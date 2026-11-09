@@ -5033,12 +5033,10 @@ package INTERP-EMIT
 \ minimum input arity: without it a bare `>ROLE` at an empty stack reads below
 \ the interpret base (test/cast-negative-suite.f pins the refusal).
 \ The registrar is asked with or without a hook, since it is a cast's whole
-\ check (as EM-COMPILE-PUBLISH-HOOKED, definition.f DECLARE-HOOKLESS); the
-\ native build's hookless prefix scan (definition.f CHECK-HOOKLESS) types a call
-\ only from that row. With no owner record or operation, REGISTER-IDENTITY calls
-\ nothing. The drain stays hook-guarded: it finds its two checker words by
-\ global name; the latches it would read are stored by value at the next record
-\ (checker.f RECW, RECMI).
+\ check (as EM-COMPILE-PUBLISH-HOOKED). With no owner record or operation,
+\ REGISTER-IDENTITY calls nothing. The drain stays hook-guarded: it finds its
+\ two checker words by global name; the latches it would read are stored by
+\ value at the next record (checker.f RECW, RECMI).
 \ `off` selects the registrar and `noname` the missing-name diagnostic.
 \ C-QUALIFY-DEF can allocate a package record; a LINEAR: row may never target
 \ that package's public wordlist, so its certifier is asked before the
@@ -11693,7 +11691,7 @@ public
 \ records nothing.
 \ Unjudged, the body still states its widths: while `0 set-check` parks a hook
 \ (SUSP-HOOK-CELL) with an owner, pass 1 scans it as a TRUSTED: body
-\ (C-CALL-CHECK-UNJUDGED, tier 1's definition.f CHECK-HOOKLESS) and lowers from
+\ (C-CALL-CHECK-UNJUDGED) and lowers from
 \ that certificate, so a wide value is not moved one cell wide. A signed does>
 \ clause is scanned first and kept (C-CALL-DOES-UNJUDGED, as CHECK-DOES-SPLIT);
 \ a definer with an unsigned clause is not scanned. No verdict is enforced. The

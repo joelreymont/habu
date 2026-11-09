@@ -1548,10 +1548,9 @@ s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
 : ES-CPX-GOOD-EXTENDED-NAME ( n -- n ) 2 + ;
 6 ES-CPX-GOOD-EXTENDED-NAME 8 T=
 
-\ Candidate dictionary/hook smoke, independent T= probes: the boot check hook
-\ is installed, a checked def compiles and runs, and a representative baked
-\ process primitive resolves. Runs on both the candidate and bin/hb.
-s" smoke-hook-installed" T-LABEL data-base HOOK-CELL + @ 0= TFALSE
+\ Candidate dictionary smoke, independent T= probes: a checked def compiles and
+\ runs, and a representative baked process primitive resolves. Runs on both the
+\ candidate and bin/hb.
 : ES-SMOKE-SQ ( i64 -- i64 ) dup * ;
 s" smoke-checked-compile-run" T-LABEL 7 ES-SMOKE-SQ 49 T=
 s" smoke-baked-word-resolves" T-LABEL ' spawn-argv-env-cwd-io drop true TTRUE

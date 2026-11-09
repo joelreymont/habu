@@ -63,11 +63,19 @@ learned live in the docs for their subject.
   public error E-PROTECTION-CAP included. The private path's protections and
   E-CTOR-PROTECTED, which now guards public families too, stay; package
   sealing is the entry "sealing a package".
-- 2026-11-03, how the compiler reaches the checker: shown that the compiler
-  can call the word named CHECK:DEFINITION whenever the dictionary has it,
-  with no hidden cell and no install step, so that only the kernel, before
-  the checker loads, compiles unchecked, Joel chose "Find by name
-  (Recommended)".
+- 2026-11-09, how the compiler reaches the checker: on 2026-11-03, offered a
+  compiler that looks up CHECK:DEFINITION by name for each definition against
+  one hook cell the checker fills, Joel chose "Find by name (Recommended)".
+  Shown on 2026-11-09 that the caller is now the Habu-written interpreter,
+  which loads after the checker, and that a lookup during a build would find
+  the half-built product's checker, he asked "what's best for long term?" and
+  "why is direct call the best answer when forth looks up words?" Told that
+  Forth looks a name up once, when it compiles the text, he asked "so we do it
+  like forth does then, correct?" and, told yes, wrote "great, keep going":
+  the interpreter's source names CHECK:DEFINITION, CHECK:IMMEDIATE and
+  CHECK:TOP-LEVEL as any word names another, looked up once when hb is built.
+  No cell, no install step and no lookup at run time: hb's own checker checks
+  everything hb compiles, a product during a build included.
 - 2026-11-03, removing a word of a sealed package: asked to approve refusing
   it once hb has started, Joel asked "why would you ever remove a word from a
   sealed package? once a package is sealed you have no access to its

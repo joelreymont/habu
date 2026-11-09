@@ -73,6 +73,7 @@ TEXTS!
 : CAST$ ( -- ptr u8 n ) s" len -- n" ;
 : CAST-NAME$ ( -- ptr u8 n ) s" nltcast" ;
 : CLAUSE$ ( -- ptr u8 n ) s" drop 1 +" ;
+: CLAUSE-SIG$ ( -- ptr u8 n ) s" ( n -- n )" ;
 
 \ The checker's pool marks, which a refused name leaves where it found them.
 13 constant MARK-N
@@ -153,7 +154,7 @@ create BEFORE MARK-N cells allot
 : CHECK-IT ( -- ) BODY$ CHECK drop ;
 : CHECK!-IT ( -- ) BODY$ CHECK! drop ;
 : CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
-: HOOK-IT ( -- ) BODY$ LOWER-CERT-HOOK:HOOK drop ;
+: HOOK-IT ( -- ) BODY$ CHECK:DEFINITION drop ;
 
 \ A product of this file's own, so a field transaction has a family to add to:
 \ the family of the field row it just committed.
@@ -348,7 +349,10 @@ variable WANT-U
 \ refused as one that does not parse: a does> clause is rejected, a cast is
 \ E-CAST-ARITY. CHECK-DOES! is trusted-only and CHECKER-DEFCAST has no effect a
 \ checked body may call, so the child names them at its top level; the cast's
-\ refusal names this file, which the child loads, and exits 70.
+\ refusal names this file, which the child loads, and exits 70. hb's checker
+\ holds only what its own files' top levels interned (the builder's checker
+\ checked hb's definitions), so the first top-level CHECK-DOES! interns its row:
+\ the child runs one with a signature that parses before it takes the marks.
 : TOO-LARGE$ ( -- ptr u8 n ) S\" checker: token buffer too large\n" ;
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 : CAST-WANT$ ( -- ptr u8 n )
@@ -366,7 +370,8 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" CHECK!-IT" 76 TOO-LARGE$ DIES-NO-SPAN
    s" CANDIDATE-IT" 76 TOO-LARGE$ DIES-NO-SPAN
    s" HOOK-IT" 76 TOO-LARGE$ DIES-NO-SPAN
-   s" MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT" RETURNS-NO-SPAN
+   s" CLAUSE$ CLAUSE-SIG$ CHECK-DOES! drop MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT"
+   RETURNS-NO-SPAN
    s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-WANT$ DIES-NO-SPAN ;
 
 \ ---- a name of exactly the ceiling ------------------------------------------

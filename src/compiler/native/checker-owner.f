@@ -8,6 +8,7 @@
 require src/lib/prelude.f
 require src/lib/error.f
 require src/core/checker-owner-guard.f
+require src/core/check-hook.f
 require src/habu/layout.f
 
 package CHECKER-OWNER
@@ -34,8 +35,6 @@ defer SOURCE-QUOT-OUT ( n n -- n n )
 defer SOURCE-INIT-LAYOUT ( n -- n n n )
 defer SOURCE-FIELD-SPAN ( n -- n n )
 defer SOURCE-C2-STOW ( n -- n n )
-defer SOURCE-REPORT ( -- )
-defer SOURCE-DECLARED-ROW ( ptr u8 n ptr u8 n -- )
 defer SOURCE-ROWS-END ( -- n )
 defer SOURCE-RETRACT-ROWS ( n -- )
 defer SOURCE-WRITE-WINDOW ( n -- )
@@ -102,7 +101,7 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
 
 \ Bound once while this source compiler and its checker are paired. The engine
 \ refuses a tick of an internal pre-hook word and a checked body may not call a
-\ trust-boundary one (CHECKER-CHECK-REPORT, E-CAP-TRUSTED), so the owner's
+\ trust-boundary one (E-CAP-TRUSTED), so the owner's
 \ callable field is the binding. The record is this tree's checker's, found by
 \ name: inside a build the live record is the building hb's.
 : PAIRED-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
@@ -121,8 +120,6 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" source init layout" PAIRED-FIELD AS-INIT-LAYOUT is SOURCE-INIT-LAYOUT
    NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" PAIRED-FIELD AS-CELLS is SOURCE-FIELD-SPAN
    NCOMP-DISPATCH:DECL-C2-STOW-OFF s" source C2 stow" PAIRED-FIELD AS-CELLS is SOURCE-C2-STOW
-   NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" source scan report" PAIRED-FIELD AS-ACTION is SOURCE-REPORT
-   NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF s" source declared row" PAIRED-FIELD AS-DECLARATION is SOURCE-DECLARED-ROW
    NCOMP-DISPATCH:DECL-ROWS-END-OFF s" source rows end" PAIRED-FIELD AS-N is SOURCE-ROWS-END
    NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" source rows retract" PAIRED-FIELD AS-MARK-ACTION is SOURCE-RETRACT-ROWS
    NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" PAIRED-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW
@@ -168,14 +165,6 @@ public
    NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" unjudged scan" FIELD
    dup 0= if drop SOURCE-UNJUDGED exit then
    AS-CHECK execute ;
-
-\ The diagnostic that scan suppressed, rendered by the same owner while it still
-\ holds the scan's state: the reason for a verdict this compiler does not
-\ enforce but may refuse over (definition.f CHECK-HOOKLESS).
-: REPORT ( -- )
-   NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" scan report" FIELD
-   dup 0= if drop SOURCE-REPORT exit then
-   AS-ACTION execute ;
 
 \ NATIVE MULTI-ERROR RECOVERY AND DIAGNOSTICS. Fields appended after the
 \ retained host's owner (src/core/checker-owner-extension.f), named through
@@ -255,7 +244,7 @@ public
 
 : DOES-FINISH ( ptr u8 n bool -- )
    CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF s" does> publication" FIELD
-   dup 0= if drop CHECKER-NATIVE-DOES-FINISH exit then
+   dup 0= if drop CHECK:DOES-PUBLISHED exit then
    AS-DOES-FINISH execute ;
 
 : DOES-BEGIN ( -- )
@@ -492,14 +481,7 @@ public
 
 TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    CHECKER-OWNER-ABI:TRUST-DECL-OFF s" declared-effect row" FIELD
-   dup 0= if drop TRUST-DECL exit then
-   AS-DECLARATION execute ;
-
-\ A hook-less definition's declaration as its row, without authority, where no
-\ live row states the symbol (checker.f CHECKER-DECLARED-ROW!).
-: DECLARED-ROW ( ptr u8 n ptr u8 n -- )
-   NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF s" declared row" FIELD
-   dup 0= if drop SOURCE-DECLARED-ROW exit then
+   dup 0= if drop CHECK:DECLARED exit then
    AS-DECLARATION execute ;
 
 : PARSE-IMM? ( ptr u8 n -- bool )

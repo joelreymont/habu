@@ -12,7 +12,7 @@ package CREATE-AXIOM-TEST
 private
 
 0 constant LOADED               \ what `catch` answers for a source that loaded
-70 constant REJECT-RC           \ src/core/check-hook.f LOWER-CERT-HOOK CHECK-RC (private there)
+70 constant REJECT-RC           \ src/core/check-hook.f CHECK CHECK-RC (private there)
 
 \ `evaluate-closed` loads a definition as a source file loads one. At top level
 \ what these publish is global, the position the inference case needs.

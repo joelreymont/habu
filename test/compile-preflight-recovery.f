@@ -36,7 +36,7 @@ depth CPR-DEPTH @ 5 CPR-EXPECT
 
 get-current CPR-WID @ 2 CPR-EXPECT
 
-LOWER-CERT-HOOK:INSTALL
+CHECK:INSTALL
 : CPR-GLOBAL ( -- n ) 73 ;
 package CPR-AFTER ;package
 : CPR-USE ( -- n ) CPR-GLOBAL ;

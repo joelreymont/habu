@@ -251,9 +251,6 @@ create TRAILER TRAILER-BYTES allot
    idx APPEND-PENDING
    idx ;
 
-: HOOKED? ( -- bool )
-   data-base HOOK-CELL + @ 0<> ;
-
 public
 
 \ Each publishes the emission NEMIT holds sealed, so it runs before the
@@ -271,7 +268,7 @@ public
    idx fn size cell COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
-   HOOKED? if idx PENDING-FACTS then ;
+   idx PENDING-FACTS ;
 
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}

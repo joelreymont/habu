@@ -512,7 +512,7 @@ public
    ROW-P @ BYTE-VIEW ROW-HEAD @ path pathu action EACH-ROWS ;
 
 : CHECKED-HOOK ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u LOWER-CERT-HOOK:HOOK dup -1 = if
+   a u CHECK:DEFINITION dup -1 = if
       a u FIRST-TOKEN {: name:ptr nameu:n :}
       check@ ['] ACCEPT-PENDING TAKE-N
          ENGINE-ORIGIN-EARLY:NATIVE-ARM 0= if name nameu TAKE then

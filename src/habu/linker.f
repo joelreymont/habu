@@ -3097,7 +3097,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 : PIECE-END ( n -- )
    {: req:n :}
    DPHW-CELL HOST@ 0<> if E-FAILED throw then
-   FILE-HELD @ LOWER-CERT-HOOK:AMENDED   \ the facts its `TRUST` rows and amenders changed
+   FILE-HELD @ CHECK:AMENDED   \ the facts its `TRUST` rows and amenders changed
    TYPE-ENTRIES
    here NULL-PTR - FILE-END !
    RETIRED!  CHECK-EARLIER  FIND-STORES
@@ -3290,7 +3290,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    {: k:n :}
    k PRIM-SPEC:NAME$ WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: src:ptr :}
    src XREF-FOUND? 0= if E-COMP-STATE throw then
-   k HB-OWNED  k PRIM-SPEC:PKG$  k PRIM-SPEC:NAME$  LOWER-CERT-HOOK:OWNED-FACTS {: a:ptr u:n :}
+   k HB-OWNED  k PRIM-SPEC:PKG$  k PRIM-SPEC:NAME$  CHECK:OWNED-FACTS {: a:ptr u:n :}
    u 0= if
       s" linker: no facts text says owned primitive " SAY
       k PRIM-SPEC:PKG$ SAY  s" :" SAY  k PRIM-SPEC:NAME$ SAY  SAY-CR

@@ -757,7 +757,7 @@ package BUILD-FIXPOINT
 : BF-APPEND-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" 0 set-check" BF-APPEND-LINE
    out outu s" src/habu/prefix-rewind.f" BF-APPEND-SOURCE
-   out outu s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE ;
+   out outu s" CHECK:INSTALL" BF-APPEND-LINE ;
 
 : BF-APPEND-STDIN-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu BF-APPEND-RUN-PRELUDE ;

@@ -12,6 +12,7 @@ require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/workspace.f
+require src/core/check-hook.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f
 require src/compiler/native/dict.f
@@ -29,7 +30,6 @@ public
 0 CWORK-VARIABLE M-IN n
 0 CWORK-VARIABLE M-OUT n
 0 CWORK-VARIABLE M-VERDICT n                   \ the verdict the recorded scan reached
-0 CWORK-VARIABLE M-REQUIRED bool                  \ this definition's build-required hookless scan
 0 CWORK-VARIABLE M-DOES-FRAME n                \ checker-owned transaction spans a split compilation
 0 CWORK-VARIABLE M-DOES n                      \ byte split after `does> `, or zero
 0 CWORK-VARIABLE M-DOES-SIG ptr u8
@@ -69,7 +69,6 @@ private
 0 CWORK-VARIABLE M-SRC ptr u8
 0 CWORK-VARIABLE M-SRC-U n
 0 CWORK-VARIABLE M-SCAN ptr u8                 \ the text scanned last
-0 CWORK-VARIABLE M-UNJUDGED n                  \ a hook-cell-empty scan's verdict, else -1
 0 CWORK-VARIABLE M-ROWS n                      \ where the checker store ended at STAGE-UNIT
 0 CWORK-VARIABLE M-HEAD-RECOVERY bool          \ a split definition's head bound a recovery row
 -1 CWORK-VARIABLE M-CB-SLOT n                   \ -1 outside a callback accessor definition
@@ -136,29 +135,7 @@ private
 : REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
    CHECKER-OWNER:DECLARED-EFFECT ;
 
-\ The hook cell stores a raw execution token; this view states the scan's signature.
-CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
-
-\ Every tier reads the hook cell per definition. With it empty a definition is
-\ published uncertified; a native build still requires the scan's verdict.
-: CERTIFYING? ( -- bool )
-   check@ 0 <> ;
-
-: UNCERTIFIED? ( -- bool )
-   TRUSTED? CERTIFYING? 0= or ;
-
-70 constant RC-REJECT                 \ the check hook's reject status (check-hook.f CHECK-RC)
-
-\ A build-required scan refuses before the declaration is recorded; otherwise
-\ KEEP-ARITY refuses only when no declaration could be recorded. The reason is
-\ printed here because a does> head's scan is replaced by its clause's before
-\ KEEP-ARITY runs.
-: CHECK-HOOKLESS ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u CHECKER-OWNER:CHECK-UNJUDGED {: v:n :}
-   v -1 <> if CHECKER-OWNER:REPORT then
-   M-REQUIRED @ v -1 <> and if RC-REJECT throw then
-   v M-UNJUDGED ! ;
+70 constant RC-REJECT                 \ CHECK:DEFINITION's reject status (check-hook.f CHECK-RC)
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -166,11 +143,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    CHECKER-OWNER:RESET-REPORT
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
       a u CHECKER-OWNER:CHECK-UNJUDGED exit then
-   check@ {: hook:n :}
-   hook 0= if -1 CHECKER-OWNER:BIND-REGIME!
-      a u CHECK-HOOKLESS -1 exit then
    0 CHECKER-OWNER:BIND-REGIME!
-   a u hook AS-HOOK execute ;
+   a u CHECK:DEFINITION ;
 
 public
 
@@ -180,8 +154,8 @@ public
 
 private
 
-\ A refused clause is reported as the check hook reports a refused body: the
-\ checker's reason, then the hook's reject status, which the run names the
+\ A refused clause is reported as CHECK:DEFINITION reports a refused body: the
+\ checker's reason, then its reject status, which the run names the
 \ definition under. The clause is named by the caller, from its open unit.
 : CLAUSE-CK ( n ptr u8 n -- )
    CHECKER-OWNER:DOES-REPORT -1 <> if RC-REJECT throw then ;
@@ -206,7 +180,7 @@ public
    1 M-DOES-FRAME !
    M-DOES @ {: cut:n :}
    M-SRC @ cut DOES-SPAN - CHECK-PARENT
-   UNCERTIFIED? if drop else -1 <> if E-COMP-VERDICT throw then then
+   TRUSTED? if drop else -1 <> if E-COMP-VERDICT throw then then
    CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY !   \ the clause's scan starts its own
    M-SRC @ cut DOES-SPAN - 0 NFETCH:CAPTURE ;
 
@@ -231,22 +205,12 @@ public
    NDICT:DOES-GLUE M-DOES-GOUT ! M-DOES-GIN !
    -1 ;
 
-private
-
-\ The empty-hook row (checker.f CHECKER-DECLARED-ROW!) is recorded after the
-\ scan, its report and capture, which it would clobber, and before KEEP-ARITY.
-: DECLARE-HOOKLESS ( -- )
-   TRUST-SIG$ {: sa:ptr su:n :}
-   su 0= if exit then
-   NAME$ sa su CHECKER-OWNER:DECLARED-ROW ;
-
 public
 
-\ The row a scan that did not certify leaves: a TRUSTED: declaration, or with
-\ the hook cell empty the declared one. Run once the scan has named the unit.
+\ A TRUSTED: definition's row, which no scan certified. Run once the scan has
+\ named the unit.
 : DECLARE-ROW ( -- )
-   TRUSTED? if NAME$ TRUST-SIG$ REGISTER-TRUST exit then
-   CERTIFYING? 0= if DECLARE-HOOKLESS then ;
+   TRUSTED? if NAME$ TRUST-SIG$ REGISTER-TRUST then ;
 
 private
 
@@ -265,7 +229,7 @@ public
 \ E-COMP-RECOVERY ends it without a second report. So is a TRUSTED: definition
 \ whose declared row the checker refused, reported and counted (SIG-REFUSED?).
 : VERDICT-CK ( -- )
-   TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if
+   TRUSTED? 0= if M-VERDICT @ -1 <> if
       M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
          RECOVERING? if E-COMP-RECOVERY throw then
       then
@@ -329,17 +293,14 @@ public
 \ ARITY-NONE is refused here: passed on as -1, NELAB:COLON would refuse it as
 \ E-NELAB-ARITY and name the wrong thing. Only a definition with no recordable
 \ declaration reaches the refusal (no signature, an unparsable one, or one with
-\ a scope scheme): a hook has refused every uncertified body, and with the cell
-\ empty DECLARE-HOOKLESS recorded the declaration. The scan has printed why, so
-\ the refusal takes the check hook's reject status. After a certified scan
-\ nothing reaches it either: a package opened and closed by the source is
+\ a scope scheme): CHECK:DEFINITION has refused every uncertified body. After a
+\ certified scan nothing reaches it either: a package opened and closed by the source is
 \ E-COMP-NAME, an unsigned body answers its inferred effect, and one whose
 \ effect is unrecorded (W-EFFECT-NOT-RECORDED) answers CHECKER-OWNER's
 \ UNRECORDED-IN and UNRECORDED-OUT cells; no row carries them for callers.
 : KEEP-ARITY ( -- )
    NAME$ NDICT:SPELL-ARITY {: din:n dout:n :}
    din NDICT:ARITY-NONE <> if din M-IN !  dout M-OUT !  exit then
-   M-UNJUDGED @ -1 <> if RC-REJECT throw then
    CHECKER-OWNER:UNRECORDED-IN {: uin:n :}
    CHECKER-OWNER:UNRECORDED-OUT {: uout:n :}
    uin 0 < uout 0 < or if E-COMP-ARITY throw then
@@ -528,12 +489,12 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    ca cu cp REPORT-FAILURE
    undefined if ca cu cp REPORT-UNDEFINED then ;
 
-\ A refusal of a body no scan certified (TRUSTED:, or refused by its
-\ hookless scan) that names its token: the load ends as a reject.
+\ A refusal of a TRUSTED: body, which no scan certified, that names its token:
+\ the load ends as a reject.
 : MALFORMED? ( n -- bool ) {: rc:n :}
    rc E-T0-CONTROL =  rc E-NELAB-CTRL = or  rc E-UNMODELED-IMMEDIATE = or
    rc E-T0-MATCH = or  rc E-T0-DEFER = or
-   TRUSTED? M-UNJUDGED @ -1 <> or and ;
+   TRUSTED? and ;
 
 \ A recovery-bound head's scan marks its record (checker.f RECOVERY-RECORD)
 \ unless deferred; a TRUSTED: head's newer TRUST-DECL row has none.
@@ -579,17 +540,15 @@ public
       RETRACT rc throw
    then ;
 
-: STAGE-UNIT ( ptr u8 n bool -- )
-   {: sa su:n required:bool :}
-   required M-REQUIRED !
+: STAGE-UNIT ( ptr u8 n -- )
+   {: sa su:n :}
    0 CHECKER-OWNER:BIND-REGIME!
    NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
    NULL-PTR M-SCAN !
    0 M-IN ! 0 M-OUT !
-   UNCERTIFIED? NHOST:SOURCE-BEGIN
+   TRUSTED? NHOST:SOURCE-BEGIN
    0 M-VERDICT !
-   -1 M-UNJUDGED !
    CHECKER-OWNER:ROWS-END M-ROWS !
    0 M-DOES-FRAME !
    DOES-BYTE@ M-DOES !

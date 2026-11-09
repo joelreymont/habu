@@ -23,7 +23,6 @@ public
 7118 constant E-TDECL-CAP       \ declaration body past TDECL-CAP, or a declared name past TF-NAME-MAX
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
-7210 constant E-TDECL-UNCHECKED \ a constructor-generating declaration while checking is suspended
 
 private
 
@@ -2386,26 +2385,11 @@ public
    fam TDECL-CTOR-REPLAY
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN ;
 
-\ SUMTYPE, PRODUCT, STRUCTURE and ENUM generate constructor words, which the
-\ checker certifies: with the hook suspended (`0 set-check`) a product's
-\ constructor plan is never consumed and a sum's constructors carry rows without
-\ authority. Each live definer refuses such a declaration through its
-\ declaration packet, after collecting the body and before registering
-\ anything: SUMTYPE and PRODUCT below, STRUCTURE and ENUM in DECL-FRONT:RUN. A
-\ NEWTYPE generates no word and is admitted. The replay entries (CHECKER-DEFSUM,
-\ *-REPLAY) define no word and stay open: verify-source.f runs them hookless in
-\ the fixpoint's certify child (tools/build-fixpoint-certify.f).
-: TDECL-UNCHECKED$ ( -- ptr u8 n )
-   s" checking is suspended; declare it where checking is on" ;
-
 : TDECL-NEWTYPE ( -- )
    parse-name TDECL-DEFFAMILY ;
 
 
 private
-
-: TDECL-UNCHECKED-BODY ( -- )
-   TDN-A @ TDN-U @ TDECL-UNCHECKED$ E-TDECL-UNCHECKED TDECL-THROW ;
 
 : TDECL-CLEAR ( -- ) 0 TDECL-U !  0 TDECL-OVERSIZE ! ;
 : TDECL-C, ( n -- )                     \ over-cap: cap + flag (never raw-die); the
@@ -2437,10 +2421,6 @@ public
    SUMTYPE-COLLECT 0= IF
       na nu TDECL-BUF TDECL-U @ TDECL-DEFSUM-NOEND EXIT
    THEN
-   check@ 0= IF
-      s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
-      [: TDECL-UNCHECKED-BODY ;] TDECL-RUN EXIT
-   THEN
    na TDN-A !  nu TDN-U !
    TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
    [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFSUM TDECL-CTOR-WORDS ;]
@@ -2471,7 +2451,6 @@ public
    PRODUCT-COLLECT
    s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
    0= IF [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN EXIT THEN
-   check@ 0= IF [: TDECL-UNCHECKED-BODY ;] TDECL-RUN EXIT THEN
    [: TDECL-PRODUCT-GEN-TXN ;] TDECL-RUN ;
 
 ;package

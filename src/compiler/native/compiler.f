@@ -161,8 +161,9 @@ align
 
 \ ---- stage N0: the definition the engine compiles ----------------------------
 \ Parked, not left on the stack: this runs inside the quotation the recovery
-\ below catches. A hook's zero verdict stands over the scan's: the definition is
-\ refused (RECORD) and its rows retracted, as src/habu/t0.f SCAN does.
+\ below catches. CHECK:DEFINITION's zero verdict stands over the scan's: the
+\ definition is refused (RECORD) and its rows retracted, as src/habu/t0.f SCAN
+\ does.
 : END-RECORDED ( -- )
    NFEED:END-UNIT {: view:IR-ARENA:view verdict:n :}
    M-VERDICT @ 0<> if verdict M-VERDICT ! then
@@ -662,7 +663,7 @@ INSTALL-FORGET
    entry-rc rc  rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and
    REFUSED-AT SETTLE-UNIT ;
 
-: STAGE ( ptr u8 n bool -- )
+: STAGE ( ptr u8 n -- )
    IDLE-CK
    STAGE-UNIT
    KEEP-PRIOR
@@ -674,20 +675,14 @@ INSTALL-FORGET
 
 private
 
-: LEASED-MODE ( ptr u8 n bool NLEASE:lease -- )
-   M-LEASE !
-   [: STAGE RUN ;] [: false M-REQUIRED ! ;] finally ;
-
 : LEASED ( ptr u8 n NLEASE:lease -- )
-   false swap LEASED-MODE ;
-
-: LEASED-CHECKED ( ptr u8 n NLEASE:lease -- )
-   true swap LEASED-MODE ;
+   M-LEASE !
+   STAGE RUN ;
 
 : FIXED-LEASED ( n COMP:body NLEASE:lease -- )
    {: val:n kind:COMP:body lease:NLEASE:lease :}
    lease M-LEASE !
-   TXT 0 false STAGE
+   TXT 0 STAGE
    kind M-FIXED ! val M-FIXED-VAL !
    RUN ;
 
@@ -785,12 +780,6 @@ public
 \ Compile the captured body directly.
 : COMPILE ( ptr u8 n -- )
    [: LEASED ;] NLEASE:WITH ;
-
-\ A build window can require the live checker's verdict while the target's
-\ check hook has not loaded. Ordinary COMPILE still leaves that window
-\ explicitly unjudged.
-: COMPILE-CHECKED ( ptr u8 n -- )
-   [: LEASED-CHECKED ;] NLEASE:WITH ;
 
 : COMPILE-FIXED ( n COMP:body -- ) {: val:n kind:COMP:body :}
    kind COMP-BODY:compiled COMP-BODY:EQ if E-COMP-STATE throw then

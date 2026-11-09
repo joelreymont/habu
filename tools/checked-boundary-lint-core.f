@@ -271,7 +271,7 @@ private
    UB-TRUE ;
 
 : UB-PREFLIGHT-INSTALL? ( -- bool )
-   s" LOWER-CERT-HOOK:INSTALL" UB-TOK=CI ;
+   s" CHECK:INSTALL" UB-TOK=CI ;
 
 \ A hook install is `' NAME set-check` / `['] NAME set-check`: current token
 \ `set-check`, two-back token the tick, one-back token the installed hook name.
@@ -367,7 +367,7 @@ private
    s" E-CHECKER-MUTATION" UB-JSON-BASE
    s" word" s" set-check" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    UB-JSON-ORIGIN
-   s" LOWER-CERT-HOOK:INSTALL" s" set-check" UB-JSON-FINISH ;
+   s" CHECK:INSTALL" s" set-check" UB-JSON-FINISH ;
 
 : UB-JSON-ROGUE-HOOK ( -- )
    s" E-UNAUDITED-HOOK" UB-JSON-BASE
@@ -409,7 +409,7 @@ private
    UB-LABEL$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
-   s" : use `LOWER-CERT-HOOK:INSTALL` before replacing the checker hook" UB-OUT UB-NL ;
+   s" : use `CHECK:INSTALL` before replacing the checker hook" UB-OUT UB-NL ;
 
 : UB-REPORT-ROGUE-HOOK ( -- )
    UB-BAD @ 1+ UB-BAD !

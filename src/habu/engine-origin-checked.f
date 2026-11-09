@@ -41,7 +41,7 @@ CAST: TAKE-N ( [ ptr u8 n -- ] -- n )
 : BODY-TAKE ( ptr u8 n -- ) FIRST-TOKEN CHECKED-TAKE ;
 
 : CHECKED-HOOK ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u LOWER-CERT-HOOK:HOOK dup -1 = if
+   a u CHECK:DEFINITION dup -1 = if
       a u FIRST-TOKEN {: name:ptr nameu:n :}
       check@ ['] BODY-TAKE TAKE-N NATIVE-ARM 0= if
          name nameu CHECKED-TAKE

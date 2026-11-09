@@ -68,7 +68,7 @@ public
 : RUN ( -- )
    REWIND-CHECK-OFF
    s" src/habu/prefix-rewind.f" included
-   LOWER-CERT-HOOK:INSTALL
+   CHECK:INSTALL
    ndict@ PRE-R !
    here BYTE-VIEW NULL-PTR BYTE-VIEW - PRE-D !
    WBACK:INSTALL

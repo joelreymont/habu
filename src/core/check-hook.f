@@ -1,10 +1,16 @@
-\ check-hook.f - default native source checker hook and certificate checkpoint.
+\ check-hook.f - the checks the compiler calls: CHECK:DEFINITION on each
+\ definition's source, CHECK:IMMEDIATE before an immediate word inside one, and
+\ the facts text each record takes.
 
-package LOWER-CERT-HOOK
+package CHECK
 
 70 constant CHECK-RC
 
-: PREFLIGHT ( ptr u8 n ptr u8 n bool -- )
+public
+
+\ An immediate word met inside a definition, before it runs: one the checker
+\ has no model for is refused unless it parses nothing.
+: IMMEDIATE ( ptr u8 n ptr u8 n bool -- )
    drop
    {: ba:ptr bu:n ta:ptr tu:n :}
    ta tu NEUTRAL-PARSE-IMM? if exit then
@@ -12,6 +18,8 @@ package LOWER-CERT-HOOK
       s" checker: preflight did not reject unmodeled immediate" 76 die
    then
    CHECK-RC throw ;
+
+private
 
 \ ---- a duplicate only the checker sees ----------------------------------------
 \ A replay entry (CHECKER-DEFPRODUCT with GENERATED-DECL-CTOR:REPLAY-LEGACY,
@@ -39,7 +47,7 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    a swap ;
 
 \ The line of a byte of the open file, counted from its first owned byte.
-: LINE-AT ( ptr u8 -- n )
+: BYTE-LINE ( ptr u8 -- n )
    SRC-OWNED @ swap ERROR-TEXT:LINE ;
 
 \ The line of the definition's name, where the wall places a duplicate. At a
@@ -52,7 +60,7 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
 : NAME-LINE ( -- n )
    SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:ptr nm:ptr p:ptr :}
    data-base PEND-OFF + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
-   if nm LINE-AT else p LINE-AT then ;
+   if nm BYTE-LINE else p BYTE-LINE then ;
 
 \ ` at <path>` while a source file is open, then `:<line>` under
 \ SRCLOC:FILE-BUFFER?, as the tail writes it; nothing on stdin or at the REPL.
@@ -98,7 +106,7 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
       CK-LIVE-PEND? 0= if exit then
       DOES-SPLIT @ 0 <> if exit then
       sym FACTS-TAGS
-      RQM @ 0= if RSBUF RSN @ ndict@ CHECK:FACTS! exit then
+      RQM @ 0= if RSBUF RSN @ ndict@ FACTS! exit then
    then
    RQM @ 0 <> if s" hook: facts text cannot say: " else s" hook: facts text differs: " then
    ERROR-TEXT:TYPE
@@ -121,8 +129,11 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    RQM @ 0= ;
 
 
-\ The does> field entry, once the definer's record ndict@ 1 - is appended: it
-\ refuses nothing and writes facts only there, as `: PKG:X` hands it the tail X.
+public
+
+\ A does> clause's publication, once the definer's record ndict@ 1 - is
+\ appended: it refuses nothing and writes facts only there, as `: PKG:X` hands
+\ it the tail X.
 : DOES-PUBLISHED ( ptr u8 n bool -- )
    {: a:ptr u:n committed:bool :}
    a u committed CHECKER-NATIVE-DOES-FINISH
@@ -131,12 +142,14 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    sym FACTS-TEXT? 0= if exit then
    sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    ix ndict@ 1 - <> if exit then
-   RSBUF RSN @ ix CHECK:FACTS!
+   RSBUF RSN @ ix FACTS!
    sym NORET-CREATES@ {: made:n :}
    made 0= if exit then
    0 RSN !  made 1 - REND-RECORD
    RQM @ 0 <> if 2drop exit then
-   CHECK:LAY-FACTS ;
+   LAY-FACTS ;
+
+private
 
 
 \ checker.f's TRUST-RAW, TRUST-DECL and CHECKER-DEFCAST, which the fields held:
@@ -148,7 +161,7 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 
 \ The raw registrar's field entry: a created word or constant takes its text
-\ through CHECK:FIND-FACTS!, or 0 when none says its effect.
+\ through FIND-FACTS!, or 0 when none says its effect.
 : RAW-DECLARED ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su RAW-REG @ REG-XT execute
@@ -158,7 +171,7 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    ix 0 < if exit then
    LASTC-LINK-SYM FACTS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then
-   ix CHECK:FIND-FACTS! ;
+   ix FIND-FACTS! ;
 
 
 \ The pending record's facts once a registrar recorded the live window for this
@@ -171,15 +184,19 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    CK-CLOSED-SYM @ CK-CLOSED-IX @ CK-CLOSED-OFF@ CK-PEND-SYM {: sym:n :}
    sym 0= if exit then
    a u CHECKER-RECORD-SYM? sym <> if exit then
-   sym FACTS-TEXT? if RSBUF RSN @ CK-CLOSED-IX @ CHECK:FACTS!
-   else NULL-PTR 0 CK-CLOSED-IX @ CHECK:FIND-FACTS! then ;
+   sym FACTS-TEXT? if RSBUF RSN @ CK-CLOSED-IX @ FACTS!
+   else NULL-PTR 0 CK-CLOSED-IX @ FIND-FACTS! then ;
 
+
+public
 
 \ The declaration registrars' field entries: each runs its registrar, then lays
 \ the declared name's facts.
 : DECLARED ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
+
+private
 
 
 : DEFERRED ( ptr u8 n -- )
@@ -197,13 +214,14 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    na nu sa su CHECKER-LINEAR  na nu PENDING-FACTS ;
 
 
-\ In multi-error mode CHECK already emitted the diagnostic, counted the reject
-\ and kept the declared signature. A non-zero hook return publishes the
-\ definition (zero rejects and unpublishes it), so the name resolves for later
-\ definitions; the driver exits nonzero via MULTI-ERR-END.
 public
 
-: HOOK ( ptr u8 n -- n )
+\ The check of a definition's source. In multi-error mode CHECK already emitted
+\ the diagnostic, counted the reject and kept the declared signature. A
+\ non-zero answer publishes the definition (zero rejects and unpublishes it),
+\ so the name resolves for later definitions; the driver exits nonzero via
+\ MULTI-ERR-END.
+: DEFINITION ( ptr u8 n -- n )
    {: a:ptr u:n :}
    CHECKER-REPORT-RESET
    a u FIRST-TOKEN {: na:ptr nu:n :}
@@ -232,18 +250,18 @@ public
 \ would read the record's older facts.
 : AMENDED ( n -- )
    {: from:n :}
-   CHECK:HELD-FACTS from ?do
-      i CHECK:HELD-FACT@ 2drop CHECK:HELD-AMENDED = if
-         i CHECK:HELD-AMENDED@ {: ix:n sym:n :}
+   HELD-FACTS from ?do
+      i HELD-FACT@ 2drop HELD-AMENDED = if
+         i HELD-AMENDED@ {: ix:n sym:n :}
          sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: now:n :}
-         now ix <> if NULL-PTR 0 ix CHECK:FACTS! then
+         now ix <> if NULL-PTR 0 ix FACTS! then
          now 0 >=  sym FACTS-TEXT?  and 0= if
             s" hook: facts text cannot say: " ERROR-TEXT:TYPE
             sym SYM-NAME$ ERROR-TEXT:TYPE
             S\" \n" ERROR-TEXT:TYPE
             CHECK-RC throw
          then
-         RSBUF RSN @ now CHECK:FACTS!
+         RSBUF RSN @ now FACTS!
       then
    loop ;
 
@@ -322,10 +340,13 @@ public
    rec  pa pu SYM-PRIVATE na nu CHECKER-PKG-SYM?  OWN-OR-ROWS ;
 
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
-\ ordinary checked code cannot type execution-token installation.
+\ ordinary checked code cannot type execution-token installation. Only the
+\ machine-code interpreter (habu2.f C-DEFHOOK) reads the two cells; inside a
+\ build the builder's own checker checks, so a product's never replaces it.
 TRUSTED: INSTALL ( -- )
-   ['] PREFLIGHT set-preflight
-   ['] HOOK set-check ;
+   BUILDING? if exit then
+   ['] CHECK:IMMEDIATE set-preflight
+   ['] DEFINITION set-check ;
 
 \ Replace checker.f's CHECKER-NATIVE-DOES-FINISH, TRUST-RAW, TRUST-DECL,
 \ CHECKER-DEFER, CHECKER-DEFCAST and CHECKER-LINEAR, now the renderer exists.

@@ -12491,14 +12491,14 @@ PPRIM: LOWER-CERT BYTES PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PRIM-TRUSTED-ONLY!
 PPRIM: LOWER-CERT FOR-HASH PE-N PE-IN PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PRIM-TRUSTED-ONLY!
-PPRIM: LOWER-CERT-HOOK HOOK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
+PPRIM: CHECK DEFINITION PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
 \ The canonical re-arm. check-hook.f declares `TRUSTED: INSTALL ( -- )`, but it
 \ loads before the hook it installs, so the declaration never reaches the
 \ effect store. Without this row the sealed checker refuses INSTALL and
-\ every top-level `LOWER-CERT-HOOK:INSTALL` dies rc 70
+\ every top-level `CHECK:INSTALL` dies rc 70
 \ (tools/check-core.f, tools/lint/text.f, the tools/build-fixpoint.f output, the
 \ re-arm tools/checked-boundary-lint-core.f tells authors to write).
-PPRIM: LOWER-CERT-HOOK INSTALL PPRIM;
+PPRIM: CHECK INSTALL PPRIM;
 PPRIM: CHECKER-CERT INSTALL PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 \ Snapshot support loads after capture; this prefix definition has no check
@@ -14508,7 +14508,7 @@ variable BIND-SEEDED
 \ body names; a body name binds what the walk bound, so its use already
 \ withheld the definition. The definition's own name binds its own recovery
 \ row, which opens no pending window (CK-CLOSE!): the row a hookless compile
-\ publishes a refused body under (definition.f DECLARE-HOOKLESS, KEEP-ARITY).
+\ publishes a refused body under (habu2.f EM-COMPILE-PUBLISH-HOOKED).
 \ A top-level step runs what it binds, and EXPORT publishes it, at once. So
 \ only under MULTI-ERR? inside a body's walk (BODY-WALK) or the compile window
 \ does a recovery row in a scope the engine searches ahead of the lookup's
@@ -22312,10 +22312,10 @@ variable CPAY-ON
 \ the loader owns for it, which an inner `evaluate` never changes (src/habu/layout.f
 \ SRCLOC:PATH-CELL, SRCLOC:PATHLEN-CELL, SRCLOC:OWNED-CELL, SRCLOC:OWNEDLEN-CELL).
 \ layout.f loads after this file, so the cells are spelled here as data-base
-\ offsets, private to the hook's package so no program writes them;
+\ offsets, private to package CHECK so no program writes them;
 \ src/core/check-hook.f, which reopens the package, reads the path and the bytes
 \ through them.
-package LOWER-CERT-HOOK
+package CHECK
 $2800 RESERVED-PTR-U8-CELL SRC-PATH
 $2808 constant SRC-PATHLEN-OFF
 $2D68 RESERVED-PTR-U8-CELL SRC-OWNED
@@ -22348,7 +22348,7 @@ create DIAGLB PATH-CAP allot   variable DIAGLU
    DIAGFB DIAG-COPY DIAGFU ! ;
 : DIAG-FILE! ( ptr u8 n -- )
    DIAG-FILE-COPY
-   LOWER-CERT-HOOK:TOP-SITE-PATH$ DIAGLB DIAG-COPY DIAGLU !
+   CHECK:TOP-SITE-PATH$ DIAGLB DIAG-COPY DIAGLU !
    -1 DIAG-LABELED ! ;
 : DIAG-LABELS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    DIAG-LABELED @ 0= IF RES-FALSE EXIT THEN
@@ -22590,8 +22590,7 @@ package CHECKER-REG
 \ binds the row and checks callers against it, a sealed one refuses it by
 \ authority (CALL-AUTHORITY), and EFFECT-QUERY and the native compiler's arity
 \ read it. A TRUSTED: declaration goes through TRUST-DECL instead. Callers: the
-\ JIT's empty-hook publish arm (habu2.f EM-COMPILE-PUBLISH-HOOKED) and tiers 0
-\ and 1 after their unjudged scan (definition.f DECLARE-HOOKLESS), both through
+\ JIT's empty-hook publish arm (habu2.f EM-COMPILE-PUBLISH-HOOKED), through
 \ DECLARED-ROW-OFF.
 \ A live row wins: at tier 1 the scan's own row (certified, deferred, or a
 \ multi-error recovery fact) keeps the symbol; after `undefine` the tombstone is
@@ -27679,17 +27678,6 @@ CHECKER-REG:}SCRATCH
    FIELD-LOAN-PENDING @ 0= and PARSE-COMPLETE @ 0= 0= and UWIN-VALID !
    UNJ-VERDICT @ ;
 
-\ What that scan did not print, for a caller that will not enforce the verdict
-\ but must not drop its reason: the native compiler with the check hook cell
-\ empty, which refuses a body the scan left without an effect
-\ (src/compiler/native/definition.f CHECK-HOOKLESS). CHECK! renders a rejection
-\ only, an uncheckable verdict only as JSON or in a multi-error load; this
-\ renders whichever verdict the scan reached. It is an owner field like the
-\ scan, so the instance that scanned is the one that renders; ask before
-\ another scan replaces its state.
-: CHECKER-CHECK-REPORT ( -- )
-   DIAG-QUIET @ 0= IF DIAGXT THEN ;
-
 package CHECKER-PREFLIGHT
 
 : RUN ( -- )
@@ -31290,7 +31278,7 @@ data-base BOOT:IMAGE-BASE-CELL + @ 0= [if]
 PPRIM: SRCLOC FILE-BUFFER? PE-F PE-OUT PPRIM;
 [then]
 
-package LOWER-CERT-HOOK
+package CHECK
 public
 
 \ The line of byte t, counted as the engine's refusal tail counts it; false
@@ -31376,21 +31364,6 @@ CHECKER-REG:}SCRATCH
    TOP-BASE @ base =  TOP-ENTRY @ lvl <= and  lvl TOP-LEVEL @ <= and IF lvl TOP-LEVEL !  EXIT THEN
    base lvl TOP-SEG-FIND dup 0 >= IF TOP-SEG-UNPARK  lvl TOP-LEVEL !  EXIT THEN drop
    TOP-SEG-PARK  base TOP-BASE !  lvl TOP-ENTRY !  lvl TOP-LEVEL ! ;
-
-\ An event inside a `0 set-check` window: the live segment's cells are unknown.
-\ The return row empties: only cells pushed after the window can be read.
-: CHECKER-TOP-FORGET ( -- ) 0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !  0 TOP-RROW-OFF ! ;
-
-\ A word event inside the window steps nothing, but the engine's `evaluate`
-\ still widens the segment.
-: TOP-WINDOW-STEP ( -- ) TOP-BEGIN TOP-WIDEN? drop ;
-
-\ The window binds nothing except an `evaluate` spelling: any other spelling
-\ returns at once, and only that one is stepped to learn whether it is the
-\ engine's word.
-: CHECKER-TOP-WIDEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" evaluate" CORE-STR=CI 0= IF EXIT THEN
-   a TOK-SPELL-A !  u TOK-SPELL-U !  TOP-GUEST  ['] TOP-WINDOW-STEP TOP-RUN  TOP-RELEASE ;
 
 \ Start a step on a live stack of n cells: DCUR is the saved row with the cells
 \ it knows at the top. A longer row loses entries from its top until it fits; a
@@ -32143,7 +32116,6 @@ package CHECKER-REG
 ' CHECKER-NATIVE-DOES-FINISH DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 ' CHECKER-NATIVE-DOES-BEGIN DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF + xt!
 ' CHECKER-NATIVE-DOES-COMMIT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF + xt!
-' CHECKER-CHECK-REPORT DECLARATIONS CHECKER-OWNER-ABI:CHECK-REPORT-OFF + xt!
 ' CHECKER-VERIFY-TOP DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!

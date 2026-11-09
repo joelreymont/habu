@@ -36,12 +36,10 @@ require tools/check-verify-core.f
 require src/core/checker-owner-guard.f
 
 \ Checker axioms.
-\ CHECK! certifies snippets so the fail-closed source hook compiles checked.
 \ TYPE-RESERVED? is the DEFLINEAR and VALUE-RECORD name rule.
 \ CHECKER-DEFLINEAR publishes parsed linearity metadata in the child scope.
 \ CHECKER-TRY-RECORD publishes a parsed record, or answers the field it refuses.
 \ CHECKER-SCOPE-START/DONE isolate, then roll back, generated dependency effects.
-s" CHECK!" s" ptr u8 n -- n" TRUST
 s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
 s" CHECKER-DEFLINEAR" s" ptr u8 n --" TRUST
 s" CHECKER-TRY-RECORD" s" ptr u8 n ptr u8 n -- n ptr u8 n" TRUST
@@ -52,11 +50,6 @@ s" CHECKER-SCOPE-DONE" s" --" TRUST
 package LSP-CHECK
 using SOURCE                             \ the shared source-string emitters
 using SOURCE-ROOT
-
-: CHK-CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! dup -1 <> if 70 throw then ;
-LOWER-CERT-HOOK:INSTALL
-' CHK-CHECK-HOOK set-check
 
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
@@ -1427,26 +1420,19 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    dup 0 < if drop s" <negative>" CHK-ERR exit then
    CHK-U$ CHK-ERR ;
 
-\ The run file's prefix turns checking off, names the subject for the checker's
-\ diagnostics, turns its warnings off and builds the hook the run is checked
-\ with (CHK-HOOK-ON turns it on). The check before the run wrote the warnings,
-\ each in its own file and placed: the run loads what that check checked, so
-\ its warnings would repeat them, naming the subject for every file and placing
+\ The run file's prefix names the subject for the checker's diagnostics and
+\ turns its warnings off. The check before the run wrote the warnings, each in
+\ its own file and placed: the run loads what that check checked, so its
+\ warnings would repeat them, naming the subject for every file and placing
 \ none. It shares the subject's first line when the subject follows it, and the
 \ origin markers add no line break, so line N of the run file is line N of the
 \ subject: the engine counts the lines of the file it reads when it refuses a
 \ statement.
-: CHK-BUILD-HOOK ( -- )
-   s" 0 set-check" CHK-RUN-SP
+: CHK-BUILD-PREFIX ( -- )
    CHK-LABEL CHK-RUN-QPATH+
    s"  DIAG-FILE!" CHK-RUN-SP
    CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-SP then
-   s" 0 WARN-DIAGS !" CHK-RUN-SP
-   s" : CHECK-F-HOOK ( ptr u8 n -- n ) LOWER-CERT-HOOK:HOOK ;" CHK-RUN-SP
-   s" LOWER-CERT-HOOK:INSTALL" CHK-RUN-SP ;
-
-: CHK-HOOK-ON ( -- )
-   s" ' CHECK-F-HOOK set-check" CHK-RUN-SP ;
+   s" 0 WARN-DIAGS !" CHK-RUN-SP ;
 
 \ The origin pass appends the marked copy of the source file at the given path
 \ to the run buffer, reading it whole through check.f's own buffer, as the
@@ -1483,9 +1469,8 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 
 : CHK-BUILD-ACT ( -- )
    CHK-SUBJ-U @ 0 > if CHK-WRITE-MARKED then
-   CHK-BUILD-HOOK
+   CHK-BUILD-PREFIX
    CHK-SUBJ-U @ 0 > if CHK-BUILD-READER then
-   CHK-HOOK-ON
    CHK-SOURCE CHK-RUN-ORIGIN+ ;
 
 : CHK-BUILD-RUN ( -- )
@@ -1757,7 +1742,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    at CHK-RUN-PATH-U @ + {: past:n :}
    a past +  u past - ;
 
-\ An inlined subject is the run file line for line (CHK-BUILD-HOOK), so where
+\ An inlined subject is the run file line for line (CHK-BUILD-PREFIX), so where
 \ the run's diagnostics name the run file, as the engine's refusal of a
 \ statement does, they name the subject at that line.
 : CHK-ERR-NAME-SUBJECT ( -- )

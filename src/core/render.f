@@ -841,10 +841,10 @@ variable DSUGE  variable DSUGA
 \ A tool's label (checker.f DIAG-FILE!) names a top step's file in place of its
 \ path while the load reads that file or none.
 : TOP-FILE$ ( -- ptr u8 n )
-   LOWER-CERT-HOOK:TOP-SITE-PATH$ {: pa:ptr pu:n :}
+   CHECK:TOP-SITE-PATH$ {: pa:ptr pu:n :}
    pa pu DIAG-LABELS? IF DIAGFB DIAGFU @ EXIT THEN
    pa pu ;
-\ A top step names its file, then the line checker.f LOWER-CERT-HOOK:TOP-SITE
+\ A top step names its file, then the line checker.f CHECK:TOP-SITE
 \ gives, if any; a step with no file and no label names no place.
 : DSITE ( -- )
    TOP-STEP @ 0= IF s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : " DTXT EXIT THEN
@@ -852,7 +852,7 @@ variable DSUGE  variable DSUGA
    TOP-FILE$ {: fa:ptr fu:n :}
    fu 0= IF EXIT THEN
    fa fu DTXT
-   LOWER-CERT-HOOK:TOP-SITE IF 58 EMIT1 JNUM ELSE drop THEN
+   CHECK:TOP-SITE IF 58 EMIT1 JNUM ELSE drop THEN
    s" : " DTXT ;
 : JSTR ( ptr u8 n -- )
    JOPEN DTXT JCLOSE ;
@@ -1614,7 +1614,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    THEN
    DIAG-VARIANT ;
 \ A top step's file as its prose names it (DSITE), its line the one checker.f
-\ LOWER-CERT-HOOK:TOP-SITE gives (DLOC-FIELDS); else the checked token in its
+\ CHECK:TOP-SITE gives (DLOC-FIELDS); else the checked token in its
 \ mapped or origin source.
 : DFILE$ ( -- ptr u8 n )
    TOP-STEP @ 0= IF DIAGFB DIAGFU @ EXIT THEN
@@ -1622,7 +1622,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DIAG-NO-FILE$ ;
 : DLOC-FIELDS ( -- )
    TOP-STEP @ IF
-      LOWER-CERT-HOOK:TOP-SITE IF s" line" JKEY  JNUM  44 EMIT1 ELSE drop THEN
+      CHECK:TOP-SITE IF s" line" JKEY  JNUM  44 EMIT1 ELSE drop THEN
       EXIT
    THEN
    TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE 0= IF JLOC-ORIGIN THEN
@@ -2241,7 +2241,7 @@ package CAST-ERROR
    WORD-A @  WORD-A @ WORD-U @ +  JLOCATE IF
       DIAGFB DIAGFU @ JLOC-L @ RES-TRUE RES-TRUE EXIT
    THEN
-   TOP-FILE$  SIG-A @ LOWER-CERT-HOOK:LINE-AT  RES-FALSE ;
+   TOP-FILE$  SIG-A @ CHECK:LINE-AT  RES-FALSE ;
 : PLACE ( -- )
    SITE {: fa:ptr fu:n line:n known:bool mapped:bool :}
    fu 0= IF EXIT THEN

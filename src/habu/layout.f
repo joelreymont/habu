@@ -988,8 +988,6 @@ CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 \ happen in the instance that renders; the counter itself is unreachable from a
 \ baked compiler, which is the whole reason this is an operation and not a cell.
 CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant DECL-CHECK-UNJUDGED-OFF
-\ The diagnostic that scan suppressed, rendered by the instance that scanned.
-CHECKER-OWNER-ABI:CHECK-REPORT-OFF constant DECL-CHECK-REPORT-OFF
 \ A hook-less definition's declaration, recorded as its row without authority.
 CHECKER-OWNER-ABI:DECLARED-ROW-OFF constant DECL-DECLARED-ROW-OFF
 \ A refused definition's cut back to the store end it began at, and that end.

@@ -519,7 +519,7 @@ variable PRE-ROWS-N
 
 : PREFIX-COMPILE ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u NCOMP:COMPILE-CHECKED
+   a u NCOMP:COMPILE
    a u PREFIX-ARM ;
 
 : RESTORE-PREFIX-DISPATCH ( -- )

@@ -304,7 +304,7 @@ emit_src() {
     cat "$f" >> "$out"
     printf '\n' >> "$out"
   done
-  printf "LOWER-CERT-HOOK:INSTALL\n" >> "$out"
+  printf "CHECK:INSTALL\n" >> "$out"
   for f in "${SRC_COMMON[@]}"; do
     if [[ "$f" == "src/os/image-bytes.f" ]]; then
       printf 'using A64ICODE\n' >> "$out"

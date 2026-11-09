@@ -244,7 +244,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : PRIM-TEXT ( n -- n )
    {: k:n :}
    k 5 PRIM@ WL:PRIMITIVES <> if 0 exit then
-   k PRIM-NAME$ LOWER-CERT-HOOK:PRIMITIVE-FACTS {: a:ptr u:n :}
+   k PRIM-NAME$ CHECK:PRIMITIVE-FACTS {: a:ptr u:n :}
    u 0= if 0 exit then
    a u INTERN:TEXT BASE @ - ;
 

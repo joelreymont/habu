@@ -9,6 +9,7 @@ require src/habu/wl.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
 require src/habu/escape.f
+require src/core/top-row.f
 
 \ NUMBER reads a token as the engine's reader does (LNUM, EMIT-NUM in
 \ habu1.f): an optional `-`, an optional `$` for radix 16 with digits a-f and
@@ -431,18 +432,13 @@ create NL NEWLINE c,
    if s" E-UNDERFLOW: " REFUSE then ;
 
 \ The engine's twin: habu2.f LTOPHOOK.
-\ With a hook installed (set-top-check) it gets ( token class flags ) for each
-\ number after the push and for each word, past its gates, before it runs. The
-\ hook consumes those four cells, as the event protocol states. A hook that
-\ leaves the stack below its base on a word event is refused here, before the
-\ word runs; the engine runs the word and stops it only where it touches the
-\ guard page (the underdepth throw, crash.f ONE FAULT IS NOT AN EXIT), so this
-\ loop names the underflow before any of the word has run.
-: HOOK@ ( -- n )
-   TOP-HOOK-CELL CELL@ ;
-
-\ The hook cell holds a raw execution token; the event protocol is its effect.
-CAST: TOP-HOOK ( n -- [ ptr u8 n n n -- ] )
+\ CHECK:TOP-LEVEL gets ( token class flags ) for each number after the push
+\ and for each word, past its gates, before it runs, and consumes those four
+\ cells, as the event protocol states. A check that leaves the stack below its
+\ base on a word event is refused here, before the word runs; the engine runs
+\ the word and stops it only where it touches the guard page (the underdepth
+\ throw, crash.f ONE FAULT IS NOT AN EXIT), so this loop names the underflow
+\ before any of the word has run.
 CAST: HOOK-CALL ( [ -- ] -- n )
 
 \ The call runs under the floor, so it pushes the event itself: a quotation
@@ -451,9 +447,8 @@ variable EVENT-CLASS
 variable EVENT-FLAGS
 
 : HOOK ( n n -- )
-   HOOK@ 0= if 2drop exit then
    EVENT-FLAGS ! EVENT-CLASS !
-   [: TOKEN$ EVENT-CLASS @ EVENT-FLAGS @ HOOK@ TOP-HOOK execute ;]
+   [: TOKEN$ EVENT-CLASS @ EVENT-FLAGS @ CHECK:TOP-LEVEL ;]
    HOOK-CALL execute-floor FLOORED ;
 
 \ The engine's twin: habu2.f C-UNIT-HOOK.

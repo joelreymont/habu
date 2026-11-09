@@ -2,7 +2,7 @@
 \ called by src/habu/app-image-core.f APP-IMAGE:SAVE; it canonicalises both regions, writes and
 \ signs a sibling of the output path, renames it over that path and exits.
 \ Load after the target image emission words (BUILD-SNAP-HDR, SNAP-DROP, SNAP-EXTRA-PTR,
-\ SNAP-EXTRA-SIZE). The core prefix's LOWER-CERT-HOOK survives capture and restore; the writer
+\ SNAP-EXTRA-SIZE). The core prefix's checker hook survives capture and restore; the writer
 \ does not replace it.
 
 require src/lib/fs.f

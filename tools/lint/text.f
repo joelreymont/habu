@@ -7,16 +7,6 @@ require src/lib/fs.f
 require src/lib/adt/option.f                      \ option<n> finders
 
 \ ---- whole-file read -------------------------------------------------------
-\ Lint tools load this first, so shared helpers fail closed under
-\ LINT-CHECK-HOOK. CHECK! is a primitive axiom so the hook definition itself
-\ compiles checked.
-s" CHECK!" s" ptr u8 n -- n" TRUST
-
-: LINT-CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! dup -1 <> IF 70 throw THEN ;
-LOWER-CERT-HOOK:INSTALL
-' LINT-CHECK-HOOK set-check
-
 create READ-PROBE 1 allot
 variable RFD  variable RGOT  variable RLEN
 TYPED-VARIABLE LINT-OUT-A ptr u8

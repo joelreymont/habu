@@ -773,7 +773,7 @@ EFIXED-ABI!
 \ The top-level tracker's own install (src/core/top-row.f TR-INSTALL): its row
 \ takes a hook of the shape the tracker is called with, where the global row
 \ above takes any one cell, as set-check and set-preflight do.
-EPPRIM: TOP-ROW set-top-check
+EPPRIM: CHECK set-top-check
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
 \ Choosing the compiler is a top-level step every program may take on its first
 \ line, before any require, so the row is global: a top-level step and a checked

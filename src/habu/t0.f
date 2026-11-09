@@ -1821,8 +1821,8 @@ variable SCAN-LO                     \ the ordinal of its first row
    then
    CHECK-SOURCE ;
 
-\ The scan's verdict stands over a hook's nonzero answer; a hook's zero answer
-\ stands over the scan's, as tier 1's END-RECORDED has it.
+\ The scan's verdict stands over CHECK:DEFINITION's nonzero answer; its zero
+\ answer stands over the scan's, as tier 1's END-RECORDED has it.
 : SCAN ( -- )
    OBSERVE
    0 SCAN-VERDICT !
@@ -2003,7 +2003,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    {: val:n kind:body :}
    kind FIXED-KIND? 0= if E-COMP-STATE throw then
    IDLE-CK
-   NULL-PTR 0 false STAGE-UNIT
+   NULL-PTR 0 STAGE-UNIT
    val FIXED-VAL !  kind BODY-KIND !
    CHECKER-OWNER:RESET-REPORT
    1 M-OPEN !
@@ -2017,7 +2017,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ Compile the pending definition whose body text the engine captured.
 : COMPILE ( ptr u8 n -- )
    IDLE-CK
-   false STAGE-UNIT
+   STAGE-UNIT
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    CHECKER-OWNER:RESET-REPORT
    0 MISSING !  0 BAD-LEN !

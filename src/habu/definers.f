@@ -9,6 +9,7 @@ require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/source-syntax.f
 require src/core/checker.f
+require src/core/check-hook.f
 require src/core/does-clause.f
 require src/habu/layout.f
 require src/habu/xref.f
@@ -53,13 +54,11 @@ public
 : DEF-ABORT ( -- ) def-abort BODY-LEX-RESET ;
 private
 
-\ The engine's cells hold the compiler entries, the preflight, the def and body
-\ hooks and the checker's declaration operations as raw execution tokens.
+\ The engine's cells hold the compiler entries, the body hook and the checker's
+\ declaration operations as raw execution tokens.
 CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
 CAST: AS-COMPILE-FIXED ( n -- [ n COMP:body -- ] )
 CAST: AS-BODY-HOOK ( n -- [ -- ptr u8 bool ] )
-CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
-CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 \ A head at tier 0 with no tier-0 compiler (TIER-CELL and COMP-CELL 0), or a
@@ -512,13 +511,8 @@ private
 
 \ The engine's twin: habu2.f C-PREFLIGHT.
 : DEF-PREFLIGHT ( -- )
-   HOOK-CELL CELL@ 0= if exit then
-   COMPILE-PREFLIGHT-CELL CELL@ {: xt:n :}
-   xt 0= if
-      S\" hb: compile preflight hook missing\n" ERROR-TEXT:TYPE RC-REJECT throw
-   then
    data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
-   xt AS-PREFLIGHT execute ;
+   CHECK:IMMEDIATE ;
 
 \ Twin: habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE. PARSE-IMM? asks the live checker:
 \ the retained one lacks a build window's `parse-imm` rows.
@@ -711,26 +705,23 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ more, and the engine names `create` for both: in the missing name's refusal
 \ and in the def hook's text.
 
-\ The keyword joins the capture, and an armed check hook reads it, `NAME
-\ create` for a created word, its verdict dropped: a definer's word always
-\ publishes (habu2.f C-DEFHOOK). The hook runs on the program's stack, so
-\ neither this word nor its callers keep locals.
+\ The keyword joins the capture, and the checker reads it, `NAME create` for a
+\ created word, its verdict dropped: a definer's word always publishes
+\ (habu2.f C-DEFHOOK). The check runs on the program's stack, so neither this
+\ word nor its callers keep locals.
 : DEF-HOOK ( ptr u8 n -- )
    DEF-CAPTURE
-   HOOK-CELL CELL@ 0= if exit then
    data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@
-   HOOK-CELL CELL@ AS-DEF-HOOK execute drop ;
+   CHECK:DEFINITION drop ;
 
 : DEF-ADDR-HOOK ( -- )
    s" create" DEF-HOOK ;
 
-\ The active owner's trust-raw. With none and a hook set the target owner's,
-\ and with no target's either the process ends naming it; with neither an
-\ owner's nor a hook, 0 (LASTC-TRUST:FIND-ACTIVE, FIND-RAW).
+\ The active owner's trust-raw, else the target owner's; with neither the
+\ process ends naming it (LASTC-TRUST:FIND-ACTIVE, FIND-RAW).
 : DEF-RAW-ACTIVE ( -- n )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
    own 0<> if own exit then
-   HOOK-CELL CELL@ 0= if 0 exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
    target 0= if s" trust-raw" RC-REJECT FAIL-CLOSED then
    target ;
@@ -741,7 +732,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ seals it through trust-raw (habu2.f LASTC-TRUST:PUBLISH-PTR-A).
 : DEF-RAW-PUBLISH ( ptr u8 n -- ) {: sig:ptr su:n :}
    DEF-RAW-ACTIVE {: own:n :}
-   own 0= if exit then
    sig su own DEF-DECLARE
    NCOMP-DISPATCH:DECL-CELL CELL@ 0= if exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
@@ -859,14 +849,12 @@ variable DEF-VALUE
    TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ NCOMP-DISPATCH:DECL-CAST-OFF
    DEF-REGISTER-IDENTITY ;
 
-\ With a hook set, the published record takes the facts the registrar latched,
-\ through the owner the registrar asked, as the native publisher drains them
+\ The published record takes the facts the registrar latched, through the
+\ owner the registrar asked, as the native publisher drains them
 \ (src/compiler/native/publish.f PENDING-FACTS): the wide mark, then the
-\ minimum input arity, which the interpret dispatch refuses an underdepth
-\ call on. With none they wait, as the engine's do (habu2.f
-\ EM-REC-WIDE-PUBLISH).
+\ minimum input arity, which the interpret dispatch refuses an underdepth call
+\ on.
 : DEF-CAST-FACTS ( -- )
-   HOOK-CELL CELL@ 0= if exit then
    CHECKER-OWNER:WIDE-PUBLISH
    CHECKER-OWNER:MIN-IN {: mi:n :}
    mi 0<> if ndict@ 1- mi min-in-mark then ;

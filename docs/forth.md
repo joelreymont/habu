@@ -1522,7 +1522,7 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
   raw `+`.
 - `0 set-check` disables the check hook for the rest of the load, so `:` is the
   plain native colon; `check@ 0 set-check … set-check` resumes the saved hook;
-  `LOWER-CERT-HOOK:INSTALL` (`src/core/check-hook.f`) installs the checker
+  `CHECK:INSTALL` (`src/core/check-hook.f`) installs the checker
   afresh. There is no `CHECKING-ON?`.
 
 ### Rigid host-allocation identity domains
@@ -2553,15 +2553,6 @@ sections above.
   `discard-check` drops a suspended hook so no later `set-check` resumes it. Use
   a `PRIM: … PRIM;` axiom for a genuine missing primitive model so later
   definitions remain checked.
-- **A constructor-generating declaration needs checking on.** `SUMTYPE`,
-  `PRODUCT`, `STRUCTURE` and `ENUM` generate constructor words the checker
-  certifies, so with the hook suspended each is refused through its
-  declaration packet before anything registers: `habu: bad sumtype declaration
-  'name': checking is suspended; declare it where checking is on at 'name'`
-  (`E-TDECL-UNCHECKED`), and a multi-error load counts it, skips to the
-  terminator and continues. `NEWTYPE` and `DEFTYPE` generate no constructor
-  and are admitted; a declaration after `check@ 0 set-check … set-check` is
-  ordinary.
 - **A sealed image needs external rows for pre-hook words.** A word defined
   before the check hook has no authority without a `PRIM:` axiom or a
   `TRUSTED:` declaration after the checker claiming it. On a sealed image a
