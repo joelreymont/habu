@@ -43,6 +43,7 @@ DYNAMIC-BUFFER IMG u8                \ the data image
 variable K0                          \ WKERNEL's first row
 variable EXEC-H
 variable CATCH-H
+variable FINALLY-H
 variable FOUND                       \ the function a name reached
 variable VAL-AT                      \ the next cell value in the capture's values
 
@@ -143,10 +144,6 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 \ The function shipped record k enters.
 : ENTERS ( n -- n ) ROUTINE-OF FIRST @ ;
 
-\ A call, code literal or code cell naming a word of the engine's own prefix
-\ reaches execute's or catch's runtime function, or what WKERNEL:PROVIDER
-\ answers: a row, or a word of src/arch/wasm/kernel-words.f, which the window
-\ must ship.
 \ The public wid of the shipped package named, or -1.
 : PKG-WID ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -181,12 +178,13 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    k 0 < if a u UNSHIPPED then
    k ;
 
-\ The function an engine-prefix name reaches: execute's or catch's runtime
-\ function, or the row or the shipped word WKERNEL's map answers.
+\ The function an engine-prefix name reaches: execute's, catch's or finally's
+\ runtime function, a WKERNEL row, or a shipped word of kernel-words.f.
 : REACH ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u s" execute" STR=CI if EXEC-H @ exit then
    a u s" catch" STR=CI if CATCH-H @ exit then
+   a u s" finally" STR=CI if FINALLY-H @ exit then
    a u WKERNEL:PROVIDER MATCH WKERNEL:provider
       row OF K0 @ + ENDOF
       word OF SHIPPED ENTERS ENDOF
@@ -210,10 +208,11 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    code throw ;
 
 \ Resolve an engine-prefix name before functions have link handles. A mapped
-\ kernel word is a captured root; a kernel row or execute/catch is not.
+\ kernel word is a captured root; a kernel row or a runtime function is not.
 : MARK-ASK ( ptr u8 n -- ptr u8 n )
    2dup s" execute" STR=CI if exit then
    2dup s" catch" STR=CI if exit then
+   2dup s" finally" STR=CI if exit then
    2dup WKERNEL:PROVIDER MATCH WKERNEL:provider
       row OF drop ENDOF
       word OF SHIPPED MARK-REC ENDOF
@@ -236,12 +235,12 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    loop
    s" " ;
 
-\ WKERNEL's rows (src/arch/wasm/kernel.f) and execute's and catch's runtime
-\ functions join every link. A row's call names a host entry, which becomes the
-\ name of the engine word it enters before the map is asked. A runtime function
-\ has an adapter's type and takes the stack as it stands, so it is its own table
-\ slot, the xt a code literal or cell of execute or catch holds. map-anon's row
-\ is the callee of the module's reserve export.
+\ WKERNEL's rows (src/arch/wasm/kernel.f) and the runtime functions of execute,
+\ catch and finally join every link. A row's call names a host entry, which
+\ becomes the name of the engine word it enters before the map is asked. A
+\ runtime function has an adapter's type and takes the stack as it stands, so
+\ it is its own table slot, the xt a code literal or cell of execute, catch or
+\ finally holds. map-anon's row is the callee of the module's reserve export.
 \ Runtime function h in the table's next slot; answers h.
 : RUNTIME+ ( n -- n )
    {: h:n :}
@@ -264,6 +263,7 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 : KERNEL+ ( -- )
    WDYN:EXECUTE+ RUNTIME+ EXEC-H !
    WDYN:CATCH+ RUNTIME+ CATCH-H !
+   WDYN:FINALLY+ RUNTIME+ FINALLY-H !
    WENC:BYTES WLINK-ORIGIN:KERNEL EMISSION+ K0 !
    WENC:CALL-SITES 0 ?do  i KERNEL-CALL+  loop
    s" map-anon" NAMED WLINK:RESERVE! ;

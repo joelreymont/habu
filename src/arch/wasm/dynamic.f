@@ -1,8 +1,8 @@
 \ dynamic.f - WDYN, the Wasm backend's dynamic calls: ADAPTER+ puts a function
-\ of the link in a table slot, and the runtime execute and catch call through
-\ one (docs/xcomp.md "Calls", "Execution tokens"). An xt is a table slot. Each
-\ body is Wasm written through WENC's opcode bytes, as WLINK writes its wrappers:
-\ none is selected from HIR, and WENC refuses call_indirect.
+\ of the link in a table slot, and the runtime execute, catch and finally call
+\ through one (docs/xcomp.md "Calls", "Execution tokens"). An xt is a table
+\ slot. Each body is Wasm written through WENC's opcode bytes, as WLINK writes
+\ its wrappers: none is selected from HIR, and WENC refuses call_indirect.
 
 require src/lib/prelude.f
 require src/lib/span.f
@@ -37,21 +37,31 @@ $7E constant I64
 10 constant LEB-MOST
 
 \ The locals: ctx, every body's parameter; the stack address a body works at;
-\ the status a lane function answered; then that function's outputs.
+\ the status a call answered; then a lane function's outputs, or finally's
+\ cleanup xt and its body's code.
 0 constant L-CTX
 1 constant L-AT
 2 constant L-STATUS
 3 constant L-OUT
+3 constant L-CLEANUP
+4 constant L-CODE
 
 \ ---- the body being written ----------------------------------------------------
 DYNAMIC-BUFFER BODY u8
 variable BODY-U
+DYNAMIC-BUFFER SITES n               \ where each call_indirect's type index starts
+variable SITES-N
 
 : B, ( n -- )
    {: v:n :}
    BODY-U @ 1+ BODY-RESERVE
    v BODY-U @ BODY c!
    1 BODY-U +! ;
+
+: SITE+ ( n -- )
+   SITES-N @ 1+ SITES-RESERVE
+   SITES-N @ SITES !
+   1 SITES-N +! ;
 
 : ROOM ( -- SPAN:span<u8> )
    BODY-U @ LEB-MOST + BODY-RESERVE
@@ -161,18 +171,26 @@ variable BODY-U
    at ;
 
 \ ---- the runtime functions ----------------------------------------------------
-\ The selector calls execute and catch in the frame with the xt on top
+\ The selector calls execute, catch and finally in the frame with the xts on top
 \ (src/arch/wasm/select.f THE DYNAMIC CALL). call_indirect's type field WLINK
 \ writes as (i32) -> (i32) (INDIRECT+); it traps on slot 0, which holds no
 \ function, and on a slot past the table. execute answers the adapter's status.
 \ catch answers 0: it restores the depth it began with less the xt and pushes
-\ the code, ctx.throw-code (all 64 bits) after a status 1 and zero after a 0. A
-\ trap passes through both, and restoring the depth restores no cell a throw
+\ the code, ctx.throw-code (all 64 bits) after a status 1 and zero after a 0.
+\ finally ( body cleanup -- ) pops the cleanup xt and runs the body as execute
+\ does; after a status 1 it keeps ctx.throw-code and restores the depth finally
+\ began with less both xts. It then runs the cleanup, after a room check for
+\ its xt. A cleanup's status 1 is answered with the cleanup's code, which
+\ supersedes the body's; otherwise a body's status 1 is answered with the body's
+\ code stored again, since a catch inside the cleanup may have overwritten it;
+\ otherwise 0, the body's results left as it left them. A cleanup xt of 0 traps
+\ before the body runs, as native finally refuses it first. A trap passes
+\ through all three, and restoring the depth restores no cell a throw
 \ overwrote (docs/xcomp.md "Exceptions and fatal failures").
 \
-\ DISPATCH, answers where call_indirect's padded type index starts. An xt whose
+\ DISPATCH, records where call_indirect's padded type index starts. An xt whose
 \ upper half is not zero traps before its low half is read as the slot.
-: DISPATCH, ( -- n )
+: DISPATCH, ( -- )
    L-CTX GET,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  WSTRUCT-OPCODE:I32-SUB OP,  L-AT TEE,
    WSTRUCT-OPCODE:I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM,
@@ -180,14 +198,14 @@ variable BODY-U
    IF,  WSTRUCT-OPCODE:UNREACHABLE OP,  OP-END B,
    L-CTX GET,
    L-AT GET,  WSTRUCT-OPCODE:I32-LOAD ALIGN-32 0 MEM,
-   WSTRUCT-OPCODE:CALL-INDIRECT OP,  PAD32,  TABLE0 B, ;
+   WSTRUCT-OPCODE:CALL-INDIRECT OP,  PAD32, SITE+  TABLE0 B, ;
 
-: EXECUTE-BODY ( -- n )
+: EXECUTE-BODY ( -- )
    1 0 LOCALS,
    DISPATCH,
    OP-END B, ;
 
-: CATCH-BODY ( -- n )
+: CATCH-BODY ( -- )
    2 0 LOCALS,
    DISPATCH,
    L-STATUS SET,
@@ -200,14 +218,40 @@ variable BODY-U
    0 I32,
    OP-END B, ;
 
+: FINALLY-BODY ( -- )
+   2 2 LOCALS,
+   L-CTX GET,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  WSTRUCT-OPCODE:I32-SUB OP,  L-AT TEE,
+   WSTRUCT-OPCODE:I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM,
+   L-AT GET,  WSTRUCT-OPCODE:I64-LOAD ALIGN-64 0 MEM,  L-CLEANUP TEE,
+   WSTRUCT-OPCODE:I64-EQZ OP,
+   IF,  WSTRUCT-OPCODE:UNREACHABLE OP,  OP-END B,
+   DISPATCH,  L-STATUS SET,
+   L-CTX GET,  WSTRUCT-OPCODE:I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE MEM,  L-CODE SET,
+   L-STATUS GET,
+   IF,  0 TOP!,  OP-END B,
+   WPROF:CTX-STACK-TOP CTX@,  L-AT SET,
+   1 ROOM,
+   L-AT GET,  L-CLEANUP GET,  WSTRUCT-OPCODE:I64-STORE ALIGN-64 0 MEM,
+   CELL-BYTES TOP!,
+   DISPATCH,
+   IF,  1 I32,  WSTRUCT-OPCODE:RETURN OP,  OP-END B,
+   L-STATUS GET,
+   IF,
+      L-CTX GET,  L-CODE GET,
+      WSTRUCT-OPCODE:I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+   OP-END B,
+   L-STATUS GET,
+   OP-END B, ;
+
 \ The body the word writes, a kernel function of the link with its indirect
-\ site; answers its handle.
-: RUNTIME ( [ -- n ] -- n )
+\ sites; answers its handle.
+: RUNTIME ( [ -- ] -- n )
    {: body :}
-   0 BODY-U !
-   body execute {: at:n :}
+   0 BODY-U !  0 SITES-N !
+   body execute
    0 BODY BODY-U @  0 0 0 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ {: k:n :}
-   k at WLINK:INDIRECT+
+   SITES-N @ 0 ?do  k i SITES @ WLINK:INDIRECT+  loop
    k ;
 
 public
@@ -222,9 +266,10 @@ public
    a at f WLINK:CALL+
    a WLINK:TABLE+ ;
 
-\ The runtime execute and catch, as kernel functions of the link; each answers
-\ its handle.
+\ The runtime execute, catch and finally, as kernel functions of the link; each
+\ answers its handle.
 : EXECUTE+ ( -- n )  [: EXECUTE-BODY ;] RUNTIME ;
 : CATCH+ ( -- n )  [: CATCH-BODY ;] RUNTIME ;
+: FINALLY+ ( -- n )  [: FINALLY-BODY ;] RUNTIME ;
 
 ;package

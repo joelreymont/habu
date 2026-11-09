@@ -462,13 +462,14 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 \ (src/compiler/native/select-x64.f) stores it, so depth, .s and catch see what
 \ they see natively; a lane call's arguments and results travel as lanes.
 \
-\ THE DYNAMIC CALL. The elaborator stages execute and catch as wordcalls to the
-\ engine's words, shaped by the xt each runs (src/compiler/native/elaborate.f
-\ DO-EXEC, DO-CATCH). Such a call is known by its entry, the global wordlist's
-\ execute or catch, never by what the spelling binds in scope: a package's own
-\ word of either spelling is an ordinary call. Each is a framed call whatever
-\ its arity: the row and the xt stored, no lane, the results read back off the
-\ stack, the convention src/arch/wasm/dynamic.f's runtime functions take.
+\ THE DYNAMIC CALL. The elaborator stages execute, catch and finally as
+\ wordcalls to the engine's words, shaped by the xts each runs
+\ (src/compiler/native/elaborate.f DO-EXEC, DO-CATCH, DO-FINALLY). Such a call
+\ is known by its entry, the global wordlist's execute, catch or finally, never
+\ by what the spelling binds in scope: a package's own word of any of these
+\ spellings is an ordinary call. Each is a framed call whatever its arity: the
+\ row and the xts stored, no lane, the results read back off the stack, the
+\ convention src/arch/wasm/dynamic.f's runtime functions take.
 
 \ What a call takes and leaves: RECURSE names the definition, so a self call's
 \ shape is the declaration's, and a wordcall states its callee's.
@@ -490,7 +491,8 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 
 : DYNAMIC? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id s" execute" ENGINE-CALL?  id s" catch" ENGINE-CALL? or ;
+   id s" execute" ENGINE-CALL?  id s" catch" ENGINE-CALL? or
+   id s" finally" ENGINE-CALL? or ;
 
 : FRAMED-CALL? ( IR-ID:ir-op-id n n -- bool )
    {: id:IR-ID:ir-op-id a:n r:n :}

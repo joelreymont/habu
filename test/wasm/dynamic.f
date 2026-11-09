@@ -43,7 +43,7 @@ public
    AOT-ARM:WINDOW$ AOT-CAPTURE:WASM-TARGET-CAPTURE
    NSHADOW:CLOSE ;
 
-: OFF ( ptr u8 -- n )
+: OFF ( ptr a -- n )
    BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + AOT-ARM:D0 @ - ;
 
 variable CODE-AT                     \ the window offsets of the address cells
@@ -63,9 +63,17 @@ CAST: >NONE ( [ n n n -- ] -- [ -- ] )
 CAST: >N ( [ n n n -- ] -- n )
 CAST: >VOID ( n -- [ -- ] )
 CAST: >BITS ( [ -- ] -- n )
+CAST: >SLOT ( xt -- n )
+CAST: >EMIT ( xt -- [ n -- ] )
 \ An xt that reaches MARK throws 37, where one that reached DROP3's would trap
 \ on the empty stack.
 : MARK ( -- ) 37 throw ;
+\ The cleanups finally runs count their runs in RUNS; FAILING throws 47 after
+\ counting.
+variable RUNS
+: CLEANUP ( -- ) 1 RUNS +! ;
+: FAILING ( -- ) CLEANUP RUNS @ 0<> if 47 throw then ;
+variable DEPTH0                      \ the depth FINALLY-DEPTH began with
 public
 : DROP3 ( n n n -- ) drop drop drop ;
 : W17 ( n n n n n n n n n n n n n n n n n -- n )
@@ -80,10 +88,27 @@ public
 : SHORT ( -- ) ['] DROP3 >NONE execute ;
 : ZERO ( -- ) 0 >VOID execute ;
 : ZERO-CAUGHT ( -- ) 0 >VOID catch throw ;
+: ZERO-CLEANUP ( -- ) [: 1 . ;] 0 >VOID finally ;
 : HIGH ( -- ) ['] MARK >BITS $100000000 or >VOID execute ;
 : DOTS ( -- ) 1 2 3 .s depth throw ;
 : CODE-SLOT ( -- ) ['] DROP3 >N throw ;
-: NAMED-SLOT ( -- ) ['] emit throw ;
+: NAMED-SLOT ( -- ) ['] emit >SLOT throw ;
+: FINALLY-KEPT ( -- ) 0 RUNS ! 5 [: 2 * 3 ;] [: CLEANUP ;] finally + RUNS @ 100 * + throw ;
+: FINALLY-PASSED ( -- )
+   0 RUNS !
+   [: [: $8000000000000010 throw ;] [: CLEANUP ;] finally ;] catch RUNS @ + throw ;
+: FINALLY-SUPERSEDED ( -- )
+   0 RUNS !
+   [: [: 41 throw ;] [: FAILING ;] finally ;] catch RUNS @ 100 * + throw ;
+: FINALLY-RESTORED ( -- )
+   0 RUNS !
+   [: [: 41 throw ;] [: [: 9 throw ;] catch RUNS +! ;] finally ;] catch RUNS @ 100 * + throw ;
+: FINALLY-THROWN ( -- )
+   0 RUNS !
+   [: 5 [: 1 + ;] [: FAILING ;] finally drop ;] catch RUNS @ 100 * + throw ;
+: FINALLY-DEPTH ( -- )
+   0 RUNS !  depth DEPTH0 !
+   [: 1 2 3 [: RUNS @ 0= if 4 5 41 throw then ;] [: depth DEPTH0 @ - RUNS ! ;] finally drop drop drop ;] catch RUNS @ 100 * + throw ;
 private
 : execute ( n -- n ) 1 + ;
 : catch ( n -- n ) 1 + ;
@@ -95,7 +120,7 @@ private
 1 TYPED-BUFFER NAMED-CELL [ n -- ]
 PERSISTED-PTR-VARIABLE DATA-CELL
 ' DROP3 0 CODE-CELL !
-' emit 0 NAMED-CELL !
+' emit >EMIT 0 NAMED-CELL !
 s" data cell text" drop DATA-CELL !
 0 CODE-CELL WASM-DYNAMIC:OFF WASM-DYNAMIC:CODE-AT !
 0 NAMED-CELL WASM-DYNAMIC:OFF WASM-DYNAMIC:NAMED-AT !
@@ -174,11 +199,29 @@ DYNAMIC-BUFFER MODULE u8
    s" execute of an xt whose slot takes three cells, with none on the stack, traps" T-LABEL
    s" WASM-DYNAMIC-WINDOW:SHORT" s" short.wasm" TRAPS ;
 
+\ Each answer adds the cleanup's runs, times 100 where the code is small.
+: FINALLY-CASE ( -- )
+   s" finally keeps the body's results and runs the cleanup once" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:FINALLY-KEPT" s" finally-kept.wasm" [: FINALLY-KEPT ;] THROWS-AS-NATIVE
+   s" finally runs the cleanup after a body's throw, whose whole code reaches an outer catch" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:FINALLY-PASSED" s" finally-passed.wasm" [: FINALLY-PASSED ;] THROWS-AS-NATIVE
+   s" a cleanup's throw supersedes the body's" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:FINALLY-SUPERSEDED" s" finally-superseded.wasm" [: FINALLY-SUPERSEDED ;] THROWS-AS-NATIVE
+   s" a throw caught inside the cleanup leaves the body's code to go on" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:FINALLY-RESTORED" s" finally-restored.wasm" [: FINALLY-RESTORED ;] THROWS-AS-NATIVE
+   s" a cleanup's throw after a body that returned is thrown" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:FINALLY-THROWN" s" finally-thrown.wasm" [: FINALLY-THROWN ;] THROWS-AS-NATIVE
+   s" the cleanup after a body's throw sees the depth finally began with less both xts" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:FINALLY-DEPTH" s" finally-depth.wasm" [: FINALLY-DEPTH ;] THROWS-AS-NATIVE ;
+
 : XT-CASE ( -- )
    s" execute of xt 0, which names no adapter, traps" T-LABEL
    s" WASM-DYNAMIC-WINDOW:ZERO" s" zero.wasm" TRAPS
    s" catch of xt 0 traps" T-LABEL
    s" WASM-DYNAMIC-WINDOW:ZERO-CAUGHT" s" zero-caught.wasm" TRAPS
+   s" finally of cleanup xt 0 traps before its body runs" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:ZERO-CLEANUP" s" zero-cleanup.wasm" TRAPS
+   WASM-HARNESS:OUT$ s" " T$=
    s" execute of an xt whose upper 32 bits are set traps, though its low half is MARK's slot" T-LABEL
    s" WASM-DYNAMIC-WINDOW:HIGH" s" high.wasm" TRAPS ;
 
@@ -213,6 +256,7 @@ public
    SETUP
    W06-CASE
    W07-CASE
+   FINALLY-CASE
    XT-CASE
    NAME-CASE
    DOT-S-CASE
