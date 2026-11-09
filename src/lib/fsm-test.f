@@ -280,6 +280,64 @@ DEFINE RELAY ( ptr n ) relay probe
 : ROWS ( -- )
    construct relay arming RELAY-RUN 11 T= ;
 
+\ No FINAL row: LAMP's runner never returns, so the test steps it.
+using FSM
+ENUM lamp dark lit ;ENUM
+ENUM flick flip ;ENUM
+TYPED-VARIABLE LAMP-CELL n
+
+: FLICK ( ptr n -- flick ) drop construct flick flip ;
+
+DEFINE LAMP ( ptr n ) lamp flick
+   IN dark  FLICK
+      flip  BUMP  >lit
+   IN lit   FLICK
+      flip  BUMP  >dark
+;DEFINE
+;using
+
+\ A throw from SENSE: BLIND throws SENSE-CODE on a zero cell.
+using FSM
+TYPED-VARIABLE PEEK-CELL n
+48 constant SENSE-CODE
+
+: BLIND ( ptr n -- pulse ) @ 0= if SENSE-CODE throw then construct pulse tick ;
+
+DEFINE PEEK ( ptr n ) tally pulse
+   IN counting  BLIND
+      tick  BUMP  >counted
+   FINAL counted  -
+;DEFINE
+;using
+
+\ The test ENUMs are private, so phases are read by exhaustive MATCH.
+: TALLY>N ( tally -- n ) MATCH tally counting OF 0 ENDOF counted OF 1 ENDOF ;MATCH ;
+: LAMP>N ( lamp -- n ) MATCH lamp dark OF 0 ENDOF lit OF 1 ENDOF ;MATCH ;
+
+
+: DOOR>N ( door -- n )
+   MATCH door opening OF 0 ENDOF opened OF 1 ENDOF shut OF 2 ENDOF ;MATCH ;
+
+
+\ A step into a FINAL answers false without its action; a step at one runs it
+\ and answers true.
+: STEPS ( -- )
+   0 COUNT-CELL !
+   COUNT-CELL construct tally counting COUNT-UP-STEP TFALSE TALLY>N 0 T=
+   COUNT-CELL @ 1 T=
+   0 DOOR-CELL !
+   DOOR-CELL construct door opening SWING-STEP TFALSE DOOR>N 1 T=
+   DOOR-CELL @ 1000 T=
+   0 DOOR-CELL !
+   DOOR-CELL construct door opened SWING-STEP TTRUE DOOR-CELL @ 10 T=
+   DOOR-CELL swap SWING-STEP TTRUE DOOR>N 1 T= DOOR-CELL @ 20 T=
+   0 LAMP-CELL !
+   LAMP-CELL construct lamp dark LAMP-STEP TFALSE dup LAMP>N 1 T=
+   LAMP-CELL @ 1 T=
+   LAMP-CELL swap LAMP-STEP TFALSE LAMP>N 0 T= LAMP-CELL @ 2 T=
+   0 PEEK-CELL !
+   [: PEEK-CELL construct tally counting PEEK-STEP 2drop ;] SENSE-CODE TTHROWSQ ;
+
 \ SRC builds texts for TEST-EVAL.
 DYNAMIC-BUFFER SRC u8
 variable SRC-LEN
@@ -443,6 +501,7 @@ public
    FAILS
    TOTAL
    ROWS
+   STEPS
    SYNTAX
    REJECTED
    SIZE

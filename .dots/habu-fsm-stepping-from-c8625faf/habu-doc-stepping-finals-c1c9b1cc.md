@@ -4,8 +4,6 @@ status: open
 priority: 3
 issue-type: task
 created-at: "2026-11-09T19:10:47.103778+02:00"
-blocks:
-  - habu-generate-name-step-52f37768
 ---
 
 Problem: docs/forth.md:806 State machines describes only the runner and the row words. Nothing states when a terminal action runs, that a FINAL is a normal outcome rather than a `finally`, that SENSE may do work, or that --verify-only's parses-through defers the checks of generated words.

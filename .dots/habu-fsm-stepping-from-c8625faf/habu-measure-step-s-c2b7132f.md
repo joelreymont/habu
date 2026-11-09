@@ -4,8 +4,6 @@ status: open
 priority: 3
 issue-type: task
 created-at: "2026-11-09T19:10:47.128506+02:00"
-blocks:
-  - habu-generate-name-step-52f37768
 ---
 
 Problem: NAME-STEP adds a second generated word per table; its cost in generated size, load time and per-dispatch call overhead is unmeasured.

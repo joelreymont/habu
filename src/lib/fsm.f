@@ -23,8 +23,8 @@ public
 
 private
 
-\ ACT-TEXT takes the action words, then ROW-TEXT's row words and run word;
-\ RUN-TEXT holds the run word's arms: each word precedes every word calling it.
+\ ACT-TEXT takes the action words, then ROW-TEXT's row, step and run words;
+\ RUN-TEXT holds the step word's arms: each word precedes every word calling it.
 DYNAMIC-BUFFER ACT-TEXT u8
 variable ACT-LEN
 DYNAMIC-BUFFER ROW-TEXT u8
@@ -161,10 +161,8 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    i iu ;
 
 
-\ `IN <state> <SENSE> <line>` with the header's inputs, or
-\ `IN <state> <SENSE> ( <inputs> ) <line>` with the row's own: opens the
-\ state's row word and its arm in the run word. In both forms a row has at
-\ least one line, so the token after SENSE, or after the `)`, is its first.
+\ Opens the state's row word and its arm in the step word; a row has at least
+\ one line, so the token after SENSE, or after `( <inputs> )`, is its first.
 : IN-ROW ( -- )
    OPERAND {: s:ptr su:n :}
    s OPEN-A ! su OPEN-U !
@@ -177,18 +175,18 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    then {: l:ptr lu:n :}
    l lu KEYWORD? l lu COMMENT? or if E-SYNTAX throw then
    l lu LINE
-   s"    " RUN+ s su RUN+ s"  OF false over " RUN+ NAME$ RUN+ s" /" RUN+ s su RUN+
+   s"    " RUN+ s su RUN+ s"  OF false swap " RUN+ NAME$ RUN+ s" /" RUN+ s su RUN+
    s\"  ENDOF\n" RUN+ ;
 
 
 \ `FINAL <state> <ACTION>`: `: <NAME>/<state> ( <ctx> -- ) <ACTION> ;`, `drop`
-\ for `-`, and the run word's arm that calls it and ends the run.
+\ for `-`, and the step word's arm that calls it and answers true.
 : FINAL-ROW ( -- )
    OPERAND {: s:ptr su:n :}
    OPERAND {: a:ptr au:n :}
    s" : " ACT+ NAME$ ACT+ s" /" ACT+ s su ACT+
    a au s" -" STR= if s" drop" else a au then ACT-BODY
-   s"    " RUN+ s su RUN+ s"  OF dup true construct " RUN+ STATES$ RUN+
+   s"    " RUN+ s su RUN+ s"  OF true construct " RUN+ STATES$ RUN+
    s"  " RUN+ s su RUN+ s"  rot " RUN+ NAME$ RUN+ s" /" RUN+ s su RUN+
    s\"  ENDOF\n" RUN+ ;
 
@@ -209,12 +207,15 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    E-SYNTAX throw ;
 
 
-\ `: <NAME> ( <ctx> <states> -- ) begin MATCH <states> … ;MATCH swap until 2drop ;`
-: RUN-WORD ( -- )
-   s" : " ROW+ NAME$ ROW+ s"  ( " ROW+ CTX$ ROW+ s"  " ROW+ STATES$ ROW+
-   s"  -- ) begin MATCH " ROW+ STATES$ ROW+ s\" \n" ROW+
+\ `: <NAME>-STEP ( <ctx> <states> -- <states> bool ) MATCH <states> … ;MATCH swap ;`
+\ `: <NAME> ( <ctx> <states> -- ) begin over swap <NAME>-STEP until 2drop ;`
+: RUN-WORDS ( -- )
+   s" : " ROW+ NAME$ ROW+ s" -STEP ( " ROW+ CTX$ ROW+ s"  " ROW+ STATES$ ROW+
+   s"  -- " ROW+ STATES$ ROW+ s"  bool ) MATCH " ROW+ STATES$ ROW+ s\" \n" ROW+
    RUN-LEN @ 0 > if 0 RUN-TEXT RUN-LEN @ ROW+ then
-   s\"    ;MATCH swap until 2drop ;\n" ROW+ ;
+   s\"    ;MATCH swap ;\n" ROW+
+   s" : " ROW+ NAME$ ROW+ s"  ( " ROW+ CTX$ ROW+ s"  " ROW+ STATES$ ROW+
+   s"  -- ) begin over swap " ROW+ NAME$ ROW+ s\" -STEP until 2drop ;\n" ROW+ ;
 
 
 : GENERATE ( -- )
@@ -222,7 +223,7 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    false
    begin TOKEN 2dup s" ;DEFINE" STR= 0= while STEP repeat
    2drop if ROW-END then
-   RUN-WORD
+   RUN-WORDS
    0 ROW-TEXT ROW-LEN @ ACT+
    0 ACT-TEXT ACT-LEN @ evaluate-closed ;
 

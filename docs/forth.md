@@ -826,7 +826,7 @@ gets, which could only throw. Each line names an input, an ACTION
 `>`, for a fixed next state, else a word `( <ctx> -- <states> )` that picks
 one. `FINAL <state> <ACTION>` ends a run in that state. DEFINE writes a word
 for each line's ACTION and each `FINAL` row, one for each `IN` row, then the
-machine:
+step word and the machine:
 
 ```forth
 : <NAME>/<state>/<input> ( <ctx> -- ) <ACTION> ;                \ a line's ACTION
@@ -837,12 +837,21 @@ machine:
       <input> OF dup <NAME>/<state>/<input> <NEXT> ENDOF        \ a NEXT word
       …
    ;MATCH ;
-: <NAME> ( <ctx> <states> -- )
-   begin MATCH <states>
-      <state> OF false over <NAME>/<state> ENDOF                \ an IN row
-      <final> OF dup true construct <states> <final> rot <NAME>/<final> ENDOF
-   ;MATCH swap until 2drop ;
+: <NAME>-STEP ( <ctx> <states> -- <states> bool ) MATCH <states>
+   <state> OF false swap <NAME>/<state> ENDOF                   \ an IN row
+   <final> OF true construct <states> <final> rot <NAME>/<final> ENDOF  \ a FINAL row
+   …
+   ;MATCH swap ;
+: <NAME> ( <ctx> <states> -- ) begin over swap <NAME>-STEP until 2drop ;
 ```
+
+`<NAME>-STEP` makes one move. From an `IN` state it runs SENSE, the line's
+ACTION and NEXT and answers the next state and false, a `FINAL` state
+included; from a `FINAL` state it runs the row's ACTION and answers the same
+state and true. `<NAME>` steps until a step answers true, so it runs one
+`FINAL` ACTION, also when started in a `FINAL` state. A caller that feeds one
+event at a time calls `<NAME>-STEP` and keeps the state it answers. A table
+needs no `FINAL` row; its `<NAME>` then runs until a callback throws.
 
 An ACTION of `-` writes no line word: `drop construct <states> <next>` on a
 `>next` line, `<NEXT>` alone before a NEXT word, and `drop` as
@@ -853,18 +862,19 @@ failure end) loads on a `>next` line or a `FINAL` row, and so does a state
 whose every line refuses. Two shapes fail the load with `E-DEAD-CODE`: an
 ACTION that never returns before a NEXT word, at the NEXT word after its line
 word, and a machine none of whose arms returns (every IN row's lines refuse and
-every FINAL's ACTION never returns), at the `swap` after the run word's
+every FINAL's ACTION never returns), at the `swap` after `<NAME>-STEP`'s
 `;MATCH`. The words land in the package and section DEFINE is called in, so
-`<NAME>/<state>`, `<NAME>/<state>/<input>` and `<NAME>/<final>` share
-`<NAME>`'s visibility. A second row for a state, or a second line for one
-input when both name an ACTION, fails the load as a duplicate definition, 78
-under `evaluate-closed`. The machine keeps no state of its own;
-a throw from a SENSE, ACTION or NEXT leaves `<NAME>` as thrown. Neither `MATCH`
-has a default arm, so the checker fails the load, 70 under `evaluate-closed`,
-for a row missing an input, an unknown `>state`, a state with neither an `IN`
-nor a `FINAL` row, and a word with the wrong effect; for a row naming its own
-ENUM, that covers a row missing one of its inputs, a line for a tag outside it
-and a SENSE answering another ENUM. The table's own grammar is `FSM:E-SYNTAX`:
+`<NAME>/<state>`, `<NAME>/<state>/<input>`, `<NAME>/<final>` and
+`<NAME>-STEP` share `<NAME>`'s visibility. A second row for a state, or a
+second line for one input when both name an ACTION, fails the load as a
+duplicate definition, 78 under `evaluate-closed`. The machine keeps no state
+of its own; a throw from a SENSE, ACTION or NEXT leaves `<NAME>-STEP` and
+`<NAME>` as thrown, with nothing answered. Neither `MATCH` has a default arm,
+so the checker fails the load, 70 under `evaluate-closed`, for a row missing
+an input, an unknown `>state`, a state with neither an `IN` nor a `FINAL` row,
+and a word with the wrong effect; for a row naming its own ENUM, that covers a
+row missing one of its inputs, a line for a tag outside it and a SENSE
+answering another ENUM. The table's own grammar is `FSM:E-SYNTAX`:
 the source ending before `;DEFINE`, a header not `( … )`, a line before the
 first `IN` or `FINAL`, a row cut short by `IN`, `FINAL` or `;DEFINE`, a row
 with no line, a `(` after SENSE not followed by one name and `)`, a token after
