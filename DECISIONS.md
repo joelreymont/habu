@@ -1039,6 +1039,25 @@ learned live in the docs for their subject.
 
 ## Compiler and builds
 
+- 2026-11-09, Wasm through the one linker: shown a design in which a Wasm
+  module is built as any program is, by hb-build with Wasm as its target (T0
+  gains a Wasm code generator beside its arm64 and x86-64 ones, the linker
+  takes the build's target and hands the code a program reaches to the
+  existing Wasm module writer, and the capture build goes), and asked to name
+  the command-line flag, Joel chose "--target wasm (Recommended)":
+  `tools/hb-build.f -- --target wasm source.f -o out.wasm`, one flag for every
+  target, taking CTARGET's architecture names. Under Joel's rule to settle
+  what the long-term rule settles, the lead chose: T0's generator now, not
+  tier 1 as a stopgap; every Wasm function is called one way, taking the
+  context and returning a status, with the data stack in memory; a module
+  starts at its MAIN, as an arm64 program does; LINKER:WITH takes the target
+  as an argument; a Wasm build compiles every file until a file's object
+  carries both copies of a definition, the module's and the host's that later
+  files run during the build; tools/wasm-build.f, src/habu/link-wasm.f,
+  src/arch/wasm/capture.f, T0's hand-off of fixed bodies to tier 1 and the
+  two capture tests go; the Wasm device check and the browser tests move to
+  the new command. Steps are dots under habu-emit-wasm-from-0d5dab47.
+
 - 2026-11-09, wasm calls to words with stack rows: shown a fix for a wasm32 call
   that passed a row's cells as lanes, which added two public HIR keys to the
   shared compiler so the wasm selector could learn its callee's declared cells,
