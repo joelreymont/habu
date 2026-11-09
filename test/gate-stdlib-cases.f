@@ -159,8 +159,6 @@ SUITE wasm-select-f64
    test/wasm/select-f64.f
 ;SUITE
 
-\ Off: Wasm.
-false [if]
 \ The Wasm backend registered at run time, src/arch/wasm/backend.f and
 \ passes.f: real source compiled through an open Wasm shadow, one emission per
 \ record whose rows match its bytes, NEMIT empty after each, the placed row
@@ -169,6 +167,8 @@ SUITE wasm-backend
    test/wasm/backend.f
 ;SUITE
 
+\ Off: Wasm.
+false [if]
 \ The capture's Wasm reader, src/arch/wasm/capture.f: a window compiled through
 \ an open Wasm shadow, captured, its emissions read into AOT-SHADOW's tables
 \ with each call row, code and DATA field and code cell keyed by shipped row.
