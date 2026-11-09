@@ -72,9 +72,7 @@ CAST: N>XT ( n -- [ -- ] )
 \ reads or sets PC cannot run out of line: its breakpoint degrades to one-shot.
 \ An engine the old builder makes reserves the block here, at load. Inside a
 \ build the code band is the building hb's, so the load reserves nothing and
-\ the written program's cell stays 0 until the start-up that maps its live
-\ code region reserves the block; until then BPADD refuses a persistent
-\ breakpoint there.
+\ the written program's start-up reserves the block (layout.f BPTRAMP-CELL).
 8 constant TRAMP-BYTES
 
 : TRAMP@ ( -- n ) data-base BPTRAMP-CELL + @ ;
@@ -82,8 +80,8 @@ CAST: N>XT ( n -- [ -- ] )
 : TRAMP-INSTALL ( -- )
    data-base BOOT:IMAGE-BASE-CELL + @ 0<> if exit then
    cp@ {: base :}
-   base MAXBP TRAMP-BYTES * + cp!
-   MAXBP TRAMP-BYTES * 0 ?do BRK0 base i + CODE! 4 +loop
+   base BPTRAMP-BYTES + cp!
+   BPTRAMP-BYTES 0 ?do BRK0 base i + CODE! 4 +loop
    base N>XT data-base BPTRAMP-CELL + xt! ;
 
 TRAMP-INSTALL

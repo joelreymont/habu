@@ -397,8 +397,11 @@ $36B8 constant FWDTGT-CELL
 \ data-claims.f proves it disjoint.
 $2C40 constant LIDX-CELL
 \ BPTRAMP-CELL: the code address of the persistent-breakpoint trampolines,
-\ MAXBP two-word slots debug.f reserves in the code band and declares with xt!.
+\ BPTRAMP-BYTES of BRK words, debug.f's MAXBP two-word slots, reserved in the
+\ code band: by debug.f at load in an engine the old builder makes, by the
+\ arm64 start-up (src/arch/arm64/boot.f) at the live code's start in a linked one.
 $36C0 constant BPTRAMP-CELL
+64 constant BPTRAMP-BYTES
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL

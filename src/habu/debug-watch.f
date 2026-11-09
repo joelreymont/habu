@@ -20,11 +20,10 @@ variable BPW-LAST
 
 \ The cell holds the table's ADDRESS, so it is reached through `ptr-field`,
 \ the declared pointer-cell door, not by reading a plain DATA offset: nothing
-\ fetched straight out of a base address is an address.
+\ fetched straight out of a base address is an address. `ptr-cell!` marks it,
+\ and while a build writes an hb it stores into that hb's header.
 : BPW-BASE! ( -- )
-   data-base BPWBASE-CELL + 0 ptr-field {: cell:ptr :}
-   cell ptr-cell-mark
-   0 BPW-TAB cell ! ;
+   0 BPW-TAB  data-base BPWBASE-CELL + 0 ptr-field ptr-cell! ;
 
 : BPW-N@ ( -- n )
    data-base BPWN-CELL + @ ;

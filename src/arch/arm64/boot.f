@@ -97,6 +97,23 @@ using A64ICODE
    EM-FRAME-STACKS                          \ habu2.f
    text0 TEXT-BASE,  11 LCRASHH LABEL@ TEXT-AT,  G-INSTALL-CRASH-X11 ;   \ crash.f
 
+\ SIGTRAP repointed from the crash handler at the breakpoint handler, as
+\ habu2.f G-INSTALL-TRAP does; an engine's only (a stripped program has no
+\ breakpoints).
+: TRAP, ( label -- )
+   {: text0:label :}
+   text0 TEXT-BASE,  11 LTRAPH LABEL@ TEXT-AT,
+   11 SIGACT-SIGINFO C-SIGACTION-FRAME  5 INSTALL-SIGACT  C-SIGACTION-FRAME-DONE ;
+
+\ The persistent breakpoints' trampolines at the live code's start, stored as
+\ BRK words through the region's RW alias (x17 = alias - base), their address
+\ in BPTRAMP-CELL (layout.f); CP starts after them.
+: TRAMPOLINES, ( -- )
+   9 CP 0 ADDI,  9 DATA BPTRAMP-CELL STR,
+   10 $D4200000D4200000 LIT64,  11 CP 17 ADD,
+   BPTRAMP-BYTES 0 ?do 10 11 i STR, 8 +loop
+   CP CP BPTRAMP-BYTES ADDI, ;
+
 \ Calls the xt in DATA's cell, then exits 0 through habu2.f EMIT-EXITHOOK.
 : CALL-EXIT, ( n -- )
    {: cell:n :}
@@ -134,8 +151,9 @@ public
    16 DBASE 17 ADD,  linked text0 rlist rlist-end 16 SLIDE-AT,
    linked text0 image image-end list list-end DATA,
    17 DATA REGION-ALIAS:DELTA-CELL STR,
+   TRAMPOLINES,
    EM-DEF-OCC:LINIT LABEL@ BL,
-   text0 STACKS,
+   text0 STACKS,  text0 TRAP,
    LHIDXBUILD LABEL@ BL,                    \ habu1.f: maps the index, keys [0, NDICT)
    ENGINE-MAIN:XT-CELL CALL-EXIT, ;
 
