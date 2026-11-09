@@ -350,8 +350,9 @@ private
    s" hb: native compiler dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
 
 public
-\ The tail passes the wall, room, duplicate and code room tests before def-open writes; the wall
-\ and code room name the tail, the rest the token. kind: 0 (compiled), DKIND:ADDR, VAL or CAST.
+\ The tail passes the wall, room, duplicate, code room and seal tests before def-open writes; the
+\ wall and code room name the tail, the rest the token. kind: 0 (compiled), DKIND:ADDR, VAL or CAST.
+\ def-open refuses a sealed package's wordlist too, but without a word (habu2.f DEFWRITE:DEF-OPEN).
 : DEF-RECORD ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
    a u DEF-WALL
    PKG-DICT-ROOM
@@ -359,6 +360,7 @@ public
       s" duplicate definition: " ERROR-TEXT:TYPE PKG-RC-DUPLICATE PKG-FAIL
    then
    a u PKG-CODE-ROOM
+   SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if a u SEALED-FAIL then
    a u wid kind def-open ;
 private
 
