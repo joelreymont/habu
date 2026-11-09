@@ -997,6 +997,24 @@ learned live in the docs for their subject.
   images run on it, and each tool image goes with the step that moves its
   last user. Asked when hb should carry the verifier, he chose "Right after
   step 5 (Recommended)".
+- 2026-11-09, agents inspect Habu from the REPL (relayed by bob from the
+  Dotfiles pane): of the ChatGPT plan
+  ~/Downloads/habu_session_and_implementation_plan.md Joel said "review and
+  let me know if we need to change anything", then of the review's two
+  adjustments "ok, make the updates". Stands: ordinary checked words in the
+  existing REPL through which an agent describes a published word's
+  identity, effect, kind and source; observes the typed rows and locals
+  before one byte boundary during a normal check, marked provisional, with
+  the verdict returned separately; and checks a few supplied replacements
+  for one span against the existing verdicts and one fixed behavioural
+  fixture. Inspection runs only when asked and normal compilation never
+  waits on an agent; a CLI or MCP adapter comes when a client needs it. The
+  describe word follows the facts-on-entries design; the observation and
+  candidate words are check-tool work and wait for incremental builds
+  (2026-11-04 above), and they sit on the checker's own cursor and
+  candidate words, never on verify-source.f's scanner, which is slated for
+  deletion. The three public words are named by this repository's
+  conventions when designed. Dots under habu-agents-inspect-habu-9f1951c1.
 - 2026-11-03, the compiler lease: shown a design in which T0's compiles take
   tier 1's compiler lease (NLEASE) so NDEFINITION's M-OPEN flag could go,
   Joel asked "why in the world do you need to take a lease? this smells! are
