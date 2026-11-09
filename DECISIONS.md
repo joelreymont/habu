@@ -950,6 +950,21 @@ learned live in the docs for their subject.
   cells a row binds stay on the context stack, where the native data stack holds
   them; no public word is added, and the shared compiler and the native backends
   do not change.
+- 2026-11-09, reading a Wasm emission's header: told that src/arch/wasm/select.f
+  (since the fix above) and src/habu/link-wasm.f each restated WENC's private
+  header layout (src/arch/wasm/encode.f), Joel chose in interview "Add the
+  reader": one public WENC word reads a function's header row, landed apart
+  from that fix. Of the function count, which link-wasm.f also read from the
+  header's bytes itself, he chose "Add FUNS@ too": WENC:FUNS@ ( ptr u8 -- n )
+  answers an emission's function count, so no file but encode.f reads the
+  layout, apart from the tests that check the bytes it writes. He was told why
+  the native backends need neither: they keep each emission's function count
+  and offsets as shadow records beside the bytes, while a Wasm function's lanes
+  must reach the link inside the emission. The
+  lead chose the row reader's form, WENC:ROW@ ( ptr u8 n -- n n n n n ),
+  function n's body offset, body size, input and output lanes and frame
+  variant; both refuse bytes that do not begin with WENC:MAGIC, and ROW@ a
+  function past the count, with E-WENC-STATE.
 - 2026-11-04, the check tool before incremental builds: asked to approve
   SOURCE-SYNTAX:COMPILE-KEYWORD?, a new public word so that checking a file
   before running it (the language server, tools/check.f) refuses `: 42` and

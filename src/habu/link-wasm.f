@@ -25,10 +25,6 @@ using AOT-SHADOW
 \ The rc of a capture this link cannot place, the capture's own refusals', and
 \ of an output it cannot write, as the engine's drivers refuse theirs.
 74 constant REFUSE-RC
-\ An emission's header: the magic and the function count, then per function its
-\ body offset, size, inputs, outputs, frame variant and a pad byte.
-8 constant HEAD-BYTES
-12 constant ROW-BYTES
 
 DYNAMIC-BUFFER ROUTINE n             \ a shipped row -> the shadow row filing its routine
 DYNAMIC-BUFFER LIVE n                \ a shipped row reachable at runtime
@@ -59,42 +55,36 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 \ function's body, which its header row places and gives its lanes and frame
 \ variant. Each function joins the link with an adapter in the table, the slot
 \ that is its xt (src/arch/wasm/dynamic.f).
-: FUNS ( ptr u8 -- n ) 4 + LE:U32@ ;
-
-: HEAD ( ptr u8 n -- ptr u8 )
-   {: p:ptr k:n :}
-   p HEAD-BYTES + k ROW-BYTES * + ;
-
-: BODY-AT ( ptr u8 n -- n ) HEAD LE:U32@ ;
+: BODY-AT ( ptr u8 n -- n ) WENC:ROW@ 2drop 2drop ;
 
 \ The function of emission p whose body starts at offset v, the bodies ascending.
 : FUN-AT ( ptr u8 n -- n )
    {: p:ptr v:n :}
-   0  p FUNS 0 ?do  p i BODY-AT v < if 1+ then  loop ;
+   0  p WENC:FUNS@ 0 ?do  p i BODY-AT v < if 1+ then  loop ;
 
 \ The function of emission p whose body holds offset v.
 : HOLDER ( ptr u8 n -- n )
    {: p:ptr v:n :}
-   -1  p FUNS 0 ?do  p i BODY-AT v <= if 1+ then  loop ;
+   -1  p WENC:FUNS@ 0 ?do  p i BODY-AT v <= if 1+ then  loop ;
 
 : FUNCTION+ ( ptr u8 n WLINK:origin -- n )
    {: p:ptr k:n o:WLINK:origin :}
-   p k HEAD {: h:ptr :}
-   p h LE:U32@ +  h 4 + LE:U32@  h 8 + c@  h 9 + c@  h 10 + c@  o WLINK:FUNCTION+ ;
+   p k WENC:ROW@ {: off:n size:n in:n out:n fv:n :}
+   p off +  size in out fv  o WLINK:FUNCTION+ ;
 
 : ADAPTER+ ( ptr u8 n n -- )
    {: p:ptr k:n f:n :}
-   p k HEAD {: h:ptr :}
+   p k WENC:ROW@ drop 2swap 2drop {: in:n out:n :}
    f 1+ SLOTS-RESERVE
-   f  h 8 + c@  h 9 + c@  WDYN:ADAPTER+  f SLOTS ! ;
+   f in out WDYN:ADAPTER+  f SLOTS ! ;
 
 \ Emission p's functions, numbered from its first, each with its adapter;
 \ answers the first.
 : EMISSION+ ( ptr u8 WLINK:origin -- n )
    {: p:ptr o:WLINK:origin :}
    p 0 o FUNCTION+ {: f0:n :}
-   p FUNS 1 ?do  p i o FUNCTION+ drop  loop
-   p FUNS 0 ?do  p i f0 i + ADAPTER+  loop
+   p WENC:FUNS@ 1 ?do  p i o FUNCTION+ drop  loop
+   p WENC:FUNS@ 0 ?do  p i f0 i + ADAPTER+  loop
    f0 ;
 
 \ A record enters its routine's first function. A `does>` definer cannot link:
@@ -425,8 +415,7 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 : ENTRY ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u SHIPPED {: k:n :}
-   k ROUTINE-OF EMISSION 0 HEAD {: h:ptr :}
-   h 8 + c@  h 9 + c@  or 0<> if a u CELLS-ENTRY then
+   k ROUTINE-OF EMISSION 0 WENC:ROW@ drop 2swap 2drop  or 0<> if a u CELLS-ENTRY then
    k ENTERS ;
 
 : UNWRITABLE ( ptr u8 n -- )

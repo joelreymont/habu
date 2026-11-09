@@ -9,6 +9,7 @@ require src/lib/prelude.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
+require src/lib/le.f
 require src/lib/adt/option.f
 require src/compiler/ir/id.f
 require src/compiler/ir/type.f
@@ -29,7 +30,7 @@ require src/arch/wasm/structure.f
 \ The Wasm backend's error block is -9800..-9834 (src/lib/error.f).
 -9825 constant E-WENC-FIRST
 -9829 constant E-WENC-LAST
--9825 constant E-WENC-STATE    \ a read of no emission or past its rows
+-9825 constant E-WENC-STATE    \ a read of no emission, of bytes that do not begin with MAGIC, or past its rows
 -9826 constant E-WENC-FORM     \ an operation, value or function with no Wasm form here: call_indirect, a function with no body, a one-byte opcode asked of brz or a two-byte one
 -9827 constant E-WENC-CALLEE   \ a call naming neither a function of its module nor a host entry
 -9828 constant E-WENC-ARITY    \ a stated arity that is not the function's signature or overflows its header byte
@@ -70,8 +71,8 @@ $FC constant MISC-PREFIX             \ the saturating truncations' and bulk memo
 \ body is a code section entry less its size. Inputs and outputs are the lanes
 \ the caller states. Past WPROF's lane arity a function takes the aligned frame
 \ and its signature passes no lane; otherwise it is (ctx, inputs) -> (status,
-\ outputs). Readers answer the last emission encoded whole; a refused one leaves
-\ nothing.
+\ outputs). FUNS@ and ROW@ read any emission's bytes; the other readers answer
+\ the last emission encoded whole, and a refused one leaves nothing.
 8 constant HEAD-BYTES                \ the magic and the function count
 12 constant ROW-BYTES                \ one function's row
 0 constant FRAME-LANES               \ the lanes are the signature's
@@ -661,5 +662,19 @@ public
 \ Its address kind, NEMIT's DATA or CODE; a FUN is filed as CODE.
 : ADDR-SITE-KIND@ ( n -- n )
    NADDRS @ ROW-CK AS-KIND @ ;
+
+\ ---- readers of an emission's bytes -------------------------------------------------
+\ The function count of the emission whose first byte is p.
+: FUNS@ ( ptr u8 -- n )
+   {: p:ptr :}
+   p LE:U32@ MAGIC <> if E-WENC-STATE throw then
+   p 4 + LE:U32@ ;
+
+\ Function n's body offset from p, body size, input and output lanes and frame variant.
+: ROW@ ( ptr u8 n -- n n n n n )
+   {: p:ptr k:n :}
+   k 0 <  k p FUNS@ >=  or if E-WENC-STATE throw then
+   p HEAD-BYTES + k ROW-BYTES * + {: h:ptr :}
+   h LE:U32@  h 4 + LE:U32@  h 8 + c@  h 9 + c@  h 10 + c@ ;
 
 ;package

@@ -24,6 +24,7 @@ require src/compiler/native/backend.f
 require src/compiler/native/shadow.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/wstruct.f
+require src/arch/wasm/encode.f
 
 \ WSEL's codes, -9820..-9824, in the Wasm backend's block -9800..-9834.
 -9820 constant E-WSEL-FIRST
@@ -502,10 +503,6 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id s" execute" ENGINE-CALL?  id s" catch" ENGINE-CALL? or
    id s" finally" ENGINE-CALL? or ;
 
-\ WENC's emission header (src/arch/wasm/encode.f HEAD-BYTES).
-8 constant HEAD-BYTES
-12 constant ROW-BYTES
-
 \ A callee's declared cells, rows as none: its shadow function's header row. A
 \ miss is an engine word, linked through WKERNEL's map, whose providers have no
 \ row, so the call's count is its callee's. The search scans every shadow
@@ -516,8 +513,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id HIR-OPCODE:CALL IS?  NSHADOW:OPEN? 0=  or if  a r  exit  then
    id 0 BND-ENTRY @ ATTR NSHADOW:SOURCE-FUNCTION {: e:n f:n :}
    e 0 < if  a r  exit  then
-   e NSHADOW:BYTES HEAD-BYTES +  f ROW-BYTES * + {: h:ptr :}
-   h 8 + c@  h 9 + c@ ;
+   e NSHADOW:BYTES f WENC:ROW@  drop 2swap 2drop ;
 
 : CALL? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
