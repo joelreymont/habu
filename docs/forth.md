@@ -524,8 +524,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   arities. A qualified token resolves only its package row; a bare token
   resolves the open package's own row (private or public), inside a part
   `A:B` then A's row, then the global row, then the public row of a package
-  `using` opened, then the sole eligible public row of another package; two
-  eligible rows at either of the last two steps are an error. So adding
+  `using` opened; two eligible rows at that last step are an error, and
+  another package's family needs `PKG:tail` or an import. So adding
   `MEM:span` cannot change what a top-level `span` means. Same-package
   duplicates, reserved grammar names and foreign private rows reject.
 - `STRUCTURE name[<params>] [ header… ] FIELD f type … ;STRUCTURE` declares a
