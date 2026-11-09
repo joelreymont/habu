@@ -10245,18 +10245,21 @@ ON-USE-DEFAULT
 : NAV-NO-USE ( -- n n n n n n n bool )
    0 0 0 0 0 0 0 RES-FALSE ;
 
-\ The first specification row naming this primitive's symbol. Overloads share
-\ one symbol and source spelling, so navigation selects their first name token.
-\ A source record or tombstone always wins before this is asked.
+\ The first prims.f row with this symbol's package and name; overloads share a
+\ symbol. A package's primitive is private (EPPRIM:): a public symbol has none.
 : NAV-PRIM-ROW ( n -- n )
    {: sym:n :}
-   sym SYM-PRIM-END @ >= if -1 exit then
+   sym SYM-ROW SYM.VIS @ {: vis:n :}
+   vis SYM-PUBLIC = if -1 exit then
    sym SYM-PKG$ {: pkg:ptr pkgu:n :}
    sym SYM-NAME$ {: name:ptr nameu:n :}
    PRIM-SPEC:COUNT 0 ?do
       i PRIM-SPEC:KIND@ {: kind:n :}
-      kind PRIM-SPEC:K-PRIM = kind PRIM-SPEC:K-PKG-PRIVATE = or
-      kind PRIM-SPEC:K-ELAB = or if
+      vis SYM-GLOBAL = if
+         kind PRIM-SPEC:K-PRIM = kind PRIM-SPEC:K-ELAB = or
+      else
+         kind PRIM-SPEC:K-PKG-PRIVATE =
+      then if
          i PRIM-SPEC:PKG$ pkg pkgu SYM-STR=CI
          i PRIM-SPEC:NAME$ name nameu SYM-STR=CI and if i unloop exit then
       then
