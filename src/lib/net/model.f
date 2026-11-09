@@ -3650,8 +3650,9 @@ FSM:DEFINE LAND-MACHINE ( ptr call ) land-step ending
 ;DEFINE
 
 
-ENUM send-step looking sending out ended lost ;ENUM
-ENUM send-event missed replayed armed faulted ;ENUM
+ENUM send-step looking sending out ended ;ENUM
+ENUM lookup-event missed replayed faulted ;ENUM
+ENUM dispatch-event armed faulted ;ENUM
 
 \ Restores the journal record in JOURNAL-OUT-BUF as the call's reply.
 : RESTORE ( ptr call -- )
@@ -3660,13 +3661,13 @@ ENUM send-event missed replayed armed faulted ;ENUM
    c [: dup JOURNAL-RESTORE ;] catch {: code:n :} drop
    code c KEEP-FAULT ;
 
-: LOOK-UP ( ptr call -- send-event )
+: LOOK-UP ( ptr call -- lookup-event )
    {: c :}
-   c MODEL-CALL:JOURNAL-READY @ 0= if construct send-event missed exit then
+   c MODEL-CALL:JOURNAL-READY @ 0= if construct lookup-event missed exit then
    false c [: >r drop r@ JOURNAL-GET? r> ;] catch {: code:n :} drop
-   code 0<> if drop code c KEEP-FAULT construct send-event faulted exit then
-   if c RESTORE construct send-event replayed exit then
-   construct send-event missed ;
+   code 0<> if drop code c KEEP-FAULT construct lookup-event faulted exit then
+   if c RESTORE construct lookup-event replayed exit then
+   construct lookup-event missed ;
 
 \ Sends the request on a fresh handle the land machine cleans up; the key is
 \ read once and wiped once libcurl copies it.
@@ -3697,12 +3698,12 @@ ENUM send-event missed replayed armed faulted ;ENUM
    c ARM
    c ;
 
-: DISPATCH ( ptr call -- send-event )
+: DISPATCH ( ptr call -- dispatch-event )
    {: c :}
    c [: POST ;] catch {: code:n :} drop
-   code 0= if construct send-event armed exit then
+   code 0= if construct dispatch-event armed exit then
    code c KEEP-FAULT
-   construct send-event faulted ;
+   construct dispatch-event faulted ;
 
 \ Runs the land machine, keeping a fault it throws as the call's outcome with
 \ the call landed.
@@ -3766,20 +3767,16 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 
 \ Sends a begun call's request, or restores its journal hit: out with the
 \ transfer armed, or landed.
-FSM:DEFINE SEND-MACHINE ( ptr call ) send-step send-event
+FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    IN looking  LOOK-UP
       missed    -  >sending
       replayed  -  >ended
-      armed     -  >lost
       faulted   -  >ended
-   IN sending  DISPATCH
-      missed    -  >lost
-      replayed  -  >lost
+   IN sending  DISPATCH ( dispatch-event )
       armed     -  >out
       faulted   -  >ended
    FINAL out    -
    FINAL ended  LAND
-   FINAL lost   LOST
 ;DEFINE
 
 : BEGIN-SEND ( ptr call -- )
