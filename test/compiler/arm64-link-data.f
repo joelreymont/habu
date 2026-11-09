@@ -226,15 +226,16 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    s" --" CMD:ARG+  name name-n CMD:ARG+
    ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
-\ Case name's child prints its arming line, then pre and v as `.` prints them,
-\ names err on stderr and exits 74.
+\ Case name's child prints its arming line, then on stderr names pre and v
+\ and err, and exits 74.
 : BAD-RUN ( CMD:command ptr u8 n ptr u8 n n ptr u8 n -- CMD:command )
    {: name:ptr name-n:n pre:ptr pre-n:n v:n err:ptr err-n:n :}
    name name-n CHILD-RC {: rc:n :}
+   name name-n s" the child arms before the link" CHILD-LABEL
+   CMD:OUT$ s\" ARM64-LINK-DATA-BAD-ARMED\n" T$=
    name name-n s" the child names the value" CHILD-LABEL
-   SB-RESET  s\" ARM64-LINK-DATA-BAD-ARMED\n" SB-APPEND  pre pre-n SB-APPEND
-   v FMT:SB-INT  10 SB-APPEND-C
-   CMD:OUT$ SB$ T$=
+   SB-RESET  pre pre-n SB-APPEND  v FMT:SB-INT  10 SB-APPEND-C
+   CMD:ERR$ SB$ CONTAINS? TTRUE
    name name-n s" the child's reason" CHILD-LABEL
    CMD:ERR$ err err-n CONTAINS? TTRUE
    name name-n s" the child exits 74" CHILD-LABEL  rc 74 T= ;
@@ -254,10 +255,10 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 \ BAD-RUN.
 : BAD-EVAL ( CMD:command -- CMD:command )
    s" eval" CHILD-RC {: rc:n :}
+   s" eval" s" the child arms before the link" CHILD-LABEL
+   CMD:OUT$ s\" ARM64-LINK-DATA-BAD-ARMED\n" T$=
    s" eval" s" the child names the caller and evaluate-closed" CHILD-LABEL
-   CMD:OUT$
-   s\" ARM64-LINK-DATA-BAD-ARMED\nlink: LD-EV calls evaluate-closed, which a stripped program cannot run\n"
-   T$=
+   CMD:ERR$ s" link: LD-EV calls evaluate-closed, which a stripped program cannot run" CONTAINS? TTRUE
    s" eval" s" the child's reason" CHILD-LABEL
    CMD:ERR$ s" link: a stripped program reaches a word it cannot run" CONTAINS? TTRUE
    s" eval" s" the child exits 74" CHILD-LABEL  rc 74 T= ;
