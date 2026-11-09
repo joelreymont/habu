@@ -13784,57 +13784,65 @@ variable CUR
    9 13 2 ANDI,
    A G-PUSH ;
 
-\ Entry kinds are fixed by the image emitter, never by source declarations or
-\ writable DATA. A restored alias has the same code entry and thus the same kind.
+package ENGINE-EMIT
+
+\ Nonzero while KERNEL emits scope-kind? for a link that writes its entries
+\ (LINK-SCOPE-ENTRIES); OPEN clears it.
+variable LINKED-SCOPES
+\ Kind k's chain label at cell k, k from 2 to 8.
+create SCOPE-SITES 9 cells allot
+
+\ Answers kind k for the entry in A when it equals kind k's entry: a linked
+\ engine's from a chain, an emitted image's at off past the dictionary when off
+\ >= 0. Every test binds its next label, so the emitted bytes and labels do not
+\ depend on which entries a complete runtime binds.
+: SCOPE-TEST ( n n label -- )
+   {: off:n k:n done:label :}
+   LBL {: next:label :}
+   LINKED-SCOPES @ 0<> if
+      LBL dup  SCOPE-SITES k cells +  LABEL!  LBL,
+      \ the 16-byte chain LINKER's ARM64:CODE-ADDRESS! writes, 0 until written
+      5 0 MOVZ,  NOP,  NOP,  NOP,
+      5 next CBZ,
+      A 5 CMP,  C-NE next BCOND,
+      A k MOVZ,  done B,
+   else
+      off 0 >= if
+         5 DICT-SIZE off + LIT64,  5 DBASE 5 ADD,
+         A 5 CMP,  C-NE next BCOND,
+         A k MOVZ,  done B,
+      then
+   then
+   next LBL, ;
+
+
+\ Entry kinds are fixed by the image emitter or the link's chains in code,
+\ never by source declarations or writable DATA. A restored alias has the same
+\ code entry and thus the same kind.
 : BSCOPE-KIND ( -- )
    A G-POP
-   LBL LBL LBL LBL LBL LBL LBL LBL
-   {: records:label record:label field:label mut:label loan:label child:label miss:label done:label :}
-   EM-C2-RECORDS-OFF @ 0 >= if
-      5 DICT-SIZE EM-C2-RECORDS-OFF @ + LIT64,  5 DBASE 5 ADD,
-      A 5 CMP,  C-NE records BCOND,
-      A 6 MOVZ,  done B,
-   then
-   records LBL,
-   EM-C2-RECORD-OFF @ 0 >= if
-      5 DICT-SIZE EM-C2-RECORD-OFF @ + LIT64,  5 DBASE 5 ADD,
-      A 5 CMP,  C-NE record BCOND,
-      A 7 MOVZ,  done B,
-   then
-   record LBL,
-   EM-C2-FIELD-OFF @ 0 >= if
-      5 DICT-SIZE EM-C2-FIELD-OFF @ + LIT64,  5 DBASE 5 ADD,
-      A 5 CMP,  C-NE field BCOND,
-      A 8 MOVZ,  done B,
-   then
-   field LBL,
-   EM-C2-INIT-OFF @ 0 >= if
-      5 DICT-SIZE EM-C2-INIT-OFF @ + LIT64,  5 DBASE 5 ADD,
-      A 5 CMP,  C-NE mut BCOND,
-      A 5 MOVZ,  done B,
-   then
-   mut LBL,
-   EM-C2-MUT-OFF @ 0 >= if
-      5 DICT-SIZE EM-C2-MUT-OFF @ + LIT64,  5 DBASE 5 ADD,
-      A 5 CMP,  C-NE loan BCOND,
-      A 3 MOVZ,  done B,
-   then
-   loan LBL,
-   EM-C2-MUT-LOAN-OFF @ 0 >= if
-      5 DICT-SIZE EM-C2-MUT-LOAN-OFF @ + LIT64,  5 DBASE 5 ADD,
-      A 5 CMP,  C-NE child BCOND,
-      A 4 MOVZ,  done B,
-   then
-   child LBL,
-   EM-SCOPE-CHILD-OFF @ 0 >= if
-      5 DICT-SIZE EM-SCOPE-CHILD-OFF @ + LIT64,  5 DBASE 5 ADD,
-      A 5 CMP,  C-NE miss BCOND,
-      A 2 MOVZ,  done B,
-   then
-   miss LBL,
+   LBL {: done:label :}
+   EM-C2-RECORDS-OFF @ 6 done SCOPE-TEST
+   EM-C2-RECORD-OFF @ 7 done SCOPE-TEST
+   EM-C2-FIELD-OFF @ 8 done SCOPE-TEST
+   EM-C2-INIT-OFF @ 5 done SCOPE-TEST
+   EM-C2-MUT-OFF @ 3 done SCOPE-TEST
+   EM-C2-MUT-LOAN-OFF @ 4 done SCOPE-TEST
+   EM-SCOPE-CHILD-OFF @ 2 done SCOPE-TEST
    A 0 MOVZ,
    done LBL,
    A G-PUSH ;
+
+public
+
+\ The next KERNEL emits scope-kind? to read each entry from a chain the link
+\ writes at SCOPE-ENTRY-SITE after it places the product's code.
+: LINK-SCOPE-ENTRIES ( -- ) -1 LINKED-SCOPES ! ;
+
+\ The label of the chain holding kind k's entry, k from 2 to 8.
+: SCOPE-ENTRY-SITE ( n -- label ) cells SCOPE-SITES + LABEL@ ;
+
+;package
 
 \ scope-find ( ptr u8 n -- ptr n ptr n ptr n n ): LSCOPEREC's four answers for a
 \ token (bound record, used publics' record, second used record when two hold
@@ -13847,8 +13855,9 @@ variable CUR
    LSCOPEREC LABEL@ BL,
    14 G-PUSH  16 G-PUSH  17 G-PUSH  15 G-PUSH ;
 
-\ The writer fills this slot from the final immutable kernel bytes. The
-\ runtime answer is independent of the source tree later present on disk.
+\ The writer fills this slot from the kernel bytes as emitted, before a link
+\ writes scope-kind?'s chains. The runtime answer is independent of the source
+\ tree later present on disk.
 : BKERNELPRODUCER ( -- )
    9 LKERNELDIGEST LABEL@ ADR,  9 G-PUSH
    9 32 MOVZ,  9 G-PUSH
@@ -14002,7 +14011,8 @@ public
 \ Code emitted before KERNEL precedes the start-up, in icode.f's first part.
 : OPEN ( ptr u8 n -- )
    \ Every ordinary emission chooses no scoped entry; only a complete runtime
-   \ binds entries, through FORTH-C2.
+   \ binds entries, through FORTH-C2, and a link through LINK-SCOPE-ENTRIES.
+   0 LINKED-SCOPES !
    -1 EM-SCOPE-CHILD-OFF !
    -1 EM-C2-MUT-OFF !
    -1 EM-C2-MUT-LOAN-OFF !

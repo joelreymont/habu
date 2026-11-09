@@ -432,10 +432,47 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    DATA-IMAGE ;
 
 
+\ C2-MEM's word whose entry scope-kind? answers kind k for.
+: SCOPE-WORD$ ( n -- ptr u8 n )
+   {: k:n :}
+   k 2 = if s" WITH-READ" exit then
+   k 3 = if s" WITH-MUT" exit then
+   k 4 = if s" WITH-MUT-LOAN" exit then
+   k 5 = if s" WITH-INIT" exit then
+   k 6 = if s" WITH-RECORDS" exit then
+   k 7 = if s" WITH-RECORD" exit then
+   k 8 = if s" WITH-FIELD" exit then
+   s" link: scope-kind? has no kind past 8" 74 die ;
+
+
+\ Kind k's chain in the kernel becomes adrp+add of the entry of k's word in
+\ C2-MEM's public wordlist wid.
+: SCOPE-ENTRY! ( n n -- )
+   {: wid:n k:n :}
+   k SCOPE-WORD$ wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   rec XREF-FOUND? 0= if
+      s" link: C2-MEM has no " SAY k SCOPE-WORD$ SAY SAY-CR
+      s" link: C2-MEM lacks a scope entry" 74 die
+   then
+   rec XREF-START LINK-ADDRESS {: to:n :}
+   to -1 = if s" link: a C2-MEM scope entry is code the product does not place" 74 die then
+   k ENGINE-EMIT:SCOPE-ENTRY-SITE ARM64:OFFSET {: at:n :}
+   to  TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
+
+
+\ After PLACE-ROUTINES, scope-kind?'s chains (ENGINE-EMIT:LINK-SCOPE-ENTRIES)
+\ name C2-MEM's entries; a product without C2-MEM leaves them 0.
+: SCOPE-ENTRIES ( -- )
+   s" C2-MEM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   pkg XREF-FOUND? 0= if exit then
+   pkg XREF-PKG-PUBLIC {: wid:n :}
+   9 2 ?do wid i SCOPE-ENTRY! loop ;
+
+
 \ An engine's code: the start-up, the whole kernel, every routine, DATA, then
 \ the records.
 : LINK-ENGINE ( -- )
-   ARM64:OPEN
+   ARM64:OPEN  ENGINE-EMIT:LINK-SCOPE-ENTRIES
    A64ICODE:LBL LIMAGE !  A64ICODE:LBL LIMAGE-END !
    A64ICODE:LBL LLIST !  A64ICODE:LBL LLIST-END !
    A64ICODE:LBL LRECS !  A64ICODE:LBL LRECS-END !
@@ -448,6 +485,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    PRIM-TEXTS
    ROUTINES REACH-ALL
    ['] DATA-ADDRESS PLACE-ROUTINES
+   SCOPE-ENTRIES
    DATA-IMAGE
    RECORD-IMAGE ;
 
