@@ -26994,7 +26994,8 @@ $A8 constant RBF.OVWIDN-OFF
 $B0 constant RBF.FLOOR-OFF
 $B8 constant RBF.VDEFN-OFF
 $C0 constant RBF.VPRSN-OFF
-$C8 constant RBF-REC
+$C8 constant RBF.NDICT-OFF                 \ the dictionary's record count
+$D0 constant RBF-REC
 \ RBF.COORD distinguishes an ordinary checker scope (-1) from a declaration
 \ frame's START tag. The declaration runner uses zero: declarations do not nest.
 -1 constant RBF-NO-COORDINATOR
@@ -27024,6 +27025,7 @@ $C8 constant RBF-REC
 : RBF.FLOOR ( ptr a -- ptr a ) RBF.FLOOR-OFF + ;
 : RBF.VDEFN ( ptr a -- ptr a ) RBF.VDEFN-OFF + ;
 : RBF.VPRSN ( ptr a -- ptr a ) RBF.VPRSN-OFF + ;
+: RBF.NDICT ( ptr a -- ptr a ) RBF.NDICT-OFF + ;
 
 
 16 constant RBF-CAP-INIT
@@ -27123,7 +27125,15 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    PASS-FLOOR @ r RBF.FLOOR !
    VERIFY-DEFINER-N @ r RBF.VDEFN !
    VERIFY-PARSES-N @ r RBF.VPRSN !
+   ndict@ r RBF.NDICT !
    RBF-NO-COORDINATOR r RBF.COORD ! ;
+
+\ A record made inside a scope keeps no facts text past it: the checker binds a
+\ name it does not know through its record's text (CHECK:READ-BOUND), so the
+\ text would bring back a name the scope retired. The boundary's rewind
+\ (CHECKER-BOUND:REWIND) needs none: it removes the records after the mark.
+: RBF-FACTS-FORGET ( n -- )
+   ndict@ swap ?do 0 i record-facts! loop ;
 
 : RBF-RESTORE-FROM ( ptr n -- ) {: r:ptr :}
    r RBF.OVNDICT @  r RBF.OVLOG @  r RBF.OVCP @  r RBF.OVWIDN @
@@ -27182,7 +27192,8 @@ package CHECKER-REG
    RBF-DEPTH @ CHECKER-OVERLAY:CLOSE-SCOPE
    RBF-DEPTH @ 1 - RBF-DEPTH !
    RBF-NAME-CUR RBF-CUR RBF.PKGU @ RBF-NAME-RESTORE
-   RBF-CUR RBF-RESTORE-FROM ;
+   RBF-CUR RBF-RESTORE-FROM
+   RBF-CUR RBF.NDICT @ RBF-FACTS-FORGET ;
 
 : RBF-POP ( -- )           \ restore every mark from the top frame, retiring index rows
    [: REG-EXT-RB-RESTORE-XT ;] RBF-POP-WITH ;
