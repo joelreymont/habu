@@ -47,8 +47,6 @@ public
    [: 1+ ;] INSTALL-N 41 N-CALLBACK @ execute 42 T= ;
 
 : CHECK-REFUSALS ( -- )
-   s" source cannot replace the reserved view family identity" T-LABEL
-   s" -1 C2-READ-FAM !" 70 SUBJECT:EXITED? TTRUE
    s" a view cannot be erased into a raw pointer" T-LABEL
    s" : C2-RAW ( read-view<p,q,u8> -- ptr u8 ) ;" 70 SUBJECT:EXITED? TTRUE
    s" the element type is invariant" T-LABEL

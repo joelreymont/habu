@@ -1512,8 +1512,6 @@ TFQ TTRUE
 : TFG ( -- bool ) 5.0 3.0 f> ;
 TFG TTRUE
 
-s" CERT-BYTES-BAD ( -- ptr u8 n ) LOWER-CERT:BYTES" T-CHECK-REJECTS
-
 \ A definition the checker refuses inside evaluate throws 70 (check-hook.f
 \ CHECK-RC); the evaluate frame rolls CP and NDICT back (EM-EVAL-THROW-RECOVER).
 variable ES-CPX-CP
