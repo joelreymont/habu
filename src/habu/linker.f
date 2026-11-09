@@ -578,7 +578,7 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    row 0< if true BODY-HIT ! else 1 row HITS ! then ;
 
 \ True for a public name's key, 0, and for a package the running file's source opened.
-: OPEN? ( n -- bool )
+: OPENED? ( n -- bool )
    {: pkg:n :}
    pkg 0= if true exit then
    OPENED-N @ 0 ?do i OPENED @ pkg = if true unloop exit then loop
@@ -595,7 +595,7 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    sum mask and
    begin dup SLOT-SUM @ 0<> while
       dup SLOT-SUM @ sum = if
-         dup SLOT-PKG @ OPEN? if dup SLOT-ROW @ MARK-ROW then
+         dup SLOT-PKG @ OPENED? if dup SLOT-ROW @ MARK-ROW then
       then
       1 + mask and
    repeat drop ;
@@ -3518,6 +3518,9 @@ public
 \ The kernel object at the path, written by a kernel build: the engine and
 \ program builds that follow lay their space as its kernel reads it and link it.
 : KERNEL ( ptr u8 n -- ) ARM64:READ ;
+
+\ True while a build's space is open, from WITH's open to the end of its close.
+: OPEN? ( -- bool ) IDLE? 0= ;
 
 \ The files the last build compiled and linked, from its open until the next open.
 : COMPILED ( -- n ) COMPILED-N @ ;

@@ -1107,6 +1107,20 @@ learned live in the docs for their subject.
   candidate words, never on verify-source.f's scanner, which is slated for
   deletion. The three public words are named by this repository's
   conventions when designed. Dots under habu-agents-inspect-habu-9f1951c1.
+- 2026-11-09, a build that ends the process: shown that a source whose top
+  level calls `s" " 0 die` ends hb-build with rc 0, no OK line and the old
+  -o in place, and a design (hb-build adds an exit action that, while the
+  linker has a build open, names the source and dies 74 after the other exit
+  actions ran; one library file owns the process-exit vector, fs-mutate's
+  cleanup its first client), Joel answered "ok" and chose "AT-EXIT:ADD
+  (Recommended)": `AT-EXIT:ADD ( [ -- ] -- )` in src/lib/at-exit.f. The lead
+  chose, under Joel's rule to settle what the long-term rule settles: actions
+  run newest first, each taken off before it runs, so one that calls `die`
+  re-enters and the rest still run; `LINKER:OPEN? ( -- bool )` answers
+  whether a build is open; under --json-errors no text is printed; ADD skips
+  an action already added; the table holds 64 actions and a 65th refuses
+  E-LAYOUT-BOUNDS; a captured image starts with none; AT-EXIT owns the
+  vector, so ADD replaces whatever a raw store put there.
 - 2026-11-03, the compiler lease: shown a design in which T0's compiles take
   tier 1's compiler lease (NLEASE) so NDEFINITION's M-OPEN flag could go,
   Joel asked "why in the world do you need to take a lease? this smells! are

@@ -1191,7 +1191,7 @@ $27F8 constant CODE-CELL
 \ runtime.
 \ It is not in the ENGINE-HOOK-OFF band: those two are the checker's crown
 \ jewels, sealed against a post-seal raw store, and this vector is armed by
-\ ordinary library code (src/lib/fs-mutate.f) after the seal. $2818 follows
+\ ordinary library code (src/lib/at-exit.f) after the seal. $2818 follows
 \ SRCLOC's three cells in the $2800..$3000 header band, below $7FF8 so the
 \ engine names it with a `DATA <off> LDR/STR` 12-bit scaled immediate, and below
 \ DATA-START so no compiled source reaches it by allot.

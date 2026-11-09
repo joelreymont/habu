@@ -1,5 +1,6 @@
-\ The cleanup registry runs at process exit: one child per exit path (normal,
-\ `die`, uncaught throw, dying inside a chained foreign hook), judged by what it
+\ The process exit actions (src/lib/at-exit.f) and the cleanup registry run at
+\ process exit: one child per exit path (normal, `die`, uncaught throw, an
+\ action that dies or throws, a build whose source exits), judged by what it
 \ left on disk. A child registers inside this fixture's temp root, given as
 \ argument 0, so a failing case leaves its evidence where the fixture removes
 \ it; it resolves `require src/lib/fs-mutate.f` against the checkout (cwd).
@@ -70,10 +71,19 @@ variable TREE-U
 : ERR-HAS? ( n ptr u8 n -- bool ) {: erru:n want:ptr wantu :}
    ERR erru want wantu CONTAINS? ;
 
-\ The child runs on the engine under test with the case's directory as its one
-\ application argument, and with this process's environment, so TMPDIR and the
-\ working directory are the ones the suite itself runs with. Capture gives the
-\ child no stdin, so the script's own exit is what the case measures.
+\ The child runs on the engine under test with the arguments put so far, and
+\ with this process's environment, so TMPDIR and the working directory are the
+\ ones the suite itself runs with. Capture gives the child no stdin, so the
+\ script's own exit is what the case measures.
+: RUN-ARGS ( -- n n n )
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN
+   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
+   {: outu:len erru:len rc:n :}
+   outu LEN>N erru LEN>N rc ;
+
+\ The script, with the case's directory as its one application argument.
 : RUN-CHILD ( -- n n n )
    SCRIPT$ TEXT$ FS:ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
@@ -81,12 +91,19 @@ variable TREE-U
    SCRIPT$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    TREE$ >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
-   {: outu:len erru:len rc:n :}
-   outu LEN>N erru LEN>N rc ;
+   RUN-ARGS ;
+
+\ hb-build with the script as its source and the case's path as its -o.
+: RUN-BUILD ( -- n n n )
+   SCRIPT$ TEXT$ FS:ATOMIC-WRITE-FILE
+   PROC-ARGV-ENV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/hb-build.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   SCRIPT$ >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   TREE$ >LEN PROC-ARGV+
+   RUN-ARGS ;
 
 \ A normal top-level exit (the engine's LRBYE) reaches the vector.
 : CASE-NORMAL ( -- )
@@ -139,44 +156,41 @@ variable TREE-U
    erru s" hb: cleanup at exit threw -2105" ERR-HAS? TTRUE
    TREE$ FS:EXISTS? TTRUE ;
 
-\ The chain. The child takes the process's single exit slot for a hook of its
-\ own BEFORE it registers anything; registration saves that vector and installs
-\ the registry's, and the registry calls it back once its own paths are gone.
-\ So the tree goes although the child never asked the registry to run, and the
-\ process exits 3, the chained hook's code, not 5: `die` writes its message and
-\ calls the vector, and the hook's own `die` exits from inside that call before
-\ the outer exit_group is reached. Both vectors are cleared before they are
-\ called, so neither `die` re-enters a hook.
+\ Actions run newest first, each taken off before it runs. The child's action,
+\ added after the registry's, dies inside `die`'s call of the vector, which runs
+\ the older actions in turn, so the tree goes and the process exits 3, the
+\ action's code, not 5: the action's `die` exits before the outer exit_group.
 : CASE-CHAIN ( -- )
    s" chain.f" s" chain-tree" CASE-PATHS
-   S\" : CHILD-HOOK ( -- ) s\q hook: dying\q 3 die ;\n" TEXT+
-   S\" TRUSTED: CHILD-ARM ( -- ) ['] CHILD-HOOK data-base EXIT-HOOK-CELL + ! ;\n" TEXT+
-   S\" : CHILD-MAIN ( -- ) CHILD-ARM CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+ s\q outer: dying\q 5 die ;\n" TEXT+
+   S\" require src/lib/at-exit.f\n" TEXT+
+   S\" : CHILD-ACTION ( -- ) s\q action: dying\q 3 die ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+\n" TEXT+
+   S\"    [: CHILD-ACTION ;] AT-EXIT:ADD s\q outer: dying\q 5 die ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
    RUN-CHILD {: outu:n erru:n rc:n :}
-   s" registering chains a foreign hook instead of replacing it" T-LABEL
+   s" an action that dies leaves the older actions to run" T-LABEL
    outu erru rc 3 EXPECT-RC
    erru s" outer: dying" ERR-HAS? TTRUE
-   erru s" hook: dying" ERR-HAS? TTRUE
+   erru s" action: dying" ERR-HAS? TTRUE
    TREE$ FS:EXISTS? TFALSE ;
 
-\ A hook that throws, armed while `die` runs inside a `catch`. The engine runs
-\ the hook with the handler chain empty, so its throw is uncaught and ends the
-\ process - the vector is already clear - with the hook's code, as CASE-CHAIN's
-\ hook ends it with its own; it never resumes the program's catch, which would
-\ return from `die` and print the caught code and `after` on stdout, rc 0.
-\ Its own child process, like every case here: process exit is the boundary.
+\ An action that throws, added while `die` runs inside a `catch`. The engine
+\ runs the vector with the handler chain empty, so the throw is uncaught and
+\ ends the process with the action's code, as CASE-CHAIN's action ends it with
+\ its own; it never resumes the program's catch, which would return from `die`
+\ and print the caught code and `after` on stdout, rc 0.
 : CASE-HOOK-THROW ( -- )
    s" hook-throw.f" s" hook-throw-tree" CASE-PATHS
-   S\" : CHILD-HOOK ( -- ) 9 throw ;\n" TEXT+
-   S\" TRUSTED: CHILD-ARM ( -- ) ['] CHILD-HOOK data-base EXIT-HOOK-CELL + ! ;\n" TEXT+
-   S\" CHILD-ARM\n" TEXT+
+   S\" require src/lib/at-exit.f\n" TEXT+
+   S\" : CHILD-ACTION ( -- ) 9 throw ;\n" TEXT+
+   S\" : CHILD-ADD ( -- ) [: CHILD-ACTION ;] AT-EXIT:ADD ;\n" TEXT+
+   S\" CHILD-ADD\n" TEXT+
    S\" : CHILD-DIE ( n -- ) 0< if s\q neg\q 3 die then ;\n" TEXT+
    S\" : CHILD-MAIN ( -- n ) [: -1 CHILD-DIE ;] catch ;\n" TEXT+
    S\" CHILD-MAIN . cr\n" TEXT+
    S\" s\q after\q type cr\n" TEXT+
    RUN-CHILD {: outu:n erru:n rc:n :}
-   s" a hook that throws ends the process instead of returning from die" T-LABEL
+   s" an action that throws ends the process instead of returning from die" T-LABEL
    outu erru rc 9 EXPECT-RC
    erru s" neg" ERR-HAS? TTRUE
    outu 0 T= ;
@@ -219,6 +233,22 @@ variable STAGED-FILES
    STAGED-BUF u s" previous" T$=
    STAGED-FILES# 1 T= ;
 
+\ hb-build loads its source in its own process, so a source whose top level
+\ ends the process ends hb-build inside the build: the build fails 74 naming
+\ the source, and -o keeps its bytes.
+: CASE-BUILD ( -- )
+   s" build.f" s" build-out" CASE-PATHS
+   0 TEXT-U !
+   S\" s\q \q 0 die\n" TEXT+
+   TREE$ s" previous" FS:WRITE-ALL
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a build whose source exits fails and keeps -o" T-LABEL
+   outu erru rc 74 EXPECT-RC
+   erru SCRIPT$ ERR-HAS? TTRUE
+   erru s" ended the process during the build" ERR-HAS? TTRUE
+   TREE$ STAGED-BUF STAGED-CAP FS:READ-ALL {: u:n :}
+   STAGED-BUF u s" previous" T$= ;
+
 : BODY ( -- )
    PREPARE
    CASE-NORMAL
@@ -227,7 +257,8 @@ variable STAGED-FILES
    CASE-REPORT
    CASE-CHAIN
    CASE-HOOK-THROW
-   CASE-STAGED ;
+   CASE-STAGED
+   CASE-BUILD ;
 
 : RUN ( -- )
    T-RESET

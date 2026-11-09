@@ -15,6 +15,7 @@ require src/lib/ffi-abi.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/image-lifecycle.f
+require src/lib/at-exit.f
 
 package FS
 
@@ -952,11 +953,9 @@ public
 
 
 private
-\ CLEANUP-AT-EXIT runs from the engine's process-exit vector (src/habu/layout.f
-\ EXIT-HOOK-CELL), called once with the vector cleared just before the
-\ exit_group of a normal top-level exit, a `die`, an uncaught throw, or a
-\ stripped application's return from MAIN. A restored image starts with an
-\ empty table and the relocated vector.
+\ CLEANUP-AT-EXIT is the registry's process exit action (src/lib/at-exit.f).
+\ Registering adds it, not loading this file: a stripped application restores
+\ no engine cell, so its exit vector is zero until its own CLEANUP+ arms it.
 \
 \ A removal that fails is reported, never swallowed: the code goes to fd 2 as
 \ one line and the exit code the process carries is kept (the engine preserves
@@ -972,63 +971,9 @@ private
    S\" \n" SB-APPEND
    2 SB$ write drop ;
 
-\ The exit-hook words are this file's one raw boundary: the vector is a fixed
-\ engine DATA cell holding a code pointer, reached through `data-base`. Arming
-\ is the only place an opaque xt is handled.
-\
-\ The vector is a chain, not a claim. Arming finds zero, and ours goes in; ours,
-\ and nothing happens; or a foreign vector, which is saved in EXIT-PREV before
-\ ours replaces it. CLEANUP-AT-EXIT calls the saved vector last, after the
-\ registry. The saved vector is put back to EXIT-NONE before it is called: a
-\ chained hook that registers a path re-arms the engine cell and then dies,
-\ which re-enters CLEANUP-AT-EXIT, and it must find the chain empty there.
-\
-\ Registering arms the vector, not loading this file: a stripped application
-\ restores no engine cell, so its vector is zero until its own CLEANUP+ fills
-\ it, and a process that registers nothing leaves the vector as it found it.
-\
-\ EXIT-PREV is a typed xt cell holding a word that is always callable, not a
-\ raw cell holding an xt or zero: the native compiler needs the convention of
-\ the call, which a raw cell's value lacks (`ncomp: cannot compile EXIT-CHAIN
-\ at execute`, E-NELAB-QUOT, when a stripped image's closure reaches this
-\ word); and a cell that is never empty needs no zero test on an exit path,
-\ where a stray zero would jump to address 0.
-: EXIT-NONE ( -- ) ;
-
-TYPED-VARIABLE EXIT-PREV [ -- ]
-
-: EXIT-INIT ( -- )
-   [: EXIT-NONE ;] EXIT-PREV ! ;
-EXIT-INIT
-
-: EXIT-CHAIN ( -- )
-   EXIT-PREV @
-   [: EXIT-NONE ;] EXIT-PREV !
-   execute ;
-
 : CLEANUP-AT-EXIT ( -- )
    [: CLEANUP-RUN ;] catch {: code :}
-   code 0<> if code EXIT-REPORT then
-   EXIT-CHAIN ;
-
-\ The vector cell holds a code pointer or zero, so it has two accessors: the
-\ number the zero and identity tests read, and the quotation slot a nonzero
-\ vector is read and every arming written through. Only a private CAST: gives a
-\ DATA address a quotation pointee.
-CAST: >VECTOR ( n -- ptr [ -- ] )
-CAST: XT>N ( [ -- ] -- n )
-
-: EXIT-HOOK-N ( -- ptr n ) data-base EXIT-HOOK-CELL + ;
-
-: EXIT-HOOK ( -- ptr [ -- ] )
-   data-base BYTE-VIEW NULL-PTR BYTE-VIEW - EXIT-HOOK-CELL + >VECTOR ;
-
-: ARM-EXIT-HOOK ( -- )
-   EXIT-HOOK-N @ {: current:n :}
-   current 0= if ['] CLEANUP-AT-EXIT EXIT-HOOK ! exit then
-   current ['] CLEANUP-AT-EXIT XT>N = if exit then
-   EXIT-HOOK @ EXIT-PREV !
-   ['] CLEANUP-AT-EXIT EXIT-HOOK ! ;
+   code 0<> if code EXIT-REPORT then ;
 
 \ REGISTRATION IS SAFE FROM ANY TASK although the table is the process's: it
 \ runs under CLEANUP-LOCK, which a refusal releases too. The row grows
@@ -1046,7 +991,7 @@ CAST: XT>N ( [ -- ] -- n )
    idx 1+ CLEANUP-N ! ;
 
 : CLEANUP-KIND+ ( ptr u8 n n -- ) {: a:ptr u kind :}
-   ARM-EXIT-HOOK
+   ['] CLEANUP-AT-EXIT AT-EXIT:ADD
    u 0 < if E-FS-PATH throw then
    kind CLEANUP-FILE <>
    kind CLEANUP-DIR <> and

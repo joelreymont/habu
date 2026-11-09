@@ -8,6 +8,7 @@ require src/lib/fmt.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/at-exit.f
 require src/lib/codesign.f
 require src/lib/source.f
 require src/lib/build.f
@@ -443,6 +444,18 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-CLEANUP
    HBB-BUILD-RC HBB-EXIT ;
 
+\ hb-build's exit action: a source whose top level ends the process ends it
+\ inside the build, with no program written and -o as it was, so the build
+\ fails naming the file it was loading, except under --json-errors.
+: HBB-EXITED ( -- )
+   LINKER:OPEN? 0= if exit then
+   HBB-JSON @ 0= if
+      s" hb-build: " HBB-WERR  HB-BUILD-CORE:ROW$ HBB-WERR
+      s"  ended the process during the build" HBB-WERR
+      HBB-WERR-LF
+   then
+   HBB-BUILD-RC HBB-EXIT ;
+
 \ LINKER:WRITE signs ad hoc, so a linked program is signed for the team here
 \ (src/lib/codesign.f).
 : HBB-BUILD-REST ( -- )
@@ -484,6 +497,7 @@ defer HBB-REPORT-HOOK ( -- )
 
 : HBB-MAIN ( -- )
    HBB-PARSE
+   [: HBB-EXITED ;] AT-EXIT:ADD
    HBB-PREPARE-TMP
    HBB-BUILD-CLI
    HBB-CLEANUP ;
