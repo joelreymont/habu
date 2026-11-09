@@ -338,16 +338,18 @@ public
    prev NULL-PTR <> IF
       prev CELL + @ 0= IF s" checker: SCRATCH{ inside an open span" 76 die THEN
    THEN
-   here {: rec:ptr :}
+   align here {: rec:ptr :}
    0 , 0 ,
    prev NULL-PTR <> IF prev rec SR-LINK! THEN
    rec SCRATCH-SPANS SR-LINK! ;
 
+\ A written program holds the span's cells at 0, as SR-RETIRE leaves them.
 : }SCRATCH ( -- )
    SCRATCH-SPANS SR-LINK@ {: rec:ptr :}
    rec NULL-PTR = IF s" checker: }SCRATCH without SCRATCH{" 76 die THEN
    rec CELL + @ 0 <> IF s" checker: }SCRATCH without SCRATCH{" 76 die THEN
-   here NULL-PTR - rec NULL-PTR - - rec CELL + ! ;
+   here NULL-PTR - rec NULL-PTR - - rec CELL + !
+   rec CELL + @ CELL / 2 ?do rec i cells + scratch-cell-mark loop ;
 ;package
 
 \ The region's chunks come from ARENA-ALLOC and are never reused before
