@@ -1509,6 +1509,37 @@ learned live in the docs for their subject.
   30 minutes to build an engine is denied. 5 minutes at most!": an engine
   build takes at most 5 minutes, a slow or failed build is root-caused at
   once, and no limit is raised to get a build past it.
+- 2026-11-07, verifying incremental builds: told that a lane took about an
+  hour from brief to landing, Joel wrote "1-hour lane runs are unacceptable"
+  and "a lane is far more than a rebuild!", then "you need to rebuild, compare
+  byte for byte, run to make sure basics work. you do not need the end-to-end
+  tests or full test suite to accomplish incremental builds. prove me wrong!"
+  A change on the incremental-builds path is verified by rebuilding hb,
+  building cold and warm and comparing what they write byte for byte, and
+  running the result; end-to-end tests and the full suite are off that path.
+  The lead adds the one check an accepted program's bytes cannot show: a warm
+  build refuses what a cold one refuses, with the same message. Joel then
+  wrote "strip down your gates, lanes, ceremony, tests, etc. down to the
+  absolute minimum and confirm it with me". Shown that the lead would write
+  each change itself, rebuild hb only when a file built into it changed, build
+  cold and warm, compare and run, with no suites, reviews, workers or design
+  documents, he answered "you do not need to push or merge to master until
+  incremental builds are working. when they are, you can rewrite your changes
+  as a group of precise commits." Asked "what's the fastest path to finishing
+  your goal? rebuilds, gates, TLC, etc after every change slows you down. how
+  can you get there with a minimum number of rebuilds, gates, etc?", and shown
+  that what is being developed loads from source on every run (the linker and
+  a facts reader the linker loads, which reaches the checker's words on the
+  whitebox hb), so a round is a 3-4 s cold and warm build of the fixture with
+  no hb rebuild, and that the one rebuild left comes at the end, when the
+  reader moves into checker.f, with no suites, TLC runs or reviews on the way,
+  Joel answered "take the fast path".
+  On 2026-11-07 he invoked /fastest ("Until the goal is met, its own measure
+  is the only check" and "Run those checks once, at the end, before the final
+  measurement"): the measure is hb's startup files built cold and then warm
+  through the linker, the program and objects compared byte for byte, and the
+  warm build timed; the fixture proofs, test/file-objects.f and the suite run
+  once, at the end.
 - 2026-11-07, the path to arm-to-arm: Joel wrote "your rebuilds, gates, etc.
   are slowing you down. what's the fastest path to build arm-to-arm with a
   minimum number of rebuilds, gates and checks?" Shown that an engine built at
@@ -1596,6 +1627,15 @@ learned live in the docs for their subject.
   building gen-2 with 0 differing bytes, and gen-2 running `1 2 + .` (about
   20 s per iteration). The test list, warm-build checks, the old-path builder
   rebuild, the suite and one review run once, at the end, before landing.
+- 2026-11-09, the fastest path to landing: during commit 4c, Joel asked "you
+  can launch these in parallel. are you doing enough work in parallel?" and
+  ran /fastest ("Find the fastest path to finishing your goal and take it
+  now"). Until arm64 lands, its own measure is the only check: hb rebuilds hb
+  through the linker and gen 1 equals gen 2 byte for byte; the suite, the
+  focused tests and one review run once, at the end, before landing.
+  Independent work goes to parallel workers without proofs in their briefs;
+  work that does not move the measure (a second comment pass, doc prose,
+  dead-code removal the lanes found) waits as dots until after landing.
 
 ## Processes
 
