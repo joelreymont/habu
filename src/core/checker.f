@@ -10151,18 +10151,6 @@ defer RECORD-CREATED-XT ( n n ptr n -- )
    [: RECORD-CREATED-DEFAULT ;] is RECORD-CREATED-XT ;
 RECORD-HOOK-DEFAULTS
 
-\ UEND lowerers need no scrub: USIGS-SNAPSHOT-PERSIST zeroes all above UEND.
-: USIGS-RESTORE-END ( n -- )
-   dup RECORD-EFFECT-REWIND-XT
-   dup CHX-TRUNCATE                      \ content and nodes share the rollback watermark
-   dup UIX-TRUNCATE                      \ drop interned nodes the rewind discards
-   dup USX-TRUNCATE
-   dup CHECKER-EFFECT-AUTHORITY:RECOVERY-REWIND
-   dup DL-TRUNCATE                       \ locations and pending uses of rewound records
-   dup PU-TRUNCATE
-   UEND !
-   UTERM! ;
-
 : USIG-NEWEST ( n -- n ) {: sym:n :}
    USX-ENSURE
    sym USX@ ;
@@ -11633,6 +11621,31 @@ variable BUILD-SYM-END   0 BUILD-SYM-END !
 : PE-LAST-FLAG! ( n -- ) {: flag:n :}
    PE-LAST @ 0 < IF EXIT THEN
    PE-LAST @ PE-ROW PE.FLAGS dup @ flag or swap ! ;
+
+\ Drops the rows whose effect lies at or above newend, the newest rows: rows
+\ are appended as their effects are built. A dropped row's slot can be cached
+\ as a symbol's first, so the cache goes with it.
+: PE-TRUNCATE ( n -- ) {: newend:n :}
+   #PE @ {: n0:n :}
+   BEGIN #PE @ 0 >  IF #PE @ 1 - PE-EFF@ newend >= ELSE RES-FALSE THEN WHILE
+      #PE @ 1 - #PE !
+   REPEAT
+   #PE @ n0 = IF EXIT THEN
+   PE-LAST @ #PE @ >= IF -1 PE-LAST ! THEN
+   HIDX-EPOCH+ ;
+
+\ UEND lowerers need no scrub: USIGS-SNAPSHOT-PERSIST zeroes all above UEND.
+: USIGS-RESTORE-END ( n -- )
+   dup RECORD-EFFECT-REWIND-XT
+   dup CHX-TRUNCATE                      \ content and nodes share the rollback watermark
+   dup UIX-TRUNCATE                      \ drop interned nodes the rewind discards
+   dup USX-TRUNCATE
+   dup PE-TRUNCATE                       \ primitive rows over rewound effects
+   dup CHECKER-EFFECT-AUTHORITY:RECOVERY-REWIND
+   dup DL-TRUNCATE                       \ locations and pending uses of rewound records
+   dup PU-TRUNCATE
+   UEND !
+   UTERM! ;
 
 \ Marks the just-registered prim a trust boundary: a checked caller is refused,
 \ a TRUSTED: body (never checked) may use it.
@@ -16890,7 +16903,11 @@ REG-EXT-AOT-DEFAULTS
 \ One row per actual dictionary occurrence. Effect and control are existing
 \ store offsets plus one, not copies of their graphs and not symbol lookups.
 \ The occurrence cell makes a reused dictionary ordinal a different word.
-7 cells constant RECORD-LINK-ROW
+\ A facts read that links no effect (CHECK READ-LINK) keeps where its rows
+\ start, plus one, in READ: a rewind below it takes the read's rows, so it
+\ clears the row and the next bind reads the text again.
+8 constant RLINK-CELLS
+RLINK-CELLS cells constant RECORD-LINK-ROW
 0 constant RLINK.OCC
 1 constant RLINK.EFFECT
 2 constant RLINK.CONTROL
@@ -16898,6 +16915,7 @@ REG-EXT-AOT-DEFAULTS
 4 constant RLINK.FIXED-KIND
 5 constant RLINK.FIXED-VALUE
 6 constant RLINK.GRID
+7 constant RLINK.READ
 package CHECKER-REG
 public
 defer RECORD-FIXED-READ-XT ( ptr n -- n n bool )
@@ -16947,10 +16965,11 @@ RECORD-PEND-EFF 0 CELL-ROW+
 
 : RECORD-LINK-CLEAR ( n -- ) {: ord:n :}
    ord RECORD-LINK-CAP @ >= IF EXIT THEN
-   ord RECORD-LINK-CELL 0 7 ARENA-CELLS-ZERO ;
+   ord RECORD-LINK-CELL 0 RLINK-CELLS ARENA-CELLS-ZERO ;
 
 : RECORD-LINK-BOUND-ROW ( ptr n -- ) {: row:ptr :}
    row RLINK.EFFECT cells + @ row RLINK.GRID cells + @ max
+      row RLINK.READ cells + @ max
       RECORD-LINK-EFFECT-HI @ max RECORD-LINK-EFFECT-HI !
    row RLINK.CONTROL cells + @
       RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI ! ;
@@ -17135,9 +17154,15 @@ PENDING-MARKED 0 CELL-ROW+
    0 row RLINK.FIXED-KIND cells + !
    0 row RLINK.FIXED-VALUE cells + !
    0 row RLINK.GRID cells + !
+   0 row RLINK.READ cells + !
    row RECORD-LINK-BOUND-ROW
    ord PENDING-OWNER-RECORD
    ord PENDING-DIRTY+ ;
+
+: RECORD-LINK-READ! ( n n -- ) {: ord:n read:n :}
+   ord RECORD-LINK-CELL {: row:ptr :}
+   read row RLINK.READ cells + !
+   row RECORD-LINK-BOUND-ROW ;
 
 : RECORD-LINK-SET ( n n n bool -- )
    {: ord:n effect:n control:n deferred:bool :}
@@ -17174,6 +17199,7 @@ PENDING-MARKED 0 CELL-ROW+
    0 RECORD-LINK-EFFECT-HI ! 0 RECORD-LINK-CONTROL-HI !
    RECORD-LINK-CAP @ 0 ?do
       i RECORD-LINK-CELL {: row:ptr :}
+      row RLINK.READ cells + @ end > IF i RECORD-LINK-CLEAR THEN
       row RLINK.GRID cells + @ end > IF
          0 row RLINK.GRID cells + !
       THEN
@@ -17185,7 +17211,8 @@ PENDING-MARKED 0 CELL-ROW+
          0 row RLINK.FIXED-VALUE cells + !
       THEN
       row RLINK.EFFECT cells + @ 0=
-      row RLINK.GRID cells + @ 0= and IF
+      row RLINK.GRID cells + @ 0= and
+      row RLINK.READ cells + @ 0= and IF
          row RLINK.OCC cells + @ 0 <> IF i RECORD-LINK-CLEAR THEN
       ELSE row RECORD-LINK-BOUND-ROW THEN
    loop ;
@@ -17227,7 +17254,7 @@ PENDING-MARKED 0 CELL-ROW+
       0 row RLINK.GRID cells + !
    THEN
    row RLINK.EFFECT cells + @ 0= IF
-      row 0 7 ARENA-CELLS-ZERO
+      row 0 RLINK-CELLS ARENA-CELLS-ZERO
    THEN ;
 
 : RECORD-LINK-GRID-ATTACH ( n n -- ) {: ord:n grid:n :}
@@ -17507,7 +17534,7 @@ CAST: RECORD-CAPTURE-PTR ( n -- ptr u8 )
    RECORD-CAPTURE-SCRATCH@ {: scratch:ptr :}
    RECORD-CAPTURE-ORIGINAL@ {: original:ptr :}
    scratch RECORD-LINK-P !
-   original CELL-VIEW 0 RECORD-LINK-CAP @ 7 * ARENA-CELLS-ZERO
+   original CELL-VIEW 0 RECORD-LINK-CAP @ RLINK-CELLS * ARENA-CELLS-ZERO
    FIRST-RECORD-XT shipped execute {: anchor:n :}
    RECORD-LINK-CAP @ ndict@ min FIRST-RECORD-XT ?do
       i RECORD-LINK-CURRENT? IF
@@ -32529,8 +32556,10 @@ CHECKER-REG:}SCRATCH
 
 \ Links record ix, sym's, with sym's newest effect and control entry. With no
 \ effect, as for a text of tags alone or of primitive rows, the link names
-\ none: LINKED? answers it read, RECORD-LINK-CURRENT? does not.
-: READ-LINK ( ptr n n n -- ) {: rec:ptr ix:n sym:n :}
+\ none: LINKED? answers it read, RECORD-LINK-CURRENT? does not, and the row
+\ keeps mark, the effect store's end when the read began, for a rewind to clear
+\ it by (RLINK.READ).
+: READ-LINK ( ptr n n n n -- ) {: rec:ptr ix:n sym:n mark:n :}
    sym USIG-NEWEST 0 <> IF
       ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
       ix RECORD-LINK-CURRENT? IF ix rec RECORD-LINK-FIXED! THEN
@@ -32538,15 +32567,17 @@ CHECKER-REG:}SCRATCH
    THEN
    ix RECORD-LINK-OCC {: slot:n occurrence:n :}
    slot ix <> IF EXIT THEN
-   ix 0 sym NORET-NEWEST sym DFER-FIND-SYM occurrence RECORD-LINK-WRITE ;
+   ix 0 sym NORET-NEWEST sym DFER-FIND-SYM occurrence RECORD-LINK-WRITE
+   ix mark 1 + RECORD-LINK-READ! ;
 
 \ A text of tags alone states sym's control word only.
-: READ-TAGS ( ptr n n n n -- ) {: rec:ptr ix:n sym:n ctl:n :}
+: READ-TAGS ( ptr n n n n n -- ) {: rec:ptr ix:n sym:n ctl:n mark:n :}
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 NORET-ADD-CREATES
-   rec ix sym READ-LINK ;
+   rec ix sym mark READ-LINK ;
 
 : READ-BODY ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
+   UEND @ {: mark:n :}
    ix CHECKER-RESOLVE:REC-AT {: rec:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
    rec REC-SYM {: sym:n :}
@@ -32563,7 +32594,7 @@ CHECKER-REG:}SCRATCH
       ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
          a u name nameu READ-REFUSE EXIT
       THEN
-      rec ix sym ctl READ-TAGS EXIT
+      rec ix sym ctl mark READ-TAGS EXIT
    THEN
    din dout rin rout hasr sym pe ou 0 <> READ-FIRST
    oa ou sym READ-OVERLOADS 0= IF a u name nameu READ-REFUSE EXIT THEN
@@ -32572,7 +32603,7 @@ CHECKER-REG:}SCRATCH
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made NORET-ADD-CREATES
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF sym RES-TRUE DFER-ADD-SYM THEN
    pimm 0 >=  sym PIMM-IX 0 <  and IF sym pimm PIMM-ADD THEN
-   rec ix sym READ-LINK ;
+   rec ix sym mark READ-LINK ;
 
 \ Whether record ix has a link row: its compile, or a read, taught the checker.
 : LINKED? ( n -- bool ) {: ix:n :}
