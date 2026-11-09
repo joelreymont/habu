@@ -6,6 +6,14 @@ learned live in the docs for their subject.
 
 ## Language and checker
 
+- 2026-10-30, nested binders (relayed by tim from Maki): shown that the
+  checker refused a signature whose type variables nest 32 deep as a syntax
+  error, from a fixed 32-slot stack, and a lane that made the stack grow,
+  Joel said "this is a proper limit. why would you have type variables
+  nesting 32 deep? this is clearly degenerate and worthy of a fixed limit,
+  prove me wrong!": a signature nests at most 32 binders, and a 33rd is
+  refused by name as a limit (`more than 32 nested binders`), not as a
+  syntax error.
 - 2026-11-04, scope memory (relayed by stuart from Tender): shown that every
   MEM:WITH-BYTES scope maps and unmaps its memory (1,000,000 empty scopes
   4.69 s, 2.04 s of it in the kernel) and a design that keeps small scopes in

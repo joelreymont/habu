@@ -1056,8 +1056,18 @@ variable MDV-I   variable MDV-F
 : DEPTH-REASON$ ( -- ptr u8 n )
    s" effect too deep to record" ;
 
+\ Shared by a definition's depth refusal (MDIAG-SUGGEST$) and a signature's
+\ (SGBAD-SUGGEST$): a row is deep by its cells or by the types it nests.
+: DEPTH-SUGGEST$ ( -- ptr u8 n )
+   s" Keep bulk values in a buffer, not on the stack, and name an inner callback's effect in a word of its own." ;
+
 : WIDTH-REASON$ ( -- ptr u8 n )
    s" input row too wide to record" ;
+
+\ More than BINDER-DEPTH-MAX nested binders: a signature's (checker.f
+\ SGBAD-BINDERS-KIND) or an inferred effect's (RBIND-FULL).
+: BINDERS-REASON ( -- )
+   s" more than " DTXT  BINDER-DEPTH-MAX JNUM  s"  nested binders" DTXT ;
 
 
 : TAIL-SUGGEST$ ( -- ptr u8 n )
@@ -1104,7 +1114,7 @@ variable MDV-I   variable MDV-F
       MD-C2-ESCAPE    of s" Return only values independent of the owner or loan opened by this operation." endof
       MD-IN-PLACE     of s" Pass the owner's pointer instead: NAME-NEW and NAME-RELEASE take a ptr to the arena owner, and a record holding one is reached through its field accessor. A copy of an owner would share its chunks, and growing or releasing both would unmap them twice." endof
       MD-ARENA-CALL   of s" Declare the storage with ARENA NAME TYPE or HEAP NAME TYPE and call its generated NAME-NEW and NAME-RELEASE: only those words call ARENA-NEW, ARENA-RELEASE, RECORD-NEW and RECORD-RELEASE, because only they tie the record size to the declared type." endof
-      MD-EFFECT-DEPTH of s" Leave fewer cells: keep bulk values in a buffer, not on the stack." endof
+      MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
       MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
@@ -1281,6 +1291,8 @@ variable MDV-I   variable MDV-F
      s" return-stack effect in signature '" DTXT  FAILTK FAILTU @ DTXT
      s" '; " DTXT  RCLAUSE-FIX$ DTXT EXIT
    THEN
+   SGBAD-BINDERS? IF BINDERS-REASON s"  at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT THEN
+   SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS  s"  at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT THEN
    s" at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT ;
 
 \ The code, repair class, suggestion, prose, verdict and per-code JSON fields all
@@ -1302,10 +1314,7 @@ variable MDV-I   variable MDV-F
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    s" E-REJECTED" ;
 : DVERDICT ( -- ptr u8 n )
-   REFUSAL@ {: k:n :}
-   k RF-UNCHECKABLE = IF s" uncheckable" EXIT THEN
-   k RF-REASON =  MDIAG @ UNFIT-REASON?  and IF s" uncheckable" EXIT THEN
-   s" rejected" ;
+   REFUSAL-UNCHECKABLE? IF s" uncheckable" EXIT THEN s" rejected" ;
 \ repair_class is the stable machine name a consumer keys its repair on. This
 \ word picks it for checker refusals; tools/check-core.f and tools/diag-code.f
 \ pick it for the refusals the check tool finds itself. A class means what its
@@ -1340,6 +1349,8 @@ variable MDV-I   variable MDV-F
    SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
    SGBAD-BAREPTR? IF s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." EXIT THEN
    SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
+   SGBAD-BINDERS? IF s" Nest fewer binders: name an inner callback's binders in a word of its own." EXIT THEN
+   SGBAD-DEPTH? IF DEPTH-SUGGEST$ EXIT THEN
    SGBAD-SIZE? IF s" Declare fewer cells: keep bulk values in a buffer, not on the stack." EXIT THEN
    s" Repair the stack-effect comment syntax, including --." ;
 : NP-SUGGEST$ ( -- ptr u8 n )
@@ -1613,6 +1624,13 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE 0= IF JLOC-ORIGIN THEN
    JLOC-FIELDS ;
 
+\ The reason a signature too large to record names its bound, count and limit
+\ by: a definition's packet (DIAG-JSON) and a stored row's (BADSIG-JSON).
+: BADSIG-REASON ( -- )
+   SGBAD-BINDERS? IF BINDERS-REASON EXIT THEN
+   SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
+   WIDTH-REASON$ DTXT  SGBAD-SIZE @ WIDTH-COUNTS ;
+
 
 \ A field that belongs to one refusal goes only on that refusal's packet: the
 \ flags of a failure the refusal outranks leave their fields behind.
@@ -1629,6 +1647,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      44 EMIT1
      MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
    THEN
+   k RF-SIG = SGBAD-SIZE? and IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
    s" file" JKEY  DFILE$ JSTR  44 EMIT1
    DLOC-FIELDS
@@ -1695,9 +1714,6 @@ DIAG-PRINT-INSTALL
 \ own class and a reason naming the bound, count and limit. The JSON is a refused
 \ record (its tools/diag-code.f row), placed at the declaring name AT in the
 \ checked text.
-: BADSIG-REASON ( -- )
-   SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
-   WIDTH-REASON$ DTXT  SGBAD-SIZE @ WIDTH-COUNTS ;
 : BADSIG-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    s" E-BAD-STORED-SIGNATURE" SGBAD-CLASS$ s" rejected" JHEAD
@@ -1752,10 +1768,7 @@ BADSIG-DIAG-INSTALL
       s" more than " DTXT  TYPE-VAR-MAX JNUM
       s"  type variables or binders in inferred effect" DTXT EXIT
    THEN
-   RBIND-FULL @ IF
-      s" more than " DTXT  BINDER-DEPTH-MAX JNUM
-      s"  nested binders in inferred effect" DTXT EXIT
-   THEN
+   RBIND-FULL @ IF BINDERS-REASON s"  in inferred effect" DTXT EXIT THEN
    RROW-UNSAID @ IF
       s" quotation return-stack clause or more than " DTXT  RROW-CAP JNUM
       s"  named rows the effect text cannot say" DTXT EXIT

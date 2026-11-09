@@ -1977,8 +1977,14 @@ ceiling is a named constant beside the code that enforces it.
   holds it. Past it the definition is uncheckable: `E-UNCHECKABLE`, `effect too
   deep to record (depth <depth>, at most <cap>)`. A `trust`, `defer` or
   `TRUSTED:` row that deep is `E-BAD-STORED-SIGNATURE` under
-  `fix_signature_size`, with the same reason. Keep bulk values in a buffer, not
-  on the stack.
+  `fix_signature_size`, with the same reason, and a local's type that deep
+  `E-BAD-SIGNATURE` under `fix_signature_size`. Keep bulk values in a buffer,
+  not on the stack, and name an inner callback's effect in a word of its own.
+- **Binders nested in one signature**: at most 32 `forall<…>` binders inside
+  one another. A 33rd is refused, `E-BAD-SIGNATURE` under `fix_signature_size`,
+  `more than 32 nested binders at '<token>'`; a `trust`, `defer` or `TRUSTED:`
+  row is `E-BAD-STORED-SIGNATURE` with the same reason. Name an inner
+  callback's binders in a word of its own.
 - **A definition's input row**: declared or inferred, a wider row makes the
   definition uncheckable: `E-UNCHECKABLE`, `input row too wide to record
   (<cells> cells, at most <cap>)`. A `RECURSE` in a body declared that wide is
