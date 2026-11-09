@@ -1975,6 +1975,7 @@ seal-package
 \ their ( -- ) rows do not model, so they are top-level-interpret-only.
 : LIBRARY ( -- )
    parse-name FFI:SELECT-LIBRARY ;
+parses: LIBRARY 1
 
 : VERSIONED-LIBRARY ( -- )
    FFI:SELECT-VERSIONED-LIBRARY ;

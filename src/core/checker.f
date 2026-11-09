@@ -4983,7 +4983,7 @@ $7FFFF constant XFER-FLAG-MASK       \ the control flags, the defer bit, CTL-NAM
 \ Positive provenance: this binding's effect was explicitly declared or its
 \ check was enforced. An ABI-only or old producer row carries no grant.
 $8 constant EFFECT-EXTERNAL
-$10 constant CTL-CORE-OP
+CHECKER-OWNER-ABI:BINDING-CORE-OP constant CTL-CORE-OP
 $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
 \ CTL-RENDERS means a call may hand rendered source to INCLUDE-EVALUATE and so

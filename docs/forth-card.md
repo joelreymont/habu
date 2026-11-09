@@ -76,9 +76,10 @@ public
   `ENGINE-ERROR:OVERLAY-OPEN`.
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
   `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
-  `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?`, by any definer (`:`,
-  `TRUSTED:`, `defer`, `constant`, …): `tools/check.f` refuses them, not
-  `--load`. A number-shaped name (`: 42`, an overflowed `: 99999999999999999999`
+  `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?`, `HB-TARGET-LINUX-KERNEL?` and
+  `HB-TARGET-KNOWN?`, as the name after `:`, `+:`, `TRUSTED:`, `KERNEL:`,
+  `create`, `variable`, `constant`, `defer` or `LAYOUT-BUFFER`: `tools/check.f`
+  refuses them, not `--load`. A number-shaped name (`: 42`, an overflowed `: 99999999999999999999`
   too) is refused by `--load`, by every definer: rc 70.
 
 forth.md: **Naming**, **Packages**, **Importing … with `using`**, **Rules
@@ -501,6 +502,10 @@ forth.md: **Errors**, **Integer arithmetic**.
   its own requires. An entry below its tree requires the tree's files
   relative to itself (`../src/…`): a tree-relative name Habu also has loads
   Habu's file. Every file requires its **own** dependencies.
+- A file picks its target's file at its top level, `HB-TARGET-MACOS? [if]
+  require src/lib/secret/macos.f [then]`, never from inside a word. The
+  verifier follows a `[if]` only after a target predicate, or one and `0=`;
+  `[if]` and `[then]` are reserved.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws a stack underflow, a file that ends
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a

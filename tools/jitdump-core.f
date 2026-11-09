@@ -4,16 +4,8 @@ require src/habu/boot-cells.f
 require src/habu/code-bytes.f
 require src/lib/fmt.f
 
-package JITDUMP-LOAD
-: TARGET ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      s" tools/jitdump-x64.f" required
-   else
-      s" tools/jitdump-arm.f" required
-   then ;
-' TARGET
-;package
-execute
+HB-TARGET-LINUX-X86-64? [if] require tools/jitdump-x64.f [then]
+HB-TARGET-LINUX-X86-64? 0= [if] require tools/jitdump-arm.f [then]
 
 \ CLI: bin/hb --load tools/jitdump.f -- '<program>' WORD
 \ Inline: <program> ' WORD JITDUMP:JD. A record supplies the terminal address;

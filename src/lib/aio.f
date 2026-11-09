@@ -1487,11 +1487,5 @@ public
 ;package
 
 \ Select after the shared package is complete so the host module can reopen it.
-package AIO-LOAD
-public
-: HOST ( -- )
-   HB-TARGET-LINUX-KERNEL? if exit then
-   HB-TARGET-MACOS? if s" src/lib/aio-macos.f" required exit then
-   E-PROC-HOST throw ;
-;package
-AIO-LOAD:HOST
+HB-TARGET-MACOS? [if] require src/lib/aio-macos.f [then]
+HB-TARGET-LINUX-KERNEL? 0= [if] HB-TARGET-MACOS? 0= [if] E-PROC-HOST throw [then] [then]

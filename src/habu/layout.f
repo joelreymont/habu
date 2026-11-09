@@ -1737,10 +1737,8 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \ chain's first MOVZ; the patched field is at +1 of a call and at
 \ +MOVABS-IMM-OFF of a literal (src/habu/address-carrier.f).
 \
-\ Both views are declared on every target. src/ has no [if] and a top-level
-\ `if` is refused on the product engine, so this file cannot choose one; which
-\ view the bytes hold is decided at run time by HB-TARGET-LINUX-X86-64? in
-\ src/habu/sites.f, the one reader of both.
+\ Both views are declared on every target: src/habu/sites.f EACH-IN-SPAN reads
+\ both and picks one at run time by HB-TARGET-LINUX-X86-64?.
 \
 \ The rows are strictly ascending by offset, one per offset, so the reader yields
 \ a span's sites in bitmap order without sorting a live band. On x86-64

@@ -251,8 +251,13 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    byte BASE-BYTE !
    byte TOKEN-BYTE ! ;
 
+\ The flags the top-level scan knows a `[if]` may take, the top last (FLAG-STEP).
+8 constant FLAG-CAP
+FLAG-CAP TYPED-BUFFER FLAGS bool
+variable FLAG-N
+
 : SCAN-RESET ( -- )
-   0 SCAN-I ! ;
+   0 SCAN-I !  0 FLAG-N ! ;
 
 : SCAN-C@ ( -- n )
    SOURCE@ SCAN-I @ + c@ ;
@@ -759,20 +764,21 @@ variable RETIRED
 \ condition, outside a quotation or inside one, may not run - a target's
 \ layout loads only when the image lacks one (tools/imgdump.f) - so its file
 \ is the run's to load. A target predicate right before an `if` is no
-\ such condition: the engine answers HB-TARGET-LINUX?, HB-TARGET-MACOS? and
-\ HB-TARGET-LINUX-X86-64? one way, so the arm its answer runs stays on the
-\ straight line and the other arm never runs (ARM-TOKEN?, DEAD-TOKEN).
-\ src/lib/power.f POWER-LOAD:HOST loads its target's file that way. A source
-\ cannot define a predicate's spelling (tools/reserved-name-lint-core.f reserves
-\ it), so the answer is the engine's. The path is the literal right before the
-\ loader word, the bytes the engine's literal makes of it (BODY-LIT!); discovery
-\ records a body loader after a path literal the engine's resolver takes,
-\ wherever it stands, and reads past one taking anything else. So the
+\ such condition: the engine answers each predicate TARGET-GUARD names one way,
+\ so the arm its answer runs stays on the straight line and the other arm never
+\ runs (ARM-TOKEN?, DEAD-TOKEN). A top-level `[if]` whose flag those answers
+\ settle reads only the text that flag chooses (KNOWN-IF?); the engine's `0=`
+\ (CORE-OP?) may negate a predicate's answer, and `[if]` is a reserved control
+\ word (tools/reserved-name-lint-core.f). The path is the literal right before
+\ the loader word, the bytes the engine's literal makes of it (BODY-LIT!);
+\ discovery records a body loader after a path literal the engine's resolver
+\ takes, wherever it stands, and reads past one taking anything else. So the
 \ composition loads nothing for a path the resolver refuses (BODY-LOAD?). An
 \ entry keeps a copy of its path: a decoded one lives only until the next
 \ decode, and the release comes after later bodies, top-level statements and
-\ nested files have decoded theirs. A file's entries sit above its loader's, and
-\ their paths go with them. The entries grow with the loads waiting at once.
+\ nested files have decoded theirs. A file's entries sit above its loader's,
+\ and their paths go with them. The entries grow with the loads waiting at
+\ once.
 \
 \ A quiet composition loads none of these: a word's run is no part of the
 \ check, so the ordinary effect checker judges its runtime loader calls.
@@ -906,13 +912,18 @@ variable SEALS-N
 : >GUARD ( bool -- n )
    IF GUARD-LIVE EXIT THEN GUARD-DEAD ;
 
-\ What a body token tells an `if` right after it.
+\ What a target predicate answers: the arm an `if` right after it runs in a
+\ body (ARM-TOKEN?), and the flag it pushes at top level (FLAG-LIT).
 : TARGET-GUARD ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" HB-TARGET-LINUX?" STR=CI IF HB-TARGET-LINUX? >GUARD EXIT THEN
    a u s" HB-TARGET-MACOS?" STR=CI IF HB-TARGET-MACOS? >GUARD EXIT THEN
    a u s" HB-TARGET-LINUX-X86-64?" STR=CI IF
       HB-TARGET-LINUX-X86-64? >GUARD EXIT
    THEN
+   a u s" HB-TARGET-LINUX-KERNEL?" STR=CI IF
+      HB-TARGET-LINUX-KERNEL? >GUARD EXIT
+   THEN
+   a u s" HB-TARGET-KNOWN?" STR=CI IF HB-TARGET-KNOWN? >GUARD EXIT THEN
    GUARD-NONE ;
 
 \ `if`, `else` and `then` on the straight line, true when the token is one. A
@@ -4130,6 +4141,54 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 : COLON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" :" CORE-STR=  a u s" kernel:" STR=CI or ;
 
+: FLAG-TOP ( -- ptr bool )
+   FLAG-N @ 1 - FLAGS ;
+
+\ A ninth known flag empties the stack.
+: FLAG-PUSH ( bool -- )
+   FLAG-N @ FLAG-CAP = IF drop 0 FLAG-N ! EXIT THEN
+   FLAG-N @ FLAGS !  FLAG-N @ 1 + FLAG-N ! ;
+
+\ The flag a predicate TARGET-GUARD answers pushes, and whether the token is one.
+: FLAG-LIT ( ptr u8 n -- bool bool ) {: a:ptr u:n :}
+   a u TARGET-GUARD {: g:n :}
+   g GUARD-NONE = IF false false EXIT THEN
+   g GUARD-LIVE = true ;
+
+: CORE-OP? ( ptr u8 n -- bool )
+   TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-CORE-OP and 0<> ;
+
+\ The known flags after a top-level token: the engine's `0=` negates a known
+\ one; any other token, or one in a stretch, empties the stack.
+: FLAG-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
+   TOP-DEFER @ 0<> IF 0 FLAG-N ! EXIT THEN
+   a u FLAG-LIT IF FLAG-PUSH EXIT THEN drop
+   a u s" 0=" STR=CI IF a u CORE-OP? ELSE false THEN IF
+      FLAG-N @ 0= IF EXIT THEN
+      FLAG-TOP @ 0= FLAG-TOP ! EXIT
+   THEN
+   0 FLAG-N ! ;
+
+\ Read raw tokens through the `[then]` that closes a `[if]` whose flag is
+\ false, counting nested `[if]`s as src/core/util.f `[if]` does; false when
+\ the source ends first.
+: SKIP-ARM ( -- bool )
+   1 BEGIN dup 0 > WHILE
+      NEXT-RAW dup 0= IF 2drop drop false EXIT THEN
+      2dup s" [if]" STR=CI IF 2drop 1 + ELSE
+         s" [then]" STR=CI IF 1 - THEN
+      THEN
+   REPEAT drop true ;
+
+\ A string before the token empties the flags; a `[if]` with one known flag is
+\ taken here, and a source ending in its skipped arm stops the scan (TOP-OPAQUE).
+: KNOWN-IF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   STR-LAST-KIND @ 0<> IF 0 FLAG-N ! THEN
+   a u s" [if]" STR=CI 0= FLAG-N @ 1 <> or IF false EXIT THEN
+   0 FLAGS @ IF true EXIT THEN
+   SKIP-ARM 0= IF a u TOP-OPAQUE THEN
+   true ;
+
 \ A parsing keyword and its operand are one value on the interpret stack, and
 \ the keyword stays the token before whatever follows: `char 0 TYPED-BUFFER B n`
 \ hands the count reader `char`, which names the count's word. A load a
@@ -4152,12 +4211,14 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       CSR-TOP
       2dup FILE-SCOPE-STEP
       2dup STR-LAST-KIND @ STR-LAST-A @ STR-LAST-U @ TOP-RETIRED
+      2dup KNOWN-IF? IF 2drop ELSE
       2dup TOP-PARSER? IF TOP-OPERAND ELSE
       2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
       2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
-      2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN
+      2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN THEN
       TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
       FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
+      TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP      \ after any file this token loaded
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop
    TICK-REMAINDER @ IF EXIT THEN

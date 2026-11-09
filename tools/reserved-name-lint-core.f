@@ -128,6 +128,8 @@ private
 : RNL-RESERVED-CONTROL? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" if" LINT-STR=CI if LINT-TRUE exit then
    a u s" then" LINT-STR=CI if LINT-TRUE exit then
+   a u s" [if]" LINT-STR=CI if LINT-TRUE exit then
+   a u s" [then]" LINT-STR=CI if LINT-TRUE exit then
    a u s" else" LINT-STR=CI if LINT-TRUE exit then
    a u s" begin" LINT-STR=CI if LINT-TRUE exit then
    a u s" until" LINT-STR=CI if LINT-TRUE exit then
@@ -202,13 +204,14 @@ private
    a u s" required" LINT-STR=CI if LINT-TRUE exit then
    a u s" provided" LINT-STR=CI ;
 
-\ tools/check.f reads a target predicate's spelling as the engine's answer to
-\ skip the arms of an `if` the engine never runs (src/habu/verify-source.f
-\ TARGET-GUARD).
+\ The verifier takes a target predicate's spelling as the engine's answer, for
+\ a body `if` and a top-level `[if]` (src/habu/verify-source.f TARGET-GUARD).
 : RNL-RESERVED-TARGET? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" hb-target-linux?" LINT-STR=CI if LINT-TRUE exit then
    a u s" hb-target-macos?" LINT-STR=CI if LINT-TRUE exit then
-   a u s" hb-target-linux-x86-64?" LINT-STR=CI ;
+   a u s" hb-target-linux-x86-64?" LINT-STR=CI if LINT-TRUE exit then
+   a u s" hb-target-linux-kernel?" LINT-STR=CI if LINT-TRUE exit then
+   a u s" hb-target-known?" LINT-STR=CI ;
 
 : RNL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u RNL-RESERVED-CONTROL? if LINT-TRUE exit then

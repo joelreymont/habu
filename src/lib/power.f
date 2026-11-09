@@ -49,9 +49,4 @@ public
 
 ;package
 
-package POWER-LOAD
-public
-: HOST ( -- )
-   HB-TARGET-MACOS? if s" src/lib/power/macos.f" required then ;
-;package
-POWER-LOAD:HOST
+HB-TARGET-MACOS? [if] require src/lib/power/macos.f [then]
