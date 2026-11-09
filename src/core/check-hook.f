@@ -295,11 +295,8 @@ public
 
 
 \ Rec's own facts text as it stands, else, in an hb whose records carry none,
-\ sym's rows' (ROWS-TEXT?); rec NULL-PTR or sym 0 is none. A text read back and
-\ rendered again can lose what it said: a text with no primitive tag and no
-\ overload reads as an external effect, which holds no primitive row. Empty
-\ when neither says them. A rendered text lies in RSBUF, which the next render
-\ reuses.
+\ sym's rows' (ROWS-TEXT?); rec NULL-PTR or sym 0 is none. Empty when neither
+\ says them. A rendered text lies in RSBUF, which the next render reuses.
 : OWN-OR-ROWS ( ptr n n -- ptr u8 n )
    {: rec:ptr sym:n :}
    rec NULL-PTR <> if

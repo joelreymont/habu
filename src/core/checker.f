@@ -7483,6 +7483,7 @@ CHECKER-REG:}SCRATCH
 \ The PE flag a facts tag names, 0 for any other token.
 : TAG>PE ( ptr u8 n -- n )
    {: a:ptr u:n :}
+   a u s" primitive" CORE-STR= IF PE-ACTIVE EXIT THEN
    a u s" trusted-only" CORE-STR= IF PE-TRUSTED-ONLY EXIT THEN
    a u s" top-only" CORE-STR= IF PE-TOP-ONLY EXIT THEN
    0 ;

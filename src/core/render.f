@@ -710,11 +710,14 @@ LOCSHOW-INSTALL
    0 RDST !  RSBUF RSN @ ;
 
 
-\ A PE row's flags as facts tags appended at RSN; only the PE-TRUSTED-ONLY and
-\ PE-TOP-ONLY bits are facts a caller's check reads.
+\ A PE row's flags as facts tags appended at RSN; the PE-ACTIVE, PE-TRUSTED-ONLY
+\ and PE-TOP-ONLY bits are facts a caller's check reads. `primitive` (PE-ACTIVE)
+\ makes the read a primitive row, whose tick is an opaque xt: without it a text
+\ reads as the word's declaration, whose tick is its quotation (`['] die`).
 : REND-PE ( n -- ptr u8 n )
    {: flags:n :}
    1 RDST !
+   flags PE-ACTIVE and 0 <> IF s" primitive " DTXT THEN
    flags PE-TRUSTED-ONLY and 0 <> IF s" trusted-only " DTXT THEN
    flags PE-TOP-ONLY and 0 <> IF s" top-only " DTXT THEN
    0 RDST !  RSBUF RSN @ ;
@@ -751,12 +754,13 @@ LOCSHOW-INSTALL
 
 
 \ `overload `, primitive row k's effect and its tags, appended at RSN; checker.f
-\ SIG-TAGS reads the rest of the text as the primitive's next row.
+\ SIG-TAGS reads the rest of the text as the primitive's next row, so the row
+\ needs no `primitive`.
 : REND-OVERLOAD ( n -- ptr u8 n )
    {: k:n :}
    1 RDST !  s" overload " DTXT
    k PE-EFF@ REND-RECORD 2drop
-   k PE-FLAGS@ REND-PE ;
+   k PE-FLAGS@ PE-ACTIVE invert and REND-PE ;
 
 
 \ FACTS-SAME?'s state for the quotations it runs; FACTS-CLEAN zeroes it, so
