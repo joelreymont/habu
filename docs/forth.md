@@ -168,7 +168,7 @@ private
   part reopens A in its private section with A's using floor. Inside A and its
   parts a qualifier `B:X` in a word or a family type, `using B` and a qualified
   definition `: B:Q` name the part `A:B` first, then a top-level package B,
-  which the part shadows there, a sealed system package such as MATCH
+  which the part shadows there, a system package such as MATCH
   included; a qualified definition naming neither makes a top-level package B.
   Outside A no name reaches the part: at top level `B:X`, `A:B:X` and `using B`
   find nothing, and a top-level `package B` is a separate package. A
@@ -200,10 +200,8 @@ private
   naming the package or word, and `tools/check.f` refuses it as
   `E-SEALED-PACKAGE` at the name. Outside a package it is refused:
   `seal-package at <loc>`, rc 75. Like `public` it names no word: in a body
-  or after `'` it is `E-UNDEFINED`. A native capture seals every package it
-  ships, so the engine's are sealed; use their public words qualified or
-  through `using`. An application image keeps its packages reopenable unless
-  they use `seal-package`.
+  or after `'` it is `E-UNDEFINED`. Only `seal-package` seals: an engine or
+  application package without it stays reopenable.
 - **Qualify only across package boundaries.** In `NAME`'s own files reopen the
   package and use bare names; `NAME:WORD` there is noise. A call into another
   package qualifies (`OTHER:WORD`) or reopens it. A subsystem is a few internal
@@ -2511,9 +2509,9 @@ sections above.
   accessor's store to another variable. The engine's own definition loads
   before the seal.
 - **Package `private` is visibility, not sealing.** Another file may reopen
-  the package and call its private words until `seal-package` or the native
-  capture seals it; a sealed reopen is refused. Multi-file owners
-  seal only after their last file (see **Packages**).
+  the package and call its private words until its `seal-package`; a sealed
+  reopen is refused. Multi-file owners seal only after their last file (see
+  **Packages**).
 - **A cast that introduces a pointer or xt requires a private package row.**
   `CAST: >BYTES ( n -- ptr u8 )` and `CAST: >OP ( n -- [ n -- n ] )` are
   `E-CAST-MINT` at top level or under `public`. A type-variable pointee is

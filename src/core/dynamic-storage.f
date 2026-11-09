@@ -444,4 +444,8 @@ public
    then
    REG-U @ 0= if REG-CLOSE then ;
 
+\ A cast reaching an arena head is admitted only here (checker.f
+\ CAST-HEAD-OWNER?), so no later source may reopen the package.
+seal-package
+
 ;package

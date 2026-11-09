@@ -163,7 +163,7 @@ before any `require`.
 | a definition with no signature that reads or pops a cell it did not push: `: X r@ ;`, `: X r> ;` | `E-REJECTED` at the token, `fix_return_stack`, at both tiers |
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
 | `package` with a name over the name cap | `E-STATEMENT-THROW` (`E-PACKAGE-NAME-CAP`) |
-| `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where the engine bakes `PKG` and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-SEALED-PACKAGE` at the name |
+| `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where `PKG` wrote `seal-package` and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-SEALED-PACKAGE` at the name |
 | a non-preserving `[: G ;] catch` | `E-MISMATCH` at `catch`, with the rows |
 | `( -- n ) [: 1 ;] ONCE` with `ONCE ( R [ -- S ] -- S ) execute`: a callable that names its stack, or keeps it where `[ -- S ]` is declared, passed, stored, installed with `is` or joined | `E-MISMATCH`, `callable row escape: …; held row A would escape into B`; declare `[ R -- S ]` |
 | a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-REJECTED` |
@@ -537,7 +537,7 @@ forth.md: **Errors**, **Integer arithmetic**.
   one (rebuild `bin/hb` to check a change to it). Write it
   anyway: a file states its dependencies.
 - Multi-file packages reopen `package NAME` per file; reopening shares scope and
-  loads nothing. An engine package is sealed: reopening one is refused. Run tools
+  loads nothing. A package that wrote `seal-package` refuses a reopen. Run tools
   as `bin/hb --load src/lib/a.f tool.f -- args`; `SCRIPT-ARGV$` starts after `--`.
 
 forth.md: **Files**, **Packages**.
