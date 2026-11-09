@@ -3,6 +3,7 @@
 \ to stderr, then dies by the signal itself, C-CRASH-RERAISE) and
 \ EMIT-SIGNAL-HANDLER, the async-signal-safe stub a program installs for an
 \ ordinary signal. Encoders are package A64ASM (src/arch/arm64/asm.f).
+require src/arch/arm64/icode.f
 using SYSCALL
 package CRASH
 public
@@ -12,7 +13,6 @@ create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2  variable CR-L3
 variable CR-OFF  variable CR-HANDLER  variable CR-FLAGS
 ;package
-require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
 

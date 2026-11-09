@@ -1,14 +1,12 @@
 \ image-bytes.f - shared executable image byte cursor and patch helpers.
-\ The target writer imports A64ICODE or X64CODE while loading this file.
+\ It names no machine's code package, so it compiles the same under every
+\ target writer and links as any file does; the writer sizes the buffer.
 
 package IMAGE-BYTES
-\ Reserve the assembler window plus the larger supported image tail: a 64 KiB
-\ header/page boundary, Mach-O DATA_CONST and fixups, and one SHA-256 digest per
-\ 4 KiB code-signing page. Both target writers check their exact maximum at load.
-CODE-CAP-BYTES $10000 + $4000 + 104 +
-dup $FFF + $1000 / $20 * $14 + $58 + $40 + +
+\ The buffer's bytes: the largest image a loaded target writer names (MSIZE!).
+variable MSIZE-N
 public
-$FFFF + $10000 / $10000 * constant MSIZE
+: MSIZE ( -- n ) MSIZE-N @ ;
 75 constant M-BOUNDS-RC
 \ Four image cursors hold addresses inside the mapped image buffer, so they are
 \ declared pointer cells (dot habu-refuse-a-ptr-5ad2734e). They belong to the
@@ -36,7 +34,7 @@ variable IMG-PAYLOAD-PREFIX
    0 IMG-PAYLOAD-N !  0 IMG-CODE-N ! ;
 
 : IMG-PAYLOAD! ( n ptr u8 n -- ) {: code:n payload:ptr bytes:n :}
-   code 0 < bytes 0 <= or code ASM-LEN > or if
+   code 0 < bytes 0 <= or if
       s" image: invalid code/payload boundary" 73 die then
    code IMG-CODE-N !  payload IMG-PAYLOAD-A !  bytes IMG-PAYLOAD-N ! ;
 
@@ -54,6 +52,13 @@ private
    MBUF-A@ 0= if M-ALLOC-BUF MBUF-A! then ;
 
 public
+\ A target writer names its largest image at load, rounded up to 64 KiB; the
+\ largest named wins, whatever the load order. The buffer maps on first use,
+\ so a size named after that is refused.
+: MSIZE! ( n -- )
+   MBUF-A@ 0= 0= if s" image-bytes: a size named after the buffer mapped" 73 die then
+   $FFFF + $10000 / $10000 *  MSIZE-N @ max  MSIZE-N ! ;
+
 : MBUF ( -- ptr u8 )
    M-ENSURE-BUF
    MBUF-A@ ;

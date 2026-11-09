@@ -23,8 +23,8 @@
 \ mapped page.
 \ Mach-O constants
 require src/arch/arm64/icode.f
-using A64ICODE
 require src/os/image-bytes.f
+using A64ICODE
 using IMAGE-BYTES
 package EXECUTABLE
 $FEEDFACF constant MH-MAGIC64
@@ -106,19 +106,17 @@ variable MACHO-FIXUPS-WROTE
 : MACHO-STARTS-BYTES ( -- n )
    24 DATA-CONST-PAGES 1- 2 * + 3 + -4 and ;
 
-\ Fail closed at load time: the image buffer must fit the largest emittable
-\ image (__text at MPAGE + __DATA_CONST + chained fixups + signature) so the
-\ loud MPAGE code-window guard stays the binding constraint, never a silent
-\ M-BOUNDS-RC throw from the byte cursor. MSIZE belongs to the target-neutral
-\ src/os/image-bytes.f, which cannot see this target's tail, so this is the
-\ check that binds the two.
-: MACHO-MSIZE-CHECK ( -- )
-   MACHO-IMAGE-MAX MACHO-FIXUPS-MAX + MACHO-SIG-MAX + MSIZE >
-   IF s" macho: MSIZE below max image" 73 die THEN ;
-MACHO-MSIZE-CHECK
+\ The image buffer fits the largest emittable image (__text at MPAGE +
+\ __DATA_CONST + chained fixups + signature), so the loud MPAGE code-window
+\ guard stays the binding constraint, never a silent M-BOUNDS-RC throw from
+\ the byte cursor.
+MACHO-IMAGE-MAX MACHO-FIXUPS-MAX + MACHO-SIG-MAX + MSIZE!
 
 : ASM-CODELEN! ( -- )
-   IMG-PAYLOAD-N @ 0 > if IMG-CODE-N @ else ASM-LEN then CODELEN ! ;
+   IMG-PAYLOAD-N @ 0 > if
+      IMG-CODE-N @ ASM-LEN > if s" image: invalid code/payload boundary" 73 die then
+      IMG-CODE-N @
+   else ASM-LEN then CODELEN ! ;
 
 public
 : ASM-CODE ( -- asm )

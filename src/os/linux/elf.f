@@ -7,8 +7,8 @@
 \ Retirement: habu-campaign-c2-mem-c3d7662b.
 
 require src/arch/arm64/icode.f
-using A64ICODE
 require src/os/image-bytes.f
+using A64ICODE
 using IMAGE-BYTES
 package EXECUTABLE
 $7F constant ELF-MAG0
@@ -75,11 +75,8 @@ variable ELF-TEXT-SIZE
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
 
-\ The image buffer includes the maximum-page-rounded text and its RW tail.
-: ELF-MSIZE-CHECK ( -- )
-   MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE >
-   IF s" elf: MSIZE below max image" 73 die THEN ;
-ELF-MSIZE-CHECK
+\ The image buffer holds the maximum-page-rounded text and its RW tail.
+MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE!
 
 : ASM-CODELEN! ( -- )
    ASM-LEN CODELEN ! ;

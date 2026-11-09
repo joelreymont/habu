@@ -1,14 +1,24 @@
 \ habu1.f, engine builder part 1: emits the native engine's primitive bodies,
 \ helper routines and seed dictionary for arm64 (Linux and macOS). The
 \ interpreter loop, keyword JIT and ENGINE-EMIT:FORTH are in habu2.f.
+\ Requests run before any package or `using` opens, so each file links
+\ (linker.f TOP-SCOPE?). A64ASM's encoders live in src/arch/arm64/asm.f.
+require src/arch/arm64/icode.f
+require src/habu/primitive-registry.f
+require src/habu/native-observer-extension.f
+require src/habu/native-body-abi.f
+require src/habu/data-claims.f          \ each band GUARD-SPAN tests is a claim
+require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
+require src/habu/task-abi.f
+require src/habu/spawn-abi.f
+require src/habu/code-span.f
+require src/habu/prof-abi.f
 package ENGINE-EMIT
 public
 variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
 ;package
 using ENGINE-EMIT
-\ A64ASM's encoders live in src/arch/arm64/asm.f.
-require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
 using CRASH
@@ -59,15 +69,6 @@ public
 private
 30 SP  16 ENC-LDRPOST constant W-LINKREST  \ ldr x30,[sp],#16
 ;package
-require src/habu/primitive-registry.f
-require src/habu/native-observer-extension.f
-require src/habu/native-body-abi.f
-require src/habu/data-claims.f          \ each band GUARD-SPAN tests is a claim
-require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
-require src/habu/task-abi.f
-require src/habu/spawn-abi.f
-require src/habu/code-span.f
-require src/habu/prof-abi.f
 package ENGINE-EMIT
 PTR-VARIABLE FP-A  variable FP-U
 
