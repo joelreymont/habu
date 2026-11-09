@@ -6482,6 +6482,7 @@ variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
 variable SIG-CTL   \ the control word, XFER-PACK form, the last facts text's tags gave
 variable SIG-PE     \ the PE-TRUSTED-ONLY and PE-TOP-ONLY bits the last facts text's tags gave
 variable SIG-PIMM   -1 SIG-PIMM !   \ the parse-imm count the last facts text's tags gave, -1 for none
+variable SIG-TAGS-ONLY   \ whether the last facts text was tags alone, with no effect
 \ The created words' facts text inside the last facts text, 0 0 for none. A
 \ caller parses that span itself, after building the first text's effect.
 PTR-VARIABLE SIG-CREATES-A   variable SIG-CREATES-U
@@ -7558,14 +7559,27 @@ CHECKER-REG:}SCRATCH
    REPEAT 2drop -1 ;
 
 
+\ A text of tags alone, a primitive's the checker types by what it does
+\ (check-hook.f TAGS-TEXT?), answers no rows.
+: PARSE-TAGS ( -- n n n n )
+   RES-TRUE SIG-TAGS-ONLY !
+   NMAP-RESET  ROWMAP-RESET  0 SGHASR !
+   0 SI !  PKRESET
+   SIG-TAGS
+   0 0 0 0 ;
+
+
 \ PSIG reads the effect between the opening `(` and the first `)` token,
-\ SIG-TAGS what follows. A text without both parses as empty, refused.
+\ SIG-TAGS what follows; a text opening with another token is tags alone. An
+\ empty text, or one with no `)`, parses as empty, refused.
 : PARSE-FACTS ( -- n n n n )
    SL @ {: len:n :}
-   0 SIG-CTL !  0 SIG-PE !  -1 SIG-PIMM !
+   0 SIG-CTL !  0 SIG-PE !  -1 SIG-PIMM !  RES-FALSE SIG-TAGS-ONLY !
    NULL-PTR SIG-CREATES-A !  0 SIG-CREATES-U !
    NULL-PTR SIG-OVERLOAD-A !  0 SIG-OVERLOAD-U !
-   PKRESET NEXT-SIG-TOK s" (" CORE-STR= {: open:bool :}
+   PKRESET NEXT-SIG-TOK {: ta:ptr tu:n :}
+   ta tu s" (" CORE-STR= {: open:bool :}
+   open 0=  tu 0 >  and IF PARSE-TAGS EXIT THEN
    SI @ {: from:n :}
    open IF FACTS-CLOSE ELSE -1 THEN {: close:n :}
    close 0 < IF SB@ len SGBAD-SYNTAX!  0 SL !  0 SI !  PSIG EXIT THEN
@@ -8051,10 +8065,14 @@ CHECKER-REG:}SCRATCH
    t MK-PTR swap MK-PUSH
    t rest MK-PUSH RECORDED-STEP ;
 
-$800000 constant USIGS-INIT-CAP
+\ The boot holds the grammar's effects a product starts with (KEYWORD-ROWS); a
+\ load grows the store on demand.
+$1000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
+create USIGS-BOOT USIGS-INIT-CAP allot
 PERSISTED-PTR-VARIABLE USIGS-P   variable USIGS-CAP-U   variable UEND
+USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !
 variable USIGS-USER-OFF
 variable CHK-CAND
 
@@ -8146,9 +8164,6 @@ CHECKER-REG:}SCRATCH
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
    need 1 - USIGS-GRAIN / 1 + USIGS-GRAIN * ;
-
-: USIGS-ALLOC ( n -- ptr u8 )
-   map-anon 0 <> IF drop s" checker: user sigs mmap failed" 76 die THEN ;
 
 \ ---- navigation: where a named declaration was written ----------------------
 \ The armed location (CHECKER-DECL-AT!) is the declaring token of the statement
@@ -8321,24 +8336,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    0 UEND !
    0 USIGS-HEAD ! ;
 
-: USIGS-ALLOC-INIT ( -- )
-   USIGS-INIT-CAP USIGS-ALLOC USIGS-P !
-   USIGS-INIT-CAP USIGS-CAP-U ! ;
-
-: USIGS-RUNTIME-INIT ( -- )
-   USIGS-ALLOC-INIT
-   USIGS-CLEAR ;
-
-USIGS-RUNTIME-INIT
-
-: USIGS-RUNTIME-SIZED? ( -- bool )
-   USIGS-P @ NULL-PTR <>
-   USIGS-CAP-U @ USIGS-INIT-CAP >= and ;
-
-: USIGS-RESET ( -- )
-   USIGS-RUNTIME-SIZED? 0= IF USIGS-ALLOC-INIT THEN
-   USIGS-CLEAR
-   0 USIGS-USER-OFF ! ;
+USIGS-CLEAR
 
 : USIGS-SNAPSHOT-SIZE ( -- n )
    UEND @ CELL + ;
@@ -8440,7 +8438,9 @@ USIGS-RUNTIME-INIT
 \ geometrically; the HIDX table (sized/masked by SYM-CAP) is rebuilt — rehashed —
 \ at the new cap on the next lookup. PKG-A/NAME-A hold offsets into SYM-STR,
 \ like CT's and VREC's name columns, so moving the pool changes only its base.
-$4000 constant SYM-CAP-INIT     \ symbol table records (grows on demand, pow2)
+\ Symbol table records, pow2. The boot holds the grammar a product starts with
+\ (KEYWORD-ROWS); a load grows it on demand.
+$40 constant SYM-CAP-INIT
 \ Keep the boot pool above the self-build's live span: once the prefix outgrows
 \ it, capture copies the used span into fresh image DATA (REG-PERSIST-MOVE) and
 \ the dead boot buffer stays, so crossing it costs DP rather than saving it.
@@ -8476,8 +8476,9 @@ $28 constant SYM-REC
 : SYM.VIS ( ptr u8 -- ptr n )
    SYM-VIS-OFF + CELL-VIEW ;
 
+create SYMS-BOOT SYM-CAP-INIT SYM-REC * allot
 create SYM-STR-BOOT SYM-STR-INIT allot
-PERSISTED-PTR-VARIABLE SYMS-P     NULL-PTR SYMS-P !
+PERSISTED-PTR-VARIABLE SYMS-P     SYMS-BOOT SYMS-P !
 PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
 \ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
 PERSISTED-PTR-VARIABLE SYM-STR-HOME   SYM-STR-BOOT SYM-STR-HOME !
@@ -8487,13 +8488,7 @@ variable SYM-STR-U
 variable SYM-PRIM-END
 variable SYM-ID
 
-\ HIDX needs its positive power-of-two capacity before the first row exists.
-\ Allocate backing separately so a retired initial table is not reserved DATA.
-: SYMS ( -- ptr u8 )
-   SYMS-P @ NULL-PTR = IF
-      SYM-CAP-V @ SYM-REC * ARENA-ALLOC SYMS-P !
-   THEN
-   SYMS-P @ ;
+: SYMS ( -- ptr u8 ) SYMS-P @ ;
 : SYM-STR ( -- ptr u8 ) SYM-STR-P @ ;
 
 1 SYM-N !
@@ -10638,7 +10633,7 @@ CHECKER-REG:}SCRATCH
 \ E-ADD-EFFECT/E-ADD-DELETED are the only creators of USER records (prims go
 \ through PE-CLOSE/E-BUILD-EFFECT directly), so they own the in-place cache
 \ update: the record just built IS the current effect for its symbol. The
-\ cache stores offset+1 because offset 0 is legal after USIGS-RESET.
+\ cache stores offset+1 because offset 0 is a record's.
 : LBUF-EFFECT-RESULT ( n ptr u8 n -- )
    {: handle:n name:ptr nameu:n :}
    LBUF-PEND-U @ 0 > nameu 0 > and IF
@@ -12037,32 +12032,36 @@ PTABLE-START
 
 PE-SPEC-REPLAY
 
-\ The host loop's own words, which every program starts with.
-PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: c"     PE-PTR-U8 PE-OUT PRIM;
-PRIM: ."     PRIM;
-PRIM: s\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: c\"    PE-PTR-U8 PE-OUT PRIM;
-PRIM: .\"    PRIM;
-PRIM: [']    PE-N PE-OUT PRIM;
-\ The row types top-level `char`, as a storage count (`CHAR 0 TYPED-BUFFER`);
-\ a body never reaches it (TRY-PRIMS), so a body `char` is a word or undefined.
-PRIM: char   PE-N PE-OUT PRIM;  PRIM-TOP-ONLY!
-PRIM: [char] PE-N PE-OUT PRIM;
-PRIM: [package] PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: constant PE-N PE-IN PRIM;
+\ The checker's grammar: the host loop's own words, which every program starts
+\ with, and the names KEYWORD-AXIOMS types. The engine holds no record for the
+\ keywords, and a build defines include.f's loading words afresh from source,
+\ where no body says that they render, so no facts text can carry these facts:
+\ they are the prefix of a product's checker stores, baked into its DATA.
+: KEYWORD-ROWS ( -- )
+   S\" s\q" PE-OPEN PE-PTR-U8 PE-OUT PE-N PE-OUT PE-CLOSE
+   S\" c\q" PE-OPEN PE-PTR-U8 PE-OUT PE-CLOSE
+   S\" .\q" PE-OPEN PE-CLOSE
+   S\" s\\\q" PE-OPEN PE-PTR-U8 PE-OUT PE-N PE-OUT PE-CLOSE
+   S\" c\\\q" PE-OPEN PE-PTR-U8 PE-OUT PE-CLOSE
+   S\" .\\\q" PE-OPEN PE-CLOSE
+   s" [']" PE-OPEN PE-N PE-OUT PE-CLOSE
+   \ The row types top-level `char`, as a storage count (`CHAR 0 TYPED-BUFFER`);
+   \ a body never reaches it (TRY-PRIMS), so a body `char` is a word or undefined.
+   s" char" PE-OPEN PE-N PE-OUT PE-CLOSE PRIM-TOP-ONLY!
+   s" [char]" PE-OPEN PE-N PE-OUT PE-CLOSE
+   s" [package]" PE-OPEN PE-PTR-U8 PE-OUT PE-N PE-OUT PE-CLOSE
+   s" constant" PE-OPEN PE-N PE-IN PE-CLOSE
+   s" >r" PE-SYM-OF drop
+   s" r>" PE-SYM-OF drop
+   s" r@" PE-SYM-OF drop
+   s" variable" PE-SYM-OF drop
+   s" included" PE-SYM-OF drop
+   s" required" PE-SYM-OF drop
+   s" script-required" PE-SYM-OF drop
+   s" INCLUDE-EVALUATE" PE-SYM-OF drop
+   s" INCLUDE-EVALUATE-RANGE" PE-SYM-OF drop ;
 
-\ NORET-AXIOMS also types names no row above interns, the interpreter's keywords
-\ and include.f's loading words.
-s" >r" PE-SYM-OF drop
-s" r>" PE-SYM-OF drop
-s" r@" PE-SYM-OF drop
-s" variable" PE-SYM-OF drop
-s" included" PE-SYM-OF drop
-s" required" PE-SYM-OF drop
-s" script-required" PE-SYM-OF drop
-s" INCLUDE-EVALUATE" PE-SYM-OF drop
-s" INCLUDE-EVALUATE-RANGE" PE-SYM-OF drop
+KEYWORD-ROWS
 
 \ A build starts with the kernel's rows and the host loop's words only: the
 \ rows below name hb's own words, which a product defines for itself. Below
@@ -14398,7 +14397,7 @@ public
 
 \ A keyword's axiom: the global symbol of a bare name the engine holds no record
 \ for, when only the axiom tables type it - a primitive row, or the identity
-\ NORET-AXIOMS records for `>r` `r>` `r@`, which the JIT matches by spelling.
+\ KEYWORD-AXIOMS records for `>r` `r>` `r@`, which the JIT matches by spelling.
 \ Those live below the user region USIG-NEWEST indexes, so a symbol with an
 \ effect record of its own and no engine record - a bodiless TRUST, a name only
 \ the source pre-verifier registered - is 0, global or package alike.
@@ -16385,8 +16384,9 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT DL-TAKE
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
-\ 4096 five-cell entries.
-$28000 constant NORET-INIT-CAP
+\ 64 five-cell entries. The boot holds the grammar a product starts with
+\ (KEYWORD-AXIOMS); a load grows it on demand.
+$A00 constant NORET-INIT-CAP
 
 \ THE ENTRY IS FIVE CELLS, and this is where they are stated.
 \   SYM      the symbol the facts are about; 0 terminates the store.
@@ -16417,21 +16417,16 @@ $8 constant NORET-ENTRY-ALIGN
 : NORET.SOURCE ( ptr a -- ptr a ) NORET-SOURCE-OFF + ;
 
 
+create NORETS-BOOT NORET-INIT-CAP allot
 PERSISTED-PTR-VARIABLE NORET-P   variable NORET-CAP-U   variable NORET-END
-NULL-PTR NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !
+NORETS-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !
 CHECKER-REG:SCRATCH{
 variable NORET-CTL      \ the packed control word NORET-SCAN-SYM last read
 CHECKER-REG:}SCRATCH
 
-\ Even an empty store has a readable zero-symbol terminator. The accessor also
-\ covers cold scans, preallocation/growth and persistence before any append.
-: NORETS ( -- ptr u8 )
-   NORET-P @ NULL-PTR = IF
-      NORET-CAP-U @ USIGS-ALLOC {: base:ptr :}
-      0 base CELL-VIEW !
-      base NORET-P !
-   THEN
-   NORET-P @ ;
+\ Even an empty store has a readable zero-symbol terminator: the boot's zeroed
+\ first cell.
+: NORETS ( -- ptr u8 ) NORET-P @ ;
 
 : NORET-CELL ( n -- ptr n ) {: off:n :}
    off NORET-ENTRY-ALIGN 1 - and 0 <> IF s" checker: unaligned no-return cell" 76 die THEN
@@ -16676,7 +16671,6 @@ CHECKER-REG:}SCRATCH
    VREC-STR-P VREC-STR-HOME VREC-STR-HOME-CAP VREC-STR-U VREC-STR-CAP-V REG-POOL-PERSIST ;
 
 : SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped at capture; rebuilt on restore
-   SYMS drop
    SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
    SYM-STR-P SYM-STR-HOME SYM-STR-HOME-CAP SYM-STR-U SYM-STR-CAP-V REG-POOL-PERSIST ;
 
@@ -17733,14 +17727,22 @@ private
 \ binds. The later rows name by identity the primitives the walk types by what
 \ they do (CTL-CORE-OP, CTL-INTRINSIC); `create`'s one row carries its identity
 \ and its facts, since a symbol's newest row wins.
-: NORET-AXIOMS ( -- )
-   s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
-   s" die" CTL-DEAD NORET-AXIOM
+\ The axioms of the grammar KEYWORD-ROWS interns, a product's whole prefix.
+: KEYWORD-AXIOMS ( -- )
+   s" >r" CTL-CORE-OP NORET-AXIOM
+   s" r>" CTL-CORE-OP NORET-AXIOM
+   s" r@" CTL-CORE-OP NORET-AXIOM
+   s" variable" INTRINSIC-VARIABLE INTRINSIC>CTL NORET-AXIOM
+   s" constant" INTRINSIC-CONSTANT INTRINSIC>CTL NORET-AXIOM
    s" INCLUDE-EVALUATE" CTL-RENDERS NORET-AXIOM
    s" INCLUDE-EVALUATE-RANGE" CTL-RENDERS NORET-AXIOM
    s" included" CTL-RENDERS NORET-AXIOM
    s" required" CTL-RENDERS NORET-AXIOM
-   s" script-required" CTL-RENDERS NORET-AXIOM
+   s" script-required" CTL-RENDERS NORET-AXIOM ;
+
+: NORET-AXIOMS ( -- )
+   s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
+   s" die" CTL-DEAD NORET-AXIOM
    s" evaluate" CTL-RENDERS CTL-CORE-OP or NORET-AXIOM
    s" evaluate-closed" CTL-RENDERS NORET-AXIOM
    s" evaluate-range" CTL-RENDERS NORET-AXIOM
@@ -17760,9 +17762,6 @@ private
    s" 2drop" CTL-CORE-OP NORET-AXIOM
    s" 2swap" CTL-CORE-OP NORET-AXIOM
    s" 2over" CTL-CORE-OP NORET-AXIOM
-   s" >r" CTL-CORE-OP NORET-AXIOM
-   s" r>" CTL-CORE-OP NORET-AXIOM
-   s" r@" CTL-CORE-OP NORET-AXIOM
    s" 2>r" CTL-CORE-OP NORET-AXIOM
    s" 2r>" CTL-CORE-OP NORET-AXIOM
    s" 2r@" CTL-CORE-OP NORET-AXIOM
@@ -17780,8 +17779,7 @@ private
    s" depth" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM
    s" .s" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM
    s" ptr-field" INTRINSIC-RAW-FIELD INTRINSIC>CTL NORET-AXIOM
-   s" variable" INTRINSIC-VARIABLE INTRINSIC>CTL NORET-AXIOM
-   s" constant" INTRINSIC-CONSTANT INTRINSIC>CTL NORET-AXIOM ;
+   KEYWORD-AXIOMS ;
 
 NORET-AXIOMS
 NORET-END @ constant NORET-PRIM-END
@@ -32392,6 +32390,7 @@ CHECKER-REG:}SCRATCH
    SGBAD-AR-DECL save GUEST-CELL  SGBAD-AR-GOT save GUEST-CELL  SGBAD-SIZE save GUEST-CELL
    SIG-UNRES save GUEST-CELL  SIG-UNRES-U save GUEST-CELL
    SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
+   SIG-TAGS-ONLY save GUEST-CELL
    SIG-PE save GUEST-CELL  SIG-PIMM save GUEST-CELL  SIG-CREATES-U save GUEST-CELL
    SIG-OVERLOAD-U save GUEST-CELL  SIGSCOPE-ON save GUEST-CELL  SIGSCOPE-U save GUEST-CELL ;
 
@@ -32427,7 +32426,8 @@ CHECKER-REG:}SCRATCH
 
 
 \ Facts text a u parsed; false when the parse refuses it, names a type no
-\ package declares here, or no record holds it.
+\ package declares here, or no record holds it. Tags alone answer no rows
+\ (SIG-TAGS-ONLY).
 : READ-ROWS ( ptr u8 n -- n n n n bool )
    {: a:ptr u:n :}
    SGBAD-CLEAR
@@ -32435,6 +32435,7 @@ CHECKER-REG:}SCRATCH
    SGBAD @ 0 <>  SIG-UNRES @ 0 <> or IF
       din dout rin rout RES-FALSE EXIT
    THEN
+   SIG-TAGS-ONLY @ IF din dout rin rout RES-TRUE EXIT THEN
    a u din dout rin rout SGBAD-UNFIT!
    din dout rin rout SGBAD @ 0= ;
 
@@ -32450,7 +32451,7 @@ CHECKER-REG:}SCRATCH
    {: ca:ptr cu:n :}
    cu 0= IF 0 RES-TRUE EXIT THEN
    ca cu READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
-   ok 0= IF 0 RES-FALSE EXIT THEN
+   ok 0=  SIG-TAGS-ONLY @ or IF 0 RES-FALSE EXIT THEN
    0 CHECKER-REC-SYM !
    din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + RES-TRUE ;
 
@@ -32475,7 +32476,7 @@ CHECKER-REG:}SCRATCH
    {: a:ptr u:n sym:n :}
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
    SIG-PE @  SGHASR @  SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: pe:n hasr:bool ra:ptr ru:n :}
-   ok 0=  SIG-CTL @ 0 <> or  SIG-PIMM @ 0 >= or  SIG-CREATES-U @ 0 <> or IF
+   ok 0=  SIG-TAGS-ONLY @ or  SIG-CTL @ 0 <> or  SIG-PIMM @ 0 >= or  SIG-CREATES-U @ 0 <> or IF
       NULL-PTR 0 RES-FALSE EXIT
    THEN
    sym CHECKER-REC-SYM !
@@ -32498,6 +32499,14 @@ CHECKER-REG:}SCRATCH
    sym CTL-FLAGS-SYM  CTL-BARRIER EFFECT-EXTERNAL or  and
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER invert and  or ;
 
+\ A text of tags alone states sym's control word only, and links record ix with
+\ no effect: LINKED? answers it read, RECORD-LINK-CURRENT? does not.
+: READ-TAGS ( n n n -- ) {: ix:n sym:n ctl:n :}
+   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 NORET-ADD-CREATES
+   ix RECORD-LINK-OCC {: slot:n occurrence:n :}
+   slot ix <> IF EXIT THEN
+   ix 0 sym NORET-NEWEST RES-FALSE occurrence RECORD-LINK-WRITE ;
+
 : READ-BODY ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
    ix CHECKER-RESOLVE:REC-AT {: rec:ptr :}
@@ -32511,6 +32520,13 @@ CHECKER-REG:}SCRATCH
    SIG-CTL @  SIG-PIMM @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
       {: ctl:n pimm:n pe:n ca:ptr cu:n hasr:bool :}
    SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: oa:ptr ou:n :}
+   SIG-TAGS-ONLY @ IF
+      pe 0 <>  pimm 0 >= or  cu 0 <> or  ou 0 <> or
+      ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
+         a u name nameu READ-REFUSE EXIT
+      THEN
+      ix sym ctl READ-TAGS EXIT
+   THEN
    sym CHECKER-REC-SYM !
    din dout rin rout hasr RES-TRUE E-ADD-EFFECT
    sym pe ou 0 <> READ-PE

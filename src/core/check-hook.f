@@ -266,13 +266,24 @@ public
    RES-TRUE ;
 
 
+\ Sym's tags alone in RSBUF, the facts text of a primitive the checker types by
+\ what it does (`execute`, `?dup`). False when it has none or a text cannot say
+\ them.
+: TAGS-TEXT? ( n -- bool )
+   {: sym:n :}
+   0 RSN !  0 RQM !
+   sym FACTS-TAGS
+   RSN @ 0 >  RQM @ 0=  and ;
+
+
 \ Sym's primitive rows as one facts text in RSBUF: the first row's effect and
-\ tags, then each further row after `overload`. False when a text cannot say
-\ them, or a created effect, whose text ends the facts, would hide the rows.
+\ tags, then each further row after `overload`; with no row, its tags alone.
+\ False when a text cannot say them, or a created effect, whose text ends the
+\ facts, would hide the rows.
 : ROWS-TEXT? ( n -- bool )
    {: sym:n :}
    sym PRIM-FIRST-IDX {: first:n :}
-   first 0= if RES-FALSE exit then
+   first 0= if sym TAGS-TEXT? exit then
    first 1 - {: k:n :}
    sym k ROWS-SAY? 0= if RES-FALSE exit then
    sym k PE-EFF@ FACTS-SAME-AT? 0= if RES-FALSE exit then
