@@ -303,6 +303,27 @@ variable PROGRAM-U
    PROGRAM-U @ 0= if INCLUDE-FALSE exit then
    a u PROGRAM-BUF PROGRAM-U @ CORE-STR= ;
 
+\ The working directory, the engine root, the program file and the resolver's
+\ work belong to the process that derived them, so their cells are scratch: a
+\ saved program, a cross-built one included, starts with none and derives its
+\ own instead of resolving against its builder's directory.
+: SCRATCH-BYTES ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do a i + scratch-cell-mark 1 cells +loop ;
+
+CWD-BUF PATH-BYTES SCRATCH-BYTES        CWD-U scratch-cell-mark
+CANON-BUF PATH-BYTES SCRATCH-BYTES      CANON-U scratch-cell-mark
+NORMAL-BUF WORK-BYTES SCRATCH-BYTES     NORMAL-U scratch-cell-mark
+CANDIDATE-BUF PATH-BYTES SCRATCH-BYTES  CANDIDATE-U scratch-cell-mark
+JOIN-BUF WORK-BYTES SCRATCH-BYTES       JOIN-U scratch-cell-mark
+WORK-BUF WORK-BYTES SCRATCH-BYTES
+ZBUF WORK-BYTES SCRATCH-BYTES
+OWNER-BUF PATH-BYTES SCRATCH-BYTES      OWNER-U scratch-cell-mark
+OWNER-SAVE PATH-BYTES SCRATCH-BYTES
+REQUEST-BUF WORK-BYTES SCRATCH-BYTES    REQUEST-U scratch-cell-mark
+ENGINE-BUF PATH-BYTES SCRATCH-BYTES     ENGINE-U scratch-cell-mark
+ENGINE-READ scratch-cell-mark
+PROGRAM-BUF PATH-BYTES SCRATCH-BYTES    PROGRAM-U scratch-cell-mark
+
 public
 
 : CURRENT$ ( -- ptr u8 n )
