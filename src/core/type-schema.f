@@ -113,7 +113,7 @@ SCHEMA-RESET
 
 : SCH-GROW ( n -- ) {: need:n :}
    need SCH-CAP-V @ 2 * max {: nc:n :}
-   SCH-A-P  SCH-CAP-V @ SCH-REC *  nc SCH-REC *  REG-GROW1
+   SCH-A-P  SCH-CAP-V @ SCH-REC *  nc SCH-REC *  CHECKER-REG:GROW
    nc SCH-CAP-V ! ;
 
 private
@@ -126,7 +126,7 @@ public
 
 : SCH-ROOT-GROW ( n -- ) {: need:n :}
    need SCH-ROOT-CAP-V @ 2 * max {: nc:n :}
-   SCH-ROOT-P  SCH-ROOT-CAP-V @ cells  nc cells  REG-GROW1
+   SCH-ROOT-P  SCH-ROOT-CAP-V @ cells  nc cells  CHECKER-REG:GROW
    nc SCH-ROOT-CAP-V ! ;
 
 private
@@ -290,7 +290,7 @@ private
 
 : SCH-RBF-GROW ( -- )
    SCH-RBF-CAP-V @ 2 * {: nc:n :}
-   SCH-RBF-P  SCH-RBF-CAP-V @ SCH-RBF-REC *  nc SCH-RBF-REC *  REG-GROW1
+   SCH-RBF-P  SCH-RBF-CAP-V @ SCH-RBF-REC *  nc SCH-RBF-REC *  CHECKER-REG:GROW
    nc SCH-RBF-CAP-V ! ;
 : SCH-RBF-ENSURE ( -- )
    SCH-RBF-DEPTH @ SCH-RBF-CAP-V @ < IF exit THEN

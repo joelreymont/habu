@@ -199,7 +199,7 @@ private
 
 : TF-STR-GROW ( n -- ) {: need:n :}
    need TF-STR-CAP-V @ 2 * max {: nc:n :}
-   TF-STR-P  TF-STR-CAP-V @  nc  REG-GROW1
+   TF-STR-P  TF-STR-CAP-V @  nc  CHECKER-REG:GROW
    nc TF-STR-CAP-V ! ;
 : TF-STR-ENSURE ( n -- ) {: add:n :}
    TF-STR-U @ add + TF-STR-CAP-V @ <= IF exit THEN
@@ -289,7 +289,7 @@ private
 
 : TF-PK-GROW ( n -- ) {: need:n :}
    need TF-PK-CAP-V @ 2 * max {: nc:n :}
-   TF-PK-P  TF-PK-CAP-V @ cells  nc cells  REG-GROW1
+   TF-PK-P  TF-PK-CAP-V @ cells  nc cells  CHECKER-REG:GROW
    nc TF-PK-CAP-V ! ;
 : TF-PK-ENSURE ( -- )
    TF-PK-N @ TF-PK-CAP-V @ < IF exit THEN
@@ -390,7 +390,7 @@ private
 
 : TF-GROW ( n -- ) {: need:n :}
    need TF-CAP-V @ 2 * max {: nc:n :}
-   TF-A-P  TF-CAP-V @ TF-REC *  nc TF-REC *  REG-GROW1
+   TF-A-P  TF-CAP-V @ TF-REC *  nc TF-REC *  CHECKER-REG:GROW
    nc TF-CAP-V ! ;
 : TF-ENSURE ( -- )
    TFAM-N @ TF-CAP-V @ < IF exit THEN
@@ -660,7 +660,7 @@ variable TFX-CUR              \ private bucket-walk cursor
    TF-CAP TFX-CAP !
    TFX-SLOTS-NEED {: need:n :}
    need TFX-SLOTS = IF EXIT THEN
-   TFX-A-P  TFX-SLOTS cells  need cells  REG-GROW1
+   TFX-A-P  TFX-SLOTS cells  need cells  CHECKER-REG:GROW
    need TFX-SLOTS-V ! ;
 
 : TFX-BUILD ( -- )
@@ -824,7 +824,7 @@ private
 
 : SUMV-GROW ( n -- ) {: need:n :}
    need SUMV-CAP-V @ 2 * max {: nc:n :}
-   SUMV-A-P  SUMV-CAP-V @ SUMV-REC *  nc SUMV-REC *  REG-GROW1
+   SUMV-A-P  SUMV-CAP-V @ SUMV-REC *  nc SUMV-REC *  CHECKER-REG:GROW
    nc SUMV-CAP-V ! ;
 : SUMV-ENSURE ( -- )
    SUMV-N @ SUMV-CAP-V @ < IF exit THEN
@@ -1013,12 +1013,12 @@ variable VNX-CUR              \ private bucket-walk cursor
 : VNX-RESIZE ( -- )
    SUMV-CAP VNX-CAP !
    SUMV-CAP VNX-LCAP @ > IF
-      VNX-L-P  VNX-LCAP @ cells  SUMV-CAP cells  REG-GROW1
+      VNX-L-P  VNX-LCAP @ cells  SUMV-CAP cells  CHECKER-REG:GROW
       SUMV-CAP VNX-LCAP !
    THEN
    VNX-SLOTS-INIT BEGIN dup SUMV-CAP 2 * < WHILE 2 * REPEAT {: need:n :}
    need VNX-SLOTS <= IF EXIT THEN
-   VNX-B-P  VNX-SLOTS cells  need cells  REG-GROW1
+   VNX-B-P  VNX-SLOTS cells  need cells  CHECKER-REG:GROW
    need VNX-SLOTS-V ! ;
 
 : VNX-BUILD ( -- )
@@ -1441,7 +1441,7 @@ private
 
 : PF-GROW ( n -- ) {: need:n :}
    need PF-CAP-V @ 2 * max {: nc:n :}
-   PF-A-P  PF-CAP-V @ PF-REC *  nc PF-REC *  REG-GROW1
+   PF-A-P  PF-CAP-V @ PF-REC *  nc PF-REC *  CHECKER-REG:GROW
    nc PF-CAP-V ! ;
 
 public
@@ -1545,12 +1545,12 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
 : FVX-RESIZE ( -- )
    PF-CAP FVX-CAP !
    PF-CAP FVX-LCAP @ > IF
-      FVX-L-P  FVX-LCAP @ cells  PF-CAP cells  REG-GROW1
+      FVX-L-P  FVX-LCAP @ cells  PF-CAP cells  CHECKER-REG:GROW
       PF-CAP FVX-LCAP !
    THEN
    FVX-SLOTS-INIT BEGIN dup PF-CAP 2 * < WHILE 2 * REPEAT {: need:n :}
    need FVX-SLOTS <= IF EXIT THEN
-   FVX-B-P  FVX-SLOTS cells  need cells  REG-GROW1
+   FVX-B-P  FVX-SLOTS cells  need cells  CHECKER-REG:GROW
    need FVX-SLOTS-V ! ;
 
 : FVX-BUILD ( -- )
@@ -1640,7 +1640,7 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 \ current stamp.
 : TFM-ENSURE ( -- )
    TFM-CAP @ TF-CAP >= IF EXIT THEN
-   TFM-P  TFM-CAP @ TFM-REC *  TF-CAP TFM-REC *  REG-GROW1
+   TFM-P  TFM-CAP @ TFM-REC *  TF-CAP TFM-REC *  CHECKER-REG:GROW
    TFM-P @  TFM-CAP @ TFM-REC * CELL /  TF-CAP TFM-REC * CELL /  ARENA-CELLS-ZERO
    TF-CAP TFM-CAP ! ;
 
@@ -1815,7 +1815,7 @@ variable TFW-CAP   TFW-INIT TFW-CAP !   \ cells TFW-P holds
 : TFW-ENSURE ( n -- ) {: need:n :}
    need TFW-CAP @ <= IF EXIT THEN
    need TFW-CAP @ 2 * max {: cap:n :}
-   TFW-P  TFW-CAP @ cells  cap cells  REG-GROW1
+   TFW-P  TFW-CAP @ cells  cap cells  CHECKER-REG:GROW
    cap TFW-CAP ! ;
 
 : TFW@ ( n -- n ) cells TFW-P @ + @ ;
@@ -2137,7 +2137,7 @@ variable PF-TX-SERIAL   0 PF-TX-SERIAL !
 : PF-TX-ENSURE ( -- )
    PF-TX-DEPTH @ PF-TX-CAP-V @ < IF EXIT THEN
    PF-TX-CAP-V @ 2 * {: nc:n :}
-   PF-TX-P PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * REG-GROW1
+   PF-TX-P PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * CHECKER-REG:GROW
    nc PF-TX-CAP-V ! ;
 
 \ A declaration participant that finds frames opened above its own must retire
@@ -3030,7 +3030,7 @@ private
 
 : LAY-GROW ( n -- ) {: need:n :}
    need LAY-CAP-V @ 2 * max {: nc:n :}
-   LAY-A-P  LAY-CAP-V @ LAY-REC *  nc LAY-REC *  REG-GROW1
+   LAY-A-P  LAY-CAP-V @ LAY-REC *  nc LAY-REC *  CHECKER-REG:GROW
    nc LAY-CAP-V ! ;
 : LAY-ENSURE ( -- )
    LAY-N @ LAY-CAP-V @ < IF exit THEN
@@ -3254,7 +3254,7 @@ private
 
 : TF-RBF-GROW ( -- )
    TF-RBF-CAP-V @ 2 * {: nc:n :}
-   TF-RBF-P  TF-RBF-CAP-V @ TF-RBF-REC *  nc TF-RBF-REC *  REG-GROW1
+   TF-RBF-P  TF-RBF-CAP-V @ TF-RBF-REC *  nc TF-RBF-REC *  CHECKER-REG:GROW
    nc TF-RBF-CAP-V ! ;
 
 public

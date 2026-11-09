@@ -245,8 +245,8 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field ptr-cell!
 \ A caller holding a byte count passes it rounded up to cells. The rounded read
 \ stays mapped because every source is a page-granular map-anon mapping or lies
 \ inside DATA; the rounded write stays inside the destination because that is a
-\ fresh ARENA-ALLOC (whole pages) or an SR-TAKE, which starts the next take on
-\ a cell boundary past it.
+\ fresh ARENA-ALLOC (whole pages), CHECKER-REG:GROW's whole cells at a build's
+\ `here`, or an SR-TAKE, which starts the next take on a cell boundary past it.
 : ARENA-CELLS-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}
    n 0 ?do src i cells + @ dst i cells + ! loop ;
 
@@ -293,6 +293,23 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field ptr-cell!
 
 : REG-GROW1 ( ptr ptr a n n -- ) {: pv:ptr ob:n nb:n :}
    pv @ ob nb ARENA-BYTES-GROW pv ! ;
+
+package CHECKER-REG
+public
+\ Grows a store whose boot buffer lies in DATA, so it holds numbers and no
+\ address. One in an open build's space is the program's: it grows there at
+\ `here`, so the linker writes it with the file that grew it. Any other grows
+\ into fresh pages (REG-GROW1), which a written program cannot name.
+: GROW ( ptr ptr u8 n n -- ) {: pv:ptr ob:n nb:n :}
+   data-base BOOT:IMAGE-BASE-CELL + @ {: image:n :}
+   pv @ NULL-PTR - {: at:n :}
+   image 0 =  at image < or  at here NULL-PTR - >= or IF pv ob nb REG-GROW1 EXIT THEN
+   align here {: dst:ptr :}
+   nb CELL + 1- CELL / cells allot
+   pv @ dst ob CELL + 1- CELL / ARENA-CELLS-COPY
+   pv @ ob ARENA-ABANDON
+   dst pv ! ;
+;package
 
 : ARENA-BOOT-RESTORE ( ptr ptr n ptr n n -- )
    {: pv:ptr boot:ptr bytes:n :}
@@ -2133,8 +2150,9 @@ public
    row 1 + CELL-ROW-N ! ;
 ;package
 
-\ Registry stores keep a baked DATA boot buffer (build-time defs never exceed
-\ the boot cap) and grow into anon mmap through ARENA-BYTES-GROW.
+\ Registry stores keep a DATA boot buffer sized for hb's own declarations and
+\ grow through CHECKER-REG:GROW, inside a build's space when a program it builds
+\ declares more.
 \
 \ The name column holds offsets into CT-STR, not pointers; every reader adds
 \ the pool base at use (CT-NAME$). An offset survives a pool relocation and a
@@ -2199,10 +2217,10 @@ CT-ARENA-BOOT
 : CT-GROW ( n -- ) {: need:n :}
    need CT-CAP-V @ 2 * max {: nc:n :}
    CT-CAP-V @ cells {: ob:n :}   nc cells {: nb:n :}
-   CT-NAME-A-P ob nb REG-GROW1   CT-NAME-U-P ob nb REG-GROW1
-   CT-CLASS-P ob nb REG-GROW1    CT-WIDTH-P ob nb REG-GROW1
-   CT-SIGN-P ob nb REG-GROW1
-   CT-PKG-A-P ob nb REG-GROW1    CT-PKG-U-P ob nb REG-GROW1
+   CT-NAME-A-P ob nb CHECKER-REG:GROW   CT-NAME-U-P ob nb CHECKER-REG:GROW
+   CT-CLASS-P ob nb CHECKER-REG:GROW    CT-WIDTH-P ob nb CHECKER-REG:GROW
+   CT-SIGN-P ob nb CHECKER-REG:GROW
+   CT-PKG-A-P ob nb CHECKER-REG:GROW    CT-PKG-U-P ob nb CHECKER-REG:GROW
    nc CT-CAP-V ! ;
 
 : CT-ENSURE ( n -- ) {: need:n :}   \ ensure record cap can index code `need`
@@ -2212,7 +2230,7 @@ CT-ARENA-BOOT
 \ A relocation moves the pool, not the names in it: stored offsets stay valid.
 : CT-STR-GROW ( n -- ) {: need:n :}
    need CT-STR-CAP-V @ 2 * max {: nc:n :}
-   CT-STR-P @ CT-STR-CAP-V @ nc ARENA-BYTES-GROW CT-STR-P !
+   CT-STR-P CT-STR-CAP-V @ nc CHECKER-REG:GROW
    nc CT-STR-CAP-V ! ;
 
 : CT-STR-ENSURE ( n -- ) {: add:n :}   \ ensure room for `add` more string bytes
@@ -5782,7 +5800,7 @@ variable VNARG-N   0 VNARG-N !
 : VNARG ( -- ptr n ) VNARG-P @ ;
 : VNARG-GROW ( n -- ) {: need:n :}
    need VNARG-CAP-V @ 2 * max {: nc:n :}
-   VNARG-P VNARG-CAP-V @ cells nc cells REG-GROW1
+   VNARG-P VNARG-CAP-V @ cells nc cells CHECKER-REG:GROW
    nc VNARG-CAP-V ! ;
 : VNARG-ENSURE ( n -- ) {: need:n :}      \ room for `need` more cells past VNARG-N
    VNARG-N @ need + VNARG-CAP-V @ <= IF exit THEN
@@ -5808,16 +5826,16 @@ variable VRC-RVN
 : VREC-GROW ( n -- ) {: need:n :}
    need VREC-CAP-V @ 2 * max {: nc:n :}
    VREC-CAP-V @ cells {: ob:n :}   nc cells {: nb:n :}
-   VREC-NAME-A-P ob nb REG-GROW1   VREC-NAME-U-P ob nb REG-GROW1
-   VREC-START-P ob nb REG-GROW1    VREC-COUNT-P ob nb REG-GROW1
-   VREC-TVN-P ob nb REG-GROW1      VREC-RVN-P ob nb REG-GROW1
+   VREC-NAME-A-P ob nb CHECKER-REG:GROW   VREC-NAME-U-P ob nb CHECKER-REG:GROW
+   VREC-START-P ob nb CHECKER-REG:GROW    VREC-COUNT-P ob nb CHECKER-REG:GROW
+   VREC-TVN-P ob nb CHECKER-REG:GROW      VREC-RVN-P ob nb CHECKER-REG:GROW
    nc VREC-CAP-V ! ;
 : VREC-ENSURE ( -- )            \ ensure room for the next record id (VREC-N)
    VREC-N @ VREC-CAP-V @ < IF exit THEN
    VREC-N @ 1 + VREC-GROW ;
 : VREC-FIELD-GROW ( n -- ) {: need:n :}
    need VREC-FIELD-CAP-V @ 2 * max {: nc:n :}
-   VREC-FIELDS-P @ VREC-FIELD-CAP-V @ cells nc cells ARENA-BYTES-GROW VREC-FIELDS-P !
+   VREC-FIELDS-P VREC-FIELD-CAP-V @ cells nc cells CHECKER-REG:GROW
    nc VREC-FIELD-CAP-V ! ;
 : VREC-FIELD-ENSURE ( -- )
    VREC-FIELD-N @ VREC-FIELD-CAP-V @ < IF exit THEN
@@ -5825,10 +5843,10 @@ variable VRC-RVN
 : VREC-NODE-GROW ( n -- ) {: need:n :}
    need VREC-NODE-CAP-V @ 2 * max {: nc:n :}
    VREC-NODE-CAP-V @ cells {: ob:n :}   nc cells {: nb:n :}
-   VRN-TAG-P ob nb REG-GROW1
-   VRN-A-P ob nb REG-GROW1   VRN-B-P ob nb REG-GROW1   VRN-C-P ob nb REG-GROW1
-   VRN-D-P ob nb REG-GROW1   VRN-E-P ob nb REG-GROW1   VRN-F-P ob nb REG-GROW1
-   VRN-G-P ob nb REG-GROW1   VRN-H-P ob nb REG-GROW1
+   VRN-TAG-P ob nb CHECKER-REG:GROW
+   VRN-A-P ob nb CHECKER-REG:GROW   VRN-B-P ob nb CHECKER-REG:GROW   VRN-C-P ob nb CHECKER-REG:GROW
+   VRN-D-P ob nb CHECKER-REG:GROW   VRN-E-P ob nb CHECKER-REG:GROW   VRN-F-P ob nb CHECKER-REG:GROW
+   VRN-G-P ob nb CHECKER-REG:GROW   VRN-H-P ob nb CHECKER-REG:GROW
    nc VREC-NODE-CAP-V ! ;
 : VREC-NODE-ENSURE ( -- )
    VREC-NODE-N @ VREC-NODE-CAP-V @ < IF exit THEN
@@ -5916,7 +5934,7 @@ variable VRC-RVN
 \ are both offsets, so nothing needs rebasing.
 : VREC-STR-GROW ( n -- ) {: need:n :}
    need VREC-STR-CAP-V @ 2 * max {: nc:n :}
-   VREC-STR-P @ VREC-STR-CAP-V @ nc ARENA-BYTES-GROW VREC-STR-P !
+   VREC-STR-P VREC-STR-CAP-V @ nc CHECKER-REG:GROW
    nc VREC-STR-CAP-V ! ;
 : VREC-STR-ENSURE ( n -- ) {: add:n :}   \ ensure room for `add` more string bytes
    VREC-STR-U @ add + VREC-STR-CAP-V @ <= IF exit THEN
@@ -8378,16 +8396,17 @@ USIGS-CLEAR
 \ (E-BUILD-EFFECT) and atom and param terms keep their names in TERM-NAMES.
 : USIGS-GROW {: need :}
    need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP {: cap:n :}
-   USIGS USIGS-CAP-U @ cap ARENA-BYTES-GROW {: next:ptr :}
+   USIGS {: old:ptr :}
+   USIGS-P USIGS-CAP-U @ cap CHECKER-REG:GROW
+   USIGS {: next:ptr :}
    \ The copy is verbatim, so every offset a valid stamp covers is still its own
    \ node. Carry only a valid stamp: an invalidation (CLEAR, a retire's null)
    \ must survive a grow. Any other stamp is dropped: the abandoned address may
    \ be mapped again, and a stamp still naming it would then match a store it
    \ never indexed.
-   USIGS CHX-BASE@ = IF next ELSE NULL-PTR THEN CHX-BASE!
-   USIGS UIX-BASE@ = IF next ELSE NULL-PTR THEN UIX-BASE!
+   old CHX-BASE@ = IF next ELSE NULL-PTR THEN CHX-BASE!
+   old UIX-BASE@ = IF next ELSE NULL-PTR THEN UIX-BASE!
    NULL-PTR USX-BASE!   NULL-PTR HIDX-EFF-BASE!
-   next USIGS-P !
    cap USIGS-CAP-U ! ;
 
 : USIGS-ENSURE {: need :}
@@ -8528,7 +8547,7 @@ variable SYM-ID
 
 : SYM-STR-GROW ( n -- ) {: need:n :}
    need SYM-STR-CAP-V @ 2 * max {: nc:n :}
-   SYM-STR-P @ SYM-STR-CAP-V @ nc ARENA-BYTES-GROW SYM-STR-P !
+   SYM-STR-P SYM-STR-CAP-V @ nc CHECKER-REG:GROW
    nc SYM-STR-CAP-V ! ;
 
 \ Every name the checker records is copied here from declaration words any
@@ -8887,7 +8906,7 @@ HIDX-MEM-CLEAR
 \ Growing drops the HIDX mapping, so the next lookup rehashes at the new cap.
 : SYM-GROW ( n -- ) {: need:n :}
    need SYM-CAP-NEXT {: nc:n :}
-   SYMS SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW SYMS-P !
+   SYMS-P SYM-CAP-V @ SYM-REC * nc SYM-REC * CHECKER-REG:GROW
    nc SYM-CAP-V !
    HIDX-MEM-CLEAR   0 HIDX-VALID !
    HIDX-EPOCH+ ;
@@ -16567,7 +16586,7 @@ CHECKER-REG:}SCRATCH
 
 : NORET-GROW {: need :}
    need NORET-CAP-U @ 2 * max USIGS-ROUND-CAP {: cap:n :}
-   NORETS NORET-CAP-U @ cap ARENA-BYTES-GROW NORET-P !
+   NORET-P NORET-CAP-U @ cap CHECKER-REG:GROW
    NULL-PTR NRX-BASE!   \ the abandoned address may be mapped again
    cap NORET-CAP-U ! ;
 
@@ -16960,7 +16979,7 @@ RECORD-PEND-EFF 0 CELL-ROW+
    RECORD-LINK-CAP @ 0= IF 64 ELSE RECORD-LINK-CAP @ THEN
    BEGIN dup ord <= WHILE 2 * REPEAT
    CK-DICT-CAP min {: cap:n :}
-   RECORD-LINK-P RECORD-LINK-CAP @ RECORD-LINK-ROW * cap RECORD-LINK-ROW * REG-GROW1
+   RECORD-LINK-P RECORD-LINK-CAP @ RECORD-LINK-ROW * cap RECORD-LINK-ROW * CHECKER-REG:GROW
    cap RECORD-LINK-CAP ! ;
 
 : RECORD-LINK-CLEAR ( n -- ) {: ord:n :}
