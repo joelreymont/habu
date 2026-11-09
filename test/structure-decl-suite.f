@@ -17,7 +17,9 @@ T-RESET
 variable B   variable PFB
 
 \ 6. A duplicate field name rejects through the field record (E-TFAM-DUP 7102)
-\    and the provisional field rows roll back.
+\    and the provisional field rows roll back. hb's own type entries are read
+\    first: a declaration reads every pending one before it opens.
+TFAM:READ-PENDING
 TYPE-FIELD:COUNT PFB !
 s" STRUCTURE dupf FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=
 TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
