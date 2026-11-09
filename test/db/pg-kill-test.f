@@ -78,21 +78,30 @@ PROCESS:NO-FD FIFO-RD !
    fd >FD FD:POLLIN PROCESS:PFD!
    1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART ;
 
-\ One line into buf, a byte at a time up to its newline, before the deadline.
-\ End of file first means the case died before it reported: that, a line that
-\ fills buf with no newline, a failed read or a failed poll answers false. The
-\ deadline running out first is thrown as a timeout, named for REPORT-READ?.
+\ The pool has reaped the inner test, naming it with its output tail if red; the
+\ FIFO's poll says nothing before a writer opens it, nor ever on macOS
+\ (src/lib/test/fifo.f EOF-WITHIN).
+: TEST-ENDED? ( -- bool )  0 >IDX GT-POOL-FREE? ;
+
+\ One line into buf, stepping the pool while none is there. False if the test
+\ ends, the FIFO ends, buf fills or a read or poll fails first; the deadline
+\ throws a timeout.
 : LINE-READ? ( ptr u8 ptr n n -- bool )
    {: buf:ptr count:ptr deadline:n :}
    0 count !
    begin
       count @ PATH-CAP >= if false exit then
-      FIFO-RD @ deadline PROCESS:LEFT-MS MS>N READY-WITHIN {: ready:n :}
-      ready 0= if s" pg-kill-test REPORT-READ" TEST-WAIT:EXPIRED then
+      FIFO-RD @ 0 READY-WITHIN {: ready:n :}
       ready 0 < if false exit then
-      FIFO-RD @ buf count @ + 1 read 1 <> if false exit then
-      buf count @ + c@ NEWLINE = if true exit then
-      count @ 1+ count !
+      ready 0= if
+         TEST-ENDED? if false exit then
+         deadline PROCESS:LEFT-MS MS>N 0= if s" pg-kill-test REPORT-READ" TEST-WAIT:EXPIRED then
+         GT-POOL-STEP
+      else
+         FIFO-RD @ buf count @ + 1 read 1 <> if false exit then
+         buf count @ + c@ NEWLINE = if true exit then
+         count @ 1+ count !
+      then
    again ;
 
 \ A report the case could not finish answers false and leaves REPORTED false.
@@ -128,9 +137,7 @@ PROCESS:NO-FD FIFO-RD !
 \ End of file within ms: nothing under the row holds the write end. A failed
 \ read or poll answers false. ms running out first is this test's own
 \ deadline, named and thrown as a timeout. A FIFO no writer has opened reads
-\ end of file too, so it means anything only after the case's report. On macOS,
-\ whose poll never reports a FIFO's end of file, a case file that dies before
-\ its report is the report wait's timeout instead of a failed report.
+\ end of file too, so it means anything only after the case's report.
 : GONE-WITHIN? ( n -- bool )
    {: ms:n :}
    FIFO-DONE @ if true exit then
