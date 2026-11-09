@@ -13,7 +13,11 @@ learned live in the docs for their subject.
   LSP, x86-64 and Wasm tests disabled, and it is pushed and installed ("the
   path to arm-to-arm", "the fastest path to arm64", "Wasm and x86-64 after
   arm64"). Its purpose, 2026-10-29: "i need fast incremental builds to
-  enable you and other agents to quickly iterate on features."
+  enable you and other agents to quickly iterate on features." On 2026-11-09,
+  told that nobody had checked that the files a one-file edit rebuilt are
+  exactly the edited file and the files that depend on it, Joel wrote "you
+  need to make sure this is working 100%" and "if arm-to-arm is 100% done and
+  working, then tackle wasm and x86, in that order".
 - 2026-11-09, Wasm and x86-64 after arm64: told that one Wasm failure on the
   landing tree is a tier-0 defect of the stack and the other's cause is
   unknown, and asked whether to hold the Wasm work until arm-to-arm lands, Joel
@@ -1042,6 +1046,21 @@ learned live in the docs for their subject.
 
 ## Compiler and builds
 
+- 2026-11-09, timestamps, not hashes: told that a warm build decides a file is
+  unchanged by the SHA-256 of its source and of the objects of the files it
+  names, and shown that make's newer-than rule would link a stale object once
+  `rsync -a` installs an edited file with its older timestamp, Joel wrote
+  "just checking the timestamp is sufficient, why did we introduce sha256?"
+  and "prove me wrong", then "it's not about speed. the speed of checking 1
+  timestamp will always be WAY faster than hashing. the point is not doing
+  stupid things in the first place! make does NO hashing", "we are not gonna
+  hash just because rsync -a is wrong. why are you using rsync and
+  introducing a dependency on another tool?" and "always fix the cause, not
+  the symptom! the cause here is that rsync is screwing up. why are we using
+  rsync at all? the c compiler does not use rsync, neither does rust. why?"
+  A build decides what changed from timestamps, without hashing, in place of
+  the SHA-256 checks "linking a file's object" names, and Habu installs
+  without rsync; both designs go to Joel before a worker starts.
 - 2026-11-09, Wasm through the one linker: shown a design in which a Wasm
   module is built as any program is, by hb-build with Wasm as its target (T0
   gains a Wasm code generator beside its arm64 and x86-64 ones, the linker
