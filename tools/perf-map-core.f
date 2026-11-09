@@ -15,7 +15,6 @@ private
 $10000 constant IN-CAP           \ one read chunk
 4096 constant LINE-CAP
 $4000 constant OUT-CAP           \ one rewritten line: LINE-CAP bytes plus a name and an offset
-512 constant PKG-CAP             \ package rows the qualifier table holds
 4 constant ADDR-MIN              \ hex digits before a token is taken for an address
 16 constant ADDR-MAX
 9 constant TAB
@@ -23,8 +22,8 @@ $4000 constant OUT-CAP           \ one rewritten line: LINE-CAP bytes plus a nam
 create IN-BUF IN-CAP allot
 create LINE-BUF LINE-CAP allot
 create OUT-BUF OUT-CAP allot
-create PKG-WID PKG-CAP cells allot
-create PKG-REC PKG-CAP cells allot
+DYNAMIC-BUFFER PKG-WID n
+DYNAMIC-BUFFER PKG-REC n
 
 variable IN-U      variable IN-I
 variable LINE-U
@@ -56,9 +55,10 @@ variable MAPPED    \ has this line's address column been rewritten already
 \ whole rewrite.
 : PKG+ ( n n -- ) {: wid:n rec:n :}
    wid 0= if exit then
-   PKG-N @ PKG-CAP >= if exit then
-   wid PKG-WID PKG-N @ cells + !
-   rec PKG-REC PKG-N @ cells + !
+   PKG-N @ 1+ PKG-WID-RESERVE
+   PKG-N @ 1+ PKG-REC-RESERVE
+   wid PKG-N @ PKG-WID !
+   rec PKG-N @ PKG-REC !
    PKG-N @ 1+ PKG-N ! ;
 
 : PKG-SCAN ( -- )
@@ -75,7 +75,7 @@ variable MAPPED    \ has this line's address column been rewritten already
    wid 0= if -1 exit then
    -1 ACC !
    PKG-N @ 0 ?do
-      PKG-WID i cells + @ wid = if PKG-REC i cells + @ ACC ! then
+      i PKG-WID @ wid = if i PKG-REC @ ACC ! then
    loop
    ACC @ ;
 
