@@ -824,50 +824,57 @@ inputs names an ENUM of just those, so it gives no line for an input it never
 gets, which could only throw. Each line names an input, an ACTION
 `( <ctx> -- )` or `-` for none, and a NEXT: `>state`, any token starting with
 `>`, for a fixed next state, else a word `( <ctx> -- <states> )` that picks
-one. `FINAL <state> <ACTION>` ends a run in that state. For each `IN` row and
-then the machine DEFINE writes:
+one. `FINAL <state> <ACTION>` ends a run in that state. DEFINE writes a word
+for each line's ACTION and each `FINAL` row, one for each `IN` row, then the
+machine:
 
 ```forth
+: <NAME>/<state>/<input> ( <ctx> -- ) <ACTION> ;                \ a line's ACTION
+: <NAME>/<final> ( <ctx> -- ) <ACTION> ;                        \ a FINAL row
 : <NAME>/<state> ( <ctx> -- <states> )
    dup <SENSE> MATCH <inputs>                     \ the row's ENUM, else the header's
-      <input> OF construct <states> <next> swap <ACTION> ENDOF   \ a >next line
-      <input> OF dup <ACTION> <NEXT> ENDOF                      \ a NEXT word
+      <input> OF construct <states> <next> swap <NAME>/<state>/<input> ENDOF  \ >next
+      <input> OF dup <NAME>/<state>/<input> <NEXT> ENDOF        \ a NEXT word
       …
    ;MATCH ;
 : <NAME> ( <ctx> <states> -- )
    begin MATCH <states>
       <state> OF false over <NAME>/<state> ENDOF                \ an IN row
-      <final> OF dup true construct <states> <final> rot <ACTION> ENDOF
+      <final> OF dup true construct <states> <final> rot <NAME>/<final> ENDOF
    ;MATCH swap until 2drop ;
 ```
 
-An ACTION of `-` writes `drop construct <states> <next>` on a `>next` line,
-`<NEXT>` alone before a NEXT word and `true construct <states> <final>` on a
-`FINAL` row. Every call the table names ends its arm, an ACTION before a NEXT
-word excepted, so an ACTION that never returns (a refused pair or a failure
-end) loads on a `>next` line or a `FINAL` row, and so does a state whose every
-line refuses. Two shapes fail the load with `E-DEAD-CODE`: an ACTION that
-never returns before a NEXT word, at that word, and a machine none of whose
-arms returns (every IN row's lines refuse and every FINAL's ACTION never
-returns), at the `swap` after the run word's `;MATCH`. The words land in the
-package and section DEFINE is called in, so `<NAME>/<state>` shares `<NAME>`'s
-visibility. The machine keeps no state of its own; a throw
-from a SENSE, ACTION or NEXT leaves `<NAME>` as thrown. Neither `MATCH` has a
-default arm, so the checker fails the load, 70 under `evaluate-closed`, for a
-row missing an input, an unknown `>state`, a state with neither an `IN` nor a
-`FINAL` row, and a word with the wrong effect; for a row naming its own
-ENUM, that covers a row missing one of its inputs, a line for a tag outside
-it and a SENSE answering another ENUM. The table's own grammar is
-`FSM:E-SYNTAX`: the source ending before `;DEFINE`, a header not `( … )`, a
-line before the first `IN` or `FINAL`, a row cut short by `IN`, `FINAL` or
-`;DEFINE`, a row with no line, a `(` after SENSE not followed by one name
-and `)`, a token after a `FINAL` row's ACTION other than those three, a `\`
-anywhere in a row, and a `(` in a row but right after SENSE. DEFINE reads the
-table with `parse-name`, so neither opens a comment there (a `STRUCTURE` or
-`ENUM` body rejects both too); comments go above the table. `tools/check.f`
-skips the table (`parses-through: FSM:DEFINE 0 ( ;DEFINE )`) and checks the
-code after it; the generated words are left to the run, so their uses are
-`W-CHECK-DEFERRED` under `--verify-only`.
+An ACTION of `-` writes no line word: `drop construct <states> <next>` on a
+`>next` line, `<NEXT>` alone before a NEXT word, and `drop` as
+`<NAME>/<final>`'s body. Every ACTION runs in a word declaring `( <ctx> -- )`,
+so the checker holds it to that effect, and that word ends its arm except
+before a NEXT word, so an ACTION that never returns (a refused pair or a
+failure end) loads on a `>next` line or a `FINAL` row, and so does a state
+whose every line refuses. Two shapes fail the load with `E-DEAD-CODE`: an
+ACTION that never returns before a NEXT word, at the NEXT word after its line
+word, and a machine none of whose arms returns (every IN row's lines refuse and
+every FINAL's ACTION never returns), at the `swap` after the run word's
+`;MATCH`. The words land in the package and section DEFINE is called in, so
+`<NAME>/<state>`, `<NAME>/<state>/<input>` and `<NAME>/<final>` share
+`<NAME>`'s visibility. A second row for a state, or a second line for one
+input when both name an ACTION, fails the load as a duplicate definition, 78
+under `evaluate-closed`. The machine keeps no state of its own;
+a throw from a SENSE, ACTION or NEXT leaves `<NAME>` as thrown. Neither `MATCH`
+has a default arm, so the checker fails the load, 70 under `evaluate-closed`,
+for a row missing an input, an unknown `>state`, a state with neither an `IN`
+nor a `FINAL` row, and a word with the wrong effect; for a row naming its own
+ENUM, that covers a row missing one of its inputs, a line for a tag outside it
+and a SENSE answering another ENUM. The table's own grammar is `FSM:E-SYNTAX`:
+the source ending before `;DEFINE`, a header not `( … )`, a line before the
+first `IN` or `FINAL`, a row cut short by `IN`, `FINAL` or `;DEFINE`, a row
+with no line, a `(` after SENSE not followed by one name and `)`, a token after
+a `FINAL` row's ACTION other than those three, a `\` anywhere in a row, and a
+`(` in a row but right after SENSE. DEFINE reads the table with `parse-name`,
+so neither opens a comment there (a `STRUCTURE` or `ENUM` body rejects both
+too); comments go above the table. `tools/check.f` skips the table
+(`parses-through: FSM:DEFINE 0 ( ;DEFINE )`) and checks the code after it; the
+generated words are left to the run, so their uses are `W-CHECK-DEFERRED` under
+`--verify-only`.
 
 GETAFIX reads a fixed-point number from a key line, keeping digits, the first
 point and a leading minus (`src/lib/fsm-test.f`):

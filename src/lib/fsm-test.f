@@ -377,12 +377,19 @@ variable SRC-LEN
    9 VALID 2 T=
    s" package FSM-BAD-ROW-SENSE ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM ENUM bell go ring ;ENUM : S ( n -- sig ) drop construct sig go ; : R ( n -- bell ) drop construct bell go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle IN busy S ( bell ) go - >done ring - >idle FINAL done - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
-   10 VALID 2 T= ;
+   10 VALID 2 T=
+   s" package FSM-BAD-FINAL ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : RETRY ( bool ph n -- bool ph ) drop ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy RETRY ;DEFINE ;using ;package"
+   TEST-EVAL:RC 70 T=
+   11 VALID 2 T=
+   s" package FSM-BAD-PICK-ACTION ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : TWIN ( n n -- n ) drop ; : PICK ( n -- ph ) drop construct ph busy ; using FSM DEFINE M ( n ) ph sig IN idle S go TWIN PICK halt - >idle FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC 70 T=
+   12 VALID 2 T=
+   s" package FSM-BAD-STATE-ACTION ENUM ph idle busy done ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : SNEAK ( ph n -- ph ) drop drop construct ph done ; using FSM DEFINE M ( n ) ph sig IN idle S go SNEAK >busy halt - >idle FINAL busy - FINAL done - ;DEFINE ;using ;package"
+   TEST-EVAL:RC 70 T=
+   13 VALID 2 T= ;
 
-\ The size table: STATES states of INPUTS inputs each, every arm calling the
-\ one action, whose long name keeps a row word under the engine's body-text
-\ ceiling while the table passes 1 MiB. Each table line becomes a longer arm, so
-\ the table's length bounds the generated text from below.
+\ The size table: STATES rows of INPUTS lines, each naming one long action, so
+\ each line word outgrows its line and the generated text the 1 MiB table.
 200 constant STATES
 44 constant INPUTS
 $100000 constant MIB

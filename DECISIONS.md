@@ -62,14 +62,17 @@ learned live in the docs for their subject.
   row words (Tender's five dispatchers with 25 row-word calls are the two
   working event machines written with `MATCH` that Maki's record of
   2026-11-06 asked for first), Joel chose "Approve NAME-STEP (Recommended)".
-  Of the hold of a FINAL action to its `( ctx -- )` effect (dot
+  Of the hold of an action to its `( ctx -- )` effect (dot
   habu-hold-a-final-20c6c6f5), Joel said "eval all the items using the
   'what's best for long term lens' and only bring to me what you can't
-  decide"; the lead chose: each FINAL action is emitted through a generated
-  `NAME/<final> ( ctx -- )` word that the arm calls last, as IN rows'
-  `NAME/<state>` words already declare their effects, so the checker holds
-  both at load; both generated words share one parser, row representation
-  and arm emitter. Dots under habu-fsm-stepping-from-c8625faf.
+  decide"; the lead chose: every ACTION runs in a generated word declaring
+  `( ctx -- )`, `NAME/<final>` for a FINAL row's and `NAME/<state>/<input>`
+  for an IN line's, as IN rows' `NAME/<state>` words already declare their
+  effects, so the checker holds every callback at load, an ACTION that never
+  returns still loads last on a `>state` line, and a wrong effect is refused
+  in a word naming the machine, state and input; NAME-STEP and the runner
+  share one parser, row representation and arm emitter. Dots under
+  habu-fsm-stepping-from-c8625faf.
 - 2026-11-04, scope memory (relayed by stuart from Tender): shown that every
   MEM:WITH-BYTES scope maps and unmaps its memory (1,000,000 empty scopes
   4.69 s, 2.04 s of it in the kernel) and a design that keeps small scopes in

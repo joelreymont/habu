@@ -5,7 +5,7 @@
 \ A row may name its own inputs ENUM, the one its SENSE answers, in place of
 \ the header's.
 \ The grammar and the generated words are in docs/forth.md "State machines".
-\ STORAGE CLASS. PROCESS-WIDE: the text buffers and header cells serve one
+\ STORAGE CLASS. PROCESS-WIDE: the text buffers and token cells serve one
 \ DEFINE at a time, as only the main thread compiles; the buffers are released
 \ before DEFINE returns or throws, so it keeps no state after.
 
@@ -23,24 +23,35 @@ public
 
 private
 
-\ ROW-TEXT gathers the whole generated source; RUN-TEXT the run word's state
-\ arms, which follow every row word they call.
+\ ACT-TEXT takes the action words, then ROW-TEXT's row words and run word;
+\ RUN-TEXT holds the run word's arms: each word precedes every word calling it.
+DYNAMIC-BUFFER ACT-TEXT u8
+variable ACT-LEN
 DYNAMIC-BUFFER ROW-TEXT u8
 variable ROW-LEN
 DYNAMIC-BUFFER RUN-TEXT u8
 variable RUN-LEN
 
-\ The header's tokens point into the source DEFINE reads, which stays in place
-\ while it runs.
+\ The header's tokens and the open row's state point into the source DEFINE
+\ reads, which stays in place while it runs.
 PTR-VARIABLE NAME-A   variable NAME-U
 PTR-VARIABLE CTX-A    variable CTX-U
 PTR-VARIABLE STATES-A variable STATES-U
 PTR-VARIABLE INPUTS-A variable INPUTS-U
+PTR-VARIABLE OPEN-A   variable OPEN-U
 
 : NAME$ ( -- ptr u8 n ) NAME-A @ NAME-U @ ;
 : CTX$ ( -- ptr u8 n ) CTX-A @ CTX-U @ ;
 : STATES$ ( -- ptr u8 n ) STATES-A @ STATES-U @ ;
 : INPUTS$ ( -- ptr u8 n ) INPUTS-A @ INPUTS-U @ ;
+: OPEN$ ( -- ptr u8 n ) OPEN-A @ OPEN-U @ ;
+
+
+: ACT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if exit then
+   ACT-LEN @ u + ACT-TEXT-RESERVE
+   a ACT-LEN @ ACT-TEXT u BYTE-COPY
+   ACT-LEN @ u + ACT-LEN ! ;
 
 
 : ROW+ ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -58,6 +69,7 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
 
 
 : RELEASE ( -- )
+   ACT-TEXT-RELEASE 0 ACT-LEN !
    ROW-TEXT-RELEASE 0 ROW-LEN !
    RUN-TEXT-RELEASE 0 RUN-LEN ! ;
 
@@ -103,27 +115,40 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
    s"  ( " ROW+ CTX$ ROW+ s"  -- " ROW+ STATES$ ROW+
    s"  ) dup " ROW+ f fu ROW+ s"  MATCH " ROW+ i iu ROW+ s\" \n" ROW+ ;
 
-\ `[dup <ACTION>]`, nothing for `-`.
-: ACTION+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" -" STR= if exit then
-   s" dup " ROW+ a u ROW+ s"  " ROW+ ;
+\ ` ( <ctx> -- ) <body> ;` after an action word's name: the declared effect
+\ holds every ACTION to the context alone.
+: ACT-BODY ( ptr u8 n -- ) {: a:ptr u:n :}
+   s"  ( " ACT+ CTX$ ACT+ s"  -- ) " ACT+ a u ACT+ s\"  ;\n" ACT+ ;
+
+\ `<NAME>/<state>/<input>`, the open row's action word for one line.
+: LINE-WORD+ ( ptr u8 n -- ) {: i:ptr iu:n :}
+   NAME$ ROW+ s" /" ROW+ OPEN$ ROW+ s" /" ROW+ i iu ROW+ ;
 
 
-\ `>state` constructs the state, then the ACTION runs on the context under it;
-\ any other NEXT is a word that picks one, after `[dup <ACTION>]`.
-: NEXT+ ( ptr u8 n ptr u8 n -- ) {: a:ptr au:n x:ptr xu:n :}
-   x c@ [char] > = 0= if a au ACTION+ x xu ROW+ exit then
-   a au s" -" STR= if s" drop " ROW+ then
+\ `>state` constructs the state, then the line word runs on the context under
+\ it; any other NEXT is a word that picks one, after `dup` and the line word.
+: NEXT+ ( bool ptr u8 n ptr u8 n -- ) {: act:bool i:ptr iu:n x:ptr xu:n :}
+   x c@ [char] > = 0= if
+      act if s" dup " ROW+ i iu LINE-WORD+ s"  " ROW+ then
+      x xu ROW+ exit
+   then
+   act 0= if s" drop " ROW+ then
    s" construct " ROW+ STATES$ ROW+ s"  " ROW+ x 1+ xu 1- ROW+
-   a au s" -" STR= if exit then
-   s"  swap " ROW+ a au ROW+ ;
+   act if s"  swap " ROW+ i iu LINE-WORD+ then ;
 
 
+\ `<input> <ACTION> <NEXT>`: the arm, after the line's action word
+\ `: <NAME>/<state>/<input> ( <ctx> -- ) <ACTION> ;` unless ACTION is `-`.
 : LINE ( ptr u8 n -- ) {: i:ptr iu:n :}
    OPERAND {: a:ptr au:n :}
    OPERAND {: x:ptr xu:n :}
+   a au s" -" STR= 0= {: act:bool :}
+   act if
+      s" : " ACT+ NAME$ ACT+ s" /" ACT+ OPEN$ ACT+ s" /" ACT+ i iu ACT+
+      a au ACT-BODY
+   then
    s"    " ROW+ i iu ROW+ s"  OF " ROW+
-   a au x xu NEXT+ s\"  ENDOF\n" ROW+ ;
+   act i iu x xu NEXT+ s\"  ENDOF\n" ROW+ ;
 
 : ROW-END ( -- ) s\"    ;MATCH ;\n" ROW+ ;
 
@@ -142,6 +167,7 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
 \ least one line, so the token after SENSE, or after the `)`, is its first.
 : IN-ROW ( -- )
    OPERAND {: s:ptr su:n :}
+   s OPEN-A ! su OPEN-U !
    OPERAND {: f:ptr fu:n :}
    TOKEN {: t:ptr tu:n :}
    t tu s" (" STR= if
@@ -155,15 +181,15 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
    s\"  ENDOF\n" RUN+ ;
 
 
-\ `FINAL <state> <ACTION>`: the run word's arm that ends the run.
+\ `FINAL <state> <ACTION>`: `: <NAME>/<state> ( <ctx> -- ) <ACTION> ;`, `drop`
+\ for `-`, and the run word's arm that calls it and ends the run.
 : FINAL-ROW ( -- )
    OPERAND {: s:ptr su:n :}
    OPERAND {: a:ptr au:n :}
-   a au s" -" STR= {: none:bool :}
-   s"    " RUN+ s su RUN+ s"  OF " RUN+
-   none 0= if s" dup " RUN+ then
-   s" true construct " RUN+ STATES$ RUN+ s"  " RUN+ s su RUN+
-   none 0= if s"  rot " RUN+ a au RUN+ then
+   s" : " ACT+ NAME$ ACT+ s" /" ACT+ s su ACT+
+   a au s" -" STR= if s" drop" else a au then ACT-BODY
+   s"    " RUN+ s su RUN+ s"  OF dup true construct " RUN+ STATES$ RUN+
+   s"  " RUN+ s su RUN+ s"  rot " RUN+ NAME$ RUN+ s" /" RUN+ s su RUN+
    s\"  ENDOF\n" RUN+ ;
 
 
@@ -197,7 +223,8 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
    begin TOKEN 2dup s" ;DEFINE" STR= 0= while STEP repeat
    2drop if ROW-END then
    RUN-WORD
-   0 ROW-TEXT ROW-LEN @ evaluate-closed ;
+   0 ROW-TEXT ROW-LEN @ ACT+
+   0 ACT-TEXT ACT-LEN @ evaluate-closed ;
 
 public
 

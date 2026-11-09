@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-09T19:10:47.090579+02:00"
-blocks:
-  - habu-hold-a-final-20c6c6f5
 ---
 
 Problem: src/lib/fsm.f:187 RUN-WORD emits only the looping runner NAME. A consumer that supplies one input per call dispatches over NAME/state itself (Tender src/admit.f:2048-2050; five dispatchers, 25 row-word calls) and a machine without a natural terminal state needs fake FINAL states that only store a phase.
