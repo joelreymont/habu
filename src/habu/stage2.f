@@ -4,6 +4,7 @@
 \ the script argument, else TMPDIR, else /tmp. build-fixpoint asserts stage2 is
 \ byte-identical to the previous native stage. A package, as stdin.f: the AOT seed
 \ runs at every boot's prefix end, so a global SLEN would collide with repl.f's.
+using DRIVER
 package STAGE2
 private
 
@@ -70,5 +71,6 @@ public
    DRV-FAIL ;
 
 ;package
+;using
 
 STAGE2:RUN

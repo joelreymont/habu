@@ -1408,6 +1408,14 @@ learned live in the docs for their subject.
   reading the recorded references. Asked to name the cutting word, he asked
   "is this not something you can decide yourself using the "what's best for
   long term" lens?"
+- 2026-11-09, the kernel writer's names: shown that hb carries the linker
+  ("tools in hb"), whose kernel comes from habu2.f's writer and habu1.f's
+  assembler, so about 2,283 of the writer's top-level words (`B`, `SP`, `T1`)
+  joined every program's global dictionary and a program defining `B` was
+  refused, Joel wrote "fix the cause, not the symptoms", then "keep going":
+  the writer's files get real packages, their internals private, so hb
+  carries the linker without adding a global name; no test renames around
+  them.
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."

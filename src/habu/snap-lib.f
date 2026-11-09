@@ -20,6 +20,8 @@ require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
 require src/habu/native-body.f
 require src/habu/native-host-cells.f
+using EXECUTABLE
+using IMAGE-BYTES
 
 package SNAP
 
@@ -679,3 +681,5 @@ public
    s" " 0 die ;
 
 ;package
+;using
+;using

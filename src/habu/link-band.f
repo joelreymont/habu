@@ -12,6 +12,7 @@ require src/compiler/native/shadow.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link.f
 require src/arch/arm64/link-kernel.f
+using EXECUTABLE
 
 package LINKER
 private
@@ -436,3 +437,4 @@ variable UNSAFE-COUNT
    NSHADOW:EMISSIONS 0 ?do i PLACED @ 0<> if i data PLACE-ONE then loop ;
 
 ;package
+;using

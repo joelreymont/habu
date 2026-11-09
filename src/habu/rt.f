@@ -5,6 +5,7 @@ require src/habu/stack-abi.f
 require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
+using SYSCALL
 
 package RT
 
@@ -145,6 +146,8 @@ public
 
 ;package
 
+package RT
+public
 \ XDS points just past the top cell (full-ascending): a push stores and advances
 \ (post-index), a pop retreats and loads (pre-index), one instruction each.
 \ Every baked primitive is built from these.
@@ -153,9 +156,11 @@ public
 
 : G-POP ( n -- )
    XDS -8 LDRPRE, ;
+private
 variable DOT-LBL  variable ATOI-LBL
 variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
 
+public
 \ The engine's one output funnel (src/lib/genio-core.f).
 \ Every byte of ORDINARY program text the engine writes leaves through G-OUT:
 \ `.` `u.` `f.` (G-PRINT9/G-PRINTU9, habu1.f BFDOT), `emit` `cr` `space`
@@ -172,8 +177,10 @@ variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
 \
 \ CALLERS PASS x1 = span address, x2 = span length, as for the syscall.
 variable LGENIOOUT
+private
 variable GO-DEV  variable GO-DONE
 
+public
 : G-OUT ( -- )
    LBL GO-DEV !  LBL GO-DONE !
    0 DATA GENIO-ABI:OUT-CELL LDR,  0 GO-DEV LABEL@ CBNZ,
@@ -209,9 +216,11 @@ variable GO-DEV  variable GO-DONE
    G-OUT
    SP SP $20 ADDI, ;
 
+private
 : EMIT-DOT ( -- )
    DOT-LBL LABEL@ LBL,  9 G-POP  G-PRINT9  RET, ;
 
+public
 \ Print x9 as UNSIGNED decimal + newline. Clobbers x9-x13 + 32 bytes of sp
 \ scratch.
 : G-PRINTU9 ( -- )
@@ -236,6 +245,7 @@ variable GO-DEV  variable GO-DONE
    G-OUT
    SP SP $10 ADDI, ;
 
+private
 \ ATOI: NUL-terminated decimal string at x9 -> push i64 (leading '-' ok). Leaf.
 : EMIT-ATOI ( -- )
    ATOI-LBL LABEL@ LBL,
@@ -257,6 +267,8 @@ variable GO-DEV  variable GO-DONE
    10 10 11 MUL,
    10 G-PUSH
    RET, ;
+;package
 
+;using
 ;using
 ;using

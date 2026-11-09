@@ -25,6 +25,8 @@
 require src/arch/arm64/icode.f
 using A64ICODE
 require src/os/image-bytes.f
+using IMAGE-BYTES
+package EXECUTABLE
 $FEEDFACF constant MH-MAGIC64
 $0100000C constant CPU-ARM64
 2         constant MH-EXECUTE
@@ -39,7 +41,9 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $8000001C constant LC-RPATH
 $80000034 constant LC-DYLD-CHAINED-FIXUPS
+public
 $100000000 constant VMBASE
+private
 \ The maximum generated executable window: everything the assembler can emit,
 \ behind the header page it sits at. It is DERIVED from the assembler's own
 \ buffer rather than written out again, because the two are one fact and a
@@ -84,7 +88,9 @@ MACHO-IMAGE-MAX MACHO-FIXUPS-MAX +
 $10       constant SG-READ-ONLY
 $6        constant S-NON-LAZY-SYMBOL-POINTERS
 6         constant DYLD-CHAINED-PTR-64-OFFSET
+public
 variable CODELEN
+private
 variable MACHO-DATA-WROTE
 variable MACHO-FIXUPS-WROTE
 
@@ -114,6 +120,7 @@ MACHO-MSIZE-CHECK
 : ASM-CODELEN! ( -- )
    IMG-PAYLOAD-N @ 0 > if IMG-CODE-N @ else ASM-LEN then CODELEN ! ;
 
+public
 : ASM-CODE ( -- asm )
    ASM-CODELEN!
    ASM-PHASE ;
@@ -122,6 +129,7 @@ MACHO-MSIZE-CHECK
 \ program is a 28 KB binary, not a fixed-cap binary. MPAGE is only the fail-closed
 \ maximum generated-code window for builder images.
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
+private
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
 variable LE-BASE-SIZE
 32 constant MH-HDR-SZ                \ mach_header_64 size
@@ -264,6 +272,7 @@ variable NCMDS
    MACHO-FIXUPS-BYTES MACHO-FIXUPS-WROTE !
    IMG-PAYLOAD-CLEAR ;
 
+public
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
 : BUILD-IMAGE ( asm -- img )
    ASM-DROP
@@ -289,4 +298,6 @@ s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
 
 DATA-CONST-SIZE MACHO-FIXUPS-SIZE + constant SNAP-EXTRA-SIZE
 s" SNAP-EXTRA-SIZE" s" -- n" TRUST
+;package
+;using
 ;using

@@ -1,11 +1,13 @@
 \ image-bytes.f - shared executable image byte cursor and patch helpers.
 \ The target writer imports A64ICODE or X64CODE while loading this file.
 
+package IMAGE-BYTES
 \ Reserve the assembler window plus the larger supported image tail: a 64 KiB
 \ header/page boundary, Mach-O DATA_CONST and fixups, and one SHA-256 digest per
 \ 4 KiB code-signing page. Both target writers check their exact maximum at load.
 CODE-CAP-BYTES $10000 + $4000 + 104 +
 dup $FFF + $1000 / $20 * $14 + $58 + $40 + +
+public
 $FFFF + $10000 / $10000 * constant MSIZE
 75 constant M-BOUNDS-RC
 \ Four image cursors hold addresses inside the mapped image buffer, so they are
@@ -15,10 +17,12 @@ $FFFF + $10000 / $10000 * constant MSIZE
 PTR-VARIABLE MBUF-A
 PTR-VARIABLE MP
 variable MLEN
+private
 PTR-VARIABLE M-A
 PTR-VARIABLE M-SRC
 variable M-N
 variable M-O
+public
 \ A stripped linker may keep immutable payload bytes outside __text. The image
 \ writer receives the code/payload boundary once; other emitters leave it empty.
 PTR-VARIABLE IMG-PAYLOAD-A
@@ -36,6 +40,7 @@ variable IMG-PAYLOAD-PREFIX
       s" image: invalid code/payload boundary" 73 die then
    code IMG-CODE-N !  payload IMG-PAYLOAD-A !  bytes IMG-PAYLOAD-N ! ;
 
+private
 : M-ALLOC-BUF ( -- ptr u8 )
    MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" 74 die then ;
 
@@ -48,18 +53,22 @@ variable IMG-PAYLOAD-PREFIX
 : M-ENSURE-BUF ( -- )
    MBUF-A@ 0= if M-ALLOC-BUF MBUF-A! then ;
 
+public
 : MBUF ( -- ptr u8 )
    M-ENSURE-BUF
    MBUF-A@ ;
 
+private
 : MP@ ( -- ptr u8 ) MP @ ;
 
+public
 : MLEN@ ( -- n )
    MLEN @ ;
 
 : MLEN! ( n -- )
    MLEN ! ;
 
+private
 : M-A@ ( -- ptr u8 )
    M-A @ ;
 
@@ -75,6 +84,7 @@ variable IMG-PAYLOAD-PREFIX
 : M-O@ ( -- off )
    M-O @ >OFF ;
 
+public
 : M-BYTE+ ( ptr u8 n -- ptr u8 )
    + ;
 
@@ -87,6 +97,7 @@ variable IMG-PAYLOAD-PREFIX
 : M-HERE ( -- n )
    MP@ MBUF - ;
 
+private
 create M-FAIL-NL 1 allot
 
 \ Report before throwing: the stage/maker drivers exit with the raw throw
@@ -104,6 +115,7 @@ create M-FAIL-NL 1 allot
    dup MSIZE > if s" image-bytes: span exceeds buffer" M-FAIL then
    drop ;
 
+public
 : M-LEN ( n -- len )
    dup M-CHECK-N
    >LEN ;
@@ -112,6 +124,7 @@ create M-FAIL-NL 1 allot
    dup M-CHECK-N
    >OFF ;
 
+private
 : M-ROOM1 ( -- )
    M-HERE MSIZE >= if s" image-bytes: cursor exceeds buffer" M-FAIL then ;
 
@@ -121,6 +134,7 @@ create M-FAIL-NL 1 allot
    LEN>N {: u:n :}
    u 0 < u MSIZE M-HERE - > or if s" image-bytes: write exceeds buffer" M-FAIL then ;
 
+public
 : IMG-M8 ( n -- )
    M-ROOM1
    MP@ c!
@@ -161,18 +175,22 @@ create M-FAIL-NL 1 allot
    2dup M-BYTES-LEN
    2drop $10 M-N @ - M-ZEROS ;
 
+private
 : M-NAME16 ( ptr u8 n -- )
    M-LEN M-NAME16-LEN ;
 
+public
 : M-PAD-OFF ( off -- )
    OFF>N M-HERE - M-ZEROS ;
 
+private
 : M-PAD ( n -- )
    M-OFF M-PAD-OFF ;
 
 : M-ADDR ( off -- ptr u8 )
    OFF>N MBUF swap M-BYTE+ ;
 
+public
 : M-LE32@ ( off -- n )
    M-ADDR
    dup c@
@@ -192,8 +210,10 @@ create M-FAIL-NL 1 allot
    dup M-O@ M-LE32!
    32 rshift M-O@ OFF>N $4 + M-OFF M-LE32! ;
 
+private
 variable MBC
 
+public
 : M-BE-RESET ( off -- )
    OFF>N MBC ! ;
 
@@ -227,5 +247,7 @@ variable MBC
       1 +
    repeat drop ;
 
+private
 : M-BE-BYTES ( ptr u8 n -- )
    M-LEN M-BE-BYTES-LEN ;
+;package

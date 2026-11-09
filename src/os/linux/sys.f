@@ -5,6 +5,8 @@
 
 require src/arch/arm64/icode.f
 using A64ICODE
+package SYSCALL
+public
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
 
@@ -21,7 +23,9 @@ $104022 constant MAP-DATA-RESERVE
 $01 constant MAP-SHARED
 $11 constant MAP-SHARED-FIXED
 
+private
 93  constant NR-EXIT
+public
 63  constant NR-READ
 64  constant NR-WRITE
 48  constant NR-ACCESS
@@ -66,13 +70,16 @@ $11 constant MAP-SHARED-FIXED
 49  constant NR-CHDIR
 94  constant NR-EXIT-GROUP
 
+private
 -100 constant AT-FDCWD
+public
 $100 constant AT-SYMLINK-NOFOLLOW
 
 : SYS, ( n -- )
    8 swap MOVZ,  0 SVC,
    16 -4095 LIT64,  0 16 CMP, ;
 
+private
 \ Runtime-emit syscall stencils: the MATCH bad-tag die is
 \ EMITTED into the user word, so its write+exit syscall words are baked here at
 \ engine-build time rather than assembled by SYS, at build time. The Linux
@@ -102,6 +109,7 @@ $D2800008 NR-WRITE 32 * + SYS-WRITE-STENCIL SYS-STENCIL-W!      \ movz x8, #NR-W
 $D2800008 NR-EXIT-GROUP 32 * + SYS-EXIT-STENCIL SYS-STENCIL-W!  \ movz x8, #NR-EXIT-GROUP
 $D4000001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0
 
+public
 : SYS-EMIT-WRITE ( -- ptr u8 n )  SYS-WRITE-STENCIL SYS-STENCIL-W ;
 : SYS-EMIT-EXIT ( -- ptr u8 n )   SYS-EXIT-STENCIL SYS-STENCIL-W ;
 : SYS-EMIT-SVC ( -- ptr u8 n )    SYS-SVC-STENCIL SYS-STENCIL-W ;
@@ -150,4 +158,5 @@ $D4000001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0
       7 $4000 MOVZ,  6 6 7 ORR,
    nonores LBL,
    3 6 0 ADDI, ;
+;package
 ;using

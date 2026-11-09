@@ -75,6 +75,12 @@ package AOT-LINK
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 using A64ICODE
+using CRASH
+using DRIVER
+using ENGINE-EMIT
+using EXECUTABLE
+using IMAGE-BYTES
+using SYSCALL
 
 
 \ The image is a minimal entry plus compacted, relocated blobs.
@@ -1071,6 +1077,12 @@ variable RP  variable RE
 : INSTALL-ARM ( -- ) [: LINK-ARM ;] is LINK-TARGET ;
 INSTALL-ARM
 
+;using
+;using
+;using
+;using
+;using
+;using
 ;using
 ;using
 ;package

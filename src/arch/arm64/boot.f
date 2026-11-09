@@ -9,6 +9,9 @@ require src/arch/arm64/link-kernel.f
 package A64BOOT
 using A64ASM
 using A64ICODE
+using CRASH
+using ENGINE-EMIT
+using SYSCALL
 
 \ x9 = the runtime address of the boot's first word, which is code offset 0.
 : TEXT-BASE, ( label -- ) 9 swap ADR, ;
@@ -157,6 +160,9 @@ public
    LHIDXBUILD LABEL@ BL,                    \ habu1.f: maps the index, keys [0, NDICT)
    ENGINE-MAIN:XT-CELL CALL-EXIT, ;
 
+;using
+;using
+;using
 ;using
 ;using
 ;package

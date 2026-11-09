@@ -66,6 +66,8 @@ s" HB@" s" -- ptr u8" TRUST
 \ program's dictionary: a program defining the same spelling dies `duplicate
 \ definition`, and a required file whose names the engine already carries cannot
 \ load. Check a new name against the tree before capturing it.
+using DRIVER
+using ENGINE-EMIT
 package STDIN-DRIVER
 public
 
@@ -151,6 +153,8 @@ public
    DRV-EXIT-OK ;
 
 ;package
+;using
+;using
 
 STDIN-DRIVER:DP-MARK
 STDIN-DRIVER:RUN

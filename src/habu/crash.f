@@ -3,14 +3,20 @@
 \ to stderr, then dies by the signal itself, C-CRASH-RERAISE) and
 \ EMIT-SIGNAL-HANDLER, the async-signal-safe stub a program installs for an
 \ ordinary signal. Encoders are package A64ASM (src/arch/arm64/asm.f).
+using SYSCALL
+package CRASH
+public
 variable LCRASHH   variable LHEX   variable LHDR   variable LSIGH
+private
 create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2  variable CR-L3
 variable CR-OFF  variable CR-HANDLER  variable CR-FLAGS
+;package
 require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
 
+package CRASH
 : CRH-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
 : CRH-INIT ( -- )
@@ -28,7 +34,9 @@ $40 constant MACOS-SA-SIGINFO
 $1 constant MACOS-SA-ONSTACK
 $4 constant LINUX-SA-SIGINFO
 $08000000 constant LINUX-SA-ONSTACK
+public
 : SIGACT-SIGINFO ( -- n )  HB-TARGET-LINUX? IF LINUX-SA-SIGINFO ELSE MACOS-SA-SIGINFO THEN ;
+private
 : SIGACT-ONSTACK ( -- n )  HB-TARGET-LINUX? IF LINUX-SA-ONSTACK ELSE MACOS-SA-ONSTACK THEN ;
 \ stack_t, the struct sigaltstack reads and writes: ss_sp first on both, then
 \ Linux puts the int ss_flags before ss_size and Darwin after it.
@@ -39,21 +47,30 @@ $08000000 constant LINUX-SA-ONSTACK
 \ `sub/add xd, xn, #n` for n in whole 4 KiB units: the shifted-immediate form,
 \ which also takes sp. A remainder is refused (asm.f SCALE/).
 : SUBI-4K, ( n n n -- )  $1000 SCALE/ ENC-SUBI-LSL12 EMITW ;
+public
 : ADDI-4K, ( n n n -- )  $1000 SCALE/ ENC-ADDI-LSL12 EMITW ;
+private
 $8 constant CRASH-LINUX-SIGSET-SIZE
+public
 $30 constant MCTX-OFF           \ macOS ucontext -> mcontext pointer offset
 $10 constant SS-OFF             \ macOS mcontext -> __ss.__x[0] offset
 $B0 constant LINUX-UC-MCTX-OFF
 $8 constant LINUX-MCTX-X0-OFF
 $A0 constant LINUX-MCTX-X19-OFF
+private
 $F0 constant LINUX-MCTX-FP-OFF
+public
 $F8 constant LINUX-MCTX-LR-OFF
 $100 constant LINUX-MCTX-SP-OFF
 $108 constant LINUX-MCTX-PC-OFF
+private
 $10 constant LINUX-SI-ADDR-OFF  \ siginfo_t._sifields._sigfault.si_addr
 $18 constant MACOS-SI-ADDR-OFF  \ __siginfo.si_addr, after six ints
+public
 $A8 constant MACOS-MCTX-X19-OFF
+private
 $F8 constant MACOS-MCTX-FP-OFF
+public
 $100 constant MACOS-MCTX-LR-OFF
 $108 constant MACOS-MCTX-SP-OFF
 $110 constant MACOS-MCTX-PC-OFF
@@ -80,6 +97,7 @@ $110 constant MACOS-MCTX-PC-OFF
    0 2 MOVZ,  1 14 0 ADDI,  2 $11 MOVZ,  NR-WRITE SYS,
    SP SP $20 ADDI,  RET, ;
 
+private
 \ x20 = signal number, x19 = ucontext, x23 = siginfo, whose si_addr tells a
 \ SIGSEGV inside a VM stack's guard page from any other. Linux enters the
 \ handler with (sig, info, uctx) in x0/x1/x2; the macOS trampoline passes
@@ -326,6 +344,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    HB-TARGET-LINUX? IF 3 CRASH-LINUX-SIGSET-SIZE MOVZ, THEN
    NR-SIGACTION SYS, ;
 
+public
 : INSTALL-SIGACT ( n -- )
    0 swap MOVZ,  C-SIGACTION-CALL ;
 
@@ -347,6 +366,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
 : C-SIGACTION-FRAME-DONE ( -- )
    SP SP $40 ADDI, ;
 
+private
 \ The end of a reported crash: the process dies by the signal itself, so the
 \ parent sees it and a core (when RLIMIT_CORE allows) shows the faulting
 \ context. x27 = the signal; on macOS x24 = the trampoline's infostyle and x5
@@ -365,6 +385,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    \ Reached only if sigreturn fails.
    0 $86 MOVZ,  NR-EXIT-GROUP SYS, ;
 
+public
 : EMIT-CRASH-HANDLER ( -- )
    LCRASHH LABEL@ LBL,
    LBL CR-L1 !  LBL CR-L2 !
@@ -406,6 +427,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    THEN
    C-SIGACTION-FRAME-DONE ;
 
+private
 \ A machine-stack overflow faults with sp in the kernel's guard, where no signal
 \ frame fits: without an alternate stack the handler never runs and the kernel
 \ kills the process unnamed. So the handler is installed SA_ONSTACK, and every
@@ -421,6 +443,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
 \ x9.
 : SIGSTKMSG$ ( -- ptr u8 n ) S\" hb: cannot install the signal stack\n" ;
 
+public
 \ sp drops SIGNAL-BYTES and the band above it is registered. A refused
 \ registration is named and fatal: the handler would run on the interrupted
 \ stack, and a machine-stack overflow would die unnamed again.
@@ -494,6 +517,8 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    1 SP 0 ADDI,  2 4 MOVZ,  NR-WRITE SYS,
    done LBL,
    SP SP $10 ADDI,  RET, ;
+;package
 
+;using
 ;using
 ;using

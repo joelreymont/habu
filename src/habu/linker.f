@@ -36,13 +36,13 @@ require src/compiler/native/shadow.f
 require src/compiler/native/publish.f
 require src/habu/link-band.f
 
-\ The linker's failed build: -9690..-9699, minted here, beside the package its
-\ codes belong to (docs/forth-card.md § 6).
--9690 constant E-LINKER-FIRST
--9699 constant E-LINKER-LAST
-
 package LINKER
 private
+
+\ The linker's failed build: -9690..-9699, minted here, in the package its codes
+\ belong to (docs/forth-card.md § 6).
+-9690 constant E-LINKER-FIRST
+-9699 constant E-LINKER-LAST
 
 \ The open's progress, the last step completed. Past open, loading: a file's load runs, from its key
 \ to its last BUILT row, the loads it requests included; returned: a load's body returned (LEFT);

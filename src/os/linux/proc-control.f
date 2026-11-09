@@ -10,6 +10,9 @@
 \ syscall ABI does not use the carry flag: the raw syscall already leaves 0 or
 \ -errno in x0, so publishing x0 unchanged is exactly the -errno contract.
 
+using RT
+using SYSCALL
+package ENGINE-EMIT
 : BKILLERRNO ( -- )                \ ( pid sig -- rc ) rc=0 or -errno
    1 G-POP  0 G-POP
    NR-KILL SYS,
@@ -19,3 +22,6 @@
    2 G-POP  1 G-POP  0 G-POP
    NR-EXECVE SYS,
    0 G-PUSH ;
+;package
+;using
+;using

@@ -31,8 +31,8 @@ s" A64ICODE:CW@" s" n -- ptr u8" TRUST
 s" A64ICODE:CODE-BYTE+" s" ptr u8 n -- ptr u8" TRUST
 \ ARESET resets the buffer; ADD,/LDAR, emit fixture instructions.
 s" A64ICODE:ARESET" s" --" TRUST
-s" ADD," s" n n n --" TRUST
-s" LDAR," s" n n --" TRUST
+s" A64ICODE:ADD," s" n n n --" TRUST
+s" A64ICODE:LDAR," s" n n --" TRUST
 \ ASM-LEN reads emitted length; LIT64, emits the literal fixture.
 s" A64ICODE:ASM-LEN" s" -- n" TRUST
 s" A64ICODE:LIT64," s" n n --" TRUST

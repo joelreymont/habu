@@ -2,12 +2,14 @@
 
 \ The ARM64 condition-code names are package A64ASM's public surface
 \ (src/arch/arm64/asm.f), imported here rather than qualified at each call so the
-\ emitters below keep the bodies they had: this file carries no package, so the
-\ ownership gate reports a changed global definition in it.
+\ emitters below keep the bodies they had.
 require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
+using RT
+using SYSCALL
 
+package ENGINE-EMIT
 : BPROCWATCHOPEN ( -- )            \ ( pid -- fd|-errno )
    LBL LBL LBL {: openbad:label regbad:label done:label :}
    9 G-POP
@@ -35,6 +37,9 @@ using A64ICODE
    done LBL,
    SP SP 64 ADDI,
    0 G-PUSH ;
+;package
 
+;using
+;using
 ;using
 ;using

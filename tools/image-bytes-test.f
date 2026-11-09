@@ -6,46 +6,39 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/arch/arm64/icode.f
+require src/os/image-bytes.f
 using A64ICODE
-
-: IBT-IMAGE-BYTES-LOADED? ( -- bool )
-   s" M-RESET" XREF-FIND 0= 0= ;
-
-: IBT-LOAD-IMAGE-BYTES ( -- )
-   IBT-IMAGE-BYTES-LOADED? if exit then
-   s" src/os/image-bytes.f" included ;
-
-IBT-LOAD-IMAGE-BYTES
+using IMAGE-BYTES
 
 \ Republished test effects.
 \ MBUF exposes the audited raw image buffer; M-BOUNDS-RC its bounds status.
-s" MBUF" s" -- ptr u8" TRUST
-s" M-BOUNDS-RC" s" -- n" TRUST
-s" M-RESET" s" --" TRUST
+s" IMAGE-BYTES:MBUF" s" -- ptr u8" TRUST
+s" IMAGE-BYTES:M-BOUNDS-RC" s" -- n" TRUST
+s" IMAGE-BYTES:M-RESET" s" --" TRUST
 \ M-LEN and M-OFF preserve the nominal roles used by negative fixtures.
-s" M-LEN" s" n -- len" TRUST
-s" M-OFF" s" n -- off" TRUST
-s" M-HERE" s" -- n" TRUST
-s" IMG-M8" s" n --" TRUST
-s" IMG-M16" s" n --" TRUST
-s" IMG-M32" s" n --" TRUST
-s" IMG-M64" s" n --" TRUST
+s" IMAGE-BYTES:M-LEN" s" n -- len" TRUST
+s" IMAGE-BYTES:M-OFF" s" n -- off" TRUST
+s" IMAGE-BYTES:M-HERE" s" -- n" TRUST
+s" IMAGE-BYTES:IMG-M8" s" n --" TRUST
+s" IMAGE-BYTES:IMG-M16" s" n --" TRUST
+s" IMAGE-BYTES:IMG-M32" s" n --" TRUST
+s" IMAGE-BYTES:IMG-M64" s" n --" TRUST
 \ These preserve byte-copy, fixed-name, and pad-to-offset roles for confusion tests.
-s" M-BYTES-LEN" s" ptr u8 len --" TRUST
-s" M-NAME16-LEN" s" ptr u8 len --" TRUST
-s" M-PAD-OFF" s" off --" TRUST
+s" IMAGE-BYTES:M-BYTES-LEN" s" ptr u8 len --" TRUST
+s" IMAGE-BYTES:M-NAME16-LEN" s" ptr u8 len --" TRUST
+s" IMAGE-BYTES:M-PAD-OFF" s" off --" TRUST
 \ M-LE32@ reads a typed offset; M-LE32!/M-LE64! patch typed offsets.
-s" M-LE32@" s" off -- n" TRUST
-s" M-LE32!" s" n off --" TRUST
-s" M-LE64!" s" n off --" TRUST
+s" IMAGE-BYTES:M-LE32@" s" off -- n" TRUST
+s" IMAGE-BYTES:M-LE32!" s" n off --" TRUST
+s" IMAGE-BYTES:M-LE64!" s" n off --" TRUST
 \ Big-endian reset/cursor, 32/64-bit emit, and typed byte-copy fixture effects.
-s" M-BE-RESET" s" off --" TRUST
-s" M-BE-HERE" s" -- n" TRUST
-s" M-BE32" s" n --" TRUST
-s" M-BE64" s" n --" TRUST
-s" M-BE-BYTES-LEN" s" ptr u8 len --" TRUST
+s" IMAGE-BYTES:M-BE-RESET" s" off --" TRUST
+s" IMAGE-BYTES:M-BE-HERE" s" -- n" TRUST
+s" IMAGE-BYTES:M-BE32" s" n --" TRUST
+s" IMAGE-BYTES:M-BE64" s" n --" TRUST
+s" IMAGE-BYTES:M-BE-BYTES-LEN" s" ptr u8 len --" TRUST
 \ MSIZE drives the cursor-overflow regression at the real buffer capacity.
-s" MSIZE" s" -- n" TRUST
+s" IMAGE-BYTES:MSIZE" s" -- n" TRUST
 
 : IBT-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -162,4 +155,5 @@ public
 ;package
 
 IMAGE-BYTES-TEST:RUN
+;using
 ;using

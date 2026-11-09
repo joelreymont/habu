@@ -10,6 +10,10 @@ require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
 using PROF-ABI
+using CRASH
+using ENGINE-EMIT
+using RT
+using SYSCALL
 
 package PROF
 
@@ -1457,6 +1461,10 @@ public
 
 ;package
 
+;using
+;using
+;using
+;using
 ;using
 ;using
 ;using

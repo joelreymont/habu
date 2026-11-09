@@ -28,6 +28,10 @@ require src/habu/habu2.f
 require src/habu/linker.f
 require src/habu/link-band.f
 require src/habu/link-map.f
+using CRASH
+using DRIVER
+using ENGINE-EMIT
+using REGALLOC
 
 package LINKER
 private
@@ -516,3 +520,7 @@ public
    path pathu DATA-IMAGE-AT WRITE-MAP ;
 
 ;package
+;using
+;using
+;using
+;using

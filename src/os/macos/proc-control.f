@@ -15,12 +15,14 @@
 
 \ The ARM64 condition-code names are package A64ASM's public surface
 \ (src/arch/arm64/asm.f), imported here rather than qualified at each call so the
-\ emitters below keep the bodies they had: this file carries no package, so the
-\ ownership gate reports a changed global definition in it.
+\ emitters below keep the bodies they had.
 require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
+using RT
+using SYSCALL
 
+package ENGINE-EMIT
 : BKILLERRNO ( -- )                \ ( pid sig -- rc ) rc=0 or -errno
    1 G-POP  0 G-POP
    2 1 MOVZ,                        \ posix=1: POSIX.1 kill(2) errno semantics
@@ -39,6 +41,9 @@ using A64ICODE
       10 0 MOVZ,  0 10 0 SUB,        \ x0 = 0 - errno = -errno
    ok LBL,
    0 G-PUSH ;
+;package
 
+;using
+;using
 ;using
 ;using

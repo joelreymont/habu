@@ -29,7 +29,12 @@ using AOT-BUF
 \ REPEAT and at each new definition, are package REGALLOC-ABI's
 \ (src/habu/regalloc-abi.f).
 using REGALLOC-ABI
+using CRASH
+using REGALLOC
+using RT
+using SYSCALL
 
+package ENGINE-EMIT
 \ Emitter selection only. Chosen offsets are baked as instruction literals;
 \ no emitted data cell can change a selected code entry's scope kind.
 variable EM-SCOPE-CHILD-OFF
@@ -39,6 +44,7 @@ variable EM-C2-INIT-OFF
 variable EM-C2-RECORDS-OFF
 variable EM-C2-RECORD-OFF
 variable EM-C2-FIELD-OFF
+public
 8 constant EM-WF-INIT
 16 constant EM-WF-FIELD
 
@@ -50,6 +56,7 @@ variable EM-C2-FIELD-OFF
 
 : C-LIT ( -- )
    LVLITPUSH LABEL@ BL, ;
+private
 \ x11 holds the value.
 : C-RAW-LIT ( -- )
    14 16 MOVZ,  LVMOVK LABEL@ BL, ;
@@ -86,6 +93,8 @@ variable EM-C2-FIELD-OFF
    done B,
    absolute LBL, C-ADDR-RAW
    done LBL, ;
+;package
+using ENGINE-EMIT
 \ The three relocation-kind words and the CALL-or-INLINE emitter sit after the
 \ snapshot-relocation labels; all four record a site through RELOC-EMIT:MARK-SITE.
 \ Addressing a baked label the ADR field cannot reach.
@@ -118,27 +127,39 @@ variable LIMGEND                                  \ the emitted image's end = th
 
 using IMGREF
 
+package ENGINE-EMIT
+public
 \ The source is the baked LSRC or stdin.
 \ A write of a literal's bytes takes its length from that literal (a -LEN word
 \ or `nip`), and a `c,` byte table's from `here TABLE -` after its last byte,
 \ never from a hand-counted byte count.
 variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBADLOC
 variable LSRCRD   variable LSRCRDP   variable LSHBANG   variable LOPENERR   variable LOPENNL
+private
 : OPENERR$ ( -- ptr u8 n )   s" hb: cannot open " ;   \ LOPENERR; the path and LOPENNL follow
+public
 variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + its fd-2 message
+private
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
 : UNCMSG$ ( -- ptr u8 n )   s" hb: uncaught throw code " ;
 : UNCMSG-LEN ( -- n )   UNCMSG$ nip ;
+public
 variable LUNDEF   \ undefined-token reject; declared with its fellow diagnostics because C-BTICK, emitted long before the MAIN label block, branches to it
 variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
+private
 : WIDEMSG$ ( -- ptr u8 n )   s" hb: interpret-mode layout value: " ;
 : WIDEMSG-LEN ( -- n )   WIDEMSG$ nip ;
+public
 variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (DNAME-INT) + its message
+private
 : INTMSG$ ( -- ptr u8 n )   s" hb: internal engine word: " ;
 : INTMSG-LEN ( -- n )   INTMSG$ nip ;
+public
 variable LTRUSTTICK   variable LTRUSTTICKMSG
+private
 : TRUSTTICKMSG$ ( -- ptr u8 n )   s" hb: trusted-only tick: " ;
 : TRUSTTICKMSG-LEN ( -- n )   TRUSTTICKMSG$ nip ;
+public
 \ The design seal (layout.f POLICY-NDICT-CELL). LPOLICYREC is the one admission
 \ predicate over a found record and LPOLICY the one refusal every sealed site
 \ shares: a record the predicate refuses, a keyword outside the KWDATA design
@@ -146,42 +167,64 @@ variable LTRUSTTICK   variable LTRUSTTICKMSG
 \ declared with the diagnostics because LKWCMP, emitted long before the MAIN
 \ label block, branches to LPOLICY.
 variable LPOLICY   variable LPOLICYMSG   variable LPOLICYREC   variable LPOLICYTOPREC   variable LKWDESIGNEND
+private
 : POLICY-MSG$ ( -- ptr u8 n )   s" hb: not in vocabulary: " ;
 : POLICY-MSG-LEN ( -- n )       POLICY-MSG$ nip ;
+public
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
+private
 : MINMSG$ ( -- ptr u8 n )   s" hb: interpret stack underdepth: " ;
 : MINMSG-LEN ( -- n )   MINMSG$ nip ;
+public
 variable LFLOORREC   \ the same underdepth throw for a data access below the base (crash.f C-CRASH-DATA-RECOVER resumes here)
 variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile-immediate preflight
+private
 : PREFMISSMSG$ ( -- ptr u8 n )   S\" hb: compile preflight hook missing\n" ;
 : PREFMISSMSG-LEN ( -- n )   PREFMISSMSG$ nip ;
+public
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
+private
 : ORPHANMSG$ ( -- ptr u8 n )   s" hb: control-flow closer without opener: " ;
 : ORPHANMSG-LEN ( -- n )   ORPHANMSG$ nip ;
+public
 variable LCFKIND   variable LCFKINDMSG   \ control-flow word whose open entry is another structure's (C-CF-AT, C-CF-NONE) + its message
+private
 : CFKINDMSG$ ( -- ptr u8 n )   s" hb: control-flow word does not match the open structure: " ;
 : CFKINDMSG-LEN ( -- n )   CFKINDMSG$ nip ;
+public
 variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCFPUSH at CFSTK-DEPTH-MAX) + its message
 variable LLOCWIDE   variable LLOCWIDEMSG   \ local name wider than LOC-NAME-CAP reject (C-LBRACE-STORE-ONE) + its message
+private
 : LOCWIDEMSG$ ( -- ptr u8 n )   s" hb: local name over 16 bytes: " ;
 : LOCWIDEMSG-LEN ( -- n )   LOCWIDEMSG$ nip ;
+public
 variable LLOCMANY   variable LLOCMANYMSG   \ more than LOC-RECS locals in one definition reject (C-LBRACE-STORE-ONE) + its message
+private
 : LOCMANYMSG$ ( -- ptr u8 n )   s" hb: more than 64 locals in one definition: " ;
 : LOCMANYMSG-LEN ( -- n )   LOCMANYMSG$ nip ;
 : CFCAPMSG$ ( -- ptr u8 n )   s" hb: control-flow nesting too deep: " ;
 : CFCAPMSG-LEN ( -- n )   CFCAPMSG$ nip ;
+public
 variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/C-CQ/C-ECQ) + its fd-2 message
+private
 : CSTRMSG$ ( -- ptr u8 n )   s" hb: counted string too long (max 255)" ;
 : CSTRMSG-LEN ( -- n )   CSTRMSG$ nip ;
+public
 variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-name wall generated from the compile-keyword dispatch rows
+private
 : DEFKWMSG$ ( -- ptr u8 n )   s" hb: compile keyword cannot be a definition name: " ;
+public
 : DEFKWMSG-LEN ( -- n )   DEFKWMSG$ nip ;
 variable LRESDEF  variable LRESDEFMSG   \ sealed reserved definition name (C-RESERVED-DEF-GUARD): its spelling + its message
+private
 : RESDEFMSG$ ( -- ptr u8 n )   s" hb: reserved word cannot be a definition name: " ;
 : RESDEFMSG-LEN ( -- n )   RESDEFMSG$ nip ;
+public
 variable LNUMDEFMSG   \ number-shaped definition name (C-NUMBER-DEF-GUARD): its message
+private
 : NUMDEFMSG$ ( -- ptr u8 n )   s" hb: number cannot be a definition name: " ;
 : NUMDEFMSG-LEN ( -- n )   NUMDEFMSG$ nip ;
+public
 \ Capacity refusals that state a count: one line naming what filled up, the
 \ ceiling and the count. LDIAGU writes a
 \ number on fd 2 and LDIAGDEF the definition being compiled.
@@ -198,6 +241,7 @@ variable LSRCEND   variable LSRCENDMSG   \ a source buffer ended inside a defini
 variable LCOMEND   variable LCOMENDMSG   \ a source buffer ended inside a `(` comment (EM-COMMENT)
 variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an outer buffer opened (C-DEF-SOURCE-CLOSE); LDIAGDEF names it
 
+private
 : DPBAD-MSG$ ( -- ptr u8 n )     s" hb: data space out of range: DP " ;
 : DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
 : DPBAD-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
@@ -212,7 +256,9 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : SRCEND-MSG$ ( -- ptr u8 n )    s" hb: source ended inside definition: " ;
 : COMEND-MSG$ ( -- ptr u8 n )    s" hb: source ended inside a ( comment" ;
 : SRCCLOSE-MSG$ ( -- ptr u8 n )  s" hb: source closed a definition it did not open: " ;
+public
 : UNSET-MSG$ ( -- ptr u8 n )     S\" hb: native compiler dispatch unset\n" ;
+private
 : P2NEST-MSG$ ( -- ptr u8 n )    s" hb: nested definition in pass 2: " ;
 : P2SLOT-MSG$ ( -- ptr u8 n )    s" hb: locals frame over 4096 cells: " ;
 
@@ -226,13 +272,17 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : QNEST-UNIT-LEN ( -- n )    QNEST-UNIT$ nip ;
 : SEMIQ-MSG-LEN ( -- n )     SEMIQ-MSG$ nip ;
 : SEMICF-MSG-LEN ( -- n )    SEMICF-MSG$ nip ;
+public
 : INCOMP-MSG-LEN ( -- n )    INCOMP-MSG$ nip ;
+private
 : SRCEND-MSG-LEN ( -- n )    SRCEND-MSG$ nip ;
 : COMEND-MSG-LEN ( -- n )    COMEND-MSG$ nip ;
 : SRCCLOSE-MSG-LEN ( -- n )  SRCCLOSE-MSG$ nip ;
 
+public
 variable LCOMPILEDIE   \ shared recoverable compile-error tail: a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it calls exit_group(x0).
 variable LSRCAT        \ the LCOMPILEDIE tail's location writer, a leaf a fail-closed die site calls before it exits
+private
 : CONFMSG$ ( -- ptr u8 n )   s" hb: construct: unknown family: " ;   \ EM-COMPILE-ADT-MODE
 : CONFMSG-LEN ( -- n )   CONFMSG$ nip ;
 : CONVMSG$ ( -- ptr u8 n )   s" hb: construct: unknown variant: " ;   \ EM-COMPILE-ADT-MODE
@@ -243,14 +293,19 @@ variable LSRCAT        \ the LCOMPILEDIE tail's location writer, a leaf a fail-c
 : MVARMSG-LEN ( -- n )   MVARMSG$ nip ;
 : MOFMSG$ ( -- ptr u8 n )   s" hb: match: expected of: " ;   \ EM-ADT-MATCH-OF
 : MOFMSG-LEN ( -- n )   MOFMSG$ nip ;
+public
 variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
+private
 : DICTFULL-MSG$ ( -- ptr u8 n )   s" hb: dictionary full at: " ;
 : CODEFULL-MSG$ ( -- ptr u8 n )   s" hb: code space full at: " ;
+public
 variable LSNAPBAD   variable LSNAPVER   \ snapshot-loader labeled-exit messages (corrupt trailer 79 / unsupported version 80)
+private
 : SNAPBAD-MSG$ ( -- ptr u8 n )   S\" hb: snapshot trailer corrupt\n" ;
 : SNAPBAD-MSG-LEN ( -- n )   SNAPBAD-MSG$ nip ;
 : SNAPVER-MSG$ ( -- ptr u8 n )   S\" hb: snapshot format version unsupported\n" ;
 : SNAPVER-MSG-LEN ( -- n )   SNAPVER-MSG$ nip ;
+;package
 \ Snapshot relocation labels, messages and instruction constant; the band offsets
 \ and exit statuses are src/habu/layout.f package SNAP-RELOC. This file compiles
 \ on a product engine, where no source reopens a baked package (docs/forth-card.md
@@ -311,6 +366,8 @@ $25 constant BL-OP-HI
 
 ;package
 
+package ENGINE-EMIT
+public
 \ The kind is decided at the emit site: DATA uses its three-half carrier, CODE
 \ the absolute one. All three record their site, so the map says where every
 \ chain starts. An AOT capture copies the blob to a different DP and must find
@@ -326,6 +383,7 @@ $25 constant BL-OP-HI
    RELOC-EMIT:MARK-SITE
    14 9 MOVZ,  C-DATA-RAW
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
+private
 \ x9, no push: the defer dispatch-cell address.
 : C-DATA-ADDR-RAW ( -- )
    RELOC-EMIT:MARK-SITE
@@ -349,7 +407,9 @@ $D63F0200 constant C-CALL-BLR-X16     \ blr x16: deferred-word indirect call
 : C-CALL-INLINE ( -- )
    LCINLINE LABEL@ BL, ;
 
+public
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
+private
 : SRCFULL-MSG$ ( -- ptr u8 n )   S\" hb: source prefix buffer full\n" ;   \ LSRCFULL; SRC-SFAIL/SRC-BFAIL arena overflow
 : SRCFULL-MSG-LEN ( -- n )   SRCFULL-MSG$ nip ;
 : SRCREAD-MSG$ ( -- ptr u8 n )   S\" hb: cannot read source\n" ;
@@ -358,37 +418,53 @@ variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled
 \ LCOMPILEDIE tail appends ` at <path>:<line>` and the newline.
 : BADSTR-MSG$ ( -- ptr u8 n )   s" hb: bad string literal" ;
 : BADSTR-MSG-LEN ( -- n )   BADSTR-MSG$ nip ;
+public
 variable LSIGBAD              \ C-SIG-BAD's code; the token and the LCOMPILEDIE tail follow it
+private
 : SIGBAD-MSG$ ( -- ptr u8 n )   s" E-MISSING-SIGNATURE: " ;
 : SIGBAD-MSG-LEN ( -- n )   SIGBAD-MSG$ nip ;
+public
 variable LSEALED              \ the exit-84 refusal's code (C-SEAL-PACKAGE-FAIL, EMIT-STORE-DEF-NAME, EM-AOTWIDGATE); the name and the LSRCAT location follow it
+private
 : SEALED-MSG$ ( -- ptr u8 n )   s" E-SEALED-PACKAGE: " ;
 : SEALED-MSG-LEN ( -- n )   SEALED-MSG$ nip ;
+public
 variable LATMSG               \ " at " — the refusal-location separator LSRCAT writes before <path>:<line>
+private
 : ATMSG$ ( -- ptr u8 n )   s"  at " ;
 : ATMSG-LEN ( -- n )   ATMSG$ nip ;
+public
 variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
+private
 : MMAPCODE-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed code region\n" ;
 : MMAPCODE-MSG-LEN ( -- n )   MMAPCODE-MSG$ nip ;
 : MMAPDATA-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed data region\n" ;
 : MMAPDATA-MSG-LEN ( -- n )   MMAPDATA-MSG$ nip ;
+public
 variable LBLRANGE   \ boot BL-range assertion labeled rc-81 exit: the mapped region fell outside BL's +/-128 MiB of __text
 variable LKERNELDIGEST
+private
 : BLRANGE-MSG$ ( -- ptr u8 n )   S\" hb: code region out of BL range\n" ;
 : BLRANGE-MSG-LEN ( -- n )   BLRANGE-MSG$ nip ;
+public
 variable LADDSUBIMM   \ the shared add/sub-immediate emitter (EMIT-ADDSUB-IMM): every transfer offset folds through it
 variable LADDSUBBIG   \ transfer immediate past the two-halves range: labeled rc-75 compile refusal
+private
 : ADDSUBBIG-MSG$ ( -- ptr u8 n )   S\" hb: transfer immediate out of range\n" ;
 : ADDSUBBIG-MSG-LEN ( -- n )   ADDSUBBIG-MSG$ nip ;
+public
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
+private
 : BADFLAG$ ( -- ptr u8 n )   s" hb: unknown flag: " ;
 : USAGE1$ ( -- ptr u8 n )    s" usage: bin/hb" ;   \ LUSAGE1; the flag names follow
 : USAGE2$ ( -- ptr u8 n )    s"  [file.f]  (source on stdin)" ;
 \ The path-string label of each BOOT-FILES row, by the row's index.
 : LPROW-CELL ( n n ptr u8 n -- ) drop drop drop drop 0 , ;
 create LPROWS -1 ' LPROW-CELL BOOT-FILES:EACH
+public
 : LPROW ( n -- ptr n ) cells LPROWS + ;
+private
 variable SRC-SFAIL
 
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
@@ -402,8 +478,10 @@ create BADLOC-KW $68 c, $61 c, $62 c, $75 c, $3A c, $20 c, $6C c, $6F c, $63 c, 
 here BADLOC-KW - constant BADLOC-LEN
 create ZBYTE 0 c,
 create NL-KW 10 c,   \ single newline for the open-failure diagnostic
+public
 here NL-KW - constant NL-LEN
 
+private
 \ The CLI flag table is the one source of truth for the matcher and the usage line.
 1 constant MODE-LOAD   2 constant MODE-SEP   3 constant MODE-FILE
 4 constant MODE-UNKNOWN   5 constant MODE-BUILD
@@ -430,6 +508,7 @@ here ONESP - constant ONESP-LEN
 : C-MCTX-X19>R12 ( -- )
    HB-TARGET-LINUX? IF 12 9 LINUX-MCTX-X19-OFF LDR, exit THEN
    12 9 MACOS-MCTX-X19-OFF LDR, ;
+;package
 
 \ The `habu-bp-lr:` line: its label, bytes and the read of the interrupted x30
 \ from the signal mcontext; tools/code-owner.f turns the value into a record name.
@@ -446,6 +525,7 @@ here BPL-KW - constant BPL-LEN
    9 9 MACOS-MCTX-LR-OFF LDR, ;
 ;package
 
+package ENGINE-EMIT
 : C-MCTX-SP-16! ( -- )
    HB-TARGET-LINUX? IF
       12 9 LINUX-MCTX-SP-OFF LDR,  12 12 16 SUBI,  12 9 LINUX-MCTX-SP-OFF STR, exit
@@ -1150,12 +1230,14 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 : PFX-PATH-STDLIB-FILES ( -- )
    BOOT-FILES:BASELIB BOOT-FILES:RESTLIB or ['] PFX-PATH-ROW BOOT-FILES:EACH ;
 
+public
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
    PFX-PATH-DECL-FILES
    PFX-PATH-CORE-FILES
    PFX-PATH-STDLIB-FILES ;
 
+private
 : SEEDED-RUNTIME? ( -- bool ) AOT-RUNTIME:COMPLETE? ;
 
 \ Raw ioctl TTY probe: x0 = 0 when fd 0 is a terminal. The attributes land in an
@@ -1241,8 +1323,10 @@ variable SRC-REPL variable SRC-DONE  variable SRC-FSCAN
 variable SRC-FNEXT variable SRC-FREADY variable SRC-FPLAIN
 variable SRC-FLOOP variable SRC-SHLOOP variable SRC-STDINPROG
 variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
+public
 variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
 
+private
 : C-SOURCE-LABELS ( -- )
    LBL SRC-TTY !   LBL SRC-FILE !  LBL SRC-SFAIL !
    LBL SRC-RL !    LBL SRC-RD !    LBL SRC-PIPEOK !
@@ -1509,6 +1593,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-PROVIDE-STDLIB-FILES
    PFX-LOAD-STDLIB-FILES
    done LBL, ;
+;package
 
 package PFX-CHAIN
 public
@@ -1562,6 +1647,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 \ Emitted below the stdlib block because it loads it: a from-source host's
 \ prefix must be the seeded product's, or a payload certified against one dies
 \ E-UNDEFINED in the other (bootstrap/cg/forth.fs EMIT-HOST-LOAD-PREFIX mirrors
@@ -1827,6 +1913,7 @@ public
    EMIT-SOURCE-APPEND-SHARED
    STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
 
+public
 \ Release an exact byte count from the machine-stack locals frame in one add
 \ (imm12) naming no scratch: x9..x15 (regalloc.f VRPACK) may hold live values.
 : C-EMIT-DROP-X12 ( -- )
@@ -1835,6 +1922,7 @@ public
       8 $910003FF LIT64,  7 12 0 ADDI,  LADDSUBIMM LABEL@ BL,   \ add sp,sp,#bytes
    done LBL, ;
 
+private
 : EMIT-CF-HELPERS ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: pisb pdone kno kyes kchk knf kok :}
    LCFPUSH LABEL@ LBL,
@@ -1937,6 +2025,7 @@ public
       lhit LBL,  0 10 0 ADDI,  RET,
       lnext LBL,  10 10 1 SUBI,  ll B,
    lmiss LBL,  0 0 MOVN,  RET, ;
+public
 \ keyword bytes (lower-case / literal) at known labels
 create SQ-KW  115 c, 34 c,
 create CQ-KW  99 c, 34 c,
@@ -1964,6 +2053,7 @@ create ENDLOC-KW 58 c, 125 c,
 \ DEFER-MAGIC is src/habu/layout.f's: this file writes and checks the trailer,
 \ and src/compiler/native/dict.f checks it too.
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
+;package
 \ The defer/is misuse diagnostics. The label cells and messages are public:
 \ KWDATA:EMIT bakes the strings and the LABELS allocator mints the ids. Their
 \ emitters reopen this package beside the defer rows.
@@ -1978,8 +2068,11 @@ variable LDEFHINT
 \ No newline: the LCOMPILEDIE tail appends the location and it.
 : HINT$ ( -- ptr u8 n )   s" hb: is: parsing words resolve outside using-imports; qualify the target" ;
 ;package
+package ENGINE-EMIT
+public
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LP2CLAUSE
 variable LNSTRINTERN
+;package
 
 \ The native compiler seam's labels hold its qualified spelling, its
 \ boot-integrity diagnostic, and the capture-only compiler entry.
@@ -1988,6 +2081,8 @@ public
 variable LWORD  variable LUNSET  variable LNEUTRAL  variable LENTRY
 : NEUTRAL$ ( -- ptr u8 n )   s" NEUTRAL-PARSE-IMM?" ;
 ;package
+package ENGINE-EMIT
+public
 \ ADT lowering keywords: `construct` and MATCH dispatch through the CMM-CELL
 \ mode machine.
 variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
@@ -2002,10 +2097,13 @@ variable LRESTAB    \ sealed system-package name table
 : KWDOES$ ( -- ptr u8 n )       s" does>" ;
 : KWTRUSTED$ ( -- ptr u8 n )    s" trusted:" ;
 : KWDUPDEF$ ( -- ptr u8 n )     s" duplicate definition: " ;
+private
 : RECWPUB$ ( -- ptr u8 n )      s" rec-wide-publish" ;
 : RECMIQ$ ( -- ptr u8 n )       s" rec-min-in@" ;
+public
 : CHKEXPORT$ ( -- ptr u8 n )    s" checker-export" ;
 : BADTAG-PFX$ ( -- ptr u8 n )   s" hb: bad " ;
+;package
 
 \ Keyword string data section: the baked name table every LKW*/LCHK* label
 \ points into, plus the sealed reserved-name table it embeds.
@@ -2129,6 +2227,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 \ Compile-time keyword handlers append JIT-emitter code at BUILD time.
 : C-POPFLAG ( -- )
    W-POP9 C-EMITW ;
@@ -2140,8 +2239,10 @@ public
    {: kind:n :}
    15 kind MOVZ,  LCFPUSH LABEL@ BL, ;   \ x9 = the entry's origin
 
+public
 : C-PUSHCP ( n -- )   9 CP 0 ADDI,  C-CF-PUSH ;
 
+private
 \ A refusal caught inside an immediate word's evaluate leaves the outer
 \ definition compiling, restored to the refused token's start mark (layout.f
 \ TOKBODY-CELL): body text, locals count, CP, virtual-stack depth and register
@@ -2158,6 +2259,7 @@ public
 : C-CF-DEPTH ( -- )
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR, ;
 
+public
 : C-CF-ROOM ( -- )
    LBL {: ok:label :}
    C-CF-DEPTH
@@ -2165,6 +2267,7 @@ public
       LCFCAP LABEL@ B,
    ok LBL, ;
 
+private
 \ x12 = the kind of entry x11 (an index from the bottom).
 : C-CF-KIND@ ( -- )
    12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 CF-KIND 8 + LDR, ;
@@ -2182,8 +2285,10 @@ public
       LCFKIND LABEL@ B,
    ok LBL, ;
 
+public
 : C-CF-AT ( n n -- )  dup C-CF-AT2 ;
 
+private
 : C-CF-NONE ( -- )
    LBL {: ok:label :}
    C-CF-DEPTH  11 ok CBZ,
@@ -2353,6 +2458,7 @@ public
    13 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW
    12 12 13 W-ADDX C-EMITW ;
 
+public
 \ The innermost loop's index lives in its frame cell, which J-FRAME, J-LOOP and
 \ J-+LOOP store on every step, and in x29 (regalloc.f LIDX), which they write
 \ beside it. `j`, throw and catch, tasks, the crash reporter and the stepper
@@ -2419,6 +2525,7 @@ public
    16 20 LOOPSP-CELL W-LDRX C-EMITW
    16 16 1 ENC-SUBI C-EMITW
    16 20 LOOPSP-CELL W-STRX C-EMITW ;
+;package
 
 \ The loop-emit family: the DO/LEAVE level stack (open a level, prove one is
 \ open, chain a LEAVE placeholder onto the innermost one) and the loop keyword
@@ -2577,6 +2684,7 @@ package LOOP-EMIT
 
 ;package
 
+package ENGINE-EMIT
 \ LIDX-RELOAD?, : x29 := the innermost index from its frame, through x16 and
 \ x17, which are never pooled, so no live value moves and no flag changes,
 \ unless LIDX-CELL says x29 holds it; then it does. Clobbers x9.
@@ -2588,6 +2696,7 @@ package LOOP-EMIT
       LIDX-SET,
    kept LBL, ;
 
+public
 \ `i` keeps the virtual stack (CFN-ENTRY) and pushes a copy of x29 as an
 \ ordinary register entry, as a local read does (C-LOCAL-REF pass 1); with the
 \ pool exhausted it spills and pushes x29 to memory.
@@ -2607,6 +2716,7 @@ package LOOP-EMIT
    4181780107 C-EMITW  $D100096B C-EMITW 3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
 
+private
 \ A fail-closed death that names the current token: the token on fd 2, the
 \ newline from LOPENNL, then exit rc. Nothing recovers it, not even inside
 \ evaluate, unlike C-DIE-TOKEN's LCOMPILEDIE tail. The token is the reader's
@@ -2616,6 +2726,7 @@ package LOOP-EMIT
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
 
+public
 \ The same death for a cause that is baked text: the label's len bytes on fd 2,
 \ the newline from LOPENNL, then exit rc. A missing engine word names its own
 \ lookup keyword (rc 70); a lowering transaction failure states it (rc 76).
@@ -2660,9 +2771,11 @@ package LOOP-EMIT
    9 G-PUSH
    10 G-PUSH ;
 
+private
 : C-PUSH-DATA-CELL ( n -- ) {: off :}
    9 DATA off LDR,  9 G-PUSH ;
 
+public
 : C-PUSH-TRUST-SIG ( n n -- ) {: aoff uoff :}
    aoff C-PUSH-DATA-CELL
    uoff C-PUSH-DATA-CELL ;
@@ -2672,12 +2785,14 @@ package LOOP-EMIT
    11 BLR,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
+private
 \ Run the stamped constant or created word x11 enters (x5 its record) while
 \ its user compiles, and leave what it pushed in x11.
 : C-RUN-FIXED ( -- )
    C-CALL-X11-SAVED
    11 G-POP ;
 
+public
 \ A definition can close only in the source frame that opened it. Both
 \ compiler loops use the same guard.
 : C-DEF-SOURCE-CLOSE ( -- )
@@ -2688,6 +2803,7 @@ package LOOP-EMIT
    9 10 CMP,  C-NE own BCOND,
    LSRCCLOSE LABEL@ B,
    own LBL, ;
+;package
 
 \ The active native compiler retains its checker even while a build replaces
 \ the source dictionary. The record's fields are the actual checker operations;
@@ -2851,6 +2967,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : C-FIND-GLOBAL? ( ptr n n -- ) {: name:ptr len:n :}
    SP SP 32 SUBI,
    14 DATA PKG-PUB-CELL LDR,  14 SP 0 STR,
@@ -2866,12 +2983,14 @@ public
    14 SP 24 LDR,  14 DATA ENCLOSING:PRI STR,
    SP SP 32 ADDI, ;
 
+public
 : C-FIND-GLOBAL ( ptr n n -- ) {: name:ptr len:n :}
    LBL {: ok:label :}
    name len C-FIND-GLOBAL?
    13 ok CBNZ,
       name len 70 C-EXIT-LABEL
    ok LBL, ;
+;package
 
 package NCOMP-EMIT
 public
@@ -2910,6 +3029,7 @@ public
    done LBL, ;
 ;package
 
+package ENGINE-EMIT
 : C-CALL-CHECKER-DEFER ( -- )
    LBL {: done:label :}
    NCOMP-DISPATCH:DECL-DEFER-OFF DECL-OWNER:NAME
@@ -2919,6 +3039,7 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
+public
 \ x11 = the operation at OFF in the source owner's record. An owner whose record
 \ ends before OFF (its byte size at [record-8], as EM-RECORD-LINK-SEED reads it)
 \ or holds 0 there writes the line MA MU to fd 2 and exits 70. Nothing is found
@@ -2966,6 +3087,7 @@ public
    0 2 MOVZ,  1 LKWDOES LABEL@ ADR,  2 KWDOES$ nip MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+private
 \ Push the does> clause's body and signature, the arguments of both clause
 \ checks: the body after `does> ` up to `; `, then TCSIG-A/U.
 : C-PUSH-DOES-CLAUSE ( -- )
@@ -3116,17 +3238,20 @@ public
       C-EMIT-CRSIG-U!
    none LBL, ;
 
+public
 : C-RUNTIME-CRSIG-CLEAR ( -- )
    9 0 MOVZ,
    9 DATA CRSIG-A-CELL STR,
    9 DATA CRSIG-U-CELL STR, ;
 
+private
 \ >R R> R@: the user return stack is a guarded mapping whose base is a header
 \ cell (STACK-ABI:RETURN-BASE-CELL), so the slot address is that base + depth*8.
 : RSTK-SLOT-ADDR, ( -- )                                      \ x11 = base + x10*8
    11 20 STACK-ABI:RETURN-BASE-CELL W-LDRX C-EMITW
    11 11 10 W-ADDX-LSL3 C-EMITW ;
 
+public
 : J-TOR ( -- )                                                \ pop data -> push RSTK
    W-POP9 C-EMITW                                      \ ldr x9,[x19,#-8]!
    10 20 RSP-CELL W-LDRX C-EMITW
@@ -3135,12 +3260,14 @@ public
    $9100054A C-EMITW                                   \ add x10,x10,#1
    10 20 RSP-CELL W-STRX C-EMITW ;
 
+private
 : J-RPOP ( -- )                                               \ x9 = RSTK top, x10 = RSP-1
    10 20 RSP-CELL W-LDRX C-EMITW
    $D100054A C-EMITW                                   \ sub x10,x10,#1
    RSTK-SLOT-ADDR,
    9 11 0 W-LDRX C-EMITW ;
 
+public
 : J-RFROM ( -- )  J-RPOP                                      \ pop RSTK -> push data
    10 20 RSP-CELL W-STRX C-EMITW
    W-PUSH9 C-EMITW ;                                   \ str x9,[x19],#8
@@ -3169,6 +3296,7 @@ public
    9 10 FRAME-CALL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
+private
 : C-SIG-START ( label -- ) {: lmiss:label :}
    LBL LBL {: ws got :}
    11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
@@ -3202,6 +3330,7 @@ public
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+public
 \ The inside of the signature after `does>`: x11 its first byte, x10 its
 \ length, INP past its `)`. A missing or open one refuses (C-SIG-BAD).
 : C-CREATED-SIG$ ( -- )
@@ -3215,6 +3344,7 @@ public
    bad LBL,  C-SIG-BAD
    done LBL, ;
 
+private
 \ The signature (x11, x10 bytes) is a string literal of the definer and goes
 \ where C-SDQ puts one: interned in the literal store, or, before intern.f
 \ installs the interner, in the code behind a branch. TCSIG-A/U take its
@@ -3240,6 +3370,7 @@ public
    done LBL,
    11 DATA TCSIG-A-CELL STR, ;
 
+public
 \ Tier 1's clause opens with the signature C-CREATED-SIG$ read, copied into
 \ the body capture at BODYLEN as `( `, the inside and ` )`, and TCSIG-A/U
 \ take the inside of that copy. A clause's scan reads the group as a comment
@@ -3257,6 +3388,7 @@ public
 \ J-DOES is emitted further down, past the capacity exits its clause record
 \ reaches for (C-DIE-DICT-FULL / C-DIE-CODE-FULL).
 
+private
 \ The word frame is decided at `;`, not at the colon: the JIT is single pass, so
 \ the opener emits the link-register save and leaves the slot's address in
 \ FRAME-CELL, and every emitter that puts a call in the body counts it in the
@@ -3272,6 +3404,7 @@ public
    1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 9 1 ADD,     \ through the alias
    11 W-NOP LIT64,  11 1 0 STRW, ;                     \ the entry slot stops framing
 
+public
 : EM-COMPILE-RET ( -- )
    LBL LBL {: leaf:label done:label :}
    11 DATA FRAME-CELL LDR,
@@ -3285,6 +3418,7 @@ public
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 0 MOVZ,  9 DATA FRAME-CELL STR, ;
 
+private
 \ The Q cells hold the innermost open quotation; each enclosing one waits in a
 \ JIT-QUOT frame (src/habu/layout.f). `[:` parks the open one before it reuses
 \ the cells and `;]` pops it back once its own body is closed.
@@ -3345,6 +3479,7 @@ public
    sqbody LBL,
       12 0 MOVZ,  12 DATA QPATCH-CELL STR,          \ the definition's own body is open again
    sqdone LBL, ;
+;package
 
 \ The does>-patch runtime routine emitter (LDOESPATCH): patches the created
 \ word's RET into a branch and publishes the declared runtime effect.
@@ -3529,6 +3664,8 @@ public
 
 ;package
 
+package ENGINE-EMIT
+public
 \ Record defining words for the checker: append the kind token and run the hook;
 \ the verdict is ignored (create/variable/constant always publish). kwv is the
 \ keyword's label cell (LKWCREATE / LKWCONST), read by LABEL@, not its bytes.
@@ -3541,12 +3678,14 @@ public
    10 G-POP
    nohk LBL, ;
 
+private
 \ Capacity exits: the fixed label first,
 \ then the token and a newline. The exit codes are contracts: dict full $4D=77,
 \ code space full $4C=76.
 : C-CAP-LABEL ( ptr n n -- ) {: msg:ptr len:n :}
    0 2 MOVZ,  1 msg LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS, ;
 
+public
 : C-DIE-TOKEN ( n -- ) {: rc:n :}                  \ definer capacity die (dict full $4D / code full $4C): recoverable inside evaluate (rollback frees the aborted definition), fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
@@ -3563,6 +3702,7 @@ public
 \ after it, then exits $4E through LCOMPILEDIE.
 : C-DUP-DEF-SAY ( -- )
    0 2 MOVZ,  1 LKWDUPDEF LABEL@ ADR,  2 KWDUPDEF$ nip MOVZ,  NR-WRITE SYS, ;
+;package
 
 \ A record's name is stored once for every definer.
 \ `:`, `create`, `export`, `package` and a qualified definition store the token
@@ -3624,6 +3764,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : C-STORE-NAME ( -- )
    LBL LBL {: fail done :}
    10 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
@@ -3636,6 +3777,7 @@ public
 : C-QUALIFY-FAIL ( n -- ) {: rc:n :}                  \ qualified-name misuse ($4B) / dict-full ($4D) during C-QUALIFY-DEF: recoverable inside evaluate, fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
+;package
 
 \ LDOESPATCH patches the created word's RET into `b D`, D inside the defining
 \ word's body: a raw PC-relative branch the AOT seed cannot relocate (a capture
@@ -3893,6 +4035,8 @@ public
 
 ;package
 
+package ENGINE-EMIT
+public
 : C-CLEAR-TRUSTED-STATE ( -- )
    9 0 MOVZ,
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
@@ -3911,8 +4055,10 @@ public
    9 DATA LOCN-CELL STR,  9 DATA LOCF-CELL STR,  9 DATA CAPDEPTH-CELL STR,
    9 DATA TOKLOCN-CELL STR,  9 DATA TOKDEPTH-CELL STR, ;
 
+private
 : B-NATIVE-PENDING-OPAQUE ( -- )
    9 DATA PEND-OPAQUE-CELL LDR,  9 G-PUSH ;
+;package
 
 \ The bodies of the fourteen rows src/habu/prims.f specifies under "the
 \ definition writers" and of the six replay writers after them, registered
@@ -4524,6 +4670,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : J-DOES ( -- )
    LBL LBL LBL {: p1:label sigd:label marked:label :}
    DOES-REC:REJECT-DUP
@@ -4651,6 +4798,7 @@ public
       tabloop B,
    done LBL, ;
 
+public
 \ A head LHEADROW resolves to a part, whose row is named by the longer path
 \ `A:head`, names no sealed package. Clobbers x2-x9, x11-x17, x24 and x25.
 : C-QUALIFY-SEAL-GUARD ( -- )   \ reject `NAME:tail` defs into a sealed system package
@@ -4678,6 +4826,7 @@ public
       C-SEAL-MATCH                                       \ prefix len = x24; fail if reserved
    ok LBL, ;
 
+private
 \ The sealed engine's reserved definition name, STRUCTURE-MAKE:PROJECT-NAME$
 \ (src/habu/definers.f DEF-RESERVED? is the twin): generated bodies bind it by
 \ name, so after the seal a definition with that tail, A-Z folded, writes the
@@ -4712,9 +4861,11 @@ public
       0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
    ok LBL, ;
 
+public
 variable LQUALIFYDEF      \ shared qualification helper entry
 variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
+private
 \ The shared qualification/publication helper at LQUALIFYDEF (dot
 \ habu-emit-one-shared), reached by BL from every definer. Memory in and out:
 \ it reads TKA/TKL/CUR and writes the DEF-* mirror and TKA/TKL; it clobbers
@@ -4806,8 +4957,10 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    bad LBL,  70 C-DIE-TOKEN
    done LBL, ;
 
+public
 : C-QUALIFY-DEF ( -- )  C-UNIT-DEF-NAME-GUARD  LQUALIFYDEF LABEL@ BL, ;
 
+private
 \ At LSTOREDEFNAME, once sealed, publishing into a protected DEF-WL-CELL wid
 \ exits via exit_group, so its unbalanced frame never returns; x9 is preserved.
 : EMIT-STORE-DEF-NAME ( -- )
@@ -4831,6 +4984,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+public
 : C-STORE-DEF-NAME ( -- )  LSTOREDEFNAME LABEL@ BL, ;
 
 \ Reader keywords that need an operand share this diagnostic. LTOK's zero
@@ -4841,6 +4995,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    0 2 MOVZ,  1 kw ADR,  2 kwlen MOVZ,  NR-WRITE SYS,
    0 $4A MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+private
 : EMIT-CREATE ( -- )
    LBL {: nokind :}
    LCREATE LABEL@ LBL,
@@ -4862,6 +5017,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    LASTC-TRUST:PUBLISH-PTR-A
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+public
 \ Interpret-mode defining-word handlers. The interpret define-keyword dispatch
 \ rows reopen this package further down and resolve them bare.
 variable LTOPHOOK
@@ -4872,6 +5028,7 @@ variable LTOPHOOK
    15 class MOVZ,  16 0 MOVZ,
    LTOPHOOK LABEL@ BL,
    nohk LBL, ;
+;package
 
 package INTERP-EMIT
 
@@ -4931,6 +5088,8 @@ package INTERP-EMIT
 
 ;package
 
+package ENGINE-EMIT
+public
 : C-PARSE-REQUIRED-SIG ( -- )
    LBL LBL {: done bad :}
    bad C-SIG-START
@@ -4940,6 +5099,7 @@ package INTERP-EMIT
    bad LBL,  C-SIG-BAD
    done LBL, ;
 
+private
 \ C-TRUSTED has set PEND and PENDTKA before its signature, so an input that
 \ ends before the signature closes is the source ending inside the definition,
 \ refused as C-DEF-SOURCE-END refuses it. C-SIG-START also misses at a byte
@@ -4966,6 +5126,7 @@ package INTERP-EMIT
    C-SIG-CAPTURE-TSIG
    nsig LBL, ;
 
+public
 \ The second end of every definition's publish, emitted by the `;` tail below
 \ and by the cast's empty body; it sits this early because a cast publishes
 \ inside its keyword handler, which the interpret dispatch rows name. The first
@@ -4981,6 +5142,7 @@ package INTERP-EMIT
    exact if 10 10 CODE-SPAN:FULL ORRI, else 10 10 4 SUBI, then
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 11 12 ADD,  10 12 8 STR,   \ through the alias
    LFLUSH LABEL@ BL, ;
+;package
 
 \ The cast's body and the def-cast row join the definition writers, past the
 \ two ends of a publish they emit.
@@ -5125,9 +5287,11 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : C-DEFER-DIE-TOKEN ( n -- ) {: rc:n :}               \ boot-integrity backstop: the bare token, then exit rc; recoverable inside evaluate, fail-closed exit rc at top level. Its ONE caller is C-DEFER-FIND-UNSET ($46), which fires before its DP alloc, so the eval-frame / REPL rollback drops only compile-state + region prot. It stays token-only on purpose: the token there is the engine's own `defer-unset` primitive name, not a name the source wrote, so there is no source misuse to explain. The four causes that ARE source misuse each name themselves through DEFER-DIAG below. Distinct from the pre-trust boot-integrity backstops (C-PD-DIE-FULL exit 72, BSEALCAP exit 73) which do NOT route here and STAY hard exits.
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
+;package
 
 \ Each defer/is misuse cause writes what went wrong, then the token, then a
 \ newline. All fire before the defer record is counted into NDICT (C-DEFER
@@ -5171,6 +5335,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : C-DEFER-FIND-UNSET ( -- )
    LBL {: found :}
    9 LKWDEFERUNSET LABEL@ ADR,  10 11 MOVZ,  LFIND LABEL@ BL,
@@ -5213,6 +5378,7 @@ public
    11 DEFER-MAGIC LIT64,  11 1 0 STR,
    11 DATA DEFER-XT-CELL LDR,  11 1 8 STR,  28 28 16 ADDI, ;
 
+public
 \ The end of `defer` and of the def-defer row alike, for record x9 in slot
 \ NDICT and the dispatch cell in DEFER-XT-CELL: [0] is CP, the code loads the
 \ cell and calls what it holds, [8] takes the code's length, the DEFER-MAGIC
@@ -5239,6 +5405,7 @@ public
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
    noshadow LBL, ;
 
+private
 : C-DEFER-ROOM ( -- )
    LBL LBL {: cpok ndok :}
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
@@ -5297,6 +5464,7 @@ public
    13 1 MOVZ,
    done LBL, ;
 
+public
 : C-DEFER ( -- )
    C-TASK-GUARD
    LBL {: named :}
@@ -5335,6 +5503,7 @@ public
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+;package
 
 \ def-defer ( n -- ): a pending kind-0 record takes DEFER-BODY, for dispatch
 \ cell n, is counted and indexed, and its fixed shadow follows, as C-DEFER's
@@ -5351,6 +5520,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : C-DEFER-TARGET-META ( -- )
    LBL LBL LBL {: named found ok :}
    LTOK LABEL@ BL,  0 named CBNZ,
@@ -5407,6 +5577,7 @@ public
       loop B,
    done LBL, ;
 
+public
 \ `immediate` writes one flag cell of the record just published and emits
 \ nothing, through the alias as habu1.f BWIDEMARK and BINTMARK do. The imm-mark
 \ row's body is this word too (EMIT-PRIMITIVE-SECTIONS).
@@ -5418,10 +5589,12 @@ public
 : C-QUOTE-START ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
 
+private
 : C-QUOTE-EOF ( -- )                               \ unterminated or bad-escape string literal: label fd 2, then recoverable inside evaluate (rc 74), fail-closed exit 74 at top level. Emitted into the scan/copy runtime routines (LESCSCAN/LESCCOPY) too; those run at compile-time and their local SP save is discarded by the LCOMPILEDIE recovery (SP reset from the catch/REPL boundary). INP not yet consumed at the die -> clean rollback
    1 LBADSTR LABEL@ ADR,  0 2 MOVZ,  2 BADSTR-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+public
 : C-QUOTE-SCAN ( -- )
    LBL LBL LBL {: sl sd eof :}
    sl LBL,
@@ -5435,6 +5608,7 @@ public
 : C-QUOTE-CONSUME ( -- )
    10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
 
+private
 : C-QUOTE-LEN ( -- )
    10 12 13 SUB, ;
 
@@ -5498,11 +5672,13 @@ public
    nul LBL,  9 $00 MOVZ,
    done LBL, ;
 
+public
 variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
 variable LSNAPRBD
 variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine
 variable LAOTPROT      \ cold-start window-relative protected-WID restore
 
+private
 \ Escape decoder, emitted once by EMIT-ESC-DECODE, BL-called from the scan and
 \ copy loops; entries clobber only x9/x10 (and LR). LESCDEC: x9 escape char ->
 \ x9 byte, x10 0=ok 1=hex 2=bad. LESCHEX: x9 hex digit -> x9 nibble, x10 0=ok 2=bad.
@@ -5572,12 +5748,14 @@ variable LAOTPROT      \ cold-start window-relative protected-WID restore
    11 G-POP
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+public
 : C-ESC-QUOTE-SCAN ( -- )
    LESCSCAN LABEL@ BL, ;
 
 : C-ESC-QUOTE-CONSUME ( -- )
    15 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
 
+private
 : C-ESC-QUOTE-SAVE ( -- )
    SP SP 32 SUBI,  16 SP 0 STR,  15 SP 8 STR,  10 SP 16 STR, ;
 
@@ -5604,6 +5782,7 @@ variable LCODEINV
    LTOPHOOK LABEL@ BL,
    nohk LBL, ;
 
+public
 : C-TOPHOOK-CALL ( -- )                    \ pre-BLR word event: x11 (xt) preserved
    LBL {: nohk:label :}
    9 DATA TOP-HOOK-CELL LDR,  9 nohk CBZ,
@@ -5627,6 +5806,7 @@ variable LCODEINV
    5 SP 16 LDR,  13 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
    ordinary LBL, ;
 
+private
 \ LTOPHOOK: shared top-row event trampoline, BL-called from the guarded event
 \ sites. Entry: x15 = class, x16 = flags, hook known installed. Pushes
 \ ( token-a token-u class flags ) and BLRs the hook word; a hook throw
@@ -5674,6 +5854,7 @@ variable LCODEINV
    RET,
    end LBL, ;
 
+public
 : C-ISDQ ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
@@ -5761,6 +5942,7 @@ variable LCODEINV
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH
    TOP-EV-CHAR C-TOPHOOK-LIT ;
 
+private
 : C-BCHAR ( -- )
    LTOK LABEL@ BL,
    LBL {: named:label :}
@@ -5775,6 +5957,7 @@ variable LCODEINV
    5 DICT-SIZE off + LIT64,  5 DBASE 5 ADD,
    11 5 CMP,  C-EQ LINTERNAL LABEL@ BCOND, ;
 
+public
 : C-SCOPE-ENTRY-GUARD ( -- )
    EM-SCOPE-CHILD-OFF @ C-SCOPE-ENTRY-TICK-GUARD
    EM-C2-MUT-OFF @ C-SCOPE-ENTRY-TICK-GUARD
@@ -5784,6 +5967,7 @@ variable LCODEINV
    EM-C2-RECORD-OFF @ C-SCOPE-ENTRY-TICK-GUARD
    EM-C2-FIELD-OFF @ C-SCOPE-ENTRY-TICK-GUARD ;
 
+private
 : C-TRUSTED-TICK? ( -- )
    LBL LBL {: noquery:label restore:label :}
    SP SP 32 SUBI,
@@ -5841,6 +6025,7 @@ variable LCODEINV
       found B,
    bk LBL, ;
 
+public
 \ A definition whose certified check recorded any wider-than-cell width fact is
 \ re-run from a sealed copy of its source with width-aware transport lowering.
 \ Width, bind and fetch facts come only from the immutable LOWER-CERT artifact
@@ -5854,6 +6039,7 @@ variable LKWAT2  variable LKWSTORE2
 variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable LP2RS
 variable LP2FETCH  variable LP2STORE  variable LP2VEXEC  variable LP2VEMIT
 variable LP2NEST  variable LP2SLOT
+;package
 package LOWER-TXN-CODE
 public
 variable BAD  variable MEM  variable FULL  variable DRIFT
@@ -5865,6 +6051,7 @@ variable VDESC  variable DRIFT-FAIL
 4095 constant MAX-WIDTH
 ;package
 
+package ENGINE-EMIT
 : EM-P2-SLOT-DIE ( -- )            \ frame slot beyond the scaled ldr/str range: fail closed
    0 2 MOVZ,  1 LP2SLOT LABEL@ ADR,  2 P2SLOT-MSG$ nip MOVZ,  NR-WRITE SYS,
    $4B C-EXIT-TOKEN ;
@@ -6034,6 +6221,7 @@ variable VDESC  variable DRIFT-FAIL
    ncd LBL,
    11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR, ;
 
+public
 : C-LBRACE-PARSE-NAMES ( -- )
    LBL LBL LBL {: nl nd nstore :}
    6 DATA LOCN-CELL LDR,
@@ -6046,6 +6234,7 @@ variable VDESC  variable DRIFT-FAIL
       nl B,
    nd LBL, ;
 
+private
 \ Pass 1 binds the group (x6 = its first local) from the virtual stack's top:
 \ local i, from the last down to the first, takes the top entry while one
 \ exists. A register entry is stored straight into the slot and its register
@@ -6109,12 +6298,14 @@ variable VDESC  variable DRIFT-FAIL
    C-LBRACE-BIND-VS
    pjoin LBL, ;
 
+public
 : C-LBRACE ( -- )
    9 DATA LOCN-CELL LDR,  9 DATA P2LOC0-CELL STR,     \ group start for the pass-2 carve
    C-LBRACE-GUARDS
    C-LBRACE-PARSE-NAMES
    C-LBRACE-CARVE-FRAME ;
 
+private
 \ Push the PC-relative address of the target in x11 (C-ADR-X9).
 : C-ADR ( -- )
    C-ADR-X9
@@ -6206,6 +6397,7 @@ variable VDESC  variable DRIFT-FAIL
    14 SP 0 ADDI,  14 14 13 ADD,  SP 14 0 ADDI,
    11 10 0 ADDI,  C-LIT ;
 
+public
 \ At top level `[package]` pushes the open package's folded name (C-PKG-NAME,
 \ C-PKG-FOLD), copied into data space as C-ISDQ copies a literal.
 : C-IBPACKAGE ( -- )
@@ -6217,6 +6409,7 @@ variable VDESC  variable DRIFT-FAIL
    15 G-PUSH  10 G-PUSH
    TOP-EV-STR C-TOPHOOK-LIT ;
 
+private
 : C-CQ ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: capok cl cd inline done il id :}
    C-QUOTE-START
@@ -6338,6 +6531,7 @@ variable VDESC  variable DRIFT-FAIL
    C-CALL ;
 variable CFSK
 
+public
 \ Every registrar below honours jit.f's row-comparison mode (CF-DEF-GUARD).
 : CF-ENTRY ( label ptr n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
@@ -6360,9 +6554,12 @@ variable CFSK
 \ MAIN is split into emission-ordered phases sharing label variables.
 variable LMAIN  variable LEXIT  variable LCOMPILE   \ LUNDEF is declared up with the diagnostics block
 variable LCAPBIND           \ tier 1's captured token, asked whether it binds before LMAIN (EM-CAPTURE-BIND)
+private
 variable LUNDERFLOW           \ top-level data-stack underflow diagnostic entry (guard at LMAIN boundary)
+public
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry (BTHROW branches here)
+private
 variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN  variable LEVLR   \ LEVALREC internal labels
 variable LEVCORRUPT  variable LEVCORRUPTMSG   \ eval-cross forged/corrupt handler-frame fail-closed path + its message
 variable CLOC-MAIN  variable CLOC-NOT
@@ -6492,6 +6689,7 @@ variable CFSK2
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL,
    CLOC-MAIN LABEL@ B, ;
 
+public
 : EM-ENTRY-ARGS ( -- )
    HB-TARGET-LINUX? IF
       13 SP 0 LDR,  14 SP 8 ADDI,
@@ -6504,10 +6702,12 @@ variable CFSK2
    THEN
    C-TARGET-UNKNOWN ;
 
+private
 : EM-RUNTIME-STACK ( -- )
    XREG-RBASE LANCHOR LABEL@ ADR,
    STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP ;
 
+public
 \ The boot task's return stack and DO/LOOP frame stack. They come after the DATA
 \ region because their bases are published in header cells; a task maps its own
 \ pair and publishes them into its own region copy (src/lib/task.f PREPARE).
@@ -6606,6 +6806,7 @@ variable CFSK2
       vdone LBL,
    THEN ;
 
+private
 \ The AOT seed registers the metabuild-compiled words baked in the LAOTCODE
 \ blob + LAOTDICT records. Runs after EM-SEED-DICT (region mapped, DBASE/NDICT/CP
 \ live) and before the DATA region is mapped, so it touches only the code region
@@ -6622,6 +6823,7 @@ variable CFSK2
       3 9 12 ADD,  3 3 0 LDRB,  4 10 12 ADD,  3 4 0 STRB,
       12 12 1 ADDI,  acopy B,
    adone LBL, ;
+;package
 
 package AOT-META
 public
@@ -6712,6 +6914,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 \ Restore the captured window's protected WIDs after the cold baseline has
 \ established WIDN and cleared the live bitmap.  Records are not registered yet,
 \ so the window base is still exactly the WIDN that SEAL-WIDS, rebases against.
@@ -7076,6 +7279,7 @@ public
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
    done LBL, ;
+;package
 
 \ DATA-literal relocation (third class): reserve the REPL's DATA span at DP and
 \ rebase every captured DATA address literal (movz/movk x9 chain) by seedDP -
@@ -7243,6 +7447,7 @@ public
    xdone LBL, ;
 ;package
 
+package ENGINE-EMIT
 \ The data delta is a whole number of cells: every captured DATA address moves by
 \ one delta, and LDAXR/STLR fault on a misaligned address (a merged engine died
 \ SIGBUS in FIND-B on a cell four bytes off). A copied window keeps its captured
@@ -7385,6 +7590,7 @@ public
       5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
       21 21 4 ADDI,  22 22 1 ADDI,  cloop B,
    crdone LBL, ;
+;package
 
 \ Named code-literal relocation (fifth class): each row (blob-off u32, name-off
 \ u32 into the call sites' deduped pool) resolves the word by name in this engine
@@ -7453,6 +7659,7 @@ variable LCOUNT   variable LROWS
    N @ 0 > IF BUF@ N @ ROW * BYTES, THEN ;
 ;package
 
+package ENGINE-EMIT
 \ Boot-run the captured top-level entry words (the REPL's INSTALL) once the
 \ seeded blob is icache-flushed: LFIND each name of the 0-terminated
 \ [len][name] list and blr its xt. Runs at LEX0 on every boot; the entry words
@@ -7473,6 +7680,7 @@ variable LCOUNT   variable LROWS
       bloop B,
    bnf LBL,  0 $52 MOVZ,  NR-EXIT-GROUP SYS,
    bdone LBL, ;
+;package
 
 \ Publish the checker payload (layout.f AOT-CELLS) after the records register
 \ and before the boot-run list: a boot-run entry word may name a seeded word.
@@ -7511,6 +7719,7 @@ public
    done LBL, ;
 ;package
 
+package ENGINE-EMIT
 \ Seed the metabuild-captured AOT words: copy the blob, register the dict
 \ records, relocate call sites and DATA-address literals, advance CP. Every
 \ region write goes through the alias; the pass flushes the icache.
@@ -7574,6 +7783,7 @@ public
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL, ;
 
+public
 : EM-MMAP-DATA-REGION ( -- )
    LBL {: dvok :}
    0 DATA-VA VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-DATA-RESERVE LIT64,  4 0 MOVN,  5 0 MOVZ,
@@ -7584,6 +7794,7 @@ public
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL, ;
 
+private
 : EM-DATA-INIT ( -- )
    20 0 RBASE-CELL STR,
    DATA 0 0 ADDI,
@@ -7643,6 +7854,7 @@ public
       13 13 21 SUB,  13 13 25 ADD,  13 9 24 STR,
       srn LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
    sdn2 LBL,  RET, ;
+;package
 
 \ In RELOC-EMIT with the labels above; the bands and exit statuses they read are
 \ src/habu/layout.f's SNAP-RELOC.
@@ -8226,6 +8438,7 @@ ardone LBL,
 
 ;package
 
+package ENGINE-EMIT
 \ Sealed-WID reject for the AOT boot passes. Entry is LFIND's answer: x5 = the
 \ record the baked name resolved to, x11 = its xt. A callee checked source could
 \ not CALL fails the boot (exit ENGINE-ERROR:SEAL-PACKAGE) before the call
@@ -8808,6 +9021,8 @@ ardone LBL,
    poldone LBL,
    snomag LBL, ;
 
+public
+
 \ The running image's text content size, read from its header as
 \ EM-SNAPSHOT-RESTORE reads it, for layout.f TEXT-SIZE-CELL. Stored with
 \ CODE-END-CELL at both of its sites.
@@ -8815,6 +9030,8 @@ ardone LBL,
    9 DATA RBASE-CELL LDR,  10 CODE-OFF LIT64,  9 9 10 SUB,
    9 9 IMAGE-TEXT-SIZE-OFF LDR,  10 IMAGE-TEXT-CONTENT-ADJ LIT64,  9 9 10 SUB,
    9 DATA TEXT-SIZE-CELL STR, ;
+
+private
 
 : EM-STARTUP-COLD-BASELINE ( -- )
    LBL LBL {: pwclr:label pwclrd:label :}
@@ -9063,6 +9280,7 @@ ardone LBL,
       C-CALL-X11-SAVED
    nosync LBL, ;
 
+public
 \ A unit hook is reached by the real interpret, package and immediate paths.
 \ It returns a skip flag only for the parsed package-name event.
 : C-UNIT-HOOK ( -- )
@@ -9139,6 +9357,7 @@ ardone LBL,
    9 DATA TRUSTED-CELL STR,
    C-CLEAR-LOCALS
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
+;package
 
 \ The def-abort and stack-clear bodies (src/habu/prims.f); FPRIM-WID frames
 \ x30 around each.
@@ -9442,6 +9661,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : C-UNIT-DISPATCH ( -- )
    LBL LBL LBL LBL {: absent:label compile:label number:label classified:label :}
    10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,  9 absent CBZ,
@@ -9462,6 +9682,7 @@ public
    70 C-DIE-TOKEN
    absent LBL, ;
 
+public
 : C-SOURCE-EXEC-BEFORE ( -- )
    LBL {: absent:label :}
    10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 absent CBZ,
@@ -9541,6 +9762,7 @@ public
       found B,
    tk LBL, ;
 
+private
 : EMIT-SOURCE-EXEC-FINISH ( -- )
    LBL LBL LBL LBL LBL
    {: absent:label callback-ok:label keep-original:label done:label current:label :}
@@ -9648,6 +9870,7 @@ public
       LMAIN LABEL@ B,
    none LBL, ;
 
+public
 : C-TRUSTED ( -- )
    C-TASK-GUARD
    LBL LBL LBL {: cpok ndok named :}
@@ -9741,6 +9964,7 @@ public
    kcolon B,
    lnotcolon LBL, ;
 
+private
 : C-CALL-CHECKER-PACKAGE ( -- )
    LBL {: done:label :}
    NCOMP-DISPATCH:DECL-PACKAGE-OFF done DECL-OWNER:TARGET
@@ -9962,6 +10186,7 @@ public
    5 DATA TKA-CELL STR,  13 DATA TKL-CELL STR,
    done LBL, ;
 
+public
 : C-PACKAGE ( -- )
    C-TASK-GUARD
    LBL LBL LBL LBL {: top:label hastok:label cold:label stored:label :}
@@ -10057,6 +10282,7 @@ public
 \ only after the open-scope + global chain misses, so `using` never shadows an
 \ existing binding; a bare tail resolving in two used packages is a hard error.
 
+private
 : C-USING-NAME-GUARD ( -- )   \ consume the next token; reject a missing name / a ':' in it
    LBL LBL LBL LBL LBL LBL {: mmiss:label hastok:label cscan:label cbad:label cmsg:label cok:label :}
    s" hb: using: missing package name" {: ma:ptr mu:n :}
@@ -10110,6 +10336,7 @@ public
       C-CALL-CHECKER-USING                                 \ mirror name into CK-USE-NAMES[depth] (reads pre-increment depth)
       7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 ADDI,  8 7 0 STR, ;
 
+public
 : C-USING ( -- )
    C-TASK-GUARD
    C-USING-NAME-GUARD
@@ -10153,6 +10380,7 @@ public
    mine LBL,
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ reload depth (no cross-syscall live reg)
 
+private
 \ EMIT-FIND-USED (LFINDUSED leaf): searched only after the open-scope + global
 \ chain misses. In: x9=token addr, x10=token len. Out: x13=0 (miss) or FIND
 \ flags with x11=code x12=body-len, and x5 = the matched record (0 on a miss),
@@ -10291,6 +10519,7 @@ public
       0 2 MOVZ,  1 ambmsg ADR,  2 au MOVZ,  NR-WRITE SYS,
       94 C-DIE-TOKEN                               \ 94 = ENGINE-ERROR:USING-AMBIGUOUS
    ambmsg LBL,  aa au BYTES, ;
+;package
 
 package INTERP-EMIT
 public
@@ -10318,6 +10547,7 @@ public
    msg LBL,  ma mu BYTES, ;
 ;package
 
+package ENGINE-EMIT
 \ LSCOPEREC: the name lookup as one leaf for every reader but the call site, in
 \ the call site's order (EM-COMPILE-CALL): LFIND (open package, enclosing one,
 \ global, or NAME:tail), then the used publics only when LFIND missed. In:
@@ -10450,6 +10680,7 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
+public
 \ EXPORT keyword: two roles split by package context, mirrored by verify-source
 \ RECORD-EXPORT.
 \ - Inside an open package: publish an existing word under its own tail into the
@@ -10525,6 +10756,7 @@ public
    C-CALL-EXPORT-ACCEPT
    SP SP 64 ADDI,
    done LBL, ;
+;package
 
 package INTERP-EMIT
 
@@ -10625,6 +10857,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : EM-COMPILE-DROP-LOCALS ( -- )
    12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12 ;
 
@@ -10880,6 +11113,7 @@ public
    8 $D1000273 LIT64,  7 5 3 LSLI,  LADDSUBIMM LABEL@ BL,            \ sub x19,x19,#W*8
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+;package
 
 package LOWER-TXN-LOOKUP
 private
@@ -10938,6 +11172,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : EMIT-P2-HELPERS ( -- )
    EMIT-P2-COPY  EMIT-P2-DROPN  EMIT-P2-REV  EMIT-P2-ROT  EMIT-P2-RS
    LOWER-TXN-LOOKUP:EMIT-LOOKUPS
@@ -11066,6 +11301,7 @@ variable P2SK
 : EM-P2X-STORE ( -- )
    5 DATA P2W0-CELL LDR,  LP2STORE LABEL@ BL, ;
 
+public
 \ An operator row lowers its token as the seeded primitive of that spelling, so
 \ it claims the token only when the lookup binds that primitive (LSCOPEREC).
 \ Any other record takes the call path: `dup` inside a package that defines
@@ -11116,6 +11352,7 @@ variable P2SK
    notp2 C-OP-ROW-GATE
    EM-P2WIDE-ROWS
    notp2 LBL, ;
+;package
 
 package LOWER-TXN
 private
@@ -11531,6 +11768,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 \ Pass-2 entry: the hook produced a sealed lowering transaction. Save the live
 \ input, point the tokenizer at its frozen span, rewind CP to the colon entry
 \ (the name bytes stay), reset per-definition state as EM-INTERPRET-COLON does,
@@ -11813,6 +12051,7 @@ public
    kept LBL,
    9 DATA EXITH-CELL LDR,  9 exact CBZ, ;
 
+public
 : EM-COMPILE-SEMI ( label -- ) {: lnotsemi:label :}
    LBL LBL LBL LBL LBL LBL
    {: noquot:label closed:label notail:label exact:label legacy:label publish:label :}
@@ -11894,6 +12133,7 @@ public
    LMAIN LABEL@ LKWQUOT   2 ['] J-QUOT     CF-ENTRY
    LMAIN LABEL@ LKWIS 2 ['] J-IS CF-ENTRY
    LMAIN LABEL@ LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY ;
+;package
 
 \ The loop keyword dispatch rows belong to the loop-emit family above: they
 \ resolve its handlers bare, so the package is reopened here.
@@ -11949,6 +12189,8 @@ public
 
 ;package
 
+package ENGINE-EMIT
+public
 : EM-COMPILE-LOCAL ( -- )
    LBL {: notloc :}
    LMAIN LABEL@ notloc C-LOCAL-REF
@@ -11964,6 +12206,7 @@ public
    lcflt LBL,
       LVPUSHF LABEL@ BL,  LMAIN LABEL@ B,
    lcnotnum LBL, ;
+;package
 
 \ The arithmetic rows hand their emitters to the jit.f VOPI-ENTRY/VOP-ENTRY/
 \ VDIVI-ENTRY registrars, private to the emitter package, so this block is in it.
@@ -12032,6 +12275,7 @@ public
 ;package
 
 
+package ENGINE-EMIT
 \ A compiled call to an internal record (DNAME-INT) needs the TRUSTED: cell
 \ armed, unless its owner's rows type it (DNAME-OWNED, src/habu/layout.f):
 \ then the call is the checker's to admit or refuse, as every checked call is.
@@ -12104,6 +12348,7 @@ public
    done LBL, ;
 
 
+public
 : EM-COMPILE-CALL ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: notimm:label depthok:label noxc:label ploop:label pdone:label usedtry:label found:label prepare:label fval:label faddr:label freg:label :}
@@ -12192,17 +12437,20 @@ public
       LVPUSHR LABEL@ BL,
       LMAIN LABEL@ B, ;
 
+private
 : EM-RESET-COMPILE-STATE ( -- )
    EM-ABORT-COMPILE-STATE
    9 0 MOVZ,
    9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR, ;
 
+public
 \ An undefined word in a `:` body is a rejected definition: 70 is both the
 \ catchable throw code and the uncaught exit (the top-level LRDIE exit and
 \ driver-io's "check reject 70"); the uncaught-throw reporter below exits it for
 \ a refusal the checker rendered.
 70 constant RC-REJECT
 
+private
 \ x10 is the absolute floor. Recovery calls this before replacing CP or DP;
 \ the installed owner removes every publication in the reclaimed suffix.
 \ A callback is total and leaves no value. Preserve the recovery registers it
@@ -13205,6 +13453,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    LMAIN LABEL@ B, ;
 
+public
 \ EM-COMPILE-ADT-MODE: the fail-closed head of the compile dispatch. CMM-CELL
 \ mirrors the checker's construct+match token machine; operand tokens are
 \ consumed here, before the semi/local/keyword/literal/call path, so captured
@@ -13238,6 +13487,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       12 0 MOVZ,  12 DATA CMM-CELL STR,
       LMAIN LABEL@ B,
    off LBL, ;
+;package
 package COMPILE-EMIT
 public
 
@@ -13321,15 +13571,20 @@ package ENGINE-EMIT
 
 ;package
 
+package ENGINE-EMIT
+public
 \ The source-buffer cursor holds an address, so its cell is declared storage.
 PTR-VARIABLE SRCA
+private
 : SRCA@ ( -- ptr u8 )
    SRCA @ ;
 
+public
 : EMIT-RESET-BUILDER ( ptr u8 n -- )
    SRCN !  SRCA !
    ASM-INIT  ENGINE-PRIMS:RESET
    0 DIVISION-PRIM-ROW !  0 CF-DEF-GUARD ! ;
+;package
 
 package LABELS
 
@@ -13493,11 +13748,14 @@ public
 
 ;package
 
+package ENGINE-EMIT
+public
 \ The AOT section goes last, after the baked source; the window header in
 \ src/arch/arm64/icode.f says why and how its labels are reached.
 : AOT-W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
+private
 : AOT-SITE-ROW@ ( n -- ptr u8 ) SITE-ROW * AOT-SITE-BUF@ + ;
 : AOT-SITE-BOFF ( n -- n ) AOT-SITE-ROW@ AOT-W32@ ;
 : AOT-SITE-NOFF ( n -- n ) AOT-SITE-ROW@ 4 + AOT-W32@ ;
@@ -13510,6 +13768,7 @@ public
 : AOT-CREC-NAME$ ( n -- ptr u8 n ) AOT-CREC-AT 8 + AOT-W32@ AOT-POOL$ ;
 : AOT-CREC-WID@ ( n -- n ) AOT-CREC-AT 16 + AOT-W32@ ;
 
+public
 \ The primitive's wid as the seeded record carries it: ENGINE-EMIT:EMIT-DICT
 \ bakes ENGINE-PRIMS:HELPER-WID into [40].
 : AOT-PRIM-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
@@ -13520,6 +13779,7 @@ public
    loop
    -1 ;
 
+private
 : AOT-PAYLOAD-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
    AOT-REC-N @ 0 ?do
       i AOT-CREC-WID@ w = if
@@ -13639,6 +13899,7 @@ variable AOT-BOUND-SITES
    AOT-PACK:DATA-LEN @ 0 > if AOT-PACK:DATA-BUF AOT-PACK:DATA-LEN @ BYTES, then ;
 : EMIT-AOT-CSITES ( -- )   \ packed u32 CODE-site offsets (after the AOT-DSITE-N DATA u32s)
    AOT-CSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * + AOT-CSITE-N @ 4 * BYTES, THEN ;
+;package
 package AOT-XTSITE
 public
 : EMIT-ROWS ( -- )   \ packed 8B rows (blob-off u32 + name-off u32)
@@ -13719,6 +13980,7 @@ variable CUR
 
 ;package
 
+package ENGINE-EMIT
 : EMIT-AOT-SEED ( -- )
    0 AOT-BIND-MEMO-N !
    AOT-BOUND-SITES? AOT-BOUND-SITES !
@@ -13781,6 +14043,7 @@ variable CUR
    LFIND LABEL@ BL,                    \ x13 = found | imm<<1 | min-in byte | int flags
    9 13 2 ANDI,
    A G-PUSH ;
+;package
 
 package ENGINE-EMIT
 
@@ -13842,6 +14105,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 \ scope-find ( ptr u8 n -- ptr n ptr n ptr n n ): LSCOPEREC's four answers for a
 \ token (bound record, used publics' record, second used record when two hold
 \ the tail, flags), so the checker, the optimizing compiler and the Habu
@@ -13860,6 +14124,7 @@ public
    9 LKERNELDIGEST LABEL@ ADR,  9 G-PUSH
    9 32 MOVZ,  9 G-PUSH
    9 0 MOVN,  9 G-PUSH ;
+;package
 
 \ The section emitters join the emitter package habu1.f opens for EMIT-PRIMS,
 \ EMIT-PROTWID and EMIT-DICT, which they call bare.
@@ -14079,6 +14344,11 @@ public
    ;
 ;package
 
+;using
+;using
+;using
+;using
+;using
 ;using
 ;using
 ;using

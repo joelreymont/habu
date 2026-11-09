@@ -9,6 +9,8 @@
 require src/arch/arm64/icode.f
 using A64ICODE
 require src/os/image-bytes.f
+using IMAGE-BYTES
+package EXECUTABLE
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
 76 constant ELF-MAG2
@@ -29,7 +31,9 @@ $B7 constant EM-AARCH64
 64 constant ELF-HDR-SZ
 56 constant ELF-PHDR-SZ
 4 constant ELF-PHDR-N
+public
 $400000 constant VMBASE
+private
 $C0 constant ELF-RW-SZ
 $B0 constant ELF-DYNAMIC-SZ
 $B0 constant ELF-DLOPEN-SLOT-OFF
@@ -63,7 +67,9 @@ $401 constant ELF-R-AARCH64-GLOB-DAT
 \ a load-time comparison of two hand-written literals; the comparison is gone
 \ with the second literal, and the drift it watched for is now unwritable.
 CODE-CAP-BYTES CODE-OFF + constant MPAGE
+public
 variable CODELEN
+private
 variable ELF-TEXT-SIZE
 
 : ELF-PAGE-UP ( n -- n )
@@ -78,12 +84,14 @@ ELF-MSIZE-CHECK
 : ASM-CODELEN! ( -- )
    ASM-LEN CODELEN ! ;
 
+public
 : ASM-CODE ( -- asm )
    ASM-CODELEN!
    ASM-PHASE ;
 
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ + ELF-PAGE-UP ;
 
+private
 : ELF-VA ( n -- n )
    VMBASE + ;
 
@@ -209,6 +217,7 @@ ELF-MSIZE-CHECK
    ELF-DYNAMIC,
    ELF-GOT, ;
 
+public
 : SNAP-EXTRA-PTR ( -- ptr u8 )
    MBUF CODE-OFF + ;
 s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
@@ -243,6 +252,7 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
    CODE-OFF ELF-RW-AT,
    SNAP-PHASE sfts ;
 
+private
 \ ---------------------------------------------------------------------------
 \ Size-attribution tail: the bytes past the page-aligned text that the driver
 \ (src/habu/driver-io.f DRV-SIZE-MARKS) has to attribute so the emitted size map
@@ -262,4 +272,6 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 : IMG-TAIL-BYTES ( n -- n ) {: i:n :}
    i 0 = if ELF-RW-SZ exit then
    s" elf: size tail index out of range" ELF-TAIL-RC die ;
+;package
+;using
 ;using

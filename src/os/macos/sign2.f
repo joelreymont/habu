@@ -5,6 +5,8 @@
 \ page hashed at its length). It works in place on MBUF, MLEN and LE-OFF once
 \ SHA256 (src/core/sha256.f, in the engine) and macho.f are loaded. Signature
 \ integers are big-endian; the header patches little-endian.
+using IMAGE-BYTES
+package EXECUTABLE
 PTR-VARIABLE SIGA  variable SIGU
 : SIGA@ ( -- ptr u8 )
    SIGA @ ;
@@ -12,10 +14,12 @@ PTR-VARIABLE SIGA  variable SIGU
 : SIGA! ( ptr u8 -- )
    SIGA ! ;
 
+public
 : SET-SIGID ( ptr u8 n -- ) {: a:ptr u:n :}
    a SIGA!
    u SIGU ! ;
 
+private
 : SIG-IDLEN ( -- n )  SIGU @ 1 + ;
 $1D       constant LC-CODE-SIG
 88        constant CD-HDR
@@ -87,9 +91,11 @@ variable CSI
      CS-SHA-CTX  MBUF CSI @ CS-PAGE * +  CSI @ CS-SLOT-SIZE  M-BE-PTR  SHA256-IN  CS-HASH M-LEN M-BE-SKIP
      CSI @ 1 + CSI ! repeat
    M-BE-HERE MLEN! ;
+public
 : CODESIG2 ( img -- img )
    CODESIG2-BODY ;
 
+private
 \ ---------------------------------------------------------------------------
 \ Size-attribution tail: the bytes past the page-aligned __TEXT that the driver
 \ (src/habu/driver-io.f DRV-SIZE-MARKS) has to attribute so the emitted size map
@@ -114,3 +120,5 @@ variable CSI
    i 1 = if MACHO-FIXUPS-WROTE @ exit then
    i 2 = if SB-SIZE exit then
    s" macho: size tail index out of range" MACHO-TAIL-RC die ;
+;package
+;using

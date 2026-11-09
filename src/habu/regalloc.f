@@ -13,6 +13,8 @@ using A64ASM
 using A64ICODE
 using REGALLOC-ABI
 
+package REGALLOC
+public
 variable LVRALLOC   variable LVBIT   variable LVRINIT   variable LFRALLOC
 
 \ LIDX holds the innermost tier 0 `do`/`?do` index between rows, a copy of the
@@ -20,17 +22,23 @@ variable LVRALLOC   variable LVBIT   variable LVRINIT   variable LFRALLOC
 \ pool value lives in it, and no row's code, inlinable primitive body or
 \ syscall stencil writes it.
 29 constant LIDX
+private
 $0F0E0D0C0B0A09 constant VRPACK     \ x9..x15 (byte per slot, idx 0 low)
 $0807061615181719 constant VRPACK2  \ overflow: x25,x23,x24,x21,x22 (tokenizer state in DATA
+public
                                     \ cells), x6,x7,x8 (no row's code uses them while pool
                                     \ values are live)
 16 constant SNAP-SLOTS              \ a snapshot frame's two pack cells hold 16 slots
+private
 : PK# ( n -- n ) 0 BEGIN over 0= 0= WHILE 1 + swap 8 rshift swap REPEAT nip ;
 VRPACK PK# constant #POOL1
 #POOL1 VRPACK2 PK# + constant #POOL
+public
 1 #POOL lshift 1 - constant VRALL
 
+private
 24 constant #FPOOL              \ d8..d31 (d0-d7 stay prim scratch; contiguous,
+public
                                 \ so idx+8 math replaces a table here)
 1 #FPOOL lshift 1 - constant FRALL
 
@@ -97,6 +105,7 @@ VRPACK PK# constant #POOL1
    LVBIT LABEL@ LBL,
    10 VRITAB-OFF LIT64,  10 DATA 10 ADD,  10 10 7 ADD,  10 10 0 LDRB,
    8 1 MOVZ,  8 8 10 LSLV,  RET, ;
+;package
 
 ;using
 ;using

@@ -51,6 +51,8 @@ require src/habu/driver-io.f
 require tools/native-layout.f
 
 using AOT-BUF
+using DRIVER
+using ENGINE-EMIT
 package NATIVE-EMIT
 
 private
@@ -133,4 +135,6 @@ public
    s" hb" path size DRV-EMIT-IMAGE ;
 
 ;package
+;using
+;using
 ;using

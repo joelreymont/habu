@@ -1,13 +1,19 @@
 \ habu1.f, engine builder part 1: emits the native engine's primitive bodies,
 \ helper routines and seed dictionary for arm64 (Linux and macOS). The
 \ interpreter loop, keyword JIT and ENGINE-EMIT:FORTH are in habu2.f.
+package ENGINE-EMIT
+public
 variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
-
+;package
+using ENGINE-EMIT
 \ A64ASM's encoders live in src/arch/arm64/asm.f.
 require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
+using CRASH
+using RT
+using SYSCALL
 
 package ENGINE-BUILD
 variable ACTIVE
@@ -17,8 +23,12 @@ variable ACTIVE
 public
 : BUILDING? ( -- bool ) ACTIVE? ;
 ;package
+package ENGINE-EMIT
+public
 $D65F03C0 constant W-RET
+private
 $D503201F constant W-NOP
+public
 $D2800009 constant W-MOVZ0
 \ `;` writes W-DOESDECL over a does>-clause opener's `adr x10, D` when the clause
 \ compiled nothing (habu2.f DOES-REC:ELIDE-EMPTY): a zero clause entry makes
@@ -28,6 +38,7 @@ $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
 
+private
 \ XDS points just past the top cell: a push is a post-indexed store, a pop a
 \ pre-indexed load. Encoded through asm.f so an out-of-field offset fails at
 \ build time.
@@ -40,11 +51,14 @@ $F2E00009 constant W-MOVK3
 16 XDS  -8 ENC-LDRPRE  constant W-POP16    \ ldr x16,[x19,#-8]!
 17 XDS  -8 ENC-LDRPRE  constant W-POP17    \ ldr x17,[x19,#-8]!
 
+public
 \ A compiled word saves LR with one pre-indexed store and restores it with one
 \ post-indexed load; a word that calls nothing gets W-NOP in the entry slot
 \ (EM-COMPILE-RET backpatches it). 16 bytes: AArch64 sp stays 16-byte aligned.
 30 SP -16 ENC-STRPRE  constant W-LINKSAVE  \ str x30,[sp,#-16]!
+private
 30 SP  16 ENC-LDRPOST constant W-LINKREST  \ ldr x30,[sp],#16
+;package
 require src/habu/primitive-registry.f
 require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
@@ -54,6 +68,7 @@ require src/habu/task-abi.f
 require src/habu/spawn-abi.f
 require src/habu/code-span.f
 require src/habu/prof-abi.f
+package ENGINE-EMIT
 PTR-VARIABLE FP-A  variable FP-U
 
 defer FP-EMIT ( -- )
@@ -72,6 +87,7 @@ variable DIVISION-PRIM-ROW
 : FP-REG ( -- n )
    FP-A@ FP-U @ FPL LABEL@ FPE LABEL@ ENGINE-PRIMS:ADD ;
 
+public
 : FPRIM ( ptr u8 n [ -- ] -- )
    FP-ARGS
    LBL FPL !  LBL FPE !
@@ -87,6 +103,7 @@ variable DIVISION-PRIM-ROW
    FP-REG drop
    FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
 
+private
 : FPRIM-L-DIVISION ( ptr u8 n [ -- ] -- )
    FP-ARGS
    LBL FPL !  LBL FPE !
@@ -112,25 +129,31 @@ variable FP-WID
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
+public
 \ label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LHOSTROW  variable LHOSTDIVROW  variable LSRC  variable SRCN
 variable LCEMIT   variable LCEMITBL  variable LCEMITB  variable LCINLINE  variable LTOK   variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
+private
 \ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder (habu2.f)
 \ reads this, not the registry: a payload record's dictionary index is the
 \ seeded count plus its position, and the registry can grow after EMIT-DICT.
 variable SEEDED-PRIM-N
+public
 variable LREPLROUTE
 \ The process-exit trampoline (habu2.f EMIT-EXITHOOK, layout.f EXIT-HOOK-CELL),
 \ declared here because BDIE below calls it.
 variable LEXITHOOK
+private
 \ A seed stub branches to this disjoint shared C entry. Reserve its label
 \ before callback-entry is emitted, then register its own span afterward.
 variable LCALLBACKTHUNK
 variable LCALLBACKADDR
+public
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
 variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
+;package
 \ Label ids of the DATA window's content bake: its non-zero extents as a count,
 \ (offset u32, length u32) rows and their bytes in row order, then the
 \ window-relative offsets of declared address cells, which the seed re-traps
@@ -147,7 +170,10 @@ variable LNXTOFF  variable LXTOFFS
 \ after that rebase, which is the only moment the target's own base is known.
 variable LWIDW0  variable LWIDSPAN  variable LNPWIN  variable LPWIN
 ;package
+package ENGINE-EMIT
+public
 variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
+;package
 \ Named code sites: a code-address literal holding a WORD's entry, which the
 \ seed resolves by name instead of rebasing. Count + 8-byte rows. Label ids
 \ only; the rest of the package is in habu2.f.
@@ -155,7 +181,10 @@ package AOT-XTSITE
 public
 variable LCOUNT  variable LROWS
 ;package
+package ENGINE-EMIT
+public
 variable LAOTBOOTRUN
+;package
 \ The checker payload the seed publishes into layout.f AOT-CELLS:SIG-POOL-CELL
 \ and SIG-LEN-CELL: its byte length, then the span (signature rows, their
 \ strings, the type registry delta, behind their own table).
@@ -163,9 +192,12 @@ package AOT-SIG
 public
 variable LLEN  variable LSPAN  variable LNAME
 ;package
+package ENGINE-EMIT
+public
 variable LPROTWIDQ  variable LPROTWIDADD
 variable LDPBAD   \ DP-CHECK out-of-range die target (habu2.f EM-COMPILE-DIE)
 variable LBCAPFULL   \ body-capture over BODYBUF-CAP die target (habu2.f EM-BODY-CAP-DIE)
+;package
 \ Hash-index label ids, bound in EMIT-HIDX: LREBUILD for the in-place compaction
 \ BNDSET's raise leg calls, LFULL for the cannot-maintain exit, LREKEY for the
 \ re-key record-wid! calls. Not in layout.f's HIDX: the engine bakes that one.
@@ -175,7 +207,10 @@ variable LREBUILD
 variable LFULL
 variable LREKEY
 ;package
+package ENGINE-EMIT
+public
 variable LHIDXADD
+;package
 
 package EM-DEF-OCC
 public
@@ -206,6 +241,8 @@ public
 variable LENTRY
 variable LNEWEST
 ;package
+package ENGINE-EMIT
+public
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LROWWALK   \ every dispatch row's spelling test over x0/x1 (habu2.f COMPILE-EMIT:EMIT-ROW-WALK); BPOLICYADMIT calls it
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
@@ -227,13 +264,17 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable
 variable LKWTRUSTED variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWSEALPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 variable LKWEXPORT variable LCHKEXPORT
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED variable LFINDUSED-CORE variable LSCOPEREC
+;package
 \ The interpreter's shadow leaf (habu2.f INTERP-EMIT:FIND-SHADOW), which the
 \ outer loop and `'` call on LFIND's hit path.
 package INTERP-EMIT
 public
 variable LFINDSHADOW
 ;package
+package ENGINE-EMIT
+public
 9 constant A   10 constant B   11 constant C
+private
 12 constant DREG  13 constant EREG
 
 \ Emit one half-open interval-overlap test. x13 holds the checked span's end;
@@ -245,6 +286,7 @@ variable LFINDSHADOW
    DREG off LIT64,  DREG DATA DREG ADD,         \ protected start
    EREG DREG CMP,  C-HI trap BCOND,             \ checked end > protected start
    skip LBL, ;
+;package
 
 package ENGINE-EMIT
 
@@ -307,6 +349,8 @@ public
 
 ;package
 
+package ENGINE-EMIT
+public
 \ A code emission target is one aligned instruction inside the writable code
 \ interval [DBASE+DICT-SIZE, DBASE+REGION), whatever the DATA protection latch
 \ says: cp! may never redirect later LCEMIT writes into a DATA band. The $4000
@@ -322,6 +366,7 @@ public
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+;package
 
 \ Every target selector below names the Linux-aarch64 and macOS arms and calls
 \ this otherwise: this file holds primitive bodies for those two targets only,
@@ -332,6 +377,7 @@ public
    s" hb: habu1: no primitive body for this target" 76 die ;
 ;package
 
+package ENGINE-EMIT
 \ Guard the kernel-written extent encoded by the target ioctl ABI. Linux's
 \ legacy TCGETS/TCSETS pair predates _IOC direction bits and is handled
 \ explicitly; unknown unencoded requests fail closed instead of recovering an
@@ -443,7 +489,9 @@ variable FFI-OFF
 variable FFI-SKIP
 variable FFI-LOOP
 variable FFI-DONE
+public
 variable STAT-BUF
+private
 variable STAT-OK
 variable STAT-DONE
 variable CATCH-RES
@@ -458,6 +506,7 @@ variable THROW-NOREC-FB2
 variable THROW-EVAL
 variable THROW-CORRUPT
 variable THROW-CORRUPT-MSG
+public
 variable SWL-LOOP
 variable SWL-END
 variable SWL-NEXT
@@ -466,6 +515,7 @@ variable SWL-MATCH
 variable SWL-F1
 variable SWL-F2
 variable SWL-INL
+private
 variable PARSE-NONE
 variable PARSE-DONE
 variable FP-COND
@@ -952,8 +1002,10 @@ variable NUM-LINT
 
 13 constant LINUX-SIGPIPE
 1 constant LINUX-SIG-IGN
+public
 8 constant LINUX-SIGSET-SIZE
 
+private
 : LINUX-IGNORE-SIGPIPE ( -- )
    LBL {: ok:label :}
    LBL {: done:label :}
@@ -1564,6 +1616,7 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 : BTOPCHECKFETCH ( -- ) 9 DATA TOP-HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live top-row hook — getter for set-top-check ([x20/DATA + TOP-HOOK-CELL])
 
+public
 \ The main thread is the compiler: only the thread whose DATA is the main
 \ region, TASK-TCB-CELL 0 (layout.f), defines, allots, evaluates or changes
 \ package scope. A task, an exposed region and a callback thread hold a TCB
@@ -1576,11 +1629,13 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
       0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
+private
 : B-LOWER-GUARD ( -- )
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
       0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+;package
 
 \ While a checker overlay is open the engine defines nothing (layout.f
 \ REPLAY-SCOPE): replay-close and an overlay rollback restore NDICT, CP and WIDN
@@ -1608,6 +1663,7 @@ variable LDIE
    ok LBL, ;
 ;package
 
+package ENGINE-EMIT
 \ cp! and ndict! are the FORGET sinks: cp! moves JIT emission to the popped CP,
 \ ndict! the next record write to DBASE+n*DREC. Each guards the span it
 \ redirects to, so a post-seal value in a sealed band fails at the sink
@@ -1631,9 +1687,11 @@ variable LDIE
    u 0 MOVZ,  u DATA LASTC-CELL STR,
    live LBL, ;
 
+public
 : LASTC-TRIM, ( n n -- ) {: t:n u:n :}
    NDICT t u LASTC-CUT, ;
 
+private
 \ The name lookup reads an empty hash slot as proof a name is absent, which
 \ holds only while every record below NDICT is in the table. Raising NDICT
 \ re-exposes records whose slots later publications may have reused, so a raise
@@ -1734,6 +1792,7 @@ variable LDIE
    11 11 13 MUL,
    9 9 13 MUL,  9 9 10 UDIV,
    9 11 9 ADD,  9 G-PUSH ;
+;package
 
 package ENGINE-EMIT
 public
@@ -1806,6 +1865,7 @@ public
       9 9 1 SUBI,  9 G-PUSH  11 BLR, ;
 ;package
 
+package ENGINE-EMIT
 \ B-EVAL and B-EVAL-RANGE jump through a set PROVIDED-XT cell with their
 \ arguments on the data stack; else the interpret loop is entered through
 \ LMAINP-CELL (a prim names no label) and LEXIT returns with EVALERR-CELL 0.
@@ -1815,8 +1875,10 @@ public
 \ (EVAL-FRAME:ROWS) is read last, once x9, x10, x13, x14 and x30 are spent: the
 \ owner's ROWS-END field is checked code.
 variable LEVALBODY
+public
 variable LSOURCEEXECFINISH
 
+private
 : B-EVAL ( -- )
    LBL {: own:label :}
    B-TASK-GUARD
@@ -1922,9 +1984,11 @@ variable LSOURCEEXECFINISH
 : BEMIT ( -- )
    A G-POP  13 9 0 ADDI,  G-EMITC ;
 
+public
 : BCR ( -- )
    13 10 MOVZ,  G-EMITC ;
 
+private
 : BSPACE ( -- )
    13 32 MOVZ,  G-EMITC ;
 
@@ -2070,9 +2134,11 @@ variable LSOURCEEXECFINISH
 : BFETCH ( -- )
    A G-POP  A A 0 LDR,  A G-PUSH ;
 
+public
 : BSTORE ( -- )
    B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  A B 0 STR, ;
 
+private
 : BPTRFIELD ( -- )
    B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
@@ -2150,6 +2216,7 @@ variable LSOURCEEXECFINISH
 : BHERE ( -- )
    7 DATA 0 LDR,  7 G-PUSH ;
 
+public
 \ Bound the DP heap to [floor, ceiling], the two cells at
 \ BOOT:DP-FLOOR-CELL and DP-CEILING-CELL, before any allot , c, or
 \ definer stores a new DP; out of range goes to habu2.f LDPBAD (EM-COMPILE-DIE).
@@ -2172,6 +2239,7 @@ variable LSOURCEEXECFINISH
       15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
 
+private
 \ Before a path lowers DP, raise the release high-water (layout.f DPHW-CELL)
 \ to the DP it lowers from, which the DP cell still holds: O(1), so releasing a
 \ large allot costs nothing, and `allot` (BALLOT) zeroes the reused space when
@@ -2207,9 +2275,11 @@ variable LSOURCEEXECFINISH
    B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
+public
 : BTYPE ( -- )
    2 G-POP  1 G-POP  G-OUT ;
 
+private
 10 constant DIE-NL                 \ the one byte that ends every die message
 
 \ die ( ptr u8 n n -- ): write the span and one newline to fd 2, then exit. An
@@ -2913,6 +2983,7 @@ $150 constant CBT-BYTES
    THEN
    4 0 MOVZ,  5 0 MOVZ,
    NR-READLINKAT SYS,  FS-SYS-PUSH ;
+;package
 
 package LIBC-OS
 
@@ -3190,6 +3261,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : BMKDIR ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
@@ -3309,6 +3381,7 @@ public
    11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  10 11 0 STRW,   \ through the alias
    C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
+;package
 
 \ Both relocation maps are keyed on region offset, and their readers refuse the
 \ image when the bytes lack the recorded shape (habu2.f RELOC-EMIT:EMIT-CALLS
@@ -3567,6 +3640,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : BCLOSE ( -- )
    0 G-POP  NR-CLOSE SYS, ;
 
@@ -3655,6 +3729,7 @@ public
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
    CATCH-RES LABEL@ LBL, ;
 
+public
 \ BTHROW ( code -- ): unwind to the nearest catch handler; the tail of `throw`
 \ (BTHROWPRIM) and the engine's throw sites. With EVALD>0 it first goes to
 \ LEVALREC (habu2.f, through EVALREC-CELL: a leaf prim cannot name a habu2.f
@@ -3706,6 +3781,7 @@ public
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
 
+private
 \ The `throw` primitive. A zero code is a caller bug, success passed as a
 \ failure: it would unwind the body and let its catch read 0, so it unwinds as
 \ ENGINE-ERROR:THROW-ZERO. A TASK:HALT unwind (HALT-UNWIND-CELL set) carries 0
@@ -3740,9 +3816,11 @@ public
 : BCATCH-HELD ( -- )
    BCATCH-RUN  CATCH-PUSH LABEL@ LBL, ;
 
+public
 : BCATCH ( -- )
    BCATCH-RUN  BCATCH-FORWARD  CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
 
+private
 \ unit-compile-run ( guard source -- rc ): the engine owns the protected
 \ dispatch hook for one source invocation. Busy or wild hooks return rc70
 \ before source runs; a source throw returns its original catch status.
@@ -4444,6 +4522,7 @@ public
    noquery LBL,  11 0 MOVZ,  12 0 MOVZ,
    done LBL, ;
 
+public
 \ Register n gets the DEF-TIER-CELL latch (layout.f) the next `:` takes.
 : TIER-LATCH ( n -- ) {: r:n :}
    LBL {: done:label :}
@@ -4452,6 +4531,7 @@ public
    r 2 MOVZ,
    done LBL, ;
 
+private
 \ A prospective answer at this boundary: 0 means checking first, 1 means the
 \ trusted gate would run first. The verifier captures it before loading tools.
 : BTICKORDER ( -- )
@@ -4523,6 +4603,7 @@ public
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
    done LBL, ;
+;package
 
 package ENGINE-EMIT
 
@@ -4560,6 +4641,7 @@ package ENGINE-EMIT
 
 ;package
 
+package ENGINE-EMIT
 : BSEALFRIEND ( -- )
    9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
 
@@ -4624,6 +4706,7 @@ package ENGINE-EMIT
    B B $FF ANDI,  B B 52 LSLI,
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
    C 12 16 LDR,  C C B ORR,  C 12 16 STR, ;
+;package
 
 package ENGINE-EMIT
 public
@@ -4743,6 +4826,7 @@ private
 
 ;package
 
+package ENGINE-EMIT
 \ prot-wid-room ( -- n ): how many more wordlists may still be allocated AND
 \ protected. Every WID below PROT-WID-MAX has a bit, so the only thing that can run
 \ out is WID ids themselves -- the resource a declaration actually consumes. Clamped
@@ -4757,6 +4841,7 @@ private
    pos LBL,
    9 G-PUSH ;
 
+public
 \ Emit the FNV-1a fold+hash of the name at reg nr (ptr), length lr, into hr;
 \ clobbers c3 c4 (byte/fold scratch) and c7 (cursor). The fold is FIND's
 \ A-Z|0x20 idiom. This is the hash index's key derivation, shared by the
@@ -4774,6 +4859,7 @@ private
       hr hr c3 MUL,
       c7 c7 1 ADDI,  hl B,
    hd LBL, ;
+;package
 
 \ WLFIND:LENTRY is the name's row in one wordlist and the whole of
 \ `search-wl`'s body: in x0 = name, x1 = length, x2 = wid; out x11 = the row's
@@ -4922,6 +5008,7 @@ public
       SWL-LOOP LABEL@ B, ;
 ;package
 
+package ENGINE-EMIT
 \ `search-wl ( ptr u8 n n -- n )`: the routine above, minus one wordlist.
 \ Engine-helper WID records and DNAME-INT records are never raw-searchable: the
 \ first are private implementation entries, and the second would otherwise let
@@ -4963,6 +5050,7 @@ public
       9 DATA INP-CELL LDR,  9 G-PUSH
       9 0 MOVZ,  9 G-PUSH
    PARSE-DONE LABEL@ LBL, ;
+;package
 
 \ num-parse ( ptr u8 n -- n bool bool ): the engine's own number reader, the
 \ LNUM routine EM-INTERPRET-NUMBER and EM-COMPILE-LITERAL call, entered with the
@@ -4986,6 +5074,7 @@ public
 
 ;package
 
+package ENGINE-EMIT
 : EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
    s" /"    ['] BDIV  FPRIM-L-DIVISION   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
@@ -5066,6 +5155,7 @@ public
    s" spawn-fds" ['] BSPAWNFDS FPRIM-L
    s" fork" ['] LIBC-OS:FORK FPRIM
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
+;package
 
 package ENGINE-EMIT
 
@@ -5099,6 +5189,7 @@ package ENGINE-EMIT
 
 ;package
 
+package ENGINE-EMIT
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM   s" ioctl" ['] BIOCTL FPRIM
    s" map-anon" ['] BMAPANON FPRIM
@@ -5155,6 +5246,7 @@ package ENGINE-EMIT
    s" executable-build-leave" ['] BBUILDLEAVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" set-top-check" ['] BSETTOPCHECK FPRIM-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
+;package
 
 package ENGINE-EMIT
 
@@ -5167,6 +5259,7 @@ package ENGINE-EMIT
 
 ;package
 
+package ENGINE-EMIT
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
 : BF+ ( -- )
@@ -5339,6 +5432,7 @@ package ENGINE-EMIT
    TOK-GOT LABEL@ LBL,  9 DATA TKA-CELL LDR,  9 11 9 SUB,  9 DATA TKL-CELL STR,
       11 DATA INP-CELL STR,  0 1 MOVZ,  RET,
    TOK-NONE LABEL@ LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
+;package
 
 \ The shared runtime lowering guard body ( x10=address, x11=byte length ). It is
 \ registered as the sealed (PROT-SPAN) engine helper so a guarded primitive that
@@ -5431,6 +5525,7 @@ package ENGINE-EMIT
 
 ;package
 
+package ENGINE-EMIT
 \ LFLUSH makes the code in [x9, CP) visible to instruction fetch; LFLUSHTO takes
 \ the end in x11 instead, for code that stands above CP (LIBC-OS:FORK's child).
 \ Clobbers x9 (rounded down to its line), x10, x11.
@@ -5460,8 +5555,10 @@ package ENGINE-EMIT
    FL-ID LABEL@ LBL,  DSB-ISH,  ISB,  RET,
    end LBL, ;
 
+public
 variable LHIDXBUILD
 
+private
 \ Emit: the chain of record x3's key, its folded name XOR its wid cell: x6 =
 \ the chain's first slot, x8 = HIDX-SLOTS, the most slots one walk visits.
 \ Clobbers x2 x4 x5 x7 x15 x16.
@@ -5897,6 +5994,7 @@ variable FIND-HINL
 variable FIND-HCMP
 variable FIND-HMATCH
 
+public
 \ LHEADROW: the package row a qualifier's head names, read by LFIND, a
 \ qualified definition and `using`. Inside package A, or a part of it, the
 \ head names A's part `A:head` first, then a top-level package. In: x9 =
@@ -5905,6 +6003,7 @@ variable FIND-HMATCH
 \ the machine stack: layout.f PACKAGE-PATH holds the token `package` is
 \ opening while a lookup runs.
 variable LHEADROW
+private
 : EMIT-HEAD-ROW ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL
    {: top:label inline:label head:label colon:label tail:label probe:label bare:label done:label :}
@@ -6262,6 +6361,7 @@ variable LHEADROW
    NUM-LINT LABEL@ LBL,  C-NUM-INT-FINISH
    NUM-DONE LABEL@ LBL,  RET,
    end LBL, ;
+;package
 
 package ENGINE-EMIT
 using ENGINE-PRIMS
@@ -6300,5 +6400,9 @@ create NAME-PADDING 0 , 0 ,
 
 ;package
 
+;using
+;using
+;using
+;using
 ;using
 ;using

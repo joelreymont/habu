@@ -2,6 +2,10 @@
 \ Engine emitters say
 \ `NR-WRITE SYS,`; porting to another OS/arch swaps this file.
 
+require src/arch/arm64/mnem.f
+using A64ICODE
+package SYSCALL
+public
 $1002 constant MAP-ANON-PRIVATE
 $1012 constant MAP-ANON-PRIVATE-FIXED
 
@@ -11,7 +15,9 @@ $1012 constant MAP-DATA-RESERVE
 $01  constant MAP-SHARED
 $11  constant MAP-SHARED-FIXED
 
+private
 $1   constant NR-EXIT
+public
 $2   constant NR-FORK
 $3   constant NR-READ
 $4   constant NR-WRITE
@@ -25,8 +31,10 @@ $6   constant NR-CLOSE
 $25  constant NR-KILL
 $52  constant NR-SETPGID
 $14  constant NR-GETPID
+private
 $148 constant NR-PTHREAD-KILL  \ __pthread_kill(thread port, sig) — BSD syscall 328
 26   constant MACH-THREAD-SELF  \ thread_self_trap is Mach trap -27, so x16 = ~26
+public
 $16A constant NR-KQUEUE
 $171 constant NR-KEVENT64
 $FFFB constant EVFILT-PROC-U16     \ EVFILT_PROC as an unsigned 16-bit filter (-5)
@@ -66,13 +74,16 @@ $1   constant NR-EXIT-GROUP
 -1   constant NR-CLOSE-RANGE
 -1   constant NR-MEMFD-CREATE
 
+private
 -2 constant AT-FDCWD
+public
 $20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux emitters use it today
 
 : SYS, ( n -- )
    dup 0 < if s" hb: sys: a Linux-only syscall number" 76 die then
    16 swap MOVZ,  $80 SVC, ;
 
+private
 \ Runtime-emit syscall stencils: the MATCH bad-tag die is
 \ EMITTED into the user word, so its write+exit syscall words are baked here at
 \ engine-build time rather than assembled by SYS, at build time. The macOS
@@ -102,6 +113,7 @@ $D2800010 NR-WRITE 32 * + SYS-WRITE-STENCIL SYS-STENCIL-W!      \ movz x16, #NR-
 $D2800010 NR-EXIT-GROUP 32 * + SYS-EXIT-STENCIL SYS-STENCIL-W!  \ movz x16, #NR-EXIT-GROUP
 $D4001001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0x80
 
+public
 : SYS-EMIT-WRITE ( -- ptr u8 n )  SYS-WRITE-STENCIL SYS-STENCIL-W ;
 : SYS-EMIT-EXIT ( -- ptr u8 n )   SYS-EXIT-STENCIL SYS-STENCIL-W ;
 : SYS-EMIT-SVC ( -- ptr u8 n )    SYS-SVC-STENCIL SYS-STENCIL-W ;
@@ -120,3 +132,5 @@ $D4001001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0x80
 : OS-OPEN-FLAGS ( -- ) ;
 
 : OS-MMAP-FLAGS ( -- ) ;
+;package
+;using

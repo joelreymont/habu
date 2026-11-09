@@ -40,6 +40,7 @@ require src/habu/aot-decl.f
 require src/habu/aot-ident.f
 require src/habu/aot-owned.f
 require src/habu/habu2.f
+using ENGINE-EMIT
 
 package LINKER
 private
@@ -320,3 +321,4 @@ public
 
 ;package
 ;package
+;using

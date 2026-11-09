@@ -6,21 +6,27 @@ require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
 using REGALLOC-ABI
+using REGALLOC
 
+package ENGINE-EMIT
+public
 variable LVSPILL   variable LVLITPUSH   variable LVPUSHC
 variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
 variable LVTOP2C   variable LVFOLDPUT
 variable LVMOVK  variable LVFORCEK  variable LVBINPREP  variable LVBINIPREP  variable LVPUSHR
 variable LVNEED  variable LVSHARED?  variable LVDEST
+private
  0 XDS  8 ENC-STRPOST  constant W-PUSHR   \ str xR,[x19],#8  (or with R)
  0 XDS -8 ENC-LDRPRE   constant W-POPR    \ ldr xR,[x19,#-8]!
  0 XDS  8 ENC-STRDPOST constant W-FPUSHR  \ str dR,[x19],#8  — tag 2 = FLOAT reg
  0 XDS -8 ENC-LDRDPRE  constant W-FPOPR   \ ldr dR,[x19,#-8]!
 $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 
+public
 : C-EMITW ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
 
+private
 \ A target syscall stencil (src/os/<target>/sys.f) is a byte string because an x86_64 instruction
 \ is one to fifteen bytes; on ARM64 a length that is not whole words is a seam defect and dies.
 : C-STENCIL-W@ ( ptr u8 n -- n ) {: a:ptr i:n :}
@@ -119,6 +125,7 @@ variable LVPUSHT
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 STR,
    6 6 1 SUBI,  6 DATA VSP-CELL STR,  RET, ;
 
+public
 \ Row-comparison mode. A routine that asks whether a name spells a dispatch row
 \ (habu2.f EMIT-DEF-KW-GUARD, EMIT-ROW-WALK) replays the row registrars with
 \ CF-DEF-GUARD set: each then emits only its spelling test, a branch to the
@@ -133,6 +140,7 @@ variable CF-DEF-HIT
 
 variable LKWPLUS  variable LKWMINUS  variable LKWSTAR  variable LKWDIV  variable LKWMOD
 variable LKWAND2  variable LKWOR2   variable LKWXOR2
+private
 variable FESK
 
 \ FOLD-ENTRY: two constant operands fold at JIT time; anything else falls through to the generic
@@ -165,10 +173,13 @@ variable FESK
 : FXOR2 ( -- )
    11 11 12 EOR, ;
 
+public
 \ The keyword-string label cells are global like every other LKW* cell in this
 \ file: the habu2.f LABELS allocator (its OPS block) mints them, and it is not
 \ this package.
 variable LKWLSH  variable LKWRSH
+;package
+using ENGINE-EMIT
 
 package ENGINE-EMIT
 
@@ -181,8 +192,11 @@ package ENGINE-EMIT
 
 ;package
 
+package ENGINE-EMIT
+public
 variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  variable LKWNIP2
 
+private
 : EMIT-SHUFKW ( -- )
    LKWDUP2 LABEL@ LBL,   s" dup" BYTES,    LKWDROP2 LABEL@ LBL,  s" drop" BYTES,
    LKWSWAP2 LABEL@ LBL,  s" swap" BYTES,   LKWOVER2 LABEL@ LBL,  s" over" BYTES,
@@ -385,6 +399,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    bdone C-VBIN-FOLD-PATH
    bno LBL,  13 0 MOVZ,
    bdone LBL,  C-VBIN-RET ;
+;package
 
 \ LVBINIPREP ( x10=imm-max -- x13=mode ) : LVBINPREP plus mode 3, for a top nonnegative constant
 \ no greater than imm-max: x14=rd and x12=rn for the deep operand, x15=imm12, VSP already --.
@@ -427,6 +442,7 @@ package ENGINE-EMIT
 
 ;package
 
+package ENGINE-EMIT
 \ LVPUSHR ( x14=reg ) : push a register entry (spill-on-full keeps x14 claimed)
 : EMIT-VPUSHR ( -- )
    LVPUSHR LABEL@ LBL,
@@ -462,6 +478,7 @@ variable FESK2
    FESK LABEL@ LBL, ;
 
 variable FESK6
+;package
 
 package ENGINE-EMIT
 
@@ -593,8 +610,11 @@ $9B108220 constant W-MSUB1716         \ msub xd,x17,x16,xa (or with d, a<<10)
 
 ;package
 
+package ENGINE-EMIT
+public
 variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKWLE2  variable LKWGE2
 
+private
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
 \ cmp rd,rm (cmp rd,#imm12 when the top is a constant in 0..4095) ;
 \ csetm rd,cond  (Forth flag 0/-1)
@@ -621,6 +641,7 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
       lmainlbl B,
    FESK LABEL@ LBL, ;
 
+public
 \ LVFUSE ( x5=k x14=VS top reg -- x16=b.cond word with imm19 0, or 0 ) : the
 \ branch keywords (habu2.f CFB-ENTRY, CFBN-ENTRY) call it on register top k.
 \ When no other entry shares k's register (LVSHARED?: that holder reads the
@@ -639,6 +660,7 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
 \ Clobbers x5-x8, x10-x13; preserves x14.
 variable LVFUSE
 
+private
 : EMIT-VFUSE ( -- )
    LVFUSE LABEL@ LBL,
    LBL LBL LBL {: walk chk no :}
@@ -669,7 +691,9 @@ variable LVFUSE
    LKWEQ2 LABEL@ LBL,  s" =" BYTES,    LKWNE2 LABEL@ LBL,  s" <>" BYTES,
    LKWLT2 LABEL@ LBL,  s" <" BYTES,    LKWGT2 LABEL@ LBL,  s" >" BYTES,
    LKWLE2 LABEL@ LBL,  s" <=" BYTES,   LKWGE2 LABEL@ LBL,  s" >=" BYTES, ;
+public
 variable LVDROP  variable LVSWAPX  variable LVNIPX  variable LVCOPY
+private
 $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 
 \ LVDROP ( -- x13=ok x12=freed ) : drop ANY top entry (reg -> free unless
@@ -855,8 +879,10 @@ variable FESK5
    LKWFPLUS LABEL@ LBL,  s" f+" BYTES,   LKWFMINUS LABEL@ LBL,  s" f-" BYTES,
    LKWFSTAR LABEL@ LBL,  s" f*" BYTES,   LKWFSLASH LABEL@ LBL,  s" f/" BYTES, ;
 
+public
 variable LVSNAP  variable LVRECON  variable LVRECONAT  variable LVFPOP  variable LVSETF  variable LVRESNAP
 
+private
 \ The depth cell and frame area live in JIT-SNAP (src/habu/layout.f). The frame area is beyond
 \ every 12-bit immediate, so SNAP-FRAME, loads its base as a 64-bit literal. The depth cell stays
 \ in `DATA <off> LDR/STR` reach so the definition-scoped resets in habu2.f that clear VSP, LVD and
@@ -1261,9 +1287,11 @@ variable FESK3
 
 : XNIP ( -- )
    LVNIPX LABEL@ BL, ;
+public
 variable LKWINC  variable LKWDEC  variable LKWZEQ  variable LKWZLT
 variable LKWNEG2  variable LKWINV2
 variable LKWCFETCH  variable LKWCELLS  variable LKWCELLP  variable LKWPFIELD
+private
 variable FESK4
 
 \ vun-entry: unary op on the VS top. Tag 1 (integer constant) folds at JIT time
@@ -1394,6 +1422,7 @@ $39400000 constant W-LDRB0       \ ldrb wT,[xN], zero-extending
 : EMIT-MEMKW ( -- )
    LKWCFETCH LABEL@ LBL,  s" c@" BYTES,     LKWCELLS LABEL@ LBL,   s" cells" BYTES,
    LKWCELLP LABEL@ LBL,   s" cell+" BYTES,  LKWPFIELD LABEL@ LBL,  s" ptr-field" BYTES, ;
+;package
 
 package ENGINE-EMIT
 
@@ -1404,6 +1433,8 @@ package ENGINE-EMIT
 
 ;package
 
+;using
+;using
 ;using
 ;using
 ;using

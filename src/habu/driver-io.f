@@ -4,21 +4,27 @@
 \ before this file) and src/habu/sign-id.f.
 
 require src/habu/sign-id.f
+using EXECUTABLE
+using IMAGE-BYTES
 
+package DRIVER
 variable DRV-WFD
 
+public
 : DRV-RETIRE-RELOADS ( -- )
    s" include" UNDEFINE-IF-DEFINED
    s" included" UNDEFINE-IF-DEFINED
    s" require" UNDEFINE-IF-DEFINED
    s" required" UNDEFINE-IF-DEFINED ;
 
+private
 : DRV-WRITE-IMAGE-PATH ( ptr u8 n -- )
    PATH0 1537 493 open DRV-WFD !
    DRV-WFD @ 0 < IF s" driver: cannot open output" 74 die THEN
    DRV-WFD @ MBUF MLEN@ FDIO:WALL
    DRV-WFD @ close ;
 
+public
 : DRV-WRITE-IMAGE ( img ptr u8 n -- ) {: phase path:ptr pathu :}
    phase IMG-DROP
    path pathu DRV-WRITE-IMAGE-PATH ;
@@ -34,6 +40,7 @@ variable DRV-WFD
 : DRV-EXIT-OK ( -- )
    s" " 0 die ;
 
+private
 \ Uncaught-throw reporting at the driver boundary, so a build failure names its
 \ throw code (an image-buffer overrun once exited 75 with no output). The exit
 \ code stays the raw throw code when the kernel can represent it (check reject
@@ -66,8 +73,12 @@ variable DRV-FN
    rc 0 < IF 0 rc - ELSE rc THEN DRV-FV !
    DRV-FAIL-DIGITS ;
 
+public
 : DRV-FAIL ( n -- ) {: rc:n :}
    s" driver: uncaught throw code " ERROR-TEXT:TYPE
    rc DRV-FAIL-CODE
    10 DRV-B2
    s" " rc die ;
+;package
+;using
+;using
