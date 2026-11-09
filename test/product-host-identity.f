@@ -64,7 +64,7 @@ variable RC
 \ A variant with one additional ARM primitive, built from copied sources.
 \ The specification row and ARM body are both required by the kernel's
 \ completeness check. The body reuses BCR because the new word is never run.
-: SPEC-ANCHOR$ ( -- ptr u8 n ) s" \ ---- primitives whose effect" ;
+: SPEC-ANCHOR$ ( -- ptr u8 n ) s" \ Primitives whose effect" ;
 : SPEC-ROW$ ( -- ptr u8 n ) S\" EPRIM: host-extra EPRIM;\n\n" ;
 : ARM-ANCHOR$ ( -- ptr u8 n ) S\" \n   s\" type\" ['] BTYPE  FPRIM-L ;" ;
 : ARM-ROW$ ( -- ptr u8 n ) S\" \n   s\" host-extra\" ['] BCR FPRIM-L" ;
