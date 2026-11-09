@@ -123,11 +123,8 @@ public
 \ HOOKS#ctl` (src/core/layout-buffer.f DBUF-SOURCE), the block claimed with its
 \ extent; PERSISTENT's and PROCESS's accessors are `#base i 8 * +` (LBUF-SOURCE),
 \ so their 64 cells are reached by offset and never named.
-\ `xt!` stores and then declares the cell to the address-cell table; a stripped
-\ image drops the declaration at link and keeps the store
-\ (src/habu/aot-closure.f AOT-DECLARATION?). Without that, REGISTER and PREPARE are
-\ refused `aot: PC-relative target removed or outside closure site=xt!`. As in
-\ src/core/dynamic-storage.f, the cells are named here because they are declared here.
+\ As in src/core/dynamic-storage.f, the cells are named here because they are
+\ declared here.
 : OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: claim :}
    N BYTE-VIEW CELL claim execute
    PERSISTENT-N BYTE-VIEW CELL claim execute

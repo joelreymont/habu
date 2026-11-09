@@ -1527,9 +1527,8 @@ INSN-PER-OP-CK
    {: rd:n d:n :}
    rd d ENC-ADR ;
 
-\ Both ends of this delta are inside ONE emission, and the stripped link depends
-\ on that: src/habu/aot-lib.f ADR-TARGET! resolves such an ADR in the member its
-\ site is in and refuses one whose target is anywhere else.
+\ Both ends of this delta are inside ONE emission, so it holds wherever that
+\ emission's code is placed.
 : PUT-CODEADDR ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 0 RESULT-REG  id ADR-DELTA  ADR-WORD  APPEND ;

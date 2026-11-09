@@ -700,7 +700,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 ;using   \ X64LAYOUT
 
 \ The arm64 DATA stream holds the DATA extent cell, then DATA [0, CALLMAP-OFF)
-\ as is; what follows is not laid out by DATA offset (snap-lib.f WRITE-BYTES).
+\ as is; what follows is not laid out by DATA offset.
 : ARM-DATA-CELL ( n -- n ) {: off:n :}
    off SNAP-RELOC:CALLMAP-OFF CELL - > if
       s" imgdump: data cell is not stored at its offset" 74 die then

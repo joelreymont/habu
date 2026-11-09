@@ -5,11 +5,6 @@
 \ engine's dictionary, since a host-captured name does not exist in bin/hb. One
 \ declaration file keeps both on one format.
 
-\ A common engine-prefix source, loaded just before habu2.f in both builders
-\ (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f BF-APPEND-COMMON), where
-\ the icode.f and layout.f requires are no-ops (provided files, or layout.f as an
-\ engine boot row in src/habu/native-runtime.f).
-
 \ In a booted bin/hb the icode.f require loads the section budget AOT-SECTION-CAP,
 \ which the engine does not keep. AOT-SECTION checks actual encoded lengths
 \ against it before the engine emitter publishes any of this section.
@@ -50,10 +45,7 @@ variable AOT-REC-N
 \ A compact row's wid word on a package row, whose first two words are then its
 \ public and private wids (AOT-PACK:REC+, the linkers' PKG?).
 $FFFFFFFF constant PKG-MARK
-\ The packed u32 every row field of this format is, read a byte at a time: this
-\ file compiles where src/lib/le.f is not loaded, in the recovery boot
-\ (tools/bootstrap.sh) and ahead of le.f in the fixpoint stream
-\ (tools/build-fixpoint.f BF-EMIT-STDIN-RUN-SOURCE).
+\ The packed little-endian u32 every row field of this format is.
 : W32@ ( ptr u8 -- n )
    {: p:ptr :}
    0 4 0 ?do p i + c@ i 8 * lshift or loop ;
@@ -107,11 +99,10 @@ create AOT-SITE-BUF AOT-SITE-MAX SITE-ROW * allot    variable AOT-SITE-N   \ pac
 \ need, so it cannot be static. habu2.f EMIT-AOT-SEED reads AOT-NAMES-BUF@ during
 \ the image emit and aot-file.f MERGE reads and writes it, both after
 \ AOT-CAPTURE:CAPTURE returns: releasing it inside the capture would emit an
-\ empty name pool. This file is build-host source (tools/native-build.f requires
-\ it before AOT-ARM:WINDOW-OPEN; tools/hb-build-lib.f and bootstrap/cg/forth.fs
-\ carry it in the stage prefix), so its control record sits BELOW the captured
-\ DATA window and registers in the HOST's DYNAMIC-STORAGE instance; the capture
-\ walks the window's instance only (src/habu/aot-capture.f ACAP-RELEASE-DYNAMIC).
+\ empty name pool. A capture tool loads this file before AOT-ARM:WINDOW-OPEN,
+\ so its control record sits BELOW the captured DATA window and registers in
+\ the HOST's DYNAMIC-STORAGE instance; the capture walks the window's instance
+\ only (src/habu/aot-capture.f ACAP-RELEASE-DYNAMIC).
 \ A declaration moved above a window open would be released mid-capture.
 DYNAMIC-BUFFER AOT-NAMES-STORAGE n
 variable AOT-NAMES-LEN
@@ -220,12 +211,11 @@ variable CONTENT-END                 \ one past the last present cell: where a m
 \ THE GROUPING IS AN IMAGE ENCODING, NOT THE CAPTURE FORMAT. The capture, the
 \ artifact sections and a merge keep the flat bitmap, where appending a window is
 \ a concatenation (src/habu/aot-file.f PLACE-WDATA) and a cell's bit is at a
-\ fixed place; BM-COMPACT groups that bitmap once for a writer, and both emitted
-\ readers (src/habu/habu2.f AOT-WINDOW:APPLY-CELLS for the baked window,
-\ src/habu/aot-link-arm.f EMIT-DATA-COPY for a stripped image) decode it with one
-\ outer loop over the presence bits around the same per-byte walk.
-\ Image form, in both writers: [groups G][stored bytes S] and then the
-\ src/habu/cell-grid.f form: presence map, present groups, values.
+\ fixed place; BM-COMPACT groups that bitmap once for a writer, and the emitted
+\ reader (src/habu/habu2.f AOT-WINDOW:APPLY-CELLS) decodes it with one outer
+\ loop over the presence bits around the flat per-byte walk.
+\ Image form: [groups G][stored bytes S] and then the src/habu/cell-grid.f
+\ form: presence map, present groups, values.
 BM-CAP GROUP-BYTES / constant GROUP-CAP
 GROUP-CAP CELL-BITS / constant PMAP-CAP
 PMAP-CAP BM-CAP + constant CBM-CAP
@@ -341,13 +331,10 @@ create BUF MAX 8 * allot    variable N   \ 8B rows: blob-off u32 + name-off u32
 \ makes a word reachable by name, and a private word nothing can qualify into is
 \ reachable by nothing - so its record buys no caller anything and does not
 \ travel (aot-capture.f ACAP-NAMED? decides). Its CODE does travel, called by a
-\ displacement the blob carries, and one reader still has to account for it:
-\ src/habu/aot-closure.f walks the code a `hb-build` is shaking out and retargets
-\ every PC-relative branch against the span that owns it. A row here is that
-\ account, and it is the whole of it - the two u32 a record row would have
-\ carried, and none of the eighteen bytes of name, flags, kind and wordlist that
-\ only a lookup needs. 20 bytes a word becomes 8, and 48 bytes of booted
-\ dictionary become none.
+\ displacement the blob carries. A row here accounts for that code, and only
+\ that: the two u32 a record row would have carried, and none of the eighteen
+\ bytes of name, flags, kind and wordlist that only a lookup needs. 20 bytes a
+\ word becomes 8, and 48 bytes of booted dictionary become none.
 \ A ROW IS (blob offset u32, raw code span u32), in capture order, the same two
 \ fields and the same CODE-SPAN encoding a compact record's first two words hold.
 \ The seed publishes the table's address, this count and the blob's landing base

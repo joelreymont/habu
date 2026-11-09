@@ -109,7 +109,7 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    s" LD-Q" LISTED-NAMED? TTRUE ;
 
 
-\ The entry store app-image-core.f START! makes; ROUTE-HEADER sends it to the
+\ The entry store APP-ENTRY:XT! makes; ROUTE-HEADER sends it to the
 \ space's header.
 : STORE-ENTRY ( -- )
    s" LD-LEAF" HOST-NAMED ENTRY-XT  data-base APP-ENTRY:XT-CELL + xt! ;

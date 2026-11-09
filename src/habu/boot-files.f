@@ -1,9 +1,7 @@
 \ boot-files.f - the files every engine loads at startup below the checker, in
 \ load order. The engine generator (src/habu/habu2.f) walks this one list to
 \ emit the startup loads, the provide rows and the path strings, each phase
-\ projecting the rows of its parts. Gforth recovery keeps declared mirrors of
-\ the same list: bootstrap/cg/forth.fs PFX-FILES and tools/bootstrap.sh
-\ SRC_CORE / SRC_COMMON (docs/bootstrap.md "The seed mirrors the engine").
+\ projecting the rows of its parts.
 \
 \ A row is its part (the boot phase that loads it), its target kind and its
 \ path. A target row loads only on its target, but its path is still part of

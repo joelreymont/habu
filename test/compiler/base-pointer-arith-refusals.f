@@ -474,8 +474,8 @@ create DIAG-BUF 8192 allot
    s" a DATA cell that holds an address is still reached through ptr-field" T-LABEL
    s" BPA-FLD ( -- ptr ptr u8 ) data-base 8 + 0 ptr-field @" CERTIFIES ;
 
-\ The linker's shape: src/habu/aot-closure.f DATA-PTR takes `data-base
-\ BYTE-VIEW` first, and DATA-CELL@ is DATA-PTR CELL-VIEW @.
+\ The linker's shape: src/habu/linker.f HOST adds an offset to `data-base
+\ BYTE-VIEW` and takes its CELL-VIEW.
 : CASE-DATA-BYTE-VIEW ( -- )
    s" and the linker's byte view of the region still certifies" T-LABEL
    s" BPA-BV ( n -- n ) data-base BYTE-VIEW swap + CELL-VIEW @" CERTIFIES ;

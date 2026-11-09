@@ -1974,8 +1974,8 @@ public
    cells bytes PARSER-SPANS ;
 
 \ Both wordlists are protected here, after FFI's last definition: an engine
-\ that loads this file after its seal (tools/build-fixpoint.f's capture host)
-\ refuses any definition into a protected wordlist and exits 84.
+\ that loads this file after its seal refuses any definition into a protected
+\ wordlist and exits 84.
 seal-package
 
 ;package

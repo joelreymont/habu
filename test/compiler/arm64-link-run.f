@@ -47,7 +47,7 @@ create PROG-BUF PATH-CAP allot
    s" : LR-DEEP ( -- ) 0 LR-REC drop ;" evaluate-closed ;
 
 
-\ The entry store app-image-core.f START! makes, of the word named a u.
+\ The entry store APP-ENTRY:XT! makes, of the word named a u.
 : STORE-ENTRY ( ptr u8 n -- )
    XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
    data-base APP-ENTRY:XT-CELL + xt! ;

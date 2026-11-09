@@ -1,9 +1,7 @@
 \ cell-grid.f - a span of DATA cells in image form; the only Forth that writes or
-\ reads it. Writers: AOT capture (aot-decl.f AOT-WINDOW, aot-link-arm.f
-\ BUILD-SPARSE-DATA), the snapshot heap when smaller (snap-lib.f ENCODE-HEAP).
-\ Emitted readers: habu2.f AOT-WINDOW:APPLY-CELLS, aot-link-arm.f EMIT-DATA-COPY,
-\ habu2.f EM-SNAPSHOT-DECODE-HEAP, which refuses any non-canonical byte: another
-\ engine built its image.
+\ reads it. Writer: AOT capture (aot-decl.f AOT-WINDOW:BM-COMPACT). Emitted
+\ readers: habu2.f AOT-WINDOW:APPLY-CELLS and EM-SNAPSHOT-DECODE-HEAP, which
+\ refuses any non-canonical byte: another engine built its image.
 
 package CELL-GRID
 \ Callers size and own every buffer.

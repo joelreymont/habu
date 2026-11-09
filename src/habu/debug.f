@@ -1,9 +1,9 @@
 \ debug.f - breakpoints on compiled words: a BRK #0 at a word's entry, served by
 \ the engine's SIGTRAP handler (habu2.f), which prints habu-bp:, pc and the stack
-\ top, then removes (one-shot) or re-arms (persistent) it. Up to 8. Baked on ARM64
-\ only (native-runtime.f): x86-64 has no breakpoint handler. With debug-watch.f
-\ and stepper.f it makes package DEBUG; the rest is private, so a program keeps
-\ its own FIND, FREE or STEP.
+\ top, then removes (one-shot) or re-arms (persistent) it. Up to 8. Baked on arm64
+\ only (tools/hb-build-core.f RUNTIME-FILES): x86-64 has no breakpoint handler.
+\ With debug-watch.f and stepper.f it makes package DEBUG; the rest is private,
+\ so a program keeps its own FIND, FREE or STEP.
 
 require src/arch/arm64/asm.f
 require src/habu/code-bytes.f

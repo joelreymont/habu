@@ -32,9 +32,8 @@ DYNAMIC-BUFFER ACC-BUF n
 \ Only a measurement session (OPEN to CLOSE, called only by measurement tools)
 \ takes the mapping or writes a slot; every entry point is a no-op outside one.
 \ That keeps durations out of a captured image: the capture copies DATA, and a
-\ DYNAMIC-BUFFER whose capacity was baked non-zero while its mapping belonged to
-\ a dead process passes the bounds check and dereferences (it SIGSEGVed the
-\ second generation of tools/two-generation-build.f). The engine keeps compiling
+\ DYNAMIC-BUFFER baked with a non-zero capacity and a dead process's mapping
+\ passes the bounds check and dereferences that mapping. The engine keeps compiling
 \ after NCOMP:CAPTURE-PREPARE, so releasing at capture alone is not enough; it
 \ still calls CLOSE for an image saved mid-session. SESSION is read before the
 \ control record, so a mapping is never indexed outside the session that took it.

@@ -147,9 +147,9 @@ public
 \ An engine helper is an engine-resident routine guarded primitives reach by a
 \ direct branch (a span guard, a bounds loop). HELPER-REGISTER records it as a
 \ sealed system-private record over [start-addr, end-addr) stamped
-\ OWNER-API-PRI-WID: hidden from raw searches (BSWL), and resolved by the AOT
-\ closure walker by its exact code entry (aot-closure.f FINDADDR-PTR), the only
-\ entry ever followed. DNAME folds the marker into the baked name/flags cell.
+\ OWNER-API-PRI-WID: hidden from raw searches (BSWL), and found by exact name at
+\ its code entry (src/compiler/native/dict.f HELPER-TARGET), the only entry ever
+\ followed. DNAME folds the marker into the baked name/flags cell.
 : HELPER-REGISTER ( ptr u8 n n n -- )
    >LABEL swap >LABEL swap ADD OWNER-API-PRI-WID swap WID! ;
 

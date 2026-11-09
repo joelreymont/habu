@@ -1255,10 +1255,9 @@ public
 
 \ Every boot row is portable: each prefix that records one opens the registry
 \ first, with REQUIRE-BOOT-OPEN as a source token (src/habu/habu2.f
-\ EMIT-REQUIRE-BOOT-OPEN-TOKEN, bootstrap/cg/forth.fs's mirror) or literally
-\ (src/habu/native-runtime.f), so BOOT-CANDIDATE answers for every engine kind.
-\ A canonical scan beside it would answer for no engine and hide a prefix that
-\ stopped opening the registry. The selection counts every frozen row whatever
+\ EMIT-REQUIRE-BOOT-OPEN-TOKEN) or literally (tools/hb-build-core.f END-WRITE),
+\ so BOOT-CANDIDATE answers for every engine kind. A canonical scan beside it
+\ would answer for no engine and hide a prefix that does not open the registry. The selection counts every frozen row whatever
 \ REQUIRE-BASE is, so a frozen row is the engine's even where its file is
 \ missing. RESOLVED-ROOT$ stays as the caller's own RESOLVE left it.
 : ENGINE-KNOWN? ( ptr u8 n -- bool )

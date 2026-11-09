@@ -1397,10 +1397,9 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 \ loads T0 on its host. So OP-CODE maps the operations by name from the running
 \ dictionary at the first T0 compile in each process (OPS-MAP); a record at or
 \ above the boundary is never an operation, so a package's own word of that
-\ name is a call. OP-OF#base is a scratch pointer cell: a saved image stores it
-\ null (src/core/pointer-storage.f PTR-VARIABLE, src/habu/snap-lib.f
-\ SND-ZERO-SCRATCH) and a stripped product restarts on the engine's own DATA, so
-\ a null base says the map is missing.
+\ name is a call. OP-OF#base is a scratch pointer cell: a linked program stores
+\ it null (src/core/pointer-storage.f PTR-VARIABLE, src/habu/link-data.f
+\ COPY-ROW), so a null base says the map is missing.
 variable OP-N                        \ the records OP-OF holds, once mapped
 DYNAMIC-BUFFER OP-OF n
 variable OP-HITS                     \ the seeded records OP-MAP found by the name

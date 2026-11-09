@@ -371,10 +371,9 @@ public
 
 \ The five cells these registries are, handed one at a time to the caller's
 \ claim. A fresh instance's zero (no mapping, no rows, no members, no live arena,
-\ open lock) is correct, so a stripped AOT image owns these cells outright
-\ (src/habu/aot-owned-cells.f). The naming happens here because the cells are
-\ private here: this hands out the five and nothing else, no entry and no
-\ address that outlives the call.
+\ open lock) is correct, so a claimant may zero them. The naming happens here
+\ because the cells are private here: this hands out the five and nothing else,
+\ no entry and no address that outlives the call.
 : OWNED-CELLS ( [ ptr u8 -- ] -- ) {: claim :}
    REG CELL-BYTES claim execute
    REG-CAP BYTE-VIEW claim execute

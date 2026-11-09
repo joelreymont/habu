@@ -1,8 +1,7 @@
 \ debug-watch.f - REPL watch cells shared by stepper.f and debug.f, which with
-\ this file make package DEBUG. The product bakes it after repl.f
-\ (native-runtime.f); the hb-stdin recovery engine gets it through
-\ `require src/habu/debug.f`. The table lives in dictionary data; fixed DATA
-\ header cells publish its address and count to the signal-safe breakpoint handler.
+\ this file make package DEBUG. hb loads it after repl.f (tools/hb-build-core.f
+\ RUNTIME-FILES). The table lives in dictionary data; fixed DATA header cells
+\ publish its address and count to the signal-safe breakpoint handler.
 
 package DEBUG
 

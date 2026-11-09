@@ -1,7 +1,7 @@
 \ created-body-abi.f - the record flag and engine cells that bound a created
-\ word's body. Loaded before checker.f by each core prefix, so the checker and
-\ src/habu/layout.f, which loads after it, read one definition. An engine bakes
-\ this file (src/habu/native-runtime.f provides it). Constants only: no DATA.
+\ word's body. Loaded before checker.f at startup (src/habu/boot-files.f
+\ CHECKER), so the checker and src/habu/layout.f, which loads after it, read one
+\ definition. Constants only: no DATA.
 package CREATED-BODY-ABI
 public
 

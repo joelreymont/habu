@@ -26,8 +26,6 @@ public
 \ `here` as an integer, like the other three cursors: every reader of the DATA
 \ coordinate compares and differences it, never follows it. DATA is at the fixed
 \ DATA-VA, so this is checked pointer arithmetic with no trust row or cast.
-\ src/habu/aot-closure.f carries the same one-liner for package AOT-LINK, which
-\ the stripped linker loads without this file.
 : HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
 
 \ Every producer latches all four spans at the same two moments: latching three,

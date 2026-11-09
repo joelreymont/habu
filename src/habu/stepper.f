@@ -1,8 +1,8 @@
 \ stepper.f - the REPL token stepper: `step <code>` runs the rest of the line one
 \ token at a time, echoing each token and the data stack after it. While
 \ stepping the REPL hook returns one token per call, so the engine's interpret
-\ loop is the evaluator. Package DEBUG (debug.f); baked after layout.f and
-\ repl.f (native-runtime.f).
+\ loop is the evaluator. Package DEBUG (debug.f); built in after layout.f
+\ and repl.f (tools/hb-build-core.f RUNTIME-FILES).
 
 require src/habu/debug-watch.f
 

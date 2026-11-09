@@ -5,7 +5,7 @@
 \ cell naming its own Q, one naming count.f's TALLY, a scratch cell and a data
 \ cell holding 0; COLORS holds three strings. HI-TEXT's literal has the bytes of
 \ count.f's facts text, so it names that text in count.f's span. After the
-\ package the top level stores RUN as the program's entry, as APP-IMAGE:START!
+\ package the top level stores RUN as the program's entry, as APP-ENTRY:XT!
 \ does.
 
 package FILE-OBJECTS-MAIN

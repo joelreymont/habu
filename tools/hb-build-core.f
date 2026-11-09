@@ -116,8 +116,8 @@ variable TEXT-U
    s" src/os/linux/repl-term.f" ;
 
 
-\ native-runtime.f's files after the startup ones, without its capture steps,
-\ and the source verifier tools/check-verify-child.f runs.
+\ hb's files after STARTUP's, and the source verifier
+\ tools/check-verify-child.f runs.
 : RUNTIME-FILES ( -- )
    s" src/habu/engine-origin.f" REQUIRE-FILE
    s" src/compiler/native/compiler.f" REQUIRE-FILE
@@ -162,12 +162,12 @@ variable TEXT-U
 
 
 \ The product's registry is the build's: the end file records each row with the
-\ product's own include.f and packs them into its DATA, as a capture's prepare
-\ does (native-runtime.f CAPTURE-PREPARE); then the installs, and under --repl
-\ the program's MAIN as hb's entry, which hb runs before its REPL or standard
-\ input (src/habu/main.f ROUTED). Last the product's IMAGE-LIFECYCLE:PREPARE
-\ releases what its files' top levels acquired in this process (FFI's library
-\ handles, mappings), which the written program must not carry.
+\ product's own include.f and packs them into its DATA; then the installs, and
+\ under --repl the program's MAIN as hb's entry, which hb runs before its REPL
+\ or standard input (src/habu/main.f ROUTED). Last the product's
+\ IMAGE-LIFECYCLE:PREPARE releases what its files' top levels acquired in this
+\ process (FFI's library handles, mappings), which the written program must not
+\ carry.
 : END-WRITE ( bool -- )
    {: entry:bool :}
    0 TEXT-U !

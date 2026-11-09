@@ -1,6 +1,6 @@
-\ wl.f - the wordlist ids the engine gives a meaning. Each core prefix loads it
-\ after boot-cells.f and before checker.f, which reads it (native-runtime.f
-\ provides it).
+\ wl.f - the wordlist ids the engine gives a meaning. Its startup row
+\ (boot-files.f FILL) loads it after boot-cells.f and before checker.f, which
+\ reads it.
 package WL
 public
 \ A live package row's: the row keeps its public and private wids where a word

@@ -21,8 +21,9 @@ public
 \    (C-SOURCE-BAKED, C-SOURCE-APPEND-LSRC under EM-STARTUP), so engine code is
 \    bounded by the 21-bit ADR byte field, ADR-HI; past it FX-REACH dies
 \    `icode: adr out of reach`.
-\ 2. Baked source, the whole of src/habu/stage2.f READ-SRC: refused at emission
-\    by CODE-CAP-WORDS. The boot arena maps IBUFSZ plus the source's length.
+\ 2. Baked source, the span habu2.f ENGINE-EMIT:OPEN receives: refused at
+\    emission by CODE-CAP-WORDS. The boot arena maps IBUFSZ plus the source's
+\    length.
 \ 3. AOT payload (EMIT-AOT-SEED). No PC-relative field addresses it (habu2.f
 \    TADR, adds the text base to a LOFF, offset), so it has one aggregate budget,
 \    AOT-SECTION-CAP, which src/habu/aot-decl.f AOT-SECTION enforces.
@@ -251,9 +252,6 @@ variable I-RTARGET                  \ byte offset it has to reach
 variable I-RDELTA                   \ signed byte distance it would need
 variable I-RLIMIT                   \ the field's exclusive bound, in bytes
 
-\ Both build texts load this file before src/lib/fmt.f (tools/bootstrap.sh
-\ SRC_COMMON, tools/build-fixpoint.f BF-APPEND-COMMON), so it renders its own
-\ decimals.
 $14 constant IDEC-CAP               \ -9223372036854775808: nineteen digits and a sign
 $30 constant IDEC-ZERO
 $2D constant IDEC-MINUS

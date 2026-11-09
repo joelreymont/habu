@@ -542,9 +542,9 @@ public
 \ TARGET-CAPTURE prepares the capture, retains live private emitted records from
 \ this map, completes it, then calls this, which refuses any other dictionary.
 \ The map is read before anything closes the shadow: NCOMP:CAPTURE-PREPARE
-\ closes the shadow of the compiler that runs it, and tools/native-build-core.f
-\ PREPARE-TARGET runs the target window's compiler, not the host's that filed
-\ the map. With no shadow open the tables stay as CAPTURE left them, empty.
+\ closes the shadow of the compiler that runs it, which may be the target
+\ window's compiler, not the host's that filed the map. With no shadow open the
+\ tables stay as CAPTURE left them, empty.
 : SHADOW-CAPTURE ( -- )
    ACAP-TIDX-ND @ ndict@ <> if
       s" aot-capture: the shadow is read only right after the capture it belongs to" 74 die

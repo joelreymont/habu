@@ -1,5 +1,5 @@
 \ bytes.f - core byte-buffer helpers, loaded in the engine's core prelude
-\ (tools/native-build-core.f LOAD-TARGET) so low-level code needs no library
+\ (a src/habu/boot-files.f CORE row) so low-level code needs no library
 \ require. BYTE-VIEW ( ptr a -- ptr u8 ) is an engine word: checked code refuses
 \ a cell @ or ! on its view (src/lib/string-test.f BAD-BYTE-VIEW-LOAD).
 

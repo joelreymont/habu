@@ -82,8 +82,7 @@ CAST: >CELL ( n -- ptr n )
 \ region (`data-base` is the running task's): the path FS:MKTEMP-DIR-IN or
 \ FS:MKTEMP answers stays this task's until it calls either again, and a new
 \ task's paths start empty. The band is declared in src/habu/layout.f, not as
-\ TASK:+USER rows, because tools/native-build-core.f requires this file to
-\ build the engine and must not load src/lib/task.f.
+\ TASK:+USER rows.
 \
 \ layout.f is loaded before this file and cannot see PATHZ-CAP or
 \ PATH-CAP, so the band states those widths and this executes the agreement

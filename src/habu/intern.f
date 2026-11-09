@@ -269,8 +269,8 @@ private
    0  owner ROWS-FIELD @ 0 ?do  owner LENGTHS i cells + @ +  loop ;
 
 \ The bodies outside the active pool, by rows and bytes, duplicates counted: no
-\ more than these can a link copy into the pool (src/habu/aot-closure.f
-\ MAPPED-DATA), since equal bodies share a row within the segment written.
+\ more than these can a link copy into the pool, since equal bodies share a row
+\ within the segment written.
 : FOREIGN-ROWS ( -- n )
    0 FIRST-P @
    begin dup 0= 0= while
@@ -342,12 +342,10 @@ public
 : WINDOW-OPEN ( -- )
    ROLE-HEAD NEW-SEGMENT dup PUBLISH SWITCH ;
 
-\ The stripped-image driver calls this before it latches the window's end, with
-\ the window's pool active (src/habu/aot-window-latch.f AOT-DATA-SPAN). The link
-\ then copies into this pool every body it reaches in another, and each copy has
-\ to land inside the window: the last segment keeps room for every body outside
-\ the pool, up to a whole segment's, and the pool opens no segment afterwards. A
-\ link that outgrows that room is refused with E-NSTR-CAP.
+\ Call this with the window's pool active, before the window's end is latched.
+\ The last segment keeps room for every body outside the pool, up to a whole
+\ segment's, and the pool opens no segment afterwards; a pool without that room
+\ is refused with E-NSTR-CAP.
 : WINDOW-CLOSE ( -- )
    FOREIGN-ROWS ROWS-MAX min  ROWS-MAX ROWS @ -  >
    FOREIGN-BYTES ARENA-CAP min  ARENA-CAP USED @ -  >  or

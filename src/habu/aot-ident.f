@@ -1,9 +1,6 @@
 \ aot-ident.f - what a chain capture was taken from: the closure it loaded and a
-\ digest over its bytes. The closure is derived: the capture brackets include.f's
-\ REQUIRE-N at window open and close (tools/aot-chain-capture.f), the metabuild
-\ fills it from an artifact's list (src/habu/aot-file.f). Engine primitives only,
-\ no registry read: the stdin metabuild host has no src/lib/, and the one
-\ tools/bootstrap.sh builds does not compile src/core/include.f.
+\ digest over its bytes. The closure is derived: a capture adds its paths with
+\ PATH+, and a read fills it from an artifact's list (src/habu/aot-file.f).
 
 package AOT-IDENT
 

@@ -415,10 +415,8 @@ public
 \ THE CALLER LOADS x11 WITH THE HANDLER'S ADDRESS, because the two callers cannot
 \ load it the same way. The engine bakes LCRASHH within ADR's ±1 MiB of its own
 \ startup (habu2.f EM-STARTUP-RUNTIME-STATE, measured at every engine build),
-\ while a stripped image places the handler after the whole copied code band and
-\ has to go through aot-lib.f TEXT-ADR,. Nothing else in this file addresses a
-\ label outside its own definition, which is what tools/aot-startup-reach-lint.f
-\ checks.
+\ while a linked product's start-up reaches it from the text base
+\ (src/arch/arm64/boot.f STACKS, through TEXT-AT,).
 : G-INSTALL-CRASH-X11 ( -- )                     \ x11 = the crash handler's address
    11 SIGACT-SIGINFO SIGACT-ONSTACK or C-SIGACTION-FRAME
    HB-TARGET-LINUX? IF
@@ -434,10 +432,10 @@ private
 \ kills the process unnamed. So the handler is installed SA_ONSTACK, and every
 \ thread that runs Habu code registers its own alternate stack before it can
 \ overflow, carved off its machine stack (stack-abi.f SIGNAL-BYTES): the
-\ engine's and a stripped image's startup (habu2.f EM-STARTUP, aot-lib.f
-\ EMIT-ENTRY), a task's thread (habu1.f BTASK-ENTRY) and a thread C started,
-\ at the callback that brings it into Habu code (habu1.f BCALLBACK-THUNK). The
-\ profiler's SA_ONSTACK handler runs on the same one.
+\ engine's and a linked product's start-up (habu2.f EM-STARTUP,
+\ src/arch/arm64/boot.f ENTRY,), a task's thread (habu1.f BTASK-ENTRY) and a
+\ thread C started, at the callback that brings it into Habu code (habu1.f
+\ BCALLBACK-THUNK). The profiler's SA_ONSTACK handler runs on the same one.
 \
 \ Each of the three writes x0, x1, x12 and the system call's own registers, and
 \ x2 on the path that exits, and nothing else, and holds no BL and no ADR into

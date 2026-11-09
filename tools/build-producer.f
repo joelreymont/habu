@@ -1,8 +1,8 @@
 \ Source buffers consumed during one native build. The driver binds OBSERVE to SOURCE-INPUT's
 \ selected reader before each loader handover. No filesystem probe occurs here.
 \ The emitter role covers whole observed prefix FILEs, including the manifest,
-\ through the last compiler file src/habu/native-runtime.f loads (COMPILER-DONE);
-\ a helper edit in one of those FILEs changes the role.
+\ through the target's last compiler file (COMPILER-DONE); a helper edit in one
+\ of those FILEs changes the role.
 require src/core/sha256.f
 require src/core/include.f
 require tools/build-target.f

@@ -1058,9 +1058,9 @@ TASK-OBSERVER-CELL
 1 constant ADDR-DATA
 2 constant ADDR-CODE
 \ The window's numbering of the same kinds, read at each definition's begin
-\ because BIND-PRODUCER re-points the bound names when src/habu/native-runtime.f
-\ finishes (tools/native-definition-cache.f), and cleared by DEF-RESET: a
-\ builder saved after a cold build must match one saved after a warm build.
+\ because BIND-PRODUCER re-points the bound names (tools/native-definition-cache.f
+\ FILE-SUCCESS), and cleared by DEF-RESET: a builder saved after a cold build
+\ must match one saved after a warm build.
 variable WIN-CALL
 variable WIN-TAIL
 variable WIN-ADDR-DATA

@@ -1,8 +1,7 @@
 \ The stack-effect checker: the declaration owner and its arenas, the scan of
 \ each definition, and the effect store and records the compiler reads.
-\ Loaded by the boot prefix (src/habu/boot-files.f) and
-\ tools/native-build-core.f ahead of src/habu/layout.f, so the fixed engine cells
-\ it uses are mirrored here as private aliases.
+\ Loaded by the boot prefix (src/habu/boot-files.f) ahead of src/habu/layout.f,
+\ so the fixed engine cells it uses are mirrored here as private aliases.
 package CHECKER-REG
 \ SOURCE-CELL (layout.f DECL-CELL) is the record the engine certifies through;
 \ TARGET-CELL is the one a replacement checker publishes itself into.
@@ -10948,7 +10947,6 @@ PTR-VARIABLE ASIG-LAST-P
 
 : CHECKER-ASIG-DISARM ( -- ) 0 ASIG-ARMED ! ;
 
-\ The pool's sizes, for tools/aot-chain-capture.f's report.
 : CHECKER-ASIG-N ( -- n ) ASIG-ROW-U @ ASIG-ROW / ;
 : CHECKER-ASIG-ROW-BYTES ( -- n ) ASIG-ROW-U @ ;
 : CHECKER-ASIG-STR-BYTES ( -- n ) ASIG-STR-U @ ;
@@ -12303,7 +12301,7 @@ PRIM: CHECKER-RESOLVES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-CERT-DUP? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-CERT-SHAPE-DUP? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
 \ The AOT signature pool's surface, an axiom because this file compiles with the
-\ hook off: tools/aot-chain-capture.f's census reads the three sizes.
+\ hook off.
 PRIM: CHECKER-ASIG-ARM PRIM;
 PRIM: CHECKER-ASIG-DISARM PRIM;
 PRIM: CHECKER-ASIG-ARMED? PE-F PE-OUT PRIM;
@@ -12342,8 +12340,7 @@ PRIM: GENR-SIG-CAP PE-N PE-OUT PRIM;
 \ beside the registrar. An engine that boots its prefix from source compiles
 \ this file before src/core/check-hook.f installs a checker, so that header
 \ publishes no effect there, and without this axiom the sealed checker
-\ refuses the word: every row, src/lib/task.f's among them, would die rc 70 on
-\ tools/build-fixpoint.f's hb-host and hb-stdin.
+\ refuses the word: every row, src/lib/task.f's among them, dies rc 70.
 \ UNSAFE-TOK? rejects `generates:` inside checked bodies, so the axiom adds no
 \ checked-code capability.
 PRIM: generates: PRIM;
@@ -12513,8 +12510,8 @@ PPRIM: CHECK DEFINITION PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
 \ loads before the hook it installs, so the declaration never reaches the
 \ effect store. Without this row the sealed checker refuses INSTALL and
 \ every top-level `CHECK:INSTALL` dies rc 70
-\ (tools/check-core.f, tools/lint/text.f, the tools/build-fixpoint.f output, the
-\ re-arm tools/checked-boundary-lint-core.f tells authors to write).
+\ (tools/check-core.f, tools/lint/text.f, the re-arm
+\ tools/checked-boundary-lint-core.f tells authors to write).
 PPRIM: CHECK INSTALL PPRIM;
 PPRIM: CHECKER-CERT INSTALL PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
@@ -14320,9 +14317,7 @@ CHECKER-REG:}SCRATCH
 \ checked code names them. Each public word such a package holds when this
 \ file loads gets the row ( -- n ), read from the dictionary, so an appended
 \ field needs no row of its own; a row goes only to the record `PKG:NAME`
-\ resolves to. The row rests on each package's constants-only contract: the
-\ Gforth seed stamps no value kind on a constant (bootstrap/cg/forth.fs
-\ C-CONSTANT).
+\ resolves to. The row rests on each package's constants-only contract.
 
 \ Whether the record lies in public wordlist WID and is the one that wordlist
 \ binds under its name, a retired or shadowed record being neither.
@@ -28848,8 +28843,7 @@ CAST: AS-PENDING-DISCARD ( n -- [ -- ] )
 \ hook-less load makes from src/core/checker.f on records its row there
 \ (CLAIM-COLD-SOURCE claims only an empty cell). Each load that replaces a
 \ running checker calls this by name after src/core/layout-valid.f and before
-\ src/core/check-hook.f: tools/native-build-core.f LOAD-TARGET in its target
-\ window and tools/bootstrap.sh's recovery reload. It is the only way in: the
+\ src/core/check-hook.f. It is the only way in: the
 \ owner record carries no transfer callback (src/core/checker-owner-abi.f, $48).
 public
 : HANDOVER ( -- )
@@ -31907,7 +31901,7 @@ public
 \ copies any grown registry, persist the live rows (all three name stores use
 \ offsets and need no pointer marking), then clear the later checker scopes.
 \ A capture is a boundary like a file's end: the pending created body closes
-\ first, before the image zeroes the `,` run cells (snap-lib.f SND-ZERO-LIVE).
+\ first.
 \ Not in CHECKER-QUIESCE-END: that runs after UIX-RESET, CHX-RESET and
 \ HIDX-MEM-CLEAR, and the record the close builds would regrow those indexes.
 : CHECKER-CAPTURE-PREPARE ( -- )

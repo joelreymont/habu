@@ -763,7 +763,7 @@ variable RETIRED
 \ such condition: the engine answers HB-TARGET-LINUX?, HB-TARGET-MACOS? and
 \ HB-TARGET-LINUX-X86-64? one way, so the arm its answer runs stays on the
 \ straight line and the other arm never runs (ARM-TOKEN?, DEAD-TOKEN).
-\ tools/native-emit-arm.f LOAD-SYS loads its target's sys.f that way. A source
+\ src/lib/power.f POWER-LOAD:HOST loads its target's file that way. A source
 \ cannot define a predicate's spelling (tools/reserved-name-lint-core.f reserves
 \ it), so the answer is the engine's. The path is the literal right before the
 \ loader word, the bytes the engine's literal makes of it (BODY-LIT!); discovery
@@ -3407,8 +3407,7 @@ variable FILE-USE
 \ the open row (ROW-WRITE). A row is known by its opener's spelling: a binding
 \ cannot tell prims.f's opener from its own definition when the scan reads
 \ prims.f. No `parses-through:` row can bound an engine row: prims.f loads
-\ before src/core/cell-effects.f defines it (tools/build-fixpoint.f
-\ BF-APPEND-CHECKER-BOOT).
+\ before src/core/cell-effects.f defines it (src/habu/boot-files.f FILL).
 : ROW-CLOSER? ( ptr u8 n ptr u8 n -- bool ) {: end:ptr endu:n alt:ptr altu:n :}
    TOKEN-A @ TOKEN-U @ end endu STR=CI IF 0 0= EXIT THEN
    altu 0= IF 0 0= 0= EXIT THEN

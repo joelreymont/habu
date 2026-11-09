@@ -111,11 +111,11 @@ variable GRP-LAST
    loop ;
 
 \ extent runs to the next owner; fill is one past the last non-zero byte. cells
-\ and cost follow the capture's scanners (aot-capture.f ACAP-SCAN-SEG,
-\ aot-link-arm.f BUILD-SPARSE-DATA): a non-zero cell costs the LEB128 of its
-\ value, and each GROUP-SPAN holding one costs GROUP-BYTES of bitmap (aot-decl.f
-\ BM-COMPACT). Sort on cost, not nonzero. Cells and groups count from the
-\ extent's own base, so neighbours sharing one are both charged.
+\ and cost follow the capture's scanner (aot-capture.f ACAP-SCAN-SEG): a
+\ non-zero cell costs the LEB128 of its value, and each GROUP-SPAN holding one
+\ costs GROUP-BYTES of bitmap (aot-decl.f BM-COMPACT). Sort on cost, not
+\ nonzero. Cells and groups count from the extent's own base, so neighbours
+\ sharing one are both charged.
 : ROW ( n n ptr u8 n n -- ) {: off:n len:n name:ptr nameu:n wid:n :}
    off len SCAN
    off FMT:.U TAB  len FMT:.U TAB  FILL @ FMT:.U TAB  NZ @ FMT:.U TAB

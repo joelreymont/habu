@@ -90,11 +90,6 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    FL-MANT @ s>f swap FL-SCALE-F ;
 
 \ ---- field splitting ------------------------------------------------------
-\ This file is one of the modules tools/build-fixpoint.f assembles into the
-\ engine's own stage source, and that source is certified against the core
-\ prefix alone. It may therefore use only what the assembly carries: the raw
-\ byte-scan words and the engine's own `idx` role, never the typed STR surface,
-\ which src/lib/string-roles.f declares outside the engine.
 : FL-STRIP-SIGN ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u :}
    u 0= if a 0 0 0= 0= exit then
    a c@ STR-MINUS = if a 1+ u 1- 0 0= exit then

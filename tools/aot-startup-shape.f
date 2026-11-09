@@ -26,8 +26,8 @@ $10 constant MOVW-LANE-BITS         \ one movz/movk immediate lane (icode.f LOFF
 
 public
 
-\ TEXT-ADR, borrows one scratch register for the code base: every emitter site
-\ in src/habu/aot-link-arm.f passes x12, and every reader compares against this.
+\ The one scratch register a stripped image's startup takes the code base in;
+\ every reader compares against this.
 12 constant TEXT-ADR-SCRATCH
 
 \ Written with the emitter's own encoders, not hex masks: a move-wide word is its
@@ -56,13 +56,13 @@ public
 : ADR-TARGET ( n n -- n ) {: w:n at:n :}
    at w ADR-DISP + ;
 
-\ THE FOUR WORDS src/habu/aot-link-arm.f TEXT-ADR, EMITS, at `at` and into `rd`:
-\ the label's byte offset from text offset zero in an LOFF, movz/movk pair (lane
-\ 0 then lane 1), `adr scratch` to the code base itself (LTEXT, bound at text
-\ offset zero, which `base` names), and the add that joins them. All four are
-\ pinned because the first word alone does not identify the sequence:
-\ EMIT-OWNED-CELLS opens a LIT64, of a DATA offset with the same `movz x9`, and
-\ it is the `adr` and the add that never follow it.
+\ THE FOUR WORDS THAT ADDRESS A TEXT LABEL, at `at` and into `rd`: the label's
+\ byte offset from text offset zero in an LOFF, movz/movk pair (lane 0 then lane
+\ 1), `adr scratch` to the code base itself (LTEXT, bound at text offset zero,
+\ which `base` names), and the add that joins them. All four are pinned because
+\ the first word alone does not identify the sequence: a LIT64, of a DATA
+\ offset opens with the same `movz x9`, and the `adr` and the add never follow
+\ it.
 : TEXT-ADR-SEQ? ( n n n n n n n -- bool )
    {: w0:n w1:n w2:n w3:n at:n base:n rd:n :}
    w0  rd w0 MOVW-LANE 0 MOVZHW <> if false exit then
@@ -76,15 +76,15 @@ public
 : TEXT-ADR-OFFSET ( n n -- n ) {: w0:n w1:n :}
    w0 MOVW-CHUNK  w1 MOVW-CHUNK or ;
 
-\ THE HEAD OF THE BLOB'S COPY LOOP: the three words src/habu/aot-link-arm.f
-\ EMIT-DATA-COPY puts at the top of its presence-map walk - the map cursor
-\ against its end, the branch out of the whole loop, and the load of the map byte
-\ this turn reads. Nothing here is a free field: the registers are the emitter's
-\ and the displacement is the loop's own length, so a match is that loop.
-\ IT IS WHAT TELLS A CODE-ONLY IMAGE FROM ONE THAT COPIES A DATA BLOB. The
-\ empty-window arm of EMIT-DATA-COPY (BLOB-LEN 0) emits no loop at all, and the
-\ two words it does emit - the span-end literal into x7 and the DP store - are
-\ the same two that end the copying arm, so only the loop separates them.
+\ THE HEAD OF THE BLOB'S COPY LOOP: the three words at the top of the startup's
+\ presence-map walk - the map cursor against its end, the branch out of the
+\ whole loop, and the load of the map byte this turn reads. Nothing here is a
+\ free field: the registers are fixed and the displacement is the loop's own
+\ length, so a match is that loop.
+\ IT IS WHAT TELLS A CODE-ONLY IMAGE FROM ONE THAT COPIES A DATA BLOB. A
+\ startup with an empty window has no loop at all, and its two words - the
+\ span-end literal into x7 and the DP store - are the same two that end a
+\ copying startup, so only the loop separates them.
 \ tools/image-size-lib.f FIND-COPY-LOOP looks for them in an image whose blob
 \ address it could not read.
 41 constant COPY-LOOP-WORDS          \ instructions from the loop's test to past its end

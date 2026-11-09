@@ -421,8 +421,7 @@ using TFAM
 \ TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are the `construct`/`match`/`;match`
 \ bridge: habu2.f resolves them through C-FIND-GLOBAL, which zeroes the open
 \ package's wordlist cells so a keyword's meaning cannot depend on where it is
-\ written, and bootstrap/cg/forth.fs mirrors the four spellings. TFAM-CTOR-WORD?
-\ is named by an AOT-captured call site, and the boot seed re-resolves a baked
+\ written. TFAM-CTOR-WORD? is named by an AOT-captured call site, and the boot seed re-resolves a baked
 \ callee only through a global scope. Each sits between `;package` and
 \ `package TFAM` and reads the registry through `using TFAM`.
 : TFAM-NAME$ ( n -- ptr u8 n ) {: id:n :}
@@ -5794,8 +5793,8 @@ TFAM-MEMBERS-INSTALL
 \ multi-cell layout argument, flat or nested) the checker records an extra-pad
 \ fact at the construct, constructor-call or `of` token: w = instantiated pads -
 \ declared pads, flagged WF-XPAD-FLAG so pass 2 fires even when w is 1. Pass 2
-\ (native EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF, mirrored in
-\ bootstrap/cg/forth.fs) adds those zero cells. A nested instantiation
+\ (native EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF) adds those zero
+\ cells. A nested instantiation
 \ (option<result<n,pkg:prod>>) needs nothing more: every width site
 \ (TFAM-INST-WIDTH@, TFC-VAR-PAYCELLS, T-WIDTH) recurses through the argument
 \ tree, so the inner bundle gets its own pads at its own site. Every width must

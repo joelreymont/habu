@@ -872,11 +872,9 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 \ Gives every row of the task's chain back to TASK-EXIT-FREE, for TASK:FREE. The
 \ task has ended and been released, so no thread runs the chain; the lock
 \ orders this against a registration on any task. A freed row holds the empty
-\ quotation: a capture carries a free table row below TASK-EXIT-N, and the
-\ stripped link declares and roots every such row's quotation
-\ (src/habu/aot-common.f CARRY-TASK-EXIT, aot-closure.f XT-CELL-ROOT), so a
-\ cleanup left in it would survive the strip, and one a dictionary rollback
-\ retired would be refused (REFUSE-XT-TARGET).
+\ quotation: the link reads every address cell of a reached file
+\ (src/habu/link-data.f ROW-LIVE?), so a cleanup left in a free row below
+\ TASK-EXIT-N would stay in the program.
 : EXIT-ROWS-FREE ( ptr n -- ) {: tcb:ptr :}
    TASK-EXIT-LOCK-GET
    tcb TASK-EXIT-SLOT@
@@ -1153,9 +1151,8 @@ variable ROW-N
 \ which the stripped link relocates through its data map; each TCB's link is
 \ the raw cell one past its body, holding the previous TCB's address, and 0
 \ ends the chain. Both sit in the capture window, which an image restores at the
-\ captured addresses, so an undeclared cell holding one ships verbatim
-\ (src/habu/aot-common.f SCAN-DATA-CELL refuses only a text pointer and a pointer
-\ into memory the build mapped). A TCB address is not an offset from `dbase@`
+\ captured addresses, so an undeclared cell holding one ships verbatim.
+\ A TCB address is not an offset from `dbase@`
 \ either (measured: the window at $340000000, `dbase@` at $1410000), so the link
 \ holds the address itself. A TASK:NEW record is on TCB-POOL, never on this
 \ chain: the chain is fixed once a task can run, because the crash handler and
@@ -1245,8 +1242,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ An ACTIVATED or EXPOSED task is the program's defect (an image cannot carry a
 \ thread), so this names the state and the field the linker would refuse with
 \ no name. `die`, not `throw`: a hook may throw and PREPARE propagates it, but
-\ hb-build would end on a bare code, while the linker's refusals print their
-\ reason and exit (src/habu/aot-closure.f REFUSE-DATA-CELL).
+\ hb-build would end on a bare code.
 : TASK-SWEEP-ONE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-STATE@ {: st:n :}
    st TASK-EXPOSED = if
@@ -2397,9 +2393,7 @@ TASK-MIN-STACK constant MIN-STACK
 \ fork copies only the thread that called it: the exit-chain lock another task
 \ held stays held in the child with nobody to free it, and the main thread's
 \ park is the parent's (MAIN-PARK-FORGET). src/lib/process-fork.f registers this
-\ with src/lib/fork-child.f, which this file cannot require: a saved AOT linker
-\ holds this file beneath an application's capture window, where that
-\ registry's cells would belong to no claim (src/habu/aot-owned-cells.f).
+\ with src/lib/fork-child.f.
 : CHILD-RESET ( -- )
    TASK-EXIT-UNLOCK
    MAIN-PARK-FORGET ;

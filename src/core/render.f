@@ -8,8 +8,8 @@ using TFAM
 
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
-\ RSBUF and RSN outlive no record: REND-SNAPSHOT-RESET releases RSBUF, mapped on
-\ first use, and snap-lib.f SND-ZERO-LIVE zeroes RSN in an image.
+\ RSBUF, mapped on first use, holds the text being recorded, RSN bytes of it;
+\ RSBUF-FLUSH and REND-SNAPSHOT-RESET zero RSN.
 16384 constant RSBUF-FIRST                \ bytes of the first mapping
 PERSISTED-PTR-VARIABLE RSBUF-P   NULL-PTR RSBUF-P !
 variable RSBUF-CAP   0 RSBUF-CAP !        \ bytes mapped at RSBUF-P, 0 for none

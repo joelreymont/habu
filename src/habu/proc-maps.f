@@ -56,8 +56,7 @@ variable GOT
 variable SNAP-CAP
 variable SNAP-U
 \ The search cursor is storage rather than locals because a local binds once and
-\ this loop moves its bounds; the linker is single-threaded, as the tables in
-\ src/habu/aot-closure.f beside it are.
+\ this loop moves its bounds; its caller is single-threaded.
 variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
 
 \ Kernel VMA addresses are ordered as unsigned cells, including x86-64's

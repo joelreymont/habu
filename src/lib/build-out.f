@@ -2,8 +2,8 @@
 \ and non-empty (relative to SOURCE-ROOT:CWD$), else .out under the working
 \ directory. <out>/obj/<key>.hfo holds one object per file key, shared by every
 \ engine, since the key names what compiles the file. <out>/<engine-key>/, the key
-\ the 64-hex SHA-256 of an engine binary (KEY-OF!), keeps that engine's support
-\ image and its keyed images under img/<family> (tools/keyed-image.f). Outputs a
+\ the 64-hex SHA-256 of an engine binary (KEY-OF!), keeps that engine's
+\ images under img/<family> (IMG$). Outputs a
 \ later engine must find live under <out> itself (BASE$). PROCESS-WIDE: cleared
 \ before image capture.
 require src/lib/error.f

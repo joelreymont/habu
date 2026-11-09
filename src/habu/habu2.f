@@ -101,8 +101,7 @@ using ENGINE-EMIT
 \ ADR, reaches ADR-HI (1 MiB) from its site: the whole ENGINE code part. The
 \ startup's ADR, to LSRC measures that allowance, so those two sites keep ADR,.
 \ Past LSRC the AOT payload section runs to megabytes: no ADR, into it, however
-\ close a label lands (src/arch/arm64/icode.f derives the window;
-\ tools/aot-section-reach-lint.f refuses an ADR, into the section).
+\ close a label lands (src/arch/arm64/icode.f derives the window).
 \
 \ EM-STARTUP takes the text base into XREG-RBASE with an ADR, at the image's
 \ first instruction; EM-DATA-INIT stores it into RBASE-CELL and reuses the
@@ -943,9 +942,9 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 \ The source arena: every boot route copies the cold prefix, then its program,
 \ into one anonymous mapping. Disk, stdin and generated path rows get IBUFSZ;
 \ the source baked at LSRC gets its own SRCN bytes on top, so a baked source
-\ never competes with the prefix it boots behind (one shared arena failed
-\ `hb: source prefix buffer full`, exit 74, for hb-stdin-mk's 1.1 MB prefix
-\ ahead of 3.1 MB of baked source). bootstrap/cg/forth.fs states the same sum.
+\ never competes with the prefix it boots behind (one shared arena dies
+\ `hb: source prefix buffer full`, exit 74, for a 1.1 MB prefix ahead of 3.1 MB
+\ of baked source).
 : SOURCE-ARENA-LEN ( -- n )
    IBUFSZ SRCN @ + ;
 
@@ -1162,12 +1161,11 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 \ Order is the files' require graph, read from the files (some spell it
 \ `s" path" required`); image-lifecycle needs quotation-storage, which the core
 \ prefix loads before include.f. span.f sits right after error.f because it
-\ declares a type family: tools/build-fixpoint.f BF-APPEND-COMMON and
-\ tools/bootstrap.sh SRC_COMMON rebuild the registry in this order, and the seed
-\ refuses a registry that does not start where its capture did
-\ (src/core/type-family.f REG-AOT-BASE-BAD). fixed-body.f is a boot row because
-\ this file's builders name COMP:body; like span.f it declares a type family the
-\ recovery texts rebuild in this order. The lifecycle registry sits below
+\ declares a type family: tools/hb-build-core.f STARTUP rebuilds the registry
+\ in this order, and the seed refuses a registry that does not start where its
+\ capture did (src/core/type-family.f REG-AOT-BASE-BAD). fixed-body.f is a boot
+\ row because this file's builders name COMP:body; like span.f it declares a
+\ type family STARTUP rebuilds in this order. The lifecycle registry sits below
 \ the compiler capture window, so an FFI cleanup that capture tooling registers
 \ later never becomes a target of the window's declared CODE cells.
 \ These files carry require lines, so the provide rows must reach the registry
@@ -1258,10 +1256,8 @@ private
 \ probe plus ARGC == 1 or the application startup entry. A writable REPL hook is
 \ not authority (batch source can name its installer; --load may inherit a tty).
 \ A sealed engine helper (LREPLROUTE), like (PROT-SPAN) and (LP2VEXEC): habu1.f
-\ BTHROW reaches it by a direct BL, and a stripped AOT image relocates such a
-\ call only to a record's code entry (aot-closure.f FINDADDR-PTR); without a
-\ record the linker refuses it (`aot: PC-relative target removed or outside
-\ closure`, exit 74). The record is system-private (OWNER-API-PRI-WID).
+\ BTHROW reaches it by a direct BL. The record is system-private
+\ (OWNER-API-PRI-WID).
 : EMIT-REPL-ROUTE ( -- )
    LBL LBL LBL {: no:label tty:label end:label :}
    LREPLROUTE LABEL@ {: start:label :}
@@ -1650,12 +1646,9 @@ public
 package ENGINE-EMIT
 \ Emitted below the stdlib block because it loads it: a from-source host's
 \ prefix must be the seeded product's, or a payload certified against one dies
-\ E-UNDEFINED in the other (bootstrap/cg/forth.fs EMIT-HOST-LOAD-PREFIX mirrors
-\ this call). The prefix reload zeroes HOOK-CELL, so the boot load of the
-\ checker/core prefix is unchecked: the refresh's stage-N binary certifies the
-\ full stage-N+1 source first (tools/build-fixpoint.f BF-CERTIFY-*, blocking)
-\ and the BF-PIN hashes close the mid-build reload race. A later on-disk edit
-\ is outside that proof.
+\ E-UNDEFINED in the other (tools/hb-build-core.f STARTUP mirrors this call).
+\ The prefix reload zeroes HOOK-CELL, so the boot load of the checker/core
+\ prefix is unchecked.
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    16 DATA SUSP-HOOK-CELL STR,  16 DATA SUSP-PREFLIGHT-CELL STR,
@@ -3043,9 +3036,7 @@ public
 \ x11 = the operation at OFF in the source owner's record. An owner whose record
 \ ends before OFF (its byte size at [record-8], as EM-RECORD-LINK-SEED reads it)
 \ or holds 0 there writes the line MA MU to fd 2 and exits 70. Nothing is found
-\ by name: the scan and the certificate it leaves are one owner's, also in
-\ tools/bootstrap.sh's reload window, where the owner stays claimed while its
-\ names are rewound.
+\ by name: the scan and the certificate it leaves are one owner's.
 : C-OWNER-FIELD ( n ptr u8 n -- ) {: off:n ma:ptr mu:n :}
    LBL LBL LBL {: absent:label msg:label ready:label :}
    11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
@@ -5825,8 +5816,8 @@ private
 \ The process-exit hook (layout.f EXIT-HOOK-CELL).
 \ LEXITHOOK: the shared exit trampoline, BL-called with the exit code in x0 from
 \ every deliberate exit: LRBYE (EM-COMPILE-EXIT), BDIE (habu1.f) and LUNCAUGHT.
-\ A stripped application's entry emits the same sequence inline
-\ (src/habu/aot-link-arm.f EMIT-EXIT-HOOK). No hook costs one load and a CBZ.
+\ A stripped program's start-up calls it too (src/arch/arm64/boot.f
+\ CALL-EXIT,). No hook costs one load and a CBZ.
 \ Before the call it clears the cell (a hook that dies or throws re-enters an
 \ exit path and must find it empty), empties HND-CELL (BDIE may run inside a
 \ program's `catch`; with no handler a hook's throw takes LUNCAUGHT and ends the
@@ -5836,9 +5827,8 @@ private
 \ The hook ( -- ) runs on the data stack as it stands, without a reset to S0:
 \ BDIE may run on a task thread with its own stack. x0 and LR are saved; every
 \ other caller-saved register is the caller's to re-derive.
-\ A sealed engine helper for the reason (LREPLROUTE) is: habu1.f BDIE reaches it
-\ by a direct BL (else `aot: PC-relative target removed or outside closure
-\ site=die`, exit 74). The record is system-private.
+\ A sealed engine helper, like (LREPLROUTE): habu1.f BDIE reaches it by a
+\ direct BL. The record is system-private.
 : EMIT-EXITHOOK ( -- )
    LBL LBL {: nohk:label end:label :}
    LEXITHOOK LABEL@ {: start:label :}
@@ -7309,9 +7299,7 @@ public
 private
 
 \ Unsigned LEB128, inline: acc answers the value, cur advances past it; b, g and
-\ sh are clobbered. Inverse of src/habu/aot-decl.f AOT-WINDOW:CELL-V!;
-\ src/habu/aot-link-arm.f EMIT-VGET decodes the same grammar for a stripped
-\ image's own DATA.
+\ sh are clobbered. Inverse of src/habu/aot-decl.f AOT-WINDOW:CELL-V!.
 : EMIT-VGET ( n n n n n -- ) {: acc:n cur:n b:n g:n sh:n :}
    LBL {: vtop:label :}
    acc 0 MOVZ,  sh 0 MOVZ,
@@ -7328,9 +7316,8 @@ public
 \ grouped (src/habu/aot-decl.f AOT-WINDOW:BM-COMPACT): a presence-map bit runs
 \ the byte walk over that group's stored bytes, a clear bit skips GROUP-SPAN
 \ bytes of DATA. The last group is padded to GROUP-BYTES, so the byte walk is a
-\ fixed count; src/habu/aot-link-arm.f EMIT-DATA-COPY reads the same two numbers
-\ from the blob header instead of labels. x16 holds the presence map's byte
-\ length until x9 and x23 are derived, then counts groups left.
+\ fixed count. x16 holds the presence map's byte length until x9 and x23 are
+\ derived, then counts groups left.
 : APPLY-CELLS ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: gtop:label gdone:label ptop:label pnext:label absent:label
@@ -7637,13 +7624,12 @@ public
 ;package
 
 \ Publish the payload's code-span table (src/habu/layout.f AOT-CELLS
-\ SPAN-TABLE-CELL, SPAN-N-CELL, SPAN-BASE-CELL; this is their one writer) for
-\ src/habu/aot-closure.f. The rows are __text and an offset means the same at
-\ every boot once the base sits beside it, so the cells need no relocation. A
-\ snapshot restore keeps this boot's three (EM-SNAPSHOT-RESTORE) and the image
-\ writer stores none (snap-lib.f SND-ZERO-LIVE). Runs with CP still at the
-\ blob's base, which offsets are measured from. A build that captured nothing
-\ has no seed pass, so the cells stay zero: no stripped spans.
+\ SPAN-TABLE-CELL, SPAN-N-CELL, SPAN-BASE-CELL; this is their one writer). The
+\ rows are __text and an offset means the same at every boot once the base sits
+\ beside it, so the cells need no relocation. A snapshot restore keeps this
+\ boot's three (EM-SNAPSHOT-RESTORE). Runs with CP still at the blob's base,
+\ which offsets are measured from. A build that captured nothing has no seed
+\ pass, so the cells stay zero: no stripped spans.
 package AOT-SPAN
 public
 variable LCOUNT   variable LROWS
@@ -8119,8 +8105,7 @@ ardone LBL,
    missing LBL,
    9 -8574 LIT64,  9 G-PUSH  BTHROW ;
 
-\ (MARK) spans [LMARK, end) as one sealed record because xt!'s direct BL must land on a record
-\ entry (aot-closure.f FINDADDR-PTR); a stripped image drops the call (AOT-DECLARATION?).
+\ (MARK) spans [LMARK, end) as one sealed record: xt!'s direct BL lands on its entry.
 : EMIT-MARK ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: common:label lookup:label full:label band:label kind:label
@@ -8312,11 +8297,10 @@ ardone LBL,
 
 \ Move every declared address cell by one signed amount.
 \   x10 = the amount to add
-\ The loader is the only caller; the writer's half is checked Habu in
-\ src/habu/snap-lib.f, working on a scratch copy of DATA. A zero cell (nothing
-\ installed) stays zero. Rows come from an image file, so each is re-validated
-\ against the band the declaration enforces: a forged offset would otherwise
-\ add the region delta to eight bytes the image chose.
+\ The loader is the only caller. A zero cell (nothing installed) stays zero.
+\ Rows come from an image file, so each is re-validated against the band the
+\ declaration enforces: a forged offset would otherwise add the region delta to
+\ eight bytes the image chose.
 \ Clobbers x5, x6, x9, x13, x14, x12.
 : EMIT-XT ( -- )
    LBL LBL LBL LBL {: loop:label skip:label band:label done:label :}
@@ -9004,8 +8988,8 @@ package ENGINE-EMIT
    10 REGION-OFF LIT64,  9 DBASE 25 SUB,  10 10 9 SUB,  \ x10 = REGION-OFF - live distance
    11 6 0 ADDI,  8 DATA REGION-ALIAS:DELTA-CELL LDR,  8 DBASE 8 ADD,   \ x11 = payload length, x8 = live region (alias)
    RELOC-EMIT:LCALLS LABEL@ BL,
-   \ Address-cell pass: declared cells arrive relative to the RBASE-VA sentinel
-   \ (snap-lib.f canonicalised them); map them onto this run's region.
+   \ Address-cell pass: declared cells arrive relative to the RBASE-VA sentinel;
+   \ map them onto this run's region.
    10 DBASE 0 ADDI,  9 RBASE-VA LIT64,  10 10 9 SUB,
    RELOC-EMIT:LXT LABEL@ BL,
    24 1 MOVZ,
@@ -9146,15 +9130,14 @@ private
    9 DATA TXN-CERT-A-CELL STR,  9 DATA TXN-CERT-U-CELL STR,  9 DATA TXN-BIND-I-CELL STR,
    9 DATA TXN-WF-I-CELL STR,  9 DATA TXN-FETCH-I-CELL STR,
    9 DATA TXN-BLOB-A-CELL STR,  9 DATA TXN-BLOB-CAP-CELL STR,
-   \ No signal fd from a restored snapshot: snap-lib.f SND-COPY carries DATA
-   \ through DP, so an image written with the stub armed names a descriptor
-   \ this process never opened.
+   \ No signal fd from a restored snapshot: an image written with the stub
+   \ armed names a descriptor this process never opened.
    9 DATA SIGNAL-ABI:FD-CELL STR,
    \ No idle closed-text stack: the list names the writing process's mappings.
    9 DATA CLOSED-FREE-CELL STR,
    \ The engine's handler is baked beside this startup, so ADR reaches it; a
-   \ stripped image's is not, and src/habu/aot-link-arm.f EMIT-ENTRY loads it
-   \ with TEXT-ADR, so the installer takes the address in x11.
+   \ stripped program's is not, and src/arch/arm64/boot.f STACKS, loads it
+   \ with TEXT-AT,, so the installer takes the address in x11.
    11 LCRASHH LABEL@ ADR,  G-INSTALL-CRASH-X11
    G-INSTALL-TRAP
    \ Publish the baked signal stub and the word it reads (layout.f package
@@ -10999,8 +10982,7 @@ package ENGINE-EMIT
 \ a seed host has the interner). Every active CHECK validates an unsigned
 \ declaration-order tag domain; guard mismatches skip that nested CHECK while
 \ still consuming its rows. It has a sealed (LP2VEXEC) helper record like
-\ (PROT-SPAN), so LP2VEMIT's direct BL resolves by exact code entry in an
-\ ahead-of-time image (aot-closure.f FINDADDR-PTR) and is relocated in-image.
+\ (PROT-SPAN), whose code entry LP2VEMIT's direct BL lands on.
 \ The invalid-tag diagnostic is inlined in the record so its ADR moves with the
 \ body: a stripped image carries no engine message data.
 : EMIT-P2-VALID-EXEC ( -- )

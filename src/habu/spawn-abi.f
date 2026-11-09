@@ -1,7 +1,5 @@
 \ spawn-abi.f - the request record spawn-fds reads, shared by its engine bodies
 \ (habu1.f BSPAWNFDS, kernel-x64.f SPAWN-FDS-ROW) and the code that builds one.
-\ Its own file as arith-abi.f is: the builder payload tools/build-fixpoint.f
-\ assembles carries the emitters without the checker boot prefix.
 package SPAWN-ABI
 public
 

@@ -376,9 +376,8 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 \ target shares. The band is two-sided: a window word reaches a prelude word as
 \ a call target or as an address the DATA relocation would rebase into nothing.
 \ Both audits run over the full recorded populations and name the window word.
-\ The metabuild host declares an empty band (src/habu/stdin.f CAPTURE-REPL): it
-\ has no prelude. Declaring is mandatory: a capture that never called
-\ PRELUDE-MARK refuses instead of guessing.
+\ Declaring is mandatory: a capture that never called PRELUDE-MARK refuses
+\ instead of guessing.
 variable ACAP-PRE-R      \ first record index of the prelude band
 variable ACAP-PRE-D      \ first DATA address of the prelude band
 variable ACAP-MARKED?    \ the band was declared for this capture
@@ -1358,11 +1357,9 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ and the walk names its first checked word; an armed-now guard would be wrong,
 \ since capture tools close the signature window (AOT-ARM:SIG-CLOSE) first.
 \ Rows are chosen per record of [R0,R1), but the registry's delta is two
-\ high-waters subtracted, so it means what the registry holds when read here,
-\ unless the window was closed early: tools/aot-chain-capture.f loads its
-\ assembler and artifact writer after its window and closes at the window
-\ (AOT-ARM:SIG-CLOSE); read here, the delta counted their families too and the
-\ seeded engine refused its own registry. A closed window keeps its end.
+\ high-waters subtracted. AOT-ARM:SIG-CLOSE latches them at the window, so the
+\ families a capture tool loads after its window stay out: counted, the seeded
+\ engine refuses its own registry. A closed window keeps its end.
 : ACAP-AUDIT-SIGS ( -- )
    0 ACAP-SIG-KNOWN !  0 ACAP-SIG-EXEMPT !  0 AOT-SIG-N !
    0 ACAP-PKG-MEMO-W !  0 ACAP-PKG-MEMO-ROW !  0 ACAP-PKG-MEMO-PUB !
@@ -2070,8 +2067,8 @@ public
    ACAP-W-B0 @ dup ACAP-GOLDLEN @ + ACAP-GNEWLEN @ ;
 
 \ Every record the capture saw, shipped or not, by capture order, for the map
-\ tools/native-build-core.f writes beside a stripped image (<image>.map). The
-\ verbatim 48-byte records still hold every name.
+\ beside a stripped image (<image>.map). The verbatim 48-byte records hold every
+\ name.
 
 : MAP-N ( -- n )
    ACAP-REC-ALL @ ;
@@ -2117,9 +2114,9 @@ public
 
 \ What the row table must hold, recounted off the live table with
 \ ACAP-BAKE-DATA's arithmetic, so a producer checks the table against a reading
-\ not taken from it (tools/aot-chain-capture.f ?XTOFF): a row never written,
-\ written twice, or for a cell in neither population. The two are disjoint: a
-\ cell inside the window counts here however its target is placed. DECLARED-IN:
+\ not taken from it: a row never written, written twice, or for a cell in
+\ neither population. The two are disjoint: a cell inside the window counts
+\ here however its target is placed. DECLARED-IN:
 \ cells inside the window's DATA span, whose bytes stay out of every sparse run,
 \ so the seed's value comes only from their row.
 : DECLARED-IN ( n n -- n )
@@ -2172,7 +2169,7 @@ public
 
 \ The signature audit's counts: records with a known checker effect, and those
 \ exempted (package, retired, no effect). They sum to the window's record
-\ count, which tools/aot-chain-capture.f prints them beside.
+\ count.
 : SIG-KNOWN ( -- n ) ACAP-SIG-KNOWN @ ;
 : SIG-EXEMPT ( -- n ) ACAP-SIG-EXEMPT @ ;
 
@@ -2440,8 +2437,7 @@ public
    d0 ACAP-COPY-DATA
    ACAP-FINISH ;
 
-\ True keeps every name: the whitebox build option passes it
-\ (tools/native-build-core.f CAPTURE).
+\ True keeps every name.
 : CAPTURE-WITH-NAMES ( n n n n n n bool -- )
    {: bstart:n bend:n rstart:n rend:n d0:n d1:n all:bool :}
    all ACAP-ALL-NAMES !

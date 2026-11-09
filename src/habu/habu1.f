@@ -3009,10 +3009,7 @@ package LIBC-OS
    loop ;
 
 \ Write the text to fd 2 from a stack frame filled by immediates, then release
-\ the frame. A member the AOT linker copies holds only instructions:
-\ src/habu/aot-link-arm.f RELOC-W32 decodes each of its words as one, so text
-\ inline in the code is read as branches. Clobbers x0-x2, x9 and the system
-\ call's registers.
+\ the frame. Clobbers x0-x2, x9 and the system call's registers.
 : ERR-TEXT, ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 15 + -16 and {: frame:n :}
@@ -3684,8 +3681,7 @@ package ENGINE-EMIT
 \ the complete caller execution frame so a caught throw resumes it. Frame: 0
 \ prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc | 32 link | 40
 \ saved-RSP | 48 saved-LOOPSP | 56 sentinel | 64 saved base | 72 saved
-\ capacity. BTHROW and EM-EVAL-THROW-RECOVER restore all of it; keep in step
-\ with the bootstrap/cg/forth.fs mirror.
+\ capacity. BTHROW and EM-EVAL-THROW-RECOVER restore all of it.
 \ BCATCH-RUN is the frame alone: push, call, unlink. A normal return branches
 \ to CATCH-PUSH with x9 = 0; a throw resumes at CATCH-RES, where it ends, with
 \ the code in x9 and the frame already unlinked. Its caller places CATCH-PUSH.
@@ -4437,8 +4433,6 @@ private
 \ discard-check ( -- ): drop the hook `0 set-check` parked, with its preflight,
 \ so no later `set-check` resumes it. It clears the SUSP-HOOK pair and nothing
 \ else; while a hook is armed the pair is already empty, so it is a no-op then.
-\ A driver that rewinds the dictionary below the parked hook's checker and
-\ reloads over its bytes (tools/bootstrap.sh emit_boot_hide) discards it here.
 : BDISCARDCHECK ( -- )
    10 0 MOVZ,  10 DATA SUSP-HOOK-CELL STR,  10 DATA SUSP-PREFLIGHT-CELL STR, ;
 
@@ -5510,11 +5504,8 @@ package ENGINE-EMIT
 \ LFLUSH makes the code in [x9, CP) visible to instruction fetch; LFLUSHTO takes
 \ the end in x11 instead, for code that stands above CP (LIBC-OS:FORK's child).
 \ Clobbers x9 (rounded down to its line), x10, x11.
-\ LFLUSHTO is registered as the sealed (FLUSHTO) engine helper for the reason
-\ (DIV-ZERO) is one: the fork primitive's Linux child branches to it directly,
-\ and a direct branch out of a primitive has to be a record the ahead-of-time
-\ closure walker can follow (aot-closure.f FINDADDR-PTR). LFLUSH needs none:
-\ every primitive that reaches it writes code, which a stripped image cannot.
+\ LFLUSHTO is registered as the sealed (FLUSHTO) engine helper, as (DIV-ZERO)
+\ is: the fork primitive's Linux child branches to it directly.
 : EMIT-FLUSH ( -- )
    LFLUSHTO LABEL@ {: start:label :}
    LBL {: end:label :}
@@ -6303,10 +6294,7 @@ private
 
 \ The engine's number reader ( x9=address, x10=length -> x11 value, x2 float?,
 \ x12 read a number? ). It is registered as the sealed (NUM) helper because
-\ `num-parse` (BNUMPARSE) reaches it by a direct BL, and the AOT closure walker
-\ follows such a branch only to a record's exact code entry (aot-closure.f
-\ FINDADDR-PTR). Its body reaches nothing outside [start, end), so the closure
-\ copies it and rewrites its internal branches with no further claim.
+\ `num-parse` (BNUMPARSE) reaches it by a direct BL.
 : EMIT-NUM ( -- )
    LBL {: end:label :}
    s" (NUM)" LNUM LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER

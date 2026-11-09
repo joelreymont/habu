@@ -334,7 +334,7 @@ private
 \ `parse-name`, so `.(` arrives on the word path as a whole token and `.(X)` is
 \ an ordinary word, as `(CMP)` is. Its body becomes a COMMENT token whose CONTENT
 \ is the body: read word at a time, the body would yield a declaration the
-\ engine never performs (test/bootstrap-wide-memory.fs opens a file in one).
+\ engine never performs.
 : PRINT-OPEN? ( ptr u8 n -- bool )
    s" .(" STR= ;
 

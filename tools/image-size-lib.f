@@ -1033,15 +1033,15 @@ variable BK-DZERO  variable BK-PAD
 \ rows and code, structured fixed DATA sections and the raw user heap, then the
 \ 48-byte trailer. Fixed unused capacity is reconstructed and has its own
 \ virtual-extent report. src/habu/layout.f owns the trailer's size and every
-\ field offset and is the only place that may state them; src/habu/snap-lib.f
-\ SNAP:WRITE-BYTES writes the stream, src/habu/habu2.f EM-SNAPSHOT-RESTORE
-\ restores it and tools/imgdump.f reads the same six fields. The stream is: the
-\ new ELF header page, the donor engine's text content, the region payload (the
-\ dictionary slot array then the code band), the DATA window, the trailer, and
-\ the RW segment. The trailer has no payload checksum: the checks of version,
-\ extents, row count, section lengths and pads establish framing and geometry,
-\ not content authenticity. Read here, above the dictionary walkers, because
-\ the record cursor needs the region payload's offsets.
+\ field offset and is the only place that may state them; src/habu/habu2.f
+\ EM-SNAPSHOT-RESTORE restores the stream and tools/imgdump.f reads the same six
+\ fields. The stream is: the new ELF header page, the donor engine's text
+\ content, the region payload (the dictionary slot array then the code band),
+\ the DATA window, the trailer, and the RW segment. The trailer has no payload
+\ checksum: the checks of version, extents, row count, section lengths and pads
+\ establish framing and geometry, not content authenticity. Read here, above
+\ the dictionary walkers, because the record cursor needs the region payload's
+\ offsets.
 variable TRL-OFF     variable NDICT-N
 variable REG-LEN     variable DAT-LEN  variable DAT-VIRT
 variable REG-OFF     variable DAT-OFF
@@ -1552,14 +1552,14 @@ variable SITE-NAMED    variable SITE-CALLEES  variable SITE-BAD
    s"   distinct bound callees " type SITE-CALLEES @ FMT:.U cr ;
 
 \ ---- reachability --------------------------------------------------------------
-\ The census marks from roots over the call graph src/habu/aot-closure.f walks
-\ for a stripped application (direct B/BL edges between baked routines, plus
-\ the code addresses the payload's relocation tables name) and reports what
-\ nothing reaches. Each aot/code-spans row is an anonymous graph node, so its
-\ edges are followed without making every stripped span a root. Bytes in gaps
-\ outside both indices and every address the payload records are roots: the
-\ census over-approximates reachability, so a word it reports unreachable is
-\ unreachable and the report is a floor.
+\ The census marks from roots over a stripped application's call graph (direct
+\ B/BL edges between baked routines, plus the code addresses the payload's
+\ relocation tables name) and reports what nothing reaches. Each aot/code-spans
+\ row is an anonymous graph node, so its edges are followed without making
+\ every stripped span a root. Bytes in gaps outside both indices and every
+\ address the payload records are roots: the census over-approximates
+\ reachability, so a word it reports unreachable is unreachable and the report
+\ is a floor.
 $7C000000 constant BR-MASK
 $14000000 constant BR-OP                          \ B and BL differ only in the link bit
 $3FFFFFF constant BR-IMM
@@ -2137,7 +2137,7 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
 \ no earlier span covered, since an EXPORT alias or a `does>` clause puts a
 \ second record over the first one's ground. What no span covers is the
 \ `unowned` row: stored quotation bodies, hidden bodies and code a definition
-\ abandoned (src/habu/snap-lib.f: the retained region carries them).
+\ abandoned.
 DYNAMIC-BUFFER BSPAN n                            \ (band offset, kind, record), ascending
 DYNAMIC-BUFFER PKGB n                             \ band code bytes per package row
 DYNAMIC-BUFFER PKGN n                             \ records charged to it
@@ -2434,21 +2434,20 @@ variable HEAD-W     variable HEAD-Z
    REPORT-HEAP ;
 
 \ ---- a stripped application ---------------------------------------------------
-\ src/habu/aot-link-arm.f LINK-ARM emits, in this order: the startup entry,
-\ the closure of MAIN, the crash and signal handlers, the sparse DATA blob, and
-\ one 8-byte relocation row per declared address cell. Nothing in the file
-\ frames that last pair, so the walk takes the emitter's own two statements
-\ about them.
+\ A stripped image holds, in this order: the startup entry, the closure of
+\ MAIN, the crash and signal handlers, the sparse DATA blob, and one 8-byte
+\ relocation row per declared address cell. Nothing in the file frames that
+\ last pair, so the walk takes the startup's own two statements about them.
 \
-\ The blob is named by the startup's single code-base-relative address into x9
-\ (EMIT-DATA-COPY loads the sparse header there through src/habu/aot-link-arm.f
-\ TEXT-ADR,). A Mach-O blob lies in __text or immediately after the GOT
-\ (BLOB-PLACE?). The blob frames itself: a u32 of groups and a u32 of stored
-\ bitmap bytes, the presence map and those groups, then one varint per present
-\ cell. The format is the AOT-WINDOW encoding (src/habu/aot-decl.f), so RUN-V@
-\ above decodes a cell and GROUP-SET? reads the map.
+\ The blob is named by the startup's single code-base-relative address into x9,
+\ through which it loads the sparse header. A Mach-O blob lies in __text or
+\ immediately after the GOT (BLOB-PLACE?). The blob frames itself: a u32 of
+\ groups and a u32 of stored bitmap bytes, the presence map and those groups,
+\ then one varint per present cell. The format is the AOT-WINDOW encoding
+\ (src/habu/aot-decl.f), so RUN-V@ above decodes a cell and GROUP-SET? reads the
+\ map.
 \
-\ The row count is the MOVZ/MOVK chain EMIT-XT-CELLS loads into x11, found
+\ The row count is the MOVZ/MOVK chain the startup loads into x11, found
 \ behind the three-instruction idiom that rounds the byte cursor up to the
 \ rows' four-byte boundary and confirmed by the `ADR x12` that follows it and
 \ must name this image's own code base. It is read, never inferred from the
@@ -2517,8 +2516,7 @@ variable ROWS-END
    loop
    STORED-AT @ RUN-STORED @ <> if E-ES-WALK throw then ;
 
-\ The blob's header, in the order src/habu/aot-link-arm.f BUILD-SPARSE-DATA
-\ writes it.
+\ The blob's header: a u32 of groups and a u32 of stored bitmap bytes.
 8 constant BLOB-HDR
 
 : BLOB-AT? ( n -- bool ) {: at:n :}
@@ -2544,13 +2542,11 @@ variable ROWS-END
 
 \ The blob's address is four words, not one ADR: the startup sits at text offset
 \ zero and the blob is placed after all code, which ADR's +-1 MiB cannot reach
-\ in a large program, so src/habu/aot-link-arm.f TEXT-ADR, emits the label's
-\ byte offset from the code base in a movz/movk pair, `adr x12` to the base
-\ itself (LTEXT, bound at text offset zero = CODE-OFF) and the add that joins
-\ them. All four are matched because the movz alone is also how
-\ EMIT-OWNED-CELLS opens a DATA-offset literal; only the whole sequence names a
-\ label. EMIT-DATA-COPY loads the blob header into x9, the only site of the
-\ four that uses it.
+\ in a large program, so it is the label's byte offset from the code base in a
+\ movz/movk pair, `adr x12` to the base itself (LTEXT, bound at text offset
+\ zero = CODE-OFF) and the add that joins them. All four are matched because the
+\ movz alone also opens a DATA-offset literal; only the whole sequence names a
+\ label. Only the blob header's load targets x9.
 : TEXT-ADR9? ( n -- bool ) {: at:n :}
    at 4 INSN * IN-IMAGE? 0= if false exit then
    at INSN@  at INSN + INSN@  at 2 INSN * + INSN@  at 3 INSN * + INSN@
@@ -2560,10 +2556,9 @@ variable ROWS-END
    at INSN@  at INSN + INSN@ AOT-STARTUP-SHAPE:TEXT-ADR-OFFSET  CODE-OFF + ;
 
 \ The startup's other statement about its DATA: the head of the copy loop
-\ (AOT-STARTUP-SHAPE:COPY-LOOP-HEAD?), which src/habu/aot-link-arm.f
-\ EMIT-DATA-COPY emits only when it has a blob. It is read when the four words
-\ above are not found, so an image whose blob address this file cannot
-\ recognise is refused by name instead of passing for code-only.
+\ (AOT-STARTUP-SHAPE:COPY-LOOP-HEAD?), present only with a blob. It is read when
+\ the four words above are not found, so an image whose blob address this file
+\ cannot recognise is refused by name instead of passing for code-only.
 variable COPY-AT
 
 : COPY-LOOP-AT? ( n -- bool ) {: at:n :}
@@ -2624,8 +2619,7 @@ variable COPY-AT
 
 
 \ ADD x10,x10,#3 / LSR x10,x10,#2 / LSL x10,x10,#2: the byte cursor rounded up
-\ to the four-byte boundary the rows sit on (src/habu/aot-link-arm.f
-\ EMIT-XT-CELLS).
+\ to the four-byte boundary the rows sit on.
 $91000D4A constant XTC-ADD3
 $D342FD4A constant XTC-LSR2
 $D37EF54A constant XTC-LSL2
@@ -2640,11 +2634,10 @@ $D37EF54A constant XTC-LSL2
    at INSN IN-IMAGE? 0= if false exit then
    at INSN@ 11 AOT-STARTUP-SHAPE:MOVK-RD? ;
 
-\ The LIT64, chain by which src/habu/aot-link-arm.f EMIT-XT-CELLS puts the row
-\ count in x11, then the ADR x12 that must follow it and name this image's code
-\ base (EMIT-XT-CELLS' own scratch, a plain ADR, and not a TEXT-ADR, site): two
-\ independent statements about the same place, so a coincidental three-word
-\ match cannot be read as a row count.
+\ The LIT64, chain that puts the row count in x11, then the ADR x12 that must
+\ follow it and name this image's code base (a plain ADR, not a four-word text
+\ address): two independent statements about the same place, so a coincidental
+\ three-word match cannot be read as a row count.
 : XTC-COUNT ( n -- n ) {: at:n :}
    at 3 INSN * + IP !
    IP @ INSN@ 11 AOT-STARTUP-SHAPE:MOVZ-RD? 0= if -1 exit then
@@ -2690,10 +2683,9 @@ $D37EF54A constant XTC-LSL2
       then
    loop ;
 
-\ A program with an empty capture window emits no blob address and no copy
-\ loop (src/habu/aot-link-arm.f EMIT-DATA-COPY's BLOB-LEN 0 arm emits the
-\ span-end literal and the DP store alone), and EMIT-XT-CELLS refuses declared
-\ address cells without a blob, so such an image is code only. FIND-BLOB
+\ A program with an empty capture window has no blob address and no copy loop
+\ (its startup holds the span-end literal and the DP store alone), and declared
+\ address cells need a blob, so such an image is code only. FIND-BLOB
 \ refuses an image with the loop and no address before here. Only here is the
 \ last non-zero byte a sound content end: it ends an A64 instruction word, and
 \ no A64 encoding has a zero top byte, so rounding up to the instruction

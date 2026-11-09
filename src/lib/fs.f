@@ -136,9 +136,8 @@ public
 private
 \ The per-call slots are the FS-ABI band of the per-task DATA region, read
 \ through data-base, the running task's region. The band is declared in
-\ src/habu/layout.f below FMT-ABI rather than as TASK:+USER rows:
-\ tools/native-build-core.f requires this file, and a `require src/lib/task.f`
-\ here would load the task runtime into the build tool. A region is a fresh
+\ src/habu/layout.f below FMT-ABI rather than as TASK:+USER rows, so this file
+\ does not require src/lib/task.f. A region is a fresh
 \ zeroed mapping, so a new task's cells start at zero. layout.f loads before
 \ this file and cannot see STAT-CAP, READ-PROBE-CAP, PATHZ-CAP or TEXT-CAP, so
 \ BAND-AGREE checks those widths once at load.

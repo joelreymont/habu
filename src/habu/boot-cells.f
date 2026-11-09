@@ -1,9 +1,8 @@
-\ boot-cells.f - the header cells the boot writes. Loaded before checker.f by
-\ each core prefix so the checker can read it (native-runtime.f provides it).
+\ boot-cells.f - the header cells the boot writes. Its startup row
+\ (boot-files.f FILL) loads it before checker.f, which reads it.
 package BOOT
 public
-\ The running engine's heap floor, a DATA offset in the fixed header: a build
-\ splits host address rows here (native-build-core.f CHECK-HOST-LAYOUT).
+\ The running engine's heap floor, a DATA offset in the fixed header.
 $47E0 constant HEAP-START-CELL
 \ The bounds habu1.f DP-CHECK holds a new DP to, absolute: every arm64 start
 \ writes DATA + DATA-START and DATA + DATA-SIZE - PROF-CNT-BYTES (prof-abi.f).

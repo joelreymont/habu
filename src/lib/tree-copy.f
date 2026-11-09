@@ -39,7 +39,7 @@ public
 
 : TREE ( ptr u8 n ptr u8 n -- ) INTO! [: MEMBER ;] FS:WALK-FILES ;
 
-\ src/ and tools/: the sources tools/native-build.f builds from.
+\ src/ and tools/: the sources tools/hb-build.f builds from.
 : BUILD-SOURCES ( ptr u8 n -- )
    {: root:ptr rootu:n :}
    s" src" root rootu TREE
