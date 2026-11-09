@@ -287,12 +287,15 @@ private
    size RETIRED-COUNT @ RETIRED-SIZE !
    1 RETIRED-COUNT +! ;
 
+\ A resolved address, a library handle and its failure are this process's:
+\ scratch cells, which a link writes zero, so the first call resolves again.
 : FN-GROW ( -- )
    DECL-TAG {: token:n :}
    token FN-CAP-CELL @ {: oldcap:n :}
    oldcap 0= if 1 else oldcap 2 * then {: next:n :}
    oldcap 0 > if RETIRE-ROOM then
    next FN-ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
+   next 0 ?do rows i FN-ROW-BYTES * + FN-ADDR-OFF + scratch-cell-mark loop
    oldcap 0 > if
       token FN-TABLE-CELL @ {: old:ptr :}
       old rows token FN-N-CELL @ FN-ROW-BYTES * BYTE-COPY
@@ -308,6 +311,10 @@ private
    oldcap 0= if 1 else oldcap 2 * then {: next:n :}
    oldcap 0 > if RETIRE-ROOM then
    next LIB-ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
+   next 0 ?do
+      rows i LIB-ROW-BYTES * + LIB-HANDLE-OFF + scratch-cell-mark
+      rows i LIB-ROW-BYTES * + LIB-FAILED-OFF + scratch-cell-mark
+   loop
    oldcap 0 > if
       token LIB-TABLE-CELL @ {: old:ptr :}
       old rows token LIB-N-CELL @ LIB-ROW-BYTES * BYTE-COPY
