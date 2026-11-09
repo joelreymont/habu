@@ -13,8 +13,9 @@ ENTRY-OWNER !
 ENTRY-ORDER !
 ;package
 
-\ tools/check-verify-child.f loads this file under its own tree's root, so the
-\ verifier comes from that tree, not the client's.
+\ hb carries the verifier. tools/check-verify-child.f loads this file under its
+\ own tree's root, so on an engine that does not carry it the verifier comes from
+\ that tree, not the client's.
 require src/habu/verify-source.f
 
 \ Engine words with no checked effect; tools/check-core.f declares them alike.

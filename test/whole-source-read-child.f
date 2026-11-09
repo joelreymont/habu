@@ -1,35 +1,29 @@
-\ The patched host whole-source-read-test.f loads once and forks each case from.
-\ FS:FILE-SIZE answers a path's size and, on every stat of the file the case
-\ grows, appends blank lines past every reader's first room (src/lib/source.f
-\ SOURCE-ROOM-MIN and the 64 KiB a MEM-ALLOC-64K-SPAN region rounds to), so each
-\ reader meets bytes past its sample and grows its room.
+\ The language server whole-source-read-test.f runs in a fork child: with a
+\ subject open, it publishes one packet about another file, which it reads from
+\ disk to range the packet.
 
 require src/lib/string.f
 require src/lib/fs.f
+require tools/lsp-docs.f
+require tools/lsp-diag.f
 
 package WHOLE-SOURCE-READ-CHILD
 private
 
-variable REQUIRED
-$20 constant MODE-CAP
-create MODE MODE-CAP allot variable MODE-U
-\ The test sizes diag-origin's capture to this growth (its GROWTH).
-$11000 constant BLANK-LEN
-create BLANKS BLANK-LEN allot
-
 create SUBJECT-PATH PATH-CAP allot variable SUBJECT-PATH-U
-create GROW-PATH PATH-CAP allot variable GROW-PATH-U
-create SUBJECT-CANON PATH-CAP allot variable SUBJECT-U
-create GROW-CANON PATH-CAP allot variable GROW-U
+create FILE-PATH PATH-CAP allot variable FILE-PATH-U
+
+\ The packet, built here rather than in SB, which the server writes while it
+\ publishes: a path and the fields around it.
+PATH-CAP 256 + constant PKT-CAP
+create PKT PKT-CAP allot
+variable PKT-U
 
 : SUBJECT$ ( -- ptr u8 n )
    SUBJECT-PATH SUBJECT-PATH-U @ ;
 
-: GROW$ ( -- ptr u8 n )
-   GROW-PATH GROW-PATH-U @ ;
-
-: MODE? ( ptr u8 n -- bool )
-   MODE MODE-U @ STR= ;
+: FILE$ ( -- ptr u8 n )
+   FILE-PATH FILE-PATH-U @ ;
 
 \ dst receives a's bytes and u its length, refused past cap.
 : KEEP! ( ptr u8 n ptr u8 ptr n n -- ) {: a:ptr u:n dst:ptr up:ptr cap:n :}
@@ -37,101 +31,29 @@ create GROW-CANON PATH-CAP allot variable GROW-U
    a dst u BYTE-COPY
    u up ! ;
 
-\ In mode origin-refused no size is answered: the stat refuses as a failed
-\ mapping does (E-MEM-MAP), with a code that is not about the file.
-: REFUSED? ( -- bool )
-   s" origin-refused" MODE? ;
-
-public
-
-\ The subject's first stat also appends a require of grown.f; each reader loads
-\ after the replacement.
-: SIZE ( ptr u8 n -- n )
-   {: path:ptr pathu:n :}
-   REFUSED? if E-MEM-MAP throw then
-   path pathu FS:FILE-SIZE {: size:n :}
-   path pathu SOURCE-ROOT:CANONICAL drop {: canon:ptr canonu:n :}
-   canon canonu GROW-CANON GROW-U @ STR= if
-      BLANK-LEN 0 ?do $0a BLANKS i + c! loop
-      path pathu BLANKS BLANK-LEN FS:APPEND-FILE
-   then
-   REQUIRED @ 0= canon canonu SUBJECT-CANON SUBJECT-U @ STR= and if
-      1 REQUIRED !
-      path pathu S\" s\" grown.f\" required\n" FS:APPEND-FILE
-   then
-   size ;
-
-\ MODE is one of check, json, all, dep, origin, origin-refused and lsp; GROW is
-\ the file to grow. The test runs MAIN in a fork child (src/lib/test/subject.f),
-\ so a case's state, its readers' and the first-stat flag never reach the next.
-: CASE! ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: mode:ptr modeu:n subj:ptr subju:n grow:ptr growu:n :}
-   mode modeu MODE MODE-U MODE-CAP KEEP!
-   subj subju SUBJECT-PATH SUBJECT-PATH-U PATH-CAP KEEP!
-   grow growu GROW-PATH GROW-PATH-U PATH-CAP KEEP!
-   SUBJECT$ SOURCE-ROOT:CANONICAL drop SUBJECT-CANON SUBJECT-U PATH-CAP KEEP!
-   GROW$ SOURCE-ROOT:CANONICAL drop GROW-CANON GROW-U PATH-CAP KEEP!
-   0 REQUIRED ! ;
-
-;package
-
-package FS
-public
-undefine FILE-SIZE
-: FILE-SIZE ( ptr u8 n -- n ) WHOLE-SOURCE-READ-CHILD:SIZE ;
-;package
-
-require tools/check-core.f
-require tools/lsp-diag.f
-
-package WHOLE-SOURCE-READ-CHILD
-private
-
-\ The packet the language server publishes, built here rather than in SB,
-\ which the server writes while it publishes: a path and the fields around it.
-PATH-CAP 256 + constant PKT-CAP
-create PKT PKT-CAP allot
-variable PKT-U
-
-\ check.f's own entry with --json-errors and the options of the mode: its
-\ status is typed, its packets go to standard error.
-: CHECK-RUN ( -- )
-   LSP-CHECK:RESET
-   s" json-errors" LSP-CHECK:OPT
-   s" all" MODE? if s" all-errors" LSP-CHECK:OPT then
-   s" check" MODE? if s" all-errors" LSP-CHECK:OPT s" verify-only" LSP-CHECK:OPT then
-   s" dep" MODE? if s" verify-only" LSP-CHECK:OPT then
-   SUBJECT$ LSP-CHECK:FILE
-   s" check: " type LSP-CHECK:RUN . cr ;
-
-: CHECK-MODE? ( -- bool )
-   s" check" MODE? s" json" MODE? or s" all" MODE? or s" dep" MODE? or ;
-
 : PKT+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    PKT-U @ u + PKT-CAP > if E-STR-CAPACITY throw then
    a PKT PKT-U @ + u BYTE-COPY
    u PKT-U +! ;
 
-\ The language server, with the subject open, publishes one packet about GROW,
-\ a file besides it, whose range it counts in GROW's text read from disk:
-\ bytes 10 to 11 of it.
-: LSP-RUN ( -- )
+public
+
+\ SUBJECT is the open document, FILE the file the packet names.
+: CASE! ( ptr u8 n ptr u8 n -- )
+   {: subj:ptr subju:n file:ptr fileu:n :}
+   subj subju SUBJECT-PATH SUBJECT-PATH-U PATH-CAP KEEP!
+   file fileu FILE-PATH FILE-PATH-U PATH-CAP KEEP! ;
+
+\ The packet ranges bytes 10 to 11 of FILE's text.
+: MAIN ( -- )
    LSP-DIAG:PREPARE
    SB-RESET s" file://" SB-APPEND SUBJECT$ SB-APPEND
    SB$ 1 SUBJECT$ s" " LSP-DOCS:DOC-OPEN
    0 PKT-U !
    S\" {\"file\":\"" PKT+
-   GROW$ PKT+
+   FILE$ PKT+
    S\" \",\"byte_start\":10,\"byte_end\":11,\"verdict\":\"rejected\",\"code\":\"E-MISMATCH\",\"message\":\"bad\"}\n" PKT+
    0 PKT PKT-U @ LSP-DIAG:PUBLISH ;
-
-public
-
-: MAIN ( -- )
-   CHECK-MODE? if CHECK-RUN exit then
-   s" origin" MODE? REFUSED? or if SUBJECT$ DIAG-ORIGIN exit then
-   s" lsp" MODE? if LSP-RUN exit then
-   s" whole-source-read-child: no such mode" 64 die ;
 
 ;package

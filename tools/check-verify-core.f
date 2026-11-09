@@ -24,7 +24,6 @@ require tools/source-discovery.f
 require tools/check-all-errors-core.f
 require src/lib/verify-diagnostics.f
 require src/habu/verify-source.f
-require tools/check-verify-image.f
 
 package LSP-CHECK
 using SOURCE-ROOT
@@ -720,24 +719,15 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    false CHK-ENGINE-REFUSED ! ;
 
 
-\ The child's executable: when the engine src/lib/engine-candidate.f names is this process's own
-\ and can save an image (tools/check-verify-image.f CAPABLE?), the saved verifier image, the
-\ engine's boot prefix plus the verifier, keyed under the out root per engine and closure, so
-\ neither this process's words nor an earlier check's can stand in for a word of the subject. Any
-\ other engine, an HABU_UNDER_TEST naming another one or one that cannot save, loads this tree's
-\ tools/check-verify-child.f, named absolutely. Either runs in this process's working directory.
-\ Resolved before the child's argv is staged: a build stages its own argv and environment in the
-\ same process-wide tables (tools/keyed-image.f BUILD-RUN). A failed build throws or dies.
-300000 constant VFY-BUILD-MS            \ as tools/hb-build-lib.f HBB-MAKER-DEFAULT-MS
+\ The child's executable, the engine src/lib/engine-candidate.f names, loading this tree's
+\ tools/check-verify-child.f, named absolutely, in this process's working directory, so neither
+\ this process's words nor an earlier check's can stand in for a word of the subject. hb carries
+\ the verifier, so the child loads only its body.
 create VFY-EXE PATH-CAP allot
 variable VFY-EXE-U
-TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the source child
 
 : VFY-EXE! ( -- )
-   CHK-ENGINE$ {: a:ptr u:n :}
-   a u CHECK-VERIFY-IMAGE:CAPABLE? dup VFY-IMAGE? !
-   if a u VFY-BUILD-MS CHECK-VERIFY-IMAGE:PATH$ else a u then
-   {: p:ptr pu:n :}
+   CHK-ENGINE$ {: p:ptr pu:n :}
    pu PATH-CAP > if E-PROC-PATH throw then
    p VFY-EXE pu BYTE-COPY
    pu VFY-EXE-U ! ;
@@ -746,8 +736,7 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
    VFY-EXE VFY-EXE-U @ ;
 
 : VFY-LOAD-ARGS ( -- )
-   VFY-IMAGE? @ 0= if s" --load" CHK-ARG+ VFY-CHILD$ CHK-ARG+ then ;
-
+   s" --load" CHK-ARG+ VFY-CHILD$ CHK-ARG+ ;
 
 : VFY-ARGV ( -- )
    PROC-ARGV-ENV-RESET
@@ -1145,8 +1134,8 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
 
 \ How the child ended. More stderr than the capture holds kills it, and its
 \ E-PROC-TRUNCATED is thrown on once what was captured is kept. The executable
-\ is resolved before the capture, so a throw from building the image is the
-\ build's, never read as the child's truncation.
+\ is resolved before the capture, so a throw from the engine's resolver is the
+\ resolver's, never read as the child's truncation.
 : VFY-RUN ( -- PROCESS:ending )
    VFY-EXE!
    [: VFY-CAPTURE ;] catch {: rc:n :}
@@ -1577,7 +1566,7 @@ TASK:MIN-STACK TASK:TASK VFY-TASK11
 
 : VFY-LANE-ARGS ( CMD:command n -- CMD:command )
    {: k:n :}
-   VFY-IMAGE? @ 0= if s" --load" CMD:ARG+ VFY-CHILD$ CMD:ARG+ then
+   s" --load" CMD:ARG+ VFY-CHILD$ CMD:ARG+
    s" --" CMD:ARG+
    k VFY-LANE-REF @ if s" --batch-ref" else s" --batch" then CMD:ARG+
    k VFY-LANE-OF-AT @ VFY-LANE-IN k VFY-LANE-OF-U @ CMD:ARG+ ;
@@ -1740,7 +1729,7 @@ public
 : VERIFY-BATCH-COMPLETE? ( -- bool )  VFY-BATCH-COMPLETE @ ;
 
 \ check.f's pre-pass of the bytes as the file at PATH, the subject named LABEL
-\ in its packets, the child given DEADLINE. The child's image is the one
+\ in its packets, the child given DEADLINE. The child is the one
 \ VERIFY-BYTES verifies on, so the pre-pass resolves the engine's words and the
 \ subject's loads, as the run does, never a word only this process loaded. It
 \ stops at the first definition the checker refuses, as the load does: ok 0 when

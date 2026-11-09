@@ -44,8 +44,8 @@ public
 \ scan with this at the definer, or at `does>` for a clause's (SIGNATURE-AT).
 7157 constant E-MISSING-SIGNATURE
 
-\ Captured by the fresh child before it loads verifier tooling, and survives
-\ the saved verifier image. A direct caller that does not supply an entry
+\ Captured by the verifier child's body as it starts loading
+\ (tools/check-verify-child-lib.f). A direct caller that does not supply an entry
 \ observation retains checking order.
 variable ENTRY-TICK-ORDER
 PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER

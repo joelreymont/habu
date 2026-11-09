@@ -112,7 +112,8 @@ variable TEXT-U
    s" src/os/linux/repl-term.f" ;
 
 
-\ native-runtime.f's files after the startup ones, without its capture steps.
+\ native-runtime.f's files after the startup ones, without its capture steps,
+\ and the source verifier tools/check-verify-child.f runs.
 : RUNTIME-FILES ( -- )
    s" src/habu/engine-origin.f" REQUIRE-FILE
    s" src/compiler/native/compiler.f" REQUIRE-FILE
@@ -126,6 +127,7 @@ variable TEXT-U
    s" src/lib/c2-owner.f" REQUIRE-FILE
    s" src/lib/executable-build.f" REQUIRE-FILE
    s" src/habu/link-data.f" REQUIRE-FILE
+   s" src/habu/verify-source.f" REQUIRE-FILE
    s" src/habu/runtime.f" REQUIRE-FILE ;
 
 

@@ -84,7 +84,7 @@ create BODY 4096 allot
    DRIVER DRIVER-U @ SB$ FS:WRITE-ALL
    DRIVER DRIVER-U @ ;
 
-\ A document request forces the server to acquire and run its verifier image.
+\ A document request forces the server to run its verifier child.
 \ Loading the entry and reaching EOF alone never crosses that boundary.
 : FRAME ( -- )
    SB$ {: a:ptr u:n :}
