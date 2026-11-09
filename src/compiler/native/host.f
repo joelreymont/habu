@@ -91,14 +91,13 @@ DYNAMIC-BUFFER FACT-TYPE-READY n
 DYNAMIC-BUFFER FACT-TYPES n
 
 \ One process's install state (INSTALL): a save or a file's object writes it
-\ zero, as CAPTURE-PREPARE leaves it.
+\ zero, as CAPTURE-PREPARE leaves it. The engine cells INSTALL fills hold no
+\ other callback, so a program whose file object kept them installed installs
+\ again over its own entries.
 variable OWNER-INSTALLED    OWNER-INSTALLED scratch-cell-mark
-variable PRIOR-INVALIDATE   PRIOR-INVALIDATE scratch-cell-mark
-variable PRIOR-FACTS        PRIOR-FACTS scratch-cell-mark
 variable KERNEL-BEGIN       KERNEL-BEGIN scratch-cell-mark
 variable KERNEL-END         KERNEL-END scratch-cell-mark
 variable SEEDED-N           SEEDED-N scratch-cell-mark
-CAST: AS-INVALIDATE ( n -- [ n n -- ] )
 CAST: AS-FACTS ( n -- [ n ptr n n n -- n bool ] )
 1 constant NUMBER-CON      \ checker.f CC-N, encoded by PRIM-SPEC:A-NUM
 
@@ -197,7 +196,6 @@ public
 : INVALIDATE ( n n -- )
    {: first:n end:n :}
    first end >= if exit then
-   PRIOR-INVALIDATE @ dup 0<> if AS-INVALIDATE first end rot execute else drop then
    KERNEL-END @ KERNEL-BEGIN @ >
    first KERNEL-END @ < and
    end KERNEL-BEGIN @ > and if
@@ -280,8 +278,6 @@ public
 
 : INSTALL ( -- )
    OWNER-INSTALLED @ 0<> if exit then
-   data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + @ PRIOR-INVALIDATE !
-   data-base NATIVE-HOST-CELLS:FACTS + @ PRIOR-FACTS !
    0 IMPL-N !
    0 IMPL-TYPE-N !
    0 EDGE-N !
@@ -296,20 +292,10 @@ public
 
 : CAPTURE-PREPARE ( -- )
    OWNER-INSTALLED @ 0<> if
-      PRIOR-INVALIDATE @ dup 0<> if
-         data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + xt!
-      else
-         data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + !
-      then
-      PRIOR-FACTS @ dup 0<> if
-         data-base NATIVE-HOST-CELLS:FACTS + xt!
-      else
-         data-base NATIVE-HOST-CELLS:FACTS + !
-      then
+      0 data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + !
+      0 data-base NATIVE-HOST-CELLS:FACTS + !
    then
    0 OWNER-INSTALLED !
-   0 PRIOR-INVALIDATE !
-   0 PRIOR-FACTS !
    0 KERNEL-BEGIN !  0 KERNEL-END !  0 SEEDED-N ! ;
 
 \ The elaborator keeps the worst reason by rank while its source tape is still
