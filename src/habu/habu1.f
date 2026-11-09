@@ -4668,6 +4668,76 @@ package ENGINE-EMIT
    bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
 
+\ SHA-256's 64 round constants (FIPS 180-4, 4.2.2).
+create SHA256-K
+$428a2f98 , $71374491 , $b5c0fbcf , $e9b5dba5 , $3956c25b , $59f111f1 , $923f82a4 , $ab1c5ed5 ,
+$d807aa98 , $12835b01 , $243185be , $550c7dc3 , $72be5d74 , $80deb1fe , $9bdc06a7 , $c19bf174 ,
+$e49b69c1 , $efbe4786 , $0fc19dc6 , $240ca1cc , $2de92c6f , $4a7484aa , $5cb0a9dc , $76f988da ,
+$983e5152 , $a831c66d , $b00327c8 , $bf597fc7 , $c6e00bf3 , $d5a79147 , $06ca6351 , $14292967 ,
+$27b70a85 , $2e1b2138 , $4d2c6dfc , $53380d13 , $650a7354 , $766a0abb , $81c2c92e , $92722c85 ,
+$a2bfe8a1 , $a81a664b , $c24b8b70 , $c76c51a3 , $d192e819 , $d6990624 , $f40e3585 , $106aa070 ,
+$19a4c116 , $1e376c08 , $2748774c , $34b0bcb5 , $391c0cb3 , $4ed8aa4a , $5b9cca4f , $682e6ff3 ,
+$748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f7 , $c67178f2 ,
+
+\ Lays the constants in a 256-byte frame on sp by immediates, two to a cell, not
+\ in the code: the AOT linker decodes a copied body's every word (ERR-TEXT,).
+: SHA256-K, ( -- )
+   SP SP 256 SUBI,
+   32 0 DO
+      14  SHA256-K i 2 * cells + @  SHA256-K i 2 * 1+ cells + @ 32 lshift or  LIT64,
+      14 SP i 8 * STR,
+   LOOP ;
+
+\ Linux states the SHA-256 instructions in AT_HWCAP (16) bit 6, HWCAP_SHA2: the
+\ auxiliary vector's type and value pairs follow envp's NULL.
+: SHA2-PROBE, ( label -- )
+   {: none:label :}
+   LBL LBL {: env:label aux:label :}
+   12 DATA ENVP-CELL LDR,  12 none CBZ,
+   env LBL,  13 12 0 LDR,  12 12 8 ADDI,  13 env CBNZ,
+   aux LBL,  13 12 0 LDR,  14 12 8 LDR,  12 12 16 ADDI,
+   13 none CBZ,  13 16 CMPI,  C-NE aux BCOND,
+   14 14 $40 ANDI,  14 none CBZ, ;
+
+\ Four rounds: v4-v7 hold the next 16 schedule words, x12 walks the constants.
+: SHA256-QUAD, ( n -- )
+   {: k:n :}
+   k 4 mod 4 + {: w:n :}
+   2 12 LD1V-POST,  2 2 w ADD4S,
+   k 12 < IF
+      w  k 1+ 4 mod 4 +  SHA256SU0,
+      w  k 2 + 4 mod 4 +  k 3 + 4 mod 4 +  SHA256SU1,
+   THEN
+   3 0 MOVV,  0 1 2 SHA256H,  1 3 2 SHA256H2, ;
+
+\ One block from x10 into the state at x9 and x13 = x9 + 32; sp holds the frame.
+: SHA256-BLOCK, ( -- )
+   0 A LD2V,  2 13 LD2V,  1 2 MOVV,                     \ v0 = a b c d, v1 = e f g h
+   4 B LD1V4-POST,
+   4 4 REV32V,  5 5 REV32V,  6 6 REV32V,  7 7 REV32V,   \ big-endian words
+   12 SP 0 ADDI,
+   16 0 DO  i SHA256-QUAD,  LOOP
+   2 A LD2V,  2 2 0 ADD4S,  2 A ST2V,
+   4 13 LD2V,  4 4 1 ADD4S,  4 13 ST2V, ;
+
+\ sha256-blocks ( ptr n ptr u8 n -- n ) state cells, bytes, block count: runs the
+\ blocks through the SHA-256 instructions and answers the count, 0 where the CPU
+\ lacks them (every Apple arm64 CPU has them). A state cell holds its word in the
+\ low half, so LD2 splits four cells into the words and their zero halves.
+: BSHA256BLOCKS ( -- )
+   LBL LBL LBL {: none:label next:label done:label :}
+   C G-POP  B G-POP  A G-POP                    \ x11 = blocks, x10 = bytes, x9 = state
+   C 0 CMPI,  C-LE none BCOND,
+   HB-TARGET-LINUX? IF none SHA2-PROBE, THEN
+   15 C 0 ADDI,  14 B 0 ADDI,
+   7 64 MOVZ,  A 7 PROT-GUARD:CALL              \ the eight state cells
+   B 14 0 ADDI,  C 15 0 ADDI,  13 A 32 ADDI,
+   SHA256-K,
+   next LBL,  SHA256-BLOCK,  C C 1 SUBI,  C next CBNZ,
+   SP SP 256 ADDI,  done B,
+   none LBL,  15 0 MOVZ,
+   done LBL,  15 G-PUSH ;
+
 \ min-in-mark ( rec-idx min -- ): OR the certified minimum input arity into
 \ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The publisher
 \ (src/compiler/native/publish.f MIN-IN-REC) and the Habu loop's definers set it
@@ -5151,6 +5221,7 @@ package ENGINE-EMIT
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
    s" record-facts!" ['] BRECFACTS FPRIM
+   s" sha256-blocks" ['] BSHA256BLOCKS FPRIM
    s" int-mark" ['] BINTMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" rep-mark" ['] BREPMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" min-in-mark" ['] BMININMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

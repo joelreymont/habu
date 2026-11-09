@@ -12057,11 +12057,30 @@ variable PE-SPEC-I   variable PE-SPEC-J
       PE-SPEC-I @ 1 + PE-SPEC-I !
    REPEAT ;
 
+package CHECKER-RESOLVE
+public
+\ The record a wordlist holds under a name, NULL-PTR for none: the engine's
+\ one-wordlist probe, whose primitive row this package owns (prims.f).
+: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
+;package
+
+\ The rows of each primitive the running hb's kernel lacks.
+: PE-SPEC-NEW ( -- )
+   0 PE-SPEC-I !
+   BEGIN PE-SPEC-I @ PRIM-SPEC:COUNT < WHILE
+      PE-SPEC-I @ PRIM-SPEC:NAME$ WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE
+      NULL-PTR = IF PE-SPEC-I @ PE-SPEC-ROW THEN
+      PE-SPEC-I @ 1 + PE-SPEC-I !
+   REPEAT ;
+
 PTABLE-START
 
-\ A copy loaded inside a build keeps the grammar alone: the product's own
-\ records carry its words' facts (CHECK:FACTS!), so it replays no hb row.
+\ A copy loaded inside a build keeps the grammar and the rows of primitives new
+\ to the building hb: the product's other records carry their words' facts
+\ (CHECK:FACTS!), and a new one's facts text starts from these rows, which its
+\ next build lays (src/habu/link-data.f PRIM-TEXT).
 data-base BOOT:IMAGE-BASE-CELL + @ 0= [if] PE-SPEC-REPLAY [then]
+data-base BOOT:IMAGE-BASE-CELL + @ 0= 0= [if] PE-SPEC-NEW [then]
 
 \ The checker's grammar: the host loop's own words, which every program starts
 \ with, and the names KEYWORD-AXIOMS types. The engine holds no record for the
@@ -12822,13 +12841,6 @@ public
 
 \ The wordlist a dictionary record was published into.
 : CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
-
-package CHECKER-RESOLVE
-public
-\ The record a wordlist holds under a name, NULL-PTR for none: the engine's
-\ one-wordlist probe, whose primitive row this package owns (prims.f).
-: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
-;package
 
 \ Dictionary record slots and flags (src/habu/layout.f DREC).
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT

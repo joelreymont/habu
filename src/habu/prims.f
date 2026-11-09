@@ -70,7 +70,7 @@ $4C constant SPEC-RC
 \ table can be walked by index from any consumer.
 $180 constant ROW-CAP        \ 384 rows
 12 constant ROW-CELLS
-$1000 constant NAME-CAP
+$2000 constant NAME-CAP
 $1000 constant CODE-CAP
 
 0 constant F-KIND
@@ -1061,6 +1061,9 @@ EPRIM: wide-mark EPRIM;
 \ record-facts! ( n n -- ) offset, index: stores where a record's facts text
 \ lies (habu1.f BRECFACTS); the row lets every checked program call it.
 EPRIM: record-facts! PE-N PE-IN PE-N PE-IN EPRIM;
+\ sha256-blocks ( ptr n ptr u8 n -- n ) state cells, bytes, block count: how
+\ many blocks the CPU's SHA-256 instructions compressed (habu1.f BSHA256BLOCKS).
+EPRIM: sha256-blocks PE-PTR-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM; REACH memory
 EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;

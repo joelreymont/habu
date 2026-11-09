@@ -4464,6 +4464,8 @@ variable MARK-CELL
    s" kernel-producer$" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH,  RAX PUSH, ;] PRIM
    s" snap-rebase" REFUSE
    s" record-facts!" REFUSE
+   \ No SHA-256 instructions here yet: sha256.f compresses every block itself.
+   s" sha256-blocks" [: RAX POP,  RAX POP,  RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM
    s" executable-build-enter" [: BUILD-ENTER-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" set-tier" [: SET-TIER-BODY ;] PRIM

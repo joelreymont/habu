@@ -421,6 +421,32 @@ public
 
 : ENC-UADDLV ( n n -- n ) DR2 $6E303800 RR ;
 
+\ A post-indexed load advances its base by the bytes it moved: 16 per register.
+: ENC-LD1V-POST ( n n -- n ) DR2 XREG? $4CDF7000 RR ;
+
+: ENC-LD1V4-POST ( n n -- n ) DR2 XREG? $4CDF2000 RR ;   \ vt..vt+3, mod 32
+
+\ LD2 and ST2 move 32 bytes, .4S lanes alternating between vt and vt+1.
+: ENC-LD2V ( n n -- n ) DR2 XREG? $4C408800 RR ;
+
+: ENC-ST2V ( n n -- n ) DR2 XREG? $4C008800 RR ;
+
+: ENC-REV32V ( n n -- n ) DR2 $6E200800 RR ;   \ the bytes of each 32-bit lane
+
+: ENC-ADD4S ( n n n -- n ) DR3 $4EA08400 RRR ;
+
+: ENC-MOVV ( n n -- n ) DR2 dup $4EA01C00 RRR ;   \ orr vd.16b, vn.16b, vn.16b
+
+\ FEAT_SHA256: H and H2 take the state halves in qd and qn and four schedule
+\ words plus their constants in vm; SU0 and SU1 extend the schedule.
+: ENC-SHA256H ( n n n -- n ) DR3 $5E004000 RRR ;
+
+: ENC-SHA256H2 ( n n n -- n ) DR3 $5E005000 RRR ;
+
+: ENC-SHA256SU0 ( n n -- n ) DR2 $5E282800 RR ;
+
+: ENC-SHA256SU1 ( n n n -- n ) DR3 $5E006000 RRR ;
+
 : ENC-UMOVH ( n n n -- n )
    ?LANEH {: lane:n :}
    DR2 XR2ND {: rd:n rn:n :}

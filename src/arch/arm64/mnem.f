@@ -138,6 +138,28 @@ public
 : SCVTF, ( n n -- )  ENC-SCVTF EMITW ;
 
 : FCVTZS, ( n n -- )  ENC-FCVTZS EMITW ;
+
+: LD1V-POST, ( n n -- )  ENC-LD1V-POST EMITW ;
+
+: LD1V4-POST, ( n n -- )  ENC-LD1V4-POST EMITW ;
+
+: LD2V, ( n n -- )  ENC-LD2V EMITW ;
+
+: ST2V, ( n n -- )  ENC-ST2V EMITW ;
+
+: REV32V, ( n n -- )  ENC-REV32V EMITW ;
+
+: ADD4S, ( n n n -- )  ENC-ADD4S EMITW ;
+
+: MOVV, ( n n -- )  ENC-MOVV EMITW ;
+
+: SHA256H, ( n n n -- )  ENC-SHA256H EMITW ;
+
+: SHA256H2, ( n n n -- )  ENC-SHA256H2 EMITW ;
+
+: SHA256SU0, ( n n -- )  ENC-SHA256SU0 EMITW ;
+
+: SHA256SU1, ( n n n -- )  ENC-SHA256SU1 EMITW ;
 ;package
 
 ;using
