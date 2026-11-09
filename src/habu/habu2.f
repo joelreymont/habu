@@ -3059,17 +3059,17 @@ public
    ready LBL, ;
 
 \ After ndict++ the checker's rec-wide-publish consumes the RECW latch for this
-\ definition's effect and, when wide, marks record ndict-1 DNAME-WIDE. Hook
-\ guarded: the engine prefix self-load has no hook and no wide-effect rows;
-\ prefix records certified between check-hook.f and the seal carry no min-in,
-\ and the checker's top-level row judges their calls (src/core/top-row.f). The
-\ same tail drains the RECMI
-\ latch through rec-min-in@ (checker.f, loaded before check-hook.f) into
-\ DNAME-MIN-IN (flags bits 52-59) through the alias, so interpret-find fails
-\ closed on a bare underdepth call; min-in 0 (unchecked) pokes nothing.
+\ definition's effect and, when wide, marks record ndict-1 DNAME-WIDE. Both
+\ calls go through the source owner's record, so the tail runs once checker.f
+\ has stored it (DECL-CELL), not on the checking switch: a linker-built hb has
+\ no HOOK-CELL, and its does> runtime publishes here (test/underdepth-gate.f
+\ UDG-MQA). The engine prefix self-load before checker.f has no owner. The
+\ same tail drains the RECMI latch through rec-min-in@ into DNAME-MIN-IN
+\ (flags bits 52-59) through the alias, so interpret-find fails closed on a
+\ bare underdepth call; min-in 0 (unchecked) pokes nothing.
 : EM-REC-WIDE-PUBLISH ( -- )
    LBL LBL {: nohook:label nomark:label :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   9 DATA NCOMP-DISPATCH:DECL-CELL LDR,  9 nohook CBZ,
    NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF RECWPUB$ C-OWNER-FIELD
    C-CALL-X11-SAVED
    NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF RECMIQ$ C-OWNER-FIELD
