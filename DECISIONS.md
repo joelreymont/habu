@@ -13,6 +13,19 @@ learned live in the docs for their subject.
   and it is pushed and installed ("the path to arm-to-arm", "the fastest path
   to arm64"). Its purpose, 2026-10-29: "i need fast incremental builds to
   enable you and other agents to quickly iterate on features."
+- 2026-11-09, Wasm and x86-64 after arm64: told that one Wasm failure on the
+  landing tree is a tier-0 defect of the stack and the other's cause is
+  unknown, and asked whether to hold the Wasm work until arm-to-arm lands, Joel
+  chose "Hold, land them red (Recommended)" and wrote "the path should be 1)
+  arm-to-arm working (including pg), 2) wasm working, 3) x86. and we are not
+  dropping wasm and x86 tests, we should be disabling them temporarily, unless
+  the tests are definitely not load-bearing", and "disable lsp and x86 and
+  wasm. get arm-to-arm done first, including pg. get that fully working then
+  tackle wasm and x86. do not delete tests unless they are absolutely not
+  load-bearing, disable them. add ifdefs if we don't have those". The failing
+  lsp-boundary, Wasm and x86-64 tests are disabled with `[if]`, not deleted;
+  arm-to-arm with pg working comes first, then Wasm (dot
+  habu-fix-the-wasm-bb1ffcfa), then x86-64 (dot habu-re-enable-the-959502b5).
 
 ## Language and checker
 
