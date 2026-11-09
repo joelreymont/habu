@@ -310,6 +310,22 @@ create NL NEWLINE c,
 : TOKEN$ ( -- ptr u8 n )
    TKA-CELL ADDR@ TKL-CELL CELL@ ;
 
+: FOLD ( n -- n ) {: c:n :}
+   c [char] A [char] Z BETWEEN? if c CASE-BIT or exit then
+   c ;
+
+\ Whether the span a u spells kw, which is lowercase. As the engine's LKWCMP
+\ does, only the span's A-Z are folded.
+: FOLDED= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n kw:ptr v:n :}
+   u v <> if false exit then
+   u 0 ?do
+      a i + c@ FOLD  kw i + c@ <> if false unloop exit then
+   loop
+   true ;
+
+: TOKEN-IS? ( ptr u8 n -- bool )
+   TOKEN$ 2swap FOLDED= ;
+
 \ The engine's twin: habu1.f LTOK.
 : BLANKS-END ( ptr u8 ptr u8 -- ptr u8 ) {: p:ptr e:ptr :}
    p begin dup e < if dup c@ BLANK <= else false then while 1 + repeat ;
@@ -519,13 +535,28 @@ TYPED-VARIABLE REC ptr n
    rec XREF-WORDLIST OWNER-API-PRI-WID = if POLICY-REFUSE then
    rec XREF-START 0= if POLICY-REFUSE then ;
 
+\ The top-level twin, habu2.f LPOLICYTOPREC: once SOURCE-ROOT! has stored the
+\ ordinary `require` (POLICY-REQUIRE-CELL), its global record, spelled so, is in
+\ the vocabulary as well. A body never admits it.
+: POLICY-REQUIRE? ( ptr n -- bool ) {: rec:ptr :}
+   POLICY-REQUIRE-CELL CELL@ {: req:n :}
+   req 0= if false exit then
+   rec XREF-FOUND? 0= if false exit then
+   rec XREF-START req <> if false exit then
+   rec XREF-WORDLIST WL:GLOBAL? 0= if false exit then
+   s" require" TOKEN-IS? ;
+
+: POLICY-CHECK-TOP ( ptr n -- ) {: rec:ptr :}
+   rec POLICY-REQUIRE? if exit then
+   rec POLICY-CHECK-REC ;
+
 \ A global hit is asked of the used publics as well, as habu2.f
 \ INTERP-EMIT:FIND-SHADOW asks them: one that also exports the token refuses
 \ it, and two are the lookup's ambiguity. The lookup names the used publics'
 \ record whether or not LFIND bound the token.
 : LOOKUP-GO ( -- )
    TOKEN$ FIND REC !
-   REC @ POLICY-CHECK-REC
+   REC @ POLICY-CHECK-TOP
    REC @ XREF-FOUND? 0= if exit then
    REC @ XREF-WORDLIST WL:GLOBAL? 0= if exit then
    TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
@@ -719,26 +750,10 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
 : RUN-WORD ( -- )
    LOOKUP RUN-FOUND ;
 
-\ The engine's twins: habu2.f CF-ENTRY and LKWCMP.
+\ The engine's twin: habu2.f CF-ENTRY.
 \ A keyword is matched before the token is read as a number or a word, and it
 \ reads the input after it itself. Each keyword table is a word that runs the
 \ token when it is one of its rows and answers whether it was.
-
-: FOLD ( n -- n ) {: c:n :}
-   c [char] A [char] Z BETWEEN? if c CASE-BIT or exit then
-   c ;
-
-\ Whether the span a u spells kw, which is lowercase. As the engine's LKWCMP
-\ does, only the span's A-Z are folded.
-: FOLDED= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n kw:ptr v:n :}
-   u v <> if false exit then
-   u 0 ?do
-      a i + c@ FOLD  kw i + c@ <> if false unloop exit then
-   loop
-   true ;
-
-: TOKEN-IS? ( ptr u8 n -- bool )
-   TOKEN$ 2swap FOLDED= ;
 
 \ The token after a reader keyword kw. With the input at its end the refusal
 \ names kw as the engine bakes it, lowercase whatever the token's case, at the

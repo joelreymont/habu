@@ -41,7 +41,8 @@ private
    s" then" TOKEN-IS? if true exit then
    s" {:" TOKEN-IS? if true exit then
    s" :}" TOKEN-IS? if true exit then
-   S\" s\"" TOKEN-IS? if true exit then
+   S\" s\q" TOKEN-IS? if true exit then
+   S\" s\\\q" TOKEN-IS? if true exit then
    s" [package]" TOKEN-IS? if true exit then
    s" package" TOKEN-IS? if true exit then
    s" public" TOKEN-IS? if true exit then

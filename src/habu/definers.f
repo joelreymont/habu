@@ -488,9 +488,9 @@ private
    then ;
 
 \ The JIT's sealed row and the tier-1 capture admit the same body vocabulary.
-\ `;` is handled before the capture. A miss reaches the six design body
+\ `;` is handled before the capture. A miss reaches the seven design body
 \ keywords only after local, dictionary and numeric lookup, as the native
-\ capture does.
+\ capture does (habu2.f CAPTURE-IMMEDIATE).
 : BODY-POLICY ( -- )
    BODY-LOCAL? if exit then
    TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
@@ -505,6 +505,7 @@ private
    s" else" TOKEN-IS? if exit then
    s" then" TOKEN-IS? if exit then
    S\" s\q" TOKEN-IS? if exit then
+   S\" s\\\q" TOKEN-IS? if exit then
    s" [package]" TOKEN-IS? if exit then
    s" {:" TOKEN-IS? if exit then
    POLICY-REFUSE ;
