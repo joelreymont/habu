@@ -829,7 +829,8 @@ public
       s" link: the build stored no entry for the program" 74 die
    then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
-   path pathu [: 2dup SIGN-ID:PROG$ 2swap DRV-EMIT-IMAGE  FS:CHMOD-X ;] FS:REPLACE-STAGED
+   path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap DRV-EMIT-IMAGE
+      FS:CHMOD-X ;] FS:REPLACE-STAGED
    path pathu DATA-IMAGE-AT WRITE-MAP ;
 
 ;package
