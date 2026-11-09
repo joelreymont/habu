@@ -3610,6 +3610,7 @@ public
    c VECTORS-BUF BUF:SPAN c idx VECTOR-OFF @ c idx VECTOR-LEN @ SPAN:SUB SPAN:$ ;
 
 : GENERATION-MODEL$ ( ptr call -- ptr u8 n ) GEN$ ;
+: EMBEDDING-MODEL$ ( ptr call -- ptr u8 n ) EMBED-MODEL$ ;
 : HTTP-STATUS ( ptr call -- n ) MODEL-CALL:HTTP-STATUS @ ;
 : INPUT-TOKENS ( ptr call -- n ) MODEL-CALL:INPUT-TOKENS @ ;
 \ The last call's recorded id: its own row, or for a replayed reply the row

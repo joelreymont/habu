@@ -1760,6 +1760,14 @@ variable LANDED
    3 DIMS drop ;
 
 
+\ The call answers the embedding model it was last given.
+: EMBEDDING-NAMED ( -- )
+   s" named-embedding" 3 M MODEL:EMBEDDING-MODEL!
+   M MODEL:EMBEDDING-MODEL$ s" named-embedding" STR= ASSERT
+   3 DIMS drop
+   M MODEL:EMBEDDING-MODEL$ s" test-embedding" STR= ASSERT ;
+
+
 \ Refused bases: another scheme, no host, a blank, a trailing slash, and
 \ userinfo or a query that could carry a credential, in a base or an Ollama
 \ endpoint. A refusal keeps the configured base.
@@ -2488,7 +2496,7 @@ variable ASKED-U
    REPLIES EARLY-ENDS UNREADABLE REFUSED [: CANCELLATION ;] QUIET
    EMBEDDINGS BAD-VECTORS BASE64-CASES EMBED-TOO-LARGE INPUT-BOUNDS
    INPUT-MAX-EMBED
-   DIMS-PROPERTY
+   DIMS-PROPERTY EMBEDDING-NAMED
    STOP-BETWEEN
    M MODEL:CLOSE
    SETUP
