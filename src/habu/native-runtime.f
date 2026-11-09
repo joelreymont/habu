@@ -174,17 +174,9 @@ public
 
 package CHECKER-REG
 
-\ Bind this compiler's fixed engine cells to its private declaration record.
-\ The entry runs again in each emitted process; capture-time stores alone do
-\ not initialize the engine header copied outside the AOT DATA window.
-TRUSTED: BIND-OWNER ( -- )
-   DECLARATIONS NCOMP-DISPATCH:DECL-A ptr-cell!
-   DECLARATIONS NCOMP-DISPATCH:TARGET-DECL-A ptr-cell! ;
-
 : SEAL ( -- )
    NCOMP:INSTALL
    SEAL-TARGET
-   BIND-OWNER
    SEAL-CAPTURE ;
 
 ' SEAL

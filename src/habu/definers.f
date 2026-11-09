@@ -951,8 +951,8 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 \ DRAIN-PRETRUST replays both registrations to the target owner.
 \ With both owner cells zero the engine's loop still holds the defer, while
 \ NCOMP below refuses it ("ncomp: cannot compile"): no checker knows its
-\ effect. No build reaches that state: native-runtime.f BIND-OWNER sets both
-\ cells at boot, and checker.f CHECKER-RESET-SOURCE zeroes only the target's.
+\ effect. No build reaches that state: NCOMP:INSTALL sets both cells as the
+\ engine completes, and checker.f CHECKER-RESET-SOURCE zeroes only the target's.
 : DEFER-READY? ( -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-OFF PKG-TARGET 0<>
    NCOMP-DISPATCH:DECL-DEFER-OFF PKG-TARGET 0<> and ;

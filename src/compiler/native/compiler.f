@@ -813,13 +813,17 @@ public
    data-base NCOMP-DISPATCH:XT-CELL + xt! ;
 
 \ The fixed engine header lies outside a partial compiler capture. Reinstall
-\ its dispatch after the captured words have been relocated at fresh boot.
+\ its dispatch after the captured words have been relocated at fresh boot,
+\ and bind both declaration-owner cells to the checker's record, which the
+\ compiler's owner reads (checker-owner.f).
 : INSTALL ( -- )
    ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
    ['] CALLBACK-STUB@ data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!
    ['] COMPILE DISPATCH!
    ['] SHADOW-FIXED data-base NCOMP-DISPATCH:FIXED-SHADOW-CELL + xt!
-   ['] SHADOW-DOES data-base NCOMP-DISPATCH:DOES-SHADOW-CELL + xt! ;
+   ['] SHADOW-DOES data-base NCOMP-DISPATCH:DOES-SHADOW-CELL + xt!
+   CHECKER-REG:DECLARATIONS NCOMP-DISPATCH:DECL-A ptr-cell!
+   CHECKER-REG:DECLARATIONS NCOMP-DISPATCH:TARGET-DECL-A ptr-cell! ;
 
 \ A whole-image capture closes the session through IMAGE-LIFECYCLE:PREPARE.
 \ A chain window captures this entry directly, so close a live session here too.
