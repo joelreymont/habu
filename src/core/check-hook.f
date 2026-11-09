@@ -295,14 +295,18 @@ public
 
 
 \ The facts text this checker gives the primitive named na nu, for a linked
-\ engine's record of it, its rows' (ROWS-TEXT?); the primitive's own record is
-\ read first when it has a text. Empty when no primitive has the name or no
-\ text says its rows. The text lies in RSBUF, which the next render reuses.
+\ engine's record of it: the primitive's own record's text as it stands, else,
+\ in an hb whose records carry none, its rows' (ROWS-TEXT?). A text read back
+\ and rendered again can lose what it said: a text with no primitive tag and no
+\ overload reads as an external effect, which holds no primitive row. Empty
+\ when no primitive has the name or no text says its rows. A rendered text
+\ lies in RSBUF, which the next render reuses.
 : PRIMITIVE-FACTS ( ptr u8 n -- ptr u8 n )
    {: na:ptr nu:n :}
    na nu WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = if NULL-PTR 0 exit then
-   rec FACTS-READ-XT
+   rec CHECKER-RESOLVE:REC>INDEX CHECK:FACTS@ {: a:ptr u:n :}
+   u 0 <> if a u exit then
    na nu CHECKER-GLOBAL-SYM ROWS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then ;
 
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
