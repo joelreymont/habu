@@ -411,16 +411,6 @@ variable ERR-U
      timeout OF src u OUT outu LEN>N ERR erru LEN>N SUBJECT:TIMED-OUT ENDOF
    ;MATCH ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
-
-\ Tier 1 records a whole definition before binding its body tokens. At EOF,
-\ this unfinished definition is refused before [char] or ['] reads an operand.
-\ The default ARM tier 0 reads that operand immediately.
-: BODY-EOF? ( ptr u8 n -- bool )
-   HB-TARGET-LINUX-X86-64? if
-      2drop ERR$ s" hb: source ended inside definition: x" CONTAINS?
-   else
-      ERR$ 2swap CONTAINS?
-   then ;
 ;package
 
 \ A cast's record carries its certified minimum input arity, so a bare call at
@@ -453,12 +443,14 @@ s" constant" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 CN-CHILD:ERR$ s" hb: reader keyword needs a name: constant" CONTAINS? TTRUE
 s" char"     CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 CN-CHILD:ERR$ s" hb: reader keyword needs a name: char" CONTAINS? TTRUE
+\ The interpreter reads a whole definition before it binds the body's tokens,
+\ so at EOF this unfinished one is refused before [char] or ['] reads an operand.
 s" : x [char]" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-s" hb: reader keyword needs a name: [char]" CN-CHILD:BODY-EOF? TTRUE
+CN-CHILD:ERR$ s" hb: source ended inside definition: x" CONTAINS? TTRUE
 s" '"        CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 CN-CHILD:ERR$ s" hb: reader keyword needs a name: '" CONTAINS? TTRUE
 s" : x [']"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-s" hb: reader keyword needs a name: [']" CN-CHILD:BODY-EOF? TTRUE
+CN-CHILD:ERR$ s" hb: source ended inside definition: x" CONTAINS? TTRUE
 package CN
 
 \ the cast: declarer used inside a checked body is rejected unsafe (verdict 0);

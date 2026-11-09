@@ -779,14 +779,12 @@ public
 HIDX-SLOTS 3 * 4 / constant LOAD-MAX
 ;package
 $37F8 constant SNAP-CELL
-\ ENGINE-MAIN:XT-CELL is the DATA cell a seeded x86-64 boot calls the engine's
-\ MAIN through (docs/xcomp.md "Build and bootstrap"). It is a separate cell
-\ from APP-ENTRY:XT-CELL because that one also switches the argv and stdin
-\ conventions to a saved application's. CHECKER-REG:SEAL installs the captured
-\ MAIN there; only the x86-64 boot reads it, and an ARM64 boot, which reaches
-\ the kernel's own source and REPL routes, never does. It sits in the
-\ single-cell run above SNAP-CELL ($37F8); a fresh DATA mapping reads it zero
-\ until set.
+\ ENGINE-MAIN:XT-CELL is the DATA cell an engine's boot calls its MAIN through
+\ (src/habu/main.f COMMAND-LINE:INSTALL stores it; src/arch/arm64/boot.f and
+\ src/habu/boot-x64.f read it). It is a separate cell from APP-ENTRY:XT-CELL
+\ because that one also switches the argv and stdin conventions to a saved
+\ application's. It sits in the single-cell run above SNAP-CELL ($37F8); a
+\ fresh DATA mapping reads it zero until set.
 package ENGINE-MAIN
 public
 $3808 constant XT-CELL
