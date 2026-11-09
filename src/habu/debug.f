@@ -153,4 +153,6 @@ public
       dup BP-SLOT-ADDR @ dup BP-NULL = 0= IF NULL-PTR BYTE-VIEW - . cr ELSE drop THEN
       1 + REPEAT  drop ;
 
+\ The last of package DEBUG's three files: no later source reopens it.
+seal-package
 ;package
