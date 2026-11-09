@@ -138,7 +138,8 @@ async function browser() {
         onInput: (enabled) => records.push(['input', enabled]) });
       window.ready = true;
     `, { headers: { "Content-Type": "text/javascript" } });
-    if (path === "/host.js" || path === "/viewport.js" || path === "/turn.js" || path === "/page.js")
+    if (path === "/host.js" || path === "/viewport.js" || path === "/turn.js" || path === "/page.js" ||
+        path === "/mcp.js")
       return new Response(Bun.file(join(root, path.slice(1))), { headers: { "Content-Type": "text/javascript" } });
     return new Response("not found", { status: 404 });
   } });

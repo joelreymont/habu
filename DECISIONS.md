@@ -864,6 +864,19 @@ learned live in the docs for their subject.
   answered by event 3), 11 `after`, 12 `read`; events 14 `notified`, 15
   `tick`, 16 `file`, 17 `chunk`; mount options `Module` and `rpc`, viewport
   `notify` and `file`, and host-cli's `--notify`, `--tick` and `--file`.
+- 2026-11-09, Maki's live view (relayed by tim): told that Maki's demo
+  rehearsal never opens its view against the live server, since host-cli
+  answers the module's tool calls only from staged files and the browser
+  page sends an Origin with no sign-in, Joel chose in interview "Relay mode
+  in Habu" over a replay of staged answers and over headless Chrome:
+  host-cli gains `--mcp URL TOKEN-FILE`, relaying each of the module's tool
+  calls to the server with the person's sign-in as ChatGPT does. Carrying it
+  out, the lead chose: the request code moves from host.js to mcp.js, which
+  host.js and host-cli share; under `--mcp` afters fire on real time and a
+  step is done once no relay is outstanding; a step `--until TEXT MS` waits
+  for a printed line that contains TEXT, so a caller can wait for what a
+  poll brings; and `--tick`, `--answer-rpc` and `--fail-rpc` are usage
+  errors with `--mcp`, as `--until` is without it.
 - 2026-11-02, sizing Maki's job runners: OS-CPU:PERFORMANCE-CORES and
   OS-MEMORY:TOTAL, approved on 2026-10-31 so Maki could compute its runner
   count from the host, needed a shared reader of Linux container (cgroup)
