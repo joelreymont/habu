@@ -17,7 +17,10 @@ learned live in the docs for their subject.
   told that nobody had checked that the files a one-file edit rebuilt are
   exactly the edited file and the files that depend on it, Joel wrote "you
   need to make sure this is working 100%" and "if arm-to-arm is 100% done and
-  working, then tackle wasm and x86, in that order".
+  working, then tackle wasm and x86, in that order". The same day, asked of
+  a library fix and a state-machine word whether they were incremental-build
+  work, Joel wrote "fix incremental builds first, work in parallel if you
+  can, then tackle everything else when incremental builds 100% work".
 - 2026-11-09, Wasm and x86-64 after arm64: told that one Wasm failure on the
   landing tree is a tier-0 defect of the stack and the other's cause is
   unknown, and asked whether to hold the Wasm work until arm-to-arm lands, Joel
