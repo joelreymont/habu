@@ -13,4 +13,4 @@ Acceptance: FSM:DEFINE also emits `NAME-STEP ( ctx phase -- phase bool )`. From 
 Files: src/lib/fsm.f (RUN-WORD 187, IN-ROW 143, FINAL-ROW 159, GENERATE 194), src/lib/fsm-test.f.
 Verify: `bin/hb src/lib/fsm-test.f` with cases added through the real loader: a self-loop steps once and returns false; active-to-final returns the final phase and false without running the final action; STEP at a FINAL runs it once and returns true; stepping it again runs it again; a no-final table steps; a throw from sense, action, next or a final action propagates its code; the existing FAILS (always-throwing) cases still load; a rejected definition followed by a valid one loads cleanly; the runner trace is unchanged on every existing case.
 Depends: habu-hold-a-final-20c6c6f5 (same arm-emission design; settle both in one design).
-Ownership: src/lib/fsm.f, src/lib/fsm-test.f. Approval: NAME-STEP is a new public generated word; Joel approves it before this dot is claimed. Claim: unassigned.
+Ownership: src/lib/fsm.f, src/lib/fsm-test.f. Approved 2026-11-09 by Joel ("Approve NAME-STEP (Recommended)"); DECISIONS.md, Language and checker. Claim: unassigned.

@@ -24,6 +24,21 @@ learned live in the docs for their subject.
   the checker's, the compiler's and elaborate's copies grow too; a block
   that cannot be mapped ends the build naming the size it tried; and every
   guarded store also refuses the live block.
+- 2026-11-09, stepping a machine from outside (relayed by bob from the
+  Dotfiles pane): asked to approve a second generated word per
+  `FSM:DEFINE`, `NAME-STEP ( ctx phase -- phase bool )`, one dispatch and
+  no loop, so an event-fed consumer stops writing its own dispatch over the
+  row words (Tender's five dispatchers with 25 row-word calls are the two
+  working event machines written with `MATCH` that Maki's record of
+  2026-11-06 asked for first), Joel chose "Approve NAME-STEP (Recommended)".
+  Of the hold of a FINAL action to its `( ctx -- )` effect (dot
+  habu-hold-a-final-20c6c6f5), Joel said "eval all the items using the
+  'what's best for long term lens' and only bring to me what you can't
+  decide"; the lead chose: each FINAL action is emitted through a generated
+  `NAME/<final> ( ctx -- )` word that the arm calls last, as IN rows'
+  `NAME/<state>` words already declare their effects, so the checker holds
+  both at load; both generated words share one parser, row representation
+  and arm emitter. Dots under habu-fsm-stepping-from-c8625faf.
 - 2026-11-04, scope memory (relayed by stuart from Tender): shown that every
   MEM:WITH-BYTES scope maps and unmaps its memory (1,000,000 empty scopes
   4.69 s, 2.04 s of it in the kernel) and a design that keeps small scopes in
