@@ -246,8 +246,10 @@ PERSISTED-PTR-VARIABLE PIN-FN
 PERSISTED-PTR-VARIABLE PIN-LIB
 variable PIN-FN-CAP
 variable PIN-LIB-CAP
-DYNAMIC-BUFFER RETIRED-BASE ptr u8
-DYNAMIC-BUFFER RETIRED-SIZE n
+\ Retired row blocks wait in DATA, so a link carries them with their count.
+\ Tables double, so 64 slots outlast any four tables a process can map.
+64 TYPED-BUFFER RETIRED-BASE ptr u8
+64 TYPED-BUFFER RETIRED-SIZE n
 variable RETIRED-COUNT
 
 : MAKER-TOKEN? ( n -- bool ) MAKER-TAG and 0<> ;
@@ -277,8 +279,8 @@ private
 
 \ The loader may still read a row's inline name or path when a callback grows a
 \ table. Keep retired declarations until the next quiescent cleanup.
-: RETIRE-ROOM ( -- )
-   RETIRED-COUNT @ 1+ dup RETIRED-BASE-RESERVE RETIRED-SIZE-RESERVE ;
+\ A full table refuses E-LAYOUT-BOUNDS here, before the grow changes anything.
+: RETIRE-ROOM ( -- ) RETIRED-COUNT @ RETIRED-BASE drop ;
 
 : RETIRE ( ptr u8 n -- ) {: base:ptr size:n :}
    base RETIRED-COUNT @ RETIRED-BASE !
@@ -753,8 +755,9 @@ private
       base PIN-FN @ <> base PIN-LIB @ <> and if
          base i RETIRED-SIZE @ ZERO-ROWS
       then
+      NULL-PTR i RETIRED-BASE !
+      0 i RETIRED-SIZE !
    loop
-   RETIRED-BASE-RELEASE RETIRED-SIZE-RELEASE
    0 RETIRED-COUNT ! ;
 
 : FORGET-SYMBOLS ( -- )
@@ -1032,8 +1035,8 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ A stripped image whose host includes FFI carries the declarations made while
 \ loading the application in its DATA window, with foreign addresses unresolved
 \ for the new process; the linker gets the table's exact storage through the two
-\ callbacks. Retired rows drain before capture; each dynamic buffer's #base and
-\ #ctl start empty in a fresh runtime. A stripped entry publishes the two table
+\ callbacks. Retired rows drain before capture, which empties the retired tables
+\ a fresh runtime starts with. A stripped entry publishes the two table
 \ bases after restoring DATA: their addresses vary with the maker's window,
 \ while the descriptor bytes and counts stay identical for one application
 \ source.
@@ -1053,9 +1056,7 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
    PIN-FN-CAP BYTE-VIEW CELL fresh execute
    PIN-LIB-CAP BYTE-VIEW CELL fresh execute
    RETIRED-BASE#base BYTE-VIEW CELL fresh execute
-   RETIRED-BASE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
    RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
-   RETIRED-SIZE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
    RETIRED-COUNT BYTE-VIEW CELL fresh execute
    OBSERVER BYTE-VIEW CELL fresh execute
    FN-REGISTERED BYTE-VIEW CELL fresh execute ;
