@@ -6,7 +6,7 @@ require src/lib/error.f
 require src/lib/fs.f
 require src/habu/app-image.f
 require src/os/script-argv.f
-require tools/hb-build-core.f
+require tools/build-core.f
 
 package APP-BUILD
 private

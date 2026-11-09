@@ -990,6 +990,14 @@ learned live in the docs for their subject.
   images run on it, and each tool image goes with the step that moves its
   last user. Asked when hb should carry the verifier, he chose "Right after
   step 5 (Recommended)".
+- 2026-11-09, where hb-build builds: shown that `hb --load tools/hb-build.f`
+  builds a maker image and runs it as a child process under
+  HB_BUILD_TIMEOUT_MS, which loads the app into its own memory and saves that
+  memory (APP-IMAGE:SAVE), while the linker writes a program from inside the
+  running hb (LINKER:WITH, LINKER:WRITE), Joel chose "In-process
+  (Recommended)": "One process per build; caller's timeout bounds it; child
+  relay code deleted." hb-build runs each build in its own process; the maker
+  image, the child and HB_BUILD_TIMEOUT_MS go.
 - 2026-11-03, the compiler lease: shown a design in which T0's compiles take
   tier 1's compiler lease (NLEASE) so NDEFINITION's M-OPEN flag could go,
   Joel asked "why in the world do you need to take a lease? this smells! are

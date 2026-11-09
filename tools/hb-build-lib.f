@@ -23,9 +23,10 @@ require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF co
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require tools/native-file-inputs.f
 require src/lib/build-out.f
+require src/habu/linker.f
 require tools/build-support.f
 require tools/app-build-image.f
-require tools/aot-builder-image.f
+require tools/hb-build-core.f
 require tools/hb-build-report.f
 require tools/event-closure-lib.f
 require tools/native-build-image.f
@@ -48,12 +49,10 @@ $7FFFFFFF constant HBB-MAKER-MAX-MS
 \ A support record: the selector key it was written under (64 hex), the
 \ producer key it selects (64 hex), the rows length (u64), then the rows.
 136 constant HBB-REPL-SUPPORT-HEADER-U
-136 constant HBB-MAKER-SUPPORT-HEADER-U
 136 constant HBB-ENGINE-SUPPORT-HEADER-U
 
 create HBB-SRC-PATH PATH-CAP allot
 create HBB-OUT-PATH PATH-CAP allot
-create HBB-MAKER-KEY-HEX 80 allot
 create HBB-MAP-SRC PATH-CAP allot
 create HBB-MAP-DST PATH-CAP allot
 create HBB-PAIR-STAGE PATH-CAP allot
@@ -65,10 +64,6 @@ create HBB-REPL-SUPPORT-PATH PATH-CAP allot
 create HBB-REPL-SUPPORT-KEY 64 allot
 create HBB-REPL-RUNNING-ROOT PATH-CAP allot
 create HBB-REPL-SELECTED-ROOT PATH-CAP allot
-create HBB-MAKER-RUNNING-ROOT PATH-CAP allot
-create HBB-MAKER-SELECTED-ROOT PATH-CAP allot
-create HBB-MAKER-SUPPORT-PATH PATH-CAP allot
-create HBB-MAKER-SUPPORT-KEY 64 allot
 create HBB-REPL-ENGINE-DIGEST 32 allot
 create HBB-BUILDER-KEY 64 allot   \ BF-ENGINE$'s engine key, naming its img/
 create HBB-REPL-ENGINE-SHA SHA256-FILE-CTX-BYTES allot
@@ -94,15 +89,11 @@ variable HBB-REPL-DEPS-U
 variable HBB-MAKER-INPUTS-U
 variable HBB-COUNTS-U
 variable HBB-REPL-SUPPORT-U
-variable HBB-MAKER-RUNNING-ROOT-U
-variable HBB-MAKER-SELECTED-ROOT-U
-variable HBB-MAKER-SUPPORT-U
 variable HBB-REPL-RUNNING-ROOT-U
 variable HBB-REPL-SELECTED-ROOT-U
 variable HBB-REPL-PRODUCER-U
 variable HBB-REPL-PRODUCER-READY
 variable HBB-I
-variable HBB-KEY-I
 variable HBB-REPL
 variable HBB-ENGINE
 variable HBB-ENGINE-COMPAT
@@ -112,8 +103,6 @@ variable HBB-JSON
 variable HBB-REPORT-JSON
 variable HBB-SIZE-REPORT
 variable HBB-MAKER-HIT
-TYPED-VARIABLE HBB-AOT-BUILDER-A ptr u8
-variable HBB-AOT-BUILDER-U
 variable HBB-MAKER-BUILD
 variable HBB-MAKER-RUN
 variable HBB-LINE-START
@@ -127,7 +116,6 @@ DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
 DYNAMIC-BUFFER HBB-INPUTS u8
 DYNAMIC-BUFFER HBB-REPL-SIDECAR u8
 DYNAMIC-BUFFER HBB-REPL-PRODUCER u8
-DYNAMIC-BUFFER HBB-MAKER-SUPPORT u8
 TYPED-VARIABLE HBB-APP-BUILDER-A ptr u8
 variable HBB-APP-BUILDER-U
 
@@ -384,17 +372,16 @@ variable HBB-APP-BUILDER-U
    HBB-SRC$ FS:FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
    HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
 
-\ Every build gets a private directory under the caller's TMPDIR: the engine's
-\ build mode writes a fixed name there (src/habu/aot-common.f `hb-aot-got`), so
-\ builds sharing one TMPDIR, as gate pool builds do, read each other's
-\ artifacts. FS:MKTEMP-DIR refuses a base that is missing or not a
-\ directory.
+\ Every build gets a private directory under the caller's TMPDIR: a build
+\ writes a fixed name there (HBB-GOT-NAME$), so builds sharing one TMPDIR, as
+\ gate pool builds do, would read each other's artifacts. FS:MKTEMP-DIR refuses
+\ a base that is missing or not a directory.
 : HBB-PREPARE-TMP ( -- )
    BF-TMP-RESET
    FS:CLEANUP-RESET
    s" hb-build-native" FS:MKTEMP-DIR 2dup BF-TMP! FS:CLEANUP-TREE+ ;
 
-\ The out root is made before any maker runs, so a root that cannot be made
+\ The out root is made before a build starts, so a root that cannot be made
 \ fails the build up front as a path error rather than midway as a file error.
 : HBB-PREPARE-OUT ( -- )
    [: BUILD-OUT:ROOT$ 2drop ;] catch {: rc:n :}
@@ -497,176 +484,13 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
    path pathu 0 HBB-INPUTS size FS:READ-ALL size <> if E-FS-IO throw then
    0 HBB-INPUTS size ;
 
-: HBB-KEY-FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
-   SOURCE-ROOT:CANON-OS 0= if SHA-E-OPEN throw then
-   CONTENT-KEY:FILE+ ;
-
-\ Discover the producer's loaded source closure instead of maintaining a
-\ second dependency list. The target selector is part of the key; discovery
-\ includes every statically reachable target branch.
-: HBB-MAKER-CLOSURE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
-   {: a:ptr u:n :}
-   a u SOURCE-ROOT:RESOLVE drop SOURCE-ROOT:RESOLVED-ROOT$
-   EC:BUILD-IN
-   0 HBB-KEY-I !
-   begin HBB-KEY-I @ EC:COUNT < while
-      HBB-KEY-I @ EC:PATH$ {: path:ptr pathu:n :}
-      path pathu s" " NFILE-INPUTS:ADD-CONTENT
-      path pathu CONTENT-KEY:FILE+
-      HBB-KEY-I @ 1+ HBB-KEY-I !
-   repeat ;
-
-: HBB-KEY-TARGET+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   HB-TARGET-LINUX? if s" target:linux-aarch64" CONTENT-KEY:TEXT+ exit then
-   HB-TARGET-MACOS? if s" target:macos-aarch64" CONTENT-KEY:TEXT+ exit then
-   HB-TARGET-LINUX-X86-64? if s" target:linux-x86-64" CONTENT-KEY:TEXT+ exit then
-   s" hb-build: unknown target" HBB-BUILD-RC die ;
-
-\ The selected engine's sidecar supplies baked source attribution. Its
-\ absence is an input too: a producer selected while the map was missing must
-\ not serve an engine that has one, or its products carry unknown-origin rows.
-: HBB-KEY-DONOR-MAP+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   HBB-REPL @ if exit then
-   BF-ENGINE$ HBB-MAP-SRC!
-   HBB-MAP-SRC$ FS:FILE? if
-      s" donor-map:present" CONTENT-KEY:TEXT+
-      HBB-MAP-SRC$ HBB-KEY-FILE+
-   else
-      s" donor-map:missing" CONTENT-KEY:TEXT+
-   then ;
-
-: HBB-MAKER-KEY-BODY ( CONTENT-KEY:fold -- )
-   s" hb-build-native-producer-v3" CONTENT-KEY:TEXT+
-   BF-ENGINE$ HBB-KEY-FILE+
-   HBB-KEY-DONOR-MAP+
-   HBB-KEY-TARGET+
-   s" tools/hb-build.f" HBB-MAKER-CLOSURE+
-   s" tools/aot-builder.f" HBB-MAKER-CLOSURE+
-   s" tools/aot-build.f" HBB-MAKER-CLOSURE+
-   HBB-MAKER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
-
-: HBB-MAKER-KEY-COLD ( -- )
-   [: HBB-MAKER-KEY-BODY ;] CONTENT-KEY:WITH-FOLD ;
-
-: HBB-MAKER-CANON ( ptr u8 n -- ptr u8 n bool )
-   {: path:ptr pathu:n :}
-   path pathu SOURCE-ROOT:CANON-OS {: answer:ptr answeru:n exists:bool :}
-   path pathu answer answeru exists NFILE-INPUTS:ADD-CANON-ONCE
-   answer answeru exists ;
-
-: HBB-MAKER-SUPPORT-PATH$ ( -- ptr u8 n )
-   HBB-MAKER-SUPPORT-PATH HBB-MAKER-SUPPORT-U @ ;
-
-: HBB-MAKER-SUPPORT-BODY ( CONTENT-KEY:fold -- )
-   s" hb-maker-support-v1" CONTENT-KEY:TEXT+
-   HBB-BUILDER-KEY KEYED-IMAGE:KEY-HEX-LEN CONTENT-KEY:TEXT+
-   HBB-KEY-DONOR-MAP+
-   HBB-KEY-TARGET+
-   SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
-   HBB-MAKER-SELECTED-ROOT HBB-MAKER-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
-   HBB-MAKER-SUPPORT-KEY CONTENT-KEY:FINAL-HEX ;
-
-\ The selector depends only on fixed support identity. The source and path
-\ queries are validated in the record it selects.
-\ The engine enters as its key, the directory its images live in, so the engine
-\ is hashed once.
-: HBB-MAKER-SUPPORT-SELECT ( -- )
-   BF-ENGINE$ HBB-BUILDER-KEY BUILD-OUT:KEY-OF!
-   [: HBB-MAKER-SUPPORT-BODY ;] CONTENT-KEY:WITH-FOLD
-   s" aot-builder.inputs" HBB-BUILDER-KEY
-      HBB-MAKER-SUPPORT-PATH HBB-MAKER-SUPPORT-U KEYED-IMAGE:PATH! ;
-
-: HBB-MAKER-SUPPORT-CHECK ( -- )
-   HBB-MAKER-SUPPORT-PATH$ FS:FILE-SIZE {: size:n :}
-   size HBB-MAKER-SUPPORT-HEADER-U <= if E-NUNIT-PROFILE throw then
-   size HBB-MAKER-SUPPORT-RESERVE
-   HBB-MAKER-SUPPORT-PATH$ 0 HBB-MAKER-SUPPORT size FS:READ-ALL size <>
-      if E-NUNIT-PROFILE throw then
-   0 HBB-MAKER-SUPPORT {: rec:ptr :}
-   rec 64 HBB-MAKER-SUPPORT-KEY 64 STR= 0= if E-NUNIT-PROFILE throw then
-   rec 128 + LE:U64@ size HBB-MAKER-SUPPORT-HEADER-U - <>
-      if E-NUNIT-PROFILE throw then
-   rec HBB-MAKER-SUPPORT-HEADER-U +
-      size HBB-MAKER-SUPPORT-HEADER-U - NFILE-INPUTS:CHECK
-   rec 64 + HBB-MAKER-KEY-HEX 64 BYTE-COPY ;
-
-: HBB-MAKER-SUPPORT-FRESH? ( -- bool )
-   HBB-MAKER-SUPPORT-PATH$ FS:FILE? 0= if HBB-FALSE exit then
-   [: HBB-MAKER-SUPPORT-CHECK ;] catch {: rc:n :}
-   HBB-MAKER-SUPPORT-RELEASE
-   rc 0= if HBB-TRUE exit then
-   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
-   rc throw ;
-
-: HBB-MAKER-SUPPORT-WRITE ( -- )
-   NFILE-INPUTS:BYTES$ {: rows:ptr rowsu:n :}
-   HBB-MAKER-SUPPORT-HEADER-U rowsu + HBB-MAKER-SUPPORT-RESERVE
-   0 HBB-MAKER-SUPPORT {: rec:ptr :}
-   HBB-MAKER-SUPPORT-KEY rec 64 BYTE-COPY
-   HBB-MAKER-KEY-HEX rec 64 + 64 BYTE-COPY
-   rowsu rec 128 + LE:U64!
-   rows rec HBB-MAKER-SUPPORT-HEADER-U + rowsu BYTE-COPY
-   HBB-MAKER-SUPPORT-PATH$ rec HBB-MAKER-SUPPORT-HEADER-U rowsu +
-      FS:ATOMIC-WRITE-FILE ;
-
-: HBB-MAKER-KEY-IN-ROOT ( -- )
-   HBB-MAKER-SUPPORT-SELECT
-   HBB-MAKER-SUPPORT-FRESH? if exit then
-   NFILE-INPUTS:MARK {: end:n :}
-   end NFILE-INPUTS:BYTES$ nip - {: first:n :}
-   end NFILE-INPUTS:FROM
-   [: [: HBB-MAKER-CANON ;] [: SOURCE-ROOT:READ-OS ;]
-      [: HBB-MAKER-KEY-COLD HBB-MAKER-SUPPORT-WRITE ;]
-      SOURCE-INPUT:WITH ;] catch {: rc:n :}
-   end NFILE-INPUTS:TRUNCATE
-   first NFILE-INPUTS:FROM
-   rc 0<> if rc throw then ;
-
-\ The maker resolves support from this invocation's CWD, falling back to the
-\ selected engine's root. Hash the same resolved closure for the producer key
-\ so a source edit in that root selects a fresh producer.
-: HBB-MAKER-KEY! ( -- )
-   SOURCE-ROOT:ENGINE$ HBB-MAKER-RUNNING-ROOT
-      HBB-MAKER-RUNNING-ROOT-U HBB-COPY-PATH!
-   BF-ENGINE$ SOURCE-ROOT:ENGINE-FOR$ HBB-MAKER-SELECTED-ROOT
-      HBB-MAKER-SELECTED-ROOT-U HBB-COPY-PATH!
-   HBB-MAKER-SELECTED-ROOT HBB-MAKER-SELECTED-ROOT-U @ SOURCE-ROOT:ENGINE!
-   [: ['] HBB-MAKER-KEY-IN-ROOT SOURCE-ROOT:WITH-CWD ;] catch {: rc:n :}
-   HBB-MAKER-RUNNING-ROOT HBB-MAKER-RUNNING-ROOT-U @ SOURCE-ROOT:ENGINE!
-   rc 0<> if rc throw then ;
-
-\ An AOT build computes the producer key before the maker runs:
-\ HBB-RUN-MAKER-CMD selects the maker through HBB-SELECT-MAKER, which reads
-\ HBB-MAKER-KEY-HEX without computing it.
-: HBB-PREPARE-AOT ( -- )
-   HBB-PREPARE-OUT
-   HBB-MAKER-KEY! ;
-
-: HBB-JSON-FLAG$ ( -- ptr u8 n )
-   HBB-JSON @ if s" 1" exit then
-   s" 0" ;
-
-\ THE PRODUCT TIER IS THE CALLER'S. A maker child is a saved image, which starts
-\ at tier 0, so its first stdin line selects this process's tier for the
-\ application it loads. Each maker's stdin is one of two complete literals
-\ chosen by the tier. The tier joins the REPL sidecar, so a product of one tier
-\ is never up to date for the other.
-: HBB-AOT-STDIN$ ( -- ptr u8 n )
-   tier@ 0= if S\" 0 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" exit then
-   S\" 1 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" ;
-
+\ THE PRODUCT TIER IS THE CALLER'S. The app builder is a saved image, which
+\ starts at tier 0, so its first stdin line selects this process's tier for the
+\ application it loads: one of two complete literals chosen by the tier. The tier
+\ joins the REPL sidecar, so a product of one tier is never up to date for the other.
 : HBB-APP-STDIN$ ( -- ptr u8 n )
    tier@ 0= if S\" 0 set-tier\nAPP-BUILD:RUN-SAVED\n" exit then
    S\" 1 set-tier\nAPP-BUILD:RUN-SAVED\n" ;
-
-: HBB-RUN-MAKER-ARGS ( -- )
-   HBB-CMD-RESET
-   s" HABU_AOT_INPUTS" >LEN HBB-MAKER-INPUTS$ >LEN PROC-ENV-SET
-   s" --" >LEN PROC-ARGV+
-   HBB-SRC$ >LEN PROC-ARGV+
-   HBB-JSON-FLAG$ >LEN PROC-ARGV+
-   s" --donor" >LEN PROC-ARGV+
-   BF-ENGINE$ >LEN PROC-ARGV+ ;
 
 : HBB-FINISH-MAKER-RC ( n n n -- ) {: outu erru rc :}
    rc 0= if
@@ -699,46 +523,12 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
    then
    E-PROC-TIMEOUT throw ;
 
-: HBB-AOT-BUILDER-TIMED-OUT ( -- )
+: HBB-SUPPORT-TIMED-OUT ( -- )
    KEYED-IMAGE:CAPTURE-OUT$ {: out:ptr outu:n :}
    KEYED-IMAGE:CAPTURE-ERR$ {: err:ptr erru:n :}
    out HBB-OUT-BUF outu BYTE-COPY
    err HBB-ERR-BUF erru BYTE-COPY
    outu erru HBB-MAKER-TIMED-OUT ;
-
-: HBB-SELECT-MAKER ( -- )
-   HBB-MAKER-KEY-HEX HBB-MAKER-TIMEOUT-MS @ AOT-BUILDER-IMAGE:SELECT-PRODUCER$
-   {: image:ptr imageu:n hit:bool :}
-   image HBB-AOT-BUILDER-A ! imageu HBB-AOT-BUILDER-U !
-   hit HBB-MAKER-HIT !
-   hit 0= HBB-MAKER-BUILD ! ;
-
-\ The saved AOT builder a build on BF-ENGINE$ runs, settled: the image
-\ HBB-RUN-MAKER-CMD selects by its producer key, so a row that settles it
-\ once (test/aot-builder-engine.f) serves every build on that engine under the
-\ same out root. The caller selects BF-ENGINE$.
-: HBB-MAKER-IMAGE$ ( n -- ptr u8 n )
-   {: timeout:n :}
-   HBB-RESET-OPTIONS
-   timeout HBB-MAKER-TIMEOUT-MS !
-   HBB-MAKER-KEY!
-   HBB-SELECT-MAKER
-   HBB-AOT-BUILDER-A @ HBB-AOT-BUILDER-U @ ;
-
-\ Select the saved maker before HBB-RUN-MAKER-ARGS stages argv and env: image
-\ publication has its own child and staging buffer. RUN loads the linker after
-\ OPEN latched the application span.
-: HBB-RUN-MAKER-CMD ( -- len len PROCESS:ending )
-   KEYED-IMAGE:CAPTURE-RESET
-   ['] HBB-SELECT-MAKER catch {: rc:n :}
-   rc E-PROC-TIMEOUT = if HBB-AOT-BUILDER-TIMED-OUT then
-   rc 0<> if rc throw then
-   HBB-RUN-MAKER-ARGS
-   HBB-AOT-BUILDER-A @ HBB-AOT-BUILDER-U @ >LEN
-   HBB-AOT-STDIN$ >LEN
-   [: HBB-OUT-ROOM ;]
-   [: HBB-ERR-ROOM ;]
-   HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
 
 : HBB-FINISH-MAKER ( len len PROCESS:ending -- )
    MATCH PROCESS:ending
@@ -924,13 +714,6 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
 : HBB-MAKER-INPUTS-CLEAR ( -- )
    HBB-MAKER-INPUTS$ 2dup FS:EXISTS? if FS:REMOVE-FILE else 2drop then ;
 
-: HBB-RUN-MAKER ( -- )
-   -1 HBB-MAKER-RUN !
-   HBB-GOT-NAME$ BF-REMOVE-TMP
-   HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
-   HBB-MAKER-INPUTS-CLEAR
-   HBB-RUN-MAKER-CMD HBB-FINISH-MAKER ;
-
 : HBB-SUCCESS ( -- )
    HBB-ENGINE-COMPAT @ if s" native-build OK: " else s" hb-build OK: " then type
    HBB-OUT$ type
@@ -941,7 +724,7 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    else HBB-REPL @ if
       s"  (native application + REPL)"
    else
-      s"  (AOT, engine stripped)"
+      s"  (stripped program)"
    then then then type
    cr ;
 
@@ -977,11 +760,34 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-RESET-TRACE
    HBB-READ-MAKER-TIMEOUT ;
 
-\ The engine and --repl children sign what they write; the AOT maker
-\ (src/habu/aot-link-arm.f) writes ad hoc, so its product is signed for the team
-\ here (src/lib/codesign.f).
+\ A stripped program is linked in this process (tools/hb-build-core.f) into TMP;
+\ under --json-errors the checker prints its refusals as JSON.
+: HBB-LINK-APP ( -- )
+   HBB-GOT-NAME$ BF-REMOVE-TMP
+   HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
+   HBB-JSON @ 0<> DIAG-JSON!
+   HBB-SRC$ HBB-GOT-NAME$ BF-A$ HB-BUILD-CORE:APP
+   LINKER:LINKED LINKER:COMPILED HB-BUILD:CAPTURE-FILES ;
+
+\ A link that threw names the file it was loading, except under --json-errors,
+\ whose stderr holds only JSON.
+: HBB-APP-FAILED ( n -- )
+   {: rc:n :}
+   HBB-JSON @ 0= if
+      s" hb-build: " HBB-WERR  HB-BUILD-CORE:ROW$ HBB-WERR  s"  threw " HBB-WERR
+      SB-RESET  rc FMT:SB-INT  SB$ HBB-WERR
+      rc ERROR:NAME$ {: name:ptr nameu:n :}
+      nameu 0<> if s"  " HBB-WERR  name nameu HBB-WERR then
+      HBB-WERR-LF
+   then
+   HBB-CLEANUP
+   HBB-BUILD-RC HBB-EXIT ;
+
+\ The engine and --repl children sign what they write; LINKER:WRITE signs ad hoc,
+\ so a stripped program is signed for the team here (src/lib/codesign.f).
 : HBB-BUILD-REST ( -- )
-   HBB-RUN-MAKER
+   ['] HBB-LINK-APP catch {: rc:n :}
+   rc 0<> if rc HBB-APP-FAILED then
    HBB-GOT-NAME$ BF-A$ CODESIGN:ENSURE
    HBB-INSTALL-OUT
    HBB-FINISH ;
@@ -1066,7 +872,7 @@ defer HBB-REPORT-HOOK ( -- )
 
 : HBB-ENGINE-CMD ( -- len len PROCESS:ending )
    ['] HBB-ENGINE-IMAGE! catch {: rc:n :}
-   rc E-PROC-TIMEOUT = if HBB-AOT-BUILDER-TIMED-OUT then
+   rc E-PROC-TIMEOUT = if HBB-SUPPORT-TIMED-OUT then
    rc 0<> if rc throw then
    HBB-ENGINE-SUPPORT-SELECT!
    HBB-CMD-RESET
@@ -1336,12 +1142,11 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-BUILD-BEGIN
    HBB-ENGINE @ if HBB-BUILD-ENGINE exit then
    HBB-REPL @ if HBB-BUILD-REPL exit then
-   HBB-PREPARE-AOT
+   HBB-PREPARE-OUT
    HBB-BUILD-REST ;
 
 : HBB-PREPARE-OUT-CLI ( -- )
-   [: HBB-REPL @ if HBB-PREPARE-OUT else HBB-PREPARE-AOT then ;]
-   catch {: rc:n :}
+   ['] HBB-PREPARE-OUT catch {: rc:n :}
    rc 0= if exit then
    rc E-BUILD-PATH = if
       HBB-CLEANUP
@@ -1405,7 +1210,6 @@ EXPORT HBB-BUILD
 EXPORT HBB-EXIT
 EXPORT HBB-JSON
 EXPORT HBB-MAIN
-EXPORT HBB-MAKER-IMAGE$
 EXPORT HBB-ENGINE-RUN-PATH
 EXPORT HBB-PATHS!
 EXPORT HBB-REPORT-JSON

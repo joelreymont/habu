@@ -405,12 +405,7 @@ FUNCTION: SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
 public
 
 \ Read the map now, and answer every question from this read alone until a
-\ capture drops it. The linker's persistent PREPARE hook takes this read
-\ (tools/aot-build-core.f) and PREPARE runs FFI's FORGET-SYMBOLS after it. A
-\ kernel query calls Mach (on Linux, getpagesize, msync and errno) through
-\ FFI's shared table, so a miss in LINK would resolve a C library address into
-\ that table, which an application's FUNCTION: rows can place in the capture
-\ window, and the link would refuse the address it just stored.
+\ capture drops it.
 : RELOAD ( -- )  true READ-MAP ;
 
 \ Areas the last read found, and none before this process has read its map.

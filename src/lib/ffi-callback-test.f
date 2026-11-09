@@ -18,7 +18,6 @@ require src/lib/image-lifecycle.f
 require src/lib/task.f
 require src/lib/test/subject.f
 require test/ffi-callback-fixture.f
-require test/aot-builder-engine.f
 
 package FFI-CB-TEST
 using FFI-CB
@@ -452,7 +451,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) 0 FFI:CALLBACK-ENTRY drop FRESH-ROW s\q fresh callback binding: ok\q type cr STRIPPED-CALLBACK-SUBJECT:RUN ;\n" FS:APPEND-FILE ;
 
 : BUILD-IMAGE ( -- len len PROCESS:ending )
-   AOT-BUILDER-ENGINE:ENSURE
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build.f" >LEN PROC-ARGV+
@@ -460,7 +458,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    SUBJECT$ >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN
    OUT CAP >LEN ERR CAP >LEN BUILD-MS >MS

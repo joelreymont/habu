@@ -10,12 +10,11 @@
 \ application runs and exits 0. MAIN does not read the rows; the build keeps
 \ them all the same.
 \ The second subject stores a dictionary-record address in a declared DATA
-\ cell laid with `allot` (src/core/pointer-storage.f PERSISTED-PTR-U8-TABLE),
-\ which no span covers. Its row (src/habu/aot-closure.f XTD-ROW) is its only
-\ check, so the build is refused with the record-pointer diagnostic.
+\ cell laid with `allot` (src/core/pointer-storage.f PERSISTED-PTR-U8-TABLE).
+\ The record lies outside hb's data and the build's space, so the linker
+\ refuses the file's object, which cannot name it (src/habu/linker.f CELL-REF+).
 require test/gate-common.f
 require src/lib/engine-candidate.f
-require test/aot-builder-engine.f
 
 package AOT-SHIFTED-BYTES-TEST
 private
@@ -46,15 +45,13 @@ variable REFUSED-U
 : RECORD-SOURCE$ ( -- ptr u8 n )
    S\" require src/habu/xref.f\n1 PERSISTED-PTR-U8-TABLE T\n0 XREF-REC BYTE-VIEW T 0 ptr-field !\n: MAIN ( -- ) s\q ok\q type cr ;\n" ;
 
-\ A fresh subject path has no observed-input index, so hb-build links it with
-\ the shared maker. Each subject is its own hb-build: a refusal ends the build.
+\ Each subject is its own hb-build: a refusal ends the build.
 : HB-BUILD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n out:ptr outu:n :}
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+
    s" --" GE-ARG+ src srcu GE-ARG+
    s" -o" GE-ARG+ out outu GE-ARG+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$ BUILD-MS GE-RUN-ENV ;
 
 : BUILD ( -- )
@@ -73,7 +70,7 @@ variable REFUSED-U
    RECORD$ RECORD-SOURCE$ FS:WRITE-ALL
    RECORD$ REFUSED$ HB-BUILD
    s" stripped build of a record pointer in a declared DATA cell" GE-EXPECT-NONZERO
-   s" dictionary-record pointer" s" the record-pointer refusal" GE-EXPECT-ERR-HAS ;
+   s" which an object cannot name" s" the record-pointer refusal" GE-EXPECT-ERR-HAS ;
 
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
@@ -81,7 +78,6 @@ variable REFUSED-U
    s" application" IMAGE GT-PATH IMAGE-U !
    s" record.f" RECORD GT-PATH RECORD-U !
    s" refused" REFUSED GT-PATH REFUSED-U !
-   AOT-BUILDER-ENGINE:ENSURE
    BUILD RUN-IMAGE BUILD-RECORD
    s" PASS: a stripped build of shifted and aligned address bytes, and a refused record pointer in a declared DATA cell" type cr ;
 

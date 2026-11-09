@@ -1,6 +1,7 @@
 \ arm64-link-data.f - LINKER's link of a stripped build's DATA. Inside one
 \ build, after the start-up and the kernel, LINK-STRIPPED roots the closure at
-\ every xt cell's value and appends a copy of the space as its non-zero runs and
+\ the entry and at each xt cell's value in the data the entry reaches, here all
+\ the build body's, and appends a copy of the space as its non-zero runs and
 \ the DATA list after the routine band: an xt cell's copy holds its routine's
 \ link address and is listed, a quotation's included; a scratch cell's copy is 0
 \ and a DATA pointer's DATA-VA plus its target's offset, neither listed; a plain

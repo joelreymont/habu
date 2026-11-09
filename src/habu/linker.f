@@ -63,6 +63,7 @@ variable FIRST-REC                   \ ndict@ at the open: records from here are
 variable OPEN-DP                     \ here's distance once open; header data is [BASE, OPEN-DP)
 TYPED-VARIABLE BODY [ -- ]
 variable COMPILED-N                  \ files the last build compiled
+variable LINKED-N                    \ files the last build linked
 TYPED-VARIABLE PRIOR-RUNNER [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 
 \ The host cells a build changes; RESTORE puts them back.
@@ -204,6 +205,12 @@ variable RETIRED-N                   \ its records
 DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-data.f), zero-padded cells
 DYNAMIC-BUFFER LISTED n              \ the DATA list's offsets, sorted before WRITE lays them (link-data.f)
 variable LISTED-N
+\ Each header cell a piece stored, compiled or linked: the cell's offset from the space and
+\ the piece's BUILT row. A stripped link reads a header address cell only once no file or a
+\ live one stored it (link-data.f).
+DYNAMIC-BUFFER HSTORE-AT n
+DYNAMIC-BUFFER HSTORE-ROW n
+variable HSTORES-N
 
 \ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR,
 \ WIDN-CELL and the loader's EVENT-COUNT as a file's load or its piece after a request starts
@@ -268,7 +275,7 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    cap NAMES-CAP !  0 NAMES-N ! ;
 
 : DISPOSE-OBJECTS ( -- )
-   LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
+   HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
@@ -297,7 +304,7 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    LOAD-PATHS 256 BUF:N>BLEN BUF:INIT
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
-   0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
+   0 HSTORES-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
    1024 NAMES-CLEAR  FIRST-REC @ INDEXED ! ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
@@ -434,12 +441,14 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    loop
    0 false ;
 
-\ The last BUILT row whose data end is v, and true; false when none.
+\ The last BUILT row whose data ends at v, and true; false when none. A piece with
+\ no data, as the open's records are, holds no byte and ends nothing.
 : DP-END-ROW ( n -- n bool )
    {: v:n :}
    BUILT-N 0 ?do
       BUILT-N 1 - i - {: row:n :}
-      row BUILT-AT ROW-BYTES 40 + + LE:U64@ v = if row true unloop exit then
+      row BUILT-AT ROW-BYTES 32 + + {: at:ptr :}
+      at 8 + LE:U64@ v =  at LE:U64@ v <>  and if row true unloop exit then
    loop
    0 false ;
 
@@ -1236,6 +1245,17 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    {: v:n :}
    STORED-N @ 1 + STORED-RESERVE
    v STORED-N @ STORED !  1 STORED-N +! ;
+
+\ The running piece's store into the cell at v, recorded when the cell is header data; the
+\ piece's BUILT row is the next.
+: HSTORE+ ( n -- )
+   {: v:n :}
+   v OPEN-DP @ < 0= if exit then
+   HSTORES-N @ 1 + {: n:n :}
+   n HSTORE-AT-RESERVE  n HSTORE-ROW-RESERVE
+   v BASE @ - HSTORES-N @ HSTORE-AT !
+   BUILT-N HSTORES-N @ HSTORE-ROW !
+   n HSTORES-N ! ;
 
 
 \ The space's address-cell row of the cell at v, and true; false when it has none.
@@ -2788,6 +2808,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       GOOD? 0= if E-COMP-STATE throw then
       ctag cx cy cz RESOLVE {: at:n :}
       kind 3 = if v else tag x y z RESOLVE then  kind  at  PUT-CELL
+      at HSTORE+
    loop
    GOOD? 0= if E-COMP-STATE throw then ;
 
@@ -3101,6 +3122,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    TYPE-ENTRIES
    here NULL-PTR - FILE-END !
    RETIRED!  CHECK-EARLIER  FIND-STORES
+   STORED-N @ 0 ?do i STORED @ HSTORE+ loop
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}
    ids held > if E-WORDLIST throw then
    ids held < if E-COMP-STATE throw then
@@ -3167,7 +3189,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    MARKS
    source sourceu INPUT!
    NAMED!
-   TOP-SCOPE? if sourceu LINKED? if exit then then
+   TOP-SCOPE? if sourceu LINKED? if 1 LINKED-N +! exit then then
    LINKING? if E-STALE throw then
    OBJECT-OPEN  COPY-BELOW
    false UNLINKABLE !  SCOPE-CK
@@ -3368,7 +3390,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    OPEN-SUM BUILT+ ;
 
 : OPEN ( -- )
-   0 COMPILED-N !
+   0 COMPILED-N !  0 LINKED-N !
    INSTALL-LOOP
    OWNED-TEXTS
    MAP SHADOW MOVE-IN CHECK-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN
@@ -3471,7 +3493,8 @@ public
    body BODY !
    [: ['] RUN ['] CLOSE finally ;] OUTER:WITHOUT-PACKAGE ;
 
-\ The files the last build compiled, from its open until the next open.
+\ The files the last build compiled and linked, from its open until the next open.
 : COMPILED ( -- n ) COMPILED-N @ ;
+: LINKED ( -- n ) LINKED-N @ ;
 
 ;package

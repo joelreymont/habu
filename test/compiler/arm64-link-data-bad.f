@@ -1,6 +1,7 @@
 \ arm64-link-data-bad.f - the link's refusals, one per process, chosen by the
 \ first script argument: `data`, a cell declared as a DATA pointer that holds an
-\ address outside the build's space; `header`, a build's xt! into a header cell
+\ address outside the build's space, read by the entry, since a stripped link
+\ checks only the data its entry reaches; `header`, a build's xt! into a header cell
 \ the link writes; `eval`, an entry that calls `evaluate-closed`.
 \ test/compiler/arm64-link-data.f runs each and checks it.
 
@@ -25,6 +26,9 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 
 : DATA-BODY ( -- )
    s" variable LD-BAD  1 LD-BAD !  LD-BAD ptr-cell-mark" evaluate-closed
+   s" : LD-BAD-READ ( -- ) LD-BAD @ drop ;" evaluate-closed
+   s" LD-BAD-READ" XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
+   data-base APP-ENTRY:XT-CELL + xt!
    s" ARM64-LINK-DATA-BAD-ARMED" type cr
    LINK-STRIPPED
    s" arm64-link-data-bad: the DATA pointer was not refused" 1 die ;

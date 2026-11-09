@@ -13,7 +13,7 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/os/script-argv.f
 require tools/native-build-args.f
-require tools/hb-build-core.f
+require tools/build-core.f
 require tools/build-target.f
 require src/lib/codesign.f
 

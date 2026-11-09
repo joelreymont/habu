@@ -186,10 +186,9 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
 - A suite whose assertions depend on the compiler tier selects it itself, with
   `1 set-tier` after the harness and tool requires and before the code under
   test, so the harness is not compiled at tier 1.
-- A row whose child compiles `src/habu/app-image.f` or the AOT builder only
-  to reach its subject runs a keyed image with them already loaded:
-  `test/app-image-engine.f` or `test/aot-builder-engine.f`, whose headers hold
-  the rules.
+- A row whose child compiles `src/habu/app-image.f` only to reach its subject
+  runs a keyed image with it already loaded: `test/app-image-engine.f`, whose
+  header holds the rules.
 - `bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks
   on stdin — it looks like a hang, a WAIT line with no CPU delta. Pipe
   `< /dev/null`, and give a spawned build child `/dev/null` stdin rather than

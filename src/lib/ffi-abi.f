@@ -955,8 +955,7 @@ public
 \ only a new descriptor appends to the selected bank. Declaring registers FFI's
 \ cleanup: loading this file declares the errno row before any module can
 \ register a persistent hook, so FFI's hook is the first and runs last, and a
-\ full image keeps the entry and the flag (tools/aot-build-core.f registers
-\ PROC-MAPS:RELOAD, which calls Mach through this table, after it).
+\ full image keeps the entry and the flag.
 : DECLARE-ROW ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
    DECL-TAG {: tag:n :}

@@ -1808,6 +1808,10 @@ DATA-SIZE 8 - constant XTCELL-OFF-MAX
 package APP-ENTRY
 public
 $43A0 constant XT-CELL
+
+\ The entry's effect is ( -- ): `' MAIN XT!` refuses another at XT!.
+: XT! ( [ -- ] -- )
+   data-base XT-CELL + xt! ;
 ;package
 
 \ AOT-ARM:OPEN writes B0-CELL, and WINDOW-CLOSE clears it. Tier 0 reads it to

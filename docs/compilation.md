@@ -130,10 +130,10 @@ inside the code are relative, so they hold at any base. The linker lists every
 stored address that points into the image, and the boot adds the load offset
 to each, as dyld and ld.so do for a position-independent C program. The boot
 maps DATA at its address and refuses to run when it cannot get it.
-**Now:** only a stripped ARM64 program that `LINKER:WRITE` writes
-(`src/habu/link-data.f` `LINK-STRIPPED`) follows this rule, and only
-`test/compiler/arm64-link-run.f` calls it until hb-build's stripped mode moves
-onto it. Every other ARM64 image's boot maps the code region wherever the
+**Now:** only a stripped ARM64 program follows this rule: hb-build's stripped
+mode builds it in its own process (`tools/hb-build-core.f` `APP`) and
+`LINKER:WRITE` writes it (`src/habu/link-data.f` `LINK-STRIPPED`). Every other
+ARM64 image's boot maps the code region wherever the
 kernel gives it near a hint, then relocates data and patches call sites by name
 (`src/habu/habu2.f` `EM-AOT-RELOC-DATA`, `EM-AOT-PATCH-NAMED-SITES`). The
 x86-64 linker places code at a fixed address (`src/habu/link-x64.f` `LAYOUT`),
