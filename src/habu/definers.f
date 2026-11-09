@@ -36,7 +36,6 @@ variable TOK-BODY-RAW
 
 76 constant DEF-RC-TIER-0        \ the code of the engine head's first refusal, a pass-2 nesting
 76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
-71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 72 constant DEF-RC-PD-FULL       \ habu2.f C-PD-DIE-FULL: no pending slot holds the defer
 
 \ def-open, body-append, created-sig!, def-close, def-abort, imm-mark and
@@ -68,11 +67,10 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    s" hb: tier 0 is not in the Habu loop: " ERROR-TEXT:TYPE
    DEF-RC-TIER-0 PKG-FAIL ;
 
-\ The engine's twins: habu1.f EMIT-BCAP and habu2.f EM-BODY-CAP-DIE.
 \ The capture's first token, the definition's name, which a head seeds: the
 \ bytes up to a space, a zero byte or BODYLEN (habu2.f EMIT-DIAGDEF).
 : DEF-CAPTURED-NAME ( -- ptr u8 n )
-   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ {: b:ptr len:n :}
+   BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ {: b:ptr len:n :}
    0 begin
       dup len < if b over + c@ dup BLANK <> swap 0<> and else false then
    while 1+ repeat
@@ -85,17 +83,6 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    {: sig:ptr len:n xt:n :}
    DEF-CAPTURED-NAME sig len xt AS-DECLARE execute ;
 
-\ A capture that would take the body past BODYBUF-CAP ends the definition,
-\ naming the ceiling, the definition and the size it needed.
-: DEF-BODY-FULL ( n -- ) {: need:n :}
-   s" hb: definition body text full at " ERROR-TEXT:TYPE
-   BODYBUF-CAP ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
-   s"  bytes: " ERROR-TEXT:TYPE
-   DEF-CAPTURED-NAME ERROR-TEXT:TYPE
-   s"  needs " ERROR-TEXT:TYPE
-   need ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
-   DEF-RC-BODY-FULL THROW-AT ;
-
 \ The source ended inside the pending definition: refused, named and located
 \ at its name token (layout.f PENDTKA-CELL), as habu2.f LSRCEND refuses.
 : DEF-ENDED ( -- )
@@ -104,10 +91,10 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    DEF-CAPTURED-NAME ERROR-TEXT:TYPE
    RC-UNCLOSED THROW-AT ;
 
-: DEF-CAPTURE ( ptr u8 n -- ) {: a:ptr u:n :}
-   BODYLEN-CELL CELL@ u + 1 + {: need:n :}
-   need BODYBUF-CAP > if need DEF-BODY-FULL then
-   a u body-append ;
+\ The engine's twin: habu1.f EMIT-BCAP. body-append grows the block when the
+\ text would pass its capacity, so an address into the text is formed after
+\ the capture, never kept across it.
+: DEF-CAPTURE ( ptr u8 n -- ) body-append ;
 
 \ The engine's twins: habu2.f EM-INTERPRET-COLON and C-TRUSTED.
 \ CP at the code ceiling and no record slot left each refuse, naming the
@@ -429,7 +416,7 @@ private
 
 \ A body admits a local before looking up a dictionary word. Tier 0's JIT
 \ fills LOCNAMES while compiling `{:`; tier 1 captures each declaration here,
-\ then the native compiler reads it from BODYBUF at `;`.
+\ then the native compiler reads it from the body text at `;`.
 : BODY-LOCAL? ( -- bool )
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ 0 ?do
@@ -512,7 +499,7 @@ private
 
 \ The engine's twin: habu2.f C-PREFLIGHT.
 : DEF-PREFLIGHT ( -- )
-   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
+   BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
    CHECK:IMMEDIATE ;
 
 \ Twin: habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE. PARSE-IMM? asks the live checker:
@@ -554,10 +541,11 @@ private
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    end INP-CELL ADDR!
    end s - 2 - {: len:n :}
-   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ + 2 + {: copy:ptr :}
+   BODYLEN-CELL CELL@ 2 + {: at:n :}
    s 1 DEF-CAPTURE
    s 1 + len DEF-CAPTURE
    end 1 - 1 DEF-CAPTURE
+   BODY-TEXT:BASE-CELL ADDR@ at + {: copy:ptr :}
    copy len created-sig! ;
 
 \ The pending parent is record NDICT. Its clause will be published under the
@@ -636,7 +624,7 @@ variable ENTRY-PEND
 \ evaluate's existing frame, whose token mark removes only the failed token.
 TRUSTED: DEF-PREFIX-BIND ( -- )
    ENTRY-PEND @ 0= if exit then
-   data-base BODYBUF-OFF + BYTE-VIEW
+   BODY-TEXT:BASE-CELL ADDR@
    BODYLEN-CELL CELL@ TOKBODY-CELL CELL@
    CHECKER-PREFIX:BIND? {: rollback:n ok:bool :}
    ok 0= if
@@ -664,7 +652,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-SOURCE-CLOSE
    NCOMP-DISPATCH:RECOVER-CELL CELL@ {: prior:n :}
    -1 NCOMP-DISPATCH:RECOVER-CELL CELL!
-   [: data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ DEF-COMPILE ;] catch
+   [: BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ DEF-COMPILE ;] catch
    {: rc:n :}
    prior NCOMP-DISPATCH:RECOVER-CELL CELL!
    rc E-COMP-RECOVERY = if DEF-ABORT true exit then
@@ -712,7 +700,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ word nor its callers keep locals.
 : DEF-HOOK ( ptr u8 n -- )
    DEF-CAPTURE
-   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@
+   BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@
    CHECK:DEFINITION drop ;
 
 : DEF-ADDR-HOOK ( -- )

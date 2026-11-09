@@ -130,7 +130,7 @@ create TAB
    LVQ-OFF                            LV-LEVELS cells         CLAIM LVQ-LEVELS
    FRAME-CELL                         1 cells                 CLAIM FRAME-CELL
    QFRAME-CELL                        1 cells                 CLAIM QFRAME-CELL
-   BODYBUF-OFF                        BODYBUF-CAP 2 +         CLAIM BODYBUF
+   BODY-TEXT:BASE-CELL                4 cells                 CLAIM BODY-TEXT
    RPKG-CUR                           RPKG-REC RPKG-CUR - 1 cells +  CLAIM RPKG-SNAPSHOT
    CMM-CELL                           1 cells                 CLAIM CMM-CELL
    DOESB-CELL                         1 cells                 CLAIM DOESB-CELL
@@ -267,7 +267,6 @@ create TAB
    STRING-ABI:START                   STRING-ABI:BYTES        CLAIM STRING-ABI
    PD-TABLE-OFF                       PD-TABLE-END PD-TABLE-OFF -  CLAIM PD-TABLE
    DECLARED-LOG:OFF                   DECLARED-LOG:END DECLARED-LOG:OFF -  CLAIM DECLARED-LOG
-   BODY-SOURCE:OFF                    BODY-SOURCE:END BODY-SOURCE:OFF -  CLAIM BODY-SOURCE
    USE-BAND-OFF                       USE-BAND-END USE-BAND-OFF -  CLAIM USE-BAND
    SNAP-RELOC:CALLMAP-OFF             SNAP-RELOC:CALLMAP-BYTES  CLAIM SNAP-CALLMAP
    SNAP-RELOC:ADDRMAP-OFF             SNAP-RELOC:ADDRMAP-BYTES  CLAIM SNAP-ADDRMAP

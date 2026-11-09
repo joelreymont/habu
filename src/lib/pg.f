@@ -39,7 +39,6 @@ public
 -9255 constant E-TRANSACTION  \ a WITH-TRANSACTION or NOTIFIED? inside a transaction on the same connection
 -9256 constant E-HANDLE       \ a handle another task owns or an image restore invalidated, a scope's token cleared or not handed back
 -9257 constant E-CAPACITY     \ more live connections or results than CONFIGURE declared, a parameter past PostgreSQL's 65535, or a declaration out of range or changed after use
--9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
 -9259 constant E-STATEMENT    \ an empty statement or name
 -9560 constant E-DEADLINE     \ a wait past the connection's DEADLINE! bound, which closed it
 -9561 constant E-BOUND        \ a DEADLINE! bound outside 0..WAIT-MAX ms, or a negative NOTIFIED? wait

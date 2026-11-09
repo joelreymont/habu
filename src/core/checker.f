@@ -6230,6 +6230,8 @@ create NMAP TYPE-VAR-MAX 3 + cells allot
 CHECKER-REG:SCRATCH{
 variable BIND-DEPTH
 create BIND-DOMAINS BINDER-DEPTH-MAX cells allot
+variable SIG-LEVEL         \ the level TERM-DEPTH gives the type SIG-TYPE reads,
+                           \ less the levels its rows' other entries add
 CHECKER-REG:}SCRATCH
 
 
@@ -6294,6 +6296,8 @@ variable NRES  variable NDI  variable NDH
 6 constant SGBAD-UNSUPPLIED-KIND
 \ A `|` clause that moves the return stack (RCLAUSE-CHECK).
 7 constant SGBAD-RETURN-KIND
+\ A binder nested inside BINDER-DEPTH-MAX others (SIG-FORALL-DOMAIN).
+8 constant SGBAD-BINDERS-KIND
 variable SGBAD
 PTR-VARIABLE SGBAD-A
 variable SGBAD-U
@@ -6587,16 +6591,18 @@ PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
    a u SGBAD-ARITY-KIND SGBAD-SET ;
 : SGBAD-ARITY? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-ARITY-KIND = and ;
-: SGBAD-SIZE! ( ptr u8 n n n -- )   \ a row too deep or too wide for a record,
-   {: a:ptr u:n kind:n size:n :}     \ measured only once it parsed (USIG-ADD-AS)
-   size SGBAD-SIZE !
+: SGBAD-SIZE! ( ptr u8 n n n -- )   \ a row too deep or too wide for a record
+   {: a:ptr u:n kind:n size:n :}     \ (USIG-ADD-AS, SIG-TYPE)
+   SGBAD @ 0= IF size SGBAD-SIZE ! THEN
    a u kind SGBAD-SET ;
 : SGBAD-DEPTH? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-DEPTH-KIND = and ;
 : SGBAD-WIDTH? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-WIDTH-KIND = and ;
+: SGBAD-BINDERS? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-BINDERS-KIND = and ;
 : SGBAD-SIZE? ( -- bool )
-   SGBAD-DEPTH? SGBAD-WIDTH? or ;
+   SGBAD-DEPTH? SGBAD-WIDTH? or SGBAD-BINDERS? or ;
 
 \ A quiet signature can contain a nominal type whose declaration an earlier
 \ reached producer may have made. Keep that status apart from SGBAD: the parser
@@ -6672,45 +6678,36 @@ variable SIGSCOPE-U
 
 \ Refuses a length that describes no memory before a byte is read: a negative
 \ one, or one that runs past the top of the address range. A false length inside
-\ the range cannot be detected; a signature, field text or source text has no
-\ bound of its own, a name has CK-NAME-MAX and a stored type CK-TEXT-SPAN?.
+\ the range cannot be detected; a name, signature, field text or source text
+\ has no bound of its own, and a stored type has CK-TEXT-SPAN?. The first
+\ reader of a name asks this before it reads a byte and refuses a false length
+\ as any name it cannot take (test/name-length-test.f drives every such word).
 : BYTE-SPAN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 < IF RES-FALSE EXIT THEN
    a u + a < IF RES-FALSE EXIT THEN
    RES-TRUE ;
 
-\ A definer captures a word's name and one separator into the body text before
-\ it writes the record, so `:` defines a name of BODYBUF-CAP - 1 bytes and
-\ refuses one byte more, rc 71. layout.f loads after this file, so its
-\ BODYBUF-CAP is restated here.
-8000 constant CK-BODYBUF-CAP               \ = layout.f BODYBUF-CAP
-CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
-
-\ The first reader of a name asks this before it reads a byte and refuses a
-\ false length as any name it cannot take (test/name-length-test.f drives every
-\ such word).
-: CK-NAME-SPAN? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   a u BYTE-SPAN? u CK-NAME-MAX <= and ;
+\ The buffer every stored type is spelled into in the checker's registration.
+$1000 constant LBUF-SIG-CAP
 
 \ The gates read a stored type's raw source span (layout-buffer.f
 \ STORAGE-PARSE-TYPE), which its definer spells into a $1000-byte buffer:
 \ LBUF-GEN on the load path (E-LAYOUT-BUFFER past LBUF-GEN-CAP) and LBUF-SIG-BUF
-\ in the checker's registration (LBUF-SIG-CAP), so no accepted stored type is
-\ longer than CK-BODYBUF-CAP; the definition capture, which drops runs of
-\ spaces, does not bound it. STORAGE-RESOLVE? asks this before it reads a byte
-\ (test/name-length-test.f drives every storage gate).
+\ in the checker's registration (E-CHECKER-LAYOUT-BUFFER past LBUF-SIG-CAP), so
+\ no accepted stored type is longer than LBUF-SIG-CAP; the definition capture,
+\ which drops runs of spaces, does not bound it. STORAGE-RESOLVE? asks this
+\ before it reads a byte (test/name-length-test.f drives every storage gate).
 : CK-TEXT-SPAN? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u BYTE-SPAN? u CK-BODYBUF-CAP <= and ;
+   a u BYTE-SPAN? u LBUF-SIG-CAP <= and ;
 
 \ Resolves a family token through the TFAM registry: (family-id true) or
 \ (0 false), always two items, in the scope order of type-family.f
 \ TFAM-RESOLVE. Qualified tokens, case validation, hidden `@` names and
-\ ambiguity live in TFAM-SIG-RESOLVE. A tail whose length no name has is never
-\ read.
+\ ambiguity live in TFAM-SIG-RESOLVE. A tail whose length describes no memory
+\ is never read.
 : SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   a u CK-NAME-SPAN? 0= IF 0 RES-FALSE EXIT THEN
+   a u BYTE-SPAN? 0= IF 0 RES-FALSE EXIT THEN
    SIG-SCOPE$ a u TFAM-RESOLVE* ;
 \ Marks an extent family FREE by its lowercase tail, resolved in the scope
 \ SIG-FAM? uses so the id is the one SIG-END-PARAM reads off a redx<..> arg. An
@@ -6859,11 +6856,12 @@ variable PKHAVE
       1+
    repeat drop RES-FALSE ;
 
-\ A length no name has names no new type, like the empty name. CHECKER-TRY-RECORD
-\ and CHECKER-DEFLINEAR ask this first, so it bounds their name: a length of -1
-\ would move the value-record or signature-type string pool's used mark back.
+\ A length that describes no memory names no new type, like the empty name.
+\ CHECKER-TRY-RECORD and CHECKER-DEFLINEAR ask this first, so it bounds their
+\ name: a length of -1 would move the value-record or signature-type string
+\ pool's used mark back.
 : TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u CK-NAME-SPAN? 0= IF RES-TRUE EXIT THEN
+   a u BYTE-SPAN? 0= IF RES-TRUE EXIT THEN
    a u DELIM? IF RES-TRUE EXIT THEN
    a u s" [" CORE-STR= IF RES-TRUE EXIT THEN
    a u ROW-LEAD? IF RES-TRUE EXIT THEN
@@ -6893,7 +6891,7 @@ variable PKHAVE
 \ SIG-PARSE-QUOT just after PSTACK; nothing reaches it before then.
 defer SIG-QUOT-XT ( -- n )
 defer SIG-BINDER-BODY-XT ( -- n )
-defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
+defer SIG-TYPE-XT ( ptr u8 n -- n )
 
 : SIG-PARENT-NAME? ( ptr u8 n n -- bool )
    {: a:ptr u:n bound:n :}
@@ -6918,20 +6916,28 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
    NEXT-SIG-TOK 2dup s" [" CORE-STR= IF
       2drop NEXT-SIG-TOK bound SIG-PARENT-ROOT {: parent:n :}
       NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
-      NEXT-SIG-TOK SIG-BOUND-TYPE-XT {: second:n :}
+      NEXT-SIG-TOK SIG-TYPE-XT {: second:n :}
       NEXT-SIG-TOK 2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
       parent second EXIT
    THEN
    bound SIG-PARENT-ROOT 0 ;
 
+\ A nesting limit ends the signature text where it is passed: nothing nested
+\ deeper is read, built or walked, and no later token latches a refusal.
+: SIG-STOP ( -- )
+   SL @ SI !  PKRESET ;
+
 \ The binder's name shadows only its NMAP slot. Row names inside the
-\ quotation still share their surrounding R/S/U map.
+\ quotation still share their surrounding R/S/U map. A binder inside
+\ BINDER-DEPTH-MAX others is refused by that limit (SGBAD-BINDERS-KIND).
 : SIG-FORALL-DOMAIN ( n -- n ) {: domain:n :}
    NEXT-SIG-TOK 2dup s" <" CORE-STR= 0= IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN 2drop
    NEXT-SIG-TOK {: name:ptr width:n :}
    name width SIG-VAR-SLOT {: bound:n :}
    bound 0 < IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
-   BIND-DEPTH @ BINDER-DEPTH-MAX >= IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   BIND-DEPTH @ BINDER-DEPTH-MAX >= IF
+      name width SGBAD-BINDERS-KIND SGBAD-SET  SIG-STOP  1 MK-CON EXIT
+   THEN
    NEXT-SIG-TOK 2dup s" inside" CORE-STR= IF
       domain BIND-SCOPE <> IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN
       2drop bound SIG-INSIDE-ROOTS
@@ -7002,7 +7008,8 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
 \ `ptr<space,elem>` resolves as a family, but `ptr elem` must always reach the
 \ MK-PTR case below, even when `ptr` is no live family (a suite that
 \ TFAM-RESETs the registry): only `family<...>` takes the family branch.
-: SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ A type nested in this one is read by SIG-TYPE-XT, which counts its level.
+: SIG-TYPE-ONE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" [" CORE-STR= IF SIG-QUOT-XT EXIT THEN   \ `[ in -- out ]` xt<effect> quot (opener consumed)
    a u s" forall" CORE-STR= IF SIG-FORALL EXIT THEN
    a u s" forall-region" CORE-STR= IF SIG-FORALL-REGION EXIT THEN
@@ -7012,7 +7019,7 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
          BEGIN
             NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT THEN
             2dup DELIM? IF SGBAD-SYNTAX! base a u fam MK-PARAM EXIT THEN
-            2dup s" [" CORE-STR= IF 2drop SIG-QUOT-XT ELSE RECURSE THEN  \ quotation arg or nested type
+            SIG-TYPE-XT  \ quotation arg or nested type
             PARAM-SCR+
             NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE
             2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT ELSE
@@ -7027,7 +7034,7 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
       THEN
    ELSE drop THEN                                     \ not a family: drop the 0 family-id
    a u SIG-PTR-TOK? IF
-      NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
+      NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE SIG-TYPE-XT MK-PTR THEN
    ELSE
       a u TOK-TYPE {: term:n :}
       SGBAD-UNKNOWN? SGBAD-A @ a = and SGBAD-U @ u = and
@@ -7041,7 +7048,7 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
                dup 0= IF 2drop a u SGBAD-SYNTAX! term EXIT THEN
                2dup DELIM? IF 2drop a u SGBAD-SYNTAX! term EXIT THEN
                2dup s" --" CORE-STR= IF 2drop a u SGBAD-SYNTAX! term EXIT THEN
-               2dup s" [" CORE-STR= IF 2drop SIG-QUOT-XT ELSE RECURSE THEN drop
+               SIG-TYPE-XT drop
                NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop term EXIT THEN
                2dup s" ," CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! term EXIT THEN
             AGAIN
@@ -7050,10 +7057,24 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
       term
    THEN ;
 
+\ One type and all it nests: a binder's body, a quotation's entries, a pointee,
+\ a family's arguments, each a level as TERM-DEPTH counts it. A type opened past
+\ EFFECT-DEPTH-MAX levels latches the depth refusal (MD-EFFECT-DEPTH for a
+\ definition, SGBAD-FAIL!) and stops the text, so no deeper term reaches the
+\ walkers or the stacks; a row's earlier entries, which TERM-DEPTH also counts,
+\ are bounded once the row is built (CHECK-DEPTH-FITS, USIG-ADD-AS).
+: SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   SIG-LEVEL @ EFFECT-DEPTH-MAX >= IF
+      a u SGBAD-DEPTH-KIND SIG-LEVEL @ 1 + SGBAD-SIZE!  SIG-STOP  1 MK-CON EXIT
+   THEN
+   SIG-LEVEL @ 1 + SIG-LEVEL !
+   a u SIG-TYPE-ONE
+   SIG-LEVEL @ 1 - SIG-LEVEL ! ;
+
 : SIG-BINDER-BODY ( -- n ) NEXT-SIG-TOK SIG-TYPE ;
 : SIG-BINDER-BODY-INSTALL ( -- )
    [: SIG-BINDER-BODY ;] is SIG-BINDER-BODY-XT
-   [: SIG-TYPE ;] is SIG-BOUND-TYPE-XT ;
+   [: SIG-TYPE ;] is SIG-TYPE-XT ;
 SIG-BINDER-BODY-INSTALL
 
 \ ---- typed local annotations -------------------------------------------------
@@ -7195,8 +7216,9 @@ variable SG-ROWS-PUBLISH
    RCLAUSE-NEUTRAL? 0= IF SB@ SL @ SGBAD-RETURN! THEN ;
 
 \ A leading single upper-case token names the row (shared by letter), else the
-\ implicit tail is used; no '|' in a quotation means rin = rout. tail is a local
-\ so it survives RECURSE.
+\ implicit tail is used. Each entry but a value record's name, a quotation
+\ included, is read by SIG-TYPE, which counts its nesting; only the row is held
+\ on the data stack meanwhile.
 : PSTACK ( n -- n ) {: tail:n :}
    NEXT-SIG-TOK 2dup ROW-LEAD? IF
       drop c@ RVAR-OF                                 \ row = named var
@@ -7204,33 +7226,7 @@ variable SG-ROWS-PUBLISH
    BEGIN
      NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN        \ ( row a u )->PK!->( row ), return
      2dup s" [" CORE-STR= IF
-        2drop
-        FRESH MK-QROW                                 \ q data row
-        FRESH MK-QROW                                 \ q return row
-        over RECURSE                                  \ row qd qr qin
-        s" --" EXPECT-SIG
-        >r >r                                         \ park qin qr
-        RECURSE                                       \ row qout
-        r>
-        NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
-           2drop
-           dup RECURSE                                \ row qout qr qrin
-           s" --" EXPECT-SIG
-           >r dup RECURSE                             \ row qout qr qrout
-           s" ]" EXPECT-SIG
-           swap drop                                  \ row qout qrout
-           r> r> 2swap >r rot r>                      \ row qin qout qrin qrout
-        ELSE
-           2dup s" ]" CORE-STR= IF
-              2drop
-           ELSE
-              SGBAD-SYNTAX!
-           THEN
-           r> swap >r swap r> dup                     \ row qin qout qrin qrout
-        THEN
-        2dup RCLAUSE-CHECK
-        MK-QUOT
-        swap MK-PUSH
+        SIG-TYPE swap MK-PUSH                         \ a quotation (SIG-PARSE-QUOT), one level
      ELSE
         2dup VREC-FIND IF
            >r 2drop r> VREC-PUSH-FIELDS
@@ -7242,8 +7238,11 @@ variable SG-ROWS-PUBLISH
 
 \ The opening '[' is already consumed. in/out share one fresh data base row and
 \ rin/rout one fresh return base row; no '|' means rin = rout = that base. A
-\ missing '--' or ']' sets SGBAD-SYNTAX! so the whole signature refuses.
+\ missing '--' or ']' sets SGBAD-SYNTAX! so the whole signature refuses. Its
+\ rows are a level below it and their entries one more, as TERM-DEPTH counts
+\ them, so SIG-TYPE bounds a quotation's nesting by that depth.
 : SIG-PARSE-QUOT ( -- n )
+   SIG-LEVEL @ 1 + SIG-LEVEL !
    FRESH MK-QROW {: qdbase:n :}
    FRESH MK-QROW {: qrbase:n :}
    qdbase PSTACK {: qin:n :}                 \ data-in row (stops at '--')
@@ -7260,7 +7259,8 @@ variable SG-ROWS-PUBLISH
    ELSE
       2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
       qin qout qrbase qrbase MK-QUOT         \ no return clause: rin = rout = base
-   THEN ;
+   THEN
+   SIG-LEVEL @ 1 - SIG-LEVEL ! ;
 : SIG-QUOT-INSTALL ( -- ) [: SIG-PARSE-QUOT ;] is SIG-QUOT-XT ;
 SIG-QUOT-INSTALL
 : TYPE-CERTAIN ( ptr u8 n -- bool ) 2drop RES-FALSE ;
@@ -7400,7 +7400,7 @@ CHECKER-REG:}SCRATCH
    ELSE PK! RR-SHARED @ THEN ;                    \ no | here -> shared tail (untouched)
 
 : PSIG ( -- n n n n )
-   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 BIND-DEPTH !  0 SGHASR !  0 RR-SHARED !
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 BIND-DEPTH !  0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
    ATOMN @ PD-ATOM0 !
    dr PSIDE  PR-IN ! PD-IN !
@@ -12780,10 +12780,10 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
    {: a:ptr u:n :}
    a u BYTE-SPAN? u CHECKER-PACKAGE-CAP >= and ;
 
-\ A package name must be a name (CK-NAME-SPAN?) that fits the mirror's row: a
-\ -1 length would copy nothing and keep its length.
+\ A package name must have a length that describes memory (BYTE-SPAN?) and
+\ fits the mirror's row: a -1 length would copy nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CK-NAME-SPAN? 0= u CHECKER-PACKAGE-CAP >= or IF
+   a u BYTE-SPAN? 0= u CHECKER-PACKAGE-CAP >= or IF
       s" checker: package name too long" 76 die
    THEN
    0 BEGIN dup u < WHILE
@@ -13074,7 +13074,7 @@ public
 \ The row a qualifier's head names here, NULL-PTR for none or a false length: in A
 \ or its part `A:<head>` first, then a top-level package. Twin: habu1.f LHEADROW.
 : HEAD-ROW ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
-   a u CK-NAME-SPAN? 0= IF NULL-PTR EXIT THEN
+   a u BYTE-SPAN? 0= IF NULL-PTR EXIT THEN
    TOP-NAME$ {: ta:ptr tu:n :}
    tu 1 + u + {: ku:n :}
    tu 0 <>  ku CHECKER-PACKAGE-CAP <  and IF
@@ -13345,11 +13345,11 @@ variable CHECKER-QBAD-TOK
 \ engine FIND parity (habu1.f FIND-QHAS/FIND-QBAD): a leading or trailing first
 \ colon keeps the token an ordinary name; a non-edge first colon with a second
 \ colon anywhere is a malformed qualified name and must never resolve. So is a
-\ name whose length no name has (CK-NAME-SPAN?): this split is the first reader
-\ of every name the checker resolves, and it reads none of that one.
+\ name whose length describes no memory (BYTE-SPAN?): this split is the first
+\ reader of every name the checker resolves, and it reads none of that one.
 : CHECKER-QUALIFIED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 CHECKER-QBAD-TOK !
-   a u CK-NAME-SPAN? 0= IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
+   a u BYTE-SPAN? 0= IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
    a u CHECKER-COLON-SCAN {: cn:n ci:n :}
    cn 0= IF RES-FALSE EXIT THEN
    ci 0= IF RES-FALSE EXIT THEN
@@ -13924,8 +13924,9 @@ public
 : PART-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    TOP-NAME$ {: pa:ptr pu:n :}
    pu 0 <>  u CHECKER-PACKAGE-CAP pu 1 + - < 0=  and IF E-PKG-CONTEXT throw THEN
-   \ Past CK-NAME-MAX the length is refused; the engine names the colon first.
-   a u CK-NAME-SPAN? 0= IF E-PACKAGE-NAME-CAP throw THEN
+   \ A length that describes no memory is refused; the engine names the colon
+   \ first.
+   a u BYTE-SPAN? 0= IF E-PACKAGE-NAME-CAP throw THEN
    a u CHECKER-COLON-SCAN drop 0 <> IF E-PKG-CONTEXT throw THEN
    pu 0= IF a u EXIT THEN
    pu 1 + u + {: ku:n :}
@@ -14095,10 +14096,10 @@ STORAGE-DIAG-DEFAULT
 : CHECKER-STORAGE-NAME-REFUSE ( ptr u8 n -- ) {: da:ptr du:n :}
    da du da du STG-NO-NAME CHECKER-STORAGE-REFUSE ;
 
-\ A published storage name has at most one inner ':'. A length no name has is
-\ refused before the refusal that would echo it.
+\ A published storage name has at most one inner ':'. A length that describes
+\ no memory is refused before the refusal that would echo it.
 : CHECKER-LBUF-NAME-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
+   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    a u CHECKER-QUALIFIED? drop
    CHECKER-QBAD-TOK @ 0 <> IF
       a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
@@ -14116,11 +14117,11 @@ STORAGE-DIAG-DEFAULT
 \ a --json-errors consumer would see only `hb: uncaught throw code 7136`.
 
 \ Inside the window the name is then held to the definer's own name rule, which
-\ answers false once it has reported a refusal. A length no name has answers
-\ false first, before the refusal that would echo the name.
+\ answers false once it has reported a refusal. A length that describes no
+\ memory answers false first, before the refusal that would echo the name.
 : CHECKER-REPLAY-NAME-OK? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
+   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF
       a u NULL-PTR 0 1 RECORD-DIAG-XT
       E-PKG-CONTEXT CHECKER-REFUSE
@@ -14149,10 +14150,10 @@ STORAGE-DIAG-DEFAULT
 : CHECKER-ORIGIN-SYM ( ptr u8 n n ptr u8 n -- n )
    SYM-FIND IF EXIT THEN drop 0 ;
 
-\ Interning stores the name, so a length no name has is refused with the symbol
-\ pool's own refusal before the split reads it.
+\ Interning stores the name, so a length that describes no memory is refused
+\ with the symbol pool's own refusal before the split reads it.
 : CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a u:n :}
-   a u CK-NAME-SPAN? 0= IF SYM-STR-OVERFLOW THEN
+   a u BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n vis:n :}
@@ -14497,8 +14498,8 @@ variable BIND-SEEDED
 \ caller that only asks reads why.
 \
 \ A name the split refuses (CHECKER-QBAD-TOK: a malformed qualified name, or a
-\ length no name has) binds nothing: the engine never binds it, and neither the
-\ pending row nor the lookup reads it.
+\ length that describes no memory) binds nothing: the engine never binds it,
+\ and neither the pending row nor the lookup reads it.
 \
 \ A sym of 0 without a refusal is not proof the load cannot bind the name: the
 \ engine holds words no checker symbol names (one defined undeclared under
@@ -14893,7 +14894,7 @@ package CHECKER-REG
 \ A package or name longer than any name keys no row; answered before hashing.
 : ASIG-AUDIT-SYM ( ptr u8 n bool ptr u8 n -- n bool )
    {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
-   pkg pkgu CK-NAME-SPAN? na nu CK-NAME-SPAN? and 0= IF 0 RES-FALSE EXIT THEN
+   pkg pkgu BYTE-SPAN? na nu BYTE-SPAN? and 0= IF 0 RES-FALSE EXIT THEN
    pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND ;
 
 : CHECKER-ASIG-KNOWN? ( ptr u8 n bool ptr u8 n -- bool )
@@ -16065,12 +16066,13 @@ CHECKER-REG:}SCRATCH
    1 SHADOW-DIAG-XT
    E-SHADOWED-ARITY REFUSE-DEF CHECKER-REFUSE ;
 
-\ CHECKER-DEFCAST hands this a name source gave it, so a length no name has is
-\ refused with the symbol pool's refusal before the constructor scan reads it.
+\ CHECKER-DEFCAST hands this a name source gave it, so a length that describes
+\ no memory is refused with the symbol pool's refusal before the constructor
+\ scan reads it.
 \ CHECK passes AT at NMOFF, where the checked text holds the name it folded.
 : USIG-CERT-ADMIT ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n at:ptr atu:n :}
-   na nu CK-NAME-SPAN? 0= IF SYM-STR-OVERFLOW THEN
+   na nu BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    na nu at atu CHECKER-REC-NAME-AT!
@@ -16115,7 +16117,6 @@ CHECKER-REG:}SCRATCH
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ RES-TRUE E-ADD-EFFECT DL-TAKE
    sa su CHECKER-ASIG-CAPTURE ;
 
-$1000 constant LBUF-SIG-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
 create LBUF-SIG-BUF LBUF-SIG-CAP allot
 variable LBUF-SIG-U
@@ -21200,6 +21201,12 @@ CHECKER-REG:}SCRATCH
    {: why:n :}
    why MD-EFFECT-DEPTH =  why MD-INPUT-WIDTH =  or ;
 
+\ Whether the refusal REFUSAL@ names leaves its definition uncheckable rather
+\ than refused: a token of unknown effect, or an unfit effect's reason.
+: REFUSAL-UNCHECKABLE? ( -- bool )
+   REFUSAL@ {: k:n :}
+   k RF-UNCHECKABLE =  k RF-REASON = MDIAG @ UNFIT-REASON? and  or ;
+
 \ Cache the parsed declared sig as an arena effect record so recurse sites
 \ instantiate it via E-INST. The record carries sym 0 so signature lookup never
 \ sees it. The declared rows are measured here, before the body binds their
@@ -22507,16 +22514,20 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
       0 FAILB !  0 FAILE !
    THEN ;
 
+\ A definition's signature nested past EFFECT-DEPTH-MAX (SIG-TYPE) makes it
+\ uncheckable for the reason a parsed effect that deep has (CHECK-DEPTH-FITS).
 : SGBAD-FAIL! ( -- )
    SGBAD @ 0= IF exit THEN
    FAILSET @ IF exit THEN
    SGBAD-COPY-TOKEN
    SGBAD-SPAN!
    0 FAILIX !
-   -1 FAILSET !
-   RF-SIG REFUSAL ! ;
+   SGBAD-DEPTH? IF
+      SGBAD-SIZE @ MDIAG-DEPTH !  MD-EFFECT-DEPTH MDIAG!  -1 UNCK !  RF-REASON REFUSAL !
+   ELSE RF-SIG REFUSAL ! THEN
+   -1 FAILSET ! ;
 
-\ A NAME whose length no name has (CK-NAME-SPAN?) spells no word, so TRUST,
+\ A NAME whose length describes no memory (BYTE-SPAN?) spells no word, so TRUST,
 \ TRUST-RAW and TRUST-DECL each refuse its row first as E-TRUST-UNRESOLVED with
 \ no spelling rendered: TRUST before its dictionary walk (whose colon scan never
 \ ends given the maximum cell), TRUST-RAW before it turns on raw-definer mode
@@ -22568,7 +22579,7 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
 : TRUST-DECL? ( ptr u8 n ptr u8 n -- bool )
    {: na:ptr nu:n sa:ptr su:n :}
    WRITE-WINDOW-CK                       \ before the does> latch steps
-   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE RES-FALSE EXIT THEN
+   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE RES-FALSE EXIT THEN
    DOES-EFF-STEP
    0 DL-NEW !
    na nu sa su TRUST-USIG!
@@ -22634,7 +22645,7 @@ package CHECKER-REG
 
 : CHECKER-DECLARED-ROW! ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n sa:ptr su:n :}
-   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
+   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu CHECKER-CERT-DUP? IF EXIT THEN
    na nu CHECKER-RECORD-NAME 2drop
    CHECKER-REC-SYM @ sa su CK-DECLARED-SYM! ;
@@ -22678,7 +22689,7 @@ package CHECKER-REG
 \ A linked file's record is read first, as a lookup reads it, so the amend
 \ keeps the tags its facts text carries.
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
-   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
+   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    na nu TRUST-REC FACTS-READ-XT
    0 DL-NEW !
@@ -22709,7 +22720,7 @@ package CHECKER-REG
 \ malformed qualified one). Nothing is recorded.
 : CHECKER-VERIFY-TRUST ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
+   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    a u CK-HOLDS-BLANK? IF RES-FALSE EXIT THEN
    a u TRUST-RESOLVES? IF RES-FALSE EXIT THEN
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> EXIT THEN
@@ -22731,7 +22742,7 @@ package CHECKER-REG
 \ TRUST in raw-definer mode, the only path that publishes a created word: every
 \ type variable is TVK-RAW, so the cell read back cannot bind a nominal family.
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
-   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
+   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    \ A does> patch publishes under the symbol LASTC's record links, if any.
    LASTC-LINK-SYM {: linked:n :}
    RES-TRUE SIG-RAW-DEFINER!
@@ -26178,12 +26189,13 @@ variable CUR-OPEN   variable CUR-PSIG
 
 \ VERDICT-DEFERRED defers the body to the run: it names a word only a rendering
 \ statement in scope can have defined (UNSEEN-COVERS?). A malformed declaration
-\ is still refused, since the declaration is what gets recorded; past a token of
-\ unknown effect nothing downstream is a judgment, so the rest is the run's.
+\ is still refused, since the declaration is what gets recorded, and one nested
+\ too deep to record is uncheckable (SGBAD-FAIL!); past a token of unknown
+\ effect nothing downstream is a judgment, so the rest is the run's.
 \ A call to a malformed qualified name (QUALBAD) is no such token: no word can
 \ ever answer it, so its body is refused like any other, not left uncheckable.
 : CHECK-VERDICT ( -- n )
-   SGBAD @ 0 <> IF VERDICT-REFUSED EXIT THEN
+   SGBAD @ 0 <> IF REFUSAL-UNCHECKABLE? IF VERDICT-UNCHECKABLE ELSE VERDICT-REFUSED THEN EXIT THEN
    UNSEEN @ 0 <> IF VERDICT-DEFERRED EXIT THEN
    UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF VERDICT-REFUSED ELSE
    UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;

@@ -52,7 +52,7 @@ public
 : DECL-HEADER ( ptr u8 n -- ptr u8 n n bool )
    {: a:ptr u:n :}
    DECL-PARAM-CLEAR
-   a u CK-NAME-SPAN? 0= IF a 0 0 RES-FALSE EXIT THEN
+   a u BYTE-SPAN? 0= IF a 0 0 RES-FALSE EXIT THEN
    0 BEGIN dup u < IF a over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1+ REPEAT
    {: tail:n :}
    tail u = IF a u 0 RES-TRUE EXIT THEN
@@ -195,11 +195,11 @@ private
    rc CHECKER-REFUSE ;
 
 \ The declared name is read first by the body's name gate and by the report. A
-\ length no name has (CK-NAME-SPAN?) is recorded as no name, so the declaration
-\ is refused as a missing name and the report reads none of it.
+\ length that describes no memory (BYTE-SPAN?) is recorded as no name, so the
+\ declaration is refused as a missing name and the report reads none of it.
 : TDECL-CTX! ( ptr u8 n ptr u8 n ptr u8 n -- )   \ kind, name, body
    TDB-U ! TDB-A !
-   2dup CK-NAME-SPAN? 0= IF drop 0 THEN
+   2dup BYTE-SPAN? 0= IF drop 0 THEN
    TDN-U ! TDN-A !
    TDK-U ! TDK-A !
    0 TDT-U !  NULL-PTR TDT-A !

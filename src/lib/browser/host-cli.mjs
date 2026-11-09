@@ -1,10 +1,13 @@
 // host-cli.mjs - the browser host's turns (turn.js) under bun, for tests. It
 // proves no rendering:
 //
-//    bun host-cli.mjs <module.wasm> [--size W H] [step]...
+//    bun host-cli.mjs <module.wasm> [--size W H] [--mcp URL TOKEN-FILE] [step]...
 //
 // Runs the start turn, then each step in order, once every run the steps
-// before it let happen has run:
+// before it let happen has run. With --mcp, rpcs go to URL as host.js sends
+// them, with TOKEN-FILE's text, trailing whitespace trimmed, as a bearer token,
+// and afters fire on real time; a step is done once no relay is outstanding.
+// The steps:
 //
 //    --pointer X Y BUTTONS MODS, --move X Y BUTTONS MODS,
 //    --release X Y BUTTONS MODS
@@ -36,7 +39,11 @@
 //    --answer-rpc ID FILE  answers the waiting rpc with ID with FILE's JSON
 //                          text, {"result":…} or {"error":…}
 //    --fail-rpc ID         fails the waiting rpc with ID, as a lost parent does
+//    --until TEXT MS       waits until a line printed after it began contains
+//                          TEXT; MS ms without one is a failure
 //
+// --tick, --answer-rpc and --fail-rpc are usage errors with --mcp, and --until
+// without it.
 // The drawing buffer is 640 by 480 unless --size says otherwise. Prints one
 // line per record, a request's when the host makes it: hello, fetch <path>,
 // post <path> <length> <body in hex>, request <method> <path> <id> <length>
@@ -45,23 +52,27 @@
 // draw <count> <mask in hex>, svg <length> <bytes in hex>, input <0|1>, text
 // <string>. At the end, outstanding <fetch|post> <path>, outstanding request
 // <method> <path> <id> or outstanding rpc <method> <id>. A --tick with no after
-// waiting, or an --answer-rpc or --fail-rpc of an id no waiting rpc holds, is
-// a failure.
+// waiting, an --answer-rpc or --fail-rpc of an id no waiting rpc holds, or a
+// relay that fails or passes RELAY_MS, is a failure.
 // It
 // draws nothing. Each failure is printed on stderr as it happens, such as
 // `throw <code>` for a run that answered a nonzero status, and the steps go
 // on; it exits 1 if any happened, else 0.
 import { readFileSync } from "node:fs";
 import { Module } from "./turn.js";
+import { mcpRpc } from "./mcp.js";
 
 const USAGE =
-  "usage: bun host-cli.mjs <module.wasm> [--size W H] " +
+  "usage: bun host-cli.mjs <module.wasm> [--size W H] [--mcp URL TOKEN-FILE] " +
   "[--pointer X Y BUTTONS MODS | --move X Y BUTTONS MODS | --release X Y BUTTONS MODS | " +
   "--wheel DX DY MODS | --key TEXT MODS | --resize W H | --control KEY | " +
   "--load FILE | --focus HEX | --highlight HEX | " +
   "--typed TEXT | --repeat-typed TEXT N | --memory | " +
   "--answer STATUS FILE | --answer-id ID STATUS FILE | --fail | " +
-  "--notify METHOD FILE | --tick | --file NAME PATH | --answer-rpc ID FILE | --fail-rpc ID]...";
+  "--notify METHOD FILE | --tick | --file NAME PATH | --answer-rpc ID FILE | --fail-rpc ID | --until TEXT MS]...";
+
+// The time a relayed rpc may take before it fails.
+const RELAY_MS = 60000;
 
 let failed = false;
 
@@ -100,17 +111,47 @@ function call(flag, id) {
   return calls.splice(at, 1)[0];
 }
 
+// Under --mcp, the relays not yet settled and the timers of the afters not
+// yet fired.
+const relays = new Set();
+const timers = new Set();
+
+// The waiting --until, if any: its text and how it is done.
+let until = null;
+
+// Prints a record line and wakes the waiting --until whose text it contains.
+function print(line) {
+  console.log(line);
+  if (until !== null && line.includes(until.text)) until.done();
+}
+
 // Answers only once every microtask has run, so every run a step let happen.
 function settled() {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+// Answers once every run has run and no relay is outstanding.
+async function quiet() {
+  await settled();
+  while (relays.size > 0) {
+    await Promise.allSettled([...relays]);
+    await settled();
+  }
+}
+
+// A step the loop awaits: its function's promise is its wait.
+function waits(step) {
+  step.waits = true;
+  return step;
 }
 
 // The module's path, the drawing buffer's size and the steps, each a function
 // of the module.
 function parse(args) {
   if (args.length < 1) throw new Error(USAGE);
-  const state = { size: [640n, 480n], memory: false };
+  const state = { size: [640n, 480n], memory: false, mcp: null };
   const steps = [];
+  const seen = new Set();
   let i = 1;
   const take = (n) => {
     if (i + n > args.length) throw new Error(USAGE);
@@ -119,10 +160,16 @@ function parse(args) {
   };
   while (i < args.length) {
     const flag = args[i++];
+    seen.add(flag);
     switch (flag) {
       case "--size":
         state.size = take(2).map(BigInt);
         break;
+      case "--mcp": {
+        const [url, file] = take(2);
+        state.mcp = { url, token: readFileSync(file, "utf8").trimEnd() };
+        break;
+      }
       case "--pointer": {
         const [x, y, buttons, mods] = take(4).map(BigInt);
         steps.push((m) => m.pointer(x, y, buttons, mods).catch(report));
@@ -246,65 +293,109 @@ function parse(args) {
         steps.push(() => call(flag, key).reject(new Error(`rpc ${key}: failed`)));
         break;
       }
+      case "--until": {
+        const [text, limit] = take(2);
+        const ms = Number(limit);
+        if (!Number.isSafeInteger(ms) || ms < 0) throw new Error(USAGE);
+        steps.push(waits(() => new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            until = null;
+            report(new Error(`${flag} ${text}: not printed within ${ms} ms`));
+            resolve();
+          }, ms);
+          until = {
+            text,
+            done: () => {
+              clearTimeout(timer);
+              until = null;
+              resolve();
+            },
+          };
+        })));
+        break;
+      }
       default:
         throw new Error(USAGE);
     }
   }
+  const scripted = ["--tick", "--answer-rpc", "--fail-rpc"].some((f) => seen.has(f));
+  if (state.mcp !== null ? scripted : seen.has("--until")) throw new Error(USAGE);
   return { wasm: args[0], state, steps };
 }
 
 try {
   const { wasm, state, steps } = parse(process.argv.slice(2));
+  const relay = state.mcp === null ? null : mcpRpc(state.mcp.url, state.mcp.token, RELAY_MS);
   const module = await Module.load(readFileSync(wasm), {
-    hello: () => console.log("hello"),
+    hello: () => print("hello"),
     fetch: (path) => {
-      console.log(`fetch ${path}`);
+      print(`fetch ${path}`);
       return request("fetch", path).then(({ status, bytes }) => {
         if (status < 200 || status > 299) throw new Error(`${path}: ${status}`);
         return bytes;
       });
     },
     post: (path, body) => {
-      console.log(`post ${path} ${body.length} ${Buffer.from(body).toString("hex")}`);
+      print(`post ${path} ${body.length} ${Buffer.from(body).toString("hex")}`);
       return request("post", path);
     },
     request: (method, path, body, id) => {
-      console.log(`request ${method} ${path} ${id} ${body.length} ${Buffer.from(body).toString("hex")}`);
+      print(`request ${method} ${path} ${id} ${body.length} ${Buffer.from(body).toString("hex")}`);
       return request("request", path, method, id);
     },
     rpc: (method, params, id) => {
-      console.log(`rpc ${method} ${id} ${params}`);
-      return new Promise((resolve, reject) => calls.push({ id, method, resolve, reject }));
+      print(`rpc ${method} ${id} ${params}`);
+      if (relay === null) return new Promise((resolve, reject) => calls.push({ id, method, resolve, reject }));
+      const answer = relay(method, params).catch((e) => {
+        report(new Error(`rpc ${id}: ${e.message}`));
+        throw e;
+      });
+      const settle = () => relays.delete(answer);
+      relays.add(answer);
+      answer.then(settle, settle);
+      return answer;
     },
     after: (ms, token) => {
-      console.log(`after ${ms} ${token}`);
-      ticks.push(token);
+      print(`after ${ms} ${token}`);
+      if (relay === null) {
+        ticks.push(token);
+        return;
+      }
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        module.tick(token).catch(report);
+      }, Number(ms));
+      timers.add(timer);
     },
     read: (file, offset, length) => {
-      console.log(`read ${file} ${offset} ${length}`);
+      print(`read ${file} ${offset} ${length}`);
       return Promise.resolve(files.get(Number(file)).subarray(Number(offset), Number(offset + length)));
     },
     error: report,
     draw: (corners, count, matrix, mask) =>
-      console.log(`draw ${count}${count ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
-    tree: (rows, selected) => console.log(`tree ${selected} ${JSON.stringify(rows)}`),
+      print(`draw ${count}${count ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
+    tree: (rows, selected) => print(`tree ${selected} ${JSON.stringify(rows)}`),
     highlight: (mask) =>
-      console.log(`highlight ${mask.length}${mask.length ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
-    svg: (bytes) => console.log(`svg ${bytes.length} ${Buffer.from(bytes).toString("hex")}`),
-    input: (enabled) => console.log(`input ${enabled ? 1 : 0}`),
-    text: (s) => console.log(`text ${s}`),
+      print(`highlight ${mask.length}${mask.length ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
+    svg: (bytes) => print(`svg ${bytes.length} ${Buffer.from(bytes).toString("hex")}`),
+    input: (enabled) => print(`input ${enabled ? 1 : 0}`),
+    text: (s) => print(`text ${s}`),
     size: () => state.size,
   });
   module.start().catch(report);
-  await settled();
+  await quiet();
   for (const step of steps) {
+    let wait;
     try {
-      step(module);
+      wait = step(module);
     } catch (e) {
       report(e);
     }
-    await settled();
+    if (step.waits) await wait;
+    await quiet();
   }
+  for (const timer of timers) clearTimeout(timer);
+  timers.clear();
   for (const { kind, path, method, id } of waiting)
     console.log(kind === "request" ? `outstanding request ${method} ${path} ${id}` : `outstanding ${kind} ${path}`);
   for (const { id, method } of calls) console.log(`outstanding rpc ${method} ${id}`);

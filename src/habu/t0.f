@@ -1,8 +1,9 @@
 \ t0.f - the tier 0 compiler's front end, package COMP.
 \
-\ Compiles one definition's body text (BODYBUF at `;`, src/habu/definers.f
-\ DEF-COMPILE) from the tape the checker's scan reports, through the step every
-\ native compiler shares (src/compiler/native/definition.f), and emits through
+\ Compiles one definition's body text (layout.f BODY-TEXT's block at `;`,
+\ src/habu/definers.f DEF-COMPILE) from the tape the checker's scan reports,
+\ through the step every native compiler shares
+\ (src/compiler/native/definition.f), and emits through
 \ src/habu/t0-emit.f's EMIT- words to the selected emitter. A name, a tick's
 \ operand and `is`'s operand lower from the record the checker bound, as tier
 \ 1's src/compiler/native/hir-word.f RESOLVE-SITE does; spelling is looked up

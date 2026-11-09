@@ -6,6 +6,7 @@
 \ call, then only read; no conversion yields. TASK-LOCAL: the work buffers.
 
 require src/lib/ffi-abi.f
+require src/lib/fmath.f
 require src/lib/image-lifecycle.f
 require src/lib/ieee754.f
 require src/lib/memory.f
@@ -28,7 +29,6 @@ private
 -9890 constant E-NATIVE
 -9891 constant E-FINITE
 $7FFFFFFFFFFFFFFF constant MAGNITUDE-MASK
-$7FF0000000000000 constant EXPONENT-MASK
 512 constant WORK-BYTES
 64 constant NATIVE-BYTES
 variable REGISTERED
@@ -99,7 +99,6 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
       out NATIVE-BYTES C-LOCALE @ format value SNPRINTF-CALL exit
    then out NATIVE-BYTES format value STRFROMD-CALL ;
 
-: FINITE? ( r -- bool ) IEEE754:F64>BITS EXPONENT-MASK and EXPONENT-MASK <> ;
 : DIGIT? ( n -- bool ) dup $30 >= swap $39 <= and ;
 : DIGITS ( ptr u8 n n -- n ) {: text:ptr len:n offset:n :}
    offset begin dup len < if text over + c@ DIGIT? else false then while 1+ repeat ;
@@ -131,7 +130,7 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
    2dup s" inf" STR=CI if 2drop true exit then s" infinity" STR=CI ;
 
 : PARSE-ROUND ( ptr u8 -- ptr u8 ) {: work:ptr :}
-   work C-PARSE dup FINITE? 0= if drop E-FINITE throw then
+   work C-PARSE dup FMATH:FINITE? 0= if drop E-FINITE throw then
    IEEE754:F64>BITS work CELL-VIEW ! work ;
 
 \ Round to nearest around strtod_l and restore the caller's mode. PARSE-COPY
@@ -336,7 +335,7 @@ public
 \ the C locale; locale and rounding mode are restored before answering, failure
 \ included.
 : FORMAT ( r ptr u8 n -- result<n,fault> ) {: value:r out:ptr capacity:n :}
-   value FINITE? 0= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
+   value FMATH:FINITE? 0= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    capacity 0 < if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
    NATIVE-READY? 0= if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
    value IEEE754:F64>BITS out capacity

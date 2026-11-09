@@ -302,8 +302,6 @@ $4000000 constant BASE
    work work NUM FINISH work NSIGN-OFF S!
    work RATIO-BITS IEEE754:BITS>F64 ;
 
-: FINITE? ( r -- bool )
-   IEEE754:F64>BITS 52 rshift $7FF and $7FF <> ;
 : NO-OVERLAP? ( SPAN:span<cell> SPAN:span<cell> -- bool )
    {: frame work :}
    frame SPAN:BYTES SPAN:$ {: fp:ptr flen:n :}
@@ -322,12 +320,12 @@ public
    then
    frame 0 12 cells SPAN:SUB work 0 WORK-CELLS cells SPAN:SUB
    NO-OVERLAP? 0= if FMATH:E-DOMAIN throw then
-   px FINITE? py FINITE? and pz FINITE? and
-   sx FINITE? and sy FINITE? and sz FINITE? and 0= if
+   px FMATH:FINITE? py FMATH:FINITE? and pz FMATH:FINITE? and
+   sx FMATH:FINITE? and sy FMATH:FINITE? and sz FMATH:FINITE? and 0= if
       FMATH:E-DOMAIN throw
    then
    12 0 ?do
-      frame i SPAN:CELL@ IEEE754:BITS>F64 FINITE? 0= if
+      frame i SPAN:CELL@ IEEE754:BITS>F64 FMATH:FINITE? 0= if
          FMATH:E-DOMAIN throw
       then
    loop

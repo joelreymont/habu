@@ -50,12 +50,8 @@ public
    u 0= if exit then
    a u munmap 0<> if E-MEM-UNMAP throw then ;
 
-\ A throw from the dispatch goes on after the free: catch, since a wasm32 link
-\ has no finally.
 : HANDLE ( [ -- ] -- )
    false TAKEN !
-   catch {: code:n :}
-   TAKEN @ 0= if DELIVERY FREE then
-   code 0<> if code throw then ;
+   [: TAKEN @ 0= if DELIVERY FREE then ;] finally ;
 
 ;package

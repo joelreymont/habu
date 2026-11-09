@@ -80,11 +80,9 @@ private
    TOK-OFF NDICT:MEM-CELLS ;
 
 \ ---- naming the token a refusal was about ------------------------------------
-\ One refused spelling's bytes, kept so a caller can name the token. A token is
-\ part of its definition's captured text, which BODYBUF-CAP bounds, so the record
-\ holds any token the engine admits.
-BODYBUF-CAP constant RF-CAP          \ bytes of one refused spelling the record holds
-
+\ One refused spelling's bytes, kept so a caller can name the token. RF-BUF is
+\ reserved to the spelling's length when it is taken, so the record holds any
+\ token the engine admits.
 align
 -1 CWORK-VARIABLE RF-AT n                       \ the row a refusal thrown now names, or -1
 -1 CWORK-VARIABLE RF-ROW n                      \ the row the record was taken for, or -1
@@ -92,7 +90,7 @@ align
 -1 CWORK-VARIABLE RF-OFF n                     \ that row's text offset, or -1
 0 CWORK-VARIABLE RF-MISSING n                  \ the refused token names a word compiled code cannot reach
 1 CWORK-BUFFER RF-KIND NTAPE:kind
-RF-CAP CWORK-SPAN RF-BUF u8
+DYNAMIC-BUFFER RF-BUF u8                        \ the held spelling's bytes
 
 : RF-RESET ( -- )
    -1 RF-AT !
@@ -114,12 +112,15 @@ RF-CAP CWORK-SPAN RF-BUF u8
    VW RF-AT @ NTAPE:KIND@ 0 RF-KIND !
    0 RF-U !  -1 RF-OFF !
    RF-AT @ RF-ROW !
-   CTX BLD  VW MKEY RF-AT @ NTAPE:SPELL@  RF-BUF RF-CAP IR-BUILD:SYMBOL-COPY
+   VW MKEY RF-AT @ NTAPE:SPELL@ {: sym:IR-ID:ir-symbol-id :}
+   CTX BLD sym IR-BUILD:SYMBOL-LEN 1 max {: cap:n :}
+   cap RF-BUF-RESERVE
+   CTX BLD sym 0 RF-BUF cap IR-BUILD:SYMBOL-COPY
    RF-U !
    VW RF-AT @ TOK-OFF RF-OFF ! ;
 
 \ Taken so that it cannot BECOME the refusal: the record is written before the
-\ throw and reads nothing that can fail.
+\ throw, and a take that fails (a refused reservation included) holds no bytes.
 : RF-RECORD ( -- )
    RF-AT @ 0 < if exit then
    [: RF-TAKE ;] catch {: rc:n :}
@@ -4526,9 +4527,10 @@ public
    RF-ROW @ 0 < if false exit then
    0 RF-KIND @ k NTAPE-KIND:EQ ;
 
+\ NULL-PTR 0 when no spelling is held: RF-BUF may have no bytes to point at.
 : REFUSED$ ( -- ptr u8 n )
-   RF-ROW @ 0 < if RF-BUF 0 exit then
-   RF-BUF RF-U @ ;
+   RF-ROW @ 0 <  RF-U @ 0= or if NULL-PTR 0 exit then
+   0 RF-BUF RF-U @ ;
 
 \ Where REFUSED$ starts in the tape's text, -1 when no spelling is held.
 : REFUSED-OFF ( -- n )

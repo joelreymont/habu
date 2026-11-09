@@ -1,0 +1,16 @@
+---
+title: Describe a published word in the live REPL
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-09T19:42:25.701245+02:00"
+blocks:
+  - habu-design-the-checker-b77c228b
+---
+
+Problem: an agent in a Habu session learns a word's binding, declared effect and source only by reading the implementation or guessing; the facts exist (a definition's facts on its dictionary entry; the checker's effect query, src/core/checker.f:14859 EFFECT-QUERY and its EFFECT-DIN-*/DOUT-* readers; src/habu/xref.f), but no REPL word answers from them.
+Acceptance: one public word takes a name in the caller's actual scope and returns its resolved qualified identity, canonical declaration and effect, kind and call authority, and source location when the definition was loaded in this session; absence and ambiguity are reported explicitly; an engine-held word reports no source rather than inventing one; a definition loaded in the session is distinguished from edited source not yet loaded; a readable effect alone never claims the caller may call the word. The answer is owned data or a copy into a caller-owned buffer, built from the existing records and renderers; no JSON or request shape inside the REPL call. Which EFFECT-* readers are public after sealing is established first; the word exposes the checked operation, not the storage. Documented in docs/forth-card.md with one copyable REPL interaction.
+Files: a new module under src/habu/ (name by convention), src/core/checker.f only if a reader must be made public, docs/forth-card.md, docs/forth.md.
+Verify: in one bin/hb session: define a word, describe it, and read its identity, effect and location without restarting; describe an unknown name and an engine-held word; the two answers differ as stated.
+Depends: habu-design-the-checker-b77c228b (the facts this word reads).
+Ownership: the describe module and its docs. Claim: unassigned.

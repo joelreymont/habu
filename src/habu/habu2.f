@@ -228,8 +228,8 @@ public
 \ ceiling and the count. LDIAGU writes a
 \ number on fd 2 and LDIAGDEF the definition being compiled.
 variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline
-variable LDIAGDEF   \ ( -- ) the open definition's name on fd 2 (first token of the body buffer)
-variable LBCAPFULLMSG   variable LBCAPUNIT   \ per-definition body-capture overflow (habu1.f EMIT-BCAP at BODYBUF-CAP); label LBCAPFULL declared in habu1.f forward-ref block
+variable LDIAGDEF   \ ( -- ) the open definition's name on fd 2 (first token of the body text)
+variable LBGROWMSG   variable LBGROWUNIT   \ the body text block could not grow (habu1.f BCAP-GROW); label LBGROWFAIL declared in habu1.f forward-ref block
 variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks): the head, the " of " before the ceiling and the " bytes" that ends the line; label LDPBAD declared in habu1.f forward-ref block
 variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
 variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting overflow (J-QUOT at JIT-QUOT:LEVELS open); EM-QUOT-NEST-DIE names the ceiling, the definition and the depth
@@ -244,8 +244,8 @@ private
 : DPBAD-MSG$ ( -- ptr u8 n )     s" hb: data space out of range: DP " ;
 : DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
 : DPBAD-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
-: BCAPFULL-MSG$ ( -- ptr u8 n )  s" hb: definition body text full at " ;
-: BCAP-UNIT$ ( -- ptr u8 n )     s"  bytes: " ;
+: BGROW-MSG$ ( -- ptr u8 n )     s" hb: cannot grow definition body text to " ;
+: BGROW-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
 : DIAG-NEEDS$ ( -- ptr u8 n )    s"  needs " ;
 : QNEST-MSG$ ( -- ptr u8 n )     s" hb: quotation nesting full at " ;
 : QNEST-UNIT$ ( -- ptr u8 n )    s"  levels: " ;
@@ -264,8 +264,8 @@ private
 : DPBADMSG-LEN ( -- n )      DPBAD-MSG$ nip ;
 : DPBAD-OF-LEN ( -- n )      DPBAD-OF$ nip ;
 : DPBAD-UNIT-LEN ( -- n )    DPBAD-UNIT$ nip ;
-: BCAPFULL-MSG-LEN ( -- n )  BCAPFULL-MSG$ nip ;
-: BCAP-UNIT-LEN ( -- n )     BCAP-UNIT$ nip ;
+: BGROW-MSG-LEN ( -- n )     BGROW-MSG$ nip ;
+: BGROW-UNIT-LEN ( -- n )    BGROW-UNIT$ nip ;
 : DIAG-NEEDS-LEN ( -- n )    DIAG-NEEDS$ nip ;
 : QNEST-MSG-LEN ( -- n )     QNEST-MSG$ nip ;
 : QNEST-UNIT-LEN ( -- n )    QNEST-UNIT$ nip ;
@@ -748,8 +748,8 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LDPBADUNIT LABEL@ LBL, DPBAD-UNIT$ BYTES,
    LDICTFULL LABEL@ LBL, DICTFULL-MSG$ BYTES,          \ capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, CODEFULL-MSG$ BYTES,
-   LBCAPFULLMSG LABEL@ LBL, BCAPFULL-MSG$ BYTES,                         \ EM-BODY-CAP-DIE appends the ceiling, the unit, the definition, " needs ", the count, newline
-   LBCAPUNIT LABEL@ LBL, BCAP-UNIT$ BYTES,
+   LBGROWMSG LABEL@ LBL, BGROW-MSG$ BYTES,                               \ EM-BODY-GROW-DIE appends the capacity tried and the unit; LCOMPILEDIE the place and newline
+   LBGROWUNIT LABEL@ LBL, BGROW-UNIT$ BYTES,
    LDIAGNEEDS LABEL@ LBL, DIAG-NEEDS$ BYTES,
    LQNESTMSG LABEL@ LBL, QNEST-MSG$ BYTES,                               \ EM-QUOT-NEST-DIE composes the same line from JIT-QUOT:LEVELS
    LQNESTUNIT LABEL@ LBL, QNEST-UNIT$ BYTES,
@@ -1240,8 +1240,8 @@ private
 
 \ Raw ioctl TTY probe: x0 = 0 when fd 0 is a terminal. The attributes land in an
 \ 80-byte machine-stack frame (macOS termios is 72 bytes, Linux 36) and are
-\ dropped, never written to BODYBUF: EMIT-REPL-ROUTE runs at every line end,
-\ while a definition open across lines holds its body capture there.
+\ dropped, never written to the body text block: EMIT-REPL-ROUTE runs at every
+\ line end, while a definition open across lines holds its body capture there.
 : C-EMIT-TTY-PROBE ( -- )
    SP SP 80 SUBI,
    0 0 MOVZ,
@@ -2741,17 +2741,18 @@ public
 
 \ C-PUSH-DREC-NAME: push the definition's original qualified spelling for the
 \ engine->checker record calls (trust/defer rows): the first token of the body
-\ buffer, which LBCAP seeds with "NAME " and C-QUALIFY-DEF leaves alone (it moves
-\ only TKA/TKL), the spelling the CHECK cert path reads as NMA. The fixed DATA
-\ buffer survives a multi-line body (DEF-TKA goes stale when the reader refills),
-\ and it is the qualified `PKG:tail`, so CHECKER-RECORD-SYM records ( pkg, tail )
-\ PUBLIC like the certify record instead of a bare `tail` row that shadows core
-\ prims. The Gforth stage0 mirror reads the body buffer for the same reason.
+\ text block, which LBCAP seeds with "NAME " and C-QUALIFY-DEF leaves alone (it
+\ moves only TKA/TKL), the spelling the CHECK cert path reads as NMA. The block,
+\ read through its handle BODY-TEXT:BASE-CELL, survives a multi-line body
+\ (DEF-TKA goes stale when the reader refills), and it is the qualified
+\ `PKG:tail`, so CHECKER-RECORD-SYM records ( pkg, tail ) PUBLIC like the
+\ certify record instead of a bare `tail` row that shadows core prims. The
+\ Gforth stage0 mirror reads the body text for the same reason.
 \ Scratch stays off x11: DEF-TRUST:FIND and C-FIND-GLOBAL leave the record XT
 \ there for the caller's C-CALL-X11-SAVED.
 : C-PUSH-DREC-NAME ( -- )
    LBL LBL {: scan:label done:label :}
-   9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
+   9 DATA BODY-TEXT:BASE-CELL LDR,      \ x9 = name start (body text base)
    10 0 MOVZ,                           \ x10 = name length
    12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound (fail-closed)
    scan LBL,
@@ -3082,7 +3083,7 @@ private
 \ Push the does> clause's body and signature, the arguments of both clause
 \ checks: the body after `does> ` up to `; `, then TCSIG-A/U.
 : C-PUSH-DOES-CLAUSE ( -- )
-   9 DATA BODYBUF-OFF ADDI,
+   9 DATA BODY-TEXT:BASE-CELL LDR,
    10 DATA DOESB-CELL LDR,
    9 9 10 ADD,  9 G-PUSH
    12 DATA BODYLEN-CELL LDR,  12 12 10 SUB,  12 G-PUSH
@@ -3127,7 +3128,7 @@ private
 \ clause scan armed (checker.f DOES-EFF-LATCH!), as tier 1's checker-owner.f
 \ DOES-FINISH does: REC-WIDE-PUBLISH clears it only under a hook
 \ (EM-REC-WIDE-PUBLISH), and a latch left armed becomes the next checked
-\ record's CREATES cell. The body buffer still opens with the definer's name.
+\ record's CREATES cell. The body text still opens with the definer's name.
 : EM-HOOKLESS-DOES-PUBLISH ( -- )
    LBL {: skip:label :}
    9 DATA HOOK-CELL LDR,  9 skip CBNZ,
@@ -3162,7 +3163,7 @@ private
 
 : C-PUSH-DEFINER-BODY ( -- )                     \ the body, or its head before `does> `
    LBL LBL {: fulllen lenok :}
-   10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
+   10 DATA BODY-TEXT:BASE-CELL LDR,  10 G-PUSH
    10 DATA DOESB-CELL LDR,  10 fulllen CBZ,
       10 10 6 SUBI,  lenok B,
    fulllen LBL,
@@ -3366,15 +3367,19 @@ public
 \ the body capture at BODYLEN as `( `, the inside and ` )`, and TCSIG-A/U
 \ take the inside of that copy. A clause's scan reads the group as a comment
 \ (checker.f CHECK-SCAN-WALK), so it is no token of the clause. x9 holds the
-\ source's `)` across the appends, which leave x9 and x10 alone.
+\ source's `)` across the appends, which leave x9 and x10 alone. An append can
+\ grow the block, so TCSIG-A is formed after the three from the base read then
+\ and the BODYLEN read before them, which rides the machine stack.
 : C-CAPTURE-CREATED-SIG ( -- )
    10 DATA TCSIG-U-CELL STR,
-   9 DATA BODYLEN-CELL LDR,  12 DATA BODYBUF-OFF 2 + ADDI,  12 12 9 ADD,
-   12 DATA TCSIG-A-CELL STR,
+   12 DATA BODYLEN-CELL LDR,  SP SP 16 SUBI,  12 SP 0 STR,
    9 DATA INP-CELL LDR,  9 9 1 SUBI,
    11 9 10 SUB,  11 11 1 SUBI,  12 1 MOVZ,  LBCS LABEL@ BL,
    11 9 10 SUB,  12 10 0 ADDI,  LBCS LABEL@ BL,
-   11 9 0 ADDI,  12 1 MOVZ,  LBCS LABEL@ BL, ;
+   11 9 0 ADDI,  12 1 MOVZ,  LBCS LABEL@ BL,
+   12 SP 0 LDR,  SP SP 16 ADDI,
+   11 DATA BODY-TEXT:BASE-CELL LDR,  11 11 2 ADDI,  12 12 11 ADD,
+   12 DATA TCSIG-A-CELL STR, ;
 
 \ J-DOES is emitted further down, past the capacity exits its clause record
 \ reaches for (C-DIE-DICT-FULL / C-DIE-CODE-FULL).
@@ -3663,7 +3668,7 @@ public
 : C-DEFHOOK ( ptr n n -- )  LBL {: kwv:ptr klen:n nohk:label :}
    11 kwv LABEL@ ADR,  12 klen MOVZ,  LBCS LABEL@ BL,
    9 DATA HOOK-CELL LDR,  9 nohk CBZ,
-   10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
+   10 DATA BODY-TEXT:BASE-CELL LDR,  10 G-PUSH
    10 DATA BODYLEN-CELL LDR,  10 G-PUSH
    SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
    10 G-POP
@@ -4536,14 +4541,15 @@ variable LREPLAYTRAP
    prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
    done LBL, ;
 
-\ body-append ( ptr u8 n -- ): LBCS is the capture `:` appends through.
+\ body-append ( ptr u8 n -- ): LBCS is the capture `:` appends through; it grows
+\ the body text block (habu1.f BCAP-GROW) as every capture does.
 : BODY-APPEND ( -- )
    LBL LBL {: bad done :}
    12 G-POP  11 G-POP                                 \ LBCS: x11 = the bytes, x12 = their count
-   14 DATA BODYLEN-CELL LDR,  15 BODYBUF-CAP MOVZ,
-   14 15 CMP,  C-HI bad BCOND,                        \ BODYLEN is already past the buffer
-   15 15 14 SUB,                                      \ x15 = the room left
-   12 15 CMP,  C-CS bad BCOND,                        \ the bytes and their space do not fit
+   14 DATA BODYLEN-CELL LDR,  15 DATA BODY-TEXT:CAP-CELL LDR,
+   14 15 CMP,  C-HI bad BCOND,                        \ BODYLEN is already past the text capacity
+   15 0 MOVN,  15 15 14 SUB,                          \ x15 = 2^64 - 1 - BODYLEN
+   12 15 CMP,  C-CS bad BCOND,                        \ BODYLEN + u + 1 wraps
    LBCS LABEL@ BL,
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
@@ -4576,7 +4582,7 @@ variable LREPLAYTRAP
       SP SP 16 SUBI,  11 SP 8 STR,
       9 0 MOVZ,
       9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
-      10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
+      10 DATA BODY-TEXT:BASE-CELL LDR,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       11 SP 8 LDR,
       C-CALL-X11-SAVED
@@ -9293,7 +9299,7 @@ public
    LBL {: unarmed:label :}
    9 DATA HOOK-CELL LDR,  9 unarmed CBZ,
    9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ,
-   9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
+   9 DATA BODY-TEXT:BASE-CELL LDR,  9 G-PUSH
    9 DATA BODYLEN-CELL LDR,  9 G-PUSH
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
@@ -9491,7 +9497,7 @@ private
    9 DATA PEND-CELL LDR,  10 10 EVAL-FRAME:PEND LDR,
    9 10 CMP,  C-NE bound BCOND,
    NCOMP-DISPATCH:DECL-PREFIX-BIND-OFF DECL-OWNER:FIND  11 bound CBZ,
-   9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
+   9 DATA BODY-TEXT:BASE-CELL LDR,  9 G-PUSH
    9 DATA BODYLEN-CELL LDR,  9 G-PUSH
    9 DATA TOKBODY-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
@@ -9616,7 +9622,7 @@ public
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
       C-DEF-SOURCE-CLOSE
-      10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
+      10 DATA BODY-TEXT:BASE-CELL LDR,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       LOAD
       SP SP 16 SUBI,
@@ -11462,7 +11468,7 @@ private
 \ certificate's own body length, which VALIDATE has already matched to it.
 : HASH-BODY ( bool -- ) {: clause:bool :}
    LBL LBL {: loop:label done:label :}
-   12 DATA BODYBUF-OFF ADDI,
+   12 DATA BODY-TEXT:BASE-CELL LDR,
    clause if  13 DATA DOESB-CELL LDR,  12 12 13 ADD,  then
    13 11 LOWER-CERT:BODY-LEN-CELL cells LDR,
    14 LOWER-CERT:FNV-OFFSET LIT64,
@@ -11699,7 +11705,7 @@ public
    alloc LBL,
    5 PROT-PAGE-MAX negate LIT64,  17 17 5 AND,
    17 MAP
-   11 DATA BODYBUF-OFF ADDI,  12 SP 40 LDR,
+   11 DATA BODY-TEXT:BASE-CELL LDR,  12 SP 40 LDR,
    13 DATA TXN-BLOB-A-CELL LDR,
    13 DATA TXN-SRC-A-CELL STR,
    11 12 13 COPY-BYTES
@@ -11922,7 +11928,7 @@ package ENGINE-EMIT
    LBL LBL LBL LBL LBL LBL LBL LBL {: nohook:label head:label scanned:label declared:label owned:label rejected:label inl:label done:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    9 DATA P2-CELL LDR,  9 publish CBNZ,               \ pass-2 second ';': no hook re-check
-      10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
+      10 DATA BODY-TEXT:BASE-CELL LDR,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       C-CALL-HOOK  10 rejected CBZ,
       LOWER-TXN:FREEZE
@@ -12965,14 +12971,14 @@ private
    SP SP 32 ADDI,  RET, ;
 
 \ LDIAGDEF ( -- ): the name of the definition being compiled, on fd 2: the first
-\ token of the body buffer (as C-PUSH-DREC-NAME reads it), not DEF-TKA/DEF-TKL,
+\ token of the body text (as C-PUSH-DREC-NAME reads it), not DEF-TKA/DEF-TKL,
 \ which the virtual stack has overwritten by a body-sized ceiling (layout.f
 \ VVAL-OFF). Bounded by BODYLEN, so an empty capture writes nothing. Clobbers
 \ x0-x2, x9, x10, x12, x13 and x30.
 : EMIT-DIAGDEF ( -- )
    LDIAGDEF LABEL@ LBL,
    LBL LBL {: scan:label done:label :}
-   9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
+   9 DATA BODY-TEXT:BASE-CELL LDR,      \ x9 = name start (body text base)
    10 0 MOVZ,                           \ x10 = name length
    12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound
    scan LBL,
@@ -12985,29 +12991,26 @@ private
    0 2 MOVZ,  1 9 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS,
    RET, ;
 
-\ Per-definition body-capture capacity diagnostic: names the buffer, its
-\ ceiling, the definition and the bytes the capture needed, then LCOMPILEDIE
-\ with x0=71 (catchable inside evaluate, since BCAP fails before the copy; exit
-\ 71 at top level). Entered with x16 = BODYLEN + token + 1; it moves to x15
-\ before the first write because SYS, reconciles errno in x16 and macOS passes
-\ the syscall number there.
-: EM-BODY-CAP-DIE ( -- )
-   LBCAPFULL LABEL@ LBL,
-   15 16 0 ADDI,                                   \ x15 = the count, across every write below
-   0 2 MOVZ,  1 LBCAPFULLMSG LABEL@ ADR,  2 BCAPFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
-   9 BODYBUF-CAP MOVZ,  LDIAGU LABEL@ BL,
-   0 2 MOVZ,  1 LBCAPUNIT LABEL@ ADR,  2 BCAP-UNIT-LEN MOVZ,  NR-WRITE SYS,
-   LDIAGDEF LABEL@ BL,
-   0 2 MOVZ,  1 LDIAGNEEDS LABEL@ ADR,  2 DIAG-NEEDS-LEN MOVZ,  NR-WRITE SYS,
+\ The body text block could not grow: `hb: cannot grow definition body text to
+\ <n> bytes`, n the capacity habu1.f BCAP-GROW tried, then LCOMPILEDIE with
+\ x0=71 (catchable inside evaluate, since the grow fails before anything is
+\ stored; exit 71 at top level). Entered with x16 = that capacity; it moves to
+\ x15 before the first write because SYS, reconciles errno in x16 and macOS
+\ passes the syscall number there; LDIAGU takes it in x9.
+: EM-BODY-GROW-DIE ( -- )
+   LBGROWFAIL LABEL@ LBL,
+   15 16 0 ADDI,                                   \ x15 = the capacity, across the write below
+   0 2 MOVZ,  1 LBGROWMSG LABEL@ ADR,  2 BGROW-MSG-LEN MOVZ,  NR-WRITE SYS,
    9 15 0 ADDI,  LDIAGU LABEL@ BL,
+   0 2 MOVZ,  1 LBGROWUNIT LABEL@ ADR,  2 BGROW-UNIT-LEN MOVZ,  NR-WRITE SYS,
    0 71 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 \ Quotation-nesting capacity diagnostic. J-QUOT parks every enclosing quotation
 \ in a JIT-QUOT frame, so a definition holds JIT-QUOT:LEVELS open at once, the
 \ checker's control-frame capacity: no certified definition reaches this, and
 \ tools/check.f's preverify refuses the 33rd frame first (E-UNCHECKABLE,
-\ src/core/checker.f CF-PUSH). The line has EM-BODY-CAP-DIE's shape (ceiling,
-\ definition, depth asked) and routes through LCOMPILEDIE with x0=75, catchable
+\ src/core/checker.f CF-PUSH). The line names the ceiling, the definition and
+\ the depth asked, and routes through LCOMPILEDIE with x0=75, catchable
 \ inside evaluate since J-QUOT branches here before any write. Entered with x10
 \ = frames parked, so this `[:` asks for x10 + 2; that moves to x15, which the
 \ writes and LDIAGU/LDIAGDEF preserve.
@@ -13540,7 +13543,7 @@ package ENGINE-EMIT
    EM-POLICY
    EMIT-DIAGU
    EMIT-DIAGDEF
-   EM-BODY-CAP-DIE
+   EM-BODY-GROW-DIE
    EM-QUOT-NEST-DIE
    EM-SOURCE-END-DIE
    EM-COMPILE-EXIT
@@ -13659,7 +13662,7 @@ package LABELS
    LBL LDPBAD !  LBL LDPBADMSG !  LBL LDPBADOF !  LBL LDPBADUNIT !
    LBL OVERLAY-EMIT:LDIE !
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
-   LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
+   LBL LBGROWFAIL !  LBL LBGROWMSG !  LBL LBGROWUNIT !
    LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !  LBL LSEMIQMSG !  LBL LSEMICFMSG !  LBL LINCOMPMSG !
    LBL LSRCEND !  LBL LSRCENDMSG !  LBL LCOMEND !  LBL LCOMENDMSG !
    LBL LSRCCLOSE !  LBL LSRCCLOSEMSG !

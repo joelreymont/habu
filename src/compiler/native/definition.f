@@ -394,15 +394,21 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 PENDTKA-CELL RESERVED-PTR-U8-CELL OPEN-NAME
 TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 
+\ The body text's base, through `ptr-field`, the declared door to a DATA cell
+\ that holds an address.
+: TEXT-BASE ( -- ptr u8 ) data-base BODY-TEXT:BASE-CELL + 0 ptr-field @ ;
+
 \ Cell k of layout.f BODY-SOURCE row i: 0 its text offset, 1 its source offset.
+\ The rows follow the text in the block, at base + cap.
 : SOURCE-ROW@ ( n n -- n )
    {: i:n k:n :}
-   data-base BODY-SOURCE:ROWS-OFF + i BODY-SOURCE:ROW * + k cells + @ ;
+   TEXT-BASE data-base BODY-TEXT:CAP-CELL + @ +
+   i BODY-SOURCE:ROW * + k cells + CELL-VIEW @ ;
 
 \ The last row at or before text offset off, -1 when none is.
 : ROW-BEFORE ( n -- n )
    {: off:n :}
-   data-base BODY-SOURCE:OFF + @
+   data-base BODY-TEXT:ROWS-CELL + @
    begin dup 0 > while
       1 - dup 0 SOURCE-ROW@ off <= if exit then
    repeat drop -1 ;
@@ -417,11 +423,12 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    FILE-START @ b src + ERROR-TEXT:LINE ;
 
 \ 0 unless the name's buffer is current and p's run has a row. Rows at or past
-\ BODYLEN are stale; a donor engine's DATA, below BODY-SOURCE:END, has none.
+\ BODYLEN are stale. A donor engine whose heap does not start at DATA-START has
+\ another layout, its BODY-TEXT cells holding other bytes, so it has none.
 : BODY-LINE ( ptr u8 -- n )
    {: p:ptr :}
-   data-base BOOT:HEAP-START-CELL + @ BODY-SOURCE:END < if 0 exit then
-   p data-base BODYBUF-OFF + - {: off:n :}
+   data-base BOOT:HEAP-START-CELL + @ DATA-START <> if 0 exit then
+   p TEXT-BASE - {: off:n :}
    off 0 <  off data-base BODYLEN-CELL + @ >= or if 0 exit then
    INPUT-START @ OPEN-NAME @ INPUT-END @ {: b:ptr nm:ptr e:ptr :}
    nm b - 0 <  e nm - 0 <= or if 0 exit then

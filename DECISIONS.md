@@ -37,6 +37,39 @@ learned live in the docs for their subject.
   then": a wordlist holds each name once, a second definition there is
   refused, and `undefine NAME` replaces a word; a package may reuse a global
   name.
+- 2026-10-30, nested binders (relayed by tim from Maki): shown that the
+  checker refused a signature whose type variables nest 32 deep as a syntax
+  error, from a fixed 32-slot stack, and a lane that made the stack grow,
+  Joel said "this is a proper limit. why would you have type variables
+  nesting 32 deep? this is clearly degenerate and worthy of a fixed limit,
+  prove me wrong!": a signature nests at most 32 binders, and a 33rd is
+  refused by name as a limit (`more than 32 nested binders`), not as a
+  syntax error.
+- 2026-11-09, a definition's text (relayed by tim from Maki): of the
+  8000-byte cap on a definition's captured text, which carl ruled should go,
+  the text growing with the definition, Joel said "should be done right
+  now!". The lead's contract, adopted: the engine keeps the text and its
+  source rows in one block it maps at the first capture and grows by
+  doubling, reached through four DATA cells (`BODY-TEXT:BASE-CELL`,
+  `CAP-CELL`, `SIZE-CELL`, `ROWS-CELL`); no capacity constant is left, so
+  the checker's, the compiler's and elaborate's copies grow too; a block
+  that cannot be mapped ends the build naming the size it tried; and every
+  guarded store also refuses the live block.
+- 2026-11-09, stepping a machine from outside (relayed by bob from the
+  Dotfiles pane): asked to approve a second generated word per
+  `FSM:DEFINE`, `NAME-STEP ( ctx phase -- phase bool )`, one dispatch and
+  no loop, so an event-fed consumer stops writing its own dispatch over the
+  row words (Tender's five dispatchers with 25 row-word calls are the two
+  working event machines written with `MATCH` that Maki's record of
+  2026-11-06 asked for first), Joel chose "Approve NAME-STEP (Recommended)".
+  Of the hold of a FINAL action to its `( ctx -- )` effect (dot
+  habu-hold-a-final-20c6c6f5), Joel said "eval all the items using the
+  'what's best for long term lens' and only bring to me what you can't
+  decide"; the lead chose: each FINAL action is emitted through a generated
+  `NAME/<final> ( ctx -- )` word that the arm calls last, as IN rows'
+  `NAME/<state>` words already declare their effects, so the checker holds
+  both at load; both generated words share one parser, row representation
+  and arm emitter. Dots under habu-fsm-stepping-from-c8625faf.
 - 2026-11-04, scope memory (relayed by stuart from Tender): shown that every
   MEM:WITH-BYTES scope maps and unmaps its memory (1,000,000 empty scopes
   4.69 s, 2.04 s of it in the kernel) and a design that keeps small scopes in
@@ -940,6 +973,19 @@ learned live in the docs for their subject.
   answered by event 3), 11 `after`, 12 `read`; events 14 `notified`, 15
   `tick`, 16 `file`, 17 `chunk`; mount options `Module` and `rpc`, viewport
   `notify` and `file`, and host-cli's `--notify`, `--tick` and `--file`.
+- 2026-11-09, Maki's live view (relayed by tim): told that Maki's demo
+  rehearsal never opens its view against the live server, since host-cli
+  answers the module's tool calls only from staged files and the browser
+  page sends an Origin with no sign-in, Joel chose in interview "Relay mode
+  in Habu" over a replay of staged answers and over headless Chrome:
+  host-cli gains `--mcp URL TOKEN-FILE`, relaying each of the module's tool
+  calls to the server with the person's sign-in as ChatGPT does. Carrying it
+  out, the lead chose: the request code moves from host.js to mcp.js, which
+  host.js and host-cli share; under `--mcp` afters fire on real time and a
+  step is done once no relay is outstanding; a step `--until TEXT MS` waits
+  for a printed line that contains TEXT, so a caller can wait for what a
+  poll brings; and `--tick`, `--answer-rpc` and `--fail-rpc` are usage
+  errors with `--mcp`, as `--until` is without it.
 - 2026-11-02, sizing Maki's job runners: OS-CPU:PERFORMANCE-CORES and
   OS-MEMORY:TOTAL, approved on 2026-10-31 so Maki could compute its runner
   count from the host, needed a shared reader of Linux container (cgroup)
@@ -958,6 +1004,12 @@ learned live in the docs for their subject.
   fs-mutate's private binding (TRUNCATE is a global word), Joel chose "Add
   FD:RESIZE (Recommended)". No write-at-offset word: cutting back and
   appending covers the case.
+- 2026-11-07, Maki's finite test (relayed by tim): Maki refuses a computed
+  length that is not finite, testing it inline with `0.0 f* f0=`, while
+  FMATH, F64-TEXT and FBASIS each hold the test privately. Asked "Should
+  Habu publish its private FMATH:FINITE? ( r -- bool ) so Maki's two copies
+  of the finite test go", Joel chose "Make it public (Recommended)":
+  `FMATH:FINITE? ( r -- bool )` is public.
 - 2026-11-01, sealing a package: Maki needs a package closed so later
   source cannot reopen it. Offered a new word, Joel answered "we already have
   package sealing, prove me wrong!". Measured: `private get-current
@@ -987,6 +1039,31 @@ learned live in the docs for their subject.
 
 ## Compiler and builds
 
+- 2026-11-09, wasm calls to words with stack rows: shown a fix for a wasm32 call
+  that passed a row's cells as lanes, which added two public HIR keys to the
+  shared compiler so the wasm selector could learn its callee's declared cells,
+  Joel asked "are you fixing the symptomps and not the cause?" and "so why does
+  native work and wasm doesn't? shouldn't wasm code be fixed instead?", and
+  answered "ok" to the lead's plan: the fix is wasm's alone. A call's lanes are
+  its callee's declared cells, read from the callee's shadow emission, and the
+  cells a row binds stay on the context stack, where the native data stack holds
+  them; no public word is added, and the shared compiler and the native backends
+  do not change.
+- 2026-11-09, reading a Wasm emission's header: told that src/arch/wasm/select.f
+  (since the fix above) and src/habu/link-wasm.f each restated WENC's private
+  header layout (src/arch/wasm/encode.f), Joel chose in interview "Add the
+  reader": one public WENC word reads a function's header row, landed apart
+  from that fix. Of the function count, which link-wasm.f also read from the
+  header's bytes itself, he chose "Add FUNS@ too": WENC:FUNS@ ( ptr u8 -- n )
+  answers an emission's function count, so no file but encode.f reads the
+  layout, apart from the tests that check the bytes it writes. He was told why
+  the native backends need neither: they keep each emission's function count
+  and offsets as shadow records beside the bytes, while a Wasm function's lanes
+  must reach the link inside the emission. The
+  lead chose the row reader's form, WENC:ROW@ ( ptr u8 n -- n n n n n ),
+  function n's body offset, body size, input and output lanes and frame
+  variant; both refuse bytes that do not begin with WENC:MAGIC, and ROW@ a
+  function past the count, with E-WENC-STATE.
 - 2026-11-04, the check tool before incremental builds: asked to approve
   SOURCE-SYNTAX:COMPILE-KEYWORD?, a new public word so that checking a file
   before running it (the language server, tools/check.f) refuses `: 42` and
@@ -1012,6 +1089,24 @@ learned live in the docs for their subject.
   (Recommended)": "One process per build; caller's timeout bounds it; child
   relay code deleted." hb-build runs each build in its own process; the maker
   image, the child and HB_BUILD_TIMEOUT_MS go.
+- 2026-11-09, agents inspect Habu from the REPL (relayed by bob from the
+  Dotfiles pane): of the ChatGPT plan
+  ~/Downloads/habu_session_and_implementation_plan.md Joel said "review and
+  let me know if we need to change anything", then of the review's two
+  adjustments "ok, make the updates". Stands: ordinary checked words in the
+  existing REPL through which an agent describes a published word's
+  identity, effect, kind and source; observes the typed rows and locals
+  before one byte boundary during a normal check, marked provisional, with
+  the verdict returned separately; and checks a few supplied replacements
+  for one span against the existing verdicts and one fixed behavioural
+  fixture. Inspection runs only when asked and normal compilation never
+  waits on an agent; a CLI or MCP adapter comes when a client needs it. The
+  describe word follows the facts-on-entries design; the observation and
+  candidate words are check-tool work and wait for incremental builds
+  (2026-11-04 above), and they sit on the checker's own cursor and
+  candidate words, never on verify-source.f's scanner, which is slated for
+  deletion. The three public words are named by this repository's
+  conventions when designed. Dots under habu-agents-inspect-habu-9f1951c1.
 - 2026-11-03, the compiler lease: shown a design in which T0's compiles take
   tier 1's compiler lease (NLEASE) so NDEFINITION's M-OPEN flag could go,
   Joel asked "why in the world do you need to take a lease? this smells! are

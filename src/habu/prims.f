@@ -797,7 +797,7 @@ ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:RESOLVE
 \ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate`, `cast:`
 \ and `defer` change is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL,
-\ TSIG, TCSIG, PKG-*), BODYBUF, DEF-TIER-CELL and the records behind the
+\ TSIG, TCSIG, PKG-*), the body text, DEF-TIER-CELL and the records behind the
 \ PROT window.
 \ These fifteen rows are how an interpreter written in Habu writes it. Each is
 \ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so a checked
@@ -878,9 +878,10 @@ EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ body-append ( ptr u8 n -- ): append the bytes and one space to BODYBUF
-\ through the capture routine `:` uses. It refuses BODYLEN + u + 1 past
-\ BODYBUF-CAP, with BODYLEN and u both unsigned.
+\ body-append ( ptr u8 n -- ): append the bytes and one space to the body text
+\ through the capture routine `:` uses, which grows the text block when they do
+\ not fit (rc 71 when it cannot). It refuses BODYLEN past the text capacity and
+\ a BODYLEN + u + 1 that wraps, with BODYLEN and u both unsigned.
 EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER body-append PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
@@ -890,7 +891,7 @@ EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 \ created-sig! ( ptr u8 n -- ): the inside of the pending definition's `does>`
 \ signature, the effect of the words it creates, into TCSIG-A and TCSIG-U: its
-\ copy in BODYBUF (definers.f DEF-CREATED). It refuses when no definition is
+\ copy in the body text (definers.f DEF-CREATED). It refuses when no definition is
 \ pending.
 EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!

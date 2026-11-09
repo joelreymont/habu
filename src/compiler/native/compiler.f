@@ -51,12 +51,9 @@ public
 private
 
 \ ---- what a recording unit is opened with ------------------------------------
-\ The unit's text ceiling is the ENGINE's own body capture, which overflows with
-\ an exit rather than a throw. The capture is at least three bytes shorter than
-\ its source.
-BODYBUF-CAP constant TEXT-CAP
-
-TEXT-CAP CWORK-SPAN TXT u8
+\ The unit's copy of its text, reserved to the text's length (at least one byte)
+\ before each unit opens, so no ceiling of its own bounds a definition.
+DYNAMIC-BUFFER TXT u8
 
 align
 1 CWORK-BUFFER M-CTX IR-CTX:ctx
@@ -173,7 +170,7 @@ align
 : TAPE-NAME$ ( -- ptr u8 n )
    TAPE MKEY 0 NTAPE:SPAN@ IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n u:n :}
-   TXT st + u ;
+   0 TXT st + u ;
 
 : KEEP-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    a NAME-A !  u NAME-U ! ;
@@ -213,18 +210,19 @@ align
 
 \ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
 \ can never produce more than n/2 rows. A tape is a span of the shared mapping.
-\ The stream entry's source is a whole file tail, so the count is taken against
-\ the unit's text ceiling too: a scan longer than that is E-NFEED-TEXT before a
-\ row of it is appended, which makes it the real bound on what one tape can hold.
 : TAPE-ROOM ( -- n )
-   SRC$ nip TEXT-CAP min 2 / 1 max ;
+   SRC$ nip 2 / 1 max ;
 
+\ TXT is reserved to the source's length and that length is the unit's text
+\ ceiling, so a scan never outgrows its copy.
 : RECORD ( -- n )
+   SRC$ nip 1 max {: cap:n :}
+   cap TXT-RESERVE
    CC BB IR-BUILD:MODULE-KEY TAPE-ROOM NTAPE:NEW {: tp:IR-ARENA:arena :}
    M-DOES @ 0<> if
-      CC BB tp TXT TEXT-CAP SRC$ M-DOES @ NFEED:BEGIN-DOES-UNIT
+      CC BB tp 0 TXT cap SRC$ M-DOES @ NFEED:BEGIN-DOES-UNIT
    else
-      CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+      CC BB tp 0 TXT cap NFEED:BEGIN-UNIT
    then
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
@@ -452,7 +450,7 @@ $20 constant NAME-END
 : FIXED-NAME$ ( -- ptr u8 n )
    M-FIXED-REC @ 0 >= if M-FIXED-REC @ XREF-REC XREF-NAME$ exit then
    M-FIXED @ COMP-BODY:defer COMP-BODY:EQ if
-      data-base BODYBUF-OFF + BYTE-VIEW
+      data-base BODY-TEXT:BASE-CELL + 0 ptr-field @
       data-base BODYLEN-CELL + @ {: b:ptr len:n :}
       0 begin
          dup len < if b over + c@ dup NAME-END <> swap 0<> and else false then
@@ -464,11 +462,11 @@ $20 constant NAME-END
 
 : FIXED-TAPE ( -- )
    FIXED-NAME$ {: a:ptr u:n :}
-   u TEXT-CAP > if E-COMP-TEXT throw then
-   a TXT u BYTE-COPY
+   u 1 max TXT-RESERVE
+   a 0 TXT u BYTE-COPY
    CC BB IR-BUILD:MODULE-KEY 1 NTAPE:NEW {: tp:IR-ARENA:arena :}
-   CC BB TXT u IR-BUILD:ADD-SOURCE {: sid:IR-ID:ir-source-id :}
-   CC BB TXT u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
+   CC BB 0 TXT u IR-BUILD:ADD-SOURCE {: sid:IR-ID:ir-source-id :}
+   CC BB 0 TXT u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
    CC BB tp
    BB sid 0 u IR-BUILD:ADD-SPAN sym NTAPE-MODE:INTERPRETING NTAPE:NAME-TOKEN
    NTAPE:PUSH-INTO drop
@@ -639,19 +637,17 @@ INSTALL-FORGET
       DEF-GEN-BEFORE @ - DEF-GEN-DELTA !
    IR-BUILD:HISTORY DEF-BUILD-BEFORE @ - DEF-BUILD-DELTA ! ;
 
-: LENGTH-CK ( -- )
-   SRC$ nip TEXT-CAP > if E-COMP-TEXT throw then ;
-
 \ The refused token and its byte: the closing `;` when the body left a construct
 \ open, else the elaborator's, at its TXT offset (TXT holds SRC$ byte for byte).
+\ A fixed body stages an empty SRC$ and spells its name in TXT, which a longer
+\ name may move: an offset past SRC$ has no byte there, so it is NULL-PTR.
 : REFUSED-AT ( -- ptr u8 n ptr u8 )
    M-AT-CLOSE @ if CLOSE$ over exit then
    NELAB:REFUSED-OFF {: off:n :}
-   off 0 < if NULL-PTR else SRC$ drop off + then {: p:ptr :}
+   off 0 <  off SRC$ nip >= or if NULL-PTR else SRC$ drop off + then {: p:ptr :}
    NELAB:REFUSED$ p ;
 
 : RUN ( -- )
-   LENGTH-CK
    CHECKER-OWNER:RESET-REPORT
    1 M-OPEN !
    0 M-RC !
@@ -682,7 +678,8 @@ private
 : FIXED-LEASED ( n COMP:body NLEASE:lease -- )
    {: val:n kind:COMP:body lease:NLEASE:lease :}
    lease M-LEASE !
-   TXT 0 STAGE
+   1 TXT-RESERVE
+   0 TXT 0 STAGE
    kind M-FIXED ! val M-FIXED-VAL !
    RUN ;
 

@@ -141,6 +141,32 @@ create ERR CAP allot
    s" snap-rebase whole-band straddle is rejected" T-LABEL
    s" TRUSTED: PST-RAW ( -- ) data-base TXN-STATE-OFF 8 - + data-base DATA-START 8 + + 0 0 0 0 snap-rebase ; PST-RAW" REJECTS ;
 
+\ An ordinary definition whose body text passes 20000 bytes: PST-LONG calls a
+\ word with a 59-byte name 350 times, 60 bytes of text each with its separator.
+\ The child's check spells the count.
+$6000 constant LONG-CAP
+create LONG-SRC LONG-CAP allot
+variable LONG-U
+: LONG+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 ?do a i + c@ LONG-SRC LONG-U @ + i + c! loop
+   LONG-U @ u + LONG-U ! ;
+: STEP$ ( -- ptr u8 n )
+   s" PST-ADD-ONE-TO-THE-COUNT-OF-STEPS-IN-A-LONG-DEFINITION-BODY" ;
+: LONG$ ( -- ptr u8 n )
+   0 LONG-U !
+   s" : " LONG+  STEP$ LONG+  s"  ( n -- n ) 1 + ; : PST-LONG ( -- n ) 0" LONG+
+   350 0 ?do s"  " LONG+  STEP$ LONG+ loop
+   s"  ; : PST-RUN ( -- ) PST-LONG 350 <> if 1 throw then ; PST-RUN" LONG+
+   LONG-SRC LONG-U @ ;
+
+\ The body text grows with the definition, and the guard follows it: the store
+\ an immediate word makes into the text captured so far, at the address the
+\ handle holds, is rejected, and a definition past 20000 bytes of text runs.
+: TEST-BODY-TEXT ( -- )
+   S\" TRUSTED: PST-POKE ( -- ) 0 data-base BODY-TEXT:BASE-CELL + 0 ptr-field @ c! ; immediate s\" PST-POKE\" 0 parse-imm : PST-HOST ( -- ) PST-POKE ;" REJECTS
+   LONG$ ACCEPTS ;
+
 public
 
 : RUN ( -- )
@@ -154,6 +180,7 @@ public
    TEST-BOUNDARY
    TEST-HULL-EDGE
    TEST-SNAP-REBASE
+   TEST-BODY-TEXT
    T-REPORT
    s" protection-span: ok" type cr ;
 

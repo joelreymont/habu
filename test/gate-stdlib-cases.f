@@ -59,6 +59,10 @@ SUITE checker-rollback-signature
    test/checker-rollback-signature-suite.f
 ;SUITE
 
+SUITE signature-nesting
+   test/signature-nesting.f
+;SUITE
+
 SUITE memory-guarded-failure
    test/memory-guarded-failure.f
 ;SUITE

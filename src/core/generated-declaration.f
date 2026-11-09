@@ -303,10 +303,11 @@ public
 
 \ RP-CLAIM ( name body -- ): install one declaration's lexed token stream. It
 \ never copies and cannot see a token already dropped, so a caller's buffer
-\ builder must raise when the declaration does not fit, never truncate
-\ (verify-source.f BODY-APPEND throws E-VS-BODY-CAP, check-core.f CHK-VREC-ROOM
-\ E-FS-CAPACITY). Comments pass through raw: the live keyword reads `\` or `(`
-\ as an ordinary token and refuses it, so replay must too.
+\ builder must hold the whole declaration or raise, never truncate
+\ (verify-source.f BODY-APPEND grows its buffers to every run, check-core.f
+\ CHK-VREC-ROOM raises E-FS-CAPACITY). Comments pass through raw: the live
+\ keyword reads `\` or `(` as an ordinary token and refuses it, so replay must
+\ too.
 : RP-CLAIM ( ptr u8 n ptr u8 n -- )
    RP-ACTIVE? IF 2drop 2drop E-REPLAY-BUSY throw THEN
    RP-BODY!  RP-HEAD!

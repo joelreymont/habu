@@ -25,10 +25,6 @@ using AOT-SHADOW
 \ The rc of a capture this link cannot place, the capture's own refusals', and
 \ of an output it cannot write, as the engine's drivers refuse theirs.
 74 constant REFUSE-RC
-\ An emission's header: the magic and the function count, then per function its
-\ body offset, size, inputs, outputs, frame variant and a pad byte.
-8 constant HEAD-BYTES
-12 constant ROW-BYTES
 
 DYNAMIC-BUFFER ROUTINE n             \ a shipped row -> the shadow row filing its routine
 DYNAMIC-BUFFER LIVE n                \ a shipped row reachable at runtime
@@ -43,6 +39,7 @@ DYNAMIC-BUFFER IMG u8                \ the data image
 variable K0                          \ WKERNEL's first row
 variable EXEC-H
 variable CATCH-H
+variable FINALLY-H
 variable FOUND                       \ the function a name reached
 variable VAL-AT                      \ the next cell value in the capture's values
 
@@ -58,42 +55,36 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 \ function's body, which its header row places and gives its lanes and frame
 \ variant. Each function joins the link with an adapter in the table, the slot
 \ that is its xt (src/arch/wasm/dynamic.f).
-: FUNS ( ptr u8 -- n ) 4 + LE:U32@ ;
-
-: HEAD ( ptr u8 n -- ptr u8 )
-   {: p:ptr k:n :}
-   p HEAD-BYTES + k ROW-BYTES * + ;
-
-: BODY-AT ( ptr u8 n -- n ) HEAD LE:U32@ ;
+: BODY-AT ( ptr u8 n -- n ) WENC:ROW@ 2drop 2drop ;
 
 \ The function of emission p whose body starts at offset v, the bodies ascending.
 : FUN-AT ( ptr u8 n -- n )
    {: p:ptr v:n :}
-   0  p FUNS 0 ?do  p i BODY-AT v < if 1+ then  loop ;
+   0  p WENC:FUNS@ 0 ?do  p i BODY-AT v < if 1+ then  loop ;
 
 \ The function of emission p whose body holds offset v.
 : HOLDER ( ptr u8 n -- n )
    {: p:ptr v:n :}
-   -1  p FUNS 0 ?do  p i BODY-AT v <= if 1+ then  loop ;
+   -1  p WENC:FUNS@ 0 ?do  p i BODY-AT v <= if 1+ then  loop ;
 
 : FUNCTION+ ( ptr u8 n WLINK:origin -- n )
    {: p:ptr k:n o:WLINK:origin :}
-   p k HEAD {: h:ptr :}
-   p h LE:U32@ +  h 4 + LE:U32@  h 8 + c@  h 9 + c@  h 10 + c@  o WLINK:FUNCTION+ ;
+   p k WENC:ROW@ {: off:n size:n in:n out:n fv:n :}
+   p off +  size in out fv  o WLINK:FUNCTION+ ;
 
 : ADAPTER+ ( ptr u8 n n -- )
    {: p:ptr k:n f:n :}
-   p k HEAD {: h:ptr :}
+   p k WENC:ROW@ drop 2swap 2drop {: in:n out:n :}
    f 1+ SLOTS-RESERVE
-   f  h 8 + c@  h 9 + c@  WDYN:ADAPTER+  f SLOTS ! ;
+   f in out WDYN:ADAPTER+  f SLOTS ! ;
 
 \ Emission p's functions, numbered from its first, each with its adapter;
 \ answers the first.
 : EMISSION+ ( ptr u8 WLINK:origin -- n )
    {: p:ptr o:WLINK:origin :}
    p 0 o FUNCTION+ {: f0:n :}
-   p FUNS 1 ?do  p i o FUNCTION+ drop  loop
-   p FUNS 0 ?do  p i f0 i + ADAPTER+  loop
+   p WENC:FUNS@ 1 ?do  p i o FUNCTION+ drop  loop
+   p WENC:FUNS@ 0 ?do  p i f0 i + ADAPTER+  loop
    f0 ;
 
 \ A record enters its routine's first function. A `does>` definer cannot link:
@@ -143,10 +134,6 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 \ The function shipped record k enters.
 : ENTERS ( n -- n ) ROUTINE-OF FIRST @ ;
 
-\ A call, code literal or code cell naming a word of the engine's own prefix
-\ reaches execute's or catch's runtime function, or what WKERNEL:PROVIDER
-\ answers: a row, or a word of src/arch/wasm/kernel-words.f, which the window
-\ must ship.
 \ The public wid of the shipped package named, or -1.
 : PKG-WID ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -181,12 +168,13 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    k 0 < if a u UNSHIPPED then
    k ;
 
-\ The function an engine-prefix name reaches: execute's or catch's runtime
-\ function, or the row or the shipped word WKERNEL's map answers.
+\ The function an engine-prefix name reaches: execute's, catch's or finally's
+\ runtime function, a WKERNEL row, or a shipped word of kernel-words.f.
 : REACH ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u s" execute" STR=CI if EXEC-H @ exit then
    a u s" catch" STR=CI if CATCH-H @ exit then
+   a u s" finally" STR=CI if FINALLY-H @ exit then
    a u WKERNEL:PROVIDER MATCH WKERNEL:provider
       row OF K0 @ + ENDOF
       word OF SHIPPED ENTERS ENDOF
@@ -210,10 +198,11 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    code throw ;
 
 \ Resolve an engine-prefix name before functions have link handles. A mapped
-\ kernel word is a captured root; a kernel row or execute/catch is not.
+\ kernel word is a captured root; a kernel row or a runtime function is not.
 : MARK-ASK ( ptr u8 n -- ptr u8 n )
    2dup s" execute" STR=CI if exit then
    2dup s" catch" STR=CI if exit then
+   2dup s" finally" STR=CI if exit then
    2dup WKERNEL:PROVIDER MATCH WKERNEL:provider
       row OF drop ENDOF
       word OF SHIPPED MARK-REC ENDOF
@@ -236,12 +225,12 @@ variable VAL-AT                      \ the next cell value in the capture's valu
    loop
    s" " ;
 
-\ WKERNEL's rows (src/arch/wasm/kernel.f) and execute's and catch's runtime
-\ functions join every link. A row's call names a host entry, which becomes the
-\ name of the engine word it enters before the map is asked. A runtime function
-\ has an adapter's type and takes the stack as it stands, so it is its own table
-\ slot, the xt a code literal or cell of execute or catch holds. map-anon's row
-\ is the callee of the module's reserve export.
+\ WKERNEL's rows (src/arch/wasm/kernel.f) and the runtime functions of execute,
+\ catch and finally join every link. A row's call names a host entry, which
+\ becomes the name of the engine word it enters before the map is asked. A
+\ runtime function has an adapter's type and takes the stack as it stands, so
+\ it is its own table slot, the xt a code literal or cell of execute, catch or
+\ finally holds. map-anon's row is the callee of the module's reserve export.
 \ Runtime function h in the table's next slot; answers h.
 : RUNTIME+ ( n -- n )
    {: h:n :}
@@ -264,6 +253,7 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 : KERNEL+ ( -- )
    WDYN:EXECUTE+ RUNTIME+ EXEC-H !
    WDYN:CATCH+ RUNTIME+ CATCH-H !
+   WDYN:FINALLY+ RUNTIME+ FINALLY-H !
    WENC:BYTES WLINK-ORIGIN:KERNEL EMISSION+ K0 !
    WENC:CALL-SITES 0 ?do  i KERNEL-CALL+  loop
    s" map-anon" NAMED WLINK:RESERVE! ;
@@ -425,8 +415,7 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 : ENTRY ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u SHIPPED {: k:n :}
-   k ROUTINE-OF EMISSION 0 HEAD {: h:ptr :}
-   h 8 + c@  h 9 + c@  or 0<> if a u CELLS-ENTRY then
+   k ROUTINE-OF EMISSION 0 WENC:ROW@ drop 2swap 2drop  or 0<> if a u CELLS-ENTRY then
    k ENTERS ;
 
 : UNWRITABLE ( ptr u8 n -- )

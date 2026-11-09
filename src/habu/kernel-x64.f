@@ -318,14 +318,18 @@ private
 
 \ (PROT-SPAN) ( rdi = address, rsi = byte length ): the twin of habu1.f
 \ GUARD-SPAN. It passes while the friend latch is open and for an empty span;
-\ a span that wraps or meets a band exits SEAL-VIOLATION. The hull test skips
-\ the band walk for a span outside [DATA-BANDS:LO, DATA-BANDS:HI), which is
-\ every DP heap address. Registered as an engine helper, as habu1.f
-\ EMIT-PROT-SPAN registers the ARM64 body, so a compiled word that reaches it
-\ by a direct call is carried and relocated with it.
+\ a span that wraps, meets a band or meets the body text block exits
+\ SEAL-VIOLATION. The hull test skips the band walk for a span outside
+\ [DATA-BANDS:LO, DATA-BANDS:HI), which is every DP heap address. The block,
+\ [BODY-TEXT:BASE-CELL, + BODY-TEXT:SIZE-CELL), is read on every call and
+\ tested last; SIZE 0 is no block. It clobbers rax and rdx. Registered as an
+\ engine helper, as habu1.f EMIT-PROT-SPAN registers the ARM64 body, so a
+\ compiled word that reaches it by a direct call is carried and relocated
+\ with it.
 : SPAN-HELPER, ( -- )
    SPAN-LBL {: start:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: end:label trap:label ok:label :}
+   X64CODE:LBL X64CODE:LBL {: live:label inside:label :}
    s" (PROT-SPAN)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start X64CODE:LBL,
    RAX SHARED-DATA,
@@ -336,11 +340,26 @@ private
    RDX RDI ASM-SINK ENC-CMP-RR  C-B trap JCC,          \ unsigned wrap
    RAX SHARED-DATA,
    RAX RAX DATA-BANDS:HI MEM-OFF ASM-SINK ENC-LEA
-   RDI RAX ASM-SINK ENC-CMP-RR  C-AE ok JCC,           \ start >= hull end
+   RDI RAX ASM-SINK ENC-CMP-RR  C-AE live JCC,         \ start >= hull end
    RAX SHARED-DATA,
    RAX RAX DATA-BANDS:LO MEM-OFF ASM-SINK ENC-LEA
-   RDX RAX ASM-SINK ENC-CMP-RR  C-BE ok JCC,           \ end <= hull start
+   RDX RAX ASM-SINK ENC-CMP-RR  C-BE live JCC,         \ end <= hull start
    trap BANDS,
+   live X64CODE:LBL,
+   RAX SHARED-DATA,
+   RAX RAX BODY-TEXT:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RAX ASM-SINK ENC-CMP-RR  C-BE ok JCC,           \ end <= block start
+   RDI RAX ASM-SINK ENC-CMP-RR  C-AE inside JCC,
+   RAX SHARED-DATA,                                    \ it starts below the block
+   RAX RAX BODY-TEXT:SIZE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE trap JCC,
+   ok JMP,
+   inside X64CODE:LBL,
+   RDX RDI ASM-SINK ENC-MOV-RR
+   RDX RAX ASM-SINK ENC-SUB-RR                         \ start - block start
+   RAX SHARED-DATA,
+   RAX RAX BODY-TEXT:SIZE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RAX ASM-SINK ENC-CMP-RR  C-B trap JCC,
    ok X64CODE:LBL,
    ASM-SINK ENC-RET
    trap X64CODE:LBL,
@@ -5404,24 +5423,27 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX WIDN-CELL CELL!, ;
 
 \ habu1.f EMIT-BCAP's BODY-SOURCE row for the run rsi/rcx landing at BODYLEN
-\ (rax). It keeps rax, rcx and rsi, and clobbers rdi and r8-r11.
+\ (rax), in the block a run has room in: row i is at BODY-TEXT:BASE-CELL +
+\ BODY-TEXT:CAP-CELL + 16i, BODY-TEXT:ROWS-CELL counts them. It keeps rax,
+\ rcx, rdx and rsi, and clobbers rdi and r8-r11.
 : BODY-ROW, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: pop:label put:label seed:label none:label src:label rowed:label :}
    RCX RCX ASM-SINK ENC-TEST-RR  C-E rowed JCC,
-   R8 DATA-REG BODY-SOURCE:OFF MEM-OFF ASM-SINK ENC-LEA
-   R9 R8 MEM-AT ASM-SINK ENC-MOV-RM   \ r8 = the band, r9 = its rows
+   R8 BODY-TEXT:BASE-CELL CELL@,
+   R8 DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM
+   R9 BODY-TEXT:ROWS-CELL CELL@,      \ r8 = the rows, r9 = their count
    pop X64CODE:LBL,
    R9 R9 ASM-SINK ENC-TEST-RR  C-E put JCC,
    R10 R9 ASM-SINK ENC-MOV-RR  R10 4 >IMM8 ASM-SINK ENC-SHL-RI8
-   R10 R8 R10 1 CELL negate MEM-IDX ASM-SINK ENC-MOV-RM   \ the last row's text offset
+   R10 R8 R10 1 2 cells negate MEM-IDX ASM-SINK ENC-MOV-RM   \ the last row's text offset
    R10 RAX ASM-SINK ENC-CMP-RR  C-B put JCC,
    R9 ASM-SINK ENC-DEC  pop JMP,
    put X64CODE:LBL,
    R10 R9 ASM-SINK ENC-MOV-RR  R10 4 >IMM8 ASM-SINK ENC-SHL-RI8
-   R10 R8 ASM-SINK ENC-ADD-RR                              \ the new row is at r10 + 8
-   RAX R10 CELL MEM-OFF ASM-SINK ENC-MOV-MR
-   R9 ASM-SINK ENC-INC  R9 R8 MEM-AT ASM-SINK ENC-MOV-MR
+   R10 R8 ASM-SINK ENC-ADD-RR                              \ the new row is at r10
+   RAX R10 MEM-AT ASM-SINK ENC-MOV-MR
+   R9 ASM-SINK ENC-INC  R9 BODY-TEXT:ROWS-CELL CELL!,
    R9 SRCLOC:INB-CELL CELL@,  R11 INE-CELL CELL@,
    \ The first run is the name, which a head seeds.
    RAX RAX ASM-SINK ENC-TEST-RR  C-E seed JCC,
@@ -5435,24 +5457,113 @@ $3A constant NAME-COLON                \ a qualified name's separator
    none X64CODE:LBL,
    RDI BODY-SOURCE:NONE IMM64,
    src X64CODE:LBL,
-   RDI R10 2 cells MEM-OFF ASM-SINK ENC-MOV-MR
+   RDI R10 CELL MEM-OFF ASM-SINK ENC-MOV-MR
    rowed X64CODE:LBL, ;
 
+\ The status a body text that cannot grow ends with, or the code it throws
+\ under a handler: habu2.f EM-BODY-GROW-DIE's x0.
+71 constant GROW-RC
+\ A capacity doubled to 2^59 is refused before its map: 17 * 2^58 stays below
+\ 2^63, so a block's size never wraps.
+59 constant GROW-LIMIT-SHIFT
+: GROW-HEAD$ ( -- ptr u8 n ) s" hb: cannot grow definition body text to " ;
+: GROW-UNIT$ ( -- ptr u8 n ) s"  bytes" ;
+
+variable GROW-CELL
+: GROW-LBL ( -- label ) GROW-CELL @ >LABEL ;
+
+\ GROW-LBL ( rdx = the text length the block must hold ): the growth of
+\ src/habu/layout.f BODY-TEXT, modelled on ADDRESS-CELLS's. The capacity is
+\ BODY-TEXT:FIRST-CAP doubled until it holds rdx; it maps 17 times that,
+\ copies BODYLEN text bytes to the new base and the rows to new base + new
+\ capacity, unmaps the old block when there was one, rebases TCSIG-A when it
+\ lies in the old text and stores BASE, CAP and SIZE. A refused map
+\ writes GROW-HEAD$, the capacity and GROW-UNIT$ on fd 2, then ends through
+\ COMPILE-DIE-LBL with GROW-RC, which names the place and throws it under a
+\ handler, else exits with it; the old block stays as it was. It keeps rax,
+\ rcx, rdx and rsi, and clobbers rdi and r8-r11.
+: GROW-HELPER, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: size:label sized:label kept:label fresh:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: nomap:label fail:label head:label unit:label :}
+   GROW-LBL X64CODE:LBL,
+   RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH
+   RDX ASM-SINK ENC-PUSH  RSI ASM-SINK ENC-PUSH
+   R9 BODY-TEXT:FIRST-CAP IMM32,
+   size X64CODE:LBL,
+   R9 RDX ASM-SINK ENC-CMP-RR  C-AE sized JCC,
+   R9 1 >IMM8 ASM-SINK ENC-SHL-RI8
+   R10 R9 ASM-SINK ENC-MOV-RR  R10 GROW-LIMIT-SHIFT >IMM8 ASM-SINK ENC-SHR-RI8
+   R10 R10 ASM-SINK ENC-TEST-RR  C-NE fail JCC,
+   size JMP,
+   sized X64CODE:LBL,
+   R10 R9 17 >IMM8 ASM-SINK ENC-IMUL-RRI8
+   R9 ASM-SINK ENC-PUSH  R10 ASM-SINK ENC-PUSH      \ [rsp] the size, [rsp+8] the capacity
+   RDI ZERO-REG,  RSI R10 ASM-SINK ENC-MOV-RR
+   RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
+   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
+   NR-MMAP SYS,  C-B nomap JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E nomap JCC,
+   R8 RAX ASM-SINK ENC-MOV-RR                       \ r8 = the new base
+   RDI R8 ASM-SINK ENC-MOV-RR
+   RSI BODY-TEXT:BASE-CELL CELL@,  RCX BODYLEN-CELL CELL@,
+   COPY-BYTES,                                      \ the text
+   RDI R8 ASM-SINK ENC-MOV-RR  RDI RSP CELL MEM-OFF ASM-SINK ENC-ADD-RM
+   RSI BODY-TEXT:BASE-CELL CELL@,
+   RSI DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM
+   RCX BODY-TEXT:ROWS-CELL CELL@,  RCX 4 >IMM8 ASM-SINK ENC-SHL-RI8
+   COPY-BYTES,                                      \ the rows
+   RDI BODY-TEXT:BASE-CELL CELL@,
+   RDI RDI ASM-SINK ENC-TEST-RR  C-E fresh JCC,
+   RSI BODY-TEXT:SIZE-CELL CELL@,
+   NR-MUNMAP SYS,
+   fresh X64CODE:LBL,
+   RAX TCSIG-A-CELL CELL@,  RDI BODY-TEXT:BASE-CELL CELL@,
+   RAX RDI ASM-SINK ENC-SUB-RR
+   RAX DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-CMP-RM  C-AE kept JCC,
+   RAX R8 ASM-SINK ENC-ADD-RR  RAX TCSIG-A-CELL CELL!,
+   kept X64CODE:LBL,
+   R8 BODY-TEXT:BASE-CELL CELL!,
+   RAX RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM  RAX BODY-TEXT:CAP-CELL CELL!,
+   RAX RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM  RAX BODY-TEXT:SIZE-CELL CELL!,
+   RSP 2 cells >IMM8 ASM-SINK ENC-ADD-RI8
+   RSI ASM-SINK ENC-POP  RDX ASM-SINK ENC-POP
+   RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
+   ASM-SINK ENC-RET
+   nomap X64CODE:LBL,
+   R9 RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   fail X64CODE:LBL,                                \ r9 = the capacity it tried
+   head GROW-HEAD$ nip STDERR-WRITE,
+   RAX R9 ASM-SINK ENC-MOV-RR  DIAG-U,
+   unit GROW-UNIT$ nip STDERR-WRITE,
+   RAX GROW-RC IMM32,  RAX ASM-SINK ENC-PUSH
+   COMPILE-DIE-LBL JMP,
+   head X64CODE:LBL,  GROW-HEAD$ TEXT,
+   unit X64CODE:LBL,  GROW-UNIT$ TEXT, ;
+
 \ body-append ( ptr u8 n -- ): habu2.f BODY-APPEND's twin, with BODY-ROW,;
-\ pass 2 re-runs a captured body and stores nothing.
+\ pass 2 re-runs a captured body and stores nothing. BODYLEN past the
+\ capacity and a length that wraps exit SEAL-VIOLATION; with no block, or
+\ none the run and its space fit, GROW-LBL grows it first.
 : BODY-APPEND-BODY ( -- )
-   X64CODE:LBL {: done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: done:label grow:label fits:label :}
    RCX POP,  RSI POP,                                 \ the count, the bytes
    RAX BODYLEN-CELL CELL@,
-   RAX BODYBUF-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-A SEAL-TRAP-LBL JCC,
-   RDX BODYBUF-CAP IMM32,
-   RDX RAX ASM-SINK ENC-SUB-RR                        \ rdx = the room left
-   RCX RDX ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
-   RDX P2-CELL CELL@,
-   RDX RDX ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   RAX DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-CMP-RM  C-A SEAL-TRAP-LBL JCC,
+   RDX RAX ASM-SINK ENC-MOV-RR
+   RDX RCX ASM-SINK ENC-ADD-RR  C-B SEAL-TRAP-LBL JCC,
+   RDX 1 >IMM8 ASM-SINK ENC-ADD-RI8  C-B SEAL-TRAP-LBL JCC,   \ the length past the space
+   R8 P2-CELL CELL@,
+   R8 R8 ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   R8 BODY-TEXT:BASE-CELL CELL@,
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E grow JCC,
+   RDX DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-CMP-RM  C-BE fits JCC,
+   grow X64CODE:LBL,  GROW-LBL CALL,
+   fits X64CODE:LBL,
    BODY-ROW,
-   RDX RAX RCX 1 1 MEM-IDX ASM-SINK ENC-LEA           \ the length past the space
-   RDI DATA-REG RAX 1 BODYBUF-OFF MEM-IDX ASM-SINK ENC-LEA
+   RDI BODY-TEXT:BASE-CELL CELL@,
+   RDI RAX ASM-SINK ENC-ADD-RR                        \ the run lands at BODYLEN
    COPY-BYTES,
    RAX STR-SPACE IMM32,
    0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
@@ -5593,7 +5704,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 \ Clobbers rax rcx rdx rsi.
 : PUSH-DREC-NAME, ( -- )
    X64CODE:LBL X64CODE:LBL {: scan:label done:label :}
-   RSI DATA-REG BODYBUF-OFF MEM-OFF ASM-SINK ENC-LEA
+   RSI BODY-TEXT:BASE-CELL CELL@,
    RCX ZERO-REG,
    RDX BODYLEN-CELL CELL@,
    scan X64CODE:LBL,
@@ -5821,8 +5932,10 @@ public
 \ def-create and def-defer, the tails of the engine's interpret-mode `create`
 \ and `defer`, refuse as those keywords do: the x86-64 kernel carries no
 \ interpreter. def-cast has a body: it publishes a cast's identity slot at CP
-\ and the pending record that names it.
+\ and the pending record that names it. GROW-LBL, which body-append calls,
+\ comes first.
 : DEFINITION, ( -- )
+   X64CODE:LBL GROW-CELL !  GROW-HELPER,
    s" namespace-record" [: NAMESPACE-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" namespace-private" [: NAMESPACE-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" alias-record" [: ALIAS-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID

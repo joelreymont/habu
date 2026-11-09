@@ -56,6 +56,8 @@ TYPED-VARIABLE JRT-WRITER JSON:writer
 93 constant JRT-RBRACK
 107 constant JRT-K
 120 constant JRT-X
+49 constant JRT-DIGIT-1
+50 constant JRT-DIGIT-2
 
 : JRT-NEAR ( r r -- bool )
    f- fabs 0.000001 f< ;
@@ -219,9 +221,9 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-RBRACE SB-APPEND-C JRT-SP SB-APPEND-C JRT-SP SB-APPEND-C
    SB$ ;
 
-\ Deep documents outgrow SB, so they are built in their own buffer: 40000
-\ levels of '[' and ']' fill it.
-80000 constant JRT-DEEP-CAP
+\ Deep documents outgrow SB, so they are built in their own buffer: two texts
+\ of 100000 levels around one digit fill it.
+400002 constant JRT-DEEP-CAP
 create JRT-DEEP-BUF JRT-DEEP-CAP allot
 
 : JRT-FILL ( n n n -- ) {: at:n count:n byte:n :}
@@ -231,6 +233,13 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    0 depth JRT-LBRACK JRT-FILL
    depth depth JRT-RBRACK JRT-FILL
    JRT-DEEP-BUF depth 2 * ;
+
+\ depth '[' around one digit byte, then depth ']', at offset at of the buffer.
+: JRT-DEEP-ONE$ ( n n n -- ptr u8 n ) {: at:n depth:n digit:n :}
+   at depth JRT-LBRACK JRT-FILL
+   at depth + 1 digit JRT-FILL
+   at depth + 1+ depth JRT-RBRACK JRT-FILL
+   JRT-DEEP-BUF at + depth 2 * 1+ ;
 
 : JRT-OPENS$ ( n -- ptr u8 n ) {: depth:n :}      \ depth '[' only
    0 depth JRT-LBRACK JRT-FILL
@@ -554,6 +563,78 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: s" [1]" JSON:READ-REPEATS? drop ;] E-JSON-READ-STATE TTHROWSQ
    [: s\" {\"a\":1," JSON:READ-REPEATS? drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
+: JRT-TEST-VALUE-EQ-SCALARS ( -- )
+   s" 1" s" 1.0" JSON:VALUE= TTRUE
+   s" 1" s" 1e0" JSON:VALUE= TTRUE
+   s" -0" s" 0" JSON:VALUE= TTRUE
+   s" 1" s" 2" JSON:VALUE= TFALSE
+   s\" \"a\"" s\" \"\\u0061\"" JSON:VALUE= TTRUE
+   s\" \"a\"" s\" \"b\"" JSON:VALUE= TFALSE
+   s" 1" s\" \"1\"" JSON:VALUE= TFALSE
+   s" null" s"  null " JSON:VALUE= TTRUE
+   s" null" s" false" JSON:VALUE= TFALSE
+   s" true" s" true" JSON:VALUE= TTRUE
+   s" true" s" false" JSON:VALUE= TFALSE ;
+
+: JRT-TEST-VALUE-EQ-ARRAYS ( -- )
+   s" []" s" [ ]" JSON:VALUE= TTRUE
+   s" []" s" {}" JSON:VALUE= TFALSE
+   s" [1,2]" s" [1.0, 2]" JSON:VALUE= TTRUE
+   s" [1,2]" s" [2,1]" JSON:VALUE= TFALSE
+   s" [1,2]" s" [1,2,3]" JSON:VALUE= TFALSE
+   s" [1,2,3]" s" [1,2]" JSON:VALUE= TFALSE ;
+
+: JRT-TEST-VALUE-EQ-OBJECTS ( -- )
+   s\" {\"a\":1,\"b\":[true,null]}" s\"  { \"b\" : [ true , null ] , \"a\" : 1 } "
+   JSON:VALUE= TTRUE
+   s" {}" s" { }" JSON:VALUE= TTRUE
+   s\" {\"\\u0061\":1}" s\" {\"a\":1}" JSON:VALUE= TTRUE
+   s\" {\"a\":[1,{\"b\":{\"c\":\"d\",\"e\":2}}]}"
+   s\" {\"a\":[1.0,{\"b\":{\"e\":2,\"c\":\"\\u0064\"}}]}" JSON:VALUE= TTRUE
+   s\" {\"a\":[1,{\"b\":{\"c\":\"d\",\"e\":2}}]}"
+   s\" {\"a\":[1,{\"b\":{\"c\":\"d\",\"e\":3}}]}" JSON:VALUE= TFALSE
+   s\" {\"a\":1,\"b\":2}" s\" {\"a\":1}" JSON:VALUE= TFALSE
+   s\" {\"a\":1}" s\" {\"a\":1,\"b\":2}" JSON:VALUE= TFALSE
+   s\" {\"a\":1,\"b\":2}" s\" {\"a\":1,\"c\":2}" JSON:VALUE= TFALSE ;
+
+\ A repeated key answers false on either side, in identical texts and when its
+\ copies are spelled differently.
+: JRT-TEST-VALUE-EQ-REPEATS ( -- )
+   s\" {\"a\":1,\"a\":1}" s\" {\"a\":1,\"b\":1}" JSON:VALUE= TFALSE
+   s\" {\"a\":1,\"b\":1}" s\" {\"a\":1,\"a\":1}" JSON:VALUE= TFALSE
+   s\" {\"a\":1,\"a\":1}" s\" {\"a\":1,\"a\":1}" JSON:VALUE= TFALSE
+   s\" [{\"a\":1,\"\\u0061\":1}]" s\" [{\"a\":1,\"a\":1}]" JSON:VALUE= TFALSE ;
+
+\ Both texts are read whole, so a malformed one throws its code whatever the
+\ comparison would answer.
+: JRT-TEST-VALUE-EQ-MALFORMED ( -- )
+   [: s\" {\"a\":1," s" {}" JSON:VALUE= drop ;] E-JSON-READ-EOF TTHROWSQ
+   [: s" 1 2" s" 1" JSON:VALUE= drop ;] E-JSON-READ-TRAILING TTHROWSQ
+   [: s" 1" s\" \"x\" x" JSON:VALUE= drop ;] E-JSON-READ-TRAILING TTHROWSQ ;
+
+\ Numbers compare by value on their lexemes, past STR>FLOAT's digit and exponent
+\ limits; an exponent past a signed cell, stated or scaled, throws.
+: JRT-TEST-VALUE-EQ-NUMBERS ( -- )
+   s" 0.0017453292519943296" s" 1.7453292519943296e-3" JSON:VALUE= TTRUE
+   s" 1e400" s" 10E399" JSON:VALUE= TTRUE
+   s" 100" s" 1e2" JSON:VALUE= TTRUE
+   s" 12" s" 1.2e1" JSON:VALUE= TTRUE
+   s" 0.01" s" 1e-2" JSON:VALUE= TTRUE
+   s" -0.0e5" s" 0" JSON:VALUE= TTRUE
+   s" 0.1" s" 0.10000000000000001" JSON:VALUE= TFALSE
+   s" 1" s" -1" JSON:VALUE= TFALSE
+   s" 1e2" s" 1e3" JSON:VALUE= TFALSE
+   s" 10" s" 1e0000000000000000000000001" JSON:VALUE= TTRUE
+   [: s" 1e9223372036854775807" s" 1" JSON:VALUE= drop ;] E-JSON-READ-NUMBER TTHROWSQ
+   [: s" 1e99999999999999999999" s" 1" JSON:VALUE= drop ;] E-JSON-READ-NUMBER TTHROWSQ ;
+
+\ 100000 arrays deep, past what recursion on the return stack survives,
+\ compare equal to themselves and unequal with the innermost digit changed.
+: JRT-TEST-VALUE-EQ-DEEP ( -- )
+   0 100000 JRT-DIGIT-1 JRT-DEEP-ONE$ 2dup JSON:VALUE= TTRUE
+   0 100000 JRT-DIGIT-1 JRT-DEEP-ONE$
+   200001 100000 JRT-DIGIT-2 JRT-DEEP-ONE$ JSON:VALUE= TFALSE ;
+
 \ Whether a one-string document decodes to the given bytes; the cursor must
 \ still be on the string, so the document ends at the next token.
 : JRT-EQ? ( ptr u8 n ptr u8 n -- bool )
@@ -787,6 +868,12 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    70 JRT-DEEP-REPEAT$ JSON:READ-REPEATS? TTRUE
    [: 70 JRT-DEEP-REPEAT$ 1- JSON:READ-REPEATS? drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
+\ 70 objects deep, both cursors and the outer lookup records grow stacks; the
+\ truncated text throws in the whole-text read.
+: JRT-DEEP-VALUE-EQ ( -- )
+   70 JRT-NEST-OBJ$ 2dup JSON:VALUE= TTRUE
+   [: 70 JRT-NEST-OBJ$ 1- 2dup JSON:VALUE= drop ;] E-JSON-READ-EOF TTHROWSQ ;
+
 : JRT-TEST-DEEP ( -- )
    s" nesting at and past the inline stack parses" T-LABEL
    [: JRT-DEEP-EDGES ;] JRT-RELEASES
@@ -805,7 +892,9 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s" a record holding a leftover parses again and nothing stays mapped" T-LABEL
    [: JRT-ABANDON-REINIT ;] JRT-RELEASES
    s" READ-REPEATS? past 64 levels releases both stacks, a throw included" T-LABEL
-   [: JRT-DEEP-REPEATS ;] JRT-RELEASES ;
+   [: JRT-DEEP-REPEATS ;] JRT-RELEASES
+   s" VALUE= past 64 levels releases every record's stack, a throw included" T-LABEL
+   [: JRT-DEEP-VALUE-EQ ;] JRT-RELEASES ;
 
 : JRT-BAD-NEGATIVE-SOURCE ( -- )
    JRT-A s" 0" drop -1 JSON:READ-INIT JSON:READ-CLOSE ;
@@ -1114,6 +1203,13 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-TEST-FIND-ANCHOR
    JRT-TEST-FIND-MISUSE
    JRT-TEST-REPEATS
+   JRT-TEST-VALUE-EQ-SCALARS
+   JRT-TEST-VALUE-EQ-ARRAYS
+   JRT-TEST-VALUE-EQ-OBJECTS
+   JRT-TEST-VALUE-EQ-REPEATS
+   JRT-TEST-VALUE-EQ-MALFORMED
+   JRT-TEST-VALUE-EQ-NUMBERS
+   JRT-TEST-VALUE-EQ-DEEP
    JRT-TEST-STR-EQ
    JRT-TEST-STR-EQ-KEY
    JRT-TEST-STR-EQ-MISUSE

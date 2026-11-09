@@ -10,7 +10,7 @@ Problem: since 05113ade a FINAL row's run-word arm is `<final> OF construct <sta
 
 Probes (were /tmp/phil-fsm-final-review/p/; text here): deep.f = a machine `DEFINE HOLD ( ptr n ) hold tick / IN go SENSE / once - >done / FINAL done REPEAT-END ;DEFINE` with `: REPEAT-END ( bool ptr n -- bool ) {: f:bool c:ptr :} 1 c +! c @ 3 >= f and ;`; twin.f = the same machine with line `once TWIN >done`, `: TWIN ( ptr n ptr n -- ptr n ) {: x:ptr y:ptr :} 1 x +! y ;` and `FINAL done -`.
 
-Candidate (review, untested): DEFINE also writes `: <NAME>/<final> ( <ctx> -- ) <ACTION> ;` per FINAL row and calls it last in the arm, and an IN line's action likewise through a word with the declared `( <ctx> -- )` effect, as IN rows' `<NAME>/<state>` words already declare theirs. This ADDS GENERATED WORDS to the caller's package, a public-surface change: it needs a design and Joel's approval before work.
+Candidate (review, untested): DEFINE also writes `: <NAME>/<final> ( <ctx> -- ) <ACTION> ;` per FINAL row and calls it last in the arm, and an IN line's action likewise through a word with the declared `( <ctx> -- )` effect, as IN rows' `<NAME>/<state>` words already declare theirs. This adds generated words to the caller's package. Approved 2026-11-09 (DECISIONS.md, Language and checker): a generated NAME/<final> ( ctx -- ) word per FINAL row, called last in the arm; designed together with habu-generate-name-step-52f37768 under parent habu-fsm-stepping-from-c8625faf.
 
 Acceptance: deep.f and twin.f fail the load (rc 70 under evaluate-closed) with the checker naming the action; every fsm-test.f case, including FAILS (a FINAL action that always throws), still passes; docs/forth.md states the generated words.
 

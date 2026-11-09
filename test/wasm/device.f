@@ -14,7 +14,6 @@ require src/arch/wasm/profile.f
 require src/arch/wasm/link.f
 require src/arch/wasm/encode.f
 require src/arch/wasm/kernel.f
-require src/lib/le.f
 require test/wasm/harness.f
 require test/wasm/w03.f
 
@@ -153,17 +152,14 @@ variable SITES
    {: f:n :}
    SITES @ 0 ?do  f  i SITE-AT @  i SITE-TO @  WLINK:CALL+  loop ;
 
-: HEADER ( n n -- ptr u8 )
-   {: k:n off:n :}
-   WENC:BYTES 8 + k 12 * + off + ;
+: ROW+ ( n -- )
+   {: k:n :}
+   WENC:BYTES k WENC:ROW@ {: off:n size:n in:n out:n fv:n :}
+   WENC:BYTES off +  size in out fv  WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ drop ;
 
 : ROWS+ ( -- )
    WKERNEL:ENCODE
-   6 0 ?do
-      WENC:BYTES i WENC:FUNCTION-OFFSET@ +  i 4 HEADER LE:U32@
-      i 8 HEADER c@  i 9 HEADER c@  i 10 HEADER c@
-      WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ drop
-   loop ;
+   6 0 ?do  i ROW+  loop ;
 
 : KERNEL+ ( -- )
    WLINK:RESET

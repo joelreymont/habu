@@ -857,11 +857,7 @@ default arm, so the checker fails the load, 70 under `evaluate-closed`, for a
 row missing an input, an unknown `>state`, a state with neither an `IN` nor a
 `FINAL` row, and a word with the wrong effect; for a row naming its own
 ENUM, that covers a row missing one of its inputs, a line for a tag outside
-it and a SENSE answering another ENUM. Each row word and the run word
-is one definition, so a row's inputs and the machine's states are bounded by
-the engine's definition body-text ceiling ([Engine limits ordinary source
-reaches](#engine-limits-ordinary-source-reaches)); past it the load fails with
-`hb: definition body text full`. The table's own grammar is
+it and a SENSE answering another ENUM. The table's own grammar is
 `FSM:E-SYNTAX`: the source ending before `;DEFINE`, a header not `( … )`, a
 line before the first `IN` or `FINAL`, a row cut short by `IN`, `FINAL` or
 `;DEFINE`, a row with no line, a `(` after SENSE not followed by one name
@@ -1939,13 +1935,11 @@ backend answers alike.
 
 These ceilings are reachable from plain Habu rather than a runaway. Each
 refuses by name with the count it saw and the ceiling, and none truncates; the
-ceiling is a named constant beside the code that enforces it.
+ceiling is a named constant beside the code that enforces it. A definition's
+captured text and its name have no ceiling: they grow with the definition, and
+a refused map ends the run, rc 71, with `hb: cannot grow definition body text
+to <n> bytes`.
 
-- **A definition's captured source text**: every token of a body (name, stack
-  comment, words, string literals with closing quote) plus one separator each.
-  Past it: `hb: definition body text full at <cap> bytes: <name> needs
-  <count>`, catchable inside `evaluate`. Move long literals into words of their
-  own. It is the only bound on a definition's name.
 - **One REPL line.** A longer line is refused, `hb: repl line over <cap> bytes:
   <length> typed`, and read again, never truncated, evaluated or saved to
   history. Load long definitions from a file.
@@ -1970,8 +1964,14 @@ ceiling is a named constant beside the code that enforces it.
   holds it. Past it the definition is uncheckable: `E-UNCHECKABLE`, `effect too
   deep to record (depth <depth>, at most <cap>)`. A `trust`, `defer` or
   `TRUSTED:` row that deep is `E-BAD-STORED-SIGNATURE` under
-  `fix_signature_size`, with the same reason. Keep bulk values in a buffer, not
-  on the stack.
+  `fix_signature_size`, with the same reason, and a local's type that deep
+  `E-BAD-SIGNATURE` under `fix_signature_size`. Keep bulk values in a buffer,
+  not on the stack, and name an inner callback's effect in a word of its own.
+- **Binders nested in one signature**: at most 32 `forall<…>` binders inside
+  one another. A 33rd is refused, `E-BAD-SIGNATURE` under `fix_signature_size`,
+  `more than 32 nested binders at '<token>'`; a `trust`, `defer` or `TRUSTED:`
+  row is `E-BAD-STORED-SIGNATURE` with the same reason. Name an inner
+  callback's binders in a word of its own.
 - **A definition's input row**: declared or inferred, a wider row makes the
   definition uncheckable: `E-UNCHECKABLE`, `input row too wide to record
   (<cells> cells, at most <cap>)`. A `RECURSE` in a body declared that wide is
