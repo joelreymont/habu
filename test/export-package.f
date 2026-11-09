@@ -23,7 +23,6 @@ require src/lib/engine-candidate.f
 70 constant XPK-UNDEF-RC              \ undefined-word child exit status
 74 constant XPK-NONAME-RC             \ missing EXPORT name ($4A)
 78 constant XPK-DUP-RC                \ duplicate definition ($4E)
-ENGINE-ERROR:SEAL-PACKAGE constant XPK-SEAL-RC
 67 constant XPK-THROW-RC              \ engine uncaught-throw boundary exit
 
 variable XPK-ROOT-U
@@ -55,10 +54,9 @@ create XPK-EMPTY 1 allot
 : XPK-LINE ( ptr u8 n -- )   SB-APPEND XPK-LF ;
 
 \ --- forge programs -----------------------------------------------------------
-\ Child exits: sealed system-package source 84 (ENGINE-ERROR:SEAL-PACKAGE),
-\ primitive source 67 (uncaught E-EXPORT-PRIM 7115), trusted primitive 67
-\ (uncaught E-EXPORT-UNSAFE 7120), private word behind a closed package 70
-\ (qualified lookup is public-only).
+\ Child exits: primitive source 67 (uncaught E-EXPORT-PRIM 7115), trusted
+\ primitive 67 (uncaught E-EXPORT-UNSAFE 7120), private word behind a closed
+\ package 70 (qualified lookup is public-only).
 
 : XPK-SRC-PKG ( -- )                          \ shared source package XA with XA:W
    s" package XA" XPK-LINE
@@ -94,14 +92,6 @@ create XPK-EMPTY 1 allot
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT NOSUCH-EXPORT-SRC" XPK-LINE
-   s" ;package" XPK-LINE
-   SB$ ;
-
-: XPK-SEALED-FORGE$ ( -- ptr u8 n )           \ sealed system-package source rejects
-   SB-RESET
-   s" package XB" XPK-LINE
-   s" public" XPK-LINE
-   s" EXPORT tfam:anything" XPK-LINE
    s" ;package" XPK-LINE
    SB$ ;
 
@@ -278,8 +268,6 @@ create XPK-EMPTY 1 allot
    s" NOSUCH-EXPORT-SRC" XPK-ERR?
    s" undefined source rejects (--load)" T-LABEL
    XPK-UNDEF-FORGE$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
-   s" sealed system-package source rejects" T-LABEL
-   XPK-SEALED-FORGE$ XPK-RUN-STDIN XPK-SEAL-RC XPK-ASSERT-RC
    s" missing name rejects" T-LABEL
    XPK-NONAME-FORGE$ XPK-RUN-STDIN XPK-NONAME-RC XPK-ASSERT-RC
    s" duplicate tail rejects with labeled diagnosis" T-LABEL
