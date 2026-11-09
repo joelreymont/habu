@@ -12031,7 +12031,9 @@ variable PE-SPEC-I   variable PE-SPEC-J
 
 PTABLE-START
 
-PE-SPEC-REPLAY
+\ A copy loaded inside a build keeps the grammar alone: the product's own
+\ records carry its words' facts (CHECK:FACTS!), so it replays no hb row.
+data-base BOOT:IMAGE-BASE-CELL + @ 0= [if] PE-SPEC-REPLAY [then]
 
 \ The checker's grammar: the host loop's own words, which every program starts
 \ with, and the names KEYWORD-AXIOMS types. The engine holds no record for the
@@ -12078,6 +12080,9 @@ SYM-PRIM-END BUILD-SYM-END @ CELL-ROW+
 USIGS-USER-OFF UEND @ CELL-ROW+
 ;package
 
+\ hb's rows for the words loaded before the checker; a copy inside a build
+\ keeps the grammar alone (PE-SPEC-REPLAY's guard).
+data-base BOOT:IMAGE-BASE-CELL + @ 0= [if]
 PRIM: script-argc  PE-N PE-OUT PRIM;
 PRIM: script-argv$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: path0    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
@@ -12094,6 +12099,9 @@ PRIM: RD32           PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
 PPRIM: ERROR-TEXT LINE PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: ERROR-TEXT DIGITS$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: ERROR-TEXT TYPE PE-PTR-U8 PE-IN PE-N PE-IN PPRIM;
+PRIM: INCLUDE-IO-RC  PE-N PE-OUT PRIM;
+PRIM: [if]           PE-F PE-IN PRIM;
+PRIM: [then]         PRIM;
 \ src/habu/boot-cells.f's and src/habu/wl.f's words, defined before the checker.
 PPRIM: BOOT HEAP-START-CELL PE-N PE-OUT PPRIM;
 PPRIM: BOOT DP-FLOOR-CELL PE-N PE-OUT PPRIM;
@@ -12689,6 +12697,7 @@ PRIM: EFFECT-EXEC-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: EFFECT-FINALLY-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: EFFECT-MATCH-CELLS PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+[then]
 
 PTABLE-END
 
@@ -14322,9 +14331,12 @@ CHECKER-REG:}SCRATCH
    ndict@ 0 ?DO
       i CHECKER-RESOLVE:REC-AT dup wid PE-PUBLIC-REC? IF PE-CONST-ROW ELSE drop THEN
    LOOP ;
+\ A copy inside a build keeps the grammar alone (PE-SPEC-REPLAY's guard).
+data-base BOOT:IMAGE-BASE-CELL + @ 0= [if]
 s" CHECKER-FETCH-ABI" PE-PUBLIC-CONSTS
 s" CHECKER-OWNER-EXT" PE-PUBLIC-CONSTS
 s" CHECKER-OWNER-ABI" PE-PUBLIC-CONSTS
+[then]
 
 \ The used slot whose public wordlist is wid, or -1. The engine's USE-WIDS and
 \ this checker's name mirror share one index (CHECKER-USING records the name at
@@ -17699,13 +17711,10 @@ private
 
 \ An axiom's symbol is in a build's prefix, below BUILD-SYM-END and so below
 \ SYM-PRIM-END: CHECKER-RESET-SOURCE keeps NORETS to NORET-PRIM-END but retires
-\ every symbol from SYM-PRIM-END. Inside a build this runs as the product's
-\ copy, whose table lacks the rows the building checker took
-\ (src/habu/interpret.f DECLARATION?) and checks nothing, so only a checker
-\ loaded outside a build is held to it.
+\ every symbol from SYM-PRIM-END.
 : NORET-AXIOM {: a:ptr u:n flag:n :}
    a u PE-SYM-OF {: sym:n :}
-   data-base BOOT:IMAGE-BASE-CELL + @ 0=  sym BUILD-SYM-END @ < 0=  and IF
+   sym BUILD-SYM-END @ < 0= IF
       s" checker: an axiom names a symbol past the build prefix" 76 die
    THEN
    sym flag 0 0 NORET-ADD-SYM ;
@@ -17779,10 +17788,12 @@ private
    s" ?dup" INTRINSIC-QDUP INTRINSIC>CTL NORET-AXIOM
    s" depth" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM
    s" .s" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM
-   s" ptr-field" INTRINSIC-RAW-FIELD INTRINSIC>CTL NORET-AXIOM
-   KEYWORD-AXIOMS ;
+   s" ptr-field" INTRINSIC-RAW-FIELD INTRINSIC>CTL NORET-AXIOM ;
 
-NORET-AXIOMS
+\ A copy inside a build keeps the grammar's axioms alone (PE-SPEC-REPLAY's
+\ guard).
+data-base BOOT:IMAGE-BASE-CELL + @ 0= [if] NORET-AXIOMS [then]
+KEYWORD-AXIOMS
 NORET-END @ constant NORET-PRIM-END
 
 \ Every entry below NORET-PRIM-END names a prefix symbol (NORET-AXIOM), so a
@@ -18353,9 +18364,11 @@ variable CURSYM
       1 +
    REPEAT drop ;
 
-\ The cold prefix compiles does-clause.f before the checker exists. Register
-\ its effect here, after PPRIM: is defined, for checked bodies that call it.
+\ hb's prefix compiles does-clause.f before the checker exists: its row gives
+\ checked bodies the effect. A build checks the file (PE-SPEC-REPLAY's guard).
+data-base BOOT:IMAGE-BASE-CELL + @ 0= [if]
 PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+[then]
 
 \ The clause name of the definer NA NU, composed in NMB: the name, then the
 \ companion suffix, the token buffers sized for it first. Growing them drops
@@ -31245,8 +31258,10 @@ public
 ;package
 
 \ Its row, so the checked writers (src/habu/outer.f AT-SOURCE,
-\ src/compiler/native/definition.f SAY-WHERE) may call it.
+\ src/compiler/native/definition.f SAY-WHERE) may call it outside a build.
+data-base BOOT:IMAGE-BASE-CELL + @ 0= [if]
 PPRIM: SRCLOC FILE-BUFFER? PE-F PE-OUT PPRIM;
+[then]
 
 package LOWER-CERT-HOOK
 public

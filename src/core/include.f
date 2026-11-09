@@ -4,9 +4,6 @@
 \ composes source; package reopening owns shared namespace.
 
 PATH-CAP constant INCLUDE-PATH-CAP
-\ A loader refusal's exit status, always after a line naming the refusal: an
-\ uncaught throw of a code below 256 ends the process with no word at all.
-$4A constant INCLUDE-IO-RC
 $46 constant INCLUDE-EVAL-RC
 -2110 constant INCLUDE-RANGE-RC
 $37D8 constant INCLUDE-EVALERR-CELL
@@ -2208,26 +2205,6 @@ immediate
 
 create SOURCE-ORIGINAL-REQUIRE-ENTRY 0 ,
 ' require SOURCE-ORIGINAL-REQUIRE-ENTRY xt!
-
-\ `[if]` and `[then]` choose text at a file's top level, as a target's files
-\ are chosen: `HB-TARGET-MACOS? [if] require src/lib/power/macos.f [then]`. A
-\ false answer skips the tokens through the matching `[then]`, counting the
-\ `[if]`s nested there, those in comments and strings too. Immediate, as
-\ `require` is, so a body cannot hold either.
-: [if] ( bool -- )
-   if exit then
-   1 begin dup 0 > while
-      parse-name dup 0= if
-         S\" hb: source ended inside [if]\n" ERROR-TEXT:TYPE INCLUDE-IO-RC throw
-      then
-      2dup s" [if]" CORE-STR=CI if 2drop 1 + else
-         s" [then]" CORE-STR=CI if 1 - then
-      then
-   repeat drop ;
-immediate
-
-: [then] ( -- ) ;
-immediate
 
 package SOURCE-UNIT
 public
