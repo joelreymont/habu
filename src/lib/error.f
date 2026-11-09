@@ -6,8 +6,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: the rows ERROR:CODE lays in data space and the
 \ head cell that reaches the newest of them.
 
-\ ERROR-TEXT is src/core/util.f's, which every prefix loads first. Not required: the
-\ window in test/native-window-owner-child.f loads it unrecorded, so a require loads it twice.
+\ ERROR-TEXT is src/core/util.f's, which every prefix loads first.
 require src/habu/layout.f
 require src/habu/xref.f
 require src/core/bytes.f

@@ -28838,16 +28838,6 @@ CAST: AS-PENDING-DISCARD ( n -- [ -- ] )
    0 CK-AOT-STATE !
    CLAIM-SOURCE-OWNER ;
 
-\ THE HANDOVER, FROM INSIDE THE LOAD THAT REPLACES THIS CHECKER. Until it runs
-\ the source cell holds the engine's certifier, and every signed definition the
-\ hook-less load makes from src/core/checker.f on records its row there
-\ (CLAIM-COLD-SOURCE claims only an empty cell). Each load that replaces a
-\ running checker calls this by name after src/core/layout-valid.f and before
-\ src/core/check-hook.f. It is the only way in: the
-\ owner record carries no transfer callback (src/core/checker-owner-abi.f, $48).
-public
-: HANDOVER ( -- )
-   SOURCE-OWNER-A @ TRANSFER-CHECKED ;
 ;package
 
 \ A package unit carries the checker's own ordered facts. The native artifact

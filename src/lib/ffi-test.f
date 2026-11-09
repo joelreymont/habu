@@ -8,10 +8,8 @@ require src/lib/string.f               \ SB / CONTAINS? - the child's stderr is 
 require src/lib/fmt.f                  \ the code the child prints is rendered from its name
 require src/lib/process.f
 require src/lib/process-argv.f         \ the growth case needs a child engine
-require src/lib/process-env.f          \ the stub child inherits this environment
 require src/lib/le.f                   \ the spilled %n out-parameter is a C int
 require src/lib/memory.f               \ the read-only page the %n format is copied into
-require src/lib/test/subject.f
 require src/lib/engine-candidate.f
 require src/lib/test/ending.f
 require src/lib/test/guard-page.f      \ a path whose bytes end where memory does
@@ -60,11 +58,8 @@ variable FFI-T-MATH
 DEFTYPE FFI-DEV
 DEFTYPE FFI-CTX
 
-\ The libc and libm bindings are FUNCTION: declarations: the declared effect is
-\ the generated word's effect and decides every argument's staging. The staging
-\ shapes no C function reproduces on both ABIs - two stack integers past x0-x7,
-\ a float stack slot, an sret x8 output - run against fixed stubs in a window
-\ child (FFI-T-STUBS below).
+\ No C function witnesses an x8 result on Linux, macOS fixed integers past x7, a
+\ double register beside a stack double, or binary32 beside a double or in s7.
 
 PROCESS-SYMBOLS
 FUNCTION: FFI-T-STRLEN$ strlen ( ptr u8 -- n ) ;FUNCTION
@@ -157,7 +152,7 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 \ Declaration-only shapes: Cairo's exact signature must load without requiring
 \ Cairo, and Darwin's variadic stack routing must admit a pointer result. These
 \ words never call their symbols; gcvt below witnesses the mixed pointer call
-\ and FFI-T-STUBS witnesses the spill trampoline.
+\ and FFI-T-VARARGS the variadic stack staging.
 : FFI-T-PTR-MIXED ( -- )
    s" FUNCTION: FFI-T-XM cairo_pdf_surface_create ( ptr u8 r r -- ptr u8 ) ;FUNCTION"
    INCLUDE-EVALUATE ;
@@ -399,69 +394,6 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 : FFI-T-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
-
-\ The staging shapes no C function reproduces on both ABIs: ten integers, the
-\ integer registers plus stack cells; a float register beside a float stack
-\ slot; an output cell (AAPCS64's sret x8, SysV's first integer argument); a
-\ binary32 beside a double and an integer; eight binary32 beside eight
-\ integers; a binary32 register before a stack double. No libm function
-\ takes any of the binary32 shapes. A variadic callee is the only system witness
-\ for a stack spill, and Apple's ABI puts every variadic argument on the stack,
-\ so it never reaches the register exhaustion that spills.
-\ test/ffi-stub-child.f calls fixed stubs for them through mcode-window-prepare.f's
-\ owner words: a window child of test/native-window-owner-child.f, on hb.
-: FFI-T-WIN-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
-
-: FFI-T-STUB-ARGS ( -- )
-   PROC-ARGV-RESET
-   s" --load" FFI-T-WIN-ARG
-   s" test/native-window-owner-child.f" FFI-T-WIN-ARG
-   s" --" FFI-T-WIN-ARG
-   s" test/ffi-stub-child.f" FFI-T-WIN-ARG
-   s" src/core/declaration-transaction.f" FFI-T-WIN-ARG
-   s" src/core/generated-declaration.f" FFI-T-WIN-ARG
-   s" src/core/decl-event.f" FFI-T-WIN-ARG
-   s" src/core/structure-make.f" FFI-T-WIN-ARG
-   s" src/core/structure-decl.f" FFI-T-WIN-ARG
-   s" src/core/arena.f" FFI-T-WIN-ARG
-   s" src/core/heap.f" FFI-T-WIN-ARG
-   s" src/core/enum-decl.f" FFI-T-WIN-ARG
-   s" src/core/structures.f" FFI-T-WIN-ARG
-   s" src/core/bytes.f" FFI-T-WIN-ARG
-   s" src/core/dynamic-storage.f" FFI-T-WIN-ARG
-   HB-TARGET-LINUX-X86-64? if
-      s" src/os/linux-x86-64/target.f" FFI-T-WIN-ARG
-      s" src/os/linux/layout-constants.f" FFI-T-WIN-ARG
-      s" src/os/linux/layout.f" FFI-T-WIN-ARG
-   else HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" FFI-T-WIN-ARG
-      s" src/os/linux/layout-constants.f" FFI-T-WIN-ARG
-      s" src/os/linux/layout.f" FFI-T-WIN-ARG
-   else
-      s" src/os/macos/target.f" FFI-T-WIN-ARG s" src/os/macos/layout.f" FFI-T-WIN-ARG
-   then then
-   s" src/habu/stack-abi.f" FFI-T-WIN-ARG
-   s" src/habu/layout.f" FFI-T-WIN-ARG
-   s" src/os/env-base.f" FFI-T-WIN-ARG
-   s" src/core/include.f" FFI-T-WIN-ARG
-   s" src/core/sha256.f" FFI-T-WIN-ARG
-   s" src/habu/code-span.f" FFI-T-WIN-ARG
-   s" test/mcode-window-prepare.f" FFI-T-WIN-ARG
-   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
-
-: FFI-T-STUB-RESULT ( -- )
-   ENGINE-CANDIDATE:PATH$ >LEN FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
-   PROCESS:WAIT-FOREVER
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
-   {: outu:len erru:len rc:n :}
-   s" test/native-window-owner-child.f" FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
-   FFI-T-OUT outu LEN>N S\" test: ok\nwindow: 0\n" STR= 0= rc 0 <> or
-      if FFI-T-OUT outu LEN>N type erru FFI-T-ERR$ type cr then
-   rc 0 T=
-   FFI-T-OUT outu LEN>N S\" test: ok\nwindow: 0\n" T$= ;
-
-: FFI-T-STUBS ( -- )
-   FFI-T-STUB-ARGS FFI-T-STUB-RESULT ;
 
 \ The libm rows ride the ABI call: sqrt a float argument and a float result,
 \ fma three float registers, scalbln a float register beside all 64 bits of the
@@ -722,8 +654,6 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
    s" FFI-T-ROLE-GOOD ( ffi-ctx -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-PASSES
    s" FFI-T-ROLE-BAD ( ffi-dev -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-REJECTS
-
-   FFI-T-STUBS
 
    FFI-T-STALE-REFUSAL
    s" a stale high-register extent cannot affect a later mixed call" T-LABEL

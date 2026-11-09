@@ -53,9 +53,8 @@ FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) 0 2 WRITES-ARG ;FUNCTION
    FFI:KPARAM-RESET
    FFI:KPARAM-COUNT 0 T= ;
 
-\ The sret x8 and stack-slot outputs have no C function that writes them on
-\ both ABIs: test/ffi-stub-child.f covers them with fixed stubs, and
-\ src/lib/ffi-test.f runs that child.
+\ src/lib/ffi-test.f calls C functions that write the sret x8 and stack-slot
+\ outputs, and names the shapes no C function witnesses.
 
 : FFI-ABI-RUN ( -- )
    T-RESET

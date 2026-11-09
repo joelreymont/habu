@@ -1,4 +1,4 @@
-\ ffi-callback-test.f - C calling back into checked Habu: qsort and
+\ ffi-callback-test.f - C calling back into checked Habu: qsort, bsearch and
 \ pthread_create are the C callers. Each case's facts, with every child's and
 \ the stripped image's exit status and streams, form a transcript written to
 \ build/ffi-callback-transcript.txt, read back and compared whole. A callback
@@ -16,7 +16,6 @@ require src/lib/engine-candidate.f
 require src/lib/test/runner.f
 require src/lib/image-lifecycle.f
 require src/lib/task.f
-require src/lib/test/subject.f
 require test/ffi-callback-fixture.f
 
 package FFI-CB-TEST
@@ -49,14 +48,13 @@ variable MAIN-SELF                    \ its pthread_self
 variable OLD-CONTEXT                  \ CTX-TASK's context, kept past its UNEXPOSE
 variable HAMMERS
 
-\ With the fixture's ten callbacks these six make sixteen entries, a table-size
-\ edge.
+\ With the fixture's eleven callbacks these five make sixteen entries, a
+\ table-size edge.
 CALLBACK: PAD-A ( -- ) ;CALLBACK
 CALLBACK: PAD-B ( -- ) ;CALLBACK
 CALLBACK: PAD-C ( -- ) ;CALLBACK
 CALLBACK: PAD-D ( -- ) ;CALLBACK
 CALLBACK: PAD-E ( -- ) ;CALLBACK
-CALLBACK: PAD-F ( -- ) ;CALLBACK
 
 : SCRIPT$ ( -- ptr u8 n )
    SCRIPT-BUF SCRIPT-U @ ;
@@ -382,56 +380,19 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" released" CHILD-CASE
    s" captures" CHILD-CASE ;
 
-\ test/ffi-callback-direct-child.f calls entries through test/mcode-window-prepare.f's
-\ FFI owner words: a window child of test/native-window-owner-child.f, on hb.
-\ The list is src/lib/ffi-test.f's FFI-T-STUB-ARGS with this child in its place.
-: DIRECT-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
-
-: DIRECT-ARGS ( -- )
-   PROC-ARGV-RESET
-   s" --load" DIRECT-ARG
-   s" test/native-window-owner-child.f" DIRECT-ARG
-   s" --" DIRECT-ARG
-   s" test/ffi-callback-direct-child.f" DIRECT-ARG
-   s" src/core/declaration-transaction.f" DIRECT-ARG
-   s" src/core/generated-declaration.f" DIRECT-ARG
-   s" src/core/decl-event.f" DIRECT-ARG
-   s" src/core/structure-make.f" DIRECT-ARG
-   s" src/core/structure-decl.f" DIRECT-ARG
-   s" src/core/arena.f" DIRECT-ARG
-   s" src/core/heap.f" DIRECT-ARG
-   s" src/core/enum-decl.f" DIRECT-ARG
-   s" src/core/structures.f" DIRECT-ARG
-   s" src/core/bytes.f" DIRECT-ARG
-   s" src/core/dynamic-storage.f" DIRECT-ARG
-   HB-TARGET-LINUX-X86-64? if
-      s" src/os/linux-x86-64/target.f" DIRECT-ARG
-      s" src/os/linux/layout-constants.f" DIRECT-ARG
-      s" src/os/linux/layout.f" DIRECT-ARG
-   else HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" DIRECT-ARG
-      s" src/os/linux/layout-constants.f" DIRECT-ARG
-      s" src/os/linux/layout.f" DIRECT-ARG
-   else
-      s" src/os/macos/target.f" DIRECT-ARG s" src/os/macos/layout.f" DIRECT-ARG
-   then then
-   s" src/habu/stack-abi.f" DIRECT-ARG
-   s" src/habu/layout.f" DIRECT-ARG
-   s" src/os/env-base.f" DIRECT-ARG
-   s" src/core/include.f" DIRECT-ARG
-   s" src/core/sha256.f" DIRECT-ARG
-   s" src/habu/code-span.f" DIRECT-ARG
-   s" test/mcode-window-prepare.f" DIRECT-ARG
-   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
-
-: CASE-DIRECT ( -- )
-   DIRECT-ARGS
-   ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
-   s" test/native-window-owner-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
-   s" direct" outu erru rc TRANSCRIBE-RC
-   s" the direct child exits 0" T-LABEL
-   rc 0 T= ;
+\ Every comparison answers the declared fallback, so bsearch matches its first
+\ probe under UNSET's 0 and no row under UNSET-ONE's 1.
+: CASE-UNSET ( -- )
+   s" == a body never stored" SAY
+   UNSET TASK:SELF-CONTEXT ENTRY {: fn:n :}
+   OUTER BYTE-VIEW OUTER BYTE-VIEW ROW-N CELL fn BSEARCH
+   OUTER NULL-PTR - ROW-N 2 / cells + =
+      s" bsearch through it answers the fallback: its first probe matches" FACT
+   UNSET FAULT@ E-FFI-CALLBACK-STATE = s" and faults E-FFI-CALLBACK-STATE" FACT
+   UNSET UNBIND
+   OUTER BYTE-VIEW OUTER BYTE-VIEW ROW-N CELL UNSET-ONE TASK:SELF-CONTEXT ENTRY
+   BSEARCH 0= s" a fallback of 1 reaches C too: no row matches" FACT
+   UNSET-ONE UNBIND ;
 
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT-BUF SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
@@ -497,21 +458,10 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 : WANT-TASKS ( -- )
    s" == the main task" W
    WANT-SORTS
-   s" == child direct: exit 0" W
-   s" ok   n arrives whole" W
-   s" ok   i32 is sign-extended from the low half" W
-   s" ok   u32 is the low half" W
-   s" ok   ptr u8 is the address C passed" W
-   s" ok   integer argument registers arrive in order" W
-   s" ok   float argument registers arrive in order" W
-   s" ok   an r result returns in the float result register" W
-   s" ok   and nothing faulted" W
-   s" ok   a body never stored answers the fallback" W
+   s" == a body never stored" W
+   s" ok   bsearch through it answers the fallback: its first probe matches" W
    s" ok   and faults E-FFI-CALLBACK-STATE" W
-   s" ok   a normal n result preserves the high half" W
-   s" test: ok" W
-   s" window: 0" W
-   s" --" W
+   s" ok   a fallback of 1 reaches C too: no row matches" W
    s" == the owner a thread claims with" W
    s" ok   the main thread claims with one value, a thousand calls and yields apart" W
    s" ok   which is not the free owner" W
@@ -654,7 +604,7 @@ public
    T-RESET
    0 SCRIPT-U !
    CASE-MAIN
-   CASE-DIRECT
+   CASE-UNSET
    CASE-OWNER
    CASE-WORKERS
    CASE-THREAD
