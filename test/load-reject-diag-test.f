@@ -369,14 +369,18 @@ variable RC
    s" family arguments keep distinct declared variables" T-LABEL
    s" NEWTYPE lrd-pair<a,b> : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
 
+\ An integer literal the engine cannot read is undefined, named where the body
+\ holds it, whichever loop reads the body.
+: TEST-BIG-LITERAL ( -- )
+   s" an integer literal the engine cannot read is undefined" T-LABEL
+   BODY$ s" TRUSTED: LRD-BIG ( -- n ) 99999999999999999999999 ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" E-UNDEFINED: 99999999999999999999999 at " ASSERT-NAMED ;
+
+
 \ T0, arm64's tier 0, refuses a body no scan certified at its first token the
 \ scan could not bind or no path reaches.
 : TEST-T0-UNBOUND ( -- )
-   s" T0 refuses an integer literal the engine cannot read" T-LABEL
-   BODY$ s" TRUSTED: LRD-BIG ( -- n ) 99999999999999999999999 ;" FS:WRITE-ALL
-   BODY$ RUN
-   s" ncomp: cannot compile LRD-BIG at 99999999999999999999999 in" ASSERT-NAMED
-   ERR$ s" E-UNDEFINED: 99999999999999999999999" CONTAINS? TTRUE
    s" T0 refuses a MATCH variant with no OF" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOOF ( n -- n ) construct lrd-choice scalar MATCH lrd-choice scalar 10 + ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
@@ -708,6 +712,7 @@ variable RC
    TEST-IMM-CALLER
    TEST-IMM-TRUSTED
    TEST-UNREPORTED-REJECT
+   TEST-BIG-LITERAL
    HB-TARGET-LINUX-X86-64? 0= if
       TEST-UNCERTIFIED-MALFORMED
       TEST-T0-UNBOUND
