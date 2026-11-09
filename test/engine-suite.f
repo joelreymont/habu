@@ -348,6 +348,10 @@ variable TC-SYMU
    SYM-N @ TC-SYMN @ = ;
 : TC-SYMU=? ( -- bool )
    SYM-STR-U @ TC-SYMU @ = ;
+\ A linked hb's checker adds a word's row from its baked seed at the word's
+\ first use, for good: the warm-up uses each word the candidates use, so the
+\ snapshot holds their rows and the probes see only what a candidate leaves.
+s" T-CAND-WARM ( n -- n ) dup drop 1+ dup 0 < if 1 throw then" CHECK-CANDIDATE! -1 T=
 TC-SNAP
 s" A ( n -- n ) 1+" CHECK-CANDIDATE! -1 T=
 s" A ( n -- n ) dup drop" CHECK-CANDIDATE! -1 T=
