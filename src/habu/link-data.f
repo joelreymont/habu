@@ -18,6 +18,7 @@ require src/habu/wl.f
 require src/habu/address-cells.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link-kernel.f
+require src/habu/regalloc.f
 require src/arch/arm64/boot.f
 require src/habu/fdio.f
 require src/habu/sign-id.f
@@ -356,8 +357,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ An engine's header cells beside HEADER-CELLS': the record count the seal
-\ covers, the wordlist counter, and process state a build's own cells name in
-\ hb (the index, the current package and record, the policy's watermark).
+\ covers, the wordlist counter, process state a build's own cells name in hb
+\ (the index, the current package and record, the policy's watermark), and
+\ the register pools all free, as a definition's start and abort leave them
+\ (habu2.f EM-ABORT-COMPILE-STATE).
 : ENGINE-CELLS ( -- )
    PRODUCT-NDICT SEAL-NDICT-CELL HEADER!
    PRODUCT-WIDN WIDN-CELL HEADER!
@@ -368,7 +371,9 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    0 LASTC-CELL HEADER!
    0 PKG-REC-CELL HEADER!
    0 ENCLOSING:REC HEADER!
-   0 POLICY-NDICT-CELL HEADER! ;
+   0 POLICY-NDICT-CELL HEADER!
+   VRALL REGALLOC-ABI:VRFREE-CELL HEADER!
+   FRALL REGALLOC-ABI:FRFREE-CELL HEADER! ;
 
 
 : SET? ( n -- bool ) COPY-CELLS @ 0<> ;
