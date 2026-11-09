@@ -785,11 +785,13 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-ADDR-TAIL ;
 
 \ A compiled defining word reaches `create` through the engine primitive,
-\ which calls the row through CREATEP-CELL (INSTALL-CREATE below) without the
-\ keyword's hook and raw-effect registration: those belong to the
-\ interpreting `create` only.
+\ which calls the row through CREATEP-CELL (INSTALL-CREATE below). The
+\ keyword's hook belongs to the interpreting `create` only; `-- ptr a` is
+\ published at both, as habu2.f EMIT-CREATE publishes it, or the word made is
+\ E-UNDEFINED where it is next read.
 : DEF-CREATE-ROW ( -- )
-   false DEF-ADDR-ROW ;
+   false DEF-ADDR-ROW
+   DEF-ADDR-PUBLISH ;
 
 : DEF-ADDR ( bool -- )
    DEF-ADDR-ROW
