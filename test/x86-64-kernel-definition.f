@@ -39,14 +39,52 @@ SECOND-SLOT X64KERNEL:CODE-SLOT + constant PAST-LONG
 : SOURCE$ ( -- ptr u8 n ) s" a-source-past-inline" ;
 
 : HELLO$ ( -- ptr u8 n ) s" hello" ;
-BODYBUF-OFF BODYBUF-CAP + constant BUF-END
+HELLO$ nip 1+ constant HELLO-LEN        \ "hello" and its space
+BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
-\ BODYBUF's last cell once "hello" and its space fill the buffer: two poisoned
-\ bytes, then the six.
-: TAIL ( -- n ) s" hello " 0 X64HARNESS:NAME-CELL 16 lshift $FFFF or ;
+\ The text cell a "hello" run starts, in a block whose next two bytes it never
+\ wrote, and the cell it ends when it fills the text up to a cell boundary.
+: HEAD ( -- n ) s" hello " 0 X64HARNESS:NAME-CELL ;
+: TAIL ( -- n ) HEAD 16 lshift ;
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
+
+\ ---- the body text block, which body-append maps at run time ---------------
+: TEXT@, ( r64 -- ) {: r:r64 :}
+   r DATA-REG BODY-TEXT:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM ;
+
+\ Push the cell off bytes into the text, or into the rows at base + capacity.
+: PUSH-TEXT-CELL, ( n -- ) {: off:n :}
+   RCX TEXT@,  RAX RCX off MEM-OFF ASM-SINK ENC-MOV-RM  0 G-PUSH ;
+: PUSH-ROW-CELL, ( n -- ) {: off:n :}
+   RCX TEXT@,  RCX DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM
+   RAX RCX off MEM-OFF ASM-SINK ENC-MOV-RM  0 G-PUSH ;
+
+: POISON-TEXT, ( n -- ) {: off:n :}
+   RCX TEXT@,  RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX RCX off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ Push the address off bytes into the text, or store it in the DATA cell at
+\ cell; pop one and expect it off bytes in.
+: PUSH-TEXT-ADDR, ( n -- ) {: off:n :}
+   RAX TEXT@,  RAX RAX off MEM-OFF ASM-SINK ENC-LEA  0 G-PUSH ;
+: TEXT-ADDR!, ( n n -- ) {: off:n cell:n :}
+   RAX TEXT@,  RAX RAX off MEM-OFF ASM-SINK ENC-LEA
+   RAX DATA-REG cell MEM-OFF ASM-SINK ENC-MOV-MR ;
+: EXPECT-POP-TEXT, ( n -- ) {: want:n :}
+   0 G-POP  RAX DATA-REG BODY-TEXT:BASE-CELL MEM-OFF ASM-SINK ENC-SUB-RM
+   0 G-PUSH  want X64HARNESS:EXPECT-POP, ;
+
+\ Keep the block's address in scratch cell 0; push 1 once it differs.
+: SAVE-BASE, ( -- )
+   RAX TEXT@,  RAX DATA-REG X64HARNESS:SCRATCH-OFF MEM-OFF ASM-SINK ENC-MOV-MR ;
+: PUSH-MOVED, ( -- )
+   X64CODE:LBL {: same:label :}
+   RAX ZERO-REG,  RCX TEXT@,
+   RCX DATA-REG X64HARNESS:SCRATCH-OFF MEM-OFF ASM-SINK ENC-SUB-RM  C-E same JCC,
+   RAX 1 >IMM32 ASM-SINK ENC-MOV-RI32
+   same X64CODE:LBL,  0 G-PUSH ;
 
 \ ---- the staging and the checks ----------------------------------------------
 : NAMESPACE, ( ptr u8 n n -- ) {: a:ptr u:n flag:n :}
@@ -67,10 +105,10 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 
 : APPEND, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" body-append" X64HARNESS:CALL-ROW, ;
 
-\ The signature row named over SIG-LEN bytes of BODYBUF, a span whose address
-\ DATA fixes.
+\ The signature row named over SIG-LEN bytes at the text's start, a span whose
+\ address the block fixes at run time.
 : SIG, ( ptr u8 n -- ) {: row:ptr rowu:n :}
-   BODYBUF-OFF X64HARNESS:PUSH-DATA,  SIG-LEN X64HARNESS:PUSH,
+   0 PUSH-TEXT-ADDR,  SIG-LEN X64HARNESS:PUSH,
    row rowu X64HARNESS:CALL-ROW, ;
 
 : XREF, ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
@@ -149,11 +187,19 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 \   TIER-CELL, and CP, which an inline name leaves.
 \ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP and the entry
 \   move 32 bytes and the pad over poisoned cells is 0.
-\ - hb-x64-kernel-body-append fills BODYBUF exactly to BODYBUF-CAP.
+\ - hb-x64-kernel-body-append maps the block at the first capture: FIRST-CAP,
+\   17 * FIRST-CAP bytes, the run at the text's start.
+\ - hb-x64-kernel-body-append-fill fills the text exactly to FIRST-CAP in
+\   place: the block does not move.
+\ - hb-x64-kernel-body-append-grow grows it past FIRST-CAP: the block moves
+\   to twice the capacity, its text following.
+\ - hb-x64-kernel-body-append-rows, after that growth: TCSIG-A rebased and
+\   the three rows at base + capacity, the copied one included.
 \ - hb-x64-kernel-body-append-pass2 appends in pass 2, which stores nothing.
-\ - hb-x64-kernel-trust-sig stores the pending definition's signature span.
+\ - hb-x64-kernel-trust-sig stores the pending definition's signature span, an
+\   address in the block.
 \ - hb-x64-kernel-created-sig stores the pending definition's `does>`
-\   signature span.
+\   signature span, an address in the block.
 \ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set:
 \   DEF-TIER, the seven signature and clause cells and PEND clear.
 \ - hb-x64-kernel-imm-mark sets DNAME-IMM on the newest record, keeping its
@@ -256,37 +302,80 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    X64KERNEL:REC-NAME X64HARNESS:PUSH-REGION-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    0 CLOSED, ;
 
-: BODY-APPEND-CASE, ( -- )
-   -1 BUF-END CELL 2 * - X64HARNESS:CELL!,  -1 BUF-END CELL - X64HARNESS:CELL!,
-   BODYBUF-CAP HELLO$ nip 1+ - BODYLEN-CELL X64HARNESS:CELL!,
+\ The block after the first capture maps it; after a second, which fills the
+\ text to FIRST-CAP in place; and after a third, which grows it. Each image
+\ checks one stage: an image has FIRST-CASE through CASE-END - 1 for its
+\ statuses (test/x86-64-peer-harness.f STATUS), eight past IMAGE's two.
+: MAPPED, ( -- )
    X64HARNESS:REST,
-   HELLO$ APPEND,
-   BODYBUF-CAP BODYLEN-CELL X64HARNESS:EXPECT-CELL,
-   TAIL BUF-END CELL - X64HARNESS:EXPECT-CELL,
-   -1 BUF-END CELL 2 * - X64HARNESS:EXPECT-CELL, ;
+   HELLO$ APPEND, ;
+: FILLED, ( -- )
+   MAPPED,
+   FIRST-CAP HELLO-LEN - BODYLEN-CELL X64HARNESS:CELL!,
+   SAVE-BASE,
+   HELLO$ APPEND, ;
+: GROWN, ( -- )
+   FILLED,
+   3 TCSIG-A-CELL TEXT-ADDR!,
+   HELLO$ APPEND, ;
+
+: BODY-APPEND-CASE, ( -- )
+   MAPPED,
+   FIRST-CAP BODY-TEXT:CAP-CELL X64HARNESS:EXPECT-CELL,
+   FIRST-CAP 17 * BODY-TEXT:SIZE-CELL X64HARNESS:EXPECT-CELL,
+   HELLO-LEN BODYLEN-CELL X64HARNESS:EXPECT-CELL,
+   0 PUSH-TEXT-CELL,  HEAD X64HARNESS:EXPECT-POP, ;
+
+: BODY-APPEND-FILL-CASE, ( -- )
+   FILLED,
+   PUSH-MOVED,  0 X64HARNESS:EXPECT-POP,
+   FIRST-CAP BODYLEN-CELL X64HARNESS:EXPECT-CELL,
+   FIRST-CAP BODY-TEXT:CAP-CELL X64HARNESS:EXPECT-CELL,
+   FIRST-CAP CELL - PUSH-TEXT-CELL,  TAIL X64HARNESS:EXPECT-POP, ;
+
+: BODY-APPEND-GROW-CASE, ( -- )
+   GROWN,
+   PUSH-MOVED,  1 X64HARNESS:EXPECT-POP,
+   FIRST-CAP 2 * BODY-TEXT:CAP-CELL X64HARNESS:EXPECT-CELL,
+   FIRST-CAP 2 * 17 * BODY-TEXT:SIZE-CELL X64HARNESS:EXPECT-CELL,
+   FIRST-CAP HELLO-LEN + BODYLEN-CELL X64HARNESS:EXPECT-CELL,
+   0 PUSH-TEXT-CELL,  HEAD X64HARNESS:EXPECT-POP,
+   FIRST-CAP CELL - PUSH-TEXT-CELL,  TAIL X64HARNESS:EXPECT-POP,
+   FIRST-CAP PUSH-TEXT-CELL,  HEAD X64HARNESS:EXPECT-POP, ;
+
+: BODY-APPEND-ROWS-CASE, ( -- )
+   GROWN,
+   TCSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  3 EXPECT-POP-TEXT,
+   3 BODY-TEXT:ROWS-CELL X64HARNESS:EXPECT-CELL,
+   2 cells PUSH-ROW-CELL,  FIRST-CAP HELLO-LEN - X64HARNESS:EXPECT-POP,   \ row 1, copied
+   4 cells PUSH-ROW-CELL,  FIRST-CAP X64HARNESS:EXPECT-POP, ;       \ row 2
 
 : BODY-APPEND-PASS2-CASE, ( -- )
-   -1 BODYBUF-OFF CELL + X64HARNESS:CELL!,
-   CELL BODYLEN-CELL X64HARNESS:CELL!,
-   1 P2-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
    HELLO$ APPEND,
-   CELL BODYLEN-CELL X64HARNESS:EXPECT-CELL,
-   -1 BODYBUF-OFF CELL + X64HARNESS:EXPECT-CELL, ;
+   CELL POISON-TEXT,
+   1 P2-CELL X64HARNESS:CELL!,
+   HELLO$ APPEND,
+   HELLO-LEN BODYLEN-CELL X64HARNESS:EXPECT-CELL,
+   1 BODY-TEXT:ROWS-CELL X64HARNESS:EXPECT-CELL,
+   CELL PUSH-TEXT-CELL,  -1 X64HARNESS:EXPECT-POP, ;
 
+\ LONG$ is a capture longer than SIG-LEN.
 : TRUST-SIG-CASE, ( -- )
    X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
+   LONG$ APPEND,
    s" trust-sig!" SIG,
-   TSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  BODYBUF-OFF X64HARNESS:EXPECT-POP-DATA,
+   TSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  0 EXPECT-POP-TEXT,
    SIG-LEN TSIG-U-CELL X64HARNESS:EXPECT-CELL,
    0 CLOSED, ;
 
 : CREATED-SIG-CASE, ( -- )
    X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
+   LONG$ APPEND,
    s" created-sig!" SIG,
-   TCSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  BODYBUF-OFF X64HARNESS:EXPECT-POP-DATA,
+   TCSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  0 EXPECT-POP-TEXT,
    SIG-LEN TCSIG-U-CELL X64HARNESS:EXPECT-CELL,
    0 CLOSED, ;
 
@@ -345,8 +434,8 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 \   (-namespace-private-set-armed), an alias of a DNAME-INT source
 \   (-alias-record-int-armed), package-scope! `-1 5`
 \   (-package-scope-clear-armed), a 17-byte def-open with CP 32 bytes below the
-\   code ceiling (-def-open-ceiling-armed), body-append one byte past
-\   BODYBUF-CAP (-body-append-full-armed), and trust-sig!, created-sig! and
+\   code ceiling (-def-open-ceiling-armed), body-append with BODYLEN one byte
+\   past the capacity (-body-append-full-armed), and trust-sig!, created-sig! and
 \   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
 \   -def-close-armed), and def-close on a tier 0 definition
 \   (-def-close-tier-armed).
@@ -389,11 +478,12 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    X64HARNESS:REST,
    LONG$ 0 0 DEF-OPEN, ;
 
-\ "hello!" and its space need one byte more than the room left.
+\ BODYLEN past the capacity, which no growth answers.
 : FULL, ( -- )
-   BODYBUF-CAP HELLO$ nip 1+ - BODYLEN-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
-   s" hello!" APPEND, ;
+   HELLO$ APPEND,                                     \ maps FIRST-CAP
+   FIRST-CAP 1+ BODYLEN-CELL X64HARNESS:CELL!,
+   HELLO$ APPEND, ;
 
 : ALIAS-PROT, ( -- )
    SOURCE$ 0 0 X64HARNESS:RECORD,
@@ -431,6 +521,9 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    [: DEF-OPEN-STATE-CASE, ;] false s" hb-x64-kernel-def-open-state" TMP-PATH IMAGE
    [: DEF-OPEN-LONG-CASE, ;] false s" hb-x64-kernel-def-open-long" TMP-PATH IMAGE
    [: BODY-APPEND-CASE, ;] false s" hb-x64-kernel-body-append" TMP-PATH IMAGE
+   [: BODY-APPEND-FILL-CASE, ;] false s" hb-x64-kernel-body-append-fill" TMP-PATH IMAGE
+   [: BODY-APPEND-GROW-CASE, ;] false s" hb-x64-kernel-body-append-grow" TMP-PATH IMAGE
+   [: BODY-APPEND-ROWS-CASE, ;] false s" hb-x64-kernel-body-append-rows" TMP-PATH IMAGE
    [: BODY-APPEND-PASS2-CASE, ;] false s" hb-x64-kernel-body-append-pass2" TMP-PATH IMAGE
    [: TRUST-SIG-CASE, ;] false s" hb-x64-kernel-trust-sig" TMP-PATH IMAGE
    [: CREATED-SIG-CASE, ;] false s" hb-x64-kernel-created-sig" TMP-PATH IMAGE

@@ -379,7 +379,7 @@ $3680 constant ENVP-CELL
 $2DB0 constant PROGRAM-FILE-CELL
 $3688 constant PEND-CELL
 \ A definition whose capture ran a parsing immediate has construction inputs
-\ outside BODYBUF. The native cache reads this only through the running engine's
+\ outside the body text. The native cache reads this only through the running engine's
 \ native-pending-opaque? primitive. The cell is transient and clears with
 \ PEND-CELL on close or abandonment. $2D48 follows NATIVE-HOST-CELLS:DIVISION-PRIM.
 $2D48 constant PEND-OPAQUE-CELL
@@ -610,7 +610,7 @@ $47D8 constant SIG-LEN-CELL
 \ retarget PC-relative branches. A row is a blob offset; the base makes it an
 \ address. Zero in all three means no stripped spans (nothing captured, or a
 \ whitebox image that kept every name).
-\ They sit in the $600..$800 header hole BODYBUF-OFF names free, above
+\ They sit in the $600..$800 header hole below BODY-TEXT:BASE-CELL, above
 \ GENIO-ABI's band. The run above BOOT:HEAP-START-CELL is not free:
 \ stack-abi.f holds $47E8..$4810, then the transaction and USER-BAND.
 package AOT-CELLS
@@ -663,7 +663,7 @@ $688 constant FD-CELL
 \ ACTIVE-CELL names the device an operation runs for: devices share their eight
 \ quotations and a quotation cannot capture a local (docs/forth.md). The funnel
 \ publishes it around the write, genio-core.f around every other operation.
-\ The band is $600..$660 of the header hole BODYBUF-OFF names free, below $7FF8
+\ The band is $600..$660 of the header hole below BODY-TEXT:BASE-CELL, below $7FF8
 \ (the funnel's first instruction is `DATA <off> LDR`) and below DATA-START; the
 \ word-frame lane's $7D0/$7D8 are untouched.
 package GENIO-ABI
@@ -1053,19 +1053,32 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 ;package
 
 
-\ Below BODYBUF-OFF: $600..$690 is GENIO-ABI, AOT-SPAN and SIGNAL-ABI, $690
-\ NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 LVS-OFF, $6A8..$6C0 the `,` run,
+\ Below BODY-TEXT:BASE-CELL: $600..$690 is GENIO-ABI, AOT-SPAN and SIGNAL-ABI,
+\ $690 NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 LVS-OFF, $6A8..$6C0 the `,` run,
 \ $6C0 NCOMP-DISPATCH:FIXED-COMP-CELL, $6C8 BOOT:IMAGE-BASE-CELL, $6D0..$750
 \ LVF-OFF, $750..$7D0 LVQ-OFF, $7D0..$7E0 FRAME-CELL and QFRAME-CELL,
 \ $7E0..$7F0 BOOT:DP-FLOOR-CELL and DP-CEILING-CELL and $7F0..$800
 \ BOOT:GLOBAL-WL-CELL and NAMESPACE-WL-CELL.
-$800 constant BODYBUF-OFF
+\ The open definition's body text lives in one mapped block the engine grows
+\ (habu1.f BCAP-GROW): text at [base, base+cap), then the BODY-SOURCE
+\ rows from base+cap, at most cap of them, since every run appends at least its
+\ separator and rows at or past BODYLEN drop first. The four cells are one
+\ DATA-BANDS row, so only the engine stores into them; the bytes from $820 to
+\ $800 + 8002, the old fixed buffer, stay unclaimed so no other band moves. A
+\ saved image has no block (snap-lib.f SND-ZERO-BODY-TAIL zeroes the cells).
+package BODY-TEXT
+public
+$800 constant BASE-CELL     \ the block's address, 0 before the first capture
+$808 constant CAP-CELL      \ the text capacity in bytes, 0 before
+$810 constant SIZE-CELL     \ the block's length in bytes, 17 * cap, 0 before; guards read BASE and SIZE
+$818 constant ROWS-CELL     \ the BODY-SOURCE row count
+8192 constant FIRST-CAP     \ the capacity mapped at the first capture, doubled as it grows
+;package
 \ The latest `,` run of a created body, defined in src/habu/created-body-abi.f,
 \ which the checker reads too.
 CREATED-BODY-ABI:COMMA-RUN-CELL constant COMMA-RUN-CELL
 CREATED-BODY-ABI:COMMA-END-CELL constant COMMA-END-CELL
 CREATED-BODY-ABI:COMMA-BASE-CELL constant COMMA-BASE-CELL
-8000 constant BODYBUF-CAP
 $568 constant RSP-CELL
 $570 constant EXITH-CELL
 $578 constant LVD-CELL
@@ -1383,7 +1396,7 @@ $4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
 \ the `does>` keyword and by does-record, which an imported definer reaches with
 \ no keyword - and cleared wherever the engine clears DOESB-CELL. habu1.f
 \ BNDAPPEND and its x86-64 twin read it to append the clause record; DOESB-CELL
-\ stays the clause's offset into BODYBUF, which an imported definer never fills.
+\ stays the clause's offset into the body text, which an imported definer never fills.
 $4CA8 constant CLAUSE-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
@@ -1605,7 +1618,7 @@ MEM-ABI:START constant END
 \ using ABI or relocation maps. PD-TABLE-OFF is past the scaled-immediate range,
 \ so slots use a computed base. Slot: [0]=name-len [8]=sig-len
 \ [PD-NAME-OFF..)=name bytes [PD-SIG-OFF..)=sig bytes.
-\ Unguarded engine scratch (BODYBUF class, not a PROT-GUARD band): a raw store
+\ Unguarded engine scratch (no DATA-BANDS row): a raw store
 \ grants nothing beyond the public `trust`/`checker-defer` words, and the table
 \ is empty whenever user source runs. test/protection-span.f pins this class at
 \ the DATA-START edge.
@@ -1977,7 +1990,7 @@ create TAB
    REPLAY-SCOPE:LATCH ,           REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,
    ENCLOSING:PUB ,                ENCLOSING:END ENCLOSING:PUB - ,
    REPLAY-SCOPE:ENCLOSING ,       ENCLOSING:END ENCLOSING:PUB - ,
-   BODYBUF-OFF ,                  BODYBUF-CAP 2 + ,
+   BODY-TEXT:BASE-CELL ,          4 cells ,
    TXN-STATE-OFF ,                TXN-STATE-LEN ,
    0 ,                            0 ,
 
@@ -2048,15 +2061,13 @@ PD-TABLE-END constant OFF
 OFF SLOTS-REL + CAP SLOT * + constant END
 ;package
 
-\ Rows (BODYBUF offset, input-buffer offset or NONE) for the runs habu1.f
+\ Rows (text offset, input-buffer offset or NONE) for the runs habu1.f
 \ EMIT-BCAP appends, ascending: a run first drops the rows at or past BODYLEN.
+\ The rows live in the body text block after its text: row i at
+\ BODY-TEXT:BASE-CELL's base + cap + i * ROW, the count at BODY-TEXT:ROWS-CELL.
 package BODY-SOURCE
 public
-BODYBUF-CAP 2 / constant CAP        \ rows: a run takes 2+ bytes
 16 constant ROW                     \ bytes per row
 -1 constant NONE
-DECLARED-LOG:END constant OFF       \ the row count; rows follow
-OFF 1 cells + constant ROWS-OFF
-ROWS-OFF CAP ROW * + constant END
 ;package
-BODY-SOURCE:END constant DATA-START
+DECLARED-LOG:END constant DATA-START

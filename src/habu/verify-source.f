@@ -97,13 +97,13 @@ variable TOP-PREV-U
 PTR-VARIABLE TOP-REFUSED                 \ the top-level token refused last (TOP-RESOLVE)
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
-create BODY-BUF BODYBUF-CAP allot
+DYNAMIC-BUFFER BODY-BUF u8
 \ Each run BODY-APPEND copies into BODY-BUF is a row of two cells: the body
 \ offset it starts at and the source offset it was read from. BODY$ hands the
 \ rows to the checker (DIAG-MAP!), so a packet locates its token at the file
-\ bytes the scanner read. A run takes at least one byte and its separator, so
-\ BODYBUF-CAP cells hold every row a full body can have.
-create BODY-ROW BODYBUF-CAP cells allot
+\ bytes the scanner read. Both buffers are reserved to what they hold before
+\ every write, and every reader reserves at least one element before it indexes.
+DYNAMIC-BUFFER BODY-ROW n
 variable BODY-ROWS
 
 \ Composition is a fixed scanner operation. The subject stays pinned across
@@ -523,14 +523,6 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 : BODY! ( -- )
    NEXT-BODY  TOKEN-U !  TOKEN-A ! ;
 
-\ A body buffer that cannot represent its input raises; it never truncates. The
-\ registration-only replay entries have no length gate, so a dropped token makes
-\ a well-formed, wrong declaration: a 1302-variant compact ENUM over BODYBUF-CAP
-\ registered 1142 variants with rc 0, every tag after the gap shifted. The code
-\ is sumtype.f E-TDECL-CAP by name: source past this bound also trips the
-\ engine's TDECL-CAP, so both paths answer the same code.
-TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
-
 \ A body read and never checked as a definition's (a TRUSTED: or type body)
 \ drops the cursor it placed.
 : BODY-RESET ( -- )
@@ -538,30 +530,37 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
    0 BODY-U !
    0 BODY-ROWS ! ;
 
-: BODY-ROW! ( n -- )
-   BODY-ROW {: src:n rows:ptr :}
-   BODY-U @  BODY-ROWS @ 2 * cells rows + !
-   src  BODY-ROWS @ 2 * 1 + cells rows + !
+: BODY-ROW! ( n -- ) {: src:n :}
+   BODY-ROWS @ 2 * {: at:n :}
+   BODY-U @  at BODY-ROW !
+   src  at 1 + BODY-ROW !
    BODY-ROWS @ 1 + BODY-ROWS ! ;
 
+\ The buffers grow to hold every run, so a body is never truncated: the
+\ registration-only replay entries have no length gate, and a dropped token
+\ would make a well-formed, wrong declaration. Both are reserved before the
+\ run changes any state, so a refused reservation leaves the body as it was.
 : BODY-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
-   BODY-U @ u + 1 + BODYBUF-CAP > IF E-VS-BODY-CAP throw THEN
    a SOURCE@ - {: src:n :}
    src 0 <  src u + SOURCE-U @ >  or IF s" verify-source: body run outside the source" 74 die THEN
+   BODY-U @ u + 1 + {: end:n :}
+   end BODY-BUF-RESERVE
+   BODY-ROWS @ 1 + 2 * BODY-ROW-RESERVE
    src CSR-PLACE
    src BODY-ROW!
-   0 BEGIN dup u < WHILE
-      dup a + c@  BODY-BUF BODY-U @ + c!
-      BODY-U @ 1 + BODY-U !
-      1 +
-   REPEAT drop
-   32 BODY-BUF BODY-U @ + c!  BODY-U @ 1 + BODY-U ! ;
+   a  0 BODY-BUF BODY-U @ +  u BYTE-COPY
+   32  BODY-U @ u + BODY-BUF c!
+   end BODY-U ! ;
 
 \ The body for the checker, with its rows armed for the packets it writes.
+\ The armed addresses hold until the next BODY-APPEND, which may move both
+\ buffers; every check calls BODY$ again before it reads them.
 : BODY$ ( -- ptr u8 n )
-   BODY-BUF BODY-U @ BODY-ROW BODY-ROWS @ DIAG-MAP!
-   BODY-BUF BODY-U @ ;
+   BODY-U @ 1 max BODY-BUF-RESERVE
+   BODY-ROWS @ 2 * 1 max BODY-ROW-RESERVE
+   0 BODY-BUF BODY-U @ 0 BODY-ROW BODY-ROWS @ DIAG-MAP!
+   0 BODY-BUF BODY-U @ ;
 
 \ The body of the definition the current token closes, its `;` or the `does>`
 \ ending a definer's body. The body holds no closer, so the checker is told
@@ -1629,8 +1628,8 @@ variable TICK-DOES-VERDICT
 \ The native compiler can refuse an earlier parent token before it reaches a
 \ does> clause, then checks the clause before the parent's closing check.
 \ Keep the parent's collected text and source map while judging the clause.
-create DOES-PARENT-BUF BODYBUF-CAP allot
-create DOES-PARENT-ROW BODYBUF-CAP cells allot
+DYNAMIC-BUFFER DOES-PARENT-BUF u8
+DYNAMIC-BUFFER DOES-PARENT-ROW n
 variable DOES-PARENT-U
 variable DOES-PARENT-ROWS
 PTR-VARIABLE DOES-CLOSER-A
@@ -1640,6 +1639,24 @@ variable DOES-ACCEPTED                  \ both parent and clause certified
 TYPED-VARIABLE DOES-PARENT-REFUSED bool
 PTR-VARIABLE DOES-CLAUSE-A
 variable DOES-CLAUSE-U
+
+\ Each copy reserves both sides to what it moves, at least one element, before
+\ it indexes either; the rows move cell by cell as the cells they are.
+: DOES-PARENT-ROOM ( n n -- ) {: u:n c:n :}
+   u 1 max BODY-BUF-RESERVE  u 1 max DOES-PARENT-BUF-RESERVE
+   c 2 * 1 max BODY-ROW-RESERVE  c 2 * 1 max DOES-PARENT-ROW-RESERVE ;
+
+: DOES-PARENT-KEEP ( -- )
+   BODY-U @ DOES-PARENT-U !  BODY-ROWS @ DOES-PARENT-ROWS !
+   DOES-PARENT-U @ DOES-PARENT-ROWS @ DOES-PARENT-ROOM
+   0 BODY-BUF 0 DOES-PARENT-BUF DOES-PARENT-U @ BYTE-COPY
+   DOES-PARENT-ROWS @ 2 * 0 ?do i BODY-ROW @ i DOES-PARENT-ROW ! loop ;
+
+: DOES-PARENT-BACK ( -- )
+   DOES-PARENT-U @ DOES-PARENT-ROWS @ DOES-PARENT-ROOM
+   0 DOES-PARENT-BUF 0 BODY-BUF DOES-PARENT-U @ BYTE-COPY
+   DOES-PARENT-ROWS @ 2 * 0 ?do i DOES-PARENT-ROW @ i BODY-ROW ! loop
+   DOES-PARENT-U @ BODY-U !  DOES-PARENT-ROWS @ BODY-ROWS ! ;
 
 : REPORT-DOES-CLAUSE ( -- )
    DOES-CLAUSE-U @ 0= IF EXIT THEN
@@ -1790,9 +1807,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    THEN
    gate unknown or IF
       TOKEN-A @ DOES-CLOSER-A !  TOKEN-U @ DOES-CLOSER-U !
-      BODY-U @ DOES-PARENT-U !  BODY-ROWS @ DOES-PARENT-ROWS !
-      BODY-BUF DOES-PARENT-BUF DOES-PARENT-U @ BYTE-COPY
-      BODY-ROW DOES-PARENT-ROW DOES-PARENT-ROWS @ 2 * cells BYTE-COPY
+      DOES-PARENT-KEEP
    ELSE
       VERIFY-NAMED-BODY dup DOES-DEF-VERDICT ! REPORT-DEFERRED
    THEN
@@ -1816,9 +1831,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
                DEFERRED-BODY$ DOES-CLAUSE-U ! DOES-CLAUSE-A !
             THEN
             TOKEN-A @ {: end:ptr :}  TOKEN-U @ {: endu:n :}
-            DOES-PARENT-BUF BODY-BUF DOES-PARENT-U @ BYTE-COPY
-            DOES-PARENT-ROW BODY-ROW DOES-PARENT-ROWS @ 2 * cells BYTE-COPY
-            DOES-PARENT-U @ BODY-U !  DOES-PARENT-ROWS @ BODY-ROWS !
+            DOES-PARENT-BACK
             DOES-CLOSER-A @ TOKEN-A !  DOES-CLOSER-U @ TOKEN-U !
             [: DOES-PARENT-RUN ;] catch {: rc:n :}
             rc 0<> IF REPORT-DOES-CLAUSE rc throw THEN
@@ -2877,12 +2890,12 @@ variable STG-TYPE-U
 
 : BODY>BYTE ( n -- n )
    {: at:n :}
-   BODY-ROW {: rows:ptr :}
+   BODY-ROWS @ 2 * 2 max BODY-ROW-RESERVE
    0 BODY-ROWS @ 0 ?do
-      i 2 * cells rows + @ at <= IF drop i THEN
+      i 2 * BODY-ROW @ at <= IF drop i THEN
    loop
    {: row:n :}
-   row 2 * 1 + cells rows + @  at +  row 2 * cells rows + @ -  BASE-BYTE @ + ;
+   row 2 * 1 + BODY-ROW @  at +  row 2 * BODY-ROW @ -  BASE-BYTE @ + ;
 
 \ A refusal stops at the name, at the field the checker refuses, or, for a
 \ record with no field, at END-VALUE-RECORD, the token read last.

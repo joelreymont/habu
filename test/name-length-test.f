@@ -1,7 +1,8 @@
 \ name-length-test.f - every checker word source can call with a name or a text
-\ refuses a length that describes no name or no text: -1, the ceiling plus one
-\ and the maximum cell. A query answers no and moves no pool mark; a declaring
-\ word ends with its own refusal. A name of exactly the ceiling is still taken.
+\ refuses a length that describes no memory, -1 and the maximum cell, and a
+\ stored type one past its buffer. A query answers no and moves no pool mark; a
+\ declaring word ends with its own refusal. A name has no ceiling: a long one is
+\ taken, while a package name past its row is refused by name.
 
 require src/lib/error.f
 require src/lib/memory.f
@@ -17,19 +18,22 @@ $400 constant OUT-CAP
 $8000 constant ERR-CAP             \ a diagnostic that names a whole name
 10000 constant TIMEOUT-MS
 -1 1 rshift constant MAX-CELL
-\ A definer captures a word's name and one separator into the definition's
-\ body text (src/habu/layout.f BODYBUF-CAP) before it writes the record, and
-\ src/core/checker.f bounds every name it is handed by the same ceiling.
-BODYBUF-CAP 1 - constant CEIL      \ the longest name `:` defines
-BODYBUF-CAP constant TEXT-CAP      \ the longest stored-type text
+\ A name has no ceiling: a definer captures a word's name and one separator
+\ into the definition's body text, which grows with the definition, before it
+\ writes the record. LONG-LEN is a name's length past the old 8000-byte cap.
+20000 constant LONG-LEN
+\ The longest stored-type text: src/core/checker.f LBUF-SIG-CAP, the buffer
+\ every stored type is spelled into.
+$1000 constant TEXT-CAP
 create OUT OUT-CAP allot
 create ERR ERR-CAP allot
 
-\ Room for a text one past its cap, in whole pages between two guard pages.
-\ Each name and text ends at a guard page, so a word that reads past a short
-\ one faults at once instead of reading on through what is mapped after it.
-\ Every byte of the names is q.
-TEXT-CAP 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES * constant ROOM
+\ Room for a name or text one past the longest a case hands, in whole pages
+\ between two guard pages. Each name and text ends at a guard page, so a word
+\ that reads past a short one faults at once instead of reading on through
+\ what is mapped after it. Every byte of the names is q.
+LONG-LEN TEXT-CAP max 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES *
+   constant ROOM
 PTR-VARIABLE NAMES
 : NAMES! ( -- )
    ROOM MEM:ALLOC-GUARDED drop {: p:ptr :}
@@ -198,27 +202,20 @@ variable LBL-U
    RELABEL outu LEN>N 0 T=
    RELABEL ERR erru LEN>N want wantu T$= ;
 
-\ -1, the cap plus one and the maximum cell: no name or text the cap bounds has
-\ any of them.
+\ -1, the cap plus one and the maximum cell: no text the cap bounds has any of
+\ them.
 : RETURNS-PAST ( n ptr u8 n -- )
    {: cap:n src:ptr srcu:n :}
    -1 s" -1" src srcu RETURNS-AT
    cap 1 + s" cap+1" src srcu RETURNS-AT
    MAX-CELL s" max" src srcu RETURNS-AT ;
-: RETURNS ( ptr u8 n -- ) {: src:ptr srcu:n :} CEIL src srcu RETURNS-PAST ;
 
-: DIES ( ptr u8 n n ptr u8 n -- )
-   {: src:ptr srcu:n rc:n want:ptr wantu:n :}
-   -1 s" -1" src srcu rc want wantu DIES-AT
-   CEIL 1 + s" ceiling+1" src srcu rc want wantu DIES-AT
-   MAX-CELL s" max" src srcu rc want wantu DIES-AT ;
-
-\ -1 and the maximum cell alone, for a text with no bound of its own.
-: RETURNS-NO-SPAN ( ptr u8 n -- )
+\ -1 and the maximum cell, for a name or a text with no bound of its own.
+: RETURNS ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    -1 s" -1" src srcu RETURNS-AT
    MAX-CELL s" max" src srcu RETURNS-AT ;
-: DIES-NO-SPAN ( ptr u8 n n ptr u8 n -- )
+: DIES ( ptr u8 n n ptr u8 n -- )
    {: src:ptr srcu:n rc:n want:ptr wantu:n :}
    -1 s" -1" src srcu rc want wantu DIES-AT
    MAX-CELL s" max" src srcu rc want wantu DIES-AT ;
@@ -250,7 +247,6 @@ variable LBL-U
 : FAM-DIES-AT-MAX ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    -1 s" -1" src srcu RETURNS-AT
-   CEIL 1 + s" ceiling+1" src srcu RETURNS-AT
    MAX-CELL s" max" src srcu 76 S\" checker: token buffer too large\n" DIES-AT ;
 
 : TEST-FAMILIES ( -- )
@@ -268,13 +264,13 @@ variable LBL-U
    s" RECORD-IT" 70 S\" checker: bad or duplicate value-record type\n" DIES
    s" TRUNCATE-RAW-IT" 76 S\" checker: missing signature truncation mark\n" DIES
    s" TRUNCATE-IT" 83 S\" seal: cannot truncate sealed checker signatures\n" DIES
-   s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES-NO-SPAN
-   CEIL 1 + s" ceiling+1" s" PACKAGE-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
-   s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES-NO-SPAN
-   CEIL 1 + s" ceiling+1" s" USING-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
+   s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES
+   LONG-LEN s" long" s" PACKAGE-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
+   s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
+   LONG-LEN s" long" s" USING-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
    -1 s" -1" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
-   CEIL 1 + s" ceiling+1" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES-AT
+   LONG-LEN s" long" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES-AT
    MAX-CELL s" max" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES-AT
    s" EXPORT-IT" 67 S\" hb: uncaught throw code 7113\n" DIES
    s" FAMILY-IT" 70 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
@@ -337,8 +333,8 @@ variable WANT-U
 \ field text, which is no name, so only -1 and the maximum cell describe no
 \ text.
 : TEST-FIELD-TEXT ( -- )
-   s" TRY-FIELDS" RETURNS-NO-SPAN
-   s" FIELDS-IT" 70 S\" checker: empty value-record\n" DIES-NO-SPAN ;
+   s" TRY-FIELDS" RETURNS
+   s" FIELDS-IT" 70 S\" checker: empty value-record\n" DIES ;
 
 \ A definition's source text, which CHECK and its entries judge, and a
 \ signature, which CHECK-DOES! and CHECKER-DEFCAST parse, are no names either:
@@ -362,14 +358,14 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    TEXT-CAP s" LAYOUT-TEXT" RETURNS-PAST
    TEXT-CAP s" STORAGE-TEXT" RETURNS-PAST
    TEXT-CAP s" DYNAMIC-TEXT" RETURNS-PAST
-   s" CHECK-IT" 76 TOO-LARGE$ DIES-NO-SPAN
-   s" CHECK!-IT" 76 TOO-LARGE$ DIES-NO-SPAN
-   s" CANDIDATE-IT" 76 TOO-LARGE$ DIES-NO-SPAN
-   s" HOOK-IT" 76 TOO-LARGE$ DIES-NO-SPAN
-   s" MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT" RETURNS-NO-SPAN
-   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-WANT$ DIES-NO-SPAN ;
+   s" CHECK-IT" 76 TOO-LARGE$ DIES
+   s" CHECK!-IT" 76 TOO-LARGE$ DIES
+   s" CANDIDATE-IT" 76 TOO-LARGE$ DIES
+   s" HOOK-IT" 76 TOO-LARGE$ DIES
+   s" MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT" RETURNS
+   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-WANT$ DIES ;
 
-\ ---- a name of exactly the ceiling ------------------------------------------
+\ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.
 : DEF-SRC ( n n -- ptr u8 n )
    {: u:n c:n :}
@@ -379,68 +375,74 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    32 p u 2 + + c!  59 p u 3 + + c!
    p u 4 + ;
 
+\ `: <u bytes of c> ( -- ) 82 emit ; <u bytes of c>`, in a fresh mapping: a
+\ definition and its one call, which prints R.
+: RAN$ ( -- ptr u8 n ) s"  ( -- ) 82 emit ; " ;
+: RUN-SRC ( n n -- ptr u8 n )
+   {: u:n c:n :}
+   RAN$ {: b:ptr bu:n :}
+   u 2 * bu + 2 + {: su:n :}
+   su MEM-ALLOC-BYTES drop {: p:ptr :}
+   58 p c!  32 p 1 + c!
+   u 0 ?do c p 2 + i + c! loop
+   bu 0 ?do b i + c@ p u 2 + + i + c! loop
+   u 0 ?do c p u 2 + bu + + i + c! loop
+   p su ;
+
 : LETTERS ( n n -- ptr u8 n )
    {: u:n c:n :}
    u MEM-ALLOC-BYTES drop {: p:ptr :}
    u 0 ?do c p i + c! loop
    p u ;
 
-: CEIL$ ( -- ptr u8 n ) CEIL TAIL ;
+: LONG$ ( -- ptr u8 n ) LONG-LEN TAIL ;
 
-\ The engine's own bound: `:` defines a name of the ceiling, and one byte more
-\ runs the definition's body text past BODYBUF-CAP. The names are w, which no
-\ word of this file is named.
-: FULL$ ( -- ptr u8 n ) s" hb: definition body text full at 8000 bytes:" ;
+\ The body text grows with the definition: on the load path a child's `:`
+\ defines a word with a long name, whose body text passes 20000 bytes, and
+\ the word runs. The name is w, which no word of this file is named.
 : TEST-ENGINE ( -- )
-   CEIL 119 DEF-SRC {: da:ptr du:n :}
-   0 s" ceiling" da du RUN-AT {: outu:len erru:len oc :}
-   s" `:` defines a name of the ceiling" T-LABEL
+   LONG-LEN 119 RUN-SRC {: da:ptr du:n :}
+   0 s" a long name" da du RUN-AT {: outu:len erru:len oc :}
+   s" `:` defines a word with a long name" T-LABEL
    da du OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    s" ... and says nothing" T-LABEL
    ERR erru LEN>N s" " T$=
-   CEIL 1 + 119 DEF-SRC {: ea:ptr eu:n :}
-   0 s" ceiling+1" ea eu RUN-AT {: outv:len errv:len od :}
-   s" `:` refuses a name one byte past it" T-LABEL
-   ea eu OUT outv LEN>N ERR errv LEN>N od 71 T-ENDING-EXITED=
-   s" ... for the body text it would need" T-LABEL
-   ERR FULL$ nip FULL$ T$= ;
+   s" ... and the word runs" T-LABEL
+   OUT outu LEN>N s" R" T$= ;
 
-\ The word this file defines below, named by exactly the ceiling.
-: TEST-CEILING ( -- )
-   s" a word named at the ceiling resolves" T-LABEL
-   CEIL$ CHECKER-RESOLVES? TTRUE
+\ The word this file defines below, with a long name.
+: TEST-LONG ( -- )
+   s" a word with a long name resolves" T-LABEL
+   LONG$ CHECKER-RESOLVES? TTRUE
    s" ... is defined in this scope" T-LABEL
-   CEIL$ CHECKER-DEFINED-HERE? TTRUE
+   LONG$ CHECKER-DEFINED-HERE? TTRUE
    s" ... has an effect to query" T-LABEL
-   CEIL$ EFFECT-QUERY TTRUE
+   LONG$ EFFECT-QUERY TTRUE
    s" ... may be published by a storage definer" T-LABEL
-   CEIL$ CHECKER-LBUF-NAME-OK? TTRUE
+   LONG$ CHECKER-LBUF-NAME-OK? TTRUE
    s" ... names no type" T-LABEL
-   CEIL$ TYPE-RESERVED? TFALSE
-   s" a value-record named at the ceiling is declared" T-LABEL
-   CEIL 114 LETTERS {: ra:ptr ru:n :}
+   LONG$ TYPE-RESERVED? TFALSE
+   s" a value-record with a long name is declared" T-LABEL
+   LONG-LEN 114 LETTERS {: ra:ptr ru:n :}
    ra ru s" f n" CHECKER-DEFRECORD
    ra ru TYPE-RESERVED? TTRUE
-   s" a linear type named at the ceiling is declared" T-LABEL
-   CEIL 115 LETTERS {: la:ptr lu:n :}
+   s" a linear type with a long name is declared" T-LABEL
+   LONG-LEN 115 LETTERS {: la:ptr lu:n :}
    la lu CHECKER-DEFLINEAR
    la lu TYPE-RESERVED? TTRUE
-   s" a record tried at the ceiling is registered" T-LABEL
-   CEIL 116 LETTERS s" f n" CHECKER-TRY-RECORD nip nip 0 T=
-   s" a deferred name of the ceiling is stored whole" T-LABEL
+   s" a record tried with a long name is registered" T-LABEL
+   LONG-LEN 116 LETTERS s" f n" CHECKER-TRY-RECORD nip nip 0 T=
+   s" a deferred long name is stored whole" T-LABEL
    SYM-STR-U @ {: used:n :}
-   CEIL 112 LETTERS CHECKER-DEFER
-   SYM-STR-U @ used CEIL + T=
-   s" the word named at the ceiling is undefined" T-LABEL
-   CEIL$ CHECKER-UNDEFINE
-   CEIL$ CHECKER-RESOLVES? TFALSE ;
+   LONG-LEN 112 LETTERS CHECKER-DEFER
+   SYM-STR-U @ used LONG-LEN + T=
+   s" the word with a long name is undefined" T-LABEL
+   LONG$ CHECKER-UNDEFINE
+   LONG$ CHECKER-RESOLVES? TFALSE ;
 
 \ A stored type's text, which the storage gates parse, is bounded by the
-\ definition body text: a storage definer spells its stored type in the effect
-\ of the accessor it generates, which the engine captures into BODYBUF-CAP
-\ bytes, so a text of exactly the cap is still taken. CHECK judges raw source,
-\ and the engine captures a definition without its comments and runs of
-\ spaces, so a source text one past the cap still certifies.
+\ buffer a storage definer spells it into (src/core/checker.f LBUF-SIG-CAP),
+\ so a text of exactly the cap is still taken.
 : TEST-TEXT-CAP ( -- )
    TEXT-CAP LEN !
    s" a stored type at the cap is a layout" T-LABEL
@@ -448,10 +450,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" ... is storage" T-LABEL
    STORED$ CHECKER-STORAGE-INFO nip TTRUE
    s" ... is a dynamic element" T-LABEL
-   STORED$ CHECKER-DYNAMIC-INFO nip TTRUE
-   TEXT-CAP 1 + LEN !
-   s" a definition text one past the capture certifies" T-LABEL
-   BODY$ CHECK-CANDIDATE! -1 T= ;
+   STORED$ CHECKER-DYNAMIC-INFO nip TTRUE ;
 
 : MAIN ( -- )
    T-RESET
@@ -463,14 +462,14 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    TEST-FIELD-TEXT
    TEST-TEXTS
    TEST-ENGINE
-   TEST-CEILING
+   TEST-LONG
    TEST-TEXT-CAP
    T-REPORT
    s" name-length-test: ok" type cr ;
 
-\ The word named at the ceiling, and the top-level-only word taking its name.
-CEIL 113 DEF-SRC evaluate
-CEIL$ SIG$ TRUST
+\ The word with a long name, and the top-level-only word taking its name.
+LONG-LEN 113 DEF-SRC evaluate
+LONG$ SIG$ TRUST
 
 MAIN
 

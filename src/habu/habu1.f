@@ -165,7 +165,7 @@ variable LLEN  variable LSPAN  variable LNAME
 ;package
 variable LPROTWIDQ  variable LPROTWIDADD
 variable LDPBAD   \ DP-CHECK out-of-range die target (habu2.f EM-COMPILE-DIE)
-variable LBCAPFULL   \ body-capture over BODYBUF-CAP die target (habu2.f EM-BODY-CAP-DIE)
+variable LBGROWFAIL   \ body text grow refused die target, x16 = the capacity tried (habu2.f EM-BODY-GROW-DIE)
 \ Hash-index label ids, bound in EMIT-HIDX: LREBUILD for the in-place compaction
 \ BNDSET's raise leg calls, LFULL for the cannot-maintain exit, LREKEY for the
 \ re-key record-wid! calls. Not in layout.f's HIDX: the engine bakes that one.
@@ -261,23 +261,33 @@ variable BAND-IX
 
 \ addr and len name runtime registers. A zero-length write is inert; an
 \ address+length wrap traps before the band tests. Inactive only while the
-\ canonical cold prefix owns the open friend latch. Clobbers x12/x13 only.
+\ canonical cold prefix owns the open friend latch. The live body text block,
+\ [BODY-TEXT:BASE-CELL's base, base + SIZE), is tested last, read from the
+\ handle on every store: both hull exits and the band walk reach it, and base
+\ and SIZE 0 before the first capture mean no region. Clobbers x12/x13 only.
 : GUARD-SPAN ( n n -- )
    {: addr:n len:n :}
-   LBL LBL {: ok:label trap:label :}
+   LBL LBL LBL {: ok:label trap:label live:label :}
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    len ok CBZ,
    EREG addr len ADD,                   \ checked end = start + length
    EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
    \ Every band lies in [DATA-BANDS:LO, DATA-BANDS:HI), so a span outside that
-   \ hull skips the band walk. Every DP heap address takes this exit: the hull
-   \ ends before pending scratch and DATA-START.
+   \ hull skips the band walk for the live test. Every DP heap address takes
+   \ this exit: the hull ends before pending scratch and DATA-START.
    DREG DATA-BANDS:HI LIT64,  DREG DATA DREG ADD,
-   addr DREG CMP,  C-CS ok BCOND,       \ start >= hull end
+   addr DREG CMP,  C-CS live BCOND,     \ start >= hull end
    DREG DATA-BANDS:LO LIT64,  DREG DATA DREG ADD,
-   EREG DREG CMP,  C-LS ok BCOND,       \ checked end <= hull start
+   EREG DREG CMP,  C-LS live BCOND,     \ checked end <= hull start
    addr trap BANDS-EMIT
+   live LBL,
+   DREG DATA BODY-TEXT:BASE-CELL LDR,
+   EREG DREG CMP,  C-LS ok BCOND,       \ checked end <= base: below the block
+   addr DREG CMP,  C-CC trap BCOND,     \ start < base < checked end: across the base
+   DREG addr DREG SUB,                  \ start - base
+   EREG DATA BODY-TEXT:SIZE-CELL LDR,
+   DREG EREG CMP,  C-CC trap BCOND,     \ start - base < SIZE: in the block
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
@@ -5273,10 +5283,87 @@ package ENGINE-EMIT
    12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
    28 28 4 ADDI,  RET, ;
 
-\ LBCAP appends TKA/TKL and a space to BODYBUF, LBCS ( x11=a x12=u ) any run,
-\ each with a layout.f BODY-SOURCE row; past BODYBUF-CAP it dies rc 71.
+\ EMIT-BCAP's grow routine at gsub ( x16 = the text length needed -- x16 = 0, or the
+\ capacity a refused map tried ): the new capacity is BODY-TEXT:FIRST-CAP doubled
+\ until it holds x16, and the block 17 * cap bytes, anonymous, private and
+\ read-write. It copies the old block's min(BODYLEN, cap) text bytes to the new
+\ base and its ROWS * 16 row bytes to new base + new cap, adds new base - old
+\ base to TCSIG-A-CELL when that lies in the old text, unmaps the old block and
+\ stores BASE, CAP and SIZE. A capacity at 2^59, whose block's size would pass
+\ 2^63, is refused as a map is, as kernel-x64.f GROW-LIMIT-SHIFT refuses it. It keeps every register but x16, the syscall's
+\ included: LBCS's callers hold x6-x10 live, and the capture then reads x11,
+\ x12, x14 and x17. A refused map leaves the handle as it was.
+: BCAP-GROW ( label -- ) {: gsub:label :}
+   LBL LBL LBL LBL LBL {: dbl:label fits:label fail:label done:label fresh:label :}
+   LBL LBL LBL LBL LBL {: tloop:label tdone:label rloop:label rdone:label kept:label :}
+   LBL {: back:label :}
+   gsub LBL,
+   SP SP 144 SUBI,
+   0 SP 0 STR,    1 SP 8 STR,    2 SP 16 STR,   3 SP 24 STR,   4 SP 32 STR,
+   5 SP 40 STR,   6 SP 48 STR,   7 SP 56 STR,   8 SP 64 STR,   9 SP 72 STR,
+   10 SP 80 STR,  11 SP 88 STR,  12 SP 96 STR,  13 SP 104 STR, 14 SP 112 STR,
+   15 SP 120 STR, 17 SP 128 STR,
+   9 16 0 ADDI,                                   \ x9 = the length needed
+   10 BODY-TEXT:FIRST-CAP LIT64,                  \ x10 = the new capacity
+   11 1 MOVZ,  11 11 59 LSLI,                     \ x11 = 2^59, the first capacity refused
+   dbl LBL,
+      10 9 CMP,  C-CS fits BCOND,
+      10 10 1 LSLI,
+      10 11 CMP,  C-CC dbl BCOND,
+   fail B,
+   fits LBL,
+   0 0 MOVZ,  1 10 4 LSLI,  1 1 10 ADD,  2 3 MOVZ,
+   3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,
+   C-CS fail BCOND,
+   11 0 0 ADDI,                                   \ x11 = the new base
+   12 DATA BODY-TEXT:BASE-CELL LDR,               \ x12 = the old base, x13 its capacity
+   13 DATA BODY-TEXT:CAP-CELL LDR,
+   12 fresh CBZ,
+   \ the text: min(BODYLEN, old cap) bytes
+   14 DATA BODYLEN-CELL LDR,  14 13 CMP,  C-LS kept BCOND,  14 13 0 ADDI,
+   kept LBL,
+   15 0 MOVZ,
+   tloop LBL,
+      15 14 CMP,  C-CS tdone BCOND,
+      5 12 15 ADD,  5 5 0 LDRB,  6 11 15 ADD,  5 6 0 STRB,
+      15 15 1 ADDI,  tloop B,
+   tdone LBL,
+   \ the rows: ROWS * 16 bytes from old base + old cap to new base + new cap
+   7 DATA BODY-TEXT:ROWS-CELL LDR,  7 7 4 LSLI,
+   15 0 MOVZ,
+   rloop LBL,
+      15 7 CMP,  C-CS rdone BCOND,
+      5 12 13 ADD,  5 5 15 ADD,  5 5 0 LDR,
+      6 11 10 ADD,  6 6 15 ADD,  5 6 0 STR,
+      15 15 8 ADDI,  rloop B,
+   rdone LBL,
+   \ TCSIG-A into the old text moves with it: unsigned, x6 < old cap covers both ends
+   5 DATA TCSIG-A-CELL LDR,  6 5 12 SUB,  6 13 CMP,  C-CS done BCOND,
+      5 5 11 ADD,  5 5 12 SUB,  5 DATA TCSIG-A-CELL STR,
+   done LBL,
+   0 12 0 ADDI,  1 DATA BODY-TEXT:SIZE-CELL LDR,  NR-MUNMAP SYS,
+   fresh LBL,
+   11 DATA BODY-TEXT:BASE-CELL STR,  10 DATA BODY-TEXT:CAP-CELL STR,
+   1 10 4 LSLI,  1 1 10 ADD,  1 DATA BODY-TEXT:SIZE-CELL STR,
+   16 0 MOVZ,
+   back B,
+   fail LBL,
+   16 10 0 ADDI,                                  \ x16 = the capacity refused
+   back LBL,
+   0 SP 0 LDR,    1 SP 8 LDR,    2 SP 16 LDR,   3 SP 24 LDR,   4 SP 32 LDR,
+   5 SP 40 LDR,   6 SP 48 LDR,   7 SP 56 LDR,   8 SP 64 LDR,   9 SP 72 LDR,
+   10 SP 80 LDR,  11 SP 88 LDR,  12 SP 96 LDR,  13 SP 104 LDR, 14 SP 112 LDR,
+   15 SP 120 LDR, 17 SP 128 LDR,
+   SP SP 144 ADDI,  RET, ;
+
+\ LBCAP appends TKA/TKL and a space to the body text, LBCS ( x11=a x12=u ) any
+\ run, each with a layout.f BODY-SOURCE row at base + cap. When BODY-TEXT's BASE
+\ is 0 or BODYLEN + u + 1 passes its CAP, it maps a larger
+\ block first (BCAP-GROW); a refused map dies rc 71 at LBGROWFAIL (habu2.f EM-BODY-GROW-DIE)
+\ before anything is stored, so the refusal is catchable inside evaluate.
 : EMIT-BCAP ( -- )
    LBL LBL LBL LBL LBL LBL {: pop put seed none src rowed :}
+   LBL LBL {: grow:label gsub:label :}
    LBCAP LABEL@ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS LABEL@ LBL,
@@ -5289,20 +5376,27 @@ package ENGINE-EMIT
    BCAP-GO LABEL@ LBL,
    17 12 0 ADDI,                  \ len in x17: callers keep x6-x8
    14 DATA BODYLEN-CELL LDR,
-   16 14 17 ADD,  16 16 1 ADDI,
-   5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE BCAP-OK LABEL@ BCOND,
-      LBCAPFULL LABEL@ B,            \ x16 = the size the capture needs: habu2.f EM-BODY-CAP-DIE names buffer, ceiling, definition and count, then rc 71
+   16 14 17 ADD,  16 16 1 ADDI,   \ x16 = the text length the capture needs
+   5 DATA BODY-TEXT:BASE-CELL LDR,  5 grow CBZ,
+   5 DATA BODY-TEXT:CAP-CELL LDR,  16 5 CMP,  C-LS BCAP-OK LABEL@ BCOND,
+   grow LBL,
+      SP SP 16 SUBI,  30 SP 0 STR,
+      gsub BL,                     \ x16 = 0 grown, else the capacity a refused map tried
+      30 SP 0 LDR,  SP SP 16 ADDI,
+      16 BCAP-OK LABEL@ CBZ,
+      LBGROWFAIL LABEL@ B,         \ habu2.f EM-BODY-GROW-DIE names the capacity, then rc 71
    BCAP-OK LABEL@ LBL,
    17 rowed CBZ,
-   \ x15 = the band, x16 = its rows; x5 = the last row's text offset
-   15 BODY-SOURCE:OFF LIT64,  15 DATA 15 ADD,  16 15 0 LDR,
+   \ x15 = the rows (base + cap), x16 = their count; x5 = the last row's text offset
+   15 DATA BODY-TEXT:BASE-CELL LDR,  13 DATA BODY-TEXT:CAP-CELL LDR,  15 15 13 ADD,
+   16 DATA BODY-TEXT:ROWS-CELL LDR,
    pop LBL,  16 put CBZ,
-      13 16 1 SUBI,  13 13 4 LSLI,  13 15 13 ADD,  5 13 8 LDR,
+      13 16 1 SUBI,  13 13 4 LSLI,  13 15 13 ADD,  5 13 0 LDR,
       5 14 CMP,  C-CC put BCOND,
       16 16 1 SUBI,  pop B,
    put LBL,
-   13 16 4 LSLI,  13 15 13 ADD,  14 13 8 STR,  \ the new row is at x13 + 8
-   16 16 1 ADDI,  16 15 0 STR,
+   13 16 4 LSLI,  13 15 13 ADD,  14 13 0 STR,  \ the new row is at x13
+   16 16 1 ADDI,  16 DATA BODY-TEXT:ROWS-CELL STR,
    15 DATA SRCLOC:INB-CELL LDR,  5 DATA INE-CELL LDR,
    \ The name and the run lie in [INB, INE); the first run is the name, seeded
    \ before PENDTKA-CELL is set.
@@ -5313,14 +5407,15 @@ package ENGINE-EMIT
    11 15 CMP,  C-CC none BCOND,  11 5 CMP,  C-CS none BCOND,
    16 11 15 SUB,  src B,
    none LBL,  16 BODY-SOURCE:NONE LIT64,
-   src LBL,  16 13 16 STR,
+   src LBL,  16 13 8 STR,
    rowed LBL,
-   15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
+   15 DATA BODY-TEXT:BASE-CELL LDR,  15 15 14 ADD,
    BCAP-CP LABEL@ LBL,  12 BCAP-CD LABEL@ CBZ,  13 11 0 LDRB,  13 15 0 STRB,
       15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  BCAP-CP LABEL@ B,
    BCAP-CD LABEL@ LBL,  13 32 MOVZ,  13 15 0 STRB,
    14 14 17 ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
-   RET, ;
+   RET,
+   gsub BCAP-GROW ;
 
 : EMIT-TOK ( -- )
    LTOK LABEL@ LBL,

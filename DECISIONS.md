@@ -14,6 +14,16 @@ learned live in the docs for their subject.
   prove me wrong!": a signature nests at most 32 binders, and a 33rd is
   refused by name as a limit (`more than 32 nested binders`), not as a
   syntax error.
+- 2026-11-09, a definition's text (relayed by tim from Maki): of the
+  8000-byte cap on a definition's captured text, which carl ruled should go,
+  the text growing with the definition, Joel said "should be done right
+  now!". The lead's contract, adopted: the engine keeps the text and its
+  source rows in one block it maps at the first capture and grows by
+  doubling, reached through four DATA cells (`BODY-TEXT:BASE-CELL`,
+  `CAP-CELL`, `SIZE-CELL`, `ROWS-CELL`); no capacity constant is left, so
+  the checker's, the compiler's and elaborate's copies grow too; a block
+  that cannot be mapped ends the build naming the size it tried; and every
+  guarded store also refuses the live block.
 - 2026-11-04, scope memory (relayed by stuart from Tender): shown that every
   MEM:WITH-BYTES scope maps and unmaps its memory (1,000,000 empty scopes
   4.69 s, 2.04 s of it in the kernel) and a design that keeps small scopes in

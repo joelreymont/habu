@@ -215,17 +215,16 @@ PTR-VARIABLE SND-A
 : SND-ZERO-MEM-SCOPE ( -- )
    MEM-ABI:START MEM-ABI:BYTES SND-ZERO-BAND ;
 
-\ BODYLEN bounds the current definition text. A cached FILE replay can leave
-\ older source after that bound, while a cold compile writes a different tail.
-\ Preserve the live prefix in the copied DATA and retire only its unused room.
+\ A saved image has no block: the body text and its BODY-SOURCE rows live in
+\ memory the writing run mapped, which the image does not own. Zero the
+\ handle's BASE, CAP, SIZE and ROWS and BODYLEN in the copied DATA, so the
+\ image's first capture maps its own block.
 : SND-ZERO-BODY-TAIL ( -- )
-   BODYLEN-CELL SND-PTR + CELL-VIEW @ {: used:n :}
-   used 0 < used BODYBUF-CAP > or if
-      s" snap: body length outside buffer" 74 die
-   then
-   BODYBUF-CAP 2 + used ?do
-      0 SND-PTR BODYBUF-OFF i + + c!
-   loop ;
+   BODY-TEXT:BASE-CELL SND-ZERO-CELL
+   BODY-TEXT:CAP-CELL SND-ZERO-CELL
+   BODY-TEXT:SIZE-CELL SND-ZERO-CELL
+   BODY-TEXT:ROWS-CELL SND-ZERO-CELL
+   BODYLEN-CELL SND-ZERO-CELL ;
 
 \ No definition is open at a capture (VERIFY-QUIESCENT) and every definition's
 \ end clears LOCN on either loop (habu2.f C-CLEAR-LOCALS, definers.f
