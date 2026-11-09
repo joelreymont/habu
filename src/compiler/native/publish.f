@@ -376,6 +376,17 @@ public
    NHOST:PUBLISH-TAKEN
    idx ;
 
+\ A record for code already in place, a kernel primitive's: the pending row
+\ takes its entry and recorded span, and nothing is placed.
+: IMPORT-ENTRY ( n n -- n )
+   {: entry:n recorded:n :}
+   PENDING-IDX {: idx:n :}
+   idx PENDING-CK
+   recorded CODE-SPAN:VALID? 0= if E-NPUB-RELOC throw then
+   entry recorded idx PUBLISH-REC
+   idx APPEND-PENDING
+   idx ;
+
 : IMPORT-FILE-UNIT ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
    IMPORT-UNIT ;
 

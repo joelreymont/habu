@@ -1,7 +1,8 @@
 \ linker.f - the cross-build's data space: WITH maps a space beside hb's DATA,
 \ points DP, the wordlists and the image base at it, switches the checker's
 \ registered stores to the build's (CHECK:OPEN), routes every file load to the
-\ build's runner (SOURCE-UNIT:USE), runs the body there with no package of
+\ build's runner (SOURCE-UNIT:USE), lays each owned primitive's record in its
+\ package as BUILT row 0 (OWNED-RECORDS), runs the body there with no package of
 \ hb's open and closes it. The close undoes exactly the open steps that ran,
 \ in reverse. Each file load links the file's object when it is fresh (FRESH?)
 \ and otherwise compiles the file, writing its object under the out root. An
@@ -24,6 +25,7 @@ require src/core/sha256.f
 require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/xref.f
+require src/habu/prims.f                \ PRIM-SPEC: the owned primitives' rows
 require src/habu/address-cells.f
 require src/habu/interpret.f
 require src/habu/definers.f
@@ -177,6 +179,16 @@ variable ALIASES-N
 DYNAMIC-BUFFER HOST-ADDRS n          \ its data address sites
 variable HOST-ADDRS-N
 
+\ The owned primitives' records the open lays (OWNED-RECORDS), gathered before MOVE-IN: per
+\ prims.f package row, OWNED-CELLS cells: the row, hb's record of the primitive, then its
+\ facts text's offset in OWNED-TEXT and length.
+4 constant OWNED-CELLS
+DYNAMIC-BUFFER OWNED n
+variable OWNED-N
+DYNAMIC-BUFFER OWNED-TEXT u8
+variable OWNED-TEXT-N
+KEY-BYTES BUFFER: OPEN-SUM           \ the open's BUILT row's sum (OWNED-SUM)
+
 \ As a file's compile starts (COPY-BELOW): the space's cells below its data, the records
 \ [FIRST-REC - 1, FILE-REC), and NSHADOW:PATCHES.
 create OLD-SPACE BUF:HDR-BYTES allot
@@ -326,14 +338,10 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
       rows i ROW-BYTES * +  ROW-BYTES  ROW ROW-BYTES  STR= if 1 + then
    loop ;
 
-\ FILE-KEY for a load of the path, recorded in LOADS: a SHA-256 over hb's own bytes, the build's
-\ mode and target, the whole path, the loader's key and that loader's earlier loads of the path.
-: KEY! ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   KEY-BYTES 0 ?do 0 ROW i + c! loop
-   LOADER$ {: ld:ptr ldu:n :}
-   ld ROW ldu BYTE-COPY
-   SHA-CTX path pathu ROW KEY-BYTES + SHA256-IN
-   SEEN {: n:n :}
+\ FILE-KEY: a SHA-256 over hb's own bytes, the build's mode and target, the path, the loader's
+\ key and the count of that loader's earlier loads of the path.
+: KEY-SUM ( ptr u8 n ptr u8 n n -- )
+   {: path:ptr pathu:n ld:ptr ldu:n n:n :}
    OBJECT BUF:CLEAR
    ENGINE-ID:KEY$ OBJECT FIELD+
    ENGINE? @ if s" engine" else s" app" then OBJECT FIELD+
@@ -341,7 +349,15 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    path pathu OBJECT FIELD+
    ld ldu OBJECT FIELD+
    8 OBJECT U64+  n OBJECT U64+
-   SHA-CTX OBJECT BYTES$ FILE-KEY SHA256-IN
+   SHA-CTX OBJECT BYTES$ FILE-KEY SHA256-IN ;
+
+\ FILE-KEY for a load of the path (KEY-SUM), recorded in LOADS.
+: KEY! ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   KEY-BYTES 0 ?do 0 ROW i + c! loop
+   LOADER$ {: ld:ptr ldu:n :}
+   ld ROW ldu BYTE-COPY
+   SHA-CTX path pathu ROW KEY-BYTES + SHA256-IN
+   path pathu ld ldu SEEN KEY-SUM
    ROW ROW-BYTES LOADS SPAN+ ;
 
 \ FILE-KEY onto the stack, true for a link.
@@ -3246,16 +3262,118 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    [: RUN-FILE ;] SOURCE-UNIT:USE
    construct step routed PROGRESS ! ;
 
-\ Last: from here header stores go to the space (habu2.f ROUTE-HEADER).
+\ From here header stores go to the space (habu2.f ROUTE-HEADER).
 : IMAGE-IN ( -- )
    BASE @ BOOT:IMAGE-BASE-CELL HOST!
-   here NULL-PTR - OPEN-DP !
    construct step open PROGRESS ! ;
+
+\ ---- owned primitives -----------------------------------------------------------
+\ A primitive a prims.f package row types (EPPRIM:) is its package's to call: the open lays a
+\ record of it in that package's private wordlist, whose code is the kernel's and which carries
+\ the primitive's facts text as every word's record does. The package's first file reopens the
+\ package the open made (packages.f PKG-ENSURE).
+
+\ hb's own record of owned primitive row k in its package's private wordlist, which an hb a build
+\ wrote holds; else NULL-PTR.
+: HB-OWNED ( n -- ptr n )
+   {: k:n :}
+   k PRIM-SPEC:PKG$ BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   pkg XREF-FOUND? 0= if XREF-NULL exit then
+   pkg XREF-PKG-PRIVATE {: wid:n :}
+   wid 0= if XREF-NULL exit then
+   k PRIM-SPEC:NAME$ wid CHECKER-RESOLVE:WL-PROBE ;
+
+\ Row k, hb's kernel record of its primitive and the facts text hb's checker gives it, copied:
+\ a rendered text lies in a buffer the next render reuses. A primitive no text says would leave
+\ its package's calls unchecked in the program the build writes, so the open fails.
+: OWNED+ ( n -- )
+   {: k:n :}
+   k PRIM-SPEC:NAME$ WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: src:ptr :}
+   src XREF-FOUND? 0= if E-COMP-STATE throw then
+   k HB-OWNED  k PRIM-SPEC:PKG$  k PRIM-SPEC:NAME$  LOWER-CERT-HOOK:OWNED-FACTS {: a:ptr u:n :}
+   u 0= if
+      s" linker: no facts text says owned primitive " SAY
+      k PRIM-SPEC:PKG$ SAY  s" :" SAY  k PRIM-SPEC:NAME$ SAY  SAY-CR
+      E-COMP-STATE throw
+   then
+   OWNED-TEXT-N @ {: off:n :}
+   off u + OWNED-TEXT-RESERVE
+   a  off OWNED-TEXT  u BYTE-COPY
+   off u + OWNED-TEXT-N !
+   OWNED-N @ OWNED-CELLS * {: at:n :}
+   at OWNED-CELLS + OWNED-RESERVE
+   k at OWNED !
+   src CHECKER-RESOLVE:REC>INDEX  at 1 + OWNED !
+   off at 2 + OWNED !
+   u at 3 + OWNED !
+   1 OWNED-N +! ;
+
+\ Before MOVE-IN, while hb's namespace and checker stores are current.
+: OWNED-TEXTS ( -- )
+   0 OWNED-N !  0 OWNED-TEXT-N !
+   PRIM-SPEC:COUNT 0 ?do
+      i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if i OWNED+ then
+   loop ;
+
+: OWNED@ ( n n -- n ) {: r:n f:n :} r OWNED-CELLS * f + OWNED @ ;
+
+\ Package a u's build record, made with its private wordlist when no earlier row made it.
+: OWNER ( ptr u8 n -- ptr n )
+   {: a:ptr u:n :}
+   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   pkg XREF-FOUND? if pkg exit then
+   a u true OUTER:PACKAGE-RECORD XREF-REC ;
+
+\ Owned row r's record, published as MAKE-DEF publishes a definition's, with the kernel's code
+\ and hb's record's immediate, wide and minimum-input bits, the ones alias-record keeps.
+: MAKE-OWNED ( n -- )
+   {: r:n :}
+   r 0 OWNED@ {: k:n :}
+   r 1 OWNED@ XREF-REC {: src:ptr :}
+   k PRIM-SPEC:PKG$ OWNER XREF-PKG-PRIVATE {: wid:n :}
+   ndict@ {: want:n :}
+   k PRIM-SPEC:NAME$ wid 0 OUTER:DEF-RECORD
+   src XREF-START  src XREF-RAW-LEN  NPUB:IMPORT-ENTRY  want <> if E-COMP-STATE throw then
+   OUTER:DEF-CLOSE
+   src XREF-FLAGS  DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or  and  want SET-FLAGS
+   r 2 OWNED@ OWNED-TEXT  r 3 OWNED@  want CHECK:FACTS! ;
+
+\ MAKE-OWNED; a throw drops the open definition and passes on, failing the open.
+: LINK-OWNED ( n -- )
+   [: dup MAKE-OWNED ;] catch {: r:n rc:n :}
+   rc 0<> if OUTER:DEF-ABORT rc throw then ;
+
+\ The open's sum: each owned row's package, name and facts text.
+: OWNED-SUM ( -- )
+   OBJECT BUF:CLEAR
+   OWNED-N @ 0 ?do
+      i 0 OWNED@ {: k:n :}
+      k PRIM-SPEC:PKG$ OBJECT FIELD+  k PRIM-SPEC:NAME$ OBJECT FIELD+
+      i 2 OWNED@ OWNED-TEXT  i 3 OWNED@  OBJECT FIELD+
+   loop
+   SHA-CTX OBJECT BYTES$ OPEN-SUM SHA256-IN ;
+
+\ After IMAGE-IN, so the texts are held, then laid before any file as the open's header data.
+\ The records are BUILT row 0, as a file's piece is, so an object names them by that row: its
+\ key is a load's with no path and no loader, which no file's load has; its sum is OWNED-SUM;
+\ it has no emission and no data of its own.
+: OWNED-RECORDS ( -- )
+   FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !
+   OWNED-N @ 0 ?do i LINK-OWNED loop
+   0 CHECK:PLACE-FACTS
+   OWNED-SUM
+   s" " s" " 0 KEY-SUM
+   FILE-KEY KEY-BYTES LOAD-PATHS SPAN+  s" " LOAD-PATHS FIELD+
+   here NULL-PTR - dup FILE-DP !  FILE-END !
+   OPEN-SUM BUILT+ ;
 
 : OPEN ( -- )
    0 COMPILED-N !
    INSTALL-LOOP
-   MAP SHADOW MOVE-IN CHECK-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN ;
+   OWNED-TEXTS
+   MAP SHADOW MOVE-IN CHECK-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN
+   OWNED-RECORDS
+   here NULL-PTR - OPEN-DP ! ;
 
 \ ---- the close -----------------------------------------------------------------
 : RESTORE ( -- )
