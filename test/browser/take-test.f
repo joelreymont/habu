@@ -38,7 +38,7 @@ variable MOD-U
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
 
 : SETUP ( -- )
-   s" browser-take" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" browser-take" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser take: module in " type DIR u type cr
    DIR u s" take.wasm" MOD FS:JOIN-PATH MOD-U ! ;
