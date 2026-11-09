@@ -1,6 +1,6 @@
 ---
 title: "Make a file's object its load instructions"
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-11-03T12:52:55.873397+02:00"
@@ -63,3 +63,5 @@ Design r2 approved 2026-11-04 (DECISIONS "how Habu builds Habu"): /tmp/jerry-big
 - From the 2026-11-05 test prune (habu-keep-only-the-4b091d0e): the per-definition cache's warm-reuse tests are deleted (native-build-recompile, native-file-alias, -prefix, -state, most of -replay and -auto, hb-build-aot-inputs). Their behaviours are acceptance cases here: a warm build's product equals the cold one's; an edit rebuilds the edited file and its dependents only, a comment edit included; task reservations, FFI handles, exit hooks, does> and casts survive reuse; an environment variable or file a build reads is a build input; a moved, truncated or FIFO input is stale.
 
 - Evidence for "a warm build's product equals the cold one's" (jerry, measured 2026-11-07 on 69eb9cea with the installed hb): a warm engine build that reused 171 files' per-definition units differs from the cold one by 2,148,071 bytes (/tmp/jerry-big/e4). chain-run gives every generation the workspace's one out directory, so whenever generation 1 differs from generation 2 (a host that lacks a new primitive) generation 3 builds warm and the chain fails its fixpoint; built cold, it matches generation 2.
+
+Released 2026-11-09 (jerry, off the arm64 path; parked heads listed in habu-design-the-checker-b77c228b). Claim: unassigned.

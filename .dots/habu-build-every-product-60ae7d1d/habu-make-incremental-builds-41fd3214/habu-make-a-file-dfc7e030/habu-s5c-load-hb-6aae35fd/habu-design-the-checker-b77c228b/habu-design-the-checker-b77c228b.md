@@ -1,6 +1,6 @@
 ---
 title: "Design the checker's facts on dictionary entries"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-06T09:25:20.915632+02:00"
@@ -12,3 +12,5 @@ Sealing 2026-11-06 (DECISIONS "sealing a package"): fold into this design as one
 Stripping, observed on the installed hb (tree d6b69973) 2026-11-06: hb keeps private names (HEAP-DECL's private SOURCE and HEAD, found through XREF:INDEXED-WL on its private wid, /tmp/jerry-strip/strip.f); a program runs a private hb word through XREF:INDEXED-WL, XREF-START and a quotation cast in its own private section (/tmp/jerry-strip/bypass.f ran SOURCE-ROOT's CWD-DIE, exit 74); Joel: "this is forth", no fix wanted. The new linker writes stripped apps with no dictionary (link-data.f, link-band.f); nothing strips hb's private names today. Per DECISIONS "privacy" (2026-11-06: "we need to deploy T0 ASAP and can tweak sealing and stripping later") the hb the cross-build writes keeps its private names until after the T0 release; then, not determined: which hb code finds a private word by name at run time.
 C1 ("Keep names of up to 8 bytes inline", change kmsktyqm), from its review 2026-11-06: src/habu/aot-capture.f ACAP-COMPACT-ONE's source-side refusal `ext 0= len 16 >` and its `len DNAME-INL > if DNAME-EXT 60 rshift else 0 then flags or` exist only for a building hb that keeps 16-byte names inline; once an hb with C1 is installed, the refusal goes back to `len DNAME-INL >` and the expression goes. Order: ACAP-REC-NAME reads up to 16 inline bytes, through [32..40), when the building hb is a 16-byte one, so the lane that stores facts at [32] is built by an installed hb carrying C1.
 C1 landed 2026-11-06 ('Keep names of up to 8 bytes inline'); the shim above is dot habu-drop-the-16-bf9499f0, and C2c waits for an installed hb carrying C1.
+
+Parked 2026-11-09 (jerry, off the arm64 path): workspaces forgotten, commits kept in the repo, nothing abandoned. Heads not on master by subject: jerry-c2d1 e14ca145 "fold-in: review F1-F3" on a3a7e074 "Roll a failed line back to a checker savepoint"; jerry-c2d3a daee0c4c "Rewrite a word's facts when a row amends it"; jerry-tfb 2d2b099c "WIP: Drop the public type fallback"; jerry-dots 2a88a58d "Record a2a waiting cases and C5 findings" on 181c1a6e "Record S5c census findings in dots" (dot edits not on master); jerry-split 913ff284 "Read a linked record before its TRUST row" (its ancestors are pre-rewrite copies of the landed stack, as is jerry-int ad2fc131). Read each against master before reusing it. Claim: unassigned.
