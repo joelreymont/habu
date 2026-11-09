@@ -1519,6 +1519,13 @@ learned live in the docs for their subject.
   and "you should be focusing on this, prove me wrong!" When a decision lacks
   evidence because a capability does not exist yet, build it in a branch and
   measure.
+- 2026-11-09, the fastest path to the first boot: Joel ran /fastest ("Find
+  the fastest path to finishing your goal and take it now"). Until hb builds
+  the next hb from tools/next-hb.f and that hb rebuilds itself identically,
+  each change is proved by that measure alone: the driver's cold build, gen-1
+  building gen-2 with 0 differing bytes, and gen-2 running `1 2 + .` (about
+  20 s per iteration). The test list, warm-build checks, the old-path builder
+  rebuild, the suite and one review run once, at the end, before landing.
 
 ## Processes
 

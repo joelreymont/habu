@@ -124,12 +124,20 @@ s" src/compiler/native/compiler.f" required
 package CHECKER-REG
 public
 \ The target's own installs, run by SEAL and filled by src/habu/runtime-x64.f
-\ on x86-64 and src/habu/runtime-arm64.f on arm64.
+\ on x86-64 and by BIND-ARM64 below on arm64.
 defer SEAL-TARGET ( -- )
 ;package
 
 HB-TARGET-KNOWN? 0= [if] s" native-runtime: unknown target" 76 die [then]
 HB-TARGET-LINUX-X86-64? 0= [if] s" src/habu/runtime-arm64.f" required [then]
+\ On arm64 COMP:INSTALL makes COMP tier 0's compiler (NCOMP-DISPATCH:COMP-CELL)
+\ before the capture seals the cell.
+HB-TARGET-LINUX-X86-64? 0= [if]
+package NATIVE-RUNTIME
+: BIND-ARM64 ( -- ) ['] COMP:INSTALL is CHECKER-REG:SEAL-TARGET ;
+BIND-ARM64
+;package
+[then]
 HB-TARGET-LINUX? [if] s" src/os/linux/repl-term.f" required [then]
 HB-TARGET-MACOS? [if] s" src/os/macos/repl-term.f" required [then]
 HB-TARGET-LINUX-X86-64? [if] s" src/os/linux-x86-64/repl-term.f" required [then]
