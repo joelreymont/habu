@@ -1255,16 +1255,15 @@ STK-OFF LEVELS 1- FRAME-BYTES * + constant END
 \ habu2.f), stored at startup like EVALREC-CELL because the crash handler that
 \ jumps there (crash.f C-CRASH-DATA-RECOVER) cannot name an emit-time label: a
 \ stripped image bakes the same handler. The handler resumes a data access below
-\ the base at that address, from the engine's own code or the JIT region, and
-\ CODE-END-CELL bounds the first: [RBASE-CELL, CODE-END-CELL) is the engine code
-\ up to its baked source (LSRC). Zero means no entry, and the fault keeps the
-\ named bounds exit: a stripped image leaves both cells at its mapping's zero,
+\ the base at that address, from the image's text [RBASE-CELL, RBASE-CELL +
+\ TEXT-SIZE-CELL) or the JIT region. Zero means no entry, and the fault keeps
+\ the named bounds exit: a stripped image leaves the cell at its mapping's zero,
 \ and a task region reads zero because src/lib/task.f copies only the cells it
-\ names. Both hold this process's addresses, so boot stores them and snapshots
-\ (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free header band for
-\ the reasons EXIT-HOOK-CELL gives: $2CD0..$2CE8, past the quotation frames
-\ (JIT-QUOT:END, $2C40); data-claims.f proves each cell disjoint at native
-\ build time.
+\ names. It and CODE-END-CELL hold this process's addresses, so boot stores
+\ them and snapshots (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free
+\ header band for the reasons EXIT-HOOK-CELL gives: $2CD0..$2CE8, past the
+\ quotation frames (JIT-QUOT:END, $2C40); data-claims.f proves each cell
+\ disjoint at native build time.
 $2CD0 constant FLOORREC-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
@@ -1274,7 +1273,10 @@ $2CD0 constant FLOORREC-CELL
 \ snapshots (snap-lib.f SND-ZERO-LIVE) zero the cell. It sits beside
 \ FLOORREC-CELL in the free header band.
 $2CD8 constant CLOSED-FREE-CELL
-$2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
+\ CODE-END-CELL: the end of the kernel's code, [RBASE-CELL, CODE-END-CELL); a
+\ linked program's words follow it. The linker maps the running hb's kernel
+\ primitives by it (src/arch/arm64/link-kernel.f HOST-KERNEL?).
+$2CE0 constant CODE-END-CELL
 \ DATA-FLOOR-CELL: the lowest DATA offset a rewind of DATA may return DP to, 0
 \ for none. The literal store (src/habu/intern.f PUBLISH) opens a
 \ segment at `here` inside whatever is running and raises the floor to the

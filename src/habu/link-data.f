@@ -47,6 +47,8 @@ variable LRECS
 variable LRECS-END
 variable LRLIST
 variable LRLIST-END
+\ The kernel's code end, in bytes from the text's start: the product's words follow.
+variable KERNEL-END
 
 \ The record list's offsets from the dictionary band, ascending as the records
 \ are laid; the code offset of each build record's out-of-line name.
@@ -171,7 +173,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ Header cells valued as hb's boot writes them (habu2.f EM-DATA-INIT,
-\ EM-STARTUP-RUNTIME-STATE), but CODE-END-CELL ends the product's own code.
+\ EM-STARTUP-RUNTIME-STATE); CODE-END-CELL ends the kernel, before the product's words.
 : HEADER-CELLS ( -- )
    DATA-VA VA>N {: va:n :}
    va DATA-IMAGE-LEN +  DP-CELL HEADER!
@@ -185,7 +187,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    TEXT-VA RBASE-CELL HEADER!
    TEXT-VA LUNCAUGHT LABEL-OFFSET +  UNCGH-CELL HEADER!
    TEXT-VA LSIGH LABEL-OFFSET +  SIGNAL-ABI:STUB-CELL HEADER!
-   TEXT-VA DATA-IMAGE-AT +  CODE-END-CELL HEADER!
+   TEXT-VA KERNEL-END @ +  CODE-END-CELL HEADER!
    \ The build's MARK left its own index mapping's address here; the product's
    \ first MARK builds one from 0.
    0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
@@ -437,6 +439,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    LUNCAUGHT A64ICODE:LABEL@ ARM64:ROOT-LABEL
    LSIGH A64ICODE:LABEL@ ARM64:ROOT-LABEL
    ARM64:CUT
+   A64ICODE:ASM-CP @ 4 * KERNEL-END !
    ['] DATA-ADDRESS PLACE-ROUTINES
    DATA-IMAGE ;
 
@@ -491,6 +494,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    LRECS A64ICODE:LABEL@  LRECS-END A64ICODE:LABEL@
    LRLIST A64ICODE:LABEL@  LRLIST-END A64ICODE:LABEL@  A64BOOT:ENGINE-START,
    ARM64:KERNEL
+   A64ICODE:ASM-CP @ 4 * KERNEL-END !
    PRIM-TEXTS
    ROUTINES REACH-ALL
    ['] DATA-ADDRESS PLACE-ROUTINES

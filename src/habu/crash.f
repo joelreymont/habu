@@ -269,7 +269,8 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
 \ entry and returns through sigreturn, as habu2.f EMIT-TRAPH does: the thread
 \ resumes there with every other register as it faulted. Recoverable means an
 \ entry exists, the fault is not the fetch (pc = fault address), and the pc lies
-\ in the engine's own code [RBASE-CELL, CODE-END-CELL) or the live region
+\ in the image's text [RBASE-CELL, RBASE-CELL + TEXT-SIZE-CELL), whose code is
+\ the kernel and a linked program's words, or in the live region
 \ [x26, x26 + REGION). Anything else is the named data exit, and so is a
 \ sigreturn that comes back: its report is emitted right after this.
 : C-CRASH-DATA-RECOVER ( -- )
@@ -279,7 +280,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    C-CRASH-PC>R9
    9 25 CMP,  C-EQ CRS-DATA-H LABEL@ BCOND,
    10 24 RBASE-CELL LDR,  9 10 CMP,  C-CC region BCOND,
-   10 24 CODE-END-CELL LDR,  9 10 CMP,  C-CC resume BCOND,
+   11 24 TEXT-SIZE-CELL LDR,  10 10 11 ADD,  9 10 CMP,  C-CC resume BCOND,
    region LBL,
    C-CRASH-REGION>R10
    9 10 CMP,  C-CC CRS-DATA-H LABEL@ BCOND,

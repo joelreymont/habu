@@ -55,7 +55,7 @@ variable N-HOSTS
 
 public
 
-\ The running hb's own code is [rbase, CODE-END-CELL).
+\ The running hb's kernel is [rbase, CODE-END-CELL).
 : HOST-KERNEL? ( n -- bool )
    {: a:n :}
    a rbase >= a data-base CODE-END-CELL + @ < and ;
