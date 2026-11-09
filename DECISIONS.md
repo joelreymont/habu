@@ -4,8 +4,25 @@ What stands now in Habu: each of Joel's decisions with its date, in his words,
 recorded once it is settled. A reversal edits or removes its entry. Lessons
 learned live in the docs for their subject.
 
+## Goals
+
+- 2026-11-09, arm64: "forget about x86, get arm64 done." Done when hb builds
+  hb through the linker on arm64, an edit rebuilds only that file and the files
+  that depend on it with output byte-equal to a cold build, the result
+  rebuilds itself byte for byte and passes the suite without its x86-64 tests,
+  and it is pushed and installed ("the path to arm-to-arm", "the fastest path
+  to arm64"). Its purpose, 2026-10-29: "i need fast incremental builds to
+  enable you and other agents to quickly iterate on features."
+
 ## Language and checker
 
+- 2026-11-09, redefinition: told that Forth lets a second definition of a
+  name take over while Habu refuses one in the same wordlist, Joel asked
+  "should we refuse and require undefine? it's certainly a way and looks
+  better than silently redefining." then wrote "so refuse and keep going
+  then": a wordlist holds each name once, a second definition there is
+  refused, and `undefine NAME` replaces a word; a package may reuse a global
+  name.
 - 2026-11-04, scope memory (relayed by stuart from Tender): shown that every
   MEM:WITH-BYTES scope maps and unmaps its memory (1,000,000 empty scopes
   4.69 s, 2.04 s of it in the kernel) and a design that keeps small scopes in
@@ -1488,6 +1505,26 @@ learned live in the docs for their subject.
   then the stack is pushed as precise commits. Later that day Joel wrote "kep going" with
   /fastest: until arm-to-arm works its own measure, how far hb's startup files
   load inside one build, is the only check, and the rest runs once at the end.
+- 2026-11-09, the fastest path to arm64: told that carl's estimate for
+  incremental builds waited on jerry's first boot of the linker-built hb, Joel
+  asked "why does your work depend on jerry? jerry is not working on
+  incremental building" and ran /fastest. Asked who makes the linker-built hb
+  work as hb, he wrote "ask jerry if he's done with it yet and if he has things
+  to work on if you take it over. report." Told that jerry's hb already
+  rebuilds itself byte for byte in his workspace and that what is left is his
+  in-tree build tool and landing, he wrote "forget about x86, get arm64 done.
+  what's the fastest way forward?" The lead chose: jerry finishes the
+  linker-built hb and its in-tree tool; carl finishes the checker call (step
+  1a), fixes his stack's suite failures and rewrites its WIP commits; both land
+  together on master with one hb build, the edit measure run through the tool
+  and the suite run once without its x86-64 tests. x86-64 gets no work, builds
+  or test runs until arm64 lands. The same day, shown that the landing tree's
+  hb still fails 20 of jerry's tests (the image-building tests and the 12 that
+  wait on them, heap, catch-stale, arena, engine and c2-read-effects cases)
+  until his step 5 builds stripped programs inside hb-build, so that landing
+  then would leave them red on master, Joel chose "Wait for green
+  (Recommended)": "Master stays green; I keep working stacked; land when step
+  5 passes."
 - 2026-10-31, startup reuse: asked to approve a public word that compares the
   tree's source hashes with the engine's so hb-build could skip its 3.3 s
   startup reload, Joel answered "why are we developing incremental building if
