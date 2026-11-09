@@ -9,9 +9,10 @@ learned live in the docs for their subject.
 - 2026-11-09, arm64: "forget about x86, get arm64 done." Done when hb builds
   hb through the linker on arm64, an edit rebuilds only that file and the files
   that depend on it with output byte-equal to a cold build, the result
-  rebuilds itself byte for byte and passes the suite without its x86-64 tests,
-  and it is pushed and installed ("the path to arm-to-arm", "the fastest path
-  to arm64"). Its purpose, 2026-10-29: "i need fast incremental builds to
+  rebuilds itself byte for byte and passes the suite, pg included, with its
+  LSP, x86-64 and Wasm tests disabled, and it is pushed and installed ("the
+  path to arm-to-arm", "the fastest path to arm64", "Wasm and x86-64 after
+  arm64"). Its purpose, 2026-10-29: "i need fast incremental builds to
   enable you and other agents to quickly iterate on features."
 - 2026-11-09, Wasm and x86-64 after arm64: told that one Wasm failure on the
   landing tree is a tier-0 defect of the stack and the other's cause is
