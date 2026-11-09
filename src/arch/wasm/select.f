@@ -21,6 +21,7 @@ require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
 require src/compiler/native/hir.f
 require src/compiler/native/backend.f
+require src/compiler/native/shadow.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/wstruct.f
 
@@ -31,7 +32,7 @@ require src/arch/wasm/wstruct.f
 -9821 constant E-WSEL-DECLARE \ a selection no DECLARE preceded, a definition whose arity is not the one declared, or a return whose operands are not its function's output cells
 -9822 constant E-WSEL-SOURCE  \ a module that is not HIR of the version this selector reads
 -9823 constant E-WSEL-TRAP    \ a may-trap operation whose rule cannot raise the trap: add, sub or mul of a unit whose overflow traps
--9824 constant E-WSEL-CALL    \ a call whose operands and results disagree on the cells live across it: fewer operands than its token and arguments, or results other than its token, that kept row and its outputs
+-9824 constant E-WSEL-CALL    \ a call whose operands and results disagree on the cells live across it: fewer operands than its token and arguments, or results other than its token, that kept row and its outputs, or fewer arguments or outputs than its callee declares
 
 package WSEL
 public
@@ -77,7 +78,6 @@ variable D-SET                       \ whether a DECLARE awaits its SELECT
 1 TYPED-BUFFER S-CTXV IR-ID:ir-value-id    \ the function's context address
 1 TYPED-BUFFER S-TOK IR-ID:ir-value-id     \ the token the next effect takes
 1 TYPED-BUFFER S-PTOK IR-ID:ir-value-id    \ the token the prologue leaves
-1 TYPED-BUFFER S-TOP IR-ID:ir-value-id     \ the stack top a call site stood at
 1 TYPED-BUFFER S-SELF IR-ID:ir-symbol-id   \ function zero, a self-call's callee
 variable S-IN                        \ the function's input cells
 variable S-OUT                       \ and output cells
@@ -91,6 +91,8 @@ DYNAMIC-BUFFER VMAP IR-ID:ir-value-id      \ HIR value -> WSTRUCT value
 DYNAMIC-BUFFER WB n                        \ HIR block -> its first WSTRUCT block
 DYNAMIC-BUFFER EXIT-TOK IR-ID:ir-value-id  \ HIR block -> its last token
 DYNAMIC-BUFFER INS IR-ID:ir-value-id       \ the values the prologue hands on
+DYNAMIC-BUFFER CALL-CI n                   \ HIR call -> its callee's declared input cells
+DYNAMIC-BUFFER CALL-CO n                   \ and output cells, recorded by PLAN
 
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
@@ -460,7 +462,13 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 \ stack's layout. At every call, wordcall and terminal the live row is stored to
 \ the context stack deepest cell first and reloaded after, as native CALL-SAVE
 \ (src/compiler/native/select-x64.f) stores it, so depth, .s and catch see what
-\ they see natively; a lane call's arguments and results travel as lanes.
+\ they see natively. A function's lanes are its declared cells, each row counted
+\ as none, so a lane call passes its callee's declared arguments and results as
+\ lanes; the cells a row binds, the deepest arguments and the deepest results,
+\ stay on the context stack above the kept row, where the native data stack
+\ holds them. After a call the cells read back come off the top the callee
+\ left, which then drops past them, so a row the caller cannot count stays where
+\ the callee left it.
 \
 \ THE DYNAMIC CALL. The elaborator stages execute, catch and finally as
 \ wordcalls to the engine's words, shaped by the xts each runs
@@ -494,18 +502,60 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id s" execute" ENGINE-CALL?  id s" catch" ENGINE-CALL? or
    id s" finally" ENGINE-CALL? or ;
 
+\ WENC's emission header (src/arch/wasm/encode.f HEAD-BYTES).
+8 constant HEAD-BYTES
+12 constant ROW-BYTES
+
+\ A callee's declared cells, rows as none: its shadow function's header row. A
+\ miss is an engine word, linked through WKERNEL's map, whose providers have no
+\ row, so the call's count is its callee's. The search scans every shadow
+\ function, so PLAN runs it once per call (LANES!).
+: LANES ( IR-ID:ir-op-id -- n n )
+   {: id:IR-ID:ir-op-id :}
+   id SHAPE {: a:n r:n :}
+   id HIR-OPCODE:CALL IS?  NSHADOW:OPEN? 0=  or if  a r  exit  then
+   id 0 BND-ENTRY @ ATTR NSHADOW:SOURCE-FUNCTION {: e:n f:n :}
+   e 0 < if  a r  exit  then
+   e NSHADOW:BYTES HEAD-BYTES +  f ROW-BYTES * + {: h:ptr :}
+   h 8 + c@  h 9 + c@ ;
+
+: CALL? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id HIR-OPCODE:CALL IS?  id HIR-OPCODE:WORDCALL IS? or ;
+
+: LANES! ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id IR-ID:OP-LOCAL {: k:n :}
+   id LANES  k CALL-CO !  k CALL-CI ! ;
+
+: CALLEE ( IR-ID:ir-op-id -- n n )
+   IR-ID:OP-LOCAL {: k:n :}
+   k CALL-CI @  k CALL-CO @ ;
+
+\ Framed by its callee's declared cells, as the callee's own signature is, or
+\ dynamic.
 : FRAMED-CALL? ( IR-ID:ir-op-id n n -- bool )
-   {: id:IR-ID:ir-op-id a:n r:n :}
-   a r FRAMED?  id DYNAMIC? or ;
+   {: id:IR-ID:ir-op-id ci:n co:n :}
+   ci co FRAMED?  id DYNAMIC? or ;
+
+\ The arguments and results a call's context stack carries (THE CALL): all of
+\ them in the frame, else those past its callee's declared cells.
+: CALL-STACKED ( IR-ID:ir-op-id -- n n )
+   {: id:IR-ID:ir-op-id :}
+   id SHAPE {: a:n r:n :}
+   id CALLEE {: ci:n co:n :}
+   a ci <  r co <  or if E-WSEL-CALL throw then
+   id ci co FRAMED-CALL? if  a r  exit  then
+   a ci -  r co - ;
 
 \ The cells an operation stores to the context stack, its operands from the
-\ first after any token: a call's kept row, and in the frame its arguments
-\ after it; a terminal's whole row; a framed return's outputs.
+\ first after any token: a call's kept row then the arguments the stack carries
+\ (CALL-STACKED); a terminal's whole row; a framed return's outputs.
 : STORED ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id HIR-OPCODE:CALL IS?  id HIR-OPCODE:WORDCALL IS?  or if
+   id CALL? if
       id SHAPE {: a:n r:n :}
-      id a r KEPT  id a r FRAMED-CALL? if a + then  exit
+      id a r KEPT  id CALL-STACKED drop +  exit
    then
    id HIR-OPCODE:TERMINAL IS? if  id NFROZEN:OPERANDS-OF 1-  exit  then
    id HIR-OPCODE:RETURN IS? FRAMED and if  id NFROZEN:OPERANDS-OF  exit  then
@@ -530,13 +580,19 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id HIR-OPCODE:DIV IS? if 5 exit then
    id ACCESS? if 2 exit then
    id STORED 0<> if 2 else 0 then
-   id HIR-OPCODE:CALL IS?  id HIR-OPCODE:WORDCALL IS? or
-   id HIR-OPCODE:TERMINAL IS? or  if 1+ then ;
+   id CALL?  id HIR-OPCODE:TERMINAL IS? or  if 1+ then ;
+
+\ Records each call's callee cells but a source store's, which SEL-STORE-CALL
+\ selects inline; answers the blocks EXTRA counts.
+: PLAN-OP ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id CALL?  id STORE-CALL? 0= and if  id LANES!  then
+   id EXTRA ;
 
 : BLOCK-SIZE ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
    1
-   bk NFROZEN:OP-COUNT 0 ?do  bk i NFROZEN:OP-AT EXTRA +  loop ;
+   bk NFROZEN:OP-COUNT 0 ?do  bk i NFROZEN:OP-AT PLAN-OP +  loop ;
 
 : PLAN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
@@ -735,55 +791,55 @@ $7FF8000000000000 constant NAN-MADE
    BLOCK-END ;
 
 \ ---- calls -------------------------------------------------------------------
-\ The n cells STORED answers go to the stack; a lane call passes its arguments
-\ as lanes, and a framed one reads its outputs off the stack where it stood.
-: CALL-SAVE ( IR-ID:ir-op-id n bool -- )
-   {: id:IR-ID:ir-op-id n:n fr:bool :}
-   n 0= fr 0= and if exit then
-   TOP@ {: t:IR-ID:ir-value-id :}
-   t 0 S-TOP !
+\ The n cells STORED answers go to the stack where it stands.
+: CALL-SAVE ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id n:n :}
    n 0= if exit then
+   TOP@ {: t:IR-ID:ir-value-id :}
    t n ROOM {: e:IR-ID:ir-value-id :}
    n 0 ?do  t  id i 1+ OPND  i 8 *  ST64  loop
    e TOP! ;
 
-: CALL-OP ( IR-ID:ir-op-id n n n bool IR-ID:ir-symbol-id -- IR-ID:ir-op-id )
-   {: id:IR-ID:ir-op-id kk:n a:n r:n fr:bool callee:IR-ID:ir-symbol-id :}
+\ The ci arguments from operand first + 1 go as lanes and co results come back
+\ as lanes; a framed call has none.
+: CALL-OP ( IR-ID:ir-op-id n n n IR-ID:ir-symbol-id -- IR-ID:ir-op-id )
+   {: id:IR-ID:ir-op-id first:n ci:n co:n callee:IR-ID:ir-symbol-id :}
    WSTRUCT-OPCODE:CALL OPEN
    CTXV USE  TOK USE
-   fr 0= if  a 0 ?do  id kk i + 1+ OPND USE  loop  then
+   ci 0 ?do  id first i + 1+ OPND USE  loop
    CTX BLD  CTX BLD WSTRUCT:KEY-CALLEE  CTX BLD callee IR-BUILD:INTERN-SYMBOL-ATTR
    IR-BUILD:ADD-ATTR
    I32 RES  MEM RES
-   fr 0= if  r 0 ?do  I64 RES  loop  then
+   co 0 ?do  I64 RES  loop
    CLOSE {: c:IR-ID:ir-op-id :}
    c 1 RESULT TOK!
    c ;
 
-\ After the status test: the outputs from their lanes or the frame, the kept
-\ cells back from the stack, and the top where it stood.
-: CALL-BACK ( IR-ID:ir-op-id IR-ID:ir-op-id n n bool -- )
-   {: id:IR-ID:ir-op-id c:IR-ID:ir-op-id kk:n r:n fr:bool :}
-   r 0 ?do
-      id  kk i + 1+ NFROZEN:RESULT-AT
-      fr if  0 S-TOP @  kk i + 8 *  LD64  else  c i 2 + RESULT  then
-      BIND
-   loop
-   kk 0 ?do  id i 1+ NFROZEN:RESULT-AT  0 S-TOP @ i 8 * LD64  BIND  loop
-   kk 0<> fr or if  0 S-TOP @ TOP!  then
+\ After the status test the base is the top the callee left less the kk + sr
+\ cells read back: the kept cells and the deepest sr outputs come off the stack
+\ from it, the rest from their lanes, and the base becomes the top.
+: CALL-BACK ( IR-ID:ir-op-id IR-ID:ir-op-id n n n -- )
+   {: id:IR-ID:ir-op-id c:IR-ID:ir-op-id kk:n r:n sr:n :}
+   kk sr + 0<> if
+      TOP@  kk sr + 8 * K32  WSTRUCT-OPCODE:I32-SUB I32 OP2 {: b:IR-ID:ir-value-id :}
+      sr 0 ?do  id kk i + 1+ NFROZEN:RESULT-AT  b kk i + 8 * LD64  BIND  loop
+      kk 0 ?do  id i 1+ NFROZEN:RESULT-AT  b i 8 * LD64  BIND  loop
+      b TOP!
+   then
+   r sr ?do  id kk i + 1+ NFROZEN:RESULT-AT  c i sr - 2 + RESULT  BIND  loop
    id 0 NFROZEN:RESULT-AT TOK BIND ;
 
 : SEL-CALL ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- )
    {: id:IR-ID:ir-op-id callee:IR-ID:ir-symbol-id :}
    id SHAPE {: a:n r:n :}
    id a r KEPT {: kk:n :}
-   id a r FRAMED-CALL? {: fr:bool :}
+   id CALL-STACKED {: sa:n sr:n :}
    id 0 OPND TOK!
-   id  id STORED  fr CALL-SAVE
-   id kk a r fr callee CALL-OP {: c:IR-ID:ir-op-id :}
+   id  kk sa +  CALL-SAVE
+   id  kk sa +  a sa -  r sr -  callee CALL-OP {: c:IR-ID:ir-op-id :}
    c 0 RESULT STATUS
    BLOCK
-   id c kk r fr CALL-BACK ;
+   id c kk r sr CALL-BACK ;
 
 : SEL-SELF-CALL ( IR-ID:ir-op-id -- )
    0 S-SELF @ SEL-CALL ;
@@ -811,8 +867,8 @@ $7FF8000000000000 constant NAN-MADE
 : SEL-TERMINAL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 OPND TOK!
-   id  id STORED  false CALL-SAVE
-   id 0 0 0 true  id 0 BND-ENTRY @ ATTR HOST-CALLEE
+   id  id STORED  CALL-SAVE
+   id 0 0 0  id 0 BND-ENTRY @ ATTR HOST-CALLEE
    CALL-OP {: c:IR-ID:ir-op-id :}
    c 0 RESULT STATUS
    BLOCK
@@ -1043,6 +1099,9 @@ public
    c WSTRUCT:NEW-BUILDER 0 S-BLD !
    SOURCE!
    VMAP-INIT
+   NFROZEN:TOTAL-OPS {: ops:n :}
+   ops CALL-CI-RESERVE
+   ops CALL-CO-RESERVE
    NFROZEN:FUN-COUNT {: n:n :}
    n FUN-IN-RESERVE
    n FUN-OUT-RESERVE

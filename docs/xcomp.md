@@ -329,6 +329,8 @@ then a return, which is not bounded space for mutual recursion.
   `(ctx:i32) -> (status:i32)`, its cells on the context stack. 16/16 is a
   pinned ABI parameter, never an optimisation choice; changing it is an ABI
   revision.
+- A call's lanes are its callee's declared cells, and the cells a row binds
+  stay on the context stack.
 - Status 0 is success; status 1 is a catchable throw whose full 64-bit code is
   in the context, never truncated into the status. Callers test status before
   reading outputs.

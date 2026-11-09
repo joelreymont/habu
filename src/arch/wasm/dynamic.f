@@ -124,8 +124,9 @@ variable SITES-N
 \ fatal, as a read below the native stack's base faults. A lane function gets
 \ its inputs as lanes with the stack top lowered past them, as a direct call
 \ leaves it; status 1 returns at once with the stack where the throw left it;
-\ status 0 stores the outputs where the inputs stood, after the room check when
-\ they outnumber the inputs. A framed function reads and writes the stack itself.
+\ status 0 stores the outputs at the top as the function left it, after the room
+\ check from there, so a row the function grew or shrank below them stays as it
+\ left it. A framed function reads and writes the stack itself.
 : DEPTH, ( n -- )
    {: in:n :}
    WPROF:CTX-STACK-TOP CTX@,  in CELL-BYTES * I32,  WSTRUCT-OPCODE:I32-SUB OP,
@@ -161,11 +162,14 @@ variable SITES-N
    out 0 ?do  L-OUT out + 1- i - SET,  loop
    L-STATUS TEE,
    IF,  L-STATUS GET,  WSTRUCT-OPCODE:RETURN OP,  OP-END B,
-   out in > if  out ROOM,  then
-   out 0 ?do
-      L-AT GET,  L-OUT i + GET,  WSTRUCT-OPCODE:I64-STORE ALIGN-64 i CELL-BYTES * MEM,
-   loop
-   out CELL-BYTES * TOP!,
+   out 0 > if
+      WPROF:CTX-STACK-TOP CTX@,  L-AT SET,
+      out ROOM,
+      out 0 ?do
+         L-AT GET,  L-OUT i + GET,  WSTRUCT-OPCODE:I64-STORE ALIGN-64 i CELL-BYTES * MEM,
+      loop
+      out CELL-BYTES * TOP!,
+   then
    0 I32,
    OP-END B,
    at ;

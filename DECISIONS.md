@@ -940,6 +940,16 @@ learned live in the docs for their subject.
 
 ## Compiler and builds
 
+- 2026-11-09, wasm calls to words with stack rows: shown a fix for a wasm32 call
+  that passed a row's cells as lanes, which added two public HIR keys to the
+  shared compiler so the wasm selector could learn its callee's declared cells,
+  Joel asked "are you fixing the symptomps and not the cause?" and "so why does
+  native work and wasm doesn't? shouldn't wasm code be fixed instead?", and
+  answered "ok" to the lead's plan: the fix is wasm's alone. A call's lanes are
+  its callee's declared cells, read from the callee's shadow emission, and the
+  cells a row binds stay on the context stack, where the native data stack holds
+  them; no public word is added, and the shared compiler and the native backends
+  do not change.
 - 2026-11-04, the check tool before incremental builds: asked to approve
   SOURCE-SYNTAX:COMPILE-KEYWORD?, a new public word so that checking a file
   before running it (the language server, tools/check.f) refuses `: 42` and

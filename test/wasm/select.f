@@ -122,7 +122,7 @@ variable FOUND?
 : CALL-ROWS ( -- )
    s" a wordcall stores the kept row, tests status and reloads it" T-LABEL
    s" PB SEL-INC +" 3 2
-   s" 5: br>1 | 3: i32.load i32.const=16 i32.add i64.extend_i32_u i64.const=200704 i64.gt_s brz>3,2 | 0: i32.const=102 i32.store i64.store unreachable | 0: i64.store*2 i32.store call brz>4,5 | 0: i64.load*2 i32.store i64.add i32.const=0 return | 0: i32.const=1 i64.const=0 return | " ROW
+   s" 5: br>1 | 3: i32.load i32.const=16 i32.add i64.extend_i32_u i64.const=200704 i64.gt_s brz>3,2 | 0: i32.const=102 i32.store i64.store unreachable | 0: i64.store*2 i32.store call brz>4,5 | 0: i32.load i32.const=16 i32.sub i64.load*2 i32.store i64.add i32.const=0 return | 0: i32.const=1 i64.const=0 return | " ROW
    s" a wordcall names its host entry" T-LABEL
    s" PB SEL-INC +" 3 2 SOURCE!
    [: CALLEE-RUN ;] OUTCOME
@@ -161,7 +161,7 @@ variable FOUND?
    1 17 true ARITY-IS
    s" a call to a seventeen-input callee passes its arguments in the frame" T-LABEL
    s" PX 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 SEL-SUM17" 0 1
-   s" 2: br>1 | 0: i64.const=1 i64.const=2 i64.const=3 i64.const=4 i64.const=5 i64.const=6 i64.const=7 i64.const=8 i64.const=9 i64.const=10 i64.const=11 i64.const=12 i64.const=13 i64.const=14 i64.const=15 i64.const=16 i64.const=17 i32.load i32.const=136 i32.add i64.extend_i32_u i64.const=200704 i64.gt_s brz>3,2 | 0: i32.const=102 i32.store i64.store unreachable | 0: i64.store*17 i32.store call brz>4,5 | 0: i64.load i32.store i32.const=0 return | 0: i32.const=1 i64.const=0 return | " ROW ;
+   s" 2: br>1 | 0: i64.const=1 i64.const=2 i64.const=3 i64.const=4 i64.const=5 i64.const=6 i64.const=7 i64.const=8 i64.const=9 i64.const=10 i64.const=11 i64.const=12 i64.const=13 i64.const=14 i64.const=15 i64.const=16 i64.const=17 i32.load i32.const=136 i32.add i64.extend_i32_u i64.const=200704 i64.gt_s brz>3,2 | 0: i32.const=102 i32.store i64.store unreachable | 0: i64.store*17 i32.store call brz>4,5 | 0: i32.load i32.const=8 i32.sub i64.load i32.store i32.const=0 return | 0: i32.const=1 i64.const=0 return | " ROW ;
 
 \ Every store to the context stack first tests where its cells end against the
 \ stack region's end, static data at $31000 (200704): past it, the block built
@@ -169,7 +169,7 @@ variable FOUND?
 : STACK-ROWS ( -- )
    s" a kept row is stored only where it ends inside the stack region" T-LABEL
    s" PK 1 2 depth drop 2drop" 0 0
-   s" 2: br>1 | 0: i64.const=1 i64.const=2 i32.load i32.const=16 i32.add i64.extend_i32_u i64.const=200704 i64.gt_s brz>3,2 | 0: i32.const=102 i32.store i64.store unreachable | 0: i64.store*2 i32.store call brz>4,5 | 0: i64.load*2 i32.store i32.const=0 return | 0: i32.const=1 return | " ROW
+   s" 2: br>1 | 0: i64.const=1 i64.const=2 i32.load i32.const=16 i32.add i64.extend_i32_u i64.const=200704 i64.gt_s brz>3,2 | 0: i32.const=102 i32.store i64.store unreachable | 0: i64.store*2 i32.store call brz>4,5 | 0: i32.load i32.const=16 i32.sub i64.load*2 i32.store i32.const=0 return | 0: i32.const=1 return | " ROW
    s" a framed output is stored only where it ends inside the stack region" T-LABEL
    s" PU" 17 17
    s" 2: i32.load i32.const=136 i32.sub i64.load*17 i32.store br>1 | 17: i32.load i32.const=136 i32.add i64.extend_i32_u i64.const=200704 i64.gt_s brz>3,2 | 0: i32.const=102 i32.store i64.store unreachable | 0: i64.store*17 i32.store i32.const=0 return | " ROW ;

@@ -73,7 +73,7 @@ CAST: >EMIT ( xt -- [ n -- ] )
 variable RUNS
 : CLEANUP ( -- ) 1 RUNS +! ;
 : FAILING ( -- ) CLEANUP RUNS @ 0<> if 47 throw then ;
-variable DEPTH0                      \ the depth FINALLY-DEPTH began with
+variable DEPTH0                      \ the depth FINALLY-DEPTH or a row entry began with
 public
 : DROP3 ( n n n -- ) drop drop drop ;
 : W17 ( n n n n n n n n n n n n n n n n n -- n )
@@ -109,6 +109,57 @@ public
 : FINALLY-DEPTH ( -- )
    0 RUNS !  depth DEPTH0 !
    [: 1 2 3 [: RUNS @ 0= if 4 5 41 throw then ;] [: depth DEPTH0 @ - RUNS ! ;] finally drop drop drop ;] catch RUNS @ 100 * + throw ;
+\ Calls to words whose effects have rows: each entry throws what it computed.
+private
+variable RES
+public
+: ROWS ( R n [ R n -- S ] -- S ) execute ;
+: R2-S1 ( -- ) 1 2 3 [: + + ;] ROWS throw ;
+: R0-S1 ( -- ) 3 [: 4 + ;] ROWS throw ;
+\ A framed call after the quotation, at the top the quotation left. Each entry
+\ adds 100 times the depth it leaves, so a top left astray changes its answer.
+: AFTER ( R n [ R n -- S ] -- S ) execute [: ;] execute ;
+: AFTER-GROW ( -- )
+   depth DEPTH0 !
+   5 [: dup 3 + ;] AFTER swap 10 * +  depth DEPTH0 @ - 100 * + throw ;
+\ Cast to the rows bound: native tier 1 refuses the uncast tick, E-NELAB-UNDER.
+private
+CAST: >GROW ( [ R n [ R n -- S ] -- S ] -- [ n [ n -- n n ] -- n n ] )
+public
+: AFTER-VIA-EXECUTE ( -- )
+   depth DEPTH0 !
+   5 [: dup 3 + ;] ['] AFTER >GROW execute swap 10 * +  depth DEPTH0 @ - 100 * + throw ;
+\ MEM:WITH-BYTES's shape, which wasmlink refuses here as no kernel row's name.
+\ Each entry adds 1000 times the cleanup's runs and 100 times the depth it leaves.
+private
+: FIN-BODY ( R n [ R n -- S ] -- S ) execute ;
+public
+: FIN-ROWS ( R n [ R n -- S ] -- S )
+   {: body :}
+   body [: FIN-BODY ;] [: CLEANUP ;] finally ;
+: FIN-SHRINK ( -- )
+   0 RUNS !  depth DEPTH0 !
+   1 2 3 [: + + RES ! ;] FIN-ROWS
+   RES @  RUNS @ 1000 * +  depth DEPTH0 @ - 100 * + throw ;
+: FIN-GROW ( -- )
+   0 RUNS !  depth DEPTH0 !
+   5 [: dup 3 + ;] FIN-ROWS swap 10 * +
+   RUNS @ 1000 * +  depth DEPTH0 @ - 100 * + throw ;
+\ The output n comes back off the stack while the row S is the caller's own.
+: ROWS-N ( R n [ R n -- S n ] -- S n ) execute ;
+: ROWS-N-SHRINK ( -- )
+   depth DEPTH0 !
+   1 2 3 [: + + ;] ROWS-N  depth DEPTH0 @ - 100 * + throw ;
+: ROWS-N-GROW ( -- )
+   depth DEPTH0 !
+   5 [: dup 3 + ;] ROWS-N swap 10 * +  depth DEPTH0 @ - 100 * + throw ;
+private
+: FIN-N-BODY ( R n [ R n -- S n ] -- S n ) execute ;
+public
+: FIN-N ( R n [ R n -- S n ] -- S n ) [: FIN-N-BODY ;] [: ;] finally ;
+: FIN-N-SHRINK ( -- )
+   depth DEPTH0 !
+   1 2 3 [: + + ;] FIN-N  depth DEPTH0 @ - 100 * + throw ;
 private
 : execute ( n -- n ) 1 + ;
 : catch ( n -- n ) 1 + ;
@@ -214,6 +265,28 @@ DYNAMIC-BUFFER MODULE u8
    s" the cleanup after a body's throw sees the depth finally began with less both xts" T-LABEL
    s" WASM-DYNAMIC-WINDOW:FINALLY-DEPTH" s" finally-depth.wasm" [: FINALLY-DEPTH ;] THROWS-AS-NATIVE ;
 
+\ A row's cells stay on the context stack and the callee's declared cells are
+\ its lanes (src/arch/wasm/select.f THE CALL).
+: ROW-CASE ( -- )
+   s" a two-cell input row and a one-cell output row" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:R2-S1" s" r2-s1.wasm" [: R2-S1 ;] THROWS-AS-NATIVE
+   s" an empty input row and a one-cell output row read back off the stack" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:R0-S1" s" r0-s1.wasm" [: R0-S1 ;] THROWS-AS-NATIVE
+   s" a row body's framed call after its quotation grew the row keeps the grown cells" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:AFTER-GROW" s" after-grow.wasm" [: AFTER-GROW ;] THROWS-AS-NATIVE
+   s" the same row body reached through execute keeps them" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:AFTER-VIA-EXECUTE" s" after-via-execute.wasm" [: AFTER-VIA-EXECUTE ;] THROWS-AS-NATIVE
+   s" a finally body that shrinks a two-cell row to none keeps the depth" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:FIN-SHRINK" s" fin-shrink.wasm" [: FIN-SHRINK ;] THROWS-AS-NATIVE
+   s" a finally body that grows an empty row to two cells keeps them" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:FIN-GROW" s" fin-grow.wasm" [: FIN-GROW ;] THROWS-AS-NATIVE
+   s" a body whose callee shrinks its row reads its output back off the top the callee left" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:ROWS-N-SHRINK" s" rows-n-shrink.wasm" [: ROWS-N-SHRINK ;] THROWS-AS-NATIVE
+   s" a body whose callee grows its row reads its output back off the top the callee left" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:ROWS-N-GROW" s" rows-n-grow.wasm" [: ROWS-N-GROW ;] THROWS-AS-NATIVE
+   s" a finally body that shrinks its row reads its output back off the top it left" T-LABEL
+   s" WASM-DYNAMIC-WINDOW:FIN-N-SHRINK" s" fin-n-shrink.wasm" [: FIN-N-SHRINK ;] THROWS-AS-NATIVE ;
+
 : XT-CASE ( -- )
    s" execute of xt 0, which names no adapter, traps" T-LABEL
    s" WASM-DYNAMIC-WINDOW:ZERO" s" zero.wasm" TRAPS
@@ -257,6 +330,7 @@ public
    W06-CASE
    W07-CASE
    FINALLY-CASE
+   ROW-CASE
    XT-CASE
    NAME-CASE
    DOT-S-CASE
