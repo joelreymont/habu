@@ -1526,6 +1526,23 @@ learned live in the docs for their subject.
   object carries a SHA-256 over its own bytes, checked before anything else; a
   mismatch makes its file compile. A file whose check or link throws loses its
   object, so the next build compiles it.
+- 2026-11-09, values a linked object replays: shown that some objects kept
+  values that depend on where earlier files' data ends or on the process that
+  built them, Joel had written "i'm going to sleep so i pre-approve the coming
+  fable design. remember to use the what's best for long term rule!" The values
+  were these. The mutex pthread_mutex_init writes at fd-lock.f's load holds the
+  bitwise NOT of its own address. error.f chained its code rows by byte
+  distances that span other files' data. The FFI's resolved addresses were
+  stored raw. A warm build linking such an object after an earlier file grew,
+  or after a reboot, would differ from a cold build or call a stale address.
+  Under those words the lead chose that each owner keeps its cells free of
+  layout and process: TASK:FACILITY-INIT lays the platform's static initializer
+  (PTHREAD_MUTEX_INITIALIZER: Darwin's signature, glibc's zeros) in place of
+  calling pthread_mutex_init, so the first lock initializes the mutex in the
+  process that takes it; error.f's head and row links are declared address
+  cells the linker relocates; and the FFI's resolved addresses, library handles
+  and failure flags are scratch cells, linked as zero and resolved again at
+  the first call. No linker rule changes.
 - 2026-11-05, the old builders: shown that DATA-FLOOR-CELL is a second floor
   for DP, kept only by the old string store so a failed line's rollback never
   drops DP below strings compiled code points at, and asked when it should go,

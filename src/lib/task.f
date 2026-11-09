@@ -294,11 +294,7 @@ FUNCTION: PTHREAD-JOIN-CALL pthread_join ( n ptr u8 -- i32 )
 ;FUNCTION
 
 \ A FACILITY's lock: one pthread_mutex_t of TASK-MUTEX-BYTES in its record,
-\ which each call may write. The init attribute is null.
-FUNCTION: MUTEX-INIT-CALL pthread_mutex_init ( ptr u8 n -- i32 )
-   0 TASK-MUTEX-BYTES WRITES-BYTES
-;FUNCTION
-
+\ which each call may write.
 FUNCTION: MUTEX-LOCK-CALL pthread_mutex_lock ( ptr u8 -- i32 )
    0 TASK-MUTEX-BYTES WRITES-BYTES
 ;FUNCTION
@@ -2046,9 +2042,13 @@ private
 : FACILITY-OWNER! ( n ptr n -- )
    FACILITY-OWNER atomic! ;
 
-: FACILITY-INIT ( ptr n -- )
-   0 over FACILITY-OWNER!
-   FACILITY-MUTEX BYTE-VIEW 0 MUTEX-INIT-CALL TASK-RC0 ;
+\ PTHREAD_MUTEX_INITIALIZER, Darwin's signature or glibc's zeros, holds no
+\ address: the first lock initializes the mutex in the process that takes it.
+: FACILITY-INIT ( ptr n -- ) {: f:ptr :}
+   0 f FACILITY-OWNER!
+   f FACILITY-MUTEX {: m:ptr :}
+   TASK-MUTEX-BYTES TASK-CELL / 0 ?do 0 m i cells + ! loop
+   HB-TARGET-MACOS? if $32AAABA7 m ! then ;
 
 : GET ( ptr n -- ) {: f:ptr :}
    TASK-OWNER {: owner:n :}
