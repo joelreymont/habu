@@ -2,8 +2,8 @@
 \ TRUSTED:, defer) carries its input arity in its record (DNAME-MIN-IN, flags
 \ bits 52-59), poked by the publish tails. Run bare at top level on a shallower
 \ stack it fails closed with `hb: interpret stack underdepth: <token>` and rc 70
-\ before its body runs. An engine-prefix word carries no arity: the checker's
-\ top row refuses its shallow call as an input underflow, rc 70, before it runs.
+\ before its body runs. hb's startup words are defined by the same interpreter, so
+\ an engine-prefix word carries its arity too.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -121,12 +121,6 @@ public
    UDG-ERR$ s" hb: interpret stack underdepth: " CONTAINS? TTRUE
    UDG-ERR$ a u CONTAINS? TTRUE ;
 
-: UDG-ASSERT-UNDERFLOW ( ptr u8 n -- ) {: a:ptr u:n :}   \ the checker's top-row reject
-   UDG-EXITED @ TTRUE
-   UDG-RC @ UDG-REJECT-RC T=
-   UDG-ERR$ s" input underflow" CONTAINS? TTRUE
-   UDG-ERR$ a u CONTAINS? TTRUE ;
-
 : UDG-ASSERT-OK ( -- )
    UDG-EXITED @ TTRUE
    UDG-RC @ 0 T= ;
@@ -211,7 +205,7 @@ public
    s" UDG-MQA" UDG-LINE
    SB$ ;
 
-: UDG-ENGINE$ ( -- ptr u8 n )            \ an engine-prefix word (the checker's top row)
+: UDG-ENGINE$ ( -- ptr u8 n )            \ an engine-prefix word
    SB-RESET
    s" CORE-STR=" UDG-LINE
    SB$ ;
@@ -232,9 +226,9 @@ public
    s" does>-created word's clause inputs fail closed" T-LABEL
    UDG-DOES$ UDG-EXEC:SUBJECT
    s" UDG-MQA" UDG-ASSERT-UNDERDEPTH
-   s" engine-prefix word (CORE-STR=) fails closed at the checker's top row" T-LABEL
+   s" engine-prefix word (CORE-STR=) fails closed" T-LABEL
    UDG-ENGINE$ UDG-EXEC:SUBJECT
-   s" CORE-STR=" UDG-ASSERT-UNDERFLOW ;
+   s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
 
 \ --- primitive negatives: the band covers every specified primitive ---------
 \ A primitive's seed record carries its spec row's input count in DNAME-MIN-IN
