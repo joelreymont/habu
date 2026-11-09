@@ -14,6 +14,7 @@ require src/habu/xref.f
 require src/compiler/native/shadow.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link-kernel.f
+require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-band.f
 require src/habu/link-data.f
@@ -58,9 +59,9 @@ public
 : RUN ( -- )
    1 SCRIPT-ARGV$ LINKER:KERNEL
    0 SCRIPT-ARGV$ {: at:ptr u:n :}
-   at u s" data" STR= if s" app" [: DATA-BODY ;] LINKER:WITH exit then
-   at u s" header" STR= if s" app" [: HEADER-BODY ;] LINKER:WITH exit then
-   at u s" eval" STR= if s" app" [: EVAL-BODY ;] LINKER:WITH exit then
+   at u s" data" STR= if s" app" RTARGET:HOST-TARGET [: DATA-BODY ;] LINKER:WITH exit then
+   at u s" header" STR= if s" app" RTARGET:HOST-TARGET [: HEADER-BODY ;] LINKER:WITH exit then
+   at u s" eval" STR= if s" app" RTARGET:HOST-TARGET [: EVAL-BODY ;] LINKER:WITH exit then
    s" arm64-link-data-bad: the case is data, header or eval" 1 die ;
 
 ;package

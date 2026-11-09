@@ -33,6 +33,7 @@ require src/compiler/native/shadow.f
 require src/habu/address-carrier.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link-kernel.f
+require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-band.f
 require src/habu/link-data.f
@@ -279,7 +280,7 @@ public
 : RUN ( -- )
    T-RESET
    false HB-BUILD-CORE:KERNEL-BUILD
-   s" app" [: BODY ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: BODY ;] LINKER:WITH
    REFUSAL-CASE
    T-REPORT ;
 

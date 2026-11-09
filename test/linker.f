@@ -13,6 +13,7 @@ require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
+require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-band.f
 
@@ -104,7 +105,9 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
    NSHADOW:OPEN? TFALSE
    HEADER-DIFFS 0 T= ;
 
-: BUILD ( [ -- ] -- ) s" test" rot LINKER:WITH ;
+: BUILD ( [ -- ] -- )
+   {: body :}
+   s" test" RTARGET:HOST-TARGET body LINKER:WITH ;
 
 : SAY ( ptr u8 n -- ) s" linker: " type type cr ;
 
@@ -241,7 +244,7 @@ variable LOW-DP
 
 : G1$ ( -- ptr u8 n ) s" LK-G1" ;
 
-: INNER ( -- ) [: ;] s" engine" rot LINKER:WITH ;
+: INNER ( -- ) s" engine" RTARGET:HOST-TARGET [: ;] LINKER:WITH ;
 
 : BODY-G ( -- )
    [: INNER ;] E-COMP-STATE TTHROWSQ

@@ -19,6 +19,7 @@ require src/lib/fs-mutate.f
 require src/lib/build-out.f
 require src/core/include.f
 require src/habu/boot-files.f
+require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
 
@@ -272,7 +273,7 @@ public
 : KERNEL-BUILD ( bool -- )
    KERNEL-ENGINE? !
    PATHS
-   s" kernel" ['] KERNEL-BODY LINKER:WITH
+   s" kernel" RTARGET:HOST-TARGET ['] KERNEL-BODY LINKER:WITH
    KERNEL-PATH KERNEL-U @ LINKER:KERNEL ;
 
 \ The kernel object the last KERNEL-BUILD wrote, for a child process's
@@ -287,7 +288,7 @@ public
    {: out:ptr outu:n :}
    out OUT-PATH !  outu OUT-LEN !
    true KERNEL-BUILD  ENGINE-END!
-   s" engine" ['] ENGINE-BODY LINKER:WITH ;
+   s" engine" RTARGET:HOST-TARGET ['] ENGINE-BODY LINKER:WITH ;
 
 \ Build hb with the source's files, the source's MAIN its entry, and write it to
 \ the second path.
@@ -295,13 +296,13 @@ public
    {: src:ptr srcu:n out:ptr outu:n :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
    true KERNEL-BUILD  REPL-END!
-   s" engine" ['] REPL-BODY LINKER:WITH ;
+   s" engine" RTARGET:HOST-TARGET ['] REPL-BODY LINKER:WITH ;
 
 \ Build the source as a stripped program and write it to the second path.
 : APP ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
    false KERNEL-BUILD  APP-END-WRITE
-   s" app" ['] APP-BODY LINKER:WITH ;
+   s" app" RTARGET:HOST-TARGET ['] APP-BODY LINKER:WITH ;
 
 ;package

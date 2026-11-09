@@ -64,6 +64,7 @@ require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/habu/intern.f
 require src/compiler/native/shadow.f
+require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
 require src/os/script-argv.f
@@ -279,19 +280,19 @@ PATH-CAP BUFFER: FOURTH-BUF
    a u type  one FMT:.INT space  two FMT:.INT space  three FMT:.INT ;
 
 : MIXED-BUILD ( -- n )
-   [: s" app" [: s" test/fixtures/file-objects/count.f" included  SHAPE ;] LINKER:WITH ;]
+   [: s" app" RTARGET:HOST-TARGET [: s" test/fixtures/file-objects/count.f" included  SHAPE ;] LINKER:WITH ;]
    catch RESULT ;
 
 \ count.f alone, then count.f and shape.f twice: shape.f compiles after count.f links.
 : MIXED ( -- )
-   [: s" app" [: s" test/fixtures/file-objects/count.f" included ;] LINKER:WITH ;]
+   [: s" app" RTARGET:HOST-TARGET [: s" test/fixtures/file-objects/count.f" included ;] LINKER:WITH ;]
    catch RESULT {: one:n :}
    MIXED-BUILD {: two:n :}
    MIXED-BUILD {: three:n :}
    s" mixed: compiled " one two three RESULTS. cr ;
 
 : EDIT-BUILD ( -- n )
-   [: s" app" [: EDIT-A$ included  s" test/fixtures/file-objects/edit-b.f" included ;]
+   [: s" app" RTARGET:HOST-TARGET [: EDIT-A$ included  s" test/fixtures/file-objects/edit-b.f" included ;]
       LINKER:WITH ;]
    catch RESULT ;
 
@@ -307,7 +308,7 @@ PATH-CAP BUFFER: FOURTH-BUF
    s" edit: compiled " one two three RESULTS. cr ;
 
 : TAIL-BUILD ( -- n )
-   [: s" app" [: TAIL-C$ included  TAIL-D$ included ;] LINKER:WITH ;] catch RESULT ;
+   [: s" app" RTARGET:HOST-TARGET [: TAIL-C$ included  TAIL-D$ included ;] LINKER:WITH ;] catch RESULT ;
 
 \ d.f, the later file, gains a variable before its first. The fourth build loads
 \ d.f alone: its object names c.f, which defines V, a name d.f spells, so it compiles.
@@ -320,11 +321,11 @@ PATH-CAP BUFFER: FOURTH-BUF
    FS:WRITE-ALL
    TAIL-BUILD {: two:n :}
    TAIL-BUILD {: three:n :}
-   [: s" app" [: TAIL-D$ included ;] LINKER:WITH ;] catch RESULT {: four:n :}
+   [: s" app" RTARGET:HOST-TARGET [: TAIL-D$ included ;] LINKER:WITH ;] catch RESULT {: four:n :}
    s" tail: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
 : SHARE-BUILD ( -- n )
-   [: s" app" [: SHARE-P$ included  SHARE-Q$ included ;] LINKER:WITH ;] catch RESULT ;
+   [: s" app" RTARGET:HOST-TARGET [: SHARE-P$ included  SHARE-Q$ included ;] LINKER:WITH ;] catch RESULT ;
 
 \ p.f, the earlier file, comes to declare q.f's package too, as q.f's object does: q.f
 \ spells no other name of p.f's.
@@ -339,7 +340,7 @@ PATH-CAP BUFFER: FOURTH-BUF
    s" share: compiled " one two three RESULTS. cr ;
 
 : LAID-BUILD ( -- n )
-   [: s" app" [: LAID-R$ included  LAID-S$ included ;] LINKER:WITH ;] catch RESULT ;
+   [: s" app" RTARGET:HOST-TARGET [: LAID-R$ included  LAID-S$ included ;] LINKER:WITH ;] catch RESULT ;
 
 \ r.f, the earlier file, comes to lay the string s.f's object lays, and spells none of s.f's
 \ names.
@@ -356,7 +357,7 @@ PATH-CAP BUFFER: FOURTH-BUF
    s" laid: compiled " one two three RESULTS. cr ;
 
 : PRIV-BUILD ( -- n )
-   [: s" app" [: PRIV-P$ included  PRIV-Q$ included ;] LINKER:WITH ;] catch RESULT ;
+   [: s" app" RTARGET:HOST-TARGET [: PRIV-P$ included  PRIV-Q$ included ;] LINKER:WITH ;] catch RESULT ;
 
 \ p.f, the earlier file, changes its private HELPER, a name q.f spells for a word of its own
 \ package: q.f opens no package of p.f's, so it links.
@@ -374,7 +375,7 @@ PATH-CAP BUFFER: FOURTH-BUF
    s" private: compiled " one two three RESULTS. cr ;
 
 : PARTS-BUILD ( -- n )
-   [: s" app" [: PARTS-A$ included  PARTS-B$ included  PARTS-C$ included ;] LINKER:WITH ;]
+   [: s" app" RTARGET:HOST-TARGET [: PARTS-A$ included  PARTS-B$ included  PARTS-C$ included ;] LINKER:WITH ;]
    catch RESULT ;
 
 \ b.f, a part of a.f's package, changes its private constant K, which c.f spells before it reopens
@@ -392,7 +393,7 @@ PATH-CAP BUFFER: FOURTH-BUF
    s" parts: compiled " one two three RESULTS. cr ;
 
 : SCOPE-BUILD ( -- n )
-   [: s" app" [: SCOPE-A$ included  SCOPE-B$ included  SCOPE-C$ included ;] LINKER:WITH ;]
+   [: s" app" RTARGET:HOST-TARGET [: SCOPE-A$ included  SCOPE-B$ included  SCOPE-C$ included ;] LINKER:WITH ;]
    catch RESULT ;
 
 \ a.f leaves its package open for b.f, which closes it and is edited: neither links (linker.f
@@ -409,10 +410,10 @@ PATH-CAP BUFFER: FOURTH-BUF
    s" scope: compiled " one two three RESULTS. cr ;
 
 : INSIDE-BUILD ( -- n )
-   [: s" app" [: INSIDE-P$ included  INSIDE-I$ included  INSIDE-Q$ included ;] LINKER:WITH ;]
+   [: s" app" RTARGET:HOST-TARGET [: INSIDE-P$ included  INSIDE-I$ included  INSIDE-Q$ included ;] LINKER:WITH ;]
    catch RESULT ;
 
-: OUTSIDE-BUILD ( -- n ) [: s" app" [: INSIDE-I$ included ;] LINKER:WITH ;] catch RESULT ;
+: OUTSIDE-BUILD ( -- n ) [: s" app" RTARGET:HOST-TARGET [: INSIDE-I$ included ;] LINKER:WITH ;] catch RESULT ;
 
 \ i.f inside the package p.f leaves open and q.f closes, alone, inside, alone: a load inside never
 \ links and its object replaces the one a load alone wrote, so each build alone compiles i.f.
@@ -427,8 +428,8 @@ PATH-CAP BUFFER: FOURTH-BUF
    OUTSIDE-BUILD {: four:n :}
    s" inside: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
-: TWIN-X-BUILD ( -- n ) [: s" app" [: TWIN-X$ included ;] LINKER:WITH ;] catch RESULT ;
-: TWIN-Y-BUILD ( -- n ) [: s" app" [: TWIN-Y$ included ;] LINKER:WITH ;] catch RESULT ;
+: TWIN-X-BUILD ( -- n ) [: s" app" RTARGET:HOST-TARGET [: TWIN-X$ included ;] LINKER:WITH ;] catch RESULT ;
+: TWIN-Y-BUILD ( -- n ) [: s" app" RTARGET:HOST-TARGET [: TWIN-Y$ included ;] LINKER:WITH ;] catch RESULT ;
 
 \ Two files of one name, each built alone in turn: each keeps an object of its own.
 : TWINS ( -- )
@@ -442,12 +443,12 @@ PATH-CAP BUFFER: FOURTH-BUF
    s" twins: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
 : ORDER-BUILD ( -- n )
-   [: s" app" [: ORDER-M$ included  ORDER-S$ included  ORDER-T$ included  ORDER-F$ included ;]
+   [: s" app" RTARGET:HOST-TARGET [: ORDER-M$ included  ORDER-S$ included  ORDER-T$ included  ORDER-F$ included ;]
       LINKER:WITH ;]
    catch RESULT ;
 
 : ORDER-SWAPPED ( -- n )
-   [: s" app" [: ORDER-M$ included  ORDER-T$ included  ORDER-S$ included  ORDER-F$ included ;]
+   [: s" app" RTARGET:HOST-TARGET [: ORDER-M$ included  ORDER-T$ included  ORDER-S$ included  ORDER-F$ included ;]
       LINKER:WITH ;]
    catch RESULT ;
 
@@ -492,7 +493,7 @@ variable SLOT-S                          \ and their count
 : CRAFT-E$ ( -- ptr u8 n ) s" crafted" s" e.f" CRAFT-BUF FILE-IN ;
 
 : CRAFT-BUILD ( -- n )
-   [: s" app" [: CRAFT-E$ included ;] LINKER:WITH ;] catch RESULT ;
+   [: s" app" RTARGET:HOST-TARGET [: CRAFT-E$ included ;] LINKER:WITH ;] catch RESULT ;
 
 : OBJ@ ( n -- n ) CRAFT-OBJ swap + LE:U64@ ;
 : OBJ! ( n n -- ) CRAFT-OBJ swap + LE:U64! ;
@@ -673,15 +674,15 @@ variable SLOT-S                          \ and their count
    space seven FMT:.INT  space eight FMT:.INT  space nine FMT:.INT cr ;
 
 : STOPS ( -- )
-   s" app" [: STOP-FILE ;] LINKER:WITH
-   s" app" [: STOP-BODY ;] LINKER:WITH
-   s" app" [: STOP-INSIDE ;] LINKER:WITH
-   s" app" [: STOP-ALIGN ;] LINKER:WITH
-   s" app" [: STOP-PAST ;] LINKER:WITH
-   s" app" [: STOP-STORE ;] LINKER:WITH
-   s" app" [: STOP-GAP ;] LINKER:WITH
-   s" app" [: STOP-STRADDLE ;] LINKER:WITH
-   s" app" [: STOP-WORDLIST ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: STOP-FILE ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: STOP-BODY ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: STOP-INSIDE ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: STOP-ALIGN ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: STOP-PAST ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: STOP-STORE ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
    MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS CRAFTS
    s" stopped" type cr ;
 
@@ -722,7 +723,7 @@ variable SLOT-S                          \ and their count
    FACTS-MISUSE FACTS-DEAD ;
 
 : FACTS ( -- )
-   s" app" [: FACTS-BODY ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: FACTS-BODY ;] LINKER:WITH
    s" facts: compiled " type  LINKER:COMPILED FMT:.INT cr ;
 
 public
@@ -732,7 +733,7 @@ public
    0 SCRIPT-ARGV$ LINKER:KERNEL
    STOP? if STOPS exit then
    FACTS? if FACTS exit then
-   s" app" [: BODY ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: BODY ;] LINKER:WITH
    s" test/fixtures/file-objects/host.f" included
    s" compiled " type LINKER:COMPILED . ;
 

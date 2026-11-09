@@ -1,14 +1,15 @@
-\ linker.f - the cross-build's data space: WITH maps a space beside hb's DATA,
-\ points DP, the wordlists and the image base at it, switches the checker's
-\ registered stores to the build's (CHECK:OPEN), routes every file load to the
-\ build's runner (SOURCE-UNIT:USE), lays each owned primitive's record in its
-\ package as BUILT row 0 (OWNED-RECORDS), runs the body there with no package of
-\ hb's open and closes it. The close undoes exactly the open steps that ran,
-\ in reverse. Each file load links the file's object when it is fresh (FRESH?)
-\ and otherwise compiles the file, writing its object under the out root. An
-\ object whose file requested others is fresh only when theirs are too. The
-\ loader's log (include.f EVENT-RECORD) names a compile's requests and its
-\ registry acts, which its object carries and a link repeats.
+\ linker.f - the cross-build's data space: WITH maps a space beside hb's DATA
+\ for the build's target, points DP, the wordlists and the image base at it,
+\ switches the checker's registered stores to the build's (CHECK:OPEN), routes
+\ every file load to the build's runner (SOURCE-UNIT:USE), lays each owned
+\ primitive's record in its package as BUILT row 0 (OWNED-RECORDS), runs the
+\ body there with no package of hb's open and closes it. The close undoes
+\ exactly the open steps that ran, in reverse. Each file load links the file's
+\ object when it is fresh (FRESH?) and otherwise compiles the file, writing its
+\ object under the out root. An object whose file requested others is fresh
+\ only when theirs are too. The loader's log (include.f EVENT-RECORD) names a
+\ compile's requests and its registry acts, which its object carries and a link
+\ repeats.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -30,6 +31,8 @@ require src/habu/interpret.f
 require src/habu/definers.f
 require src/habu/intern.f
 require src/core/include.f
+require src/compiler/target/model.f
+require src/compiler/target/native-binding.f
 require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
 require src/compiler/native/publish.f
@@ -58,6 +61,7 @@ private
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
+TYPED-VARIABLE TARGET RTARGET:resolved-target   \ the target the build's program runs on
 variable BASE                        \ the space's address, its distance from NULL-PTR
 variable SPACE-SIZE                  \ the space's size, as MAP mapped it
 variable FIRST-REC                   \ ndict@ at the open: records from here are the space's
@@ -124,10 +128,14 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ Above hb's DATA: below it CHECKER-OWNER-GUARD refuses with E-COMP-OWNER.
 : HINT ( -- n ) DATA-N DATA-SIZE + ;
 
+\ A build for another target than hb's own.
+: CROSS? ( -- bool ) TARGET @ RTARGET:HOST-TARGET RTARGET:SAME? 0= ;
+
 \ The space's DATA starts, ends and stops DP where the kernel the link adopts
-\ reads them (ARM64:READ); a kernel build's, or one no object was read for,
-\ where hb's does.
-: OBJECT-LAYOUT? ( -- bool ) KERNEL? @ 0= ARM64:READ? and ;
+\ reads them (ARM64:READ); a kernel build's, a cross build's, or one no object
+\ was read for, where hb's does (src/arch/wasm/profile.f WPROF mirrors hb's
+\ band through DATA-START).
+: OBJECT-LAYOUT? ( -- bool ) KERNEL? @ 0= CROSS? 0= and ARM64:READ? and ;
 
 : LAYOUT-START ( -- n )
    OBJECT-LAYOUT? if s" DATA-START" ARM64:SYM exit then
@@ -486,12 +494,12 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    repeat
    drop E-COMP-STATE throw ;
 
-\ FILE-KEY's object: arm64, WITH's mode, the file's path, from the path's second load a dot and
-\ the load's number from 2, then .hfo (BUILD-OUT:OBJ$). A source named a.f.2 shares the name of
-\ a.f's second load: each fails the other's object at HEADER-CK's key and compiles.
+\ FILE-KEY's object: the build's target, WITH's mode, the file's path, from the path's second load
+\ a dot and the load's number from 2, then .hfo (BUILD-OUT:OBJ$). A source named a.f.2 shares the
+\ name of a.f's second load: each fails the other's object at HEADER-CK's key and compiles.
 : OBJECT$ ( -- ptr u8 n )
    OBJ-NAME BUF:CLEAR
-   s" arm64/" OBJ-NAME SPAN+
+   TARGET @ RTARGET:PROFILE$ OBJ-NAME SPAN+  s" /" OBJ-NAME SPAN+
    ENGINE? @ if s" engine" else KERNEL? @ if s" kernel" else s" app" then then OBJ-NAME SPAN+
    FILE-KEY CANON$ {: p:ptr pu:n :}
    pu 0 >  if p c@ FS:SLASH = else false then 0= if s" /" OBJ-NAME SPAN+ then
@@ -1754,7 +1762,8 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    loop ;
 
 \ FILE-KEY's object after its last piece, whose time is t, built for PIECE-PLACE's facts and written
-\ only with a stamp; an UNLINKABLE file's INPUT is 0 0 -1, so it never links and keeps its times.
+\ only with a stamp and for hb's own target (LOAD); an UNLINKABLE file's INPUT is 0 0 -1, so it
+\ never links and keeps its times.
 : WRITE-OBJECT ( n -- )
    {: t:n :}
    \ FILES ends with the named files (NAMED+), then the run words' pieces REACHED lists (RAN-FILES+).
@@ -1796,7 +1805,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    pieces piecesu OBJECT SPAN+
    files-at KEYS-OUT
    pieces-at FACTS-AT +!
-   STAMPED? 0= if exit then
+   STAMPED? 0=  CROSS? or if exit then
    \ Unsynced: an object a crash cut short fails HEADER-CK's or PIECE-CK's bounds checks and compiles.
    OBJECT$ {: obj:ptr obju:n :}
    obj obju OBJECT-DIR
@@ -3429,8 +3438,9 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    construct step mapped PROGRESS !
    LAY-ADDRESS-HEADER ;
 
+\ hb's native shadow, or a cross build's for the target's code.
 : SHADOW ( -- )
-   NABI:BINDING NSHADOW:OPEN-NATIVE
+   TARGET @ RTARGET:NATIVE-BINDING  CROSS? if NSHADOW:OPEN else NSHADOW:OPEN-NATIVE then
    construct step shadowed PROGRESS ! ;
 
 \ The flags cell of hb's newest record: an `immediate` before the space's first
@@ -3708,7 +3718,9 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 \ The file's load: its key and marks, then a link of its fresh object when it starts in TOP-SCOPE?,
 \ else a compile of its source, which NEST cuts into pieces at each request, ending with its last
 \ piece and its object. A file a linking file requested links or ends the build with E-STALE: no
-\ piece compiles after a linked one.
+\ piece compiles after a linked one. A cross build links no object and writes none: an object
+\ carries one emission per definition, and a cross build makes two, the target's and the host's
+\ that later files run.
 : LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    path pathu KEY!
@@ -3716,11 +3728,11 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    path pathu root rootu PATH+
    MARKS
    INPUT!
-   TOP-SCOPE? if LINKED? if 1 LINKED-N +! exit then then
+   TOP-SCOPE? CROSS? 0= and if LINKED? if 1 LINKED-N +! exit then then
    LINKING? if E-STALE throw then
    HITS-CLEAR  source sourceu SPELLED  NAMED!   \ a failed check left its replay in HITS
    OBJECT-OPEN  COPY-BELOW
-   false UNLINKABLE !  STAMPED? 0= if true UNLINKABLE ! then  SCOPE-CK
+   CROSS? UNLINKABLE !  STAMPED? 0= if true UNLINKABLE ! then  SCOPE-CK
    false PUSH-KEY
    0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
    true GOING                          \ E-FAILED: a request failed and the source caught it
@@ -4010,10 +4022,12 @@ public
 
 \ Run the body in a build's space with no package of hb's open, close on every
 \ exit, reopen the caller's package, rethrow; E-COMP-STATE while a build is open.
-\ The mode is "engine", "kernel" for a kernel build, or a stripped program's.
-: WITH ( ptr u8 n [ -- ] -- )
-   {: mode:ptr modeu:n body :}
+\ The mode is "engine", "kernel" for a kernel build, or a stripped program's; the
+\ target is the one the program runs on, and another than hb's own makes a cross build.
+: WITH ( ptr u8 n RTARGET:resolved-target [ -- ] -- )
+   {: mode:ptr modeu:n target:RTARGET:resolved-target body :}
    IDLE? 0= if E-COMP-STATE throw then
+   target TARGET !
    mode modeu s" engine" STR= ENGINE? !
    mode modeu s" kernel" STR= KERNEL? !
    body BODY !

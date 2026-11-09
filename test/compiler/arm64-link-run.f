@@ -20,6 +20,7 @@ require src/lib/fs-mutate.f
 require src/lib/process-command.f
 require src/habu/layout.f
 require src/habu/xref.f
+require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
 require tools/hb-build-core.f
@@ -109,7 +110,7 @@ public
    s" habu-link-run" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    false HB-BUILD-CORE:KERNEL-BUILD
-   s" app" [: BODY ;] LINKER:WITH
+   s" app" RTARGET:HOST-TARGET [: BODY ;] LINKER:WITH
    [: RUN-HI ;] CMD:WITH-COMMAND
    [: RUN-THROW ;] CMD:WITH-COMMAND
    [: RUN-XT ;] CMD:WITH-COMMAND

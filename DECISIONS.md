@@ -1105,9 +1105,12 @@ learned live in the docs for their subject.
   tier 1 as a stopgap; every Wasm function is called one way, taking the
   context and returning a status, with the data stack in memory; a module
   starts at its MAIN, as an arm64 program does; LINKER:WITH takes the target
-  as an argument; a Wasm build compiles every file until a file's object
-  carries both copies of a definition, the module's and the host's that later
-  files run during the build; tools/wasm-build.f, src/habu/link-wasm.f,
+  as an argument, an RTARGET:resolved-target (the machine and OS, whose binding
+  the target's shadow opens with), and `--target`'s architecture names map to
+  one: wasm to wasm32-unknown-unknown, the host's to the host's; a Wasm build
+  compiles every file until a file's object carries both copies of a
+  definition, the module's and the host's that later files run during the
+  build; tools/wasm-build.f, src/habu/link-wasm.f,
   src/arch/wasm/capture.f, T0's hand-off of fixed bodies to tier 1 and the
   two capture tests go; the Wasm device check and the browser tests move to
   the new command. Steps are dots under habu-emit-wasm-from-0d5dab47.
