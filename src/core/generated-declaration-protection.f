@@ -74,8 +74,10 @@ public
 
 \ A failure before the commits finish rolls every participant back in reverse
 \ order and rethrows its own code; a declaration opened inside another is E-ACTIVE.
+\ Type entries are read before it opens: a read inside one dies (TFAM-FIND).
 : RUN ( [ -- ] -- )
    {: body :}
+   TFAM:READ-PENDING
    OPEN
    [: SAVEPOINTS ;] catch {: save-rc:n :}
    save-rc 0 <> IF CLOSE save-rc throw THEN
