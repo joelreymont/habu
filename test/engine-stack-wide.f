@@ -122,7 +122,7 @@ package STACK-LIFECYCLE-TEST
 \ Set RSP inside the compiled word: the interpreter parks its own tokens on
 \ the return stack between top-level words. An observable wide peek/pop
 \ reaches the guarded VM mapping, so these measure its two-cell boundary.
-: WIDE-RETURN-NATIVE ( -- )
+: WIDE-RETURN-GROUPS ( -- )
    s" native wide return peek and pop preserve both cells" T-LABEL
    s" variable OLD-RSP TRUSTED: SET-EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! ; TRUSTED: RESTORE-EDGE ( -- ) data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = . OLD-RSP @ data-base RSP-CELL + ! ; : MOVE ( -- ) SET-EDGE 11 22 SW-PAIR:MAKE >r r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . RESTORE-EDGE ; MOVE"
    PAIR-RC 0 T=
@@ -137,19 +137,6 @@ package STACK-LIFECYCLE-TEST
    s" TRUSTED: SET-EDGE ( n -- ) data-base RSP-CELL + ! ; : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r 1 SET-EDGE r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . ; MOVE"
    PAIR-REFUSED-RETURN ;
 
-: WIDE-RETURN-ARM ( -- )
-   s" wide return move uses exactly the last two slots" T-LABEL
-   s" : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r r@ drop r> drop ; STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! MOVE data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n ."
-   PAIR-RC 0 T= OUT OUTLEN @ S\" -1\n" T$=
-   s" wide return move needs two free slots" T-LABEL
-   s" : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r r> drop ; STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! MOVE" PAIR-REFUSED-RETURN
-   s" wide return pop proves its whole source before decrement" T-LABEL
-   s" : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r 1 data-base RSP-CELL + ! r> drop ; MOVE" PAIR-REFUSED-RETURN
-   s" wide return peek proves its whole source" T-LABEL
-   s" : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r 1 data-base RSP-CELL + ! r@ drop r> drop ; MOVE" PAIR-REFUSED-RETURN ;
-
-: WIDE-RETURN-GROUPS ( -- )
-   HB-TARGET-LINUX-X86-64? if WIDE-RETURN-NATIVE else WIDE-RETURN-ARM then ;
 
 \ The 513-cell value's byte offsets pass arm64 ADD/SUB's 12-bit immediate.
 : LARGE-TYPE-SOURCE ( -- )
