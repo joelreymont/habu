@@ -156,10 +156,10 @@ variable RC
 
 : WD-APP ( -- )
    SB-RESET
-   s" require src/lib/fs-list.f" LINE
+   s" require src/lib/utf16.f" LINE
    s" package SOURCE-ROOT-EXE-WD" LINE
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" LINE
-   s" FS-LIST:DT-DIR 4 = FS:EACCES 13 = and YN" LINE
+   S\" UTF16:E-UTF16 -9530 = s\q ok\q UTF8:VALID? and YN" LINE
    s" ;package" LINE ;
 
 \ A package that names itself as it loads, standing in for a library file.
@@ -221,9 +221,9 @@ variable RC
    s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/src/lib/error.f" SB$ TEXT
    s" wd-app/src/lib" A$ FS:MAKE-DIRS
    WD-APP s" wd-app/wd.f" SB$ TEXT
-   s" SOURCE-ROOT-EXE-ENTRY-DECOY" DECOY s" wd-app/src/lib/fs.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-ENTRY-DECOY" DECOY s" wd-app/src/lib/utf8-scalar.f" SB$ TEXT
    s" shadow/src/lib" A$ FS:MAKE-DIRS
-   s" SOURCE-ROOT-EXE-WD-DECOY" DECOY s" shadow/src/lib/fs-list.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-WD-DECOY" DECOY s" shadow/src/lib/utf16.f" SB$ TEXT
    \ A program behind a link of another name requires the file beside it, then
    \ itself.
    s" real" A$ FS:MAKE-DIR
@@ -322,7 +322,7 @@ variable RC
    S\"    s\q src/lib/string.f\q ENGINE-PROVIDES? YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
-   s" require src/lib/fs.f" PLINE ;
+   s" require src/lib/utf8-scalar.f" PLINE ;
 
 : FROM-FOREIGN ( ptr u8 n -- )
    {: exe:ptr exeu:n :}
@@ -347,7 +347,7 @@ variable RC
    PROG-RESET
    s" SOURCE-ROOT:ENGINE$ type cr" PLINE
    s" require src/lib/string.f" PLINE
-   s" require src/lib/fs.f" PLINE
+   s" require src/lib/utf8-scalar.f" PLINE
    PROC-ARGV-RESET
    s" tree/bin/hb" HB-AT$ s" b" A$ PROG$ TIMEOUT-MS RUN-EXE
    SB-RESET s" b" A$ LINE
@@ -360,10 +360,10 @@ variable RC
    SB-RESET GATE$ LINE SB$ 0 EXPECT
    s" elsewhere it takes the working directory, and finds no library there" T-LABEL
    PROC-ARGV-RESET
-   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire src/lib/fs.f\n"
+   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire src/lib/utf8-scalar.f\n"
    TIMEOUT-MS RUN-EXE
    SB-RESET FOREIGN$ LINE SB$ STDOUT
-   FOREIGN$ s" /src/lib/fs.f" CANNOT-OPEN ;
+   FOREIGN$ s" /src/lib/utf8-scalar.f" CANNOT-OPEN ;
 
 \ The tree's lib is missing, so its frozen rows answer by name, also under a
 \ discovery base, and a library is refused naming the owner's path.
@@ -380,11 +380,11 @@ variable RC
    s"    REQUIRE-RESTORE ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
-   s" require src/lib/fs.f" PLINE
+   s" require src/lib/utf8-scalar.f" PLINE
    PROC-ARGV-RESET
    s" p/bin/hb" HB-AT$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
    SB-RESET s" p" A$ LINE s" yes" LINE s" yes" LINE SB$ STDOUT
-   FOREIGN$ s" /src/lib/fs.f" CANNOT-OPEN ;
+   FOREIGN$ s" /src/lib/utf8-scalar.f" CANNOT-OPEN ;
 
 \ After the program's load lines: the root, and whether q's file loaded.
 : NOT-TREE-RUN ( -- )
@@ -428,9 +428,9 @@ variable RC
 \ A relative dependency searches its owner, the root, then the working
 \ directory; a relative --load entry is relative to the working directory only;
 \ only the root's own copy matches a frozen engine row.
-\ The entry lacks src/lib/fs-list.f, which the working directory holds, and
-\ holds src/lib/fs.f, which the root's fs-list.f requires: each decoy would
-\ print its package name, and leave FS-LIST or FS undefined.
+\ The entry lacks src/lib/utf16.f, which the working directory holds, and
+\ holds src/lib/utf8-scalar.f, which the root's utf16.f requires: each decoy
+\ would print its package name, and leave UTF16 or UTF8 undefined.
 : WD ( -- )
    s" a library comes from the root, not the working or the entry directory" T-LABEL
    PROC-ARGV-RESET
@@ -453,10 +453,10 @@ variable RC
    s" a relative --load entry is relative to the working directory only" T-LABEL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" src/lib/fs.f" >LEN PROC-ARGV+
+   s" src/lib/utf8-scalar.f" >LEN PROC-ARGV+
    s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
    NULL$ STDOUT
-   FOREIGN$ s" /src/lib/fs.f" CANNOT-OPEN ;
+   FOREIGN$ s" /src/lib/utf8-scalar.f" CANNOT-OPEN ;
 
 \ The root's src is a symlink into the gate tree; branch is a symlink
 \ elsewhere, so branch/../src/lib/error.f only reads like the root's file.
@@ -502,7 +502,7 @@ variable RC
    YN-LINE
    s" : RUN ( -- )" PLINE
    S\"    SOURCE-ROOT:CWD$ s\q src/lib/error.f\q SOURCE-ROOT:JOIN provided" PLINE
-   S\"    s\q src/lib/fs.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
+   S\"    s\q src/lib/utf8-scalar.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
    S\"    s\q src/lib/error.f\q ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT:RESOLVED-ROOT$ type cr ;" PLINE
    s" RUN" PLINE
