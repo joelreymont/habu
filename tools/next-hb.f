@@ -130,11 +130,13 @@ create END-PATH PATH-CAP allot  variable END-U
 
 \ The product's registry is the build's: end.f records each row with the
 \ product's own include.f and packs them into its DATA, as a capture's prepare
-\ does (native-runtime.f CAPTURE-PREPARE); then the installs.
+\ does (native-runtime.f CAPTURE-PREPARE); then the installs. Last the product's
+\ IMAGE-LIFECYCLE:PREPARE releases what its files' top levels acquired in this
+\ process (FFI's library handles, mappings), which the written program must not carry.
 : END-WRITE ( -- )
    END$ s\" REQUIRE-BOOT-OPEN\n" FS:WRITE-ALL
    REQUIRE-N @ REQUIRE-BASE @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ REG-ROW loop
-   s\" REQUIRE-BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\n" END+ ;
+   s\" REQUIRE-BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\nIMAGE-LIFECYCLE:PREPARE\n" END+ ;
 
 
 : BUILD ( -- )
