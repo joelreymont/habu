@@ -4,7 +4,7 @@
 \ a subsystem that outgrows its block takes a second region, never renumbers.
 \ A package's block is minted in the package's file; a comment here says where.
 \ STORAGE CLASS. PROCESS-WIDE: the rows ERROR:CODE lays in data space and the
-\ head cell that reaches the newest of them.
+\ persisted head cell that holds the newest one's address.
 
 \ ERROR-TEXT is src/core/util.f's, which every prefix loads first.
 require src/habu/layout.f
@@ -1250,8 +1250,8 @@ require src/lib/prelude.f
 -9607 constant E-T0-DEFER        \ `is` names no deferred word: COMP's UNSUPPORTED$
 -9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE
 
-\ A declared code's row holds no address: HEAD and each row's prev are byte
-\ distances to the newest row and to the row before, 0 for none.
+\ HEAD and each row's first cell are declared address cells holding the newest
+\ row and the row before, NULL-PTR for none, so the linker relocates them.
 package ERROR
 
 private
@@ -1260,34 +1260,29 @@ private
 \ `-`, 19 digits, ` constant ` and the name.
 NAME-CAP 30 + constant LINE-CAP
 
-variable HEAD
+PERSISTED-PTR-VARIABLE HEAD
 create LINE LINE-CAP allot
 variable LINE-U
 create NL $0A c,
 
-\ A row by its distance from HEAD.
-: ROW-AT ( n -- ptr n )  HEAD BYTE-VIEW + CELL-VIEW ;
-: ROW-PREV ( n -- n )  ROW-AT @ ;
-: ROW-CODE ( n -- n )  ROW-AT cell+ @ ;
+: ROW-PREV ( ptr n -- ptr n )  0 ptr-field @ ;
+: ROW-CODE ( ptr n -- n )  cell+ @ ;
 
 
-: ROW-NAME$ ( n -- ptr u8 n )
-   ROW-AT {: r:ptr :}
+: ROW-NAME$ ( ptr n -- ptr u8 n ) {: r:ptr :}
    r 4 cells + BYTE-VIEW r 2 cells + @ ;
 
 
-: ROW-TEXT$ ( n -- ptr u8 n )
-   ROW-AT {: r:ptr :}
+: ROW-TEXT$ ( ptr n -- ptr u8 n ) {: r:ptr :}
    r 4 cells + BYTE-VIEW r 2 cells + @ + r 3 cells + @ ;
 
 
-\ The newest row with this code, by its distance from HEAD; 0 for none.
-: FIND ( n -- n ) {: code:n :}
+\ The newest row with this code, NULL-PTR for none.
+: FIND ( n -- ptr n ) {: code:n :}
    HEAD @
-   begin dup 0<> while
+   begin dup NULL-PTR <> while
       dup ROW-CODE code = if exit then
-      dup ROW-PREV dup 0= if 2drop 0 exit then
-      -
+      ROW-PREV
    repeat ;
 
 
@@ -1318,10 +1313,10 @@ create NL $0A c,
    s" " 70 die ;
 
 
-\ Whether the row at this distance carries the name this declaration gives:
-\ PKG$, `:` and the name in a package, else the name.
-: SAME-NAME? ( n ptr u8 n -- bool )
-   {: at:n name:ptr nameu:n :}
+\ Whether the row carries the name this declaration gives: PKG$, `:` and the
+\ name in a package, else the name.
+: SAME-NAME? ( ptr n ptr u8 n -- bool )
+   {: at:ptr name:ptr nameu:n :}
    at ROW-NAME$ {: r:ptr ru:n :}
    PKG$ {: p:ptr pu:n :}
    pu 0= if r ru name nameu XREF-STR=CI exit then
@@ -1346,8 +1341,8 @@ create NL $0A c,
       s" ERROR:CODE: " SAY name nameu SAY-NAME s"  has an empty text" SAY REFUSE
    then
    code 0 < code 255 > or 0= if exit then
-   code FIND {: at:n :}
-   at 0= if exit then
+   code FIND {: at:ptr :}
+   at NULL-PTR = if exit then
    at name nameu SAME-NAME? if exit then
    s" ERROR:CODE: " SAY code SAY-INT s"  is " SAY at ROW-NAME$ SAY
    s" , declared again as " SAY name nameu SAY-NAME REFUSE ;
@@ -1383,8 +1378,9 @@ create NL $0A c,
    {: code:n name:ptr nameu:n text:ptr textu:n :}
    align
    PKG$ {: p:ptr pu:n :}
-   here NULL-PTR - HEAD NULL-PTR - - {: at:n :}
-   HEAD @ dup 0<> if at swap - then ,
+   here CELL-VIEW {: at:ptr :}
+   here ptr-cell-mark 0 ,
+   HEAD @ at 0 ptr-field !
    code ,
    pu nameu + pu 0<> if 1+ then ,
    textu ,
@@ -1409,12 +1405,12 @@ generates: CODE ( -- n )
 
 \ The newest declaration's name or text for a code, empty when none.
 : NAME$ ( n -- ptr u8 n )
-   FIND dup 0= if drop s" " exit then
+   FIND dup NULL-PTR = if drop s" " exit then
    ROW-NAME$ ;
 
 
 : TEXT$ ( n -- ptr u8 n )
-   FIND dup 0= if drop s" " exit then
+   FIND dup NULL-PTR = if drop s" " exit then
    ROW-TEXT$ ;
 
 seal-package
