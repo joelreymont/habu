@@ -254,8 +254,7 @@ Cross-build first, self-host second.
 4. **The cross-built engine self-hosts** on an x86-64 host, two
    generations building the same image.
 5. **Recovery.** The Gforth chain emits ARM64 only and refuses x86-64 by name;
-   x86-64 recovery is a cross-build from a working ARM64 engine, and
-   `tools/native-build.f` is its only route.
+   x86-64 recovery is a cross-build from a working ARM64 engine.
 
 ### Gates and acceptance
 
@@ -267,25 +266,6 @@ Cross-build first, self-host second.
 - A native x86-64 build records the emission it published and reaches the same
   image, engine and names sidecar, across three generations before a
   product is promoted.
-
-### Build target
-
-`tools/native-build.f -- <out> [whitebox] [--target <target>]` builds for
-`linux-aarch64`, `macos-aarch64` or `linux-x86-64`, by default for the engine
-running it. The window gets that target's `target.f` and `layout.f`, and inside
-it the window's own predicates answer; the building engine's predicates are not
-touched. The entry refuses a target whose architecture has no backend
-registered in the building engine and loads none itself, so a cross-build
-loads the backend ahead of the driver:
-
-```sh
-bin/hb --load src/arch/x86-64/passes.f tools/native-build.f -- <out> --target linux-x86-64
-```
-
-The building engine's own checker checks the backend, so the engine must
-know every rule the backend's source uses: an engine without the `xt` type
-refuses `select-x64.f`'s `XT>N` cast with E-CAST-FAM. Cross-build with an
-engine built from the same tree.
 
 ## Wasm
 

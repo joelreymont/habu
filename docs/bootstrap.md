@@ -15,8 +15,9 @@ root, which the build then links (DECISIONS.md "the kernel a build writes").
 
 Build from the tree's root: a build opens its boot files under the working
 directory and refuses one outside the engine root. Builds write their objects
-under the out root ([gate.md](gate.md#scratch-and-cache)), keyed by the
-building hb's own bytes, so hosts that differ never share an object.
+under the out root ([gate.md](gate.md#scratch-and-cache)), in a directory
+named by the building hb's change time and size, so two hb never share an
+object.
 
 No route builds hb without an hb. x86-64 and Wasm builds are off until each
 moves onto the linker (DECISIONS.md "the old builders").
@@ -65,9 +66,7 @@ generations are the same image (CODESIGN:SAME-IMAGE?):
 Run it for changes to code generation, self-hosting or capture that can affect
 successive output. Use an external scratch directory for `$TMP`, as described
 in [gate.md](gate.md). Every generation compiles the checkout's source, so
-leave the tree unchanged until the tool exits: hb records the hash of each file
-built into it, so a comment edited while a generation builds makes that
-generation differ from the one before.
+leave the tree unchanged until the tool exits.
 
 A codegen change can first appear in generation two because generation one
 was compiled by the old host. Compare successive products, not an arbitrary

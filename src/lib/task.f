@@ -1977,7 +1977,7 @@ SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
 \ 0, or the quotation OBSERVE-SLOTS stored: +USER hands it each slot word it
 \ generates with the word's offset and size, so a build tool knows the record
 \ by TASK's own account of it, never by its spelling. An image carries 0
-\ (OWNED-CELLS fresh; the tools declare the cell a process cell as FFI's).
+\ (OWNED-CELLS fresh).
 variable SLOT-OBSERVER
 CAST: SLOT-OBSERVER-FN ( n -- [ [ -- ptr n ] n n -- ] )
 CAST: SLOT-OBSERVER-N ( [ [ -- ptr n ] n n -- ] -- n )
@@ -2540,13 +2540,10 @@ TASK-MIN-STACK constant MIN-STACK
    ['] TASK:#USER READER>N claim execute ;
 
 \ Hand every slot word +USER generates, as its execution token with the slot's
-\ offset and size, to a quotation. The tools' file object journals the slots
-\ a file's code makes (tools/native-unit-dependency.f USER-MADE); a captured
-\ image holds 0.
+\ offset and size, to a quotation; a captured image holds 0.
 : OBSERVE-SLOTS ( [ [ -- ptr n ] n n -- ] -- ) SLOT-OBSERVER-N SLOT-OBSERVER ! ;
 : UNOBSERVE-SLOTS ( -- ) 0 SLOT-OBSERVER ! ;
-\ The observer's cell. The tools declare it a process cell at their load, as
-\ they do FFI's (tools/native-unit-object.f).
+\ The observer's cell.
 : SLOT-OBSERVER-CELL ( -- ptr n ) SLOT-OBSERVER ;
 
 \ A copied ROW-TABLE control points into its carried row allocation. The

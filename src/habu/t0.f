@@ -1846,8 +1846,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ state; the tape, the measures and the NFETCH facts are only read.
 \ INTERN:STRING finds before it adds, so a string gets one address in both
 \ routines, but each walk interns it: a source-row recording
-\ (INTERN:SOURCE-BEGIN), which only the definition cache's capture of tier 1
-\ opens (tools/native-definition-cache.f), would list it twice.
+\ (INTERN:SOURCE-BEGIN) would list it twice.
 
 \ The machine this engine runs on, the one src/compiler/native/publish.f
 \ TARGET-CK requires of every emission.

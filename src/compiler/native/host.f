@@ -27,9 +27,7 @@ public
 \ sites carry. INDIRECT: a run of an xt or text operand, which a file's closure
 \ walk and source observer account for. CAST, UNCHECKED and FOREIGN: an effect
 \ the facts cannot name. UNKNOWN: an unmodeled op or literal, or no facts.
-\ REBIND: a compiled `is`. SAFE, MEMORY, INDIRECT, FIXED and REBIND are admitted
-\ (tools/native-file-reference.f REASON-ADMITTED?), UNCHECKED when the definition
-\ has a checker contract (tools/native-unit-dependency.f MEMBER-ADMITTED?).
+\ REBIND: a compiled `is`.
 \ Objects publish these values in section 15: append, never renumber.
 0 constant SAFE
 1 constant CAST

@@ -109,8 +109,7 @@ public
 \ Closure identity: fixed domain, version, file count, then per file its path
 \ length, exact recorded path bytes and 32-byte SHA-256 content digest. A reader
 \ recomputes it from disk, so a mismatch means a stale artifact, which a
-\ recapture cures. The producer identity is not here: src/lib/engine-id.f in a
-\ booted capture, SHA256-FILE-IN over the emitted engine in the metabuild.
+\ recapture cures. The producer identity is not here.
 : CHAIN-DIGEST ( ptr u8 -- ) {: out:ptr :}
    N @ 0= if
       s" aot-ident: chain digest asked for before the closure was latched" REFUSE-RC die

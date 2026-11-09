@@ -1837,10 +1837,7 @@ private
 public
 
 \ The declaration between FUNCTION: and ;FUNCTION: 0 when none is open, else
-\ one more than the clauses it holds. A top-level run that changes it is
-\ admitted by that change (tools/native-unit-dependency.f RUN-JUDGE); a
-\ segment that opens or closes with one pending refuses
-\ (tools/native-unit-object.f DECL-CLOSED-CK).
+\ one more than the clauses it holds.
 : PENDING ( -- n ) OPEN @ ;
 
 \ Nothing is published before ;FUNCTION, and the row is registered as the text

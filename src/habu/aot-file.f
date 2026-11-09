@@ -15,9 +15,7 @@ using AOT-BUF
 using AOT-WINDOW
 
 \ IDENTITY IS NOT THE FORMAT'S. WRITE takes the producer key and READ takes the
-\ key it will accept. A booted capture reads src/lib/engine-id.f's content key
-\ for the binary it runs; the metabuild recomputes SHA-256 over the capture host
-\ it emitted; the two readings are compared for hard equality here.
+\ key it will accept; the two are compared for hard equality here.
 \
 \ THE THREE DIGESTS:
 \   PRODUCER  - sha256 of the engine binary that produced the capture: refuses an

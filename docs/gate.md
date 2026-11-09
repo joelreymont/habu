@@ -141,8 +141,8 @@ bytes of socket path on macOS (107 on Linux), of which macOS's default
 `/var/folders` `TMPDIR` already spends 97: the fs-mutate socket row fails
 there when run on its own.
 
-Build outputs live with the tree, under `<cwd>/.out/<engine>/` or
-`$HABU_OUT/<engine>/` (src/lib/build-out.f states the layout). They are
+Build outputs live with the tree, under `<cwd>/.out/` or `$HABU_OUT/`
+(src/lib/build-out.f states the layout). They are
 disposable: no other cache exists, deleting them costs only a rebuild, and a
 deliberate cold measurement selects a fresh `HABU_OUT`.
 

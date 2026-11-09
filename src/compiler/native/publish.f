@@ -55,7 +55,7 @@ variable UNIT-ARMED
 : APPEND-PENDING ( n -- )
    ndict-append ;
 
-\ A prepared package unit (tools/native-unit-object.f): the build host has
+\ A prepared package unit: the build host has
 \ relocated its code and dictionary rows and names each relocation site as a
 \ unit-relative byte offset. The publication itself is this owner's alone.
 : PUBLISH-UNIT ( ptr u8 n ptr u8 n -- )

@@ -194,69 +194,39 @@ nor inside the product's spaces is refused, naming the cell.
 
 **A file is the unit of compilation.** Packages stay namespaces that any file
 can open or reopen. The loader reads source from disk in its normal order, and
-a file is compiled again when its inputs, the facts it consumed, the compiler
-or the target change. Objects and images live in the tree's own out root
-(src/lib/build-out.f); no build cache is shared between trees.
+each file decides at its own load: it links its saved object while the object
+still holds, and compiles otherwise, after linked files too. Objects live in
+the tree's own out root (src/lib/build-out.f); no build cache is shared
+between trees. The proof is a warm build whose program equals the program of
+a build into an empty out root.
 
-**A file's object holds its compiled definitions.** For each `:` and
-`TRUSTED:` definition it holds the code, literals and checker state the
-compile produced and the facts that compile consumed; compiler scratch is not
-part of it. Addresses are relocatable references, resolved by declaration and
-offset at install and never keyed, so an edit that changes an earlier file's
-size leaves later objects valid. Symbols resolve by package and name, not by
-the numbers the compiler assigned them. State a subsystem owns (compiler
-identities, checker pools, the literal pool) is exported and restored by that
-owner; an object never copies a span of another owner's data.
+**A build decides from stamps and times and hashes nothing.** A file's stamp
+is its change time and size, read before the file is read. Its object links
+only while the stamp is equal, so a file put back with an older time compiles.
+Each part of an object carries the clock time its result last changed; a file
+that compiles to the bytes its old object held keeps those times, so the files
+that depend on it link. A comment edit compiles one file.
 
-**A reused file runs its top level again.** Its compile-time code, defining
-words included, runs as it did when the file was compiled, remaking the
-file's records, wordlists, DATA and constants and repeating what that code
-writes to the output device, the file system or the environment. At each
-definition head whose inputs still hold (below), the definition installs from
-the object in place of compiling its body; any other definition compiles. A
-value a body captured at compile time stays part of the object until a tracked
-input changes, so a program that needs a fresh value on every run reads it at
-run time. A reused file loads where its source loads it, so package
-visibility, `require`/`include` semantics and the order of reopenings hold as
-in a clean build. The proof is a warm build whose product equals the product
-of a build from an empty cache.
+**A file depends on the earlier files it uses**, and links only while each is
+in the build with the time the file's object recorded:
 
-**A file's key names what compiles it and its place in the load, never its
-text** (src/habu/linker.f KEY! says what it covers). Its place includes its
-whole path, so a tree moved to another path compiles once. A file is stale
-when a file it depends on changed, comments included, as make decides: an edit
-recompiles the file and its consumers, and an edit to a file the kernel,
-compiler or build tool is made from recompiles every file.
+- a file whose words or data its compiled code refers to;
+- a file that defines a public name its source spells outside comment lines,
+  and for a file that reopens a package, that package's private names too;
+- a file that changes a record an earlier file made, which counts as defining
+  that record's name;
+- when it ran an earlier file's word while it compiled, every file that
+  word's code reaches and every file that stored into data it reaches, those
+  loading in the order they did then.
 
-**An entry is valid while what it consumed still holds.** In order: the file's
-size and change time match, or else its bytes hash the same; the
-environment and path-resolution inputs it read answer the same; and every fact
-it consumed from earlier files still holds. A consumed fact is a record of an
-earlier file that the compilation looked up (its contract, immediacy, fixed
-value or generated family, the resolution of a spelling in the search order)
-or the search order at entry, recorded once per file, and the records a
-compile-time run reached, an immediate word's run while a body is read
-included: each word through its code and each data record through its
-extent, following the addresses its pointer cells hold. A read is tracked as
-a read of the record whose address it derives from, within that record's
-extent; a read past the extent into the next record is outside what the
-build tracks. A comment or body-only edit leaves later files valid; renaming
-a word or changing a contract, a constant or `immediate` invalidates exactly
-the files that consumed it. In a reused file, each definition installs from
-the entry only while the file's own records,
-wordlists and DATA before its head, and the loads among them, match the ones
-the entry recorded; otherwise that definition compiles live, as when an
-earlier file's word now makes another record, lays out other data or loads a
-file at another point at this file's top level.
+**hb's identity is its own stamp.** Objects are saved at `<out>/obj/<hb's
+stamp>/<target>/<mode>/<source path>.hfo`, so a new hb compiles every file
+once. hb-build replaces its output only when the image differs apart from its
+signature, and writes a file it generates only when the text differs.
 
-**A file that reads earlier data around its owners stores no object.**
-Compile-time code reads earlier files' state through dictionary records and
-owner-exported state. A file whose compile-time code reads earlier data through
-a trusted body outside an owner interface, or an untracked foreign or system
-call is compiled on every build, and the build names the word. A mapping a
-record of the file holds is not earlier data: the top level that reads it runs
-again on every load. Reads made inside the kernel are the kernel's and do not
-make a file ordered.
+**A file whose load a link could not repeat writes no object** and compiles on
+every build: one that leaves a package open for a later file, or is loaded
+inside one (src/habu/linker.f UNLINKABLE).
 
 **An edit during a build is read in due course.** A file already compiled
 keeps the version it read for that build and is rebuilt on the next; a file not

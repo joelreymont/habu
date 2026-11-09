@@ -29613,7 +29613,7 @@ private
 
 \ The definition's record is the one at the mark; a does> definer's clause
 \ record follows it. Whoever compiled or installed the definition owns how
-\ many records it made (tools/native-unit-object.f DEFINITION-END).
+\ many records it made.
 : CHECKER-PENDING-EXPORT-REFS ( [ ptr u8 n -- n ] -- ptr u8 n )
    UNIT-PENDING @ 0= IF UNIT-BAD THEN
    UNIT-NDICT @ RECORD-LINK-CURRENT? 0= IF UNIT-BAD THEN
@@ -31901,9 +31901,8 @@ public
    NORET-COMPACT
    CHECKER-QUIESCE-END ;
 
-\ A file object runs this as each of its segments opens, and as one closes
-\ unrefused (tools/native-unit-object.f SCRATCH-RETIRE), so the scratch a
-\ check leaves rests there as it rests in an image. Index state
+\ Run at a file boundary, so the scratch a check leaves rests there as it
+\ rests in an image. Index state
 \ rests here through the spans as at every file boundary; only dropping the
 \ mappings (HIDX-MEM-CLEAR, UIX-RESET, CHX-RESET) and persistence are image-only.
 package CHECKER-REG

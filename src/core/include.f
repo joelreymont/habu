@@ -985,10 +985,8 @@ public
 
 \ The cells this registry writes, each handed to keep with its byte extent: its
 \ own eight, the row count, and the four cursors TRUNCATE and REMOVE keep inside
-\ the rows. A per-file object leaves them out of its earlier-DATA updates
-\ because a require restores the registry itself (tools/native-unit-object.f
-\ OWNERS-GATHER). The rows and chunks are mapped, never DATA, and PERSIST's
-\ block is allotted fresh, so no other span is written.
+\ the rows. The rows and chunks are mapped, never DATA, and PERSIST's block is
+\ allotted fresh, so no other span is written.
 : CELL-SPANS ( [ ptr u8 n -- ] -- ) {: keep :}
    FROZEN BYTE-VIEW CELL keep execute
    ROWS BYTE-VIEW CELL keep execute
