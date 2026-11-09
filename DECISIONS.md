@@ -1712,6 +1712,15 @@ learned live in the docs for their subject.
   being replaced, tests that one tool agrees with another, tests of the test
   harness except one catching a failure a running suite cannot show, and
   lints.
+- 2026-11-09, a test that is not started: asked whether the test framework
+  should keep letting a runner answer that a test has not started yet (the
+  test then waits, and TEST:SETTLE!'s step makes waiting tests startable),
+  which only the tests waiting for a built image used, Joel wrote "there are
+  no rows and gates, but tests and suites. why in the world would a test ever
+  answer "not ready" or not started yet? this should never happen, prove me
+  wrong!" The waiting tests and TEST:SETTLE! go: a runner is `( ptr u8 n -- )`
+  and a standard-input runner `( ptr u8 n ptr u8 n -- )`, so Tender's and
+  Maki's runners drop their trailing `true`.
 
 ## Docs
 

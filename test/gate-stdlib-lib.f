@@ -57,16 +57,13 @@ package STDLIB-GATE
 : ROW-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-\ Every row starts when the registry offers it.
-: SUITE-HB-RUN ( ptr u8 n -- bool ) {: label:ptr labelu:n :}
+: SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    SUITE-ENV
-   PRODUCT-SPAWN$ label labelu GT-POOL-START
-   true ;
+   PRODUCT-SPAWN$ label labelu GT-POOL-START ;
 
-: SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- bool ) {: in:ptr inu:n label:ptr labelu:n :}
+: SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu:n label:ptr labelu:n :}
    SUITE-ENV
-   PRODUCT-SPAWN$ label labelu in inu GT-POOL-START-STDIN
-   true ;
+   PRODUCT-SPAWN$ label labelu in inu GT-POOL-START-STDIN ;
 
 \ The entry guard walks the load graph LOAD-GRAPH:READ read and refuses the
 \ registry before anything starts: this hook runs outside the catch around the
@@ -78,9 +75,6 @@ package STDLIB-GATE
    GT-POOL-CATCH-SIGNALS
    s" habu-native-suite" GT-START
    GT-POOL-RESET ;
-
-\ No row waits, so nothing settles before a drain.
-: SUITE-SETTLE ( -- ) ;
 
 : SUITE-DRAIN ( -- )
    GT-POOL-DRAIN-SOFT ;
@@ -102,7 +96,6 @@ package STDLIB-GATE
 : SUITE-INSTALL-HOOKS ( -- )
    [: SUITE-SETUP ;] TEST:SETUP!
    [: SUITE-FINISH ;] TEST:TEARDOWN!
-   [: SUITE-SETTLE ;] TEST:SETTLE!
    [: SUITE-DRAIN ;] TEST:DRAIN!
    [: ROW-BEGIN ;] TEST:ARGS-BEGIN!
    [: ROW-ARG+ ;] TEST:ARG+!

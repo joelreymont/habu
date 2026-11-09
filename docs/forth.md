@@ -2028,10 +2028,9 @@ package FEATURE-TEST
 
 variable RUN-N
 
-: RUNNER ( ptr u8 n -- bool )
+: RUNNER ( ptr u8 n -- )
    2drop
-   1 RUN-N +!
-   true ;
+   1 RUN-N +! ;
 
 : INSTALL ( -- )
    [: RUNNER ;] TEST:RUNNER! ;

@@ -1,13 +1,12 @@
 \ gate-pool.f - checked bounded process pool for native tests.
 \
 \ A caller starts rows - an executable spawned with the argv and environment it
-\ prepared (GT-POOL-START, GT-POOL-START-STDIN) or a forked quotation
-\ (GT-POOL-START-FORK) - and GT-POOL-DRAIN waits for every one: a red row's
-\ report, then exit 1. At most GT-POOL-SLOTS! rows run at once, GT-POOL-MAX at
-\ most, six by default on Linux and eight on macOS. A row's stdout and stderr go
-\ to capture files; its red line keeps the tail of each.
+\ prepared (GT-POOL-START, GT-POOL-START-STDIN) - and GT-POOL-DRAIN waits for
+\ every one: a red row's report, then exit 1. At most GT-POOL-SLOTS! rows run at
+\ once, GT-POOL-MAX at most, six by default on Linux and eight on macOS. A row's
+\ stdout and stderr go to capture files; its red line keeps the tail of each.
 \
-\ A SPAWNED ROW gets its own scratch directory as TMPDIR, which the pool
+\ EVERY ROW gets its own scratch directory as TMPDIR, which the pool
 \ removes when the slot retires, whatever the row left in it; a scratch that
 \ will not go turns the row red. A row whose caller set TMPDIR itself owns that
 \ directory. It also gets a short directory for Unix-domain sockets as
@@ -39,9 +38,6 @@ require src/lib/process-tree.f               \ a slot ends with everything desce
 require src/lib/signal.f                     \ a signalled run is answered at a pool step
 require src/lib/test/runner.f
 require src/lib/test/suite.f                 \ TEST:ITEM-MAX sizes the red table
-require tools/why-threw.f
-
-using WHY-THREW                          \ the fork-throw self-identifying report
 
 16 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
@@ -310,8 +306,8 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-TMP-PATH-U-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-TMP-PATH-US + ;
 
-\ The scratch directory this pool made for a SPAWNED slot's child, empty for a
-\ forked slot, which shares the parent's image and gets no directory of its own.
+\ The scratch directory this pool made for the slot's child, empty when the
+\ caller chose the child's TMPDIR (GT-POOL-ENV-TMPDIR-OWN?).
 : GT-POOL-TMP$ ( idx -- ptr u8 n ) {: idx:idx :}
    idx GT-POOL-TMP-PATH-BUF idx GT-POOL-TMP-PATH-U-PTR @ ;
 
@@ -326,8 +322,8 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-SCRATCH-CODE-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-SCRATCH-CODES + ;
 
-\ The short directory this pool made for a SPAWNED slot's child's sockets,
-\ empty for a forked slot (GT-POOL-CHILD-SOCK!).
+\ The short directory this pool made for the slot's child's sockets
+\ (GT-POOL-CHILD-SOCK!).
 : GT-POOL-SOCK$ ( idx -- ptr u8 n ) {: idx:idx :}
    idx GT-POOL-SOCK-PATH-BUF idx GT-POOL-SOCK-PATH-U-PTR @ ;
 
@@ -398,7 +394,7 @@ GT-POOL-ABORT-BARE!
 \ its own group and the reaper joined it, so a slot group-kill already SIGKILLed
 \ the reaper - this still reaps its zombie, and in the normal-completion path
 \ (child exited on its own, reaper still blocking) it SIGKILLs the reaper first.
-\ Forked slots never arm a reaper (pid stays -1), so the guard makes this a no-op.
+\ A slot whose reaper fork failed keeps pid -1, which the guard skips.
 : GT-POOL-KILL-REAPER ( idx -- ) {: idx:idx :}
    idx GT-POOL-REAPER-PID@ PID>N 0 >= if
       idx GT-POOL-REAPER-PID@ PROCESS:SIGKILL PROCESS:KILL-RAW drop
@@ -435,7 +431,7 @@ GT-POOL-ABORT-BARE!
    idx GT-POOL-CLOSE-CAPTURE ;
 
 \ Absence is tolerated: a directory is gone already when a child removed it
-\ itself, and a forked slot never had one.
+\ itself, and a slot whose caller chose its TMPDIR never had one.
 : GT-POOL-TREE-REMOVE ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if exit then
    a u FS:EXISTS? 0= if exit then
@@ -611,14 +607,6 @@ false GT-POOL-CATCHING !
    SIGNAL:CATCH-STOPS
    true GT-POOL-CATCHING ! ;
 
-\ A forked worker is a new process holding its parent's pipe: left as it is, a
-\ signal sent to the worker would be written there and answered by the parent
-\ as its own.
-: GT-POOL-UNCATCH-SIGNALS ( -- )
-   GT-POOL-CATCHING @ 0= if exit then
-   SIGNAL:RELEASE
-   false GT-POOL-CATCHING ! ;
-
 : GT-POOL-CHECK-LIMIT ( n -- n ) {: n :}
    n 1 < if E-TBL-BOUNDS throw then
    n GT-POOL-MAX > if E-TBL-BOUNDS throw then
@@ -681,11 +669,8 @@ false GT-POOL-CATCHING !
 : GT-POOL-DEATH-RD@ ( -- fd )
    GT-POOL-DEATH-RD @ >FD ;
 
-: GT-POOL-DEATH-WR@ ( -- fd )
-   GT-POOL-DEATH-WR @ >FD ;
-
 \ Create the pool-parent death pipe once per pool. The parent keeps WR; every
-\ forked worker's reaper keeps RD.
+\ slot's reaper keeps RD.
 : GT-POOL-DEATH-MAKE ( -- )
    GT-POOL-DEATH-MADE @ 0 <> if exit then
    PROC-FORK:DEATH-PIPE {: rd:fd wr:fd :}
@@ -866,79 +851,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 : GT-POOL-SPAWN ( idx ptr u8 n -- )
    -1 >FD GT-POOL-SPAWN-FD ;
 
-: GT-POOL-FORK-EXIT ( n -- )
-   s" " rot die ;
-
-\ Exit with a fixed nonzero code: the kernel keeps only the low 8 exit bits,
-\ so a raw throw code that is a multiple of 256 would read as success.
-: GT-POOL-FORK-THROW ( n -- ) {: rc:n :}
-   rc WHY-THREW-DUMP                             \ self-identify an opaque capacity throw before dying
-   GT-POOL-NAME-RESET
-   s" fork worker throw rc " GT-POOL-NAME+
-   rc 0 < if
-      s" -" GT-POOL-NAME+
-      rc negate GT-POOL-NUM$ GT-POOL-NAME+
-   else
-      rc GT-POOL-NUM$ GT-POOL-NAME+
-   then
-   GT-POOL-NAME$ 1 die ;
-
-: GT-POOL-FORK-SETUP-FAIL ( -- )
-   127 GT-POOL-FORK-EXIT ;
-
-: GT-POOL-DUP2! ( fd n -- ) {: fd:fd dst:n :}
-   fd FD>N dst dup2 dup 0 < if drop GT-POOL-FORK-SETUP-FAIL then drop ;
-
-\ Become our own process-group leader right after fork so a kill
-\ (GT-POOL-KILL-SLOT signalling -pid) reaches this worker's whole subtree --
-\ nested pools and spawned hb -- instead of orphaning grandchildren.
-: GT-POOL-SETPGID-SELF ( -- )
-   0 >PID 0 >PID PROC-FORK:SET-PGID RC>N 0 < if GT-POOL-FORK-SETUP-FAIL then ;
-
-\ Worker side: open a worker-alive pipe, arm the parent-death reaper watching
-\ both the pool parent's death pipe (RD) and this worker-alive pipe, then drop
-\ every copy the worker no longer needs: the inherited parent death-pipe RD/WR.
-\ The worker keeps the worker-alive WR open (an untracked fd, close-on-exec) so
-\ it closes exactly at this worker's exit and the reaper self-exits with no
-\ orphan -- and it keeps the worker-alive RD published as PROC-FORK:REAP-WATCH-FD,
-\ so every capture child this worker spawns (PROC-RUN-CAPTURE family) gets its
-\ own co-located reaper watching this worker's life. Extra RD copies never
-\ delay the EOF (only write ends count) and both ends are close-on-exec. The
-\ made-flag is cleared so a nested pool this worker later drives builds its own
-\ death pipe. The reaper is a reparented grandchild (see PROC-FORK:FORK-REAPER),
-\ never a child of this worker, so the worker body's wait(-1) still sees no
-\ children. A refused reaper fork ends the worker through GT-POOL-FORK-THROW.
-: GT-POOL-ARM-REAPER ( -- )
-   PROC-FORK:DEATH-PIPE {: wa-rd:fd wa-wr:fd :}
-   GT-POOL-DEATH-RD@ wa-rd PROC-FORK:FORK-REAPER
-   GT-POOL-DEATH-RD@ FD>N close
-   GT-POOL-DEATH-WR@ FD>N close
-   wa-rd FD>N PROC-FORK:REAP-WATCH-FD !
-   0 GT-POOL-DEATH-MADE ! ;
-
-: GT-POOL-FORK-CHILD ( idx [ -- ] -- ) {: idx:idx q :}
-   GT-POOL-UNCATCH-SIGNALS
-   idx GT-POOL-CLOSE-READS
-   idx GT-POOL-OUT-W-PTR @ 1 GT-POOL-DUP2!
-   idx GT-POOL-ERR-W-PTR @ 2 GT-POOL-DUP2!
-   idx GT-POOL-CLOSE-WRITES
-   idx GT-POOL-CLOSE-CAPTURE
-   GT-POOL-SETPGID-SELF
-   GT-POOL-RED-RESET
-   [: GT-POOL-ARM-REAPER ;] catch {: arm:n :}
-   arm 0<> if arm GT-POOL-FORK-THROW then
-   q catch {: rc:n :}
-   rc 0= if 0 GT-POOL-FORK-EXIT then
-   rc GT-POOL-FORK-THROW ;
-
-: GT-POOL-FORK ( idx [ -- ] -- ) {: idx:idx q :}
-   PROC-FORK:RAW {: pid:pid :}
-   pid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
-   pid PID>N 0= if idx q GT-POOL-FORK-CHILD then
-   pid idx GT-POOL-PID-PTR !
-   idx GT-POOL-WATCH-OPEN
-   idx GT-POOL-CLOSE-WRITES ;
-
 : GT-POOL-STREAM-FILE-FD-PTR ( idx n -- ptr fd ) {: idx:idx stream:n :}
    stream 0= if idx GT-POOL-OUT-FD-PTR exit then
    idx GT-POOL-ERR-FD-PTR ;
@@ -1028,10 +940,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 \ PROC-ENV-SET, not PROC-ENV+, because the caller has already inherited its
 \ environment into the table and an inherited TMPDIR has to be replaced rather
 \ than shadowed.
-\
-\ Forked slots never call this: a forked worker shares the parent's image, gets
-\ no environment of its own, and must not be handed a directory whose removal
-\ would touch the parent's tree.
 \
 \ A TMPDIR row already in the caller's table is one of two things: the copy
 \ PROC-ENV-INHERIT-MISSING took from this process's own environment, which is
@@ -1187,7 +1095,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    GT-POOL-RED-OVERFLOW-LINE ;
 
 \ The slot bookkeeping every start shares: pipes, capture files, label and
-\ start time. The caller then spawns or forks into the slot and counts it live.
+\ start time. The caller then spawns into the slot and counts it live.
 : GT-POOL-OPEN-SLOT ( ptr u8 n idx -- ) {: label:ptr labelu idx :}
    idx GT-POOL-DONE@ 0= if
       s" test pool: fixed slot already active" type cr
@@ -1234,11 +1142,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    idx path pathu r GT-POOL-SPAWN-FD
    r FD>N close
    w bytes byten GT-POOL-FEED-STDIN
-   GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
-
-: GT-POOL-START-FORK-SLOT ( ptr u8 n idx [ -- ] -- ) {: label:ptr labelu:n idx:idx q :}
-   label labelu idx GT-POOL-OPEN-SLOT
-   idx q GT-POOL-FORK
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
 : GT-POOL-PFD-SLOT ( idx -- ptr n ) {: idx :}
@@ -1515,11 +1418,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    GT-POOL-FIND-FREE {: idx :}
    path pathu label labelu bytes byten idx GT-POOL-START-STDIN-SLOT ;
 
-: GT-POOL-START-FORK ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
-   GT-POOL-WAIT-FREE
-   GT-POOL-FIND-FREE {: idx:idx :}
-   label labelu idx q GT-POOL-START-FORK-SLOT ;
-
 : GT-POOL-DRAIN-SOFT ( -- )
    begin GT-POOL-LIVE @ 0 > while
       GT-POOL-STEP
@@ -1541,5 +1439,3 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    GT-POOL-DRAIN-SOFT
    GT-POOL-RED# 0 > if GT-POOL-RED-DIE then
    GT-POOL-FALLBACK-REMOVE ;
-
-;using

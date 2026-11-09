@@ -1,6 +1,6 @@
 \ suite.f - package TEST: suite, group and row registration and the run loop,
 \ loaded by src/lib/test.f. A project adapter installs the hooks (SETUP! through
-\ SETTLE!); fixture helper words belong in a private package, not
+\ STDIN-RUNNER!); fixture helper words belong in a private package, not
 \ global stemmed names.
 \ STORAGE CLASS. PROCESS-WIDE: the row and group tables, argument buffer and
 \ hooks are static; one task registers and runs a suite.
@@ -49,23 +49,14 @@ variable DEF-ID
 variable DEF-SCRIPT
 variable DEF-ENTRIES
 variable LAST-GROUP
-\ Rows a runner declined, in registry order: item ids waiting to start.
-create PENDING ITEM-MAX cells allot
-variable PENDING-N
-variable PEND-SCAN
-variable PEND-KEEP
 
 defer SETUP ( -- )
 defer TEARDOWN ( n -- )
 defer DRAIN ( -- )
 defer ARGS-BEGIN ( -- )
 defer ARG+ ( ptr u8 n -- )
-\ A runner answers whether the row started: FALSE leaves it pending, offered
-\ again before every later start and at every drain. SETTLE runs before each
-\ drain and makes every pending row startable: after it no runner declines.
-defer RUNNER ( ptr u8 n -- bool )
-defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- bool )
-defer SETTLE ( -- )
+defer RUNNER ( ptr u8 n -- )
+defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 
 : TRUE ( -- bool )
    0 0= ;
@@ -76,10 +67,10 @@ defer SETTLE ( -- )
 : ARG-DROP ( ptr u8 n -- )
    2drop ;
 
-: RUN-MISSING ( ptr u8 n -- bool )
+: RUN-MISSING ( ptr u8 n -- )
    2drop E-FS-OPEN throw ;
 
-: STDIN-RUN-MISSING ( ptr u8 n ptr u8 n -- bool )
+: STDIN-RUN-MISSING ( ptr u8 n ptr u8 n -- )
    2drop 2drop E-FS-OPEN throw ;
 
 : CAP-CHECK ( n n -- ) {: u:n cap:n :}
@@ -312,17 +303,17 @@ defer SETTLE ( -- )
       ARG-SCAN @ cell + u + ARG-SCAN !
    loop ;
 
-: ITEM-RUN-FILE ( n -- bool ) {: id:n :}
+: ITEM-RUN-FILE ( n -- ) {: id:n :}
    ARGS-BEGIN
    id ITEM-ARGS-FEED
    id ITEM-NAME$ RUNNER ;
 
-: ITEM-RUN-STDIN ( n -- bool ) {: id:n :}
+: ITEM-RUN-STDIN ( n -- ) {: id:n :}
    ARGS-BEGIN
    id ITEM-ARGS-FEED
    id ITEM-STDIN$ id ITEM-NAME$ STDIN-RUNNER ;
 
-: ITEM-DISPATCH ( n -- bool ) {: id:n :}
+: ITEM-DISPATCH ( n -- ) {: id:n :}
    id ITEM-KIND@
    case
       ITEM-FILE of id ITEM-RUN-FILE endof
@@ -330,50 +321,12 @@ defer SETTLE ( -- )
       E-TBL-FIELD throw
    endcase ;
 
-: ITEM-START ( n -- bool )
-   ITEM-DISPATCH {: ok:bool :}
-   ok if ITEM-RAN @ 1+ ITEM-RAN ! then
-   ok ;
-
-: PEND ( n -- ) {: id:n :}
-   id PENDING PENDING-N @ ITEM-CELL !
-   PENDING-N @ 1+ PENDING-N ! ;
-
-\ Offer every pending row in registry order, keeping the declined ones in
-\ place. Index cells, not a loop frame: a runner may catch and throw.
-: PENDING-RETRY ( -- )
-   0 PEND-KEEP !
-   0 PEND-SCAN !
-   begin PEND-SCAN @ PENDING-N @ < while
-      PENDING PEND-SCAN @ ITEM-CELL @ {: id:n :}
-      id ITEM-START 0= if
-         id PENDING PEND-KEEP @ ITEM-CELL !
-         PEND-KEEP @ 1+ PEND-KEEP !
-      then
-      PEND-SCAN @ 1+ PEND-SCAN !
-   repeat
-   PEND-KEEP @ PENDING-N ! ;
-
-\ After SETTLE every pending row must start: a decline then breaks the
-\ adapter's contract and is refused by name.
-: PENDING-FLUSH ( -- )
-   SETTLE
-   PENDING-RETRY
-   PENDING-N @ 0= if exit then
-   PENDING 0 ITEM-CELL @ {: id:n :}
-   s" test: row " type id ITEM-NAME$ type s"  not started after settle" type cr
-   E-SUITE-ROW throw ;
-
-: DRAIN-ALL ( -- )
-   PENDING-FLUSH
-   DRAIN ;
-
 : GROUP-HEADER? ( n -- bool ) {: gid:n :}
    gid LAST-GROUP @ <> ;
 
 : GROUP-HEADER ( n -- ) {: gid:n :}
    gid GROUP-HEADER? if
-      gid GROUP-MODE@ GROUP-SEQUENTIAL = if DRAIN-ALL then
+      gid GROUP-MODE@ GROUP-SEQUENTIAL = if DRAIN then
       s" GROUP: " type gid GROUP-NAME$ type
       gid GROUP-MODE@ GROUP-SEQUENTIAL = if s"  (sequential)" else s"  (parallel)" then
       type cr
@@ -382,27 +335,22 @@ defer SETTLE ( -- )
 
 : ITEM-RUN ( n -- ) {: id:n :}
    id ITEM-GROUP@ GROUP-HEADER
-   id SEQUENTIAL? if DRAIN-ALL then
-   id ITEM-START 0= if id PEND then
-   id SEQUENTIAL? if DRAIN-ALL then ;
+   id SEQUENTIAL? if DRAIN then
+   id ITEM-DISPATCH
+   ITEM-RAN @ 1+ ITEM-RAN !
+   id SEQUENTIAL? if DRAIN then ;
 
 : RUNS? ( n -- bool )
    {: id:n :}
    CHOSEN? @ 0= if TRUE exit then
    ITEM-CHOSEN id ITEM-CELL @ 0<> ;
 
-\ A pending row starts at the first start after its runner accepts it, ahead
-\ of every later row not yet started.
 : RUN-BODY ( -- )
    -1 LAST-GROUP !
-   0 PENDING-N !
    ITEM-N @ 0 ?do
-      i RUNS? if
-         PENDING-RETRY
-         i ITEM-RUN
-      then
+      i RUNS? if i ITEM-RUN then
    loop
-   DRAIN-ALL ;
+   DRAIN ;
 
 : RUN-ACT ( -- )
    SETUP
@@ -430,14 +378,11 @@ EXPORT ITEM-NAME$
 : ARG+! ( [ ptr u8 n -- ] -- )
    is ARG+ ;
 
-: RUNNER! ( [ ptr u8 n -- bool ] -- )
+: RUNNER! ( [ ptr u8 n -- ] -- )
    is RUNNER ;
 
-: STDIN-RUNNER! ( [ ptr u8 n ptr u8 n -- bool ] -- )
+: STDIN-RUNNER! ( [ ptr u8 n ptr u8 n -- ] -- )
    is STDIN-RUNNER ;
-
-: SETTLE! ( [ -- ] -- )
-   is SETTLE ;
 
 : ITEMS-REGISTERED ( -- n )
    ITEM-N @ ;
@@ -481,8 +426,7 @@ EXPORT ITEM-NAME$
    [: NOOP ;] ARGS-BEGIN!
    [: ARG-DROP ;] ARG+!
    [: RUN-MISSING ;] RUNNER!
-   [: STDIN-RUN-MISSING ;] STDIN-RUNNER!
-   [: NOOP ;] SETTLE! ;
+   [: STDIN-RUN-MISSING ;] STDIN-RUNNER! ;
 
 : RESET ( -- )
    0 ITEM-N !
@@ -524,8 +468,7 @@ parses-through: SUITE-STDIN 2 ( ;SUITE TEST:;SUITE )
 \ and TEARDOWN, which receives the run's throw code; RUN rethrows it. DRAIN runs
 \ on entry to a SEQ group, before and after each of its rows, and once at the
 \ end. A row whose arguments reach another row keyword or the end of input
-\ (`test: row <name> has no ;SUITE`) and a row a runner still declines after
-\ SETTLE (`test: row <name> not started after settle`) throw E-SUITE-ROW.
+\ throws E-SUITE-ROW (`test: row <name> has no ;SUITE`).
 : RUN ( -- )
    RUN-ACT ;
 

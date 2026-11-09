@@ -10,5 +10,5 @@ also a library; `-core.f` and `-lib.f` hold what tests and other tools reuse;
   `build-fixpoint.f` (self-rebuild), `native-emit.f`, `wasm-build.f`, `seed.f`.
 - Convergence: `two-generation-*.f`, `ddc-verify.f` and `ddc-drive.f`.
 - Checks: `check.f`, the `*-lint.f` entries over `lint/`, `lsp.f` and `lsp-*.f`.
-- Inspection: `engine-size.f`, `imagedisasm.f`, `jitdump.f`, `why-threw.f`.
+- Inspection: `engine-size.f`, `imagedisasm.f`, `jitdump.f`.
 - `unicode/` generates and verifies `src/lib/unicode/class-data.f`.
