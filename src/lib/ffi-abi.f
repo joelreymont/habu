@@ -1310,7 +1310,7 @@ variable CUR-LIB
 variable OPEN                              \ 0 closed, else 1 + the open declaration's clauses
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET                         \ ... and whether one was stated at all
-variable SCOPE-HOOK
+SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark   \ RECORD-SCOPE says why
 
 \ The token cells a library selection shares with a declaration, at rest.
 : REST-TOKENS ( -- )
@@ -1797,21 +1797,10 @@ private
 \ INCLUDE-PATH names the last file opened (src/lib/codegen.f after `require
 \ src/lib/ffi-abi.f`), so every consumer would share one identity. A wordlist is
 \ saved and restored with the package scope and separates two consumers whose
-\ requires end at one file. A selection belongs to the source load that made it:
-\ the source closes before capture, and its host wordlist id is not an image id.
-: CLEAR-SCOPE ( -- )
-   0 SCOPE-WID !
-   0 SCOPE-SET !
-   NOTIFY-SCOPE ;
-
-: ENSURE-SCOPE-HOOK ( -- )
-   SCOPE-HOOK @ 0= if
-      [: CLEAR-SCOPE ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT
-      1 SCOPE-HOOK !
-   then ;
-
+\ requires end at one file. A selection belongs to the source load that made it,
+\ and a wordlist id holds only in the process that made it, so both cells are
+\ scratch: every saved program, a cross-built one included, starts with none.
 : RECORD-SCOPE ( -- )
-   ENSURE-SCOPE-HOOK
    get-current SCOPE-WID !
    1 SCOPE-SET !
    NOTIFY-SCOPE ;
@@ -1839,23 +1828,6 @@ private
    STRUCT-BYTES BYTE-VIEW CELL keep execute ;
 
 public
-
-\ A cold FILE import can restore a selection made before a child FILE and then
-\ continue with FUNCTION:. Install the matching cleanup before capture; the
-\ hook flag itself belongs to the live registry, not the serialized bytes.
-: ARM-SCOPE ( -- ) ENSURE-SCOPE-HOOK ;
-
-\ The declarer's selection as a file object carries it: the library index,
-\ the wordlist it was stated in, and whether one is stated. SELECT restores
-\ it at an install as RECORD-SCOPE made it, hook included. Like
-\ RECORD-SCOPE it reports the write, an unchanged one included: a file's
-\ object must record the selection a write replaced.
-: SELECTION ( -- n n bool ) CUR-LIB @ SCOPE-WID @ SCOPE-SET @ 0<> ;
-: SELECT ( n n bool -- )
-   {: lib:n wid:n set:bool :}
-   lib CUR-LIB ! wid SCOPE-WID !
-   set if ENSURE-SCOPE-HOOK 1 else 0 then SCOPE-SET !
-   NOTIFY-SCOPE ;
 
 \ The declaration between FUNCTION: and ;FUNCTION: 0 when none is open, else
 \ one more than the clauses it holds. A top-level run that changes it is
