@@ -330,8 +330,7 @@ public
   An exported `does>` definer `MK` brings its clause along as `MK;does`.
   Re-exporting a generated constructor under a second name is allowed; adding
   tails INTO a generated constructor package is not. At TOP LEVEL `EXPORT
-  name…` is the hb-build `--repl` export directive: the build strips it and a
-  plain load consumes the name as a no-op.
+  name…` consumes the name as a no-op.
 - **A process can be sealed to the packages a harness admits**:
   `src/lib/vocabulary.f` states the vocabulary and the refusals.
 
@@ -780,10 +779,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   B
   ```
 
-  A native engine boots with no created word, so a `does>` before any
-  `create` is refused the same way. An image restored from a `--repl` build
-  keeps its build's last created word instead, and its first `does>` patches
-  that word.
+  A native engine boots with no created word, one hb-build `--repl` wrote
+  included, so a `does>` before any `create` is refused the same way.
 - **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` or `( … )`
   comment inside the body is refused, rc 70 (`habu: bad enum declaration 'kind':
   unexpected token in enum declaration at '('`); `tools/check.f` reports a `\`

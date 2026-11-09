@@ -1,4 +1,4 @@
-\ font-image-subject.f - live FONT handles are retired before image capture.
+\ font-image-subject.f - live FONT handles are retired before hb-build writes hb.
 \ Build: bin/hb --load tools/hb-build.f -- --repl test/font-image-subject.f -o build/font-image
 \ Run: build/font-image
 require src/lib/font.f

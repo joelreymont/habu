@@ -14,7 +14,6 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
-require test/app-image-engine.f
 
 using SOURCE-ROOT
 package INCLUDE-REFUSAL-E2E
@@ -155,40 +154,11 @@ variable RC
    EXITS-74
    ERR$ S\" bundle: this engine does not provide src/lib/absent.f\n" T$= ;
 
-\ The program on stdin, at the top level a save runs at, with the image path as
-\ its argument, on the engine with the saver loaded (test/app-image-engine.f).
-\ The saver's image starts at tier 0, where APP-IMAGE:SAVE refuses retained
-\ code, so the program sets tier 1: only the root scope can refuse it.
-: SAVE-IN-WITH ( -- )
-   APP-IMAGE-ENGINE:PATH$ {: eng:ptr engu:n :}
-   0 PROG-U !
-   s" 1 set-tier" PLINE
-   s" package INCLUDE-REFUSAL-SAVE" PLINE
-   s" public" PLINE
-   S\" : RUN ( -- ) s\q " PROG+ ROOT$ PROG+
-   S\" \q [: 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ;] SOURCE-ROOT:WITH ;" PLINE
-   s" ;package" PLINE
-   s" INCLUDE-REFUSAL-SAVE:RUN" PLINE
-   s" save-in-with" s" .f" NAMED PROG$ FS:WRITE-ALL
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" --" >LEN PROC-ARGV+
-   s" image" AT >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   eng engu >LEN CWD$ >LEN PROG$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT!
-   s" save-in-with" KEEP
-   s" an image save inside SOURCE-ROOT:WITH exits 74 by name" T-LABEL
-   EXITS-74
-   ERR$ S\" source root: an image cannot be saved inside a root scope\n" T$=
-   s" and writes no image" T-LABEL
-   s" image" AT FS:EXISTS? TFALSE ;
-
 public
 
 : RUN ( -- )
    T-RESET SETUP
-   WITH-REFUSED REQUIRE-ABSENT CANON-NONE BUNDLE-ABSENT SAVE-IN-WITH
+   WITH-REFUSED REQUIRE-ABSENT CANON-NONE BUNDLE-ABSENT
    s" include refusal tree: " type ROOT$ type cr
    T-REPORT ;
 

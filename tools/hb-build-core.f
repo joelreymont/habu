@@ -1,12 +1,13 @@
-\ hb-build-core.f - builds this tree's arm64 hb, or a stripped program, as a
-\ cross-build in the running hb (LINKER:WITH) and writes it with its map beside it.
-\ Both load hb's startup files in hb's own order (src/habu/habu2.f
-\ EMIT-HOST-LOAD-PREFIX); an engine then loads the runtime's files and its
-\ registry and installs, a program its source and its entry.
+\ hb-build-core.f - builds this tree's arm64 hb, hb with a program's files
+\ (--repl), or a stripped program, as a cross-build in the running hb
+\ (LINKER:WITH) and writes it with its map beside it. Each loads hb's startup
+\ files in hb's own order (src/habu/habu2.f EMIT-HOST-LOAD-PREFIX); hb then loads
+\ the runtime's files, --repl the program's source, and both their registry and
+\ installs; a stripped program loads its source and its entry.
 \ The files written under <out>/hb-build/ load inside the build, so a warm build
 \ links what they do: reset.f, the token hb's prefix runs after include.f;
-\ end.f, an engine's registry and installs; app-end.f, a program's entry. Builds
-\ sharing an out root write each whole (FS:ATOMIC-WRITE-FILE).
+\ end-<sha>.f, hb's registry and installs; app-end.f, a stripped program's entry.
+\ Builds sharing an out root write each whole (FS:ATOMIC-WRITE-FILE).
 
 require src/lib/error.f
 require src/lib/string.f
@@ -14,6 +15,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/build-out.f
 require src/core/include.f
+require src/core/sha256.f
 require src/habu/boot-files.f
 require src/habu/linker.f
 require src/habu/link-data.f
@@ -30,8 +32,11 @@ variable OUT-LEN
 create DIR PATH-CAP allot  variable DIR-U
 create RESET-PATH PATH-CAP allot  variable RESET-U
 create END-PATH PATH-CAP allot  variable END-U
+create END-NAME 70 allot                \ end-, 64 hex digits, .f
+create END-SHA SHA256-CTX-BYTES allot
+create END-DIGEST 32 allot
 create APP-END-PATH PATH-CAP allot  variable APP-END-U
-DYNAMIC-BUFFER TEXT u8                  \ end.f's text until it is written
+DYNAMIC-BUFFER TEXT u8                  \ the end file's text until it is written
 variable TEXT-U
 
 : RESET$ ( -- ptr u8 n ) RESET-PATH RESET-U @ ;
@@ -45,7 +50,6 @@ variable TEXT-U
    BUILD-OUT:BASE$ s" hb-build" DIR FS:JOIN-PATH DIR-U !
    DIR DIR-U @ FS:MAKE-DIRS
    DIR DIR-U @ s" reset.f" RESET-PATH FS:JOIN-PATH RESET-U !
-   DIR DIR-U @ s" end.f" END-PATH FS:JOIN-PATH END-U !
    DIR DIR-U @ s" app-end.f" APP-END-PATH FS:JOIN-PATH APP-END-U !
    RESET$ s\" SOURCE-INPUT:RESET\n" FS:ATOMIC-WRITE-FILE ;
 
@@ -147,16 +151,32 @@ variable TEXT-U
    s\" s\" " TEXT+  a cu + 1 + u cu - 1 - TEXT+  s\" \" REQUIRE-REG:APPEND\n" TEXT+ ;
 
 
-\ The product's registry is the build's: end.f records each row with the
+\ The end file's name carries its text's SHA-256, so builds sharing an out root
+\ whose registries differ never load each other's.
+: END-PATH! ( -- )
+   END-SHA 0 TEXT TEXT-U @ END-DIGEST SHA256-IN
+   s" end-" drop END-NAME 4 BYTE-COPY
+   END-DIGEST END-NAME 4 + SHA256>HEX
+   s" .f" drop END-NAME 68 + 2 BYTE-COPY
+   DIR DIR-U @ END-NAME 70 END-PATH FS:JOIN-PATH END-U ! ;
+
+
+\ The product's registry is the build's: the end file records each row with the
 \ product's own include.f and packs them into its DATA, as a capture's prepare
-\ does (native-runtime.f CAPTURE-PREPARE); then the installs. Last the product's
-\ IMAGE-LIFECYCLE:PREPARE releases what its files' top levels acquired in this
-\ process (FFI's library handles, mappings), which the written program must not carry.
-: END-WRITE ( -- )
+\ does (native-runtime.f CAPTURE-PREPARE); then the installs, and under --repl
+\ the program's MAIN as hb's entry, which hb runs before its REPL or standard
+\ input (src/habu/main.f ROUTED). Last the product's IMAGE-LIFECYCLE:PREPARE
+\ releases what its files' top levels acquired in this process (FFI's library
+\ handles, mappings), which the written program must not carry.
+: END-WRITE ( bool -- )
+   {: entry:bool :}
    0 TEXT-U !
    s\" REQUIRE-BOOT-OPEN\n" TEXT+
    REQUIRE-N @ REQUIRE-BASE @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ REG-ROW loop
-   s\" REQUIRE-BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\nIMAGE-LIFECYCLE:PREPARE\n" TEXT+
+   s\" REQUIRE-BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\n" TEXT+
+   entry if s\" ' MAIN APP-ENTRY:XT!\n" TEXT+ then
+   s\" IMAGE-LIFECYCLE:PREPARE\n" TEXT+
+   END-PATH!
    END$ 0 TEXT TEXT-U @ FS:ATOMIC-WRITE-FILE
    TEXT-RELEASE ;
 
@@ -164,7 +184,16 @@ variable TEXT-U
 : ENGINE-BODY ( -- )
    STARTUP
    RUNTIME-FILES
-   END-WRITE
+   false END-WRITE
+   END$ INCLUDE-FILE
+   OUT$ LINKER:WRITE ;
+
+
+: REPL-BODY ( -- )
+   STARTUP
+   RUNTIME-FILES
+   SRC$ INCLUDE-FILE
+   true END-WRITE
    END$ INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 
@@ -192,6 +221,14 @@ public
    out OUT-PATH !  outu OUT-LEN !
    PATHS
    s" engine" ['] ENGINE-BODY LINKER:WITH ;
+
+\ Build hb with the source's files, the source's MAIN its entry, and write it to
+\ the second path.
+: REPL ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n out:ptr outu:n :}
+   src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
+   PATHS
+   s" engine" ['] REPL-BODY LINKER:WITH ;
 
 \ Build the source as a stripped program and write it to the second path.
 : APP ( ptr u8 n ptr u8 n -- )

@@ -96,9 +96,9 @@ bin/hb --load tools/hb-build.f -- --engine -o bin/hb-next
 ```
 
 `--target <profile>` selects the platform before loading the target sources;
-`--whitebox` requests an unsealed test engine. The same command builds REPL
-applications with `--repl source.f -o out`, or stripped applications with
-`source.f -o out`. `tools/native-build.f` accepts its previous output-first
+`--whitebox` requests an unsealed test engine. The same command builds hb with
+a program's files, its `MAIN` run before the REPL, with `--repl source.f -o
+out`, or a stripped program with `source.f -o out`. `tools/native-build.f` accepts its previous output-first
 syntax for callers that still use it. A process that preloaded a compiler or
 backend keeps the in-process native driver so its live definitions remain
 available.

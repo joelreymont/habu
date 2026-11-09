@@ -1,10 +1,11 @@
 \ hb-build.f - the native application build command (tools/hb-build-lib.f).
 \   bin/hb --load tools/hb-build.f -- [--engine [--whitebox] [--target T]
 \     | --repl | --json-errors] [--size-report] [--report-json] [source.f] -o out
-\ Default: a stripped program linked in this process (tools/hb-build-core.f); --repl
-\ a snapshot keeping compiler, checker and REPL. The source defines a checked global
-\ MAIN ( -- ), any other effect refused; top-level code runs once, at build time.
-\ HB_BUILD_TIMEOUT_MS: wall-time deadline of an --engine or --repl build's child.
+\ A stripped program, or under --repl hb with the source's files, linked in this
+\ process (tools/hb-build-core.f). The source defines a checked global MAIN ( -- ),
+\ any other effect refused, which --repl's hb runs before its REPL; top-level code
+\ runs once, at build time.
+\ HB_BUILD_TIMEOUT_MS: wall-time deadline of an --engine build's child.
 
 require src/lib/error.f
 require src/lib/string.f

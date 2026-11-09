@@ -1,7 +1,7 @@
 \ Focused registry/load-path acceptance for the stdlib gate entry guard.
 
 require src/lib/test.f
-require test/gate-images.f
+require test/load-graph.f
 require test/gate-entry-guard.f
 require test/gate-stdlib-lib.f
 
@@ -9,7 +9,7 @@ package ENTRY-GUARD-TEST
 
 \ The gate reads the registry's load graph, then walks it (SUITE-SETUP).
 : GUARD ( -- )
-   GATE-IMAGES:DERIVE
+   LOAD-GRAPH:READ
    ENTRY-GUARD:CHECK ;
 
 T-RESET

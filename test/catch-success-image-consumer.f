@@ -1,4 +1,4 @@
-\ Fresh guarded source compiled after restoring the captured zero-test summary.
+\ Fresh guarded source compiled against the zero-test summary the built hb carries.
 package CATCH-IMAGE
 public
 variable FRESH-FAIL

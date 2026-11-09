@@ -8,8 +8,7 @@
 \ publisher under another key replaces the image. Two keys arise when
 \ selections sharing the root vary an input a selector key folds (working
 \ directory, engine path spelling, donor map, target, selected root or source
-\ closure); sharing HABU_OUT across trees is outside the contract. Gate grants:
-\ test/keyed-image.f.
+\ closure); sharing HABU_OUT across trees is outside the contract.
 
 require src/lib/error.f
 require src/lib/string.f

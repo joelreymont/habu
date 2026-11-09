@@ -1,4 +1,4 @@
-\ Replace a previously certified zero-test summary after restoring its image.
+\ Replace a certified zero-test summary the built hb carries.
 1 set-tier
 package CATCH-IMAGE
 public

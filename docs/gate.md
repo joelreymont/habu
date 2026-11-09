@@ -174,21 +174,15 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
 - Files in a `SUITE` row are entries unless an `ENTRIES` marker follows an
   inert preload prefix. Put reusable definitions in preloads, then let each row
   run only its own assertions. The gate refuses a preload that is another row's
-  entry and any import or launch of one (`test/gate-images.f`);
-  `bin/hb --load test/gate-entry-guard-test.f` checks this without starting
-  the full suite.
-- A row needs a keyed image when its load closure holds the image's module;
-  nothing is declared. A failed build row makes every row that needs its image
-  red naming it; every other row runs.
+  entry and any import or launch of one (`test/gate-entry-guard.f`, over
+  `test/load-graph.f`); `bin/hb --load test/gate-entry-guard-test.f` checks
+  this without starting the full suite.
 - Measure a row's CPU outside the gate, user plus system from
   `/usr/bin/time bin/hb --load <file>`. Reduce repeated work and share setup
   before splitting a slow row.
 - A suite whose assertions depend on the compiler tier selects it itself, with
   `1 set-tier` after the harness and tool requires and before the code under
   test, so the harness is not compiled at tier 1.
-- A row whose child compiles `src/habu/app-image.f` only to reach its subject
-  runs a keyed image with it already loaded: `test/app-image-engine.f`, whose
-  header holds the rules.
 - `bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks
   on stdin — it looks like a hang, a WAIT line with no CPU delta. Pipe
   `< /dev/null`, and give a spawned build child `/dev/null` stdin rather than

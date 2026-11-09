@@ -172,7 +172,7 @@ create CS-DBUF 8192 allot
    s" PP2 ( ptr u8 n -- n ) ['] OUTER-PARTIAL-QUOTE catch {: code:n :} drop c@"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
-\ The saved-image children below run bin/hb in a fresh process.
+\ The children below run bin/hb and the hb it builds, each a fresh process.
 4096 constant CS-CHILD-CAP
 create CS-CHILD-OUT CS-CHILD-CAP allot
 create CS-CHILD-ERR CS-CHILD-CAP allot
@@ -190,9 +190,9 @@ create CS-PRODUCT-PATH PATH-CAP allot
    s" HABU_FIXPOINT_ENGINE" >LEN CS-PRODUCT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
-\ Definition control summaries survive APP-IMAGE:SAVE. Execute the guarded
-\ source from the restored image, then load fresh unsafe source against that
-\ same image so stale and zero-test semantics must still be enforced.
+\ Definition control summaries survive a --repl build (tools/hb-build.f). The
+\ built hb runs the guarded source as its MAIN, then loads fresh unsafe source,
+\ so stale and zero-test semantics must still be enforced.
 create CS-IMAGE-ROOT-BUF PATH-CAP allot
 create CS-IMAGE-PATH-BUF PATH-CAP allot
 variable CS-IMAGE-ROOT-U
@@ -208,7 +208,7 @@ variable CS-CHILD-ERR-U
    path CS-IMAGE-ROOT-BUF size BYTE-COPY
    size CS-IMAGE-ROOT-U !
    CS-IMAGE-ROOT$ FS:CLEANUP-TREE+
-   CS-IMAGE-ROOT$ s" saved-hb" CS-IMAGE-PATH-BUF FS:JOIN-PATH
+   CS-IMAGE-ROOT$ s" built-hb" CS-IMAGE-PATH-BUF FS:JOIN-PATH
    CS-IMAGE-PATH-U ! ;
 
 : CS-IMAGE-RC ( result<pcap:captured,pcap:failed> -- n )
@@ -216,11 +216,13 @@ variable CS-CHILD-ERR-U
 
 : CS-IMAGE-BUILD ( -- )
    PROC-ARGV-RESET
-   s" --" >LEN PROC-ARGV+
-   CS-IMAGE$ >LEN PROC-ARGV+
+   s" --load" >LEN PROC-ARGV+  s" tools/hb-build.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  s" --repl" >LEN PROC-ARGV+
+   s" test/catch-success-image-subject.f" >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+  CS-IMAGE$ >LEN PROC-ARGV+
    CS-ENV!
    CS-HB$ >LEN
-   S\" require src/habu/app-image.f\nrequire test/catch-success-image-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   s" " >LEN
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    180000 >MS RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
    CS-IMAGE$ FS:EXECUTABLE? TTRUE ;
@@ -229,7 +231,7 @@ variable CS-CHILD-ERR-U
    PROC-ARGV-RESET
    CS-ENV!
    CS-IMAGE$ >LEN
-   S\" CATCH-IMAGE:RUN\ns\" test/catch-success-image-consumer.f\" included\n" >LEN
+   S\" s\" test/catch-success-image-consumer.f\" included\n" >LEN
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    10000 >MS RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" CONTAINS? TTRUE
@@ -255,7 +257,7 @@ variable CS-CHILD-ERR-U
       s" unsafe" CS-SAVED-REFUSAL ;
 
 : CS-SECTION-IMAGE ( -- )
-   s" a saved image executes a guarded catch and still refuses forged proof" T-LABEL
+   s" a built hb executes a guarded catch and still refuses forged proof" T-LABEL
    FS:CLEANUP-RESET
    CS-IMAGE-PREPARE
    [: CS-IMAGE-BODY ;] catch {: code:n :}

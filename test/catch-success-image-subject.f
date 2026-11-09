@@ -1,4 +1,4 @@
-\ Guarded catch source captured into an application image.
+\ Guarded catch source a --repl build links into hb, run as its MAIN.
 package CATCH-IMAGE
 private
 variable FAIL
@@ -15,3 +15,5 @@ public
    [: -1 GUARDED drop ;] catch -71 <> if s" wrong catch failure" 74 die then
    s" catch-image: ok" type cr ;
 ;package
+
+: MAIN ( -- ) CATCH-IMAGE:RUN ;

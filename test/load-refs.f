@@ -3,7 +3,7 @@
 \ INCLUDES reads again, LAUNCHES runs in a child (a literal a load helper
 \ consumes). An import whose path is no literal the engine decodes is OPAQUE.
 \ EACH and OPAQUE-EACH read src/lib/source-lex.f's tokens of the source lexed
-\ last. Used by test/gate-images.f and test/gate-entry-guard.f.
+\ last. Used by test/load-graph.f and test/gate-entry-guard.f.
 
 require src/lib/string.f
 require src/lib/source-lex.f

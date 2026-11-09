@@ -2,7 +2,7 @@
 \ In its owner's private section `LINEAR: NAME ( payload -- PKG:tok )` mints and
 \ `( PKG:tok -- payload )` erases once CHECKER-LINEAR certifies the row; nothing
 \ mints a top-level DEFLINEAR. Fronts: the engine keyword, the source pre-pass,
-\ tools/check.f fixtures in fork children, and a reopened application image.
+\ tools/check.f fixtures in fork children, and an hb built with --repl.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -10,7 +10,7 @@ require src/lib/test.f
 require src/lib/fs-mutate.f
 require src/lib/test/subject.f
 require src/habu/verify-source.f
-require test/app-image-engine.f
+require src/lib/engine-candidate.f
 require test/pcap-result.f
 require tools/check-core.f
 
@@ -210,7 +210,7 @@ s" package LCH public DEFLINEAR LCH:tok ;package package LCH LINEAR: LCM ( n -- 
    LIN-CHILD:RUN 70 T=
 LIN-CHILD:ERR$ s" hb: interpret stack underdepth: LCM" CONTAINS? TTRUE
 
-\ ---- tools/check.f and a saved application image --------------------------------
+\ ---- tools/check.f and an hb built with --repl -----------------------------------
 package LIN-FILES
 4096 constant CAP
 $2000 constant PROG-CAP
@@ -288,7 +288,7 @@ variable PROG-U
 
 \ Push the type table past its 256-row boot store (src/core/checker.f
 \ CT-CAP-INIT) before the owner declares, so the owner's row lives only in the
-\ grown store that an image save must persist.
+\ grown store that the built hb must carry.
 : FILLER ( -- )
    256 0 ?do
       s" DEFLINEAR lf" PROG+
@@ -298,16 +298,18 @@ variable PROG-U
    loop ;
 
 : SAVE ( -- )
-   APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
+   ROOT-BUF ROOT-U @ s" lim.f" PATH-BUF FS:JOIN-PATH PATH-U !
    ROOT-BUF ROOT-U @ s" app" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
    0 PROG-U !
-   S\" 1 set-tier\n" PROG+
    FILLER
-   S\" package LIM\npublic\nDEFLINEAR LIM:tok\n;package\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" PROG+
+   S\" package LIM\npublic\nDEFLINEAR LIM:tok\n;package\n: MAIN ( -- ) ;\n" PROG+
+   PATH$ PROG$ FS:WRITE-ALL
+   0 PROG-U !
    PROC-ARGV-ENV-RESET
-   s" --" >LEN PROC-ARGV+
-   IMAGE$ >LEN PROC-ARGV+
-   host hostu IMAGE-MS RUN ;
+   s" --load" >LEN PROC-ARGV+  s" tools/hb-build.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  s" --repl" >LEN PROC-ARGV+
+   PATH$ >LEN PROC-ARGV+  s" -o" >LEN PROC-ARGV+  IMAGE$ >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ IMAGE-MS RUN ;
 
 : REOPEN ( -- )
    0 PROG-U !
@@ -341,11 +343,11 @@ variable PROG-U
    ERR$ S\" \"code\":\"E-CAST-ARITY\",\"repair_class\":\"fix_cast_declaration\"" CONTAINS? TTRUE
    ERR$ S\" \"token\":\"MINT\",\"reason\":\"the input and output rows end in different tails\"" CONTAINS? TTRUE
    ERR$ S\" lin-tail.f\",\"line\":6," CONTAINS? TTRUE
-   s" an application image keeps the owner of a type in its grown table" T-LABEL
+   s" an hb built with --repl keeps the owner of a type in its grown table" T-LABEL
    SAVE
    RC @ 0 T=
    IMAGE$ FS:EXECUTABLE? TTRUE
-   s" so the reopened owner mints and erases, and another package may not" T-LABEL
+   s" so its reopened owner mints and erases, and another package may not" T-LABEL
    REOPEN
    OUT$ s\" 42\n" CONTAINS? TTRUE
    ERR$ S\" E-LINEAR-OWNER habu: linear: 'XM': the linear type belongs to package 'LIM'\nhb: uncaught throw code 7196\n" CONTAINS? TTRUE
