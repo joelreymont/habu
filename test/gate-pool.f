@@ -944,8 +944,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 \ A TMPDIR row already in the caller's table is one of two things: the copy
 \ PROC-ENV-INHERIT-MISSING took from this process's own environment, which is
 \ the pool's to replace, or a value the caller chose for its child - a scratch
-\ root the caller owns and reaps (test/nf-path-test.f hands each build a root
-\ of a chosen length and byte content) - which stays, and then the slot gets no
+\ root the caller owns and reaps - which stays, and then the slot gets no
 \ directory at all. A set TMPDIR is no private root by itself: macOS hands every
 \ process the same per-user one, which this process's own copy names.
 : GT-POOL-ENV-TMPDIR-OWN? ( -- bool )

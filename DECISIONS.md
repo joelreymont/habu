@@ -1451,7 +1451,16 @@ learned live in the docs for their subject.
   AGENTS.md, docs/bootstrap.md and docs/gate.md still told a change to the
   seed or its mirror to run the Gforth recovery check, Joel chose "Retire it
   from the rules (Recommended)": no change runs a Gforth check or edits
-  bootstrap/ to follow the tree.
+  bootstrap/ to follow the tree. On 2026-11-09, shown that deleting the old hb
+  builder breaks the Gforth route (tools/bootstrap.sh) and the trusted-seed
+  route (tools/seed.f), both of which refresh through tools/build-fixpoint.f,
+  Joel chose "Trusted hb only (Recommended)": "Trusted hb runs hb-build;
+  bootstrap.sh, build-fixpoint and the Gforth route go." Recovery is a trusted
+  hb, its digest checked by tools/seed-main.f when HABU_SEED_SHA256 names it,
+  building bin/hb with
+  `tools/hb-build.f -- --engine -o bin/hb`. The Gforth seed, bootstrap/ and
+  the DDC audit that compared against it go with the old builder, before the
+  JIT.
 - 2026-11-06, renaming a file hb has built in: shown that the installed hb
   knows its built-in files only by path, so on a tree that renames
   src/lib/errors.f to error.f every tool loads error.f a second time and dies

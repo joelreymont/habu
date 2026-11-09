@@ -1,8 +1,7 @@
 \ num-types.f - package NUM: one-cell nominal numeric roles and their checked
 \ validators. A role value comes only from its public validator, which calls a
-\ private CAST: mint on the success path. The native build seals NUM
-\ (src/core/internal-mark.f SEAL-PACKAGES): a later `package NUM` exits 84 and
-\ the mints are unforgeable. The arithmetic is src/lib/num-arithmetic.f.
+\ private CAST: mint on the success path. The arithmetic is
+\ src/lib/num-arithmetic.f.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 \ Validation failure is a value: numeric-result<a> has a payloadless arm per

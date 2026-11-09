@@ -4,7 +4,7 @@
 \ interpret-mode string literal that keeps its text, `evaluate`, a load and the
 \ package keywords run on the main thread while tasks are live, and exit $4F on
 \ a thread whose DATA holds a TCB in TASK-TCB-CELL: a task, an exposed region
-\ or a callback. `cp!`, `ndict!` and `seed-ndict!` also exit $4F on main while
+\ or a callback. `cp!` and `ndict!` also exit $4F on main while
 \ TASKS-LIVE-CELL (the main region's count, every exposed task and the AIO loop
 \ task included) is nonzero: lowering frees code a task may be running and
 \ records it may reference. A task's DBASE, NDICT and CP are registers loaded
@@ -1086,7 +1086,7 @@ variable ROW-N
    data-base FFI:>CELL ROWS-END
    TASK-SELF TASK-DONE-SEM SEM-SIGNAL ;
 
-\ LOWERING WHILE A TASK IS LIVE. `cp!`, `ndict!` and `seed-ndict!` exit $4F
+\ LOWERING WHILE A TASK IS LIVE. `cp!` and `ndict!` exit $4F
 \ while this count is nonzero (habu1.f B-LOWER-GUARD), every exposed task and
 \ the AIO loop task included: a forget frees code a task may be running. The
 \ count is the main region's, so a worker activating or exposing a task counts

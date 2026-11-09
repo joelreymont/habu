@@ -40,10 +40,6 @@ SUITE source-root-exe
    test/source-root-exe-test.f
 ;SUITE
 
-SUITE native-build-entry
-   test/native-build-entry.f
-;SUITE
-
 SUITE codesign
    src/lib/codesign-test.f
 ;SUITE

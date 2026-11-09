@@ -1,4 +1,4 @@
-\ hb-build-lib.f - native AOT/REPL build CLI library, package HB-BUILD-CLI:
+\ hb-build-lib.f - hb-build's command line, package HB-BUILD-CLI:
 \ private but for the export block at the end. The name HB-BUILD belongs to the
 \ report module, tools/hb-build-report.f.
 
@@ -8,43 +8,23 @@ require src/lib/fmt.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/le.f
-require src/lib/process.f
-require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/codesign.f
-require src/lib/engine-id.f
-require src/os/env-base.f
 require src/lib/source.f
 require src/lib/build.f
-require src/lib/content-key.f
 require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
 require src/lib/string-roles.f               \ package STR: the typed string surface
-require tools/native-file-inputs.f
 require src/lib/build-out.f
 require src/habu/linker.f
-require tools/build-support.f
 require tools/hb-build-core.f
 require tools/hb-build-report.f
-require tools/native-build-image.f
-require tools/build-target.f
 
 package HB-BUILD-CLI
-using BUILD-FIXPOINT                     \ shared build paths, child env and source scratch
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
-67 constant HBB-UNCAUGHT-RC
 74 constant HBB-BUILD-RC
 34 constant HBB-DQ
 10 constant HBB-LF
-\ ms per maker run, an engine build included: docs/gate.md "Qualifying a candidate"
-300000 constant HBB-MAKER-DEFAULT-MS
-$7FFFFFFF constant HBB-MAKER-MAX-MS
-65536 constant HBB-CAPTURE-CAP
-\ A support record: the selector key it was written under (64 hex), the
-\ producer key it selects (64 hex), the rows length (u64), then the rows.
-136 constant HBB-ENGINE-SUPPORT-HEADER-U
 
 create HBB-SRC-PATH PATH-CAP allot
 create HBB-OUT-PATH PATH-CAP allot
@@ -52,58 +32,29 @@ create HBB-MAP-SRC PATH-CAP allot
 create HBB-MAP-DST PATH-CAP allot
 create HBB-PAIR-STAGE PATH-CAP allot
 create HBB-PAIR-BACKUP PATH-CAP allot
-create HBB-COUNTS-PATH PATH-CAP allot
-create HBB-ENGINE-SELECT-KEY 64 allot
-create HBB-ENGINE-SELECT-PATH PATH-CAP allot
-create HBB-ENGINE-IMAGE-PATH PATH-CAP allot
+create HBB-GOT-PATH PATH-CAP allot
 create HBB-LF-BUF 1 allot
 HBB-LF HBB-LF-BUF c!
 
-DYNAMIC-BUFFER HBB-OUT-CAPTURE u8
-DYNAMIC-BUFFER HBB-ERR-CAPTURE u8
 variable HBB-SRC-U
 variable HBB-OUT-U
 variable HBB-MAP-SRC-U
 variable HBB-MAP-DST-U
 variable HBB-PAIR-STAGE-U
 variable HBB-PAIR-BACKUP-U
+variable HBB-GOT-U
 variable HBB-PAIR-HAD-MAP
 variable HBB-PAIR-MOVED
 variable HBB-PAIR-COMMITTED
 variable HBB-PAIR-KEEP-BACKUP
-variable HBB-COUNTS-U
 variable HBB-I
 variable HBB-REPL
 variable HBB-ENGINE
-variable HBB-ENGINE-COMPAT
-variable HBB-WHITEBOX
-variable HBB-ENGINE-TARGET
 variable HBB-JSON
 variable HBB-REPORT-JSON
 variable HBB-SIZE-REPORT
-variable HBB-MAKER-HIT
-variable HBB-MAKER-BUILD
-variable HBB-MAKER-RUN
-variable HBB-LINE-START
-variable HBB-JSON-FOUND
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
-variable HBB-MAKER-TIMEOUT-MS
-variable HBB-ENGINE-SELECT-U
-variable HBB-ENGINE-IMAGE-U
-DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
-
-: HBB-OUT-ROOM ( n -- ptr u8 )
-   HBB-OUT-CAPTURE-RESERVE 0 HBB-OUT-CAPTURE ;
-
-: HBB-ERR-ROOM ( n -- ptr u8 )
-   HBB-ERR-CAPTURE-RESERVE 0 HBB-ERR-CAPTURE ;
-
-: HBB-OUT-BUF ( -- ptr u8 )
-   HBB-CAPTURE-CAP HBB-OUT-ROOM ;
-
-: HBB-ERR-BUF ( -- ptr u8 )
-   HBB-CAPTURE-CAP HBB-ERR-ROOM ;
 
 : HBB-TRUE ( -- bool )
    0 0= ;
@@ -115,7 +66,7 @@ DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--engine [--whitebox] [--target TARGET] | --repl | --json-errors] [options] [source.f] -o out" HBB-USAGE-RC die ;
+   s" usage: tools/hb-build.f [--engine | --repl | --json-errors] [options] [source.f] -o out" HBB-USAGE-RC die ;
 
 : HBB-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u PATH-CAP > if E-BUILD-PATH throw then
@@ -178,70 +129,12 @@ DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
    HBB-MAP-SRC$ FS:FILE? 0= if E-BUILD-PATH throw then
    HBB-MAP-DST$ [: HBB-MAP-FILL ;] FS:REPLACE-STAGED ;
 
-: HBB-MAP-REMOVE? ( ptr u8 n -- )
-   HBB-MAP-SRC!
-   HBB-MAP-SRC$ FS:FILE? if HBB-MAP-SRC$ FS:REMOVE-FILE then ;
-
 : HBB-WERR ( ptr u8 n -- ) {: a:ptr u :}
    u 0= if exit then
    2 a u write u <> if s" hb-build: stderr write failed" HBB-BUILD-RC die then ;
 
-: HBB-WOUT-ERR ( n -- ) {: u :}
-   u 0 > if HBB-OUT-BUF u HBB-WERR then ;
-
-: HBB-WERR-ERR ( n -- ) {: u :}
-   u 0 > if HBB-ERR-BUF u HBB-WERR then ;
-
 : HBB-WERR-LF ( -- )
    HBB-LF-BUF 1 HBB-WERR ;
-
-: HBB-WERR-SEPARATE ( n n -- ) {: outu:n erru:n :}
-   erru 0 > if
-      HBB-ERR-BUF erru 1- + c@ HBB-LF <> if HBB-WERR-LF then
-      exit
-   then
-   outu 0 > if
-      HBB-OUT-BUF outu 1- + c@ HBB-LF <> if HBB-WERR-LF then
-   then ;
-
-: HBB-LINE-FIRST ( n n -- n ) {: start end :}
-   start begin dup end < while
-      dup HBB-ERR-BUF + c@ dup 32 = swap 9 = or if
-         1+
-      else
-         exit
-      then
-   repeat ;
-
-: HBB-LINE-JSON? ( n n -- bool ) {: start end :}
-   start end HBB-LINE-FIRST
-   dup end >= if drop HBB-FALSE exit then
-   HBB-ERR-BUF + c@ 123 = ;
-
-: HBB-WERR-LINE ( n n -- ) {: start end :}
-   end start - {: len :}
-   len 0 > if HBB-ERR-BUF start + len HBB-WERR then
-   HBB-WERR-LF ;
-
-: HBB-WERR-JSON-LINE ( n n -- ) {: start end :}
-   start end HBB-LINE-JSON? if
-      start end HBB-WERR-LINE
-      -1 HBB-JSON-FOUND !
-   then ;
-
-: HBB-WERR-JSON-ONLY ( n -- ) {: u :}
-   0 HBB-JSON-FOUND !
-   0 HBB-LINE-START !
-   0 begin dup u < while
-      HBB-ERR-BUF over + c@ HBB-LF = if
-         HBB-LINE-START @ over HBB-WERR-JSON-LINE
-         1+ dup HBB-LINE-START !
-      else
-         1+
-      then
-   repeat drop
-   HBB-LINE-START @ u < if HBB-LINE-START @ u HBB-WERR-JSON-LINE then
-   HBB-JSON-FOUND @ 0= if u HBB-WERR-ERR then ;
 
 : HBB-PATH-HAS-DQ? ( ptr u8 n -- bool )
    STR:LENGTH HBB-DQ STR:INDEX-OF MATCH option
@@ -252,22 +145,9 @@ DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
 : HBB-RESET-OPTIONS ( -- )
    0 HBB-REPL !
    0 HBB-ENGINE !
-   0 HBB-ENGINE-COMPAT !
-   0 HBB-WHITEBOX !
-   0 HBB-ENGINE-TARGET !
    0 HBB-JSON !
    0 HBB-REPORT-JSON !
    0 HBB-SIZE-REPORT ! ;
-
-: HBB-RESET-TRACE ( -- )
-   0 HBB-MAKER-HIT !
-   0 HBB-MAKER-BUILD !
-   0 HBB-MAKER-RUN ! ;
-
-: HBB-PATHS! ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu out:ptr outu :}
-   src srcu HBB-SRC!
-   out outu HBB-OUT! ;
 
 : HBB-INC-I ( -- )
    HBB-I @ 1+ HBB-I ! ;
@@ -278,21 +158,10 @@ DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
 : HBB-ARG= ( n ptr u8 n -- bool ) {: idx pat:ptr patu :}
    idx HBB-ARG$ pat patu STR= ;
 
-: HBB-OPT-VALUE$ ( -- ptr u8 n )   \ flag is at HBB-I; advance to and return its value arg
-   HBB-INC-I
-   HBB-I @ SCRIPT-ARGC >= if HBB-USAGE then
-   HBB-I @ HBB-ARG$ ;
-
 : HBB-PARSE-OPTION? ( -- bool )
    HBB-I @ SCRIPT-ARGC >= if HBB-FALSE exit then
    HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --engine" HBB-ARG= if -1 HBB-ENGINE ! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --whitebox" HBB-ARG= if -1 HBB-WHITEBOX ! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --target" HBB-ARG= if
-      HBB-OPT-VALUE$ BUILD-TARGET:SELECT? 0= if
-         s" hb-build: unknown --target profile" HBB-USAGE-RC die
-      then
-      -1 HBB-ENGINE-TARGET ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --size-report" HBB-ARG= if -1 HBB-SIZE-REPORT ! HBB-INC-I HBB-TRUE exit then
@@ -306,7 +175,6 @@ DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
 
 : HBB-PARSE ( -- )
    HBB-RESET-OPTIONS
-   BUILD-TARGET:HOST!
    0 HBB-I !
    HBB-PARSE-OPTIONS
    HBB-ENGINE @ if
@@ -314,10 +182,8 @@ DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
       SCRIPT-ARGC HBB-I @ - 2 <> if HBB-USAGE then
       HBB-I @ s" -o" HBB-ARG= 0= if HBB-USAGE then
       HBB-I @ 1+ HBB-ARG$ HBB-OUT-ARG!
-      s" src/habu/habu2.f" HBB-SRC!
       exit
    then
-   HBB-WHITEBOX @ 0<> HBB-ENGINE-TARGET @ 0<> or if HBB-USAGE then
    SCRIPT-ARGC HBB-I @ - 3 <> if HBB-USAGE then
    HBB-I @ HBB-ARG$ HBB-SRC-ARG!
    HBB-I @ 1+ s" -o" HBB-ARG= 0= if HBB-USAGE then
@@ -325,14 +191,25 @@ DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
    HBB-SRC$ FS:FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
    HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
 
+: HBB-GOT-NAME$ ( -- ptr u8 n )
+   HBB-ENGINE @ if s" hb-engine-got" exit then
+   HBB-REPL @ if s" hb-build-got" else s" hb-aot-got" then ;
+
+\ The program a build writes, with its .map beside it.
+: HBB-GOT$ ( -- ptr u8 n )
+   HBB-GOT-PATH HBB-GOT-U @ ;
+
 \ Every build gets a private directory under the caller's TMPDIR: a build
 \ writes a fixed name there (HBB-GOT-NAME$), so builds sharing one TMPDIR, as
-\ gate pool builds do, would read each other's artifacts. FS:MKTEMP-DIR refuses
-\ a base that is missing or not a directory.
+\ gate pool builds do, would read each other's artifacts. HBB-CLEANUP removes
+\ the directory whole. FS:MKTEMP-DIR refuses a base that is missing or not a
+\ directory.
 : HBB-PREPARE-TMP ( -- )
-   BF-TMP-RESET
    FS:CLEANUP-RESET
-   s" hb-build-native" FS:MKTEMP-DIR 2dup BF-TMP! FS:CLEANUP-TREE+ ;
+   s" hb-build-native" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+ {: dir:ptr diru:n :}
+   HBB-GOT-NAME$ {: name:ptr nameu:n :}
+   diru 1 + nameu + PATH-CAP > if E-BUILD-PATH throw then
+   dir diru name nameu HBB-GOT-PATH FS:JOIN-PATH HBB-GOT-U ! ;
 
 \ The out root is made before a build starts, so a root that cannot be made
 \ fails the build up front as a path error rather than midway as a file error.
@@ -343,129 +220,7 @@ DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
    rc throw ;
 
 : HBB-CLEANUP ( -- )
-   FS:CLEANUP-RUN
-   HBB-ENGINE-RECORD-RELEASE
-   HBB-OUT-CAPTURE-RELEASE
-   HBB-ERR-CAPTURE-RELEASE
-   BF-TMP-RESET ;
-
-: HBB-BAD-MAKER-TIMEOUT ( -- )
-   HBB-JSON @ if HB-BUILD:TIMEOUT-ENV-ERROR$ else HB-BUILD:TIMEOUT-ENV-ERROR-TEXT$ then
-   HBB-WERR HBB-WERR-LF
-   HBB-USAGE-RC HBB-EXIT ;
-
-: HBB-READ-MAKER-TIMEOUT ( -- )
-   HBB-MAKER-DEFAULT-MS HBB-MAKER-TIMEOUT-MS !
-   s" HB_BUILD_TIMEOUT_MS" GETENV dup 0= if 2drop exit then
-   STR>NUMBER? MATCH option
-      none OF HBB-BAD-MAKER-TIMEOUT ENDOF
-      some OF ENDOF
-   ;MATCH {: limit:n :}
-   limit 1 < limit HBB-MAKER-MAX-MS > or if HBB-BAD-MAKER-TIMEOUT then
-   limit HBB-MAKER-TIMEOUT-MS ! ;
-
-\ The maker's per-file counts (tools/native-definition-cache.f COUNTS-WRITE):
-\ `<reused> <compiled>` and a newline, two nonnegative cells of at most 19
-\ decimal digits each. The file lives in the build's TMP directory for one
-\ maker run.
-40 constant HBB-COUNTS-MAX
-HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
-
-: HBB-COUNTS$ ( -- ptr u8 n )
-   s" hb-build-counts" BF-A$ {: a:ptr u:n :}
-   u PATH-CAP > if E-BUILD-PATH throw then
-   a HBB-COUNTS-PATH u BYTE-COPY
-   u HBB-COUNTS-U !
-   HBB-COUNTS-PATH HBB-COUNTS-U @ ;
-
-\ A failing maker's counts are never read. Every launch removes the file first
-\ so that a maker that exits 0 without writing it, or an earlier in-process
-\ build sharing this TMP directory, cannot hand this build stale counts.
-: HBB-COUNTS-ARM ( -- )
-   HBB-COUNTS$ 2dup FS:EXISTS? if FS:REMOVE-FILE else 2drop then
-   s" HABU_BUILD_COUNTS" >LEN HBB-COUNTS$ >LEN PROC-ENV-SET ;
-
-: HBB-COUNT ( ptr u8 n -- n )
-   STR>NUMBER? MATCH option
-      none OF E-BUILD-STATUS throw ENDOF
-      some OF ENDOF
-   ;MATCH {: v:n :}
-   v 0 < if E-BUILD-STATUS throw then
-   v ;
-
-\ A successful maker finished its counted session, so a missing or malformed
-\ file is a maker that did not report: E-BUILD-STATUS.
-: HBB-COUNTS-READ ( -- )
-   HBB-COUNTS$ FS:FILE? 0= if E-BUILD-STATUS throw then
-   HBB-COUNTS$ FS:FILE-SIZE {: size:n :}
-   size 2 < size HBB-COUNTS-MAX > or if E-BUILD-STATUS throw then
-   HBB-COUNTS$ HBB-COUNTS-BUF size FS:READ-ALL size <> if E-BUILD-STATUS throw then
-   HBB-COUNTS-BUF size 1- + c@ 10 <> if E-BUILD-STATUS throw then
-   HBB-COUNTS-BUF size 1- STR-SPACE INDEX-OF MATCH option
-      none OF E-BUILD-STATUS throw ENDOF
-      some OF IDX>N ENDOF
-   ;MATCH {: sp:n :}
-   HBB-COUNTS-BUF sp HBB-COUNT
-   HBB-COUNTS-BUF sp 1+ + size 2 - sp - HBB-COUNT
-   HB-BUILD:CAPTURE-FILES
-   HBB-COUNTS$ FS:REMOVE-FILE ;
-
-: HBB-CMD-RESET ( -- )
-   PROC-ARGV-RESET
-   BF-PREPARE-ENV
-   HBB-COUNTS-ARM
-   PROC-ENV-INHERIT-MISSING ;
-
-: HBB-GOT-NAME$ ( -- ptr u8 n )
-   HBB-ENGINE @ if s" hb-engine-got" exit then
-   HBB-REPL @ if s" hb-build-got" else s" hb-aot-got" then ;
-
-: HBB-FINISH-MAKER-RC ( n n n -- ) {: outu erru rc :}
-   rc 0= if
-      HBB-COUNTS-READ
-      HBB-ENGINE @ if
-         HBB-REPORT-JSON @ 0= if HBB-OUT-BUF outu type then
-         erru HBB-WERR-ERR
-      then
-      exit
-   then
-   outu HBB-WOUT-ERR
-   HBB-JSON @ if erru HBB-WERR-JSON-ONLY else erru HBB-WERR-ERR then
-   rc HBB-EXIT ;
-
-: HBB-MAKER-KIND$ ( -- ptr u8 n )
-   HBB-ENGINE @ if s" engine" exit then
-   HBB-REPL @ if s" repl" else s" aot" then ;
-
-: HBB-MAKER-TIMED-OUT ( n n -- ) {: outu:n erru:n :}
-   HBB-JSON @ if
-      HBB-MAKER-KIND$ HBB-SRC$ HBB-MAKER-TIMEOUT-MS @
-      HBB-OUT-BUF outu HBB-ERR-BUF erru HB-BUILD:MAKER-TIMEOUT-ERROR$
-      HBB-WERR HBB-WERR-LF
-   else
-      outu HBB-WOUT-ERR
-      erru HBB-WERR-ERR
-      outu erru HBB-WERR-SEPARATE
-      HBB-MAKER-KIND$ HBB-SRC$ HBB-MAKER-TIMEOUT-MS @
-      HB-BUILD:MAKER-TIMEOUT-ERROR-TEXT$ HBB-WERR HBB-WERR-LF
-   then
-   E-PROC-TIMEOUT throw ;
-
-: HBB-SUPPORT-TIMED-OUT ( -- )
-   KEYED-IMAGE:CAPTURE-OUT$ {: out:ptr outu:n :}
-   KEYED-IMAGE:CAPTURE-ERR$ {: err:ptr erru:n :}
-   out HBB-OUT-BUF outu BYTE-COPY
-   err HBB-ERR-BUF erru BYTE-COPY
-   outu erru HBB-MAKER-TIMED-OUT ;
-
-: HBB-FINISH-MAKER ( len len PROCESS:ending -- )
-   MATCH PROCESS:ending
-      exited OF {: outu:len erru:len rc:n :}
-         outu LEN>N erru LEN>N rc HBB-FINISH-MAKER-RC ENDOF
-      signaled OF {: outu:len erru:len sig:n :}
-         outu LEN>N erru LEN>N sig 128 + HBB-FINISH-MAKER-RC ENDOF
-      timeout OF LEN>N swap LEN>N swap HBB-MAKER-TIMED-OUT ENDOF
-   ;MATCH ;
+   FS:CLEANUP-RUN ;
 
 \ Every file hb-build writes at -o is written to its sibling and renamed over
 \ -o only once it is whole and executable (src/lib/fs-mutate.f FS:REPLACE-STAGED), so
@@ -473,7 +228,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 \ HBB-FILLING is set only while the fill runs, so HBB-REPLACE-OUT tells the
 \ fill's own failure (its source, the bytes it writes) from the replace's: a
 \ sibling the host will not make beside -o, or a rename it refuses, is an
-\ output hb-build cannot replace, and the CLI names it (HBB-CLI-MAKER-CODE).
+\ output hb-build cannot replace, and the CLI names it (HBB-CLI-CODE).
 defer HBB-FILL ( ptr u8 n -- )
 variable HBB-FILLING
 
@@ -621,29 +376,25 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
 \ copied; the copy keeps the team signature the product already carries.
 : HBB-INSTALL-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}
-   HBB-GOT-NAME$ BF-A$ tmp tmpu FS:COPY-FILE-STREAM
+   HBB-GOT$ tmp tmpu FS:COPY-FILE-STREAM
    tmp tmpu FS:CHMOD-X ;
 
 : HBB-INSTALL-OUT ( -- )
-   HBB-GOT-NAME$ BF-EXPECT
-   HBB-GOT-NAME$ BF-A$ HBB-MAP-SRC!
+   HBB-GOT$ FS:FILE? 0= if E-BUILD-PATH throw then
+   HBB-GOT$ HBB-MAP-SRC!
    HBB-OUT$ HBB-MAP-DST!
-   [: HBB-INSTALL-FILL ;] HBB-PAIR-RUN
-   HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
-   HBB-GOT-NAME$ BF-A$ FS:REMOVE-FILE ;
+   [: HBB-INSTALL-FILL ;] HBB-PAIR-RUN ;
 
 : HBB-SUCCESS ( -- )
-   HBB-ENGINE-COMPAT @ if s" native-build OK: " else s" hb-build OK: " then type
+   s" hb-build OK: " type
    HBB-OUT$ type
-   HBB-ENGINE-COMPAT @ if
-      HBB-WHITEBOX @ if s"  (whitebox image)" else s"  (product image)" then
-   else HBB-ENGINE @ if
-      HBB-WHITEBOX @ if s"  (whitebox engine)" else s"  (engine)" then
+   HBB-ENGINE @ if
+      s"  (engine)"
    else HBB-REPL @ if
       s"  (native application + REPL)"
    else
       s"  (stripped program)"
-   then then then type
+   then then type
    cr ;
 
 defer HBB-REPORT-HOOK ( -- )
@@ -661,31 +412,26 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-JSON @ if HB-BUILD:PATH-ERROR$ else HB-BUILD:PATH-ERROR-TEXT$ then HBB-WERR
    HBB-WERR-LF ;
 
-\ A build runs on the selected engine, else on the running one.
-: HBB-SELECT-ENGINE ( -- )
-   BF-ENGINE-SELECTED? 0= if ENGINE-ID:PATH$ BF-ENGINE! then ;
-
 : HBB-BUILD-BEGIN ( -- )
    mono-ns HBB-START-NS !
-   HBB-SELECT-ENGINE
-   HB-BUILD:RESET
-   HBB-RESET-TRACE
-   HBB-READ-MAKER-TIMEOUT ;
+   HB-BUILD:RESET ;
 
-\ A stripped program, or under --repl hb with the source's files, is linked in
-\ this process (tools/hb-build-core.f) into TMP; under --json-errors the checker
-\ prints its refusals as JSON.
-: HBB-LINK-APP ( -- )
-   HBB-GOT-NAME$ BF-REMOVE-TMP
-   HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
+\ hb, a stripped program, or under --repl hb with the source's files, is linked
+\ in this process (tools/hb-build-core.f) into HBB-GOT$; under --json-errors
+\ the checker prints its refusals as JSON.
+: HBB-LINK ( -- )
    HBB-JSON @ 0<> DIAG-JSON!
-   HBB-SRC$ HBB-GOT-NAME$ BF-A$
-   HBB-REPL @ if HB-BUILD-CORE:REPL else HB-BUILD-CORE:APP then
+   HBB-ENGINE @ if
+      HBB-GOT$ HB-BUILD-CORE:ENGINE
+   else
+      HBB-SRC$ HBB-GOT$
+      HBB-REPL @ if HB-BUILD-CORE:REPL else HB-BUILD-CORE:APP then
+   then
    LINKER:LINKED LINKER:COMPILED HB-BUILD:CAPTURE-FILES ;
 
 \ A link that threw names the file it was loading, except under --json-errors,
 \ whose stderr holds only JSON.
-: HBB-APP-FAILED ( n -- )
+: HBB-LINK-FAILED ( n -- )
    {: rc:n :}
    HBB-JSON @ 0= if
       s" hb-build: " HBB-WERR  HB-BUILD-CORE:ROW$ HBB-WERR  s"  threw " HBB-WERR
@@ -697,126 +443,14 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-CLEANUP
    HBB-BUILD-RC HBB-EXIT ;
 
-\ The engine child signs what it writes; LINKER:WRITE signs ad hoc, so a linked
-\ program is signed for the team here (src/lib/codesign.f).
+\ LINKER:WRITE signs ad hoc, so a linked program is signed for the team here
+\ (src/lib/codesign.f).
 : HBB-BUILD-REST ( -- )
-   ['] HBB-LINK-APP catch {: rc:n :}
-   rc 0<> if rc HBB-APP-FAILED then
-   HBB-GOT-NAME$ BF-A$ CODESIGN:ENSURE
+   ['] HBB-LINK catch {: rc:n :}
+   rc 0<> if rc HBB-LINK-FAILED then
+   HBB-GOT$ CODESIGN:ENSURE
    HBB-INSTALL-OUT
    HBB-FINISH ;
-
-\ The engine build's support image is selected through
-\ img/native-build-support.inputs, a support record as HBB-ENGINE-SUPPORT-HEADER-U
-\ lays out: the rows are checked against this invocation before the key is
-\ adopted. The engine build itself always runs.
-: HBB-ENGINE-SELECT$ ( -- ptr u8 n )
-   HBB-ENGINE-SELECT-PATH HBB-ENGINE-SELECT-U @ ;
-
-: HBB-ENGINE-SELECT-BODY ( CONTENT-KEY:fold -- )
-   s" hb-engine-selection-v2" CONTENT-KEY:TEXT+
-   NATIVE-BUILD-IMAGE:DONOR$ CONTENT-KEY:TEXT+
-   NATIVE-BUILD-IMAGE:ROOT$ CONTENT-KEY:TEXT+
-   SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
-   BUILD-TARGET:CURRENT RTARGET:PROFILE$ CONTENT-KEY:TEXT+
-   NATIVE-BUILD-IMAGE:PROGRAM-BYTES$ CONTENT-KEY:TEXT+
-   HBB-ENGINE-SELECT-KEY CONTENT-KEY:FINAL-HEX ;
-
-: HBB-ENGINE-SELECT-KEY! ( -- )
-   [: HBB-ENGINE-SELECT-BODY ;] CONTENT-KEY:WITH-FOLD
-   s" native-build-support.inputs" NATIVE-BUILD-IMAGE:DONOR$ drop
-      HBB-ENGINE-SELECT-PATH HBB-ENGINE-SELECT-U KEYED-IMAGE:PATH! ;
-
-: HBB-ENGINE-SUPPORT-ROWS$ ( -- ptr u8 n )
-   0 HBB-ENGINE-RECORD {: rec:ptr :}
-   rec HBB-ENGINE-SUPPORT-HEADER-U + rec 128 + LE:U64@ ;
-
-: HBB-ENGINE-SELECT-CHECK ( -- )
-   HBB-ENGINE-SELECT$ FS:FILE-SIZE {: size:n :}
-   size HBB-ENGINE-SUPPORT-HEADER-U <= if E-NUNIT-PROFILE throw then
-   size HBB-ENGINE-RECORD-RESERVE
-   HBB-ENGINE-SELECT$ 0 HBB-ENGINE-RECORD size FS:READ-ALL size <>
-      if E-NUNIT-PROFILE throw then
-   0 HBB-ENGINE-RECORD {: rec:ptr :}
-   rec 64 HBB-ENGINE-SELECT-KEY 64 STR= 0= if E-NUNIT-PROFILE throw then
-   rec 128 + LE:U64@ size HBB-ENGINE-SUPPORT-HEADER-U - <>
-      if E-NUNIT-PROFILE throw then
-   HBB-ENGINE-SUPPORT-ROWS$ NFILE-INPUTS:CHECK ;
-
-: HBB-ENGINE-SELECT-FRESH? ( -- bool )
-   HBB-ENGINE-SELECT$ FS:FILE? 0= if HBB-FALSE exit then
-   [: HBB-ENGINE-SELECT-CHECK ;] catch {: rc:n :}
-   rc 0= if HBB-TRUE exit then
-   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
-   rc throw ;
-
-: HBB-ENGINE-IMAGE! ( -- )
-   KEYED-IMAGE:CAPTURE-RESET
-   0 HBB-MAKER-HIT !
-   HBB-ENGINE-SELECT-FRESH? if
-      0 HBB-ENGINE-RECORD 64 + 64
-      HBB-ENGINE-SUPPORT-ROWS$ NATIVE-BUILD-IMAGE:ADOPT
-      NATIVE-BUILD-IMAGE:REUSE? HBB-MAKER-HIT !
-   then
-   HBB-ENGINE-RECORD-RELEASE
-   HBB-MAKER-HIT @ 0<> if NATIVE-BUILD-IMAGE:PATH$
-   else HBB-REPORT-JSON @ 0<> NATIVE-BUILD-IMAGE:BUILD$ then
-      {: image:ptr imageu:n :}
-   image imageu HBB-ENGINE-IMAGE-PATH HBB-ENGINE-IMAGE-U HBB-COPY-PATH!
-   HBB-MAKER-HIT @ 0= HBB-MAKER-BUILD !
-   HBB-ENGINE-COMPAT @ HBB-REPORT-JSON @ 0= and if
-      s" native-build: support image " type
-      HBB-MAKER-HIT @ 0<> if s" hit" else s" built" then type cr
-   then ;
-
-\ The support child has finished, so its key and rows describe the bytes it
-\ actually read. Record that success before the engine child can fail.
-: HBB-ENGINE-SUPPORT-SELECT! ( -- )
-   HBB-MAKER-HIT @ 0<> if exit then
-   NATIVE-BUILD-IMAGE:ROWS$ {: rows:ptr rowsu:n :}
-   HBB-ENGINE-SUPPORT-HEADER-U rowsu + HBB-ENGINE-RECORD-RESERVE
-   0 HBB-ENGINE-RECORD {: rec:ptr :}
-   HBB-ENGINE-SELECT-KEY rec 64 BYTE-COPY
-   NATIVE-BUILD-IMAGE:KEY$ drop rec 64 + 64 BYTE-COPY
-   rowsu rec 128 + LE:U64!
-   rows rec HBB-ENGINE-SUPPORT-HEADER-U + rowsu BYTE-COPY
-   HBB-ENGINE-SELECT$ rec HBB-ENGINE-SUPPORT-HEADER-U rowsu +
-      FS:ATOMIC-WRITE-FILE
-   HBB-ENGINE-RECORD-RELEASE ;
-
-: HBB-ENGINE-CMD ( -- len len PROCESS:ending )
-   ['] HBB-ENGINE-IMAGE! catch {: rc:n :}
-   rc E-PROC-TIMEOUT = if HBB-SUPPORT-TIMED-OUT then
-   rc 0<> if rc throw then
-   HBB-ENGINE-SUPPORT-SELECT!
-   HBB-CMD-RESET
-   s" --" >LEN PROC-ARGV+
-   HBB-GOT-NAME$ BF-A$ >LEN PROC-ARGV+
-   HBB-WHITEBOX @ if s" whitebox" >LEN PROC-ARGV+ then
-   HBB-ENGINE-TARGET @ if
-      s" --target" >LEN PROC-ARGV+
-      BUILD-TARGET:CURRENT RTARGET:PROFILE$ >LEN PROC-ARGV+
-   then
-   HBB-ENGINE-IMAGE-PATH HBB-ENGINE-IMAGE-U @ >LEN
-   s" " >LEN
-   [: HBB-OUT-ROOM ;]
-   [: HBB-ERR-ROOM ;]
-   HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
-
-: HBB-BUILD-ENGINE ( -- )
-   HBB-PREPARE-OUT
-   NATIVE-BUILD-IMAGE:CONTEXT!
-   HBB-ENGINE-SELECT-KEY!
-   -1 HBB-MAKER-RUN !
-   HBB-ENGINE-CMD HBB-FINISH-MAKER
-   HBB-INSTALL-OUT
-   HBB-FINISH ;
-
-: HBB-BUILD ( -- )
-   HBB-BUILD-BEGIN
-   HBB-ENGINE @ if HBB-BUILD-ENGINE exit then
-   HBB-PREPARE-OUT
-   HBB-BUILD-REST ;
 
 : HBB-PREPARE-OUT-CLI ( -- )
    ['] HBB-PREPARE-OUT catch {: rc:n :}
@@ -828,13 +462,8 @@ defer HBB-REPORT-HOOK ( -- )
    then
    rc throw ;
 
-: HBB-CLI-MAKER-CODE ( n -- ) {: rc:n :}
+: HBB-CLI-CODE ( n -- ) {: rc:n :}
    rc 0= if exit then
-   rc E-PROC-TIMEOUT = if
-      HBB-CLEANUP
-      HBB-ENGINE @ if PROCESS:TIMEOUT-RC HBB-EXIT then
-      HBB-UNCAUGHT-RC HBB-EXIT
-   then
    rc E-BUILD-INSTALL = if
       [: HBB-CLEANUP ;] catch {: clean:n :}
       clean 0<> if
@@ -850,25 +479,11 @@ defer HBB-REPORT-HOOK ( -- )
 
 : HBB-BUILD-CLI ( -- )
    HBB-BUILD-BEGIN
-   HBB-ENGINE @ if [: HBB-BUILD-ENGINE ;] catch HBB-CLI-MAKER-CODE exit then
    HBB-PREPARE-OUT-CLI
-   [: HBB-BUILD-REST ;] catch HBB-CLI-MAKER-CODE ;
+   [: HBB-BUILD-REST ;] catch HBB-CLI-CODE ;
 
 : HBB-MAIN ( -- )
    HBB-PARSE
-   HBB-PREPARE-TMP
-   HBB-BUILD-CLI
-   HBB-CLEANUP ;
-
-: HBB-ENGINE-RUN-PATH ( ptr u8 n bool bool -- )
-   {: out:ptr outu:n whitebox:bool target:bool :}
-   HBB-RESET-OPTIONS
-   -1 HBB-ENGINE !
-   -1 HBB-ENGINE-COMPAT !
-   whitebox if -1 HBB-WHITEBOX ! then
-   target if -1 HBB-ENGINE-TARGET ! then
-   out outu HBB-OUT-ARG!
-   s" src/habu/habu2.f" HBB-SRC!
    HBB-PREPARE-TMP
    HBB-BUILD-CLI
    HBB-CLEANUP ;
@@ -878,15 +493,6 @@ defer HBB-REPORT-HOOK ( -- )
 
 public
 
-EXPORT HBB-BUILD
-EXPORT HBB-EXIT
-EXPORT HBB-JSON
 EXPORT HBB-MAIN
-EXPORT HBB-ENGINE-RUN-PATH
-EXPORT HBB-PATHS!
-EXPORT HBB-REPORT-JSON
-EXPORT HBB-RESET-OPTIONS
-EXPORT HBB-SRC$
 
-;using
 ;package

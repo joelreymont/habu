@@ -1,22 +1,9 @@
 \ prelude.f - checked boolean, flag and float-stack conveniences core leaves out
 \ (true/false, typed float dup/over/drop, float <= / >=). Core only; load early.
 \ It is the one sanctioned global surface (docs/forth.md package-first rule): its
-\ words are called bare across the tree and the seed and re-exported into --repl
-\ bundles, so it is not packaged; a PRELUDE: qualifier would break those calls.
+\ words are called bare across the tree, so it is not packaged; a PRELUDE:
+\ qualifier would break those calls.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
-
-\ The `export NAME` lines are hb-build --repl export directives; on a plain load
-\ the engine's `export` keyword consumes the name as a no-op and shadows any definition.
-
-export true
-export false
-export 0<>
-export bool>n
-export fdrop
-export fdup
-export fover
-export f<=
-export f>=
 
 : true  ( -- bool ) 0 0= ;
 : false ( -- bool ) 0 0= 0= ;

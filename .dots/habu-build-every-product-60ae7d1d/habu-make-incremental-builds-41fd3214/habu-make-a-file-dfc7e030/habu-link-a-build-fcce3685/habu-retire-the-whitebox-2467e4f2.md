@@ -1,9 +1,11 @@
 ---
 title: Delete the old builders once the linker builds hb
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-05T23:20:37.924915+02:00"
+closed-at: "2026-11-09T18:53:59.182927+02:00"
+close-reason: "step 5 commit 4: hb-build --engine is the one hb build and the recovery route (tools/seed-main.f); gen 4, 5 and 8 of the linker-built hb are byte-equal without the signature, maps equal; ffi-cabi and ffi-callback pass; p10/p11 die 70 at seed-ndict! and exit 83/84 with ndict!; rg whitebox, cold-load, window-rewind and prefix-rewind leaves only test/engine-suite.f's 'Whitebox:' wording, tools/wasm-build.f (Wasm off) and docs/xcomp.md (habu-fix-the-stale-4580a9e3); the HBB-GOT-NAME$ item moved to habu-stage-sign-and-efd0258a."
 ---
 
 Step 5 commit 4 (step 7 of the cross-build order; jerry-a2a .out/a2a/step5-design.md "Commit order"). DECISIONS 'the old builders' (2026-11-05): when the arm64 cross-build writes a working hb, the old hb builder, its string windows and DATA-FLOOR-CELL go. Problem: after commits 1-3 hb-build runs every build inside LINKER:WITH, yet the loading builders stay: tools/native-build*.f with its capture window, handover and host-offset code, test/keyed-image.f, tools/cold-load*.f, the app-image* tools, snap-lib and the snapshot format, the arm64 aot-* files, src/habu/window-rewind.f, src/habu/prefix-rewind.f, the CAPTURE-PREPARE list, the whitebox option (tools/native-build.f, tools/hb-build.f, CLASS-WHITEBOX in tools/native-build-core.f, internal-mark.f's IMAGE-WHITEBOX/ENGINE-UNSEAL? branch, docs/bootstrap.md 'Recovery routes' whitebox host) and tools/next-hb.f's entry. Acceptance: they go; `hb-build --engine` is the one hb build (body 1) and the recovery route; docs/gate.md:32-40 names it; test/fixture-writer.f, test/cold-engine.f and test/keyed-image.f go too. Files: the ones named. Verify: rg whitebox, cold-load, window-rewind and prefix-rewind over src tools test docs print only unrelated words; hb-build --engine builds hb, which rebuilds itself byte for byte; the acceptance cases below. Depends: step 5 commits 1-3 (habu-build-stripped-apps-805dee2b, habu-carry-the-src-944537e3, habu-build-repl-images-b8097226). Ownership: those files. Claim: unassigned.

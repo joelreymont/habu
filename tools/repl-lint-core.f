@@ -97,22 +97,6 @@ variable REPL-ROOT-U
    REPL-ROOT-SELF? if a u exit then
    REPL-PATH-BUF  REPL-ROOT-A@ REPL-ROOT-U @ a u REPL-PATH-BUF FS:JOIN-PATH ;
 
-: TRIM-DQUOTE  ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u 0 <= if a u exit then
-   a u 1- + c@ DQUOTE = if a u 1- exit then
-   a u ;
-
-: SQUOTE-TOK?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 2 <> if LINT-FALSE exit then
-   a c@ LINT-FOLD 115 =  a 1+ c@ DQUOTE = and ;
-
-: SRC-PATH-TRIMMED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" src/" LINT-STARTS-WITH?
-   a u s" .f" HAS-EXT? and ;
-
-: SRC-PATH-TOK? ( ptr u8 n -- bool )
-   TRIM-DQUOTE SRC-PATH-TRIMMED? ;
-
 : PATH-ID@  ( n -- n )  REPL-PATH-IDS swap cells + @ ;
 : PATH-ID!  ( n n -- )  REPL-PATH-IDS swap cells + ! ;
 
@@ -149,25 +133,9 @@ variable REPL-ROOT-U
       REPL-I @ 1+ REPL-I !
    repeat ;
 
-: ADD-STDIN-SOURCES  ( -- )
-   s" src/habu/stdin.f" REPL-ROOTED$ REPL-FB REPL-FILE-CAP READ-FILE
-   -1 PARENS? !  TOKENIZE
-   0 REPL-I !
-   begin REPL-I @ 2 + TN# @ < while
-      REPL-I @ TOK s" -SRC" LINT-SUFFIX? if
-            REPL-I @ 1+ TOK SQUOTE-TOK? if
-               REPL-I @ 2 + TOK SRC-PATH-TOK? if
-                  REPL-I @ 2 + TOK TRIM-DQUOTE ADD-REPL-PATH
-            then
-         then
-      then
-      REPL-I @ 1+ REPL-I !
-   repeat ;
-
 : COLLECT-REPL-PATHS  ( -- )
    INTERN-RESET
    0 REPL-PATH# !
-   ADD-STDIN-SOURCES
    ADD-BACKSTOP-PATHS
    SORT-REPL-PATHS ;
 

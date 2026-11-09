@@ -1952,9 +1952,7 @@ ceiling is a named constant beside the code that enforces it.
 - **Quotation nesting in one definition**, the most `[:` bodies open at once:
   `hb: quotation nesting full at <cap> levels: <name> needs <depth>`, catchable
   inside `evaluate`; `tools/check.f` refuses the same source first,
-  `E-UNCHECKABLE`. Factor the inner quotations into named words. The files
-  `tools/bootstrap.sh` compiles allow one open quotation: a nested `[:` there
-  prints `[:` and exits in the Gforth recovery build while `bin/hb` accepts it.
+  `E-UNCHECKABLE`. Factor the inner quotations into named words.
 - **Control-flow nesting in one definition** (`begin`, `if`, `while`, `do`,
   `?do` and the other open structures): `hb: control-flow nesting too deep:
   <word>`. Checked code meets the checker first: 33 nested `begin`s are refused
@@ -2549,11 +2547,11 @@ sections above.
   `discard-check` drops a suspended hook so no later `set-check` resumes it. Use
   a `PRIM: … PRIM;` axiom for a genuine missing primitive model so later
   definitions remain checked.
-- **A sealed image needs external rows for pre-hook words.** A word defined
+- **A pre-hook word needs an external row.** A word defined
   before the check hook has no authority without a `PRIM:` axiom or a
-  `TRUSTED:` declaration after the checker claiming it. On a sealed image a
+  `TRUSTED:` declaration after the checker claiming it. A
   checked or top-level use is refused before it runs with `E-CAP-TRUSTED`
-  (call it only from a `TRUSTED:` definition); a whitebox image runs it. A
+  (call it only from a `TRUSTED:` definition). A
   `TRUSTED:` or data word before the hook gains no such declaration. A
   top-level step that reads one is refused the same way, so its row goes in
   `src/core/cell-effects.f`.

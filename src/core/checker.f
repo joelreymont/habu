@@ -8368,10 +8368,8 @@ USIGS-CLEAR
 \ Bake the store at the grain above its content plus one grain of room;
 \ USIGS-GROW still doubles at runtime. The spare grain is zero and the grid
 \ stores no zero group, so it costs bitmap bytes, not heap. Without it a capture
-\ just under a grain boundary left a restored engine a few rows, its first
-\ definitions regrew the store, and its own capture copied the grown store into
-\ fresh DATA past everything the program laid last (measured on the NORETS of
-\ test/app-image-engine.f's image: 32 bytes left).
+\ just under a grain boundary leaves a restored program a few rows before its
+\ first definitions regrow the store.
 : USIGS-PERSIST-CAP ( n -- n )
    USIGS-GRAIN + USIGS-ROUND-CAP ;
 
@@ -12677,25 +12675,6 @@ PPRIM: PRIM-SPEC R-RUN PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-IN PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-NUM PE-N PE-OUT PPRIM;
-\ CHECKER-BOUND REWIND is declared and MARK is not: prefix-rewind.f's top-level
-\ text only rewinds, so nothing outside this file moves the boundary. REWIND
-\ dies on an unrecorded boundary and inside a rollback scope; run in a booted
-\ engine it drops the symbols above the prefix and later references fail
-\ closed with E-UNDEFINED (measured).
-PPRIM: CHECKER-BOUND REWIND PPRIM;
-\ CHECKER-BOUND EMPTY-STORE serves tools/bootstrap.sh's boot-hide prologue,
-\ which reloads the whole core prefix, this file included: the dictionary drops
-\ to the prefix's first record and the signature store must return to offset
-\ zero. REWIND returns to the prefix's end; used there it builds a stage-1
-\ engine that cannot boot (measured: silent rc 78). The row exists because
-\ `USIGS` has no effect, and a TRUSTED: body naming it loses the record in a
-\ stripped image.
-\
-\ It takes no argument by design: the seam USIGS-RESTORE-END takes the new end,
-\ and declaring it would hand a trusted build word a store write at any offset.
-\ Run in a booted engine it fails closed like REWIND (measured; a following enum
-\ declaration and arithmetic body still certify).
-PPRIM: CHECKER-BOUND EMPTY-STORE PPRIM;
 \ Their one caller is LINKER:WITH (src/habu/linker.f), at its open and close.
 PPRIM: CHECK OPEN PPRIM;
 PPRIM: CHECK CLOSE PPRIM;
@@ -26962,19 +26941,11 @@ defer REG-EXT-RB-SAVE-XT ( -- )
 defer REG-EXT-RB-FINALIZE-XT ( -- )
 defer REG-EXT-RB-RESTORE-XT ( -- )
 
-\ The same two extension registries again, for the ONE mark that is not a scope:
-\ the core-prefix boundary below records into a single record instead of pushing
-\ a frame, so its extension halves have to be depth-neutral too. Same installers,
-\ same owners, different bodies - see CHECKER-BOUND.
-defer REG-EXT-BND-SAVE-XT ( -- )
-defer REG-EXT-BND-RESTORE-XT ( -- )
 
 : REG-EXT-RB-DEFAULTS ( -- )
    [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-SAVE-XT
    [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-FINALIZE-XT
-   [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-RESTORE-XT
-   [: REG-EXT-RB-NOOP ;] is REG-EXT-BND-SAVE-XT
-   [: REG-EXT-RB-NOOP ;] is REG-EXT-BND-RESTORE-XT ;
+   [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-RESTORE-XT ;
 REG-EXT-RB-DEFAULTS
 
 \ The source pre-pass (src/habu/verify-source.f DEFINER-SYM) learns definers in
@@ -27117,10 +27088,6 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    0 MSEEN-N !
    0 MTCH-ROW !  0 MTCH-I !  0 MTCH-TAGT !  0 MTCH-W ! ;
 
-\ THE FIELD LIST, WRITTEN ONCE. The frame stack and the core-prefix boundary
-\ both record and restore through this pair, so a mark added here joins both: a
-\ boundary that restores fewer cursor families than a scope leaves a warm image
-\ whose first declaration stores through a stale pointer.
 : RBF-SAVE-INTO ( ptr n -- ) {: r:ptr :}
    UEND @ r RBF.UEND !
    NORET-END @ r RBF.NEND !
@@ -27149,8 +27116,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 
 \ A record made inside a scope keeps no facts text past it: the checker binds a
 \ name it does not know through its record's text (CHECK:READ-BOUND), so the
-\ text would bring back a name the scope retired. The boundary's rewind
-\ (CHECKER-BOUND:REWIND) needs none: it removes the records after the mark.
+\ text would bring back a name the scope retired.
 : RBF-FACTS-FORGET ( n -- )
    ndict@ swap ?do 0 i record-facts! loop ;
 
@@ -27221,61 +27187,6 @@ package CHECKER-REG
    REG-EXT-RB-FINALIZE-XT
    RBF-DEPTH @ CHECKER-OVERLAY:CLOSE-SCOPE
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;
-
-\ ---------------------------------------------------------------------------
-\ THE CORE-PREFIX BOUNDARY. One mark, taken once at the end of the boot prefix
-\ (src/core/lower-cert-seal.f) and rewound to once at the head of a generated
-\ engine source (src/habu/prefix-rewind.f), which returns a compiling host to
-\ the end of its own boot instead of recompiling the prefix.
-\ It is a record, not a frame: a frame open across the boot is one deeper than
-\ the core, and the depth-lockstep assert (RBF-DEPTH @ TYPES-READY-XT) fails on
-\ the first declaration past the mark (measured, throw 7113). It moves no depth,
-\ holds no savepoint, and reads and writes the scope's field list through the
-\ pair above. The list lives in this file because it changes with this file;
-\ the extension registries ride through hooks their owners install
-\ (src/core/type-family.f).
-create RBF-BND-REC    RBF-REC allot
-create RBF-BND-NAME   RBF-NAME-REC allot
-variable RBF-BND-N   0 RBF-BND-N !
-
-package CHECKER-BOUND
-
-public
-
-\ How many marks the boundary carries, counted off the record. Zero until MARK
-\ has run, which makes it the build's capability probe: an engine whose boundary
-\ carries nothing cannot host a source that rewinds to one.
-: CURSORS ( -- n )
-   RBF-BND-N @ ;
-
-: MARK ( -- )
-   RBF-DEPTH @ IF s" checker: prefix boundary inside rollback scope" 76 die THEN
-   RBF-BND-REC RBF-SAVE-INTO
-   RBF-BND-NAME RBF-NAME-SAVE
-   REG-EXT-BND-SAVE-XT
-   RBF-REC CELL / RBF-BND-N ! ;
-
-: REWIND ( -- )
-   RBF-BND-N @ 0= IF s" checker: no recorded prefix boundary" 76 die THEN
-   RBF-DEPTH @ IF s" checker: prefix boundary inside rollback scope" 76 die THEN
-   0 BWIN-VALID !  0 UWIN-VALID !
-   REG-EXT-BND-RESTORE-XT
-   RBF-BND-NAME RBF-BND-REC RBF.PKGU @ RBF-NAME-RESTORE
-   RBF-BND-REC RBF-RESTORE-FROM ;
-
-\ THE COARSER REWIND, for a host that reloads the prefix from its first record
-\ instead of from the mark: the signature store back to empty through the
-\ store's own truncation seam, so the interned-node table and the per-symbol
-\ record index are repaired too. tools/bootstrap.sh's boot-hide prologue is the
-\ one consumer (its row in this file's primitive table says why it takes no
-\ argument). Unlike REWIND it moves no depth and touches no other cursor: the
-\ caller is discarding the dictionary those cursors describe.
-: EMPTY-STORE ( -- )
-   RBF-DEPTH @ IF s" checker: store reset inside rollback scope" 76 die THEN
-   0 BWIN-VALID !  0 UWIN-VALID !
-   0 USIGS-RESTORE-END ;
-
-;package
 
 package CHECKER-DECL-FRAME
 
@@ -30987,14 +30898,12 @@ private
    EFFECT-XFER-CLEAR
    CHECKER-REG:UNIT-SCRATCH-RELEASE-CHECKER ;
 
-\ A capture keeps the primitive control prefix verbatim and the state at two
-\ later checkpoints: the saved core-prefix boundary, when present, and now.
-\ Each interval needs its own newest row per symbol; a zero row is a retraction
-\ and must survive just like a nonzero one. A retired symbol keeps no row at
+\ A capture keeps the primitive control prefix verbatim and the state now: the
+\ newest row per symbol after it; a zero row is a retraction and must survive
+\ just like a nonzero one. A retired symbol keeps no row at
 \ all: no spelling reaches it, so no row of its can ever be read again. Effect
 \ offsets in CREATES never change: the sweep zeroes retired bindings in place
 \ and moves nothing.
-RBF-REC CELL / constant NORET-BOUND-CELLS
 PTR-VARIABLE RECORD-CTL-MAP-P
 variable RECORD-CTL-MAP-N
 
@@ -31053,25 +30962,19 @@ variable RECORD-CTL-MAP-N
       sym SYM-N @ >= IF drop RES-FALSE THEN
    loop ;
 
-: NORET-COMPACT-CHECK ( -- n n )
+: NORET-COMPACT-CHECK ( -- n )
    RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
-   RBF-BND-N @ IF
-      RBF-BND-N @ NORET-BOUND-CELLS <> IF NORET-COMPACT-REFUSE THEN
-   THEN
-   RBF-BND-N @ IF RBF-BND-REC RBF.NEND @ ELSE NORET-PRIM-END THEN {: bound:n :}
    NORET-END @ {: oldend:n :}
    NORET-PRIM-END 0 < IF NORET-COMPACT-REFUSE THEN
-   NORET-PRIM-END bound > IF NORET-COMPACT-REFUSE THEN
-   bound oldend > IF NORET-COMPACT-REFUSE THEN
+   NORET-PRIM-END oldend > IF NORET-COMPACT-REFUSE THEN
    NORET-CAP-U @ CELL < IF NORET-COMPACT-REFUSE THEN
    oldend NORET-CAP-U @ CELL - > IF NORET-COMPACT-REFUSE THEN
    NORET-PRIM-END NORET-ENTRY / NORET-ENTRY * NORET-PRIM-END <>
       IF NORET-COMPACT-REFUSE THEN
-   bound NORET-ENTRY / NORET-ENTRY * bound <> IF NORET-COMPACT-REFUSE THEN
    oldend NORET-ENTRY / NORET-ENTRY * oldend <> IF NORET-COMPACT-REFUSE THEN
    oldend NORET-COMPACT-TERM? 0= IF NORET-COMPACT-REFUSE THEN
    oldend NORET-COMPACT-SYMS? 0= IF NORET-COMPACT-REFUSE THEN
-   bound oldend ;
+   oldend ;
 
 : NORET-COMPACT-HEAD ( n ptr n -- ptr n ) {: sym:n heads:ptr :}
    heads sym cells + ;
@@ -31113,15 +31016,12 @@ variable RECORD-CTL-MAP-N
    loop ;
 
 : NORET-COMPACT ( -- )
-   NORET-COMPACT-CHECK {: bound:n oldend:n :}   \ all guards precede mutation
+   NORET-COMPACT-CHECK {: oldend:n :}   \ all guards precede mutation
    oldend RECORD-CTL-MAP-BEGIN
    SYM-N @ cells ARENA-ALLOC {: heads:ptr :}
-   NORET-PRIM-END bound NORET-PRIM-END heads
-      NORET-COMPACT-INTERVAL {: newbound:n :}
-   bound oldend newbound heads NORET-COMPACT-INTERVAL {: newend:n :}
+   NORET-PRIM-END oldend NORET-PRIM-END heads NORET-COMPACT-INTERVAL {: newend:n :}
    newend heads NORET-COMPACT-LINKS
    RECORD-CTL-MAP-END
-   RBF-BND-N @ IF newbound RBF-BND-REC RBF.NEND ! THEN
    newend NORET-END !
    NORETS CELL-VIEW newend CELL / oldend CELL / 1 + ARENA-CELLS-ZERO
    heads BYTE-VIEW SYM-N @ cells ASIG-RELEASE
@@ -31578,22 +31478,20 @@ CHECKER-REG:}SCRATCH
 \ NORET-PRIM-END), which is how `>r` or `2>r` resolve at all. Every other symbol
 \ is decided by src/core/checker-surface.f, which reads the dictionary and the
 \ seal pass's verdict and loads after this file. Until it installs its policy
-\ the sweep does nothing, so an engine whose closure does not load it (the
-\ recovery engine, built from src/habu/repl.f) captures every symbol it holds.
+\ the sweep does nothing, so an engine whose closure does not load it captures
+\ every symbol it holds.
 \ Which records ship with a name is the capture's answer: the policy asks NAMED?
-\ of the record a symbol's spelling resolves to. A snapshot (src/habu/
-\ snap-lib.f, APP-IMAGE:SAVE) writes every live record with its name, so SWEEP,
-\ the capture seam's call, answers yes for every record. The native build's
+\ of the record a symbol's spelling resolves to. SWEEP, CHECKER-CAPTURE-PREPARE's
+\ call, answers yes for every record. The native build's
 \ capture decides in src/habu/aot-capture.f which records keep their names (a
 \ retained DNAME-INT word included) and then runs STRIP with its own answer,
 \ before it copies DATA. A stripped name leaves no spelling, so its symbol goes;
 \ a kept one is a callee a TRUSTED: body can call, whose arity the native
 \ compiler asks this checker for.
 \ A DROPPED SYMBOL IS RETIRED IN PLACE, never renumbered: ids are held outside
-\ this table (a variant's constructor symbol in src/core/type-family.f, the
-\ core-prefix boundary's SYM-N), and a retired row answers no lookup, so a stale
-\ id names nothing. The string pool is rebuilt from the kept rows in id order,
-\ so rows below the boundary keep their strings below its pool mark.
+\ this table (a variant's constructor symbol in src/core/type-family.f), and a
+\ retired row answers no lookup, so a stale id names nothing. The string pool is
+\ rebuilt from the kept rows in id order.
 \ Its rows go with it: control rows at NORET-COMPACT; defer, unsafe and
 \ parse-immediate rows filtered here; effect bindings zeroed in place
 \ (RETIRE-BINDINGS). CHECKER-REG CHECKED-ROW walks every id of a product host
@@ -31654,25 +31552,19 @@ variable CUR                             \ the binding walk's record cursor
 : STR-ZERO ( n n -- ) {: from:n to:n :}
    to from ?do 0 SYM-STR i + c! loop ;
 
-: BOUND-SYMU! ( -- )
-   SYM-STR-U @ RBF-BND-REC RBF.SYMU ! ;
-
 : STRINGS ( -- )
    SYM-STR-U @ {: oldu:n :}
    oldu 0= IF EXIT THEN
    oldu ARENA-ALLOC {: old:ptr :}
    SYM-STR old oldu ARENA-COPY
    oldu cells ARENA-ALLOC {: map:ptr :}
-   RBF-BND-N @ IF RBF-BND-REC RBF.SYMN @ ELSE 0 THEN {: bnd:n :}
    0 SYM-STR-U !
    SYM-N @ 1 ?do
-      i bnd = IF BOUND-SYMU! THEN
       i SYM-RETIRED? 0= IF
          i SYM-PKG-A-FIELD @ i SYM-ROW SYM.PKG-U @ old map MOVE-STR i SYM-PKG-A-FIELD !
          i SYM-NAME-A-FIELD @ i SYM-ROW SYM.NAME-U @ old map MOVE-STR i SYM-NAME-A-FIELD !
       THEN
    loop
-   bnd SYM-N @ = IF BOUND-SYMU! THEN
    SYM-STR-U @ oldu STR-ZERO
    old oldu ASIG-RELEASE
    map BYTE-VIEW oldu cells ASIG-RELEASE ;
@@ -31847,21 +31739,17 @@ variable MARK-U                          \ the map's length in bytes
    UIX-READY? IF UIX-DROP UIX-BUILD THEN
    CHX-READY? IF CHX-DROP CHX-BUILD THEN ;
 
-\ Newest-wins holds for the rows that stay because their order does. A rollback
-\ frame cannot be open here, so the boundary's end is the one saved end to move.
+\ Newest-wins holds for the rows that stay because their order does.
 : DEFER-FILTER ( -- )
-   RBF-BND-N @ IF RBF-BND-REC RBF.DFEREND @ ELSE -1 THEN {: bnd:n :}
    DFER-END @ {: oldend:n :}
    0 DST !
    oldend DFER-REC / 0 ?do
       i DFER-REC * {: at:n :}
-      at bnd = IF DST @ RBF-BND-REC RBF.DFEREND ! THEN
       DFERS at + DFER.SYM @ SYM-RETIRED? 0= IF
          at DST @ <> IF DFERS at + BYTE-VIEW DFERS DST @ + BYTE-VIEW DFER-REC ARENA-COPY THEN
          DST @ DFER-REC + DST !
       THEN
    loop
-   bnd oldend = IF DST @ RBF-BND-REC RBF.DFEREND ! THEN
    DST @ DFER-REWIND ;
 
 : PIMM-FILTER ( -- )

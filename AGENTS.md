@@ -17,9 +17,8 @@ Application-specific policy and model workflows stay out of the language core.
   things up in [docs/forth.md](docs/forth.md) at the heading the card names.
 - Habu tools are written in Habu: tools, test harnesses and build drivers are
   checked Habu programs run by `bin/hb`. A shell or Python file may only invoke
-  `bin/hb` and carries no logic, parsing or policy. Two exceptions exist:
-  `tools/bootstrap.sh`, the recovery launcher for when `bin/hb` does not exist,
-  and the device-peer scripts under `test/` that stand in for a foreign machine
+  `bin/hb` and carries no logic, parsing or policy. The one exception is the
+  device-peer scripts under `test/` that stand in for a foreign machine
   (serial, XMODEM, UDP, the embedded assembler hosts, and `test/wasm/run.mjs`
   and `test/wasm/data-peer.mjs`, which run a Wasm module under bun). Any other
   non-Habu file under `tools/` or `test/` is a defect to convert.
@@ -31,7 +30,7 @@ Application-specific policy and model workflows stay out of the language core.
   declaration, checker, compiler or runtime is wrong, and fix that layer.
 - Diagnose a native failure by [docs/debugging.md](docs/debugging.md), and
   recover a missing or stale `bin/hb` by [docs/bootstrap.md](docs/bootstrap.md)
-  "Recovery routes".
+  "Recovery".
 
 ## Changes
 
@@ -85,10 +84,9 @@ add.
   behavior is baked into it. Run the full suite (`bin/hb --load test/run.f`)
   for shared checker or compiler behavior, runtime ABI, capture format, effects
   across libraries, or an impact focused tests cannot bound; a file's location
-  alone does not require it. Check multi-generation convergence when codegen,
-  self-hosting or capture changes can alter successive engine output. No
-  change runs a Gforth check or edits bootstrap/ to follow the tree
-  (DECISIONS.md "recovery"). [Etch](../etch) owns its downstream checks.
+  alone does not require it. Check multi-generation convergence
+  (`tools/chain-run-build.f`) when codegen, self-hosting or capture changes can
+  alter successive engine output. [Etch](../etch) owns its downstream checks.
   Documentation and mechanical changes need proportionate checks.
 - Report actual results and untested boundaries; never weaken a claim to make a
   check pass. Keep each verification claim within the limits

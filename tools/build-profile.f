@@ -1,22 +1,12 @@
-\ build-profile.f - run the engine self-build under Habu's own profiler, which
-\ names the words the engine compiled for itself (perf sees one anonymous mapping).
+\ build-profile.f - build this tree's hb under Habu's own profiler, which
+\ names the words the build runs (perf sees one anonymous mapping).
 \ Run: bin/hb --load tools/build-profile.f -- <engine-out> <text-report> <json-report>
-\ The product is byte-identical to tools/native-build.f's: the profiler's DATA
-\ allocations stay out of the artifact. It calls NATIVE-BUILD:RUN-PATH-RC, not
-\ native-build.f, whose RUN ends in `die`, so the report could never be written.
-1 set-tier
-require tools/tool-role.f
-TOOL-ROLE:ENTRY
+\ The build is tools/hb-build.f --engine's, linked in this process
+\ (HB-BUILD-CORE:ENGINE); <engine-out> keeps the linker's ad hoc signature.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
-require src/lib/executable-build.f
-package BUILD-PROFILE
-: LOAD ( -- ) s" tools/native-build-core.f" required ;
-' LOAD
-;package
-EXECUTABLE-BUILD:WITH
-TOOL-ROLE:DONE
+require tools/hb-build-core.f
 
 package BUILD-PROFILE
 private
@@ -58,19 +48,22 @@ variable REPORT-FD
 : TEXT-REPORT ( -- )   TEXT$ REDIRECT  prof-report  RESTORE ;
 : JSON-REPORT ( -- )   JSON$ REDIRECT  prof-json    RESTORE ;
 
-: DRIVE-RC ( -- n )
-   ENGINE$ NATIVE-BUILD:RUN-PATH-RC ;
+: BUILD ( -- )
+   ENGINE$ HB-BUILD-CORE:ENGINE ;
 
 public
 : MAIN ( -- )
    ARGS-OK? 0= if USAGE then
    0 prof-on
-   DRIVE-RC {: rc:n :}
+   ['] BUILD catch {: rc:n :}
    prof-off
    TEXT-REPORT
    JSON-REPORT
    s" build-profile: reports in " type TEXT$ type s"  and " type JSON$ type cr
-   s" " rc NATIVE-BUILD:EXIT-RC die ;
+   rc 0<> if
+      s" build-profile: the build threw " type rc . s" at " type HB-BUILD-CORE:ROW$ type cr
+      s" " 1 die
+   then ;
 ;package
 
 BUILD-PROFILE:MAIN

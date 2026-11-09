@@ -39,8 +39,8 @@ prof-off
 s" PROF-LATE-TRIM" HIDE-DEFS-FROM
 prof-json
 
-\ A seed rewind retains runnable donor code, but a later CP rewind releases
-\ that code. Reuse must stop charging its old identity before the next report.
+\ A CP rewind after an NDICT lowering releases the donor's code; the word that
+\ reuses its address must not charge the donor's identity in the next report.
 variable REUSE-CP
 variable REUSE-ND
 variable REUSE-PC
@@ -49,7 +49,7 @@ ndict@ REUSE-ND !
 : PROF-RECLAIM-DONOR ( -- ) 100000000 0 ?do i drop loop ;
 s" PROF-RECLAIM-DONOR" XREF-FIND XREF-START REUSE-PC !
 0 prof-on
-REUSE-ND @ seed-ndict!
+REUSE-ND @ ndict!
 REUSE-CP @ cp!
 : PROF-RECLAIM-TARGET ( -- n ) 100000000 0 ?do i drop loop 42 ;
 : VERIFY-RECLAIM ( -- )

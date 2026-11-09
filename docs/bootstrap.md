@@ -1,263 +1,91 @@
 # Bootstrap
 
-How the first `hb` is made from nothing, and how that path is checked.
+How `hb` builds `hb`, and how a missing or broken `bin/hb` is recovered.
 
-## The bootstrap process
+## How hb builds hb
 
-**The seed builds the first `hb`.** `bootstrap/cg/*.fs` runs on Gforth and
-writes `hb-stage0`, an ARM64 engine with a machine-code interpreter and its own
-copy of the ARM64 primitive bodies. That engine loads the Habu sources, and the
-chain below builds `hb` from them. A host the seed does not target gets its first `hb` by
-cross-build from any `hb` ([cross-compilation](architecture.md#cross-compilation)).
+`hb --load tools/hb-build.f -- --engine -o <out>` builds this tree's hb inside
+the running hb and writes it, with its `.map`, to `<out>`
+(tools/hb-build-core.f). The build is a cross-build whose target is the
+running machine: the product is data the build writes, never a slice of the
+running hb's memory (DECISIONS.md "how Habu builds Habu").
 
-**The seed mirrors the engine.** It copies the engine facts it needs from the
-Habu sources, and `bootstrap/cg/forth.fs` names each mirror where it stands.
-No change edits it to follow the tree or runs the
-[no-binary recovery check](#periodic-no-binary-check) (DECISIONS.md
-"recovery").
+Build from the tree's root: a build opens its boot files under the working
+directory and refuses one outside the engine root. Builds write their objects
+under the out root ([gate.md](gate.md#scratch-and-cache)), keyed by the
+building hb's own bytes, so hosts that differ never share an object.
 
-## Recovery routes
+No route builds hb without an hb. x86-64 and Wasm builds are off until each
+moves onto the linker (DECISIONS.md "the old builders").
 
-Use a trusted native hb from the same OS and architecture when one is
-available ([below](#recovery-from-a-trusted-native-seed)). On ARM64 macOS or
-Linux with no native binary, tools/bootstrap.sh uses the Gforth seed in
-bootstrap/cg to build a small recovery engine, then refreshes it from current
-source. The recovery engine is a host for a native product build.
-Qualification of that product is in [gate.md](gate.md).
+## Recovery
 
-The installed release, a copied seed and a newly recovered source-only
-engine are different artifacts. Build and test a native product from the
-exact source tree before using it as a release candidate.
-
-## Recovery from a trusted native seed
-
-A trusted native hb (a previous release asset, or a seed copied from a trusted
-checkout) is a recovery seed, not a qualified product. It runs the checked
-recovery command:
+A trusted native hb of the same OS and machine (a previous release asset, or
+a copy from a trusted checkout) rebuilds `bin/hb` from the checkout
+(DECISIONS.md "recovery"):
 
 ```sh
-HABU_SEED_SHA256=<hex> /path/to/hb-seed --load tools/seed-main.f \
-  -- /path/to/hb-seed
+HABU_SEED_SHA256=<hex> /path/to/trusted-hb --load tools/seed-main.f \
+  -- /path/to/trusted-hb
 ```
 
-`HABU_SEED_SHA256`, when set, pins the seed's digest. `tools/seed.f` installs
-the seed as `bin/hb` and refreshes it from current source through the
-self-rebuild fixpoint. After that, refresh `bin/hb` as
-[Refresh `bin/hb`](#refresh-binhb) describes; the seed is not needed again.
+`HABU_SEED_SHA256`, when set, pins the trusted hb's digest. `tools/seed.f`
+installs it as `bin/hb`, checks that it runs, and has it build `bin/hb` from
+current source with `tools/hb-build.f -- --engine -o bin/hb`. That result is a
+candidate, not a qualified product: run the
+[convergence check](#convergence-check) from it, then qualify the converged hb
+([gate.md](gate.md)) before installing it.
+
+A trusted hb too old to build the tree needs a [staged host](#staged-hosts).
 
 ## Requirements
 
-The Gforth seed emits ARM64 code and supports macOS ARM64 and Linux AArch64.
-It requires Gforth 0.7.9 or newer with locals support. Check the selected
-interpreter before recovery:
-
-    printf ': x {: a :} a . ; 7 x bye\n' | /path/to/gforth
-
-The command must print 7 and exit zero. Gforth 0.7.3 lacks the required
-locals. A known-good release is 0.7.9_20260610. If no Gforth is installed,
-use its complang dist tarball, which includes the prebuilt bootstrap images:
-https://www.complang.tuwien.ac.at/forth/gforth/Snapshots/0.7.9_20260610/gforth-0.7.9_20260610.tar.xz
-The GitHub tag archive requires an existing Gforth to build.
-
 The full native suite has additional host requirements. On Linux its PTY
-tests need working /dev/ptmx and /dev/pts. The database row needs initdb
+tests need working /dev/ptmx and /dev/pts. The database test needs initdb
 and postgres on PATH and libpq 17 or newer for native query cancellation,
 run as an ordinary user because initdb refuses root.
-On macOS the library rows use Homebrew libzip, libunistring, openssl@3,
+On macOS the library tests use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
-The FFI row compiles its struct-by-value fixture library with /usr/bin/cc.
+The FFI test compiles its struct-by-value fixture library with /usr/bin/cc.
 Keg-only postgresql@18 needs its bin directory on PATH.
 See [gate.md](gate.md) for the suite and its boundaries.
 
-## No-Binary Recovery
+## Convergence check
 
-From the repository root on a supported ARM64 host:
+`tools/chain-run-build.f` builds generation 1 with a host, generation 2 with
+generation 1, and generation 3 with generation 2 when the first two differ,
+each by `tools/hb-build.f -- --engine`, and passes when two successive
+generations are the same image (CODESIGN:SAME-IMAGE?):
 
-    HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth tools/bootstrap.sh
+    TMPDIR=$TMP bin/hb --load tools/chain-run-build.f -- bin/hb $TMP/g1 $TMP/g2 $TMP/g3 $TMP
 
-The launcher targets the host's OS unless HABU_TARGET is set, builds private
-stages in a new directory under TMPDIR, runs recovery checks and
-installs bin/hb. That source-only engine can build the native product; it is
-not itself the product the native suite qualifies.
-
-For a source-only recovery host, load and install the source compiler before
-the native driver's first target scope selects tier 1. With `HOST` naming
-that host and `TMP` outside the checkout, build from the target tree:
-
-```sh
-cat > "$TMP/native-preload.f" <<'EOF'
-require src/compiler/native/compiler.f
-NCOMP:INSTALL
-EOF
-HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" TMPDIR="$TMP" \
-  "$HOST" --load "$TMP/native-preload.f" tools/native-build.f -- "$OUT"
-```
-
-This route emits the ordinary native product and its `.map`; qualify that
-pair against the matching sources before promotion.
-
-When a source update adds a baked checker API that snapshot support uses, or
-a layout cell that SND-ZERO-LIVE clears, an older native host cannot save the
-new builder support: its ordinary build refuses with `E-UNDEFINED`. Stage a
-fresh checker-bearing whitebox host once through the same compiler preload,
-then build the product on that host:
-
-```sh
-TMPDIR="$TMP" \
-  HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" \
-  "$HOST" --load "$TMP/native-preload.f" tools/native-build.f \
-  -- "$TMP/hb-whitebox" whitebox
-TMPDIR="$TMP" \
-  "$TMP/hb-whitebox" --load tools/hb-build.f -- --engine -o "$OUT"
-```
-
-The second command builds the ordinary sealed product and its matching `.map`.
-The first runs on the older host with that host's baked files, so a file the
-build driver loads from disk may name only words those baked files define: a
-new public word in `src/habu/xref.f` or a new `src/habu/layout.f` constant
-named by `src/habu/aot-capture.f` or by `src/lib/fs.f` (`FS-ABI:TEXT-OFF`;
-`tools/native-build-deps.f` loads fs.f) stops the stage with `E-UNDEFINED`.
-
-An older native host cannot build a tree whose disk sources need what the host
-does not supply: a primitive such as `scratch-cell-mark`, which
-`src/core/pointer-storage.f` calls, or the package marker `BOOT:NAMESPACE-WL`
-reads from `BOOT:NAMESPACE-WL-CELL` instead of the constant
-`WL:NAMESPACE`. A host whose boot leaves that cell 0 stops the build with
-rc 70, `hb: no authenticated package context for this definition`. Build a
-host from a tree that adds only the primitive or the cell's boot write, and
-build this tree on it.
-
-These builds, like every build and gate run from the checkout, write their
-objects under its out root ([gate.md](gate.md#scratch-and-cache)).
-
-The Gforth seed cannot emit an x86-64 engine. For Linux x86-64, use a
-working ARM64 compiler with the x86-64 backend loaded to cross-build the
-native engine, then execute and qualify it on an x86-64 host;
-`docs/xcomp.md` "Build and bootstrap" gives the target-specific build and
-execution path.
-
-The cross-build's steps add no mirror to bootstrap/cg/forth.fs, so a
-primitive one of them adds to the cold prefix stops the no-binary check
-below. The normal native gate does not build that seed.
-
-## Periodic No-Binary Check
-
-The normal native gate uses an existing `bin/hb`; it does not prove the
-from-scratch Gforth recovery path. No change runs this check (DECISIONS.md
-"recovery"); it runs only when a recovery audit is asked for:
-
-```sh
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/habu-bootstrap-check.XXXXXX")
-HABU_ALLOW_BOOTSTRAP=1 \
-HABU_BOOTSTRAP_CHECK_ONLY=1 \
-GFORTH="${GFORTH:-$HOME/.local/bin/gforth}" \
-TMPDIR="$tmp" \
-tools/bootstrap.sh
-```
-
-`HABU_BOOTSTRAP_CHECK_ONLY=1` builds and checks the private bootstrap chain and
-exits before replacing `bin/hb`.
-
-## Generation Chain Check
-
-Run tools/two-generation-build.f for changes to code generation, self-hosting
-or capture that can affect successive output. It builds the generations
-privately and leaves the installed engine alone; with no argument the
-checkout's bin/hb is generation zero, and `--same-host` builds twice with one
-host to check repeatability:
-
-    TMPDIR=$TMP bin/hb --load tools/two-generation-build.f -- <seed-engine>
-    TMPDIR=$TMP bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
-
-Use an external scratch directory for `$TMP`, as described in
-[gate.md](gate.md). Every generation compiles the checkout's source, so leave
-the tree unchanged until the tool exits: a comment edited in an engine-provided
-file while generation 5 built made it differ from generation 4 by 1677 bytes.
+Run it for changes to code generation, self-hosting or capture that can affect
+successive output. Use an external scratch directory for `$TMP`, as described
+in [gate.md](gate.md). Every generation compiles the checkout's source, so
+leave the tree unchanged until the tool exits: hb records the hash of each file
+built into it, so a comment edited while a generation builds makes that
+generation differ from the one before.
 
 A codegen change can first appear in generation two because generation one
-was compiled by the old host. Other source changes usually reach generation
-one. Compare successive products, not an arbitrary seed and product. A
-pre-window build file resolves names against its host, so a newly called
-engine primitive, a fixed layout declaration, or a changed compiler contract
-that pre-window tools call (the unit observer's arguments, or the emission
-state at observation) may require a staged host: the checked prefix compiles
-with the host's compiler, and the unit tools call the host's producer until
-`src/habu/native-runtime.f` loads.
-The `:` and `TRUSTED:` heads run the host's machine code for the whole build,
-so a head contract the tree adds never reaches its own build. When the tree's
-tools need such a contract and the installed engine lacks it, the build
-refuses at the first definition of `src/core/util.f` (E-NUNIT-PROFILE from
-NUNIT-DEP:COMPILING!). Build a stage first, from a revision whose engine adds
-the contract but whose tools do not yet need it, with the installed engine;
-then build the tree with that stage:
+was compiled by the old host. Compare successive products, not an arbitrary
+seed and product.
+
+## Staged hosts
+
+When the tree's build needs something the running hb lacks, build a stage
+first, from a revision that adds it but does not yet need it, with the running
+hb; then build the tree with that stage:
 
     jj workspace add --name stage -r <revision> "$TMP/stage"
     (cd "$TMP/stage" && TMPDIR="$TMP" hb --load tools/hb-build.f -- --engine -o "$TMP/stage-hb")
     TMPDIR="$TMP" "$TMP/stage-hb" --load tools/hb-build.f -- --engine -o "$OUT"
 
-The window's captured records and cells must not retain the host's process
-addresses or record numbers: a host whose checker differs from the tree's
-numbers its records and symbols differently, so a record number left in DATA
-names a host record, not the product's. A reserved-layout transition builds by
-the ordinary native build, as described below.
-
-## Landing a Reserved-Layout Change
-
-A **reserved-layout change** moves a band below `DATA-START`: raising
-`SNAP-RELOC:XTCELL-CAP`, appending a band, widening the protected-WID bitmap.
-Each one moves `DATA-START` itself, and the host that builds the tree does not
-move with it.
-
-Build it with `tools/native-build.f`: its support child
-(`tools/native-build-image.f`) runs `tools/cold-load.f`, which loads the tree's
-layout before capture, so the first product's layout and bands agree. The build
-refuses a donor that publishes no heap floor (BOOT:HEAP-START-CELL) or
-has an address row below it that names no slot (`tools/native-build-core.f`
-CHECK-HOST-LAYOUT), and `src/habu/snap-lib.f` writes the heap from that floor.
-The build also runs the tree's source in the donor, so an engine cell that
-source reads by DATA offset sits at a fixed offset no band change moves
-(`src/habu/layout.f` REPLAY-SCOPE and UNIT-COMPILE-CELL, `src/habu/boot-cells.f`
-BOOT:HEAP-START-CELL); the moving address-cell header is read at the
-donor offset the build passes (ADDRESS-CELLS:WITH-HOST-HEADER). A direct saved
-writer keeps the layout of the builder it was saved from: rebuild that builder
-from matching source rather than use a saved writer from the previous layout.
-Run `test/native-layout-transition.f` with a saved same-machine donor whose
-reserved layout differs to check the first product, and check multi-generation
-convergence when codegen, self-hosting or capture changes require it.
-
-A per-task band that grows while a file the build tool loads from disk reads
-it, as `src/lib/fs.f` reads FS-ABI, is not built that way from the previous hb:
-its `tools/hb-build.f -- --engine` on a tree whose band is larger stops with
-E-FS-OPEN, rc 74. Build it in stages:
-1. On the previous hb, build a stage engine by `tools/hb-build.f -- --engine`
-   from the tree with the band's new constants declared but its size
-   unchanged. That engine is a build host only: its new member overlaps the
-   next band.
-2. On the stage engine, from the tree itself, stage a whitebox by the
-   compiler-preload route above ("No-Binary Recovery").
-3. Build an engine on the whitebox by `tools/hb-build.f -- --engine`, then each
-   next engine on the last, until two successive engines are the same image
-   (CODESIGN:SAME-IMAGE?).
-
-## DDC Audit (Diverse Double-Compiling)
-
-tools/ddc-verify.f is an explicit trust audit. It builds through the
-Gforth recovery route and the native route, then compares their refreshed
-products byte for byte. It is separate from the ordinary gate and requires
-HABU_ALLOW_BOOTSTRAP=1 and a working Gforth. Run the driver from the
-repository root only when auditing recovery:
-
-    HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth bin/hb --load tools/ddc-drive.f
-
-A past match does not establish that the current source or engine matches.
-Inspect a DIVERGENT result before claiming the routes converge.
-
 ## What the engine carries
 
-src/habu/native-runtime.f is the ordered manifest of source baked into a
-native product. Loading a baked file by name does not reread edits from disk;
+tools/hb-build-core.f (STARTUP and RUNTIME-FILES) lists the source baked into
+hb. Loading a baked file by name does not reread edits from disk;
 a native rebuild is needed to test those changes. Files outside that closure
-load normally from disk. Use the generation check for changes baked into the
+load normally from disk. Use the convergence check for changes baked into the
 engine.
 
 The engine knows the files it carries by path only (`src/core/include.f`
@@ -268,10 +96,8 @@ stops at a `require` of the old path. While the renamed file's bytes equal the
 old file's, build the first engine in three steps; edit the file in a later
 change:
 1. Run the previous engine with a one-line file, `s" <new path>" provided`,
-   loaded before `tools/native-build.f -- $OUT`; the preload keeps the build in
-   this process, where that `provided` fact holds, instead of hb-build's maker
-   child (`tools/native-build.f` PRELOADED?). Never install this engine: the next
-   one differs from it.
+   loaded before `tools/hb-build.f -- --engine -o $OUT`. Never install this
+   engine: the next one differs from it.
 2. On that engine, build again by the candidate command in
    [gate.md](gate.md) "Qualifying a candidate", at the normal limits.
 3. On the step-2 engine, build once more; qualify and install it once
@@ -280,9 +106,9 @@ change:
 ## Refresh `bin/hb`
 
 After `bin/hb` exists, use it as the host for normal native builds. Build a
-private product image with `tools/native-build.f -- <out>` and qualify that
-image against its matching source tree as described in [gate.md](gate.md).
-Promote the verified product to `bin/hb` only after the gate passes.
+private hb with `tools/hb-build.f -- --engine -o <out>` and qualify it against
+its matching source tree as described in [gate.md](gate.md). Promote the
+verified product to `bin/hb` only after the gate passes.
 
 If the checkout's `bin/hb` is missing or too old to load current source, use a
 trusted installed native engine as `HOST` and build from the checkout root
@@ -292,38 +118,6 @@ another generation until successive products match. Keep each output private,
 with its paired `.map` file, and run the [native gate](gate.md) on the
 converged product before promotion. A stale host can fail to compile an
 application against newer source while still compiling the current engine.
-
-Build from the tree's root: a build opens its boot files under the working
-directory and refuses one outside the engine root.
-
-The separate ARM stage-2 recovery/development refresh, the positive stage-2
-fixpoint check, is:
-
-```sh
-bin/hb --load tools/build-fixpoint-refresh.f -- install --force
-```
-
-A retained AOT host resolves named calls against its cold prefix before reading
-tool input, so removing a prefix provider can make that host fail with
-`hb: AOT call site unresolved`. Use the
-[check-only recovery chain](#periodic-no-binary-check) to regenerate a private
-seed from current source before refreshing it.
-
-`install` promotes `hb-stdin`, the source-only recovery engine. It does not
-qualify that engine as the native product: its checked access to internal
-compiler signatures differs from the captured runtime. Set
-`HABU_FIXPOINT_ENGINE` to an existing engine to make it both the first build
-host and the install destination, isolating this route from a verified
-product. On Intel, build the product with `tools/native-build.f` and check
-convergence with `tools/two-generation-build.f`; the recovery refresh has no
-Intel route. The `snap` verb remains available on both targets: it builds a
-native product before saving its image.
-
-The `all`/`install` refresh skips an unchanged rebuild by a content-keyed
-stamp at `<out root>/fixpoint/stamp`, where the out root is `$HABU_OUT` (a
-relative value against the working directory), else `.out` in the working
-directory. Append `--force` to rebuild unconditionally; proof flows always pass
-it.
 
 ## Stable local command
 
@@ -356,19 +150,5 @@ kernel cached, and the kernel kills the new executable at launch:
 `echo bye | hb` dies by SIGKILL (rc 137) within milliseconds, while the same
 bytes renamed in as a new file run.
 
-## Warm Dev Snapshot
-
-For a hot edit/check loop, build a warm snapshot engine with
-`bin/hb --load tools/build-fixpoint-refresh.f -- snap`: it writes
-`$TMPDIR/hb-new`, a snapshot image that boots warm with the checker, stdlib
-prefix and REPL. `hb-new` is a local dev artifact: it is never installed as
-`bin/hb`, never used as a gate or candidate launcher, and must be rebuilt after
-source changes.
-
-If a tool fails on a missing native primitive, rebuild and qualify the native
-product against its matching sources.
-
-Run the gate after bootstrap or refresh (`bin/hb --load test/run.f`,
-[gate.md](gate.md)). It runs in the product `bin/hb` engine, never through a
-snapshot image; generated snapshot images are local artifacts and are never
-committed.
+Run the gate after recovery or refresh (`bin/hb --load test/run.f`,
+[gate.md](gate.md)). It runs in the product `bin/hb` engine.

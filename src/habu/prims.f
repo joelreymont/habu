@@ -785,8 +785,6 @@ EPRIM: ndict@         PE-N PE-OUT EPRIM;
 \ host whose construction state the driver cannot inspect.
 EPRIM: native-pending-opaque? PE-F PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
-EPRIM: seed-ndict!    PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ top-level boundary: no checked body names it
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
 EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE    \ src/compiler/native/publish.f APPEND-PENDING

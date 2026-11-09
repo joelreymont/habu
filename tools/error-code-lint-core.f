@@ -1,7 +1,6 @@
 \ error-code-lint-core.f - E- throw-code collision lint: error codes are one
 \ global throw namespace. Walks .f/.fs sources under src/, tools/ and test/ and
-\ flags a code claimed by two different E- names. bootstrap/ is not walked: the
-\ recovery seed is a pinned corpus in its own process space.
+\ flags a code claimed by two different E- names.
 \ LINT-LEX (src/lib/source-lex.f) decides which bytes are code; a lexer defect
 \ stops the scan. STRICT is the gate entry; LEDGER prints without throwing.
 

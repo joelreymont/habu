@@ -1249,8 +1249,7 @@ private
    2 2 1 SUB,  2 2 5 LSRI,
    2 8 ARN-COUNT STR,  4 8 ARN-LO STR,  5 8 ARN-HI STR, ;
 
-\ Ordinary NDICT lowering: resolve deferred PCs before their dictionary rows
-\ disappear. Seed rewind already detached its live slots and keeps its spans.
+\ NDICT lowering: resolve deferred PCs before their dictionary rows disappear.
 : EMIT-PROFTRIM ( -- )
    LPROFTRIM LABEL@ LBL,
    LBL LBL LBL LBL LBL {: absent scan sync turn next :}
@@ -1312,34 +1311,6 @@ private
    0 8 0 ADDI,  C-PROF-INDEX-PRUNE
    C-PROF-CLOCK-RESUME
    absent LBL,  C-PROF-RETIRE-CLOSE ;
-
-\ seed-ndict! calls this before lowering NDICT, with the new count in x6.
-\ The final sync names deferred donor PCs while their records still exist;
-\ clearing only the retired ordinals' live slots leaves their IDs, names and
-\ code spans owned by this session for later reports and stack samples.
-: EMIT-PROFREWIND ( -- )
-   LPROFREWIND LABEL@ LBL,
-   LBL LBL LBL LBL {: absent turn next done :}
-   SP SP 32 SUBI,  30 SP 0 STR,  6 SP 8 STR,
-   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,  0 absent CBZ,
-   9 0 ARN-IDS LDR,  9 absent CBZ,             \ prof-rate alone has no session
-   C-PROF-CLOCK-HOLD
-   LPROFSYNC LABEL@ BL,
-   6 SP 8 LDR,
-   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,
-   turn LBL,
-      6 NDICT CMP,  C-CS done BCOND,
-      9 ARN-LIVE LIT64,  9 8 9 ADD,
-      10 6 3 LSLI,  9 9 10 ADD,
-      10 9 0 LDR,  10 0 CMPI,  C-LT next BCOND,
-      11 ARN-RECS LIT64,  11 8 11 ADD,
-      12 PROF-ID-ENT MOVZ,  12 10 12 MUL,  11 11 12 ADD,
-      12 0 MOVN,  12 11 RID-OWNER STR,  12 9 0 STR,
-   next LBL,  6 6 1 ADDI,  turn B,
-   done LBL,
-   C-PROF-CLOCK-RESUME
-   absent LBL,
-   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ A REPORT NEVER SAMPLES ITSELF. It reads PROF-TOT once and then walks every
 \ counter; a tick in between would leave the header's own identity - words +
@@ -1455,7 +1426,6 @@ public
 
 : EMIT-PROF-REPORTS ( -- )
    EMIT-PROFNUM  EMIT-PROFPCT  EMIT-PROFNAME  EMIT-PROFSYNC
-   EMIT-PROFREWIND
    EMIT-PROFTRIM  EMIT-PROFRECLAIM
    false EMIT-PROFREP  true EMIT-PROFREP  EMIT-PROFROW ;
 

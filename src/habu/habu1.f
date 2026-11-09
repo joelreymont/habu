@@ -1753,25 +1753,6 @@ private
    bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
 
-\ Lower the dictionary and open the namespace as one engine operation. Its
-\ `( n -- )` checker row is a top-level boundary: top-level text (evaluated
-\ text included) and TRUSTED: bodies call it, no checked body names it, and the
-\ engine refuses its tick.
-: BSEEDNDICTSET ( -- ) B-TASK-GUARD  B-LOWER-GUARD  A G-POP                         \ ( n -- )
-   LBL LBL {: lower:label bad:label :}
-   A 0 CMPI,  C-LT bad BCOND,
-   A NDICT CMP,  C-LT lower BCOND,
-   bad LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
-   lower LBL,
-   SP SP 16 SUBI,  A SP 0 STR,
-   6 A 0 ADDI,  PROF-ABI:LPROFREWIND LABEL@ BL,
-   A SP 0 LDR,  SP SP 16 ADDI,
-   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
-   EM-DEF-OCC:LCOUNT LABEL@ BL,
-   HIDX-EMIT:LREBUILD LABEL@ BL,
-   A B LASTC-TRIM,
-   9 0 MOVZ,  9 DATA SEAL-NDICT-CELL STR, ;
-
 : BEPOCHSECONDS ( -- )
    LBL TIME-OK !
    0 DATA GTOD-SCRATCH ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-GETTIMEOFDAY SYS,
@@ -5168,7 +5149,6 @@ package ENGINE-EMIT
    s" native-origin-cell" ['] BNATIVEORIGINCELL FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
-   s" seed-ndict!" ['] BSEEDNDICTSET FPRIM
    s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-select" ['] BDEFSELECT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-resolve" ['] BDEFRESOLVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

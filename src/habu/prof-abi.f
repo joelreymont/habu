@@ -8,9 +8,8 @@ require src/habu/layout.f
 
 package PROF-ABI
 public
-\ The seed rewind body is emitted before prof.f loads. Its helper label must
-\ therefore be declared in this early ABI package and assigned by habu2.f.
-variable LPROFREWIND
+\ The trim and reclaim callers are emitted before prof.f loads, so their labels
+\ are declared in this early ABI package and assigned by habu2.f.
 variable LPROFTRIM
 variable LPROFRECLAIM
 

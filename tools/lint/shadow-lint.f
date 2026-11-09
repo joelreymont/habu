@@ -210,7 +210,7 @@ variable IN-DEFINITION
    s" src/habu/habu1.f"     LINT-FILE   s" src/habu/prof.f"      LINT-FILE
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
    s" src/habu/sign-id.f"   LINT-FILE
-   s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap-lib.f"  LINT-FILE
+   s" src/habu/habu2.f"     LINT-FILE
    BAD @ 0 > IF  s" shadow-lint: " type BAD @ FMT:.INT s"  collision(s)" type cr
       s" shadow-lint: prim-name collision(s)" 1 die
    ELSE  s" shadow-lint: clean (" type PN# @ FMT:.INT s"  prims checked)" type cr  THEN ;

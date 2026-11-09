@@ -8,7 +8,7 @@ package HOOK-SITES
 
 private
 
-5 constant ROW-N
+4 constant ROW-N
 
 0 constant KIND-CHECK
 1 constant KIND-TOP
@@ -18,10 +18,9 @@ private
    k ROW-N >= if E-TBL-BOUNDS throw then
    k case
       0 of s" src/core/check-hook.f" s" DEFINITION" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
-      1 of s" test/compile-preflight-recovery.f" s" CPR-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
-      2 of s" src/core/top-row.f" s" TOP-LEVEL" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-TOP endof
-      3 of s" src/habu/engine-origin.f" s" CHECKED-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
-      4 of s" src/habu/engine-origin-checked.f" s" CHECKED-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
+      1 of s" src/core/top-row.f" s" TOP-LEVEL" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-TOP endof
+      2 of s" src/habu/engine-origin.f" s" CHECKED-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
+      3 of s" src/habu/engine-origin-checked.f" s" CHECKED-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
       drop E-TBL-BOUNDS throw
    endcase ;
 

@@ -1517,8 +1517,8 @@ variable LBL#  variable LX  variable GROWN
    repeat  LSTATE-RELEASE ;
 
 \ ---- driver ---------------------------------------------------------------
-\ The engine's files in load order (tools/native-emit-arm.f): a call binds an
-\ earlier definition, so every host row precedes its callers.
+\ The engine's files in load order: a call binds an earlier definition, so
+\ every host row precedes its callers.
 : EACH-FILE ( [ ptr u8 n -- ] -- ) {: visit :}
    s" src/habu/rt.f" visit execute  s" src/habu/crash.f" visit execute
    s" src/habu/regalloc.f" visit execute  s" src/habu/habu1.f" visit execute

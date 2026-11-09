@@ -37,12 +37,11 @@ package STDLIB-GATE
 : PRODUCT-ENGINE$ ( -- ptr u8 n )
    ENGINE-ID:PATH$ ;
 
-\ HABU_UNDER_TEST (read first by src/lib/engine-candidate.f) and HABU_FIXPOINT_ENGINE name the
-\ product engine to an item's children; set before the inherit, which skips a name already present.
+\ HABU_UNDER_TEST (read first by src/lib/engine-candidate.f) names the product engine to an
+\ item's children; set before the inherit, which skips a name already present.
 : SUITE-ENV ( -- )
    PROC-ENV-RESET
    s" HABU_UNDER_TEST" >LEN PRODUCT-ENGINE$ >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN PRODUCT-ENGINE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ The registry feeds a row's argv right before it offers the row (src/lib/test/suite.f

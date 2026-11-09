@@ -187,7 +187,6 @@ create CS-PRODUCT-PATH PATH-CAP allot
 : CS-ENV! ( -- )
    PROC-ENV-RESET
    s" HABU_UNDER_TEST" >LEN CS-PRODUCT$ >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN CS-PRODUCT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ Definition control summaries survive a --repl build (tools/hb-build.f). The

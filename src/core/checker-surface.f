@@ -30,10 +30,8 @@ private
 \ LFIND's qualified branch searches the public wid, and habu2.f
 \ C-PACKAGE-PROT-GUARD refuses reopening it. A part's public words are spelled
 \ only inside its package, so they keep as that package's privates do; a part's
-\ row, alone, is named by a path `A:B`. The whitebox image keeps everything:
-\ its suites reopen engine packages (src/core/internal-mark.f).
+\ row, alone, is named by a path `A:B`.
 : KEEP? ( ptr u8 n bool ptr u8 n -- bool ) {: pa:ptr pu:n pub:bool na:ptr nu:n :}
-   ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX = if true exit then
    pu 0= if na nu 0 SHIPPED? exit then
    pa pu BOOT:NAMESPACE-WL RECORD-INDEX {: row:n :}
    row 0 < if false exit then

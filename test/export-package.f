@@ -1,7 +1,6 @@
 \ export-package.f - interpret-level `EXPORT` in fresh child engines. Inside an
 \ open package it publishes an existing word under its own tail; at top level it
-\ is the hb-build --repl export directive and consumes the name as a no-op, so a
-\ directive-carrying program (src/lib/prelude.f) still loads.
+\ consumes the name as a no-op.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -79,7 +78,7 @@ create XPK-EMPTY 1 allot
    s" 5 U2 . cr" XPK-LINE
    SB$ ;
 
-: XPK-DIRECTIVE-FORGE$ ( -- ptr u8 n )        \ top-level directive is a no-op
+: XPK-DIRECTIVE-FORGE$ ( -- ptr u8 n )        \ top-level EXPORT is a no-op
    SB-RESET
    s" : SQ ( n -- n ) dup * ;" XPK-LINE
    s" EXPORT SQ" XPK-LINE
@@ -255,7 +254,7 @@ create XPK-EMPTY 1 allot
 : XPK-POSITIVES ( -- )
    s" dual-name execution + checked callers" T-LABEL
    XPK-OK-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" 14" XPK-OUT? s" 10" XPK-OUT?
-   s" top-level EXPORT is the directive no-op" T-LABEL
+   s" top-level EXPORT is a no-op" T-LABEL
    XPK-DIRECTIVE-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" 36" XPK-OUT?
    s" generated ctor re-export allowed; checked alias caller compiles" T-LABEL
    XPK-CTOR-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" ctor-alias-ok" XPK-OUT?

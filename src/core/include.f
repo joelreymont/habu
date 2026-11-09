@@ -190,7 +190,7 @@ variable SLOT-N
 
 \ The current path as set, null for the top-level root, which a scope saves
 \ and restores: CURRENT$ would hand back CWD-BUF, which no top-level path may
-\ hold (RESET clears it, and CD and POPPATH release the path they replace).
+\ hold (CD and POPPATH release the path they replace).
 : CURRENT@ ( -- ptr u8 n )
    CURRENT-PTR CURRENT-U @ ;
 
@@ -275,8 +275,7 @@ private
 \ the top-level root (CURRENT$) and PROGRAM? counts it as loaded, so no stream
 \ or registry row names it: a row appended on first use would vanish under the
 \ rollback of a failed require or a discovery pass. With the cell clear nothing
-\ is derived; RESET forgets the path, and a captured image starts with the cell
-\ clear. Deriving writes only PROGRAM-BUF, so the caller's scratch survives.
+\ is derived. Deriving writes only PROGRAM-BUF, so the caller's scratch survives.
 PROGRAM-FILE-CELL RESERVED-PTR-U8-CELL PROGRAM-ARG
 create PROGRAM-BUF PATH-BYTES allot
 variable PROGRAM-U
@@ -563,9 +562,6 @@ public
 
 private
 
-: CLEAR-BYTES ( ptr u8 n -- )
-   0 ?do 0 over i + c! loop drop ;
-
 \ The path words act on the top level only: each open scope, a load's among
 \ them, holds the current path it replaced and restores it on exit.
 : TOP-ONLY ( ptr u8 n -- )
@@ -653,33 +649,6 @@ public
    NULL$ drop ix SLOT-FIELD !
    0 ix SLOT-U!
    ix SLOT-N ! ;
-
-\ A captured image starts at the working directory, so it refuses a saved
-\ path as it refuses an open scope, and releases CD's.
-: RESET ( -- )
-   SCOPES @ 0= 0= if
-      s" source root: an image cannot be saved inside a root scope" INCLUDE-IO-RC die
-   then
-   SLOT-N @ 0= 0= if
-      s" PUSHPATH: an image cannot be saved with a path pushed" INCLUDE-IO-RC die
-   then
-   RELEASE-CURRENT
-   CWD-BUF PATH-BYTES CLEAR-BYTES
-   CANON-BUF PATH-BYTES CLEAR-BYTES
-   NORMAL-BUF WORK-BYTES CLEAR-BYTES
-   CANDIDATE-BUF PATH-BYTES CLEAR-BYTES
-   OWNER-BUF PATH-BYTES CLEAR-BYTES
-   OWNER-SAVE PATH-BYTES CLEAR-BYTES
-   JOIN-BUF WORK-BYTES CLEAR-BYTES
-   WORK-BUF WORK-BYTES CLEAR-BYTES
-   ZBUF WORK-BYTES CLEAR-BYTES
-   REQUEST-BUF WORK-BYTES CLEAR-BYTES
-   ENGINE-BUF PATH-BYTES CLEAR-BYTES
-   PROGRAM-BUF PATH-BYTES CLEAR-BYTES
-   0 REQUEST-U !
-   0 CWD-U ! 0 CANON-U ! 0 NORMAL-U ! 0 CANDIDATE-U !
-   0 JOIN-U ! 0 OWNER-U !
-   0 ENGINE-U ! 0 ENGINE-READ ! 0 PROGRAM-U ! ;
 
 ;package
 
@@ -1074,9 +1043,8 @@ private
 \ first, a copied tree there would load as application source. A build's fresh
 \ registry holds no row, so its rows are relative to the working directory.
 \ Derived on first need from the executable's path and realpath, not through
-\ SOURCE-INPUT: it is a fact of this process. RESET forgets it, so a captured
-\ image derives the root of the executable that restores it. Deriving touches
-\ only JOIN, WORK, Z and CANON scratch, so NORMAL-BUF and CANDIDATE-BUF survive.
+\ SOURCE-INPUT: it is a fact of this process. Deriving touches only JOIN, WORK,
+\ Z and CANON scratch, so NORMAL-BUF and CANDIDATE-BUF survive.
 
 \ The running engine's path: on macOS the one execve received, in the
 \ executable_path= apple string past envp's terminator; on Linux
@@ -1145,8 +1113,8 @@ public
    ENGINE-FIND-FOR dup 0= if drop CWD$ exit then
    CANON-BUF swap ;
 
-\ A saved builder restores its original fallback root before loading source.
-\ RESET clears this override when the completed application image is saved.
+\ Override the fallback root; the caller restores the old one after its load
+\ (tools/check-verify-child.f).
 : ENGINE! ( ptr u8 n -- )
    ROOT-CANON
    CANON-BUF ENGINE-BUF CANON-U @ BYTE-COPY
@@ -2312,35 +2280,6 @@ public
    REQUIRE-N @ ;
 
 ;package
-
-\ The loader scratch a fresh pass may reset at any time: the open file, the read
-\ counters, the path buffer, the discovery base and the event log. None of it
-\ describes a load in flight.
-\ The path buffer's bytes and copy cursor are reset, not just its length: a
-\ capture taken afterwards would bake the build directory's path, or its length,
-\ into the engine, the last difference between two builds of one revision from
-\ two directories.
-: INCLUDE-RESET-SCRATCH ( -- )
-   INCLUDE-CLOSE
-   0 INCLUDE-U !
-   0 INCLUDE-RD !
-   INCLUDE-PATH-CAP 1 + 0 ?do 0 INCLUDE-PATH i ZBYTE! loop
-   0 INCLUDE-PATH-U !
-   0 REQUIRE-BASE !
-   EVENT-OFF
-   DISCOVERY-OFF
-   EVENTS-RESET ;
-
-\ Every source mapping is released when its load returns. Snapshot preparation
-\ requires no load in flight and clears only process-local resolver scratch.
-: INCLUDE-SNAPSHOT-PREPARE ( -- )
-   INCLUDE-DEPTH @ 0= 0= if
-      s" include: snapshot prepare under an open load" INCLUDE-DIE
-   then
-   INCLUDE-RESET-SCRATCH
-   SOURCE-INPUT:CLEAR-OBSERVED
-   RESET
-   REQUIRE-REG:PERSIST ;
 
 \ What the ENGINE provides, as opposed to what this process loaded: the boot
 \ prefix marks its own files `provided` before any user token runs, and freezing

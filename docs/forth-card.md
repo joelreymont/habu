@@ -154,7 +154,6 @@ before any `require`.
 | an `if` arm or loop body that changes depth | `E-MISMATCH` at `then`/`repeat` |
 | a local read or declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE` |
 | a `[:` past the quotation nesting ceiling | `E-UNCHECKABLE`; `--load` exits, `hb: quotation nesting full at <cap> levels` |
-| a nested `[:` in a file `tools/bootstrap.sh` compiles | the Gforth recovery build prints `[:` and exits; name the inner body |
 | a definition whose effect, a returned quotation's row included, is deeper than the ceiling | `E-UNCHECKABLE`, `effect too deep to record (depth <depth>, at most <cap>)` |
 | a definition taking more input cells than the ceiling, declared or inferred | `E-UNCHECKABLE`, `input row too wide to record (<cells> cells, at most <cap>)` |
 | a `trust`, `TRUSTED:` or `defer` row past either ceiling | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
@@ -191,7 +190,7 @@ before any `require`.
 | `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH` |
 | `: K ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) ;`: a fresh name the body supplies holds an input's region, or one region under two such names (forth.md **Rigid host-allocation identity domains**) | `E-RIGID-REGION-MISMATCH` |
 | `[: RG-ONE ;] dup execute swap execute SAME-ID`, or `[: RG-ONE ;] RUN` with `RUN ( [ -- x ] -- x )`: a fresh region a quotation's inputs do not carry is minted by each execution of the outermost quotation holding it at the top of its outputs or in a callback input's rows, and shared by the quotations that execution returns or hands on, at a direct call, a tick and an inferred effect alike; no callee or callback whose effect types one, generic or fresh, takes it | `E-RIGID-REGION-MISMATCH` |
-| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after the checker) in a checked body | `E-CAP-TRUSTED` — **on a sealed image only**; a whitebox image runs it; a top-level step that reads one is refused the same way, so its row goes in `src/core/cell-effects.f` |
+| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after the checker) in a checked body | `E-CAP-TRUSTED`; a top-level step that reads one is refused the same way, so its row goes in `src/core/cell-effects.f` |
 | a body the scan refuses with the hook cell empty (`0 set-check`) at tier 1 | ordinary compilation uses its declaration, with the reason on stderr and no row authority; a native build requires the prefix scan and refuses before publication (forth.md **Rules learned by refusal**) |
 | a checker scan, `generates:`, a type registration or another checker store write in a native compile callback | `E-COMP-STATE`, catchable, before anything changes |
 
@@ -486,7 +485,7 @@ holds an address**.
   `,`, `evaluate`, a load or a package keyword run on a task's, an exposed
   region's or a callback's thread, with nothing on fd 2: `evaluate` is refused
   before its text is read, so a keyword in that text never runs. The main
-  thread compiles while tasks run; `cp!`, `ndict!` and `seed-ndict!` exit 79 on
+  thread compiles while tasks run; `cp!` and `ndict!` exit 79 on
   it too, silently, while any task is live. `NLEASE`'s checks throw
   `NLEASE:E-TASK` on a task's thread.
 - `0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op:

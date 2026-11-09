@@ -17,7 +17,7 @@ using SOURCE-ROOT
 
 \ Each entry stores its path and the root it resolved under, each at most
 \ PATH-CAP bytes, so the pool holds EC-MAX of both and a walk is refused for its
-\ entry count alone. The largest keyed walk, tools/native-build.f, is well under.
+\ entry count alone.
 $400 constant EC-MAX
 EC-MAX 2 * PATH-CAP * constant EC-POOL-CAP
 

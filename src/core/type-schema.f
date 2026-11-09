@@ -300,13 +300,8 @@ private
 \ ---- rewind to a recorded pair ----------------------------------------------
 \ Every place that lowers the schema counts comes through REWIND, which scrubs
 \ the retired nodes and roots and moves no frame depth: SCHEMA-ROLLBACK-RESTORE
-\ (the checker frame), src/core/sumtype.f TDECL-RESTORE and type-family.f
-\ PFX-REWIND. SCHEMA-RESET runs at load, before REWIND exists, and scrubs itself.
-\ The prefix boundary is not a scope: it records COUNTS beside the family
-\ registry's counters instead of holding a frame open across the boot.
-
-: COUNTS ( -- n n )
-   SCH-N @ SCH-ROOT-N @ ;
+\ (the checker frame) and src/core/sumtype.f TDECL-RESTORE. SCHEMA-RESET runs
+\ at load, before REWIND exists, and scrubs itself.
 
 public
 

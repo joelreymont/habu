@@ -116,8 +116,10 @@ variable RC
    {: engine:ptr engineu:n tree:ptr treeu:n path:ptr pathu:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" ARGV+
-   s" tools/native-build.f" ARGV+
+   s" tools/hb-build.f" ARGV+
    s" --" ARGV+
+   s" --engine" ARGV+
+   s" -o" ARGV+
    path pathu ARGV+
    ENV!
    engine engineu >LEN tree treeu >LEN
@@ -127,10 +129,10 @@ variable RC
 
 : NAMES! ( ptr u8 n ptr u8 ptr n -- )
    {: path:ptr pathu:n dst:ptr up:ptr :}
-   pathu s" .names" nip + PATH-CAP > if E-FS-PATH throw then
+   pathu s" .map" nip + PATH-CAP > if E-FS-PATH throw then
    path dst pathu BYTE-COPY
-   s" .names" dst pathu + swap BYTE-COPY
-   pathu s" .names" nip + up ! ;
+   s" .map" dst pathu + swap BYTE-COPY
+   pathu s" .map" nip + up ! ;
 
 : SAME-PRODUCT ( ptr u8 n ptr u8 n -- )
    {: a:ptr au:n b:ptr bu:n :}

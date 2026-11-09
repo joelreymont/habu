@@ -36,9 +36,8 @@ through the tier-0 JIT as it reads. At `;` a hook runs the checker over the
 source text again (`src/core/check-hook.f:109`), filling a token tape
 (`src/compiler/native/tape.f`). Tier 1 rebuilds the structure from that tape in
 an elaborator of its own (`src/compiler/native/elaborate.f`). What the control
-words mean is written down about nine times, among them
-`src/compiler/native/hir-word.f:1418-1643`, `src/core/type-family.f:2598` and
-`bootstrap/cg/forth.fs:4110`.
+words mean is written down about eight times, among them
+`src/compiler/native/hir-word.f:1418-1643` and `src/core/type-family.f:2598`.
 
 **The checker records what the codegen reads, and nothing more.** Each
 construct is one event:
@@ -81,37 +80,19 @@ them ([Build host, product and target](xcomp.md#build-host-product-and-target)).
 [Cross-compilation](architecture.md#cross-compilation) says which platforms a
 build names. A stripped application image carries its code and data with no
 compiler, dictionary or REPL ([Images](architecture.md#images)). The test
-suite builds `hb` once and runs every test against it. The two-generation build
-and the build from zero ([bootstrap.md](bootstrap.md)) are occasional
-integration tests.
-**Now:** the engine target loads sources into a fresh window of the running
-engine and captures its memory. `tools/build-fixpoint.f` also compiles
-glued source text until two generations build the same image, and test
-files build engines of their own.
-
-The public native engine target is:
+suite builds `hb` once and runs every test against it. The convergence check
+([bootstrap.md](bootstrap.md#convergence-check)) is an occasional integration
+test.
+**Now:** `tools/hb-build.f` links this tree's hb in its own process
+(`tools/hb-build-core.f` `ENGINE`) and writes it as data:
 
 ```sh
 bin/hb --load tools/hb-build.f -- --engine -o bin/hb-next
 ```
 
-`--target <profile>` selects the platform before loading the target sources;
-`--whitebox` requests an unsealed test engine. The same command builds hb with
-a program's files, its `MAIN` run before the REPL, with `--repl source.f -o
-out`, or a stripped program with `source.f -o out`. `tools/native-build.f` accepts its previous output-first
-syntax for callers that still use it. A process that preloaded a compiler or
-backend keeps the in-process native driver so its live definitions remain
-available.
-
-An engine build reads the selected files through the native FILE session and
-uses its existing definition cache: every invocation writes the image and its
-`.map` sidecar, and definitions whose dependencies still match may reuse their
-cached native emission. The ordinary loader still executes file-level
-initialization during the build.
-Target compilation and capture run in the native build scope. Once the capture
-owns its bytes, the uncaptured source writer loads, then restores the previous
-tier. Its definitions use the fresh target layout and do not enter the emitted
-engine.
+The same command builds hb with a program's files, its `MAIN` run before the
+REPL, with `--repl source.f -o out`, or a stripped program with `source.f -o
+out`. Every build writes the image and its `.map` sidecar.
 
 **Incremental-build implementation guidance.** Read files from disk and use
 files as compilation units, following the C compiler / make model. Packages
@@ -130,11 +111,8 @@ inside the code are relative, so they hold at any base. The linker lists every
 stored address that points into the image, and the boot adds the load offset
 to each, as dyld and ld.so do for a position-independent C program. The boot
 maps DATA at its address and refuses to run when it cannot get it.
-**Now:** only a stripped ARM64 program follows this rule: hb-build's stripped
-mode builds it in its own process (`tools/hb-build-core.f` `APP`) and
-`LINKER:WRITE` writes it (`src/habu/link-data.f` `LINK-STRIPPED`). Every other
-ARM64 image's boot maps the code region wherever the
-kernel gives it near a hint, then relocates data and patches call sites by name
-(`src/habu/habu2.f` `EM-AOT-RELOC-DATA`, `EM-AOT-PATCH-NAMED-SITES`). The
+**Now:** every ARM64 image hb-build makes follows this rule: it builds hb or
+the program in its own process (`tools/hb-build-core.f`) and `LINKER:WRITE`
+writes it (`src/habu/link-data.f` `LINK-ENGINE`, `LINK-STRIPPED`). The
 x86-64 linker places code at a fixed address (`src/habu/link-x64.f` `LAYOUT`),
 and nothing in the product build calls it.

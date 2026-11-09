@@ -9,6 +9,4 @@ When to run what, and what a suite file must satisfy, is in `docs/gate.md`.
 - `compiler/` — compiler, capture and image tests; `wasm/`, `browser/` — Wasm
   and browser-host tests; `db/` — the private PostgreSQL cluster;
   `policy/` and `fixtures/` — subjects other tests load.
-- Non-Habu files are device peers (`*.py`, `wasm/*.mjs`, `browser/*.mjs`) and
-  the Gforth recovery checks (`bootstrap-*.fs`, `nf.fs`) `tools/bootstrap.sh`
-  runs.
+- Non-Habu files are device peers (`*.py`, `wasm/*.mjs`, `browser/*.mjs`).

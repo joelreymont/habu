@@ -34,25 +34,23 @@ DYNAMIC-BUFFER FILES u8
       s" chain-run: host gen1 gen2 gen3 TMPDIR required" 64 die
    then ;
 
-\ A native build that failed, by its exit status; its stderr names the step.
-\ The build exits PROCESS:TIMEOUT-RC when a deadline expired in it
-\ (tools/native-build-args.f), and that verdict is thrown again as
-\ E-PROC-TIMEOUT so it reaches the top of the chain. Any other status is a
-\ failed build.
-: BUILD-FAILED ( CMD:command n -- CMD:command ) {: rc:n :}
-   s" chain-run: native-build stderr: " type CMD:ERR$ type cr
-   rc PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+\ A build that failed; its stderr names the file it was loading. A build past
+\ BUILD-MS is killed, and CMD:RUN-RC throws E-PROC-TIMEOUT for it.
+: BUILD-FAILED ( CMD:command n -- CMD:command )
+   drop
+   s" chain-run: hb-build stderr: " type CMD:ERR$ type cr
    E-BUILD-STATUS throw ;
 
 : BUILD-IN ( ptr u8 n ptr u8 n ptr u8 n CMD:command -- CMD:command )
    >r {: host:ptr hostu out:ptr outu tmp:ptr tmpu :} r>
    s" --load" CMD:ARG+
-   s" tools/native-build.f" CMD:ARG+
+   s" tools/hb-build.f" CMD:ARG+
    s" --" CMD:ARG+
+   s" --engine" CMD:ARG+
+   s" -o" CMD:ARG+
    out outu CMD:ARG+
    s" TMPDIR" tmp tmpu CMD:ENV+
    s" HABU_UNDER_TEST" host hostu CMD:ENV+
-   s" HABU_FIXPOINT_ENGINE" host hostu CMD:ENV+
    host hostu BUILD-MS >MS CMD:RUN-RC MATCH result
       ok OF drop ENDOF
       err OF BUILD-FAILED ENDOF

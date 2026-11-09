@@ -7,10 +7,9 @@
   `--load` prefix; `jit.f`, `rt.f`, `regalloc.f` are its parts.
 - `layout.f` — image, dictionary and snapshot layout and the DATA bands.
 - `interpret.f` (`outer.f`, `packages.f`, `definers.f`, `repl.f`) and `main.f` —
-  the interpret loop and command line in Habu; `docs/architecture.md`
-  "Interpreter" says where each runs.
+  the interpret loop and command line in Habu (`docs/architecture.md`
+  "Interpreter").
 - `*-x64.f` — the x86-64 engine (`kernel-x64.f` bodies, `boot-x64.f` entry);
   `link-wasm.f` links a captured window into one Wasm module.
-- `aot-*.f`, `app-image*.f`, `snap*.f` — capture and saved images; `stage2.f`
-  and `stdin.f` — drivers `tools/build-fixpoint.f` runs; `*-abi.f` — fixed
-  cells shared with source-loaded code.
+- `aot-*.f`, `snap*.f` — capture and saved images; `*-abi.f` —
+  fixed cells shared with source-loaded code.

@@ -46,12 +46,10 @@ public
    AOT-REC-N @ dup 0 < swap AOT-REC-MAX > or if BAD then
    AOT-REC-N @ 0= if 0 0= 0= exit then
    s" CHECKER-REG" $FFFFFFFF FIND {: owner:n :}
-   s" PREFIX-MARK" $FFFFFFFF FIND {: mark:n :}
    s" NATIVE-RUNTIME" $FFFFFFFF FIND {: runtime:n :}
-   owner 0 < mark 0 < and runtime 0 < and if 0 0= 0= exit then
+   owner 0 < runtime 0 < and if 0 0= 0= exit then
    owner 0 < if BAD then
    s" CAPTURE-PREPARE" runtime MEMBER? 0= if BAD then
-   s" CURSORS" mark MEMBER? 0= if BAD then
    0 0= ;
 
 ;package

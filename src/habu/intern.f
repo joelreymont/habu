@@ -26,10 +26,9 @@ $80000 constant ARENA-CAP            \ 512 KB of bodies per segment
 8192 constant ROWS-MAX               \ distinct bodies per segment
 ROWS-MAX 2 * constant SLOTS          \ a power of two, twice ROWS-MAX
 
-\ An owner is a pool's first segment, which selects the pool, a later segment of
-\ one, or the compact, already-full rows a native build imports. A first segment
-\ is closed once its window is latched: the pool opens no segment after that.
-0 constant ROLE-IMPORTED
+\ An owner is a pool's first segment, which selects the pool, or a later segment
+\ of one. A first segment is closed once its window is latched: the pool opens no
+\ segment after that.
 1 constant ROLE-HEAD
 2 constant ROLE-MORE
 3 constant ROLE-CLOSED
@@ -81,7 +80,7 @@ $38 constant OWNER-BYTES
    \ Allot leaves old bytes intact. Unused rows and arena capacity belong to
    \ this new owner too, and must not retain the build host's scratch values.
    owner cap OWNER-SIZE CLEAR-CELLS
-   role ROLE-IMPORTED <> if arena ARENA-CAP CELL + CLEAR-CELLS then
+   arena ARENA-CAP CELL + CLEAR-CELLS
    0 owner NEXT-FIELD !
    arena owner ARENA-FIELD LINK!
    cap owner CAP-FIELD !
@@ -171,15 +170,6 @@ variable SOURCE-ON
       address body size ROW-CONTAINS? if body size true unloop exit then
    loop
    NULL-PTR 0 false ;
-
-: IMPORT-CHECK ( n ptr n ptr n -- ) {: rows:n offsets:ptr lengths:ptr :}
-   rows 0 < rows ROWS-MAX > or if E-NSTR-BODY throw then
-   rows 0 ?do
-      offsets i cells + @ {: off:n :}
-      lengths i cells + @ {: size:n :}
-      off 0 < off ARENA-CAP > or if E-NSTR-BODY throw then
-      size 0 < size ARENA-CAP off - > or if E-NSTR-BODY throw then
-   loop ;
 
 \ ---- finding a body that is already here --------------------------------------
 \ Masked by an `and` against a positive constant so a hash whose top bit ran
@@ -383,24 +373,6 @@ public
    ['] STRING data-base NSTR-ABI:INTERN-CELL + xt! ;
 
 private
-
-\ Only the build driver may import the retained owner's row tables; it proves
-\ the arena belongs to the capture first. The driver finds this private word by
-\ name after the target loads, since the target's pool did not exist when the
-\ driver compiled. A public wrapper would let any source import literal
-\ ownership, and an engine cell costs a fixed slot and a layout row, so the
-\ capture keeps the name on purpose
-\ (src/habu/aot-capture.f ACAP-KEEP?).
-: IMPORT-ROWS ( ptr u8 n ptr n ptr n -- )
-   {: arena:ptr rows:n source-off:ptr source-len:ptr :}
-   rows source-off source-len IMPORT-CHECK
-   align here {: owner:ptr :}
-   rows OWNER-SIZE allot
-   owner arena rows ROLE-IMPORTED OWNER-INIT
-   source-off BYTE-VIEW owner OFFSETS BYTE-VIEW rows cells BYTE-COPY
-   source-len BYTE-VIEW owner LENGTHS BYTE-VIEW rows cells BYTE-COPY
-   rows owner ROWS-FIELD !
-   owner PUBLISH ;
 
 \ FILE selection predicts literal placements across its entire chosen tree.
 \ The planned rows borrow bodies from owned prepared ranges; no pool or DATA

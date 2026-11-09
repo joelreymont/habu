@@ -1,7 +1,6 @@
 \ catch-frame.f - a caught throw restores the whole caller frame: data SP, user
 \ return-stack depth (RSP-CELL), loop-stack depth (LOOPSP-CELL) and the handler
-\ chain. tools/bootstrap.sh also runs this file on the Gforth-recovered
-\ candidate: native and recovery agree.
+\ chain.
 
 require src/lib/test.f
 

@@ -1,7 +1,7 @@
 \ engine-error-package.f - engine failure ABI: exact exits 86..88, the post-seal
 \ checker bridge, and a definition no authority can place in a package failing
-\ closed with 70 and naming the refused state on fd 2. Native gates run it on
-\ HABU_UNDER_TEST, bootstrap.sh on the Gforth-recovered candidate.
+\ closed with 70 and naming the refused state on fd 2. The suite runs it on
+\ HABU_UNDER_TEST.
 
 require src/lib/error.f
 require src/lib/string.f

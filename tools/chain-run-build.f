@@ -1,9 +1,9 @@
 \ chain-run-build.f - CLI entry for the checked generation-chain driver.
 \
 \ Exit status: 0 at a fixpoint; 64 for a refused command line; PROCESS:TIMEOUT-RC
-\ (124, src/lib/process.f) when a deadline expired, in this process or in a native
-\ build that exited with it; CHAIN-RUN:FAIL-RC for a non-fixpoint and for every
-\ other throw, which it names first as `chain-run: uncaught throw code N`.
+\ (124, src/lib/process.f) when a build's deadline expired; CHAIN-RUN:FAIL-RC for
+\ a non-fixpoint and for every other throw, which it names first as
+\ `chain-run: uncaught throw code N`.
 
 require src/lib/process.f
 require tools/chain-run.f

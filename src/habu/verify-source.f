@@ -3174,8 +3174,8 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    VISIT-CUR @ ON-DEFINITION ;
 
 \ Inside an open package EXPORT re-exports (CHECKER-EXPORT aliases the
-\ source's checked effect under its tail); at top level it is the hb-build
-\ --repl export directive, a no-op the scan consumes.
+\ source's checked effect under its tail); at top level it is a no-op the scan
+\ consumes.
 \ The checker refuses a duplicate tail only
 \ once the name resolves (src/core/checker.f EXPORT-RECORD), as --load does, so
 \ the refusal is caught here and kept at the name as written.

@@ -35,8 +35,7 @@ Tests of behavior baked into the engine run on a product candidate built from
 a private copy of the matching tree with a ready native engine as host:
 
 ```sh
-HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST TMPDIR=$TMP \
-  $HOST --load tools/native-build.f -- $OUT
+TMPDIR=$TMP $HOST --load tools/hb-build.f -- --engine -o $OUT
 ```
 
 An engine build takes at most 5 minutes; a build that runs out of its limit has
@@ -52,16 +51,12 @@ it (tools/image-names.f), so a stale map names the wrong words.
 bin/hb --load test/run.f </dev/null
 ```
 
-The registry runs only on a `tools/native-build.f` product. The engine
-`tools/bootstrap.sh` installs is the recovery engine and cannot run it: after a
-recovery, use that engine as `$HOST` above and gate its product. The
-generation chain's fixpoint is likewise its last generation, never the seed it
-was given.
+The convergence check's fixpoint is its last generation, never the host it
+was given; after a recovery, gate the converged hb, not the trusted one.
 
 Multi-generation convergence is a separate check for codegen, self-hosting or
 capture changes that can alter successive engine output; see
-[bootstrap.md](bootstrap.md#generation-chain-check). The Gforth recovery checks
-below are also separate from the registry.
+[bootstrap.md](bootstrap.md#convergence-check).
 
 ### A lane rebased over code its change reaches
 
@@ -208,21 +203,6 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
   graph); such a test corrupts the file on disk rather than steering the
   producer through a test-only switch. Platform rows are switched by
   platform, never trimmed.
-
-## Separate Gforth recovery checks
-
-No change runs a Gforth check (DECISIONS.md "recovery"). `bin/hb --load
-test/nf-path-test.f`, which runs the Gforth fixture, the
-[no-binary recovery check](bootstrap.md#periodic-no-binary-check) and the
-[DDC audit](bootstrap.md#ddc-audit-diverse-double-compiling) run only when a
-recovery audit is asked for. None is part of the native registry or a
-per-commit or release gate.
-
-If a private `XDG_CACHE_HOME` is used for a Gforth check, first check
-`gforth -e bye` with that environment. A Gforth snapshot may reopen precompiled
-`libcc-tmp` libraries from its cache: an empty private cache then fails before
-any Habu fixture runs. Copy the installed Gforth cache into the private cache,
-preserving symlinks, and verify Gforth starts before running the check.
 
 ## Verification claims
 

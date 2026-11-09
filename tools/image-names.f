@@ -1,6 +1,6 @@
-\ Read native-build's optional <image>.map by column name; unknown versions
-\ and malformed rows supply no name. Signing rewrites the image, so rows match
-\ by span.
+\ Read an image's optional <image>.map (src/habu/link-map.f writes it) by
+\ column name; unknown versions and malformed rows supply no name. Signing
+\ rewrites the image, so rows match by span.
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f

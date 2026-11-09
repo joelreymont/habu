@@ -1,7 +1,6 @@
 \ seed.f - checked native seed installation helpers: validate against
-\ HABU_SEED_SHA256 when set, promote to a signed bin/hb, smoke it, then refresh
-\ with `tools/build-fixpoint-main.f -- install --force`. The --force keeps the
-\ content-key stamp skip from standing in for the self-rebuild fixpoint.
+\ HABU_SEED_SHA256 when set, promote to a signed bin/hb, smoke it, then rebuild
+\ bin/hb from current source with `tools/hb-build.f -- --engine -o bin/hb`.
 
 require src/lib/error.f
 require src/lib/span.f
@@ -14,7 +13,8 @@ require src/core/sha256.f
 
 64 constant SEED-SHA256-HEX-U
 10000 constant SEED-SMOKE-TIMEOUT-MS
-1200000 constant SEED-BUILD-TIMEOUT-MS
+\ ms per engine build: docs/gate.md "Qualifying a candidate"
+300000 constant SEED-BUILD-TIMEOUT-MS
 4096 constant SEED-SMOKE-OUT-CAP
 4096 constant SEED-SMOKE-ERR-CAP
 32768 constant SEED-BUILD-OUT-CAP
@@ -166,22 +166,13 @@ variable SEED-LAST
 : SEED-PREPARE-BUILD-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" src/lib/error.f"  >LEN PROC-ARGV+
-   s" src/lib/string.f"  >LEN PROC-ARGV+
-   s" src/lib/memory.f"  >LEN PROC-ARGV+
-   s" src/lib/fs.f"  >LEN PROC-ARGV+
-   s" src/lib/fs-mutate.f"  >LEN PROC-ARGV+
-   s" src/lib/process.f"  >LEN PROC-ARGV+
-   s" src/lib/process-argv.f"  >LEN PROC-ARGV+
-   s" src/lib/process-env.f"  >LEN PROC-ARGV+
-   s" src/lib/codesign.f"  >LEN PROC-ARGV+
-   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
-   s" tools/build-fixpoint-main.f"  >LEN PROC-ARGV+
+   s" tools/hb-build.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
-   s" install"  >LEN PROC-ARGV+
-   s" --force"  >LEN PROC-ARGV+ ;
+   s" --engine"  >LEN PROC-ARGV+
+   s" -o"  >LEN PROC-ARGV+
+   s" bin/hb"  >LEN PROC-ARGV+ ;
 
-: SEED-RUN-BUILD-FIXPOINT ( ptr u8 n -- ) {: hb:ptr hbu :}
+: SEED-RUN-BUILD ( ptr u8 n -- ) {: hb:ptr hbu :}
    SEED-PREPARE-BUILD-ARGV
    hb hbu >LEN
    SEED-BUILD-OUT SEED-BUILD-OUT-CAP >LEN
@@ -190,7 +181,7 @@ variable SEED-LAST
      ok  OF PCAP-CAPTURED:UNMAKE 2drop ENDOF
      err OF PCAP-FAILED:UNMAKE  drop {: outu:len erru:len :}
              outu LEN>N erru LEN>N SEED-REPLAY-BUILD-OUTPUT
-             s" seed: build-fixpoint failed" SEED-ERR
+             s" seed: hb-build failed" SEED-ERR
              SEED-LF 1 SEED-ERR
              E-BUILD-STATUS throw ENDOF
    ;MATCH ;
@@ -199,7 +190,7 @@ variable SEED-LAST
    src srcu SEED-VERIFY-OPTIONAL-SHA256
    src srcu dst dstu SEED-INSTALL
    dst dstu SEED-SMOKE
-   dst dstu SEED-RUN-BUILD-FIXPOINT ;
+   dst dstu SEED-RUN-BUILD ;
 
 : SEED-USAGE ( -- )
    s" usage: hb --load tools/seed-main.f -- /path/to/hb-seed" SEED-USAGE-RC die ;

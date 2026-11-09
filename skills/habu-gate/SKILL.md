@@ -10,7 +10,7 @@ Use native `bin/hb` for all gate work. Select checks using the repository's
 tests through their owning load paths.
 
 When changed behavior is baked into the engine, build a private product from
-the exact tree with `tools/native-build.f`, then copy the candidate and its
+the exact tree with `tools/hb-build.f -- --engine -o <out>`, then copy the candidate and its
 `.map` file into that private tree's `bin/` as `hb` and `hb.map`.
 
 When the impact rules require the full native gate, run it there:
@@ -24,5 +24,4 @@ testing uncached behavior. See [the gate instructions](../../docs/gate.md) for
 candidate setup and execution.
 
 Run generation convergence checks only for the impacts named in the testing
-policy; [bootstrap.md](../../docs/bootstrap.md) gives their commands. No change
-runs a Gforth recovery check.
+policy; [bootstrap.md](../../docs/bootstrap.md) gives their commands.

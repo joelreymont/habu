@@ -690,11 +690,6 @@ variable ACAP-ENTRY-N
 
 \ Dynamic name uses the derived rule cannot see: consumers resolve these names
 \ after this engine is captured.
-\ INTERN:IMPORT-ROWS is a private build-driver seam resolved through the shipped
-\ dictionary; the alternatives are a public wrapper, which would let any source
-\ import literal ownership, or a fixed engine cell.
-\ The drift guard is the build's refusal "native-build: literal importer
-\ missing".
 \ The FILE cache resolves TFAM:FILE-REF-RESET/USE, TFAM:FILE-IDENTITY$/FILE-FIND
 \ and CHECKER-REG:FILE-CON-RESET/USE after capture without reloading their
 \ sources. The definition cache binds and clears CHECKER-REG's publication
@@ -716,8 +711,6 @@ variable ACAP-ENTRY-N
    if true exit then
    a u s" CHECKER-STORAGE-CELLS" CORE-STR=CI
    k ACAP-REC-DST 40 + ACAP-W32@ 0= and if true exit then
-   a u s" IMPORT-ROWS" CORE-STR=CI
-   k s" INTERN" ACAP-KEEP-PKG? and if true exit then
    a u s" FILE-REF-RESET" CORE-STR=CI
    a u s" FILE-REF-USE" CORE-STR=CI or
    a u s" FILE-IDENTITY$" CORE-STR=CI or
@@ -2332,9 +2325,7 @@ public
    prepare AOT-ARM:B0 @ < prepare AOT-ARM:B1 @ >= or if
       s" aot-capture: checker preparation is outside captured code" 74 die then
    s" CHECKER-REG" s" DECLARATIONS" ACAP-MEMBER? 0= if
-      s" aot-capture: persistent payload has no captured checker declaration owner" 74 die then
-   s" PREFIX-MARK" s" CURSORS" ACAP-MEMBER? 0= if
-      s" aot-capture: persistent payload has no completed core prefix" 74 die then ;
+      s" aot-capture: persistent payload has no captured checker declaration owner" 74 die then ;
 
 private
 CAST: ACAP-RECORD-CAPTURE-XT ( n -- [ [ n -- n ] [ -- ] -- ] )

@@ -58,10 +58,6 @@ variable RC
    s" host-hb" HOST HOST-U ROOT-PATH!
    s" rebuilt-hb" REBUILT REBUILT-U ROOT-PATH! ;
 
-\ A host numbers the names it holds a PRIM: row for ahead of all others, and
-\ checker.f TRANSFER-CHECKED copies the prefix's effects (src/ up to
-\ src/core/layout-valid.f) in the host's symbol order: a word without its row
-\ moves its own record, and one with an extra row renumbers every later symbol.
 \ The row is found at a line start up to its name, so a changed effect still
 \ matches, and replaced through its line end.
 : ROW$ ( -- ptr u8 n ) S\" \nPRIM: CHECKER-STORAGE-INFO " ;
@@ -124,8 +120,10 @@ variable RC
    {: engine:ptr engineu:n tree:ptr treeu:n path:ptr pathu:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" ARGV+
-   s" tools/native-build.f" ARGV+
+   s" tools/hb-build.f" ARGV+
    s" --" ARGV+
+   s" --engine" ARGV+
+   s" -o" ARGV+
    path pathu ARGV+
    ENV!
    engine engineu >LEN tree treeu >LEN
@@ -149,12 +147,12 @@ variable RC
 
 \ The host is this tree's engine built from a copy whose checker.f gives
 \ CHECKER-STORAGE-INFO's PRIM: row to CHECKER-CAPTURE-PREPARE. Three builds run
-\ tools/native-build.f in fresh processes: the reference, the host, and the
-\ host's rebuild of the copied tree. Private copies keep all three builds on
-\ exactly the same source bytes, and the variant's edit away from the checkout.
-\ The printed private directory keeps both source trees, the host and both
-\ products with their name maps; `tools/two-generation-build.f -- --compare`
-\ names the first differing offset of a failing pair.
+\ `tools/hb-build.f -- --engine` in fresh processes: the reference, the host,
+\ and the host's rebuild of the copied tree. Private copies keep all three
+\ builds on exactly the same source bytes, and the variant's edit away from the
+\ checkout. The printed private directory keeps both source trees, the host and
+\ both products with their name maps; `cmp` names the first differing offset of
+\ a failing pair once `codesign --remove-signature` has stripped both.
 : RUN ( -- )
    T-RESET
    SETUP

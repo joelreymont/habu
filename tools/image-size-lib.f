@@ -1729,28 +1729,6 @@ variable FALL-N                                      \ modeled fall-through edge
       then
    loop ;
 
-\ The capture keeps one private word by name outside the language surface:
-\ tools/native-build-core.f resolves INTERN:IMPORT-ROWS after loading the target
-\ package. A surface-only census would call it dead, and a compactor removing
-\ its span would fail the next native build at TARGET-IMPORTER. The root is
-\ explicit and package-qualified, not a widened root set or private allowlist.
-: ROOT-PKG-WORD ( ptr u8 n ptr u8 n -- ) {: pkg:ptr pkgu:n name:ptr nameu:n :}
-   REC-N @ 0 ?do
-      i CREC-PKG? 0= i REC-ROLE ROLE-PRIVATE = and if
-         i REC-WID WPKG @ {: p:n :}
-         p REC-NAME {: pa:n pu:n :}
-         pu pkgu = pa pu pkg pkgu IMAGE-STR= and if
-            i CREC-NAME {: na:n nu:n :}
-            nu nameu = na nu name nameu IMAGE-STR= and if
-               i CREC-START MARK-ENTRY
-            then
-         then
-      then
-   loop ;
-
-: ROOTS-CAPTURE ( -- )
-   s" INTERN" s" IMPORT-ROWS" ROOT-PKG-WORD ;
-
 \ Only bytes outside both the record and stripped-span indices are roots.
 \ Scanning an unreachable span here would root all of its callees by mistake.
 : SCAN-UNOWNED ( -- )
@@ -1971,7 +1949,7 @@ $FFFF constant ROW-MASK
    .SPAN-ROWS ;
 
 : CENSUS-SURFACE ( -- )
-   REACH-RESET  ROOTS-SURFACE  ROOTS-CAPTURE  ROOTS-ENTRY  SWEEP
+   REACH-RESET  ROOTS-SURFACE  ROOTS-ENTRY  SWEEP
    s" dictionary-surface" REPORT-REACH ;
 
 : CENSUS-ENTRY ( -- )

@@ -10688,8 +10688,7 @@ public
 \   immediate/wide bits; no forwarding body. Internal source words are refused.
 \   A does> definer's export publishes its clause in the slot above
 \   (C-EXPORT-CLAUSE-ROOM, C-EXPORT-CLAUSE-RECORD).
-\ - Top level: the hb-build --repl export directive (src/lib/prelude.f rides
-\   it); the engine consumes the name as a no-op so such programs stay loadable.
+\ - Top level: the engine consumes the name as a no-op.
 \ CHECKER-EXPORT sees the original spelling and throws on unsigned/prim sources.
 \ Native walls without the hook: missing name ($4A), sealed source prefix
 \ (C-QUALIFY-SEAL-GUARD, ENGINE-ERROR:SEAL-PACKAGE), undefined word (rc 70),
@@ -13701,7 +13700,7 @@ package LABELS
    LBL PROF:LPROFH !  LBL PROF:LPROFDUMP !  LBL PROF:LPROFFIND !  LBL PROF:LPROFEDGE !
    LBL PROF:LPROFJSON !  LBL PROF:LPROFNUM !  LBL PROF:LPROFPCT !
    LBL PROF:LPROFNAME !  LBL PROF:LPROFSYNC !
-   LBL PROF:LPROFROW !  LBL PROF-ABI:LPROFREWIND !
+   LBL PROF:LPROFROW !
    LBL PROF-ABI:LPROFTRIM !  LBL PROF-ABI:LPROFRECLAIM !
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !

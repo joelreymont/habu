@@ -3323,59 +3323,6 @@ package TFAM
    PF-TX-P PF-TX-BOOT PF-TX-CAP-V @ PF-TX-REC * ARENA-BOOT-RESTORE
    PF-TX-CAP-INIT PF-TX-CAP-V ! ;
 
-\ ---- the core-prefix boundary: this file's half -------------------------------
-\ checker.f CHECKER-BOUND owns the mark and the seam; these bodies hang off
-\ REG-EXT-BND-SAVE-XT / REG-EXT-BND-RESTORE-XT. Without them the registries keep
-\ every row the boot declared after the mark, and a later snapshot redeclares
-\ one on the first `require` and dies `duplicate family` (measured, at
-\ 'option'). It is a recorded set, not a frame: the SAVE/RESTORE stack moves in
-\ lockstep with the checker's core frame, and an unpaired push held across the
-\ boot fails the first declaration after it (measured: throw 7113). It records
-\ TF-SAVE's counters and runs TF-RESTORE-TOP's body minus TF-RELEASE (the pop).
-\ Both halves refuse a live field transaction or an open rollback frame: a
-\ recorded set describes the registries only when nothing is half-declared.
-
-;package
-
-package SCHEMA-REG
-
-private
-
-variable BTFAM  variable BSTRU  variable BPK  variable BSUMV  variable BLAY
-variable BPF    variable BPFC   variable BSCH  variable BSCHR
-
-: AT-REST ( -- )
-   PF-TX-DEPTH @ IF
-      s" checker: prefix boundary inside field transaction" 76 die THEN
-   TF-RBF-DEPTH @ IF
-      s" checker: prefix boundary inside family rollback scope" 76 die THEN
-   SCH-RBF-DEPTH @ IF
-      s" checker: prefix boundary inside schema rollback scope" 76 die THEN ;
-
-: PFX-MARK ( -- )
-   AT-REST
-   TFAM-N @ BTFAM !
-   TF-STR-U @ BSTRU !
-   TF-PK-N @ BPK !
-   SUMV-N @ BSUMV !
-   LAY-N @ BLAY !
-   PF-N @ BPF !
-   PF-COMMIT-N @ BPFC !
-   COUNTS BSCHR ! BSCH ! ;
-
-: PFX-REWIND ( -- )
-   AT-REST
-   BSCH @ BSCHR @ REWIND
-   BTFAM @ BSTRU @ BPK @ BSUMV @ BLAY @ TFAM-REWIND
-   BPF @ BPFC @ PF-REWIND ;
-
-\ Installed, not published: the boundary's one public seam is the checker's, so
-\ these registries cannot be rewound at the boundary by anything else.
-: INSTALL-BOUND ( -- )
-   [: PFX-MARK ;] is REG-EXT-BND-SAVE-XT
-   [: PFX-REWIND ;] is REG-EXT-BND-RESTORE-XT ;
-INSTALL-BOUND
-
 ;package
 
 package TFAM

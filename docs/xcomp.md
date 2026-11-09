@@ -154,7 +154,9 @@ is not covered: ARM64 answers the signalling one quieted, SSE the left one.
 
 The x86-64 backend shares the target-free compiler with ARM64 and forks
 nothing else by accident. Linux x86-64 is the target; the ARM64 engine
-cross-builds it.
+cross-builds it. x86-64 builds are off until x86-64 moves onto the linker
+(DECISIONS.md "the old builders"): the builder this section names,
+`tools/native-build.f`, is gone.
 
 A second architecture touches five layers: the assembler
 (`src/arch/x86-64/`), the engine primitive bodies (`src/habu/kernel-x64.f`,
@@ -497,11 +499,8 @@ is `src/os/AGENTS.md`.
 
 The target is wired in exactly these source-list owners:
 
-- `tools/bootstrap.sh` for no-binary recovery;
-- `tools/build-fixpoint.f` for native refresh, AOT and REPL builds;
-- `tools/native-emit.f` for the emitter's own seam load;
-- `src/habu/habu2.f` and `bootstrap/cg/forth.fs` for the `--load` prefix;
-- `src/habu/stdin.f` and `tools/hb-build-lib.f` for baked REPL sources;
+- `src/habu/habu2.f` for the `--load` prefix;
+- `tools/hb-build-core.f` for baked REPL sources;
 - `tools/lint/shadow-lint.f` for lint coverage.
 
 No caller passes a target prelude for normal tests: `bin/hb --load` selects the
@@ -563,7 +562,7 @@ After `bin/hb` exists on the target, run only native validation on the target
 machine:
 
 ```sh
-bin/hb --load tools/build-fixpoint-refresh.f -- install --force
+bin/hb --load tools/hb-build.f -- --engine -o bin/hb
 
 bin/hb --load test/run.f
 ```
@@ -573,6 +572,5 @@ bring up `bin/hb` on the target machine and let it select its own sources.
 
 ### Future ports
 
-The Gforth seed emits ARM64 only. Bring up another host by cross-building with
-an existing Habu compiler and running the product there; extend the no-binary
-seed only when native recovery on that host is needed.
+Bring up another host by cross-building with an existing Habu compiler and
+running the product there.

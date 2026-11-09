@@ -1334,7 +1334,7 @@ $2D58 constant DPHW-CELL
 \ NDICT-HW-CELL: the largest record count NDICT was ever lowered from; the
 \ dictionary high-water is the larger of NDICT and this cell. Records are written
 \ only at the head, so only a lowering of NDICT leaves published records above
-\ the count. Every lowering (ndict!, seed-ndict!, evaluate's and the REPL's
+\ the count. Every lowering (ndict!, evaluate's and the REPL's
 \ recovery) passes through habu1.f EM-DEF-OCC:LCOUNT or kernel-x64.f OCC-COUNT,
 \ which raise this cell. A raising ndict! re-exposes the retired records below
 \ it, so the does> patch clears alias kinds up to the high-water, not to NDICT
