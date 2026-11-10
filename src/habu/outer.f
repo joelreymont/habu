@@ -608,21 +608,7 @@ TYPED-VARIABLE REC ptr n
    f MIN-IN 8 lshift or ;
 
 \ The engine's twins: habu2.f C-SOURCE-EXEC-BEFORE and EMIT-SOURCE-EXEC-FINISH.
-\ source-exec-run (habu1.f BSOURCEEXECRUN) pushes one frame on the native
-\ stack, named by SOURCE-EXEC-CTX-CELL, and runs a continuation that evaluates
-\ the owned range. The engine's evaluate arms the frame when the range it
-\ opens is the owned one, and adopts it for a buffer an observed word
-\ evaluates until that buffer returns or throws (habu1.f EMIT-EVAL-BODY,
-\ layout.f EVAL-FRAME:SX-CTX); its loop calls the before
-\ callback for a word about to run and for a tick's target (SOURCE-EXEC:WORD,
-\ SOURCE-EXEC:TICK; numbers, strings and characters have no event) and the
-\ after callback at the top of the next pass, and BSOURCEEXECRUN runs the
-\ finish once more after its catch. This loop does the same with the same
-\ fields, so the engine's predicates (source-exec-boundary?, -loader-cut?,
-\ -position, the source-unit-run snapshot) read them unchanged. The fields the
-\ engine stores and nothing reads (SX-OP, SX-REC, SX-ENTRY, SX-WRITES) are not
-\ stored. The engine closes its PROT window around a callback; this loop never
-\ holds one (definers.f: def-open closes its own).
+\ This loop stores the frame fields source-exec-boundary? and -loader-cut? read.
 4 constant OBSERVE-TICK          \ the before callback's op for a tick's target
 public
 5 constant OBSERVE-WORD          \ the before callback's op for a word about to run; the linker's RESUME passes it too
