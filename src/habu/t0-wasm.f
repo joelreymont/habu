@@ -1,12 +1,12 @@
 \ t0-wasm.f - the Wasm generator of the tier 0 compiler, part WASM of package
 \ COMP.
 \
-\ Implements the straight-line EMIT- operations src/habu/t0-emit.f states for
-\ every target; this file holds only Wasm encodings and local choices. FILL-SLOT
-\ stores its words into the EMIT- cells for CTARGET-ARCH:WASM. Later work: the
-\ quotation and does> units (QUOT-OPEN, UNIT-OPEN, ADDR-QUOT), the callback
-\ stub, CALL-SELF, the control cells, the return stack and the loops, which stay
-\ unset.
+\ Implements the straight-line and control EMIT- operations src/habu/t0-emit.f
+\ states for every target; this file holds only Wasm encodings and local
+\ choices. FILL-SLOT stores its words into the EMIT- cells for
+\ CTARGET-ARCH:WASM. Later work: the quotation and does> units (QUOT-OPEN,
+\ UNIT-OPEN, ADDR-QUOT), the callback stub, CALL-SELF, the return stack, the DO
+\ loops and `leave`, which stay unset.
 
 require src/lib/error.f
 require src/lib/byte-buffer.f
@@ -29,8 +29,13 @@ package WASM
 
 \ ---- the Wasm bytes ------------------------------------------------------------
 $00 constant OP-UNREACHABLE
+$02 constant OP-BLOCK
+$03 constant OP-LOOP
 $04 constant OP-IF
+$05 constant OP-ELSE
 $0B constant OP-END
+$0C constant OP-BR
+$0D constant OP-BR-IF
 $01 constant OP-NOP
 $0F constant OP-RETURN
 $10 constant OP-CALL
@@ -44,7 +49,9 @@ $36 constant OP-I32-STORE
 $37 constant OP-I64-STORE
 $41 constant OP-I32-CONST
 $42 constant OP-I64-CONST
+$45 constant OP-I32-EQZ
 $4B constant OP-I32-GT-U
+$50 constant OP-I64-EQZ
 $51 constant OP-I64-EQ
 $52 constant OP-I64-NE
 $53 constant OP-I64-LT-S
@@ -69,7 +76,7 @@ $A7 constant OP-I32-WRAP-I64
 $AD constant OP-I64-EXTEND-I32-U
 $7F constant I32
 $7E constant I64
-$40 constant EMPTY-TYPE              \ an if taking and leaving nothing
+$40 constant EMPTY-TYPE              \ a block, loop or if taking and leaving nothing
 2 constant ALIGN-32                  \ a load's or store's alignment exponent
 3 constant ALIGN-64
 8 constant CELL-BYTES
@@ -89,6 +96,8 @@ create SINK BUF:HDR-BYTES SCRATCH-ALLOT
 SCRATCH-VARIABLE SINK-LIVE            \ nonzero once SINK holds storage
 variable FRAME-CELLS                  \ frame slots this unit uses
 variable COUNT-AT                     \ the unit's padded i64 count field
+DYNAMIC-BUFFER CF-KIND n              \ the open blocks' kinds, innermost last
+variable CF-N
 
 4096 constant SINK-START-BYTES
 10 constant LEB-MOST
@@ -114,7 +123,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : SET, ( n -- ) OP-LOCAL-SET B, U32, ;
 : I32, ( n -- ) OP-I32-CONST B, S32, ;
 : I64, ( n -- ) OP-I64-CONST B, S64, ;
-: IF, ( -- ) OP-IF B, EMPTY-TYPE B, ;
+: OPENER, ( n -- ) B, EMPTY-TYPE B, ;
 : END, ( -- ) OP-END B, ;
 
 \ A load or a store: the opcode, its alignment's exponent, its offset.
@@ -161,7 +170,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ written at most that move's cells past the region before the module ends;
 \ tier 1 checks before the stores (src/arch/wasm/select.f ROOM).
 : ROOM ( -- )
-   L-SP GET,  WPROF:STACK-END I32,  OP-I32-GT-U B,  IF,
+   L-SP GET,  WPROF:STACK-END I32,  OP-I32-GT-U B,  OP-IF OPENER,
    ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-SP GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
 
@@ -171,7 +180,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : CHECKED ( vreg -- ) {: a:vreg :}
    a GET-REG  WPROF:CTX-BASE I64,  OP-I64-LT-U B,
    a GET-REG  $FFFFFFFF I64,  OP-I64-GT-U B,
-   OP-I32-OR B,  IF,
+   OP-I32-OR B,  OP-IF OPENER,
    CRASH-RC FAULT-KIND,  a GET-REG  FAULT-END,  END, ;
 
 \ Every unit is a function of type (i32 ctx) -> (i32 status) as WLINK takes a
@@ -198,6 +207,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
       1 SINK-LIVE !
    then
    SINK BUF:CLEAR
+   0 CF-N !
    UNIT-BEGIN ;
 
 \ Status 0 is a return (src/arch/wasm/select.f THE STATUS).
@@ -363,13 +373,83 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ throw left it.
 : CALL ( n n -- ) {: to:n loc:n :}
    NEMIT:CALL to loc CALL-SITE
-   IF,  1 I32,  OP-RETURN B,  END,
+   OP-IF OPENER,  1 I32,  OP-RETURN B,  END,
    SP@, ;
 
 \ The callee's status is this unit's.
 : TAIL ( n n -- ) {: to:n loc:n :}
    NEMIT:TAIL to loc CALL-SITE
    OP-RETURN B, ;
+
+\ ---- control -----------------------------------------------------------------
+\ CONTROL. A Wasm branch names an enclosing block by depth, so every open source
+\ structure is one open block of the empty type, an entry in CF-KIND; a
+\ branch's depth is the count of entries above its target. A `begin` is a
+\ `loop` and a `while` an `if` inside it: `begin A while B repeat` is
+\ `loop A <flag> if B br 1 end end`, and `begin A while B while C repeat D then`
+\ is `loop A <flag> if B <flag> if C br 2 end D end end`. A back branch makes
+\ its LOOP a LOOP-DONE, whose `end` CLOSE-DONE writes once it is innermost.
+0 constant CF-IF
+1 constant CF-LOOP
+2 constant CF-LOOP-DONE
+3 constant CF-CASE
+
+: CF-PUSH ( n -- ) {: kind:n :}
+   CF-N @ {: k:n :}
+   k 1 + CF-KIND-RESERVE
+   kind k CF-KIND !
+   k 1 + CF-N ! ;
+
+: CF-POP ( -- ) CF-N @ 1 - CF-N ! ;
+
+\ The index of the innermost open entry of kind.
+: CF-FIND ( n -- n ) {: kind:n :}
+   CF-N @ 1 -
+   begin dup 0 >= if dup CF-KIND @ kind <> else false then while 1 - repeat
+   dup 0 < if E-T0-OPERAND throw then ;
+
+: DEPTH-OF ( n -- n ) CF-FIND  CF-N @ 1 -  swap - ;
+
+: MARK-DONE ( -- ) CF-LOOP CF-FIND {: k:n :}  CF-LOOP-DONE k CF-KIND ! ;
+
+: CLOSE-DONE ( -- )
+   begin CF-N @ 0 > if CF-N @ 1 - CF-KIND @ CF-LOOP-DONE = else false then
+   while END, CF-POP repeat ;
+
+: BR, ( n -- ) OP-BR B, U32, ;
+: BR-IF, ( n -- ) OP-BR-IF B, U32, ;
+: ARM, ( -- ) OP-IF OPENER,  CF-IF CF-PUSH ;
+
+\ Condition c of the last compare, as an i32.
+: TEST, ( cc -- ) {: c:cc :}
+   L-CA GET,  L-CB GET,  c COND B, ;
+
+: IF, ( vreg -- ) GET-REG  OP-I64-EQZ B,  OP-I32-EQZ B,  ARM, ;
+: IF-CC, ( cc -- ) TEST,  ARM, ;
+: ELSE, ( -- ) OP-ELSE B, ;
+: THEN, ( -- ) END,  CF-POP  CLOSE-DONE ;
+: BEGIN, ( -- ) OP-LOOP OPENER,  CF-LOOP CF-PUSH ;
+
+: REPEAT, ( -- )
+   CF-LOOP DEPTH-OF BR,  END,  CF-POP  MARK-DONE  CLOSE-DONE ;
+
+: UNTIL, ( vreg -- )
+   GET-REG  OP-I64-EQZ B,  CF-LOOP DEPTH-OF BR-IF,  MARK-DONE  CLOSE-DONE ;
+
+: UNTIL-CC, ( cc -- )
+   CC-NOT TEST,  CF-LOOP DEPTH-OF BR-IF,  MARK-DONE  CLOSE-DONE ;
+
+: AGAIN, ( -- ) CF-LOOP DEPTH-OF BR,  MARK-DONE  CLOSE-DONE ;
+: CASE, ( -- ) OP-BLOCK OPENER,  CF-CASE CF-PUSH ;
+
+: OF, ( vreg vreg -- ) {: s:vreg v:vreg :}
+   s GET-REG  v GET-REG  OP-I64-EQ B,  ARM, ;
+
+: OF-LIT ( vreg n -- ) {: s:vreg v:n :}
+   s GET-REG  v I64,  OP-I64-EQ B,  ARM, ;
+
+: ENDOF, ( -- ) CF-CASE DEPTH-OF BR,  END,  CF-POP  CLOSE-DONE ;
+: ENDCASE, ( -- ) END,  CF-POP  CLOSE-DONE ;
 
 \ ---- the seam ----------------------------------------------------------------
 : FILL-SLOT ( n -- )
@@ -412,7 +492,23 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    ['] IMM? k EMIT-IMM?-XT !
    ['] LOAD k EMIT-LOAD-XT !
    ['] CALL k EMIT-CALL-XT !
-   ['] TAIL k EMIT-TAIL-XT ! ;
+   ['] TAIL k EMIT-TAIL-XT !
+   ['] IF, k EMIT-IF,-XT !
+   ['] ELSE, k EMIT-ELSE,-XT !
+   ['] THEN, k EMIT-THEN,-XT !
+   ['] BEGIN, k EMIT-BEGIN,-XT !
+   ['] IF, k EMIT-WHILE,-XT !
+   ['] REPEAT, k EMIT-REPEAT,-XT !
+   ['] UNTIL, k EMIT-UNTIL,-XT !
+   ['] IF-CC, k EMIT-IF-CC,-XT !
+   ['] IF-CC, k EMIT-WHILE-CC,-XT !
+   ['] UNTIL-CC, k EMIT-UNTIL-CC,-XT !
+   ['] AGAIN, k EMIT-AGAIN,-XT !
+   ['] CASE, k EMIT-CASE,-XT !
+   ['] OF, k EMIT-OF,-XT !
+   ['] OF-LIT k EMIT-OF-LIT-XT !
+   ['] ENDOF, k EMIT-ENDOF,-XT !
+   ['] ENDCASE, k EMIT-ENDCASE,-XT ! ;
 
 CTARGET-ARCH:WASM ' FILL-SLOT EMIT-PROVIDE
 
