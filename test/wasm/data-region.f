@@ -1,4 +1,6 @@
-\ A checked tools/wasm-build program for the task DATA and static image boundary.
+\ data-region.f - a program for test/wasm/data-test.f: a stack depth, a real's
+\ text, a dynamic buffer and its bounds refusal, built by `tools/hb-build.f --
+\ --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/ieee754.f
@@ -24,3 +26,5 @@ public
    0 BYTES BYTE-VIEW NULL-PTR BYTE-VIEW - . ;
 
 ;package
+
+: MAIN ( -- ) WASM-DATA-REGION:MAIN ;

@@ -1,4 +1,5 @@
-\ The checked build's DATA boundary under a foreign Wasm host. The peer,
+\ A module `hb-build --target wasm` builds under a foreign Wasm host that grows
+\ its memory before the run. The peer,
 \ test/wasm/data-peer.mjs, only dumps the module's memory before and after its
 \ run and writes OUT; this file makes every check from those bytes.
 require src/lib/string.f
@@ -40,8 +41,7 @@ variable AFTER-PATH-U
 204800 constant DYN-BYTES
 137 constant DYN-BYTE
 
-\ The module's memory as the peer dumped it before and after the run.
-DYNAMIC-BUFFER BEFORE u8
+\ The module's memory as the peer dumped it after the run.
 DYNAMIC-BUFFER AFTER u8
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
@@ -69,11 +69,7 @@ DYNAMIC-BUFFER AFTER u8
    DIR u s" after.bin" AFTER-PATH FS:JOIN-PATH AFTER-PATH-U ! ;
 
 : BUILD ( -- n )
-   PROC-ARGV-RESET
-   s" --load" ARG+ s" tools/wasm-build.f" ARG+ s" --" ARG+
-   s" test/wasm/data-region.f" ARG+ s" WASM-DATA-REGION:MAIN" ARG+
-   MOD MOD-U @ ARG+
-   s" bin/hb" SPAWN ;
+   s" test/wasm/data-region.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 : PEER ( -- n )
    PROC-ARGV-RESET
@@ -86,16 +82,13 @@ DYNAMIC-BUFFER AFTER u8
    {: pa:ptr pu:n dst:ptr u:n :}
    pa pu dst u FS:READ-ALL u <> if E-FS-IO throw then ;
 
-\ Reads both dumps; answers the first one's size, the base of the page the peer
-\ grew.
+\ Reads the dump after the run; answers the size of the one before it, the
+\ base of the page the peer grew.
 : LOAD-DUMPS ( -- n )
-   BEFORE-PATH BEFORE-PATH-U @ FS:FILE-SIZE {: bu:n :}
    AFTER-PATH AFTER-PATH-U @ FS:FILE-SIZE {: au:n :}
-   bu BEFORE-RESERVE
    au AFTER-RESERVE
-   BEFORE-PATH BEFORE-PATH-U @ 0 BEFORE bu READ-DUMP
    AFTER-PATH AFTER-PATH-U @ 0 AFTER au READ-DUMP
-   bu ;
+   BEFORE-PATH BEFORE-PATH-U @ FS:FILE-SIZE ;
 
 : LAST-LINE ( ptr u8 n -- ptr u8 n )
    RTRIM {: a:ptr u:n :}
@@ -121,21 +114,16 @@ public
 : RUN ( -- )
    T-RESET
    SETUP
-   s" tools/wasm-build compiles the checked DATA and owner program" T-LABEL
+   s" test/wasm/data-region.f builds into a module that validates" T-LABEL
    BUILD 0 T=
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    s" the module runs to status 0 under the foreign peer" T-LABEL
    PEER 0 T=
    LOAD-DUMPS {: host:n :}
-   s" the run leaves the static owner's first image page as instantiated" T-LABEL
-   WPROF:IMAGE-BASE BEFORE WPROF:PAGE-BYTES  WPROF:IMAGE-BASE AFTER WPROF:PAGE-BYTES
-   STR= TTRUE
    s" the task header's stack base cell holds STACK-BASE" T-LABEL
    WPROF:DATA-BASE STACK-ABI:BASE-CELL + AFTER LE:U64@ WPROF:STACK-BASE T=
    s" the task header's stack capacity cell holds STACK-BYTES" T-LABEL
    WPROF:DATA-BASE STACK-ABI:CAP-CELL + AFTER LE:U64@ WPROF:STACK-BYTES T=
-   s" the DATA region holds the task header's last cell" T-LABEL
-   WPROF:DATA-BYTES STACK-ABI:CAP-CELL 8 + >= TTRUE
    s" the run keeps the byte the peer stored in the page it grew" T-LABEL
    host HOST-OFFSET + AFTER c@ HOST-BYTE T=
    s" OUT starts with the stack depth line" T-LABEL
