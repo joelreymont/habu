@@ -73,11 +73,8 @@ DYNAMIC-BUFFER PAYLOAD u8
    rc 0 T= ;
 
 : BUILD ( -- )
-   PROC-ARGV-RESET
-   s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
-   s" test/browser/echo.f" ARG+  s" -o" ARG+  MOD MOD-U @ ARG+
    s" test/browser/echo.f builds into a module that validates" T-LABEL
-   s" bin/hb" >LEN SPAWN SUCCEEDED
+   s" test/browser/echo.f" MOD MOD-U @ WASM-HARNESS:BUILD 0 T=
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE ;
 
 : HOST-OPEN ( -- )

@@ -49,10 +49,7 @@ PATH-CAP BUFFER: FILE
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
 
 : BUILD ( -- n )
-   PROC-ARGV-RESET
-   s" --load" ARG+ s" tools/hb-build.f" ARG+ s" --" ARG+ s" --target" ARG+ s" wasm" ARG+
-   s" test/browser/navigation.f" ARG+ s" -o" ARG+ MOD MOD-U @ ARG+
-   s" bin/hb" >LEN SPAWN ;
+   s" test/browser/navigation.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET

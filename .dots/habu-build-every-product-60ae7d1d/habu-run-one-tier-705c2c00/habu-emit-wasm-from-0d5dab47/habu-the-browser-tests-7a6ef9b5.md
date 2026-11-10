@@ -1,6 +1,6 @@
 ---
 title: The browser tests build their modules with their own hb-build call
-status: open
+status: active
 priority: 3
 issue-type: task
 created-at: "2026-11-10T20:17:00.865420+02:00"

@@ -1,6 +1,6 @@
 ---
 title: "ENGINE-INTERNAL:SEAL-PACKAGES has no caller once wasm-build.f is gone"
-status: open
+status: active
 priority: 3
 issue-type: task
 created-at: "2026-11-10T20:22:09.801734+02:00"

@@ -56,10 +56,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    rc ;
 
 : BUILD ( -- n )
-   PROC-ARGV-RESET
-   s" --load" ARG+ s" tools/hb-build.f" ARG+ s" --" ARG+ s" --target" ARG+ s" wasm" ARG+
-   s" test/browser/storage.f" ARG+ s" -o" ARG+ MOD MOD-U @ ARG+
-   s" bin/hb" >LEN SPAWN ;
+   s" test/browser/storage.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 : SUM ( ptr u8 n -- n )
    {: a:ptr u:n :}

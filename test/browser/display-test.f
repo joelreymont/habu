@@ -50,10 +50,7 @@ variable FILE-U
    FILE FILE-U @ s" sixteen bytes ok" FS:WRITE-ALL ;
 
 : BUILD ( -- n )
-   PROC-ARGV-RESET
-   s" --load" ARG+ s" tools/hb-build.f" ARG+ s" --" ARG+ s" --target" ARG+ s" wasm" ARG+
-   s" test/browser/display.f" ARG+ s" -o" ARG+ MOD MOD-U @ ARG+
-   s" bin/hb" >LEN SPAWN ;
+   s" test/browser/display.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 : MAC-CHROME ( -- ptr u8 n )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;

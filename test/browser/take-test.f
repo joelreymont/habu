@@ -44,10 +44,7 @@ variable MOD-U
    DIR u s" take.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
 : BUILD ( -- n )
-   PROC-ARGV-RESET
-   s" --load" ARG+ s" tools/hb-build.f" ARG+ s" --" ARG+ s" --target" ARG+ s" wasm" ARG+
-   s" test/browser/take.f" ARG+ s" -o" ARG+ MOD MOD-U @ ARG+
-   s" bin/hb" >LEN SPAWN ;
+   s" test/browser/take.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 \ host-cli.mjs on the module with the typed texts, run by bun.
 : HOST ( ptr u8 n ptr u8 n -- n )
