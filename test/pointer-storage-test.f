@@ -13,6 +13,8 @@ PTR-VARIABLE SLOT
 PERSISTED-PTR-VARIABLE PERSISTED-SLOT
 4 PTR-U8-TABLE TABLE-SLOT
 PERSISTED-PTR-U8-TABLE-VARIABLE TABLE-HEAD
+SCRATCH-VARIABLE SCR-CELL
+16 SCRATCH-BUFFER: SCR-ROW
 
 \ Two reserved engine-layout cells, named by DATA offset; neither is written and
 \ nothing depends on what lives at either offset.
@@ -44,6 +46,10 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    TARGET ADDRESS !
    ADDRESS @ TARGET = TTRUE ;
 
+: SCRATCH-RUNTIME ( -- )
+   42 SCR-CELL !  SCR-CELL @ 42 T=
+   65 SCR-ROW 15 + c!  SCR-ROW 15 + c@ 65 T= ;
+
 : SAMPLE ( -- ptr u8 )
    s" pointer-storage" drop ;
 
@@ -60,7 +66,11 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    [: s" PTR-VARIABLE VS-PTR : VS-ADDR ( -- ptr ptr n ) VS-PTR ;" VERIFY:SOURCE-BUF ;]
    catch 0 T=
    [: s" PERSISTED-PTR-VARIABLE VPS-PTR : VPS-ADDR ( -- ptr ptr n ) VPS-PTR ;" VERIFY:SOURCE-BUF ;]
-   catch 0 T= ;
+   catch 0 T=
+   [: s" SCRATCH-VARIABLE VS-SCR : VS-SCR-A ( -- ptr n ) VS-SCR ;" VERIFY:SOURCE-BUF ;]
+   catch 0 T=
+   [: s" SCRATCH-VARIABLE VS-SCR2 : VS-SCR2-A ( -- ptr ptr u8 ) VS-SCR2 ;" VERIFY:SOURCE-BUF ;]
+   catch 0<> TTRUE ;
 
 \ PTR-U8-TABLE and PERSISTED-PTR-U8-TABLE-VARIABLE spell the pointee in the
 \ does> clause, so the published effect carries no type variable, `trust-raw`
@@ -114,6 +124,7 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 : RUN ( -- )
    T-RESET
    RUNTIME
+   SCRATCH-RUNTIME
    TABLE-RUNTIME
    VERIFY-EFFECT
    VERIFY-DECLARED-POINTEE

@@ -2239,13 +2239,8 @@ DUPLICATE-INIT
 
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
-\ RAW-TRUST-NEXT: registers the given effect for the word the next token names,
-\ with TVK-RAW type vars (SIG-RAW-MODE! brackets the checker's signature parse).
-\ Used for the raw storage definers create/variable/constant/PTR-VARIABLE and
-\ PERSISTED-PTR-VARIABLE so a fetch from their raw cell yields a RAW value that
-\ cannot launder into a nominal atom or family (habu-nominal-storage-raw, VALUE
-\ side). The class is the definer's: DEF-CONSTANT for `constant`, DEF-STORAGE
-\ for the rest.
+\ RAW-TRUST-NEXT: registers the effect for the word the next token names with
+\ TVK-RAW type vars, so its cell cannot launder into a nominal atom or family.
 : RAW-TRUST-NEXT ( ptr u8 n n -- )
    {: sig:ptr sigu:n class:n :}
    NAME-TOKEN
@@ -3796,6 +3791,7 @@ variable HEAP-XT s" HEAP" HEAP-XT LIBRARY-XT!
 variable CWORK-BUFFER-XT s" CWORK-BUFFER" CWORK-BUFFER-XT LIBRARY-XT!
 variable CWORK-SPAN-XT s" CWORK-SPAN" CWORK-SPAN-XT LIBRARY-XT!
 variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
+variable SCRATCH-VARIABLE-XT s" SCRATCH-VARIABLE" SCRATCH-VARIABLE-XT LIBRARY-XT!
 variable PTR-VARIABLE-XT s" PTR-VARIABLE" PTR-VARIABLE-XT LIBRARY-XT!
 variable PERSISTED-PTR-VARIABLE-XT s" PERSISTED-PTR-VARIABLE" PERSISTED-PTR-VARIABLE-XT LIBRARY-XT!
 variable PTR-U8-TABLE-XT s" PTR-U8-TABLE" PTR-U8-TABLE-XT LIBRARY-XT!
@@ -3901,6 +3897,8 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u SCRATCH-VARIABLE-XT @ s" SCRATCH-VARIABLE" LIBRARY-DEFINER? IF
+      s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u PTR-VARIABLE-XT @ s" PTR-VARIABLE" LIBRARY-DEFINER? IF
       s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u PERSISTED-PTR-VARIABLE-XT @ s" PERSISTED-PTR-VARIABLE" LIBRARY-DEFINER? IF

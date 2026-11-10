@@ -53,6 +53,10 @@ STR-MAX-I64 negate 1 - constant STR-MIN-I64
    dup STR-CHECK-LEN
    create allot does> ( -- ptr u8 ) ;
 
+: SCRATCH-BUFFER: ( n -- )
+   dup STR-CHECK-LEN
+   create SCRATCH-ALLOT does> ( -- ptr u8 ) ;
+
 : STR-LEN ( n -- len )
    dup STR-CHECK-LEN
    >LEN ;

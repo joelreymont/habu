@@ -6584,9 +6584,8 @@ CHECKER-REG:}SCRATCH
 32 constant PE-TOP-ONLY           \ prim types a top-level keyword: a body token never takes the row
 
 \ While set, every type var the signature parser mints is TVK-RAW.
-\ verify-source and the two-stage native definer hook bracket a raw storage
-\ definer's effect (create/variable/constant, PTR-VARIABLE,
-\ PERSISTED-PTR-VARIABLE) with SIG-RAW-DEFINER!, so raw dictionary storage does
+\ verify-source and the two-stage native definer hook bracket every raw storage
+\ definer's effect with it, so raw dictionary storage does
 \ not publish an unrestricted polymorphic effect. Off for ordinary signatures,
 \ prim builds and TRUST rows.
 variable SIG-RAW-MODE   0 SIG-RAW-MODE !

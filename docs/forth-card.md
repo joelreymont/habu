@@ -325,8 +325,10 @@ Every form loaded and its accessor effect certified.
 | form | for | accessor |
 |---|---|---|
 | `variable V` | a raw scalar, role or atom cell | `V @` / `V !` |
+| `SCRATCH-VARIABLE V` | a `variable` whose value a build leaves out | `( -- ptr a )` |
 | `create B 256 allot` | static dictionary storage | `B`, pointee bound by the use (`B 4 type`, `B @`) |
 | `n BUFFER: B` | a fixed zeroed byte row | `( -- ptr u8 )`; bytes are never a `TYPED-BUFFER` element |
+| `n SCRATCH-BUFFER: B` | a `BUFFER:` whose bytes a build leaves out | `( -- ptr u8 )` |
 | `PTR-VARIABLE P` | a global slot holding an address | `( -- ptr ptr a )`; callers declare the pointee: `: F ( -- ptr u8 ) P @ ;` |
 | `TYPED-VARIABLE V t` | one typed cell or record | `( -- ptr t )` |
 | `TYPED-VARIABLE V ptr t` | a cell holding an address of `t` | `( -- ptr ptr t )` |
@@ -360,7 +362,10 @@ word's uses before the run; what no row states is left to the run (§ 3). `FUNCT
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
 `PTR-U8-TABLE-VARIABLE` cells as null; their `PERSISTED-` siblings keep their
 addresses, and so do the pointer fields of typed storage. A pointer into memory
-the build mapped is refused at save, naming the cell. Runtime-sized buffers come
+the build mapped is refused at save, naming the cell. Scratch storage belongs to
+the process that fills it: a build leaves it out and the program reads it as
+zero, and it is declared where it is made, as `create R n SCRATCH-ALLOT` for a
+definer's own scratch body, with `here` cell-aligned. Runtime-sized buffers come
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
 a byte offset.
 

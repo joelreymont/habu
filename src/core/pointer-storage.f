@@ -1,11 +1,19 @@
-\ pointer-storage.f - pointer-valued global storage definer.
+\ pointer-storage.f - scratch storage and the global cells that hold an address.
+
+\ Reserves n bytes at a cell-aligned `here`, rounded up to cells, as scratch
+\ storage (docs/forth-card.md § 4).
+: SCRATCH-ALLOT ( n -- )
+   7 + 8 / dup 0 ?do here i cells + scratch-cell-mark loop cells allot ;
 
 \ The clauses are empty on purpose: an empty clause declares the effect only, and
 \ the engine leaves the word the body and DKIND:ADDR stamp `create` gave it
 \ (habu2.f DOES-REC:ELIDE-EMPTY), so a read costs one load (`0 ptr-field` cost a
 \ call, a branch and a frame).
+: SCRATCH-VARIABLE ( -- )
+   create 1 cells SCRATCH-ALLOT does> ( -- ptr a ) ;
+
 : PTR-VARIABLE ( -- )
-   create here scratch-cell-mark 0 , does> ( -- ptr ptr a ) ;
+   create 1 cells SCRATCH-ALLOT does> ( -- ptr ptr a ) ;
 
 \ The DATA cell at an offset the engine layout reserves, declared as a cell that
 \ holds a byte pointer. `ptr-field` (src/habu/prims.f) is the declared door
@@ -44,7 +52,7 @@ public
 \ NAME` publishes NAME as the table's BASE, so `i cells NAME + 0 ptr-field` takes
 \ the field of a declared pointer cell rather than of raw dictionary storage.
 : PTR-U8-TABLE ( n -- )
-   create dup 0 ?do here i cells + scratch-cell-mark loop cells allot does> ( -- ptr ptr u8 ) ;
+   create cells SCRATCH-ALLOT does> ( -- ptr ptr u8 ) ;
 
 \ A PTR-U8-TABLE whose cells keep their addresses across a save.
 : PERSISTED-PTR-U8-TABLE ( n -- )
@@ -56,7 +64,7 @@ public
    create here ptr-cell-mark 0 , does> ( -- ptr ptr ptr u8 ) ;
 
 : PTR-U8-TABLE-VARIABLE ( -- )
-   create here scratch-cell-mark 0 , does> ( -- ptr ptr ptr u8 ) ;
+   create 1 cells SCRATCH-ALLOT does> ( -- ptr ptr ptr u8 ) ;
 
 \ `off RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell
 \ the engine layout reserves at `off`, declared `ptr ptr u8`. The offset goes

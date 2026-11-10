@@ -30,6 +30,8 @@ PRIM: REPORT-UNCHECKABLE PE-N PE-IN PE-N PE-OUT PRIM;
 \ The checker's error code the constructor tests read at top level.
 PRIM: E-CTOR-PROTECTED PE-N PE-OUT PRIM;
 
+s" SCRATCH-ALLOT" s" n --" TRUST
+s" SCRATCH-VARIABLE" s" --" TRUST
 s" PTR-VARIABLE" s" --" TRUST
 s" PERSISTED-PTR-VARIABLE" s" --" TRUST
 s" PTR-U8-TABLE" s" n --" TRUST
