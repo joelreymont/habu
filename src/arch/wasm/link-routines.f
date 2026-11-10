@@ -65,6 +65,37 @@ $81 constant OP-I64-REM-S
 2 constant L-DIVISOR
 3 constant L-ACTUAL
 
+\ ---- floats
+$1B constant OP-SELECT
+$2B constant OP-F64-LOAD
+$39 constant OP-F64-STORE
+$44 constant OP-F64-CONST
+$61 constant OP-F64-EQ
+$62 constant OP-F64-NE
+$63 constant OP-F64-LT
+$64 constant OP-F64-GT
+$99 constant OP-F64-ABS
+$9A constant OP-F64-NEG
+$9F constant OP-F64-SQRT
+$A0 constant OP-F64-ADD
+$A1 constant OP-F64-SUB
+$A2 constant OP-F64-MUL
+$A3 constant OP-F64-DIV
+$AD constant OP-I64-EXTEND-I32-U
+$B9 constant OP-F64-CONVERT-I64-S
+$FC constant OP-MISC                 \ the prefix of the saturating truncations
+6 constant MISC-I64-TRUNC-SAT-F64-S
+$7C constant F64
+
+\ A float body's locals after sp: the doubles a and b and the answer r.
+2 constant L-A
+3 constant L-B
+4 constant L-R
+
+\ The NaN every float operation that makes one answers, src/arch/wasm/select.f
+\ NAN-MADE.
+$7FF8000000000000 constant NAN-MADE
+
 \ ---- the body being written ----------------------------------------------------
 DYNAMIC-BUFFER BUF u8
 variable BUF-U
@@ -194,6 +225,93 @@ variable BUF-U
    ONE-RESULT,
    0 I32,  OP-END B, ;
 
+
+\ ---- floats
+\ A real is one stack cell holding the double's bits, which f64.load and
+\ f64.store move unchanged.
+: FLOAT-LOCALS, ( -- )  2 U32,  1 U32,  I32 B,  3 U32,  F64 B, ;
+: DONE, ( -- )  0 I32,  OP-END B, ;
+
+: SP-AT, ( n -- )
+   {: back:n :}
+   WPROF:CTX-STACK-TOP CTX@,  back I32,  OP-I32-SUB B,  L-SP SET, ;
+
+: F@, ( n -- )
+   {: off:n :}
+   L-SP GET,  OP-F64-LOAD ALIGN-64 off MEM, ;
+
+\ Its eight bytes follow the opcode low first.
+: F64, ( n -- )
+   {: v:n :}
+   OP-F64-CONST B,  8 0 do  v i 8 * rshift $FF and B,  loop ;
+
+\ Over x and y on the Wasm stack: x when the double in local c is a NaN, else y.
+: IF-NAN, ( n -- )
+   {: c:n :}
+   c GET,  c GET,  OP-F64-NE B,  OP-SELECT B, ;
+
+\ select.f THE FLOATS' rule without a branch: r becomes NAN-MADE when it is a
+\ NaN, then the operand in local c when that is one.
+: CANON, ( -- )  NAN-MADE F64,  L-R GET,  L-R IF-NAN,  L-R SET, ;
+: PASS, ( n -- )  {: c:n :}  c GET,  L-R GET,  c IF-NAN,  L-R SET, ;
+
+\ ( a b -- r ) by the f64 opcode op; of two NaN operands a is the answer.
+: FARITH-BODY ( n -- )
+   {: op:n :}
+   FLOAT-LOCALS,  CELL-BYTES 2 * SP-AT,
+   0 F@,  L-A SET,  CELL-BYTES F@,  L-B SET,
+   L-A GET,  L-B GET,  op B,  L-R SET,
+   CANON,  L-B PASS,  L-A PASS,
+   L-SP GET,  L-R GET,  OP-F64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,  DONE, ;
+
+: FSQRT-BODY ( -- )
+   FLOAT-LOCALS,  CELL-BYTES SP-AT,
+   0 F@,  L-A SET,
+   L-A GET,  OP-F64-SQRT B,  L-R SET,
+   CANON,  L-A PASS,
+   L-SP GET,  L-R GET,  OP-F64-STORE ALIGN-64 0 MEM,
+   DONE, ;
+
+\ The top cell, loaded by ld, turned by what the caller writes next, stored back
+\ by st: the top does not move.
+: IN-PLACE, ( n -- )
+   {: ld:n :}
+   FLOAT-LOCALS,  CELL-BYTES SP-AT,
+   L-SP GET,  L-SP GET,  ld ALIGN-64 0 MEM, ;
+
+: ;IN-PLACE, ( n -- )  ALIGN-64 0 MEM,  DONE, ;
+
+: FSIGN-BODY ( n -- )  OP-F64-LOAD IN-PLACE,  B,  OP-F64-STORE ;IN-PLACE, ;
+: S>F-BODY ( -- )  OP-I64-LOAD IN-PLACE,  OP-F64-CONVERT-I64-S B,  OP-F64-STORE ;IN-PLACE, ;
+
+\ The truncation saturates and answers 0 for a NaN, as the engine BF>S's FCVTZS.
+: F>S-BODY ( -- )
+   OP-F64-LOAD IN-PLACE,
+   OP-MISC B,  MISC-I64-TRUNC-SAT-F64-S U32,
+   OP-I64-STORE ;IN-PLACE, ;
+
+\ The i32 predicate on the Wasm stack, over the i64 0 pushed before it, as a
+\ flag: 0 - extend_u(p), all ones for true.
+: FLAG, ( -- )  OP-I64-EXTEND-I32-U B,  OP-I64-SUB B, ;
+
+\ ( a b -- flag ) by the f64 compare op.
+: FCOMPARE-BODY ( n -- )
+   {: op:n :}
+   FLOAT-LOCALS,  CELL-BYTES 2 * SP-AT,
+   L-SP GET,  0 I64,  0 F@,  CELL-BYTES F@,  op B,  FLAG,
+   OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,  DONE, ;
+
+\ ( a -- flag ) by op against +0.0, whose bits are zero: -0.0 equals it and is
+\ not below it.
+: FCOMPARE0-BODY ( n -- )
+   {: op:n :}
+   FLOAT-LOCALS,  CELL-BYTES SP-AT,
+   L-SP GET,  0 I64,  0 F@,  0 F64,  op B,  FLAG,
+   OP-I64-STORE ALIGN-64 0 MEM,
+   DONE, ;
+
 : BODY$ ( -- ptr u8 n )  0 BUF BUF-U @ ;
 
 public
@@ -213,6 +331,21 @@ public
    name u s" byte-view" STR=CI if VIEW-BODY BODY$ true exit then
    name u s" atomic!" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    name u s" atomic-cas" STR=CI if CAS-BODY BODY$ true exit then
+   \ ---- floats
+   name u s" f+" STR=CI if OP-F64-ADD FARITH-BODY BODY$ true exit then
+   name u s" f-" STR=CI if OP-F64-SUB FARITH-BODY BODY$ true exit then
+   name u s" f*" STR=CI if OP-F64-MUL FARITH-BODY BODY$ true exit then
+   name u s" f/" STR=CI if OP-F64-DIV FARITH-BODY BODY$ true exit then
+   name u s" fsqrt" STR=CI if FSQRT-BODY BODY$ true exit then
+   name u s" fnegate" STR=CI if OP-F64-NEG FSIGN-BODY BODY$ true exit then
+   name u s" fabs" STR=CI if OP-F64-ABS FSIGN-BODY BODY$ true exit then
+   name u s" f<" STR=CI if OP-F64-LT FCOMPARE-BODY BODY$ true exit then
+   name u s" f>" STR=CI if OP-F64-GT FCOMPARE-BODY BODY$ true exit then
+   name u s" f=" STR=CI if OP-F64-EQ FCOMPARE-BODY BODY$ true exit then
+   name u s" f0<" STR=CI if OP-F64-LT FCOMPARE0-BODY BODY$ true exit then
+   name u s" f0=" STR=CI if OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
+   name u s" s>f" STR=CI if S>F-BODY BODY$ true exit then
+   name u s" f>s" STR=CI if F>S-BODY BODY$ true exit then
    s" " false ;
 
 ;package

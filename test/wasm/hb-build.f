@@ -133,6 +133,41 @@ variable MOD-U
    WASM-HARNESS:THROW-CODE E-DIV-ZERO T= ;
 
 
+\ The program f.f: each float word through a word whose operands are not
+\ literals at the call, printed by `f.` and `.`.
+: F! ( -- )
+   SB-RESET
+   S\" : ADD ( r r -- r ) f+ ;\n: SUB ( r r -- r ) f- ;\n: MUL ( r r -- r ) f* ;\n" SB-APPEND
+   S\" : DIV ( r r -- r ) f/ ;\n: ROOT ( r -- r ) fsqrt ;\n: FLIP ( r -- r ) fnegate ;\n" SB-APPEND
+   S\" : SIZE ( r -- r ) fabs ;\n: LESS ( r r -- ) f< bool>n . ;\n" SB-APPEND
+   S\" : MORE ( r r -- ) f> bool>n . ;\n: SAME ( r r -- ) f= bool>n . ;\n" SB-APPEND
+   S\" : BELOW0 ( r -- ) f0< bool>n . ;\n: AT0 ( r -- ) f0= bool>n . ;\n" SB-APPEND
+   S\" : FLOAT ( n -- r ) s>f ;\n: TRUNC ( r -- n ) f>s ;\n" SB-APPEND
+   S\" : BIG ( -- r ) 1000000000000000.0 dup MUL ;\n: MAIN ( -- )\n" SB-APPEND
+   S\"    1.5 2.25 ADD f.  1.5 2.25 SUB f.  1.5 2.25 MUL f.  1.5 0.25 DIV f.\n" SB-APPEND
+   S\"    2.0 ROOT f.  -4.0 ROOT dup TRUNC .  dup SAME\n   -2.5 FLIP f.  -2.5 SIZE f.\n" SB-APPEND
+   S\"    1.0 2.0 LESS  2.0 1.0 LESS  2.0 1.0 MORE  1.0 2.0 MORE  1.0 1.0 SAME  1.0 2.0 SAME\n" SB-APPEND
+   S\"    0.0 FLIP BELOW0  0.0 BELOW0  -1.0 BELOW0  0.0 FLIP AT0  0.0 AT0  -1.0 AT0\n" SB-APPEND
+   S\"    -7 FLOAT f.  2.9 TRUNC .  -2.9 TRUNC .  BIG TRUNC .  BIG FLIP TRUNC . ;\n" SB-APPEND
+   SB$ s" f.f" SOURCE! ;
+
+\ What F!'s MAIN prints on the host: the square root of -4 is a NaN, which
+\ truncates to 0 and equals nothing; 1e30 and -1e30 truncate to MAX-N and MIN-N.
+: F-HOST$ ( -- ptr u8 n )
+   SB-RESET
+   S\" 3.750000\n-0.750000\n3.375000\n6.000000\n1.414213\n0\n0\n2.500000\n2.500000\n" SB-APPEND
+   S\" -1\n0\n-1\n0\n-1\n0\n0\n0\n-1\n-1\n-1\n0\n" SB-APPEND
+   S\" -7.000000\n2\n-2\n9223372036854775807\n-9223372036854775808\n" SB-APPEND
+   SB$ ;
+
+: FLOAT-CASE ( -- )
+   F!
+   s" the float words build into a module that prints what the host prints" T-LABEL
+   s" f.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ F-HOST$ T$= ;
+
+
 : REFUSAL-CASE ( -- )
    s" : MAIN ( -- ) depth drop ;" s" depth.f" SOURCE!
    s" a kernel word with no routine is refused by name with 74 and no module" T-LABEL
@@ -148,6 +183,7 @@ public
    EMIT-CASE
    PROGRAM-CASES
    ARITH-CASES
+   FLOAT-CASE
    REFUSAL-CASE
    T-REPORT ;
 
