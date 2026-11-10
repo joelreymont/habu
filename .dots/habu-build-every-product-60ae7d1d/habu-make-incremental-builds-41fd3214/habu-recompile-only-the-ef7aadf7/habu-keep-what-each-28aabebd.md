@@ -1,0 +1,11 @@
+---
+title: "Keep what each word's code refers to"
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-11-10T13:27:00.580025+02:00"
+---
+
+Problem: the run rule knows what a run word reaches only by piece (linker.f BUILT-USES, ROW-USES+, STORERS), so a file that ran one word of a piece depends on the whole piece and everything it references; six-edit table in the parent: any edit that renews util.f's piece time rewrites 202-213 objects, repl.f's 11-13. Decision (lead, design-word-level.md 'Decision (lead)'): the build keeps, per record, what its code refers to. This lane records it on both paths and nothing reads it: EDGES cells (4 * id + kind: record, emission, a piece's data, header data) with spans per record (REC-EDGES), per emission (EM-EDGES) and per BUILT row's data (ROW-EDGES), written at CODE-REF+, DATA-REF+, WORD-RECORD+, EM-CODE+, PIECE+ on the compile and RESOLVE, MAKE-DEF, LINK-ALIAS, LINK-TYPE, LINK-DATA on the link. Acceptance: a compiled piece and the same piece linked record the same lists; no object or program byte changes. Files: src/habu/linker.f. Verify: a temporary probe's edges lines equal between the cold (hb2.log) and warm (hb3.log) builds of ev.sh, then ev.sh without the probe (cold = warm unsigned, probe rewritten 11, file-objects PASS). Depends: none (stack tip zolomuqz da10c376). Brief: carl-layout/.out/briefs/lane-word-edges.md; site facts .out/reports/run-rule-sites.md. Ownership: carl. Claim: agent=carl workspace=.jj-ws.noindex/carl-words (carl-edges retired).
+
+Merged 2026-11-10 into the stack as sxyoypmz 2696ac72 (src/habu/linker.f, 82 insertions, 21 deletions). Worker's evidence: a temporary probe printed, per linker session, EDGES-N, the cells owned by a span and an order-free sum over (owner, cell): the cold build (every piece compiled) and the warm one (every piece linked) printed the same two lines, `edges 104053 104053 -2320123718291365718` and `edges 135587 135587 567299492167611610`; without the probe cold 13.0 s, warm 1.7 s, 0 rewritten, cold = warm = restored unsigned, probe rewritten 11, file-objects PASS. Not covered: the order of cells inside a span. Lead's fold after the evidence: the four append words call one EDGE+ (hb1 builds; the next lane's evidence runs it). Closes when the feature lands.

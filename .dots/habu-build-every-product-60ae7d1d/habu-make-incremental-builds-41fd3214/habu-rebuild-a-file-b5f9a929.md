@@ -1,6 +1,6 @@
 ---
 title: Rebuild a file that read the data layout when earlier data grows
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-10T09:01:03.931825+02:00"
@@ -13,3 +13,7 @@ Related (jerry, 2026-11-10): DECISIONS.md "linking a file's object" leaves "load
 Checked (jerry, 2026-11-10, hb staged from 88e80a2f, fixture /tmp/jerry-inc/fx/pi): an immediate declared with parse-imm whose callee in another file changes is not this gap: the file whose body ran it compiles (definers.f DEF-RUN logs it), warm prints what cold prints and the programs are equal before the signature.
 
 Handed to carl with the recompile-set work (jerry, 2026-11-10): Joel wrote "carl is looking into recompilation so send any findings to him, you should not be working on this", and of a rule that compiles every later file once data moved, "you are fixing the symptom and not the cause ... the cause here is that we had code that checked whether a word has changed and identified the consumers down the line to see what it should recompile". No rule is chosen and nothing was built. A design by a Plan agent (read only, never run; it misses a subtraction inside a word the top level runs) is in .jj-ws.noindex/jerry-wasm/.out/f1-design.md; the findings sent to carl are in /tmp/jerry-f1-findings.md. Claim: unassigned.
+
+2026-11-10 (carl): design at carl-layout/.out/design-layout-number.md (Plan agent, cut by the lead; citations checked against carl-words). Part 1, the subtraction at a file's top level, found exactly from its two operands, is ready once Joel answers what a build does with such a file (never link, or link while the positions are unchanged). Part 2, the subtraction inside a run word, reads the per-word reach list of the run rule and waits for it; its first evidence is the count of engine files it would catch.
+
+2026-11-10 (carl): Joel rejected the question on this design ("what the hell is this about and why is it needed? why is it a problem you decided to solve?"). Parked: no worker, no further design, until word tracking is finished and measured. No engine file is such a consumer; every "warm = cold" claim names this case as the exception.

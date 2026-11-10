@@ -1,0 +1,13 @@
+---
+title: REF-FILE scans every FILES row for each word the run walk reaches
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-11-10T14:02:16.887905+02:00"
+---
+
+Problem: src/habu/linker.f REF-FILE (:648 at 0fbd7181) compares the BUILT row's key and piece number with every FILES row of the object; the run walk calls it once per word reached (SEE -> NAMED-REC+ -> WORD-REF). Measured by lane 2's fold-in worker on a cold engine build: REF-FILE 2072 of 135844 samples (222 before the walk), STR= under it 673; cold user CPU 13.03 and 12.89 s against the parent's 12.59 and 12.45 s. Acceptance: REF-FILE answers a BUILT row's FILES row from a mark stamped with the object's serial (REF-OF), scanning only on a miss; same answer and writes for every call; cold = warm unsigned; file-objects unchanged. Left unmeasured after it: the walk's own per-cell cost (DYNAMIC-STORAGE RESERVE +1169 and ADDRESS +1001 samples, SEE 472, SEE-SPAN 139): profile again after this lane before filing anything. Files: src/habu/linker.f. Verify: ev.sh; a scratch assertion that the mark's row passes the scan's comparison; back-to-back user CPU; build-profile rows. Depends: none. Ownership: carl. Brief: .out/briefs/lane-ref-file-index.md. Claim: agent=carl workspace=.jj-ws.noindex/carl-ref.
+
+Lane reported 2026-11-10: commit "Find a piece's FILES row without a scan" (f281108d on 0fbd7181; rebased onto the USES removal as e3a1993e, the lead resolving REF-FILE's hit exit without the USED line; workspace carl-ref retired). REF-OF marks each BUILT row with the object's serial and its FILES row; FIND-REF answers from it or scans. A scratch assertion that the marked row passes the scan's STR= ran a whole ev.sh without a throw. ev.sh: all rc=0, warm rewritten 0, cold = warm unsigned, probe 3, file-objects PASS. Cold user CPU 11.77 and 11.81 s against the parent's 11.94 and 12.02 s. Profile (126077 samples): REF-FILE 763 inclusive (2070 before), RAN-FILES+ 4887, SEE 468 self and 4171 inclusive, FOLLOW 4622, DYNAMIC-STORAGE:RESERVE 2574 inclusive, ADDRESS 4422 self. The walk itself is now about 3.9 percent of a cold build.
+
+Profile at the tip e3a1993e 2026-11-10 (126964 samples, ~/.cache/tmp/carl-words/prof-tip/build.txt): the walk LINKER:SEE 479 self and 4078 inclusive (3.2 percent). DYNAMIC-STORAGE:ADDRESS 4287 self in the whole build, of which the linker's callers are SEE 444, SEE-SPAN 204 and RETIRED-AT 176 (0.65 percent of the build); DYNAMIC-STORAGE:RESERVE 2502 inclusive, of which SEE 149, REC-TIME 97 and FOLLOW 36 of its 627 self. The walk's per-cell cost is under 1 percent of a cold build: nothing more is filed for it.

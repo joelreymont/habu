@@ -1400,6 +1400,11 @@ learned live in the docs for their subject.
   compiled." Everything compiling a file produces, TRUSTED: bodies and does>
   definers included, is cached and replayed as one unit; no per-definition
   reuse.
+- 2026-11-10, incremental builds, on the entry above: "my recorded words are
+  wrong. the file is no longer the unit since we are tracking if words have
+  been modified and something else depends on them. given that we track
+  words, we don't need to track things between requires". A file depends on
+  the words it uses, not on the files it requests.
 - 2026-11-03, file objects: Joel wrote "whatever creates the object files (is
   it loader? should it be linker instead if it both saves and load?) has
   control over what executes when those object files are linked into an
