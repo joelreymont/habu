@@ -1577,9 +1577,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx FILE-REC @ - 6 WORD-SPAN {: at:ptr :}
    at @ bit or  at ! ;
 
-\ RECORD+, then the entry's span, its emission, the highest FILES row it names and the record it
-\ binds into WORD-SPANS, with no text yet; PIECE+ reserved the word's cells and zeroed cell 6. The
-\ piece filed the emission an entry names: E-COMP-STATE for another.
+\ RECORD+, then the entry's span, emission (none in a cross build, as CODE+), highest FILES row
+\ and bound record into WORD-SPANS; PIECE+ zeroed cell 6. E-COMP-STATE for an emission the piece did not file.
 : WORD-RECORD+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ - {: w:n :}
@@ -1589,7 +1588,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx RECORD+ {: bound:n :}
    idx SHADOW-ROW {: row:n :}
    idx row KIND {: kind:n :}
-   kind KIND-DEF =  kind KIND-DOES =  or {: coded:bool :}
+   kind KIND-DEF =  kind KIND-DOES =  or  CROSS? 0= and {: coded:bool :}
    coded if row NSHADOW:EMISSION@ FILE-EM @ - else -1 then {: em:n :}
    coded  em 0<  em NSHADOW:EMISSIONS FILE-EM @ - >=  or  and if E-COMP-STATE throw then
    bound 0 >= if bound REC-EDGE+ then
