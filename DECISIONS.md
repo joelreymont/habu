@@ -34,6 +34,8 @@ learned live in the docs for their subject.
   lsp-boundary, Wasm and x86-64 tests are disabled with `[if]`, not deleted;
   arm-to-arm with pg working comes first, then Wasm (dot
   habu-fix-the-wasm-bb1ffcfa), then x86-64 (dot habu-re-enable-the-959502b5).
+  On 2026-11-10 Joel wrote "we are past arm-to-arm and on to wasm and x86":
+  step 1 is over, and work parked until arm-to-arm landed is no longer held.
 
 ## Language and checker
 
