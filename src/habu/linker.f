@@ -627,8 +627,9 @@ variable PENDING-STORERS-N           \ its pairs
    p du FS:MAKE-DIRS ;
 
 \ ---- the records ---------------------------------------------------------------
-\ No address reaches PIECES: a record is named by file and index or identity, code and data by
-\ span and offset, so larger earlier files leave its bytes alone (test/file-objects.f).
+\ No address reaches PIECES: a record is named by its file, name sum and count, a facts row's still
+\ by file and index, code and data by span and offset, so larger earlier files leave its bytes alone
+\ (test/file-objects.f).
 
 : BUILT-N ( -- n ) BUILT BYTES$ {: a:ptr u:n :}  u BUILT-BYTES / ;
 
@@ -748,8 +749,8 @@ variable PENDING-STORERS-N           \ its pairs
    row  row ROOT-BUILT @ >=  idx REC-TIME 0=  or  REF-FILE
    row BUILT-AT BUILT-FIRST + LE:U64@ ;
 
-\ A record reference of a package role, an alias source, a private or seal entry or a facts row: the
-\ file, 0 for this one, then the index in that file; an earlier file's record also gets its WORDS row.
+\ A facts row's record reference, which alone still uses it: the file, 0 for this one, then the
+\ index in that file; an earlier piece's record also gets its WORDS row.
 : REF+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ >= if
@@ -759,8 +760,8 @@ variable PENDING-STORERS-N           \ its pairs
    k PIECES U64+  idx first - PIECES U64+
    k idx WORD-ROW+ ;
 
-\ A code reference's record: the file, 0 for this one, then its sum and count (REC-ID), which no
-\ insertion before it changes; an earlier file's record also gets its WORDS row.
+\ A record reference: the file, 0 for this one, then the record's sum and count (REC-ID), which no
+\ insertion before it changes; an earlier piece's record also gets its WORDS row.
 : ID-REF+ ( n -- )
    {: idx:n :}
    idx REC-ID {: sum:n count:n :}
@@ -1427,7 +1428,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    w 0<>  w rec XREF-PKG-PUBLIC 1 + =  and ;
 
 \ The wordlist's role: 0 global, 1 primitives, 2 package names, 3 or 4 a package's
-\ public or private one, then the package, which is the build's and below the record; 5 types.
+\ public or private one, then the package's record reference (ID-REF+), which is the build's and
+\ below the record; 5 types.
 : WORDLIST+ ( n -- )
    {: idx:n :}
    idx MADE-WID {: wid:n :}
@@ -1438,7 +1440,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    wid CHECK:WORDLIST-PACKAGE {: pkg:n hit:bool :}
    hit 0=  pkg FIRST-REC @ <  or  pkg idx >=  or if E-COMP-STATE throw then
    pkg XREF-REC XREF-PKG-PUBLIC wid = if 3 else 4 then PIECES U64+
-   pkg REF+ ;
+   pkg ID-REF+ ;
 
 variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow rows
 
@@ -1518,7 +1520,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    then
    kind KIND-TYPE = if TYPE-SOURCE exit then
    idx ALIAS-SOURCE {: src:n :}
-   src REF+  src ;
+   src ID-REF+  src ;
 
 \ Word w's cell c in WORD-SPANS.
 : WORD-SPAN ( n n -- ptr n )
@@ -1626,7 +1628,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 
 : LATE+ ( n -- )
    LATE-P {: p:n :}
-   KIND-PRIVATE PIECES U64+  p REF+  p NAMED-LATE NAMED-BY! ;
+   KIND-PRIVATE PIECES U64+  p ID-REF+  p NAMED-LATE NAMED-BY! ;
 
 \ Writes into PIECES each late private wordlist from the kth whose id is below
 \ the mark, and answers the next k.
@@ -1761,12 +1763,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \     P                    the does> slot's site, -1 for none; when P >= 0 its target's
 \                          reference
 \ A reference is a tag, then its fields: 0 a dictionary record (file, its name sum, its count
-\ among that file's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation (file, emission, function);
-\ 3 a file's data (file, offset from that file's first data byte, at most its data size:
-\ a body of no bytes at the file's end); 4 the open's header data (offset from BASE); 5 none: a
-\ patch target, a cell row's 0 or scratch cell, or a definition with no dispatch cell. A file
-\ field is 0 for this object, else its FILES row from 1 (REF-FILE). A cross build's E is 0: its
-\ shadow holds the target's code, in the target's site encodings, and it writes no object (LOAD).
+\ among that file's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation
+\ (file, emission, function); 3 a file's data (file, offset from that file's first data byte, at
+\ most its data size: a body of no bytes at the file's end); 4 the open's header data (offset from
+\ BASE); 5 none: a patch target, a cell row's 0 or scratch cell, or a definition with no dispatch
+\ cell. A file field is 0 for this object, else its FILES row from 1 (REF-FILE). A cross build's E
+\ is 0: its shadow holds the target's code, in the target's site encodings, and it writes no
+\ object (LOAD).
 : CODE+ ( -- )
    ENTRIES
    CROSS? if 0 PIECES U64+ exit then
@@ -2153,7 +2156,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 : SEAL+ ( ptr u8 n -- )
    {: old:ptr idx:n :}
    old idx SEALED-NOW? 0= if exit then
-   KIND-SEALED PIECES U64+  idx REF+  idx CHANGER+ ;
+   KIND-SEALED PIECES U64+  idx ID-REF+  idx CHANGER+ ;
 
 
 \ An event of the loader's log an ACTS row carries: a require the registry already held, or a
@@ -2242,7 +2245,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 : WRITE-OBJECT ( n -- )
    {: t:n :}
    \ FILES ends with the pieces the source names (NAMED+), then those a run word reaches (RAN-FILES+);
-   \ WORDS lists the words the pieces refer to (REF+, ID-REF+), the source spells (NAMED+) and a run reaches.
+   \ WORDS lists the words the pieces refer to (REF+, ID-REF+), the source spells (NAMED+) and a
+   \ run reaches.
    NAMED+  RAN-FILES+  PATHS-LAY
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
@@ -2489,6 +2493,23 @@ variable RD-END
    idx file FILE-RECS >= if BAD then ;
 
 
+\ A record reference (file, sum, count; ID-REF+): this file's record number below the bound
+\ (OWN-REC), or an earlier file's record (PLACE); -1 for a pending file's or once the object is BAD.
+: ID-REF-CK ( n n n n -- n )
+   {: file:n sum:n count:n bound:n :}
+   GOOD? 0= if -1 exit then
+   file 0= if
+      sum count OWN-REC {: o:n :}
+      o 0<  o bound >=  or if BAD -1 exit then
+      o exit
+   then
+   file FILE-IN? 0= if BAD -1 exit then
+   file PENDING? if -1 exit then
+   file FILES-ROW sum count PLACE {: r:n :}
+   r 0< if BAD then
+   r ;
+
+
 \ A quotation (file, emission, function); this file's emission at most top.
 : FN-REF-CK ( n n n n -- )
    {: file:n e:n f:n top:n :}
@@ -2510,15 +2531,9 @@ variable RD-END
    {: tag:n x:n y:n z:n top:n bound:n :}
    GOOD? 0= if exit then
    tag 0 = if
-      x 0= if
-         y z OWN-REC {: o:n :}
-         o 0<  o bound >=  or if BAD exit then
-         o REC-KIND KIND-PACKAGE = if BAD then exit
-      then
-      x FILE-IN? 0= if BAD exit then
-      x PENDING? if exit then
-      x FILES-ROW y z PLACE {: r:n :}
-      r 0< if BAD exit then
+      x y z bound ID-REF-CK {: r:n :}
+      r 0< if exit then
+      x 0= if  r REC-KIND KIND-PACKAGE = if BAD then exit  then
       r PKG? if BAD then exit
    then
    tag 1 = if rbase x + ARM64:HOST-KERNEL? 0= if BAD then exit then
@@ -2902,25 +2917,26 @@ variable RD-END
    RD-AT @ PIECE-AT ! ;
 
 
-\ A record reference naming a package: an earlier entry of KIND-PACKAGE, or an earlier file's
-\ package record. It answers the file and index it read.
+\ A record reference (file, sum, count) naming a package: an earlier entry of KIND-PACKAGE, or an
+\ earlier file's package record. It answers the file and the record ID-REF-CK found, -1 for none.
 : PKG-REF-CK ( -- n n )
-   RD-U64 RD-U64 {: file:n idx:n :}
-   file idx RECS-N @ REC-REF-CK
-   GOOD? if
+   RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
+   file sum count RECS-N @ ID-REF-CK {: n:n :}
+   GOOD?  n -1 <>  and if
       file 0= if
-         idx REC-KIND KIND-PACKAGE <> if BAD then
+         n REC-KIND KIND-PACKAGE <> if BAD then
       else
-         file PENDING? 0= if  file BUILT-FIRST BUILT@ idx + PKG? 0= if BAD then  then
+         n PKG? 0= if BAD then
       then
    then
-   file idx ;
+   file n ;
 
 
-\ A package holding a private wordlist, by the file and index a reference names it with.
+\ A package holding a private wordlist, by its file and the record PKG-REF-CK answers: this
+\ file's record number, or an earlier file's record.
 : PRIV+ ( n n -- )
-   {: file:n idx:n :}
-   file PRIVS-N @ 2 * PRIVS !  idx PRIVS-N @ 2 * 1 + PRIVS !
+   {: file:n n:n :}
+   file PRIVS-N @ 2 * PRIVS !  n PRIVS-N @ 2 * 1 + PRIVS !
    1 PRIVS-N +! ;
 
 
@@ -2935,28 +2951,27 @@ variable RD-END
    false ;
 
 
-\ Whether the package a reference names has a private wordlist: an earlier entry gave it one, it is
-\ an earlier file's package record holding one or granted one (GRANT+), or a pending piece's,
-\ which its link checks again.
+\ Whether the package a reference names, by its file and the record PKG-REF-CK answers, has a
+\ private wordlist: an earlier entry gave it one, it is an earlier file's package record holding one
+\ or granted one (GRANT+), or a pending piece's, which its link checks again.
 : PRIVATE? ( n n -- bool )
-   {: file:n idx:n :}
+   {: file:n n:n :}
    PRIVS-N @ 0 ?do
-      i 2 * PRIVS @ file =  i 2 * 1 + PRIVS @ idx =  and if true unloop exit then
+      i 2 * PRIVS @ file =  i 2 * 1 + PRIVS @ n =  and if true unloop exit then
    loop
    file 0= if false exit then
    file PENDING? if true exit then
-   file BUILT-FIRST BUILT@ idx + {: r:n :}
-   r GRANTED?  r XREF-REC XREF-PKG-PRIVATE 0<>  or ;
+   n GRANTED?  n XREF-REC XREF-PKG-PRIVATE 0<>  or ;
 
 
 \ A KIND-SEALED entry's package: an earlier file's, unsealed until the link seals it. A package of
 \ this file carries its seal in its own record's flags.
 : SEALED-CK ( -- )
-   PKG-REF-CK {: file:n idx:n :}
+   PKG-REF-CK {: file:n n:n :}
    GOOD? 0= if exit then
    file 0= if BAD exit then
    file PENDING? if exit then
-   file BUILT-FIRST BUILT@ idx + XREF-REC XREF:SEALED? if BAD then ;
+   n XREF-REC XREF:SEALED? if BAD then ;
 
 
 \ An entry's flags, which RECORD+ writes without the name length and EXT.
@@ -2974,9 +2989,9 @@ variable RD-END
    role 5 =  kind KIND-TYPE =  xor if BAD exit then
    role 3 = if PKG-REF-CK 2drop exit then
    role 4 <> if exit then
-   PKG-REF-CK {: file:n idx:n :}
+   PKG-REF-CK {: file:n n:n :}
    GOOD? 0= if exit then
-   file idx PRIVATE? 0= if BAD then ;
+   file n PRIVATE? 0= if BAD then ;
 
 
 \ A KIND-DEF entry's emission: NSHADOW:PUBLISH files one emission per definition, so it is the
@@ -3021,23 +3036,22 @@ variable RD-END
    y 8 + OWN-DATA-MAX @ max OWN-DATA-MAX ! ;
 
 
-\ Entry i: its offset into ENTRY-OFFS, then its fields (RECORD+, LATE+, SEAL+); a record's index
-\ is RECS-N as it starts.
+\ Entry i: its offset into ENTRY-OFFS, then its fields (RECORD+, LATE+, SEAL+), each record it
+\ names by file, sum and count (ID-REF-CK); a record's index is RECS-N as it starts.
 : ENTRY-CK ( n -- )
    {: i:n :}
    RD-AT @ i ENTRY-OFFS !
    RD-U64 {: kind:n :}
    kind 0<  kind KIND-TYPE >  or if BAD exit then
    kind KIND-PRIVATE = if
-      \ A package holding a private wordlist gains none (OUTER:PACKAGE-PRIVATE refuses it).
-      PKG-REF-CK {: file:n idx:n :}
+      \ A package holding a private wordlist gains none (OUTER:PACKAGE-PRIVATE refuses it); a
+      \ pending file's package is PRIVATE? whatever PRIVS holds, so it is not added.
+      PKG-REF-CK {: file:n n:n :}
       GOOD? if
-         file PENDING? if
-            file idx PRIV+
-         else
-            file idx PRIVATE? if BAD else
-               file idx PRIV+
-               file 0<> if  file BUILT-FIRST BUILT@ idx + GRANT+  then
+         file PENDING? 0= if
+            file n PRIVATE? if BAD else
+               file n PRIV+
+               file 0<> if n GRANT+ then
             then
          then
       then
@@ -3049,16 +3063,16 @@ variable RD-END
    kind KIND-DEF =  GOOD? and if RECS-N @ em EM-RECS ! then
    kind KIND-DEF = if DISPATCH-CK then
    kind KIND-PACKAGE = if PKG-FLAG-CK then
-   kind KIND-ALIAS = if RD-U64 RD-U64 RECS-N @ REC-REF-CK then
+   kind KIND-ALIAS = if RD-U64 RD-U64 RD-U64 RECS-N @ ID-REF-CK drop then
    kind KIND-DOES = if DOES-CK then
    em LAST-EM !
    kind RECS-N @ REC-KINDS !
    1 RECS-N +! ;
 
 
-\ A piece's entries (PIECE+); 24 bytes is a KIND-PRIVATE or KIND-SEALED entry's size.
+\ A piece's entries (PIECE+); 32 bytes is a KIND-PRIVATE or KIND-SEALED entry's size.
 : ENTRIES-CK ( -- )
-   24 RD-COUNT {: n:n :}
+   32 RD-COUNT {: n:n :}
    n ENTRIES-N !  0 RECS-N !  0 DEFS-N !  0 DOES-N !  0 PRIVS-N !  -1 LAST-EM !
    0 OWN-DATA-MAX !
    n 0 > if
@@ -3902,6 +3916,20 @@ variable LINK-EM                     \ that emission's number in this object, -1
    file BUILT-FIRST BUILT@ idx + ;
 
 
+\ The dictionary index a linked record reference (file, sum, count; ID-REF+) names: this file's
+\ record by OWN-REC, an earlier file's by PLACE; E-COMP-STATE when neither finds it.
+: ID-REC ( n n n -- n )
+   {: file:n sum:n count:n :}
+   file 0= if
+      sum count OWN-REC {: o:n :}
+      o 0< if E-COMP-STATE throw then
+      FILE-REC @ o + exit
+   then
+   file FILES-ROW sum count PLACE {: r:n :}
+   r 0< if E-COMP-STATE throw then
+   r ;
+
+
 \ A quotation reference's address: function f of the file's emission e, the host
 \ entry the shadow filed for it, which CODE-REF+ wrote through SOURCE-FUNCTION.
 : FN-ADDR ( n n n -- n )
@@ -3921,9 +3949,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
 : RESOLVE ( n n n n -- n )
    {: tag:n x:n y:n z:n :}
    tag 0 = if
-      x 0= if y z OWN-REC else x FILES-ROW y z PLACE then {: o:n :}
-      o 0< if E-COMP-STATE throw then
-      x 0= if FILE-REC @ o + else o then {: r:n :}
+      x y z ID-REC {: r:n :}
       r ndict@ >= if E-COMP-STATE throw then
       r PKG? if E-COMP-STATE throw then
       r REC-EDGE+  r XREF-REC XREF-START exit
@@ -3957,8 +3983,8 @@ variable LINK-EM                     \ that emission's number in this object, -1
    at @  DNAME-LEN-MASK DNAME-EXT or  and  saved or  at ! ;
 
 
-\ The wordlist a role names (WORDLIST+); roles 3 and 4 are then the package's reference,
-\ and a package without that wordlist (id 0) is E-COMP-STATE.
+\ The wordlist a role names (WORDLIST+); roles 3 and 4 are then the package's reference (file,
+\ sum, count; ID-REC), and a package without that wordlist (id 0) is E-COMP-STATE.
 : ROLE-WID ( -- n )
    RD-U64 {: role:n :}
    role 0 = if BOOT:GLOBAL-WL exit then
@@ -3966,7 +3992,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    role 2 = if BOOT:NAMESPACE-WL exit then
    role 5 = if BOOT:TYPES-WL exit then
    role 3 <>  role 4 <>  and if E-COMP-STATE throw then
-   RD-U64 RD-U64 REC-INDEX XREF-REC {: rec:ptr :}
+   RD-U64 RD-U64 RD-U64 ID-REC XREF-REC {: rec:ptr :}
    role 3 = if rec XREF-PKG-PUBLIC else rec XREF-PKG-PRIVATE then {: wid:n :}
    wid 0= if E-COMP-STATE throw then
    wid ;
@@ -3992,9 +4018,9 @@ variable LINK-EM                     \ that emission's number in this object, -1
    {: i:n :}
    i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 KIND-PRIVATE <> if E-COMP-STATE throw then
-   RD-U64 RD-U64 {: file:n idx:n :}
+   RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
    GOOD? 0= if E-COMP-STATE throw then
-   file idx REC-INDEX dup CHANGER+ OUTER:PACKAGE-PRIVATE ;
+   file sum count ID-REC dup CHANGER+ OUTER:PACKAGE-PRIVATE ;
 
 
 \ Entry i, an earlier file's package this file sealed (SEAL+), sealed again.
@@ -4002,9 +4028,9 @@ variable LINK-EM                     \ that emission's number in this object, -1
    {: i:n :}
    i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 KIND-SEALED <> if E-COMP-STATE throw then
-   RD-U64 RD-U64 {: file:n idx:n :}
+   RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
    GOOD? 0= if E-COMP-STATE throw then
-   file idx REC-INDEX dup CHANGER+ XREF-REC XREF:SEAL ;
+   file sum count ID-REC dup CHANGER+ XREF-REC XREF:SEAL ;
 
 
 \ Entry i, an alias (RECORD+), as the next record.
@@ -4015,9 +4041,9 @@ variable LINK-EM                     \ that emission's number in this object, -1
    RD-NAME {: a:ptr u:n :}
    RD-U64 {: flags:n :}
    ROLE-WID {: wid:n :}
-   RD-U64 RD-U64 {: file:n idx:n :}
+   RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
    GOOD? 0= if E-COMP-STATE throw then
-   file idx REC-INDEX {: src:n :}
+   file sum count ID-REC {: src:n :}
    ndict@ {: want:n :}
    a u src wid OUTER:ALIAS-RECORD
    flags want SET-FLAGS
