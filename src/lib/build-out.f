@@ -1,11 +1,10 @@
 \ build-out.f - where a build writes what it makes, under <out>: $HABU_OUT when set
 \ and non-empty (relative to SOURCE-ROOT:CWD$), else .out under the working
 \ directory. <out>/obj/<key>.hfo holds one object per file key, shared by every
-\ engine, since the key names what compiles the file. <out>/<engine-key>/, the key
-\ the 64-hex SHA-256 of an engine binary (KEY-OF!), keeps that engine's
-\ images under img/<family> (IMG$). Outputs a
-\ later engine must find live under <out> itself (BASE$). PROCESS-WIDE: cleared
-\ before image capture.
+\ engine, since the key names what compiles the file. <out>/<engine-key>/, named
+\ by ENGINE-ID:KEY$, hb's stamp, keeps that engine's images under img/<family>
+\ (IMG$). Outputs a later engine must find live under <out> itself (BASE$).
+\ PROCESS-WIDE: cleared before image capture.
 require src/lib/error.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -97,9 +96,8 @@ public
 
 
 \ The engine key of the binary at the path into a KEY-LEN-byte buffer: the
-\ lowercase hex SHA-256 of its bytes, the string ENGINE-ID:KEY$ gives for the
-\ running engine's own file. An unopenable file throws E-FS-OPEN and a failed
-\ read E-FS-IO.
+\ lowercase hex SHA-256 of its bytes. An unopenable file throws E-FS-OPEN and a
+\ failed read E-FS-IO.
 : KEY-OF! ( ptr u8 n ptr u8 -- )
    {: path:ptr pathu:n dst:ptr :}
    REGISTER-CLEANUP

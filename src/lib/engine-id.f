@@ -1,14 +1,16 @@
-\ engine-id.f - the running engine's path and binary content key. PATH$ is the
+\ engine-id.f - the running engine's path and stamp. PATH$ is the
 \ kernel-reported pathname, which can be replaced after it resolves, so KEY$
-\ hashes a descriptor bound to the running image: /proc/self/exe on Linux, on
-\ macOS one whose vnode matches the main executable's mapped vnode. Caches and
-\ query buffers clear before image capture through a one-shot hook, registered
-\ again by the next use that caches either value.
+\ fstats a descriptor bound to the running image (/proc/self/exe on Linux, on
+\ macOS one whose vnode matches the main executable's mapped vnode): decimal
+\ `<ctime seconds>.<nanoseconds>-<size>`. Caches and query buffers clear before
+\ image capture through a one-shot hook that the next use caching either sets.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
+require src/lib/fs.f
+require src/lib/fmt.f
 
 package ENGINE-ID
 
@@ -16,9 +18,10 @@ PATH-CAP 1 + constant EID-PATH-CAP
 64 constant EID-KEY-LEN
 
 create EID-PATH EID-PATH-CAP allot   variable EID-PATH-U   variable EID-PATH-DONE
-create EID-KEY EID-KEY-LEN allot     variable EID-KEY-DONE
+create EID-KEY EID-KEY-LEN allot     variable EID-KEY-U
+variable EID-KEY-DONE
 variable EID-CLEANUP-LIVE
-create EID-FSHA-CTX SHA256-FILE-CTX-BYTES allot
+create EID-PATHZ EID-PATH-CAP allot
 
 \ Linux follows the process's executable mapping, even after its old pathname
 \ has been renamed and another file has appeared there.
@@ -59,18 +62,19 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
    {: a:ptr u:n :}
    u 0 ?do 0 a i + c! loop ;
 
-\ Capture clears each buffer whole. On macOS KEY$ leaves the pathname in the
-\ digest context's path field and in the mapped-region answer, as well as in
-\ EID-PATH, and proc_pidpath can leave a right-aligned copy beyond the length it
-\ reports. The key, the digest state and the descriptor answer go too.
+\ Capture clears each buffer whole. On macOS KEY$ leaves the pathname in
+\ EID-PATHZ and in the mapped-region answer, as well as in EID-PATH, and
+\ proc_pidpath can leave a right-aligned copy beyond the length it reports. The
+\ key and the descriptor answer go too.
 : CLEAR-CACHE ( -- )
    EID-PATH EID-PATH-CAP CLEAR-SPAN
    EID-KEY EID-KEY-LEN CLEAR-SPAN
-   EID-FSHA-CTX SHA256-FILE-CTX-BYTES CLEAR-SPAN
+   EID-PATHZ EID-PATH-CAP CLEAR-SPAN
    EID-MAPPED EID-REGION-BYTES CLEAR-SPAN
    EID-OPENED EID-FD-BYTES CLEAR-SPAN
    0 EID-PATH-U !
    0 EID-PATH-DONE !
+   0 EID-KEY-U !
    0 EID-KEY-DONE !
    0 EID-CLEANUP-LIVE ! ;
 
@@ -109,7 +113,7 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
       EID-PROC-EXE open-rd exit
    then
    HB-TARGET-MACOS? if
-      CACHED-PATH EID-FSHA-CTX SHA-FILE-PATH PATH-CAP 1+ SPAN:MAKE FFI:CSTR
+      CACHED-PATH EID-PATHZ EID-PATH-CAP SPAN:MAKE FFI:CSTR
       open-rd exit
    then
    E-ENGINE-KEY throw ;
@@ -127,12 +131,25 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
    EID-OPENED EID-FD-INO + LE:U64@ = and
    0= if E-ENGINE-KEY throw then ;
 
+\ Appends a number, at least zero, to the key in decimal without padding.
+: DEC+ ( n -- ) {: v:n :}
+   v 0 < if E-ENGINE-KEY throw then
+   v FMT:INT$ {: a:ptr u:n :}
+   a EID-KEY EID-KEY-U @ + u BYTE-COPY
+   EID-KEY-U @ u + EID-KEY-U ! ;
+
+: BYTE+ ( n -- )
+   EID-KEY EID-KEY-U @ + c!
+   EID-KEY-U @ 1+ EID-KEY-U ! ;
+
 \ Preserve the descriptor across catch so KEY$ can close it even if a foreign
-\ identity query or the read throws. The returned descriptor keeps catch's stack
-\ effect preserving; KEY$ discards that output before using its own local.
-: HASH-RUNNING ( n -- n ) {: fd:n :}
+\ identity query or the fstat throws. The returned descriptor keeps catch's
+\ stack effect preserving; KEY$ discards that output before using its own local.
+: STAMP-RUNNING ( n -- n ) {: fd:n :}
    HB-TARGET-MACOS? if fd VERIFY-MACOS then
-   EID-FSHA-CTX fd EID-KEY SHA256-FD-HEX-IN 0<> if E-ENGINE-KEY throw then
+   fd >FD FS:FD-STAMP {: sec:n ns:n size:n :}
+   0 EID-KEY-U !
+   sec DEC+ $2E BYTE+ ns DEC+ $2D BYTE+ size DEC+
    fd ;
 
 public
@@ -144,11 +161,11 @@ public
       REGISTER-CLEANUP
       OPEN-RUNNING {: fd:n :}
       fd 0 < if E-ENGINE-KEY throw then
-      fd [: HASH-RUNNING ;] catch {: code:n :} drop
+      fd [: STAMP-RUNNING ;] catch {: code:n :} drop
       fd close
       code 0<> if code throw then
       -1 EID-KEY-DONE !
    then
-   EID-KEY EID-KEY-LEN ;
+   EID-KEY EID-KEY-U @ ;
 
 ;package

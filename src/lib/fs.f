@@ -560,6 +560,12 @@ private
    HB-TARGET-MACOS? if 96 + LE:U64@ exit then
    48 + LE:U64@ ;
 
+\ The change time of libc's struct stat, seconds then nanoseconds, which
+\ FSTAT-CALL writes; offsets measured as LIBC-SIZE@'s were.
+: LIBC-CTIME@ ( ptr u8 -- n n ) {: buf:ptr :}
+   HB-TARGET-MACOS? if buf 64 + LE:U64@ buf 72 + LE:U64@ exit then
+   buf 104 + LE:U64@ buf 112 + LE:U64@ ;
+
 : FSTAT-FAIL ( n n -- ) {: file cause :}
    file close
    cause CAUSE!
@@ -591,6 +597,12 @@ public
    dst size READ-FILL size <> if IO-FAIL then
    READ-MORE? if IO-FAIL then
    IO-FD @ close ;
+
+\ The open descriptor's file: change time, seconds then nanoseconds, and size.
+\ A failed fstat is E-FS-STAT with the descriptor left open.
+: FD-STAMP ( fd -- n n n ) {: file:fd :}
+   file FD>N STAT-BUF FSTAT-CALL 0<> if FFI:ERRNO CAUSE! E-FS-STAT throw then
+   STAT-BUF LIBC-CTIME@  STAT-BUF LIBC-SIZE@ ;
 
 private
 : WRITE-BY-FLAGS ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu src:ptr u flags :}
