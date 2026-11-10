@@ -549,17 +549,6 @@ public
    q catch {: rc:n :}
    fresh u old oldu rc ROOT-LEAVE ;
 
-\ A builder's target source is discovered from the invocation root. Restore
-\ its caller's source root after compilation, including on a checker refusal.
-: WITH-CWD ( [ -- ] -- ) {: q :}
-   CURRENT@ {: old:ptr oldu:n :}
-   CWD$ CURRENT!
-   1 SCOPES +!
-   q catch {: rc:n :}
-   -1 SCOPES +!
-   old oldu CURRENT!
-   rc 0= 0= if rc throw then ;
-
 private
 
 \ The path words act on the top level only: each open scope, a load's among
