@@ -2,12 +2,10 @@
 \ (src/lib/c2-memory.f; rules in docs/design.md "Ownership"). A frame is PENDING
 \ before any allocation can return, LIVE once its acquisitions are recorded,
 \ then CLOSING -> CLOSED as disposers run; at most FRAME-CAP nest (E-C2-CAPACITY).
-\ Image capture refuses an open frame or loan (E-C2-CAPTURE).
 \ STORAGE CLASS. TASK-LOCAL: the frame chain is one TASK:+USER row (OWNER-REGION).
 require src/lib/error.f
 require src/lib/task.f
 require src/lib/memory.f
-require src/lib/image-lifecycle.f
 
 package C2-MEM
 private
@@ -68,14 +66,8 @@ CAST: >APPEND-DISPOSER-CELL ( ptr u8 -- ptr [ ptr u8 NUM:alloc-byte-len -- ] )
 : HEAD-FRAME ( -- ptr n )
    HEAD-CELL @ 1- FRAME-AT ;
 
-: CAPTURE-GUARD ( -- )
-   HEAD-CELL @ 0<> LOAN-DEPTH-CELL @ 0<> or if E-C2-CAPTURE throw then ;
-
 : LOAN-ENTER ( -- ) 1 LOAN-DEPTH-CELL +! ;
 : LOAN-LEAVE ( -- ) -1 LOAN-DEPTH-CELL +! ;
-
-: REGISTER-CAPTURE-GUARD ( -- )
-   [: CAPTURE-GUARD ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT ;
 
 \ Called only on a live BYTES head, whose length MEM:ALLOC-BYTES returned. Its
 \ CLOSING state while the adapter runs is a halted task's one cleanup record.
@@ -311,10 +303,4 @@ TRUSTED: INVOKE ( R [ R -- S | U -- U ] | U -- S | U )
    OPEN
    INVOKE ;
 
-;package
-
-\ Declaration-time guard stays armed after a refused capture and is carried
-\ into emitted images. PREPARE calls it after one-shot task cleanup.
-package C2-MEM
-REGISTER-CAPTURE-GUARD
 ;package

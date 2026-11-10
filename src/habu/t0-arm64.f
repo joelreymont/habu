@@ -7,7 +7,6 @@
 \ CTARGET-ARCH:AARCH64.
 
 require src/lib/error.f
-require src/lib/image-lifecycle.f
 require src/lib/byte-buffer.f
 require src/lib/le.f
 require src/lib/span.f
@@ -83,10 +82,10 @@ C-GT CC-GT CC>N CONDS !
 ' ENC-LSLI SH-LEFT SHIFTER>N SH-RI !
 ' ENC-LSRI SH-RIGHT SHIFTER>N SH-RI !
 
-create RAW BUF:HDR-BYTES allot        \ the open unit's body
-create OUT BUF:HDR-BYTES allot        \ the closed units, BYTES
-create EPI BUF:HDR-BYTES allot        \ the open unit's epilogue, built at CLOSE
-variable LIVE                         \ nonzero once the buffers hold storage
+create RAW BUF:HDR-BYTES SCRATCH-ALLOT \ the open unit's body
+create OUT BUF:HDR-BYTES SCRATCH-ALLOT \ the closed units, BYTES
+create EPI BUF:HDR-BYTES SCRATCH-ALLOT \ the open unit's epilogue, built at CLOSE
+SCRATCH-VARIABLE LIVE                 \ nonzero once the buffers hold storage
 variable FRAME-CELLS                  \ machine-stack cells this unit uses
 variable LINKED                       \ nonzero once this unit calls
 variable HELD                         \ nonzero while x29 holds the index
@@ -350,16 +349,6 @@ DYNAMIC-BUFFER BR-ARG n
    0 NUNIT !
    LABEL:RESET
    UNIT-BEGIN ;
-
-\ The buffers are this process's mappings, which no image carries; the next
-\ OPEN maps them again.
-: CAPTURE-PREPARE ( -- )
-   LIVE @ 0= if exit then
-   RAW BUF:DISPOSE
-   OUT BUF:DISPOSE
-   EPI BUF:DISPOSE
-   0 LIVE ! ;
-' CAPTURE-PREPARE IMAGE-LIFECYCLE:REGISTER-PERSISTENT
 
 
 \ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins

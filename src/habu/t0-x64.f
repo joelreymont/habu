@@ -7,7 +7,6 @@
 \ CTARGET-ARCH:X86-64.
 
 require src/lib/error.f
-require src/lib/image-lifecycle.f
 require src/lib/byte-buffer.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
@@ -39,8 +38,8 @@ using X64ASM
    k 5 = if C-G exit then
    E-OPERAND throw ;
 
-create SINK BUF:HDR-BYTES allot
-variable SINK-LIVE                    \ nonzero once SINK holds storage
+create SINK BUF:HDR-BYTES SCRATCH-ALLOT
+SCRATCH-VARIABLE SINK-LIVE            \ nonzero once SINK holds storage
 variable FRAME-CELLS                  \ machine-stack cells this body uses
 variable NFRAME
 variable NUNIT                        \ units begun in this emission
@@ -144,14 +143,6 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    0 NUNIT !
    LABEL:RESET
    UNIT-BEGIN ;
-
-\ The sink is this process's mapping, which no image carries; the next OPEN
-\ maps it again.
-: CAPTURE-PREPARE ( -- )
-   SINK-LIVE @ 0= if exit then
-   SINK BUF:DISPOSE
-   0 SINK-LIVE ! ;
-' CAPTURE-PREPARE IMAGE-LIFECYCLE:REGISTER-PERSISTENT
 
 : QUOT-OPEN ( n -- ) {: n:n :}
    n NUNIT @ <> if E-T0-UNIT throw then

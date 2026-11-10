@@ -3,12 +3,12 @@
 \ only checked call surface: its word names a row, never an address.
 \ STORAGE CLASS. TASK-LOCAL: marshalling buffers, extent tables, kernel params
 \ and the DLSYM loader block; calls nest only through a C callback, which shares
-\ them (src/lib/ffi-callback.f). PROCESS-WIDE: rows, cleared before each capture.
+\ them (src/lib/ffi-callback.f). PROCESS-WIDE: rows, whose addresses, handles
+\ and failures are scratch.
 
 s" src/lib/error.f" required
 s" src/lib/span.f" required                   \ CSTR's destination carries its reach
 s" src/lib/string.f" required
-s" src/lib/image-lifecycle.f" required
 s" src/lib/le.f" required                     \ the four-byte C int this package reads back
 s" src/lib/float32.f" required                \ binary32 conversion at the C ABI boundary
 s" src/lib/adt/option.f" required             \ option<n> - the version token VERSIONED-LIBRARY parses
@@ -241,7 +241,6 @@ CAST: OBSERVER-N ( [ n n -- ] -- n )
 
 : NOTIFY ( n n -- ) {: kind:n idx:n :}
    OBSERVER @ dup 0<> if kind idx rot OBSERVER-FN execute else drop then ;
-variable FN-REGISTERED
 PERSISTED-PTR-VARIABLE PIN-FN
 PERSISTED-PTR-VARIABLE PIN-LIB
 variable PIN-FN-CAP
@@ -442,8 +441,8 @@ private
    idx LIB-CHECK
    value idx LIB-FAILED-OFF LIB-FIELD ! ;
 
-\ Clears a staged buffer (registers, spills, dlopen/dlsym, lengths) so two builds
-\ of one program match; kernel params stay until FFI-KPARAM-RESET.
+\ Clears a staged buffer (registers, spills, dlopen/dlsym, lengths); kernel
+\ params stay until FFI-KPARAM-RESET.
 : FORGET-STAGED ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do 0 a i + c! loop ;
 
@@ -726,9 +725,8 @@ public
 private
 
 \ dlclose answers a C int, which fills only the low half of the return register,
-\ and zero is success. A refused close keeps the handle for the next PREPARE to
-\ retry. This runs only inside FFI's registered hook, so the dlclose row is
-\ looked up without registering.
+\ and zero is success. A refused close keeps the handle for the next
+\ FORGET-CACHE to retry.
 : CLOSE-SLOT ( n -- bool ) {: slot:n :}
    RESET slot LIB-HANDLE@ 0 VALUE!
    DLCLOSE-FN-CELL @ {: row:n :}
@@ -739,10 +737,7 @@ private
    true ;
 
 \ Library handles are owned references, released here; function addresses are
-\ borrowed and only cleared, so the first call after a restore re-resolves. This
-\ runs after every one-shot cleanup (IMAGE-LIFECYCLE:PREPARE runs persistent
-\ hooks last, in reverse order, and FFI registers first), so module cleanup that
-\ calls into a library has finished before the library closes.
+\ borrowed and only cleared, so the next call resolves again.
 : CLOSE-BANK ( n -- bool ) {: tag:n :}
    true
    tag LIB-N-CELL @ 0 ?do
@@ -778,26 +773,11 @@ private
    closed 0= if E-FFI-DLCLOSE throw then
    DRAIN-RETIRED ;
 
-\ The registered flag is set only after REGISTER completes, so a throwing
-\ registration leaves flag and registry consistent for a retry (the rule above
-\ src/lib/image-lifecycle.f PREPARE).
-: REGISTER-CLEANUP ( -- )
-   FN-REGISTERED @ 0= if
-      [: FORGET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT
-      1 FN-REGISTERED !
-   then ;
-
-\ The unresolved path arms FFI's cleanup before the lookup acquires an address
-\ or a handle. A stripped image needs this: it starts with an empty registry and
-\ the flag clear (AOT-CONTROLS) and replays no declaration, so its first
-\ resolution registers, and FFI's hook is its first persistent one unless the
-\ program registered one at run time before its first foreign call. Registering
-\ here, not in the CALL words, places this after REGISTER-CLEANUP and the hook's
-\ dlclose call, which uses FN-LOOKUP.
+\ A function address is scratch, so a program's first call through a row
+\ resolves it here.
 : FN-RESOLVE ( n -- n ) {: idx:n :}
    idx FN-ADDR@ dup 0 <> if exit then
    drop
-   REGISTER-CLEANUP
    idx FN-LOOKUP ;
 
 public
@@ -979,8 +959,7 @@ public
    argc FFI-MAX-ARGS FFI-CHECK-COUNT
    spills FFI-MAX-ARGS FFI-CHECK-COUNT
    reloc argc spills RELOC-OWNED? 0= if E-FFI-ARITY throw then
-   name u lib argc spills reloc FN-INDEX dup 0 >= if REGISTER-CLEANUP OBS-FN over NOTIFY exit then drop
-   REGISTER-CLEANUP
+   name u lib argc spills reloc FN-INDEX dup 0 >= if OBS-FN over NOTIFY exit then drop
    FN-NEW
    tag FN-N-CELL @ tag or {: idx:n :}
    name u idx NAME-FIELD CSTR drop
@@ -1041,11 +1020,9 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ A stripped image whose host includes FFI carries the declarations made while
 \ loading the application in its DATA window, with foreign addresses unresolved
 \ for the new process; the linker gets the table's exact storage through the two
-\ callbacks. Retired rows drain before capture, which empties the retired tables
-\ a fresh runtime starts with. A stripped entry publishes the two table
-\ bases after restoring DATA: their addresses vary with the maker's window,
-\ while the descriptor bytes and counts stay identical for one application
-\ source.
+\ callbacks. A stripped entry publishes the two table bases after restoring
+\ DATA: their addresses vary with the maker's window, while the descriptor
+\ bytes and counts stay identical for one application source.
 : AOT-CONTROLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: carry fresh :}
    FN-N BYTE-VIEW CELL carry execute
@@ -1064,8 +1041,7 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
    RETIRED-BASE#base BYTE-VIEW CELL fresh execute
    RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
    RETIRED-COUNT BYTE-VIEW CELL fresh execute
-   OBSERVER BYTE-VIEW CELL fresh execute
-   FN-REGISTERED BYTE-VIEW CELL fresh execute ;
+   OBSERVER BYTE-VIEW CELL fresh execute ;
 
 
 \ Stripped application runtime starts with no maker declarations. The
