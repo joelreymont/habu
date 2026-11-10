@@ -1837,6 +1837,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    THEN
    k RF-SIG = SGBAD-SIZE? and IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
    k RF-LOCAL = LOCALBAD-GROUP? and IF s" reason" JKEY LOCALBAD-REASON$ JSTR 44 EMIT1 THEN
+   k RF-RETURN = IF s" reason" JKEY RS-REASON$ JSTR 44 EMIT1 THEN   \ the sentence the load's prose prints
    s" token_index" JKEY
    TOP-STEP @ IF s" null" DTXT ELSE FAILIX @ JNUM THEN  44 EMIT1
    s" file" JKEY  DFILE$ JSTR  44 EMIT1

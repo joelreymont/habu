@@ -510,8 +510,10 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    s" : CDD-NP3 ( n -- ) create , does> ( R -- S ) drop ;" CDD-NP-REFUSED
    s" a clause that claims a quotation's output row without running it is refused" T-LABEL
    s" : CDD-NP4 ( n -- ) create , does> ( R [ R -- S ] -- S ) drop drop ;" CDD-NP-REFUSED
-   s" a clause that binds its declared return row is refused" T-LABEL
-   s" : CDD-NP5 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;" CDD-NP-REFUSED
+   \ The return-stack seal's, not the parametric pass's (checker.f RS-BORROWS?).
+   s" a clause that reads below its declared return row is refused at the read" T-LABEL
+   s" : CDD-RB1 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;"
+      s" at 'r>' return stack: this reads below the return-stack cells pushed here" CDD-NOT-CERTIFIED
    s" a clause too wide to record is uncheckable, and the load goes on" T-LABEL
    CDD-WIDE$ s" input row too wide to record (257 cells, at most 255)" CDD-NOT-CERTIFIED
    s" a clause whose signature fits a record declares it, though its body is too wide" T-LABEL

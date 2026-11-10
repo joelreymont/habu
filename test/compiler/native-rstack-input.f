@@ -97,7 +97,7 @@ variable ERR-U
    REFUSED-RC REFUSED
    s" a quotation literal pops a cell its caller pushed"
    S\" : QPOP ( n -- n ) >r [: r> ;] execute ;\n: USE ( -- n ) 5 QPOP ;\nUSE . cr\n"
-   S\" habu: in qpop: at ';]' return stack: the quotation reads below the return-stack cells it pushed expected: n actual: ; suggestion: Read or pop only return-row cells this quotation pushed with >r; below them lies the caller's frame.\nhook: non-certified definition: qpop at ';]'\n"
+   S\" habu: in qpop: at 'r>' return stack: the quotation reads below the return-stack cells it pushed expected: n actual: ; suggestion: Read or pop only return-row cells this quotation pushed with >r; below them lies the caller's frame.\nhook: non-certified definition: qpop at 'r>'\n"
    REFUSED-RC REFUSED
    s" an unsigned definition reads a cell it did not push"
    S\" : UREAD r@ ;\n"

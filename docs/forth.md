@@ -1198,9 +1198,10 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 - The implicit return row is sealed the same way, with or without a signature:
   `r>`, `r@`, `2r>` and `2r@` reach only cells this definition pushed, even
   when a later `>r` restores the balance, so `: X r@ ;` and `: X r> ;` are
-  refused (`fix_return_stack`) at both tiers. A quotation literal's return row
-  is sealed at its `;]`: `[: >r ;] execute r>` and `>r [: r> ;] execute` are
-  refused there.
+  refused (`fix_return_stack`) at the read, at both tiers. A quotation
+  literal's own reads are sealed the same way (`>r [: r> ;] execute` is refused
+  at `r>`); one that leaves its return row unbalanced is refused at its `;]`
+  (`[: >r ;] execute r>`).
 - A **type var** (`a`, `b`, …) is a fresh polymorphic type; one letter in one
   signature is one type. `n`, `f` and `r` are concrete types, not type vars.
 - Type, role and family names are lower case and case-sensitive: `I64` and
@@ -1501,7 +1502,10 @@ shapes with `E-NONPARAMETRIC-EFFECT` (`fix_parametric_effect`):
    distinct, and a row is never bound to fixed cells: `( R [ R -- S ] -- S )
    drop` and `( R n -- ) drop` unify two rows, and `( R -- S ) 1` fixes `S`.
    Run the quotation that yields the output row on every path, or declare the
-   row the body leaves.
+   row the body leaves. A definition's own return row (the implicit base or its
+   `|` row) bound to fixed cells is refused by the return-stack seal instead:
+   `E-REJECTED`, `fix_return_stack`, at the read that binds it, or at the last
+   token when no read does.
 
 The pass makes no bindings, so a rejected signature never persists.
 

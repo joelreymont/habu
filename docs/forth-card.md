@@ -166,8 +166,8 @@ before any `require`.
 | a local's type nested past the depth ceiling: `{: x:[[[… :}` | `E-BAD-SIGNATURE`, `fix_signature_size`, the depth reason |
 | more than 32 `forall<…>` binders nested in one signature | `E-BAD-SIGNATURE`, `fix_signature_size`, `more than 32 nested binders at '<token>'`; `E-BAD-STORED-SIGNATURE` for a stored row |
 | a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`, at both tiers; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `trust`, `CAST:` — park a value with `>r … r>` inside one definition |
-| a quotation literal that pushes a cell its caller pops, or pops one its caller pushed: `[: >r ;] execute r>`, `>r [: r> ;] execute` | `E-REJECTED` at `;]`, `fix_return_stack` |
-| a definition with no signature that reads or pops a cell it did not push: `: X r@ ;`, `: X r> ;` | `E-REJECTED` at the token, `fix_return_stack`, at both tiers |
+| a quotation literal that pushes a cell its caller pops: `[: >r ;] execute r>` | `E-REJECTED` at `;]`, `fix_return_stack` |
+| a body or quotation literal that reads or pops a return cell it did not push: `: X r@ ;`, `: X ( -- ) r> drop ;`, `>r [: r> ;] execute` | `E-REJECTED` at the read, `fix_return_stack`, at both tiers |
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
 | `package` with a name over the name cap | `E-STATEMENT-THROW` (`E-PACKAGE-NAME-CAP`) |
 | `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where `PKG` wrote `seal-package` and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-SEALED-PACKAGE` at the name |
@@ -184,7 +184,7 @@ before any `require`.
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
-| `( R [ R -- S ] -- S ) drop`, `( R n -- ) drop`, `( R -- S ) 1`: a body that unifies two declared rows, a row with the unnamed row, or binds a row to fixed cells | `E-NONPARAMETRIC-EFFECT`, naming the rows — run the quotation on every path, or declare the row the body leaves |
+| `( R [ R -- S ] -- S ) drop`, `( R n -- ) drop`, `( R -- S ) 1`: a body that unifies two declared rows, a row with the unnamed row, or binds a row other than its own return row to fixed cells | `E-NONPARAMETRIC-EFFECT`, naming the rows — run the quotation on every path, or declare the row the body leaves |
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with `ENGINE-ERROR:USING-SHADOW-GLOBAL` |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |

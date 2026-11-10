@@ -318,11 +318,40 @@ variable ERR-U
    s" r> below a body's return frame names the return-stack reason" T-LABEL
    DIAG-BUF DIAG-CAP DIAG-BUFFER!
    [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" habu: in ts-b15: at 'drop' return stack: this reads below the return-stack cells pushed here expected: a actual: " HAS?
+   s" habu: in ts-b15: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: " HAS?
    DIAG-BUFFER-OFF
    s" 2r> below the saved return cells is refused with the same reason" T-LABEL
    s" 1 2 2>r 2r> 2r> 2drop" CHECK-RC EXITS
    s" at '2r>' return stack: this reads below the return-stack cells pushed here expected: a b actual: " ERR-HAS? ;
+
+\ A signature naming one row as data and after `|` binds its caller's return
+\ base at the call, with no read token: the seal refuses the bound base
+\ (CHECK-NO-BORROW, QUOT-RSEAL), pinned at the last token walked. A child for
+\ the run: unchecked, TS-B17's r@ reads below its return frame, which crashes
+\ the process.
+: CASE-RETURN-BOUND ( -- )
+   s" a call binding the return base with no read is refused by the seal" T-LABEL
+   ARM
+   [: s" : TS-U1 ( U | U -- U | U ) ; : TS-B16 ( n -- n ) TS-U1 ;" evaluate-closed ;]
+   CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\"TS-U1\"" HAS?
+   DISARM
+   s" r@ over a return base a call bound is refused by the seal, never run" T-LABEL
+   s" true DIAG-JSON! : TS-U2 ( U | U -- U | U ) ; : TS-B17 ( n -- n n ) TS-U2 r@ ; : TS-T7 ( -- n ) 5 TS-B17 drop ; TS-T7 . cr"
+   CHECK-RC EXITS
+   S\" \"code\":\"E-REJECTED\"" ERR-HAS?  S\" \"token\":\"r@\"" ERR-HAS?
+   s" a literal binding its return base with no read is refused at ;]" T-LABEL
+   ARM
+   [: s" : TS-U3 ( U | U -- U | U ) ; : TS-B18 ( -- ) [: 5 TS-U3 r@ drop drop ;] drop ;" evaluate-closed ;]
+   CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\";]\"" HAS?
+   DISARM
+   s" a literal reading its caller's pushed cell through the bound base is refused at ;]" T-LABEL
+   ARM
+   [: s" : TS-U4 ( U | U -- U | U ) ; : TS-B19 ( -- n ) 5 >r [: 7 TS-U4 r@ swap drop ;] execute r> drop ;" evaluate-closed ;]
+   CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\";]\"" HAS?
+   DISARM ;
 
 \ A child: DIAG-FILE! has no inverse; the label stays on this test file for
 \ every later case.
@@ -520,6 +549,7 @@ public
    CASE-EXECUTE-OPAQUE-TICK
    CASE-EXECUTE-UNKNOWN
    CASE-RETURN-BELOW
+   CASE-RETURN-BOUND
    CASE-SHORT-ROW
    CASE-SCOPES
    CASE-NUMERIC

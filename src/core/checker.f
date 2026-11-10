@@ -5104,7 +5104,7 @@ variable SG-ROWS-PUBLISH
 \ claiming DEXP/DACT too would relabel every return-stack mismatch as a value
 \ mismatch.
 CHECKER-REG:SCRATCH{
-variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit, 2 a frame borrowed below; 3 and 4 the same at a quotation literal's ;]
+variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit, 2 a frame borrowed below; 3 and 4 the same for a quotation literal's own row
 CHECKER-REG:}SCRATCH
 \ The quotation literal's own return rows, base and current, latched with RSBAD
 \ 3 or 4: CF-SEMIQ restores the definition's before the field is rendered.
@@ -5662,8 +5662,45 @@ CHECKER-REG:}SCRATCH
    din dout UNJ-ARMED? CHECKER-STEP-UNJ ;
 
 \ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
-\ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
-\ balance check rejects net growth or borrowing; loop joins unify RCUR too.
+\ must leave the return row exactly as it found it (ANS 3.2.3.3). A read that
+\ reaches below the cells pushed here is refused at its own token (RS-BORROWS?);
+\ the final balance check rejects net growth, and a return base bound with no
+\ read (CHECK-NO-BORROW, QUOT-RSEAL); loop joins unify RCUR too.
+\
+\ The return row's base is the definition's SGRBASE (SGRIN, the row its `|`
+\ clause carries, else RBROW), or inside a quotation literal the literal's own
+\ RBROW (CF-QUOT). A read short of cells does not fail where it reads: the base
+\ is an open row, so the unify binds it. So the read measures the row as STEP-BORROWS?
+\ measures the data row, before the unify, and refuses once the unify has fit.
+: RS-BASE ( -- n )
+   QDEPTH @ 0= IF SGRBASE @ ELSE RBROW @ THEN ;
+
+: RS-AT-BASE? ( -- bool )   \ does the return row still end in its base? UF-HAVE = its cells
+   RS-BASE {: base:n :}
+   base 0= IF RES-FALSE EXIT THEN
+   RCUR @ ROW-TAIL  base ROW-TAIL  <> IF RES-FALSE EXIT THEN   \ cells over another tail are not this frame's to count
+   RCUR @ ROW-CELLS UF-HAVE !
+   RES-TRUE ;
+
+: RS-BORROWS? ( n -- bool ) {: rin:n :}   \ would this read reach below the return cells pushed here?
+   RS-AT-BASE? 0= IF RES-FALSE EXIT THEN
+   rin ROW-CELLS UF-NEED !
+   UF-NEED @ UF-HAVE @ > ;
+
+\ The read fit only by binding the return base: refused here, so the pin is the
+\ read's token (CAP-FAIL).
+: RS-UNDERFLOW! ( -- )
+   FAILSET @ 0=  OK @ and IF
+      QDEPTH @ 0= IF 2 RSBAD ! ELSE
+         4 RSBAD !  RBROW @ QRS-EXP !  RCUR @ QRS-ACT !
+      THEN
+      -1 FAILSET !
+   THEN
+   0 OK ! ;
+
+: RS-READ-UNDER! ( -- )   \ r> r@ 2r> 2r@ : the read's refusal, its rows kept
+   RS-UNDERFLOW!
+   UNJ-ARMED? IF -1 UNJ-SPLICED ! THEN ;   \ as RS->R
 : RS->R                                    \ >r : data top -> return row
    LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
@@ -5686,15 +5723,21 @@ CHECKER-REG:}SCRATCH
 : RSR>                                     \ r> : return top -> data row
    LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
-   RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   tv rest MK-PUSH {: rin:n :}
+   rin RS-BORROWS? {: borrows:bool :}   \ measured before the unify binds the base
+   RCUR @  rin  UNIFY OK @ and OK !
    rest RCUR !  tv DCUR @ MK-PUSH DCUR !
+   OK @ borrows and IF RS-READ-UNDER! THEN
    OK @ IF bef LIN-CHECK THEN ;
 
 : RSR@                                     \ r@ : peek return top
    LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
-   RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   tv rest MK-PUSH {: rin:n :}
+   rin RS-BORROWS? {: borrows:bool :}   \ measured before the unify binds the base
+   RCUR @  rin  UNIFY OK @ and OK !
    tv DCUR @ MK-PUSH DCUR !
+   OK @ borrows and IF RS-READ-UNDER! THEN
    OK @ IF bef LIN-CHECK THEN ;
 
 : RS2->R                                   \ 2>r : data pair -> return row
@@ -5717,16 +5760,22 @@ CHECKER-REG:}SCRATCH
 : RS2R>                                    \ 2r> : return pair -> data row
    LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
-   RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
+   t2 t1 rest MK-PUSH MK-PUSH {: rin:n :}
+   rin RS-BORROWS? {: borrows:bool :}   \ measured before the unify binds the base
+   RCUR @  rin  UNIFY OK @ and OK !
    rest RCUR !
    t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
+   OK @ borrows and IF RS-READ-UNDER! THEN
    OK @ IF bef LIN-CHECK THEN ;
 
 : RS2R@                                    \ 2r@ : peek return pair
    LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
-   RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
+   t2 t1 rest MK-PUSH MK-PUSH {: rin:n :}
+   rin RS-BORROWS? {: borrows:bool :}   \ measured before the unify binds the base
+   RCUR @  rin  UNIFY OK @ and OK !
    t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
+   OK @ borrows and IF RS-READ-UNDER! THEN
    OK @ IF bef LIN-CHECK THEN ;
 
 \ Record a complete token effect while its input row is unified. Memory
@@ -15576,7 +15625,7 @@ variable EFFQ-SAVE-DOUT
 
 \ Every word leaves its caller's return stack alone: no signature declares a
 \ return-stack cell (RCLAUSE-CHECK) and every body reads only the return cells
-\ it pushed (CHECK-NO-BORROW, CHECK-RBALANCE, QUOT-RSEAL). False when no name
+\ it pushed (RS-BORROWS?, CHECK-NO-BORROW, CHECK-RBALANCE, QUOT-RSEAL). False when no name
 \ was resolved.
 : EFFECT-RET-NEUTRAL? ( -- bool )
    EFFQ-OK @ 0 <> ;
@@ -20503,7 +20552,8 @@ variable CHECKER-PREFIX-ROLLBACK
 \ exactly-W run validated slot W-1..0 as one family, die 76 on a malformed run;
 \ any other cell is a 1-cell group; a row var materializes a fresh 1-cell var
 \ group through FRESH+UNIFY; a read below the declared inputs is measured as
-\ CHECKER-STEP measures it (STEP-AT-BASE?, STEP-UNDERFLOW!)), then write the
+\ CHECKER-STEP measures it (STEP-AT-BASE?, STEP-UNDERFLOW!), and one below the
+\ return cells pushed here as RSR> measures it (RS-AT-BASE?, RS-UNDERFLOW!)), then write the
 \ op's output permutation with MK-PUSH. Any operand carrying proof or lost
 \ metadata (XP-META-IN-K?), scalars included, takes this path. An operand that
 \ is a logical layout cell of open width (LOGICAL-KNOWN? false) sends the op to
@@ -20736,7 +20786,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
 : XPORT-APPLY ( ptr u8 n -- )
    {: a:ptr u:n :}
    LIN-SNAPSHOT {: bef:n :}
-   a u WF-XPORT-RROW? IF RES-FALSE ELSE STEP-AT-BASE? THEN {: based:bool :}   \ a data-row read, measured before XG-READ binds the tail
+   a u WF-XPORT-RROW? IF RS-AT-BASE? ELSE STEP-AT-BASE? THEN {: based:bool :}   \ the row read, measured before XG-READ binds its tail
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
    0  a u WF-XPORT-K 0 ?do   \ ( row cells ): each operand's logical cell of known width expanded
       2dup ROW-DROP-N R-RES  dup TAG S-PUSH <> IF drop leave THEN
@@ -20746,13 +20796,13 @@ variable XG-N   variable XG-TN   variable XG-ROW
    a u WF-XPORT-K  XG-READ 0= IF EXIT THEN
    \ unjudged, this refusal settles (UNJ-SETTLE): a data-row word compiles at the token's raw effect, whose rows replace the logical ones;
    \ a cut inside a multi-cell value, or a return-row transfer, leaves the scan incomplete where a wide cell is at stake (UNJ-LOST)
-   based IF
-      XG-TN @ UF-NEED !
-      OK @  UF-NEED @ UF-HAVE @ >  and IF STEP-UNDERFLOW! THEN   \ the read spent the caller's frame
-   THEN
+   based IF XG-TN @ UF-NEED ! THEN
+   based  UF-NEED @ UF-HAVE @ >  and {: under:bool :}   \ the read spent the caller's frame
+   OK @ under and  a u WF-XPORT-RROW? 0= and IF STEP-UNDERFLOW! THEN
    REC-ON @ IF a u XPORT-CALL THEN
    a u XP-RS? IF
       a u XPORT-RS-APPLY
+      OK @ under and  a u WF-XPORT-RROW? and IF RS-UNDERFLOW! THEN   \ r> and its kin: below the return cells pushed here
    ELSE
       XG-ROW @ a u XP-DATA-SEQ$ XG-REPLAY DCUR !
       a u XP-DATA-SEQ$ XG-TAINT-SEQ
@@ -21619,10 +21669,12 @@ SCOPE-INTRO-FENCE-INSTALL
    dup 0= IF drop RES-FALSE EXIT THEN
    ROW-OPEN? 0= ;
 
-\ The body read below a base it may not bind: the declared data base (none
-\ without a signature, whose inputs are inferred) or the return base every
-\ definition has, signed or not. A borrowed return frame that is the
-\ definition's first failure is the return row's (RSBAD 2).
+\ The body bound a base it may not bind: the declared data base (none without
+\ a signature, whose inputs are inferred) or the return base. A read below the
+\ return base is refused at its own token (RS-BORROWS?); this catches a return
+\ base bound with no read (RSBAD 2): by a call whose signature names one row as
+\ data and after `|`, or by `execute` of a quotation literal that runs, over
+\ cells it pushed, a quotation parameter whose `|` row is the base.
 : CHECK-NO-BORROW ( -- )
    SGDBASE @ ROW-BORROWED? IF 0 OK ! THEN
    SGRBASE @ ROW-BORROWED? IF
@@ -21636,10 +21688,12 @@ SCOPE-INTRO-FENCE-INSTALL
 
 \ A quotation literal declares no return clause, so `;]` seals its return row as
 \ `;` seals a definition's that has none (CHECK-NO-BORROW, CHECK-RBALANCE): it
-\ reads only the cells it pushed and leaves the row as it found it. Unsealed,
-\ `[: >r ;] execute r>` and `>r [: r> ;] execute` would certify and fail in the
-\ native compiler (E-NELAB-UNDER, E-NELAB-JOIN). Asked with the literal's own
-\ rows, before CF-SEMIQ restores the outer ones.
+\ leaves the row as it found it. Unsealed, `[: >r ;] execute r>` and
+\ `>r [: r> ;] execute` would certify and fail in the native compiler
+\ (E-NELAB-UNDER, E-NELAB-JOIN). Asked with the literal's own rows, before
+\ CF-SEMIQ restores the outer ones. A read below the literal's own cells is
+\ refused at the read (RS-BORROWS?, RSBAD 4); a base bound with no read is
+\ refused here, also RSBAD 4.
 : QUOT-RSEAL ( -- )
    RBROW @ ROW-BORROWED? IF 4 ELSE
       CHECK-RETURNS? 0= IF EXIT THEN
@@ -26669,17 +26723,17 @@ variable CUR-OPEN   variable CUR-PSIG
               EXIT
            THEN
            PD-BASE @ SGDBASE !
-           \ The return tail a body may not bind: the shared row behind `|`, or
-           \ without a return clause the implicit base RBROW. Latching the base
-           \ here puts every consumer (r> r@ 2r> 2r@, transport, catch) under
-           \ CHECK-NO-BORROW, so a body cannot read the caller's frame and
-           \ still balance.
-           SGHASR @ IF RR-SHARED @ ELSE RBROW @ THEN SGRBASE !
            SGHASR @ IF
              SGROUT !  dup SGRIN !  RCUR !  SGOUT !  dup SGIN !  DCUR !
            ELSE
              2drop  SGOUT !  dup SGIN !  DCUR !
            THEN  -1 SGSEEN !
+           \ The return tail a body may not bind: the row the `|` clause carries
+           \ (SGRIN), or without a return clause the implicit base RBROW. RS-BORROWS?
+           \ measures every read, step or transport, against it at its own token, and
+           \ CHECK-NO-BORROW refuses it bound at `;`, so a body cannot read the caller's
+           \ frame and still balance.
+           SGHASR @ IF SGRIN @ ELSE RBROW @ THEN SGRBASE !
            SG-ROWS-COLLECT
            NP-COLLECT
            SIG-EFF-CACHE!
@@ -28311,12 +28365,13 @@ CHECKER-REG:}SCRATCH
 
 : RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
-   SGHASR @ IF RR-SHARED @ ELSE RBROW @ THEN SGRBASE !   \ no `|`: the implicit base is the sealed tail
    SGHASR @ IF
       SGROUT !  SGRIN !  SGOUT !  SGIN !
    ELSE
       2drop  SGOUT !  SGIN !
-   THEN ;
+   THEN
+   SGHASR @ IF SGRIN @ ELSE RBROW @ THEN SGRBASE !   \ no `|`: the implicit base is the sealed tail
+   ;
 
 \ Certifies `cast:` and `linear:` for both front ends, the engine's reader
 \ keyword (habu2.f REGISTER-IDENTITY) and verify-source's pre-pass.

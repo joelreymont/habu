@@ -977,9 +977,24 @@ variable RC
    0 s" repair_class" cls clsu FIELD=
    0 s" suggestion" sug sugu FIELD= ;
 
+\ A read below the return-stack cells pushed here is the return row's to repair,
+\ and its packet carries the sentence the load prints; QUOTED, inside a
+\ quotation literal, which names the cells the literal pushed.
+: READS-BELOW ( bool -- ) {: quoted:bool :}
+   quoted IF
+      s" fix_return_stack" s" Read or pop only return-row cells this quotation pushed with >r; below them lies the caller's frame." REPAIRED-AS
+      0 s" reason" s" return stack: the quotation reads below the return-stack cells it pushed" FIELD=
+   ELSE
+      s" fix_return_stack" s" Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame." REPAIRED-AS
+      0 s" reason" s" return stack: this reads below the return-stack cells pushed here" FIELD=
+   THEN ;
+
 \ The repair class and the suggestion name the refusal the code names: a
 \ mismatch before an unbalanced return row is the mismatch's to repair, and a
 \ >r or 2>r whose cells do not fit names the mismatch a data stack word names.
+\ A read below the return-stack cells pushed here is refused at the read, not
+\ at the last token walked: the measure is taken before the read's unify binds
+\ the open return base.
 : TEST-REPAIR-FOLLOWS ( -- )
    s" a mismatch before an unbalanced return row" T-LABEL
    s" : X ( n -- ) >r 1 c@ ;" s" mismatch-rstack.f" LINE-FIXTURE
@@ -1008,7 +1023,43 @@ variable RC
    s" that unbalanced return row alone" T-LABEL
    s" : X ( n -- ) >r ;" s" rstack.f" LINE-FIXTURE
    s" E-REJECTED" s" >r" 1 14 13 15 REFUSED-AT
-   s" fix_return_stack" s" Balance return-stack transfers before the definition exits." REPAIRED-AS ;
+   s" fix_return_stack" s" Balance return-stack transfers before the definition exits." REPAIRED-AS
+   s" an r> below the return cells pushed here" T-LABEL
+   s" : X ( -- ) r> drop ;" s" rread.f" LINE-FIXTURE
+   s" E-REJECTED" s" r>" 1 12 11 13 REFUSED-AT  false READS-BELOW
+   s" an r@ below them" T-LABEL
+   s" : X ( -- ) r@ drop ;" s" rfetch.f" LINE-FIXTURE
+   s" E-REJECTED" s" r@" 1 12 11 13 REFUSED-AT  false READS-BELOW
+   s" a 2r> below them" T-LABEL
+   s" : X ( -- ) 2r> 2drop ;" s" r2read.f" LINE-FIXTURE
+   s" E-REJECTED" s" 2r>" 1 12 11 14 REFUSED-AT  false READS-BELOW
+   s" a 2r@ below them" T-LABEL
+   s" : X ( -- ) 2r@ 2drop ;" s" r2fetch.f" LINE-FIXTURE
+   s" E-REJECTED" s" 2r@" 1 12 11 14 REFUSED-AT  false READS-BELOW
+   s" an r> whose cell goes back with >r" T-LABEL
+   s" : X ( -- ) r> >r ;" s" rround.f" LINE-FIXTURE
+   s" E-REJECTED" s" r>" 1 12 11 13 REFUSED-AT  false READS-BELOW
+   s" an r> in the else arm, whose if arm pushed its own" T-LABEL
+   s" : X ( bool -- ) if 1 >r r> drop else r> drop then ;" s" relse.f" LINE-FIXTURE
+   s" E-REJECTED" s" r>" 1 38 37 39 REFUSED-AT  false READS-BELOW
+   s" an r> in a quotation literal" T-LABEL
+   s" : X ( -- ) [: r> drop ;] drop ;" s" rquot.f" LINE-FIXTURE
+   s" E-REJECTED" s" r>" 1 15 14 16 REFUSED-AT  true READS-BELOW
+   s" an r@ in a do loop, whose cells are not on the return row" T-LABEL
+   s" : X ( n n -- ) do r@ drop loop ;" s" rloopf.f" LINE-FIXTURE
+   s" E-REJECTED" s" r@" 1 19 18 20 REFUSED-AT  false READS-BELOW
+   s" an r> in a do loop" T-LABEL
+   s" : X ( n n -- ) do r> drop loop ;" s" rloopr.f" LINE-FIXTURE
+   s" E-REJECTED" s" r>" 1 19 18 20 REFUSED-AT  false READS-BELOW
+   s" an r> below a return row the signature names" T-LABEL
+   s" : X ( | U -- | U ) r> drop ;" s" rnamed.f" LINE-FIXTURE
+   s" E-REJECTED" s" r>" 1 20 19 21 REFUSED-AT  false READS-BELOW
+   s" a 2r> that moves a record whole, one cell short" T-LABEL
+   SB-RESET
+   s" PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT" SB-APPEND LF+
+   s" : X ( pr2 -- ) >r 2r> drop drop ;" SB-APPEND LF+
+   s" rwide.f" FIXTURE!
+   s" E-REJECTED" s" 2r>" 2 19 59 62 REFUSED-AT  false READS-BELOW ;
 
 \ The repair of a read of a cell `catch` left stale.
 : STALE-REPAIRED ( -- )
