@@ -319,12 +319,12 @@ PATH-CAP BUFFER: FIFTH-BUF
       LINKER:WITH ;]
    catch RESULT ;
 
-\ a.f, the earlier file, gains a variable before its first.
+\ a.f, the earlier file, grows its variable.
 : EDITS ( -- )
    s" edit" DIR$ FS:MAKE-DIR
    EDIT-A$ s\" package FILE-OBJECTS-EDIT-A public variable V ;package\n" FS:WRITE-ALL
    EDIT-BUILD {: one:n :}
-   EDIT-A$ s\" package FILE-OBJECTS-EDIT-A public variable W variable V ;package\n"
+   EDIT-A$ s\" package FILE-OBJECTS-EDIT-A public variable V 8 allot ;package\n"
    FS:WRITE-ALL
    EDIT-BUILD {: two:n :}
    EDIT-BUILD {: three:n :}
@@ -560,7 +560,7 @@ PATH-CAP BUFFER: FIFTH-BUF
 \ ---- objects the link refuses or links wrong ----
 \ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
 8192 constant CRAFT-CAP
-168 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
+184 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 PATH-CAP BUFFER: CRAFT-BUF
 PATH-CAP BUFFER: CRAFT-PATH   variable CRAFT-PATH-U
 PATH-CAP BUFFER: CRAFT-TAIL   variable CRAFT-TAIL-U   \ the end of the path CRAFT-FIND seeks

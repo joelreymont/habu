@@ -180,6 +180,10 @@ create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
 \ holds each row's record index.
 create WORD-ROWS BUF:HDR-BYTES allot
 create WORD-RECS BUF:HDR-BYTES allot
+\ The object's EXTENTS rows, one per earlier extent a data reference names (USED-EXT+): its FILES
+\ row k from 1, its kind, sum and count and its time (BUILT-EXTS).
+create USED-EXTS BUF:HDR-BYTES allot
+40 constant USED-EXT-BYTES
 create REQUESTS BUF:HDR-BYTES allot  \ the object's REQUESTS rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create TIMES BUF:HDR-BYTES allot     \ the object's TIMES, a block per piece compiled so far
@@ -258,8 +262,9 @@ DYNAMIC-BUFFER ORDER n               \ EXTENTS!'s sorts: anchor numbers, then st
 \ The running piece's extents in address order (EXTENTS!, or OWN-IDS! for a checked part), EXT-CELLS
 \ cells each: the start as a distance from NULL-PTR, the kind, sum and count; then, as DATA+ writes
 \ it, its span's offset in PIECES and length, the highest FILES row its cell rows name (TOP-ROW), its
-\ first slot in EXT-ROWS and its cell rows there; last its length in bytes.
-10 constant EXT-CELLS
+\ first slot in EXT-ROWS and its cell rows there; its length in bytes; last its time, as TIMES+
+\ writes it or OWN-IDS! reads it from TIMES.
+11 constant EXT-CELLS
 DYNAMIC-BUFFER EXTS n
 variable EXTS-N
 DYNAMIC-BUFFER PICKED n              \ the piece's cell rows in the space's order, each then its extent (GROUP-ROWS)
@@ -297,6 +302,8 @@ variable OWN-SERIAL                  \ the last check's number (OWN-IDS!)
 \ Record r's mark: the serial of the object that last gave it a WORDS row (WORD-ROW+), 0 for none.
 \ Each OBJECT-OPEN takes the next of SERIALS, which only grows, so no object takes another's mark.
 DYNAMIC-BUFFER LISTED-BY n
+\ Build-table row b's mark: the serial of the object that last gave it an EXTENTS row (USED-EXT+).
+DYNAMIC-BUFFER USED-BY n
 \ BUILT row r's mark at 2r: the serial of the object that last asked for its FILES row (REF-FILE),
 \ that row from 1 at 2r + 1. Only OBJECT-OPEN (under a new serial) and REF-FILE's append change the
 \ FILES rows, so a mark with the object's serial names its row.
@@ -306,11 +313,11 @@ DYNAMIC-BUFFER REF-OF n
 DYNAMIC-BUFFER REC-ROW n
 variable REC-ROW-N
 \ The build table (BUILT+): BUILT-EXT-CELLS cells per extent of every built part, its BUILT row,
-\ kind, sum, count, start as a distance from NULL-PTR and length; a part's rows together and in
-\ address order, its extents, then each text it laid past them (TEXT-EXTS+): kind 2, sum 0, which
-\ no string has (BYTES-SUM), and its FACTS row's number as count. ROW-EXTS: BUILT row r's first
-\ build-table row at 2r, its count at 2r + 1.
-6 constant BUILT-EXT-CELLS
+\ kind, sum, count, start as a distance from NULL-PTR, length and time; a part's rows together and
+\ in address order, its extents, then each text it laid past them (TEXT-EXTS+): kind 2, sum 0, which
+\ no string has (BYTES-SUM), its FACTS row's number as count and time 0. ROW-EXTS: BUILT row r's
+\ first build-table row at 2r, its count at 2r + 1.
+7 constant BUILT-EXT-CELLS
 DYNAMIC-BUFFER BUILT-EXTS n
 variable BUILT-EXTS-N
 DYNAMIC-BUFFER ROW-EXTS n
@@ -381,10 +388,11 @@ variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of th
 TYPED-VARIABLE UNLINKABLE bool
 
 \ The magic, the key, the part's number and time, then per section INPUT FILES REQUESTS NAMES
-\ REACHED PATHS WORDS TIMES PIECES an offset and a length (0 0 for an empty FILES to REACHED or
-\ WORDS); then the sections, in order.
-8 KEY-BYTES + 16 + 9 2 * 8 * + constant HEADER-BYTES
-\ WORDS and TIMES, which hold times, precede PIECES, which test/file-objects.f compares across out roots.
+\ REACHED PATHS WORDS EXTENTS TIMES PIECES an offset and a length (0 0 for an empty FILES to
+\ REACHED, WORDS or EXTENTS); then the sections, in order.
+8 KEY-BYTES + 16 + 10 2 * 8 * + constant HEADER-BYTES
+\ WORDS, EXTENTS and TIMES, which hold times, precede PIECES, which test/file-objects.f compares
+\ across out roots.
 HEADER-BYTES 32 - constant TIMES-FIELD      \ the header's TIMES pair
 HEADER-BYTES 16 - constant PIECES-FIELD     \ the header's last pair: PIECES' offset, then its length
 \ TIMES holds the word count, then per word WORD-CELLS cells: its time, its entry, emission and text
@@ -448,7 +456,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    cap RUN-CAP !  0 RUN-N ! ;
 
 : DISPOSE-OBJECTS ( -- )
-   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
+   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  USED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
    RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
    EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STORED-RELEASE
    ANCHORS-RELEASE  ORDER-RELEASE  EXTS-RELEASE  PICKED-RELEASE  EXT-ROWS-RELEASE  BUILT-EXTS-RELEASE  ROW-EXTS-RELEASE
@@ -458,7 +466,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT BUF:DISPOSE  REQ-PATH BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-RECS BUF:DISPOSE
-   SPELLS BUF:DISPOSE  NAMED-RECS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  REFS BUF:DISPOSE
+   SPELLS BUF:DISPOSE  NAMED-RECS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  USED-EXTS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HIT-STAMPS-RELEASE  HITS-RELEASE  OPENED-RELEASE
    OLD-NAMES-RELEASE  NAMES-RELEASE ;
 
@@ -468,6 +476,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    BUILT 256 BUF:N>BLEN BUF:INIT
    REFS 256 BUF:N>BLEN BUF:INIT
    WORD-ROWS 256 BUF:N>BLEN BUF:INIT
+   USED-EXTS 256 BUF:N>BLEN BUF:INIT
    WORD-RECS 256 BUF:N>BLEN BUF:INIT
    REQUESTS 256 BUF:N>BLEN BUF:INIT
    PIECES 256 BUF:N>BLEN BUF:INIT
@@ -683,7 +692,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 
 \ The FILES row, 1-based, naming the BUILT row's piece by its file's key and its number; added
 \ on first use and marked in REF-OF. Its time is the piece's once a use is whole, else 0: only
-\ WORDS rows decide.
+\ WORDS and EXTENTS rows decide.
 : REF-FILE ( n bool -- n )
    {: row:n whole:bool :}
    row BUILT-AT {: at:ptr :}
@@ -1287,35 +1296,49 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    then
    7 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ ;
 
-\ An address in BUILT row row's data, k its FILES row, and true: a word's, a string's or a laid
-\ text's build-table row (ROW-EXT-OF) holding it, its end included, as tag 3 or 6 and the offset in
-\ it, or the head's as tag 7 and the offset from the part's first data byte. False, writing nothing,
-\ for an address no row holds: one between the D bytes and a text, or in a part with no row.
-: ROW-DATA-REF+ ( n n n -- bool )
-   {: v:n row:n k:n :}
+\ FILES row k's EXTENTS row for build-table row b, unless the object already has one for it
+\ (USED-BY).
+: USED-EXT+ ( n n -- )
+   {: k:n b:n :}
+   b 1 + USED-BY-RESERVE
+   b USED-BY @ OBJECT-SERIAL @ = if exit then
+   OBJECT-SERIAL @ b USED-BY !
+   k USED-EXTS U64+  b 1 BUILT-EXT @ USED-EXTS U64+  b 2 BUILT-EXT @ USED-EXTS U64+
+   b 3 BUILT-EXT @ USED-EXTS U64+  b 6 BUILT-EXT @ USED-EXTS U64+ ;
+
+\ An address in BUILT row row's data, and true: a word's, a string's or a laid text's build-table
+\ row (ROW-EXT-OF) holding it, its end included, as tag 3 or 6 and the offset in it, or the head's
+\ as tag 7 and the offset from the part's first data byte. Its FILES row is asked for by the
+\ extent's EXTENTS row, or whole for a laid text, which has no time. False, writing nothing, for
+\ an address no row holds: one between the D bytes and a text, or in a part with no row.
+: ROW-DATA-REF+ ( n n -- bool )
+   {: v:n row:n :}
    v row ROW-EXT-OF {: b:n :}
    b 0< if false exit then
    b 1 BUILT-EXT @  b 4 BUILT-EXT @ {: kind:n start:n :}
    v  start b 5 BUILT-EXT @ +  > if false exit then
+   b 6 BUILT-EXT @ 0<> {: timed:bool :}
+   row  timed 0=  REF-FILE {: k:n :}
+   timed if  k b USED-EXT+  then
    row DATA-EDGE+
    kind 3 = if  7 PIECES U64+  k PIECES U64+  v start - PIECES U64+  true exit  then
    kind 1 = if 3 else 6 then PIECES U64+  k PIECES U64+
    b 2 BUILT-EXT @ PIECES U64+  b 3 BUILT-EXT @ PIECES U64+  v start - PIECES U64+  true ;
 
-\ A data address's reference, and true: a file's data a row names (ROW-DATA-REF+), or the open's
-\ header data; false, writing nothing, for any other address. A file's end names it only after
-\ every span, so a later file's first byte names that later file.
+\ A data address's reference, and true: a file's data a row names (ROW-DATA-REF+, which asks for
+\ its FILES row), or the open's header data; false, writing nothing, for any other address. A
+\ file's end names it only after every span, so a later file's first byte names that later file.
 : DATA-REF+ ( n -- bool )
    {: v:n :}
    v FILE-DP @ >=  v FILE-END @ <  and if  v OWN-DATA-REF+ true exit  then
    v DP-ROW {: row:n hit:bool :}
-   hit if  v row  row true REF-FILE  ROW-DATA-REF+ exit  then
+   hit if  v row ROW-DATA-REF+ exit  then
    v BASE @ >=  v OPEN-DP @ <  and if
       true HOLDS-HEADER !  HEADER-EDGE+  4 PIECES U64+  v BASE @ - PIECES U64+ true exit
    then
    v FILE-END @ = if  v OWN-DATA-REF+ true exit  then
    v DP-END-ROW {: end-row:n end-hit:bool :}
-   end-hit if  v end-row  end-row true REF-FILE  ROW-DATA-REF+ exit  then
+   end-hit if  v end-row ROW-DATA-REF+ exit  then
    false ;
 
 
@@ -1903,7 +1926,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    $811C9DC5  u 0 ?do  a i + c@ xor  $1000193 *  loop
    dup 0= if 1 + then ;
 
-\ The extent at the address onto EXTS, with no span, rows or length yet.
+\ The extent at the address onto EXTS, with no span, rows, length or time yet.
 : EXT+ ( n n n n -- )
    {: at:n kind:n sum:n count:n :}
    EXTS-N @ {: e:n :}
@@ -2393,10 +2416,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    req ACTS+
    req PIECES U64+ ;
 
-\ As the file's compile starts: no FILES, WORDS, REQUESTS, RAN-RECS, TIMES or piece yet, and a
-\ new serial.
+\ As the file's compile starts: no FILES, WORDS, EXTENTS, REQUESTS, RAN-RECS, TIMES or piece yet,
+\ and a new serial.
 : OBJECT-OPEN ( -- )
-   REFS BUF:CLEAR  WORD-ROWS BUF:CLEAR  WORD-RECS BUF:CLEAR  REQUESTS BUF:CLEAR  PIECES BUF:CLEAR
+   REFS BUF:CLEAR  WORD-ROWS BUF:CLEAR  WORD-RECS BUF:CLEAR  USED-EXTS BUF:CLEAR  REQUESTS BUF:CLEAR  PIECES BUF:CLEAR
    RAN-RECS BUF:CLEAR  TIMES BUF:CLEAR
    1 SERIALS +!  SERIALS @ OBJECT-SERIAL ! ;
 
@@ -2423,7 +2446,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    {: t:n :}
    \ FILES ends with the pieces the part's source names (NAMED+), then those a run word reaches
    \ (RAN-FILES+); WORDS lists the words the part refers to (ID-REF+), its source spells (NAMED+)
-   \ and a run reaches.
+   \ and a run reaches; EXTENTS the earlier extents its data references name (ROW-DATA-REF+).
    NAMED+  RAN-FILES+  PATHS-LAY
    REFS BYTES$ {: refs:ptr refsu:n :}
    REQUESTS BYTES$ {: reqs:ptr requ:n :}
@@ -2431,6 +2454,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    REACHED BYTES$ {: rch:ptr rchu:n :}
    OBJ-PATHS BYTES$ {: pth:ptr pthu:n :}
    WORD-ROWS BYTES$ {: wds:ptr wdsu:n :}
+   USED-EXTS BYTES$ {: exts:ptr extsu:n :}
    TIMES BYTES$ {: tms:ptr tmsu:n :}
    PIECES BYTES$ {: pieces:ptr piecesu:n :}
    HEADER-BYTES INPUT-BYTES + {: files-at:n :}
@@ -2439,7 +2463,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    names-at nmu + {: reached-at:n :}
    reached-at rchu + {: paths-at:n :}
    paths-at pthu + {: words-at:n :}
-   words-at wdsu + {: times-at:n :}
+   words-at wdsu + {: exts-at:n :}
+   exts-at extsu + {: times-at:n :}
    times-at tmsu + {: pieces-at:n :}
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
@@ -2452,6 +2477,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    rchu 0<> if reached-at else 0 then OBJECT U64+  rchu OBJECT U64+
    paths-at OBJECT U64+  pthu OBJECT U64+
    wdsu 0<> if words-at else 0 then OBJECT U64+  wdsu OBJECT U64+
+   extsu 0<> if exts-at else 0 then OBJECT U64+  extsu OBJECT U64+
    times-at OBJECT U64+  tmsu OBJECT U64+
    pieces-at OBJECT U64+  piecesu OBJECT U64+
    UNLINKABLE @ if
@@ -2465,6 +2491,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    rch rchu OBJECT SPAN+
    pth pthu OBJECT SPAN+
    wds wdsu OBJECT SPAN+
+   exts extsu OBJECT SPAN+
    tms tmsu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
    files-at KEYS-OUT
@@ -2476,7 +2503,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    obj obju [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
 
 \ The running part's extents (EXTS) into the build table as BUILT row BUILT-N's, each also into
-\ PLACES under -3; lengths come from EXTS, since FILE-END by now may lie past laid texts.
+\ PLACES under -3; lengths and times come from EXTS, since FILE-END by now may lie past laid texts.
 : BUILT-EXTS+ ( -- )
    EXTS-N @ {: n:n :}
    BUILT-N {: row:n :}
@@ -2487,7 +2514,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       first i + {: b:n :}
       i 1 EXT @  i 2 EXT @  i 3 EXT @ {: kind:n sum:n count:n :}
       row b 0 BUILT-EXT !  kind b 1 BUILT-EXT !  sum b 2 BUILT-EXT !  count b 3 BUILT-EXT !
-      i 0 EXT @ b 4 BUILT-EXT !  i 9 EXT @ b 5 BUILT-EXT !
+      i 0 EXT @ b 4 BUILT-EXT !  i 9 EXT @ b 5 BUILT-EXT !  i 10 EXT @ b 6 BUILT-EXT !
       -3 row kind sum count b PLACE!
    loop
    n BUILT-EXTS-N +!
@@ -2504,15 +2531,15 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ix CHECK:HELD-AMENDED = if at 32 + else at 8 + then {: text:n :}
    text 8 +  obj text + LE:U64@ +  text ;
 
-\ BUILT row row's build-table row for the text laid at start, FACTS row count's, put into PLACES
-\ under -3; TEXT-EXTS+ sets its length.
+\ BUILT row row's build-table row for the text laid at start, FACTS row count's, with no time, put
+\ into PLACES under -3; TEXT-EXTS+ sets its length.
 : TEXT-EXT+ ( n n n -- )
    {: count:n start:n row:n :}
    BUILT-EXTS-N @ {: b:n :}
    b 1 + BUILT-EXT-CELLS * BUILT-EXTS-RESERVE
    1 PLACES-ROOM
    row b 0 BUILT-EXT !  2 b 1 BUILT-EXT !  0 b 2 BUILT-EXT !  count b 3 BUILT-EXT !
-   start b 4 BUILT-EXT !  0 b 5 BUILT-EXT !
+   start b 4 BUILT-EXT !  0 b 5 BUILT-EXT !  0 b 6 BUILT-EXT !
    -3 row 2 0 count b PLACE!
    1 BUILT-EXTS-N +! ;
 
@@ -2979,10 +3006,10 @@ variable RD-END
 
 \ The part's records into PLACES by the sums and counts its TIMES block holds, in record order, each
 \ under the key -2 and a new OWN-SERIAL with its number in the piece; then its extents into EXTS,
-\ each with its kind, sum and count from TIMES, its length from its span's length cell, its start
-\ FILE-DP plus the lengths before it, and into PLACES the same way. Bad when two records share a sum
-\ and count, two extents a kind, sum and count, or a span is too short to hold its length cell;
-\ EXTENT-CK proves the rest against DATA.
+\ each with its time, kind, sum and count from TIMES, its length from its span's length cell, its
+\ start FILE-DP plus the lengths before it, and into PLACES the same way. Bad when two records share
+\ a sum and count, two extents a kind, sum and count, or a span is too short to hold its length
+\ cell; EXTENT-CK proves the rest against DATA.
 : OWN-IDS! ( -- )
    TIMES-AT {: at:n :}
    1 OWN-SERIAL +!
@@ -3005,6 +3032,7 @@ variable RD-END
       PIECE-AT @  r 8 + OBJ@ +  24 + OBJ@ {: u:n :}
       kind sum count OWN-EXT 0 >= if BAD unloop exit then
       start i 0 EXT !  kind i 1 EXT !  sum i 2 EXT !  count i 3 EXT !  u i 9 EXT !
+      r OBJ@ i 10 EXT !
       -2 OWN-SERIAL @ kind sum count i PLACE!
       start u +
    loop drop ;
@@ -3060,9 +3088,24 @@ variable RD-END
    HIT-N @ 0<> if BAD then ;
 
 
+\ EXTENTS' u bytes from RD-AT, a multiple of USED-EXT-BYTES (USED-EXT+): bad when a row's FILES row
+\ is not built (FILE-IN?), its time is 0, or its built part has no extent of its kind, sum and count
+\ (ROW-EXT) or gives that extent another time.
+: EXTENTS-CK ( n -- )
+   {: u:n :}
+   GOOD? 0= if exit then
+   u USED-EXT-BYTES / 0 ?do
+      RD-U64 RD-U64 RD-U64 RD-U64 RD-U64 {: k:n kind:n sum:n count:n t:n :}
+      k FILE-IN? 0=  t 0=  or if BAD unloop exit then
+      k FILE-ROWS @ kind sum count ROW-EXT {: b:n :}
+      b 0< if BAD unloop exit then
+      b 6 BUILT-EXT @  t <> if BAD unloop exit then
+   loop ;
+
+
 \ The header, its part number FILE-PART's, and every section before PIECES as WRITE-OBJECT lays
 \ them: INPUT against INPUT-STAMP, NAMES replayed (NAMES-CK, NAMED-CK), REACHED-CK, PATHS skipped as
-\ KEYS-IN read it, WORDS-CK, TIMES-CK; then PIECE-AT, PIECES' offset.
+\ KEYS-IN read it, WORDS-CK, EXTENTS-CK, TIMES-CK; then PIECE-AT, PIECES' offset.
 : HEADER-CK ( -- )
    0 FILES-N !  0 REQS-N !
    OBJECT BYTES$ nip {: len:n :}
@@ -3097,7 +3140,11 @@ variable RD-END
    RD-U64 RD-U64 {: woff:n wordsu:n :}
    wordsu 0<  wordsu WORD-ROW-BYTES mod 0<>  or  wordsu len words-at - >  or if BAD exit then
    woff  wordsu 0<> if words-at else 0 then  <> if BAD then
-   words-at wordsu + {: times-at:n :}
+   words-at wordsu + {: exts-at:n :}
+   RD-U64 RD-U64 {: xoff:n extsu:n :}
+   extsu 0<  extsu USED-EXT-BYTES mod 0<>  or  extsu len exts-at - >  or if BAD exit then
+   xoff  extsu 0<> if exts-at else 0 then  <> if BAD then
+   exts-at extsu + {: times-at:n :}
    RD-U64 RD-U64 {: toff:n timesu:n :}
    timesu 0<  timesu len times-at - >  or if BAD exit then
    toff times-at <> if BAD then
@@ -3109,7 +3156,7 @@ variable RD-END
    nmu NAMES-CK  NAMED-CK
    rchu REACHED-CK
    pthu RD-SKIP
-   wordsu WORDS-CK
+   wordsu WORDS-CK  extsu EXTENTS-CK
    pieces-at len TIMES-CK
    RD-AT @ PIECE-AT ! ;
 
@@ -3821,8 +3868,8 @@ variable PRIOR-EXT-NEXT
 \ The running piece's TIMES block, the piece starting at the offset in PIECES: its word count, then
 \ per word its time (WORD-TIME), also into WORD-TIMES, its entry, emission and text ranges, the
 \ time of the record it binds (BOUND-TIME), the bits of the rows naming it from outside, and its
-\ sum and count (REC-ID); then its extent count, then per extent its time (EXT-TIME), its span's
-\ offset and length, its kind, sum and count.
+\ sum and count (REC-ID); then its extent count, then per extent its time (EXT-TIME), also into
+\ EXTS, its span's offset and length, its kind, sum and count.
 : TIMES+ ( n n -- )
    {: start:n now:n :}
    WORDS-N @ TIMES U64+
@@ -3838,7 +3885,8 @@ variable PRIOR-EXT-NEXT
    loop
    EXTS-N @ TIMES U64+
    EXTS-N @ 0 ?do
-      start i now EXT-TIME TIMES U64+
+      start i now EXT-TIME {: t:n :}
+      t TIMES U64+  t i 10 EXT !
       i 4 EXT @ start - TIMES U64+  i 5 EXT @ TIMES U64+
       i 1 EXT @ TIMES U64+  i 2 EXT @ TIMES U64+  i 3 EXT @ TIMES U64+
    loop ;

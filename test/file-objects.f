@@ -14,9 +14,10 @@
 \ build of count.f alone links it, one of count.f and shape.f then compiles
 \ shape.f alone, after count.f links, and the next compiles none; the edit,
 \ share and laid sequences, whose first file is edited, compile 2, 2 and 0: the
-\ second file reads the first's variable, spells the package the first comes to
-\ declare, or lays the string the first comes to lay. The tail sequence, whose
-\ second file is edited, compiles 2, 1 and 0; its fourth build, of d.f alone,
+\ second file reads the variable the first comes to grow, spells the package
+\ the first comes to declare, or lays the string the first comes to lay. The
+\ tail sequence, whose second file is edited, compiles 2, 1 and 0; its fourth
+\ build, of d.f alone,
 \ compiles 1: d.f's object names c.f, which defines V, a name d.f spells. The
 \ private sequence, whose first file's private word changes, compiles 2, 1 and
 \ 0: the second spells that word's name for its own package's word. The parts
@@ -158,8 +159,8 @@ package FILE-OBJECTS-TEST
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
                                          \ words sequence's five, the ran sequence's four
-184 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
-168 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
+200 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
+184 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 64 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
 32 constant FILES-ROW                    \ a FILES row's bytes (linker.f FILES-ROW-BYTES)
 24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp, 0 0 -1 if it never links
@@ -393,9 +394,10 @@ variable KEPT-NS
    s" count.f's object holds its stamp" LABEL
    BYTES-B HEADER-BYTES + v EXPECT INPUT-BYTES T$= ;
 
-\ A file compiles when it, a file its object references or an earlier file that defines a public
-\ name it spells, or a private name of a package it opens, is edited, when an earlier file lays a
-\ string its object lays, when it is loaded without the files its object names, when files that
+\ A file compiles when it is edited, when what its object names in another file changes, when an
+\ earlier file that defines a public name it spells, or a private name of a package it opens, is
+\ edited, when an earlier file lays a string its object lays, when it is loaded without the
+\ files its object names, when files that
 \ stored into a cell it read load in another order, or when the link refuses its object or would
 \ link it wrong; any other file links, a compile after it included.
 : CHECK-EDIT ( -- )
