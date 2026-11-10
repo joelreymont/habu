@@ -1606,31 +1606,25 @@ CELL constant FR-NAMED
 3 cells constant FR-ROOM
 4 cells constant FR-SIZE
 5 cells constant FR-ROOTLEN
-6 cells constant FR-ACTMODE
-7 cells constant FR-ACTLEN
-8 cells constant FR-OWNER
-9 cells constant FR-EXEC-COPY
-10 cells constant FR-EVAL-OK
-11 cells constant FR-EVAL-PTR
-12 cells constant FR-EVAL-SIZE
-13 cells constant FR-EVAL-FIRST
-14 cells constant FR-EVAL-END
+6 cells constant FR-OWNER
+7 cells constant FR-EXEC-COPY
+8 cells constant FR-EVAL-OK
+9 cells constant FR-EVAL-PTR
+10 cells constant FR-EVAL-SIZE
+11 cells constant FR-EVAL-FIRST
+12 cells constant FR-EVAL-END
 \ How many root programs (RUN-ROOT) are being read while this frame is the top.
-15 cells constant FR-ROOT-RUNS
+13 cells constant FR-ROOT-RUNS
 \ The file's stamp (ACTIVE-STAMP): change time seconds, nanoseconds and size.
-16 cells constant FR-CTIME-SEC
-17 cells constant FR-CTIME-NS
-18 cells constant FR-STAMP-SIZE
-19 cells constant FR-PATH
+14 cells constant FR-CTIME-SEC
+15 cells constant FR-CTIME-NS
+16 cells constant FR-STAMP-SIZE
+17 cells constant FR-PATH
 FR-PATH INCLUDE-PATH-CAP + 1 cells + constant FR-ROOT
-FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant FR-ACTPATH
-\ The action retains the raw request, before normalization limits the resolved
-\ path. Its room matches CHECK and REQUEST-BUF, so a long spelling is neither
-\ truncated nor refused before RESOLVE can normalize it.
-FR-ACTPATH WORK-BYTES + constant HEADER-BYTES
+FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant HEADER-BYTES
 $1000 constant ROOM-MIN
 \ A frame's FR-PREV, FR-OWNER, FR-EXEC-COPY and FR-EVAL-PTR cells hold
-\ addresses; its other header cells hold counts, flags and modes, and its bytes
+\ addresses; its other header cells hold counts, flags and stamps, and its bytes
 \ follow them.
 CAST: FRAME-CELLS ( ptr u8 -- ptr ptr u8 )
 : FRAME-PREV ( ptr u8 -- ptr ptr u8 ) FRAME-CELLS FR-PREV CELL / ptr-field ;
@@ -1693,8 +1687,6 @@ variable LAST-LOAD-EVAL-OK
    INCLUDE-PATH-U @ frame FR-PATHLEN + CELL-VIEW !
    ROOM-MIN frame FR-ROOM + CELL-VIEW !
    -1 frame FR-SIZE + CELL-VIEW !
-   -1 frame FR-ACTMODE + CELL-VIEW !
-   0 frame FR-ACTLEN + CELL-VIEW !
    NULL-PTR frame FRAME-EXEC-COPY !
    0 frame FR-EVAL-OK + CELL-VIEW !
    0 frame FR-ROOT-RUNS + CELL-VIEW !
@@ -1780,28 +1772,6 @@ create STAT-BUF FS-ABI:STAT-BYTES allot
    SOURCE INCLUDE-U @ ;
 
 public
-
-: ACTION! ( n ptr u8 n -- )
-   {: mode:n path:ptr size:n :}
-   TOP@ 0= if exit then
-   path size CHECK
-   TOP@ {: frame:ptr :}
-   path frame FR-ACTPATH + size BYTE-COPY
-   size frame FR-ACTLEN + CELL-VIEW !
-   mode frame FR-ACTMODE + CELL-VIEW ! ;
-
-: ACTION$ ( -- n ptr u8 n )
-   CHECK-ACTIVE
-   TOP@ {: frame:ptr :}
-   frame FR-ACTMODE + CELL-VIEW @
-   frame FR-ACTPATH + frame FR-ACTLEN + CELL-VIEW @ ;
-
-: PARENT-ACTION$ ( -- n ptr u8 n )
-   CHECK-ACTIVE
-   TOP@ FRAME-PREV @ {: frame:ptr :}
-   frame 0= if INCLUDE-RANGE-RC throw then
-   frame FR-ACTMODE + CELL-VIEW @
-   frame FR-ACTPATH + frame FR-ACTLEN + CELL-VIEW @ ;
 
 : ACTIVE-SOURCE ( -- ptr u8 n ptr u8 n ptr u8 n )
    CHECK-ACTIVE
@@ -2159,7 +2129,6 @@ public
 
 : included ( ptr u8 n -- )
    {: a:ptr u:n :}
-   0 a u SOURCE-ROOT:ACTION!
    a u RESOLVE drop {: path:ptr pathu:n :}
    a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
@@ -2187,7 +2156,6 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
 
 : required ( ptr u8 n -- )
    {: a:ptr u:n :}
-   1 a u SOURCE-ROOT:ACTION!
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
    a u  a u RESOLVE  REQUIRE-BODY ;
 
@@ -2240,12 +2208,6 @@ public
    entry SOURCE-ORIGINAL-INCLUDED-ENTRY @ =
    entry SOURCE-ORIGINAL-REQUIRED-ENTRY @ = or if STACK-PATH exit then
    NONE ;
-
-: ACTION$ ( -- n ptr u8 n ) SOURCE-ROOT:ACTION$ ;
-
-\ A child callback runs while the child's source frame is on top. Its parent
-\ retains the original request even from inside a compiled word.
-: PARENT-ACTION$ ( -- n ptr u8 n ) SOURCE-ROOT:PARENT-ACTION$ ;
 
 : LOAD-PATH ( n ptr u8 n -- ) {: mode:n path:ptr size:n :}
    SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop 2drop
