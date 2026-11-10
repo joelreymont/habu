@@ -39,8 +39,7 @@ package WSEL
 public
 
 \ ---- the signature descriptor -----------------------------------------------
-\ The pinned 16/16 rule (docs/xcomp.md "Calls"): a function past either
-\ count takes the frame.
+\ The pinned 16/16 rule: a function past either count takes the frame.
 : FRAMED? ( n n -- bool )
    {: in:n out:n :}
    in WPROF:PARAMS-MAX >  out WPROF:RESULTS-MAX >  or ;

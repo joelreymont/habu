@@ -287,44 +287,23 @@ A browser host takes turns with the module through its memory
 | Features | scalar core plus multi-value, saturating float-to-int and bulk memory (`src/arch/wasm/profile.f`) |
 | Cell | 64 bits; no cell, product or mask shrinks |
 | Pointer | a canonical zero-extended 32-bit offset in an eight-byte cell, narrowed only after its check |
-| Representation | a structured control-flow graph, fully frozen before encoding |
 | Route | a shadow binding; no Wasm routine is placed in the engine's code region |
 | Imports | none; no start function |
-| Registers | none to allocate: one Wasm local per value |
 
 A 64-bit integer does not need memory64: Wasm's value types and memory address
 types are independent. Generic code never infers the cell or pointer-slot width
 from address width.
 
-### Control
-
-The selector builds a structured module from the folded HIR; the full freeze
-restores the checks the interim freeze skipped, because a Wasm backend has no
-machine module to verify instead. Wasm's `block`, `loop` and `if` derive from
-dominators, and an irreducible graph is refused; a block-argument transfer is a
-parallel copy, because sequential copies on a swapping edge miscompile. Stack
-shuffles and the admitted return-stack operations rename values at compile
-time; Wasm's operand stack is not Habu's return stack. A tail call is a call
-then a return, which is not bounded space for mutual recursion.
-
 ### Calls
 
-- A direct call is `(ctx:i32, inputs x i64) -> (status:i32, outputs x i64)`.
-  Past 16 input or 16 output lanes a function takes the aligned frame,
-  `(ctx:i32) -> (status:i32)`, its cells on the context stack. 16/16 is a
-  pinned ABI parameter, never an optimisation choice; changing it is an ABI
-  revision.
-- A call's lanes are its callee's declared cells, and the cells a row binds
-  stay on the context stack.
+- Every function is `(ctx:i32) -> (status:i32)`. Its cells are on the data
+  stack, which is in the module's memory as the return stack is; Wasm's
+  operand stack is neither.
 - Status 0 is success; status 1 is a catchable throw whose full 64-bit code is
-  in the context, never truncated into the status. Callers test status before
-  reading outputs.
-- At every call the live row is stored to the context stack and reloaded
-  after, as the native boundary stores it, so `depth`, `.s` and `catch` see
-  what they see natively.
-- A dynamic call (`execute`, a stored quotation, a deferred word) goes through
-  a uniform `(ctx:i32) -> i32` adapter that checks stack depth before
-  dispatch.
+  in the context, never truncated into the status. A caller tests the status
+  before it goes on.
+- A tail call is a call then a return, which is not bounded space for mutual
+  recursion.
 - Browser-facing calls pass `i64` as `BigInt`, never `Number`, and read
   exported `i32` addresses as unsigned. No layout is presumed to match the
   wasm32 C ABI.
@@ -341,7 +320,7 @@ write.
 
 ### Arithmetic
 
-The selector keeps the language rules ("Numeric admission"): a zero divisor
+A module keeps the language rules ("Numeric admission"): a zero divisor
 throws before any divide, and `-1` answers `0 - n`, so `MIN-N -1 /` is `MIN-N`
 where `i64.div_s` would trap. An observable flag is `0 - extend_u(p)`, because
 Wasm comparisons answer 0/1. A raw 64-bit condition is tested against zero
@@ -349,21 +328,20 @@ before it becomes an `i32`; truncating it can turn nonzero into false.
 
 ### Floating point
 
-Wasm permits several NaN payloads; Habu's NaN rule binds it anyway, and the
-selector applies it without a branch. `f>s` is `i64.trunc_sat_f64_s`, which
-already truncates, saturates and answers 0 for a NaN. Contraction,
-reassociation and relaxed SIMD stay off. Base Wasm has no fused multiply-add,
-and a multiply followed by an add is not a substitute where one rounding is
-required.
+Wasm permits several NaN payloads; Habu's NaN rule binds it anyway, applied
+without a branch. `f>s` is `i64.trunc_sat_f64_s`, which already truncates,
+saturates and answers 0 for a NaN. Contraction, reassociation and relaxed SIMD
+stay off. Base Wasm has no fused multiply-add, and a multiply followed by an
+add is not a substitute where one rounding is required.
 
 ### Execution tokens
 
-An xt is its adapter's table slot, fixed for the module's life. Slots number
+An xt is its function's table slot, fixed for the module's life. Slots number
 from 1: slot 0 is a null funcref, so `0 execute` traps as native execute of 0
-fails, and an xt with an upper bit set traps before dispatch. Every adapter
+fails, and an xt with an upper bit set traps before dispatch. Every function
 shares one Wasm type, so Wasm's signature check cannot see Habu effects or
-types; the adapter checks depth itself. Quotations capture nothing, as
-natively; code inspection and patching have no Wasm form.
+types. Quotations capture nothing, as natively; code inspection and patching
+have no Wasm form.
 
 ### Linking
 
@@ -374,13 +352,9 @@ native dictionary or snapshot is copied in. Changing an index can change an
 LEB's length, so every call and address immediate is a padded LEB and the
 padded size is accepted (`src/arch/wasm/link.f`, `leb.f`). Memory regions are
 fixed by the profile; address zero is in bounds in Wasm, so null is enforced by
-the checked access, not by a guard page.
-
-### Encoder
-
-`src/arch/wasm/encode.f` writes the binary in checked Habu; section order
-follows the specification, not a sort by section ID. A custom section would be
-evidence, not authority: a loader compares the actual imports, memory and table
+the checked access, not by a guard page. Section order follows the
+specification, not a sort by section ID. A custom section would be evidence,
+not authority: a loader compares the actual imports, memory and table
 declarations.
 
 ### Validation and proof

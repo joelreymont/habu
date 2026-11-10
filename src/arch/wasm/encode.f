@@ -1,7 +1,6 @@
 \ encode.f - WENC, the Wasm backend's encoder: a frozen WSTRUCT module written
-\ as one emission, a header then each function's body in Wasm binary form
-\ (docs/xcomp.md "Encoder"). Calls and addresses become rows that
-\ src/arch/wasm/link.f rewrites in place.
+\ as one emission, a header then each function's body in Wasm binary form. Calls
+\ and addresses become rows that src/arch/wasm/link.f rewrites in place.
 \ STORAGE CLASS. MODULE-OWNED: the emission and its rows live in this package's
 \ buffers until the next ENCODE or RETIRE.
 

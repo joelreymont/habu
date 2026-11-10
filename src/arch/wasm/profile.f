@@ -16,7 +16,7 @@ public
    s" multi-value,saturating-float-to-int,bulk-memory" ;
 
 \ The most input and output lanes a direct call passes; past either a function
-\ takes the aligned frame (docs/xcomp.md "Calls").
+\ takes the aligned frame.
 16 constant PARAMS-MAX
 16 constant RESULTS-MAX
 
