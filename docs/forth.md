@@ -299,17 +299,19 @@ public
   `SOURCE-ROOT:WITH ( ptr u8 n [ -- ] -- )`, which restores the caller's on
   return or throw; a root that does not resolve to a searchable directory, and
   an image save inside the scope, are refused by name.
-- A build's loader does every load, at a file's top level: a word that loads a
-  file (`included`, `required`, `script-required`, `INCLUDE-LOAD`,
-  `SOURCE-ROOT:LOAD`, `SOURCE-ROOT:WITH-BYTES`, `SOURCE-ROOT:WITH-SUPPLIED`,
-  `SOURCE-ROOT:RUN-PROGRAM`), is refused when it runs during a build,
-  `include: a word loaded a file during a build; load it with require or
-  include at the file's top level: <path>`, so a file that scoped its root by
-  loading from a word sets it with `ROOT!` instead. `SOURCE-ROOT:READ-OS`
-  fills only the frame of a file a load is opening, as a reader installed with
-  `SOURCE-INPUT:USE` calls it; any other call, in a build or not, is refused
-  with `include: READ-OS reads only the file a load is opening; a word read:
-  <path>`. `SOURCE-ROOT:RESOLVE`
+- A build's loader does every load, at a file's top level: a word that loads or
+  provides a file (`included`, `required`, `script-required`, `provided`,
+  `INCLUDE-LOAD`, `SOURCE-ROOT:LOAD`, `SOURCE-ROOT:WITH-BYTES`,
+  `SOURCE-ROOT:WITH-SUPPLIED`, `SOURCE-ROOT:RUN-PROGRAM`) is refused when it
+  runs during a build, `include: a word loaded or provided a file during a
+  build; do it at the file's top level: <path>`, so a file that scoped its
+  root by loading from a word sets it with `ROOT!` instead. The refusal is
+  `SOURCE-ROOT:BUILD-REFUSE ( ptr u8 n -- )`, handed the resolved path: in a
+  build it ends the process with that text, outside one it returns.
+  `SOURCE-ROOT:READ-OS` fills only the frame of a file a load is opening, as
+  a reader installed with `SOURCE-INPUT:USE` calls it; any other call, in a
+  build or not, is refused with `include: READ-OS reads only the file a load
+  is opening; a word read: <path>`. `SOURCE-ROOT:RESOLVE`
   resolves in a build as elsewhere, its known flag there answering for the
   built program's own registry. Fixtures resolve
   against `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument.
@@ -1016,12 +1018,13 @@ Factor raw compiler and emitter code to the same standard.
   `HB-TARGET-MACOS? [if] require src/lib/secret/macos.f [then]`. There is no
   `[else]`; the other arm tests the negated flag. The source verifier follows a
   `[if]` only right after a target predicate, or a predicate and `0=`, and
-  `[if]` and `[then]` are reserved names. A word a build runs never loads a
-  file: hb's loader runs a top-level `require` (src/habu/interpret.f LOADER?),
-  but a load a word runs calls the build's own copy of the loader, whose loads
-  the linker never sees, so that copy refuses it, naming the path: `include: a
-  word loaded a file during a build; load it with require or include at the
-  file's top level: <path>` ("Packages" lists the words refused).
+  `[if]` and `[then]` are reserved names. A word a build runs never loads or
+  provides a file: hb's loader runs a top-level `require` or `provided`
+  (src/habu/interpret.f LOADER?), but a word's load or provide calls the
+  build's own copy of the loader, whose loads and rows the linker never sees,
+  so that copy refuses it, naming the path: `include: a word loaded or
+  provided a file during a build; do it at the file's top level: <path>`
+  ("Packages" lists the words refused).
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
   standard input, in every file `--load`, `include` and `require` load, and in
   the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.

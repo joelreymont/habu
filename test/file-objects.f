@@ -103,9 +103,10 @@
 \ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell, SCRATCH-VARIABLE and
 \ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
 \ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
-\ level leaves a task running, into one out root, and each fails naming that file. X and X2 build
-\ word-load-main.f and word-read-main.f, whose top levels run a word that loads, or reads through
-\ SOURCE-ROOT:READ-OS, a file, and each fails naming that file with its own refusal.
+\ level leaves a task running, into one out root, and each fails naming that file. X, X4 and X2
+\ build word-load-main.f, word-provided-main.f and word-read-main.f, whose top levels run a word
+\ that loads, provides, or reads through SOURCE-ROOT:READ-OS, a file, and each fails naming that
+\ file with its entry's refusal.
 \ Q builds kept-main.f, whose files' top levels leave an archive open and await an aio ticket, each
 \ keeping its handle; its program opens another of each and the kept handle is refused. N builds
 \ kept-genio.f with --repl, since genio-core.f calls the REPL's KEY1, and its program refuses a device
@@ -608,14 +609,16 @@ variable KEPT-NS
    s" the build refuses the word's file by its path" LABEL  said TTRUE ;
 
 \ A refusal ends the build's process, so each entry a word reaches the file
-\ through is its own build: included (word-load-main.f), refused as a load in
-\ a build, and SOURCE-ROOT:READ-OS (word-read-main.f), refused because hb's top
-\ frame is held. SOURCE-INPUT:READ reaches the same READ-OS through the default
-\ reader, so it needs no build of its own.
+\ through is its own build: included (word-load-main.f) and provided
+\ (word-provided-main.f, before it stores the file's row), each refused as a
+\ word's act in a build, and SOURCE-ROOT:READ-OS (word-read-main.f), refused
+\ because hb's top frame is held. SOURCE-INPUT:READ reaches the same READ-OS
+\ through the default reader, so it needs no build of its own.
 : WORD-LOAD-BUILD ( CMD:command -- CMD:command )
-   s" include: a word loaded a file during a build; load it with require or include at the file's top level: "
+   s" include: a word loaded or provided a file during a build; do it at the file's top level: "
    REFUSAL!
    s" X" WHICH!  s" test/fixtures/file-objects/word-load-main.f" REFUSED-BUILD
+   s" X4" WHICH!  s" test/fixtures/file-objects/word-provided-main.f" REFUSED-BUILD
    s" include: READ-OS reads only the file a load is opening; a word read: "
    REFUSAL!
    s" X2" WHICH!  s" test/fixtures/file-objects/word-read-main.f" REFUSED-BUILD ;

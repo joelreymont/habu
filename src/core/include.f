@@ -421,21 +421,26 @@ private
 \ frames over hb's. The build's loader does every load, at a file's top level,
 \ so in a build the copy's loads refuse (BUILD-REFUSE): LOAD-RESULT, and so
 \ every load of a file (included, required, LOAD, script-required);
-\ RUN-PROGRAM; WITH-BYTES; WITH-SUPPLIED. READ-OS is refused by its frame's
-\ state instead (READ-REFUSE), in a build as elsewhere.
+\ RUN-PROGRAM; WITH-BYTES; WITH-SUPPLIED; provided, before it stores a row.
+\ READ-OS is refused by its frame's state instead (READ-REFUSE), in a build as
+\ elsewhere.
 : OWN-LOADER? ( -- bool ) LOADER LOADER-REC = ;
+
+public
 
 \ The build refusal for the path a loading word was handed, unless this copy's
 \ record is the process's. The resolver does not refuse: RESOLVE loads nothing,
 \ and in a build it searches the process's current root, so a word may ask
 \ where a file lies (test/aot-shifted-bytes.f RESOLVES-BUILD; test/file-objects.f
-\ WORD-LOAD-BUILD). provided is not refused here: in a
-\ build the row it stores lies in mappings outside the build's space, so the
-\ linker refuses that file's object at its end.
+\ WORD-LOAD-BUILD). Public so provided, which this file defines outside
+\ SOURCE-ROOT, refuses here too: its row would lie outside the build's space,
+\ which only the linker would catch.
 : BUILD-REFUSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    OWN-LOADER? if exit then
-   s" include: a word loaded a file during a build; load it with require or include at the file's top level: "
+   s" include: a word loaded or provided a file during a build; do it at the file's top level: "
    path pathu PATH-DIE ;
+
+private
 
 \ The file system root always resolves through realpath; only a supplied canon
 \ (SOURCE-INPUT:USE) can answer that no directory above a path does.
@@ -2228,6 +2233,7 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 : provided ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u RESOLVE {: path:ptr pathu:n known:bool :}
+   path pathu SOURCE-ROOT:BUILD-REFUSE
    a u path pathu EV-PROVIDED known REQUIRE-STATE EVENT-RECORD
    known if exit then
    path pathu REQUIRE-STORE 2drop ;
