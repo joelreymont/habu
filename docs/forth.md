@@ -2215,7 +2215,8 @@ documentation-only edits need no rebuild.
   authorize a pointer: an aligned cell containing a build-time mapping
   address remains refused in a stripped image.
 - **Missing convenience words are not bugs in the standard.** Core lacks `pick`,
-  `within`, `s>number?`, `move`, `fill`, `erase`, `bl` and `*/`; each is
+  `within`, `s>number?`, `move`, `fill`, `erase`, `bl`, `*/`, `0>`, `0>=`,
+  `2*`, `hex`, `.r`, `value`, `to`, `cmove` and `bye`; each is
   `E-UNDEFINED` in a checked body (`: W ( -- ) bl ;`). Use cells, explicit
   increments and comparisons, and the checked byte and string helpers. `0<>`,
   `true`, `false`, `fdup`, `fover`, `fdrop`, `f<=` and `f>=` come from

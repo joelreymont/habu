@@ -241,6 +241,14 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `*/` | none; `*` then `/` |
 | `s>number?` | `STR>NUMBER?`, `src/lib/string.f` |
 | `'` in a compiled body | `[: WORD ;]`; `'` is top level only |
+| `0>` | `0 >` |
+| `0>=` | `0 >=` |
+| `2*` | `2 *` |
+| `hex` | `$ff` literals; print with `SB-RESET n FMT:SB-HEX SB$ type`, `src/lib/fmt.f` |
+| `.r` | none; `FMT:INT$`, `space` up to the width, then `type` |
+| `value`, `to` | a `variable`: `5 V !`, `V @` |
+| `cmove` | `BYTE-COPY ( src dst n -- )`, `src/core/bytes.f` |
+| `bye` | none; a file ends at its last line, and `s" why" n die` exits with status n |
 
 A top-level word that parses or is a `defer` is `W-CHECK-DEFERRED` at the word
 under `--verify-only`, verdict `deferred`, exit 0 unless something is refused,
