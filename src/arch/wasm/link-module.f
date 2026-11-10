@@ -232,8 +232,8 @@ variable KERNEL-N                    \ the kernel routines this link added
 
 public
 
-\ Link the open space's stripped program and write it to the path as one Wasm
-\ module. The header's DP, its bounds and the heap start stay as the copy holds them.
+\ Link the open space's stripped program into one Wasm module at the path, its reserve
+\ calling map-anon; the header's DP, bounds and heap start stay as the copy holds them.
 : WRITE-MODULE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    false GOING
@@ -246,6 +246,7 @@ public
    EMISSIONS+
    DATA+
    entry CALLEE {: h:n :}
+   s" map-anon" NAMED-ENTRY KERNEL-FUNCTION WLINK:RESERVE!
    REFUSALS
    0 COPY-AT DATA-IMAGE-LEN WLINK:DATA!
    path pathu  h WLINK:LINK  FS:ATOMIC-WRITE-FILE ;

@@ -21,6 +21,16 @@ package WASM
    s" " ;
 
 
+\ NAME-AT's reverse: the host entry of the dictionary's first record so named,
+\ or 0.
+: NAMED-ENTRY ( ptr u8 n -- n )
+   {: name:ptr u:n :}
+   ndict@ 0 ?do
+      i XREF-REC XREF-NAME$ name u STR=CI if i XREF-REC XREF-START unloop exit then
+   loop
+   0 ;
+
+
 \ The host entry of the public word tail of the package named p, or 0. A build
 \ that never loaded the package provides nothing.
 : PUBLIC-ENTRY ( ptr u8 n ptr u8 n -- n )

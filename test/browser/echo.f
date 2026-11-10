@@ -1,8 +1,8 @@
 \ echo.f - ECHO, the browser host's fixture module (src/lib/browser/host.f),
-\ built by tools/wasm-build.f with the entry ECHO:TURN; test/browser/echo-test.f
-\ runs it under src/lib/browser/host-cli.mjs. Every run frees the event's
-\ delivery (src/lib/browser/event.f), so typed text and an answer's body are
-\ copies, in REQ and ANSWER.
+\ built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN;
+\ test/browser/echo-test.f runs it under src/lib/browser/host-cli.mjs. Every
+\ run frees the event's delivery (src/lib/browser/event.f), so typed text and
+\ an answer's body are copies, in REQ and ANSWER.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -135,3 +135,5 @@ public
 
 ;using
 ;package
+
+: MAIN ( -- ) ECHO:TURN ;

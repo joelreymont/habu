@@ -75,8 +75,8 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : BUILD ( -- )
    PROC-ARGV-RESET
-   s" --load" ARG+  s" tools/wasm-build.f" ARG+  s" --" ARG+
-   s" test/browser/echo.f" ARG+  s" ECHO:TURN" ARG+  MOD MOD-U @ ARG+
+   s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
+   s" test/browser/echo.f" ARG+  s" -o" ARG+  MOD MOD-U @ ARG+
    s" test/browser/echo.f builds into a module that validates" T-LABEL
    s" bin/hb" >LEN SPAWN SUCCEEDED
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE ;
@@ -151,7 +151,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ i + i/509; 509 is prime, so the pages differ and a page copied to the wrong
 \ place changes the checksum.
 : LARGE-CASE ( -- )
-   WPROF:IMAGE-BASE  MOD MOD-U @ FS:FILE-SIZE +  PAGE-BYTES +  13 + {: u:n :}
+   WPROF:DATA-BASE  MOD MOD-U @ FS:FILE-SIZE +  PAGE-BYTES +  13 + {: u:n :}
    u PAYLOAD-RESERVE
    u 0 ?do  i  i 509 / +  $FF and  i PAYLOAD c!  loop
    0 PAYLOAD u s" large.bin" FILE!
