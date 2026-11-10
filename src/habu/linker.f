@@ -261,6 +261,10 @@ variable LISTED-N
 DYNAMIC-BUFFER HSTORE-AT n
 DYNAMIC-BUFFER HSTORE-ROW n
 variable HSTORES-N
+\ Each store a piece made below its own data, compiled or linked (STORER+): pair p holds at 2p
+\ the BUILT row holding the cell, -1 for header data, and at 2p + 1 the storing piece's row.
+DYNAMIC-BUFFER STORERS n
+variable STORERS-N                   \ its pairs
 
 \ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR,
 \ WIDN-CELL and the loader's EVENT-COUNT as a file's load or its piece after a request starts
@@ -337,7 +341,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    cap RUN-CAP !  0 RUN-N ! ;
 
 : DISPOSE-OBJECTS ( -- )
-   HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
+   HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  USED-RELEASE  USES-RELEASE  BUILT-USES-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
@@ -370,7 +374,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    LOAD-PATHS 256 BUF:N>BLEN BUF:INIT
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
-   0 HSTORES-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
+   0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
    0 USES-N !  0 USES-FROM !
    1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED ! ;
 
@@ -1368,6 +1372,20 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    v BASE @ - HSTORES-N @ HSTORE-AT !
    BUILT-N HSTORES-N @ HSTORE-ROW !
    n HSTORES-N ! ;
+
+
+\ The running piece's store into the cell at v, as a STORERS pair; the piece's BUILT row is the
+\ next. A store into the cell of no BUILT row's data, above the header data, is E-COMP-STATE.
+: STORER+ ( n -- )
+   {: v:n :}
+   v OPEN-DP @ < if -1 else v DP-ROW 0= if E-COMP-STATE throw then then {: held:n :}
+   STORERS-N @ {: n:n :}
+   n 0 > if
+      n 1 - 2 * STORERS @ held =  n 1 - 2 * 1 + STORERS @ BUILT-N =  and if exit then
+   then
+   n 1 + 2 * STORERS-RESERVE
+   held n 2 * STORERS !  BUILT-N n 2 * 1 + STORERS !
+   n 1 + STORERS-N ! ;
 
 
 \ The space's address-cell row of the cell at v, and true; false when it has none.
@@ -3077,7 +3095,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       GOOD? 0= if E-COMP-STATE throw then
       ctag cx cy cz RESOLVE {: at:n :}
       kind 3 = if v else tag x y z RESOLVE then  kind  at  PUT-CELL
-      at HSTORE+
+      at HSTORE+  at STORER+
    loop
    GOOD? 0= if E-COMP-STATE throw then ;
 
@@ -3402,7 +3420,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    TYPE-ENTRIES
    here NULL-PTR - FILE-END !
    RETIRED!  CHECK-EARLIER  FIND-STORES
-   STORED-N @ 0 ?do i STORED @ HSTORE+ loop
+   STORED-N @ 0 ?do i STORED @ dup HSTORE+ STORER+ loop
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}
    ids held > if E-WORDLIST throw then
    ids held < if E-COMP-STATE throw then
