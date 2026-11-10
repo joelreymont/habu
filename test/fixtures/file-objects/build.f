@@ -575,7 +575,7 @@ variable LOW-REC
 variable HIGH-REC
 variable BYTES-AT                        \ MID's emission's bytes' offset
 variable SITE-AT                         \ MID's call row of LOW: its site's offset
-variable INDEX-AT                        \ and its reference's index's offset
+variable INDEX-AT                        \ and its reference's sum's offset
 variable LATE-FLAG-AT                    \ the late package entry's own-private flag's offset
 variable LATE-AT                         \ the late package's KIND-PRIVATE entry's offset
 variable SLOT-AT                         \ the first does> slot's P: its offset
@@ -592,12 +592,19 @@ variable SLOT-S                          \ and their count
 : OBJ-U64 ( -- n ) AT @ OBJ@  8 AT +! ;
 : OBJ-SKIP ( n -- ) 8 * AT +! ;
 
-\ A reference: its tag, then 2, 1, 3, 2, 1 or 0 fields for tags 0-5 (linker.f CODE+).
+\ The first piece's record n's sum and count, from its TIMES block: the header's pair 16 bytes before
+\ PIECES' gives its offset; the block is its word count, then 11 cells a word, sum and count last.
+: CRAFT-ID ( n -- n n )
+   {: n:n :}
+   PIECES-FIELD 16 - OBJ@  8 +  n 88 * + {: w:n :}
+   w 72 + OBJ@  w 80 + OBJ@ ;
+
+\ A reference: its tag, then 3, 1, 3, 2, 1 or 0 fields for tags 0-5 (linker.f CODE+).
 : REF-SKIP ( -- )
    OBJ-U64 {: tag:n :}
-   tag 0 =  tag 3 =  or if 2 OBJ-SKIP exit then
+   tag 0 =  tag 2 =  or if 3 OBJ-SKIP exit then
    tag 1 =  tag 4 =  or if 1 OBJ-SKIP exit then
-   tag 2 = if 3 OBJ-SKIP then ;
+   tag 3 = if 2 OBJ-SKIP then ;
 
 
 \ An entry (linker.f RECORD+, LATE+); kind 4 is a late private wordlist, no record.
@@ -628,7 +635,8 @@ variable SLOT-S                          \ and their count
    2 OBJ-SKIP ;
 
 
-\ A call row of emission e: site, kind, reference; MID's row naming LOW (tag 0, file 0) is kept.
+\ A call row of emission e: site, kind, reference; MID's row naming LOW (tag 0, file 0, LOW's sum
+\ and count) is kept.
 : CALL-ROW ( n -- )
    {: e:n :}
    AT @ {: site:n :}
@@ -636,7 +644,8 @@ variable SLOT-S                          \ and their count
    AT @ {: ref:n :}
    REF-SKIP
    e MID-EM @ <> if exit then
-   ref OBJ@ 0=  ref 8 + OBJ@ 0=  and  ref 16 + OBJ@ LOW-REC @ =  and if
+   LOW-REC @ CRAFT-ID {: sum:n count:n :}
+   ref OBJ@ 0=  ref 8 + OBJ@ 0=  and  ref 16 + OBJ@ sum =  and  ref 24 + OBJ@ count =  and if
       site SITE-AT !  ref 16 + INDEX-AT !
    then ;
 
@@ -711,10 +720,12 @@ variable SLOT-S                          \ and their count
    site SITE-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
 \ MID's call row naming HIGH, a record made after MID.
-: LATER-RECORD ( -- n ) CRAFT-WALK  HIGH-REC @ INDEX-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
+: LATER-RECORD ( -- n )
+   CRAFT-WALK  HIGH-REC @ CRAFT-ID  INDEX-AT @ 8 + OBJ!  INDEX-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
 \ MID's call row naming the package's own record.
-: PACKAGE-RECORD ( -- n ) CRAFT-WALK  PKG-REC @ INDEX-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
+: PACKAGE-RECORD ( -- n )
+   CRAFT-WALK  PKG-REC @ CRAFT-ID  INDEX-AT @ 8 + OBJ!  INDEX-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
 \ V's does> slot, the created word's return a clause patches, moved 4 bytes onto an instruction
 \ that is not 0.
@@ -730,17 +741,19 @@ variable SLOT-S                          \ and their count
    then
    s" build: CRAFTS: no instruction beside V's slot" 1 die ;
 
-\ V's slot naming LOW (tag 0, file 0) in place of none: 16 bytes more, in the last section.
+\ V's slot naming LOW (tag 0, file 0, LOW's sum and count) in place of none: 24 bytes more, in the
+\ last section.
 : SLOT-TARGET ( -- n )
    CRAFT-WALK
    SLOT-AT @ 8 + {: tag-at:n :}
    tag-at OBJ@ 5 <> if s" build: CRAFTS: V's slot names a target" 1 die then
-   CRAFT-U @ 16 + {: u:n :}
+   CRAFT-U @ 24 + {: u:n :}
    u CRAFT-CAP > if s" build: CRAFTS: the grown object exceeds CRAFT-CAP" 1 die then
-   CRAFT-FIRST tag-at 8 + +  CRAFT-OBJ tag-at 24 + +  CRAFT-U @ tag-at 8 + -  BYTE-COPY
-   0 tag-at OBJ!  0 tag-at 8 + OBJ!  LOW-REC @ tag-at 16 + OBJ!
+   LOW-REC @ CRAFT-ID {: sum:n count:n :}
+   CRAFT-FIRST tag-at 8 + +  CRAFT-OBJ tag-at 32 + +  CRAFT-U @ tag-at 8 + -  BYTE-COPY
+   0 tag-at OBJ!  0 tag-at 8 + OBJ!  sum tag-at 16 + OBJ!  count tag-at 24 + OBJ!
    PIECES-FIELD 8 + {: len-at:n :}
-   len-at OBJ@ 16 + len-at OBJ!
+   len-at OBJ@ 24 + len-at OBJ!
    u CRAFTED-BUILD ;
 
 \ The late package's own-private flag 1: its KIND-PRIVATE entry names a package holding one.

@@ -285,11 +285,14 @@ DYNAMIC-BUFFER REC-IDS n
 variable IDENTIFIED                  \ every record below it that a piece holds has its identity
 \ PLACES finds a record by its file's key and identity: slot s holds at 5s the key's first cell plus
 \ 1, 0 while empty, then its second cell, the sum, the count and the record; half its slots at most
-\ are filled, so a probe ends.
+\ are filled, so a probe ends. A key whose first cell is -2 is a check's (OWN-IDS!), its second
+\ cell the check's OWN-SERIAL; a piece's link reads the table its PIECE-CK filled, since LINK-FILE
+\ runs PIECE-CK right before LINK-OBJECT.
 DYNAMIC-BUFFER PLACES n
 DYNAMIC-BUFFER OLD-PLACES n          \ PLACES' slots as it grows
 variable PLACES-CAP                  \ its slots, a power of two
 variable PLACES-N                    \ its filled slots
+variable OWN-SERIAL                  \ the last check's number (OWN-IDS!)
 \ Record r's mark: the serial of the object that last gave it a WORDS row (WORD-ROW+), 0 for none.
 \ Each OBJECT-OPEN takes the next of SERIALS, which only grows, so no object takes another's mark;
 \ POP-FRAME gives back the marks a nested object overwrote (RELIST).
@@ -499,7 +502,7 @@ variable PENDING-STORERS-N           \ its pairs
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
    0 EDGES-N !
-   1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED !  0 IDENTIFIED !  FIRST-REC @ REC-ROW-N !
+   1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED !  0 IDENTIFIED !  0 OWN-SERIAL !  FIRST-REC @ REC-ROW-N !
    1024 5 * PLACES-RESERVE  1024 5 * 0 ?do 0 i PLACES ! loop  1024 PLACES-CAP !  0 PLACES-N !  PENDING-RECS-CLEAR ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
@@ -624,7 +627,7 @@ variable PENDING-STORERS-N           \ its pairs
    p du FS:MAKE-DIRS ;
 
 \ ---- the records ---------------------------------------------------------------
-\ No address reaches PIECES: a record is named by file and index, code and data by
+\ No address reaches PIECES: a record is named by file and index or identity, code and data by
 \ span and offset, so larger earlier files leave its bytes alone (test/file-objects.f).
 
 : BUILT-N ( -- n ) BUILT BYTES$ {: a:ptr u:n :}  u BUILT-BYTES / ;
@@ -745,8 +748,8 @@ variable PENDING-STORERS-N           \ its pairs
    row  row ROOT-BUILT @ >=  idx REC-TIME 0=  or  REF-FILE
    row BUILT-AT BUILT-FIRST + LE:U64@ ;
 
-\ A record reference: the file, 0 for this one, then the index in that file; an earlier file's
-\ record also gets its WORDS row.
+\ A record reference of a package role, an alias source, a private or seal entry or a facts row: the
+\ file, 0 for this one, then the index in that file; an earlier file's record also gets its WORDS row.
 : REF+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ >= if
@@ -754,6 +757,18 @@ variable PENDING-STORERS-N           \ its pairs
    then
    idx WORD-REF {: k:n first:n :}
    k PIECES U64+  idx first - PIECES U64+
+   k idx WORD-ROW+ ;
+
+\ A code reference's record: the file, 0 for this one, then its sum and count (REC-ID), which no
+\ insertion before it changes; an earlier file's record also gets its WORDS row.
+: ID-REF+ ( n -- )
+   {: idx:n :}
+   idx REC-ID {: sum:n count:n :}
+   idx FILE-REC @ >= if
+      0 PIECES U64+  sum PIECES U64+  count PIECES U64+  exit
+   then
+   idx WORD-REF drop {: k:n :}
+   k PIECES U64+  sum PIECES U64+  count PIECES U64+
    k idx WORD-ROW+ ;
 
 \ ---- dependencies by name -------------------------------------------------------
@@ -792,16 +807,21 @@ variable PENDING-STORERS-N           \ its pairs
    s PLACES @ 0= if -1 exit then
    s 4 + PLACES @ ;
 
+\ The number in its piece of the checked piece's record with that sum and count (OWN-IDS!), -1 for
+\ none.
+: OWN-REC ( n n -- n )
+   {: sum:n count:n :}
+   -2 OWN-SERIAL @ sum count PLACE-SLOT 5 * {: s:n :}
+   s PLACES @ 0= if -1 exit then
+   s 4 + PLACES @ ;
 
-\ Each record from the larger of FILE-REC and IDENTIFIED, the running piece's: its sum and count,
-\ which carries on across FILE-KEY's pieces, into REC-IDS, the record into PLACES, grown first to
-\ stay half empty.
-: IDENTIFY ( -- )
-   FILE-REC @ IDENTIFIED @ max {: start:n :}
-   ndict@ 2 * REC-IDS-RESERVE
-   FILE-KEY LE:U64@  FILE-KEY 8 + LE:U64@ {: path:n seen:n :}
+
+\ PLACES grown to have room for n more slots at half full; growing drops a finished check's slots
+\ (first cell -1), and PLACES-N counts the slots put back.
+: PLACES-ROOM ( n -- )
+   {: n:n :}
    PLACES-CAP @ {: cap:n :}
-   ndict@ start - 0 max  PLACES-N @ +  2 * {: need:n :}
+   n PLACES-N @ +  2 * {: need:n :}
    cap begin dup need < while 2 * repeat {: grown:n :}
    grown cap > if
       cap 5 * OLD-PLACES-RESERVE
@@ -809,24 +829,42 @@ variable PENDING-STORERS-N           \ its pairs
       grown 5 * PLACES-RESERVE
       grown 5 * 0 ?do  0 i PLACES !  loop
       grown PLACES-CAP !
+      0 PLACES-N !
       cap 0 ?do
          i 5 * {: o:n :}
-         o OLD-PLACES @ 0<> if
-            o OLD-PLACES @ 1 -  o 1 + OLD-PLACES @  o 2 + OLD-PLACES @  o 3 + OLD-PLACES @
+         o OLD-PLACES @ {: first:n :}
+         first 0<>  first -1 <>  and if
+            first 1 -  o 1 + OLD-PLACES @  o 2 + OLD-PLACES @  o 3 + OLD-PLACES @
             PLACE-SLOT 5 * {: s:n :}
             5 0 ?do  o i + OLD-PLACES @  s i + PLACES !  loop
+            1 PLACES-N +!
          then
       loop
-   then
+   then ;
+
+
+\ Record r into the empty slot PLACE-SLOT answers for the key's two cells, the sum and the count.
+: PLACE! ( n n n n n -- )
+   {: path:n seen:n sum:n count:n r:n :}
+   path seen sum count PLACE-SLOT 5 * {: s:n :}
+   path 1 + s PLACES !  seen s 1 + PLACES !  sum s 2 + PLACES !  count s 3 + PLACES !
+   r s 4 + PLACES !
+   1 PLACES-N +! ;
+
+
+\ Each record from the larger of FILE-REC and IDENTIFIED, the running piece's: its sum and count,
+\ which carries on across FILE-KEY's pieces, into REC-IDS, the record into PLACES.
+: IDENTIFY ( -- )
+   FILE-REC @ IDENTIFIED @ max {: start:n :}
+   ndict@ 2 * REC-IDS-RESERVE
+   FILE-KEY LE:U64@  FILE-KEY 8 + LE:U64@ {: path:n seen:n :}
+   ndict@ start - 0 max PLACES-ROOM
    ndict@ start ?do
       i XREF-REC XREF-NAME$ {: a:ptr u:n :}
       u 0= if 0 else a u NAME-SUM then {: sum:n :}
       0 begin dup FILE-KEY sum rot PLACE 0 >= while 1 + repeat {: count:n :}
       sum i 2 * REC-IDS !  count i 2 * 1 + REC-IDS !
-      path seen sum count PLACE-SLOT 5 * {: s:n :}
-      path 1 + s PLACES !  seen s 1 + PLACES !  sum s 2 + PLACES !  count s 3 + PLACES !
-      i s 4 + PLACES !
-      1 PLACES-N +!
+      path seen sum count i PLACE!
    loop
    ndict@ IDENTIFIED ! ;
 
@@ -1609,14 +1647,14 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx PKG? if idx XREF-REC XREF-PKG-PUBLIC exit then
    idx MADE-WID 1 + ;
 
-\ A code address's reference, and true: a record's entry, a quotation's function, or hb's
-\ own code, last since a record's host copy may lie inside hb's code range; false, writing
-\ nothing, for any other address.
+\ A code address's reference, and true: a record's entry, by the record's identity (ID-REF+), a
+\ quotation's function, or hb's own code, last since a record's host copy may lie inside hb's code
+\ range; false, writing nothing, for any other address.
 : CODE-REF+ ( n -- bool )
    {: a:n :}
    a REC-AT {: r:n :}
    r 0 >= if
-      r NSHADOW:RECORD@ REC-EDGE+  0 PIECES U64+  r NSHADOW:RECORD@ REF+ true exit
+      r NSHADOW:RECORD@ REC-EDGE+  0 PIECES U64+  r NSHADOW:RECORD@ ID-REF+ true exit
    then
    a NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
    qe 0 >= if
@@ -1722,8 +1760,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \     A, then A addr rows  site, kind (0 code, 1 data), reference
 \     P                    the does> slot's site, -1 for none; when P >= 0 its target's
 \                          reference
-\ A reference is a tag, then its fields: 0 a dictionary record (file, index in that
-\ file); 1 hb's own code (offset from rbase); 2 a quotation (file, emission, function);
+\ A reference is a tag, then its fields: 0 a dictionary record (file, its name sum, its count
+\ among that file's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation (file, emission, function);
 \ 3 a file's data (file, offset from that file's first data byte, at most its data size:
 \ a body of no bytes at the file's end); 4 the open's header data (offset from BASE); 5 none: a
 \ patch target, a cell row's 0 or scratch cell, or a definition with no dispatch cell. A file
@@ -2204,7 +2242,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 : WRITE-OBJECT ( n -- )
    {: t:n :}
    \ FILES ends with the pieces the source names (NAMED+), then those a run word reaches (RAN-FILES+);
-   \ WORDS lists the words the pieces refer to (REF+), the source spells (NAMED+) and a run reaches.
+   \ WORDS lists the words the pieces refer to (REF+, ID-REF+), the source spells (NAMED+) and a run reaches.
    NAMED+  RAN-FILES+  PATHS-LAY
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
@@ -2374,6 +2412,11 @@ variable RD-END
    {: k:n :}
    k 1 >=  k FILES-N @ <=  and ;
 
+\ FILES row k, from 1, in OBJECT.
+: FILES-ROW ( n -- ptr u8 )
+   {: k:n :}
+   OBJECT BYTES$ drop  HEADER-BYTES INPUT-BYTES +  k 1 - FILES-ROW-BYTES * +  + ;
+
 \ A FILES row a reference may name: built, or pending.
 : FILE-IN? ( n -- bool )
    {: k:n :}
@@ -2418,7 +2461,7 @@ variable RD-END
 \ A reference: its tag and fields, 0 for absent ones (CODE+ states them).
 : RD-REF ( -- n n n n )
    RD-U64 {: tag:n :}
-   tag 0 = if tag RD-U64 RD-U64 0 exit then
+   tag 0 = if tag RD-U64 RD-U64 RD-U64 exit then
    tag 1 = if tag RD-U64 0 0 exit then
    tag 2 = if tag RD-U64 RD-U64 RD-U64 exit then
    tag 3 = if tag RD-U64 RD-U64 0 exit then
@@ -2461,16 +2504,22 @@ variable RD-END
 
 
 \ A code reference (RD-REF) whose own emission is at most top and own record below bound: the
-\ records RESOLVE finds when the link resolves it. It names no package, which RESOLVE refuses.
+\ records RESOLVE finds when the link resolves it, a record by its file, sum and count (OWN-REC,
+\ PLACE). It names no package, which RESOLVE refuses.
 : CODE-REF-CK ( n n n n n n -- )
    {: tag:n x:n y:n z:n top:n bound:n :}
    GOOD? 0= if exit then
    tag 0 = if
-      x y bound REC-REF-CK
-      GOOD? 0= if exit then
-      x 0= if y REC-KIND KIND-PACKAGE = if BAD then exit then
+      x 0= if
+         y z OWN-REC {: o:n :}
+         o 0<  o bound >=  or if BAD exit then
+         o REC-KIND KIND-PACKAGE = if BAD then exit
+      then
+      x FILE-IN? 0= if BAD exit then
       x PENDING? if exit then
-      x BUILT-FIRST BUILT@ y + PKG? if BAD then exit
+      x FILES-ROW y z PLACE {: r:n :}
+      r 0< if BAD exit then
+      r PKG? if BAD then exit
    then
    tag 1 = if rbase x + ARM64:HOST-KERNEL? 0= if BAD then exit then
    tag 2 = if x y z top FN-REF-CK exit then
@@ -2510,12 +2559,6 @@ variable RD-END
       at i BUILT-AT ROW-FITS? if i true unloop exit then
    loop
    0 false ;
-
-
-\ FILES row k, from 1, in OBJECT.
-: FILES-ROW ( n -- ptr u8 )
-   {: k:n :}
-   OBJECT BYTES$ drop  HEADER-BYTES INPUT-BYTES +  k 1 - FILES-ROW-BYTES * +  + ;
 
 
 \ The PENDING row equal to the FILES row, and true; false when none.
@@ -2733,6 +2776,21 @@ variable RD-END
 : TIMES-AT ( n -- n )
    {: k:n :}
    TIMES-FIELD OBJ@  k 0 ?do  dup OBJ@ WORD-BYTES * + 8 +  loop ;
+
+
+\ Piece k's records into PLACES by the sums and counts its TIMES block holds, in record order, each
+\ under the key -2 and a new OWN-SERIAL with its number in the piece; bad when two share both.
+: OWN-IDS! ( n -- )
+   TIMES-AT {: at:n :}
+   1 OWN-SERIAL +!
+   at OBJ@ {: n:n :}
+   n PLACES-ROOM
+   n 0 ?do
+      at 8 +  i WORD-BYTES * + {: w:n :}
+      w 9 8 * + OBJ@  w 10 8 * + OBJ@ {: sum:n count:n :}
+      sum count OWN-REC 0 >= if BAD unloop exit then
+      -2 OWN-SERIAL @ sum count i PLACE!
+   loop ;
 
 
 \ A TIMES span: an offset and a length inside a piece of plen bytes.
@@ -3063,9 +3121,9 @@ variable RD-END
    tag 0 <> if BAD exit then
    tag x y z top  top EM-RECS @ 1 +  CODE-REF-CK
    GOOD? 0= if exit then
-   x 0= if  y REC-KIND KIND-DOES <> if BAD then  exit  then
+   x 0= if  y z OWN-REC REC-KIND KIND-DOES <> if BAD then  exit  then
    x PENDING? if exit then
-   x BUILT-FIRST BUILT@ y + {: r:n :}
+   x FILES-ROW y z PLACE {: r:n :}
    r 1 <  if BAD exit then
    r 1 - XREF-DOES-COMPANION? 0= if BAD then ;
 
@@ -3201,6 +3259,7 @@ variable RD-END
    GOOD? 0= if exit then
    PIECE-AT @ {: start:n :}
    start  OBJECT BYTES$ nip  RD-OPEN
+   req PIECE-N OWN-IDS!
    ENTRIES-CK  CODE-CK  DATA-CK  FACTS-CK  ACTS-CK
    req PIECE-N TIMES-AT OBJ@  RECS-N @  <> if BAD then
    req RD-EQ
@@ -3862,7 +3921,9 @@ variable LINK-EM                     \ that emission's number in this object, -1
 : RESOLVE ( n n n n -- n )
    {: tag:n x:n y:n z:n :}
    tag 0 = if
-      x y REC-INDEX {: r:n :}
+      x 0= if y z OWN-REC else x FILES-ROW y z PLACE then {: o:n :}
+      o 0< if E-COMP-STATE throw then
+      x 0= if FILE-REC @ o + else o then {: r:n :}
       r ndict@ >= if E-COMP-STATE throw then
       r PKG? if E-COMP-STATE throw then
       r REC-EDGE+  r XREF-REC XREF-START exit
