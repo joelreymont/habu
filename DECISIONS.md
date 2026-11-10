@@ -6,6 +6,10 @@ learned live in the docs for their subject.
 
 ## Goals
 
+- 2026-11-10, the consumers' releases: "you need to get habu rock-solid for
+  zen, tender and maki releases this week." An issue Zen, Tender or Maki meets
+  on Habu goes before Wasm's warm builds and x86-64 (AGENTS.md); those resume
+  when no such issue is open and unworked.
 - 2026-11-09, arm64: "forget about x86, get arm64 done." Done when hb builds
   hb through the linker on arm64, an edit rebuilds only that file and the files
   that depend on it with output byte-equal to a cold build, the result

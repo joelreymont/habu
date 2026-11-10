@@ -1,0 +1,11 @@
+---
+title: "Census: build Maki, Zen and Tender on master plus the fixes in flight"
+status: active
+priority: 1
+issue-type: task
+created-at: "2026-11-10T22:34:40.418189+02:00"
+---
+
+Problem: each consumer meets the linker's refusals one at a time (aio.f ROWS, Zen's symbol-font.f RECORD-LINK-P, Maki's LINT-LEX SRC-A), a report and an install apart; nobody has built the three on a tree that holds the fixes in flight to see what stops them next. Acceptance: Maki's image (--repl maki.f) and viewer (--target wasm viewer-main.f), Zen's server (scripts/build.f src/server/server.f) and Tender's server (build.f tenderd.f) are each built cold and warm with the engine of a scratch merge of carl's unlanded stack (db44561c) and the store-growth commit (9baa5e1d); each refusal and each warm build that differs from cold is recorded here with its text and becomes a dot of its own; a refusal in a lane a peer holds goes to that peer. Files: none in src. Verify: ~/.cache/tmp/jerry-census/census.log and the per-build logs beside it. Depends: none. Ownership: scratch only; the workspace never lands. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-census (script /tmp/jerry-census/run.sh).
+
+Result (2026-11-10, ~/.cache/tmp/jerry-census/census.log; engine built twice from db44561c merged with 9baa5e1d): Maki's image and viewer and Tender's server build cold and warm with rc 0, each warm output equal to the cold one (programs before the code signature, the module whole). Zen's server builds cold (rc 0) and its second build ends rc 74, 'include: cannot open /Users/joel/Work/src/zen.f': src/server/server.f:4 sets its root and :8 requires ../src/zen.f, and the request is joined to the build's first root. Control: an engine of master 1e624f63 merged with 9baa5e1d builds Zen cold and warm, equal (~/.cache/tmp/jerry-census/m). The stack brings it, so it went to carl with /tmp/jerry-zen-warm.md; nothing on master fails. Not covered: whether a built program runs (no server was started, no suite of a consumer was run), a build after an edit, and master without 9baa5e1d, where Zen's build stops at symbol-font.f (habu-a-build-refuses-a7935d86). Tender's cold build exits 0 on both engines, against the Consumers line of habu-build-every-product-60ae7d1d ('Tender's server image cannot be built'); whether that image starts was not tried.
