@@ -1064,6 +1064,19 @@ learned live in the docs for their subject.
   A build decides what changed from timestamps, without hashing, in place of
   the SHA-256 checks "linking a file's object" names, and Habu installs
   without rsync; both designs go to Joel before a worker starts.
+- 2026-11-10, reusing the kernel object: shown that every build reruns the
+  kernel build (about 0.5 s of a 2-3.5 s warm build) and writes the same bytes
+  each time, and a design in which the kernel object has one fixed name per hb,
+  tree and kind, lists the files it was made from with the change time and size
+  each was read at, and is adopted without a kernel build while every listed
+  file is unchanged, Joel chose "Approve (Recommended)": "Fixed name, stamps
+  inside the object, about 0.5 s saved per warm build", over a fresh kernel
+  each build or a list in a separate file. The object loses its checksum and
+  its hash-made name. Asked the same day "is this best for long term?", the
+  lead's review kept the approach and corrected two things: the list covers
+  every file the process loaded from disk, the build tool's own included,
+  since tools/hb-build-core.f chooses what the kernel build loads; and a cut
+  or malformed object is rebuilt, not a fatal error.
 - 2026-11-09, Wasm through the one linker: shown a design in which a Wasm
   module is built as any program is, by hb-build with Wasm as its target (T0
   gains a Wasm code generator beside its arm64 and x86-64 ones, the linker
