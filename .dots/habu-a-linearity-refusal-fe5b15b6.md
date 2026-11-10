@@ -1,0 +1,9 @@
+---
+title: A linearity refusal and a scoped transport refusal carry no reason
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-10T18:01:19.833528+02:00"
+---
+
+Problem: read, not run (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/transport-hunt.md item 3 and its last line): src/core/checker.f LIN-CHECK sets OK false with no reason and no FAILSET on the step path (CHECKER-STEP-UNJ) and on the transport path (XPORT-APPLY); C2-XPORT-REJECT names only a scoped exclusive group on copy or drop and returns with no reason for >r, 2>r, r>, 2r> and when no scoped term is found. A refusal with no reason is E-REJECTED, unknown_rejection, pinned at the last token. Source: Joel, 2026-11-10: "i want all issues identified to be dotted and fixed". Hunt first: a program that reaches each exit and what its packet says. Acceptance: each of those refusals names its reason and its token. Files: src/core/checker.f, src/core/render.f. Verify: the hunt's programs as refused cases. Depends: habu-a-stack-word-5dd345f9. Ownership: the linearity refusals' reasons. Claim: unassigned.
