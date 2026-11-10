@@ -1470,7 +1470,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    CHECK:HELD-FACTS FILE-HELD @ ?do
       i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
       ix CHECK:HELD-RETIRED = if
-         i CHECK:HELD-RETIRED@ {: idx:n wid:n :}
+         i CHECK:HELD-RETIRED@ drop {: idx:n wid:n :}
          RETIRED-N @ 1 + 2 * RETIRED-RESERVE
          idx  RETIRED-N @ 2 * RETIRED !   wid  RETIRED-N @ 2 * 1 + RETIRED !
          1 RETIRED-N +!
@@ -2102,7 +2102,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \                          none), bytes (the cell's value for kind 3, else 0), its value's
 \                          reference (CELL-REF+ for kinds 0-2, else 5)
 \   F, then F facts rows   each entry the file's compile held, in order (FACTS+): CHECK:HELD-RETIRED
-\                          then the retired record's reference (ID-REF+); CHECK:HELD-AMENDED, a
+\                          then the retired record's reference (ID-REF+) and how many of the
+\                          part's own records the compile had made by then; CHECK:HELD-AMENDED, a
 \                          record's reference and its text as a FIELD+; CHECK:HELD-LAID for a
 \                          laid text or CHECK:HELD-UNDEFINE for an `undefine`, then the text as a
 \                          FIELD+
@@ -2370,14 +2371,14 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ix FILE-REC @ - LAST-HELD @  k = ;
 
 
-\ A facts row: a retirement's kind and record, which marks a word of the running piece
-\ (NAMED-BY!); a record's text, the piece's own or an earlier one's, by reference; a kind's text.
+\ A facts row: a retirement's kind, record (NAMED-BY! marks the running piece's word) and count of
+\ the piece's records made before it; a record's text, own or earlier, by reference; a kind's text.
 : FACT+ ( n -- )
    {: k:n :}
    k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
    ix CHECK:HELD-RETIRED = if
-      k CHECK:HELD-RETIRED@ drop {: r:n :}
-      ix PIECES U64+  r ID-REF+  r NAMED-RETIRED NAMED-BY!  exit
+      k CHECK:HELD-RETIRED@ nip {: r:n made:n :}
+      ix PIECES U64+  r ID-REF+  made FILE-REC @ - PIECES U64+  r NAMED-RETIRED NAMED-BY!  exit
    then
    ix 0 >= if
       CHECK:HELD-AMENDED PIECES U64+  ix ID-REF+  a u PIECES FIELD+  exit
@@ -2575,7 +2576,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    {: at:n :}
    OBJECT BYTES$ drop {: obj:ptr :}
    obj at + LE:U64@ {: ix:n :}
-   ix CHECK:HELD-RETIRED = if  at 32 +  -1 exit  then
+   ix CHECK:HELD-RETIRED = if  at 40 +  -1 exit  then
    ix CHECK:HELD-AMENDED = if at 32 + else at 8 + then {: text:n :}
    text 8 +  obj text + LE:U64@ +  text ;
 
@@ -3561,21 +3562,26 @@ variable RD-END
    40 RD-COUNT 0 ?do STORE-CK loop ;
 
 
-\ FACTS (FACTS+): each row a retirement of a record reference (ID-REF-CK), a text for a record
-\ reference, or a text of a kind, CHECK:HELD-LAID or CHECK:HELD-UNDEFINE.
+\ FACTS (FACTS+): each row a retirement of a record reference (ID-REF-CK) with the count of the
+\ piece's records made before it, from 0 to RECS-N and never below the last retirement's; a text
+\ for a record reference; or a text of a kind, CHECK:HELD-LAID or CHECK:HELD-UNDEFINE.
 : FACTS-CK ( -- )
    RD-AT @ FACTS-AT !
-   16 RD-COUNT 0 ?do
-      RD-U64 {: ix:n :}
+   0  16 RD-COUNT 0 ?do
+      RD-U64 {: last:n ix:n :}
       ix CHECK:HELD-RETIRED =  ix CHECK:HELD-AMENDED =  or if
          RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
          file sum count RECS-N @ ID-REF-CK drop
-         ix CHECK:HELD-AMENDED = if RD-U64 RD-SKIP then
+         ix CHECK:HELD-AMENDED = if RD-U64 RD-SKIP  last else
+            RD-U64 {: made:n :}
+            made last <  made RECS-N @ >  or if BAD then
+            made
+         then
       else
          ix CHECK:HELD-UNDEFINE <  ix 0 >=  or if BAD then
-         RD-U64 RD-SKIP
+         RD-U64 RD-SKIP  last
       then
-   loop ;
+   loop drop ;
 
 
 \ ACTS (ACTS+): each row a kind, EV-REQUIRED or EV-PROVIDED, and a path.
@@ -4439,14 +4445,6 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    E-COMP-STATE throw ;
 
 
-\ The read object's entries in their order, then its data.
-: LINK-OBJECT ( -- )
-   LINK-CLEAR
-   0 ALIASES-N !
-   ENTRIES-N @ 0 ?do i LINK-ENTRY loop
-   LINK-DATA ;
-
-
 \ A facts row's record (file, sum, count; ID-REF+) as a dictionary index: a link's by ID-REC; a
 \ compile's by PLACE, the key at FILE-KEY for file 0, else at REFS' row, which starts with it.
 : FACT-REC ( bool n n n -- n )
@@ -4457,11 +4455,13 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    r 0< if E-COMP-STATE throw then
    r ;
 
-\ A retirement row's record retired again (XREF:RETIRE), as the file's compile retired it. An
-\ earlier piece's record is changed once retired, so a compile and a link see one wordlist.
+\ A retirement row's record retired again (XREF:RETIRE), as the file's compile retired it; the
+\ row's count of the part's records made before it orders the replay (DUE!). An earlier piece's
+\ record is changed once retired, so a compile and a link see one wordlist.
 : LINK-RETIRED ( bool -- )
    {: read:bool :}
    RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
+   RD-U64 drop
    GOOD? 0= if E-COMP-STATE throw then
    read file sum count FACT-REC {: r:n :}
    read if r XREF-REC XREF:RETIRE then
@@ -4480,26 +4480,82 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    a u r CHECK:FACTS!
    read if a u r CHECK:READ-FACTS then ;
 
+
+\ The FACTS replay of the part being placed or linked: the offset in OBJECT of its next row and
+\ the rows left; for a link, the rows through the next retirement row, 0 when none is left, and
+\ that row's count of the part's records the compile made before it.
+variable REPLAY-AT
+variable REPLAY-LEFT
+variable DUE-ROWS
+variable DUE-MADE
+
+: REPLAY-FROM ( -- ) FACTS-AT @ 8 + REPLAY-AT !  FACTS-AT @ OBJ@ REPLAY-LEFT ! ;
+
+
+\ DUE-ROWS and DUE-MADE for the first retirement row from REPLAY-AT on.
+: DUE! ( -- )
+   0 DUE-ROWS !
+   REPLAY-AT @  REPLAY-LEFT @ 0 ?do
+      {: at:n :}
+      at OBJ@ CHECK:HELD-RETIRED = if
+         i 1 + DUE-ROWS !  at 32 + OBJ@ DUE-MADE !  unloop exit
+      then
+      at FACT-ROW drop
+   loop drop ;
+
+
+\ The FACTS row at the reader held again.
+: REPLAY-ROW ( bool -- )
+   {: read:bool :}
+   RD-U64 {: ix:n :}
+   ix CHECK:HELD-RETIRED = if read LINK-RETIRED exit then
+   ix CHECK:HELD-AMENDED = if read LINK-TEXT exit then
+   RD-NAME {: a:ptr u:n :}
+   GOOD? 0= if E-COMP-STATE throw then
+   ix CHECK:HELD-LAID = if a u CHECK:LAY-FACTS then
+   ix CHECK:HELD-UNDEFINE =  read  and if a u CHECK:READ-UNDEFINE then ;
+
+
+\ The next n FACTS rows held again. The reader opens at REPLAY-AT: MAKE-DEF reopens it per entry.
+: REPLAY-ROWS ( bool n -- )
+   {: read:bool n:n :}
+   REPLAY-AT @  OBJECT BYTES$ nip  RD-OPEN
+   n 0 ?do read REPLAY-ROW loop
+   GOOD? 0= if E-COMP-STATE throw then
+   RD-AT @ REPLAY-AT !  n negate REPLAY-LEFT +! ;
+
+
+\ Every FACTS row through the last retirement the compile held with no more of the part's records
+\ made than the link has made, in row order; the rows after it may name records not made yet.
+: REPLAY-DUE ( -- )
+   begin
+      DUE-ROWS @ 0 > if  DUE-MADE @  ndict@ FILE-REC @ -  <=  else false then
+   while
+      true DUE-ROWS @ REPLAY-ROWS  DUE!
+   repeat ;
+
+
+\ The read object's entries in their order, each after the FACTS rows due before its record
+\ (REPLAY-DUE), so a retirement precedes the records the compile made after it; then its data.
+\ LINK-FACTS replays the rows left.
+: LINK-OBJECT ( -- )
+   LINK-CLEAR
+   0 ALIASES-N !
+   REPLAY-FROM  DUE!
+   ENTRIES-N @ 0 ?do  REPLAY-DUE  i LINK-ENTRY  loop
+   LINK-DATA ;
+
+
 \ OBJECT's FACTS held again, then placed at here with the rest the file held: a cold build
 \ places from the object it wrote, a warm one from the object it read, so both lay one text.
-\ A link also replays each `undefine` and retirement in the compile's order, and reads back
-\ into the checker an earlier file's record's text a later `TRUST` row or amender rewrote; a
-\ record's own text is read when a lookup first binds it (the checker's READ-BOUND). A cold build
-\ applied them as it held them.
+\ A link replays here the rows LINK-OBJECT left: each `undefine` and retirement in the compile's
+\ order, and reads back into the checker an earlier file's record's text a later `TRUST` row or
+\ amender rewrote; a record's own text is read when a lookup first binds it (the checker's
+\ READ-BOUND). A cold build replays every row, having applied them as it held them.
 : LINK-FACTS ( bool -- )
    {: read:bool :}
-   FACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
-   RD-U64 0 ?do
-      RD-U64 {: ix:n :}
-      ix CHECK:HELD-RETIRED = if read LINK-RETIRED else
-      ix CHECK:HELD-AMENDED = if read LINK-TEXT else
-         RD-NAME {: a:ptr u:n :}
-         GOOD? 0= if E-COMP-STATE throw then
-         ix CHECK:HELD-LAID = if a u CHECK:LAY-FACTS then
-         ix CHECK:HELD-UNDEFINE =  read  and if a u CHECK:READ-UNDEFINE then
-      then then
-   loop
-   GOOD? 0= if E-COMP-STATE throw then
+   read 0= if REPLAY-FROM then
+   read REPLAY-LEFT @ REPLAY-ROWS
    FILE-HELD @ CHECK:PLACE-FACTS ;
 
 \ ---- the open ------------------------------------------------------------------

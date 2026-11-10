@@ -13396,7 +13396,7 @@ public
 \ A held entry's kind, where a record's facts carry the record's index.
 -1 constant HELD-LAID                \ a laid text
 -2 constant HELD-UNDEFINE            \ an `undefine`: the symbol's identity (HOLD-UNDEFINE)
--3 constant HELD-RETIRED             \ a retired record: its index and wordlist cell before
+-3 constant HELD-RETIRED             \ a retired record: index, wordlist, record count (HOLD-RETIRED)
 -4 constant HELD-AMENDED             \ an amended record: its index and symbol (HOLD-AMENDED)
 private
 \ A build's facts writes and retirements, in order: per entry its kind or record
@@ -13504,19 +13504,20 @@ public
 : HELD-FACTS ( -- n ) HELD-N @ ;
 : HELD-FACT@ ( n -- n ptr u8 n ) dup HELD-N @ HELD-RANGE HELD-ENTRY ;
 \ While a build's space is open, holds record ix's retirement from wordlist cell
-\ wid, a native cell each, in order with the facts writes.
+\ wid and how many records existed then (ndict@), a native cell each, in order
+\ with the facts writes.
 : HOLD-RETIRED ( n n -- )
    {: ix:n wid:n :}
    BUILDING? 0= IF EXIT THEN
-   2 cells HELD-RETIRED HOLD {: at:ptr :}
-   ix at CELL-VIEW !   wid at CELL + CELL-VIEW ! ;
-\ Entry k's retired record and the wordlist cell it had.
-: HELD-RETIRED@ ( n -- n n )
+   3 cells HELD-RETIRED HOLD {: at:ptr :}
+   ix at CELL-VIEW !   wid at CELL + CELL-VIEW !   ndict@ at 2 cells + CELL-VIEW ! ;
+\ Entry k's retired record, the wordlist cell it had and the record count at the hold.
+: HELD-RETIRED@ ( n -- n n n )
    HELD-FACT@ {: ix:n a:ptr u:n :}
-   ix HELD-RETIRED <>  u 2 cells <>  or IF
+   ix HELD-RETIRED <>  u 3 cells <>  or IF
       s" checker: held entry is not a retired record" 76 die
    THEN
-   a CELL-VIEW @   a CELL + CELL-VIEW @ ;
+   a CELL-VIEW @   a CELL + CELL-VIEW @   a 2 cells + CELL-VIEW @ ;
 \ While a build's space is open, holds that a `TRUST` row or an amender
 \ (RECORD-CONTROL-AT!) changed record ix's facts after its text was written, and
 \ sym, the symbol they are read from. Neither can write the text then, before the

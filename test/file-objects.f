@@ -122,6 +122,8 @@
 \ flip.f's require of it cuts no part and flip.f's second part starts after its flip-b.f request,
 \ which a true [if] makes, and compiles; Z3 links it. unclean.f's part after an unclean request and
 \ a clean one links in Z2, and the program prints 5, 1, 2, 3, 7 and 9.
+\ J and J2 build redo-main.f, whose one part undefines Y and X and defines them again: J2 links it
+\ and exits 0, and its program prints 2.
 \ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell, SCRATCH-VARIABLE and
 \ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
 \ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
@@ -920,6 +922,12 @@ variable KEPT-NS
    s" the build links the part that starts at [then]" LINKED
    s\" 5\n1\n2\n3\n7\n9\n" s" the program prints flip-a.f's F, P, Q, R, A and C" PRINTS-RUN ;
 
+\ Guards a link of a part that retires its own records: J2 links redo-main.f's part.
+: REDO-CASE ( CMD:command -- CMD:command )
+   s" J" WHICH!  s" test/fixtures/file-objects/redo-main.f" FIXTURE-BUILD 0= if exit then
+   s" J2" WHICH!  s" test/fixtures/file-objects/redo-main.f" FIXTURE-BUILD 0= if exit then
+   s\" 2\n" s" the program calls the second Y" PRINTS-RUN ;
+
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN
@@ -1010,7 +1018,7 @@ variable KEPT-NS
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
-      STORED-CASE RETIRED-CASE ORDER-CASE MID-CASE START-CASE PIECE-CASE SEAL-CASE
+      STORED-CASE RETIRED-CASE ORDER-CASE MID-CASE START-CASE REDO-CASE PIECE-CASE SEAL-CASE
       NEST-CASE ;]
    CMD:WITH-COMMAND ;
 

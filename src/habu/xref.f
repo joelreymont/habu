@@ -495,8 +495,9 @@ CAST: GRID-RETIRE-XT ( n -- [ ptr n -- ] )
 
 public
 
-\ A build holds the retirement (CHECK:HOLD-RETIRED) before the grid action drops
-\ the record's checker link, so a link replays the two in the compile's order.
+\ A build holds the retirement and the record count then (CHECK:HOLD-RETIRED)
+\ before the grid action drops the record's checker link, so a link replays it
+\ before the first record the compile made after it (the linker's LINK-OBJECT).
 : RETIRE ( ptr n -- ) {: rec:ptr :}
    rec CHECKER-RESOLVE:REC>INDEX  rec XREF-WORDLIST  CHECK:HOLD-RETIRED
    rec GRID-RETIRE
