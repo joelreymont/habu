@@ -16,9 +16,19 @@ package BUILD-OUT
 
 private
 
-create OUT-BUF PATH-CAP allot     variable OUT-U
-create OBJ-BUF PATH-CAP allot     variable OBJ-U
-create PATH-BUF PATH-CAP allot
+\ The caches belong to the process that filled them, so their cells are scratch: a link
+\ writes them zero. A buffer takes whole cells, so its marks stay inside it.
+PATH-CAP 1 cells 1- + 1 cells / cells constant PATH-ROOM
+
+: SCRATCH-BYTES ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 ?do a i + scratch-cell-mark 1 cells +loop ;
+
+create OUT-BUF PATH-ROOM allot    OUT-BUF PATH-ROOM SCRATCH-BYTES
+variable OUT-U                    OUT-U scratch-cell-mark
+create OBJ-BUF PATH-ROOM allot    OBJ-BUF PATH-ROOM SCRATCH-BYTES
+variable OBJ-U                    OBJ-U scratch-cell-mark
+create PATH-BUF PATH-ROOM allot   PATH-BUF PATH-ROOM SCRATCH-BYTES
 variable CLEANUP-LIVE   CLEANUP-LIVE scratch-cell-mark
 
 : CLEAR-SPAN ( ptr u8 n -- )

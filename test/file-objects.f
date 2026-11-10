@@ -71,6 +71,8 @@
 \ holds no mutex the build locked (macOS), and its MAIN takes HELD, logs its line and releases HELD.
 \ M has no require, so app-end.f's object becomes M's; L2 builds log-main.f again, compiling
 \ app-end.f beside log-main.f's reused objects.
+\ P builds path-main.f, whose top level caches the build's engine path; after M2, P2 links it
+\ beside a recompiled app-end.f, and its program prints its own path.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -510,12 +512,25 @@ variable TAIL-N                          \ and the paths that end with it
    s" the program logs MAIN's line" LABEL  ran TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
 
+\ path-main.f's program, run in its own process: the path it reports is the written file's.
+: PATH-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:OUT$ s\" /prog\n" ENDS-WITH? {: own:bool :}
+   own  rc 0 =  and 0= if rc SHOW then
+   s" the program reports its own path" LABEL  own TTRUE
+   s" the program exits 0" LABEL  rc 0 T= ;
+
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    LOG-UNLOCKED  LOG-RUN
    s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
    s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
-   LOG-RUN ;
+   LOG-RUN
+   s" P" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
+   s" M2" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
+   s" P2" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
+   PATH-RUN ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND

@@ -17,11 +17,22 @@ package ENGINE-ID
 PATH-CAP 1 + constant EID-PATH-CAP
 64 constant EID-KEY-LEN
 
-create EID-PATH EID-PATH-CAP allot   variable EID-PATH-U   variable EID-PATH-DONE
-create EID-KEY EID-KEY-LEN allot     variable EID-KEY-U
-variable EID-KEY-DONE
+\ The caches belong to the process that filled them, so their cells are scratch: a link
+\ writes them zero. A buffer takes whole cells, so its marks stay inside it.
+EID-PATH-CAP 1 cells 1- + 1 cells / cells constant EID-PATH-ROOM
+
+: SCRATCH-BYTES ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 ?do a i + scratch-cell-mark 1 cells +loop ;
+
+create EID-PATH EID-PATH-ROOM allot   EID-PATH EID-PATH-ROOM SCRATCH-BYTES
+variable EID-PATH-U                   EID-PATH-U scratch-cell-mark
+variable EID-PATH-DONE                EID-PATH-DONE scratch-cell-mark
+create EID-KEY EID-KEY-LEN allot      EID-KEY EID-KEY-LEN SCRATCH-BYTES
+variable EID-KEY-U                    EID-KEY-U scratch-cell-mark
+variable EID-KEY-DONE                 EID-KEY-DONE scratch-cell-mark
 variable EID-CLEANUP-LIVE   EID-CLEANUP-LIVE scratch-cell-mark
-create EID-PATHZ EID-PATH-CAP allot
+create EID-PATHZ EID-PATH-ROOM allot  EID-PATHZ EID-PATH-ROOM SCRATCH-BYTES
 
 \ Linux follows the process's executable mapping, even after its old pathname
 \ has been renamed and another file has appeared there.
@@ -43,8 +54,8 @@ create EID-PROC-EXE
 104 constant EID-REGION-INO
 24 constant EID-FD-DEV
 32 constant EID-FD-INO
-create EID-MAPPED EID-REGION-BYTES allot
-create EID-OPENED EID-FD-BYTES allot
+create EID-MAPPED EID-REGION-BYTES allot   EID-MAPPED EID-REGION-BYTES SCRATCH-BYTES
+create EID-OPENED EID-FD-BYTES allot       EID-OPENED EID-FD-BYTES SCRATCH-BYTES
 
 PROCESS-SYMBOLS
 FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- n )
