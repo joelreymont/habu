@@ -522,21 +522,11 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
 : TASK-PARK-SEM ( ptr n -- sem )
    TCB.PARK SEM-AT ;
 
-\ THE PARK LIVES AS LONG AS ITS TCB DOES IN THIS PROCESS, unlike the mailbox and
-\ the done semaphore, which a release destroys: nothing orders a post of the
-\ park (TASK-WAKE after reading RUNNING, HALT-REQ or EXPOSED; HALT after its CAS;
-\ both from any thread) before the owner's next KILL, JOIN or ACTIVATE. PREPARE
-\ creates it once and no lifecycle word destroys it, so every admitted post
-\ meets one live semaphore. ACTIVATE and EXPOSE drain it, so each run and
-\ exposure opens at zero. Only the capture sweep destroys it, where no waker can
-\ hold the TCB; the next PREPARE creates it again. TASK:FREE keeps it, so a pool record carries it to
-\ the task TASK:NEW next makes of it.
+\ The park outlives every release of its TCB, TASK:FREE included: a post from
+\ any thread (TASK-WAKE, HALT) is ordered before no KILL, JOIN or ACTIVATE.
 : PARK-CREATE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PARK-SEM SEM-LIVE? if exit then
    0 tcb TASK-PARK-SEM SEM-INIT ;
-
-: PARK-DESTROY ( ptr n -- ) {: tcb:ptr :}
-   tcb TASK-PARK-SEM SEM-DESTROY ;
 
 \ A run opens at zero while the record stays live under any post in flight.
 : PARK-DRAIN ( ptr n -- ) {: tcb:ptr :}
@@ -678,30 +668,29 @@ SCRATCH-VARIABLE MAIN-PARK-READY
 \ a second row, so a defined task's rows cannot leak. TASK:FREE moves a NEW
 \ task's rows onto TASK-EXIT-FREE, which a registration takes from first.
 \ A row's owed mark, 1 or 0, says its cleanup is owed a run in this task's
-\ ending. Each input in each state; every change is made under TASK-EXIT-LOCK
-\ but the sweep's, which runs while no task runs:
-\ | row            | AT-EXIT of its q  | ending starts | ending takes it     | TASK:FREE      | sweep    |
-\ | free           | takes a row: owed | -             | -                   | -              | -        |
-\ | held, not owed | owed              | owed          | -                   | free, not owed | -        |
-\ | held, owed     | owed              | owed          | not owed, then runs | free, not owed | not owed |
+\ ending. Each input in each state; every change is made under TASK-EXIT-LOCK:
+\ | row            | AT-EXIT of its q  | ending starts | ending takes it     | TASK:FREE      |
+\ | free           | takes a row: owed | -             | -                   | -              |
+\ | held, not owed | owed              | owed          | -                   | free, not owed |
+\ | held, owed     | owed              | owed          | not owed, then runs | free, not owed |
 \
 \ THE ROWS GROW WITH THE TASKS THAT USE THEM. The first TASK-EXIT-TABLE-N rows
-\ are this package's storage (TASK-EXIT-QT, TASK-EXIT-LINK, TASK-EXIT-OWED),
-\ which an image carries. Past them a registration maps a chunk of
+\ are this package's storage: TASK-EXIT-QT and TASK-EXIT-LINK, which a program
+\ carries, and TASK-EXIT-OWED, scratch. Past them a registration maps a chunk of
 \ EXIT-CHUNK-ROWS more, the growth unit and not a cap: the next chunk's address,
 \ the index of its first row, then rows of a quotation cell, a link cell and an
 \ owed cell. Rows never move while the process runs, so an index a chain holds
-\ stays valid under a reader. A capture cannot carry the mappings:
-\ EXIT-ROWS-SWEEP moves the held rows into the table and gives the chunks back.
+\ stays valid under a reader. A program carries the table's rows and no chunk:
+\ a file whose top level leaves a chunk mapped is refused (EXIT-CHUNKS).
 $80 constant TASK-EXIT-TABLE-N
 TASK-EXIT-TABLE-N TYPED-BUFFER TASK-EXIT-QT [ -- ]
 TASK-ALIGN8
 create TASK-EXIT-LINK TASK-EXIT-TABLE-N TASK-ZERO-CELLS,
+\ Scratch: an ending marks every row of its chain owed before it runs one (EXIT-OWE-ALL).
 TASK-ALIGN8
-create TASK-EXIT-OWED TASK-EXIT-TABLE-N TASK-ZERO-CELLS,
+create TASK-EXIT-OWED TASK-EXIT-TABLE-N cells SCRATCH-ALLOT
 \ The first row never handed out: every row below it has been used, freed
-\ rows included. A capture lowers it to the table's end as the chunks go
-\ (EXIT-FREE-TABLE).
+\ rows included.
 TASK-ALIGN8
 variable TASK-EXIT-N
 \ The first row TASK:FREE gave back, plus one; 0 is none. A free row's link
@@ -709,10 +698,11 @@ variable TASK-EXIT-N
 TASK-ALIGN8
 variable TASK-EXIT-FREE
 TASK-ALIGN8
-variable TASK-EXIT-LOCK
-\ The newest chunk, as a number; 0 is none.
+SCRATCH-VARIABLE TASK-EXIT-LOCK
+\ The newest chunk, as a number; 0 is none. Declared an address cell, so the
+\ linker refuses a file whose top level leaves a chunk mapped.
 TASK-ALIGN8
-variable EXIT-CHUNKS
+variable EXIT-CHUNKS   EXIT-CHUNKS ptr-cell-mark
 $4000 constant EXIT-CHUNK-BYTES
 3 cells constant EXIT-ROW-BYTES
 2 cells constant EXIT-CHUNK-HEAD
@@ -756,7 +746,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    0 tcb TCB.JOINER atomic! ;
 
 \ Read and written under TASK-EXIT-LOCK, which orders the head and its rows,
-\ but by TCB-CLEAR and EXIT-CHAIN-HOME, where no other task reaches the record.
+\ but by TCB-CLEAR, where no other task reaches the record.
 : TASK-EXIT-SLOT@ ( ptr n -- n )
    TCB.EXIT-SLOT @ ;
 
@@ -910,6 +900,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 \ nothing: every word below hands its rows back before it throws. A declaration
 \ grows this table before a task can run. No C entry embeds a row address: the
 \ main region's CB-ROWS publishes the current base for the thunk on every call.
+\ The rows are scratch, so a program starts with every row unbound and idle.
 4 cells constant ROW-BYTES
 2 cells constant ROW-MOVES-OFF
 3 cells constant ROW-CLAIM-OFF
@@ -920,7 +911,7 @@ variable ROW-N
 : ROW-ALLOC ( n -- ptr u8 ) {: size:n :}
    TASK-ALIGN8
    here BYTE-VIEW {: rows:ptr :}
-   size allot
+   size SCRATCH-ALLOT
    rows ;
 
 : ROW-GROW ( -- )
@@ -960,7 +951,7 @@ variable ROW-N
 
 \ Names region r in row k, then counts the store, each a release store. Every
 \ region store goes through here, by a mover that holds the row BUSY and hands
-\ it back only after both - the capture sweep aside, which runs alone.
+\ it back only after both.
 : ROW-NAME! ( n n -- ) {: r:n k:n :}
    r k ROW ROW-REGION atomic!
    k ROW-MOVES atomic@ 1 + k ROW-MOVES atomic! ;
@@ -1091,15 +1082,10 @@ variable ROW-N
    MUNMAP-CALL TASK-RC0 ;
 
 \ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives every
-\ release until the capture sweep (PARK-CREATE). The mailbox and the done
-\ semaphore are destroyed, the five mappings go back, and the five cells cleared
-\ last are what the run acquired: the pthread_t, the value the join wrote, and
-\ the data base, record count and code end ACTIVATE or EXPOSE took. An image
-\ restores none of them, and a stripped link refuses a captured cell holding
-\ one, the later ones unnamed because a `create … does>` body spells only cell 0
-\ (measured on a load-time activate/join/kill: `holds a pointer into memory the
-\ build mapped word=<unknown> data-off=12219368` for TCB.THREAD, then `holds an
-\ undeclared code/dict pointer` for TCB.DBASE). Clearing them changes no run:
+\ release (PARK-CREATE). The mailbox and the done semaphore are destroyed, the
+\ five mappings go back, and the five cells cleared last are what the run
+\ acquired: the pthread_t, the value the join wrote, and the data base, record
+\ count and code end ACTIVATE or EXPOSE took. Clearing them changes no run:
 \ ACTIVATE writes THREAD again, the join writes RET and ACTIVATE or EXPOSE
 \ writes the other three.
 : TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
@@ -1132,7 +1118,7 @@ variable ROW-N
    0 tcb TCB.NDICT !
    0 tcb TCB.CP ! ;
 
-\ ---- every declared TCB, and the sweep a capture runs over them ---------------
+\ ---- every declared TCB ------------------------------------------------------
 \ The head and each link (TASK-LINK@) are declared address cells; 0 ends. The
 \ chain only grows, read unlocked, so a TASK:NEW record stays on TCB-POOL.
 PERSISTED-PTR-VARIABLE TASK-CHAIN
@@ -1163,14 +1149,14 @@ TASK-CHAIN-PUBLISH
 \ its claim and TASK:NEW takes a free record before it maps another chunk, so
 \ nothing is unlinked or unmapped under EXPOSED-TCB and TCB-POOLED?, which walk
 \ it with no lock, and a WAKE or HALT that read a TCB before TASK:FREE still
-\ posts a live park. The capture sweep alone destroys the parks and gives the
-\ chunks back, after refusing a record still held. The x86-64 crash handler
-\ walks TASK-CHAIN only (src/habu/boot-x64.f), so a guard-page fetch in a NEW
-\ task's stack reaches its generic dump instead of the stack-bounds report.
+\ posts a live park. The heads are scratch, so a program starts with an empty
+\ pool. The x86-64 crash handler walks TASK-CHAIN only (src/habu/boot-x64.f), so
+\ a guard-page fetch in a NEW task's stack reaches its generic dump instead of
+\ the stack-bounds report.
 TASK-ALIGN8
-variable TCB-POOL
+SCRATCH-VARIABLE TCB-POOL
 TASK-ALIGN8
-variable TCB-CHUNKS
+SCRATCH-VARIABLE TCB-CHUNKS
 TASK-TCB-BYTES 2 cells + constant TCB-REC-BYTES
 $4000 constant TCB-CHUNK-BYTES
 TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
@@ -1187,171 +1173,12 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 : TCB-CLAIM ( ptr n -- ptr n )
    TASK-TCB-BYTES + CELL + ;
 
-: TCB-CHUNK-RELEASE ( n -- )
-   TASK-N>PTR BYTE-VIEW TCB-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
-
-\ Every record is free here, so EMPTY with no mapping but its park. A record
-\ still held is the program's defect, named rather than left to the linker as a
-\ mapping it cannot carry; `die` and not `throw`, as TASK-SWEEP-ONE says.
-: TCB-POOL-SWEEP ( -- )
-   TCB-POOL atomic@
-   begin dup 0 <> while
-      dup TASK-N>PTR TCB-CLAIM atomic@ CLAIM-FREE <> if
-         s" task: TASK:NEW task at capture - kill and TASK:FREE it before the build or snapshot captures"
-         E-TASK-STATE die
-      then
-      dup TASK-N>PTR PARK-DESTROY
-      TASK-N>PTR TASK-LINK@
-   repeat
-   drop
-   0 TCB-POOL atomic!
-   TCB-CHUNKS atomic@
-   begin dup 0 <> while
-      dup TASK-N>PTR @ swap TCB-CHUNK-RELEASE
-   repeat
-   drop
-   0 TCB-CHUNKS atomic! ;
-
-\ A PREPARED TASK IS RELEASED AT CAPTURE, as package FFI drops resolved symbols:
-\ the next ACTIVATE prepares it again. So is every park, an EMPTY task's
-\ included: a guard captured live would have the restored image skip creating
-\ its own. No other thread can post a park during the capture: a task's thread
-\ ends the process below, and ROWS-SWEEP refused a foreign thread inside a slot.
-\ An ACTIVATED or EXPOSED task is the program's defect (an image cannot carry a
-\ thread), so this names the state and the field the linker would refuse with
-\ no name. `die`, not `throw`: a hook may throw and PREPARE propagates it, but
-\ hb-build would end on a bare code.
-: TASK-SWEEP-ONE ( ptr n -- ) {: tcb:ptr :}
-   tcb TASK-STATE@ {: st:n :}
-   st TASK-EXPOSED = if
-      s" task: exposed task at capture - unexpose it before the build or snapshot captures (CB-OWNER)"
-      E-TASK-STATE die
-   then
-   st TASK-EMPTY <> st TASK-CONSTRUCTED <> and if
-      s" task: activated task at capture - kill it before the build or snapshot captures (TCB.THREAD)"
-      E-TASK-STATE die
-   then
-   st TASK-CONSTRUCTED = if
-      tcb TASK-RELEASE-MEM
-      TASK-EMPTY tcb TASK-STATE!
-   then
-   tcb PARK-DESTROY ;
-
-variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
-
-\ The flag is cleared last, so a walk that threw part way - TASK-RELEASE-MEM
-\ answers a refusing munmap with E-TASK-THREAD - leaves the hook registered for
-\ the retry IMAGE-LIFECYCLE:PREPARE keeps a throwing callback for.
-\ A binding is process state: idle rows are dropped, and a row a thread is
-\ inside names a foreign call in progress, which no image can carry.
-: ROWS-SWEEP ( -- )
-   ROW-N @ 0 ?do
-      i ROW ROW-OWNER atomic@ 0 <> if
-         s" task: callback slot in flight at capture - return from the foreign call before the build or snapshot captures"
-         E-TASK-STATE die
-      then
-      0 i ROW ROW-REGION atomic!
-      0 i ROW-MOVES atomic!
-      0 i ROW-CLAIM !
-   loop ;
-
-: EXIT-CHUNK-RELEASE ( n -- )
-   TASK-N>PTR BYTE-VIEW EXIT-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
-
-\ Keeps the rows TASK:FREE gave back that lie in the table; a row in a chunk
-\ goes with its chunk.
-: EXIT-FREE-TABLE ( -- )
-   TASK-EXIT-FREE @
-   0 TASK-EXIT-FREE !
-   begin dup 0 <> while
-      1 - dup TASK-EXIT-LINK-AT @ swap
-      dup TASK-EXIT-TABLE-N < if
-         TASK-EXIT-FREE @ over TASK-EXIT-LINK-AT !
-         1 + TASK-EXIT-FREE !
-      else
-         drop
-      then
-   repeat
-   drop
-   TASK-EXIT-N @ TASK-EXIT-TABLE-N min TASK-EXIT-N ! ;
-
-\ Moves the row the cell names into the table when it lies in a chunk, and
-\ answers the cell naming the next row. Rows that do not fit the table are the
-\ program's defect, named rather than carried as an index into a mapping the
-\ image does not have; `die` and not `throw`, as TASK-SWEEP-ONE says.
-: EXIT-ROW-HOME ( ptr n -- ptr n ) {: at:ptr :}
-   at @ 1 - {: idx:n :}
-   idx TASK-EXIT-TABLE-N < if idx TASK-EXIT-LINK-AT exit then
-   TASK-EXIT-FREE @ 0= TASK-EXIT-N @ TASK-EXIT-TABLE-N >= and if
-      s" task: defined tasks hold more AT-EXIT cleanups at capture than the image's table carries (TASK-EXIT-TABLE-N rows)"
-      E-TASK-EXIT-TABLE die
-   then
-   EXIT-ROW-POP {: home:n :}
-   idx EXIT-QT @ home EXIT-QT !
-   idx TASK-EXIT-LINK-AT @ home TASK-EXIT-LINK-AT !
-   home 1 + at !
-   home TASK-EXIT-LINK-AT ;
-
-: EXIT-CHAIN-HOME ( ptr n -- )
-   TCB.EXIT-SLOT
-   begin dup @ 0 <> while EXIT-ROW-HOME repeat
-   drop ;
-
-\ A capture carries the table and not this process's chunks. TCB-POOL-SWEEP
-\ has refused a TASK:NEW task still held, so every row a pool task held is
-\ free, and the rows still held belong to defined tasks, all on TASK-CHAIN. Each
-\ such row in a chunk moves into a free row of the table, keeping its place in
-\ its chain; no thread reads a chain while the capture runs (TASK-SWEEP-ONE).
-\ The chunks are given back and the next registration maps afresh. No carried
-\ row is owed: an image starts with no task ending.
-: EXIT-ROWS-SWEEP ( -- )
-   TASK-EXIT-TABLE-N 0 ?do i EXIT-PAY loop
-   EXIT-CHUNKS @ 0= if exit then
-   EXIT-FREE-TABLE
-   TASK-CHAIN@ FFI:>CELL
-   begin dup 0 <> while
-      TASK-N>PTR dup EXIT-CHAIN-HOME TASK-LINK@
-   repeat
-   drop
-   EXIT-CHUNKS @
-   begin dup 0 <> while
-      dup TASK-N>PTR @ swap EXIT-CHUNK-RELEASE
-   repeat
-   drop
-   0 EXIT-CHUNKS ! ;
-
-: TASK-CAPTURE-SWEEP ( -- )
-   ROWS-SWEEP
-   TASK-CHAIN@ FFI:>CELL
-   begin dup 0 <> while
-      TASK-N>PTR dup TASK-SWEEP-ONE TASK-LINK@
-   repeat
-   drop
-   TCB-POOL-SWEEP
-   EXIT-ROWS-SWEEP
-   0 SWEEP-ARMED ! ;
-
-\ THE SWEEP IS A ONE-SHOT CLEANUP, ARMED BY THE WORD THAT TAKES WHAT IT GIVES
-\ BACK. It munmaps, so it runs in the foreign-call cleanup phase of
-\ src/lib/image-lifecycle.f: after FFI's FORGET-SYMBOLS, MUNMAP-CALL would
-\ resolve munmap again and leave this process's address in a captured cell. A
-\ run disarms it and the next PREPARE, here or in the restored image, arms it
-\ again. Two owners preparing at once may register two hooks; the second walk
-\ finds every task EMPTY.
-: TASK-ARM-SWEEP ( -- )
-   SWEEP-ARMED @ 0= if
-      [: TASK-CAPTURE-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
-      1 SWEEP-ARMED !
-   then ;
-
 \ Maps outside the lock, since a mapping may block or throw, and appends under
 \ it: the chunk starts where the rows end, and its header (first row index, link
 \ to the chunk before) is stored before the release store that publishes it to
 \ EXIT-ROW-AT, which TASK-RUN-EXIT-ONE calls outside the lock.
-\ Two registrations growing at once append two chunks. The sweep is armed before
-\ the mapping exists, as TCB-GROW does.
+\ Two registrations growing at once append two chunks.
 : EXIT-GROW ( -- )
-   TASK-ARM-SWEEP
    EXIT-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
    TASK-EXIT-LOCK-GET
    EXIT-ROWS-END c CELL + TASK-N>PTR !
@@ -1468,10 +1295,9 @@ variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
 \ Every resource above records its owner as soon as it succeeds. A later mmap
-\ or semaphore refusal leaves the task EMPTY, so the capture sweep cannot own
-\ the partial record; release it here before propagating the original error.
+\ or semaphore refusal leaves the task EMPTY, so no later release owns the
+\ partial record; release it here before propagating the original error.
 : PREPARE ( ptr n -- ) {: tcb:ptr :}
-   TASK-ARM-SWEEP
    tcb TASK-CONSTRUCTED? if exit then
    tcb TCB.SIZE @ TASK-CHECK-SIZE
    tcb [: dup TASK-PREPARE-RESOURCES ;] catch {: rc:n :}
@@ -1508,8 +1334,7 @@ variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
 
 \ A create attempt that failed started no thread, so this takes back what
 \ ACTIVATE published for one: the live count and RUNNING. The task stays
-\ prepared, its stacks and region kept for the next ACTIVATE or the capture
-\ sweep.
+\ prepared, its stacks and region kept for the next ACTIVATE.
 : TASK-CREATE-ROLLBACK ( ptr n -- ) {: tcb:ptr :}
    TASK-LIVE-
    TASK-CONSTRUCTED tcb TASK-STATE! ;
@@ -1735,7 +1560,7 @@ variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
 : SLOT-CHECK ( n -- ) {: k:n :}
    k 0 < k ROW-N @ >= or if E-TASK-STATE throw then ;
 
-\ Binding publishes the row table first and arms the capture sweep. The row
+\ Binding publishes the row table first. The row
 \ moves 0 -> BUSY before it is read, and the bind decides on what it reads
 \ under BUSY, where nothing else moves the row. A row that is not idle - a
 \ thread inside, or another bind, unbind, claim or drop moving it - refuses
@@ -1758,7 +1583,6 @@ variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
    ctx CONTEXT-CHECK {: host:n :}
    k SLOT-CHECK
    ROW-TABLE @ FFI:>CELL MAIN-BASE CB-ROWS + atomic!
-   TASK-ARM-SWEEP
    0 CB-ROW-BUSY k ROW ROW-OWNER atomic-cas 0 <> if E-TASK-STATE throw then
    k ROW ROW-REGION atomic@ {: held:n :}
    held 0 <> if
@@ -1852,10 +1676,8 @@ variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
    until ;
 
 \ A fresh mapping is zero: every record EMPTY and CLAIM-FREE. Its first record
-\ is the caller's before the chunk is published, the sweep armed before the
-\ mapping exists, as SEM-GROW does.
+\ is the caller's before the chunk is published.
 : TCB-GROW ( -- n )
-   TASK-ARM-SWEEP
    TCB-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
    TCB-POOL-N 1 - 0 ?do
       c i 1 + TCB-REC c i TCB-REC TCB-POOL-LINK !
@@ -1926,13 +1748,17 @@ variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
 \ address (`dbase@` is typed `-- n`). +USER's slot lies in every task's region, so it generates its accessor.
 
 \ The body is TASK-TCB-BYTES; the cell after it is this TCB's chain link, taking
-\ the head the definition found and leaving its own address there.
+\ the head the definition found and leaving its own address there. Every body
+\ cell but the size and the cleanup chain's head is this process's (the thread,
+\ the mappings, the semaphores, the state), so a program starts with each
+\ defined task EMPTY.
 : TASK ( n -- )
    dup TASK-CHECK-SIZE
    TASK-ALIGN8
    create
       here CELL-VIEW >r
-      ,  TASK-TCB-BYTES 8 / 1 - 0 do 0 , loop
+      ,  TASK-ABI:EXIT-SLOT-OFF CELL - SCRATCH-ALLOT
+      0 ,  TASK-TCB-BYTES TASK-ABI:EXIT-SLOT-OFF - CELL - SCRATCH-ALLOT
       here ptr-cell-mark 0 ,
       TASK-CHAIN@ r@ TASK-TCB-BYTES + 0 ptr-field !
       r> TASK-CHAIN!
@@ -2219,8 +2045,8 @@ TASK-MIN-STACK constant MIN-STACK
 \ no-op; a slot naming another context, with a thread inside, or that another
 \ bind, unbind, UNEXPOSE or task end is moving, is refused, and so is a bind
 \ to an exposed task that an UNEXPOSE on another thread ends meanwhile.
-\ A binding lives until CONTEXT-UNBIND, UNEXPOSE, the end of the task whose
-\ region it names, or a capture.
+\ A binding lives until CONTEXT-UNBIND, UNEXPOSE or the end of the task whose
+\ region it names; a program starts with every slot unbound.
 : CONTEXT-BIND ( n n -- )
    CONTEXT-BIND ;
 
@@ -2231,11 +2057,6 @@ TASK-MIN-STACK constant MIN-STACK
 \ exposed. The table may grow while earlier idle bindings already exist.
 : DECLARE-CALLBACK ( n -- )
    ROW-DECLARE ;
-
-\ An unbound row can still carry process-local MOVES, so the sweep is armed
-\ when rows exist.
-: ARM-IMPORTED-CALLBACKS ( -- )
-   ROW-N @ 0 > if TASK-ARM-SWEEP then ;
 
 \ Yields the processor. In a task whose run a TASK:HALT has reached, outside a
 \ callback and outside DEFER-ENTER, it unwinds the body through every finally
@@ -2362,7 +2183,7 @@ TASK-MIN-STACK constant MIN-STACK
 \ any other state, a defined task, the null TCB and a task already given back
 \ are E-TASK-STATE, and the task is left as it was. The handle is dead after it:
 \ TASK:NEW may hand the record out again. The stacks went back at the join;
-\ the record and its park go back at the next capture.
+\ the record and its park stay in the pool for the next TASK:NEW.
 : FREE ( ptr n -- )
    TASK-FREE ;
 

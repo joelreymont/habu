@@ -3,7 +3,6 @@
 \ Run: bin/hb --load test/ffi-callback-child.f -- <case>
 require test/ffi-callback-fixture.f
 require src/lib/string.f
-require src/lib/image-lifecycle.f
 require src/lib/task.f
 
 package FFI-CB-TEST
@@ -234,14 +233,6 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its WAIT
    STOPS-FRESH? if s" fresh: nor does a hint to an earlier exposure" type cr then
    CTX-TASK TASK:KILL ;
 
-: CAPTURES ( -- )
-   THREAD-BIND
-   START-FN @ 1 THREAD-START STARTED
-   WAIT-INSIDE
-   s" captures: a thread is parked inside" type cr
-   IMAGE-LIFECYCLE:PREPARE
-   s" ffi-callback-child: captures was not refused" SURVIVED-RC die ;
-
 : CASE? ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
 
@@ -256,7 +247,6 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its WAIT
    s" defines" CASE? if DEFINES then
    s" body-defines" CASE? if BODY-DEFINES then
    s" released" CASE? if HALTED KILLED WOKEN FRESH exit then
-   s" captures" CASE? if CAPTURES then
    s" ffi-callback-child: unknown case" SURVIVED-RC die ;
 
 DISPATCH

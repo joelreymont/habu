@@ -1,9 +1,11 @@
 ---
 title: Task cells a capture hook clears are carried by objects
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T12:21:34.709801+02:00"
+closed-at: "2026-11-10T16:24:57.508361+02:00"
+close-reason: "landed as 'Declare the semaphore pool and main park scratch' and 'End the task capture sweep', by the rulings recorded here; TASK:ARM-IMPORTED-CALLBACKS removed (no caller). test/exit-hook-test.f CASE-BUILD-CLEANUPS: cleanups a top level registers run in the program (prints 21); CASE-BUILD-CHUNK: a source that leaves a cleanup chunk mapped is refused, rc 74 (the engine before the change refused it with the same message). Waiting cases: habu-no-test-ends-9a611b72, habu-a-semaphore-a-eaa1fc80, habu-a-task-new-327cc183. Gate at the landing tip (gate-all.sh): engine built twice equal before the signature, maps equal, test/pointer-storage-test.f and test/file-objects.f ok, suite 272 of 272, chain fixpoint at generation 2."
 ---
 
 Problem (code review of the registration-cells fix, 2026-11-10, by reading, not reproduced): in src/lib/task.f these are plain cells an object carries while the hook that resets them is never carried. (b) :602-604 MAIN-PARK-REC and MAIN-PARK-READY: 2 records the main task's semaphore (a Mach port name on Darwin) and its IMAGE-LIFECYCLE:REGISTER of MAIN-PARK-RESET (:624-637); a file whose top level parks or wakes the main task would give a warm link another process's semaphore. (c) heads of process-local mapped chains swept by hooks: TASK-SEM-POOL's link and used cells (:448), TCB-POOL (:1179), TCB-CHUNKS (:1181), EXIT-CHUNKS (:759). (d) callback rows' per-row process state ROW-REGION, ROW-MOVES, ROW-CLAIM (cleared by ROWS-SWEEP :1255-1265): a warm link replays rows and nothing arms the sweep; the public word ARM-IMPORTED-CALLBACKS (:2244) was written for this and has no caller in src, tools, test, docs or ../etch. Acceptance: a reproducer for each of b, c and d (a program whose top level does the thing, built, a no-require program built, the first built again in one out root; what the third build or its program does); then each cell a hook clears is a scratch cell, or the report says why one must be carried; ARM-IMPORTED-CALLBACKS is called where a link needs it or removed. Files: src/lib/task.f. Verify: the reproducers as cases of test/file-objects.f; src/lib/task-test.f; engine built twice equal. Depends: none. Ownership: src/lib/task.f. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-int.

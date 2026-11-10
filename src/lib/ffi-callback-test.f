@@ -14,7 +14,6 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/test/runner.f
-require src/lib/image-lifecycle.f
 require src/lib/task.f
 require test/ffi-callback-fixture.f
 
@@ -273,19 +272,10 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" a definition succeeds" SAY
    CTX-TASK TASK:KILL ;
 
-: CASE-PREPARE ( -- )
-   s" == IMAGE-LIFECYCLE:PREPARE" SAY
+: CASE-ACCESSOR ( -- )
+   s" == a frame accessor" SAY
    [: 0 ARG@ drop ;] catch E-FFI-CALLBACK-STATE =
-      s" a frame accessor outside a callback is E-FFI-CALLBACK-STATE" FACT
-   CMP-VIA TASK:SELF-CONTEXT ENTRY drop
-   IMAGE-LIFECYCLE:PREPARE
-   CTX-TASK TASK:EXPOSE
-   [: CMP-VIA CTX-TASK TASK:CONTEXT ENTRY drop ;] catch 0=
-      s" the capture dropped the binding: the slot binds to another context" FACT
-   CTX-TASK TASK:KILL
-   CMP TASK:SELF-CONTEXT ENTRY CMP-FN !
-   SORT-PLAIN s" ENTRY then qsort after the capture" FACT
-   CMP UNBIND ;
+      s" a frame accessor outside a callback is E-FFI-CALLBACK-STATE" FACT ;
 
 \ Each rides INCLUDE-EVALUATE, so the refusal is a throw this file catches.
 : DECL-BAD-TOKEN ( -- )
@@ -377,8 +367,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" unexposed" CHILD-CASE
    s" defines" CHILD-CASE
    s" body-defines" CHILD-CASE
-   s" released" CHILD-CASE
-   s" captures" CHILD-CASE ;
+   s" released" CHILD-CASE ;
 
 \ Every comparison answers the declared fallback, so bsearch matches its first
 \ probe under UNSET's 0 and no row under UNSET-ONE's 1.
@@ -504,10 +493,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   whose callback ran to its result" W
    s" ok   UNEXPOSE gives the count back" W
    s" a definition succeeds" W
-   s" == IMAGE-LIFECYCLE:PREPARE" W
-   s" ok   a frame accessor outside a callback is E-FFI-CALLBACK-STATE" W
-   s" ok   the capture dropped the binding: the slot binds to another context" W
-   s" ok   ENTRY then qsort after the capture" W ;
+   s" == a frame accessor" W
+   s" ok   a frame accessor outside a callback is E-FFI-CALLBACK-STATE" W ;
 
 : WANT-DECLARATIONS ( -- )
    s" == declarations refused" W
@@ -569,10 +556,6 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" fresh: a hint to a run that ended does not reach an exposure" W
    s" fresh: nor does a hint to an earlier exposure" W
    s" --" W
-   s" == child captures: exit 67" W
-   s" captures: a thread is parked inside" W
-   s" --" W
-   s" task: callback slot in flight at capture - return from the foreign call before the build or snapshot captures" W
    s" == a stripped image" W
    s" ok   hb-build links test/stripped-callback-subject.f stripped" W
    s" == child stripped: exit 0" W
@@ -610,7 +593,7 @@ public
    CASE-THREAD
    CASE-HELD
    CASE-HANDOFF
-   CASE-PREPARE
+   CASE-ACCESSOR
    CASE-DECLARATIONS
    CASE-CHILDREN
    CASE-STRIPPED

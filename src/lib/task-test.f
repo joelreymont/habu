@@ -2474,20 +2474,6 @@ variable BIND-PAIR-Q-WON
    s" the race gives the live count back" T-LABEL
    TASK-LIVE-COUNT base T= ;
 
-\ An exposed task is process state no image carries: the capture sweep names it
-\ and ends the build, as it does an activated one.
-: TASK-EXPOSED-CAPTURE$ ( -- ptr u8 n )
-   SB-RESET
-   s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" require src/lib/image-lifecycle.f" SB-APPEND TASK-LF
-   s" TASK:MIN-STACK TASK:TASK TEX-TASK" SB-APPEND TASK-LF
-   s" TEX-TASK TASK:EXPOSE" SB-APPEND TASK-LF
-   s" IMAGE-LIFECYCLE:PREPARE" SB-APPEND TASK-LF
-   SB$ ;
-
-: TASK-TEST-EXPOSED-CAPTURE ( -- )
-   TASK-EXPOSED-CAPTURE$ TASK-UNCAUGHT-RC s" exposed task at capture" TASK-EXPECT-FAIL ;
-
 \ THE LIVE COUNT IS THE MAIN REGION'S, WHOEVER ACTIVATES. The lowering guard
 \ reads the main region's cell, so a worker that activates a worker counts
 \ there: counted in its own region, the inner task would be invisible once the
@@ -2740,21 +2726,6 @@ variable NEW-STRAY
    s" an exposed task TASK:FREE refused is given back after its kill" T-LABEL
    [: NEW-FREE-HELD ;] catch 0 T= ;
 
-\ A TASK:NEW task not given back holds a record this process mapped, which no
-\ image carries: the capture names it and ends the build. A child process,
-\ because the capture ends it.
-: TASK-NEW-CAPTURE$ ( -- ptr u8 n )
-   SB-RESET
-   s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" require src/lib/image-lifecycle.f" SB-APPEND TASK-LF
-   s" : TNC-HOLD ( -- ) TASK:MIN-STACK TASK:NEW drop ;" SB-APPEND TASK-LF
-   s" TNC-HOLD" SB-APPEND TASK-LF
-   s" IMAGE-LIFECYCLE:PREPARE" SB-APPEND TASK-LF
-   SB$ ;
-
-: TASK-TEST-NEW-CAPTURE ( -- )
-   TASK-NEW-CAPTURE$ TASK-UNCAUGHT-RC s" TASK:NEW task at capture" TASK-EXPECT-FAIL ;
-
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
@@ -2858,8 +2829,6 @@ variable NEW-STRAY
    TASK-TEST-EXIT-GROW
    TASK-TEST-FREE-REFUSED
    TASK-TEST-NEW-EXPOSE
-   TASK-TEST-NEW-CAPTURE
-   TASK-TEST-EXPOSED-CAPTURE
    TASK-TEST-WORKER-ACTIVATES
    T-REPORT ;
 

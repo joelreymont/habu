@@ -305,24 +305,21 @@ variable RUN-FILE-U
    erru SCRIPT$ ERR-HAS? TTRUE
    erru s" habu-crash" ERR-HAS? TFALSE ;
 
-\ A build is the boundary under test: a cleanup whose row lies in a chunk
-\ reaches the product only through the capture's EXIT-ROWS-SWEEP
-\ (src/lib/task.f). The 128 TASK:NEW tasks push both cleanups' rows into a
-\ chunk; the product says "no row moved" unless TASK:OWNED-EXIT-N fell by both
-\ rows across the capture, and otherwise prints 21, each cleanup run once,
-\ newest first.
+\ The task and the two cleanups both build sources start with.
+: CLEANUPS-TEXT ( -- )
+   0 TEXT-U !
+   S\" require src/lib/task.f\nTASK:MIN-STACK TASK:TASK CHILD-TASK\nvariable CHILD-MARK\n" TEXT+
+   S\" : CHILD-FIRST ( -- ) CHILD-MARK @ 10 * 1 + CHILD-MARK ! ;\n" TEXT+
+   S\" : CHILD-SECOND ( -- ) CHILD-MARK @ 10 * 2 + CHILD-MARK ! ;\n" TEXT+ ;
+
+\ A build is the boundary under test: cleanups a source's top level registers
+\ on a defined task hold rows in the table (src/lib/task.f TASK-EXIT-QT), which
+\ the product carries; it prints 21, each cleanup run once, newest first.
 : CASE-BUILD-CLEANUPS ( -- )
    s" cleanups.f" s" cleanups-out" CASE-PATHS
-   0 TEXT-U !
-   S\" require src/lib/task.f\nTASK:MIN-STACK TASK:TASK CHILD-TASK\nvariable CHILD-MARK\nvariable CHILD-ROWS\n" TEXT+
-   S\" : CHILD-FIRST ( -- ) CHILD-MARK @ 10 * 1 + CHILD-MARK ! ;\n" TEXT+
-   S\" : CHILD-SECOND ( -- ) CHILD-MARK @ 10 * 2 + CHILD-MARK ! ;\n" TEXT+
-   S\" : CHILD-HOLD ( n -- ) {: k:n :} k 0= if ['] CHILD-FIRST CHILD-TASK TASK:AT-EXIT\n" TEXT+
-   S\"    ['] CHILD-SECOND CHILD-TASK TASK:AT-EXIT exit then\n" TEXT+
-   S\"    TASK:MIN-STACK TASK:NEW {: t:ptr :} [: ;] t TASK:AT-EXIT k 1 - RECURSE t TASK:FREE ;\n" TEXT+
-   S\" 128 CHILD-HOLD TASK:OWNED-EXIT-N CHILD-ROWS !\n" TEXT+
-   S\" : MAIN ( -- ) TASK:OWNED-EXIT-N 2 + CHILD-ROWS @ > if s\q no row moved\q type cr exit then\n" TEXT+
-   S\"    [: 0 TASK:RETURN ;] CHILD-TASK TASK:ACTIVATE CHILD-TASK TASK:JOIN\n" TEXT+
+   CLEANUPS-TEXT
+   S\" ' CHILD-FIRST CHILD-TASK TASK:AT-EXIT\n' CHILD-SECOND CHILD-TASK TASK:AT-EXIT\n" TEXT+
+   S\" : MAIN ( -- ) [: 0 TASK:RETURN ;] CHILD-TASK TASK:ACTIVATE CHILD-TASK TASK:JOIN\n" TEXT+
    S\"    MATCH result ok OF drop ENDOF err OF . ENDOF ;MATCH CHILD-MARK @ . ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a build carries its task's cleanups into the product" T-LABEL
@@ -332,6 +329,23 @@ variable RUN-FILE-U
    s" the product's task runs each carried cleanup once, newest first" T-LABEL
    OUT poutu S\" 21\n" T$=
    poutu perru prc 0 EXPECT-RC ;
+
+\ The 128 TASK:NEW tasks push the cleanups' rows past the table into a mapped
+\ chunk, which no product can carry: the linker refuses the source by the
+\ address cell EXIT-CHUNKS (src/lib/task.f) and the build fails 74.
+: CASE-BUILD-CHUNK ( -- )
+   s" cleanups-chunk.f" s" cleanups-chunk-out" CASE-PATHS
+   CLEANUPS-TEXT
+   S\" : CHILD-HOLD ( n -- ) {: k:n :} k 0= if ['] CHILD-FIRST CHILD-TASK TASK:AT-EXIT\n" TEXT+
+   S\"    ['] CHILD-SECOND CHILD-TASK TASK:AT-EXIT exit then\n" TEXT+
+   S\"    TASK:MIN-STACK TASK:NEW {: t:ptr :} [: ;] t TASK:AT-EXIT k 1 - RECURSE t TASK:FREE ;\n" TEXT+
+   S\" 128 CHILD-HOLD\n: MAIN ( -- ) ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a source that leaves a cleanup chunk mapped is refused" T-LABEL
+   outu erru rc 74 EXPECT-RC
+   erru SCRIPT$ ERR-HAS? TTRUE
+   erru s" in EXIT-CHUNKS +0 holds" ERR-HAS? TTRUE
+   erru s" which an object cannot name" ERR-HAS? TTRUE ;
 
 : BODY ( -- )
    PREPARE
@@ -345,7 +359,8 @@ variable RUN-FILE-U
    CASE-BUILD
    CASE-BUILT
    CASE-BUILD-ACTION
-   CASE-BUILD-CLEANUPS ;
+   CASE-BUILD-CLEANUPS
+   CASE-BUILD-CHUNK ;
 
 : RUN ( -- )
    T-RESET
