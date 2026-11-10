@@ -11,10 +11,12 @@ The [interpreter](architecture.md#interpreter) reads source one token at a
 time and either runs the word a token names or compiles it into the current
 definition. The [kernel](architecture.md#kernel) loads first, untyped; the
 checker is part of it, and from the end of the kernel every definition is
-checked. The engine's prefix does this today: of its files
-(`src/habu/boot-files.f`), those before `src/core/check-hook.f` load
-unchecked, `src/core/check-hook.f` switches the checker on (:142), and every
-definition after it is checked.
+checked. A build checks the engine's prefix (`src/habu/boot-files.f`) from
+its first file: the builder's own checker checks every row, so a definition
+with a wrong effect in a prefix file is refused (`src/core/check-hook.f`
+INSTALL). Only the cold prefix of an engine that was not seeded
+(`src/habu/habu2.f` EMIT-HOST-LOAD-PREFIX) loads the files before
+`src/core/check-hook.f` unchecked, until that file switches the checker on.
 
 ## Defining a word
 

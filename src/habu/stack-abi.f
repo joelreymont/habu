@@ -1,6 +1,7 @@
-\ stack-abi.f - physical VM stack extents, shared by source-loaded and recovered
-\ emitters. Every VM stack is a guarded mapping [base - PAGE-BYTES, base + CAP +
-\ PAGE-BYTES), so compiled code carries no bounds check: an overflow or underflow
+\ stack-abi.f - physical VM stack extents, shared by the runtime (rt.f), the
+\ x86-64 kernel (kernel-x64.f) and the task library. Every VM stack is a
+\ guarded mapping [base - PAGE-BYTES, base + CAP + PAGE-BYTES), so compiled
+\ code carries no bounds check: an overflow or underflow
 \ faults and src/habu/crash.f reports `hb: stack bounds exceeded (<which>)`, except
 \ a data-stack access below the base, thrown as the underdepth reject (crash.f ONE
 \ FAULT IS NOT AN EXIT).

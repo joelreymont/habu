@@ -73,8 +73,8 @@ does not establish those outcomes.
 ## Gate commands
 
 x86-64 builds are off until x86-64 moves onto the linker (DECISIONS.md "the
-old builders"): `tools/native-build.f`, `tools/two-generation-build.f` and
-`tools/bootstrap.sh`, which the commands below name, are gone.
+old builders"): `tools/native-build.f` and `tools/two-generation-build.f`,
+which the commands below name, are gone.
 
 On spark, from a tree whose `bin/hb` is the candidate
 ([docs/gate.md](docs/gate.md)):
@@ -86,12 +86,13 @@ HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST TMPDIR=$TMP \
 TMPDIR=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed>  # chain
 ```
 
-If an engine is too old to build current `master`, recover through Gforth
-([docs/bootstrap.md](docs/bootstrap.md)) and rebuild from that:
+If an engine is too old to build current `master`, recover from a trusted
+native hb of the same OS and machine
+([docs/bootstrap.md](docs/bootstrap.md) "Recovery"):
 
 ```sh
-HABU_ALLOW_BOOTSTRAP=1 HABU_TARGET=linux-aarch64 TMPDIR=$TMP \
-  GFORTH=$(command -v gforth) tools/bootstrap.sh
+HABU_SEED_SHA256=<hex> /path/to/trusted-hb --load tools/seed-main.f \
+  -- /path/to/trusted-hb
 ```
 
 Cross-build from a working ARM64 engine whose baked layout matches the source:
@@ -124,8 +125,7 @@ when their stated acceptance is met.
   bytes, with the imm64 at offset 2.
 - Guard pages and traps use the ARM64 mmap model. The signal frame decoding
   reads `RIP` and `RSP`.
-- x86 recovery is a cross-build from a working ARM64 engine. The Gforth chain
-  emits ARM64 only and refuses x86 by name.
+- x86 recovery is a cross-build from a working ARM64 engine.
 - x86 has no cold route: `tools/native-build.f` is its only build route.
 - Every code-bearing record comes from the compiler. No assembly chain is
   decoded.

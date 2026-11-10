@@ -1,6 +1,6 @@
 # src/core — the checked core
 
-Load order is the `--load` prefix in `src/habu/habu2.f`.
+Load order is the engine's prefix list, `src/habu/boot-files.f` (FILL).
 
 - `checker.f` — the stack-effect checker: effect grammar, the primitive rows it
   replays from `src/habu/prims.f`, unification; `check-hook.f` installs it.
