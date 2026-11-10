@@ -57,6 +57,7 @@ public
 -9691 s" a file of this build changed an earlier record or code, or stored into a cell no file holds" ERROR:CODE E-STORE
 -9692 s" a file a linked file requested, or a linked file's later part, did not check at its turn: the next build compiles them" ERROR:CODE E-STALE
 -9693 s" a file of this build made a wordlist no package of it holds" ERROR:CODE E-WORDLIST
+-9694 s" a file of this build left a task running at its end: its object would hold data the task can still change" ERROR:CODE E-LIVE-TASK
 private
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
@@ -66,6 +67,7 @@ variable BASE                        \ the space's address, its distance from NU
 variable SPACE-SIZE                  \ the space's size, as MAP mapped it
 variable FIRST-REC                   \ ndict@ at the open: records from here are the space's
 variable OPEN-DP                     \ here's distance once open; header data is [BASE, OPEN-DP)
+variable OPEN-TASKS                  \ hb's live tasks at the open (TASKS-LIVE-CELL)
 TYPED-VARIABLE BODY [ -- ]
 variable COMPILED-N                  \ files the last build compiled
 variable LINKED-N                    \ files the last build linked
@@ -3858,16 +3860,32 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    loop ;
 
 
-\ The running piece's checks, then the piece into PIECES (PIECE+): E-FAILED once DP moved back,
-\ E-STORE (CHECK-EARLIER, FIND-STORES), E-WORDLIST for an id no record accounts for.
+\ A linked file's top level never runs, so what a piece stores in scratch ends with it: every
+\ scratch cell in file data, [OPEN-DP, DP), reads zero after each piece.
+: RESET-SCRATCH ( -- )
+   ROWS {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row SCRATCH-ROW? if
+         row ROW-AT OPEN-DP @ >= if  0 row ROW-OFF SPACE-AT !  then
+      then
+   loop ;
+
+
+\ The piece's checks, RESET-SCRATCH, then PIECES (PIECE+): E-FAILED once DP moved back, E-LIVE-TASK
+\ for a task left running, E-STORE (CHECK-EARLIER, FIND-STORES), E-WORDLIST for an id no record holds.
 : PIECE-END ( n -- )
    {: req:n :}
    DPHW-CELL HOST@ 0<> if E-FAILED throw then
+   TASKS-LIVE-CELL HOST@ OPEN-TASKS @ > if
+      REFUSAL s" a task is still running at the file's end" SAY SAY-CR  E-LIVE-TASK throw
+   then
    FILE-HELD @ CHECK:AMENDED   \ the facts its `TRUST` rows and amenders changed
    TYPE-ENTRIES
    here NULL-PTR - FILE-END !
    RETIRED!  CHECK-EARLIER  FIND-STORES
    STORED-N @ 0 ?do i STORED @ dup HSTORE+ STORER+ loop
+   RESET-SCRATCH
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}
    ids held > if E-WORDLIST throw then
    ids held < if E-COMP-STATE throw then
@@ -4141,7 +4159,8 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    OWNED-TEXTS
    MAP SHADOW MOVE-IN CHECK-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN
    OWNED-RECORDS
-   here NULL-PTR - OPEN-DP ! ;
+   here NULL-PTR - OPEN-DP !
+   TASKS-LIVE-CELL HOST@ OPEN-TASKS ! ;
 
 \ ---- the close -----------------------------------------------------------------
 : RESTORE ( -- )

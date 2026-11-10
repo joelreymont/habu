@@ -97,6 +97,9 @@
 \ object names order-q2.f first; O3 checks it while order-ha.f, order-hb.f and order-hc.f are built
 \ and order-q1.f and order-q2.f are checked and not yet linked, and compiles it to name order-q1.f
 \ first; O4 links it.
+\ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell at top level;
+\ its program prints 0: the store ends with that file. W and W2 build task-left-main.f, whose top
+\ level leaves a task running, into one out root, and each fails naming that file.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -551,6 +554,22 @@ variable KEPT-NS
    s" the build exits 0" LABEL  rc 0 T=
    rc 0 = ;
 
+\ Builds task-left-main.f as FIXTURE-BUILD builds a fixture; the linker refuses it at its end.
+: TASK-LEFT-BUILD ( CMD:command -- CMD:command )
+   CMD:RESET
+   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
+   s" --" CMD:ARG+  s" test/fixtures/file-objects/task-left-main.f" CMD:ARG+
+   s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
+   s" HABU_OUT" F$ CMD:ENV+
+   ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:ERR$ s" linker: " CONTAINS? {: named:bool :}
+   CMD:ERR$ s" task-left-main.f: a task is still running at the file's end" CONTAINS?
+   named and {: said:bool :}
+   rc 0 =  said 0=  or if rc SHOW then
+   s" the build exits nonzero" LABEL  rc 0<> TTRUE
+   s" the build says a task is still running at the file's end" LABEL  said TTRUE ;
+
 \ Darwin's first lock of a mutex sets its signature, $4D55545A (the bytes ZTUM), and unlocking leaves it.
 : LOG-UNLOCKED ( -- )
    HB-TARGET-MACOS? 0= if exit then
@@ -611,6 +630,13 @@ variable KEPT-NS
    trapped  rc 85 =  and 0= if rc SHOW then
    s" the program dies with the bad-tag error" LABEL  trapped TTRUE
    s" the program exits 85" LABEL  rc 85 T= ;
+
+\ scratch-main.f's program, run in its own process: the boundary under test is the written file.
+: SCRATCH-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   rc 0<> if rc SHOW then
+   s" a file's scratch store ends with the file" LABEL  CMD:OUT$ s\" 0\n" T$= ;
 
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
@@ -739,11 +765,17 @@ variable KEPT-NS
    s" O4" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
    s" the build links order-x2.f" LINKED ;
 
+: PIECE-CASE ( CMD:command -- CMD:command )
+   s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
+   SCRATCH-RUN
+   s" W" WHICH!  TASK-LEFT-BUILD
+   s" W2" WHICH!  TASK-LEFT-BUILD ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
-      STORED-CASE RETIRED-CASE ORDER-CASE ;]
+      STORED-CASE RETIRED-CASE ORDER-CASE PIECE-CASE ;]
    CMD:WITH-COMMAND ;
 
 
