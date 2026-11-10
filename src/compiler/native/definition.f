@@ -479,13 +479,22 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    s"  at " p SAY-WHERE
    S\" \n" ERROR-TEXT:TYPE ;
 
-\ The token the checker refused in the text it scanned last, the byte that
-\ places it (checker.f SGBAD-SPAN!), and whether it is undefined; empty if none.
+public
+
+\ The `;` that ends the definition: the token the engine read last, whose
+\ address in the input places a refusal there on its line.
+: CLOSE$ ( -- ptr u8 n ) READ-AT @ data-base TKL-CELL + @ ;
+
+private
+
+\ The checker's refused token in the text scanned last, empty if none; its byte, the
+\ closing `;` (CLOSE$) for one past the body's end; and whether it is undefined.
 : CHECKER-REFUSED$ ( -- ptr u8 n ptr u8 bool )
    M-SCAN @ NULL-PTR = if NULL-PTR 0 NULL-PTR false exit then
    CHECKER-OWNER:ERROR-TOKEN
    CHECKER-OWNER:REFUSED-SPAN nip {: b:n undefined:bool :}
-   M-SCAN @ b +  undefined ;
+   M-SCAN @ b + {: p:ptr :}
+   SRC$ + p - 0= if CLOSE$ drop else p then  undefined ;
 
 \ A reject or a using refusal (E-USING-SHADOW-GLOBAL, E-USING-AMBIGUOUS) with
 \ no compiler token is the checker's refusal of the body: name the token it
@@ -512,10 +521,6 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    M-HEAD-RECOVERY @ TRUSTED? 0= and ;
 
 public
-
-\ The `;` that ends the definition: the token the engine read last, whose
-\ address in the input places a refusal there on its line.
-: CLOSE$ ( -- ptr u8 n ) READ-AT @ data-base TKL-CELL + @ ;
 
 \ A word compiled code cannot reach and a MALFORMED? body take the reject
 \ status, as the JIT refuses them; p is the refused token's byte or NULL-PTR.

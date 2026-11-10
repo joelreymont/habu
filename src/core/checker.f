@@ -23973,23 +23973,24 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 : CF-OPEN? ( -- bool )
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
 
-\ The closer DIAG-CLOSER! names is the load's last token of the mapped
-\ definition, and the load's compiler refuses a structure still open there
-\ (src/habu/habu2.f EM-COMPILE-SEMI) before its checker sees it. At the walk's
-\ end (CHECK-SCAN), before a held using refusal raises and the checks at `;`
-\ run, this takes the pin and diagnostic as REFUSAL-STEP takes a compile
-\ refusal, unless an earlier one holds them, and fails the definition. The walk
-\ drops only openers (DEADERR, CF-OVER), so a structure open here is open in
-\ the load. A truncated construct or match keeps its reason; any other open
-\ structure is MD-CF-OPEN.
-: CLOSER-REFUSE ( -- )
-   CF-OPEN? 0=  DCLOSE-U @ 0=  or  TBASE @ DMAP-A @ - 0 <>  or  RCOMPILE @ 0 <>  or IF EXIT THEN
+\ Refuses a structure open at closer CA CU, or at the mapped closer, as the load's
+\ compiler does (habu2.f EM-COMPILE-SEMI), unless a compile refusal or CF-OVER holds the pin.
+: CLOSER-REFUSE ( ptr u8 n -- )
+   {: ca:ptr cu:n :}
+   CF-OPEN? 0=  RCOMPILE @ 0 <>  or  CF-OVER @ 0 <>  or IF EXIT THEN
+   TBASE @ DMAP-A @ - 0= {: mapped:bool :}
+   mapped IF DCLOSE-U @ ELSE cu THEN 0= IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
    THEN {: why:n :}
    why MDIAG !  RF-REASON REFUSAL-TAKE  -1 RCOMPILE !
-   DCLOSE-A @ DCLOSE-U @ FAIL-PIN!
-   DCLOSE-A @ TBASE @ - FAILB !
+   mapped IF
+      DCLOSE-A @ DCLOSE-U @ FAIL-PIN!
+      DCLOSE-A @ TBASE @ - FAILB !
+   ELSE
+      ca cu FAIL-PIN!
+      TBLEN @ FAILB !
+   THEN
    FAILB @ FAILTU @ + FAILE !
    why CF-FAIL ;
 
@@ -26194,19 +26195,17 @@ variable CUR-OPEN   variable CUR-PSIG
    REPEAT
    CUR-END ;
 
-\ The walk holds a body's using refusals (USING-HOLD) and its end raises the one
-\ that refuses the definition, before the checks at `;` and a retry; a structure
-\ open at the closer is refused first (CLOSER-REFUSE). A throw out of the walk
-\ leaves the hold off. Only definition bodies walk here, so BODY-WALK is on for
-\ exactly that walk.
-: CHECK-SCAN ( -- )
+\ Walks a body, holding its using refusals (USING-HOLD) for the end, where a
+\ structure open at closer CA CU is refused first (CLOSER-REFUSE); a prefix passes none.
+: CHECK-SCAN ( ptr u8 n -- )
+   {: ca:ptr cu:n :}
    BODY-WALK @ {: walk0:n :}
    -1 BODY-WALK !
    [: CHECK-SCAN-WALK ;] catch  0 USING-HOLD !  walk0 BODY-WALK !
    {: rc:n :}
    rc 0 <> IF rc throw THEN
    TORDER-SCAN-UNKNOWN @ IF EXIT THEN
-   CLOSER-REFUSE
+   ca cu CLOSER-REFUSE
    USING-RAISE ;
 
 : CHECK-FOLD-EXITS ( -- )
@@ -26889,7 +26888,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    WRITE-WINDOW-CK
    -1 PARSE-COMPLETE !
    a u CHECK-RESET
-   CHECK-SCAN
+   DOES-SPLIT @ 0 <> IF s" does>" ELSE s" ;" THEN CHECK-SCAN   \ a definer's head ends at its does>
    SIG-UNRES @ SGBAD @ 0= and IF
       0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
       CHECKER-UNSEEN-MARK
@@ -27500,7 +27499,7 @@ variable ANSWER
       0 CHECKER-PREFIX-MISS !
       CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
       SOURCE-A @ SOURCE-U @ CHECK-RESET
-      CHECK-SCAN
+      s" " CHECK-SCAN                  \ a prefix: no closer
       CHECKER-PREFIX-MISS @ 0= IF RES-TRUE ANSWER ! EXIT THEN
       CK-AOT-INTAKE 0= IF RES-FALSE ANSWER ! EXIT THEN
    AGAIN ;
@@ -27950,7 +27949,7 @@ package CHECKER-REG
    BROW @ DCUR !
    SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
    SIG-BODY-FRESH
-   CHECK-SCAN
+   s" ;" CHECK-SCAN
    TORDER-SCAN-UNKNOWN @ IF WRAP-CLEAR 2 EXIT THEN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    CHECK-FOLD-EXITS

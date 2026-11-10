@@ -1381,6 +1381,19 @@ variable RC
    s" : X ( n -- n ) leave NOPE ;" s" leave-undefined.f" LINE-FIXTURE
    s" E-REJECTED" s" leave" 1 16 15 20 REFUSED-AT ;
 
+
+\ A do holding 32 nested ifs, which loop leaves before their thens: the 32nd if
+\ opens the definition's 33rd control structure.
+: DEEP-FIXTURE ( -- )
+   SB-RESET
+   s" : X ( n -- ) 0 do" SB-APPEND
+   32 0 do s"  0 0= if" SB-APPEND loop
+   s"  loop" SB-APPEND
+   32 0 do s"  then" SB-APPEND loop
+   s"  ;" SB-APPEND LF+
+   s" if-deep.f" FIXTURE! ;
+
+
 \ A control-flow refusal names its reason: a depth change is a mismatch of the
 \ start row, or the else arm's, and the changed row; others name their repair.
 : TEST-CONTROL-REASON ( -- )
@@ -1430,6 +1443,26 @@ variable RC
    s" E-REJECTED" s" ;" 1 20 19 20 REFUSED-AT
    0 s" repair_class" s" fix_control_flow" FIELD=
    0 s" reason" s" a control structure is still open at the end of the definition" FIELD=
+   s" habu: in x: at ';' a control structure is still open at the end of the definition" REJECT-RC LOADED
+   s" an if still open at ; after a refused drop" T-LABEL
+   s" : X ( -- ) drop 0 0= if ;" s" if-open-drop.f" LINE-FIXTURE
+   s" E-REJECTED" s" ;" 1 25 24 25 REFUSED-AT
+   0 s" reason" s" a control structure is still open at the end of the definition" FIELD=
+   s" habu: in x: at ';' a control structure is still open at the end of the definition" REJECT-RC LOADED
+   s" a case still open at ;" T-LABEL
+   s" : X ( n -- ) case ;" s" case-open.f" LINE-FIXTURE
+   s" E-REJECTED" s" ;" 1 19 18 19 REFUSED-AT
+   0 s" reason" s" a control structure is still open at the end of the definition" FIELD=
+   s" habu: in x: at ';' a control structure is still open at the end of the definition" REJECT-RC LOADED
+   s" a structure past the frame limit is refused at its opener, not at ;" T-LABEL
+   DEEP-FIXTURE
+   s" --all-errors" CHECK
+   GJA-LINE# @ 1 T=
+   0 s" code" s" E-UNCHECKABLE" FIELD=
+   0 s" verdict" s" uncheckable" FIELD=
+   0 s" if" 1 272 271 273 AT
+   0 s" reason" s" control flow nested too deep to check (depth 33, at most 32)" FIELD=
+   s" habu: in x: at 'if' control flow nested too deep to check (depth 33, at most 32)" REJECT-RC LOADED
    s" a loop that meets an if inside its do" T-LABEL
    s" : X ( -- ) 3 0 do 0 0= if loop then ;" s" loop-in-if.f" LINE-FIXTURE
    s" E-REJECTED" s" loop" 1 27 26 30 REFUSED-AT

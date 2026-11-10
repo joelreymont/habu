@@ -599,6 +599,25 @@ variable RC
    EXITED @ TTRUE
    RC @ DUP-RC T= ;
 
+\ The native compiler places a structure the checker finds open at a body's
+\ closing `;`, a plain body's or a does> clause's, on the line of that `;`.
+: ASSERT-CLOSE-LINE ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n line:ptr lineu:n :}
+   BODY$ RUN
+   SB-RESET  10 SB-APPEND-C  s" ncomp: cannot compile " SB-APPEND  name nameu SB-APPEND
+   s"  at ; in " SB-APPEND  BODY$ SB-APPEND  line lineu SB-APPEND  10 SB-APPEND-C
+   ERR$ SB$ CONTAINS? TTRUE
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ REJECT-RC T= ;
+
+: TEST-OPEN-AT-CLOSE ( -- )
+   s" an if open at a later line's ; is refused on the line of the ;" T-LABEL
+   BODY$ S\" : LRD-OI ( bool -- ) if\n\n;\n" FS:WRITE-ALL
+   s" LRD-OI" s" :3" ASSERT-CLOSE-LINE
+   s" a does> clause leaving an if open is refused on the line of its ;" T-LABEL
+   BODY$ S\" : LRD-MKO ( n -- ) create ,\ndoes> ( -- )\n@ 0= if\n;\n" FS:WRITE-ALL
+   s" LRD-MKO" s" :4" ASSERT-CLOSE-LINE ;
+
 \ A name only the checker holds, a PRODUCT replay with no word behind it, is
 \ refused by the checker hook's writer (src/core/check-hook.f AT-SOURCE), which
 \ names an evaluated string's file alone too.
@@ -769,6 +788,7 @@ variable RC
    TEST-EVALUATED-PLACE
    TEST-EVALUATED-SLICE
    TEST-REPLAY-DUP-PLACE
+   TEST-OPEN-AT-CLOSE
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
    TEST-IMM-INCLUDE
