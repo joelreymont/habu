@@ -1,4 +1,4 @@
-\ scratch-second.f - its top level stores 7 into scratch-first.f's scratch cell.
+\ scratch-second.f - its top level stores 7 into scratch-first.f's three scratch stores.
 
 require test/fixtures/file-objects/scratch-first.f
 

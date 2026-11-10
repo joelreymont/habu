@@ -97,8 +97,9 @@
 \ object names order-q2.f first; O3 checks it while order-ha.f, order-hb.f and order-hc.f are built
 \ and order-q1.f and order-q2.f are checked and not yet linked, and compiles it to name order-q1.f
 \ first; O4 links it.
-\ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell at top level;
-\ its program prints 0: the store ends with that file. W and W2 build task-left-main.f, whose top
+\ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell, SCRATCH-VARIABLE and
+\ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
+\ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
 \ level leaves a task running, into one out root, and each fails naming that file.
 
 require src/lib/error.f
@@ -636,7 +637,7 @@ variable KEPT-NS
    CMD:RESET
    L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
-   s" a file's scratch store ends with the file" LABEL  CMD:OUT$ s\" 0\n" T$= ;
+   s" a file's scratch store ends with the file" LABEL  CMD:OUT$ s\" 0\n0\n0\n0\n0\n0\n" T$= ;
 
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
