@@ -455,15 +455,10 @@ CAST: >BYTES ( n -- ptr u8 )
    u refused rc ;
 
 
-\ The body outran the span: the span stream refused a write, which is
-\ `truncated`, not a failure.
-: OVERFLOW? ( n bool -- bool ) {: rc:n refused:bool :}
-   rc CURLE-WRITE-ERROR = refused and ;
-
-
-\ A transfer's code once an overflow has been answered as `truncated`.
-: BODY-RC ( n bool -- n ) {: rc:n full:bool :}
-   full if CURLE-OK else rc then ;
+\ A refused write is `truncated` whatever code ends the transfer: 23 over
+\ HTTP/1.1, 56 over HTTP/2 on libcurl 8.7.1 (curl-test.f's HTTP/2 span cases).
+: BODY-RC ( n bool -- n ) {: rc:n refused:bool :}
+   refused if CURLE-OK else rc then ;
 
 
 : FIRST-ERROR ( n n -- n ) {: prior:n next:n :}
@@ -1146,8 +1141,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    idx LEAVING? if
       headers headeru BYTES-RELEASE idx LEAVE-DONE CURLM-OK exit
    then
-   rc refused OVERFLOW? {: full:bool :}
-   rc full BODY-RC bodyrc FIRST-ERROR headrc FIRST-ERROR {: outcome:n :}
+   rc refused BODY-RC bodyrc FIRST-ERROR headrc FIRST-ERROR {: outcome:n :}
    outcome CURLE-OK <> if
       headers headeru BYTES-RELEASE
       idx outcome FAILED-STORE
@@ -1156,7 +1150,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    then
    idx REC-EASY@ STATUS-TRY {: status:n valid:bool :}
    valid 0= if headers headeru BYTES-RELEASE E-RESULT throw then
-   idx status u full RESULT-STORE
+   idx status u refused RESULT-STORE
    idx REC-EASY@ headers headeru STATE-PUBLISH
    idx SETTLE
    CURLM-OK ;
@@ -2008,8 +2002,7 @@ public
    body SPAN-TAKE {: u:n refused:bool bodyrc:n :}
    headers HBUF-CELL HLEN-CELL STREAM-TAKE {: captured:n capturedu:n headrc:n :}
    easy DATA-CLEAR {: clear-rc:n :}
-   rc refused OVERFLOW? {: full:bool :}
-   rc full BODY-RC bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
+   rc refused BODY-RC bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
       {: outcome:n :}
    outcome CURLE-OK <> if
       captured capturedu BYTES-RELEASE
@@ -2018,7 +2011,7 @@ public
    easy STATUS-TRY {: status:n valid:bool :}
    valid 0= if captured capturedu BYTES-RELEASE E-RESULT throw then
    easy captured capturedu STATE-PUBLISH
-   status u full FETCH-RESULT ;
+   status u refused FETCH-RESULT ;
 
 
 \ Gives up the caller's uncollected transfer as a halted owner does; another

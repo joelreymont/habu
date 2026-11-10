@@ -1,8 +1,10 @@
 \ curl-test.f - focused tests for src/lib/net/curl.f over loopback HTTP. One
 \ process holds both peers: a server task binds a TCP4 listener on a free
 \ loopback port, publishes the port in a shared cell and accepts one connection
-\ at a time while the main task drives CURL. A second listener is never accepted
-\ on: the peer that never answers. HABU_NET_TESTS=1 adds one real HTTPS request.
+\ at a time while the main task drives CURL. It speaks HTTP/1, and cleartext
+\ HTTP/2 to a client that opens with the HTTP/2 preface. A second listener is
+\ never accepted on: the peer that never answers. HABU_NET_TESTS=1 adds one real
+\ HTTPS request.
 \ Run: bin/hb --load src/lib/net/curl-test.f
 
 require src/lib/error.f
@@ -23,8 +25,8 @@ require src/lib/aio.f                       \ the loop the multiplexed transfers
 require src/lib/net/tcp4.f
 require src/lib/net/curl.f
 
-\ White-box: reopens CURL so the definitions below see the record count and a
-\ record's published length; they land in CURL-TEST.
+\ White-box: reopens CURL for the record count, a record's published length and
+\ the raw option setter; CURL-TEST: words land in CURL-TEST, the rest in CURL.
 package CURL
 
 : CURL-TEST:RECORDS ( -- n )
@@ -38,6 +40,14 @@ package CURL
    CURL-LOCK TASK:GET
    idx REC-LEN-CELL LE:U64@
    CURL-LOCK TASK:RELEASE ;
+
+
+OPT-LONG 84 + constant OPT-HTTP-VERSION   \ CURLOPT_HTTP_VERSION
+5 constant HTTP-2-PRIOR                   \ CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE
+
+\ Cleartext HTTP/2 from the first byte, with no upgrade from HTTP/1.1.
+: CURL-TEST:H2-PRIOR ( CURL:handle -- CURL:status ) {: subject:CURL:handle :}
+   subject OPT-HTTP-VERSION HTTP-2-PRIOR SET-NUM-RAW CODE>STATUS ;
 
 ;package
 
@@ -580,6 +590,71 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    conn SEND-RESPONSE ;
 
 
+\ Reads on until REQ-BUF holds `want` bytes; false when the peer ends first or
+\ they would not fit.
+: REQ-HOLDS? ( TCP4:connection n -- bool ) {: conn:TCP4:connection want:n :}
+   want REQ-CAP > if false exit then
+   begin REQ-U @ want < while
+      conn REQ-CHUNK 0= if false exit then
+   repeat true ;
+
+
+\ The `u`-byte big-endian field at `at` in REQ-BUF.
+: REQ-BE@ ( n n -- n ) {: at:n u:n :}
+   0 u 0 ?do 8 lshift REQ-BUF at + i + c@ or loop ;
+
+
+\ The HTTP/2 frame at `at` once REQ-BUF holds it whole: its stream id, type and
+\ end. Its 9-byte header: length (3), type, flags, stream id (4, top bit clear).
+: H2-FRAME ( TCP4:connection n -- n n n bool ) {: conn:TCP4:connection at:n :}
+   conn at 9 + REQ-HOLDS? 0= if 0 0 0 false exit then
+   at 3 REQ-BE@ {: len:n :}
+   conn at 9 + len + REQ-HOLDS? 0= if 0 0 0 false exit then
+   at 5 + 4 REQ-BE@ $7FFFFFFF and
+   REQ-BUF at + 3 + c@
+   at 9 + len +
+   true ;
+
+
+\ The stream of the request's HEADERS frame (type 1). REQ-READ took the
+\ preface's first 18 bytes as a head whose method is PRI; its last 6 follow.
+: H2-STREAM ( TCP4:connection -- n bool ) {: conn:TCP4:connection :}
+   HEAD-U @ {: at:n :}
+   conn at 6 + REQ-HOLDS? 0= if 0 false exit then
+   REQ-BUF at + 6 S\" SM\r\n\r\n" STR= 0= if 0 false exit then
+   at 6 +
+   begin
+      conn swap H2-FRAME 0= if 2drop drop 0 false exit then
+      swap 1 = if drop true exit then
+      nip
+   again ;
+
+
+\ `u` bytes of `value`, most significant first.
+: RES-BE+ ( n n -- ) {: value:n u:n :}
+   u 0 ?do value u 1- i - 8 * rshift $FF and RES-C+ loop ;
+
+
+: H2-HEAD+ ( n n n n -- ) {: len:n type:n flags:n stream:n :}
+   len 3 RES-BE+ type RES-C+ flags RES-C+ stream 4 RES-BE+ ;
+
+
+\ HELLO$ over cleartext HTTP/2 to a client with prior knowledge, for the HTTP/2
+\ span cases (BODY-RC in curl.f says why they differ from HTTP/1.1).
+: SERVE-H2 ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn H2-STREAM 0= if drop conn TCP4:CLOSE PEER-STATUS exit then
+   {: stream:n :}
+   RES-RESET
+   0 4 0 0 H2-HEAD+                              \ SETTINGS
+   0 4 1 0 H2-HEAD+                              \ SETTINGS with ACK
+   1 1 4 stream H2-HEAD+ $88 RES-C+              \ HEADERS: :status 200, HPACK index 8
+   HELLO$ nip 0 1 stream H2-HEAD+ HELLO$ RES+    \ DATA with END_STREAM
+   \ GOAWAY, no error, as Connection: close: without it the loop's next transfer
+   \ reuses this connection, which the server drains and closes unanswered.
+   8 7 0 0 H2-HEAD+ stream 4 RES-BE+ 0 4 RES-BE+
+   conn SEND-RESPONSE ;
+
+
 : SERVE-HELLO ( TCP4:connection -- ) {: conn:TCP4:connection :}
    s" If-Modified-Since:" REQ-HAS-CI? if
       s" 304 Not Modified" RESPOND-EMPTY
@@ -790,6 +865,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 : ROUTE ( TCP4:connection -- )
    {: conn:TCP4:connection :}
+   s" PRI" METHOD-IS? if conn SERVE-H2 exit then
    PATH$ s" http://" STARTS-WITH? if
       s" 200 OK" PROXY-BODY$ RESPOND conn SEND-RESPONSE exit
    then
@@ -2041,6 +2117,21 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    LAST-STATUS @ 200 T=
    BODY$ s" hello" T$=
    BODY-BUF 5 + c@ FILL-BYTE T=
+   PATH-HELLO$ GET-READY {: whole:CURL:handle :}
+   whole CURL-TEST:H2-PRIOR EXPECT-OK
+   whole 7 multi SPAN-RUN
+   s" an HTTP/2 body shorter than its span arrives whole" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ HELLO$ T$=
+   PATH-HELLO$ GET-READY {: past:CURL:handle :}
+   past CURL-TEST:H2-PRIOR EXPECT-OK
+   past 5 multi SPAN-RUN
+   s" an HTTP/2 body past the span fills it and stops at its end" T-LABEL
+   LAST-KIND @ KIND-TRUNCATED T=
+   LAST-STATUS @ 200 T=
+   BODY$ s" hello" T$=
+   BODY-BUF 5 + c@ FILL-BYTE T=
    PATH-HELLO$ 0 multi SPAN-FETCH
    s" an empty span truncates a body and holds nothing" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
@@ -2992,7 +3083,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   87 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   91 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
