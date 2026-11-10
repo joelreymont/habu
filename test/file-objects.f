@@ -171,7 +171,9 @@ package FILE-OBJECTS-TEST
 18 constant UNCLEAN-LAST
 19 constant FLIP-SECOND
 20 constant REDO-MAIN
-21 constant TAILS                        \ TAIL$'s tails
+21 constant UNCLEAN-FIRST                \ unclean.f's first part's, which an unclean cut ends,
+22 constant UNCLEAN-SECOND               \ and its second's, which follows that cut
+23 constant TAILS                        \ TAIL$'s tails
 46 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -302,11 +304,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" the program exits 0" LABEL  rc 0 T= ;
 
 
-\ The tail of object i's path, from 0: A's count.f, shape.f, main.f, reopen.f, mark.f and again.f's
-\ two loads; 7 pad.f's, which B adds; 8 log-first.f's; 9 path-main.f's; 10 stale-spell.f's, which S
-\ writes; 11 sealed-spell.f's, G's; 12 stored-run.f's, T's; 13 retired-spell.f's, V's; 14
-\ order-x2.f's, O's; 15 hidden-spell.f's, K's; 16 seal-second.f's, F's; 17 mid-four.f's part 3's,
-\ 18 unclean.f's part 2's, 19 flip.f's part 1's and 20 redo-main.f's, Y's.
+\ The tail of object i's path: 0 to 6 A's files in load order, 7 pad.f's, then the named tails'.
 : TAIL$ ( n -- ptr u8 n )
    {: i:n :}
    i 0 = if s" /test/fixtures/file-objects/count.f.hfo" exit then
@@ -329,6 +327,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    i UNCLEAN-LAST = if s" /test/fixtures/file-objects/unclean.f+2.hfo" exit then
    i FLIP-SECOND = if s" /test/fixtures/file-objects/flip.f+1.hfo" exit then
    i REDO-MAIN = if s" /test/fixtures/file-objects/redo-main.f.hfo" exit then
+   i UNCLEAN-FIRST = if s" /test/fixtures/file-objects/unclean.f.hfo" exit then
+   i UNCLEAN-SECOND = if s" /test/fixtures/file-objects/unclean.f+1.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -722,6 +722,17 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    FOUND$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    size i KEPT-SIZE @ =  cs i KEPT-S @ =  and  cns i KEPT-NS @ =  and TTRUE ;
 
+\ The label holds when the build's object of tail i holds INPUT 0 0 -1, which no file's stamp
+\ equals: the part compiles in every build (linker.f WRITE-OBJECT).
+: UNSTAMPED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
+   F$ WHICH WHICH-U @ i FOUND? {: one:bool :}
+   a u LABEL
+   one 0= if false TTRUE exit then
+   FOUND$ BYTES-B CAP FS:READ-ALL {: len:n :}
+   0 EXPECT LE:U64!  0 EXPECT 8 + LE:U64!  -1 EXPECT 16 + LE:U64!
+   len HEADER-BYTES - 0 max INPUT-BYTES min {: v:n :}
+   BYTES-B HEADER-BYTES + v EXPECT INPUT-BYTES T$= ;
+
 \ path-main.f's program, run in its own process: the path it reports is the written
 \ file's, and the park it wakes is its own.
 : PATH-RUN ( CMD:command -- CMD:command )
@@ -918,6 +929,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" the build links mid-four.f's last part" MID-FOUR-LAST LINKED
    s" the build links unclean.f's last part after an unclean request and a clean one"
    UNCLEAN-LAST LINKED
+   s" unclean.f's part an unclean request ends never links" UNCLEAN-FIRST UNSTAMPED
+   s" unclean.f's part after an unclean request never links" UNCLEAN-SECOND UNSTAMPED
    s" the build links redo-main.f's part" REDO-MAIN LINKED
    s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n"
    s" the program prints mid-four.f's words with mid-w2.f's W and redo-main.f's second Y" PRINTS-RUN
