@@ -17,7 +17,6 @@ require src/lib/process-env.f
 require src/lib/ffi-abi.f
 require src/lib/le.f
 require src/lib/memory.f                   \ the request body past 64 MiB
-require src/lib/image-lifecycle.f
 require src/lib/task.f
 require test/host-threads.f
 require src/lib/aio.f                       \ the loop the multiplexed transfers wait on
@@ -29,7 +28,7 @@ require src/lib/net/curl.f
 package CURL
 
 : CURL-TEST:RECORDS ( -- n )
-   REC-COUNT atomic@ ;
+   REC-COUNT ;
 
 
 \ The length the handle's record's memstream last published, read under the
@@ -3034,33 +3033,10 @@ variable DEFER-RETURNED
    ROOT$ FS:REMOVE-TREE ;
 
 
-variable FIRST-RECORDS
-
-\ CASE-MANY grew the records past the static chunk. With every task ended, a
-\ capture gives the grown chunks back and the count is the static chunk's again.
-: TEST-CAPTURE-GROWN ( -- )
-   IMAGE-LIFECYCLE:PREPARE
-   s" a capture gives the grown record chunks back" T-LABEL
-   CURL-TEST:RECORDS FIRST-RECORDS @ T= ;
-
-
-\ No request or live task is needed: each fresh initialization must arm the
-\ reset that makes the next captured process initialize libcurl for itself.
-: TEST-RECAPTURE ( -- )
-   IMAGE-LIFECYCLE:PREPARE
-   IMAGE-LIFECYCLE:COUNT {: base:n :}
-   2 0 do
-      OPEN-HANDLE CURL:CLEANUP
-      IMAGE-LIFECYCLE:COUNT base 1+ T=
-      IMAGE-LIFECYCLE:PREPARE
-      IMAGE-LIFECYCLE:COUNT base T=
-   loop ;
-
 public
 
 : RUN ( -- )
    T-RESET
-   TEST-RECAPTURE
    PREPARE
    TEST-PROXY
    TEST-GET
@@ -3087,13 +3063,11 @@ public
    TEST-REFUSALS
    TEST-LONG-TEXT
    TEST-HOST:SNAPSHOT
-   CURL-TEST:RECORDS FIRST-RECORDS !
    AIO:START
    TEST-MULTI
    AIO:STOP
    OPT-IN
    TEARDOWN
-   TEST-CAPTURE-GROWN
    TEST-SERVER
    T-REPORT
    s" curl-test: ok" type cr ;

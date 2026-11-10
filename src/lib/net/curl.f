@@ -7,11 +7,10 @@
 \ and take each as it answers.
 \ Only HABU_NET_TESTS=1 runs the case that leaves the machine (TLS, CA bundle).
 require src/lib/error.f
-require src/lib/string.f                      \ BUFFER:, the transfer table's byte rows
+require src/lib/string.f                      \ BUFFER:, SCRATCH-BUFFER:, the transfer table's byte rows
 require src/lib/le.f                          \ the foreign cells are little-endian
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
-require src/lib/image-lifecycle.f
 require src/lib/memory.f                      \ the grown record chunks, the text copies
 require src/lib/span.f                        \ a text copy's reach
 require src/lib/num-types.f                   \ the alloc-byte-len a chunk carries
@@ -510,30 +509,13 @@ CAST: >BYTES ( n -- ptr u8 )
    if 1 else 0 then ;
 
 
-\ Process-wide, as curl_global_init requires.
-variable GLOBAL-DONE
-variable GLOBAL-REGISTERED
-
-
-\ A captured image is restored into another process, where libcurl is not
-\ initialised; the flag is cleared then, exactly as FFI clears its symbol cache.
-: FORGET-GLOBAL ( -- )
-   0 GLOBAL-DONE !
-   0 GLOBAL-REGISTERED ! ;
-
-
-\ The registered flag is set only after REGISTER completes, so a throwing
-\ registration leaves flag and hook consistent for a retry.
-: REGISTER-CLEANUP ( -- )
-   GLOBAL-REGISTERED @ 0= if
-      [: FORGET-GLOBAL ;] IMAGE-LIFECYCLE:REGISTER
-      1 GLOBAL-REGISTERED !
-   then ;
+\ Process-wide, as curl_global_init requires. A build leaves the flag out, so a
+\ program initialises libcurl on its first use.
+SCRATCH-VARIABLE GLOBAL-DONE
 
 
 : GLOBAL-READY ( -- n )
    GLOBAL-DONE @ 0 <> if CURLE-OK exit then
-   REGISTER-CLEANUP
    GLOBAL-DEFAULT GLOBAL-INIT dup CURLE-OK <> if exit then
    1 GLOBAL-DONE ! ;
 
@@ -764,22 +746,21 @@ END-STRUCTURE
 \ The records live in a chain of chunks, as AIO's do: a link cell, then the
 \ records. The first chunk is static and each grown one holds as many records
 \ as all before it plus RECS-FIRST, so REC passes at most log2 links. A chunk
-\ never moves and goes back only at a capture, so a record's index is stable
-\ for the loop and for the owners that read a record without the facility.
+\ never moves or goes back, so a record's index is stable for the loop and for
+\ the owners that read a record without the facility.
 $20 constant RECS-FIRST
 CELL constant CHUNK-HEAD
 
-\ BUFFER: allots zeroed storage on a cell-rounded address and a grown chunk is
-\ a mapping, page-aligned, which is the alignment every row below wants - the
-\ atomic record fields, and the fd_sets, the CURLMsg copy and the
-\ out-parameter cells libcurl reads and writes as aligned C objects.
-CHUNK-HEAD RECS-FIRST REC-BYTES * + BUFFER: CURL-RECS
+\ BUFFER: and SCRATCH-BUFFER: allot zeroed storage on a cell-rounded address and
+\ a grown chunk is a mapping, page-aligned, which is the alignment every row
+\ below wants - the atomic record fields, and the fd_sets, the CURLMsg copy and
+\ the out-parameter cells libcurl reads and writes as aligned C objects. A
+\ program reads the first chunk as zero: no grown chunk, every record free.
+CHUNK-HEAD RECS-FIRST REC-BYTES * + SCRATCH-BUFFER: CURL-RECS
 
-\ The records the published chunks hold. Grown under the facility, after the
-\ chunk's link; read with atomic@ by an owner checking an index.
-variable REC-COUNT
-RECS-FIRST REC-COUNT !
-variable MAPS-ARMED                       \ the capture sweep below is registered
+\ The records the grown chunks hold, so zero is the first chunk alone. Grown
+\ under the facility, after the chunk's link; read with atomic@ by REC-COUNT.
+SCRATCH-VARIABLE REC-GROWN
 
 FD-SET-BYTES BUFFER: SET-READ
 FD-SET-BYTES BUFFER: SET-WRITE
@@ -851,8 +832,11 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CHUNK-NEXT dup 0= if s" curl: record index" E-STATE die then ;
 
 
+: REC-COUNT ( -- n ) REC-GROWN atomic@ RECS-FIRST + ;
+
+
 : REC-CHECK ( n -- n ) {: idx:n :}
-   idx 0 < idx REC-COUNT atomic@ >= or if E-OPERAND throw then
+   idx 0 < idx REC-COUNT >= or if E-OPERAND throw then
    idx ;
 
 
@@ -890,52 +874,14 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    state idx REC R.STATE atomic! ;
 
 
-\ A grown chunk is this process's: a capture gives it back so the image carries
-\ only the static first chunk. A record in flight in one is the program's
-\ defect, named here: await every transfer before a capture.
-: CHUNK-RETIRE ( n n -- ) {: c:n len:n :}
-   len 0 ?do
-      c i CHUNK-REC R.STATE atomic@ STATE-FREE <> if
-         s" curl: transfer in flight at capture - await it before the build or snapshot captures"
-         E-STATE die
-      then
-   loop
-   c CURL-N>PTR BYTE-VIEW len CHUNK-LEN MEM:RELEASE-BYTES ;
-
-
-\ The walk carries the next chunk and the record count of the one after. The
-\ facility keeps a loop turn from walking the chain while it is cut.
-: RECS-SWEEP ( -- )
-   CURL-LOCK TASK:GET
-   CHUNK-FIRST CHUNK-NEXT RECS-FIRST 2 *
-   0 CHUNK-FIRST CURL-N>PTR atomic!
-   begin over 0<> while
-      over CHUNK-NEXT -rot
-      swap over CHUNK-RETIRE 2 *
-   repeat
-   2drop
-   RECS-FIRST REC-COUNT atomic!
-   0 MAPS-ARMED !
-   CURL-LOCK TASK:RELEASE ;
-
-
-\ Armed before a chunk is mapped, so no mapping exists without its cleanup;
-\ the flag is set only after REGISTER completes, as AIO's MAPS-ARM.
-: MAPS-ARM ( -- )
-   MAPS-ARMED @ 0<> if exit then
-   [: RECS-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
-   1 MAPS-ARMED ! ;
-
-
 \ A fresh mapping is zero: every record free. The chunk is linked once it is
-\ whole, and REC-COUNT grows after the link, so a reader that sees the count
+\ whole, and REC-GROWN grows after the link, so a reader that sees the count
 \ finds the chunk.
 : REC-GROW ( -- )
-   MAPS-ARM
-   REC-COUNT @ RECS-FIRST + {: len:n :}
+   REC-COUNT RECS-FIRST + {: len:n :}
    len CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
    c CHUNK-LAST CURL-N>PTR atomic!
-   REC-COUNT @ len + REC-COUNT atomic! ;
+   REC-GROWN @ len + REC-GROWN atomic! ;
 
 
 \ The first free record of the chunk at c, whose records start at index base,
@@ -1011,7 +957,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 : TABLE-CLEAR ( -- )
-   REC-COUNT @ 0 ?do i REC-RELEASE loop ;
+   REC-COUNT 0 ?do i REC-RELEASE loop ;
 
 
 \ The record a handle is in, or -1. A handle is in at most one record at a time
@@ -1019,7 +965,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 \ how a task finds its own transfer: asking libcurl about a handle the loop may
 \ be driving is exactly what it must not do.
 : REC-FIND ( n -- n ) {: easy:n :}
-   REC-COUNT @ 0 ?do
+   REC-COUNT 0 ?do
       i REC-STATE@ STATE-FREE <> if
          i REC-EASY@ easy = if i unloop exit then
       then
@@ -1028,7 +974,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 : ANY-BUSY? ( -- bool )
-   REC-COUNT @ 0 ?do
+   REC-COUNT 0 ?do
       i REC-STATE@ STATE-FREE <> if true unloop exit then
    loop
    false ;
@@ -1317,7 +1263,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 : SERVICE-RECORDS ( -- n )
-   REC-COUNT @ 0 ?do
+   REC-COUNT 0 ?do
       i SERVICE-ONE dup CURLM-OK <> if unloop exit then drop
    loop
    CURLM-OK ;
@@ -1582,7 +1528,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 : FAIL-ALL ( -- )
    CURL-LOCK TASK:GET
    1 STOP-FLAG atomic!
-   REC-COUNT @ 0 ?do i FAIL-ONE loop
+   REC-COUNT 0 ?do i FAIL-ONE loop
    CURL-LOCK TASK:RELEASE ;
 
 
@@ -1702,7 +1648,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 : OWNER-END ( -- )
    TASK:SELF {: owner:ptr :}
    CURL-LOCK TASK:GET
-   false REC-COUNT @ 0 ?do owner i OWNER-MARK or loop
+   false REC-COUNT 0 ?do owner i OWNER-MARK or loop
    CURL-LOCK TASK:RELEASE
    if WAKE-POKE then ;
 
