@@ -1,0 +1,9 @@
+---
+title: "User source arms the storage definers' window and mints a typed pointer"
+status: active
+priority: 1
+issue-type: task
+created-at: "2026-11-10T19:25:35.107622+02:00"
+---
+
+Problem: 'PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT' / 's" create FOOB 1 allot : FOO ( n -- ptr pr2 ) FOOB swap 16 * + ;" s" FOO" LBUF-EVAL! drop' / ': USE ( -- ptr pr2 ) 1000 FOO ;' loads rc 0: USE yields a ptr pr2 16000 bytes past a 1-byte buffer. The FOO line written directly is refused E-MISMATCH at '+', and with another pending name it is refused too. src/core/layout-buffer-seal.f undefines LBUF-PEND! and its siblings but leaves LBUF-EVAL and LBUF-EVAL! (src/core/layout-buffer.f) callable, and they reach LBUF-PEND! through their compiled call; TDECL-EVAL-ARMED stays set. The comment at src/core/checker.f above NOMPTR-BLOCK? ('user source cannot arm it') is false. Run by the re-review of habu-a-stack-word-5dd345f9 fix two (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/openlayout-rereview.md, HIGH, outside the fold) on that lane's engines and the one before; not rerun by the lead. Not tried: ARENA-CALL-REFUSE? keys on the same window, so RECORD-RELEASE on any pointer may be admitted the same way. Source: Joel, 2026-11-10: "i want all issues identified to be dotted and fixed". Acceptance: no word user source can call opens the window: the reproducer is refused, the storage definers (HEAP, ARENA, the DYNAMIC definers, LAYOUT-BUFFER, the workspace's) still build, and the comment is true. Files: src/core/layout-buffer-seal.f, src/core/layout-buffer.f, src/core/checker.f (the comment), a test beside the existing layout-buffer seal test. Verify: the reproducer refused under --load and under tools/check.f; the full suite. Depends: none. Ownership: the seal of the layout-buffer window. Claim: agent=bob workspace=.jj-ws.noindex/habu-user-src-arms-bc2ab900
