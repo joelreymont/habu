@@ -12,8 +12,6 @@ require src/lib/fs-mutate.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/link.f
-require src/arch/wasm/encode.f
-require src/arch/wasm/kernel.f
 require test/wasm/harness.f
 require test/wasm/w03.f
 
@@ -122,148 +120,6 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
    s" W03's module writes no output" T-LABEL
    WASM-HARNESS:OUT$ nip 0 T= ;
 
-\ ---- WKERNEL's rows -------------------------------------------------------------
-\ Each module links the original six rows as kernel functions 0..5, in the
-\ order WENC emits them, and an entry of no lanes that calls a tested row by
-\ the function the map answers for its name. The die row needs a captured
-\ type provider, outside these hand-built kernel-only modules. No entry here
-\ calls .s, whose call to `.` stays unlinked.
-WPROF:STACK-BASE WPROF:OUT-BASE - constant OUT-CAP
-: EMITTED ( -- ptr u8 n )  S\" emit row\n" ;
-
-16 constant SITES-CAP
-SITES-CAP TYPED-BUFFER SITE-AT n       \ each call field of the body being built
-SITES-CAP TYPED-BUFFER SITE-TO n       \ the function it calls
-variable SITES
-
-: ROW ( ptr u8 n -- n )
-   WKERNEL:PROVIDER MATCH provider
-      row OF ENDOF
-      word OF 2drop -1 ENDOF
-   ;MATCH ;
-
-: CALL, ( n -- )
-   {: f:n :}
-   $10 B,
-   BODY-U @ SITES @ SITE-AT !  f SITES @ SITE-TO !  1 SITES +!
-   0 PAD5, ;
-
-: SITES+ ( n -- )
-   {: f:n :}
-   SITES @ 0 ?do  f  i SITE-AT @  i SITE-TO @  WLINK:CALL+  loop ;
-
-: ROW+ ( n -- )
-   {: k:n :}
-   WENC:BYTES k WENC:ROW@ {: off:n size:n in:n out:n fv:n :}
-   WENC:BYTES off +  size in out fv  WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ drop ;
-
-: ROWS+ ( -- )
-   WKERNEL:ENCODE
-   6 0 ?do  i ROW+  loop ;
-
-: KERNEL+ ( -- )
-   WLINK:RESET
-   ROWS+ ;
-
-\ An entry body: ctx is local 0, an i32 local 1 and an i64 local 2.
-: MAIN-OPEN ( -- )
-   0 SITES !  0 BODY-U !
-   2 B,  1 B, $7F B,  1 B, $7E B, ;
-
-: MAIN-SHUT ( ptr u8 n -- ptr u8 n )
-   {: name:ptr nu:n :}
-   $0B B,
-   BODY$ 0 0 0 WLINK-ORIGIN:CAPTURED WLINK:FUNCTION+ {: m:n :}
-   m SITES+
-   m name nu MODULE ;
-
-\ ctx's stack top, the address a cell is stored at.
-: TOP, ( -- )  CTX, $28 B, 2 B, WPROF:CTX-STACK-TOP B, ;
-
-\ The i64 left after TOP, stored there and the top moved past it.
-: PUSHED, ( -- )
-   $37 B, 3 B, 0 B,
-   CTX, TOP, $41 B, 8 S32, $6A B, $36 B, 2 B, WPROF:CTX-STACK-TOP B, ;
-
-: PUSH, ( n -- )  TOP, $42 B, S64, PUSHED, ;
-
-: ROW, ( ptr u8 n -- )  CTX, ROW CALL, ;
-
-\ depth, its count taken in local 2 and pushed.
-: DEPTH, ( -- )
-   s" depth" ROW,  $21 B, 2 B,  $1A B,
-   TOP, $20 B, 2 B, PUSHED, ;
-
-: EMIT-ROW ( -- )
-   KERNEL+
-   MAIN-OPEN
-   EMITTED {: t:ptr tu:n :}
-   tu 0 do
-      CTX, $42 B, t i + c@ S64, s" emit" ROW CALL,
-      i 0<> if $72 B, then                       \ i32.or of the statuses
-   loop
-   s" emit.wasm" MAIN-SHUT {: a:ptr u:n :}
-   s" a module calling the emit row validates" T-LABEL
-   a u WASM-HARNESS:VALID? TTRUE
-   s" each emit answers status 0" T-LABEL
-   a u WASM-HARNESS:RUN 0 T=
-   s" the bytes emitted are OUT's" T-LABEL
-   WASM-HARNESS:OUT$ EMITTED T$= ;
-
-\ n emits in a loop, local 1 counting them.
-: FILL ( n ptr u8 n -- ptr u8 n )
-   {: n:n name:ptr nu:n :}
-   KERNEL+
-   MAIN-OPEN
-   $02 B, $40 B,  $03 B, $40 B,
-      $20 B, 1 B,  $41 B, n S32,  $46 B,  $0D B, 1 B,
-      CTX, $42 B, 120 S64, s" emit" ROW CALL, $1A B,
-      $20 B, 1 B,  $41 B, 1 S32,  $6A B,  $21 B, 1 B,
-      $0C B, 0 B,
-   $0B B, $0B B,
-   $41 B, 0 S32,
-   name nu MAIN-SHUT ;
-
-: FULL-ROW ( -- )
-   OUT-CAP s" full.wasm" FILL {: a:ptr u:n :}
-   s" emit fills OUT to its last byte" T-LABEL
-   a u WASM-HARNESS:RUN 0 T=
-   WASM-HARNESS:OUT$ nip OUT-CAP T=
-   OUT-CAP 1+ s" over.wasm" FILL {: b:ptr v:n :}
-   s" an emit past OUT traps" T-LABEL
-   b v WASM-HARNESS:RUN 2 T= ;
-
-\ 1 2 3 9 throw takes the 9, so the depth thrown after it is 3.
-: DEPTH-ROW ( -- )
-   KERNEL+
-   MAIN-OPEN
-   1 PUSH, 2 PUSH, 3 PUSH, 9 PUSH,
-   s" throw" ROW, $1A B,
-   DEPTH,
-   s" throw" ROW,
-   s" depth.wasm" MAIN-SHUT {: a:ptr u:n :}
-   s" a module calling the depth and throw rows validates" T-LABEL
-   a u WASM-HARNESS:VALID? TTRUE
-   s" throw answers status 1" T-LABEL
-   a u WASM-HARNESS:RUN 1 T=
-   s" depth counts the cells the throw left" T-LABEL
-   WASM-HARNESS:THROW-CODE 3 T= ;
-
-: THROWN ( n n ptr u8 n -- )
-   {: c:n want:n name:ptr nu:n :}
-   KERNEL+
-   MAIN-OPEN
-   c PUSH,  s" throw" ROW,
-   name nu MAIN-SHUT {: a:ptr u:n :}
-   a u WASM-HARNESS:RUN 1 T=
-   WASM-HARNESS:THROW-CODE want T= ;
-
-: THROW-ROW ( -- )
-   s" a throw's code is stored whole" T-LABEL
-   CODE CODE s" throw.wasm" THROWN
-   s" a zero throw throws ENGINE-ERROR:THROW-ZERO, as the engine's does" T-LABEL
-   0 ENGINE-ERROR:THROW-ZERO s" throw0.wasm" THROWN ;
-
 public
 
 : RUN ( -- )
@@ -273,10 +129,6 @@ public
    TRAP-ROW
    INVALID-ROW
    W03-ROW
-   EMIT-ROW
-   FULL-ROW
-   DEPTH-ROW
-   THROW-ROW
    T-REPORT ;
 
 ;package

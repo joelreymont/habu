@@ -101,6 +101,23 @@ variable TEXT-U
    RAN 0 T=
    WASM-HARNESS:OUT$ s" 5" T$= ;
 
+: EMITS! ( n ptr u8 n -- )
+   {: reps:n name:ptr nu:n :}
+   SB-RESET
+   s" : MAIN ( -- ) " SB-APPEND  reps FMT:SB-U  s"  0 do 120 emit loop ;" SB-APPEND
+   SB$ name nu SOURCE! ;
+
+: FULL-CASE ( -- )
+   WPROF:OUT-CAP s" full.f" EMITS!
+   s" emit fills OUT to its last byte" T-LABEL
+   s" full.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ nip WPROF:OUT-CAP T=
+   WPROF:OUT-CAP 1+ s" over.f" EMITS!
+   s" an emit past OUT traps" T-LABEL
+   s" over.wasm" BUILD 0 T=
+   RAN 2 T= ;
+
 
 \ Package K at the name, its first test comparing 5 FACT with want; a failed
 \ test reads below WPROF:CTX-BASE, which traps.
@@ -655,6 +672,7 @@ public
    T-RESET
    SETUP
    EMIT-CASE
+   FULL-CASE
    PASS-CASE
    PROGRAM-CASES
    DIV0-CASE

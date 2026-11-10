@@ -171,9 +171,7 @@ SUITE wasm-backend
    test/wasm/backend.f
 ;SUITE
 
-\ src/arch/wasm/kernel-words.f beside the engine's primitives on the host: each
-\ engine name WKERNEL's map answers with a word prints and exits as the engine
-\ primitive does, and a name no provider answers is refused.
+\ Some of src/arch/wasm/kernel-words.f's words beside the engine's primitives, on the host.
 SUITE wasm-kernel-words
    test/wasm/kernel.f
 ;SUITE

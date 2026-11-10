@@ -1,18 +1,13 @@
-\ src/arch/wasm/kernel-words.f beside the engine's primitives, on the host: each
-\ engine name WKERNEL's map (src/arch/wasm/kernel.f) answers with a
-\ kernel-words.f word runs as the engine's primitive and as that word, each in a
-\ child of its own, on the same edge arguments; both print the same bytes to
-\ stdout and stderr and exit alike. The map's hand-built functions run in Wasm,
-\ in test/wasm/device.f.
+\ src/arch/wasm/kernel-words.f on the host: a SAME case runs an engine name and the word WKMAP
+\ (kernel-map.f) answers for it, each in a child of its own; both print and exit alike.
 
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/string.f
 require src/lib/process.f
 require src/lib/ieee754.f
-require src/arch/wasm/link.f
 require src/arch/wasm/kernel-words.f
-require src/arch/wasm/kernel.f
+require src/arch/wasm/kernel-map.f
 
 package WKERNEL-TEST
 private
@@ -24,12 +19,11 @@ CAP BUFFER: ERR-E
 CAP BUFFER: OUT-K
 CAP BUFFER: ERR-K
 
-\ The word the map names for an engine name; a row is a failed case.
+\ The word the map names for an engine name; an empty spelling is a failed case.
 : WORD$ ( ptr u8 n -- ptr u8 n )
-   WKERNEL:PROVIDER MATCH WKERNEL:provider
-      row OF drop  s" the map answers a word" T-LABEL  false TTRUE  s" " ENDOF
-      word OF ENDOF
-   ;MATCH ;
+   WKMAP:WORD-OF {: w:ptr wu:n :}
+   wu 0= if  s" the map answers a word" T-LABEL  false TTRUE  then
+   w wu ;
 
 \ The text args, w and tail, run in a child with its stdout into o and its
 \ stderr into e; answers their lengths and its exit status.
@@ -125,17 +119,6 @@ CAP BUFFER: ERR-K
    s" f<=" ORDER
    s" f>=" ORDER ;
 
-\ A name no provider answers is refused with E-WLINK-UNRESOLVED.
-: UNANSWERED ( -- )
-   s" key" WKERNEL:PROVIDER MATCH WKERNEL:provider
-      row OF drop ENDOF
-      word OF 2drop ENDOF
-   ;MATCH ;
-
-: REFUSAL ( -- )
-   s" a name no provider answers is refused" T-LABEL
-   [: UNANSWERED ;] E-WLINK-UNRESOLVED TTHROWSQ ;
-
 public
 
 : RUN ( -- )
@@ -146,7 +129,6 @@ public
    NUMBERS
    TESTS
    COMPARISONS
-   REFUSAL
    T-REPORT ;
 
 ;package
