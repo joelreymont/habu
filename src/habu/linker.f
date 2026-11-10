@@ -1804,10 +1804,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    e NSHADOW:CALL-SITES {: calls:n :}
    s PIECES U64+  e NSHADOW:RET-BYTES PIECES U64+
    src s PIECES SPAN+
-   PIECES BYTES$ {: buf:ptr bufu:n :}
-   bufu s - {: off:n :}
-   calls 0 ?do 0  buf off + e i NSHADOW:CALL-SITE@ +  LE:U32! loop
-   p 0 >= if 0  buf off + p +  LE:U32! then
+   PIECES BYTES$ nip s - {: off:n :}
    e NSHADOW:FUNCTIONS {: f:n :}
    f PIECES U64+
    f 0 ?do e i NSHADOW:FUNCTION-OFFSET@ PIECES U64+ loop
@@ -1875,8 +1872,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \   E                      emissions this file's compile filed, from the file's first
 \   per emission, in number order:
 \     S, R                 size in bytes; return bytes (R <= S)
-\     S raw bytes          unpadded; each call site's 4 bytes, the does> slot's 4 bytes
-\                          and every 16-bit immediate of each address chain written as 0
+\     S raw bytes          unpadded, as the compile sealed them, except that every 16-bit
+\                          immediate of each address chain is written as 0
 \     F, then F offsets    function starts
 \     C, then C call rows  site, kind (0 call, 1 tail), reference; sites strictly ascending, and
 \                          no does> slot row
@@ -3433,19 +3430,21 @@ variable RD-END
    n 0 ?do i ENTRY-CK loop ;
 
 
-\ A call row of emission top, s bytes; its site, above the row before it, holds in the object's copy the zeroed
-\ call EMISSION-CODE+ writes. A record target precedes top's own: a body naming its word is E-UNDEFINED, RECURSE files no row.
+\ A call row of emission top, s bytes; its site, above the row before it, holds the compile's
+\ unplaced call of the row's kind. A record target precedes top's own: a body naming its word is
+\ E-UNDEFINED, RECURSE files no row.
 : CALL-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: site:n :}
    site 0<  site 3 and 0<>  or  site s 4 - >  or if BAD then
-   GOOD? if
-      OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  site +  LE:U32@ 0<> if BAD then
-   then
    site LAST-CALL @ <= if BAD then
    site LAST-CALL !
    RD-U64 {: kind:n :}
    kind 0<>  kind 1 <>  and if BAD then
+   GOOD? if
+      OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  site +  LE:U32@ {: word:n :}
+      kind 0= if 0 A64ASM:ENC-BL else 0 A64ASM:ENC-B then  word <> if BAD then
+   then
    RD-REF top  top EM-RECS @  CODE-REF-CK ;
 
 
@@ -3476,7 +3475,7 @@ variable RD-END
    BAD ;
 
 
-\ The does> slot: -1, or its site, past the last call row and holding the zeroed slot EMISSION-CODE+ writes, and
+\ The does> slot: -1, or its site, past the last call row and holding the compile's return, and
 \ its target: none while no clause patched it, else the record of a does> clause, checked as a call's.
 : SLOT-CK ( n n -- )
    {: s:n top:n :}
@@ -3485,7 +3484,7 @@ variable RD-END
    p 0<  p 3 and 0<>  or  p s 4 - >  or if BAD exit then
    p LAST-CALL @ <= if BAD then
    GOOD? if
-      OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  p +  LE:U32@ 0<> if BAD then
+      OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  p +  LE:U32@ A64ASM:ENC-RET <> if BAD then
    then
    RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 5 = if exit then
@@ -4327,9 +4326,9 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    site HOST-ADDRS-N @ HOST-ADDRS !  1 HOST-ADDRS-N +! ;
 
 
-\ This object's emission e (CODE+) sealed in NEMIT over CODE-COPY, as its compile sealed it: each
-\ call site the compile's unplaced call, each address chain its value, the does> slot a return.
-\ The answer is the entry of the clause that patched the slot, 0 for none.
+\ This object's emission e (CODE+) sealed in NEMIT over CODE-COPY: the object's bytes, as the
+\ compile sealed them, with each address chain's value written in. The answer is the entry of
+\ the clause that patched the slot, 0 for none.
 : NEMIT-FILL ( n -- n )
    {: e:n :}
    e EM-OFFS @  OBJECT BYTES$ nip  RD-OPEN
@@ -4345,7 +4344,6 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
       RD-U64 RD-U64 {: site:n k:n :}
       RD-REF RESOLVE {: target:n :}
       k 0= if NEMIT:CALL else NEMIT:TAIL then {: nk:n :}
-      0 nk 0  copy site +  ARM64:CALL!
       site nk target 0 0 NEMIT:CALL-SITE+
       nk NEMIT:CALL =  target NPUB:IN-REGION? 0=  and if site HOST-CALL+ then
    loop
@@ -4366,7 +4364,6 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    RD-U64 {: p:n :}
    p 0 >= if
       RD-REF {: tag:n x:n y:n z:n w:n :}
-      A64ASM:ENC-RET  copy p +  LE:U32!
       p NEMIT:PATCH-SLOT!
       tag 5 = if 0 else tag x y z w RESOLVE then
    else

@@ -13,6 +13,7 @@ require src/habu/xref.f
 require src/habu/intern.f
 require src/compiler/native/shadow.f
 require src/compiler/target/model.f
+require src/arch/arm64/asm.f
 require src/habu/linker.f
 require src/habu/link-data.f
 require src/os/script-argv.f
@@ -674,12 +675,13 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
 \ The package's own-private flag 0 while LOW, a later entry, names its private wordlist.
 : NO-PRIVATE ( -- n ) CRAFT-WALK  0 FLAG-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
-\ MID's call row's site on the instruction after the call, whose bytes are not 0.
+\ MID's call row's site on the instruction after the call, which is not an unplaced call.
 : SITE-MOVED ( -- n )
    CRAFT-WALK
    SITE-AT @ OBJ@ 4 + {: site:n :}
-   CRAFT-OBJ BYTES-AT @ + site + LE:U32@ 0= if
-      s" build: CRAFTS: the instruction after MID's call is 0" 1 die
+   CRAFT-OBJ BYTES-AT @ + site + LE:U32@ {: word:n :}
+   word 0 A64ASM:ENC-BL =  word 0 A64ASM:ENC-B =  or if
+      s" build: CRAFTS: the instruction after MID's call is an unplaced call" 1 die
    then
    site SITE-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
@@ -692,15 +694,15 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
    CRAFT-WALK  PKG-REC @ CRAFT-ID  INDEX-AT @ 8 + OBJ!  INDEX-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
 \ V's does> slot, the created word's return a clause patches, moved 4 bytes onto an instruction
-\ that is not 0.
+\ that is not a return.
 : SLOT-SITE ( -- n )
    CRAFT-WALK
    SLOT-AT @ OBJ@ {: p:n :}
    CRAFT-OBJ SLOT-BYTES-AT @ + {: em:ptr :}
-   p 4 >= if em p 4 - + LE:U32@ 0<> else false then if
+   p 4 >= if em p 4 - + LE:U32@ A64ASM:ENC-RET <> else false then if
       p 4 - SLOT-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD exit
    then
-   p 4 + SLOT-S @ 4 - <= if em p 4 + + LE:U32@ 0<> else false then if
+   p 4 + SLOT-S @ 4 - <= if em p 4 + + LE:U32@ A64ASM:ENC-RET <> else false then if
       p 4 + SLOT-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD exit
    then
    s" build: CRAFTS: no instruction beside V's slot" 1 die ;
