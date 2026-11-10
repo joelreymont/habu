@@ -265,12 +265,13 @@ DYNAMIC-BUFFER EM-SPANS n
 variable WORDS-N                     \ the piece's words
 variable TOP-ROW                     \ the highest FILES row REF-FILE answered since it was zeroed
 DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0 for none (REC-TIME)
-\ Record r's identity, which no insertion before it changes: its NAME-SUM at 2r, 0 for no name, its
-\ count at 2r + 1, from 0, among the earlier records of its file with that sum (IDENTIFY).
+\ Record r's identity, which no earlier part changes: its NAME-SUM at 2r, 0 for no name, its
+\ count at 2r + 1, from 0, among the earlier records of its part with that sum (IDENTIFY).
 DYNAMIC-BUFFER REC-IDS n
 variable IDENTIFIED                  \ every record below it that a piece holds has its identity
-\ Slot s holds at 6s the key's first cell plus 1 (0 while empty), its second, the kind, sum, count and value; at most
-\ half full, so a probe ends. A link reads the key -2 slots that PART-FRESH?, run right before it, filled (OWN-IDS!).
+\ Slot s holds at 6s the key's first cell plus 1 (0 while empty), its second, a third cell, sum, count and value: a file
+\ key's part, else the kind (keys -2 and -3). At most half full, so a probe ends. A link reads the key -2 slots that
+\ PART-FRESH?, run right before it, filled (OWN-IDS!).
 DYNAMIC-BUFFER PLACES n
 DYNAMIC-BUFFER OLD-PLACES n          \ PLACES' slots as it grows
 variable PLACES-CAP                  \ its slots, a power of two
@@ -713,7 +714,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    row  idx REC-TIME 0=  REF-FILE ;
 
 \ A record reference: the file, 0 for this one, then the record's sum and count (REC-ID), which no
-\ insertion before it changes; an earlier piece's record also gets its WORDS row.
+\ earlier part changes; an earlier piece's record also gets its WORDS row.
 : ID-REF+ ( n -- )
    {: idx:n :}
    idx REC-ID {: sum:n count:n :}
@@ -736,30 +737,35 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    loop
    dup 0= if 1 + then ;
 
-\ The slot of PLACES that holds the key's two cells, that kind, sum and count, else the empty slot
-\ the probe from their hash ends at.
+\ The slot of PLACES that holds the key's two cells, that third cell, sum and count, else the empty
+\ slot the probe from their hash ends at.
 : PLACE-SLOT ( n n n n n -- n )
-   {: path:n seen:n kind:n sum:n count:n :}
+   {: path:n seen:n third:n sum:n count:n :}
    PLACES-CAP @ 1 - {: mask:n :}
-   sum  path $9E3779B1 * +  seen $C2B2AE3D * +  count $85EBCA77 * +  kind $27D4EB2F * +  mask and
+   sum  path $9E3779B1 * +  seen $C2B2AE3D * +  count $85EBCA77 * +  third $27D4EB2F * +  mask and
    begin
       dup 6 * PLACES @ 0<> if
          dup 6 * PLACES @ path 1 + <>  over 6 * 1 + PLACES @ seen <>  or
-         over 6 * 2 + PLACES @ kind <>  or
+         over 6 * 2 + PLACES @ third <>  or
          over 6 * 3 + PLACES @ sum <>  or  over 6 * 4 + PLACES @ count <>  or
       else false then
    while 1 + mask and repeat ;
 
-\ The value in the slot PLACE-SLOT answers for the key, kind and identity, -1 for none.
+\ The value in the slot PLACE-SLOT answers for the key, third cell and identity, -1 for none.
 : PLACE-VALUE ( n n n n n -- n )
    PLACE-SLOT 6 * {: s:n :}
    s PLACES @ 0= if -1 exit then
    s 5 + PLACES @ ;
 
-\ The record of the file whose key is at the address with that sum and count, -1 for none.
+\ The record with that sum and count of the part whose FILES row is at the address, -1 for none.
 : PLACE ( ptr u8 n n -- n )
    {: key:ptr sum:n count:n :}
-   key LE:U64@  key 8 + LE:U64@  0 sum count PLACE-VALUE ;
+   key LE:U64@  key 8 + LE:U64@  key KEY-BYTES + LE:U64@  sum count PLACE-VALUE ;
+
+\ The running part's record with that sum and count, -1 for none.
+: PART-REC ( n n -- n )
+   {: sum:n count:n :}
+   FILE-KEY LE:U64@  FILE-KEY 8 + LE:U64@  FILE-PART @  sum count PLACE-VALUE ;
 
 \ The number in its piece of the checked piece's record with that sum and count (OWN-IDS!), -1 for
 \ none.
@@ -836,19 +842,20 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    then ;
 
 
-\ The value v into the empty slot PLACE-SLOT answers; E-COMP-STATE when a slot holds the key, kind and identity, since
-\ a second value would hide the first: a part's records and extents each have their own identity (IDENTIFY, EXTENTS!).
+\ The value v into the empty slot PLACE-SLOT answers; E-COMP-STATE when a slot holds the key, third cell and identity,
+\ since a second value would hide the first: a part's records and extents each have their own identity (IDENTIFY,
+\ EXTENTS!).
 : PLACE! ( n n n n n n -- )
-   {: path:n seen:n kind:n sum:n count:n v:n :}
-   path seen kind sum count PLACE-SLOT 6 * {: s:n :}
+   {: path:n seen:n third:n sum:n count:n v:n :}
+   path seen third sum count PLACE-SLOT 6 * {: s:n :}
    s PLACES @ 0<> if E-COMP-STATE throw then
-   path 1 + s PLACES !  seen s 1 + PLACES !  kind s 2 + PLACES !  sum s 3 + PLACES !
+   path 1 + s PLACES !  seen s 1 + PLACES !  third s 2 + PLACES !  sum s 3 + PLACES !
    count s 4 + PLACES !  v s 5 + PLACES !
    1 PLACES-N +! ;
 
 
-\ The running piece's records from FILE-REC or IDENTIFIED into REC-IDS and PLACES, counts carrying on across FILE-KEY's pieces.
-\ A shifted count binds a user's WORDS row to a word of the old bytes and retirement (WORD-TIME) or fails WORDS-CK.
+\ The running piece's records from FILE-REC or IDENTIFIED into REC-IDS and PLACES, each counted among part FILE-PART's
+\ records.
 : IDENTIFY ( -- )
    FILE-REC @ IDENTIFIED @ max {: start:n :}
    ndict@ 2 * REC-IDS-RESERVE
@@ -857,9 +864,9 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    ndict@ start ?do
       i XREF-REC XREF-NAME$ {: a:ptr u:n :}
       u 0= if 0 else a u NAME-SUM then {: sum:n :}
-      0 begin dup FILE-KEY sum rot PLACE 0 >= while 1 + repeat {: count:n :}
+      0 begin sum over PART-REC 0 >= while 1 + repeat {: count:n :}
       sum i 2 * REC-IDS !  count i 2 * 1 + REC-IDS !
-      path seen 0 sum count i PLACE!
+      path seen FILE-PART @ sum count i PLACE!
    loop
    ndict@ IDENTIFIED ! ;
 
@@ -1796,7 +1803,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \     P                    the does> slot's site, -1 for none; when P >= 0 its target's
 \                          reference
 \ A reference is a tag, then its fields: 0 a dictionary record (file, its name sum, its count
-\ among that file's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation
+\ among that part's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation
 \ (file, its owning definition's name sum and count as tag 0's, function); 3 a word's data and 6 a
 \ string's (file, the extent's sum and count, offset in the extent, at most its length) or a text
 \ an earlier part laid (sum 0 and its FACTS row's number for the extent's); 7 a file's head (file,
@@ -3905,8 +3912,8 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
 : LINK-CLEAR ( -- ) -1 LINK-EM !  -1 LINK-OWNER !  0 LINK-FN ! ;
 
 
-\ The dictionary index a linked record reference (file, sum, count; ID-REF+) names: this file's
-\ record by OWN-REC, an earlier file's by PLACE; E-COMP-STATE when neither finds it.
+\ The dictionary index a linked record reference (file, sum, count; ID-REF+) names: this part's
+\ record by OWN-REC, an earlier part's by PLACE; E-COMP-STATE when neither finds it.
 : ID-REC ( n n n -- n )
    {: file:n sum:n count:n :}
    file 0= if
@@ -4312,12 +4319,13 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 
 
 \ A facts row's record (file, sum, count; ID-REF+) as a dictionary index: a link's by ID-REC; a
-\ compile's by PLACE, the key at FILE-KEY for file 0, else at REFS' row, which starts with it.
+\ compile's by PART-REC for file 0, else by PLACE at REFS' row, which starts with the part's key.
 : FACT-REC ( bool n n n -- n )
    {: read:bool file:n sum:n count:n :}
    read if file sum count ID-REC exit then
-   file 0= if FILE-KEY else  REFS BYTES$ drop  file 1 - FILES-ROW-BYTES * +  then
-   sum count PLACE {: r:n :}
+   file 0= if  sum count PART-REC  else
+      REFS BYTES$ drop  file 1 - FILES-ROW-BYTES * +  sum count PLACE
+   then {: r:n :}
    r 0< if E-COMP-STATE throw then
    r ;
 
@@ -4965,7 +4973,7 @@ variable DUE-MADE
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !  false HOLDS-HEADER !
    OWNED-N @ 0 ?do i LINK-OWNED loop
    0 CHECK:PLACE-FACTS
-   s" " KEY-PATHS PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!
+   s" " KEY-PATHS PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!  0 FILE-PART !
    FILE-KEY KEY-BYTES LOAD-PATHS SPAN+  s" " LOAD-PATHS FIELD+
    here NULL-PTR - dup FILE-DP !  FILE-END !
    0 EXTS-N !  0 0 BUILT+ ;

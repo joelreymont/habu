@@ -902,14 +902,16 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" U3" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
    s" prog-n" s\" 2\n" s" the program prints K" NEST-RUN ;
 
-\ The same-name sequence's g.f: DEF makes a word of the name it reads, or reads it and makes nothing.
+\ The same-name sequence's g.f: DEF makes a word of the name it reads, or reads it and makes nothing;
+\ FLAG is true when DEF makes one.
 : WRITE-G ( bool -- ) {: make:bool :}
    s" package FILE-OBJECTS-SAME-G public : DEF ( -- ) " SRC+
    make if s" create 0 , " else s" parse-name drop drop " then SRC+
-   s\" ; ;package\n" SRC+  s" g.f" NEST-WRITE ;
+   s" ; " SRC+  make if s" true" else s" false" then SRC+
+   s\"  constant FLAG ;package\n" SRC+  s" g.f" NEST-WRITE ;
 
-\ f.f's first part makes two private records named Y and X when g.f's DEF makes them, shifting the
-\ counts of its second part's two Y and two X, which answer 1, 10, 2 and 20.
+\ f.f's first part makes private Y and X when g.f's DEF makes them and a private definer MK when g.f's
+\ FLAG is true; its second part has two Y, X and MK, whose X answer 10 and 20 and MK add 0 and 100.
 : WRITE-SAME ( -- )
    L$ s" same-name" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
    true WRITE-G
@@ -917,24 +919,30 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s\" : SAME-H2 ( -- n ) 2 ;\n" SRC+  s" h2.f" NEST-WRITE
    s\" : SAME-H3 ( -- n ) 3 ;\n" SRC+  s" h3.f" NEST-WRITE
    s" g.f" REQUIRE+
-   s\" package FILE-OBJECTS-SAME FILE-OBJECTS-SAME-G:DEF Y FILE-OBJECTS-SAME-G:DEF X ;package\n" SRC+
+   s\" package FILE-OBJECTS-SAME FILE-OBJECTS-SAME-G:DEF Y FILE-OBJECTS-SAME-G:DEF X\n" SRC+
+   s\" FILE-OBJECTS-SAME-G:FLAG [if]\n" SRC+
+   s\" : MK ( n -- ) create , does> ( -- n ) @ 1000 + ;\n" SRC+
+   s\" [then]\n;package\n" SRC+
    s" h1.f" REQUIRE+
    s\" : Y ( -- n ) 1 ; : X ( -- n ) Y 10 * ; : W1 ( -- n ) X ; undefine X undefine Y\n" SRC+
    s\" : Y ( -- n ) 2 ; : X ( -- n ) Y 10 * ; : W ( -- n ) X ;\n" SRC+
+   s\" : MK ( n -- ) create , does> ( -- n ) @ ;\n: MK1 ( n -- ) MK ;\nundefine MK\n" SRC+
+   s\" : MK ( n -- ) create , does> ( -- n ) @ 100 + ;\n: MK2 ( n -- ) MK ;\n" SRC+
    s" h2.f" REQUIRE+  s\" : SHOW3 ( -- ) X . Y . ;\n" SRC+
    s" h3.f" REQUIRE+  s\" : SHOW4 ( -- ) W . W1 . ;\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : SHOW ( -- ) X . Y . ;\n" SRC+  s" u.f" NEST-WRITE
-   s" f.f" REQUIRE+  s\" W constant K : SHOWV ( -- ) W1 . K . ;\n" SRC+  s" v.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" W constant K 5 MK2 FIVE : SHOWV ( -- ) W1 . K . FIVE . ;\n" SRC+
+   s" v.f" NEST-WRITE
    s" f.f" REQUIRE+  s" u.f" REQUIRE+  s" v.f" REQUIRE+
    s\" : MAIN ( -- ) SHOW SHOWV SHOW3 SHOW4 cr ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ I's program prints what a cold build prints under either g.f.
 : SAME-RUN ( CMD:command -- CMD:command )
-   s" prog-s" s\" 20\n2\n10\n20\n20\n2\n20\n10\n\n" s" the program prints each X and Y it reached"
+   s" prog-s" s\" 20\n2\n10\n20\n105\n20\n2\n20\n10\n\n" s" the program prints each X and Y it reached"
    NEST-RUN ;
 
-\ Guards a user's binding when a same-name record shifts later counts: u.f spells X and Y, v.f and
-\ f.f's last part only W1 and W, which call them; each build prints what a cold build prints.
+\ Guards a user's binding when f.f's first part gains or drops same-name records: u.f spells X and Y,
+\ v.f and f.f's last part reach them only by W1 and W, and v.f's FIVE the second MK only by MK2.
 : SAME-CASE ( CMD:command -- CMD:command )
    WRITE-SAME
    s" I" WHICH!  s" main.f" s" prog-s" NEST-BUILD 0= if exit then  SAME-RUN
