@@ -475,7 +475,8 @@ $178 constant PKG-OUTSIDE
 \ reads these cells as it reads INCLUDE-EVALERR-CELL.
 \ PATH-CELL / PATHLEN-CELL: the innermost open include frame's path, 0/0 with
 \ no include frame open: the root source stream's own text (src/habu/main.f:
-\ stdin, tty or piped, or a plain `hb <file>`) and the boot prefix.
+\ stdin, tty or piped, or the `--load` and `--build` streams) and the boot
+\ prefix. The program file of a plain `hb <file>` has a frame of its own.
 \ src/core/include.f SOURCE-ROOT:PUSH copies the resolved path into its frame and publishes it; POP
 \ republishes the parent's. The address is the frame's, not INCLUDE-PATH's,
 \ because a nested include overwrites that buffer.

@@ -258,8 +258,9 @@ public
   opened is refused at its end, as every source is (**Rules learned by
   refusal**): `hb: source ended inside definition: D at <path>:<line>`, so no
   definition spans a load. Fix a file that leaves cells or a definition; never
-  loosen the loader. `hb prog.f` and a program on stdin are not loaded files
-  and keep their top-level stack.
+  loosen the loader. The program file of `hb prog.f` is a loaded file, so a
+  refusal in it names `prog.f:<line>`, but it keeps its top-level stack; a
+  program on stdin is no file and keeps its stack too.
 - **Source roots.** Relative dependencies search the root of the file that
   requires them, then the engine's source root, then the invocation working
   directory, each root once. A named `--load` entry's root is its directory; a

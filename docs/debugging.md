@@ -19,7 +19,8 @@ the start of the file.
 A refusal with no include frame open prints the message and a newline with
 **no** ` at …`, because there is no file to name: the root source stream's own
 text (src/habu/main.f `ROUTED`: stdin when `hb` has no argument, tty or piped,
-or a plain `hb <file>` without `--load`) and the engine's own boot prefix. A
+or the `--load` and `--build` streams themselves) and the engine's own boot
+prefix. The program file of a plain `hb <file>` is an open file and is named. A
 string `evaluate`d *inside* a file keeps the file line only while it is a slice
 of the file's own bytes (`parse-name X evaluate`). Any other evaluated string
 names the file alone (` at <path>`) for a refusal in it, and so do the native

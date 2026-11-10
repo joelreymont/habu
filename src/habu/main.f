@@ -1,9 +1,10 @@
 \ main.f - the engine's command line in Habu, mirroring the assembly's reading
 \ (src/habu/habu2.f FLAGTAB-DATA, LFLAGMATCH, LSRCBADFLAG, C-SOURCE-FILE-PREFIX,
 \ C-SOURCE-FIND-SEP, C-SOURCE-FILE-LOOP, C-SOURCE-APPEND-ARG, LSRCRD, LSHBANG).
-\ Every route builds one source stream, interpreted once, open, through
-\ SOURCE-ROOT:RUN-ROOT. MAIN reads the process's argv and stdin; RUN takes a
-\ vector, so a test can hand it one.
+\ `--load`, `--build` and stdin build one source stream, interpreted once, open,
+\ through SOURCE-ROOT:RUN-ROOT; the program file of `hb prog.f` is a loaded file
+\ the loader reads and runs open (SOURCE-ROOT:RUN-PROGRAM). MAIN reads the
+\ process's argv and stdin; RUN takes a vector, so a test can hand it one.
 
 require src/lib/string.f
 require src/core/bytes.f
@@ -93,10 +94,10 @@ ENUM route load build plain ;ENUM
    ;MATCH ;
 
 \ `--load` writes a `s" <path>" script-required` row per file, so the registry
-\ loads each in its own include frame and skips one the engine holds. The program
-\ file and the first file of `--build` are read raw after a `s" <path>" provided`
-\ row, `#!` made a comment; later `--build` files get `script-required` rows
-\ (`--build a.f missing.f` prints a.f's output, then include's "cannot open").
+\ loads each in its own include frame and skips one the engine holds. The first
+\ file of `--build` is read raw after a `s" <path>" provided` row, `#!` made a
+\ comment; later `--build` files get `script-required` rows (`--build a.f
+\ missing.f` prints a.f's output, then include's "cannot open").
 \ habu2.f C-SOURCE-FILE-LOOP and C-SOURCE-APPEND-ARG: one row per file, a newline
 \ between files, all in one arena before any runs. The bytes stay mapped for the
 \ process's life; the arena pointer is src/habu/layout.f ARENA-CELL, which the
@@ -153,19 +154,20 @@ variable USED
    0 USED ! ;
 
 \ The program file's argv string, 0 off the plain route: PROGRAM-FILE-CELL
-\ (src/habu/layout.f), which src/core/include.f derives the program from.
+\ (src/habu/layout.f), from which src/core/include.f derives the program's
+\ canonical path and its directory, the top-level root.
 : PROGRAM-ARG ( -- ptr ptr u8 )
    data-base PROGRAM-FILE-CELL + 0 ptr-field ;
 
-\ The stream for files [first, end); raw says whether the first is read raw.
-\ A raw `--build` payload carries its `provided` row, the program none.
+\ The stream for files [first, end); raw says whether the first, a `--build`
+\ payload, is read raw after its `provided` row.
 : STREAM ( ptr ptr u8 n n bool -- ptr u8 n ) {: argv:ptr first:n end:n raw:bool :}
    START-STREAM
    end first ?do
       i first > if NL 1 APPEND then
       argv i ARG
       i first = raw and if
-         PROGRAM-ARG @ 0= if 2dup s" provided" ROW then
+         2dup s" provided" ROW
          FILE
       else
          s" script-required" ROW
@@ -179,7 +181,7 @@ variable USED
    SOURCE-ARENA @ USED @ SHEBANG
    SOURCE-ARENA @ USED @ ;
 
-\ The root stream runs open, as the engine's loop runs it: a program that
+\ The root stream runs open, as the engine's loop runs it: a stream that
 \ leaves cells still exits 0 (src/core/include.f SOURCE-ROOT:RUN-ROOT).
 : RUN-TEXT ( ptr u8 n -- ) SOURCE-ROOT:RUN-ROOT ;
 
@@ -223,18 +225,20 @@ public
 
 \ Load what argv names, in order. argv[0] is the program and is not read; a
 \ vector with nothing after it has no file to load (the assembly sends that
-\ one to the REPL before it reaches its file list).
+\ one to the REPL before it reaches its file list). The program file of the
+\ plain route runs as a loaded file, its stack kept, as the stream's is.
 : RUN ( ptr ptr u8 n -- ) {: argv:ptr argc:n :}
    argc 2 < if NO-FILES then
    argv 1 ARG ROUTE {: r:route :}
    argv argc r FILES {: first:n end:n :}
    first end >= if NO-FILES then
    r MATCH route
-      load OF false ENDOF
-      build OF true ENDOF
-      plain OF argv first ARG drop PROGRAM-ARG ! true ENDOF
-   ;MATCH {: raw:bool :}
-   argv first end raw STREAM RUN-TEXT ;
+      load OF argv first end false STREAM RUN-TEXT ENDOF
+      build OF argv first end true STREAM RUN-TEXT ENDOF
+      plain OF
+         argv first ARG over PROGRAM-ARG ! SOURCE-ROOT:RUN-PROGRAM
+      ENDOF
+   ;MATCH ;
 
 private
 

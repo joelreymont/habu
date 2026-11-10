@@ -289,10 +289,11 @@ private
 \ PROGRAM-FILE-CELL only on that route (src/habu/habu2.f SRC-FPLAIN,
 \ src/habu/main.f RUN). Its canonical path, against the working directory no
 \ Habu word changes, is derived on first need, as ENGINE$ is. Its directory is
-\ the top-level root (CURRENT$) and PROGRAM? counts it as loaded, so no stream
-\ or registry row names it: a row appended on first use would vanish under the
-\ rollback of a failed require or a discovery pass. With the cell clear nothing
-\ is derived. Deriving writes only PROGRAM-BUF, so the caller's scratch survives.
+\ the top-level root (CURRENT$) and PROGRAM? counts it as loaded: RUN-PROGRAM
+\ gives it a frame but no registry row names it, since a row appended on first
+\ use would vanish under the rollback of a failed require or a discovery pass.
+\ With the cell clear nothing is derived. Deriving writes only PROGRAM-BUF, so
+\ the caller's scratch survives.
 PROGRAM-FILE-CELL RESERVED-PTR-U8-CELL PROGRAM-ARG
 create PROGRAM-BUF PATH-BYTES allot
 variable PROGRAM-U
@@ -1893,12 +1894,14 @@ public
 \ inside LOAD-UNIT's whole-program boundary, so values can cross fragments.
 : RUN-EVAL-RANGE ( ptr u8 n n n -- ) [: EVAL-STAGED ;] CLOSE-RANGE ;
 
-\ The process's root stream runs open, as the engine's own loop runs it: the
-\ program may leave cells on the stack and the process still exits 0. The
-\ files it loads keep their own closed units (LOAD-UNIT). Its text is no file's,
-\ so a refusal in it names none: run while a file is open (a harness calling
-\ src/habu/main.f), it counts itself on that file's frame, which then publishes
-\ no location until the program returns or throws.
+\ The process's root stream (stdin, or the `--load` or `--build` stream
+\ src/habu/main.f builds) runs open, as the engine's own loop runs it: it may
+\ leave cells on the stack and the process still exits 0. The files it loads
+\ keep their own closed units (LOAD-UNIT); the program file of `hb prog.f` runs
+\ in a frame of its own (RUN-PROGRAM). Its text is no file's, so a refusal in it
+\ names none: run while a file is open (a harness calling src/habu/main.f), it
+\ counts itself on that file's frame, which then publishes no location until
+\ the stream returns or throws.
 : ROOT-RUNS+ ( n -- ) {: k:n :}
    TOP@ 0= if exit then
    TOP@ {: frame:ptr :}
@@ -2070,6 +2073,25 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    RESOLVED-ROOT$ [: LOAD-CURRENT ;] WITH ;
 
 public
+
+\ The program file `hb prog.f` runs (src/habu/main.f RUN), as argv names it, is
+\ a loaded file without a registry row (PROGRAM? counts it as loaded): a frame
+\ holds its canonical path, root and bytes, `#!` made a comment, so
+\ ACTIVE-SOURCE reads it and a refusal names it. It runs open, as RUN-ROOT runs
+\ its stream: the stack it leaves is kept, with no unit and no residue check.
+\ No WITH scope opens, so CD stays legal in its text (TOP-ONLY) and the frame's
+\ root is CURRENT$, at the top level the program's directory (PROGRAM-INIT).
+\ A path that does not resolve is refused by name before the frame opens.
+: RUN-PROGRAM ( ptr u8 n -- )
+   CANONICAL {: path:ptr pathu:n exists:bool :}
+   path pathu INCLUDE-PATH0 drop
+   exists 0= if INCLUDE-OPEN-DIE then
+   PUSH
+   [: LOAD-BYTES TOP@ RANGE-OWNER ! 0 TOP@ FR-SIZE + CELL-VIEW @ RUN-RANGE ;]
+   catch {: rc:n :}
+   INCLUDE-CLOSE
+   POP
+   rc 0= 0= if rc throw then ;
 
 \ A completed source range leaves definitions live even if a unit callback
 \ later throws. A require keeps its row in that case.

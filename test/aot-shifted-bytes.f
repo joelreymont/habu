@@ -18,7 +18,8 @@
 \ Built through tools/hb-build.f, the file's `SOURCE-ROOT:` words are the
 \ build's copy of src/core/include.f and the loads are hb's; both reach the one
 \ record the process names in SRCLOC:SOURCE-CELL, so the build prints the lines
-\ `hb --load` prints.
+\ `hb --load` prints. Run as `hb probe.f`, the program file is a loaded file to
+\ the loader (SOURCE-ROOT:RUN-PROGRAM) and prints them too.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 
@@ -125,6 +126,15 @@ variable LOADED-U
    u LOADED-CAP > if s" the probe's --load output fits its buffer" GE-FAIL then
    a LOADED u BYTE-COPY  u LOADED-U ! ;
 
+\ The program file of `hb probe.f`: its frame names it as --load's does.
+: PROBE-PLAIN ( -- )
+   GE-HB-RESET
+   ENGINE-CANDIDATE:PATH$ GE-ARGV+
+   PROBE$ GE-ARG+
+   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" hb probe.f, a program file whose loads read the loader" GE-EXPECT-OK
+   LOADED$ s" the loader's lines under hb probe.f, as under hb --load" GE-EXPECT-OUT-HAS ;
+
 \ The build caches objects under its out root, and a cached probe runs none of
 \ its top-level code, so each run builds under its own.
 : PROBE-BUILD ( -- )
@@ -146,8 +156,8 @@ variable LOADED-U
    s" out" PROBE-OUT GT-PATH PROBE-OUT-U !
    s" probe" PROBE-IMAGE GT-PATH PROBE-IMAGE-U !
    BUILD RUN-IMAGE BUILD-RECORD
-   PROBE-WRITE PROBE-LOAD PROBE-BUILD
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, and a build whose loads read the loader as hb --load does" type cr ;
+   PROBE-WRITE PROBE-LOAD PROBE-PLAIN PROBE-BUILD
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, and a program file and a build whose loads read the loader as hb --load does" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;
