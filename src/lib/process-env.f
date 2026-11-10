@@ -2,8 +2,9 @@
 \ environment and the inherited defaults are tables of row addresses plus row
 \ bytes in chunks of max(row size, $1000), grown without a ceiling.
 \ STORAGE CLASS. PROCESS-WIDE: both tables are one set for the image, held by
-\ the task preparing a spawn until the spawn resets them; an owned CMD run reads
-\ only the defaults.
+\ the task preparing a spawn until the spawn resets them; a reset keeps the
+\ storage. It is scratch, so a build leaves it out. An owned CMD run reads only
+\ the defaults.
 
 \ A row's bytes never move once added: process-command.f INHERIT-Z holds them
 \ from PREPARE to spawn.
@@ -20,70 +21,46 @@ require src/lib/adt/option.f
 61 constant PROC-ENV-EQUAL
 58 constant PROC-PATH-SEP
 47 constant PROC-PATH-SLASH
-variable PROC-ENV-N
+SCRATCH-VARIABLE PROC-ENV-N
 variable PROC-ENV-I
 variable PROC-PATH-I
-variable PROC-ENV-DEF-N
+SCRATCH-VARIABLE PROC-ENV-DEF-N
 
 package PROC-ENV-ROWS
 private
 
 DYNAMIC-BUFFER TABLE ptr u8
 DYNAMIC-BUFFER CHUNKS SPAN:span<u8>
-PROC-CHUNKS:CONTROL-CELLS TYPED-BUFFER CONTROL n
+create CONTROL PROC-CHUNKS:CONTROL-CELLS cells SCRATCH-ALLOT
 DYNAMIC-BUFFER DEF-TABLE ptr u8
 DYNAMIC-BUFFER DEF-CHUNKS SPAN:span<u8>
-PROC-CHUNKS:CONTROL-CELLS TYPED-BUFFER DEF-CONTROL n
-TYPED-VARIABLE REGISTERED bool
-false REGISTERED !
-
-: RELEASE ( -- )
-   0 CONTROL [: drop CHUNKS ;] PROC-CHUNKS:FREE
-   CHUNKS-RELEASE
-   TABLE-RELEASE
-   0 DEF-CONTROL [: drop DEF-CHUNKS ;] PROC-CHUNKS:FREE
-   DEF-CHUNKS-RELEASE
-   DEF-TABLE-RELEASE
-   0 >COUNT PROC-ENV-N !
-   0 >COUNT PROC-ENV-DEF-N !
-   false REGISTERED ! ;
-
-\ Register before allocation: refusal cannot leave an untracked mapping.
-\ IMAGE-LIFECYCLE releases the storage; a reset keeps it for the next spawn.
-: REGISTER ( -- )
-   REGISTERED @ if exit then
-   [: RELEASE ;] IMAGE-LIFECYCLE:REGISTER
-   true REGISTERED ! ;
+create DEF-CONTROL PROC-CHUNKS:CONTROL-CELLS cells SCRATCH-ALLOT
 
 public
 
 : SLOT ( idx -- ptr ptr u8 )
    {: idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
-   REGISTER
    idx IDX>N 1+ TABLE-RESERVE
    idx IDX>N TABLE ;
 
 : DEF-SLOT ( idx -- ptr ptr u8 )
    {: idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
-   REGISTER
    idx IDX>N 1+ DEF-TABLE-RESERVE
    idx IDX>N DEF-TABLE ;
 
 : BYTES ( n -- ptr u8 )
-   REGISTER
-   0 CONTROL [: drop CHUNKS ;] [: drop CHUNKS-RESERVE ;] PROC-CHUNKS:ROOM ;
+   CONTROL [: drop CHUNKS ;] [: drop CHUNKS-RESERVE ;] PROC-CHUNKS:ROOM ;
 
 : DEF-BYTES ( n -- ptr u8 )
-   REGISTER
-   0 DEF-CONTROL [: drop DEF-CHUNKS ;] [: drop DEF-CHUNKS-RESERVE ;] PROC-CHUNKS:ROOM ;
+   DEF-CONTROL [: drop DEF-CHUNKS ;] [: drop DEF-CHUNKS-RESERVE ;] PROC-CHUNKS:ROOM ;
 
 : REWIND ( -- )
-   0 CONTROL PROC-CHUNKS:REWIND ;
+   CONTROL PROC-CHUNKS:REWIND ;
 
 : DEF-REWIND ( -- )
-   0 DEF-CONTROL PROC-CHUNKS:REWIND ;
+   DEF-CONTROL PROC-CHUNKS:REWIND ;
 
 ;package
 

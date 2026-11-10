@@ -2,8 +2,8 @@
 \ kernel-reported pathname, which can be replaced after it resolves, so KEY$
 \ fstats a descriptor bound to the running image (/proc/self/exe on Linux, on
 \ macOS one whose vnode matches the main executable's mapped vnode): decimal
-\ `<ctime seconds>.<nanoseconds>-<size>`. Caches and query buffers clear before
-\ image capture through a one-shot hook that the next use caching either sets.
+\ `<ctime seconds>.<nanoseconds>-<size>`. The caches and query buffers are
+\ scratch, so a build leaves them out.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -17,22 +17,15 @@ package ENGINE-ID
 PATH-CAP 1 + constant EID-PATH-CAP
 64 constant EID-KEY-LEN
 
-\ The caches belong to the process that filled them, so their cells are scratch: a link
-\ writes them zero. A buffer takes whole cells, so its marks stay inside it.
-EID-PATH-CAP 1 cells 1- + 1 cells / cells constant EID-PATH-ROOM
-
-: SCRATCH-BYTES ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   u 0 ?do a i + scratch-cell-mark 1 cells +loop ;
-
-create EID-PATH EID-PATH-ROOM allot   EID-PATH EID-PATH-ROOM SCRATCH-BYTES
-variable EID-PATH-U                   EID-PATH-U scratch-cell-mark
-variable EID-PATH-DONE                EID-PATH-DONE scratch-cell-mark
-create EID-KEY EID-KEY-LEN allot      EID-KEY EID-KEY-LEN SCRATCH-BYTES
-variable EID-KEY-U                    EID-KEY-U scratch-cell-mark
-variable EID-KEY-DONE                 EID-KEY-DONE scratch-cell-mark
-variable EID-CLEANUP-LIVE   EID-CLEANUP-LIVE scratch-cell-mark
-create EID-PATHZ EID-PATH-ROOM allot  EID-PATHZ EID-PATH-ROOM SCRATCH-BYTES
+\ The caches belong to the process that filled them; a zero DONE flag means
+\ nothing is cached yet.
+EID-PATH-CAP SCRATCH-BUFFER: EID-PATH
+SCRATCH-VARIABLE EID-PATH-U
+SCRATCH-VARIABLE EID-PATH-DONE
+EID-KEY-LEN SCRATCH-BUFFER: EID-KEY
+SCRATCH-VARIABLE EID-KEY-U
+SCRATCH-VARIABLE EID-KEY-DONE
+EID-PATH-CAP SCRATCH-BUFFER: EID-PATHZ
 
 \ Linux follows the process's executable mapping, even after its old pathname
 \ has been renamed and another file has appeared there.
@@ -54,8 +47,8 @@ create EID-PROC-EXE
 104 constant EID-REGION-INO
 24 constant EID-FD-DEV
 32 constant EID-FD-INO
-create EID-MAPPED EID-REGION-BYTES allot   EID-MAPPED EID-REGION-BYTES SCRATCH-BYTES
-create EID-OPENED EID-FD-BYTES allot       EID-OPENED EID-FD-BYTES SCRATCH-BYTES
+EID-REGION-BYTES SCRATCH-BUFFER: EID-MAPPED
+EID-FD-BYTES SCRATCH-BUFFER: EID-OPENED
 
 PROCESS-SYMBOLS
 FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- n )
@@ -68,32 +61,6 @@ FUNCTION: MAPPED-INFO proc_pidinfo ( n n n ptr u8 n -- i32 )
 FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
    3 4 WRITES-ARG
 ;FUNCTION
-
-: CLEAR-SPAN ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   u 0 ?do 0 a i + c! loop ;
-
-\ Capture clears each buffer whole. On macOS KEY$ leaves the pathname in
-\ EID-PATHZ and in the mapped-region answer, as well as in EID-PATH, and
-\ proc_pidpath can leave a right-aligned copy beyond the length it reports. The
-\ key and the descriptor answer go too.
-: CLEAR-CACHE ( -- )
-   EID-PATH EID-PATH-CAP CLEAR-SPAN
-   EID-KEY EID-KEY-LEN CLEAR-SPAN
-   EID-PATHZ EID-PATH-CAP CLEAR-SPAN
-   EID-MAPPED EID-REGION-BYTES CLEAR-SPAN
-   EID-OPENED EID-FD-BYTES CLEAR-SPAN
-   0 EID-PATH-U !
-   0 EID-PATH-DONE !
-   0 EID-KEY-U !
-   0 EID-KEY-DONE !
-   0 EID-CLEANUP-LIVE ! ;
-
-: REGISTER-CLEANUP ( -- )
-   EID-CLEANUP-LIVE @ 0= if
-      [: CLEAR-CACHE ;] IMAGE-LIFECYCLE:REGISTER
-      -1 EID-CLEANUP-LIVE !
-   then ;
 
 \ The kernel's byte count for the engine's pathname in EID-PATH; zero or
 \ negative when it refuses.
@@ -111,7 +78,6 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
 \ so. Only a reported, whole pathname is cached.
 : CACHED-PATH ( -- ptr u8 n )
    EID-PATH-DONE @ 0= if
-      REGISTER-CLEANUP
       ENGINE-SELF-PATH dup 0 <= over EID-PATH-CAP >= or if
          drop E-ENGINE-PATH throw
       then
@@ -169,7 +135,6 @@ public
 
 : KEY$ ( -- ptr u8 n )
    EID-KEY-DONE @ 0= if
-      REGISTER-CLEANUP
       OPEN-RUNNING {: fd:n :}
       fd 0 < if E-ENGINE-KEY throw then
       fd [: STAMP-RUNNING ;] catch {: code:n :} drop

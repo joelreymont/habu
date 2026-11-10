@@ -2,17 +2,17 @@
 \ "SPAWN". These spawns pass the child no variables: to inherit, prepare an
 \ environment (src/lib/process-env.f) and spawn through its *-ARGV-ENV-* words.
 \ STORAGE CLASS. PROCESS-WIDE: one argv table and row bytes for the image, held by
-\ the task preparing a spawn until the spawn resets them; a reset keeps the storage,
-\ an image save releases it. An owned CMD run (process-command.f) touches none of it.
+\ the task preparing a spawn until the spawn resets them; a reset keeps the storage.
+\ It is scratch, so a build leaves it out. An owned CMD run (process-command.f)
+\ touches none of it.
 
 s" src/lib/error.f" required
 s" src/lib/memory.f" required
 s" src/lib/process.f" required
 require src/lib/process-chunks.f
 require src/lib/string.f
-require src/lib/image-lifecycle.f
 
-variable PROC-ARGV-N
+SCRATCH-VARIABLE PROC-ARGV-N
 
 \ The argv table holds the address of every zero-terminated argument, so it is
 \ declared pointer storage: a pointer stored in or fetched from an undeclared
@@ -22,42 +22,23 @@ private
 
 DYNAMIC-BUFFER TABLE ptr u8
 DYNAMIC-BUFFER CHUNKS SPAN:span<u8>
-PROC-CHUNKS:CONTROL-CELLS TYPED-BUFFER CONTROL n
-TYPED-VARIABLE REGISTERED bool
-false REGISTERED !
-
-: RELEASE ( -- )
-   0 CONTROL [: drop CHUNKS ;] PROC-CHUNKS:FREE
-   CHUNKS-RELEASE
-   TABLE-RELEASE
-   0 >COUNT PROC-ARGV-N !
-   false REGISTERED ! ;
-
-
-\ Register before allocation: refusal cannot leave an untracked mapping.
-\ A failed allocation leaves a harmless hook, cleared by the next capture.
-: REGISTER ( -- )
-   REGISTERED @ if exit then
-   [: RELEASE ;] IMAGE-LIFECYCLE:REGISTER
-   true REGISTERED ! ;
+create CONTROL PROC-CHUNKS:CONTROL-CELLS cells SCRATCH-ALLOT
 
 public
 
 : SLOT ( idx -- ptr ptr u8 )
    {: idx :}
    idx IDX>N 0 < if E-PROC-OUTPUT throw then
-   REGISTER
    idx IDX>N 1+ TABLE-RESERVE
    idx IDX>N TABLE ;
 
 
 : BYTES ( n -- ptr u8 )
-   REGISTER
-   0 CONTROL [: drop CHUNKS ;] [: drop CHUNKS-RESERVE ;] PROC-CHUNKS:ROOM ;
+   CONTROL [: drop CHUNKS ;] [: drop CHUNKS-RESERVE ;] PROC-CHUNKS:ROOM ;
 
 
 : REWIND ( -- )
-   0 CONTROL PROC-CHUNKS:REWIND ;
+   CONTROL PROC-CHUNKS:REWIND ;
 
 ;package
 
