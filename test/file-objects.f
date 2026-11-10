@@ -140,6 +140,8 @@
 \ I, I2 and I3 (SAME-CASE), in L's out root after U3, build main.f with g.f's DEF making f.f's first
 \ part's private Y and X, making nothing, and making them again, which shifts the counts of f.f's
 \ later Y and X; each program prints the X and Y that u.f, v.f and f.f's last parts reach.
+\ WASM (CROSS-CASE) builds bare-main.f with --target wasm in the fixture out root and exits 0: a
+\ cross build's words have no emission (linker.f WORD-RECORD+).
 
 require src/lib/error.f
 require src/lib/string.f
@@ -614,21 +616,26 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" A's root holds eight objects" LABEL  A$ OBJECTS FILES-B T=
    SAME-AS-B ;
 
-\ Builds a fixture to L's prog in the shared fixture out root by tools/hb-build.f, since log.f
-\ requires and creates through does> (build.f's files may not); --repl when the flag is true. Its
-\ TMPDIR is L's directory: a build SEALED-FAIL refuses runs no exit hook (outer.f FAIL-CLOSED), so
-\ its scratch goes with L.
-: BUILD-RC ( CMD:command ptr u8 n bool -- CMD:command n )
-   {: src:ptr src-u:n repl:bool :}
-   CMD:RESET
-   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
-   s" --" CMD:ARG+
-   repl if s" --repl" CMD:ARG+ then
-   src src-u CMD:ARG+
+: TOOL-ARGS ( CMD:command -- CMD:command )
+   CMD:RESET  s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+ ;
+
+\ After TOOL-ARGS and its options, builds the fixture to L's prog in the shared fixture out root.
+\ Its TMPDIR is L's directory: a build SEALED-FAIL refuses runs no exit hook (outer.f
+\ FAIL-CLOSED), so its scratch goes with L.
+: TOOL-RUN ( CMD:command ptr u8 n -- CMD:command n )
+   CMD:ARG+
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
    s" HABU_OUT" F$ CMD:ENV+  s" TMPDIR" L$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N ;
+
+\ Builds a fixture by tools/hb-build.f (TOOL-RUN), since log.f requires and creates through does>
+\ (build.f's files may not); --repl when the flag is true.
+: BUILD-RC ( CMD:command ptr u8 n bool -- CMD:command n )
+   {: src:ptr src-u:n repl:bool :}
+   TOOL-ARGS
+   repl if s" --repl" CMD:ARG+ then
+   src src-u TOOL-RUN ;
 
 : TOOL-BUILD ( CMD:command ptr u8 n bool -- CMD:command bool )
    BUILD-RC {: rc:n :}
@@ -1049,12 +1056,21 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    true WRITE-G
    s" I3" WHICH!  s" main.f" s" prog-s" NEST-BUILD 0= if exit then  SAME-RUN ;
 
+\ bare-main.f built for Wasm in a fresh hb: the boundary under test is the build's target, which
+\ the process fixes. The module never runs.
+: CROSS-CASE ( CMD:command -- CMD:command )
+   s" WASM" WHICH!
+   TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
+   s" test/fixtures/file-objects/bare-main.f" TOOL-RUN {: rc:n :}
+   rc 0<> if rc SHOW then
+   s" the build exits 0" LABEL  rc 0 T= ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE
-      NEST-CASE SAME-CASE ;]
+      NEST-CASE SAME-CASE CROSS-CASE ;]
    CMD:WITH-COMMAND ;
 
 
