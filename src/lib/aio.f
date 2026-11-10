@@ -195,7 +195,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.TIMED-OUT        \ the link fired, so -ECANCELED means timed out
    CELL +FIELD REC.CANCELING        \ a cancel was submitted; a record gets one
    CELL +FIELD REC.HOLD             \ REC.BUF and REC.BUF-LEN are this record's
-   CELL +FIELD REC.GEN              \ the handle's other half, bumped by REC-RESET
+   CELL +FIELD REC.GEN              \ the handle's other half, set by REC-RESET and REC-GROW
    CELL +FIELD REC.OWNER            \ the submitting task, as TASK:WAKE takes it
    \ The allocation a transfer holds: the pointer MEM:ALLOC-BYTES answered and
    \ its extent. REC.HOLD says the pair is this record's to give back. It is
@@ -257,6 +257,9 @@ SCRATCH-VARIABLE REC-LIVE           \ records claimed and not yet freed: URING-C
 
 variable GROUP-N
 variable RING-FD
+\ Carried while the records are scratch: at least every generation a ticket
+\ holds. Read with atomic@, written with atomic! under AIO-LOCK.
+variable GEN-SERIAL
 variable RING-LIVE                  \ the loop is running
 variable RING-STOP                  \ the loop's stop flag
 variable RING-READY                 \ the facility has been initialized once
@@ -465,36 +468,21 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    repeat
    G-AT ;
 
-\ A fresh mapping is zero: every record free. The chunk is linked once its
-\ records are whole, and REC-GROWN grows after the link, so a reader that sees
-\ the capacity finds the chunk.
+\ A fresh mapping is zero, every record free; each record's generation is above
+\ GEN-SERIAL. The chunk is linked before REC-GROWN counts it.
 : REC-GROW ( -- )
    REC-CAP RECS-FIRST + {: len:n :}
    len CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
    len 0 ?do
       -1 c i CHUNK-REC REC.PEER !
-      0 c i CHUNK-REC REC.GEN !
+      GEN-SERIAL atomic@ 1 + c i CHUNK-REC REC.GEN !
    loop
    c CHUNK-LAST AIO-N>PTR atomic!
    REC-GROWN @ len + REC-GROWN atomic! ;
 
 \ ---- handles -----------------------------------------------------------------
-\ A ticket and an xfer name the record they were minted over and the
-\ generation that record carried then. REC-RESET bumps the generation, so a
-\ handle kept past its record's reuse names a generation no record has and
-\ OWNED-CHECK refuses it - which the index and the owner alone cannot do,
-\ because a record reclaimed by the same task has both of them right.
-\ The handle describes itself, so the table can grow without a bound: the top
-\ HANDLE-TOP..63 bits hold w, the bit width of the index; the low w bits the
-\ index; the bits between the generation modulo 2^(HANDLE-TOP-w). A record
-\ is at least 64 bytes, so no address space holds an index that leaves fewer
-\ than a few dozen generation bits, and a generation only has to differ from
-\ the ones live handles still carry.
-\ A mint reads the record's generation after the facility is released, which is
-\ safe: between the stage and the mint the record is submitted and this task's,
-\ and REC-FREE reaches a record only as its owner's TAKE, as the last completion
-\ of a forgotten one, as a link record, as a staging failure that mints nothing,
-\ or as START clearing the whole table.
+\ A handle's bits HANDLE-TOP..63 hold w, the index's width; the low w bits hold
+\ the index, the bits between its record's generation modulo 2^(HANDLE-TOP-w).
 58 constant HANDLE-TOP
 
 : IDX-WIDTH ( n -- n )
@@ -518,16 +506,14 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : AIO-NULL-BYTES ( -- ptr u8 )
    NULL$ drop ;
 
-\ Only the buffer pointer is cleared, because REC.HOLD is what says the pair is
-\ readable. A record whose HOLD is zero never has its extent read.
-\ The generation is bumped here and nowhere else, before the state goes free, so
-\ every handle over this record is stale from the moment somebody can claim it.
+\ Only REC.BUF is cleared: REC.HOLD says whether the pair is readable. The
+\ generation passes its own and GEN-SERIAL before the state goes free.
 : REC-RESET ( n -- ) {: idx:n :}
    idx REC {: r:ptr :}
    0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT ! 0 r REC.CANCELING !
    0 r REC.PENDING ! -1 r REC.PEER ! KIND-POLL r REC.KIND !
    0 r REC.HOLD !
-   r REC.GEN @ 1 + r REC.GEN !
+   r REC.GEN @ GEN-SERIAL atomic@ max 1 + r REC.GEN !
    AIO-NULL-BYTES idx REC-BUF !
    AIO-NULL idx REC-OWNER !
    STATE-FREE r REC.STATE atomic! ;
@@ -567,16 +553,15 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
       rot CHUNK-NEXT dup 0= if drop 2drop -1 exit then -rot
    again ;
 
-\ A free record, grown into when every one is taken. Every claim runs under
-\ AIO-LOCK, which is what lets REC-GROW append without a race. Answers a code
-\ and the index: 0 and the record, or the code the growth threw and -1, which a
-\ stage answers because it holds the facility.
+\ A free record, grown into when all are taken; every claim holds AIO-LOCK,
+\ which serializes REC-GROW and GEN-SERIAL. Answers 0 and it, or a code and -1.
 : REC-CLAIM ( -- n n )
    REC-FIND dup 0 < if
       drop [: REC-GROW ;] catch dup 0<> if -1 exit then drop
       REC-FIND
    then
    REC-LIVE @ 1 + REC-LIVE atomic!
+   dup REC REC.GEN @ GEN-SERIAL atomic@ max GEN-SERIAL atomic!
    0 swap ;
 
 : REC-ARM ( n n n -- ) {: idx:n kind:n owed:n :}
@@ -1096,6 +1081,8 @@ INSTALL-HOST
    ENSURE-SCRUB
    AIO-LOCK TASK:GET ;
 
+\ Mints with AIO-LOCK released: until the handle exists, no REC-FREE caller
+\ reaches a record whose stage answered 0.
 : SUBMIT-LEAVE ( n n -- n ) {: rc:n idx:n :}
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then

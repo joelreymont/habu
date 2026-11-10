@@ -101,9 +101,10 @@
 \ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
 \ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
 \ level leaves a task running, into one out root, and each fails naming that file.
-\ Q builds kept-main.f, whose first file's top level leaves an archive open and keeps its handle;
-\ its program opens another and the kept handle is refused. N builds kept-genio.f with --repl, since
-\ genio-core.f calls the REPL's KEY1, and its program refuses a device handle kept the same way.
+\ Q builds kept-main.f, whose files' top levels leave an archive open and await an aio ticket, each
+\ keeping its handle; its program opens another of each and the kept handle is refused. N builds
+\ kept-genio.f with --repl, since genio-core.f calls the REPL's KEY1, and its program refuses a device
+\ handle kept the same way.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -653,7 +654,7 @@ variable KEPT-NS
    CMD:RESET
    L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
-   s" a handle a file kept is refused in the program" LABEL  CMD:OUT$ s\" zip refused\n" T$= ;
+   s" a handle a file kept is refused in the program" LABEL  CMD:OUT$ s\" zip refused\naio refused\n" T$= ;
 
 \ kept-genio.f's program, run in its own process with empty stdin, which ends its REPL.
 : GENIO-RUN ( CMD:command -- CMD:command )
