@@ -30,11 +30,6 @@ TYPED-VARIABLE IMAGE FONT:image
       svg i + 5 s" <path" STR= if 1+ then
    loop ;
 
-: WRITE-IMAGE ( FONT:image ptr u8 n -- )
-   {: image:FONT:image path:ptr len:n :}
-   image FONT:SVG$ {: svg:ptr bytes:n :}
-   path len svg bytes FS:WRITE-ALL ;
-
 : DRAW-CHECK ( FONT:font -- )
    {: face:FONT:font :}
    face s\" A\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81" 1000 FONT:RENDER
@@ -50,7 +45,6 @@ TYPED-VARIABLE IMAGE FONT:image
    y h f+ 0.0 f= T-ASSERT
    accents FONT:SVG$ s" viewBox='" CONTAINS? 0= T-ASSERT
    accents FONT:SVG$ s\" viewBox=\"-2 -1582 671 1582\"" CONTAINS? TTRUE
-   accents s" build/font-accents.svg" WRITE-IMAGE
    accents FONT:FREE
 
    \ HarfBuzz's ink box ends at -9; its emitted `o` path reaches -9.0146.
@@ -60,7 +54,6 @@ TYPED-VARIABLE IMAGE FONT:image
 
    face s\" \xD0\x94" 400 FONT:RENDER {: greek:FONT:image :}
    greek FONT:SVG$ s" <path" CONTAINS? TTRUE
-   greek s" build/font-greek.svg" WRITE-IMAGE
    greek FONT:FREE
 
    face s"  " 1000 FONT:RENDER {: spaces:FONT:image :}
@@ -82,7 +75,6 @@ TYPED-VARIABLE IMAGE FONT:image
    data size MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face s" fi" 1000 FONT:RENDER {: ligature:FONT:image :}
    ligature FONT:SVG$ PATH-COUNT 1 T=
-   ligature s" build/font-ligature.svg" WRITE-IMAGE
    ligature FONT:FREE face FONT:CLOSE ;
 
 : CFF-BOUNDS-CHECK ( -- )
