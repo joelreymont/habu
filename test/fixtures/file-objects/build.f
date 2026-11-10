@@ -524,7 +524,7 @@ PATH-CAP BUFFER: FOURTH-BUF
 \ ---- objects the link refuses or links wrong ----
 \ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
 8192 constant CRAFT-CAP
-144 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
+160 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
 PATH-CAP BUFFER: CRAFT-BUF
 PATH-CAP BUFFER: CRAFT-PATH   variable CRAFT-PATH-U
 CRAFT-CAP BUFFER: CRAFT-FIRST   variable CRAFT-U

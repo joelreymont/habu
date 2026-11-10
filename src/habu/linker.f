@@ -175,6 +175,10 @@ create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
 create BUILT BUF:HDR-BYTES allot
 create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
+\ The object's WORDS rows, one per earlier word it refers to: its FILES row k from 1, its
+\ number in that piece and its time (WORD-TIMES); WORD-RECS holds each row's record index.
+create WORD-ROWS BUF:HDR-BYTES allot
+create WORD-RECS BUF:HDR-BYTES allot
 create REQUESTS BUF:HDR-BYTES allot  \ the object's REQUESTS rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create TIMES BUF:HDR-BYTES allot     \ the object's TIMES, a block per piece compiled so far
@@ -274,7 +278,14 @@ DYNAMIC-BUFFER WORD-SPANS n
 DYNAMIC-BUFFER EM-SPANS n
 variable WORDS-N                     \ the piece's words
 variable TOP-ROW                     \ the highest FILES row REF-FILE answered since it was zeroed
-DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0 for none (BOUND-TIME)
+DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0 for none (REC-TIME)
+\ Record r's mark: the serial of the object that last gave it a WORDS row (WORD-ROW+), 0 for none.
+\ Each OBJECT-OPEN takes the next of SERIALS, which only grows, so no object takes another's mark;
+\ POP-FRAME gives back the marks a nested object overwrote (RELIST).
+DYNAMIC-BUFFER LISTED-BY n
+variable SERIALS
+variable OBJECT-SERIAL
+3 8 * constant WORD-ROW-BYTES
 DYNAMIC-BUFFER RETIRED n             \ the piece's retired records (RETIRED!): index, then wordlist cell
 variable RETIRED-N                   \ its records
 DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-copy.f), zero-padded cells
@@ -322,10 +333,12 @@ variable USES-AT                    \ the offset in OBJECT of USES' count, of th
 TYPED-VARIABLE UNLINKABLE bool
 
 \ The magic, the key, the last piece's time, then per section INPUT FILES REQUESTS NAMES REACHED PATHS
-\ TIMES PIECES an offset and a length (0 0 for an empty FILES to REACHED); then the sections, in order.
-8 KEY-BYTES + 8 + 8 2 * 8 * + constant HEADER-BYTES
-\ TIMES precedes PIECES, which test/file-objects.f compares across out roots.
+\ WORDS TIMES PIECES an offset and a length (0 0 for an empty FILES to REACHED or WORDS); then the
+\ sections, in order.
+8 KEY-BYTES + 8 + 9 2 * 8 * + constant HEADER-BYTES
+\ WORDS and TIMES, which hold times, precede PIECES, which test/file-objects.f compares across out roots.
 HEADER-BYTES 32 - constant TIMES-FIELD      \ the header's TIMES pair
+HEADER-BYTES 16 - constant PIECES-FIELD     \ the header's last pair: PIECES' offset, then its length
 \ A word in TIMES, WORD-CELLS cells: its time, its entry, emission and text spans, the time of the
 \ record it binds (0 for none), then the bits of the rows that name it from outside (SPAN-CELLS).
 9 constant WORD-CELLS
@@ -403,7 +416,7 @@ variable PENDING-STORERS-N           \ its pairs
 : PENDING-RECS-CLEAR ( -- ) 0 PENDING-RECS-N !  0 PENDING-STORERS-N !  64 PENDING-SLOTS-CLEAR ;
 
 : DISPOSE-OBJECTS ( -- )
-   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  TIMES BUF:DISPOSE
+   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  TIMES BUF:DISPOSE
    WALKED-RELEASE  WALK-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  USED-RELEASE  USES-RELEASE  BUILT-USES-RELEASE
@@ -411,7 +424,7 @@ variable PENDING-STORERS-N           \ its pairs
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  REQ-PATH BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-ROWS BUF:DISPOSE
-   SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE
+   SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE
    OLD-NAMES-RELEASE  NAMES-RELEASE
    PENDING-RECS-RELEASE  PENDING-FIRST-RELEASE  PENDING-STORERS-RELEASE  PENDING-OWN-RELEASE  PENDING-SLOTS-RELEASE  PENDING-HITS-RELEASE ;
@@ -421,6 +434,8 @@ variable PENDING-STORERS-N           \ its pairs
    LOADS 256 BUF:N>BLEN BUF:INIT
    BUILT 256 BUF:N>BLEN BUF:INIT
    REFS 256 BUF:N>BLEN BUF:INIT
+   WORD-ROWS 256 BUF:N>BLEN BUF:INIT
+   WORD-RECS 256 BUF:N>BLEN BUF:INIT
    REQUESTS 256 BUF:N>BLEN BUF:INIT
    PIECES 256 BUF:N>BLEN BUF:INIT
    TIMES 256 BUF:N>BLEN BUF:INIT
@@ -639,15 +654,33 @@ variable PENDING-STORERS-N           \ its pairs
    n 2 + USED-RESERVE  row 1 +  n 1 + USED !
    n 1 + TOPPED ;
 
-\ A record reference: the file, 0 for this one, then the index in that file.
+\ Record r's time in WORD-TIMES, 0 for none.
+: REC-TIME ( n -- n )
+   {: r:n :}
+   r 1 + WORD-TIMES-RESERVE  r WORD-TIMES @ ;
+
+\ The object's WORDS row for record idx of FILES row k's piece, whose first record is first,
+\ unless the object already has one for the record (LISTED-BY).
+: WORD-ROW+ ( n n n -- )
+   {: k:n idx:n first:n :}
+   idx 1 + LISTED-BY-RESERVE
+   idx LISTED-BY @ OBJECT-SERIAL @ = if exit then
+   OBJECT-SERIAL @ idx LISTED-BY !
+   k WORD-ROWS U64+  idx first - WORD-ROWS U64+  idx REC-TIME WORD-ROWS U64+
+   idx WORD-RECS U64+ ;
+
+\ A record reference: the file, 0 for this one, then the index in that file; an earlier file's
+\ record also gets its WORDS row.
 : REF+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ >= if
       0 PIECES U64+  idx FILE-REC @ - PIECES U64+  exit
    then
    idx BUILT-ROW {: row:n :}
-   row REF-FILE PIECES U64+
-   idx  row BUILT-AT BUILT-FIRST + LE:U64@ -  PIECES U64+ ;
+   row REF-FILE {: k:n :}
+   row BUILT-AT BUILT-FIRST + LE:U64@ {: first:n :}
+   k PIECES U64+  idx first - PIECES U64+
+   k idx first WORD-ROW+ ;
 
 \ ---- dependencies by name -------------------------------------------------------
 \ A file depends on the files its object references and on every earlier piece that defines, or
@@ -1954,10 +1987,12 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    USES+
    req PIECES U64+ ;
 
-\ As the file's compile starts: no FILES, REQUESTS, RAN-ROWS, TIMES or piece yet, and PIECES' piece
-\ count 0 until WRITE-OBJECT.
+\ As the file's compile starts: no FILES, WORDS, REQUESTS, RAN-ROWS, TIMES or piece yet, a new
+\ serial, and PIECES' piece count 0 until WRITE-OBJECT.
 : OBJECT-OPEN ( -- )
-   REFS BUF:CLEAR  REQUESTS BUF:CLEAR  PIECES BUF:CLEAR  RAN-ROWS BUF:CLEAR  TIMES BUF:CLEAR  0 REQ-N !
+   REFS BUF:CLEAR  WORD-ROWS BUF:CLEAR  WORD-RECS BUF:CLEAR  REQUESTS BUF:CLEAR  PIECES BUF:CLEAR
+   RAN-ROWS BUF:CLEAR  TIMES BUF:CLEAR  0 REQ-N !
+   1 SERIALS +!  SERIALS @ OBJECT-SERIAL !
    0 PIECES U64+ ;
 
 \ OBJECT as REFS then PIECES, FACTS-AT moved into it, as a request ends a piece.
@@ -1987,7 +2022,8 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 \ never links and keeps its times.
 : WRITE-OBJECT ( n -- )
    {: t:n :}
-   \ FILES ends with the named files (NAMED+), then the run words' pieces REACHED lists (RAN-FILES+).
+   \ FILES ends with the named files (NAMED+), then the run words' pieces REACHED lists (RAN-FILES+),
+   \ rows no WORDS row names: WORDS lists the words the pieces refer to (REF+).
    NAMED+  RAN-FILES+  PATHS-LAY
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
@@ -1995,6 +2031,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    SPELLS BYTES$ {: nm:ptr nmu:n :}
    REACHED BYTES$ {: rch:ptr rchu:n :}
    OBJ-PATHS BYTES$ {: pth:ptr pthu:n :}
+   WORD-ROWS BYTES$ {: wds:ptr wdsu:n :}
    TIMES BYTES$ {: tms:ptr tmsu:n :}
    PIECES BYTES$ {: pieces:ptr piecesu:n :}
    HEADER-BYTES INPUT-BYTES + {: files-at:n :}
@@ -2002,7 +2039,8 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    reqs-at requ + {: names-at:n :}
    names-at nmu + {: reached-at:n :}
    reached-at rchu + {: paths-at:n :}
-   paths-at pthu + {: times-at:n :}
+   paths-at pthu + {: words-at:n :}
+   words-at wdsu + {: times-at:n :}
    times-at tmsu + {: pieces-at:n :}
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
@@ -2014,6 +2052,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    nmu 0<> if names-at else 0 then OBJECT U64+  nmu OBJECT U64+
    rchu 0<> if reached-at else 0 then OBJECT U64+  rchu OBJECT U64+
    paths-at OBJECT U64+  pthu OBJECT U64+
+   wdsu 0<> if words-at else 0 then OBJECT U64+  wdsu OBJECT U64+
    times-at OBJECT U64+  tmsu OBJECT U64+
    pieces-at OBJECT U64+  piecesu OBJECT U64+
    UNLINKABLE @ if
@@ -2026,6 +2065,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    nm nmu OBJECT SPAN+
    rch rchu OBJECT SPAN+
    pth pthu OBJECT SPAN+
+   wds wdsu OBJECT SPAN+
    tms tmsu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
    files-at KEYS-OUT
@@ -2526,8 +2566,25 @@ variable RD-END
    RD-AT @ pieces-at <> if BAD then ;
 
 
+\ WORDS' u bytes from RD-AT, a multiple of WORD-ROW-BYTES (WORD-ROW+): bad when a row's FILES row is
+\ not in FILES, or is built and lacks the word or gives it another time; a pending or absent piece's
+\ rows wait for its FILES row (ROWS-CK).
+: WORDS-CK ( n -- )
+   {: u:n :}
+   GOOD? 0= if exit then
+   u WORD-ROW-BYTES / 0 ?do
+      RD-U64 RD-U64 RD-U64 {: k:n w:n t:n :}
+      k FILE-ROW? 0= if BAD unloop exit then
+      k FILE-ROWS @ 0 >= if
+         w 0<  w k FILE-RECS >=  or if BAD unloop exit then
+         k BUILT-FIRST BUILT@ w + REC-TIME  t <> if BAD unloop exit then
+      then
+   loop ;
+
+
 \ The header and every section before PIECES as WRITE-OBJECT lays them: INPUT against INPUT-STAMP, NAMES
-\ replayed (NAMES-CK, NAMED-CK), REACHED-CK, PATHS skipped as KEYS-IN read it, TIMES-CK; then PIECE-AT.
+\ replayed (NAMES-CK, NAMED-CK), REACHED-CK, PATHS skipped as KEYS-IN read it, WORDS-CK, TIMES-CK; then
+\ PIECE-AT.
 : HEADER-CK ( -- )
    0 FILES-N !  0 REQS-N !
    OBJECT BYTES$ nip {: len:n :}
@@ -2558,7 +2615,11 @@ variable RD-END
    RD-U64 RD-U64 {: poff:n pthu:n :}
    pthu 0<  pthu len paths-at - >  or if BAD exit then
    poff  pthu 0<> if paths-at else 0 then  <> if BAD then
-   paths-at pthu + {: times-at:n :}
+   paths-at pthu + {: words-at:n :}
+   RD-U64 RD-U64 {: woff:n wordsu:n :}
+   wordsu 0<  wordsu WORD-ROW-BYTES mod 0<>  or  wordsu len words-at - >  or if BAD exit then
+   woff  wordsu 0<> if words-at else 0 then  <> if BAD then
+   words-at wordsu + {: times-at:n :}
    RD-U64 RD-U64 {: toff:n timesu:n :}
    timesu 0<  timesu len times-at - >  or if BAD exit then
    toff times-at <> if BAD then
@@ -2570,6 +2631,7 @@ variable RD-END
    nmu NAMES-CK  NAMED-CK
    rchu REACHED-CK
    pthu RD-SKIP
+   wordsu WORDS-CK
    pieces-at len TIMES-CK
    REQS-N @ 1 + RD-EQ
    RD-AT @ PIECE-AT ! ;
@@ -3047,7 +3109,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    a 8  s" HABUFOBJ" STR= 0= if false exit then
    a 8 + KEY-BYTES  FILE-KEY KEY-BYTES  STR= 0= if false exit then
    8 KEY-BYTES + 8 + {: pairs:n :}
-   pairs 16 + PRIOR-PAIR?  pairs 32 + PRIOR-PAIR? and  pairs 96 + PRIOR-PAIR? and  pairs 112 + PRIOR-PAIR? and
+   pairs 16 + PRIOR-PAIR?  pairs 32 + PRIOR-PAIR? and  TIMES-FIELD PRIOR-PAIR? and  PIECES-FIELD PRIOR-PAIR? and
    0= if false exit then
    pairs 24 + PRIOR@ FILES-ROW-BYTES mod 0= ;
 
@@ -3075,7 +3137,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    8 KEY-BYTES + 8 + {: pairs:n :}
    pairs 32 + PRIOR@ {: roff:n :}
    roff  pairs 40 + PRIOR@ + {: rend:n :}
-   roff  pairs 112 + PRIOR@ 8 +
+   roff  PIECES-FIELD PRIOR@ 8 +
    k 0 ?do
       {: at:n piece:n :}
       at rend PRIOR-ROW {: next:n ok:bool :}
@@ -3204,12 +3266,12 @@ variable KEPT-ROWS-N
 
 
 \ The time of the record word w binds (WORD-SPANS' cell 7), 0 for none; the record is an earlier
-\ one, so its time is in WORD-TIMES.
+\ one, so it has its time (REC-TIME).
 : BOUND-TIME ( n -- n )
    {: w:n :}
    w 7 WORD-SPAN @ {: b:n :}
    b 0< if 0 exit then
-   b WORD-TIMES @ ;
+   b REC-TIME ;
 
 
 \ Word w's time: the old word w's when it has one, every FILES row the word names is within
@@ -4122,9 +4184,6 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 : SCOPE-CK ( -- ) TOP-SCOPE? 0= if true UNLINKABLE ! then ;
 
 
-\ The header's last pair: PIECES' offset, then its length.
-HEADER-BYTES 16 - constant PIECES-FIELD
-
 \ After a linked request's load, whether it returned or threw: the linking file's key and object.
 : RETURNED ( -- ) POP-KEY UNPARK ;
 
@@ -4277,7 +4336,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 \ The compiling file's object so far onto FRAMES while a file it requested loads, which reuses its
 \ buffers; FRAME-TAIL bytes end each frame, so POP-FRAME finds the lengths from FRAMES' end.
-10 8 * constant FRAME-TAIL
+13 8 * constant FRAME-TAIL
 
 : SAVE+ ( ptr a -- n )
    {: buf:ptr :}
@@ -4286,12 +4345,13 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 : PUSH-FRAME ( -- )
    PIECES SAVE+  REFS SAVE+  REQUESTS SAVE+  NAMED-ROWS SAVE+  SPELLS SAVE+  RAN-ROWS SAVE+  TIMES SAVE+
-   {: p:n r:n rq:n m:n s:n ran:n tm:n :}
+   WORD-ROWS SAVE+  WORD-RECS SAVE+
+   {: p:n r:n rq:n m:n s:n ran:n tm:n wr:n wc:n :}
    INPUT-STAMP INPUT-BYTES FRAMES SPAN+
    FILE-PATH FILE-PATH-N @ FRAMES SPAN+
    p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+  s FRAMES U64+  ran FRAMES U64+
-   tm FRAMES U64+  FILE-PATH-N @ FRAMES U64+  REQ-N @ FRAMES U64+
-   UNLINKABLE @ if 1 else 0 then FRAMES U64+ ;
+   tm FRAMES U64+  wr FRAMES U64+  wc FRAMES U64+  FILE-PATH-N @ FRAMES U64+  REQ-N @ FRAMES U64+
+   UNLINKABLE @ if 1 else 0 then FRAMES U64+  OBJECT-SERIAL @ FRAMES U64+ ;
 
 
 \ FRAMES' u bytes from at into the buffer, and the offset after them.
@@ -4301,19 +4361,30 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    at u + ;
 
 
-\ The top frame back into the compiling file's buffers (PUSH-FRAME), and off FRAMES.
+\ Each record the object's WORDS rows list (WORD-RECS) marked as the object's again: a nested
+\ object overwrote the mark of each record it listed too.
+: RELIST ( -- )
+   WORD-RECS BYTES$ {: a:ptr u:n :}
+   u 8 / 0 ?do  OBJECT-SERIAL @  a i 8 * + LE:U64@  LISTED-BY !  loop ;
+
+
+\ The top frame back into the compiling file's buffers (PUSH-FRAME), its serial and marks, and off
+\ FRAMES.
 : POP-FRAME ( -- )
    FRAMES BYTES$ {: f:ptr fu:n :}
    f fu + FRAME-TAIL - {: t:ptr :}
    t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@ {: p:n r:n rq:n m:n :}
    t 32 + LE:U64@  t 40 + LE:U64@  t 48 + LE:U64@ {: s:n ran:n tm:n :}
-   t 56 + LE:U64@  t 64 + LE:U64@  t 72 + LE:U64@ {: pn:n reqs:n unlinkable:n :}
-   fu FRAME-TAIL -  p r + rq + m + s + ran + tm + INPUT-BYTES + pn + - {: start:n :}
+   t 56 + LE:U64@  t 64 + LE:U64@ {: wr:n wc:n :}
+   t 72 + LE:U64@  t 80 + LE:U64@  t 88 + LE:U64@  t 96 + LE:U64@ {: pn:n reqs:n unlinkable:n serial:n :}
+   fu FRAME-TAIL -  p r + rq + m + s + ran + tm + wr + wc + INPUT-BYTES + pn + - {: start:n :}
    start p PIECES RESTORE+  r REFS RESTORE+  rq REQUESTS RESTORE+  m NAMED-ROWS RESTORE+
-   s SPELLS RESTORE+  ran RAN-ROWS RESTORE+  tm TIMES RESTORE+ {: at:n :}
+   s SPELLS RESTORE+  ran RAN-ROWS RESTORE+  tm TIMES RESTORE+
+   wr WORD-ROWS RESTORE+  wc WORD-RECS RESTORE+ {: at:n :}
    f at + INPUT-STAMP INPUT-BYTES BYTE-COPY
    f at + INPUT-BYTES + FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
    reqs REQ-N !  unlinkable 0<> UNLINKABLE !
+   serial OBJECT-SERIAL !  RELIST
    f start BUF:N>BLEN FRAMES BUF:REPLACE ;
 
 
