@@ -12,7 +12,6 @@ require src/habu/code-span.f
 require src/habu/wl.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
-require src/habu/aot-x64-format.f
 require tools/aot-startup-shape.f        \ the startup's instruction shapes, named once
 require tools/image-names.f
 require tools/macho-read.f
@@ -36,12 +35,11 @@ require src/habu/address-carrier.f
 \ prefix in a read-only carrier PT_LOAD at the region's end, which the boot
 \ copies into the DATA it maps. A snapshot heap follows immutable RX text; a
 \ text-site footer marks executable code and the trailer recovers the donor
-\ text boundary. A stripped x86 image locates its sparse DATA runs and XT rows
-\ through a versioned footer in RX text. The x86 path measures those segments
-\ and validates raw/grid heap framing; the AOT and reachability walkers are
-\ arm64 only. It reads the linux-x86-64 layout, qualified, under the guard
-\ below, on any host: the host's DATA-VA is not where an x86 image maps DATA
-\ on a macOS host.
+\ text boundary. An x86 image is a baked engine or a snapshot; the x86 path
+\ measures its segments and validates raw/grid heap framing, and the AOT and
+\ reachability walkers are arm64 only. It reads the linux-x86-64 layout,
+\ qualified, under the guard below, on any host: the host's DATA-VA is not
+\ where an x86 image maps DATA on a macOS host.
 require src/os/linux-x86-64/target-layout.f
 
 package IMAGE-SIZE
@@ -2779,91 +2777,8 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 variable X64-TEXT-END
 variable X64-CODE-END
 variable X64-DICT-N
-variable X64-AOT
-variable X64-AOT-END
-variable X64-AOT-FOOTER
-variable X64-AOT-CUR
-variable X64-AOT-LAST
 
 $3145544953343658 constant X64-SITES-MAGIC
-
-: X64-AOT-LOCATE ( -- )
-   X64-TEXT-END @ X64LAYOUT:CODE-OFF X64AOT-FORMAT:FOOTER-BYTES + 8 + >=
-      s" image-size: x86 stripped table footer is missing" ?TRL
-   X64-TEXT-END @ X64AOT-FORMAT:FOOTER-BYTES - {: footer:n :}
-   footer 8 + U64@ X64AOT-FORMAT:MAGIC =
-      s" image-size: x86 stripped table footer is missing" ?TRL
-   footer U32@ {: offset:n :}
-   footer 4 + U32@ {: length:n :}
-   offset footer X64LAYOUT:CODE-OFF - <=
-      s" image-size: x86 stripped table starts outside text" ?TRL
-   X64LAYOUT:CODE-OFF offset + {: start:n :}
-   length 8 >= length footer start - <= and
-      s" image-size: x86 stripped table length is invalid" ?TRL
-   start X64-CODE-END !
-   start BLOB-AT !
-   start length + X64-AOT-END !
-   footer X64-AOT-FOOTER ! ;
-
-: X64-AOT-FITS ( n -- ) {: len:n :}
-   X64-AOT-CUR @ X64-AOT-END @ <=
-   len X64-AOT-END @ X64-AOT-CUR @ - <= and
-      s" image-size: x86 stripped table is truncated" ?TRL ;
-
-: X64-AOT-U32 ( -- n )
-   4 X64-AOT-FITS
-   X64-AOT-CUR @ U32@
-   4 X64-AOT-CUR +! ;
-
-: X64-AOT-ROWS ( -- )
-   X64-CODE-END @ X64-AOT-CUR !
-   s" app/run-count" X64-AOT-CUR @ 4 SPAN B-OTHER ROW
-   X64-AOT-U32 {: runs:n :}
-   runs X64-AOT-END @ X64-AOT-CUR @ - 4 -
-      X64AOT-FORMAT:RUN-HEADER-BYTES / <=
-      s" image-size: x86 stripped run count exceeds table" ?TRL
-   0 X64-AOT-LAST !
-   runs 0 ?do
-      X64AOT-FORMAT:RUN-HEADER-BYTES X64-AOT-FITS
-      s" app/run-header" X64-AOT-CUR @
-         X64AOT-FORMAT:RUN-HEADER-BYTES SPAN B-OTHER ROW
-      X64-AOT-U32 {: off:n :}
-      X64-AOT-U32 {: len:n :}
-      off X64-AOT-LAST @ >=
-         s" image-size: x86 stripped runs overlap or are unordered" ?TRL
-      len 0 > off X64LAYOUT:DATA-SIZE <= and
-      if len X64LAYOUT:DATA-SIZE off - <= else false then
-         s" image-size: x86 stripped run exceeds DATA window" ?TRL
-      off len + X64-AOT-LAST !
-      len X64-AOT-FITS
-      X64-AOT-CUR @ len SPAN {: bytes:n zeros:n :}
-      zeros 0=
-         s" image-size: x86 stripped run contains zero bytes" ?TRL
-      s" app/data-run" bytes zeros B-DATA ROW
-      len X64-AOT-CUR +!
-   loop
-   X64-AOT-CUR @ BLOB-STOP !
-   4 X64-AOT-FITS
-   s" app/xt-count" X64-AOT-CUR @ 4 SPAN B-OTHER ROW
-   X64-AOT-U32 {: xts:n :}
-   xts X64-AOT-END @ X64-AOT-CUR @ -
-      X64AOT-FORMAT:XT-ROW-BYTES / =
-      s" image-size: x86 stripped XT rows do not fill table" ?TRL
-   -1 X64-AOT-LAST !
-   xts 0 ?do
-      s" app/xt-row" X64-AOT-CUR @
-         X64AOT-FORMAT:XT-ROW-BYTES SPAN B-OTHER ROW
-      X64-AOT-U32 {: off:n :}
-      X64-AOT-U32 {: target:n :}
-      off X64-AOT-LAST @ >
-      off X64LAYOUT:DATA-SIZE 8 - <= and
-         s" image-size: x86 stripped XT cell is outside DATA or unordered" ?TRL
-      target X64-CODE-END @ X64LAYOUT:CODE-OFF - <
-         s" image-size: x86 stripped XT target is outside code" ?TRL
-      off X64-AOT-LAST !
-   loop
-   X64-AOT-CUR @ X64-AOT-END @ =
-      s" image-size: x86 stripped table has trailing bytes" ?TRL ;
 
 : X64-FOOTER ( -- )
    X64-TEXT-END @ X64-CODE-END !
@@ -2939,7 +2854,6 @@ $3145544953343658 constant X64-SITES-MAGIC
       s" image-size: x86 snapshot padding is not zero" ?TRL ;
 
 : X64-DICT-COUNT ( -- n )
-   X64-REG-BYTES DICT-SIZE < if 0 exit then
    CFSTK-OFF DREC / 0 ?do
       X64-REG-OFF i DREC * + {: at:n :}
       at U64@ 0= at 8 + U64@ 0= and at 16 + U64@ 0= and if
@@ -2950,35 +2864,25 @@ $3145544953343658 constant X64-SITES-MAGIC
 
 : X64-CLASSIFY ( -- )
    TEXT-SIZE X64-TEXT-END !
-   0 X64-AOT !
    0 BAND-CODE !  0 BAND-NAMES !  0 BAND-FREE !  0 DOWN-N !
    0 BLOB-OFF !  0 BLOB-LEN !  0 BLOB-AT !  0 BLOB-STOP !
    SNAPSHOT? if
       X64-TRAILER
       construct image-class snapshot CLASS!
    else
-      X64-REG-BYTES 0= if
-         construct image-class stripped CLASS!
-         -1 X64-AOT !
-      else
-         X64-REG-BYTES DICT-SIZE < if
-            s" image-size: x86 dictionary LOAD is incomplete" RC die
-         then
-         construct image-class engine CLASS!
+      X64-REG-BYTES DICT-SIZE < if
+         s" image-size: x86 dictionary LOAD is incomplete" RC die
       then
+      construct image-class engine CLASS!
    then
-   X64-AOT @ if X64-AOT-LOCATE else X64-FOOTER then
+   X64-FOOTER
    X64-DICT-COUNT X64-DICT-N !
-   X64-REG-BYTES DICT-SIZE >= if
-      X64-REG-OFF DICT-SIZE + BLOB-OFF !
-      X64-REG-BYTES DICT-SIZE - dup BLOB-LEN ! BAND-CODE !
-      X64-DICT-N @ DREC * dup BAND-NAMES !
-      DICT-SIZE swap - BAND-FREE !
-   then
-   X64-AOT @ 0= if
-      X64-DATA-OFF BLOB-AT !
-      X64-DATA-OFF X64-DATA-BYTES + BLOB-STOP !
-   then ;
+   X64-REG-OFF DICT-SIZE + BLOB-OFF !
+   X64-REG-BYTES DICT-SIZE - dup BLOB-LEN ! BAND-CODE !
+   X64-DICT-N @ DREC * dup BAND-NAMES !
+   DICT-SIZE swap - BAND-FREE !
+   X64-DATA-OFF BLOB-AT !
+   X64-DATA-OFF X64-DATA-BYTES + BLOB-STOP ! ;
 
 : X64-GAP ( n n -- ) {: at:n len:n :}
    at len ZEROS len <> if
@@ -2990,15 +2894,8 @@ $3145544953343658 constant X64-SITES-MAGIC
    -1 ZCOL !  BUDGET-BEGIN
    s" elf/header-page" 0 X64LAYOUT:CODE-OFF SPAN B-OTHER ROW
    s" image/text" X64LAYOUT:CODE-OFF X64-CODE-END @ X64LAYOUT:CODE-OFF - SPAN B-CODE ROW
-   X64-AOT @ if
-      X64-AOT-ROWS
-      X64-AOT-END @ X64-AOT-FOOTER @ X64-AOT-END @ - X64-GAP
-      s" app/table-footer" X64-AOT-FOOTER @
-         X64AOT-FORMAT:FOOTER-BYTES SPAN B-OTHER ROW
-   else
-      s" image/text-sites" X64-CODE-END @
-         X64-TEXT-END @ X64-CODE-END @ - SPAN B-OTHER ROW
-   then
+   s" image/text-sites" X64-CODE-END @
+      X64-TEXT-END @ X64-CODE-END @ - SPAN B-OTHER ROW
    SNAPSHOT-CLASS? if
       DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if
          s" snapshot/heap-frame" DAT-HEAP @ SNAPSHOT-FORMAT:GRID-FRAME SPAN B-DATA ROW
@@ -3012,17 +2909,13 @@ $3145544953343658 constant X64-SITES-MAGIC
       s" snapshot/trailer" TRAILER-OFF SNAP-TRL-BYTES SPAN B-OTHER ROW
    then
    s" elf/rw-segment" TEXT-SIZE RW-BYTES SPAN B-OTHER ROW
-   X64-REG-BYTES 0 > if
-      TEXT-SIZE RW-BYTES + X64-REG-OFF over - X64-GAP
-      s" region/dictionary-records" X64-REG-OFF X64-DICT-N @ DREC * SPAN B-NAMES ROW
-      s" region/state" X64-REG-OFF X64-DICT-N @ DREC * +
-         DICT-SIZE X64-DICT-N @ DREC * - SPAN B-OTHER ROW
-      s" region/code" X64-REG-OFF DICT-SIZE +
-         X64-REG-BYTES DICT-SIZE - SPAN B-CODE ROW
-      X64-REG-OFF X64-REG-BYTES +
-   else
-      TEXT-SIZE RW-BYTES +
-   then
+   TEXT-SIZE RW-BYTES + X64-REG-OFF over - X64-GAP
+   s" region/dictionary-records" X64-REG-OFF X64-DICT-N @ DREC * SPAN B-NAMES ROW
+   s" region/state" X64-REG-OFF X64-DICT-N @ DREC * +
+      DICT-SIZE X64-DICT-N @ DREC * - SPAN B-OTHER ROW
+   s" region/code" X64-REG-OFF DICT-SIZE +
+      X64-REG-BYTES DICT-SIZE - SPAN B-CODE ROW
+   X64-REG-OFF X64-REG-BYTES +
    X64-DATA-BYTES 0 > if
       X64-DATA-OFF over - X64-GAP
       s" data/fixed-load" X64-DATA-OFF X64-DATA-BYTES SPAN B-DATA ROW
