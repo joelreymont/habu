@@ -1,9 +1,9 @@
 \ hb-build.f - `hb-build --target wasm` run by its command line, each module it
-\ writes validated by wasm-tools and run by bun (test/wasm/harness.f); each case
-\ starts a build process, since the build's command line and exit status are
-\ under test. test/wasm/device.f runs it, as does `bin/hb --load
-\ test/wasm/hb-build.f` from the tree's root. The sources and modules stay in the
-\ printed directory.
+\ writes validated by wasm-tools and run by bun (test/wasm/harness.f). A program
+\ whose build status, output or trap is under test has its own build process; the
+\ six that only run to status 0 share one. test/wasm/device.f runs it, as does
+\ `bin/hb --load test/wasm/hb-build.f` from the tree's root. The sources and
+\ modules stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -77,6 +77,22 @@ variable MOD-U
    MOD MOD-U @ WASM-HARNESS:RUN ;
 
 
+\ m.f, and a file of requires whose paths hold DIR, may outgrow SB-CAP: their
+\ text is built here.
+CAP BUFFER: TEXT
+variable TEXT-U
+
+: TEXT+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   TEXT-U @ u + CAP > if E-STR-CAPACITY throw then
+   a TEXT TEXT-U @ + u BYTE-COPY  u TEXT-U +! ;
+
+\ A require of the name in DIR, at the end of TEXT.
+: REQUIRE+ ( ptr u8 n -- )
+   {: name:ptr nu:n :}
+   s" require " TEXT+  DIR DIR-U @ TEXT+  s" /" TEXT+  name nu TEXT+  S\" \n" TEXT+ ;
+
+
 : EMIT-CASE ( -- )
    s" : MAIN ( -- ) 53 emit ;" s" emit.f" SOURCE!
    s" `53 emit` builds into a module that validates, runs to status 0 and prints 5" T-LABEL
@@ -85,8 +101,8 @@ variable MOD-U
    WASM-HARNESS:OUT$ s" 5" T$= ;
 
 
-\ The program k.f, its first test comparing 5 FACT with want; a failed test
-\ reads below WPROF:CTX-BASE, which traps.
+\ Package K at the name, its first test comparing 5 FACT with want; a failed
+\ test reads below WPROF:CTX-BASE, which traps.
 : K! ( n ptr u8 n -- )
    {: want:n name:ptr nu:n :}
    SB-RESET
@@ -100,18 +116,18 @@ variable MOD-U
    S\"    SEED @ 9 <> if 3 >BYTES c@ drop then\n" SB-APPEND
    S\"    0 ACC !  7 BUMP 8 BUMP  ACC @ 15 <> if 4 >BYTES c@ drop then\n" SB-APPEND
    S\"    65 SPOT c!  SPOT c@ 65 <> if 5 >BYTES c@ drop then\n" SB-APPEND
-   S\"    [: 1 ;] drop ;\n;package\n: MAIN ( -- ) K:MAIN ;\n" SB-APPEND
+   S\"    [: 1 ;] drop ;\n;package\n" SB-APPEND
    SB$ name nu SOURCE! ;
 
 : PROGRAM-CASES ( -- )
-   120 s" k.f" K!
-   s" a program of recursion, a loop, variables, stores and a quotation runs to status 0" T-LABEL
-   s" k.wasm" BUILD 0 T=
-   RAN 0 T=
-   121 s" k-fail.f" K!
+   121 s" k-bad.f" K!
+   0 TEXT-U !  s" k-bad.f" REQUIRE+  S\" : MAIN ( -- ) K:MAIN ;\n" TEXT+
+   TEXT TEXT-U @ s" k-fail.f" SOURCE!
    s" the same program with a failing first test runs to its trap" T-LABEL
    s" k-fail.wasm" BUILD 0 T=
    RAN 2 T=
+   WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
+   WASM-HARNESS:FAULT-ADDR 1 T=
    S\" package K private CAST: >BYTES ( n -- ptr u8 ) public : MAIN ( -- ) 65 8 >BYTES c! ; ;package : MAIN ( -- ) K:MAIN ;"
    s" low.f" SOURCE!
    s" a c! below WPROF:CTX-BASE faults and traps" T-LABEL
@@ -121,7 +137,7 @@ variable MOD-U
    WASM-HARNESS:FAULT-ADDR 8 T= ;
 
 
-\ The program d.f: division, max, atomics and views through words whose operands
+\ Package D in d.f: division, max, atomics and views through words whose operands
 \ are not literals at the call; a failed test reads below WPROF:CTX-BASE.
 : D! ( -- )
    SB-RESET
@@ -136,14 +152,10 @@ variable MOD-U
    S\"    5 9 CELL0 atomic-cas 5 <> if 10 FAIL then  CELL0 @ 9 <> if 11 FAIL then\n" SB-APPEND
    S\"    5 1 CELL0 atomic-cas 9 <> if 12 FAIL then  CELL0 @ 9 <> if 13 FAIL then\n" SB-APPEND
    S\"    77 SPOT !  SPOT byte-view c@ 77 <> if 14 FAIL then\n" SB-APPEND
-   S\"    SPOT cell-view @ 77 <> if 15 FAIL then ;\n;package\n: MAIN ( -- ) D:MAIN ;\n" SB-APPEND
+   S\"    SPOT cell-view @ 77 <> if 15 FAIL then ;\n;package\n" SB-APPEND
    SB$ s" d.f" SOURCE! ;
 
-: ARITH-CASES ( -- )
-   D!
-   s" division, max, atomics and views build into a module that runs to status 0" T-LABEL
-   s" d.wasm" BUILD 0 T=
-   RAN 0 T=
+: DIV0-CASE ( -- )
    s" : DIV ( n n -- n ) / ;  : MAIN ( -- ) 1 0 DIV drop ;" s" div0.f" SOURCE!
    s" a zero divisor runs to status 1 and throws E-DIV-ZERO" T-LABEL
    s" div0.wasm" BUILD 0 T=
@@ -234,16 +246,7 @@ variable MOD-U
    WASM-HARNESS:OUT$ NAN-HOST$ T$= ;
 
 
-\ m.f is longer than SB-CAP: its text is built here.
-CAP BUFFER: TEXT
-variable TEXT-U
-
-: TEXT+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   TEXT-U @ u + CAP > if E-STR-CAPACITY throw then
-   a TEXT TEXT-U @ + u BYTE-COPY  u TEXT-U +! ;
-
-\ The program m.f: map-anon and munmap through words; a failed test reads below
+\ Package M in m.f: map-anon and munmap through words; a failed test reads below
 \ WPROF:CTX-BASE.
 : M! ( -- )
    0 TEXT-U !
@@ -277,14 +280,10 @@ variable TEXT-U
    S\"    -1 MAP -1 = 43 CHECK  0 AT 44 CHECK  1 32 lshift 1 + MAP -1 = 45 CHECK  0 AT 46 CHECK\n" TEXT+
    S\"    1 32 lshift MAP -1 = 47 CHECK  0 AT 48 CHECK\n" TEXT+
    S\"    ONE-PAGE 49 FRESH {: z:ptr :}  z 0 UNMAP -1 = 50 CHECK  z ONE-PAGE 51 FREE-RUN ;\n" TEXT+
-   S\" public\n: MAIN ( -- ) TWO REUSE JOIN REFUSALS ;\n;package\n: MAIN ( -- ) M:MAIN ;\n" TEXT+
+   S\" public\n: MAIN ( -- ) TWO REUSE JOIN REFUSALS ;\n;package\n" TEXT+
    TEXT TEXT-U @ s" m.f" SOURCE! ;
 
-: MAP-CASES ( -- )
-   M!
-   s" map-anon and munmap hand out, reuse, join and split page runs and refuse bad counts" T-LABEL
-   s" m.wasm" BUILD 0 T=
-   RAN 0 T=
+: TWICE-CASE ( -- )
    S\" : MAIN ( -- ) 65536 map-anon . {: p:ptr :} p 65536 munmap . p 65536 munmap . ;"
    s" twice.f" SOURCE!
    s" a run unmapped twice traps after both earlier answers" T-LABEL
@@ -331,20 +330,17 @@ variable TEXT-U
    NO-MODULE ;
 
 
-\ The program execute.f: execute of a named word's xt, of a quotation and of a
+\ Package X in execute.f: execute of a named word's xt, of a quotation and of a
 \ quotation kept in a variable; a failed test reads below WPROF:CTX-BASE.
-: EXECUTE-CASE ( -- )
+: X! ( -- )
    SB-RESET
    S\" package X\nprivate\nCAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
    S\" TYPED-VARIABLE HOOK [ n -- n ]\n: DOUBLE ( n -- n ) 2 * ;\npublic\n" SB-APPEND
    S\" : MAIN ( -- )\n   3 ['] DOUBLE execute 6 <> if 1 >BYTES c@ drop then\n" SB-APPEND
    S\"    4 [: 1 + ;] execute 5 <> if 2 >BYTES c@ drop then\n" SB-APPEND
    S\"    [: 10 * ;] HOOK !  7 HOOK @ execute 70 <> if 3 >BYTES c@ drop then ;\n" SB-APPEND
-   S\" ;package\n: MAIN ( -- ) X:MAIN ;\n" SB-APPEND
-   SB$ s" execute.f" SOURCE!
-   s" execute runs a named word's xt, a quotation and a stored quotation" T-LABEL
-   s" execute.wasm" BUILD 0 T=
-   RAN 0 T= ;
+   S\" ;package\n" SB-APPEND
+   SB$ s" execute.f" SOURCE! ;
 
 : THROW-CASES ( -- )
    s" : MAIN ( -- ) 9 throw ;" s" throw.f" SOURCE!
@@ -368,7 +364,7 @@ variable TEXT-U
    WASM-HARNESS:OUT$ s" boom" T$= ;
 
 
-\ The program catch.f: catch, finally and the depths a caught throw restores, which
+\ Package C in catch.f: catch, finally and the depths a caught throw restores, which
 \ LEAK and LEAK-R overflow without; a failed WANT reads below WPROF:CTX-BASE.
 : CATCH! ( -- )
    SB-RESET
@@ -389,14 +385,8 @@ variable TEXT-U
    S\" 0 DONE !  [: [: 7 throw ;] [: CLEAN ;] finally ;] catch 7 12 WANT\n" SB-APPEND
    S\" DONE @ 1 13 WANT  [: [: 7 throw ;] [: 8 throw ;] finally ;] catch 8 14 WANT\n" SB-APPEND
    S\" [: [: 7 throw ;] [: [: 9 throw ;] catch drop ;] finally ;] catch 7 15 WANT ;\n" SB-APPEND
-   S\" ;package\n: MAIN ( -- ) C:MAIN ;\n" SB-APPEND
+   S\" ;package\n" SB-APPEND
    SB$ s" catch.f" SOURCE! ;
-
-: CATCH-CASE ( -- )
-   CATCH!
-   s" catch and finally catch codes, restore the depths and run cleanups" T-LABEL
-   s" catch.wasm" BUILD 0 T=
-   RAN 0 T= ;
 
 
 \ The frames are wide: a recursion of one cell a level exhausts bun's call
@@ -432,7 +422,7 @@ variable TEXT-U
    WASM-HARNESS:FAULT-ADDR WPROF:DATA-BASE T= ;
 
 
-\ The program grow.f: a cell row reserved, then reserved larger; a failed WANT
+\ Package G in grow.f: a cell row reserved, then reserved larger; a failed WANT
 \ reads below WPROF:CTX-BASE.
 : GROW! ( -- )
    SB-RESET
@@ -444,14 +434,25 @@ variable TEXT-U
    S\"    100000 ROW-RESERVE  0 ROW @ 11 1 WANT  3 ROW @ 22 2 WANT  0 AT old = bool>n 0 3 WANT\n" SB-APPEND
    S\"    33 99999 ROW !  99999 ROW @ 33 4 WANT\n" SB-APPEND
    S\"    65536 map-anon 0 5 WANT  NULL-PTR - old 6 WANT  ROW-RELEASE ;\n" SB-APPEND
-   S\" ;package\n: MAIN ( -- ) G:MAIN ;\n" SB-APPEND
+   S\" ;package\n" SB-APPEND
    SB$ s" grow.f" SOURCE! ;
 
-: GROWTH-CASE ( -- )
-   GROW!
-   s" a DYNAMIC-BUFFER reserved larger moves, keeps its cells and frees its first run" T-LABEL
-   s" grow.wasm" BUILD 0 T=
-   RAN 0 T= ;
+
+\ OUT's letters name the program a failed check ran in, and fault-addr is the
+\ check's number.
+: PASS-CASE ( -- )
+   120 s" k.f" K!  D!  M!  X!  CATCH!  GROW!
+   0 TEXT-U !
+   s" k.f" REQUIRE+  s" d.f" REQUIRE+  s" m.f" REQUIRE+
+   s" execute.f" REQUIRE+  s" catch.f" REQUIRE+  s" grow.f" REQUIRE+
+   S\" : MAIN ( -- ) 75 emit K:MAIN 68 emit D:MAIN 77 emit M:MAIN " TEXT+
+   S\" 88 emit X:MAIN 67 emit C:MAIN 71 emit G:MAIN ;\n" TEXT+
+   TEXT TEXT-U @ s" pass.f" SOURCE!
+   s" six programs in one module each run to their end: recursion, a loop, variables and a quotation; division, max, atomics and views; map-anon and munmap; execute; catch and finally; a DYNAMIC-BUFFER reserved larger" T-LABEL
+   s" pass.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:FAULT-ADDR 0 T=
+   WASM-HARNESS:OUT$ s" KDMXCG" T$= ;
 
 
 : SEGMENTS-CASE ( -- )
@@ -468,19 +469,17 @@ public
    T-RESET
    SETUP
    EMIT-CASE
+   PASS-CASE
    PROGRAM-CASES
-   ARITH-CASES
+   DIV0-CASE
    FLOAT-CASE
    LOOP-CASE
    NAN-CASE
-   MAP-CASES
+   TWICE-CASE
    REFUSAL-CASES
-   EXECUTE-CASE
    THROW-CASES
    DIE-CASE
-   CATCH-CASE
    BOUNDS-CASES
-   GROWTH-CASE
    SEGMENTS-CASE
    T-REPORT ;
 

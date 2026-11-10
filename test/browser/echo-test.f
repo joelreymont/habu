@@ -13,7 +13,6 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test.f
-require src/arch/wasm/profile.f
 require test/wasm/harness.f
 
 package BROWSER-ECHO-TEST
@@ -149,7 +148,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ A file of several pages, which reserve grows memory for. Byte i is the low byte
 \ of i + i/509 (509 is prime), so a page copied to the wrong place changes the sum.
 : LARGE-CASE ( -- )
-   WPROF:DATA-BASE  MOD MOD-U @ FS:FILE-SIZE +  PAGE-BYTES +  13 + {: u:n :}
+   PAGE-BYTES 8 * 13 + {: u:n :}
    u PAYLOAD-RESERVE
    u 0 ?do  i  i 509 / +  $FF and  i PAYLOAD c!  loop
    0 PAYLOAD u s" large.bin" FILE!
