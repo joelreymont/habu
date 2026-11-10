@@ -115,6 +115,13 @@
 \ F builds seal-main.f, whose definition into the package seal-second.f seals is refused: exit 84,
 \ E-SEALED-PACKAGE at its line. F2, the same build again, links seal-second.f's object, which keeps
 \ its size and change time, and is refused the same way: the link carries the seal.
+\ Y and Y2 build mid-root-1.f and mid-root-2.f, whose first files define W differently: Y2 compiles
+\ mid-four.f's second part, which calls W, and links its last part after it, so its program prints
+\ 10, 2, 30 and 40.
+\ Z, Z2 and Z3 build flip-root-plain.f, flip-root-x.f and flip-root-x.f: Z2 loads flip-a.f first, so
+\ flip.f's require of it cuts no part and flip.f's second part starts after its flip-b.f request,
+\ which a true [if] makes, and compiles; Z3 links it. unclean.f's part after an unclean request and
+\ a clean one links in Z2, and the program prints 5, 1, 2, 3, 7 and 9.
 \ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell, SCRATCH-VARIABLE and
 \ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
 \ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
@@ -149,12 +156,15 @@ package FILE-OBJECTS-TEST
 8 constant LOG-FIRST                     \ TAIL$'s numbers for log-first.f's, path-main.f's,
 9 constant PATH-MAIN                     \ stale-spell.f's, sealed-spell.f's, stored-run.f's,
 10 constant STALE-SPELL                  \ retired-spell.f's, order-x2.f's, hidden-spell.f's and
-11 constant SEALED-SPELL                 \ seal-second.f's objects
-12 constant STORED-RUN
+11 constant SEALED-SPELL                 \ seal-second.f's objects, mid-four.f's last part's,
+12 constant STORED-RUN                   \ unclean.f's last part's and flip.f's second part's
 13 constant RETIRED-SPELL
 14 constant ORDER-X2
 15 constant HIDDEN-SPELL
 16 constant SEAL-SECOND
+17 constant MID-FOUR-LAST
+18 constant UNCLEAN-LAST
+19 constant FLIP-SECOND
 46 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -289,7 +299,8 @@ variable KEPT-NS
 \ The tail of object i's path, from 0: A's count.f, shape.f, main.f, reopen.f, mark.f and again.f's
 \ two loads; 7 pad.f's, which B adds; 8 log-first.f's; 9 path-main.f's; 10 stale-spell.f's, which S
 \ writes; 11 sealed-spell.f's, G's; 12 stored-run.f's, T's; 13 retired-spell.f's, V's; 14
-\ order-x2.f's, O's; 15 hidden-spell.f's, K's; 16 seal-second.f's, F's.
+\ order-x2.f's, O's; 15 hidden-spell.f's, K's; 16 seal-second.f's, F's; 17 mid-four.f's part 3's,
+\ Y's; 18 unclean.f's part 2's and 19 flip.f's part 1's, Z's.
 : TAIL$ ( n -- ptr u8 n )
    {: i:n :}
    i 0 = if s" /test/fixtures/file-objects/count.f.hfo" exit then
@@ -308,6 +319,9 @@ variable KEPT-NS
    i RETIRED-SPELL = if s" /test/fixtures/file-objects/retired-spell.f.hfo" exit then
    i ORDER-X2 = if s" /test/fixtures/file-objects/order-x2.f.hfo" exit then
    i HIDDEN-SPELL = if s" /test/fixtures/file-objects/hidden-spell.f.hfo" exit then
+   i MID-FOUR-LAST = if s" /test/fixtures/file-objects/mid-four.f+3.hfo" exit then
+   i UNCLEAN-LAST = if s" /test/fixtures/file-objects/unclean.f+2.hfo" exit then
+   i FLIP-SECOND = if s" /test/fixtures/file-objects/flip.f+1.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -749,6 +763,15 @@ variable KEPT-NS
    rc 0<> if rc SHOW then
    s" a device a file kept is refused in the program" LABEL  CMD:OUT$ s\" genio refused\n" T$= ;
 
+\ L's program, run in its own process: the boundary under test is the written file. The label
+\ holds when its stdout is the wanted text.
+: PRINTS-RUN ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
+   {: want:ptr wantu:n label:ptr labelu:n :}
+   CMD:RESET
+   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   rc 0<> if rc SHOW then
+   label labelu LABEL  CMD:OUT$ want wantu T$= ;
+
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP
@@ -876,6 +899,27 @@ variable KEPT-NS
    s" O4" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
    s" the build links order-x2.f" LINKED ;
 
+\ Guards linking the parts after a compiled part, each from its own start: Y2 compiles
+\ mid-four.f's second part, which calls W.
+: MID-CASE ( CMD:command -- CMD:command )
+   s" Y" WHICH!  s" test/fixtures/file-objects/mid-root-1.f" FIXTURE-BUILD 0= if exit then
+   MID-FOUR-LAST KEEP
+   s" Y2" WHICH!  s" test/fixtures/file-objects/mid-root-2.f" FIXTURE-BUILD 0= if exit then
+   s" the build links mid-four.f's last part" LINKED
+   s\" 10\n2\n30\n40\n" s" the program prints mid-four.f's words with mid-w2.f's W" PRINTS-RUN ;
+
+\ Guards a part's start moving between builds with no edit: Z2's flip.f part 1 starts after its
+\ flip-b.f request, not Z's flip-a.f one, and compiles; linked from Z's object it defines Q twice.
+: START-CASE ( CMD:command -- CMD:command )
+   s" Z" WHICH!  s" test/fixtures/file-objects/flip-root-plain.f" FIXTURE-BUILD 0= if exit then
+   UNCLEAN-LAST KEEP
+   s" Z2" WHICH!  s" test/fixtures/file-objects/flip-root-x.f" FIXTURE-BUILD 0= if exit then
+   s" the build links unclean.f's last part after an unclean request and a clean one" LINKED
+   FLIP-SECOND KEEP
+   s" Z3" WHICH!  s" test/fixtures/file-objects/flip-root-x.f" FIXTURE-BUILD 0= if exit then
+   s" the build links the part that starts at [then]" LINKED
+   s\" 5\n1\n2\n3\n7\n9\n" s" the program prints flip-a.f's F, P, Q, R, A and C" PRINTS-RUN ;
+
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN
@@ -966,7 +1010,8 @@ variable KEPT-NS
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
-      STORED-CASE RETIRED-CASE ORDER-CASE PIECE-CASE SEAL-CASE NEST-CASE ;]
+      STORED-CASE RETIRED-CASE ORDER-CASE MID-CASE START-CASE PIECE-CASE SEAL-CASE
+      NEST-CASE ;]
    CMD:WITH-COMMAND ;
 
 
