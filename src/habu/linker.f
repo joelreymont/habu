@@ -2537,10 +2537,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    loop
    row 2 * 1 + ROW-EXTS @  stop first - +  row 2 * 1 + ROW-EXTS ! ;
 
-\ The piece's BUILT row, its extents and laid texts in the build table (BUILT-EXTS+, TEXT-EXTS+); NAMES takes its
-\ records and REC-ROW gives each its row, rows rising.
-: BUILT+ ( n n -- )
-   {: piece:n t:n :}
+\ Part FILE-PART's BUILT row with time t, its extents and laid texts in the build table (BUILT-EXTS+, TEXT-EXTS+);
+\ NAMES takes its records and REC-ROW gives each its row, rows rising.
+: BUILT+ ( n -- )
+   {: t:n :}
    BUILT-EXTS+  TEXT-EXTS+
    ndict@ REC-ROW-RESERVE
    FILE-REC @ REC-ROW-N @ ?do  0 i REC-ROW !  loop
@@ -2550,7 +2550,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ndict@ BUILT-N INDEX-RECS
    BUILT-N 1 + BUILT-PATHS-RESERVE  KEY-PATH BUILT-N BUILT-PATHS !
    FILE-KEY KEY-BYTES BUILT SPAN+
-   piece BUILT U64+  t BUILT U64+
+   FILE-PART @ BUILT U64+  t BUILT U64+
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
    FILE-EM @ BUILT U64+  NSHADOW:EMISSIONS BUILT U64+
    FILE-DP @ BUILT U64+  FILE-END @ BUILT U64+
@@ -4615,7 +4615,7 @@ variable DUE-MADE
       drop PART-FRESH? dup if
          LINK-OBJECT  LINKED-TIMES  true LINK-FACTS  READ-ALIASES  LINK-ACTS
          here NULL-PTR - FILE-END !
-         FILE-PART @ PIECE-TIME BUILT+
+         PIECE-TIME BUILT+
       then
    ;] catch {: linked rc:n :}
    rc 0<> if DROP-OBJECT rc throw then
@@ -4676,13 +4676,12 @@ variable DUE-MADE
    req PIECE+  RAN+ ;
 
 
-\ The piece's texts placed from OBJECT, as a link places them, then its BUILT row with its number
-\ and time.
-: PIECE-PLACE ( n n -- )
-   {: piece:n t:n :}
+\ Part FILE-PART's texts placed from OBJECT, as a link places them, then its BUILT row with time t.
+: PIECE-PLACE ( n -- )
+   {: t:n :}
    FILE-HELD @ CHECK:DROP-FACTS  false LINK-FACTS
    here NULL-PTR - FILE-END !          \ the piece's span ends after its texts
-   piece t BUILT+ ;
+   t BUILT+ ;
 
 
 \ The compiling part's NAMES (NAMED!) from FILE-OFF to end in its source, before PIECE-END. Scanned as the part ends, so
@@ -4761,7 +4760,7 @@ variable DUE-MADE
                   sourceu PART-NAMES
                   -1 PIECE-END
                   0 COMPILED-TIME dup WRITE-OBJECT
-                  FILE-PART @ swap PIECE-PLACE
+                  PIECE-PLACE
                   true true
                ENDOF
                cut OF
@@ -4822,7 +4821,7 @@ variable DUE-MADE
    0 PIECE-END
    0 COMPILED-TIME {: t:n :}
    t WRITE-OBJECT
-   FILE-PART @ t PIECE-PLACE
+   t PIECE-PLACE
    align   \ the next part starts at a cell boundary, as include.f LOAD-UNIT leaves here
    STAMP@ {: s:n ns:n size:n :}
    FILE-PART @  FILE-OFF @  FILE-SRC @  FILE-SRC-U @ {: part:n off:n src:n srcu:n :}
@@ -4979,7 +4978,7 @@ variable DUE-MADE
    s" " KEY-PATHS PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!  0 FILE-PART !
    FILE-KEY KEY-BYTES LOAD-PATHS SPAN+  s" " LOAD-PATHS FIELD+
    here NULL-PTR - dup FILE-DP !  FILE-END !
-   0 EXTS-N !  0 0 BUILT+ ;
+   0 EXTS-N !  0 BUILT+ ;
 
 : OPEN ( -- )
    0 COMPILED-N !  0 LINKED-N !
