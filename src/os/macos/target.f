@@ -12,5 +12,9 @@
 : HB-TARGET-LINUX-KERNEL? ( -- bool )
    0 0= 0= ;
 
+: HB-TARGET-WASM? ( -- bool )
+   0 0= 0= ;
+
 : HB-TARGET-KNOWN? ( -- bool )
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or HB-TARGET-LINUX-X86-64? or ;
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or HB-TARGET-LINUX-X86-64? or
+   HB-TARGET-WASM? or ;

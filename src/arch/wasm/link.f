@@ -13,6 +13,7 @@ require src/lib/string.f
 require src/lib/span.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/wstruct.f
+require src/habu/layout.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/encode.f
 require src/compiler/native/emission.f
@@ -63,8 +64,9 @@ $21 constant OP-LOCAL-SET
 3 constant ALIGN-64
 WPROF:PAGE-BYTES constant PAGE-BYTES
 WPROF:PAGES-MAX constant PAGES-MAX
-\ The most image bytes those pages hold from the DATA base.
-PAGES-MAX PAGE-BYTES * WPROF:DATA-BASE - constant IMAGE-MAX
+WPROF:DATA-MAX constant IMAGE-MAX     \ the most image bytes the DATA region holds
+\ The shared layout's reserved band through DATA-START, in whole pages.
+DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
 10 constant LEB-MOST                 \ the widest LEB, a 64-bit one
 8 constant CELL-BYTES                \ a data cell
 
@@ -358,7 +360,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ The pages holding every region and the image. The run wrapper and tier 0's
 \ code store into the DATA region's header cells whatever the image's length.
 : PAGES ( -- n )
-   WPROF:DATA-BASE  IMAGE-U @ WPROF:DATA-BYTES max +  PAGE-BYTES 1- +  PAGE-BYTES / ;
+   WPROF:DATA-BASE  IMAGE-U @ DATA-BYTES max +  PAGE-BYTES 1- +  PAGE-BYTES / ;
 
 : TYPE-SEC ( -- )
    NTYPES @ PUT-U32

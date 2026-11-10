@@ -1,0 +1,20 @@
+\ wasm runtime/build-script target flag.
+
+: HB-TARGET-LINUX? ( -- bool )
+   0 0= 0= ;
+
+: HB-TARGET-MACOS? ( -- bool )
+   0 0= 0= ;
+
+: HB-TARGET-LINUX-X86-64? ( -- bool )
+   0 0= 0= ;
+
+: HB-TARGET-LINUX-KERNEL? ( -- bool )
+   0 0= 0= ;
+
+: HB-TARGET-WASM? ( -- bool )
+   0 0= ;
+
+: HB-TARGET-KNOWN? ( -- bool )
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or HB-TARGET-LINUX-X86-64? or
+   HB-TARGET-WASM? or ;

@@ -82,9 +82,9 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   tokens. The loaders `include`, `included`, `require`, `required` and
   `provided` are reserved because `tools/check.f` reads their spelling
   lexically, and so are the target predicates `HB-TARGET-LINUX?`,
-  `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?`, whose spelling it reads to
-  skip the arms of an `if` the engine's target never runs. Lexical locals such
-  as `{: i:n :}` stay legal. `tools/check.f` reports `E-RESERVED-DEFINITION`
+  `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?` and `HB-TARGET-WASM?`, whose
+  spelling it reads to skip the arms of an `if` the engine's target never
+  runs. Lexical locals such as `{: i:n :}` stay legal. `tools/check.f` reports `E-RESERVED-DEFINITION`
   with file, line and token.
 - **Never define a number-shaped word.** Every definer refuses a name the
   number reader claims, a number out of range included: `: 42` writes

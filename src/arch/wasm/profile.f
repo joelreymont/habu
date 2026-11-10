@@ -1,9 +1,8 @@
 \ profile.f - WPROF, the Wasm V1 the backend targets: features, call arity and
 \ memory layout. The target contract carries only BASE and SCALAR-FP for wasm
-\ (src/compiler/target.f MASK-WASM), so these numbers live here.
-
-require src/habu/layout.f
-require src/habu/stack-abi.f
+\ (src/compiler/target.f MASK-WASM), so these numbers live here. A Wasm build
+\ loads it as a start-up row before `require` exists, after
+\ src/habu/stack-abi.f (src/habu/boot-files.f), so it requires nothing.
 
 package WPROF
 public
@@ -39,10 +38,11 @@ STACK-END constant RETURN-BASE
 RETURN-BASE STACK-ABI:RETURN-BYTES + constant LOOP-BASE
 
 \ The DATA region is the single-task DATA ABI region: a build's data space sits
-\ from DATA-BASE, offset for offset, header band included. It is at least
-\ DATA-BYTES, the shared layout's reserved band through DATA-START.
+\ from DATA-BASE, offset for offset, header band included, through the
+\ memory's last page at most. A Wasm target's DATA-VA and DATA-SIZE are these
+\ two (src/os/wasm/layout.f).
 LOOP-BASE STACK-ABI:LOOP-BYTES + constant DATA-BASE
-DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
+PAGES-MAX PAGE-BYTES * DATA-BASE - constant DATA-MAX
 
 \ One eight-byte slot per field, so i64 and i32 fields are all naturally aligned.
 0 constant CTX-STACK-BASE

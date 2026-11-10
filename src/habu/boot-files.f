@@ -15,6 +15,7 @@ public
 1 constant LINUX
 2 constant MACOS
 3 constant X64
+4 constant WASM
 
 \ Parts: one bit each, so a walk selects any set of them.
 1 constant CHECKER
@@ -84,12 +85,16 @@ private
    CORE LINUX s" src/os/linux/target.f" ROW
    CORE MACOS s" src/os/macos/target.f" ROW
    CORE X64 s" src/os/linux-x86-64/target.f" ROW
+   CORE WASM s" src/os/wasm/target.f" ROW
    CORE LINUX s" src/os/linux/layout-constants.f" ROW
    CORE LINUX s" src/os/linux/layout.f" ROW
    CORE MACOS s" src/os/macos/layout.f" ROW
    CORE X64 s" src/os/linux/layout-constants.f" ROW
    CORE X64 s" src/os/linux/layout.f" ROW
    CORE COMMON s" src/habu/stack-abi.f" ROW
+   \ WPROF reads STACK-ABI, and layout.f reads the target's DATA-SIZE.
+   CORE WASM s" src/arch/wasm/profile.f" ROW
+   CORE WASM s" src/os/wasm/layout.f" ROW
    CORE COMMON s" src/habu/layout.f" ROW
    CORE COMMON s" src/os/env-base.f" ROW
    CORE COMMON s" src/core/quotation-storage.f" ROW
