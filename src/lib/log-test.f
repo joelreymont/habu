@@ -10,6 +10,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/byte-buffer.f
 require src/lib/span.f
+require src/lib/memory.f
 require src/lib/date.f
 require src/lib/fmt.f
 require src/lib/task.f
@@ -26,6 +27,10 @@ package LOG
 
 package LOG-TEST
 
+private
+CAST: N>PTR ( n -- ptr u8 )
+public
+
 -9672 s" the log test's code" ERROR:CODE E-LOG-CODE
 -9678 constant UNDECLARED          \ no ERROR:CODE declares it
 $A constant LF
@@ -37,6 +42,9 @@ $10000 constant CHUNK-U
 0 constant F-DUPFD
 $A constant SAVE-FD-MIN             \ the saved stderr lands clear of 0..2
 $4000000000000 constant HUGE-U      \ 2^50: BUF admits it, a 47- or 48-bit address space cannot map it
+$800000000000 constant SPACE-U      \ 2^47, the first span FILL tries
+$1000 constant PAGE-MIN             \ the smallest page any target maps
+256 constant HOLDS-CAP
 
 create PATH-BUF PATH-CAP allot      \ the capture file's path
 variable PATH-U
@@ -52,15 +60,22 @@ variable T0                         \ epoch seconds before a case's first line
 variable T1                         \ and after its last
 variable CODE-A
 variable CODE-B
+variable CODE-C
 variable START
 variable LINES
 variable BAD
 2 TYPED-BUFFER NEXTS n               \ each writer's next line number, a then b
 variable READY
+HOLDS-CAP TYPED-BUFFER HOLD-ATS n    \ each reserved span's address
+HOLDS-CAP TYPED-BUFFER HOLD-US n     \ and its bytes
+variable HOLDS
 
 TASK:MIN-STACK TASK:TASK WRITER-A
 TASK:MIN-STACK TASK:TASK WRITER-B
 TASK:MIN-STACK TASK:TASK READER
+\ OPEN-CASE's own task: RELEASE-CASE needs WRITER-A to register LOG's release
+\ after ROW-PROBE, and a registration serves later activations.
+TASK:MIN-STACK TASK:TASK OPENER
 
 : BLEN ( n -- NUM:byte-len )  BUF:N>BLEN ;
 
@@ -183,6 +198,12 @@ TASK:MIN-STACK TASK:TASK READER
    FILE$ BIG-OK ;
 
 
+: SHED-CASE ( -- )
+   s" a line past START-CAP leaves its row released" T-LABEL
+   [: BIG-LINE ;] CAPTURED
+   LOG-TEST:ROW BUF:LIVE? TFALSE ;
+
+
 \ The stray words find no line open: the big line's ;LINE closed it.
 : STRAY-LINES ( -- )
    BIG-LINE
@@ -274,8 +295,8 @@ TASK:MIN-STACK TASK:TASK READER
    at u CONTROL-REST$ LINE-OK nip 0 T= ;
 
 
-\ The text's span is HUGE-U bytes from a one-byte string: the row's growth to
-\ hold it is refused before a byte of it is read.
+\ The text's span is HUGE-U bytes from a one-byte string, so this case relies on
+\ TEXT+ growing the row before it reads a byte of the text (ESCAPED+).
 : LOST-LINES ( -- )
    [: LOG:ERROR s" t" LOG:LINE s" x" drop HUGE-U LOG:TEXT+ LOG:;LINE ;] catch CODE-A !
    [: KEPT-LINE ;] catch CODE-B ! ;
@@ -284,13 +305,18 @@ TASK:MIN-STACK TASK:TASK READER
 : NOTICE-REST$ ( -- ptr u8 n )  S\"  error log: out of memory, a line was lost\n" ;
 
 
-: LOST-CASE ( -- )
-   s" a line no mapping can hold is written as the notice" T-LABEL
-   [: LOST-LINES ;] CAPTURED
+\ The file holds the notice, then KEPT-LINE's line.
+: NOTICE-THEN-KEPT ( -- )
    FILE$ {: at:ptr u:n :}
    u DATE:TIME-LEN 2 * NOTICE-REST$ nip + KEPT-REST$ nip + T=
    at u NOTICE-REST$ LINE-OK
-   KEPT-REST$ LINE-OK nip 0 T=
+   KEPT-REST$ LINE-OK nip 0 T= ;
+
+
+: LOST-CASE ( -- )
+   s" a line no mapping can hold is written as the notice" T-LABEL
+   [: LOST-LINES ;] CAPTURED
+   NOTICE-THEN-KEPT
    CODE-A @ 0 T=
    CODE-B @ 0 T= ;
 
@@ -316,6 +342,93 @@ TASK:MIN-STACK TASK:TASK READER
    [: ABANDON-TASK ;] WRITER-A TASK:ACTIVATE
    WRITER-A TASK:JOIN JOIN-CODE E-FS-IO T=
    ROW-CODE @ E-BUF-STATE T= ;
+
+
+\ Reserves an inaccessible span of n bytes for EMPTY; false when none is left.
+: HOLD ( n -- bool )
+   {: u:n :}
+   MEM-ADDR-ANY u MEM-PROT-NONE MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap
+   {: at:n :}
+   at 0 < if false exit then
+   at HOLDS @ HOLD-ATS !
+   u HOLDS @ HOLD-US !
+   1 HOLDS +!
+   true ;
+
+
+\ Reserves spans, largest first, until the kernel has no page left, so every
+\ mapping the process asks for is refused until EMPTY.
+: FILL ( -- )
+   0 HOLDS !
+   SPACE-U
+   begin dup PAGE-MIN >= HOLDS @ HOLDS-CAP < and while
+      dup HOLD 0= if 2 / then
+   repeat drop
+   HOLDS @ HOLDS-CAP < TTRUE ;
+
+
+: EMPTY ( -- )
+   HOLDS @ 0 ?do
+      i HOLD-ATS @ N>PTR i HOLD-US @ munmap 0 T=
+   loop
+   0 HOLDS ! ;
+
+
+: FULL ( [ -- ] -- )
+   FILL
+   [: EMPTY ;] finally ;
+
+
+: OPEN-LOST ( -- )
+   [: LOG:ERROR s" t" LOG:LINE s" lost" LOG:TEXT+ LOG:;LINE ;] FULL ;
+
+
+\ A task's row is unmapped until its first line opens it.
+: OPEN-LOST-TASK ( -- )
+   [: OPEN-LOST ;] catch CODE-A !
+   [: KEPT-LINE ;] catch CODE-B !
+   0 TASK:RETURN ;
+
+
+: OPEN-LOST-JOIN ( -- )
+   [: OPEN-LOST-TASK ;] OPENER TASK:ACTIVATE
+   OPENER TASK:JOIN JOIN-CODE CODE-C ! ;
+
+
+: OPEN-CASE ( -- )
+   s" a line whose row LINE cannot map is written as the notice" T-LABEL
+   [: OPEN-LOST-JOIN ;] CAPTURED
+   NOTICE-THEN-KEPT
+   CODE-C @ 0 T=
+   CODE-A @ 0 T=
+   CODE-B @ 0 T= ;
+
+
+\ The text fills the row to its capacity, so the LF ;LINE appends needs a
+\ growth. BIG$ holds the text; a row with more room than BIG-U fails here.
+: ROW-FILL ( -- )
+   LOG-TEST:ROW BUF:CAP@ BUF:BLEN>N LOG-TEST:ROW BUF:LEN@ BUF:BLEN>N -
+   {: room:n :}
+   room BIG-U <= TTRUE
+   BIG$ drop room BIG-U min LOG:TEXT+ ;
+
+
+: FINISH-LOST ( -- )
+   LOG:ERROR s" t" LOG:LINE ROW-FILL
+   [: LOG:;LINE ;] FULL ;
+
+
+: FINISH-LINES ( -- )
+   [: FINISH-LOST ;] catch CODE-A !
+   [: KEPT-LINE ;] catch CODE-B ! ;
+
+
+: FINISH-CASE ( -- )
+   s" a line whose LF ;LINE cannot map is written as the notice" T-LABEL
+   [: FINISH-LINES ;] CAPTURED
+   NOTICE-THEN-KEPT
+   CODE-A @ 0 T=
+   CODE-B @ 0 T= ;
 
 
 : NEXT ( n -- ptr n )  [char] a - NEXTS ;
@@ -450,30 +563,6 @@ TASK:MIN-STACK TASK:TASK READER
    CODE-A @ 0 T= ;
 
 
-: NESTED ( -- )
-   LOG:WARN s" t" LOG:LINE s" before" LOG:TEXT+ LOG:;LINE
-   [: PATH$ STDERR:CAPTURE ;] catch CODE-A !
-   LOG:WARN s" t" LOG:LINE s" after" LOG:TEXT+ LOG:;LINE ;
-
-
-: BEFORE-REST$ ( -- ptr u8 n )  S\"  warn t: before\n" ;
-: AFTER-REST$ ( -- ptr u8 n )  S\"  warn t: after\n" ;
-: REOPEN ( -- )  [: ;] CAPTURED ;
-
-
-: NESTED-CASE ( -- )
-   s" a capture inside a capture is refused" T-LABEL
-   [: NESTED ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
-   u DATE:TIME-LEN 2 * BEFORE-REST$ nip + AFTER-REST$ nip + T=
-   at u BEFORE-REST$ LINE-OK
-   AFTER-REST$ LINE-OK nip 0 T=
-   CODE-A @ STDERR:E-STATE T=
-   [: STDERR:;CAPTURE ;] catch CODE-B !
-   CODE-B @ STDERR:E-STATE T=
-   [: REOPEN ;] catch 0 T= ;
-
-
 : CODE-LINES ( -- )
    LOG:ERROR s" t" LOG:LINE E-LOG-CODE LOG:CODE+ LOG:;LINE
    LOG:ERROR s" t" LOG:LINE UNDECLARED LOG:CODE+ LOG:;LINE ;
@@ -498,16 +587,18 @@ TASK:MIN-STACK TASK:TASK READER
    BIG-MAKE
    LEVELS-CASE
    BIG-CASE
+   SHED-CASE
    STRAY-CASE
    CONTROL-CASE
    ABANDON-CASE
    UNPAIRED-CASE
    LINE-IN-LINE-CASE
    LOST-CASE
+   OPEN-CASE
+   FINISH-CASE
    RELEASE-CASE
    PIPE-CASE
    REFUSED-CASE
-   NESTED-CASE
    CODE-CASE
    BIG-B BUF:DISPOSE
    FILE-B BUF:DISPOSE ;

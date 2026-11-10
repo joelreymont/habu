@@ -10,10 +10,11 @@
 \ replaces with NOTICE. A LINE while a line is open abandons that line, as a
 \ throw does, so the TEXT+ and ;LINE that follow it write nothing.
 \ STORAGE CLASS. TASK-LOCAL: the line, a TASK:+USER BUF row kept across lines
-\ and released once a line grows it past START-CAP; ARMED, set while the row's
-\ release is registered; PHASE, whether a line is closed, open or lost. A line
-\ logged from a TASK:AT-EXIT cleanup leaks its row: the release LINE registers
-\ then joins a chain already running (src/lib/task.f TASK-RUN-EXIT).
+\ and released once a line grows it past START-CAP; ARMED, set once this run
+\ has registered the row's release; PHASE, whether a line is closed, open or
+\ lost. A line logged from a TASK:AT-EXIT cleanup leaks its row: the release
+\ LINE registers then joins a chain already running (src/lib/task.f
+\ TASK-RUN-EXIT).
 \ PROCESS-WIDE: LOCK, held for each line's write, which keeps this process's
 \ lines whole (another process writing the same fd can still split a line
 \ longer than PIPE_BUF), and NOTICE, written under it.
@@ -90,7 +91,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    1 ARMED ! ;
 
 
-\ A refused mapping loses the open line; any other code is the caller's.
+\ A refused mapping loses the open line; any other code goes on.
 : MAP-REFUSED ( n -- )
    {: code:n :}
    code 0= if exit then
@@ -141,7 +142,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    at from + to from - BUF:N>BLEN ROW BUF:APPEND-SPAN ;
 
 
-\ The row first grows to hold the text unescaped, so a refused mapping comes
+\ TEXT+'s contract: the row's first growth, to hold the text unescaped, comes
 \ before any byte of the text is read.
 : ESCAPED+ ( ptr u8 n -- )
    {: at:ptr u:n :}

@@ -659,6 +659,7 @@ SUITE argv-stdlib-mocks
 SUITE test-stdlib
    src/lib/test/assert-test.f
    src/lib/test/mapped-test.f
+   src/lib/test/stderr-test.f
 ;SUITE
 
 SUITE date-helpers
