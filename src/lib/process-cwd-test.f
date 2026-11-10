@@ -97,25 +97,56 @@ variable PCT-I
    s" /bin/cat" >LEN s" /no/such/habu-process-cwd-test" >LEN -1 >FD -1 >FD -1 >FD
    PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;
 
-: PCT-EARLY-EOF$ ( -- ptr u8 n )
-   s" 111 emit 107 emit 1 close 2 close : PCT-WAIT ( -- ) mono-ns 1000000000 + begin dup mono-ns > while repeat drop ; PCT-WAIT" ;
+: PCT-EARLY-EOF$ ( -- ptr u8 n )   \ writes ok, closes 1 and 2, spins 60 s, so only its deadline ends it
+   s" 111 emit 107 emit 1 close 2 close : PCT-WAIT ( -- ) mono-ns 60000000000 + begin dup mono-ns > while repeat drop ; PCT-WAIT" ;
+
+: PCT-SELF-EOF$ ( -- ptr u8 n )   \ writes ok, closes 1 and 2, spins 50 ms, then ends
+   s" 111 emit 107 emit 1 close 2 close : PCT-WAIT ( -- ) mono-ns 50000000 + begin dup mono-ns > while repeat drop ; PCT-WAIT" ;
+
+: PCT-OUT-CLEAR ( -- )   \ so no assertion passes on an earlier capture's bytes
+   0 PCT-OUT c!
+   0 PCT-OUT 1 + c! ;
+
+\ stdout of a deadline capture: a prefix of ok, as the deadline may fall before
+\ the child's first emit or between its two.
+: PCT-OUT-OK? ( n -- )
+   {: n :}
+   n 0 >= n 2 <= and TTRUE
+   PCT-OUT n 2 min s" ok" drop n 2 min T$= ;
+
+: PCT-CLEARED ( -- )
+   PROCESS:PID @ PROCESS:NO-PID T= PROCESS:IN-W @ PROCESS:NO-FD T= ;
 
 : PCT-EARLY-EOF ( -- )
    PCT-RESET
+   PCT-OUT-CLEAR
    s" bin/hb" s" ." PCT-EARLY-EOF$ PCT-OUT PCT-CAP PCT-ERR PCT-CAP 300
    PCT-STDIN-CAPTURE drop 2drop ;
 
+: PCT-OUTCOME ( ptr u8 n ms -- len len PROCESS:ending )
+   {: src:ptr srcu:n deadline:ms :}
+   PCT-RESET
+   PCT-OUT-CLEAR
+   s" bin/hb" >LEN s" ." >LEN src srcu >LEN
+   PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN deadline
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ;
+
+\ The 300 ms captures also cover the child's start, so they claim only what a
+\ deadline promises: a timeout, pid and stdin cleared, stdout a prefix of ok.
+\ The third child ends by itself under a guard it never reaches, so it alone
+\ claims a clean exit with exactly ok read across its early end of output.
 : PCT-RUN-EARLY-EOF ( -- )
    [: PCT-EARLY-EOF ;] E-PROC-TIMEOUT TTHROWSQ
-   PROCESS:OUT-LEN @ 2 T= PCT-OUT 2 s" ok" T$=
-   PROCESS:PID @ PROCESS:NO-PID T= PROCESS:IN-W @ PROCESS:NO-FD T=
-   PCT-RESET
-   s" bin/hb" >LEN s" ." >LEN PCT-EARLY-EOF$ >LEN
-   PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 300 >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME
-   T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 2 T=
+   PCT-CLEARED
+   PROCESS:OUT-LEN @ PCT-OUT-OK?
+   PCT-EARLY-EOF$ 300 >MS PCT-OUTCOME
+   T-ENDING-TIMEOUT LEN>N 0 T= LEN>N PCT-OUT-OK?
+   PCT-CLEARED
+   PCT-SELF-EOF$ 60000 >MS PCT-OUTCOME {: outu:len erru:len oc :}
+   PCT-SELF-EOF$ PCT-OUT outu LEN>N PCT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
+   erru LEN>N 0 T= outu LEN>N 2 T=
    PCT-OUT 2 s" ok" T$=
-   PROCESS:PID @ PROCESS:NO-PID T= PROCESS:IN-W @ PROCESS:NO-FD T= ;
+   PCT-CLEARED ;
 
 : PCT-RUN-MISSING-CWD ( -- )
    [: PCT-MISSING-CWD ;] E-PROC-SPAWN TTHROWSQ
