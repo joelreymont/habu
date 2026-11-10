@@ -113,5 +113,38 @@ public
    size 0= if false exit then
    b site +  v size ADDRESS-CARRIER:SET-CHAIN-VALUE  true ;
 
+
+private
+
+\ Whether site starts a whole instruction inside s bytes.
+: INSN-SITE? ( n n -- bool )
+   {: s:n site:n :}
+   site 0 >=  site 3 and 0=  and  site s 4 - <=  and ;
+
+public
+
+\ Whether emission bytes b, s of them, hold at site the compile's unplaced call of kind:
+\ bl 0 for NEMIT:CALL, b 0 for NEMIT:TAIL.
+: CALL? ( ptr u8 n n n -- bool )
+   {: b:ptr s:n site:n kind:n :}
+   s site INSN-SITE? 0= if false exit then
+   b site + LE:U32@ {: word:n :}
+   kind NEMIT:CALL = if word 0 A64ASM:ENC-BL = exit then
+   kind NEMIT:TAIL = if word 0 A64ASM:ENC-B = exit then
+   false ;
+
+
+\ Whether emission bytes b, s of them, hold at site the return a does> clause patches.
+: SLOT? ( ptr u8 n n -- bool )
+   {: b:ptr s:n site:n :}
+   s site INSN-SITE? 0= if false exit then
+   b site + LE:U32@ A64ASM:ENC-RET = ;
+
+
+\ Whether s bytes are a whole number of instructions, at least one.
+: SIZE? ( n -- bool )
+   {: s:n :}
+   s 4 >=  s 3 and 0=  and ;
+
 ;package
 ;package

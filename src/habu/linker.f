@@ -3422,27 +3422,27 @@ variable RD-END
    n 0 ?do i ENTRY-CK loop ;
 
 
+\ The machine this object's emission e holds: every emission of an object is the target's.
+: EM-ARCH ( n -- CTARGET:arch )
+   drop NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
+
+
 \ A call row of emission top, s bytes; its site, above the row before it, holds the compile's
 \ unplaced call of the row's kind. A record target precedes top's own: a body naming its word is
 \ E-UNDEFINED, RECURSE files no row.
 : CALL-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: site:n :}
-   site 0<  site 3 and 0<>  or  site s 4 - >  or if BAD then
    site LAST-CALL @ <= if BAD then
    site LAST-CALL !
    RD-U64 {: kind:n :}
    kind 0<>  kind 1 <>  and if BAD then
    GOOD? if
-      OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  site +  LE:U32@ {: word:n :}
-      kind 0= if 0 A64ASM:ENC-BL else 0 A64ASM:ENC-B then  word <> if BAD then
+      top EM-ARCH  OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  s  site
+      kind 0= if NEMIT:CALL else NEMIT:TAIL then  CALL?
+      0= if BAD then
    then
    RD-REF top  top EM-RECS @  CODE-REF-CK ;
-
-
-\ The machine this object's emission e holds: every emission of an object is the target's.
-: EM-ARCH ( n -- CTARGET:arch )
-   drop NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
 
 
 \ An address row of an emission of s bytes, numbered top, its site above the row before it: its
@@ -3471,10 +3471,10 @@ variable RD-END
    {: s:n top:n :}
    RD-U64 {: p:n :}
    p -1 = if exit then
-   p 0<  p 3 and 0<>  or  p s 4 - >  or if BAD exit then
    p LAST-CALL @ <= if BAD then
    GOOD? if
-      OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  p +  LE:U32@ A64ASM:ENC-RET <> if BAD then
+      top EM-ARCH  OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  s  p  SLOT?
+      0= if BAD exit then
    then
    RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 5 = if exit then
@@ -3493,7 +3493,7 @@ variable RD-END
    {: e:n :}
    RD-AT @ e EM-OFFS !
    RD-U64 {: s:n :}
-   s 4 <  s 3 and 0<>  or if BAD then
+   e EM-ARCH s SIZE? 0= if BAD then
    RD-U64 {: r:n :}
    r 0<  r s >  or if BAD then
    s RD-SKIP
