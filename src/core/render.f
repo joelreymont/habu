@@ -1180,8 +1180,8 @@ variable MDV-I   variable MDV-F
    s" more than " DTXT  BINDER-DEPTH-MAX JNUM  s"  nested binders" DTXT ;
 
 
-\ Shared by a token of unknown effect (SUGGEST-TEXT), control nested too deep
-\ (MDIAG-SUGGEST$) and a deferred stretch or definition (TOP-DEFERRED-DIAG).
+\ Shared by a token of unknown effect (SUGGEST-TEXT) and a deferred stretch or
+\ definition (TOP-DEFERRED-DIAG).
 : UNCK-SUGGEST$ ( -- ptr u8 n )
    s" Rewrite with modeled words or isolate an audited primitive." ;
 
@@ -1231,7 +1231,7 @@ variable MDV-I   variable MDV-F
       MD-ARENA-CALL   of s" Declare the storage with ARENA NAME TYPE or HEAP NAME TYPE and call its generated NAME-NEW and NAME-RELEASE: only those words call ARENA-NEW, ARENA-RELEASE, RECORD-NEW and RECORD-RELEASE, because only they tie the record size to the declared type." endof
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
-      MD-CF-DEPTH     of UNCK-SUGGEST$ endof
+      MD-CF-DEPTH     of s" Move the inner control structures into a named word and call it there; each definition counts its own control frames." endof
       MD-RECURSE-SIG  of s" Declare the definition's stack effect after its name." endof
       MD-RECURSE-DOES of s" Move the recursion into a named word with a declared effect and call it from the clause." endof
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof

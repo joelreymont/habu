@@ -3,9 +3,9 @@
 \ BINDER-DEPTH-MAX), and pointees or quotations nested past EFFECT-DEPTH-MAX.
 \ A body nested past CF-FRAMES-MAX control frames, a RECURSE with no declared
 \ effect and a RECURSE in a does> clause are uncheckable for a reason they name
-\ too, and each says so in its JSON packet, a RECURSE's with a suggestion of its
-\ own; the packet of a RECURSE with no declared effect has a null
-\ declared_effect, which the diagnostics gate accepts.
+\ too, and each says so in its JSON packet with a suggestion of its own; the
+\ packet of a RECURSE with no declared effect has a null declared_effect, which
+\ the diagnostics gate accepts.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process.
 require src/lib/test.f
@@ -169,6 +169,10 @@ public
    SRC-RESET s" SN-IFS-33" 33 IFS-TEXT
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
    S\" \"reason\":\"control flow nested too deep to check (depth 33, at most 32)\"" PACKET-HAS
+   s" 33 nested IFs suggest a named word for the inner structures" T-LABEL
+   SRC-RESET s" SN-IFS-33" 33 IFS-TEXT
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
+   S\" \"suggestion\":\"Move the inner control structures into a named word and call it there; each definition counts its own control frames.\"" PACKET-HAS
    s" a RECURSE with no declared effect is uncheckable for want of one" T-LABEL
    RECURSE-NOSIG
    s" at 'RECURSE' recursion needs a declared stack effect" REFUSES
