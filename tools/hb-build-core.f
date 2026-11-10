@@ -1,9 +1,9 @@
 \ hb-build-core.f - builds this tree's arm64 hb, hb with a program's files
 \ (--repl), or a stripped program, as a cross-build in the running hb
-\ (LINKER:WITH) and writes it with its map beside it. A kernel build first
-\ compiles the tree's kernel writer and writes the kernel object the build
-\ then links (KERNEL-BUILD). Each loads hb's startup
-\ files in hb's own order (src/habu/habu2.f EMIT-HOST-LOAD-PREFIX); hb then loads
+\ (LINKER:WITH) and writes it with its map beside it. A native build first
+\ compiles the tree's arm64 kernel writer and writes the kernel object the
+\ build then links (KERNEL-BUILD); a Wasm program builds none. Each loads hb's
+\ startup files in hb's own order (src/habu/habu2.f EMIT-HOST-LOAD-PREFIX); hb then loads
 \ the runtime's files, --repl the program's source, and both their registry and
 \ installs; a stripped program loads its source and its entry.
 \ The files written under <out>/hb-build/<target>/ load inside the build, so a
@@ -42,7 +42,7 @@ create KERNEL-PATH PATH-CAP allot  variable KERNEL-U
 7 64 + 4 + constant KERNEL-NAME-U   \ kernel-<64 hex digits>.hko
 create KERNEL-NAME KERNEL-NAME-U allot
 TYPED-VARIABLE KERNEL-ENGINE? bool     \ the kernel build writes an engine's kernel
-\ the build's target, stored by KERNEL-BUILD, which every build runs first
+\ the build's target, which every build stores before PATHS
 TYPED-VARIABLE TARGET RTARGET:resolved-target
 DYNAMIC-BUFFER TEXT u8                  \ the end file's text until it is written
 variable TEXT-U
@@ -87,6 +87,8 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 
 : TARGET? ( RTARGET:profile-id -- bool )
    TARGET @ RTARGET:PROFILE@ RTARGET-PROFILE--ID:EQ ;
+
+: WASM? ( -- bool ) TARGET @ RTARGET:ARCH@ CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
 
 \ A row loads when its kind is common or the build's target (habu2.f PFX-LOAD?).
 : LOAD? ( n -- bool )
@@ -251,8 +253,11 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 : APP-END-WRITE ( -- )
    APP-END$ s\" ' MAIN APP-ENTRY:XT!\n" WRITE-CHANGED ;
 
+\ A Wasm module's kernel words (WKWORDS) load ahead of the program, so its words
+\ and the link reach them.
 : APP-BODY ( -- )
    STARTUP
+   WASM? if s" src/arch/wasm/kernel-words.f" REQUIRE-FILE then
    SRC$ INCLUDE-FILE
    APP-END$ INCLUDE-FILE
    OUT$ LINKER:WRITE ;
@@ -323,11 +328,13 @@ public
    s" engine" target ['] REPL-BODY LINKER:WITH ;
 
 \ Build the source as a stripped program for the target and write it to the
-\ second path.
+\ second path. A Wasm target links no arm64 kernel object.
 : APP ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
    {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
-   false target KERNEL-BUILD  APP-END-WRITE
+   target TARGET !
+   WASM? if PATHS else false target KERNEL-BUILD then
+   APP-END-WRITE
    s" app" target ['] APP-BODY LINKER:WITH ;
 
 ;package

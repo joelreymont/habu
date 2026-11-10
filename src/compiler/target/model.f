@@ -190,6 +190,7 @@ private
    name size s" macos-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN true exit then
    name size s" linux-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU true exit then
    name size s" linux-x86-64" NAME? if RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU true exit then
+   name size s" wasm" NAME? if RTARGET-PROFILE--ID:WASM32-UNKNOWN-UNKNOWN true exit then
    RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN false ;
 
 : PROFILE ( ptr u8 n -- profile-id )
