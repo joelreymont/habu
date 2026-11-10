@@ -44,15 +44,17 @@ variable RC
 : MARKER ( ptr u8 n -- ) {: marker size:n :}
    OUT OUT-U @ marker size CONTAINS? TTRUE ;
 
+: ENTRY$ ( -- ptr u8 n ) s" source-run.f" FILE$ ;
+
 : SOURCE-ARGS ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" --" >LEN PROC-ARGV+
+   ENTRY$ >LEN PROC-ARGV+
    ROOT$ >LEN PROC-ARGV+ ;
 
 : SOURCE-RUN ( -- )
+   ENTRY$ S\" require test/xml-owner-consumer.f\nMAIN\n" FS:WRITE-ALL
    SOURCE-ARGS
-   ENGINE-CANDIDATE:PATH$
-   S\" require test/xml-owner-consumer.f\nMAIN\n" RUN-INPUT
+   ENGINE-CANDIDATE:PATH$ s" " RUN-INPUT
    s" public source load opens, edits and cleans multiple parts" T-LABEL
    NEED-OK s" xml-owner-consumer: ok" MARKER ;
 

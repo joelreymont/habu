@@ -985,8 +985,8 @@ Factor raw compiler and emitter code to the same standard.
   separate files, split at responsibility boundaries.
 - **Reusable helpers live in libraries**; shared behaviour lives in one owned
   file. Run multi-file tools as `hb --load src/lib/a.f src/lib/b.f tool.f -- args…`:
-  sources before `--`, `SCRIPT-ARGV$` after it, fd 0 still tool data when stdin
-  is not a tty. Use `--load` only with more than one source file.
+  sources before `--`, `SCRIPT-ARGV$` after it, fd 0 tool data, as it is
+  whenever hb has an argument. Use `--load` only with more than one source file.
 - **Data never spans a load.** The loader aligns `here` to a cell when a loaded
   file starts and when it ends, so a file's data bytes depend only on its own
   source and its stored object installs whatever earlier files allotted. A live
@@ -1010,8 +1010,8 @@ Factor raw compiler and emitter code to the same standard.
   appenders; a line near the interpreter input buffer truncates and surfaces
   later as unrelated top-level words.
 - **Script argv is explicit.** `hb tool.f arg…` treats `arg…` as script
-  arguments; read them only after `SCRIPT-ARGC`, since `SCRIPT-ARGV$` for a
-  missing argument faults today instead of throwing.
+  arguments; `SCRIPT-ARGC` counts them, and `SCRIPT-ARGV$` for a missing one
+  throws `E-SCRIPT-ARGV-RANGE`.
 
 ## Stack comments
 

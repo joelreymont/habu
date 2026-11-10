@@ -219,13 +219,6 @@ CAST: HOOK-ACTION ( n -- [ -- ] )
    refusal 0<> code refusal = and if NULL$ 70 die then
    NULL$ UNCAUGHT-RC die ;
 
-: LIST? ( route -- bool )
-   MATCH route
-      load OF true ENDOF
-      build OF true ENDOF
-      plain OF false ENDOF
-   ;MATCH ;
-
 public
 
 \ Load what argv names, in order. argv[0] is the program and is not read; a
@@ -245,26 +238,17 @@ public
 
 private
 
-\ Unknown leading flags are checked before any stdin read. Explicit source
-\ lists never consume stdin, including when stdin is a pipe.
+\ Off a built application, any argument names what runs and stdin stays the
+\ program's data (test/main-routing.f); with none, stdin is the source.
 : ROUTED ( -- )
    APP? if
       APP-RUN
       TTY? if REPL-ENABLE OUTER:REPL else STDIN RUN-TEXT then
       exit
    then
-   ARGC 1 > if
-      1 ARGV$ ROUTE LIST? if
-         ARGV-BASE ARGC RUN exit
-      then
-   then
-   TTY? if
-      ARGC 1 > if ARGV-BASE ARGC RUN exit then
-      REPL-ENABLE OUTER:REPL exit
-   then
-   STDIN {: a:ptr u:n :}
-   u 0 > if a u RUN-TEXT exit then
-   ARGC 1 > if ARGV-BASE ARGC RUN else a u RUN-TEXT then ;
+   ARGC 1 > if ARGV-BASE ARGC RUN exit then
+   TTY? if REPL-ENABLE OUTER:REPL exit then
+   STDIN RUN-TEXT ;
 
 public
 

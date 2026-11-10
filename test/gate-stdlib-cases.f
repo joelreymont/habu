@@ -35,6 +35,10 @@ SUITE engine-stack-machine
    test/engine-stack-machine.f
 ;SUITE
 
+SUITE main-routing
+   test/main-routing.f
+;SUITE
+
 SUITE aot-shifted-bytes
    test/aot-shifted-bytes.f
 ;SUITE

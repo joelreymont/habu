@@ -181,10 +181,10 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
 - A suite whose assertions depend on the compiler tier selects it itself, with
   `1 set-tier` after the harness and tool requires and before the code under
   test, so the harness is not compiled at tier 1.
-- `bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks
-  on stdin — it looks like a hang, a WAIT line with no CPU delta. Pipe
-  `< /dev/null`, and give a spawned build child `/dev/null` stdin rather than
-  letting it inherit one.
+- `bin/hb` with no argument reads its program from stdin: a pipe left open
+  blocks it before anything runs and a terminal gets the REPL — it looks like a
+  hang, a WAIT line with no CPU delta. Any argument names what runs, and stdin
+  is then only the program's data.
 - A CLI tool that reads the ambient argv is never `include`d into a shared
   image: it would read the harness's argv. Run it spawned, and keep its
   assertion in an argv-free `-test.f`.

@@ -38,9 +38,9 @@ create PATH-BUF PATH-CAP allot
 
 : PLAIN ( -- )
    S\" s\" PIPE\" type cr\n" [: FILE-ARG ;] RUN
-   S\" PIPE\n" s" nonempty stdin wins" PASS
-   s" " [: FILE-ARG ;] RUN
-   S\" FILE\n" s" empty stdin falls back" PASS ;
+   S\" FILE\n" s" a named file runs over a nonempty stdin" PASS
+   s" Q" [: READ$ GE-ARG+ ;] RUN
+   S\" Q\n" s" plain leaves stdin alone" PASS ;
 
 : LOAD-ROUTE ( -- )
    s" Q" [: s" --load" GE-ARG+ READ$ GE-ARG+ ;] RUN

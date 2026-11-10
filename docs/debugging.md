@@ -18,13 +18,13 @@ the start of the file.
 
 A refusal with no include frame open prints the message and a newline with
 **no** ` at …`, because there is no file to name: the root source stream's own
-text (src/habu/main.f: stdin, tty or piped, or a plain `hb <file>` without
-`--load`) and the engine's own boot prefix. A string `evaluate`d *inside* a file
-keeps the file line only while it is a slice of the file's own bytes
-(`parse-name X evaluate`). Any other evaluated string names the file alone
-(` at <path>`) for a refusal in it, and so do the native compiler's `ncomp:` and
-`E-UNDEFINED:` lines that follow that refusal (src/core/checker.f
-SRCLOC:FILE-BUFFER?).
+text (src/habu/main.f `ROUTED`: stdin when `hb` has no argument, tty or piped,
+or a plain `hb <file>` without `--load`) and the engine's own boot prefix. A
+string `evaluate`d *inside* a file keeps the file line only while it is a slice
+of the file's own bytes (`parse-name X evaluate`). Any other evaluated string
+names the file alone (` at <path>`) for a refusal in it, and so do the native
+compiler's `ncomp:` and `E-UNDEFINED:` lines that follow that refusal
+(src/core/checker.f SRCLOC:FILE-BUFFER?).
 
 An undefined word, `E-UNDEFINED: X at <path>:<line>`, is located like any
 compile refusal on both loops. A loaded file that leaves cells prints
