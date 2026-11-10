@@ -1,13 +1,19 @@
 ---
 title: Cross-build a linux-aarch64 engine from macOS
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-30T10:56:42.187456+02:00"
 ---
 
-Problem: native-build --target linux-aarch64 on macOS stops with 'not executable here' (timer lane 1, 2026-10-30), so a Linux engine cannot be produced on the Mac; the roadmap's finish line says a cross-built engine starts. Acceptance: the cross build writes a Linux arm64 engine on macOS and that engine boots on spark. Files: tools/native-build-core.f, tools/native-build.f. Verify: the cross-built engine on spark runs bin/hb --load test/run.f. Depends: none. Ownership: tools/native-build*.f. Claim: unassigned.
+Problem: native-build --target linux-aarch64 on macOS stops with 'not executable here' (timer lane 1, 2026-10-30), so a Linux engine cannot be produced on the Mac; the roadmap's finish line says a cross-built engine starts. Acceptance: the cross build writes a Linux arm64 engine on macOS and that engine boots on spark. Files: tools/native-build-core.f, tools/native-build.f. Verify: the cross-built engine on spark runs bin/hb --load test/run.f. Depends: none. Ownership: tools/native-build*.f. Claim: agent=carl workspace=.jj-ws.noindex/carl-layout (design for Joel; no lane before he approves it).
 
 Needed by: the checker-cost timings on spark (habu-cut-the-checker-6c4079af, 2026-11-06 note): no hb on spark builds today's tree, so a Linux arm64 engine has to come from the Mac. The old capture builder's `--target` path is machinery being replaced (CLAUDE.md); the engine comes from the linker's cross-build with a Linux file writer.
 
 Acceptance case (stuart, 2026-11-07): a Linux arm64 hb cross-built on the Mac by the old capture builder (~/.local/lib/habu, `--target aarch64-unknown-linux-gnu`, the same source as spark's tree) boots on spark, runs Tender's corpus (5 forms; libzip.so.5 from ~/stuart-runs/lib) and builds itself with rc=0, but the product is not byte-equal: spark:~/stuart-runs/habu/bin/hb vs ~/stuart-runs/hbo/hb2, both 7,143,616 bytes, 2,644,568 bytes differ from byte 6885 (0xd3 vs 0x0b), while the two hb.map files are identical (build log ~/stuart-runs/hbo/b2.log). Not yet diagnosed. With the engine written by the linker's cross-build, a Linux arm64 hb cross-built on the Mac equals the hb that hb builds of the same tree on spark.
+
+Request (2026-11-10): stuart relayed, as Joel's words, "tell carl to fix spark in parallel with his other work". Tender's corpus score runs stay off the Mac, and every Tender campaign landing waits on a spark hb that loads Tender main 95f21bb5.
+
+Stopgap (carl, 2026-11-10): spark:~/carl-runs/habu-58ccf/bin/hb and hb.map, Habu 58ccf72b7c (the last commit with tools/native-build.f and the growing definition text), built on spark in 2 minutes by ~/stuart-runs/habu/bin/hb through tools/native-build.f. Checked: a 10 KB colon definition loads on it and is refused by the older hb. Not checked: Tender main, a second generation, any suite. No route steps master's history on Linux (the Mac's steps between ed44fc3a6d and 19442634b0 used tools/next-hb.f and a stage that is not in the pushed commits), and master's hb-build cannot target Linux.
+
+Observed at master 39f922ed (carl, 2026-11-10): tools/hb-build-core.f LOAD? :61-69 picks boot-file rows by the builder's own HB-TARGET-*? and hb-build has no --target; hb carries one file writer, chosen when hb was built (src/habu/link-data.f:23-30, src/arch/arm64/link-kernel.f:17-19), and the Mach-O and ELF writers both define package EXECUTABLE, so only one can load; the kernel build compiles the tree's writer in a build window; jerry's unlanded 53689749 "Give the linker the build's target" makes LINKER:WITH take the target. The linker path has never run on Linux arm64, and the Linux start-up (src/arch/arm64/boot.f:15-27) is unproven. Acceptance replaces the old Files and Verify: `hb-build -- --target <linux arm64> --engine` on the Mac writes an hb that boots on spark, builds itself there, and equals the Mac's output for the same tree.
