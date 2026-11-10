@@ -14,6 +14,7 @@ require src/lib/process-argv.f
 require src/lib/test.f
 require src/core/engine-error.f
 require src/arch/wasm/profile.f
+require src/arch/wasm/leb.f
 require test/wasm/harness.f
 
 package WASM-HB-BUILD-TEST
@@ -319,6 +320,40 @@ variable TEXT-U
    s" link: B has a does> clause, which a Wasm module cannot hold" ERR-HAS
    s" link: a Wasm module cannot hold a does> clause" ERR-HAS
    NO-MODULE
+   SB-RESET
+   S\" package ADV\nprivate\nvariable ACTION\npublic\n" SB-APPEND
+   S\" : MAKER ( -- ) create 0 , does> ( -- ) drop ;\n: MAIN ( -- ) ACTION @ drop ;\n" SB-APPEND
+   S\" ' MAKER;does ACTION xt!\n;package\n: MAIN ( -- ) ADV:MAIN ;\n" SB-APPEND
+   SB$ s" clause-cell.f" SOURCE!
+   \ The cell places its definer's whole emission, and every does> definer calls
+   \ does-patch, which a Wasm module has no function for.
+   s" a cell naming a does> clause is refused with 74 and no module" T-LABEL
+   s" clause-cell.wasm" BUILD 74 T=
+   s" link: a Wasm module has no does-patch" ERR-HAS
+   s" link: the program reaches kernel words a Wasm module does not provide" ERR-HAS
+   NO-MODULE
+   s" : MAIN ( -- ) 1 ;" s" unchecked.f" SOURCE!
+   s" an unchecked MAIN is refused with 74 and no module" T-LABEL
+   s" unchecked.wasm" BUILD 74 T=
+   s" hook: non-certified definition: main" ERR-HAS
+   s" threw 70" ERR-HAS
+   NO-MODULE
+   s" require src/lib/span.f : MAIN ( -- ) 8 SPAN-BUFFER: ;" s" reached-definer.f" SOURCE!
+   s" a definer MAIN reaches is refused with 74 and no module" T-LABEL
+   s" reached-definer.wasm" BUILD 74 T=
+   s" link: a stripped program reaches a word it cannot run" ERR-HAS
+   NO-MODULE
+   s" : MAIN ( n -- ) drop ;" s" cells.f" SOURCE!
+   s" a MAIN that takes a cell is refused with 74 and no module" T-LABEL
+   s" cells.wasm" BUILD 74 T=
+   s" APP-ENTRY:XT!" ERR-HAS
+   s" expected: [ -- ] actual: [ n -- ]" ERR-HAS
+   NO-MODULE
+   s" : MAIN ( -- ) ;" s" unwritten.f" SOURCE!
+   s" an output path in a missing directory is refused with 64 and no module" T-LABEL
+   s" missing/unwritten.wasm" BUILD 64 T=
+   s" hb-build: no such output directory" ERR-HAS
+   NO-MODULE
    s" an engine build for Wasm is refused with 64 and no module" T-LABEL
    s" engine.wasm" BUILD-ENGINE 64 T=
    s" hb-build: a Wasm target builds a program, not an engine or a REPL" ERR-HAS
@@ -463,6 +498,157 @@ variable TEXT-U
    RAN 0 T=
    WASM-HARNESS:OUT$ S\" 1\n" T$= ;
 
+
+: UNUSED-CASE ( -- )
+   s" : DEAD ( -- ) here drop ; : MAIN ( -- ) 7 . ;" s" unused.f" SOURCE!
+   s" an unreachable definition with an unsupported call is omitted" T-LABEL
+   s" unused.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ S\" 7\n" T$= ;
+
+: FATAL-CASE ( -- )
+   S\" : FATAL ( -- ) s\" fatal\" 77 die ; : MAIN ( -- ) ['] FATAL catch . ;"
+   s" fatal.f" SOURCE!
+   s" die prints its message and traps through catch, with no continuation" T-LABEL
+   s" fatal.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ s" fatal" T$= ;
+
+\ `bin/hb --load` of the source; answers its exit status.
+: NATIVE ( -- n )
+   PROC-ARGV-RESET  s" --load" ARG+  SRC+  DRIVER ;
+
+: NEGATIVE-BYTE-CASE ( -- )
+   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ; MAIN"
+   s" negative-native.f" SOURCE!
+   s" native BYTE-COPY dies through catch on a negative length" T-LABEL
+   NATIVE 76 T=
+   ERR ERR-U @ RTRIM s" byte: negative length" T$=
+   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ;"
+   s" negative-wasm.f" SOURCE!
+   s" Wasm BYTE-COPY prints the same diagnostic and traps through catch" T-LABEL
+   s" negative.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ s" byte: negative length" T$= ;
+
+
+\ ACTION-XT gives execute's own xt, which has no stored effect, as this
+\ fixture's type; its table slot is execute's kernel routine.
+: EXECUTE-CELL! ( -- )
+   SB-RESET
+   S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ [ -- ] -- ] ) ;\n" SB-APPEND
+   S\" CODE-CELL: ACTION\nTRUSTED: ACTION-XT ( -- [ [ -- ] -- ] ) ['] execute ;\npublic\n: TARGET ( -- ) 31 . ;\n" SB-APPEND
+   S\" : MAIN ( -- ) ['] TARGET ACTION @ execute ;\nACTION-XT ACTION xt!\n;package\n" SB-APPEND
+   S\" : MAIN ( -- ) PROBE:MAIN ;\n" SB-APPEND
+   SB$ s" execute-cell.f" SOURCE! ;
+
+: CATCH-CELL! ( -- )
+   SB-RESET
+   S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ [ -- ] -- n ] ) ;\n" SB-APPEND
+   S\" CODE-CELL: ACTION\nTRUSTED: ACTION-XT ( -- [ [ -- ] -- n ] ) ['] catch ;\npublic\n: TARGET ( -- ) -37 throw ;\n" SB-APPEND
+   S\" : MAIN ( -- ) ['] TARGET ACTION @ execute . ;\nACTION-XT ACTION xt!\n;package\n" SB-APPEND
+   S\" : MAIN ( -- ) PROBE:MAIN ;\n" SB-APPEND
+   SB$ s" catch-cell.f" SOURCE! ;
+
+: WORD-CELL! ( -- )
+   SB-RESET
+   S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ -- ] ) ;\n" SB-APPEND
+   S\" CODE-CELL: ACTION\npublic\n: TARGET ( -- ) 31 . ;\n" SB-APPEND
+   S\" : MAIN ( -- ) ACTION @ execute ;\n' TARGET ACTION xt!\n;package\n" SB-APPEND
+   S\" : MAIN ( -- ) PROBE:MAIN ;\n" SB-APPEND
+   SB$ s" word-cell.f" SOURCE! ;
+
+: CELL-CASES ( -- )
+   EXECUTE-CELL!
+   s" a word run through a code cell holding execute's xt prints 31, as natively" T-LABEL
+   s" execute-cell.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ S\" 31\n" T$=
+   WORD-CELL!
+   s" a word run through a code cell holding its own xt prints 31, as natively" T-LABEL
+   s" word-cell.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ S\" 31\n" T$=
+   CATCH-CELL!
+   s" catch through a code cell holding catch's xt prints the code -37, as natively" T-LABEL
+   s" catch-cell.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ S\" -37\n" T$= ;
+
+
+\ A fetch of an ENUM value through a pointer runs the tag check first.
+: FETCH! ( -- )
+   SB-RESET
+   S\" package PROBE\npublic\nENUM shade dark light grey ;ENUM\nTYPED-VARIABLE V shade\n" SB-APPEND
+   S\" private\nCAST: >CELL ( ptr shade -- ptr n )\npublic\n: TONE@ ( ptr shade -- shade ) @ ;\n" SB-APPEND
+   S\" : CODE ( -- n ) V TONE@ MATCH shade dark OF 0 ENDOF light OF 1 ENDOF grey OF 2 ENDOF ;MATCH ;\n" SB-APPEND
+   S\" : MAIN ( -- ) construct shade grey V ! CODE .  7 V >CELL ! CODE . ;\n;package\n" SB-APPEND
+   S\" : MAIN ( -- ) PROBE:MAIN ;\n" SB-APPEND
+   SB$ s" fetch.f" SOURCE! ;
+
+: FETCH-CASES ( -- )
+   FETCH!
+   s" an ENUM fetched through a pointer passes its tag check, then a stored 7 fails it" T-LABEL
+   s" fetch.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ S\" 2\nhb: bad layout tag" T$= ;
+
+
+65536 constant PAGE-BYTES
+5 constant SEC-MEMORY
+variable POS                         \ the byte offset in MODULE read next
+DYNAMIC-BUFFER MODULE u8
+
+\ The source at the name: MAIN reads a cell or a byte at the address.
+: ACCESS! ( n bool ptr u8 n -- )
+   {: a:n cell:bool name:ptr nu:n :}
+   SB-RESET
+   S\" package WASM-MEMORY\nprivate\nCAST: >CELL ( n -- ptr n )\n" SB-APPEND
+   S\" CAST: >BYTE ( n -- ptr u8 )\npublic\n: ACCESS ( -- ) " SB-APPEND
+   a FMT:SB-U
+   cell if s"  >CELL @" else s"  >BYTE c@" then SB-APPEND
+   S\"  drop ;\n;package\n: MAIN ( -- ) WASM-MEMORY:ACCESS ;\n" SB-APPEND
+   SB$ name nu SOURCE! ;
+
+: ACCESS ( ptr u8 n -- n )
+   BUILD 0 T=
+   RAN ;
+
+: U32> ( ptr u8 n -- n )
+   {: m:ptr u:n :}
+   m POS @ +  u POS @ -  WLEB:U32@ POS +! ;
+
+\ The module's memory size in bytes: past the 8-byte header, section by section
+\ to the memory section, then its count and limits flag to the minimum pages.
+: MEMORY-END ( -- n )
+   MOD MOD-U @ FS:FILE-SIZE {: u:n :}
+   u MODULE-RESERVE
+   MOD MOD-U @ 0 MODULE u FS:READ-ALL u T=
+   0 MODULE {: m:ptr :}
+   8 POS !
+   begin m POS @ + c@ SEC-MEMORY <> while
+      1 POS +!  m u U32> POS +!
+   repeat
+   1 POS +!  m u U32> drop  m u U32> drop  1 POS +!
+   m u U32> PAGE-BYTES * ;
+
+\ Memory ends at the memory section's minimum pages (WLINK's PAGES), not the
+\ image; the four sources differ only in the access, so they share that end.
+: MEMORY-CASES ( -- )
+   s" a cell at an upper-bit pointer, $100031000, fails its check and traps" T-LABEL
+   $100031000 true s" upper.f" ACCESS!
+   s" upper.wasm" ACCESS 2 T=
+   MEMORY-END {: end:n :}
+   s" a byte in the null region, $FFFF, fails its check and traps" T-LABEL
+   $FFFF false s" null.f" ACCESS!
+   s" null.wasm" ACCESS 2 T=
+   s" the last byte of the module's memory reads" T-LABEL
+   end 1- false s" last.f" ACCESS!
+   s" last.wasm" ACCESS 0 T=
+   s" a cell whose last byte is one past the memory's end traps in the engine" T-LABEL
+   end 7 - true s" past.f" ACCESS!
+   s" past.wasm" ACCESS 2 T= ;
+
 public
 
 : RUN ( -- )
@@ -481,6 +667,12 @@ public
    DIE-CASE
    BOUNDS-CASES
    SEGMENTS-CASE
+   UNUSED-CASE
+   FATAL-CASE
+   NEGATIVE-BYTE-CASE
+   CELL-CASES
+   FETCH-CASES
+   MEMORY-CASES
    T-REPORT ;
 
 ;package
