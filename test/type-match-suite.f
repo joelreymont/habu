@@ -230,6 +230,7 @@ variable MD-J   \ MD-BODY's own loop index: MD-APP clobbers MD-I per append
    0 MD-J !  begin MD-J @ k < while s" then " MD-APP MD-J @ 1 + MD-J ! repeat
    MD-BUF MD-U @ ;
 s" MD31=" type 31 MD-BODY CHECK-QUIET-CANDIDATE! 0 T=
+s" MD30=" type 30 MD-BODY CHECK-QUIET-CANDIDATE! -1 T=
 s" MD29=" type 29 MD-BODY CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-DEPTH" type cr
 
