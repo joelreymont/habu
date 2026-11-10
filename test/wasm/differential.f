@@ -1,8 +1,11 @@
-\ differential.f - W31: each row's program runs natively under bin/hb and as a
-\ module tools/wasm-build.f builds, wasm-tools validates and bun runs
-\ (test/wasm/harness.f), both held to the row. Both tools must be on PATH, so
-\ test/wasm/device.f runs it, as does `bin/hb --load test/wasm/differential.f`
-\ from the tree's root. Sources and modules stay in the printed directory.
+\ differential.f - W31: a program runs natively under bin/hb and as a module
+\ `hb-build --target wasm` builds, wasm-tools validates and bun runs
+\ (test/wasm/harness.f), both held to the same bytes. The rows that return are
+\ one program, built once; a throw or a trap ends a run, so each such row is a
+\ program of its own. Both tools must be on PATH, so test/wasm/device.f runs it,
+\ as does `bin/hb --load test/wasm/differential.f` from the tree's root.
+\ Sources, modules and the expected and actual output stay in the printed
+\ directory.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -17,7 +20,7 @@ package WASM-DIFFERENTIAL
 private
 
 60000 constant DEADLINE-MS
-4096 constant CAP
+65536 constant CAP
 139 constant CRASH-RC                  \ 128 + SIGSEGV: native dies of the trap after its dump
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -29,12 +32,34 @@ PATH-CAP BUFFER: CALLER
 variable CALLER-U
 PATH-CAP BUFFER: MODULE
 variable MODULE-U
+PATH-CAP BUFFER: FILE
 PTR-VARIABLE NAME-A
 variable NAME-U
 DYNAMIC-BUFFER GEN u8                  \ W03's source
 variable GEN-U
 
+\ The returning rows' program: their sources, MAIN's body and what it prints.
+CAP BUFFER: ALL
+variable ALL-U
+CAP BUFFER: CALLS
+variable CALLS-U
+CAP BUFFER: WANT
+variable WANT-U
+CAP BUFFER: PROG                       \ the program being written
+variable PROG-U
+
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
+
+: TEXT+ ( ptr u8 n ptr u8 ptr n -- )
+   {: a:ptr u:n buf:ptr len:ptr :}
+   len @ u + CAP > if E-STR-CAPACITY throw then
+   a  buf len @ +  u BYTE-COPY
+   u len +! ;
+
+: ALL+ ( ptr u8 n -- )  ALL ALL-U TEXT+ ;
+: CALLS+ ( ptr u8 n -- )  CALLS CALLS-U TEXT+ ;
+: WANT+ ( ptr u8 n -- )  WANT WANT-U TEXT+ ;
+: PROG+ ( ptr u8 n -- )  PROG PROG-U TEXT+ ;
 
 : NAME$ ( -- ptr u8 n )  NAME-A @ NAME-U @ ;
 
@@ -46,17 +71,24 @@ variable GEN-U
    SB-RESET  NAME$ SB-APPEND  sfx su SB-APPEND
    DIR DIR-U @ SB$ buf FS:JOIN-PATH ;
 
-\ The row's files: SOURCE as NAME.f, NAME's call as NAME-call.f, and its
-\ module's path, NAME.wasm.
-: FILES ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nu:n src:ptr su:n :}
+\ DIR's file named NAME and then suffix holds the bytes.
+: KEEP ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n sfx:ptr su:n :}
+   sfx su FILE PATH {: fu:n :}
+   FILE fu a u FS:WRITE-ALL ;
+
+\ The program's files: the source and a MAIN of the body as NAME.f, MAIN's call
+\ as NAME-call.f, and its module's path, NAME.wasm.
+: FILES ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: name:ptr nu:n src:ptr su:n body:ptr bu:n :}
    name NAME-A !  nu NAME-U !
    s" .f" SRC PATH SRC-U !
    s" -call.f" CALLER PATH CALLER-U !
    s" .wasm" MODULE PATH MODULE-U !
-   SRC SRC-U @ src su FS:WRITE-ALL
-   SB-RESET  NAME$ SB-APPEND  S\" \n" SB-APPEND
-   CALLER CALLER-U @ SB$ FS:WRITE-ALL ;
+   0 PROG-U !
+   src su PROG+  S\" \n: MAIN ( -- ) " PROG+  body bu PROG+  S\"  ;\n" PROG+
+   SRC SRC-U @ PROG PROG-U @ FS:WRITE-ALL
+   CALLER CALLER-U @ S\" MAIN\n" FS:WRITE-ALL ;
 
 \ bin/hb run on the arguments staged after PROC-ARGV-RESET: the lengths of its
 \ stdout and stderr, and its exit status.
@@ -70,30 +102,30 @@ variable GEN-U
    {: code:n :}
    SB-RESET  s" hb: uncaught throw code " SB-APPEND  code FMT:SB-INT  SB$ ;
 
-\ SOURCE then NAME, natively: they print want and exit rc, with nothing on
-\ stderr for 0 and the uncaught throw of code for UNCAUGHT-RC.
+\ The program natively: it prints want and exits rc, with nothing on stderr
+\ for 0 and the uncaught throw of code for UNCAUGHT-RC.
 : NATIVE ( ptr u8 n n n -- )
    {: want:ptr wu:n rc:n code:n :}
+   want wu s" -expected.txt" KEEP
    PROC-ARGV-RESET
    s" --load" ARG+  SRC SRC-U @ ARG+  CALLER CALLER-U @ ARG+
    HB {: o:n e:n r:n :}
+   OUT o s" -native.txt" KEEP
    LABEL  r rc T=
    LABEL  OUT o want wu T$=
    rc 0= if  LABEL  ERR e s" " T$=  then
    rc UNCAUGHT-RC = if  LABEL  ERR e RTRIM code UNCAUGHT$ T$=  then ;
 
-\ SOURCE built with entry NAME, valid and run: it prints want and answers
-\ status, a throw's code whole. A build that fails prints why.
+\ The program as a module, valid and run: it prints want and answers status, a
+\ throw's code whole.
 : WASM ( ptr u8 n n n -- )
    {: want:ptr wu:n status:n code:n :}
-   PROC-ARGV-RESET
-   s" --load" ARG+  s" tools/wasm-build.f" ARG+  s" --" ARG+
-   SRC SRC-U @ ARG+  NAME$ ARG+  MODULE MODULE-U @ ARG+
-   HB {: o:n e:n r:n :}
+   SRC SRC-U @ MODULE MODULE-U @ WASM-HARNESS:BUILD {: r:n :}
    LABEL  r 0 T=
-   r 0<> if  ERR e type  exit  then
+   r 0<> if  exit  then
    LABEL  MODULE MODULE-U @ WASM-HARNESS:VALID? TTRUE
    LABEL  MODULE MODULE-U @ WASM-HARNESS:RUN status T=
+   WASM-HARNESS:OUT$ s" -wasm.txt" KEEP
    LABEL  WASM-HARNESS:OUT$ want wu T$=
    status 1 = if  LABEL  WASM-HARNESS:THROW-CODE code T=  then ;
 
@@ -160,23 +192,27 @@ public
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm differential: sources and modules in " type  DIR u type cr ;
 
-\ A row is a NAME, a SOURCE that defines it and the EXPECTED bytes it prints
-\ (test/wasm/numeric-rows.f): natively `bin/hb --load` loads SOURCE then a file
-\ calling NAME; for Wasm SOURCE is built with entry NAME. ROW's program returns:
-\ exit 0, empty stderr, status 0. No Habu control word builds W02's cycle
-\ entered at two blocks, so its refusal stays structural
-\ (test/wasm/structure.f).
+\ A row's NAME, the SOURCE defining it and the bytes it prints (numeric-rows.f) join
+\ RETURNING's program. No control word builds W02's cycle; test/wasm/structure.f tests its refusal.
 : ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
-   name nu src su FILES
-   want wu 0 0 NATIVE
-   want wu 0 0 WASM ;
+   src su ALL+  S\" \n" ALL+
+   S\"  s\" " CALLS+  name nu CALLS+  S\" \" type cr " CALLS+  name nu CALLS+  S\" \n" CALLS+
+   name nu WANT+  S\" \n" WANT+  want wu WANT+ ;
+
+\ The returning rows natively and as one module: exit 0, empty stderr, status 0;
+\ W05-FEATURE's f>s makes the module need saturating float-to-int to validate.
+: RETURNING ( -- )
+   s" rows" ALL ALL-U @ CALLS CALLS-U @ FILES
+   WANT WANT-U @ 0 0 NATIVE
+   WANT WANT-U @ 0 0 WASM
+   LABEL  MODULE MODULE-U @ WASM-HARNESS:VALID-WITHOUT-SAT? TFALSE ;
 
 \ THROW-ROW's program throws a code uncaught: natively the engine's uncaught
 \ throw names it, and the run answers status 1 with the code whole.
 : THROW-ROW ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n code:n :}
-   name nu src su FILES
+   name nu src su name nu FILES
    want wu UNCAUGHT-RC code NATIVE
    want wu 1 code WASM ;
 
@@ -184,23 +220,16 @@ public
 \ status 2, which no catch takes.
 : TRAP-ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
-   name nu src su FILES
+   name nu src su name nu FILES
    want wu CRASH-RC 0 NATIVE
    want wu 2 0 WASM ;
-
-\ W05's generated conversion requires saturating float-to-int validation.
-: W05-ROW ( -- )
-   s" W05-FEATURE"
-   s" : W05-FEATURE ( -- ) 1 s>f f>s . ;"
-   S\" 1\n" ROW
-   LABEL  MODULE MODULE-U @ WASM-HARNESS:VALID-WITHOUT-SAT? TFALSE ;
 
 ;package
 
 T-RESET
 WASM-DIFFERENTIAL:SETUP
 using WASM-DIFFERENTIAL
-W05-ROW
+s" W05-FEATURE" s" : W05-FEATURE ( -- ) 1 s>f f>s . ;" s\" 1\n" ROW
 include test/wasm/numeric-rows.f
 
 \ ---- W01 a loop's edge copies form a cycle; nested exits keep their depths -------
@@ -265,9 +294,8 @@ s" W31-FMATH"
 s" require src/lib/fmath.f : W31-FMATH ( -- ) 1 s>f FMATH:SIN 1 s>f FMATH:COS 10 s>f FMATH:SIN 10 s>f FMATH:COS depth . .s fdrop fdrop fdrop fdrop ;"
 s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-4617639132858127585\n" ROW
 
-\ A prebuilt library's signed minimum is written without carrying its native
-\ digit table address into a Wasm capture. The row also exercises JSON fields,
-\ UTF-8 bytes and the same writer through the native load path.
+\ JSON fields, UTF-8 bytes and the signed minimum's text through the library's
+\ writer.
 s" WJSON:STEP"
 S\" require src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\n128 BUFFER: B\npublic\n: STEP ( -- )\n   W B 128 JSON:WRITE-OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR-MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr ;\n;package\n"
 S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
@@ -284,5 +312,6 @@ s" WNUM:STEP"
 s" require test/wasm/number-text.f"
 S\" 1.2500000000000000e0\n-0.0000000000000000e0\n1.2500e-1\n-2.5000e-3\n-1\n-1\n0\n0\n0\n0\n-1\n-1\n-1\n-1\n-1\n" ROW
 
+RETURNING
 ;using
 T-REPORT
