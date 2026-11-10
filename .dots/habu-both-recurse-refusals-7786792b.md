@@ -1,6 +1,6 @@
 ---
 title: Both recurse refusals suggest the generic uncheckable rewrite
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-10T12:47:37.142867+02:00"
