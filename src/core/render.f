@@ -1015,7 +1015,7 @@ REG-SCRATCH-SNAP-INSTALL
 variable MDV-I   variable MDV-F
 
 \ A row pair's repair by depth, counted in the unit its rows were judged in:
-\ ROW-VALUES for a mismatch, as ROW-COVER pairs; ROW-CELLS for a depth reason.
+\ ROW-VALUES for a mismatch, as ROWS-COVER pairs; ROW-CELLS for a depth reason.
 : ROWS-DEPTHS ( [ n -- n ] -- )
    {: measure :}
    AT-PIN

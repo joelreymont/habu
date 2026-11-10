@@ -4804,7 +4804,16 @@ TAIL-CAPTURE-DEFAULT
    THEN ;
 
 
-\ One pairing of COVER-BELOW: one value (VALUE-REST) off each side, whatever
+\ Named declaration rows start unrestricted. Body inference may alias them to
+\ a quotation's fixed-window/literal tail; that temporary kind must not become
+\ the reusable provider's kind. Keep their identities across nested parsers.
+\ SG-ROWS-LET holds each row's source letter, for NP-ROWS-CHECK's diagnostic.
+create SG-ROWS 26 cells allot
+create SG-ROWS-LET 26 cells allot
+variable SG-ROWS-N
+variable SG-ROWS-PUBLISH
+
+\ One pairing of COVER-WALK: one value (VALUE-REST) off each side, whatever
 \ its width on the other.
 : COVER-STEP ( n n -- n n bool )
    {: e:n a:n :}
@@ -4812,14 +4821,14 @@ TAIL-CAPTURE-DEFAULT
    a VALUE-REST {: ar:n aok:bool :}
    er ar  eok aok and ;
 
-\ The part of act below exp's own values; false when act runs out first or exp's
-\ tail cuts one of its hidden groups.
-: COVER-BELOW ( n n -- n bool )
+\ exp and act paired value by value until either runs out of values: the rest
+\ of each below the pairs; false when either's tail cuts a hidden group.
+: COVER-WALK ( n n -- n n bool )
    {: exp:n act:n :}
    exp act
-   BEGIN over R-RES TAG S-PUSH = WHILE
-      COVER-STEP 0= IF nip RES-FALSE EXIT THEN
-   REPEAT nip RES-TRUE ;
+   BEGIN  over R-RES TAG S-PUSH =  over R-RES TAG S-PUSH =  and WHILE
+      COVER-STEP 0= IF RES-FALSE EXIT THEN
+   REPEAT RES-TRUE ;
 
 \ Copies of exp's own pushes, in order, over below.
 : COVER-COPY ( n n -- n )
@@ -4831,15 +4840,32 @@ TAIL-CAPTURE-DEFAULT
    REPEAT drop
    below swap P-REST!  head ;
 
-\ exp's own values over the values of act below them, binding nothing: a failed
-\ step leaves its input row's tail unbound (U-DRAIN stops at the failed pair).
-: ROW-COVER ( n n -- n )
+
+\ Row s ends in a tail the check could still extend: unbound and none of the
+\ signature's bases, the implicit one (SGDBASE) or a named row (SG-ROWS), as a
+\ quotation's input or an unsigned definition's.
+: TAIL-OPEN? ( n -- bool )
+   {: s:n :}
+   s ROW-TAIL {: t:n :}
+   t ISROW 0= IF RES-FALSE EXIT THEN
+   SGDBASE @ IF  t SGDBASE @ ROW-TAIL = IF RES-FALSE EXIT THEN  THEN
+   SG-ROWS-N @ 0 ?do
+      i cells SG-ROWS + @ ROW-TAIL  t = IF RES-FALSE unloop EXIT THEN
+   loop RES-TRUE ;
+
+
+\ The pair as the bindings U-DRAIN stops before (at the failed pair) would leave it,
+\ binding nothing: exp's values over act's below, or an open act's over exp's rest.
+: ROWS-COVER ( n n -- n n )
    {: exp:n act:n :}
    exp ROW-TAIL {: tail:n :}
-   tail ISROW 0=  tail act ROW-TAIL =  or IF exp EXIT THEN
-   exp R-RES TAG S-PUSH <> IF exp EXIT THEN
-   exp act COVER-BELOW 0= IF drop exp EXIT THEN
-   exp swap COVER-COPY ;
+   tail ISROW 0=  tail act ROW-TAIL =  or IF exp act EXIT THEN
+   exp R-RES TAG S-PUSH <> IF exp act EXIT THEN
+   exp act COVER-WALK {: er:n ar:n ok:bool :}
+   ok 0= IF exp act EXIT THEN
+   er R-RES TAG S-PUSH <> IF exp ar COVER-COPY  act EXIT THEN
+   act R-RES TAG S-PUSH <>  act TAIL-OPEN? 0=  or IF exp act EXIT THEN
+   act er COVER-COPY  exp swap ;
 
 
 \ The first failure, captured once. Every site that judges a row (the token
@@ -4847,8 +4873,9 @@ TAIL-CAPTURE-DEFAULT
 \ expected/actual pair the renderer prints, then the reason the refusal raised,
 \ then FAILSET, which freezes the pin. The reason must be named before that last
 \ store: MDIAG! is silent once the pin is closed.
-: UF-CAPTURE ( n n -- ) {: exp:n act:n :}
-   exp act ROW-COVER DEXP !  act DACT !  ROWS-PIN
+: UF-CAPTURE ( n n -- )
+   {: exp:n act:n :}
+   exp act ROWS-COVER DACT !  DEXP !  ROWS-PIN
    UF>DIAG
    CELL-DIAG!
    -1 FAILSET ! ;
@@ -4909,7 +4936,7 @@ CHECKER-REG:}SCRATCH
 
 : STEP-BORROWS? ( n -- bool ) {: din:n :}   \ would this step reach under the declared inputs?
    SGDBASE @ 0= IF RES-FALSE EXIT THEN            \ no declared signature: no sealed base
-   DCUR @ ROW-TAIL  SGDBASE @ ROW-TAIL  <> IF RES-FALSE EXIT THEN   \ quotation/locals frames own a fresh base
+   DCUR @ ROW-TAIL  SGDBASE @ ROW-TAIL  <> IF RES-FALSE EXIT THEN   \ another base: a quotation body's own (CF-QUOT) or a row the signature names (SG-ROWS); a locals bind keeps the declared one
    DCUR @ ROW-CELLS UF-HAVE !
    din ROW-CELLS UF-NEED !
    UF-NEED @ UF-HAVE @ > ;
@@ -7348,15 +7375,6 @@ SIG-BINDER-BODY-INSTALL
 create ROWMAP 26 cells allot
 : ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 : RVAR-OF {: c :}  c 65 - cells ROWMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-ROW ;
-
-\ Named declaration rows start unrestricted. Body inference may alias them to
-\ a quotation's fixed-window/literal tail; that temporary kind must not become
-\ the reusable provider's kind. Keep their identities across nested parsers.
-\ SG-ROWS-LET holds each row's source letter, for NP-ROWS-CHECK's diagnostic.
-create SG-ROWS 26 cells allot
-create SG-ROWS-LET 26 cells allot
-variable SG-ROWS-N
-variable SG-ROWS-PUBLISH
 
 : SG-ROWS-RESET ( -- )
    SG-ROWS 0 26 ARENA-CELLS-ZERO

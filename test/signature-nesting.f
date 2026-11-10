@@ -14,7 +14,10 @@
 \ covered name in an unfit definition. A refusal's prose line ends with its
 \ packet's suggestion, after the rows when it prints them. A mismatch over cells
 \ below prints its expected row over them too, so it is classed by type and a
-\ surplus by depth. The tokens after a refusal check in CPU time linear in
+\ surplus by depth; one over an open input (a quotation's or an unsigned
+\ definition's) prints its actual row over the cells it would take, so it is
+\ classed by type too, while one over a row the signature declares is a
+\ missing value. The tokens after a refusal check in CPU time linear in
 \ their count.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
@@ -311,6 +314,26 @@ public
    \ cost is bounded, and up to 64 when it grows with the tokens before it.
    1000 STRAY-NS {: small:n :}   8000 STRAY-NS {: big:n :}
    big  small 24 *  < TTRUE
+   s" a quotation's wrong input over its open input is a type fault over the same values" T-LABEL
+   SRC-RESET  s" SN-QS2 ( n -- ) [: 1 SN-CF ;] execute" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"n bool \",\"actual\":\"n n \"" VERDICT-REFUSED PACKET-HAS
+   s" a quotation's wrong input over a group it takes from below is a type fault" T-LABEL
+   SRC-RESET  s" SN-QG ( snz<n,n> -- ) [: 1 SN-LHN ;] execute" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"snz<n,n> bool \",\"actual\":\"snz<n,n> n \"" VERDICT-REFUSED PACKET-HAS
+   s" an unsigned definition's wrong input over its inferred input is a type fault" T-LABEL
+   SRC-RESET  s" SN-QI 1 SN-CF" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"n bool \",\"actual\":\"n n \"" VERDICT-REFUSED PACKET-HAS
+   s" a call short against a declared empty input is a missing producer" T-LABEL
+   SRC-RESET  s" SN-S ( -- ) 1 SN-CF" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"add_producer\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"n bool \",\"actual\":\"n \"" VERDICT-REFUSED PACKET-HAS
+   s" a call short against a named row is a missing producer" T-LABEL
+   SRC-RESET  s" SN-SX ( R [ R -- S ] -- S ) execute 1 SN-CF" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"add_producer\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"n bool \",\"actual\":\"n \"" VERDICT-REFUSED PACKET-HAS
    s" a RECURSE with no declared effect is uncheckable for want of one, and says to declare one" T-LABEL
    RECURSE-NOSIG
    S\" habu: in sn-down: at 'RECURSE' recursion needs a declared stack effect; suggestion: Declare the definition's stack effect after its name.\n" REFUSES
