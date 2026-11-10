@@ -810,8 +810,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n"
    s" the program prints flip-a.f's F, P, Q, R, A and C" PRINTS-RUN ;
 
-\ Guards what a file's top level may do in a build: store into scratch, keep a handle or device, leave a
-\ task running, or run a word that loads, provides or reads a file.
+\ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the
+\ program, and a task left running or a run word that loads, provides or reads a file fails the build.
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN
@@ -892,7 +892,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
 \ r.f, m.f after x.f's K changes, which rewrites x.f's object and leaves r.f's, then r.f again: U3's
-\ program prints the new K, since r.f's object names every piece built inside x.f's load, y.f's included.
+\ program prints the new K, since r.f's last part lists K, whose time x.f's compile in U2 changed.
 : NEST-CASE ( CMD:command -- CMD:command )
    WRITE-NESTED
    s" U" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
@@ -910,8 +910,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" ; " SRC+  make if s" true" else s" false" then SRC+
    s\"  constant FLAG ;package\n" SRC+  s" g.f" NEST-WRITE ;
 
-\ f.f's first part makes private Y and X when g.f's DEF makes them and a private definer MK when g.f's
-\ FLAG is true; its second part has two Y, X and MK, whose X answer 10 and 20 and MK add 0 and 100.
+\ f.f's second part makes private Y and X when g.f's DEF makes them and a private definer MK when g.f's
+\ FLAG is true; its third part has two Y, X and MK, whose X answer 10 and 20 and MK add 0 and 100.
 : WRITE-SAME ( -- )
    L$ s" same-name" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
    true WRITE-G
@@ -941,7 +941,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" prog-s" s\" 20\n2\n10\n20\n105\n20\n2\n20\n10\n\n" s" the program prints each X and Y it reached"
    NEST-RUN ;
 
-\ Guards a user's binding when f.f's first part gains or drops same-name records: u.f spells X and Y,
+\ Guards a user's binding when f.f's second part gains or drops same-name records: u.f spells X and Y,
 \ v.f and f.f's last part reach them only by W1 and W, and v.f's FIVE the second MK only by MK2.
 : SAME-CASE ( CMD:command -- CMD:command )
    WRITE-SAME

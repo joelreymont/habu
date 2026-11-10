@@ -623,9 +623,9 @@ TYPED-VARIABLE REC ptr n
 \ engine stores and nothing reads (SX-OP, SX-REC, SX-ENTRY, SX-WRITES) are not
 \ stored. The engine closes its PROT window around a callback; this loop never
 \ holds one (definers.f: def-open closes its own).
-4 constant OBSERVE-TICK          \ SOURCE-EXEC:TICK (src/habu/source-exec.f)
+4 constant OBSERVE-TICK          \ the before callback's op for a tick's target
 public
-5 constant OBSERVE-WORD          \ SOURCE-EXEC:WORD; the linker's RESUME passes it too
+5 constant OBSERVE-WORD          \ the before callback's op for a word about to run; the linker's RESUME passes it too
 private
 
 \ The frame of the loop now reading tokens, as EVAL-TOP-CELL holds it, 0 for

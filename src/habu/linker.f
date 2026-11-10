@@ -269,9 +269,8 @@ DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0
 \ count at 2r + 1, from 0, among the earlier records of its part with that sum (IDENTIFY).
 DYNAMIC-BUFFER REC-IDS n
 variable IDENTIFIED                  \ every record below it that a piece holds has its identity
-\ Slot s holds at 6s the key's first cell plus 1 (0 while empty), its second, a third cell, sum, count and value: a file
-\ key's part, else the kind (keys -2 and -3). At most half full, so a probe ends. A link reads the key -2 slots that
-\ PART-FRESH?, run right before it, filled (OWN-IDS!).
+\ Slot s holds at 6s the key's first cell plus 1 (0 while empty), its second, a file key's part or a key -2 or -3's
+\ kind, sum, count, value; at most half full, so a probe ends. A link reads the -2 slots its PART-FRESH? filled (OWN-IDS!).
 DYNAMIC-BUFFER PLACES n
 DYNAMIC-BUFFER OLD-PLACES n          \ PLACES' slots as it grows
 variable PLACES-CAP                  \ its slots, a power of two
@@ -842,9 +841,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    then ;
 
 
-\ The value v into the empty slot PLACE-SLOT answers; E-COMP-STATE when a slot holds the key, third cell and identity,
-\ since a second value would hide the first: a part's records and extents each have their own identity (IDENTIFY,
-\ EXTENTS!).
+\ The value v into the empty slot PLACE-SLOT answers; E-COMP-STATE when a slot holds the key, third cell and identity:
+\ a second value would hide the first, and a part's records and extents each have their own (IDENTIFY, EXTENTS!).
 : PLACE! ( n n n n n n -- )
    {: path:n seen:n third:n sum:n count:n v:n :}
    path seen third sum count PLACE-SLOT 6 * {: s:n :}
@@ -2707,8 +2705,8 @@ variable RD-END
    r REC-KINDS @ ;
 
 
-\ A record reference (file, sum, count; ID-REF+): this file's record number below the bound
-\ (OWN-REC), or an earlier file's record (PLACE); -1 once the object is BAD.
+\ A record reference (file, sum, count; ID-REF+): this part's record number below the bound
+\ (OWN-REC), or an earlier part's record (PLACE); -1 once the object is BAD.
 : ID-REF-CK ( n n n n -- n )
    {: file:n sum:n count:n bound:n :}
    GOOD? 0= if -1 exit then
@@ -2723,8 +2721,8 @@ variable RD-END
    r ;
 
 
-\ A quotation (file, its owner's sum and count, function f): the owner is this file's record with an emission at most
-\ top (OWN-REC) or an earlier file's (PLACE) with one (OWNER-EM); f is below that emission's function count.
+\ A quotation (file, its owner's sum and count, function f): the owner is this part's record with an emission at most
+\ top (OWN-REC) or an earlier part's (PLACE) with one (OWNER-EM); f is below that emission's function count.
 : FN-REF-CK ( n n n n n -- )
    {: file:n sum:n count:n f:n top:n :}
    f 0< if BAD exit then
@@ -4329,8 +4327,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    r 0< if E-COMP-STATE throw then
    r ;
 
-\ A retirement row's record retired again (XREF:RETIRE) in the compile's order (DUE!); an earlier piece's record is then
-\ changed (CHANGER+), so a compile and a link see one wordlist.
+\ A retirement row: a link retires its record again (XREF:RETIRE) in the compile's order (DUE!), so both see one
+\ wordlist; either way an earlier piece's record counts as changed by this piece (CHANGER+).
 : LINK-RETIRED ( bool -- )
    {: read:bool :}
    RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}

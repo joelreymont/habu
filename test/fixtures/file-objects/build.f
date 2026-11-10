@@ -760,7 +760,7 @@ variable SLOT-S                          \ and their count
    at OBJ@ 1 +  at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;
 
 \ b.f's first WORDS row naming sum 1000, which no word of its piece has; then a build, which compiles b.f:
-\ its source spells a word its object does not list.
+\ the row names no record of its sum and count (WORDS-CK).
 : WORD-MISSING ( -- n )
    FIRST-WORD-ROW 8 + {: at:n :}
    1000 at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;
