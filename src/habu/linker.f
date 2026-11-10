@@ -234,6 +234,7 @@ FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
 DYNAMIC-BUFFER ENTRY-OFFS n          \ a read object's entries' offsets in OBJECT (FRESH?)
 DYNAMIC-BUFFER REC-KINDS n           \ its record r's kind
 DYNAMIC-BUFFER EM-RECS n             \ its emission e's record index
+DYNAMIC-BUFFER REC-EMS n             \ its record r's emission, -1 for none
 DYNAMIC-BUFFER PRIVS n               \ the packages holding a private wordlist: file, index
 variable PRIVS-N
 DYNAMIC-BUFFER GRANTS n              \ the built packages a checked piece gives a private wordlist, by record
@@ -461,7 +462,7 @@ variable PENDING-STORERS-N           \ its pairs
    WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
    RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
    EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
-   ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
+   ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  REC-EMS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
@@ -654,15 +655,6 @@ variable PENDING-STORERS-N           \ its pairs
 \ The BUILT row that holds the record index; E-COMP-STATE when none does.
 : BUILT-ROW ( n -- n )
    REC-ROW@ 0= if drop E-COMP-STATE throw then ;
-
-\ The BUILT row whose [first, end) emission holds the emission number.
-: EM-ROW ( n -- n )
-   {: e:n :}
-   BUILT-N 0 ?do
-      i BUILT-AT BUILT-EM + {: at:ptr :}
-      at LE:U64@ e <=  at 8 + LE:U64@ e >  and if i unloop exit then
-   loop
-   E-COMP-STATE throw ;
 
 \ The BUILT row whose [first, end) data pointer holds v, and true; false when none.
 : DP-ROW ( n -- n bool )
@@ -1467,6 +1459,40 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx MADE-WID BOOT:TYPES-WL = if KIND-TYPE exit then
    KIND-ALIAS ;
 
+
+\ The record that owns host emission e: its first shadow row's, a definition's; E-COMP-STATE when
+\ no row is e's or that row is a does> companion's. Emissions rise with the row (SHADOW-ROW).
+: EM-OWNER ( n -- n )
+   {: e:n :}
+   0 NSHADOW:RECORDS
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid NSHADOW:EMISSION@ e < if mid 1 + hi else lo mid then
+   repeat
+   drop {: row:n :}
+   row NSHADOW:RECORDS >= if E-COMP-STATE throw then
+   row NSHADOW:EMISSION@ e <> if E-COMP-STATE throw then
+   row NSHADOW:ENTRY@ 0<> if E-COMP-STATE throw then
+   row NSHADOW:RECORD@ ;
+
+
+\ Record r's host emission; -1 when no shadow row is r's or r is a does> companion, which owns
+\ none.
+: OWNER-EM ( n -- n )
+   {: r:n :}
+   0 NSHADOW:RECORDS
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid NSHADOW:RECORD@ r < if mid 1 + hi else lo mid then
+   repeat
+   drop {: row:n :}
+   row NSHADOW:RECORDS >= if -1 exit then
+   row NSHADOW:RECORD@ r <> if -1 exit then
+   row NSHADOW:ENTRY@ 0<> if -1 exit then
+   row NSHADOW:EMISSION@ ;
+
 \ The record's dispatch cell, a defer's trailer cell, as a data reference; 5 for none.
 : DISPATCH+ ( ptr n -- )
    {: rec:ptr :}
@@ -1636,8 +1662,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx MADE-WID 1 + ;
 
 \ A code address's reference, and true: a record's entry, by the record's identity (ID-REF+), a
-\ quotation's function, or hb's own code, last since a record's host copy may lie inside hb's code
-\ range; false, writing nothing, for any other address.
+\ quotation's function, by its owning definition's identity and the function's number, or hb's
+\ own code, last since a record's host copy may lie inside hb's code range; false, writing
+\ nothing, for any other address.
 : CODE-REF+ ( n -- bool )
    {: a:n :}
    a REC-AT {: r:n :}
@@ -1646,15 +1673,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    then
    a NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
    qe 0 >= if
-      qe EM-EDGE+  2 PIECES U64+
-      qe FILE-EM @ >= if
-         0 PIECES U64+  qe FILE-EM @ - PIECES U64+
-      else
-         qe EM-ROW {: row:n :}
-         row true REF-FILE PIECES U64+
-         qe  row BUILT-AT BUILT-EM + LE:U64@ -  PIECES U64+
-      then
-      qf PIECES U64+ true exit
+      qe EM-EDGE+  2 PIECES U64+  qe EM-OWNER ID-REF+  qf PIECES U64+ true exit
    then
    a ARM64:HOST-KERNEL? if 1 PIECES U64+  a rbase - PIECES U64+ true exit then
    false ;
@@ -1750,12 +1769,12 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \                          reference
 \ A reference is a tag, then its fields: 0 a dictionary record (file, its name sum, its count
 \ among that file's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation
-\ (file, emission, function); 3 a file's data (file, offset from that file's first data byte, at
-\ most its data size: a body of no bytes at the file's end); 4 the open's header data (offset from
-\ BASE); 5 none: a patch target, a cell row's 0 or scratch cell, or a definition with no dispatch
-\ cell. A file field is 0 for this object, else its FILES row from 1 (REF-FILE). A cross build's E
-\ is 0: its shadow holds the target's code, in the target's site encodings, and it writes no
-\ object (LOAD).
+\ (file, its owning definition's name sum and count as tag 0's, function); 3 a file's data (file,
+\ offset from that file's first data byte, at most its data size: a body of no bytes at the
+\ file's end); 4 the open's header data (offset from BASE); 5 none: a patch target, a cell row's
+\ 0 or scratch cell, or a definition with no dispatch cell. A file field is 0 for this object,
+\ else its FILES row from 1 (REF-FILE). A cross build's E is 0: its shadow holds the target's
+\ code, in the target's site encodings, and it writes no object (LOAD).
 : CODE+ ( -- )
    ENTRIES
    CROSS? if 0 PIECES U64+ exit then
@@ -2418,11 +2437,6 @@ variable RD-END
    k FILE-ROWS @ ROW-PENDING = ;
 
 
-: FILE-EMS ( n -- n )
-   {: k:n :}
-   k BUILT-EM 8 + BUILT@  k BUILT-EM BUILT@ - ;
-
-
 : FILE-BYTES ( n -- n )
    {: k:n :}
    k BUILT-DP 8 + BUILT@  k BUILT-DP BUILT@ - ;
@@ -2441,13 +2455,13 @@ variable RD-END
    at 24 + at OBJ@ +  j 8 * + OBJ@ ;
 
 
-\ A reference: its tag and four fields, 0 for absent ones (CODE+ states them); every tag's fourth
-\ is absent.
+\ A reference: its tag and four fields, 0 for absent ones (CODE+ states them); only a quotation
+\ has a fourth.
 : RD-REF ( -- n n n n n )
    RD-U64 {: tag:n :}
    tag 0 = if tag RD-U64 RD-U64 RD-U64 0 exit then
    tag 1 = if tag RD-U64 0 0 0 exit then
-   tag 2 = if tag RD-U64 RD-U64 RD-U64 0 exit then
+   tag 2 = if tag RD-U64 RD-U64 RD-U64 RD-U64 exit then
    tag 3 = if tag RD-U64 RD-U64 0 0 exit then
    tag 4 = if tag RD-U64 0 0 0 exit then
    tag 5 = if tag 0 0 0 0 exit then
@@ -2478,18 +2492,26 @@ variable RD-END
    r ;
 
 
-\ A quotation (file, emission, function); this file's emission at most top.
-: FN-REF-CK ( n n n n -- )
-   {: file:n e:n f:n top:n :}
-   e 0<  f 0<  or if BAD exit then
+\ A quotation (file, its owning definition's sum and count, function f): this file's owner
+\ (OWN-REC) a definition whose emission is at most top, or an earlier file's (PLACE) one with an
+\ emission (OWNER-EM); f below that emission's function count.
+: FN-REF-CK ( n n n n n -- )
+   {: file:n sum:n count:n f:n top:n :}
+   f 0< if BAD exit then
    file 0= if
-      e EMS-N @ >=  e top >  or if BAD exit then
+      sum count OWN-REC {: o:n :}
+      o 0<  o RECS-N @ >=  or if BAD exit then
+      o REC-EMS @ {: e:n :}
+      e 0<  e EMS-N @ >=  or  e top >  or if BAD exit then
       f e OWN-FUNS >= if BAD then exit
    then
    file FILE-IN? 0= if BAD exit then
    file PENDING? if exit then
-   e file FILE-EMS >= if BAD exit then
-   f  file BUILT-EM BUILT@ e + NSHADOW:FUNCTIONS  >= if BAD then ;
+   file FILES-ROW sum count PLACE {: r:n :}
+   r 0< if BAD exit then
+   r OWNER-EM {: em:n :}
+   em 0< if BAD exit then
+   f em NSHADOW:FUNCTIONS >= if BAD then ;
 
 
 \ A code reference (RD-REF) whose own emission is at most top and own record below bound: the
@@ -2505,7 +2527,7 @@ variable RD-END
       r PKG? if BAD then exit
    then
    tag 1 = if rbase x + ARM64:HOST-KERNEL? 0= if BAD then exit then
-   tag 2 = if x y z top FN-REF-CK exit then
+   tag 2 = if x y z w top FN-REF-CK exit then
    BAD ;
 
 
@@ -3036,7 +3058,7 @@ variable RD-END
    kind KIND-ALIAS = if RD-U64 RD-U64 RD-U64 RECS-N @ ID-REF-CK drop then
    kind KIND-DOES = if DOES-CK then
    em LAST-EM !
-   kind RECS-N @ REC-KINDS !
+   kind RECS-N @ REC-KINDS !  em RECS-N @ REC-EMS !
    1 RECS-N +! ;
 
 
@@ -3046,7 +3068,7 @@ variable RD-END
    n ENTRIES-N !  0 RECS-N !  0 DEFS-N !  0 DOES-N !  0 PRIVS-N !  -1 LAST-EM !
    0 OWN-DATA-MAX !
    n 0 > if
-      n ENTRY-OFFS-RESERVE  n REC-KINDS-RESERVE  n EM-RECS-RESERVE  n 2 * PRIVS-RESERVE
+      n ENTRY-OFFS-RESERVE  n REC-KINDS-RESERVE  n EM-RECS-RESERVE  n REC-EMS-RESERVE  n 2 * PRIVS-RESERVE
    then
    n 0 ?do i ENTRY-CK loop ;
 
@@ -3875,8 +3897,9 @@ INSTALL-CHECK
 \ reference's value (RESOLVE) and the entries that are not code.
 variable LINK-FN                     \ the emission being linked's address: SOURCE-FUNS' at
 variable LINK-EM                     \ that emission's number in this object, -1 for none
+variable LINK-OWNER                  \ the record that emission makes, -1 for none
 
-: LINK-CLEAR ( -- ) -1 LINK-EM !  0 LINK-FN ! ;
+: LINK-CLEAR ( -- ) -1 LINK-EM !  -1 LINK-OWNER !  0 LINK-FN ! ;
 
 
 \ The dictionary index a linked record reference (file, sum, count; ID-REF+) names: this file's
@@ -3893,16 +3916,19 @@ variable LINK-EM                     \ that emission's number in this object, -1
    r ;
 
 
-\ A quotation reference's address: function f of the file's emission e, the host
-\ entry the shadow filed for it, which CODE-REF+ wrote through SOURCE-FUNCTION.
-: FN-ADDR ( n n n -- n )
-   {: file:n e:n f:n :}
-   file 0=  e LINK-EM @ =  and if LINK-FN @  e f OWN-FUN-AT + exit then
-   file 0= if
-      FILE-EM @ e +  dup NSHADOW:EMISSIONS >= if E-COMP-STATE throw then
-   else
-      file BUILT-EM BUILT@ e +
-   then {: em:n :}
+\ A quotation reference's address (file, owner's sum and count, function f), with the edge to
+\ the owner's emission: f of the definition being made, which has no shadow row yet, or the host
+\ entry the shadow filed for f of the owner's emission (OWNER-EM).
+: FN-ADDR ( n n n n -- n )
+   {: file:n sum:n count:n f:n :}
+   file sum count ID-REC {: r:n :}
+   r LINK-OWNER @ = if
+      FILE-EM @ LINK-EM @ + EM-EDGE+
+      LINK-FN @  LINK-EM @ f OWN-FUN-AT +  exit
+   then
+   r OWNER-EM {: em:n :}
+   em 0< if E-COMP-STATE throw then
+   em EM-EDGE+
    em f NSHADOW:FUNCTION-SOURCE@ {: addr:n :}
    addr 0= if E-COMP-STATE throw then
    addr ;
@@ -3918,10 +3944,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
       r REC-EDGE+  r XREF-REC XREF-START exit
    then
    tag 1 = if rbase x + exit then
-   tag 2 = if
-      x 0= if FILE-EM @ y + else x BUILT-EM BUILT@ y + then EM-EDGE+
-      x y z FN-ADDR exit
-   then
+   tag 2 = if x y z w FN-ADDR exit then
    tag 3 = if
       x 0= if BUILT-N DATA-EDGE+  FILE-DP @ y + exit then
       x FILE-ROWS @ DATA-EDGE+  x BUILT-DP BUILT@ y + exit
@@ -4132,7 +4155,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    ndict@ {: want:n :}
    a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  OUTER:DEF-RECORD
    NPUB:NEXT-SLOT {: fn:n :}
-   fn LINK-FN !  e LINK-EM !
+   fn LINK-FN !  e LINK-EM !  want LINK-OWNER !
    EDGES-N @ {: em-start:n :}
    e NEMIT-FILL {: patch:n :}
    FILE-EM @ e +  em-start EM-EDGES!

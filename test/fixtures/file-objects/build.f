@@ -600,10 +600,11 @@ variable SLOT-S                          \ and their count
    PIECES-FIELD 16 - OBJ@  8 +  n 88 * + {: w:n :}
    w 72 + OBJ@  w 80 + OBJ@ ;
 
-\ A reference: its tag, then 3, 1, 3, 2, 1 or 0 fields for tags 0-5 (linker.f CODE+).
+\ A reference: its tag, then 3, 1, 4, 2, 1 or 0 fields for tags 0-5 (linker.f CODE+).
 : REF-SKIP ( -- )
    OBJ-U64 {: tag:n :}
-   tag 0 =  tag 2 =  or if 3 OBJ-SKIP exit then
+   tag 0 = if 3 OBJ-SKIP exit then
+   tag 2 = if 4 OBJ-SKIP exit then
    tag 1 =  tag 4 =  or if 1 OBJ-SKIP exit then
    tag 3 = if 2 OBJ-SKIP then ;
 
