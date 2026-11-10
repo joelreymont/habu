@@ -267,7 +267,13 @@ variable TEXT-U
    S\"    ONE-PAGE 27 FRESH {: t:ptr :}  t d >N ONE-PAGE 2 * + AT 28 CHECK\n" TEXT+
    S\"    h ONE-PAGE 2 * 29 FREE-RUN  t ONE-PAGE 30 FREE-RUN ;\n" TEXT+
    S\" : REFUSALS ( -- )\n   0 MAP -1 = 31 CHECK  0 AT 32 CHECK\n" TEXT+
-   S\"    ONE-PAGE 33 FRESH {: p:ptr :}  p 1 + ONE-PAGE UNMAP -1 = 34 CHECK  p ONE-PAGE 35 FREE-RUN ;\n" TEXT+
+   S\"    ONE-PAGE 33 FRESH {: p:ptr :}  p 1 + ONE-PAGE UNMAP -1 = 34 CHECK  p ONE-PAGE 35 FREE-RUN\n" TEXT+
+   S\"    NULL-PTR ONE-PAGE UNMAP -1 = 36 CHECK\n" TEXT+
+   S\"    ONE-PAGE 37 FRESH {: q:ptr :}  q ONE-PAGE 38 FREE-RUN  NULL-PTR ONE-PAGE UNMAP -1 = 39 CHECK\n" TEXT+
+   S\"    ONE-PAGE 40 FRESH {: w:ptr :}  w q >N AT 41 CHECK  w ONE-PAGE 42 FREE-RUN\n" TEXT+
+   S\"    -1 MAP -1 = 43 CHECK  0 AT 44 CHECK  1 32 lshift 1 + MAP -1 = 45 CHECK  0 AT 46 CHECK\n" TEXT+
+   S\"    1 32 lshift MAP -1 = 47 CHECK  0 AT 48 CHECK\n" TEXT+
+   S\"    ONE-PAGE 49 FRESH {: z:ptr :}  z 0 UNMAP -1 = 50 CHECK  z ONE-PAGE 51 FREE-RUN ;\n" TEXT+
    S\" public\n: MAIN ( -- ) TWO REUSE JOIN REFUSALS ;\n;package\n: MAIN ( -- ) M:MAIN ;\n" TEXT+
    TEXT TEXT-U @ s" m.f" SOURCE! ;
 

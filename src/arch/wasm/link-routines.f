@@ -509,8 +509,8 @@ variable BUF-U
       OP-END B,
    OP-END B, ;
 
-\ munmap ( addr bytes -- ior ) as tier 1's (src/arch/wasm/kernel.f UNMAP-ROW): -1
-\ for bytes outside 1 through 2^32 or an addr not a page-aligned offset below 2^32.
+\ munmap ( addr bytes -- ior ): -1 for bytes outside 1 through 2^32, an addr 0 or an addr
+\ not a page-aligned offset below 2^32; tier 1's UNMAP-ROW (src/arch/wasm/kernel.f) admits 0.
 : UNMAP-BODY ( -- )
    ALLOC-LOCALS,  CELL-BYTES 2 * SP-AT,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-PTR SET,
@@ -520,7 +520,7 @@ variable BUF-U
       L-BYTES GET,  1 I64,  OP-I64-SUB B,  L-PTR GET,  OP-I64-OR B,
       OFFSET-BITS I64,  OP-I64-SHR-U B,
       L-PTR GET,  WPROF:PAGE-BYTES 1- I64,  OP-I64-AND B,  OP-I64-OR B,
-      0 I64,  OP-I64-NE B,  0 BR-IF,
+      0 I64,  OP-I64-NE B,  L-PTR GET,  OP-I64-EQZ B,  OP-I32-OR B,  0 BR-IF,
       L-BYTES GET,  PAGES-OF,  L-PAGES SET,
       L-PTR GET,  L-PAGES GET,  BYTES-OF,  OP-I64-ADD B,  L-END SET,
       LIST-HEAD,
