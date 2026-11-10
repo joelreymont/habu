@@ -3,7 +3,10 @@
 \ prefix on the host and a body's names bind as it compiles, so while a shadow
 \ is open src/compiler/native/compiler.f compiles each definition a second time
 \ for the shadow's binding, in a nested context, from the HIR module
-\ NBACK:FREEZE froze for the engine's own selector.
+\ NBACK:FREEZE froze for the engine's own selector. Such a shadow keeps both
+\ copies: a definition files its target emission e and then its host emission
+\ e+1, which later files run while they compile. A native shadow's one emission
+\ serves both roles. A record's emission is always the target's.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -50,6 +53,7 @@ DYNAMIC-BUFFER EM-ADDR0 n            \ its first address row
 DYNAMIC-BUFFER EM-ADDRS n
 DYNAMIC-BUFFER EM-PATCH n            \ created-word does> jump, or -1
 DYNAMIC-BUFFER EM-PATCH-TGT n        \ later clause entry, or zero
+DYNAMIC-BUFFER EM-HOST n             \ its host emission: itself, e+1, or -1
 
 variable N-FUNS
 DYNAMIC-BUFFER FUN-OFF n             \ where a function starts
@@ -86,12 +90,15 @@ DYNAMIC-BUFFER PATCHED n
 \ A definer and its `does>` companion are the most records one routine is.
 2 constant RECS-MAX
 
-\ ---- the emission taken and not yet published --------------------------------
-\ None taken; plain, copied past the counts; or does, a definer's, whose
-\ companion record enters at PEND-ENTRY in it.
+\ ---- the emissions taken and not yet published -------------------------------
+\ The target's, or a native shadow's one: none taken; plain, copied past the
+\ counts; or does, a definer's, whose companion record enters at PEND-ENTRY in
+\ it.
 ENUM pending none plain does ;ENUM
 TYPED-VARIABLE PENDING pending
 variable PEND-ENTRY
+\ The host's copy lies pending as the emission past the target's.
+TYPED-VARIABLE HOST-PENDING bool
 
 public
 
@@ -151,17 +158,26 @@ private
 \ row (NBACK:EMIT-UNPLACED): every call, branch and address leaving it is a row
 \ whose field the linker writes. NEMIT holds one emission and the engine's own
 \ opens it next, so TAKE copies the bytes and rows before the nested context
-\ leaves.
+\ leaves, and TAKE-HOST the host's after the engine's own walk seals them.
 \
-\ Only bytes of the machine the shadow's binding names are its routines. A
-\ native shadow takes the engine's own emission, placed or not; OPEN-NATIVE
-\ admitted only the engine's own binding.
-: TARGET-CK ( -- )
-   NEMIT:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
+\ A target copy holds only bytes of the machine the shadow's binding names, a
+\ host copy only the engine's own. A native shadow takes the engine's own
+\ emission, placed or not; OPEN-NATIVE admitted only the engine's own binding.
+: HOST-BINDING ( -- CBIND:binding )
+   RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING ;
+
+: ARCH-CK ( CBIND:binding -- )
+   {: b:CBIND:binding :}
+   NEMIT:ARCH b CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
    0= if E-NSHADOW-TARGET throw then ;
 
-: COPY-BYTES ( -- )
-   CODE-N @ {: at:n :}
+: TARGET-CK ( -- )
+   SH-BIND @ ARCH-CK ;
+
+\ The copy words write emission e where COPY-ROW placed it.
+: COPY-BYTES ( n -- )
+   {: e:n :}
+   e EM-AT @ {: at:n :}
    NEMIT:SIZE {: size:n :}
    at size + CODE-BUF-RESERVE
    NEMIT:BYTES at CODE-BUF size BYTE-COPY ;
@@ -174,7 +190,9 @@ private
 $E8 constant CALL-OP
 $E9 constant TAIL-OP
 
-: NATIVE-CALLS ( -- )
+: NATIVE-CALLS ( n -- )
+   {: e:n :}
+   e EM-AT @ {: at:n :}
    NEMIT:CALL-SITES 0 ?do
       i NEMIT:CALL-SITE@ {: off:n :}
       off 0 < off REL32-BYTES + NEMIT:SIZE > or if E-NSHADOW-ROW throw then
@@ -182,13 +200,14 @@ $E9 constant TAIL-OP
       kind NEMIT:CALL = if CALL-OP else
          kind NEMIT:TAIL = if TAIL-OP else E-NSHADOW-ROW throw then
       then {: opcode:n :}
-      CODE-N @ off + CODE-BUF {: p:ptr :}
+      at off + CODE-BUF {: p:ptr :}
       p c@ opcode <> if E-NSHADOW-ROW throw then
       0 p REL32-FIELD + LE:U32!
    loop ;
 
-: COPY-FUNS ( -- )
-   N-FUNS @ {: k0:n :}
+: COPY-FUNS ( n -- )
+   {: e:n :}
+   e EM-FUN0 @ {: k0:n :}
    NEMIT:FUNCTIONS {: n:n :}
    k0 n + FUN-OFF-RESERVE
    k0 n + FUN-SOURCE-RESERVE
@@ -197,8 +216,9 @@ $E9 constant TAIL-OP
       0 k0 i + FUN-SOURCE !
    loop ;
 
-: COPY-CALLS ( -- )
-   N-CALLS @ {: k0:n :}
+: COPY-CALLS ( n -- )
+   {: e:n :}
+   e EM-CALL0 @ {: k0:n :}
    NEMIT:CALL-SITES {: n:n :}
    k0 n + CALL-OFF-RESERVE
    k0 n + CALL-KIND-RESERVE
@@ -209,8 +229,9 @@ $E9 constant TAIL-OP
       i NEMIT:CALL-TARGET@ k0 i + CALL-TGT !
    loop ;
 
-: COPY-ADDRS ( -- )
-   N-ADDRS @ {: k0:n :}
+: COPY-ADDRS ( n -- )
+   {: e:n :}
+   e EM-ADDR0 @ {: k0:n :}
    NEMIT:ADDR-SITES {: n:n :}
    k0 n + ADDR-OFF-RESERVE
    k0 n + ADDR-KIND-RESERVE
@@ -224,19 +245,27 @@ $E9 constant TAIL-OP
    n EM-FUN0-RESERVE  n EM-FUNS-RESERVE
    n EM-CALL0-RESERVE  n EM-CALLS-RESERVE
    n EM-ADDR0-RESERVE  n EM-ADDRS-RESERVE
-   n EM-PATCH-RESERVE  n EM-PATCH-TGT-RESERVE ;
+   n EM-PATCH-RESERVE  n EM-PATCH-TGT-RESERVE  n EM-HOST-RESERVE ;
 
-: COPY-ROW ( -- )
-   N-EMS @ {: e:n :}
+\ Emission e's row: a target or native copy starts at the counts, a host copy
+\ past the pending target's bytes and rows.
+: COPY-ROW ( n -- )
+   {: e:n :}
    e 1+ EM-RESERVE
-   CODE-N @ e EM-AT !
+   N-EMS @ {: t:n :}
+   e t > {: past:bool :}
+   CODE-N @  past if t EM-SIZE @ + then  e EM-AT !
    NEMIT:SIZE e EM-SIZE !
    NEMIT:RET-BYTES e EM-RET !
-   N-FUNS @ e EM-FUN0 ! NEMIT:FUNCTIONS e EM-FUNS !
-   N-CALLS @ e EM-CALL0 ! NEMIT:CALL-SITES e EM-CALLS !
-   N-ADDRS @ e EM-ADDR0 ! NEMIT:ADDR-SITES e EM-ADDRS !
+   N-FUNS @  past if t EM-FUNS @ + then  e EM-FUN0 !
+   NEMIT:FUNCTIONS e EM-FUNS !
+   N-CALLS @  past if t EM-CALLS @ + then  e EM-CALL0 !
+   NEMIT:CALL-SITES e EM-CALLS !
+   N-ADDRS @  past if t EM-ADDRS @ + then  e EM-ADDR0 !
+   NEMIT:ADDR-SITES e EM-ADDRS !
    NEMIT:PATCH-SLOT e EM-PATCH !
-   0 e EM-PATCH-TGT ! ;
+   0 e EM-PATCH-TGT !
+   NATIVE? past or if e else -1 then  e EM-HOST ! ;
 
 \ Room for the records is made here, so PUBLISH, which runs after publication
 \ has committed the engine's own routine, grows nothing and refuses nothing.
@@ -248,6 +277,17 @@ $E9 constant TAIL-OP
    N-PATCHES @ 1+ PATCHED-RESERVE
    e N-PATCHES @ PATCHED !  1 N-PATCHES +! ;
 
+: PATCH-ONE ( n n -- ) {: e:n target:n :}
+   target e EM-PATCH-TGT !
+   e PATCH+ ;
+
+\ A clause target goes to emission e and to its host emission when that is
+\ another.
+: PATCH-PAIR ( n n -- ) {: e:n target:n :}
+   e target PATCH-ONE
+   e EM-HOST @ {: h:n :}
+   h 0 >=  h e <> and if h target PATCH-ONE then ;
+
 \ Whether COPY returns a native shadow's placed emission to the unplaced form,
 \ which needs NATIVE-ADDRS!.
 : UNPLACE? ( -- bool )
@@ -255,27 +295,57 @@ $E9 constant TAIL-OP
    NATIVE-ADDRS-SET @ 0= if E-NSHADOW-STATE throw then
    true ;
 
-\ A copy taken over one no publication claimed simply replaces it: both lie
-\ past the counts.
-: COPY ( -- )
+\ Copy the emission sealed in NEMIT as emission e. A copy taken over one no
+\ publication claimed simply replaces it: both lie past the counts.
+: COPY ( n -- )
+   {: e:n :}
+   UNPLACE? {: unplace:bool :}
+   e COPY-ROW
+   e COPY-BYTES
+   unplace if
+      e NATIVE-CALLS
+      e EM-AT @ CODE-BUF NATIVE-ADDRS-XT @ execute
+   then
+   e COPY-FUNS
+   e COPY-CALLS
+   e COPY-ADDRS
+   REC-RESERVE ;
+
+\ Copy the target's emission, or a native shadow's one, over any pair no
+\ publication claimed.
+: TAKE-TARGET ( -- )
    OPEN-CK
    TARGET-CK
-   UNPLACE? {: unplace:bool :}
-   construct pending none PENDING !
-   COPY-BYTES
-   unplace if
-      NATIVE-CALLS
-      CODE-N @ CODE-BUF NATIVE-ADDRS-XT @ execute
-   then
-   COPY-FUNS
-   COPY-CALLS
-   COPY-ADDRS
-   COPY-ROW
-   REC-RESERVE ;
+   construct pending none PENDING !  false HOST-PENDING !
+   N-EMS @ COPY ;
+
+: SUB-ROW ( n n n -- n ) {: k:n first:n count:n :}
+   k count ROW-CK first + ;
+
+\ Where function fun of emission e, a definer's clause, starts; the clause
+\ cannot be where the definer itself enters.
+: CLAUSE-AT ( n n -- n )
+   {: e:n fun:n :}
+   fun  e EM-FUN0 @  e EM-FUNS @  SUB-ROW  FUN-OFF @ {: off:n :}
+   off 0 <= if E-NSHADOW-ROW throw then
+   off ;
+
+\ Copy the host's emission past the pending target's. HOST-MARK files it as
+\ the target's host; the pending target stays the target's.
+: HOST-COPY ( -- n )
+   HOST-BINDING ARCH-CK
+   N-EMS @ 1+ {: e:n :}
+   e COPY
+   e ;
+
+: HOST-MARK ( n -- )
+   {: e:n :}
+   e  e 1- EM-HOST !
+   true HOST-PENDING ! ;
 
 \ ---- the counts -------------------------------------------------------------
 : CLEAR ( -- )
-   construct pending none PENDING !  0 PEND-ENTRY !
+   construct pending none PENDING !  0 PEND-ENTRY !  false HOST-PENDING !
    0 CODE-N !  0 N-EMS !  0 N-FUNS !  0 N-CALLS !  0 N-ADDRS !  0 N-RECS !
    0 SOURCE-CAP !  0 SOURCE-N !  0 N-PATCHES ! ;
 
@@ -285,15 +355,12 @@ $E9 constant TAIL-OP
    EM-FUN0-RELEASE  EM-FUNS-RELEASE
    EM-CALL0-RELEASE  EM-CALLS-RELEASE
    EM-ADDR0-RELEASE  EM-ADDRS-RELEASE
-   EM-PATCH-RELEASE  EM-PATCH-TGT-RELEASE
+   EM-PATCH-RELEASE  EM-PATCH-TGT-RELEASE  EM-HOST-RELEASE
    FUN-OFF-RELEASE  FUN-SOURCE-RELEASE
    CALL-OFF-RELEASE  CALL-KIND-RELEASE  CALL-TGT-RELEASE
    ADDR-OFF-RELEASE  ADDR-KIND-RELEASE
    SOURCE-KEYS-RELEASE  SOURCE-USED-RELEASE  SOURCE-EM-RELEASE  SOURCE-FUN-RELEASE
    REC-IDX-RELEASE  REC-EM-RELEASE  REC-ENTRY-RELEASE  PATCHED-RELEASE ;
-
-: SUB-ROW ( n n n -- n ) {: k:n first:n count:n :}
-   k count ROW-CK first + ;
 
 : FUN-ROW ( n n -- n ) {: e:n k:n :}
    e EM-CK drop
@@ -320,6 +387,8 @@ $E9 constant TAIL-OP
 : SOURCE-FILE ( n n -- )
    {: e:n f:n :}
    e f FUN-ROW FUN-SOURCE @ {: key:n :}
+   \ A host copy's functions have no source address: it is the source.
+   key 0= if exit then
    key SOURCE-SLOT {: s:n :}
    s SOURCE-USED @ 0<> if exit then
    1 s SOURCE-USED !  key s SOURCE-KEYS !  e s SOURCE-EM !  f s SOURCE-FUN ! ;
@@ -387,23 +456,38 @@ public
    OPEN-CK SH-BIND @ ;
 
 \ ---- what the driver and publication do --------------------------------------
-\ Copy the emission of the definition being compiled while it stands sealed in
-\ NEMIT, before its backend's RETIRE row clears it.
+\ Copy the target's emission of the definition being compiled while it stands
+\ sealed in NEMIT, before its backend's RETIRE row clears it.
 : TAKE ( -- )
-   COPY
+   TAKE-TARGET
    construct pending plain PENDING ! ;
 
 \ The same for a `does>` definer, whose clause is function `fun` of the
-\ emission: the companion record enters there, so it cannot be where the
-\ definer itself enters.
+\ emission: the companion record enters there.
 : TAKE-DOES ( n -- )
    {: fun:n :}
-   COPY
-   N-EMS @ {: e:n :}
-   fun  e EM-FUN0 @  e EM-FUNS @  SUB-ROW  FUN-OFF @ {: off:n :}
-   off 0 <= if E-NSHADOW-ROW throw then
-   off PEND-ENTRY !
+   TAKE-TARGET
+   N-EMS @ fun CLAUSE-AT PEND-ENTRY !
    construct pending does PENDING ! ;
+
+\ The host's copy, sealed in NEMIT once the target's is taken: in a native
+\ shadow TAKE, elsewhere the emission past the pending target's, and nothing
+\ when no target copy is pending.
+: TAKE-HOST ( -- )
+   OPEN-CK
+   NATIVE? if TAKE exit then
+   PENDING? 0= if exit then
+   HOST-COPY HOST-MARK ;
+
+\ The same for a `does>` definer; its companion enters the target's copy.
+: TAKE-HOST-DOES ( n -- )
+   {: fun:n :}
+   OPEN-CK
+   NATIVE? if fun TAKE-DOES exit then
+   PENDING? 0= if exit then
+   HOST-COPY {: e:n :}
+   e fun CLAUSE-AT drop
+   e HOST-MARK ;
 
 \ The x86 def-cast writer publishes a raw one-byte RET identity body. It seals
 \ no NEMIT emission because the kernel writes it directly, so that writer
@@ -421,7 +505,7 @@ public
    N-FUNS @ e EM-FUN0 !  1 e EM-FUNS !
    N-CALLS @ e EM-CALL0 !  0 e EM-CALLS !
    N-ADDRS @ e EM-ADDR0 !  0 e EM-ADDRS !
-   -1 e EM-PATCH !  0 e EM-PATCH-TGT !
+   -1 e EM-PATCH !  0 e EM-PATCH-TGT !  e e EM-HOST !
    CODE-N @ size + CODE-BUF-RESERVE
    at ENTRY-BYTES CODE-N @ CODE-BUF size BYTE-COPY
    N-FUNS @ 1+ FUN-OFF-RESERVE  N-FUNS @ 1+ FUN-SOURCE-RESERVE
@@ -429,8 +513,9 @@ public
    REC-RESERVE
    construct pending plain PENDING ! ;
 
-\ Pairs the pending copy's functions with the host emission's, placed at `at`,
-\ before publication commits: both walks emit the same functions, a stub last.
+\ Pairs the pending target copy's functions with the host emission's, placed
+\ at `at`, before publication commits: both walks emit the same functions, a
+\ stub last.
 : SOURCE-FUNS ( n -- ) {: at:n :}
    PENDING? 0= if exit then
    N-EMS @ {: e:n :}
@@ -440,9 +525,10 @@ public
       at i NEMIT:FUNCTION-OFFSET@ +  e EM-FUN0 @ i + FUN-SOURCE !
    loop ;
 
-\ File the taken emission under the record publication has just committed, and
-\ a definer's companion under the next. Nonthrowing: publication runs it past
-\ its code window, and TAKE made the room.
+\ File the taken target emission under the record publication has just
+\ committed, and a definer's companion under the next; the counts advance over
+\ it and a pending host copy. Nonthrowing: publication runs it past its code
+\ window, and the takes made the room.
 : PUBLISH ( n -- ) {: idx:n :}
    PENDING? 0= if exit then
    N-EMS @ {: e:n :}
@@ -454,37 +540,39 @@ public
    else
       k 1+ N-RECS !
    then
-   e EM-SIZE @ CODE-N +!
-   e EM-FUNS @ N-FUNS +!
-   e EM-CALLS @ N-CALLS +!
-   e EM-ADDRS @ N-ADDRS +!
-   e 1+ N-EMS !
-   construct pending none PENDING ! ;
+   HOST-PENDING @ if 2 else 1 then e + {: end:n :}
+   end e ?do
+      i EM-SIZE @ CODE-N +!
+      i EM-FUNS @ N-FUNS +!
+      i EM-CALLS @ N-CALLS +!
+      i EM-ADDRS @ N-ADDRS +!
+   loop
+   end N-EMS !
+   construct pending none PENDING !  false HOST-PENDING ! ;
 
 \ The host's does> primitive patches its created ARM body after CREATE has
 \ published, passing the clause's ARM entry, or zero for an empty replacement
 \ that restores the body `create` made; record it as the jump slot's
-\ relocation target. The x86 body holds a five-byte slot and the capture
-\ resolves the tail call through the clause companion's row like any other
-\ tail site. A backend with no slot (Wasm) cannot carry the clause, and since
-\ a later replacement can still clear the target, nothing is dropped here:
-\ ROUTINE? answers the capture when the map is read. The patched emission joins
-\ PATCHES.
+\ relocation target of the record's emission and of its host emission. The x86
+\ body holds a five-byte slot and the capture resolves the tail call through
+\ the clause companion's row like any other tail site. A backend with no slot
+\ (Wasm) cannot carry the clause, and since a later replacement can still clear
+\ the target, nothing is dropped here: ROUTINE? answers the capture when the
+\ map is read. Each patched emission joins PATCHES.
 : PATCH-DOES ( n n -- ) {: idx:n target:n :}
    OPEN? 0= if exit then
    N-RECS @ 0 ?do
       i REC-IDX @ idx = if
-         target i REC-EM @ EM-PATCH-TGT !
-         i REC-EM @ PATCH+
+         i REC-EM @ target PATCH-PAIR
          unloop exit
       then
    loop
    E-NSHADOW-ROW throw ;
 
-\ Drop a taken emission no publication claimed. Nonthrowing: compiler.f
+\ Drop the taken copies no publication claimed. Nonthrowing: compiler.f
 \ RETIRE-BODY runs it as every tier-1 definition ends, refused or accepted.
 : ABANDON ( -- )
-   construct pending none PENDING ! ;
+   construct pending none PENDING !  false HOST-PENDING ! ;
 
 \ ---- the map ----------------------------------------------------------------
 \ Records in the order they were published.
@@ -513,15 +601,21 @@ public
 : EMISSIONS ( -- n )
    OPEN-CK N-EMS @ ;
 
+\ Emission e's host emission: itself in a native shadow and for a host
+\ emission, the next for a target emission with a host copy, else -1.
+: HOST@ ( n -- n )
+   EM-CK EM-HOST @ ;
+
+\ The machine emission e's bytes are for.
+: ARCH@ ( n -- CTARGET:arch )
+   EM-CK {: e:n :}
+   e EM-HOST @ e = if HOST-BINDING else SH-BIND @ then
+   CBIND:TARGET@ CTARGET:ARCH@ ;
+
 : SIZE ( n -- n )
    EM-CK EM-SIZE @ ;
 
-\ The machine it was compiled for: the binding's, which TARGET-CK holds every
-\ emission to.
-: ARCH@ ( n -- CTARGET:arch )
-   EM-CK drop SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ ;
-
-\ Its first byte, until the next TAKE moves the storage.
+\ Its first byte, until the next take moves the storage.
 : BYTES ( n -- ptr u8 )
    EM-CK EM-AT @ CODE-BUF ;
 

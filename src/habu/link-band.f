@@ -440,7 +440,7 @@ variable UNSAFE-COUNT
 
 \ An engine ships every routine.
 : REACH-ALL ( -- )
-   NSHADOW:EMISSIONS 0 ?do 1 i PLACED ! loop ;
+   NSHADOW:RECORDS 0 ?do 1 i NSHADOW:EMISSION@ PLACED ! loop ;
 
 
 \ The dispatch cell of the defer whose record emission e holds, or 0; dict.f

@@ -1993,6 +1993,8 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ walks a definition for the shadow's machine first and HOSTED then for the
 \ engine's, each selecting its emitter; HOSTED selects at every compile because
 \ a cross build's capture runs INSTALL on another machine than the target's.
+\ The shadow keeps HOSTED's unplaced seal as the host's copy beside the
+\ target's (HOST-TAKE), and a native shadow as its one copy.
 \ The shadow walk runs only for a machine an emitter provided (EMIT-PROVIDED?):
 \ for any other a T0 colon definition has no shadow routine, and the capture
 \ refuses one a shadow routine reaches. A refusal in either walk refuses the
@@ -2014,7 +2016,13 @@ variable SCAN-LO                     \ the ordinal of its first row
    M-DOES @ 0<> if CLAUSE @ NSHADOW:TAKE-DOES exit then
    NSHADOW:TAKE ;
 
-\ A native shadow takes HOSTED's unplaced seal of the host walk instead.
+\ The host's copy, picked as SHADOW-TAKE picks; NSHADOW takes nothing when no
+\ target copy is pending.
+: HOST-TAKE ( -- )
+   M-DOES @ 0<> if CLAUSE @ NSHADOW:TAKE-HOST-DOES exit then
+   NSHADOW:TAKE-HOST ;
+
+\ A native shadow has no walk of its own: its one copy is HOSTED's.
 : SHADOWED ( [ -- ] -- )
    NSHADOW:OPEN? 0= if drop exit then
    NSHADOW:NATIVE? if drop exit then
@@ -2060,7 +2068,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 : HOSTED ( [ -- ] -- )
    HOST-ARCH EMIT-SELECT
    execute
-   NSHADOW:NATIVE? if EMIT-SEAL-UNPLACED SHADOW-TAKE NEMIT:CLEAR then
+   NSHADOW:OPEN? if EMIT-SEAL-UNPLACED HOST-TAKE NEMIT:CLEAR then
    NPUB:NEXT-SLOT EMIT-PLACE EMIT-SEAL
    STUB-TAKE
    PUBLISH-IT ;

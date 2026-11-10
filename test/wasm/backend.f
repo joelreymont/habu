@@ -212,10 +212,21 @@ NSHADOW:EMISSIONS FILED-EMS !
    e k NSHADOW:ADDR-SITE-KIND@
    e NSHADOW:BYTES e NSHADOW:SIZE at WLEB:S64-PAD@ ;
 
+\ Row r's host copies: tier 0 files one just past its emission, tier 1 none.
+: HOST-COPIES ( n -- n ) {: r:n :}
+   r NSHADOW:EMISSION@ {: e:n :}
+   e NSHADOW:HOST@ {: h:n :}
+   h 0< if 0 exit then
+   h e 1+ T=
+   1 ;
+
+\ Every emission is a record's own or its host copy.
 : FILED-CASE ( -- )
    s" each record publication committed is filed once, with an emission of its own" T-LABEL
    FILED-RECS @ 12 T=
-   FILED-EMS @ 12 T=
+   0  12 0 ?do i HOST-COPIES + loop  12 +  FILED-EMS @ T=
+   0 NSHADOW:EMISSION@ 0 T=
+   12 1 ?do  i NSHADOW:EMISSION@  i 1- NSHADOW:EMISSION@  >  TTRUE  loop
    REC-BUF @ ROW-OF 0 T=
    REC-LEAF @ ROW-OF 1 T=
    REC-CALLER @ ROW-OF 2 T=
@@ -227,8 +238,7 @@ NSHADOW:EMISSIONS FILED-EMS !
    REC-EMPTY @ ROW-OF 8 T=
    REC-FULL @ ROW-OF 9 T=
    REC-PX @ ROW-OF 10 T=
-   REC-LAST @ ROW-OF 11 T=
-   12 0 ?do  i NSHADOW:EMISSION@ i T=  loop ;
+   REC-LAST @ ROW-OF 11 T= ;
 
 : BODY-CASE ( -- )
    s" each tier-1 emission's header names its one body, its lanes the word's arity" T-LABEL
