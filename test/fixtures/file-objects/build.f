@@ -600,13 +600,13 @@ variable SLOT-S                          \ and their count
    PIECES-FIELD 16 - OBJ@  8 +  n 88 * + {: w:n :}
    w 72 + OBJ@  w 80 + OBJ@ ;
 
-\ A reference: its tag, then 3, 1, 4, 2, 1 or 0 fields for tags 0-5 (linker.f CODE+).
+\ A reference: its tag, then 3, 1, 4, 4, 1, 0, 4 or 2 fields for tags 0-7 (linker.f CODE+).
 : REF-SKIP ( -- )
    OBJ-U64 {: tag:n :}
    tag 0 = if 3 OBJ-SKIP exit then
-   tag 2 = if 4 OBJ-SKIP exit then
+   tag 2 =  tag 3 =  tag 6 =  or or if 4 OBJ-SKIP exit then
    tag 1 =  tag 4 =  or if 1 OBJ-SKIP exit then
-   tag 3 = if 2 OBJ-SKIP then ;
+   tag 7 = if 2 OBJ-SKIP then ;
 
 
 \ An entry (linker.f RECORD+, LATE+, SEAL+); kind 4 is a late private wordlist and kind 5 a

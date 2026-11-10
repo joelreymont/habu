@@ -255,11 +255,11 @@ variable STORED-N
 DYNAMIC-BUFFER ANCHORS n
 variable ANCHORS-N
 DYNAMIC-BUFFER ORDER n               \ EXTENTS!'s sorts: anchor numbers, then string extents
-\ The running piece's extents in address order (EXTENTS!), EXT-CELLS cells each: the start as a
-\ distance from NULL-PTR, the kind, sum and count; then, as DATA+ writes it, its span's offset in
-\ PIECES and length, the highest FILES row its cell rows name (TOP-ROW), its first slot in EXT-ROWS
-\ and its cell rows there.
-9 constant EXT-CELLS
+\ The running piece's extents in address order (EXTENTS!, or OWN-IDS! for a checked part), EXT-CELLS
+\ cells each: the start as a distance from NULL-PTR, the kind, sum and count; then, as DATA+ writes
+\ it, its span's offset in PIECES and length, the highest FILES row its cell rows name (TOP-ROW), its
+\ first slot in EXT-ROWS and its cell rows there; last its length in bytes.
+10 constant EXT-CELLS
 DYNAMIC-BUFFER EXTS n
 variable EXTS-N
 DYNAMIC-BUFFER PICKED n              \ the piece's cell rows in the space's order, each then its extent (GROUP-ROWS)
@@ -281,11 +281,13 @@ DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0
 \ count at 2r + 1, from 0, among the earlier records of its file with that sum (IDENTIFY).
 DYNAMIC-BUFFER REC-IDS n
 variable IDENTIFIED                  \ every record below it that a piece holds has its identity
-\ PLACES finds a record by its file's key and identity: slot s holds at 5s the key's first cell plus
-\ 1, 0 while empty, then its second cell, the sum, the count and the record; half its slots at most
-\ are filled, so a probe ends. A key whose first cell is -2 is a check's (OWN-IDS!), its second
-\ cell the check's OWN-SERIAL; a piece's link reads the table its PIECE-CK filled, since LINK-PART
-\ runs PIECE-CK right before LINK-OBJECT.
+\ PLACES finds a record or an extent by a key, a kind and an identity: slot s holds at 6s the key's
+\ first cell plus 1, 0 while empty, then its second cell, the kind, the sum, the count and the value;
+\ half its slots at most are filled, so a probe ends. Kind 0 is a record, under its file's key; kinds
+\ 1-3 an extent's (EXTS). Key -2 and OWN-SERIAL is a check's (OWN-IDS!): a record's number or an
+\ extent's in its part; a piece's link reads the slots its PIECE-CK filled, since LINK-PART runs
+\ PIECE-CK right before LINK-OBJECT. Key -3 and a BUILT row is a built part's extent, the value its
+\ BUILT-EXTS row (BUILT+): a string's count is its number in its part, so the key is the part's.
 DYNAMIC-BUFFER PLACES n
 DYNAMIC-BUFFER OLD-PLACES n          \ PLACES' slots as it grows
 variable PLACES-CAP                  \ its slots, a power of two
@@ -302,6 +304,13 @@ DYNAMIC-BUFFER REF-OF n
 \ to REC-ROW-N are written.
 DYNAMIC-BUFFER REC-ROW n
 variable REC-ROW-N
+\ The build table (BUILT+): BUILT-EXT-CELLS cells per extent of every built part, its BUILT row,
+\ kind, sum, count, start as a distance from NULL-PTR and length; a part's rows together and in
+\ address order. ROW-EXTS: BUILT row r's first build-table row at 2r, its count at 2r + 1.
+6 constant BUILT-EXT-CELLS
+DYNAMIC-BUFFER BUILT-EXTS n
+variable BUILT-EXTS-N
+DYNAMIC-BUFFER ROW-EXTS n
 variable SERIALS
 variable OBJECT-SERIAL
 \ Record r's mark: the serial of the object that last took it as a seed (RAN-RECORD).
@@ -439,7 +448,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
    RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
    EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STORED-RELEASE
-   ANCHORS-RELEASE  ORDER-RELEASE  EXTS-RELEASE  PICKED-RELEASE  EXT-ROWS-RELEASE
+   ANCHORS-RELEASE  ORDER-RELEASE  EXTS-RELEASE  PICKED-RELEASE  EXT-ROWS-RELEASE  BUILT-EXTS-RELEASE  ROW-EXTS-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  REC-EMS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
@@ -478,9 +487,9 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
-   0 EDGES-N !
+   0 EDGES-N !  0 BUILT-EXTS-N !
    1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED !  0 IDENTIFIED !  0 OWN-SERIAL !  FIRST-REC @ REC-ROW-N !
-   1024 5 * PLACES-RESERVE  1024 5 * 0 ?do 0 i PLACES ! loop  1024 PLACES-CAP !  0 PLACES-N ! ;
+   1024 6 * PLACES-RESERVE  1024 6 * 0 ?do 0 i PLACES ! loop  1024 PLACES-CAP !  0 PLACES-N ! ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
 : INIT-OBJECTS ( -- )
@@ -746,33 +755,77 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    loop
    dup 0= if 1 + then ;
 
-\ The slot of PLACES that holds the key's two cells, that sum and that count, else the empty slot
+\ The slot of PLACES that holds the key's two cells, that kind, sum and count, else the empty slot
 \ the probe from their hash ends at.
-: PLACE-SLOT ( n n n n -- n )
-   {: path:n seen:n sum:n count:n :}
+: PLACE-SLOT ( n n n n n -- n )
+   {: path:n seen:n kind:n sum:n count:n :}
    PLACES-CAP @ 1 - {: mask:n :}
-   sum  path $9E3779B1 * +  seen $C2B2AE3D * +  count $85EBCA77 * +  mask and
+   sum  path $9E3779B1 * +  seen $C2B2AE3D * +  count $85EBCA77 * +  kind $27D4EB2F * +  mask and
    begin
-      dup 5 * PLACES @ 0<> if
-         dup 5 * PLACES @ path 1 + <>  over 5 * 1 + PLACES @ seen <>  or
-         over 5 * 2 + PLACES @ sum <>  or  over 5 * 3 + PLACES @ count <>  or
+      dup 6 * PLACES @ 0<> if
+         dup 6 * PLACES @ path 1 + <>  over 6 * 1 + PLACES @ seen <>  or
+         over 6 * 2 + PLACES @ kind <>  or
+         over 6 * 3 + PLACES @ sum <>  or  over 6 * 4 + PLACES @ count <>  or
       else false then
    while 1 + mask and repeat ;
+
+\ The value in the slot PLACE-SLOT answers for the key, kind and identity, -1 for none.
+: PLACE-VALUE ( n n n n n -- n )
+   PLACE-SLOT 6 * {: s:n :}
+   s PLACES @ 0= if -1 exit then
+   s 5 + PLACES @ ;
 
 \ The record of the file whose key is at the address with that sum and count, -1 for none.
 : PLACE ( ptr u8 n n -- n )
    {: key:ptr sum:n count:n :}
-   key LE:U64@  key 8 + LE:U64@  sum count PLACE-SLOT 5 * {: s:n :}
-   s PLACES @ 0= if -1 exit then
-   s 4 + PLACES @ ;
+   key LE:U64@  key 8 + LE:U64@  0 sum count PLACE-VALUE ;
 
 \ The number in its piece of the checked piece's record with that sum and count (OWN-IDS!), -1 for
 \ none.
 : OWN-REC ( n n -- n )
    {: sum:n count:n :}
-   -2 OWN-SERIAL @ sum count PLACE-SLOT 5 * {: s:n :}
-   s PLACES @ 0= if -1 exit then
-   s 4 + PLACES @ ;
+   -2 OWN-SERIAL @ 0 sum count PLACE-VALUE ;
+
+\ The number in its part of the checked part's extent of that kind, sum and count (OWN-IDS!), -1
+\ for none.
+: OWN-EXT ( n n n -- n )
+   {: kind:n sum:n count:n :}
+   -2 OWN-SERIAL @ kind sum count PLACE-VALUE ;
+
+\ The BUILT-EXTS row of BUILT row row's extent of that kind, sum and count (BUILT+), -1 for none.
+: ROW-EXT ( n n n n -- n )
+   {: row:n kind:n sum:n count:n :}
+   -3 row kind sum count PLACE-VALUE ;
+
+\ Cell f of extent e.
+: EXT ( n n -- ptr n ) swap EXT-CELLS * + EXTS ;
+
+\ The extent holding the address: the last whose start is at most it, -1 for none.
+: EXT-OF ( n -- n )
+   {: at:n :}
+   0 EXTS-N @
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid 0 EXT @ at <= if mid 1 + hi else lo mid then
+   repeat
+   drop 1 - ;
+
+\ Cell f of BUILT-EXTS row b.
+: BUILT-EXT ( n n -- ptr n ) swap BUILT-EXT-CELLS * + BUILT-EXTS ;
+
+\ The BUILT-EXTS row of BUILT row row's extent holding the address: the last whose start is at most
+\ it, -1 for none.
+: ROW-EXT-OF ( n n -- n )
+   {: at:n row:n :}
+   row 2 * ROW-EXTS @ {: first:n :}
+   first  first row 2 * 1 + ROW-EXTS @ +
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid 4 BUILT-EXT @ at <= if mid 1 + hi else lo mid then
+   repeat
+   drop 1 -  dup first < if drop -1 then ;
 
 
 \ PLACES grown to have room for n more slots at half full; growing drops a finished check's slots
@@ -783,31 +836,34 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    n PLACES-N @ +  2 * {: need:n :}
    cap begin dup need < while 2 * repeat {: grown:n :}
    grown cap > if
-      cap 5 * OLD-PLACES-RESERVE
-      cap 5 * 0 ?do  i PLACES @  i OLD-PLACES !  loop
-      grown 5 * PLACES-RESERVE
-      grown 5 * 0 ?do  0 i PLACES !  loop
+      cap 6 * OLD-PLACES-RESERVE
+      cap 6 * 0 ?do  i PLACES @  i OLD-PLACES !  loop
+      grown 6 * PLACES-RESERVE
+      grown 6 * 0 ?do  0 i PLACES !  loop
       grown PLACES-CAP !
       0 PLACES-N !
       cap 0 ?do
-         i 5 * {: o:n :}
+         i 6 * {: o:n :}
          o OLD-PLACES @ {: first:n :}
          first 0<>  first -1 <>  and if
-            first 1 -  o 1 + OLD-PLACES @  o 2 + OLD-PLACES @  o 3 + OLD-PLACES @
-            PLACE-SLOT 5 * {: s:n :}
-            5 0 ?do  o i + OLD-PLACES @  s i + PLACES !  loop
+            first 1 -  o 1 + OLD-PLACES @  o 2 + OLD-PLACES @  o 3 + OLD-PLACES @  o 4 + OLD-PLACES @
+            PLACE-SLOT 6 * {: s:n :}
+            6 0 ?do  o i + OLD-PLACES @  s i + PLACES !  loop
             1 PLACES-N +!
          then
       loop
    then ;
 
 
-\ Record r into the empty slot PLACE-SLOT answers for the key's two cells, the sum and the count.
-: PLACE! ( n n n n n -- )
-   {: path:n seen:n sum:n count:n r:n :}
-   path seen sum count PLACE-SLOT 5 * {: s:n :}
-   path 1 + s PLACES !  seen s 1 + PLACES !  sum s 2 + PLACES !  count s 3 + PLACES !
-   r s 4 + PLACES !
+\ The value v into the empty slot PLACE-SLOT answers for the key's two cells, the kind, the sum and
+\ the count; E-COMP-STATE when a slot holds them, since a second value would hide the first: a
+\ part's records and extents each have their own identity (IDENTIFY, EXTENTS!).
+: PLACE! ( n n n n n n -- )
+   {: path:n seen:n kind:n sum:n count:n v:n :}
+   path seen kind sum count PLACE-SLOT 6 * {: s:n :}
+   s PLACES @ 0<> if E-COMP-STATE throw then
+   path 1 + s PLACES !  seen s 1 + PLACES !  kind s 2 + PLACES !  sum s 3 + PLACES !
+   count s 4 + PLACES !  v s 5 + PLACES !
    1 PLACES-N +! ;
 
 
@@ -823,7 +879,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
       u 0= if 0 else a u NAME-SUM then {: sum:n :}
       0 begin dup FILE-KEY sum rot PLACE 0 >= while 1 + repeat {: count:n :}
       sum i 2 * REC-IDS !  count i 2 * 1 + REC-IDS !
-      path seen sum count i PLACE!
+      path seen 0 sum count i PLACE!
    loop
    ndict@ IDENTIFIED ! ;
 
@@ -1213,30 +1269,51 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    start row 2 * ROW-EDGES !  EDGES-N @ start -  row 2 * 1 + ROW-EDGES ! ;
 
 
+\ An address in the running part's data: a word's or a string's extent (EXT-OF) holding it as tag 3
+\ or 6 and the offset in it, else tag 7 and the offset from FILE-DP (the head, or no extent).
+: OWN-DATA-REF+ ( n -- )
+   {: v:n :}
+   BUILT-N DATA-EDGE+
+   v EXT-OF {: e:n :}
+   e 0 >= if
+      e 1 EXT @ {: kind:n :}
+      kind 1 =  kind 2 =  or if
+         kind 1 = if 3 else 6 then PIECES U64+  0 PIECES U64+
+         e 2 EXT @ PIECES U64+  e 3 EXT @ PIECES U64+  v e 0 EXT @ - PIECES U64+ exit
+      then
+   then
+   7 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ ;
+
+\ An address in BUILT row row's data, k its FILES row: a word's or a string's extent (ROW-EXT-OF)
+\ holding it, its end included, as tag 3 or 6 and the offset in it; else tag 7 and the offset from
+\ the part's first data byte (the head, no extent, or a text the part laid past its extents).
+: ROW-DATA-REF+ ( n n n -- )
+   {: v:n row:n k:n :}
+   row DATA-EDGE+
+   v row ROW-EXT-OF {: b:n :}
+   b 0 >= if
+      b 1 BUILT-EXT @  b 4 BUILT-EXT @ {: kind:n start:n :}
+      v  start b 5 BUILT-EXT @ +  <=  kind 1 =  kind 2 =  or  and if
+         kind 1 = if 3 else 6 then PIECES U64+  k PIECES U64+
+         b 2 BUILT-EXT @ PIECES U64+  b 3 BUILT-EXT @ PIECES U64+  v start - PIECES U64+ exit
+      then
+   then
+   7 PIECES U64+  k PIECES U64+  v  row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ ;
+
 \ A data address's reference, and true: a file's data, or the open's header data; false,
 \ writing nothing, for any other address. A file's end names it only after every span, so
 \ a later file's first byte names that later file.
 : DATA-REF+ ( n -- bool )
    {: v:n :}
-   v FILE-DP @ >=  v FILE-END @ <  and if
-      BUILT-N DATA-EDGE+  3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ true exit
-   then
+   v FILE-DP @ >=  v FILE-END @ <  and if  v OWN-DATA-REF+ true exit  then
    v DP-ROW {: row:n hit:bool :}
-   hit if
-      row DATA-EDGE+  3 PIECES U64+  row true REF-FILE PIECES U64+
-      v  row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ true exit
-   then
+   hit if  v row  row true REF-FILE  ROW-DATA-REF+ true exit  then
    v BASE @ >=  v OPEN-DP @ <  and if
       true HOLDS-HEADER !  HEADER-EDGE+  4 PIECES U64+  v BASE @ - PIECES U64+ true exit
    then
-   v FILE-END @ = if
-      BUILT-N DATA-EDGE+  3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ true exit
-   then
+   v FILE-END @ = if  v OWN-DATA-REF+ true exit  then
    v DP-END-ROW {: end-row:n end-hit:bool :}
-   end-hit if
-      end-row DATA-EDGE+  3 PIECES U64+  end-row true REF-FILE PIECES U64+
-      v  end-row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ true exit
-   then
+   end-hit if  v end-row  end-row true REF-FILE  ROW-DATA-REF+ true exit  then
    false ;
 
 
@@ -1717,12 +1794,15 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \                          reference
 \ A reference is a tag, then its fields: 0 a dictionary record (file, its name sum, its count
 \ among that file's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation
-\ (file, its owning definition's name sum and count as tag 0's, function); 3 a file's data (file,
-\ offset from that file's first data byte, at most its data size: a body of no bytes at the
-\ file's end); 4 the open's header data (offset from BASE); 5 none: a patch target, a cell row's
-\ 0 or scratch cell, or a definition with no dispatch cell. A file field is 0 for this object,
-\ else its FILES row from 1 (REF-FILE). A cross build's E is 0: its shadow holds the target's
-\ code, in the target's site encodings, and it writes no object (LOAD).
+\ (file, its owning definition's name sum and count as tag 0's, function); 3 a word's data and 6 a
+\ string's (file, the extent's sum and count, offset in the extent, at most its length); 7 a
+\ file's data no word or string owns (file, offset from that file's first data byte, at most its
+\ data size); 4 the open's header data (offset from BASE); 5 none: a patch target, a cell row's 0
+\ or scratch cell, or a definition with no dispatch cell. A file field is 0 for this object, else
+\ its FILES row from 1 (REF-FILE). Tags 3 and 6 name data by its owner, so data that only moved
+\ keeps its references' bytes.
+\ A cross build's E is 0: its shadow holds the target's code, in the target's site encodings, and
+\ it writes no object (LOAD).
 : CODE+ ( -- )
    ENTRIES
    CROSS? if 0 PIECES U64+ exit then
@@ -1801,9 +1881,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    p q <> if p q < exit then
    j 3 * 2 + ANCHORS @  k 3 * 2 + ANCHORS @ < ;
 
-\ Cell f of extent e.
-: EXT ( n n -- ptr n ) swap EXT-CELLS * + EXTS ;
-
 \ Whether string extent j sorts before string extent k: by sum, then address.
 : EXT-SUM< ( n n -- bool )
    {: j:n k:n :}
@@ -1811,21 +1888,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    a b <> if a b < exit then
    j k < ;
 
-\ The address where extent e ends: the next one's start, the last FILE-END.
+\ The address where extent e ends.
 : EXT-END ( n -- n )
    {: e:n :}
-   e 1 +  EXTS-N @ < if  e 1 + 0 EXT @  else  FILE-END @  then ;
-
-\ The extent holding the address: the last whose start is at most it.
-: EXT-OF ( n -- n )
-   {: at:n :}
-   0 EXTS-N @
-   begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      mid 0 EXT @ at <= if mid 1 + hi else lo mid then
-   repeat
-   drop 1 - ;
+   e 0 EXT @  e 9 EXT @ + ;
 
 
 \ FNV-1a over the bytes, as NAME-SUM without its case fold; never 0.
@@ -1834,7 +1900,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    $811C9DC5  u 0 ?do  a i + c@ xor  $1000193 *  loop
    dup 0= if 1 + then ;
 
-\ The extent at the address onto EXTS, with no span or rows yet.
+\ The extent at the address onto EXTS, with no span, rows or length yet.
 : EXT+ ( n n n n -- )
    {: at:n kind:n sum:n count:n :}
    EXTS-N @ {: e:n :}
@@ -1860,7 +1926,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 
 \ The running piece's extents into EXTS: anchors at each record's body (EM-DATA of its emission, for
 \ a record DNAME-ALLOC marks) and dispatch cell, and each string's length cell (STRING+), sorted
-\ (ANCHOR<), after a head when D is above 0 and no anchor sits at FILE-DP.
+\ (ANCHOR<), after a head when D is above 0 and no anchor sits at FILE-DP; then each one's length,
+\ the distance to the next start, the last's to FILE-END.
 : EXTENTS! ( -- )
    0 ANCHORS-N !  0 EXTS-N !
    ndict@ FILE-REC @ ?do
@@ -1889,6 +1956,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       else
          at 2  NULL-PTR BYTE-VIEW x +  x BODY-U  BYTES-SUM  0 EXT+
       then
+   loop
+   EXTS-N @ 0 ?do
+      i 1 +  EXTS-N @ < if  i 1 + 0 EXT @  else  FILE-END @  then  i 0 EXT @ -  i 9 EXT !
    loop
    STRING-COUNTS ;
 
@@ -1954,7 +2024,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \                          and its body follows
 \   S, then S store rows   each cell below FILE-DP the compile stored into, other than a scratch
 \                          cell, or gave an address-cell row, ascending by address: its
-\                          reference (tag 3 with a FILES row, or 4), kind (ROW-KIND, 3 for
+\                          reference (tag 3, 6 or 7 with a FILES row, or 4), kind (ROW-KIND, 3 for
 \                          none), bytes (the cell's value for kind 3, else 0), its value's
 \                          reference (CELL-REF+ for kinds 0-2, else 5)
 \   F, then F facts rows   each entry the file's compile held, in order (FACTS+): CHECK:HELD-RETIRED
@@ -2402,10 +2472,30 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    obj obju OBJECT-DIR
    obj obju [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
 
-\ The piece's BUILT row with its number and time, its file's path and HOLDS-HEADER; NAMES takes
-\ its records, REC-ROW gives each its row, rows rising.
+\ The running part's extents (EXTS) into the build table as BUILT row BUILT-N's, each also into
+\ PLACES under -3; lengths come from EXTS, since FILE-END by now may lie past laid texts.
+: BUILT-EXTS+ ( -- )
+   EXTS-N @ {: n:n :}
+   BUILT-N {: row:n :}
+   BUILT-EXTS-N @ {: first:n :}
+   n PLACES-ROOM
+   first n + BUILT-EXT-CELLS * BUILT-EXTS-RESERVE
+   n 0 ?do
+      first i + {: b:n :}
+      i 1 EXT @  i 2 EXT @  i 3 EXT @ {: kind:n sum:n count:n :}
+      row b 0 BUILT-EXT !  kind b 1 BUILT-EXT !  sum b 2 BUILT-EXT !  count b 3 BUILT-EXT !
+      i 0 EXT @ b 4 BUILT-EXT !  i 9 EXT @ b 5 BUILT-EXT !
+      -3 row kind sum count b PLACE!
+   loop
+   n BUILT-EXTS-N +!
+   row 1 + 2 * ROW-EXTS-RESERVE
+   first row 2 * ROW-EXTS !  n row 2 * 1 + ROW-EXTS ! ;
+
+\ The piece's BUILT row with its number and time, its file's path and HOLDS-HEADER, its extents in
+\ the build table (BUILT-EXTS+); NAMES takes its records, REC-ROW gives each its row, rows rising.
 : BUILT+ ( n n -- )
    {: piece:n t:n :}
+   BUILT-EXTS+
    ndict@ REC-ROW-RESERVE
    FILE-REC @ REC-ROW-N @ ?do  0 i REC-ROW !  loop
    ndict@ FILE-REC @ ?do  BUILT-N 1 + i REC-ROW !  loop
@@ -2437,7 +2527,6 @@ variable FILES-N                      \ its FILES rows
 variable DEFS-N                       \ the KIND-DEF entries read so far
 variable DOES-N                       \ the KIND-DOES entries read so far, DOES-AT's rows
 variable LAST-EM                      \ the entry just read's emission when it is KIND-DEF, else -1
-variable OWN-DATA-MAX                 \ the furthest a reference reaches into this file's data
 
 \ The reader over OBJECT: [RD-AT, RD-END), and a failure that sticks until RD-OPEN.
 \ A failure also empties the window, so a later read fails on its bounds alone.
@@ -2546,14 +2635,13 @@ variable RD-END
    at 24 + at OBJ@ +  j 8 * + OBJ@ ;
 
 
-\ A reference: its tag and four fields, 0 for absent ones (CODE+ states them); only a quotation
-\ has a fourth.
+\ A reference: its tag and four fields, 0 for absent ones (CODE+ states them).
 : RD-REF ( -- n n n n n )
    RD-U64 {: tag:n :}
    tag 0 = if tag RD-U64 RD-U64 RD-U64 0 exit then
    tag 1 = if tag RD-U64 0 0 0 exit then
-   tag 2 = if tag RD-U64 RD-U64 RD-U64 RD-U64 exit then
-   tag 3 = if tag RD-U64 RD-U64 0 0 exit then
+   tag 2 =  tag 3 =  tag 6 =  or or if tag RD-U64 RD-U64 RD-U64 RD-U64 exit then
+   tag 7 = if tag RD-U64 RD-U64 0 0 exit then
    tag 4 = if tag RD-U64 0 0 0 exit then
    tag 5 = if tag 0 0 0 0 exit then
    BAD tag 0 0 0 0 ;
@@ -2620,13 +2708,33 @@ variable RD-END
    BAD ;
 
 
-\ A data reference (RD-REF): a file's data, at most its size, or the open's header data.
+\ A data reference (RD-REF): a word's (tag 3) or a string's (tag 6) extent of this part (OWN-EXT)
+\ or of a built one (ROW-EXT), the offset at most its length; a part's data (tag 7), at most the
+\ head's length in this part, 0 when it has no extent, or the data size of another; or the open's
+\ header data.
 : DATA-REF-CK ( n n n n n -- )
-   drop drop {: tag:n x:n y:n :}
+   {: tag:n x:n y:n z:n w:n :}
    GOOD? 0= if exit then
-   tag 3 = if
+   tag 3 =  tag 6 =  or if
+      w 0< if BAD exit then
+      tag 3 = if 1 else 2 then {: kind:n :}
+      x 0= if
+         kind y z OWN-EXT {: e:n :}
+         e 0< if BAD exit then
+         w e 9 EXT @ > if BAD then exit
+      then
+      x FILE-IN? 0= if BAD exit then
+      x FILE-ROWS @ kind y z ROW-EXT {: b:n :}
+      b 0< if BAD exit then
+      w b 5 BUILT-EXT @ > if BAD then exit
+   then
+   tag 7 = if
       y 0< if BAD exit then
-      x 0= if y OWN-DATA-MAX @ max OWN-DATA-MAX ! exit then
+      x 0= if
+         EXTS-N @ 0= if  y 0<> if BAD then exit  then
+         0 1 EXT @ 3 <> if BAD exit then
+         y 0 9 EXT @ > if BAD then exit
+      then
       x FILE-IN? 0= if BAD exit then
       y x FILE-BYTES > if BAD then exit
    then
@@ -2802,20 +2910,44 @@ variable RD-END
 \ The offset in OBJECT of TIMES' word count, once HEADER-CK passed.
 : TIMES-AT ( -- n ) TIMES-FIELD OBJ@ ;
 
+\ The offset in OBJECT of TIMES' row for extent e, after the word rows and the extent count.
+: TIMES-EXT ( n -- n )
+   {: e:n :}
+   TIMES-AT {: at:n :}
+   at 8 +  at OBJ@ WORD-BYTES * +  8 +  e EXT-BYTES * + ;
+
 
 \ The part's records into PLACES by the sums and counts its TIMES block holds, in record order, each
-\ under the key -2 and a new OWN-SERIAL with its number in the piece; bad when two share both.
+\ under the key -2 and a new OWN-SERIAL with its number in the piece; then its extents into EXTS,
+\ each with its kind, sum and count from TIMES, its length from its span's length cell, its start
+\ FILE-DP plus the lengths before it, and into PLACES the same way. Bad when two records share a sum
+\ and count, two extents a kind, sum and count, or a span is too short to hold its length cell;
+\ EXTENT-CK proves the rest against DATA.
 : OWN-IDS! ( -- )
    TIMES-AT {: at:n :}
    1 OWN-SERIAL +!
    at OBJ@ {: n:n :}
-   n PLACES-ROOM
+   at 8 +  n WORD-BYTES * +  OBJ@ {: x:n :}
+   n x + PLACES-ROOM
    n 0 ?do
       at 8 +  i WORD-BYTES * + {: w:n :}
       w 9 8 * + OBJ@  w 10 8 * + OBJ@ {: sum:n count:n :}
       sum count OWN-REC 0 >= if BAD unloop exit then
-      -2 OWN-SERIAL @ sum count i PLACE!
-   loop ;
+      -2 OWN-SERIAL @ 0 sum count i PLACE!
+   loop
+   x EXT-CELLS * EXTS-RESERVE
+   x EXTS-N !
+   FILE-DP @  x 0 ?do
+      {: start:n :}
+      i TIMES-EXT {: r:n :}
+      r 16 + OBJ@ 32 < if BAD unloop exit then
+      r 24 + OBJ@  r 32 + OBJ@  r 40 + OBJ@ {: kind:n sum:n count:n :}
+      PIECE-AT @  r 8 + OBJ@ +  24 + OBJ@ {: u:n :}
+      kind sum count OWN-EXT 0 >= if BAD unloop exit then
+      start i 0 EXT !  kind i 1 EXT !  sum i 2 EXT !  count i 3 EXT !  u i 9 EXT !
+      -2 OWN-SERIAL @ kind sum count i PLACE!
+      start u +
+   loop drop ;
 
 
 \ A TIMES span: an offset and a length inside a piece of plen bytes.
@@ -3029,12 +3161,15 @@ variable RD-END
    BAD ;
 
 
-\ A definition's dispatch cell (DISPATCH+): none, or a whole cell of this file's data.
+\ A definition's dispatch cell (DISPATCH+): none, or the start of a word's extent of this part
+\ (OWN-EXT) of at least a cell, at an offset from FILE-DP that is a multiple of 8.
 : DISPATCH-CK ( -- )
    RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 5 = if exit then
-   tag 3 <>  x 0<>  or  y 0<  or  y 7 and 0<>  or  y 8 + 0<  or if BAD exit then
-   y 8 + OWN-DATA-MAX @ max OWN-DATA-MAX ! ;
+   tag 3 <>  x 0<>  or  w 0<>  or if BAD exit then
+   1 y z OWN-EXT {: e:n :}
+   e 0< if BAD exit then
+   e 9 EXT @ 8 <  e 0 EXT @ FILE-DP @ - 7 and 0<>  or if BAD then ;
 
 
 \ Entry i: its offset into ENTRY-OFFS, then its fields (RECORD+, LATE+, SEAL+), each record it
@@ -3072,7 +3207,6 @@ variable RD-END
 : ENTRIES-CK ( -- )
    32 RD-COUNT {: n:n :}
    n ENTRIES-N !  0 RECS-N !  0 DEFS-N !  0 DOES-N !  0 PRIVS-N !  -1 LAST-EM !
-   0 OWN-DATA-MAX !
    n 0 > if
       n ENTRY-OFFS-RESERVE  n REC-KINDS-RESERVE  n EM-RECS-RESERVE  n REC-EMS-RESERVE  n 2 * PRIVS-RESERVE
    then
@@ -3204,8 +3338,9 @@ variable RD-END
    OBJECT BYTES$ drop at 8 + +  n  INTERN:FIND 0<> if BAD then ;
 
 
-\ Extent e of DATA's d bytes, at RD-AT once its starts were read: kind 1 or 2, or 3 first; its
-\ length the distance to the next start, the last's to d; its bytes; its cell rows (CELL-ROW-CK);
+\ Extent e of DATA's d bytes, at RD-AT once its starts were read: where TIMES' span for e starts;
+\ kind 1 or 2, or 3 first; its length the distance to the next start, the last's to d; its start,
+\ kind, sum, count and length those OWN-IDS! put into EXTS; its bytes; its cell rows (CELL-ROW-CK);
 \ a string's length cell (STRING-CK).
 : EXTENT-CK ( n n -- )
    {: e:n d:n :}
@@ -3213,23 +3348,33 @@ variable RD-END
    EXTS-AT @ 8 + e 8 * + {: at:n :}
    at OBJ@ {: s:n :}
    e 1 +  EXTS-AT @ OBJ@ < if at 8 + OBJ@ else d then {: end:n :}
+   RD-AT @  PIECE-AT @  e TIMES-EXT 8 + OBJ@ +  <> if BAD exit then
    RD-U64 RD-U64 RD-U64 RD-U64 {: kind:n sum:n count:n u:n :}
    kind 1 <  kind 3 >  or  kind 3 =  e 0<>  and  or if BAD exit then
    u  end s -  <> if BAD exit then
+   kind e 1 EXT @ <>  sum e 2 EXT @ <>  or  count e 3 EXT @ <>  or  u e 9 EXT @ <>  or
+   s FILE-DP @ +  e 0 EXT @ <>  or if BAD exit then
    RD-AT @ {: bytes:n :}
    u RD-SKIP
    kind 2 = if bytes u STRING-CK then
    24 RD-COUNT 0 ?do s u CELL-ROW-CK loop ;
 
 
-\ A store row: a cell FIND-STORES admits by where it starts, at an aligned offset below an earlier
-\ file's data end (a cell may run past an unaligned end: main.f's D is 98) or in the header data.
+\ A store row: a cell FIND-STORES admits by where it starts, at an offset from an earlier part's
+\ first data byte that is a multiple of 8: inside a word's or a string's extent (tag 3 or 6) or
+\ below the part's data end (tag 7; a cell may run past an unaligned end: main.f's D is 98); or in
+\ the header data.
 : STORE-CK ( -- )
    RD-REF {: tag:n x:n y:n z:n w:n :}
-   tag 3 =  x 1 >=  and  tag 4 =  or 0= if BAD exit then
+   tag 3 =  tag 6 =  tag 7 =  or or  x 1 >=  and  tag 4 =  or 0= if BAD exit then
    tag x y z w DATA-REF-CK
    GOOD? 0= if exit then
-   tag 3 = if
+   tag 3 =  tag 6 =  or if
+      x FILE-ROWS @  tag 3 = if 1 else 2 then  y z ROW-EXT {: b:n :}
+      w b 5 BUILT-EXT @ >= if BAD exit then
+      b 4 BUILT-EXT @  x BUILT-DP BUILT@ -  w +  7 and 0<> if BAD exit then
+   then
+   tag 7 = if
       y 7 and 0<> if BAD exit then
       y x FILE-BYTES >= if BAD exit then
    then
@@ -3240,15 +3385,15 @@ variable RD-END
    kind CELL-REF-CK ;
 
 
-\ DATA and STORES (DATA+, STORES+): D at least 0; X starts ascending from 0, none past D, and
-\ none only when D is 0; each extent (EXTENT-CK).
+\ DATA and STORES (DATA+, STORES+): D at least 0; X, TIMES' extent count (EXTS-N), starts ascending
+\ from 0, none past D, and none only when D is 0; each extent (EXTENT-CK).
 : DATA-CK ( -- )
    RD-AT @ DATA-AT !
    RD-U64 {: d:n :}
    d 0< if BAD then
    RD-AT @ EXTS-AT !
    8 RD-COUNT {: x:n :}
-   x 0=  d 0<>  and if BAD then
+   x 0=  d 0<>  and  x EXTS-N @ <>  or if BAD then
    0  x 0 ?do
       RD-U64 {: s:n :}
       s over <  s d >  or  i 0=  s 0<>  and  or if BAD then
@@ -3256,8 +3401,7 @@ variable RD-END
    loop drop
    x 0 ?do i d EXTENT-CK loop
    RD-AT @ STORES-AT !
-   40 RD-COUNT 0 ?do STORE-CK loop
-   OWN-DATA-MAX @ d > if BAD then ;
+   40 RD-COUNT 0 ?do STORE-CK loop ;
 
 
 \ FACTS (FACTS+): each row a retirement of a record reference (ID-REF-CK), a text for a record
@@ -3770,7 +3914,19 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    then
    tag 1 = if rbase x + exit then
    tag 2 = if x y z w FN-ADDR exit then
-   tag 3 = if
+   tag 3 =  tag 6 =  or if
+      tag 3 = if 1 else 2 then {: kind:n :}
+      x 0= if
+         kind y z OWN-EXT {: e:n :}
+         e 0< if E-COMP-STATE throw then
+         BUILT-N DATA-EDGE+  e 0 EXT @ w + exit
+      then
+      x FILE-ROWS @ {: row:n :}
+      row kind y z ROW-EXT {: b:n :}
+      b 0< if E-COMP-STATE throw then
+      row DATA-EDGE+  b 4 BUILT-EXT @ w + exit
+   then
+   tag 7 = if
       x 0= if BUILT-N DATA-EDGE+  FILE-DP @ y + exit then
       x FILE-ROWS @ DATA-EDGE+  x BUILT-DP BUILT@ y + exit
    then
@@ -4700,8 +4856,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ After IMAGE-IN, so the texts are held, then laid before any file as the open's header data.
 \ The records are BUILT row 0, as a file's piece is, so an object names them by that row: its
 \ key is the empty path's, which no file's load has; it is piece 0 at time 0, since what it holds
-\ follows from hb, whose stamp names the objects' directory (BUILD-OUT:OBJ$); it has no emission
-\ and no data.
+\ follows from hb, whose stamp names the objects' directory (BUILD-OUT:OBJ$); it has no emission,
+\ no data and no extent.
 : OWNED-RECORDS ( -- )
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !  false HOLDS-HEADER !
    OWNED-N @ 0 ?do i LINK-OWNED loop
@@ -4709,7 +4865,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    s" " KEY-PATHS PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!
    FILE-KEY KEY-BYTES LOAD-PATHS SPAN+  s" " LOAD-PATHS FIELD+
    here NULL-PTR - dup FILE-DP !  FILE-END !
-   0 0 BUILT+ ;
+   0 EXTS-N !  0 0 BUILT+ ;
 
 : OPEN ( -- )
    0 COMPILED-N !  0 LINKED-N !
