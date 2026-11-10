@@ -1,8 +1,8 @@
-\ crew-test.f - CREW's tasks: three that record their task by value and end, a
-\ fourth START that takes a reaped task's record, STOP ending parked tasks
-\ through their finally, START inside STOP's quotation refused while STOP still
-\ ends its tasks, and a body that throws, whose LOG line is on fd 2 once it
-\ ends, reaped by the next START.
+\ crew-test.f - CREW's tasks: three that record their task by value and hold
+\ until the test has compared them, a fourth START that takes a reaped task's
+\ record, STOP ending parked tasks through their finally, START inside STOP's
+\ quotation refused while STOP still ends its tasks, and a body that throws,
+\ whose LOG line is on fd 2 once it ends, reaped by the next START.
 \ Run: bin/hb --load src/lib/crew-test.f
 
 require src/lib/error.f
@@ -31,6 +31,7 @@ JOBS TYPED-BUFFER SEEN n             \ the task that ran the value, 0 before
 JOBS TYPED-BUFFER PARKED n           \ 1 once the body parks
 JOBS TYPED-BUFFER ASKED n            \ 1 once STOP's quotation ran with it
 JOBS TYPED-BUFFER UNWOUND n          \ 1 once the parked body's finally ran
+variable GO                          \ 1 once RECORD-CASE has compared its tasks
 
 create PATH-BUF PATH-CAP allot       \ the stderr capture file's path
 variable PATH-U
@@ -41,7 +42,8 @@ CAST: N>TCB ( n -- ptr n )
 : RESET ( -- )
    JOBS 0 ?do
       0 i SEEN atomic! 0 i PARKED atomic! 0 i ASKED atomic! 0 i UNWOUND atomic!
-   loop ;
+   loop
+   0 GO atomic! ;
 
 : WAIT ( [ -- bool ] -- )
    mono-ns WAIT-MS NS-PER-MS * + s" crew-test" TEST-WAIT:POLL ;
@@ -51,7 +53,8 @@ CAST: N>TCB ( n -- ptr n )
 : SET ( ptr n -- ) 1 swap atomic! ;
 : ONE? ( ptr n -- bool ) atomic@ 1 = ;
 
-\ The value's task ran and has ended.
+\ The value's task ran and has ended; the answer holds only until a START or
+\ STOP gives the task back.
 : ENDED? ( n -- bool )
    SEEN@ dup 0= if drop false exit then
    N>TCB TASK:DONE? ;
@@ -61,6 +64,14 @@ CAST: N>TCB ( n -- ptr n )
    TASK:SELF-N v SEEN atomic! ;
 
 : START-RECORD ( n -- ) TASK:MIN-STACK swap [: RECORD ;] CREW:START ;
+
+
+: HOLD ( n -- )
+   {: v:n :}
+   TASK:SELF-N v SEEN atomic!
+   begin GO atomic@ 0= while TASK:PAUSE repeat ;
+
+: START-HOLD ( n -- ) TASK:MIN-STACK swap [: HOLD ;] CREW:START ;
 
 
 \ The parked body's own value: the one whose SEEN is this task among those
@@ -89,12 +100,14 @@ CAST: N>TCB ( n -- ptr n )
 
 : RECORD-CASE ( -- )
    RESET
-   0 START-RECORD 1 START-RECORD 2 START-RECORD
-   [: 0 ENDED? 1 ENDED? and 2 ENDED? and ;] WAIT
+   0 START-HOLD 1 START-HOLD 2 START-HOLD
+   [: 0 SEEN? 1 SEEN? and 2 SEEN? and ;] WAIT
    s" three tasks each run the body with their own value" T-LABEL
    0 SEEN@ 1 SEEN@ T<>
    1 SEEN@ 2 SEEN@ T<>
    0 SEEN@ 2 SEEN@ T<>
+   GO SET
+   [: 0 ENDED? 1 ENDED? and 2 ENDED? and ;] WAIT
    3 START-RECORD
    [: 3 SEEN? ;] WAIT
    \ TASK:NEW takes the first free record in pool order: the first task's once
