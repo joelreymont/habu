@@ -11,7 +11,6 @@ require src/lib/memory.f
 require src/lib/span.f
 require src/lib/float.f
 require src/lib/task.f
-require src/lib/image-lifecycle.f
 require src/lib/pg.f
 
 \ PG's row readers: -9320..-9329, the decade after IMAGE-LIFECYCLE's. Minted
@@ -63,9 +62,7 @@ variable CONNECTIONS-FROZEN
 0 constant MAIN-ARENA             \ the arena of the main task, which has no TCB
 1 constant FIRST-CLAIMED          \ the rows tasks take, MAIN-ARENA being taken already
 
-variable READER-N                 \ the declared rows, zero until CONFIGURE-READERS
-TYPED-VARIABLE READERS-REGISTERED bool
-false READERS-REGISTERED !
+SCRATCH-VARIABLE READER-N         \ the declared rows, zero until CONFIGURE-READERS
 
 STRUCTURE chunk DERIVE addr
    FIELD prev ptr u8
@@ -124,7 +121,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last
 \ The newest chunk of row at, with room for u more bytes. A row's first chunk
 \ is mapped here on its first read, by the only task that ever asks for it -
 \ so the map needs no lock, and main's row is mapped the same way as a
-\ worker's. Its bytes live until image preparation.
+\ worker's. Its bytes live until the process ends.
 : ROOM ( n n -- SPAN:span<u8> ) {: at:n u:n :}
    at READ-CHUNK @ SPAN:LEN 0= if at READ-CAP CHUNK+ then
    at READ-USED @ u + at READ-CHUNK @ SPAN:LEN > if
@@ -176,25 +173,6 @@ DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last
    0 MY-ARENA REFUSAL-U ! ;
 
 
-\ A restored image runs in another process: the arenas are mappings it does not
-\ own and the TCB numbers name tasks it never started. The rows are released
-\ and the declaration with them; configure again in the new process.
-: FORGET-READERS ( -- )
-   READER-N @ 0<> if
-      READER-N @ 0 ?do
-         i READ-CHUNK @ SPAN:LEN 0<> if i TRIM i READ-CHUNK @ MEM:FREE-SPAN then
-         i REFUSAL @ SPAN:LEN 0<> if i REFUSAL @ MEM:FREE-SPAN then
-      loop
-      READ-CHUNK-RELEASE
-      READ-TASK-RELEASE
-      READ-USED-RELEASE
-      REFUSAL-RELEASE
-      REFUSAL-U-RELEASE
-      0 READER-N !
-   then
-   false READERS-REGISTERED ! ;
-
-
 : CELL$ ( PG:result n -- PG:result ptr u8 n ) {: c:n :}
    0 >ROW c >COL NULL? if E-ROW throw then
    0 >ROW c >COL TEXT$ ;
@@ -208,9 +186,9 @@ public
 
 \ Declares how many tasks read rows or run queries, the main task among them,
 \ and maps the table of their rows. Like CONFIGURE it is one decision for the
-\ process: repeating the same count is harmless, a different one is E-CAPACITY
-\ until image preparation releases the rows. A read, query or REFUSED$ before
-\ it is E-READERS, and so is one from one task more than the count.
+\ process: repeating the same count is harmless, a different one is E-CAPACITY.
+\ A read, query or REFUSED$ before it is E-READERS, and so is one from one task
+\ more than the count.
 : CONFIGURE-READERS ( n -- ) {: readers:n :}
    readers 1 < if E-CAPACITY throw then
    READER-N @ {: had:n :}
@@ -221,11 +199,7 @@ public
    readers READ-USED-RESERVE
    readers REFUSAL-RESERVE
    readers REFUSAL-U-RESERVE
-   readers READER-N !
-   READERS-REGISTERED @ 0= if
-      [: FORGET-READERS ;] IMAGE-LIFECYCLE:REGISTER
-      true READERS-REGISTERED !
-   then ;
+   readers READER-N ! ;
 
 
 \ The declared connection count, also used by suites that deliberately leave

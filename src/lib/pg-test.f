@@ -12,7 +12,6 @@ require src/lib/process.f
 require src/lib/task.f
 require src/lib/aio.f
 require src/lib/net/tcp4.f
-require src/lib/image-lifecycle.f
 require src/lib/be.f
 require src/lib/pg.f
 
@@ -1707,34 +1706,6 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    lis TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
 
 
-\ A restored image runs in another process where the libpq pointers are gone,
-\ so PREPARE closes native resources and retires every handle. A new registry
-\ cannot revive a stale handle even when it reuses the same slot number.
-: USE-CONN ( PG:connection -- PG:connection )
-   dup PARAMS ;
-
-
-: STALE-CONN ( PG:connection -- PG:connection ) {: c :}
-   c [: USE-CONN ;] catch {: stale code:n :}
-   code E-HANDLE T=
-   c ;
-
-
-\ A capture runs after the program's tasks stop: PREPARE ends the process on a
-\ task still activated (src/lib/task.f), and the AIO loop is one. CAPTURE stops
-\ it, prepares, and starts it again however PREPARE ends, so the loop is live
-\ for the connections opened afterwards and for MAIN's cleanup.
-: CAPTURE ( -- )
-   AIO:STOP
-   [: IMAGE-LIFECYCLE:PREPARE ;] [: AIO:START ;] finally ;
-
-
-\ Preparation retires the body's result under it, so the token's next read
-\ throws out of the body.
-: CAPTURE-UNDER ( PG:connection -- PG:connection )
-   dup s" select 1" [: CAPTURE ROWS drop ;] WITH-RESULT ;
-
-
 \ CLOSE frees an unscoped token's slot at once, so the next query takes it and
 \ only the generation tells the stale token from the live result there. A CLEAR
 \ that returned would have cleared that live result.
@@ -1749,28 +1720,8 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    gone other ;
 
 
-: IMAGE-CASES ( -- )
-   OPEN {: c :}
-   c s" drop table if exists pqtimage" EXEC-OK
-   c s" create table pqtimage (value int)" EXEC-OK
-   c s" insert into pqtimage values (0)" EXEC-OK
-   c s" begin" EXEC-OK
-   c s" select * from pqtimage for update" [: ;] WITH-RESULT
-   OPEN {: waiter :}
-   waiter BACKEND {: waiter-pid:n :}
-   waiter s" update pqtimage set value=1" SEND
-   OPEN {: observer :}
-   observer waiter-pid AWAIT-LOCK
-   c PARAMS
-   c [: CAPTURE-UNDER ;] catch {: stale-res res-code:n :}
-   res-code E-CLEARED T=
-   c PG:LIVE? TFALSE
-   c STALE-CONN drop
+: REUSE-CASES ( -- )
    OPEN {: fresh :}
-   fresh PG:LIVE? TTRUE
-   fresh s" select value from pqtimage" [: 0 >ROW 0 >COL INT 0 T= ;] WITH-RESULT
-   c PG:LIVE? TFALSE
-   c fresh s" select 2" [: swap STALE-CONN swap ;] WITH-RESULT drop
    s" a stale token is E-CLEARED after a later query reuses its slot" T-LABEL
    0 CLEAR-RETURNED !
    OPEN fresh [: CLEAR-REUSED ;] catch {: gone kept code:n :}
@@ -2008,9 +1959,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    RECYCLE-CASES
    PG:CLOSE
    CLOSE-CLEARS-CASES
-   IMAGE-CASES
-   \ A later connection must arm cleanup for the next capture too.
-   IMAGE-CASES ;
+   REUSE-CASES ;
 
 
 \ The loop's stop with a deadline pending. The exit worker EXIT-CASES halted

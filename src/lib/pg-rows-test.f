@@ -19,7 +19,6 @@ require src/lib/string.f
 require src/lib/float.f
 require src/lib/task.f
 require src/lib/aio.f
-require src/lib/image-lifecycle.f
 require src/lib/pg.f
 require src/lib/pg-rows.f
 
@@ -472,18 +471,6 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    CONN @ s" select count(*) from pg_tables where tablename = 'third_ddl_q'" PG:ONE-INT 0 T= ;
 
 
-\ ---- image preparation ------------------------------------------------------------
-\ The rows go with an image: a read after it is E-READERS until the new process
-\ declares its readers, and it may declare a different count.
-: IMAGE-CASES ( -- )
-   IMAGE-LIFECYCLE:PREPARE
-   s" a read after image preparation" T-LABEL
-   [: PG:READ-RESET ;] PG:E-READERS TTHROWSQ
-   s" a new declaration after image preparation" T-LABEL
-   [: READERS 1 + PG:CONFIGURE-READERS ;] 0 TTHROWSQ
-   [: PG:READ-RESET ;] 0 TTHROWSQ ;
-
-
 : SESSION ( -- )
    CONNINFO$ PG:OPEN CONN !
    SEED
@@ -509,8 +496,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    [: 0 PG:CONFIGURE-READERS ;] PG:E-CAPACITY TTHROWSQ
    READERS PG:CONFIGURE-READERS
    AIO:START
-   [: SESSION ;] [: AIO:STOP ;] finally
-   IMAGE-CASES ;
+   [: SESSION ;] [: AIO:STOP ;] finally ;
 
 T-RESET
 MAIN

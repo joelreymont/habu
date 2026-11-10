@@ -14,7 +14,6 @@ require src/lib/memory.f
 require src/lib/type/deftype.f
 require src/lib/task.f
 require src/lib/aio.f
-require src/lib/image-lifecycle.f
 require src/lib/byte-buffer.f
 require src/lib/fork-child.f
 
@@ -113,9 +112,9 @@ $30 constant DIGIT-ZERO
 $7FFFFFFF constant WAIT-MAX               \ the longest one NOTIFIED? poll waits, in ms; DEADLINE!'s largest bound
 65535 constant PARAM-MAX                  \ a Bind message counts its parameters in 16 bits
 
-TYPED-VARIABLE CONN-CAPACITY n
-TYPED-VARIABLE RESULT-CAPACITY n
-TYPED-VARIABLE CONFIGURED bool
+SCRATCH-VARIABLE CONN-CAPACITY
+SCRATCH-VARIABLE RESULT-CAPACITY
+SCRATCH-VARIABLE CONFIGURED                \ 1 once CONFIGURE published the registry
 
 DYNAMIC-BUFFER CONN-PG ptr u8
 DYNAMIC-BUFFER CONN-GEN n
@@ -143,21 +142,16 @@ DYNAMIC-BUFFER RES-CONN n
 DYNAMIC-BUFFER RES-OUTER n
 DYNAMIC-BUFFER RES-SCOPED n
 
-TYPED-VARIABLE REGISTERED bool
-
-false CONFIGURED !
-false REGISTERED !
-
 here data-base - negate 7 and allot
 variable GENERATION
-variable CONFIG-MUTEX
+SCRATCH-VARIABLE CONFIG-MUTEX
 \ The packed handle of the running task's innermost result scope ("result scopes").
 TASK:#USER 7 + CELL-MASK and CELL TASK:+USER SCOPE-HEAD drop
 \ The packed handle of the attempt CONNECT waits on, 0 when none. Its cleanup
 \ is a quotation, which cannot read CONNECT's locals.
 TASK:#USER 7 + CELL-MASK and CELL TASK:+USER CONNECT-HEAD drop
-\ The task's last refusal text, a BUF that grows from REFUSED-CAP. The main task
-\ has no exit chain, so image preparation releases its buffer.
+\ The task's last refusal text, a BUF that grows from REFUSED-CAP; REFUSED-REGISTER
+\ says who releases it.
 $1000 constant REFUSED-CAP
 TASK:#USER 7 + CELL-MASK and BUF:HDR-BYTES TASK:+USER REFUSED-TEXT drop
 TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-LIVE drop
@@ -361,8 +355,8 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 
 \ One OS mapping per connection, sized to the call being built: the statement
 \ bytes, every parameter with its NUL and the paramValues array, with no fixed
-\ ceiling. It is released the moment libpq returns, and by the next PARAMS,
-\ CLOSE and image capture. Parameters are recorded as OFFSETS, never pointers,
+\ ceiling. It is released the moment libpq returns, and by the next PARAMS and
+\ CLOSE. Parameters are recorded as OFFSETS, never pointers,
 \ so growing the arena may move it without invalidating anything staged.
 : ALLOC-ARENA ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
@@ -603,7 +597,7 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 
 
 \ A process-wide generation survives registry release, so allocating the same
-\ slot after image preparation cannot revive a saved handle.
+\ slot after a release cannot revive an earlier handle.
 : NEXT-GENERATION ( -- n )
    1 GENERATION atomic-add 1+ dup GENERATION-MAX > if E-CAPACITY throw then ;
 
@@ -694,7 +688,7 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    RES-SCOPED-RELEASE
    0 CONN-CAPACITY !
    0 RESULT-CAPACITY !
-   false CONFIGURED ! ;
+   0 CONFIGURED ! ;
 
 
 : ALLOC-REGISTRY ( -- )
@@ -744,61 +738,19 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot ;
 
 
-\ A restored image runs in another process: its PGconn and PGresult addresses
-\ are gone and its mappings are not its own. Retiring every slot makes the
-\ surviving handles refuse instead of reaching a freed pointer, and releases
-\ the call arenas the image must not carry. The flag is set only after REGISTER
-\ returns, so a throwing registration stays retryable
-\ (`src/lib/image-lifecycle.f PREPARE`). Stop the AIO loop before capture (a
-\ live task at PREPARE ends the process) and CONFIGURE again in the new one.
-: FORGET-HANDLES ( -- )
-   0
-   CONFIGURED @ if
-      \ Cancel every pending statement before closing any connection: closing
-      \ an earlier lock holder first could let a later pending write commit.
-      CONN-CAP 0 ?do
-         i CONN-LIVE@ 0 <> if
-            i ['] CANCEL-PENDING catch nip
-            over 0= if nip else drop then
-         then
-      loop
-      RESULT-CAP 0 ?do
-         i RES-LIVE@ 0 <> if i RES-PG@ LIB-CLEAR then
-      loop
-      CONN-CAP 0 ?do
-         i CONN-LIVE@ 0 <> if
-            i ARENA-RELEASE
-            i DRAIN-LAST@ NULL-ADDR? 0= if i DRAIN-LAST@ LIB-CLEAR then
-            i CONN-PG@ LIB-FINISH
-         then
-      loop
-      RELEASE-REGISTRY
-   then
-   0 SCOPE-HEAD !
-   false REGISTERED !
-   dup 0<> if throw then drop ;
-
-
-: REGISTER-CLEANUP ( -- )
-   REGISTERED @ 0= if
-      [: FORGET-HANDLES ;] IMAGE-LIFECYCLE:REGISTER
-      true REGISTERED !
-   then ;
-
-
 : CONFIGURE-REGISTRY ( n n -- )
    {: conns:n results:n :}
    conns 0 <= results 0 <= or if E-CAPACITY throw then
    conns HANDLE-STRIDE >= results HANDLE-STRIDE >= or if E-CAPACITY throw then
-   CONFIGURED @ if
+   CONFIGURED @ 0<> if
       conns CONN-CAP = results RESULT-CAP = and if exit then
       E-CAPACITY throw
    then
    conns CONN-CAPACITY !
    results RESULT-CAPACITY !
-   [: ALLOC-REGISTRY REGISTER-CLEANUP ;] catch {: code:n :}
+   [: ALLOC-REGISTRY ;] catch {: code:n :}
    code 0<> if RELEASE-REGISTRY code throw then
-   true CONFIGURED ! ;
+   1 CONFIGURED ! ;
 
 : CONFIG-LOCK ( -- ) begin 0 1 CONFIG-MUTEX atomic-cas 0= until ;
 : CONFIG-UNLOCK ( -- ) 0 CONFIG-MUTEX atomic! ;
@@ -938,10 +890,11 @@ REGISTER-CHILD-RESET
    REFUSED-TEXT BUF:DISPOSE ;
 
 : REFUSED-REGISTER ( -- )
-   TASK:SELF-N 0= if [: REFUSED-DISPOSE ;] IMAGE-LIFECYCLE:REGISTER exit then
+   TASK:SELF-N 0= if exit then
    [: REFUSED-DISPOSE ;] TASK:SELF TASK:AT-EXIT ;
 
-\ A refused registration releases the buffer it would have released, so a live
+\ The main task has no exit chain: its buffer lasts the process, in user cells no
+\ build carries. Elsewhere a refused registration releases the buffer, so a live
 \ buffer always has its release armed.
 : REFUSED-OPEN ( -- )
    REFUSED-LIVE @ 0<> if exit then
@@ -1343,8 +1296,7 @@ REGISTER-CHILD-RESET
 \ packed handle in the running task's SCOPE-HEAD cell, where the cleanup reads
 \ it. A nested scope saves the cell in RES-OUTER under its own slot and its
 \ cleanup puts it back, so each cleanup retires its own result. Zero is no
-\ scope: a packed handle is at least one HANDLE-STRIDE, and image preparation,
-\ which releases every slot, zeroes the cell of the task that runs it.
+\ scope: a packed handle is at least one HANDLE-STRIDE.
 
 : SCOPE-ENTER ( n -- n ) {: raw:n :}
    raw HANDLE-SLOT {: slot:n :}
@@ -1388,7 +1340,7 @@ REGISTER-CHILD-RESET
 public
 
 \ CONFIGURE sizes the registry, connections then live results, before CONNECT.
-\ Repeating it is harmless; a different one is E-CAPACITY until image preparation.
+\ Repeating it is harmless; a different one is E-CAPACITY while the process lives.
 : CONFIGURE ( n n -- )
    CONFIG-LOCK [: CONFIGURE-REGISTRY ;] [: CONFIG-UNLOCK ;] finally ;
 
@@ -1411,7 +1363,6 @@ public
 \ the conninfo's values, a password among them.
 : CONNECT-START ( ptr u8 n -- connection )
    {: a u:n :}
-   REGISTER-CLEANUP
    CLAIM-CONN-SLOT {: slot:n :}
    slot OPEN-CONN-SLOT
    a u slot ['] STAGE-CONNINFO catch {: code:n :}
@@ -1443,8 +1394,9 @@ public
 
 
 \ A task retaining a CONNECT-START handle may need to clean it up after AWAIT
-\ or POLL retired it internally. Check the registry before reading a slot: image
-\ preparation releases those buffers. A reused slot has a different generation.
+\ or POLL retired it internally. Check the registry before reading a slot: a
+\ process that has not configured it has no buffers. A reused slot has a
+\ different generation.
 : LIVE? ( connection -- bool ) {: handle:connection :}
    CONFIGURED @ 0= if false exit then
    handle CONNECTION>N {: raw:n :}
@@ -1660,7 +1612,7 @@ public
 \ sets no bound; a bound outside 0..$7FFFFFFF ms is E-BOUND. CONNECT, AWAIT and
 \ NOTIFIED? are not bounded. On expiry the connection closes and the operation
 \ throws E-DEADLINE. While the bound is nonzero, every close but an explicit
-\ CLOSE and FORGET-HANDLES - expiry, a transport or readiness failure, an
+\ CLOSE - expiry, a transport or readiness failure, an
 \ exception caught while waiting, a failed ROLLBACK under a body's throw -
 \ finishes it without the cancel, as ABANDON does, since a cancel to an
 \ unreachable server would stretch the bound; the primary exception stands. The
