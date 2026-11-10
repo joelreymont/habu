@@ -1,0 +1,9 @@
+---
+title: "A program can call CWORK's file-capture words, which nothing calls"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-11T07:18:12.495705+02:00"
+---
+
+Problem: package CWORK (src/compiler/workspace.f) keeps six public words of the deleted per-definition build cache: FILE-MARK (:149), FILE-EXPORT (:217), FILE-PLAN-RESET (:383), FILE-PREPARE (:389), FILE-INSTALL (:400) and FILE-CLOSE (:428) (line numbers after the five-word removal). Nothing in Habu (rg -i --no-ignore over src tools test docs data spec), Zen, Tender, Maki or Etch calls one, bare or as CWORK:, and nothing says using CWORK for them. FILE-MARK sets FILE-ACTIVE and FILE-CLOSE stores KEY-XT and RESOLVE-XT in the hb doing the build: in a program build that changes the builder, not the program, and no object carries it, so a part that calls one and is linked on the next build behaves differently. With FILE-IDENTITY-SET gone, KEY-XT and RESOLVE-XT hold only 0 or NO-KEY and NO-RESOLVE, so FILE-EXPORT with a recorded event and FILE-INSTALL with a row can only throw E-LAYOUT-BUFFER. Found by the review of the five-word removal. Acceptance: the six words and every private word, cell and buffer of workspace.f that only they reach (KEY-XT, RESOLVE-XT, NO-KEY, NO-RESOLVE, KEY$, RESOLVE, FILE-BUF, the event, alloc, prep and project rows as far as nothing else reads them) are gone; a program that says one is refused as undefined; the aot-capture.f FILE-MARK keep row stays (it is ENGINE-ORIGIN-EARLY's). Before a brief: for each private word between :40 and :440, list its callers and keep what CWORK-VARIABLE, CWORK-BUFFER, CWORK-SPAN and OPEN still use. Files: src/compiler/workspace.f. Verify: probes refuse on the new engine; chain check; suite and measure once at landing. Depends: none. Ownership: carl. Claim: unassigned.

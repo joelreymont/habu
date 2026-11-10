@@ -1,6 +1,6 @@
 ---
 title: Decode a JSON string into a byte buffer
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-10T13:20:18.736282+02:00"
@@ -11,3 +11,7 @@ Problem: JSON reads the reader's current string only into a caller's span (READ-
 Named by Joel (2026-11-10, interview answer, his chosen option): JSON:READ-STR-APPEND, effect ( JSON:reader ptr a -- JSON:reader ) as the question stated it. src/lib/json/read.f gains a require of src/lib/byte-buffer.f. Ready for a worker brief; nothing waits on it.
 
 Consumers: Maki's two private copies are now src/project.f:304-309 STR-APPEND and deploy/release/rebuild.f:231-239 MEMBER$.
+
+Named by Joel (2026-11-11, interview answer, his chosen option): the BUF word the append needs to cut the buffer back is BUF:LEN! ( NUM:byte-len ptr a -- ), VEC:LEN!'s contract (src/lib/vector.f LEN!): any length from zero through the capacity, above it E-BUF-BOUNDS; the capacity stays. The other options were a shorten-only BUF:TRUNCATE or BUF:SHORTEN and no new word (BUF:REPLACE on the buffer's own bytes).
+
+Claim: agent=carl workspace=.jj-ws.noindex/carl-json
