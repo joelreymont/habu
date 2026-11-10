@@ -627,9 +627,8 @@ variable PENDING-STORERS-N           \ its pairs
    p du FS:MAKE-DIRS ;
 
 \ ---- the records ---------------------------------------------------------------
-\ No address reaches PIECES: a record is named by its file, name sum and count, a facts row's still
-\ by file and index, code and data by span and offset, so larger earlier files leave its bytes alone
-\ (test/file-objects.f).
+\ No address reaches PIECES: a record is named by its file, name sum and count, code and data by
+\ span and offset, so larger earlier files leave its bytes alone (test/file-objects.f).
 
 : BUILT-N ( -- n ) BUILT BYTES$ {: a:ptr u:n :}  u BUILT-BYTES / ;
 
@@ -748,17 +747,6 @@ variable PENDING-STORERS-N           \ its pairs
    idx BUILT-ROW {: row:n :}
    row  row ROOT-BUILT @ >=  idx REC-TIME 0=  or  REF-FILE
    row BUILT-AT BUILT-FIRST + LE:U64@ ;
-
-\ A facts row's record reference, which alone still uses it: the file, 0 for this one, then the
-\ index in that file; an earlier piece's record also gets its WORDS row.
-: REF+ ( n -- )
-   {: idx:n :}
-   idx FILE-REC @ >= if
-      0 PIECES U64+  idx FILE-REC @ - PIECES U64+  exit
-   then
-   idx WORD-REF {: k:n first:n :}
-   k PIECES U64+  idx first - PIECES U64+
-   k idx WORD-ROW+ ;
 
 \ A record reference: the file, 0 for this one, then the record's sum and count (REC-ID), which no
 \ insertion before it changes; an earlier piece's record also gets its WORDS row.
@@ -1823,11 +1811,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \                          none), bytes (the cell's value for kind 3, else 0), its value's
 \                          reference (CELL-REF+ for kinds 0-2, else 5)
 \   F, then F facts rows   each entry the file's compile held, in order (FACTS+): CHECK:HELD-RETIRED
-\                          then the retired record's reference (REF+); CHECK:HELD-AMENDED, an
-\                          earlier file's record's reference and the text a `TRUST` row or an
-\                          amender wrote again for it; else the record's index from FILE-REC, or CHECK:HELD-LAID
-\                          for a laid text or CHECK:HELD-UNDEFINE for an `undefine`, then the
-\                          text as a FIELD+
+\                          then the retired record's reference (ID-REF+); CHECK:HELD-AMENDED, a
+\                          record's reference and its text as a FIELD+; CHECK:HELD-LAID for a
+\                          laid text or CHECK:HELD-UNDEFINE for an `undefine`, then the text as a
+\                          FIELD+
 : DATA+ ( -- )
    FILE-DATA {: a:ptr d:n :}
    d PIECES U64+  a d PIECES SPAN+
@@ -2115,19 +2102,18 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 
 
 \ A facts row: a retirement's kind and record, which marks a word of the running piece
-\ (NAMED-BY!), an earlier file's record's text by reference, any other kind's or record's text.
+\ (NAMED-BY!); a record's text, the piece's own or an earlier one's, by reference; a kind's text.
 : FACT+ ( n -- )
    {: k:n :}
    k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
    ix CHECK:HELD-RETIRED = if
       k CHECK:HELD-RETIRED@ drop {: r:n :}
-      ix PIECES U64+  r REF+  r NAMED-RETIRED NAMED-BY!  exit
+      ix PIECES U64+  r ID-REF+  r NAMED-RETIRED NAMED-BY!  exit
    then
-   ix 0 >=  ix FILE-REC @ <  and if
-      CHECK:HELD-AMENDED PIECES U64+  ix REF+  a u PIECES FIELD+  exit
+   ix 0 >= if
+      CHECK:HELD-AMENDED PIECES U64+  ix ID-REF+  a u PIECES FIELD+  exit
    then
-   ix 0< if ix else ix FILE-REC @ - then PIECES U64+
-   a u PIECES FIELD+ ;
+   ix PIECES U64+  a u PIECES FIELD+ ;
 
 
 \ FACT+, then for a text of the piece's own record its span into WORD-SPANS.
@@ -2245,7 +2231,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 : WRITE-OBJECT ( n -- )
    {: t:n :}
    \ FILES ends with the pieces the source names (NAMED+), then those a run word reaches (RAN-FILES+);
-   \ WORDS lists the words the pieces refer to (REF+, ID-REF+), the source spells (NAMED+) and a
+   \ WORDS lists the words the pieces refer to (ID-REF+), the source spells (NAMED+) and a
    \ run reaches.
    NAMED+  RAN-FILES+  PATHS-LAY
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
@@ -2479,18 +2465,6 @@ variable RD-END
    {: r:n :}
    r 0<  r RECS-N @ >=  or if -1 exit then
    r REC-KINDS @ ;
-
-
-\ A record reference (file, index): this file's index below the bound, or an
-\ earlier file's below its record count.
-: REC-REF-CK ( n n n -- )
-   {: file:n idx:n bound:n :}
-   GOOD? 0= if exit then
-   idx 0< if BAD exit then
-   file 0= if idx bound >= if BAD then exit then
-   file FILE-IN? 0= if BAD exit then
-   file PENDING? if exit then
-   idx file FILE-RECS >= if BAD then ;
 
 
 \ A record reference (file, sum, count; ID-REF+): this file's record number below the bound
@@ -3239,18 +3213,18 @@ variable RD-END
    OWN-DATA-MAX @ d > if BAD then ;
 
 
-\ FACTS (FACTS+): each row a retirement of a record reference, a text for a record reference, or
-\ a text of a kind or of one of the object's records.
+\ FACTS (FACTS+): each row a retirement of a record reference (ID-REF-CK), a text for a record
+\ reference, or a text of a kind, CHECK:HELD-LAID or CHECK:HELD-UNDEFINE.
 : FACTS-CK ( -- )
    RD-AT @ FACTS-AT !
    16 RD-COUNT 0 ?do
       RD-U64 {: ix:n :}
       ix CHECK:HELD-RETIRED =  ix CHECK:HELD-AMENDED =  or if
-         RD-U64 RD-U64 {: file:n idx:n :}
-         file idx RECS-N @ REC-REF-CK
+         RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
+         file sum count RECS-N @ ID-REF-CK drop
          ix CHECK:HELD-AMENDED = if RD-U64 RD-SKIP then
       else
-         ix CHECK:HELD-UNDEFINE <  ix RECS-N @ >=  or if BAD then
+         ix CHECK:HELD-UNDEFINE <  ix 0 >=  or if BAD then
          RD-U64 RD-SKIP
       then
    loop ;
@@ -3909,13 +3883,6 @@ variable LINK-EM                     \ that emission's number in this object, -1
 : LINK-CLEAR ( -- ) -1 LINK-EM !  0 LINK-FN ! ;
 
 
-\ A record reference's file and index as a dictionary index.
-: REC-INDEX ( n n -- n )
-   {: file:n idx:n :}
-   file 0= if FILE-REC @ idx + exit then
-   file BUILT-FIRST BUILT@ idx + ;
-
-
 \ The dictionary index a linked record reference (file, sum, count; ID-REF+) names: this file's
 \ record by OWN-REC, an earlier file's by PLACE; E-COMP-STATE when neither finds it.
 : ID-REC ( n n n -- n )
@@ -4298,39 +4265,35 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    LINK-DATA ;
 
 
-\ The BUILT row REFS' FILES row k, from 1, names: a cold build places from the object it wrote,
-\ whose rows no FILES-CK mapped.
-: REFS-ROW ( n -- n )
-   {: k:n :}
-   REFS BYTES$ drop  k 1 - FILES-ROW-BYTES * + {: r:ptr :}
-   BUILT-N 0 ?do
-      r i BUILT-AT ROW-FITS? if i unloop exit then
-   loop
-   E-COMP-STATE throw ;
-
-\ A facts row's reference to an earlier piece's record, file not 0, as a dictionary index: a
-\ link's through FILE-ROWS (REC-INDEX), a compile's through REFS (REFS-ROW).
-: EARLIER-REC ( bool n n -- n )
-   {: read:bool file:n idx:n :}
-   read if file idx REC-INDEX else  file REFS-ROW BUILT-AT BUILT-FIRST + LE:U64@ idx +  then ;
+\ A facts row's record (file, sum, count; ID-REF+) as a dictionary index: a link's by ID-REC; a
+\ compile's by PLACE, the key at FILE-KEY for file 0, else at REFS' row, which starts with it.
+: FACT-REC ( bool n n n -- n )
+   {: read:bool file:n sum:n count:n :}
+   read if file sum count ID-REC exit then
+   file 0= if FILE-KEY else  REFS BYTES$ drop  file 1 - FILES-ROW-BYTES * +  then
+   sum count PLACE {: r:n :}
+   r 0< if E-COMP-STATE throw then
+   r ;
 
 \ A retirement row's record retired again (XREF:RETIRE), as the file's compile retired it. An
 \ earlier piece's record is changed once retired, so a compile and a link see one wordlist.
 : LINK-RETIRED ( bool -- )
    {: read:bool :}
-   RD-U64 RD-U64 {: file:n idx:n :}
+   RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
    GOOD? 0= if E-COMP-STATE throw then
-   read if file idx REC-INDEX XREF-REC XREF:RETIRE then
-   file 0<> if read file idx EARLIER-REC CHANGER+ then ;
+   read file sum count FACT-REC {: r:n :}
+   read if r XREF-REC XREF:RETIRE then
+   file 0<> if r CHANGER+ then ;
 
-\ An earlier file's record's text, written again by a `TRUST` row or an amender, held again for
-\ that record and read back.
-: LINK-EARLIER ( bool -- )
+\ A record's text held again for it. An earlier file's record's text, which a `TRUST` row or an
+\ amender wrote again, also changes that record and is read back.
+: LINK-TEXT ( bool -- )
    {: read:bool :}
-   RD-U64 RD-U64 {: file:n idx:n :}
+   RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
    RD-NAME {: a:ptr u:n :}
-   GOOD? 0=  file 0=  or if E-COMP-STATE throw then
-   read file idx EARLIER-REC {: r:n :}
+   GOOD? 0= if E-COMP-STATE throw then
+   read file sum count FACT-REC {: r:n :}
+   file 0= if a u r CHECK:FACTS! exit then
    r CHANGER+
    a u r CHECK:FACTS!
    read if a u r CHECK:READ-FACTS then ;
@@ -4338,21 +4301,20 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ OBJECT's FACTS held again, then placed at here with the rest the file held: a cold build
 \ places from the object it wrote, a warm one from the object it read, so both lay one text.
 \ A link also replays each `undefine` and retirement in the compile's order, and reads back
-\ into the checker an earlier file's record's text a later `TRUST` row or amender rewrote; a record's own
-\ text is read when a lookup first binds it (the checker's READ-BOUND). A cold build applied
-\ them as it held them.
+\ into the checker an earlier file's record's text a later `TRUST` row or amender rewrote; a
+\ record's own text is read when a lookup first binds it (the checker's READ-BOUND). A cold build
+\ applied them as it held them.
 : LINK-FACTS ( bool -- )
    {: read:bool :}
    FACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: ix:n :}
       ix CHECK:HELD-RETIRED = if read LINK-RETIRED else
-      ix CHECK:HELD-AMENDED = if read LINK-EARLIER else
+      ix CHECK:HELD-AMENDED = if read LINK-TEXT else
          RD-NAME {: a:ptr u:n :}
          GOOD? 0= if E-COMP-STATE throw then
          ix CHECK:HELD-LAID = if a u CHECK:LAY-FACTS then
          ix CHECK:HELD-UNDEFINE =  read  and if a u CHECK:READ-UNDEFINE then
-         ix 0 >= if a u FILE-REC @ ix + CHECK:FACTS! then
       then then
    loop
    GOOD? 0= if E-COMP-STATE throw then
