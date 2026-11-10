@@ -1,6 +1,6 @@
 ----------------------------- MODULE ModelCall -----------------------------
 (* MODEL's call (src/lib/net/model.f: START, SERVE, AWAIT, CLOSE, CANCEL,  *)
-(* REQUEST-STOP), over CURL's record and request machines                  *)
+(* REQUEST-STOP, ACCOUNT), over CURL's record and request machines         *)
 (* (src/lib/net/curl.f: NEXT-ARM, NEXT-READY?, NEXT-TAKE, ABANDON,         *)
 (* CLEANUP, OWNER-END, SERVICE-ONE) and TASK's halt and wait               *)
 (* (src/lib/task.f: HALT, PAUSE, HALT-UNWIND, DEFER-ENTER, DEFER-LEAVE,    *)
@@ -30,7 +30,7 @@ Answered == {"chunk", "response", "failed"}
 Places == {<<"free">>, <<"parked">>, <<"halting">>, <<"unwinding">>,
            <<"finally">>, <<"ended">>}
           \cup ({"dispatch", "await", "abandon"} \X Calls)
-          \cup ({"cleanup"} \X Calls \X {"serve", "await"})
+          \cup ({"cleanup", "account"} \X Calls \X {"serve", "await"})
 
 TypeOK ==
     /\ lc \in [Calls -> Lifecycles]
@@ -114,12 +114,13 @@ Throws(c) ==
           THEN {<<"none", Marked(c)>>} ELSE {})
 
 (* A receive that throws, caught by SERVE and AWAIT and landed by          *)
-(* LAND-FAULT: KEEP-FAULT, then LAND, whose SETTLE-SENSE ends the transfer *)
-(* (END-TRANSFER), frees the handle (CURL:CLEANUP) and lands the call      *)
-(* (END-CALL). The record is the caller's, so CLEANUP's OWNED-INDEX finds  *)
-(* it and ABANDON gives it up: a DONE one is freed at once (LEAVE-DONE,    *)
-(* REC-RELEASE) and the call lands; any other is marked LEAVING and the    *)
-(* owner waits in ABANDON (CleanupStep) before the call lands.             *)
+(* LAND-FAULT: KEEP-FAULT, then SETTLE, whose SETTLE-SENSE ends the       *)
+(* transfer (END-TRANSFER), frees the handle (CURL:CLEANUP) and lands the  *)
+(* call (END-CALL). The record is the caller's, so CLEANUP's OWNED-INDEX   *)
+(* finds it and ABANDON gives it up: a DONE one is freed at once           *)
+(* (LEAVE-DONE, REC-RELEASE) and the call lands; any other is marked       *)
+(* LEAVING and the owner waits in ABANDON (CleanupStep) before the call    *)
+(* lands.                                                                  *)
 TakeFault(c) ==
     \E t \in Throws(c) :
         /\ transport' = [transport EXCEPT ![c] = FALSE]
@@ -184,8 +185,8 @@ Back ==
 (* (HALT-PENDING? reads TCB.STOP), outside every DEFER-ENTER.              *)
 Pending == halted /\ ~unwound /\ ~deferred
 
-(* The end of SERVE's RECEIVE-STARTED (model.f): DEFER-LEAVE, then         *)
-(* 0 TASK:HALT-UNWIND, which starts the unwind on a pending halt.           *)
+(* The end of SERVE's RECEIVE-STARTED (model.f) after DEFER-LEAVE and *)
+(* ACCOUNT: 0 TASK:HALT-UNWIND starts the unwind on a pending halt. *)
 ServeEnd ==
     IF Pending
     THEN /\ unwound' = TRUE
@@ -241,8 +242,9 @@ Dispatch(c) ==
 
 (* SERVE's started arm (RECEIVE-STARTED) as one step: the receive only     *)
 (* polls, deferred; a take that throws may wait in CLEANUP's ABANDON; then *)
-(* DEFER-LEAVE and HALT-UNWIND. A halted owner's poll that takes nothing   *)
-(* leaves the call started and the owner unwinding.                        *)
+(* DEFER-LEAVE, and a landed call's recorder and journal put (ACCOUNT)     *)
+(* before HALT-UNWIND. A halted owner's poll that takes nothing leaves the *)
+(* call started and the owner unwinding.                                   *)
 (* REQUIRE-STARTER passes: the one owner starts every call.                *)
 (* OWNED-INDEX's refusal of a left owner's record never fires: no TCB is   *)
 (* reused.                                                                 *)
@@ -257,7 +259,10 @@ Serve(c) ==
     /\ IF rec'[c] = "leaving"
        THEN /\ opc' = <<"cleanup", c, "serve">>
             /\ UNCHANGED unwound
-       ELSE ServeEnd
+       ELSE IF lc'[c] = "landed"
+            THEN /\ opc' = <<"account", c, "serve">>
+                 /\ UNCHANGED unwound
+            ELSE ServeEnd
     /\ UNCHANGED <<cancelled, stopped, span, starts, hints, halted,
                    deferred, left, ends, wroteFreed, wokeEnded, rule>>
 
@@ -300,19 +305,14 @@ Await(c) ==
 (* TASK:WAIT and its HALTED? check, which starts ABANDON (curl.f). After   *)
 (* TASK:WAIT, NEXT-TAKE checks HALTED? before an answered read, so a       *)
 (* halted owner gives the record up even when its read was answered. Once  *)
-(* the call lands, DEFER-LEAVE and HALT-UNWIND: a pending halt starts the  *)
-(* unwind with the call landed, else AWAIT makes it idle.                  *)
+(* the call lands, DEFER-LEAVE, then its recorder and journal put         *)
+(* (ACCOUNT).                                                              *)
 AwaitStep(c) ==
     /\ opc = <<"await", c>>
     /\ \/ /\ lc[c] = "landed"
-          /\ IF Pending
-             THEN /\ unwound' = TRUE
-                  /\ opc' = Unwind
-                  /\ UNCHANGED lc
-             ELSE /\ lc' = [lc EXCEPT ![c] = "idle"]
-                  /\ opc' = Back
-                  /\ UNCHANGED unwound
-          /\ UNCHANGED <<rest, transport, hints, rec, req, held>>
+          /\ opc' = <<"account", c, "await">>
+          /\ UNCHANGED <<lc, rest, transport, hints, unwound, rec, req,
+                         held>>
        \/ /\ lc[c] = "started"
           /\ req[c] \in Answered
           /\ Take(c)
@@ -355,8 +355,8 @@ AbandonStep(c) ==
                    left, ends, wroteFreed, wokeEnded, rule>>
 
 (* CLEANUP's ABANDON in LAND-FAULT's SETTLE-SENSE: the same wait; once the *)
-(* owner has freed the record, END-CALL lands the call, then SERVE's arm   *)
-(* ends (ServeEnd) or AWAIT's goes on.                                     *)
+(* owner has freed the record, END-CALL lands the call, then its recorder  *)
+(* and journal put run (ACCOUNT).                                          *)
 CleanupStep(c) ==
     \E f \in {"serve", "await"} :
         /\ opc = <<"cleanup", c, f>>
@@ -365,11 +365,8 @@ CleanupStep(c) ==
               /\ req' = [req EXCEPT ![c] = "none"]
               /\ held' = [held EXCEPT ![c] = FALSE]
               /\ lc' = [lc EXCEPT ![c] = "landed"]
-              /\ IF f = "serve"
-                 THEN ServeEnd
-                 ELSE /\ opc' = <<"await", c>>
-                      /\ UNCHANGED unwound
-              /\ UNCHANGED hints
+              /\ opc' = <<"account", c, f>>
+              /\ UNCHANGED <<hints, unwound>>
            \/ /\ rec[c] /= "left"
               /\ hints > 0
               /\ hints' = hints - 1
@@ -377,6 +374,39 @@ CleanupStep(c) ==
         /\ UNCHANGED <<rest, cancelled, stopped, transport, span, starts,
                        halted, deferred, left, ends, wroteFreed, wokeEnded,
                        rule>>
+
+(* ACCOUNT (model.f): a landed call's recorder and journal put, which may  *)
+(* wait, run after RECEIVE-STARTED's DEFER-LEAVE. The put ends: SERVE's    *)
+(* arm ends (ServeEnd); AWAIT's starts the unwind on a pending halt with   *)
+(* the call landed, else makes the call idle and returns.                  *)
+PutDone(c) ==
+    \E f \in {"serve", "await"} :
+        /\ opc = <<"account", c, f>>
+        /\ IF f = "serve"
+           THEN /\ ServeEnd
+                /\ UNCHANGED lc
+           ELSE IF Pending
+                THEN /\ unwound' = TRUE
+                     /\ opc' = Unwind
+                     /\ UNCHANGED lc
+                ELSE /\ lc' = [lc EXCEPT ![c] = "idle"]
+                     /\ opc' = Back
+                     /\ UNCHANGED unwound
+        /\ UNCHANGED <<rest, cancelled, stopped, transport, span, starts,
+                       hints, halted, deferred, rec, req, left, held, ends,
+                       wroteFreed, wokeEnded, rule>>
+
+(* A halt served while the recorder or put waits: the task unwinds there,  *)
+(* and LANDING-END leaves the call landed (outcome E-CANCELLED).           *)
+PutCut(c) ==
+    \E f \in {"serve", "await"} :
+        /\ opc = <<"account", c, f>>
+        /\ Pending
+        /\ unwound' = TRUE
+        /\ opc' = Unwind
+        /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
+                       hints, halted, deferred, rec, req, left, held, ends,
+                       wroteFreed, wokeEnded, rule>>
 
 (* CLOSE (model.f) frees an idle or landed call's arena; a started one is  *)
 (* refused.                                                                *)
@@ -594,7 +624,8 @@ Ended ==
 OwnerStep ==
     \/ \E c \in Calls :
           Start(c) \/ Dispatch(c) \/ Serve(c) \/ Await(c) \/ AwaitStep(c)
-          \/ AbandonStep(c) \/ CleanupStep(c) \/ Close(c)
+          \/ AbandonStep(c) \/ CleanupStep(c) \/ PutDone(c) \/ PutCut(c)
+          \/ Close(c)
     \/ WaitAny \/ Resume \/ Quit \/ HaltEnter \/ HaltStep \/ UnwindStep
     \/ FinallyStep
 
@@ -615,6 +646,7 @@ Fairness ==
           /\ WF_vars(Start(c)) /\ WF_vars(Dispatch(c)) /\ WF_vars(Serve(c))
           /\ WF_vars(Await(c)) /\ WF_vars(AwaitStep(c))
           /\ WF_vars(AbandonStep(c)) /\ WF_vars(CleanupStep(c))
+          /\ WF_vars(PutDone(c) /\ ~Pending) /\ WF_vars(PutCut(c))
           /\ WF_vars(Close(c))
           /\ WF_vars(Add(c)) /\ WF_vars(Produce(c)) /\ WF_vars(Deliver(c))
           /\ WF_vars(Finish(c)) /\ WF_vars(CancelRun(c))

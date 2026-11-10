@@ -65,7 +65,10 @@ require src/lib/time.f
 \ nothing. Neither get nor put runs with a transfer out. put and record run
 \ with the call landed, reject inside REJECTED; none of the three may CLOSE
 \ it. A get, put or reject failure propagates, as does a record failure from a
-\ call that otherwise succeeded; RECORD-FAULT keeps record's either way.
+\ call that otherwise succeeded; RECORD-FAULT keeps record's either way. A halt
+\ of the starter pending while put or record runs, one that came during the
+\ transfer included, ends it at its first TASK:PAUSE, the call landed
+\ E-CANCELLED.
 
 package MODEL
 
@@ -113,7 +116,8 @@ public
 -9706 constant E-REFUSED
 \ The response ended incomplete: INCOMPLETE-REASON$ names why.
 -9707 constant E-INCOMPLETE
-\ CANCEL ended the call, or REQUEST-STOP came before or during it.
+\ CANCEL ended the call, REQUEST-STOP came before or during it, or a halt cut
+\ its recorder or journal put.
 -9709 constant E-CANCELLED
 \ Out of turn: a busy or unopened call, a part or item outside building, SERVE
 \ or AWAIT unstarted or on another task, VECTOR@ or CONTENT$ without its result.
@@ -230,8 +234,12 @@ STRUCTURE stream DERIVE addr
 
 CAST: >STREAM ( ptr u8 -- ptr stream )
 
-\ How the call ended, for the land machine: the transfer's HTTP status, libcurl
-\ code, spoiling fault and cut (END-TRANSFER); outcome, the fault it throws.
+\ The land machine's steps: settling ends the call's transfer and lands it;
+\ recording runs the recorder; serving and refusing run it, then the put.
+ENUM land-step settling recording serving refusing landed ;ENUM
+
+\ END-TRANSFER's status, code, spoiling fault and cut; outcome, the fault it
+\ throws; step, the land machine's next; outer, the LANDING ACCOUNT replaced.
 STRUCTURE receipt DERIVE addr
    FIELD status CURL:http-status
    FIELD code n
@@ -239,6 +247,8 @@ STRUCTURE receipt DERIVE addr
    FIELD cut bool
    FIELD replayed bool
    FIELD outcome n
+   FIELD step land-step
+   FIELD outer n
 ;STRUCTURE
 
 CAST: >RECEIPT ( ptr u8 -- ptr receipt )
@@ -855,8 +865,7 @@ public
    code 0<> if c RELEASE-OPEN code throw then ;
 
 
-\ Frees the open call; a started one is E-STATE.
-\ A landed one, left so by a halt in its recorder or journal put, is freed.
+\ Frees the open call, a landed one included; a started one is E-STATE.
 : CLOSE ( ptr call -- )
    {: c :}
    c REQUIRE-OPEN
@@ -3419,17 +3428,13 @@ ENUM poll none fed spoiled done ;ENUM
    0 l LEDGER-TRANSPORT !
    l LEDGER-READY @ u 0= and if E-STATE throw then ;
 
-\ Records a dispatched request and answers the recorder's fault when the header
-\ says it propagates, else 0, so a model fault stays primary.
-: END-LEDGER ( n bool ptr call -- n )
+\ Keeps a dispatched request's fault and cut for its record.
+: END-LEDGER ( n bool ptr call -- )
    {: code:n cancelled:bool c :}
    c LEDGER {: l :}
-   l LEDGER-READY @ l LEDGER-DISPATCHED @ and 0= if 0 exit then
+   l LEDGER-READY @ l LEDGER-DISPATCHED @ and 0= if exit then
    code l LEDGER-CODE !
-   cancelled l LEDGER-CANCELLED !
-   c [: RECORD-RUN ;] catch {: rc:n :} drop
-   rc l LEDGER-FAULT !
-   code 0= cancelled 0= and if rc else 0 then ;
+   cancelled l LEDGER-CANCELLED ! ;
 
 : JOURNAL-PUT ( ptr call -- )
    {: c :}
@@ -3577,8 +3582,8 @@ private
    c EVENTS+
    LOG:;LINE ;
 
-ENUM land-step settling landed ;ENUM
 ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
+ENUM record-event kept faulted ;ENUM
 
 \ Keeps n as the call's outcome unless one is kept.
 : KEEP-FAULT ( n ptr call -- )
@@ -3599,7 +3604,7 @@ ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
 
 
 \ Ends the call's transfer, decoder and handle, wipes its header and parses its
-\ reply, keeping the first fault; then lands, records and answers its ending.
+\ reply, keeping the first fault; then lands the call and answers its ending.
 : SETTLE-SENSE ( ptr call -- ending )
    {: c :}
    c RECEIPT {: r :}
@@ -3642,13 +3647,13 @@ ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
    then
    c END-CALL {: cancelled:bool :}
    r RECEIPT-OUTCOME @ {: fault:n :}
-   fault cancelled c END-LEDGER {: recorded:n :}
+   fault cancelled c END-LEDGER
    cancelled if construct ending cut exit then
    replayed if
       fault 0= if construct ending replayed exit then
       construct ending replay-failed exit
    then
-   fault 0= if recorded r RECEIPT-OUTCOME ! construct ending served exit then
+   fault 0= if construct ending served exit then
    c LEDGER {: l :}
    l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or 0= if
       construct ending unsent exit
@@ -3658,6 +3663,19 @@ ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
 
 : LAND-CUT ( ptr call -- ) E-CANCELLED swap RECEIPT RECEIPT-OUTCOME ! ;
 
+
+\ Records a dispatched request, keeping the recorder's fault.
+: RECORD-SENSE ( ptr call -- record-event )
+   {: c :}
+   c LEDGER {: l :}
+   l LEDGER-READY @ l LEDGER-DISPATCHED @ and 0= if
+      construct record-event kept exit
+   then
+   c [: RECORD-RUN ;] catch {: rc:n :} drop
+   rc l LEDGER-FAULT !
+   rc 0<> if construct record-event faulted exit then
+   construct record-event kept ;
+
 \ A put fault replaces the outcome.
 : LAND-SERVED ( ptr call -- )
    {: c :}
@@ -3665,29 +3683,42 @@ ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
    c [: dup JOURNAL-PUT ;] catch {: put:n :} drop
    put 0<> if put c RECEIPT RECEIPT-OUTCOME ! then ;
 
+\ A served call whose recorder failed keeps the recorder's fault as its outcome
+\ and is journaled as served.
+: LAND-UNRECORDED ( ptr call -- )
+   dup LEDGER LEDGER-FAULT @ over RECEIPT RECEIPT-OUTCOME !
+   LAND-SERVED ;
+
 \ Journals a live refusal so a replay meets it at the same step and asks for
 \ less with no request. A put fault replaces the outcome.
 : LAND-REFUSED ( ptr call -- )
    {: c :}
-   c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
-   fault c REPORT
    c MODEL-CALL:JOURNAL-READY @ 0= if exit then
-   fault c [: 2dup REFUSAL-PUT ;] catch {: put:n :} 2drop
+   c RECEIPT RECEIPT-OUTCOME @ c [: 2dup REFUSAL-PUT ;] catch {: put:n :} 2drop
    put 0<> if put c RECEIPT RECEIPT-OUTCOME ! then ;
 
-: LAND-FAILED ( ptr call -- ) dup RECEIPT RECEIPT-OUTCOME @ swap REPORT ;
+: REPORT-OUTCOME ( ptr call -- ) dup RECEIPT RECEIPT-OUTCOME @ swap REPORT ;
 
-\ Lands a call once its run ends: what each ending reports, saves
-\ and leaves as the outcome.
+\ Lands a call once its run ends: what each ending reports, records, saves and
+\ leaves as the outcome. Settling runs in SETTLE, the rest in ACCOUNT.
 FSM:DEFINE LAND-MACHINE ( ptr call ) land-step ending
    IN settling  SETTLE-SENSE
-      cut            LAND-CUT      >landed
-      replayed       -             >landed
-      replay-failed  -             >landed
-      served         LAND-SERVED   >landed
-      unsent         -             >landed
-      refused        LAND-REFUSED  >landed
-      failed         LAND-FAILED   >landed
+      cut            LAND-CUT        >recording
+      replayed       -               >landed
+      replay-failed  -               >landed
+      served         -               >serving
+      unsent         -               >landed
+      refused        REPORT-OUTCOME  >refusing
+      failed         REPORT-OUTCOME  >recording
+   IN recording  RECORD-SENSE ( record-event )
+      kept     -  >landed
+      faulted  -  >landed
+   IN serving  RECORD-SENSE ( record-event )
+      kept     LAND-SERVED      >landed
+      faulted  LAND-UNRECORDED  >landed
+   IN refusing  RECORD-SENSE ( record-event )
+      kept     LAND-REFUSED  >landed
+      faulted  LAND-REFUSED  >landed
    FINAL landed  -
 ;DEFINE
 
@@ -3747,18 +3778,90 @@ ENUM dispatch-event armed faulted ;ENUM
    code c KEEP-FAULT
    construct dispatch-event faulted ;
 
-\ Runs the land machine, keeping a fault it throws as the call's outcome with
-\ the call landed.
-: LAND ( ptr call -- )
+\ The call whose recorder or journal put this task runs (ACCOUNT), for the
+\ cleanup a halt's unwind runs, which takes nothing.
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER LANDING drop
+CAST: CALL>N ( ptr call -- n )
+CAST: N>CALL ( n -- ptr call )
+
+: STEP! ( land-step ptr call -- ) RECEIPT RECEIPT-STEP ! ;
+
+\ A fault the machine throws becomes the outcome, and the call ends landed.
+: LAND-THREW ( n ptr call -- )
+   {: rc:n c :}
+   rc c RECEIPT RECEIPT-OUTCOME !
+   construct land-step landed c STEP! ;
+
+: SETTLE-RUN ( ptr call -- ptr call )
    {: c :}
-   c [: dup construct land-step settling LAND-MACHINE ;] catch {: rc:n :} drop
-   rc 0<> if
-      c END-CALL drop
-      rc c RECEIPT RECEIPT-OUTCOME !
-   then ;
+   c construct land-step settling LAND-MACHINE-STEP drop
+   c STEP!
+   c ;
+
+: SETTLE-CAUGHT ( ptr call -- )
+   {: c :}
+   c [: SETTLE-RUN ;] catch {: rc:n :} drop
+   rc 0= if exit then
+   c END-CALL drop
+   rc c LAND-THREW ;
+
+\ Lands a call once its run ends, keeping the next step for ACCOUNT. It runs
+\ deferred: a halt while it runs leaves the call landed.
+: SETTLE ( ptr call -- )
+   TASK:DEFER-ENTER
+   [: SETTLE-CAUGHT ;] [: TASK:DEFER-LEAVE ;] finally ;
+
+\ Whether the call's recorder or journal put is still to run.
+: ACCOUNTING? ( land-step -- bool )
+   MATCH land-step
+      settling OF false ENDOF
+      recording OF true ENDOF
+      serving OF true ENDOF
+      refusing OF true ENDOF
+      landed OF false ENDOF
+   ;MATCH ;
+
+: ACCOUNT-RUN ( ptr call -- ptr call )
+   {: c :}
+   c RECEIPT {: r :}
+   begin
+      c r RECEIPT-STEP @ LAND-MACHINE-STEP
+      swap r RECEIPT-STEP !
+   until
+   c ;
+
+: ACCOUNT-CAUGHT ( ptr call -- )
+   {: c :}
+   c [: ACCOUNT-RUN ;] catch {: rc:n :} drop
+   rc 0= if exit then
+   rc c LAND-THREW ;
+
+\ Restores the landing this task held before; a halt's unwind out of the
+\ recorder or put leaves the call cut.
+: LANDING-END ( -- )
+   LANDING @ N>CALL {: c :}
+   c RECEIPT {: r :}
+   r RECEIPT-OUTER @ LANDING !
+   r RECEIPT-STEP @ ACCOUNTING? 0= if exit then
+   c LAND-CUT
+   construct land-step landed c STEP! ;
+
+\ Runs a settled call's recorder and journal put after SETTLE's deferred
+\ section: a halt served while they wait leaves the call landed E-CANCELLED.
+: ACCOUNT ( ptr call -- )
+   {: c :}
+   c RECEIPT {: r :}
+   r RECEIPT-STEP @ ACCOUNTING? 0= if exit then
+   LANDING @ r RECEIPT-OUTER !
+   c CALL>N LANDING !
+   c [: ACCOUNT-CAUGHT ;] [: LANDING-END ;] finally ;
+
+\ Settles the call, then runs its recorder and journal put.
+: LAND ( ptr call -- )
+   dup SETTLE ACCOUNT ;
 
 \ Receives the reply, or drops one the call cannot keep and drains its
-\ transfer, landing the call when it ends; reading and dropping park, not wait.
+\ transfer, settling the call when it ends; reading and dropping park, not wait.
 FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    IN reading       TAKE ( poll )
       none     -           >parked
@@ -3780,7 +3883,7 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
       done     -           >ended
    FINAL parked           PARK
    FINAL parked-dropping  PARK-DROP
-   FINAL ended            LAND
+   FINAL ended            SETTLE
    FINAL lost             LOST
 ;DEFINE
 
@@ -3799,13 +3902,13 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
       dropping OF construct receive-step dropping ENDOF
    ;MATCH RECEIVE-MACHINE ;
 
-\ Lands a call whose receive threw n before the machine ended; 0: the machine
-\ landed or parked it.
+\ Settles a call whose receive threw n before the machine ended; 0: the machine
+\ settled or parked it.
 : LAND-FAULT ( n ptr call -- )
    {: code:n c :}
    code 0= if exit then
    code c KEEP-FAULT
-   c LAND ;
+   c SETTLE ;
 
 \ Sends a begun call's request, or restores its journal hit: out with the
 \ transfer armed, or landed.
@@ -3826,6 +3929,7 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    c BEGIN-CALL
    false c RECEIPT RECEIPT-REPLAYED !
    0 c RECEIPT RECEIPT-OUTCOME !
+   construct land-step settling c STEP!
    c construct send-step looking SEND-MACHINE ;
 
 
@@ -3852,13 +3956,14 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    c receive catch {: code:n :} drop code c LAND-FAULT ;
 
 
-\ Runs a started call's receive deferred, so a halt while it waits lands the
-\ call first; SERVE's never waits, so a halt there leaves the call started.
+\ The receive runs deferred: a halt while AWAIT waits settles the call, one in
+\ SERVE leaves it started; ACCOUNT follows outside it, where a halt is served.
 : RECEIVE-STARTED ( [ ptr call -- ptr call ] ptr call -- )
    {: receive c :}
    c REQUIRE-STARTER
    TASK:DEFER-ENTER
    receive c [: RECEIVE-CAUGHT ;] [: TASK:DEFER-LEAVE ;] finally
+   c ACCOUNT
    0 TASK:HALT-UNWIND ;
 
 public

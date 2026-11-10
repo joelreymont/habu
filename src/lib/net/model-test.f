@@ -1103,6 +1103,7 @@ private
 $10000 TASK:TASK WORK-TASK
 TASK:SEMAPHORE STOP-READY
 TASK:SEMAPHORE STOP-GO
+TASK:SEMAPHORE LOCK-ENTERED
 1 TYPED-BUFFER SETS MODEL:settings
 \ A 16 KiB embedding input.
 16384 constant PAD-U
@@ -2129,6 +2130,82 @@ variable ROW-FAIL
 : PURPOSE ( -- ) s" assemble" M MODEL:PURPOSE! ;
 \ The first generation row's prefix hash, 64 hex digits.
 create HASH 64 allot
+
+
+\ How long a locked callback waits, as on a database lock, unless halted.
+3000000000 constant LOCK-NS
+
+
+\ Signals LOCK-ENTERED, then waits LOCK-NS, serving a halt at each turn.
+: LOCK-WAIT ( -- )
+   LOCK-ENTERED TASK:SIGNAL-SEM
+   mono-ns {: t0:n :}
+   begin
+      TASK:PAUSE
+      10 >MS TASK:WAIT-MS drop
+      mono-ns t0 - LOCK-NS >
+   until ;
+
+
+: LOCKED-PUT ( n ptr u8 n ptr u8 n -- ) 2drop 2drop drop LOCK-WAIT ;
+: LOCKED-RECORD ( n ptr u8 n -- n ) 2drop drop LOCK-WAIT 1 ;
+
+
+\ A halt of the worker's chat while a locked callback waits ends it within
+\ PROMPT-NS, the call landed E-CANCELLED; another task then ends and closes it.
+: LOCK-HALTED ( -- )
+   ['] CHAT-WORK WORK-TASK TASK:ACTIVATE
+   LOCK-ENTERED TASK:WAIT-SEM
+   mono-ns {: t0:n :}
+   WORK-TASK TASK:HALT
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF drop FAIL ENDOF
+      err OF drop ENDOF
+   ;MATCH
+   mono-ns t0 - PROMPT-NS < ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   M MODEL:CLOSE ;
+
+
+\ A halt while the journal put waits.
+: PUT-HALT ( -- )
+   0 LOCK-ENTERED TASK:SEMAPHORE-INIT
+   0 [: CAPTURE-GET ;] [: LOCKED-PUT ;] M MODEL:JOURNAL!
+   s" valid" PREP
+   LOCK-HALTED
+   LOCK-ENTERED TASK:SEMAPHORE-DESTROY ;
+
+
+\ A halt while the recorder waits.
+: RECORD-HALT ( -- )
+   0 LOCK-ENTERED TASK:SEMAPHORE-INIT
+   0 [: LOCKED-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   PURPOSE s" valid" PREP
+   LOCK-HALTED
+   LOCK-ENTERED TASK:SEMAPHORE-DESTROY ;
+
+
+variable PAUSED-ROWS
+: PAUSE-RECORD ( n ptr u8 n -- n ) 2drop drop TASK:PAUSE 1 PAUSED-ROWS +! 1 ;
+
+
+\ A halt that came during the transfer ends the recorder at its first pause;
+\ the call lands E-CANCELLED and unrecorded.
+: PENDING-HALT ( -- )
+   0 PAUSED-ROWS !
+   0 [: PAUSE-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   PURPOSE
+   HOLD
+   mono-ns {: t0:n :}
+   WORK-TASK TASK:HALT
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF drop FAIL ENDOF
+      err OF drop ENDOF
+   ;MATCH
+   mono-ns t0 - PROMPT-NS < ASSERT
+   PAUSED-ROWS @ 0= ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   M MODEL:CLOSE ;
 
 
 \ Every request dispatched to the backend is recorded once, served or failed,
@@ -3321,6 +3398,7 @@ variable COUNTED-U
    SETUP HELD-SERVE MANY-CALLS SPOILED-SERVE
    STOP-ACTIVE
    M MODEL:CLOSE
+   SETUP PUT-HALT SETUP RECORD-HALT SETUP PENDING-HALT
    SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL
    RECORDED-RESEND
    M MODEL:CLOSE
