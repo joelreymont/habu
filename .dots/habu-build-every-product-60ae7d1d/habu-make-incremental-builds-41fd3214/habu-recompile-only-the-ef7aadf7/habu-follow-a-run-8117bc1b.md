@@ -1,9 +1,11 @@
 ---
 title: Follow a run word to the words it reaches
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T13:35:34.680025+02:00"
+closed-at: "2026-11-10T23:38:05.018680+02:00"
+close-reason: its commit of the same subject lands with the word-level stack; suite 273 of 273 and the measure green on the landing tip
 ---
 
 Problem: the run rule walks by piece (linker.f RAN+, RAN-FILES+, ROW-USES+, WALK-USES): a file that ran one word of a piece lists the whole piece and everything it references in REACHED, so any edit that renews a piece's time recompiles every file that reaches it (six-edit table in the parent: util.f 202-213 objects, repl.f 11-13). Change: RAN+ keeps the records run (RAN-RECS); RAN-FILES+ walks EDGES from each (REC-EDGES, EM-EDGES, ROW-EDGES, dot habu-keep-what-each-28aabebd): a word reached gets a WORDS row with its time (NAMED-REC+), a piece whose data is reached stays a whole REACHED row with the pieces that stored into it; the header data counts once a reached cell is a header reference or the compiling file holds one. The object format, REACHED-CK, WORDS-CK and STORERS do not change. Lead's decision: a CHANGER+ pair (a piece that changed an earlier record's facts, seal, retirement or private wordlist) follows its holder row only when that row's data is reached; a file that spells the record depends on the changer by name as before; a run word that reads the dictionary at run time is not followed, as the design's failure list already says. BUILT-USES and the USES section lose their reader: removal is a later lane. Acceptance: a new file-objects sequence 'ran: compiled 4 1 3 0 3 0' (c.f runs b.f's W, which calls a.f's V; d.f runs a.f's U: a body edit of V compiles a.f, b.f, c.f and links d.f, with W's lists read once from a link and once from a compile); every other sequence unchanged or reported; cold = warm unsigned. Files: src/habu/linker.f, test/fixtures/file-objects/build.f, test/file-objects.f. Verify: ev.sh (cold/warm/probe/restore, file-objects), why.py counts for util.f and repl.f. Depends: habu-keep-what-each-28aabebd (merged). Brief: carl-layout/.out/briefs/lane-run-rule-by-word.md. Ownership: carl. Claim: agent=carl workspace=.jj-ws.noindex/carl-run

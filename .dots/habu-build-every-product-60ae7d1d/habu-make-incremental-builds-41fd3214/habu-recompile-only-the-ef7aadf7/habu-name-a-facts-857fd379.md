@@ -1,9 +1,11 @@
 ---
 title: "Name a facts row's record by its identity"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T15:13:32.661559+02:00"
+closed-at: "2026-11-10T23:38:05.104412+02:00"
+close-reason: its commit of the same subject lands with the word-level stack; suite 273 of 273 and the measure green on the landing tip
 blocks:
   - habu-name-an-entry-147c1a88
 ---

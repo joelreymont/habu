@@ -1,9 +1,11 @@
 ---
 title: "Keep what each word's code refers to"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T13:27:00.580025+02:00"
+closed-at: "2026-11-10T23:38:05.041919+02:00"
+close-reason: its commit of the same subject lands with the word-level stack; suite 273 of 273 and the measure green on the landing tip
 ---
 
 Problem: the run rule knows what a run word reaches only by piece (linker.f BUILT-USES, ROW-USES+, STORERS), so a file that ran one word of a piece depends on the whole piece and everything it references; six-edit table in the parent: any edit that renews util.f's piece time rewrites 202-213 objects, repl.f's 11-13. Decision (lead, design-word-level.md 'Decision (lead)'): the build keeps, per record, what its code refers to. This lane records it on both paths and nothing reads it: EDGES cells (4 * id + kind: record, emission, a piece's data, header data) with spans per record (REC-EDGES), per emission (EM-EDGES) and per BUILT row's data (ROW-EDGES), written at CODE-REF+, DATA-REF+, WORD-RECORD+, EM-CODE+, PIECE+ on the compile and RESOLVE, MAKE-DEF, LINK-ALIAS, LINK-TYPE, LINK-DATA on the link. Acceptance: a compiled piece and the same piece linked record the same lists; no object or program byte changes. Files: src/habu/linker.f. Verify: a temporary probe's edges lines equal between the cold (hb2.log) and warm (hb3.log) builds of ev.sh, then ev.sh without the probe (cold = warm unsigned, probe rewritten 11, file-objects PASS). Depends: none (stack tip zolomuqz da10c376). Brief: carl-layout/.out/briefs/lane-word-edges.md; site facts .out/reports/run-rule-sites.md. Ownership: carl. Claim: agent=carl workspace=.jj-ws.noindex/carl-words (carl-edges retired).

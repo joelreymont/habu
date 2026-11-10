@@ -1,9 +1,11 @@
 ---
 title: Check a referenced file by its words
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T12:23:01.375089+02:00"
+closed-at: "2026-11-10T23:38:04.993757+02:00"
+close-reason: its commit of the same subject lands with the word-level stack; suite 273 of 273 and the measure green on the landing tip
 ---
 
 Problem: once objects list the words they refer to (WORDS rows), a FILES row a WORDS row covers still carries the piece's time, so the piece's every change still recompiles the file. Acceptance: REF-FILE takes whole or not; a FILES row made only by record references (REF+) to a piece built before the root file's load began has time 0 and matches a built piece by key and number (BUILT-MATCH, PENDING-HAS?); rows from CODE-REF+, DATA-REF+, REACHED, NAMED+, the request row and every piece built since the root's load began stay whole; a words-only row on a pending piece is refused. Fixture sequence: a.f two words, b.f calls one, c.f the other, d.f aliases the first, e2.f calls the alias; a body edit of the first compiles a, b, d, e2 and links c. Then: repl.f + unused word rewrites fewer than 21 objects. Files: src/habu/linker.f, test/file-objects.f, test/fixtures/file-objects/build.f. Verify: file-objects; cold/warm cmp; probe count. Depends: habu-count-rows-that-1e6ebb3f and 'List the words an object refers to' merged. Then separately: whole rows for every piece built inside a file's own load (design 3.5), and a crafted bad WORDS row. Ownership: carl. Claim: unassigned.

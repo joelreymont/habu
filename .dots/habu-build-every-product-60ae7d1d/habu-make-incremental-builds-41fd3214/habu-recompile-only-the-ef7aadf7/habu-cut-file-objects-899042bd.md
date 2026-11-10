@@ -1,9 +1,11 @@
 ---
 title: "Cut file-objects case N's three fresh builds"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T13:00:24.268970+02:00"
+closed-at: "2026-11-10T23:38:05.266532+02:00"
+close-reason: "'Build file-objects' case N in L's out root' lands with the word-level stack; suite 273 of 273 and the measure green on the landing tip"
 ---
 
 Problem: test/file-objects.f NEST-CASE runs tools/hb-build.f three times in fresh hb processes and its program twice; file-objects went from 14.4 s to 23.8 s wall. The boundary under test is the object another build wrote, not the process, and each hb-build repeats the kernel build. Acceptance: case N's assertions unchanged (first run prints 1, last prints 2, the stale link fails it) with the repeated setup removed, or a measurement showing where the 9 s goes and that none of it repeats. Files: test/file-objects.f, a driver under test/fixtures/file-objects/ if one is needed. Verify: file-objects wall and CPU before and after. Depends: habu-name-every-piece-da16d296 and habu-list-the-words-9c7141f7 merged (same file). Ownership: unassigned. Claim: unassigned.

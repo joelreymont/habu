@@ -1,9 +1,11 @@
 ---
 title: "Record a header store that rewrites the cell's value"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T12:17:33.228671+02:00"
+closed-at: "2026-11-10T23:38:05.277697+02:00"
+close-reason: "merged into 'Drop header stores from the run rule'; lands with the word-level stack; suite 273 of 273 and the measure green on the landing tip"
 ---
 
 Problem: src/habu/linker.f FIND-STORES (carl-words :1670) learns a piece's stores by comparing the space with its copy and by new address-cell rows; a routed xt! or ptr-cell! (habu2.f ROUTE-HEADER :8270) that writes into a header cell the value an earlier piece stored changes nothing and adds no row (EMIT-MARK keeps one row per cell), so the piece's object holds no store. With header stores out of the run rule the piece links when the earlier storer is removed or edited: the cell is never stored or keeps the wrong value, and warm differs from cold. Found by the review of xqvqnuts (inferred, not reproduced). Acceptance: fixture sequence same (k.f, s1.f and s2.f both storing K's xt into one header cell; build k s1 s2, then k s2): the second build links s2 and its program holds the store; the sequence fails on the stack's hb before the fix. Fix: ROUTE-HEADER marks each routed cell in a band the linker maps below the image (layout.f ROUTED-BYTES); FIND-STORES counts every marked cell a store. Files: src/habu/habu2.f, src/habu/layout.f, src/habu/linker.f, test/file-objects.f, test/fixtures/file-objects/build.f. Verify: file-objects; cold/warm engine cmp. Depends: none. Ownership: carl. Claim: agent=carl workspace=.jj-ws.noindex/carl-hdrf.

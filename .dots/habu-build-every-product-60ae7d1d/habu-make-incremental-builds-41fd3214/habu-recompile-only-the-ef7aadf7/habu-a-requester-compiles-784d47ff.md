@@ -1,9 +1,11 @@
 ---
 title: A requester compiles with the file it requests
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T11:40:42.211311+02:00"
+closed-at: "2026-11-10T23:46:22.953404+02:00"
+close-reason: "the chain is gone on the word-level stack: a comment or an unused word appended to src/lib/fmt.f rewrites only fmt.f's five objects (two in the engine build, three in the kernel build), 1.6 s user CPU against 1.6 s with nothing changed (~/.cache/tmp/carl-d6/land/r2/chain-fmt.out)"
 ---
 
 Problem: src/habu/linker.f LOAD :3732 ends a build with E-STALE when a file under a linking file does not link, and FRESH? fails a requester whose requested file is stale (CHECKED :2874-2881), so an edit compiles the chain of files that first request the edited file, to the bytes they had: a word appended to src/lib/fmt.f compiles habu2.f, boot.f and kernel-object.f in the kernel build and fs-mutate.f and link-data.f in the engine build. No reason is recorded (commit 16ec856f); read from the code, a link is decided before anything is applied and cannot compile a file's tail. Findings: .jj-ws.noindex/carl-layout/.out/reports/why-nested-files-must-link.md. Acceptance: the wall time the chain costs for an edit to fmt.f and to util.f is measured once words are tracked; then either the chain goes (a piece after a request links or compiles by the words it uses) or the cost is recorded as accepted. Files: src/habu/linker.f. Verify: the compile count and time of the fmt.f edit. Depends: habu-give-each-word-26c91f8b and the WORDS rows lane. Ownership: carl. Claim: unassigned.

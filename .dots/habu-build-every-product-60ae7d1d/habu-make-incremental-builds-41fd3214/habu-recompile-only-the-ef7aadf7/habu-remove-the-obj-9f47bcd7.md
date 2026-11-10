@@ -1,9 +1,11 @@
 ---
 title: "Remove the object's USES section and its words"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T13:37:54.728942+02:00"
+closed-at: "2026-11-10T23:38:05.182678+02:00"
+close-reason: its commit of the same subject lands with the word-level stack; suite 273 of 273 and the measure green on the landing tip
 blocks:
   - habu-follow-a-run-8117bc1b
 ---
