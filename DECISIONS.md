@@ -1554,10 +1554,23 @@ learned live in the docs for their subject.
   one that defines a public name its source spells outside comment lines; for
   a file that reopens a package, that package's private names count too: its
   parts share scope, and a constant T0 copies inline leaves no reference.
-  `<out>/loads`, the build-wide mode and the sum over every earlier file go. An
-  object carries a SHA-256 over its own bytes, checked before anything else; a
-  mismatch makes its file compile. A file whose check or link throws loses its
-  object, so the next build compiles it.
+  A file that ran an earlier file's word while it compiled depends as well on
+  every file that word's code reaches and on every file that stored into data
+  it reaches. Unchanged means the time the earlier
+  file's result last changed is the one this file's object recorded
+  ("timestamps, not hashes"), so a file compiled again to the same result
+  rebuilds no file that depends on it. `<out>/loads`, the build-wide mode and
+  the sum over every earlier file go. A file whose check or link throws loses
+  its object, so the next build compiles it.
+- 2026-11-10, files that change what an earlier file made: the lead's, under
+  "timestamps, not hashes". A file that changes a record an earlier file made
+  (it writes the record's checker facts again, as a `TRUST` row does, retires
+  or undefines it, seals its package or gives the package a private section)
+  counts as defining that record's name: a file that spells the name depends
+  on it, and compiles when a file that now changes the name is not one its
+  object lists. A file's object also says which files the words it ran
+  reach, and the file links only while every file that now stores into the
+  data of one of them, or changes one of its records, is among them.
 - 2026-11-09, values a linked object replays: shown that some objects kept
   values that depend on where earlier files' data ends or on the process that
   built them, Joel had written "i'm going to sleep so i pre-approve the coming

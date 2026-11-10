@@ -169,6 +169,7 @@ create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's source names, 8 bytes each
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
 create RAN-ROWS BUF:HDR-BYTES allot  \ the BUILT rows whose words the compiling file's pieces ran, each once
+create REACHED BUF:HDR-BYTES allot   \ the object's REACHED: the FILES rows of the pieces RAN-FILES+ walked, 8 bytes each
 create FRAMES BUF:HDR-BYTES allot    \ each compiling loader's object so far while its request loads
 create PARKED BUF:HDR-BYTES allot    \ each checked or linking file's place in its object while its request is checked or loads
 create PENDING BUF:HDR-BYTES allot   \ the pieces a root's check passed, in load order, as FILES rows
@@ -294,9 +295,10 @@ variable USES-AT                    \ the offset in OBJECT of USES' count, of th
 \ or ends off TOP-SCOPE?, or a load it asked for never reached the build's runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 
-\ The magic, the key, the last piece's time, then for INPUT FILES REQUESTS NAMES PIECES an offset and
-\ a length (U64+), 0 0 while empty; then those sections in order, PIECES' last piece ending the object.
-8 KEY-BYTES + 8 + 5 2 * 8 * + constant HEADER-BYTES
+\ The magic, the key, the last piece's time, then for INPUT FILES REQUESTS NAMES REACHED PIECES an
+\ offset and a length (U64+), 0 0 while empty; then those sections in order, PIECES' last piece ending
+\ the object.
+8 KEY-BYTES + 8 + 6 2 * 8 * + constant HEADER-BYTES
 
 \ A record's kind in PIECES.
 0 constant KIND-DEF
@@ -353,7 +355,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
-   PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  RAN-ROWS BUF:DISPOSE
+   PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-ROWS BUF:DISPOSE
    SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE
    OLD-NAMES-RELEASE  NAMES-RELEASE ;
@@ -368,6 +370,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    NAMED-ROWS 256 BUF:N>BLEN BUF:INIT
    SPELLS 256 BUF:N>BLEN BUF:INIT
    RAN-ROWS 256 BUF:N>BLEN BUF:INIT
+   REACHED 256 BUF:N>BLEN BUF:INIT
    FRAMES 256 BUF:N>BLEN BUF:INIT
    PARKED 256 BUF:N>BLEN BUF:INIT
    PENDING 256 BUF:N>BLEN BUF:INIT
@@ -855,15 +858,17 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    loop ;
 
 
-\ FILES gains each piece the rows of RAN-ROWS reach, in BUILT order, after NAMED+'s.
+\ FILES gains each piece the rows of RAN-ROWS reach, in BUILT order, after NAMED+'s; REACHED takes
+\ each one's FILES row.
 : RAN-FILES+ ( -- )
+   REACHED BUF:CLEAR
    RAN-ROWS BYTES$ nip 0= if exit then
    BUILT-N 1 + WALKED-RESERVE
    BUILT-N 1 + 0 ?do 0 i WALKED ! loop
    0 WALK-N !
    RAN-ROWS BYTES$ nip 8 / 0 ?do  RAN-ROWS BYTES$ drop i 8 * + LE:U64@ WALK+  loop
    0 begin  WALK-USES  WALK-STORERS  dup WALK-N @ =  until drop
-   BUILT-N 0 ?do  i WALKED @ 0<> if i REF-FILE drop then  loop ;
+   BUILT-N 0 ?do  i WALKED @ 0<> if i REF-FILE REACHED U64+ then  loop ;
 
 
 \ A data address's reference, and true: a file's data, or the open's header data; false,
@@ -1713,7 +1718,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 \ FIELD+, then the FILES row of the requested file's last piece. A sibling renamed into place,
 \ unsynced: an object a crash cut short fails HEADER-CK's and PIECE-CK's bounds checks, and its
 \ file compiles. FILES ends with the files the source names (NAMED+), then the pieces the words
-\ the file ran reach (RAN-FILES+).
+\ the file ran reach (RAN-FILES+), whose FILES rows REACHED lists.
 : WRITE-OBJECT ( n -- )
    {: t:n :}
    NAMED+  RAN-FILES+
@@ -1721,11 +1726,13 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    REFS BYTES$ {: refs:ptr refsu:n :}
    REQUESTS BYTES$ {: reqs:ptr requ:n :}
    SPELLS BYTES$ {: nm:ptr nmu:n :}
+   REACHED BYTES$ {: rch:ptr rchu:n :}
    PIECES BYTES$ {: pieces:ptr piecesu:n :}
    HEADER-BYTES INPUT-BYTES + {: files-at:n :}
    files-at refsu + {: reqs-at:n :}
    reqs-at requ + {: names-at:n :}
-   names-at nmu + {: pieces-at:n :}
+   names-at nmu + {: reached-at:n :}
+   reached-at rchu + {: pieces-at:n :}
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
    FILE-KEY KEY-BYTES OBJECT SPAN+
@@ -1734,11 +1741,13 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    refsu 0<> if files-at else 0 then OBJECT U64+  refsu OBJECT U64+
    requ 0<> if reqs-at else 0 then OBJECT U64+  requ OBJECT U64+
    nmu 0<> if names-at else 0 then OBJECT U64+  nmu OBJECT U64+
+   rchu 0<> if reached-at else 0 then OBJECT U64+  rchu OBJECT U64+
    pieces-at OBJECT U64+  piecesu OBJECT U64+
    INPUT-STAMP INPUT-BYTES OBJECT SPAN+
    refs refsu OBJECT SPAN+
    reqs requ OBJECT SPAN+
    nm nmu OBJECT SPAN+
+   rch rchu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
    pieces-at FACTS-AT +!
    UNLINKABLE @ if exit then
@@ -2047,6 +2056,27 @@ variable RD-END
    BUILT-N 0 ?do i HITS @ 1 = if BAD then loop ;
 
 
+\ REACHED's u bytes from RD-AT, each a FILES row; bad when a piece that stored into header data or
+\ into a reached piece's data (STORERS) is not reached, as RAN-FILES+ would now reach it.
+: REACHED-CK ( n -- )
+   {: u:n :}
+   GOOD? 0= if exit then
+   u 0= if exit then
+   BUILT-N 1 + WALKED-RESERVE  BUILT-N 0 ?do 0 i WALKED ! loop
+   u 8 / 0 ?do
+      RD-U64 {: k:n :}
+      k FILE-ROW? 0= if BAD unloop exit then
+      k FILE-ROWS @ {: row:n :}
+      row 0 >= if 1 row WALKED ! then
+   loop
+   STORERS-N @ 0 ?do
+      i 2 * STORERS @ {: held:n :}
+      held -1 = if true else held WALKED @ 0<> then if
+         i 2 * 1 + STORERS @ WALKED @ 0= if BAD then
+      then
+   loop ;
+
+
 \ A name: its length, at least 1, then its bytes.
 : NAME-CK ( -- ) RD-U64 {: u:n :}  u 1 < if BAD exit then  u RD-SKIP ;
 
@@ -2130,7 +2160,8 @@ variable RD-END
 
 
 \ The header, INPUT against INPUT-STAMP, the sections before PIECES and its piece count, as WRITE-OBJECT
-\ lays them, NAMES replayed (NAMES-CK) and checked against FILES (NAMED-CK); then PIECE-AT.
+\ lays them, NAMES replayed (NAMES-CK) and checked against FILES (NAMED-CK), REACHED against STORERS
+\ (REACHED-CK); then PIECE-AT.
 : HEADER-CK ( -- )
    0 FILES-N !  0 REQS-N !
    OBJECT BYTES$ nip {: len:n :}
@@ -2153,12 +2184,16 @@ variable RD-END
    RD-U64 RD-U64 {: noff:n nmu:n :}
    nmu 0<  nmu 8 mod 0<>  or  nmu len names-at - >  or if BAD exit then
    noff  nmu 0<> if names-at else 0 then  <> if BAD then
-   names-at nmu + RD-EQ  len names-at - nmu - RD-EQ
+   names-at nmu + {: reached-at:n :}
+   RD-U64 RD-U64 {: hoff:n rchu:n :}
+   rchu 0<  rchu 8 mod 0<>  or  rchu len reached-at - >  or if BAD exit then
+   hoff  rchu 0<> if reached-at else 0 then  <> if BAD then
+   reached-at rchu + RD-EQ  len reached-at - rchu - RD-EQ
    INPUT-STAMP INPUT-BYTES RD-SAME
    refsu FILES-CK
    reqs-at REQS-AT !  requ REQUESTS-CK
-   nmu NAMES-CK
-   NAMED-CK
+   nmu NAMES-CK  NAMED-CK
+   rchu REACHED-CK
    REQS-N @ 1 + RD-EQ
    RD-AT @ PIECE-AT ! ;
 
@@ -2607,7 +2642,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    a 8  s" HABUFOBJ" STR= 0= if false exit then
    a 8 + KEY-BYTES  FILE-KEY KEY-BYTES  STR= 0= if false exit then
    8 KEY-BYTES + 8 + {: pairs:n :}
-   pairs 16 + PRIOR-PAIR?  pairs 32 + PRIOR-PAIR? and  pairs 64 + PRIOR-PAIR? and 0= if false exit then
+   pairs 16 + PRIOR-PAIR?  pairs 32 + PRIOR-PAIR? and  pairs 80 + PRIOR-PAIR? and 0= if false exit then
    pairs 24 + PRIOR@ FILES-ROW-BYTES mod 0= ;
 
 
@@ -2634,7 +2669,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    8 KEY-BYTES + 8 + {: pairs:n :}
    pairs 32 + PRIOR@ {: roff:n :}
    roff  pairs 40 + PRIOR@ + {: rend:n :}
-   roff  pairs 64 + PRIOR@ 8 +
+   roff  pairs 80 + PRIOR@ 8 +
    k 0 ?do
       {: at:n piece:n :}
       at rend PRIOR-ROW {: next:n ok:bool :}
