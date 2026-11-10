@@ -1804,6 +1804,29 @@ variable RC
    s" match-open.f" FIXTURE!
    s" E-MATCH-UNTERMINATED" s" ;" 2 38 81 82 REFUSED-AT ;
 
+\ A does> clause that walks no token and fails its end-of-body check is
+\ refused at its closing `;`, on that token's own line and bytes. The parses:
+\ row then names a refused word, a second packet only --all-errors gives.
+: TEST-EMPTY-CLAUSE ( -- )
+   s" an empty does> clause refused at its ;" T-LABEL
+   s" : MYK ( n -- ) drop does> ( -- ) ;" s" empty-clause.f" LINE-FIXTURE
+   s" E-MISMATCH" s" ;" 1 34 33 34 REFUSED-AT
+   s" an empty does> clause refused at its ; on a later line" T-LABEL
+   SB-RESET
+   s" : MYK ( n -- ) drop" SB-APPEND LF+
+   s"   does> ( -- )" SB-APPEND LF+
+   s"   ;" SB-APPEND LF+
+   s" empty-clause-lines.f" FIXTURE!
+   s" E-MISMATCH" s" ;" 3 3 37 38 REFUSED-AT
+   SB-RESET  s" ncomp: cannot compile MYK at ; in " SB-APPEND
+   FX-PATH$ CANON$ SB-APPEND  s" :3" SB-APPEND  10 SB-APPEND-C
+   SB$ REJECT-RC LOADED
+   s" an empty does> clause of a definer with a parses: row" T-LABEL
+   s" : MK ( n -- ) create , does> ( -- ) ; parses: MK 1" s" empty-clause-parses.f" LINE-FIXTURE
+   s" " CHECK
+   s" E-MISMATCH" REJECTED-AS
+   0 s" ;" 1 37 36 37 AT ;
+
 \ A match beyond the control-frame limit leaves its body to the load. The
 \ checker's abandoned-match walk must still spend literal payloads before
 \ counting a real ;MATCH, so their text cannot replace the depth refusal.
@@ -2006,6 +2029,7 @@ variable RC
    TEST-CONTROL-REASON
    TEST-SECOND-ELSE
    TEST-CONTROL-OPEN
+   TEST-EMPTY-CLAUSE
    TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER
    TEST-TOP-MISMATCH

@@ -24328,6 +24328,18 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 : CF-OPEN? ( -- bool )
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
 
+\ Pins the closer CA CU one past the body's end, or the mapped closer at its own byte.
+: CLOSER-PIN! ( ptr u8 n -- )
+   {: ca:ptr cu:n :}
+   TBASE @ DMAP-A @ - 0= IF
+      DCLOSE-A @ DCLOSE-U @ FAIL-PIN!
+      DCLOSE-A @ TBASE @ - FAILB !
+   ELSE
+      ca cu FAIL-PIN!
+      TBLEN @ FAILB !
+   THEN
+   FAILB @ FAILTU @ + FAILE ! ;
+
 \ Refuses a structure open at closer CA CU, or at the mapped closer, as the load's
 \ compiler does (habu2.f EM-COMPILE-SEMI), unless a compile refusal or CF-OVER holds the pin.
 : CLOSER-REFUSE ( ptr u8 n -- )
@@ -24339,14 +24351,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
    THEN {: why:n :}
    why MDIAG !  RF-REASON REFUSAL-TAKE  -1 RCOMPILE !
-   mapped IF
-      DCLOSE-A @ DCLOSE-U @ FAIL-PIN!
-      DCLOSE-A @ TBASE @ - FAILB !
-   ELSE
-      ca cu FAIL-PIN!
-      TBLEN @ FAILB !
-   THEN
-   FAILB @ FAILTU @ + FAILE !
+   ca cu CLOSER-PIN!
    why CF-FAIL ;
 
 \ A failed unjudged token no step settled drops its steps' width facts and
@@ -28322,6 +28327,9 @@ package CHECKER-REG
    SIG-BODY-FRESH
    s" ;" CHECK-SCAN
    TORDER-SCAN-UNKNOWN @ IF WRAP-CLEAR SIG-EFF-DROP 2 EXIT THEN
+   \ The end-of-body checks below pin no token of their own: their packet names
+   \ the token walked last. A clause that walked none names its `;` instead.
+   FAILSET @ 0= FAILTU @ 0= and IF s" ;" CLOSER-PIN! THEN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
