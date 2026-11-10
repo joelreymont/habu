@@ -163,12 +163,17 @@ create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's source names, 8 bytes each
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
 create FRAMES BUF:HDR-BYTES allot    \ each compiling loader's object so far while its request loads
-create PARKED BUF:HDR-BYTES allot    \ each checked or linking file's object while its request is checked or loads
+create PARKED BUF:HDR-BYTES allot    \ each checked or linking file's place in its object while its request is checked or loads
 create PENDING BUF:HDR-BYTES allot   \ the pieces a root's check passed, in load order: key, then sum
 create PENDING-PATHS BUF:HDR-BYTES allot \ the paths those pieces registered, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
 create SRC-COPY BUF:HDR-BYTES allot  \ a checked request's bytes as the loader runs them
-create OBJECT BUF:HDR-BYTES allot    \ a key's fields, then an object's bytes
+256 constant OBJECT-DEPTHS
+OBJECT-DEPTHS BUF:HDR-BYTES * BUFFER: OBJECTS \ OBJECT at each depth of requests (PARK)
+variable OBJECT-DEPTH                \ the frames on PARKED, and OBJECT's index in OBJECTS
+: OBJECT-AT ( n -- ptr u8 ) BUF:HDR-BYTES * OBJECTS + ;
+\ A key's fields, then the object of the file at this depth; a parked loader's stays in its own (PARK).
+: OBJECT ( -- ptr u8 ) OBJECT-DEPTH @ OBJECT-AT ;
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
 create LATE BUF:HDR-BYTES allot      \ the file's late private wordlists
 create LOAD-PATHS BUF:HDR-BYTES allot \ each load's key, then its path below its root as a FIELD+
@@ -311,7 +316,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
-   LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
+   LATE BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  SPELLS BUF:DISPOSE
    NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
    LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE  OLD-NAMES-RELEASE
@@ -332,7 +337,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    PENDING-PATHS 256 BUF:N>BLEN BUF:INIT
    REQ-PATH 256 BUF:N>BLEN BUF:INIT
    SRC-COPY 256 BUF:N>BLEN BUF:INIT
-   OBJECT 256 BUF:N>BLEN BUF:INIT
+   OBJECT-DEPTHS 0 ?do i OBJECT-AT 256 BUF:N>BLEN BUF:INIT loop  0 OBJECT-DEPTH !
    CODE-COPY 256 BUF:N>BLEN BUF:INIT
    LATE 256 BUF:N>BLEN BUF:INIT
    LOAD-PATHS 256 BUF:N>BLEN BUF:INIT
@@ -2398,34 +2403,33 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 \ The check walks them in load order before anything links, each piece once MAP-FILES maps the
 \ pieces passed before it (PENDING), and applies nothing.
 
-\ The checked or linking file's object and place in it onto PARKED while its request is checked or
-\ loads: OBJECT, FILE-PATH, FILE-KEY and INPUT-SUM, then PARK-TAIL bytes: the object's and the
-\ path's lengths, PIECE-AT, FILES-N, REQS-N and REQS-AT.
-6 8 * constant PARK-TAIL
+\ While its request is checked or loads, OBJECT is a depth deeper and the file's place is on PARKED:
+\ FILE-PATH, FILE-KEY, INPUT-SUM, then PARK-TAIL: the path's length, PIECE-AT, FILES-N, REQS-N, REQS-AT.
+5 8 * constant PARK-TAIL
 
 : PARK ( -- )
-   OBJECT BYTES$ {: a:ptr u:n :}
-   a u PARKED SPAN+
+   OBJECT-DEPTH @ 1 + OBJECT-DEPTHS = if E-STALE throw then
    FILE-PATH FILE-PATH-N @ PARKED SPAN+
    FILE-KEY KEY-BYTES PARKED SPAN+
    INPUT-SUM KEY-BYTES PARKED SPAN+
-   u PARKED U64+  FILE-PATH-N @ PARKED U64+
-   PIECE-AT @ PARKED U64+  FILES-N @ PARKED U64+  REQS-N @ PARKED U64+  REQS-AT @ PARKED U64+ ;
+   FILE-PATH-N @ PARKED U64+
+   PIECE-AT @ PARKED U64+  FILES-N @ PARKED U64+  REQS-N @ PARKED U64+  REQS-AT @ PARKED U64+
+   1 OBJECT-DEPTH +! ;
 
 
-\ The top of PARKED back (PARK), and off it.
+\ The top of PARKED back and off it, and OBJECT the loader's again (PARK).
 : UNPARK ( -- )
+   -1 OBJECT-DEPTH +!
    PARKED BYTES$ {: f:ptr fu:n :}
    f fu + PARK-TAIL - {: t:ptr :}
-   t LE:U64@  t 8 + LE:U64@ {: u:n pn:n :}
-   fu PARK-TAIL -  KEY-BYTES 2 * -  pn -  u - {: start:n :}
-   f start +  u BUF:N>BLEN  OBJECT BUF:REPLACE
-   f start + u + {: at:ptr :}
+   t LE:U64@ {: pn:n :}
+   fu PARK-TAIL -  KEY-BYTES 2 * -  pn - {: start:n :}
+   f start + {: at:ptr :}
    at FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
    at pn + FILE-KEY KEY-BYTES BYTE-COPY
    at pn + KEY-BYTES + INPUT-SUM KEY-BYTES BYTE-COPY
-   t 16 + LE:U64@ PIECE-AT !  t 24 + LE:U64@ FILES-N !
-   t 32 + LE:U64@ REQS-N !  t 40 + LE:U64@ REQS-AT !
+   t 8 + LE:U64@ PIECE-AT !  t 16 + LE:U64@ FILES-N !
+   t 24 + LE:U64@ REQS-N !  t 32 + LE:U64@ REQS-AT !
    f start BUF:N>BLEN PARKED BUF:REPLACE ;
 
 
@@ -2485,7 +2489,8 @@ defer CHECK-OBJECT ( -- )
 
 
 \ REQUESTS row k: the path it spells resolves, as a load from the checked file resolves it, to the
-\ path it loaded, a require's not REGISTERED? yet and then registered; then that file checks.
+\ path it loaded, a require's not REGISTERED? yet and then registered; then that file checks a depth
+\ deeper, short of OBJECT-DEPTHS, so a file nested deeper compiles and no link parks past it.
 \ SOURCE-ROOT:RESOLVE is the last loader call before WITH-BYTES, which enters the root it resolved
 \ through.
 : CHECK-REQUEST ( n -- )
@@ -2501,6 +2506,7 @@ defer CHECK-OBJECT ( -- )
       canon canonu known REGISTERED? if BAD exit then
       canon canonu PENDING-PATHS FIELD+
    then
+   OBJECT-DEPTH @ 1 + OBJECT-DEPTHS = if BAD exit then
    PARK
    canon canonu ['] CHECK-FILE ['] UNPARK finally ;
 
