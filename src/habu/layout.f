@@ -2060,3 +2060,6 @@ public
 -1 constant NONE                    \ mirrored: src/core/checker.f DROW-NONE
 ;package
 DECLARED-LOG:END constant DATA-START
+\ The bytes below a build's image where a routed header store marks its cell (habu2.f
+\ ROUTE-HEADER): DATA-START and the cell every such store sets, rounded up to a multiple of $10000.
+DATA-START 8 + $FFFF + $10000 / $10000 * constant ROUTED-BYTES

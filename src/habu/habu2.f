@@ -8262,12 +8262,16 @@ ardone LBL,
    LSCRATCHMARK LABEL@ BL, ;
 
 \ While a build writes an image, a store into this engine's header goes to the
-\ same offset in the image. Clobbers x12 and x13, as the store's guard does.
+\ same offset in the image, and marks the cell: its address goes to the cell ROUTED-BYTES
+\ below it and to the cell below the image, in the band the build maps there (linker.f MAP).
+\ Clobbers x12 and x13, as the store's guard does.
 : ROUTE-HEADER ( n -- ) {: reg:n :}
    LBL {: own:label :}
    13 reg DATA SUB,  12 DATA-START LIT64,  13 12 CMP,  C-CS own BCOND,
    12 DATA BOOT:IMAGE-BASE-CELL LDR,  12 own CBZ,
    reg 12 13 ADD,
+   13 12 8 SUBI,  reg 13 0 STR,
+   12 ROUTED-BYTES LIT64,  13 reg 12 SUB,  reg 13 0 STR,
    own LBL, ;
 
 \ xt! ( q ptr q -- ): store an execution token into a persisted cell and declare

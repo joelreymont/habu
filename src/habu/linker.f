@@ -64,7 +64,7 @@ TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
 TYPED-VARIABLE TARGET RTARGET:resolved-target   \ the target the build's program runs on
 variable BASE                        \ the space's address, its distance from NULL-PTR
-variable SPACE-SIZE                  \ the space's size, as MAP mapped it
+variable SPACE-SIZE                  \ the space's size; MAP maps ROUTED-BYTES more below BASE
 variable FIRST-REC                   \ ndict@ at the open: records from here are the space's
 variable OPEN-DP                     \ here's distance once open; header data is [BASE, OPEN-DP)
 variable OPEN-TASKS                  \ hb's live tasks at the open (TASKS-LIVE-CELL)
@@ -125,7 +125,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ the space's table (habu2.f EMIT-MARK) and its index is released unlocked.
 : UNMAP ( -- )
    ADDRESS-CELLS:INDEX-CELL SPACE-AT ADDRESS-CELLS:INDEX-RELEASE
-   NULL-PTR BYTE-VIEW BASE @ + SPACE-SIZE @ munmap
+   NULL-PTR BYTE-VIEW BASE @ ROUTED-BYTES - +  SPACE-SIZE @ ROUTED-BYTES +  munmap
    0<> if E-MEM-UNMAP throw then ;
 
 \ Above hb's DATA: below it CHECKER-OWNER-GUARD refuses with E-COMP-OWNER.
@@ -158,15 +158,17 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ key is that offset and the count of the build's earlier loads of the path. BUILT holds a row per
 \ piece compiled or linked: its file's key, its number in the file, its time
 \ (COMPILED-TIME as it compiled), its first and end record index, its first and end
-\ emission, and the data pointer as the piece starts and ends. A FILES row is a BUILT
-\ row's first FILES-ROW-BYTES bytes.
+\ emission, the data pointer as the piece starts and ends, and 1 when the piece holds a
+\ header-data address (HOLDS-HEADER), else 0. A FILES row is a BUILT row's first
+\ FILES-ROW-BYTES bytes.
 16 constant KEY-BYTES
-KEY-BYTES 64 + constant BUILT-BYTES
+KEY-BYTES 72 + constant BUILT-BYTES
 KEY-BYTES constant BUILT-PIECE
 BUILT-PIECE 8 + constant BUILT-TIME
 BUILT-TIME 8 + constant BUILT-FIRST
 BUILT-FIRST 16 + constant BUILT-EM
 BUILT-EM 16 + constant BUILT-DP
+BUILT-DP 16 + constant BUILT-HEADER
 KEY-BYTES 16 + constant FILES-ROW-BYTES
 KEY-BYTES 8 + constant LOADER-BYTES
 create LOADERS BUF:HDR-BYTES allot
@@ -302,6 +304,9 @@ variable FILE-WID                    \ the first wordlist id the file's compile 
 variable FILE-EVENT                  \ the first event of the loader's log the piece made
 variable FILE-RUN                    \ the first entry of OUTER's run log the piece made
 variable FILE-END                    \ here's distance as the piece ends
+\ The running piece holds a header-data address outside its STORES rows' cells: a tag-4
+\ reference written (DATA-REF+) or resolved (RESOLVE).
+TYPED-VARIABLE HOLDS-HEADER bool
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
 variable FILE-PATH-N
@@ -897,7 +902,10 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 \ ---- dependencies by run --------------------------------------------------------
 \ A file that runs an earlier piece's word while it compiles keeps the word's answer, so it
 \ depends on every piece that word reaches: the rows the piece references (BUILT-USES) and the
-\ pieces that stored into its data or the header data or changed its records (STORERS).
+\ pieces that stored into its data or changed its records (STORERS). xt! and ptr-cell! into hb's
+\ header store into the space's (habu2.f ROUTE-HEADER) and a run word reads hb's (xref.f
+\ SEAL-NDICT@ reads the space's only to refuse), so a store into header data counts once a reached
+\ piece or the compiling file holds a header-data address.
 
 : RAN-KNOWN? ( n -- bool )
    {: idx:n :}
@@ -956,25 +964,49 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : WALK-USES ( n -- n )
    begin dup WALK-N @ < while  dup WALK @ ROW-USES+  1 +  repeat ;
 
-\ The piece of each STORERS pair whose holder is the header data or a walked row.
-: WALK-STORERS ( -- )
+: HEADER-HELD? ( n -- bool ) BUILT-AT BUILT-HEADER + LE:U64@ 0<> ;
+
+\ A walked row holds a header-data address.
+: HEADER-REACHED? ( -- bool )
+   BUILT-N 0 ?do
+      i WALKED @ 0<> if  i HEADER-HELD? if true unloop exit then  then
+   loop
+   false ;
+
+\ The compiling file holds a header-data address: its running piece, or an earlier piece of it,
+\ whose runs RAN-ROWS also holds.
+: OWN-HEADER? ( -- bool )
+   HOLDS-HEADER @ if true exit then
+   BUILT-N 0 ?do
+      i BUILT-AT KEY-BYTES  FILE-KEY KEY-BYTES  STR=  i HEADER-HELD?  and if true unloop exit then
+   loop
+   false ;
+
+\ The piece of each STORERS pair whose holder is a walked row, or the header data once own is
+\ true or a walked row holds a header-data address.
+: WALK-STORERS ( bool -- )
+   {: own:bool :}
+   own if true else HEADER-REACHED? then {: header:bool :}
    STORERS-N @ 0 ?do
       i 2 * STORERS @ {: held:n :}
-      held -1 = if true else held WALKED @ 0<> then if  i 2 * 1 + STORERS @ WALK+  then
+      held -1 = if header else held WALKED @ 0<> then if  i 2 * 1 + STORERS @ WALK+  then
    loop ;
 
 
 \ FILES gains each piece the rows of RAN-ROWS reach, in BUILT order, after NAMED+'s; REACHED takes
-\ each one's FILES row.
+\ each one's FILES row, then -1 when the walk reached the header data's storers: REACHED-CK runs
+\ before any piece the file requests is built.
 : RAN-FILES+ ( -- )
    REACHED BUF:CLEAR
    RAN-ROWS BYTES$ nip 0= if exit then
+   OWN-HEADER? {: own:bool :}
    BUILT-N 1 + WALKED-RESERVE
    BUILT-N 1 + 0 ?do 0 i WALKED ! loop
    0 WALK-N !
    RAN-ROWS BYTES$ nip 8 / 0 ?do  RAN-ROWS BYTES$ drop i 8 * + LE:U64@ WALK+  loop
-   0 begin  WALK-USES  WALK-STORERS  dup WALK-N @ =  until drop
-   BUILT-N 0 ?do  i WALKED @ 0<> if i REF-FILE REACHED U64+ then  loop ;
+   0 begin  WALK-USES  own WALK-STORERS  dup WALK-N @ =  until drop
+   BUILT-N 0 ?do  i WALKED @ 0<> if i REF-FILE REACHED U64+ then  loop
+   own HEADER-REACHED? or if -1 REACHED U64+ then ;
 
 
 \ A data address's reference, and true: a file's data, or the open's header data; false,
@@ -990,7 +1022,9 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
       3 PIECES U64+  row REF-FILE PIECES U64+
       v  row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ true exit
    then
-   v BASE @ >=  v OPEN-DP @ <  and if 4 PIECES U64+  v BASE @ - PIECES U64+ true exit then
+   v BASE @ >=  v OPEN-DP @ <  and if
+      true HOLDS-HEADER !  4 PIECES U64+  v BASE @ - PIECES U64+ true exit
+   then
    v FILE-END @ = if
       3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ true exit
    then
@@ -1520,6 +1554,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ ---- the stores ----------------------------------------------------------------
 \ A file's compile may store into cells below its data, but must leave earlier records and
 \ emissions alone: E-STORE, which fails the build as any throw out of a load does (RUN-FILE).
+\ hb's xt! and ptr-cell! mark each header cell they store into, changed or not (MARKED+).
 
 \ The space's cells a store can reach, as [from, to) offsets from BASE: [0, FILE-DP) less
 \ INDEX-CELL and the address-cell header and boot rows, which EMIT-MARK writes.
@@ -1531,6 +1566,21 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 
 
 : SPACE-BYTES ( n -- ptr u8 ) NULL-PTR BYTE-VIEW BASE @ + swap + ;
+
+\ The band's cell that marks the header cell at offset off: a routed store wrote the cell's
+\ address there (MAP).
+: MARK-AT ( n -- ptr n )
+   {: off:n :}
+   NULL-PTR BYTE-VIEW  BASE @ ROUTED-BYTES - off +  + CELL-VIEW ;
+
+\ The band's last cell: nonzero once a routed store marked a cell.
+: ANY-MARK ( -- ptr n ) NULL-PTR BYTE-VIEW  BASE @ CELL -  + CELL-VIEW ;
+
+: CLEAR-MARKS ( -- )
+   ANY-MARK @ 0= if exit then
+   DATA-START CELL / 0 ?do 0 i cells MARK-AT ! loop  0 ANY-MARK ! ;
+
+
 : COPY-REC ( n -- ) XREF-REC BYTE-VIEW DREC OLD-RECS SPAN+ ;
 
 
@@ -1539,9 +1589,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    from SPACE-BYTES  to from -  OLD-SPACE SPAN+ ;
 
 
-\ What the file's compile may change below its own data, as it starts.
+\ What the file's compile may change below its own data, as it starts, and no routed store's
+\ mark.
 : COPY-BELOW ( -- )
-   OLD-SPACE BUF:CLEAR  OLD-RECS BUF:CLEAR
+   OLD-SPACE BUF:CLEAR  OLD-RECS BUF:CLEAR  CLEAR-MARKS
    [: COPY-RANGE ;] EACH-RANGE
    FILE-REC @ FIRST-REC @ 1 - ?do i COPY-REC loop
    NSHADOW:PATCHES OLD-PATCHES !
@@ -1686,12 +1737,24 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    loop  STORED-N ! ;
 
 
-\ STORED, ascending: each changed cell below FILE-DP but a scratch one, and each new row's cell
-\ there, aligned (else E-COMP-STATE, as in DATA+); E-STORE for a cell no earlier file or the
-\ header holds.
+\ The header cell at offset o, when a routed store marked it, into STORED; a mark other than the
+\ cell's address is a store off a cell boundary: E-COMP-STATE.
+: MARKED+ ( n -- )
+   {: o:n :}
+   o MARK-AT @ {: m:n :}
+   m 0= if exit then
+   BASE @ o + {: v:n :}
+   m v <> if E-COMP-STATE throw then
+   v STORED+ ;
+
+
+\ STORED, ascending: each changed cell below FILE-DP but a scratch one, each header cell an xt!
+\ or ptr-cell! stored, changed or not (MARKED+), and each new row's cell there, aligned (else
+\ E-COMP-STATE, as in DATA+); E-STORE for a cell no earlier file or the header holds.
 : FIND-STORES ( -- )
    0 STORED-N !  0 OLD-AT !
    [: COMPARE-RANGE ;] EACH-RANGE
+   ANY-MARK @ 0<> if DATA-START CELL / 0 ?do i cells MARKED+ loop then
    ROWS {: rows:ptr count:n :}
    count FILE-CELLS @ ?do
       rows i cells + @ ROW-AT {: at:n :}
@@ -1711,7 +1774,9 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    STORED-N @ PIECES U64+
    STORED-N @ 0 ?do
       i STORED @ {: v:n :}
+      HOLDS-HEADER @ {: held:bool :}              \ the store's cell is no address the piece holds
       v DATA-REF+ 0= if E-COMP-STATE throw then   \ FIND-STORES refused a cell nothing holds
+      held HOLDS-HEADER !
       v ROW-OF {: row:n hit:bool :}
       hit if
          row ROW-KIND PIECES U64+  0 PIECES U64+  row CELL-REF+
@@ -1939,8 +2004,8 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    obj obju OBJECT-DIR
    obj obju [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
 
-\ The piece's BUILT row with its number and time, its file's path and the USES entries since the
-\ row before; NAMES takes its records.
+\ The piece's BUILT row with its number and time, its file's path, the USES entries since the
+\ row before and HOLDS-HEADER; NAMES takes its records.
 : BUILT+ ( n n -- )
    {: piece:n t:n :}
    ndict@ BUILT-N INDEX-RECS
@@ -1953,7 +2018,8 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    piece BUILT U64+  t BUILT U64+
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
    FILE-EM @ BUILT U64+  NSHADOW:EMISSIONS BUILT U64+
-   FILE-DP @ BUILT U64+  FILE-END @ BUILT U64+ ;
+   FILE-DP @ BUILT U64+  FILE-END @ BUILT U64+
+   HOLDS-HEADER @ if 1 else 0 then BUILT U64+ ;
 
 \ ---- reading an object ---------------------------------------------------------
 \ FRESH? reads FILE-KEY's object into OBJECT and checks every field WRITE-OBJECT writes.
@@ -2272,37 +2338,43 @@ variable RD-END
    PENDING-N 0 ?do i PENDING-HITS @ 1 = if BAD then loop ;
 
 
-\ REACHED's u bytes, FILES rows: bad when a built or pending piece that stored into header data or into
-\ a reached piece's data or records is unreached, or reached pieces link out of order (the later store holds).
+\ REACHED's u bytes from RD-AT, each a FILES row but a last -1 (RAN-FILES+); bad when a built or
+\ pending piece that stored into a reached piece's data or records, or into header data once the -1
+\ is there (STORERS), is not reached, or when the reached pieces link out of order: of two stores
+\ into one cell the later holds.
 : REACHED-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
    u 0= if exit then
    BUILT-N PENDING-N + 1 + {: marks:n :}
    marks WALKED-RESERVE  marks 0 ?do 0 i WALKED ! loop
-   -1  u 8 / 0 ?do
-      {: last:n :}
+   false -1  u 8 / 0 ?do
+      {: own:bool last:n :}
       RD-U64 {: k:n :}
-      k FILE-ROW? 0= if BAD unloop exit then
-      k FILE-ROWS @ {: at:n :}
-      at ROW-PENDING = if k PENDING-HOLDER HOLDER-ROW else at then {: row:n :}
-      row 0 >= if
-         row last <= if BAD unloop exit then
-         1 row WALKED !  row
+      k -1 =  i 1 + 8 * u =  and if
+         true last
       else
-         last
+         k FILE-ROW? 0= if BAD unloop exit then
+         k FILE-ROWS @ {: at:n :}
+         at ROW-PENDING = if k PENDING-HOLDER HOLDER-ROW else at then {: row:n :}
+         row 0 >= if
+            row last <= if BAD unloop exit then
+            1 row WALKED !  own row
+         else
+            own last
+         then
       then
    loop
-   drop
+   drop {: header:bool :}
    STORERS-N @ 0 ?do
       i 2 * STORERS @ {: held:n :}
-      held -1 = if true else held WALKED @ 0<> then if
+      held -1 = if header else held WALKED @ 0<> then if
          i 2 * 1 + STORERS @ WALKED @ 0= if BAD then
       then
    loop
    PENDING-STORERS-N @ 0 ?do
       i 2 * PENDING-STORERS @ {: held:n :}
-      held -1 = if true else held HOLDER-ROW WALKED @ 0<> then if
+      held -1 = if header else held HOLDER-ROW WALKED @ 0<> then if
          BUILT-N  i 2 * 1 + PENDING-STORERS @ +  WALKED @ 0= if BAD then
       then
    loop ;
@@ -3466,7 +3538,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
       x 0= if FILE-DP @ y + exit then
       x BUILT-DP BUILT@ y + exit
    then
-   tag 4 = if BASE @ x + exit then
+   tag 4 = if true HOLDS-HEADER !  BASE @ x + exit then
    tag 5 = if 0 exit then
    E-COMP-STATE throw ;
 
@@ -3769,7 +3841,9 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       RD-U64 RD-U64 {: kind:n v:n :}
       RD-REF {: tag:n x:n y:n z:n :}
       GOOD? 0= if E-COMP-STATE throw then
+      HOLDS-HEADER @ {: held:bool :}              \ the store's cell, as STORES+ keeps it
       ctag cx cy cz RESOLVE {: at:n :}
+      held HOLDS-HEADER !
       kind 3 = if v else tag x y z RESOLVE then  kind  at  PUT-CELL
       at HSTORE+  at STORER+
    loop
@@ -3875,12 +3949,14 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ADDRESS-CELLS:BOOT-CAP h ADDRESS-CELLS:CAP-FIELD + SPACE-AT !
    0 h ADDRESS-CELLS:MODE-FIELD + SPACE-AT ! ;
 
+\ The space, with ROUTED-BYTES below BASE: the band where hb's routed header stores mark their
+\ cells (habu2.f ROUTE-HEADER), the linker's own; no object, image or program holds it.
 : MAP ( -- )
    LAYOUT-SIZE {: size:n :}
-   HINT size MEM-PROT-RW MEM-MAP-PRIVATE-ANON NORESERVE or
+   HINT size ROUTED-BYTES + MEM-PROT-RW MEM-MAP-PRIVATE-ANON NORESERVE or
    MEM-ANON-FD MEM-OFF-ZERO mmap {: at:n :}
    at 0 < if E-MEM-MAP throw then
-   at BASE !  size SPACE-SIZE !
+   at ROUTED-BYTES + BASE !  size SPACE-SIZE !
    at HINT < if UNMAP E-MEM-MAP throw then
    construct step mapped PROGRESS !
    LAY-ADDRESS-HEADER ;
@@ -3985,7 +4061,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 
 \ As a file's load or its piece after a request starts.
 : MARKS ( -- )
-   ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !  0 RETIRED-N !
+   ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !  0 RETIRED-N !  false HOLDS-HEADER !
    TFAM:TFAM-N@ FILE-TFAM !  CHECK:TYPE-END FILE-TYPES !
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
@@ -4401,7 +4477,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 \ follows from hb, whose stamp names the objects' directory (BUILD-OUT:OBJ$); it has no emission
 \ and no data.
 : OWNED-RECORDS ( -- )
-   FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !
+   FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !  false HOLDS-HEADER !
    OWNED-N @ 0 ?do i LINK-OWNED loop
    0 CHECK:PLACE-FACTS
    s" " KEY-PATHS PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!

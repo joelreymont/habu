@@ -36,11 +36,15 @@
 \ out root, one name in two directories, are each built alone in turn x, y, x,
 \ y. Then order/m.f, s.f, t.f and f.f, with s.f and t.f storing into m.f's
 \ variable and f.f reading it, are built in that order, twice with s.f and t.f
-\ swapped, then in that order again. `edit: compiled `, `tail: compiled `,
+\ swapped, then in that order again. Then header/w.f and header/r.f, whose top
+\ level runs w.f's word, are built, then twice more with header/h.f, which stores
+\ into header data, between them. Then same/k.f, s1.f and s2.f, s1.f and s2.f
+\ each storing k.f's K as the program's entry, are built, then k.f and s2.f,
+\ which write the program `prog`. `edit: compiled `, `tail: compiled `,
 \ `share: compiled `, `laid: compiled `, `private: compiled `, `parts: compiled `,
-\ `scope: compiled `, `inside: compiled `, `twins: compiled ` and
-\ `order: compiled ` print each build's result: its LINKER:COMPILED, or the
-\ code it threw. `crafted: compiled ` prints nine: crafted/e.f's build, seven
+\ `scope: compiled `, `inside: compiled `, `twins: compiled `, `order: compiled `,
+\ `header: compiled ` and `same: compiled ` print each build's result: its
+\ LINKER:COMPILED, or the code it threw. `crafted: compiled ` prints nine: crafted/e.f's build, seven
 \ over an edit of its object the link refuses or links wrong, then a plain
 \ build. With `facts`, a build loads count.f and facts.f, then its body compiles
 \ FOB-AFTER, a caller of count.f's words, and FOB-WRAP, a caller of facts.f's
@@ -270,6 +274,12 @@ PATH-CAP BUFFER: FOURTH-BUF
 : ORDER-S$ ( -- ptr u8 n ) s" order" s" s.f" SECOND-BUF FILE-IN ;
 : ORDER-T$ ( -- ptr u8 n ) s" order" s" t.f" THIRD-BUF FILE-IN ;
 : ORDER-F$ ( -- ptr u8 n ) s" order" s" f.f" FOURTH-BUF FILE-IN ;
+: HEAD-W$ ( -- ptr u8 n ) s" header" s" w.f" FIRST-BUF FILE-IN ;
+: HEAD-H$ ( -- ptr u8 n ) s" header" s" h.f" SECOND-BUF FILE-IN ;
+: HEAD-R$ ( -- ptr u8 n ) s" header" s" r.f" THIRD-BUF FILE-IN ;
+: SAME-K$ ( -- ptr u8 n ) s" same" s" k.f" FIRST-BUF FILE-IN ;
+: SAME-S1$ ( -- ptr u8 n ) s" same" s" s1.f" SECOND-BUF FILE-IN ;
+: SAME-S2$ ( -- ptr u8 n ) s" same" s" s2.f" THIRD-BUF FILE-IN ;
 
 \ Given a build's caught code: that code, or its LINKER:COMPILED when it threw none.
 : RESULT ( n -- n ) dup 0= if drop LINKER:COMPILED then ;
@@ -465,6 +475,51 @@ PATH-CAP BUFFER: FOURTH-BUF
    ORDER-SWAPPED {: three:n :}
    ORDER-BUILD {: four:n :}
    s" order: compiled " one two three RESULTS.  space four FMT:.INT cr ;
+
+: HEAD-BUILD ( -- n )
+   [: s" app" RTARGET:HOST-TARGET [: HEAD-W$ included  HEAD-R$ included ;] LINKER:WITH ;]
+   catch RESULT ;
+
+: HEAD-STORED ( -- n )
+   [: s" app" RTARGET:HOST-TARGET [: HEAD-W$ included  HEAD-H$ included  HEAD-R$ included ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ h.f stores into header data, as main.f's last line does, and r.f runs w.f's W: r.f links once
+\ h.f joins the build (linker.f "dependencies by run").
+: HEADS ( -- )
+   s" header" DIR$ FS:MAKE-DIR
+   HEAD-W$ s\" package FILE-OBJECTS-HEADER public : W ( -- n ) 3 ; ;package\n" FS:WRITE-ALL
+   HEAD-H$ s\" package FILE-OBJECTS-HEADER-H public : H ( -- ) ; ;package\n' FILE-OBJECTS-HEADER-H:H data-base $43A0 + xt!\n"
+   FS:WRITE-ALL
+   HEAD-R$ s\" FILE-OBJECTS-HEADER:W constant FILE-OBJECTS-HEADER-N\n" FS:WRITE-ALL
+   HEAD-BUILD {: one:n :}
+   HEAD-STORED {: two:n :}
+   HEAD-STORED {: three:n :}
+   s" header: compiled " one two three RESULTS. cr ;
+
+\ The second build alone writes a program, PROG$ in the out root: its entry is the header store
+\ s2.f's object holds, and LINKER:WRITE ends the build rc 74 when the entry cell is empty.
+: SAME-BUILD ( -- n )
+   [: s" app" RTARGET:HOST-TARGET [: SAME-K$ included  SAME-S1$ included  SAME-S2$ included ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+: SAME-WRITTEN ( -- n )
+   [: s" app" RTARGET:HOST-TARGET [: SAME-K$ included  SAME-S2$ included  PROG$ LINKER:WRITE ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ s1.f and s2.f store K's xt into the header cell main.f's last line stores into: s2.f's store
+\ leaves the cell as s1.f left it, and its object still holds it once s1.f leaves the build.
+: SAMES ( -- )
+   s" same" DIR$ FS:MAKE-DIR
+   SAME-K$ s\" package FILE-OBJECTS-SAME public : K ( -- ) ; ;package\n" FS:WRITE-ALL
+   SAME-S1$ s\" ' FILE-OBJECTS-SAME:K data-base $43A0 + xt!\n" FS:WRITE-ALL
+   SAME-S2$ s\" ' FILE-OBJECTS-SAME:K data-base $43A0 + xt!\n" FS:WRITE-ALL
+   SAME-BUILD {: one:n :}
+   SAME-WRITTEN {: two:n :}
+   s" same: compiled " type  one FMT:.INT space  two FMT:.INT cr ;
 
 \ ---- objects the link refuses or links wrong ----
 \ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
@@ -691,7 +746,7 @@ variable SLOT-S                          \ and their count
    s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS CRAFTS
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES CRAFTS
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----

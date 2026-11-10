@@ -33,9 +33,16 @@
 \ keeps an object of its own. Four files, two storing into one cell and the fourth reading it
 \ at top level, built in order, twice with the storers swapped and in order
 \ again, compile 4, 3, 0 and 3: of two stores into one cell the later holds, so
-\ the reader compiles again when the storers swap. The crafted sequence's
+\ the reader compiles again when the storers swap. The header sequence, whose
+\ second and third builds load a file storing into header data between a file
+\ and the one that runs its word, compiles 2, 1 and 0: the store is no
+\ dependency of the run (linker.f "dependencies by run"). The same sequence,
+\ whose two files store one word as the program's entry, compiles 3, then 0
+\ when the first storer leaves the build: the second's object holds its store,
+\ though it left the cell as the first did, so the program it writes has K as
+\ its entry and its map lists K. The crafted sequence's
 \ builds of e.f over eight objects the link refuses or links wrong compile 1,
-\ and a plain build after them links. C writes twenty-eight objects, and the
+\ and a plain build after them links. C writes thirty-four objects, and the
 \ two of A's files, count.f's and shape.f's, have A's bytes from PIECES on: a
 \ refused file writes none. A's
 \ printed state gives FILE-OBJECTS-COUNT:HI's record the facts text `( -- ) `
@@ -54,7 +61,7 @@
 \ piece by its time; again.f's two loads link. B2, in `second` mode, loads
 \ pad.f, which A's builds never loaded, first, so it compiles four: pad.f,
 \ main.f and mark.f, which spell its SCRATCH and FIRST, and reopen.f, which
-\ runs words, and every run word reaches pad.f's stores into header data. It
+\ runs count.f's LATER: main.f stores into count.f's data. It
 \ links the other four, prints B's state, writes B's program and leaves A's
 \ root holding B's objects. Each warm build compares its program's bytes, its
 \ printed state and the objects' bytes from PIECES on with a cold build's.
@@ -136,8 +143,9 @@ package FILE-OBJECTS-TEST
 14 constant ORDER-X2
 15 constant HIDDEN-SPELL
 16 constant SEAL-SECOND
-28 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
-                                         \ never link included, the twins', the order sequence's four, e.f's
+34 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
+                                         \ never link included, the twins', the order sequence's four,
+                                         \ the header sequence's three, the same sequence's three, e.f's
 160 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 144 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
 56 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
@@ -361,7 +369,7 @@ variable KEPT-NS
 \ writes; count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote twenty-eight objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote thirty-four objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -399,6 +407,10 @@ variable KEPT-NS
    STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
    s" the order builds compile 4, 3, 0 and 3 files" LABEL
    STATE-W STATE-W-U @ s\" order: compiled 4 3 0 3\n" CONTAINS? TTRUE
+   s" the header builds compile 2, 1 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" header: compiled 2 1 0\n" CONTAINS? TTRUE
+   s" the same builds compile 3 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" same: compiled 3 0\n" CONTAINS? TTRUE
    s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE ;
 
@@ -426,6 +438,14 @@ variable KEPT-NS
    A$ s" prog.map" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u:n :}
    s" the map lists RUN as main.f's" LABEL
    PROG-1 u s\"  RUN word loaded test/fixtures/file-objects/main.f\n" CONTAINS? TTRUE ;
+
+\ C's program, the same sequence's, has K as its entry: its map lists K. A failed C wrote none.
+: CHECK-SAME ( -- )
+   s" C" WHICH!
+   STATE-W-U @ 0= if exit then
+   C$ s" prog.map" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u:n :}
+   s" the map lists K as a word the build loaded" LABEL
+   PROG-1 u s"  K word loaded " CONTAINS? TTRUE ;
 
 \ A file's texts and the body's are placed, and a later file's literal finds an earlier file's text.
 : CHECK-FACTS ( -- )
@@ -478,7 +498,7 @@ variable KEPT-NS
    s" D" WHICH!
    s" the build wrote seven objects" LABEL  D$ OBJECTS FILES T=
    s" A" WHICH!  SAME-AS-D
-   CHECK-MAP CHECK-FACTS CHECK-STOP CHECK-EDIT CHECK-E ;
+   CHECK-MAP CHECK-FACTS CHECK-STOP CHECK-EDIT CHECK-SAME CHECK-E ;
 
 \ Moves A's program and map to prog-cold and prog-cold.map, so A2 writes its own.
 : COLD-ASIDE ( -- )
