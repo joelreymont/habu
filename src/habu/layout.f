@@ -16,8 +16,8 @@
 \ two differ. ENGINE-GPR:X64-DSTACK is read here by src/arch/x86-64/machine.f
 \ X64M:DSTACK-GPR and src/arch/x86-64/rt.f.
 \ Both targets' registers are declared on every target: this file cannot branch
-\ at top level and an ARM64 engine emits x86-64 code. DSTACK and MASK select the
-\ running target's pair at run time and refuse a target that has neither.
+\ at top level and an ARM64 engine emits x86-64 code. DSTACK selects the running
+\ target's register at run time and refuses a target that has neither.
 package ENGINE-GPR
 
 \ src/core/cell.f's CORE-LAYOUT-RC.
@@ -58,11 +58,6 @@ constant X64-MASK
 : DSTACK ( -- n )
    HB-TARGET-LINUX-X86-64? if X64-DSTACK exit then
    HB-TARGET-LINUX? HB-TARGET-MACOS? or if A64-DSTACK exit then
-   s" layout: ENGINE-GPR: unknown target" UNKNOWN-TARGET-RC die ;
-
-: MASK ( -- n )
-   HB-TARGET-LINUX-X86-64? if X64-MASK exit then
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or if A64-MASK exit then
    s" layout: ENGINE-GPR: unknown target" UNKNOWN-TARGET-RC die ;
 
 ;package

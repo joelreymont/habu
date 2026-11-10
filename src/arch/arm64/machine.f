@@ -37,9 +37,8 @@ PLATFORM-RESERVED-MASK
 constant TARGET-RESERVED-MASK
 
 \ The engine's claim, x19's data stack among it, is ENGINE-GPR:A64-MASK, the one
-\ authority: never name an engine register here. It is read by name, never as
-\ ENGINE-GPR:MASK, because the x86-64 compiler loads this file too (abi.f and
-\ frame.f require a64ir.f) and there MASK is the x86-64 claim.
+\ authority: never name an engine register here. It is read by name: the x86-64
+\ compiler loads this file too (abi.f and frame.f require a64ir.f).
 TARGET-RESERVED-MASK ENGINE-GPR:A64-MASK or constant RESERVED-MASK
 
 1 FILE-N lshift 1 -  RESERVED-MASK invert and  constant GPR-MASK
