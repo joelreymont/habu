@@ -2253,6 +2253,41 @@ variable KEYLESS-U
    NO-CACHE-KEY ;
 
 
+\ Neither the last request nor its journal input names an output limit.
+: NO-MAX-OUTPUT ( -- )
+   MODEL-PEER:SENT$ READER s" max_output_tokens" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE
+   INPUT$ s" configuration" MEMBER s" max_output_tokens" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
+\ The last request's output limit is the JSON number n.
+: MAX-OUTPUT-IS ( n -- )
+   {: n:n :}
+   s" max_output_tokens" SENT JSON:READ-TOKEN JSON:T-INT = ASSERT
+   JSON:READ-INT n = ASSERT JSON:READ-CLOSE ;
+: NEGATIVE-MAX-OUTPUT ( n -- n ) -1 M MODEL:MAX-OUTPUT! ;
+
+
+\ An output limit reaches every chat request and its journal input while set
+\ and no embedding request. 0 sends none and a negative limit is refused.
+: MAX-OUTPUTS ( -- )
+   CAPTURE
+   PURPOSE CHAT
+   NO-MAX-OUTPUT
+   9200 M MODEL:MAX-OUTPUT!
+   PURPOSE CHAT
+   9200 MAX-OUTPUT-IS
+   s" max_output_tokens" CONFIG 9200 INT-IS
+   PURPOSE CHAT
+   9200 MAX-OUTPUT-IS
+   s" embed" M MODEL:PURPOSE!
+   s" one" INPUTS s" two" M MODEL:INPUT+ M MODEL:EMBED
+   NO-MAX-OUTPUT
+   0 M MODEL:MAX-OUTPUT!
+   PURPOSE CHAT
+   NO-MAX-OUTPUT
+   0 [: NEGATIVE-MAX-OUTPUT ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   PURPOSE CHAT
+   NO-MAX-OUTPUT ;
+
+
 \ The last chat request names no service tier.
 : NO-TIER ( -- )
    MODEL-PEER:SENT$ READER s" service_tier" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
@@ -2667,12 +2702,14 @@ variable ASKED-U
 
 
 \ A count sends the members the count endpoint accepts in the chat body's
-\ order, with no store, stream, include, service_tier or prompt_cache_key: a
-\ tools call its tools, one required call and no parallel calls, a schema call
-\ its text format. It answers the peer's count, the body's length.
+\ order, with no store, stream, include, service_tier, prompt_cache_key or
+\ max_output_tokens: a tools call its tools, one required call and no parallel
+\ calls, a schema call its text format. It answers the peer's count, the body's
+\ length.
 : COUNT-BODY ( -- )
    TOOLS s" high" M MODEL:EFFORT!
    s" test:count" M MODEL:CACHE-KEY! s" flex" M MODEL:SERVICE-TIER!
+   9200 M MODEL:MAX-OUTPUT!
    s" tool-call" PREP CALLED$ ITEM
    M MODEL:COUNT-INPUT {: tools-n:n :}
    s" tool-call" COUNT-HEAD s" ," SB-APPEND CALLED$ SB-APPEND
@@ -2688,7 +2725,8 @@ variable ASKED-U
    S\" \qstrict\q:true,\qschema\q:" SB-APPEND SCHEMA$ SB-APPEND s" }}}" SB-APPEND
    MODEL-PEER:SENT$ SB$ STR= ASSERT
    schema-n MODEL-PEER:SENT$ nip = ASSERT
-   s" " M MODEL:EFFORT! s" " M MODEL:CACHE-KEY! s" " M MODEL:SERVICE-TIER! ;
+   s" " M MODEL:EFFORT! s" " M MODEL:CACHE-KEY! s" " M MODEL:SERVICE-TIER!
+   0 M MODEL:MAX-OUTPUT! ;
 
 
 create COUNTED 32768 allot    \ the input member of the last count body kept
@@ -3098,6 +3136,28 @@ variable COUNTED-U
    SETTINGS-CASES ;
 
 
+\ While a limit is set, a count and a compaction send and journal none, a
+\ negative limit keeps the earlier one, and setting one drops a prepared request.
+: MAX-OUTPUT-KINDS ( -- )
+   CAPTURE
+   9200 M MODEL:MAX-OUTPUT!
+   0 [: NEGATIVE-MAX-OUTPUT ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   PURPOSE CHAT
+   9200 MAX-OUTPUT-IS
+   PURPOSE s" valid" PREP M MODEL:COUNT-INPUT drop
+   NO-MAX-OUTPUT
+   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   9200 MAX-OUTPUT-IS
+   s" max_output_tokens" CONFIG 9200 INT-IS
+   PURPOSE s" valid" PREP CALLED$ ITEM M MODEL:COMPACT
+   NO-MAX-OUTPUT
+   0 M MODEL:MAX-OUTPUT!
+   PURPOSE s" valid" PREPARE
+   9200 M MODEL:MAX-OUTPUT!
+   CHAT-CODE MODEL:E-STATE = ASSERT
+   0 M MODEL:MAX-OUTPUT! ;
+
+
 : CASES ( -- )
    SETUP
    M MODEL:CANCEL 0= ASSERT
@@ -3125,7 +3185,7 @@ variable COUNTED-U
    M MODEL:CLOSE
    SETUP COMPACT-BODY COMPACT-THEN-CHAT COMPACT-JOURNAL COMPACT-PREPARED COMPACT-TOO-LARGE COMPACT-RESULT COMPACT-REPLY COMPACT-WINDOWS
    M MODEL:CLOSE
-   SETUP EFFORTS CACHE-KEYS
+   SETUP EFFORTS CACHE-KEYS MAX-OUTPUTS MAX-OUTPUT-KINDS
    M MODEL:CLOSE
    SETUP TIERS
    M MODEL:CLOSE

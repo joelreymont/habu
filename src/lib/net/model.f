@@ -299,9 +299,11 @@ ENDING-AT RECEIPT-BYTES + constant HASH-AT
 \ An event row: the offset and length in the event text of an event type, and
 \ how many events of it the stream carried.
 3 cells constant EVENT-ROW-BYTES
-\ The row the call in progress uses, plus one, then a row being added.
+\ The row the call in progress uses, plus one, the chat output limit, then a
+\ row being added.
 HASH-AT SHA256-CTX-BYTES + 96 + 7 + 7 invert and constant PICK-AT
-PICK-AT 1 cells + constant ROW-NEW-AT
+PICK-AT 1 cells + constant MAX-OUTPUT-AT
+MAX-OUTPUT-AT 1 cells + constant ROW-NEW-AT
 ROW-NEW-AT ROW-BYTES + constant INPUT-OFF-AT
 INPUT-OFF-AT INPUT-MAX cells + constant INPUT-LEN-AT
 INPUT-LEN-AT INPUT-MAX cells + constant VECTOR-OFF-AT
@@ -502,6 +504,9 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 \ The row the call in progress uses, plus one; 0 is none.
 : PICK-CELL ( ptr call -- ptr n )
    PICK-AT 1 cells REGION SPAN:$ drop CELL-VIEW ;
+\ The most output tokens a chat request asks for; 0 asks for no limit.
+: MAX-OUTPUT-CELL ( ptr call -- ptr n )
+   MAX-OUTPUT-AT 1 cells REGION SPAN:$ drop CELL-VIEW ;
 \ Cell k of the row being added.
 : ROW-NEW ( n ptr call -- ptr n )
    {: k:n c :}
@@ -635,6 +640,15 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
       compaction OF false ENDOF
    ;MATCH ;
 
+\ Whether a kind's journal input names the output limit: a chat's alone.
+: LIMITED? ( call-kind -- bool )
+   MATCH call-kind
+      chat OF true ENDOF
+      embed OF false ENDOF
+      tally OF false ENDOF
+      compaction OF false ENDOF
+   ;MATCH ;
+
 
 \ Whether kind k's configuration is the one the last call restored from a
 \ journal record, with no setter of it since: the record's kind builds the
@@ -740,6 +754,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    false c MODEL-CALL:JOURNAL-READY !
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    0 c PICK-CELL !
+   0 c MAX-OUTPUT-CELL !
    0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
    0 c MODEL-CALL:COUNTED !
@@ -919,6 +934,14 @@ public
    {: a:ptr u:n c :}
    c UNPREPARE drop
    u 0= if c CACHE-KEY-BUF BUF:CLEAR else a u c CACHE-KEY-BUF REPLACE-SOME then ;
+
+\ The most output tokens, reasoning included, of each later chat request alone,
+\ 0 none; a chat's journal input names it, so a refusal replays only under it.
+: MAX-OUTPUT! ( n ptr call -- )
+   {: n:n c :}
+   c UNPREPARE drop
+   n 0< if E-CONFIG throw then
+   n c MAX-OUTPUT-CELL ! ;
 
 \ The service tier every generation request without a purpose row names,
 \ such as flex; empty sends none, so the provider serves its default.
@@ -1495,6 +1518,13 @@ private
       JSON:WRITE-COMMA s" service_tier" c TIER$ JSON:WRITE-FIELD-S
    then ;
 
+\ The output limit member, when the call sets one.
+: OUTPUT-MEMBER ( ptr JSON:writer ptr call -- ptr JSON:writer )
+   {: c :}
+   c MAX-OUTPUT-CELL @ 0 > if
+      JSON:WRITE-COMMA s" max_output_tokens" c MAX-OUTPUT-CELL @ JSON:WRITE-FIELD-U
+   then ;
+
 \ The instructions and the input: the parts' message, then the items.
 : INPUT-MEMBERS ( ptr JSON:writer ptr call -- ptr JSON:writer )
    {: c :}
@@ -1526,6 +1556,7 @@ private
    JSON:WRITE-COMMA s" stream" true JSON:WRITE-FIELD-BOOL
    c EFFORT-MEMBER
    c SERVICE-MEMBERS
+   c OUTPUT-MEMBER
    c INPUT-MEMBERS
    c MODEL-CALL:FORM @ MATCH reply-form
       none OF E-CONFIG throw ENDOF
@@ -1543,7 +1574,7 @@ private
    c BODY-DONE ;
 
 \ A count's body: the chat body's members the count endpoint takes, without
-\ store, stream, include, prompt_cache_key or service_tier.
+\ store, stream, include, prompt_cache_key, service_tier or max_output_tokens.
 : COUNT-BODY ( ptr call -- )
    {: c :}
    c BODY-OPEN
@@ -1678,6 +1709,7 @@ private
    shaped c EFFORT$ nip 0<> and if
       JSON:WRITE-COMMA s" effort" c EFFORT$ JSON:WRITE-FIELD-S
    then
+   k LIMITED? if c OUTPUT-MEMBER then
    JSON:WRITE-COMMA s" endpoint" url url-u JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END
    JSON:WRITE-COMMA s" instructions" c SYSTEM$ JSON:WRITE-FIELD-S
@@ -3956,8 +3988,8 @@ public
 \ next CHAT or START sends that request, or REPLAY restores a saved reply for
 \ it. A call that changes the chat request (PARTS-RESET, TEXT+, IMAGE+, ITEM+,
 \ PURPOSE!, PURPOSE-MODEL! and the generation model, base URL, system, schema,
-\ tools, effort, service tier and cache key setters) or EMBED or START-EMBED
-\ first discards it, and the request is built again from PARTS-RESET.
+\ tools, effort, service tier, cache key and output limit setters) or EMBED or
+\ START-EMBED first discards it, and it is built again from PARTS-RESET.
 : JOURNAL-INPUT$ ( ptr call -- ptr u8 n )
    {: c :}
    c REQUIRE-OPEN
