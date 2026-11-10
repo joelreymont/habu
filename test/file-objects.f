@@ -100,7 +100,8 @@
 \ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell, SCRATCH-VARIABLE and
 \ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
 \ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
-\ level leaves a task running, into one out root, and each fails naming that file.
+\ level leaves a task running, into one out root, and each fails naming that file. X builds
+\ word-load-main.f, whose top level runs a word that loads a file, and fails saying so.
 \ Q builds kept-main.f, whose files' top levels leave an archive open and await an aio ticket, each
 \ keeping its handle; its program opens another of each and the kept handle is refused. N builds
 \ kept-genio.f with --repl, since genio-core.f calls the REPL's KEY1, and its program refuses a device
@@ -544,10 +545,9 @@ variable KEPT-NS
    s" A's root holds eight objects" LABEL  A$ OBJECTS FILES-B T=
    SAME-AS-B ;
 
-\ Builds a fixture to L's prog by tools/hb-build.f, since log.f requires and creates through does>
-\ (build.f's files may not), in the fixture out root every fixture build shares, with --repl when
-\ the flag is true; true on rc 0.
-: TOOL-BUILD ( CMD:command ptr u8 n bool -- CMD:command bool )
+\ Builds a fixture to L's prog in the shared fixture out root by tools/hb-build.f, since log.f
+\ requires and creates through does> (build.f's files may not); --repl when the flag is true.
+: BUILD-RC ( CMD:command ptr u8 n bool -- CMD:command n )
    {: src:ptr src-u:n repl:bool :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
@@ -557,7 +557,10 @@ variable KEPT-NS
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
    s" HABU_OUT" F$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
-   PROCESS:ENDING>RC RC>N {: rc:n :}
+   PROCESS:ENDING>RC RC>N ;
+
+: TOOL-BUILD ( CMD:command ptr u8 n bool -- CMD:command bool )
+   BUILD-RC {: rc:n :}
    rc 0<> if rc SHOW then
    s" the build exits 0" LABEL  rc 0 T=
    rc 0 = ;
@@ -565,21 +568,26 @@ variable KEPT-NS
 : FIXTURE-BUILD ( CMD:command ptr u8 n -- CMD:command bool ) false TOOL-BUILD ;
 : REPL-BUILD ( CMD:command ptr u8 n -- CMD:command bool ) true TOOL-BUILD ;
 
-\ Builds task-left-main.f as FIXTURE-BUILD builds a fixture; the linker refuses it at its end.
+\ Builds a fixture the build refuses and answers its exit code.
+: FAILING-BUILD ( CMD:command ptr u8 n -- CMD:command n ) false BUILD-RC ;
+
+\ The linker refuses task-left-main.f at its end.
 : TASK-LEFT-BUILD ( CMD:command -- CMD:command )
-   CMD:RESET
-   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
-   s" --" CMD:ARG+  s" test/fixtures/file-objects/task-left-main.f" CMD:ARG+
-   s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
-   s" HABU_OUT" F$ CMD:ENV+
-   ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
-   PROCESS:ENDING>RC RC>N {: rc:n :}
+   s" test/fixtures/file-objects/task-left-main.f" FAILING-BUILD {: rc:n :}
    CMD:ERR$ s" linker: " CONTAINS? {: named:bool :}
    CMD:ERR$ s" task-left-main.f: a task is still running at the file's end" CONTAINS?
    named and {: said:bool :}
    rc 0 =  said 0=  or if rc SHOW then
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
    s" the build says a task is still running at the file's end" LABEL  said TTRUE ;
+
+\ The loader refuses a file a word of word-load-main.f loads at its top level.
+: WORD-LOAD-BUILD ( CMD:command -- CMD:command )
+   s" test/fixtures/file-objects/word-load-main.f" FAILING-BUILD {: rc:n :}
+   CMD:ERR$ s" a word loaded a file during a build" CONTAINS? {: said:bool :}
+   rc 0 =  said 0=  or if rc SHOW then
+   s" the build exits nonzero" LABEL  rc 0<> TTRUE
+   s" the build says a word loaded a file" LABEL  said TTRUE ;
 
 \ Darwin's first lock of a mutex sets its signature, $4D55545A (the bytes ZTUM), and unlocking leaves it.
 : LOG-UNLOCKED ( -- )
@@ -796,7 +804,8 @@ variable KEPT-NS
    s" Q" WHICH!  s" test/fixtures/file-objects/kept-main.f" FIXTURE-BUILD 0= if exit then  KEPT-RUN
    s" N" WHICH!  s" test/fixtures/file-objects/kept-genio.f" REPL-BUILD 0= if exit then  GENIO-RUN
    s" W" WHICH!  TASK-LEFT-BUILD
-   s" W2" WHICH!  TASK-LEFT-BUILD ;
+   s" W2" WHICH!  TASK-LEFT-BUILD
+   s" X" WHICH!  WORD-LOAD-BUILD ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND

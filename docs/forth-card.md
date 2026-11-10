@@ -503,9 +503,10 @@ forth.md: **Errors**, **Integer arithmetic**.
   relative to itself (`../src/…`): a tree-relative name Habu also has loads
   Habu's file. Every file requires its **own** dependencies.
 - A file picks its target's file at its top level, `HB-TARGET-MACOS? [if]
-  require src/lib/secret/macos.f [then]`, never from inside a word. The
-  verifier follows a `[if]` only after a target predicate, or one and `0=`;
-  `[if]` and `[then]` are reserved.
+  require src/lib/secret/macos.f [then]`, never from inside a word: a build
+  refuses a load a word runs (`include: a word loaded a file during a
+  build`). The verifier follows a `[if]` only after a target predicate, or one
+  and `0=`; `[if]` and `[then]` are reserved.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws a stack underflow, a file that ends
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a

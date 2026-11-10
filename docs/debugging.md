@@ -70,6 +70,9 @@ For build-time underflow, also probe with `depth .`: `.s` walks the saved
 base-to-top range and can hide a negative depth after a native emitter corrupts
 the build stack. `.` pops and prints one value, for a specific intermediate.
 
+A probe in `src/habu/linker.f` shows only in a rebuilt engine:
+`tools/hb-build.f` runs the linker inside `bin/hb`, not the source file.
+
 ## The debugger: watched cells, `step`, breakpoints
 
 The engine bakes the debugger as package DEBUG (`src/habu/debug.f` lists its

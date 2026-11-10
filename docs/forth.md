@@ -997,10 +997,12 @@ Factor raw compiler and emitter code to the same standard.
   `HB-TARGET-MACOS? [if] require src/lib/secret/macos.f [then]`. There is no
   `[else]`; the other arm tests the negated flag. The source verifier follows a
   `[if]` only right after a target predicate, or a predicate and `0=`, and
-  `[if]` and `[then]` are reserved names. A word in a file a build loads never
-  loads a file: hb's loader runs a top-level `require` (src/habu/interpret.f
-  LOADER?), but a `required` inside a word calls the target's own loader, whose
-  rows no file object can name, and the build fails.
+  `[if]` and `[then]` are reserved names. A word a build runs never loads a
+  file: hb's loader runs a top-level `require` (src/habu/interpret.f LOADER?),
+  but a load a word runs (`included`, `required`, `script-required`,
+  `INCLUDE-LOAD`) calls the build's own copy of the loader, whose loads the
+  linker never sees, so that copy refuses: `include: a word loaded a file
+  during a build; load it with require or include at the file's top level`.
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
   standard input, in every file `--load`, `include` and `require` load, and in
   the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.

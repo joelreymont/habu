@@ -2068,6 +2068,19 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    rc 0= 0= if rc throw then
    a u q ;
 
+\ Whether this copy of the loader is the one a build compiled into the space it
+\ writes: a build is open and this file's cells lie in that space.
+: BUILD-COPY? ( -- bool )
+   data-base BOOT:IMAGE-BASE-CELL + @ {: base:n :}
+   INCLUDE-DEPTH NULL-PTR - {: cell:n :}
+   base 0 <>  cell base >= and  cell here NULL-PTR - < and ;
+
+\ During a build only hb's loader reads a file: the linker sees none the
+\ build's copy reads (test/file-objects.f WORD-LOAD-BUILD).
+: HOST-LOAD ( -- )
+   BUILD-COPY? 0= if exit then
+   s" include: a word loaded a file during a build; load it with require or include at the file's top level" INCLUDE-DIE ;
+
 \ The row decision belongs to the whole load, including path resolution and
 \ reader callbacks before PUSH. Its result is consumed before returning.
 : LOAD-RAW ( ptr u8 n -- )
@@ -2080,6 +2093,7 @@ public
 \ A completed source range leaves definitions live even if a unit callback
 \ later throws. A require keeps its row in that case.
 : LOAD-RESULT ( ptr u8 n -- bool n )
+   HOST-LOAD
    0 LAST-LOAD-EVAL-OK !
    [: 2dup LOAD-RAW ;] catch {: rc:n :}
    2drop
@@ -2099,6 +2113,7 @@ public
 \ opens a source frame and makes its root current until the callback returns.
 : WITH-BYTES ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
    {: path:ptr pathu:n q :}
+   HOST-LOAD
    path pathu CONFINE INCLUDE-PATH0 drop
    RESOLVED-ROOT$ ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
    q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
