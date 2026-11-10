@@ -56,7 +56,6 @@ TYPED-VARIABLE PROGRESS step
 public
 -9690 s" a file of this build failed or DP moved back in its space: the build loads no other file and writes no object or program" ERROR:CODE E-FAILED
 -9691 s" a file of this build changed an earlier record or code, or stored into a cell no file holds" ERROR:CODE E-STORE
--9692 s" a file a linked file requested, or a linked file's later part, did not check at its turn: the next build compiles them" ERROR:CODE E-STALE
 -9693 s" a file of this build made a wordlist no package of it holds" ERROR:CODE E-WORDLIST
 -9694 s" a file of this build left a task running at its end: its object would hold data the task can still change" ERROR:CODE E-LIVE-TASK
 private
@@ -175,9 +174,6 @@ KEY-BYTES 8 + constant LOADER-BYTES
 create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
 create BUILT BUF:HDR-BYTES allot
-\ BUILT's row count as the outermost load starts (ENTER): a later build checks that load's tree
-\ (CHECK-PIECES) while a piece built since can be ROW-PENDING, with no word times.
-variable ROOT-BUILT
 create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
 \ The object's WORDS rows, one per earlier word it refers to, spells or reaches from a word it
 \ ran: its FILES row k from 1, its sum and count (REC-IDS) and its time (WORD-TIMES); WORD-RECS
@@ -192,17 +188,9 @@ create NAMED-RECS BUF:HDR-BYTES allot \ the records with a time the running scan
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
 create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling file's pieces ran, 8 bytes each (RAN-RECORD)
 create REACHED BUF:HDR-BYTES allot   \ the object's REACHED: the FILES rows of the pieces whose data RAN-FILES+ reached, 8 bytes each
-create FRAMES BUF:HDR-BYTES allot    \ each compiling loader's object so far while its request loads
-create PARKED BUF:HDR-BYTES allot    \ each checked or linking file's place in its object while its request is checked or loads
-create PENDING BUF:HDR-BYTES allot   \ the pieces a root's check passed, in load order, as FILES rows
-create PENDING-PATHS BUF:HDR-BYTES allot \ the paths those pieces registered, each a FIELD+
+create PENDING-PATHS BUF:HDR-BYTES allot \ the paths the checked part's earlier acts provided, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
-256 constant OBJECT-DEPTHS
-OBJECT-DEPTHS BUF:HDR-BYTES * BUFFER: OBJECTS \ OBJECT at each depth of requests (PARK)
-variable OBJECT-DEPTH                \ the frames on PARKED, and OBJECT's index in OBJECTS
-: OBJECT-AT ( n -- ptr u8 ) BUF:HDR-BYTES * OBJECTS + ;
-\ A key's fields, then the object of the file at this depth; a parked loader's stays in its own (PARK).
-: OBJECT ( -- ptr u8 ) OBJECT-DEPTH @ OBJECT-AT ;
+create OBJECT BUF:HDR-BYTES allot    \ the object WRITE-OBJECT lays or READ-OBJECT reads
 create PRIOR BUF:HDR-BYTES allot     \ the compiling file's object as the last build left it
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
 create LATE BUF:HDR-BYTES allot      \ the file's late private wordlists
@@ -214,9 +202,6 @@ DYNAMIC-BUFFER BUILT-PATHS n         \ BUILT row r's path: its FIELD+'s offset i
 KEY-BYTES BUFFER: FILE-KEY
 3 8 * constant INPUT-BYTES
 INPUT-BYTES BUFFER: INPUT-STAMP      \ the source's stamp (INPUT!), the object's INPUT
-KEY-BYTES BUFFER: WANT-KEY           \ a checked request's FILES row as its loader names it: key, piece, time
-variable WANT-PIECE
-variable WANT-TIME
 
 \ clock_gettime writes a struct timespec: seconds, then nanoseconds, eight bytes each.
 $10 constant TIMESPEC-BYTES
@@ -295,12 +280,11 @@ variable PLACES-CAP                  \ its slots, a power of two
 variable PLACES-N                    \ its filled slots
 variable OWN-SERIAL                  \ the last check's number (OWN-IDS!)
 \ Record r's mark: the serial of the object that last gave it a WORDS row (WORD-ROW+), 0 for none.
-\ Each OBJECT-OPEN takes the next of SERIALS, which only grows, so no object takes another's mark;
-\ POP-FRAME gives back the marks a nested object overwrote (RELIST).
+\ Each OBJECT-OPEN takes the next of SERIALS, which only grows, so no object takes another's mark.
 DYNAMIC-BUFFER LISTED-BY n
 \ BUILT row r's mark at 2r: the serial of the object that last asked for its FILES row (REF-FILE),
-\ that row from 1 at 2r + 1. Only OBJECT-OPEN (under a new serial), REF-FILE's append and POP-FRAME
-\ (with the frame's serial) change the FILES rows, so a mark with the object's serial names its row.
+\ that row from 1 at 2r + 1. Only OBJECT-OPEN (under a new serial) and REF-FILE's append change the
+\ FILES rows, so a mark with the object's serial names its row.
 DYNAMIC-BUFFER REF-OF n
 \ Record r's BUILT row plus 1, 0 for a record no row holds (BUILT+); its cells from FIRST-REC up
 \ to REC-ROW-N are written.
@@ -308,8 +292,7 @@ DYNAMIC-BUFFER REC-ROW n
 variable REC-ROW-N
 variable SERIALS
 variable OBJECT-SERIAL
-\ Record r's mark: the serial of the object that last took it as a seed (RAN-RECORD). A nested
-\ object overwrites marks, so after POP-FRAME a record can be a seed twice; the walk visits it once.
+\ Record r's mark: the serial of the object that last took it as a seed (RAN-RECORD).
 DYNAMIC-BUFFER RAN-BY n
 4 8 * constant WORD-ROW-BYTES
 DYNAMIC-BUFFER RETIRED n             \ the piece's retired records (RETIRED!): index, then wordlist cell
@@ -323,11 +306,12 @@ variable LISTED-N
 DYNAMIC-BUFFER HSTORE-AT n
 DYNAMIC-BUFFER HSTORE-ROW n
 variable HSTORES-N
-\ A built piece's stores below its own data (STORER+) and changed earlier records (CHANGER+): pair
-\ p holds at 2p the cell's or record's BUILT row, -1 for header data, and at 2p + 1 the piece's row.
+\ Each store a piece made below its own data (STORER+) and each earlier record it changed
+\ (CHANGER+), compiled or linked: pair p holds at 2p the BUILT row holding the cell or the record,
+\ -1 for header data, and at 2p + 1 the piece's row.
 DYNAMIC-BUFFER STORERS n
 variable STORERS-N                   \ its pairs
-DYNAMIC-BUFFER WALKED n              \ BUILT row r's mark: RAN-FILES+'s walk reached its data, or REACHED-CK listed it; PENDING row q's at BUILT-N + q
+DYNAMIC-BUFFER WALKED n              \ BUILT row r's mark: RAN-FILES+'s walk reached its data
 DYNAMIC-BUFFER REACH n               \ the cells the walk reached, each once, in EDGES' form (EDGE+)
 variable REACH-N
 \ A record's or emission's cell holds REACH-STAMP once the running walk reached it; each walk
@@ -418,19 +402,6 @@ variable RUN-CAP                     \ its slots, a power of two
 variable RUN-N                       \ the running run's filled slots
 variable RUN-ID                      \ the running run's id, from 1
 variable RUN-AT                      \ the offset in SPELLS of the running run's first sum
-\ The records of the pieces a root's check passed (PENDING), as PENDING-REC+ lays them: each piece's
-\ own, then the earlier records it changes. HIT marks their PENDING-HITS rows as it marks BUILT rows.
-DYNAMIC-BUFFER PENDING-RECS n
-variable PENDING-RECS-N              \ its records
-DYNAMIC-BUFFER PENDING-FIRST n       \ PENDING row p's first record
-DYNAMIC-BUFFER PENDING-OWN n         \ PENDING row p's own record count, the records PENDING-KEY and PENDING-CHANGED+ index
-DYNAMIC-BUFFER PENDING-SLOTS n       \ the records by sum: slot s holds 1 + a record, 0 while empty
-variable PENDING-CAP                 \ its slots, a power of two
-DYNAMIC-BUFFER PENDING-HITS n        \ PENDING row p's mark, as HITS marks a BUILT row
-\ STORERS' pairs for the pending pieces: at 2i the holder, -1 for header data, a BUILT row or -2 - q
-\ for PENDING row q (PENDING-HOLDER), and at 2i + 1 the storing PENDING row.
-DYNAMIC-BUFFER PENDING-STORERS n
-variable PENDING-STORERS-N           \ its pairs
 
 : SLOT-SUM ( n -- ptr n ) 3 * NAMES ;
 : SLOT-ROW ( n -- ptr n ) 3 * 1 + NAMES ;
@@ -450,16 +421,6 @@ variable PENDING-STORERS-N           \ its pairs
    cap 2 * 0 ?do 0 i RUN-SUMS ! loop
    cap RUN-CAP !  0 RUN-N ! ;
 
-\ PENDING-SLOTS with cap slots, all empty.
-: PENDING-SLOTS-CLEAR ( n -- )
-   {: cap:n :}
-   cap PENDING-SLOTS-RESERVE
-   cap 0 ?do 0 i PENDING-SLOTS ! loop
-   cap PENDING-CAP ! ;
-
-\ No pending record nor pending pair.
-: PENDING-RECS-CLEAR ( -- ) 0 PENDING-RECS-N !  0 PENDING-STORERS-N !  64 PENDING-SLOTS-CLEAR ;
-
 : DISPOSE-OBJECTS ( -- )
    WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
    RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
@@ -468,12 +429,11 @@ variable PENDING-STORERS-N           \ its pairs
    FILE-ROWS-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
-   LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  REQ-PATH BUF:DISPOSE
-   PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-RECS BUF:DISPOSE
+   LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT BUF:DISPOSE  REQ-PATH BUF:DISPOSE
+   PENDING-PATHS BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-RECS BUF:DISPOSE
    SPELLS BUF:DISPOSE  NAMED-RECS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HIT-STAMPS-RELEASE  HITS-RELEASE  OPENED-RELEASE
-   OLD-NAMES-RELEASE  NAMES-RELEASE
-   PENDING-RECS-RELEASE  PENDING-FIRST-RELEASE  PENDING-STORERS-RELEASE  PENDING-OWN-RELEASE  PENDING-SLOTS-RELEASE  PENDING-HITS-RELEASE ;
+   OLD-NAMES-RELEASE  NAMES-RELEASE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
@@ -490,12 +450,9 @@ variable PENDING-STORERS-N           \ its pairs
    SPELLS 256 BUF:N>BLEN BUF:INIT
    RAN-RECS 256 BUF:N>BLEN BUF:INIT
    REACHED 256 BUF:N>BLEN BUF:INIT
-   FRAMES 256 BUF:N>BLEN BUF:INIT
-   PARKED 256 BUF:N>BLEN BUF:INIT
-   PENDING 256 BUF:N>BLEN BUF:INIT
    PENDING-PATHS 256 BUF:N>BLEN BUF:INIT
    REQ-PATH 256 BUF:N>BLEN BUF:INIT
-   OBJECT-DEPTHS 0 ?do i OBJECT-AT 256 BUF:N>BLEN BUF:INIT loop  0 OBJECT-DEPTH !
+   OBJECT 256 BUF:N>BLEN BUF:INIT
    PRIOR 256 BUF:N>BLEN BUF:INIT
    CODE-COPY 256 BUF:N>BLEN BUF:INIT
    LATE 256 BUF:N>BLEN BUF:INIT
@@ -508,7 +465,7 @@ variable PENDING-STORERS-N           \ its pairs
    0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
    0 EDGES-N !
    1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED !  0 IDENTIFIED !  0 OWN-SERIAL !  FIRST-REC @ REC-ROW-N !
-   1024 5 * PLACES-RESERVE  1024 5 * 0 ?do 0 i PLACES ! loop  1024 PLACES-CAP !  0 PLACES-N !  PENDING-RECS-CLEAR ;
+   1024 5 * PLACES-RESERVE  1024 5 * 0 ?do 0 i PLACES ! loop  1024 PLACES-CAP !  0 PLACES-N ! ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
 : INIT-OBJECTS ( -- )
@@ -929,32 +886,6 @@ variable PENDING-STORERS-N           \ its pairs
    OPENED-N @ 1 + OPENED-RESERVE
    OPENED-N @ OPENED !  1 OPENED-N +! ;
 
-\ Field f of pending record r (PENDING-RECS).
-: PENDING-REC@ ( n n -- n )
-   {: r:n f:n :}
-   r 4 * f + PENDING-RECS @ ;
-
-: PENDING-N ( -- n ) PENDING BYTES$ nip FILES-ROW-BYTES / ;
-
-\ PENDING-HIT's slot s: its record's PENDING row marked when the record has the sum and an OPENED? key.
-: PENDING-SLOT-HIT ( n n -- )
-   {: s:n sum:n :}
-   s PENDING-SLOTS @ 1 - {: r:n :}
-   r 0 PENDING-REC@ sum = if
-      r 1 PENDING-REC@ OPENED? if  1  r 3 PENDING-REC@ PENDING-HITS !  then
-   then ;
-
-\ Marks every PENDING row a pending record with the sum is in, as HIT marks a BUILT row. Half
-\ PENDING-SLOTS' slots at most are filled (PENDING-REC+), so a probe always ends.
-: PENDING-HIT ( n -- )
-   {: sum:n :}
-   PENDING-CAP @ 1 - {: mask:n :}
-   sum mask and
-   begin dup PENDING-SLOTS @ 0<> while
-      dup sum PENDING-SLOT-HIT
-      1 + mask and
-   repeat drop ;
-
 \ A NAMES slot's record hit: the build's body's in BODY-HIT, a piece named whole in HITS, else
 \ the record once per scan in HIT-STAMPS, HIT-N and NAMED-RECS.
 : HIT-SLOT ( n -- )
@@ -965,8 +896,7 @@ variable PENDING-STORERS-N           \ its pairs
    v HIT-STAMPS @ HIT-STAMP @ = if exit then
    HIT-STAMP @ v HIT-STAMPS !  1 HIT-N +!  v NAMED-RECS U64+ ;
 
-\ Marks every record NAMES holds the sum for, a private name's only once its package is open, then
-\ each pending row holding a record of the sum, by the same rule (PENDING-HIT).
+\ Marks every record NAMES holds the sum for, a private name's only once its package is open.
 : HIT ( n -- )
    {: sum:n :}
    NAMES-CAP @ 1 - {: mask:n :}
@@ -976,8 +906,7 @@ variable PENDING-STORERS-N           \ its pairs
          dup SLOT-PKG @ OPENED? if dup SLOT-ROW @ HIT-SLOT then
       then
       1 + mask and
-   repeat drop
-   sum PENDING-HIT ;
+   repeat drop ;
 
 : RUN-TAKEN? ( n n -- bool )
    {: s:n sum:n :}
@@ -1075,11 +1004,10 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    loop
    SKIP @ 0= if src u 32 WORD-END then ;
 
-\ A new scan: no row marked, BUILT's or PENDING's, nor the build's body, nor a record (HIT-STAMPS).
+\ A new scan: no row marked, nor the build's body, nor a record (HIT-STAMPS).
 : HITS-CLEAR ( -- )
    BUILT-N 1 + HITS-RESERVE
    BUILT-N 0 ?do 0 i HITS ! loop
-   PENDING-N 0 ?do 0 i PENDING-HITS ! loop
    false BODY-HIT !
    2 HIT-STAMP +!  0 HIT-N !  NAMED-RECS BUF:CLEAR ;
 
@@ -2224,12 +2152,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    RAN-RECS BUF:CLEAR  TIMES BUF:CLEAR
    1 SERIALS +!  SERIALS @ OBJECT-SERIAL ! ;
 
-\ OBJECT as REFS then PIECES, FACTS-AT moved into it, as a request ends a piece.
-: PIECE-LAY ( -- )
-   REFS BYTES$ {: refs:ptr refsu:n :}
-   OBJECT BUF:CLEAR  refs refsu OBJECT SPAN+  PIECES BYTES$ OBJECT SPAN+
-   refsu FACTS-AT +! ;
-
 \ OBJ-PATHS: FILE-KEY's path, then each REFS row's, once each.
 : PATHS-LAY ( -- )
    OBJ-PATHS BUF:CLEAR
@@ -2407,12 +2329,10 @@ variable RD-END
 : PRIOR@ ( n -- n ) PRIOR BYTES$ drop swap + LE:U64@ ;
 
 
-\ FILE-ROWS' value for a FILES row whose piece a root's check passed but no BUILT row holds yet
-\ (PENDING), and for one no BUILT row holds and no check passed.
--1 constant ROW-PENDING
+\ FILE-ROWS' value for a FILES row no BUILT row holds.
 -2 constant ROW-ABSENT
 
-\ FILES row k's BUILT row's number at the byte offset (BUILT's layout); not for a pending row.
+\ FILES row k's BUILT row's number at the byte offset (BUILT's layout).
 : BUILT@ ( n n -- n )
    {: k:n off:n :}
    k FILE-ROWS @ BUILT-AT off + LE:U64@ ;
@@ -2427,17 +2347,11 @@ variable RD-END
    {: k:n :}
    OBJECT BYTES$ drop  HEADER-BYTES INPUT-BYTES +  k 1 - FILES-ROW-BYTES * +  + ;
 
-\ A FILES row a reference may name: built, or pending.
+\ A FILES row a reference may name: one a BUILT row holds.
 : FILE-IN? ( n -- bool )
    {: k:n :}
    k FILE-ROW? 0= if false exit then
    k FILE-ROWS @ ROW-ABSENT <> ;
-
-\ A FILES row naming a pending piece: the reference is checked again as that file links.
-: PENDING? ( n -- bool )
-   {: k:n :}
-   k FILE-ROW? 0= if false exit then
-   k FILE-ROWS @ ROW-PENDING = ;
 
 
 : FILE-BYTES ( n -- n )
@@ -2479,7 +2393,7 @@ variable RD-END
 
 
 \ A record reference (file, sum, count; ID-REF+): this file's record number below the bound
-\ (OWN-REC), or an earlier file's record (PLACE); -1 for a pending file's or once the object is BAD.
+\ (OWN-REC), or an earlier file's record (PLACE); -1 once the object is BAD.
 : ID-REF-CK ( n n n n -- n )
    {: file:n sum:n count:n bound:n :}
    GOOD? 0= if -1 exit then
@@ -2489,7 +2403,6 @@ variable RD-END
       o exit
    then
    file FILE-IN? 0= if BAD -1 exit then
-   file PENDING? if -1 exit then
    file FILES-ROW sum count PLACE {: r:n :}
    r 0< if BAD then
    r ;
@@ -2509,7 +2422,6 @@ variable RD-END
       f e OWN-FUNS >= if BAD then exit
    then
    file FILE-IN? 0= if BAD exit then
-   file PENDING? if exit then
    file FILES-ROW sum count PLACE {: r:n :}
    r 0< if BAD exit then
    r OWNER-EM {: em:n :}
@@ -2542,7 +2454,6 @@ variable RD-END
       y 0< if BAD exit then
       x 0= if y OWN-DATA-MAX @ max OWN-DATA-MAX ! exit then
       x FILE-IN? 0= if BAD exit then
-      x PENDING? if exit then
       y x FILE-BYTES > if BAD then exit
    then
    tag 4 = if
@@ -2569,50 +2480,14 @@ variable RD-END
    0 false ;
 
 
-\ The PENDING row equal to the FILES row, and true; false when none.
-: PENDING-AT ( ptr u8 -- n bool )
-   {: at:ptr :}
-   PENDING BYTES$ {: a:ptr u:n :}
-   u FILES-ROW-BYTES / 0 ?do
-      a i FILES-ROW-BYTES * + FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if i true unloop exit then
-   loop
-   0 false ;
-
-
-\ FILES row k's piece, built or pending, as a PENDING-STORERS holder: its BUILT row, else -2 - q
-\ for its PENDING row q.
-: PENDING-HOLDER ( n -- n )
-   {: k:n :}
-   k PENDING? if  k FILES-ROW PENDING-AT drop  -2 swap -  exit  then
-   k FILE-ROWS @ ;
-
-\ The row a holder other than header data has once the pending pieces link: PENDING row q's is
-\ BUILT-N + q, as LINK-FILE adds each piece's BUILT row in the order the check passed them.
-: HOLDER-ROW ( n -- n )
-   {: held:n :}
-   held 0 >= if held exit then
-   BUILT-N  -2 held -  + ;
-
-\ The pair (holder held, PENDING row p) onto PENDING-STORERS unless it is the newest pair, as PAIR+.
-: PENDING-PAIR+ ( n n -- )
-   {: held:n p:n :}
-   PENDING-STORERS-N @ {: n:n :}
-   n 0 > if
-      n 1 - 2 * PENDING-STORERS @ held =  n 1 - 2 * 1 + PENDING-STORERS @ p =  and if exit then
-   then
-   n 1 + 2 * PENDING-STORERS-RESERVE
-   held n 2 * PENDING-STORERS !  p n 2 * 1 + PENDING-STORERS !
-   n 1 + PENDING-STORERS-N ! ;
-
-
-\ FILE-ROWS from 1 for OBJECT's FILES rows: each its BUILT row, else ROW-PENDING or ROW-ABSENT.
+\ FILE-ROWS from 1 for OBJECT's FILES rows: each its BUILT row, else ROW-ABSENT.
 : MAP-FILES ( -- )
    FILES-N @ 0 ?do
       i 1 + FILES-ROW {: at:ptr :}
       at BUILT-MATCH if
          i 1 + FILE-ROWS !
       else
-         drop  at PENDING-AT nip if ROW-PENDING else ROW-ABSENT then  i 1 + FILE-ROWS !
+         drop  ROW-ABSENT i 1 + FILE-ROWS !
       then
    loop ;
 
@@ -2635,9 +2510,8 @@ variable RD-END
    FILES-N @ 0 ?do i 1 + FILE-ROWS @ ROW-ABSENT = if BAD unloop exit then loop ;
 
 
-\ After FILES-CK: bad when the source names a record of the build's body, names a piece whole
-\ (NAMES-CK) that no whole FILES row, one with the BUILT row's time, lists, or names a pending
-\ piece (PENDING-HIT) FILES does not list: the pending piece links before it.
+\ After FILES-CK: bad when the source names a record of the build's body, or names a piece whole
+\ (NAMES-CK) that no whole FILES row, one with the BUILT row's time, lists.
 : NAMED-CK ( -- )
    GOOD? 0= if exit then
    BODY-HIT @ if BAD exit then
@@ -2647,24 +2521,19 @@ variable RD-END
          i 1 + FILES-ROW BUILT-TIME + LE:U64@  row BUILT-AT BUILT-TIME + LE:U64@  =
          row HITS @ 0<>  and if 2 row HITS ! then
       then
-      row ROW-PENDING = if
-         i 1 + FILES-ROW PENDING-AT if 2 swap PENDING-HITS ! else drop then
-      then
    loop
-   BUILT-N 0 ?do i HITS @ 1 = if BAD then loop
-   PENDING-N 0 ?do i PENDING-HITS @ 1 = if BAD then loop ;
+   BUILT-N 0 ?do i HITS @ 1 = if BAD then loop ;
 
 
-\ REACHED's u bytes from RD-AT, each a FILES row but a last -1 (RAN-FILES+); bad when a built or
-\ pending piece that stored into a reached piece's data or records, or into header data once the -1
-\ is there (STORERS), is not reached, or when the reached pieces link out of order: of two stores
-\ into one cell the later holds.
+\ REACHED's u bytes from RD-AT, each a FILES row but a last -1 (RAN-FILES+); bad when a piece
+\ that stored into a reached piece's data, or into header data once the -1 is there (STORERS), is
+\ not reached, or when the reached pieces are built in another order than RAN-FILES+ listed them:
+\ of two stores into one cell the later holds.
 : REACHED-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
    u 0= if exit then
-   BUILT-N PENDING-N + 1 + {: marks:n :}
-   marks WALKED-RESERVE  marks 0 ?do 0 i WALKED ! loop
+   BUILT-N 1 + WALKED-RESERVE  BUILT-N 0 ?do 0 i WALKED ! loop
    false -1  u 8 / 0 ?do
       {: own:bool last:n :}
       RD-U64 {: k:n :}
@@ -2672,8 +2541,7 @@ variable RD-END
          true last
       else
          k FILE-ROW? 0= if BAD unloop exit then
-         k FILE-ROWS @ {: at:n :}
-         at ROW-PENDING = if k PENDING-HOLDER HOLDER-ROW else at then {: row:n :}
+         k FILE-ROWS @ {: row:n :}
          row 0 >= if
             row last <= if BAD unloop exit then
             1 row WALKED !  own row
@@ -2687,12 +2555,6 @@ variable RD-END
       i 2 * STORERS @ {: held:n :}
       held -1 = if header else held WALKED @ 0<> then if
          i 2 * 1 + STORERS @ WALKED @ 0= if BAD then
-      then
-   loop
-   PENDING-STORERS-N @ 0 ?do
-      i 2 * PENDING-STORERS @ {: held:n :}
-      held -1 = if header else held HOLDER-ROW WALKED @ 0<> then if
-         BUILT-N  i 2 * 1 + PENDING-STORERS @ +  WALKED @ 0= if BAD then
       then
    loop ;
 
@@ -2812,7 +2674,7 @@ variable RD-END
 \ WORDS' u bytes from RD-AT, a multiple of WORD-ROW-BYTES (WORD-ROW+): bad when a row's FILES row is
 \ not in FILES, is time 0 (REF-FILE) and not built, or is built and has no record of the row's sum
 \ and count (PLACE) or gives it another time, or when the source spells a record with a time no row
-\ lists (NAMES-CK); a whole row's pending or absent piece waits for its FILES row (ROWS-CK).
+\ lists (NAMES-CK); a whole row's absent piece waits for its FILES row (ROWS-CK).
 : WORDS-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
@@ -2920,14 +2782,13 @@ variable RD-END
 
 \ Whether the package a reference names, by its file and the record PKG-REF-CK answers, has a
 \ private wordlist: an earlier entry gave it one, it is an earlier file's package record holding one
-\ or granted one (GRANT+), or a pending piece's, which its link checks again.
+\ or granted one (GRANT+).
 : PRIVATE? ( n n -- bool )
    {: file:n n:n :}
    PRIVS-N @ 0 ?do
       i 2 * PRIVS @ file =  i 2 * 1 + PRIVS @ n =  and if true unloop exit then
    loop
    file 0= if false exit then
-   file PENDING? if true exit then
    n GRANTED?  n XREF-REC XREF-PKG-PRIVATE 0<>  or ;
 
 
@@ -2937,7 +2798,6 @@ variable RD-END
    PKG-REF-CK {: file:n n:n :}
    GOOD? 0= if exit then
    file 0= if BAD exit then
-   file PENDING? if exit then
    n XREF-REC XREF:SEALED? if BAD then ;
 
 
@@ -3009,15 +2869,12 @@ variable RD-END
    RD-U64 {: kind:n :}
    kind 0<  kind KIND-TYPE >  or if BAD exit then
    kind KIND-PRIVATE = if
-      \ A package holding a private wordlist gains none (OUTER:PACKAGE-PRIVATE refuses it); a
-      \ pending file's package is PRIVATE? whatever PRIVS holds, so it is not added.
+      \ A package holding a private wordlist gains none (OUTER:PACKAGE-PRIVATE refuses it).
       PKG-REF-CK {: file:n n:n :}
       GOOD? if
-         file PENDING? 0= if
-            file n PRIVATE? if BAD else
-               file n PRIV+
-               file 0<> if n GRANT+ then
-            then
+         file n PRIVATE? if BAD else
+            file n PRIV+
+            file 0<> if n GRANT+ then
          then
       then
       -1 LAST-EM ! exit
@@ -3101,7 +2958,6 @@ variable RD-END
    tag x y z w top  top EM-RECS @ 1 +  CODE-REF-CK
    GOOD? 0= if exit then
    x 0= if  y z OWN-REC REC-KIND KIND-DOES <> if BAD then  exit  then
-   x PENDING? if exit then
    x FILES-ROW y z PLACE {: r:n :}
    r 1 <  if BAD exit then
    r 1 - XREF-DOES-COMPANION? 0= if BAD then ;
@@ -3180,7 +3036,7 @@ variable RD-END
    GOOD? 0= if exit then
    tag 3 = if
       y 7 and 0<> if BAD exit then
-      x PENDING? 0= if  y x FILE-BYTES >= if BAD exit then  then
+      y x FILE-BYTES >= if BAD exit then
    then
    tag 4 = if x 7 and 0<> if BAD exit then then
    RD-U64 RD-U64 {: kind:n v:n :}
@@ -3591,7 +3447,7 @@ variable KEPT-ROWS-N
 : PART-FRESH? ( -- bool )
    STAMPED? 0= if false exit then
    HITS-CLEAR                          \ the check replays NAMES into HITS
-   PENDING BUF:CLEAR  PENDING-PATHS BUF:CLEAR  0 GRANTS-N !
+   PENDING-PATHS BUF:CLEAR  0 GRANTS-N !
    READ-OBJECT 0= if false exit then
    HEADER-CK
    REQS-N @ 0<> if 0 else -1 then PIECE-CK
