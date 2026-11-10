@@ -3,11 +3,12 @@
 \ function of the files, not of the process. Cold builds A, B and D, each with
 \ HABU_OUT its own temp directory, compile count.f, shape.f, main.f, reopen.f,
 \ mark.f and again.f twice, and load host.f after they close. A writes seven
-\ objects. D, in `shifted` mode, declares a package and lays three cells first,
-\ so its records, emissions, wordlist ids and data sit elsewhere, and writes
-\ seven with A's bytes: an absolute index or address in an object shows as
-\ different bytes. B loads pad.f first and writes eight, under A's names and
-\ pad.f's. Build C, in `stop` mode, runs its refused builds, its mixed builds,
+\ objects, each found by the end of its path under <out>/obj. D, in `shifted`
+\ mode, declares a package and lays three cells first, so its records,
+\ emissions, wordlist ids and data sit elsewhere, and writes seven whose bytes
+\ from PIECES on are A's: an absolute index or address in an object shows as
+\ different bytes. B loads pad.f first and writes eight, A's seven and pad.f's.
+\ Build C, in `stop` mode, runs its refused builds, its mixed builds,
 \ three edit sequences, the twins and the crafted sequence in one out root: a
 \ build of count.f alone links it, one of count.f and shape.f then compiles
 \ shape.f alone, after count.f links, and the next compiles none; the edit,
@@ -26,28 +27,31 @@
 \ alone, inside again and alone, compiles 3, 1, 3 and 0: only a load at top
 \ level writes or links an object. Two files named a.f in two directories, each built alone in turn twice,
 \ compile 1, 1, 0 and 0: each keeps an object of its own. The crafted
-\ sequence's builds of e.f over seven objects the link refuses or links wrong,
-\ each with its checksum written again, compile 1, and a plain build after them
-\ links. C writes nineteen objects, and the two whose names A also wrote,
-\ count.f's and shape.f's, have A's bytes: a refused file writes none. A's
+\ sequence's builds of e.f over seven objects the link refuses or links wrong
+\ compile 1, and a plain build after them links. C writes nineteen objects, and
+\ the two of A's files, count.f's and shape.f's, have A's bytes from PIECES on:
+\ a refused file writes none. A's
 \ printed state gives FILE-OBJECTS-COUNT:HI's record the facts text `( -- ) `
 \ and FILE-OBJECTS-BODY-SUM's, which the build's body defines, `( n n -- n ) `,
 \ and main.f's literal with the bytes of HI's text lies at that text. Objects
-\ carry texts by value: D's, A's and C's shared objects stay byte-equal. A's
+\ carry texts by value: D's and C's shared objects equal A's from PIECES on;
+\ their heads hold the pieces' times, which differ between out roots. A's
 \ program prints Hi and ok and exits 0, run in its own process: the boundary
 \ under test is the written file. A's map lists RUN as main.f's. Then
-\ five warm builds in A's out root. A2 compiles none, prints A's state and
+\ four warm builds in A's out root. A2 compiles none, prints A's state and
 \ writes A's program and map byte for byte, A's objects unchanged and its
-\ records' texts A's. A3, after one byte of the string green in an object
-\ changes, A4, after count.f's object is cut to half its length, and A5, on
-\ macOS, after it grows to 2^48 bytes, more than a build can hold, each compile
-\ the damaged file alone, whose object comes back with its old bytes, so the
-\ later files link, with A2's outcome. B2, in `second` mode, loads pad.f, which A's
-\ builds never loaded, first, so it compiles pad.f and the files that spell its
-\ SCRATCH and FIRST, main.f and mark.f, links the other five, prints B's state,
-\ writes B's program and leaves A's root holding B's objects. Each warm build
-\ compares its program's bytes, its printed state and the objects' bytes with a
-\ cold build's. Build E, in `facts` mode in its own out root, loads count.f and
+\ records' texts A's. A4, after count.f's object is cut to half its length,
+\ and A5, on macOS, after it grows to 2^48 bytes, more than a build can hold,
+\ each compile five files with A2's outcome: count.f, whose piece gets a new
+\ time, and shape.f, main.f, reopen.f and mark.f, whose objects name that
+\ piece by its time; again.f's two loads link. B2, in `second` mode, loads
+\ pad.f, which A's builds never loaded, first, so it compiles four: pad.f,
+\ main.f and mark.f, which spell its SCRATCH and FIRST, and reopen.f, which
+\ runs words, and every run word reaches pad.f's stores into header data. It
+\ links the other four, prints B's state, writes B's program and leaves A's
+\ root holding B's objects. Each warm build compares its program's bytes, its
+\ printed state and the objects' bytes from PIECES on with a cold build's.
+\ Build E, in `facts` mode in its own out root, loads count.f and
 \ facts.f, compiles callers of their words, runs one and writes the program,
 \ then compiles two definitions the checker refuses for misusing them; it
 \ compiles 2. E2, in E's root after E's program moves aside, compiles none and
@@ -63,7 +67,6 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fd.f
-require src/lib/fs-list.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require tools/hb-build-core.f
@@ -73,12 +76,10 @@ package FILE-OBJECTS-TEST
 7 constant FILES                         \ build A's objects, and D's
 8 constant FILES-B                       \ build B's: A's and pad.f's
 19 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, the twins', e.f's
-68 constant NAME-BYTES                   \ <hex key>.hfo
-\ The names, newline-separated.
-: LISTING-BYTES ( n -- n ) NAME-BYTES 1 + * 1 - ;
-: NAME-COUNT ( n -- n ) 1 + NAME-BYTES 1 + / ;
+144 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
+128 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
 24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp
-8192 constant CAP                        \ a listing's or an object's bytes
+8192 constant CAP                        \ an object's bytes
 16384 constant STATE-CAP                 \ a build's output before its last line
 65536 constant PROG-CAP
 
@@ -87,13 +88,10 @@ PATH-CAP BUFFER: OUT-B   variable OUT-B-U
 PATH-CAP BUFFER: OUT-C   variable OUT-C-U
 PATH-CAP BUFFER: OUT-D   variable OUT-D-U
 PATH-CAP BUFFER: OUT-E   variable OUT-E-U
-PATH-CAP BUFFER: OBJ-DIR
 PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
-CAP BUFFER: NAMES-A      variable NAMES-A-U
-CAP BUFFER: NAMES-B      variable NAMES-B-U
-CAP BUFFER: NAMES-C      variable NAMES-C-U
-CAP BUFFER: NAMES-D      variable NAMES-D-U
+PATH-CAP BUFFER: ROOT    variable ROOT-U     \ the obj directory a walk starts at
+PATH-CAP BUFFER: FOUND   variable FOUND-U    \ the walk's last path that ends with its tail
 CAP BUFFER: BYTES-A
 CAP BUFFER: BYTES-B
 INPUT-BYTES BUFFER: EXPECT
@@ -107,8 +105,9 @@ PROG-CAP BUFFER: PROG-2
 8 BUFFER: WHICH          variable WHICH-U  \ the build the labels name
 96 BUFFER: TEXT-BUF
 128 BUFFER: LABEL-BUF
-variable SHARED-N                        \ C's objects whose names A also wrote
-variable INPUT-N                         \ those holding count.f's INPUT
+variable OBJ-N                          \ the walk's objects
+variable TAIL-I                          \ the tail the walk looks for (TAIL$)
+variable TAIL-N                          \ and the paths that end with it
 
 
 : A$ ( -- ptr u8 n ) OUT-A OUT-A-U @ ;
@@ -121,22 +120,19 @@ variable INPUT-N                         \ those holding count.f's INPUT
    out outu name nameu JOINED FS:JOIN-PATH {: u:n :}
    JOINED u ;
 
-: OBJ$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: out:ptr outu:n name:ptr nameu:n :}
-   out outu s" obj" OBJ-DIR FS:JOIN-PATH {: du:n :}
-   OBJ-DIR du name nameu IN$ ;
-
 : WHICH! ( ptr u8 n -- ) {: a:ptr u:n :}
    a WHICH u BYTE-COPY  u WHICH-U ! ;
 
 \ The build's name, ": " and the text, as the next label.
-: LABEL ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   WHICH WHICH-U @ {: w:ptr wu:n :}
+: LABEL-AS ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n a:ptr u:n :}
    w LABEL-BUF wu BYTE-COPY
    s" : " {: c:ptr cu:n :}
    c LABEL-BUF wu + cu BYTE-COPY
    a LABEL-BUF wu + cu + u BYTE-COPY
    LABEL-BUF wu cu + u + T-LABEL ;
+
+: LABEL ( ptr u8 n -- ) {: a:ptr u:n :}  WHICH WHICH-U @ a u LABEL-AS ;
 
 \ The text, another build's name and more text, as the next label.
 : LABEL-NAMING ( ptr u8 n ptr u8 n ptr u8 n -- )
@@ -191,71 +187,76 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" the program exits 0" LABEL  rc 0 T= ;
 
 
-: LIST ( ptr u8 n ptr u8 -- n ) {: out:ptr outu:n dst:ptr :}
-   out outu s" obj" OBJ-DIR FS:JOIN-PATH {: du:n :}
-   OBJ-DIR du dst CAP FS-LIST:NAMES ;
+\ The tail of the path of A's object i, from 0: count.f's, shape.f's, main.f's, reopen.f's,
+\ mark.f's, again.f's first load's and its second's; 7 is pad.f's, which B also writes.
+: TAIL$ ( n -- ptr u8 n )
+   {: i:n :}
+   i 0 = if s" /test/fixtures/file-objects/count.f.hfo" exit then
+   i 1 = if s" /test/fixtures/file-objects/shape.f.hfo" exit then
+   i 2 = if s" /test/fixtures/file-objects/main.f.hfo" exit then
+   i 3 = if s" /test/fixtures/file-objects/reopen.f.hfo" exit then
+   i 4 = if s" /test/fixtures/file-objects/mark.f.hfo" exit then
+   i 5 = if s" /test/fixtures/file-objects/again.f.hfo" exit then
+   i 6 = if s" /test/fixtures/file-objects/again.f.2.hfo" exit then
+   s" /test/fixtures/file-objects/pad.f.hfo" ;
 
-: LIST-A ( -- ) A$ NAMES-A LIST NAMES-A-U ! ;
-: LIST-B ( -- ) B$ NAMES-B LIST NAMES-B-U ! ;
-: LIST-C ( -- ) C$ NAMES-C LIST NAMES-C-U ! ;
-: LIST-D ( -- ) D$ NAMES-D LIST NAMES-D-U ! ;
+: ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu s" obj" ROOT FS:JOIN-PATH ROOT-U ! ;
 
-\ A build that made no obj directory lists no names.
-: LIST-OR-NONE ( [ -- ] -- ) catch {: rc:n :}
-   rc 0 =  rc E-FS-LIST-OPEN =  or 0= if rc throw then ;
+: OBJ-SEEN ( ptr u8 n -- ) s" .hfo" ENDS-WITH? if 1 OBJ-N +! then ;
 
-: RELIST-A ( -- ) 0 NAMES-A-U !  ['] LIST-A LIST-OR-NONE ;
+: TAIL-SEEN ( ptr u8 n -- )
+   {: p:ptr pu:n :}
+   p pu TAIL-I @ TAIL$ ENDS-WITH? 0= if exit then
+   1 TAIL-N +!  p FOUND pu BYTE-COPY  pu FOUND-U ! ;
 
-: NAME ( n -- ptr u8 n )
-   NAME-BYTES 1 + * {: off:n :}  NAMES-A off + NAME-BYTES ;
+: COUNT-WALK ( -- ) ROOT ROOT-U @ ['] OBJ-SEEN FS:WALK-FILES ;
+: TAIL-WALK ( -- ) ROOT ROOT-U @ ['] TAIL-SEEN FS:WALK-FILES ;
 
-: C-NAME ( n -- ptr u8 n )
-   NAME-BYTES 1 + * {: off:n :}  NAMES-C off + NAME-BYTES ;
+\ A walk of a build that made no obj directory visits nothing: the missing root is E-FS-STAT.
+: WALKED ( [ -- ] -- ) catch {: rc:n :}
+   rc 0 =  rc E-FS-STAT =  or 0= if rc throw then ;
 
-: A-OBJ$ ( n -- ptr u8 n ) NAME {: name:ptr nameu:n :}  A$ name nameu OBJ$ ;
+\ The objects under the out root's obj directory.
+: OBJECTS ( ptr u8 n -- n )
+   ROOT!  0 OBJ-N !  ['] COUNT-WALK WALKED  OBJ-N @ ;
 
-\ A's object at the index read into BYTES-A; answers its length.
-: A-OBJECT ( n -- n ) A-OBJ$ BYTES-A CAP FS:READ-ALL ;
+\ Whether exactly one path under the out root's obj directory ends with tail i, as a test under
+\ the build's name; FOUND$ is that path.
+: FOUND? ( ptr u8 n ptr u8 n n -- bool )
+   {: out:ptr outu:n name:ptr nameu:n i:n :}
+   out outu ROOT!  i TAIL-I !  0 TAIL-N !  0 FOUND-U !
+   ['] TAIL-WALK WALKED
+   TAIL-N @ 1 = {: one:bool :}
+   name nameu s" the build wrote that object" LABEL-AS  one TTRUE
+   one ;
 
-\ The index of A's object holding the bytes, or -1.
-: HOLDING ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   NAMES-A-U @ NAME-COUNT 0 ?do
-      BYTES-A i A-OBJECT  a u CONTAINS? if i unloop exit then
-   loop
-   -1 ;
+: FOUND$ ( -- ptr u8 n ) FOUND FOUND-U @ ;
 
-\ Whether the other build's listing names A's object at the index, as a test.
-: LISTED? ( ptr u8 n ptr u8 n n -- bool )
-   {: names:ptr namesu:n peer:ptr peeru:n i:n :}
-   names namesu i NAME CONTAINS? {: has:bool :}
-   s" " peer peeru s"  wrote each of A's names" LABEL-NAMING  has TTRUE
-   has ;
+\ Whether BYTES-A's first au bytes and BYTES-B's first bu have one length, one PIECES offset and
+\ the same bytes from it on.
+: FROM-PIECES? ( n n -- bool )
+   {: au:n bu:n :}
+   au bu <> if false exit then
+   au HEADER-BYTES < if false exit then
+   BYTES-A PIECES-FIELD + LE:U64@ {: at:n :}
+   BYTES-B PIECES-FIELD + LE:U64@ at <> if false exit then
+   at au > if false exit then
+   BYTES-A at +  au at -  BYTES-B at +  au at -  STR= ;
 
-\ A's object at the index has the bytes of the other build's of the same name.
-: SAME-OBJECT ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: out:ptr outu:n names:ptr namesu:n peer:ptr peeru:n i:n :}
-   names namesu peer peeru i LISTED? 0= if exit then
-   i NAME {: name:ptr nameu:n :}
-   A$ name nameu OBJ$ BYTES-A CAP FS:READ-ALL {: au:n :}
-   out outu name nameu OBJ$ BYTES-B CAP FS:READ-ALL {: bu:n :}
-   s" each of A's objects has " peer peeru s" 's bytes" LABEL-NAMING
-   BYTES-A au BYTES-B bu T$= ;
+\ A's object of tail i equals the peer's from PIECES on. The head before PIECES is not compared:
+\ it holds the pieces' times, which differ between out roots.
+: SAME-OBJECT ( ptr u8 n ptr u8 n n -- )
+   {: out:ptr outu:n peer:ptr peeru:n i:n :}
+   A$ s" A" i FOUND? 0= if exit then
+   FOUND$ BYTES-A CAP FS:READ-ALL {: au:n :}
+   out outu peer peeru i FOUND? 0= if exit then
+   FOUND$ BYTES-B CAP FS:READ-ALL {: bu:n :}
+   s" each of A's objects has " peer peeru s" 's bytes from PIECES on" LABEL-NAMING
+   au bu FROM-PIECES? TTRUE ;
 
-\ Each of the objects A's listing names, when it names that many, against the
-\ other build's out root, listing and name.
-: SAME-OBJECTS ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: out:ptr outu:n names:ptr namesu:n peer:ptr peeru:n count:n :}
-   NAMES-A-U @ count LISTING-BYTES <> if exit then
-   count 0 ?do out outu names namesu peer peeru i SAME-OBJECT loop ;
-
-: SAME-AS-D ( -- ) D$ NAMES-D NAMES-D-U @ s" D" FILES SAME-OBJECTS ;
-: SAME-AS-B ( -- ) B$ NAMES-B NAMES-B-U @ s" B" FILES-B SAME-OBJECTS ;
-
-\ B lists each of A's names; their bytes are not compared.
-: B-NAMES ( -- )
-   NAMES-A-U @ FILES LISTING-BYTES <> if exit then
-   FILES 0 ?do NAMES-B NAMES-B-U @ s" B" i LISTED? drop loop ;
+: SAME-AS-D ( -- ) FILES 0 ?do D$ s" D" i SAME-OBJECT loop ;
+: SAME-AS-B ( -- ) FILES-B 0 ?do B$ s" B" i SAME-OBJECT loop ;
 
 \ Whether the first out root's file holds the bytes of the second's.
 : SAME-FILE? ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
@@ -269,29 +270,18 @@ variable INPUT-N                         \ those holding count.f's INPUT
    FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    cs EXPECT LE:U64!  cns EXPECT 8 + LE:U64!  size EXPECT 16 + LE:U64! ;
 
-\ C's object at the index, when A also wrote its name, has A's bytes; counted in
-\ SHARED-N, and in INPUT-N when it holds EXPECT.
-: SHARED-OBJECT ( n -- )
-   C-NAME {: name:ptr nameu:n :}
-   NAMES-A NAMES-A-U @ name nameu CONTAINS? 0= if exit then
-   1 SHARED-N +!
-   C$ name nameu OBJ$ BYTES-B CAP FS:READ-ALL {: cu:n :}
-   BYTES-B cu EXPECT INPUT-BYTES CONTAINS? if 1 INPUT-N +! then
-   A$ name nameu OBJ$ BYTES-A CAP FS:READ-ALL {: au:n :}
-   s" each object A also wrote has A's bytes" LABEL  BYTES-A au BYTES-B cu T$= ;
-
-\ Build C's objects: each sequence's, the twins', e.f's, and count.f's and shape.f's,
-\ whose names A also wrote; count.f's holds its INPUT.
+\ Build C's objects: each sequence's, the twins', e.f's, and count.f's and shape.f's, which A also
+\ writes; count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote nineteen objects" LABEL  NAMES-C-U @ FILES-C LISTING-BYTES T=
-   NAMES-C-U @ NAME-COUNT {: n:n :}
-   NAMES-C-U @ n LISTING-BYTES <> if exit then
+   s" the build wrote nineteen objects" LABEL  C$ OBJECTS FILES-C T=
+   C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
+   C$ s" C" 0 FOUND? 0= if exit then
+   FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
    s" test/fixtures/file-objects/count.f" EXPECT!
-   0 SHARED-N !  0 INPUT-N !
-   n 0 ?do i SHARED-OBJECT loop
-   s" A wrote two of C's objects" LABEL  SHARED-N @ 2 T=
-   s" one of them holds count.f's stamp" LABEL  INPUT-N @ 1 T= ;
+   u HEADER-BYTES - 0 max INPUT-BYTES min {: v:n :}
+   s" count.f's object holds its stamp" LABEL
+   BYTES-B HEADER-BYTES + v EXPECT INPUT-BYTES T$= ;
 
 \ A file compiles when it, a file its object references or an earlier file that defines a public
 \ name it spells, or a private name of a package it opens, is edited, when an earlier file lays a string its object lays, when it is loaded
@@ -391,19 +381,13 @@ variable INPUT-N                         \ those holding count.f's INPUT
    COLD-E ;
 
 : CHECK-COLD ( -- )
-   RELIST-A
-   0 NAMES-B-U !  ['] LIST-B LIST-OR-NONE
-   0 NAMES-C-U !  ['] LIST-C LIST-OR-NONE
-   0 NAMES-D-U !  ['] LIST-D LIST-OR-NONE
    s" A" WHICH!
-   s" the build wrote seven objects" LABEL
-   NAMES-A NAMES-A-U @ s" .hfo" COUNT-SUB FILES T=
-   s" the names are seven keys" LABEL  NAMES-A-U @ FILES LISTING-BYTES T=
+   s" the build wrote seven objects" LABEL  A$ OBJECTS FILES T=
    s" B" WHICH!
-   s" the build wrote eight objects" LABEL
-   NAMES-B NAMES-B-U @ s" .hfo" COUNT-SUB FILES-B T=
-   s" the names are eight keys" LABEL  NAMES-B-U @ FILES-B LISTING-BYTES T=
-   s" A" WHICH!  B-NAMES  SAME-AS-D
+   s" the build wrote eight objects" LABEL  B$ OBJECTS FILES-B T=
+   s" D" WHICH!
+   s" the build wrote seven objects" LABEL  D$ OBJECTS FILES T=
+   s" A" WHICH!  SAME-AS-D
    CHECK-MAP CHECK-FACTS CHECK-STOP CHECK-EDIT CHECK-E ;
 
 \ Moves A's program and map to prog-cold and prog-cold.map, so A2 writes its own.
@@ -432,8 +416,8 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" the program has E's bytes" LABEL  E$ s" prog" E$ s" prog-cold" SAME-FILE? TTRUE ;
 
 \ A build of A's files in A's out root, whose last line is the given one:
-\ it prints A's state, writes A's program and map and leaves A's objects with
-\ D's bytes.
+\ it prints A's state, writes A's program and map and leaves A's seven objects
+\ with D's bytes from PIECES on.
 : WARM ( CMD:command ptr u8 n -- CMD:command )
    {: last:ptr lastu:n :}
    A$ s" " last lastu STATE-W BUILD {: u:n :}
@@ -441,75 +425,48 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" the build prints A's state" LABEL  STATE-W u STATE-A STATE-A-U @ T$=
    s" the program has A's bytes" LABEL  A$ s" prog" A$ s" prog-cold" SAME-FILE? TTRUE
    s" the map has A's bytes" LABEL  A$ s" prog.map" A$ s" prog-cold.map" SAME-FILE? TTRUE
-   RELIST-A
-   s" A's root still holds seven objects" LABEL  NAMES-A-U @ FILES LISTING-BYTES T=
+   s" A's root still holds seven objects" LABEL  A$ OBJECTS FILES T=
    SAME-AS-D ;
 
 \ A2: every object linked.
 : WARM-A ( CMD:command -- CMD:command )
    s" A2" WHICH!  COLD-ASIDE  s\" compiled 0\n" WARM ;
 
-\ A3's edit: the first e of the string green in A's object that holds it
-\ becomes f, past the INPUT, which the source's stamp still matches.
-: FLIP ( -- )
-   s" green" HOLDING {: k:n :}
-   s" one of A's objects holds green" LABEL  k 0 >= TTRUE
-   k 0 < if exit then
-   k A-OBJECT {: u:n :}
-   BYTES-A u s" green" FIND-SUB MATCH option
-      none OF ENDOF
-      some OF IDX>N {: at:n :}  [char] f BYTES-A at + 2 + c! ENDOF
-   ;MATCH
-   k A-OBJ$ BYTES-A u FS:WRITE-ALL ;
-
-\ The listing index of count.f's object, found by its INPUT, or -1 after a failed check.
-: COUNT-OBJ ( -- n )
-   s" test/fixtures/file-objects/count.f" EXPECT!
-   EXPECT INPUT-BYTES HOLDING {: k:n :}
-   s" one of A's objects holds count.f's stamp" LABEL  k 0 >= TTRUE
-   k ;
-
 \ A4's edit: count.f's object cut to half its length.
 : CUT ( -- )
-   COUNT-OBJ {: k:n :}
-   k 0 < if exit then
-   k A-OBJECT {: u:n :}
-   k A-OBJ$ BYTES-A u 2 / FS:WRITE-ALL ;
-
-: WARM-FLIP ( CMD:command -- CMD:command )
-   s" A3" WHICH!  FLIP  s\" compiled 1\n" WARM ;
+   A$ s" A" 0 FOUND? 0= if exit then
+   FOUND$ BYTES-A CAP FS:READ-ALL {: u:n :}
+   FOUND$ BYTES-A u 2 / FS:WRITE-ALL ;
 
 \ A5's edit: count.f's object grown in place to 2^48 bytes, past what mmap maps on an arm64
 \ host; the bytes added are a hole, so the disk holds none.
 : GROW ( -- )
-   COUNT-OBJ {: k:n :}
-   k 0 < if exit then
-   k A-OBJ$ FS:OPEN-APPEND-FD >FD {: f:fd :}
+   A$ s" A" 0 FOUND? 0= if exit then
+   FOUND$ FS:OPEN-APPEND-FD >FD {: f:fd :}
    f 1 48 lshift FD:RESIZE
    f FD>N close ;
 
 : WARM-CUT ( CMD:command -- CMD:command )
-   s" A4" WHICH!  CUT  s\" compiled 1\n" WARM ;
+   s" A4" WHICH!  CUT  s\" compiled 5\n" WARM ;
 
 \ macOS only: Linux ext4 refuses a file past 16 TiB, so FD:RESIZE throws E-FS-IO there.
 : WARM-GROW ( CMD:command -- CMD:command )
    HB-TARGET-MACOS? 0= if exit then
-   s" A5" WHICH!  GROW  s\" compiled 1\n" WARM ;
+   s" A5" WHICH!  GROW  s\" compiled 5\n" WARM ;
 
 : WARM-B ( CMD:command -- CMD:command )
    s" B2" WHICH!
-   A$ s" second" s\" compiled 3\n" STATE-W BUILD {: u:n :}
+   A$ s" second" s\" compiled 4\n" STATE-W BUILD {: u:n :}
    u 0 < if exit then
    s" the build prints B's state" LABEL  STATE-W u STATE-B STATE-B-U @ T$=
    s" the program has B's bytes" LABEL  A$ s" prog" B$ s" prog" SAME-FILE? TTRUE
-   RELIST-A
-   s" A's root lists B's objects" LABEL  NAMES-A NAMES-A-U @ NAMES-B NAMES-B-U @ T$=
+   s" A's root holds eight objects" LABEL  A$ OBJECTS FILES-B T=
    SAME-AS-B ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-FLIP WARM-CUT WARM-GROW WARM-B WARM-E ;] CMD:WITH-COMMAND ;
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E ;] CMD:WITH-COMMAND ;
 
 
 : REMOVE-A ( -- ) A$ FS:REMOVE-TREE ;

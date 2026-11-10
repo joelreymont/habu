@@ -53,11 +53,9 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/fs-list.f
 require src/lib/fmt.f
 require src/lib/le.f
 require src/lib/build-out.f
-require src/core/sha256.f
 require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/habu/intern.f
@@ -432,20 +430,14 @@ PATH-CAP BUFFER: THIRD-BUF
    TWIN-Y-BUILD {: four:n :}
    s" twins: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
-\ ---- objects the link refuses or links wrong, each with its checksum written again ----
+\ ---- objects the link refuses or links wrong ----
 \ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
 8192 constant CRAFT-CAP
-68 constant OBJ-NAME-BYTES               \ <hex key>.hfo
-136 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
-40 constant SUM-AT                       \ the checksum, a SHA-256 of every byte from SUMMED-AT
-72 constant SUMMED-AT
+128 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
 PATH-CAP BUFFER: CRAFT-BUF
-PATH-CAP BUFFER: CRAFT-DIR
 PATH-CAP BUFFER: CRAFT-PATH   variable CRAFT-PATH-U
-CRAFT-CAP BUFFER: CRAFT-NAMES
 CRAFT-CAP BUFFER: CRAFT-FIRST   variable CRAFT-U
 CRAFT-CAP BUFFER: CRAFT-OBJ
-SHA256-CTX-BYTES BUFFER: CRAFT-CTX
 variable AT                              \ the walk's offset in CRAFT-OBJ
 variable RECS                            \ the records walked
 variable FLAG-AT                         \ the package entry's own-private flag's offset
@@ -553,31 +545,25 @@ variable SLOT-S                          \ and their count
    then ;
 
 
-\ The edited object, u bytes, its checksum written again, into e.f's object; then a build.
+\ The edited object, u bytes, into e.f's object; then a build.
 : CRAFTED-BUILD ( n -- n )
    {: u:n :}
-   CRAFT-CTX  CRAFT-OBJ SUMMED-AT +  u SUMMED-AT -  CRAFT-OBJ SUM-AT +  SHA256-IN
    CRAFT-PATH CRAFT-PATH-U @ CRAFT-OBJ u FS:WRITE-ALL
    CRAFT-BUILD ;
 
 
-\ Whether the listing's object at index i, read into CRAFT-FIRST, holds FILE-OBJECTS-CRAFT.
-: CRAFT-HOLDS? ( n n -- bool )
-   {: du:n i:n :}
-   CRAFT-DIR du  CRAFT-NAMES i OBJ-NAME-BYTES 1 + * +  OBJ-NAME-BYTES  CRAFT-PATH FS:JOIN-PATH
-   CRAFT-PATH-U !
-   CRAFT-PATH CRAFT-PATH-U @ CRAFT-FIRST CRAFT-CAP FS:READ-ALL {: u:n :}
-   u CRAFT-U !
-   CRAFT-FIRST u s" FILE-OBJECTS-CRAFT" CONTAINS? ;
+\ A path of the walk that ends with e.f's object's tail into CRAFT-PATH.
+: CRAFT-SEEN ( ptr u8 n -- )
+   {: p:ptr pu:n :}
+   p pu s" /crafted/e.f.hfo" ENDS-WITH? 0= if exit then
+   p CRAFT-PATH pu BYTE-COPY  pu CRAFT-PATH-U ! ;
 
 \ e.f's object under <out>/obj, into CRAFT-FIRST and CRAFT-PATH.
 : CRAFT-FIND ( -- )
-   BUILD-OUT:BASE$ s" obj" CRAFT-DIR FS:JOIN-PATH {: du:n :}
-   CRAFT-DIR du CRAFT-NAMES CRAFT-CAP FS-LIST:NAMES {: lu:n :}
-   lu 1 + OBJ-NAME-BYTES 1 + / 0 ?do
-      du i CRAFT-HOLDS? if unloop exit then
-   loop
-   s" build: CRAFTS: no object holds FILE-OBJECTS-CRAFT" 1 die ;
+   0 CRAFT-PATH-U !
+   s" obj" DIR$ ['] CRAFT-SEEN FS:WALK-FILES
+   CRAFT-PATH-U @ 0= if s" build: CRAFTS: no object holds FILE-OBJECTS-CRAFT" 1 die then
+   CRAFT-PATH CRAFT-PATH-U @ CRAFT-FIRST CRAFT-CAP FS:READ-ALL CRAFT-U ! ;
 
 
 \ The package's own-private flag 0 while LOW, a later entry, names its private wordlist.
