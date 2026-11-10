@@ -18,3 +18,5 @@ Depends: Describe a published word in the live REPL; habu-make-incremental-build
 Ownership: the cursor owner's capture path in src/core/checker.f, the inspection module. Claim: unassigned.
 
 Joel, 2026-11-10 evening, asked which stages start now: "i have no hold on showing the checker's typed state before a token. i don't know what that is so you have to explain and give me context! what is best for long term here?" The 'Held' line above is not his ruling: it came from an option he picked without the thing being explained. Not yet settled when this stage is built; explain it to him with an example first (what an agent sees today, what it would see).
+
+Joel, 2026-11-10, after the stage was explained to him with an example (the stack at one failing word today; the stack, return stack and locals before any word with the stage built) and told it is built only if a measure says stack mismatches cost enough: "measure then". The measure is habu-measure-what-a-7edae949; this stage waits for its result.
