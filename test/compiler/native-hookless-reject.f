@@ -43,13 +43,23 @@ variable RC
    src u SUBJECT-STORE! ;
 
 \ The checker's ambiguity refusal makes the native compiler exit with the
-\ reject status under the definition's name.
+\ reject status under the definition's name and the callee it refused.
+\ Its own process: the uncaught throw ends it, and its exit status is tested.
 : AMBIGUOUS-CALLEE ( -- )
    s" an ambiguous bare callee is refused naming the callee" T-LABEL
    s" ;package package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
    RC @ RC-REJECT T=
    s" E-USING-AMBIGUOUS habu: bare 'AW' is ambiguous under using" SAYS
-   s" ncomp: cannot compile UT-AMB" SAYS ;
+   s" ncomp: cannot compile UT-AMB at AW in" SAYS ;
+
+\ A used public that shadows a global is refused the same way.
+\ Its own process: the uncaught throw ends it, and its exit status is tested.
+: SHADOWING-CALLEE ( -- )
+   s" a bare callee a used public shadows is refused naming the callee" T-LABEL
+   s" ;package : SW ( -- n ) 11 ; package US public : SW ( -- n ) 33 ; ;package using US : UT-SHADOW ( -- n ) SW ; ;using" SESSION
+   RC @ RC-REJECT T=
+   s" E-USING-SHADOW-GLOBAL habu: bare 'SW' is ambiguous under using" SAYS
+   s" ncomp: cannot compile UT-SHADOW at SW in" SAYS ;
 
 \ ---- a refused definition keeps no row ---------------------------------------
 \ The texts outrun a source line, so TEXT holds them; `;package` first makes
@@ -84,6 +94,7 @@ create TEXT CAP allot                  variable TEXT-U
 : RUN ( -- )
    T-RESET
    AMBIGUOUS-CALLEE
+   SHADOWING-CALLEE
    REFUSED-CAUGHT
    T-REPORT ;
 

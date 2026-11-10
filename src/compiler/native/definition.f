@@ -487,11 +487,14 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    CHECKER-OWNER:REFUSED-SPAN nip {: b:n undefined:bool :}
    M-SCAN @ b +  undefined ;
 
-\ A reject with no compiler token is the checker's refusal of the body: name
-\ the token it refused instead.
+\ A reject or a using refusal (E-USING-SHADOW-GLOBAL, E-USING-AMBIGUOUS) with
+\ no compiler token is the checker's refusal of the body: name the token it
+\ refused instead.
 : REPORT-REFUSAL ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n p:ptr rc:n :}
-   rc RC-REJECT <>  u 0<> or if a u p REPORT-FAILURE exit then
+   rc RC-REJECT =  rc E-USING-SHADOW-GLOBAL = or  rc E-USING-AMBIGUOUS = or
+   0=  u 0<> or
+   if a u p REPORT-FAILURE exit then
    CHECKER-REFUSED$ {: ca:ptr cu:n cp:ptr undefined:bool :}
    ca cu cp REPORT-FAILURE
    undefined if ca cu cp REPORT-UNDEFINED then ;
