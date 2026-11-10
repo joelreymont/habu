@@ -1356,15 +1356,27 @@ variable RC
    s" : X ( n -- n ) leave NOPE ;" s" leave-undefined.f" LINE-FIXTURE
    s" E-REJECTED" s" leave" 1 16 15 20 REFUSED-AT ;
 
-\ A control-flow refusal names its reason: a loop body that changes the stack's
-\ depth is a mismatch of the loop's start row and its back edge's, a change of
-\ the return stack's depth is the return stack's to repair, and the structural
-\ refusals are the control flow's.
+\ A control-flow refusal names its reason: a depth change is a mismatch of the
+\ start row, or the else arm's, and the changed row; others name their repair.
 : TEST-CONTROL-REASON ( -- )
    s" a loop body that changes the stack's depth" T-LABEL
    s" : X ( n -- n ) 3 0 do dup loop ;" s" loop-depth.f" LINE-FIXTURE
    s" E-MISMATCH" s" loop" 1 27 26 30 REFUSED-AT
    0 s" reason" s" the loop body changes the stack's depth" FIELD=
+   0 s" expected" s" n " FIELD=
+   0 s" actual" s" n n " FIELD=
+   s" remove_producer" s" Remove an extra producer or drop the surplus value." REPAIRED-AS
+   s" an if arm that changes the stack's depth" T-LABEL
+   s" : X ( n bool -- n ) if 1 then ;" s" if-depth.f" LINE-FIXTURE
+   s" E-MISMATCH" s" then" 1 26 25 29 REFUSED-AT
+   0 s" reason" s" the if arm changes the stack's depth" FIELD=
+   0 s" expected" s" n " FIELD=
+   0 s" actual" s" n n " FIELD=
+   s" remove_producer" s" Remove an extra producer or drop the surplus value." REPAIRED-AS
+   s" if and else arms that leave different depths" T-LABEL
+   s" : X ( n bool -- n ) if 1 else then ;" s" arms-depth.f" LINE-FIXTURE
+   s" E-MISMATCH" s" then" 1 31 30 34 REFUSED-AT
+   0 s" reason" s" the if and else arms leave different stack depths" FIELD=
    0 s" expected" s" n " FIELD=
    0 s" actual" s" n n " FIELD=
    s" remove_producer" s" Remove an extra producer or drop the surplus value." REPAIRED-AS

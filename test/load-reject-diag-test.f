@@ -347,8 +347,8 @@ variable RC
    CF$ src srcu FS:WRITE-ALL
    CF$ RUN ;
 
-\ A control-flow refusal names its reason after the token; a loop body that
-\ changes the stack's depth names the loop's start row and its back edge's.
+\ A control-flow refusal names its reason after the token; a depth change names
+\ the start row, or the else arm's, as expected and the changed row as actual.
 : TEST-CONTROL-FLOW ( -- )
    s" a loop body that changes depth names both rows" T-LABEL
    s" : LRD-LD ( n -- n ) 3 0 do dup loop ;" CF-RUN
@@ -366,6 +366,14 @@ variable RC
    s" : LRD-TS ( -- ) then ;" CF-RUN
    s" in lrd-ts" ASSERT-NAMED
    ERR$ s" at 'then' this word closes nothing open here" CONTAINS? TTRUE
+   s" an if arm that changes depth names both rows" T-LABEL
+   s" : LRD-IA ( n bool -- n ) if 1 then ;" CF-RUN
+   s" in lrd-ia" ASSERT-NAMED
+   ERR$ s" at 'then' the if arm changes the stack's depth expected: n actual: n n" CONTAINS? TTRUE
+   s" if and else arms of different depths name both rows" T-LABEL
+   s" : LRD-AD ( n bool -- n ) if 1 else then ;" CF-RUN
+   s" in lrd-ad" ASSERT-NAMED
+   ERR$ s" at 'then' the if and else arms leave different stack depths expected: n actual: n n" CONTAINS? TTRUE
    s" an exit inside a loop says it needs unloop" T-LABEL
    s" : LRD-EL ( -- ) 3 0 do exit loop ;" CF-RUN
    s" in lrd-el" ASSERT-NAMED

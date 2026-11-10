@@ -4614,6 +4614,9 @@ CHECKER-REG:}SCRATCH
 59 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
 60 constant MD-RECURSE-DOES  \ a RECURSE in a does> clause, which calls the defining word (CF-RECURSE)
 
+61 constant MD-IF-DEPTH      \ an if's arm leaves another data depth than the if started with (CF-THEN)
+62 constant MD-ARMS-DEPTH    \ an if's two arms leave different data depths (CF-THEN-ELSE-MERGE)
+
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
 : STALE-WHY ( n -- n )
@@ -21362,18 +21365,24 @@ CHECKER-REG:}SCRATCH
    CF-TOP CF.FA @ FACTS !
    DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
 
-\ A loop's back edge or leave differs from its start: a data depth change names both
-\ rows, as a join that does not fit names them (UF-CAPTURE), and only while the
-\ pin is open, as a reason latches.
-: CF-DEPTH-FAIL ( n n -- ) {: exp:n act:n :}
+\ Paths that meet at different data depths: the refusal names both rows, as
+\ UF-CAPTURE does, while the pin is open.
+: CF-DEPTH-FAIL ( n n n -- )
+   {: exp:n act:n why:n :}
    MDIAG @ 0=  FAILSET @ 0=  and IF
       CAPTURE-CLEAR  exp DEXP !  act DACT !
    THEN
-   MD-LOOP-DEPTH CF-FAIL ;
+   why CF-FAIL ;
+
+\ da is the if arm's row, db the other path's and the expected one. Asked before
+\ the join: ROW-CELLS follows the tail the join binds.
+: CF-ARMS-DEPTH ( n n n -- )
+   {: da:n db:n why:n :}
+   da ROW-CELLS db ROW-CELLS <> IF db da why CF-DEPTH-FAIL THEN ;
 
 : CF-CARRIED= ( n n n n -- ) {: da:n db:n ra:n rb:n :}
    da db ROW-META=  ra rb ROW-META= and IF EXIT THEN
-   da ROW-CELLS db ROW-CELLS <> IF da db CF-DEPTH-FAIL EXIT THEN
+   da ROW-CELLS db ROW-CELLS <> IF da db MD-LOOP-DEPTH CF-DEPTH-FAIL EXIT THEN
    ra ROW-CELLS rb ROW-CELLS <> IF MD-LOOP-RDEPTH CF-FAIL EXIT THEN
    MD-LOOP-CARRIED CF-FAIL ;
 
@@ -21482,6 +21491,7 @@ CHECKER-REG:}SCRATCH
       if-dead IF
          0 DEADP !
       ELSE
+         CF@B DCUR @ MD-ARMS-DEPTH CF-ARMS-DEPTH
          CF@B DCUR @ CF@RB RCUR @ CF-TOP CF.FB @ FACTS @ CF-JOIN-LIVE
          0 DEADP !
          CF@LB CF-LOOPS=
@@ -21502,6 +21512,7 @@ CHECKER-REG:}SCRATCH
            CF-TOP CF.FA @ FACTS !
            entry-d DCUR !  entry-r RCUR !
            CF-TOP CF.FT @ RES-FALSE CF-ARM-FACT
+           true-d DCUR @ MD-IF-DEPTH CF-ARMS-DEPTH
            DCUR @ true-d RCUR @ true-r FACTS @ true-f CF-JOIN-LIVE
            CF@LA CF-LOOPS=
         THEN
