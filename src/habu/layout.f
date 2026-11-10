@@ -498,6 +498,13 @@ $2D70 constant OWNEDLEN-CELL     \ mirrored: src/core/checker.f SRCLOC OWNEDLEN-
 \ CURSOR: INP-CELL as a declared cell, the byte address the scanner reads next.
 \ The native FILE cache reads it at a loader cut.
 INP-CELL RESERVED-PTR-U8-CELL CURSOR
+\ SOURCE-CELL: the address of the process's loader record, its top frame,
+\ current root and scope count (src/core/include.f LOADER). include.f stores
+\ it with `ptr-cell!` as it loads, so a cross-build's copy of include.f routes
+\ the store to the image it writes while its code reads the running hb's
+\ record. It sits at JIT-QUOT:END + 8, after LIDX-CELL, in the $2800..$3000
+\ free header band.
+$2C48 constant SOURCE-CELL
 ;package
 
 \ RPKG-* / PKGRESYNC-CELL: the REPL line's package snapshot. EM-REPL-READ

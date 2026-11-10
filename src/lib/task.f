@@ -1238,6 +1238,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    data-base reg ARGV-CELL TASK-COPY-CELL
    data-base reg ENVP-CELL TASK-COPY-CELL
    data-base reg PROGRAM-FILE-CELL TASK-COPY-CELL
+   \ The loader's record is the process's (src/core/include.f LOADER).
+   data-base reg SRCLOC:SOURCE-CELL TASK-COPY-CELL
    \ SCRIPT-ARGV picks the application convention from this cell
    \ (src/os/script-argv.f SCRIPT-ARG-START); a task left at the region's zero
    \ reads the engine's and loses argument 0.

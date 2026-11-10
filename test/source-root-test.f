@@ -21,6 +21,7 @@ create APP-A CAP allot
 create APP-B CAP allot
 create FALLBACK CAP allot
 create SAVED-ROOT CAP allot
+create SAVED-TOP CAP allot
 create TARGET CAP allot
 create LINK CAP allot
 variable ROOT-U
@@ -31,7 +32,7 @@ variable SAVED-ROOT-U
 variable TARGET-U
 variable LINK-U
 variable LOADED
-variable SAVED-DEPTH
+variable SAVED-TOP-U
 variable SAVED-NAMED
 $4000 constant CHILD-CAP
 create CHILD-OUT CHILD-CAP allot
@@ -54,13 +55,13 @@ private
 
 : RESTORED ( -- )
    CURRENT$ SAVED-ROOT SAVED-ROOT-U @ T$=
-   INCLUDE-DEPTH @ SAVED-DEPTH @ T=
+   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SAVED-TOP SAVED-TOP-U @ T$=
    SCRIPT-NAMED-LOAD? if 1 else 0 then SAVED-NAMED @ T= ;
 
 : PREP ( -- )
    FS:CLEANUP-RESET 0 LOADED !
    CURRENT$ SAVED-ROOT SAVED-ROOT-U COPY!
-   INCLUDE-DEPTH @ SAVED-DEPTH !
+   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SAVED-TOP SAVED-TOP-U COPY!
    SCRIPT-NAMED-LOAD? if 1 else 0 then SAVED-NAMED !
    s" habu-source-root" FS:MKTEMP-DIR CANONICAL TTRUE ROOT ROOT-U COPY!
    ROOT$ FS:CLEANUP-TREE+

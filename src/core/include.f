@@ -38,7 +38,6 @@ variable PREFIX-CUT
 
 ;package
 
-variable INCLUDE-DEPTH
 variable INCLUDE-FD
 variable INCLUDE-U
 variable INCLUDE-RD
@@ -169,9 +168,27 @@ variable NORMAL-U
 variable CANDIDATE-U
 variable JOIN-U
 variable OWNER-U
-PTR-VARIABLE CURRENT-A
-variable CURRENT-U
-variable SCOPES
+\ The loader's record: the top frame, the current root (address and length)
+\ and the open scope count. One per process: the module names it in
+\ SRCLOC:SOURCE-CELL as it loads, and every reader reaches it through that
+\ cell, so in a cross-build the copy of this file being built reads and writes
+\ the running hb's record while its own store goes to the image's header
+\ (src/habu/habu2.f ROUTE-HEADER). Its cells are scratch: a saved program
+\ starts with no frame, root or scope.
+0 constant REC-TOP
+CELL constant REC-ROOT
+2 cells constant REC-ROOTLEN
+3 cells constant REC-SCOPES
+4 cells constant REC-BYTES
+create LOADER-REC REC-BYTES SCRATCH-ALLOT
+SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER-CELL
+LOADER-REC LOADER-CELL ptr-cell!
+CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
+: LOADER ( -- ptr u8 ) LOADER-CELL @ ;
+: TOP ( -- ptr ptr u8 ) LOADER REC-CELLS REC-TOP CELL / ptr-field ;
+: CURRENT-A ( -- ptr ptr u8 ) LOADER REC-CELLS REC-ROOT CELL / ptr-field ;
+: CURRENT-U ( -- ptr n ) LOADER REC-ROOTLEN + CELL-VIEW ;
+: SCOPES ( -- ptr n ) LOADER REC-SCOPES + CELL-VIEW ;
 create ENGINE-BUF PATH-BYTES allot
 variable ENGINE-U
 variable ENGINE-READ
@@ -1622,7 +1639,6 @@ CAST: FRAME-CELLS ( ptr u8 -- ptr ptr u8 )
    FRAME-CELLS FR-EXEC-COPY CELL / ptr-field ;
 : FRAME-EVAL-PTR ( ptr u8 -- ptr ptr u8 )
    FRAME-CELLS FR-EVAL-PTR CELL / ptr-field ;
-PTR-VARIABLE TOP
 PTR-VARIABLE RANGE-OWNER
 variable LAST-LOAD-EVAL-OK
 
@@ -1630,7 +1646,7 @@ variable LAST-LOAD-EVAL-OK
 : TOP! ( ptr u8 -- ) TOP ! ;
 
 : CHECK-ACTIVE ( -- )
-   INCLUDE-DEPTH @ 0 <= if s" include: depth underflow" INCLUDE-DIE then ;
+   TOP@ 0= if s" include: depth underflow" INCLUDE-DIE then ;
 
 : FRAME-EXEC-SOURCE ( ptr u8 -- ptr u8 )
    {: frame:ptr :}
@@ -1650,7 +1666,7 @@ variable LAST-LOAD-EVAL-OK
    0 data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + ! ;
 
 : PUBLISH-LOCATION ( -- )
-   INCLUDE-DEPTH @ 0 <= if PUBLISH-NONE exit then
+   TOP@ 0= if PUBLISH-NONE exit then
    TOP@ {: frame:ptr :}
    frame FR-ROOT-RUNS + CELL-VIEW @ 0 > if PUBLISH-NONE exit then
    frame FR-PATH + NULL-PTR - data-base INCLUDE-SRCLOC-PATH-CELL + !
@@ -1691,7 +1707,6 @@ variable LAST-LOAD-EVAL-OK
    root frame FR-ROOT + rootu BYTE-COPY
    frame TOP!
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
-   1 INCLUDE-DEPTH +!
    PUBLISH-LOCATION ;
 
 : POP ( -- )
@@ -1701,7 +1716,6 @@ variable LAST-LOAD-EVAL-OK
    frame FRAME-EXEC-COPY @ {: copy:ptr :}
    frame FR-SIZE + CELL-VIEW @ 1 max {: copyu:n :}
    frame FRAME-PREV @ TOP!
-   -1 INCLUDE-DEPTH +!
    PUBLISH-LOCATION
    copy 0= if 0 else copy copyu munmap then {: copyrc:n :}
    frame dup MAPPED munmap 0 < copyrc 0 < or if
@@ -1769,7 +1783,7 @@ public
 
 : ACTION! ( n ptr u8 n -- )
    {: mode:n path:ptr size:n :}
-   INCLUDE-DEPTH @ 0= if exit then
+   TOP@ 0= if exit then
    path size CHECK
    TOP@ {: frame:ptr :}
    path frame FR-ACTPATH + size BYTE-COPY
@@ -1916,7 +1930,7 @@ public
 \ src/habu/main.f), it counts itself on that file's frame, which then publishes
 \ no location until the program returns or throws.
 : ROOT-RUNS+ ( n -- ) {: k:n :}
-   INCLUDE-DEPTH @ 0 <= if exit then
+   TOP@ 0= if exit then
    TOP@ {: frame:ptr :}
    frame FR-ROOT-RUNS + CELL-VIEW @ k + frame FR-ROOT-RUNS + CELL-VIEW !
    PUBLISH-LOCATION ;
@@ -2069,11 +2083,8 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    a u q ;
 
 \ Whether this copy of the loader is the one a build compiled into the space it
-\ writes: a build is open and this file's cells lie in that space.
-: BUILD-COPY? ( -- bool )
-   data-base BOOT:IMAGE-BASE-CELL + @ {: base:n :}
-   INCLUDE-DEPTH NULL-PTR - {: cell:n :}
-   base 0 <>  cell base >= and  cell here NULL-PTR - < and ;
+\ writes: there the process's record (LOADER) is hb's, not this copy's own.
+: BUILD-COPY? ( -- bool ) LOADER LOADER-REC = 0= ;
 
 \ During a build only hb's loader reads a file: the linker sees none the
 \ build's copy reads (test/file-objects.f WORD-LOAD-BUILD).
@@ -2102,7 +2113,7 @@ public
    committed rc ;
 
 : NAMED? ( -- bool )
-   INCLUDE-DEPTH @ 0= if INCLUDE-FALSE exit then
+   TOP@ 0= if INCLUDE-FALSE exit then
    TOP@ FR-NAMED + c@ 0= 0= ;
 
 : LOAD ( ptr u8 n -- )
