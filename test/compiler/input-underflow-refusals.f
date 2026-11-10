@@ -128,6 +128,46 @@ create DIAG-BUF 8192 allot
    NAMED  s" 2dup" TOKEN?  s" 3" s" 2" SHORT-BY?
    DISARM ;
 
+\ `>r` and `2>r` move one-cell rows by the step path when no proof is among
+\ their operands (checker.f RS->R, RS2->R); the transfer that reaches under the
+\ declared inputs owns the refusal, not the `;` that finds the borrow.
+: CASE-TO-R ( -- )
+   s" a >r with nothing on the stack is refused at the >r" T-LABEL
+   ARM
+   [: s" : IUF-TOR ( -- ) >r r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" >r" TOKEN?  s" 1" s" 0" SHORT-BY?
+   DISARM ;
+
+: CASE-TWO-TO-R ( -- )
+   s" a 2>r over one cell is refused at the 2>r" T-LABEL
+   ARM
+   [: s" : IUF-2TOR ( -- ) 1 2>r 2r> 2drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" 2>r" TOKEN?  s" 2" s" 1" SHORT-BY?
+   DISARM ;
+
+: CASE-SECOND-TO-R ( -- )
+   s" the >r that empties past the declared inputs is refused" T-LABEL
+   ARM
+   [: s" : IUF-TOR2 ( -- ) 1 >r >r 2r> 2drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" >r" TOKEN?  s" 1" s" 0" SHORT-BY?
+   DISARM ;
+
+\ The first `>r` moves catch's proof-carrying cell by row surgery; the second
+\ takes the step path and owns the refusal.
+: CASE-TO-R-AFTER-PROOF ( -- )
+   s" a >r after a proof-carrying cell moved is refused at that >r" T-LABEL
+   ARM
+   [: s" : IUF-XTOR ( -- ) [: ;] catch >r >r 2r> 2drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" >r" TOKEN?  s" 1" s" 0" SHORT-BY?
+   DISARM ;
+
+: CASE-TWO-TO-R-IN-ARM ( -- )
+   s" a 2>r in an if arm is refused at the 2>r, not at then" T-LABEL
+   ARM
+   [: s" : IUF-ARM2TOR ( f -- ) if 1 2>r 2r> 2drop then ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" 2>r" TOKEN?  s" 2" s" 1" SHORT-BY?
+   DISARM ;
+
 \ Binding the declared input into a local does not make another one appear; the
 \ call still owns the refusal.
 : CASE-AFTER-LOCALS ( -- )
@@ -291,6 +331,11 @@ create DIAG-BUF 8192 allot
    s" a call that spends exactly the declared inputs still certifies" T-LABEL
    [: s" : IUF-OK ( n -- n ) UFC 0 ;" evaluate-closed ;] 0 TTHROWSQ ;
 
+\ Nor is a >r of the declared input.
+: CASE-EXACT-TO-R ( -- )
+   s" a >r of the declared input still certifies" T-LABEL
+   [: s" : IUF-OK-TOR ( n -- ) >r r> drop ;" evaluate-closed ;] 0 TTHROWSQ ;
+
 \ Nor is a call under a value the body produced itself.
 : CASE-PRODUCED ( -- )
    s" and a call over a value the body produced certifies too" T-LABEL
@@ -317,6 +362,11 @@ public
    CASE-SWAP-OVER-PROOF
    CASE-WIDE-OVER-PROOF
    CASE-WIDE-COPY
+   CASE-TO-R
+   CASE-TWO-TO-R
+   CASE-SECOND-TO-R
+   CASE-TO-R-AFTER-PROOF
+   CASE-TWO-TO-R-IN-ARM
    CASE-AFTER-LOCALS
    CASE-LOCALS-BINDER
    CASE-OVER-ABANDONED-CANDIDATE
@@ -335,6 +385,7 @@ public
    CASE-ROWS-REPAIR
    CASE-MISTYPED-CALL
    CASE-EXACT
+   CASE-EXACT-TO-R
    CASE-PRODUCED
    CASE-UNSIGNED
    CASE-QUOTATION

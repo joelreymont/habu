@@ -1157,7 +1157,7 @@ EPPRIM: OUTER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
 \ Primitives whose effect the checker elaborates.
 \ These have engine bodies and deliberately no row: their effect depends on the
 \ call site, so src/core/checker.f computes it in the elaborator instead of
-\ reading one from the table (RSEXEC, RSCATCH, RS2->R, RS2R>, RS2R@ in CF-TOK?,
+\ reading one from the table (RSEXEC, RSCATCH, RS2->R, RS2R>, RS2R@ in RS-TOK?,
 \ `evaluate`'s dynamic rule, and `?dup`'s branch-shaped result). A row here
 \ states that, so the completeness gate accepts the body without an effect.
 ELAB: execute REACH run

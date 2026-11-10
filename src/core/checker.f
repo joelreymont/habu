@@ -5013,52 +5013,6 @@ CHECKER-REG:}SCRATCH
    t SEED-TERM? IF t RES-TRUE EXIT THEN
    0 RES-FALSE ;
 
-\ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
-\ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
-\ balance check rejects net growth or borrowing; loop joins unify RCUR too.
-: RS->R                                    \ >r : data top -> return row
-   LIN-SNAPSHOT {: bef:n :}
-   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
-   DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
-   rest DCUR !  tv RCUR @ MK-PUSH RCUR !
-   OK @ IF bef LIN-CHECK THEN ;
-
-: RSR>                                     \ r> : return top -> data row
-   LIN-SNAPSHOT {: bef:n :}
-   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
-   RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
-   rest RCUR !  tv DCUR @ MK-PUSH DCUR !
-   OK @ IF bef LIN-CHECK THEN ;
-
-: RSR@                                     \ r@ : peek return top
-   LIN-SNAPSHOT {: bef:n :}
-   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
-   RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
-   tv DCUR @ MK-PUSH DCUR !
-   OK @ IF bef LIN-CHECK THEN ;
-
-: RS2->R                                   \ 2>r : data pair -> return row
-   LIN-SNAPSHOT {: bef:n :}
-   FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
-   DCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
-   rest DCUR !
-   t1 RCUR @ MK-PUSH  t2 swap MK-PUSH  RCUR !
-   OK @ IF bef LIN-CHECK THEN ;
-
-: RS2R>                                    \ 2r> : return pair -> data row
-   LIN-SNAPSHOT {: bef:n :}
-   FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
-   RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
-   rest RCUR !
-   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
-   OK @ IF bef LIN-CHECK THEN ;
-
-: RS2R@                                    \ 2r@ : peek return pair
-   LIN-SNAPSHOT {: bef:n :}
-   FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
-   RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
-   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
-   OK @ IF bef LIN-CHECK THEN ;
 variable QTT  variable QD2  variable QR2
 
 \ ---- what a throw path leaves of the window it was entered with ---------------
@@ -5490,6 +5444,67 @@ CHECKER-REG:}SCRATCH
    STEP-R @ 0= IF -1 UNJ-SPLICED ! THEN ;
 : CHECKER-STEP {: din dout :}
    din dout UNJ-ARMED? CHECKER-STEP-UNJ ;
+
+\ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
+\ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
+\ balance check rejects net growth or borrowing; loop joins unify RCUR too.
+: RS->R                                    \ >r : data top -> return row
+   LIN-SNAPSHOT {: bef:n :}
+   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   tv rest MK-PUSH {: din:n :}
+   din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
+   DCUR @  din  UNIFY OK @ and OK !
+   OK @ borrows and IF
+      STEP-UNDERFLOW!
+      \ an unjudged scan keeps these rows, one raw cell each as the runtime moves;
+      \ left unsettled, UNJ-SETTLE would mark the scan incomplete over a wide return row (UNJ-LOST)
+      UNJ-ARMED? IF -1 UNJ-SPLICED ! THEN
+   THEN
+   rest DCUR !  tv RCUR @ MK-PUSH RCUR !
+   OK @ IF bef LIN-CHECK THEN ;
+
+: RSR>                                     \ r> : return top -> data row
+   LIN-SNAPSHOT {: bef:n :}
+   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   rest RCUR !  tv DCUR @ MK-PUSH DCUR !
+   OK @ IF bef LIN-CHECK THEN ;
+
+: RSR@                                     \ r@ : peek return top
+   LIN-SNAPSHOT {: bef:n :}
+   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   tv DCUR @ MK-PUSH DCUR !
+   OK @ IF bef LIN-CHECK THEN ;
+
+: RS2->R                                   \ 2>r : data pair -> return row
+   LIN-SNAPSHOT {: bef:n :}
+   FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
+   t2 t1 rest MK-PUSH MK-PUSH {: din:n :}
+   din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
+   DCUR @  din  UNIFY OK @ and OK !
+   OK @ borrows and IF
+      STEP-UNDERFLOW!
+      UNJ-ARMED? IF -1 UNJ-SPLICED ! THEN   \ as RS->R
+   THEN
+   rest DCUR !
+   t1 RCUR @ MK-PUSH  t2 swap MK-PUSH  RCUR !
+   OK @ IF bef LIN-CHECK THEN ;
+
+: RS2R>                                    \ 2r> : return pair -> data row
+   LIN-SNAPSHOT {: bef:n :}
+   FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
+   RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
+   rest RCUR !
+   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
+   OK @ IF bef LIN-CHECK THEN ;
+
+: RS2R@                                    \ 2r@ : peek return pair
+   LIN-SNAPSHOT {: bef:n :}
+   FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
+   RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
+   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
+   OK @ IF bef LIN-CHECK THEN ;
 
 \ Record a complete token effect while its input row is unified. Memory
 \ tokens construct these rows directly instead of instantiating a named word.
