@@ -19,7 +19,7 @@ private
 create OUT-BUF PATH-CAP allot     variable OUT-U
 create OBJ-BUF PATH-CAP allot     variable OBJ-U
 create PATH-BUF PATH-CAP allot
-variable CLEANUP-LIVE
+variable CLEANUP-LIVE   CLEANUP-LIVE scratch-cell-mark
 
 : CLEAR-SPAN ( ptr u8 n -- )
    {: a:ptr u:n :}

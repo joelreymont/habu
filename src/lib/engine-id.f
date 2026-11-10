@@ -20,7 +20,7 @@ PATH-CAP 1 + constant EID-PATH-CAP
 create EID-PATH EID-PATH-CAP allot   variable EID-PATH-U   variable EID-PATH-DONE
 create EID-KEY EID-KEY-LEN allot     variable EID-KEY-U
 variable EID-KEY-DONE
-variable EID-CLEANUP-LIVE
+variable EID-CLEANUP-LIVE   EID-CLEANUP-LIVE scratch-cell-mark
 create EID-PATHZ EID-PATH-CAP allot
 
 \ Linux follows the process's executable mapping, even after its old pathname

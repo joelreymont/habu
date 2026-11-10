@@ -447,7 +447,7 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES 8 / TASK-ZERO-CELLS,
 
 \ Whether a capture cleanup is registered for the mapped chunks.
 TASK-ALIGN8
-variable SEM-CHUNKS-ARMED
+variable SEM-CHUNKS-ARMED   SEM-CHUNKS-ARMED scratch-cell-mark
 
 \ Chunks are named by address, as n; 0 ends the chain.
 : SEM-POOL-FIRST ( -- n )
@@ -1245,7 +1245,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    then
    tcb PARK-DESTROY ;
 
-variable SWEEP-ARMED
+variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
 
 \ The flag is cleared last, so a walk that threw part way - TASK-RELEASE-MEM
 \ answers a refusing munmap with E-TASK-THREAD - leaves the hook registered for
@@ -2239,10 +2239,9 @@ TASK-MIN-STACK constant MIN-STACK
 : DECLARE-CALLBACK ( n -- )
    ROW-DECLARE ;
 
-\ FILE replay may restore SWEEP-ARMED from DATA, but not its process-local
-\ one-shot registration. An unbound row can still carry process-local MOVES.
+\ An unbound row can still carry process-local MOVES, so the sweep is armed
+\ when rows exist.
 : ARM-IMPORTED-CALLBACKS ( -- )
-   0 SWEEP-ARMED !
    ROW-N @ 0 > if TASK-ARM-SWEEP then ;
 
 \ Yields the processor. In a task whose run a TASK:HALT has reached, outside a

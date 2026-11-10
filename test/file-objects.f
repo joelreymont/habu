@@ -69,6 +69,8 @@
 \ argument, so their out roots hold only the files' objects.
 \ Build L builds log-main.f, whose first file takes LOG's facility and leaves HELD held: the program
 \ holds no mutex the build locked (macOS), and its MAIN takes HELD, logs its line and releases HELD.
+\ M has no require, so app-end.f's object becomes M's; L2 builds log-main.f again, compiling
+\ app-end.f beside log-main.f's reused objects.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -479,14 +481,14 @@ variable TAIL-N                          \ and the paths that end with it
    s" A's root holds eight objects" LABEL  A$ OBJECTS FILES-B T=
    SAME-AS-B ;
 
-\ tools/hb-build.f's build of log-main.f to L's prog, in a fresh hb and L's own out root: log.f
-\ requires and defines through does>, which build.f's files may not. True when it exits 0.
-: LOG-BUILD ( CMD:command -- CMD:command bool )
+\ Builds a fixture to L's prog by tools/hb-build.f, since log.f requires and creates through does>
+\ (build.f's files may not), in the tree's out root, which keeps the library's objects; true on rc 0.
+: FIXTURE-BUILD ( CMD:command ptr u8 n -- CMD:command bool )
+   {: src:ptr src-u:n :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
-   s" --" CMD:ARG+  s" test/fixtures/file-objects/log-main.f" CMD:ARG+
+   s" --" CMD:ARG+  src src-u CMD:ARG+
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
-   s" HABU_OUT" L$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
@@ -509,8 +511,11 @@ variable TAIL-N                          \ and the paths that end with it
    s" the program exits 0" LABEL  rc 0 T= ;
 
 : LOG-CASE ( CMD:command -- CMD:command )
-   s" L" WHICH!  LOG-BUILD 0= if exit then
-   LOG-UNLOCKED  LOG-RUN ;
+   s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
+   LOG-UNLOCKED  LOG-RUN
+   s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
+   s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
+   LOG-RUN ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND

@@ -9,7 +9,8 @@ package IMAGE-LIFECYCLE
 private
 
 DYNAMIC-BUFFER HOOKS [ -- ]
-variable N
+\ N counts HOOKS, so it is a scratch cell as HOOKS's are: a link writes both zero.
+variable N   N scratch-cell-mark
 \ Declaration-time hooks survive captures; typed DATA cells own relocation.
 64 TYPED-BUFFER PERSISTENT [ -- ]
 variable PERSISTENT-N

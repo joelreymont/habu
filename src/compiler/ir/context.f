@@ -501,7 +501,7 @@ public
 
 private
 
-variable HOOKED
+variable HOOKED   HOOKED scratch-cell-mark
 0 HOOKED !
 
 \ Runs before IR-CTX clears its registry at capture, so an idle session closes
