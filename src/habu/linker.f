@@ -4399,13 +4399,18 @@ variable DUE-MADE
    repeat ;
 
 
-\ The entries in order, each after the FACTS rows due before its record (REPLAY-DUE), so a retirement precedes records
-\ made after it; then the data. LINK-FACTS replays the rest.
+\ An entry that makes no record: a late private wordlist, a seal, a does> companion.
+: RECORDLESS? ( n -- bool )
+   ENTRY-OFFS @ OBJ@ {: kind:n :}
+   kind KIND-PRIVATE =  kind KIND-SEALED =  or  kind KIND-DOES =  or ;
+
+\ The entries in order, each record's after the FACTS rows due before it (REPLAY-DUE), so a retirement precedes records
+\ made after it and follows a RECORDLESS? entry made before it; then the data. LINK-FACTS replays the rest.
 : LINK-OBJECT ( -- )
    LINK-CLEAR
    0 ALIASES-N !
    REPLAY-FROM  DUE!
-   ENTRIES-N @ 0 ?do  REPLAY-DUE  i LINK-ENTRY  loop
+   ENTRIES-N @ 0 ?do  i RECORDLESS? 0= if REPLAY-DUE then  i LINK-ENTRY  loop
    LINK-DATA ;
 
 
