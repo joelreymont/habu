@@ -1,11 +1,14 @@
 ---
-title: Build the snapshot hole fixture on x86
+title: Store into a created table at interpret level on x86
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-01T20:15:09.355646+02:00"
 ---
 
-Problem: on x86 (master efef8267's engine and the t0x86 stack alike) building test/snapshot-writer-hole.f fails with 'hb: interpret stack underdepth: STR-MAX-I64$', so test/snapshot-writer.f F79 fails (expected rc 0, got 70; /tmp/jerry-big/x86base-suite.log:3299 and :3312 for F124). arm64 builds it. The fixture names src/lib/string.f:68's created table STR-MAX-I64$ at interpret level (snapshot-writer-hole.f:60-61 '0 STR-MAX-I64$ !') and in SEED-CELLS/SEED-NEXT (33-34). Root cause unknown: find whether the x86 engine's loader, the created word's effect or the interpret depth check is wrong, and fix that layer. Acceptance: the hole fixture builds on x86 and snapshot-writer's hole cases (F79-F94) pass there; arm64 unchanged. Files: to be found. Verify: on pulsar, bin/hb --load test/snapshot-writer.f; on the Mac, the same row. Depends: none. Ownership: the lane that takes it. Claim: unassigned.
-
-Census 2026-11-04: an acceptance case of its parent; fix it in the code that stays (named above), never in the machinery the parent replaces.
+Problem: on x86-64 engines of an older master (efef8267 and the t0x86 stack), `0 STR-MAX-I64$ !` at interpret level after `require src/lib/string.f` failed with 'hb: interpret stack underdepth: STR-MAX-I64$' (STR-MAX-I64$ is the table `create`d at src/lib/string.f:72). The snapshot hole fixture that showed it and its test, test/snapshot-writer.f, are deleted (d4d9e6c6a4). arm64 answers it: on the audit's arm64 engine, some commits behind master, `require src/lib/string.f 0 STR-MAX-I64$ ! STR-MAX-I64$ @ . depth .` printed 0 and 0, rc 0, so the shared interpret loop handles it and an x86 failure would lie in x86-only code. Whether x86 still fails is unknown; the cause is unknown (the x86 loader, the created word's effect, or the interpret depth check). The x86-64 tests are disabled until habu-re-enable-the-959502b5. This is an acceptance case of the parent (habu-move-the-interpreter-d35780fa): fix it in the code that stays, never in the machinery the parent replaces.
+Acceptance: the case is run on an x86-64 host; if it fails, the cause is reported at file:line and fixed there, and the case prints 0 0 with rc 0 on x86-64 and arm64; if it passes, the dot closes with that run as evidence.
+Files: to be found.
+Verify: first, on an x86-64 Linux host, bin/hb --load on a file holding `require src/lib/string.f` `0 STR-MAX-I64$ !` `STR-MAX-I64$ @ . depth .`; then the same on arm64.
+Depends: none.
+Ownership: unassigned. Claim: unassigned.
