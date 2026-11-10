@@ -7,7 +7,8 @@
 \ VALID? answers wasm-tools validate's verdict under core Wasm and WPROF's
 \ features. RUN answers run.mjs's exit status: 0 or 1, the entry's status, 2 for
 \ a trap and 3 for a compile or link error. OUT$ answers the OUT bytes the run
-\ wrote and THROW-CODE its full throw code, 0 unless it exited 1.
+\ wrote and THROW-CODE its full throw code, 0 unless it exited 1; FAULT-KIND and
+\ FAULT-ADDR the kind and address a checked fault stored before its trap, else 0.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -29,6 +30,8 @@ ERR-CAP BUFFER: ERR
 variable OUT-U
 variable ERR-U
 variable CODE
+variable KIND
+variable ADDR
 
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
@@ -54,6 +57,37 @@ variable CODE
       some OF ENDOF
       none OF a u NO-THROW-LINE ENDOF
    ;MATCH ;
+
+\ run.mjs's last stderr line for status 2 is its fault line; bun's own failures
+\ may exit 2 as well, so any other text ends the check.
+: NO-FAULT-LINE ( ptr u8 n -- )
+   type cr
+   s" wasm harness: bun exited 2 without a `fault <kind> <addr>` line" 1 die ;
+
+: LAST-LINE ( -- ptr u8 n )
+   ERR ERR-U @ RTRIM {: a:ptr u:n :}
+   u begin dup 0 > while
+      dup 1- a + c@ 10 = if  a over +  u rot -  exit  then
+      1-
+   repeat drop a u ;
+
+\ The number spelled by a field of the fault line.
+: FAULT-FIELD ( ptr u8 n ptr u8 n -- n )
+   {: line:ptr lu:n a:ptr u:n :}
+   a u STR>NUMBER? MATCH option
+      some OF ENDOF
+      none OF line lu NO-FAULT-LINE ENDOF
+   ;MATCH ;
+
+: FAULTED ( -- )
+   LAST-LINE {: a:ptr u:n :}
+   a u s" fault " STARTS-WITH? 0= if  a u NO-FAULT-LINE  then
+   a 6 + u 6 - 32 INDEX-OF MATCH option
+      some OF IDX>N ENDOF
+      none OF a u NO-FAULT-LINE ENDOF
+   ;MATCH {: k:n :}
+   a u  a 6 + k FAULT-FIELD KIND !
+   a u  a 7 + k +  u 7 - k -  FAULT-FIELD ADDR ! ;
 
 : VALIDATE ( ptr u8 n bool -- bool )
    {: path:ptr u:n no-sat:bool :}
@@ -82,12 +116,15 @@ public
    PROC-ARGV-RESET
    s" test/wasm/run.mjs" ARG+  path u ARG+
    s" bun" SPAWN {: rc:n :}
-   0 CODE !
+   0 CODE !  0 KIND !  0 ADDR !
    rc 1 = if  THROWN CODE !  then
+   rc 2 = if  FAULTED  then
    rc ;
 
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 
 : THROW-CODE ( -- n )  CODE @ ;
+: FAULT-KIND ( -- n )  KIND @ ;
+: FAULT-ADDR ( -- n )  ADDR @ ;
 
 ;package

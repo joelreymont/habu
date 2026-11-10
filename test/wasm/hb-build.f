@@ -13,12 +13,14 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/test.f
 require src/core/engine-error.f
+require src/arch/wasm/profile.f
 require test/wasm/harness.f
 
 package WASM-HB-BUILD-TEST
 private
 
 60000 constant DEADLINE-MS
+134 constant CRASH-RC   \ the kind a checked-address fault records (src/habu/t0-wasm.f CRASH-RC)
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -115,7 +117,9 @@ variable MOD-U
    s" low.f" SOURCE!
    s" a c! below WPROF:CTX-BASE faults and traps" T-LABEL
    s" low.wasm" BUILD 0 T=
-   RAN 2 T= ;
+   RAN 2 T=
+   WASM-HARNESS:FAULT-KIND CRASH-RC T=
+   WASM-HARNESS:FAULT-ADDR 8 T= ;
 
 
 \ The program d.f: division, max, atomics and views through words whose operands
@@ -396,6 +400,39 @@ variable TEXT-U
    RAN 0 T= ;
 
 
+\ The frames are wide: a recursion of one cell a level exhausts bun's call
+\ stack before a 64 KiB region.
+: BOUNDS-CASES ( -- )
+   SB-RESET
+   S\" : P8 ( n -- n n n n n n n n n ) dup dup dup dup dup dup dup dup ;\n" SB-APPEND
+   S\" : D8 ( n n n n n n n n -- ) 2drop 2drop 2drop 2drop ;\n" SB-APPEND
+   S\" : DEEP ( n -- ) P8 P8 P8 P8 recurse D8 D8 D8 D8 ;\n: MAIN ( -- ) 0 DEEP ;\n" SB-APPEND
+   SB$ s" sdata.f" SOURCE!
+   s" a data stack past its region faults with STACK-BOUNDS above its end and traps" T-LABEL
+   s" sdata.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STACK-BOUNDS T=
+   WASM-HARNESS:FAULT-ADDR WPROF:STACK-END > TTRUE
+   SB-RESET
+   S\" : DEEP ( n -- ) dup >r dup >r dup >r dup >r dup >r dup >r dup >r dup >r " SB-APPEND
+   S\" dup >r dup >r dup >r dup >r dup >r dup >r dup >r dup >r recurse " SB-APPEND
+   S\" r> drop r> drop r> drop r> drop r> drop r> drop r> drop r> drop " SB-APPEND
+   S\" r> drop r> drop r> drop r> drop r> drop r> drop r> drop r> drop ;\n" SB-APPEND
+   S\" : MAIN ( -- ) 0 DEEP ;\n" SB-APPEND
+   SB$ s" sret.f" SOURCE!
+   s" a return stack past its region faults with STACK-BOUNDS at its end and traps" T-LABEL
+   s" sret.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STACK-BOUNDS T=
+   WASM-HARNESS:FAULT-ADDR WPROF:LOOP-BASE T=
+   S\" : DEEP ( -- ) 1 0 do recurse loop ;\n: MAIN ( -- ) DEEP ;\n" s" sloop.f" SOURCE!
+   s" a loop stack past its region faults with STACK-BOUNDS at its end and traps" T-LABEL
+   s" sloop.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:STACK-BOUNDS T=
+   WASM-HARNESS:FAULT-ADDR WPROF:DATA-BASE T= ;
+
+
 \ The program grow.f: a cell row reserved, then reserved larger; a failed WANT
 \ reads below WPROF:CTX-BASE.
 : GROW! ( -- )
@@ -443,6 +480,7 @@ public
    THROW-CASES
    DIE-CASE
    CATCH-CASE
+   BOUNDS-CASES
    GROWTH-CASE
    SEGMENTS-CASE
    T-REPORT ;

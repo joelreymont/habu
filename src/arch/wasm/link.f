@@ -80,7 +80,8 @@ DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
 
 \ ---- the signatures an emission row states -------------------------------------
 1 constant FRAME-ALIGNED             \ the lanes are in the aligned frame
-4 constant WRAPPERS                  \ run, throw-code, out-base and out-len
+\ run, throw-code, out-base, out-len, fault-kind and fault-addr
+6 constant WRAPPERS
 variable RESERVES                    \ 1 once RESERVE! named reserve's callee, else 0
 variable RES-FN                      \ that callee
 3 constant RANKS
@@ -189,8 +190,8 @@ LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
 
 \ ---- index order ----------------------------------------------------------------
 \ Functions are numbered by origin (kernel, captured, adapter), each in the order
-\ added, then the wrappers: run, throw-code, out-base, out-len and, once RESERVE!
-\ named its callee, reserve.
+\ added, then the wrappers: run, throw-code, out-base, out-len, fault-kind,
+\ fault-addr and, once RESERVE! named its callee, reserve.
 : RANKED ( n [ n -- ] -- )
    {: r:n fn :}
    NF @ 0 ?do  i FN-RANK @ r = if  i fn execute  then  loop ;
@@ -219,8 +220,8 @@ variable TYPES-U
 variable NTYPES
 DYNAMIC-BUFFER TYPE-AT n
 DYNAMIC-BUFFER TYPE-LEN n
-variable WR-I32                      \ () -> (i32): run, out-base and out-len
-variable WR-I64                      \ () -> (i64): throw-code
+variable WR-I32                      \ () -> (i32): run, out-base, out-len, fault-kind
+variable WR-I64                      \ () -> (i64): throw-code, fault-addr
 variable WR-RES                      \ (i64) -> (i64): reserve
 variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 
@@ -289,9 +290,11 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ loop leaves no depth for the next host turn; it stores WPROF's stack base in
 \ ctx's stack base and top and 0 in its out-len, calls the entry with WPROF's
 \ ctx base and answers its status; throw-code answers ctx's throw code,
-\ out-base WPROF's out base, out-len ctx's out-len. reserve, (i64 bytes) ->
-\ (i64 address), calls map-anon and answers its address, 0 when refused: a host
-\ copies each delivery into pages the module reserved (src/lib/browser/turn.js).
+\ out-base WPROF's out base, out-len ctx's out-len; fault-kind and fault-addr
+\ answer ctx's fault kind and address, which a trap leaves. reserve, (i64
+\ bytes) -> (i64 address), calls map-anon and answers its address, 0 when
+\ refused: a host copies each delivery into pages the module reserved
+\ (src/lib/browser/turn.js).
 \ ctx's field at off := v, an i32.
 : CTX! ( n n -- )
    {: v:n off:n :}
@@ -350,6 +353,16 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    OP-I32-LOAD ALIGN-32 WPROF:CTX-OUT-LEN CTX@
    OP-END PUT-BYTE ;
 
+: FAULT-KIND-BODY ( -- )
+   0 PUT-U32
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-FAULT-KIND CTX@
+   OP-END PUT-BYTE ;
+
+: FAULT-ADDR-BODY ( -- )
+   0 PUT-U32
+   OP-I64-LOAD ALIGN-64 WPROF:CTX-FAULT-ADDR CTX@
+   OP-END PUT-BYTE ;
+
 \ A frame callee takes the count at the data stack's first cell and answers
 \ the address there, the ior above it; the stack is empty between runs.
 : FRAME-RESERVE ( -- )
@@ -404,6 +417,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    NF @ WRAPPERS + RESERVES @ + PUT-U32
    [: FN-TYPE @ PUT-U32 ;] IN-ORDER
    WR-I32 @ PUT-U32  WR-I64 @ PUT-U32  WR-I32 @ PUT-U32  WR-I32 @ PUT-U32
+   WR-I32 @ PUT-U32  WR-I64 @ PUT-U32
    RESERVES @ 0<> if  WR-RES @ PUT-U32  then ;
 
 : TABLE-SEC ( -- )
@@ -427,6 +441,8 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    s" throw-code" EXPORT-FUNC NF @ 1+ PUT-EXPORT
    s" out-base" EXPORT-FUNC NF @ 2 + PUT-EXPORT
    s" out-len" EXPORT-FUNC NF @ 3 + PUT-EXPORT
+   s" fault-kind" EXPORT-FUNC NF @ 4 + PUT-EXPORT
+   s" fault-addr" EXPORT-FUNC NF @ 5 + PUT-EXPORT
    RESERVES @ 0<> if  s" reserve" EXPORT-FUNC NF @ WRAPPERS + PUT-EXPORT  then ;
 
 : ELEMENT-SEC ( -- )
@@ -448,6 +464,8 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    [: THROW-CODE-BODY ;] SIZED
    [: OUT-BASE-BODY ;] SIZED
    [: OUT-LEN-BODY ;] SIZED
+   [: FAULT-KIND-BODY ;] SIZED
+   [: FAULT-ADDR-BODY ;] SIZED
    RESERVES @ 0<> if  [: RESERVE-BODY ;] SIZED  then ;
 
 : DATA-SEC ( -- )
