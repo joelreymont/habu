@@ -619,17 +619,17 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 public
 
 \ SwiftForth's path words, at the top level of a stdin session or of a program
-\ file run as `bin/hb file.f`; inside a loaded file (`--load`, `require`) they
-\ are refused, and a file scopes a root with WITH. `CD <dir>` on its own line
-\ moves the current path (CD-PATH), and a bare CD prints it.
+\ file run as `bin/hb file.f`; inside a load (`--load`, `require`) or a WITH
+\ body they are refused, and a file scopes a root with WITH. `CD <dir>` on its
+\ own line moves the current path (CD-PATH), and a bare CD prints it.
 : CD ( -- )
-   s" CD: only at top level" TOP-ONLY
+   s" CD: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH" TOP-ONLY
    LINE-BLANK? if CURRENT$ type cr exit then
    parse-name CD-PATH ;
 
 \ PUSHPATH saves the current path; a null slot is the top-level root.
 : PUSHPATH ( -- )
-   s" PUSHPATH: only at top level" TOP-ONLY
+   s" PUSHPATH: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH" TOP-ONLY
    SLOT-N @ PATH-DEPTH >= if
       s" PUSHPATH: directory stack is full" INCLUDE-IO-RC die
    then
@@ -640,7 +640,7 @@ public
    ix 1+ SLOT-N ! ;
 
 : POPPATH ( -- )
-   s" POPPATH: only at top level" TOP-ONLY
+   s" POPPATH: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH" TOP-ONLY
    SLOT-N @ 0= if s" POPPATH: directory stack is empty" INCLUDE-IO-RC die then
    SLOT-N @ 1- {: ix:n :}
    RELEASE-CURRENT

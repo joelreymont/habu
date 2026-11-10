@@ -558,9 +558,18 @@ variable RC
 \ A load holds the path it replaced, so none of the words may move it.
 : PATH-IN-LOAD ( -- )
    s" the path words are refused inside a loaded file" T-LABEL
-   s" cd-load.f" S\" CD: only at top level\n" IN-LOAD
-   s" push-load.f" S\" PUSHPATH: only at top level\n" IN-LOAD
-   s" pop-load.f" S\" POPPATH: only at top level\n" IN-LOAD ;
+   s" cd-load.f" S\" CD: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH\n" IN-LOAD
+   s" push-load.f" S\" PUSHPATH: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH\n" IN-LOAD
+   s" pop-load.f" S\" POPPATH: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH\n" IN-LOAD ;
+
+\ A root scope holds the path it replaced too, with no file loaded.
+: PATH-IN-ROOT ( -- )
+   s" the path words are refused inside a top-level root scope" T-LABEL
+   PROG-RESET
+   S\" : G ( -- ) s\q /tmp\q [: SOURCE-ROOT:CD ;] SOURCE-ROOT:WITH ;" PLINE
+   s" G" PLINE
+   RUN-TREE
+   S\" CD: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH\n" REFUSAL ;
 
 \ A null slot is the working directory, which the last POPPATH restores. The
 \ round trip spells the words bare under `using SOURCE-ROOT`.
@@ -604,7 +613,7 @@ variable RC
    s" CD: does not exist: " CD-REFUSED
    s" CD to a file is refused by name" s" cd/x.f"
    s" CD: is not a searchable directory: " CD-REFUSED
-   CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-STACK ;
+   CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-IN-ROOT PATH-STACK ;
 
 : MAIN ( -- )
    T-RESET

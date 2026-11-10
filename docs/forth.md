@@ -287,10 +287,10 @@ public
   (`SOURCE-ROOT:CD`, or `CD` under `using SOURCE-ROOT`), move the current
   path, the first root a relative path searches: `CD <dir>` sets it, relative
   to the current path when relative, and a bare `CD` prints it; `PUSHPATH`
-  saves it and `POPPATH` restores it. Inside a loaded file (`--load` or
-  `require`) they are refused by name. They never change the engine root or
-  the process working directory, and an image cannot be saved with a path
-  pushed. A file scopes a root with
+  saves it and `POPPATH` restores it. Inside a load (`--load` or `require`)
+  or a `SOURCE-ROOT:WITH` body they are refused by name. They never change the
+  engine root or the process working directory, and an image cannot be saved
+  with a path pushed. A file scopes a root with
   `SOURCE-ROOT:WITH ( ptr u8 n [ -- ] -- )`, which restores the caller's on
   return or throw; a root that does not resolve to a searchable directory, and
   an image save inside the scope, are refused by name. Fixtures resolve
