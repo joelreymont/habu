@@ -1519,8 +1519,9 @@ learned live in the docs for their subject.
   wordlist its records do not account for ends the build with `-9693
   LINKER:E-WORDLIST`. LINKER:WRITE sorts the program's address-cell list by
   offset, so the program does not depend on the order cells were marked. Left to
-  later steps: a does> slot a clause patched, the error-code chain and loader
-  state at a file's start.
+  later steps: a does> slot a clause patched, loader state at a file's start,
+  and a value a file read from an earlier file's cell at its start, such as
+  the newest error row its own row links to.
 - 2026-11-07, a warm build after an edit: shown that a build read
   `<out>/loads`, the previous build's started loads, at its first file and
   then linked every file or compiled every file, each object stale once any
@@ -1550,14 +1551,15 @@ learned live in the docs for their subject.
   distances that span other files' data. The FFI's resolved addresses were
   stored raw. A warm build linking such an object after an earlier file grew,
   or after a reboot, would differ from a cold build or call a stale address.
-  Under those words the lead chose that each owner keeps its cells free of
+  In the design those words approved, each owner keeps its cells free of
   layout and process: TASK:FACILITY-INIT lays the platform's static initializer
-  (PTHREAD_MUTEX_INITIALIZER: Darwin's signature, glibc's zeros) in place of
-  calling pthread_mutex_init, so the first lock initializes the mutex in the
-  process that takes it; error.f's head and row links are declared address
-  cells the linker relocates; and the FFI's resolved addresses, library handles
-  and failure flags are scratch cells, linked as zero and resolved again at
-  the first call. No linker rule changes.
+  (PTHREAD_MUTEX_INITIALIZER: Darwin's signature then zeros, glibc's zeros) in
+  place of calling pthread_mutex_init, so on Darwin the first lock initializes
+  the mutex in the process that takes it, and no load of a build takes a
+  facility; error.f's head and row links are declared address cells the linker
+  relocates; and the FFI's resolved addresses, library handles and failure
+  flags are scratch cells, linked as zero and resolved again at the first
+  call. No linker rule changes.
 - 2026-11-05, the old builders: shown that DATA-FLOOR-CELL is a second floor
   for DP, kept only by the old string store so a failed line's rollback never
   drops DP below strings compiled code points at, and asked when it should go,

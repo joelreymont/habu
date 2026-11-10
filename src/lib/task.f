@@ -2042,8 +2042,8 @@ private
 : FACILITY-OWNER! ( n ptr n -- )
    FACILITY-OWNER atomic! ;
 
-\ PTHREAD_MUTEX_INITIALIZER, Darwin's signature or glibc's zeros, holds no
-\ address: the first lock initializes the mutex in the process that takes it.
+\ PTHREAD_MUTEX_INITIALIZER: Darwin's _PTHREAD_MUTEX_SIG_init then zeros, glibc's zeros.
+\ Darwin's first lock writes the mutex's address, so no load of a build takes a facility.
 : FACILITY-INIT ( ptr n -- ) {: f:ptr :}
    0 f FACILITY-OWNER!
    f FACILITY-MUTEX {: m:ptr :}
