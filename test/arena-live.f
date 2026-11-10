@@ -4,16 +4,11 @@
 \ owner (test/arena.f refuses the casts; address arithmetic still reaches a
 \ head), and it can neither call nor tick the arena runtime words outside
 \ ARENA's generated words; a fetch through a family missing its argument is
-\ refused for its arity; a package's
-\ own `field-project` is refused at its definition; capture refuses a live
-\ arena declared at top level and one declared in a package, each named on
-\ stderr, and admits both released.
+\ refused for its arity; a package's own `field-project` is refused at its
+\ definition.
 require src/lib/string.f
-require src/lib/image-lifecycle.f
 
 STRUCTURE top-rec DERIVE addr FIELD x n ;STRUCTURE
-ARENA TOP-RECS top-rec
-TYPED-VARIABLE TOP-POOL top-recs
 
 \ A top-level name whose constructor package, its hyphens doubled, passes 255
 \ bytes is STRUCTURE's refusal, spoken before anything is defined; this name
@@ -154,21 +149,3 @@ ARENA-CAPTURE-ROW
 package STRUCT-CAPTURE
 STRUCT-CAPTURE-ROW
 ;package
-
-package ARENA-LIVE
-STRUCTURE rec DERIVE addr FIELD x n ;STRUCTURE
-ARENA LIVE-RECS rec
-TYPED-VARIABLE POOL live-recs
-
-: PREPARED ( -- n ) [: IMAGE-LIFECYCLE:PREPARE ;] catch ;
-
-public
-
-: RUN ( -- )
-   s" arena-live: " type
-   TOP-POOL TOP-RECS-NEW drop PREPARED . TOP-POOL TOP-RECS-RELEASE
-   POOL LIVE-RECS-NEW drop PREPARED . POOL LIVE-RECS-RELEASE
-   PREPARED . ;
-;package
-
-ARENA-LIVE:RUN

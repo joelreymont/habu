@@ -22,9 +22,7 @@ variable CALLS
    s" : RAW-TASK-ENTRY ( -- n ) task-entry ;" CHECK-QUIET-CANDIDATE! 0 T=
    0 CALLS atomic!
    RUN-STABLE
-   IMAGE-LIFECYCLE:PREPARE
    RUN-STABLE
-   IMAGE-LIFECYCLE:PREPARE
    RUN-STABLE
    CALLS atomic@ 3 T=
    T-REPORT ;

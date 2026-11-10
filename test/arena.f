@@ -8,14 +8,12 @@
 \ or forges an owner's head, checked code can neither call nor tick the arena
 \ runtime words outside ARENA's generated words, the cast, CWORK-VARIABLE and
 \ call refusals live and under tools/check.f --verify-only,
-\ a fetch through a family missing its argument is refused for its arity, no
-\ package defines its own `field-project`, and a live arena refuses capture,
-\ naming itself on stderr, unless a capture hook releases it.
+\ a fetch through a family missing its argument is refused for its arity, and
+\ no package defines its own `field-project`.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
-require src/lib/image-lifecycle.f
 require test/e2e-tree.f
 
 package ARENA-TEST
@@ -189,14 +187,6 @@ variable OVF-U
    ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ E2E-TREE:RUN-ON ;
 
 
-: LIVE-CHILD ( -- )
-   s" capture names the live arena on stderr" T-LABEL
-   E2E-TREE:ERR$ s" hb: capture: live arena TOP-RECS" CONTAINS? TTRUE
-   E2E-TREE:ERR$ s" hb: capture: live arena ARENA-LIVE:LIVE-RECS" CONTAINS? TTRUE
-   E2E-TREE:OUT$ S\" arena-live: 7211\n7211\n0\n" CONTAINS? TTRUE
-   E2E-TREE:RC@ 0 T= ;
-
-
 \ At top level no head accessor exists to plant bytes as a chunk or to copy a
 \ head, and an owner is refused whole at the fetch that would copy it.
 : OWNER-CHILD ( -- )
@@ -250,29 +240,10 @@ variable OVF-U
    E2E-TREE:RC@ 0 <> TTRUE ;
 
 
-\ Last: PREPARE runs every capture hook this process registered.
-: LIVE-CAPTURE ( -- )
-   s" a live arena refuses capture until it is released" T-LABEL
-   0 POOLS POOL-ITEMS RECS-NEW drop
-   [: IMAGE-LIFECYCLE:PREPARE ;] catch DYNAMIC-STORAGE:E-ARENA-LIVE T=
-   0 POOLS POOL-ITEMS RECS-RELEASE
-   [: IMAGE-LIFECYCLE:PREPARE ;] catch 0 T= ;
-
-
-\ The guard runs after every hook, so an owner can release its arena through
-\ the lifecycle's own registry.
-: HOOK-RELEASE ( -- )
-   s" a capture hook that releases its arena admits the capture" T-LABEL
-   1 POOLS POOL-ITEMS RECS-NEW drop
-   [: 1 POOLS POOL-ITEMS RECS-RELEASE ;] IMAGE-LIFECYCLE:REGISTER
-   [: IMAGE-LIFECYCLE:PREPARE ;] catch 0 T= ;
-
-
 : RUN ( -- )
    T-RESET
-   CHILD GROWTH REFUSALS COPIES OWNER-CHILD CALL-CHILD CAPTURE-CHILD LIVE-CHILD
+   CHILD GROWTH REFUSALS COPIES OWNER-CHILD CALL-CHILD CAPTURE-CHILD
    VERIFY-CALLS
-   LIVE-CAPTURE HOOK-RELEASE
    T-REPORT ;
 
 RUN

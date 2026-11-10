@@ -1,4 +1,5 @@
-\ zip-lifecycle-test.f - live ZIP archives retired by image preparation.
+\ zip-lifecycle-test.f - an archive's snapshot goes with CLOSE, and a halt
+\ during disposal takes effect after the archive's node is freed.
 require src/lib/string.f
 require src/lib/zip.f
 require src/lib/zip-test-fixture.f
@@ -14,17 +15,12 @@ EXPORT ORIGINAL$
 
 package ZIP
 using FFI
-using IMAGE-LIFECYCLE
 
 create BASE PATH-CAP allot
 variable BASE-LEN
 create PATH-BUF PATH-CAP allot
 create SNAP-PATH PATH-CAP allot
 variable SNAP-PATH-U
-TYPED-VARIABLE OWNER archive
-variable OWNER-LIVE
-variable OWNER-CLOSES
-variable OWNER-RESULT
 PTR-VARIABLE CLOSE-NODE
 variable CLOSE-STARTED
 variable CLOSE-FINISHED
@@ -45,63 +41,8 @@ TASK:SEMAPHORE LOCK-RELEASE
    INPUT$ ZIP-TEST:ORIGINAL$ FS:WRITE-ALL ;
 
 
-\ The library may retire this identity before its application owner runs.
-: OWNER-CLOSE ( -- )
-   OWNER-LIVE @ 0= if exit then
-   OWNER @ [: dup CLOSE ;] catch {: code:n :} drop
-   code 0<> code E-HANDLE <> and if code throw then
-   code OWNER-RESULT ! 1 OWNER-CLOSES +!
-   0 >ARCHIVE OWNER ! 0 OWNER-LIVE ! ;
-
-
-: OWNER-OPEN ( -- archive )
-   [: OWNER-CLOSE ;] IMAGE-LIFECYCLE:REGISTER
-   INPUT$ OPEN dup OWNER ! 1 OWNER-LIVE ! ;
-
-
-: READ-STORED ( archive -- entry )
-   dup 0 ENTRY {: archive:archive member:entry :}
-   archive member NAME$ s" stored.txt" T$=
-   archive member READ s" stored value" T$= member ;
-
-
-: STALE-COUNT ( archive -- archive ) dup COUNT drop ;
-: STALE-READ ( archive entry -- archive entry ) 2dup READ 2drop ;
-
-
-: ASSERT-RETIRED ( -- )
-   ARCHIVES @ NULL? TTRUE ;
-
-
-: LIFECYCLE-USE ( -- )
-   [: s" /no/such/habu-zip-lifecycle.zip" OPEN drop ;]
-      E-OPEN TTHROWSQ ;
-
-
-: LIFECYCLE-ASSERT-CLEAR ( -- )
-   ASSERT-RETIRED REGISTERED @ 0 T= ;
-
-
-: LIFECYCLE-ARCHIVES ( -- )
-   OWNER-OPEN dup READ-STORED {: archive:archive member:entry :}
-   INPUT$ EDIT {: other:archive :}
-   other 0 ENTRY other swap s" replacement" REPLACE
-   PREPARE LIFECYCLE-ASSERT-CLEAR
-   OWNER-LIVE @ 0 T= OWNER-RESULT @ E-HANDLE T=
-   archive [: STALE-COUNT ;] catch E-HANDLE T= drop
-   archive member [: STALE-READ ;] catch E-HANDLE T= 2drop
-   other [: STALE-COUNT ;] catch E-HANDLE T= drop
-   OWNER-CLOSES @ OWNER-CLOSE OWNER-CLOSES @ T=
-   INPUT$ OPEN {: fresh:archive :}
-   fresh ARCHIVE>N archive ARCHIVE>N T<>
-   fresh READ-STORED drop
-   PREPARE LIFECYCLE-ASSERT-CLEAR
-   fresh [: STALE-COUNT ;] catch E-HANDLE T= drop
-   PREPARE LIFECYCLE-ASSERT-CLEAR ;
-
-
-\ A halt requested while disposal waits must take effect after the node is
-\ unregistered and freed. Otherwise image retirement discards its C object twice.
+\ A halt requested while disposal waits takes effect after the node is
+\ unregistered and freed, or its C object is discarded twice.
 : HOLD-ZIP-LOCK ( -- )
    STATE-GET
    1 LOCK-HELD atomic!
@@ -151,21 +92,11 @@ TASK:SEMAPHORE LOCK-RELEASE
    s" CLOSE removed the archive's snapshot" T-LABEL
    SNAP-PATH SNAP-PATH-U @ FS:EXISTS? TFALSE ;
 
-\ Even a failed open registers the retirement; every PREPARE leaves nothing.
 : LIFECYCLE-RUN ( -- )
-   T-RESET FS:CLEANUP-RESET
-   LIFECYCLE-SETUP
-   PREPARE LIFECYCLE-ASSERT-CLEAR
-   LIFECYCLE-USE REGISTERED @ 1 T=
-   PREPARE LIFECYCLE-ASSERT-CLEAR
-   LIFECYCLE-ARCHIVES
-   LIFECYCLE-USE PREPARE LIFECYCLE-ASSERT-CLEAR
-   SNAPSHOT-REMOVED
-   HALT-DURING-CLOSE
-   FS:CLEANUP-RUN T-REPORT ;
+   T-RESET FS:CLEANUP-RESET LIFECYCLE-SETUP SNAPSHOT-REMOVED
+   HALT-DURING-CLOSE FS:CLEANUP-RUN T-REPORT ;
 
 
 LIFECYCLE-RUN
-;using
 ;using
 ;package
