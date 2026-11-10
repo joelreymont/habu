@@ -1,6 +1,6 @@
 ---
 title: An open if at ; names if in prose and ; in the packet
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-10T11:10:15.043646+02:00"
@@ -11,3 +11,5 @@ Problem: for `: T ( bool -- ) if ;` the prose line names `'if'` and the JSON pac
 More cases 2026-11-10 (bob), from the control-flow review: `: T ( -- ) drop 0 0= if ;` puts the prose at 'drop' and the packet at ';'; `: T ( n -- ) case ;` prints prose with no reason.
 
 Case 2026-11-10 (bob), from the control-flow re-review: a do, 32 ifs, `loop`, then 32 thens. The packet refuses at `;` with "a control structure is still open at the end of the definition", not E-UNCHECKABLE at the 33rd if; the prose names `if` and gives no reason. Same tokens on the base.
+
+Claim: agent=bob workspace=.jj-ws.noindex/habu-an-open-if-7b86a774
