@@ -516,8 +516,8 @@ variable HOOKED   HOOKED scratch-cell-mark
 \ registration would never recur in an engine built from an image.
 : HOOK-CAPTURE ( -- )
    HOOKED @ 0<> if exit then
-   1 HOOKED !
-   [: SESSION-AT-CAPTURE ;] IMAGE-LIFECYCLE:REGISTER ;
+   [: SESSION-AT-CAPTURE ;] IMAGE-LIFECYCLE:REGISTER
+   1 HOOKED ! ;
 
 public
 
