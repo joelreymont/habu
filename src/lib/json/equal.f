@@ -3,6 +3,7 @@
 
 require src/lib/memory.f
 require src/lib/span.f
+require src/lib/string.f
 require src/lib/json/read.f
 
 package JSON
@@ -148,184 +149,417 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
 
 
 \ ---- the walk --------------------------------------------------------------
+\ An index pass reads b once into rows; the walk then reads a once against
+\ them, and reads again only each string of b it compares.
 
-\ Reads text as one value with record c, each number's exponents checked as
-\ NUMBER= reads them, and answers its deepest container level.
-: TEXT-DEPTH ( ptr cursor ptr u8 n -- n )
-   {: c:ptr text:ptr u:n :}
-   c text u INIT-STATE
-   0 begin c NEXT-INNER dup T-END <> while
-      NUMERIC? if c RAW-SPAN$ POINT-EXP drop then
-      c CURSOR-DEPTH @ max
-   repeat drop ;
-
-
-\ Whether ca's and cb's tokens are one kind, numbers being one kind.
-: SAME-KIND? ( ptr cursor ptr cursor -- bool )
-   {: ca:ptr cb:ptr :}
-   ca CURSOR-KIND @ {: ka:n :}
-   cb CURSOR-KIND @ {: kb:n :}
+: SAME-KIND? ( n n -- bool )
+   {: ka:n kb:n :}
    ka kb =  ka NUMERIC? kb NUMERIC? and  or ;
 
 
-\ Whether two scalars of one kind hold the same value: a string decodes into
-\ buf, which holds any string of ca's text.
-: SCALAR= ( ptr cursor ptr cursor ptr u8 n -- bool )
-   {: ca:ptr cb:ptr buf:ptr cap:n :}
-   ca CURSOR-KIND @ NUMERIC? if ca RAW-SPAN$ cb RAW-SPAN$ NUMBER= exit then
-   ca CURSOR-KIND @ T-STR = if cb buf ca buf cap STR-INNER MATCH-INNER exit then
-   true ;
-
-
-\ Opens record r on object text and leaves it past the opener.
-: OPEN-OBJECT ( ptr cursor ptr u8 n -- )
-   {: r:ptr text:ptr u:n :}
-   r text u INIT-STATE
-   r NEXT-INNER drop ;
-
-
-: MEMBER-COUNT ( ptr cursor ptr u8 n -- n )
-   {: r:ptr text:ptr u:n :}
-   r text u OPEN-OBJECT
-   0 begin r NEXT-INNER T-KEY = while
-      1+ r NEXT-INNER drop r SKIP-INNER
-   repeat ;
-
-
-\ With ca on a key, finds that key in object text with record r; on true both
-\ cursors are on the member's value.
-: MEMBER-PAIR? ( ptr cursor ptr cursor ptr u8 n ptr u8 n -- bool )
-   {: ca:ptr r:ptr text:ptr u:n buf:ptr cap:n :}
-   ca buf cap STR-INNER {: ku:n :}
-   r text u OPEN-OBJECT
-   r buf ku FIND-INNER 0= if false exit then
-   ca NEXT-INNER drop true ;
-
-
-\ With ca just past the close of the object opened at offset start, whether
-\ two of its keys decode the same.
-: CLOSED-REPEATS? ( ptr cursor n -- bool )
-   {: ca:ptr start:n :}
-   ca CURSOR-SRC @ start +  ca CURSOR-POS @ start -  READ-REPEATS? ;
-
-
-\ One open container of the walk, kind T-ARR or T-OBJ. cur walks b's side: an
-\ array's is its parent's, an object's is record, which finds each of a's keys
-\ in b's object, the bytes text..text+len. start is the offset of a's object
-\ and count the members matched so far.
-STRUCTURE frame DERIVE addr
+\ One value of b: start..start+len its bytes, a string's quotes included; count a container's
+\ children; next the first row past its own; parent -1 at the top; first its first member's place.
+STRUCTURE row DERIVE addr
    FIELD kind n
-   FIELD cur ptr cursor
    FIELD start n
-   FIELD text ptr u8
    FIELD len n
    FIELD count n
-   FIELD record cursor
+   FIELD next n
+   FIELD parent n
+   FIELD key-at n
+   FIELD key-len n
+   FIELD first n
+   FIELD matched bool
 ;STRUCTURE
 
-\ VALUE='s scratch: records a and b on the two texts, depth frames open of
-\ those at levels, then buf..buf+cap for decoding a's strings.
+\ One container open on both sides, kind T-ARR or T-OBJ, against b's row; due
+\ is the row an array's next element compares with, count the children
+\ matched so far.
+STRUCTURE frame DERIVE addr
+   FIELD kind n
+   FIELD row n
+   FIELD due n
+   FIELD count n
+;STRUCTURE
+
+\ VALUE='s scratch, one mapping laid out by WALK-INIT. A fresh mapping reads 0:
+\ every count starts at 0, the member list is empty and no record owns a stack.
 STRUCTURE walk DERIVE addr
    FIELD a cursor
    FIELD b cursor
+   FIELD s cursor
+   FIELD frames ptr u8
    FIELD depth n
-   FIELD levels ptr u8
+   FIELD rows ptr u8
+   FIELD used n
+   FIELD open n
+   FIELD members ptr u8
+   FIELD spare ptr u8
+   FIELD member-n n
+   FIELD keys ptr u8
+   FIELD key-cap n
+   FIELD key-used n
+   FIELD key-at n
+   FIELD key-len n
+   FIELD due n
    FIELD buf ptr u8
    FIELD cap n
 ;STRUCTURE
 
+CAST: >ROW ( ptr n -- ptr row )
 CAST: >FRAME ( ptr n -- ptr frame )
 CAST: >WALK ( ptr n -- ptr walk )
 
-\ The walk's states: a value is due under a's cursor and CB; the innermost frame
-\ reads on, past an equal value or into one just opened; the two answers.
+\ The walk's states: a value is due under a's cursor and row due; the
+\ innermost frame reads on, past an equal value or into one just opened; the
+\ two answers.
 0 constant W-VALUE
 1 constant W-ON
 2 constant W-SAME
 3 constant W-DIFFERENT
 
+: ROW ( ptr walk n -- ptr row )
+   {: w:ptr i:n :}
+   w WALK-ROWS @ i ROW-BYTES * + CELL-VIEW >ROW ;
+
 : FRAME ( ptr walk n -- ptr frame )
    {: w:ptr i:n :}
-   w WALK-LEVELS @ i FRAME-BYTES * + CELL-VIEW >FRAME ;
+   w WALK-FRAMES @ i FRAME-BYTES * + CELL-VIEW >FRAME ;
 
 : TOP ( ptr walk -- ptr frame )
    {: w:ptr :}
    w  w WALK-DEPTH @ 1-  FRAME ;
 
-\ The cursor on b's side of the value due.
-: CB ( ptr walk -- ptr cursor )
+
+\ ---- the scratch's size -----------------------------------------------------
+
+\ Counts byte c into text's opening brackets, commas and colons so far.
+: TALLY ( n n n n -- n n n )
+   {: opens:n commas:n colons:n c:n :}
+   c LBRACE =  c LBRACK =  or if opens 1+ commas colons exit then
+   c COMMA = if opens commas 1+ colons exit then
+   opens commas  colons  c COLON = if 1+ then ;
+
+\ A byte inside a string counts too, so each count only bounds what it counts.
+: PUNCTUATION ( ptr u8 n -- n n n )
+   {: p:ptr u:n :}
+   0 0 0  u 0 ?do p i + c@ TALLY loop ;
+
+
+\ Frames, rows and member cells: each frame is a container open in both texts; each value of b
+\ but the top and a container's first follows a comma; a member a colon, a cell in each list.
+: WALK-COUNTS ( ptr u8 n ptr u8 n -- n n n )
+   {: a:ptr u:n b:ptr v:n :}
+   a u PUNCTUATION 2drop  b v PUNCTUATION {: ka:n kb:n commas:n colons:n :}
+   ka kb min  commas kb + 1+  colons 2 * ;
+
+: WALK-LEN ( n n n n n -- n )
+   {: k:n r:n s:n u:n v:n :}
+   WALK-BYTES  k FRAME-BYTES * +  r ROW-BYTES * +  s cells +  u +  v + ;
+
+
+\ Lays the walk over scratch: k frames, r rows, s member cells (the list, then the
+\ spare), v key bytes, then u bytes for a's strings.
+: WALK-INIT ( SPAN:span<u8> n n n n n -- ptr walk )
+   {: scratch k:n r:n s:n u:n v:n :}
+   scratch SPAN:$ drop {: base:ptr :}
+   base CELL-VIEW >WALK {: w:ptr :}
+   base WALK-BYTES + {: frames:ptr :}
+   frames k FRAME-BYTES * + {: rows:ptr :}
+   rows r ROW-BYTES * + {: list:ptr :}
+   list s cells + {: keys:ptr :}
+   frames w WALK-FRAMES !
+   rows w WALK-ROWS !
+   list w WALK-MEMBERS !
+   list s 2 / cells + w WALK-SPARE !
+   keys w WALK-KEYS !
+   v w WALK-KEY-CAP !
+   keys v + w WALK-BUF !
+   u w WALK-CAP !
+   -1 w WALK-OPEN !
+   w ;
+
+
+\ Releases every record's stack, then the scratch.
+: WALK-FREE ( SPAN:span<u8> -- )
+   {: scratch :}
+   scratch SPAN:$ drop CELL-VIEW >WALK {: w:ptr :}
+   w WALK-A MORE-RELEASE
+   w WALK-B MORE-RELEASE
+   w WALK-S MORE-RELEASE
+   scratch MEM:FREE-SPAN ;
+
+
+\ ---- b's members -------------------------------------------------------------
+
+: LIST-CELL ( ptr u8 n -- ptr n )
+   cells + CELL-VIEW ;
+
+: MEMBER@ ( ptr walk n -- n )
+   {: w:ptr i:n :}
+   w WALK-MEMBERS @ i LIST-CELL @ ;
+
+: MEMBER-KEY$ ( ptr walk n -- ptr u8 n )
+   {: w:ptr r:n :}
+   w r ROW {: row:ptr :}
+   w WALK-KEYS @ row ROW-KEY-AT @ +  row ROW-KEY-LEN @ ;
+
+
+\ Whether member row p sorts before member row q: a lower parent row first, then by key.
+: MEMBER< ( ptr walk n n -- bool )
+   {: w:ptr p:n q:n :}
+   w p ROW ROW-PARENT @  w q ROW ROW-PARENT @ {: pp:n qp:n :}
+   pp qp <> if pp qp < exit then
+   w p MEMBER-KEY$  w q MEMBER-KEY$  STR< ;
+
+
+\ Whether the merge takes place i of the left run before place j of the right: on a
+\ tie the left, so equal keys of one object keep document order.
+: LEFT-NEXT? ( ptr walk ptr u8 n n n n -- bool )
+   {: w:ptr src:ptr i:n j:n mid:n hi:n :}
+   i mid >= if false exit then
+   j hi >= if true exit then
+   w  src j LIST-CELL @  src i LIST-CELL @  MEMBER< 0= ;
+
+
+\ Moves the next member of the runs i..mid and j..hi of src to place k of dst.
+: MERGE-STEP ( n n ptr walk ptr u8 ptr u8 n n n -- n n )
+   {: i:n j:n w:ptr src:ptr dst:ptr mid:n hi:n k:n :}
+   w src i j mid hi LEFT-NEXT? if
+      src i LIST-CELL @  dst k LIST-CELL !  i 1+ j exit
+   then
+   src j LIST-CELL @  dst k LIST-CELL !  i j 1+ ;
+
+
+: MERGE-RUNS ( ptr walk ptr u8 ptr u8 n n n -- )
+   {: w:ptr src:ptr dst:ptr lo:n mid:n hi:n :}
+   lo mid
+   hi lo ?do w src dst mid hi i MERGE-STEP loop
+   2drop ;
+
+
+\ Merges src's n members, in runs of width, into dst.
+: MERGE-PASS ( ptr walk ptr u8 ptr u8 n n -- )
+   {: w:ptr src:ptr dst:ptr n:n width:n :}
+   n 0 ?do
+      w src dst  i  i width + n min  i width 2 * + n min  MERGE-RUNS
+   width 2 * +loop ;
+
+
+\ Merges the list's runs of width into spare, which becomes the list.
+: SORT-ROUND ( ptr walk n -- )
+   {: w:ptr width:n :}
+   w WALK-MEMBERS @  w WALK-SPARE @ {: src:ptr dst:ptr :}
+   w src dst  w WALK-MEMBER-N @  width MERGE-PASS
+   dst w WALK-MEMBERS !
+   src w WALK-SPARE ! ;
+
+
+\ Stores place i in its member's object row when the member before it has
+\ another parent prev; answers its own parent.
+: MARK-FIRST ( n ptr walk n -- n )
+   {: prev:n w:ptr i:n :}
+   w  w i MEMBER@  ROW ROW-PARENT @ {: obj:n :}
+   obj prev <> if i  w obj ROW ROW-FIRST ! then
+   obj ;
+
+
+\ Sorts the list by MEMBER<, then stores each object's first place in it.
+: SORT-MEMBERS ( ptr walk -- )
    {: w:ptr :}
-   w WALK-DEPTH @ 0= if w WALK-B exit then
-   w TOP FRAME-CUR @ ;
+   1 begin dup w WALK-MEMBER-N @ < while w over SORT-ROUND 2 * repeat drop
+   -1  w WALK-MEMBER-N @ 0 ?do w i MARK-FIRST loop drop ;
 
 
-: OPEN-FRAME ( ptr walk n ptr cursor -- ptr frame )
-   {: w:ptr kind:n cur:ptr :}
+\ Halves lo..hi toward the lowest place whose key is not below key.
+: NARROW ( n n ptr walk ptr u8 n -- n n )
+   {: lo:n hi:n w:ptr key:ptr len:n :}
+   lo hi + 2 / {: mid:n :}
+   w  w mid MEMBER@  MEMBER-KEY$  key len STR< if mid 1+ hi exit then
+   lo mid ;
+
+
+\ Object row obj's member whose key decodes to key, or -1. The first of equal keys is found each
+\ time, so a key a repeats meets a member already matched and a key b repeats leaves one unmatched.
+: FIND-MEMBER ( ptr walk n ptr u8 n -- n )
+   {: w:ptr obj:n key:ptr len:n :}
+   w obj ROW {: o:ptr :}
+   o ROW-FIRST @  dup o ROW-COUNT @ + {: lo:n hi:n :}
+   lo hi begin 2dup < while w key len NARROW repeat
+   drop {: at:n :}
+   at hi = if -1 exit then
+   w at MEMBER@ {: q:n :}
+   w q MEMBER-KEY$ key len STR= if q else -1 then ;
+
+
+\ ---- the index pass ----------------------------------------------------------
+
+\ Decodes the key under record b into the key area as the key read last.
+: KEEP-KEY ( ptr walk -- )
+   {: w:ptr :}
+   w WALK-KEY-USED @ {: at:n :}
+   w WALK-B  w WALK-KEYS @ at +  w WALK-KEY-CAP @ at -  STR-INNER {: len:n :}
+   at w WALK-KEY-AT !
+   len w WALK-KEY-LEN !
+   at len + w WALK-KEY-USED ! ;
+
+
+\ Appends member row r to the list; a repeat is entered like any member (see FIND-MEMBER).
+: ADD-MEMBER ( ptr walk n -- )
+   {: w:ptr r:n :}
+   w WALK-MEMBER-N @ {: at:n :}
+   r  w WALK-MEMBERS @ at LIST-CELL !
+   at 1+ w WALK-MEMBER-N ! ;
+
+
+\ Appends a row for the value of kind under record b, a member's when the
+\ innermost open row is an object's, and answers its index.
+: ADD-ROW ( ptr walk n -- n )
+   {: w:ptr kind:n :}
+   w WALK-B {: c:ptr :}
+   w WALK-USED @ {: r:n :}
+   w WALK-OPEN @ {: obj:n :}
+   w r ROW {: row:ptr :}
+   kind row ROW-KIND !
+   c CURSOR-TOK-AT @  c CURSOR-TOK-LEN @
+   kind T-STR = if 2 + swap 1- swap then
+   row ROW-LEN !  row ROW-START !
+   0 row ROW-COUNT !
+   r 1+ row ROW-NEXT !
+   obj row ROW-PARENT !
+   0 row ROW-KEY-AT !
+   0 row ROW-KEY-LEN !
+   false row ROW-MATCHED !
+   r 1+ w WALK-USED !
+   obj 0 < if r exit then
+   w obj ROW {: p:ptr :}
+   1 p ROW-COUNT +!
+   p ROW-KIND @ T-OBJ = if
+      w WALK-KEY-AT @ row ROW-KEY-AT !
+      w WALK-KEY-LEN @ row ROW-KEY-LEN !
+      w r ADD-MEMBER
+   then
+   r ;
+
+
+\ b's innermost open container closes: its bytes end past the closer, and
+\ the next row is its sibling's.
+: CLOSE-ROW ( ptr walk -- )
+   {: w:ptr :}
+   w  w WALK-OPEN @  ROW {: row:ptr :}
+   w WALK-B CURSOR-POS @  row ROW-START @ -  row ROW-LEN !
+   w WALK-USED @ row ROW-NEXT !
+   row ROW-PARENT @ w WALK-OPEN ! ;
+
+
+: INDEX-TOKEN ( ptr walk n -- )
+   {: w:ptr kind:n :}
+   kind T-KEY = if w KEEP-KEY exit then
+   kind CLOSER? if w CLOSE-ROW exit then
+   kind NUMERIC? if w WALK-B RAW-SPAN$ POINT-EXP drop then
+   w kind ADD-ROW {: r:n :}
+   kind OPENER? if r w WALK-OPEN ! then ;
+
+
+\ Reads b whole with record b, each number's exponents checked as NUMBER=
+\ reads them, into one row per value.
+: INDEX ( ptr walk ptr u8 n -- )
+   {: w:ptr b:ptr v:n :}
+   w WALK-B {: c:ptr :}
+   c b v INIT-STATE
+   begin c NEXT-INNER dup T-END <> while w swap INDEX-TOKEN repeat
+   drop ;
+
+
+\ ---- a against b's rows ------------------------------------------------------
+
+\ a's next token, a number's exponents checked as NUMBER= reads them.
+: A-NEXT ( ptr walk -- n )
+   {: w:ptr :}
+   w WALK-A NEXT-INNER
+   dup NUMERIC? if w WALK-A RAW-SPAN$ POINT-EXP drop then ;
+
+
+: OPEN-FRAME ( ptr walk n n -- n )
+   {: w:ptr kind:n r:n :}
    w  w WALK-DEPTH @  FRAME {: f:ptr :}
    kind f FRAME-KIND !
-   cur f FRAME-CUR !
+   r f FRAME-ROW !
+   r 1+ f FRAME-DUE !
+   0 f FRAME-COUNT !
    w WALK-DEPTH @ 1+ w WALK-DEPTH !
-   f ;
+   W-ON ;
 
 : CLOSE-FRAME ( ptr walk -- )
    {: w:ptr :}
    w WALK-DEPTH @ 1- w WALK-DEPTH ! ;
 
 
-\ With a's cursor and CB on objects, opens a frame whose record finds a's keys
-\ in b's object; CB moves past that object.
-: OPEN-OBJECT-FRAME ( ptr walk -- )
-   {: w:ptr :}
-   w WALK-A CURSOR-TOK-AT @ {: start:n :}
-   w CB VALUE-SPAN-INNER {: text:ptr len:n :}
-   w  w WALK-DEPTH @  FRAME FRAME-RECORD {: r:ptr :}
-   w T-OBJ r OPEN-FRAME {: f:ptr :}
-   start f FRAME-START !
-   text f FRAME-TEXT !
-   len f FRAME-LEN !
-   0 f FRAME-COUNT ! ;
+\ Whether a's scalar equals row r of one kind with it: a string decodes into
+\ buf and streams against r's bytes under record s.
+: SCALAR= ( ptr walk ptr row -- bool )
+   {: w:ptr r:ptr :}
+   w WALK-A {: ca:ptr :}
+   w WALK-B CURSOR-SRC @ r ROW-START @ +  r ROW-LEN @ {: raw:ptr len:n :}
+   ca CURSOR-KIND @ NUMERIC? if ca RAW-SPAN$ raw len NUMBER= exit then
+   ca CURSOR-KIND @ T-STR <> if true exit then
+   ca w WALK-BUF @ w WALK-CAP @ STR-INNER {: n:n :}
+   w WALK-S raw len INIT-STATE
+   w WALK-S NEXT-INNER drop
+   w WALK-S w WALK-BUF @ n MATCH-INNER ;
 
 
-\ Compares the value due: a scalar whole, a container by opening its frame.
+\ Compares a's value due with row due: a scalar whole, a container by opening
+\ its frame.
 : ENTER ( ptr walk -- n )
    {: w:ptr :}
-   w WALK-A  w CB {: ca:ptr cb:ptr :}
-   ca cb SAME-KIND? 0= if W-DIFFERENT exit then
-   ca CURSOR-KIND @ {: kind:n :}
-   kind T-ARR = if w T-ARR cb OPEN-FRAME drop W-ON exit then
-   kind T-OBJ = if w OPEN-OBJECT-FRAME W-ON exit then
-   ca cb w WALK-BUF @ w WALK-CAP @ SCALAR= if W-ON else W-DIFFERENT then ;
+   w WALK-DUE @ {: r:n :}
+   w r ROW {: row:ptr :}
+   w WALK-A CURSOR-KIND @ {: kind:n :}
+   kind row ROW-KIND @ SAME-KIND? 0= if W-DIFFERENT exit then
+   kind OPENER? if w kind r OPEN-FRAME exit then
+   w row SCALAR= if W-ON else W-DIFFERENT then ;
 
 
-\ The next elements of both arrays are due, or both closes close the frame.
-: NEXT-ELEMENT ( ptr walk -- n )
-   {: w:ptr :}
-   w WALK-A NEXT-INNER T-ARR-END =  w CB NEXT-INNER T-ARR-END =
-   {: ea:bool eb:bool :}
-   ea eb and if w CLOSE-FRAME W-ON exit then
-   ea eb or if W-DIFFERENT exit then
-   W-VALUE ;
+: ALL-MATCHED? ( ptr walk ptr frame -- bool )
+   {: w:ptr f:ptr :}
+   f FRAME-COUNT @  w  f FRAME-ROW @  ROW ROW-COUNT @  = ;
 
-
-\ Every key of a's object found, so as many members in b's and no repeat in
-\ a's close the frame: a repeat in b's would be one in a's.
-: CLOSE-MEMBERS ( ptr walk -- n )
-   {: w:ptr :}
-   w TOP {: f:ptr :}
-   f FRAME-RECORD f FRAME-TEXT @ f FRAME-LEN @ MEMBER-COUNT
-   f FRAME-COUNT @ <> if W-DIFFERENT exit then
-   w WALK-A f FRAME-START @ CLOSED-REPEATS? if W-DIFFERENT exit then
+\ At a's close, the frame closes equal only when every child of b's matched.
+: CLOSE-ON ( ptr walk ptr frame -- n )
+   {: w:ptr f:ptr :}
+   w f ALL-MATCHED? 0= if W-DIFFERENT exit then
    w CLOSE-FRAME W-ON ;
 
 
-\ a's next key, found in b's object, makes its value due on both sides.
+\ a's next element compares with the row due, or both arrays close.
+: NEXT-ELEMENT ( ptr walk -- n )
+   {: w:ptr :}
+   w TOP {: f:ptr :}
+   w A-NEXT T-ARR-END = if w f CLOSE-ON exit then
+   w f ALL-MATCHED? if W-DIFFERENT exit then
+   f FRAME-DUE @ {: r:n :}
+   r w WALK-DUE !
+   w r ROW ROW-NEXT @ f FRAME-DUE !
+   1 f FRAME-COUNT +!
+   W-VALUE ;
+
+
+\ a's next key, found among the members of b's object, makes its value due on
+\ both sides; a key whose member has matched already is a repeat in a.
 : NEXT-MEMBER ( ptr walk -- n )
    {: w:ptr :}
    w TOP {: f:ptr :}
-   w WALK-A NEXT-INNER T-KEY <> if w CLOSE-MEMBERS exit then
-   w WALK-A f FRAME-RECORD f FRAME-TEXT @ f FRAME-LEN @
-   w WALK-BUF @ w WALK-CAP @ MEMBER-PAIR? 0= if W-DIFFERENT exit then
-   f FRAME-COUNT @ 1+ f FRAME-COUNT !
+   w A-NEXT T-KEY <> if w f CLOSE-ON exit then
+   w WALK-A w WALK-BUF @ w WALK-CAP @ STR-INNER {: len:n :}
+   w  f FRAME-ROW @  w WALK-BUF @ len FIND-MEMBER {: q:n :}
+   q 0< if W-DIFFERENT exit then
+   w q ROW {: row:ptr :}
+   row ROW-MATCHED @ if W-DIFFERENT exit then
+   true row ROW-MATCHED !
+   1 f FRAME-COUNT +!
+   q w WALK-DUE !
+   w A-NEXT drop
    W-VALUE ;
 
 
@@ -336,95 +570,48 @@ CAST: >WALK ( ptr n -- ptr walk )
    w NEXT-MEMBER ;
 
 
-\ Whether the values under records a and b are equal, one state at a time:
-\ the frames live in the scratch, so no nesting reaches the return stack.
+\ Whether a's value equals b's top row, one state at a time: the frames live
+\ in the scratch, so no nesting reaches the return stack.
 : VALUE-EQ? ( ptr walk -- bool )
    {: w:ptr :}
+   w A-NEXT drop
    W-VALUE begin dup W-SAME < while
       W-VALUE = if w ENTER else w READ-ON then
    repeat
    W-SAME = ;
 
 
-: DEPTH-SLOT ( n SPAN:span<u8> ptr u8 n ptr u8 n -- n SPAN:span<u8> ptr u8 n ptr u8 n )
-   {: scratch a:ptr u:n b:ptr v:n :}
-   drop scratch SPAN:$ drop RECORD {: c:ptr :}
-   c a u TEXT-DEPTH  c b v TEXT-DEPTH  min
-   scratch a u b v ;
-
-
-\ Reads both texts whole, so a malformed one throws whatever the answer, and
-\ answers the lesser deepest container level: the walk opens a frame only
-\ inside a container on both sides, so no more frames than that.
-: CHECKED-DEPTH ( ptr u8 n ptr u8 n -- n )
-   {: a:ptr u:n b:ptr v:n :}
-   CURSOR-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: scratch :}
-   0 scratch a u b v [: DEPTH-SLOT ;] catch
-   {: depth spare pa ua pb ub code:n :}
-   scratch SCRATCH-FREE
-   code 0= if depth exit then
-   code throw ;
-
-
-\ The scratch holds the walk, k frames, then u bytes for decoding a's strings.
-: WALK-INIT ( SPAN:span<u8> n n -- ptr walk )
-   {: scratch k:n u:n :}
-   scratch SPAN:$ drop {: base:ptr :}
-   base CELL-VIEW >WALK {: w:ptr :}
-   base WALK-BYTES + w WALK-LEVELS !
-   base WALK-BYTES + k FRAME-BYTES * + w WALK-BUF !
-   u w WALK-CAP !
-   w ;
-
-
-\ Releases every record's stack, a frame's whether opened or not, then the
-\ scratch.
-: WALK-FREE ( SPAN:span<u8> n -- )
-   {: scratch k:n :}
-   scratch SPAN:$ drop CELL-VIEW >WALK {: w:ptr :}
-   w WALK-A MORE-RELEASE
-   w WALK-B MORE-RELEASE
-   k 0 ?do w i FRAME FRAME-RECORD MORE-RELEASE loop
-   scratch MEM:FREE-SPAN ;
-
-
+\ The answer stands only once record a has read a to its end.
 : EQUAL-SLOT ( bool ptr walk ptr u8 n ptr u8 n -- bool ptr walk ptr u8 n ptr u8 n )
    {: w:ptr a:ptr u:n b:ptr v:n :}
    drop
-   w WALK-A a u INIT-STATE  w WALK-A NEXT-INNER drop
-   w WALK-B b v INIT-STATE  w WALK-B NEXT-INNER drop
+   w b v INDEX
+   w SORT-MEMBERS
+   w WALK-A a u INIT-STATE
    w VALUE-EQ?
+   begin w A-NEXT T-END = until
    w a u b v ;
 
 
-\ k frames bound the walk's depth (CHECKED-DEPTH).
-: EQUAL-RUN ( ptr u8 n ptr u8 n n -- bool )
-   {: a:ptr u:n b:ptr v:n k:n :}
-   WALK-BYTES k FRAME-BYTES * + u + MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: scratch :}
-   scratch k u WALK-INIT {: w:ptr :}
+: EQUAL-RUN ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n b:ptr v:n :}
+   a u b v WALK-COUNTS {: k:n r:n s:n :}
+   k r s u v WALK-LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: scratch :}
+   scratch k r s u v WALK-INIT {: w:ptr :}
    false w a u b v [: EQUAL-SLOT ;] catch
    {: same spare pa ua pb ub code:n :}
-   scratch k WALK-FREE
+   scratch WALK-FREE
    code 0= if same exit then
    code throw ;
 
 public
 
-\ Whether two texts, each one JSON value, hold the same value: one kind, all
-\ numbers being one; strings that decode to the same bytes; numbers of equal
-\ mathematical value, as JSON Schema 2020-12 Core §4.2.2 defines equality,
-\ decided on the lexemes with no conversion to binary64, so 1, 1.0, 1e0 and
-\ 10e-1 are equal, -0 equals 0, and 0.1 differs from 0.10000000000000001;
-\ arrays equal element by element in order; objects with the same keys in any
-\ order, each with equal values, and false when either side repeats a key
-\ (READ-REPEATS?). Malformed text throws the reader's code, and so does a
-\ number whose exponent, as stated or scaled to its digits, a signed cell
-\ cannot hold (E-JSON-READ-NUMBER), whatever the answer. Any nesting the
-\ reader accepts compares; scratch is freed on every path.
+\ False when either side repeats a key. Both texts are read whole: a malformed one throws whatever
+\ the answer, as does an exponent past a cell. Time is at most n log n in the two texts' sizes.
 : VALUE= ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
    a u REQUIRE-SOURCE
    b v REQUIRE-SOURCE
-   a u b v  a u b v CHECKED-DEPTH  EQUAL-RUN ;
+   a u b v EQUAL-RUN ;
 
 ;package

@@ -6,6 +6,7 @@ require src/lib/string.f
 require src/lib/float.f
 require src/lib/memory.f
 require src/lib/test.f
+require src/lib/time.f
 require src/lib/json.f
 require src/lib/test/ending.f
 require src/lib/test/guard-page.f
@@ -261,6 +262,43 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JRT-RBRACE SB-APPEND-C
    depth 1- 0 ?do JRT-RBRACE SB-APPEND-C loop
    SB$ ;
+
+\ Byte c at offset at of the deep buffer; answers the next offset.
+: JRT-PUT ( n n -- n ) {: at:n c:n :}
+   c JRT-DEEP-BUF at + c!  at 1+ ;
+
+\ The text from offset at of the deep buffer to offset end.
+: JRT-SINCE$ ( n n -- ptr u8 n ) {: end:n at:n :}
+   JRT-DEEP-BUF at +  end at - ;
+
+\ depth objects at offset at, each holding only "k", around the digit 1.
+: JRT-NEST-AT$ ( n n -- ptr u8 n ) {: at:n depth:n :}
+   at depth 0 ?do
+      JRT-LBRACE JRT-PUT JRT-DQ JRT-PUT JRT-K JRT-PUT JRT-DQ JRT-PUT JRT-COLON JRT-PUT
+   loop
+   JRT-DIGIT-1 JRT-PUT
+   depth 0 ?do JRT-RBRACE JRT-PUT loop
+   at JRT-SINCE$ ;
+
+\ The decimal digit of idx at unit, at offset at.
+: JRT-DIGIT-PUT ( n n n -- n ) {: at:n idx:n unit:n :}
+   at  idx unit / 10 mod JRT-DIGIT-1 1- +  JRT-PUT ;
+
+\ Member idx, "k" and four digits of idx as its key and 1 as its value.
+: JRT-MEMBER-AT ( n n -- n ) {: at:n idx:n :}
+   at JRT-DQ JRT-PUT JRT-K JRT-PUT
+   idx 1000 JRT-DIGIT-PUT  idx 100 JRT-DIGIT-PUT  idx 10 JRT-DIGIT-PUT  idx 1 JRT-DIGIT-PUT
+   JRT-DQ JRT-PUT JRT-COLON JRT-PUT JRT-DIGIT-1 JRT-PUT ;
+
+\ One object of count members at offset at, in order or reversed.
+: JRT-FLAT-AT$ ( n n bool -- ptr u8 n ) {: at:n count:n back:bool :}
+   at JRT-LBRACE JRT-PUT
+   count 0 ?do
+      i 0 > if JRT-COMMA JRT-PUT then
+      back if count 1- i - else i then JRT-MEMBER-AT
+   loop
+   JRT-RBRACE JRT-PUT
+   at JRT-SINCE$ ;
 
 : JRT-SCALAR-INT ( ptr u8 n n -- ) {: want:n :}
    JRT-OPEN-A
@@ -595,7 +633,17 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s\" {\"a\":[1,{\"b\":{\"c\":\"d\",\"e\":3}}]}" JSON:VALUE= TFALSE
    s\" {\"a\":1,\"b\":2}" s\" {\"a\":1}" JSON:VALUE= TFALSE
    s\" {\"a\":1}" s\" {\"a\":1,\"b\":2}" JSON:VALUE= TFALSE
-   s\" {\"a\":1,\"b\":2}" s\" {\"a\":1,\"c\":2}" JSON:VALUE= TFALSE ;
+   s\" {\"a\":1,\"b\":2}" s\" {\"a\":1,\"c\":2}" JSON:VALUE= TFALSE
+   s\" [{\"a\":1,\"b\":2},{\"c\":3,\"d\":4}]" s\" [{\"b\":2,\"a\":1},{\"d\":4,\"c\":3}]"
+   JSON:VALUE= TTRUE
+   s\" [{\"a\":1,\"b\":2},{\"c\":3,\"d\":4}]" s\" [{\"b\":2,\"a\":1},{\"d\":5,\"c\":3}]"
+   JSON:VALUE= TFALSE
+   s\" {\"x\":{\"k\":1},\"y\":{\"j\":2}}" s\" {\"y\":{\"k\":1},\"x\":{\"j\":2}}" JSON:VALUE= TFALSE
+   s\" {\"x\":{\"k\":1},\"y\":{\"k\":2}}" s\" {\"y\":{\"k\":2},\"x\":{\"k\":1}}" JSON:VALUE= TTRUE
+   s\" {\"a\":1,\"ab\":2,\"b\":3,\"c\":4,\"d\":5,\"e\":6,\"f\":7,\"g\":8}"
+   s\" {\"g\":8,\"f\":7,\"e\":6,\"d\":5,\"c\":4,\"b\":3,\"ab\":2,\"a\":1}" JSON:VALUE= TTRUE
+   s\" {\"a\":{\"m\":1},\"z\":2,\"zz\":3}" s\" {\"zz\":3,\"z\":2,\"a\":{\"m\":1}}"
+   JSON:VALUE= TTRUE ;
 
 \ A repeated key answers false on either side, in identical texts and when its
 \ copies are spelled differently.
@@ -603,14 +651,18 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s\" {\"a\":1,\"a\":1}" s\" {\"a\":1,\"b\":1}" JSON:VALUE= TFALSE
    s\" {\"a\":1,\"b\":1}" s\" {\"a\":1,\"a\":1}" JSON:VALUE= TFALSE
    s\" {\"a\":1,\"a\":1}" s\" {\"a\":1,\"a\":1}" JSON:VALUE= TFALSE
-   s\" [{\"a\":1,\"\\u0061\":1}]" s\" [{\"a\":1,\"a\":1}]" JSON:VALUE= TFALSE ;
+   s\" [{\"a\":1,\"\\u0061\":1}]" s\" [{\"a\":1,\"a\":1}]" JSON:VALUE= TFALSE
+   s\" {\"k\":1,\"k\":1,\"j\":2}" s\" {\"k\":1,\"j\":2,\"m\":3}" JSON:VALUE= TFALSE
+   s\" {\"k\":1,\"j\":2}" s\" {\"k\":1,\"k\":1,\"j\":2}" JSON:VALUE= TFALSE ;
 
 \ Both texts are read whole, so a malformed one throws its code whatever the
 \ comparison would answer.
 : JRT-TEST-VALUE-EQ-MALFORMED ( -- )
    [: s\" {\"a\":1," s" {}" JSON:VALUE= drop ;] E-JSON-READ-EOF TTHROWSQ
    [: s" 1 2" s" 1" JSON:VALUE= drop ;] E-JSON-READ-TRAILING TTHROWSQ
-   [: s" 1" s\" \"x\" x" JSON:VALUE= drop ;] E-JSON-READ-TRAILING TTHROWSQ ;
+   [: s" 1" s\" \"x\" x" JSON:VALUE= drop ;] E-JSON-READ-TRAILING TTHROWSQ
+   [: s" [1,2" s" [2]" JSON:VALUE= drop ;] E-JSON-READ-EOF TTHROWSQ
+   [: s" [2]" s" [1,2" JSON:VALUE= drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
 \ Numbers compare by value on their lexemes, past STR>FLOAT's digit and exponent
 \ limits; an exponent past a signed cell, stated or scaled, throws.
@@ -634,6 +686,29 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    0 100000 JRT-DIGIT-1 JRT-DEEP-ONE$ 2dup JSON:VALUE= TTRUE
    0 100000 JRT-DIGIT-1 JRT-DEEP-ONE$
    200001 100000 JRT-DIGIT-2 JRT-DEEP-ONE$ JSON:VALUE= TFALSE ;
+
+\ The least of five VALUE= calls on each pair of equal texts, in nanoseconds; the
+\ pairs alternate, so a move between core kinds reaches both sizes alike.
+: JRT-EQ-LEASTS ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n n )
+   {: a:ptr u:n b:ptr v:n c:ptr x:n d:ptr y:n :}
+   MEM-MAX-N MEM-MAX-N  5 0 ?do
+      swap  TIME:MONO-NS  a u b v JSON:VALUE= TTRUE  TIME:MONO-NS swap -  min
+      swap  TIME:MONO-NS  c x d y JSON:VALUE= TTRUE  TIME:MONO-NS swap -  min
+   loop ;
+
+\ Objects 4000 and 8000 deep against copies: the bound is 3 because a walk n log n in the bytes
+\ grows under 2.2 times, and one that rereads each enclosing object for every level quadruples it.
+: JRT-TEST-VALUE-EQ-DEPTH-TIME ( -- )
+   200000 4000 JRT-NEST-AT$  300000 4000 JRT-NEST-AT$
+   0 8000 JRT-NEST-AT$  100000 8000 JRT-NEST-AT$  JRT-EQ-LEASTS {: t4:n t8:n :}
+   t8  t4 3 *  < TTRUE ;
+
+\ One object of 4000 and of 8000 members against a reversed copy: the bound is 3 because a walk
+\ n log n in the members grows under 2.2 times; one that rescans b's object per key quadruples it.
+: JRT-TEST-VALUE-EQ-MEMBERS-TIME ( -- )
+   200000 4000 false JRT-FLAT-AT$  300000 4000 true JRT-FLAT-AT$
+   0 8000 false JRT-FLAT-AT$  100000 8000 true JRT-FLAT-AT$  JRT-EQ-LEASTS {: t4:n t8:n :}
+   t8  t4 3 *  < TTRUE ;
 
 \ Whether a one-string document decodes to the given bytes; the cursor must
 \ still be on the string, so the document ends at the next token.
@@ -868,11 +943,11 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    70 JRT-DEEP-REPEAT$ JSON:READ-REPEATS? TTRUE
    [: 70 JRT-DEEP-REPEAT$ 1- JSON:READ-REPEATS? drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
-\ 70 objects deep, both cursors and the outer lookup records grow stacks; the
-\ truncated text throws in the whole-text read.
+\ 70 objects deep, both texts' records grow stacks; a truncated a throws while b's
+\ record holds its stack.
 : JRT-DEEP-VALUE-EQ ( -- )
    70 JRT-NEST-OBJ$ 2dup JSON:VALUE= TTRUE
-   [: 70 JRT-NEST-OBJ$ 1- 2dup JSON:VALUE= drop ;] E-JSON-READ-EOF TTHROWSQ ;
+   [: 70 JRT-NEST-OBJ$ 1-  70 JRT-NEST-OBJ$ JSON:VALUE= drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
 : JRT-TEST-DEEP ( -- )
    s" nesting at and past the inline stack parses" T-LABEL
@@ -1210,6 +1285,8 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-TEST-VALUE-EQ-MALFORMED
    JRT-TEST-VALUE-EQ-NUMBERS
    JRT-TEST-VALUE-EQ-DEEP
+   JRT-TEST-VALUE-EQ-DEPTH-TIME
+   JRT-TEST-VALUE-EQ-MEMBERS-TIME
    JRT-TEST-STR-EQ
    JRT-TEST-STR-EQ-KEY
    JRT-TEST-STR-EQ-MISUSE
