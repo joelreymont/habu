@@ -139,23 +139,48 @@ variable RC
 : CHECK ( ptr u8 n -- )
    REJECT-RC CHECK-EXIT ;
 
-: INT-FIELD ( SPAN:span<u8> ptr u8 n -- n ) \ -1 when absent
-   GJA-FIELD? if GJA-INT exit then drop -1 ;
-
 \ One failed assertion naming KEY, a field the packet lacks; the run goes on.
 : FIELD-MISSING ( ptr u8 n -- )
    {: key:ptr keyu:n :}
    T-NEXT
    T-FAIL
-   s" assert: missing JSON field " type key keyu type cr
-   T-LABEL-CLEAR ;
+   s" assert: missing JSON field " type key keyu type cr ;
+
+\ One failed assertion naming KEY, a field that is not KIND; the run goes on.
+: FIELD-NOT ( ptr u8 n ptr u8 n -- )
+   {: key:ptr keyu:n kind:ptr kindu:n :}
+   T-NEXT
+   T-FAIL
+   s" assert: JSON field " type key keyu type s"  is not " type kind kindu type cr ;
 
 
 \ The packet ROOT has the string WANT for KEY.
 : STR-FIELD= ( SPAN:span<u8> ptr u8 n ptr u8 n -- )
    {: root:SPAN:span<u8> key:ptr keyu:n want:ptr wantu:n :}
    root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
-   GJA-STRING$ want wantu T$= ;
+   {: v:SPAN:span<u8> :}
+   v GJA-KIND JSON:T-STR <> IF key keyu s" a string" FIELD-NOT EXIT THEN
+   v GJA-STRING$ want wantu T$= ;
+
+
+\ The packet ROOT has the integer WANT for KEY, of either sign.
+: INT-FIELD= ( SPAN:span<u8> ptr u8 n n -- )
+   {: root:SPAN:span<u8> key:ptr keyu:n want:n :}
+   root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
+   {: v:SPAN:span<u8> :}
+   v GJA-KIND JSON:T-INT <> IF key keyu s" an integer" FIELD-NOT EXIT THEN
+   v GJA-OPEN JSON:READ-INT {: got:n :} JSON:READ-CLOSE
+   got want T= ;
+
+
+\ The packet ROOT has no field KEY.
+: FIELD-ABSENT ( SPAN:span<u8> ptr u8 n -- )
+   {: root:SPAN:span<u8> key:ptr keyu:n :}
+   root key keyu GJA-FIELD? 0= IF drop T-NEXT EXIT THEN
+   drop
+   T-NEXT
+   T-FAIL
+   s" assert: unexpected JSON field " type key keyu type cr ;
 
 
 \ Packet k of the last run has the string WANT for KEY.
@@ -172,14 +197,14 @@ variable RC
    k GJA-LINE$ GJA-PARSE
    {: root:SPAN:span<u8> :}
    root s" file" path pathu STR-FIELD=
-   root s" line" INT-FIELD line T=
-   root s" column" INT-FIELD col T=
-   root s" byte_start" INT-FIELD bs T=
-   root s" byte_end" INT-FIELD be T=
+   root s" line" line INT-FIELD=
+   root s" column" col INT-FIELD=
+   root s" byte_start" bs INT-FIELD=
+   root s" byte_end" be INT-FIELD=
    bs 0 >=  be bs >= and  be textu <= and IF
       text bs + be bs - sp spu T$=
    ELSE
-      T-FAIL
+      T-NEXT s" expected span lies outside the fixture" T-ASSERT-DETAIL
    THEN ;
 
 \ PLACED-IN, and the packet's token is the bytes it locates.
@@ -319,10 +344,10 @@ variable RC
    0 s" token" s" !" FIELD=
    0 s" file" path pathu FIELD=
    0 GJA-LINE$ GJA-PARSE {: root:SPAN:span<u8> :}
-   root s" line" INT-FIELD line T=
-   root s" column" INT-FIELD -1 T=
-   root s" byte_start" INT-FIELD -1 T=
-   root s" byte_end" INT-FIELD -1 T= ;
+   root s" line" line INT-FIELD=
+   root s" column" FIELD-ABSENT
+   root s" byte_start" FIELD-ABSENT
+   root s" byte_end" FIELD-ABSENT ;
 
 : TEST-TOP-LINE ( -- )
    s" a top-level refusal after a definition names its line alone" T-LABEL
@@ -648,7 +673,7 @@ variable RC
 : THREW ( n -- )
    {: code:n :}
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
-   0 GJA-LINE$ GJA-PARSE s" throw_code" INT-FIELD code T= ;
+   0 GJA-LINE$ GJA-PARSE s" throw_code" code INT-FIELD= ;
 
 \ REFUSED-AT for a statement that throws CODE at TOK: each check's one packet is
 \ the record of that throw.
@@ -1040,10 +1065,10 @@ variable RC
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ GJA-PARSE
    {: root:SPAN:span<u8> :}
-   root s" line" INT-FIELD -1 T=
-   root s" column" INT-FIELD -1 T=
-   root s" byte_start" INT-FIELD -1 T=
-   root s" byte_end" INT-FIELD -1 T= ;
+   root s" line" FIELD-ABSENT
+   root s" column" FIELD-ABSENT
+   root s" byte_start" FIELD-ABSENT
+   root s" byte_end" FIELD-ABSENT ;
 
 \ Each check of the fixture, plain, --all-errors and --verify-only, refuses its
 \ trust row as stale at TOK, that packet alone and unplaced.
