@@ -262,12 +262,12 @@ variable STRS-N
 DYNAMIC-BUFFER LAST-HELD n           \ a file's record r's last held facts entry, -1 for none (FACTS+)
 DYNAMIC-BUFFER RETIRED n             \ the piece's retired records (RETIRED!): index, then wordlist cell
 variable RETIRED-N                   \ its records
-DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-data.f), zero-padded cells
+DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-copy.f), zero-padded cells
 DYNAMIC-BUFFER LISTED n              \ the DATA list's offsets, sorted before WRITE lays them (link-data.f)
 variable LISTED-N
 \ Each header cell a piece stored, compiled or linked: the cell's offset from the space and
 \ the piece's BUILT row. A stripped link reads a header address cell only once no file or a
-\ live one stored it (link-data.f).
+\ live one stored it (link-copy.f).
 DYNAMIC-BUFFER HSTORE-AT n
 DYNAMIC-BUFFER HSTORE-ROW n
 variable HSTORES-N

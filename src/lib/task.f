@@ -828,7 +828,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 \ task has ended and been released, so no thread runs the chain; the lock
 \ orders this against a registration on any task. A freed row is not owed and
 \ holds the empty quotation: the link reads every address cell of a reached file
-\ (src/habu/link-data.f ROW-LIVE?), so a cleanup left in a free row below
+\ (src/habu/link-copy.f ROW-LIVE?), so a cleanup left in a free row below
 \ TASK-EXIT-N would stay in the program.
 : EXIT-ROWS-FREE ( ptr n -- ) {: tcb:ptr :}
    TASK-EXIT-LOCK-GET

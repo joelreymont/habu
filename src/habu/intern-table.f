@@ -133,7 +133,7 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 \ One `allot` checks the bounds and zeroes before the copy; no `,`, so the length
 \ cell never joins a created body's grid (BCOMMA). It ends aligned, as `create`.
 \ An empty body takes a byte, so no other datum starts at a body's address: a
-\ stripped link keeps a body by its address alone (link-data.f STRING-OF).
+\ stripped link keeps a body by its address alone (link-copy.f STRING-OF).
 : LAY ( ptr n ptr u8 n -- n )
    {: t:ptr a:ptr u:n :}
    t FILLED-CELL @ 1+ 2 *  t SIZE-CELL @ > if t WIDEN then
