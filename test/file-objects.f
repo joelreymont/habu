@@ -1,147 +1,5 @@
-\ file-objects.f - builds of the files in test/fixtures/file-objects/ by
-\ build.f, each in a fresh hb: a fresh process, since an object must be a
-\ function of the files, not of the process. Cold builds A, B and D, each with
-\ HABU_OUT its own temp directory, compile count.f, shape.f, main.f, reopen.f,
-\ mark.f and again.f twice, and load host.f after they close. A writes seven
-\ objects, each found by the end of its path under <out>/obj. D, in `shifted`
-\ mode, declares a package and lays three cells first, so its records,
-\ emissions, wordlist ids and data sit elsewhere, and writes seven whose bytes
-\ from PIECES on are A's: an absolute index or address in an object shows as
-\ different bytes. B loads pad.f first and writes eight, A's seven and pad.f's.
-\ Build C, in `stop` mode, runs its refused builds, its mixed builds,
-\ its edit sequences, the twins, the order sequence and the crafted sequence
-\ in one out root: a
-\ build of count.f alone links it, one of count.f and shape.f then compiles
-\ shape.f alone, after count.f links, and the next compiles none; the edit,
-\ share and laid sequences, whose first file is edited, compile 2, 2 and 0: the
-\ second file reads the variable the first comes to grow, spells the package
-\ the first comes to declare, or lays the string the first comes to lay. The
-\ tail sequence, whose second file is edited, compiles 2, 1 and 0; its fourth
-\ build, of d.f alone,
-\ compiles 1: d.f's object names c.f, which defines V, a name d.f spells. The
-\ private sequence, whose first file's private word changes, compiles 2, 1 and
-\ 0: the second spells that word's name for its own package's word. The parts
-\ sequence, whose second file's private constant changes, compiles 3, 2 and 0:
-\ the third reopens their package and reads the constant, which leaves no
-\ reference. The scope sequence, whose first file leaves its package open for
-\ the second, which is edited, compiles 3, 3 and 2: the first two files never
-\ link and compile each time; the third, which names the second's word,
-\ compiles when that word's file is edited and links after. i.f, built inside
-\ a package one file leaves open and another closes, then alone, inside again
-\ and alone, compiles 3, 1, 3 and 1: a load inside a package never links, and
-\ its object replaces the one the load alone wrote. Two files named a.f in two
-\ directories, each built alone in turn twice, compile 1, 1, 0 and 0: each
-\ keeps an object of its own. Four files, two storing into one cell and the fourth reading it
-\ at top level, built in order, twice with the storers swapped and in order
-\ again, compile 4, 3, 0 and 3: of two stores into one cell the later holds, so
-\ the reader compiles again when the storers swap. The header sequence, whose
-\ second and third builds load a file storing into header data between a file
-\ and the one that runs its word, compiles 2, 1 and 0: the store is no
-\ dependency of the run (linker.f "dependencies by run"). The same sequence,
-\ whose two files store one word as the program's entry, compiles 3, then 0
-\ when the first storer leaves the build: the second's object holds its store,
-\ though it left the cell as the first did, so the program it writes has K as
-\ its entry and its map lists K. The held sequence, the header sequence with a
-\ runner that also holds a header-data address, compiles 2, 2 and 0: the store
-\ is then a dependency of the run. The crafted sequence's
-\ builds of e.f over eight objects the link refuses or links wrong compile 1,
-\ and a plain build after them links. The words sequence compiles 5, 4, 0, 2,
-\ 1, 1 and 0: a file depends on each earlier word its source spells, not on
-\ the word's whole piece, and compiles when its source spells a word its
-\ object does not list. The ran sequence compiles 4, 1, 3, 0, 3 and 0: a file
-\ that runs a word depends on each word the run word reaches, not on the
-\ word's whole piece. C writes forty-six objects, and the
-\ two of A's files, count.f's and shape.f's, have A's bytes from PIECES on: a
-\ refused file writes none. A's
-\ printed state gives FILE-OBJECTS-COUNT:HI's record the facts text `( -- ) `
-\ and FILE-OBJECTS-BODY-SUM's, which the build's body defines, `( n n -- n ) `,
-\ and main.f's literal with the bytes of HI's text lies at that text. Objects
-\ carry texts by value: D's and C's shared objects equal A's from PIECES on;
-\ their heads hold the pieces' times, which differ between out roots. A's
-\ program prints Hi and ok and exits 0, run in its own process: the boundary
-\ under test is the written file. A's map lists RUN as main.f's. Then
-\ four warm builds in A's out root. A2 compiles none, prints A's state and
-\ writes A's program and map byte for byte, A's objects unchanged and its
-\ records' texts A's. A4, after count.f's object is cut to half its length,
-\ and A5, on macOS, after it grows to 2^48 bytes, more than a build can hold,
-\ each compile five files with A2's outcome: count.f, whose piece gets a new
-\ time, and shape.f, main.f, reopen.f and mark.f, whose objects name that
-\ piece by its time; again.f's two loads link. B2, in `second` mode, loads
-\ pad.f, which A's builds never loaded, first, so it compiles four: pad.f,
-\ main.f and mark.f, which spell its SCRATCH and FIRST, and reopen.f, which
-\ runs count.f's LATER: main.f stores into count.f's data. It
-\ links the other four, prints B's state, writes B's program and leaves A's
-\ root holding B's objects. Each warm build compares its program's bytes, its
-\ printed state and the objects' bytes from PIECES on with a cold build's.
-\ Build E, in `facts` mode in its own out root, loads count.f and
-\ facts.f, compiles callers of their words, runs one and writes the program,
-\ then compiles two definitions the checker refuses for misusing them; it
-\ compiles 2. E2, in E's root after E's program moves aside, compiles none and
-\ prints E's lines, E's refusals on stderr and writes E's program byte for byte:
-\ its body's code is checked against the linked words as against compiled ones.
-\ Builds A to E link the tree's stripped kernel object, which this process
-\ writes once (HB-BUILD-CORE:KERNEL-BUILD) and passes as build.f's first
-\ argument, so their out roots hold only the files' objects.
-\ Build L builds log-main.f, whose first file takes LOG's facility and leaves HELD held: the program
-\ holds no mutex the build locked (macOS), and its MAIN takes HELD, logs its line and releases HELD.
-\ M has no require, so app-end.f's object becomes M's, and its program prints the enum its MAIN
-\ fetched through a pointer, a fetch tier 0 checks; L2 builds log-main.f again, compiling
-\ app-end.f beside log-main.f's reused objects.
-\ P builds path-main.f, whose top level caches the build's engine path and wakes the main task's
-\ park; after M2, P2 links it beside a recompiled app-end.f, and its program prints its own path
-\ and wakes its own park. A compile replaces a file's object (linker.f WRITE-OBJECT) and a link
-\ leaves it, so log-first.f's object keeps its size and change time from L to L2, and path-main.f's
-\ from P to P2.
-\ H builds part-main.f, whose package's part NFETCH-CHECK has a BAD-TAG that returns; its
-\ program dies with the bad-tag error all the same.
-\ S, S2 and S3 build stale-root.f, stale-alone.f and stale-root.f: S2 leaves stale-spell.f's object
-\ naming no file, and S3 checks it while stale-def.f, which defines V, a name stale-spell.f spells,
-\ is checked and not yet linked, so S3 compiles it. K, K2 and K3 build hidden-root.f, hidden-alone.f
-\ and hidden-root.f, and K3 exits 0: hidden-spell.f spells W, which hidden-def.f defines privately.
-\ K2 leaves hidden-spell.f's object naming hidden-pkg.f alone, and K3 compiles it to name
-\ hidden-def.f too. G, G2 and G3 build sealed-root.f, sealed-alone.f and sealed-root.f, and G3 exits 0: sealed-spell.f
-\ spells FILE-OBJECTS-SEALED, which sealed-seal.f seals. G2 leaves sealed-spell.f's object naming
-\ sealed-pkg.f alone, and G3 compiles it to name sealed-seal.f too. T, T2 and T3 build stored-root.f,
-\ stored-alone.f and stored-root.f, and T3 exits 0: stored-run.f runs stored-pkg.f's SGET, which
-\ reads the variable stored-store.f stores into. T2 leaves stored-run.f's object naming no
-\ stored-store.f, and T3 compiles it to name that file. V, V2 and V3 build retired-root.f,
-\ retired-alone.f and retired-root.f, and V3 exits 0: retired-spell.f spells RW, which
-\ retired-undefine.f retires. V2 leaves retired-spell.f's object naming no file, and V3 compiles it
-\ to name retired-undefine.f. O to O4 build order-root-a.f, order-root-b.f, order-root-a.f and
-\ order-root-a.f, and each exits 0: O2 compiles order-x2.f after order-q2.f and order-q1.f, so its
-\ object names order-q2.f first; O3 checks it while order-ha.f, order-hb.f and order-hc.f are built
-\ and order-q1.f and order-q2.f are checked and not yet linked, and compiles it to name order-q1.f
-\ first; O4 links it.
-\ F builds seal-main.f, whose definition into the package seal-second.f seals is refused: exit 84,
-\ E-SEALED-PACKAGE at its line. F2, the same build again, links seal-second.f's object, which keeps
-\ its size and change time, and is refused the same way: the link carries the seal.
-\ Y, Y2 and Y3 build parts-root-1.f, parts-root-2.f and parts-root-2.f, which load mid-w1.f or
-\ mid-w2.f, whose W differ, then mid-four.f, flip.f, unclean.f and redo-main.f. Y2 compiles
-\ mid-four.f's second part, which calls W, and links its last part after it. Y2 loads flip-a.f
-\ before flip.f, so flip.f's require of it cuts no part and flip.f's second part starts after its
-\ flip-b.f request, which a true [if] makes, and compiles; Y3 links it. Y2 links unclean.f's part
-\ after an unclean request and a clean one, and redo-main.f's one part, which undefines Y and X and
-\ defines them again. The programs of Y2 and Y3 print 10, 2, 30, 40, 5, 1, 2, 3, 7, 9 and 2.
-\ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell, SCRATCH-VARIABLE and
-\ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
-\ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
-\ level leaves a task running, into one out root, and each fails naming that file. X, X4 and X2
-\ build word-load-main.f, word-provided-main.f and word-read-main.f, whose top levels run a word
-\ that loads, provides, or reads through SOURCE-ROOT:READ-OS, a file, and each fails naming that
-\ file with its entry's refusal.
-\ Q builds kept-main.f, whose files' top levels leave an archive open and await an aio ticket, each
-\ keeping its handle; its program opens another of each and the kept handle is refused. N builds
-\ kept-genio.f with --repl, since genio-core.f calls the REPL's KEY1, and its program refuses a device
-\ handle kept the same way.
-\ U, U2 and U3 (NEST-CASE), by tools/hb-build.f in L's out root after L's build, which leaves the
-\ kernel's objects there, build r.f, which requires x.f, which requires y.f between two pieces; then
-\ m.f, which also requires x.f, after x.f's first piece changes K; then r.f again, whose program
-\ prints the new K: r.f's object names every piece built inside x.f's load.
-\ I, I2 and I3 (SAME-CASE), in L's out root after U3, build main.f with g.f's DEF making f.f's first
-\ part's private Y and X, making nothing, and making them again, which shifts the counts of f.f's
-\ later Y and X; each program prints the X and Y that u.f, v.f and f.f's last parts reach.
-\ WASM (CROSS-CASE) builds bare-main.f with --target wasm in the fixture out root and exits 0: a
-\ cross build's words have no emission (linker.f WORD-RECORD+).
+\ file-objects.f - builds of the files in test/fixtures/file-objects/, each in a fresh hb: an object must be
+\ a function of the files, not of the process.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -194,7 +52,7 @@ PATH-CAP BUFFER: OUT-D   variable OUT-D-U
 PATH-CAP BUFFER: OUT-E   variable OUT-E-U
 PATH-CAP BUFFER: OUT-L   variable OUT-L-U
 PATH-CAP BUFFER: OUT-F   variable OUT-F-U    \ the fixture builds' out root, in L's directory
-PATH-CAP BUFFER: NEST-DIR  variable NEST-DIR-U  \ U's or I's sources, <L's out>/nested or same-name
+PATH-CAP BUFFER: NEST-DIR  variable NEST-DIR-U  \ U's or I's sources: L's directory's nested or same-name
 PATH-CAP BUFFER: NEST-PATH                      \ one of them
 PATH-CAP 2 * BUFFER: NEST-SRC  variable NEST-SRC-U  \ the text NEST-WRITE writes
 PATH-CAP BUFFER: JOINED
@@ -296,6 +154,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    u STATE-CAP > if -1 exit then
    o dst u BYTE-COPY  u ;
 
+\ A's program, run in its own process: the boundary under test is the written file.
 : RUN-PROG ( CMD:command ptr u8 n -- CMD:command ) {: out:ptr outu:n :}
    CMD:RESET
    out outu s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
@@ -386,6 +245,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" each of A's objects has " peer peeru s" 's bytes from PIECES on" LABEL-NAMING
    au bu FROM-PIECES? TTRUE ;
 
+\ D's shifted build moves records, emissions, wordlist ids and data, so an absolute index or address in an
+\ object would show as bytes different from A's; objects carry texts by value.
 : SAME-AS-D ( -- ) FILES 0 ?do D$ s" D" i SAME-OBJECT loop ;
 : SAME-AS-B ( -- ) FILES-B 0 ?do B$ s" B" i SAME-OBJECT loop ;
 
@@ -402,7 +263,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    cs EXPECT LE:U64!  cns EXPECT 8 + LE:U64!  size EXPECT 16 + LE:U64! ;
 
 \ Build C's objects: each sequence's, the twins', e.f's, and count.f's and shape.f's, which A also
-\ writes; count.f's holds its INPUT.
+\ writes; a refused file writes none, and count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
    s" the build wrote forty-six objects" LABEL  C$ OBJECTS FILES-C T=
@@ -599,6 +460,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    f 1 48 lshift FD:RESIZE
    f FD>N close ;
 
+\ Guards a cut object: count.f compiles, and its piece's new time compiles shape.f, main.f, reopen.f and
+\ mark.f, whose objects name that piece by its time; again.f's two loads link.
 : WARM-CUT ( CMD:command -- CMD:command )
    s" A4" WHICH!  CUT  s\" compiled 5\n" WARM ;
 
@@ -607,6 +470,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    HB-TARGET-MACOS? 0= if exit then
    s" A5" WHICH!  GROW  s\" compiled 5\n" WARM ;
 
+\ Guards a new first file: pad.f compiles, and so do main.f and mark.f, which spell its SCRATCH and FIRST,
+\ and reopen.f, which runs count.f's LATER after main.f stores into count.f's data; the other four link.
 : WARM-B ( CMD:command -- CMD:command )
    s" B2" WHICH!
    A$ s" second" s\" compiled 4\n" STATE-W BUILD {: u:n :}
@@ -713,7 +578,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    FOUND$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    size i KEPT-SIZE !  cs i KEPT-S !  cns i KEPT-NS ! ;
 
-\ The label holds when the build's object of tail i keeps the size and change time KEEP held.
+\ The label holds when the build's object of tail i keeps the size and change time KEEP held: a compile
+\ replaces a file's object (linker.f WRITE-OBJECT) and a link leaves it.
 : LINKED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
    i KEPT-SIZE @ 0 < if a u LABEL false TTRUE exit then
    F$ WHICH WHICH-U @ i FOUND? {: one:bool :}
@@ -793,6 +659,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    rc 0<> if rc SHOW then
    label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
+\ Guards a lock across a build: L's program holds no mutex the build locked and takes HELD, which
+\ log-first.f left held; L2, after M rewrites app-end.f's object, links log-first.f.
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP
@@ -801,6 +669,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    s" the build links log-first.f" LOG-FIRST LINKED  LOG-RUN ;
 
+\ Guards a linked file's top-level cache: P2 links path-main.f after M2, and its program reports its own path;
+\ H's program dies on a bad tag though part-main.f's NFETCH-CHECK has a BAD-TAG that returns.
 : PATH-CASE ( CMD:command -- CMD:command )
    s" P" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
    PATH-MAIN KEEP
@@ -940,6 +810,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n"
    s" the program prints flip-a.f's F, P, Q, R, A and C" PRINTS-RUN ;
 
+\ Guards what a file's top level may do in a build: store into scratch, keep a handle or device, leave a
+\ task running, or run a word that loads, provides or reads a file.
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN
@@ -960,6 +832,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" the build refuses FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
    s" the refusal names seal-main.f's line 6" LABEL  placed TTRUE ;
 
+\ Guards a seal a link carries: F2 links seal-second.f's object and is refused as F is.
 : SEAL-CASE ( CMD:command -- CMD:command )
    s" F" WHICH!  SEAL-REFUSED  SEAL-SECOND KEEP
    s" F2" WHICH!  SEAL-REFUSED
@@ -994,8 +867,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" x.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-NESTED:K . ;\n" SRC+  s" r.f" NEST-WRITE
    s" x.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" m.f" NEST-WRITE ;
 
-\ tools/hb-build.f's build of U's source to U's program of that name, in a fresh hb and L's out
-\ root: the boundary under test is the object another build wrote. True when it exits 0.
+\ tools/hb-build.f's build of a NEST-DIR source to the program of that name, in a fresh hb with L's
+\ directory as its out root: the boundary under test is the object another build wrote. True when it exits 0.
 : NEST-BUILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command bool )
    {: src:ptr srcu:n prog:ptr progu:n :}
    CMD:RESET
@@ -1018,7 +891,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    CMD:OUT$ want wantu STR=  rc 0 =  and 0= if rc SHOW then
    label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
-\ r.f, m.f after x.f's K changes, which rewrites x.f's object and leaves r.f's, then r.f again.
+\ r.f, m.f after x.f's K changes, which rewrites x.f's object and leaves r.f's, then r.f again: U3's
+\ program prints the new K, since r.f's object names every piece built inside x.f's load, y.f's included.
 : NEST-CASE ( CMD:command -- CMD:command )
    WRITE-NESTED
    s" U" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
@@ -1069,8 +943,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    true WRITE-G
    s" I3" WHICH!  s" main.f" s" prog-s" NEST-BUILD 0= if exit then  SAME-RUN ;
 
-\ bare-main.f built for Wasm in a fresh hb: the boundary under test is the build's target, which
-\ the process fixes. The module never runs.
+\ Guards a cross build, whose words have no emission (linker.f WORD-RECORD+): bare-main.f for Wasm in a
+\ fresh hb, since the process fixes the build's target. The module never runs.
 : CROSS-CASE ( CMD:command -- CMD:command )
    s" WASM" WHICH!
    TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
@@ -1122,6 +996,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
 
 public
 
+\ Builds A to E link the stripped kernel object this process writes once and BUILD passes, so their out
+\ roots hold only the files' objects.
 : RUN ( -- )
    T-RESET
    false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD

@@ -1,70 +1,5 @@
-\ build.f - test/file-objects.f's child: a build of count.f, shape.f, main.f,
-\ reopen.f and mark.f written as the program `prog` under the out root, with
-\ again.f loaded twice in the same build, then host.f loaded after the build
-\ closes. After the write the build prints its state, each record's facts text
-\ among it, runs three of its words (STATE., RUN-WORDS) and prints `shared -1`
-\ when main.f's literal lies at count.f's HI's text (SHARED.); the last line is
-\ `compiled ` and LINKER:COMPILED. Between shape.f and main.f the body defines
-\ FILE-OBJECTS-BODY-SUM and lays one cell, which no file's data holds. The first
-\ script argument is the kernel object every build links (test/file-objects.f
-\ passes HB-BUILD-CORE:KERNEL$). With a second argument `second` the build
-\ loads pad.f first; with `shifted` it declares a package and lays three cells
-\ before count.f. With `stop`, these builds run in the one out root. Ten fail: in
-\ STOP-FILE and STOP-BODY every later load and write is LINKER:E-FAILED,
-\ STOP-INSIDE's file moves DP back and its own load is LINKER:E-FAILED,
-\ STOP-ALIGN's file marks a cell its object cannot place, E-COMP-STATE,
-\ STOP-PAST's file marks a cell past its own end, E-COMP-STATE,
-\ STOP-STORE's file marks hb's newest record immediate, LINKER:E-STORE,
-\ STOP-GAP's file stores into a cell the body laid, which no file holds,
-\ LINKER:E-STORE, STOP-STRADDLE's file stores into a cell straddling the
-\ header's entry cell, E-COMP-STATE, STOP-WORDLIST's file makes a wordlist,
-\ LINKER:E-WORDLIST. A build of count.f alone, then two of count.f and
-\ shape.f, which has no object there before them, print `mixed: compiled `
-\ and their results: shape.f compiles after count.f links. Six
-\ sequences of three builds then each load files, one edited after the first
-\ build: edit/a.f under the out root, edited, and edit-b.f beside build.f;
-\ tail/c.f and tail/d.f under the out root with d.f edited, then a fourth
-\ build of d.f alone; share/p.f and share/q.f under the out root with p.f
-\ edited to declare q.f's package too; laid/r.f and laid/s.f with r.f edited to
-\ lay s.f's string; private/p.f and private/q.f with p.f's private HELPER, a
-\ name q.f spells, edited; parts/a.f, parts/b.f and parts/c.f with b.f's
-\ private K, which c.f reads, edited; scope/a.f, which leaves its package open,
-\ scope/b.f, which closes it, and scope/c.f, at top level, which names b.f's
-\ word, with b.f edited. Then four builds of
-\ inside/i.f: inside the package inside/p.f leaves open and inside/q.f closes,
-\ alone, inside again, alone. Then twin-x/a.f and twin-y/a.f under the
-\ out root, one name in two directories, are each built alone in turn x, y, x,
-\ y. Then order/m.f, s.f, t.f and f.f, with s.f and t.f storing into m.f's
-\ variable and f.f reading it, are built in that order, twice with s.f and t.f
-\ swapped, then in that order again. Then header/w.f and header/r.f, whose top
-\ level runs w.f's word, are built, then twice more with header/h.f, which stores
-\ into header data, between them. Then same/k.f, s1.f and s2.f, s1.f and s2.f
-\ each storing k.f's K as the program's entry, are built, then k.f and s2.f,
-\ which write the program `prog`. Then held/w.f, h.f and r.f are built as the
-\ header sequence's files are, r.f also holding a header-data address.
-\ `edit: compiled `, `tail: compiled `, `share: compiled `, `laid: compiled `,
-\ `private: compiled `, `parts: compiled `, `scope: compiled `, `inside: compiled `,
-\ `twins: compiled `, `order: compiled `, `header: compiled `, `same: compiled ` and
-\ `held: compiled ` print each build's result: its LINKER:COMPILED, or the code it
-\ threw. `crafted: compiled ` prints ten: crafted/e.f's build, eight
-\ over an edit of its object the link refuses or links wrong, then a plain
-\ build. `words: compiled ` prints seven builds of words/a.f, b.f, c.f, d.f
-\ and e.f, which spell a.f's words, b.f's A1, c.f's A2, d.f's re-export of A1:
-\ as written, with A1's body edited, again, with a.f gaining C, over b.f's
-\ object with its first word's time and then its word number edited, again.
-\ `ran: compiled ` prints six builds of ran/a.f, b.f, c.f and d.f, whose top
-\ levels run b.f's W, which calls a.f's V, and a.f's U: as written, with c.f
-\ gaining a comment line, with V's body edited, again, with V edited again, again.
-\ With `facts`, a build loads count.f and facts.f, then its body compiles
-\ FOB-AFTER, a caller of count.f's words, and FOB-WRAP, a caller of facts.f's
-\ definer BOX, each line printing the code its compile threw (`after: 0`), runs
-\ FOB-AFTER when it compiled and prints `after ran`, writes the program with
-\ FOB-AFTER its entry, then compiles two definitions the checker refuses, a
-\ string passed to TAKE and a token after FAIL, printed as `misuse: ` and
-\ `dead: `; its last line is `facts: compiled ` and LINKER:COMPILED.
-\ The build's files load from its body: in a build's file `require` is
-\ E-UNDEFINED (rc 70), and creating through a `does>` definer ends the process
-\ at rec-wide-publish (rc 70).
+\ build.f - test/file-objects.f's child, which builds the fixtures here in the out root HABU_OUT names.
+\ Its arguments: the kernel object every build links, then the mode, if any (MODE$).
 
 require src/lib/error.f
 require src/lib/string.f
@@ -824,7 +759,8 @@ variable SLOT-S                          \ and their count
    FIRST-WORD-ROW 24 + {: at:n :}
    at OBJ@ 1 +  at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;
 
-\ b.f's first WORDS row naming sum 1000, which no word of its piece has; then a build.
+\ b.f's first WORDS row naming sum 1000, which no word of its piece has; then a build, which compiles b.f:
+\ its source spells a word its object does not list.
 : WORD-MISSING ( -- n )
    FIRST-WORD-ROW 8 + {: at:n :}
    1000 at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;
