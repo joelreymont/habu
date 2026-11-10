@@ -1584,7 +1584,7 @@ learned live in the docs for their subject.
   definition and any emission the shadow has not filed, the build fails
   (LINKER:E-FAILED), and its close drops the shadow emissions, records and code
   the link made. A file found stale after a linked one compiles (the next
-  entry), so `-9692 LINKER:E-STALE` no longer ends a build for it. A file that makes a
+  entry) instead of ending the build. A file that makes a
   wordlist its records do not account for ends the build with `-9693
   LINKER:E-WORDLIST`. LINKER:WRITE sorts the program's address-cell list by
   offset, so the program does not depend on the order cells were marked. Left to

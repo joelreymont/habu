@@ -1,16 +1,5 @@
-\ linker.f - the cross-build's data space: WITH maps a space beside hb's DATA
-\ for the build's target, points DP, the wordlists and the image base at it,
-\ switches the checker's registered stores to the build's (CHECK:OPEN), routes
-\ every file load to the build's runner (SOURCE-UNIT:USE), lays each owned
-\ primitive's record in its package as BUILT row 0 (OWNED-RECORDS), runs the
-\ body there with no package of hb's open and closes it. The close undoes
-\ exactly the open steps that ran, in reverse. A file's source is cut into parts
-\ at each request it makes, each part with its own object under the out root.
-\ A load takes its parts in turn: a part whose object checks links (LINK-PART),
-\ and one that does not compiles to its request or the source's end; either way
-\ the file the part requests loads before the next part. The loader's log
-\ (include.f EVENT-RECORD) names a compile's requests and its registry acts,
-\ which its object carries and a link repeats.
+\ linker.f - the cross-build: WITH opens a data space for the build's target, runs the body there and closes it, and
+\ each part of a file links its object or compiles (docs/architecture.md "Builds").
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -160,7 +149,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ (COMPILED-TIME as it compiled), its first and end record index, its first and end
 \ emission, the data pointer as the piece starts and ends, and 1 when the piece holds a
 \ header-data address (HOLDS-HEADER), else 0. A FILES row is a BUILT row's first
-\ FILES-ROW-BYTES bytes, its time 0 when only WORDS rows name the piece (REF-FILE).
+\ FILES-ROW-BYTES bytes, its time 0 while no use names the piece whole (REF-FILE).
 16 constant KEY-BYTES
 KEY-BYTES 72 + constant BUILT-BYTES
 KEY-BYTES constant BUILT-PIECE
@@ -175,9 +164,8 @@ create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
 create BUILT BUF:HDR-BYTES allot
 create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
-\ The object's WORDS rows, one per earlier word it refers to, spells or reaches from a word it
-\ ran: its FILES row k from 1, its sum and count (REC-IDS) and its time (WORD-TIMES); WORD-RECS
-\ holds each row's record index.
+\ The object's WORDS rows (WORD-ROW+), one per earlier word it uses: its FILES row k from 1, its sum and count
+\ (REC-IDS) and its time (WORD-TIMES); WORD-RECS holds each row's record index.
 create WORD-ROWS BUF:HDR-BYTES allot
 create WORD-RECS BUF:HDR-BYTES allot
 \ The object's EXTENTS rows, one per earlier extent a data reference names (USED-EXT+): its FILES
@@ -186,11 +174,11 @@ create USED-EXTS BUF:HDR-BYTES allot
 40 constant USED-EXT-BYTES
 create REQUESTS BUF:HDR-BYTES allot  \ the object's REQUESTS rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
-create TIMES BUF:HDR-BYTES allot     \ the object's TIMES, a block per piece compiled so far
+create TIMES BUF:HDR-BYTES allot     \ the object's TIMES: the part's block (TIMES+)
 create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's source names whole, 8 bytes each
 create NAMED-RECS BUF:HDR-BYTES allot \ the records with a time the running scan hit, 8 bytes each, in hit order
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
-create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling file's pieces ran, 8 bytes each (RAN-RECORD)
+create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling part ran, 8 bytes each (RAN-RECORD)
 create REACHED BUF:HDR-BYTES allot   \ the object's REACHED: the FILES rows of the pieces whose data RAN-FILES+ reached, 8 bytes each
 create PENDING-PATHS BUF:HDR-BYTES allot \ the paths the checked part's earlier acts provided, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
@@ -259,21 +247,16 @@ variable STORED-N
 DYNAMIC-BUFFER ANCHORS n
 variable ANCHORS-N
 DYNAMIC-BUFFER ORDER n               \ EXTENTS!'s sorts: anchor numbers, then string extents
-\ The running piece's extents in address order (EXTENTS!, or OWN-IDS! for a checked part), EXT-CELLS
-\ cells each: the start as a distance from NULL-PTR, the kind, sum and count; then, as DATA+ writes
-\ it, its span's offset in PIECES and length, the highest FILES row its cell rows name (TOP-ROW), its
-\ first slot in EXT-ROWS and its cell rows there; its length in bytes; last its time, as TIMES+
-\ writes it or OWN-IDS! reads it from TIMES.
+\ The running piece's extents in address order (EXTENTS!, OWN-IDS!), EXT-CELLS cells: start from NULL-PTR, kind, sum,
+\ count; span in PIECES and TOP-ROW (EXTENT+); first slot and count in EXT-ROWS (GROUP-ROWS); bytes; time (TIMES+).
 11 constant EXT-CELLS
 DYNAMIC-BUFFER EXTS n
 variable EXTS-N
 DYNAMIC-BUFFER PICKED n              \ the piece's cell rows in the space's order, each then its extent (GROUP-ROWS)
 DYNAMIC-BUFFER EXT-ROWS n            \ the same rows grouped by extent
 DYNAMIC-BUFFER LAST-HELD n           \ a file's record r's last held facts entry, -1 for none (FACTS+)
-\ Per word as PIECE+ writes it, SPAN-CELLS cells: entry offset and length, emission or -1, text offset and
-\ length (0 0 for none), highest FILES row named (TOP-ROW), the bits of the rows outside its ranges
-\ that name it (NAMED-RETIRED, NAMED-LATE), the record it binds or -1 (RECORD+); EM-SPANS: per
-\ emission offset, length, row.
+\ Per word as PIECE+ writes it, SPAN-CELLS cells: entry offset and length, emission or -1, text offset and length (0 0
+\ for none), TOP-ROW, the bits of the outside rows that name it (NAMED-RETIRED, NAMED-LATE), RECORD+'s answer.
 8 constant SPAN-CELLS
 1 constant NAMED-RETIRED             \ a retirement row (FACT+)
 2 constant NAMED-LATE                \ a late private wordlist (LATE+)
@@ -286,14 +269,8 @@ DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0
 \ count at 2r + 1, from 0, among the earlier records of its file with that sum (IDENTIFY).
 DYNAMIC-BUFFER REC-IDS n
 variable IDENTIFIED                  \ every record below it that a piece holds has its identity
-\ PLACES finds a record or an extent by a key, a kind and an identity: slot s holds at 6s the key's
-\ first cell plus 1, 0 while empty, then its second cell, the kind, the sum, the count and the value;
-\ half its slots at most are filled, so a probe ends. Kind 0 is a record, under its file's key; kinds
-\ 1-3 an extent's (EXTS). Key -2 and OWN-SERIAL is a check's (OWN-IDS!): a record's number or an
-\ extent's in its part; a piece's link reads the slots its PIECE-CK filled, since LINK-PART runs
-\ PIECE-CK right before LINK-OBJECT. Key -3 and a BUILT row is a built part's extent, the value its
-\ BUILT-EXTS row (BUILT+): a string's count is its number in its part, a laid text's its FACTS row,
-\ so the key is the part's.
+\ Slot s holds at 6s the key's first cell plus 1 (0 while empty), its second, the kind, sum, count and value; at most
+\ half full, so a probe ends. A link reads the key -2 slots that PART-FRESH?, run right before it, filled (OWN-IDS!).
 DYNAMIC-BUFFER PLACES n
 DYNAMIC-BUFFER OLD-PLACES n          \ PLACES' slots as it grows
 variable PLACES-CAP                  \ its slots, a power of two
@@ -304,19 +281,15 @@ variable OWN-SERIAL                  \ the last check's number (OWN-IDS!)
 DYNAMIC-BUFFER LISTED-BY n
 \ Build-table row b's mark: the serial of the object that last gave it an EXTENTS row (USED-EXT+).
 DYNAMIC-BUFFER USED-BY n
-\ BUILT row r's mark at 2r: the serial of the object that last asked for its FILES row (REF-FILE),
-\ that row from 1 at 2r + 1. Only OBJECT-OPEN (under a new serial) and REF-FILE's append change the
-\ FILES rows, so a mark with the object's serial names its row.
+\ BUILT row r's mark at 2r, the serial of the object that last asked for its FILES row (REF-FILE), and that row from 1
+\ at 2r + 1; only OBJECT-OPEN, under a new serial, and REF-FILE's append change FILES rows, so the mark names its row.
 DYNAMIC-BUFFER REF-OF n
 \ Record r's BUILT row plus 1, 0 for a record no row holds (BUILT+); its cells from FIRST-REC up
 \ to REC-ROW-N are written.
 DYNAMIC-BUFFER REC-ROW n
 variable REC-ROW-N
-\ The build table (BUILT+): BUILT-EXT-CELLS cells per extent of every built part, its BUILT row,
-\ kind, sum, count, start as a distance from NULL-PTR, length and time; a part's rows together and
-\ in address order, its extents, then each text it laid past them (TEXT-EXTS+): kind 2, sum 0, which
-\ no string has (BYTES-SUM), its FACTS row's number as count and time 0. ROW-EXTS: BUILT row r's
-\ first build-table row at 2r, its count at 2r + 1.
+\ The build table (BUILT+), per built part's extent: BUILT row, kind, sum, count, start from NULL-PTR, length, time;
+\ a part's extents in address order, then its laid texts (TEXT-EXTS+). ROW-EXTS: row r's first at 2r, count at 2r + 1.
 7 constant BUILT-EXT-CELLS
 DYNAMIC-BUFFER BUILT-EXTS n
 variable BUILT-EXTS-N
@@ -337,9 +310,8 @@ variable LISTED-N
 DYNAMIC-BUFFER HSTORE-AT n
 DYNAMIC-BUFFER HSTORE-ROW n
 variable HSTORES-N
-\ Each store a piece made below its own data (STORER+) and each earlier record it changed
-\ (CHANGER+), compiled or linked: pair p holds at 2p the BUILT row holding the cell or the record,
-\ -1 for header data, and at 2p + 1 the piece's row.
+\ Each store a piece made below its own data (STORER+) and each earlier record it changed (CHANGER+): pair p holds at
+\ 2p the BUILT row holding the cell or the record, -1 for header data, and at 2p + 1 the piece's row.
 DYNAMIC-BUFFER STORERS n
 variable STORERS-N                   \ its pairs
 \ BUILT row r's marks from RAN-FILES+'s walk: 1 an extent of its data reached, 2 its stores
@@ -387,28 +359,24 @@ PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused referenc
 variable FILE-PATH-N
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
 variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
-\ The compiling part never links, so it compiles in every build (WRITE-OBJECT): the build is a
-\ cross build, its file has no stamp, it starts or ends off TOP-SCOPE?, an earlier part of its file
-\ ended at an unclean cut (NEST), or a load it asked for never reached the runner (ACTS+).
+\ The compiling part never links (WRITE-OBJECT): a cross build, no stamp, a start or end off TOP-SCOPE?,
+\ an unclean cut ending it or the part before it (NEST), or a load it asked for that never reached the runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 \ What LOAD's loop over the file's parts does next: link part FILE-PART at FILE-OFF, compile it,
 \ or, once NEST cut the compiling part at a clean request, go back to linking the next.
 ENUM turn link compile cut ;ENUM
 TYPED-VARIABLE TURN turn
 
-\ The magic, the key, the part's number and time, the offset in the source the part starts at
-\ (FILE-OFF), then per section INPUT FILES REQUESTS NAMES REACHED PATHS WORDS EXTENTS TIMES PIECES
-\ an offset and a length (0 0 for an empty FILES to REACHED, WORDS or EXTENTS); then the sections.
+\ The magic, key, part number and time, FILE-OFF, then per section INPUT FILES REQUESTS NAMES REACHED PATHS WORDS
+\ EXTENTS TIMES PIECES an offset and a length (0 0 for an empty FILES to REACHED, WORDS or EXTENTS); then the sections.
 8 KEY-BYTES + 24 + constant PAIRS-AT        \ the header's first pair, INPUT's
 PAIRS-AT 10 2 * 8 * + constant HEADER-BYTES
 \ WORDS, EXTENTS and TIMES, which hold times, precede PIECES, which test/file-objects.f compares
 \ across out roots.
 HEADER-BYTES 32 - constant TIMES-FIELD      \ the header's TIMES pair
 HEADER-BYTES 16 - constant PIECES-FIELD     \ the header's last pair: PIECES' offset, then its length
-\ TIMES holds the word count, then per word WORD-CELLS cells: its time, its entry, emission and text
-\ spans, the time of the record it binds (0 for none), the bits of the rows that name it from outside
-\ (SPAN-CELLS), then its sum and count (REC-IDS); then the extent count, then per extent EXT-BYTES:
-\ its time, its span's offset and length, its kind, sum and count (EXTENT+).
+\ TIMES: word count, per word WORD-CELLS cells (time, entry, emission and text spans, its bound record's time or 0, the
+\ outside rows' bits, sum, count); extent count, per extent EXT-BYTES (time, span offset and length, kind, sum, count).
 11 constant WORD-CELLS
 WORD-CELLS 8 * constant WORD-BYTES
 48 constant EXT-BYTES
@@ -422,9 +390,8 @@ WORD-CELLS 8 * constant WORD-BYTES
 5 constant KIND-SEALED               \ an earlier file's package this file sealed
 6 constant KIND-TYPE                 \ a type entry: a family's record in the types wordlist
 
-\ NAMES maps each name the build's records define, by its NAME-SUM, to the record (INDEX-RECS), and
-\ to its package's key when the record is private (NAME-PKG). HIT marks what the running file's
-\ source names: a record with a time in HIT-STAMPS, a piece named whole in HITS.
+\ NAMES maps each name the build's records define, by NAME-SUM, to the record (INDEX-RECS) and, when private, its
+\ package's key (NAME-PKG). HIT marks what the running source names: timed records in HIT-STAMPS, whole pieces in HITS.
 DYNAMIC-BUFFER NAMES n               \ slot s: the sum at 3s, 0 while empty, the record (INDEX-RECS), the package key
 DYNAMIC-BUFFER OLD-NAMES n           \ NAMES' slots as it grows
 variable NAMES-CAP                   \ its slots, a power of two
@@ -612,10 +579,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    repeat
    drop E-COMP-STATE throw ;
 
-\ The object of FILE-KEY's part FILE-PART: the build's target, WITH's mode, the file's path, from
-\ the path's second load a dot and the load's number from 2, from part 1 a + and the part's
-\ number, then .hfo (BUILD-OUT:OBJ$). A source named a.f.2 or a.f+1 shares the name of a.f's
-\ second load or second part: each fails the other's object at HEADER-CK's key and compiles.
+\ The object of FILE-KEY's part FILE-PART. A source named a.f.2 or a.f+1 shares the name of a.f's second load or
+\ second part: each fails the other's object at HEADER-CK's key and compiles.
 : OBJECT$ ( -- ptr u8 n )
    OBJ-NAME BUF:CLEAR
    TARGET @ RTARGET:PROFILE$ OBJ-NAME SPAN+  s" /" OBJ-NAME SPAN+
@@ -638,8 +603,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    p du FS:MAKE-DIRS ;
 
 \ ---- the records ---------------------------------------------------------------
-\ No address reaches PIECES: a record is named by its file, name sum and count, code and data by
-\ span and offset, so larger earlier files leave its bytes alone (test/file-objects.f).
+\ No address reaches PIECES, so larger earlier files leave its bytes alone (test/file-objects.f).
 
 : BUILT-N ( -- n ) BUILT BYTES$ {: a:ptr u:n :}  u BUILT-BYTES / ;
 
@@ -700,9 +664,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    loop
    n ;
 
-\ The FILES row, 1-based, naming the BUILT row's piece by its file's key and its number; added
-\ on first use and marked in REF-OF. Its time is the piece's once a use is whole, else 0: only
-\ WORDS and EXTENTS rows decide.
+\ The FILES row from 1 naming the BUILT row's piece, added on first use and marked in REF-OF. Its time is the piece's
+\ once a use is whole, else 0: only WORDS and EXTENTS rows decide.
 : REF-FILE ( n bool -- n )
    {: row:n whole:bool :}
    row BUILT-AT {: at:ptr :}
@@ -762,11 +725,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    k idx WORD-ROW+ ;
 
 \ ---- dependencies by name -------------------------------------------------------
-\ A file depends on the files its object references and on every earlier record that defines a
-\ public name its source spells or a private name of a package it opens after `package`, whose
-\ parts share scope: a value T0 inlined, a word that now shadows another and a package an earlier
-\ file now declares change a compile without leaving a reference. A record with a time is a WORDS
-\ row; one with none, or one a later piece changed (CHANGER+), names its whole piece.
+\ A spelled record with a time gets a WORDS row; one without names its piece whole, as do the pieces that changed it.
 
 \ FNV-1a over the name folded to upper case, as the dictionary compares names; never 0.
 : NAME-SUM ( ptr u8 n -- n )
@@ -877,9 +836,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    then ;
 
 
-\ The value v into the empty slot PLACE-SLOT answers for the key's two cells, the kind, the sum and
-\ the count; E-COMP-STATE when a slot holds them, since a second value would hide the first: a
-\ part's records and extents each have their own identity (IDENTIFY, EXTENTS!).
+\ The value v into the empty slot PLACE-SLOT answers; E-COMP-STATE when a slot holds the key, kind and identity, since
+\ a second value would hide the first: a part's records and extents each have their own identity (IDENTIFY, EXTENTS!).
 : PLACE! ( n n n n n n -- )
    {: path:n seen:n kind:n sum:n count:n v:n :}
    path seen kind sum count PLACE-SLOT 6 * {: s:n :}
@@ -889,8 +847,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    1 PLACES-N +! ;
 
 
-\ Each record from the larger of FILE-REC and IDENTIFIED, the running piece's: its sum and count,
-\ which carries on across FILE-KEY's pieces, into REC-IDS, the record into PLACES.
+\ The running piece's records from FILE-REC or IDENTIFIED into REC-IDS and PLACES, counts carrying on across FILE-KEY's pieces.
+\ A shifted count binds a user's WORDS row to a word of the old bytes and retirement (WORD-TIME) or fails WORDS-CK.
 : IDENTIFY ( -- )
    FILE-REC @ IDENTIFIED @ max {: start:n :}
    ndict@ 2 * REC-IDS-RESERVE
@@ -1138,14 +1096,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 
 \ ---- dependencies by run --------------------------------------------------------
-\ A file that runs an earlier word while it compiles keeps the word's answer, so it depends on
-\ each word that word reaches through the build's references (EDGES), by its WORDS row; on each
-\ extent of an earlier piece's data it reaches, by its EXTENTS row, or whole for a laid text; and
-\ whole on each piece that stored into a reached piece or changed its records (STORERS), with what
-\ its stores reach. xt! and ptr-cell! into hb's header store into the space's (habu2.f
-\ ROUTE-HEADER) and a run word reads hb's (xref.f SEAL-NDICT@ reads the space's only to refuse),
-\ so a store into header data counts once the walk reaches a header-data reference or the
-\ compiling file holds a header-data address.
+\ A part that ran an earlier word depends on what that word reaches through EDGES (docs/architecture.md "Builds").
 
 \ A run log entry's record index onto RAN-RECS, unless the object took it already (RAN-BY); hb's
 \ records are no seed.
@@ -1186,10 +1137,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    k ;
 
 
-\ A reached cell onto REACH once. A record, unless hb's, gets its FILES and WORDS rows when an
-\ earlier piece holds it (NAMED-REC+); an earlier piece's extent marks its BUILT row's data in
-\ WALKED and gets its FILES row (EXT-FILE). The running piece's extents have no build-table row
-\ yet: from BUILT-EXTS-N on, they are followed and list nothing.
+\ A reached cell onto REACH once; an earlier piece's record or extent gets its rows, the extent marking its row WALKED.
+\ The running piece's extents, from BUILT-EXTS-N on, have no build-table row yet: they are followed and list nothing.
 : SEE ( n -- )
    {: cell:n :}
    cell CELL-ID {: id:n kind:n :}
@@ -1260,9 +1209,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    false ;
 
 
-\ Each STORERS pair's piece whose stores are not yet reached, when its holder row has a WALKED
-\ mark, or is the header data once own is true or the walk reached a header-data reference: its
-\ stores marked reached and their ROW-EDGES span given to SEE. True when it marked one.
+\ Each STORERS piece with stores not yet reached whose holder is WALKED, or is header data once own is true or the walk
+\ reached a header-data reference: its stores marked reached, their ROW-EDGES span given to SEE. True if it marked one.
 : WALK-STORERS ( bool -- bool )
    {: own:bool :}
    own if true else HEADER-SEEN @ then {: header:bool :}
@@ -1277,11 +1225,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    loop ;
 
 
-\ The walk from RAN-RECS' records, after NAMED+: a word reached gets its FILES and WORDS rows, an
-\ extent its FILES row (SEE); REACHED takes, in BUILT order, the FILES row of each piece with a
-\ WALKED mark, whole when its stores are reached, then -1 when the header data's storers count:
-\ REACHED-CK runs before any piece the file requests is built. A pass of WALK-STORERS that marks
-\ nothing saw no span.
+\ The walk from RAN-RECS' records, after NAMED+; REACHED takes each WALKED piece's FILES row, whole when its stores are
+\ reached, then -1 when header storers count. REACHED-CK runs before any piece the file requests is built.
 : RAN-FILES+ ( -- )
    REACHED BUF:CLEAR
    RAN-RECS BYTES$ nip 0= if exit then
@@ -1298,9 +1243,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    own HEADER-SEEN @ or if -1 REACHED U64+ then ;
 
 
-\ One reference onto EDGES as 4 * id + kind: kind 0 a record by its index, 1 an emission by its
-\ shadow number, 2 an extent by its build-table row (the running piece's extent e will be
-\ BUILT-EXTS-N plus e), 3 the header data.
+\ One reference onto EDGES as 4 * id + kind: 0 a record by index, 1 an emission by shadow number, 2 an extent by its
+\ build-table row (the running piece's extent e will be BUILT-EXTS-N plus e), 3 the header data.
 : EDGE+ ( n -- )
    {: cell:n :}
    EDGES-N @ {: n:n :}
@@ -1337,9 +1281,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    start b 2 * EXT-EDGES !  EDGES-N @ start -  b 2 * 1 + EXT-EDGES ! ;
 
 
-\ An address in the running part's data: a word's or a string's extent (EXT-OF) holding it as tag 3
-\ or 6 and the offset in it, else tag 7 and the offset from FILE-DP (the head, or no extent). Its
-\ edge names the extent holding it, the head included; an address in no extent has none.
+\ An address in the running part's data: tag 3 or 6 and its offset in the word's or string's extent (EXT-OF), else tag
+\ 7 and its offset from FILE-DP. Its edge names the extent holding it, the head included; none when no extent does.
 : OWN-DATA-REF+ ( n -- )
    {: v:n :}
    v EXT-OF {: e:n :}
@@ -1353,11 +1296,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    then
    7 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ ;
 
-\ An address in BUILT row row's data, and true: a word's, a string's or a laid text's build-table
-\ row (ROW-EXT-OF) holding it, its end included, as tag 3 or 6 and the offset in it, or the head's
-\ as tag 7 and the offset from the part's first data byte; its FILES row (EXT-FILE) and its edge
-\ name that build-table row. False, writing nothing, for an address no row holds: one between the
-\ D bytes and a text, or in a part with no row.
+\ An address in BUILT row row's data, end included, and true: tag 3 or 6 by the build-table row holding it (ROW-EXT-OF)
+\ or the head's tag 7, then the offset; its FILES row and edge name that row. False, writing nothing, if none holds it.
 : ROW-DATA-REF+ ( n n -- bool )
    {: v:n row:n :}
    v row ROW-EXT-OF {: b:n :}
@@ -1370,9 +1310,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    kind 1 = if 3 else 6 then PIECES U64+  k PIECES U64+
    b 2 BUILT-EXT @ PIECES U64+  b 3 BUILT-EXT @ PIECES U64+  v start - PIECES U64+  true ;
 
-\ A data address's reference, and true: a file's data a row names (ROW-DATA-REF+, which asks for
-\ its FILES row), or the open's header data; false, writing nothing, for any other address. A
-\ file's end names it only after every span, so a later file's first byte names that later file.
+\ A data address's reference, and true: a file's data a row names (ROW-DATA-REF+) or the open's header data, else
+\ false. A file's end names it only after every span, so a later file's first byte names that later file.
 : DATA-REF+ ( n -- bool )
    {: v:n :}
    v FILE-DP @ >=  v FILE-END @ <  and if  v OWN-DATA-REF+ true exit  then
@@ -1503,9 +1442,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    rec XREF-PKG-PRIVATE {: w:n :}
    w 0<>  w rec XREF-PKG-PUBLIC 1 + =  and ;
 
-\ The wordlist's role: 0 global, 1 primitives, 2 package names, 3 or 4 a package's
-\ public or private one, then the package's record reference (ID-REF+), which is the build's and
-\ below the record; 5 types.
+\ The wordlist's role: 0 global, 1 primitives, 2 package names, 5 types, or 3 or 4 a package's public or private one
+\ followed by the package's record reference (ID-REF+), which is the build's and below the record.
 : WORDLIST+ ( n -- )
    {: idx:n :}
    idx MADE-WID {: wid:n :}
@@ -1607,10 +1545,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    then
    src ;
 
-\ The kind, the name, the flags without the name length and EXT, the wordlist (WORDLIST+), then
-\ the kind's fields (DISPATCH+, the does entry's offset, OWN-PRIVATE?, the alias's source, none
-\ for KIND-TYPE); a KIND-PRIVATE entry is LATE+'s, a KIND-SEALED one SEAL+'s. Answers the record
-\ the entry binds: an alias's source, a type entry's TYPE-SOURCE, else -1.
+\ The kind, name, flags without the name length and EXT, wordlist, then the kind's fields; KIND-PRIVATE and
+\ KIND-SEALED entries are LATE+'s and SEAL+'s. Answers the record the entry binds: an alias's or type's source, else -1.
 : RECORD+ ( n -- n )
    {: idx:n :}
    idx XREF-REC {: rec:ptr :}
@@ -1756,10 +1692,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx PKG? if idx XREF-REC XREF-PKG-PUBLIC exit then
    idx MADE-WID 1 + ;
 
-\ A code address's reference, and true: a record's entry, by the record's identity (ID-REF+), a
-\ quotation's function, by its owning definition's identity and the function's number, or hb's
-\ own code, last since a record's host copy may lie inside hb's code range; false, writing
-\ nothing, for any other address.
+\ A code address's reference, and true: a record's entry, a quotation's function, or hb's own code, tested last since
+\ a record's host copy may lie inside hb's code range; false, writing nothing, for any other address.
 : CODE-REF+ ( n -- bool )
    {: a:n :}
    a REC-AT {: r:n :}
@@ -1906,10 +1840,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 : BODY-U ( n -- n ) CELL - BASE @ - SPACE-AT @ ;
 
 \ ---- extents ---------------------------------------------------------------------
-\ A piece's data, [FILE-DP, FILE-END), is cut into extents at its anchors, each running to the next
-\ anchor, the last to FILE-END: kind 1 a record's (its sum and count, REC-ID), kind 2 a string's (the
-\ sum of its body's bytes and its number among the piece's strings with that sum, in address order),
-\ kind 3 the head from FILE-DP to the first anchor (0 0), only when D is above 0 and none sits there.
+\ Extents cut a piece's data at its anchors: kind 1 a record's (REC-ID), 2 a string's (STRING-COUNTS), 3 the head (0 0).
 
 \ An anchor of the given rank at the address, when it lies in [FILE-DP, FILE-END].
 : ANCHOR+ ( n n n -- )
@@ -1995,10 +1926,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    loop 2drop ;
 
 
-\ The running piece's extents into EXTS: anchors at each record's body (EM-DATA of its emission, for
-\ a record DNAME-ALLOC marks) and dispatch cell, and each string's length cell (STRING+), sorted
-\ (ANCHOR<), after a head when D is above 0 and no anchor sits at FILE-DP; then each one's length,
-\ the distance to the next start, the last's to FILE-END.
+\ The running piece's extents into EXTS: anchors at each DNAME-ALLOC record's body (EM-DATA) and dispatch cell and each
+\ string's length cell, sorted, after a head when D > 0 and no anchor is at FILE-DP; each runs to the next or FILE-END.
 : EXTENTS! ( -- )
    0 ANCHORS-N !  0 EXTS-N !
    ndict@ FILE-REC @ ?do
@@ -2034,9 +1963,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    STRING-COUNTS ;
 
 
-\ The running piece's cell rows inside its data into EXT-ROWS, grouped by extent and in the space's
-\ order within one, in one pass over ROWS: a cell not 8-aligned from FILE-DP, crossing its extent's
-\ end or ending past the data is E-COMP-STATE.
+\ The running piece's cell rows into EXT-ROWS, grouped by extent and in the space's order within one: a cell not
+\ 8-aligned from FILE-DP, crossing its extent's end or ending past the data is E-COMP-STATE.
 : GROUP-ROWS ( -- )
    ROWS {: rows:ptr count:n :}
    0  count 0 ?do
@@ -2117,11 +2045,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    EXTS-N @ 0 ?do  i EXTENT+  loop ;
 
 \ ---- the stores ----------------------------------------------------------------
-\ A file's compile may store into cells below its data, but must leave earlier records and
-\ emissions alone: E-STORE, which fails the build as any throw out of a load does (RUN-FILE).
-\ hb's xt! and ptr-cell! mark each header cell they store into, changed or not (MARKED+). A
-\ store into the header below its address-cell rows is found by its mark alone, so one made
-\ around xt! and ptr-cell! is not found; the cells above those rows are compared (BELOW).
+\ A header cell below the address-cell rows is found only by the mark xt! and ptr-cell! leave (MARKED+), others BELOW.
 
 \ The compared cells, as [from, to) offsets from BASE: the header above its address-cell rows,
 \ the open's data and every earlier file's data.
@@ -2242,10 +2166,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    {: v:n :}
    v OPEN-DP @ < if -1 else v DP-ROW 0= if E-COMP-STATE throw then then  PAIR+ ;
 
-\ The running piece changed record idx of an earlier piece (its facts, a retirement, a seal, a
-\ late private wordlist): NAMES takes the record's name as naming the piece whole, so a file that
-\ spells it depends on the whole piece, and STORERS the piece against the record's row. Nothing for
-\ its own.
+\ The running piece changed an earlier piece's record (facts, retirement, seal, late wordlist): its name in NAMES names
+\ the running piece whole, so a file spelling it depends on that piece; STORERS pairs the piece with the record's row.
 : CHANGER+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ >= if exit then
@@ -2309,9 +2231,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    v STORED+ ;
 
 
-\ STORED, ascending: each changed cell BELOW but a scratch one, each header cell an xt! or
-\ ptr-cell! stored, changed or not (MARKED+), and each new row's cell below FILE-DP, aligned
-\ (else E-COMP-STATE, as in DATA+); E-STORE for a cell no earlier file or the header holds.
+\ STORED, ascending: each changed non-scratch cell BELOW, each header cell xt! or ptr-cell! stored (MARKED+) and each
+\ new row's cell below FILE-DP, aligned or E-COMP-STATE; E-STORE for a cell no earlier file or the header holds.
 : FIND-STORES ( -- )
    0 STORED-N !
    BELOW COMPARE-RANGE
@@ -2422,11 +2343,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ev EVENT-KIND@ EV-PROVIDED =
    ev EVENT-KIND@ EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-KNOWN =  and  or ;
 
-\ ACTS, the registry acts of the part, req 0 when a request ends it and -1 when it ends the file,
-\ from the loader's log (include.f EVENT-RECORD): their count, then each its kind, EV-REQUIRED or
-\ EV-PROVIDED, and the path as spelled (FIELD+). The newest event of a piece a request ends is that
-\ request's own. Any other event is a load the source caught before the build's runner ran it,
-\ which a link could not repeat: the file is UNLINKABLE. E-COMP-STATE when the log stopped.
+\ ACTS from the loader's log (include.f EVENT-RECORD); req >= 0 leaves out the newest event, the ending request's own.
+\ Any other event is a load the source caught before the build's runner ran it, which a link cannot repeat: UNLINKABLE.
 : ACTS+ ( n -- )
    {: req:n :}
    EVENT-COUNT  req 0 >= if 1 - then {: end:n :}
@@ -2441,11 +2359,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    loop ;
 
 
-\ The running piece's extents (EXTENTS!), then the piece into PIECES: entry count; records by
-\ index, each late private wordlist (by id) before the first record marked above its id, so ids
-\ mint in entry order; each earlier package the piece sealed, after every record, so a link seals
-\ it once the piece's definitions are in; CODE; DATA; STORES; FACTS, whose offset in PIECES it
-\ leaves in FACTS-AT; ACTS; then req, 0 when a request ends the part, -1 when the part ends the file.
+\ Records by index, each late private wordlist before the first record marked above its id, so ids mint in entry order;
+\ sealed packages last, so a link seals once the definitions are in. req: 0 a request ends the part, -1 the file ends.
 : PIECE+ ( n -- )
    {: req:n :}
    IDENTIFY  EXTENTS!
@@ -2488,9 +2403,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       OBJECT BYTES$ drop files-at + i FILES-ROW-BYTES * +  LE:U64!
    loop ;
 
-\ Part FILE-PART's object as the part ends, its time t, built for PIECE-PLACE's facts and written
-\ (OBJECT$) only with a stamp and for hb's own target (LOAD); an UNLINKABLE part's INPUT is
-\ 0 0 -1, so it never links and keeps its times.
+\ Part FILE-PART's object with time t, built for PIECE-PLACE's facts and written only with a stamp and for hb's target;
+\ an UNLINKABLE part's INPUT is 0 0 -1, so it never links and keeps its times.
 : WRITE-OBJECT ( n -- )
    {: t:n :}
    \ FILES ends with the pieces the part's source names (NAMED+), then those a run word reaches
@@ -2593,10 +2507,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    -3 row 2 0 count b PLACE!
    1 BUILT-EXTS-N +! ;
 
-\ After BUILT-EXTS+, each text the running part laid past its D bytes (LINK-FACTS lays them in
-\ FACTS row order) as BUILT row BUILT-N's: a FACTS row's text whose length cell lies past the text
-\ added last and below FILE-END. A text an earlier row named or an earlier part laid lies lower.
-\ Its length runs to the next text, the last's to FILE-END.
+\ After BUILT-EXTS+, each text the part laid past its D bytes (in FACTS row order, as LINK-FACTS lays them) for BUILT-N:
+\ one whose length cell lies past the last added and below FILE-END; a lower one is an earlier row's or part's.
 : TEXT-EXTS+ ( -- )
    EXTS-N @ 0= if FILE-DP @ else EXTS-N @ 1 - EXT-END then {: dend:n :}
    FILE-END @ {: end:n :}
@@ -2621,9 +2533,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    loop
    row 2 * 1 + ROW-EXTS @  stop first - +  row 2 * 1 + ROW-EXTS ! ;
 
-\ The piece's BUILT row with its number and time, its file's path and HOLDS-HEADER, its extents and
-\ laid texts in the build table (BUILT-EXTS+, TEXT-EXTS+); NAMES takes its records, REC-ROW gives
-\ each its row, rows rising.
+\ The piece's BUILT row, its extents and laid texts in the build table (BUILT-EXTS+, TEXT-EXTS+); NAMES takes its
+\ records and REC-ROW gives each its row, rows rising.
 : BUILT+ ( n n -- )
    {: piece:n t:n :}
    BUILT-EXTS+  TEXT-EXTS+
@@ -2642,8 +2553,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    HOLDS-HEADER @ if 1 else 0 then BUILT U64+ ;
 
 \ ---- reading an object ---------------------------------------------------------
-\ PART-FRESH? reads a part's object into OBJECT and checks every field WRITE-OBJECT writes.
-\ The link reads these variables, ENTRY-OFFS, EM-OFFS and FILE-ROWS, valid once PART-FRESH? answers true.
+\ PART-FRESH? checks the part's object in OBJECT; these, ENTRY-OFFS, EM-OFFS and FILE-ROWS hold once it answers true.
 variable ENTRIES-N                    \ the object's entries
 variable RECS-N                       \ its records: entries neither KIND-PRIVATE nor KIND-SEALED
 variable EMS-N                        \ its emissions, E
@@ -2651,8 +2561,8 @@ variable DATA-AT                      \ the offset in OBJECT of DATA's D
 variable EXTS-AT                      \ of its X
 variable STORES-AT                    \ of STORES' S
 variable REQS-AT                      \ the offset in OBJECT of its REQUESTS
-variable REQS-N                       \ its REQUESTS rows; it has one piece more
-variable PIECE-AT                     \ the offset in OBJECT of the next piece to check
+variable REQS-N                       \ its REQUESTS rows: 1 when a request ends the part, else 0 (REQUESTS-CK)
+variable PIECE-AT                     \ the offset in OBJECT of the part's piece (HEADER-CK)
 \ Only the check uses these and DOES-AT.
 variable FILES-N                      \ its FILES rows
 variable DEFS-N                       \ the KIND-DEF entries read so far
@@ -2807,9 +2717,8 @@ variable RD-END
    r ;
 
 
-\ A quotation (file, its owning definition's sum and count, function f): this file's owner
-\ (OWN-REC) a definition whose emission is at most top, or an earlier file's (PLACE) one with an
-\ emission (OWNER-EM); f below that emission's function count.
+\ A quotation (file, its owner's sum and count, function f): the owner is this file's record with an emission at most
+\ top (OWN-REC) or an earlier file's (PLACE) with one (OWNER-EM); f is below that emission's function count.
 : FN-REF-CK ( n n n n n -- )
    {: file:n sum:n count:n f:n top:n :}
    f 0< if BAD exit then
@@ -2828,9 +2737,8 @@ variable RD-END
    f em NSHADOW:FUNCTIONS >= if BAD then ;
 
 
-\ A code reference (RD-REF) whose own emission is at most top and own record below bound: the
-\ records RESOLVE finds when the link resolves it, a record by its file, sum and count (OWN-REC,
-\ PLACE). It names no package, which RESOLVE refuses.
+\ A code reference (RD-REF) that RESOLVE resolves: an own emission at most top, an own record below bound, and a record
+\ (OWN-REC, PLACE) that is no package.
 : CODE-REF-CK ( n n n n n n n -- )
    {: tag:n x:n y:n z:n w:n top:n bound:n :}
    GOOD? 0= if exit then
@@ -2845,10 +2753,8 @@ variable RD-END
    BAD ;
 
 
-\ A data reference (RD-REF): a word's (tag 3) or a string's or laid text's (tag 6) extent of this
-\ part (OWN-EXT) or of a built one (ROW-EXT), the offset at most its length; a part's head (tag 7),
-\ the offset at most its length, 0 in this part when it has no extent (HEAD-LEN); or the open's
-\ header data.
+\ A data reference (RD-REF): a word's (tag 3), string's or laid text's (tag 6) extent here (OWN-EXT) or built (ROW-EXT),
+\ or a part's head (tag 7, HEAD-LEN; 0 when none here), the offset at most its length; or header data (tag 4).
 : DATA-REF-CK ( n n n n n -- )
    {: tag:n x:n y:n z:n w:n :}
    GOOD? 0= if exit then
@@ -2911,8 +2817,7 @@ variable RD-END
    loop ;
 
 
-\ FILES' rows, u bytes, mapped (MAP-FILES). A row may name a piece the root's check has not reached,
-\ so only the last piece's check (ROWS-CK) requires every row.
+\ FILES' rows, u bytes, mapped (MAP-FILES); PIECE-CK requires every row built (ROWS-CK).
 : FILES-CK ( n -- )
    {: u:n :}
    0 FILES-N !
@@ -2944,10 +2849,8 @@ variable RD-END
    BUILT-N 0 ?do i HITS @ 1 = if BAD then loop ;
 
 
-\ REACHED's u bytes from RD-AT, each a FILES row but a last -1 (RAN-FILES+); bad when a piece
-\ that stored into a reached piece's data, or into header data once the -1 is there (STORERS), is
-\ not reached, or when the reached pieces are built in another order than RAN-FILES+ listed them:
-\ of two stores into one cell the later holds.
+\ REACHED's u bytes, FILES rows then -1 (RAN-FILES+): bad unless each storer (STORERS) into reached data, or header
+\ data once the -1 is read, is reached, and rows run in build order: of two stores into a cell the later holds.
 : REACHED-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
@@ -3005,9 +2908,8 @@ variable RD-END
    RD-AT @ end <> if BAD then ;
 
 
-\ NAMES' u bytes from RD-AT (SPELLS), u a multiple of 8, run as SPELLED ran them: HIT for each
-\ sum, OPENED+ for the sum after a 0. Against the source INPUT-STAMP stamps, HITS, HIT-STAMPS and
-\ HIT-N end as a scan's.
+\ NAMES' u bytes (SPELLS) run as SPELLED ran them: HIT each sum, OPENED+ the sum after a 0; for a source INPUT-STAMP
+\ stamps, HITS, HIT-STAMPS and HIT-N end as a scan's.
 : NAMES-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
@@ -3054,12 +2956,8 @@ variable RD-END
    at 8 +  at OBJ@ WORD-BYTES * +  8 +  e EXT-BYTES * + ;
 
 
-\ The part's records into PLACES by the sums and counts its TIMES block holds, in record order, each
-\ under the key -2 and a new OWN-SERIAL with its number in the piece; then its extents into EXTS,
-\ each with its time, kind, sum and count from TIMES, its length from its span's length cell, its
-\ start FILE-DP plus the lengths before it, and into PLACES the same way. Bad when two records share
-\ a sum and count, two extents a kind, sum and count, or a span is too short to hold its length
-\ cell; EXTENT-CK proves the rest against DATA.
+\ Places the part's records (TIMES order, key -2, a new OWN-SERIAL) and extents (EXTS, laid from FILE-DP); bad on a
+\ repeated identity or a span too short for its length cell. EXTENT-CK checks the rest against DATA.
 : OWN-IDS! ( -- )
    TIMES-AT {: at:n :}
    1 OWN-SERIAL +!
@@ -3095,10 +2993,8 @@ variable RD-END
    off 0<  u 0<  or  off plen >  or  u plen off - >  or if BAD then ;
 
 
-\ TIMES from RD-AT to PIECES at the offset, in an object of len bytes: the piece's block (TIMES+),
-\ each word's and each extent's span inside the piece, which runs from PIECES to the object's end;
-\ a word's time, bound record's time, bits, sum and count and an extent's time, kind, sum and count
-\ are skipped.
+\ TIMES (TIMES+) from RD-AT to PIECES at pieces-at: each word's and extent's spans lie in the piece, which runs to the
+\ object's end at len; the other fields are skipped.
 : TIMES-CK ( n n -- )
    {: pieces-at:n len:n :}
    GOOD? 0= if exit then
@@ -3117,10 +3013,8 @@ variable RD-END
    r HIT-STAMPS @ HIT-STAMP @ <> if exit then
    HIT-STAMP @ 1 + r HIT-STAMPS !  -1 HIT-N +! ;
 
-\ WORDS' u bytes from RD-AT, a multiple of WORD-ROW-BYTES (WORD-ROW+): bad when a row's FILES row is
-\ not in FILES, is time 0 (REF-FILE) and not built, or is built and has no record of the row's sum
-\ and count (PLACE) or gives it another time, or when the source spells a record with a time no row
-\ lists (NAMES-CK); a whole row's absent piece waits for its FILES row (ROWS-CK).
+\ WORDS' u bytes (WORD-ROW+): bad when a row's FILES row is missing, unbuilt with time 0 (REF-FILE), or built with no
+\ record of its sum and count at its time (PLACE), or a spelled record no row lists (NAMES-CK); ROWS-CK checks the rest.
 : WORDS-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
@@ -3138,9 +3032,7 @@ variable RD-END
    HIT-N @ 0<> if BAD then ;
 
 
-\ EXTENTS' u bytes from RD-AT, a multiple of USED-EXT-BYTES (USED-EXT+): bad when a row's FILES row
-\ is not built (FILE-IN?), its time is 0, or its built part has no extent of its kind, sum and count
-\ (ROW-EXT) or gives that extent another time.
+\ EXTENTS' u bytes (USED-EXT+): each an extent of a built part (ROW-EXT) with the time the row records, never 0.
 : EXTENTS-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
@@ -3153,9 +3045,8 @@ variable RD-END
    loop ;
 
 
-\ The header, its part number FILE-PART's and its start FILE-OFF's, and every section before PIECES as WRITE-OBJECT lays
-\ them: INPUT against INPUT-STAMP, NAMES replayed (NAMES-CK, NAMED-CK), REACHED-CK, PATHS skipped as
-\ KEYS-IN read it, WORDS-CK, EXTENTS-CK, TIMES-CK; then PIECE-AT, PIECES' offset.
+\ The header (FILE-PART, FILE-OFF, INPUT-STAMP) and each section before PIECES as WRITE-OBJECT lays it, by its -CK word;
+\ PATHS is skipped as KEYS-IN read it. Leaves PIECE-AT at PIECES' offset.
 : HEADER-CK ( -- )
    0 FILES-N !  0 REQS-N !
    OBJECT BYTES$ nip {: len:n :}
@@ -3234,7 +3125,7 @@ variable RD-END
    1 PRIVS-N +! ;
 
 
-\ A built package, by record index, a piece the root's check passed gave a private wordlist.
+\ A built package, by record index, that an earlier entry of the checked part gave a private wordlist.
 : GRANT+ ( n -- )
    GRANTS-N @ 1 + GRANTS-RESERVE
    GRANTS-N @ GRANTS !  1 GRANTS-N +! ;
@@ -3245,9 +3136,8 @@ variable RD-END
    false ;
 
 
-\ Whether the package a reference names, by its file and the record PKG-REF-CK answers, has a
-\ private wordlist: an earlier entry gave it one, it is an earlier file's package record holding one
-\ or granted one (GRANT+).
+\ Whether the package a reference names (file, PKG-REF-CK's record) has a private wordlist: one an earlier entry gave
+\ (PRIVS), an earlier file's package record holding one, or a grant (GRANT+).
 : PRIVATE? ( n n -- bool )
    {: file:n n:n :}
    PRIVS-N @ 0 ?do
@@ -3483,9 +3373,8 @@ variable RD-END
    RD-U64 CELL-REF-CK ;
 
 
-\ A string extent of u bytes at the offset in OBJECT: its first 8 bytes hold its body's length,
-\ which the rest holds. A string the table already holds was laid by an earlier file since, so the
-\ file compiles.
+\ A string extent of u bytes at the offset in OBJECT: an 8-byte body length, then the body. A string the table holds was
+\ laid since by an earlier file, so the part compiles.
 : STRING-CK ( n n -- )
    {: at:n u:n :}
    GOOD? 0= if exit then
@@ -3495,11 +3384,8 @@ variable RD-END
    OBJECT BYTES$ drop at 8 + +  n  INTERN:FIND 0<> if BAD then ;
 
 
-\ Extent e of DATA's d bytes, at RD-AT once its starts were read: where TIMES' span for e starts;
-\ kind 1 or 2, or 3 first; a string's sum not 0, a laid text's identity (TEXT-EXTS+); its length
-\ the distance to the next start, the last's to d; its start, kind, sum, count and length those
-\ OWN-IDS! put into EXTS; its bytes; its cell rows (CELL-ROW-CK); a string's length cell
-\ (STRING-CK).
+\ Extent e of DATA's d bytes, RD-AT past the starts: TIMES span, kind (3 only first, 2 with a sum), length to the next
+\ start or d and identity as OWN-IDS! put them in EXTS; then bytes, cell rows (CELL-ROW-CK), length cell (STRING-CK).
 : EXTENT-CK ( n n -- )
    {: e:n d:n :}
    GOOD? 0= if exit then
@@ -3518,10 +3404,8 @@ variable RD-END
    24 RD-COUNT 0 ?do s u CELL-ROW-CK loop ;
 
 
-\ A store row: a cell FIND-STORES admits by where it starts, at an offset from an earlier part's
-\ first data byte that is a multiple of 8: inside a word's, a string's or a laid text's extent (tag
-\ 3 or 6) or the head (tag 7; a cell may run past an unaligned end: main.f's D is 98); or in the
-\ header data.
+\ A store row, as FIND-STORES admits it: a cell 8-aligned from an earlier part's first data byte, in a word's, string's
+\ or laid text's extent (tag 3, 6), the head (tag 7; may pass an unaligned end: main.f's D is 98), header data (tag 4).
 : STORE-CK ( -- )
    RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 3 =  tag 6 =  tag 7 =  or or  x 1 >=  and  tag 4 =  or 0= if BAD exit then
@@ -3594,9 +3478,8 @@ variable RD-END
    loop ;
 
 
-\ The piece at PIECE-AT after MAP-FILES, its TIMES block counting its records, ending with req (0
-\ when a request ends the part, -1 when it ends the file) at the object's end; every FILES row
-\ built (ROWS-CK).
+\ The piece at PIECE-AT after MAP-FILES: its TIMES count equals its records, req (0 when a request ends the part, -1 at
+\ the file's end) ends the object, and every FILES row is built (ROWS-CK).
 : PIECE-CK ( n -- )
    {: req:n :}
    GOOD? 0= if exit then
@@ -3684,8 +3567,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 
 
 \ ---- the last build's object ----------------------------------------------------
-\ As a piece compiles, PRIOR holds its part's object as the last build left it: a piece whose
-\ bytes and references equal its old piece's keeps that piece's time (COMPILED-TIME).
+\ PRIOR holds the part's object as the last build left it: a piece equal to its old one keeps its time (COMPILED-TIME).
 
 \ The header pair at the offset in PRIOR, an offset and a length, inside PRIOR's length.
 : PRIOR-PAIR? ( n -- bool )
@@ -3763,9 +3645,8 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    at 8 +  x ;
 
 
-\ The old piece the running piece's words and extents compare with (PRIOR-PIECE!): its offset in
-\ PRIOR, its length, the offset in PRIOR of its first word in TIMES, its words, 0 for none, the word
-\ OLD-WORD tries first, KEPT-ROWS, and the same three for its extents (OLD-EXT).
+\ The old piece (PRIOR-PIECE!): offset in PRIOR, length, TIMES offset of its first word, word count (0 for none),
+\ OLD-WORD's next try, KEPT-ROWS, then the same three for extents (OLD-EXT).
 variable PRIOR-AT
 variable PRIOR-SIZE
 variable PRIOR-FIRST-WORD
@@ -3824,9 +3705,8 @@ variable PRIOR-EXT-NEXT
    top  em 3 * 2 + EM-SPANS @  max ;
 
 
-\ The offset in PRIOR of the old piece's word with word w's sum and count, -1 for none. The search
-\ starts at PRIOR-NEXT, after the last word found, and wraps: an unchanged file finds each word at
-\ once, and an added word costs one pass over the old words.
+\ The offset in PRIOR of the old word with word w's sum and count, -1 for none. The search wraps from after the last
+\ word found, so an unchanged file finds each word at once.
 : OLD-WORD ( n -- n )
    {: w:n :}
    FILE-REC @ w + REC-ID {: sum:n count:n :}
@@ -3841,9 +3721,8 @@ variable PRIOR-EXT-NEXT
    -1 ;
 
 
-\ Whether the running piece's range at offset noff, nu bytes long, holds the bytes of the old piece's
-\ range at ooff, ou bytes long, inside the old piece; offsets from each piece's first byte, the
-\ running piece's at the offset start in PIECES.
+\ Whether the running piece's range noff, nu (the piece at start in PIECES) holds the old piece's range ooff, ou, which
+\ must lie inside the old piece.
 : SPAN= ( n n n n n -- bool )
    {: start:n noff:n nu:n ooff:n ou:n :}
    ooff 0<  ou 0<  or  ooff PRIOR-SIZE @ >  or  ou PRIOR-SIZE @ ooff - >  or if false exit then
@@ -3867,10 +3746,8 @@ variable PRIOR-EXT-NEXT
    b REC-TIME ;
 
 
-\ Word w's time: its old word's, the one of the same sum and count (OLD-WORD), when that has one,
-\ every FILES row the word names is within KEPT-ROWS-N, so names the same file in both objects,
-\ its ranges hold the same bytes, and the bound record's time and the bits of the rows naming it
-\ from outside are the old word's; else now, as for a word binding a record with no time.
+\ Word w's time: its old word's (OLD-WORD) when that has one, names no row past KEPT-ROWS-N, holds the same bytes and
+\ has w's bound record time and outside bits; else now, as for a word binding a record with no time.
 : WORD-TIME ( n n n -- n )
    {: start:n w:n now:n :}
    w BOUND-TIME {: bt:n :}
@@ -3920,11 +3797,8 @@ variable PRIOR-EXT-NEXT
    t ;
 
 
-\ The running piece's TIMES block, the piece starting at the offset in PIECES: its word count, then
-\ per word its time (WORD-TIME), also into WORD-TIMES, its entry, emission and text ranges, the
-\ time of the record it binds (BOUND-TIME), the bits of the rows naming it from outside, and its
-\ sum and count (REC-ID); then its extent count, then per extent its time (EXT-TIME), also into
-\ EXTS, its span's offset and length, its kind, sum and count.
+\ The TIMES block of the piece at start in PIECES: word count, per word time (WORD-TIME, also WORD-TIMES), spans,
+\ bound time, outside bits, sum, count; extent count, per extent time (EXT-TIME, also EXTS), span, kind, sum, count.
 : TIMES+ ( n n -- )
    {: start:n now:n :}
    WORDS-N @ TIMES U64+
@@ -3966,8 +3840,7 @@ variable PRIOR-EXT-NEXT
 
 
 \ ---- checking a part ------------------------------------------------------------
-\ A part checks as its compile ran: each path its acts and its request name resolves as its compile
-\ resolved it, PENDING-PATHS holding the paths the part's earlier acts provided.
+\ Each path a part's acts and request name resolves as its compile resolved it; PENDING-PATHS holds earlier acts' paths.
 
 \ Whether an earlier act of the checked part provided the path (PENDING-PATHS).
 : PENDING-PATH? ( ptr u8 n -- bool )
@@ -4004,10 +3877,8 @@ variable PRIOR-EXT-NEXT
    loop ;
 
 
-\ After INPUT!: true when part FILE-PART's object reads whole and checks, with a stamp, since an
-\ unstamped source's INPUT-STAMP, 0 0 -1, equals an UNLINKABLE part's INPUT. A request must spell a
-\ path that resolves to the one it loaded, an existing file, and a require's not REGISTERED? yet.
-\ It applies nothing.
+\ After INPUT!: true when part FILE-PART's object reads whole and checks with the source stamped (unstamped, INPUT-STAMP
+\ is 0 0 -1, an UNLINKABLE part's INPUT); a request resolves to the existing file it loaded, a require's not REGISTERED?
 : PART-FRESH? ( -- bool )
    STAMPED? 0= if false exit then
    HITS-CLEAR                          \ the check replays NAMES into HITS
@@ -4026,8 +3897,7 @@ variable PRIOR-EXT-NEXT
    canon canonu known REGISTERED? 0= ;
 
 \ ---- linking an object ---------------------------------------------------------
-\ The words a link of a fresh object applies it with, once PART-FRESH? answers true: each
-\ reference's value (RESOLVE) and the entries that are not code.
+\ What a link of an object PART-FRESH? passed applies it with: each reference's value (RESOLVE), the non-code entries.
 variable LINK-FN                     \ the emission being linked's address: SOURCE-FUNS' at
 variable LINK-EM                     \ that emission's number in this object, -1 for none
 variable LINK-OWNER                  \ the record that emission makes, -1 for none
@@ -4049,9 +3919,8 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    r ;
 
 
-\ A quotation reference's address (file, owner's sum and count, function f), with the edge to
-\ the owner's emission: f of the definition being made, which has no shadow row yet, or the host
-\ entry the shadow filed for f of the owner's emission (OWNER-EM).
+\ A quotation reference's address (file, owner's sum and count, f), adding the edge to the owner's emission: f of the
+\ definition being made, which has no shadow row yet, or the host entry the shadow filed for it (OWNER-EM).
 : FN-ADDR ( n n n n -- n )
    {: file:n sum:n count:n f:n :}
    file sum count ID-REC {: r:n :}
@@ -4284,9 +4153,8 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    E-COMP-STATE throw ;
 
 
-\ Entry i, a definition (RECORD+), as the next record, placed and published; a KIND-DOES entry
-\ right after it is its companion, the record after that. Its emission e is the file's next: each
-\ MAKE-DEF of the piece before it published one.
+\ Entry i, a definition (RECORD+), as the next record, placed and published, a KIND-DOES entry after it its companion;
+\ its emission is the file's next, since each earlier MAKE-DEF of the piece published one.
 : MAKE-DEF ( n -- )
    {: i:n :}
    NSHADOW:EMISSIONS FILE-EM @ - {: e:n :}
@@ -4377,9 +4245,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    E-COMP-STATE throw ;
 
 
-\ One pass over the object's extents, each at FILE-DP plus its start: pass 0 copies their bytes, 1
-\ puts their cells (PUT-CELL) and keeps extent i's references as the EXT-EDGES of its build-table
-\ row to be, BUILT-EXTS-N plus i, 2 adopts their strings' bodies (INTERN:ADOPT).
+\ A pass over the object's extents at FILE-DP plus their starts: 0 copies bytes, 1 puts cells (PUT-CELL) and keeps
+\ extent i's references as EXT-EDGES of build-table row BUILT-EXTS-N plus i to be, 2 adopts strings (INTERN:ADOPT).
 : LINK-EXTENTS ( n -- )
    {: pass:n :}
    EXTS-AT @  OBJECT BYTES$ nip  RD-OPEN
@@ -4405,9 +4272,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    GOOD? 0= if E-COMP-STATE throw then ;
 
 
-\ The object's DATA at here: every extent's bytes, then their cells, then their strings
-\ (LINK-EXTENTS); then its stores, after the file's entries. The caller sets FILE-DP to here's
-\ distance from NULL-PTR first, as RUN-FILE does.
+\ The object's DATA at here (LINK-EXTENTS' three passes), then its stores, after the file's entries. The caller first
+\ sets FILE-DP to here's distance from NULL-PTR, as MARKS does.
 : LINK-DATA ( -- )
    LINK-CLEAR
    here NULL-PTR -  FILE-DP @ <> if E-COMP-STATE throw then
@@ -4455,9 +4321,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    r 0< if E-COMP-STATE throw then
    r ;
 
-\ A retirement row's record retired again (XREF:RETIRE), as the file's compile retired it; the
-\ row's count of the part's records made before it orders the replay (DUE!). An earlier piece's
-\ record is changed once retired, so a compile and a link see one wordlist.
+\ A retirement row's record retired again (XREF:RETIRE) in the compile's order (DUE!); an earlier piece's record is then
+\ changed (CHANGER+), so a compile and a link see one wordlist.
 : LINK-RETIRED ( bool -- )
    {: read:bool :}
    RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
@@ -4481,9 +4346,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    read if a u r CHECK:READ-FACTS then ;
 
 
-\ The FACTS replay of the part being placed or linked: the offset in OBJECT of its next row and
-\ the rows left; for a link, the rows through the next retirement row, 0 when none is left, and
-\ that row's count of the part's records the compile made before it.
+\ The FACTS replay: the offset in OBJECT of the next row and the rows left; for a link, the rows through the next
+\ retirement row (0 when none) and that row's count of the part's records made before it.
 variable REPLAY-AT
 variable REPLAY-LEFT
 variable DUE-ROWS
@@ -4535,9 +4399,8 @@ variable DUE-MADE
    repeat ;
 
 
-\ The read object's entries in their order, each after the FACTS rows due before its record
-\ (REPLAY-DUE), so a retirement precedes the records the compile made after it; then its data.
-\ LINK-FACTS replays the rows left.
+\ The entries in order, each after the FACTS rows due before its record (REPLAY-DUE), so a retirement precedes records
+\ made after it; then the data. LINK-FACTS replays the rest.
 : LINK-OBJECT ( -- )
    LINK-CLEAR
    0 ALIASES-N !
@@ -4546,12 +4409,8 @@ variable DUE-MADE
    LINK-DATA ;
 
 
-\ OBJECT's FACTS held again, then placed at here with the rest the file held: a cold build
-\ places from the object it wrote, a warm one from the object it read, so both lay one text.
-\ A link replays here the rows LINK-OBJECT left: each `undefine` and retirement in the compile's
-\ order, and reads back into the checker an earlier file's record's text a later `TRUST` row or
-\ amender rewrote; a record's own text is read when a lookup first binds it (the checker's
-\ READ-BOUND). A cold build replays every row, having applied them as it held them.
+\ FACTS replayed, then placed at here with the rest the file held: a link replays the rows LINK-OBJECT left; a cold
+\ build, which applied them as it held them, replays every row. Cold and warm builds lay one text.
 : LINK-FACTS ( bool -- )
    {: read:bool :}
    read 0= if REPLAY-FROM then
@@ -4734,10 +4593,8 @@ variable DUE-MADE
 : DROP-OBJECT ( -- ) OBJECT$ FS:REMOVE-FILE ;
 
 
-\ After INPUT!: true once part FILE-PART checked (PART-FRESH?) and was linked with its acts and
-\ word times, added to BUILT with its texts, number and time; false, with nothing applied, when
-\ it does not check. A throw out of the check or the link removes the object before it passes, so
-\ the next build compiles the part instead of failing the same way.
+\ After INPUT!: true once part FILE-PART checked (PART-FRESH?), linked and joined BUILT; false, applying nothing, when
+\ it does not. A throw removes the object (DROP-OBJECT), so the next build compiles the part instead of failing again.
 : LINK-PART ( -- bool )
    false [:
       drop PART-FRESH? dup if
@@ -4813,9 +4670,8 @@ variable DUE-MADE
    piece t BUILT+ ;
 
 
-\ As the compiling part ends at the offset in the source, before PIECE-END: its NAMES (NAMED!) from
-\ its own source, FILE-OFF to there. NAMES holds still while a part compiles, and a part after a
-\ request hits the names of the file just loaded.
+\ The compiling part's NAMES (NAMED!) from FILE-OFF to end in its source, before PIECE-END. Scanned as the part ends, so
+\ a part after a request hits the names of the file just loaded.
 : PART-NAMES ( n -- )
    {: end:n :}
    HITS-CLEAR
@@ -4831,8 +4687,7 @@ variable DUE-MADE
    INPUT-STAMP 16 + LE:U64!  INPUT-STAMP 8 + LE:U64!  INPUT-STAMP LE:U64! ;
 
 
-\ The request linked part FILE-PART ends with, loaded as a link loads it: a nested LOAD that links
-\ or compiles the file. Then the next part, and the offset in the source it starts at.
+\ Loads the request linked part FILE-PART ends with by a nested LOAD, as a link does; answers the next part's offset.
 \ The row is read first: the requested file's load reuses OBJECT and REQ-PATH.
 : REPLAY ( -- n )
    REQ-FIELDS {: kind:n spelled:n loaded:n :}
@@ -4847,11 +4702,8 @@ variable DUE-MADE
    resume ;
 
 
-\ The file's load, its parts in turn from part 0 (TURN): a part links (LINK-PART) in TOP-SCOPE?
-\ outside a cross build, its request then replayed (REPLAY); one that does not compiles to its
-\ request's clean cut (NEST) or the source's end. A cross build links no object and writes none:
-\ an object carries one emission per definition, and a cross build makes two, the target's and
-\ the host's that later files run.
+\ The file's parts in turn (TURN): one links (LINK-PART) and replays its request, or compiles to its request's clean cut
+\ (NEST) or the end. A cross build writes no object: it makes two emissions per definition, an object holds one.
 : LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    path pathu KEY!
@@ -4921,12 +4773,8 @@ variable DUE-MADE
    ev EVENT-PATH@ path pathu STR=  and ;
 
 
-\ For request event ev of the compiling file, the offset in its source just past the request's
-\ token, where the next part starts; -1 unless the request is a clean cut there: in TOP-SCOPE?,
-\ no cells on the requester's stack, no definition open, the token inside the source, the
-\ newest word the piece ran a loader word (include.f SOURCE-UNIT:LOADER-KIND), and the running
-\ reader the file's own range with its cursor at the token's end. NEST ends that reader at a clean
-\ cut, which from an evaluated copy of a slice of the file would end the evaluation instead.
+\ The offset past request ev's token where the next part starts, -1 unless a clean cut: top scope, empty stack, no open
+\ definition, the token in the source, a loader word run last, this file's reader at the token's end (NEST ends it).
 : RESUME ( n -- n )
    {: ev:n :}
    ev EVENT-TOK@ {: a:n u:n :}
@@ -4944,14 +4792,8 @@ variable DUE-MADE
    a u + src - ;
 
 
-\ A request of the compiling file, the newest event of the loader's log (REQUEST?, else
-\ E-COMP-STATE), ends its part: the part's names to where its source resumes (RESUME; -1, not a
-\ clean cut, names to the source's end and makes this part and the next UNLINKABLE), its one
-\ REQUESTS row (kind, resume offset, the path as spelled and as loaded), its object and BUILT row.
-\ The requested file then loads (LOAD), and the next part starts at a cell boundary, as a load
-\ leaves here (include.f LOAD-UNIT); the requester's place waits in locals. At a clean cut NEST
-\ ends the file's reader and leaves the next part to LOAD (TURN cut); at an unclean one the next
-\ part compiles on in this reader, with a new object.
+\ The newest request (REQUEST?) ends the part (names, REQUESTS row, object, BUILT row), then loads its file. At a
+\ clean cut (RESUME) the next part is LOAD's turn; else it compiles on in this reader, both parts UNLINKABLE.
 : NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    EVENT-COUNT 1 - {: ev:n :}
@@ -4966,7 +4808,7 @@ variable DUE-MADE
    0 COMPILED-TIME {: t:n :}
    t WRITE-OBJECT
    FILE-PART @ t PIECE-PLACE
-   align
+   align   \ the next part starts at a cell boundary, as include.f LOAD-UNIT leaves here
    STAMP@ {: s:n ns:n size:n :}
    FILE-PART @  FILE-OFF @  FILE-SRC @  FILE-SRC-U @ {: part:n off:n src:n srcu:n :}
    UNLINKABLE @ {: unlinkable:bool :}
@@ -5016,8 +4858,8 @@ variable DUE-MADE
    ;MATCH ;
 
 
-\ Links the file when its object is fresh, else compiles it, counting and writing a compile; a
-\ request of a compiling file nests (NEST).
+\ A file's load once GOING admits it: ENTER (LOAD, or NEST for a compiling file's request), then
+\ LEFT on either exit.
 : RUN-FILE ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    LOADER$ nip 0<> GOING
    construct step loading PROGRESS !
@@ -5113,11 +4955,8 @@ variable DUE-MADE
    [: dup MAKE-OWNED ;] catch {: r:n rc:n :}
    rc 0<> if OUTER:DEF-ABORT rc throw then ;
 
-\ After IMAGE-IN, so the texts are held, then laid before any file as the open's header data.
-\ The records are BUILT row 0, as a file's piece is, so an object names them by that row: its
-\ key is the empty path's, which no file's load has; it is piece 0 at time 0, since what it holds
-\ follows from hb, whose stamp names the objects' directory (BUILD-OUT:OBJ$); it has no emission,
-\ no data and no extent.
+\ After IMAGE-IN, the open's records as BUILT row 0, laid before any file as header data: key the empty path's, which no
+\ load has; piece 0 at time 0, its content following from hb, whose stamp names the objects' dir (BUILD-OUT:OBJ$).
 : OWNED-RECORDS ( -- )
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !  false HOLDS-HEADER !
    OWNED-N @ 0 ?do i LINK-OWNED loop

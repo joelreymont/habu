@@ -135,8 +135,8 @@
 \ keeping its handle; its program opens another of each and the kept handle is refused. N builds
 \ kept-genio.f with --repl, since genio-core.f calls the REPL's KEY1, and its program refuses a device
 \ handle kept the same way.
-\ The nested build (NEST-CASE), by tools/hb-build.f in L's out root after L's build, which leaves the
-\ kernel's objects there, builds r.f, which requires x.f, which requires y.f between two pieces; then
+\ U, U2 and U3 (NEST-CASE), by tools/hb-build.f in L's out root after L's build, which leaves the
+\ kernel's objects there, build r.f, which requires x.f, which requires y.f between two pieces; then
 \ m.f, which also requires x.f, after x.f's first piece changes K; then r.f again, whose program
 \ prints the new K: r.f's object names every piece built inside x.f's load.
 
@@ -187,7 +187,7 @@ PATH-CAP BUFFER: OUT-D   variable OUT-D-U
 PATH-CAP BUFFER: OUT-E   variable OUT-E-U
 PATH-CAP BUFFER: OUT-L   variable OUT-L-U
 PATH-CAP BUFFER: OUT-F   variable OUT-F-U    \ the fixture builds' out root, in L's directory
-PATH-CAP BUFFER: NEST-DIR  variable NEST-DIR-U  \ N's sources, <L's out>/nested
+PATH-CAP BUFFER: NEST-DIR  variable NEST-DIR-U  \ U's sources, <L's out>/nested
 PATH-CAP BUFFER: NEST-PATH                      \ one of them
 PATH-CAP 2 * BUFFER: NEST-SRC  variable NEST-SRC-U  \ the text NEST-WRITE writes
 PATH-CAP BUFFER: JOINED
@@ -954,7 +954,7 @@ variable KEPT-NS
    s" the build links seal-second.f" LINKED ;
 
 
-\ The path of N's source of that name.
+\ The path of U's source of that name.
 : NEST-PATH$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    NEST-DIR NEST-DIR-U @ a u NEST-PATH FS:JOIN-PATH {: v:n :}
    NEST-PATH v ;
@@ -962,10 +962,10 @@ variable KEPT-NS
 : SRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a NEST-SRC NEST-SRC-U @ + u BYTE-COPY  u NEST-SRC-U +! ;
 
-\ A line that requires N's source of that name by its absolute path.
+\ A line that requires U's source of that name by its absolute path.
 : REQUIRE+ ( ptr u8 n -- ) s" require " SRC+  NEST-PATH$ SRC+  s\" \n" SRC+ ;
 
-\ Writes the text to N's source of that name and starts the next text.
+\ Writes the text to U's source of that name and starts the next text.
 : NEST-WRITE ( ptr u8 n -- ) NEST-PATH$ NEST-SRC NEST-SRC-U @ FS:WRITE-ALL  0 NEST-SRC-U ! ;
 
 \ x.f: FILE-OBJECTS-NESTED:K, whose value is the text, then a require of y.f, then a second package.
@@ -982,7 +982,7 @@ variable KEPT-NS
    s" x.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-NESTED:K . ;\n" SRC+  s" r.f" NEST-WRITE
    s" x.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" m.f" NEST-WRITE ;
 
-\ tools/hb-build.f's build of N's source to N's program of that name, in a fresh hb and L's out
+\ tools/hb-build.f's build of U's source to U's program of that name, in a fresh hb and L's out
 \ root: the boundary under test is the object another build wrote. True when it exits 0.
 : NEST-BUILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command bool )
    {: src:ptr srcu:n prog:ptr progu:n :}
@@ -997,7 +997,7 @@ variable KEPT-NS
    s" the build exits 0" LABEL  rc 0 T=
    rc 0 = ;
 
-\ N's program, run in its own process: the boundary under test is the written file.
+\ U's program, run in its own process: the boundary under test is the written file.
 : NEST-RUN ( CMD:command ptr u8 n -- CMD:command ) {: want:ptr wantu:n :}
    CMD:RESET
    L$ s" prog-n" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
@@ -1007,11 +1007,11 @@ variable KEPT-NS
 \ r.f, m.f after x.f's K changes, which rewrites x.f's object and leaves r.f's, then r.f again.
 : NEST-CASE ( CMD:command -- CMD:command )
    WRITE-NESTED
-   s" N" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
+   s" U" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
    s\" 1\n" NEST-RUN
    s" 2" WRITE-X
-   s" N2" WHICH!  s" m.f" s" prog-m" NEST-BUILD 0= if exit then
-   s" N3" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
+   s" U2" WHICH!  s" m.f" s" prog-m" NEST-BUILD 0= if exit then
+   s" U3" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
    s\" 2\n" NEST-RUN ;
 
 : CHECKS ( -- )

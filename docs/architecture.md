@@ -192,43 +192,50 @@ nor inside the product's spaces is refused, naming the cell.
 
 ## Builds
 
-**A file is the unit of compilation.** Packages stay namespaces that any file
-can open or reopen. The loader reads source from disk in its normal order, and
-each file decides at its own load: it links its saved object while the object
-still holds, and compiles otherwise, after linked files too. Objects live in
-the tree's own out root (src/lib/build-out.f); no build cache is shared
-between trees. The proof is a warm build whose program equals the program of
-a build into an empty out root.
+**A part of a file is the unit of compilation.** Packages stay namespaces that
+any file can open or reopen. A file's source is cut into parts at each file it
+requests, and each part has its own object. The loader reads source from disk
+in its normal order, and each part decides at its own turn: it links its saved
+object while the object still holds, and compiles otherwise, to its request or
+the file's end, after linked parts too. Either way the file it requests loads
+before the next part. Objects live in the tree's own out root
+(src/lib/build-out.f); no build cache is shared between trees. The proof is a
+warm build whose program equals the program of a build into an empty out root.
 
 **A build decides from stamps and times and hashes nothing.** A file's stamp
-is its change time and size, read before the file is read. Its object links
-only while the stamp is equal, so a file put back with an older time compiles.
-Each part of an object carries the clock time its result last changed; a file
-that compiles to the bytes its old object held keeps those times, so the files
-that depend on it link. A comment edit compiles one file.
+is its change time and size, read before the file is read. Its parts' objects
+link only while the stamp is equal, so a file put back with an older time
+compiles. Each word and each stretch of data carries the clock time its result
+last changed; a word that compiles to the bytes its part's old object held
+keeps its time, so the parts that depend on it link. A comment edit compiles
+one file.
 
-**A file depends on the earlier files it uses**, and links only while each is
-in the build with the time the file's object recorded:
+**A part depends on the earlier words and data it uses**, and links only while
+each is in the build with the time the part's object recorded:
 
-- a file whose words or data its compiled code refers to;
-- a file that defines a public name its source spells outside comment lines,
-  and for a file that reopens a package, that package's private names too;
-- a file that changes a record an earlier file made, which counts as defining
+- a word or a stretch of data its compiled code refers to;
+- a public word its source spells outside comment lines, and for a part that
+  reopens a package, that package's private words too;
+- a part that changes a record an earlier part made, which counts as defining
   that record's name;
-- when it ran an earlier file's word while it compiled, every file that
-  word's code reaches and every file that stored into data it reaches, those
-  loading in the order they did then.
+- when it ran an earlier word while it compiled, every word that word's code
+  reaches, every stretch of data it reaches and every part that stored into
+  that data, those loading in the order they did then.
 
 **hb's identity is its own stamp.** Objects are saved at `<out>/obj/<hb's
 stamp>/<target>/<mode>/<source path>.hfo`, so a new hb compiles every file
 once. hb-build replaces its output only when the image differs apart from its
 signature, and writes a file it generates only when the text differs.
 
-**A file whose load a link could not repeat never links** and compiles on
-every build: one that leaves a package open for a later file, is loaded inside
-one, or catches a load it asks for before the load runs (src/habu/linker.f
-UNLINKABLE). Its object only keeps its pieces' times, so the files that depend
-on it link while those pieces compile to the same bytes.
+**A part whose load a link could not repeat never links** and compiles on
+every build: one that starts or ends inside an open package or `using`, one
+whose request is not a plain one at its top level (made inside a definition,
+with cells on the stack or from evaluated text), the part after such a
+request, one that catches a load it asks for before the load runs, and every
+part of a file with no stamp or of a build for another machine
+(src/habu/linker.f UNLINKABLE). Its object only keeps its words' times, so the
+parts that depend on it link while those words compile to the same bytes; a
+build for another machine writes no object.
 
 **An edit during a build is read in due course.** A file already compiled
 keeps the version it read for that build and is rebuilt on the next; a file not
