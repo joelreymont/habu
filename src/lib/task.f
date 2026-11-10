@@ -439,6 +439,9 @@ TASK-SEM-CHUNK-RECS-OFF TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * +
 : TASK-ZERO-CELLS, ( n -- )
    0 ?do 0 , loop ;
 
+: TASK-SCRATCH-CELLS, ( n -- )
+   0 ?do here scratch-cell-mark 0 , loop ;
+
 TASK-ALIGN8
 create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES 8 / TASK-ZERO-CELLS,
 
@@ -591,14 +594,12 @@ variable SEM-CHUNKS-ARMED   SEM-CHUNKS-ARMED scratch-cell-mark
 : PARK-DRAIN ( ptr n -- ) {: tcb:ptr :}
    begin tcb TASK-PARK-SEM SEM-TRY-WAIT while repeat ;
 
-\ The main thread has no TCB (TASK:SELF answers the null TCB), so its park is
-\ this record and a WAKE of the null TCB posts it: a program with no tasks can
-\ wait on a loop too. MAIN-PARK-READY's compare-and-swap makes two tasks waking
-\ the main thread at once initialize the record once.
+\ The main thread has no TCB, so a WAKE of the null TCB posts this record. Both
+\ it and READY are scratch cells, linked zero: see MAIN-PARK-RESET.
 TASK-ALIGN8
-create MAIN-PARK-REC TASK-SEMAPHORE-BYTES 8 / TASK-ZERO-CELLS,
+create MAIN-PARK-REC TASK-SEMAPHORE-BYTES 8 / TASK-SCRATCH-CELLS,
 TASK-ALIGN8
-variable MAIN-PARK-READY
+variable MAIN-PARK-READY  MAIN-PARK-READY scratch-cell-mark
 
 : MAIN-PARK ( -- sem )
    MAIN-PARK-REC CELL-VIEW SEM-AT ;

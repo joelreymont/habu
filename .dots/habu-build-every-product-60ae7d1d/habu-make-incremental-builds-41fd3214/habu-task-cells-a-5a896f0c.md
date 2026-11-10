@@ -10,4 +10,6 @@ Problem (code review of the registration-cells fix, 2026-11-10, by reading, not 
 
 Hunt (2026-11-10, each by a mixed build): (b) top level `TASK:SELF TASK:WAKE`: three builds rc 0, the third program dies -3606 (E-TASK-SEM-STATE), rc 67; replayed MAIN-PARK-REC's guard cell, its Mach port name and MAIN-PARK-READY = 2. (c) top level `TASK:NEW ... drop`: the cold build is refused rc 74 'task at capture', the third build passes rc 0 and its program dies signal 11; replayed TASK-SEM-POOL's used cell, TCB-POOL and TCB-CHUNKS; scratch marks cannot restore the refusal. (d) top level declares and binds a CALLBACK: all rc 0 and the programs print the same; ARM-IMPORTED-CALLBACKS has no caller. Case b is fixed in this dot; c and d wait for design habu-design-no-file-298feb05.
 
-Claim: agent=jerry workspace=.jj-ws.noindex/jerry-task.
+Case b landed (2026-11-10): MAIN-PARK-REC's cells and MAIN-PARK-READY are scratch cells; test/file-objects.f builds path-main.f, whose top level wakes the main park, in P and P2, and P2's program exits 0 (before the fix rc 67, -3606). Open: c and d.
+
+Claim: unassigned.

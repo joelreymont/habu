@@ -513,7 +513,8 @@ variable TAIL-N                          \ and the paths that end with it
    s" the program logs MAIN's line" LABEL  ran TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
 
-\ path-main.f's program, run in its own process: the path it reports is the written file's.
+\ path-main.f's program, run in its own process: the path it reports is the written
+\ file's, and the park it wakes is its own.
 : PATH-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
