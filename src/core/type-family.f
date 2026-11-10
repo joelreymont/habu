@@ -19,9 +19,8 @@ package TFAM
 
 public
 
-\ NFILE-REF installs these after the engine prefix has loaded. Family identity
-\ is its exact canonical package and tail; constructor identity is an
-\ occurrence in the FILE tree.
+\ FAMILY-HOOK-DEFAULTS binds these. Family identity is its exact canonical
+\ package and tail; constructor identity is an occurrence in the FILE tree.
 defer FAMILY-KEY-XT ( n -- ptr u8 n bool )
 defer FAMILY-BY-KEY-XT ( ptr u8 n -- n bool )
 defer FAMILY-KEY-MATCH-XT ( ptr u8 n ptr u8 n ptr u8 n -- bool )
@@ -50,26 +49,6 @@ private
 FAMILY-HOOK-DEFAULTS
 
 public
-
-: FILE-REF-RESET ( -- )
-   [: FAMILY-KEY-ABSENT ;] is FAMILY-KEY-XT
-   [: FAMILY-BY-KEY-ABSENT ;] is FAMILY-BY-KEY-XT
-   [: FAMILY-KEY-MATCH-ABSENT ;] is FAMILY-KEY-MATCH-XT
-   [: drop ;] is CON-DECLARED-XT
-   [: drop ;] CHECKER-REG:CON-DECLARED-USE
-   [: FAMILY-KEY-ABSENT ;] is CON-KEY-XT
-   [: FAMILY-BY-KEY-ABSENT ;] is CON-BY-KEY-XT
-   [: FAMILY-BIND-ABSENT ;] is CON-BIND-XT ;
-
-: FILE-REF-USE ( [ n -- ptr u8 n bool ] [ ptr u8 n -- n bool ] [ ptr u8 n ptr u8 n ptr u8 n -- bool ] [ n -- ] [ n -- ptr u8 n bool ] [ ptr u8 n -- n bool ] [ n ptr u8 n -- ] -- )
-   is CON-BIND-XT
-   is CON-BY-KEY-XT
-   is CON-KEY-XT
-   dup CHECKER-REG:CON-DECLARED-USE
-   is CON-DECLARED-XT
-   is FAMILY-KEY-MATCH-XT
-   is FAMILY-BY-KEY-XT
-   is FAMILY-KEY-XT ;
 
 0 constant TK-CELL          \ scalar-cell family (no ADT layout)
 1 constant TK-PRODUCT       \ record / struct

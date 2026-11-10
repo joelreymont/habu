@@ -18365,7 +18365,6 @@ public
 package CHECKER-REG
 public
 defer CON-DECLARED-XT ( n -- )
-: CON-DECLARED-USE ( [ n -- ] -- ) is CON-DECLARED-XT ;
 private
 : CON-DECLARED-DEFAULT ( -- ) [: drop ;] is CON-DECLARED-XT ;
 CON-DECLARED-DEFAULT
@@ -29539,23 +29538,15 @@ private
    [: UNIT-TFAM-MAP ;] is CK-GRAPH-FAMILY-MAP-XT ;
 UNIT-GRAPH-MAP-INSTALL
 
-public
-: FILE-CON-USE ( [ n -- ptr u8 n bool ] [ n ptr u8 n -- ] -- )
-   is UNIT-CON-BIND is UNIT-CON-KEY$ ;
-
-private
 : FILE-CON-KEY-UNAVAILABLE ( n -- ptr u8 n bool )
    drop E-UNIT-STATE throw ;
 
 : FILE-CON-BIND-UNAVAILABLE ( n ptr u8 n -- )
    drop 2drop E-UNIT-STATE throw ;
 
-public
 : FILE-CON-RESET ( -- )
    [: FILE-CON-KEY-UNAVAILABLE ;] is UNIT-CON-KEY$
    [: FILE-CON-BIND-UNAVAILABLE ;] is UNIT-CON-BIND ;
-
-private
 FILE-CON-RESET
 
 : UNIT-RBF? ( -- ) RBF-DEPTH @ IF UNIT-BAD THEN ;

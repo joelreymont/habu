@@ -689,10 +689,6 @@ variable ACAP-ENTRY-N
 
 \ Dynamic name uses the derived rule cannot see: consumers resolve these names
 \ after this engine is captured.
-\ The FILE cache resolves TFAM:FILE-REF-RESET/USE, TFAM:FILE-IDENTITY$/FILE-FIND
-\ and CHECKER-REG:FILE-CON-RESET/USE after capture without reloading their
-\ sources. The FILE origin codec and cache resolve their owner callbacks by name
-\ when they replay or neutralize a captured window.
 \ DEFER-UNSET: habu2.f C-DEFER-FIND-UNSET resolves it by name for every new
 \ defer from a lookup string outside the named-site tables; without the record
 \ `defer SETUP ( -- )` fails.
@@ -709,14 +705,9 @@ variable ACAP-ENTRY-N
    if true exit then
    a u s" CHECKER-STORAGE-CELLS" CORE-STR=CI
    k ACAP-REC-DST 40 + ACAP-W32@ 0= and if true exit then
-   a u s" FILE-REF-RESET" CORE-STR=CI
-   a u s" FILE-REF-USE" CORE-STR=CI or
-   a u s" FILE-IDENTITY$" CORE-STR=CI or
+   a u s" FILE-IDENTITY$" CORE-STR=CI
    a u s" FILE-FIND" CORE-STR=CI or
    k s" TFAM" ACAP-KEEP-PKG? and if true exit then
-   a u s" FILE-CON-RESET" CORE-STR=CI
-   a u s" FILE-CON-USE" CORE-STR=CI or
-   k s" CHECKER-REG" ACAP-KEEP-PKG? and if true exit then
    a u s" FILE-MARK" CORE-STR=CI
    a u s" FILE-ROWS" CORE-STR=CI or
    a u s" FILE-IMPORT" CORE-STR=CI or
