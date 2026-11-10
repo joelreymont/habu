@@ -672,6 +672,27 @@ variable RC
    s" : X ( n -- zz ) evaluate ;" s" badsig-unsafe.f" LINE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
 
+\ The load binds `--` and `|` in a locals group as locals; the checker refuses
+\ the definition at that token with the reason, and a body reference to it
+\ keeps that refusal rather than naming an undefined word.
+: TEST-LOCAL-GROUP ( -- )
+   s" -- in a locals group" T-LABEL
+   s" : X ( n -- n ) {: a -- b :} a ;" s" local-dash.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" --" 1 21 20 22 REFUSED-MODES
+   0 s" reason" s" a locals group names only locals; the signature declares the outputs" FIELD=
+   0 s" suggestion" s" Remove the token: a locals group lists only the names to bind." FIELD=
+   s" | in a locals group" T-LABEL
+   s" : X ( n n -- n ) {: a | :} a ;" s" local-bar.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" |" 1 23 22 23 REFUSED-MODES
+   0 s" reason" s" a locals group names only locals; Habu has no uninitialised locals" FIELD=
+   0 s" suggestion" s" Remove the token: a locals group lists only the names to bind." FIELD=
+   s" a body reference to -- from a locals group" T-LABEL
+   s" : X ( n -- n ) {: a -- b :} -- ;" s" local-dash-ref.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" --" 1 21 20 22 REFUSED-MODES
+   s" a body reference to | from a locals group" T-LABEL
+   s" : X ( n n -- n ) {: a | :} | ;" s" local-bar-ref.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" |" 1 23 22 23 REFUSED-MODES ;
+
 \ Packet K of the last check is the record CODE refuses for TOK, the name the
 \ row is stored for, placed at SPELL, the declaring name as written, on LINE at
 \ COL in bytes [BS, BE) of the file at PATH.
@@ -851,8 +872,8 @@ variable RC
    s" SUMTYPE rf VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- rf ) evaluate construct rf nope ;"
       s" unsafe-variant.f" LINE-FIXTURE
    s" E-CONSTRUCT-UNKNOWN-VARIANT" s" nope" 1 81 80 84 REFUSED-AT
-   s" a mismatch before a token of unknown effect" T-LABEL
-   s" : X ( n -- n ) dup c@ {: a -- b :} a ;" s" mismatch-unck.f" LINE-FIXTURE
+   s" a mismatch before a refused locals group token" T-LABEL
+   s" : X ( n -- n ) dup c@ {: a -- b :} a ;" s" mismatch-local.f" LINE-FIXTURE
    s" E-MISMATCH" s" c@" 1 20 19 21 REFUSED-AT
    s" a signature that does not parse and a TRUSTED-only primitive" T-LABEL
    s" : X ( n -- zz ) 1 c2-invoke ;" s" badsig-cap.f" LINE-FIXTURE
@@ -1481,6 +1502,7 @@ variable RC
    TEST-ENUM-CLOSE
    TEST-STRUCTURE
    TEST-BAD-SIGNATURE
+   TEST-LOCAL-GROUP
    TEST-STORED-SIGNATURE
    TEST-REPLACED-SIGNATURE
    TEST-MALFORMED-RECORD

@@ -1243,7 +1243,7 @@ variable MDV-I   variable MDV-F
 : IMM-SUGGEST$ ( -- ptr u8 n )
    s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body." ;
 
-\ The LOCALBAD kinds come from checker.f LOC-REJECT.
+\ The LOCALBAD kinds come from checker.f LOC-REJECT and LOC-GROUP-REJECT.
 : LOCALBAD-CODE$ ( -- ptr u8 n )
    LOCALBAD-KIND @ 2 = IF s" E-LOCAL-NAME-TOO-LONG" EXIT THEN
    LOCALBAD-KIND @ 1 = IF s" E-TOO-MANY-LOCALS" EXIT THEN
@@ -1257,12 +1257,25 @@ variable MDV-I   variable MDV-F
 : LOCALBAD-SUGGEST$ ( -- ptr u8 n )
    LOCALBAD-KIND @ 2 = IF s" Shorten the local name to at most 16 bytes." EXIT THEN
    LOCALBAD-KIND @ 1 = IF s" Bind at most 64 locals in one definition, or factor a helper." EXIT THEN
+   LOCALBAD-KIND @ 3 >= IF s" Remove the token: a locals group lists only the names to bind." EXIT THEN
    s" Move locals to a live top-level path or factor a helper." ;
+
+\ Kinds 3 and 4, a locals group token that names no local, state why; the
+\ prose prints it after the token and the packet as its reason.
+: LOCALBAD-GROUP? ( -- bool )
+   LOCALBAD-KIND @ 3 >= ;
+
+: LOCALBAD-REASON$ ( -- ptr u8 n )
+   LOCALBAD-KIND @ 3 = IF s" a locals group names only locals; the signature declares the outputs" EXIT THEN
+   s" a locals group names only locals; Habu has no uninitialised locals" ;
 
 \ FAILTK is the declaration token pinned by the first failure, so a later body
 \ reference to the rejected name cannot relabel the reject as an undefined word.
 : LOCALBAD-PROSE ( -- )
    LOCALBAD-CODE$ DTXT  s"  " DTXT  DSITE
+   LOCALBAD-GROUP? IF
+     s" at '" DTXT  FAILTK FAILTU @ DTXT  s" ': " DTXT  LOCALBAD-REASON$ DTXT EXIT
+   THEN
    LOCALBAD-KIND @ 2 = IF
      s" local '" DTXT  FAILTK FAILTU @ DTXT  s" ' has a " DTXT  LOCALBAD-LEN @ JNUM
      s" -byte name; the limit is " DTXT  LOC-NAME-W JNUM  s"  bytes" DTXT EXIT
@@ -1663,6 +1676,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
    THEN
    k RF-SIG = SGBAD-SIZE? and IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
+   k RF-LOCAL = LOCALBAD-GROUP? and IF s" reason" JKEY LOCALBAD-REASON$ JSTR 44 EMIT1 THEN
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
    s" file" JKEY  DFILE$ JSTR  44 EMIT1
    DLOC-FIELDS

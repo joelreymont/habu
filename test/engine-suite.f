@@ -766,6 +766,17 @@ s" CBAD-LOC-QUOTE ( -- n ) [: 1 {: x:n :} x ;] execute" CHECK-CANDIDATE! 0 T=
 s" quotation locals keep E-BAD-LOCAL-SHAPE" T-LABEL
 DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE
 DIAG-BUFFER$ s" a local cannot be bound or referenced inside a quotation, or bound on a dead path" CONTAINS? TTRUE
+\ A locals group names only locals: `--` and `|` are refused at the token with the reason.
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" -- in a locals group rejects" T-LABEL
+s" CBAD-LOC-DASH ( n -- n ) {: a -- b :} a" CHECK-CANDIDATE! 0 T=
+s" -- in a locals group names E-BAD-LOCAL-SHAPE and the reason" T-LABEL
+DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE habu: in cbad-loc-dash: at '--': a locals group names only locals; the signature declares the outputs" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" | in a locals group rejects" T-LABEL
+s" CBAD-LOC-BAR ( n n -- n ) {: a | :} a" CHECK-CANDIDATE! 0 T=
+s" | in a locals group names E-BAD-LOCAL-SHAPE and the reason" T-LABEL
+DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE habu: in cbad-loc-bar: at '|': a locals group names only locals; Habu has no uninitialised locals" CONTAINS? TTRUE
 \ A local the load cannot bind refuses the definition at its token, as the
 \ load does while it compiles the body, ahead of any check failure before it.
 \ Only the FIRST local fault's kind is recorded: a later local fault of another
@@ -804,6 +815,12 @@ LOCG$ CHECK-CANDIDATE! 0 T=
 s" 65th local JSON code and class" T-LABEL
 DIAG-BUFFER$ s\" \"code\":\"E-TOO-MANY-LOCALS\"" CONTAINS? TTRUE
 DIAG-BUFFER$ s\" \"repair_class\":\"reduce_local_count\"" CONTAINS? TTRUE
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
+s" -- in a locals group JSON packet" T-LABEL
+s" CBAD-LOC-DASH-JSON ( n -- n ) {: a -- b :} a" CHECK-CANDIDATE! 0 T=
+s" -- in a locals group JSON code and reason" T-LABEL
+DIAG-BUFFER$ s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"reason\":\"a locals group names only locals; the signature declares the outputs\"" CONTAINS? TTRUE
 DIAG-BUFFER-OFF  false DIAG-JSON!
 \ --- multi-error load mode: rejects do not abort the load; the declared sig is
 \ retained so later definitions keep checking, and the count drives a fail-closed

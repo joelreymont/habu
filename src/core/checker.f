@@ -6308,7 +6308,7 @@ CHECKER-REG:SCRATCH{
 variable UNSAFE
 variable RETIRED             \ a permanently retired token was named in a checked body
 variable LOCALBAD
-variable LOCALBAD-KIND       \ 0 = locals opened inside a quotation or on a dead path; 1 = more than LOC-CAP locals; 2 = a name over LOC-NAME-W
+variable LOCALBAD-KIND       \ 0 = locals opened inside a quotation or on a dead path; 1 = more than LOC-CAP locals; 2 = a name over LOC-NAME-W; 3 = `--` in a locals group; 4 = `|` in one
 variable LOCALBAD-LEN        \ kind 2: the rejected local's bare-name width in bytes
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
@@ -6391,7 +6391,7 @@ CHECKER-REG:}SCRATCH
 1 constant RF-IMM            \ an unmodeled compile-time immediate (IMMERR)
 2 constant RF-UNDEF          \ an undefined word or a retired global (UNDEFERR)
 3 constant RF-QUAL           \ a malformed qualified name
-4 constant RF-LOCAL          \ a local the load cannot bind (LOCALBAD)
+4 constant RF-LOCAL          \ a local the load cannot bind, or a group token that names no local (LOCALBAD)
 5 constant RF-SIG            \ a signature type that does not parse (SGBAD)
 6 constant RF-DEAD           \ code after a terminating control word (DEADERR)
 7 constant RF-NP             \ a non-parametric declared effect (NPBAD)
@@ -6426,6 +6426,7 @@ CHECKER-REG:}SCRATCH
    CAPREQ @ IF RF-CAP EXIT THEN
    UNSAFE @ IF RF-UNSAFE EXIT THEN
    LINLOCBAD @ IF RF-LINLOCAL EXIT THEN
+   LOCALBAD @ IF RF-LOCAL EXIT THEN   \ a group token the checker refuses (LOC-GROUP-REJECT)
    MDIAG @ 0 <> IF RF-REASON EXIT THEN
    UNDEFERR @ IF RF-UNDEF EXIT THEN
    UNCK @ IF RF-UNCHECKABLE EXIT THEN
@@ -20513,6 +20514,15 @@ CHECKER-REG:}SCRATCH
    THEN
    -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
 
+\ A locals group names only locals: `--` declares no outputs, the signature
+\ does, and `|` opens no uninitialised locals, which Habu has none of. The load
+\ binds either token as a local, so this is a check failure, not a compile-time
+\ refusal: the first failure keeps the diagnostic, and the kind is recorded only
+\ when this is it.
+: LOC-GROUP-REJECT ( n -- ) {: kind:n :}
+   FAILSET @ 0=  RCOMPILE @ 0=  and IF kind LOCALBAD-KIND !  0 LOCALBAD-LEN ! THEN
+   -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
+
 : LOC-ADD ( ptr u8 ptr u8 n -- )   \ raw declaration, folded declaration, their shared length
    {: ra:ptr a:ptr u:n :}
    a u LCOLON {: col:n :}
@@ -20787,11 +20797,16 @@ CHECKER-REG:}SCRATCH
    LOC-SHOW-GROUP
    LIN-LOCAL-BIND-CHECK ;
 
+\ `--` and `|` bind as in the load, so a body reference finds them and they
+\ count toward LOC-CAP. In a checked body the token has failed, so LOC-BIND
+\ exits on OK 0 and binds no cell to them; an unjudged scan sets OK afresh for
+\ each token (DO-TOK1), so its LOC-BIND binds them as the runtime does.
 : LOC-TOK
    {: ra a u :}
    a u s" :}" CORE-STR= IF CHECKER-TAPE:K-LOCAL-CLOSE 0 0 EVENT!  0 LMODE ! LOC-BIND ELSE
-   a u s" --" CORE-STR= IF -1 UNCK ! THEN   \ the engine binds `--` as a local too
-   ra a u LOC-ADD THEN ;
+   ra a u LOC-ADD
+   a u s" --" CORE-STR= IF 3 LOC-GROUP-REJECT THEN
+   a u s" |" CORE-STR= IF 4 LOC-GROUP-REJECT THEN THEN ;
 
 : LOC-BEGIN ( -- )
    EV-OPERAND
