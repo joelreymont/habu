@@ -811,9 +811,8 @@ public
    CHECKER-REG:DECLARATIONS NCOMP-DISPATCH:DECL-A ptr-cell!
    CHECKER-REG:DECLARATIONS NCOMP-DISPATCH:TARGET-DECL-A ptr-cell! ;
 
-\ A whole-image capture closes the session through IMAGE-LIFECYCLE:PREPARE.
-\ A chain window captures this entry directly, so close a live session here too.
-\ SESSION-FORGET clears its readers before the interner is unmapped.
+\ A capture closes a live session here, so no reader takes it as live after the
+\ interner is unmapped.
 : CAPTURE-PREPARE ( -- )
    NLEASE:IDLE-CK
    IDLE-CK

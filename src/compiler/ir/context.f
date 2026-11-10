@@ -9,7 +9,6 @@ require src/lib/error.f
 require src/lib/memory.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
-require src/lib/image-lifecycle.f
 require src/compiler/workspace.f
 
 package IR-CTX
@@ -52,8 +51,7 @@ CAST: HEADER-PTR ( ptr u8 -- ptr header )
 align
 variable GEN-CELL
 0 GEN-CELL !
-variable DEPTH
-0 DEPTH !
+SCRATCH-VARIABLE DEPTH
 DEPTH-MAX CWORK-SPAN HANDLES n
 DEPTH-MAX CWORK-BUFFER BASES ptr u8
 DEPTH-MAX CWORK-SPAN ENTERED n   \ scope depth -> the slot that scope took
@@ -71,8 +69,7 @@ DEPTH-MAX CWORK-SPAN ENTERED n   \ scope depth -> the slot that scope took
 align
 PTR-VARIABLE REGION-BASE
 NULL-PTR REGION-BASE !
-variable REGION-HERE
-0 REGION-HERE !
+SCRATCH-VARIABLE REGION-HERE
 
 : REGION-ALLOC-LEN ( -- NUM:alloc-byte-len )
    REGION-BYTES MEM:BYTES-ALLOC-LEN ;
@@ -82,8 +79,7 @@ variable REGION-HERE
 \ A child stamps the epoch into the identity cell it keeps at an offset and
 \ compares its reference's stamp with that cell, never with the current epoch:
 \ a session-lived object is older than the counter by every definition since.
-variable REGION-EPOCH
-0 REGION-EPOCH !
+SCRATCH-VARIABLE REGION-EPOCH
 
 : EPOCH-BUMP ( -- )
    REGION-EPOCH @ dup EPOCH-MAX >= if E-IR-CTX-SERIALS throw then
@@ -396,7 +392,7 @@ public
 public
 
 \ No compilation context survives into a captured runtime. Registry payloads
-\ share the transient workspace; only the generation and region epochs persist.
+\ share the transient workspace; only the generation epoch persists.
 : CAPTURE-PREPARE ( -- )
    DEPTH @ 0<> if E-IR-CTX-STATE throw then
    ENTERED-N @ 0<> if E-IR-CTX-STATE throw then
@@ -409,28 +405,27 @@ public
 \ CTX-TAKE at the bottom of the region and closed through CTX-RETIRE, so no
 \ definition's release reaches it. Each definition is an ordinary nested
 \ WITH-CONTEXT, because builder registry rows are freed only at a context
-\ teardown. It lives until capture or process exit.
+\ teardown. It lives until SESSION-CLOSE or process exit.
 \ A second session, a session opened inside any context, and a close while a
 \ context is open inside it are E-IR-CTX-STATE.
 private
 
 1 TYPED-BUFFER SESSION-CTX IR-CTX:ctx
-variable SESSION-SLOT
+SCRATCH-VARIABLE SESSION-SLOT   \ the session's slot plus one; zero: no session
 
 : SESSION-FORGET ( -- )
-   -1 SESSION-SLOT ! ;
-SESSION-FORGET
+   0 SESSION-SLOT ! ;
 
 : SESSION-CK ( -- )
-   SESSION-SLOT @ 0 < if E-IR-CTX-STATE throw then ;
+   SESSION-SLOT @ 0= if E-IR-CTX-STATE throw then ;
 
 \ The slot comes from CTX-TAKE's answer, not a second read of DEPTH.
 : SESSION-INSTALL ( CBIND:binding -- )
-   SERIAL-CEILING CTX-TAKE SESSION-SLOT !
+   SERIAL-CEILING CTX-TAKE 1+ SESSION-SLOT !
    0 SESSION-CTX ! ;
 
 : SESSION-RETIRE ( -- )
-   SESSION-SLOT @ CTX-RETIRE
+   SESSION-SLOT @ 1- CTX-RETIRE
    SESSION-FORGET ;
 
 \ One opened inside a scope would die with that scope while answering as live.
@@ -439,7 +434,7 @@ SESSION-FORGET
 
 \ A context open inside the session reads storage that dies with this row.
 : SESSION-DEEPEST-CK ( -- )
-   DEPTH @ 1- SESSION-SLOT @ <> if E-IR-CTX-STATE throw then ;
+   DEPTH @ 1- SESSION-SLOT @ 1- <> if E-IR-CTX-STATE throw then ;
 
 \ ---- what the session's owner stands down ------------------------------------
 \ The owner's flags (a dialect prototype, a registered vocabulary) describe
@@ -476,7 +471,7 @@ public
    is SESSION-ADMISSION ;
 
 : SESSION-LIVE? ( -- bool )
-   SESSION-SLOT @ 0 < 0= ;
+   SESSION-SLOT @ 0<> ;
 
 \ A FILE import cannot alias saved handles against an unrelated live context.
 \ A compiler session is the only permitted live row while importing its child.
@@ -499,28 +494,6 @@ public
    SESSION-ADMISSION
    SESSION-END ;
 
-private
-
-variable HOOKED   HOOKED scratch-cell-mark
-0 HOOKED !
-
-\ Runs before IR-CTX clears its registry at capture, so an idle session closes
-\ first and an open definition context is refused by the session's name. The
-\ flag clears only on success: a throwing callback stays registered for retry.
-: SESSION-AT-CAPTURE ( -- )
-   SESSION-LIVE? if SESSION-CLOSE then
-   0 HOOKED ! ;
-
-\ Registered when a session is taken, not at load: PREPARE removes every
-\ callback it runs and an image does not carry the registry, so a load-time
-\ registration would never recur in an engine built from an image.
-: HOOK-CAPTURE ( -- )
-   HOOKED @ 0<> if exit then
-   [: SESSION-AT-CAPTURE ;] IMAGE-LIFECYCLE:REGISTER
-   1 HOOKED ! ;
-
-public
-
 \ The binding is revalidated as in WITH-CONTEXT-BOUND, with the production
 \ ceiling. A first tier-1 definition compiled inside a caller's own context is
 \ refused here by REGISTRY-EMPTY-CK.
@@ -529,7 +502,6 @@ public
    REGISTRY-EMPTY-CK
    SERIAL-CEILING CEIL-OK
    DEPTH-ROOM
-   HOOK-CAPTURE
    CBIND:VALIDATE
    SESSION-INSTALL
    0 SESSION-CTX @ ;
