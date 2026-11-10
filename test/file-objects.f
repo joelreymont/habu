@@ -79,6 +79,10 @@
 \ from P to P2.
 \ H builds part-main.f, whose package's part NFETCH-CHECK has a BAD-TAG that returns; its
 \ program dies with the bad-tag error all the same.
+\ S, S2 and S3 build stale-root.f, stale-alone.f and stale-root.f: S2 leaves stale-spell.f's object
+\ naming no file, and S3 checks it while stale-def.f, which defines V, a name stale-spell.f spells,
+\ is checked and not yet linked, so S3 compiles it. K, K2 and K3 build hidden-root.f, hidden-alone.f
+\ and hidden-root.f, and K3 exits 0: hidden-spell.f spells W, which hidden-def.f defines privately.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -95,12 +99,15 @@ package FILE-OBJECTS-TEST
 
 7 constant FILES                         \ build A's objects, and D's
 8 constant FILES-B                       \ build B's: A's and pad.f's
-8 constant LOG-FIRST                     \ TAIL$'s numbers for log-first.f's and path-main.f's objects
-9 constant PATH-MAIN
+8 constant LOG-FIRST                     \ TAIL$'s numbers for log-first.f's, path-main.f's and
+9 constant PATH-MAIN                     \ stale-spell.f's objects
+10 constant STALE-SPELL
 28 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four, e.f's
 144 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 128 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
+56 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
+32 constant FILES-ROW                    \ a FILES row's bytes (linker.f FILES-ROW-BYTES)
 24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp, 0 0 -1 if it never links
 8192 constant CAP                        \ an object's bytes
 16384 constant STATE-CAP                 \ a build's output before its last line
@@ -218,8 +225,9 @@ variable KEPT-NS
    s" the program exits 0" LABEL  rc 0 T= ;
 
 
-\ The tail of object i's path: A's from 0 (count.f's, shape.f's, main.f's, reopen.f's, mark.f's,
-\ again.f's first load's and its second's), pad.f's at 7, then log-first.f's and path-main.f's.
+\ The tail of object i's path, from 0: A's count.f, shape.f, main.f, reopen.f, mark.f and again.f's
+\ two loads; 7 pad.f's, which B adds; 8 log-first.f's; 9 path-main.f's; 10 stale-spell.f's, which S
+\ writes.
 : TAIL$ ( n -- ptr u8 n )
    {: i:n :}
    i 0 = if s" /test/fixtures/file-objects/count.f.hfo" exit then
@@ -231,7 +239,8 @@ variable KEPT-NS
    i 6 = if s" /test/fixtures/file-objects/again.f.2.hfo" exit then
    i 7 = if s" /test/fixtures/file-objects/pad.f.hfo" exit then
    i LOG-FIRST = if s" /test/fixtures/file-objects/log-first.f.hfo" exit then
-   s" /test/fixtures/file-objects/path-main.f.hfo" ;
+   i PATH-MAIN = if s" /test/fixtures/file-objects/path-main.f.hfo" exit then
+   s" /test/fixtures/file-objects/stale-spell.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" obj" ROOT FS:JOIN-PATH ROOT-U ! ;
@@ -593,10 +602,33 @@ variable KEPT-NS
    s" H" WHICH!  s" test/fixtures/file-objects/part-main.f" FIXTURE-BUILD 0= if exit then
    PART-RUN ;
 
+\ The FILES length of stale-spell.f's object in the fixture out root, -1 if there is not one.
+: SPELL-FILES ( -- n )
+   F$ WHICH WHICH-U @ STALE-SPELL FOUND? 0= if -1 exit then
+   FOUND$ BYTES-A CAP FS:READ-ALL {: u:n :}
+   u HEADER-BYTES < if -1 exit then
+   BYTES-A FILES-LEN-FIELD + LE:U64@ ;
+
+\ Three builds are the boundary: S gives stale-def.f an object, S2 gives stale-spell.f one naming no
+\ file, and only S3 checks both in one walk, before either links; a reused object would name no file.
+: STALE-CASE ( CMD:command -- CMD:command )
+   s" S" WHICH!  s" test/fixtures/file-objects/stale-root.f" FIXTURE-BUILD 0= if exit then
+   s" S2" WHICH!  s" test/fixtures/file-objects/stale-alone.f" FIXTURE-BUILD 0= if exit then
+   s" stale-spell.f's object names no file" LABEL  SPELL-FILES 0 T=
+   s" S3" WHICH!  s" test/fixtures/file-objects/stale-root.f" FIXTURE-BUILD 0= if exit then
+   s" stale-spell.f compiles: its object names stale-def.f" LABEL  SPELL-FILES FILES-ROW T= ;
+
+\ Guards a private name of a checked-but-unlinked piece: K3 checks hidden-def.f's W unlinked.
+: HIDDEN-CASE ( CMD:command -- CMD:command )
+   s" K" WHICH!  s" test/fixtures/file-objects/hidden-root.f" FIXTURE-BUILD 0= if exit then
+   s" K2" WHICH!  s" test/fixtures/file-objects/hidden-alone.f" FIXTURE-BUILD 0= if exit then
+   s" K3" WHICH!  s" test/fixtures/file-objects/hidden-root.f" FIXTURE-BUILD drop ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE ;] CMD:WITH-COMMAND ;
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE ;]
+   CMD:WITH-COMMAND ;
 
 
 : REMOVE-A ( -- ) A$ FS:REMOVE-TREE ;

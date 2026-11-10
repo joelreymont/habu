@@ -335,6 +335,14 @@ variable RUN-CAP                     \ its slots, a power of two
 variable RUN-N                       \ the running run's filled slots
 variable RUN-ID                      \ the running run's id, from 1
 variable RUN-AT                      \ the offset in SPELLS of the running run's first sum
+\ The records of the pieces a root's check passed (PENDING), as PENDING-REC+ lays them. HIT marks
+\ their rows in PENDING-HITS as it marks BUILT rows, for names they define but not names they change.
+DYNAMIC-BUFFER PENDING-RECS n
+variable PENDING-RECS-N              \ its records
+DYNAMIC-BUFFER PENDING-FIRST n       \ PENDING row p's first record
+DYNAMIC-BUFFER PENDING-SLOTS n       \ the records by sum: slot s holds 1 + a record, 0 while empty
+variable PENDING-CAP                 \ its slots, a power of two
+DYNAMIC-BUFFER PENDING-HITS n        \ PENDING row p's mark, as HITS marks a BUILT row
 
 : SLOT-SUM ( n -- ptr n ) 3 * NAMES ;
 : SLOT-ROW ( n -- ptr n ) 3 * 1 + NAMES ;
@@ -354,6 +362,16 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    cap 2 * 0 ?do 0 i RUN-SUMS ! loop
    cap RUN-CAP !  0 RUN-N ! ;
 
+\ PENDING-SLOTS with cap slots, all empty.
+: PENDING-SLOTS-CLEAR ( n -- )
+   {: cap:n :}
+   cap PENDING-SLOTS-RESERVE
+   cap 0 ?do 0 i PENDING-SLOTS ! loop
+   cap PENDING-CAP ! ;
+
+\ No pending record.
+: PENDING-RECS-CLEAR ( -- ) 0 PENDING-RECS-N !  64 PENDING-SLOTS-CLEAR ;
+
 : DISPOSE-OBJECTS ( -- )
    WALKED-RELEASE  WALK-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
@@ -364,7 +382,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-ROWS BUF:DISPOSE
    SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE
-   OLD-NAMES-RELEASE  NAMES-RELEASE ;
+   OLD-NAMES-RELEASE  NAMES-RELEASE
+   PENDING-RECS-RELEASE  PENDING-FIRST-RELEASE  PENDING-SLOTS-RELEASE  PENDING-HITS-RELEASE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
@@ -394,7 +413,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
    0 USES-N !  0 USES-FROM !
-   1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED ! ;
+   1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED !  PENDING-RECS-CLEAR ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
 : INIT-OBJECTS ( -- )
@@ -687,7 +706,34 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    OPENED-N @ 1 + OPENED-RESERVE
    OPENED-N @ OPENED !  1 OPENED-N +! ;
 
-\ Marks every row NAMES holds the sum for, a private name's only once its package is open.
+\ Field f of pending record r (PENDING-RECS).
+: PENDING-REC@ ( n n -- n )
+   {: r:n f:n :}
+   r 4 * f + PENDING-RECS @ ;
+
+: PENDING-N ( -- n ) PENDING BYTES$ nip FILES-ROW-BYTES / ;
+
+\ PENDING-HIT's slot s: its record's PENDING row marked when the record has the sum and an OPENED? key.
+: PENDING-SLOT-HIT ( n n -- )
+   {: s:n sum:n :}
+   s PENDING-SLOTS @ 1 - {: r:n :}
+   r 0 PENDING-REC@ sum = if
+      r 1 PENDING-REC@ OPENED? if  1  r 3 PENDING-REC@ PENDING-HITS !  then
+   then ;
+
+\ Marks every PENDING row a pending record with the sum is in, as HIT marks a BUILT row. Half
+\ PENDING-SLOTS' slots at most are filled (PENDING-REC+), so a probe always ends.
+: PENDING-HIT ( n -- )
+   {: sum:n :}
+   PENDING-CAP @ 1 - {: mask:n :}
+   sum mask and
+   begin dup PENDING-SLOTS @ 0<> while
+      dup sum PENDING-SLOT-HIT
+      1 + mask and
+   repeat drop ;
+
+\ Marks every row NAMES holds the sum for, a private name's only once its package is open, then
+\ each pending row holding a record of the sum, by the same rule (PENDING-HIT).
 : HIT ( n -- )
    {: sum:n :}
    NAMES-CAP @ 1 - {: mask:n :}
@@ -697,7 +743,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
          dup SLOT-PKG @ OPENED? if dup SLOT-ROW @ MARK-ROW then
       then
       1 + mask and
-   repeat drop ;
+   repeat drop
+   sum PENDING-HIT ;
 
 : RUN-TAKEN? ( n n -- bool )
    {: s:n sum:n :}
@@ -795,10 +842,11 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    loop
    SKIP @ 0= if src u 32 WORD-END then ;
 
-\ No row marked, nor the build's body.
+\ No row marked, BUILT's or PENDING's, nor the build's body.
 : HITS-CLEAR ( -- )
    BUILT-N 1 + HITS-RESERVE
    BUILT-N 0 ?do 0 i HITS ! loop
+   PENDING-N 0 ?do 0 i PENDING-HITS ! loop
    false BODY-HIT ! ;
 
 \ After KEY!, before FRESH?: INPUT-STAMP, the active file's change time seconds, nanoseconds and
@@ -2063,13 +2111,14 @@ variable RD-END
    OBJECT BYTES$ drop  HEADER-BYTES INPUT-BYTES +  k 1 - FILES-ROW-BYTES * +  + ;
 
 
-: PENDING-HAS? ( ptr u8 -- bool )
+\ The PENDING row equal to the FILES row, and true; false when none.
+: PENDING-AT ( ptr u8 -- n bool )
    {: at:ptr :}
    PENDING BYTES$ {: a:ptr u:n :}
    u FILES-ROW-BYTES / 0 ?do
-      a i FILES-ROW-BYTES * + FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if true unloop exit then
+      a i FILES-ROW-BYTES * + FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if i true unloop exit then
    loop
-   false ;
+   0 false ;
 
 
 \ FILE-ROWS from 1 for OBJECT's FILES rows: each its BUILT row, else ROW-PENDING or ROW-ABSENT.
@@ -2079,7 +2128,7 @@ variable RD-END
       at BUILT-MATCH if
          i 1 + FILE-ROWS !
       else
-         drop  at PENDING-HAS? if ROW-PENDING else ROW-ABSENT then  i 1 + FILE-ROWS !
+         drop  at PENDING-AT nip if ROW-PENDING else ROW-ABSENT then  i 1 + FILE-ROWS !
       then
    loop ;
 
@@ -2103,15 +2152,19 @@ variable RD-END
 
 
 \ After FILES-CK: bad when the source names a record of the build's body or of a file FILES
-\ does not list (NAMES-CK).
+\ does not list (NAMES-CK), built or pending (PENDING-HIT): the pending piece links before it.
 : NAMED-CK ( -- )
    GOOD? 0= if exit then
    BODY-HIT @ if BAD exit then
    FILES-N @ 0 ?do
       i 1 + FILE-ROWS @ {: row:n :}
       row 0 >= if  row HITS @ 0<> if 2 row HITS ! then  then
+      row ROW-PENDING = if
+         i 1 + FILES-ROW PENDING-AT if 2 swap PENDING-HITS ! else drop then
+      then
    loop
-   BUILT-N 0 ?do i HITS @ 1 = if BAD then loop ;
+   BUILT-N 0 ?do i HITS @ 1 = if BAD then loop
+   PENDING-N 0 ?do i PENDING-HITS @ 1 = if BAD then loop ;
 
 
 \ REACHED's u bytes from RD-AT, each a FILES row; bad when a piece that stored into header data or
@@ -2859,10 +2912,69 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    f start BUF:N>BLEN PARKED BUF:REPLACE ;
 
 
-\ The piece ending with REQUESTS row req, or the last (-1), passed: PENDING gains FILE-KEY and its
-\ number and time.
+\ Pending record r into PENDING-SLOTS by its sum.
+: PENDING-PUT ( n -- )
+   {: r:n :}
+   PENDING-CAP @ 1 - {: mask:n :}
+   r 0 PENDING-REC@ mask and
+   begin dup PENDING-SLOTS @ 0<> while 1 + mask and repeat
+   r 1 +  swap PENDING-SLOTS ! ;
+
+\ PENDING-SLOTS with twice its slots, every pending record put again.
+: PENDING-GROW ( -- )
+   PENDING-CAP @ 2 * PENDING-SLOTS-CLEAR
+   PENDING-RECS-N @ 0 ?do i PENDING-PUT loop ;
+
+\ A pending record: its name's sum, its package key, its TOP-NAME's sum, its PENDING row. Half
+\ PENDING-SLOTS' slots at most are filled.
+: PENDING-REC+ ( n n n n -- )
+   {: sum:n key:n top:n p:n :}
+   PENDING-RECS-N @ {: r:n :}
+   r 1 + 4 * PENDING-RECS-RESERVE
+   sum r 4 * PENDING-RECS !  key r 4 * 1 + PENDING-RECS !
+   top r 4 * 2 + PENDING-RECS !  p r 4 * 3 + PENDING-RECS !
+   r 1 + PENDING-RECS-N !
+   r 1 + 2 *  PENDING-CAP @ > if PENDING-GROW else r PENDING-PUT then ;
+
+\ NAME-PKG's key, once PENDING row p links, for the entry whose role (ROLE-CK) is at the offset:
+\ role 4's package's TOP-NAME sum, else 0; 0 for an index past a pending piece's records (PENDING?).
+: PENDING-KEY ( n n -- n )
+   {: ro:n p:n :}
+   ro OBJ@ 4 <> if 0 exit then
+   ro 8 + OBJ@  ro 16 + OBJ@ {: file:n idx:n :}
+   file 0= if  p PENDING-FIRST @ idx +  2 PENDING-REC@ exit  then
+   file PENDING? if
+      file FILES-ROW PENDING-AT drop {: q:n :}
+      q PENDING-FIRST @ idx + {: r:n :}
+      r  q 1 + PENDING-FIRST @  >= if 0 exit then
+      r 2 PENDING-REC@ exit
+   then
+   file BUILT-FIRST BUILT@ idx + XREF-REC XREF-NAME$ TOP-NAME NAME-SUM ;
+
+\ The entry at the offset in OBJECT as a record of PENDING row p.
+: PENDING-ENTRY+ ( n n -- )
+   {: at:n p:n :}
+   at 8 + FIELD$ {: a:ptr u:n :}
+   a u NAME-SUM  at 24 + u + p PENDING-KEY  a u TOP-NAME NAME-SUM  p PENDING-REC+ ;
+
+\ The checked piece's records (ENTRIES-CK) as PENDING row p's, in their order, so a record index
+\ is its offset from PENDING-FIRST; p's mark cleared.
+: PENDING-NAMES+ ( n -- )
+   {: p:n :}
+   p 1 + PENDING-FIRST-RESERVE  p 1 + PENDING-HITS-RESERVE
+   PENDING-RECS-N @ p PENDING-FIRST !  0 p PENDING-HITS !
+   ENTRIES-N @ 0 ?do
+      i ENTRY-OFFS @ {: at:n :}
+      at OBJ@ {: kind:n :}
+      kind KIND-PRIVATE <>  kind KIND-SEALED <>  and if at p PENDING-ENTRY+ then
+   loop ;
+
+
+\ The piece ending with REQUESTS row req, or the last (-1), passed: its records into the pending
+\ records (PENDING-NAMES+), then PENDING gains FILE-KEY and its number and time.
 : PENDING+ ( n -- )
    {: req:n :}
+   PENDING-N PENDING-NAMES+
    FILE-KEY KEY-BYTES PENDING SPAN+
    req PIECE-N PENDING U64+  req PIECE-TIME PENDING U64+ ;
 
@@ -2959,6 +3071,10 @@ defer CHECK-OBJECT ( -- )
 : INSTALL-CHECK ( -- ) [: CHECK-PIECES ;] is CHECK-OBJECT ;
 INSTALL-CHECK
 
+\ No piece the check passed, nor its paths, grants or records.
+: CHECK-CLEAR ( -- )
+   PENDING BUF:CLEAR  PENDING-PATHS BUF:CLEAR  0 GRANTS-N !  PENDING-RECS-CLEAR ;
+
 
 \ After INPUT!: true when FILE-KEY's object reads whole and checks, with the files its requests
 \ loaded (CHECK-OBJECT). It applies nothing. Under a linking file, which checked it, only the
@@ -2966,9 +3082,9 @@ INSTALL-CHECK
 : FRESH? ( -- bool )
    HEADER-FRESH? 0= if false exit then
    LINKING? if true exit then
-   PENDING BUF:CLEAR  PENDING-PATHS BUF:CLEAR  0 GRANTS-N !
+   CHECK-CLEAR
    CHECK-OBJECT
-   PENDING BUF:CLEAR  PENDING-PATHS BUF:CLEAR  0 GRANTS-N !
+   CHECK-CLEAR
    GOOD? ;
 
 \ ---- linking an object ---------------------------------------------------------
