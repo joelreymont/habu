@@ -28,7 +28,7 @@ Joel 2026-11-04: "we decided to unify the frontend and just have different code-
 
 Acceptance cases folded in by the 2026-11-04 census (the closed dots' full text is in the history before the census commit):
 - habu-locate-loop-refusals-0754c0b1 (closed): habu2.f LDIAGRET refusals unlocated; located loop refusals become a case of the one typed interpreter [v]
-- habu-name-a-refused-6e9b9843 (closed): habu2.f LCOMPILEDIE prints only "does> at"; diagnostic for a refused clause is an acceptance case; same as 6848c356 part (c) [i]
+- habu-name-a-refused-6e9b9843 (closed): habu2.f LCOMPILEDIE prints only "does> at"; diagnostic for a refused clause is an acceptance case; same as 6848c356 part (c), which landed (5e3a3ebe, f22431ea) [i]
 - habu-check-top-row-997dd86e (closed): test now test/compiler/native-eval.f:302; x86 kernel prints the same "hb: interpret stack underdepth: " (src/habu/kernel-x64.f:381); x86 run not done, inferred
 - habu-clear-the-addr-23daaaee (closed): habu2.f EM-EVAL-THROW-RECOVER leaves CALLMAP/ADDRMAP rows; a failed evaluate rolls back fully: acceptance case of the typed interpreter. Reproduced by habu-find-why-a-521e9f2c: a caught throw after `create` (`create LK-Y 0 0 / drop`, in a LINKER:WITH body or outside a build) leaves the ADDRMAP bit of the created body above the code pointer CP 13 40 LDR, restores (habu2.f LEVALREC), so FORGET-SPACE's CODE-RECLAIM:TRUNCATE never reaches it (rule habu1.f:3375); EM-REPL-RECOVER (habu2.f:12465) looks the same, unproved
 - habu-checking-pair-or-a859fbfe (closed): "lowering certificate replay drift" is habu2.f:5868 DRIFT$ (verified); pair/sum locals beside a quotation must check and run after M1
