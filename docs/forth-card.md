@@ -117,7 +117,9 @@ cannot execute: `E-EXEC-OPAQUE-XT`.
 - Locals `{: a b:ptr :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Names are at most 16 bytes, 64 per
-  definition, block-scoped, bindable after a closed early-exit guard.
+  definition, block-scoped, bindable after a closed early-exit guard. A local
+  hides the word of its spelling, the loop index included:
+  `{: i:n :} 3 0 ?do i . loop` prints the local three times.
 - Keep related one-line definitions together. Separate multiline definitions
   with two blank lines; place each word's comment directly above it.
 - A `{: … :}` group that binds at entry goes on its own line after the line
