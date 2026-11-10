@@ -9,7 +9,8 @@
 \ The files written under <out>/hb-build/ load inside the build, so a warm build
 \ links what they do: reset.f, the token hb's prefix runs after include.f;
 \ end-<sha>.f, hb's registry and installs; app-end.f, a stripped program's entry.
-\ Builds sharing an out root write each whole (FS:ATOMIC-WRITE-FILE).
+\ Builds sharing an out root write each whole, and only when it changes
+\ (WRITE-CHANGED).
 
 require src/lib/error.f
 require src/lib/string.f
@@ -42,6 +43,7 @@ create KERNEL-PATH PATH-CAP allot  variable KERNEL-U
 TYPED-VARIABLE KERNEL-ENGINE? bool     \ the kernel build writes an engine's kernel
 DYNAMIC-BUFFER TEXT u8                  \ the end file's text until it is written
 variable TEXT-U
+DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE? compares them
 
 : RESET$ ( -- ptr u8 n ) RESET-PATH RESET-U @ ;
 : END$ ( -- ptr u8 n ) END-PATH END-U @ ;
@@ -50,12 +52,32 @@ variable TEXT-U
 : OUT$ ( -- ptr u8 n ) OUT-PATH @ OUT-LEN @ ;
 
 
+\ True when the file at the path holds exactly the bytes; false when it is missing.
+: SAME-FILE? ( ptr u8 n ptr u8 n -- bool )
+   {: pa:ptr pu:n a:ptr u:n :}
+   pa pu FS:OPEN-SIZED {: file:fd size:n found:bool :}
+   found 0= if false exit then
+   size u <> if file FD>N close false exit then
+   size PRESENT-RESERVE
+   file 0 PRESENT size FS:READ-SIZED
+   0 PRESENT size a u STR=
+   PRESENT-RELEASE ;
+
+
+\ A file the build loads keeps its inode and change time while its bytes stay
+\ the same, so a later build that stamps it sees it unchanged.
+: WRITE-CHANGED ( ptr u8 n ptr u8 n -- )
+   {: pa:ptr pu:n a:ptr u:n :}
+   pa pu a u SAME-FILE? if exit then
+   pa pu a u FS:ATOMIC-WRITE-FILE ;
+
+
 : PATHS ( -- )
    BUILD-OUT:BASE$ s" hb-build" DIR FS:JOIN-PATH DIR-U !
    DIR DIR-U @ FS:MAKE-DIRS
    DIR DIR-U @ s" reset.f" RESET-PATH FS:JOIN-PATH RESET-U !
    DIR DIR-U @ s" app-end.f" APP-END-PATH FS:JOIN-PATH APP-END-U !
-   RESET$ s\" SOURCE-INPUT:RESET\n" FS:ATOMIC-WRITE-FILE ;
+   RESET$ s\" SOURCE-INPUT:RESET\n" WRITE-CHANGED ;
 
 
 \ A row loads when its kind is common or the builder's own target (habu2.f PFX-LOAD?).
@@ -192,7 +214,7 @@ variable TEXT-U
    entry if s\" ' MAIN APP-ENTRY:XT!\n" TEXT+ then
    s\" IMAGE-LIFECYCLE:PREPARE\n" TEXT+
    END-PATH!
-   END$ 0 TEXT TEXT-U @ FS:ATOMIC-WRITE-FILE
+   END$ 0 TEXT TEXT-U @ WRITE-CHANGED
    TEXT-RELEASE ;
 
 
@@ -218,7 +240,7 @@ variable TEXT-U
 \ the checker refuses app-end.f at MAIN when there is none or it takes or leaves
 \ cells. The product's IMAGE-LIFECYCLE:PREPARE then runs, as END-WRITE's does.
 : APP-END-WRITE ( -- )
-   APP-END$ s\" ' MAIN APP-ENTRY:XT!\nIMAGE-LIFECYCLE:PREPARE\n" FS:ATOMIC-WRITE-FILE ;
+   APP-END$ s\" ' MAIN APP-ENTRY:XT!\nIMAGE-LIFECYCLE:PREPARE\n" WRITE-CHANGED ;
 
 : APP-BODY ( -- )
    STARTUP

@@ -380,10 +380,49 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    HBB-GOT$ tmp tmpu FS:COPY-FILE-STREAM
    tmp tmpu FS:CHMOD-X ;
 
+DYNAMIC-BUFFER HBB-BUILT u8             \ a built file's bytes while HBB-SAME-PAIR compares them
+DYNAMIC-BUFFER HBB-HELD u8              \ the installed file's bytes beside them
+TYPED-VARIABLE HBB-SAME-OUT bool
+
+\ The file read whole into the buffer the reserve and buffer words name; its
+\ length, 0 when it is missing.
+: HBB-READ ( ptr u8 n [ n -- ] [ n -- ptr u8 ] -- n )
+   {: a:ptr u:n reserve buf :}
+   a u FS:OPEN-SIZED {: file:fd size:n found:bool :}
+   found 0= if 0 exit then
+   size reserve execute
+   file 0 buf execute size FS:READ-SIZED
+   size ;
+
+\ True when the built file and the installed one, a regular file and no
+\ symlink, compare equal by the quotation. HBB-SAME-OUT? releases the buffers.
+: HBB-SAME-FILE? ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- bool ] -- bool )
+   {: a:ptr u:n b:ptr bu:n same :}
+   b bu FS:FILE? 0= b bu FS:SYMLINK? or if false exit then
+   a u [: HBB-BUILT-RESERVE ;] [: HBB-BUILT ;] HBB-READ {: au:n :}
+   b bu [: HBB-HELD-RESERVE ;] [: HBB-HELD ;] HBB-READ {: hu:n :}
+   0 HBB-BUILT au 0 HBB-HELD hu same execute ;
+
+: HBB-SAME-PAIR ( -- )
+   HBB-GOT$ HBB-OUT$ [: CODESIGN:SAME-IMAGE? ;] HBB-SAME-FILE? 0= if exit then
+   HBB-MAP-SRC$ HBB-MAP-DST$ [: STR= ;] HBB-SAME-FILE? HBB-SAME-OUT ! ;
+
+\ True when -o and its map already hold what the build made, the image apart
+\ from its signature, so the install leaves both, change time and inode, as
+\ they are. An installed file that cannot be read is replaced as a differing one.
+: HBB-SAME-OUT? ( -- bool )
+   false HBB-SAME-OUT !
+   [: HBB-SAME-PAIR ;] catch {: rc:n :}
+   HBB-BUILT-RELEASE HBB-HELD-RELEASE
+   rc 0= HBB-SAME-OUT @ and ;
+
+\ The build's files, whole and team-signed under TMPDIR, are compared with -o's
+\ before anything is staged beside -o; HBB-CLEANUP removes them either way.
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT$ FS:FILE? 0= if E-BUILD-PATH throw then
    HBB-GOT$ HBB-MAP-SRC!
    HBB-OUT$ HBB-MAP-DST!
+   HBB-SAME-OUT? if exit then
    [: HBB-INSTALL-FILL ;] HBB-PAIR-RUN ;
 
 : HBB-SUCCESS ( -- )
