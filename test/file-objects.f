@@ -64,9 +64,11 @@
 \ compiles 2. E2, in E's root after E's program moves aside, compiles none and
 \ prints E's lines, E's refusals on stderr and writes E's program byte for byte:
 \ its body's code is checked against the linked words as against compiled ones.
-\ Every build links the tree's stripped kernel object, which this process
+\ Builds A to E link the tree's stripped kernel object, which this process
 \ writes once (HB-BUILD-CORE:KERNEL-BUILD) and passes as build.f's first
-\ argument, so the out roots hold only the files' objects.
+\ argument, so their out roots hold only the files' objects.
+\ Build L builds log-main.f, whose first file takes LOG's facility and leaves HELD held: the program
+\ holds no mutex the build locked (macOS), and its MAIN takes HELD, logs its line and releases HELD.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -90,13 +92,14 @@ package FILE-OBJECTS-TEST
 24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp, 0 0 -1 if it never links
 8192 constant CAP                        \ an object's bytes
 16384 constant STATE-CAP                 \ a build's output before its last line
-65536 constant PROG-CAP
+262144 constant PROG-CAP                 \ a program's bytes, L's included
 
 PATH-CAP BUFFER: OUT-A   variable OUT-A-U
 PATH-CAP BUFFER: OUT-B   variable OUT-B-U
 PATH-CAP BUFFER: OUT-C   variable OUT-C-U
 PATH-CAP BUFFER: OUT-D   variable OUT-D-U
 PATH-CAP BUFFER: OUT-E   variable OUT-E-U
+PATH-CAP BUFFER: OUT-L   variable OUT-L-U
 PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
 PATH-CAP BUFFER: ROOT    variable ROOT-U     \ the obj directory a walk starts at
@@ -124,6 +127,7 @@ variable TAIL-N                          \ and the paths that end with it
 : C$ ( -- ptr u8 n ) OUT-C OUT-C-U @ ;
 : D$ ( -- ptr u8 n ) OUT-D OUT-D-U @ ;
 : E$ ( -- ptr u8 n ) OUT-E OUT-E-U @ ;
+: L$ ( -- ptr u8 n ) OUT-L OUT-L-U @ ;
 
 : IN$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: out:ptr outu:n name:ptr nameu:n :}
    out outu name nameu JOINED FS:JOIN-PATH {: u:n :}
@@ -475,10 +479,43 @@ variable TAIL-N                          \ and the paths that end with it
    s" A's root holds eight objects" LABEL  A$ OBJECTS FILES-B T=
    SAME-AS-B ;
 
+\ tools/hb-build.f's build of log-main.f to L's prog, in a fresh hb and L's own out root: log.f
+\ requires and defines through does>, which build.f's files may not. True when it exits 0.
+: LOG-BUILD ( CMD:command -- CMD:command bool )
+   CMD:RESET
+   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
+   s" --" CMD:ARG+  s" test/fixtures/file-objects/log-main.f" CMD:ARG+
+   s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
+   s" HABU_OUT" L$ CMD:ENV+
+   ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N {: rc:n :}
+   rc 0<> if rc SHOW then
+   s" the build exits 0" LABEL  rc 0 T=
+   rc 0 = ;
+
+\ Darwin's first lock of a mutex sets its signature, $4D55545A (the bytes ZTUM), and unlocking leaves it.
+: LOG-UNLOCKED ( -- )
+   HB-TARGET-MACOS? 0= if exit then
+   L$ s" prog" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u:n :}
+   s" the program holds no mutex the build locked" LABEL  PROG-1 u s" ZTUM" CONTAINS? TFALSE ;
+
+\ L's program, run in its own process: the boundary under test is the written file.
+: LOG-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:ERR$ s\"  warn main: ran\n" ENDS-WITH? {: ran:bool :}
+   ran  rc 0 =  and 0= if rc SHOW then
+   s" the program logs MAIN's line" LABEL  ran TTRUE
+   s" the program exits 0" LABEL  rc 0 T= ;
+
+: LOG-CASE ( CMD:command -- CMD:command )
+   s" L" WHICH!  LOG-BUILD 0= if exit then
+   LOG-UNLOCKED  LOG-RUN ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E ;] CMD:WITH-COMMAND ;
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE ;] CMD:WITH-COMMAND ;
 
 
 : REMOVE-A ( -- ) A$ FS:REMOVE-TREE ;
@@ -486,11 +523,17 @@ variable TAIL-N                          \ and the paths that end with it
 : REMOVE-C ( -- ) C$ FS:REMOVE-TREE ;
 : REMOVE-D ( -- ) D$ FS:REMOVE-TREE ;
 : REMOVE-E ( -- ) E$ FS:REMOVE-TREE ;
+: REMOVE-L ( -- ) L$ FS:REMOVE-TREE ;
+
+: WITH-L ( -- )
+   s" habu-file-objects-l" FS:MKTEMP-DIR {: l:ptr u:n :}
+   l OUT-L u BYTE-COPY  u OUT-L-U !
+   ['] CHECKS ['] REMOVE-L finally ;
 
 : WITH-E ( -- )
    s" habu-file-objects-e" FS:MKTEMP-DIR {: e:ptr u:n :}
    e OUT-E u BYTE-COPY  u OUT-E-U !
-   ['] CHECKS ['] REMOVE-E finally ;
+   ['] WITH-L ['] REMOVE-E finally ;
 
 : WITH-D ( -- )
    s" habu-file-objects-d" FS:MKTEMP-DIR {: d:ptr u:n :}

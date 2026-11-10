@@ -1927,13 +1927,8 @@ variable SWEEP-ARMED
 \ 20, which the thread entry points at TCB.REGION), so inside a task it names a
 \ different object.
 \
-\ TASK and FACILITY publish SHARED storage, so they keep `create ... does>`: no
-\ checked source expression gives a thread-invariant address (`dbase@`, register
-\ 26, is typed `-- n`). Measured: a generated FACILITY makes each task lock its
-\ own uninitialised copy (src/lib/task-test.f dies E-TASK-THREAD, rc 237), and a
-\ generated TASK faults reading a TCB at region base + dictionary offset. +USER
-\ storage IS a task-local slot, bounded by TASK-USER-END inside every region, so
-\ +USER generates its accessor.
+\ TASK and FACILITY keep `create ... does>`: no checked expression gives a thread-invariant
+\ address (`dbase@` is typed `-- n`). +USER's slot lies in every task's region, so it generates its accessor.
 
 \ The body is TASK-TCB-BYTES; the cell after it is this TCB's chain link, taking
 \ the head the definition found and leaving its own address there.
@@ -2013,9 +2008,13 @@ private
 : HIS ( ptr n ptr n -- ptr n ) {: tcb:ptr cur:ptr :}
    cur data-base - tcb TCB.REGION @ + ;
 
+\ The record is this process's lock and its holder, so every cell is a scratch
+\ cell, which a link writes zero.
 : FACILITY ( -- )
    TASK-ALIGN8
-   create TASK-FACILITY-BYTES allot
+   create
+   TASK-FACILITY-BYTES TASK-CELL / 0 ?do here i cells + scratch-cell-mark loop
+   TASK-FACILITY-BYTES allot
    does> ( -- ptr n ) ;
 
 : FACILITY-OWNER ( ptr n -- ptr n )
@@ -2034,16 +2033,21 @@ private
    FACILITY-OWNER atomic! ;
 
 \ PTHREAD_MUTEX_INITIALIZER: Darwin's _PTHREAD_MUTEX_SIG_init then zeros, glibc's zeros.
-\ Darwin's first lock writes the mutex's address, so no load of a build takes a facility.
 : FACILITY-INIT ( ptr n -- ) {: f:ptr :}
    0 f FACILITY-OWNER!
    f FACILITY-MUTEX {: m:ptr :}
    TASK-MUTEX-BYTES TASK-CELL / 0 ?do 0 m i cells + ! loop
    HB-TARGET-MACOS? if $32AAABA7 m ! then ;
 
+\ A zero Darwin signature is no mutex: set the initializer's from 0 only, so a
+\ lost race, or a signature a lock already wrote, leaves a held mutex alone.
+: MUTEX-READY ( ptr n -- ) {: m:ptr :}
+   HB-TARGET-MACOS? if 0 $32AAABA7 m atomic-cas drop then ;
+
 : GET ( ptr n -- ) {: f:ptr :}
    TASK-OWNER {: owner:n :}
    f FACILITY-OWNER@ owner = if exit then
+   f FACILITY-MUTEX MUTEX-READY
    f FACILITY-MUTEX BYTE-VIEW MUTEX-LOCK-CALL TASK-RC0
    owner f FACILITY-OWNER! ;
 
