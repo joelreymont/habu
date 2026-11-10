@@ -1,12 +1,16 @@
-\ signal-test.f - package SIGNAL against real deliveries this process sends
-\ itself. Only SIGUSR1 and SIGUSR2 are raised: SIGTERM and SIGINT would end the
-\ run on any path that reaches them before their disposition is installed.
+\ signal-test.f - package SIGNAL against real deliveries. This process raises
+\ only SIGUSR1 and SIGUSR2: SIGTERM and SIGINT would end the run on any path
+\ that reaches them before their disposition is installed. SIGSTOP and SIGCONT
+\ go to a child.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/wait.f
+require src/lib/fd.f
 require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test/ending.f
 require src/lib/task.f
 require src/lib/ffi-abi.f
 require src/lib/aio.f
@@ -16,10 +20,11 @@ require src/habu/layout.f
 package SIGNAL-TEST
 private
 
-\ src/lib/signal.f selects its record layout, SA_RESTART and SIGUSR numbers per
-\ target. These arms spell the same platform facts independently, so a wrong
-\ library arm fails here; asserting one host's values would make this suite red
-\ on the other target. A third target is refused by name.
+\ src/lib/signal.f selects its record layout, SA_RESTART and the SIGUSR, SIGSTOP
+\ and SIGCONT numbers per target. These arms spell the same platform facts
+\ independently, so a wrong library arm fails here; asserting one host's values
+\ would make this suite red on the other target. A third target is refused by
+\ name.
 : EXPECT-SIGUSR1 ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 10 exit then
    HB-TARGET-MACOS? if 30 exit then
@@ -28,6 +33,16 @@ private
 : EXPECT-SIGUSR2 ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 12 exit then
    HB-TARGET-MACOS? if 31 exit then
+   E-PROC-HOST throw ;
+
+: EXPECT-SIGSTOP ( -- n )
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 19 exit then
+   HB-TARGET-MACOS? if 17 exit then
+   E-PROC-HOST throw ;
+
+: EXPECT-SIGCONT ( -- n )
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 18 exit then
+   HB-TARGET-MACOS? if 19 exit then
    E-PROC-HOST throw ;
 
 : SA-FLAGS-OFF ( -- n )
@@ -71,6 +86,15 @@ $FFFFFFFF constant INT-MASK        \ sa_flags is an int; the cell read carries i
 2 constant RACE-TIMEOUT
 1 constant NOT-RUN                 \ no throw code and no kind, so an idle task fails
 
+1000 constant STOPPED-MS           \ the stop poll's deadline from SIGSTOP
+5000 constant RESUMED-MS           \ far above what a resumed child takes to end
+1 constant WNOHANG                 \ waitpid's flags on Linux and macOS
+2 constant WUNTRACED
+$7F constant STOP-MARK             \ a stop report's low status byte
+0 constant PROBE-RUNNING           \ what one stop probe saw
+1 constant PROBE-STOPPED           \ stopped by SIGSTOP
+2 constant PROBE-OTHER             \ ended, or stopped by another signal
+
 create SA-ACT SA-BUF-BYTES allot
 create SA-OLD SA-BUF-BYTES allot
 
@@ -93,6 +117,11 @@ variable OUTSIDER-CATCH            \ what CATCH, RELEASE and FD threw off-owner
 variable OUTSIDER-RELEASE
 variable OUTSIDER-FD
 
+variable STOP-PID                  \ the stop case's child until reaped, else 0
+variable STOP-R                    \ its stdin's read end until closed, else -1
+variable STOP-W                    \ that pipe's write end until closed, else -1
+variable STOP-STATUS               \ the status waitpid wrote for the stop probe
+
 TASK:MIN-STACK TASK:TASK SIG-RAISER
 TASK:MIN-STACK TASK:TASK RACER-A
 TASK:MIN-STACK TASK:TASK RACER-B
@@ -102,6 +131,10 @@ PROCESS-SYMBOLS
 
 FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    2 SA-BUF-BYTES WRITES-BYTES
+;FUNCTION
+
+FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
+   1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
 ;FUNCTION
 
 : ZERO-BYTES ( ptr u8 n -- ) {: a:ptr u :}
@@ -176,16 +209,115 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
       timeout OF 0 0 T= ENDOF
    ;MATCH ;
 
-\ 10/12 on Linux and 30/31 on macOS, against this file's own arm rather than the
-\ library's: a library that spelled one host's number everywhere would agree
-\ with itself on both and fail here on one.
+\ SIGUSR1/2 10/12 on Linux and 30/31 on macOS, SIGSTOP/CONT 19/18 and 17/19,
+\ against this file's own arm rather than the library's: a library that spelled
+\ one host's number everywhere would agree with itself on both and fail here on
+\ one.
 
 : HOST-CASE ( -- )
    s" SIGUSR1 carries this host's number, not the other host's" T-LABEL
    SIGNAL:SIGUSR1 EXPECT-SIGUSR1 T=
 
    s" ... and so does SIGUSR2" T-LABEL
-   SIGNAL:SIGUSR2 EXPECT-SIGUSR2 T= ;
+   SIGNAL:SIGUSR2 EXPECT-SIGUSR2 T=
+
+   s" ... and so does SIGSTOP" T-LABEL
+   SIGNAL:SIGSTOP EXPECT-SIGSTOP T=
+
+   s" ... and so does SIGCONT" T-LABEL
+   SIGNAL:SIGCONT EXPECT-SIGCONT T= ;
+
+: STOP-SCRIPT ( -- ptr u8 n )
+   s" read x; exit 0" ;
+
+: CLOSE-END ( ptr n -- )
+   {: v:ptr :}
+   v @ 0 < if exit then
+   v @ close
+   -1 v ! ;
+
+\ The spawn gives the child only fds 0-2 (src/lib/process.f PROC-RAW), so
+\ this process holds the only write end; closing it ends the child's read.
+: SPAWN-READER ( -- )
+   FD:PIPE {: r:fd w:fd :}
+   r FD>N STOP-R !
+   w FD>N STOP-W !
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   STOP-SCRIPT >LEN PROC-ARGV+
+   s" /bin/sh" >LEN r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N STOP-PID !
+   STOP-R CLOSE-END ;
+
+: SEND ( n -- ) {: sig:n :}
+   STOP-PID @ >PID sig PROCESS:KILL-RAW RC>N 0 <> if E-PROC-OUTPUT throw then ;
+
+\ A wait that saw the child end reaped it, so its pid is no longer ours.
+: REAPED? ( PROCESS:ending -- bool )
+   MATCH PROCESS:ending
+     exited OF drop 0 STOP-PID ! 0 0= ENDOF
+     signaled OF drop 0 STOP-PID ! 0 0= ENDOF
+     timeout OF 0 0= 0= ENDOF
+   ;MATCH ;
+
+: STOP-REAP ( -- )
+   STOP-R CLOSE-END
+   STOP-W CLOSE-END
+   STOP-PID @ 0= if exit then
+   PROCESS:SIGKILL SEND
+   STOP-PID @ >PID PROCESS:WAIT-STATUS drop
+   0 STOP-PID ! ;
+
+\ One waitpid with WUNTRACED: a stop report leaves the child unreaped for a
+\ later wait, while an ending reaps it, so its pid is no longer ours.
+: STOP-PROBE ( -- n )
+   0 STOP-STATUS !
+   STOP-PID @ STOP-STATUS BYTE-VIEW WNOHANG WUNTRACED or WAITPID-CALL
+   {: got:n :}
+   got 0= if PROBE-RUNNING exit then
+   got STOP-PID @ <> if
+      FFI:ERRNO FD:EINTR# <> if E-PROC-WAIT throw then
+      PROBE-RUNNING exit
+   then
+   STOP-STATUS @ {: status:n :}
+   status $FF and STOP-MARK <> if 0 STOP-PID ! PROBE-OTHER exit then
+   status 8 rshift $FF and SIGNAL:SIGSTOP = if PROBE-STOPPED exit then
+   PROBE-OTHER ;
+
+\ True once the child reports a stop by SIGSTOP; false if it ended, stopped
+\ by another signal or reported nothing within STOPPED-MS.
+: STOP-SEEN? ( -- bool )
+   STOPPED-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
+   begin STOP-PROBE dup PROBE-RUNNING = while
+      drop
+      deadline PROCESS:LEFT-MS MS>N 0= if false exit then
+      1 >MS TASK:SLEEP
+   repeat
+   PROBE-STOPPED = ;
+
+\ The write end is closed, ending the child's read, only once the stop is
+\ reported, so the child cannot exit before SIGCONT.
+: STOP-BODY ( -- )
+   SPAWN-READER
+   SIGNAL:SIGSTOP SEND
+   STOP-SEEN? {: held:bool :}
+
+   s" a child sent SIGSTOP is reported stopped by that signal" T-LABEL
+   held TTRUE
+   held 0= if exit then
+
+   STOP-W CLOSE-END
+   SIGNAL:SIGCONT SEND
+   STOP-PID @ >PID RESUMED-MS >MS PROCESS:WAIT-BOUNDED {: done :}
+   done REAPED? drop
+
+   s" ... and once sent SIGCONT it exits 0" T-LABEL
+   STOP-SCRIPT s" " s" " done 0 T-ENDING-EXITED= ;
+
+: STOP-CASE ( -- )
+   0 STOP-PID !
+   -1 STOP-R !
+   -1 STOP-W !
+   [: STOP-BODY ;] [: STOP-REAP ;] finally ;
 
 : COLD-CASE ( -- )
    s" FD before INIT is refused by name" T-LABEL
@@ -502,6 +634,7 @@ public
    T-RESET
    AIO:START
    HOST-CASE
+   STOP-CASE
    COLD-CASE
    SIGNAL:INIT
    KEEP-FD-WORD

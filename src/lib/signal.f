@@ -24,9 +24,10 @@ SUMTYPE signal-result
    VARIANT timeout ;VARIANT
 ;SUMTYPE
 
-\ SIGHUP, SIGINT and SIGTERM carry the same number on both hosts. SIGUSR1 and
-\ SIGUSR2 do not, so they are words with an arm per target rather than one
-\ constant that would name SIGBUS and SIGSYS on macOS.
+\ SIGHUP, SIGINT and SIGTERM carry the same number on both hosts. SIGUSR1,
+\ SIGUSR2, SIGSTOP and SIGCONT do not, so they are words with an arm per target:
+\ one constant would name another signal on the other host, as Linux's SIGUSR1
+\ is macOS's SIGBUS and Linux's SIGSTOP is macOS's SIGCONT.
 1 constant SIGHUP
 2 constant SIGINT
 15 constant SIGTERM
@@ -39,6 +40,16 @@ SUMTYPE signal-result
 : SIGUSR2 ( -- n )
    HB-TARGET-LINUX-KERNEL? if 12 exit then
    HB-TARGET-MACOS? if 31 exit then
+   E-PROC-HOST throw ;
+
+: SIGSTOP ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 19 exit then
+   HB-TARGET-MACOS? if 17 exit then
+   E-PROC-HOST throw ;
+
+: SIGCONT ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 18 exit then
+   HB-TARGET-MACOS? if 19 exit then
    E-PROC-HOST throw ;
 
 private
