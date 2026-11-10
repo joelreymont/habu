@@ -1171,8 +1171,8 @@ $27F8 constant CODE-CELL
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
 \ before the exit_group of a DELIBERATE program exit: the normal top-level exit
 \ (habu2.f EM-COMPILE-EXIT, LRBYE), `die` (habu1.f BDIE), the uncaught top-level
-\ throw (habu2.f LUNCAUGHT) and a stripped program's own exit(0)
-\ (src/arch/arm64/boot.f CALL-EXIT,, src/habu/aot-x64.f X64-EXIT,). The
+\ throw (habu2.f LUNCAUGHT) and the exit(0) after a program's entry returns
+\ (src/arch/arm64/boot.f CALL-EXIT,, src/habu/boot-x64.f ENTRY,). The
 \ engine's fail-closed exits - every ENGINE-ERROR:* rc and the 70/74/75/76
 \ band - do NOT call it: a broken engine must not run program code. Clearing
 \ before the call is what stops a hook that dies or throws from re-entering

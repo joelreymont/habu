@@ -240,7 +240,7 @@ variable SNAP-END
    RBASE-REG RAX ASM-SINK ENC-MOV-RR
    \ The text content size the source text-extent words read (layout.f
    \ TEXT-SIZE-CELL), from the header as kernel-x64.f DLSYM, reads it. Every
-   \ entry (START, LINKED-START, SNAP-START,) passes here.
+   \ entry (START, SNAP-START,) passes here.
    RAX RBASE-REG RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
    RAX RAX X64LAYOUT:IMAGE-TEXT-SIZE-OFF MEM-OFF ASM-SINK ENC-MOV-RM
@@ -862,18 +862,6 @@ public
    crash rest stub SETTLE,
    booted JMP,
    REGION-BAD @ >LABEL S\" hb: cannot map fixed code region\n" MAP-FAIL-RC FAIL,
-   booted crash rest stub CLOSE, ;
-
-: LINKED-START, ( n n -- ) {: records:n cp:n :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: booted:label crash:label rest:label stub:label :}
-   X64CODE:LBL SCALAR-ROW-LABEL !
-   OPEN,
-   records cp LINKED-REGION,
-   DATA-LOAD,
-   false DATA-INIT,
-   crash rest stub SETTLE,
-   booted JMP,
-   REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" MAP-FAIL-RC FAIL,
    booted crash rest stub CLOSE, ;
 
 \ Full-engine entry from the cold RX extent or an appended snapshot frame.
