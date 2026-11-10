@@ -145,6 +145,24 @@ variable RC
    EXITS-74
    ERR$ S\" source root: no directory above the path resolves: /absent/x\n" T$= ;
 
+\ A word that reads another file through the loader's reader while its own file
+\ is loading: that file's frame holds its bytes already, so the read is refused
+\ before it touches the frame.
+: READ-OS-WORD ( -- )
+   0 PROG-U !
+   s" package INCLUDE-REFUSAL-READ" PLINE
+   s" public" PLINE
+   S\" : RUN ( -- ) s\q " PROG+ s" plain.f" AT PROG+
+   S\" \q SOURCE-ROOT:CURRENT$ SOURCE-ROOT:READ-OS 2drop ;" PLINE
+   s" ;package" PLINE
+   s" INCLUDE-REFUSAL-READ:RUN" PLINE
+   s" read-os-word" LOAD-CASE
+   s" a word's SOURCE-ROOT:READ-OS of another file exits 74 by name" T-LABEL
+   EXITS-74
+   s" include: READ-OS reads only the file a load is opening; a word read: "
+   s" plain.f" SB-AT
+   ERR$ SB$ T$= ;
+
 \ The statement a bundle (tools/bundle-lib.f) makes for each file it assumes.
 : BUNDLE-ABSENT ( -- )
    0 PROG-U !
@@ -158,7 +176,7 @@ public
 
 : RUN ( -- )
    T-RESET SETUP
-   WITH-REFUSED REQUIRE-ABSENT CANON-NONE BUNDLE-ABSENT
+   WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD BUNDLE-ABSENT
    s" include refusal tree: " type ROOT$ type cr
    T-REPORT ;
 

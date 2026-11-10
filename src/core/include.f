@@ -421,14 +421,15 @@ private
 \ frames over hb's. The build's loader does every load, at a file's top level,
 \ so in a build the copy's loads refuse (BUILD-REFUSE): LOAD-RESULT, and so
 \ every load of a file (included, required, LOAD, script-required);
-\ RUN-PROGRAM; WITH-BYTES; WITH-SUPPLIED.
+\ RUN-PROGRAM; WITH-BYTES; WITH-SUPPLIED. READ-OS is refused by its frame's
+\ state instead (READ-REFUSE), in a build as elsewhere.
 : OWN-LOADER? ( -- bool ) LOADER LOADER-REC = ;
 
 \ The build refusal for the path a loading word was handed, unless this copy's
 \ record is the process's. The resolver does not refuse: RESOLVE loads nothing,
 \ and in a build it searches the process's current root, so a word may ask
-\ where a file lies (test/aot-shifted-bytes.f LOADS-BUILD, RESOLVES-BUILD;
-\ test/file-objects.f WORD-LOAD-BUILD). provided is not refused here: in a
+\ where a file lies (test/aot-shifted-bytes.f RESOLVES-BUILD; test/file-objects.f
+\ WORD-LOAD-BUILD). provided is not refused here: in a
 \ build the row it stores lies in mappings outside the build's space, so the
 \ linker refuses that file's object at its end.
 : BUILD-REFUSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
@@ -1792,6 +1793,14 @@ create STAT-BUF FS-ABI:STAT-BYTES allot
    FS-ABI:STAT-CTIME-NS-OFF STAT-CELL@ frame FR-CTIME-NS + CELL-VIEW !
    FS-ABI:STAT-SIZE-OFF STAT-CELL@ frame FR-STAMP-SIZE + CELL-VIEW ! ;
 
+\ Refuses PATH unless the top frame awaits its bytes (FR-SIZE -1 from PUSH until
+\ HOLD). A word's read finds its own file's frame held, or no frame; in a build,
+\ hb's held frame.
+: READ-REFUSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TOP@ 0= 0= if TOP@ FR-SIZE + CELL-VIEW @ -1 = if exit then then
+   s" include: READ-OS reads only the file a load is opening; a word read: "
+   path pathu PATH-DIE ;
+
 : INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )
    2dup INCLUDE-PATH0 STAMP!
    INCLUDE-OPEN
@@ -1819,8 +1828,10 @@ public
    frame FR-CTIME-NS + CELL-VIEW @
    frame FR-STAMP-SIZE + CELL-VIEW @ ;
 
+\ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
+\ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.
 : READ-OS ( ptr u8 n ptr u8 n -- ptr u8 n )
-   2drop INCLUDE-READ-ALL ;
+   2drop 2dup READ-REFUSE INCLUDE-READ-ALL ;
 
 \ A source whose first two bytes are `#!` names its interpreter on that line,
 \ and the engine reads the line as a comment: the two bytes become `\ `, so

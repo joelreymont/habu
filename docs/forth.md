@@ -302,10 +302,14 @@ public
 - A build's loader does every load, at a file's top level: a word that loads a
   file (`included`, `required`, `script-required`, `INCLUDE-LOAD`,
   `SOURCE-ROOT:LOAD`, `SOURCE-ROOT:WITH-BYTES`, `SOURCE-ROOT:WITH-SUPPLIED`,
-  `SOURCE-ROOT:RUN-PROGRAM`) is refused when it runs during a build, `include:
-  a word loaded a file during a build; load it with require or include at the
-  file's top level: <path>`, so a file that scoped its root by loading from a
-  word sets it with `ROOT!` instead. `SOURCE-ROOT:RESOLVE`
+  `SOURCE-ROOT:RUN-PROGRAM`), is refused when it runs during a build,
+  `include: a word loaded a file during a build; load it with require or
+  include at the file's top level: <path>`, so a file that scoped its root by
+  loading from a word sets it with `ROOT!` instead. `SOURCE-ROOT:READ-OS`
+  fills only the frame of a file a load is opening, as a reader installed with
+  `SOURCE-INPUT:USE` calls it; any other call, in a build or not, is refused
+  with `include: READ-OS reads only the file a load is opening; a word read:
+  <path>`. `SOURCE-ROOT:RESOLVE`
   resolves in a build as elsewhere, its known flag there answering for the
   built program's own registry. Fixtures resolve
   against `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument.

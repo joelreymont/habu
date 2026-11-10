@@ -103,8 +103,9 @@
 \ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell, SCRATCH-VARIABLE and
 \ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
 \ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
-\ level leaves a task running, into one out root, and each fails naming that file. X builds
-\ word-load-main.f, whose top level runs a word that loads a file, and fails saying so.
+\ level leaves a task running, into one out root, and each fails naming that file. X and X2 build
+\ word-load-main.f and word-read-main.f, whose top levels run a word that loads, or reads through
+\ SOURCE-ROOT:READ-OS, a file, and each fails naming that file with its own refusal.
 \ Q builds kept-main.f, whose files' top levels leave an archive open and await an aio ticket, each
 \ keeping its handle; its program opens another of each and the kept handle is refused. N builds
 \ kept-genio.f with --repl, since genio-core.f calls the REPL's KEY1, and its program refuses a device
@@ -172,6 +173,7 @@ PROG-CAP BUFFER: PROG-2
 96 BUFFER: TEXT-BUF
 T-LABEL-CAP BUFFER: HELD-LABEL           \ a label FIXTURE-OBJECT keeps across FOUND?
 128 BUFFER: LABEL-BUF
+PATH-CAP 128 + BUFFER: REFUSAL  variable REFUSAL-U  \ the loader refusal REFUSED-BUILD expects
 variable OBJ-N                          \ the walk's objects
 variable TAIL-I                          \ the tail the walk looks for (TAIL$)
 variable TAIL-N                          \ and the paths that end with it
@@ -588,13 +590,35 @@ variable KEPT-NS
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
    s" the build says a task is still running at the file's end" LABEL  said TTRUE ;
 
-\ The loader refuses a file a word of word-load-main.f loads at its top level.
-: WORD-LOAD-BUILD ( CMD:command -- CMD:command )
-   s" test/fixtures/file-objects/word-load-main.f" FAILING-BUILD {: rc:n :}
-   CMD:ERR$ s" a word loaded a file during a build" CONTAINS? {: said:bool :}
+\ The loader's refusal TEXT of word-load-inc.f, by its canonical path, as the
+\ next build of a fixture whose word reaches that file should say it.
+: REFUSAL! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a REFUSAL u BYTE-COPY
+   s" test/fixtures/file-objects/word-load-inc.f" SOURCE-ROOT:CANONICAL drop {: p:ptr pu:n :}
+   p REFUSAL u + pu BYTE-COPY
+   u pu + REFUSAL-U ! ;
+
+\ The loader refuses word-load-inc.f, which the fixture's word reaches at its
+\ top level.
+: REFUSED-BUILD ( CMD:command ptr u8 n -- CMD:command ) {: src:ptr srcu:n :}
+   src srcu FAILING-BUILD {: rc:n :}
+   CMD:ERR$ REFUSAL REFUSAL-U @ CONTAINS? {: said:bool :}
    rc 0 =  said 0=  or if rc SHOW then
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
-   s" the build says a word loaded a file" LABEL  said TTRUE ;
+   s" the build refuses the word's file by its path" LABEL  said TTRUE ;
+
+\ A refusal ends the build's process, so each entry a word reaches the file
+\ through is its own build: included (word-load-main.f), refused as a load in
+\ a build, and SOURCE-ROOT:READ-OS (word-read-main.f), refused because hb's top
+\ frame is held. SOURCE-INPUT:READ reaches the same READ-OS through the default
+\ reader, so it needs no build of its own.
+: WORD-LOAD-BUILD ( CMD:command -- CMD:command )
+   s" include: a word loaded a file during a build; load it with require or include at the file's top level: "
+   REFUSAL!
+   s" X" WHICH!  s" test/fixtures/file-objects/word-load-main.f" REFUSED-BUILD
+   s" include: READ-OS reads only the file a load is opening; a word read: "
+   REFUSAL!
+   s" X2" WHICH!  s" test/fixtures/file-objects/word-read-main.f" REFUSED-BUILD ;
 
 \ Darwin's first lock of a mutex sets its signature, $4D55545A (the bytes ZTUM), and unlocking leaves it.
 : LOG-UNLOCKED ( -- )
@@ -812,7 +836,7 @@ variable KEPT-NS
    s" N" WHICH!  s" test/fixtures/file-objects/kept-genio.f" REPL-BUILD 0= if exit then  GENIO-RUN
    s" W" WHICH!  TASK-LEFT-BUILD
    s" W2" WHICH!  TASK-LEFT-BUILD
-   s" X" WHICH!  WORD-LOAD-BUILD ;
+   WORD-LOAD-BUILD ;
 
 \ seal-main.f's build, in a fresh hb since SEALED-FAIL ends the process it refuses in: it exits 84
 \ with E-SEALED-PACKAGE naming the definition and seal-main.f's line.
