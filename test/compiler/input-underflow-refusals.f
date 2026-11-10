@@ -139,6 +139,33 @@ create DIAG-BUF 8192 allot
    s" a -- a " DECLARED?
    DISARM ;
 
+\ A quotation's own rows hold no cells; the packet names them, in the
+\ renderer's letters, where the signature wrote R and S.
+: CASE-DECLARED-QUOTATION-ROWS ( -- )
+   s" a quotation's own rows stay named in the declared effect" T-LABEL
+   ARM
+   [: s" : IUF-QROW ( [ R -- S ] -- [ R -- S ] ) swap ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   s" [ A -- B ] -- [ A -- B ] " DECLARED?
+   DISARM ;
+
+\ A fresh name is one identity per spelling in a signature, so the packet
+\ writes it as the signature does, with no ordinal.
+: CASE-DECLARED-FRESH ( -- )
+   s" a fresh name stays as written in the declared effect" T-LABEL
+   ARM
+   [: s" : IUF-FRESH ( n -- fresh-region-a ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   s" n -- fresh-region-a " DECLARED?
+   DISARM ;
+
+\ A quantifier after a free variable takes the next letter in both passes, not
+\ the variable's.
+: CASE-DECLARED-BINDER ( -- )
+   s" a quantifier keeps its own name in the declared effect" T-LABEL
+   ARM
+   [: s" : IUF-FORALL ( a forall<p,[ read-view<p,p,u8> -- ]> -- a ) drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   s" a forall<b,[ read-view<b,b,u8> -- ]> -- a " DECLARED?
+   DISARM ;
+
 \ ---- the controls ------------------------------------------------------------
 
 \ Short and mistyped: the type is the better answer and must not be swallowed by
@@ -184,6 +211,9 @@ public
    CASE-OVER-ABANDONED-CANDIDATE
    CASE-DECLARED-ROWS
    CASE-DECLARED-VARIABLE
+   CASE-DECLARED-QUOTATION-ROWS
+   CASE-DECLARED-FRESH
+   CASE-DECLARED-BINDER
    CASE-MISTYPED-CALL
    CASE-EXACT
    CASE-PRODUCED
