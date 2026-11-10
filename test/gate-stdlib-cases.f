@@ -434,6 +434,10 @@ SUITE base64
    src/lib/base64-test.f
 ;SUITE
 
+SUITE base85
+   src/lib/base85-test.f
+;SUITE
+
 SUITE utf16-units
    src/lib/utf16-test.f
 ;SUITE

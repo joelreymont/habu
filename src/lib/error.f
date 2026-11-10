@@ -1238,6 +1238,8 @@ require src/lib/prelude.f
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,
 \ WLINK -9830..-9834.
+\ Adobe Ascii85: -9840..-9849, minted in src/lib/base85.f, which owns package
+\ BASE85.
 
 \ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package COMP, because
 \ src/compiler/native/definition.f MALFORMED? reads them.
