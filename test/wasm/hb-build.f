@@ -183,6 +183,54 @@ variable MOD-U
    WASM-HARNESS:OUT$ F-HOST$ T$= ;
 
 
+\ The program loops.f: +loop up, down and not entered, j, r@, leave, until and again.
+: LOOPS! ( -- )
+   SB-RESET
+   S\" : STEP3 ( -- n ) 0 10 0 ?do i + 3 +loop ;\n: DOWN ( -- n ) 0 0 5 ?do i + -1 +loop ;\n" SB-APPEND
+   S\" : NONE ( -- n ) 0 5 5 ?do i + 1 +loop ;\n" SB-APPEND
+   S\" : OUTER ( -- n ) 0 3 0 do 4 0 do j + loop loop ;\n: PEEK ( n -- n ) >r r@ r> + ;\n" SB-APPEND
+   S\" : QUIT5 ( -- n ) 0 10 0 do i 5 = if leave then 1 + loop ;\n" SB-APPEND
+   S\" : UNTIL3 ( -- n ) 0 begin 1 + dup 3 = until ;\n" SB-APPEND
+   S\" : AGAIN4 ( -- n ) 0 begin 1 + dup 4 = if exit then again ;\n" SB-APPEND
+   S\" : MAIN ( -- ) STEP3 . DOWN . NONE . OUTER . 7 PEEK . QUIT5 . UNTIL3 . AGAIN4 . ;\n" SB-APPEND
+   SB$ s" loops.f" SOURCE! ;
+
+: LOOPS-HOST$ ( -- ptr u8 n )  S\" 18\n15\n0\n12\n14\n5\n3\n4\n" ;
+
+: LOOP-CASE ( -- )
+   LOOPS!
+   s" +loop up, down and not entered, j, r@, leave, until and again print what the host prints" T-LABEL
+   s" loops.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ LOOPS-HOST$ T$= ;
+
+
+\ The program nan.f prints the bits of a made NaN, then of a NaN operand on the
+\ left, on the right, the left of two, and under a unary word.
+: NAN! ( -- )
+   SB-RESET
+   S\" package N\nprivate\nCAST: BITS ( r -- n )\nCAST: >FLOAT ( n -- r )\n" SB-APPEND
+   S\" : ADD ( r r -- r ) f+ ;\n: MUL ( r r -- r ) f* ;\n: ROOT ( r -- r ) fsqrt ;\n" SB-APPEND
+   S\" : ODD ( n -- r ) $7FF8000000000000 + >FLOAT ;\npublic\n: MAIN ( -- )\n" SB-APPEND
+   S\"    -4.0 ROOT BITS .\n" SB-APPEND
+   S\"    1 ODD 1.5 ADD BITS .  1.5 2 ODD ADD BITS .  1 ODD 2 ODD MUL BITS .\n" SB-APPEND
+   S\"    1 ODD ROOT BITS . ;\n;package\n: MAIN ( -- ) N:MAIN ;\n" SB-APPEND
+   SB$ s" nan.f" SOURCE! ;
+
+: NAN-HOST$ ( -- ptr u8 n )
+   SB-RESET
+   S\" 9221120237041090560\n9221120237041090561\n9221120237041090562\n" SB-APPEND
+   S\" 9221120237041090561\n9221120237041090561\n" SB-APPEND
+   SB$ ;
+
+: NAN-CASE ( -- )
+   NAN!
+   s" a made NaN is the one NaN, and a NaN operand is the answer, the left before the right" T-LABEL
+   s" nan.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ NAN-HOST$ T$= ;
+
+
 \ m.f is longer than SB-CAP: its text is built here.
 CAP BUFFER: TEXT
 variable TEXT-U
@@ -381,6 +429,8 @@ public
    PROGRAM-CASES
    ARITH-CASES
    FLOAT-CASE
+   LOOP-CASE
+   NAN-CASE
    MAP-CASES
    REFUSAL-CASES
    EXECUTE-CASE
