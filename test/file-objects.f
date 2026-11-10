@@ -137,6 +137,9 @@
 \ kernel's objects there, build r.f, which requires x.f, which requires y.f between two pieces; then
 \ m.f, which also requires x.f, after x.f's first piece changes K; then r.f again, whose program
 \ prints the new K: r.f's object names every piece built inside x.f's load.
+\ I, I2 and I3 (SAME-CASE), in L's out root after U3, build main.f with g.f's DEF making f.f's first
+\ part's private Y and X, making nothing, and making them again, which shifts the counts of f.f's
+\ later Y and X; each program prints the X and Y that u.f, v.f and f.f's last parts reach.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -187,7 +190,7 @@ PATH-CAP BUFFER: OUT-D   variable OUT-D-U
 PATH-CAP BUFFER: OUT-E   variable OUT-E-U
 PATH-CAP BUFFER: OUT-L   variable OUT-L-U
 PATH-CAP BUFFER: OUT-F   variable OUT-F-U    \ the fixture builds' out root, in L's directory
-PATH-CAP BUFFER: NEST-DIR  variable NEST-DIR-U  \ U's sources, <L's out>/nested
+PATH-CAP BUFFER: NEST-DIR  variable NEST-DIR-U  \ U's or I's sources, <L's out>/nested or same-name
 PATH-CAP BUFFER: NEST-PATH                      \ one of them
 PATH-CAP 2 * BUFFER: NEST-SRC  variable NEST-SRC-U  \ the text NEST-WRITE writes
 PATH-CAP BUFFER: JOINED
@@ -986,29 +989,72 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" the build exits 0" LABEL  rc 0 T=
    rc 0 = ;
 
-\ U's program, run in its own process: the boundary under test is the written file.
-: NEST-RUN ( CMD:command ptr u8 n -- CMD:command ) {: want:ptr wantu:n :}
+\ L's program of that name, run in its own process: the boundary under test is the written file.
+\ The label holds when its stdout is the wanted text.
+: NEST-RUN ( CMD:command ptr u8 n ptr u8 n ptr u8 n -- CMD:command )
+   {: prog:ptr progu:n want:ptr wantu:n label:ptr labelu:n :}
    CMD:RESET
-   L$ s" prog-n" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ prog progu IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ want wantu STR=  rc 0 =  and 0= if rc SHOW then
-   s" the program prints K" LABEL  CMD:OUT$ want wantu T$= ;
+   label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
 \ r.f, m.f after x.f's K changes, which rewrites x.f's object and leaves r.f's, then r.f again.
 : NEST-CASE ( CMD:command -- CMD:command )
    WRITE-NESTED
    s" U" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
-   s\" 1\n" NEST-RUN
+   s" prog-n" s\" 1\n" s" the program prints K" NEST-RUN
    s" 2" WRITE-X
    s" U2" WHICH!  s" m.f" s" prog-m" NEST-BUILD 0= if exit then
    s" U3" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
-   s\" 2\n" NEST-RUN ;
+   s" prog-n" s\" 2\n" s" the program prints K" NEST-RUN ;
+
+\ The same-name sequence's g.f: DEF makes a word of the name it reads, or reads it and makes nothing.
+: WRITE-G ( bool -- ) {: make:bool :}
+   s" package FILE-OBJECTS-SAME-G public : DEF ( -- ) " SRC+
+   make if s" create 0 , " else s" parse-name drop drop " then SRC+
+   s\" ; ;package\n" SRC+  s" g.f" NEST-WRITE ;
+
+\ f.f's first part makes two private records named Y and X when g.f's DEF makes them, shifting the
+\ counts of its second part's two Y and two X, which answer 1, 10, 2 and 20.
+: WRITE-SAME ( -- )
+   L$ s" same-name" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   true WRITE-G
+   s\" : SAME-H1 ( -- n ) 1 ;\n" SRC+  s" h1.f" NEST-WRITE
+   s\" : SAME-H2 ( -- n ) 2 ;\n" SRC+  s" h2.f" NEST-WRITE
+   s\" : SAME-H3 ( -- n ) 3 ;\n" SRC+  s" h3.f" NEST-WRITE
+   s" g.f" REQUIRE+
+   s\" package FILE-OBJECTS-SAME FILE-OBJECTS-SAME-G:DEF Y FILE-OBJECTS-SAME-G:DEF X ;package\n" SRC+
+   s" h1.f" REQUIRE+
+   s\" : Y ( -- n ) 1 ; : X ( -- n ) Y 10 * ; : W1 ( -- n ) X ; undefine X undefine Y\n" SRC+
+   s\" : Y ( -- n ) 2 ; : X ( -- n ) Y 10 * ; : W ( -- n ) X ;\n" SRC+
+   s" h2.f" REQUIRE+  s\" : SHOW3 ( -- ) X . Y . ;\n" SRC+
+   s" h3.f" REQUIRE+  s\" : SHOW4 ( -- ) W . W1 . ;\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : SHOW ( -- ) X . Y . ;\n" SRC+  s" u.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" W constant K : SHOWV ( -- ) W1 . K . ;\n" SRC+  s" v.f" NEST-WRITE
+   s" f.f" REQUIRE+  s" u.f" REQUIRE+  s" v.f" REQUIRE+
+   s\" : MAIN ( -- ) SHOW SHOWV SHOW3 SHOW4 cr ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ I's program prints what a cold build prints under either g.f.
+: SAME-RUN ( CMD:command -- CMD:command )
+   s" prog-s" s\" 20\n2\n10\n20\n20\n2\n20\n10\n\n" s" the program prints each X and Y it reached"
+   NEST-RUN ;
+
+\ Guards a user's binding when a same-name record shifts later counts: u.f spells X and Y, v.f and
+\ f.f's last part only W1 and W, which call them; each build prints what a cold build prints.
+: SAME-CASE ( CMD:command -- CMD:command )
+   WRITE-SAME
+   s" I" WHICH!  s" main.f" s" prog-s" NEST-BUILD 0= if exit then  SAME-RUN
+   false WRITE-G
+   s" I2" WHICH!  s" main.f" s" prog-s" NEST-BUILD 0= if exit then  SAME-RUN
+   true WRITE-G
+   s" I3" WHICH!  s" main.f" s" prog-s" NEST-BUILD 0= if exit then  SAME-RUN ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE
-      NEST-CASE ;]
+      NEST-CASE SAME-CASE ;]
    CMD:WITH-COMMAND ;
 
 
