@@ -88,11 +88,11 @@ that stage:
     (cd "$TMP/stage" && TMPDIR="$TMP" hb --load tools/hb-build.f -- --engine -o "$TMP/stage-hb")
     TMPDIR="$TMP" "$TMP/stage-hb" --load tools/hb-build.f -- --engine -o "$OUT"
 
-The link refuses a kernel object the running hb cannot take
+The link refuses a kernel object the running hb cannot read
 (src/arch/arm64/link-kernel.f READ). A change to the object's format needs a
-stage that changes the reader before the tree changes the writer. A layout that
-moves where DATA starts cannot be built, staged or not: the hb building it
-sends a build's xt! and ptr-cell! stores into its header to the image only
+stage that changes the reader before the tree changes the writer. READ also
+refuses an object whose DATA-START is not hb's, staged or not: the hb building
+it sends a build's xt! and ptr-cell! stores into its header to the image only
 below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 
 ## What the engine carries

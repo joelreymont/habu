@@ -85,7 +85,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ A host address in the open space at its DATA-VA address: the resolver code's
 \ data address sites get.
-: DATA-ADDRESS ( n -- n ) DATA-OFFSET  DATA-VA VA>N + ;
+: DATA-ADDRESS ( n -- n ) DATA-OFFSET  ARM64:DATA-VA + ;
 
 
 : PAD8 ( -- ) A64ICODE:ASM-LEN 7 and 0<> if 0 A64ICODE:EMITW then ;
@@ -144,7 +144,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ EM-STARTUP-RUNTIME-STATE), at the kernel object's offsets, and the cells it
 \ presets; CODE-END-CELL ends the kernel, before the product's words.
 : HEADER-CELLS ( -- )
-   DATA-VA VA>N {: va:n :}
+   ARM64:DATA-VA {: va:n :}
    s" DATA-START" ARM64:SYM {: start:n :}
    va DATA-IMAGE-LEN +  s" DP-CELL" ARM64:SYM HEADER!
    va start +  s" DP-FLOOR-CELL" ARM64:SYM HEADER!
@@ -152,10 +152,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    start s" HEAP-START-CELL" ARM64:SYM HEADER!
    ARM64:PRESET-N 0 ?do i ARM64:PRESET@ HEADER! loop
    va s" FD-CELL" ARM64:SYM +  s" FD-PTR-CELL" ARM64:SYM HEADER!
-   TEXT-VA s" RBASE-CELL" ARM64:SYM HEADER!
-   TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" ARM64:SYM HEADER!
-   TEXT-VA LSIGH LABEL-OFFSET +  s" STUB-CELL" ARM64:SYM HEADER!
-   TEXT-VA KERNEL-END @ +  s" CODE-END-CELL" ARM64:SYM HEADER!
+   ARM64:TEXT-VA s" RBASE-CELL" ARM64:SYM HEADER!
+   ARM64:TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" ARM64:SYM HEADER!
+   ARM64:TEXT-VA LSIGH LABEL-OFFSET +  s" STUB-CELL" ARM64:SYM HEADER!
+   ARM64:TEXT-VA KERNEL-END @ +  s" CODE-END-CELL" ARM64:SYM HEADER!
    \ The build's MARK left its own index mapping's address here; the product's
    \ first MARK builds one from 0.
    0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
@@ -166,9 +166,9 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ inside an evaluate, at a live tty REPL and after a data-stack underdepth. A
 \ stripped program's cut keeps none of the three.
 : RECOVERY-CELLS ( -- )
-   TEXT-VA LEVALREC LABEL-OFFSET +  s" EVALREC-CELL" ARM64:SYM HEADER!
-   TEXT-VA LRREC LABEL-OFFSET +  s" RRECP-CELL" ARM64:SYM HEADER!
-   TEXT-VA LFLOORREC LABEL-OFFSET +  s" FLOORREC-CELL" ARM64:SYM HEADER! ;
+   ARM64:TEXT-VA LEVALREC LABEL-OFFSET +  s" EVALREC-CELL" ARM64:SYM HEADER!
+   ARM64:TEXT-VA LRREC LABEL-OFFSET +  s" RRECP-CELL" ARM64:SYM HEADER!
+   ARM64:TEXT-VA LFLOORREC LABEL-OFFSET +  s" FLOORREC-CELL" ARM64:SYM HEADER! ;
 
 \ The header cells HEADER-CELLS and RECOVERY-CELLS give a code address.
 : LIST-HEADER ( -- )
@@ -250,13 +250,13 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    wid WL:NAMESPACE = if
       first A64ICODE:DCQ,  k 1 PRIM@ A64ICODE:DCQ,
    else
-      TEXT-VA first + at CODE-CELL,
+      ARM64:TEXT-VA first + at CODE-CELL,
       k PRIM-LEN A64ICODE:DCQ,
    then
    k 2 PRIM@ {: flags:n :}
    flags A64ICODE:DCQ,
    flags DNAME-EXT and 0<> if
-      TEXT-VA k 3 PRIM@ +  at 24 + CODE-CELL,
+      ARM64:TEXT-VA k 3 PRIM@ +  at 24 + CODE-CELL,
    else
       k 3 PRIM@ A64ICODE:DCQ,
    then
@@ -302,7 +302,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    then
    rec XREF-FLAGS A64ICODE:DCQ,
    rec XREF-EXT? if
-      TEXT-VA  r FIRST-REC @ - NAME-AT @ +  at 24 + CODE-CELL,
+      ARM64:TEXT-VA  r FIRST-REC @ - NAME-AT @ +  at 24 + CODE-CELL,
    else
       rec XREF-NAME-SLOT XREF-CELL@ A64ICODE:DCQ,
    then
@@ -454,7 +454,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    rec XREF-START LINK-ADDRESS {: to:n :}
    to -1 = if s" link: a C2-MEM scope entry is code the product does not place" 74 die then
    k ARM64:SCOPE-SITE ARM64:OFFSET {: at:n :}
-   to  TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
+   to  ARM64:TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
 
 
 \ After PLACE-ROUTINES, scope-kind?'s chains (src/arch/arm64/kernel-object.f

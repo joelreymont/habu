@@ -442,16 +442,16 @@ variable UNSAFE-COUNT
    r 0 >= if
       r NSHADOW:EMISSION@ {: e:n :}
       e PLACED @ 0= if -1 exit then
-      TEXT-VA  e OFFSET@ +  r NSHADOW:ENTRY@ + exit
+      ARM64:TEXT-VA  e OFFSET@ +  r NSHADOW:ENTRY@ + exit
    then
    a ARM64:KERNEL-ENTRY {: off:n :}
-   off 0 >= if TEXT-VA off + exit then
+   off 0 >= if ARM64:TEXT-VA off + exit then
    \ Only a value no record or kernel entry matched scans every emission's
    \ functions: (quotation xt cells) x (functions), here and in QUOTE-ROOT.
    a NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
    qe 0< if -1 exit then
    qe PLACED @ 0= if -1 exit then
-   TEXT-VA  qe OFFSET@ +  qe qf NSHADOW:FUNCTION-OFFSET@ + ;
+   ARM64:TEXT-VA  qe OFFSET@ +  qe qf NSHADOW:FUNCTION-OFFSET@ + ;
 
 
 : TARGET-ADDRESS ( n -- n )
@@ -470,7 +470,7 @@ variable UNSAFE-COUNT
    e NSHADOW:SIZE 4 / {: words:n :}
    words A64ICODE:ASM-CP?
    e PLACING !
-   e  A64ICODE:CODE e OFFSET@ +  TEXT-VA e OFFSET@ +  data  ['] TARGET-ADDRESS
+   e  A64ICODE:CODE e OFFSET@ +  ARM64:TEXT-VA e OFFSET@ +  data  ['] TARGET-ADDRESS
    ARM64:PLACE
    words A64ICODE:ASM-CP +!
    e TRAILERS @ {: cell:n :}

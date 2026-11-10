@@ -30,10 +30,6 @@ private
 
 : SAY-CR ( -- ) s\" \n" SAY ;
 
-
-\ The address __text is linked at, where offset 0 of A64ICODE's code runs.
-: TEXT-VA ( -- n ) EXECUTABLE:VMBASE CODE-OFF + ;
-
 package ARM64
 
 \ The host-entry table, ascending by host entry: HOSTS[i] is where a running
@@ -172,6 +168,12 @@ public
 
 : SYM-LABEL ( ptr u8 n -- label ) SYM >LABEL ;
 
+\ The address the target links its code at, from the kernel object.
+: TEXT-VA ( -- n ) s" TEXT-VA" SYM ;
+
+\ The address the target maps its DATA at, from the kernel object.
+: DATA-VA ( -- n ) s" DATA-VA" SYM ;
+
 \ The object's primitive rows, as the tree's writer registered them.
 : ROW-N ( -- n ) PRIMS-N @ ;
 : ROW-FIRST ( n -- label ) PRIM-AT @ KOBJ@ >LABEL ;
@@ -197,7 +199,7 @@ public
    at 8 + KOBJ@  at KOBJ@ ;
 
 \ The kernel object at the path, which the links that follow adopt; one whose
-\ TEXT-VA, DATA-VA or DATA-START is not hb's dies (docs/bootstrap.md "Staged hosts").
+\ DATA-START is not hb's dies (docs/bootstrap.md "Staged hosts").
 : READ ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 KOBJ-U !
@@ -212,8 +214,6 @@ public
    file 0 KOBJ size FS:READ-SIZED
    size KOBJ-U !
    CHECK SECTIONS
-   TEXT-VA  s" TEXT-VA" SYM  s" TEXT-VA" SAME
-   DATA-VA VA>N  s" DATA-VA" SYM  s" DATA-VA" SAME
    DATA-START  s" DATA-START" SYM  s" DATA-START" SAME ;
 
 \ The running hb's kernel is [rbase, CODE-END-CELL).

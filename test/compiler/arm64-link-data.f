@@ -91,7 +91,7 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 
 : LISTED-NAMED? ( ptr u8 n -- bool ) CELL-OFF LISTED? ;
 
-: BAND-LINK ( n -- n ) OFFSET@ TEXT-VA + ;
+: BAND-LINK ( n -- n ) OFFSET@ ARM64:TEXT-VA + ;
 : PLACED? ( ptr u8 n -- bool ) EMISSION-NAMED PLACED @ 0<> ;
 
 
@@ -125,7 +125,7 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    s" scratch cell: not in the DATA list" T-LABEL
    s" LD-SCR" LISTED-NAMED? TFALSE
    s" DATA pointer: its copy is DATA-VA plus LD-V's offset" T-LABEL
-   s" LD-P" COPY-VALUE  DATA-VA VA>N s" LD-V" CELL-OFF + T=
+   s" LD-P" COPY-VALUE  ARM64:DATA-VA s" LD-V" CELL-OFF + T=
    s" DATA pointer: not in the DATA list" T-LABEL
    s" LD-P" LISTED-NAMED? TFALSE ;
 
@@ -180,7 +180,7 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 : IN-CODE? ( n -- bool )
    {: off:n :}
    off COPY-AT LE:U64@ {: v:n :}
-   v TEXT-VA >=  v TEXT-VA DATA-IMAGE-AT + <=  and ;
+   v ARM64:TEXT-VA >=  v ARM64:TEXT-VA DATA-IMAGE-AT + <=  and ;
 
 : LIST-CASE ( -- )
    s" list: every listed cell holds an address in the product's code" T-LABEL
@@ -192,7 +192,7 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 
 : CHAIN-CASE ( -- )
    s" data address: LD-ADDR's chain is DATA-VA plus LD-V's offset" T-LABEL
-   s" LD-ADDR" EMISSION-NAMED DATA-CHAIN  DATA-VA VA>N s" LD-V" CELL-OFF + T=
+   s" LD-ADDR" EMISSION-NAMED DATA-CHAIN  ARM64:DATA-VA s" LD-V" CELL-OFF + T=
    s" data address: its variable LD-V is not placed" T-LABEL
    s" LD-V" PLACED? TFALSE ;
 

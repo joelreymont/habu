@@ -412,7 +412,7 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
 
 \ Emission e's placed copy in the band and the link address it runs at.
 : BAND-AT ( n -- ptr u8 ) OFFSET@ A64ICODE:CODE swap + ;
-: BAND-LINK ( n -- n ) OFFSET@ TEXT-VA + ;
+: BAND-LINK ( n -- n ) OFFSET@ ARM64:TEXT-VA + ;
 
 : BAND-CALLS ( n -- n ) {: e:n :} e e BAND-AT e BAND-LINK ['] LINK-ADDRESS CALLS-BAD ;
 : BAND-CHAINS ( n -- n ) {: e:n :} e e BAND-AT e BAND-LINK ['] LINK-ADDRESS CHAINS-BAD ;
@@ -434,9 +434,9 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
 : COUNT-CALL ( n -- )
    {: a:n :}
    a LINK-ADDRESS {: to:n :}
-   to TEXT-VA KERNEL-END @ + >= if 1 PRODUCT-CALLS +! exit then
+   to ARM64:TEXT-VA KERNEL-END @ + >= if 1 PRODUCT-CALLS +! exit then
    a ARM64:KERNEL-ENTRY {: off:n :}
-   off 0 >=  to TEXT-VA off + =  and if 1 KERNEL-CALLS +! then ;
+   off 0 >=  to ARM64:TEXT-VA off + =  and if 1 KERNEL-CALLS +! then ;
 
 
 : COUNT-CALLS ( -- )
