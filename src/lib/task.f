@@ -429,7 +429,9 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
 \ The records live in chunks TASK owns, so a pooled handle still names a TASK
 \ record. A chunk is a link, TASK-SEM-POOL-N used cells and as many records. The
 \ first chunk is static; later ones are mapped and never move, since a handle is
-\ the record's address. A freed record is reused before the pool grows.
+\ the record's address. A freed record is reused before the pool grows. The
+\ first chunk is scratch, so a program starts with every record free and no
+\ chunk mapped.
 $40 constant TASK-SEM-POOL-N
 1 cells constant TASK-SEM-CHUNK-USED-OFF
 TASK-SEM-POOL-N 1 + cells constant TASK-SEM-CHUNK-RECS-OFF
@@ -439,15 +441,8 @@ TASK-SEM-CHUNK-RECS-OFF TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * +
 : TASK-ZERO-CELLS, ( n -- )
    0 ?do 0 , loop ;
 
-: TASK-SCRATCH-CELLS, ( n -- )
-   0 ?do here scratch-cell-mark 0 , loop ;
-
 TASK-ALIGN8
-create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES 8 / TASK-ZERO-CELLS,
-
-\ Whether a capture cleanup is registered for the mapped chunks.
-TASK-ALIGN8
-variable SEM-CHUNKS-ARMED   SEM-CHUNKS-ARMED scratch-cell-mark
+create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
 
 \ Chunks are named by address, as n; 0 ends the chain.
 : SEM-POOL-FIRST ( -- n )
@@ -473,19 +468,6 @@ variable SEM-CHUNKS-ARMED   SEM-CHUNKS-ARMED scratch-cell-mark
    loop
    0 ;
 
-: SEM-CHUNK-LIVE? ( n -- bool ) {: c:n :}
-   TASK-SEM-POOL-N 0 ?do
-      c i SEM-CHUNK-USED atomic@ 0<> if true unloop exit then
-   loop
-   false ;
-
-: SEM-CHAIN-LIVE? ( n -- bool )
-   begin dup 0<> while
-      dup SEM-CHUNK-LIVE? if drop true exit then
-      SEM-CHUNK-NEXT
-   repeat
-   drop false ;
-
 \ The used cell of the record that handle names, or 0 for a handle from
 \ anywhere else: a defined semaphore and a task's mailbox are not the pool's to
 \ hand back out.
@@ -503,38 +485,6 @@ variable SEM-CHUNKS-ARMED   SEM-CHUNKS-ARMED scratch-cell-mark
       SEM-CHUNK-NEXT
    repeat ;
 
-: SEM-CHUNK-RELEASE ( n -- )
-   TASK-N>PTR BYTE-VIEW TASK-SEM-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
-
-\ A capture gives the mapped chunks back, so the image carries only the static
-\ first chunk, which its declaration zeroes. A live record in one is the
-\ program's defect, named here rather than left to the linker: free a held
-\ semaphore in a cleanup registered after taking it, so it runs before this one.
-\ `die`, not `throw`, as TASK-SWEEP-ONE says. The flag is cleared last: the next
-\ chunk mapped, here or in the restored image, arms the cleanup again.
-: SEM-CHUNKS-SWEEP ( -- )
-   SEM-POOL-FIRST SEM-CHUNK-NEXT
-   dup SEM-CHAIN-LIVE? if
-      s" task: live pool semaphore at capture - free it before the build or snapshot captures"
-      E-TASK-STATE die
-   then
-   0 SEM-POOL-FIRST SEM-CHUNK-LINK atomic!
-   begin dup 0<> while
-      dup SEM-CHUNK-NEXT swap SEM-CHUNK-RELEASE
-   repeat
-   drop
-   0 SEM-CHUNKS-ARMED atomic! ;
-
-\ Armed before a chunk is mapped, so no mapping exists without its cleanup. The
-\ flag is set only after REGISTER completes (src/lib/image-lifecycle.f), so a
-\ registration that throws leaves it clear for the next grower to retry. Two
-\ growers that both see it clear each register a sweep; the second finds an
-\ empty chain.
-: SEM-CHUNKS-ARM ( -- )
-   SEM-CHUNKS-ARMED atomic@ 0<> if exit then
-   [: SEM-CHUNKS-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
-   1 SEM-CHUNKS-ARMED atomic! ;
-
 \ Two tasks growing at once each append their own chunk; the loser walks on to
 \ the new last.
 : SEM-CHUNK-APPEND ( n -- ) {: c:n :}
@@ -548,7 +498,6 @@ variable SEM-CHUNKS-ARMED   SEM-CHUNKS-ARMED scratch-cell-mark
 \ A fresh mapping is zero: no record used, none live. Its first record is the
 \ caller's before the chunk is published.
 : SEM-GROW ( -- n )
-   SEM-CHUNKS-ARM
    TASK-SEM-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
    1 c 0 SEM-CHUNK-USED !
    c SEM-CHUNK-APPEND
@@ -580,8 +529,7 @@ variable SEM-CHUNKS-ARMED   SEM-CHUNKS-ARMED scratch-cell-mark
 \ creates it once and no lifecycle word destroys it, so every admitted post
 \ meets one live semaphore. ACTIVATE and EXPOSE drain it, so each run and
 \ exposure opens at zero. Only the capture sweep destroys it, where no waker can
-\ hold the TCB (MAIN-PARK-RESET does the same for the main record); the next
-\ PREPARE creates it again. TASK:FREE keeps it, so a pool record carries it to
+\ hold the TCB; the next PREPARE creates it again. TASK:FREE keeps it, so a pool record carries it to
 \ the task TASK:NEW next makes of it.
 : PARK-CREATE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PARK-SEM SEM-LIVE? if exit then
@@ -594,18 +542,19 @@ variable SEM-CHUNKS-ARMED   SEM-CHUNKS-ARMED scratch-cell-mark
 : PARK-DRAIN ( ptr n -- ) {: tcb:ptr :}
    begin tcb TASK-PARK-SEM SEM-TRY-WAIT while repeat ;
 
-\ The main thread has no TCB, so a WAKE of the null TCB posts this record. Both
-\ it and READY are scratch cells, linked zero: see MAIN-PARK-RESET.
+\ The main thread has no TCB, so a WAKE of the null TCB posts this record. It
+\ and READY are scratch, so a program starts with no park and its first wake
+\ makes one.
 TASK-ALIGN8
-create MAIN-PARK-REC TASK-SEMAPHORE-BYTES 8 / TASK-SCRATCH-CELLS,
+create MAIN-PARK-REC TASK-SEMAPHORE-BYTES SCRATCH-ALLOT
 TASK-ALIGN8
-variable MAIN-PARK-READY  MAIN-PARK-READY scratch-cell-mark
+SCRATCH-VARIABLE MAIN-PARK-READY
 
 : MAIN-PARK ( -- sem )
    MAIN-PARK-REC CELL-VIEW SEM-AT ;
 
-\ This semaphore belongs to the running process, including Darwin's Mach port.
-\ Capturing a warm main task must leave the next process an uninitialised park.
+\ The semaphore, Darwin's Mach port included, belongs to this process. A failed
+\ MAIN-PARK-CREATE gives it back here, so the next wake makes the park again.
 : MAIN-PARK-RESET ( -- )
    MAIN-PARK SEM-DESTROY
    0 MAIN-PARK-READY atomic! ;
@@ -620,8 +569,7 @@ variable MAIN-PARK-READY  MAIN-PARK-READY scratch-cell-mark
    0 MAIN-PARK-READY atomic! ;
 
 : MAIN-PARK-CREATE ( -- )
-   0 MAIN-PARK SEM-INIT
-   [: MAIN-PARK-RESET ;] IMAGE-LIFECYCLE:REGISTER ;
+   0 MAIN-PARK SEM-INIT ;
 
 : MAIN-PARK-INIT ( -- )
    begin
