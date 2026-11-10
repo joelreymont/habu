@@ -12,10 +12,8 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/arch/wasm/leb.f
-require src/arch/wasm/wstruct.f
 require src/habu/layout.f
 require src/arch/wasm/profile.f
-require src/arch/wasm/encode.f
 require src/compiler/native/emission.f
 
 \ The Wasm backend's error block is -9800..-9834 (src/lib/error.f).
@@ -23,6 +21,8 @@ require src/compiler/native/emission.f
 -9834 constant E-WLINK-LAST
 -9830 constant E-WLINK-UNRESOLVED  \ an entry, site, cell or slot naming no function, image byte or table slot of the link
 -9831 constant E-WLINK-MEMORY      \ an image whose end, from WPROF's DATA base, passes memory32's 65536 pages
+-9832 constant E-WLINK-ARITY       \ an entry that takes or answers a lane, or a reserve callee without map-anon's lanes
+-9833 constant E-WLINK-KIND        \ an address kind outside NONE, DATA and CODE
 
 package WLINK
 public
@@ -57,9 +57,17 @@ $70 constant FUNCREF
 0 constant ACTIVE                    \ an active segment of table or memory zero
 1 constant FIRST-SLOT                \ the first slot holding a function; 0 is null
 $0B constant OP-END
+$10 constant OP-CALL
 $1A constant OP-DROP
 $20 constant OP-LOCAL-GET
 $21 constant OP-LOCAL-SET
+$28 constant OP-I32-LOAD
+$29 constant OP-I64-LOAD
+$36 constant OP-I32-STORE
+$37 constant OP-I64-STORE
+$41 constant OP-I32-CONST
+$42 constant OP-I64-CONST
+0 constant ADDR-NONE                 \ the address kind of a field holding no address
 2 constant ALIGN-32                  \ an i32 access's natural alignment, 2^2
 3 constant ALIGN-64
 WPROF:PAGE-BYTES constant PAGE-BYTES
@@ -152,15 +160,13 @@ LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
    {: v:n :}
    4 0 do  v i 8 * rshift $FF and PUT-BYTE  loop ;
 
-: PUT-OP ( WSTRUCT:opcode -- )
-   WENC:OPCODE-BYTE PUT-BYTE ;
 
 \ i32.const of a number below 2^31, as every address of WPROF's layout is.
 : I32-CONST ( n -- )
-   WSTRUCT-OPCODE:I32-CONST PUT-OP  PUT-S32 ;
+   OP-I32-CONST PUT-BYTE  PUT-S32 ;
 
 : I64-CONST ( n -- )
-   WSTRUCT-OPCODE:I64-CONST PUT-OP  PUT-S64 ;
+   OP-I64-CONST PUT-BYTE  PUT-S64 ;
 
 \ i32.const of a memory address, 0 to 2^32 - 1: one from 2^31 up is written as
 \ the negative number of the same 32 bits.
@@ -278,8 +284,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    NINDS @ 0 > if  0 TY-U !  FUNC-FORM TY-BYTE  0 ROW  0 ROW  INTERN WR-DYN !  then ;
 
 \ ---- the wrappers ---------------------------------------------------------------
-\ The exports are memory and the wrappers, written through WENC's opcode bytes
-\ because their signatures lie outside WSTRUCT's call row. run initializes the
+\ The exports are memory and the wrappers. run initializes the
 \ task DATA stack header, stores WPROF's stack base in ctx's stack base and top
 \ and 0 in its out-len, calls the entry with WPROF's ctx base and answers its
 \ status; throw-code answers ctx's throw code, out-base WPROF's out base, out-len
@@ -291,20 +296,20 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 : CTX! ( n n -- )
    {: v:n off:n :}
    WPROF:CTX-BASE I32-CONST  v I32-CONST
-   WSTRUCT-OPCODE:I32-STORE PUT-OP  ALIGN-32 PUT-U32  off PUT-U32 ;
+   OP-I32-STORE PUT-BYTE  ALIGN-32 PUT-U32  off PUT-U32 ;
 
 \ A full cell in the task-local DATA header; the copied native image holds no
 \ Wasm stack address or capacity.
 : DATA-CELL! ( n n -- )
    {: v:n off:n :}
    WPROF:DATA-BASE off + I32-CONST  v I64-CONST
-   WSTRUCT-OPCODE:I64-STORE PUT-OP  ALIGN-64 PUT-U32  0 PUT-U32 ;
+   OP-I64-STORE PUT-BYTE  ALIGN-64 PUT-U32  0 PUT-U32 ;
 
 \ ctx's field at off, read by a load of the alignment al.
-: CTX@ ( WSTRUCT:opcode n n -- )
-   {: op:WSTRUCT:opcode al:n off:n :}
+: CTX@ ( n n n -- )
+   {: op:n al:n off:n :}
    WPROF:CTX-BASE I32-CONST
-   op PUT-OP  al PUT-U32  off PUT-U32 ;
+   op PUT-BYTE  al PUT-U32  off PUT-U32 ;
 
 \ Each body but reserve's declares no local.
 : RUN-BODY ( -- )
@@ -315,12 +320,12 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    WPROF:STACK-BASE WPROF:CTX-STACK-TOP CTX!
    0 WPROF:CTX-OUT-LEN CTX!
    WPROF:CTX-BASE I32-CONST
-   WSTRUCT-OPCODE:CALL PUT-OP  ENTRY-IDX @ PUT-U32
+   OP-CALL PUT-BYTE  ENTRY-IDX @ PUT-U32
    OP-END PUT-BYTE ;
 
 : THROW-CODE-BODY ( -- )
    0 PUT-U32
-   WSTRUCT-OPCODE:I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE CTX@
+   OP-I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE CTX@
    OP-END PUT-BYTE ;
 
 : OUT-BASE-BODY ( -- )
@@ -330,7 +335,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 
 : OUT-LEN-BODY ( -- )
    0 PUT-U32
-   WSTRUCT-OPCODE:I32-LOAD ALIGN-32 WPROF:CTX-OUT-LEN CTX@
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-OUT-LEN CTX@
    OP-END PUT-BYTE ;
 
 \ The callee answers status, address and ior; local 1, an i64, holds the
@@ -339,7 +344,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    1 PUT-U32  1 PUT-U32  I64 PUT-BYTE
    WPROF:CTX-BASE I32-CONST
    OP-LOCAL-GET PUT-BYTE  0 PUT-U32
-   WSTRUCT-OPCODE:CALL PUT-OP  RES-FN @ FN-IDX @ PUT-U32
+   OP-CALL PUT-BYTE  RES-FN @ FN-IDX @ PUT-U32
    OP-DROP PUT-BYTE
    OP-LOCAL-SET PUT-BYTE  1 PUT-U32
    OP-DROP PUT-BYTE
@@ -438,9 +443,9 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ ---- reading the rows ------------------------------------------------------------
 \ An entry, site, cell or slot naming no function, image byte or slot, and an
 \ address of kind NONE, are E-WLINK-UNRESOLVED; a kind outside NONE, DATA and
-\ CODE is E-WSTRUCT-ADDR. A reserve callee naming no function is
+\ CODE is E-WLINK-KIND. A reserve callee naming no function is
 \ E-WLINK-UNRESOLVED, and one without map-anon's lanes (one in, two out)
-\ E-WENC-ARITY, as is an entry that takes or answers a lane. A field that is not
+\ E-WLINK-ARITY, as is an entry that takes or answers a lane. A field that is not
 \ a padded LEB of its width inside its body is WLEB's refusal, and a cell outside
 \ the image E-SPAN-RANGE.
 \ A handle of a function the link holds.
@@ -462,15 +467,15 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
       t FIRST-SLOT <  t NSLOTS @ FIRST-SLOT + >= or if E-WLINK-UNRESOLVED throw then
       t exit
    then
-   kind WSTRUCT:ADDR-NONE = if E-WLINK-UNRESOLVED throw then
-   E-WSTRUCT-ADDR throw ;
+   kind ADDR-NONE = if E-WLINK-UNRESOLVED throw then
+   E-WLINK-KIND throw ;
 
 \ Run calls the entry with ctx alone and answers its status, so the entry takes
 \ and answers no lane; FUNCTION+ held a function of none to its lanes variant.
 : ENTRY-CK ( n -- )
    {: e:n :}
    e RESOLVED drop
-   e FN-IN @ 0<>  e FN-OUT @ 0<> or if E-WENC-ARITY throw then ;
+   e FN-IN @ 0<>  e FN-OUT @ 0<> or if E-WLINK-ARITY throw then ;
 
 : CALL-CK ( n -- )
    {: k:n :}
@@ -497,7 +502,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    RESERVES @ 0= if exit then
    RES-FN @ RESOLVED {: f:n :}
    f FN-IN @ 1 <>  f FN-OUT @ 2 <> or  f FN-VAR @ FRAME-ALIGNED = or
-   if E-WENC-ARITY throw then ;
+   if E-WLINK-ARITY throw then ;
 
 : ROWS-CK ( n -- )
    ENTRY-CK
@@ -578,7 +583,7 @@ public
    0 NF !  0 BODIES-U !  0 NCALLS !  0 NADDRS !  0 IMAGE-U !  0 NCELLS !  0 NSLOTS !
    0 NINDS !  0 RESERVES !  0 NRUNS ! ;
 
-\ A body as WENC writes it (local declarations, code, end), the lanes in and out
+\ A body as a code entry holds it (local declarations, code, end), the lanes in and out
 \ its emission row states, its frame variant and its origin; answers its handle,
 \ the order it was added in. Every lane is an i64 at a word boundary: a function
 \ in its lanes has type (i32 ctx, inputs x i64) -> (i32 status, outputs x i64),

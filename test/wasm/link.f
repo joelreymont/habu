@@ -199,11 +199,11 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    s" 8080042903180b06004180a0040b0900418080042802100b0b0100" W+
    0 MOD-U @ HEX$ WANT$ T$=
    s" an entry in the aligned frame is refused though its type is the entry's" T-LABEL
-   [: 1 WLINK:LINK 2drop ;] E-WENC-ARITY TTHROWSQ
+   [: 1 WLINK:LINK 2drop ;] E-WLINK-ARITY TTHROWSQ
    s" an entry taking a lane is refused" T-LABEL
-   [: 2 WLINK:LINK 2drop ;] E-WENC-ARITY TTHROWSQ
+   [: 2 WLINK:LINK 2drop ;] E-WLINK-ARITY TTHROWSQ
    s" an entry answering a lane is refused" T-LABEL
-   [: 4 WLINK:LINK 2drop ;] E-WENC-ARITY TTHROWSQ ;
+   [: 4 WLINK:LINK 2drop ;] E-WLINK-ARITY TTHROWSQ ;
 
 : ADD0 ( n n n -- )
    WLINK-ORIGIN:KERNEL ADD drop ;
@@ -392,7 +392,7 @@ $350000 constant PAGE-53-END
    s" a reserve callee past the functions is refused" T-LABEL
    BASE  3 WLINK:RESERVE!  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" a reserve callee without map-anon's lanes is refused" T-LABEL
-   BASE  0 WLINK:RESERVE!  [: LINK0 ;] E-WENC-ARITY TTHROWSQ ;
+   BASE  0 WLINK:RESERVE!  [: LINK0 ;] E-WLINK-ARITY TTHROWSQ ;
 
 : CALL-ROWS ( -- )
    s" a call of no function is refused" T-LABEL
@@ -419,9 +419,9 @@ $350000 constant PAGE-53-END
    s" an address of kind none names nothing and is refused" T-LABEL
    BASE  2 2 WSTRUCT:ADDR-NONE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an address of a kind past code is refused" T-LABEL
-   BASE  2 2 NEMIT:ADDR-CODE 1+ 0 WLINK:ADDRESS+  [: LINK0 ;] E-WSTRUCT-ADDR TTHROWSQ
+   BASE  2 2 NEMIT:ADDR-CODE 1+ 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-KIND TTHROWSQ
    s" an address of a kind below none is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-NONE 1- 0 WLINK:ADDRESS+  [: LINK0 ;] E-WSTRUCT-ADDR TTHROWSQ
+   BASE  2 2 WSTRUCT:ADDR-NONE 1- 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-KIND TTHROWSQ
    s" an address field that is not padded is refused" T-LABEL
    BASE  0 BODY-U !  0 B, $42 B, 0 B, $1A B, $41 B, 0 B, $0B B,  0 0 0 ADD0
    3 2 NEMIT:ADDR-DATA 0 WLINK:ADDRESS+  [: LINK0 ;] WLEB:E-UNPADDED TTHROWSQ ;
