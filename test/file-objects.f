@@ -40,9 +40,11 @@
 \ whose two files store one word as the program's entry, compiles 3, then 0
 \ when the first storer leaves the build: the second's object holds its store,
 \ though it left the cell as the first did, so the program it writes has K as
-\ its entry and its map lists K. The crafted sequence's
+\ its entry and its map lists K. The held sequence, the header sequence with a
+\ runner that also holds a header-data address, compiles 2, 2 and 0: the store
+\ is then a dependency of the run. The crafted sequence's
 \ builds of e.f over eight objects the link refuses or links wrong compile 1,
-\ and a plain build after them links. C writes thirty-four objects, and the
+\ and a plain build after them links. C writes thirty-seven objects, and the
 \ two of A's files, count.f's and shape.f's, have A's bytes from PIECES on: a
 \ refused file writes none. A's
 \ printed state gives FILE-OBJECTS-COUNT:HI's record the facts text `( -- ) `
@@ -143,9 +145,9 @@ package FILE-OBJECTS-TEST
 14 constant ORDER-X2
 15 constant HIDDEN-SPELL
 16 constant SEAL-SECOND
-34 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
+37 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
-                                         \ the header sequence's three, the same sequence's three, e.f's
+                                         \ the header, same and held sequences' three each, e.f's
 176 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 160 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
 56 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
@@ -369,7 +371,7 @@ variable KEPT-NS
 \ writes; count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote thirty-four objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote thirty-seven objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -411,6 +413,8 @@ variable KEPT-NS
    STATE-W STATE-W-U @ s\" header: compiled 2 1 0\n" CONTAINS? TTRUE
    s" the same builds compile 3 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" same: compiled 3 0\n" CONTAINS? TTRUE
+   s" the held builds compile 2, 2 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" held: compiled 2 2 0\n" CONTAINS? TTRUE
    s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE ;
 

@@ -40,11 +40,13 @@
 \ level runs w.f's word, are built, then twice more with header/h.f, which stores
 \ into header data, between them. Then same/k.f, s1.f and s2.f, s1.f and s2.f
 \ each storing k.f's K as the program's entry, are built, then k.f and s2.f,
-\ which write the program `prog`. `edit: compiled `, `tail: compiled `,
-\ `share: compiled `, `laid: compiled `, `private: compiled `, `parts: compiled `,
-\ `scope: compiled `, `inside: compiled `, `twins: compiled `, `order: compiled `,
-\ `header: compiled ` and `same: compiled ` print each build's result: its
-\ LINKER:COMPILED, or the code it threw. `crafted: compiled ` prints nine: crafted/e.f's build, seven
+\ which write the program `prog`. Then held/w.f, h.f and r.f are built as the
+\ header sequence's files are, r.f also holding a header-data address.
+\ `edit: compiled `, `tail: compiled `, `share: compiled `, `laid: compiled `,
+\ `private: compiled `, `parts: compiled `, `scope: compiled `, `inside: compiled `,
+\ `twins: compiled `, `order: compiled `, `header: compiled `, `same: compiled ` and
+\ `held: compiled ` print each build's result: its LINKER:COMPILED, or the code it
+\ threw. `crafted: compiled ` prints nine: crafted/e.f's build, seven
 \ over an edit of its object the link refuses or links wrong, then a plain
 \ build. With `facts`, a build loads count.f and facts.f, then its body compiles
 \ FOB-AFTER, a caller of count.f's words, and FOB-WRAP, a caller of facts.f's
@@ -277,6 +279,9 @@ PATH-CAP BUFFER: FOURTH-BUF
 : HEAD-W$ ( -- ptr u8 n ) s" header" s" w.f" FIRST-BUF FILE-IN ;
 : HEAD-H$ ( -- ptr u8 n ) s" header" s" h.f" SECOND-BUF FILE-IN ;
 : HEAD-R$ ( -- ptr u8 n ) s" header" s" r.f" THIRD-BUF FILE-IN ;
+: HELD-W$ ( -- ptr u8 n ) s" held" s" w.f" FIRST-BUF FILE-IN ;
+: HELD-H$ ( -- ptr u8 n ) s" held" s" h.f" SECOND-BUF FILE-IN ;
+: HELD-R$ ( -- ptr u8 n ) s" held" s" r.f" THIRD-BUF FILE-IN ;
 : SAME-K$ ( -- ptr u8 n ) s" same" s" k.f" FIRST-BUF FILE-IN ;
 : SAME-S1$ ( -- ptr u8 n ) s" same" s" s1.f" SECOND-BUF FILE-IN ;
 : SAME-S2$ ( -- ptr u8 n ) s" same" s" s2.f" THIRD-BUF FILE-IN ;
@@ -497,6 +502,29 @@ PATH-CAP BUFFER: FOURTH-BUF
    HEAD-STORED {: two:n :}
    HEAD-STORED {: three:n :}
    s" header: compiled " one two three RESULTS. cr ;
+
+: HELD-BUILD ( -- n )
+   [: s" app" RTARGET:HOST-TARGET [: HELD-W$ included  HELD-R$ included ;] LINKER:WITH ;]
+   catch RESULT ;
+
+: HELD-STORED ( -- n )
+   [: s" app" RTARGET:HOST-TARGET [: HELD-W$ included  HELD-H$ included  HELD-R$ included ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ HEADS with r.f also holding a header-data address: T's literal has the bytes of a facts text
+\ the open lays for an owned primitive (linker.f OWNED-RECORDS). r.f compiles when h.f joins.
+: HELDS ( -- )
+   s" held" DIR$ FS:MAKE-DIR
+   HELD-W$ s\" package FILE-OBJECTS-HELD public : W ( -- n ) 3 ; ;package\n" FS:WRITE-ALL
+   HELD-H$ s\" package FILE-OBJECTS-HELD-H public : H ( -- ) ; ;package\n' FILE-OBJECTS-HELD-H:H data-base $43A0 + xt!\n"
+   FS:WRITE-ALL
+   HELD-R$ s\" package FILE-OBJECTS-HELD-R public : T ( -- ptr u8 n ) s\" ( -- ) primitive \" ; ;package\nFILE-OBJECTS-HELD:W constant FILE-OBJECTS-HELD-N\n"
+   FS:WRITE-ALL
+   HELD-BUILD {: one:n :}
+   HELD-STORED {: two:n :}
+   HELD-STORED {: three:n :}
+   s" held: compiled " one two three RESULTS. cr ;
 
 \ The second build alone writes a program, PROG$ in the out root: its entry is the header store
 \ s2.f's object holds, and LINKER:WRITE ends the build rc 74 when the entry cell is empty.
@@ -746,7 +774,7 @@ variable SLOT-S                          \ and their count
    s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES CRAFTS
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----
