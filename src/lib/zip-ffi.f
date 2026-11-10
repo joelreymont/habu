@@ -43,28 +43,38 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
    repeat
    @ STATE-RELEASE ;
 
-: CLOSE-INPUT-OBJECT ( ptr n -- bool ) {: node:ptr :}
-   node INPUT-KIND @ 1 = if node INPUT-FD @ C-CLOSE-FD 0<> exit then
-   node INPUT-KIND @ 2 = if false exit then
-   node INPUT-OBJECT @ dup NULL? if drop false else C-FCLOSE 0<> then ;
+\ 0, or E-FS-IO for a failed descriptor close, E-READ for a failed libzip one.
+: CLOSE-INPUT-OBJECT ( ptr n -- n ) {: node:ptr :}
+   node INPUT-KIND @ 1 = if
+      node INPUT-FD @ C-CLOSE-FD 0<> if E-FS-IO else 0 then exit
+   then
+   node INPUT-KIND @ 2 = if 0 exit then
+   node INPUT-OBJECT @ dup NULL? if drop 0 exit then
+   C-FCLOSE 0<> if E-READ else 0 then ;
 
-: CLOSE-OWNED ( ptr n -- bool ) {: owner:ptr :}
-   false begin owner DETACH-OWNED dup NULL? 0= while
+: WORSE-CODE ( n n -- n ) {: a:n b:n :}
+   a E-FS-IO = b E-FS-IO = or if E-FS-IO exit then
+   a 0<> if a else b then ;
+
+: CLOSE-OWNED ( ptr n -- n ) {: owner:ptr :}
+   0 begin owner DETACH-OWNED dup NULL? 0= while
       {: input:ptr :}
-      input CLOSE-INPUT-OBJECT or
+      input CLOSE-INPUT-OBJECT WORSE-CODE
       input NODE-FREE
    repeat drop ;
 
 : DISCARD-NODE ( ptr n -- )
    {: node:ptr :}
-   node CLOSE-OWNED
+   node CLOSE-OWNED {: inputs:n :}
    node OBJECT @ dup NULL? if drop else C-DISCARD then
+   false
    node SOURCE-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
    node SNAP-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
    node RAW-PTR @ dup NULL? if drop else node RAW-LEN @ munmap 0<> or then
    node SOURCE-LIVE @ 0<> if node SOURCE-PTR @ unlink 0<> or then
    node FORGET-ARCHIVE
-   if E-READ throw then ;
+   if E-FS-IO throw then
+   inputs 0<> if inputs throw then ;
 
 
 : C-OPEN ( ptr u8 n -- ptr u8 ) {: path:ptr flags:n :}

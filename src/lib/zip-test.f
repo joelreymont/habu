@@ -106,11 +106,15 @@ TASK:SEMAPHORE ZIP-START
    other ZIP:CLOSE ;
 
 : MALFORMED ( -- ) s" invalid.zip" PATH$ ZIP:OPEN drop ;
+: ABSENT ( -- ) s" absent.zip" PATH$ ZIP:OPEN drop ;
+: DIR-OPEN ( -- ) BASE$ ZIP:OPEN drop ;
 : EMPTY-PATH ( -- ) s" " ZIP:OPEN drop ;
 : NUL-PATH ( -- ) S\" a\x00b" ZIP:OPEN drop ;
 : BAD-PATHS ( -- )
    s" invalid.zip" PATH$ s" temporarily unavailable" FS:WRITE-ALL
    [: MALFORMED ;] E-OPEN TTHROWSQ
+   [: ABSENT ;] E-FS-OPEN TTHROWSQ
+   [: DIR-OPEN ;] E-FS-IO TTHROWSQ
    [: EMPTY-PATH ;] E-PATH TTHROWSQ
    [: NUL-PATH ;] E-FFI-NUL TTHROWSQ ;
 

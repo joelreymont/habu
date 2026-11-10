@@ -1,4 +1,5 @@
-\ Supply an output path and an unusable TMPDIR to test clean OPEN refusal.
+\ Supply an output path and an unusable TMPDIR: OPEN refuses with FS:MKTEMP's
+\ E-FS-DIR.
 require src/lib/zip.f
 require src/lib/zip-test-fixture.f
 require src/lib/fs.f
@@ -16,7 +17,7 @@ public
    0 SCRIPT-ARGV$ {: path:ptr len:n :}
    path len ORIGINAL$ FS:WRITE-ALL
    path len [: TRY-TEMP ;] catch {: code:n :} 2drop
-   code ZIP:E-OPEN T=
+   code E-FS-DIR T=
    T-REPORT path len type cr ;
 ;package
 

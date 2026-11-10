@@ -1,4 +1,5 @@
-\ zip-lifecycle-test.f - an archive's snapshot goes with CLOSE, and a halt
+\ zip-lifecycle-test.f - an archive's snapshot goes with CLOSE, a host fault
+\ during CLOSE keeps the host's code and still retires the archive, and a halt
 \ during disposal takes effect after the archive's node is freed.
 require src/lib/string.f
 require src/lib/zip.f
@@ -80,21 +81,43 @@ TASK:SEMAPHORE LOCK-RELEASE
    LOCK-RELEASE TASK:SEMAPHORE-DESTROY ;
 
 
+: KEEP-SNAP-PATH ( archive -- ) ARCHIVE-NODE {: node:ptr :}
+   node SOURCE-PTR @ SNAP-PATH node SOURCE-LEN @ BYTE-COPY
+   node SOURCE-LEN @ SNAP-PATH-U ! ;
+
 \ An archive's snapshot exists while it is open and goes with CLOSE.
 : SNAPSHOT-REMOVED ( -- )
    INPUT$ OPEN {: archive:archive :}
-   archive ARCHIVE-NODE {: node:ptr :}
-   node SOURCE-PTR @ SNAP-PATH node SOURCE-LEN @ BYTE-COPY
-   node SOURCE-LEN @ SNAP-PATH-U !
+   archive KEEP-SNAP-PATH
    s" the open archive's snapshot exists" T-LABEL
    SNAP-PATH SNAP-PATH-U @ FS:EXISTS? TTRUE
    archive CLOSE
    s" CLOSE removed the archive's snapshot" T-LABEL
    SNAP-PATH SNAP-PATH-U @ FS:EXISTS? TFALSE ;
 
+: CLOSE-KEEP ( archive -- archive ) dup CLOSE ;
+
+: SNAPSHOT-GONE ( -- )
+   INPUT$ OPEN {: archive:archive :}
+   archive KEEP-SNAP-PATH
+   SNAP-PATH SNAP-PATH-U @ FS:REMOVE-FILE
+   s" CLOSE with its snapshot removed is E-FS-IO" T-LABEL
+   archive [: CLOSE-KEEP ;] catch E-FS-IO T= drop
+   s" CLOSE retired the archive whose snapshot was removed" T-LABEL
+   archive [: CLOSE-KEEP ;] catch E-HANDLE T= drop ;
+
+: SOURCE-FD-GONE ( -- )
+   INPUT$ OPEN {: archive:archive :}
+   s" the source input's descriptor closes under it" T-LABEL
+   archive OPEN-SOURCE INPUT-NODE INPUT-FD @ C-CLOSE-FD 0 T=
+   s" CLOSE with an open source input's descriptor closed is E-FS-IO" T-LABEL
+   archive [: CLOSE-KEEP ;] catch E-FS-IO T= drop
+   s" CLOSE retired the archive whose input's descriptor was closed" T-LABEL
+   archive [: CLOSE-KEEP ;] catch E-HANDLE T= drop ;
+
 : LIFECYCLE-RUN ( -- )
    T-RESET FS:CLEANUP-RESET LIFECYCLE-SETUP SNAPSHOT-REMOVED
-   HALT-DURING-CLOSE FS:CLEANUP-RUN T-REPORT ;
+   SNAPSHOT-GONE SOURCE-FD-GONE HALT-DURING-CLOSE FS:CLEANUP-RUN T-REPORT ;
 
 
 LIFECYCLE-RUN

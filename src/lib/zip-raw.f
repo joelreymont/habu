@@ -86,7 +86,8 @@ $14 constant LOCATOR-BYTES
    0 begin dup len < while
       dup {: done:n :}
       node SNAP-FD @ dst done + len done - off done + C-PREAD {: got:n :}
-      got 0 <= got len done - > or if E-READ throw then
+      got 0 < if E-FS-IO throw then
+      got 0= got len done - > or if E-READ throw then
       got +
    repeat drop ;
 

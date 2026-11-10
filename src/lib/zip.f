@@ -1,6 +1,9 @@
 \ zip.f - indexed ZIP reading and byte-preserving replacement; libzip
 \ (src/lib/zip-ffi.f) decompresses. Every word checks that the archive is live
 \ (ZIP:E-HANDLE) and the entry its own (ZIP:E-ENTRY). No error quotes a member.
+\ ZIP:E-OPEN, E-READ and E-SIZE refuse the archive's bytes or report a libzip
+\ failure, and E-SIZE a caller's length too; a host fault ZIP sees keeps the
+\ host's code (FS:MKTEMP's, E-FS-OPEN, E-FS-IO).
 \ STORAGE CLASS. TASK-LOCAL: libzip's stat block and EOF probe byte, one
 \ TASK:+USER row. A handle owns its buffers, entries and inputs and has one task
 \ owner. PROCESS-WIDE: the identity registry and serial, src/lib/zip-state.f.
@@ -37,19 +40,14 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    node SOURCE-PTR ! len node SOURCE-LEN ! 1 node SOURCE-LIVE !
    node copy ;
 
-\ An unusable TMPDIR, or any other refusal to make the snapshot, is E-OPEN. The
-\ room for its path is allocated outside the catch, so an allocation failure
-\ keeps its own code, as OPEN-WORK's other allocations do.
 : SNAPSHOT-OPEN ( ptr n -- )
    {: node:ptr :}
    node SNAPSHOT-ROOM BUFFER-ALLOC {: copy:ptr :}
-   node copy [: SNAPSHOT-WORK ;] catch {: code:n :}
-   2drop
-   code 0<> if E-OPEN throw then ;
+   node copy SNAPSHOT-WORK 2drop ;
 
 : SOURCE-STEP ( ptr n ptr u8 n -- n ) {: node:ptr buf:ptr cap:n :}
    node SOURCE-FD @ buf cap read {: got:n :}
-   got 0 < got cap > or if E-READ throw then
+   got 0 < got cap > or if E-FS-IO throw then
    got 0 > if node SNAP-FD @ >FD buf got FD:WRITE-FULL then
    got ;
 
@@ -62,7 +60,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 : CLOSE-SOURCE-FD ( ptr n -- ) {: node:ptr :}
    node SOURCE-FD @ {: fd:n :}
    -1 node SOURCE-FD !
-   fd C-CLOSE-FD 0<> if E-READ throw then ;
+   fd C-CLOSE-FD 0<> if E-FS-IO throw then ;
 
 : NATIVE-STORED? ( ptr n -- bool ) {: node:ptr :}
    node MEMBER-COUNT @ 0 ?do
@@ -79,11 +77,11 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    len node PATH-LEN !
    node SNAPSHOT-OPEN
    node PATH-PTR @ open-rd {: src:n :}
-   src 0 < if E-OPEN throw then src node SOURCE-FD !
+   src 0 < if E-FS-OPEN throw then src node SOURCE-FD !
    node COPY-SOURCE node CLOSE-SOURCE-FD
    node RAW-LEN @ dup END-BYTES < if E-OPEN throw then
    0 swap 1 2 node SNAP-FD @ 0 mmap {: mapped:n :}
-   mapped -1 = if E-OPEN throw then
+   mapped -1 = if E-FS-IO throw then
    mapped MAPPED>RAW node RAW-PTR !
    node PARSE-RAW
    node NATIVE-STORED? 0= if
@@ -92,7 +90,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
       czip C-COUNT node MEMBER-COUNT @ <> if E-OPEN throw then
    then
    node $10000 BUFFER-ALLOC node RAW-SCRATCH !
-   node RAW-PTR @ node RAW-LEN @ munmap 0<> if E-READ throw then
+   node RAW-PTR @ node RAW-LEN @ munmap 0<> if E-FS-IO throw then
    0 MAPPED>RAW node RAW-PTR !
    node path len flags ;
 
@@ -169,7 +167,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    ident node ID !
    owner node INPUT-OWNER ! owner RAW-LEN @ node INPUT-LEN !
    owner SOURCE-PTR @ open-rd {: fd:n :}
-   fd 0 < if node NODE-FREE E-OPEN throw then
+   fd 0 < if node NODE-FREE E-FS-OPEN throw then
    fd node INPUT-FD ! 1 node INPUT-KIND !
    node REGISTER-INPUT ;
 
@@ -205,7 +203,10 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    dst SPAN:$ {: data:ptr cap:n :}
    cap 0= if 0 exit then
    node data cap INPUT-BYTES {: got:n :}
-   got 0 < got cap > or if E-READ throw then
+   \ A negative count from read or C-PREAD (kinds 1 and 2) is the host's; from
+   \ C-FREAD it is libzip's and does not tell the bytes from the host.
+   got 0 < if node INPUT-KIND @ 0= if E-READ throw then E-FS-IO throw then
+   got cap > if E-READ throw then
    got 0= if node INPUT-END 0 exit then
    node INPUT-OFF @ got SAFE+ dup node INPUT-LEN @ > if E-READ throw then
    node INPUT-OFF !
@@ -215,15 +216,8 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 
 : DISCARD-INPUT ( ptr n -- n ) {: node:ptr :}
    node UNREGISTER-INPUT
-   node INPUT-KIND @ 1 = if
-      node INPUT-FD @ C-CLOSE-FD
-   else
-      node INPUT-KIND @ 2 = if 0 else
-         node INPUT-OBJECT @ {: file:ptr :}
-         file NULL? if 0 else file C-FCLOSE then
-      then
-   then {: code:n :}
-   node NODE-FREE code ;
+   node CLOSE-INPUT-OBJECT
+   node NODE-FREE ;
 
 : READ-IN-TRY ( ptr n SPAN:span<u8> -- ptr n SPAN:span<u8> ) {: node:ptr dst :}
    node dst READ-INNER node INPUT-LAST ! node dst ;
@@ -244,7 +238,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    node [: CLOSE-IN-WORK ;] catch {: code:n :}
    drop node DISCARD-INPUT {: close-code:n :}
    code 0<> if code throw then
-   close-code 0<> if E-READ throw then ;
+   close-code 0<> if close-code throw then ;
 
 : COPY-INPUT ( ptr n ptr u8 n -- ptr n ptr u8 n )
    {: node:ptr buf:ptr len:n :}
@@ -266,7 +260,9 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    node len BUFFER-ALLOC {: buf:ptr :}
    node idx OPEN-INPUT INPUT-NODE {: input:ptr :}
    input buf len COPY-ATTEMPT {: code:n :}
-   input DISCARD-INPUT 0<> code 0<> or if E-READ throw then
+   input DISCARD-INPUT {: close-code:n :}
+   code 0<> if code throw then
+   close-code 0<> if close-code throw then
    buf len ;
 
 : WRITABLE ( ptr n -- )
@@ -299,10 +295,10 @@ public
 
 \ OPEN is read-only; EDIT opens an existing archive (copy the input first for a
 \ new output). Both copy the input once to a private snapshot under $TMPDIR (or
-\ /tmp), so later changes to the input path change nothing. No snapshot, or no
-\ end record, is ZIP:E-OPEN and releases what it made; there is no in-memory
-\ fallback. An all-stored unencrypted archive reads members from the snapshot;
-\ any other opens libzip.
+\ /tmp), so later changes to the input path change nothing. No end record is
+\ ZIP:E-OPEN; a snapshot that cannot be made keeps the host's code; either
+\ releases what it made, and there is no in-memory fallback. An all-stored
+\ unencrypted archive reads members from the snapshot; any other opens libzip.
 : OPEN ( ptr u8 n -- archive ) READONLY-FLAG OPEN-CHECKED ;
 : EDIT ( ptr u8 n -- archive ) 0 OPEN-CHECKED ;
 : OPEN-FILE ( ptr u8 n -- archive ) OPEN ;
@@ -313,7 +309,7 @@ public
    ARCHIVE-NODE {: node:ptr :}
    node RAW-PTR @ NULL? if
       0 node RAW-LEN @ 1 2 node SNAP-FD @ 0 mmap {: mapped:n :}
-      mapped -1 = if E-READ throw then
+      mapped -1 = if E-FS-IO throw then
       mapped MAPPED>RAW node RAW-PTR !
    then
    node RAW-PTR @ node RAW-LEN @ ;
@@ -348,8 +344,8 @@ public
 \ callback context.
 : INPUT-SLOT ( ptr n -- ptr input ) >INPUT-SLOT ;
 
-\ Checks length and CRC through EOF; a failure retires the input and throws
-\ ZIP:E-READ.
+\ Checks length, and a member's CRC, through EOF, a mismatch being ZIP:E-READ;
+\ any failure retires the input.
 : READ-IN ( input SPAN:span<u8> -- n ) READ-IN-CHECKED ;
 \ Drains and verifies an unfinished member.
 : CLOSE-ENTRY ( input -- ) CLOSE-IN-CHECKED ;

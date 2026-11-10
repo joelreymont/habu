@@ -1,6 +1,7 @@
 \ End-to-end ZIP:OPEN refusal under an unusable TMPDIR. A child engine runs
 \ test/zip-temp-source.f with TMPDIR naming a regular file, so the source
-\ snapshot cannot be created and OPEN throws ZIP:E-OPEN with no memory fallback.
+\ snapshot cannot be created and OPEN throws FS:MKTEMP's E-FS-DIR with no memory
+\ fallback.
 \ The child reads its archive path from argv, so it runs spawned and stays
 \ unregistered. The temporary tree is retained as evidence.
 require src/lib/string.f
@@ -27,7 +28,7 @@ variable RC
 : ARCHIVE$ ( -- ptr u8 n ) ARCHIVE ARCHIVE-U @ ;
 
 \ BAD is a regular file, so FS:MKTEMP refuses a TMPDIR naming it (E-FS-DIR)
-\ and OPEN answers ZIP:E-OPEN.
+\ and OPEN passes that code on.
 : SETUP ( -- )
    s" zip-temp" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
