@@ -1226,15 +1226,11 @@ variable RC
    s\" inc-target.f\" included\nINCLUDED-WORD drop\n" FX+
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
-\ The plain check and --all-errors certify the fixture; --verify-only gives two
-\ deferrals: the call CALL of a body's loader, at the start of line CLINE from
-\ byte CBS, then the stretch at TOK, on LINE at COL, in bytes [BS, BE).
-: VERIFY-DEFERRED-AT ( ptr u8 n n n ptr u8 n n n n n -- )
+\ --verify-only gives two deferrals: the call CALL the run decides, at the start
+\ of line CLINE from byte CBS, then the stretch or definition deferred at TOK,
+\ on LINE at COL, in bytes [BS, BE).
+: VERIFY-ONLY-AT ( ptr u8 n n n ptr u8 n n n n n -- )
    {: call:ptr callu:n cline:n cbs:n tok:ptr toku:n line:n col:n bs:n be:n :}
-   s" " 0 CHECK-EXIT
-   GJA-LINE# @ 0 T=
-   s" --all-errors" 0 CHECK-EXIT
-   GJA-LINE# @ 0 T=
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 2 T=
    0 s" code" s" W-CHECK-DEFERRED" FIELD=
@@ -1243,6 +1239,16 @@ variable RC
    1 s" code" s" W-CHECK-DEFERRED" FIELD=
    1 s" verdict" s" deferred" FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ The plain check and --all-errors certify the fixture; --verify-only defers
+\ the call CALL of a body's loader and the stretch at TOK (VERIFY-ONLY-AT).
+: VERIFY-DEFERRED-AT ( ptr u8 n n n ptr u8 n n n n n -- )
+   {: call:ptr callu:n cline:n cbs:n tok:ptr toku:n line:n col:n bs:n be:n :}
+   s" " 0 CHECK-EXIT
+   GJA-LINE# @ 0 T=
+   s" --all-errors" 0 CHECK-EXIT
+   GJA-LINE# @ 0 T=
+   call callu cline cbs tok toku line col bs be VERIFY-ONLY-AT ;
 
 \ A string loader's path is the bytes the load's literal makes: escapes decoded,
 \ followed through `included` and `required`; a plain literal's spelling is
@@ -1747,7 +1753,9 @@ variable RC
 \ A structure still open where its definition ends is one the load cannot
 \ compile: it refuses the definition at the `;`, or at the `does>` ending a
 \ definer's body, before a signature that does not parse, a called shadowed
-\ name, a trust-boundary word and dead code. An open match keeps its reason.
+\ name, a trust-boundary word and dead code. A definer whose head calls a word
+\ the run decides is refused as the load refuses it, never as a duplicate of
+\ itself, and --verify-only defers that head. An open match keeps its reason.
 : TEST-CONTROL-OPEN ( -- )
    s" a signature that does not parse and an if open at ;" T-LABEL
    s" : X ( n -- zz ) dup if ;" s" badsig-open.f" LINE-FIXTURE
@@ -1765,6 +1773,27 @@ variable RC
    s" an if open at the does> ending a definer's body" T-LABEL
    s" : CONST ( n -- ) create dup , 0= if does> ( -- n ) @ ;" s" does-open.f" LINE-FIXTURE
    s" E-REJECTED" s" does>" 1 37 36 41 REFUSED-AT
+   s" an if open at does> after a head call the run decides" T-LABEL
+   s" : MYK ( n -- ) MADE drop create dup , 0= if does> ( -- n ) @ ;"
+   s" made-does-open.f" MADE-FIXTURE
+   s" E-REJECTED" s" does>" 3 45 86 91 RUN-REFUSED-AT
+   s" MK" 2 34 s" does>" 3 45 86 91 VERIFY-ONLY-AT
+   s" an if open at does> on the line after a head call the run decides" T-LABEL
+   SB-RESET
+   s" : MK ( -- ) create ; parses: MK 1" SB-APPEND LF+
+   s" MK MADE" SB-APPEND LF+
+   s" : MYK ( n -- ) ( c ) MADE drop create dup ," SB-APPEND LF+
+   s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
+   s" made-does-open2.f" FIXTURE!
+   s" E-REJECTED" s" does>" 4 10 95 100 RUN-REFUSED-AT
+   s" an orphan then before does> after a head call the run decides" T-LABEL
+   s" : MYK ( n -- ) MADE drop create dup , then does> ( -- n ) @ ;"
+   s" made-does-then.f" MADE-FIXTURE
+   s" E-REJECTED" s" then" 3 39 80 84 RUN-REFUSED-AT
+   s" an undefined head call and an if open at does>" T-LABEL
+   s" : MYK ( n -- ) NOSUCH drop create dup , 0= if does> ( -- n ) @ ;"
+   s" made-does-nosuch.f" MADE-FIXTURE
+   s" E-UNDEFINED" s" NOSUCH" 3 16 57 63 RUN-REFUSED-AT
    s" an if open at the ; ending a does> clause" T-LABEL
    s" : CONST ( n -- ) create , does> ( -- n ) @ dup 0= if ;" s" clause-open.f" LINE-FIXTURE
    s" E-REJECTED" s" ;" 1 54 53 54 REFUSED-AT

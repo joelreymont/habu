@@ -27254,8 +27254,11 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
       CHECKER-UNSEEN-MARK
       2 EXIT
    THEN
-   \ A does> clause may be checked before the parent's closing body checks.
-   \ Keep only an earlier parent compile or resolution refusal in this pass.
+   \ A parent-order pass checks a definer's head before its does> clause; the
+   \ parent's closing pass checks it again once the clause is checked and
+   \ neither refused nor left to the run. Keep only an earlier parent compile
+   \ or resolution refusal in this pass; a deferral it reaches records nothing
+   \ (the deferred record step below).
    TORDER-ACTIVE @ TORDER-PARENT-GATE >=
    RCOMPILE @ 0= REFUSAL @ USING-KIND? 0= and and IF
       0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
@@ -27366,8 +27369,10 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    \ Deferred: the declaration is recorded with authority, so a later caller
    \ still binds to it and a duplicate is still refused, but no control claim
    \ is made for a body the run measures; only CTL-INHERITED, a may-claim the walk
-   \ saw directly. The last pass of a retried check records it.
-   dup 2 =  NMU @ 0 >  and  CHECK-SIG? and  CK-AOT-RETRY-DUE @ 0= and IF
+   \ saw directly. The last pass of a retried check records it, and of a
+   \ definer's head the parent's closing pass, never a parent-order pass.
+   dup 2 =  NMU @ 0 >  and  CHECK-SIG? and  CK-AOT-RETRY-DUE @ 0= and
+   TORDER-ACTIVE @ TORDER-PARENT-GATE < and IF
       NMA @ NMU @ CHECK-REC-ADMIT
       NMA @ NMU @ INHSET @ NORET-ADD
       SGA @ SGU @  NMA @ NMU @  NMOFF @ TADDR NMU @  RES-TRUE CHECKER-USIG-CERT-ADD-AS
