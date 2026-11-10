@@ -8,6 +8,14 @@ Habu directly.
 Zen, Tender and Maki build, test and run on Habu without issues. A dot that
 removes an issue one of them meets goes before any other work.
 
+Until the three are released, a Habu change is measured by what they do on it:
+Maki's image and viewer, Zen's server and worker and Tender's server are built
+from their own trees, cold then warm, and Tender's `tender.f` is loaded, on the
+candidate engine before it lands and on the installed one after. A fix one of
+them waits for lands and is installed alone, ahead of any stack it sits in.
+Work that does not move that measure waits. Suites, the chain check and a
+feature's review run once, before the install, not per change.
+
 ## Repository
 
 - Build and test candidates in a workspace or a temporary directory. Keep one
