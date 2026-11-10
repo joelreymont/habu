@@ -33,9 +33,12 @@
 \ inside/i.f: inside the package inside/p.f leaves open and inside/q.f closes,
 \ alone, inside again, alone. Then twin-x/a.f and twin-y/a.f under the
 \ out root, one name in two directories, are each built alone in turn x, y, x,
-\ y. `edit: compiled `, `tail: compiled `, `share: compiled `, `laid: compiled `,
-\ `private: compiled `, `parts: compiled `, `scope: compiled `, `inside: compiled `
-\ and `twins: compiled ` print each build's result: its LINKER:COMPILED, or the
+\ y. Then order/m.f, s.f, t.f and f.f, with s.f and t.f storing into m.f's
+\ variable and f.f reading it, are built in that order, twice with s.f and t.f
+\ swapped, then in that order again. `edit: compiled `, `tail: compiled `,
+\ `share: compiled `, `laid: compiled `, `private: compiled `, `parts: compiled `,
+\ `scope: compiled `, `inside: compiled `, `twins: compiled ` and
+\ `order: compiled ` print each build's result: its LINKER:COMPILED, or the
 \ code it threw. `crafted: compiled ` prints nine: crafted/e.f's build, seven
 \ over an edit of its object the link refuses or links wrong, then a plain
 \ build. With `facts`, a build loads count.f and facts.f, then its body compiles
@@ -228,6 +231,7 @@ PATH-CAP BUFFER: DIR-BUF
 PATH-CAP BUFFER: FIRST-BUF
 PATH-CAP BUFFER: SECOND-BUF
 PATH-CAP BUFFER: THIRD-BUF
+PATH-CAP BUFFER: FOURTH-BUF
 
 : DIR$ ( ptr u8 n -- ptr u8 n )
    {: d:ptr du:n :}
@@ -259,6 +263,10 @@ PATH-CAP BUFFER: THIRD-BUF
 : INSIDE-Q$ ( -- ptr u8 n ) s" inside" s" q.f" THIRD-BUF FILE-IN ;
 : TWIN-X$ ( -- ptr u8 n ) s" twin-x" s" a.f" FIRST-BUF FILE-IN ;
 : TWIN-Y$ ( -- ptr u8 n ) s" twin-y" s" a.f" SECOND-BUF FILE-IN ;
+: ORDER-M$ ( -- ptr u8 n ) s" order" s" m.f" FIRST-BUF FILE-IN ;
+: ORDER-S$ ( -- ptr u8 n ) s" order" s" s.f" SECOND-BUF FILE-IN ;
+: ORDER-T$ ( -- ptr u8 n ) s" order" s" t.f" THIRD-BUF FILE-IN ;
+: ORDER-F$ ( -- ptr u8 n ) s" order" s" f.f" FOURTH-BUF FILE-IN ;
 
 \ Given a build's caught code: that code, or its LINKER:COMPILED when it threw none.
 : RESULT ( n -- n ) dup 0= if drop LINKER:COMPILED then ;
@@ -429,6 +437,30 @@ PATH-CAP BUFFER: THIRD-BUF
    TWIN-X-BUILD {: three:n :}
    TWIN-Y-BUILD {: four:n :}
    s" twins: compiled " one two three RESULTS.  space four FMT:.INT cr ;
+
+: ORDER-BUILD ( -- n )
+   [: s" app" [: ORDER-M$ included  ORDER-S$ included  ORDER-T$ included  ORDER-F$ included ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+: ORDER-SWAPPED ( -- n )
+   [: s" app" [: ORDER-M$ included  ORDER-T$ included  ORDER-S$ included  ORDER-F$ included ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ s.f and t.f store into one cell and f.f reads it at top level: f.f compiles again when the
+\ storers swap.
+: ORDERS ( -- )
+   s" order" DIR$ FS:MAKE-DIR
+   ORDER-M$ s\" package FILE-OBJECTS-ORDER public variable MODE ;package\n" FS:WRITE-ALL
+   ORDER-S$ s\" 1 FILE-OBJECTS-ORDER:MODE !\n" FS:WRITE-ALL
+   ORDER-T$ s\" 2 FILE-OBJECTS-ORDER:MODE !\n" FS:WRITE-ALL
+   ORDER-F$ s\" FILE-OBJECTS-ORDER:MODE @ constant FILE-OBJECTS-ORDER-M\n" FS:WRITE-ALL
+   ORDER-BUILD {: one:n :}
+   ORDER-SWAPPED {: two:n :}
+   ORDER-SWAPPED {: three:n :}
+   ORDER-BUILD {: four:n :}
+   s" order: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
 \ ---- objects the link refuses or links wrong ----
 \ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
@@ -647,7 +679,7 @@ variable SLOT-S                          \ and their count
    s" app" [: STOP-GAP ;] LINKER:WITH
    s" app" [: STOP-STRADDLE ;] LINKER:WITH
    s" app" [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS CRAFTS
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS CRAFTS
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----
