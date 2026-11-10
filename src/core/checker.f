@@ -6510,11 +6510,20 @@ CHECKER-REG:}SCRATCH
    REFUSAL @ 0 <> IF REFUSAL @ EXIT THEN
    REFUSAL-OF ;
 
+\ No failure is pinned yet; inside an unjudged token, that token has not failed.
+: PIN-OPEN? ( -- bool )
+   UNJ-TOK @ 0 <> IF OK @ 0 <> ELSE FAILSET @ 0= THEN ;
+
 \ Marks the definition uncheckable only while the pin is open, as MDIAG! latches;
 \ an unjudged token's own mark, while it has not failed, arms UNJ-SETTLE (DO-TOK1).
 : UNCK-RAISE ( -- )
-   UNJ-TOK @ 0 <> IF OK @ 0 <> ELSE FAILSET @ 0= THEN
-   IF -1 UNCK ! THEN ;
+   PIN-OPEN? IF -1 UNCK ! THEN ;
+
+\ A name a rendering statement may define defers the definition only while the
+\ pin is open: a failure pinned before it decides it (the limit: UNSEEN-MARK$).
+: UNSEEN-RAISE ( -- )
+   PIN-OPEN? IF -1 UNSEEN ! THEN
+   UNCK-RAISE ;
 
 \ The pinned token's span in the scanned text, offsets from TBASE, and whether
 \ the refusal is an undefined word; an empty span when no failure pinned one.
@@ -19945,14 +19954,8 @@ defer NAMED-OPERAND-XT ( -- )
    [: C2-STOW-BORROW ;] is C2-STOW-BORROW-HOOK ;
 C2-STOW-BORROW-INSTALL
 
-\ A name no row answers: E-UNDEFINED (E-BAD-QUALIFIED for a malformed qualified
-\ name, which CHECKER-QBAD-TOK holds once UNSEEN-COVERS? has split this name),
-\ the name joins the lazy intake's queue (ASIG-MISS+), and a name a rendering
-\ statement in scope may define is left to the run (UNSEEN-COVERS?), which the
-\ flag answers.
-\ A prefix probe (CHECKER-PREFIX:BIND?) observes only misses in the token it
-\ just captured. Earlier body text belongs to the caller and may still await
-\ its own closing `;`.
+\ A prefix probe (CHECKER-PREFIX:BIND?) observes only misses in the token it just
+\ captured; earlier body text is the caller's and may still await its own `;`.
 variable CHECKER-PREFIX-ACTIVE
 variable CHECKER-PREFIX-CUT
 variable CHECKER-PREFIX-MISS
@@ -19965,15 +19968,17 @@ variable CHECKER-PREFIX-ROLLBACK
       rollback CHECKER-PREFIX-ROLLBACK !
    THEN ;
 
+\ A name no row answers is E-UNDEFINED (E-BAD-QUALIFIED when malformed) and joins
+\ the intake queue (ASIG-MISS+); true when the run may define it (UNSEEN-RAISE).
 : CALL-UNDEFINED ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    TSTART @ dup PREFIX-MISS-AT
    a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
-   -1 UNDEFERR !  UNCK-RAISE
+   -1 UNDEFERR !
    a u UNSEEN-COVERS?                              \ the run's to judge: see UNSEEN-MARK$
    {: unseen:bool :}
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
-   unseen IF -1 UNSEEN ! THEN
+   unseen IF UNSEEN-RAISE ELSE UNCK-RAISE THEN
    unseen ;
 
 \ The load's compiler finds no word named A U: it refuses the definition there
@@ -19996,7 +20001,7 @@ variable CHECKER-PREFIX-ROLLBACK
    CUSING @ 0= TOK-SYM @ SYM-EFFECT-UNRESOLVED? and IF
       TOK-SYM @ PRIM-TRUSTED-SYM? IF
          TOP-STEP @ 0= IF C2-STOW-BORROW  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
-      ELSE -1 UNSEEN !  UNCK-RAISE  EXIT THEN
+      ELSE UNSEEN-RAISE  EXIT THEN
    THEN
    \ What the call may do at run time is its symbol's, read before an identity
    \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
@@ -23735,9 +23740,10 @@ variable IS-PEND-U                   \ and its length
    IS-TARGET-TOK? 0= IF CHECKER-TAPE:K-IS -1 0 EVENT!  MD-IS-MISSING MDIAG!  IS-FAIL EXIT THEN
    IS-TARGET-SYM {: sym:n :}
    CHECKER-TAPE:K-IS  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
+   sym 0=  IS-TA@ IS-TU @ UNSEEN-COVERS?  and IF TICK-PIN  UNSEEN-RAISE  EXIT THEN
    sym DFER-FIND-SYM 0= IF sym IS-TARGET-FAIL EXIT THEN
    CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
-      -1 UNSEEN !  UNCK-RAISE  EXIT
+      UNSEEN-RAISE  EXIT
    THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
@@ -23843,7 +23849,7 @@ variable IS-PEND-U                   \ and its length
       0 OK !  -1 FAILSET !  EXIT
    THEN
    CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
-      TICK-PIN  -1 UNSEEN !  UNCK-RAISE  EXIT
+      TICK-PIN  UNSEEN-RAISE  EXIT
    THEN
    FEP-CLEAR
    sym CHECKER-FIND-USIG-SYM drop
@@ -26328,17 +26334,14 @@ variable CUR-OPEN   variable CUR-PSIG
    FAILSET @ 0=  OK @ and IF 1 RSBAD !  -1 FAILSET ! THEN
    0 OK ! ;
 
-\ A definition whose effect cannot be recorded is uncheckable (ROWS-FIT?): one
-\ deeper than EFFECT-DEPTH-MAX levels, with the depth of its deepest row, or
-\ one taking more than EFFECT-MIN-IN-MAX cells, with its input row's width.
-\ Asked before the verdict, and UNFIT keeps every record step from it. A
-\ refused or uncheckable definition keeps its own reason. A deferred one cannot
-\ be deferred, since deferring records its declaration: it is uncheckable for
-\ this reason instead, and the token the run would define is no undefined word.
+\ An effect too deep or wide to record (ROWS-FIT?) is uncheckable for it; a
+\ deferral would record it, so a covered name yields; a pinned refusal stands.
 : UNFIT-UNCHECKABLE ( -- )
    UNFIT @ 0= IF EXIT THEN
    UNSEEN @ 0 <> IF
-      0 UNSEEN !  0 UNDEFERR !  UNFIT-WHY MDIAG !  UNCK-RAISE  EXIT
+      0 UNSEEN !  0 UNDEFERR !
+      RCOMPILE @ 0 <> IF 0 UNCK !  0 OK !  EXIT THEN
+      UNFIT-WHY MDIAG !  UNCK-RAISE  EXIT
    THEN
    OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
    UNFIT-WHY MDIAG!  UNCK-RAISE ;

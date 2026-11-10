@@ -1018,8 +1018,8 @@ variable RC
    c cu REJECTED-AS
    0 tok toku line col bs be AT ;
 
-\ --verify-only defers both MK's call and X's body, whose use of MADE or unsafe
-\ word needs its own warning where the check stopped.
+\ --verify-only defers both MK's call and X's body, whose use of MADE needs its
+\ own warning where the check stopped.
 : VERIFY-DEFERS ( ptr u8 n -- )
    {: tok:ptr toku:n :}
    s" --verify-only" 0 CHECK-EXIT
@@ -1333,8 +1333,7 @@ variable RC
    s" x at 'zz'" REJECT-RC LOADED
    s" a trust-boundary word before a call of that word" T-LABEL
    s" : X ( -- ) evaluate MADE ;" s" made-unsafe.f" MADE-FIXTURE
-   s" E-UNSAFE" s" evaluate" 3 12 53 61 RUN-REFUSED-AT
-   s" evaluate" VERIFY-DEFERS
+   s" E-UNSAFE" s" evaluate" 3 12 53 61 VERIFY-REFUSED-AT
    s" x at 'evaluate'" REJECT-RC LOADED
    s" a call of that word, whose address X does not declare" T-LABEL
    s" : X ( -- ) MADE ;" s" made-call.f" MADE-FIXTURE
@@ -1354,6 +1353,27 @@ variable RC
    GJA-LINE# @ 1 T=
    0 21 MK-DEFERRED
    s" x at 'zz'" REJECT-RC LOADED ;
+
+\ A word nothing defines after a name another package's public mark covers, in
+\ a definition too wide to record, is refused there as the load refuses it.
+: TEST-UNSEEN-UNDEFINED ( -- )
+   s" a covered qualified name, then a word nothing defines, in an unfit definition" T-LABEL
+   BASE$ s" unseen-undefined.f" FX-P FS:JOIN-PATH FX-PU !
+   0 FX-U !
+   s\" package PM\npublic\ns\" : MADE ( -- ) ;\" evaluate\n;package\n" FX+
+   s\" package QX\n: X ( " FX+
+   256 0 ?do s" n " FX+ loop
+   s" -- ) PM:MADE NOPE" FX+
+   256 0 ?do s"  drop" FX+ loop
+   s\"  ;\n;package\n" FX+
+   FX-PATH$ FX$ FS:WRITE-ALL
+   s" E-UNDEFINED" s" NOPE" 6 532 598 602 RUN-REFUSED-AT
+   s" --verify-only" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   0 s" evaluate" 3 21 38 46 FX-PATH$ CANON$ FX$ AT-IN
+   1 s" E-UNDEFINED" s" NOPE" 6 532 598 602 VERIFY-REJECTED-AT
+   s" E-UNDEFINED habu: in x: undefined word 'NOPE'" REJECT-RC LOADED ;
 
 \ A control-flow word with no structure open, or another structure's, is one
 \ the load cannot compile: it refuses the definition at that word, before a
@@ -1657,6 +1677,7 @@ variable RC
    TEST-LIVE-BRANCHES
    TEST-TICK-TARGET
    TEST-MADE
+   TEST-UNSEEN-UNDEFINED
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON
    TEST-SECOND-ELSE

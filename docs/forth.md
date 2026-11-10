@@ -2389,7 +2389,9 @@ sections above.
   wordlist of its top-level call. There, a later unresolved name that may be
   its product is checked by the subsequent `bin/hb --load` run; in
   `--verify-only` it is `W-CHECK-DEFERRED` at the use and the verdict is
-  `deferred`. The load rejects a misspelled `trust` product as
+  `deferred`. A failure the check pins before that use decides the definition
+  there, refused or uncheckable; the load names the use instead when the run
+  does not define it. The load rejects a misspelled `trust` product as
   `E-TRUST-UNRESOLVED`. The mark covers only later uses in that section; an
   earlier use, other package, or inaccessible private product still refuses.
   A `trust` row for an unknown product defers only in the wordlist where it

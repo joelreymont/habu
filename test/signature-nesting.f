@@ -6,7 +6,11 @@
 \ too, and each says so in its JSON packet with a suggestion of its own; the
 \ packet of a RECURSE with no declared effect has a null declared_effect, which
 \ the diagnostics gate accepts. A token that fails before the frames overflow
-\ keeps its mismatch in prose, packet and CHECK-CANDIDATE!'s answer.
+\ keeps its mismatch in prose, packet and CHECK-CANDIDATE!'s answer; a failure
+\ pinned before a name a rendering statement may define, or a compile-time
+\ refusal after it in an unfit definition, keeps its packet and answer, and that
+\ name alone defers its definition, or makes an unfit one uncheckable for its
+\ width.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
@@ -101,6 +105,13 @@ TYPED-VARIABLE SRC-U len
 
 : RECURSE-NOSIG ( -- )
    SRC-RESET  s" : " S+  RECURSE-TEXT  s"  ;" S+ ;
+
+\ A definition NAME taking 256 cells, one more than a record holds, whose body
+\ is BODY, then drops them all.
+: WIDE-TEXT ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n body:ptr bodyu:n :}
+   SRC-RESET  name nameu S+  s"  ( " S+  s" n " 256 S+N  s" -- ) " S+
+   body bodyu S+  s"  drop" 256 S+N ;
 
 \ A definer whose does> clause recurses.
 : RECURSE-DOES ( -- )
@@ -239,9 +250,42 @@ public
    RESULT-LINE  SRC$ TEST-EVAL:RC 0 T=
    s" an unknown type that ends a line refuses by its name alone" T-LABEL
    UNKNOWN-LINE
-   s" at 'sn-nosuch'" REFUSES
+   s" at 'sn-nosuch'" REFUSES ;
+
+\ Run while a package holding a rendering statement's mark is open, so MADE is
+\ a name the run may define (UNSEEN-COVERS?) to these texts and to no other.
+: UNSEEN-CASES ( -- )
+   s" an is target the run may define defers its definition to the run" T-LABEL
+   SRC-RESET  s" SN-IS-UNSEEN ( -- ) ['] T-RESET is MADE-D" S+
+   SRC$ CHECK-CANDIDATE! VERDICT-DEFERRED T=
+   s" a covered name alone in an unfit definition is uncheckable for its width" T-LABEL
+   s" SN-WIDE-UNSEEN" s" MADE" WIDE-TEXT
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
+   S\" \"reason\":\"input row too wide to record (256 cells, at most 255)\"" VERDICT-UNCHECKABLE PACKET-HAS
+   s" a covered name after a pinned reason in an unfit definition keeps the reason" T-LABEL
+   s" SN-LOOPLESS" s" i drop MADE" WIDE-TEXT
+   S\" \"code\":\"E-REJECTED\"" S\" \"verdict\":\"rejected\""
+   S\" \"reason\":\"no loop is open here\"" VERDICT-REFUSED PACKET-HAS
+   s" a structure left open after a covered name in an unfit definition keeps its reason" T-LABEL
+   s" SN-OPEN-UNSEEN" s" MADE" WIDE-TEXT  s"  0 0= IF" S+
+   S\" \"code\":\"E-REJECTED\"" S\" \"verdict\":\"rejected\""
+   S\" \"reason\":\"a control structure is still open at the end of the definition\"" VERDICT-REFUSED PACKET-HAS
+   s" a covered name after a pinned mismatch keeps the mismatch" T-LABEL
+   SRC-RESET  s" SN-MISMATCH ( -- ) 1 IF THEN MADE" S+
+   S\" \"code\":\"E-MISMATCH\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"bool \",\"actual\":\"n \"" VERDICT-REFUSED PACKET-HAS ;
+
+: REPORT ( -- )
    T-REPORT
    s" signature-nesting: ok" type cr ;
 ;package
 
 SIGNATURE-NESTING:RUN
+
+\ The mark covers this package alone (UNSEEN-COVERS?).
+package UNSEEN-NAMES
+CHECKER-UNSEEN-MARK
+SIGNATURE-NESTING:UNSEEN-CASES
+;package
+
+SIGNATURE-NESTING:REPORT
