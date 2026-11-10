@@ -8977,12 +8977,16 @@ package CHECK
 
 \ ndict@ at the open: records from here on are the build's, their facts in its space.
 variable BUILD-FIRST   0 BUILD-FIRST !
+\ hb's DP ceiling at the open (the linker's SAVED-CEILING): it bounds hb's records'
+\ facts while a build's space is open, when DP-CEILING-CELL holds the build's.
+variable HB-CEILING   0 HB-CEILING !
 
 
 public
 \ Saves every row's cells, then gives each store a fresh arena holding its
 \ prefix and each cell its value: two passes, since stores may share cells.
-: OPEN ( -- )
+: OPEN ( n -- )
+   HB-CEILING !
    ndict@ BUILD-FIRST !
    ROW-N @ 0 ?do i SAVE-ROW loop
    CELL-ROW-N @ 0 ?do i SAVE-CELL loop
@@ -12689,7 +12693,7 @@ PPRIM: PRIM-SPEC A-IN PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-NUM PE-N PE-OUT PPRIM;
 \ Their one caller is LINKER:WITH (src/habu/linker.f), at its open and close.
-PPRIM: CHECK OPEN PPRIM;
+PPRIM: CHECK OPEN PE-N PE-IN PPRIM;
 PPRIM: CHECK CLOSE PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The scope probe a caller that only observes asks before EFFECT-QUERY (BY-EFFECT?).
@@ -12969,17 +12973,19 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 : BUILDING? ( -- bool ) IMAGE-BASE 0 <> ;
 
 public
-\ Record ix's facts text, empty for none: bytes 32-39 hold its offset from the
-\ DATA owning the record, a build's space from the build's first record on, else
-\ hb's. Both DATAs have the size the current one's DP-CEILING-CELL bounds. The
-\ kernel checks only a write's index, so a text or length cell outside DATA dies.
+\ Record ix's facts text, empty for none: bytes 32-39 hold its offset in the DATA
+\ owning it, and a text outside that DATA dies: the kernel bounds only writes.
 : FACTS@ ( n -- ptr u8 n )
    {: ix:n :}
    ix CHECKER-RESOLVE:REC-AT CK-REC-FACTS-SLOT cells + @ {: off:n :}
    off 0= IF NULL-PTR BYTE-VIEW 0 EXIT THEN
-   BUILDING? IF IMAGE-BASE ELSE data-base NULL-PTR - THEN {: now:n :}
-   data-base BOOT:DP-CEILING-CELL + @ now - {: size:n :}
-   BUILDING? ix BUILD-FIRST @ >= and IF IMAGE-BASE ELSE data-base NULL-PTR - THEN {: base:n :}
+   data-base BOOT:DP-CEILING-CELL + @ {: ceiling:n :}
+   BUILDING? ix BUILD-FIRST @ >= and IF
+      IMAGE-BASE ceiling
+   ELSE
+      data-base NULL-PTR -  BUILDING? IF HB-CEILING @ ELSE ceiling THEN
+   THEN {: base:n top:n :}
+   top base - {: size:n :}
    off CELL < off size >= or IF s" checker: facts text outside DATA" 76 die THEN
    NULL-PTR BYTE-VIEW base + off + {: a:ptr :}
    a CELL - CELL-VIEW @ {: u:n :}

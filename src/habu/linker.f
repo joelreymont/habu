@@ -3484,7 +3484,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    construct step moved PROGRESS ! ;
 
 : CHECK-IN ( -- )
-   CHECK:OPEN
+   SAVED-CEILING @ CHECK:OPEN
    construct step checked PROGRESS ! ;
 
 \ The build's registry starts empty (include.f REQUIRE-SNAPSHOT), the loader logs each act,
