@@ -1165,7 +1165,10 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 \ in this order, and the seed refuses a registry that does not start where its
 \ capture did (src/core/type-family.f REG-AOT-BASE-BAD). fixed-body.f is a boot
 \ row because this file's builders name COMP:body; like span.f it declares a
-\ type family STARTUP rebuilds in this order. The lifecycle registry sits below
+\ type family STARTUP rebuilds in this order. fetch-check.f is a boot row because
+\ a checked fetch's compiled code calls NFETCH-CHECK by name (t0.f TAG-INLINE
+\ and VALIDATE, elaborate.f VALIDATE-FETCH), in a built program as in the
+\ engine. The lifecycle registry sits below
 \ the compiler capture window, so an FFI cleanup that capture tooling registers
 \ later never becomes a target of the window's declared CODE cells.
 \ These files carry require lines, so the provide rows must reach the registry

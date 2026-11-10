@@ -69,7 +69,8 @@
 \ argument, so their out roots hold only the files' objects.
 \ Build L builds log-main.f, whose first file takes LOG's facility and leaves HELD held: the program
 \ holds no mutex the build locked (macOS), and its MAIN takes HELD, logs its line and releases HELD.
-\ M has no require, so app-end.f's object becomes M's; L2 builds log-main.f again, compiling
+\ M has no require, so app-end.f's object becomes M's, and its program prints the enum its MAIN
+\ fetched through a pointer, a fetch tier 0 checks; L2 builds log-main.f again, compiling
 \ app-end.f beside log-main.f's reused objects.
 \ P builds path-main.f, whose top level caches the build's engine path; after M2, P2 links it
 \ beside a recompiled app-end.f, and its program prints its own path.
@@ -521,10 +522,21 @@ variable TAIL-N                          \ and the paths that end with it
    s" the program reports its own path" LABEL  own TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
 
+\ M's program, run in its own process: only a built program lacks the engine's
+\ own compiler files, so the build and the written file are the boundary under test.
+: BARE-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:OUT$ s\" valued\n" STR= {: same:bool :}
+   same  rc 0 =  and 0= if rc SHOW then
+   s" the program prints the enum its MAIN fetched" LABEL  same TTRUE
+   s" the program exits 0" LABEL  rc 0 T= ;
+
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    LOG-UNLOCKED  LOG-RUN
    s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
+   BARE-RUN
    s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    LOG-RUN
    s" P" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
