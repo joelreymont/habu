@@ -1,9 +1,11 @@
 ---
 title: Install Habu with a Habu command, not rsync
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-09T22:19:16.299037+02:00"
+closed-at: "2026-11-10T21:56:45.399791+02:00"
+close-reason: "landed: tools/install.f is on master and the Mac install ran with it; the spark install is an acceptance case of habu-cross-build-a-cb630896 (dots audit 2026-11-10)"
 blocks:
   - habu-cross-build-a-cb630896
 ---

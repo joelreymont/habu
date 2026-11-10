@@ -11,7 +11,6 @@ blocks:
   - habu-cross-build-a-cb630896
   - habu-name-the-build-abed309a
   - habu-run-one-tier-705c2c00
-  - habu-share-one-front-199b02a2
   - habu-read-each-def-f7ce769a
 ---
 

@@ -1,9 +1,11 @@
 ---
 title: Copy the tier-1 back end T0 uses into COMP
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-03T12:29:33.248064+02:00"
+closed-at: "2026-11-10T21:56:45.441200+02:00"
+close-reason: merged into habu-copy-every-tier-86155a25, which carries its whole text (dots audit 2026-11-10)
 ---
 
 Joel 2026-11-03 (DECISIONS "editing tier 1"): T0 shares only front-end code with tier 1; what T0 needs from tier 1's back end is copied into COMP and owned there; tier 1 keeps its copy unedited. Design /tmp/jerry-big/t0copy-design.md (rev 4; rev 3 kept as t0copy-design-r3.md). Lanes: 1 back-end copy (t0.f private PUBLISH-IT, HOST-ARITIES, HOST-ROOT-CONTRACT, HOST-DECL?, BODY-KIND, FIXED-VAL; no public items), workspace .jj-ws.noindex/jerry-t0pub, change tnsprlqx; 2 the callback request's typed state in definition.f, T0 reading it directly, FFI-CB EMIT ending the request on a throw (fixes habu-disarm-a-cb-7870abbf, supersedes habu-give-the-cb-e6876f60's design); 3 T0's fixed-shadow cell, picked by the tier at the builder sites (brief /tmp/jerry-big/t0c3-brief.md, to revise). Lanes 2 and 3 add public items (NDEFINITION:STUB-REQUEST, STUB-PLACED!, CALLBACK-STUB@'s contract, one cell): critic, then Joel. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-t0pub.
