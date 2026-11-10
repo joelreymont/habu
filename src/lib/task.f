@@ -1141,18 +1141,8 @@ variable ROW-N
    0 tcb TCB.CP ! ;
 
 \ ---- every declared TCB, and the sweep a capture runs over them ---------------
-\ ONE HEAD REACHES EVERY TCB THE PROGRAM DECLARED, because a capture has to reach
-\ them all: a prepared task holds this process's mappings and a running one its
-\ thread, and an image restores neither. The head is a declared pointer cell,
-\ which the stripped link relocates through its data map; each TCB's link is
-\ the raw cell one past its body, holding the previous TCB's address, and 0
-\ ends the chain. Both sit in the capture window, which an image restores at the
-\ captured addresses, so an undeclared cell holding one ships verbatim.
-\ A TCB address is not an offset from `dbase@`
-\ either (measured: the window at $340000000, `dbase@` at $1410000), so the link
-\ holds the address itself. A TASK:NEW record is on TCB-POOL, never on this
-\ chain: the chain is fixed once a task can run, because the crash handler and
-\ every lock-free walker read it without a lock, and an image carries it.
+\ The head and each link (TASK-LINK@) are declared address cells; 0 ends. The
+\ chain only grows, read unlocked, so a TASK:NEW record stays on TCB-POOL.
 PERSISTED-PTR-VARIABLE TASK-CHAIN
 
 \ The crash handler reads this chain after an instruction fetch faults in a
@@ -1171,7 +1161,7 @@ TASK-CHAIN-PUBLISH
 \ The link cell sits one cell past TCB.DONE. Nothing after the TCB belongs to
 \ TASK-ABI, so the layout check above answers for the structure unchanged.
 : TASK-LINK@ ( ptr n -- n )
-   TASK-TCB-BYTES + @ ;
+   TASK-TCB-BYTES + 0 ptr-field @ FFI:>CELL ;
 
 \ A record is a TCB, its pool link where a chain link sits (the next record as a
 \ number, 0 ends), and its claim: CLAIM-FREE, CLAIM-HELD while TASK:NEW has
@@ -1953,7 +1943,8 @@ variable SWEEP-ARMED
    create
       here CELL-VIEW >r
       ,  TASK-TCB-BYTES 8 / 1 - 0 do 0 , loop
-      TASK-CHAIN@ FFI:>CELL ,
+      here ptr-cell-mark 0 ,
+      TASK-CHAIN@ r@ TASK-TCB-BYTES + 0 ptr-field !
       r> TASK-CHAIN!
    does> ( -- ptr n ) ;
 
