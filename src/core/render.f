@@ -881,6 +881,28 @@ variable DSUGE  variable DSUGA
 : JEFFECT ( n n n n bool -- ) JOPEN JEFFECT-TEXT JCLOSE ;
 
 
+\ A definition's declared effect from the record SIG-EFF-CACHE! built before the
+\ body could bind the declared rows, instantiated as REND-RECORD does and named
+\ in the renderer's letters. Its names go back after it, and the live rows are
+\ then rendered with the text dropped, so the later fields name them as the live
+\ declared rows name them. A signature too bad or too large to record has no
+\ record: the live rows are then the only declared effect there is, and are
+\ rendered as the body left them.
+: DECL-EFFECT ( -- )
+   RECEFF-ON? 0= IF  SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT  EXIT THEN
+   RECEFF @ {: off:n :}
+   NLET @ RROW-N @ RATOM-N @ {: nlet:n rrow:n ratom:n :}
+   off E-PTR E-INST-RESET
+   off E-PTR E-HASR@ 0 <> {: hasr:bool :}
+   off E-PTR E-DIN@ E-INST  off E-PTR E-DOUT@ E-INST
+   hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
+   hasr JEFFECT
+   nlet NLET !  rrow RROW-N !  ratom RATOM-N !
+   RSN @ {: at:n :}
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT-TEXT
+   at RSN ! ;
+
+
 : INFERRED-EFFECT ( -- )   \ the body's effect so far: the declared inputs to the current rows
    SGSEEN @ IF SGIN @ ELSE BROW @ THEN
    DCUR @
@@ -1745,8 +1767,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DLOC-FIELDS
    s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
    SGSEEN @ IF
-     s" declared_effect" JKEY
-     SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT  44 EMIT1
+     s" declared_effect" JKEY  DECL-EFFECT  44 EMIT1
      s" declared_effect_source" JKEY
      SGA @ SGU @ SIG-TRIM JSTR  44 EMIT1
    THEN

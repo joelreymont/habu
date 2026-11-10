@@ -1,7 +1,8 @@
 \ input-underflow-refusals.f - rejected programs for "a definition may not
 \ consume below its declared inputs". The refusal names the consuming token and
 \ both counts. Controls: a short and mistyped call keeps its own mismatch, and a
-\ body spending exactly what it declared still certifies. Cases run through
+\ body spending exactly what it declared still certifies. The packet's declared
+\ effect is the signature's rows, whatever the body bound. Cases run through
 \ `evaluate-closed`, the path `bin/hb --load` takes; a refusal is a throw.
 
 require src/lib/test.f
@@ -66,6 +67,11 @@ create DIAG-BUF 8192 allot
 : NAMED ( -- )
    CODE$ HAS?  REPAIR$ HAS? ;
 
+: DECLARED? ( ptr u8 n -- )
+   SB-RESET
+   S\" \"declared_effect\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
+   SB$ HAS? ;
+
 \ ---- the shortfall itself ----------------------------------------------------
 
 : CASE-BARE ( -- )
@@ -113,6 +119,26 @@ create DIAG-BUF 8192 allot
    S\" \"code\":\"E-RAW-CELL-PTR\"" LACKS?
    DISARM ;
 
+\ ---- the declared effect -----------------------------------------------------
+
+\ A step that reaches under the declared inputs binds the row below them; the
+\ packet still declares only the one input the signature wrote.
+: CASE-DECLARED-ROWS ( -- )
+   s" an underflow's declared effect is the signature as written" T-LABEL
+   ARM
+   [: s" : IUF-PLUS ( n -- n ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" n -- n " DECLARED?
+   DISARM ;
+
+\ A body that specialises a declared variable binds it; the packet still
+\ declares the variable.
+: CASE-DECLARED-VARIABLE ( -- )
+   s" a specialised variable stays a variable in the declared effect" T-LABEL
+   ARM
+   [: s" : IUF-PARAM ( a -- a ) 1 + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   s" a -- a " DECLARED?
+   DISARM ;
+
 \ ---- the controls ------------------------------------------------------------
 
 \ Short and mistyped: the type is the better answer and must not be swallowed by
@@ -156,6 +182,8 @@ public
    CASE-AFTER-LOCALS
    CASE-LOCALS-BINDER
    CASE-OVER-ABANDONED-CANDIDATE
+   CASE-DECLARED-ROWS
+   CASE-DECLARED-VARIABLE
    CASE-MISTYPED-CALL
    CASE-EXACT
    CASE-PRODUCED

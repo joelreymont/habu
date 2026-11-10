@@ -21244,7 +21244,8 @@ CHECKER-REG:}SCRATCH
    k RF-UNCHECKABLE =  k RF-REASON = MDIAG @ UNCK-REASON? and  or ;
 
 \ Cache the parsed declared sig as an arena effect record so recurse sites
-\ instantiate it via E-INST. The record carries sym 0 so signature lookup never
+\ instantiate it via E-INST, and a diagnostic renders the declared effect from
+\ it (render.f DECL-EFFECT). The record carries sym 0 so signature lookup never
 \ sees it. The declared rows are measured here, before the body binds their
 \ tails: a sig too deep or too wide to record has no cache, and its definition
 \ is unfit (CHECK-DEPTH-FITS).
@@ -26891,7 +26892,6 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
       2 EXIT
    THEN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
-   SIG-EFF-DROP
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
    FIELD-LOAN-PENDING @ IF SCOPE-FIELD-REJECT THEN
@@ -26936,6 +26936,9 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    \ A pass another pass will replace has not judged anything yet, so it says
    \ nothing: the diagnostic belongs to the verdict the definition is given.
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
+   \ The declared effect's record outlives the body until the diagnostic above,
+   \ which renders it (render.f DECL-EFFECT).
+   SIG-EFF-DROP
    0 BIND-HORIZON !                                   \ the record step asks the store, not the walk
    CK-CLOSE-CLEAR
    \ An unjudged scan's call rows are the width authority whatever its verdict
