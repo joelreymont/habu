@@ -5,6 +5,9 @@ Application-specific policy and model workflows stay out of the language core.
 Agents write, build and debug everything in Habu and on it; no person uses
 Habu directly.
 
+Zen, Tender and Maki build, test and run on Habu without issues. A dot that
+removes an issue one of them meets goes before any other work.
+
 ## Repository
 
 - Build and test candidates in a workspace or a temporary directory. Keep one
