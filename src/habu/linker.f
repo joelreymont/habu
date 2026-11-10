@@ -333,9 +333,8 @@ DYNAMIC-BUFFER EM-EDGES n            \ the same by emission number
 DYNAMIC-BUFFER ROW-EDGES n           \ the same by BUILT row, for its STORES values
 DYNAMIC-BUFFER EXT-EDGES n           \ the same by build-table row, for its cell rows
 
-\ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR,
-\ WIDN-CELL, the loader's EVENT-COUNT and OUTER:RUN-COUNT as a file's load or its piece after a
-\ request starts (MARKS).
+\ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR, WIDN-CELL,
+\ the loader's EVENT-COUNT and OUTER:RUN-COUNT as a file's load or its piece after a request starts (MARKS).
 variable FILE-REC
 variable FILE-HELD
 variable FILE-TFAM                   \ TFAM:TFAM-N@ as the running piece starts
@@ -350,6 +349,7 @@ variable FILE-OFF                    \ the offset in the source the compiling or
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-EVENT                  \ the first event of the loader's log the piece made
 variable FILE-RUN                    \ the first entry of OUTER's run log the piece made
+variable FILE-ROOTS                  \ SOURCE-ROOT:CHANGE-COUNT as the piece starts
 variable FILE-END                    \ here's distance as the piece ends
 \ The running piece holds a header-data address outside its STORES rows' cells: a tag-4
 \ reference written (DATA-REF+) or resolved (RESOLVE).
@@ -359,8 +359,8 @@ PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused referenc
 variable FILE-PATH-N
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
 variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
-\ The compiling part never links (WRITE-OBJECT): a cross build, no stamp, a start or end off TOP-SCOPE?,
-\ an unclean cut ending it or the part before it (NEST), or a load it asked for that never reached the runner (ACTS+).
+\ The compiling part never links (WRITE-OBJECT): a cross build, no stamp, a start or end off TOP-SCOPE?, an unclean cut
+\ ending it or the part before (NEST), a load it asked for the runner never ran (ACTS+), a source root it set (ROOT-CK).
 TYPED-VARIABLE UNLINKABLE bool
 \ What LOAD's loop over the file's parts does next: link part FILE-PART at FILE-OFF, compile it,
 \ or, once NEST cut the compiling part at a clean request, go back to linking the next.
@@ -4562,7 +4562,7 @@ variable DUE-MADE
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
-   EVENT-COUNT FILE-EVENT !  OUTER:RUN-COUNT FILE-RUN ! ;
+   EVENT-COUNT FILE-EVENT !  SOURCE-ROOT:CHANGE-COUNT FILE-ROOTS !  OUTER:RUN-COUNT FILE-RUN ! ;
 
 
 \ The scope a build's top-level file starts in: no package or part open, the build's global
@@ -4574,6 +4574,10 @@ variable DUE-MADE
    PKG-REC-CELL HOST@ 0=  get-current BOOT:GLOBAL-WL =  and  USE-DEPTH-CELL HOST@ 0=  and ;
 
 : SCOPE-CK ( -- ) TOP-SCOPE? 0= if true UNLINKABLE ! then ;
+
+\ A piece that set the source root (SOURCE-ROOT:ROOT!) is UNLINKABLE: its request and the file's later ones
+\ resolve from that root, and a link runs none of the piece's code.
+: ROOT-CK ( -- ) SOURCE-ROOT:CHANGE-COUNT FILE-ROOTS @ <> if true UNLINKABLE ! then ;
 
 
 \ The piece's ACTS rows (ACTS-CK) applied as its compile made them: a provide through
@@ -4753,7 +4757,7 @@ variable DUE-MADE
             TURN @ MATCH turn
                link OF E-COMP-STATE throw ENDOF
                compile OF                 \ the source ended
-                  SCOPE-CK
+                  SCOPE-CK  ROOT-CK
                   sourceu PART-NAMES
                   -1 PIECE-END
                   0 COMPILED-TIME dup WRITE-OBJECT
@@ -4811,6 +4815,7 @@ variable DUE-MADE
    ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
    ev RESUME {: resume:n :}
    resume 0< if true UNLINKABLE ! then
+   ROOT-CK
    resume 0< if FILE-SRC-U @ else resume then PART-NAMES
    mode REQUESTS U64+  resume REQUESTS U64+
    ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+

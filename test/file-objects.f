@@ -31,7 +31,8 @@ package FILE-OBJECTS-TEST
 20 constant REDO
 21 constant UNCLEAN-FIRST                \ unclean.f's first part's, which an unclean cut ends,
 22 constant UNCLEAN-SECOND               \ and its second's, which follows that cut
-23 constant TAILS                        \ TAIL$'s tails
+23 constant ROOT-SET-LAST                \ root-set.f's last part's, after its request from the root its first part sets
+24 constant TAILS                        \ TAIL$'s tails
 46 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -191,6 +192,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    i REDO = if s" /test/fixtures/file-objects/redo.f.hfo" exit then
    i UNCLEAN-FIRST = if s" /test/fixtures/file-objects/unclean.f.hfo" exit then
    i UNCLEAN-SECOND = if s" /test/fixtures/file-objects/unclean.f+1.hfo" exit then
+   i ROOT-SET-LAST = if s" /test/fixtures/file-objects/root-set.f+2.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -825,11 +827,12 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    s" O4" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
    s" the build links order-x2.f" ORDER-X2 LINKED ;
 
-\ Guards linking parts after a compiled part, each from its own start, and a part retiring its own records; compiling a
-\ part whose start moves unedited (linked: Q twice) or number shifts after an unclean top-scope cut (linked: no request).
+\ Guards parts linking after a compiled part, each from its own start, retiring their own records and requesting from the root
+\ a compiled part set (linked: no root); compiling a part that moves unedited (linked: Q twice) or shifts after an unclean cut.
 : PART-LINK-CASE ( CMD:command -- CMD:command )
    s" Y" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
    MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  UNCLEAN-FIRST KEEP  UNCLEAN-SECOND KEEP  REDO KEEP
+   ROOT-SET-LAST KEEP
    s" Y2" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
    s" the build links mid-four.f's last part" MID-FOUR-LAST LINKED
    s" the build links unclean.f's last part after an unclean request and a clean one"
@@ -837,13 +840,14 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    s" unclean.f's part an unclean request ends never links" UNCLEAN-FIRST COMPILED
    s" unclean.f's part after an unclean request never links" UNCLEAN-SECOND COMPILED
    s" the build links redo.f's part" REDO LINKED
-   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n"
-   s" the program prints mid-four.f's words with mid-w2.f's W, redo.f's second Y, S and T" PRINTS-RUN
+   s" the build links root-set.f's last part, after its first part sets the root" ROOT-SET-LAST LINKED
+   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n13\n"
+   s" the program prints MAIN's numbers: mid-four.f's with mid-w2.f's W, redo.f's X with its second Y" PRINTS-RUN
    FLIP-SECOND KEEP
    s" Y3" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
    s" the build links the part that starts at [then]" FLIP-SECOND LINKED
-   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n"
-   s" the program prints flip-a.f's F, P, Q, R, A, C, S and T" PRINTS-RUN ;
+   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n13\n"
+   s" the program prints MAIN's numbers with flip.f's part at [then] linked" PRINTS-RUN ;
 
 \ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the program,
 \ word docs keep no address of a freed text, a task left running or a run word that loads, provides or reads a file fails it.

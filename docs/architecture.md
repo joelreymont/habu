@@ -231,8 +231,9 @@ signature, and writes a file it generates only when the text differs.
 every build: one that starts or ends inside an open package or `using`, one
 whose request is not a plain one at its top level (made inside a definition,
 with cells on the stack or from evaluated text), the part after such a
-request, one that catches a load it asks for before the load runs, and every
-part of a file with no stamp or of a build for another machine
+request, one that catches a load it asks for before the load runs, one that
+sets its source root, and every part of a file with no stamp or of a build for
+another machine
 (src/habu/linker.f UNLINKABLE). Its object only keeps its words' times, so the
 parts that depend on it link while those words compile to the same bytes; a
 build for another machine writes no object.
