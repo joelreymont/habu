@@ -264,13 +264,17 @@ DYNAMIC-BUFFER STRS n                \ the file's string bodies as distances fro
 variable STRS-N
 DYNAMIC-BUFFER LAST-HELD n           \ a file's record r's last held facts entry, -1 for none (FACTS+)
 \ Per word as PIECE+ writes it, SPAN-CELLS cells: entry offset and length, emission or -1, text offset and
-\ length (0 0 for none), highest FILES row named (TOP-ROW); EM-SPANS: per emission offset, length, row.
-6 constant SPAN-CELLS
+\ length (0 0 for none), highest FILES row named (TOP-ROW), the bits of the rows outside its ranges
+\ that name it (NAMED-RETIRED, NAMED-LATE), the record it binds or -1 (RECORD+); EM-SPANS: per
+\ emission offset, length, row.
+8 constant SPAN-CELLS
+1 constant NAMED-RETIRED             \ a retirement row (FACT+)
+2 constant NAMED-LATE                \ a late private wordlist (LATE+)
 DYNAMIC-BUFFER WORD-SPANS n
 DYNAMIC-BUFFER EM-SPANS n
 variable WORDS-N                     \ the piece's words
 variable TOP-ROW                     \ the highest FILES row REF-FILE answered since it was zeroed
-DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0 for none: nothing reads them
+DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0 for none (BOUND-TIME)
 DYNAMIC-BUFFER RETIRED n             \ the piece's retired records (RETIRED!): index, then wordlist cell
 variable RETIRED-N                   \ its records
 DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-copy.f), zero-padded cells
@@ -322,7 +326,9 @@ TYPED-VARIABLE UNLINKABLE bool
 8 KEY-BYTES + 8 + 8 2 * 8 * + constant HEADER-BYTES
 \ TIMES precedes PIECES, which test/file-objects.f compares across out roots.
 HEADER-BYTES 32 - constant TIMES-FIELD      \ the header's TIMES pair
-7 constant WORD-CELLS
+\ A word in TIMES, WORD-CELLS cells: its time, its entry, emission and text spans, the time of the
+\ record it binds (0 for none), then the bits of the rows that name it from outside (SPAN-CELLS).
+9 constant WORD-CELLS
 WORD-CELLS 8 * constant WORD-BYTES
 
 \ A record's kind in PIECES.
@@ -1213,10 +1219,22 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    cell DATA-REF+ if exit then
    REFUSAL  rec XREF-NAME$ SAY  s" 's dispatch cell is " SAY  cell false VALUE.  REFUSED ;
 
+\ The build's TFAM:TYPE-WORD, the word every type entry's record runs.
+: TYPE-SOURCE ( -- n )
+   s" TFAM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   -1  pkg XREF-FOUND? if
+      drop  s" TYPE-WORD" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE CHECKER-RESOLVE:REC>INDEX
+   then {: src:n :}
+   src FIRST-REC @ < if
+      REFUSAL  s" a type entry needs the build's own TFAM:TYPE-WORD" SAY SAY-CR  E-COMP-STATE throw
+   then
+   src ;
+
 \ The kind, the name, the flags without the name length and EXT, the wordlist (WORDLIST+), then
 \ the kind's fields (DISPATCH+, OWN-PRIVATE?, none for KIND-TYPE); a KIND-PRIVATE entry is
-\ LATE+'s, a KIND-SEALED one SEAL+'s.
-: RECORD+ ( n -- )
+\ LATE+'s, a KIND-SEALED one SEAL+'s. Answers the record the entry binds: an alias's source, a
+\ type entry's TYPE-SOURCE, else -1.
+: RECORD+ ( n -- n )
    {: idx:n :}
    idx XREF-REC {: rec:ptr :}
    idx SHADOW-ROW {: row:n :}
@@ -1225,28 +1243,36 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    rec XREF-NAME$ PIECES FIELD+
    rec XREF-FLAGS  DNAME-LEN-MASK DNAME-EXT or invert and  PIECES U64+
    idx WORDLIST+
-   kind KIND-DEF = if row EMISSION+  rec DISPATCH+ exit then
-   kind KIND-DOES = if row EMISSION+  row NSHADOW:ENTRY@ PIECES U64+ exit then
+   kind KIND-DEF = if row EMISSION+  rec DISPATCH+  -1 exit then
+   kind KIND-DOES = if row EMISSION+  row NSHADOW:ENTRY@ PIECES U64+  -1 exit then
    kind KIND-PACKAGE = if
-      idx OWN-PRIVATE? if 1 else 0 then PIECES U64+ exit
+      idx OWN-PRIVATE? if 1 else 0 then PIECES U64+  -1 exit
    then
-   kind KIND-TYPE = if exit then
-   idx ALIAS-SOURCE REF+ ;
+   kind KIND-TYPE = if TYPE-SOURCE exit then
+   idx ALIAS-SOURCE {: src:n :}
+   src REF+  src ;
 
 \ Word w's cell c in WORD-SPANS.
 : WORD-SPAN ( n n -- ptr n )
    {: w:n c:n :}
    w SPAN-CELLS * c + WORD-SPANS ;
 
-\ RECORD+, then the entry's span, its emission and the highest FILES row it names into WORD-SPANS,
-\ with no text yet. The piece filed the emission an entry names: E-COMP-STATE for another.
+\ The bit into cell 6 of the word record idx is, when it is a record of the running piece.
+: NAMED-BY! ( n n -- )
+   {: idx:n bit:n :}
+   idx FILE-REC @ < if exit then
+   idx FILE-REC @ - 6 WORD-SPAN {: at:ptr :}
+   at @ bit or  at ! ;
+
+\ RECORD+, then the entry's span, its emission, the highest FILES row it names and the record it
+\ binds into WORD-SPANS, with no text yet; PIECE+ reserved the word's cells and zeroed cell 6. The
+\ piece filed the emission an entry names: E-COMP-STATE for another.
 : WORD-RECORD+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ - {: w:n :}
-   w 1 + SPAN-CELLS * WORD-SPANS-RESERVE
    PIECES BYTES$ nip {: at:n :}
    0 TOP-ROW !
-   idx RECORD+
+   idx RECORD+ {: bound:n :}
    idx SHADOW-ROW {: row:n :}
    idx row KIND {: kind:n :}
    kind KIND-DEF =  kind KIND-DOES =  or {: coded:bool :}
@@ -1256,7 +1282,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    PIECES BYTES$ nip at -  w 1 WORD-SPAN !
    em  w 2 WORD-SPAN !
    0 w 3 WORD-SPAN !  0 w 4 WORD-SPAN !
-   TOP-ROW @  w 5 WORD-SPAN ! ;
+   TOP-ROW @  w 5 WORD-SPAN !
+   bound  w 7 WORD-SPAN ! ;
 
 \ The late private wordlists in id order, 16 bytes each: the id, then the package.
 : LATE-N ( -- n ) LATE BYTES$ {: a:ptr u:n :}  u 16 / ;
@@ -1325,7 +1352,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       i LATE-OF dup 0 >= if i swap LATE-INSERT else drop then
    loop ;
 
-: LATE+ ( n -- ) KIND-PRIVATE PIECES U64+  LATE-P REF+ ;
+: LATE+ ( n -- )
+   LATE-P {: p:n :}
+   KIND-PRIVATE PIECES U64+  p REF+  p NAMED-LATE NAMED-BY! ;
 
 \ Writes into PIECES each late private wordlist from the kth whose id is below
 \ the mark, and answers the next k.
@@ -1810,13 +1839,14 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    ix FILE-REC @ - LAST-HELD @  k = ;
 
 
-\ A facts row: a retirement's kind and record, an earlier file's record's text by reference, any
-\ other kind's or record's text.
+\ A facts row: a retirement's kind and record, which marks a word of the running piece
+\ (NAMED-BY!), an earlier file's record's text by reference, any other kind's or record's text.
 : FACT+ ( n -- )
    {: k:n :}
    k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
    ix CHECK:HELD-RETIRED = if
-      ix PIECES U64+  k CHECK:HELD-RETIRED@ drop REF+  exit
+      k CHECK:HELD-RETIRED@ drop {: r:n :}
+      ix PIECES U64+  r REF+  r NAMED-RETIRED NAMED-BY!  exit
    then
    ix 0 >=  ix FILE-REC @ <  and if
       CHECK:HELD-AMENDED PIECES U64+  ix REF+  a u PIECES FIELD+  exit
@@ -1912,6 +1942,8 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    LATE-COLLECT
    ndict@ FILE-REC @ -  LATE-N +  SEALED-N +  PIECES U64+
    ndict@ FILE-REC @ - WORDS-N !
+   WORDS-N @ SPAN-CELLS * WORD-SPANS-RESERVE
+   WORDS-N @ 0 ?do  0 i 6 WORD-SPAN !  loop
    0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i WORD-RECORD+  loop
    LATE-REST
    LATE-N 0 ?do i LATE-P CHANGER+ loop
@@ -2476,7 +2508,8 @@ variable RD-END
 
 
 \ TIMES from RD-AT to PIECES at the offset, in an object of len bytes: a block per piece (TIMES+),
-\ each span inside its piece, as long as its REQUESTS row says or to the object's end for the last.
+\ each span inside its piece, as long as its REQUESTS row says or to the object's end for the last;
+\ a word's time, bound record's time and bits are skipped.
 : TIMES-CK ( n n -- )
    {: pieces-at:n len:n :}
    GOOD? 0= if exit then
@@ -2485,7 +2518,9 @@ variable RD-END
       {: first:n :}
       i REQS-N @ < if i PIECE-LEN else len first - then {: plen:n :}
       plen 0<  plen len first - >  or if BAD then
-      WORD-BYTES RD-COUNT 0 ?do  8 RD-SKIP  plen SPAN-CK  plen SPAN-CK  plen SPAN-CK  loop
+      WORD-BYTES RD-COUNT 0 ?do
+         8 RD-SKIP  plen SPAN-CK  plen SPAN-CK  plen SPAN-CK  16 RD-SKIP
+      loop
       first plen +
    loop drop
    RD-AT @ pieces-at <> if BAD then ;
@@ -3168,16 +3203,32 @@ variable KEPT-ROWS-N
    PIECES BYTES$ drop start + noff +  nu  PRIOR BYTES$ drop PRIOR-AT @ + ooff +  ou  STR= ;
 
 
+\ The time of the record word w binds (WORD-SPANS' cell 7), 0 for none; the record is an earlier
+\ one, so its time is in WORD-TIMES.
+: BOUND-TIME ( n -- n )
+   {: w:n :}
+   w 7 WORD-SPAN @ {: b:n :}
+   b 0< if 0 exit then
+   b WORD-TIMES @ ;
+
+
 \ Word w's time: the old word w's when it has one, every FILES row the word names is within
-\ KEPT-ROWS-N, so names the same file in both objects, and its ranges hold the same bytes; else now.
+\ KEPT-ROWS-N, so names the same file in both objects, its ranges hold the same bytes, and the
+\ bound record's time and the bits of the rows naming it from outside are the old word's; else
+\ now, as for a word binding a record with no time.
 : WORD-TIME ( n n n -- n )
    {: start:n w:n now:n :}
+   w BOUND-TIME {: bt:n :}
+   w 7 WORD-SPAN @ 0 >=  bt 0=  and if now exit then
    w PRIOR-WORDS-N @ >= if now exit then
-   PRIOR-FIRST-WORD @  w WORD-BYTES * +  PRIOR@ {: t:n :}
+   PRIOR-FIRST-WORD @  w WORD-BYTES * + {: old:n :}
+   old PRIOR@ {: t:n :}
    t 0=  w WORD-TOP KEPT-ROWS-N @ >  or if now exit then
    start w 0 SAME-SPAN? 0= if now exit then
    start w 1 SAME-SPAN? 0= if now exit then
    start w 2 SAME-SPAN? 0= if now exit then
+   old 7 8 * + PRIOR@  bt <> if now exit then
+   old 8 8 * + PRIOR@  w 6 WORD-SPAN @ <> if now exit then
    t ;
 
 \ Word w's range s onto TIMES, its offset then its length (NEW-SPAN).
@@ -3187,7 +3238,8 @@ variable KEPT-ROWS-N
 
 
 \ The running piece's TIMES block, the piece starting at the offset in PIECES: its word count, then
-\ per word its time (WORD-TIME), also into WORD-TIMES, and its entry, emission and text ranges.
+\ per word its time (WORD-TIME), also into WORD-TIMES, its entry, emission and text ranges, the
+\ time of the record it binds (BOUND-TIME) and the bits of the rows naming it from outside.
 : TIMES+ ( n n -- )
    {: start:n now:n :}
    WORDS-N @ TIMES U64+
@@ -3196,6 +3248,7 @@ variable KEPT-ROWS-N
       start i now WORD-TIME {: t:n :}
       t TIMES U64+
       start i 0 SPAN-TIMES+  start i 1 SPAN-TIMES+  start i 2 SPAN-TIMES+
+      i BOUND-TIME TIMES U64+  i 6 WORD-SPAN @ TIMES U64+
       t  FILE-REC @ i +  WORD-TIMES !
    loop ;
 
@@ -3624,17 +3677,6 @@ variable LINK-EM                     \ that emission's number in this object, -1
    flags want SET-FLAGS
    ALIASES-N @ 2 + ALIASES-RESERVE
    want ALIASES-N @ ALIASES !  src ALIASES-N @ 1 + ALIASES !  2 ALIASES-N +! ;
-
-\ The build's TFAM:TYPE-WORD, the word every type entry's record runs.
-: TYPE-SOURCE ( -- n )
-   s" TFAM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
-   -1  pkg XREF-FOUND? if
-      drop  s" TYPE-WORD" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE CHECKER-RESOLVE:REC>INDEX
-   then {: src:n :}
-   src FIRST-REC @ < if
-      REFUSAL  s" a type entry needs the build's own TFAM:TYPE-WORD" SAY SAY-CR  E-COMP-STATE throw
-   then
-   src ;
 
 
 \ Entry i, a type entry (RECORD+), as the next record; LINK-FACTS gives it its text.
