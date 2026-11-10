@@ -7,10 +7,12 @@
 \ TEXT+ writes a byte below $20, $7F and `\` as `\xHH`, so a line stays one
 \ line and reads one way. A log call never throws for LOG's own failure: a line
 \ fd 2 refuses is lost, and a refused mapping loses the line, which ;LINE
-\ replaces with NOTICE. STORAGE CLASS. TASK-LOCAL: the line, a TASK:+USER BUF
-\ row kept across lines and released once a line grows it past START-CAP; LIVE,
-\ set while the row holds storage; ARMED, set while the row's release is
-\ registered; LOST, set while the open line is lost. A line logged from a
+\ replaces with NOTICE. A LINE while a line is open abandons that line, as a
+\ throw does, so the TEXT+ and ;LINE that follow it write nothing.
+\ STORAGE CLASS. TASK-LOCAL: the line, a TASK:+USER BUF row kept across lines
+\ and released once a line grows it past START-CAP; LIVE, set while the row
+\ holds storage; ARMED, set while the row's release is registered; PHASE,
+\ whether a line is closed, open or lost. A line logged from a
 \ TASK:AT-EXIT cleanup leaks its row: the release LINE registers then joins a
 \ chain already running (src/lib/task.f TASK-RUN-EXIT). PROCESS-WIDE: LOCK,
 \ held for each line's write, which keeps this process's lines whole (another
@@ -46,9 +48,22 @@ $5C constant BACKSLASH
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and BUF:HDR-BYTES TASK:+USER ROW drop
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER LIVE drop
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER ARMED drop
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER LOST drop
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER PHASE drop
 TASK:FACILITY LOCK
 LOCK TASK:FACILITY-INIT
+
+
+\ PHASE's states; a fresh task's is CLOSED. Each input in each state, and the
+\ state it leaves:
+\   state    LINE              TEXT+ INT+ CODE+  ;LINE             refused map
+\   CLOSED   opens: OPENED     nothing           nothing: CLOSED   -
+\   OPENED   abandons: OPENED  appends           the row: CLOSED   LOST
+\   LOST     abandons: OPENED  nothing           NOTICE: CLOSED    LOST
+\ LINE leaves LOST when the row's mapping is refused; ;LINE leaves CLOSED also
+\ when its write throws. An abandoned line is never written.
+0 constant CLOSED
+1 constant OPENED
+2 constant LOST
 
 
 \ The line written for a lost one: a stamp, then the text.
@@ -82,7 +97,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 : MAP-REFUSED ( n -- )
    {: code:n :}
    code 0= if exit then
-   code E-MEM-MAP = code DYNAMIC-STORAGE:E-MAP = or if 1 LOST ! exit then
+   code E-MEM-MAP = code DYNAMIC-STORAGE:E-MAP = or if LOST PHASE ! exit then
    code throw ;
 
 
@@ -166,8 +181,9 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
 : FINISH ( -- )
-   LOST @ 0= if [: LF ROW BUF:APPEND-BYTE ;] catch MAP-REFUSED then
-   LOST @ 0<> if [: NOTICE-OUT ;] WRITE exit then
+   PHASE @ CLOSED = if exit then
+   PHASE @ OPENED = if [: LF ROW BUF:APPEND-BYTE ;] catch MAP-REFUSED then
+   PHASE @ LOST = if [: NOTICE-OUT ;] WRITE exit then
    [: ROW-OUT ;] WRITE ;
 
 
@@ -185,7 +201,7 @@ public
 
 
 : TEXT+ ( ptr u8 n -- )
-   LOST @ 0<> if 2drop exit then
+   PHASE @ OPENED <> if 2drop exit then
    [: 2dup ESCAPED+ ;] catch >r 2drop r> MAP-REFUSED ;
 
 
@@ -205,13 +221,13 @@ public
 \ LINE clears it, and the task's release frees its row.
 : LINE ( level ptr u8 n -- )
    {: level:level tag:ptr tagu:n :}
-   0 LOST !
-   [: OPEN ;] catch MAP-REFUSED
+   CLOSED PHASE !
+   [: OPEN  OPENED PHASE ! ;] catch MAP-REFUSED
    s"  " TEXT+  level LEVEL$ TEXT+  s"  " TEXT+
    tag tagu TEXT+  s" : " TEXT+ ;
 
 
 : ;LINE ( -- )
-   [: FINISH ;] [: SHED ;] finally ;
+   [: FINISH ;] [: CLOSED PHASE !  SHED ;] finally ;
 
 ;package

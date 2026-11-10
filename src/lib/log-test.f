@@ -167,15 +167,35 @@ TASK:MIN-STACK TASK:TASK READER
    LOG:ERROR s" big" LOG:LINE BIG$ LOG:TEXT+ LOG:;LINE ;
 
 
-: BIG-CASE ( -- )
-   s" a 1 MiB text arrives whole in one line" T-LABEL
-   [: BIG-LINE ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
+\ The file holds exactly BIG-LINE's line.
+: BIG-OK ( ptr u8 n -- )
+   {: at:ptr u:n :}
    u DATE:TIME-LEN BIG-HEAD$ nip + BIG-U + 1 + T=
    at STAMP-OK
    at DATE:TIME-LEN + BIG-HEAD$ nip BIG-HEAD$ T$=
    at DATE:TIME-LEN + BIG-HEAD$ nip + BIG-U BIG$ T$=
    at u + 1- c@ LF T= ;
+
+
+: BIG-CASE ( -- )
+   s" a 1 MiB text arrives whole in one line" T-LABEL
+   [: BIG-LINE ;] CAPTURED
+   FILE$ BIG-OK ;
+
+
+\ The stray words find no line open: the big line's ;LINE closed it.
+: STRAY-LINES ( -- )
+   BIG-LINE
+   [: s" stray" LOG:TEXT+ ;] catch CODE-A !
+   [: 7 LOG:INT+ ;] catch CODE-B ! ;
+
+
+: STRAY-CASE ( -- )
+   s" a stray TEXT+ or INT+ after a 1 MiB line neither writes nor throws" T-LABEL
+   [: STRAY-LINES ;] CAPTURED
+   FILE$ BIG-OK
+   CODE-A @ 0 T=
+   CODE-B @ 0 T= ;
 
 
 : ABANDON ( -- )
@@ -202,6 +222,41 @@ TASK:MIN-STACK TASK:TASK READER
    at u KEPT-REST$ LINE-OK nip 0 T=
    CODE-A @ E-FS-IO T=
    CODE-B @ 0 T= ;
+
+
+: UNPAIRED-LINES ( -- )  KEPT-LINE LOG:;LINE ;
+
+
+: UNPAIRED-CASE ( -- )
+   s" a ;LINE with no line open writes nothing" T-LABEL
+   [: UNPAIRED-LINES ;] CAPTURED
+   FILE$ {: at:ptr u:n :}
+   u DATE:TIME-LEN KEPT-REST$ nip + T=
+   at u KEPT-REST$ LINE-OK nip 0 T= ;
+
+
+\ The callee's line opens while this one is open, so this one is abandoned and
+\ the words after the call find no line open.
+: OUTER-LINE ( [ -- ] -- )
+   LOG:ERROR s" outer" LOG:LINE s" head" LOG:TEXT+
+   execute
+   s" tail" LOG:TEXT+ 7 LOG:INT+ E-LOG-CODE LOG:CODE+ LOG:;LINE ;
+
+
+: SHORT-IN-LINE ( -- )  [: [: KEPT-LINE ;] OUTER-LINE ;] catch CODE-A ! ;
+: BIG-IN-LINE ( -- )  [: [: BIG-LINE ;] OUTER-LINE ;] catch CODE-A ! ;
+
+
+: LINE-IN-LINE-CASE ( -- )
+   s" a line inside an open line is written once, the open one never" T-LABEL
+   [: SHORT-IN-LINE ;] CAPTURED
+   FILE$ {: at:ptr u:n :}
+   u DATE:TIME-LEN KEPT-REST$ nip + T=
+   at u KEPT-REST$ LINE-OK nip 0 T=
+   CODE-A @ 0 T=
+   [: BIG-IN-LINE ;] CAPTURED
+   FILE$ BIG-OK
+   CODE-A @ 0 T= ;
 
 
 : CONTROL-LINE ( -- )
@@ -443,8 +498,11 @@ TASK:MIN-STACK TASK:TASK READER
    BIG-MAKE
    LEVELS-CASE
    BIG-CASE
+   STRAY-CASE
    CONTROL-CASE
    ABANDON-CASE
+   UNPAIRED-CASE
+   LINE-IN-LINE-CASE
    LOST-CASE
    RELEASE-CASE
    PIPE-CASE
