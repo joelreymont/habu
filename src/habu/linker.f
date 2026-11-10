@@ -3445,19 +3445,20 @@ variable RD-END
    40 RD-COUNT 0 ?do STORE-CK loop ;
 
 
-\ FACTS (FACTS+): each row a retirement of a record reference (ID-REF-CK) with the count of the
-\ piece's records made before it, from 0 to RECS-N and never below the last retirement's; a text
-\ for a record reference; or a text of a kind, CHECK:HELD-LAID or CHECK:HELD-UNDEFINE.
+\ FACTS (FACTS+): each row a retirement of a record made before it (its count of the piece's records,
+\ never below the last retirement's), a text for a record, or a text of kind CHECK:HELD-LAID or -UNDEFINE.
 : FACTS-CK ( -- )
    RD-AT @ FACTS-AT !
    0  16 RD-COUNT 0 ?do
       RD-U64 {: last:n ix:n :}
       ix CHECK:HELD-RETIRED =  ix CHECK:HELD-AMENDED =  or if
          RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
-         file sum count RECS-N @ ID-REF-CK drop
-         ix CHECK:HELD-AMENDED = if RD-U64 RD-SKIP  last else
+         ix CHECK:HELD-AMENDED = if
+            file sum count RECS-N @ ID-REF-CK drop  RD-U64 RD-SKIP  last
+         else
             RD-U64 {: made:n :}
             made last <  made RECS-N @ >  or if BAD then
+            file sum count made ID-REF-CK drop
             made
          then
       else
