@@ -6,4 +6,14 @@ issue-type: task
 created-at: "2026-10-16T11:17:41.726409+03:00"
 ---
 
-Remove self-assertions and exclusively consumed metadata in type-schema.f, type-family.f and checker private record layouts; engine-suite mirrors too. Keep constants/accessors as single source, actual target width/serialized ABI validation and storage/recovery tests. Update the docs/forth.md "Structures And Enums" prescription. Existing core behavior tests and integrated matching native gate.
+Problem: the type layer checks its own private record layouts at run time and keeps metadata that only those checks read, in src/core/type-schema.f, src/core/type-family.f, the checker's private record layouts (src/core/checker.f) and their copies in test/engine-suite.f; the original names no site. One found by reading: a product field's row (ADD, src/core/type-family.f:2700-2720) stores a byte offset, a byte count, an alignment and flags beside its slot and cell count, and PF-LAYOUT-REQUIRE (:2659-2682) refuses any row where they are not slot cells, cells cells, CELL and 0 for every layout policy it admits (the niche, boxed and custom policies are refused outright). REG-AOT-FIELD (:3999-4007) and REG-AOT-FIELD-SCHEMA (:4318-4340) check the same values again; UNIT-FAM-CON-FAMILY (:7249-7252) writes them into the FILE contract a compiled file carries, a saved format, so removing them there needs the user's approval first; src/core/sumtype.f:1975-1978 reads the byte offset. docs/forth.md "Structures And Enums" (:430) is the prescription to update. Keep constants and accessors as the one source, validation of the real target width and of saved formats, and the storage and recovery tests.
+
+Acceptance: a census in this dot of every such self-check and the metadata only it reads, at file:line, each marked removed or kept with its reason; the removable ones removed, any saved-format field brought to the user before it changes; docs/forth.md "Structures And Enums" matches.
+
+Files: src/core/type-schema.f, src/core/type-family.f, src/core/checker.f, src/core/sumtype.f, test/engine-suite.f, docs/forth.md.
+
+Verify: test/enum-decl-suite.f and test/c2-records-types.f pass; the engine builds with `bin/hb --load tools/hb-build.f -- --engine -o $OUT/hb`; the convergence check (docs/bootstrap.md "Convergence check") if a built layout changes.
+
+Depends: none.
+
+Ownership: unassigned. Claim: unassigned.

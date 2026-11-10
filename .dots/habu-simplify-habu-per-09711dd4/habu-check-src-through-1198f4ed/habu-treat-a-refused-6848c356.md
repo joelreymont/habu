@@ -1,9 +1,11 @@
 ---
 title: Treat a refused does> clause like a refused body after the pre-pass
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-10-02T13:24:10.225863+02:00"
+closed-at: "2026-11-10T22:40:17.062309+02:00"
+close-reason: "split into habu-treat-a-refused-dd6594fe (the --all-errors cascade, reproducers 1 and 2: one cause) and habu-give-a-refused-4fb8cf32 (declared_effect in the JSON record); part (c) landed: src/habu/habu2.f:3090-3094 and src/core/checker.f:28625-28628 report a refused clause under the definer's clause name in both compilers, commits 5e3a3ebe and f22431ea; review 326 (b) and (c) are obsolete: CHECKER-CHECK-REPORT is gone"
 ---
 
 Problem (lane 308 r4-doesname, 8d6da143): (a) under tools/check.f --all-errors a refused does> clause leaves the created word unknown, so each caller adds a follow-on E-UNDEFINED for it (fixtures m1g/m1f in $HOME/.cache/tmp/kestrel-r4-doesname/); a refused definer body does the same. (b) The clause's JSON record has no declared_effect: DIAG-JSON prints it only when SGSEEN is set and the clause signature is parsed outside the name/signature scan. (c) The engine's own --load path still reports a refused clause only as 'does> at file:line' (CHECK-DOES! is called from habu2.f C-CALL-CHECK-DOES with no name). Acceptance: --all-errors reports the refusal once and no follow-on E-UNDEFINED for the created word or the definer (recover with the declared effect as a refused colon body's callers are handled, or state the measured reason that is wrong); the clause record carries declared_effect like a body's; the load path names the clause <definer>;does as check.f now does; each seen failing first. Files: src/core/checker.f, src/habu/verify-source.f, src/habu/habu2.f, tools/check-test-lib.f.

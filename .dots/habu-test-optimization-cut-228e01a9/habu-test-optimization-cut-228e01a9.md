@@ -6,8 +6,14 @@ issue-type: task
 created-at: "2026-09-29T13:57:55.711568+02:00"
 ---
 
-Campaign only; do not dispatch this parent. The native gate (bin/hb --load test/run.f) took 787 s wall on an idle host: 99 s of serial setup (15 s cold engine, 84 s whitebox native build, test/gate-stdlib-lib.f:108-113), then a pool phase of 688 s against an 8-slot ideal of 456 s for 3647 s of row work. The pool starts rows in registry order and each waits for a free slot (test/gate-pool.f:1214-1222), so a pool barrier or a late long row idles slots. Measured in native-gate.log (491/492) and native-gate-serial-floor.log (3 TIMEOUT-UNDER-LOAD rows killed at the 360 s deadline under external load). The speed work removes the barriers, orders the rows longest first, overlaps the whitebox build with the pool and keeps each row under half its deadline. Close this parent when the speed work has landed and a green gate shows the reduced wall time.
+Problem: campaign only; do not dispatch this parent. The full test suite (`bin/hb --load test/run.f`) took 787 s wall on an idle host: 99 s of serial setup (15 s cold engine, 84 s private whitebox build), then a pool phase of 688 s against an 8-slot ideal of 456 s for 3647 s of test work, because the pool started tests in registry order and each waited for a free slot. The speed work has landed on master: 9e5643a1 "Order gate rows longest first after the splits", 02b52c09 "Start private whitebox build early", 0b00fee1 "Delete PTX-BARRIER!" and c8d47bef "Scale the gate's spawned per-suite walls with load"; no open child is speed work. What is missing is a run that shows the reduced wall time. The other open dots in this directory were filed here later; they are independent of wall time, keep their own acceptance and do not block closing this parent.
 
-Later source, diagnostic and runtime defect dots were filed inside this
-directory, but are independent of gate wall time. Their open status does not
-block closing this campaign; each keeps its own acceptance.
+Acceptance: one green full suite run on current master, on an idle host, records its wall time below 787 s, and this dot closes with that time and the commit.
+
+Files: none.
+
+Verify: first, the full suite `bin/hb --load test/run.f` on a master tip with its wall time; the run docs/gate.md requires once on each landing tip can serve.
+
+Depends: none.
+
+Ownership: unassigned. Claim: unassigned.
