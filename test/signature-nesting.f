@@ -10,7 +10,8 @@
 \ pinned before a name a rendering statement may define, or a compile-time
 \ refusal after it in an unfit definition, keeps its packet and answer, and that
 \ name alone defers its definition, or makes an unfit one uncheckable for its
-\ width.
+\ width. A refusal's prose line ends with its packet's suggestion, after the
+\ rows when it prints them.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
@@ -218,9 +219,9 @@ public
    SRC-RESET 33 BADCOND-TEXT
    S\" \"code\":\"E-MISMATCH\"" S\" \"verdict\":\"rejected\""
    S\" \"actual\":\"bool n \"" VERDICT-REFUSED PACKET-HAS
-   s" a RECURSE with no declared effect is uncheckable for want of one" T-LABEL
+   s" a RECURSE with no declared effect is uncheckable for want of one, and says to declare one" T-LABEL
    RECURSE-NOSIG
-   s" at 'RECURSE' recursion needs a declared stack effect" REFUSES
+   S\" habu: in sn-down: at 'RECURSE' recursion needs a declared stack effect; suggestion: Declare the definition's stack effect after its name.\n" REFUSES
    s" a RECURSE with no declared effect writes an uncheckable packet that says why" T-LABEL
    SRC-RESET RECURSE-TEXT
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
@@ -233,9 +234,9 @@ public
    S\" \"declared_effect\":null,\"declared_effect_source\":null,"
    VERDICT-UNCHECKABLE PACKET-HAS
    PACKET-PASSES
-   s" a RECURSE in a does> clause is uncheckable for calling the defining word" T-LABEL
+   s" a RECURSE in a does> clause is uncheckable for calling the defining word, and says where to recurse" T-LABEL
    RECURSE-DOES
-   S\" at 'RECURSE' recurse in a does> clause would call the defining word\n" REFUSES
+   S\" habu: in sn-mk;does: at 'RECURSE' recurse in a does> clause would call the defining word; suggestion: Move the recursion into a named word with a declared effect and call it from the clause.\n" REFUSES
    s" a RECURSE in a does> clause writes an uncheckable packet that says why" T-LABEL
    RECURSE-DOES
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
@@ -250,7 +251,16 @@ public
    RESULT-LINE  SRC$ TEST-EVAL:RC 0 T=
    s" an unknown type that ends a line refuses by its name alone" T-LABEL
    UNKNOWN-LINE
-   s" at 'sn-nosuch'" REFUSES ;
+   s" at 'sn-nosuch'" REFUSES
+   s" a type mismatch prints its suggestion after its actual row" T-LABEL
+   SRC-RESET  s" : SN-MIS ( -- bool ) 1 ;" S+
+   S\" habu: in sn-mis: at '1' expected: bool actual: n ; suggestion: Change the body so produced types match the signature.\n" REFUSES
+   s" a bare ptr in a signature names its missing element type once, in its suggestion" T-LABEL
+   SRC-RESET  s" : SN-BP ( ptr -- ) drop ;" S+
+   S\" habu: in sn-bp: 'ptr' needs an element type; suggestion: Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.\n" REFUSES
+   s" a trust-boundary primitive in a checked body names its boundary once, in its suggestion" T-LABEL
+   SRC-RESET  s" : SN-CAP ( -- ) reloc-maps-clear ;" S+
+   S\" E-CAP-TRUSTED habu: in sn-cap: 'reloc-maps-clear' is a trust-boundary primitive; suggestion: Move this compiler or runtime boundary behind audited TRUST.\n" REFUSES ;
 
 \ Run while a package holding a rendering statement's mark is open, so MADE is
 \ a name the run may define (UNSEEN-COVERS?) to these texts and to no other.

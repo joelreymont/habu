@@ -28,17 +28,18 @@ SRCLOC:FILE-BUFFER?).
 
 An undefined word, `E-UNDEFINED: X at <path>:<line>`, is located like any
 compile refusal on both loops. A loaded file that leaves cells prints
-`E-EVAL-RESIDUE: stack depth N at <path>`, naming the whole file and so no
-line, once at the innermost file, before the throw it raises (uncaught, that
-throw ends the load). The other interpret-level diagnostics
-(`hb: interpret-mode layout value: X` and its siblings) print no location.
-The checker's refusal in a body names the definition and the token
-(`habu: in g: at '2' expected: n actual: n n`); the native line after it
-places the token (`ncomp: cannot compile G at 2 in <path>:<line>`), and an
-undefined word adds `E-UNDEFINED: x at <path>:<line>`. A top-level refusal
-names the file and line in its own line (`habu: <path>:<line>: at '!' …`),
-the file alone for a token of an evaluated string that is not the file's own
-bytes, and no place outside a file; a tool's label replaces the path of the file it labels. For those that
+`E-EVAL-RESIDUE: stack depth N at <path>`, naming the whole file and so no line,
+once at the innermost file, before the throw it raises (uncaught, that throw
+ends the load). The other interpret-level diagnostics
+(`hb: interpret-mode layout value: X` and its siblings) print no location. The
+checker's refusal in a body names the definition and the token
+(`habu: in g: at '2' expected: n actual: n n ; suggestion: Remove an extra producer or drop the surplus value.`);
+the native line after it places the token
+(`ncomp: cannot compile G at 2 in <path>:<line>`), and an undefined word adds
+`E-UNDEFINED: x at <path>:<line>`. A top-level refusal names the file and line
+in its own line (`habu: <path>:<line>: at '!' …`), the file alone for a token of
+an evaluated string that is not the file's own bytes, and no place outside a
+file; a tool's label replaces the path of the file it labels. For those that
 print no location, search the source for the named definition, or bisect.
 
 ## Reading an exit status

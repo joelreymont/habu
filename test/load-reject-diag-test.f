@@ -669,7 +669,7 @@ variable RC
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    head headu ASSERT-NAMED
-   ERR$ s" ' reads source or changes the compiler's or checker's state, which no stack effect describes, so a checked body cannot use it; to evaluate text there, use evaluate-closed" CONTAINS? TTRUE
+   ERR$ s" ' reads source or changes the compiler's or checker's state, which no stack effect describes, so a checked body cannot use it; suggestion: Remove it from the checked body; to evaluate text there, use evaluate-closed." CONTAINS? TTRUE
    ERR$ line lineu CONTAINS? TTRUE ;
 
 : TEST-UNSAFE ( -- )

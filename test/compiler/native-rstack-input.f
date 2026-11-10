@@ -69,7 +69,7 @@ variable ERR-U
 : REFUSALS ( -- )
    s" rs1: a body replaces a declared return-stack cell"
    S\" : RC1 ( | n -- | n ) r> drop 0 >r ;\nTRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RC1 r> ;\nUSE . cr\n"
-   S\" habu: in rc1: return-stack effect in signature ' | n -- | n '; after '|' write one row variable, the same on both sides, or no '|'\nhook: non-certified definition: rc1 at ' | n -- | n '\n"
+   S\" habu: in rc1: return-stack effect in signature ' | n -- | n '; suggestion: Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition.\nhook: non-certified definition: rc1 at ' | n -- | n '\n"
    REFUSED-RC REFUSED
    s" rs1: a TRUSTED: body replaces a declared return-stack cell"
    S\" TRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RT1 r> ;\nUSE . cr\n"
@@ -77,11 +77,11 @@ variable ERR-U
    REFUSED-RC REFUSED
    s" rs2: a body pops a declared return-stack input"
    S\" : RP ( | n -- n | ) r> ;\n: USE ( -- n ) 5 >r RP ;\nUSE . cr\n"
-   S\" habu: in rp: return-stack effect in signature ' | n -- n | '; after '|' write one row variable, the same on both sides, or no '|'\nhook: non-certified definition: rp at ' | n -- n | '\n"
+   S\" habu: in rp: return-stack effect in signature ' | n -- n | '; suggestion: Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition.\nhook: non-certified definition: rp at ' | n -- n | '\n"
    REFUSED-RC REFUSED
    s" a quotation type moves a cell to the return stack"
    S\" : RUNQ ( n [ n -- | U -- U n ] | U -- n | U ) execute r> ;\n: USE ( -- n ) 5 [: >r ;] RUNQ ;\nUSE . cr\n"
-   S\" habu: in runq: return-stack effect in signature ' n [ n -- | U -- U n ] | U -- n | U '; after '|' write one row variable, the same on both sides, or no '|'\nhook: non-certified definition: runq at ' n [ n -- | U -- U n ] | U -- n | U '\n"
+   S\" habu: in runq: return-stack effect in signature ' n [ n -- | U -- U n ] | U -- n | U '; suggestion: Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition.\nhook: non-certified definition: runq at ' n [ n -- | U -- U n ] | U -- n | U '\n"
    REFUSED-RC REFUSED
    s" a generates: row declares a return-stack cell"
    S\" package GP\n: G ( n -- ) drop ;\ngenerates: G ( | -- | n )\npublic\n;package\n"
@@ -89,23 +89,23 @@ variable ERR-U
    UNCAUGHT-RC REFUSED
    s" a bar on one side only"
    S\" : ONE ( R n | S -- R ) drop ;\n"
-   S\" habu: in one: return-stack effect in signature ' R n | S -- R '; after '|' write one row variable, the same on both sides, or no '|'\nhook: non-certified definition: one at ' R n | S -- R '\n"
+   S\" habu: in one: return-stack effect in signature ' R n | S -- R '; suggestion: Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition.\nhook: non-certified definition: one at ' R n | S -- R '\n"
    REFUSED-RC REFUSED
    s" a quotation literal pushes a cell its caller pops"
    S\" : QPUSH ( n -- n ) [: >r ;] execute r> ;\n: USE ( -- n ) 5 QPUSH ;\nUSE . cr\n"
-   S\" habu: in qpush: at ';]' return stack: the quotation leaves its return row unbalanced expected: actual: n \nhook: non-certified definition: qpush at ';]'\n"
+   S\" habu: in qpush: at ';]' return stack: the quotation leaves its return row unbalanced expected: actual: n ; suggestion: Balance return-stack transfers before the quotation returns.\nhook: non-certified definition: qpush at ';]'\n"
    REFUSED-RC REFUSED
    s" a quotation literal pops a cell its caller pushed"
    S\" : QPOP ( n -- n ) >r [: r> ;] execute ;\n: USE ( -- n ) 5 QPOP ;\nUSE . cr\n"
-   S\" habu: in qpop: at ';]' return stack: the quotation reads below the return-stack cells it pushed expected: n actual: \nhook: non-certified definition: qpop at ';]'\n"
+   S\" habu: in qpop: at ';]' return stack: the quotation reads below the return-stack cells it pushed expected: n actual: ; suggestion: Read or pop only return-row cells this quotation pushed with >r; below them lies the caller's frame.\nhook: non-certified definition: qpop at ';]'\n"
    REFUSED-RC REFUSED
    s" an unsigned definition reads a cell it did not push"
    S\" : UREAD r@ ;\n"
-   S\" habu: in uread: at 'r@' return stack: this reads below the return-stack cells pushed here expected: a actual: a \nhook: non-certified definition: uread at 'r@'\n"
+   S\" habu: in uread: at 'r@' return stack: this reads below the return-stack cells pushed here expected: a actual: a ; suggestion: Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame.\nhook: non-certified definition: uread at 'r@'\n"
    REFUSED-RC REFUSED
    s" an unsigned definition pops a cell it did not push"
    S\" : UPOP r> ;\n"
-   S\" habu: in upop: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: \nhook: non-certified definition: upop at 'r>'\n"
+   S\" habu: in upop: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: ; suggestion: Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame.\nhook: non-certified definition: upop at 'r>'\n"
    REFUSED-RC REFUSED ;
 
 \ ---- still admitted -----------------------------------------------------------

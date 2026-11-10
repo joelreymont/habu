@@ -1104,8 +1104,10 @@ the return stack as it found it, so no signature declares a return-stack cell.
 A `|` clause may name one row variable, the same on both sides: the word leaves
 its caller's return stack alone, which is what a signature with no bar says.
 Any other clause is refused at the declaration, at both tiers, before the body
-is checked: `habu: in NAME: return-stack effect in signature '<sig>'; after '|'
-write one row variable, the same on both sides, or no '|'` (`E-BAD-SIGNATURE`,
+is checked: `habu: in NAME: return-stack effect in signature '<sig>';
+suggestion: Declare no return-stack effect: after '|' write one row variable,
+the same on both sides, or no '|'; park a value with >r and take it back with
+r> in one definition.` (`E-BAD-SIGNATURE`,
 repair class `fix_return_stack`). A stored signature — a `TRUSTED:`
 definition's, a `defer`'s, a `trust` row's or a `CAST:` — is refused as
 `E-BAD-STORED-SIGNATURE` with the same repair class. To keep a value across
@@ -1937,7 +1939,7 @@ backend answers alike.
 
   ```forth
   ARG s" child" TOK= if CHILD-MAIN exit then
-  \ habu: in dispatch: at 'exit' after 'CHILD-MAIN'
+  \ habu: in dispatch: at 'exit' after 'CHILD-MAIN'; suggestion: Remove tokens after the terminating control word, or move the work before it.
   \ hook: non-certified definition: dispatch at 'exit'
   ```
 
@@ -2098,7 +2100,9 @@ documentation-only edits need no rebuild.
   word on stderr and may spill the rest of the definition through the
   interpreter. `tools/check.f --all-errors` and `--verify-only` report every
   refused definition, each for the one fault the load refuses it for; the
-  `tools/diag-code.f` header states the diagnostic contract.
+  `tools/diag-code.f` header states the diagnostic contract. A refused
+  definition's prose line ends with `; suggestion: ` and the text its packet's
+  `suggestion` field carries.
 
 ## Habu Native Tooling Gotchas
 

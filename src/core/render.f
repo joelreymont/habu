@@ -603,8 +603,8 @@ variable RSHOW-DST
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
-\ DIAG-PRINT writes one reject line to stderr:
-\   habu: in NAME: at 'TOK' expected: <row> actual: <row>
+\ DIAG-PRINT writes one reject line to stderr, its packet's suggestion last:
+\   habu: in NAME: at 'TOK' expected: <row> actual: <row> ; suggestion: <text>
 \ A top-level step's line names its place instead (DSITE): habu: PATH:LINE: ...
 \ expected and actual appear only when the failing unify was captured.
 : DTXT ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -1444,14 +1444,14 @@ variable MDV-I   variable MDV-F
      s" unknown type '" DTXT  FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT
    THEN
    SGBAD-BAREPTR? IF
-     s" 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
+     s" 'ptr' needs an element type" DTXT EXIT
    THEN
    SGBAD-ARITY? IF
      s" wrong arity for type family '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
    THEN
    SGBAD-RETURN? IF
      s" return-stack effect in signature '" DTXT  FAILTK FAILTU @ DTXT
-     s" '; " DTXT  RCLAUSE-FIX$ DTXT EXIT
+     s" '" DTXT EXIT
    THEN
    SGBAD-BINDERS? IF BINDERS-REASON s"  at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT THEN
    SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS  s"  at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT THEN
@@ -1647,7 +1647,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    THEN
    s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
    s" ' is minted into " DTXT  NP-FAM-REND
-   s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type — use an audited TRUSTED: boundary" DTXT ;
+   s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type" DTXT ;
 \ The return rows `return_stack` names, expected then actual: a quotation
 \ literal's own when its seal refused it (RSBAD 3, 4), else the definition's.
 : RS-ROWS ( -- n n )
@@ -1670,21 +1670,20 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    k RF-IMM = IF
      IMM-CODE$ DTXT  s"  " DTXT  DSITE
      s" compile-time immediate '" DTXT  FAILTK FAILTU @ DTXT
-     s" ' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body" DTXT EXIT
+     s" ' is not a stack-neutral parsing immediate" DTXT EXIT
    THEN
    k RF-SIG = IF SGBAD-PROSE EXIT THEN
    k RF-NP = IF NP-PROSE EXIT THEN
    k RF-CAP = IF
      DCODE DTXT  s"  " DTXT  DSITE
      s" '" DTXT  FAILTK FAILTU @ DTXT
-     s" ' is a trust-boundary primitive; call it only from a TRUSTED: definition" DTXT EXIT
+     s" ' is a trust-boundary primitive" DTXT EXIT
    THEN
    k RF-UNSAFE = IF
      DCODE DTXT  s"  " DTXT  DSITE
      s" '" DTXT  FAILTK FAILTU @ DTXT
      s" ' reads source or changes the compiler's or checker's state, which no stack" DTXT
-     s"  effect describes, so a checked body cannot use it; to evaluate text there," DTXT
-     s"  use evaluate-closed" DTXT EXIT
+     s"  effect describes, so a checked body cannot use it" DTXT EXIT
    THEN
    k RF-LOCAL = IF LOCALBAD-PROSE EXIT THEN
    k RF-QUAL = IF
@@ -1698,7 +1697,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    THEN
    k RF-LINLOCAL = IF
      s" E-LINEAR-LOCAL " DTXT  DSITE
-     s" linear value cannot be bound to a local; keep it on the stack" DTXT EXIT
+     s" linear value cannot be bound to a local" DTXT EXIT
    THEN
    DSITE  s" at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
@@ -1855,7 +1854,9 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 
 : DIAG-PRINT
    1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !
-   JSON-DIAGS @ IF DIAG-JSON ELSE DIAG-PROSE THEN
+   JSON-DIAGS @ IF DIAG-JSON ELSE
+     DIAG-PROSE  s" ; suggestion: " DTXT  SUGGEST-TEXT DTXT
+   THEN
    10 EMIT1
    RSBUF-FLUSH
    JSON-DIAGS @ IF CHECKER-REPORT-MARK THEN ;
