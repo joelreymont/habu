@@ -568,6 +568,7 @@ CRAFT-CAP BUFFER: CRAFT-FIRST   variable CRAFT-U
 CRAFT-CAP BUFFER: CRAFT-OBJ
 variable AT                              \ the walk's offset in CRAFT-OBJ
 variable RECS                            \ the records walked
+variable DEFS                            \ the kind 0 entries walked, each its emission's number
 variable FLAG-AT                         \ the package entry's own-private flag's offset
 variable MID-EM
 variable PKG-REC
@@ -623,8 +624,8 @@ variable SLOT-S                          \ and their count
    kind 1 =  craft and if RECS @ PKG-REC ! then
    1 RECS +!
    kind 0 = if
-      OBJ-U64 {: e:n :}
-      name nu s" MID" STR= if e MID-EM ! then
+      name nu s" MID" STR= if DEFS @ MID-EM ! then
+      1 DEFS +!
       REF-SKIP exit
    then
    kind 1 = if
@@ -632,7 +633,7 @@ variable SLOT-S                          \ and their count
       late if AT @ LATE-FLAG-AT ! then
       1 OBJ-SKIP exit
    then
-   kind 2 = if 3 else 2 then OBJ-SKIP ;
+   kind 2 = if 3 else 1 then OBJ-SKIP ;
 
 
 \ A call row of emission e: site, kind, reference; MID's row naming LOW (tag 0, file 0, LOW's sum
@@ -671,7 +672,7 @@ variable SLOT-S                          \ and their count
 : CRAFT-WALK ( -- )
    CRAFT-FIRST CRAFT-OBJ CRAFT-U @ BYTE-COPY
    PIECES-FIELD OBJ@ AT !  1 OBJ-SKIP
-   0 RECS !  -1 FLAG-AT !  -1 MID-EM !  -1 PKG-REC !  -1 LOW-REC !  -1 HIGH-REC !
+   0 RECS !  0 DEFS !  -1 FLAG-AT !  -1 MID-EM !  -1 PKG-REC !  -1 LOW-REC !  -1 HIGH-REC !
    -1 BYTES-AT !  -1 SITE-AT !  -1 INDEX-AT !
    -1 LATE-FLAG-AT !  -1 LATE-AT !  -1 SLOT-AT !  -1 SLOT-BYTES-AT !  -1 SLOT-S !
    OBJ-U64 0 ?do ENTRY-WALK loop

@@ -240,7 +240,7 @@ DYNAMIC-BUFFER GRANTS n              \ the built packages a checked piece gives 
 variable GRANTS-N
 DYNAMIC-BUFFER EM-OFFS n             \ its emissions' offsets in OBJECT, each at its S
 DYNAMIC-BUFFER FILE-ROWS n           \ its FILES row k, from 1, as that file's BUILT row index
-DYNAMIC-BUFFER DOES-AT n             \ its KIND-DOES entries' emission fields' offsets in OBJECT
+DYNAMIC-BUFFER DOES-AT n             \ its KIND-DOES entries: the offset field's place in OBJECT, the emission
 DYNAMIC-BUFFER HOST-CALLS n          \ the host copy's call sites out of hb's region
 variable HOST-CALLS-N
 DYNAMIC-BUFFER ALIASES n             \ the linked file's aliases, each its record index, then its source's
@@ -1466,9 +1466,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx MADE-WID BOOT:TYPES-WL = if KIND-TYPE exit then
    KIND-ALIAS ;
 
-\ A definition's or does record's emission, numbered from the file's first.
-: EMISSION+ ( n -- ) NSHADOW:EMISSION@ FILE-EM @ - PIECES U64+ ;
-
 \ The record's dispatch cell, a defer's trailer cell, as a data reference; 5 for none.
 : DISPATCH+ ( ptr n -- )
    {: rec:ptr :}
@@ -1489,9 +1486,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    src ;
 
 \ The kind, the name, the flags without the name length and EXT, the wordlist (WORDLIST+), then
-\ the kind's fields (DISPATCH+, OWN-PRIVATE?, none for KIND-TYPE); a KIND-PRIVATE entry is
-\ LATE+'s, a KIND-SEALED one SEAL+'s. Answers the record the entry binds: an alias's source, a
-\ type entry's TYPE-SOURCE, else -1.
+\ the kind's fields (DISPATCH+, the does entry's offset, OWN-PRIVATE?, the alias's source, none
+\ for KIND-TYPE); a KIND-PRIVATE entry is LATE+'s, a KIND-SEALED one SEAL+'s. Answers the record
+\ the entry binds: an alias's source, a type entry's TYPE-SOURCE, else -1.
 : RECORD+ ( n -- n )
    {: idx:n :}
    idx XREF-REC {: rec:ptr :}
@@ -1501,8 +1498,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    rec XREF-NAME$ PIECES FIELD+
    rec XREF-FLAGS  DNAME-LEN-MASK DNAME-EXT or invert and  PIECES U64+
    idx WORDLIST+
-   kind KIND-DEF = if row EMISSION+  rec DISPATCH+  -1 exit then
-   kind KIND-DOES = if row EMISSION+  row NSHADOW:ENTRY@ PIECES U64+  -1 exit then
+   kind KIND-DEF = if rec DISPATCH+  -1 exit then
+   kind KIND-DOES = if row NSHADOW:ENTRY@ PIECES U64+  -1 exit then
    kind KIND-PACKAGE = if
       idx OWN-PRIVATE? if 1 else 0 then PIECES U64+  -1 exit
    then
@@ -2971,9 +2968,7 @@ variable RD-END
 \ A KIND-DEF entry's emission: NSHADOW:PUBLISH files one emission per definition, so it is the
 \ count of KIND-DEF entries before it.
 : EM-NAMED ( -- n )
-   RD-U64 {: e:n :}
-   e DEFS-N @ <> if BAD then
-   1 DEFS-N +!  e ;
+   DEFS-N @  1 DEFS-N +! ;
 
 
 \ A package entry's own-private flag; a 1 adds the package, the next record, to PRIVS.
@@ -2983,12 +2978,12 @@ variable RD-END
    f 1 = if 0 RECS-N @ PRIV+ then ;
 
 
-\ A does record's emission, its definer's just before it, then its entry offset (DOES-ENTRY-CK).
+\ A does record's entry offset (DOES-ENTRY-CK) into its definer's emission, the KIND-DEF entry's
+\ just before it.
 : DOES-CK ( -- )
-   DOES-N @ 1 + DOES-AT-RESERVE
-   RD-AT @ DOES-N @ DOES-AT !  1 DOES-N +!
-   RD-U64 {: e:n :}
-   LAST-EM @ 0<  e LAST-EM @ <>  or if BAD then
+   DOES-N @ 1 + 2 * DOES-AT-RESERVE
+   RD-AT @ DOES-N @ 2 * DOES-AT !  LAST-EM @ DOES-N @ 2 * 1 + DOES-AT !  1 DOES-N +!
+   LAST-EM @ 0< if BAD then
    8 RD-SKIP ;
 
 
@@ -3138,13 +3133,12 @@ variable RD-END
    s e SLOT-CK ;
 
 
-\ Each KIND-DOES entry's offset, after its emission e: function j's offset of e, j from 1 to F - 1,
-\ an ENTRY@ as RECORD+ writes it.
+\ Each KIND-DOES entry's offset: function j's offset of its definer's emission e, j from 1 to
+\ F - 1, an ENTRY@ as RECORD+ writes it.
 : DOES-ENTRY-CK ( -- )
    GOOD? 0= if exit then
    DOES-N @ 0 ?do
-      i DOES-AT @ {: at:n :}
-      at OBJ@  at 8 + OBJ@ {: e:n off:n :}
+      i 2 * 1 + DOES-AT @  i 2 * DOES-AT @ OBJ@ {: e:n off:n :}
       false  e OWN-FUNS 1 ?do  e i OWN-FUN-AT off =  or  loop
       0= if BAD unloop exit then
    loop ;
@@ -4111,25 +4105,26 @@ variable LINK-EM                     \ that emission's number in this object, -1
 
 
 \ Entry i, a definition (RECORD+), as the next record, placed and published; a KIND-DOES entry
-\ right after it is its companion, the record after that.
+\ right after it is its companion, the record after that. Its emission e is the file's next: each
+\ MAKE-DEF of the piece before it published one.
 : MAKE-DEF ( n -- )
    {: i:n :}
+   NSHADOW:EMISSIONS FILE-EM @ - {: e:n :}
    i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 KIND-DEF <> if E-COMP-STATE throw then
    RD-NAME {: a:ptr u:n :}
    RD-U64 {: flags:n :}
    ROLE-WID {: wid:n :}
-   RD-U64 {: e:n :}
    RD-REF {: tag:n x:n y:n z:n :}
    GOOD? 0= if E-COMP-STATE throw then
    i 1 + ENTRIES-N @ < if i 1 + ENTRY-OFFS @ OBJ@ KIND-DOES = else false then {: does:bool :}
    does if
       i 1 + ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
-      RD-U64 drop  RD-NAME  RD-U64  ROLE-WID  RD-U64  RD-U64
+      RD-U64 drop  RD-NAME  RD-U64  ROLE-WID  RD-U64
    else
-      NULL-PTR 0  0  0  e  0
-   then {: da:ptr du:n dflags:n dwid:n de:n off:n :}
-   GOOD? 0=  de e <>  or if E-COMP-STATE throw then
+      NULL-PTR 0  0  0  0
+   then {: da:ptr du:n dflags:n dwid:n off:n :}
+   GOOD? 0= if E-COMP-STATE throw then
    does  tag 5 <>  and if E-COMP-STATE throw then
    does if e off DOES-FUN else 0 then {: j:n :}
    ndict@ {: want:n :}
