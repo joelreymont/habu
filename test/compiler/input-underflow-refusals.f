@@ -8,11 +8,12 @@
 require src/lib/test.f
 require src/lib/string.f
 
-\ The consumers the evaluated programs call. They are file-global because the
-\ programs below are compiled at run time, in the scope a real program writes
-\ them in.
+\ The consumers the evaluated programs call and the type they move. They are
+\ file-global because the programs below are compiled at run time, in the scope
+\ a real program writes them in.
 : UFC ( n -- ) drop ;
 : UFC2 ( n n -- ) 2drop ;
+SUMTYPE rb<a> VARIANT rf a ;VARIANT ;SUMTYPE   \ a multi-cell value
 
 \ The cell a speculative candidate refuses before the real row is applied.
 variable IUF-V
@@ -99,6 +100,32 @@ create DIAG-BUF 8192 allot
    ARM
    [: s" : IUF-TWO ( n -- n ) UFC2 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED  s" UFC2" TOKEN?  s" 2" s" 1" SHORT-BY?
+   DISARM ;
+
+\ catch's code cell carries a proof, so a stack word over it moves the cells by
+\ row surgery (checker.f XPORT-APPLY); the word that reaches under the declared
+\ inputs still owns the refusal.
+: CASE-SWAP-OVER-PROOF ( -- )
+   s" a swap over a proof-carrying cell is refused at the swap" T-LABEL
+   ARM
+   [: s" : IUF-XSWAP ( -- ) [: ;] catch swap drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" swap" TOKEN?  s" 2" s" 1" SHORT-BY?
+   DISARM ;
+
+\ A multi-cell value moves as one logical group, so both counts are cells, not
+\ operands, with a proof among them or not.
+: CASE-WIDE-OVER-PROOF ( -- )
+   s" a 2swap over a proof and a multi-cell value counts cells" T-LABEL
+   ARM
+   [: s" : IUF-XWIDE ( -- ) 5 RB:RF [: ;] catch 2swap drop drop drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" 2swap" TOKEN?  s" 5" s" 3" SHORT-BY?
+   DISARM ;
+
+: CASE-WIDE-COPY ( -- )
+   s" a 2dup of a multi-cell declared input counts cells" T-LABEL
+   ARM
+   [: s" : IUF-WCOPY ( rb<n> -- rb<n> rb<n> ) 2dup ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" 2dup" TOKEN?  s" 3" s" 2" SHORT-BY?
    DISARM ;
 
 \ Binding the declared input into a local does not make another one appear; the
@@ -287,6 +314,9 @@ public
    T-RESET
    CASE-BARE
    CASE-TWO-DEEP
+   CASE-SWAP-OVER-PROOF
+   CASE-WIDE-OVER-PROOF
+   CASE-WIDE-COPY
    CASE-AFTER-LOCALS
    CASE-LOCALS-BINDER
    CASE-OVER-ABANDONED-CANDIDATE

@@ -4674,7 +4674,7 @@ CHECKER-REG:}SCRATCH
 25 constant MD-RIGID-XDOM     \ rigid-identity domain confusion: a region/extent/generation used where another is required
 26 constant MD-RAW-PTR        \ a pointer met an undeclared raw storage cell (RAW-OK? T-PTR)
 27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base; same E-RAW-CELL-PTR code, prose names 'ptr-field'
-28 constant MD-UNDERFLOW      \ a step reached under the definition's declared inputs (STEP-BORROWS?)
+28 constant MD-UNDERFLOW      \ a step or transport reached under the definition's declared inputs (STEP-BORROWS?, XPORT-APPLY)
 29 constant MD-NULL-PTR       \ a nominal or a pointer read through NULL-PTR (BASE-BLOCK?); same E-RAW-CELL-PTR code, prose names the null
 30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth; same E-RAW-CELL-PTR code, prose names the DATA region
 31 constant MD-RAW-EXEC       \ an execution token met an undeclared cell or a base address (FENCE-EXEC); same E-RAW-CELL-PTR code, its own prose and repair class
@@ -4934,10 +4934,14 @@ CHECKER-REG:SCRATCH{
 variable UF-NEED   variable UF-HAVE
 CHECKER-REG:}SCRATCH
 
-: STEP-BORROWS? ( n -- bool ) {: din:n :}   \ would this step reach under the declared inputs?
+: STEP-AT-BASE? ( -- bool )   \ does the data row still end in the declared base? UF-HAVE = its cells
    SGDBASE @ 0= IF RES-FALSE EXIT THEN            \ no declared signature: no sealed base
    DCUR @ ROW-TAIL  SGDBASE @ ROW-TAIL  <> IF RES-FALSE EXIT THEN   \ another base: a quotation body's own (CF-QUOT) or a row the signature names (SG-ROWS); a locals bind keeps the declared one
    DCUR @ ROW-CELLS UF-HAVE !
+   RES-TRUE ;
+
+: STEP-BORROWS? ( n -- bool ) {: din:n :}   \ would this step reach under the declared inputs?
+   STEP-AT-BASE? 0= IF RES-FALSE EXIT THEN
    din ROW-CELLS UF-NEED !
    UF-NEED @ UF-HAVE @ > ;
 
@@ -20310,9 +20314,10 @@ variable CHECKER-PREFIX-ROLLBACK
 \ rebuilds the consumed row: read k logical groups (a hidden tag opens an
 \ exactly-W run validated slot W-1..0 as one family, die 76 on a malformed run;
 \ any other cell is a 1-cell group; a row var materializes a fresh 1-cell var
-\ group through FRESH+UNIFY, and underflow is the normal UNIFY reject), then
-\ write the op's output permutation with MK-PUSH. Pure-scalar rows never reach
-\ this path. A logical layout cell (LAYOUT-WIDTH-OPEN?) among the operands
+\ group through FRESH+UNIFY; a read below the declared inputs is measured as
+\ CHECKER-STEP measures it (STEP-AT-BASE?, STEP-UNDERFLOW!)), then write the
+\ op's output permutation with MK-PUSH. Any operand carrying proof or lost
+\ metadata (XP-META-IN-K?), scalars included, takes this path. A logical layout cell (LAYOUT-WIDTH-OPEN?) among the operands
 \ rejects here (XG-READ-GROUP); without a hidden group or proof/lost metadata
 \ among the operands (XPORT-STEP?) the op takes the one-cell path, which
 \ LAYOUT-XPORT-ALLOW? refuses when the layout may be linear (TDLIN-VAR-TOR,
@@ -20540,6 +20545,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
 : XPORT-APPLY ( ptr u8 n -- )
    {: a:ptr u:n :}
    LIN-SNAPSHOT {: bef:n :}
+   a u WF-XPORT-RROW? IF RES-FALSE ELSE STEP-AT-BASE? THEN {: based:bool :}   \ a data-row read, measured before XG-READ binds the tail
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
    0  a u WF-XPORT-K 0 ?do   \ ( row cells ): each operand's logical cell of known width expanded
       2dup ROW-DROP-N R-RES  dup TAG S-PUSH <> IF drop leave THEN
@@ -20547,6 +20553,12 @@ variable XG-N   variable XG-TN   variable XG-ROW
       2dup ROW-DROP-N R-RES P>TYPE T-RES  dup HIDDEN-PARAM? IF T-WIDTH ELSE drop 1 THEN  +
    loop drop
    a u WF-XPORT-K  XG-READ 0= IF EXIT THEN
+   \ unjudged, this refusal settles (UNJ-SETTLE): a data-row word compiles at the token's raw effect, whose rows replace the logical ones;
+   \ a cut inside a multi-cell value, or a return-row transfer, leaves the scan incomplete where a wide cell is at stake (UNJ-LOST)
+   based IF
+      XG-TN @ UF-NEED !
+      OK @  UF-NEED @ UF-HAVE @ >  and IF STEP-UNDERFLOW! THEN   \ the read spent the caller's frame
+   THEN
    REC-ON @ IF a u XPORT-CALL THEN
    a u XP-RS? IF
       a u XPORT-RS-APPLY
