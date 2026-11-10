@@ -10,14 +10,13 @@
 \ replaces with NOTICE. A LINE while a line is open abandons that line, as a
 \ throw does, so the TEXT+ and ;LINE that follow it write nothing.
 \ STORAGE CLASS. TASK-LOCAL: the line, a TASK:+USER BUF row kept across lines
-\ and released once a line grows it past START-CAP; LIVE, set while the row
-\ holds storage; ARMED, set while the row's release is registered; PHASE,
-\ whether a line is closed, open or lost. A line logged from a
-\ TASK:AT-EXIT cleanup leaks its row: the release LINE registers then joins a
-\ chain already running (src/lib/task.f TASK-RUN-EXIT). PROCESS-WIDE: LOCK,
-\ held for each line's write, which keeps this process's lines whole (another
-\ process writing the same fd can still split a line longer than PIPE_BUF), and
-\ NOTICE, written under it.
+\ and released once a line grows it past START-CAP; ARMED, set while the row's
+\ release is registered; PHASE, whether a line is closed, open or lost. A line
+\ logged from a TASK:AT-EXIT cleanup leaks its row: the release LINE registers
+\ then joins a chain already running (src/lib/task.f TASK-RUN-EXIT).
+\ PROCESS-WIDE: LOCK, held for each line's write, which keeps this process's
+\ lines whole (another process writing the same fd can still split a line
+\ longer than PIPE_BUF), and NOTICE, written under it.
 
 require src/lib/error.f
 require src/lib/prelude.f
@@ -46,7 +45,6 @@ $7F constant DEL-B
 $5C constant BACKSLASH
 
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and BUF:HDR-BYTES TASK:+USER ROW drop
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER LIVE drop
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER ARMED drop
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER PHASE drop
 TASK:FACILITY LOCK
@@ -75,7 +73,6 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 : ROW-RELEASE ( -- )
    0 ARMED !
-   0 LIVE !
    ROW BUF:DISPOSE ;
 
 
@@ -102,9 +99,8 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
 : ROW-READY ( -- )
-   LIVE @ 0<> if ROW BUF:CLEAR exit then
-   ROW START-CAP BUF:N>BLEN BUF:INIT
-   1 LIVE ! ;
+   ROW BUF:LIVE? if ROW BUF:CLEAR exit then
+   ROW START-CAP BUF:N>BLEN BUF:INIT ;
 
 
 : STAMP ( -- )
@@ -189,9 +185,8 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 \ A task that logged one huge line keeps none of its storage.
 : SHED ( -- )
-   LIVE @ 0= if exit then
+   ROW BUF:LIVE? 0= if exit then
    ROW BUF:CAP@ BUF:BLEN>N START-CAP <= if exit then
-   0 LIVE !
    ROW BUF:DISPOSE ;
 
 public

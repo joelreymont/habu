@@ -10,6 +10,7 @@ require src/lib/property.f
 create BUFT-BUF BUF:HDR-BYTES allot
 create BUFT-REL-BUF BUF:HDR-BYTES allot
 create BUFT-BIG-BUF BUF:HDR-BYTES allot
+create BUFT-LIVE-BUF BUF:HDR-BYTES allot
 create BUFT-CHUNK 1024 allot
 create BUFT-REF 4096 allot
 
@@ -215,6 +216,14 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
       BUFT-REL-BUF BUF:DISPOSE
    loop ;
 
+\ LIVE? answers on a header never initialised, a live one and a disposed one.
+: BUFT-LIVE ( -- )
+   BUFT-LIVE-BUF BUF:LIVE? TFALSE
+   BUFT-LIVE-BUF BUFT-CAP0 BUFT-N>BLEN BUF:INIT
+   BUFT-LIVE-BUF BUF:LIVE? TTRUE
+   BUFT-LIVE-BUF BUF:DISPOSE
+   BUFT-LIVE-BUF BUF:LIVE? TFALSE ;
+
 : BUFT-GROW-FAIL-ATOMIC ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    s" keep" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN
@@ -310,6 +319,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-DISPOSE-RELEASES
    BUFT-DISPOSE-DOUBLE
    BUFT-DISPOSE-CYCLE-BOUNDED
+   [: BUFT-LIVE ;] catch 0 T=                         \ LIVE? never throws
    BUFT-GROW-FAIL-ATOMIC
    [: BUFT-USE-SPAN ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-CONTENT ;] E-BUF-STATE TTHROWSQ

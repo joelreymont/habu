@@ -217,6 +217,8 @@ public
    buf CHECK-LIVE  buf LEN-RAW@ N>BLEN ;
 : CAP@ ( ptr a -- NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf CAP-RAW@ N>BLEN ;
+\ The one accessor safe on a fresh or disposed header.
+: LIVE? ( ptr a -- bool )  CAP-RAW@ 0<> ;
 \ SPAN and SPAN$ borrow exactly the active prefix until the next mutation or
 \ disposal; the span enforces neither that lifetime nor read-only use, and the
 \ borrower never frees it.
