@@ -106,10 +106,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : COPY-ROW ( n -- )
    {: row:n :}
    row ROW-OFF {: off:n :}
-   off CELL + DATA-IMAGE-LEN > if
-      s" link: a declared cell past the build's data, at offset " SAY off SAY-INT SAY-CR
-      s" link: a declared cell lies past the build's data" 74 die
-   then
+   off CELL-FITS
    row CELL-VALUE {: v:n :}
    row SCRATCH-ROW? if 0 off COPY-AT LE:U64! exit then
    row DATA-ROW? if
@@ -383,9 +380,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : DATA-IMAGE ( -- )
    PAD8
    LIMAGE A64ICODE:LABEL@ A64ICODE:LBL,
-   FILL-COPY
-   ENGINE? @ 0= if CUT-DEAD KEEP-STRINGS KEEP-LIST then
-   SORT-ROWS
+   KEPT-COPY
    ['] COPY-ROW EACH-KEPT
    HEADER-CELLS
    ENGINE? @ if ENGINE-CELLS RECOVERY-CELLS then

@@ -30,13 +30,6 @@ private
    s" link: a DATA pointer outside the build's space" 74 die ;
 
 
-\ Each row of the space's address cells, handed to visit.
-: EACH-ROW ( [ n -- ] -- )
-   {: visit :}
-   ROWS {: rows:ptr count:n :}
-   count 0 ?do rows i cells + @ visit execute loop ;
-
-
 \ ---- the data a stripped program reaches ------------------------------------------
 \ A stripped program keeps the data of the files it reaches, whole files: unit r,
 \ r < BUILT-N, is the file whose first BUILT row is r, each of its pieces; unit
@@ -248,6 +241,14 @@ variable STR-N
    ENGINE? @ if true exit then
    i CELL-READ @ 0<> ;
 
+\ Dies unless the cell at offset off lies inside the copy.
+: CELL-FITS ( n -- )
+   {: off:n :}
+   off CELL + DATA-IMAGE-LEN > if
+      s" link: a declared cell past the build's data, at offset " SAY off SAY-INT SAY-CR
+      s" link: a declared cell lies past the build's data" 74 die
+   then ;
+
 \ Each kept address row, handed to visit.
 : EACH-KEPT ( [ n -- ] -- )
    {: visit :}
@@ -341,5 +342,13 @@ variable STR-N
    LIST-AT {: at:n :}
    SNAP-RELOC:XTCELL-N-CELL COPY-AT LE:U64@ {: n:n :}
    n 0 > if at COPY-CELLS n [: ROW-OFF swap ROW-OFF swap < ;] SORT:SORT! then ;
+
+
+\ The copy filled, a stripped program's dead units cut and its kept rows listed
+\ in cell order; an engine keeps every unit and row.
+: KEPT-COPY ( -- )
+   FILL-COPY
+   ENGINE? @ 0= if CUT-DEAD KEEP-STRINGS KEEP-LIST then
+   SORT-ROWS ;
 
 ;package

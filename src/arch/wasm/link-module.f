@@ -184,10 +184,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 : ROW+ ( n -- )
    {: row:n :}
    row ROW-OFF {: off:n :}
-   off CELL + DATA-IMAGE-LEN > if
-      s" link: a declared cell past the build's data, at offset " SAY off SAY-INT SAY-CR
-      s" link: a declared cell lies past the build's data" 74 die
-   then
+   off CELL-FITS
    row SCRATCH-ROW? if 0 off COPY-AT LE:U64! exit then
    row CELL-VALUE {: v:n :}
    v 0= if exit then
@@ -226,7 +223,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 \ The copy's kept rows; the index mapping address is zeroed, as link-data.f
 \ HEADER-CELLS zeroes it.
 : DATA+ ( -- )
-   FILL-COPY CUT-DEAD KEEP-STRINGS KEEP-LIST SORT-ROWS
+   KEPT-COPY
    ['] ROW+ EACH-KEPT
    0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
 
