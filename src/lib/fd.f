@@ -2,7 +2,8 @@
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
 \ as a failed call), and syncing and resizing a file. A refused PIPE, mark,
 \ read, write, sync or resize, a write that takes no byte and a count past the
-\ asked one are E-FS-IO; a negative length is E-SPAN-LENGTH. A refused
+\ asked one are E-FS-IO, which TRY-WRITE-FULL answers as how far its write got;
+\ a negative length is E-SPAN-LENGTH. A refused
 \ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE fcntl is
 \ E-PROC-OUTPUT, and O-NONBLOCK and F-DUPFD-CLOEXEC throw E-PROC-HOST on a host
 \ that is neither Linux nor macOS.
@@ -33,6 +34,10 @@ ENUM fill
    VARIANT full ;VARIANT
    VARIANT eof FIELD bytes n ;VARIANT
 ;ENUM
+
+\ How TRY-WRITE-FULL ended: every byte moved, the first write was refused with
+\ nothing moved, or some bytes moved and then a write was refused.
+ENUM wrote all none part ;ENUM
 
 1 constant POLLIN
 4 constant POLLOUT
@@ -176,13 +181,11 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
    k want > if E-FS-IO throw then
    k ;
 
+\ The bytes one write moved, 0 when it moved none; a count past the asked one is
+\ answered as the call gave it.
 : SENT ( n fd ptr u8 n -- n )
    {: done:n f:fd src:ptr u:n :}
-   u done - {: want:n :}
-   f FD>N src done + want write {: k:n :}
-   k 0 <= if E-FS-IO throw then
-   k want > if E-FS-IO throw then
-   k ;
+   f FD>N src done + u done - write 0 max ;
 
 : PIPE-HELD ( -- fd fd )
    pipe {: r:n w:n rc:n :}
@@ -212,13 +215,26 @@ public
 \ moved. Every handler that returns (the profiler's, src/lib/signal.f's) sets
 \ SA_RESTART, so a blocked write that moved nothing resumes. A write to a pipe
 \ with no reader raises SIGPIPE, which ends the process unless the caller armed
-\ FD-NOSIGPIPE! or writes inside WITH-NOSIGPIPE; then it is E-FS-IO.
-: WRITE-FULL ( fd ptr u8 n -- )
+\ FD-NOSIGPIPE! or writes inside WITH-NOSIGPIPE; then the write is refused. A
+\ count past the asked one is `part`: bytes moved, but not the ones asked.
+: TRY-WRITE-FULL ( fd ptr u8 n -- wrote )
    {: f:fd src:ptr u:n :}
    u 0 < if E-SPAN-LENGTH throw then
    0 begin dup u < while
-      dup f src u SENT +
-   repeat drop ;
+      dup dup f src u SENT +
+      2dup = if drop 0= if FD-WROTE:none else FD-WROTE:part then exit then
+      dup u > if 2drop FD-WROTE:part exit then
+      nip
+   repeat drop FD-WROTE:all ;
+
+
+\ TRY-WRITE-FULL, with E-FS-IO for anything short of `all`.
+: WRITE-FULL ( fd ptr u8 n -- )
+   TRY-WRITE-FULL MATCH wrote
+      all OF ENDOF
+      none OF E-FS-IO throw ENDOF
+      part OF E-FS-IO throw ENDOF
+   ;MATCH ;
 
 \ Arms O_NONBLOCK for the call, writes through libc to keep errno, and waits for
 \ POLLOUT until the deadline, an absolute mono-ns reading a caller can share

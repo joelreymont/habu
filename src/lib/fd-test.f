@@ -1,5 +1,5 @@
 \ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes,
-\ a write with SIGPIPE held off; a temp file cut back and appended to, and a
+\ a write with SIGPIPE held off, how far a tried write got; a temp file cut back and appended to, and a
 \ directory synced.
 \ Run: bin/hb --load src/lib/fd-test.f
 \ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
@@ -44,6 +44,7 @@ variable CHILD-CODE               \ the exit code a child's part chose
 variable ERR-FD                   \ the descriptor a word run under catch uses
 variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 variable FLAG-IN                  \ the SIGPIPE flag WITH-NOSIGPIPE's quotation read
+variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotation tried
 1 TYPED-BUFFER NO-ENV ptr u8      \ a NULL slot: the exec'd child's empty environment
 
 : OUTCOME ( FD:fill -- n )        \ FULL-MARK, or the bytes before end of file
@@ -411,6 +412,36 @@ variable FLAG-IN                  \ the SIGPIPE flag WITH-NOSIGPIPE's quotation 
    w FD>N close ;
 
 
+0 constant ALL-MARK
+1 constant NONE-MARK
+2 constant PART-MARK
+
+: WROTE>N ( FD:wrote -- n )
+   MATCH FD:wrote all OF ALL-MARK ENDOF none OF NONE-MARK ENDOF part OF PART-MARK ENDOF ;MATCH ;
+
+
+: TRY-NO-READER ( -- )
+   ERR-FD @ >FD s" data" TRY-WRITE-FULL WROTE>N WROTE-IN ! ;
+
+
+\ TRY-WRITE-FULL answers `all` on an ordinary write, `part` once a full
+\ non-blocking pipe refuses after taking bytes, and `none` once the reader is gone.
+: TRY-WRITE ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   w s" abc" TRY-WRITE-FULL WROTE>N ALL-MARK T=
+   r SMALL 3 TAKE READ-EXACT OUTCOME FULL-MARK T=
+   SMALL $ drop 3 s" abc" T$=
+   w NONBLOCK!
+   w SRC @ $ TRY-WRITE-FULL WROTE>N PART-MARK T=
+   r 0 >MS PROCESS:POLL-IN COUNT>N 1 T=
+   r FD>N close
+   w FD>N ERR-FD !
+   -1 WROTE-IN !
+   w [: TRY-NO-READER ;] WITH-NOSIGPIPE
+   WROTE-IN @ NONE-MARK T=
+   w FD>N close ;
+
+
 \ XNU stores the flags before a kqueue refuses FIONBIO, so the refused mark
 \ must put them back.
 : REFUSED-MARK ( -- )
@@ -441,6 +472,7 @@ variable FLAG-IN                  \ the SIGPIPE flag WITH-NOSIGPIPE's quotation 
    DIR-SYNC
    ERRORS
    HELD-WRITE
+   TRY-WRITE
    REFUSED-MARK
    SRC @ FREE-SPAN
    DST @ FREE-SPAN

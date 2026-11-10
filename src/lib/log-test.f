@@ -585,6 +585,47 @@ TASK:MIN-STACK TASK:TASK OPENER
    CODE-A @ 0 T= ;
 
 
+: TAKE-ONE ( -- bool )
+   PIPE-R @ CHUNK CHUNK-U read {: got:n :}
+   got 0 > if CHUNK got BLEN PIPE-B BUF:APPEND-SPAN then
+   got 0 > ;
+
+
+\ Reads what the non-blocking pipe holds into PIPE-B, until a read finds none.
+: TAKE ( -- )
+   PIPE-B BUF:CLEAR
+   begin TAKE-ONE 0= until ;
+
+
+: CUT-LINES ( -- )
+   [: BIG-LINE ;] catch CODE-A !
+   TAKE
+   [: KEPT-LINE ;] catch CODE-B ! ;
+
+
+\ A non-blocking pipe nobody drains takes part of a line longer than it holds,
+\ then refuses the rest and the LF that ends the cut line at once.
+: CUT-CASE ( -- )
+   s" a line fd 2 takes in part is ended before the next line" T-LABEL
+   PIPE-B 1 BLEN BUF:INIT
+   PIPE-OPEN
+   PIPE-R @ >FD FD:NONBLOCK!
+   PIPE-W @ >FD FD:NONBLOCK!
+   epoch-seconds T0 !
+   CUT-LINES
+   TAKE
+   epoch-seconds T1 !
+   PIPE-BACK
+   PIPE-R @ close-rc 0 T=
+   PIPE-B BUF:SPAN$ BUF:BLEN>N {: at:ptr u:n :}
+   u 1 DATE:TIME-LEN + KEPT-REST$ nip + T=
+   at c@ LF T=
+   at 1+ u 1- KEPT-REST$ LINE-OK nip 0 T=
+   CODE-A @ 0 T=
+   CODE-B @ 0 T=
+   PIPE-B BUF:DISPOSE ;
+
+
 : CODE-LINES ( -- )
    LOG:ERROR s" t" LOG:LINE E-LOG-CODE LOG:CODE+ LOG:;LINE
    LOG:ERROR s" t" LOG:LINE UNDECLARED LOG:CODE+ LOG:;LINE ;
@@ -622,6 +663,7 @@ TASK:MIN-STACK TASK:TASK OPENER
    PIPE-CASE
    REFUSED-CASE
    BROKEN-CASE
+   CUT-CASE
    CODE-CASE
    BIG-B BUF:DISPOSE
    FILE-B BUF:DISPOSE ;
