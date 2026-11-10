@@ -3802,7 +3802,9 @@ variable FFI-LIT-B                          \ and the newer
 \ relocation when the verifier is captured.
 : LIBRARY-XT! ( ptr u8 n ptr n -- )
    {: a:ptr u:n cell:ptr :}
-   a u XREF-FIND XREF-START cell xt! ;
+   a u XREF-FIND {: rec:ptr :}
+   rec XREF-FOUND? 0= IF 2 s" verify-source: library word not loaded: " write drop  a u 70 die THEN
+   rec XREF-START cell xt! ;
 
 variable LAYOUT-BUFFER-XT s" LAYOUT-BUFFER" LAYOUT-BUFFER-XT LIBRARY-XT!
 variable DEFER-LAYOUT-BUFFER-XT s" DEFER-LAYOUT-BUFFER" DEFER-LAYOUT-BUFFER-XT LIBRARY-XT!

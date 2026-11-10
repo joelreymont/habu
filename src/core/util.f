@@ -25,6 +25,17 @@ CAST: >I64 ( n -- i64 )
 \ record the engine's lookup binds to a scope by it.
 5 constant DICT-WORDLIST-SLOT
 
+\ A dictionary record's cell at a slot. No record is NULL-PTR (src/habu/xref.f
+\ XREF-NULL), whose cells would be read from the page at address 0, so it is
+\ refused by name; a caller that may hold no record tests for it first.
+\ src/habu/xref.f XREF-CELL@ and src/core/checker.f CK-REC-WID read through this
+\ word, and CHECKER-RESOLVE:CK-REC-NAME$ reads its flags through it before any
+\ other cell, so this one guard covers all three.
+7231 constant E-XREF-NULL
+: DICT-CELL@ ( ptr n n -- n )
+   over NULL-PTR = IF E-XREF-NULL throw THEN
+   cells + @ ;
+
 \ The scope-find flag bit set when two used publics hold the tail.
 2 constant SCOPE-FIND-AMBIGUOUS
 

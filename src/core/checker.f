@@ -13101,7 +13101,7 @@ public
 ;package
 
 \ The wordlist a dictionary record was published into.
-: CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
+: CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT DICT-CELL@ ;
 
 \ Dictionary record slots and flags (src/habu/layout.f DREC).
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
@@ -13134,7 +13134,7 @@ public
 \ XREF-NAME-A reads it.
 : CK-REC-NAME$ ( ptr n -- ptr u8 n )
    {: rec:ptr :}
-   rec CK-REC-FLAGS-SLOT cells + @ {: flags:n :}
+   rec CK-REC-FLAGS-SLOT DICT-CELL@ {: flags:n :}
    flags CK-REC-LEN-MASK and {: u:n :}
    flags CK-REC-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
    rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;

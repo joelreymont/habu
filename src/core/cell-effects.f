@@ -11,6 +11,7 @@ PRIM: PATH-CAP PE-N PE-OUT PRIM;
 PRIM: E-PATH-RANGE PE-N PE-OUT PRIM;
 PRIM: E-PATH-NUL PE-N PE-OUT PRIM;
 PRIM: SCOPE-FIND-AMBIGUOUS PE-N PE-OUT PRIM;
+PRIM: E-XREF-NULL PE-N PE-OUT PRIM;
 
 \ intern-table.f's words load before the checker; a row records no throw, so the
 \ checker misses TEXT's and FIND's E-INTERN-REWIND (util.f PATHZ).
