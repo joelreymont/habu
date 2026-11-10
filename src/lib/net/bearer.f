@@ -19,7 +19,6 @@
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/memory.f
-require src/lib/image-lifecycle.f
 require src/lib/base64.f
 require src/lib/json.f
 require src/lib/log.f
@@ -57,16 +56,16 @@ TYPED-VARIABLE ISSUER SPAN:span<u8>
 TYPED-VARIABLE AUDIENCE SPAN:span<u8>
 TYPED-VARIABLE KEYS-URL SPAN:span<u8>
 
-\ An allocation holding the two challenges naming METADATA!'s URL and scope,
-\ the no-token one's NAMED-U bytes first; empty while neither is stated.
-\ NAMED's two cells are IMAGE-LIFECYCLE process cells, so a saved image starts
-\ with the plain challenges; a stripped build refuses texts stated at load.
-\ They are declared at the first allocation, not at load, for the reason
-\ src/lib/fs-mutate.f gives for its cleanup row; NAMED-DECLARED is no process
-\ cell, as a snapshot keeps the table holding the declarations.
-TYPED-VARIABLE NAMED SPAN:span<u8>
-variable NAMED-U
-variable NAMED-DECLARED
+\ NAMED-LEN bytes at NAMED, an allocation holding the two challenges naming
+\ METADATA!'s URL and scope, the no-token one's NAMED-U bytes first; empty while
+\ neither is stated. A built program starts with the plain challenges: NAMED is
+\ a PTR-VARIABLE and NAMED-LEN and NAMED-U are scratch cells, each written as 0
+\ in the product.
+PTR-VARIABLE NAMED
+variable NAMED-LEN   NAMED-LEN scratch-cell-mark
+variable NAMED-U   NAMED-U scratch-cell-mark
+
+: NAMED-SPAN ( -- SPAN:span<u8> ) NAMED @ NAMED-LEN @ SPAN:MAKE ;
 
 \ The key set's text, under KEYS-LOCK with KEYS-AT and FETCHING; the lock is
 \ never held across the network. FETCHED is the flagged fetcher's alone.
@@ -405,7 +404,7 @@ drop
 \ The challenge for NO-TOKEN or INVALID.
 : CHALLENGE$ ( n -- ptr u8 n )
    {: outcome:n :}
-   NAMED @ {: named :}
+   NAMED-SPAN {: named :}
    named SPAN:LEN 0= if
       outcome NO-TOKEN = if s" Bearer" exit then
       S\" Bearer error=\"invalid_token\"" exit
@@ -460,20 +459,11 @@ drop
    {: past-sep:n :}
    SCOPE-NAME scope su row past-sep PARAM ;
 
-\ A cell of NAMED, as the address PROCESS-CELL takes.
-CAST: >CELL ( n -- ptr n )
-: DECLARE-NAMED ( -- )
-   NAMED-DECLARED @ 0<> if exit then
-   NAMED NULL-PTR - >CELL IMAGE-LIFECYCLE:PROCESS-CELL
-   NAMED NULL-PTR - 1 cells + >CELL IMAGE-LIFECYCLE:PROCESS-CELL
-   1 NAMED-DECLARED ! ;
-
 \ The challenges naming the URL and scope, in a new allocation, and the
 \ no-token one's length; an empty span when both are empty.
 : COMPOSED ( ptr u8 n ptr u8 n -- SPAN:span<u8> n )
    {: url:ptr uu:n scope:ptr su:n :}
    uu 0= su 0= and if s" " SPAN:MAKE 0 exit then
-   DECLARE-NAMED
    METADATA-NAME nip uu PARAM-LEN SCOPE-NAME nip su PARAM-LEN +
    uu 0<> su 0<> and if SEPARATOR nip + then {: params:n :}
    NAMED-PREFIX nip INVALID-PREFIX nip + params 2 * +
@@ -524,9 +514,8 @@ public
 \ The URL of this server's protected-resource metadata and the scope of access
 \ a token needs here (RFC 6750 3), which each 401 challenge then names as
 \ resource_metadata and scope; an empty text names none. The texts are copied,
-\ so they need not outlive the call. A saved image keeps neither: its process
-\ challenges plainly until the host states METADATA! again, and a stripped
-\ build refuses texts stated at load, so a host states them at run time.
+\ so they need not outlive the call. A built program keeps neither: it
+\ challenges plainly until it states METADATA! at run time.
 \ E-OPERAND for a URL holding a quote, a backslash, a control byte below $20 or
 \ $7F, which the quoted challenge value cannot carry, or a scope that is not
 \ space-separated RFC 6749 3.3 scope tokens. A refused text or allocation
@@ -537,8 +526,8 @@ public
    url uu QUOTABLE
    scope su SCOPE-TOKENS
    url uu scope su COMPOSED {: row split:n :}
-   NAMED @ {: was :}
-   row NAMED ! split NAMED-U !
+   NAMED-SPAN {: was :}
+   row SPAN:$ NAMED-LEN ! NAMED ! split NAMED-U !
    was SPAN:LEN 0 > if was MEM:FREE-SPAN then ;
 
 

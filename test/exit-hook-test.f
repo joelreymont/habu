@@ -1,9 +1,11 @@
 \ The process exit actions (src/lib/at-exit.f) and the cleanup registry run at
 \ process exit: one child per exit path (normal, `die`, uncaught throw, an
 \ action that dies or throws, a build whose source exits), judged by what it
-\ left on disk. A child registers inside this fixture's temp root, given as
-\ argument 0, so a failing case leaves its evidence where the fixture removes
-\ it; it resolves `require src/lib/fs-mutate.f` against the checkout (cwd).
+\ left on disk, and a built program, judged by what it printed and removed. A
+\ child registers inside this fixture's temp root, given as argument 0 or
+\ written into a built program's source, so a failing case leaves its evidence
+\ where the fixture removes it; it resolves `require src/lib/fs-mutate.f`
+\ against the checkout (cwd).
 require src/lib/test.f
 require src/lib/error.f
 require src/lib/string.f
@@ -71,17 +73,19 @@ variable TREE-U
 : ERR-HAS? ( n ptr u8 n -- bool ) {: erru:n want:ptr wantu :}
    ERR erru want wantu CONTAINS? ;
 
-\ The child runs on the engine under test with the arguments put so far, and
+\ The child runs the program at the path with the arguments put so far, and
 \ with this process's environment, so TMPDIR and the working directory are the
 \ ones the suite itself runs with. Capture gives the child no stdin, so the
-\ script's own exit is what the case measures.
-: RUN-ARGS ( -- n n n )
+\ program's own exit is what the case measures.
+: RUN-PATH ( ptr u8 n -- n n n ) {: path:ptr pathu :}
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN
+   path pathu >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;
+
+: RUN-ARGS ( -- n n n ) ENGINE-CANDIDATE:PATH$ RUN-PATH ;
 
 \ The script, with the case's directory as its one application argument.
 : RUN-CHILD ( -- n n n )
@@ -104,6 +108,14 @@ variable TREE-U
    s" -o" >LEN PROC-ARGV+
    TREE$ >LEN PROC-ARGV+
    RUN-ARGS ;
+
+\ The program RUN-BUILD wrote, with no arguments.
+: RUN-PRODUCT ( -- n n n )
+   PROC-ARGV-ENV-RESET
+   TREE$ RUN-PATH ;
+
+: OUT-HAS? ( n ptr u8 n -- bool ) {: outu:n want:ptr wantu :}
+   OUT outu want wantu CONTAINS? ;
 
 \ A normal top-level exit (the engine's LRBYE) reaches the vector.
 : CASE-NORMAL ( -- )
@@ -249,6 +261,37 @@ variable STAGED-FILES
    TREE$ STAGED-BUF STAGED-CAP FS:READ-ALL {: u:n :}
    STAGED-BUF u s" previous" T$= ;
 
+create RUN-FILE-BUF PATH-CAP allot
+variable RUN-FILE-U
+
+: RUN-FILE$ ( -- ptr u8 n ) RUN-FILE-BUF RUN-FILE-U @ ;
+
+\ It builds and runs a product because the build boundary is under test: a
+\ built program starts with none of the exit actions and cleanups its source's
+\ top level registered, and registering at run time works from empty.
+: CASE-BUILT ( -- )
+   s" built.f" s" built-out" CASE-PATHS
+   ROOT$ s" built-run" RUN-FILE-BUF FS:JOIN-PATH RUN-FILE-U !
+   0 TEXT-U !
+   S\" require src/lib/fs-mutate.f\n" TEXT+
+   S\" : BUILD-ACTION ( -- ) s\q build-time exit action ran\q type cr ;\n" TEXT+
+   S\" : RUN-ACTION ( -- ) s\q run-time exit action ran\q type cr ;\n" TEXT+
+   S\" : BUILT-FILE ( -- ptr u8 n ) s\q " TEXT+  TREE$ TEXT+  S\" .built\q ;\n" TEXT+
+   S\" : RUN-FILE ( -- ptr u8 n ) s\q " TEXT+  RUN-FILE$ TEXT+  S\" \q ;\n" TEXT+
+   S\" ' BUILD-ACTION AT-EXIT:ADD\n" TEXT+
+   S\" BUILT-FILE s\q b\q FS:WRITE-ALL BUILT-FILE FS:CLEANUP+\n" TEXT+
+   S\" : MAIN ( -- ) ['] RUN-ACTION AT-EXIT:ADD\n" TEXT+
+   S\"    RUN-FILE s\q r\q FS:WRITE-ALL RUN-FILE FS:CLEANUP+ s\q main done\q type cr ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a built program starts with none of the build's exit actions and cleanups" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   rc 0<> if exit then
+   RUN-PRODUCT {: pu:n pe:n prc:n :}
+   pu pe prc 0 EXPECT-RC
+   pu s" run-time exit action ran" OUT-HAS? TTRUE
+   pu s" build-time exit action ran" OUT-HAS? TFALSE
+   RUN-FILE$ FS:EXISTS? TFALSE ;
+
 : BODY ( -- )
    PREPARE
    CASE-NORMAL
@@ -258,7 +301,8 @@ variable STAGED-FILES
    CASE-CHAIN
    CASE-HOOK-THROW
    CASE-STAGED
-   CASE-BUILD ;
+   CASE-BUILD
+   CASE-BUILT ;
 
 : RUN ( -- )
    T-RESET

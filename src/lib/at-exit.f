@@ -7,34 +7,25 @@
 
 require src/lib/prelude.f
 require src/lib/error.f
-require src/lib/image-lifecycle.f
 
 package AT-EXIT
 private
 
 \ ACTIONS holds N actions, oldest first; a 65th refuses E-LAYOUT-BOUNDS. MUTEX
-\ serializes adding and taking. A capture keeps the process's actions and the
-\ image starts with none: N is an IMAGE-LIFECYCLE process cell, declared at the
-\ first ADD, not at load, for the reason src/lib/fs-mutate.f gives above
-\ DECLARE-CLEANUP.
+\ serializes adding and taking. The process keeps its actions and a built
+\ program starts with none: N is a scratch cell, written as 0 in the product.
 64 constant CAP
 CAP TYPED-BUFFER ACTIONS [ -- ]
-variable DECLARED
 
 \ Atomic cells require native cell alignment.
 here data-base - negate 7 and allot
-variable N
+variable N   N scratch-cell-mark
 variable MUTEX
 
 : LOCK ( -- )
    begin 0 1 MUTEX atomic-cas 0= until ;
 
 : UNLOCK ( -- ) 0 MUTEX atomic! ;
-
-: DECLARE ( -- )
-   DECLARED @ 0<> if exit then
-   N IMAGE-LIFECYCLE:PROCESS-CELL
-   1 DECLARED ! ;
 
 \ The vector is an engine DATA cell holding a code pointer, reached through
 \ `data-base`; only a private CAST: gives an address a quotation pointee.
@@ -72,7 +63,6 @@ TYPED-VARIABLE RUNNER [ -- ]
 RUNNER-INIT
 
 : APPEND ( [ -- ] -- ) {: q :}
-   DECLARE
    N @ 0 ?do
       i ACTIONS @ XT>N q XT>N = if unloop exit then
    loop

@@ -14,7 +14,6 @@ require src/lib/fs-identity.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
 require src/lib/memory.f
-require src/lib/image-lifecycle.f
 require src/lib/at-exit.f
 
 package FS
@@ -51,33 +50,18 @@ COPY-CAP SPAN-BUFFER: COPY-BUF
 \ CLEANUP-LOCK serializes registration, forgetting, growth and the run, and
 \ holds its owner: the address of that task's DATA region, unique per live task.
 \
-\ A capture keeps the process's registrations and the image starts empty: N,
-\ CAP and ROW are IMAGE-LIFECYCLE process cells, stored as 0 in the image. They
-\ are declared at the first registration, not at load: a load inside a native
-\ build's capture window would spend slots of the host's 64-slot process-cell
-\ table on that window's DATA addresses, which a later snapshot would zero in
-\ storage that is no longer the program's. CLEANUP-DECLARED is no process cell:
-\ a snapshot keeps the table that holds the declarations, so it keeps the flag.
+\ The process keeps its registrations and a built program starts with none:
+\ CLEANUP-N and CLEANUP-CAP are scratch cells and CLEANUP-ROW a PTR-VARIABLE,
+\ each written as 0 in the product.
 PATH-CAP CELL 1- + CELL / 2 + constant CLEANUP-STRIDE
 8 constant CLEANUP-FIRST
-TYPED-VARIABLE CLEANUP-ROW ptr n
-variable CLEANUP-CAP
-variable CLEANUP-DECLARED
+PTR-VARIABLE CLEANUP-ROW
+variable CLEANUP-CAP   CLEANUP-CAP scratch-cell-mark
 
 \ Atomic cells require native cell alignment.
 here data-base - negate 7 and allot
-variable CLEANUP-N
+variable CLEANUP-N   CLEANUP-N scratch-cell-mark
 variable CLEANUP-LOCK
-
-\ The row's address is declared as the cell it is: IMAGE-LIFECYCLE:PROCESS-CELL
-\ takes ( ptr n ), and an address becomes one only through a private cast.
-CAST: >CELL ( n -- ptr n )
-: DECLARE-CLEANUP ( -- )
-   CLEANUP-DECLARED @ 0<> if exit then
-   CLEANUP-N IMAGE-LIFECYCLE:PROCESS-CELL
-   CLEANUP-CAP IMAGE-LIFECYCLE:PROCESS-CELL
-   CLEANUP-ROW NULL-PTR - >CELL IMAGE-LIFECYCLE:PROCESS-CELL
-   1 CLEANUP-DECLARED ! ;
 
 \ The staged paths are task-local, in the FS-MUT-ABI band of the per-task DATA
 \ region (`data-base` is the running task's): the path FS:MKTEMP-DIR-IN or
@@ -979,10 +963,8 @@ private
 \ runs under CLEANUP-LOCK, which a refusal releases too. The row grows
 \ when it is full, the slot is written, and only then is it counted, so every
 \ counted slot names a path and a refused registration - a path past the slot
-\ (E-SPAN-CAPACITY), a row that cannot grow, a full process-cell table - leaves
-\ the count it found.
+\ (E-SPAN-CAPACITY) or a row that cannot grow - leaves the count it found.
 : CLEANUP-APPEND ( ptr u8 n n -- ) {: a:ptr u kind :}
-   DECLARE-CLEANUP
    CLEANUP-N @ {: idx :}
    idx CLEANUP-CAP @ = if CLEANUP-GROW then
    a u idx CLEANUP-SLOT SPAN:COPY
