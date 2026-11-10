@@ -95,9 +95,8 @@ it exactly. A raw execution token fetched from untyped memory has lost its
 effect, and executing one is refused (see "Typed top level").
 
 **Escape hatches are loud and few.** `TRUSTED:` asserts an effect without
-checking the body; `0 set-check` turns checking off for a span; `PRIM:` and
-`PPRIM:` rows give an engine primitive its effect; a private `CAST:` changes a
-type at one named point. Each is a site a reader and the checked-boundary lint
+checking the body; `PRIM:` and `PPRIM:` rows give an engine primitive its
+effect; a private `CAST:` changes a type at one named point. Each is a site a reader and the checked-boundary lint
 can find. A trusted site's comment states why the effect cannot be inferred,
 and a focused test pins its behaviour through the production path. Before
 adding trust, try a checked factoring: a single primitive row usually turns a
@@ -233,9 +232,8 @@ checked source write a private cell or run a definer. Executing or catching an
 xt fetched from untyped memory is refused. The fix is provenance-blind: it
 closes the whole class of laundered calls at check time.
 
-Neither route is a boundary against a program that turns checking off
-(`0 set-check`) or computes addresses; both keep checked code from reaching a
-registry by name.
+Neither route is a boundary against a program that computes addresses; both
+keep checked code from reaching a registry by name.
 
 **A guarded memory band was rejected.** Moving the cells into a write-trapped
 band would require a guard-bypass writer for legitimate declaration-time
@@ -269,12 +267,11 @@ the REPL and `evaluate`.
 **Live depth is the anchor.** Each event loads the saved row at the live depth.
 Cells the row does not know are unknown, and a typed consumer refuses them; the
 row's bottom is the live floor, so a step that reaches below it is refused as a
-body reaching under its declared inputs is. A word with no stored effect
-(defined under `0 set-check`) is refused at top level as in a body.
+body reaching under its declared inputs is. A word with no stored effect is
+refused at top level as in a body.
 
-**One escape hatch.** `0 set-check` suspends the row inside its window; the
-data cells the window leaves are unknown after it, and its return-stack cells
-cannot be read after it. Nothing else suspends it.
+**No escape hatch.** Nothing suspends the row: after `0 set-check` every
+top-level token is still checked, and a cell pushed meanwhile keeps its type.
 
 **An xt carries its effect.** `['] W` yields `xt<effect(W)>`, a quotation type
 built from `W`'s certified effect, so `execute`, `catch` and `is` check it by
