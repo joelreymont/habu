@@ -1851,11 +1851,10 @@ variable LANDED
 : SERVE-BIT ( n -- ) {: i:n :} i CALL MODEL:SERVE if LANDED @ 1 i lshift or LANDED ! then ;
 
 
-\ Serves calls 0 to 3 once each; call 0 is held. Answers whether calls 1, 2
-\ and 3 have each answered true.
+\ Serves calls 0 to 3 once each. True when calls 1, 2 and 3 have each answered
+\ true and the held call 0 never has; once it has, ROUNDS ends by SERVE-OVER?.
 : ROUND ( -- bool )
-   0 CALL MODEL:SERVE 0= ASSERT
-   1 SERVE-BIT 2 SERVE-BIT 3 SERVE-BIT
+   0 SERVE-BIT 1 SERVE-BIT 2 SERVE-BIT 3 SERVE-BIT
    LANDED @ 14 = ;
 
 
