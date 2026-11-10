@@ -262,8 +262,9 @@ variable LISTED-N
 DYNAMIC-BUFFER HSTORE-AT n
 DYNAMIC-BUFFER HSTORE-ROW n
 variable HSTORES-N
-\ Each store a piece made below its own data, compiled or linked (STORER+): pair p holds at 2p
-\ the BUILT row holding the cell, -1 for header data, and at 2p + 1 the storing piece's row.
+\ Each store a piece made below its own data (STORER+) and each earlier record it changed
+\ (CHANGER+), compiled or linked: pair p holds at 2p the BUILT row holding the cell or the record,
+\ -1 for header data, and at 2p + 1 the piece's row.
 DYNAMIC-BUFFER STORERS n
 variable STORERS-N                   \ its pairs
 DYNAMIC-BUFFER WALKED n              \ BUILT row r's mark in RAN-FILES+'s walk
@@ -557,10 +558,10 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    idx  row BUILT-AT BUILT-FIRST + LE:U64@ -  PIECES U64+ ;
 
 \ ---- dependencies by name -------------------------------------------------------
-\ A file depends on the files its object references and on every earlier file that defines a
-\ public name its source spells, or a private name of a package its source opens after
-\ `package`, whose parts share scope: a value T0 inlined, a word that now shadows another and a
-\ package an earlier file now declares change a compile without leaving a reference.
+\ A file depends on the files its object references and on every earlier piece that defines, or
+\ changed (CHANGER+), a public name its source spells or a private name of a package it opens
+\ after `package`, whose parts share scope: a value T0 inlined, a word that now shadows another
+\ and a package an earlier file now declares change a compile without leaving a reference.
 
 \ FNV-1a over the name folded to upper case, as the dictionary compares names; never 0.
 : NAME-SUM ( ptr u8 n -- n )
@@ -786,8 +787,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 \ ---- dependencies by run --------------------------------------------------------
 \ A file that runs an earlier piece's word while it compiles keeps the word's answer, so it
-\ depends on every piece that word reaches: the rows the piece references (BUILT-USES), the
-\ pieces that stored into its data (STORERS), and those that stored into the header data.
+\ depends on every piece that word reaches: the rows the piece references (BUILT-USES) and the
+\ pieces that stored into its data or the header data or changed its records (STORERS).
 
 : RAN-KNOWN? ( n -- bool )
    {: idx:n :}
@@ -846,7 +847,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : WALK-USES ( n -- n )
    begin dup WALK-N @ < while  dup WALK @ ROW-USES+  1 +  repeat ;
 
-\ The storer of each STORERS pair whose holder is the header data or a walked row.
+\ The piece of each STORERS pair whose holder is the header data or a walked row.
 : WALK-STORERS ( -- )
    STORERS-N @ 0 ?do
       i 2 * STORERS @ {: held:n :}
@@ -1461,11 +1462,10 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    n HSTORES-N ! ;
 
 
-\ The running piece's store into the cell at v, as a STORERS pair; the piece's BUILT row is the
-\ next. A store into the cell of no BUILT row's data, above the header data, is E-COMP-STATE.
-: STORER+ ( n -- )
-   {: v:n :}
-   v OPEN-DP @ < if -1 else v DP-ROW 0= if E-COMP-STATE throw then then {: held:n :}
+\ The pair (holder row held, the running piece's row) onto STORERS unless it is the newest pair;
+\ the piece's BUILT row is the next.
+: PAIR+ ( n -- )
+   {: held:n :}
    STORERS-N @ {: n:n :}
    n 0 > if
       n 1 - 2 * STORERS @ held =  n 1 - 2 * 1 + STORERS @ BUILT-N =  and if exit then
@@ -1473,6 +1473,22 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    n 1 + 2 * STORERS-RESERVE
    held n 2 * STORERS !  BUILT-N n 2 * 1 + STORERS !
    n 1 + STORERS-N ! ;
+
+\ The running piece's store into the cell at v, as a STORERS pair. A store into the cell of no
+\ BUILT row's data, above the header data, is E-COMP-STATE.
+: STORER+ ( n -- )
+   {: v:n :}
+   v OPEN-DP @ < if -1 else v DP-ROW 0= if E-COMP-STATE throw then then  PAIR+ ;
+
+\ The running piece changed record idx of an earlier piece (its facts, a retirement, a seal, a
+\ late private wordlist): NAMES takes the record's name as the piece's, so a file that spells it
+\ depends on the piece, and STORERS the piece against the record's row. Nothing for its own.
+: CHANGER+ ( n -- )
+   {: idx:n :}
+   idx FILE-REC @ >= if exit then
+   idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   u 0<> if  a u NAME-SUM  BUILT-N  idx NAME-PKG  NAME+  then
+   idx BUILT-ROW PAIR+ ;
 
 
 \ The space's address-cell row of the cell at v, and true; false when it has none.
@@ -1608,7 +1624,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 : SEAL+ ( ptr u8 n -- )
    {: old:ptr idx:n :}
    old idx SEALED-NOW? 0= if exit then
-   KIND-SEALED PIECES U64+  idx REF+ ;
+   KIND-SEALED PIECES U64+  idx REF+  idx CHANGER+ ;
 
 
 \ An event of the loader's log an ACTS row carries: a require the registry already held, or a
@@ -1670,6 +1686,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    ndict@ FILE-REC @ -  LATE-N +  SEALED-N +  PIECES U64+
    0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i RECORD+  loop
    LATE-REST
+   LATE-N 0 ?do i LATE-P CHANGER+ loop
    OLD-RECS-N 0 ?do i OLD-REC SEAL+ loop
    CODE+  DATA+  STORES+
    PIECES BYTES$ nip FACTS-AT !  FACTS+
@@ -2935,7 +2952,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    RD-U64 KIND-PRIVATE <> if E-COMP-STATE throw then
    RD-U64 RD-U64 {: file:n idx:n :}
    GOOD? 0= if E-COMP-STATE throw then
-   file idx REC-INDEX OUTER:PACKAGE-PRIVATE ;
+   file idx REC-INDEX dup CHANGER+ OUTER:PACKAGE-PRIVATE ;
 
 
 \ Entry i, an earlier file's package this file sealed (SEAL+), sealed again.
@@ -2945,7 +2962,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    RD-U64 KIND-SEALED <> if E-COMP-STATE throw then
    RD-U64 RD-U64 {: file:n idx:n :}
    GOOD? 0= if E-COMP-STATE throw then
-   file idx REC-INDEX XREF-REC XREF:SEAL ;
+   file idx REC-INDEX dup CHANGER+ XREF-REC XREF:SEAL ;
 
 
 \ Entry i, an alias (RECORD+), as the next record.
@@ -3210,13 +3227,6 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    LINK-DATA ;
 
 
-\ A retirement row's record retired again (XREF:RETIRE), as the file's compile retired it.
-: LINK-RETIRED ( bool -- )
-   {: read:bool :}
-   RD-U64 RD-U64 {: file:n idx:n :}
-   GOOD? 0= if E-COMP-STATE throw then
-   read if file idx REC-INDEX XREF-REC XREF:RETIRE then ;
-
 \ The BUILT row REFS' FILES row k, from 1, names: a cold build places from the object it wrote,
 \ whose rows no FILES-CK mapped.
 : REFS-ROW ( n -- n )
@@ -3227,6 +3237,21 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    loop
    E-COMP-STATE throw ;
 
+\ A facts row's reference to an earlier piece's record, file not 0, as a dictionary index: a
+\ link's through FILE-ROWS (REC-INDEX), a compile's through REFS (REFS-ROW).
+: EARLIER-REC ( bool n n -- n )
+   {: read:bool file:n idx:n :}
+   read if file idx REC-INDEX else  file REFS-ROW BUILT-AT BUILT-FIRST + LE:U64@ idx +  then ;
+
+\ A retirement row's record retired again (XREF:RETIRE), as the file's compile retired it. An
+\ earlier piece's record is changed once retired, so a compile and a link see one wordlist.
+: LINK-RETIRED ( bool -- )
+   {: read:bool :}
+   RD-U64 RD-U64 {: file:n idx:n :}
+   GOOD? 0= if E-COMP-STATE throw then
+   read if file idx REC-INDEX XREF-REC XREF:RETIRE then
+   file 0<> if read file idx EARLIER-REC CHANGER+ then ;
+
 \ An earlier file's record's text, written again by a `TRUST` row or an amender, held again for
 \ that record and read back.
 : LINK-EARLIER ( bool -- )
@@ -3234,7 +3259,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    RD-U64 RD-U64 {: file:n idx:n :}
    RD-NAME {: a:ptr u:n :}
    GOOD? 0=  file 0=  or if E-COMP-STATE throw then
-   read if file idx REC-INDEX else  file REFS-ROW BUILT-AT BUILT-FIRST + LE:U64@ idx +  then {: r:n :}
+   read file idx EARLIER-REC {: r:n :}
+   r CHANGER+
    a u r CHECK:FACTS!
    read if a u r CHECK:READ-FACTS then ;
 
