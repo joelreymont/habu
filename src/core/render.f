@@ -1022,8 +1022,10 @@ variable MDV-I   variable MDV-F
 \ change): the actual row holds more cells than the expected, fewer, or as many
 \ of other types.
 : ROWS-DEPTHS ( -- )
+   AT-PIN
    DEXP @ REND-COLLECT RBN @ DSUGE !
-   DACT @ REND-COLLECT RBN @ DSUGA ! ;
+   DACT @ REND-COLLECT RBN @ DSUGA !
+   ;AT-PIN ;
 
 : ROWS-CLASS$ ( -- ptr u8 n )
    ROWS-DEPTHS
@@ -1720,11 +1722,13 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    MDIAG @ MD-TAIL-ESCAPE = IF
      s"  expected: " DTXT  TCAP-EXP$ DTXT
      s" actual: " DTXT  TCAP-ACT$ DTXT EXIT THEN
+   AT-PIN
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
      s" actual: " DTXT  DACT @ DROW THEN
    DF-ACT @ 0 <>  DEXP @ 0= and IF
-     s"  actual: " DTXT  DF-ACT @ REND-TYPE THEN ;
+     s"  actual: " DTXT  DF-ACT @ REND-TYPE THEN
+   ;AT-PIN ;
 
 
 \ Expected takes precedence over actual, so unrelated matched row cells cannot
@@ -1809,7 +1813,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DLOC-FIELDS
    s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
    s" declared_effect" JKEY
-   SGSEEN @ IF DECL-EFFECT ELSE s" null" DTXT THEN  44 EMIT1
+   SGSEEN @ IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" DTXT THEN  44 EMIT1
    s" declared_effect_source" JKEY
    SGSEEN @ IF SGA @ SGU @ SIG-TRIM JSTR ELSE s" null" DTXT THEN  44 EMIT1
    s" inferred_effect" JKEY
@@ -1826,12 +1830,14 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
        44 EMIT1 s" expected" JKEY TCAP-EXP$ JSTR
        44 EMIT1 s" actual"   JKEY TCAP-ACT$ JSTR
      ELSE
+       AT-PIN
        DEXP @ 0 <> IF
          44 EMIT1 s" expected" JKEY DEXP @ JROW
          44 EMIT1 s" actual"   JKEY DACT @ JROW
          DIAG-FAMILY THEN
        DF-ACT @ 0 <>  DEXP @ 0= and IF
           44 EMIT1 s" actual_type" JKEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
+       ;AT-PIN
      THEN
    THEN
    k RF-NP = IF                                           \ non-parametric declared effect

@@ -711,9 +711,10 @@ variable TOP-UNKNOWN
 4096 constant TRAIL-INIT        \ trail entries (grows on demand)
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
+variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (ROWS-PIN), 0 none
 CHECKER-REG:}SCRATCH
 : TRAIL ( -- ptr n ) TRAIL-P @ ;
-: TRAIL-RESET ( -- ) 0 TRAIL-N ! ;
+: TRAIL-RESET ( -- ) 0 TRAIL-N !  0 TRAIL-PIN ! ;
 : TRAIL-ENSURE ( n -- ) {: need:n :}
    need TRAIL-CAP @ <= IF exit THEN
    need TRAIL-CAP @ 2 * max TRAIL-INIT max {: nc:n :}
@@ -741,17 +742,65 @@ CHECKER-REG:}SCRATCH
    10 = IF TVK-CELL ELSE TVK-ANY THEN ;
 
 
+: TRAIL-SLOT ( n -- ptr n )   \ the cell a trail entry changed
+   {: e:n :}
+   e 15 and {: tag:n :}   e 4 rshift cells {: off:n :}
+   tag 0= IF TVT off + EXIT THEN
+   tag 1 = IF RVT off + EXIT THEN
+   tag 8 = IF NSCOPE off + EXIT THEN
+   TVK off + ;
+
+
+: TRAIL-UNDO ( n -- )   \ put back what one trail entry changed
+   {: e:n :}
+   e 15 and {: tag:n :}
+   tag 0=  tag 1 = or  tag 8 = or IF 0 ELSE tag TRAIL-KIND-OF THEN
+   e TRAIL-SLOT ! ;
+
+
+\ An unwind below the pin takes back bindings the pin saw, so the pin falls with
+\ it: AT-PIN then still takes back every binding made after the refusal.
 : TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+undo every mutation above `mark`
+   TRAIL-PIN @ mark 1 + > IF mark 1 + TRAIL-PIN ! THEN
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
-      TRAIL-N @ cells TRAIL + @ {: e:n :}
-      e 15 and {: tag:n :}   e 4 rshift {: id:n :}
-      tag 0= IF 0 id cells TVT + ! ELSE
-      tag 1 = IF 0 id cells RVT + ! ELSE
-      tag 8 = IF 0 id cells NSCOPE + ! ELSE
-      tag TRAIL-KIND-OF
-      id cells TVK + ! THEN THEN THEN
+      TRAIL-N @ cells TRAIL + @ TRAIL-UNDO
    REPEAT ;
+
+
+\ Between AT-PIN and ;AT-PIN every binding made since ROWS-PIN is undone; past
+\ the pin COMPRESS? is false, so the trail holds every binding a row reads.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE PIN-SAVE-P   variable PIN-SAVE-CAP   variable PIN-TOP
+CHECKER-REG:}SCRATCH
+: PIN-SAVE ( -- ptr n ) PIN-SAVE-P @ ;
+: PIN-SAVE-ENSURE ( n -- ) {: need:n :}
+   need PIN-SAVE-CAP @ <= IF EXIT THEN
+   need PIN-SAVE-CAP @ 2 * max TRAIL-INIT max {: nc:n :}
+   PIN-SAVE-P @ PIN-SAVE-CAP @ cells nc cells SR-GROW PIN-SAVE-P !
+   nc PIN-SAVE-CAP ! ;
+
+: ROWS-PIN ( -- ) TRAIL-N @ 1 + TRAIL-PIN ! ;
+
+: AT-PIN ( -- )
+   TRAIL-PIN @ 0= IF EXIT THEN
+   TRAIL-PIN @ 1 - {: mark:n :}
+   TRAIL-N @ PIN-TOP !
+   PIN-TOP @ mark - PIN-SAVE-ENSURE
+   PIN-TOP @ BEGIN dup mark > WHILE
+      1 -
+      dup cells TRAIL + @ {: e:n :}
+      e TRAIL-SLOT @  over mark - cells PIN-SAVE + !
+      e TRAIL-UNDO
+   REPEAT drop ;
+
+: ;AT-PIN ( -- )
+   TRAIL-PIN @ 0= IF EXIT THEN
+   TRAIL-PIN @ 1 - {: mark:n :}
+   mark BEGIN dup PIN-TOP @ < WHILE
+      dup mark - cells PIN-SAVE + @  over cells TRAIL + @ TRAIL-SLOT !
+      1 +
+   REPEAT drop ;
 \ TVK-RAISE-TO is trailed, so a failed prim-overload trial (TRIAL-REST) or a
 \ definition reject puts the displaced kind back; a meet that changes nothing
 \ records nothing.
@@ -812,13 +861,13 @@ CHECKER-REG:}SCRATCH
    LTNT-N @ cells LTNT + !
    LTNT-N @ 1 + LTNT-N ! ;
 
-\ TRIAL-DEPTH counts open trials (TRY-EFF, LOC-AS-BUNDLE?), HOLD-N open QUOT-PAIR
-\ comparisons; an unwind cannot undo a compression store, so COMPRESS? waits for both 0.
+\ TRIAL-DEPTH counts open trials, HOLD-N open QUOT-PAIR comparisons; neither an
+\ unwind nor AT-PIN undoes a compression store, so COMPRESS? waits for both and TRAIL-PIN at 0.
 variable TRIAL-DEPTH   0 TRIAL-DEPTH !
 CHECKER-REG:SCRATCH{
 variable HOLD-N
 CHECKER-REG:}SCRATCH
-: COMPRESS? ( -- bool ) TRIAL-DEPTH @ HOLD-N @ or 0= ;
+: COMPRESS? ( -- bool ) TRIAL-DEPTH @ HOLD-N @ or  TRAIL-PIN @ or  0= ;
 variable TCMP                            \ path-compression walk cursor
 
 \ Only storage uses the +1 encoding. Logical terms (including term zero) and
@@ -4648,12 +4697,12 @@ CHECKER-REG:}SCRATCH
    dup HIDDEN-PARAM? IF MK-LOGICAL THEN ;
 
 : CAPTURE-CLEAR ( -- )
-   0 DF-ACT !  0 DF-EXP !  0 DEXP !  0 DACT !  -1 DVAR !  -1 DPOS ! ;
+   0 DF-ACT !  0 DF-EXP !  0 DEXP !  0 DACT !  -1 DVAR !  -1 DPOS !  0 TRAIL-PIN ! ;
 
 : C2-REJECT ( n n -- ) {: actual:n reason:n :}
    MDIAG @ 0 <> FAILSET @ 0 <> or IF 0 OK ! -1 FAILSET ! EXIT THEN
    reason MDIAG !
-   CAPTURE-CLEAR  actual C2-LOGICAL DF-ACT !
+   CAPTURE-CLEAR  actual C2-LOGICAL DF-ACT !  ROWS-PIN
    0 OK !  -1 FAILSET ! ;
 
 : UF>DIAG ( -- )
@@ -4695,7 +4744,7 @@ TAIL-CAPTURE-DEFAULT
 \ then FAILSET, which freezes the pin. The reason must be named before that last
 \ store: MDIAG! is silent once the pin is closed.
 : UF-CAPTURE ( n n -- ) {: exp:n act:n :}
-   exp DEXP !  act DACT !
+   exp DEXP !  act DACT !  ROWS-PIN
    UF>DIAG
    CELL-DIAG!
    -1 FAILSET ! ;
@@ -18640,7 +18689,7 @@ variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
 variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
-variable SV-TRAIL
+variable SV-TRAIL   variable SV-PIN
 variable TSEEN  variable TSOK  variable TFA
 CHECKER-REG:}SCRATCH
 
@@ -18650,7 +18699,7 @@ CHECKER-REG:}SCRATCH
    TRIAL-DEPTH @ 0 <> IF s" checker: active trial at capture" 76 die THEN ;
 
 : TRIAL-SAVE
-   FV @ SV-FV !  TRAIL-N @ SV-TRAIL !     \ trail height is the per-TRY-EFF mark
+   FV @ SV-FV !  TRAIL-N @ SV-TRAIL !  TRAIL-PIN @ SV-PIN !     \ trail height is the per-TRY-EFF mark
    SPN @ SV-SPN !  CATCH-PF-N @ SV-PFN !  FACTS @ SV-FACTS !
    QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !  UNSEEN @ SV-UNSEEN !
@@ -18673,6 +18722,7 @@ CHECKER-REG:}SCRATCH
 
 : TRIAL-REST
    SV-TRAIL @ TRAIL-UNWIND       \ undo speculative binds in both pools
+   SV-PIN @ TRAIL-PIN !          \ a pin the trial made goes with its rows
    SV-FV @ TV-CLEAR-FROM         \ new-var backstop (cells never bound via TV!/RV!)
    SV-FV @ FV !
    SV-SPN @ SPN !  SV-PFN @ CATCH-PF-N !  SV-FACTS @ FACTS !
@@ -18966,7 +19016,7 @@ CHECKER-REG:}SCRATCH
    FAILSET @ 0= IF
       PE-U8 MK-PTR FRESH MK-ROW MK-PUSH DACT !
       FRESH MK-VAR MK-PTR FRESH MK-ROW MK-PUSH DEXP !
-      UF>DIAG  -1 FAILSET !
+      ROWS-PIN  UF>DIAG  -1 FAILSET !
    THEN ;
 
 : CELL-FETCH-TOK ( -- )
@@ -21407,7 +21457,7 @@ CHECKER-REG:}SCRATCH
 : CF-DEPTH-FAIL ( n n n -- )
    {: exp:n act:n why:n :}
    MDIAG @ 0=  FAILSET @ 0=  and IF
-      CAPTURE-CLEAR  exp DEXP !  act DACT !
+      CAPTURE-CLEAR  exp DEXP !  act DACT !  ROWS-PIN
    THEN
    why CF-FAIL ;
 
@@ -25788,7 +25838,7 @@ CHECKER-REG:}SCRATCH
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
+   0 FAILSET !  0 DEXP !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    RBROW @ SGRBASE !   \ a definition with no signature reads only what it pushed too
    NULL-PTR SGA !  0 SGU !

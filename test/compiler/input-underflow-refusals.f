@@ -72,6 +72,13 @@ create DIAG-BUF 8192 allot
    S\" \"declared_effect\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    SB$ HAS? ;
 
+: ROWS? ( ptr u8 n ptr u8 n -- )   \ the packet's expected and actual rows
+   {: e:ptr eu:n a:ptr au:n :}
+   SB-RESET
+   S\" \"expected\":\"" SB-APPEND  e eu SB-APPEND
+   S\" \",\"actual\":\"" SB-APPEND  a au SB-APPEND  34 SB-APPEND-C
+   SB$ HAS? ;
+
 \ ---- the shortfall itself ----------------------------------------------------
 
 : CASE-BARE ( -- )
@@ -166,6 +173,35 @@ create DIAG-BUF 8192 allot
    s" a forall<b,[ read-view<b,b,u8> -- ]> -- a " DECLARED?
    DISARM ;
 
+\ ---- the refusal's rows ------------------------------------------------------
+
+\ The drops after a refused `then` reach under the declared inputs and bind the
+\ row below them; the refusal's rows are still those `then` saw.
+: CASE-ROWS-AT-REFUSAL ( -- )
+   s" a refusal's rows take no binding a later token makes" T-LABEL
+   ARM
+   [: s" : IUF-LATE ( ptr u8 bool -- ) if 1 then drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   MISMATCH$ HAS?  s" then" TOKEN?
+   s" ptr u8 " s" ptr u8 n " ROWS?
+   DISARM ;
+
+\ A row variable a later token specialises keeps its letter in the refusal's rows.
+: CASE-ROWS-NAMES ( -- )
+   s" a refusal's rows keep the letters a later token binds" T-LABEL
+   ARM
+   [: s" : IUF-NAMES ( a b bool -- ) if 1 else 0 0 = then rot 1 + drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   s" a b bool " s" a b n " ROWS?
+   DISARM ;
+
+\ The repair class is read from the rows the refused call saw, not from the
+\ deeper rows the drops after it bind.
+: CASE-ROWS-REPAIR ( -- )
+   s" a refusal's repair class reads the rows its token saw" T-LABEL
+   ARM
+   [: s" : IUF-LATE-CALL ( ptr u8 bool -- ) UFC2 drop drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   s" n n " s" ptr u8 bool " ROWS?  S\" \"repair_class\":\"fix_type\"" HAS?
+   DISARM ;
+
 \ ---- the controls ------------------------------------------------------------
 
 \ Short and mistyped: the type is the better answer and must not be swallowed by
@@ -214,6 +250,9 @@ public
    CASE-DECLARED-QUOTATION-ROWS
    CASE-DECLARED-FRESH
    CASE-DECLARED-BINDER
+   CASE-ROWS-AT-REFUSAL
+   CASE-ROWS-NAMES
+   CASE-ROWS-REPAIR
    CASE-MISTYPED-CALL
    CASE-EXACT
    CASE-PRODUCED

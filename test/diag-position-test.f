@@ -932,7 +932,7 @@ variable RC
    s" a mismatch before an unbalanced return row" T-LABEL
    s" : X ( n -- ) >r 1 c@ ;" s" mismatch-rstack.f" LINE-FIXTURE
    s" E-MISMATCH" s" c@" 1 19 18 20 REFUSED-AT
-   s" remove_producer" s" Remove an extra producer or drop the surplus value." REPAIRED-AS
+   s" fix_type" s" Change the body so produced types match the signature." REPAIRED-AS
    s" that unbalanced return row alone" T-LABEL
    s" : X ( n -- ) >r ;" s" rstack.f" LINE-FIXTURE
    s" E-REJECTED" s" >r" 1 14 13 15 REFUSED-AT
