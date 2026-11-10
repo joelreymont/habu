@@ -5,7 +5,8 @@
 \ effect and a RECURSE in a does> clause are uncheckable for a reason they name
 \ too, and each says so in its JSON packet with a suggestion of its own; the
 \ packet of a RECURSE with no declared effect has a null declared_effect, which
-\ the diagnostics gate accepts.
+\ the diagnostics gate accepts. A token that fails before the frames overflow
+\ keeps its mismatch in prose, packet and CHECK-CANDIDATE!'s answer.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
@@ -84,6 +85,17 @@ TYPED-VARIABLE SRC-U len
    {: name:ptr nameu:n k:n :}
    SRC-RESET  s" : " S+  name nameu k IFS-TEXT  s"  ;" S+ ;
 
+\ The same nest whose innermost `IF` tests a number, from its name to its last
+\ token: the token fails its condition before it overflows the frames.
+: BADCOND-TEXT ( n -- )
+   {: k:n :}
+   s" SN-BADCOND ( bool -- ) " S+  s" dup IF " k 1 - S+N  s" 1 IF " S+
+   s" THEN " k S+N  s" drop" S+ ;
+
+: NESTED-BADCOND ( n -- )
+   {: k:n :}
+   SRC-RESET  s" : " S+  k BADCOND-TEXT  s"  ;" S+ ;
+
 \ A definition with no signature that recurses, from its name to its last token.
 : RECURSE-TEXT ( -- )   s" SN-DOWN dup 0 > IF 1 - RECURSE THEN" S+ ;
 
@@ -141,8 +153,10 @@ create PKT-BUF 8192 allot
    0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
 
 
-: PACKET-HAS ( ptr u8 n ptr u8 n ptr u8 n -- )
-   PACKET-OPEN  SRC$ CHECK-CANDIDATE! drop  PACKET-HOLDS ;
+\ CHECK-CANDIDATE! also answers ANSWER: VERDICT-REFUSED or VERDICT-UNCHECKABLE.
+: PACKET-HAS ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: answer:n :}
+   PACKET-OPEN  SRC$ CHECK-CANDIDATE! answer T=  PACKET-HOLDS ;
 
 
 : CLAUSE-PACKET-HAS ( ptr u8 n ptr u8 n ptr u8 n -- )
@@ -179,24 +193,34 @@ public
    s" 33 nested IFs write an uncheckable packet that names the limit" T-LABEL
    SRC-RESET s" SN-IFS-33" 33 IFS-TEXT
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
-   S\" \"reason\":\"control flow nested too deep to check (depth 33, at most 32)\"" PACKET-HAS
+   S\" \"reason\":\"control flow nested too deep to check (depth 33, at most 32)\""
+   VERDICT-UNCHECKABLE PACKET-HAS
    s" 33 nested IFs suggest a named word for the inner structures" T-LABEL
    SRC-RESET s" SN-IFS-33" 33 IFS-TEXT
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
-   S\" \"suggestion\":\"Move the inner control structures into a named word and call it there; each definition counts its own control frames.\"" PACKET-HAS
+   S\" \"suggestion\":\"Move the inner control structures into a named word and call it there; each definition counts its own control frames.\""
+   VERDICT-UNCHECKABLE PACKET-HAS
+   s" a wrong condition at the 33rd nested IF reports the mismatch" T-LABEL
+   33 NESTED-BADCOND
+   s" at 'IF' expected: bool" REFUSES
+   s" a wrong condition at the 33rd nested IF writes a rejected packet" T-LABEL
+   SRC-RESET 33 BADCOND-TEXT
+   S\" \"code\":\"E-MISMATCH\"" S\" \"verdict\":\"rejected\""
+   S\" \"actual\":\"bool n \"" VERDICT-REFUSED PACKET-HAS
    s" a RECURSE with no declared effect is uncheckable for want of one" T-LABEL
    RECURSE-NOSIG
    s" at 'RECURSE' recursion needs a declared stack effect" REFUSES
    s" a RECURSE with no declared effect writes an uncheckable packet that says why" T-LABEL
    SRC-RESET RECURSE-TEXT
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
-   S\" \"reason\":\"recursion needs a declared stack effect\"" PACKET-HAS
+   S\" \"reason\":\"recursion needs a declared stack effect\"" VERDICT-UNCHECKABLE PACKET-HAS
    s" a RECURSE with no declared effect suggests declaring one" T-LABEL
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
-   S\" \"suggestion\":\"Declare the definition's stack effect after its name.\"" PACKET-HAS
+   S\" \"suggestion\":\"Declare the definition's stack effect after its name.\"" VERDICT-UNCHECKABLE PACKET-HAS
    s" a RECURSE with no declared effect writes null for its declared effect" T-LABEL
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
-   S\" \"declared_effect\":null,\"declared_effect_source\":null," PACKET-HAS
+   S\" \"declared_effect\":null,\"declared_effect_source\":null,"
+   VERDICT-UNCHECKABLE PACKET-HAS
    PACKET-PASSES
    s" a RECURSE in a does> clause is uncheckable for calling the defining word" T-LABEL
    RECURSE-DOES

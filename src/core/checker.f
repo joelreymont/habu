@@ -6510,6 +6510,12 @@ CHECKER-REG:}SCRATCH
    REFUSAL @ 0 <> IF REFUSAL @ EXIT THEN
    REFUSAL-OF ;
 
+\ Marks the definition uncheckable only while the pin is open, as MDIAG! latches;
+\ an unjudged token's own mark, while it has not failed, arms UNJ-SETTLE (DO-TOK1).
+: UNCK-RAISE ( -- )
+   UNJ-TOK @ 0 <> IF OK @ 0 <> ELSE FAILSET @ 0= THEN
+   IF -1 UNCK ! THEN ;
+
 \ The pinned token's span in the scanned text, offsets from TBASE, and whether
 \ the refusal is an undefined word; an empty span when no failure pinned one.
 : PIN-SPAN ( -- n n bool )
@@ -19963,7 +19969,7 @@ variable CHECKER-PREFIX-ROLLBACK
    {: a:ptr u:n :}
    TSTART @ dup PREFIX-MISS-AT
    a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
-   -1 UNDEFERR !  -1 UNCK !
+   -1 UNDEFERR !  UNCK-RAISE
    a u UNSEEN-COVERS?                              \ the run's to judge: see UNSEEN-MARK$
    {: unseen:bool :}
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
@@ -19990,7 +19996,7 @@ variable CHECKER-PREFIX-ROLLBACK
    CUSING @ 0= TOK-SYM @ SYM-EFFECT-UNRESOLVED? and IF
       TOK-SYM @ PRIM-TRUSTED-SYM? IF
          TOP-STEP @ 0= IF C2-STOW-BORROW  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
-      ELSE -1 UNSEEN !  -1 UNCK !  EXIT THEN
+      ELSE -1 UNSEEN !  UNCK-RAISE  EXIT THEN
    THEN
    \ What the call may do at run time is its symbol's, read before an identity
    \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
@@ -21138,7 +21144,7 @@ SCOPE-INTRO-FENCE-INSTALL
 : CF-PUSH {: k s0 s1 r0 r1 :}
    -1 WRAPBENT !
    #CFC @ CF-FRAMES-MAX >= IF
-     MD-CF-DEPTH MDIAG!  -1 UNCK !  -1 CF-OVER ! ELSE
+     MD-CF-DEPTH MDIAG!  UNCK-RAISE  -1 CF-OVER ! ELSE
      #CFC @ CF-ROW {: rec:ptr :}
      k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
      r0 rec CF.RA !  r1 rec CF.RB !
@@ -21386,7 +21392,7 @@ CHECKER-REG:}SCRATCH
    UNFIT @ IF UNFIT-WHY ELSE
       CLAUSE-WALK @ 0 <> IF MD-RECURSE-DOES ELSE MD-RECURSE-SIG THEN
    THEN MDIAG!
-   -1 UNCK ! ;
+   UNCK-RAISE ;
 
 \ Uniform-branch acceptance. A GPU predicate provably identical across every
 \ lane of the block is the distinct family `uniform<bool>`. When the pending
@@ -22681,7 +22687,7 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
    SGBAD-SPAN!
    0 FAILIX !
    SGBAD-DEPTH? IF
-      SGBAD-SIZE @ MDIAG-DEPTH !  MD-EFFECT-DEPTH MDIAG!  -1 UNCK !  RF-REASON REFUSAL !
+      SGBAD-SIZE @ MDIAG-DEPTH !  MD-EFFECT-DEPTH MDIAG!  UNCK-RAISE  RF-REASON REFUSAL !
    ELSE RF-SIG REFUSAL ! THEN
    -1 FAILSET ! ;
 
@@ -23731,7 +23737,7 @@ variable IS-PEND-U                   \ and its length
    CHECKER-TAPE:K-IS  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
    sym DFER-FIND-SYM 0= IF sym IS-TARGET-FAIL EXIT THEN
    CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
-      -1 UNSEEN !  -1 UNCK !  EXIT
+      -1 UNSEEN !  UNCK-RAISE  EXIT
    THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
@@ -23837,7 +23843,7 @@ variable IS-PEND-U                   \ and its length
       0 OK !  -1 FAILSET !  EXIT
    THEN
    CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
-      TICK-PIN  -1 UNSEEN !  -1 UNCK !  EXIT
+      TICK-PIN  -1 UNSEEN !  UNCK-RAISE  EXIT
    THEN
    FEP-CLEAR
    sym CHECKER-FIND-USIG-SYM drop
@@ -23893,7 +23899,7 @@ variable IS-PEND-U                   \ and its length
    DCUR-TOP-LAYOUT? IF
       0 OK !  -1 FAILSET !  -1 QDUPBAD !         \ width-breaking touch of a layout value
    ELSE
-      -1 UNDEFERR !  -1 UNCK !                   \ no row models a scalar ?dup: refused as an undefined word
+      -1 UNDEFERR !  UNCK-RAISE                  \ no row models a scalar ?dup: refused as an undefined word
    THEN ;
 
 \ --- construct form (docs/forth.md "Structures And Enums"): `construct family
@@ -24128,6 +24134,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    BWIN-UNJUDGED @ 0 <> {: unj:bool :}       \ judged per token: OK := incoming AND this token
    unj IF TKF TKFU @ UNSAFE-TOK? ELSE RES-FALSE THEN {: unsafe:bool :}
    OK @ {: ok-in:n :}  UNCK @ {: unck-in:n :}    \ an uncheckable token fails with OK still set
+   FAILSET @ {: pin-in:n :}
    unj IF
       -1 OK !  0 UNCK !  -1 UNJ-TOK !  0 UNJ-SPLICED !  DCUR @ UNJ-PD !  RCUR @ UNJ-PR !  WF-N @ UNJ-WF0 !
    THEN
@@ -24192,7 +24199,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    unj IF
       OK @ 0=  UNCK @ 0 <>  or IF unsafe UNJ-SETTLE THEN
       OK @ ok-in and OK !
-      UNCK @ unck-in or UNCK !
+      pin-in 0= IF UNCK @ unck-in or ELSE unck-in THEN UNCK !   \ a mark past the pin only settles (UNCK-RAISE)
       0 UNJ-TOK !
    THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -26331,10 +26338,10 @@ variable CUR-OPEN   variable CUR-PSIG
 : UNFIT-UNCHECKABLE ( -- )
    UNFIT @ 0= IF EXIT THEN
    UNSEEN @ 0 <> IF
-      0 UNSEEN !  0 UNDEFERR !  UNFIT-WHY MDIAG !  -1 UNCK !  EXIT
+      0 UNSEEN !  0 UNDEFERR !  UNFIT-WHY MDIAG !  UNCK-RAISE  EXIT
    THEN
    OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
-   UNFIT-WHY MDIAG!  -1 UNCK ! ;
+   UNFIT-WHY MDIAG!  UNCK-RAISE ;
 
 \ Every record of a checked declaration holds the declared rows, which
 \ SIG-EFF-CACHE! measured; an inferred effect is measured here.
