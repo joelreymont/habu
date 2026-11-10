@@ -283,6 +283,10 @@ DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0
 \ Each OBJECT-OPEN takes the next of SERIALS, which only grows, so no object takes another's mark;
 \ POP-FRAME gives back the marks a nested object overwrote (RELIST).
 DYNAMIC-BUFFER LISTED-BY n
+\ BUILT row r's mark at 2r: the serial of the object that last asked for its FILES row (REF-FILE),
+\ that row from 1 at 2r + 1. Only OBJECT-OPEN (under a new serial), REF-FILE's append and POP-FRAME
+\ (with the frame's serial) change the FILES rows, so a mark with the object's serial names its row.
+DYNAMIC-BUFFER REF-OF n
 \ Record r's BUILT row plus 1, 0 for a record no row holds (BUILT+); its cells from FIRST-REC up
 \ to REC-ROW-N are written.
 DYNAMIC-BUFFER REC-ROW n
@@ -437,7 +441,7 @@ variable PENDING-STORERS-N           \ its pairs
 : PENDING-RECS-CLEAR ( -- ) 0 PENDING-RECS-N !  0 PENDING-STORERS-N !  64 PENDING-SLOTS-CLEAR ;
 
 : DISPOSE-OBJECTS ( -- )
-   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
+   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
    RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
    EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
@@ -664,22 +668,37 @@ variable PENDING-STORERS-N           \ its pairs
 
 : TOPPED ( n -- n ) dup TOP-ROW @ max TOP-ROW ! ;
 
+\ The object's FILES row from 0 naming the BUILT row's piece by its file's key and its number, the
+\ count of rows for none: REF-OF's row when its mark is the object's serial, else the first match.
+: FIND-REF ( n -- n )
+   {: row:n :}
+   row 1 + 2 * REF-OF-RESERVE
+   row 2 * REF-OF @ OBJECT-SERIAL @ = if  row 2 * 1 + REF-OF @ 1 -  exit then
+   row BUILT-AT {: at:ptr :}
+   REFS BYTES$ {: refs:ptr refsu:n :}
+   refsu FILES-ROW-BYTES / {: n:n :}
+   n 0 ?do
+      refs i FILES-ROW-BYTES * +  KEY-BYTES 8 +  at KEY-BYTES 8 +  STR= if i unloop exit then
+   loop
+   n ;
+
 \ The FILES row, 1-based, naming the BUILT row's piece by its file's key and its number; added
-\ on first use. Its time is the piece's once a use is whole, else 0: only WORDS rows decide.
+\ on first use and marked in REF-OF. Its time is the piece's once a use is whole, else 0: only
+\ WORDS rows decide.
 : REF-FILE ( n bool -- n )
    {: row:n whole:bool :}
    row BUILT-AT {: at:ptr :}
    REFS BYTES$ {: refs:ptr refsu:n :}
    refsu FILES-ROW-BYTES / {: n:n :}
-   n 0 ?do
+   row FIND-REF {: i:n :}
+   OBJECT-SERIAL @ row 2 * REF-OF !  i 1 + row 2 * 1 + REF-OF !
+   i n < if
       refs i FILES-ROW-BYTES * + {: r:ptr :}
-      r KEY-BYTES 8 +  at KEY-BYTES 8 +  STR= if
-         whole  r BUILT-TIME + LE:U64@ 0=  and if
-            at BUILT-TIME + LE:U64@  r BUILT-TIME +  LE:U64!
-         then
-         i 1 + TOPPED unloop exit
+      whole  r BUILT-TIME + LE:U64@ 0=  and if
+         at BUILT-TIME + LE:U64@  r BUILT-TIME +  LE:U64!
       then
-   loop
+      i 1 + TOPPED exit
+   then
    at FILES-ROW-BYTES REFS SPAN+
    whole 0= if  0  REFS BYTES$ drop  n FILES-ROW-BYTES * +  BUILT-TIME +  LE:U64!  then
    n 1 + TOPPED ;
