@@ -1,6 +1,6 @@
 ---
 title: An i64 reaches a u8 input through any word declared n
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-11-10T13:32:12.588988+02:00"
@@ -15,3 +15,7 @@ Scope 2026-11-10 (review of habu-the-checker-accepts-fbca7120, /Users/joel/Work/
 Design 2026-11-10 (/Users/joel/Work/reviews/habu-10x-2026-11-10/designs/n-rule-design.md): with Joel before any worker. Its findings outside the rule: a raw variable carries an i64 into a u8 word (the open raw-cell rule, checker.f :3458-3464); c, declares n while c! declares u8 (prims.f :590, :562); the comment at checker.f :7899 states c@ answers n, against prims.f :561; the census report's 'c@ yields n' is wrong.
 
 Ruling 2026-11-10 (Joel chose "i64 is fixed (Recommended)" to: is i64 a fixed-width type, so that an n going into an i64 needs the new >I64 conversion): i64 is fixed-width for the rule; n into i64 needs `>I64`. n into addr is refused, as this dot's acceptance program has it. Design: /Users/joel/Work/reviews/habu-10x-2026-11-10/designs/n-rule-design.md (four global words >U8 >U16 >U32 >I64; TIMES EACH MAP FOLD and three WLEB words take n; N>I64 removed; two refusal reasons under E-MISMATCH; four steps: words, literal facts, tree migration by subsystem, the rule). Joel, same day, on the design's three undetermined facts: "so determine it!". Being determined: the words' load position by prototype (brief Find-load-position-for-conversion-words.md, workspace bob-nwords); the 314 unchecked files' places by the instrumented engine (Census-n-in-unchecked-files.md, workspace bob-ncensus2 on 74e1fbbf); whether each migrated form passes today's rule is shown per file by the migration step's own suite runs, which start once the words land.
+
+Determined 2026-11-10, load position (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/nwords-prototype.md): the four words load in a new prefix file src/core/int-convert.f right after util.f (src/habu/boot-files.f:47); the three raw casts are retired in a second file src/core/int-convert-retire.f right after xref.f (:102), because undefine is first defined there, as prefix-boundary.f retires checker.f's FIRST-RECORD-XT. A build checks the prefix from its first row; only the cold prefix (habu2.f EMIT-HOST-LOAD-PREFIX) loads it unchecked, and that path was not run. Step one (brief Add-integer-conversion-words.md) also deletes the two private >U32 ( n -- n ) of src/arch/tic6x/sim.f:92 and test/compiler/tic6x-eabi.f:23, which the global word replaces. Claim: agent=bob workspace=.jj-ws.noindex/habu-an-i64-reaches-d5f2806b (step one).
+
+Census method 2026-11-10 (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/ncensus2-part1.md): children the test library spawns start with an empty environment, so the instrumented engine recorded nothing in them; the first census therefore undercounts events that arise only in such children, in files it counted as checked. The second census loads each child file directly. No path on this host checks the x86-64 files past src/os/linux-x86-64/elf.f:101 (E-UNDEFINED MSIZE; habu-re-enable-the-959502b5) or the Wasm files.
