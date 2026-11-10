@@ -33,6 +33,7 @@ require src/lib/span.f
 require src/arch/wasm/leb.f
 require src/habu/layout.f
 require src/arch/wasm/profile.f
+require src/arch/wasm/code.f
 require src/compiler/native/emission.f
 
 \ The Wasm backend's error block is -9800..-9834 (src/lib/error.f).
@@ -54,6 +55,7 @@ ENUM origin
 ;ENUM
 
 private
+using WCODE
 
 \ ---- Wasm's numbers ----------------------------------------------------------
 $6D736100 constant MAGIC             \ "\0asm", low byte first
@@ -67,28 +69,13 @@ $6D736100 constant MAGIC             \ "\0asm", low byte first
 10 constant SEC-CODE
 11 constant SEC-DATA
 $60 constant FUNC-FORM               \ a function type's first byte
-$7F constant I32
-$7E constant I64
 $70 constant FUNCREF
 1 constant LIMITS-MAX                \ limits stating a maximum as well
 0 constant EXPORT-FUNC
 2 constant EXPORT-MEMORY
 0 constant ACTIVE                    \ an active segment of table or memory zero
 1 constant FIRST-SLOT                \ the first slot holding a function; 0 is null
-$0B constant OP-END
-$10 constant OP-CALL
-$1A constant OP-DROP
-$20 constant OP-LOCAL-GET
-$21 constant OP-LOCAL-SET
-$28 constant OP-I32-LOAD
-$29 constant OP-I64-LOAD
-$36 constant OP-I32-STORE
-$37 constant OP-I64-STORE
-$41 constant OP-I32-CONST
-$42 constant OP-I64-CONST
 0 constant ADDR-NONE                 \ the address kind of a field holding no address
-2 constant ALIGN-32                  \ an i32 access's natural alignment, 2^2
-3 constant ALIGN-64
 WPROF:PAGE-BYTES constant PAGE-BYTES
 WPROF:PAGES-MAX constant PAGES-MAX
 WPROF:DATA-MAX constant IMAGE-MAX     \ the most image bytes the DATA region holds
@@ -732,6 +719,7 @@ public
    PATCH
    0 OUT u ;
 
+;using
 ;package
 
 WLINK:RESET

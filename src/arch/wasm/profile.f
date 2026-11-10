@@ -30,6 +30,7 @@ $11000 constant OUT-BASE
 $21000 constant STACK-BASE
 $10000 constant STACK-BYTES
 STACK-BASE STACK-BYTES + constant STACK-END
+STACK-BASE OUT-BASE - constant OUT-CAP        \ the OUT region's bytes, all a run writes
 
 \ The return stack and the DO frames follow the data stack, each its STACK-ABI
 \ size; a push checks its region's end, since Wasm memory has no guard page.
@@ -49,5 +50,8 @@ PAGES-MAX PAGE-BYTES * DATA-BASE - constant DATA-MAX
 32 constant CTX-FAULT-KIND
 40 constant CTX-FAULT-ADDR
 48 constant CTX-FREE-HEAD                 \ the first free page run, 0 for none; runs keep it
+
+\ The kind a checked-address fault records in ctx's CTX-FAULT-KIND field.
+134 constant CRASH-RC
 
 ;package

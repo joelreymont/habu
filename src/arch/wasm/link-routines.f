@@ -5,6 +5,7 @@ require src/lib/span.f
 require src/core/engine-error.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
+require src/arch/wasm/code.f
 require src/habu/layout.f
 require src/lib/error.f
 
@@ -13,35 +14,8 @@ private
 
 package WASM
 private
+using WCODE
 
-\ The exit status a checked-memory fault records, src/habu/t0-wasm.f CRASH-RC.
-134 constant CRASH-RC
-
-$00 constant OP-UNREACHABLE
-$04 constant OP-IF
-$0B constant OP-END
-$20 constant OP-LOCAL-GET
-$21 constant OP-LOCAL-SET
-$28 constant OP-I32-LOAD
-$29 constant OP-I64-LOAD
-$36 constant OP-I32-STORE
-$37 constant OP-I64-STORE
-$3C constant OP-I64-STORE8
-$41 constant OP-I32-CONST
-$42 constant OP-I64-CONST
-$4F constant OP-I32-GE-U
-$54 constant OP-I64-LT-U
-$56 constant OP-I64-GT-U
-$6A constant OP-I32-ADD
-$6B constant OP-I32-SUB
-$72 constant OP-I32-OR
-$A7 constant OP-I32-WRAP-I64
-$7F constant I32
-$7E constant I64
-$40 constant EMPTY-TYPE              \ a block, loop or if taking and leaving nothing
-0 constant ALIGN-8                   \ a load's or store's alignment exponent
-2 constant ALIGN-32
-3 constant ALIGN-64
 8 constant CELL-BYTES
 10 constant LEB-MOST
 
@@ -52,42 +26,12 @@ $40 constant EMPTY-TYPE              \ a block, loop or if taking and leaving no
 2 constant L-LEN
 2 constant L-ADDR
 
-\ The OUT region ends where the stack starts (test/wasm/harness.f OUT-CAP).
-WPROF:STACK-BASE WPROF:OUT-BASE - constant OUT-CAP
-
 \ ---- division, views and atomics
-$0F constant OP-RETURN
-$50 constant OP-I64-EQZ
-$51 constant OP-I64-EQ
-$7D constant OP-I64-SUB
-$7F constant OP-I64-DIV-S
-$81 constant OP-I64-REM-S
 \ Local 2 of a division is its divisor; local 3 of atomic-cas is the cell as read.
 2 constant L-DIVISOR
 3 constant L-ACTUAL
 
 \ ---- floats
-$1B constant OP-SELECT
-$2B constant OP-F64-LOAD
-$39 constant OP-F64-STORE
-$44 constant OP-F64-CONST
-$61 constant OP-F64-EQ
-$62 constant OP-F64-NE
-$63 constant OP-F64-LT
-$64 constant OP-F64-GT
-$99 constant OP-F64-ABS
-$9A constant OP-F64-NEG
-$9F constant OP-F64-SQRT
-$A0 constant OP-F64-ADD
-$A1 constant OP-F64-SUB
-$A2 constant OP-F64-MUL
-$A3 constant OP-F64-DIV
-$AD constant OP-I64-EXTEND-I32-U
-$B9 constant OP-F64-CONVERT-I64-S
-$FC constant OP-MISC                 \ the prefix each MISC- opcode follows
-6 constant MISC-I64-TRUNC-SAT-F64-S
-$7C constant F64
-
 \ A float body's locals after sp: the doubles a and b and the answer r.
 2 constant L-A
 3 constant L-B
@@ -98,27 +42,6 @@ $7C constant F64
 $7FF8000000000000 constant NAN-MADE
 
 \ ---- map-anon and munmap
-$02 constant OP-BLOCK
-$03 constant OP-LOOP
-$05 constant OP-ELSE
-$0C constant OP-BR
-$0D constant OP-BR-IF
-$40 constant OP-MEMORY-GROW          \ followed by its memory index
-$45 constant OP-I32-EQZ
-$46 constant OP-I32-EQ
-$47 constant OP-I32-NE
-$4B constant OP-I32-GT-U
-$52 constant OP-I64-NE
-$53 constant OP-I64-LT-S
-$55 constant OP-I64-GT-S
-$57 constant OP-I64-LE-S
-$74 constant OP-I32-SHL
-$7C constant OP-I64-ADD
-$83 constant OP-I64-AND
-$84 constant OP-I64-OR
-$86 constant OP-I64-SHL
-$88 constant OP-I64-SHR-U
-11 constant MISC-MEMORY-FILL         \ after OP-MISC, followed by its memory index
 0 constant MEMORY-0
 
 \ log2 of WPROF:PAGE-BYTES.
@@ -146,9 +69,6 @@ $88 constant OP-I64-SHR-U
 12 constant L-END
 
 \ ---- throw, die and execute
-$11 constant OP-CALL-INDIRECT
-$22 constant OP-LOCAL-TEE
-$0A constant MISC-MEMORY-COPY
 0 constant TABLE0                    \ call_indirect's table, the module's one
 4 constant HIGH-HALF                 \ a cell's upper 32 bits, little-endian
 2 constant L-CODE                    \ throw's code
@@ -160,11 +80,6 @@ $0A constant MISC-MEMORY-COPY
 4 constant L-LDEPTH
 5 constant L-CLEANUP                 \ finally's cleanup xt
 6 constant L-BODY-CODE               \ finally's body's throw code
-
-\ Tier 0's return and loop stack depths, i64 cells in memory, as
-\ src/habu/t0-wasm.f RDEPTH-AT and LDEPTH-AT.
-WPROF:DATA-BASE RSP-CELL + constant RDEPTH-AT
-WPROF:DATA-BASE LOOPSP-CELL + constant LDEPTH-AT
 
 \ ---- the body being written ----------------------------------------------------
 DYNAMIC-BUFFER BUF u8
@@ -209,7 +124,7 @@ variable BUF-U
    1 U32,  2 U32,  I32 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
    WPROF:CTX-OUT-LEN CTX@,  L-LEN SET,
-   L-LEN GET,  OUT-CAP I32,  OP-I32-GE-U B,  IF,  OP-UNREACHABLE B,  OP-END B,
+   L-LEN GET,  WPROF:OUT-CAP I32,  OP-I32-GE-U B,  IF,  OP-UNREACHABLE B,  OP-END B,
    WPROF:OUT-BASE I32,  L-LEN GET,  OP-I32-ADD B,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,
    OP-I64-STORE8 ALIGN-8 0 MEM,
@@ -220,12 +135,12 @@ variable BUF-U
 
 
 \ The address in L-ADDR is at or past WPROF:CTX-BASE and below 2^32, else the
-\ fault records CRASH-RC with it, as src/habu/t0-wasm.f CHECKED.
+\ fault records WPROF:CRASH-RC with it, as src/habu/t0-wasm.f CHECKED.
 : ADDRESS-CHECK, ( -- )
    L-ADDR GET,  WPROF:CTX-BASE I64,  OP-I64-LT-U B,
    L-ADDR GET,  $FFFFFFFF I64,  OP-I64-GT-U B,
    OP-I32-OR B,  IF,
-      L-CTX GET,  CRASH-RC I32,  OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
+      L-CTX GET,  WPROF:CRASH-RC I32,  OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
       L-CTX GET,  L-ADDR GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
       OP-UNREACHABLE B,
    OP-END B, ;
@@ -573,7 +488,7 @@ variable SITES-N
    OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
    L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-U SET,
    WPROF:CTX-OUT-LEN CTX@,  L-LEN SET,
-   L-U GET,  OUT-CAP I32,  L-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
+   L-U GET,  WPROF:OUT-CAP I32,  L-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
    OP-I64-GT-U B,  IF,  OP-UNREACHABLE B,  OP-END B,
    WPROF:OUT-BASE I32,  L-LEN GET,  OP-I32-ADD B,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I32-WRAP-I64 B,
@@ -713,5 +628,6 @@ public
    name u s" finally" STR=CI if FINALLY-BODY BODY$ true exit then
    s" " false ;
 
+;using
 ;package
 ;package

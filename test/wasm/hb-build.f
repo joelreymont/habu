@@ -20,7 +20,6 @@ package WASM-HB-BUILD-TEST
 private
 
 60000 constant DEADLINE-MS
-134 constant CRASH-RC   \ the kind a checked-address fault records (src/habu/t0-wasm.f CRASH-RC)
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -118,7 +117,7 @@ variable MOD-U
    s" a c! below WPROF:CTX-BASE faults and traps" T-LABEL
    s" low.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:FAULT-KIND CRASH-RC T=
+   WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
    WASM-HARNESS:FAULT-ADDR 8 T= ;
 
 

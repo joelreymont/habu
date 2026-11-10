@@ -21,11 +21,10 @@ package WASM-HARNESS
 private
 
 60000 constant DEADLINE-MS
-WPROF:STACK-BASE WPROF:OUT-BASE - constant OUT-CAP   \ the OUT region, all a run writes
 4096 constant ERR-CAP
 
 PATH-CAP BUFFER: EXE
-OUT-CAP BUFFER: OUT
+WPROF:OUT-CAP BUFFER: OUT
 ERR-CAP BUFFER: ERR
 variable OUT-U
 variable ERR-U
@@ -39,7 +38,7 @@ variable ADDR
 \ its exit status, or 128 plus the signal that ended it.
 : SPAWN ( ptr u8 n -- n )
    >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
-   EXE u  OUT OUT-CAP >LEN  ERR ERR-CAP >LEN  DEADLINE-MS >MS
+   EXE u  OUT WPROF:OUT-CAP >LEN  ERR ERR-CAP >LEN  DEADLINE-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;

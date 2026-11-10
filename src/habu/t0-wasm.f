@@ -33,73 +33,18 @@ require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
+require src/arch/wasm/code.f
 require src/compiler/target.f
 require src/compiler/native/emission.f
 require src/habu/t0-emit.f
 
 package COMP
 package WASM
+using WCODE
 
 15 constant NVREG
 
-\ The exit status a Wasm checked-memory fault records, the value and meaning of
-\ tier 1's (src/arch/wasm/select.f CRASH-RC).
-134 constant CRASH-RC
-
 \ ---- the Wasm bytes ------------------------------------------------------------
-$00 constant OP-UNREACHABLE
-$02 constant OP-BLOCK
-$03 constant OP-LOOP
-$04 constant OP-IF
-$05 constant OP-ELSE
-$0B constant OP-END
-$0C constant OP-BR
-$0D constant OP-BR-IF
-$01 constant OP-NOP
-$0F constant OP-RETURN
-$10 constant OP-CALL
-$1A constant OP-DROP
-$20 constant OP-LOCAL-GET
-$21 constant OP-LOCAL-SET
-$28 constant OP-I32-LOAD
-$29 constant OP-I64-LOAD
-$31 constant OP-I64-LOAD8-U
-$36 constant OP-I32-STORE
-$37 constant OP-I64-STORE
-$41 constant OP-I32-CONST
-$42 constant OP-I64-CONST
-$45 constant OP-I32-EQZ
-$4B constant OP-I32-GT-U
-$50 constant OP-I64-EQZ
-$51 constant OP-I64-EQ
-$52 constant OP-I64-NE
-$53 constant OP-I64-LT-S
-$54 constant OP-I64-LT-U
-$55 constant OP-I64-GT-S
-$56 constant OP-I64-GT-U
-$57 constant OP-I64-LE-S
-$59 constant OP-I64-GE-S
-$6A constant OP-I32-ADD
-$6B constant OP-I32-SUB
-$72 constant OP-I32-OR
-$74 constant OP-I32-SHL
-$7C constant OP-I64-ADD
-$7D constant OP-I64-SUB
-$7E constant OP-I64-MUL
-$7F constant OP-I64-DIV-S
-$81 constant OP-I64-REM-S
-$83 constant OP-I64-AND
-$84 constant OP-I64-OR
-$85 constant OP-I64-XOR
-$86 constant OP-I64-SHL
-$88 constant OP-I64-SHR-U
-$A7 constant OP-I32-WRAP-I64
-$AD constant OP-I64-EXTEND-I32-U
-$7F constant I32
-$7E constant I64
-$40 constant EMPTY-TYPE              \ a block, loop or if taking and leaving nothing
-2 constant ALIGN-32                  \ a load's or store's alignment exponent
-3 constant ALIGN-64
 8 constant CELL-BYTES
 
 \ Locals: ctx (the unit's parameter), SP (the data stack pointer), AT (a return
@@ -198,12 +143,12 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    FAULT-END,  END, ;
 
 \ The checked pointer: its high 32 bits are zero and it is at or past
-\ WPROF:CTX-BASE, else the fault records CRASH-RC with the pointer.
+\ WPROF:CTX-BASE, else the fault records WPROF:CRASH-RC with the pointer.
 : CHECKED ( vreg -- ) {: a:vreg :}
    a GET-REG  WPROF:CTX-BASE I64,  OP-I64-LT-U B,
    a GET-REG  $FFFFFFFF I64,  OP-I64-GT-U B,
    OP-I32-OR B,  OP-IF OPENER,
-   CRASH-RC FAULT-KIND,  a GET-REG  FAULT-END,  END, ;
+   WPROF:CRASH-RC FAULT-KIND,  a GET-REG  FAULT-END,  END, ;
 
 \ A unit is a function (i32 ctx) -> (i32 status): two i32 locals, SP and AT,
 \ then FIXED-I64 + FRAME-CELLS i64 locals, a padded count CLOSE writes.
@@ -485,8 +430,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ ---- the return stack ----------------------------------------------------------
 \ One task: the stacks are WPROF's fixed regions, each depth an i64 in the DATA
 \ cell native code keeps it in, the return stack's in cells, the loop's in frames.
-: RDEPTH-AT ( -- n ) WPROF:DATA-BASE RSP-CELL + ;
-: LDEPTH-AT ( -- n ) WPROF:DATA-BASE LOOPSP-CELL + ;
 
 : DEPTH, ( n -- ) I32,  LD64, ;
 
@@ -671,5 +614,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 CTARGET-ARCH:WASM ' FILL-SLOT EMIT-PROVIDE
 
+;using
 ;package
 ;package
