@@ -1,8 +1,9 @@
 \ Process exit and the build boundary, one child per case: the exit actions
 \ (src/lib/at-exit.f) and the cleanup registry on each exit path, and what a
-\ built program keeps from its build. A child registers inside this fixture's
-\ temp root, so a failing case leaves its evidence where the fixture removes it;
-\ it resolves `require src/lib/fs-mutate.f` against the checkout (cwd).
+\ built program keeps from its build, a queue its build defined included. A
+\ child registers inside this fixture's temp root, so a failing case leaves its
+\ evidence where the fixture removes it; it resolves
+\ `require src/lib/fs-mutate.f` against the checkout (cwd).
 \ A child is judged by what it left on disk or its exit code, a built program
 \ by what it printed or removed.
 require src/lib/test.f
@@ -267,12 +268,14 @@ variable RUN-FILE-U
 
 \ It builds and runs a product because the build boundary is under test: a
 \ built program starts with none of the exit actions and cleanups its source's
-\ top level registered, and registering at run time works from empty.
+\ top level registered, and registering at run time works from empty; it inits
+\ a queue its build defined, whose record address the build must carry.
 : CASE-BUILT ( -- )
    s" built.f" s" built-out" CASE-PATHS
    ROOT$ s" built-run" RUN-FILE-BUF FS:JOIN-PATH RUN-FILE-U !
    0 TEXT-U !
-   S\" require src/lib/fs-mutate.f\n" TEXT+
+   S\" require src/lib/fs-mutate.f\nrequire src/lib/queue.f\n" TEXT+
+   S\" $10 QUEUE:QUEUE JOBS\n" TEXT+
    S\" : BUILD-ACTION ( -- ) s\q build-time exit action ran\q type cr ;\n" TEXT+
    S\" : RUN-ACTION ( -- ) s\q run-time exit action ran\q type cr ;\n" TEXT+
    S\" : BUILT-FILE ( -- ptr u8 n ) s\q " TEXT+  TREE$ TEXT+  S\" .built\q ;\n" TEXT+
@@ -280,13 +283,15 @@ variable RUN-FILE-U
    S\" ' BUILD-ACTION AT-EXIT:ADD\n" TEXT+
    S\" BUILT-FILE s\q b\q FS:WRITE-ALL BUILT-FILE FS:CLEANUP+\n" TEXT+
    S\" : MAIN ( -- ) ['] RUN-ACTION AT-EXIT:ADD\n" TEXT+
-   S\"    RUN-FILE s\q r\q FS:WRITE-ALL RUN-FILE FS:CLEANUP+ s\q main done\q type cr ;\n" TEXT+
+   S\"    RUN-FILE s\q r\q FS:WRITE-ALL RUN-FILE FS:CLEANUP+ JOBS QUEUE:INIT\n" TEXT+
+   S\"    s\q main done\q type cr ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a built program starts with none of the build's exit actions and cleanups" T-LABEL
    outu erru rc 0 EXPECT-RC
    rc 0<> if exit then
    RUN-PRODUCT {: pu:n pe:n prc:n :}
    pu pe prc 0 EXPECT-RC
+   pu s" main done" OUT-HAS? TTRUE
    pu s" run-time exit action ran" OUT-HAS? TTRUE
    pu s" build-time exit action ran" OUT-HAS? TFALSE
    RUN-FILE$ FS:EXISTS? TFALSE ;

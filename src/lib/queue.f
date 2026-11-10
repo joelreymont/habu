@@ -46,12 +46,12 @@ END-STRUCTURE
 2 constant Q-SEM-LOCK-IX
 Q-MAX Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem
 
-create Q-RECS Q-MAX cells allot
+Q-MAX TYPED-BUFFER Q-RECS ptr n
 variable Q-N
 
 : Q-SLOT ( n -- ptr ptr n ) {: idx:n :}
    idx 0 < idx Q-MAX >= or if E-QUEUE-OPERAND throw then
-   Q-RECS CELL-VIEW idx cells + 0 ptr-field ;
+   idx Q-RECS ;
 
 \ The one crossing from a handle back to memory, and it is a bounds check: a
 \ handle no definition minted is refused here instead of being dereferenced.

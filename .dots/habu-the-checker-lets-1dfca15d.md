@@ -1,0 +1,9 @@
+---
+title: The checker lets an address into raw storage through CELL-VIEW and ptr-field
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-10T20:33:40.652024+02:00"
+---
+
+Problem: 'create T 4 cells allot : S ( ptr n -- ) T CELL-VIEW 0 ptr-field ! ;' certifies (tools/check.f rc 0), while the same line without CELL-VIEW is refused E-RAW-CELL-PTR ('ptr-field: base is an undeclared raw storage cell'). cell-view (src/habu/prims.f, ( ptr u8 -- ptr n )) answers a concrete ptr n from raw storage, and RAW-FIELD-TOK? / RAW-FIELD-BASE? (src/core/checker.f) refuse only a base whose pointee is still a RAW variable, so ptr-field's row ( ptr a n -- ptr ptr b ) turns a scalar cell into a pointer cell. A store through it marks no address cell, so a build copies the address as bytes: this is how src/lib/queue.f's Q-RECS crashed a built program (dot habu-a-built-program-3cee92c8; probes ~/.cache/tmp/carl-queue/c1.f, c2.f). A third open launder beside the two docs/forth.md 'Raw storage never holds an address' lists. Reach: src/lib/task.f (the TASK definer, 'here CELL-VIEW ... 0 ptr-field !' with a hand ptr-cell-mark) and src/lib/error.f ROW, use the pattern and mark by hand, so they work today and a stricter check refuses them: they move to a declared form in the same change. Not searched: addresses laundered as integers (FFI:>CELL then !) into raw storage. Acceptance: the c2.f line is refused with E-RAW-CELL-PTR naming the cell; task.f and error.f lay their pointer cells with a declared form and no hand mark; docs/forth.md and the card state the rule; the suite passes. Files: src/core/checker.f, src/habu/prims.f (rows), src/lib/task.f, src/lib/error.f, docs/forth.md, docs/forth-card.md. Verify: a rejected-program test through the real load path; the full suite (shared checker behaviour). Depends: none; after the incremental-builds stack lands. Ownership: unassigned. Claim: unassigned.
