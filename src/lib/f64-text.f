@@ -1,16 +1,13 @@
-\ f64-text.f - exact finite binary64 text: PARSE through glibc or Darwin libc,
-\ and a shortest round-trip FORMAT computed here in integers, which borrows no
-\ locale or rounding mode. No task yields while PARSE borrows the thread's
-\ rounding mode, and caller output is copied only after success.
-\ STORAGE CLASS. PROCESS-WIDE: the library and the immutable C numeric locale,
-\ made by PARSE's first call, then only read; the locale is scratch, so a built
-\ program makes its own. No conversion yields. TASK-LOCAL: the work buffers.
+\ f64-text.f - exact finite binary64 text computed here in integers: PARSE
+\ rounds a decimal to the nearest binary64 and FORMAT writes the shortest
+\ decimal that reads back. Neither reads the locale or the rounding mode, and
+\ neither calls anything foreign. Output is copied only after success.
+\ STORAGE CLASS. TASK-LOCAL: the work buffers. No conversion yields.
 
-require src/lib/ffi-abi.f
+require src/lib/error.f
 require src/lib/fmath.f
 require src/lib/ieee754.f
 require src/lib/memory.f
-require src/lib/span.f
 require src/lib/string.f
 require src/lib/adt/result.f
 
@@ -20,49 +17,20 @@ using MEM
 public
 \ Always enough for FORMAT: the length of the negative least subnormal.
 327 constant MAX-BYTES
-\ Bytes left after a complete decimal are `trailing`; nan, inf, infinity and an
-\ overflowing decimal `nonfinite`; a negative capacity or a text longer than it
-\ `capacity`; a failed library load or native call `runtime`; else `malformed`.
+\ `trailing`: bytes after a decimal; `nonfinite`: nan, inf, infinity, overflow;
+\ `capacity`: FORMAT room below 0 or short; `runtime`: never, callers match it.
 ENUM fault malformed trailing nonfinite capacity runtime ;ENUM
 
 private
--9890 constant E-NATIVE
--9891 constant E-FINITE
+-9860 constant E-FIRST
+-9869 constant E-LAST
+-9860 s" a number needs more limbs than its capacity" ERROR:CODE E-LIMBS
 $7FFFFFFFFFFFFFFF constant MAGNITUDE-MASK
 \ FORMAT's work: its length cell at 112, its text at 128, its number at BIG-AT.
+\ PARSE's work is its number alone, of the limbs LIMBS gives.
 512 constant BIG-AT
-40 constant LIMBS
-BIG-AT LIMBS 1+ 8 * + constant WORK-BYTES
-SCRATCH-VARIABLE C-LOCALE
-
-\ The locale calls and strtod_l are libc's, which every process holds.
-PROCESS-SYMBOLS
-FUNCTION: NEWLOCALE-CALL newlocale ( n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: FREELOCALE-CALL freelocale ( n -- ) ;FUNCTION
-FUNCTION: STRTOD-CALL strtod_l ( ptr u8 n n -- r ) ;FUNCTION
-
-\ The rounding mode is libm's on glibc; Darwin keeps it in libSystem.
-: SELECT-MATH ( -- )
-   HB-TARGET-MACOS? if FFI:SELECT-PROCESS exit then
-   s" libm.so.6" FFI:SELECT-LIBRARY ;
-
-SELECT-MATH
-FUNCTION: GET-ROUND fegetround ( -- i32 ) ;FUNCTION
-FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
-
-
-: NEW-LOCALE ( -- n )
-   HB-TARGET-MACOS? if 16 else 2 then s\" C\z" drop 0 NEWLOCALE-CALL ;
-
-
-: INITIALIZE ( -- )
-   C-LOCALE @ 0<> if exit then
-   NEW-LOCALE dup 0= if drop E-NATIVE throw then C-LOCALE ! ;
-
-
-: NATIVE-READY? ( -- bool ) [: INITIALIZE ;] catch 0= ;
-
-: C-PARSE ( ptr u8 -- r ) 0 C-LOCALE @ STRTOD-CALL ;
+39 constant FORMAT-LIMBS
+BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
 
 : DIGIT? ( n -- bool ) dup $30 >= swap $39 <= and ;
 : DIGITS ( ptr u8 n n -- n ) {: text:ptr len:n offset:n :}
@@ -94,61 +62,25 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
    2dup s" nan" STR=CI if 2drop true exit then
    2dup s" inf" STR=CI if 2drop true exit then s" infinity" STR=CI ;
 
-: PARSE-ROUND ( ptr u8 -- ptr u8 ) {: work:ptr :}
-   work C-PARSE dup FMATH:FINITE? 0= if drop E-FINITE throw then
-   IEEE754:F64>BITS work CELL-VIEW ! work ;
-
-\ Round to nearest around strtod_l and restore the caller's mode. PARSE-COPY
-\ catches whatever this throws, inside the scope that holds the work buffer.
-: PARSE-SCOPED ( ptr u8 -- ptr u8 ) {: work:ptr :}
-   GET-ROUND {: prior:n :}
-   prior 0 < if E-NATIVE throw then
-   0 SET-ROUND 0 <> if E-NATIVE throw then
-   work [: PARSE-ROUND ;] catch nip {: code:n :}
-   prior SET-ROUND 0 <> if E-NATIVE throw then
-   code 0 <> if code throw then work ;
-
-
-\ The bits and the status, both read before the scope releases the copy.
-: PARSE-COPY ( ptr u8 n ptr u8 NUM:alloc-byte-len -- n n )
-   ALLOCATION>SPAN {: text:ptr len:n copy :}
-   text len copy FFI:CSTR {: work:ptr :}
-   work [: PARSE-SCOPED ;] catch nip {: status:n :}
-   work CELL-VIEW @ status ;
-
-
-public
-\ Complete signed decimal/exponent syntax; padding, hex, nonfinite values and
-\ trailing bytes are refused; subnormals and signed zero are kept. The locale
-\ goes to strtod_l; the rounding mode is restored before answering, failure
-\ included.
-: PARSE ( ptr u8 n -- result<r,fault> )
-   {: text:ptr len:n :}
-   len 0 < if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
-   text len NONFINITE-TEXT? if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
-   text len GRAMMAR {: code:n :}
-   code 1 = if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
-   code 2 = if F64--TEXT-FAULT:TRAILING RESULT:ERR exit then
-   len MAGNITUDE-MASK 1- > if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
-   NATIVE-READY? 0= if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
-   text len len FFI:CSTR-ROOM 8 max BYTES-ALLOC-LEN [: PARSE-COPY ;] WITH-BYTES
-   {: bits:n status:n :}
-   status 0= if bits IEEE754:BITS>F64 RESULT:OK exit then
-   status E-FINITE = if F64--TEXT-FAULT:NONFINITE RESULT:ERR else F64--TEXT-FAULT:RUNTIME RESULT:ERR then ;
-
-private
 : POW10 ( n -- n ) 1 swap 0 ?do 10 * loop ;
 : PUT-DIGITS ( n ptr u8 n -- ) {: value:n out:ptr width:n :}
    value width 0 ?do 10 /mod swap $30 + out width i - 1- + c! loop drop ;
 
-\ A natural number at BIG-AT: the count of limbs in use, then LIMBS limbs of
-\ 32 bits, low first. A limb times 10^9 plus a carry fits a cell.
+\ A natural number: the count of limbs in use, its capacity, then that many
+\ limbs of 32 bits, low first. A limb times 10^9 plus a carry fits a cell.
 $FFFFFFFF constant LIMB-MASK
 1000000000 constant BILLION
 
 : LIMB@ ( ptr n n -- n ) {: big:ptr at:n :}
-   at 0 >= at big @ < and if big at 1+ cells + @ else 0 then ;
-: LIMB! ( n ptr n n -- ) 1+ cells + ! ;
+   at 0 >= at big @ < and if big at 2 + cells + @ else 0 then ;
+: LIMB! ( n ptr n n -- ) 2 + cells + ! ;
+: LIMB-CAP ( ptr n -- n ) 1 cells + @ ;
+: BIG-INIT ( n ptr n -- ) {: limbs:n big:ptr :} 0 big ! limbs big 1 cells + ! ;
+: NEED-LIMBS ( n ptr n -- ) LIMB-CAP > if E-LIMBS throw then ;
+
+\ Appends a top limb.
+: BIG-PUSH ( n ptr n -- ) {: limb:n big:ptr :}
+   big @ 1+ big NEED-LIMBS limb big big @ LIMB! big @ 1+ big ! ;
 
 : TRIM ( ptr n -- ) {: big:ptr :}
    big @ begin dup 0 > if big over 1- LIMB@ 0= else false then while
@@ -156,18 +88,34 @@ $FFFFFFFF constant LIMB-MASK
    repeat big ! ;
 
 : BIG-SET ( n ptr n -- ) {: value:n big:ptr :}
-   value LIMB-MASK and big 0 LIMB! value 32 rshift big 1 LIMB!
-   2 big ! big TRIM ;
+   0 big !
+   value 0<> if value LIMB-MASK and big BIG-PUSH then
+   value 32 rshift dup 0<> if big BIG-PUSH else drop then ;
 
 : BIG-CELL ( ptr n -- n ) {: big:ptr :}
    big 0 LIMB@ big 1 LIMB@ 32 lshift or ;
+
+: BIT-LENGTH ( n -- n )
+   0 swap begin dup 0<> while 1 rshift swap 1+ swap repeat drop ;
+: BIG-BITS ( ptr n -- n )
+   {: big:ptr :}
+   big @ 0= if 0 exit then
+   big @ 1- 32 * big big @ 1- LIMB@ BIT-LENGTH + ;
 
 
 : BIG-MUL ( n ptr n -- ) {: factor:n big:ptr :}
    0 big @ 0 ?do
       big i LIMB@ factor * + dup LIMB-MASK and big i LIMB! 32 rshift
    loop
-   dup 0<> if big big @ LIMB! big @ 1+ big ! else drop then ;
+   dup 0<> if big BIG-PUSH else drop then ;
+
+\ Adds a number below 2^32.
+: BIG-ADD ( n ptr n -- )
+   {: addend:n big:ptr :}
+   addend big @ 0 ?do
+      big i LIMB@ + dup LIMB-MASK and big i LIMB! 32 rshift
+   loop
+   dup 0<> if big BIG-PUSH else drop then ;
 
 
 \ Answers whether the remainder was nonzero.
@@ -178,15 +126,18 @@ $FFFFFFFF constant LIMB-MASK
    loop 0<> big TRIM ;
 
 
-\ The top limb first, so each limb is read before it is written.
+\ The top limb first, so each limb is read before it is written; the result
+\ has exactly the limbs its bits need.
 : BIG-SHL ( n ptr n -- ) {: count:n big:ptr :}
+   big BIG-BITS dup 0= if drop exit then
+   count + 31 + 32 / {: top:n :}
+   top big NEED-LIMBS
    count 32 / {: whole:n :} count 32 mod {: part:n :}
-   big @ whole + 1+ {: top:n :}
    top 0 ?do
       big top 1- i - whole - LIMB@ part lshift
       big top 2 - i - whole - LIMB@ 32 part - rshift or LIMB-MASK and
       big top 1- i - LIMB!
-   loop top big ! big TRIM ;
+   loop top big ! ;
 
 
 \ Answers whether a one bit was shifted out.
@@ -221,9 +172,6 @@ $FFFFFFFF constant LIMB-MASK
    shift 0 < if shift negate big BIG-SHR or then
    {: lost:bool :} big BIG-CELL lost ;
 
-: BIT-LENGTH ( n -- n )
-   0 swap begin dup 0<> while 1 rshift swap 1+ swap repeat drop ;
-
 
 \ At precision p, of D = floor(value / 10^(18-p)) and D + 1, those inside
 \ [least, most], the nearer, ties upward; and whether either was inside.
@@ -243,9 +191,8 @@ $FFFFFFFF constant LIMB-MASK
    d p POW10 = if d 10 / k 1+ p else d k p then ;
 
 
-\ Exact, in units of 10^(k-17) with 10^k <= value < 10^(k+1): the value and the
-\ least and most integers its rounding interval holds. floor(L x log10 2), L
-\ the bit length, is k or k + 1; 1292913986 / 2^32 gives that floor exactly.
+\ The shortest decimal in v's rounding interval, by PICK over v and its ends
+\ at 18 digits; floor(L x 1292913986 / 2^32) is k or k + 1, L the bit length.
 : FIND-DECIMAL ( n ptr u8 -- n n n ) {: bits:n work:ptr :}
    bits 52 rshift {: biased:n :}
    bits $FFFFFFFFFFFFF and {: mantissa:n :}
@@ -255,6 +202,7 @@ $FFFFFFFF constant LIMB-MASK
    mantissa 0= biased 1 > and if 1 else 2 then {: below:n :}
    f 1 and 0= {: even:bool :}
    work BIG-AT + CELL-VIEW {: big :}
+   FORMAT-LIMBS big BIG-INIT
    f BIT-LENGTH e + 1292913986 * 2000 32 lshift + 32 rshift 2000 - {: guess:n :}
    f 2 lshift {: v:n :}
    v e 2 - 17 guess - big SCALED drop {: first:n :}
@@ -311,12 +259,158 @@ $FFFFFFFF constant LIMB-MASK
 
 public
 \ A shortest round-trip plain decimal, no terminator; equally close shortest
-\ decimals resolve away from zero, as Rust Display does; no locale or rounding.
+\ decimals resolve away from zero, as Rust Display does.
 : FORMAT ( r ptr u8 n -- result<n,fault> ) {: value:r out:ptr capacity:n :}
    value FMATH:FINITE? 0= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    capacity 0 < if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
    value IEEE754:F64>BITS out capacity
-   WORK-BYTES BYTES-ALLOC-LEN [: FORMAT-COPY ;] WITH-BYTES ;
+   FORMAT-BYTES BYTES-ALLOC-LEN [: FORMAT-COPY ;] WITH-BYTES ;
+
+private
+\ A point halfway between two binary64 values has fewer significant digits.
+800 constant MAX-DIGITS
+100000000000000000 constant EXPONENT-CAP
+
+: FOLD ( n n ptr n -- ) {: pending:n width:n big:ptr :}
+   width POW10 big BIG-MUL pending big BIG-ADD ;
+
+
+\ The state: digits kept, their power of ten and whether a dropped digit was
+\ not 0. Past MAX-DIGITS a digit is dropped; an integer one raises the power.
+: COUNT-DIGIT ( n n bool n bool -- n n bool )
+   {: kept:n power:n lost:bool digit:n frac:bool :}
+   frac if power 1- else power then {: moved:n :}
+   kept 0= digit 0= and if kept moved lost exit then
+   kept MAX-DIGITS >= if
+      kept frac if power else power 1+ then lost digit 0<> or exit
+   then
+   kept 1+ moved lost ;
+
+
+: COUNT-DIGITS ( n n bool ptr u8 n n bool -- n n bool )
+   {: text:ptr from:n to:n frac:bool :}
+   to from ?do text i + c@ $30 - frac COUNT-DIGIT loop ;
+
+
+\ The state: digits taken, digits pending and their count. Only the first
+\ `kept` significant digits are taken.
+: FILL-DIGIT ( n n n n n ptr n -- n n n )
+   {: taken:n pending:n width:n digit:n kept:n big:ptr :}
+   taken kept >= taken 0= digit 0= and or if taken pending width exit then
+   pending 10 * digit + {: next:n :}
+   width 8 = if next 9 big FOLD taken 1+ 0 0 exit then
+   taken 1+ next width 1+ ;
+
+
+: FILL-DIGITS ( n n n ptr u8 n n n ptr n -- n n n )
+   {: text:ptr from:n to:n kept:n big:ptr :}
+   to from ?do text i + c@ $30 - kept big FILL-DIGIT loop ;
+
+
+\ The exponent after the marker at offset - 1; once its magnitude reaches
+\ EXPONENT-CAP it grows no more.
+: EXPONENT-VALUE ( ptr u8 n n -- n )
+   {: text:ptr len:n offset:n :}
+   text len offset SIGN-SKIP {: start:n :}
+   0 len start ?do
+      dup EXPONENT-CAP < if 10 * text i + c@ $30 - + then
+   loop
+   start offset > if text offset + c@ $2D = if negate then then ;
+
+
+\ Of a text GRAMMAR admits: where its digits start, its integer digits end and
+\ its fraction ends.
+: PARTS ( ptr u8 n -- n n n ) {: text:ptr len:n :}
+   text len 0 SIGN-SKIP {: first:n :}
+   text len first DIGITS {: integer-end:n :}
+   first integer-end text len integer-end FRACTION-END ;
+
+
+\ The count of significant digits kept, q with the value D x 10^q, D those
+\ digits, and whether a dropped digit was not 0.
+: SCAN-DECIMAL ( ptr u8 n -- n n bool )
+   {: text:ptr len:n :}
+   text len PARTS {: first:n integer-end:n end:n :}
+   0 0 false text first integer-end false COUNT-DIGITS
+   end integer-end > if text integer-end 1+ end true COUNT-DIGITS then
+   {: kept:n power:n lost:bool :}
+   end len < if text len end 1+ EXPONENT-VALUE else 0 then {: exponent:n :}
+   kept exponent power + lost ;
+
+
+\ Leaves D, the first `kept` significant digits, in big.
+: FILL-DECIMAL ( ptr u8 n n ptr n -- )
+   {: text:ptr len:n kept:n big:ptr :}
+   text len PARTS {: first:n integer-end:n end:n :}
+   0 0 0 text first integer-end kept big FILL-DIGITS
+   end integer-end > if text integer-end 1+ end kept big FILL-DIGITS then
+   big FOLD drop ;
+
+
+\ B and s with D x 10^q = B x 2^-s, B replacing D in big, and whether B dropped
+\ a fraction. As 3402 / 1024 exceeds log2 10, B has at least 64 bits for q < 0.
+: BINARY-SCALE ( n ptr n -- n bool )
+   {: q:n big:ptr :}
+   q 0 >= if q big BIG-MUL-TENS 0 false exit then
+   q negate 3402 * 1024 / 65 + big BIG-BITS - 0 max {: s:n :}
+   s big BIG-SHL q negate big BIG-DIV-TENS s swap ;
+
+
+\ The pattern of the binary64 nearest B x 2^-s, ties to even, lost a fraction
+\ below B; the round's carry runs into the exponent, up to the infinite pattern.
+: ROUNDED ( n bool ptr n -- n )
+   {: s:n lost:bool big:ptr :}
+   big BIG-BITS 1- s - {: top:n :}
+   top 1023 > if $7FF0000000000000 exit then
+   top -1022 < if 0 s 1074 - else top 1022 + top 52 - s + then
+   {: field:n shift:n :}
+   shift 1 < if big BIG-CELL shift negate lshift field 52 lshift + exit then
+   shift 1- big BIG-SHR lost or {: sticky:bool :}
+   big BIG-CELL 1 and 1 = {: half:bool :}
+   1 big BIG-SHR drop
+   big BIG-CELL field 52 lshift + {: pattern:n :}
+   half sticky pattern 1 and 1 = or and if pattern 1+ else pattern then ;
+
+
+\ Every number for `count` digits and q has at most n x 3402 / 1024 + 65 bits,
+\ n = max(count + max(q, 0), -q), as 3402 / 1024 exceeds log2 10.
+: LIMBS ( n n -- n ) {: count:n q:n :}
+   count q 0 max + q negate max 3402 * 1024 / 65 + 31 + 32 / ;
+
+
+: CONVERT ( ptr u8 n n n bool n n ptr u8 NUM:alloc-byte-len -- result<r,fault> )
+   drop {: text:ptr len:n count:n q:n dropped:bool limbs:n sign:n work:ptr :}
+   work CELL-VIEW {: big :}
+   limbs big BIG-INIT
+   text len count big FILL-DECIMAL
+   q big BINARY-SCALE dropped or big ROUNDED {: bits:n :}
+   bits $7FF0000000000000 >= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
+   bits sign or IEEE754:BITS>F64 RESULT:OK ;
+
+
+\ Decides the far ranges before it allocates; the sign joins last.
+: READ-DECIMAL ( ptr u8 n -- result<r,fault> )
+   {: text:ptr len:n :}
+   text c@ $2D = if $8000000000000000 else 0 then {: sign:n :}
+   text len SCAN-DECIMAL {: count:n q:n dropped:bool :}
+   count 0= count q + -330 < or if sign IEEE754:BITS>F64 RESULT:OK exit then
+   count q + 310 > if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
+   count q LIMBS {: limbs:n :}
+   text len count q dropped limbs sign
+   limbs 2 + cells BYTES-ALLOC-LEN [: CONVERT ;] WITH-BYTES ;
+
+
+public
+\ The nearest binary64 to a signed decimal/exponent text, ties to even, zero's
+\ sign kept; padding, hex, nonfinite values and trailing bytes are refused.
+: PARSE ( ptr u8 n -- result<r,fault> )
+   {: text:ptr len:n :}
+   len 0 < if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
+   text len NONFINITE-TEXT? if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
+   text len GRAMMAR {: code:n :}
+   code 1 = if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
+   code 2 = if F64--TEXT-FAULT:TRAILING RESULT:ERR exit then
+   text len READ-DECIMAL ;
 
 ;using
 ;package

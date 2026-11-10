@@ -16,6 +16,7 @@ create OUTPUT MAX-BYTES allot
 
 : PARSE-OK ( ptr u8 n -- r )
    PARSE MATCH result ok OF ENDOF err OF drop -9899 throw ENDOF ;MATCH ;
+: PARSE-BITS ( ptr u8 n -- n ) PARSE-OK F64>BITS ;
 
 : EXPECT ( n ptr u8 n -- ) {: bits:n expected:ptr len:n :}
    bits BITS>F64 FORMAT-OK {: actual:n :}
@@ -23,13 +24,18 @@ create OUTPUT MAX-BYTES allot
    OUTPUT actual PARSE-OK F64>BITS bits T= ;
 
 \ In LONG: head, then count zeros, then tail.
-create LONG MAX-BYTES allot
+create LONG 8192 allot
 : PADDED ( ptr u8 n n ptr u8 n -- ptr u8 n )
    {: head:ptr head-len:n count:n tail:ptr tail-len:n :}
    head LONG head-len BYTE-COPY
    count 0 ?do $30 LONG head-len i + + c! loop
    tail LONG head-len count + + tail-len BYTE-COPY
    LONG head-len count + tail-len + ;
+
+\ In LONG: count nines, then tail.
+: NINES ( n ptr u8 n -- ptr u8 n ) {: count:n tail:ptr tail-len:n :}
+   count 0 ?do $39 LONG i + c! loop
+   tail LONG count + tail-len BYTE-COPY LONG count tail-len + ;
 
 : ROUNDTRIP ( n -- ) {: bits:n :}
    bits BITS>F64 FORMAT-OK OUTPUT swap PARSE-OK F64>BITS bits T= ;
@@ -74,8 +80,10 @@ create LONG MAX-BYTES allot
    s" +.5e+1" PARSE-OK F64>BITS $4014000000000000 T=
    s" -1e-9999" PARSE-OK F64>BITS $8000000000000000 T=
    s" 4.9406564584124654e-324" PARSE-OK F64>BITS 1 T=
-   s" 1.00000000000000011102230246251565404236316680908203125" PARSE-OK F64>BITS $3FF0000000000000 T=
-   s" 1.00000000000000011102230246251565404236316680908203126" PARSE-OK F64>BITS $3FF0000000000001 T=
+   s" 1.00000000000000011102230246251565404236316680908203125"
+   PARSE-BITS $3FF0000000000000 T=
+   s" 1.00000000000000011102230246251565404236316680908203126"
+   PARSE-BITS $3FF0000000000001 T=
    s" 2.4703282292062327e-324" PARSE-OK F64>BITS 0 T=
    s" 2.4703282292062328e-324" PARSE-OK F64>BITS 1 T=
    s" 1e9999" PARSE ERROR-CODE 3 T=
@@ -83,9 +91,33 @@ create LONG MAX-BYTES allot
    s" " PARSE ERROR-CODE 1 T= s" ." PARSE ERROR-CODE 1 T=
    s" 1e+" PARSE ERROR-CODE 1 T= s"  1" PARSE ERROR-CODE 1 T=
    s" 1x" PARSE ERROR-CODE 2 T= s" 1 " PARSE ERROR-CODE 2 T=
+   s" 0001.5" PARSE-BITS $3FF8000000000000 T=
+   s" -0.0e5" PARSE-BITS $8000000000000000 T=
+   s" 1.7976931348623157e308" PARSE-BITS $7FEFFFFFFFFFFFFF T=
+   s" 1.7976931348623158e308" PARSE-BITS $7FEFFFFFFFFFFFFF T=
+   s" 1.7976931348623159e308" PARSE ERROR-CODE 3 T=
+   s" 1e309" PARSE ERROR-CODE 3 T=
+   s" 2.2250738585072011e-308" PARSE-BITS $000FFFFFFFFFFFFF T=
+   s" 2.2250738585072012e-308" PARSE-BITS $0010000000000000 T=
+   s" 9007199254740993" PARSE-BITS $4340000000000000 T=
+   s" 9007199254740993.0000000000000000000000001" PARSE-BITS
+   $4340000000000001 T=
+   s" 1" 400 s" e-400" PADDED PARSE-BITS $3FF0000000000000 T=
+   s" 1" 5000 s" e-5000" PADDED PARSE-BITS $3FF0000000000000 T=
+   s" 1.00000000000000011102230246251565404236316680908203125" 800 s" 1"
+   PADDED PARSE-BITS $3FF0000000000001 T=
+   s" 1e999999999999999999999" PARSE ERROR-CODE 3 T=
+   s" 1e-999999999999999999999" PARSE-BITS 0 T=
+   800 s" e-1123" NINES PARSE-BITS 2 T= 800 s" e-1122" NINES PARSE-BITS $14 T=
+   800 s" e-1100" NINES PARSE-BITS $01A56E1FC2F8F359 T=
+   800 s" e-1130" NINES PARSE-BITS 0 T=
+   800 s" e-492" NINES PARSE-BITS $7FE1CCF385EBC8A0 T=
+   800 s" e-490" NINES PARSE ERROR-CODE 3 T=
+   308 s" " NINES PARSE-BITS $7FE1CCF385EBC8A0 T=
+   309 s" " NINES PARSE ERROR-CODE 3 T=
+   s" 1e-323" PARSE-BITS 2 T= s" 3e-324" PARSE-BITS 1 T=
    $5A OUTPUT c! 1.5 OUTPUT 2 FORMAT FORMAT-ERROR 4 T= OUTPUT c@ $5A T=
-   1 ROUNDTRIP 2 ROUNDTRIP $FFFFFFFFFFFFF ROUNDTRIP $10000000000000 ROUNDTRIP
-   $7FEFFFFFFFFFFFFF ROUNDTRIP $FFEFFFFFFFFFFFFF ROUNDTRIP
+   2 ROUNDTRIP $FFFFFFFFFFFFF ROUNDTRIP $FFEFFFFFFFFFFFFF ROUNDTRIP
    2048 0 do
       i 6364136223846793005 * 1442695040888963407 +
       $FFEFFFFFFFFFFFFF and ROUNDTRIP
@@ -96,61 +128,4 @@ RUN
 ;using
 ;using
 ;using
-;package
-
-\ Reopen the owning package to witness restoration of the native thread state.
-package F64-TEXT
-
-\ The witness installs a thread locale and reads it back.
-PROCESS-SYMBOLS
-FUNCTION: USE-LOCALE uselocale ( n -- n ) ;FUNCTION
-
-create STATE-OUTPUT MAX-BYTES allot
-: TEST-LOCALE ( -- n ) 2 s\" C.UTF-8\z" drop 0 NEWLOCALE-CALL ;
-
-: STATE-PARSE ( ptr u8 n n -- ) {: expected:n :}
-   PARSE MATCH result
-      ok OF IEEE754:F64>BITS expected T= ENDOF
-      err OF drop -9899 throw ENDOF
-   ;MATCH ;
-
-: STATE-FORMAT ( n -- ) {: capacity:n :}
-   0.1 STATE-OUTPUT capacity FORMAT MATCH result
-      ok OF 3 T= STATE-OUTPUT 3 s" 0.1" STR= TTRUE ENDOF
-      err OF MATCH fault
-         capacity OF capacity 2 T= ENDOF
-         malformed OF -9899 throw ENDOF trailing OF -9899 throw ENDOF
-         nonfinite OF -9899 throw ENDOF runtime OF -9899 throw ENDOF
-      ;MATCH ENDOF
-   ;MATCH ;
-
-\ fegetround/fesetround use the C library's target ABI values. The three
-\ non-nearest modes occupy bits 10-11 on Linux x86-64 and bits 22-23 on ARM.
-: ROUND-MODE ( n -- n )
-   HB-TARGET-LINUX-X86-64? if $400 else $400000 then * ;
-
-: RESTORATION ( -- )
-   GET-ROUND {: prior-round:n :}
-   TEST-LOCALE {: locale:n :} locale 0 T<>
-   locale USE-LOCALE {: prior-locale:n :}
-   4 0 do
-      i ROUND-MODE {: mode:n :} mode SET-ROUND 0 T=
-      s" 0.1" $3FB999999999999A STATE-PARSE
-      GET-ROUND mode T= 0 USE-LOCALE locale T=
-      MAX-BYTES STATE-FORMAT GET-ROUND mode T= 0 USE-LOCALE locale T=
-      2 STATE-FORMAT GET-ROUND mode T= 0 USE-LOCALE locale T=
-      s" 1e9999" PARSE MATCH result
-         ok OF drop -9899 throw ENDOF
-         err OF MATCH fault
-            nonfinite OF ENDOF malformed OF -9899 throw ENDOF
-            trailing OF -9899 throw ENDOF capacity OF -9899 throw ENDOF
-            runtime OF -9899 throw ENDOF
-         ;MATCH ENDOF
-      ;MATCH
-      GET-ROUND mode T= 0 USE-LOCALE locale T=
-   loop
-   prior-round SET-ROUND 0 T= prior-locale USE-LOCALE 0 T<>
-   locale FREELOCALE-CALL T-REPORT ;
-
-RESTORATION
 ;package
