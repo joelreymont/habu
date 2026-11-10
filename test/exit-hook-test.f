@@ -1,12 +1,10 @@
-\ The process exit actions (src/lib/at-exit.f) and the cleanup registry run at
-\ process exit: one child per exit path (normal, `die`, uncaught throw, an
-\ action that dies or throws, a build whose source exits, a failed build whose
-\ source added an action), judged by what it left on disk or its exit code, and
-\ a built program, judged by what it printed and removed. A child registers
-\ inside this fixture's temp root, given as argument 0 or written into a built
-\ program's source, so a failing case leaves its evidence where the fixture
-\ removes it; it resolves `require src/lib/fs-mutate.f` against the checkout
-\ (cwd).
+\ Process exit and the build boundary, one child per case: the exit actions
+\ (src/lib/at-exit.f) and the cleanup registry on each exit path, and what a
+\ built program keeps from its build. A child registers inside this fixture's
+\ temp root, so a failing case leaves its evidence where the fixture removes it;
+\ it resolves `require src/lib/fs-mutate.f` against the checkout (cwd).
+\ A child is judged by what it left on disk or its exit code, a built program
+\ by what it printed or removed.
 require src/lib/test.f
 require src/lib/error.f
 require src/lib/string.f
@@ -307,6 +305,34 @@ variable RUN-FILE-U
    erru SCRIPT$ ERR-HAS? TTRUE
    erru s" habu-crash" ERR-HAS? TFALSE ;
 
+\ A build is the boundary under test: a cleanup whose row lies in a chunk
+\ reaches the product only through the capture's EXIT-ROWS-SWEEP
+\ (src/lib/task.f). The 128 TASK:NEW tasks push both cleanups' rows into a
+\ chunk; the product says "no row moved" unless TASK:OWNED-EXIT-N fell by both
+\ rows across the capture, and otherwise prints 21, each cleanup run once,
+\ newest first.
+: CASE-BUILD-CLEANUPS ( -- )
+   s" cleanups.f" s" cleanups-out" CASE-PATHS
+   0 TEXT-U !
+   S\" require src/lib/task.f\nTASK:MIN-STACK TASK:TASK CHILD-TASK\nvariable CHILD-MARK\nvariable CHILD-ROWS\n" TEXT+
+   S\" : CHILD-FIRST ( -- ) CHILD-MARK @ 10 * 1 + CHILD-MARK ! ;\n" TEXT+
+   S\" : CHILD-SECOND ( -- ) CHILD-MARK @ 10 * 2 + CHILD-MARK ! ;\n" TEXT+
+   S\" : CHILD-HOLD ( n -- ) {: k:n :} k 0= if ['] CHILD-FIRST CHILD-TASK TASK:AT-EXIT\n" TEXT+
+   S\"    ['] CHILD-SECOND CHILD-TASK TASK:AT-EXIT exit then\n" TEXT+
+   S\"    TASK:MIN-STACK TASK:NEW {: t:ptr :} [: ;] t TASK:AT-EXIT k 1 - RECURSE t TASK:FREE ;\n" TEXT+
+   S\" 128 CHILD-HOLD TASK:OWNED-EXIT-N CHILD-ROWS !\n" TEXT+
+   S\" : MAIN ( -- ) TASK:OWNED-EXIT-N 2 + CHILD-ROWS @ > if s\q no row moved\q type cr exit then\n" TEXT+
+   S\"    [: 0 TASK:RETURN ;] CHILD-TASK TASK:ACTIVATE CHILD-TASK TASK:JOIN\n" TEXT+
+   S\"    MATCH result ok OF drop ENDOF err OF . ENDOF ;MATCH CHILD-MARK @ . ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a build carries its task's cleanups into the product" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   rc 0<> if exit then
+   RUN-PRODUCT {: poutu:n perru:n prc:n :}
+   s" the product's task runs each carried cleanup once, newest first" T-LABEL
+   OUT poutu S\" 21\n" T$=
+   poutu perru prc 0 EXPECT-RC ;
+
 : BODY ( -- )
    PREPARE
    CASE-NORMAL
@@ -318,7 +344,8 @@ variable RUN-FILE-U
    CASE-STAGED
    CASE-BUILD
    CASE-BUILT
-   CASE-BUILD-ACTION ;
+   CASE-BUILD-ACTION
+   CASE-BUILD-CLEANUPS ;
 
 : RUN ( -- )
    T-RESET
