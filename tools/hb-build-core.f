@@ -88,7 +88,12 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 : TARGET? ( RTARGET:profile-id -- bool )
    TARGET @ RTARGET:PROFILE@ RTARGET-PROFILE--ID:EQ ;
 
-: WASM? ( -- bool ) TARGET @ RTARGET:ARCH@ CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
+: TARGET-WASM? ( RTARGET:resolved-target -- bool )
+   RTARGET:ARCH@ CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
+
+: WASM? ( -- bool ) TARGET @ TARGET-WASM? ;
+
+64 constant USAGE-RC                    \ sysexits EX_USAGE
 
 \ A row loads when its kind is common or the build's target (habu2.f PFX-LOAD?).
 : LOAD? ( n -- bool )
@@ -293,6 +298,13 @@ CAST: >WRITER ( n -- [ bool [ ptr u8 n -- ] -- ] )
 
 public
 
+\ hb and a REPL program run where hb runs, so only a program builds for Wasm: a
+\ command line calls this before it makes anything.
+: REFUSE-WASM ( RTARGET:resolved-target -- )
+   TARGET-WASM? if
+      s" hb-build: a Wasm target builds a program, not an engine or a REPL" USAGE-RC die
+   then ;
+
 \ Writes this tree's kernel object, an engine's or a stripped program's, under
 \ <out>/hb-build/<target>/, the tree's writer laying its bytes and this tool
 \ writing the file, and reads it for the builds that follow. A build's registry
@@ -312,17 +324,19 @@ public
 \ The file the last build was loading, for the message of a build that threw.
 : ROW$ ( -- ptr u8 n ) ROW-PATH @ ROW-LEN @ ;
 
-\ Build this tree's hb for the target and write it to the path.
+\ Build this tree's hb for the target and write it to the path (REFUSE-WASM).
 : ENGINE ( ptr u8 n RTARGET:resolved-target -- )
    {: out:ptr outu:n target:RTARGET:resolved-target :}
+   target REFUSE-WASM
    out OUT-PATH !  outu OUT-LEN !
    true target KERNEL-BUILD  ENGINE-END!
    s" engine" target ['] ENGINE-BODY LINKER:WITH ;
 
 \ Build hb with the source's files, the source's MAIN its entry, for the target
-\ and write it to the second path.
+\ and write it to the second path (REFUSE-WASM).
 : REPL ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
    {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
+   target REFUSE-WASM
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
    true target KERNEL-BUILD  REPL-END!
    s" engine" target ['] REPL-BODY LINKER:WITH ;
