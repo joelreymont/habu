@@ -477,8 +477,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 \ is known by its entry, the global wordlist's execute, catch or finally, never
 \ by what the spelling binds in scope: a package's own word of any of these
 \ spellings is an ordinary call. Each is a framed call whatever its arity: the
-\ row and the xts stored, no lane, the results read back off the stack, the
-\ convention src/arch/wasm/dynamic.f's runtime functions take.
+\ row and the xts stored, no lane, the results read back off the stack.
 
 \ What a call takes and leaves: RECURSE names the definition, so a self call's
 \ shape is the declaration's, and a wordcall states its callee's.
@@ -504,8 +503,8 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id s" finally" ENGINE-CALL? or ;
 
 \ A callee's declared cells, rows as none: its shadow function's header row. A
-\ miss is an engine word, linked through WKERNEL's map, whose providers have no
-\ row, so the call's count is its callee's. The search scans every shadow
+\ miss is an engine word, whose provider has no row, so the call's count is its
+\ callee's. The search scans every shadow
 \ function, so PLAN runs it once per call (LANES!).
 : LANES ( IR-ID:ir-op-id -- n n )
    {: id:IR-ID:ir-op-id :}

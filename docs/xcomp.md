@@ -62,7 +62,7 @@ the output only through tracked owners, never by copying a host image:
 - `src/compiler/native/shadow.f` compiles each definition a second time for the
   target from the same frozen HIR module and keeps it as a sealed unplaced
   emission whose every call and address is a row (x86-64 "Dual emission").
-- The capture (`src/habu/aot-shadow.f`, `src/arch/wasm/capture.f`) resolves
+- The capture (`src/habu/aot-shadow.f`) resolves
   each host address through its record and refuses an unresolved one by name.
 - The target linker places records and DATA at target addresses
   (`src/habu/link-x64.f`, `src/arch/wasm/link.f`).
@@ -270,10 +270,12 @@ Cross-build first, self-host second.
 
 ## Wasm
 
-Checked Habu compiles directly to a core Wasm module through
-`src/arch/wasm/` and `tools/wasm-build.f`; the production path depends on no
-LLVM, Emscripten or Binaryen. The backend reuses the checker, the recorded
-tape, the elaborator and the frozen HIR; each file's header states its part.
+Checked Habu compiles directly to a core Wasm module:
+`tools/hb-build.f -- --target wasm source.f -o out.wasm` builds a program as
+it does for any target, through tier 0's Wasm generator (`src/habu/t0-wasm.f`)
+and the linker's module writer (`src/arch/wasm/link-module.f`, `link.f`). The
+production path depends on no LLVM, Emscripten or Binaryen; each file's header
+states its part.
 A browser host takes turns with the module through its memory
 (`src/lib/browser/`).
 
@@ -365,8 +367,8 @@ natively; code inspection and patching have no Wasm form.
 
 ### Linking
 
-Before lowering, every reachable definition is guest code, guest data, a
-kernel row or refused: native syscalls, `dlopen`, host addresses and code
+Every reachable definition is guest code, guest data, a kernel word the
+module provides or refused by name: native syscalls, `dlopen`, host addresses and code
 pointers have no Wasm form. A target data builder lays out static bytes; no
 native dictionary or snapshot is copied in. Changing an index can change an
 LEB's length, so every call and address immediate is a padded LEB and the

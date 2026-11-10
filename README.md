@@ -36,14 +36,12 @@ bin/hb --load test/run.f
 ```
 
 Build a source file into a WebAssembly module whose `run` export calls its
-word `MAIN` (`PKG:NAME` names a package's public word);
-`bun test/wasm/run.mjs program.wasm` runs it. The build replays the portable
-standard libraries under the Wasm backend, so the source can use captured
-runtime words such as the JSON writer. The backend's design is in
-[docs/xcomp.md](docs/xcomp.md#wasm), "Wasm":
+global word `MAIN`; `bun test/wasm/run.mjs program.wasm` runs it. The build
+compiles the libraries the source requires for Wasm, as a program build does
+for any target. The design is in [docs/xcomp.md](docs/xcomp.md#wasm), "Wasm":
 
 ```sh
-bin/hb --load tools/wasm-build.f -- path/to/program.f MAIN program.wasm
+bin/hb --load tools/hb-build.f -- --target wasm path/to/program.f -o program.wasm
 ```
 
 If `bin/hb` is missing or broken, read the current recovery status and procedure

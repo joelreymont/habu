@@ -5,8 +5,8 @@ Every tool is checked Habu run as `bin/hb --load tools/<name>.f -- <args>`.
 also a library; `-core.f` and `-lib.f` hold what tests and other tools reuse;
 `-test.f` is its focused test.
 
-- Builds: `hb-build.f` (hb under `--engine`, applications); `wasm-build.f` is
-  off until Wasm builds through the linker.
+- Builds: `hb-build.f` (hb under `--engine`, applications, Wasm modules under
+  `--target wasm`).
 - Recovery: `seed-main.f` (`docs/bootstrap.md` "Recovery").
 - Convergence: `chain-run-build.f`.
 - Profiling a build: `build-profile.f`.

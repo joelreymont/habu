@@ -1,6 +1,6 @@
 \ calls.f - WCALLS: execute, catch and finally through xts, quotations and rows.
 \ CHECKS throws the number of the first entry whose code is not the one it throws
-\ natively; test/wasm/dynamic.f runs CHECKS natively and as a module's MAIN, and
+\ natively; test/wasm/calls-test.f runs CHECKS natively and as a module's MAIN, and
 \ each trapping word as a module of its own.
 
 package WCALLS

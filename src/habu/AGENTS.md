@@ -9,7 +9,6 @@
 - `interpret.f` (`outer.f`, `packages.f`, `definers.f`, `repl.f`) and `main.f` —
   the interpret loop and command line in Habu (`docs/architecture.md`
   "Interpreter").
-- `*-x64.f` — the x86-64 engine (`kernel-x64.f` bodies, `boot-x64.f` entry);
-  `link-wasm.f` links a captured window into one Wasm module.
+- `*-x64.f` — the x86-64 engine (`kernel-x64.f` bodies, `boot-x64.f` entry).
 - `aot-*.f`, `snap*.f` — capture and saved images; `*-abi.f` —
   fixed cells shared with source-loaded code.

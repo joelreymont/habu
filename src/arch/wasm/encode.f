@@ -1,7 +1,7 @@
 \ encode.f - WENC, the Wasm backend's encoder: a frozen WSTRUCT module written
 \ as one emission, a header then each function's body in Wasm binary form
 \ (docs/xcomp.md "Encoder"). Calls and addresses become rows that
-\ src/arch/wasm/capture.f resolves and src/arch/wasm/link.f rewrites in place.
+\ src/arch/wasm/link.f rewrites in place.
 \ STORAGE CLASS. MODULE-OWNED: the emission and its rows live in this package's
 \ buffers until the next ENCODE or RETIRE.
 
@@ -366,11 +366,11 @@ private
 \ call is call then return), the target, its published host implementation when
 \ external, and its source location. A callee spelled `host` and a decimal entry
 \ is that host word; a callee naming a module function becomes its body offset,
-\ which the capture reads as a self call (src/arch/wasm/capture.f WC-CALL). An
-\ internal target has no host implementation until publication resolves it. The
-\ target is an absolute address, measured for an unplaced emission from its
-\ first byte (src/compiler/native/emission.f). call_indirect, whose type index
-\ is the linker's, and a function with no body are refused with E-WENC-FORM.
+\ a self call. An internal target has no host implementation until publication
+\ resolves it. The target is an absolute address, measured for an unplaced
+\ emission from its first byte (src/compiler/native/emission.f). call_indirect,
+\ whose type index is the linker's, and a function with no body are refused with
+\ E-WENC-FORM.
 : MODULE-FUN ( IR-ID:ir-symbol-id -- n bool )
    {: s:IR-ID:ir-symbol-id :}
    NFROZEN:FUN-COUNT 0 ?do

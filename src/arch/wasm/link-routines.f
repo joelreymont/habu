@@ -120,7 +120,7 @@ variable BUF-U
 
 
 \ emit ( c -- ) stores c's low byte at OUT-BASE plus ctx.out-len and counts it;
-\ a full OUT traps, as tier 1's (src/arch/wasm/kernel.f EMIT-ROW).
+\ a full OUT traps.
 : EMIT-BODY ( -- )
    1 U32,  2 U32,  I32 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
@@ -369,8 +369,8 @@ variable BUF-U
    L-CUR GET,  OP-I64-EXTEND-I32-U B,  L-PTR SET,  0 I64,  L-IOR SET,
    3 BR, ;
 
-\ map-anon ( bytes -- ptr ior ) as tier 1's (src/arch/wasm/kernel.f MAP-ROW): first
-\ fit, else growth; a count outside 1 through 2^32 or a refused growth answers 0 -1.
+\ map-anon ( bytes -- ptr ior ): first fit, else growth; a count outside 1
+\ through 2^32 or a refused growth answers 0 -1.
 : MAP-BODY ( -- )
    ALLOC-LOCALS,  CELL-BYTES SP-AT,  CELL-BYTES 2 * STACK-ROOM,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-BYTES SET,
@@ -500,8 +500,8 @@ variable SITES-N
    OP-UNREACHABLE B,  OP-END B, ;
 
 
-\ Pops an xt, the callee's table slot, and calls through it for its status, as
-\ tier 1's (dynamic.f DISPATCH,); an xt with a nonzero upper half traps first.
+\ Pops an xt, the callee's table slot, and calls through it for its status; an
+\ xt with a nonzero upper half traps first.
 : DISPATCH, ( -- )
    L-CTX GET,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,
@@ -552,8 +552,8 @@ variable SITES-N
    0 I32,  OP-END B, ;
 
 
-\ finally ( body cleanup -- ) as tier 1's (src/arch/wasm/dynamic.f FINALLY-BODY):
-\ a cleanup's throw supersedes the body's, else the body's code is stored again.
+\ finally ( body cleanup -- ): a cleanup's throw supersedes the body's, else the
+\ body's code is stored again.
 : FINALLY-BODY ( -- )
    2 U32,  2 U32,  I32 B,  4 U32,  I64 B,
    L-CTX GET,

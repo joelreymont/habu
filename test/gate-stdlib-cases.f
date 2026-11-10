@@ -171,31 +171,12 @@ SUITE wasm-backend
    test/wasm/backend.f
 ;SUITE
 
-\ Off: Wasm.
-false [if]
-\ The capture's Wasm reader, src/arch/wasm/capture.f: a window compiled through
-\ an open Wasm shadow, captured, its emissions read into AOT-SHADOW's tables
-\ with each call row, code and DATA field and code cell keyed by shipped row.
-SUITE wasm-capture
-   test/wasm/capture.f
-;SUITE
-[then]
-
 \ src/arch/wasm/kernel-words.f beside the engine's primitives on the host: each
 \ engine name WKERNEL's map answers with a word prints and exits as the engine
 \ primitive does, and a name no provider answers is refused.
 SUITE wasm-kernel-words
    test/wasm/kernel.f
 ;SUITE
-
-\ Off: Wasm.
-false [if]
-\ WASMLINK, src/habu/link-wasm.f: a captured window linked into one module whose
-\ data image is the window's DATA, and the three windows it refuses by name.
-SUITE wasm-link-capture
-   test/wasm/link-capture.f
-;SUITE
-[then]
 
 SUITE compiler-arm32-asm
    test/compiler/arm32-asm.f
