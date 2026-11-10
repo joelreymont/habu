@@ -52,6 +52,9 @@
 \ and e.f, which spell a.f's words, b.f's A1, c.f's A2, d.f's re-export of A1:
 \ as written, with A1's body edited, again, with a.f gaining C, over b.f's
 \ object with its first word's time and then its word number edited, again.
+\ `ran: compiled ` prints six builds of ran/a.f, b.f, c.f and d.f, whose top
+\ levels run b.f's W, which calls a.f's V, and a.f's U: as written, with c.f
+\ gaining a comment line, with V's body edited, again, with V edited again, again.
 \ With `facts`, a build loads count.f and facts.f, then its body compiles
 \ FOB-AFTER, a caller of count.f's words, and FOB-WRAP, a caller of facts.f's
 \ definer BOX, each line printing the code its compile threw (`after: 0`), runs
@@ -829,6 +832,40 @@ variable SLOT-S                          \ and their count
    s" words: compiled " one two three RESULTS.
    space four FMT:.INT  space five FMT:.INT  space six FMT:.INT  space seven FMT:.INT cr ;
 
+\ ---- words a run word reaches ----
+: RAN-A$ ( -- ptr u8 n ) s" ran" s" a.f" FIRST-BUF FILE-IN ;
+: RAN-B$ ( -- ptr u8 n ) s" ran" s" b.f" SECOND-BUF FILE-IN ;
+: RAN-C$ ( -- ptr u8 n ) s" ran" s" c.f" THIRD-BUF FILE-IN ;
+: RAN-D$ ( -- ptr u8 n ) s" ran" s" d.f" FOURTH-BUF FILE-IN ;
+
+: RAN-BUILD ( -- n )
+   [: s" app" RTARGET:HOST-TARGET
+      [: RAN-A$ included  RAN-B$ included  RAN-C$ included  RAN-D$ included ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ A file that runs a word depends on each word the run word reaches, not on the word's whole
+\ piece: V's edit compiles c.f, which ran W, which calls V, and not d.f, which ran U. Build 2's
+\ c.f compiles while a.f and b.f link, build 5's after b.f compiles.
+: BY-RUN ( -- )
+   s" ran" DIR$ FS:MAKE-DIR
+   RAN-A$ s\" package FILE-OBJECTS-RAN public : V ( -- n ) 1 ; : U ( -- n ) 5 ; ;package\n" FS:WRITE-ALL
+   RAN-B$ s\" package FILE-OBJECTS-RAN-B public : W ( -- n ) FILE-OBJECTS-RAN:V ; ;package\n" FS:WRITE-ALL
+   RAN-C$ s\" package FILE-OBJECTS-RAN-C public FILE-OBJECTS-RAN-B:W constant CW ;package\n" FS:WRITE-ALL
+   RAN-D$ s\" package FILE-OBJECTS-RAN-D public FILE-OBJECTS-RAN:U constant CU ;package\n" FS:WRITE-ALL
+   RAN-BUILD {: one:n :}
+   RAN-C$ s\" package FILE-OBJECTS-RAN-C public FILE-OBJECTS-RAN-B:W constant CW ;package\n\\ CW is W's answer\n"
+   FS:WRITE-ALL
+   RAN-BUILD {: two:n :}
+   RAN-A$ s\" package FILE-OBJECTS-RAN public : V ( -- n ) 3 ; : U ( -- n ) 5 ; ;package\n" FS:WRITE-ALL
+   RAN-BUILD {: three:n :}
+   RAN-BUILD {: four:n :}
+   RAN-A$ s\" package FILE-OBJECTS-RAN public : V ( -- n ) 4 ; : U ( -- n ) 5 ; ;package\n" FS:WRITE-ALL
+   RAN-BUILD {: five:n :}
+   RAN-BUILD {: six:n :}
+   s" ran: compiled " one two three RESULTS.
+   space four FMT:.INT  space five FMT:.INT  space six FMT:.INT cr ;
+
 : STOPS ( -- )
    s" app" RTARGET:HOST-TARGET [: STOP-FILE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-BODY ;] LINKER:WITH
@@ -839,7 +876,7 @@ variable SLOT-S                          \ and their count
    s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD BY-RUN
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----
