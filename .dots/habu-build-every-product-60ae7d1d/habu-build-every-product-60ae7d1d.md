@@ -35,3 +35,5 @@ Acceptance cases (defects the replaced machinery shows):
 Rule (Habu CLAUDE.md "Machinery being replaced"): no change extends or patches replaced machinery; a defect it shows becomes an acceptance case of the replacement here.
 Campaign only; do not dispatch.
 Claim: unassigned.
+
+Acceptance case from habu-checked-src-can-d80dc074 (bob, 2026-11-10): once no build stores into the running hb's global, namespace and types wordlist cells (src/habu/linker.f MOVE-IN, RESTORE today), DATA-BANDS gains a row for each of BOOT:GLOBAL-WL-CELL, BOOT:NAMESPACE-WL-CELL and BOOT:TYPES-WL-CELL, a store from checked source into each exits 83, and test/seal.f holds a negative case per cell and the reproducer of /Users/joel/Work/reviews/habu-10x-2026-11-10/cases8/wlcell.
