@@ -2,6 +2,9 @@
 
 Application-specific policy and model workflows stay out of the language core.
 
+Agents write, build and debug everything in Habu and on it; no person uses
+Habu directly.
+
 ## Repository
 
 - Build and test candidates in a workspace or a temporary directory. Keep one
