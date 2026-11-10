@@ -1368,25 +1368,23 @@ learned live in the docs for their subject.
   object as the instructions that remake the file's result, and a reused
   file is linked without reading its source.
 - 2026-11-06, the saved file object: shown the object a build saves for each
-  file it loads (one file under <out>/obj named by a key over hb's own
-  bytes, the build's mode and target, the file's path, load kind and loader;
-  overwritten when the file compiles again; references by name, not
-  address), against keeping every version or saving raw memory, Joel wrote
-  "i don't know enough to approve it. is it what's best for long term?" The
-  lead chose one object per file, overwritten on recompile: objects are a
-  cache any change of hb rebuilds, so a later layout change costs one cold
-  build; keeping every version helps only a return to an old edit and needs
-  a cleaner; raw memory would rebuild every later file after an edit, not
-  just its dependents. The lead later left the load kind out of the key, as
-  the linker's runner does not see it, and put in its place the count of
-  that loader's earlier loads of the same path. On 2026-11-07, under Joel's
-  words of the night before ("i'm leaving for the night so make your own
-  judgement and do everything without asking me. apply the what's best for
-  long term criteria", then "get the incremental builds done already"), the
-  lead made the key cover the file's whole canonical path, not its path under
-  its search root: a file outside every root takes its own directory as its
-  root, so /x/a.f and /y/a.f shared a key and each build overwrote the
-  other's object. A tree moved to another directory compiles once.
+  file it loads (one file under <out>/obj; overwritten when the file compiles
+  again; references by name, not address), against keeping every version or
+  saving raw memory, Joel wrote "i don't know enough to approve it. is it
+  what's best for long term?" The lead chose one object per file, overwritten
+  on recompile: objects are a cache any change of hb rebuilds, so a later
+  layout change costs one cold build; keeping every version helps only a
+  return to an old edit and needs a cleaner; raw memory would rebuild every
+  later file after an edit, not just its dependents. Under "timestamps, not
+  hashes" the object's path says what it is for: hb's stamp, the target, the
+  build's mode and the file's whole canonical path, with `.2.hfo` for a
+  build's second load of one path. The path is the canonical one, not the
+  path under a search root (the lead's choice of 2026-11-07, under Joel's "get
+  the incremental builds done already"): a file outside every root takes its
+  own directory as its root, so /x/a.f and /y/a.f would share an object. A
+  tree moved to another directory compiles once. The loader is not part of
+  the path: an object compiled in another program's context names files this
+  build does not hold, and its file compiles.
 - 2026-11-03, x86-64 builds: asked whether to remove two of SOURCE-EXEC's
   words while a lane gave the x86-64 kernel the observer the build cache
   watches a file's re-run through, Joel asked "what is source-exec and why do

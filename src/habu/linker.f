@@ -21,7 +21,7 @@ require src/lib/le.f
 require src/lib/sort.f
 require src/lib/engine-id.f
 require src/lib/build-out.f
-require src/core/sha256.f
+require src/lib/fmt.f
 require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/xref.f
@@ -144,14 +144,13 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 
 \ ---- the object ----------------------------------------------------------------
 \ LOADERS stacks a row per file whose compile or link is running: its key, then 1
-\ for a link, 0 for a compile. LOADS holds a row per load: the loader's key,
-\ zeros for the build's body, then the SHA-256 of the path. BUILT holds a row per
+\ for a link, 0 for a compile. LOADS holds each load's path, its offset in KEY-PATHS, 8 bytes; a
+\ key is that offset and the count of the build's earlier loads of the path. BUILT holds a row per
 \ piece compiled or linked: its file's key, its number in the file, its time
 \ (COMPILED-TIME as it compiled), its first and end record index, its first and end
 \ emission, and the data pointer as the piece starts and ends. A FILES row is a BUILT
 \ row's first FILES-ROW-BYTES bytes.
-32 constant KEY-BYTES
-KEY-BYTES 2 * constant ROW-BYTES
+16 constant KEY-BYTES
 KEY-BYTES 64 + constant BUILT-BYTES
 KEY-BYTES constant BUILT-PIECE
 BUILT-PIECE 8 + constant BUILT-TIME
@@ -186,17 +185,17 @@ create PRIOR BUF:HDR-BYTES allot     \ the compiling file's object as the last b
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
 create LATE BUF:HDR-BYTES allot      \ the file's late private wordlists
 create LOAD-PATHS BUF:HDR-BYTES allot \ each load's key, then its path below its root as a FIELD+
+create KEY-PATHS BUF:HDR-BYTES allot  \ each loaded or named file's path once, a FIELD+; a key's first cell is its offset
+create OBJ-PATHS BUF:HDR-BYTES allot  \ the object's PATHS as WRITE-OBJECT lays it
+create OBJ-NAME BUF:HDR-BYTES allot   \ an object's name below BUILD-OUT:OBJ$'s directory
 DYNAMIC-BUFFER BUILT-PATHS n         \ BUILT row r's path: its FIELD+'s offset in LOAD-PATHS
-SHA256-CTX-BYTES BUFFER: SHA-CTX
 KEY-BYTES BUFFER: FILE-KEY
-ROW-BYTES BUFFER: ROW
 3 8 * constant INPUT-BYTES
 INPUT-BYTES BUFFER: INPUT-STAMP      \ the source's stamp (INPUT!), the object's INPUT
 KEY-BYTES BUFFER: WANT-KEY           \ a checked request's FILES row as its loader names it: key, piece, time
 variable WANT-PIECE
 variable WANT-TIME
 variable REQ-N                       \ the compiling file's requests so far, REQUESTS' rows
-KEY-BYTES 2 * BUFFER: KEY-HEX
 
 \ clock_gettime writes a struct timespec: seconds, then nanoseconds, eight bytes each.
 $10 constant TIMESPEC-BYTES
@@ -295,10 +294,10 @@ variable USES-AT                    \ the offset in OBJECT of USES' count, of th
 \ or ends off TOP-SCOPE?, or a load it asked for never reached the build's runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 
-\ The magic, the key, the last piece's time, then for INPUT FILES REQUESTS NAMES REACHED PIECES an
-\ offset and a length (U64+), 0 0 while empty; then those sections in order, PIECES' last piece ending
-\ the object.
-8 KEY-BYTES + 8 + 6 2 * 8 * + constant HEADER-BYTES
+\ The magic, the key, the last piece's time, then for INPUT FILES REQUESTS NAMES REACHED PATHS PIECES
+\ an offset and a length (U64+), 0 0 while empty; then those sections in order, PIECES' last piece
+\ ending the object.
+8 KEY-BYTES + 8 + 7 2 * 8 * + constant HEADER-BYTES
 
 \ A record's kind in PIECES.
 0 constant KIND-DEF
@@ -353,7 +352,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  USED-RELEASE  USES-RELEASE  BUILT-USES-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
-   BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
+   BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-ROWS BUF:DISPOSE
    SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE
@@ -382,6 +381,9 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    CODE-COPY 256 BUF:N>BLEN BUF:INIT
    LATE 256 BUF:N>BLEN BUF:INIT
    LOAD-PATHS 256 BUF:N>BLEN BUF:INIT
+   KEY-PATHS 256 BUF:N>BLEN BUF:INIT
+   OBJ-PATHS 256 BUF:N>BLEN BUF:INIT
+   OBJ-NAME 256 BUF:N>BLEN BUF:INIT
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
@@ -407,6 +409,24 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 : FIELD+ ( ptr u8 n ptr a -- ) {: a:ptr u:n buf:ptr :}
    u buf U64+  a u buf SPAN+ ;
 
+\ The offset of the path's FIELD+ in the buffer of FIELD+s, added when it holds none.
+: PATH-IN ( ptr u8 n ptr a -- n )
+   {: a:ptr u:n buf:ptr :}
+   buf BYTES$ {: p:ptr pu:n :}
+   0 begin dup pu < while
+      {: at:n :}
+      p at + LE:U64@ {: len:n :}
+      p at + 8 + len  a u  STR= if at exit then
+      at 8 + len +
+   repeat
+   drop  a u buf FIELD+  pu ;
+
+\ The path the key at the address names (KEY-PATHS).
+: CANON$ ( ptr u8 -- ptr u8 n )
+   LE:U64@ {: at:n :}
+   KEY-PATHS BYTES$ drop {: a:ptr :}
+   a at + 8 +  a at + LE:U64@ ;
+
 \ The key of the file whose compile or link is running, empty for the build's body.
 : LOADER$ ( -- ptr u8 n )
    LOADERS BYTES$ {: a:ptr u:n :}
@@ -419,34 +439,22 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    u 0= if false exit then
    a u 8 - + LE:U64@ 1 = ;
 
-\ The loads already recorded with ROW's loader and path.
-: SEEN ( -- n )
+\ The build's earlier loads of the path at the offset in KEY-PATHS (LOADS).
+: SEEN ( n -- n )
+   {: at:n :}
    LOADS BYTES$ {: rows:ptr rowsu:n :}
-   0  rowsu ROW-BYTES / 0 ?do
-      rows i ROW-BYTES * +  ROW-BYTES  ROW ROW-BYTES  STR= if 1 + then
+   0  rowsu 8 / 0 ?do
+      rows i 8 * + LE:U64@ at = if 1 + then
    loop ;
 
-\ FILE-KEY: a SHA-256 over hb's own bytes, the build's mode and target, the path, the loader's
-\ key and the count of that loader's earlier loads of the path.
-: KEY-SUM ( ptr u8 n ptr u8 n n -- )
-   {: path:ptr pathu:n ld:ptr ldu:n n:n :}
-   OBJECT BUF:CLEAR
-   ENGINE-ID:KEY$ OBJECT FIELD+
-   ENGINE? @ if s" engine" else s" app" then OBJECT FIELD+
-   s" arm64" OBJECT FIELD+
-   path pathu OBJECT FIELD+
-   ld ldu OBJECT FIELD+
-   8 OBJECT U64+  n OBJECT U64+
-   SHA-CTX OBJECT BYTES$ FILE-KEY SHA256-IN ;
-
-\ FILE-KEY for a load of the path (KEY-SUM), recorded in LOADS.
-: KEY! ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   KEY-BYTES 0 ?do 0 ROW i + c! loop
-   LOADER$ {: ld:ptr ldu:n :}
-   ld ROW ldu BYTE-COPY
-   SHA-CTX path pathu ROW KEY-BYTES + SHA256-IN
-   path pathu ld ldu SEEN KEY-SUM
-   ROW ROW-BYTES LOADS SPAN+ ;
+\ FILE-KEY for a load of the path: its offset in KEY-PATHS, then its earlier loads (SEEN); the
+\ offset goes onto LOADS.
+: KEY! ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   path pathu KEY-PATHS PATH-IN {: at:n :}
+   at FILE-KEY LE:U64!
+   at SEEN FILE-KEY 8 + LE:U64!
+   at LOADS U64+ ;
 
 \ FILE-KEY onto the stack, true for a link.
 : PUSH-KEY ( bool -- )
@@ -480,6 +488,28 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
       KEY-BYTES +  a over + LE:U64@ +  8 +
    repeat
    drop E-COMP-STATE throw ;
+
+\ FILE-KEY's object: arm64, WITH's mode, the file's path, from the path's second load a dot and
+\ the load's number from 2, then .hfo (BUILD-OUT:OBJ$). A source named a.f.2 shares the name of
+\ a.f's second load: each fails the other's object at HEADER-CK's key and compiles.
+: OBJECT$ ( -- ptr u8 n )
+   OBJ-NAME BUF:CLEAR
+   s" arm64/" OBJ-NAME SPAN+
+   ENGINE? @ if s" engine" else KERNEL? @ if s" kernel" else s" app" then then OBJ-NAME SPAN+
+   FILE-KEY CANON$ {: p:ptr pu:n :}
+   pu 0 >  if p c@ FS:SLASH = else false then 0= if s" /" OBJ-NAME SPAN+ then
+   p pu OBJ-NAME SPAN+
+   FILE-KEY 8 + LE:U64@ {: n:n :}
+   n 0 > if  s" ." OBJ-NAME SPAN+  n 1 + FMT:INT$ OBJ-NAME SPAN+  then
+   s" .hfo" OBJ-NAME SPAN+
+   OBJ-NAME BYTES$ BUILD-OUT:OBJ$ ;
+
+\ The object path's directory made, so the object can be written there.
+: OBJECT-DIR ( ptr u8 n -- )
+   {: p:ptr pu:n :}
+   pu begin dup 0 > if p over 1 - + c@ FS:SLASH <> else false then while 1 - repeat
+   1 - {: du:n :}
+   p du FS:MAKE-DIRS ;
 
 \ ---- the records ---------------------------------------------------------------
 \ No address reaches PIECES: a record is named by file and index, code and data by
@@ -1711,6 +1741,22 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    OBJECT BUF:CLEAR  refs refsu OBJECT SPAN+  PIECES BYTES$ OBJECT SPAN+
    refsu FACTS-AT +! ;
 
+\ OBJ-PATHS: FILE-KEY's path, then each REFS row's, once each.
+: PATHS-LAY ( -- )
+   OBJ-PATHS BUF:CLEAR
+   FILE-KEY CANON$ OBJ-PATHS PATH-IN drop
+   REFS BYTES$ {: refs:ptr refsu:n :}
+   refsu FILES-ROW-BYTES / 0 ?do  refs i FILES-ROW-BYTES * + CANON$ OBJ-PATHS PATH-IN drop  loop ;
+
+\ OBJECT's FILES rows at the offset, each key's first cell made its path's offset in OBJ-PATHS.
+: KEYS-OUT ( n -- )
+   {: files-at:n :}
+   REFS BYTES$ {: refs:ptr refsu:n :}
+   refsu FILES-ROW-BYTES / 0 ?do
+      refs i FILES-ROW-BYTES * + CANON$ OBJ-PATHS PATH-IN
+      OBJECT BYTES$ drop files-at + i FILES-ROW-BYTES * +  LE:U64!
+   loop ;
+
 \ FILE-KEY's object after its last piece, whose time is t, with INPUT-STAMP as INPUT! left it;
 \ written only when the file is not UNLINKABLE, but built for the facts PIECE-PLACE links. A
 \ REQUESTS row: the time and the length in bytes of the piece the request ends, the kind
@@ -1718,41 +1764,48 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 \ FIELD+, then the FILES row of the requested file's last piece. A sibling renamed into place,
 \ unsynced: an object a crash cut short fails HEADER-CK's and PIECE-CK's bounds checks, and its
 \ file compiles. FILES ends with the files the source names (NAMED+), then the pieces the words
-\ the file ran reach (RAN-FILES+), whose FILES rows REACHED lists.
+\ the file ran reach (RAN-FILES+), whose FILES rows REACHED lists. On disk a key's first cell is
+\ its path's offset in PATHS (PATHS-LAY, KEYS-OUT); REFS keeps memory keys for PIECE-PLACE.
 : WRITE-OBJECT ( n -- )
    {: t:n :}
-   NAMED+  RAN-FILES+
+   NAMED+  RAN-FILES+  PATHS-LAY
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
    REQUESTS BYTES$ {: reqs:ptr requ:n :}
    SPELLS BYTES$ {: nm:ptr nmu:n :}
    REACHED BYTES$ {: rch:ptr rchu:n :}
+   OBJ-PATHS BYTES$ {: pth:ptr pthu:n :}
    PIECES BYTES$ {: pieces:ptr piecesu:n :}
    HEADER-BYTES INPUT-BYTES + {: files-at:n :}
    files-at refsu + {: reqs-at:n :}
    reqs-at requ + {: names-at:n :}
    names-at nmu + {: reached-at:n :}
-   reached-at rchu + {: pieces-at:n :}
+   reached-at rchu + {: paths-at:n :}
+   paths-at pthu + {: pieces-at:n :}
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
-   FILE-KEY KEY-BYTES OBJECT SPAN+
+   0 OBJECT U64+  FILE-KEY 8 + LE:U64@ OBJECT U64+
    t OBJECT U64+
    HEADER-BYTES OBJECT U64+  INPUT-BYTES OBJECT U64+
    refsu 0<> if files-at else 0 then OBJECT U64+  refsu OBJECT U64+
    requ 0<> if reqs-at else 0 then OBJECT U64+  requ OBJECT U64+
    nmu 0<> if names-at else 0 then OBJECT U64+  nmu OBJECT U64+
    rchu 0<> if reached-at else 0 then OBJECT U64+  rchu OBJECT U64+
+   paths-at OBJECT U64+  pthu OBJECT U64+
    pieces-at OBJECT U64+  piecesu OBJECT U64+
    INPUT-STAMP INPUT-BYTES OBJECT SPAN+
    refs refsu OBJECT SPAN+
    reqs requ OBJECT SPAN+
    nm nmu OBJECT SPAN+
    rch rchu OBJECT SPAN+
+   pth pthu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
+   files-at KEYS-OUT
    pieces-at FACTS-AT +!
    UNLINKABLE @ if exit then
-   FILE-KEY KEY-HEX SHA256>HEX
-   KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$  [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
+   OBJECT$ {: obj:ptr obju:n :}
+   obj obju OBJECT-DIR
+   obj obju [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
 
 \ The piece's BUILT row with its number and time, its file's path and the USES entries since the
 \ row before; NAMES takes its records.
@@ -2161,7 +2214,7 @@ variable RD-END
 
 \ The header, INPUT against INPUT-STAMP, the sections before PIECES and its piece count, as WRITE-OBJECT
 \ lays them, NAMES replayed (NAMES-CK) and checked against FILES (NAMED-CK), REACHED against STORERS
-\ (REACHED-CK); then PIECE-AT.
+\ (REACHED-CK), PATHS skipped, as KEYS-IN read it; then PIECE-AT.
 : HEADER-CK ( -- )
    0 FILES-N !  0 REQS-N !
    OBJECT BYTES$ nip {: len:n :}
@@ -2188,12 +2241,17 @@ variable RD-END
    RD-U64 RD-U64 {: hoff:n rchu:n :}
    rchu 0<  rchu 8 mod 0<>  or  rchu len reached-at - >  or if BAD exit then
    hoff  rchu 0<> if reached-at else 0 then  <> if BAD then
-   reached-at rchu + RD-EQ  len reached-at - rchu - RD-EQ
+   reached-at rchu + {: paths-at:n :}
+   RD-U64 RD-U64 {: poff:n pthu:n :}
+   pthu 0<  pthu len paths-at - >  or if BAD exit then
+   poff  pthu 0<> if paths-at else 0 then  <> if BAD then
+   paths-at pthu + RD-EQ  len paths-at - pthu - RD-EQ
    INPUT-STAMP INPUT-BYTES RD-SAME
    refsu FILES-CK
    reqs-at REQS-AT !  requ REQUESTS-CK
    nmu NAMES-CK  NAMED-CK
    rchu REACHED-CK
+   pthu RD-SKIP
    REQS-N @ 1 + RD-EQ
    RD-AT @ PIECE-AT ! ;
 
@@ -2612,11 +2670,40 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    code E-FS-PATH = or  code E-FFI-NUL = or  code E-MEM-MAP = or  if false exit then
    code throw ;
 
-\ FILE-KEY's object, whole, into OBJECT; false when it is missing or cannot be opened or
-\ read, so the file compiles and its write replaces the object.
+\ The disk key at the address made a memory key: its first cell, an offset in PATHS' u bytes, becomes
+\ that path's offset in KEY-PATHS (PATH-IN); false when the FIELD+ there leaves PATHS.
+: KEY-IN ( ptr u8 ptr u8 n -- bool )
+   {: key:ptr paths:ptr u:n :}
+   key LE:U64@ {: at:n :}
+   at 0<  at u 8 - >  or if false exit then
+   paths at + LE:U64@ {: len:n :}
+   len 0<  len u at - 8 - >  or if false exit then
+   paths at + 8 + len KEY-PATHS PATH-IN  key LE:U64!
+   true ;
+
+\ The object read into the buffer: true once its header key and FILES rows hold memory keys (KEY-IN);
+\ false when the magic, the FILES or PATHS pair or a key leaves the object, which then counts as unread.
+: KEYS-IN ( ptr a -- bool )
+   {: buf:ptr :}
+   buf BYTES$ {: a:ptr len:n :}
+   len HEADER-BYTES < if false exit then
+   a 8  s" HABUFOBJ" STR= 0= if false exit then
+   8 KEY-BYTES + 8 + {: pairs:n :}
+   a pairs + 16 + LE:U64@  a pairs + 24 + LE:U64@ {: foff:n fu:n :}
+   a pairs + 80 + LE:U64@  a pairs + 88 + LE:U64@ {: poff:n pu:n :}
+   foff 0<  fu 0<  or  foff len >  or  fu len foff - >  or  fu FILES-ROW-BYTES mod 0<>  or if false exit then
+   poff 0<  pu 0<  or  poff len >  or  pu len poff - >  or if false exit then
+   a 8 +  a poff +  pu  KEY-IN 0= if false exit then
+   fu FILES-ROW-BYTES / 0 ?do
+      a foff + i FILES-ROW-BYTES * +  a poff +  pu  KEY-IN 0= if false unloop exit then
+   loop
+   true ;
+
+\ FILE-KEY's object, whole, into OBJECT, its keys memory keys (KEYS-IN); false when it is missing,
+\ cannot be opened or read, or a key leaves it, so the file compiles and its write replaces the object.
 : READ-OBJECT ( -- bool )
-   FILE-KEY KEY-HEX SHA256>HEX
-   KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ OBJECT READ-WHOLE ;
+   OBJECT$ OBJECT READ-WHOLE 0= if false exit then
+   OBJECT KEYS-IN ;
 
 
 \ ---- the last build's object ----------------------------------------------------
@@ -2631,18 +2718,18 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    off 0<  u 0<  or  off len >  or  u len off - >  or  0= ;
 
 
-\ FILE-KEY's object into PRIOR, and true when it read with the magic, FILE-KEY and the FILES,
-\ REQUESTS and PIECES pairs inside it, FILES whole rows; the header's offsets, not WRITE-OBJECT's
-\ layout, place the sections.
+\ FILE-KEY's object into PRIOR, its keys memory keys (KEYS-IN), and true when it read with the
+\ magic, FILE-KEY and the FILES, REQUESTS and PIECES pairs inside it, FILES whole rows; the
+\ header's offsets, not WRITE-OBJECT's layout, place the sections.
 : PRIOR-READ ( -- bool )
-   FILE-KEY KEY-HEX SHA256>HEX
-   KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ PRIOR READ-WHOLE 0= if false exit then
+   OBJECT$ PRIOR READ-WHOLE 0= if false exit then
+   PRIOR KEYS-IN 0= if false exit then
    PRIOR BYTES$ {: a:ptr len:n :}
    len HEADER-BYTES < if false exit then
    a 8  s" HABUFOBJ" STR= 0= if false exit then
    a 8 + KEY-BYTES  FILE-KEY KEY-BYTES  STR= 0= if false exit then
    8 KEY-BYTES + 8 + {: pairs:n :}
-   pairs 16 + PRIOR-PAIR?  pairs 32 + PRIOR-PAIR? and  pairs 80 + PRIOR-PAIR? and 0= if false exit then
+   pairs 16 + PRIOR-PAIR?  pairs 32 + PRIOR-PAIR? and  pairs 96 + PRIOR-PAIR? and 0= if false exit then
    pairs 24 + PRIOR@ FILES-ROW-BYTES mod 0= ;
 
 
@@ -2669,7 +2756,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    8 KEY-BYTES + 8 + {: pairs:n :}
    pairs 32 + PRIOR@ {: roff:n :}
    roff  pairs 40 + PRIOR@ + {: rend:n :}
-   roff  pairs 80 + PRIOR@ 8 +
+   roff  pairs 96 + PRIOR@ 8 +
    k 0 ?do
       {: at:n piece:n :}
       at rend PRIOR-ROW {: next:n ok:bool :}
@@ -3531,9 +3618,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 
 \ FILE-KEY's object removed, so the next build compiles its file.
-: DROP-OBJECT ( -- )
-   FILE-KEY KEY-HEX SHA256>HEX
-   KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ FS:REMOVE-FILE ;
+: DROP-OBJECT ( -- ) OBJECT$ FS:REMOVE-FILE ;
 
 
 \ After INPUT!: true once the file's object was fresh and linked. A throw out of the check or the
@@ -3823,13 +3908,14 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 \ After IMAGE-IN, so the texts are held, then laid before any file as the open's header data.
 \ The records are BUILT row 0, as a file's piece is, so an object names them by that row: its
-\ key is a load's with no path and no loader, which no file's load has; it is piece 0 at time 0,
-\ since what it holds follows from hb, which KEY-SUM covers; it has no emission and no data.
+\ key is the empty path's, which no file's load has; it is piece 0 at time 0, since what it holds
+\ follows from hb, whose stamp names the objects' directory (BUILD-OUT:OBJ$); it has no emission
+\ and no data.
 : OWNED-RECORDS ( -- )
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !
    OWNED-N @ 0 ?do i LINK-OWNED loop
    0 CHECK:PLACE-FACTS
-   s" " s" " 0 KEY-SUM
+   s" " KEY-PATHS PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!
    FILE-KEY KEY-BYTES LOAD-PATHS SPAN+  s" " LOAD-PATHS FIELD+
    here NULL-PTR - dup FILE-DP !  FILE-END !
    0 0 BUILT+ ;

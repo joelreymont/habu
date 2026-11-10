@@ -1,9 +1,8 @@
 \ build-out.f - where a build writes what it makes, under <out>: $HABU_OUT when set
 \ and non-empty (relative to SOURCE-ROOT:CWD$), else .out under the working
-\ directory. <out>/obj/<key>.hfo holds one object per file key, shared by every
-\ engine, since the key names what compiles the file. <out>/<engine-key>/, named
-\ by ENGINE-ID:KEY$, hb's stamp, keeps that engine's images under img/<family>
-\ (IMG$). Outputs a later engine must find live under <out> itself (BASE$).
+\ directory. <out>/obj/<hb's stamp>/ holds the objects that hb wrote, each under the
+\ name its writer gives (OBJ$). <out>/<engine-key>/, named by ENGINE-ID:KEY$,
+\ hb's stamp, keeps that engine's images under img/<family> (IMG$). Outputs a later engine must find live under <out> itself (BASE$).
 \ PROCESS-WIDE: cleared before image capture.
 require src/lib/error.f
 require src/lib/fs.f
@@ -23,7 +22,6 @@ private
 create OUT-BUF PATH-CAP allot     variable OUT-U
 create ROOT-BUF PATH-CAP allot    variable ROOT-U
 create OBJ-BUF PATH-CAP allot     variable OBJ-U
-create NAME-BUF PATH-CAP allot
 create PATH-BUF PATH-CAP allot
 create IMG-BUF PATH-CAP allot
 create IMG-PATH-BUF PATH-CAP allot
@@ -40,7 +38,6 @@ variable CLEANUP-LIVE
    OBJ-BUF PATH-CAP CLEAR-SPAN
    IMG-BUF PATH-CAP CLEAR-SPAN
    IMG-PATH-BUF PATH-CAP CLEAR-SPAN
-   NAME-BUF PATH-CAP CLEAR-SPAN
    PATH-BUF PATH-CAP CLEAR-SPAN
    KEY-CTX SHA256-FILE-CTX-BYTES CLEAR-SPAN
    0 OUT-U ! 0 ROOT-U ! 0 OBJ-U ! 0 CLEANUP-LIVE ! ;
@@ -81,17 +78,15 @@ public
    ROOT-BUF ROOT-U @ ;
 
 : OBJ$ ( ptr u8 n -- ptr u8 n )
-   {: key:ptr keyu:n :}
-   keyu 0 <= if E-FS-PATH throw then
-   keyu PATH-CAP 4 - > if E-FS-CAPACITY throw then
+   {: name:ptr nameu:n :}
+   nameu 0 <= if E-FS-PATH throw then
    OBJ-U @ 0= if
-      BASE$ s" obj" OBJ-BUF FS:JOIN-PATH {: obju:n :}
-      OBJ-BUF obju FS:MAKE-DIRS
-      obju OBJ-U !
+      BASE$ s" obj" PATH-BUF FS:JOIN-PATH {: obju:n :}
+      PATH-BUF obju ENGINE-ID:KEY$ OBJ-BUF FS:JOIN-PATH {: stampu:n :}
+      OBJ-BUF stampu FS:MAKE-DIRS
+      stampu OBJ-U !
    then
-   key NAME-BUF keyu BYTE-COPY
-   s" .hfo" drop NAME-BUF keyu + 4 BYTE-COPY
-   OBJ-BUF OBJ-U @ NAME-BUF keyu 4 + PATH-BUF FS:JOIN-PATH
+   OBJ-BUF OBJ-U @ name nameu PATH-BUF FS:JOIN-PATH
    PATH-BUF swap ;
 
 
