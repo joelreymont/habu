@@ -171,7 +171,7 @@ SUMTYPE zsec
   VARIANT hide n ;VARIANT
 ;SUMTYPE
 ;package
-s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
+s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 0 T=   \ undefined word -> refused
 
 \ rejected declarations generate nothing: a duplicate family neither redefines
 \ nor duplicates the existing constructor words (load survives = proof).
@@ -243,9 +243,9 @@ s" CONSTRUCT-BAD" type cr
 \ 1) bare dup/swap bind the PRIMS, not zwv's ZWV:DUP/ZWV:SWAP rows.
 s" LK1 ( n n -- n n ) swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" LK2 ( n -- n n ) dup"    CHECK-QUIET-CANDIDATE! -1 T=
-\ 2) a plain qualified colon def leaves bare `lkw` undefined (uncheckable 1).
+\ 2) a plain qualified colon def leaves bare `lkw` undefined (refused 0).
 : lkpkg:lkw ( n -- n ) 1 + ;
-s" LK3 ( n -- n ) lkw"       CHECK-QUIET-CANDIDATE! 1 T=
+s" LK3 ( n -- n ) lkw"       CHECK-QUIET-CANDIDATE! 0 T=
 \ 3) the qualified spelling resolves.
 s" LK4 ( n -- n ) lkpkg:lkw" CHECK-QUIET-CANDIDATE! -1 T=
 s" LEAK-FIX" type cr
@@ -345,7 +345,7 @@ PRODUCT phid
   FIELD v n
 ;PRODUCT
 ;package
-s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
+s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 0 T=   \ undefined word -> refused
 \ protection: the derived package is closed (reopen/undefine reject), and the
 \ generated words stay callable after the rejected attempts.
 s" package zpt" TCE-CATCH E-CTOR-PROTECTED T=

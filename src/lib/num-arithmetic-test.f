@@ -260,7 +260,7 @@ CAST: T-CO>RAW ( NUM:cell-off -- n )
    T-REPORT ;
 RT
 
-\ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
+\ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected, 1 uncheckable.
 : STAT ( -- )
    T-RESET
    s" GOOD-ADD ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM:ADD-BYTES"
@@ -554,9 +554,9 @@ create BP-BUF 16 allot
 
 : STATIC-PRIVATE ( -- )
    s" PRIVATE-INDEX-PROJ ( NUM:index -- n ) NUM:INDEX>N"
-      CHECK-QUIET-CANDIDATE! 1 T=
+      CHECK-QUIET-CANDIDATE! 0 T=
    s" PRIVATE-BYTE-OFF-PROJ ( NUM:byte-off -- n ) NUM:BYTE-OFF>N"
-      CHECK-QUIET-CANDIDATE! 1 T= ;
+      CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : RUN ( -- )
    T-RESET

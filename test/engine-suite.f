@@ -403,14 +403,15 @@ s" candidate no-return redefinition certifies" T-LABEL
 s" T-CTV ( -- ) 1 throw" CHECK-QUIET-CANDIDATE! -1 T=
 s" ctl flags rolled back with the scope" T-LABEL
 s" COK-CTV-LIVE ( -- n ) T-CTV 5" CHECK-QUIET-CANDIDATE! -1 T=
-\ checker scope: a name interned inside the scope stops resolving after it.
+\ checker scope: a name interned inside the scope stops resolving after it, and a
+\ call to it there is refused as an undefined word (0).
 CHECKER-SCOPE-START
 : T-SCOPED-W ( -- n ) 0 ;
 s" scoped TRUST resolves inside the scope" T-LABEL
 s" COK-SCOPED-IN ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! -1 T=
 CHECKER-SCOPE-DONE
 s" scoped TRUST retired with the scope" T-LABEL
-s" CUNK-SCOPED-OUT ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! 1 T=
+s" CUNK-SCOPED-OUT ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! 0 T=
 \ package resolution order: private wins over public and global inside the
 \ open package; the private row never leaks as qualified or global outside.
 : T-PRESO ( -- n ) 0 ;
@@ -429,11 +430,11 @@ s" COK-PRES-PUB-IN ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! -1 T=
 s" global effect restored outside the package" T-LABEL
 s" COK-PRES-GLOB ( -- n ) T-PRESO" CHECK-QUIET-CANDIDATE! -1 T=
 s" private row does not resolve qualified" T-LABEL
-s" CUNK-PRES-QUAL-PRIV ( -- n n ) ES-PRES:T-PRESO" CHECK-QUIET-CANDIDATE! 1 T=
+s" CUNK-PRES-QUAL-PRIV ( -- n n ) ES-PRES:T-PRESO" CHECK-QUIET-CANDIDATE! 0 T=
 s" public resolves qualified outside the package" T-LABEL
 s" COK-PRES-QUAL ( -- n ) ES-PRES:ES-PRES-PUB" CHECK-QUIET-CANDIDATE! -1 T=
 s" public does not resolve bare outside the package" T-LABEL
-s" CUNK-PRES-BARE ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! 1 T=
+s" CUNK-PRES-BARE ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- what the ENGINE's name lookup resolves ---------------------------------
 \ Which body a token binds to when LFIND resolves it, pinned by execution: every
@@ -900,18 +901,18 @@ s" CBAD-TFAM-PTRARITY ( ptr<a> -- ) drop" T-CHECK-REJECTS
 s" COK-TFAM-NEST-CALL ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> ) COK-TFAM-NEST" T-CHECK-PASSES
 s" COK-TFAM-NEST4-CALL ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> ) COK-TFAM-NEST4" T-CHECK-PASSES
 \ A row CHECK! alone recorded is the checker's, not the engine's: compiled code
-\ cannot call COK-TFAM-SPAN, so a candidate naming it binds nowhere (1), as
+\ cannot call COK-TFAM-SPAN, so a candidate naming it binds nowhere (0), as
 \ `: C ... COK-TFAM-SPAN ;` is E-UNDEFINED.
 s" a checked-only row binds nowhere in compiled code" T-LABEL
-s" CBAD-TFAM-SPAN-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-TFAM-SPAN" CHECK-QUIET-CANDIDATE! 1 T=
+s" CBAD-TFAM-SPAN-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-TFAM-SPAN" CHECK-QUIET-CANDIDATE! 0 T=
 \ The row CHECK! recorded last binds nowhere either: a check run by hand holds
 \ no unpublished definition, so it opens no pending window for the next check
 \ (src/core/checker.f CK-CLOSE!), live candidate or CHECK! alike.
 s" COK-LAST-ROW ( -- n ) 1" CHECK! -1 T=
 s" the row CHECK! recorded last binds nowhere in compiled code" T-LABEL
-s" CBAD-LAST-ROW-CALL ( -- n ) COK-LAST-ROW" CHECK-QUIET-CANDIDATE! 1 T=
+s" CBAD-LAST-ROW-CALL ( -- n ) COK-LAST-ROW" CHECK-QUIET-CANDIDATE! 0 T=
 s" nor for the next CHECK!" T-LABEL
-s" CBAD-LAST-ROW-CHAIN ( -- n ) COK-LAST-ROW" CHECK! 1 T=
+s" CBAD-LAST-ROW-CHAIN ( -- n ) COK-LAST-ROW" CHECK! 0 T=
 \ A row checked inside a candidate scope is pending for the later rows of that
 \ scope until it closes (src/core/checker.f CK-PENDING-SYM): a generated plan
 \ checks every row before its one evaluate publishes them, and a derived HASH
@@ -924,7 +925,7 @@ s" a candidate scope's row binds for its later rows" T-LABEL
 s" CSP-CALL ( -- n n ) CSPQ:ROW-A CSPQ:ROW-B" CHECK! -1 T=
 CHECKER-CANDIDATE-SCOPE-DONE
 s" and nowhere once the scope has closed" T-LABEL
-s" CSP-AFTER ( -- n ) CSPQ:ROW-A" CHECK-QUIET-CANDIDATE! 1 T=
+s" CSP-AFTER ( -- n ) CSPQ:ROW-A" CHECK-QUIET-CANDIDATE! 0 T=
 \ Family-specific arity diagnostics assert the message, not merely rejection,
 \ so a regression swapping the arity reason for a syntax error is caught.
 s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" s" wrong arity for type family 'span'" T-CHECK-SAYS

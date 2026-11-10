@@ -344,7 +344,7 @@ EXPORT CN-EXP-SRC-PKG:CN-EXP-SRC
 CHECKER-END-PACKAGE
 ;package
 s" CNEX0 ( n -- n ) CN-EXP-A:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! -1 T=
-s" CNEX1 ( n -- n ) CN-EXP-B:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! 1 T=
+s" CNEX1 ( n -- n ) CN-EXP-B:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ Offline verification replays a package in the verifier window's own scope. A
 \ normal simulated package verifies, restores the live provider, and leaves no

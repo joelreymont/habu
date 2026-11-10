@@ -105,7 +105,7 @@ s" the spelling inside a bracket comment ends nothing" T-LABEL
 s" DP-J ( n n -- n ) 0 = if drop ( throw ) then" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ A candidate is one line and the candidate reader has no `\` comment (a bare
-\ backslash answers unresolvable, measured): the bracket form is the comment
+\ backslash is refused as an undefined word): the bracket form is the comment
 \ case.
 
 s" the axiom really fired: nothing may follow it on that path" T-LABEL

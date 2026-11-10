@@ -210,7 +210,7 @@ s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM"
    TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
 enum-ctor-test:PENDING 0 T=
 DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
-s" RC-FRESH ( -- n ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! 1 T=
+s" RC-FRESH ( -- n ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! 0 T=
 ROLLCOLL:TAKEN 37 T=
 \ Rollback also removes protection of the generated package and leaves the
 \ namespace available for a corrected declaration using the same family name.
@@ -225,7 +225,7 @@ s" STRUCTURE rollp FIELD value n ;STRUCTURE"
    TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
 enum-ctor-test:PENDING 0 T=
 DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
-s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 1 T=
+s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 ROLLP:UNMAKE 41 T=
 undefine ROLLP:UNMAKE
 s" STRUCTURE rollp FIELD value n ;STRUCTURE" evaluate-closed

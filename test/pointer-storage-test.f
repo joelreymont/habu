@@ -110,7 +110,7 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 \ source declaring a reserved cell verifies without being run. The scan compiles
 \ nothing: a candidate binds VSRSV only inside the neutral scope holding the
 \ scan, and once it closes no VSRSV record exists, so a live candidate cannot
-\ bind it (1).
+\ bind it (0).
 : REG-RESERVED-CELL ( -- )
    s" $30 RESERVED-PTR-U8-CELL VSRSV" VERIFY:SOURCE-BUF-IN-SCOPE ;
 : VERIFY-RESERVED-SCAN ( -- )
@@ -119,7 +119,7 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE -1 T=
    s" VSRSV-WRONG ( -- ptr ptr n ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    CHECKER-SCOPE-DONE
-   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" CHECK-QUIET-CANDIDATE! 1 T= ;
+   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : RUN ( -- )
    T-RESET

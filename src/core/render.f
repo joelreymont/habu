@@ -1470,8 +1470,8 @@ variable MDV-I   variable MDV-F
    SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS  s"  at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT THEN
    s" at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT ;
 
-\ The code, repair class, suggestion, prose, verdict and per-code JSON fields all
-\ name the one refusal checker.f REFUSAL@ chose.
+\ The code, repair class, suggestion, prose and per-code JSON fields all name
+\ the one refusal checker.f REFUSAL@ chose.
 : DCODE ( -- ptr u8 n )
    REFUSAL@ {: k:n :}
    k RF-IMM = IF IMM-CODE$ EXIT THEN
@@ -1488,8 +1488,10 @@ variable MDV-I   variable MDV-F
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    s" E-REJECTED" ;
+\ The verdict the load gave the definition or step (checker.f CHECK-VERDICT),
+\ which each DIAGXT caller stores in DVERD before it renders.
 : DVERDICT ( -- ptr u8 n )
-   REFUSAL-UNCHECKABLE? IF s" uncheckable" EXIT THEN s" rejected" ;
+   DVERD @ VERDICT-UNCHECKABLE = IF s" uncheckable" EXIT THEN s" rejected" ;
 \ repair_class is the stable machine name a consumer keys its repair on. This
 \ word picks it for checker refusals; tools/check-core.f and tools/diag-code.f
 \ pick it for the refusals the check tool finds itself. A class means what its

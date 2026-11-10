@@ -4635,7 +4635,7 @@ public
    [: VERIFY-THEN ;] RUN-IN-SCOPE ;
 
 \ What the certify path says about one candidate definition, `NAME ( effect )
-\ body`: -1 certified, 0 refused, 1 unresolvable, as CHECK-QUIET-CANDIDATE!
+\ body`: -1 certified, 0 refused, 1 uncheckable, as CHECK-QUIET-CANDIDATE!
 \ answers. A name this scanner registered has no engine record, so a live
 \ candidate cannot bind it; here it binds where the scan recorded it.
 : CANDIDATE-IN-SCOPE ( ptr u8 n -- n )

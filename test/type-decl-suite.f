@@ -601,7 +601,9 @@ s" TDW34-QUOTE ( tdw34 -- tdw34 n ) [: ;] catch" TD-MIN-IN 34 T=
 s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
 \ Rejection rolls the candidate back without damaging the stored wide effect.
 s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" CHECK-QUIET-CANDIDATE! 1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" undefined word 'TDW34-BAD'" CONTAINS? TTRUE
 s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
 \ A product containing W34 has the same physical width and minimum, not W34^2.
 PRODUCT tdw34nest
@@ -1255,9 +1257,9 @@ s" TDOK-AFTER ( tdfoo<n,n> -- tdfoo<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 TWX-MULTI-ERR-BEGIN
 s" : TDSME1 ( nope<n> -- nope<n> ) ; : TDSME2 ( tdfoo<n> -- tdfoo<n> ) ; : TDSME3 ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 2 T=
-\ A stored row would resolve the call (verdict -1 or 0); no row leaves it 1.
-s" TDSME1-USE ( n -- n ) TDSME1" CHECK-QUIET-CANDIDATE! 1 T=
-s" TDSME2-USE ( n -- n ) TDSME2" CHECK-QUIET-CANDIDATE! 1 T=
+\ A stored row resolves the call (-1, or 0 on a mismatch); with none it is undefined (0).
+s" TDSME1-USE ( n -- n ) TDSME1" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDSME2-USE ( n -- n ) TDSME2" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDSME3-USE ( n -- n ) TDSME3" CHECK-QUIET-CANDIDATE! -1 T=
 \ A raw TRUST row with an unparseable SIGNATURE: counted + reported, and the
 \ malformed effect is not stored.
@@ -1304,8 +1306,8 @@ s" TDRV-RAWZ ( tdrv -- bool ) 0=" CHECK-QUIET-CANDIDATE! 0 T=
 \ the derived word is family-exact: the wrong family rejects.
 ENUM tdrw one two ;ENUM
 s" TDRW-XEQ ( tdrw tdrw -- bool ) TDRV:EQ" CHECK-QUIET-CANDIDATE! 0 T=
-\ a non-derived enum grows no eq surface (undefined word: uncheckable).
-s" TDRW-NOEQ ( tdrw tdrw -- bool ) TDRW:EQ" CHECK-QUIET-CANDIDATE! 1 T=
+\ a non-derived enum grows no eq surface (undefined word: refused).
+s" TDRW-NOEQ ( tdrw tdrw -- bool ) TDRW:EQ" CHECK-QUIET-CANDIDATE! 0 T=
 \ the derived words are undefine-protected like constructors; these pins mirror
 \ the type-ctor-suite seal pins (undefine + reopen).
 s" undefine TDRV:EQ" E-CTOR-PROTECTED TDT-NEG
@@ -1381,9 +1383,9 @@ PRODUCT tdpv DERIVE eq
 TDPV-EQ TTRUE
 TDPV-NEQ-C TFALSE
 TDPV-NEQ-N TFALSE
-\ products derive EQ only: no TAG surface (undefined -> uncheckable), and the
+\ products derive EQ only: no TAG surface (undefined -> refused), and the
 \ derived EQ is undefine-protected like a constructor.
-s" TDPV-TAG ( tdpv -- n ) TDPV:TAG" CHECK-QUIET-CANDIDATE! 1 T=
+s" TDPV-TAG ( tdpv -- n ) TDPV:TAG" CHECK-QUIET-CANDIDATE! 0 T=
 s" undefine TDPV:EQ" E-CTOR-PROTECTED TDT-NEG
 
 \ payload-role gates: pointer, parametric, linear, non-derived enum field,
@@ -1446,17 +1448,17 @@ TDHP-H TTRUE
 TDHP-D1 TFALSE
 TDHP-D2 TFALSE
 
-\ hash-alone: HASH + TAG generated, EQ absent (undefined -> uncheckable);
+\ hash-alone: HASH + TAG generated, EQ absent (undefined -> refused);
 \ the derived HASH is undefine-protected like a constructor.
 ENUM tdho DERIVE hash oa ob ;ENUM
 : TDHO-H ( -- bool ) TDHO:OA TDHO:HASH TDHO:OA TDHO:HASH = ;
 : TDHO-T ( -- n ) TDHO:OB TDHO:TAG ;
 TDHO-H TTRUE
 TDHO-T 1 T=
-s" TDHO-E ( tdho tdho -- bool ) TDHO:EQ" CHECK-QUIET-CANDIDATE! 1 T=
+s" TDHO-E ( tdho tdho -- bool ) TDHO:EQ" CHECK-QUIET-CANDIDATE! 0 T=
 s" undefine TDHO:HASH" E-CTOR-PROTECTED TDT-NEG
 \ eq-only families grow no hash surface.
-s" TDSV-NOH ( tdsv -- n ) TDSV:HASH" CHECK-QUIET-CANDIDATE! 1 T=
+s" TDSV-NOH ( tdsv -- n ) TDSV:HASH" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ grammar: order stays deferred inside the list; unknown first token rejects;
 \ a sum variant named hash collides; hash-only ptr/field gates still fire.

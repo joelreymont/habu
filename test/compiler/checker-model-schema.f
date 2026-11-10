@@ -54,7 +54,7 @@ variable VEC-N
 
 \ One verdict per row, written once. `V-CERT`, `V-UNCK` and `V-REJECT` are the
 \ model's three outcomes; the cases file maps the checker's -1 / 1 / 0 into
-\ them, so an unresolvable is never read as a refusal.
+\ them, so an uncheckable definition is never read as a refusal.
 
 public
 
@@ -159,11 +159,12 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 \ the rules are the capture, the truncation test at the definition boundary, and
 \ the inline step that turns a variant payload into the family's bundle.
 \ The first pair is the step: certifies with its payload on the row, refused
-\ without it. The second pair is the capture, and its verdicts differ in class:
-\ `construct` takes its two operands whatever they spell (`CONSTRUCT-TOK`,
-\ src/core/checker.f), so an operand naming no variant is a refusal, while the
-\ same token outside the form is an unknown word, merely uncheckable; a trailing
-\ operand that fell through to word lookup would answer uncheckable for both.
+\ without it. The second pair is the capture: `construct` takes its two operands
+\ whatever they spell (`CONSTRUCT-TOK`, src/core/checker.f), so an operand naming
+\ no variant is refused as E-CONSTRUCT-UNKNOWN-VARIANT, and the same token outside
+\ the form as an undefined word. Both are refusals, so these rows cannot see an
+\ operand that fell through to word lookup; test/type-match-suite.f G16 pins the
+\ capture by its code.
 \ The third pair is the payload's owner: two variants of one family differing
 \ only in what they carry. The last row round-trips through `MATCH`, the
 \ inverse of `construct`.
@@ -171,8 +172,7 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 \ Measured by mutating the checker, rebuilding the fixpoint and rerunning this
 \ gate: dropping the `CONM` clause from `CHECK`'s open-form test turns only the
 \ unterminated row red; deleting the inline step from `CONSTRUCT-TOK` turns the
-\ first, captured, payload-owner and round-trip rows red; making the family
-\ operand close the form turns every row but the uncheckable control red.
+\ first, captured, payload-owner and round-trip rows red.
 \
 \ `TFAM-CONSTRUCT-FAM` (src/core/type-family.f) resolves a construct family in
 \ the active package only: checker-model-manifest.f supplies that scope, and
@@ -191,9 +191,9 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
    s" a_construct_operand_is_captured_whatever_it_spells"
       s" CMV22 ( cmres -- cmres ) construct cmres CMNOVAR"
       V-REJECT VEC-ROW
-   s" the_same_operand_outside_the_form_is_only_uncheckable"
+   s" the_same_operand_outside_the_form_is_an_undefined_word"
       s" CMV23 ( cmres -- cmres ) CMNOVAR"
-      V-UNCK VEC-ROW
+      V-REJECT VEC-ROW
    s" the_payload_is_the_variants_and_not_the_familys"
       s" CMV24 ( n -- cmbres ) construct cmbres cmbn"
       V-CERT VEC-ROW

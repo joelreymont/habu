@@ -10,8 +10,9 @@
 \ pinned before a name a rendering statement may define, or a compile-time
 \ refusal after it in an unfit definition, keeps its packet and answer, and that
 \ name alone defers its definition, or makes an unfit one uncheckable for its
-\ width. A refusal's prose line ends with its packet's suggestion, after the
-\ rows when it prints them.
+\ width. An undefined word is refused in packet and answer, alone or after a
+\ covered name in an unfit definition. A refusal's prose line ends with its
+\ packet's suggestion, after the rows when it prints them.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
@@ -219,6 +220,18 @@ public
    SRC-RESET 33 BADCOND-TEXT
    S\" \"code\":\"E-MISMATCH\"" S\" \"verdict\":\"rejected\""
    S\" \"actual\":\"bool n \"" VERDICT-REFUSED PACKET-HAS
+   s" an undefined word is refused and writes a rejected packet" T-LABEL
+   SRC-RESET  s" SN-UNDEF ( -- ) SN-NO-SUCH-WORD" S+
+   S\" \"code\":\"E-UNDEFINED\"" S\" \"verdict\":\"rejected\""
+   S\" \"token\":\"SN-NO-SUCH-WORD\"" VERDICT-REFUSED PACKET-HAS
+   s" a word the engine holds that no row answers is refused and writes a rejected packet" T-LABEL
+   SRC-RESET  s" SN-PRIVPRIM ( -- ) 0 0 0 xref-retarget" S+
+   S\" \"code\":\"E-UNDEFINED\"" S\" \"verdict\":\"rejected\""
+   S\" \"token\":\"xref-retarget\"" VERDICT-REFUSED PACKET-HAS
+   s" a scalar ?dup is refused as an undefined word and writes a rejected packet" T-LABEL
+   SRC-RESET  s" SN-QDUP ( n -- ) ?dup drop" S+
+   S\" \"code\":\"E-UNDEFINED\"" S\" \"verdict\":\"rejected\""
+   S\" \"token\":\"?dup\"" VERDICT-REFUSED PACKET-HAS
    s" a RECURSE with no declared effect is uncheckable for want of one, and says to declare one" T-LABEL
    RECURSE-NOSIG
    S\" habu: in sn-down: at 'RECURSE' recursion needs a declared stack effect; suggestion: Declare the definition's stack effect after its name.\n" REFUSES
@@ -285,6 +298,14 @@ public
    S\" \"code\":\"E-MISMATCH\"" S\" \"verdict\":\"rejected\""
    S\" \"expected\":\"bool \",\"actual\":\"n \"" VERDICT-REFUSED PACKET-HAS ;
 
+\ Run from a package no mark covers, so a bare name nothing defines is
+\ undefined while SN-MARKED:MADE is a name the run may define (UNSEEN-COVERS?).
+: COVERED-CASES ( -- )
+   s" an undefined word after a covered name in an unfit definition is refused" T-LABEL
+   s" SN-WIDE-UNDEF" s" SN-MARKED:MADE SN-NO-SUCH-WORD" WIDE-TEXT
+   S\" \"code\":\"E-UNDEFINED\"" S\" \"verdict\":\"rejected\""
+   S\" \"token\":\"SN-NO-SUCH-WORD\"" VERDICT-REFUSED PACKET-HAS ;
+
 : REPORT ( -- )
    T-REPORT
    s" signature-nesting: ok" type cr ;
@@ -296,6 +317,16 @@ SIGNATURE-NESTING:RUN
 package UNSEEN-NAMES
 CHECKER-UNSEEN-MARK
 SIGNATURE-NESTING:UNSEEN-CASES
+;package
+
+\ A mark in a package's public words covers that package's qualified names.
+package SN-MARKED
+public
+CHECKER-UNSEEN-MARK
+;package
+
+package SN-UNMARKED
+SIGNATURE-NESTING:COVERED-CASES
 ;package
 
 SIGNATURE-NESTING:REPORT

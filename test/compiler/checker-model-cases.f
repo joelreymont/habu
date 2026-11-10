@@ -69,8 +69,8 @@ defer MK-REGION-PAIR ( -- fresh-region-a fresh-region-a )
 private
 
 \ ---- the shared program vectors ----------------------------------------------
-\ `CHECK-QUIET-CANDIDATE!` answers -1 certified, 1 unresolvable, 0 refused; the
-\ mapping is written once so an unresolvable never reads as a refusal.
+\ `CHECK-QUIET-CANDIDATE!` answers -1 certified, 1 uncheckable, 0 refused; the
+\ mapping is written once so an uncheckable never reads as a refusal.
 
 : VERDICT-OF ( n -- n ) {: answer:n :}
    answer -1 = if V-CERT exit then

@@ -4497,7 +4497,7 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 variable TOKIX  variable FAILIX
 variable FAILB  variable FAILE
 CHECKER-REG:SCRATCH{
-variable DVERD
+variable DVERD     \ the verdict CHECK-VERDICT gave what DIAGXT renders next
 PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 CHECKER-REG:}SCRATCH
 variable JSON-DIAGS   0 JSON-DIAGS !
@@ -23951,8 +23951,7 @@ variable IS-PEND-U                   \ and its length
 
 \ A failed family resolve still consumes the variant token (CONFAM -1): the
 \ three-token form always captures whole, so the trailing operand never falls
-\ through to locals or word lookup and blurs the reject into an
-\ uncheckable-undefined verdict.
+\ through to locals or word lookup.
 : CONSTRUCT-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
    EV-OPERAND                          \ the family compiles nothing, nor does a variant of no family
@@ -26364,7 +26363,7 @@ variable CUR-OPEN   variable CUR-PSIG
    UNFIT @ 0= IF EXIT THEN
    UNSEEN @ 0 <> IF
       0 UNSEEN !  0 UNDEFERR !
-      RCOMPILE @ 0 <> IF 0 UNCK !  0 OK !  EXIT THEN
+      RCOMPILE @ 0 <> IF EXIT THEN
       UNFIT-WHY MDIAG !  UNCK-RAISE  EXIT
    THEN
    OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
@@ -26387,10 +26386,13 @@ variable CUR-OPEN   variable CUR-PSIG
 \ effect nothing downstream is a judgment, so the rest is the run's.
 \ A call to a malformed qualified name (QUALBAD) is no such token: no word can
 \ ever answer it, so its body is refused like any other, not left uncheckable.
+\ A recorded compile-time refusal (RCOMPILE), or an undefined word the check
+\ finds itself (REFUSAL@ RF-UNDEF), is a refusal whatever follows it.
+\ The packet's verdict is this answer (render.f DVERDICT reads DVERD).
 : CHECK-VERDICT ( -- n )
    SGBAD @ 0 <> IF REFUSAL-UNCHECKABLE? IF VERDICT-UNCHECKABLE ELSE VERDICT-REFUSED THEN EXIT THEN
    UNSEEN @ 0 <> IF VERDICT-DEFERRED EXIT THEN
-   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF VERDICT-REFUSED ELSE
+   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED ELSE
    UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;
 
 \ --- generated-product certification.
@@ -27772,7 +27774,7 @@ variable DEF-STOPPED
 \ a multi-error load, or not at all in a quiet probe.
 : REPORT-UNCHECKABLE ( n -- n )
    dup 1 = JSON-DIAGS @ 0= and MULTI-ERR? 0= and DIAG-QUIET @ 0= and
-   if DIAGXT then ;
+   if dup DVERD !  DIAGXT then ;
 
 \ ---- the scan whose verdict nobody enforces ----------------------------------
 \ A TRUSTED: definition's declared effect is the assertion: the body is scanned
@@ -28160,6 +28162,7 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
 : DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
    v -1 = v 2 = or IF v EXIT THEN
    na nu DOES-NAME!
+   v DVERD !
    DIAG-QUIET @ 0= IF DIAGXT THEN
    SIG-EFF-DROP
    MULTI-ERR? IF 1 MULTI-ERR-N +! THEN
@@ -31442,7 +31445,7 @@ public
    OK @ 0= FAILSET @ 0= and IF -1 FAILSET ! THEN
    0 USING-HOLD !
    TOK-SPELL-A @ TOK-SPELL-U @ REFUSAL-STEP
-   CHECK-VERDICT {: v:n :}
+   CHECK-VERDICT dup DVERD ! {: v:n :}
    v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or  RCOMPILE @ 0=  and IF EXIT THEN
    v CK-AOT-RETRY-DUE? IF EXIT THEN
    DIAG-QUIET @ 0= IF DIAGXT THEN

@@ -78,10 +78,10 @@ s" SDMAPRT ( n n n n n n bool n r char -- n n n n n n bool n r char ) SDMAP:MAKE
 s" SDMAPBAD ( n n n n n bool n n r char -- n n n n n bool n n r char ) SDMAP:MAKE SDMAP:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ 12. Only a structure with fields gets a ctor package (SD-MAKEABLE?): a zero-field
-\     family declares, and its MAKE is an unknown word (1).
+\     family declares, and its MAKE is an unknown word (0).
 s" STRUCTURE badf FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=  \ duplicate field rejects
 s" STRUCTURE opaque ;STRUCTURE" evaluate-closed                  \ zero-field opaque one-cell family (docs/forth.md "Structures And Enums")
-s" SDOPQMK ( -- opaque ) OPAQUE:MAKE" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDOPQMK ( -- opaque ) OPAQUE:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ 13. A PRIVATE structure with fields generates FAMILY-MAKE/FAMILY-UNMAKE
 \     (src/core/type-family.f TF-CTOR-PRIV$) into the declaring package's
@@ -101,8 +101,8 @@ public
 11 22 SDPRIVTEST:HGO 22 T= 11 T=                      \ declaration order + values round-trip
 SDPRIVTEST:HTAIL 7 T=                                 \ generation did not seal the private wordlist
 
-\ A second package and the global scope cannot resolve them: the probe answers 1
-\ (unresolvable), not 0 (refused). Contrasts: the same probe certifies inside
+\ A second package and the global scope cannot resolve them: the probe is refused
+\ as an undefined word (0). Contrasts: the same probe certifies inside
 \ the declaring package, and case 10's public family certifies from every scope.
 package SDPRIVTEST
 private
@@ -111,11 +111,11 @@ public
 ;package
 package SDPRIVOTHER
 private
-s" SDPO ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDPO ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDPT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 public
 ;package
-s" SDPG ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDPG ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDPGT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ While its package is open, a private product's MAKE and UNMAKE refuse undefine
@@ -676,11 +676,12 @@ SDAPRIV:HGO 16 T= 6 T= 5 T=
 
 package SDAOTHER
 private
-\ The accessor name reaches nothing here: 1 (unresolvable), not 0 (refused), as
-\ section 13's private pair. The probe's signature names no private type: that
-\ type is not nameable outside its package either and would be refused for that
-\ reason instead; the next line pins the contrast.
-s" SDAP1 ( n -- n ) HREC-X" CHECK-QUIET-CANDIDATE! 1 T=
+\ The accessor name reaches nothing here: SDAP1 is refused as an undefined word
+\ (0), as its diagnostic says. Its signature names no private type, which would
+\ be refused too; SDAP2 refuses for that type.
+DECL-DIAG:PROSE
+s" SDAP1 ( n -- n ) HREC-X" CHECK-CANDIDATE! 0 T=
+s" undefined word 'HREC-X'" DECL-DIAG:HAS? TTRUE
 s" SDAP2 ( ptr SDAPRIV:hrec -- n ) drop 0" CHECK-QUIET-CANDIDATE! 0 T=
 public
 ;package
@@ -796,15 +797,15 @@ SDOPQ:OEQF TFALSE
 SDOPQ:OHSH TTRUE
 
 \ Another package names the type and reaches none of the words, under any
-\ spelling: the probe answers 1 (unresolvable), as section 13's SDPO does.
+\ spelling: the probe is refused as an undefined word (0), as section 13's SDPO is.
 package SDOPQOTHER
 private
-s" SDOO ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
-s" SDOQ ( n n -- n n ) SDOPQ-OBOX:MAKE SDOPQ-OBOX:UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
-s" SDOC ( n n -- n n ) SDOPQ:OBOX-MAKE SDOPQ:OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
-s" SDOE ( SDOPQ:oeq SDOPQ:oeq -- bool ) SDOPQ-OEQ:EQ" CHECK-QUIET-CANDIDATE! 1 T=
-s" SDOA ( ptr SDOPQ:oaddr -- ptr n ) SDOPQ-OADDR:X" CHECK-QUIET-CANDIDATE! 1 T=
-s" SDOB ( mut-view<a,b,c,init<d,SDOPQ:oinit>> -- mut-view<a,b,c,init<d,SDOPQ:oinit>> n ) OINIT-A@" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDOO ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDOQ ( n n -- n n ) SDOPQ-OBOX:MAKE SDOPQ-OBOX:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDOC ( n n -- n n ) SDOPQ:OBOX-MAKE SDOPQ:OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDOE ( SDOPQ:oeq SDOPQ:oeq -- bool ) SDOPQ-OEQ:EQ" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDOA ( ptr SDOPQ:oaddr -- ptr n ) SDOPQ-OADDR:X" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDOB ( mut-view<a,b,c,init<d,SDOPQ:oinit>> -- mut-view<a,b,c,init<d,SDOPQ:oinit>> n ) OINIT-A@" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDOT ( SDOPQ:obox -- SDOPQ:obox )" CHECK-QUIET-CANDIDATE! -1 T=
 public
 ;package

@@ -345,7 +345,7 @@ variable CANDIDATE-VERDICT
    s" RPEEK ( i64 i64 -- i64 i64 i64 i64 ) 2>r 2r@ 2r>" GE-SRC-CHECK-LINE
    s" QD ( i64 -- i64 i64 ) ?dup" GE-SRC-CHECK-LINE
    s" hb return-stack/?dup primitive verdicts" GE-EVAL-RUN-STDIN
-   SB-RESET s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" -1" GE-OUT-LINE s" 1" GE-OUT-LINE
+   SB-RESET s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" -1" GE-OUT-LINE s" 0" GE-OUT-LINE
    SB$ s" hb return-stack/?dup primitive verdicts output" GE-EXPECT-OUT ;
 
 : COMBINATOR-CHECKS ( -- )
@@ -602,7 +602,7 @@ variable CANDIDATE-VERDICT
    s" hb package checker scope" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE
-   s" 1" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
    SB$ s" hb package checker scope output" GE-EXPECT-OUT
    GE-SRC-RESET
    s" package GD-QCHECK" GE-SRC-LINE
@@ -674,7 +674,7 @@ variable CANDIDATE-VERDICT
    s" -255" GE-OUT-LINE
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
-   s" 1" GE-OUT-LINE s" 1" GE-OUT-LINE s" 0" GE-OUT-LINE ;
+   s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE ;
 
 : LITERAL-FLOAT-FIRST ( -- )
    GE-HB-RESET

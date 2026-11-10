@@ -95,7 +95,7 @@ package CERTIFY-DOES-DEFINER
 
 -1 constant ACCEPTED
 0 constant REFUSED
-1 constant UNRESOLVED
+0 constant UNRESOLVED          \ a name nothing resolves is refused, E-UNDEFINED
 2 constant DEFERRED            \ a mark leaves the name to the run
 
 \ The engine publishes a does> definer's clause row at creation (habu2.f
@@ -157,9 +157,9 @@ package CERTIFY-DOES-DEFINER
 \ section 5): the wrapper rule is not a prefix match on "calls something that
 \ creates". Such a word still calls `create`, so a top-level statement running
 \ it marks its wordlist: a later name nothing there resolves is left to the run
-\ (DEFERRED, src/core/checker.f UNSEEN-COVERS?), not UNRESOLVED. The run takes
-\ the latch sections, which pin names as UNRESOLVED, before this one marks
-\ this file's wordlist.
+\ (DEFERRED, src/core/checker.f UNSEEN-COVERS?), not refused as UNRESOLVED. The
+\ run takes the latch sections, which refuse names as UNRESOLVED, before this one
+\ marks this file's wordlist.
 : CDD-SECTION-NOT-A-WRAPPER ( -- )
    s\" : CDD-CD ( n -- ) create , does> ( -- ptr n ) ;\n: CDD-IFW ( n -- ) dup 0= if drop 1 then CDD-CD ;\n2 CDD-IFW CDD-COND\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
