@@ -276,13 +276,10 @@ variable STR-N
 \ Placed emission e's data addresses and defer trailer make their units live.
 : READ-EM ( n -- )
    {: e:n :}
-   e NSHADOW:BYTES {: b:ptr :}
-   b e NSHADOW:SIZE + {: end:ptr :}
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
-         b e i NSHADOW:ADDR-SITE@ + {: p:ptr :}
-         p end ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
-         size 0<> if p size ADDRESS-CARRIER:CHAIN-VALUE REACH-ADDRESS then
+         e i SITE-VALUE {: v:n has:bool :}
+         has if v REACH-ADDRESS then
       then
    loop
    e EM-TRAILER {: cell:n :}

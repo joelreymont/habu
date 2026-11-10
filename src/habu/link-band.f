@@ -1,17 +1,21 @@
-\ link-band.f - the arm64 shadow emissions a program's roots reach, or every one
-\ for an engine, laid out back to back after the kernel in A64ICODE's code
-\ buffer and placed at TEXT-VA plus their offset there; a defer's emission is
-\ followed by its trailer, as publish.f COMMIT-DEFER lays it. Words visible only
-\ inside LINKER.
+\ link-band.f - the shadow emissions a program's roots reach, or every one for
+\ an engine, on arm64 or Wasm. An arm64 link lays them back to back after the
+\ kernel in A64ICODE's code buffer and places them at TEXT-VA plus their offset
+\ there; a defer's emission is followed by its trailer, as publish.f
+\ COMMIT-DEFER lays it. Words visible only inside LINKER.
 
 require src/lib/hashmap.f
 require src/habu/layout.f
 require src/habu/xref.f
+require src/compiler/target.f
+require src/compiler/binding.f
 require src/compiler/native/dict.f
 require src/compiler/native/shadow.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link.f
 require src/arch/arm64/link-kernel.f
+require src/arch/wasm/leb.f
+require src/arch/wasm/link-kernel.f
 
 package LINKER
 private
@@ -199,26 +203,62 @@ variable UNSAFE-COUNT
    0 PLACE-COUNT !  0 LIVE-COUNT ! ;
 
 
-\ Code address site k's chain value, read from the shadow's bytes as
-\ ARM64:PLACE reads it.
-: CHAIN-AT ( n n -- n )
+\ The open shadow's machine is Wasm.
+: WASM? ( -- bool )
+   NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
+
+
+\ Emission e's address site k's value, and whether the site holds one. A Wasm
+\ site is `i64.const` then a padded LEB (t0-wasm.f ADDR-ROW); an arm64 site is
+\ a MOVZ/MOVK chain, read as ARM64:PLACE reads it, and a data site whose chain
+\ CHAIN-SIZE does not read holds none.
+: SITE-VALUE ( n n -- n bool )
    {: e:n k:n :}
-   e NSHADOW:BYTES  e k NSHADOW:ADDR-SITE@ +
-   ADDRESS-CARRIER:ADDR-CHAIN-BYTES ADDRESS-CARRIER:CHAIN-VALUE ;
+   e NSHADOW:BYTES {: b:ptr :}
+   e k NSHADOW:ADDR-SITE@ {: at:n :}
+   WASM? if b e NSHADOW:SIZE at 1+ WLEB:S64-PAD@ true exit then
+   b at + {: p:ptr :}
+   e k NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
+      p ADDRESS-CARRIER:ADDR-CHAIN-BYTES ADDRESS-CARRIER:CHAIN-VALUE true exit
+   then
+   p  b e NSHADOW:SIZE +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
+   size 0= if 0 false exit then
+   p size ADDRESS-CARRIER:CHAIN-VALUE true ;
+
+
+\ Emission e's function whose offset is v, or -1. A Wasm call or code address
+\ naming a function of its own emission holds that offset, never a host
+\ address; an arm64 value is always a host address.
+: OWN-FUNCTION ( n n -- n )
+   {: e:n v:n :}
+   WASM? 0= if -1 exit then
+   e NSHADOW:FUNCTIONS 0 ?do
+      e i NSHADOW:FUNCTION-OFFSET@ v = if i unloop exit then
+   loop
+   -1 ;
+
+
+: VISIT-OUTSIDE ( n n [ n -- ] -- )
+   {: e:n v:n visit :}
+   e v OWN-FUNCTION 0 >= if exit then
+   v visit execute ;
 
 
 \ The host address each call and code address site of emission e at an offset
-\ in [from, to) names, handed to visit; data addresses name none.
+\ in [from, to) names outside e, handed to visit; data addresses name none.
 : EACH-TARGET ( n n n [ n -- ] -- )
    {: e:n from:n to:n visit :}
    e NSHADOW:CALL-SITES 0 ?do
       e i NSHADOW:CALL-SITE@ {: s:n :}
-      s from >=  s to < and if e i NSHADOW:CALL-TARGET@ visit execute then
+      s from >=  s to < and if e  e i NSHADOW:CALL-TARGET@  visit VISIT-OUTSIDE then
    loop
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
          e i NSHADOW:ADDR-SITE@ {: at:n :}
-         at from >=  at to < and if e i CHAIN-AT visit execute then
+         at from >=  at to < and if
+            e i SITE-VALUE {: v:n has:bool :}
+            has if e v visit VISIT-OUTSIDE then
+         then
       then
    loop ;
 
@@ -246,11 +286,31 @@ variable UNSAFE-COUNT
    s" link: a stripped program reaches a word it cannot run" 74 die ;
 
 
-\ A target naming no record and no UNSAFE-NAME? word is a kernel primitive,
-\ whose code PLACE-TARGET keeps, or a foreign word TARGET-ADDRESS refuses.
-: LIVE-TARGET ( n -- )
+\ The shadow record host address a names, or -1. A Wasm module has no hb
+\ kernel: a kernel word a kernel-words.f word provides names that word's record.
+: TARGET-REC ( n -- n )
    {: a:n :}
    a REC-AT {: r:n :}
+   r 0 >= if r exit then
+   WASM? 0= if -1 exit then
+   a WASM:PROVIDER {: p:n :}
+   p 0= if -1 exit then
+   p REC-AT ;
+
+
+\ Keeps the kernel code entering at host address a, true when a is a kernel
+\ primitive's entry. A Wasm module has no hb kernel and keeps none.
+: KEEP-KERNEL ( n -- bool )
+   WASM? if drop false exit then
+   ARM64:ROOT-ENTRY ;
+
+
+\ A target TARGET-REC finds no record for and naming no UNSAFE-NAME? word is a
+\ kernel primitive, whose code PLACE-TARGET keeps on arm64, or a foreign word
+\ the write step refuses.
+: LIVE-TARGET ( n -- )
+   {: a:n :}
+   a TARGET-REC {: r:n :}
    r 0 >= if r MAKE-LIVE exit then
    a UNSAFE@ {: d:n :}
    d 0< if exit then
@@ -258,11 +318,13 @@ variable UNSAFE-COUNT
    s"  calls " SAY d CANNOT-RUN ;
 
 
+\ A placed emission's target places the emission holding its record, else
+\ KEEP-KERNEL keeps its kernel code.
 : PLACE-TARGET ( n -- )
    {: a:n :}
-   a REC-AT {: r:n :}
+   a TARGET-REC {: r:n :}
    r 0 >= if r NSHADOW:EMISSION@ PLACE-EM exit then
-   a ARM64:ROOT-ENTRY drop ;
+   a KEEP-KERNEL drop ;
 
 
 : LIVE-STEP ( -- )
@@ -310,14 +372,15 @@ variable UNSAFE-COUNT
 
 
 \ Host address a the program starts from: a record's or QUOTE-ROOT's entry makes
-\ live the code it reaches; a kernel primitive's entry keeps its kernel code.
+\ live the code it reaches; an arm64 kernel primitive's entry keeps its kernel
+\ code.
 : ROOT ( n -- )
    {: a:n :}
-   a REC-AT {: r:n :}
+   a TARGET-REC {: r:n :}
    r 0 >= if r MAKE-LIVE DRAIN exit then
    a UNSAFE@ {: d:n :}
    d 0< if
-      a ARM64:ROOT-ENTRY if exit then
+      a KEEP-KERNEL if exit then
       a QUOTE-ROOT exit
    then
    s" link: the program starts at " SAY d CANNOT-RUN ;
