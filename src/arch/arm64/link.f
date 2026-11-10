@@ -44,11 +44,10 @@ public
    A64ASM:ENC-NOP  p 12 + LE:U32! ;
 
 
-\ Emission e copied to dst, whose first byte runs at link-time address at: calls
-\ and code address chains to resolve of their target, data addresses through data.
-: PLACE ( n ptr u8 n [ n -- n ] [ n -- n ] -- )
+\ Emission e's calls and address chains rewritten in dst, which holds its bytes and runs from
+\ link-time address at: calls and code chains to resolve of their target, data chains through data.
+: PATCH ( n ptr u8 n [ n -- n ] [ n -- n ] -- )
    {: e:n dst:ptr at:n data resolve :}
-   e NSHADOW:BYTES dst e NSHADOW:SIZE BYTE-COPY
    dst e NSHADOW:SIZE + {: end:ptr :}
    e NSHADOW:CALL-SITES 0 ?do
       e i NSHADOW:CALL-SITE@ {: s:n :}
@@ -72,6 +71,13 @@ public
          resolve execute  at s +  p CODE-ADDRESS!
       then
    loop ;
+
+
+\ Emission e copied to dst, whose first byte runs at link-time address at, and patched there.
+: PLACE ( n ptr u8 n [ n -- n ] [ n -- n ] -- )
+   {: e:n dst:ptr at:n data resolve :}
+   e NSHADOW:BYTES dst e NSHADOW:SIZE BYTE-COPY
+   e dst at data resolve PATCH ;
 
 ;package
 ;package

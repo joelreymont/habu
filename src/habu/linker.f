@@ -2673,7 +2673,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
       site nk target 0 0 NEMIT:CALL-SITE+
       nk NEMIT:CALL =  target NPUB:IN-REGION? 0=  and if site HOST-CALL+ then
    loop
-   \ PLACE turns a code chain into adrp+add, with no address-map row; a data chain needs one.
+   \ PATCH turns a code chain into adrp+add, with no address-map row; a data chain needs one.
    RD-U64 0 ?do
       RD-U64 RD-U64 {: site:n k:n :}
       RD-REF RESOLVE {: v:n :}
@@ -2740,11 +2740,11 @@ variable LINK-EM                     \ that emission's number in this object, -1
    fn NSHADOW:SOURCE-FUNS
    NEMIT:CLEAR
    want NSHADOW:PUBLISH
-   \ As the does> primitive's patch: PLACE then writes the slot as a branch to the clause.
+   \ As the does> primitive's patch: PATCH then writes the slot as a branch to the clause.
    patch 0<> if want patch NSHADOW:PATCH-DOES then
    CODE-COPY BYTES$ drop {: copy:ptr :}
    \ The call targets and chains already hold host values, so both resolvers answer what they get.
-   NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;]  ARM64:PLACE
+   NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;]  ARM64:PATCH
    e EM-OFFS @ {: at:n :}
    at OBJ@  at 8 + OBJ@ {: s:n r:n :}
    r 0= if s CODE-SPAN:EXACT else s r - then {: recorded:n :}
