@@ -1,0 +1,19 @@
+---
+title: "Find the layout values a moved file's object keeps"
+status: closed
+priority: 2
+issue-type: task
+created-at: "2026-11-09T22:33:27.128107+02:00"
+closed-at: "2026-11-10T07:02:03.727874+02:00"
+close-reason: landed; two cold builds differing by an 8-byte allot differ only in sums and the changed file, no object holds a builder address, warm equals cold, suite 270 of 270 on the candidate hb
+---
+
+Problem: a file's object keeps values that depend on where earlier files' data ends, so linking it after an earlier file's data grew can make warm != cold. Seen after the repl.f string edit (carl-warm/.out/rca-summary.md, design-cascade.md §2, §D): fd-lock.f's DATA (136 bytes) differs by an 8-byte shift (LOCK TASK:FACILITY-INIT runs pthread_mutex_init at load, src/lib/fd-lock.f:11-12, src/lib/task.f:2049-2051); linker.f's kind-3 store (src/habu/linker.f STORES+ :1346-1357, else branch) into a cell holding ERROR:CODE's generated text (src/lib/error.f:1259-1264 LINE) carries a DP distance (0x109bd0 vs 0x109bc8); fd-lock.f and another facility user store builder-process addresses (0x19b7b5604, 0x19b7f54e8) raw into task.f's data at offsets 2184 and 4032. Causes inferred, not verified. Acceptance: a reproducer (cold build, the same build with an 8-byte private allot added to src/habu/code-bytes.f, and a warm build of the edit over the first build's objects) and a report of every differing cell between the edited build's cold and warm objects and products: file, section, offset, both values, the owner (the word and source line that wrote it) and the fix each needs. Files: none changed but the probe edit. Verify: cmp of cold and warm products and objects; the report's cells traced to source lines. Depends: none. Ownership: carl. Claim: agent=carl workspace=.jj-ws.noindex/carl-layout (stack 9ad4518a, 74c5ad4a, 4d5a2ecc on 7901f8e5; unpushed until incremental builds work, then the suite and one review at landing).
+
+Found (carl worker, 2026-11-09, reproducer in carl-layout/.out a, b, w): warm == cold in this run, because every changed object recompiled; three cells depend on layout or process.
+- fd-lock.f DATA +56: macOS pthread_mutex_init stores the bitwise NOT of the mutex's address at mutex +48 (ctypes check at 4 addresses). Fix: 74c5ad4a TASK:FACILITY-INIT lays PTHREAD_MUTEX_INITIALIZER.
+- linker.f STORES kind 3 into error.f HEAD: a DP distance spanning every file between error.f and linker.f; each row's prev is the same kind. Fix: 9ad4518a HEAD and row links are declared address cells.
+- fd-lock.f and fd.f objects store __error and pthread_mutex_init (dyld shared cache, stable until reboot) raw into task.f's FFI row cells; a link after a reboot would hand the builder a stale address. Fix: 4d5a2ecc FN-ADDR, LIB-HANDLE and LIB-FAILED cells are scratch.
+Proof on the stack (carl-layout/.out a3, b3, w3): cold A and cold B with an 8-byte private allot in code-bytes.f differ only in sums, code-bytes.f and debug.f's record index into it (objdiff ab3-diff.txt); no object carries either FFI address (4 objects did before); warm W's program and map equal cold B's (bytes before LC_CODE_SIGNATURE); the built hb runs `1 2 + .` and passes error-test, task-test, spawn-test and ffi-test. Not covered: a warm build that links such an object across grown layout (today's cascade recompiles them), Linux.
+
+Review (Opus code-reviewer, 2026-11-10, 95a28c80..35c43715): REVISE. The three values are gone; the static initializer, the chain walk and the FFI's second resolve pass. Its comment and DECISIONS findings are fixed in "State the facility lock rule for both systems". What it found beyond these commits: an error row's link still depends on which earlier file laid the newest row (dot habu-compile-a-file-a61e0d05); each TCB's chain link is a raw address (task.f TASK; lane carl-tcb); a facility taken during a build's load writes the builder's address back (dot habu-keep-a-facility-434ff19b).
