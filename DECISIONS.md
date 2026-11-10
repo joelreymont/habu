@@ -838,7 +838,9 @@ learned live in the docs for their subject.
   second storage area across the engine, compiler and build cache), Joel
   answered "i want you to mark each cell AND record this decision in case we
   want to go back to option 2 where scratch storage lives apart", and named
-  the marking word `scratch-cell-mark`, beside ptr-cell-mark. Shown that the
+  the marking word `scratch-cell-mark`, beside ptr-cell-mark; on 2026-11-10
+  he replaced the per-cell mark ("scratch storage", below), and option 2
+  stays recorded. Shown that the
   only scratch cells holding an address at the engine save are the opcode-name
   tables of src/compiler/native/a64ir.f and hir.f, which mark their cells by
   hand, Joel chose "Add the word": `PERSISTED-PTR-U8-TABLE ( n -- )`, the
@@ -875,6 +877,32 @@ learned live in the docs for their subject.
   the buffer. That is the checker's to refuse (dot
   habu-refuse-ptr-field-331a9731), not a scan of undeclared bytes to keep.
 
+- 2026-11-10, scratch storage: asked to name a shared word `( ptr u8 n -- )`
+  that marks each cell of a byte buffer scratch after the buffer is declared,
+  Joel wrote "i like scratch-bytes but why do you need to mark every cell?
+  this smells! what problem are you solving? why not have the system
+  understand that this is a buffer and that it needs to be scratch? are you
+  solving the symptom or the fixing the cause?" The word is withdrawn. Shown
+  the design that answers it, he wrote "good": storage is declared scratch
+  by the statement that allocates it, the engine records one byte range per
+  declaration instead of a row per cell, and whatever lies inside a scratch
+  range is not carried, a record with pointer fields included.
+  `scratch-cell-mark` and the three private SCRATCH-BYTES loops are deleted,
+  and no word marks storage that already exists. Scratch storage stays in
+  place among ordinary data; option 2 of 2026-10-31 (a separate area) stays
+  open, since the declaring words are the same either way. PTR-VARIABLE,
+  PTR-U8-TABLE and DYNAMIC-BUFFER keep their names and behaviour. Plain
+  storage a top level fills is still carried; scratch storage reads what its
+  file's top level wrote until that file ends, and every later file and the
+  built program read zero, in a cold build and a warm one alike. An object
+  file lists scratch ranges, hard cutover. Not added: scratch forms of
+  TYPED-VARIABLE and TYPED-BUFFER (no caller), a public scratch bracket (it
+  would mark by position), and scratch as the default of `variable` or
+  `BUFFER:`. Asked to name the word `( n -- )` that reserves n bytes at here
+  and records them as scratch, Joel chose "SCRATCH-ALLOT (Recommended)" over
+  SCRATCH-BYTES; the definer of one scratch cell, "SCRATCH-VARIABLE
+  (Recommended)" over PROCESS-VARIABLE; the definer of a scratch byte buffer,
+  "SCRATCH-BUFFER: (Recommended)" over PROCESS-BUFFER:.
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
   zero-fills the record, so the XML C2 reader stops casting bytes into XML's
