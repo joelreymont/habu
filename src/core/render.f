@@ -966,6 +966,25 @@ REG-SCRATCH-SNAP-INSTALL
 \ declaration-order tags index the family's contiguous SUMV rows.
 variable MDV-I   variable MDV-F
 
+\ A row pair's repair by depth (REPAIR-CLASS, SUGGEST-TEXT, a loop's depth
+\ change): the actual row holds more cells than the expected, fewer, or as many
+\ of other types.
+: ROWS-DEPTHS ( -- )
+   DEXP @ REND-COLLECT RBN @ DSUGE !
+   DACT @ REND-COLLECT RBN @ DSUGA ! ;
+
+: ROWS-CLASS$ ( -- ptr u8 n )
+   ROWS-DEPTHS
+   DSUGA @ DSUGE @ > IF s" remove_producer" EXIT THEN
+   DSUGA @ DSUGE @ < IF s" add_producer" EXIT THEN
+   s" fix_type" ;
+
+: ROWS-SUGGEST$ ( -- ptr u8 n )
+   ROWS-DEPTHS
+   DSUGA @ DSUGE @ > IF s" Remove an extra producer or drop the surplus value." EXIT THEN
+   DSUGA @ DSUGE @ < IF s" Add the missing producer or stop consuming a required value." EXIT THEN
+   s" Change the body so produced types match the signature." ;
+
 
 : MDIAG-CODE$ ( -- ptr u8 n )
    MDIAG @ case
@@ -1017,6 +1036,7 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" E-UNDEFINED" endof
       MD-IS-NOT-DEFER of s" E-NOT-DEFERRED" endof
       MD-IS-MISSING   of s" E-MISSING-NAME" endof
+      MD-LOOP-DEPTH   of s" E-MISMATCH" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -1067,6 +1087,17 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" fix_is_target" endof
       MD-IS-NOT-DEFER of s" fix_is_target" endof
       MD-IS-MISSING   of s" fix_missing_name" endof
+      MD-LOOP-DEPTH   of ROWS-CLASS$ endof
+      MD-LOOP-RDEPTH  of s" fix_return_stack" endof
+      MD-LOOP-CARRIED of s" fix_control_flow" endof
+      MD-NO-LOOP      of s" fix_control_flow" endof
+      MD-NO-OUTER-LOOP of s" fix_control_flow" endof
+      MD-CLOSES-NOTHING of s" fix_control_flow" endof
+      MD-NO-CASE      of s" fix_control_flow" endof
+      MD-ELSE-TWICE   of s" fix_control_flow" endof
+      MD-EXIT-LOOP    of s" fix_control_flow" endof
+      MD-UNLOOP-JOIN  of s" fix_control_flow" endof
+      MD-CF-OPEN      of s" fix_control_flow" endof
       s" fix_match_syntax" rot
    endcase ;
 
@@ -1145,6 +1176,17 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
       MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
       MD-IS-MISSING   of s" Write the name of a word declared with defer after is." endof
+      MD-LOOP-DEPTH   of ROWS-SUGGEST$ endof
+      MD-LOOP-RDEPTH  of s" Take back with r> in the loop body every cell it pushes with >r, so each pass leaves the return stack as it found it." endof
+      MD-LOOP-CARRIED of s" Make each pass leave the cells it carries as it found them, of the same types and with the same facts known of them; keep a value that changes per pass in a variable." endof
+      MD-NO-LOOP      of s" Use i, leave, unloop, loop and +loop only inside a do or ?do this definition opened and has not closed." endof
+      MD-NO-OUTER-LOOP of s" Use j only inside a do loop nested in another; the index of a single loop is i." endof
+      MD-CLOSES-NOTHING of s" Close each structure with its own word, innermost first: if ... else ... then, begin ... until, begin ... while ... repeat, case ... of ... endof ... endcase, [: ... ;]." endof
+      MD-NO-CASE      of s" Write of only inside case ... endcase, after the previous branch's endof." endof
+      MD-ELSE-TWICE   of s" Give an if one else at most; choose among more paths with an if ... else ... then nested in the else branch." endof
+      MD-EXIT-LOOP    of s" Write unloop before exit once for each loop the exit leaves, or leave the loop and return after it." endof
+      MD-UNLOOP-JOIN  of s" Unloop the same loops on every path that meets here, or exit from each path right after its unloop." endof
+      MD-CF-OPEN      of s" Close every if, do, begin, case and [: before the definition ends." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
 
@@ -1199,6 +1241,17 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" names no word" endof
       MD-IS-NOT-DEFER of s" is not a deferred word" endof
       MD-IS-MISSING   of s" missing target word after is" endof
+      MD-LOOP-DEPTH   of s" the loop body changes the stack's depth" endof
+      MD-LOOP-RDEPTH  of s" the loop body changes the return stack's depth" endof
+      MD-LOOP-CARRIED of s" the loop body leaves a carried cell different from the one it entered with" endof
+      MD-NO-LOOP      of s" no loop is open here" endof
+      MD-NO-OUTER-LOOP of s" no outer loop is open here" endof
+      MD-CLOSES-NOTHING of s" this word closes nothing open here" endof
+      MD-NO-CASE      of s" no case is open here" endof
+      MD-ELSE-TWICE   of s" this if already has an else" endof
+      MD-EXIT-LOOP    of s" exit inside a loop needs unloop first" endof
+      MD-UNLOOP-JOIN  of s" the paths that meet here have unlooped different loops" endof
+      MD-CF-OPEN      of s" a control structure is still open at the end of the definition" endof
       s" bad match: rejected" rot
    endcase ;
 
@@ -1384,11 +1437,7 @@ variable MDV-I   variable MDV-F
    k RF-UNCHECKABLE = IF s" rewrite_uncheckable" EXIT THEN
    k RF-RETURN = IF s" fix_return_stack" EXIT THEN
    k RF-MISMATCH <> IF s" unknown_rejection" EXIT THEN
-   DEXP @ REND-COLLECT RBN @ DSUGE !
-   DACT @ REND-COLLECT RBN @ DSUGA !
-   DSUGA @ DSUGE @ > IF s" remove_producer" ELSE
-   DSUGA @ DSUGE @ < IF s" add_producer" ELSE
-   s" fix_type" THEN THEN ;
+   ROWS-CLASS$ ;
 \ Shared by SUGGEST-TEXT, a bad stored signature's diagnostic and a refused
 \ `generates:` row's.
 : SGBAD-SUGGEST$ ( -- ptr u8 n )
@@ -1444,12 +1493,7 @@ variable MDV-I   variable MDV-F
       s" Balance return-stack transfers before the definition exits." EXIT
    THEN
    k RF-MISMATCH <> IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
-   DEXP @ REND-COLLECT RBN @ DSUGE !
-   DACT @ REND-COLLECT RBN @ DSUGA !
-   DSUGA @ DSUGE @ > IF  s" Remove an extra producer or drop the surplus value."
-   ELSE DSUGA @ DSUGE @ < IF  s" Add the missing producer or stop consuming a required value."
-   ELSE  s" Change the body so produced types match the signature."
-   THEN THEN ;
+   ROWS-SUGGEST$ ;
 \ A packet's position: the file line, column and byte of its token's first byte,
 \ and the byte after its last.
 variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E

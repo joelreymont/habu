@@ -1325,6 +1325,8 @@ variable RC
    s" a then with no if before an undefined word" T-LABEL
    s" : X ( n -- n ) then NOPE ;" s" then-undefined.f" LINE-FIXTURE
    s" E-REJECTED" s" then" 1 16 15 19 REFUSED-AT
+   0 s" repair_class" s" fix_control_flow" FIELD=
+   0 s" reason" s" this word closes nothing open here" FIELD=
    s" a trust-boundary word before a then with no if" T-LABEL
    s" : X ( n -- n ) evaluate then ;" s" unsafe-then.f" LINE-FIXTURE
    s" E-REJECTED" s" then" 1 25 24 28 REFUSED-AT
@@ -1337,6 +1339,62 @@ variable RC
    s" a leave outside every do before an undefined word" T-LABEL
    s" : X ( n -- n ) leave NOPE ;" s" leave-undefined.f" LINE-FIXTURE
    s" E-REJECTED" s" leave" 1 16 15 20 REFUSED-AT ;
+
+\ A control-flow refusal names its reason: a loop body that changes the stack's
+\ depth is a mismatch of the loop's start row and its back edge's, a change of
+\ the return stack's depth is the return stack's to repair, and the structural
+\ refusals are the control flow's.
+: TEST-CONTROL-REASON ( -- )
+   s" a loop body that changes the stack's depth" T-LABEL
+   s" : X ( n -- n ) 3 0 do dup loop ;" s" loop-depth.f" LINE-FIXTURE
+   s" E-MISMATCH" s" loop" 1 27 26 30 REFUSED-AT
+   0 s" reason" s" the loop body changes the stack's depth" FIELD=
+   0 s" expected" s" n " FIELD=
+   0 s" actual" s" n n " FIELD=
+   s" remove_producer" s" Remove an extra producer or drop the surplus value." REPAIRED-AS
+   s" an i outside every loop" T-LABEL
+   s" : X ( -- ) i drop ;" s" i-outside.f" LINE-FIXTURE
+   s" E-REJECTED" s" i" 1 12 11 12 REFUSED-AT
+   0 s" repair_class" s" fix_control_flow" FIELD=
+   0 s" reason" s" no loop is open here" FIELD=
+   s" a j in a single loop" T-LABEL
+   s" : X ( -- ) 3 0 do j drop loop ;" s" j-single.f" LINE-FIXTURE
+   s" E-REJECTED" s" j" 1 19 18 19 REFUSED-AT
+   0 s" repair_class" s" fix_control_flow" FIELD=
+   0 s" reason" s" no outer loop is open here" FIELD=
+   s" an exit inside a loop with no unloop" T-LABEL
+   s" : X ( -- ) 3 0 do exit loop ;" s" exit-loop.f" LINE-FIXTURE
+   s" E-REJECTED" s" exit" 1 19 18 22 REFUSED-AT
+   0 s" repair_class" s" fix_control_flow" FIELD=
+   0 s" reason" s" exit inside a loop needs unloop first" FIELD=
+   s" a loop body that changes the return stack's depth" T-LABEL
+   s" : X ( -- ) 3 0 do 1 >r loop ;" s" loop-rdepth.f" LINE-FIXTURE
+   s" E-REJECTED" s" loop" 1 24 23 27 REFUSED-AT
+   0 s" repair_class" s" fix_return_stack" FIELD=
+   0 s" reason" s" the loop body changes the return stack's depth" FIELD=
+   s" an if still open at ;" T-LABEL
+   s" : X ( bool -- ) if ;" s" if-open.f" LINE-FIXTURE
+   s" E-REJECTED" s" ;" 1 20 19 20 REFUSED-AT
+   0 s" repair_class" s" fix_control_flow" FIELD=
+   0 s" reason" s" a control structure is still open at the end of the definition" FIELD=
+   s" a loop that meets an if inside its do" T-LABEL
+   s" : X ( -- ) 3 0 do 0 0= if loop then ;" s" loop-in-if.f" LINE-FIXTURE
+   s" E-REJECTED" s" loop" 1 27 26 30 REFUSED-AT
+   0 s" repair_class" s" fix_control_flow" FIELD=
+   0 s" reason" s" this word closes nothing open here" FIELD=
+   s" a loop that meets an if with no do open" T-LABEL
+   s" : X ( -- ) 0 0= if loop then ;" s" loop-no-do.f" LINE-FIXTURE
+   s" E-REJECTED" s" loop" 1 20 19 23 REFUSED-AT
+   0 s" repair_class" s" fix_control_flow" FIELD=
+   0 s" reason" s" no loop is open here" FIELD=
+   s" match arms that unloop different loops" T-LABEL
+   SB-RESET
+   s" ENUM choice first second ;ENUM" SB-APPEND LF+
+   s" : LOB-MATCH ( choice -- ) 3 0 do dup MATCH choice first OF unloop ENDOF second OF ENDOF ;MATCH loop drop ;" SB-APPEND LF+
+   s" match-unloop.f" FIXTURE!
+   s" E-REJECTED" s" ENDOF" 2 83 113 118 REFUSED-AT
+   0 s" repair_class" s" fix_control_flow" FIELD=
+   0 s" reason" s" the paths that meet here have unlooped different loops" FIELD= ;
 
 \ The load's compiler takes a second else, as it takes an else over an if's
 \ frame: the check fails there, which leaves the refusal to a later undefined
@@ -1353,7 +1411,9 @@ variable RC
    s" E-UNSAFE" s" evaluate" 1 17 16 24 REFUSED-AT
    s" a second else alone" T-LABEL
    s" : X ( bool -- ) if else else then ;" s" else2.f" LINE-FIXTURE
-   s" E-REJECTED" s" else" 1 25 24 28 REFUSED-AT ;
+   s" E-REJECTED" s" else" 1 25 24 28 REFUSED-AT
+   0 s" repair_class" s" fix_control_flow" FIELD=
+   0 s" reason" s" this if already has an else" FIELD= ;
 
 \ A structure still open where its definition ends is one the load cannot
 \ compile: it refuses the definition at the `;`, or at the `does>` ending a
@@ -1514,6 +1574,7 @@ variable RC
    TEST-TICK-TARGET
    TEST-MADE
    TEST-CONTROL-ORPHAN
+   TEST-CONTROL-REASON
    TEST-SECOND-ELSE
    TEST-CONTROL-OPEN
    TEST-MATCH-DEPTH-PAYLOAD

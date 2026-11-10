@@ -4594,8 +4594,22 @@ CHECKER-REG:}SCRATCH
 44 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
 45 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
 46 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code as check.f's
-47 constant MD-CF-DEPTH      \ an opener found all CF-FRAMES-MAX control frames in use (CF-PUSH)
-48 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
+\ The control-flow refusals (CF-FAIL). A data depth change is E-MISMATCH and
+\ prints the loop's start row and the row at its back edge or leave; the others
+\ are E-REJECTED.
+47 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
+48 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
+49 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose proof or lineage differs, at the same depths (CF-CARRIED=)
+50 constant MD-NO-LOOP       \ i, leave, unloop, loop or +loop with no loop open
+51 constant MD-NO-OUTER-LOOP \ j with fewer than two loops open
+52 constant MD-CLOSES-NOTHING \ a closer over no frame or another kind's (CF-AT?); a loop or +loop only where a DO is open in its body (CF-LOOP-WHY)
+53 constant MD-NO-CASE       \ of over no case frame (CF-AT?)
+54 constant MD-ELSE-TWICE    \ a second else in one if (CF-ELSE)
+55 constant MD-EXIT-LOOP     \ exit while a loop no unloop closed is open (CF-EXIT)
+56 constant MD-UNLOOP-JOIN   \ paths meet with different loops unlooped (CF-LOOPS=)
+57 constant MD-CF-OPEN       \ a control structure open at the definition's end
+58 constant MD-CF-DEPTH      \ an opener found all CF-FRAMES-MAX control frames in use (CF-PUSH)
+59 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
@@ -6460,9 +6474,10 @@ CHECKER-REG:}SCRATCH
    CREFUSE @ 0 <> IF drop EXIT THEN
    CREFUSE ! ;
 
-\ A compile-time reason (a construct or match family that resolves nothing)
-\ names the refusal unless an earlier compile-time refusal holds the diagnostic
-\ or refused this token, whatever reason an earlier check latched.
+\ A compile-time reason (a construct or match family that resolves nothing, a
+\ control-flow word the load cannot compile) names the refusal unless an earlier
+\ compile-time refusal holds the diagnostic or refused this token, whatever reason
+\ an earlier check latched.
 : MDIAG-COMPILE! ( n -- )
    {: code:n :}
    RCOMPILE @  CREFUSE @ 0 <>  or IF EXIT THEN
@@ -21072,30 +21087,33 @@ SCOPE-INTRO-FENCE-INSTALL
       1 +
    REPEAT drop RES-TRUE ;
 
-: CF-FAIL ( -- )
+\ A control-flow check fails for the MD-* reason why.
+: CF-FAIL ( n -- )
+   MDIAG!
    0 OK !
    -1 FAILSET ! ;
 
 \ A control-flow word the load's compiler refuses while compiling it: the token
-\ is refused. The frames are the compiler's only while every token was walked
-\ and every opener kept one: a word after a terminating word is skipped
-\ (DEADERR), and an opener skipped so, or one past the deepest frame (CF-OVER),
-\ leaves its closer no frame here though the compiler has one.
-: CF-REFUSE ( -- )
-   DEADERR @ 0=  CF-OVER @ 0=  and IF RF-REJECTED CREFUSE! THEN ;
+\ is refused for the reason why. The frames are the compiler's only while every
+\ token was walked and every opener kept one: a word after a terminating word is
+\ skipped (DEADERR), and an opener skipped so, or one past the deepest frame
+\ (CF-OVER), leaves its closer no frame here though the compiler has one.
+: CF-REFUSE ( n -- )
+   DEADERR @ 0=  CF-OVER @ 0=  and IF MDIAG-COMPILE! ELSE drop THEN ;
 
 \ Whether the open frame is of kind k1 or k2, the kinds that stand for the frame
 \ the load's compiler requires there. A control-flow word over no frame or
-\ another kind's is one the compiler refuses (src/habu/habu2.f C-CF-AT2).
-: CF-AT? ( n n -- bool )
-   {: k1:n k2:n :}
+\ another kind's is one the compiler refuses (src/habu/habu2.f C-CF-AT2), for
+\ the reason why.
+: CF-AT? ( n n n -- bool )
+   {: k1:n k2:n why:n :}
    CF-MT? 0= IF
       CF@K k1 =  CF@K k2 =  or IF RES-TRUE EXIT THEN
    THEN
-   CF-REFUSE  CF-FAIL  RES-FALSE ;
+   why CF-REFUSE  why CF-FAIL  RES-FALSE ;
 
 : CF-LOOPS= ( n -- )
-   CF-LOOPS @ <> IF CF-FAIL THEN ;
+   CF-LOOPS @ <> IF MD-UNLOOP-JOIN CF-FAIL THEN ;
 
 
 : CF-LOOP-BIT ( n -- n )
@@ -21337,8 +21355,20 @@ CHECKER-REG:}SCRATCH
    CF-TOP CF.FA @ FACTS !
    DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
 
+\ A loop's back edge or leave differs from its start: a data depth change names both
+\ rows, as a join that does not fit names them (UF-CAPTURE), and only while the
+\ pin is open, as a reason latches.
+: CF-DEPTH-FAIL ( n n -- ) {: exp:n act:n :}
+   MDIAG @ 0=  FAILSET @ 0=  and IF
+      CAPTURE-CLEAR  exp DEXP !  act DACT !
+   THEN
+   MD-LOOP-DEPTH CF-FAIL ;
+
 : CF-CARRIED= ( n n n n -- ) {: da:n db:n ra:n rb:n :}
-   da db ROW-META=  ra rb ROW-META= and 0= IF CF-FAIL THEN ;
+   da db ROW-META=  ra rb ROW-META= and IF EXIT THEN
+   da ROW-CELLS db ROW-CELLS <> IF da db CF-DEPTH-FAIL EXIT THEN
+   ra ROW-CELLS rb ROW-CELLS <> IF MD-LOOP-RDEPTH CF-FAIL EXIT THEN
+   MD-LOOP-CARRIED CF-FAIL ;
 
 : CF-LOOP-FACTS ( -- )
    CF-TOP CF.FA @ FACTS !
@@ -21377,7 +21407,7 @@ CHECKER-REG:}SCRATCH
 
 
 : CF-OF ( -- )
-   7 7 CF-AT? IF
+   7 7 MD-NO-CASE CF-AT? IF
       STEP-N-IN
       CF@A SUNI-JOIN
       CF@RA RSUNI-JOIN
@@ -21387,7 +21417,7 @@ CHECKER-REG:}SCRATCH
 
 
 : CF-ENDOF ( -- )                    \ an OF frame sits on its CASE (CF-OF)
-   8 8 CF-AT? IF
+   8 8 MD-CLOSES-NOTHING CF-AT? IF
       CF-CASE-IDX CF-CASE-ACCUM
       CF@A CF@RA {: data:n ret:n :}
       CF@LA CF-LOOPS !
@@ -21399,7 +21429,7 @@ CHECKER-REG:}SCRATCH
    THEN ;
 
 : CF-ENDCASE ( -- )
-   7 7 CF-AT? IF
+   7 7 MD-CLOSES-NOTHING CF-AT? IF
       DEADP @ 0= IF STEP-N-IN THEN
       #CFC @ 1 - CF-CASE-ACCUM
       CF@DED 0 <> IF
@@ -21417,7 +21447,7 @@ CHECKER-REG:}SCRATCH
 \ takes and leaves (src/habu/habu2.f J-ELSE): a second else compiles, and the
 \ check, which models one, fails there.
 : CF-ELSE
-   1 2 CF-AT? IF CF@K 1 <> IF CF-FAIL ELSE
+   1 2 MD-CLOSES-NOTHING CF-AT? IF CF@K 1 <> IF MD-ELSE-TWICE CF-FAIL ELSE
      DEADP @ CF-TOP CF.DED !  0 DEADP !                  \ save if-branch deadness; else runs live
      DCUR @ RCUR @ {: data:n ret:n :}
      CF@A DCUR !  CF@RA RCUR !
@@ -21452,7 +21482,7 @@ CHECKER-REG:}SCRATCH
    THEN ;
 
 : CF-THEN
-   1 2 CF-AT? IF
+   1 2 MD-CLOSES-NOTHING CF-AT? IF
      CF@K 1 = IF                                          \ IF ... THEN (no else)
         DEADP? IF
            CF@A DCUR !  CF@RA RCUR !  CF-ENTRY-FACTS
@@ -21477,7 +21507,7 @@ CHECKER-REG:}SCRATCH
 
 : CF-EXIT ( -- )
    -1 WRAPBENT !
-   CF-LOOPS @ 0 <> IF CF-FAIL EXIT THEN
+   CF-LOOPS @ 0 <> IF MD-EXIT-LOOP CF-FAIL EXIT THEN
    XSET @ IF
       XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
       DCUR @ XROW !  RCUR @ XRROW !  FACTS @ XFACT !
@@ -21488,7 +21518,7 @@ CHECKER-REG:}SCRATCH
 
 : CF-UNLOOP ( -- )
    0 CF-LOOP-FIND
-   dup 0 < IF drop CF-FAIL EXIT THEN
+   dup 0 < IF drop MD-NO-LOOP CF-FAIL EXIT THEN
    CF-LOOP-BIT invert CF-LOOPS @ and CF-LOOPS ! ;
 
 : CF-BEGIN ( -- )
@@ -21497,7 +21527,7 @@ CHECKER-REG:}SCRATCH
 
 : CF-UNTIL
    STEP-BOOL-IN
-   3 3 CF-AT? IF
+   3 3 MD-CLOSES-NOTHING CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
@@ -21508,7 +21538,7 @@ CHECKER-REG:}SCRATCH
 
 
 : CF-AGAIN ( -- )
-   3 3 CF-AT? IF
+   3 3 MD-CLOSES-NOTHING CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN  CF@LA CF-LOOPS=
@@ -21519,7 +21549,7 @@ CHECKER-REG:}SCRATCH
 
 : CF-WHILE
    STEP-BOOL-IN
-   3 3 CF-AT? IF
+   3 3 MD-CLOSES-NOTHING CF-AT? IF
      4 CF-TOP CF.KND !
      DCUR @ CF-TOP CF.SB !
      RCUR @ CF-TOP CF.RB !
@@ -21528,7 +21558,7 @@ CHECKER-REG:}SCRATCH
 
 
 : CF-REPEAT
-   4 4 CF-AT? IF
+   4 4 MD-CLOSES-NOTHING CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN  CF@LA CF-LOOPS=
@@ -21549,10 +21579,28 @@ CHECKER-REG:}SCRATCH
    -1 CF-TOP CF.DED ! ;
 
 
+\ The nearest enclosing DO frame, or -1. Stops at the first DO (kind 5) or
+\ quotation boundary (kind 6): a `leave` inside [: ;] does not escape to an
+\ outer loop.
+: CF-FINDDO ( -- n )
+   #CFC @ 1 -
+   BEGIN dup 0 >= WHILE
+      dup CF-ROW CF.KND @
+      dup 5 = IF drop EXIT THEN
+      6 = IF drop -1 EXIT THEN
+      1 -
+   REPEAT ;
+
+\ Why a loop or +loop is refused: with no DO open in its own body, a
+\ quotation's included (CF-FINDDO), no loop is open; with one, another frame is
+\ open over it and the word closes nothing.
+: CF-LOOP-WHY ( -- n )
+   CF-FINDDO 0< IF MD-NO-LOOP ELSE MD-CLOSES-NOTHING THEN ;
+
 \ A live latch, a zero-trip ?do or LEAVE reaches the DO-point exit row.
 \ A DO whose whole body returns or throws has no normal continuation.
 : CF-LOOP
-   5 5 CF-AT? IF
+   5 5 CF-LOOP-WHY CF-AT? IF
      DEADP @ IF CF@DED 0= DEADP !
      ELSE
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
@@ -21569,22 +21617,10 @@ CHECKER-REG:}SCRATCH
    CF-LOOP ;
 
 : CF-I ( -- )
-   0 CF-LOOP-FIND 0 < IF CF-FAIL ELSE STEP-N-OUT THEN ;
+   0 CF-LOOP-FIND 0 < IF MD-NO-LOOP CF-FAIL ELSE STEP-N-OUT THEN ;
 
 : CF-J ( -- )
-   1 CF-LOOP-FIND 0 < IF CF-FAIL ELSE STEP-N-OUT THEN ;
-
-\ The nearest enclosing DO frame, or -1. Stops at the first DO (kind 5) or
-\ quotation boundary (kind 6): a `leave` inside [: ;] does not escape to an
-\ outer loop.
-: CF-FINDDO ( -- n )
-   #CFC @ 1 -
-   BEGIN dup 0 >= WHILE
-      dup CF-ROW CF.KND @
-      dup 5 = IF drop EXIT THEN
-      6 = IF drop -1 EXIT THEN
-      1 -
-   REPEAT ;
+   1 CF-LOOP-FIND 0 < IF MD-NO-OUTER-LOOP CF-FAIL ELSE STEP-N-OUT THEN ;
 
 \ Whether a DO is open anywhere in the definition. The load's compiler refuses
 \ a `leave` while compiling it only when none is (src/habu/habu2.f LVREQUIRE):
@@ -21603,8 +21639,8 @@ CHECKER-REG:}SCRATCH
    -1 WRAPBENT !
    CF-FINDDO {: doidx:n :}
    doidx 0< IF
-      CF-ANY-DO? 0= IF CF-REFUSE THEN
-      CF-FAIL
+      CF-ANY-DO? 0= IF MD-NO-LOOP CF-REFUSE THEN
+      MD-NO-LOOP CF-FAIL
    ELSE
      doidx CF-LOOP-BIT doidx CF-ROW CF.LA @ or CF-LOOPS=
      doidx CF-ROW CF.SA @ DCUR @
@@ -21633,7 +21669,7 @@ variable QTMP
 CHECKER-REG:}SCRATCH
 
 : CF-SEMIQ  \ ;] — quot<nested effect> pushed onto the restored outer row
-   6 6 CF-AT? IF
+   6 6 MD-CLOSES-NOTHING CF-AT? IF
      XSET @ IF                                   \ fold the quote's OWN early returns into its effect
        DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
        ELSE
@@ -22022,7 +22058,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    a u s" of" 6 CF-IS? IF CF-OF RES-TRUE EXIT THEN
    a u s" endof" 7 CF-IS? IF CF-ENDOF-DISPATCH RES-TRUE EXIT THEN
    a u s" endcase" 8 CF-IS? IF CF-ENDCASE RES-TRUE EXIT THEN
-   a u s" ;match" 9 CF-IS? IF MD-STRAY MDIAG-COMPILE! CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
+   a u s" ;match" 9 CF-IS? IF MD-STRAY MDIAG-COMPILE! MD-STRAY CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
    a u s" begin" 10 CF-IS? IF CF-BEGIN RES-TRUE EXIT THEN
    a u s" until" 11 CF-IS? IF CF-UNTIL RES-TRUE EXIT THEN
    a u s" again" 12 CF-IS? IF CF-AGAIN RES-TRUE EXIT THEN
@@ -23927,18 +23963,17 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 \ refusal, unless an earlier one holds them, and fails the definition. The walk
 \ drops only openers (DEADERR, CF-OVER), so a structure open here is open in
 \ the load. A truncated construct or match keeps its reason; any other open
-\ structure is RF-REJECTED.
+\ structure is MD-CF-OPEN.
 : CLOSER-REFUSE ( -- )
    CF-OPEN? 0=  DCLOSE-U @ 0=  or  TBASE @ DMAP-A @ - 0 <>  or  RCOMPILE @ 0 <>  or IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
-      CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE 0 THEN
+      CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
    THEN {: why:n :}
-   why 0 <> IF why MDIAG !  RF-REASON ELSE RF-REJECTED THEN
-   REFUSAL-TAKE  -1 RCOMPILE !
+   why MDIAG !  RF-REASON REFUSAL-TAKE  -1 RCOMPILE !
    DCLOSE-A @ DCLOSE-U @ FAIL-PIN!
    DCLOSE-A @ TBASE @ - FAILB !
    FAILB @ FAILTU @ + FAILE !
-   CF-FAIL ;
+   why CF-FAIL ;
 
 \ A failed unjudged token no step settled drops its steps' width facts and
 \ splices its declared ABI effect; an unsafe token has no effect to splice.
@@ -26881,7 +26916,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    CHECK-SIG? CHECK-RETURNS? 0= and IF FRESH-CLAIM THEN   \ a body that never returns resolves its fresh names too
    CHECK-SIG? 0= IF INFER-FRESH-CLAIM THEN
-   CF-OPEN? IF CF-FAIL THEN
+   CF-OPEN? IF MD-CF-OPEN CF-FAIL THEN
    CHECK-RBALANCE
    CHECK-RET-SIG? IF
       SGROUT @ RSUNI-COERCE                     \ RSUNI-COERCE names a cell refusal on the return row
@@ -27906,7 +27941,7 @@ package CHECKER-REG
       CHECK-FRESH-OUTPUT
       OK @ IF SGOUT @ DCUR ! THEN
    ELSE FRESH-CLAIM THEN
-   CF-OPEN? IF CF-FAIL THEN
+   CF-OPEN? IF MD-CF-OPEN CF-FAIL THEN
    CHECK-RBALANCE
    SGHASR? CHECK-RETURNS? and IF SGROUT @ RSUNI-COERCE THEN
    OK @ IF NP-CHECK THEN

@@ -53,6 +53,7 @@ create RES-P PATH-CAP allot
 create RTYPE-P PATH-CAP allot
 create RNEST-P PATH-CAP allot
 create RCATCH-P PATH-CAP allot
+create CF-P PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -74,6 +75,7 @@ variable RES-U
 variable RTYPE-U
 variable RNEST-U
 variable RCATCH-U
+variable CF-U
 variable OUT-U
 variable ERR-U
 variable EXITED
@@ -139,6 +141,9 @@ variable RC
 : RCATCH$ ( -- ptr u8 n )
    RCATCH-P RCATCH-U @ ;
 
+: CF$ ( -- ptr u8 n )
+   CF-P CF-U @ ;
+
 : FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n frag:ptr fragu:n post:ptr postu:n path:ptr pathu:n :}
    SB-RESET
@@ -174,6 +179,7 @@ variable RC
    s" trusted.f" TRUSTED-P TRUSTED-U PATH!
    s" byte-ptr-store.f" BPS-P BPS-U PATH!
    s" byte-ptr-fetch.f" BPF-P BPF-U PATH!
+   s" control-flow.f" CF-P CF-U PATH!
    s" residue.f" RES-P RES-U PATH!
    s" residue-type.f" RTYPE-P RTYPE-U PATH!
    s" residue-nest.f" RNEST-P RNEST-U PATH!
@@ -335,6 +341,55 @@ variable RC
    ERR$ s" at '!'" CONTAINS? TTRUE
    ERR$ s" expected: ptr a" CONTAINS? TTRUE
    ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
+
+\ Each control-flow case is a load of its own: a load stops at its first refusal.
+: CF-RUN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   CF$ src srcu FS:WRITE-ALL
+   CF$ RUN ;
+
+\ A control-flow refusal names its reason after the token; a loop body that
+\ changes the stack's depth names the loop's start row and its back edge's.
+: TEST-CONTROL-FLOW ( -- )
+   s" a loop body that changes depth names both rows" T-LABEL
+   s" : LRD-LD ( n -- n ) 3 0 do dup loop ;" CF-RUN
+   s" in lrd-ld" ASSERT-NAMED
+   ERR$ s" at 'loop' the loop body changes the stack's depth expected: n actual: n n" CONTAINS? TTRUE
+   s" an i outside every loop says no loop is open" T-LABEL
+   s" : LRD-IO ( -- ) i drop ;" CF-RUN
+   s" in lrd-io" ASSERT-NAMED
+   ERR$ s" at 'i' no loop is open here" CONTAINS? TTRUE
+   s" a j in a single loop says no outer loop is open" T-LABEL
+   s" : LRD-JO ( -- ) 3 0 do j drop loop ;" CF-RUN
+   s" in lrd-jo" ASSERT-NAMED
+   ERR$ s" at 'j' no outer loop is open here" CONTAINS? TTRUE
+   s" a then with no if says it closes nothing" T-LABEL
+   s" : LRD-TS ( -- ) then ;" CF-RUN
+   s" in lrd-ts" ASSERT-NAMED
+   ERR$ s" at 'then' this word closes nothing open here" CONTAINS? TTRUE
+   s" an exit inside a loop says it needs unloop" T-LABEL
+   s" : LRD-EL ( -- ) 3 0 do exit loop ;" CF-RUN
+   s" in lrd-el" ASSERT-NAMED
+   ERR$ s" at 'exit' exit inside a loop needs unloop first" CONTAINS? TTRUE
+   s" a leave that changes depth names both rows" T-LABEL
+   s" : LRD-LV ( n -- n ) 3 0 do 1 leave loop ;" CF-RUN
+   s" in lrd-lv" ASSERT-NAMED
+   ERR$ s" at 'leave' the loop body changes the stack's depth expected: n actual: n n" CONTAINS? TTRUE
+   s" a loop body that changes the return stack's depth says so" T-LABEL
+   s" : LRD-RD ( -- ) 3 0 do 1 >r loop ;" CF-RUN
+   s" in lrd-rd" ASSERT-NAMED
+   ERR$ s" at 'loop' the loop body changes the return stack's depth" CONTAINS? TTRUE
+   s" a second else says the if already has one" T-LABEL
+   s" : LRD-E2 ( bool -- ) if else else then ;" CF-RUN
+   s" in lrd-e2" ASSERT-NAMED
+   ERR$ s" at 'else' this if already has an else" CONTAINS? TTRUE
+   s" an if open at ; says a structure is still open" T-LABEL
+   s" : LRD-OP ( bool -- ) if ;" CF-RUN
+   s" in lrd-op" ASSERT-NAMED
+   ERR$ s" a control structure is still open at the end of the definition" CONTAINS? TTRUE
+   s" a +loop that meets an if inside its do says it closes nothing" T-LABEL
+   s" : LRD-PI ( -- ) 3 0 do 0 0= if 1 +loop then ;" CF-RUN
+   s" in lrd-pi" ASSERT-NAMED
+   ERR$ s" at '+loop' this word closes nothing open here" CONTAINS? TTRUE ;
 
 : TEST-BYTE-PTR-FETCH ( -- )
    s" cell fetch from a byte pointer names expected/actual" T-LABEL
@@ -697,6 +752,7 @@ variable RC
    TEST-PARAMETRIC
    TEST-BYTE-PTR-STORE
    TEST-BYTE-PTR-FETCH
+   TEST-CONTROL-FLOW
    TEST-STORAGE
    TEST-MISSING-SIGNATURE
    TEST-CAST
