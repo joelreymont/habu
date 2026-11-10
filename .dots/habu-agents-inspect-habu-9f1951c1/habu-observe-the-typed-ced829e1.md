@@ -16,3 +16,5 @@ Verify: through the real load path in one program: `: SQUARE ( i64 -- i64 ) DUP 
 Held (Joel, 2026-11-10): the moment it serves measured 148 stack-mismatch episodes in 988 refusal episodes, each reaching a clean run in a median 2-3 calls.
 Depends: Describe a published word in the live REPL; habu-make-incremental-builds-41fd3214 (check-tool work is parked until then, Joel 2026-11-04).
 Ownership: the cursor owner's capture path in src/core/checker.f, the inspection module. Claim: unassigned.
+
+Joel, 2026-11-10 evening, asked which stages start now: "i have no hold on showing the checker's typed state before a token. i don't know what that is so you have to explain and give me context! what is best for long term here?" The 'Held' line above is not his ruling: it came from an option he picked without the thing being explained. Not yet settled when this stage is built; explain it to him with an example first (what an agent sees today, what it would see).
