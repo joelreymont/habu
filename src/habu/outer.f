@@ -736,15 +736,34 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    0 ctx SX-SUSPEND FR!
    code 0<> if code throw then ;
 
-\ The unit hook, then the top-row hook, then the source observer, before the
-\ word runs (habu2.f EM-INTERPRET-FIND). The flags and the xt are read before
-\ any of them runs.
+\ The dictionary record index of each word run since RECORD-RUNS, in order:
+\ the linker reads which files' words a file ran while it compiled.
+DYNAMIC-BUFFER RUNS n
+variable RUNS-N
+variable RUNS-CAP
+TYPED-VARIABLE RUNS-ON bool
+
+: RUN+ ( n -- ) {: idx:n :}
+   RUNS-ON @ 0= if exit then
+   RUNS-N @ RUNS-CAP @ = if
+      RUNS-CAP @ 0= if 1024 else RUNS-CAP @ 2 * then
+      dup RUNS-RESERVE RUNS-CAP !
+   then
+   idx RUNS-N @ RUNS !
+   RUNS-N @ 1 + RUNS-N ! ;
+
+
+\ The unit hook, then the top-row hook, then the run log and the source
+\ observer, before the word runs (habu2.f EM-INTERPRET-FIND). The flags and
+\ the xt are read before any of them runs.
 : RUN-FOUND ( -- )
    GATE
    WORD-FLAGS REC @ NHOST:RUN-REC {: flags:n xt:n :}
    xt UNIT-EV-WORD UNIT-EVENT drop
    TOP-EV-WORD flags HOOK
-   OBSERVE-WORD REC @ XREF-NULL - XREF-ADDR>INDEX xt OBSERVE-BEFORE
+   REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
+   idx RUN+
+   OBSERVE-WORD idx xt OBSERVE-BEFORE
    xt execute-floor FLOORED ;
 
 : RUN-WORD ( -- )
@@ -925,11 +944,13 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    SCOPE-ENTRY-GUARD
    TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
 
-\ The host selection and then the source observer see the tick's target before
-\ the xt is pushed (habu2.f C-TICK).
+\ The host selection, the run log and then the source observer see the tick's
+\ target before the xt is pushed (habu2.f C-TICK): the file may execute it.
 : TICK-OBSERVE ( -- n )
    REC @ NHOST:RUN-REC {: xt:n :}
-   OBSERVE-TICK REC @ XREF-NULL - XREF-ADDR>INDEX xt OBSERVE-BEFORE
+   REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
+   idx RUN+
+   OBSERVE-TICK idx xt OBSERVE-BEFORE
    xt ;
 
 \ The hook sees the operand as the token and the record's flags.
@@ -949,5 +970,22 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    s" char" TOKEN-IS? if PUSH-CHAR true exit then
    s" '" TOKEN-IS? if PUSH-XT true exit then
    false ;
+
+public
+
+\ RECORD-RUNS … ;RECORD-RUNS logs the words run between them (RUN+); a
+\ build's linker reads the log before ;RECORD-RUNS releases it.
+: RECORD-RUNS ( -- )
+   0 RUNS-N !  true RUNS-ON ! ;
+
+: ;RECORD-RUNS ( -- )
+   false RUNS-ON !  RUNS-RELEASE  0 RUNS-N !  0 RUNS-CAP ! ;
+
+: RUN-COUNT ( -- n ) RUNS-N @ ;
+
+\ RUNS refuses a negative entry; the capacity past the count is not the log.
+: RUN-RECORD@ ( n -- n )
+   dup RUN-COUNT >= if E-LAYOUT-BOUNDS throw then
+   RUNS @ ;
 
 ;package

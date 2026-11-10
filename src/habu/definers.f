@@ -515,12 +515,14 @@ private
 \ Keep the original occurrence across the unit hook and the preflight, then
 \ select its host body. A preflight that retires it cannot substitute a
 \ reused dictionary slot. The stack's floor holds after the word, as after a
-\ word the loop runs.
+\ word the loop runs. The run log (RUN+) holds the immediate the body ran.
 : DEF-RUN ( ptr n -- )
    DEF-OCC:SELECT {: slot:n occurrence:n :}
    0 UNIT-EV-IMMEDIATE UNIT-EVENT drop
    DEF-PREFLIGHT
-   slot occurrence DEF-OCC:RESOLVE NHOST:RUN-REC
+   slot occurrence DEF-OCC:RESOLVE {: rec:ptr :}
+   rec XREF-NULL - XREF-ADDR>INDEX RUN+
+   rec NHOST:RUN-REC
    -1 PEND-OPAQUE-CELL CELL!
    execute-floor FLOORED ;
 
