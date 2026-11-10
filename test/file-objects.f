@@ -120,6 +120,9 @@
 \ keeping its handle; its program opens another of each and the kept handle is refused. N builds
 \ kept-genio.f with --repl, since genio-core.f calls the REPL's KEY1, and its program refuses a device
 \ handle kept the same way.
+\ Build N, by tools/hb-build.f in its own out root, builds r.f, which requires x.f, which requires y.f
+\ between two pieces; then m.f, which also requires x.f, after x.f's first piece changes K; then r.f
+\ again, whose program prints the new K: r.f's object names every piece built inside x.f's load.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -164,6 +167,10 @@ PATH-CAP BUFFER: OUT-D   variable OUT-D-U
 PATH-CAP BUFFER: OUT-E   variable OUT-E-U
 PATH-CAP BUFFER: OUT-L   variable OUT-L-U
 PATH-CAP BUFFER: OUT-F   variable OUT-F-U    \ the fixture builds' out root, in L's directory
+PATH-CAP BUFFER: OUT-N   variable OUT-N-U
+PATH-CAP BUFFER: NEST-DIR  variable NEST-DIR-U  \ N's sources, <out>/src
+PATH-CAP BUFFER: NEST-PATH                      \ one of them
+PATH-CAP 2 * BUFFER: NEST-SRC  variable NEST-SRC-U  \ the text NEST-WRITE writes
 PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
 PATH-CAP BUFFER: ROOT    variable ROOT-U     \ the obj directory a walk starts at
@@ -200,6 +207,7 @@ variable KEPT-NS
 : E$ ( -- ptr u8 n ) OUT-E OUT-E-U @ ;
 : L$ ( -- ptr u8 n ) OUT-L OUT-L-U @ ;
 : F$ ( -- ptr u8 n ) OUT-F OUT-F-U @ ;
+: N$ ( -- ptr u8 n ) OUT-N OUT-N-U @ ;
 
 : IN$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: out:ptr outu:n name:ptr nameu:n :}
    out outu name nameu JOINED FS:JOIN-PATH {: u:n :}
@@ -882,11 +890,72 @@ variable KEPT-NS
    s" F2" WHICH!  SEAL-REFUSED
    s" the build links seal-second.f" LINKED ;
 
+
+\ The path of N's source of that name.
+: NEST-PATH$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   NEST-DIR NEST-DIR-U @ a u NEST-PATH FS:JOIN-PATH {: v:n :}
+   NEST-PATH v ;
+
+: SRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a NEST-SRC NEST-SRC-U @ + u BYTE-COPY  u NEST-SRC-U +! ;
+
+\ A line that requires N's source of that name by its absolute path.
+: REQUIRE+ ( ptr u8 n -- ) s" require " SRC+  NEST-PATH$ SRC+  s\" \n" SRC+ ;
+
+\ Writes the text to N's source of that name and starts the next text.
+: NEST-WRITE ( ptr u8 n -- ) NEST-PATH$ NEST-SRC NEST-SRC-U @ FS:WRITE-ALL  0 NEST-SRC-U ! ;
+
+\ x.f: FILE-OBJECTS-NESTED:K, whose value is the text, then a require of y.f, then a second package.
+: WRITE-X ( ptr u8 n -- ) {: k:ptr ku:n :}
+   s" package FILE-OBJECTS-NESTED public " SRC+  k ku SRC+  s\"  constant K ;package\n" SRC+
+   s" y.f" REQUIRE+
+   s\" package FILE-OBJECTS-NESTED-X public : X ( -- ) ; ;package\n" SRC+
+   s" x.f" NEST-WRITE ;
+
+: WRITE-NESTED ( -- )
+   N$ s" src" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" package FILE-OBJECTS-NESTED-Y public : Y ( -- ) ; ;package\n" SRC+  s" y.f" NEST-WRITE
+   s" 1" WRITE-X
+   s" x.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-NESTED:K . ;\n" SRC+  s" r.f" NEST-WRITE
+   s" x.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" m.f" NEST-WRITE ;
+
+\ tools/hb-build.f's build of N's source to N's program of that name, in a fresh hb and N's out
+\ root: the boundary under test is the object another build wrote. True when it exits 0.
+: NEST-BUILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command bool )
+   {: src:ptr srcu:n prog:ptr progu:n :}
+   CMD:RESET
+   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
+   s" --" CMD:ARG+  src srcu NEST-PATH$ CMD:ARG+
+   s" -o" CMD:ARG+  N$ prog progu IN$ CMD:ARG+
+   s" HABU_OUT" N$ CMD:ENV+
+   ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N {: rc:n :}
+   rc 0<> if rc SHOW then
+   s" the build exits 0" LABEL  rc 0 T=
+   rc 0 = ;
+
+\ N's program, run in its own process: the boundary under test is the written file.
+: NEST-RUN ( CMD:command ptr u8 n -- CMD:command ) {: want:ptr wantu:n :}
+   CMD:RESET
+   N$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:OUT$ want wantu STR=  rc 0 =  and 0= if rc SHOW then
+   s" the program prints K" LABEL  CMD:OUT$ want wantu T$= ;
+
+\ r.f, m.f after x.f's K changes, which rewrites x.f's object and leaves r.f's, then r.f again.
+: NEST-CASE ( CMD:command -- CMD:command )
+   WRITE-NESTED
+   s" N" WHICH!  s" r.f" s" prog" NEST-BUILD 0= if exit then
+   s\" 1\n" NEST-RUN
+   s" 2" WRITE-X
+   s" N2" WHICH!  s" m.f" s" prog-m" NEST-BUILD 0= if exit then
+   s" N3" WHICH!  s" r.f" s" prog" NEST-BUILD 0= if exit then
+   s\" 2\n" NEST-RUN ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
-      STORED-CASE RETIRED-CASE ORDER-CASE PIECE-CASE SEAL-CASE ;]
+      STORED-CASE RETIRED-CASE ORDER-CASE PIECE-CASE SEAL-CASE NEST-CASE ;]
    CMD:WITH-COMMAND ;
 
 
@@ -896,12 +965,18 @@ variable KEPT-NS
 : REMOVE-D ( -- ) D$ FS:REMOVE-TREE ;
 : REMOVE-E ( -- ) E$ FS:REMOVE-TREE ;
 : REMOVE-L ( -- ) L$ FS:REMOVE-TREE ;
+: REMOVE-N ( -- ) N$ FS:REMOVE-TREE ;
+
+: WITH-N ( -- )
+   s" habu-file-objects-n" FS:MKTEMP-DIR {: p:ptr u:n :}
+   p OUT-N u BYTE-COPY  u OUT-N-U !
+   ['] CHECKS ['] REMOVE-N finally ;
 
 : WITH-L ( -- )
    s" habu-file-objects-l" FS:MKTEMP-DIR {: l:ptr u:n :}
    l OUT-L u BYTE-COPY  u OUT-L-U !
    L$ s" out" OUT-F FS:JOIN-PATH OUT-F-U !
-   ['] CHECKS ['] REMOVE-L finally ;
+   ['] WITH-N ['] REMOVE-L finally ;
 
 : WITH-E ( -- )
    s" habu-file-objects-e" FS:MKTEMP-DIR {: e:ptr u:n :}

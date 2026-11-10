@@ -4450,9 +4450,10 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ A request of the compiling file, the newest event of the loader's log (REQUEST?, else
 \ E-COMP-STATE): its piece ends here, placed with its number and its time (COMPILED-TIME), which
 \ starts the request's row with the piece's length, its kind and the path as spelled and as
-\ loaded; its object so far waits on FRAMES while the file loads; then the row ends with the
-\ FILES row of that file's last piece, and the next piece starts at a cell boundary, as a load
-\ leaves here (include.f LOAD-UNIT).
+\ loaded; its object so far waits on FRAMES while the file loads; then it names, whole, every
+\ piece built inside that load, so a changed piece anywhere under the request compiles it; the row
+\ ends with the FILES row of that file's last piece, and the next piece starts at a cell boundary,
+\ as a load leaves here (include.f LOAD-UNIT).
 : NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    EVENT-COUNT 1 - {: ev:n :}
@@ -4468,9 +4469,11 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+
    1 REQ-N +!
    align
+   BUILT-N {: first:n :}
    PUSH-FRAME
    path pathu root rootu source sourceu q LOAD
    POP-FRAME
+   BUILT-N first ?do i true REF-FILE drop loop
    BUILT-N 1 - true REF-FILE REQUESTS U64+
    LOADER$ {: k:ptr ku:n :}
    k FILE-KEY ku BYTE-COPY
