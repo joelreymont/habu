@@ -1026,6 +1026,10 @@ SUITE combinators
    test/combinators.f
 ;SUITE
 
+SUITE int-convert
+   test/int-convert.f
+;SUITE
+
 SUITE export-keyword-package
    test/export-package.f
 ;SUITE

@@ -6,6 +6,19 @@
 \ This identifies the prefix; earlier DATA allocations can still be live.
 variable IMK-NDICT0
 
+\ >U8, >U16 and >U32 answer the low 8, 16 or 32 bits of an n; >I64 answers the
+\ n declared an i64. The raw casts are retired in src/core/int-convert-retire.f,
+\ because src/habu/xref.f first defines undefine.
+CAST: >U8-RAW ( n -- u8 )
+CAST: >U16-RAW ( n -- u16 )
+CAST: >U32-RAW ( n -- u32 )
+
+: >U8 ( n -- u8 ) $FF and >U8-RAW ;
+: >U16 ( n -- u16 ) $FFFF and >U16-RAW ;
+: >U32 ( n -- u32 ) $FFFFFFFF and >U32-RAW ;
+
+CAST: >I64 ( n -- i64 )
+
 \ The cell of a dictionary record (src/habu/layout.f DREC) that holds the
 \ wordlist it was published into, 0 for the global one. src/habu/xref.f reads
 \ records by it, and src/core/checker.f, which loads before xref.f, maps the

@@ -25,8 +25,6 @@ private
 101 constant EXP-LOWER
 -922337203685477580 constant LIMIT-QUOTIENT
 
-CAST: N>I64 ( n -- i64 )
-
 : DIGIT? ( n -- bool )
    dup ZERO >= swap NINE <= and ;
 
@@ -128,7 +126,7 @@ CAST: N>I64 ( n -- i64 )
       dup LIMIT-QUOTIENT < if drop OPTION:NONE unloop exit then
       10 *
    loop
-   negative? 0= if 0 swap - then N>I64 OPTION:SOME ;
+   negative? 0= if 0 swap - then >I64 OPTION:SOME ;
 
 \ All zero mantissas are exact regardless of exponent size. For a nonzero
 \ mantissa, `base` is the count of whole digits after leading zeros. Compare
@@ -157,7 +155,7 @@ CAST: N>I64 ( n -- i64 )
    a u start integer? DIGITS {: int-end:n int-count:n int-lead:n int-trail:n :}
    integer? if
       int-count 0= int-end u <> or if OPTION:NONE exit then
-      int-count int-lead = if 0 N>I64 OPTION:SOME exit then
+      int-count int-lead = if 0 >I64 OPTION:SOME exit then
       a start int-end int-count int-count int-lead int-trail 0 false negative? VALUE exit
    then
    a u int-end AT DOT = if
@@ -172,7 +170,7 @@ CAST: N>I64 ( n -- i64 )
    frac-count 0= if int-trail else
       frac-count frac-lead = if frac-count int-trail + else frac-trail then
    then {: trailing:n :}
-   int-count frac-count + leading = if 0 N>I64 OPTION:SOME exit then
+   int-count frac-count + leading = if 0 >I64 OPTION:SOME exit then
    a start mant-end int-count int-count frac-count + leading trailing magnitude exp-negative? negative? VALUE ;
 
 public

@@ -411,9 +411,9 @@ A layout's fields count as the bare type: a cast into a layout whose `FIELD`
 holds a pointer or a quotation is the same mint. A cast into another package's
 cell family or `OPAQUE` structure is the writer's claim, which the checker does
 not prove. A cast whose either side reaches an arena head, through pointers,
-quotation rows or fields, is `E-CAST-OWNER`: `CAST: >U8 ( ptr foos -- ptr u8 )`
-over an `ARENA FOOS` owner, or its reverse, outside `DYNAMIC-STORAGE`, private
-section included.
+quotation rows or fields, is `E-CAST-OWNER`:
+`CAST: >OWN-BYTES ( ptr foos -- ptr u8 )` over an `ARENA FOOS` owner, or its
+reverse, outside `DYNAMIC-STORAGE`, private section included.
 
 In checked code a `DEFLINEAR` token is minted and erased the same way, by the
 package that declared the type: `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE

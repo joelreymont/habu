@@ -100,6 +100,7 @@ private
    CORE COMMON s" src/core/combinators.f" ROW
    CORE COMMON s" src/habu/code-span.f" ROW
    CORE COMMON s" src/habu/xref.f" ROW
+   CORE COMMON s" src/core/int-convert-retire.f" ROW
    CORE COMMON s" src/core/cell-body.f" ROW
    CORE COMMON s" src/core/generated-declaration-dictionary.f" ROW
    CORE COMMON s" src/core/generated-declaration-protection.f" ROW

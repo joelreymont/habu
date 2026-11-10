@@ -704,9 +704,9 @@ multi-cell type rationale is `docs/design.md` "Types".
     ptr OP:box )` outside `package OP`.
     An arena head that either term reaches, through pointers, quotation rows
     or a layout's members, belongs to `DYNAMIC-STORAGE`: after
-    `ARENA FOOS rec`, `CAST: >U8 ( ptr foos -- ptr u8 )` would copy the head
-    and `( ptr u8 -- ptr foos )` forge one, so both are `E-CAST-OWNER`
-    elsewhere, a private section included.
+    `ARENA FOOS rec`, `CAST: >OWN-BYTES ( ptr foos -- ptr u8 )` would copy
+    the head and `( ptr u8 -- ptr foos )` forge one, so both are
+    `E-CAST-OWNER` elsewhere, a private section included.
   - A pointer or a quotation in an introduction position is a class mint and
     is declared only in a package's private section (`E-CAST-MINT`).
 
@@ -1096,9 +1096,9 @@ EXECUTE( R [ R -- S ] -- S )
 DIP    ( R a [ R -- S ] -- S a )
 KEEP   ( R a [ R a -- S ] -- S a )
 BI     ( R a [ R a -- R b ] [ R b a -- R b c ] -- R b c )
-TIMES  ( R i64 [ R -- R ] -- R )
-EACH   ( R ptr a i64 [ R a -- R ] -- R )
-FOLD   ( R ptr a i64 b [ R b a -- R b ] -- R b )
+TIMES  ( R n [ R -- R ] -- R )
+EACH   ( R ptr a n [ R a -- R ] -- R )
+FOLD   ( R ptr a n b [ R b a -- R b ] -- R b )
 ```
 
 The arithmetic and comparison axioms are declared over `n`, so a diagnostic
@@ -1524,7 +1524,9 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
 - Roles are entered and left through no-op conversions: `>IDX IDX>N`, `>LEN
   LEN>N`, `>COUNT COUNT>N`, `>OFF OFF>N`, `>FD FD>N`, `>RC RC>N`, `>PID PID>N`,
   `>MS MS>N`, `>NS NS>N`, `>TOK TOK>N`, `>REG REG>N`, `>LABEL LABEL>N`, `>VA
-  VA>N`, `>SYMIDX SYMIDX>N` (`src/core/roles.f`). Library boundaries prefer
+  VA>N`, `>SYMIDX SYMIDX>N` (`src/core/roles.f`). `>U8`, `>U16` and `>U32`
+  answer the low 8, 16 or 32 bits of an `n`, and `>I64` answers an `n`
+  declared an `i64` (`src/core/util.f`). Library boundaries prefer
   checked refinement constructors that reject negative, overflowing or
   out-of-capacity input: `A-LEN`, `A-IDX`, `A-COUNT`, `STR-LEN`, `STR-OFF`,
   `STR-COUNT`, `M-LEN`, `M-OFF`.
@@ -2538,8 +2540,9 @@ sections above.
   `E-CAST-LINEAR`, and a layout's fields carry the mint rule recursively: a
   `pfbox` whose field is `ptr u8` exposes that pointer through
   `PFBOX:UNMAKE` (see **Structures And Enums**). A private row admits no cast
-  that reaches an arena head on either side: `CAST: >U8 ( ptr foos -- ptr u8 )`
-  copies a head and its reverse forges one, so both are `E-CAST-OWNER` outside
+  that reaches an arena head on either side:
+  `CAST: >OWN-BYTES ( ptr foos -- ptr u8 )` copies a head and its reverse
+  forges one, so both are `E-CAST-OWNER` outside
   `DYNAMIC-STORAGE`. A `LINEAR:` token conversion
   similarly requires the declaring package's private section; bad payload,
   owner or scope is respectively `E-LINEAR-PAYLOAD`, `E-LINEAR-OWNER` or

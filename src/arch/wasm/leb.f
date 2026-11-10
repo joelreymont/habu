@@ -108,7 +108,7 @@ $7FFFFFFF constant S32-MAX
 public
 
 \ ---- the shortest LEB ----------------------------------------------------
-: U32! ( u32 SPAN:span<u8> -- n )
+: U32! ( n SPAN:span<u8> -- n )
    {: v:n s :}
    v U32? 0= if E-RANGE throw then
    v false v ULEN s PUT ;
@@ -134,7 +134,7 @@ public
 \ ---- padded fields ------------------------------------------------------
 \ A padded reader answers the field at an offset; it and a patch refuse a field
 \ that is not a padded LEB of its width.
-: U32-PAD! ( u32 SPAN:span<u8> -- n )
+: U32-PAD! ( n SPAN:span<u8> -- n )
    {: v:n s :}
    v U32? 0= if E-RANGE throw then
    v false 32 WIDEST s PUT ;
@@ -149,7 +149,7 @@ public
 : S64-PAD@ ( ptr u8 n n -- n )
    64 true FIELD ;
 
-: U32-PATCH ( u32 SPAN:span<u8> n -- )
+: U32-PATCH ( n SPAN:span<u8> n -- )
    {: v:n s at:n :}
    s SPAN:$ at U32-PAD@ drop
    v s at SPAN:SKIP U32-PAD! drop ;

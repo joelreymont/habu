@@ -89,7 +89,6 @@ variable F-IDLE
    value low < value high > or if E-OPERAND throw then value ;
 
 
-: >U32 ( n -- n ) MASK32 and ;
 : >S32 ( n -- n ) >U32 dup $80000000 and 0 <> if $100000000 - then ;
 : SEXT ( n n -- n ) {: value:n bits:n :}
    value 1 bits lshift 1- and dup 1 bits 1- lshift and 0 <> if 1 bits lshift - then ;

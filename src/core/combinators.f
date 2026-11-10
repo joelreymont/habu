@@ -12,18 +12,18 @@
 : TRI ( R a [ R a -- R b ] [ R b a -- R b c ] [ R b c a -- R b c d ] -- R b c d )
    >r >r KEEP r> KEEP r> execute ;
 
-: TIMES ( R i64 [ R -- R ] -- R )
-   {: n:i64 q :}
+: TIMES ( R n [ R -- R ] -- R )
+   {: n:n q :}
    n 0 ?do q execute loop ;
 
-: EACH ( R ptr a i64 [ R a -- R ] -- R )
+: EACH ( R ptr a n [ R a -- R ] -- R )
    {: a n q :}
    n 0 ?do a i cells + @ q execute loop ;
 
-: MAP ( R ptr a i64 [ R a -- R a ] -- R )
+: MAP ( R ptr a n [ R a -- R a ] -- R )
    {: a n q :}
    n 0 ?do a i cells + @ q execute a i cells + ! loop ;
 
-: FOLD ( R ptr a i64 b [ R b a -- R b ] -- R b )
+: FOLD ( R ptr a n b [ R b a -- R b ] -- R b )
    {: a n acc q :}
    acc n 0 ?do a i cells + @ q execute loop ;

@@ -20,7 +20,6 @@ variable FAILURES
 variable QUOTIENT
 variable REMAINDER
 
-: >U32 ( n -- n ) MASK32 and ;
 : >S32 ( n -- n ) >U32 dup $80000000 and 0 <> if $100000000 - then ;
 : VECTOR ( n -- n ) cells VECTORS + @ ;
 
