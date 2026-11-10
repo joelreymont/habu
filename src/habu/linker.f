@@ -335,11 +335,12 @@ variable RUN-CAP                     \ its slots, a power of two
 variable RUN-N                       \ the running run's filled slots
 variable RUN-ID                      \ the running run's id, from 1
 variable RUN-AT                      \ the offset in SPELLS of the running run's first sum
-\ The records of the pieces a root's check passed (PENDING), as PENDING-REC+ lays them. HIT marks
-\ their rows in PENDING-HITS as it marks BUILT rows, for names they define but not names they change.
+\ The records of the pieces a root's check passed (PENDING), as PENDING-REC+ lays them: each piece's
+\ own, then the earlier records it changes. HIT marks their PENDING-HITS rows as it marks BUILT rows.
 DYNAMIC-BUFFER PENDING-RECS n
 variable PENDING-RECS-N              \ its records
 DYNAMIC-BUFFER PENDING-FIRST n       \ PENDING row p's first record
+DYNAMIC-BUFFER PENDING-OWN n         \ PENDING row p's own record count, the records PENDING-KEY and PENDING-CHANGED+ index
 DYNAMIC-BUFFER PENDING-SLOTS n       \ the records by sum: slot s holds 1 + a record, 0 while empty
 variable PENDING-CAP                 \ its slots, a power of two
 DYNAMIC-BUFFER PENDING-HITS n        \ PENDING row p's mark, as HITS marks a BUILT row
@@ -383,7 +384,7 @@ DYNAMIC-BUFFER PENDING-HITS n        \ PENDING row p's mark, as HITS marks a BUI
    SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE
    OLD-NAMES-RELEASE  NAMES-RELEASE
-   PENDING-RECS-RELEASE  PENDING-FIRST-RELEASE  PENDING-SLOTS-RELEASE  PENDING-HITS-RELEASE ;
+   PENDING-RECS-RELEASE  PENDING-FIRST-RELEASE  PENDING-OWN-RELEASE  PENDING-SLOTS-RELEASE  PENDING-HITS-RELEASE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
@@ -2925,8 +2926,8 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    PENDING-CAP @ 2 * PENDING-SLOTS-CLEAR
    PENDING-RECS-N @ 0 ?do i PENDING-PUT loop ;
 
-\ A pending record: its name's sum, its package key, its TOP-NAME's sum, its PENDING row. Half
-\ PENDING-SLOTS' slots at most are filled.
+\ A pending record: its name's sum, its package key, its TOP-NAME's sum (0 for a changed record),
+\ its PENDING row. Half PENDING-SLOTS' slots at most are filled.
 : PENDING-REC+ ( n n n n -- )
    {: sum:n key:n top:n p:n :}
    PENDING-RECS-N @ {: r:n :}
@@ -2937,7 +2938,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    r 1 + 2 *  PENDING-CAP @ > if PENDING-GROW else r PENDING-PUT then ;
 
 \ NAME-PKG's key, once PENDING row p links, for the entry whose role (ROLE-CK) is at the offset:
-\ role 4's package's TOP-NAME sum, else 0; 0 for an index past a pending piece's records (PENDING?).
+\ role 4's package's TOP-NAME sum, else 0; 0 past a pending piece's own records (PENDING?).
 : PENDING-KEY ( n n -- n )
    {: ro:n p:n :}
    ro OBJ@ 4 <> if 0 exit then
@@ -2946,7 +2947,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    file PENDING? if
       file FILES-ROW PENDING-AT drop {: q:n :}
       q PENDING-FIRST @ idx + {: r:n :}
-      r  q 1 + PENDING-FIRST @  >= if 0 exit then
+      r  q PENDING-FIRST @  q PENDING-OWN @ +  >= if 0 exit then
       r 2 PENDING-REC@ exit
    then
    file BUILT-FIRST BUILT@ idx + XREF-REC XREF-NAME$ TOP-NAME NAME-SUM ;
@@ -2957,17 +2958,57 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    at 8 + FIELD$ {: a:ptr u:n :}
    a u NAME-SUM  at 24 + u + p PENDING-KEY  a u TOP-NAME NAME-SUM  p PENDING-REC+ ;
 
-\ The checked piece's records (ENTRIES-CK) as PENDING row p's, in their order, so a record index
-\ is its offset from PENDING-FIRST; p's mark cleared.
+\ Record idx of an earlier file, which PENDING row p changes, as a record of p with its name's sum
+\ and package key; its TOP-NAME sum is 0, as nothing indexes it. Nothing for p's own (file 0).
+: PENDING-CHANGED+ ( n n n -- )
+   {: file:n idx:n p:n :}
+   file 0= if exit then
+   file PENDING? if
+      file FILES-ROW PENDING-AT drop {: q:n :}
+      q PENDING-FIRST @ idx + {: r:n :}
+      r  q PENDING-FIRST @  q PENDING-OWN @ +  >= if exit then
+      r 0 PENDING-REC@  r 1 PENDING-REC@  0  p PENDING-REC+ exit
+   then
+   file BUILT-FIRST BUILT@ idx + {: d:n :}
+   d XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   u 0= if exit then
+   a u NAME-SUM  d NAME-PKG  0  p PENDING-REC+ ;
+
+\ The earlier records the checked piece's FACTS retirement and amender rows change, as PENDING
+\ row p's (PENDING-CHANGED+), read as LINK-FACTS reads them; FACTS-CK passed the rows.
+: PENDING-FACTS+ ( n -- )
+   {: p:n :}
+   FACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
+   RD-U64 0 ?do
+      RD-U64 {: ix:n :}
+      ix CHECK:HELD-RETIRED =  ix CHECK:HELD-AMENDED =  or if
+         RD-U64 RD-U64 p PENDING-CHANGED+
+         ix CHECK:HELD-AMENDED = if RD-U64 RD-SKIP then
+      else
+         RD-U64 RD-SKIP
+      then
+   loop ;
+
+\ The checked piece's records (ENTRIES-CK) as PENDING row p's own, in their order, so a record
+\ index is its offset from PENDING-FIRST, then the earlier records it changes; p's mark cleared.
 : PENDING-NAMES+ ( n -- )
    {: p:n :}
-   p 1 + PENDING-FIRST-RESERVE  p 1 + PENDING-HITS-RESERVE
+   p 1 + PENDING-FIRST-RESERVE  p 1 + PENDING-OWN-RESERVE  p 1 + PENDING-HITS-RESERVE
    PENDING-RECS-N @ p PENDING-FIRST !  0 p PENDING-HITS !
    ENTRIES-N @ 0 ?do
       i ENTRY-OFFS @ {: at:n :}
       at OBJ@ {: kind:n :}
       kind KIND-PRIVATE <>  kind KIND-SEALED <>  and if at p PENDING-ENTRY+ then
-   loop ;
+   loop
+   PENDING-RECS-N @  p PENDING-FIRST @ -  p PENDING-OWN !
+   ENTRIES-N @ 0 ?do
+      i ENTRY-OFFS @ {: at:n :}
+      at OBJ@ {: kind:n :}
+      kind KIND-PRIVATE =  kind KIND-SEALED =  or if
+         at 8 + OBJ@  at 16 + OBJ@  p PENDING-CHANGED+
+      then
+   loop
+   p PENDING-FACTS+ ;
 
 
 \ The piece ending with REQUESTS row req, or the last (-1), passed: its records into the pending

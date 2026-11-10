@@ -83,6 +83,8 @@
 \ naming no file, and S3 checks it while stale-def.f, which defines V, a name stale-spell.f spells,
 \ is checked and not yet linked, so S3 compiles it. K, K2 and K3 build hidden-root.f, hidden-alone.f
 \ and hidden-root.f, and K3 exits 0: hidden-spell.f spells W, which hidden-def.f defines privately.
+\ G, G2 and G3 build sealed-root.f, sealed-alone.f and sealed-root.f, and G3 exits 0: sealed-spell.f
+\ spells FILE-OBJECTS-SEALED, which sealed-seal.f seals.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -624,10 +626,16 @@ variable KEPT-NS
    s" K2" WHICH!  s" test/fixtures/file-objects/hidden-alone.f" FIXTURE-BUILD 0= if exit then
    s" K3" WHICH!  s" test/fixtures/file-objects/hidden-root.f" FIXTURE-BUILD drop ;
 
+\ Guards a name a checked-but-unlinked piece changes: G3 checks sealed-seal.f's seal unlinked.
+: SEALED-CASE ( CMD:command -- CMD:command )
+   s" G" WHICH!  s" test/fixtures/file-objects/sealed-root.f" FIXTURE-BUILD 0= if exit then
+   s" G2" WHICH!  s" test/fixtures/file-objects/sealed-alone.f" FIXTURE-BUILD 0= if exit then
+   s" G3" WHICH!  s" test/fixtures/file-objects/sealed-root.f" FIXTURE-BUILD drop ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE ;]
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE ;]
    CMD:WITH-COMMAND ;
 
 
