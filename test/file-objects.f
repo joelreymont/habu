@@ -86,7 +86,8 @@
 \ G, G2 and G3 build sealed-root.f, sealed-alone.f and sealed-root.f, and G3 exits 0: sealed-spell.f
 \ spells FILE-OBJECTS-SEALED, which sealed-seal.f seals. T, T2 and T3 build stored-root.f,
 \ stored-alone.f and stored-root.f, and T3 exits 0: stored-run.f runs stored-pkg.f's SGET, which
-\ reads the variable stored-store.f stores into.
+\ reads the variable stored-store.f stores into. V, V2 and V3 build retired-root.f, retired-alone.f
+\ and retired-root.f, and V3 exits 0: retired-spell.f spells RW, which retired-undefine.f retires.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -640,10 +641,16 @@ variable KEPT-NS
    s" T2" WHICH!  s" test/fixtures/file-objects/stored-alone.f" FIXTURE-BUILD 0= if exit then
    s" T3" WHICH!  s" test/fixtures/file-objects/stored-root.f" FIXTURE-BUILD drop ;
 
+\ Guards a name a checked-but-unlinked piece retires: V3 checks retired-undefine.f's undefine unlinked.
+: RETIRED-CASE ( CMD:command -- CMD:command )
+   s" V" WHICH!  s" test/fixtures/file-objects/retired-root.f" FIXTURE-BUILD 0= if exit then
+   s" V2" WHICH!  s" test/fixtures/file-objects/retired-alone.f" FIXTURE-BUILD 0= if exit then
+   s" V3" WHICH!  s" test/fixtures/file-objects/retired-root.f" FIXTURE-BUILD drop ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE STORED-CASE ;]
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE STORED-CASE RETIRED-CASE ;]
    CMD:WITH-COMMAND ;
 
 

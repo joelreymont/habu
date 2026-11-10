@@ -2994,22 +2994,22 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    a u NAME-SUM  at 24 + u + p PENDING-KEY  a u TOP-NAME NAME-SUM  p PENDING-REC+ ;
 
 \ Record idx of an earlier file, which PENDING row p changes, as a pair (PENDING-PAIR+) and, named,
-\ a record of p: its name's sum, its package key and 0 as TOP-NAME sum, which nothing indexes.
-: PENDING-CHANGED+ ( n n n -- )
-   {: file:n idx:n p:n :}
+\ a record of p with TOP-NAME sum 0: its name's sum and key, 0 once retired (XREF-RETIRED-WL has no package).
+: PENDING-CHANGED+ ( n n bool n -- )
+   {: file:n idx:n retired:bool p:n :}
    file 0= if exit then
    file PENDING? if
       file FILES-ROW PENDING-AT drop {: q:n :}
       q PENDING-FIRST @ idx + {: r:n :}
       r  q PENDING-FIRST @  q PENDING-OWN @ +  >= if exit then
       file PENDING-HOLDER p PENDING-PAIR+
-      r 0 PENDING-REC@  r 1 PENDING-REC@  0  p PENDING-REC+ exit
+      r 0 PENDING-REC@  retired if 0 else r 1 PENDING-REC@ then  0  p PENDING-REC+ exit
    then
    file PENDING-HOLDER p PENDING-PAIR+
    file BUILT-FIRST BUILT@ idx + {: d:n :}
    d XREF-REC XREF-NAME$ {: a:ptr u:n :}
    u 0= if exit then
-   a u NAME-SUM  d NAME-PKG  0  p PENDING-REC+ ;
+   a u NAME-SUM  retired if 0 else d NAME-PKG then  0  p PENDING-REC+ ;
 
 \ The earlier records the checked piece's FACTS retirement and amender rows change, as PENDING
 \ row p's (PENDING-CHANGED+), read as LINK-FACTS reads them; FACTS-CK passed the rows.
@@ -3019,7 +3019,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    RD-U64 0 ?do
       RD-U64 {: ix:n :}
       ix CHECK:HELD-RETIRED =  ix CHECK:HELD-AMENDED =  or if
-         RD-U64 RD-U64 p PENDING-CHANGED+
+         RD-U64 RD-U64  ix CHECK:HELD-RETIRED =  p PENDING-CHANGED+
          ix CHECK:HELD-AMENDED = if RD-U64 RD-SKIP then
       else
          RD-U64 RD-SKIP
@@ -3042,7 +3042,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
       i ENTRY-OFFS @ {: at:n :}
       at OBJ@ {: kind:n :}
       kind KIND-PRIVATE =  kind KIND-SEALED =  or if
-         at 8 + OBJ@  at 16 + OBJ@  p PENDING-CHANGED+
+         at 8 + OBJ@  at 16 + OBJ@  false  p PENDING-CHANGED+
       then
    loop
    p PENDING-FACTS+ ;
