@@ -33,9 +33,8 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   (**Packages**) and a generated declaration are closed programs too. A text's
   top-level code is typed as a body is: with `variable V` and
   `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed` is `E-RAW-CELL-PTR`
-  at `!` and throws 70 before V changes. One case stays open: a text that runs
-  `0 set-check` leaves every later definition and token unchecked, inside the
-  text and after it.
+  at `!` and throws 70 before V changes. A `0 set-check` in the text or before
+  it leaves every later definition and token checked.
 - Existing TRUST forms are legacy awaiting removal; mentions below describe
   legacy syntax only.
 
@@ -382,11 +381,10 @@ and always available, for a one-off call or to escape a collision.
   `READ`, `WRITE` or `CLOSE`. Qualify the package word (always certifies) or
   rename the collision. The checker enforces this in every checked body, and
   the interpreter at top level and for `'` (`ENGINE-ERROR:USING-SHADOW-GLOBAL`,
-  a throw inside `evaluate`). Only the bodies nothing certifies, `TRUSTED:` and
-  `0 set-check` definitions, keep global-first, as the explicit unchecked
-  boundary.
+  a throw inside `evaluate`). A `TRUSTED:` body and a definition after
+  `0 set-check` are refused the same way.
 - The colliding global need not be one the checker knows: an unsigned engine
-  word or a `0 set-check` definition counts. Likewise a word in the open
+  word counts. Likewise a word in the open
   package's wordlist wins over a used public even when the checker never
   recorded it, and lacking a signature the reference is then `E-UNDEFINED`.
 - Resolution happens at certify time: a call compiled inside a `using` scope
@@ -1530,10 +1528,6 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
   declaring 255 input cells is uncheckable, as its colon twin `( 255 cells ptr
   a -- … )` is at 256 cells. Step through the data field with `cell+`, not
   raw `+`.
-- `0 set-check` disables the check hook for the rest of the load, so `:` is the
-  plain native colon; `check@ 0 set-check … set-check` resumes the saved hook;
-  `CHECK:INSTALL` (`src/core/check-hook.f`) installs the checker
-  afresh. There is no `CHECKING-ON?`.
 
 ### Rigid host-allocation identity domains
 
@@ -2223,10 +2217,6 @@ documentation-only edits need no rebuild.
   `src/lib/prelude.f`, which the engine already provides: writing `require
   src/lib/prelude.f` documents the dependency but is not load-bearing. Never
   re-derive `0 0=` / `0 0= 0=` by hand.
-- **Code that suspends checking restores the existing hook**: after `0
-  set-check` it re-arms the same hook at once with `' HOOK set-check`. That is
-  no permission for new unchecked spans, and a second hook name in a baked
-  bundle fails closed at startup.
 - **Escaped literals for readable snapshots**: `s"` reads no escapes; `S\"`,
   `C\"`, `.\"` accept C-style escapes (`\\`, `\"`/`\q`, `\n`, `\r`, `\t`,
   `\xNN`, `\z`, …) for direct JSON/source expected strings. `S\"` needs its
@@ -2555,16 +2545,12 @@ sections above.
   so a conflicting enum variant is refused. A grammar keyword such as
   `policy` and a value-record name already registered as `vr` similarly
   cannot name a family (`STRUCTURE vr` is refused).
-- **`0 set-check` suspends the armed hook with its compile preflight.** It
-  empties both cells; `set-check` of that same hook resumes both, so
-  `check@ 0 set-check … set-check` restores checking whole. Arming any
-  other hook discards the suspension and starts without a preflight until
-  `set-preflight` installs one; an armed checker without one refuses the
-  first source-defined immediate with `hb: compile preflight hook missing`.
-  `0 set-check` while already off keeps the suspension, so windows nest.
-  `discard-check` drops a suspended hook so no later `set-check` resumes it. Use
-  a `PRIM: … PRIM;` axiom for a genuine missing primitive model so later
-  definitions remain checked.
+- **`set-check` turns no checking off.** `set-check ( xt -- )` stores the
+  cell `check@` reads and `0 set-check` empties it, but hb's interpreter
+  calls the checker by name: after `0 set-check`, `' NAME set-check` or
+  `discard-check`, every definition, immediate and top-level token is
+  checked, and a cell pushed meanwhile keeps its type. Use a `PRIM: … PRIM;`
+  axiom for a genuine missing primitive model.
 - **A pre-hook word needs an external row.** A word defined
   before the check hook has no authority without a `PRIM:` axiom or a
   `TRUSTED:` declaration after the checker claiming it. A
@@ -2573,8 +2559,8 @@ sections above.
   `TRUSTED:` or data word before the hook gains no such declaration. A
   top-level step that reads one is refused the same way, so its row goes in
   `src/core/cell-effects.f`.
-- **A signature compiled with the hook empty is a row without authority.**
-  This applies to cold prefix and `0 set-check` definitions at either tier.
+- **A signature compiled before the check hook is a row without authority.**
+  This applies to cold prefix definitions at either tier.
   An unsealed checker can use the declared effect to check callers, rejecting
   a missing input as `E-INPUT-UNDERFLOW`; sealed images refuse it
   `E-CAP-TRUSTED`, while a pre-hook internal name is refused by the engine

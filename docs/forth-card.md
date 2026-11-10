@@ -314,7 +314,7 @@ below it throws a stack underflow and a text that leaves cells throws
 cannot reach them: `' F execute` with F's input under the floor is
 `E-INPUT-UNDERFLOW` at `execute`. A text that ends
 inside a definition it opened is refused as every source is, `hb: source ended
-inside definition: NAME`, and the definition is rolled back (forth.md **Checked code and primitive boundaries** lists the open cases).
+inside definition: NAME`, and the definition is rolled back (forth.md **Checked code and primitive boundaries** states what `evaluate-closed` checks).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
@@ -550,7 +550,7 @@ forth.md: **Testing**, **Verification before committing**.
 
 | heading | open it when |
 |---|---|
-| Checked code and primitive boundaries | `TRUST`, a new `PRIM:`, what `evaluate-closed` leaves open |
+| Checked code and primitive boundaries | `TRUST`, a new `PRIM:`, what `evaluate-closed` checks |
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require, search roots and `SOURCE-ROOT` |
 | Importing … with `using` | ambiguity, scope end, the limit |
