@@ -169,6 +169,59 @@ variable MOD-U
    WASM-HARNESS:OUT$ F-HOST$ T$= ;
 
 
+\ m.f is longer than SB-CAP: its text is built here.
+CAP BUFFER: TEXT
+variable TEXT-U
+
+: TEXT+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   TEXT-U @ u + CAP > if E-STR-CAPACITY throw then
+   a TEXT TEXT-U @ + u BYTE-COPY  u TEXT-U +! ;
+
+\ The program m.f: map-anon and munmap through words; a failed test reads below
+\ WPROF:CTX-BASE.
+: M! ( -- )
+   0 TEXT-U !
+   S\" package M\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nCAST: >N ( ptr u8 -- n )\n" TEXT+
+   S\" : FAIL ( n -- ) >BYTES c@ drop ;\n" TEXT+
+   S\" : CHECK ( bool n -- ) swap if drop else FAIL then ;\n: ONE-PAGE ( -- n ) 65536 ;\n" TEXT+
+   S\" : MAP ( n -- ptr u8 n ) map-anon ;\n: UNMAP ( ptr u8 n -- n ) munmap ;\n" TEXT+
+   S\" : AT ( ptr u8 n -- bool ) swap >N swap = ;\n" TEXT+
+   S\" : ALIGNED ( ptr u8 -- bool ) >N 65535 and 0= ;\n" TEXT+
+   S\" : FRESH ( n n -- ptr u8 ) {: u:n k:n :} u MAP 0= k CHECK ;\n" TEXT+
+   S\" : FREE-RUN ( ptr u8 n n -- ) {: k:n :} UNMAP 0= k CHECK ;\n" TEXT+
+   S\" : TWO ( -- ptr u8 )\n   ONE-PAGE 1 FRESH {: a:ptr :}  ONE-PAGE 2 FRESH {: b:ptr :}\n" TEXT+
+   S\"    a >N b >N <> 3 CHECK  a ALIGNED 4 CHECK  b ALIGNED 5 CHECK\n" TEXT+
+   S\"    a c@ 0= 6 CHECK  b 65535 + c@ 0= 7 CHECK  b ONE-PAGE 8 FREE-RUN  a ;\n" TEXT+
+   S\" : REUSE ( ptr u8 -- )\n   {: a:ptr :}  99 a 100 + c!  a ONE-PAGE 9 FREE-RUN\n" TEXT+
+   S\"    ONE-PAGE 10 FRESH {: c:ptr :}  c a >N AT 11 CHECK  c 100 + c@ 0= 12 CHECK\n" TEXT+
+   S\"    c ONE-PAGE 13 FREE-RUN ;\n" TEXT+
+   S\" : JOIN ( -- )\n   ONE-PAGE 14 FRESH {: d:ptr :}  ONE-PAGE 15 FRESH {: e:ptr :}\n" TEXT+
+   S\"    ONE-PAGE 16 FRESH {: f:ptr :}\n" TEXT+
+   S\"    e d >N ONE-PAGE + AT 17 CHECK  f d >N ONE-PAGE 2 * + AT 18 CHECK\n" TEXT+
+   S\"    d ONE-PAGE 19 FREE-RUN  f ONE-PAGE 20 FREE-RUN  e ONE-PAGE 21 FREE-RUN\n" TEXT+
+   S\"    ONE-PAGE 3 * 22 FRESH {: g:ptr :}  g d >N AT 23 CHECK  g ONE-PAGE 3 * 24 FREE-RUN\n" TEXT+
+   S\"    ONE-PAGE 2 * 25 FRESH {: h:ptr :}  h d >N AT 26 CHECK\n" TEXT+
+   S\"    ONE-PAGE 27 FRESH {: t:ptr :}  t d >N ONE-PAGE 2 * + AT 28 CHECK\n" TEXT+
+   S\"    h ONE-PAGE 2 * 29 FREE-RUN  t ONE-PAGE 30 FREE-RUN ;\n" TEXT+
+   S\" : REFUSALS ( -- )\n   0 MAP -1 = 31 CHECK  0 AT 32 CHECK\n" TEXT+
+   S\"    ONE-PAGE 33 FRESH {: p:ptr :}  p 1 + ONE-PAGE UNMAP -1 = 34 CHECK  p ONE-PAGE 35 FREE-RUN ;\n" TEXT+
+   S\" public\n: MAIN ( -- ) TWO REUSE JOIN REFUSALS ;\n;package\n: MAIN ( -- ) M:MAIN ;\n" TEXT+
+   TEXT TEXT-U @ s" m.f" SOURCE! ;
+
+: MAP-CASES ( -- )
+   M!
+   s" map-anon and munmap hand out, reuse, join and split page runs and refuse bad counts" T-LABEL
+   s" m.wasm" BUILD 0 T=
+   RAN 0 T=
+   S\" : MAIN ( -- ) 65536 map-anon . {: p:ptr :} p 65536 munmap . p 65536 munmap . ;"
+   s" twice.f" SOURCE!
+   s" a run unmapped twice traps after both earlier answers" T-LABEL
+   s" twice.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ S\" 0\n0\n" T$= ;
+
+
 : REFUSAL-CASE ( -- )
    s" : MAIN ( -- ) depth drop ;" s" depth.f" SOURCE!
    s" a kernel word with no routine is refused by name with 74 and no module" T-LABEL
@@ -222,6 +275,7 @@ public
    PROGRAM-CASES
    ARITH-CASES
    FLOAT-CASE
+   MAP-CASES
    REFUSAL-CASE
    EXECUTE-CASE
    THROW-CASES

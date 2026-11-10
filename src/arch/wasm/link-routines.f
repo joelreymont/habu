@@ -37,7 +37,7 @@ $72 constant OP-I32-OR
 $A7 constant OP-I32-WRAP-I64
 $7F constant I32
 $7E constant I64
-$40 constant EMPTY-TYPE              \ an if taking and leaving nothing
+$40 constant EMPTY-TYPE              \ a block, loop or if taking and leaving nothing
 0 constant ALIGN-8                   \ a load's or store's alignment exponent
 2 constant ALIGN-32
 3 constant ALIGN-64
@@ -96,6 +96,54 @@ $7C constant F64
 \ The NaN every float operation that makes one answers, src/arch/wasm/select.f
 \ NAN-MADE.
 $7FF8000000000000 constant NAN-MADE
+
+\ ---- map-anon and munmap
+$02 constant OP-BLOCK
+$03 constant OP-LOOP
+$05 constant OP-ELSE
+$0C constant OP-BR
+$0D constant OP-BR-IF
+$40 constant OP-MEMORY-GROW          \ followed by its memory index
+$45 constant OP-I32-EQZ
+$46 constant OP-I32-EQ
+$47 constant OP-I32-NE
+$4B constant OP-I32-GT-U
+$52 constant OP-I64-NE
+$53 constant OP-I64-LT-S
+$55 constant OP-I64-GT-S
+$57 constant OP-I64-LE-S
+$74 constant OP-I32-SHL
+$7C constant OP-I64-ADD
+$83 constant OP-I64-AND
+$84 constant OP-I64-OR
+$86 constant OP-I64-SHL
+$88 constant OP-I64-SHR-U
+11 constant MISC-MEMORY-FILL         \ after OP-MISC, followed by its memory index
+0 constant MEMORY-0
+
+\ log2 of WPROF:PAGE-BYTES.
+16 constant PAGE-SHIFT
+\ log2 of memory32's 2^32 bytes: a memory offset has no bit at or above it.
+32 constant OFFSET-BITS
+
+\ A free run's node is its first page: the next run's address, 0 for none, and
+\ its page count, each an i32. ctx's free head names the first, by address.
+0 constant NODE-NEXT
+8 constant NODE-PAGES
+
+\ The allocator's locals after sp, eight i32 then four i64; the link is the
+\ address of the cell naming cur, a free run's node.
+2 constant L-PAGES
+3 constant L-LINK
+4 constant L-CUR
+5 constant L-NEXT
+6 constant L-TOTAL
+7 constant L-REST
+8 constant L-REM
+9 constant L-BYTES
+10 constant L-IOR
+11 constant L-PTR
+12 constant L-END
 
 \ ---- throw, die and execute
 $11 constant OP-CALL-INDIRECT
@@ -323,6 +371,160 @@ variable BUF-U
    DONE, ;
 
 
+\ ---- map-anon and munmap
+\ Room for n bytes of cells past SP, as src/habu/t0-wasm.f ROOM: an end above
+\ WPROF:STACK-END records ENGINE-ERROR:STACK-BOUNDS with that address and traps.
+: STACK-ROOM, ( n -- )
+   {: n:n :}
+   L-SP GET,  n I32,  OP-I32-ADD B,  WPROF:STACK-END I32,  OP-I32-GT-U B,  IF,
+      L-CTX GET,  ENGINE-ERROR:STACK-BOUNDS I32,
+      OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
+      L-CTX GET,  L-SP GET,  n I32,  OP-I32-ADD B,  OP-I64-EXTEND-I32-U B,
+      OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
+      OP-UNREACHABLE B,
+   OP-END B, ;
+
+: BLOCK, ( -- )  OP-BLOCK B,  EMPTY-TYPE B, ;
+: LOOP, ( -- )  OP-LOOP B,  EMPTY-TYPE B, ;
+\ A branch to the label n blocks, loops or ifs out from here, 0 the innermost.
+: BR, ( n -- )  OP-BR B,  U32, ;
+: BR-IF, ( n -- )  OP-BR-IF B,  U32, ;
+
+: ALLOC-LOCALS, ( -- )  2 U32,  8 U32,  I32 B,  4 U32,  I64 B, ;
+
+\ The i32 at offset off past the address in i32 local l.
+: LD32, ( n n -- )
+   {: l:n off:n :}
+   l GET,  OP-I32-LOAD ALIGN-32 off MEM, ;
+
+\ An i32 store at offset off past the address under the value.
+: ST32, ( n -- )
+   {: off:n :}
+   OP-I32-STORE ALIGN-32 off MEM, ;
+
+\ The i64 bytes on the Wasm stack, 1 through 2^32, as the i32 pages they take.
+: PAGES-OF, ( -- )
+   WPROF:PAGE-BYTES 1- I64,  OP-I64-ADD B,
+   PAGE-SHIFT I64,  OP-I64-SHR-U B,  OP-I32-WRAP-I64 B, ;
+
+\ The i32 pages on the Wasm stack as their i64 bytes.
+: BYTES-OF, ( -- )  OP-I64-EXTEND-I32-U B,  PAGE-SHIFT I64,  OP-I64-SHL B, ;
+
+\ The i64 address past the free run whose node is in i32 local l.
+: RUN-END, ( n -- )
+   {: l:n :}
+   l GET,  OP-I64-EXTEND-I32-U B,  l NODE-PAGES LD32,  BYTES-OF,  OP-I64-ADD B, ;
+
+\ The link becomes the address of ctx's free head, cur the run it names.
+: LIST-HEAD, ( -- )
+   L-CTX GET,  WPROF:CTX-FREE-HEAD I32,  OP-I32-ADD B,  L-LINK SET,
+   L-LINK NODE-NEXT LD32,  L-CUR SET, ;
+
+\ The link becomes cur's next cell, cur the run it names.
+: LIST-STEP, ( -- )
+   L-CUR GET,  L-LINK SET,  L-CUR NODE-NEXT LD32,  L-CUR SET, ;
+
+\ map-anon's scan found cur with the pages: its run, but for a tail left free in
+\ place, is cleared and answered. The branch leaves the if, loop and two blocks.
+: FIT, ( -- )
+   L-CUR NODE-PAGES LD32,  L-PAGES GET,  OP-I32-SUB B,  L-REST SET,
+   L-REST GET,  OP-I32-EQZ B,  IF,
+      L-LINK GET,  L-CUR NODE-NEXT LD32,  NODE-NEXT ST32,
+   OP-ELSE B,
+      L-CUR GET,  L-PAGES GET,  PAGE-SHIFT I32,  OP-I32-SHL B,  OP-I32-ADD B,  L-REM SET,
+      L-REM GET,  L-CUR NODE-NEXT LD32,  NODE-NEXT ST32,
+      L-REM GET,  L-REST GET,  NODE-PAGES ST32,
+      L-LINK GET,  L-REM GET,  NODE-NEXT ST32,
+   OP-END B,
+   L-CUR GET,  0 I32,  L-PAGES GET,  PAGE-SHIFT I32,  OP-I32-SHL B,
+   OP-MISC B,  MISC-MEMORY-FILL U32,  MEMORY-0 B,
+   L-CUR GET,  OP-I64-EXTEND-I32-U B,  L-PTR SET,  0 I64,  L-IOR SET,
+   3 BR, ;
+
+\ map-anon ( bytes -- ptr ior ) as tier 1's (src/arch/wasm/kernel.f MAP-ROW): first
+\ fit, else growth; a count outside 1 through 2^32 or a refused growth answers 0 -1.
+: MAP-BODY ( -- )
+   ALLOC-LOCALS,  CELL-BYTES SP-AT,  CELL-BYTES 2 * STACK-ROOM,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-BYTES SET,
+   -1 I64,  L-IOR SET,
+   BLOCK,
+      L-BYTES GET,  0 I64,  OP-I64-LE-S B,
+      L-BYTES GET,  WPROF:PAGES-MAX WPROF:PAGE-BYTES * I64,  OP-I64-GT-S B,
+      OP-I32-OR B,  0 BR-IF,
+      L-BYTES GET,  PAGES-OF,  L-PAGES SET,
+      LIST-HEAD,
+      BLOCK,
+         LOOP,
+            L-CUR GET,  OP-I32-EQZ B,  1 BR-IF,
+            L-CUR NODE-PAGES LD32,  L-PAGES GET,  OP-I32-GE-U B,  IF,  FIT,  OP-END B,
+            LIST-STEP,  0 BR,
+         OP-END B,
+      OP-END B,
+      L-PAGES GET,  OP-MEMORY-GROW B,  MEMORY-0 B,  L-CUR SET,
+      L-CUR GET,  -1 I32,  OP-I32-EQ B,  0 BR-IF,
+      L-CUR GET,  BYTES-OF,  L-PTR SET,  0 I64,  L-IOR SET,
+   OP-END B,
+   L-SP GET,  L-PTR GET,  OP-I64-STORE ALIGN-64 0 MEM,
+   L-SP GET,  L-IOR GET,  OP-I64-STORE ALIGN-64 CELL-BYTES MEM,
+   L-SP GET,  CELL-BYTES 2 * I32,  OP-I32-ADD B,  L-SP SET,  SP!,
+   DONE, ;
+
+\ Where munmap's scan stopped: a cur starting before the freed run's end overlaps
+\ it, as in a double free, and traps before any store; one at that end merges in.
+: AFTER-RUN, ( -- )
+   L-CUR GET,  L-NEXT SET,  L-PAGES GET,  L-TOTAL SET,
+   L-CUR GET,  IF,
+      L-CUR GET,  OP-I64-EXTEND-I32-U B,  L-END GET,  OP-I64-LT-S B,  IF,
+         OP-UNREACHABLE B,
+      OP-END B,
+      L-END GET,  L-CUR GET,  OP-I64-EXTEND-I32-U B,  OP-I64-EQ B,  IF,
+         L-CUR NODE-NEXT LD32,  L-NEXT SET,
+         L-PAGES GET,  L-CUR NODE-PAGES LD32,  OP-I32-ADD B,  L-TOTAL SET,
+      OP-END B,
+   OP-END B, ;
+
+\ The freed run joins the list at the link; the run before, when the link is its
+\ node and it ends at the freed run, takes it in.
+: INSERT-RUN, ( -- )
+   L-PTR GET,  OP-I32-WRAP-I64 B,  L-NEXT GET,  NODE-NEXT ST32,
+   L-PTR GET,  OP-I32-WRAP-I64 B,  L-TOTAL GET,  NODE-PAGES ST32,
+   L-LINK GET,  L-PTR GET,  OP-I32-WRAP-I64 B,  NODE-NEXT ST32,
+   L-LINK GET,  L-CTX GET,  WPROF:CTX-FREE-HEAD I32,  OP-I32-ADD B,  OP-I32-NE B,  IF,
+      L-LINK RUN-END,  L-PTR GET,  OP-I64-EQ B,  IF,
+         L-LINK GET,  L-NEXT GET,  NODE-NEXT ST32,
+         L-LINK GET,  L-LINK NODE-PAGES LD32,  L-TOTAL GET,  OP-I32-ADD B,  NODE-PAGES ST32,
+      OP-END B,
+   OP-END B, ;
+
+\ munmap ( addr bytes -- ior ) as tier 1's (src/arch/wasm/kernel.f UNMAP-ROW): -1
+\ for bytes outside 1 through 2^32 or an addr not a page-aligned offset below 2^32.
+: UNMAP-BODY ( -- )
+   ALLOC-LOCALS,  CELL-BYTES 2 * SP-AT,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-PTR SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-BYTES SET,
+   -1 I64,  L-IOR SET,
+   BLOCK,
+      L-BYTES GET,  1 I64,  OP-I64-SUB B,  L-PTR GET,  OP-I64-OR B,
+      OFFSET-BITS I64,  OP-I64-SHR-U B,
+      L-PTR GET,  WPROF:PAGE-BYTES 1- I64,  OP-I64-AND B,  OP-I64-OR B,
+      0 I64,  OP-I64-NE B,  0 BR-IF,
+      L-BYTES GET,  PAGES-OF,  L-PAGES SET,
+      L-PTR GET,  L-PAGES GET,  BYTES-OF,  OP-I64-ADD B,  L-END SET,
+      LIST-HEAD,
+      BLOCK,
+         LOOP,
+            L-CUR GET,  OP-I32-EQZ B,  1 BR-IF,
+            L-CUR RUN-END,  L-PTR GET,  OP-I64-GT-S B,  1 BR-IF,
+            LIST-STEP,  0 BR,
+         OP-END B,
+      OP-END B,
+      AFTER-RUN,  INSERT-RUN,
+      0 I64,  L-IOR SET,
+   OP-END B,
+   L-SP GET,  L-IOR GET,  OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,  DONE, ;
+
+
 \ ---- throw, die and execute
 \ Where each call_indirect's padded type index starts in the body, for
 \ WLINK:INDIRECT+ to name (i32) -> (i32) there.
@@ -429,6 +631,9 @@ public
    name u s" f0=" STR=CI if OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
    name u s" s>f" STR=CI if S>F-BODY BODY$ true exit then
    name u s" f>s" STR=CI if F>S-BODY BODY$ true exit then
+   \ ---- map-anon and munmap
+   name u s" map-anon" STR=CI if MAP-BODY BODY$ true exit then
+   name u s" munmap" STR=CI if UNMAP-BODY BODY$ true exit then
    \ ---- throw, die and execute
    name u s" throw" STR=CI if THROW-BODY BODY$ true exit then
    name u s" die" STR=CI if DIE-BODY BODY$ true exit then
