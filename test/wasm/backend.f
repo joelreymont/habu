@@ -96,17 +96,19 @@ variable REC-PX
 : OPEN-WASM ( -- )
    WBACK:BINDING NSHADOW:OPEN ;
 
-\ Definers made before the open, so only their children are filed. A Wasm body
-\ carries no patch slot, so a nonempty clause outdates its child's routine: the
-\ child stays filed but is no routine (NSHADOW:ROUTINE?) and reports no call
-\ site. An empty clause leaves the body `create` made and keeps the routine.
+\ Definers made before the open, so only their children are filed. Tier 0 files
+\ a `create` body and a definer's child (src/habu/t0-wasm.f), so the cases read
+\ tier 1's encoding from the colon words only.
 : FULLD ( n -- ) create , does> ( -- n ) @ ;
 : EMPTYD ( n -- ) create , does> ( -- ptr n ) ;
 \ PB's empty clause replaces PA's and restores the body `create` made.
 : PA ( -- ) create 5 , does> ( -- n ) @ 100 + ;
 : PB ( -- ) PA does> ( -- ptr n ) ;
 
-\ Reading scaffolding precedes the open, so only the words under test are filed.
+\ Tier 0 files every definition made while the shadow is open, the cases below
+\ among them, so the counts are taken once the last word under test is filed.
+variable FILED-RECS
+variable FILED-EMS
 $10 constant OP-CALL
 $42 constant OP-I64-CONST
 $0B constant OP-END
@@ -146,6 +148,8 @@ PB BK-PX
 ndict@ REC-LAST !
 : BK-LAST ( n -- n ) 2 * ;
 0 set-tier
+NSHADOW:RECORDS FILED-RECS !
+NSHADOW:EMISSIONS FILED-EMS !
 
 : HOST-CASE ( -- )
    s" every word compiled with the Wasm shadow open runs on the host as before" T-LABEL
@@ -210,8 +214,8 @@ ndict@ REC-LAST !
 
 : FILED-CASE ( -- )
    s" each record publication committed is filed once, with an emission of its own" T-LABEL
-   NSHADOW:RECORDS 12 T=
-   NSHADOW:EMISSIONS 12 T=
+   FILED-RECS @ 12 T=
+   FILED-EMS @ 12 T=
    REC-BUF @ ROW-OF 0 T=
    REC-LEAF @ ROW-OF 1 T=
    REC-CALLER @ ROW-OF 2 T=
@@ -224,27 +228,17 @@ ndict@ REC-LAST !
    REC-FULL @ ROW-OF 9 T=
    REC-PX @ ROW-OF 10 T=
    REC-LAST @ ROW-OF 11 T=
-   12 0 ?do  i NSHADOW:EMISSION@ i T=  loop
-   s" an empty does> clause keeps its child's routine" T-LABEL
-   REC-EMPTY @ EM-OF NSHADOW:ROUTINE? TTRUE
-   s" a nonempty clause outdates its child's routine, which stays filed and reports no call site" T-LABEL
-   REC-FULL @ EM-OF NSHADOW:ROUTINE? TFALSE
-   REC-FULL @ EM-OF NSHADOW:CALL-SITES 0 T=
-   s" an empty replacement clears the earlier one: the create body's routine stands" T-LABEL
-   REC-PX @ EM-OF NSHADOW:ROUTINE? TTRUE ;
+   12 0 ?do  i NSHADOW:EMISSION@ i T=  loop ;
 
 : BODY-CASE ( -- )
-   s" each emission's header names its one body, its lanes the word's arity" T-LABEL
-   REC-BUF @ 0 1 ONE-BODY
+   s" each tier-1 emission's header names its one body, its lanes the word's arity" T-LABEL
    REC-LEAF @ 2 1 ONE-BODY
    REC-CALLER @ 1 1 ONE-BODY
    REC-SELF @ 1 1 ONE-BODY
    REC-ADDR @ 0 1 ONE-BODY
    REC-BOOM @ 1 0 ONE-BODY
    REC-TRAP @ 1 0 ONE-BODY
-   REC-SAME @ 2 1 ONE-BODY
-   REC-FULL @ 0 1 ONE-BODY
-   REC-PX @ 0 1 ONE-BODY ;
+   REC-SAME @ 2 1 ONE-BODY ;
 
 : CALL-CASE ( -- )
    s" a call row sits on the padded index after `call`, naming the callee's host entry" T-LABEL
@@ -273,9 +267,6 @@ ndict@ REC-LAST !
    REC-ADDR @ EM-OF {: addr:n :}
    addr NSHADOW:ADDR-SITES 1 T=
    addr 0 ADDR-ROW  BK-BUF >N T=  NEMIT:ADDR-DATA T=
-   REC-BUF @ EM-OF {: buf:n :}
-   buf NSHADOW:ADDR-SITES 1 T=
-   buf 0 ADDR-ROW  BK-BUF >N T=  NEMIT:ADDR-DATA T=
    s" a trap's message is a data address row" T-LABEL
    REC-TRAP @ EM-OF {: trap:n :}
    trap NSHADOW:ADDR-SITES 1 T=
