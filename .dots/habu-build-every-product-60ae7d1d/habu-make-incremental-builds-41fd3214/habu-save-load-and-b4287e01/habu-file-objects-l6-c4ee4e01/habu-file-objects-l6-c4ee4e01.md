@@ -1,9 +1,11 @@
 ---
 title: "File objects L6: compile after linked files"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-06T12:21:51.570993+02:00"
+closed-at: "2026-11-10T21:57:58.759907+02:00"
+close-reason: landed as 138288db, f414ee08 and 585d9191; its last child merged into habu-find-a-compile-3bbd4bb2
 blocks:
   - habu-file-objects-l5-c2dba0e3
 ---

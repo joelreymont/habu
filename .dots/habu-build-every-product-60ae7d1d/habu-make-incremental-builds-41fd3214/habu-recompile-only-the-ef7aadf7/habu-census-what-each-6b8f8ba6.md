@@ -1,9 +1,11 @@
 ---
 title: "Census: what each data reference of an engine build points at"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T14:08:50.450844+02:00"
+closed-at: "2026-11-10T21:56:50.057031+02:00"
+close-reason: "done: the census report is .jj-ws.noindex/carl-layout/.out/reports/census-data-anchors.md"
 ---
 
 Problem: an object names data by (file, offset in the piece), linker.f DATA-REF+ (:1100 at caba839b), so a string made longer or a variable added mid-file moves every later offset (six-edit rerun: util.f string 13 objects, variable 166). Before a design for data named by its owning word (.out/design-word-level.md 'Data owned by word'), count what each tag-3 reference hits: a DNAME-ALLOC word's body start, inside its extent, a defer cell, a string body, before any owner, the piece's end; and whether every body-laying definer sets DNAME-ALLOC. Acceptance: the counts and samples reported; the workspace restored. Files: none kept (scratch probe in src/habu/linker.f). Verify: the report. Depends: none. Ownership: carl. Brief: .out/briefs/census-data-anchors.md. Claim: agent=carl workspace=.jj-ws.noindex/carl-census.

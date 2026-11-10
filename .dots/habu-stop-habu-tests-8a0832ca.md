@@ -13,3 +13,8 @@ Note 2026-11-05: test/compiler/native-build-edit-e2e.f, test/native-file-retired
 Cause of the habu-zip-source-* family (2026-11-10, /Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/seal-resolution-review.md finding 1): a build whose top level keeps a zip archive open leaves the archive's snapshot in TMPDIR. src/lib/zip.f:33-37 makes it with FS:MKTEMP, which registers nothing for cleanup (src/lib/fs-mutate.f:879-886); it is unlinked only when the archive is discarded (src/lib/zip-ffi.f:65 DISCARD-NODE). Reproducer: `TMPDIR=<empty dir> HABU_OUT=<empty dir> bin/hb --load tools/hb-build.f -- test/fixtures/file-objects/kept-main.f -o <dir>/prog </dev/null` ends rc 0 and leaves habu-zip-source-<n>-0 (682 bytes) in TMPDIR. test/file-objects.f's BUILD-RC now sets TMPDIR to its own removed directory, so a direct run of that test no longer shows it.
 
 Acceptance case 2026-11-10 (bob; merged from habu-census-test-temp-99730692 "Census test temp roots that no cleanup removes", one cause with this dot): 262 FS:MKTEMP-DIR sites under test/ and tools/ against 26 FS:REMOVE-TREE and about 20 FS:CLEANUP-RUN users; test/native-file-e2e.f leaked 9 GB in a day before registering its root (habu-remove-the-native). List each helper or row whose temp root reaches process exit unregistered, and fix each at its helper with FS:CLEANUP-TREE+.
+
+
+Merged from habu-remove-fixture-directories-75e60ce7 (Remove fixture directories tests leave under TMPDIR), 2026-11-10:
+
+stuart observed (2026-10-31) that src/lib/jsonl-test.f, tools/lsp-test.f and tools/lsp-entry-test.f leave their fixture directories under TMPDIR after a passing run. Each test removes what it creates. Ownership: carl. Claim: unassigned.

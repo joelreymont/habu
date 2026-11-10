@@ -1,9 +1,11 @@
 ---
 title: Rebuild a file that read the data layout when earlier data grows
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T09:01:03.931825+02:00"
+closed-at: "2026-11-10T21:56:49.176599+02:00"
+close-reason: merged into habu-recompile-only-the-ef7aadf7
 ---
 
 Problem: a number a file takes from the data layout at top level is baked into its object, which then links after an earlier file's data grows: warm != cold. Reproducer (/tmp/jerry-inc/fx/q, remake): s.f 'create A-BUF 8 allot', f.f 'here data-base - constant M', r.f 'require s.f / require f.f / : MAIN ( -- ) M . cr ;'; build, change 8 to 64, build warm and cold (fresh HABU_OUT): warm prints 1099515828264, cold 1099515828320. f.f ran only words below FIRST-REC, which src/habu/linker.f RAN-RECORD ignores, and names nothing of s.f, so no FILES row ties it to s.f. The installed hb (d061bcee36) does the same; closed dot habu-find-the-layout-a39a3ad5 fixed three engine files of this class and left no rule. Acceptance: the reproducer's warm build prints what its cold build prints, by a dependency rule that holds for every file that reads the layout at top level; a case of it in test/file-objects.f. Until then 'warm = cold, every edit kind' has this counter-example and every such claim says so. Files: src/habu/linker.f; test/fixtures/file-objects/build.f; test/file-objects.f. Verify: the reproducer warm = cold; test/file-objects.f. Depends: a design of the rule, approved before a worker starts. Ownership: unassigned. Claim: unassigned.
