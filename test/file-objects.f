@@ -72,8 +72,11 @@
 \ M has no require, so app-end.f's object becomes M's, and its program prints the enum its MAIN
 \ fetched through a pointer, a fetch tier 0 checks; L2 builds log-main.f again, compiling
 \ app-end.f beside log-main.f's reused objects.
-\ P builds path-main.f, whose top level caches the build's engine path; after M2, P2 links it
-\ beside a recompiled app-end.f, and its program prints its own path.
+\ P builds path-main.f, whose top level caches the build's engine path and wakes the main task's
+\ park; after M2, P2 links it beside a recompiled app-end.f, and its program prints its own path
+\ and wakes its own park. A compile replaces a file's object (linker.f WRITE-OBJECT) and a link
+\ leaves it, so log-first.f's object keeps its size and change time from L to L2, and path-main.f's
+\ from P to P2.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -90,6 +93,8 @@ package FILE-OBJECTS-TEST
 
 7 constant FILES                         \ build A's objects, and D's
 8 constant FILES-B                       \ build B's: A's and pad.f's
+8 constant LOG-FIRST                     \ TAIL$'s numbers for log-first.f's and path-main.f's objects
+9 constant PATH-MAIN
 28 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four, e.f's
 144 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
@@ -105,10 +110,12 @@ PATH-CAP BUFFER: OUT-C   variable OUT-C-U
 PATH-CAP BUFFER: OUT-D   variable OUT-D-U
 PATH-CAP BUFFER: OUT-E   variable OUT-E-U
 PATH-CAP BUFFER: OUT-L   variable OUT-L-U
+PATH-CAP BUFFER: OUT-F   variable OUT-F-U    \ the fixture builds' out root, in L's directory
 PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
 PATH-CAP BUFFER: ROOT    variable ROOT-U     \ the obj directory a walk starts at
 PATH-CAP BUFFER: FOUND   variable FOUND-U    \ the walk's last path that ends with its tail
+PATH-CAP BUFFER: KEPT    variable KEPT-U     \ the object KEEP found, 0 long if none
 CAP BUFFER: BYTES-A
 CAP BUFFER: BYTES-B
 INPUT-BYTES BUFFER: EXPECT
@@ -125,6 +132,9 @@ PROG-CAP BUFFER: PROG-2
 variable OBJ-N                          \ the walk's objects
 variable TAIL-I                          \ the tail the walk looks for (TAIL$)
 variable TAIL-N                          \ and the paths that end with it
+variable KEPT-SIZE                       \ KEPT$'s size and its change time's seconds and
+variable KEPT-S                          \ nanoseconds, as KEEP read them
+variable KEPT-NS
 
 
 : A$ ( -- ptr u8 n ) OUT-A OUT-A-U @ ;
@@ -133,6 +143,7 @@ variable TAIL-N                          \ and the paths that end with it
 : D$ ( -- ptr u8 n ) OUT-D OUT-D-U @ ;
 : E$ ( -- ptr u8 n ) OUT-E OUT-E-U @ ;
 : L$ ( -- ptr u8 n ) OUT-L OUT-L-U @ ;
+: F$ ( -- ptr u8 n ) OUT-F OUT-F-U @ ;
 
 : IN$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: out:ptr outu:n name:ptr nameu:n :}
    out outu name nameu JOINED FS:JOIN-PATH {: u:n :}
@@ -205,8 +216,8 @@ variable TAIL-N                          \ and the paths that end with it
    s" the program exits 0" LABEL  rc 0 T= ;
 
 
-\ The tail of the path of A's object i, from 0: count.f's, shape.f's, main.f's, reopen.f's,
-\ mark.f's, again.f's first load's and its second's; 7 is pad.f's, which B also writes.
+\ The tail of object i's path: A's from 0 (count.f's, shape.f's, main.f's, reopen.f's, mark.f's,
+\ again.f's first load's and its second's), pad.f's at 7, then log-first.f's and path-main.f's.
 : TAIL$ ( n -- ptr u8 n )
    {: i:n :}
    i 0 = if s" /test/fixtures/file-objects/count.f.hfo" exit then
@@ -216,7 +227,9 @@ variable TAIL-N                          \ and the paths that end with it
    i 4 = if s" /test/fixtures/file-objects/mark.f.hfo" exit then
    i 5 = if s" /test/fixtures/file-objects/again.f.hfo" exit then
    i 6 = if s" /test/fixtures/file-objects/again.f.2.hfo" exit then
-   s" /test/fixtures/file-objects/pad.f.hfo" ;
+   i 7 = if s" /test/fixtures/file-objects/pad.f.hfo" exit then
+   i LOG-FIRST = if s" /test/fixtures/file-objects/log-first.f.hfo" exit then
+   s" /test/fixtures/file-objects/path-main.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" obj" ROOT FS:JOIN-PATH ROOT-U ! ;
@@ -250,6 +263,7 @@ variable TAIL-N                          \ and the paths that end with it
    one ;
 
 : FOUND$ ( -- ptr u8 n ) FOUND FOUND-U @ ;
+: KEPT$ ( -- ptr u8 n ) KEPT KEPT-U @ ;
 
 \ Whether BYTES-A's first au bytes and BYTES-B's first bu have one length, one PIECES offset and
 \ the same bytes from it on.
@@ -485,13 +499,14 @@ variable TAIL-N                          \ and the paths that end with it
    SAME-AS-B ;
 
 \ Builds a fixture to L's prog by tools/hb-build.f, since log.f requires and creates through does>
-\ (build.f's files may not), in the tree's out root, which keeps the library's objects; true on rc 0.
+\ (build.f's files may not), in the fixture out root every fixture build shares; true on rc 0.
 : FIXTURE-BUILD ( CMD:command ptr u8 n -- CMD:command bool )
    {: src:ptr src-u:n :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
    s" --" CMD:ARG+  src src-u CMD:ARG+
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
+   s" HABU_OUT" F$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
@@ -512,6 +527,23 @@ variable TAIL-N                          \ and the paths that end with it
    ran  rc 0 =  and 0= if rc SHOW then
    s" the program logs MAIN's line" LABEL  ran TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
+
+\ KEPT$ gets the path of the build's object of tail i; KEEP holds its size and change time.
+: KEEP ( n -- ) {: i:n :}
+   0 KEPT-U !
+   F$ WHICH WHICH-U @ i FOUND? 0= if exit then
+   FOUND$ {: p:ptr pu:n :}
+   p KEPT pu BYTE-COPY  pu KEPT-U !
+   KEPT$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   size KEPT-SIZE !  cs KEPT-S !  cns KEPT-NS ! ;
+
+\ The label holds when the object KEEP found keeps its size and change time.
+: LINKED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u LABEL
+   KEPT-U @ 0= if false TTRUE exit then
+   KEPT$ FS:FILE? 0= if false TTRUE exit then
+   KEPT$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   size KEPT-SIZE @ =  cs KEPT-S @ =  and  cns KEPT-NS @ =  and TTRUE ;
 
 \ path-main.f's program, run in its own process: the path it reports is the written
 \ file's, and the park it wakes is its own.
@@ -535,20 +567,23 @@ variable TAIL-N                          \ and the paths that end with it
 
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
-   LOG-UNLOCKED  LOG-RUN
+   LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP
    s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
    BARE-RUN
    s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
-   LOG-RUN
+   s" the build links log-first.f" LINKED  LOG-RUN ;
+
+: PATH-CASE ( CMD:command -- CMD:command )
    s" P" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
+   PATH-MAIN KEEP
    s" M2" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
    s" P2" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
-   PATH-RUN ;
+   s" the build links path-main.f" LINKED  PATH-RUN ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE ;] CMD:WITH-COMMAND ;
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE ;] CMD:WITH-COMMAND ;
 
 
 : REMOVE-A ( -- ) A$ FS:REMOVE-TREE ;
@@ -561,6 +596,7 @@ variable TAIL-N                          \ and the paths that end with it
 : WITH-L ( -- )
    s" habu-file-objects-l" FS:MKTEMP-DIR {: l:ptr u:n :}
    l OUT-L u BYTE-COPY  u OUT-L-U !
+   L$ s" out" OUT-F FS:JOIN-PATH OUT-F-U !
    ['] CHECKS ['] REMOVE-L finally ;
 
 : WITH-E ( -- )
