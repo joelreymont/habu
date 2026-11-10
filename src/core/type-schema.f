@@ -171,9 +171,8 @@ public
 : SCHEMA-A@ ( n -- n ) SCH-REC@ SCH.A @ ;
 : SCHEMA-B@ ( n -- n ) SCH-REC@ SCH.B @ ;
 : SCHEMA-C@ ( n -- n ) SCH-REC@ SCH.C @ ;
-\ Publics carry no checker effect (loaded before the hook), so internal-mark.f
-\ marks them DNAME-INT; SCHEMA-N@ and SCHEMA-ROOT-N@ alone carry PPRIM: axioms
-\ in checker.f, because suites read the high-water marks at top level.
+\ Publics carry no checker effect, so checked code cannot call them; SCHEMA-N@ and
+\ SCHEMA-ROOT-N@ alone carry PPRIM: axioms (checker.f).
 : SCHEMA-N@ ( -- n ) SCH-N @ ;             \ node high-water (for rollback/tests)
 
 : SCHEMA-PARAM? ( n -- bool ) SCHEMA-TAG@ SCH-PARAM = ;

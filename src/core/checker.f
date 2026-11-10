@@ -23537,8 +23537,8 @@ PIMM-NS-P PIMM-CAP-V CELL CHECK:TABLE+
    a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
    EFFECT-DIN-N 0=
    EFFECT-DOUT-N 0= and ;
-\ The native compiler asks this prefix API after internal-mark.f has sealed the
-\ checker's authority. Its declared row is what keeps that one shared decision callable.
+\ The native compiler asks this of the prefix; its declared row is what lets
+\ checked code call it.
 s" neutral-parse-imm?" s" ptr u8 n -- bool" TRUST
 
 package CHECKER-PREFLIGHT

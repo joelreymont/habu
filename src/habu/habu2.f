@@ -1188,10 +1188,8 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    PFX-LOAD-SCRIPT-ARGV
    done LBL, ;
 
-\ internal-mark.f is the LAST prefix source before top-row.f: it seals the
-\ checker's authority once every prefix definition and every recorded effect
-\ (cell/pointer-storage effect rows, checked structure words, xref/script-argv
-\ signatures) is in.
+\ internal-mark.f is the last prefix source before top-row.f; its header says
+\ what it loads.
 : PFX-LOAD-INTMARK ( -- )
    BOOT-FILES:INTERNAL ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
@@ -1202,12 +1200,8 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    PFX-LOAD-INTMARK
    done LBL, ;
 
-\ top-row.f installs the tier-1 top-level row tracker as the LAST cold-prefix
-\ source: after
-\ internal-mark's own top-level `0 set-check` window (whose re-arm lives inside a
-\ word body and is invisible to a token hook), so the tracker starts armed and
-\ empty on the first user token. Snapshot boots skip it (SNAP-CELL guard), like
-\ internal-mark above.
+\ top-row.f, the last cold-prefix source, arms the tier-1 row tracker empty for the
+\ first user token; snapshot boots skip it (SNAP-CELL guard), like internal-mark.
 : PFX-LOAD-TOPROW ( -- )
    BOOT-FILES:TOPROW ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
