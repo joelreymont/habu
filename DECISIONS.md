@@ -1056,21 +1056,30 @@ learned live in the docs for their subject.
   cross-compilation, even on the same platform". Every build is a
   cross-compilation from the running hb, the host, to its target. Prose and
   comments follow (dot habu-say-target-not-268135eb); no word is renamed.
-- 2026-11-09, timestamps, not hashes: told that a warm build decides a file is
-  unchanged by the SHA-256 of its source and of the objects of the files it
-  names, and shown that make's newer-than rule would link a stale object once
-  `rsync -a` installs an edited file with its older timestamp, Joel wrote
-  "just checking the timestamp is sufficient, why did we introduce sha256?"
-  and "prove me wrong", then "it's not about speed. the speed of checking 1
-  timestamp will always be WAY faster than hashing. the point is not doing
-  stupid things in the first place! make does NO hashing", "we are not gonna
-  hash just because rsync -a is wrong. why are you using rsync and
-  introducing a dependency on another tool?" and "always fix the cause, not
-  the symptom! the cause here is that rsync is screwing up. why are we using
-  rsync at all? the c compiler does not use rsync, neither does rust. why?"
-  A build decides what changed from timestamps, without hashing, in place of
-  the SHA-256 checks "linking a file's object" names, and Habu installs
-  without rsync; both designs go to Joel before a worker starts.
+- 2026-11-09, timestamps, not hashes: a build decides what changed from
+  timestamps and hashes nothing, and Habu installs without rsync. Told that a
+  warm build compared SHA-256 sums, and that make's newer-than rule would link
+  a stale object once `rsync -a` installs an edited file with its older time,
+  Joel wrote "just checking the timestamp is sufficient, why did we introduce
+  sha256?", "make does NO hashing" and "always fix the cause, not the symptom!
+  the cause here is that rsync is screwing up. why are we using rsync at all?"
+  `sha256-blocks` stays for the seed check.
+- 2026-11-10, stamps and times: the lead's, under "timestamps, not hashes" and
+  Joel's "review the 2 designs and pick the best one for long term". A file's
+  stamp is its change time and size, read before the file is read; its object
+  links while the stamp is equal, so a file put back with an older time
+  compiles, and a file changed in the second its object was written gets no
+  rule of its own. Each part of an object carries the clock time its result
+  last changed: a file that compiles to the bytes its old object held keeps
+  those times, so the files that depend on it link. A dependency's time is
+  compared for equality, so a clock set back hides no change. The outer
+  interpreter records the words a build's files run, and the linker reads the
+  record. hb's identity is its own stamp, read through `FS:FD-STAMP` (an open
+  file's change time and size), and objects are saved at `<out>/obj/<hb's
+  stamp>/<target>/<mode>/<source path>.hfo`. hb-build replaces its output only
+  when the image differs apart from its signature and writes a generated file
+  only when its text differs. hb records nothing about the files built into
+  it. The kernel object follows "reusing the kernel object" below.
 - 2026-11-10, reusing the kernel object: shown that every build reruns the
   kernel build (about 0.5 s of a 2-3.5 s warm build) and writes the same bytes
   each time, and a design in which the kernel object has one fixed name per hb,
@@ -1502,11 +1511,13 @@ learned live in the docs for their subject.
   asking me. apply the what's best for long term criteria", and then "get the
   incremental builds done already". Under those words the lead settled how a
   warm build links an unchanged file's object instead of compiling it. A file
-  links when its object reads whole and checks before anything is applied: its
-  key, the size and SHA-256 of the runner's bytes, its sections in bounds, every
-  reference resolvable, and each earlier file it names found in this build by
-  key with an equal object SHA-256; any other file compiles. An object the build
-  cannot open or read counts as stale, and its file compiles. The link remakes
+  links when its object reads whole and checks before anything is applied: the
+  stamp of the source it was compiled from equal to the stamp of this load, its
+  sections in bounds, every reference resolvable, and each earlier file it names
+  found in this build with the time the object recorded for it ("timestamps,
+  not hashes"); any other file compiles. An object the build cannot open or
+  read counts as stale, and its file compiles; so does one a crash cut short or
+  left zero-filled, which fails the bounds checks. The link remakes
   the compile's result through the owners' words, with no owner rows and no new
   object section: `OUTER:DEF-RECORD ( ptr u8 n n n -- )`, `OUTER:PACKAGE-RECORD
   ( ptr u8 n bool -- n )`, `OUTER:PACKAGE-PRIVATE ( n -- )`, `OUTER:ALIAS-RECORD

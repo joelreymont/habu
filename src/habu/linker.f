@@ -181,7 +181,8 @@ DYNAMIC-BUFFER BUILT-PATHS n         \ BUILT row r's path: its FIELD+'s offset i
 SHA256-CTX-BYTES BUFFER: SHA-CTX
 KEY-BYTES BUFFER: FILE-KEY
 ROW-BYTES BUFFER: ROW
-KEY-BYTES BUFFER: INPUT-SUM
+3 8 * constant INPUT-BYTES
+INPUT-BYTES BUFFER: INPUT-STAMP      \ the source's stamp (INPUT!), the object's INPUT
 KEY-BYTES BUFFER: CK-SUM             \ the SHA-256 of the object past its checksum (HEADER-CK)
 KEY-BYTES BUFFER: PIECE-SUM          \ the sum of a piece a request ends (PIECE-SUM!)
 KEY-BYTES BUFFER: WANT-KEY           \ a checked request's key and sum, as its loader's FILES row names them
@@ -261,7 +262,6 @@ TYPED-VARIABLE UNLINKABLE bool
 \ The magic, the key, the SHA-256 of every byte after it, then for INPUT FILES REQUESTS NAMES PIECES
 \ an offset from the file's start and a length (U64+), 0 0 while empty; then those sections in order.
 8 KEY-BYTES 2 * + 5 2 * 8 * + constant HEADER-BYTES
-8 KEY-BYTES + constant INPUT-BYTES  \ the source's size, then its SHA-256 (INPUT!)
 
 \ A record's kind in PIECES.
 0 constant KIND-DEF
@@ -722,13 +722,17 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    BUILT-N 0 ?do 0 i HITS ! loop
    false BODY-HIT ! ;
 
-\ After KEY!, before FRESH?: INPUT-SUM, and HITS-CLEAR, NAMES first taking the records the build's
-\ body made since the last file.
+\ After KEY!, before FRESH?: INPUT-STAMP, the active file's change time seconds, nanoseconds and
+\ size, and HITS-CLEAR, NAMES first taking the records the build's body made since the last file.
 : INPUT! ( ptr u8 n -- )
    {: src:ptr u:n :}
-   SHA-CTX src u INPUT-SUM SHA256-IN
+   SOURCE-ROOT:ACTIVE-STAMP {: sec:n ns:n size:n :}
+   sec INPUT-STAMP LE:U64!  ns INPUT-STAMP 8 + LE:U64!  size INPUT-STAMP 16 + LE:U64!
    FILE-REC @ -1 INDEX-RECS
    HITS-CLEAR ;
+
+\ False for bytes no file stamp covers (size -1): such a file never links.
+: STAMPED? ( -- bool ) INPUT-STAMP 16 + LE:U64@ -1 <> ;
 
 \ After SPELLED, before the compile: NAMED-ROWS from HITS, which a requested file's load overwrites.
 : NAMED! ( -- )
@@ -1532,14 +1536,13 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    refsu FACTS-AT +!
    SHA-CTX OBJECT BYTES$ PIECE-SUM SHA256-IN ;
 
-\ FILE-KEY's object after its last piece, given its source's size, with INPUT-SUM as INPUT! left it;
-\ its checksum sums every byte after it; written only when the file is not UNLINKABLE, but built for
-\ its sum, which names its last piece in BUILT. A REQUESTS row: the sum of the piece the request ends
+\ FILE-KEY's object after its last piece, with INPUT-STAMP as INPUT! left it; its checksum sums
+\ every byte after it; written only when the file is not UNLINKABLE, but built for its sum, which
+\ names its last piece in BUILT. A REQUESTS row: the sum of the piece the request ends
 \ (PIECE-SUM!), the kind (SOURCE-UNIT:LOAD-INCLUDE or LOAD-REQUIRE), the path as spelled and the
 \ path loaded, each a FIELD+, then the FILES row of the requested file's last piece. A sibling renamed
 \ into place, unsynced: an object a crash cut short fails its checksum, and its file compiles.
-: WRITE-OBJECT ( n -- )
-   {: srcu:n :}
+: WRITE-OBJECT ( -- )
    NAMED+
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
@@ -1559,8 +1562,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    requ 0<> if reqs-at else 0 then OBJECT U64+  requ OBJECT U64+
    nmu 0<> if names-at else 0 then OBJECT U64+  nmu OBJECT U64+
    pieces-at OBJECT U64+  piecesu OBJECT U64+
-   srcu OBJECT U64+
-   INPUT-SUM KEY-BYTES OBJECT SPAN+
+   INPUT-STAMP INPUT-BYTES OBJECT SPAN+
    refs refsu OBJECT SPAN+
    reqs requ OBJECT SPAN+
    nm nmu OBJECT SPAN+
@@ -1900,7 +1902,7 @@ variable RD-END
 
 
 \ NAMES' u bytes from RD-AT (SPELLS), u a multiple of 8, run as SPELLED ran them: HIT for each
-\ sum, OPENED+ for the sum after a 0. Against the bytes INPUT-SUM sums, HITS ends as a scan's.
+\ sum, OPENED+ for the sum after a 0. Against the source INPUT-STAMP stamps, HITS ends as a scan's.
 : NAMES-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
@@ -1943,10 +1945,9 @@ variable RD-END
    OBJECT BYTES$ drop  req REQ-AT + ;
 
 
-\ The header, the sections before PIECES and its piece count, as WRITE-OBJECT lays them, NAMES
-\ replayed (NAMES-CK) and checked against FILES (NAMED-CK); PIECE-AT is then the first piece's offset.
-: HEADER-CK ( n -- )
-   {: srcu:n :}
+\ The header, its checksum, INPUT against INPUT-STAMP, the sections before PIECES and its piece count, as
+\ WRITE-OBJECT lays them, NAMES replayed (NAMES-CK) and checked against FILES (NAMED-CK); then PIECE-AT.
+: HEADER-CK ( -- )
    0 FILES-N !  0 REQS-N !
    OBJECT BYTES$ nip {: len:n :}
    0 len RD-OPEN
@@ -1971,8 +1972,7 @@ variable RD-END
    nmu 0<  nmu 8 mod 0<>  or  nmu len names-at - >  or if BAD exit then
    noff  nmu 0<> if names-at else 0 then  <> if BAD then
    names-at nmu + RD-EQ  len names-at - nmu - RD-EQ
-   srcu RD-EQ
-   INPUT-SUM KEY-BYTES RD-SAME
+   INPUT-STAMP INPUT-BYTES RD-SAME
    refsu FILES-CK
    reqs-at REQS-AT !  requ REQUESTS-CK
    nmu NAMES-CK
@@ -2389,12 +2389,11 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ OBJECT READ-WHOLE ;
 
 
-\ After INPUT!, given the source's size: true when FILE-KEY's object reads whole and its
-\ header, INPUT and FILES check (HEADER-CK).
-: HEADER-FRESH? ( n -- bool )
-   {: srcu:n :}
+\ After INPUT!: true when FILE-KEY's object reads whole and its header, INPUT and FILES check
+\ (HEADER-CK).
+: HEADER-FRESH? ( -- bool )
    READ-OBJECT 0= if false exit then
-   srcu HEADER-CK  GOOD? ;
+   HEADER-CK  GOOD? ;
 
 
 \ ---- checking a file's requests --------------------------------------------------
@@ -2404,14 +2403,14 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 \ pieces passed before it (PENDING), and applies nothing.
 
 \ While its request is checked or loads, OBJECT is a depth deeper and the file's place is on PARKED:
-\ FILE-PATH, FILE-KEY, INPUT-SUM, then PARK-TAIL: the path's length, PIECE-AT, FILES-N, REQS-N, REQS-AT.
+\ FILE-PATH, FILE-KEY, INPUT-STAMP, then PARK-TAIL: the path's length, PIECE-AT, FILES-N, REQS-N, REQS-AT.
 5 8 * constant PARK-TAIL
 
 : PARK ( -- )
    OBJECT-DEPTH @ 1 + OBJECT-DEPTHS = if E-STALE throw then
    FILE-PATH FILE-PATH-N @ PARKED SPAN+
    FILE-KEY KEY-BYTES PARKED SPAN+
-   INPUT-SUM KEY-BYTES PARKED SPAN+
+   INPUT-STAMP INPUT-BYTES PARKED SPAN+
    FILE-PATH-N @ PARKED U64+
    PIECE-AT @ PARKED U64+  FILES-N @ PARKED U64+  REQS-N @ PARKED U64+  REQS-AT @ PARKED U64+
    1 OBJECT-DEPTH +! ;
@@ -2423,11 +2422,11 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    PARKED BYTES$ {: f:ptr fu:n :}
    f fu + PARK-TAIL - {: t:ptr :}
    t LE:U64@ {: pn:n :}
-   fu PARK-TAIL -  KEY-BYTES 2 * -  pn - {: start:n :}
+   fu PARK-TAIL -  KEY-BYTES -  INPUT-BYTES -  pn - {: start:n :}
    f start + {: at:ptr :}
    at FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
    at pn + FILE-KEY KEY-BYTES BYTE-COPY
-   at pn + KEY-BYTES + INPUT-SUM KEY-BYTES BYTE-COPY
+   at pn + KEY-BYTES + INPUT-STAMP INPUT-BYTES BYTE-COPY
    t 8 + LE:U64@ PIECE-AT !  t 16 + LE:U64@ FILES-N !
    t 24 + LE:U64@ REQS-N !  t 32 + LE:U64@ REQS-AT !
    f start BUF:N>BLEN PARKED BUF:REPLACE ;
@@ -2461,7 +2460,8 @@ defer CHECK-OBJECT ( -- )
    WANT-KEY FILE-KEY KEY-BYTES BYTE-COPY
    path pathu PATH!
    src srcu EXEC-BYTES INPUT!
-   srcu HEADER-FRESH? 0= if BAD exit then
+   STAMPED? 0= if BAD exit then
+   HEADER-FRESH? 0= if BAD exit then
    CK-SUM KEY-BYTES  WANT-SUM KEY-BYTES  STR= 0= if BAD exit then
    CHECK-OBJECT ;
 
@@ -2544,10 +2544,10 @@ defer CHECK-OBJECT ( -- )
 INSTALL-CHECK
 
 
-\ After INPUT!, given the source's size: true when FILE-KEY's object reads whole and checks, with
-\ the files its requests loaded (CHECK-OBJECT). It applies nothing. Under a linking file, which
-\ checked it, only the header: each piece checks again as it links (LINK-FILE).
-: FRESH? ( n -- bool )
+\ After INPUT!: true when FILE-KEY's object reads whole and checks, with the files its requests
+\ loaded (CHECK-OBJECT). It applies nothing. Under a linking file, which checked it, only the
+\ header: each piece checks again as it links (LINK-FILE).
+: FRESH? ( -- bool )
    HEADER-FRESH? 0= if false exit then
    LINKING? if true exit then
    PENDING BUF:CLEAR  PENDING-PATHS BUF:CLEAR  0 GRANTS-N !
@@ -3190,15 +3190,14 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ FS:REMOVE-FILE ;
 
 
-\ After INPUT!, given the source's size: true once the file's object was fresh and linked. A
-\ throw out of the check or the link removes the object before it passes, so the next build
-\ compiles the file instead of failing the same way.
-: TRY-LINK ( bool n -- bool n )
-   {: linked:bool srcu:n :}
-   srcu FRESH? dup if LINK-FILE then  srcu ;
+\ After INPUT!: true once the file's object was fresh and linked. A throw out of the check or the
+\ link removes the object before it passes, so the next build compiles the file instead of failing
+\ the same way.
+: TRY-LINK ( bool -- bool )
+   drop FRESH? dup if LINK-FILE then ;
 
-: LINKED? ( n -- bool )
-   false swap ['] TRY-LINK catch {: linked srcu rc:n :}
+: LINKED? ( -- bool )
+   false ['] TRY-LINK catch {: linked rc:n :}
    rc 0<> if DROP-OBJECT rc throw then
    linked ;
 
@@ -3250,7 +3249,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 : PUSH-FRAME ( -- )
    PIECES SAVE+  REFS SAVE+  REQUESTS SAVE+  NAMED-ROWS SAVE+  SPELLS SAVE+ {: p:n r:n rq:n m:n s:n :}
-   INPUT-SUM KEY-BYTES FRAMES SPAN+
+   INPUT-STAMP INPUT-BYTES FRAMES SPAN+
    FILE-PATH FILE-PATH-N @ FRAMES SPAN+
    p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+  s FRAMES U64+
    FILE-PATH-N @ FRAMES U64+  REQ-N @ FRAMES U64+
@@ -3270,11 +3269,11 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    f fu + FRAME-TAIL - {: t:ptr :}
    t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@  t 32 + LE:U64@ {: p:n r:n rq:n m:n s:n :}
    t 40 + LE:U64@  t 48 + LE:U64@  t 56 + LE:U64@ {: pn:n reqs:n unlinkable:n :}
-   fu FRAME-TAIL -  p r + rq + m + s + KEY-BYTES + pn + - {: start:n :}
+   fu FRAME-TAIL -  p r + rq + m + s + INPUT-BYTES + pn + - {: start:n :}
    start p PIECES RESTORE+  r REFS RESTORE+  rq REQUESTS RESTORE+  m NAMED-ROWS RESTORE+
    s SPELLS RESTORE+ {: at:n :}
-   f at + INPUT-SUM KEY-BYTES BYTE-COPY
-   f at + KEY-BYTES + FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
+   f at + INPUT-STAMP INPUT-BYTES BYTE-COPY
+   f at + INPUT-BYTES + FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
    reqs REQ-N !  unlinkable 0<> UNLINKABLE !
    f start BUF:N>BLEN FRAMES BUF:REPLACE ;
 
@@ -3290,18 +3289,18 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    path pathu root rootu PATH+
    MARKS
    source sourceu INPUT!
-   TOP-SCOPE? if sourceu LINKED? if 1 LINKED-N +! exit then then
+   TOP-SCOPE? if LINKED? if 1 LINKED-N +! exit then then
    LINKING? if E-STALE throw then
    HITS-CLEAR  source sourceu SPELLED  NAMED!   \ a failed check left its replay in HITS
    OBJECT-OPEN  COPY-BELOW
-   false UNLINKABLE !  SCOPE-CK
+   false UNLINKABLE !  STAMPED? 0= if true UNLINKABLE ! then  SCOPE-CK
    false PUSH-KEY
    0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
    true GOING                          \ E-FAILED: a request failed and the source caught it
    SCOPE-CK
    -1 PIECE-END
    1 COMPILED-N +!
-   sourceu WRITE-OBJECT
+   WRITE-OBJECT
    OBJECT-SUM PIECE-PLACE ;
 
 

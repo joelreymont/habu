@@ -1613,7 +1613,11 @@ CELL constant FR-NAMED
 14 cells constant FR-EVAL-END
 \ How many root programs (RUN-ROOT) are being read while this frame is the top.
 15 cells constant FR-ROOT-RUNS
-16 cells constant FR-PATH
+\ The file's stamp (ACTIVE-STAMP): change time seconds, nanoseconds and size.
+16 cells constant FR-CTIME-SEC
+17 cells constant FR-CTIME-NS
+18 cells constant FR-STAMP-SIZE
+19 cells constant FR-PATH
 FR-PATH INCLUDE-PATH-CAP + 1 cells + constant FR-ROOT
 FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant FR-ACTPATH
 \ The action retains the raw request, before normalization limits the resolved
@@ -1691,6 +1695,9 @@ variable LAST-LOAD-EVAL-OK
    NULL-PTR frame FRAME-EXEC-COPY !
    0 frame FR-EVAL-OK + CELL-VIEW !
    0 frame FR-ROOT-RUNS + CELL-VIEW !
+   0 frame FR-CTIME-SEC + CELL-VIEW !
+   0 frame FR-CTIME-NS + CELL-VIEW !
+   -1 frame FR-STAMP-SIZE + CELL-VIEW !
    INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
    CURRENT$ {: root:ptr rootu:n :}
    rootu frame FR-ROOTLEN + CELL-VIEW !
@@ -1742,7 +1749,29 @@ variable LAST-LOAD-EVAL-OK
    INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
    INCLUDE-FALSE ;
 
+\ A stat64 buffer of this file's own: src/lib/fs.f, which owns the per-task
+\ one, loads after it.
+create STAT-BUF FS-ABI:STAT-BYTES allot
+
+: STAT-CELL@ ( n -- n ) STAT-BUF + CELL-VIEW @ ;
+
+: STAT-REGULAR? ( -- bool )
+   STAT-BUF FS-ABI:STAT-MODE-OFF + {: m:ptr :}
+   m c@  m 1 + c@ 256 * or  FS-ABI:S-IFMT and  FS-ABI:S-IFREG = ;
+
+\ The open frame's stamp, from a stat of the path taken before the file is
+\ opened, so a change during the read leaves a stamp no later load matches. A
+\ path that is not a regular file keeps 0 0 -1: its bytes have no stamp.
+: STAMP! ( ptr u8 -- )
+   STAT-BUF stat64 0 < if exit then
+   STAT-REGULAR? 0= if exit then
+   TOP@ {: frame:ptr :}
+   FS-ABI:STAT-CTIME-SEC-OFF STAT-CELL@ frame FR-CTIME-SEC + CELL-VIEW !
+   FS-ABI:STAT-CTIME-NS-OFF STAT-CELL@ frame FR-CTIME-NS + CELL-VIEW !
+   FS-ABI:STAT-SIZE-OFF STAT-CELL@ frame FR-STAMP-SIZE + CELL-VIEW ! ;
+
 : INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )
+   2dup INCLUDE-PATH0 STAMP!
    INCLUDE-OPEN
    0 INCLUDE-U !
    begin INCLUDE-READ-DONE? 0= while repeat
@@ -1779,6 +1808,16 @@ public
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    SOURCE frame FR-SIZE + CELL-VIEW @ ;
+
+\ The active file's change time seconds, nanoseconds and size as STAMP! took
+\ them; 0 0 -1 for bytes READ-OS did not read from a regular file, as
+\ WITH-SUPPLIED's are.
+: ACTIVE-STAMP ( -- n n n )
+   CHECK-ACTIVE
+   TOP@ {: frame:ptr :}
+   frame FR-CTIME-SEC + CELL-VIEW @
+   frame FR-CTIME-NS + CELL-VIEW @
+   frame FR-STAMP-SIZE + CELL-VIEW @ ;
 
 : READ-OS ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop INCLUDE-READ-ALL ;

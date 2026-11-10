@@ -22,12 +22,6 @@ private
 4096 constant DIR-CAP
 256 constant STAT-CAP
 64 constant TEXT-CAP
-4 constant STAT-MODE-OFF
-48 constant STAT-MTIME-SEC-OFF
-56 constant STAT-MTIME-NS-OFF
-64 constant STAT-CTIME-SEC-OFF
-72 constant STAT-CTIME-NS-OFF
-96 constant STAT-SIZE-OFF
 16 constant DIRENT-RECLEN-OFF
 18 constant DIRENT-NAMELEN-OFF
 21 constant DIRENT-NAME-OFF
@@ -47,14 +41,14 @@ private
 1 constant READ-PROBE-CAP
 
 public
-$F000 constant S-IFMT
+FS-ABI:S-IFMT constant S-IFMT
 
 private
 $1000 constant S-IFIFO
 $4000 constant S-IFDIR
 
 public
-$8000 constant S-IFREG
+FS-ABI:S-IFREG constant S-IFREG
 
 private
 $A000 constant S-IFLNK
@@ -353,22 +347,22 @@ public
    >PATHZ 0 access 0= ;
 
 : STAT-MODE@ ( -- n )
-   STAT-BUF STAT-MODE-OFF + LE:U16@ ;
+   STAT-BUF FS-ABI:STAT-MODE-OFF + LE:U16@ ;
 
 : STAT-SIZE@ ( -- n )
-   STAT-BUF STAT-SIZE-OFF + LE:U64@ ;
+   STAT-BUF FS-ABI:STAT-SIZE-OFF + LE:U64@ ;
 
 : STAT-MTIME-SEC@ ( -- n )
-   STAT-BUF STAT-MTIME-SEC-OFF + LE:U64@ ;
+   STAT-BUF FS-ABI:STAT-MTIME-SEC-OFF + LE:U64@ ;
 
 : STAT-MTIME-NS@ ( -- n )
-   STAT-BUF STAT-MTIME-NS-OFF + LE:U64@ ;
+   STAT-BUF FS-ABI:STAT-MTIME-NS-OFF + LE:U64@ ;
 
 : STAT-CTIME-SEC@ ( -- n )
-   STAT-BUF STAT-CTIME-SEC-OFF + LE:U64@ ;
+   STAT-BUF FS-ABI:STAT-CTIME-SEC-OFF + LE:U64@ ;
 
 : STAT-CTIME-NS@ ( -- n )
-   STAT-BUF STAT-CTIME-NS-OFF + LE:U64@ ;
+   STAT-BUF FS-ABI:STAT-CTIME-NS-OFF + LE:U64@ ;
 
 : TRY-STAT ( ptr u8 n -- bool )
    >PATHZ STAT-BUF stat64 0 < if false exit then

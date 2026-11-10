@@ -1536,6 +1536,16 @@ WR-OFF 8 + constant STAT-OFF
 STAT-OFF STAT-BYTES + constant PROBE-OFF
 PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 PATHZ-OFF PATHZ-BYTES + constant TEXT-OFF
+
+\ Fields of the buffer the stat64 and lstat64 primitives fill.
+4 constant STAT-MODE-OFF                \ 16 bits
+48 constant STAT-MTIME-SEC-OFF
+56 constant STAT-MTIME-NS-OFF
+64 constant STAT-CTIME-SEC-OFF
+72 constant STAT-CTIME-NS-OFF
+96 constant STAT-SIZE-OFF
+$F000 constant S-IFMT
+$8000 constant S-IFREG
 ;package
 
 \ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch: the second

@@ -66,7 +66,6 @@ require src/lib/fd.f
 require src/lib/fs-list.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
-require src/core/sha256.f
 require tools/hb-build-core.f
 
 package FILE-OBJECTS-TEST
@@ -78,7 +77,7 @@ package FILE-OBJECTS-TEST
 \ The names, newline-separated.
 : LISTING-BYTES ( n -- n ) NAME-BYTES 1 + * 1 - ;
 : NAME-COUNT ( n -- n ) 1 + NAME-BYTES 1 + / ;
-40 constant INPUT-BYTES                  \ an object's INPUT's first 40 bytes: a size, then a SHA-256
+24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp
 8192 constant CAP                        \ a listing's or an object's bytes
 16384 constant STATE-CAP                 \ a build's output before its last line
 65536 constant PROG-CAP
@@ -97,8 +96,6 @@ CAP BUFFER: NAMES-C      variable NAMES-C-U
 CAP BUFFER: NAMES-D      variable NAMES-D-U
 CAP BUFFER: BYTES-A
 CAP BUFFER: BYTES-B
-CAP BUFFER: SOURCE-BYTES
-SHA256-CTX-BYTES BUFFER: CTX
 INPUT-BYTES BUFFER: EXPECT
 STATE-CAP BUFFER: STATE-A  variable STATE-A-U
 STATE-CAP BUFFER: STATE-B  variable STATE-B-U
@@ -267,11 +264,10 @@ variable INPUT-N                         \ those holding count.f's INPUT
    b bu bn bnu IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
    PROG-1 u1 PROG-2 u2 STR= ;
 
-\ EXPECT: the first 40 bytes of the file's INPUT: its size, low byte first, and SHA-256.
-: EXPECT! ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu SOURCE-BYTES CAP FS:READ-ALL {: u:n :}
-   8 0 ?do u i 8 * rshift $FF and EXPECT i + c! loop
-   CTX SOURCE-BYTES u EXPECT 8 + SHA256-IN ;
+\ EXPECT: the file's INPUT, its change time seconds, nanoseconds and size, each low byte first.
+: EXPECT! ( ptr u8 n -- )
+   FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   cs EXPECT LE:U64!  cns EXPECT 8 + LE:U64!  size EXPECT 16 + LE:U64! ;
 
 \ C's object at the index, when A also wrote its name, has A's bytes; counted in
 \ SHARED-N, and in INPUT-N when it holds EXPECT.
@@ -295,7 +291,7 @@ variable INPUT-N                         \ those holding count.f's INPUT
    0 SHARED-N !  0 INPUT-N !
    n 0 ?do i SHARED-OBJECT loop
    s" A wrote two of C's objects" LABEL  SHARED-N @ 2 T=
-   s" one of them holds count.f's size and SHA-256" LABEL  INPUT-N @ 1 T= ;
+   s" one of them holds count.f's stamp" LABEL  INPUT-N @ 1 T= ;
 
 \ A file compiles when it, a file its object references or an earlier file that defines a public
 \ name it spells, or a private name of a package it opens, is edited, when an earlier file lays a string its object lays, when it is loaded
@@ -454,7 +450,7 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" A2" WHICH!  COLD-ASIDE  s\" compiled 0\n" WARM ;
 
 \ A3's edit: the first e of the string green in A's object that holds it
-\ becomes f, past the INPUT, which the object's source still matches.
+\ becomes f, past the INPUT, which the source's stamp still matches.
 : FLIP ( -- )
    s" green" HOLDING {: k:n :}
    s" one of A's objects holds green" LABEL  k 0 >= TTRUE
@@ -470,7 +466,7 @@ variable INPUT-N                         \ those holding count.f's INPUT
 : COUNT-OBJ ( -- n )
    s" test/fixtures/file-objects/count.f" EXPECT!
    EXPECT INPUT-BYTES HOLDING {: k:n :}
-   s" one of A's objects holds count.f's size and SHA-256" LABEL  k 0 >= TTRUE
+   s" one of A's objects holds count.f's stamp" LABEL  k 0 >= TTRUE
    k ;
 
 \ A4's edit: count.f's object cut to half its length.
