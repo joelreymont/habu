@@ -1,5 +1,6 @@
-\ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes;
-\ a temp file cut back and appended to, and a directory synced.
+\ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes,
+\ a write with SIGPIPE held off; a temp file cut back and appended to, and a
+\ directory synced.
 \ Run: bin/hb --load src/lib/fd-test.f
 \ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
 \ loops; a blocking write answers short only when a caught signal lands after
@@ -42,6 +43,7 @@ variable CHILD-FD                 \ the pipe end a forked child works on
 variable CHILD-CODE               \ the exit code a child's part chose
 variable ERR-FD                   \ the descriptor a word run under catch uses
 variable UNTIL-AT                 \ deadline used by caught bounded-write cases
+variable FLAG-IN                  \ the SIGPIPE flag WITH-NOSIGPIPE's quotation read
 1 TYPED-BUFFER NO-ENV ptr u8      \ a NULL slot: the exec'd child's empty environment
 
 : OUTCOME ( FD:fill -- n )        \ FULL-MARK, or the bytes before end of file
@@ -368,6 +370,47 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    [: RESIZE-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    w FD>N close ;
 
+
+\ fd's SIGPIPE flag: macOS keeps one per open file description, Linux none.
+: NOSIGPIPE@ ( fd -- n )  FD>N F-GETNOSIGPIPE 0 fcntl ;
+
+
+: HELD-FLAG ( -- )
+   HB-TARGET-MACOS? if ERR-FD @ >FD NOSIGPIPE@ FLAG-IN ! then ;
+
+
+: HELD-RETURN ( -- )
+   ERR-FD @ >FD [: HELD-FLAG ;] WITH-NOSIGPIPE ;
+
+
+: HELD-NO-READER ( -- )
+   ERR-FD @ >FD [: HELD-FLAG WRITE-NO-READER ;] WITH-NOSIGPIPE ;
+
+
+\ On macOS the flag was set inside the quotation and is clear again after it.
+: HELD= ( fd -- )
+   {: f:fd :}
+   HB-TARGET-MACOS? 0= if exit then
+   FLAG-IN @ 1 T=
+   f NOSIGPIPE@ 0 T= ;
+
+
+\ A write to a pipe with no reader inside WITH-NOSIGPIPE is E-FS-IO, not the
+\ process's death, and the flag goes back on a return and on a throw.
+: HELD-WRITE ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   r FD>N close
+   w FD>N ERR-FD !
+   HB-TARGET-MACOS? if w NOSIGPIPE@ 0 T= then
+   -1 FLAG-IN !
+   HELD-RETURN
+   w HELD=
+   -1 FLAG-IN !
+   [: HELD-NO-READER ;] E-FS-IO TTHROWSQ
+   w HELD=
+   w FD>N close ;
+
+
 \ XNU stores the flags before a kqueue refuses FIONBIO, so the refused mark
 \ must put them back.
 : REFUSED-MARK ( -- )
@@ -397,6 +440,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    CUT-THEN-APPEND
    DIR-SYNC
    ERRORS
+   HELD-WRITE
    REFUSED-MARK
    SRC @ FREE-SPAN
    DST @ FREE-SPAN

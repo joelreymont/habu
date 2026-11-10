@@ -3,8 +3,9 @@
 \ as a failed call), and syncing and resizing a file. A refused PIPE, mark,
 \ read, write, sync or resize, a write that takes no byte and a count past the
 \ asked one are E-FS-IO; a negative length is E-SPAN-LENGTH. A refused
-\ PIPE-PAIR, FD-CLOEXEC! or FD-NOSIGPIPE! is E-PROC-OUTPUT, and O-NONBLOCK and
-\ F-DUPFD-CLOEXEC throw E-PROC-HOST on a host that is neither Linux nor macOS.
+\ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE fcntl is
+\ E-PROC-OUTPUT, and O-NONBLOCK and F-DUPFD-CLOEXEC throw E-PROC-HOST on a host
+\ that is neither Linux nor macOS.
 \ Signals and descriptors stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
@@ -43,6 +44,7 @@ ENUM fill
 3 constant F-GETFL
 4 constant F-SETFL
 73 constant F-SETNOSIGPIPE
+74 constant F-GETNOSIGPIPE
 1 constant FD-CLOEXEC
 
 \ O_NONBLOCK is not one number: $800 (0o4000) on Linux, 4 on macOS. F_SETFL
@@ -65,6 +67,20 @@ ENUM fill
 
 : FD-NOSIGPIPE! ( fd -- ) {: fd :}
    fd FD>N F-SETNOSIGPIPE 1 fcntl 0 <> if E-PROC-OUTPUT throw then ;
+
+
+\ Holds SIGPIPE off on fd for the quotation, then puts fd's flag back, throw or
+\ not. On Linux F-SETNOSIGPIPE ignores SIGPIPE process-wide: no flag goes back.
+: WITH-NOSIGPIPE ( fd [ -- ] -- )
+   {: f:fd body :}
+   HB-TARGET-LINUX-KERNEL? if f FD-NOSIGPIPE! body execute exit then
+   f FD>N F-GETNOSIGPIPE 0 fcntl {: old:n :}
+   old 0 < if E-PROC-OUTPUT throw then
+   f FD-NOSIGPIPE!
+   body catch {: code:n :}
+   f FD>N F-SETNOSIGPIPE old fcntl 0 <> if E-PROC-OUTPUT throw then
+   code 0<> if code throw then ;
+
 
 : PIPE-PAIR ( -- fd fd )
    pipe {: r w rc :}
@@ -196,7 +212,7 @@ public
 \ moved. Every handler that returns (the profiler's, src/lib/signal.f's) sets
 \ SA_RESTART, so a blocked write that moved nothing resumes. A write to a pipe
 \ with no reader raises SIGPIPE, which ends the process unless the caller armed
-\ FD-NOSIGPIPE!; then it is E-FS-IO.
+\ FD-NOSIGPIPE! or writes inside WITH-NOSIGPIPE; then it is E-FS-IO.
 : WRITE-FULL ( fd ptr u8 n -- )
    {: f:fd src:ptr u:n :}
    u 0 < if E-SPAN-LENGTH throw then

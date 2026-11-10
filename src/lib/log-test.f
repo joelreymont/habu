@@ -69,6 +69,7 @@ variable READY
 HOLDS-CAP TYPED-BUFFER HOLD-ATS n    \ each reserved span's address
 HOLDS-CAP TYPED-BUFFER HOLD-US n     \ and its bytes
 variable HOLDS
+variable AFTER-LOG                  \ set by the statement after a log call
 
 TASK:MIN-STACK TASK:TASK WRITER-A
 TASK:MIN-STACK TASK:TASK WRITER-B
@@ -563,6 +564,27 @@ TASK:MIN-STACK TASK:TASK OPENER
    CODE-A @ 0 T= ;
 
 
+: BROKEN-LINE ( -- )
+   KEPT-LINE
+   1 AFTER-LOG ! ;
+
+
+\ A write to a pipe whose reader has gone raises SIGPIPE, which ends the process
+\ with status 141 unless LOG holds it off.
+: BROKEN-CASE ( -- )
+   s" a line to a pipe with no reader is lost without a throw" T-LABEL
+   pipe {: r:n w:n rc:n :}
+   rc 0 T=
+   r close-rc 0 T=
+   w ERR-TO
+   0 AFTER-LOG !
+   [: BROKEN-LINE ;] catch CODE-A !
+   ERR-BACK
+   w close-rc 0 T=
+   AFTER-LOG @ 1 T=
+   CODE-A @ 0 T= ;
+
+
 : CODE-LINES ( -- )
    LOG:ERROR s" t" LOG:LINE E-LOG-CODE LOG:CODE+ LOG:;LINE
    LOG:ERROR s" t" LOG:LINE UNDECLARED LOG:CODE+ LOG:;LINE ;
@@ -599,6 +621,7 @@ TASK:MIN-STACK TASK:TASK OPENER
    RELEASE-CASE
    PIPE-CASE
    REFUSED-CASE
+   BROKEN-CASE
    CODE-CASE
    BIG-B BUF:DISPOSE
    FILE-B BUF:DISPOSE ;

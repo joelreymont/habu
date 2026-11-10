@@ -157,18 +157,21 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    at swap u RUN+ ;
 
 
-: ROW-OUT ( -- )  FD:STDERR ROW BUF:SPAN$ BUF:BLEN>N FD:WRITE-FULL ;
+: ROW-OUT ( -- )
+   FD:STDERR [: FD:STDERR ROW BUF:SPAN$ BUF:BLEN>N FD:WRITE-FULL ;]
+   FD:WITH-NOSIGPIPE ;
 
 
 : NOTICE-OUT ( -- )
    epoch-seconds NOTICE DATE:TIME-LEN DATE:FORMAT-EPOCH-UTC 2drop
-   FD:STDERR NOTICE NOTICE-U FD:WRITE-FULL ;
+   FD:STDERR [: FD:STDERR NOTICE NOTICE-U FD:WRITE-FULL ;] FD:WITH-NOSIGPIPE ;
 
 
-\ A line fd 2 refuses is lost: there is no other channel to report it on.
+\ A line is lost when fd 2 or its SIGPIPE hold refuses it. The flag is held only
+\ for the write: other processes share fd 2's file description and its flag.
 : OUT ( [ -- ] -- )
    catch {: code:n :}
-   code 0= code E-FS-IO = or if exit then
+   code 0= code E-FS-IO = or code E-PROC-OUTPUT = or if exit then
    code throw ;
 
 
