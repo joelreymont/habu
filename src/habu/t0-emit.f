@@ -1,7 +1,8 @@
 \ t0-emit.f - the emitter seam of the tier 0 compiler, package COMP.
 \
 \ src/habu/t0.f drives the EMIT- operations below; an emitter part per target
-\ implements them (ARM64 in src/habu/t0-arm64.f, X86-64 in src/habu/t0-x64.f).
+\ implements them (ARM64 in src/habu/t0-arm64.f, X86-64 in src/habu/t0-x64.f,
+\ WASM in src/habu/t0-wasm.f).
 \ The front end names values by vreg (0 .. EMIT-VREGS - 1), never by machine
 \ register, so the types, constants and rules here hold on every target.
 
@@ -20,6 +21,7 @@ package COMP
 -9591 constant E-T0-UNIT     \ EMIT-QUOT-OPEN of a unit other than the next one
 -9592 constant E-T0-UNFILLED \ an operation the selected emitter does not provide
 -9593 constant E-T0-SLOT     \ code after the does> patch slot
+-9594 constant E-T0-OPERAND  \ a vreg, operation, shift or condition outside its type
 
 DEFTYPE VREG       \ a virtual register, 0 .. EMIT-VREGS - 1
 DEFTYPE ALU        \ a two-operand operation EMIT-OP applies
