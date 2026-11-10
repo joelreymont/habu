@@ -14,8 +14,8 @@ require src/compiler/native/shadow.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link.f
 require src/arch/arm64/link-kernel.f
-require src/arch/wasm/leb.f
 require src/arch/wasm/link-kernel.f
+require src/arch/wasm/link-site.f
 
 package LINKER
 private
@@ -224,27 +224,37 @@ variable UNSAFE-COUNT
    NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
 
 
-\ Emission e's address site k's value and whether it holds one: a Wasm padded
-\ LEB after i64.const, an arm64 chain as ARM64:PLACE reads it.
+\ The address value machine a's emission bytes b, s of them, hold at site for a row of
+\ kind, and whether they hold one there, read by a's part of LINKER.
+: ADDRESS@ ( CTARGET:arch ptr u8 n n n -- n bool )
+   {: a:CTARGET:arch b:ptr s:n site:n kind:n :}
+   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:ADDRESS@ exit then
+   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site kind WASM:ADDRESS@ exit then
+   s" link: an emission of a machine the linker has no part for" 74 die ;
+
+
+\ v written as ADDRESS@ reads it, by a's part of LINKER; false, with nothing written,
+\ where ADDRESS@ answers false.
+: ADDRESS! ( n CTARGET:arch ptr u8 n n n -- bool )
+   {: v:n a:CTARGET:arch b:ptr s:n site:n kind:n :}
+   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if v b s site kind ARM64:ADDRESS! exit then
+   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if v b s site kind WASM:ADDRESS! exit then
+   s" link: an emission of a machine the linker has no part for" 74 die ;
+
+
+\ Emission e's address site k's value and whether it holds one, read as the emission's
+\ machine encodes it.
 : SITE-VALUE ( n n -- n bool )
    {: e:n k:n :}
-   e NSHADOW:BYTES {: b:ptr :}
-   e k NSHADOW:ADDR-SITE@ {: at:n :}
-   WASM? if b e NSHADOW:SIZE at 1+ WLEB:S64-PAD@ true exit then
-   b at + {: p:ptr :}
-   e k NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-CODE = if
-      p ADDRESS-CARRIER:ADDR-CHAIN-BYTES ADDRESS-CARRIER:CHAIN-VALUE true exit
-   then
-   p  b e NSHADOW:SIZE +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
-   size 0= if 0 false exit then
-   p size ADDRESS-CARRIER:CHAIN-VALUE true ;
+   e NSHADOW:ARCH@  e NSHADOW:BYTES  e NSHADOW:SIZE  e k NSHADOW:ADDR-SITE@
+   e k NSHADOW:ADDR-SITE-KIND@  ADDRESS@ ;
 
 
-\ Emission e's function at offset v, or -1: a Wasm site naming its own emission
-\ holds that offset, an arm64 site a host address.
+\ Emission e's function at offset v, or -1: a site of a Wasm emission naming that
+\ emission holds the offset, an arm64 site a host address.
 : OWN-FUNCTION ( n n -- n )
    {: e:n v:n :}
-   WASM? 0= if -1 exit then
+   e NSHADOW:ARCH@ CTARGET-ARCH:WASM CTARGET-ARCH:EQ 0= if -1 exit then
    e NSHADOW:FUNCTIONS 0 ?do
       e i NSHADOW:FUNCTION-OFFSET@ v = if i unloop exit then
    loop

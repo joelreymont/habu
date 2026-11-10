@@ -1459,17 +1459,13 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : VALUE. ( n bool -- ) if CODE-VALUE. else DATA-VALUE. then ;
 
 
-\ The highest value at most at among emission e's data address chains, -1 for none.
+\ The highest value at most at among emission e's data address values, -1 for none.
 : EM-BELOW ( n n -- n )
    {: e:n at:n :}
-   e NSHADOW:BYTES {: src:ptr :}
-   e NSHADOW:SIZE {: s:n :}
    -1  e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
-         e i NSHADOW:ADDR-SITE@ {: c:n :}
-         src c +  src s +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
-         size 0<> if
-            src c +  size ADDRESS-CARRIER:CHAIN-VALUE {: w:n :}
+         e i SITE-VALUE {: w:n held:bool :}
+         held if
             w at <= if w max then
          then
       then
@@ -1794,7 +1790,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    false ;
 
 
-\ One emission of CODE+; chain values are read from the shadow's bytes:
+\ One emission of CODE+; address values are read from the shadow's bytes:
 \ PIECES' copy has them cleared.
 : EMISSION-CODE+ ( n -- )
    {: e:n :}
@@ -1824,14 +1820,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       e i NSHADOW:ADDR-SITE@ {: at:n :}
       e i NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
       kind NEMIT:ADDR-CODE <>  kind NEMIT:ADDR-DATA <>  and if E-COMP-STATE throw then
-      kind NEMIT:ADDR-CODE = if
-         ADDRESS-CARRIER:ADDR-CHAIN-BYTES
-      else
-         src at +  src s +  ADDRESS-CARRIER:CHAIN-SIZE
-      then {: size:n :}
-      size 0= if E-COMP-STATE throw then
-      src at +  size ADDRESS-CARRIER:CHAIN-VALUE {: v:n :}
-      PIECES BYTES$ drop off + at +  0 size ADDRESS-CARRIER:SET-CHAIN-VALUE
+      e i SITE-VALUE {: v:n held:bool :}
+      held 0= if E-COMP-STATE throw then
+      0  e NSHADOW:ARCH@  PIECES BYTES$ drop off +  s  at  kind  ADDRESS!
+      0= if E-COMP-STATE throw then
       at PIECES U64+
       kind NEMIT:ADDR-CODE = {: code:bool :}
       code if
@@ -1872,8 +1864,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \   E                      emissions this file's compile filed, from the file's first
 \   per emission, in number order:
 \     S, R                 size in bytes; return bytes (R <= S)
-\     S raw bytes          unpadded, as the compile sealed them, except that every 16-bit
-\                          immediate of each address chain is written as 0
+\     S raw bytes          unpadded, as the compile sealed them, except that each address
+\                          value is written as 0 in its machine's encoding
 \     F, then F offsets    function starts
 \     C, then C call rows  site, kind (0 call, 1 tail), reference; sites strictly ascending, and
 \                          no does> slot row
@@ -3448,27 +3440,25 @@ variable RD-END
    RD-REF top  top EM-RECS @  CODE-REF-CK ;
 
 
-\ ADDRESS-CARRIER:CHAIN-SIZE (0, 12 or 16) of the chain at an address row's site in the object's
-\ copy of emission e's bytes, s of them.
-: OWN-CHAIN ( n n n -- n )
-   {: site:n s:n e:n :}
-   OBJECT BYTES$ drop  e EM-OFFS @ 16 + + {: src:ptr :}
-   src site +  src s +  ADDRESS-CARRIER:CHAIN-SIZE ;
+\ The machine this object's emission e holds: every emission of an object is the target's.
+: EM-ARCH ( n -- CTARGET:arch )
+   drop NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
 
 
-\ An address row of an emission of s bytes, numbered top, its site above the row before it: a code chain is
-\ ADDR-CHAIN-BYTES long, as the link requires, and a data chain is whole. A record target precedes top's own, as a call's.
+\ An address row of an emission of s bytes, numbered top, its site above the row before it: its
+\ site holds an address value of the row's kind in the emission's machine's encoding. A record
+\ target precedes top's own, as a call's.
 : ADDR-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: site:n :}
-   site 0<  site 3 and 0<>  or  site s >=  or if BAD then
    site LAST-ADDR @ <= if BAD then
    site LAST-ADDR !
    RD-U64 {: kind:n :}
+   kind 0<>  kind 1 <>  and if BAD then
    GOOD? if
-      site s top OWN-CHAIN {: size:n :}
-      kind 0=  size ADDRESS-CARRIER:ADDR-CHAIN-BYTES <>  and if BAD then
-      kind 1 =  size 0=  and if BAD then
+      top EM-ARCH  OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  s  site
+      kind 0= if NEMIT:ADDR-CODE else NEMIT:ADDR-DATA then  ADDRESS@ nip
+      0= if BAD then
    then
    kind 0= if RD-REF top  top EM-RECS @  CODE-REF-CK exit then
    kind 1 = if RD-REF DATA-REF-CK exit then
@@ -4327,7 +4317,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
 
 
 \ This object's emission e (CODE+) sealed in NEMIT over CODE-COPY: the object's bytes, as the
-\ compile sealed them, with each address chain's value written in. The answer is the entry of
+\ compile sealed them, with each address value written in. The answer is the entry of
 \ the clause that patched the slot, 0 for none.
 : NEMIT-FILL ( n -- n )
    {: e:n :}
@@ -4337,7 +4327,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    OBJECT BYTES$ drop RD-AT @ +  CODE-COPY s BUF:N>BLEN BUF:GROW SPAN:$ drop  s BYTE-COPY
    s RD-SKIP
    CODE-COPY BYTES$ drop {: copy:ptr :}
-   copy s r  NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@  NEMIT:OPEN
+   copy s r  e EM-ARCH  NEMIT:OPEN
    RD-U64 0 ?do RD-U64 NEMIT:FUNCTION+ loop
    0 HOST-CALLS-N !  0 HOST-ADDRS-N !
    RD-U64 0 ?do
@@ -4351,13 +4341,8 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    RD-U64 0 ?do
       RD-U64 RD-U64 {: site:n k:n :}
       RD-REF RESOLVE {: v:n :}
-      k 0= if
-         ADDRESS-CARRIER:ADDR-CHAIN-BYTES
-      else
-         copy site +  copy s +  ADDRESS-CARRIER:CHAIN-SIZE
-      then {: size:n :}
-      copy site +  v size ADDRESS-CARRIER:SET-CHAIN-VALUE
       k 0= if NEMIT:ADDR-CODE else NEMIT:ADDR-DATA then {: nk:n :}
+      v  e EM-ARCH  copy  s  site  nk  ADDRESS!  0= if E-COMP-STATE throw then
       site nk -1 NEMIT:ADDR-SITE+
       k 0<> if site HOST-ADDR+ then
    loop

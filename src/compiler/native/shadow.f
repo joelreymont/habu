@@ -516,6 +516,11 @@ public
 : SIZE ( n -- n )
    EM-CK EM-SIZE @ ;
 
+\ The machine it was compiled for: the binding's, which TARGET-CK holds every
+\ emission to.
+: ARCH@ ( n -- CTARGET:arch )
+   EM-CK drop SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ ;
+
 \ Its first byte, until the next TAKE moves the storage.
 : BYTES ( n -- ptr u8 )
    EM-CK EM-AT @ CODE-BUF ;
