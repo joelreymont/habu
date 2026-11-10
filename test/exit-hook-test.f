@@ -1,11 +1,12 @@
 \ The process exit actions (src/lib/at-exit.f) and the cleanup registry run at
 \ process exit: one child per exit path (normal, `die`, uncaught throw, an
-\ action that dies or throws, a build whose source exits), judged by what it
-\ left on disk, and a built program, judged by what it printed and removed. A
-\ child registers inside this fixture's temp root, given as argument 0 or
-\ written into a built program's source, so a failing case leaves its evidence
-\ where the fixture removes it; it resolves `require src/lib/fs-mutate.f`
-\ against the checkout (cwd).
+\ action that dies or throws, a build whose source exits, a failed build whose
+\ source added an action), judged by what it left on disk or its exit code, and
+\ a built program, judged by what it printed and removed. A child registers
+\ inside this fixture's temp root, given as argument 0 or written into a built
+\ program's source, so a failing case leaves its evidence where the fixture
+\ removes it; it resolves `require src/lib/fs-mutate.f` against the checkout
+\ (cwd).
 require src/lib/test.f
 require src/lib/error.f
 require src/lib/string.f
@@ -292,6 +293,20 @@ variable RUN-FILE-U
    pu s" build-time exit action ran" OUT-HAS? TFALSE
    RUN-FILE$ FS:EXISTS? TFALSE ;
 
+\ hb-build dies after a failed build has unmapped its source's own AT-EXIT; it
+\ starts a build because only a build closes the source's space before the exit.
+: CASE-BUILD-ACTION ( -- )
+   s" build-action.f" s" build-action-out" CASE-PATHS
+   0 TEXT-U !
+   S\" require src/lib/at-exit.f\n" TEXT+
+   S\" : ACT ( -- ) ;  ' ACT AT-EXIT:ADD\n" TEXT+
+   S\" NOSUCHWORD\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a failed build whose source added an exit action fails 74" T-LABEL
+   outu erru rc 74 EXPECT-RC
+   erru SCRIPT$ ERR-HAS? TTRUE
+   erru s" habu-crash" ERR-HAS? TFALSE ;
+
 : BODY ( -- )
    PREPARE
    CASE-NORMAL
@@ -302,7 +317,8 @@ variable RUN-FILE-U
    CASE-HOOK-THROW
    CASE-STAGED
    CASE-BUILD
-   CASE-BUILT ;
+   CASE-BUILT
+   CASE-BUILD-ACTION ;
 
 : RUN ( -- )
    T-RESET

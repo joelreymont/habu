@@ -88,6 +88,7 @@ variable SAVED-CURRENT
 variable SAVED-SIG-POOL
 variable SAVED-SIG-LEN
 variable SAVED-FLAGS                 \ hb's newest record's flags (NEWEST-FLAGS)
+variable SAVED-EXIT-HOOK             \ hb's process-exit vector (ARM-EXIT)
 
 $40 constant NORESERVE               \ macOS MAP_NORESERVE
 
@@ -3444,7 +3445,12 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ definition sets it.
 : NEWEST-FLAGS ( -- ptr n ) FIRST-REC @ 1- REC-FLAGS ;
 
+\ A space's own AT-EXIT leaves a runner the close forgets in the exit vector; a
+\ no-op ADD arms hb's runner, which runs all of hb's actions, for RESTORE.
+: ARM-EXIT ( -- ) [: ;] AT-EXIT:ADD ;
+
 : SAVE ( -- )
+   ARM-EXIT  EXIT-HOOK-CELL HOST@ SAVED-EXIT-HOOK !
    NEWEST-FLAGS @ SAVED-FLAGS !
    DP-CELL HOST@ SAVED-DP !
    BOOT:DP-FLOOR-CELL HOST@ SAVED-FLOOR !
@@ -3947,6 +3953,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    SAVED-LASTC @ LASTC-CELL HOST!
    SAVED-SIG-POOL @ AOT-CELLS:SIG-POOL-CELL HOST!
    SAVED-SIG-LEN @ AOT-CELLS:SIG-LEN-CELL HOST!
+   SAVED-EXIT-HOOK @ EXIT-HOOK-CELL HOST!
    SAVED-FLAGS @ NEWEST-FLAGS ! ;
 
 \ Records still below the count would name bodies in the unmapped space; their
