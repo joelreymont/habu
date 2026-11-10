@@ -48,14 +48,28 @@ variable MOD-U
    DIR DIR-U @ name nu SRC FS:JOIN-PATH SRC-U !
    SRC SRC-U @ text tu FS:WRITE-ALL ;
 
-\ The source's module at the name, by `hb-build --target wasm`; answers its exit status.
-: BUILD ( ptr u8 n -- n )
+\ MOD at the name in DIR, and the arguments that run hb-build.
+: START ( ptr u8 n -- )
    {: name:ptr nu:n :}
    DIR DIR-U @ name nu MOD FS:JOIN-PATH MOD-U !
    PROC-ARGV-RESET
-   s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+
-   s" --target" ARG+  s" wasm" ARG+  SRC SRC-U @ ARG+  s" -o" ARG+  MOD MOD-U @ ARG+
-   DRIVER ;
+   s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+ ;
+
+: WASM+ ( -- )  s" --target" ARG+  s" wasm" ARG+ ;
+: SRC+ ( -- )  SRC SRC-U @ ARG+ ;
+: MOD+ ( -- )  s" -o" ARG+  MOD MOD-U @ ARG+ ;
+
+\ The source's module at the name, by `hb-build --target wasm`; answers its exit status.
+: BUILD ( ptr u8 n -- n )
+   START  WASM+  SRC+  MOD+  DRIVER ;
+
+\ `hb-build --engine --target wasm`, and `--repl --target wasm` of the source,
+\ each writing to the name and answering its exit status.
+: BUILD-ENGINE ( ptr u8 n -- n )
+   START  s" --engine" ARG+  WASM+  MOD+  DRIVER ;
+
+: BUILD-REPL ( ptr u8 n -- n )
+   START  s" --repl" ARG+  WASM+  SRC+  MOD+  DRIVER ;
 
 : RAN ( -- n )
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
@@ -222,12 +236,42 @@ variable TEXT-U
    WASM-HARNESS:OUT$ S\" 0\n0\n" T$= ;
 
 
-: REFUSAL-CASE ( -- )
-   s" : MAIN ( -- ) depth drop ;" s" depth.f" SOURCE!
-   s" a kernel word with no routine is refused by name with 74 and no module" T-LABEL
-   s" depth.wasm" BUILD 74 T=
-   ERR ERR-U @ s" link: a Wasm module has no depth" CONTAINS? TTRUE
-   MOD MOD-U @ FS:EXISTS? TFALSE ;
+: ERR-HAS ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   ERR ERR-U @ a u CONTAINS? TTRUE ;
+
+: NO-MODULE ( -- )  MOD MOD-U @ FS:EXISTS? TFALSE ;
+
+: REFUSAL-CASES ( -- )
+   s" : MAIN ( -- ) depth drop .s ;" s" kernel.f" SOURCE!
+   s" kernel words with no routine are each refused by name with 74 and no module" T-LABEL
+   s" kernel.wasm" BUILD 74 T=
+   s" link: a Wasm module has no depth" ERR-HAS
+   s" link: a Wasm module has no .s" ERR-HAS
+   s" link: the program reaches kernel words a Wasm module does not provide" ERR-HAS
+   NO-MODULE
+   s" defer HOOK ( n -- n )  : TWICE ( n -- n ) 2 * ;  : MAIN ( -- ) [: TWICE ;] is HOOK  3 HOOK drop ;"
+   s" defer.f" SOURCE!
+   s" a defer is refused by name with 74 and no module" T-LABEL
+   s" defer.wasm" BUILD 74 T=
+   s" link: the defer HOOK needs a trailer, which a Wasm module cannot hold" ERR-HAS
+   s" link: a Wasm module cannot hold a defer" ERR-HAS
+   NO-MODULE
+   s" require src/lib/span.f 8 SPAN-BUFFER: B : MAIN ( -- ) B SPAN:LEN . ;" s" does.f" SOURCE!
+   s" a does> clause is refused by name with 74 and no module" T-LABEL
+   s" does.wasm" BUILD 74 T=
+   s" link: B has a does> clause, which a Wasm module cannot hold" ERR-HAS
+   s" link: a Wasm module cannot hold a does> clause" ERR-HAS
+   NO-MODULE
+   s" an engine build for Wasm is refused with 64 and no module" T-LABEL
+   s" engine.wasm" BUILD-ENGINE 64 T=
+   s" hb-build: a Wasm target builds a program, not an engine or a REPL" ERR-HAS
+   NO-MODULE
+   s" : MAIN ( -- ) ;" s" repl.f" SOURCE!
+   s" a REPL build for Wasm is refused with 64 and no module" T-LABEL
+   s" repl.wasm" BUILD-REPL 64 T=
+   s" hb-build: a Wasm target builds a program, not an engine or a REPL" ERR-HAS
+   NO-MODULE ;
 
 
 \ The program execute.f: execute of a named word's xt, of a quotation and of a
@@ -329,7 +373,7 @@ public
    ARITH-CASES
    FLOAT-CASE
    MAP-CASES
-   REFUSAL-CASE
+   REFUSAL-CASES
    EXECUTE-CASE
    THROW-CASES
    DIE-CASE

@@ -195,6 +195,9 @@ variable HBB-ELAPSED-NS
    HBB-RESET-OPTIONS
    0 HBB-I !
    HBB-PARSE-OPTIONS
+   HBB-WASM? HBB-ENGINE @ 0<> HBB-REPL @ 0<> or and if
+      s" hb-build: a Wasm target builds a program, not an engine or a REPL" HBB-USAGE-RC die
+   then
    HBB-ENGINE @ if
       HBB-REPL @ 0<> HBB-JSON @ 0<> or if HBB-USAGE then
       SCRIPT-ARGC HBB-I @ - 2 <> if HBB-USAGE then
