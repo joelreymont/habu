@@ -550,12 +550,12 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    k CELL-KIND @ k CELL-TGT @ FINAL  k CELL-AT @  {: v:n off:n :}
    CELL-BYTES 0 do  v i 8 * rshift $FF and  off i + IMAGE c!  loop ;
 
-\ Memory starts zeroed, so the data section writes only the image's runs. A run
-\ starts at a non-zero byte and ends at the last non-zero byte before GAP-MIN or
-\ more zero bytes or before the image's end: a gap that long outweighs a
-\ segment's header, at most 13 bytes (flag, i32.const, 5-byte address, end,
-\ 5-byte length).
+\ Memory starts zeroed: the data section holds the image's non-zero runs, split
+\ where GAP zero bytes lie, GAP-MIN (more than a segment header's 13) doubled
+\ until at most RUNS-MAX runs remain.
 16 constant GAP-MIN
+100000 constant RUNS-MAX             \ the most data segments a JS host must load (the JS API's limit)
+variable GAP                         \ the zero bytes that end a run
 variable RUN-FIRST                   \ the open run's first offset, -1 while none is open
 variable RUN-LAST                    \ its last non-zero byte's offset
 
@@ -566,18 +566,23 @@ variable RUN-LAST                    \ its last non-zero byte's offset
    1 NRUNS +!
    -1 RUN-FIRST ! ;
 
-\ Byte at, which is non-zero, ends the open run when GAP-MIN zero bytes lie
-\ before it, then opens a run or extends the open one.
+\ Byte at, which is non-zero, ends the open run when GAP zero bytes lie before
+\ it, then opens a run or extends the open one.
 : RUN-BYTE ( n -- )
    {: at:n :}
-   RUN-FIRST @ 0 >=  at RUN-LAST @ - 1- GAP-MIN >= and if RUN-CLOSE then
+   RUN-FIRST @ 0 >=  at RUN-LAST @ - 1- GAP @ >= and if RUN-CLOSE then
    RUN-FIRST @ 0 < if at RUN-FIRST ! then
    at RUN-LAST ! ;
 
-: FIND-RUNS ( -- )
+: SCAN-RUNS ( -- )
    0 NRUNS !  -1 RUN-FIRST !
    IMAGE-U @ 0 ?do  i IMAGE c@ 0<> if i RUN-BYTE then  loop
    RUN-FIRST @ 0 >= if RUN-CLOSE then ;
+
+\ The doubling ends: a gap as long as the image leaves one run.
+: FIND-RUNS ( -- )
+   GAP-MIN GAP !  SCAN-RUNS
+   begin  NRUNS @ RUNS-MAX >  while  GAP @ 2 * GAP !  SCAN-RUNS  repeat ;
 
 \ ---- patching the module ---------------------------------------------------------
 \ A call site is a padded five-byte field in its caller's body and gets its

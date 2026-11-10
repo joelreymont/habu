@@ -363,6 +363,15 @@ variable TEXT-U
    s" grow.wasm" BUILD 0 T=
    RAN 0 T= ;
 
+
+: SEGMENTS-CASE ( -- )
+   s" create T  : LAY ( -- ) 100001 0 do 1 , 0 , 0 , loop ; LAY  : MAIN ( -- ) T @ . ;"
+   s" segments.f" SOURCE!
+   s" data of 100001 separated cells builds into a module of at most 100000 segments, which bun loads" T-LABEL
+   s" segments.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ S\" 1\n" T$= ;
+
 public
 
 : RUN ( -- )
@@ -379,6 +388,7 @@ public
    DIE-CASE
    CATCH-CASE
    GROWTH-CASE
+   SEGMENTS-CASE
    T-REPORT ;
 
 ;package
