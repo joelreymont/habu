@@ -1178,7 +1178,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 \ A descriptor of one row and no guards checks inline that 0 <= tag < limit;
 \ every entry it pushes is gone again, so the address is on top.
 : TAG-INLINE ( ptr u8 n -- ) {: d:ptr at:n :}
-   s" NFETCH-CHECK:BAD-TAG" NDICT:CALL-TARGET {: entry:n :}
+   s" NFETCH-CHECK:BAD-TAG" NDICT:TOP-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
    d 2 DESC@ {: limit:n :}
    0 DEEP  d 1 DESC@ ADDR+  CELL-W FETCH
@@ -1200,7 +1200,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    width w <> if E-T0-BUNDLE throw then
    NULL-PTR BYTE-VIEW address + {: d:ptr :}
    d PLAIN? if d at TAG-INLINE exit then
-   s" NFETCH-CHECK:TAGS" NDICT:CALL-TARGET {: entry:n :}
+   s" NFETCH-CHECK:TAGS" NDICT:TOP-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
    0 DEEP
    address origin PUSH-ADDR

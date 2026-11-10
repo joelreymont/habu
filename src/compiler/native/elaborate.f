@@ -3596,7 +3596,7 @@ CAST: XT>N ( xt -- n )
    w 1+ VDROP ;
 
 : DO-QUOTATION-STORE ( n -- ) {: ix:n :}
-   s" QUOTATION-STORAGE:STORE" NDICT:CALL-TARGET {: entry:n :}
+   s" QUOTATION-STORAGE:STORE" NDICT:TOP-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
    ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
@@ -3612,7 +3612,7 @@ CAST: XT>N ( xt -- n )
    bytes 0= if exit then
    width VW ix TOK-CELLS <> if E-NELAB-BUNDLE throw then
    VN @ 1 < if E-NELAB-UNDER throw then
-   s" NFETCH-CHECK:TAGS" NDICT:CALL-TARGET {: entry:n :}
+   s" NFETCH-CHECK:TAGS" NDICT:TOP-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
    VN @ 1- VAT VPUSH
    ix address NEMIT:ADDR-DATA origin EMIT-KIND-LIT-OWNED

@@ -77,6 +77,8 @@
 \ and wakes its own park. A compile replaces a file's object (linker.f WRITE-OBJECT) and a link
 \ leaves it, so log-first.f's object keeps its size and change time from L to L2, and path-main.f's
 \ from P to P2.
+\ H builds part-main.f, whose package's part NFETCH-CHECK has a BAD-TAG that returns; its
+\ program dies with the bad-tag error all the same.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -565,6 +567,15 @@ variable KEPT-NS
    s" the program prints the enum its MAIN fetched" LABEL  same TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
 
+\ H's program, run in its own process: the trap ends it, so its exit code and stderr are what is checked.
+: PART-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:ERR$ s\" hb: bad layout tag\n" STR= {: trapped:bool :}
+   trapped  rc 85 =  and 0= if rc SHOW then
+   s" the program dies with the bad-tag error" LABEL  trapped TTRUE
+   s" the program exits 85" LABEL  rc 85 T= ;
+
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP
@@ -578,7 +589,9 @@ variable KEPT-NS
    PATH-MAIN KEEP
    s" M2" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
    s" P2" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
-   s" the build links path-main.f" LINKED  PATH-RUN ;
+   s" the build links path-main.f" LINKED  PATH-RUN
+   s" H" WHICH!  s" test/fixtures/file-objects/part-main.f" FIXTURE-BUILD 0= if exit then
+   PART-RUN ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND

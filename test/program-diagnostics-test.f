@@ -85,6 +85,11 @@ package PROGRAM-DIAGNOSTICS
       s" LAYOUT-VALID-ACTIVE-ARMED" s" hb: bad layout tag" NEGATIVE
    s" test/layout-valid-root-bad.f" 85
       s" LAYOUT-VALID-ROOT-ARMED" s" hb: bad layout tag" NEGATIVE
+   \ The trap ends the load's process, so its exit code and stderr are what is checked.
+   s" test/layout-valid-part-bad.f" 85
+      s" LAYOUT-VALID-PART-ARMED" s" hb: bad layout tag" NEGATIVE
+   s" test/layout-valid-tags-bad.f" 85
+      s" LAYOUT-VALID-TAGS-ARMED" s" hb: bad layout tag" NEGATIVE
    s" test/layout-valid-hook-forge.f" 70
       s" LAYOUT-VALID-FORGE-ARMED" s" E-UNDEFINED: LAYOUT-VALID-RECORD-XT" NEGATIVE
    s" test/layout-valid-walk-forge.f" 70

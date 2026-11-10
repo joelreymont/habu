@@ -324,25 +324,45 @@ public
 \ Whether a compiled call may bind an internal record (DNAME-INT) with flag cell
 \ f: an owned one (DNAME-OWNED) always, since the checker decides that call as
 \ tier 0's C-COMPILE-CALL-GUARD does (src/habu/habu2.f); any other only while
-\ the TRUSTED: compilation cell is armed. Asked by CALL-BINDING and by
+\ the TRUSTED: compilation cell is armed. Asked by REC-CALL and by
 \ src/compiler/native/hir-word.f RESOLVE-SITE.
 : INT-CALL? ( n -- bool )
    DNAME-OWNED and 0<> if true exit then
    data-base TRUSTED-CELL + @ 0<> ;
 
-\ Where a compiled CALL may branch to, or zero when it may not branch there at
-\ all: an internal record as INT-CALL? admits it, any other when it is visible.
-: CALL-BINDING ( ptr u8 n -- n n )
-   SCOPE-REC {: rec:ptr :}
+private
+
+\ Where a compiled CALL to the bound record may branch, or zero: an internal
+\ record as INT-CALL? admits it, any other when visible.
+: REC-CALL ( ptr n -- n n )
+   {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 0 exit then
    rec XREF-FLAGS {: f:n :}
    f DNAME-INT and 0<> if f INT-CALL? else rec VISIBLE-RECORD? then
    0= if 0 0 exit then
    rec REC-BINDING ;
 
+\ A `PACKAGE:WORD` spelling's record among the publics of the top-level package
+\ BOOT:NAMESPACE-WL holds; any other spelling binds none.
+: TOP-REC ( ptr u8 n -- ptr n )
+   {: a:ptr u:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q 0 < if XREF-NULL exit then
+   a q BOOT:NAMESPACE-WL WL-RECORD {: pkg:ptr :}
+   pkg XREF-FOUND? 0= if XREF-NULL exit then
+   a q 1+ +  u q - 1-  pkg XREF-PKG-PUBLIC WL-RECORD ;
+
+public
+
+: CALL-BINDING ( ptr u8 n -- n n ) SCOPE-REC REC-CALL ;
+
 \ A caller that needs definer semantics captures them with the same resolved
 \ entry. Most call sites only need the target address.
 : CALL-TARGET ( ptr u8 n -- n ) CALL-BINDING drop ;
+
+\ CALL-TARGET for a runtime word the compiler itself calls: bound at the top
+\ level, so no part or using of the code being compiled can stand in for it.
+: TOP-TARGET ( ptr u8 n -- n ) TOP-REC REC-CALL drop ;
 
 \ Where a compiled `[']` may take its xt from, or zero. An xt runs wherever it
 \ is handed, so a tick binds no record TICK-REFUSED? refuses, owned or not.
