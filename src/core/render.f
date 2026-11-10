@@ -1180,8 +1180,8 @@ variable MDV-I   variable MDV-F
    s" more than " DTXT  BINDER-DEPTH-MAX JNUM  s"  nested binders" DTXT ;
 
 
-\ Shared by a token of unknown effect (SUGGEST-TEXT) and a reason that leaves
-\ no effect to check (MDIAG-SUGGEST$).
+\ Shared by a token of unknown effect (SUGGEST-TEXT), control nested too deep
+\ (MDIAG-SUGGEST$) and a deferred stretch or definition (TOP-DEFERRED-DIAG).
 : UNCK-SUGGEST$ ( -- ptr u8 n )
    s" Rewrite with modeled words or isolate an audited primitive." ;
 
@@ -1232,8 +1232,8 @@ variable MDV-I   variable MDV-F
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
       MD-CF-DEPTH     of UNCK-SUGGEST$ endof
-      MD-RECURSE-SIG  of UNCK-SUGGEST$ endof
-      MD-RECURSE-DOES of UNCK-SUGGEST$ endof
+      MD-RECURSE-SIG  of s" Declare the definition's stack effect after its name." endof
+      MD-RECURSE-DOES of s" Move the recursion into a named word with a declared effect and call it from the clause." endof
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
       MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
       MD-IS-MISSING   of s" Write the name of a word declared with defer after is." endof
@@ -1301,7 +1301,7 @@ variable MDV-I   variable MDV-F
       MD-INPUT-WIDTH  of WIDTH-REASON$ endof
       MD-CF-DEPTH     of s" control flow nested too deep to check" endof
       MD-RECURSE-SIG  of s" recursion needs a declared stack effect" endof
-      MD-RECURSE-DOES of s" recurse in a does> clause would call the defining word; move the recursion into a named word with a declared effect and call it from the clause" endof
+      MD-RECURSE-DOES of s" recurse in a does> clause would call the defining word" endof
       MD-IS-UNKNOWN   of s" names no word" endof
       MD-IS-NOT-DEFER of s" is not a deferred word" endof
       MD-IS-MISSING   of s" missing target word after is" endof

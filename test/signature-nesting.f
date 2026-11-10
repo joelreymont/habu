@@ -3,8 +3,9 @@
 \ BINDER-DEPTH-MAX), and pointees or quotations nested past EFFECT-DEPTH-MAX.
 \ A body nested past CF-FRAMES-MAX control frames, a RECURSE with no declared
 \ effect and a RECURSE in a does> clause are uncheckable for a reason they name
-\ too, and each says so in its JSON packet; the packet of a RECURSE with no
-\ declared effect has a null one, which the diagnostics gate accepts.
+\ too, and each says so in its JSON packet, a RECURSE's with a suggestion of its
+\ own; the packet of a RECURSE with no declared effect has a null
+\ declared_effect, which the diagnostics gate accepts.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process.
 require src/lib/test.f
@@ -175,17 +176,24 @@ public
    SRC-RESET RECURSE-TEXT
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
    S\" \"reason\":\"recursion needs a declared stack effect\"" PACKET-HAS
+   s" a RECURSE with no declared effect suggests declaring one" T-LABEL
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
+   S\" \"suggestion\":\"Declare the definition's stack effect after its name.\"" PACKET-HAS
    s" a RECURSE with no declared effect writes null for its declared effect" T-LABEL
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
    S\" \"declared_effect\":null,\"declared_effect_source\":null," PACKET-HAS
    PACKET-PASSES
    s" a RECURSE in a does> clause is uncheckable for calling the defining word" T-LABEL
    RECURSE-DOES
-   s" at 'RECURSE' recurse in a does> clause would call the defining word; move the recursion into a named word with a declared effect and call it from the clause" REFUSES
+   S\" at 'RECURSE' recurse in a does> clause would call the defining word\n" REFUSES
    s" a RECURSE in a does> clause writes an uncheckable packet that says why" T-LABEL
    RECURSE-DOES
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
-   S\" \"reason\":\"recurse in a does> clause would call the defining word; move the recursion into a named word with a declared effect and call it from the clause\"" CLAUSE-PACKET-HAS
+   S\" \"reason\":\"recurse in a does> clause would call the defining word\"" CLAUSE-PACKET-HAS
+   s" a RECURSE in a does> clause suggests a named word to recurse in" T-LABEL
+   RECURSE-DOES
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
+   S\" \"suggestion\":\"Move the recursion into a named word with a declared effect and call it from the clause.\"" CLAUSE-PACKET-HAS
    T-REPORT
    s" signature-nesting: ok" type cr ;
 ;package
