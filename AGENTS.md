@@ -91,6 +91,10 @@ add.
   (`tools/chain-run-build.f`) when codegen, self-hosting or capture changes can
   alter successive engine output. [Etch](../etch) owns its downstream checks.
   Documentation and mechanical changes need proportionate checks.
+- Stacks that are ready together land together: one engine built at the
+  combined tip, and the full suite and the chain check once there. A lane before
+  that runs only its focused test, and a rebase over commits that change only
+  `.dots/` reruns nothing.
 - Report actual results and untested boundaries; never weaken a claim to make a
   check pass. Keep each verification claim within the limits
   [docs/gate.md](docs/gate.md) "Verification claims" states.
