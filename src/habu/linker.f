@@ -218,6 +218,11 @@ DYNAMIC-BUFFER GRANTS n              \ the built packages a checked piece gives 
 variable GRANTS-N
 DYNAMIC-BUFFER EM-OFFS n             \ its emissions' offsets in OBJECT, each at its S
 DYNAMIC-BUFFER FILE-ROWS n           \ its FILES row k, from 1, as that file's BUILT row index
+DYNAMIC-BUFFER USED n                \ FILES row k's mark, from 1: 0, or 1 + its BUILT row once the running piece references it
+DYNAMIC-BUFFER USES n                \ the BUILT rows the pieces reference, each piece's together
+variable USES-N                      \ its entries
+variable USES-FROM                   \ the first entry of the piece whose BUILT row comes next
+DYNAMIC-BUFFER BUILT-USES n          \ BUILT row r's entries in USES: the first at 2r, their count at 2r + 1
 DYNAMIC-BUFFER DOES-AT n             \ its KIND-DOES entries' emission fields' offsets in OBJECT
 DYNAMIC-BUFFER HOST-CALLS n          \ the host copy's call sites out of hb's region
 variable HOST-CALLS-N
@@ -274,6 +279,7 @@ PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused referenc
 variable FILE-PATH-N
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
 variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
+variable USES-AT                    \ the offset in OBJECT of USES' count, of the piece checked
 \ The compiling file's object is not written, so the file compiles in every build: a piece starts
 \ or ends off TOP-SCOPE?, or a load it asked for never reached the build's runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
@@ -333,7 +339,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 : DISPOSE-OBJECTS ( -- )
    HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
-   FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
+   FILE-ROWS-RELEASE  USED-RELEASE  USES-RELEASE  BUILT-USES-RELEASE
+   DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  SPELLS BUF:DISPOSE
@@ -364,6 +371,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    0 HSTORES-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
+   0 USES-N !  0 USES-FROM !
    1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED ! ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
@@ -519,9 +527,13 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    REFS BYTES$ {: refs:ptr refsu:n :}
    refsu FILES-ROW-BYTES / {: n:n :}
    n 0 ?do
-      refs i FILES-ROW-BYTES * +  FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if i 1 + unloop exit then
+      refs i FILES-ROW-BYTES * +  FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if
+         i 2 + USED-RESERVE  row 1 +  i 1 + USED !
+         i 1 + unloop exit
+      then
    loop
    at FILES-ROW-BYTES REFS SPAN+
+   n 2 + USED-RESERVE  row 1 +  n 1 + USED !
    n 1 + ;
 
 \ A record reference: the file, 0 for this one, then the index in that file.
@@ -1520,13 +1532,33 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    loop ;
 
 
+\ n, a BUILT row index, onto USES.
+: USE+ ( n -- )
+   USES-N @ 1 + USES-RESERVE
+   USES-N @ USES !
+   1 USES-N +! ;
+
+
+\ USES, the FILES rows of 1..n marked in USED, which a request's own row and a file the source only
+\ names are not: their count, then each row, ascending; USE+ takes each one's BUILT row.
+: USES+ ( -- )
+   REFS BYTES$ nip FILES-ROW-BYTES / {: n:n :}
+   0  n 0 ?do i 1 + USED @ 0<> if 1 + then loop  PIECES U64+
+   n 0 ?do
+      i 1 + USED @ {: mark:n :}
+      mark 0<> if  i 1 + PIECES U64+  mark 1 - USE+  then
+   loop ;
+
+
 \ The running piece into PIECES: entry count; records by index, each late private wordlist (by id)
 \ before the first record marked above its id, so ids mint in entry order; each earlier package the
 \ piece sealed, after every record, so a link seals it once the piece's definitions are in; CODE;
-\ DATA; STRINGS; STORES; FACTS, whose offset in PIECES it leaves in FACTS-AT; ACTS; then the
-\ REQUESTS row that ends the piece, from 0, or -1 after the file's last piece.
+\ DATA; STRINGS; STORES; FACTS, whose offset in PIECES it leaves in FACTS-AT; ACTS; USES; then
+\ the REQUESTS row that ends the piece, from 0, or -1 after the file's last piece.
 : PIECE+ ( n -- )
    {: req:n :}
+   REFS BYTES$ nip FILES-ROW-BYTES / {: rows:n :}
+   rows 1 + USED-RESERVE  rows 0 ?do 0 i 1 + USED ! loop
    LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
    LATE-COLLECT
@@ -1537,6 +1569,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    CODE+  DATA+  STORES+
    PIECES BYTES$ nip FACTS-AT !  FACTS+
    req ACTS+
+   USES+
    req PIECES U64+ ;
 
 \ As the file's compile starts: no FILES, REQUESTS or piece yet, and PIECES' piece count 0 until
@@ -1589,11 +1622,16 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    FILE-KEY KEY-HEX SHA256>HEX
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$  [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
 
-\ The piece's BUILT row with its number and time and its file's path; NAMES takes its records.
+\ The piece's BUILT row with its number and time, its file's path and the USES entries since the
+\ row before; NAMES takes its records.
 : BUILT+ ( n n -- )
    {: piece:n t:n :}
    ndict@ BUILT-N INDEX-RECS
    BUILT-N 1 + BUILT-PATHS-RESERVE  KEY-PATH BUILT-N BUILT-PATHS !
+   BUILT-N 1 + 2 * BUILT-USES-RESERVE
+   USES-FROM @  BUILT-N 2 * BUILT-USES !
+   USES-N @ USES-FROM @ -  BUILT-N 2 * 1 + BUILT-USES !
+   USES-N @ USES-FROM !
    FILE-KEY KEY-BYTES BUILT SPAN+
    piece BUILT U64+  t BUILT U64+
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
@@ -2352,6 +2390,16 @@ variable RD-END
    loop ;
 
 
+\ USES (USES+): each row a FILES row a reference may name, above the row before it.
+: USES-CK ( -- )
+   RD-AT @ USES-AT !
+   0  8 RD-COUNT 0 ?do
+      RD-U64 {: prev:n k:n :}
+      k FILE-IN? 0=  k prev <=  or if BAD then
+      k
+   loop drop ;
+
+
 \ The piece at PIECE-AT after MAP-FILES, then the REQUESTS row req that ends it, or -1 at the
 \ object's end; a piece a request ends is as long as that row says (PIECE-LEN). PIECE-AT then
 \ the next piece's offset.
@@ -2360,7 +2408,7 @@ variable RD-END
    GOOD? 0= if exit then
    PIECE-AT @ {: start:n :}
    start  OBJECT BYTES$ nip  RD-OPEN
-   ENTRIES-CK  CODE-CK  DATA-CK  FACTS-CK  ACTS-CK
+   ENTRIES-CK  CODE-CK  DATA-CK  FACTS-CK  ACTS-CK  USES-CK
    req RD-EQ
    req 0 >=  if  RD-AT @ start -  req PIECE-LEN <>  if BAD then  then
    req 0<  RD-AT @ RD-END @ <>  and if BAD then
@@ -3284,9 +3332,21 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    loop ;
 
 
+\ The checked piece's USES (USES-CK) onto USES as BUILT rows; E-COMP-STATE for a row no BUILT row
+\ holds.
+: USES-IN ( -- )
+   USES-AT @ OBJ@ {: n:n :}
+   n 0 ?do
+      USES-AT @ 8 + i 8 * + OBJ@ FILE-ROWS @ {: row:n :}
+      row 0< if E-COMP-STATE throw then
+      row USE+
+   loop ;
+
+
 \ The fresh object as the file's result, piece by piece: each piece checked against the files
-\ linked before it, linked with its registry acts and added to BUILT with its placed texts, its
-\ number and its time, then the file its request loaded linked in turn (LINK-REQUEST).
+\ linked before it, linked with its registry acts and added to BUILT with its placed texts, the
+\ BUILT rows it references, its number and its time, then the file its request loaded linked in
+\ turn (LINK-REQUEST).
 : LINK-FILE ( -- )
    PIECES-FIELD OBJ@ 8 + PIECE-AT !
    REQS-N @ 1 + 0 ?do
@@ -3297,6 +3357,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
       GOOD? 0= if E-STALE throw then
       LINK-OBJECT  true LINK-FACTS  READ-ALIASES  LINK-ACTS
       here NULL-PTR - FILE-END !
+      USES-IN
       req PIECE-N  req PIECE-TIME  BUILT+
       req 0 >= if req LINK-REQUEST then
    loop ;
