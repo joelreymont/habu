@@ -161,6 +161,7 @@ create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
 create REQUESTS BUF:HDR-BYTES allot  \ the object's REQUESTS rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's source names, 8 bytes each
+create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
 create FRAMES BUF:HDR-BYTES allot    \ each compiling loader's object so far while its request loads
 create PARKED BUF:HDR-BYTES allot    \ each checked or linking file's object while its request is checked or loads
 create PENDING BUF:HDR-BYTES allot   \ the pieces a root's check passed, in load order: key, then sum
@@ -252,10 +253,8 @@ variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of th
 \ or ends off TOP-SCOPE?, or a load it asked for never reached the build's runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 
-\ The magic, the key, the SHA-256 of every byte after this checksum, and an offset
-\ from the file's start and a length for each of INPUT FILES REQUESTS NAMES PIECES,
-\ 0 0 while empty; then the sections in the order INPUT FILES REQUESTS PIECES. Every
-\ number is eight bytes, low byte first.
+\ The magic, the key, the SHA-256 of every byte after it, then for INPUT FILES REQUESTS NAMES PIECES
+\ an offset from the file's start and a length (U64+), 0 0 while empty; then those sections in order.
 8 KEY-BYTES 2 * + 5 2 * 8 * + constant HEADER-BYTES
 8 KEY-BYTES + constant INPUT-BYTES  \ the source's size, then its SHA-256 (INPUT!)
 
@@ -281,6 +280,13 @@ DYNAMIC-BUFFER OPENED n              \ the keys of the packages the running file
 variable OPENED-N
 DYNAMIC-BUFFER HITS n                \ BUILT row r's mark: 0, or named by the running file's source
 TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's body made
+\ The sums SPELLS holds since its last open, the running run: slot s holds a sum at 2s and its
+\ run's id at 2s+1, and a slot of an earlier run is empty.
+DYNAMIC-BUFFER RUN-SUMS n
+variable RUN-CAP                     \ its slots, a power of two
+variable RUN-N                       \ the running run's filled slots
+variable RUN-ID                      \ the running run's id, from 1
+variable RUN-AT                      \ the offset in SPELLS of the running run's first sum
 
 : SLOT-SUM ( n -- ptr n ) 3 * NAMES ;
 : SLOT-ROW ( n -- ptr n ) 3 * 1 + NAMES ;
@@ -293,15 +299,23 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    cap 3 * 0 ?do 0 i NAMES ! loop
    cap NAMES-CAP !  0 NAMES-N ! ;
 
+\ RUN-SUMS with cap slots, all empty: no run's id is 0.
+: RUN-CLEAR ( n -- )
+   {: cap:n :}
+   cap 2 * RUN-SUMS-RESERVE
+   cap 2 * 0 ?do 0 i RUN-SUMS ! loop
+   cap RUN-CAP !  0 RUN-N ! ;
+
 : DISPOSE-OBJECTS ( -- )
    HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
-   PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE
-   PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
-   LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  HITS-RELEASE  OPENED-RELEASE  OLD-NAMES-RELEASE  NAMES-RELEASE ;
+   PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  SPELLS BUF:DISPOSE
+   NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
+   LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE  OLD-NAMES-RELEASE
+   NAMES-RELEASE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
@@ -311,6 +325,7 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    REQUESTS 256 BUF:N>BLEN BUF:INIT
    PIECES 256 BUF:N>BLEN BUF:INIT
    NAMED-ROWS 256 BUF:N>BLEN BUF:INIT
+   SPELLS 256 BUF:N>BLEN BUF:INIT
    FRAMES 256 BUF:N>BLEN BUF:INIT
    PARKED 256 BUF:N>BLEN BUF:INIT
    PENDING 256 BUF:N>BLEN BUF:INIT
@@ -324,7 +339,7 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    0 HSTORES-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
-   1024 NAMES-CLEAR  FIRST-REC @ INDEXED ! ;
+   1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED ! ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
 : INIT-OBJECTS ( -- )
@@ -600,6 +615,44 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
       1 + mask and
    repeat drop ;
 
+: RUN-TAKEN? ( n n -- bool )
+   {: s:n sum:n :}
+   s 2 * 1 + RUN-SUMS @ RUN-ID @ =  s 2 * RUN-SUMS @ sum <>  and ;
+
+\ The running run's slot holding the sum, else the first empty one from the sum's.
+: RUN-SLOT ( n -- n )
+   {: sum:n :}
+   RUN-CAP @ 1 - {: mask:n :}
+   sum mask and
+   begin dup sum RUN-TAKEN? while 1 + mask and repeat ;
+
+\ The sum into the running run, and true when it was not there.
+: RUN-SUM+ ( n -- bool )
+   {: sum:n :}
+   sum RUN-SLOT {: s:n :}
+   s 2 * 1 + RUN-SUMS @ RUN-ID @ = if false exit then
+   sum s 2 * RUN-SUMS !  RUN-ID @ s 2 * 1 + RUN-SUMS !  1 RUN-N +!  true ;
+
+\ RUN-SUMS with twice its slots, holding the running run's sums from SPELLS.
+: GROW-RUN ( -- )
+   RUN-CAP @ 2 * RUN-CLEAR
+   SPELLS BYTES$ {: a:ptr u:n :}
+   u RUN-AT @ - 8 / 0 ?do a RUN-AT @ + i 8 * + LE:U64@ RUN-SUM+ drop loop ;
+
+: RUN! ( -- ) 1 RUN-ID +!  0 RUN-N !  SPELLS BYTES$ nip RUN-AT ! ;
+
+\ SPELLED's HIT: SPELLS gains the sum once per run, as a repeat with no open between marks
+\ nothing more. Half RUN-SUMS' slots at most are filled, so a probe always ends.
+: SPELL-HIT ( n -- )
+   {: sum:n :}
+   RUN-N @ 1 + 2 *  RUN-CAP @ > if GROW-RUN then
+   sum RUN-SUM+ if  sum SPELLS U64+  sum HIT  then ;
+
+\ SPELLED's OPENED+: SPELLS gains 0, which no NAME-SUM is, then the sum, and a run starts.
+: SPELL-OPEN ( n -- )
+   {: sum:n :}
+   0 SPELLS U64+  sum SPELLS U64+  sum OPENED+  RUN! ;
+
 \ A byte that ends a spelled name: white space, or ':' and '"', which join a package to its
 \ word and a string's quote to its first word.
 : BLANK? ( n -- bool ) {: c:n :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
@@ -612,10 +665,10 @@ TYPED-VARIABLE FIRST-WORD bool       \ no word has ended on the running line
 TYPED-VARIABLE SKIP bool             \ the running line is a comment
 TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
-\ HIT for the source's bytes [from, to) when there are any.
+\ SPELL-HIT for the source's bytes [from, to) when there are any.
 : HIT-SPAN ( ptr u8 n n -- )
    {: src:ptr from:n to:n :}
-   to from > if src from +  to from -  NAME-SUM HIT then ;
+   to from > if src from +  to from -  NAME-SUM SPELL-HIT then ;
 
 \ True when the word [from, to) is `\` and its line's first: the line is a comment. A `\` later
 \ in a line may be text a parsing word takes (`[char] \ INDEX-OF`), so it starts none.
@@ -627,7 +680,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : OPENS ( ptr u8 n n -- )
    {: src:ptr from:n to:n :}
    src from +  to from - {: a:ptr u:n :}
-   AFTER-PACKAGE @ if a u NAME-SUM OPENED+ then
+   AFTER-PACKAGE @ if a u NAME-SUM SPELL-OPEN then
    a u s" package" XREF-STR=CI AFTER-PACKAGE ! ;
 
 \ The running word ends at byte i, the blank c.
@@ -640,13 +693,12 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    c 10 = if true FIRST-WORD ! then
    i 1 + PART-AT !  i 1 + WORD-AT !  false JOINED ! ;
 
-\ HIT for each name the source spells outside its comment lines: every run of bytes between
-\ CUT? bytes, and every run between white space that holds a ':' or '"', so `P:W` names P, W
-\ and P:W.
+\ SPELL-HIT for each name the source spells outside its comment lines: each span between CUT? bytes,
+\ and each between white space that holds a ':' or '"', so `P:W` names P, W and P:W.
 : SPELLED ( ptr u8 n -- )
    {: src:ptr u:n :}
    0 PART-AT !  0 WORD-AT !  false JOINED !  true FIRST-WORD !  false SKIP !
-   false AFTER-PACKAGE !  0 OPENED-N !
+   false AFTER-PACKAGE !  0 OPENED-N !  SPELLS BUF:CLEAR  RUN!
    u 0 ?do
       src i + c@ {: c:n :}
       SKIP @ if
@@ -659,18 +711,21 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    loop
    SKIP @ 0= if src u 32 WORD-END then ;
 
-\ After KEY!, before FRESH? and the compile: INPUT-SUM, and HITS and BODY-HIT for the source,
-\ NAMES first taking the records the build's body made since the last file.
+\ No row marked, nor the build's body.
+: HITS-CLEAR ( -- )
+   BUILT-N 1 + HITS-RESERVE
+   BUILT-N 0 ?do 0 i HITS ! loop
+   false BODY-HIT ! ;
+
+\ After KEY!, before FRESH?: INPUT-SUM, and HITS-CLEAR, NAMES first taking the records the build's
+\ body made since the last file.
 : INPUT! ( ptr u8 n -- )
    {: src:ptr u:n :}
    SHA-CTX src u INPUT-SUM SHA256-IN
    FILE-REC @ -1 INDEX-RECS
-   BUILT-N 1 + HITS-RESERVE
-   BUILT-N 0 ?do 0 i HITS ! loop
-   false BODY-HIT !
-   src u SPELLED ;
+   HITS-CLEAR ;
 
-\ After INPUT!, before FRESH?: NAMED-ROWS from HITS, which a requested file's INPUT! overwrites.
+\ After SPELLED, before the compile: NAMED-ROWS from HITS, which a requested file's load overwrites.
 : NAMED! ( -- )
    NAMED-ROWS BUF:CLEAR
    BUILT-N 0 ?do i HITS @ 0<> if i NAMED-ROWS U64+ then loop ;
@@ -1484,10 +1539,12 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
    REQUESTS BYTES$ {: reqs:ptr requ:n :}
+   SPELLS BYTES$ {: nm:ptr nmu:n :}
    PIECES BYTES$ {: pieces:ptr piecesu:n :}
    HEADER-BYTES INPUT-BYTES + {: files-at:n :}
    files-at refsu + {: reqs-at:n :}
-   reqs-at requ + {: pieces-at:n :}
+   reqs-at requ + {: names-at:n :}
+   names-at nmu + {: pieces-at:n :}
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
    FILE-KEY KEY-BYTES OBJECT SPAN+
@@ -1495,12 +1552,13 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    HEADER-BYTES OBJECT U64+  INPUT-BYTES OBJECT U64+
    refsu 0<> if files-at else 0 then OBJECT U64+  refsu OBJECT U64+
    requ 0<> if reqs-at else 0 then OBJECT U64+  requ OBJECT U64+
-   0 OBJECT U64+  0 OBJECT U64+        \ NAMES, empty
+   nmu 0<> if names-at else 0 then OBJECT U64+  nmu OBJECT U64+
    pieces-at OBJECT U64+  piecesu OBJECT U64+
    srcu OBJECT U64+
    INPUT-SUM KEY-BYTES OBJECT SPAN+
    refs refsu OBJECT SPAN+
    reqs requ OBJECT SPAN+
+   nm nmu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
    pieces-at FACTS-AT +!
    OBJECT BYTES$ {: obj:ptr len:n :}
@@ -1798,7 +1856,7 @@ variable RD-END
 
 
 \ After FILES-CK: bad when the source names a record of the build's body or of a file FILES
-\ does not list (INPUT!).
+\ does not list (NAMES-CK).
 : NAMED-CK ( -- )
    GOOD? 0= if exit then
    BODY-HIT @ if BAD exit then
@@ -1836,6 +1894,21 @@ variable RD-END
    RD-AT @ end <> if BAD then ;
 
 
+\ NAMES' u bytes from RD-AT (SPELLS), u a multiple of 8, run as SPELLED ran them: HIT for each
+\ sum, OPENED+ for the sum after a 0. Against the bytes INPUT-SUM sums, HITS ends as a scan's.
+: NAMES-CK ( n -- )
+   {: u:n :}
+   GOOD? 0= if exit then
+   0 OPENED-N !
+   RD-AT @ u + {: end:n :}
+   begin GOOD?  RD-AT @ end <  and while
+      RD-U64 {: sum:n :}
+      sum 0<> if sum HIT else
+         RD-AT @ end < if RD-U64 OPENED+ else BAD then
+      then
+   repeat ;
+
+
 \ REQUESTS row k's offset in OBJECT, from 0; the row starts with the sum of the piece it ends.
 : REQ-AT ( n -- n )
    {: k:n :}
@@ -1865,9 +1938,8 @@ variable RD-END
    OBJECT BYTES$ drop  req REQ-AT + ;
 
 
-\ The header, its checksum, INPUT against the source's size and INPUT-SUM, FILES, covering every
-\ file the source names, REQUESTS and the piece count, as WRITE-OBJECT lays them; PIECE-AT is then
-\ the first piece's offset.
+\ The header, the sections before PIECES and its piece count, as WRITE-OBJECT lays them, NAMES
+\ replayed (NAMES-CK) and checked against FILES (NAMED-CK); PIECE-AT is then the first piece's offset.
 : HEADER-CK ( n -- )
    {: srcu:n :}
    0 FILES-N !  0 REQS-N !
@@ -1889,12 +1961,16 @@ variable RD-END
    RD-U64 RD-U64 {: roff:n requ:n :}
    requ 0<  requ len reqs-at - >  or if BAD exit then
    roff  requ 0<> if reqs-at else 0 then  <> if BAD then
-   0 RD-EQ  0 RD-EQ                    \ NAMES
-   reqs-at requ + RD-EQ  len reqs-at - requ - RD-EQ
+   reqs-at requ + {: names-at:n :}
+   RD-U64 RD-U64 {: noff:n nmu:n :}
+   nmu 0<  nmu 8 mod 0<>  or  nmu len names-at - >  or if BAD exit then
+   noff  nmu 0<> if names-at else 0 then  <> if BAD then
+   names-at nmu + RD-EQ  len names-at - nmu - RD-EQ
    srcu RD-EQ
    INPUT-SUM KEY-BYTES RD-SAME
    refsu FILES-CK
    reqs-at REQS-AT !  requ REQUESTS-CK
+   nmu NAMES-CK
    NAMED-CK
    REQS-N @ 1 + RD-EQ
    RD-AT @ PIECE-AT ! ;
@@ -3157,10 +3233,9 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    sum BUILT+ ;
 
 
-\ The compiling file's object so far onto FRAMES while a file it requested loads: PIECES, REFS,
-\ REQUESTS, NAMED-ROWS, INPUT-SUM and FILE-PATH, then FRAME-TAIL bytes of their lengths, REQ-N
-\ and UNLINKABLE.
-7 8 * constant FRAME-TAIL
+\ The compiling file's object so far onto FRAMES while a file it requested loads, which reuses its
+\ buffers; FRAME-TAIL bytes end each frame, so POP-FRAME finds the lengths from FRAMES' end.
+8 8 * constant FRAME-TAIL
 
 : SAVE+ ( ptr a -- n )
    {: buf:ptr :}
@@ -3168,10 +3243,10 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    a u FRAMES SPAN+  u ;
 
 : PUSH-FRAME ( -- )
-   PIECES SAVE+  REFS SAVE+  REQUESTS SAVE+  NAMED-ROWS SAVE+ {: p:n r:n rq:n m:n :}
+   PIECES SAVE+  REFS SAVE+  REQUESTS SAVE+  NAMED-ROWS SAVE+  SPELLS SAVE+ {: p:n r:n rq:n m:n s:n :}
    INPUT-SUM KEY-BYTES FRAMES SPAN+
    FILE-PATH FILE-PATH-N @ FRAMES SPAN+
-   p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+
+   p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+  s FRAMES U64+
    FILE-PATH-N @ FRAMES U64+  REQ-N @ FRAMES U64+
    UNLINKABLE @ if 1 else 0 then FRAMES U64+ ;
 
@@ -3187,10 +3262,11 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 : POP-FRAME ( -- )
    FRAMES BYTES$ {: f:ptr fu:n :}
    f fu + FRAME-TAIL - {: t:ptr :}
-   t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@ {: p:n r:n rq:n m:n :}
-   t 32 + LE:U64@  t 40 + LE:U64@  t 48 + LE:U64@ {: pn:n reqs:n unlinkable:n :}
-   fu FRAME-TAIL -  p r + rq + m + KEY-BYTES + pn + - {: start:n :}
-   start p PIECES RESTORE+  r REFS RESTORE+  rq REQUESTS RESTORE+  m NAMED-ROWS RESTORE+ {: at:n :}
+   t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@  t 32 + LE:U64@ {: p:n r:n rq:n m:n s:n :}
+   t 40 + LE:U64@  t 48 + LE:U64@  t 56 + LE:U64@ {: pn:n reqs:n unlinkable:n :}
+   fu FRAME-TAIL -  p r + rq + m + s + KEY-BYTES + pn + - {: start:n :}
+   start p PIECES RESTORE+  r REFS RESTORE+  rq REQUESTS RESTORE+  m NAMED-ROWS RESTORE+
+   s SPELLS RESTORE+ {: at:n :}
    f at + INPUT-SUM KEY-BYTES BYTE-COPY
    f at + KEY-BYTES + FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
    reqs REQ-N !  unlinkable 0<> UNLINKABLE !
@@ -3208,9 +3284,9 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    path pathu root rootu PATH+
    MARKS
    source sourceu INPUT!
-   NAMED!
    TOP-SCOPE? if sourceu LINKED? if 1 LINKED-N +! exit then then
    LINKING? if E-STALE throw then
+   HITS-CLEAR  source sourceu SPELLED  NAMED!   \ a failed check left its replay in HITS
    OBJECT-OPEN  COPY-BELOW
    false UNLINKABLE !  SCOPE-CK
    false PUSH-KEY

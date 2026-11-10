@@ -369,13 +369,13 @@ PATH-CAP BUFFER: THIRD-BUF
    [: s" app" [: PARTS-A$ included  PARTS-B$ included  PARTS-C$ included ;] LINKER:WITH ;]
    catch RESULT ;
 
-\ b.f, a part of a.f's package, changes its private constant K, which c.f reopens the package
-\ to store into its own V: no reference names b.f, so c.f compiles only because it spells K.
+\ b.f, a part of a.f's package, changes its private constant K, which c.f spells before it reopens
+\ the package and again to store it into its own V: only the spelling after the open compiles c.f.
 : PARTS ( -- )
    s" parts" DIR$ FS:MAKE-DIR
    PARTS-A$ s\" package FILE-OBJECTS-PARTS public : ONE ( -- n ) 1 ; ;package\n" FS:WRITE-ALL
    PARTS-B$ s\" package FILE-OBJECTS-PARTS 5 constant K ;package\n" FS:WRITE-ALL
-   PARTS-C$ s\" package FILE-OBJECTS-PARTS-C public variable V ;package\n" FS:WRITE-ALL
+   PARTS-C$ s\" package FILE-OBJECTS-PARTS-C public variable V ( K ) ;package\n" FS:WRITE-ALL
    PARTS-C$ s\" package FILE-OBJECTS-PARTS K FILE-OBJECTS-PARTS-C:V ! ;package\n" FS:APPEND-FILE
    PARTS-BUILD {: one:n :}
    PARTS-B$ s\" package FILE-OBJECTS-PARTS 6 constant K ;package\n" FS:WRITE-ALL
