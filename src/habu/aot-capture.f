@@ -691,9 +691,8 @@ variable ACAP-ENTRY-N
 \ after this engine is captured.
 \ The FILE cache resolves TFAM:FILE-REF-RESET/USE, TFAM:FILE-IDENTITY$/FILE-FIND
 \ and CHECKER-REG:FILE-CON-RESET/USE after capture without reloading their
-\ sources. The definition cache binds and clears CHECKER-REG's publication
-\ observer by its public names. The FILE origin codec and cache resolve their
-\ owner callbacks by name when they replay or neutralize a captured window.
+\ sources. The FILE origin codec and cache resolve their owner callbacks by name
+\ when they replay or neutralize a captured window.
 \ DEFER-UNSET: habu2.f C-DEFER-FIND-UNSET resolves it by name for every new
 \ defer from a lookup string outside the named-site tables; without the record
 \ `defer SETUP ( -- )` fails.
@@ -717,8 +716,6 @@ variable ACAP-ENTRY-N
    k s" TFAM" ACAP-KEEP-PKG? and if true exit then
    a u s" FILE-CON-RESET" CORE-STR=CI
    a u s" FILE-CON-USE" CORE-STR=CI or
-   a u s" PUBLICATION-USE" CORE-STR=CI or
-   a u s" PUBLICATION-CLEAR" CORE-STR=CI or
    k s" CHECKER-REG" ACAP-KEEP-PKG? and if true exit then
    a u s" FILE-MARK" CORE-STR=CI
    a u s" FILE-ROWS" CORE-STR=CI or
