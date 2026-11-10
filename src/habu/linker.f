@@ -351,6 +351,8 @@ variable FILE-TYPES                  \ CHECK:TYPE-END as the running piece start
 variable FILE-ROW
 variable FILE-EM
 variable FILE-DP
+variable FILE-SRC                    \ the compiling file's source, its distance from NULL-PTR (LOAD)
+variable FILE-SRC-U                  \ its length in bytes
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-EVENT                  \ the first event of the loader's log the piece made
 variable FILE-RUN                    \ the first entry of OUTER's run log the piece made
@@ -2690,6 +2692,7 @@ variable RD-END
       16 RD-SKIP
       RD-U64 {: kind:n :}
       kind SOURCE-UNIT:LOAD-INCLUDE <>  kind SOURCE-UNIT:LOAD-REQUIRE <>  and if BAD then
+      RD-U64 0< if BAD then
       NAME-CK  NAME-CK
       RD-U64 FILE-ROW? 0= if BAD then
       1 REQS-N +!
@@ -2714,11 +2717,11 @@ variable RD-END
 
 
 \ REQUESTS row k's offset in OBJECT, from 0; the row starts with the time and the length of the
-\ piece it ends.
+\ piece it ends, then the kind and the resume offset (NEST).
 : REQ-AT ( n -- n )
    {: k:n :}
    REQS-AT @  k 0 ?do
-      24 +  dup OBJ@ 8 + +  dup OBJ@ 8 + +  8 +
+      32 +  dup OBJ@ 8 + +  dup OBJ@ 8 + +  8 +
    loop ;
 
 \ The length in bytes of the piece that ends with REQUESTS row k.
@@ -2728,9 +2731,12 @@ variable RD-END
 \ REQUESTS row k's kind, the offsets of its spelled and loaded paths, and its FILES row.
 : REQ-FIELDS ( n -- n n n n )
    REQ-AT 16 + {: at:n :}
-   at 8 + {: spelled:n :}
+   at 16 + {: spelled:n :}
    spelled 8 + spelled OBJ@ + {: loaded:n :}
    at OBJ@  spelled  loaded  loaded 8 + loaded OBJ@ + OBJ@ ;
+
+\ REQUESTS row k's resume offset: where the requester's source goes on after the request.
+: REQ-RESUME ( n -- n ) REQ-AT 24 + OBJ@ ;
 
 
 \ The FIELD+ at the offset in OBJECT.
@@ -3347,14 +3353,15 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    pairs 24 + PRIOR@ FILES-ROW-BYTES mod 0= ;
 
 
-\ The PRIOR REQUESTS row at the offset, which ends by rend: time, length, kind, two paths (a
-\ length, then its bytes) and a FILES row. The offset after it, and true; false when it passes rend.
+\ The PRIOR REQUESTS row at the offset, which ends by rend: time, length, kind, resume offset, two
+\ paths (a length, then its bytes) and a FILES row. The offset after it, and true; false when it
+\ passes rend.
 : PRIOR-ROW ( n n -- n bool )
    {: at:n rend:n :}
-   at 32 + rend > if 0 false exit then
-   at 24 + PRIOR@ {: u:n :}
-   u 0<  u rend at - 32 - >  or if 0 false exit then
-   at 32 + u + {: at2:n :}
+   at 40 + rend > if 0 false exit then
+   at 32 + PRIOR@ {: u:n :}
+   u 0<  u rend at - 40 - >  or if 0 false exit then
+   at 40 + u + {: at2:n :}
    at2 8 + rend > if 0 false exit then
    at2 PRIOR@ {: u2:n :}
    u2 0<  u2 rend at2 - 16 - >  or if 0 false exit then
@@ -4668,6 +4675,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    LINKING? if E-STALE throw then
    HITS-CLEAR  source sourceu SPELLED  NAMED!   \ a failed check left its replay in HITS
    OBJECT-OPEN  COPY-BELOW
+   source NULL-PTR - FILE-SRC !  sourceu FILE-SRC-U !
    CROSS? UNLINKABLE !  STAMPED? 0= if true UNLINKABLE ! then  SCOPE-CK
    false PUSH-KEY
    0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
@@ -4692,10 +4700,30 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ev EVENT-PATH@ path pathu STR=  and ;
 
 
+\ For request event ev of the compiling file, the offset in its source just past the request's
+\ token, where the interpreter goes on; -1 unless the request is a clean cut there: in TOP-SCOPE?,
+\ no cells on the requester's stack, no definition open, the token inside the source, and the
+\ newest word the piece ran a loader word (include.f SOURCE-UNIT:LOADER-KIND).
+: RESUME ( n -- n )
+   {: ev:n :}
+   ev EVENT-TOK@ {: a:n u:n :}
+   FILE-SRC @ {: src:n :}
+   TOP-SCOPE? 0= if -1 exit then
+   ev EVENT-DEPTH@ 0<> if -1 exit then
+   PEND-CELL HOST@ 0<> if -1 exit then
+   a src <  a u +  src FILE-SRC-U @ +  >  or if -1 exit then
+   OUTER:RUN-COUNT FILE-RUN @ <= if -1 exit then
+   OUTER:RUN-COUNT 1 - OUTER:RUN-RECORD@ {: idx:n :}
+   \ 5 is OUTER's OBSERVE-WORD, the op its run loop passes for a word about to run
+   5 idx  idx XREF-REC XREF-START  SOURCE-UNIT:LOADER-KIND  SOURCE-UNIT:NONE = if -1 exit then
+   a u + src - ;
+
+
 \ A request of the compiling file, the newest event of the loader's log (REQUEST?, else
 \ E-COMP-STATE): its piece ends here, placed with its number and its time (COMPILED-TIME), which
-\ starts the request's row with the piece's length, its kind and the path as spelled and as
-\ loaded; its object so far waits on FRAMES while the file loads; then it names, whole, every
+\ starts the request's row with the piece's length, its kind, where the requester's source resumes
+\ (RESUME; -1 makes the file UNLINKABLE) and the path as spelled and as loaded; its object so far
+\ waits on FRAMES while the file loads, its source's place in locals; then it names, whole, every
 \ piece built inside that load, so a changed piece anywhere under the request compiles it; the row
 \ ends with the FILES row of that file's last piece, and the next piece starts at a cell boundary,
 \ as a load leaves here (include.f LOAD-UNIT).
@@ -4704,20 +4732,23 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    EVENT-COUNT 1 - {: ev:n :}
    ev path pathu REQUEST? 0= if E-COMP-STATE throw then
    ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
-   SCOPE-CK
+   ev RESUME {: resume:n :}
+   resume 0< if true UNLINKABLE ! then
    PIECES BYTES$ nip {: start:n :}
    REQ-N @ PIECE-END
    PIECE-LAY  start REQ-N @ COMPILED-TIME {: t:n :}
    PIECES BYTES$ nip start - {: size:n :}
    REQ-N @ t PIECE-PLACE
-   t REQUESTS U64+  size REQUESTS U64+  mode REQUESTS U64+
+   t REQUESTS U64+  size REQUESTS U64+  mode REQUESTS U64+  resume REQUESTS U64+
    ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+
    1 REQ-N +!
    align
    BUILT-N {: first:n :}
+   FILE-SRC @ FILE-SRC-U @ {: src:n srcu:n :}
    PUSH-FRAME
    path pathu root rootu source sourceu q LOAD
    POP-FRAME
+   src FILE-SRC !  srcu FILE-SRC-U !
    BUILT-N first ?do i true REF-FILE drop loop
    BUILT-N 1 - true REF-FILE REQUESTS U64+
    LOADER$ {: k:ptr ku:n :}

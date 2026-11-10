@@ -1454,9 +1454,10 @@ SOURCE-UNIT:RESET
 \ multiplicity and require/provided registry state in order, and a build's
 \ linker can carry the acts in a file's object. Recorded only while EVENT-ON?.
 \ During discovery the walker runs DISCOVERY-ON and passes the loader-token span
-\ to DISC-TOK!; a real load reads TKA-CELL and TKL-CELL.
+\ to DISC-TOK!; a real load reads TKA-CELL and TKL-CELL. A build's linker reads
+\ the depth to tell a request made with cells on the stack.
 
-10 constant EVENT-FIELDS
+11 constant EVENT-FIELDS
 EVENT-FIELDS cells constant EVENT-BYTES          \ one record
 $1000 constant EVENT-ROOM-MIN                    \ a first mapping's bytes
 $4D constant INCLUDE-EVENT-RC
@@ -1609,6 +1610,7 @@ public
    st    ix 5 EVENT-FIELD!
    soff  ix 8 EVENT-FIELD!
    slen  ix 9 EVENT-FIELD!
+   depth ix 10 EVENT-FIELD!     \ the callers hold their arguments in locals: the requester's depth
    ix SOURCE-EVENT:STORE-ROOT
    ix 1 + EVENT-N ! ;
 
@@ -1626,6 +1628,7 @@ public
    ix 9 EVENT-FIELD@ ;
 : EVENT-TOK@ ( n -- n n ) {: ix:n :}
    ix 3 EVENT-FIELD@ ix 4 EVENT-FIELD@ ;
+: EVENT-DEPTH@ ( n -- n )    10 EVENT-FIELD@ ;
 
 package SOURCE-ROOT
 private
