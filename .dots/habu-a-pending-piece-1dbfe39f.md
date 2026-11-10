@@ -1,0 +1,9 @@
+---
+title: "A pending piece's undefine of a private word gives a false fresh"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-10T15:00:01.965226+02:00"
+---
+
+Problem: building root-rv.f, alone-rv.f, root-rv.f in one out root, the third build throws LINKER:E-STALE (rc 74): a pending piece that retires a package's private word (rv-un.f: 'package ATK-V undefine VW ;package') is filed under the key the record had before it was retired (src/habu/linker.f PENDING-CHANGED+ :2998: 'r 1 PENDING-REC@' or 'd NAME-PKG'), while the link's CHANGER+ sees the retired wordlist, which belongs to no package, and files it under key 0 (LINK-RETIRED :3577 runs XREF:RETIRE before CHANGER+); so the check passes rv-spell.f and the link refuses it. Fails on the lane's parent too. Reproducer: bash /Users/joel/Work/reviews/habu-10x-2026-11-10/cases8/pending-review/repro-retired.sh <tree> <fresh out> with fx/rv-*.f; controls rv2 and rp pass. Found by the review of habu-the-pre-link-44b5d596 (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/pending-pieces-review.md, Medium). Source: Joel, 2026-11-10: "i want all issues identified to be dotted and fixed". Acceptance: the third build exits 0 and recompiles the speller; PENDING-CHANGED+ lays key 0 for a retired record in both branches (the review's correction: a fourth argument retired:bool, PENDING-FACTS+ passes 'ix CHECK:HELD-RETIRED =', PENDING-NAMES+ false) and its comment says so; a RETIRED-CASE in test/file-objects.f built like SEALED-CASE with fixtures copied from fx/rv-*. Files: src/habu/linker.f, test/file-objects.f, test/fixtures/file-objects. Verify: the reproducer and test/file-objects.f. Depends: none. Ownership: the file linker's pre-link check. Claim: unassigned.
