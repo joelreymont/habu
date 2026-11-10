@@ -6,20 +6,14 @@ issue-type: task
 created-at: "2026-09-18T10:24:05.100828+03:00"
 ---
 
-The tools retain private mixed pointer/count storage, including LINT-SLAB in
-tools/lint/text.f and its users, and paired pointer/length helpers in the check,
-build and JSON tools. Existing bounds checks do not establish the pointer-cell
-type invariant needed by the open ptr-field and pointer-view rules (331a9731
-and 030be3ad).
+Problem: habu-refuse-ptr-field-331a9731 designs two checker refusals that land last, after the tree is moved off the shapes they refuse: a `ptr-field` whose base's pointee is not a pointer, and a `byte-view` whose base's pointee is a pointer or an unfenced type variable. This dot is that design's tools lanes (A7 tools and tests, B2 tool records; their lane text is gone). The tools still hold storage in those shapes. `ptr-field` over a ( ptr n ) base: tools/lint/text.f:88 (LINT-SLAB:BUF-FIELD; a slab is three caller-owned cells, backing pointer, capacity and length, used by tools/lint/shadow-lint.f, tools/public-signatures-core.f and tools/error-code-lint-core.f), tools/check-core.f:149 and :1378, tools/json-only.f:17, tools/json-only-core.f:32, tools/repair-packet-core.f:34, tools/lsp-test-lib.f:1635 and :1645. `byte-view`: tools/data-table-census.f:35, tools/image-size-lib.f:62, tools/image-names.f:47, :84 and :141, tools/sha256-file-test.f:247. Existing bounds checks do not establish the pointer-cell type these rules need, so a tool the rule refuses stops loading when the refusal lands.
 
-When those rules have a current design, migrate only the storage and accessors
-needed to close their demonstrated laundering paths without breaking legitimate
-tool callers. Use existing declared records where they express the layout;
-preserve bounds, published sizes and behavior. Do not require every private
-pointer/length pair to become a record or a tree-wide zero-ptr-field count.
-Select the affected lint/check/build E2Es from the actual changed paths; shared
-checker impact requires the repository native gate and matching engine.
+Acceptance: each listed site whose base the designed rule refuses reads through a declared pointer cell (PTR-VARIABLE, TYPED-VARIABLE NAME ptr t, a declared record's generated accessor) or a private `CAST:` in its owning package, with bounds, published sizes and behaviour unchanged; a site the rule admits stays as it is, and the report says which sites were which. Not every private pointer/length pair has to become a record, and no tree-wide count of `ptr-field` is a goal.
 
-The unused indexed CHK-PTR-U8-SLOT helper family is a separate small deletion
-under 11e9a4f3. The used non-indexed pointer-slot helpers remain. This narrowing
-does not claim the stricter pointer rules or tool migrations are implemented.
+Files: the tools files above.
+
+Verify: the lint, check, build or JSON end-to-end tests selected from the changed paths pass; a change to shared checker code also needs the repository native suite on a matching engine; once 331a9731's refusal is on a candidate engine, the changed tools load under it.
+
+Depends: none (331a9731's refusal comes after this). The unused CHK-PTR-U8-SLOT family (tools/check-core.f:157-164) is deleted under habu-delete-the-dead-11e9a4f3, not here; the used non-indexed pointer-slot helpers stay.
+
+Ownership: unassigned. Claim: unassigned.
