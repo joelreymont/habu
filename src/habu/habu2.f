@@ -12798,9 +12798,10 @@ private
 \ With a source file open the place is ` at <path>`, the innermost include
 \ frame's (src/core/include.f SRCLOC:PATH-CELL/PATHLEN-CELL). With no include
 \ frame open the path is 0 and no place is printed: the root source stream's own
-\ text (src/habu/main.f: stdin, tty or piped, or a plain `hb <file>`) and the
-\ boot prefix. `:<line>` follows under the rule SRCLOC:FILE-BUFFER? states,
-\ tested here in machine code: <line> is 1 + the newlines in
+\ text (src/habu/main.f: stdin, tty or piped, or the `--load` and `--build`
+\ streams) and the boot prefix. `:<line>` follows under the rule
+\ SRCLOC:FILE-BUFFER? states, tested here in machine code: <line> is 1 + the
+\ newlines in
 \ [SRCLOC:OWNED-CELL, INP-CELL). LSRCAT is a leaf: x0-x2 and x9-x14 are
 \ scratch, and a fail-closed site
 \ (C-SEAL-PACKAGE-FAIL, EMIT-STORE-DEF-NAME, EM-AOTWIDGATE) calls it before its

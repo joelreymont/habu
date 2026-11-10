@@ -285,7 +285,8 @@ learned live in the docs for their subject.
   matching `[then]` when the answer is false, so a file chooses what it loads
   at its top level (`HB-TARGET-MACOS? [if] require src/lib/secret/macos.f
   [then]`), no word loads a file during a build, the build's loader does every
-  load, and no header cell holds a loader. C's `#ifdef`, Rust's `#[cfg]` and
+  load, and no header cell holds a loader; a header cell names the process's
+  loader record, which holds no code (2026-11-10). C's `#ifdef`, Rust's `#[cfg]` and
   Go's build tags choose files the same way.
 - 2026-11-06, where a word's facts text is laid: shown that a text laid at
   `here` while `create`, `variable` or a definer's run-time `create` has its

@@ -415,6 +415,27 @@ private
    2 a u write drop
    path pathu INCLUDE-IO-RC die ;
 
+\ Whether the process's loader record is this copy's own. A build compiles a
+\ second copy of this file into the program it builds, and there LOADER answers
+\ hb's record: the copy's loading words would run its own registry, buffers and
+\ frames over hb's. The build's loader does every load, at a file's top level,
+\ so in a build the copy's loads refuse (BUILD-REFUSE): LOAD-RESULT, and so
+\ every load of a file (included, required, LOAD, script-required);
+\ RUN-PROGRAM; WITH-BYTES; WITH-SUPPLIED.
+: OWN-LOADER? ( -- bool ) LOADER LOADER-REC = ;
+
+\ The build refusal for the path a loading word was handed, unless this copy's
+\ record is the process's. The resolver does not refuse: RESOLVE loads nothing,
+\ and in a build it searches the process's current root, so a word may ask
+\ where a file lies (test/aot-shifted-bytes.f LOADS-BUILD, RESOLVES-BUILD;
+\ test/file-objects.f WORD-LOAD-BUILD). provided is not refused here: in a
+\ build the row it stores lies in mappings outside the build's space, so the
+\ linker refuses that file's object at its end.
+: BUILD-REFUSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   OWN-LOADER? if exit then
+   s" include: a word loaded a file during a build; load it with require or include at the file's top level: "
+   path pathu PATH-DIE ;
+
 \ The file system root always resolves through realpath; only a supplied canon
 \ (SOURCE-INPUT:USE) can answer that no directory above a path does.
 : EXISTING-PARENT ( -- n )
@@ -539,43 +560,47 @@ private
    a fresh u 1+ BYTE-COPY
    fresh ;
 
-: ROOT-ENTER ( ptr u8 n -- ptr u8 n ptr u8 n )
+: ROOT-ENTER ( ptr u8 n -- ptr u8 n )
    ROOT-CANON
    CANON-U @ {: u:n :}
    CANON-BUF u MAP-COPY {: fresh:ptr :}
-   CURRENT@ {: old:ptr oldu:n :}
+   CURRENT@
    fresh u CURRENT!
-   1 SCOPES +!
-   fresh u old oldu ;
+   1 SCOPES +! ;
 
-: ROOT-LEAVE ( ptr u8 n ptr u8 n n -- )
-   {: fresh:ptr u:n old:ptr oldu:n rc:n :}
+\ The root current at a scope's exit is the scope's own mapping, or the one a
+\ ROOT! in the scope replaced it with; either is released once the caller's
+\ root is back.
+: ROOT-LEAVE ( ptr u8 n n -- )
+   {: old:ptr oldu:n rc:n :}
    -1 SCOPES +!
+   CURRENT@ {: cur:ptr curu:n :}
    old oldu CURRENT!
-   fresh u 1+ munmap 0 < if
+   cur curu 1+ munmap 0 < if
       s" source root: cannot release a root mapping" INCLUDE-IO-RC die
    then
    rc 0= 0= if rc throw then ;
 
 public
 
-\ Each scope owns a mapping sized to its root string. There is no additional
-\ root-count/depth limit, and a throw restores the caller before releasing it.
-\ A root that does not resolve to a searchable directory is refused by name.
+\ Each scope maps its root string at entry and releases the root current at its
+\ exit. There is no additional root-count/depth limit, and a throw restores the
+\ caller before releasing it. A root that does not resolve to a searchable
+\ directory is refused by name.
 : WITH ( ptr u8 n [ -- ] -- ) {: q :}
-   ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
+   ROOT-ENTER {: old:ptr oldu:n :}
    q catch {: rc:n :}
-   fresh u old oldu rc ROOT-LEAVE ;
+   old oldu rc ROOT-LEAVE ;
 
 private
 
-\ The path words act on the top level only: each open scope, a load's among
-\ them, holds the current path it replaced and restores it on exit.
+\ CD, PUSHPATH and POPPATH act on the top level only: each open scope, a load's
+\ among them, holds the current path it replaced and restores it on exit.
 : TOP-ONLY ( ptr u8 n -- )
    SCOPES @ 0= if 2drop exit then
    INCLUDE-IO-RC die ;
 
-\ At the top level a current path is CD's mapping, or POPPATH's.
+\ A current path is ROOT!'s mapping or POPPATH's, inside a scope also the scope's.
 : RELEASE-CURRENT ( -- )
    CURRENT-U @ 0 > if
       CURRENT-PTR CURRENT-U @ 1+ munmap 0 < if
@@ -606,33 +631,36 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    repeat
    drop INCLUDE-TRUE ;
 
-\ CD's directory: the current path, which a relative require searches first,
-\ becomes it, relative to the current path when relative. It never changes the
+public
+
+\ The current root, which a relative require searches first, becomes the
+\ directory, relative to the current root when relative. Legal at the top
+\ level, inside a load and inside a WITH body: a file sets its root with ROOT!,
+\ which its load's end undoes, or scopes one with WITH. It never changes the
 \ process's directory or the engine root. A refusal names the absolute
 \ spelling tried.
-: CD-PATH ( ptr u8 n -- )
+: ROOT! ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u INCLUDE-PATH-CAP > if s" CD: path is too long" INCLUDE-IO-RC die then
+   u INCLUDE-PATH-CAP > if s" source root: path is too long" INCLUDE-IO-RC die then
    CURRENT$ a u JOIN {: p:ptr pu:n :}
-   pu INCLUDE-PATH-CAP > if s" CD: path is too long" INCLUDE-IO-RC die then
+   pu INCLUDE-PATH-CAP > if s" source root: path is too long" INCLUDE-IO-RC die then
    p pu CANON-N {: n:n :}
-   n -2 = if s" CD: path is too long" INCLUDE-IO-RC die then
-   n 0 < if s" CD: does not exist: " p pu PATH-DIE then
-   n ENGINE-DIR? 0= if s" CD: is not a searchable directory: " p pu PATH-DIE then
+   n -2 = if s" source root: path is too long" INCLUDE-IO-RC die then
+   n 0 < if s" source root: does not exist: " p pu PATH-DIE then
+   n ENGINE-DIR? 0= if s" source root: is not a searchable directory: " p pu PATH-DIE then
    CANON-BUF n MAP-COPY {: fresh:ptr :}
    RELEASE-CURRENT
    fresh n CURRENT! ;
 
-public
-
 \ SwiftForth's path words, at the top level of a stdin session or of a program
 \ file run as `bin/hb file.f`; inside a load (`--load`, `require`) or a WITH
-\ body they are refused, and a file scopes a root with WITH. `CD <dir>` on its
-\ own line moves the current path (CD-PATH), and a bare CD prints it.
+\ body they are refused, and a file sets its root with ROOT! or scopes one with
+\ WITH. `CD <dir>` on its own line is `ROOT!` of that directory, and a bare CD
+\ prints the current root.
 : CD ( -- )
    s" CD: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH" TOP-ONLY
    LINE-BLANK? if CURRENT$ type cr exit then
-   parse-name CD-PATH ;
+   parse-name ROOT! ;
 
 \ PUSHPATH saves the current path; a null slot is the top-level root.
 : PUSHPATH ( -- )
@@ -1898,7 +1926,7 @@ public
 \ src/habu/main.f builds) runs open, as the engine's own loop runs it: it may
 \ leave cells on the stack and the process still exits 0. The files it loads
 \ keep their own closed units (LOAD-UNIT); the program file of `hb prog.f` runs
-\ in a frame of its own (RUN-PROGRAM). Its text is no file's, so a refusal in it
+\ in a frame of its own (RUN-PROGRAM). The stream's text is no file's, so a refusal in it
 \ names none: run while a file is open (a harness calling src/habu/main.f), it
 \ counts itself on that file's frame, which then publishes no location until
 \ the stream returns or throws.
@@ -2055,16 +2083,6 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    rc 0= 0= if rc throw then
    a u q ;
 
-\ Whether this copy of the loader is the one a build compiled into the space it
-\ writes: there the process's record (LOADER) is hb's, not this copy's own.
-: BUILD-COPY? ( -- bool ) LOADER LOADER-REC = 0= ;
-
-\ During a build only hb's loader reads a file: the linker sees none the
-\ build's copy reads (test/file-objects.f WORD-LOAD-BUILD).
-: HOST-LOAD ( -- )
-   BUILD-COPY? 0= if exit then
-   s" include: a word loaded a file during a build; load it with require or include at the file's top level" INCLUDE-DIE ;
-
 \ The row decision belongs to the whole load, including path resolution and
 \ reader callbacks before PUSH. Its result is consumed before returning.
 : LOAD-RAW ( ptr u8 n -- )
@@ -2083,6 +2101,7 @@ public
 \ root is CURRENT$, at the top level the program's directory (PROGRAM-INIT).
 \ A path that does not resolve is refused by name before the frame opens.
 : RUN-PROGRAM ( ptr u8 n -- )
+   2dup BUILD-REFUSE
    CANONICAL {: path:ptr pathu:n exists:bool :}
    path pathu INCLUDE-PATH0 drop
    exists 0= if INCLUDE-OPEN-DIE then
@@ -2096,7 +2115,7 @@ public
 \ A completed source range leaves definitions live even if a unit callback
 \ later throws. A require keeps its row in that case.
 : LOAD-RESULT ( ptr u8 n -- bool n )
-   HOST-LOAD
+   2dup BUILD-REFUSE
    0 LAST-LOAD-EVAL-OK !
    [: 2dup LOAD-RAW ;] catch {: rc:n :}
    2drop
@@ -2116,22 +2135,23 @@ public
 \ opens a source frame and makes its root current until the callback returns.
 : WITH-BYTES ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
    {: path:ptr pathu:n q :}
-   HOST-LOAD
+   path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
-   RESOLVED-ROOT$ ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
+   RESOLVED-ROOT$ ROOT-ENTER {: old:ptr oldu:n :}
    q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
    drop
-   fresh u old oldu rc ROOT-LEAVE ;
+   old oldu rc ROOT-LEAVE ;
 
 \ A caller that owns PATH's source bytes can open the same loader frame without
 \ reading a different disk copy. This is used for an included buffer subject.
 : WITH-SUPPLIED ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
    {: path:ptr pathu:n src:ptr srcu:n q :}
+   path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
-   RESOLVED-ROOT$ ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
+   RESOLVED-ROOT$ ROOT-ENTER {: old:ptr oldu:n :}
    src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
    2drop drop
-   fresh u old oldu rc ROOT-LEAVE ;
+   old oldu rc ROOT-LEAVE ;
 
 ;package
 
@@ -2269,14 +2289,14 @@ public
 : POLICY-WITH-ROOT ( ptr u8 n [ -- ] [ -- ] -- )
    {: path:ptr u:n q require-xt :}
    data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
-   path u ROOT-ENTER {: fresh:ptr freshu:n prior:ptr prioru:n :}
+   path u ROOT-ENTER {: prior:ptr prioru:n :}
    data-base INCLUDE-POLICY-REQUIRE-CELL + @ 0= 0= {: had:bool :}
    POLICY-ROOT-U @ {: old-u:n :}
    POLICY-ROOT-BUF old-u MAP-COPY {: old:ptr :}
    require-xt POLICY-ROOT-SET
    q catch {: rc:n :}
    data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> if
-      fresh freshu prior prioru 0 ROOT-LEAVE
+      prior prioru 0 ROOT-LEAVE
       old old-u POLICY-ROOT-RELEASE POLICY-SEALED
    then
    had if
@@ -2287,7 +2307,7 @@ public
       0 data-base INCLUDE-POLICY-REQUIRE-CELL + xt!
    then
    old old-u POLICY-ROOT-RELEASE
-   fresh freshu prior prioru rc ROOT-LEAVE ;
+   prior prioru rc ROOT-LEAVE ;
 
 ;package
 

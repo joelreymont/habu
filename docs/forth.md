@@ -290,10 +290,24 @@ public
   saves it and `POPPATH` restores it. Inside a load (`--load` or `require`)
   or a `SOURCE-ROOT:WITH` body they are refused by name. They never change the
   engine root or the process working directory, and an image cannot be saved
-  with a path pushed. A file scopes a root with
+  with a path pushed. A file sets its root with
+  `SOURCE-ROOT:ROOT! ( ptr u8 n -- )`, legal at the top level, inside a load
+  and inside a `WITH` body: the directory, relative to the current root when
+  relative, becomes the current root, and the end of the load or `WITH` scope
+  it runs in restores the root that was current when that load or scope began
+  (`CD <dir>` is `ROOT!` at the top level). A file scopes a root with
   `SOURCE-ROOT:WITH ( ptr u8 n [ -- ] -- )`, which restores the caller's on
   return or throw; a root that does not resolve to a searchable directory, and
-  an image save inside the scope, are refused by name. Fixtures resolve
+  an image save inside the scope, are refused by name.
+- A build's loader does every load, at a file's top level: a word that loads a
+  file (`included`, `required`, `script-required`, `INCLUDE-LOAD`,
+  `SOURCE-ROOT:LOAD`, `SOURCE-ROOT:WITH-BYTES`, `SOURCE-ROOT:WITH-SUPPLIED`,
+  `SOURCE-ROOT:RUN-PROGRAM`) is refused when it runs during a build, `include:
+  a word loaded a file during a build; load it with require or include at the
+  file's top level: <path>`, so a file that scoped its root by loading from a
+  word sets it with `ROOT!` instead. `SOURCE-ROOT:RESOLVE`
+  resolves in a build as elsewhere, its known flag there answering for the
+  built program's own registry. Fixtures resolve
   against `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument.
 - The files the engine bakes are already loaded: `require` of one, such as
   `require src/core/sha256.f`, is a no-op, and an application's file named like
@@ -1000,10 +1014,10 @@ Factor raw compiler and emitter code to the same standard.
   `[if]` only right after a target predicate, or a predicate and `0=`, and
   `[if]` and `[then]` are reserved names. A word a build runs never loads a
   file: hb's loader runs a top-level `require` (src/habu/interpret.f LOADER?),
-  but a load a word runs (`included`, `required`, `script-required`,
-  `INCLUDE-LOAD`) calls the build's own copy of the loader, whose loads the
-  linker never sees, so that copy refuses: `include: a word loaded a file
-  during a build; load it with require or include at the file's top level`.
+  but a load a word runs calls the build's own copy of the loader, whose loads
+  the linker never sees, so that copy refuses it, naming the path: `include: a
+  word loaded a file during a build; load it with require or include at the
+  file's top level: <path>` ("Packages" lists the words refused).
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
   standard input, in every file `--load`, `include` and `require` load, and in
   the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.

@@ -544,7 +544,7 @@ variable RC
    PROG-RESET s" SOURCE-ROOT:CD" s" deep" PATH-LINE
    5 0 do SB-RESET s" SOURCE-ROOT:CD " SB-APPEND LONG LONG-NAME SB-APPEND SB$ PLINE loop
    RUN-TREE
-   S\" CD: path is too long\n" REFUSAL ;
+   S\" source root: path is too long\n" REFUSAL ;
 
 \ A path word in <tmp>/<file>, the --load entry.
 : IN-LOAD ( ptr u8 n ptr u8 n -- )
@@ -610,9 +610,9 @@ variable RC
    RUN-TREE
    SB-RESET s" from cd" LINE s" cd/sub" A$ LINE SB$ 0 EXPECT
    s" CD to a missing directory is refused by name" s" absent"
-   s" CD: does not exist: " CD-REFUSED
+   s" source root: does not exist: " CD-REFUSED
    s" CD to a file is refused by name" s" cd/x.f"
-   s" CD: is not a searchable directory: " CD-REFUSED
+   s" source root: is not a searchable directory: " CD-REFUSED
    CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-IN-ROOT PATH-STACK ;
 
 : MAIN ( -- )
