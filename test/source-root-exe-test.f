@@ -39,6 +39,8 @@ $1000 constant PROG-CAP
 9 constant OVER-DEPTH
 \ Search without read permission (0111).
 $49 constant SEARCH-ONLY
+\ No permission at all (0000).
+0 constant NO-ACCESS
 
 create GATE CAP allot
 create TOP CAP allot
@@ -245,6 +247,7 @@ variable RC
    s" push-load.f" S\" SOURCE-ROOT:PUSHPATH\n" TEXT
    s" pop-load.f" S\" SOURCE-ROOT:POPPATH\n" TEXT
    s" search-only" A$ FS:MAKE-DIR
+   s" locked/inner" A$ FS:MAKE-DIRS
    LONG-NAME 0 ?do 97 LONG i + c! loop
    DEEP-DIRS ;
 
@@ -523,12 +526,30 @@ variable RC
    SB-RESET s" source root: a boot file is outside the engine root: " SB-APPEND
    s" foreign/x.f" A$ LINE SB$ REFUSAL ;
 
+: CD-PROG ( ptr u8 n -- ) {: rel:ptr relu:n :}
+   PROG-RESET s" SOURCE-ROOT:CD" rel relu PATH-LINE ;
+
+\ The refusal want, then <tmp>/<rel>.
+: CD-WANT ( ptr u8 n ptr u8 n -- )
+   {: rel:ptr relu:n want:ptr wantu:n :}
+   SB-RESET want wantu SB-APPEND rel relu A$ LINE SB$ REFUSAL ;
+
 : CD-REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n rel:ptr relu:n want:ptr wantu:n :}
    label labelu T-LABEL
-   PROG-RESET s" SOURCE-ROOT:CD" rel relu PATH-LINE
+   rel relu CD-PROG
    RUN-TREE
-   SB-RESET want wantu SB-APPEND rel relu A$ LINE SB$ REFUSAL ;
+   rel relu want wantu CD-WANT ;
+
+\ The canon fails behind a parent with no search permission, as it does for a
+\ missing directory; the parent's mode comes back even when the run throws, so
+\ the cleanup can remove the tree.
+: CD-LOCKED ( -- )
+   s" CD to a directory behind an unsearchable parent is refused by name" T-LABEL
+   s" locked" A$ NO-ACCESS FS:CHMOD-MODE
+   s" locked/inner" CD-PROG
+   [: RUN-TREE ;] [: s" locked" A$ MODE-DIR FS:CHMOD-MODE ;] finally
+   s" locked/inner" s" source root: does not resolve to a directory: " CD-WANT ;
 
 : CD-SEARCH-ONLY ( -- )
    s" a directory searchable without read permission is a current path" T-LABEL
@@ -610,7 +631,8 @@ variable RC
    RUN-TREE
    SB-RESET s" from cd" LINE s" cd/sub" A$ LINE SB$ 0 EXPECT
    s" CD to a missing directory is refused by name" s" absent"
-   s" source root: does not exist: " CD-REFUSED
+   s" source root: does not resolve to a directory: " CD-REFUSED
+   CD-LOCKED
    s" CD to a file is refused by name" s" cd/x.f"
    s" source root: is not a searchable directory: " CD-REFUSED
    CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-IN-ROOT PATH-STACK ;

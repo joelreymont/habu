@@ -652,7 +652,7 @@ public
    pu INCLUDE-PATH-CAP > if s" source root: path is too long" INCLUDE-IO-RC die then
    p pu CANON-N {: n:n :}
    n -2 = if s" source root: path is too long" INCLUDE-IO-RC die then
-   n 0 < if s" source root: does not exist: " p pu PATH-DIE then
+   n 0 < if s" source root: does not resolve to a directory: " p pu PATH-DIE then
    n ENGINE-DIR? 0= if s" source root: is not a searchable directory: " p pu PATH-DIE then
    CANON-BUF n MAP-COPY {: fresh:ptr :}
    RELEASE-CURRENT
