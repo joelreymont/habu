@@ -142,11 +142,27 @@ variable RC
 : INT-FIELD ( SPAN:span<u8> ptr u8 n -- n ) \ -1 when absent
    GJA-FIELD? if GJA-INT exit then drop -1 ;
 
+\ One failed assertion naming KEY, a field the packet lacks; the run goes on.
+: FIELD-MISSING ( ptr u8 n -- )
+   {: key:ptr keyu:n :}
+   T-NEXT
+   T-FAIL
+   s" assert: missing JSON field " type key keyu type cr
+   T-LABEL-CLEAR ;
+
+
+\ The packet ROOT has the string WANT for KEY.
+: STR-FIELD= ( SPAN:span<u8> ptr u8 n ptr u8 n -- )
+   {: root:SPAN:span<u8> key:ptr keyu:n want:ptr wantu:n :}
+   root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
+   GJA-STRING$ want wantu T$= ;
+
+
 \ Packet k of the last run has the string WANT for KEY.
 : FIELD= ( n ptr u8 n ptr u8 n -- )
    {: k:n key:ptr keyu:n want:ptr wantu:n :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
-   k GJA-LINE$ GJA-PARSE key keyu GJA-REQ GJA-STRING$ want wantu T$= ;
+   k GJA-LINE$ GJA-PARSE key keyu want wantu STR-FIELD= ;
 
 \ Packet k of the last run names file PATH, whose bytes are TEXT, at LINE, COL
 \ and bytes [BS, BE), and those bytes of TEXT are SPELL.
@@ -155,7 +171,7 @@ variable RC
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ GJA-PARSE
    {: root:SPAN:span<u8> :}
-   root s" file" GJA-REQ GJA-STRING$ path pathu T$=
+   root s" file" path pathu STR-FIELD=
    root s" line" INT-FIELD line T=
    root s" column" INT-FIELD col T=
    root s" byte_start" INT-FIELD bs T=
