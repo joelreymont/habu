@@ -168,6 +168,7 @@ create REQUESTS BUF:HDR-BYTES allot  \ the object's REQUESTS rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's source names, 8 bytes each
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
+create RAN-ROWS BUF:HDR-BYTES allot  \ the BUILT rows whose words the compiling file's pieces ran, each once
 create FRAMES BUF:HDR-BYTES allot    \ each compiling loader's object so far while its request loads
 create PARKED BUF:HDR-BYTES allot    \ each checked or linking file's place in its object while its request is checked or loads
 create PENDING BUF:HDR-BYTES allot   \ the pieces a root's check passed, in load order, as FILES rows
@@ -265,10 +266,13 @@ variable HSTORES-N
 \ the BUILT row holding the cell, -1 for header data, and at 2p + 1 the storing piece's row.
 DYNAMIC-BUFFER STORERS n
 variable STORERS-N                   \ its pairs
+DYNAMIC-BUFFER WALKED n              \ BUILT row r's mark in RAN-FILES+'s walk
+DYNAMIC-BUFFER WALK n                \ the rows the walk reached, in the order it reached them
+variable WALK-N
 
 \ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR,
-\ WIDN-CELL and the loader's EVENT-COUNT as a file's load or its piece after a request starts
-\ (MARKS).
+\ WIDN-CELL, the loader's EVENT-COUNT and OUTER:RUN-COUNT as a file's load or its piece after a
+\ request starts (MARKS).
 variable FILE-REC
 variable FILE-HELD
 variable FILE-TFAM                   \ TFAM:TFAM-N@ as the running piece starts
@@ -277,6 +281,7 @@ variable FILE-EM
 variable FILE-DP
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-EVENT                  \ the first event of the loader's log the piece made
+variable FILE-RUN                    \ the first entry of OUTER's run log the piece made
 variable FILE-END                    \ here's distance as the piece ends
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
@@ -341,16 +346,16 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    cap RUN-CAP !  0 RUN-N ! ;
 
 : DISPOSE-OBJECTS ( -- )
-   HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
+   WALKED-RELEASE  WALK-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  USED-RELEASE  USES-RELEASE  BUILT-USES-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
-   PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  SPELLS BUF:DISPOSE
-   NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
-   LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE  OLD-NAMES-RELEASE
-   NAMES-RELEASE ;
+   PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  RAN-ROWS BUF:DISPOSE
+   SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE
+   BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE
+   OLD-NAMES-RELEASE  NAMES-RELEASE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
@@ -361,6 +366,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    PIECES 256 BUF:N>BLEN BUF:INIT
    NAMED-ROWS 256 BUF:N>BLEN BUF:INIT
    SPELLS 256 BUF:N>BLEN BUF:INIT
+   RAN-ROWS 256 BUF:N>BLEN BUF:INIT
    FRAMES 256 BUF:N>BLEN BUF:INIT
    PARKED 256 BUF:N>BLEN BUF:INIT
    PENDING 256 BUF:N>BLEN BUF:INIT
@@ -776,6 +782,87 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : NAMED+ ( -- )
    NAMED-ROWS BYTES$ {: a:ptr u:n :}
    u 8 / 0 ?do a i 8 * + LE:U64@ REF-FILE drop loop ;
+
+
+\ ---- dependencies by run --------------------------------------------------------
+\ A file that runs an earlier piece's word while it compiles keeps the word's answer, so it
+\ depends on every piece that word reaches: the rows the piece references (BUILT-USES), the
+\ pieces that stored into its data (STORERS), and those that stored into the header data.
+
+: RAN-KNOWN? ( n -- bool )
+   {: idx:n :}
+   RAN-ROWS BYTES$ {: a:ptr u:n :}
+   u 8 / 0 ?do  idx  a i 8 * + LE:U64@  HOLDS? if true unloop exit then  loop
+   false ;
+
+\ The BUILT row that holds the record index, and true; false when none.
+: RAN-HOLDER ( n -- n bool )
+   {: idx:n :}
+   BUILT-N 0 ?do  idx i HOLDS? if i true unloop exit then  loop
+   0 false ;
+
+: RAN-ROW+ ( n -- )
+   {: row:n :}
+   RAN-ROWS BYTES$ {: a:ptr u:n :}
+   u 8 / 0 ?do  a i 8 * + LE:U64@ row = if unloop exit then  loop
+   row RAN-ROWS U64+ ;
+
+
+\ A run log entry's record index: true for the running piece's own word; else its earlier piece's
+\ BUILT row onto RAN-ROWS. hb's records and the build body's have no row.
+: RAN-RECORD ( n -- bool )
+   {: idx:n :}
+   idx FIRST-REC @ < if false exit then
+   idx FILE-REC @ >= if true exit then
+   idx RAN-KNOWN? if false exit then
+   idx RAN-HOLDER if RAN-ROW+ else drop then
+   false ;
+
+
+\ After PIECE+: the rows of the words the piece ran onto RAN-ROWS. A word of its own reaches what
+\ the piece references, its USES entries from USES-FROM.
+: RAN+ ( -- )
+   false  OUTER:RUN-COUNT FILE-RUN @ ?do  i OUTER:RUN-RECORD@ RAN-RECORD or  loop
+   if  USES-N @ USES-FROM @ ?do i USES @ RAN-ROW+ loop  then ;
+
+
+\ The running piece, at BUILT-N, has no row yet.
+: WALK+ ( n -- )
+   {: r:n :}
+   r BUILT-N >= if exit then
+   r WALKED @ 0<> if exit then
+   1 r WALKED !
+   WALK-N @ 1 + WALK-RESERVE
+   r WALK-N @ WALK !
+   1 WALK-N +! ;
+
+: ROW-USES+ ( n -- )
+   {: r:n :}
+   r 2 * BUILT-USES @ {: first:n :}
+   first  r 2 * 1 + BUILT-USES @ +  first ?do i USES @ WALK+ loop ;
+
+\ WALK's entries from k on, each giving WALK+ the rows its piece references; WALK-N once every
+\ entry is visited.
+: WALK-USES ( n -- n )
+   begin dup WALK-N @ < while  dup WALK @ ROW-USES+  1 +  repeat ;
+
+\ The storer of each STORERS pair whose holder is the header data or a walked row.
+: WALK-STORERS ( -- )
+   STORERS-N @ 0 ?do
+      i 2 * STORERS @ {: held:n :}
+      held -1 = if true else held WALKED @ 0<> then if  i 2 * 1 + STORERS @ WALK+  then
+   loop ;
+
+
+\ FILES gains each piece the rows of RAN-ROWS reach, in BUILT order, after NAMED+'s.
+: RAN-FILES+ ( -- )
+   RAN-ROWS BYTES$ nip 0= if exit then
+   BUILT-N 1 + WALKED-RESERVE
+   BUILT-N 1 + 0 ?do 0 i WALKED ! loop
+   0 WALK-N !
+   RAN-ROWS BYTES$ nip 8 / 0 ?do  RAN-ROWS BYTES$ drop i 8 * + LE:U64@ WALK+  loop
+   0 begin  WALK-USES  WALK-STORERS  dup WALK-N @ =  until drop
+   BUILT-N 0 ?do  i WALKED @ 0<> if i REF-FILE drop then  loop ;
 
 
 \ A data address's reference, and true: a file's data, or the open's header data; false,
@@ -1590,10 +1677,10 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    USES+
    req PIECES U64+ ;
 
-\ As the file's compile starts: no FILES, REQUESTS or piece yet, and PIECES' piece count 0 until
+\ As the file's compile starts: no FILES, REQUESTS, RAN-ROWS or piece yet, and PIECES' piece count 0 until
 \ WRITE-OBJECT.
 : OBJECT-OPEN ( -- )
-   REFS BUF:CLEAR  REQUESTS BUF:CLEAR  PIECES BUF:CLEAR  0 REQ-N !
+   REFS BUF:CLEAR  REQUESTS BUF:CLEAR  PIECES BUF:CLEAR  RAN-ROWS BUF:CLEAR  0 REQ-N !
    0 PIECES U64+ ;
 
 \ OBJECT as REFS then PIECES, FACTS-AT moved into it, as a request ends a piece.
@@ -1608,10 +1695,11 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 \ (SOURCE-UNIT:LOAD-INCLUDE or LOAD-REQUIRE), the path as spelled and the path loaded, each a
 \ FIELD+, then the FILES row of the requested file's last piece. A sibling renamed into place,
 \ unsynced: an object a crash cut short fails HEADER-CK's and PIECE-CK's bounds checks, and its
-\ file compiles.
+\ file compiles. FILES ends with the files the source names (NAMED+), then the pieces the words
+\ the file ran reach (RAN-FILES+).
 : WRITE-OBJECT ( n -- )
    {: t:n :}
-   NAMED+
+   NAMED+  RAN-FILES+
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
    REQUESTS BYTES$ {: reqs:ptr requ:n :}
@@ -3251,10 +3339,10 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    CHECK:OPEN
    construct step checked PROGRESS ! ;
 
-\ The build's registry starts empty (include.f REQUIRE-SNAPSHOT) and the loader logs each act,
-\ which a compiling file's object carries (ACTS+).
+\ The build's registry starts empty (include.f REQUIRE-SNAPSHOT), the loader logs each act,
+\ which a compiling file's object carries (ACTS+), and OUTER logs each word run (RAN+).
 : REQUIRE-FRESH ( -- )
-   REQUIRE-SNAPSHOT  EVENTS-RESET EVENT-ON
+   REQUIRE-SNAPSHOT  EVENTS-RESET EVENT-ON  OUTER:RECORD-RUNS
    construct step required PROGRESS ! ;
 
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
@@ -3299,7 +3387,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
-   EVENT-COUNT FILE-EVENT ! ;
+   EVENT-COUNT FILE-EVENT !  OUTER:RUN-COUNT FILE-RUN ! ;
 
 
 \ The scope a build's top-level file starts in: no package or part open, the build's global
@@ -3424,7 +3512,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}
    ids held > if E-WORDLIST throw then
    ids held < if E-COMP-STATE throw then
-   req PIECE+ ;
+   req PIECE+  RAN+ ;
 
 
 \ The piece's texts placed from OBJECT, as a link places them, then its BUILT row with its number
@@ -3438,7 +3526,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 \ The compiling file's object so far onto FRAMES while a file it requested loads, which reuses its
 \ buffers; FRAME-TAIL bytes end each frame, so POP-FRAME finds the lengths from FRAMES' end.
-8 8 * constant FRAME-TAIL
+9 8 * constant FRAME-TAIL
 
 : SAVE+ ( ptr a -- n )
    {: buf:ptr :}
@@ -3446,10 +3534,11 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    a u FRAMES SPAN+  u ;
 
 : PUSH-FRAME ( -- )
-   PIECES SAVE+  REFS SAVE+  REQUESTS SAVE+  NAMED-ROWS SAVE+  SPELLS SAVE+ {: p:n r:n rq:n m:n s:n :}
+   PIECES SAVE+  REFS SAVE+  REQUESTS SAVE+  NAMED-ROWS SAVE+  SPELLS SAVE+  RAN-ROWS SAVE+
+   {: p:n r:n rq:n m:n s:n ran:n :}
    INPUT-STAMP INPUT-BYTES FRAMES SPAN+
    FILE-PATH FILE-PATH-N @ FRAMES SPAN+
-   p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+  s FRAMES U64+
+   p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+  s FRAMES U64+  ran FRAMES U64+
    FILE-PATH-N @ FRAMES U64+  REQ-N @ FRAMES U64+
    UNLINKABLE @ if 1 else 0 then FRAMES U64+ ;
 
@@ -3465,11 +3554,12 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 : POP-FRAME ( -- )
    FRAMES BYTES$ {: f:ptr fu:n :}
    f fu + FRAME-TAIL - {: t:ptr :}
-   t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@  t 32 + LE:U64@ {: p:n r:n rq:n m:n s:n :}
-   t 40 + LE:U64@  t 48 + LE:U64@  t 56 + LE:U64@ {: pn:n reqs:n unlinkable:n :}
-   fu FRAME-TAIL -  p r + rq + m + s + INPUT-BYTES + pn + - {: start:n :}
+   t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@ {: p:n r:n rq:n m:n :}
+   t 32 + LE:U64@  t 40 + LE:U64@ {: s:n ran:n :}
+   t 48 + LE:U64@  t 56 + LE:U64@  t 64 + LE:U64@ {: pn:n reqs:n unlinkable:n :}
+   fu FRAME-TAIL -  p r + rq + m + s + ran + INPUT-BYTES + pn + - {: start:n :}
    start p PIECES RESTORE+  r REFS RESTORE+  rq REQUESTS RESTORE+  m NAMED-ROWS RESTORE+
-   s SPELLS RESTORE+ {: at:n :}
+   s SPELLS RESTORE+  ran RAN-ROWS RESTORE+ {: at:n :}
    f at + INPUT-STAMP INPUT-BYTES BYTE-COPY
    f at + INPUT-BYTES + FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
    reqs REQ-N !  unlinkable 0<> UNLINKABLE !
@@ -3740,7 +3830,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
          CHECK:CLOSE construct step moved PROGRESS ! true
       ENDOF
       required OF
-         EVENT-OFF EVENTS-RESET REQUIRE-RESTORE construct step checked PROGRESS ! true
+         OUTER:;RECORD-RUNS  EVENT-OFF EVENTS-RESET REQUIRE-RESTORE construct step checked PROGRESS ! true
       ENDOF
       objects OF
          DISPOSE-OBJECTS construct step required PROGRESS ! true
