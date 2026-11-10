@@ -37,3 +37,5 @@ Claim: unassigned.
 Acceptance case from habu-checked-src-can-d80dc074 (bob, 2026-11-10): once no build stores into the running hb's global, namespace and types wordlist cells (src/habu/linker.f MOVE-IN, RESTORE today), DATA-BANDS gains a row for each of BOOT:GLOBAL-WL-CELL, BOOT:NAMESPACE-WL-CELL and BOOT:TYPES-WL-CELL, a store from checked source into each exits 83, and test/seal.f holds a negative case per cell and the reproducer of /Users/joel/Work/reviews/habu-10x-2026-11-10/cases8/wlcell.
 
 Acceptance case 2026-11-10 (habu-checked-src-can-88e8a977): a read or write through a null the checker cannot see (': R ( ptr n -- n ) @ ;' then 'NULL-PTR R') stops with a catchable code, not a segmentation fault (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/nullread-hunt.md item 4).
+
+Consumers: Tender's server image cannot be built until this lands (the stripped build cannot carry the rows behind LOG:CODE+, used 39 times in tenderd), so tenderd runs from source (tenderd/run.f:1-4; Tender dot f2c40b6d).

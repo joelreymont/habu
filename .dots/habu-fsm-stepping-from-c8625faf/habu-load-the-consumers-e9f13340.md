@@ -12,3 +12,5 @@ Files: none in src; the installed tree.
 Verify: the three loads' output and exit status, recorded here.
 Depends: none.
 Ownership: the installed tree; a consumer's defect belongs to its owner. Claim: unassigned.
+
+The installed tree's src/lib/fsm.f equals master's and generates the step word, so the premise that the installed tree is old no longer holds. What remains is a recorded load of each consumer.

@@ -19,3 +19,5 @@ Note 2026-11-03: test/suite-budget.f, cited above, no longer exists. tools/lsp-e
 Note 2026-11-05: test/prefix-provided-unfilled.f is deleted, its BUILD-TIMEOUT-MS with it: two whole x86-64 engine builds (578 s, the suite's second slowest test) checked one refusal of the x86-64 capture build, and its second build reused no file object (dot habu-fit-cache-diagnostics-ef6f5f55: reused 0, compiled 176).
 
 Recurred (2026-11-06, jerry): the A1+B+A2a landing suite (gate engine /tmp/jerry-gate/gen2, load 11 rising to 50, 545 s wall) failed only check-cli-boundary, "check/file-load-context - child never exited; deadlock guard ms: 54000"; the same test alone on the same engine and tree passed in 354 s wall, 124 s user. One trivial `bin/hb --load tools/check.f -- ok.f` child takes 1.5 s user and 4 s wall at load 24, against the 0.62 s heaviest child tools/check-test-lib.f:51-55 states, so the guard's margin is a third of what its comment claims. Which child expired is not known: the suite removed its temporary directory.
+
+Consumers: Maki's chat-case is gone, so no consumer meets this today; the deadlines of Habu's own rows stay as described.
