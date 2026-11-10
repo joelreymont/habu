@@ -1,6 +1,6 @@
 \ take.f - TAKE-TURN, a browser host module (src/lib/browser/host.f) that keeps
 \ a delivery past its turn with BROWSER-EVENT:TAKE (src/lib/browser/event.f),
-\ built by tools/wasm-build.f with the entry TAKE-TURN:TURN;
+\ built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN;
 \ test/browser/take-test.f runs it under src/lib/browser/host-cli.mjs. Its
 \ records are test/browser/echo.f's.
 \
@@ -78,3 +78,5 @@ public
 
 ;using
 ;package
+
+: MAIN ( -- ) TAKE-TURN:TURN ;

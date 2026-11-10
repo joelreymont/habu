@@ -2,7 +2,7 @@
 \ echoes a load, focus or highlight event as a text record: the kind's name,
 \ a space and the event's bytes in lowercase hex. Typed "fetch" fetches the
 \ page-relative path slow.
-\ Build with tools/wasm-build.f, entry DISPLAY:TURN.
+\ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
 
@@ -111,3 +111,5 @@ public
 
 ;using
 ;package
+
+: MAIN ( -- ) DISPLAY:TURN ;

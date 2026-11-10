@@ -1,5 +1,5 @@
 \ request.f - real Wasm fixture for the browser request/reply protocol.
-\ Build with tools/wasm-build.f, entry REQUEST-TURN:TURN.
+\ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -182,3 +182,5 @@ public
 
 ;using
 ;package
+
+: MAIN ( -- ) REQUEST-TURN:TURN ;

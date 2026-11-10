@@ -1,7 +1,7 @@
 \ app.f - real Wasm fixture for the turn protocol's rpc, after and read records
-\ and its notified, tick, file and chunk events. Build with tools/wasm-build.f,
-\ entry APP-TURN:TURN. Each event it reads answers a text record naming its
-\ fields; typed text names the record to make.
+\ and its notified, tick, file and chunk events, built by `tools/hb-build.f --
+\ --target wasm`, whose entry is MAIN. Each event it reads answers a text record
+\ naming its fields; typed text names the record to make.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -181,3 +181,5 @@ public
 
 ;using
 ;package
+
+: MAIN ( -- ) APP-TURN:TURN ;

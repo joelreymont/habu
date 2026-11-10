@@ -1,6 +1,6 @@
 \ take-test.f - test/browser/take.f's module under bun: a delivery a turn takes
 \ with BROWSER-EVENT:TAKE (src/lib/browser/event.f) outlives the turn, and the
-\ module frees it in a later one. The module is built by tools/wasm-build.f and
+\ module frees it in a later one. The module is built by tools/hb-build.f and
 \ validated by wasm-tools; bun and wasm-tools must be on PATH, so
 \ test/wasm/device.f runs it, not the ordinary gate.
 
@@ -45,8 +45,8 @@ variable MOD-U
 
 : BUILD ( -- n )
    PROC-ARGV-RESET
-   s" --load" ARG+ s" tools/wasm-build.f" ARG+ s" --" ARG+
-   s" test/browser/take.f" ARG+ s" TAKE-TURN:TURN" ARG+ MOD MOD-U @ ARG+
+   s" --load" ARG+ s" tools/hb-build.f" ARG+ s" --" ARG+ s" --target" ARG+ s" wasm" ARG+
+   s" test/browser/take.f" ARG+ s" -o" ARG+ MOD MOD-U @ ARG+
    s" bin/hb" >LEN SPAWN ;
 
 \ host-cli.mjs on the module with the typed texts, run by bun.

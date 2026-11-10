@@ -1,7 +1,7 @@
 \ storage.f - STORAGE-TURN, a browser host module (src/lib/browser/host.f) whose
 \ dynamic buffer shares the module's allocator with the deliveries the host
-\ reserves through it (src/lib/browser/event.f), built by tools/wasm-build.f
-\ with the entry STORAGE-TURN:TURN; test/browser/storage-test.f runs it under
+\ reserves through it (src/lib/browser/event.f), built by `tools/hb-build.f --
+\ --target wasm`, whose entry is MAIN; test/browser/storage-test.f runs it under
 \ src/lib/browser/host-cli.mjs. Its records are test/browser/echo.f's.
 \
 \ Start reserves two pages, P and P+1, then answers hello, a fetch of `fixture`
@@ -115,3 +115,5 @@ public
 
 ;using
 ;package
+
+: MAIN ( -- ) STORAGE-TURN:TURN ;

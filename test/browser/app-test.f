@@ -1,7 +1,7 @@
 \ app-test.f - the turn protocol's rpc, after and read records and its
 \ notified, tick, file and chunk events under bun:
 \ src/lib/browser/host-cli.mjs runs test/browser/app.f's module, built by
-\ tools/wasm-build.f, through src/lib/browser/turn.js. bun and wasm-tools must
+\ tools/hb-build.f, through src/lib/browser/turn.js. bun and wasm-tools must
 \ be on PATH, so this is no row of the ordinary gate: test/wasm/device.f runs
 \ it, as does `bin/hb --load test/browser/app-test.f` from the tree's root.
 \ With Chrome installed (macOS's application or google-chrome on PATH) the
@@ -112,8 +112,8 @@ variable BEFORE-U
 
 : BUILD ( -- n )
    PROC-ARGV-RESET
-   s" --load" ARG+  s" tools/wasm-build.f" ARG+  s" --" ARG+
-   s" test/browser/app.f" ARG+  s" APP-TURN:TURN" ARG+  MOD MOD-U @ ARG+
+   s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
+   s" test/browser/app.f" ARG+  s" -o" ARG+  MOD MOD-U @ ARG+
    s" bin/hb" >LEN SPAWN ;
 
 

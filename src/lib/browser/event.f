@@ -1,5 +1,5 @@
 \ event.f - BROWSER-EVENT: a browser module's side of the turn protocol's events
-\ (src/lib/browser/turn.js). A module built by tools/wasm-build.f answers hello
+\ (src/lib/browser/turn.js). A module built by tools/hb-build.f answers hello
 \ with EVENT's address; the host writes each event's seven cells there before
 \ the run that reads it, and copies delivered bytes into pages it reserved
 \ through the module's reserve export. HANDLE frees each delivery its turn does

@@ -1,7 +1,7 @@
 \ storage-test.f - test/browser/storage.f's module under bun: its dynamic buffer
 \ and the deliveries src/lib/browser/host-cli.mjs reserves through the module
 \ share one allocator (src/lib/browser/event.f). The module is built by
-\ tools/wasm-build.f and validated by wasm-tools; bun and wasm-tools must be on
+\ tools/hb-build.f and validated by wasm-tools; bun and wasm-tools must be on
 \ PATH, so test/wasm/device.f runs it, not the ordinary gate.
 
 \ The fetch is answered with a file larger than the module's image, so the
@@ -58,8 +58,8 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : BUILD ( -- n )
    PROC-ARGV-RESET
-   s" --load" ARG+ s" tools/wasm-build.f" ARG+ s" --" ARG+
-   s" test/browser/storage.f" ARG+ s" STORAGE-TURN:TURN" ARG+ MOD MOD-U @ ARG+
+   s" --load" ARG+ s" tools/hb-build.f" ARG+ s" --" ARG+ s" --target" ARG+ s" wasm" ARG+
+   s" test/browser/storage.f" ARG+ s" -o" ARG+ MOD MOD-U @ ARG+
    s" bin/hb" >LEN SPAWN ;
 
 : SUM ( ptr u8 n -- n )
@@ -67,7 +67,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    0 u 0 ?do 31 * a i + c@ + $FFFFFFFF and loop ;
 
 : PAYLOAD! ( -- n )
-   WPROF:IMAGE-BASE MOD MOD-U @ FS:FILE-SIZE + WPROF:PAGE-BYTES + 13 + {: u:n :}
+   WPROF:DATA-BASE MOD MOD-U @ FS:FILE-SIZE + WPROF:PAGE-BYTES + 13 + {: u:n :}
    u PAYLOAD-RESERVE
    u 0 ?do i i 509 / + $FF and i PAYLOAD c! loop
    FILE FILE-U @ 0 PAYLOAD u FS:WRITE-ALL

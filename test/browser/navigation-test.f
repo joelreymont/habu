@@ -50,8 +50,8 @@ PATH-CAP BUFFER: FILE
 
 : BUILD ( -- n )
    PROC-ARGV-RESET
-   s" --load" ARG+ s" tools/wasm-build.f" ARG+ s" --" ARG+
-   s" test/browser/navigation.f" ARG+ s" NAV:TURN" ARG+ MOD MOD-U @ ARG+
+   s" --load" ARG+ s" tools/hb-build.f" ARG+ s" --" ARG+ s" --target" ARG+ s" wasm" ARG+
+   s" test/browser/navigation.f" ARG+ s" -o" ARG+ MOD MOD-U @ ARG+
    s" bin/hb" >LEN SPAWN ;
 
 : HOST-OPEN ( -- )

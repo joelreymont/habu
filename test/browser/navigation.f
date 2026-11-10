@@ -1,5 +1,5 @@
 \ navigation.f - Wasm fixture for the browser navigation, tree and highlight
-\ protocol. Build with tools/wasm-build.f, entry NAV:TURN.
+\ protocol, built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
 
@@ -142,3 +142,5 @@ public
 
 ;using
 ;package
+
+: MAIN ( -- ) NAV:TURN ;
