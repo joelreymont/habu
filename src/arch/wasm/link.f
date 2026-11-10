@@ -1,7 +1,9 @@
 \ link.f - WLINK, the Wasm backend's linker: encoded functions, a data image and
 \ table slots written as one Wasm module (docs/xcomp.md "Linking"); the rows come
-\ from src/habu/link-wasm.f. LINK reads every row before it writes and patches
-\ only its copies, so the rows stay as given and LINK can run again.
+\ from src/habu/link-wasm.f. The image's byte at offset off is memory's byte at
+\ WPROF:DATA-BASE + off. LINK checks every row before it writes, stores the data
+\ cells into its copy of the image and patches only the module, so LINK can run
+\ again.
 \ STORAGE CLASS. MODULE-OWNED: the rows, bodies and image live in this package's
 \ buffers until RESET, and the module LINK answers until the next LINK.
 
@@ -19,7 +21,7 @@ require src/compiler/native/emission.f
 -9830 constant E-WLINK-FIRST
 -9834 constant E-WLINK-LAST
 -9830 constant E-WLINK-UNRESOLVED  \ an entry, site, cell or slot naming no function, image byte or table slot of the link
--9831 constant E-WLINK-MEMORY      \ an image whose end, from WPROF's image base, passes memory32's 65536 pages
+-9831 constant E-WLINK-MEMORY      \ an image whose end, from WPROF's DATA base, passes memory32's 65536 pages
 
 package WLINK
 public
@@ -61,8 +63,8 @@ $21 constant OP-LOCAL-SET
 3 constant ALIGN-64
 WPROF:PAGE-BYTES constant PAGE-BYTES
 WPROF:PAGES-MAX constant PAGES-MAX
-\ The most image bytes those pages hold above the image base.
-PAGES-MAX PAGE-BYTES * WPROF:IMAGE-BASE - constant IMAGE-MAX
+\ The most image bytes those pages hold from the DATA base.
+PAGES-MAX PAGE-BYTES * WPROF:DATA-BASE - constant IMAGE-MAX
 10 constant LEB-MOST                 \ the widest LEB, a 64-bit one
 8 constant CELL-BYTES                \ a data cell
 
@@ -108,6 +110,9 @@ variable NCELLS
 DYNAMIC-BUFFER CELL-AT n             \ each data cell's offset in the image
 DYNAMIC-BUFFER CELL-KIND n
 DYNAMIC-BUFFER CELL-TGT n
+variable NRUNS                       \ the image's runs of non-zero bytes, once LINK found them
+DYNAMIC-BUFFER RUN-AT n              \ each run's first offset in the image
+DYNAMIC-BUFFER RUN-LEN n
 variable NSLOTS                      \ the slots holding a function
 DYNAMIC-BUFFER SLOT-FN n             \ the function in slot FIRST-SLOT + k
 variable NINDS
@@ -154,6 +159,12 @@ LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
 
 : I64-CONST ( n -- )
    WSTRUCT-OPCODE:I64-CONST PUT-OP  PUT-S64 ;
+
+\ i32.const of a memory address, 0 to 2^32 - 1: one from 2^31 up is written as
+\ the negative number of the same 32 bits.
+: ADDRESS-CONST ( n -- )
+   {: a:n :}
+   a $7FFFFFFF > if  a $100000000 -  else  a  then  I32-CONST ;
 
 \ What body writes, after its size.
 : SIZED ( [ -- ] -- )
@@ -336,17 +347,18 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ ---- the sections -------------------------------------------------------------
 \ Sections in the specification's order: type, function, table when a slot was
 \ added, memory, export, element from slot 1, code, and data, one active segment
-\ at WPROF's image base. Memory's minimum is the pages holding the image's end,
-\ its maximum memory32's 65536, which WKERNEL's map-anon grows toward. No global
+\ per run of the image. Memory's minimum is the pages holding the DATA region and
+\ the image, its maximum memory32's 65536, which WKERNEL's map-anon grows toward. No global
 \ is declared (ctx lives in memory at WPROF's ctx base), nothing is imported and
 \ no start function runs.
 : BODY$ ( n -- ptr u8 n )
    {: k:n :}
    k FN-AT @ BODIES  k FN-LEN @ ;
 
-\ The pages holding every region and the image.
+\ The pages holding every region and the image. The run wrapper and tier 0's
+\ code store into the DATA region's header cells whatever the image's length.
 : PAGES ( -- n )
-   WPROF:IMAGE-BASE IMAGE-U @ +  PAGE-BYTES 1- +  PAGE-BYTES / ;
+   WPROF:DATA-BASE  IMAGE-U @ WPROF:DATA-BYTES max +  PAGE-BYTES 1- +  PAGE-BYTES / ;
 
 : TYPE-SEC ( -- )
    NTYPES @ PUT-U32
@@ -402,14 +414,13 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    [: OUT-LEN-BODY ;] SIZED
    RESERVES @ 0<> if  [: RESERVE-BODY ;] SIZED  then ;
 
-variable IMAGE-POS                   \ where LINK wrote the image in the module
-
 : DATA-SEC ( -- )
-   1 PUT-U32
-   ACTIVE PUT-U32  WPROF:IMAGE-BASE I32-CONST  OP-END PUT-BYTE
-   IMAGE-U @ PUT-U32
-   DRY @ 0= if  AT @ IMAGE-POS !  then
-   IMAGE-U @ 0 > if  0 IMAGE IMAGE-U @ PUT-BYTES  then ;
+   NRUNS @ PUT-U32
+   NRUNS @ 0 ?do
+      ACTIVE PUT-U32  WPROF:DATA-BASE i RUN-AT @ + ADDRESS-CONST  OP-END PUT-BYTE
+      i RUN-LEN @ PUT-U32
+      i RUN-AT @ IMAGE  i RUN-LEN @ PUT-BYTES
+   loop ;
 
 : WRITE-MODULE ( -- )
    MAGIC PUT-LE32  VERSION PUT-LE32
@@ -436,12 +447,14 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    k 0 <  k NF @ >= or if E-WLINK-UNRESOLVED throw then
    k ;
 
-\ The value an address of a kind and a target is written as.
+\ The value an address of a kind and a target is written as: a DATA target is an
+\ image offset, 0 to its length, written as WPROF's DATA base plus it; a CODE
+\ target is a table slot, written as the slot.
 : FINAL ( n n -- n )
    {: kind:n t:n :}
    kind NEMIT:ADDR-DATA = if
       t 0 <  t IMAGE-U @ > or if E-WLINK-UNRESOLVED throw then
-      WPROF:IMAGE-BASE t +  exit
+      WPROF:DATA-BASE t +  exit
    then
    kind NEMIT:ADDR-CODE = if
       t FIRST-SLOT <  t NSLOTS @ FIRST-SLOT + >= or if E-WLINK-UNRESOLVED throw then
@@ -493,20 +506,51 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    NADDRS @ 0 ?do  i ADDR-CK  loop
    NCELLS @ 0 ?do  i CELL-CK  loop ;
 
+\ ---- the image's cells and runs ---------------------------------------------------
+\ A data cell is eight image bytes, low first, holding its kind and target's FINAL
+\ value; LINK stores every cell before it finds the runs.
+: IMAGE-CELL! ( n -- )
+   {: k:n :}
+   k CELL-KIND @ k CELL-TGT @ FINAL  k CELL-AT @  {: v:n off:n :}
+   CELL-BYTES 0 do  v i 8 * rshift $FF and  off i + IMAGE c!  loop ;
+
+\ Memory starts zeroed, so the data section writes only the image's runs. A run
+\ starts at a non-zero byte and ends at the last non-zero byte before GAP-MIN or
+\ more zero bytes or before the image's end: a gap that long outweighs a
+\ segment's header, at most 13 bytes (flag, i32.const, 5-byte address, end,
+\ 5-byte length).
+16 constant GAP-MIN
+variable RUN-FIRST                   \ the open run's first offset, -1 while none is open
+variable RUN-LAST                    \ its last non-zero byte's offset
+
+: RUN-CLOSE ( -- )
+   NRUNS @ {: k:n :}
+   k 1+ RUN-AT-RESERVE  k 1+ RUN-LEN-RESERVE
+   RUN-FIRST @ k RUN-AT !  RUN-LAST @ 1+ RUN-FIRST @ - k RUN-LEN !
+   1 NRUNS +!
+   -1 RUN-FIRST ! ;
+
+\ Byte at, which is non-zero, ends the open run when GAP-MIN zero bytes lie
+\ before it, then opens a run or extends the open one.
+: RUN-BYTE ( n -- )
+   {: at:n :}
+   RUN-FIRST @ 0 >=  at RUN-LAST @ - 1- GAP-MIN >= and if RUN-CLOSE then
+   RUN-FIRST @ 0 < if at RUN-FIRST ! then
+   at RUN-LAST ! ;
+
+: FIND-RUNS ( -- )
+   0 NRUNS !  -1 RUN-FIRST !
+   IMAGE-U @ 0 ?do  i IMAGE c@ 0<> if i RUN-BYTE then  loop
+   RUN-FIRST @ 0 >= if RUN-CLOSE then ;
+
 \ ---- patching the module ---------------------------------------------------------
 \ A call site is a padded five-byte field in its caller's body and gets its
-\ callee's index. An address site (a padded ten-byte field) and a data cell
-\ (eight image bytes, low first) name a kind and a target: a DATA target is an
-\ image offset, 0 to its length, written as WPROF's image base plus it; a CODE
-\ target is a table slot, written as the slot. An indirect site, the padded
-\ five-byte field after call_indirect, gets the index of (i32) -> (i32), every
-\ table slot's type (src/arch/wasm/dynamic.f).
+\ callee's index. An address site, a padded ten-byte field, gets its kind and
+\ target's FINAL value. An indirect site, the padded five-byte field after
+\ call_indirect, gets the index of (i32) -> (i32), every table slot's type
+\ (src/arch/wasm/dynamic.f).
 : MODULE ( -- SPAN:span<u8> )
    0 OUT AT @ SPAN:MAKE ;
-
-: PUT-CELL ( n n -- )
-   {: v:n off:n :}
-   CELL-BYTES 0 do  v i 8 * rshift $FF and  off i + OUT c!  loop ;
 
 : PATCH ( -- )
    NCALLS @ 0 ?do
@@ -518,9 +562,6 @@ variable IMAGE-POS                   \ where LINK wrote the image in the module
    NADDRS @ 0 ?do
       i ADDR-KIND @ i ADDR-TGT @ FINAL  MODULE  i ADDR-FN @ FN-POS @ i ADDR-AT @ +
       WLEB:S64-PATCH
-   loop
-   NCELLS @ 0 ?do
-      i CELL-KIND @ i CELL-TGT @ FINAL  IMAGE-POS @ i CELL-AT @ +  PUT-CELL
    loop ;
 
 : COLUMN+ ( n -- )
@@ -533,7 +574,7 @@ public
 
 : RESET ( -- )
    0 NF !  0 BODIES-U !  0 NCALLS !  0 NADDRS !  0 IMAGE-U !  0 NCELLS !  0 NSLOTS !
-   0 NINDS !  0 RESERVES ! ;
+   0 NINDS !  0 RESERVES !  0 NRUNS ! ;
 
 \ A body as WENC writes it (local declarations, code, end), the lanes in and out
 \ its emission row states, its frame variant and its origin; answers its handle,
@@ -579,8 +620,8 @@ public
    f k ADDR-FN !  at k ADDR-AT !  kind k ADDR-KIND !  t k ADDR-TGT !
    1 NADDRS +! ;
 
-\ The data image, in place of any before it. An image past memory32's 65536
-\ pages is refused before a byte is reserved.
+\ The data image, in place of any before it. An image whose end from WPROF's
+\ DATA base passes memory32's 65536 pages is refused before a byte is reserved.
 : DATA! ( ptr u8 n -- )
    {: a u:n :}
    u 0 < if E-SPAN-LENGTH throw then
@@ -589,7 +630,8 @@ public
    u 0 > if  a u  0 IMAGE u SPAN:MAKE  SPAN:COPY  then
    u IMAGE-U ! ;
 
-\ The image's cell at offset at holds the address of a kind and a target.
+\ The image's cell at offset at holds the address of a kind and a target, which
+\ LINK stores into the image before it writes the module.
 : DATA-CELL+ ( n n n -- )
    {: at:n kind:n t:n :}
    NCELLS @ {: k:n :}
@@ -617,6 +659,8 @@ public
 : LINK ( n -- ptr u8 n )
    {: e:n :}
    e ROWS-CK
+   NCELLS @ 0 ?do  i IMAGE-CELL!  loop
+   FIND-RUNS
    0 NEXT !  [: NUMBER ;] IN-ORDER
    e FN-IDX @ ENTRY-IDX !
    TYPE-ALL

@@ -24,22 +24,25 @@ public
 $10000 constant PAGE-BYTES
 $10000 constant PAGES-MAX
 
-\ Page 0 is null. The DATA region is the single-task DATA ABI region and covers
-\ the shared layout's reserved band through DATA-START. Dynamic mappings lie past
-\ the image's last page, in pages map-anon grows.
+\ Page 0 is null. Dynamic mappings lie past the memory's last page, in pages
+\ map-anon grows.
 $10000 constant CTX-BASE
 $11000 constant OUT-BASE
 $21000 constant STACK-BASE
-$31000 constant DATA-BASE
-DATA-BASE STACK-BASE - constant STACK-BYTES
-DATA-BASE constant STACK-END
-DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
+$10000 constant STACK-BYTES
+STACK-BASE STACK-BYTES + constant STACK-END
 
-\ The return stack and the DO frames follow the DATA region, each its STACK-ABI
-\ size; a push checks the region's end, since Wasm memory has no guard page.
-DATA-BASE DATA-BYTES + constant RETURN-BASE
+\ The return stack and the DO frames lie between the data stack and the DATA
+\ region, each its STACK-ABI size; a push checks its region's end, since Wasm
+\ memory has no guard page.
+STACK-END constant RETURN-BASE
 RETURN-BASE STACK-ABI:RETURN-BYTES + constant LOOP-BASE
-LOOP-BASE STACK-ABI:LOOP-BYTES + constant IMAGE-BASE
+
+\ The DATA region is the single-task DATA ABI region: a build's data space sits
+\ from DATA-BASE, offset for offset, header band included. It is at least
+\ DATA-BYTES, the shared layout's reserved band through DATA-START.
+LOOP-BASE STACK-ABI:LOOP-BYTES + constant DATA-BASE
+DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
 
 \ One eight-byte slot per field, so i64 and i32 fields are all naturally aligned.
 0 constant CTX-STACK-BASE

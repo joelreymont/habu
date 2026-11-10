@@ -141,10 +141,12 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 \ then the wrappers; types are deduplicated in first-use order, so a function in
 \ the aligned frame shares the type of one of no lanes and only the latter can
 \ be the entry. A call field holds its callee's index; an address field or data
-\ cell holds WPROF's image base plus a target in the image (its end included),
+\ cell holds WPROF's DATA base plus a target in the image (its end included),
 \ or a table slot. The table lists the slots' functions from slot 1; slot 0
-\ holds none. Memory's minimum is the pages the image ends in, its maximum
-\ memory32's 65536, which map-anon grows toward.
+\ holds none. The data section holds one segment per run of the image's
+\ non-zero bytes, at the DATA base plus the run's offset. Memory's minimum is
+\ the pages the DATA region or the image ends in, whichever is later, its
+\ maximum memory32's 65536, which map-anon grows toward.
 
 \ The process's first link, so its image buffers have never held a byte.
 : MIN-ROW ( -- )
@@ -154,10 +156,10 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    0 LINKED
    s" one function, no image: memory and four wrappers with task header stores" T-LABEL
    WANT-RESET
-   s" 0061736d01000000010e0360017f017f6000017f6000017e03060500010201010506010132808004073205066d656d6f72790200" W+
+   s" 0061736d01000000010e0360017f017f6000017f6000017e03060500010201010506010134808004073205066d656d6f72790200" W+
    s" 0372756e00010a7468726f772d636f64650002086f75742d626173650003076f75742d6c656e00040a5f05040041000b3d00" W+
-   s" 41d0a30c4280a00837030041e8af0d42808004370300418080044180a008360200418080044180a008360208418080044100" W+
-   s" 3602104180800410000b0900418080042903180b06004180a0040b0900418080042802100b0b0901004180a0c4010b00" W+
+   s" 41d0a3144280a00837030041e8af1542808004370300418080044180a008360200418080044180a008360208418080044100" W+
+   s" 3602104180800410000b0900418080042903180b06004180a0040b0900418080042802100b0b0100" W+
    0 MOD-U @ HEX$ WANT$ T$= ;
 
 \ Handles 0..4 are an adapter, a kernel, a captured, a kernel and a captured
@@ -173,10 +175,10 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    s" kernel, captured, adapter, each as added, then the wrappers; types as first used" T-LABEL
    WANT-RESET
    s" 0061736d01000000012c0760027f7e017f60037f7e7e017f60047f7e7e7e017f60057f7e7e7e7e017f60017f017f6000017f" W+
-   s" 6000017e030a090001020304050605050506010132808004073205066d656d6f727902000372756e00050a7468726f772d636f64" W+
+   s" 6000017e030a090001020304050605050506010134808004073205066d656d6f727902000372756e00050a7468726f772d636f64" W+
    s" 650006086f75742d626173650007076f75742d6c656e00080a73090400410b0b0400410d0b0400410c0b0400410e0b040041" W+
-   s" 0a0b3d0041d0a30c4280a00837030041e8af0d42808004370300418080044180a008360200418080044180a00836020841" W+
-   s" 80800441003602104180800410040b0900418080042903180b06004180a0040b0900418080042802100b0b0901004180a0c4010b00" W+
+   s" 0a0b3d0041d0a3144280a00837030041e8af1542808004370300418080044180a008360200418080044180a00836020841" W+
+   s" 80800441003602104180800410040b0900418080042903180b06004180a0040b0900418080042802100b0b0100" W+
    0 MOD-U @ HEX$ WANT$ T$= ;
 
 \ Kernels 0..4: no lanes; 17 in, in the aligned frame; one in, twice; one out.
@@ -191,10 +193,10 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    s" types deduplicated by structure: the aligned frame shares the type of no lanes" T-LABEL
    WANT-RESET
    s" 0061736d01000000011a0560017f017f60027f7e017f60017f027f7e6000017f6000017e030a090000010102030403030506" W+
-   s" 010132808004073205066d656d6f727902000372756e00050a7468726f772d636f64650006086f75742d626173650007076f7574" W+
-   s" 2d6c656e00080a7509040041010b040041020b040041030b040041040b0600410542000b3d0041d0a30c4280a00837030041" W+
-   s" e8af0d42808004370300418080044180a008360200418080044180a0083602084180800441003602104180800410000b090041" W+
-   s" 8080042903180b06004180a0040b0900418080042802100b0b0901004180a0c4010b00" W+
+   s" 010134808004073205066d656d6f727902000372756e00050a7468726f772d636f64650006086f75742d626173650007076f7574" W+
+   s" 2d6c656e00080a7509040041010b040041020b040041030b040041040b0600410542000b3d0041d0a3144280a00837030041" W+
+   s" e8af1542808004370300418080044180a008360200418080044180a0083602084180800441003602104180800410000b090041" W+
+   s" 8080042903180b06004180a0040b0900418080042802100b0b0100" W+
    0 MOD-U @ HEX$ WANT$ T$=
    s" an entry in the aligned frame is refused though its type is the entry's" T-LABEL
    [: 1 WLINK:LINK 2drop ;] E-WENC-ARITY TTHROWSQ
@@ -254,27 +256,70 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    s" the table holds three slots and the element segment, from slot 1, functions 3 and 2" T-LABEL
    S-TABLE SECTION$ s" 0170010303" T$=
    S-ELEMENT SECTION$ s" 010041010b020302" T$=
-   s" a data address is the image base plus its target, the image's length included" T-LABEL
-   MBUF MOD-U @  0 BODY@ drop 2 +  WLEB:S64-PAD@  WPROF:IMAGE-BASE IMAGE-LEN + T=
+   s" a data address is the DATA base plus its target, the image's length included" T-LABEL
+   MBUF MOD-U @  0 BODY@ drop 2 +  WLEB:S64-PAD@  WPROF:DATA-BASE IMAGE-LEN + T=
    s" a code address is its slot" T-LABEL
    MBUF MOD-U @  1 BODY@ drop 2 +  WLEB:S64-PAD@  2 T=
-   s" data cells hold the same, low byte first, in one active segment at the image base" T-LABEL
-   S-DATA SECTION$ s" 01004180a0c4010b18081031000000000008090a0b0c0d0e0f0100000000000000" T$= ;
+   s" data cells hold the same, low byte first; the image's trailing zeros are in no segment" T-LABEL
+   S-DATA SECTION$ s" 01004180a0140b11081005000000000008090a0b0c0d0e0f01" T$= ;
 
-61441 BUFFER: BIG                      \ zeros, an image one byte past a page boundary
+\ Zero images of up to 3 MB: a DYNAMIC-BUFFER maps its own pages, which start
+\ zeroed, where a BUFFER: would hold them in the dictionary.
+DYNAMIC-BUFFER BIG u8
 
-\ From $311000, 61440 bytes end at 50 pages and one more needs a 51st.
+: ZEROS ( n -- ptr u8 )
+   BIG-RESERVE  0 BIG ;
+
+\ The DATA region ends at $331000, in page 52; page 53 ends at $350000.
+$350000 constant PAGE-53-END
+
 : PAGES-ROW ( -- )
    WLINK:RESET
    0 KERNEL drop
-   BIG 61440 WLINK:DATA!
+   64 ZEROS 64 WLINK:DATA!
    0 LINKED
-   s" an image ending at a page's end: memory's minimum 50 pages, its maximum 65536" T-LABEL
-   S-MEMORY SECTION$ s" 010132808004" T$=
-   BIG 61441 WLINK:DATA!
+   s" an image inside the DATA region: memory's minimum the region's 52 pages, its maximum 65536" T-LABEL
+   S-MEMORY SECTION$ s" 010134808004" T$=
+   s" an image of zeros writes no segment" T-LABEL
+   S-DATA SECTION$ s" 00" T$=
+   PAGE-53-END WPROF:DATA-BASE - {: u:n :}
+   u 1+ ZEROS u WLINK:DATA!
    0 LINKED
-   s" one byte more: a minimum of 51 pages" T-LABEL
-   S-MEMORY SECTION$ s" 010133808004" T$= ;
+   s" an image ending at page 53's end: a minimum of 53 pages" T-LABEL
+   S-MEMORY SECTION$ s" 010135808004" T$=
+   0 BIG u 1+ WLINK:DATA!
+   0 LINKED
+   s" one byte more: a minimum of 54 pages" T-LABEL
+   S-MEMORY SECTION$ s" 010136808004" T$= ;
+
+
+\ ---- runs ---------------------------------------------------------------------------
+32 BUFFER: GAP-BUF
+
+\ An image of u bytes, 1 at offset 0 and 2 at its last byte, linked.
+: GAP-LINKED ( n -- )
+   {: u:n :}
+   WLINK:RESET
+   0 KERNEL drop
+   32 0 do  0 GAP-BUF i + c!  loop
+   1 GAP-BUF c!  2 GAP-BUF u 1- + c!
+   GAP-BUF u WLINK:DATA!
+   0 LINKED ;
+
+: RUNS-ROW ( -- )
+   17 GAP-LINKED
+   s" a gap of 15 zero bytes stays in one segment" T-LABEL
+   S-DATA SECTION$ s" 01004180a0140b110100000000000000000000000000000002" T$=
+   18 GAP-LINKED
+   s" a gap of 16 zero bytes makes two segments" T-LABEL
+   S-DATA SECTION$ s" 02004180a0140b0101004191a0140b0102" T$=
+   WLINK:RESET
+   0 KERNEL drop
+   16 ZEROS 16 WLINK:DATA!
+   8 NEMIT:ADDR-DATA 0 WLINK:DATA-CELL+
+   0 LINKED
+   s" a cell in zero image bytes lands in a run once its address is stored" T-LABEL
+   S-DATA SECTION$ s" 01004189a0140b021005" T$= ;
 
 \ ---- W03 --------------------------------------------------------------------------
 \ WASM-W03:BUILD's module, test/wasm/w03.f.
@@ -289,7 +334,7 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
 \ Run's body, calling the entry at index 135.
 : RUN-135 ( -- )
    WANT-RESET
-   s" 0041d0a30c4280a00837030041e8af0d42808004370300418080044180a008360200418080044180a0083602084180800441003602104180800410" W+
+   s" 0041d0a3144280a00837030041e8af1542808004370300418080044180a008360200418080044180a0083602084180800441003602104180800410" W+
    s" 87010b" W+ ;
 
 : W03-ROW ( -- )
@@ -402,9 +447,9 @@ $100000000 constant MEMORY32-BYTES     \ 65536 pages of 64 KiB
 \ need not hold the bytes these lengths name.
 : MEMORY-ROW ( -- )
    s" an image ending one byte past memory32's 4 GiB is refused" T-LABEL
-   [: BIG  MEMORY32-BYTES WPROF:IMAGE-BASE - 1+  WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ
+   [: 1 ZEROS  MEMORY32-BYTES WPROF:DATA-BASE - 1+  WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ
    s" an image of MAX-N bytes, whose end would wrap, is refused" T-LABEL
-   [: BIG MAX-N WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ ;
+   [: 1 ZEROS MAX-N WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ ;
 
 public
 
@@ -416,6 +461,7 @@ public
    CALLS-ROW
    TABLE-ROW
    PAGES-ROW
+   RUNS-ROW
    W03-ROW
    ENTRY-ROWS
    RESERVE-ROWS
