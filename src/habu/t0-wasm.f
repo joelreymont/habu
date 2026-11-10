@@ -4,8 +4,8 @@
 \ Implements the straight-line, control, return-stack and loop EMIT- operations
 \ src/habu/t0-emit.f states for every target; this file holds only Wasm
 \ encodings and local choices. FILL-SLOT stores its words into the EMIT- cells
-\ for CTARGET-ARCH:WASM. Later work: the quotation and does> units (QUOT-OPEN,
-\ UNIT-OPEN, ADDR-QUOT), the callback stub and CALL-SELF, which stay unset.
+\ for CTARGET-ARCH:WASM. Later work: the callback stub (EMIT-CB-STUB-XT), which
+\ stays unset.
 
 require src/lib/error.f
 require src/lib/byte-buffer.f
@@ -104,6 +104,8 @@ variable COUNT-AT                     \ the unit's padded i64 count field
 DYNAMIC-BUFFER CF-KIND n              \ the open blocks' kinds, innermost last
 DYNAMIC-BUFFER CF-ENTRY n             \ at a DO-HEAD: its `?do` compare's offset, or -1
 variable CF-N
+variable NUNIT                        \ units begun in this emission
+DYNAMIC-BUFFER UNIT-REF n             \ each unit's address field offset
 
 4096 constant SINK-START-BYTES
 10 constant LEB-MOST
@@ -194,6 +196,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ padded count CLOSE writes.
 : UNIT-BEGIN ( -- )
    HERE-OFF EMIT-UNIT+
+   NUNIT @ 1 + NUNIT !
    0 FRAME-CELLS !
    2 B,  2 B,  I32 B,
    HERE-OFF COUNT-AT !  FIXED-I64 PAD32,  I64 B,
@@ -205,6 +208,9 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ five-byte u32 function index, zero here, whose field starts one byte past the
 \ row's offset; an address site is `i64.const` and a padded ten-byte s64
 \ holding the host value, whose field starts one byte past the row's offset.
+\ A Wasm body is never placed at a host address, so a site naming a function of
+\ its own emission, a quotation's address or a self call, holds that function's
+\ offset from byte 0; no host address is that small (src/arch/wasm/capture.f).
 \ The does> patch slot is six bytes: `drop; i32.const 0; nop; nop; nop` (no
 \ clause, status 0), or `call` and a padded five-byte function index.
 : OPEN ( -- )
@@ -214,7 +220,16 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    then
    SINK BUF:CLEAR
    0 CF-N !
+   0 NUNIT !
    UNIT-BEGIN ;
+
+\ CF-N is 0: the unit before closed every structure it opened.
+: QUOT-OPEN ( n -- ) {: n:n :}
+   n NUNIT @ <> if E-T0-UNIT throw then
+   HERE-OFF  SINK BUF:SPAN  n UNIT-REF @  WLEB:S64-PATCH
+   UNIT-BEGIN ;
+
+: UNIT-OPEN ( -- ) UNIT-BEGIN ;
 
 \ Status 0 is a return (src/arch/wasm/select.f THE STATUS).
 : RETURN ( -- )
@@ -255,6 +270,12 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 : ADDR-CODE ( n vreg -- ) {: v:n d:vreg :}
    v -1 d NEMIT:ADDR-CODE ADDR ;
+
+\ The site's field holds 0 until QUOT-OPEN writes unit n's offset.
+: ADDR-QUOT ( n vreg -- ) {: n:n d:vreg :}
+   n 1 + UNIT-REF-RESERVE
+   HERE-OFF ADDR-QUOT-KIND n -1 EMIT-ADDR-ROW+
+   OP-I64-CONST B,  HERE-OFF n UNIT-REF !  0 PAD64,  d SET-REG ;
 
 : SPILL ( vreg n -- ) {: s:vreg k:n :}
    k CELL-AT,  s GET-REG  ST64, ;
@@ -381,6 +402,9 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    NEMIT:CALL to loc CALL-SITE
    OP-IF OPENER,  1 I32,  OP-RETURN B,  END,
    SP@, ;
+
+\ `recurse` calls function offset 0, unit 0 (the rule above OPEN).
+: CALL-SELF ( -- ) 0 0 CALL ;
 
 \ The callee's status is this unit's.
 : TAIL ( n n -- ) {: to:n loc:n :}
@@ -579,6 +603,10 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    {: k:n :}
    NVREG k EMIT-VREGS-N !
    ['] OPEN k EMIT-OPEN-XT !
+   ['] QUOT-OPEN k EMIT-QUOT-OPEN-XT !
+   ['] UNIT-OPEN k EMIT-UNIT-OPEN-XT !
+   ['] ADDR-QUOT k EMIT-ADDR-QUOT-XT !
+   ['] CALL-SELF k EMIT-CALL-SELF-XT !
    ['] RETURN k EMIT-RETURN-XT !
    ['] CLOSE k EMIT-CLOSE-XT !
    ['] SLOT-CLOSE k EMIT-SLOT-CLOSE-XT !
