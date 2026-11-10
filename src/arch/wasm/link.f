@@ -1,11 +1,30 @@
 \ link.f - WLINK, the Wasm backend's linker: encoded functions, a data image and
 \ table slots written as one Wasm module (docs/xcomp.md "Linking"); the rows come
-\ from src/habu/link-wasm.f. The image's byte at offset off is memory's byte at
+\ from LINKER's Wasm writer (src/arch/wasm/link-module.f) and
+\ src/habu/link-wasm.f. The image's byte at offset off is memory's byte at
 \ WPROF:DATA-BASE + off. LINK checks every row before it writes, stores the data
 \ cells into its copy of the image and patches only the module, so LINK can run
 \ again.
 \ STORAGE CLASS. MODULE-OWNED: the rows, bodies and image live in this package's
 \ buffers until RESET, and the module LINK answers until the next LINK.
+\
+\ THE WRAPPERS. The exports are memory and the wrappers. run initializes the
+\ task DATA stack header and zeroes its return and loop depths, so a throw
+\ uncaught inside a loop leaves no depth for the next host turn; it stores
+\ WPROF's stack base in ctx's stack base and top and 0 in its out-len, calls the
+\ entry with WPROF's ctx base and answers its status; throw-code answers ctx's
+\ throw code, out-base WPROF's out base, out-len ctx's out-len; fault-kind and
+\ fault-addr answer ctx's fault kind and address, which a checked fault stores
+\ before it traps and no other trap does. reserve, (i64 bytes) -> (i64 address),
+\ calls map-anon and answers its address, 0 when refused: a host copies each
+\ delivery into pages the module reserved (src/lib/browser/turn.js).
+\
+\ THE SECTIONS. In the specification's order: type, function, table when a slot
+\ was added, memory, export, element from slot 1, code, and data, one active
+\ segment per run of the image. Memory's minimum is the pages holding the DATA
+\ region and the image, its maximum memory32's 65536, which map-anon grows
+\ toward. No global is declared (ctx lives in memory at WPROF's ctx base),
+\ nothing is imported and no start function runs.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -285,16 +304,6 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    NINDS @ 0 > if  0 TY-U !  FUNC-FORM TY-BYTE  0 ROW  0 ROW  INTERN WR-DYN !  then ;
 
 \ ---- the wrappers ---------------------------------------------------------------
-\ The exports are memory and the wrappers. run initializes the task DATA stack
-\ header and zeroes its return and loop depths, so a throw uncaught inside a
-\ loop leaves no depth for the next host turn; it stores WPROF's stack base in
-\ ctx's stack base and top and 0 in its out-len, calls the entry with WPROF's
-\ ctx base and answers its status; throw-code answers ctx's throw code,
-\ out-base WPROF's out base, out-len ctx's out-len; fault-kind and fault-addr
-\ answer ctx's fault kind and address, which a trap leaves. reserve, (i64
-\ bytes) -> (i64 address), calls map-anon and answers its address, 0 when
-\ refused: a host copies each delivery into pages the module reserved
-\ (src/lib/browser/turn.js).
 \ ctx's field at off := v, an i32.
 : CTX! ( n n -- )
    {: v:n off:n :}
@@ -394,12 +403,6 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    LANES-RESERVE ;
 
 \ ---- the sections -------------------------------------------------------------
-\ Sections in the specification's order: type, function, table when a slot was
-\ added, memory, export, element from slot 1, code, and data, one active segment
-\ per run of the image. Memory's minimum is the pages holding the DATA region and
-\ the image, its maximum memory32's 65536, which WKERNEL's map-anon grows toward. No global
-\ is declared (ctx lives in memory at WPROF's ctx base), nothing is imported and
-\ no start function runs.
 : BODY$ ( n -- ptr u8 n )
    {: k:n :}
    k FN-AT @ BODIES  k FN-LEN @ ;
@@ -569,8 +572,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    CELL-BYTES 0 do  v i 8 * rshift $FF and  off i + IMAGE c!  loop ;
 
 \ Memory starts zeroed: the data section holds the image's non-zero runs, split
-\ where GAP zero bytes lie, GAP-MIN (more than a segment header's 13) doubled
-\ until at most RUNS-MAX runs remain.
+\ at GAP zero bytes: GAP-MIN, over a segment header's 13, doubled to fit RUNS-MAX.
 16 constant GAP-MIN
 100000 constant RUNS-MAX             \ the most data segments a JS host must load (the JS API's limit)
 variable GAP                         \ the zero bytes that end a run

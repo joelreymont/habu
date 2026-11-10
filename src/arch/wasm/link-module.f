@@ -97,9 +97,8 @@ variable KERNEL-N                    \ the kernel routines this link added
    h ;
 
 
-\ Host address a's function handle, or -1 once a is refused; resolved in
-\ LINK-ADDRESS's order, a record's entry before a quotation's function, then a
-\ kernel word's routine when the module has one.
+\ Host address a's function handle, or -1 once refused: a record's entry, a
+\ quotation's function, then a kernel routine.
 : CALLEE ( n -- n )
    {: a:n :}
    a TARGET-REC {: r:n :}

@@ -4,11 +4,10 @@
 \ tools/hb-build.f and validated by wasm-tools; bun and wasm-tools must be on
 \ PATH, so test/wasm/device.f runs it, not the ordinary gate.
 
-\ The fetch is answered with a file larger than the module's image, so the
-\ fetched bytes take several pages between the buffer's first two and the ones
-\ it grows into. A second run types 1000 keystrokes, each freed in its run, and
-\ ends with the same memory as the first; a check the module failed shows as its
-\ throw code.
+\ The fetch is answered with a file of several pages, so the fetched bytes take
+\ pages between the buffer's first two and the ones it grows into. A second run
+\ types 1000 keystrokes, each freed in its run, and ends with the same memory as
+\ the first; a check the module failed shows as its throw code.
 
 require src/lib/string.f
 require src/lib/fmt.f

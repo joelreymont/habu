@@ -3,6 +3,22 @@
 \ the copy is the space's bytes without its dead units, its kept rows listed in
 \ cell order. A machine's writer gives each kept cell its image value. Words
 \ visible only inside LINKER.
+\
+\ THE DATA A STRIPPED PROGRAM REACHES.
+\ A stripped program keeps the data of the files it reaches, whole files: unit r,
+\ r < BUILT-N, is the file whose first BUILT row is r, each of its pieces; unit
+\ BUILT-N the header data [BASE, OPEN-DP); unit BUILT-N + 1 the data no piece
+\ holds, the build body's and the facts texts. The header is live, and a header
+\ address cell is read once no file stored it or a live one did: an address a
+\ file stored there is that file's, as its object carries it. The entry cell is
+\ read whatever stored it: it is the program's root. A read xt cell roots the
+\ code it names and a read pointer cell makes its target's unit live;
+\ each placed emission's data addresses and defer trailer make theirs live.
+\ An address in a string literal's body keeps that body alone: the body lies in
+\ the file that first interned it, and every later file spelling it shares it
+\ (src/habu/intern-table.f). The copy holds the dead units, all but their
+\ kept bodies, and every address cell not read as zeros, and lists none of
+\ them. An engine keeps every unit and cell.
 
 require src/lib/le.f
 require src/lib/sort.f
@@ -31,20 +47,6 @@ private
 
 
 \ ---- the data a stripped program reaches ------------------------------------------
-\ A stripped program keeps the data of the files it reaches, whole files: unit r,
-\ r < BUILT-N, is the file whose first BUILT row is r, each of its pieces; unit
-\ BUILT-N the header data [BASE, OPEN-DP); unit BUILT-N + 1 the data no piece
-\ holds, the build body's and the facts texts. The header is live, and a header
-\ address cell is read once no file stored it or a live one did: an address a
-\ file stored there is that file's, as its object carries it. The entry cell is
-\ read whatever stored it: it is the program's root. A read xt cell roots the
-\ code it names and a read pointer cell makes its target's unit live;
-\ each placed emission's data addresses and defer trailer make theirs live.
-\ An address in a string literal's body keeps that body alone: the body lies in
-\ the file that first interned it, and every later file spelling it shares it
-\ (src/habu/intern-table.f). The copy holds the dead units, all but their
-\ kept bodies, and every address cell not read as zeros, and lists none of
-\ them. An engine keeps every unit and cell.
 
 DYNAMIC-BUFFER ROW-UNIT n            \ BUILT row r's unit
 DYNAMIC-BUFFER UNIT-LIVE n           \ 1 once the unit is live

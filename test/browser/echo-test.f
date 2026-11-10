@@ -146,10 +146,8 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" a small file: hello, loading, fetch fixture, the copy's checksum, then 3,4" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
-\ A module's memory is at most its data base plus its file's bytes rounded up to
-\ a page, so this file is larger than all of it. Byte i is the low byte of
-\ i + i/509; 509 is prime, so the pages differ and a page copied to the wrong
-\ place changes the checksum.
+\ A file of several pages, which reserve grows memory for. Byte i is the low byte
+\ of i + i/509 (509 is prime), so a page copied to the wrong place changes the sum.
 : LARGE-CASE ( -- )
    WPROF:DATA-BASE  MOD MOD-U @ FS:FILE-SIZE +  PAGE-BYTES +  13 + {: u:n :}
    u PAYLOAD-RESERVE
@@ -158,7 +156,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    HOST-OPEN  200 s" large.bin" ANSWER+  s" --pointer" 0 0 1 AT+  s" --pointer" 1279 719 1 AT+
    HOST SUCCEEDED
    STARTED  0 PAYLOAD u SUM-LINE  s" 0,0" TEXT-LINE  s" 1279,719" TEXT-LINE
-   s" a file larger than the module's memory: its reserve grows it and the module reads the copy" T-LABEL
+   s" a file of several pages: its reserve grows memory and the module reads the copy" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
 : HELD-CASE ( -- )

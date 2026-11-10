@@ -208,10 +208,8 @@ variable UNSAFE-COUNT
    NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
 
 
-\ Emission e's address site k's value, and whether the site holds one. A Wasm
-\ site is `i64.const` then a padded LEB (t0-wasm.f ADDR-ROW); an arm64 site is
-\ a MOVZ/MOVK chain, read as ARM64:PLACE reads it, and a data site whose chain
-\ CHAIN-SIZE does not read holds none.
+\ Emission e's address site k's value and whether it holds one: a Wasm padded
+\ LEB after i64.const, an arm64 chain as ARM64:PLACE reads it.
 : SITE-VALUE ( n n -- n bool )
    {: e:n k:n :}
    e NSHADOW:BYTES {: b:ptr :}
@@ -226,9 +224,8 @@ variable UNSAFE-COUNT
    p size ADDRESS-CARRIER:CHAIN-VALUE true ;
 
 
-\ Emission e's function whose offset is v, or -1. A Wasm call or code address
-\ naming a function of its own emission holds that offset, never a host
-\ address; an arm64 value is always a host address.
+\ Emission e's function at offset v, or -1: a Wasm site naming its own emission
+\ holds that offset, an arm64 site a host address.
 : OWN-FUNCTION ( n n -- n )
    {: e:n v:n :}
    WASM? 0= if -1 exit then
@@ -305,9 +302,8 @@ variable UNSAFE-COUNT
    ARM64:ROOT-ENTRY ;
 
 
-\ A target TARGET-REC finds no record for and naming no UNSAFE-NAME? word is a
-\ kernel primitive, whose code PLACE-TARGET keeps on arm64, or a foreign word
-\ the write step refuses.
+\ A target with no record and no UNSAFE-NAME? word is a kernel primitive or a
+\ foreign word the write step refuses.
 : LIVE-TARGET ( n -- )
    {: a:n :}
    a TARGET-REC {: r:n :}
@@ -371,9 +367,8 @@ variable UNSAFE-COUNT
    r MAKE-LIVE DRAIN ;
 
 
-\ Host address a the program starts from: a record's or QUOTE-ROOT's entry makes
-\ live the code it reaches; an arm64 kernel primitive's entry keeps its kernel
-\ code.
+\ Host address a the program starts from: a record's or quotation's entry makes
+\ its code live; an arm64 kernel primitive keeps its code.
 : ROOT ( n -- )
    {: a:n :}
    a TARGET-REC {: r:n :}
@@ -391,10 +386,8 @@ variable UNSAFE-COUNT
    NSHADOW:EMISSIONS 0 ?do 1 i PLACED ! loop ;
 
 
-\ The dispatch cell of the defer whose record emission e holds, or 0. On arm64
-\ the record spans the whole emission, so the product's entry plus its length is
-\ the trailer, where dict.f TRAILER-CELL reads it. A Wasm module holds no
-\ trailer, so a Wasm defer dies here.
+\ The dispatch cell of the defer whose record emission e holds, or 0; dict.f
+\ TRAILER-CELL reads the arm64 trailer. A Wasm defer dies here.
 : EM-TRAILER ( n -- n )
    {: e:n :}
    e EM-FIRST @

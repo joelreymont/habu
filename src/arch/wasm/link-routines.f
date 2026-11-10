@@ -62,8 +62,7 @@ $51 constant OP-I64-EQ
 $7D constant OP-I64-SUB
 $7F constant OP-I64-DIV-S
 $81 constant OP-I64-REM-S
-\ The i64 locals after a store's address: a division's divisor, atomic-cas's
-\ cell as read.
+\ Local 2 of a division is its divisor; local 3 of atomic-cas is the cell as read.
 2 constant L-DIVISOR
 3 constant L-ACTUAL
 
@@ -132,7 +131,7 @@ $88 constant OP-I64-SHR-U
 0 constant NODE-NEXT
 8 constant NODE-PAGES
 
-\ The allocator's locals after sp, eight i32 then four i64; the link is the
+\ The allocator's locals after sp, seven i32 then four i64; the link is the
 \ address of the cell naming cur, a free run's node.
 2 constant L-PAGES
 3 constant L-LINK
@@ -509,8 +508,8 @@ variable BUF-U
       OP-END B,
    OP-END B, ;
 
-\ munmap ( addr bytes -- ior ): -1 for bytes outside 1 through 2^32, an addr 0 or an addr
-\ not a page-aligned offset below 2^32; tier 1's UNMAP-ROW (src/arch/wasm/kernel.f) admits 0.
+\ munmap ( addr bytes -- ior ): -1 for bytes outside 1 through 2^32, addr 0, or
+\ an addr that is not a page-aligned offset below 2^32.
 : UNMAP-BODY ( -- )
    ALLOC-LOCALS,  CELL-BYTES 2 * SP-AT,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-PTR SET,

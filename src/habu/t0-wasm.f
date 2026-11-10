@@ -4,8 +4,26 @@
 \ Implements the straight-line, control, return-stack and loop EMIT- operations
 \ src/habu/t0-emit.f states for every target; this file holds only Wasm
 \ encodings and local choices. FILL-SLOT stores its words into the EMIT- cells
-\ for CTARGET-ARCH:WASM. Later work: the callback stub (EMIT-CB-STUB-XT), which
-\ stays unset.
+\ for CTARGET-ARCH:WASM. The callback stub cell (EMIT-CB-STUB-XT) stays unset.
+\
+\ THE ROWS (t0-emit.f "THE ROWS"). A call or tail site is `call` and a padded
+\ five-byte u32 function index, zero here; an address site is `i64.const` and a
+\ padded ten-byte s64 holding the host value; each field starts one byte past
+\ the row's offset. A Wasm body is never placed at a host address, so a site
+\ naming a function of its own emission, a quotation's address or a self call,
+\ holds that function's offset from byte 0; no host address is that small. The
+\ does> patch slot is six bytes: `drop; i32.const 0; nop; nop; nop` (no clause,
+\ status 0), or `call` and a padded five-byte function index.
+\
+\ CONTROL. A Wasm branch names an enclosing block by depth, so every open source
+\ structure is one open block of the empty type, an entry in CF-KIND; a
+\ branch's depth is the count of entries above its target. A `begin` is a
+\ `loop` and a `while` an `if` inside it: `begin A while B repeat` is
+\ `loop A <flag> if B br 1 end end`, and `begin A while B while C repeat D then`
+\ is `loop A <flag> if B <flag> if C br 2 end D end end`. A back branch makes
+\ its LOOP a LOOP-DONE, whose `end` CLOSE-DONE writes once it is innermost.
+\ A DO level is a `block` around a `loop`: `leave` and the `?do` entry branch to
+\ the block, and LOOP-CLOSE pops the frame after both ends.
 
 require src/lib/error.f
 require src/lib/byte-buffer.f
@@ -84,9 +102,8 @@ $40 constant EMPTY-TYPE              \ a block, loop or if taking and leaving no
 3 constant ALIGN-64
 8 constant CELL-BYTES
 
-\ The locals: ctx, the unit's parameter; SP, the data stack pointer; AT, the
-\ address a return-stack or loop word works at; the vregs; CA and CB, the
-\ operands of the last compare; then frame slot k.
+\ Locals: ctx (the unit's parameter), SP (the data stack pointer), AT (a return
+\ or loop word's address), the vregs, CA and CB (the last compare), frame slot k.
 0 constant L-CTX
 1 constant L-SP
 2 constant L-AT
@@ -173,27 +190,23 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : FAULT-END, ( -- )
    OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,  OP-UNREACHABLE B, ;
 
-\ SP past the stack region records STACK-BOUNDS with SP as its address. The
-\ check follows the stores of the cells the move covers, so a failed one has
-\ written at most that move's cells past the region before the module ends;
-\ tier 1 checks before the stores (src/arch/wasm/select.f ROOM).
+\ SP past the stack region records STACK-BOUNDS with SP. The check follows the
+\ move's stores, so a failed one has written at most that move's cells past it.
 : ROOM ( -- )
    L-SP GET,  WPROF:STACK-END I32,  OP-I32-GT-U B,  OP-IF OPENER,
    ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-SP GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
 
-\ The checked pointer of tier 1 (src/arch/wasm/select.f THE CHECKED ACCESS):
-\ its high 32 bits are zero and it is at or past WPROF:CTX-BASE, else the
-\ fault records CRASH-RC with the pointer.
+\ The checked pointer: its high 32 bits are zero and it is at or past
+\ WPROF:CTX-BASE, else the fault records CRASH-RC with the pointer.
 : CHECKED ( vreg -- ) {: a:vreg :}
    a GET-REG  WPROF:CTX-BASE I64,  OP-I64-LT-U B,
    a GET-REG  $FFFFFFFF I64,  OP-I64-GT-U B,
    OP-I32-OR B,  OP-IF OPENER,
    CRASH-RC FAULT-KIND,  a GET-REG  FAULT-END,  END, ;
 
-\ Every unit is a function of type (i32 ctx) -> (i32 status) as WLINK takes a
-\ body: two i32 locals, SP and AT, then FIXED-I64 + FRAME-CELLS i64 locals, a
-\ padded count CLOSE writes.
+\ A unit is a function (i32 ctx) -> (i32 status): two i32 locals, SP and AT,
+\ then FIXED-I64 + FRAME-CELLS i64 locals, a padded count CLOSE writes.
 : UNIT-BEGIN ( -- )
    HERE-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
@@ -204,15 +217,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 
 \ ---- the body ----------------------------------------------------------------
-\ The rows (t0-emit.f "THE ROWS"): a call or tail site is `call` and a padded
-\ five-byte u32 function index, zero here, whose field starts one byte past the
-\ row's offset; an address site is `i64.const` and a padded ten-byte s64
-\ holding the host value, whose field starts one byte past the row's offset.
-\ A Wasm body is never placed at a host address, so a site naming a function of
-\ its own emission, a quotation's address or a self call, holds that function's
-\ offset from byte 0; no host address is that small (src/arch/wasm/capture.f).
-\ The does> patch slot is six bytes: `drop; i32.const 0; nop; nop; nop` (no
-\ clause, status 0), or `call` and a padded five-byte function index.
+\ The sites' encodings are the header's THE ROWS.
 : OPEN ( -- )
    SINK-LIVE @ 0= if
       SINK SINK-START-BYTES BUF:N>BLEN BUF:INIT
@@ -412,15 +417,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    OP-RETURN B, ;
 
 \ ---- control -----------------------------------------------------------------
-\ CONTROL. A Wasm branch names an enclosing block by depth, so every open source
-\ structure is one open block of the empty type, an entry in CF-KIND; a
-\ branch's depth is the count of entries above its target. A `begin` is a
-\ `loop` and a `while` an `if` inside it: `begin A while B repeat` is
-\ `loop A <flag> if B br 1 end end`, and `begin A while B while C repeat D then`
-\ is `loop A <flag> if B <flag> if C br 2 end D end end`. A back branch makes
-\ its LOOP a LOOP-DONE, whose `end` CLOSE-DONE writes once it is innermost.
-\ A DO level is a `block` around a `loop`: `leave` and the `?do` entry branch to
-\ the block, and LOOP-CLOSE pops the frame after both ends.
+\ The blocks each source structure opens are the header's CONTROL.
 0 constant CF-IF
 1 constant CF-LOOP
 2 constant CF-LOOP-DONE
@@ -486,9 +483,8 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : ENDCASE, ( -- ) END,  CF-POP  CLOSE-DONE ;
 
 \ ---- the return stack ----------------------------------------------------------
-\ A module runs one task, so the stacks are WPROF's fixed regions; each depth is
-\ an i64 in the DATA cell native code keeps it in, the return stack's in cells
-\ and the loop stack's in frames.
+\ One task: the stacks are WPROF's fixed regions, each depth an i64 in the DATA
+\ cell native code keeps it in, the return stack's in cells, the loop's in frames.
 : RDEPTH-AT ( -- n ) WPROF:DATA-BASE RSP-CELL + ;
 : LDEPTH-AT ( -- n ) WPROF:DATA-BASE LOOPSP-CELL + ;
 

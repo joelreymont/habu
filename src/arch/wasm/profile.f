@@ -31,16 +31,13 @@ $21000 constant STACK-BASE
 $10000 constant STACK-BYTES
 STACK-BASE STACK-BYTES + constant STACK-END
 
-\ The return stack and the DO frames lie between the data stack and the DATA
-\ region, each its STACK-ABI size; a push checks its region's end, since Wasm
-\ memory has no guard page.
+\ The return stack and the DO frames follow the data stack, each its STACK-ABI
+\ size; a push checks its region's end, since Wasm memory has no guard page.
 STACK-END constant RETURN-BASE
 RETURN-BASE STACK-ABI:RETURN-BYTES + constant LOOP-BASE
 
-\ The DATA region is the single-task DATA ABI region: a build's data space sits
-\ from DATA-BASE, offset for offset, header band included, through the
-\ memory's last page at most. A Wasm target's DATA-VA and DATA-SIZE are these
-\ two (src/os/wasm/layout.f).
+\ The DATA region holds a build's data space from DATA-BASE, offset for offset,
+\ header band included: a Wasm target's DATA-VA and DATA-SIZE are these two.
 LOOP-BASE STACK-ABI:LOOP-BYTES + constant DATA-BASE
 PAGES-MAX PAGE-BYTES * DATA-BASE - constant DATA-MAX
 
