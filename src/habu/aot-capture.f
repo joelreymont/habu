@@ -705,9 +705,6 @@ variable ACAP-ENTRY-N
    if true exit then
    a u s" CHECKER-STORAGE-CELLS" CORE-STR=CI
    k ACAP-REC-DST 40 + ACAP-W32@ 0= and if true exit then
-   a u s" FILE-IDENTITY$" CORE-STR=CI
-   a u s" FILE-FIND" CORE-STR=CI or
-   k s" TFAM" ACAP-KEEP-PKG? and if true exit then
    a u s" FILE-MARK" CORE-STR=CI
    a u s" FILE-ROWS" CORE-STR=CI or
    a u s" FILE-IMPORT" CORE-STR=CI or
@@ -721,8 +718,6 @@ variable ACAP-ENTRY-N
    a u s" FILE-STATE" CORE-STR=CI or
    a u s" FILE-BOUNDARY" CORE-STR=CI or
    a u s" FILE-RESTORE" CORE-STR=CI or
-   a u s" FILE-ACCEPT-USE" CORE-STR=CI or
-   a u s" FILE-ACCEPT-CLEAR" CORE-STR=CI or
    a u s" INSTALL" CORE-STR=CI or
    k s" ENGINE-ORIGIN" ACAP-KEEP-PKG? and ;
 

@@ -696,13 +696,6 @@ public
    REPEAT
    0 RES-FALSE ;
 
-: FILE-IDENTITY$ ( n -- ptr u8 n ptr u8 n bool ) {: id:n :}
-   id 0 < id TFAM-N @ >= or IF
-      NULL-PTR 0 NULL-PTR 0 RES-FALSE EXIT THEN
-   id TFAM-PKG$ id TFAM-NAME$ RES-TRUE ;
-
-: FILE-FIND ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
-
 \ --- declaration. Storage only ever sees canonical lowercase tails.
 
 private

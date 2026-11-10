@@ -283,9 +283,6 @@ CAST: N-ACCEPT ( n -- [ n n -- ] )
 
 public
 
-: FILE-ACCEPT-USE ( [ n n -- ] -- ) ACCEPT-N FILE-ACCEPT-XT ! ;
-: FILE-ACCEPT-CLEAR ( -- ) 0 FILE-ACCEPT-XT ! ;
-
 : ARM ( -- ) 1 ARMED ! ENGINE-ORIGIN-EARLY:FILE-ARM ;
 : DISARM ( -- ) 0 ARMED ! ENGINE-ORIGIN-EARLY:FILE-DISARM ;
 : FILE-RESTORE ( bool -- )
@@ -377,7 +374,6 @@ public
 \ Move every hook-time row in one copy before process resource cleanup.
 \ The map pointer is cleared before capture, so no transient address leaks.
 : CAPTURE-PREPARE ( -- )
-   FILE-ACCEPT-CLEAR
    DISARM
    FILE-VISIT-RELEASE
    INDEX-RELEASE

@@ -146,11 +146,6 @@ public
       i cells DEFAULT-VALUE + @ swap !
    loop ;
 
-\ The native FILE loader supplies publication identity without making this
-\ baked compiler module depend on a build tool.
-: FILE-IDENTITY-SET ( [ n -- ptr u8 n ] [ ptr u8 n -- n ] -- )
-   RESOLVE-XT ! KEY-XT ! ;
-
 : FILE-MARK ( -- )
    FILE-ACTIVE @ if E-LAYOUT-BUFFER throw then
    EVENT-N @ FILE-FIRST !
