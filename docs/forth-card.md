@@ -358,7 +358,10 @@ it no longer follows the body.
 
 A definer that writes its word as text (`+USER`) states what it makes with
 `generates: D ( effect )` after D's definition, so `tools/check.f` checks that
-word's uses before the run; what no row states is left to the run (§ 3). `FUNCTION:` needs no row.
+word's uses before the run; what no row states is left to the run (§ 3). A
+deferred D, or one no `parse-name` reaches through the words it calls (not
+through a `defer` or an executed xt), is `E-GENERATES-ROW`.
+`FUNCTION:` needs no row.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and

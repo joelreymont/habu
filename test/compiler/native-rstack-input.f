@@ -84,7 +84,7 @@ variable ERR-U
    S\" habu: in runq: return-stack effect in signature ' n [ n -- | U -- U n ] | U -- n | U '; suggestion: Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition.\nhook: non-certified definition: runq at ' n [ n -- | U -- U n ] | U -- n | U '\n"
    REFUSED-RC REFUSED
    s" a generates: row declares a return-stack cell"
-   S\" package GP\n: G ( n -- ) drop ;\ngenerates: G ( | -- | n )\npublic\n;package\n"
+   S\" package GP\n: G ( n -- ) drop parse-name 2drop ;\ngenerates: G ( | -- | n )\npublic\n;package\n"
    S\" E-GENERATES-ROW habu: generates: row for 'G': return-stack effect: after '|' write one row variable, the same on both sides, or no '|'\nhb: uncaught throw code 7153\n"
    UNCAUGHT-RC REFUSED
    s" a bar on one side only"

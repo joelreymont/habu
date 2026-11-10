@@ -28340,17 +28340,21 @@ variable TOP-ASK-ANSWER
 \ text. `generates: D ( effect )` states it: the row's record lands on D's
 \ CREATES cell as a certified clause's does, so every clause reader (the
 \ wrapper walk, the pre-pass's resident lookup) reads it unchanged. The row is
-\ checked for its own three claims under one code: D names a word here, nothing
+\ checked for its own four claims under one code: D names a word here, nothing
 \ already states what D makes (its clause, an earlier row, the definer it
-\ wraps), and the effect parses. It is the third writer of the cell, beside
-\ STORE's latch take and CHECKER-NATIVE-DOES-PUBLISH, and appends through
-\ NORET-ADD-CREATES like them, carrying D's flags and masks forward with
-\ CTL-GENERATES set, so the pre-pass reads a call of D as declared
-\ (verify-source.f DECLARED-RENDER?).
+\ wraps), D is seen to read the source after it (CTL-PARSES, which a call
+\ through a defer or an executed xt does not carry) and is not deferred, since
+\ the pre-pass takes the token after a call of D as the made name, and the
+\ effect parses.
+\ It is the third writer of the cell, beside STORE's latch take and
+\ CHECKER-NATIVE-DOES-PUBLISH, and appends through NORET-ADD-CREATES like them,
+\ carrying D's flags and masks forward with CTL-GENERATES set, so the pre-pass
+\ reads a call of D as declared (verify-source.f DECLARED-RENDER?).
 0 constant GENR-UNRESOLVED                \ D names no word here
 1 constant GENR-CREATES                   \ something already states what D makes
 2 constant GENR-BADSIG                    \ the effect does not parse or no record
                                           \ holds it (SGBAD-UNFIT!); SGBAD says why
+3 constant GENR-READS-NONE                \ D lacks CTL-PARSES, or is deferred
 defer GENERATES-DIAG-XT ( ptr u8 n n -- ) \ render.f installs the diagnostic: row name, kind
 : GENERATES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is GENERATES-DIAG-XT ;
 GENERATES-DIAG-DEFAULT
@@ -28378,6 +28382,8 @@ GENERATES-DIAG-DEFAULT
    sym 0= IF na nu GENR-UNRESOLVED GENERATES-REFUSE sym 0 EXIT THEN
    sym na nu NAV-USE-NOW
    already sym NORET-CREATES@ 0 <> or IF na nu GENR-CREATES GENERATES-REFUSE sym 0 EXIT THEN
+   sym TOP-CONTROL {: flags:n deferred:bool :}
+   flags CTL-PARSES and 0= deferred or IF na nu GENR-READS-NONE GENERATES-REFUSE sym 0 EXIT THEN
    sa su CREATED-RECORD-BUILD
    {: rec:n :}
    rec 0= IF na nu GENR-BADSIG GENERATES-REFUSE THEN

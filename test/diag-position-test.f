@@ -514,6 +514,32 @@ variable RC
    s" --verify-only" CHECK
    0 s" NOWHERE" 4 13 73 80 FX-PATH$ CANON$ FX$ AT-IN ;
 
+\ A row on a word that reads no name after it is refused at the row's name in
+\ every mode: kept, it makes the pre-pass take `s"` after the call of GEN as
+\ the made word, and the trust row on MADE then throws E-STATEMENT-THROW while
+\ the load accepts the file.
+: TEST-GENERATES-READS-NONE ( -- )
+   s" a generates: row on a word that reads no name" T-LABEL
+   SB-RESET
+   s" : GEN ( -- ) s" SB-APPEND 34 SB-APPEND-C
+   s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s" generates: GEN ( -- )" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" s" SB-APPEND 34 SB-APPEND-C s"  MADE" SB-APPEND 34 SB-APPEND-C
+   s"  s" SB-APPEND 34 SB-APPEND-C s"  --" SB-APPEND 34 SB-APPEND-C s"  trust" SB-APPEND LF+
+   s" MADE" SB-APPEND LF+
+   s" generates-reads-none.f" FIXTURE!
+   s" " CHECK
+   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   0 s" code" s" E-GENERATES-ROW" FIELD=
+   0 s" GEN" 2 12 63 66 AT
+   s" --all-errors" CHECK
+   0 s" code" s" E-GENERATES-ROW" FIELD=
+   0 s" GEN" 2 12 63 66 AT
+   s" --verify-only" CHECK
+   0 s" code" s" E-GENERATES-ROW" FIELD=
+   0 s" GEN" 2 12 63 66 FX-PATH$ CANON$ FX$ AT-IN ;
+
 \ The row's registrar resolves its name as a use does.
 : TEST-GENERATES-SHADOW ( -- )
    s" a generates: row naming that shared name" T-LABEL
@@ -1737,6 +1763,7 @@ variable RC
    TEST-SHADOWED-ARITY
    TEST-NOT-RECORDED
    TEST-GENERATES
+   TEST-GENERATES-READS-NONE
    TEST-GENERATES-SHADOW
    TEST-COMPOSE-DEP
    TEST-COMPOSE-ALL

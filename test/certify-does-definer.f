@@ -405,7 +405,10 @@ variable CDD-SRC-U
 
 \ Section 12: the engine refuses a row it cannot keep. A refused row prints its
 \ E-GENERATES-ROW line on stderr before it throws, as section 5's refused clause
-\ does. The checker's own error constant, read at load time under a local name.
+\ does. A row on a word that reads no name after it, `evaluate` or a deferred
+\ word is refused too: kept, it makes the pre-pass take the token after a call
+\ as a made name the load never makes. The checker's own error constant, read
+\ at load time under a local name.
 E-GENERATES-ROW constant E-GEN-ROW
 
 \ Values of 2 to 128 cells, for a row of 256 input cells short enough to state.
@@ -429,7 +432,13 @@ STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
    [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" an effect too wide to record is refused" T-LABEL
    [: s\" : CDD-GW ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GW ( cdd-c128 cdd-c64 cdd-c32 cdd-c16 cdd-c8 cdd-c4 cdd-c2 n n -- )\n" evaluate-closed ;]
-      E-GEN-ROW TTHROWSQ ;
+      E-GEN-ROW TTHROWSQ
+   s" a row on a word that reads no name after it is refused" T-LABEL
+   [: s\" : CDD-GN ( n -- ) drop ;\ngenerates: CDD-GN ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   s" a row on a deferred word is refused" T-LABEL
+   [: s\" defer CDD-GF ( n -- )\ngenerates: CDD-GF ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   s" a row on evaluate, which reads no name, is refused" T-LABEL
+   [: s\" generates: evaluate ( -- )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ ;
 
 \ Section 13: a clause's body ends as its colon twin's does (checker.f
 \ CHECK-DOES-RUN); refused clauses' diagnostics go to CDD-DIAG, not stderr.

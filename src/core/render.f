@@ -2313,9 +2313,9 @@ RECORD-DIAG-INSTALL
 STGR-DIAG-INSTALL
 
 \ A `generates:` row the checker cannot keep (checker.f CHECKER-GENERATES), on
-\ TSTALE-JSON's template: the kind says which of three claims failed, each with
-\ its own repair (correct the name, delete the row, or the signature refusal's
-\ class and text). Placed at the name where the pre-pass scanner read it.
+\ TSTALE-JSON's template: the kind says which of four claims failed, each with
+\ its own repair (correct the name, delete the row, make D read its name, or
+\ the signature refusal's class and text). Placed at the name where the pre-pass scanner read it.
 : GENR-BADSIG-PROSE ( -- )
    SGBAD-UNKNOWN? IF
       s" unknown type '" DTXT  SGBAD-A @ SGBAD-U @ DTXT  s" ' in its effect" DTXT EXIT
@@ -2339,6 +2339,13 @@ STGR-DIAG-INSTALL
       s" ' already creates: its does> clause, an earlier generates: row or the" DTXT
       s"  definer it wraps already states what it makes. Delete the row" DTXT EXIT
    THEN
+   kind GENR-READS-NONE = IF
+      s" ' is deferred, or no parse-name reaches it through the words it calls" DTXT
+      s"  (a call through a defer or an executed xt shows none), so the check" DTXT
+      s"  cannot take the next token as the word a call makes. Delete the row," DTXT
+      s"  or make the definer read its name with parse-name, called directly or" DTXT
+      s"  through words it calls by name" DTXT EXIT
+   THEN
    s" ': " DTXT  GENR-BADSIG-PROSE ;
 : GENR-SUGGEST$ ( n -- ptr u8 n )
    {: kind:n :}
@@ -2348,11 +2355,15 @@ STGR-DIAG-INSTALL
    kind GENR-CREATES = IF
       s" This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row." EXIT
    THEN
+   kind GENR-READS-NONE = IF
+      s" This word is deferred, or no parse-name reaches it through the words it calls (a call through a defer or an executed xt shows none), so the check cannot take the next token as the word a call makes. Delete the row, or make the definer read its name with parse-name, called directly or through words it calls by name, and make the word from that name." EXIT
+   THEN
    SGBAD-SUGGEST$ ;
 : GENR-CLASS$ ( n -- ptr u8 n )
    {: kind:n :}
    kind GENR-UNRESOLVED = IF s" fix_generates_row" EXIT THEN
    kind GENR-CREATES = IF s" delete_generates_row" EXIT THEN
+   kind GENR-READS-NONE = IF s" fix_generates_row" EXIT THEN
    SGBAD-CLASS$ ;
 : GENR-JSON ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}

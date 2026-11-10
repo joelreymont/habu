@@ -2426,9 +2426,11 @@ sections above.
   D makes that effect, as `does>` does. `FUNCTION:` instead supplies its
   declaration group, treating an `i32` result as `n`. A `generates:` claim
   does not define the made word; the load judges its actual effect and any
-  other products. An undefined D, duplicate declaration (including a clause
-  or inherited definer effect), or invalid effect is `E-GENERATES-ROW`. A
-  used-scope conflict is `E-USING-SHADOW-GLOBAL` or `E-USING-AMBIGUOUS`. The
+  other products. An undefined D, a deferred D, a D no `parse-name` reaches
+  through the words it calls (a call through a `defer` or an executed xt
+  shows none), a duplicate declaration (including a clause or inherited
+  definer effect), or an invalid effect is `E-GENERATES-ROW`. A used-scope
+  conflict is `E-USING-SHADOW-GLOBAL` or `E-USING-AMBIGUOUS`. The
   name is one blank-delimited token; the signature opens at the first `(`
   after blanks, attached to a token or not, and closes at the first `)` byte;
   a line feed inside it stays in its token. The signature has a fixed byte
