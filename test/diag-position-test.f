@@ -334,20 +334,37 @@ variable RC
    s" " CHECK
    0 s" NOPE-LATE" 7 4 84 93 AT ;
 
-\ Packet 0 of the last run is the run stage's refusal of a top-level `!` in file
-\ PATH: the file and LINE alone, for the run file keeps each subject line on
-\ its own line but its markers shift bytes and columns, and a top step sits in
-\ no definition an origin maps.
-: TOP-AT ( ptr u8 n n -- ) {: path:ptr pathu:n line:n :}
+\ The packet ROOT has null for KEY.
+: NULL-FIELD ( SPAN:span<u8> ptr u8 n -- )
+   {: root:SPAN:span<u8> key:ptr keyu:n :}
+   root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
+   {: v:SPAN:span<u8> :}
+   v GJA-KIND JSON:T-NULL <> IF key keyu s" null" FIELD-NOT EXIT THEN
+   T-NEXT ;
+
+\ Packet 0 of the last run is the run stage's refusal CODE of the top-level
+\ token TOK in file PATH: a null word and null definition fields, the file and
+\ LINE alone, for the run file keeps each subject line on its own line but its
+\ markers shift bytes and columns, and a top step sits in no definition an
+\ origin maps.
+: TOP-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: c:ptr cu:n tok:ptr toku:n path:ptr pathu:n line:n :}
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
-   0 s" code" s" E-RAW-CELL-PTR" FIELD=
-   0 s" token" s" !" FIELD=
+   0 s" code" c cu FIELD=
+   0 s" token" tok toku FIELD=
    0 s" file" path pathu FIELD=
    0 GJA-LINE$ GJA-PARSE {: root:SPAN:span<u8> :}
+   root s" word" NULL-FIELD
+   root s" token_index" NULL-FIELD
+   root s" definition_source" NULL-FIELD
+   root s" declared_effect" NULL-FIELD
+   root s" declared_effect_source" NULL-FIELD
+   root s" inferred_effect" NULL-FIELD
    root s" line" line INT-FIELD=
    root s" column" FIELD-ABSENT
    root s" byte_start" FIELD-ABSENT
-   root s" byte_end" FIELD-ABSENT ;
+   root s" byte_end" FIELD-ABSENT
+   root GJA-DIAG-CONTRACT-ROW ;
 
 : TEST-TOP-LINE ( -- )
    s" a top-level refusal after a definition names its line alone" T-LABEL
@@ -357,7 +374,7 @@ variable RC
    s" here V !" SB-APPEND LF+
    s" top-line.f" FIXTURE!
    s" " CHECK
-   FX-PATH$ 5 TOP-AT ;
+   s" E-RAW-CELL-PTR" s" !" FX-PATH$ 5 TOP-AT ;
 
 \ The run stage labels the subject (checker.f DIAG-FILE!), and the label names
 \ that file alone: a top-level refusal in a file the subject requires names the
@@ -375,7 +392,15 @@ variable RC
    s" : F ( -- ) ;" SB-APPEND LF+
    s" top-subject.f" FIXTURE!
    s" " CHECK
-   DEP-PATH$ 7 TOP-AT ;
+   s" E-RAW-CELL-PTR" s" !" DEP-PATH$ 7 TOP-AT ;
+
+: TEST-TOP-MISMATCH ( -- )
+   s" a top-level mismatch has a null word" T-LABEL
+   SB-RESET
+   s" 1 0= 1 +" SB-APPEND LF+
+   s" top-mismatch.f" FIXTURE!
+   s" " CHECK
+   s" E-MISMATCH" s" +" FX-PATH$ 1 TOP-AT ;
 
 \ SHADE, which package P publishes and the global wordlist defines too, each
 \ by the line DECL, and on line 8 the body BODY of a definition under `using P`.
@@ -1793,6 +1818,7 @@ variable RC
    TEST-CONTROL-OPEN
    TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER
+   TEST-TOP-MISMATCH
    FS:CLEANUP-RUN
    T-REPORT
    s" diag-position-test: ok" type cr ;

@@ -252,6 +252,9 @@ variable GJA-DIRECT
 : GJA-REQ-NULL-OR-NONEMPTY-STRF ( SPAN:span<u8> ptr u8 n -- )
    GJA-REQ dup GJA-KIND JSON:T-NULL = IF drop exit THEN GJA-NONEMPTY-STR ;
 
+: GJA-REQ-NULLF ( SPAN:span<u8> ptr u8 n -- )
+   GJA-REQ GJA-KIND JSON:T-NULL <> IF s" expected JSON null" GJA-FAIL THEN ;
+
 : GJA-SCHEMA1 ( SPAN:span<u8> -- )
    s" schema_version" GJA-REQ GJA-INT 1 <> IF s" schema_version is not 1" GJA-FAIL THEN ;
 
@@ -466,6 +469,19 @@ variable GJA-DIRECT
    root s" declared_effect_source" GJA-REQ GJA-KIND JSON:T-NULL =
    xor IF s" declared_effect and declared_effect_source disagree on null" GJA-FAIL THEN ;
 
+\ A top-level step has no definition: with its word null, the fields that would
+\ describe one are null too, and its place is a line at most.
+: GJA-TOP-STEP ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
+   root s" token_index" GJA-REQ-NULLF
+   root s" definition_source" GJA-REQ-NULLF
+   root s" declared_effect" GJA-REQ-NULLF
+   root s" declared_effect_source" GJA-REQ-NULLF
+   root s" inferred_effect" GJA-REQ-NULLF
+   root s" line" GJA-HAS? IF root s" line" GJA-REQ-INTF THEN
+   root s" column" GJA-NO-FIELD
+   root s" byte_start" GJA-NO-FIELD
+   root s" byte_end" GJA-NO-FIELD ;
+
 : GJA-REPAIR-DEF ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root s" word" GJA-REQ GJA-NONEMPTY-STR
    root s" token" GJA-REQ GJA-NONEMPTY-STR
@@ -591,8 +607,7 @@ variable GJA-DIRECT
    dup s" file" GJA-REQ GJA-NONEMPTY-STR
    s" suggestion" GJA-REQ GJA-NONEMPTY-STR ;
 
-: GJA-DIAG-COMMON ( SPAN:span<u8> -- )
-   dup GJA-DIAG-HEAD
+: GJA-DIAG-DEF ( SPAN:span<u8> -- )
    dup s" word" GJA-REQ GJA-NONEMPTY-STR
    dup s" token" GJA-REQ GJA-NONEMPTY-STR
    dup s" token_index" GJA-REQ-INTF
@@ -605,11 +620,19 @@ variable GJA-DIRECT
    dup s" declared_effect" GJA-REQ-NULL-OR-NONEMPTY-STRF
    dup s" declared_effect_source" GJA-REQ-NULL-OR-NONEMPTY-STRF
    dup GJA-DECLARED-PAIR
-   dup s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR
-   dup s" return_stack" GJA-REQ dup GJA-OBJ
+   s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR ;
+
+: GJA-DIAG-COMMON ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
+   root GJA-DIAG-HEAD
+   root s" word" GJA-REQ GJA-KIND JSON:T-NULL = IF
+      root s" token" GJA-REQ GJA-NONEMPTY-STR
+      root GJA-TOP-STEP
+   ELSE
+      root GJA-DIAG-DEF
+   THEN
+   root s" return_stack" GJA-REQ dup GJA-OBJ
    dup s" expected" GJA-REQ-STRF
-   s" actual" GJA-REQ-STRF
-   drop ;
+   s" actual" GJA-REQ-STRF ;
 
 : GJA-DIAG-DECL ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DIAG-HEAD

@@ -12,6 +12,9 @@
 \ zero-based, end exclusive, in the labeled file. Text with no file bytes behind
 \ it (the engine's own load, `evaluate`, checker-generated definitions) reports
 \ its definition's origin plus the token's offset in the checked text.
+\ A definition record whose word is null is a top-level step's: token_index,
+\ definition_source, declared_effect, declared_effect_source and inferred_effect
+\ are null with it, and its place is a line alone, none when no file holds it.
 \ source_excerpt is the record's definition_source: packet builders normalize,
 \ the checker emits no aliases. --all-errors and LSP-CHECK:VERIFY-BYTES report every
 \ refused definition and go on; at a duplicate name LSP-CHECK:VERIFY-BYTES skips the
@@ -24,7 +27,8 @@ require src/lib/string.f
 package DIAG-CODE
 public
 
-\ definition: a refused definition, the shape of every code without a row.
+\ definition: a refused definition or top-level step (word null), the shape of
+\ every code without a row.
 \ declaration and storage: a refused family or storage declaration.
 \ source-span: a refusal placed in the source outside any definition.
 \ deferral: no refusal, a top-level stretch or a definition placed in the

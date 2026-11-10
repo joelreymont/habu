@@ -1802,11 +1802,14 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 
 
 \ A field that belongs to one refusal goes only on that refusal's packet: the
-\ flags of a failure the refusal outranks leave their fields behind.
+\ flags of a failure the refusal outranks leave their fields behind. A top-level
+\ step has no definition, and its packet says so with a null word and null
+\ definition fields.
 : DIAG-JSON
    REFUSAL@ {: k:n :}
    DCODE REPAIR-CLASS DVERDICT JHEAD
-   s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
+   s" word" JKEY
+   TOP-STEP @ IF s" null" DTXT ELSE NMA @ NMU @ JSTR THEN  44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
    k RF-DEAD = IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
    k RF-REASON = IF
@@ -1818,16 +1821,22 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    THEN
    k RF-SIG = SGBAD-SIZE? and IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
    k RF-LOCAL = LOCALBAD-GROUP? and IF s" reason" JKEY LOCALBAD-REASON$ JSTR 44 EMIT1 THEN
-   s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
+   s" token_index" JKEY
+   TOP-STEP @ IF s" null" DTXT ELSE FAILIX @ JNUM THEN  44 EMIT1
    s" file" JKEY  DFILE$ JSTR  44 EMIT1
    DLOC-FIELDS
-   s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
+   s" definition_source" JKEY
+   TOP-STEP @ IF s" null" DTXT ELSE TBASE @ TBLEN @ JSTR THEN  44 EMIT1
    s" declared_effect" JKEY
-   RECEFF-ON? IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" DTXT THEN  44 EMIT1
+   RECEFF-ON? TOP-STEP @ 0= and IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" DTXT THEN
+   44 EMIT1
    s" declared_effect_source" JKEY
-   RECEFF-ON? IF SGA @ SGU @ SIG-TRIM JSTR ELSE s" null" DTXT THEN  44 EMIT1
+   RECEFF-ON? TOP-STEP @ 0= and IF SGA @ SGU @ SIG-TRIM JSTR ELSE s" null" DTXT THEN
+   44 EMIT1
    s" inferred_effect" JKEY
-   MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ JSTR ELSE JOPEN INFERRED-EFFECT JCLOSE THEN
+   TOP-STEP @ IF s" null" DTXT ELSE
+      MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ JSTR ELSE JOPEN INFERRED-EFFECT JCLOSE THEN
+   THEN
    44 EMIT1
    s" return_stack" JKEY
    123 EMIT1

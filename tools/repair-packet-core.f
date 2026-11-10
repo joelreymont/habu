@@ -231,8 +231,15 @@ variable RP-ROW-OBJECT
    RP-W JSON:WRITE-OBJECT-END drop
    row rowu RP-ROW! ;
 
+\ A null word is a top-level step's: it has no definition to repair.
 : RP-DEF-PACKET ( n -- ptr u8 n )
    {: count:n :}
+   s" word" RP-FIND if
+      JSON:READ-TOKEN JSON:T-NULL = if
+         JSON:READ-CLOSE s" repair-packet: a top-level step has no packet" RP-E-IO RP-FAIL
+      then
+   then
+   JSON:READ-CLOSE
    RP-PACKET-START
    RP-W JSON:WRITE-COMMA drop s" word" RP-REQ-STR-FIELD
    RP-W JSON:WRITE-COMMA drop s" token" RP-REQ-STR-FIELD
