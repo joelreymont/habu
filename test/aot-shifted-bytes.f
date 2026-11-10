@@ -23,7 +23,13 @@
 \ loaded file to the loader (SOURCE-ROOT:RUN-PROGRAM) and prints them too. A
 \ file whose word only resolves its own path, as Maki's
 \ src/vocabulary.f does, loads nothing: its build prints the directory
-\ `hb --load` prints.
+\ `hb --load` prints. A file whose top level sets its root with ROOT! and requires a
+\ file only that root reaches loads and builds; a second build into the same out
+\ root reuses its object, so it runs none of the file's top-level code. That
+\ file then requires a second file only its root reaches, which the first
+\ required file loaded already, so the requiring file's object holds a registry
+\ act made under the set root, not a request; the rebuild reuses it all the same.
+\ A third build after the first required file changes prints its new line.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 
@@ -45,6 +51,12 @@ create PROBE-IMAGE PATH-CAP allot
 create RESOLVES PATH-CAP allot
 create RESOLVES-OUT PATH-CAP allot
 create RESOLVES-IMAGE PATH-CAP allot
+create ROOTED PATH-CAP allot
+create ROOTED-DIR PATH-CAP allot
+create ROOTED-HELPER PATH-CAP allot
+create ROOTED-SHARED PATH-CAP allot
+create ROOTED-OUT PATH-CAP allot
+create ROOTED-IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 variable RECORD-U
@@ -57,6 +69,12 @@ variable PROBE-IMAGE-U
 variable RESOLVES-U
 variable RESOLVES-OUT-U
 variable RESOLVES-IMAGE-U
+variable ROOTED-U
+variable ROOTED-DIR-U
+variable ROOTED-HELPER-U
+variable ROOTED-SHARED-U
+variable ROOTED-OUT-U
+variable ROOTED-IMAGE-U
 \ what `hb --load` printed, which the build must print too
 4096 constant LOADED-CAP
 create LOADED LOADED-CAP allot
@@ -74,6 +92,12 @@ variable LOADED-U
 : RESOLVES$ ( -- ptr u8 n ) RESOLVES RESOLVES-U @ ;
 : RESOLVES-OUT$ ( -- ptr u8 n ) RESOLVES-OUT RESOLVES-OUT-U @ ;
 : RESOLVES-IMAGE$ ( -- ptr u8 n ) RESOLVES-IMAGE RESOLVES-IMAGE-U @ ;
+: ROOTED$ ( -- ptr u8 n ) ROOTED ROOTED-U @ ;
+: ROOTED-DIR$ ( -- ptr u8 n ) ROOTED-DIR ROOTED-DIR-U @ ;
+: ROOTED-HELPER$ ( -- ptr u8 n ) ROOTED-HELPER ROOTED-HELPER-U @ ;
+: ROOTED-SHARED$ ( -- ptr u8 n ) ROOTED-SHARED ROOTED-SHARED-U @ ;
+: ROOTED-OUT$ ( -- ptr u8 n ) ROOTED-OUT ROOTED-OUT-U @ ;
+: ROOTED-IMAGE$ ( -- ptr u8 n ) ROOTED-IMAGE ROOTED-IMAGE-U @ ;
 : LOADED$ ( -- ptr u8 n ) LOADED LOADED-U @ ;
 \ a line the probe's --load output must hold, naming its canonical directory
 create WANT PATH-CAP 2 * allot
@@ -102,6 +126,22 @@ variable WANT-U
 \ the file's top level: Maki's src/vocabulary.f shape.
 : RESOLVES-SOURCE$ ( -- ptr u8 n )
    S\" : RESOLVES-DIR ( -- ) s\q resolves.f\q SOURCE-ROOT:RESOLVE drop SOURCE-ROOT:DIRNAME s\q resolves dir \q type type cr ;\nRESOLVES-DIR\n: MAIN ( -- ) ;\n" ;
+
+\ A file that prints a line at top level, sets its root to beside/ and requires
+\ helper.f and then shared.f, which only that root resolves and helper.f has
+\ loaded; MAIN prints a word each of them defines.
+: ROOTED-SOURCE$ ( -- ptr u8 n )
+   S\" s\q rooted top level\q type cr\ns\q beside\q SOURCE-ROOT:ROOT!\nrequire helper.f\nrequire shared.f\n: MAIN ( -- ) s\q rooted main \q type BESIDE-WORD type s\q  and \q type SHARED-WORD type cr ;\n" ;
+
+: HELPER-SOURCE$ ( -- ptr u8 n )
+   S\" require shared.f\n: BESIDE-WORD ( -- ptr u8 n ) s\q from beside\q ;\n" ;
+
+\ helper.f rewritten: its word answers another line.
+: HELPER-CHANGED-SOURCE$ ( -- ptr u8 n )
+   S\" require shared.f\n: BESIDE-WORD ( -- ptr u8 n ) s\q from beside, changed\q ;\n" ;
+
+: SHARED-SOURCE$ ( -- ptr u8 n )
+   S\" : SHARED-WORD ( -- ptr u8 n ) s\q shared\q ;\n" ;
 
 \ Each subject is its own hb-build: a refusal ends the build.
 : BUILD-ARGV ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n out:ptr outu:n :}
@@ -198,6 +238,57 @@ variable WANT-U
    s" stripped build of a file whose word resolves its own path" GE-EXPECT-OK
    WANT$ s" the directory the word resolves in the build, as under hb --load" GE-EXPECT-OUT-HAS ;
 
+: EXPECT-OUT-LACKS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
+   GT-OUT$ want wantu CONTAINS? if label labelu GE-FAIL then ;
+
+: ROOTED-LOAD ( -- )
+   ROOTED-DIR$ FS:MAKE-DIRS
+   ROOTED-HELPER$ HELPER-SOURCE$ FS:WRITE-ALL
+   ROOTED-SHARED$ SHARED-SOURCE$ FS:WRITE-ALL
+   ROOTED$ ROOTED-SOURCE$ FS:WRITE-ALL
+   GE-HB-RESET
+   ENGINE-CANDIDATE:PATH$ GE-ARGV+
+   s" --load" GE-ARG+ ROOTED$ GE-ARG+
+   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" hb --load of a file that requires a file only its ROOT! reaches" GE-EXPECT-OK ;
+
+\ The program run, printing MAIN's line.
+: ROOTED-RUN ( ptr u8 n -- ) {: want:ptr wantu:n :}
+   GE-HB-RESET
+   ROOTED-IMAGE$ GE-ARGV+
+   ROOTED-IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" the program built from a file whose ROOT! reaches its require" GE-EXPECT-OK
+   want wantu s" MAIN's line, from the words the ROOT!-reached files define" GE-EXPECT-OUT ;
+
+: ROOTED-LINE$ ( -- ptr u8 n ) S\" rooted main from beside and shared\n" ;
+
+\ Both builds share ROOTED-OUT: the first compiles the file, running its top
+\ level; the second reuses its cached object, which runs no top-level code.
+: ROOTED-BUILD ( -- )
+   GE-HB-RESET
+   s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
+   ROOTED$ ROOTED-IMAGE$ BUILD-ARGV BUILD-RUN
+   s" stripped build of a file that requires a file only its ROOT! reaches" GE-EXPECT-OK
+   s" rooted top level" s" the first build runs the file's top level" GE-EXPECT-OUT-HAS
+   ROOTED-LINE$ ROOTED-RUN ;
+
+: ROOTED-REBUILD ( -- )
+   GE-HB-RESET
+   s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
+   ROOTED$ ROOTED-IMAGE$ BUILD-ARGV BUILD-RUN
+   s" second build of it into the same out root" GE-EXPECT-OK
+   s" rooted top level" s" the second build reuses the cached object, running no top-level code" EXPECT-OUT-LACKS
+   ROOTED-LINE$ ROOTED-RUN ;
+
+\ A third build into the same out root, after helper.f changed, links its new word.
+: ROOTED-CHANGED ( -- )
+   ROOTED-HELPER$ HELPER-CHANGED-SOURCE$ FS:WRITE-ALL
+   GE-HB-RESET
+   s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
+   ROOTED$ ROOTED-IMAGE$ BUILD-ARGV BUILD-RUN
+   s" third build of it into the same out root, after its required file changed" GE-EXPECT-OK
+   S\" rooted main from beside, changed and shared\n" ROOTED-RUN ;
+
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -212,10 +303,17 @@ variable WANT-U
    s" resolves.f" RESOLVES GT-PATH RESOLVES-U !
    s" resolves-out" RESOLVES-OUT GT-PATH RESOLVES-OUT-U !
    s" resolves" RESOLVES-IMAGE GT-PATH RESOLVES-IMAGE-U !
+   s" rooted.f" ROOTED GT-PATH ROOTED-U !
+   s" beside" ROOTED-DIR GT-PATH ROOTED-DIR-U !
+   s" beside/helper.f" ROOTED-HELPER GT-PATH ROOTED-HELPER-U !
+   s" beside/shared.f" ROOTED-SHARED GT-PATH ROOTED-SHARED-U !
+   s" rooted-out" ROOTED-OUT GT-PATH ROOTED-OUT-U !
+   s" rooted" ROOTED-IMAGE GT-PATH ROOTED-IMAGE-U !
    BUILD RUN-IMAGE BUILD-RECORD
    PROBE-WRITE PROBE-LOAD PROBE-PLAIN PROBE-BUILD
    RESOLVES-LOAD RESOLVES-BUILD
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, and a build whose word resolves its own path as hb --load does" type cr ;
+   ROOTED-LOAD ROOTED-BUILD ROOTED-REBUILD ROOTED-CHANGED
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, and a file whose ROOT! reaches its require, loaded, built, rebuilt from its cached object and rebuilt after its required file changed" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

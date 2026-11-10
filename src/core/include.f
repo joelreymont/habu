@@ -1456,7 +1456,11 @@ SOURCE-UNIT:RESET
 \ During discovery the walker runs DISCOVERY-ON and passes the loader-token span
 \ to DISC-TOK!; a real load reads TKA-CELL and TKL-CELL.
 
-10 constant EVENT-FIELDS
+\ A record's fields: 0 the kind; 1/2 the resolved path's pool offset and
+\ length; 3/4 the loader-token span; 5 the registry state; 6/7 the root the
+\ request resolved under (SOURCE-EVENT:ROOT@); 8/9 the path as spelled; 10/11
+\ the root current when the request was spelled (EVENT-SPELLED@).
+12 constant EVENT-FIELDS
 EVENT-FIELDS cells constant EVENT-BYTES          \ one record
 $1000 constant EVENT-ROOM-MIN                    \ a first mapping's bytes
 $4D constant INCLUDE-EVENT-RC
@@ -1468,7 +1472,7 @@ $4D constant INCLUDE-EVENT-RC
 1 constant EV-STATE-KNOWN
 
 \ The records, and the pool that holds each event's paths and, unless an
-\ earlier event stored the same one, the root it resolved under, are mappings
+\ earlier field stored the same one, its two roots, are mappings
 \ that grow as events arrive, so a discovery records every act however many
 \ there are. Each CAP counts the bytes its mapping holds, 0 while unmapped.
 PTR-VARIABLE EVENT-RECS
@@ -1574,11 +1578,19 @@ public
 
 private
 
-: COPY-ROOT ( -- n n )
-   RESOLVED-ROOT$ {: a:ptr u:n :}
-   0 begin dup EVENT-N @ < while
-      dup ROOT@ a u CORE-STR= if
+\ The root in field pair F/F+1 of event IX.
+: ROOT-IN ( n n -- ptr u8 n ) {: ix:n f:n :}
+   ix f EVENT-FIELD@ EVENT-POOL-AT ix f 1+ EVENT-FIELD@ ;
+
+\ The pool offset and length of root A U: those of an equal root that an event
+\ below LIM already stored, in either of its root fields, else a fresh copy.
+: SHARE-ROOT ( ptr u8 n n -- n n ) {: a:ptr u:n lim:n :}
+   0 begin dup lim < while
+      dup 6 ROOT-IN a u CORE-STR= if
          dup 6 EVENT-FIELD@ swap 7 EVENT-FIELD@ exit
+      then
+      dup 10 ROOT-IN a u CORE-STR= if
+         dup 10 EVENT-FIELD@ swap 11 EVENT-FIELD@ exit
       then
       1+
    repeat drop
@@ -1586,10 +1598,19 @@ private
 
 public
 
+\ Event IX's two roots: the one its request resolved under (6/7) and the one
+\ current when it was spelled (10/11), which is that same string when equal.
 : STORE-ROOT ( n -- ) {: ix:n :}
-   COPY-ROOT {: off:n len:n :}
+   RESOLVED-ROOT$ ix SHARE-ROOT {: off:n len:n :}
    off ix 6 EVENT-FIELD!
-   len ix 7 EVENT-FIELD! ;
+   len ix 7 EVENT-FIELD!
+   SOURCE-ROOT:CURRENT$ {: a:ptr u:n :}
+   ix ROOT@ a u CORE-STR= if
+      off ix 10 EVENT-FIELD!  len ix 11 EVENT-FIELD!  exit
+   then
+   a u ix SHARE-ROOT {: coff:n clen:n :}
+   coff ix 10 EVENT-FIELD!
+   clen ix 11 EVENT-FIELD! ;
 
 ;package
 
@@ -1621,9 +1642,12 @@ public
 : EVENT-PATH@ ( n -- ptr u8 n ) {: ix:n :}
    ix 1 EVENT-FIELD@ EVENT-POOL-AT
    ix 2 EVENT-FIELD@ ;
-: EVENT-SPELLED@ ( n -- ptr u8 n ) {: ix:n :}
+\ The path as spelled, then the root current when it was spelled.
+: EVENT-SPELLED@ ( n -- ptr u8 n ptr u8 n ) {: ix:n :}
    ix 8 EVENT-FIELD@ EVENT-POOL-AT
-   ix 9 EVENT-FIELD@ ;
+   ix 9 EVENT-FIELD@
+   ix 10 EVENT-FIELD@ EVENT-POOL-AT
+   ix 11 EVENT-FIELD@ ;
 : EVENT-TOK@ ( n -- n n ) {: ix:n :}
    ix 3 EVENT-FIELD@ ix 4 EVENT-FIELD@ ;
 

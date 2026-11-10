@@ -295,7 +295,18 @@ variable FILE-END                    \ here's distance as the piece ends
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
 variable FILE-PATH-N
-variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
+PATH-CAP BUFFER: FILE-ROOT           \ the root current as the file's load starts (LOAD), its load root
+variable FILE-ROOT-N
+PATH-CAP BUFFER: ROOT-DOT            \ a row's root then "/.", which only a searchable directory passes (ROOTS-HOLD?)
+\ A row with roots (ROOTS+) is checked and linked inside its root's SOURCE-ROOT:WITH, whose body
+\ takes and leaves nothing: the row's kind and the offset in OBJECT of the path it spells go in;
+\ the path resolved there, and whether the registry held it, come out.
+variable ROOTED-KIND
+variable ROOTED-AT
+PATH-CAP BUFFER: ROOTED-PATH
+variable ROOTED-PATH-N
+TYPED-VARIABLE ROOTED-KNOWN bool
+variable FACTS-AT                   \ the offset in OBJECT of FACTS' count, of the piece placed or object read
 variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
 variable USES-AT                    \ the offset in OBJECT of USES' count, of the piece checked
 \ The compiling file never links, so it compiles in every build (WRITE-OBJECT): it has no stamp,
@@ -304,7 +315,9 @@ TYPED-VARIABLE UNLINKABLE bool
 
 \ The magic, the key, the last piece's time, then for INPUT FILES REQUESTS NAMES REACHED PATHS PIECES
 \ an offset and a length (U64+), 0 0 while empty; then those sections in order, PIECES' last piece
-\ ending the object.
+\ ending the object. Each REQUESTS row and each ACTS row carries two roots (ROOTS+): both empty
+\ when the root current as the compile made the row was the file's load root, else that load root
+\ then the row's root.
 8 KEY-BYTES + 8 + 7 2 * 8 * + constant HEADER-BYTES
 
 \ A record's kind in PIECES.
@@ -503,6 +516,12 @@ variable PENDING-STORERS-N           \ its pairs
    {: path:ptr pathu:n :}
    pathu PATH-CAP min {: u:n :}
    path FILE-PATH u BYTE-COPY  u FILE-PATH-N ! ;
+
+\ FILE-ROOT from the root current as the file's load starts, its load root (ROOTS+).
+: LOAD-ROOT! ( -- )
+   SOURCE-ROOT:CURRENT$ {: a:ptr au:n :}
+   au PATH-CAP min {: u:n :}
+   a FILE-ROOT u BYTE-COPY  u FILE-ROOT-N ! ;
 
 \ FILE-KEY's load into LOAD-PATHS, with the path below the root that resolved it, as the
 \ program's map names the file.
@@ -1728,11 +1747,20 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    ev EVENT-KIND@ EV-PROVIDED =
    ev EVENT-KIND@ EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-KNOWN =  and  or ;
 
+\ A row's two roots, for an event spelled under the root: both empty (two zero lengths) when that
+\ is the file's load root (FILE-ROOT), else the load root then the event's root, each a FIELD+.
+: ROOTS+ ( ptr u8 n ptr a -- )
+   {: a:ptr u:n buf:ptr :}
+   a u FILE-ROOT FILE-ROOT-N @ STR= if  0 buf U64+  0 buf U64+  exit  then
+   FILE-ROOT FILE-ROOT-N @ buf FIELD+  a u buf FIELD+ ;
+
+
 \ ACTS, the registry acts of the piece ending with REQUESTS row req, or of the last (-1), from the
 \ loader's log (include.f EVENT-RECORD): their count, then each its kind, EV-REQUIRED or
-\ EV-PROVIDED, and the path as spelled (FIELD+). The newest event of a piece a request ends is that
-\ request's own. Any other event is a load the source caught before the build's runner ran it,
-\ which a link could not repeat: the file is UNLINKABLE. E-COMP-STATE when the log stopped.
+\ EV-PROVIDED, the path as spelled (FIELD+), then its roots (ROOTS+). The newest event of a piece
+\ a request ends is that request's own. Any other event is a load the source caught before the
+\ build's runner ran it, which a link could not repeat: the file is UNLINKABLE. E-COMP-STATE when
+\ the log stopped.
 : ACTS+ ( n -- )
    {: req:n :}
    EVENT-COUNT  req 0 >= if 1 - then {: end:n :}
@@ -1740,7 +1768,9 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    0  end FILE-EVENT @ ?do i ACT? if 1 + then loop  PIECES U64+
    end FILE-EVENT @ ?do
       i ACT? if
-         i EVENT-KIND@ PIECES U64+  i EVENT-SPELLED@ PIECES FIELD+
+         i EVENT-KIND@ PIECES U64+
+         i EVENT-SPELLED@ {: sa:ptr su:n ra:ptr ru:n :}
+         sa su PIECES FIELD+  ra ru PIECES ROOTS+
       else
          true UNLINKABLE !
       then
@@ -2245,8 +2275,16 @@ variable RD-END
    u RD-SKIP
    a u ;
 
+\ A row's two roots (ROOTS+): both empty, or both nonempty, each in bounds.
+: ROOTS-CK ( -- )
+   RD-U64 {: u:n :}  u RD-SKIP
+   RD-U64 {: v:n :}  v RD-SKIP
+   u 0= if v 0<> else v 0= then if BAD then ;
 
-\ REQUESTS' rows, u bytes from RD-AT (WRITE-OBJECT), counted into REQS-N.
+
+\ REQUESTS' rows, u bytes from RD-AT (WRITE-OBJECT), counted into REQS-N: each the time and the
+\ length of the piece it ends, its kind, the path as spelled and as loaded, their roots (ROOTS+)
+\ and the FILES row of the loaded file's last piece.
 : REQUESTS-CK ( n -- )
    {: u:n :}
    0 REQS-N !
@@ -2255,7 +2293,7 @@ variable RD-END
       16 RD-SKIP
       RD-U64 {: kind:n :}
       kind SOURCE-UNIT:LOAD-INCLUDE <>  kind SOURCE-UNIT:LOAD-REQUIRE <>  and if BAD then
-      NAME-CK  NAME-CK
+      NAME-CK  NAME-CK  ROOTS-CK
       RD-U64 FILE-ROW? 0= if BAD then
       1 REQS-N +!
    repeat
@@ -2282,19 +2320,22 @@ variable RD-END
 : REQ-AT ( n -- n )
    {: k:n :}
    REQS-AT @  k 0 ?do
-      24 +  dup OBJ@ 8 + +  dup OBJ@ 8 + +  8 +
+      24 +  4 0 ?do  dup OBJ@ 8 + +  loop  8 +
    loop ;
 
 \ The length in bytes of the piece that ends with REQUESTS row k.
 : PIECE-LEN ( n -- n ) REQ-AT 8 + OBJ@ ;
 
 
-\ REQUESTS row k's kind, the offsets of its spelled and loaded paths, and its FILES row.
-: REQ-FIELDS ( n -- n n n n )
+\ REQUESTS row k's kind, the offsets of its spelled and loaded paths and of its two roots
+\ (ROOTS+), and its FILES row.
+: REQ-FIELDS ( n -- n n n n n n )
    REQ-AT 16 + {: at:n :}
    at 8 + {: spelled:n :}
    spelled 8 + spelled OBJ@ + {: loaded:n :}
-   at OBJ@  spelled  loaded  loaded 8 + loaded OBJ@ + OBJ@ ;
+   loaded 8 + loaded OBJ@ + {: base:n :}
+   base 8 + base OBJ@ + {: root:n :}
+   at OBJ@  spelled  loaded  base  root  root 8 + root OBJ@ + OBJ@ ;
 
 
 \ The FIELD+ at the offset in OBJECT.
@@ -2701,13 +2742,13 @@ variable RD-END
    loop ;
 
 
-\ ACTS (ACTS+): each row a kind, EV-REQUIRED or EV-PROVIDED, and a path.
+\ ACTS (ACTS+): each row a kind, EV-REQUIRED or EV-PROVIDED, a path and its roots (ROOTS+).
 : ACTS-CK ( -- )
    RD-AT @ ACTS-AT !
-   16 RD-COUNT 0 ?do
+   32 RD-COUNT 0 ?do
       RD-U64 {: kind:n :}
       kind EV-REQUIRED <>  kind EV-PROVIDED <>  and if BAD then
-      NAME-CK
+      NAME-CK  ROOTS-CK
    loop ;
 
 
@@ -2838,18 +2879,25 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    pairs 24 + PRIOR@ FILES-ROW-BYTES mod 0= ;
 
 
-\ The PRIOR REQUESTS row at the offset, which ends by rend: time, length, kind, two paths (a
-\ length, then its bytes) and a FILES row. The offset after it, and true; false when it passes rend.
+\ The PRIOR field at the offset (FIELD+), which ends by rend: the offset after it, and true; false
+\ when it passes rend.
+: PRIOR-FIELD ( n n -- n bool )
+   {: at:n rend:n :}
+   at 8 + rend > if 0 false exit then
+   at PRIOR@ {: u:n :}
+   u 0<  u rend at - 8 - >  or if 0 false exit then
+   at 8 + u + true ;
+
+\ The PRIOR REQUESTS row at the offset, which ends by rend: time, length, kind, two paths and
+\ their two roots (each a length, then its bytes) and a FILES row. The offset after it, and true;
+\ false when it passes rend.
 : PRIOR-ROW ( n n -- n bool )
    {: at:n rend:n :}
-   at 32 + rend > if 0 false exit then
-   at 24 + PRIOR@ {: u:n :}
-   u 0<  u rend at - 32 - >  or if 0 false exit then
-   at 32 + u + {: at2:n :}
-   at2 8 + rend > if 0 false exit then
-   at2 PRIOR@ {: u2:n :}
-   u2 0<  u2 rend at2 - 16 - >  or if 0 false exit then
-   at2 16 + u2 + true ;
+   at 24 +
+   4 0 ?do  rend PRIOR-FIELD 0= if false unloop exit then  loop
+   {: next:n :}
+   next 8 + rend > if 0 false exit then
+   next 8 + true ;
 
 
 \ Piece k of PRIOR (PRIOR-READ): its offset, length and time, and true; zeros and false when
@@ -3109,18 +3157,51 @@ defer CHECK-OBJECT ( -- )
    a u PENDING-PATH? ;
 
 
+\ Whether a row's roots (ROOTS+), base then root, hold now: both empty; or the base is the root
+\ current now, so a relative ROOT! names the root it named in the compile, and the root still
+\ resolves to itself as a searchable directory, which SOURCE-ROOT:WITH needs or it ends the process.
+: ROOTS-HOLD? ( ptr u8 n ptr u8 n -- bool )
+   {: b:ptr bu:n r:ptr ru:n :}
+   bu 0=  ru 0=  and if true exit then
+   b bu SOURCE-ROOT:CURRENT$ STR= 0= if false exit then
+   ru 0=  ru 2 + PATH-CAP >  or if false exit then
+   r ROOT-DOT ru BYTE-COPY  47 ROOT-DOT ru + c!  46 ROOT-DOT ru 1 + + c!
+   ROOT-DOT ru 2 + FS:EXISTS? 0= if false exit then
+   r ru SOURCE-ROOT:CANONICAL drop  r ru STR= ;
+
+\ ROOTED-AT's path resolved by SOURCE-ROOT:RESOLVE under the root current, into ROOTED-PATH,
+\ ROOTED-PATH-N and ROOTED-KNOWN, which outlive the SOURCE-ROOT:WITH this runs inside. RESOLVE
+\ answers at most PATH-CAP bytes.
+: ROOTED-RESOLVE ( -- )
+   ROOTED-AT @ FIELD$ SOURCE-ROOT:RESOLVE {: a:ptr u:n known:bool :}
+   u PATH-CAP > if E-COMP-STATE throw then
+   a ROOTED-PATH u BYTE-COPY  u ROOTED-PATH-N !  known ROOTED-KNOWN ! ;
+
+\ The path at the offset in OBJECT resolved as SOURCE-ROOT:RESOLVE resolves it: under the root
+\ current when the row's root is empty, else inside that root (ROOTED-RESOLVE). RESOLVED-ROOT$
+\ outlives the WITH, so WITH-BYTES still enters the root the path resolved through.
+: ROW-RESOLVE ( n ptr u8 n -- ptr u8 n bool )
+   {: at:n r:ptr ru:n :}
+   ru 0= if at FIELD$ SOURCE-ROOT:RESOLVE exit then
+   at ROOTED-AT !
+   r ru [: ROOTED-RESOLVE ;] SOURCE-ROOT:WITH
+   ROOTED-PATH ROOTED-PATH-N @ ROOTED-KNOWN @ ;
+
+
 \ REQUESTS row k: the path it spells resolves, as a load from the checked file resolves it, to the
 \ path it loaded, a require's not REGISTERED? yet and then registered; then that file checks a depth
 \ deeper, short of OBJECT-DEPTHS, so a file nested deeper compiles and no link parks past it.
 \ SOURCE-ROOT:RESOLVE is the last loader call before WITH-BYTES, which enters the root it resolved
-\ through.
+\ through. A row with roots (ROOTS+) is bad unless they hold (ROOTS-HOLD?), and its path resolves
+\ inside its root, as its request did.
 : CHECK-REQUEST ( n -- )
    {: k:n :}
-   k REQ-FIELDS {: kind:n spelled:n loaded:n file:n :}
+   k REQ-FIELDS {: kind:n spelled:n loaded:n base:n root:n file:n :}
    file FILES-ROW {: at:ptr :}
    at WANT-KEY KEY-BYTES BYTE-COPY
    at BUILT-PIECE + LE:U64@ WANT-PIECE !  at BUILT-TIME + LE:U64@ WANT-TIME !
-   spelled FIELD$ SOURCE-ROOT:RESOLVE {: canon:ptr canonu:n known:bool :}
+   base FIELD$ root FIELD$ ROOTS-HOLD? 0= if BAD exit then
+   spelled root FIELD$ ROW-RESOLVE {: canon:ptr canonu:n known:bool :}
    canon canonu  loaded FIELD$  STR= 0= if BAD exit then
    canon canonu FS:FILE? 0= if BAD exit then
    kind SOURCE-UNIT:LOAD-REQUIRE = if
@@ -3133,12 +3214,18 @@ defer CHECK-OBJECT ( -- )
 
 
 \ The piece's ACTS rows (ACTS-CK), each path resolved as a load from the checked file resolves
-\ it: a require's must be REGISTERED?, as its compile found it; a provide's is registered.
+\ it: a require's must be REGISTERED?, as its compile found it; a provide's is registered. A row
+\ with roots (ROOTS+) is bad unless they hold (ROOTS-HOLD?), and its path resolves inside its root,
+\ as its act did.
 : ACTS-WALK ( -- )
    ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
-      RD-NAME SOURCE-ROOT:RESOLVE {: canon:ptr canonu:n known:bool :}
+      RD-AT @ {: at:n :}
+      RD-NAME 2drop
+      RD-NAME RD-NAME {: b:ptr bu:n r:ptr ru:n :}
+      b bu r ru ROOTS-HOLD? 0= if BAD unloop exit then
+      at r ru ROW-RESOLVE {: canon:ptr canonu:n known:bool :}
       kind EV-PROVIDED = if
          canon canonu PENDING-PATHS FIELD+
       else
@@ -3771,32 +3858,58 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 : RETURNED ( -- ) POP-KEY UNPARK ;
 
 
-\ REQUESTS row k of the linking file: the path it spells loads again, as the compile's request
-\ loaded it, under the linking file's key, so the requested file links; it must end with the BUILT
-\ row of the FILES row the request names, else E-STALE.
-: LINK-REQUEST ( n -- )
-   REQ-FIELDS {: kind:n spelled:n loaded:n file:n :}
-   REQ-PATH BUF:CLEAR
-   spelled FIELD$ REQ-PATH SPAN+       \ OBJECT is the requested file's while it loads
+\ A linked request of the kind loads the path in REQ-PATH under the linking file's key, OBJECT the
+\ requested file's while it loads.
+: REQUEST-LOAD ( n -- )
+   {: kind:n :}
    PARK
    true PUSH-KEY
-   kind REQ-PATH BYTES$ ['] SOURCE-UNIT:LOAD-PATH ['] RETURNED finally
+   kind REQ-PATH BYTES$ ['] SOURCE-UNIT:LOAD-PATH ['] RETURNED finally ;
+
+
+\ REQUESTS row k of the linking file: the path it spells loads again, as the compile's request
+\ loaded it, under the linking file's key, so the requested file links; it must end with the BUILT
+\ row of the FILES row the request names, else E-STALE. A row with roots (ROOTS+) is E-STALE
+\ unless they hold (ROOTS-HOLD?), and loads inside its root, as its request did; the WITH copies
+\ the root, and REQ-PATH and ROOTED-KIND hold the rest, before PARK makes OBJECT the requested file's.
+: LINK-REQUEST ( n -- )
+   REQ-FIELDS {: kind:n spelled:n loaded:n base:n root:n file:n :}
+   base FIELD$ root FIELD$ ROOTS-HOLD? 0= if E-STALE throw then
+   REQ-PATH BUF:CLEAR
+   spelled FIELD$ REQ-PATH SPAN+
+   root OBJ@ 0= if
+      kind REQUEST-LOAD
+   else
+      kind ROOTED-KIND !
+      root FIELD$ [: ROOTED-KIND @ REQUEST-LOAD ;] SOURCE-ROOT:WITH
+   then
    file FILES-ROW BUILT-MATCH {: row:n hit:bool :}
    hit 0=  row BUILT-N 1 - <>  or if E-STALE throw then ;
 
 
-\ The piece's ACTS rows (ACTS-CK) applied as its compile made them: a provide through
-\ `provided`; a require the registry must hold by now, else E-STALE.
+\ An ACTS row of the kind applied as its compile made it: a provide through `provided`; a require
+\ the registry must hold by now, else E-STALE.
+: ACT-LINK ( n ptr u8 n -- )
+   {: kind:n a:ptr u:n :}
+   kind EV-PROVIDED = if a u provided exit then
+   a u SOURCE-ROOT:RESOLVE nip nip 0= if E-STALE throw then ;
+
+\ The piece's ACTS rows (ACTS-CK), each applied (ACT-LINK). A row with roots (ROOTS+) is E-STALE
+\ unless they hold (ROOTS-HOLD?), and applies inside its root, as its act did.
 : LINK-ACTS ( -- )
    ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
+      RD-AT @ {: at:n :}
       RD-NAME {: a:ptr u:n :}
+      RD-NAME RD-NAME {: b:ptr bu:n r:ptr ru:n :}
       GOOD? 0= if E-COMP-STATE throw then
-      kind EV-PROVIDED = if
-         a u provided
+      b bu r ru ROOTS-HOLD? 0= if E-STALE throw then
+      ru 0= if
+         kind a u ACT-LINK
       else
-         a u SOURCE-ROOT:RESOLVE nip nip 0= if E-STALE throw then
+         kind ROOTED-KIND !  at ROOTED-AT !
+         r ru [: ROOTED-KIND @ ROOTED-AT @ FIELD$ ACT-LINK ;] SOURCE-ROOT:WITH
       then
    loop ;
 
@@ -3903,7 +4016,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 \ The compiling file's object so far onto FRAMES while a file it requested loads, which reuses its
 \ buffers; FRAME-TAIL bytes end each frame, so POP-FRAME finds the lengths from FRAMES' end.
-9 8 * constant FRAME-TAIL
+10 8 * constant FRAME-TAIL
 
 : SAVE+ ( ptr a -- n )
    {: buf:ptr :}
@@ -3915,9 +4028,11 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    {: p:n r:n rq:n m:n s:n ran:n :}
    INPUT-STAMP INPUT-BYTES FRAMES SPAN+
    FILE-PATH FILE-PATH-N @ FRAMES SPAN+
+   FILE-ROOT FILE-ROOT-N @ FRAMES SPAN+
    p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+  s FRAMES U64+  ran FRAMES U64+
    FILE-PATH-N @ FRAMES U64+  REQ-N @ FRAMES U64+
-   UNLINKABLE @ if 1 else 0 then FRAMES U64+ ;
+   UNLINKABLE @ if 1 else 0 then FRAMES U64+
+   FILE-ROOT-N @ FRAMES U64+ ;
 
 
 \ FRAMES' u bytes from at into the buffer, and the offset after them.
@@ -3934,11 +4049,13 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@ {: p:n r:n rq:n m:n :}
    t 32 + LE:U64@  t 40 + LE:U64@ {: s:n ran:n :}
    t 48 + LE:U64@  t 56 + LE:U64@  t 64 + LE:U64@ {: pn:n reqs:n unlinkable:n :}
-   fu FRAME-TAIL -  p r + rq + m + s + ran + INPUT-BYTES + pn + - {: start:n :}
+   t 72 + LE:U64@ {: rn:n :}
+   fu FRAME-TAIL -  p r + rq + m + s + ran + INPUT-BYTES + pn + rn + - {: start:n :}
    start p PIECES RESTORE+  r REFS RESTORE+  rq REQUESTS RESTORE+  m NAMED-ROWS RESTORE+
    s SPELLS RESTORE+  ran RAN-ROWS RESTORE+ {: at:n :}
    f at + INPUT-STAMP INPUT-BYTES BYTE-COPY
    f at + INPUT-BYTES + FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
+   f at + INPUT-BYTES + pn + FILE-ROOT rn BYTE-COPY  rn FILE-ROOT-N !
    reqs REQ-N !  unlinkable 0<> UNLINKABLE !
    f start BUF:N>BLEN FRAMES BUF:REPLACE ;
 
@@ -3953,6 +4070,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    path pathu KEY!
    path pathu PATH!
+   LOAD-ROOT!
    path pathu root rootu PATH+
    MARKS
    INPUT!
@@ -3986,10 +4104,10 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 \ A request of the compiling file, the newest event of the loader's log (REQUEST?, else
 \ E-COMP-STATE): its piece ends here, placed with its number and its time (COMPILED-TIME), which
-\ starts the request's row with the piece's length, its kind and the path as spelled and as
-\ loaded; its object so far waits on FRAMES while the file loads; then the row ends with the
-\ FILES row of that file's last piece, and the next piece starts at a cell boundary, as a load
-\ leaves here (include.f LOAD-UNIT).
+\ starts the request's row with the piece's length, its kind, the path as spelled and as loaded
+\ and the roots of the request (ROOTS+); its object so far waits on FRAMES while the file loads;
+\ then the row ends with the FILES row of that file's last piece, and the next piece starts at a
+\ cell boundary, as a load leaves here (include.f LOAD-UNIT).
 : NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    EVENT-COUNT 1 - {: ev:n :}
@@ -4002,7 +4120,8 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    PIECES BYTES$ nip start - {: size:n :}
    REQ-N @ t PIECE-PLACE
    t REQUESTS U64+  size REQUESTS U64+  mode REQUESTS U64+
-   ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+
+   ev EVENT-SPELLED@ {: sa:ptr su:n ra:ptr ru:n :}
+   sa su REQUESTS FIELD+  path pathu REQUESTS FIELD+  ra ru REQUESTS ROOTS+
    1 REQ-N +!
    align
    PUSH-FRAME
