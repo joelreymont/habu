@@ -22,6 +22,15 @@ create OUTPUT MAX-BYTES allot
    OUTPUT actual expected len STR= TTRUE
    OUTPUT actual PARSE-OK F64>BITS bits T= ;
 
+\ In LONG: head, then count zeros, then tail.
+create LONG MAX-BYTES allot
+: PADDED ( ptr u8 n n ptr u8 n -- ptr u8 n )
+   {: head:ptr head-len:n count:n tail:ptr tail-len:n :}
+   head LONG head-len BYTE-COPY
+   count 0 ?do $30 LONG head-len i + + c! loop
+   tail LONG head-len count + + tail-len BYTE-COPY
+   LONG head-len count + tail-len + ;
+
 : ROUNDTRIP ( n -- ) {: bits:n :}
    bits BITS>F64 FORMAT-OK OUTPUT swap PARSE-OK F64>BITS bits T= ;
 
@@ -52,6 +61,16 @@ create OUTPUT MAX-BYTES allot
    $39E0000000000000 s" 0.000000000000000000000000000006310887241768095" EXPECT
    $430C6BF526340002 s" 1000000000000000.3" EXPECT
    $C30C6BF526340002 s" -1000000000000000.3" EXPECT
+   1 s" 0." 323 s" 5" PADDED EXPECT
+   $10000000000000 s" 0." 307 s" 22250738585072014" PADDED EXPECT
+   $7FEFFFFFFFFFFFFF s" 17976931348623157" 292 s" " PADDED EXPECT
+   $4340000000000000 s" 9007199254740992" EXPECT
+   $433FFFFFFFFFFFFF s" 9007199254740991" EXPECT
+   $4340000000000001 s" 9007199254740994" EXPECT
+   $4024000000000000 s" 10" EXPECT $3FE0000000000000 s" 0.5" EXPECT
+   $4049000000000000 s" 50" EXPECT $401A000000000000 s" 6.5" EXPECT
+   $401A9374BC6A7EFA s" 6.644" EXPECT
+   $4310000000000001 s" 1125899906842624.3" EXPECT
    s" +.5e+1" PARSE-OK F64>BITS $4014000000000000 T=
    s" -1e-9999" PARSE-OK F64>BITS $8000000000000000 T=
    s" 4.9406564584124654e-324" PARSE-OK F64>BITS 1 T=
@@ -81,6 +100,10 @@ RUN
 
 \ Reopen the owning package to witness restoration of the native thread state.
 package F64-TEXT
+
+\ The witness installs a thread locale and reads it back.
+PROCESS-SYMBOLS
+FUNCTION: USE-LOCALE uselocale ( n -- n ) ;FUNCTION
 
 create STATE-OUTPUT MAX-BYTES allot
 : TEST-LOCALE ( -- n ) 2 s\" C.UTF-8\z" drop 0 NEWLOCALE-CALL ;

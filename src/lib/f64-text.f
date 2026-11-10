@@ -1,8 +1,9 @@
-\ f64-text.f - exact finite binary64 text on glibc and Darwin libc: PARSE and a
-\ shortest round-trip FORMAT. No task yields while thread-local locale or
-\ rounding state is borrowed, and caller output is copied only after success.
+\ f64-text.f - exact finite binary64 text: PARSE through glibc or Darwin libc,
+\ and a shortest round-trip FORMAT computed here in integers, which borrows no
+\ locale or rounding mode. No task yields while PARSE borrows the thread's
+\ rounding mode, and caller output is copied only after success.
 \ STORAGE CLASS. PROCESS-WIDE: the library and the immutable C numeric locale,
-\ made by the first call, then only read; the locale is scratch, so a built
+\ made by PARSE's first call, then only read; the locale is scratch, so a built
 \ program makes its own. No conversion yields. TASK-LOCAL: the work buffers.
 
 require src/lib/ffi-abi.f
@@ -28,25 +29,17 @@ private
 -9890 constant E-NATIVE
 -9891 constant E-FINITE
 $7FFFFFFFFFFFFFFF constant MAGNITUDE-MASK
-512 constant WORK-BYTES
-64 constant NATIVE-BYTES
+\ FORMAT's work: its length cell at 112, its text at 128, its number at BIG-AT.
+512 constant BIG-AT
+40 constant LIMBS
+BIG-AT LIMBS 1+ 8 * + constant WORK-BYTES
 SCRATCH-VARIABLE C-LOCALE
 
-\ The locale calls and the text conversions are libc's, which every process
-\ holds. glibc formats through strfromd; Darwin through snprintf_l, whose double
-\ is variadic and so rides the stack.
+\ The locale calls and strtod_l are libc's, which every process holds.
 PROCESS-SYMBOLS
 FUNCTION: NEWLOCALE-CALL newlocale ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: FREELOCALE-CALL freelocale ( n -- ) ;FUNCTION
-FUNCTION: USE-LOCALE uselocale ( n -- n ) ;FUNCTION
 FUNCTION: STRTOD-CALL strtod_l ( ptr u8 n n -- r ) ;FUNCTION
-FUNCTION: STRFROMD-CALL strfromd ( ptr u8 n ptr u8 r -- i32 )
-   0 1 WRITES-ARG                        \ the output and its capacity
-;FUNCTION
-FUNCTION: SNPRINTF-CALL snprintf_l ( ptr u8 n n ptr u8 r -- i32 )
-   4 VARIADIC
-   0 1 WRITES-ARG                        \ the output and its capacity
-;FUNCTION
 
 \ The rounding mode is libm's on glibc; Darwin keeps it in libSystem.
 : SELECT-MATH ( -- )
@@ -70,11 +63,6 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
 : NATIVE-READY? ( -- bool ) [: INITIALIZE ;] catch 0= ;
 
 : C-PARSE ( ptr u8 -- r ) 0 C-LOCALE @ STRTOD-CALL ;
-
-: C-FORMAT ( r ptr u8 ptr u8 -- n ) {: value:r out:ptr format:ptr :}
-   HB-TARGET-MACOS? if
-      out NATIVE-BYTES C-LOCALE @ format value SNPRINTF-CALL exit
-   then out NATIVE-BYTES format value STRFROMD-CALL ;
 
 : DIGIT? ( n -- bool ) dup $30 >= swap $39 <= and ;
 : DIGITS ( ptr u8 n n -- n ) {: text:ptr len:n offset:n :}
@@ -153,98 +141,134 @@ private
 : PUT-DIGITS ( n ptr u8 n -- ) {: value:n out:ptr width:n :}
    value width 0 ?do 10 /mod swap $30 + out width i - 1- + c! loop drop ;
 
-: FORMAT-SPEC ( ptr u8 n -- )
-   {: out:ptr precision:n :}
-   $25 out c! $2E out 1+ c!
-   precision 1- dup 9 > if
-      out 2 + 2 PUT-DIGITS $65 out 4 + c! 5
-   else out 2 + 1 PUT-DIGITS $65 out 3 + c! 4 then
-   out 64 SPAN:MAKE FFI:CSTR! drop ;
+\ A natural number at BIG-AT: the count of limbs in use, then LIMBS limbs of
+\ 32 bits, low first. A limb times 10^9 plus a carry fits a cell.
+$FFFFFFFF constant LIMB-MASK
+1000000000 constant BILLION
 
-: SMALL-NUMBER ( ptr u8 n -- n ) {: text:ptr len:n :}
-   0 len 0 ?do 10 * text i + c@ $30 - + loop ;
+: LIMB@ ( ptr n n -- n ) {: big:ptr at:n :}
+   at 0 >= at big @ < and if big at 1+ cells + @ else 0 then ;
+: LIMB! ( n ptr n n -- ) 1+ cells + ! ;
 
-\ The native scientific spelling has exactly precision digits and a signed exponent.
-: SCIENTIFIC-PARTS ( ptr u8 n n -- n n ) {: text:ptr len:n precision:n :}
-   text c@ $30 -
-   precision 1- 0 ?do
-      10 * text i 2 + + c@ $30 - +
-   loop {: digits:n :}
-   precision 1 = if 2 else precision 2 + then {: sign-at:n :}
-   text sign-at 1+ + len sign-at 1+ - SMALL-NUMBER
-   text sign-at + c@ $2D = if negate then digits swap ;
+: TRIM ( ptr n -- ) {: big:ptr :}
+   big @ begin dup 0 > if big over 1- LIMB@ 0= else false then while
+      1-
+   repeat big ! ;
 
-: CANDIDATE! ( ptr u8 n n n -- ) {: out:ptr digits:n exponent:n precision:n :}
-   digits out precision PUT-DIGITS $65 out precision + c!
-   exponent precision 1- - {: power:n :}
-   power 0 < if $2D else $2B then out precision 1+ + c!
-   power abs out precision 2 + + 3 PUT-DIGITS
-   0 out precision 5 + + c! ;
+: BIG-SET ( n ptr n -- ) {: value:n big:ptr :}
+   value LIMB-MASK and big 0 LIMB! value 32 rshift big 1 LIMB!
+   2 big ! big TRIM ;
 
-: ROUNDTRIP? ( ptr u8 n n n n -- bool )
-   {: out:ptr digits:n exponent:n precision:n bits:n :}
-   out digits exponent precision CANDIDATE!
-   out C-PARSE IEEE754:F64>BITS bits = ;
-
-: PREVIOUS-DECIMAL ( n n n -- n n ) {: digits:n exponent:n precision:n :}
-   digits precision 1- POW10 = if precision POW10 1- exponent 1- else digits 1- exponent then ;
-: NEXT-DECIMAL ( n n n -- n n ) {: digits:n exponent:n precision:n :}
-   digits precision POW10 1- = if precision 1- POW10 exponent 1+ else digits 1+ exponent then ;
+: BIG-CELL ( ptr n -- n ) {: big:ptr :}
+   big 0 LIMB@ big 1 LIMB@ 32 lshift or ;
 
 
-: HIGH-BIT ( n -- n )
-   dup 1 <= if drop 0 exit then 1 rshift recurse 1+ ;
+: BIG-MUL ( n ptr n -- ) {: factor:n big:ptr :}
+   0 big @ 0 ?do
+      big i LIMB@ factor * + dup LIMB-MASK and big i LIMB! 32 rshift
+   loop
+   dup 0<> if big big @ LIMB! big @ 1+ big ! else drop then ;
 
-: REDUCE-FIVES ( n n -- n bool )
-   dup 0= if drop true exit then
-   over 5 mod 0 <> if 2drop 0 false exit then
-   1- swap 5 / swap recurse ;
 
-: MULTIPLY-FIVES ( n n -- n bool )
-   dup 0= if drop true exit then
-   over $20000000000000 5 / > if 2drop 0 false exit then
-   1- swap 5 * swap recurse ;
+\ Answers whether the remainder was nonzero.
+: BIG-DIV ( n ptr n -- bool ) {: divisor:n big:ptr :}
+   0 big @ 0 ?do
+      32 lshift big big @ 1- i - LIMB@ + divisor /mod
+      big big @ 1- i - LIMB!
+   loop 0<> big TRIM ;
 
-\ (2*digits+1)*10^scale/2 is an exact binary value only after every denominator
-\ factor five cancels. The remaining odd significand must fit 53 bits. Building
-\ its IEEE bits checks equality without another rounded decimal conversion.
-: MIDPOINT? ( n n n n -- bool ) {: digits:n exponent:n precision:n bits:n :}
-   exponent precision 1- - {: scale:n :}
-   digits 2 * 1+ scale 0 < if scale negate REDUCE-FIVES else scale MULTIPLY-FIVES then
-   0= if drop false exit then {: significand:n :}
-   significand $20000000000000 >= if false exit then
-   significand HIGH-BIT {: high:n :}
-   scale 1- high + 1023 + {: biased:n :}
-   biased 2047 >= if false exit then
-   biased 0 <= if
-      scale 1073 + dup 0 < if drop false exit then
-      significand swap lshift bits = exit
+
+\ The top limb first, so each limb is read before it is written.
+: BIG-SHL ( n ptr n -- ) {: count:n big:ptr :}
+   count 32 / {: whole:n :} count 32 mod {: part:n :}
+   big @ whole + 1+ {: top:n :}
+   top 0 ?do
+      big top 1- i - whole - LIMB@ part lshift
+      big top 2 - i - whole - LIMB@ 32 part - rshift or LIMB-MASK and
+      big top 1- i - LIMB!
+   loop top big ! big TRIM ;
+
+
+\ Answers whether a one bit was shifted out.
+: BIG-SHR ( n ptr n -- bool ) {: count:n big:ptr :}
+   count 32 / {: whole:n :} count 32 mod {: part:n :}
+   big @ {: len:n :}
+   false whole len min 0 ?do big i LIMB@ 0<> or loop
+   big whole LIMB@ 1 part lshift 1- and 0<> or {: lost:bool :}
+   len whole - 0 max {: kept:n :}
+   kept 0 ?do
+      big i whole + LIMB@ part rshift
+      big i whole + 1+ LIMB@ 32 part - lshift or LIMB-MASK and
+      big i LIMB!
+   loop kept big ! big TRIM lost ;
+
+
+: BIG-MUL-TENS ( n ptr n -- ) {: power:n big:ptr :}
+   power 9 / 0 ?do BILLION big BIG-MUL loop
+   power 9 mod POW10 big BIG-MUL ;
+: BIG-DIV-TENS ( n ptr n -- bool ) {: power:n big:ptr :}
+   false power 9 / 0 ?do BILLION big BIG-DIV or loop
+   power 9 mod POW10 big BIG-DIV or ;
+
+
+\ floor(value x 2^shift x 10^power) and whether that dropped a fraction.
+: SCALED ( n n n ptr n -- n bool ) {: value:n shift:n power:n big:ptr :}
+   value big BIG-SET
+   shift 0 > if shift big BIG-SHL then
+   power 0 > if power big BIG-MUL-TENS then
+   false
+   power 0 < if power negate big BIG-DIV-TENS or then
+   shift 0 < if shift negate big BIG-SHR or then
+   {: lost:bool :} big BIG-CELL lost ;
+
+: BIT-LENGTH ( n -- n )
+   0 swap begin dup 0<> while 1 rshift swap 1+ swap repeat drop ;
+
+
+\ At precision p, of D = floor(value / 10^(18-p)) and D + 1, those inside
+\ [least, most], the nearer, ties upward; and whether either was inside.
+: PICK ( n n n n -- n bool ) {: value:n least:n most:n p:n :}
+   18 p - POW10 {: unit:n :}
+   value unit / {: d:n :}
+   d unit * least >= {: down:bool :}
+   d 1+ unit * most <= {: up:bool :}
+   down up and if
+      d value d unit * unit 2 / + >= if 1+ then true exit
    then
-   biased 52 lshift significand 52 high - lshift $FFFFFFFFFFFFF and or bits = ;
+   down if d true exit then
+   d 1+ up ;
 
-: CHOOSE-TIE ( ptr u8 n n n n -- n n n )
-   {: work:ptr digits:n exponent:n precision:n bits:n :}
-   digits exponent precision bits MIDPOINT? if
-      digits exponent precision NEXT-DECIMAL {: next:n next-exp:n :}
-      work next next-exp precision bits ROUNDTRIP? if next next-exp precision exit then
-   then digits exponent precision ;
+\ A candidate of p + 1 digits is 10^p: one digit at the next exponent.
+: ANSWER ( n n n -- n n n ) {: d:n k:n p:n :}
+   d p POW10 = if d 10 / k 1+ p else d k p then ;
 
-\ At each precision the correctly rounded decimal and its two neighboring grid
-\ points contain every possible shortest round-trip answer. Checking neighbors
-\ handles asymmetric IEEE intervals; decimal powers have a smaller lower step.
-: FIND-DECIMAL ( r ptr u8 -- n n n ) {: value:r work:ptr :}
-   value IEEE754:F64>BITS {: bits:n :}
-   18 1 do
-      work 64 + i FORMAT-SPEC
-      value work work 64 + C-FORMAT {: len:n :}
-      len 0 < len NATIVE-BYTES >= or if E-NATIVE throw then
-      work len i SCIENTIFIC-PARTS {: digits:n exponent:n :}
-      work digits exponent i bits ROUNDTRIP? if work digits exponent i bits CHOOSE-TIE unloop exit then
-      digits exponent i PREVIOUS-DECIMAL {: previous:n previous-exp:n :}
-      work previous previous-exp i bits ROUNDTRIP? if work previous previous-exp i bits CHOOSE-TIE unloop exit then
-      digits exponent i NEXT-DECIMAL {: next:n next-exp:n :}
-      work next next-exp i bits ROUNDTRIP? if work next next-exp i bits CHOOSE-TIE unloop exit then
-   loop E-NATIVE throw ;
+
+\ Exact, in units of 10^(k-17) with 10^k <= value < 10^(k+1): the value and the
+\ least and most integers its rounding interval holds. floor(L x log10 2), L
+\ the bit length, is k or k + 1; 1292913986 / 2^32 gives that floor exactly.
+: FIND-DECIMAL ( n ptr u8 -- n n n ) {: bits:n work:ptr :}
+   bits 52 rshift {: biased:n :}
+   bits $FFFFFFFFFFFFF and {: mantissa:n :}
+   biased 0= if mantissa -1074 else
+      mantissa $10000000000000 or biased 1075 -
+   then {: f:n e:n :}
+   mantissa 0= biased 1 > and if 1 else 2 then {: below:n :}
+   f 1 and 0= {: even:bool :}
+   work BIG-AT + CELL-VIEW {: big :}
+   f BIT-LENGTH e + 1292913986 * 2000 32 lshift + 32 rshift 2000 - {: guess:n :}
+   f 2 lshift {: v:n :}
+   v e 2 - 17 guess - big SCALED drop {: first:n :}
+   first 17 POW10 < if guess 1- else guess then {: k:n :}
+   first 17 POW10 < if v e 2 - 17 k - big SCALED drop else first then {: s:n :}
+   v below - e 2 - 17 k - big SCALED {: low:n low-cut:bool :}
+   v 2 + e 2 - 17 k - big SCALED {: high:n high-cut:bool :}
+   low-cut even 0= or if low 1+ else low then {: least:n :}
+   high-cut even or if high else high 1- then {: most:n :}
+   17 1 do
+      s least most i PICK if k i ANSWER unloop exit then drop
+   loop
+   \ The interval is wider than the 17-digit step, so one candidate is inside.
+   s least most 17 PICK drop k 17 ANSWER ;
 
 : PLAIN! ( ptr u8 n n n bool -- n )
    {: out:ptr digits:n exponent:n precision:n negative:bool :}
@@ -270,37 +294,16 @@ private
 : FORMAT-LENGTH ( n ptr u8 -- n ) {: bits:n work:ptr :}
    bits MAGNITUDE-MASK and dup 0= if
       drop work 128 + 0 0 1 bits 0 < PLAIN! exit
-   then IEEE754:BITS>F64 work FIND-DECIMAL {: digits:n exponent:n precision:n :}
+   then work FIND-DECIMAL {: digits:n exponent:n precision:n :}
    work 128 + digits exponent precision bits 0 < PLAIN! ;
 
 : FORMAT-WORK ( n ptr u8 -- n ptr u8 ) {: bits:n work:ptr :}
    bits work FORMAT-LENGTH work 112 + CELL-VIEW ! bits work ;
 
-: FORMAT-ROUNDED ( n ptr u8 -- n ptr u8 ) {: bits:n work:ptr :}
-   GET-ROUND {: prior-round:n :}
-   prior-round 0 < if E-NATIVE throw then
-   0 SET-ROUND 0 <> if E-NATIVE throw then
-   bits work [: FORMAT-WORK ;] catch >r 2drop r> {: code:n :}
-   prior-round SET-ROUND {: round-rc:n :}
-   code 0 <> if code throw then
-   round-rc 0 <> if E-NATIVE throw then bits work ;
-
-\ The C locale stays installed only inside the catch, so whatever throws under
-\ it, a rounding row's first-call resolution included, restores the caller's.
-: FORMAT-SCOPED ( n ptr u8 -- n ptr u8 ) {: bits:n work:ptr :}
-   C-LOCALE @ USE-LOCALE {: prior-locale:n :}
-   prior-locale 0= if E-NATIVE throw then
-   bits work [: FORMAT-ROUNDED ;] catch >r 2drop r> {: code:n :}
-   prior-locale USE-LOCALE {: locale-rc:n :}
-   code 0 <> if code throw then
-   locale-rc 0= if E-NATIVE throw then bits work ;
-
-
 \ The output is copied out before the scope releases the work buffer.
 : FORMAT-COPY ( n ptr u8 n ptr u8 NUM:alloc-byte-len -- result<n,fault> )
    drop {: bits:n out:ptr capacity:n work:ptr :}
-   bits work [: FORMAT-SCOPED ;] catch >r 2drop r> {: code:n :}
-   code 0 <> if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
+   bits work FORMAT-WORK 2drop
    work 112 + CELL-VIEW @ {: len:n :}
    len capacity > if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
    work 128 + out len BYTE-COPY len RESULT:OK ;
@@ -308,13 +311,10 @@ private
 
 public
 \ A shortest round-trip plain decimal, no terminator; equally close shortest
-\ decimals resolve away from zero, as Rust Display does. The thread switches to
-\ the C locale; locale and rounding mode are restored before answering, failure
-\ included.
+\ decimals resolve away from zero, as Rust Display does; no locale or rounding.
 : FORMAT ( r ptr u8 n -- result<n,fault> ) {: value:r out:ptr capacity:n :}
    value FMATH:FINITE? 0= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    capacity 0 < if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
-   NATIVE-READY? 0= if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
    value IEEE754:F64>BITS out capacity
    WORK-BYTES BYTES-ALLOC-LEN [: FORMAT-COPY ;] WITH-BYTES ;
 
