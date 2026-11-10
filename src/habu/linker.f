@@ -262,7 +262,7 @@ variable OWNED-N
 DYNAMIC-BUFFER OWNED-TEXT u8
 variable OWNED-TEXT-N
 
-\ As a file's compile starts (COPY-BELOW): the space's cells below its data, the records
+\ As a file's compile starts (COPY-BELOW): the space's cells BELOW, the records
 \ [FIRST-REC - 1, FILE-REC), and NSHADOW:PATCHES.
 create OLD-SPACE BUF:HDR-BYTES allot
 create OLD-RECS BUF:HDR-BYTES allot
@@ -1734,15 +1734,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ ---- the stores ----------------------------------------------------------------
 \ A file's compile may store into cells below its data, but must leave earlier records and
 \ emissions alone: E-STORE, which fails the build as any throw out of a load does (RUN-FILE).
-\ hb's xt! and ptr-cell! mark each header cell they store into, changed or not (MARKED+).
+\ hb's xt! and ptr-cell! mark each header cell they store into, changed or not (MARKED+). A
+\ store into the header below its address-cell rows is found by its mark alone, so one made
+\ around xt! and ptr-cell! is not found; the cells above those rows are compared (BELOW).
 
-\ The space's cells a store can reach, as [from, to) offsets from BASE: [0, FILE-DP) less
-\ INDEX-CELL and the address-cell header and boot rows, which EMIT-MARK writes.
-: EACH-RANGE ( [ n n -- ] -- )
-   {: q :}
-   0 ADDRESS-CELLS:INDEX-CELL q execute
-   ADDRESS-CELLS:INDEX-CELL CELL +  SNAP-RELOC:XTCELL-N-CELL q execute
-   SNAP-RELOC:XTCELL-END  FILE-DP @ BASE @ -  q execute ;
+\ The compared cells, as [from, to) offsets from BASE: the header above its address-cell rows,
+\ the open's data and every earlier file's data.
+: BELOW ( -- n n ) SNAP-RELOC:XTCELL-END  FILE-DP @ BASE @ - ;
 
 
 : SPACE-BYTES ( n -- ptr u8 ) NULL-PTR BYTE-VIEW BASE @ + swap + ;
@@ -1769,11 +1767,11 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    from SPACE-BYTES  to from -  OLD-SPACE SPAN+ ;
 
 
-\ What the file's compile may change below its own data, as it starts, and no routed store's
-\ mark.
+\ What the file's compile may change below its own data that no mark shows, as it starts, and
+\ no routed store's mark.
 : COPY-BELOW ( -- )
    OLD-SPACE BUF:CLEAR  OLD-RECS BUF:CLEAR  CLEAR-MARKS
-   [: COPY-RANGE ;] EACH-RANGE
+   BELOW COPY-RANGE
    FILE-REC @ FIRST-REC @ 1 - ?do i COPY-REC loop
    NSHADOW:PATCHES OLD-PATCHES !
    ROWS nip FILE-CELLS ! ;
@@ -1823,8 +1821,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       i NSHADOW:PATCHED@ FILE-EM @ < if E-STORE throw then
    loop ;
 
-
-variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 
 : STORED+ ( n -- )
    {: v:n :}
@@ -1889,18 +1885,17 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 : SCRATCH-CELL? ( n -- bool ) ROW-OF if SCRATCH-ROW? else drop false then ;
 
 
-\ Each cell of [from, to) that differs from the copy at OLD-AT, into STORED, other than a
-\ scratch cell.
+\ Each cell of [from, to) that differs from its copy in OLD-SPACE, which starts at from, into
+\ STORED, other than a scratch cell.
 : COMPARE-RANGE ( n n -- )
    {: from:n to:n :}
-   OLD-SPACE BYTES$ drop OLD-AT @ + {: old:ptr :}
+   OLD-SPACE BYTES$ drop {: old:ptr :}
    from SPACE-BYTES {: now:ptr :}
    to from - CELL / 0 ?do
       old i cells + CELL-VIEW @  now i cells + CELL-VIEW @  <> if
          BASE @ from + i cells + dup SCRATCH-CELL? if drop else STORED+ then
       then
-   loop
-   to from - OLD-AT +! ;
+   loop ;
 
 
 \ A store's cell lies in an earlier file's data or the header data.
@@ -1929,12 +1924,12 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    v STORED+ ;
 
 
-\ STORED, ascending: each changed cell below FILE-DP but a scratch one, each header cell an xt!
-\ or ptr-cell! stored, changed or not (MARKED+), and each new row's cell there, aligned (else
-\ E-COMP-STATE, as in DATA+); E-STORE for a cell no earlier file or the header holds.
+\ STORED, ascending: each changed cell BELOW but a scratch one, each header cell an xt! or
+\ ptr-cell! stored, changed or not (MARKED+), and each new row's cell below FILE-DP, aligned
+\ (else E-COMP-STATE, as in DATA+); E-STORE for a cell no earlier file or the header holds.
 : FIND-STORES ( -- )
-   0 STORED-N !  0 OLD-AT !
-   [: COMPARE-RANGE ;] EACH-RANGE
+   0 STORED-N !
+   BELOW COMPARE-RANGE
    ANY-MARK @ 0<> if DATA-START CELL / 0 ?do i cells MARKED+ loop then
    ROWS {: rows:ptr count:n :}
    count FILE-CELLS @ ?do
