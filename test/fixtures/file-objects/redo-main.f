@@ -1,5 +1,5 @@
 \ redo-main.f - one part defines Y and X, which calls Y, undefines both and defines them again,
-\ Y answering 2: MAIN prints 2.
+\ Y answering 2 the second time.
 
 package FILE-OBJECTS-REDO
 public
@@ -9,5 +9,3 @@ undefine X  undefine Y
 : Y ( -- n ) 2 ;
 : X ( -- n ) Y ;
 ;package
-
-: MAIN ( -- ) FILE-OBJECTS-REDO:X . ;

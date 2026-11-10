@@ -115,15 +115,13 @@
 \ F builds seal-main.f, whose definition into the package seal-second.f seals is refused: exit 84,
 \ E-SEALED-PACKAGE at its line. F2, the same build again, links seal-second.f's object, which keeps
 \ its size and change time, and is refused the same way: the link carries the seal.
-\ Y and Y2 build mid-root-1.f and mid-root-2.f, whose first files define W differently: Y2 compiles
-\ mid-four.f's second part, which calls W, and links its last part after it, so its program prints
-\ 10, 2, 30 and 40.
-\ Z, Z2 and Z3 build flip-root-plain.f, flip-root-x.f and flip-root-x.f: Z2 loads flip-a.f first, so
-\ flip.f's require of it cuts no part and flip.f's second part starts after its flip-b.f request,
-\ which a true [if] makes, and compiles; Z3 links it. unclean.f's part after an unclean request and
-\ a clean one links in Z2, and the program prints 5, 1, 2, 3, 7 and 9.
-\ J and J2 build redo-main.f, whose one part undefines Y and X and defines them again: J2 links it
-\ and exits 0, and its program prints 2.
+\ Y, Y2 and Y3 build parts-root-1.f, parts-root-2.f and parts-root-2.f, which load mid-w1.f or
+\ mid-w2.f, whose W differ, then mid-four.f, flip.f, unclean.f and redo-main.f. Y2 compiles
+\ mid-four.f's second part, which calls W, and links its last part after it. Y2 loads flip-a.f
+\ before flip.f, so flip.f's require of it cuts no part and flip.f's second part starts after its
+\ flip-b.f request, which a true [if] makes, and compiles; Y3 links it. Y2 links unclean.f's part
+\ after an unclean request and a clean one, and redo-main.f's one part, which undefines Y and X and
+\ defines them again. The programs of Y2 and Y3 print 10, 2, 30, 40, 5, 1, 2, 3, 7, 9 and 2.
 \ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell, SCRATCH-VARIABLE and
 \ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
 \ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
@@ -159,15 +157,17 @@ package FILE-OBJECTS-TEST
 9 constant PATH-MAIN                     \ stale-spell.f's, sealed-spell.f's, stored-run.f's,
 10 constant STALE-SPELL                  \ retired-spell.f's, order-x2.f's, hidden-spell.f's and
 11 constant SEALED-SPELL                 \ seal-second.f's objects, mid-four.f's last part's,
-12 constant STORED-RUN                   \ unclean.f's last part's and flip.f's second part's
-13 constant RETIRED-SPELL
+12 constant STORED-RUN                   \ unclean.f's last part's, flip.f's second part's and
+13 constant RETIRED-SPELL                \ redo-main.f's
 14 constant ORDER-X2
 15 constant HIDDEN-SPELL
 16 constant SEAL-SECOND
 17 constant MID-FOUR-LAST
 18 constant UNCLEAN-LAST
 19 constant FLIP-SECOND
-46 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
+20 constant REDO-MAIN
+21 constant TAILS                        \ TAIL$'s tails
+46 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
                                          \ words sequence's five, the ran sequence's four
@@ -194,7 +194,6 @@ PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
 PATH-CAP BUFFER: ROOT    variable ROOT-U     \ the obj directory a walk starts at
 PATH-CAP BUFFER: FOUND   variable FOUND-U    \ the walk's last path that ends with its tail
-PATH-CAP BUFFER: KEPT    variable KEPT-U     \ the object KEEP found, 0 long if none
 CAP BUFFER: BYTES-A
 CAP BUFFER: BYTES-B
 DYNAMIC-BUFFER FIXTURE-BYTES u8
@@ -214,9 +213,9 @@ PATH-CAP 128 + BUFFER: REFUSAL  variable REFUSAL-U  \ the loader refusal REFUSED
 variable OBJ-N                          \ the walk's objects
 variable TAIL-I                          \ the tail the walk looks for (TAIL$)
 variable TAIL-N                          \ and the paths that end with it
-variable KEPT-SIZE                       \ KEPT$'s size and its change time's seconds and
-variable KEPT-S                          \ nanoseconds, as KEEP read them
-variable KEPT-NS
+TAILS TYPED-BUFFER KEPT-SIZE n          \ by tail, the object's size and its change time's
+TAILS TYPED-BUFFER KEPT-S n             \ seconds and nanoseconds, as KEEP read them; size -1
+TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
 
 
 : A$ ( -- ptr u8 n ) OUT-A OUT-A-U @ ;
@@ -302,7 +301,7 @@ variable KEPT-NS
 \ two loads; 7 pad.f's, which B adds; 8 log-first.f's; 9 path-main.f's; 10 stale-spell.f's, which S
 \ writes; 11 sealed-spell.f's, G's; 12 stored-run.f's, T's; 13 retired-spell.f's, V's; 14
 \ order-x2.f's, O's; 15 hidden-spell.f's, K's; 16 seal-second.f's, F's; 17 mid-four.f's part 3's,
-\ Y's; 18 unclean.f's part 2's and 19 flip.f's part 1's, Z's.
+\ 18 unclean.f's part 2's, 19 flip.f's part 1's and 20 redo-main.f's, Y's.
 : TAIL$ ( n -- ptr u8 n )
    {: i:n :}
    i 0 = if s" /test/fixtures/file-objects/count.f.hfo" exit then
@@ -324,6 +323,7 @@ variable KEPT-NS
    i MID-FOUR-LAST = if s" /test/fixtures/file-objects/mid-four.f+3.hfo" exit then
    i UNCLEAN-LAST = if s" /test/fixtures/file-objects/unclean.f+2.hfo" exit then
    i FLIP-SECOND = if s" /test/fixtures/file-objects/flip.f+1.hfo" exit then
+   i REDO-MAIN = if s" /test/fixtures/file-objects/redo-main.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -358,7 +358,6 @@ variable KEPT-NS
    one ;
 
 : FOUND$ ( -- ptr u8 n ) FOUND FOUND-U @ ;
-: KEPT$ ( -- ptr u8 n ) KEPT KEPT-U @ ;
 
 \ Whether BYTES-A's first au bytes and BYTES-B's first bu have one length, one PIECES offset and
 \ the same bytes from it on.
@@ -697,22 +696,21 @@ variable KEPT-NS
    s" the program logs MAIN's line" LABEL  ran TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
 
-\ KEPT$ gets the path of the build's object of tail i; KEEP holds its size and change time.
+\ KEEP holds the size and change time of the build's object of tail i.
 : KEEP ( n -- ) {: i:n :}
-   0 KEPT-U !
+   -1 i KEPT-SIZE !
    F$ WHICH WHICH-U @ i FOUND? 0= if exit then
-   FOUND$ {: p:ptr pu:n :}
-   p KEPT pu BYTE-COPY  pu KEPT-U !
-   KEPT$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
-   size KEPT-SIZE !  cs KEPT-S !  cns KEPT-NS ! ;
+   FOUND$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   size i KEPT-SIZE !  cs i KEPT-S !  cns i KEPT-NS ! ;
 
-\ The label holds when the object KEEP found keeps its size and change time.
-: LINKED ( ptr u8 n -- ) {: a:ptr u:n :}
+\ The label holds when the build's object of tail i keeps the size and change time KEEP held.
+: LINKED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
+   i KEPT-SIZE @ 0 < if a u LABEL false TTRUE exit then
+   F$ WHICH WHICH-U @ i FOUND? {: one:bool :}
    a u LABEL
-   KEPT-U @ 0= if false TTRUE exit then
-   KEPT$ FS:FILE? 0= if false TTRUE exit then
-   KEPT$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
-   size KEPT-SIZE @ =  cs KEPT-S @ =  and  cns KEPT-NS @ =  and TTRUE ;
+   one 0= if false TTRUE exit then
+   FOUND$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   size i KEPT-SIZE @ =  cs i KEPT-S @ =  and  cns i KEPT-NS @ =  and TTRUE ;
 
 \ path-main.f's program, run in its own process: the path it reports is the written
 \ file's, and the park it wakes is its own.
@@ -780,14 +778,14 @@ variable KEPT-NS
    s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
    BARE-RUN
    s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
-   s" the build links log-first.f" LINKED  LOG-RUN ;
+   s" the build links log-first.f" LOG-FIRST LINKED  LOG-RUN ;
 
 : PATH-CASE ( CMD:command -- CMD:command )
    s" P" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
    PATH-MAIN KEEP
    s" M2" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
    s" P2" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
-   s" the build links path-main.f" LINKED  PATH-RUN
+   s" the build links path-main.f" PATH-MAIN LINKED  PATH-RUN
    s" H" WHICH!  s" test/fixtures/file-objects/part-main.f" FIXTURE-BUILD 0= if exit then
    PART-RUN ;
 
@@ -899,34 +897,25 @@ variable KEPT-NS
    X2-BEFORE? TTRUE
    ORDER-X2 KEEP
    s" O4" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
-   s" the build links order-x2.f" LINKED ;
+   s" the build links order-x2.f" ORDER-X2 LINKED ;
 
-\ Guards linking the parts after a compiled part, each from its own start: Y2 compiles
-\ mid-four.f's second part, which calls W.
-: MID-CASE ( CMD:command -- CMD:command )
-   s" Y" WHICH!  s" test/fixtures/file-objects/mid-root-1.f" FIXTURE-BUILD 0= if exit then
-   MID-FOUR-LAST KEEP
-   s" Y2" WHICH!  s" test/fixtures/file-objects/mid-root-2.f" FIXTURE-BUILD 0= if exit then
-   s" the build links mid-four.f's last part" LINKED
-   s\" 10\n2\n30\n40\n" s" the program prints mid-four.f's words with mid-w2.f's W" PRINTS-RUN ;
-
-\ Guards a part's start moving between builds with no edit: Z2's flip.f part 1 starts after its
-\ flip-b.f request, not Z's flip-a.f one, and compiles; linked from Z's object it defines Q twice.
-: START-CASE ( CMD:command -- CMD:command )
-   s" Z" WHICH!  s" test/fixtures/file-objects/flip-root-plain.f" FIXTURE-BUILD 0= if exit then
-   UNCLEAN-LAST KEEP
-   s" Z2" WHICH!  s" test/fixtures/file-objects/flip-root-x.f" FIXTURE-BUILD 0= if exit then
-   s" the build links unclean.f's last part after an unclean request and a clean one" LINKED
+\ Guards linking parts after a compiled part, each from its own start; compiling a part whose start
+\ moves with no edit (linked, it defines Q twice); linking a part that retires its own records.
+: PART-LINK-CASE ( CMD:command -- CMD:command )
+   s" Y" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
+   MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  REDO-MAIN KEEP
+   s" Y2" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
+   s" the build links mid-four.f's last part" MID-FOUR-LAST LINKED
+   s" the build links unclean.f's last part after an unclean request and a clean one"
+   UNCLEAN-LAST LINKED
+   s" the build links redo-main.f's part" REDO-MAIN LINKED
+   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n"
+   s" the program prints mid-four.f's words with mid-w2.f's W and redo-main.f's second Y" PRINTS-RUN
    FLIP-SECOND KEEP
-   s" Z3" WHICH!  s" test/fixtures/file-objects/flip-root-x.f" FIXTURE-BUILD 0= if exit then
-   s" the build links the part that starts at [then]" LINKED
-   s\" 5\n1\n2\n3\n7\n9\n" s" the program prints flip-a.f's F, P, Q, R, A and C" PRINTS-RUN ;
-
-\ Guards a link of a part that retires its own records: J2 links redo-main.f's part.
-: REDO-CASE ( CMD:command -- CMD:command )
-   s" J" WHICH!  s" test/fixtures/file-objects/redo-main.f" FIXTURE-BUILD 0= if exit then
-   s" J2" WHICH!  s" test/fixtures/file-objects/redo-main.f" FIXTURE-BUILD 0= if exit then
-   s\" 2\n" s" the program calls the second Y" PRINTS-RUN ;
+   s" Y3" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
+   s" the build links the part that starts at [then]" FLIP-SECOND LINKED
+   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n"
+   s" the program prints flip-a.f's F, P, Q, R, A and C" PRINTS-RUN ;
 
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
@@ -951,7 +940,7 @@ variable KEPT-NS
 : SEAL-CASE ( CMD:command -- CMD:command )
    s" F" WHICH!  SEAL-REFUSED  SEAL-SECOND KEEP
    s" F2" WHICH!  SEAL-REFUSED
-   s" the build links seal-second.f" LINKED ;
+   s" the build links seal-second.f" SEAL-SECOND LINKED ;
 
 
 \ The path of U's source of that name.
@@ -1018,7 +1007,7 @@ variable KEPT-NS
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
-      STORED-CASE RETIRED-CASE ORDER-CASE MID-CASE START-CASE REDO-CASE PIECE-CASE SEAL-CASE
+      STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE
       NEST-CASE ;]
    CMD:WITH-COMMAND ;
 
