@@ -469,7 +469,7 @@ PATH-CAP BUFFER: FOURTH-BUF
 \ ---- objects the link refuses or links wrong ----
 \ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
 8192 constant CRAFT-CAP
-128 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
+144 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
 PATH-CAP BUFFER: CRAFT-BUF
 PATH-CAP BUFFER: CRAFT-PATH   variable CRAFT-PATH-U
 CRAFT-CAP BUFFER: CRAFT-FIRST   variable CRAFT-U
@@ -650,8 +650,15 @@ variable SLOT-S                          \ and their count
 \ The late package's own-private flag 1: its KIND-PRIVATE entry names a package holding one.
 : LATE-OWN ( -- n ) CRAFT-WALK  1 LATE-FLAG-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
+\ The first piece's word count in TIMES, whose pair is the header's 16 bytes before PIECES, one
+\ more than its records.
+: TIMES-COUNT ( -- n )
+   CRAFT-WALK
+   PIECES-FIELD 16 - OBJ@ {: count-at:n :}
+   count-at OBJ@ 1 +  count-at OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
-\ e.f's first build, seven builds each over one crafted object, then a plain build. CRAFT's
+
+\ e.f's first build, eight builds each over one crafted object, then a plain build. CRAFT's
 \ wordlists come between LATE's two, so LATE gains its private one by a KIND-PRIVATE entry.
 : CRAFTS ( -- )
    s" crafted" DIR$ FS:MAKE-DIR
@@ -668,10 +675,11 @@ variable SLOT-S                          \ and their count
    SLOT-SITE {: six:n :}
    SLOT-TARGET {: seven:n :}
    LATE-OWN {: eight:n :}
-   CRAFT-BUILD {: nine:n :}
+   TIMES-COUNT {: nine:n :}
+   CRAFT-BUILD {: ten:n :}
    s" crafted: compiled " one two three RESULTS.
    space four FMT:.INT  space five FMT:.INT  space six FMT:.INT
-   space seven FMT:.INT  space eight FMT:.INT  space nine FMT:.INT cr ;
+   space seven FMT:.INT  space eight FMT:.INT  space nine FMT:.INT  space ten FMT:.INT cr ;
 
 : STOPS ( -- )
    s" app" RTARGET:HOST-TARGET [: STOP-FILE ;] LINKER:WITH

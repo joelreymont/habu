@@ -34,7 +34,7 @@
 \ at top level, built in order, twice with the storers swapped and in order
 \ again, compile 4, 3, 0 and 3: of two stores into one cell the later holds, so
 \ the reader compiles again when the storers swap. The crafted sequence's
-\ builds of e.f over seven objects the link refuses or links wrong compile 1,
+\ builds of e.f over eight objects the link refuses or links wrong compile 1,
 \ and a plain build after them links. C writes twenty-eight objects, and the
 \ two of A's files, count.f's and shape.f's, have A's bytes from PIECES on: a
 \ refused file writes none. A's
@@ -138,8 +138,8 @@ package FILE-OBJECTS-TEST
 16 constant SEAL-SECOND
 28 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four, e.f's
-144 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
-128 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
+160 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
+144 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
 56 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
 32 constant FILES-ROW                    \ a FILES row's bytes (linker.f FILES-ROW-BYTES)
 24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp, 0 0 -1 if it never links
@@ -399,8 +399,8 @@ variable KEPT-NS
    STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
    s" the order builds compile 4, 3, 0 and 3 files" LABEL
    STATE-W STATE-W-U @ s\" order: compiled 4 3 0 3\n" CONTAINS? TTRUE
-   s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE ;
+   s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE ;
 
 \ Whether A's printed state holds the line, a record's name line with its newlines, followed
 \ by a fields line that ends in the text, the record's facts text.
