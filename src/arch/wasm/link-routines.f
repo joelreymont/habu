@@ -17,6 +17,7 @@ private
 using WCODE
 
 8 constant CELL-BYTES
+3 constant CELL-SHIFT                \ log2 of CELL-BYTES
 10 constant LEB-MOST
 
 \ The locals: ctx, the parameter; the stack address the routine works at; emit's
@@ -577,6 +578,19 @@ variable SITES-N
    L-STATUS GET,
    OP-END B, ;
 
+
+\ ---- depth
+\ depth ( -- n ) pushes the count of cells from ctx's stack base to its top.
+: DEPTH-BODY ( -- )
+   1 U32,  1 U32,  I32 B,
+   WPROF:CTX-STACK-TOP CTX@,  L-SP SET,
+   CELL-BYTES STACK-ROOM,
+   L-SP GET,
+   L-SP GET,  WPROF:CTX-STACK-BASE CTX@,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
+   CELL-SHIFT I64,  OP-I64-SHR-U B,
+   OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,  DONE, ;
+
 \ The count of call_indirect sites in the last body ROUTINE-BODY answered, and
 \ site k's offset in it.
 : ROUTINE-SITES ( -- n )  SITES-N @ ;
@@ -626,6 +640,8 @@ public
    \ ---- catch and finally
    name u s" catch" STR=CI if CATCH-BODY BODY$ true exit then
    name u s" finally" STR=CI if FINALLY-BODY BODY$ true exit then
+   \ ---- depth
+   name u s" depth" STR=CI if DEPTH-BODY BODY$ true exit then
    s" " false ;
 
 ;using

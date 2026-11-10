@@ -179,6 +179,10 @@ public
    n 0 < if  45 emit  0 n - DIGITS  else  n DIGITS  then
    NEWLINE ;
 
+\ `.s` prints every stack cell as `.` does, the deepest first, and keeps them.
+: DOT-S ( -- )
+   depth 0 ?do  WPROF:STACK-BASE i CELL * + >DATA @ DOT  loop ;
+
 : F-DOT ( r -- )
    {: x:r :}
    x F>BITS 0 < if  45 emit  then

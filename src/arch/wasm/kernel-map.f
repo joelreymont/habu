@@ -11,6 +11,7 @@ public
 : WORD-OF ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    a u s" ." STR=CI if s" WKWORDS:DOT" exit then
+   a u s" .s" STR=CI if s" WKWORDS:DOT-S" exit then
    a u s" u." STR=CI if s" WKWORDS:U-DOT" exit then
    a u s" f." STR=CI if s" WKWORDS:F-DOT" exit then
    a u s" fdrop" STR=CI if s" WKWORDS:F-DROP" exit then

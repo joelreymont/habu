@@ -299,11 +299,11 @@ variable TEXT-U
 : NO-MODULE ( -- )  MOD MOD-U @ FS:EXISTS? TFALSE ;
 
 : REFUSAL-CASES ( -- )
-   s" : MAIN ( -- ) depth drop .s ;" s" kernel.f" SOURCE!
+   s" : MAIN ( -- ) here drop align ;" s" kernel.f" SOURCE!
    s" kernel words with no routine are each refused by name with 74 and no module" T-LABEL
    s" kernel.wasm" BUILD 74 T=
-   s" link: a Wasm module has no depth" ERR-HAS
-   s" link: a Wasm module has no .s" ERR-HAS
+   s" link: a Wasm module has no here" ERR-HAS
+   s" link: a Wasm module has no align" ERR-HAS
    s" link: the program reaches kernel words a Wasm module does not provide" ERR-HAS
    NO-MODULE
    s" defer HOOK ( n -- n )  : TWICE ( n -- n ) 2 * ;  : MAIN ( -- ) [: TWICE ;] is HOOK  3 HOOK drop ;"
