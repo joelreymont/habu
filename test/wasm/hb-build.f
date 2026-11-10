@@ -266,6 +266,59 @@ variable TEXT-U
    RAN 2 T=
    WASM-HARNESS:OUT$ s" boom" T$= ;
 
+
+\ The program catch.f: catch, finally and the depths a caught throw restores, which
+\ LEAK and LEAK-R overflow without; a failed WANT reads below WPROF:CTX-BASE.
+: CATCH! ( -- )
+   SB-RESET
+   S\" package C\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable DONE\n" SB-APPEND
+   S\" : FAIL ( n -- ) >BYTES c@ drop ;\n" SB-APPEND
+   S\" : WANT ( n n n -- ) {: a:n b:n k:n :} a b <> if k FAIL then ;\n" SB-APPEND
+   S\" : DEEP ( -- ) 11 throw ;\n: MID ( -- ) DEEP ;\n: CLEAN ( -- ) 1 DONE ! ;\n" SB-APPEND
+   S\" : FIVE ( -- ) 4 [: 1 + ;] catch 0= if 5 3 WANT else drop 2 FAIL then ;\n" SB-APPEND
+   S\" : LEAK ( -- ) 100000 0 do [: 10 0 do 1 throw loop ;] catch drop loop ;\n" SB-APPEND
+   S\" : LEAK-R ( -- ) 100000 0 do [: 5 >r 1 throw ;] catch drop loop ;\n" SB-APPEND
+   S\" : NEST ( -- n ) 0 3 0 do 4 0 do 1 + loop loop ;\n: PARK ( n -- n ) >r 1 r> + ;\n" SB-APPEND
+   \ MAIN's lines go unindented to keep the text within SB-CAP (src/lib/string.f).
+   S\" public\n: MAIN ( -- )\n" SB-APPEND
+   S\" [: 7 throw ;] catch 7 1 WANT  FIVE  [: 0 throw ;] catch 109 4 WANT\n" SB-APPEND
+   S\" 1 2 [: MID ;] catch 11 5 WANT  2 6 WANT  1 7 WANT\n" SB-APPEND
+   S\" LEAK  LEAK-R  NEST 12 8 WANT  6 PARK 7 9 WANT\n" SB-APPEND
+   S\" [: 42 ;] [: CLEAN ;] finally 42 10 WANT  DONE @ 1 11 WANT\n" SB-APPEND
+   S\" 0 DONE !  [: [: 7 throw ;] [: CLEAN ;] finally ;] catch 7 12 WANT\n" SB-APPEND
+   S\" DONE @ 1 13 WANT  [: [: 7 throw ;] [: 8 throw ;] finally ;] catch 8 14 WANT\n" SB-APPEND
+   S\" [: [: 7 throw ;] [: [: 9 throw ;] catch drop ;] finally ;] catch 7 15 WANT ;\n" SB-APPEND
+   S\" ;package\n: MAIN ( -- ) C:MAIN ;\n" SB-APPEND
+   SB$ s" catch.f" SOURCE! ;
+
+: CATCH-CASE ( -- )
+   CATCH!
+   s" catch and finally catch codes, restore the depths and run cleanups" T-LABEL
+   s" catch.wasm" BUILD 0 T=
+   RAN 0 T= ;
+
+
+\ The program grow.f: a cell row reserved, then reserved larger; a failed WANT
+\ reads below WPROF:CTX-BASE.
+: GROW! ( -- )
+   SB-RESET
+   S\" package G\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nDYNAMIC-BUFFER ROW n\n" SB-APPEND
+   S\" : FAIL ( n -- ) >BYTES c@ drop ;\n" SB-APPEND
+   S\" : WANT ( n n n -- ) {: a:n b:n k:n :} a b <> if k FAIL then ;\n" SB-APPEND
+   S\" : AT ( n -- n ) ROW NULL-PTR - ;\npublic\n: MAIN ( -- )\n" SB-APPEND
+   S\"    4 ROW-RESERVE  11 0 ROW !  22 3 ROW !  0 AT {: old:n :}\n" SB-APPEND
+   S\"    100000 ROW-RESERVE  0 ROW @ 11 1 WANT  3 ROW @ 22 2 WANT  0 AT old = bool>n 0 3 WANT\n" SB-APPEND
+   S\"    33 99999 ROW !  99999 ROW @ 33 4 WANT\n" SB-APPEND
+   S\"    65536 map-anon 0 5 WANT  NULL-PTR - old 6 WANT  ROW-RELEASE ;\n" SB-APPEND
+   S\" ;package\n: MAIN ( -- ) G:MAIN ;\n" SB-APPEND
+   SB$ s" grow.f" SOURCE! ;
+
+: GROWTH-CASE ( -- )
+   GROW!
+   s" a DYNAMIC-BUFFER reserved larger moves, keeps its cells and frees its first run" T-LABEL
+   s" grow.wasm" BUILD 0 T=
+   RAN 0 T= ;
+
 public
 
 : RUN ( -- )
@@ -280,6 +333,8 @@ public
    EXECUTE-CASE
    THROW-CASES
    DIE-CASE
+   CATCH-CASE
+   GROWTH-CASE
    T-REPORT ;
 
 ;package

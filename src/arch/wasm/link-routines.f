@@ -5,6 +5,7 @@ require src/lib/span.f
 require src/core/engine-error.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
+require src/habu/layout.f
 require src/lib/error.f
 
 package LINKER
@@ -153,6 +154,18 @@ $0A constant MISC-MEMORY-COPY
 4 constant HIGH-HALF                 \ a cell's upper 32 bits, little-endian
 2 constant L-CODE                    \ throw's code
 3 constant L-U                       \ die's message length
+
+\ ---- catch and finally
+2 constant L-STATUS                  \ the first callee's status
+3 constant L-RDEPTH                  \ the two depths as the routine began
+4 constant L-LDEPTH
+5 constant L-CLEANUP                 \ finally's cleanup xt
+6 constant L-BODY-CODE               \ finally's body's throw code
+
+\ Tier 0's return and loop stack depths, i64 cells in memory, as
+\ src/habu/t0-wasm.f RDEPTH-AT and LDEPTH-AT.
+WPROF:DATA-BASE RSP-CELL + constant RDEPTH-AT
+WPROF:DATA-BASE LOOPSP-CELL + constant LDEPTH-AT
 
 \ ---- the body being written ----------------------------------------------------
 DYNAMIC-BUFFER BUF u8
@@ -592,6 +605,64 @@ variable SITES-N
    DISPATCH,
    OP-END B, ;
 
+
+\ ---- catch and finally
+\ A throw leaves the return and loop stacks as deep as inside the thrown body;
+\ a caught one restores the depths saved before it, as the native handler frame.
+: DEPTHS-SAVE, ( -- )
+   0 I32,  OP-I64-LOAD ALIGN-64 RDEPTH-AT MEM,  L-RDEPTH SET,
+   0 I32,  OP-I64-LOAD ALIGN-64 LDEPTH-AT MEM,  L-LDEPTH SET, ;
+
+: DEPTHS-RESTORE, ( -- )
+   0 I32,  L-RDEPTH GET,  OP-I64-STORE ALIGN-64 RDEPTH-AT MEM,
+   0 I32,  L-LDEPTH GET,  OP-I64-STORE ALIGN-64 LDEPTH-AT MEM, ;
+
+
+\ catch ( xt -- code ): after a status 1 the code is ctx.throw-code, stored
+\ where the xt lay; after a 0 it is zero, pushed over the callee's results.
+: CATCH-BODY ( -- )
+   2 U32,  2 U32,  I32 B,  2 U32,  I64 B,
+   DEPTHS-SAVE,
+   DISPATCH,  L-STATUS SET,
+   L-STATUS GET,  IF,
+      DEPTHS-RESTORE,
+      L-SP GET,  L-CTX GET,  OP-I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+      OP-I64-STORE ALIGN-64 0 MEM,
+      ONE-RESULT,  0 I32,  OP-RETURN B,
+   OP-END B,
+   WPROF:CTX-STACK-TOP CTX@,  L-SP SET,
+   CELL-BYTES STACK-ROOM,
+   L-SP GET,  0 I64,  OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,
+   0 I32,  OP-END B, ;
+
+
+\ finally ( body cleanup -- ) as tier 1's (src/arch/wasm/dynamic.f FINALLY-BODY):
+\ a cleanup's throw supersedes the body's, else the body's code is stored again.
+: FINALLY-BODY ( -- )
+   2 U32,  2 U32,  I32 B,  4 U32,  I64 B,
+   L-CTX GET,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,
+   OP-LOCAL-TEE B,  L-SP U32,
+   OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-LOCAL-TEE B,  L-CLEANUP U32,
+   OP-I64-EQZ B,  IF,  OP-UNREACHABLE B,  OP-END B,
+   DEPTHS-SAVE,
+   DISPATCH,  L-STATUS SET,
+   L-CTX GET,  OP-I64-LOAD ALIGN-64 WPROF:CTX-THROW-CODE MEM,  L-BODY-CODE SET,
+   L-STATUS GET,  IF,  SP!,  DEPTHS-RESTORE,  OP-END B,
+   WPROF:CTX-STACK-TOP CTX@,  L-SP SET,
+   CELL-BYTES STACK-ROOM,
+   L-SP GET,  L-CLEANUP GET,  OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,
+   DISPATCH,
+   IF,  1 I32,  OP-RETURN B,  OP-END B,
+   L-STATUS GET,  IF,
+      L-CTX GET,  L-BODY-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+   OP-END B,
+   L-STATUS GET,
+   OP-END B, ;
+
 \ The count of call_indirect sites in the last body ROUTINE-BODY answered, and
 \ site k's offset in it.
 : ROUTINE-SITES ( -- n )  SITES-N @ ;
@@ -638,6 +709,9 @@ public
    name u s" throw" STR=CI if THROW-BODY BODY$ true exit then
    name u s" die" STR=CI if DIE-BODY BODY$ true exit then
    name u s" execute" STR=CI if EXECUTE-BODY BODY$ true exit then
+   \ ---- catch and finally
+   name u s" catch" STR=CI if CATCH-BODY BODY$ true exit then
+   name u s" finally" STR=CI if FINALLY-BODY BODY$ true exit then
    s" " false ;
 
 ;package
