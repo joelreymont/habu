@@ -391,9 +391,10 @@ variable UNSAFE-COUNT
    NSHADOW:EMISSIONS 0 ?do 1 i PLACED ! loop ;
 
 
-\ The dispatch cell of the defer whose record emission e holds, or 0. The record
-\ spans the whole emission, so the product's entry plus its length is the trailer,
-\ where dict.f TRAILER-CELL reads it.
+\ The dispatch cell of the defer whose record emission e holds, or 0. On arm64
+\ the record spans the whole emission, so the product's entry plus its length is
+\ the trailer, where dict.f TRAILER-CELL reads it. A Wasm module holds no
+\ trailer, so a Wasm defer dies here.
 : EM-TRAILER ( n -- n )
    {: e:n :}
    e EM-FIRST @
@@ -401,6 +402,11 @@ variable UNSAFE-COUNT
       dup NSHADOW:RECORD@ XREF-REC {: rec:ptr :}
       rec NDICT:TRAILER-CELL {: cell:n :}
       cell 0<> if
+         WASM? if
+            s" link: the defer " SAY rec XREF-NAME$ SAY
+            s"  needs a trailer, which a Wasm module cannot hold" SAY SAY-CR
+            s" link: a Wasm module cannot hold a defer" 74 die
+         then
          NSHADOW:ENTRY@ rec XREF-LEN +  e NSHADOW:SIZE <> if
             s" link: the defer " SAY rec XREF-NAME$ SAY s"  does not end its routine" SAY SAY-CR
             s" link: a defer does not end its routine" 74 die

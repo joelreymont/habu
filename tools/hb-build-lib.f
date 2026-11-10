@@ -59,6 +59,8 @@ TYPED-VARIABLE HBB-TARGET RTARGET:resolved-target
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
 
+: HBB-WASM? ( -- bool ) HBB-TARGET @ RTARGET:ARCH@ CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
+
 : HBB-TRUE ( -- bool )
    0 0= ;
 
@@ -239,7 +241,7 @@ variable HBB-ELAPSED-NS
    FS:CLEANUP-RUN ;
 
 \ Every file hb-build writes at -o is written to its sibling and renamed over
-\ -o only once it is whole and executable (src/lib/fs-mutate.f FS:REPLACE-STAGED), so
+\ -o only once it is whole, a program executable (src/lib/fs-mutate.f FS:REPLACE-STAGED), so
 \ a failed install leaves -o as it was and no sibling.
 \ HBB-FILLING is set only while the fill runs, so HBB-REPLACE-OUT tells the
 \ fill's own failure (its source, the bytes it writes) from the replace's: a
@@ -431,10 +433,30 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    HBB-BUILT-RELEASE HBB-HELD-RELEASE
    rc 0= HBB-SAME-OUT @ and ;
 
-\ The build's files, whole and team-signed under TMPDIR, are compared with -o's
-\ before anything is staged beside -o; HBB-CLEANUP removes them either way.
+\ A Wasm module is copied with no execute bit, and no map is written beside it.
+: HBB-MODULE-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   HBB-GOT$ tmp tmpu FS:COPY-FILE-STREAM ;
+
+: HBB-SAME-MODULE ( -- )
+   HBB-GOT$ HBB-OUT$ [: STR= ;] HBB-SAME-FILE? HBB-SAME-OUT ! ;
+
+\ True when -o already holds the module's bytes, as HBB-SAME-OUT? tells a program's.
+: HBB-SAME-MODULE? ( -- bool )
+   false HBB-SAME-OUT !
+   [: HBB-SAME-MODULE ;] catch {: rc:n :}
+   HBB-BUILT-RELEASE HBB-HELD-RELEASE
+   rc 0= HBB-SAME-OUT @ and ;
+
+: HBB-INSTALL-MODULE ( -- )
+   HBB-SAME-MODULE? if exit then
+   [: HBB-MODULE-FILL ;] HBB-REPLACE-OUT ;
+
+\ The build's files, whole under TMPDIR and a program team-signed, are compared
+\ with -o's before anything is staged beside -o; HBB-CLEANUP removes them either way.
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT$ FS:FILE? 0= if E-BUILD-PATH throw then
+   HBB-WASM? if HBB-INSTALL-MODULE exit then
    HBB-GOT$ HBB-MAP-SRC!
    HBB-OUT$ HBB-MAP-DST!
    HBB-SAME-OUT? if exit then
@@ -443,13 +465,15 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 : HBB-SUCCESS ( -- )
    s" hb-build OK: " type
    HBB-OUT$ type
-   HBB-ENGINE @ if
+   HBB-WASM? if
+      s"  (Wasm module)"
+   else HBB-ENGINE @ if
       s"  (engine)"
    else HBB-REPL @ if
       s"  (native application + REPL)"
    else
       s"  (stripped program)"
-   then then type
+   then then then type
    cr ;
 
 defer HBB-REPORT-HOOK ( -- )
@@ -511,11 +535,11 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-BUILD-RC HBB-EXIT ;
 
 \ LINKER:WRITE signs ad hoc, so a linked program is signed for the team here
-\ (src/lib/codesign.f).
+\ (src/lib/codesign.f); a Wasm module is not signed.
 : HBB-BUILD-REST ( -- )
    ['] HBB-LINK catch {: rc:n :}
    rc 0<> if rc HBB-LINK-FAILED then
-   HBB-GOT$ CODESIGN:ENSURE
+   HBB-WASM? 0= if HBB-GOT$ CODESIGN:ENSURE then
    HBB-INSTALL-OUT
    HBB-FINISH ;
 

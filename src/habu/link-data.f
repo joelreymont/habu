@@ -32,6 +32,7 @@ require src/habu/driver-io.f
 require src/habu/linker.f
 require src/habu/link-band.f
 require src/habu/link-copy.f
+require src/arch/wasm/link-module.f
 require src/habu/link-map.f
 using DRIVER
 
@@ -491,17 +492,14 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       s" link: the kernel object is another kind of build's" 74 die
    then ;
 
-public
-
 \ Link the open space's program and write it, signed, to the path; the caller
 \ first stores its entry, a stripped program's with APP-ENTRY:XT!,
 \ an engine's in ENGINE-MAIN:XT-CELL, and writes its names beside it as
 \ <path>.map. The facts texts the build's body held lie after every file, so
 \ no file's literal can name one. The program goes to a sibling renamed over
 \ the path: macOS kills a signed program rewritten in place (docs/bootstrap.md).
-: WRITE ( ptr u8 n -- )
+: WRITE-PROGRAM ( ptr u8 n -- )
    {: path:ptr pathu:n :}
-   false GOING
    OBJECT-KIND
    0 CHECK:PLACE-FACTS
    s" ENTRY-CELL" ARM64:SYM {: entry:n :}
@@ -512,6 +510,16 @@ public
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap DRV-EMIT-IMAGE
       FS:CHMOD-X ;] FS:REPLACE-STAGED
    path pathu DATA-IMAGE-AT WRITE-MAP ;
+
+public
+
+\ Link the open space's program and write it to the path: a Wasm target's as a
+\ module (WASM:WRITE-MODULE), any other's as WRITE-PROGRAM does. GOING comes
+\ first: outside a build no shadow is open for WASM? to read.
+: WRITE ( ptr u8 n -- )
+   false GOING
+   WASM? if WASM:WRITE-MODULE exit then
+   WRITE-PROGRAM ;
 
 ;package
 ;using
