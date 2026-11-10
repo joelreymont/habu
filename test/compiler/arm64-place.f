@@ -34,6 +34,7 @@ require src/arch/arm64/icode.f
 require src/compiler/native/dict.f
 require src/arch/arm64/link-kernel.f
 require src/habu/link-band.f
+require src/compiler/target/model.f
 require tools/hb-build-core.f
 
 package LINKER
@@ -603,7 +604,7 @@ public
 : RUN ( -- )
    T-RESET
    TIER-CK
-   false HB-BUILD-CORE:KERNEL-BUILD
+   false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD
    ARM64:ADOPT
    A64ICODE:ASM-LEN KERNEL-END !
    ENTRIES-CASE

@@ -15,6 +15,7 @@ require src/lib/build.f
 require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/build-out.f
+require src/compiler/target/model.f
 require src/habu/linker.f
 require tools/hb-build-core.f
 require tools/hb-build-report.f
@@ -54,6 +55,7 @@ variable HBB-ENGINE
 variable HBB-JSON
 variable HBB-REPORT-JSON
 variable HBB-SIZE-REPORT
+TYPED-VARIABLE HBB-TARGET RTARGET:resolved-target
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
 
@@ -67,7 +69,7 @@ variable HBB-ELAPSED-NS
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--engine | --repl | --json-errors] [options] [source.f] -o out" HBB-USAGE-RC die ;
+   s" usage: tools/hb-build.f [--engine | --repl | --json-errors] [--target name] [options] [source.f] -o out" HBB-USAGE-RC die ;
 
 : HBB-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u PATH-CAP > if E-BUILD-PATH throw then
@@ -148,7 +150,8 @@ variable HBB-ELAPSED-NS
    0 HBB-ENGINE !
    0 HBB-JSON !
    0 HBB-REPORT-JSON !
-   0 HBB-SIZE-REPORT ! ;
+   0 HBB-SIZE-REPORT !
+   RTARGET:HOST-TARGET HBB-TARGET ! ;
 
 : HBB-INC-I ( -- )
    HBB-I @ 1+ HBB-I ! ;
@@ -159,6 +162,17 @@ variable HBB-ELAPSED-NS
 : HBB-ARG= ( n ptr u8 n -- bool ) {: idx pat:ptr patu :}
    idx HBB-ARG$ pat patu STR= ;
 
+: HBB-TARGET-OPTION ( -- )
+   HBB-INC-I
+   HBB-I @ SCRIPT-ARGC >= if HBB-USAGE then
+   HBB-I @ HBB-ARG$ {: a:ptr u:n :}
+   a u RTARGET:PLATFORM? 0= if
+      s" hb-build: unknown target " HBB-WERR  a u HBB-WERR  HBB-WERR-LF
+      HBB-USAGE-RC HBB-EXIT
+   then
+   a u RTARGET:RESOLVE HBB-TARGET !
+   HBB-INC-I ;
+
 : HBB-PARSE-OPTION? ( -- bool )
    HBB-I @ SCRIPT-ARGC >= if HBB-FALSE exit then
    HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I HBB-TRUE exit then
@@ -166,6 +180,7 @@ variable HBB-ELAPSED-NS
    HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --size-report" HBB-ARG= if -1 HBB-SIZE-REPORT ! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --target" HBB-ARG= if HBB-TARGET-OPTION HBB-TRUE exit then
    HBB-I @ HBB-ARG$ s" --" STR= if HBB-INC-I HBB-FALSE exit then
    HBB-ENGINE @ if HBB-I @ s" -o" HBB-ARG= if HBB-FALSE exit then then
    HBB-I @ HBB-ARG$ s" -" STARTS-WITH? if HBB-USAGE then
@@ -462,9 +477,9 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-LINK ( -- )
    HBB-JSON @ 0<> DIAG-JSON!
    HBB-ENGINE @ if
-      HBB-GOT$ HB-BUILD-CORE:ENGINE
+      HBB-GOT$ HBB-TARGET @ HB-BUILD-CORE:ENGINE
    else
-      HBB-SRC$ HBB-GOT$
+      HBB-SRC$ HBB-GOT$ HBB-TARGET @
       HBB-REPL @ if HB-BUILD-CORE:REPL else HB-BUILD-CORE:APP then
    then
    LINKER:LINKED LINKER:COMPILED HB-BUILD:CAPTURE-FILES ;

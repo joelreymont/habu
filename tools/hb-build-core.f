@@ -6,9 +6,9 @@
 \ files in hb's own order (src/habu/habu2.f EMIT-HOST-LOAD-PREFIX); hb then loads
 \ the runtime's files, --repl the program's source, and both their registry and
 \ installs; a stripped program loads its source and its entry.
-\ The files written under <out>/hb-build/ load inside the build, so a warm build
-\ links what they do: reset.f, the token hb's prefix runs after include.f;
-\ end.f, hb's registry and installs, which under --repl is
+\ The files written under <out>/hb-build/<target>/ load inside the build, so a
+\ warm build links what they do: reset.f, the token hb's prefix runs after
+\ include.f; end.f, hb's registry and installs, which under --repl is
 \ end/<the source's path>/end.f; app-end.f, a stripped program's entry. Builds
 \ sharing an out root write each whole, and only when it changes (WRITE-CHANGED).
 
@@ -39,6 +39,8 @@ create END-DIR PATH-CAP allot           \ a --repl end file's directory (REPL-EN
 create APP-END-PATH PATH-CAP allot  variable APP-END-U
 create KERNEL-PATH PATH-CAP allot  variable KERNEL-U
 TYPED-VARIABLE KERNEL-ENGINE? bool     \ the kernel build writes an engine's kernel
+\ the build's target, stored by KERNEL-BUILD, which every build runs first
+TYPED-VARIABLE TARGET RTARGET:resolved-target
 DYNAMIC-BUFFER TEXT u8                  \ the end file's text until it is written
 variable TEXT-U
 DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE? compares them
@@ -70,21 +72,26 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    pa pu a u FS:ATOMIC-WRITE-FILE ;
 
 
+\ The tool's files sit under the target's name, since their text follows from the target.
 : PATHS ( -- )
-   BUILD-OUT:BASE$ s" hb-build" DIR FS:JOIN-PATH DIR-U !
+   BUILD-OUT:BASE$ s" hb-build" RESET-PATH FS:JOIN-PATH {: u:n :}
+   RESET-PATH u  TARGET @ RTARGET:PROFILE$  DIR FS:JOIN-PATH DIR-U !
    DIR DIR-U @ FS:MAKE-DIRS
    DIR DIR-U @ s" reset.f" RESET-PATH FS:JOIN-PATH RESET-U !
    DIR DIR-U @ s" app-end.f" APP-END-PATH FS:JOIN-PATH APP-END-U !
    RESET$ s\" SOURCE-INPUT:RESET\n" WRITE-CHANGED ;
 
 
-\ A row loads when its kind is common or the builder's own target (habu2.f PFX-LOAD?).
+: TARGET? ( RTARGET:profile-id -- bool )
+   TARGET @ RTARGET:PROFILE@ RTARGET-PROFILE--ID:EQ ;
+
+\ A row loads when its kind is common or the build's target (habu2.f PFX-LOAD?).
 : LOAD? ( n -- bool )
    case
       BOOT-FILES:COMMON of true endof
-      BOOT-FILES:LINUX of HB-TARGET-LINUX? endof
-      BOOT-FILES:MACOS of HB-TARGET-MACOS? endof
-      BOOT-FILES:X64 of HB-TARGET-LINUX-X86-64? endof
+      BOOT-FILES:LINUX of RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU TARGET? endof
+      BOOT-FILES:MACOS of RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN TARGET? endof
+      BOOT-FILES:X64 of RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU TARGET? endof
       false swap
    endcase ;
 
@@ -136,7 +143,7 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 
 
 : REPL-TERM$ ( -- ptr u8 n )
-   HB-TARGET-MACOS? if s" src/os/macos/repl-term.f" exit then
+   RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN TARGET? if s" src/os/macos/repl-term.f" exit then
    s" src/os/linux/repl-term.f" ;
 
 
@@ -186,12 +193,13 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    s\" \" REQUIRE-REG:APPEND\n" TEXT+ ;
 
 
-\ hb's end file is <out>/hb-build/end.f: its text follows from the tree alone.
+\ hb's end file is <out>/hb-build/<target>/end.f: its text follows from the tree
+\ and the target.
 : ENGINE-END! ( -- ) DIR DIR-U @ s" end.f" END-PATH FS:JOIN-PATH END-U ! ;
 
-\ A --repl program's end file is <out>/hb-build/end/<its source's canonical
-\ path>/end.f: its text follows from the tree and that source, so two programs
-\ built under one out root never load each other's.
+\ A --repl program's end file is <out>/hb-build/<target>/end/<its source's canonical
+\ path>/end.f: its text follows from the tree, the target and that source, so two
+\ programs built under one out root never load each other's.
 : REPL-END! ( -- )
    SRC$ SOURCE-ROOT:CANONICAL drop {: src:ptr srcu:n :}
    DIR DIR-U @ s" end" END-PATH FS:JOIN-PATH {: endu:n :}
@@ -267,13 +275,14 @@ CAST: >WRITER ( n -- [ ptr u8 n ptr u8 bool -- n ] )
 public
 
 \ Writes this tree's kernel object, an engine's or a stripped program's, under
-\ <out>/hb-build/ and reads it for the builds that follow. A build's
+\ <out>/hb-build/<target>/ and reads it for the builds that follow. A build's
 \ registry starts empty, so the writer's files load from this tree; a kernel
 \ build shares a program build's objects.
-: KERNEL-BUILD ( bool -- )
-   KERNEL-ENGINE? !
+: KERNEL-BUILD ( bool RTARGET:resolved-target -- )
+   {: engine:bool target:RTARGET:resolved-target :}
+   engine KERNEL-ENGINE? !  target TARGET !
    PATHS
-   s" kernel" RTARGET:HOST-TARGET ['] KERNEL-BODY LINKER:WITH
+   s" kernel" target ['] KERNEL-BODY LINKER:WITH
    KERNEL-PATH KERNEL-U @ LINKER:KERNEL ;
 
 \ The kernel object the last KERNEL-BUILD wrote, for a child process's
@@ -283,26 +292,27 @@ public
 \ The file the last build was loading, for the message of a build that threw.
 : ROW$ ( -- ptr u8 n ) ROW-PATH @ ROW-LEN @ ;
 
-\ Build this tree's hb and write it to the path.
-: ENGINE ( ptr u8 n -- )
-   {: out:ptr outu:n :}
+\ Build this tree's hb for the target and write it to the path.
+: ENGINE ( ptr u8 n RTARGET:resolved-target -- )
+   {: out:ptr outu:n target:RTARGET:resolved-target :}
    out OUT-PATH !  outu OUT-LEN !
-   true KERNEL-BUILD  ENGINE-END!
-   s" engine" RTARGET:HOST-TARGET ['] ENGINE-BODY LINKER:WITH ;
+   true target KERNEL-BUILD  ENGINE-END!
+   s" engine" target ['] ENGINE-BODY LINKER:WITH ;
 
-\ Build hb with the source's files, the source's MAIN its entry, and write it to
-\ the second path.
-: REPL ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n out:ptr outu:n :}
+\ Build hb with the source's files, the source's MAIN its entry, for the target
+\ and write it to the second path.
+: REPL ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
+   {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
-   true KERNEL-BUILD  REPL-END!
-   s" engine" RTARGET:HOST-TARGET ['] REPL-BODY LINKER:WITH ;
+   true target KERNEL-BUILD  REPL-END!
+   s" engine" target ['] REPL-BODY LINKER:WITH ;
 
-\ Build the source as a stripped program and write it to the second path.
-: APP ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n out:ptr outu:n :}
+\ Build the source as a stripped program for the target and write it to the
+\ second path.
+: APP ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
+   {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
-   false KERNEL-BUILD  APP-END-WRITE
-   s" app" RTARGET:HOST-TARGET ['] APP-BODY LINKER:WITH ;
+   false target KERNEL-BUILD  APP-END-WRITE
+   s" app" target ['] APP-BODY LINKER:WITH ;
 
 ;package

@@ -76,6 +76,7 @@ require src/lib/fs-mutate.f
 require src/lib/fd.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
+require src/compiler/target/model.f
 require tools/hb-build-core.f
 
 package FILE-OBJECTS-TEST
@@ -510,7 +511,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   false HB-BUILD-CORE:KERNEL-BUILD
+   false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD
    s" habu-file-objects-a" FS:MKTEMP-DIR {: a:ptr u:n :}
    a OUT-A u BYTE-COPY  u OUT-A-U !
    ['] WITH-B ['] REMOVE-A finally

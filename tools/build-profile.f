@@ -6,6 +6,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
+require src/compiler/target/model.f
 require tools/hb-build-core.f
 
 package BUILD-PROFILE
@@ -49,7 +50,7 @@ variable REPORT-FD
 : JSON-REPORT ( -- )   JSON$ REDIRECT  prof-json    RESTORE ;
 
 : BUILD ( -- )
-   ENGINE$ HB-BUILD-CORE:ENGINE ;
+   ENGINE$ RTARGET:HOST-TARGET HB-BUILD-CORE:ENGINE ;
 
 public
 : MAIN ( -- )
