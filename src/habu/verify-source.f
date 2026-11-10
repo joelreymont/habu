@@ -1551,19 +1551,23 @@ variable DEFER-REPORT                            \ the child reports deferrals
 \ it, and each writes the packet that locates it when the child asks for one.
 variable DEFER-SEEN
 
+\ WHY is the deferral's cause (checker.f DW-PARSER ..), which picks its packet's
+\ suggestion; 0 when the site cannot tell.
 CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
-: REPORT-STRETCH ( ptr u8 n -- )
+: REPORT-STRETCH ( ptr u8 n n -- )
+   CHECKER-DEFER-WHY!
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
 
-: DEFER-AT ( ptr u8 n -- )
+: DEFER-AT ( ptr u8 n n -- )
+   {: a:ptr u:n why:n :}
    -1 DEFER-SEEN !
-   DEFER-REPORT @ IF REPORT-STRETCH ELSE 2drop THEN ;
+   DEFER-REPORT @ IF a u why REPORT-STRETCH THEN ;
 
 : QUIET-TYPE-CLEAR ( -- )
    CHECKER-SIG-UNRES-TAKE drop 2drop ;
 : QUIET-TYPE-REPORT ( -- )
    CHECKER-SIG-UNRES-TAKE {: a:ptr u:n found:bool :}
-   found IF a u DEFER-AT THEN ;
+   found IF a u DW-TYPE DEFER-AT THEN ;
 
 \ A body the checker deferred to the run (verdict 2) is reported where the
 \ checker's judgment of it stopped (CHECKER-VERIFY-DEFERRED-BODY), when the
@@ -1574,7 +1578,7 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
 : REPORT-DEFERRED ( n -- )
    2 <> IF EXIT THEN
    -1 DEFER-SEEN !
-   DEFER-REPORT @ IF DEFERRED-BODY$ REPORT-STRETCH THEN ;
+   DEFER-REPORT @ IF DEFERRED-BODY$ 0 REPORT-STRETCH THEN ;
 
 \ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run
 \ (see RENDERS-MARK?), 0 refused. In MULTI-ERR mode a refusal, rejected (0) or
@@ -1671,7 +1675,7 @@ variable DOES-CLAUSE-U
 
 : REPORT-DOES-CLAUSE ( -- )
    DOES-CLAUSE-U @ 0= IF EXIT THEN
-   DOES-CLAUSE-A @ DOES-CLAUSE-U @ DEFER-AT ;
+   DOES-CLAUSE-A @ DOES-CLAUSE-U @ 0 DEFER-AT ;
 
 : TICK-DOES-CHECK ( -- )
    TICK-BODY-A @ TICK-BODY-U @
@@ -2344,7 +2348,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
       LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR=CI  and IF
          \ This scan skips the clause body, so its acceptance is unknown.
          INDEX-ON @ IF
-            TOKEN-A @ TOKEN-U @ DEFER-AT
+            TOKEN-A @ TOKEN-U @ 0 DEFER-AT
             true TICK-REMAINDER ! EXIT
          THEN
          TOKEN-A @ SIGNATURE-AT
@@ -2611,7 +2615,7 @@ variable SUM-VAR-NEXT
       2dup ENUM-END? IF
          BODY-APPEND
          name nameu BODY$ ENUM-DECL:ED-REPLAY-OUTCOME
-         IF DEFER-AT ELSE 2drop THEN
+         IF DW-TYPE DEFER-AT ELSE 2drop THEN
          EXIT
       THEN
       BODY-APPEND
@@ -2635,7 +2639,7 @@ variable SUM-VAR-NEXT
       2dup STRUCTURE-DECL-END? IF
          BODY-APPEND
          name nameu BODY$ STRUCTURE-DECL:SD-REPLAY-OUTCOME
-         IF DEFER-AT ELSE 2drop THEN
+         IF DW-TYPE DEFER-AT ELSE 2drop THEN
          EXIT
       THEN
       BODY-APPEND
@@ -2891,7 +2895,7 @@ variable STG-TYPE-U
    rc 0= IF EXIT THEN
    DISARM
    rc E-CHECKER-STORAGE-UNRESOLVED <> IF rc throw THEN
-   STG-TYPE-A @ STG-TYPE-U @ DEFER-AT
+   STG-TYPE-A @ STG-TYPE-U @ DW-TYPE DEFER-AT
    QUIET-TYPE-CLEAR ;
 
 : BODY>BYTE ( n -- n )
@@ -2948,7 +2952,7 @@ CAST: TRUST-ACTION ( n -- [ ptr u8 n -- bool ] )
    STR-LAST-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
    STR-PREV-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
    STR-PREV-A @ STR-PREV-U @ TRUST-UNSEEN? IF
-      STR-PREV-A @ STR-PREV-U @ DEFER-AT
+      STR-PREV-A @ STR-PREV-U @ DW-RENDERED DEFER-AT
       EXIT
    THEN
    QUIET-TYPE-CLEAR
@@ -3011,10 +3015,13 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-GENERATES and 0<> ;
 
 \ Rendered text no row declares is source this scan never reads.
+\ A deferred word's cause is its `defer`, read as TOP-PARSER reads it.
 : RENDER-GAP ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u DECLARED-RENDER? IF EXIT THEN
-   a u DEFER-AT ;
+   a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-DEFER and 0<>
+   IF a u DW-DEFER DEFER-AT EXIT THEN
+   a u DW-RENDERER DEFER-AT ;
 
 \ A call of a `names:` word right after an `s"` literal is a use of the word
 \ the literal names, at the bytes between its quotes (checker.f
@@ -3027,10 +3034,10 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    STR-LAST-A @ STR-LAST-U @ NAMED-USE ;
 
 \ An unmodelled call makes the rest of the source uncertain, declarations the
-\ source index has already seen included.
-: TOP-OPAQUE ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u DEFER-AT
+\ source index has already seen included. WHY is its cause, as DEFER-AT's.
+: TOP-OPAQUE ( ptr u8 n n -- )
+   {: a:ptr u:n why:n :}
+   a u why DEFER-AT
    true TICK-REMAINDER ! ;
 
 : BOUND-CALL ( ptr u8 n bool -- )
@@ -3038,7 +3045,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    renders IF a u RENDER-GAP THEN
    a u TOP-NAMED
    \ Literal openers only push the scanned string. Other calls may alter bindings.
-   INDEX-ON @ IF a u STRING-OPENER? 0= IF a u TOP-OPAQUE THEN THEN ;
+   INDEX-ON @ IF a u STRING-OPENER? 0= IF a u 0 TOP-OPAQUE THEN THEN ;
 
 : BINDING-ID ( n -- n )
    CHECKER-OWNER-ABI:BINDING-ID-MASK and CHECKER-OWNER-ABI:BINDING-ID-SHIFT rshift ;
@@ -3145,10 +3152,10 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    id CHECKER-OWNER-ABI:BINDING-PARSES-ID = IF a u 0 0= 0= PARSES-ROW EXIT THEN
    id CHECKER-OWNER-ABI:BINDING-THROUGH-ID = IF a u 0 0= PARSES-ROW EXIT THEN
    id CHECKER-OWNER-ABI:BINDING-NAMES-ID = IF a u NAMES-ROW EXIT THEN
-   ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0<> IF a u TOP-OPAQUE EXIT THEN
+   ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0<> IF a u DW-DEFER TOP-OPAQUE EXIT THEN
    sym eff1 PRS-FIND {: row:n :}
-   row 0= IF a u TOP-OPAQUE EXIT THEN
-   a u DEFER-AT
+   row 0= IF a u DW-PARSER TOP-OPAQUE EXIT THEN
+   a u DW-PARSES DEFER-AT
    row 1 - PRS-CONSUME ;
 
 : TOKEN-TAIL ( ptr u8 n -- ptr u8 n )
@@ -4057,9 +4064,11 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 : TOP-CLOSE ( -- )
    0 TOP-DEFER !  0 TOP-DEFER-U ! ;
 
+\ No cause: TOP-VERDICT answers 3 both for a name only rendered text may define
+\ and for a word whose effect names a type that may arrive.
 : TOP-DUE ( -- )
    TOP-DEFER-U @ 0= IF EXIT THEN
-   TOP-DEFER-A @ TOP-DEFER-U @ DEFER-AT
+   TOP-DEFER-A @ TOP-DEFER-U @ 0 DEFER-AT
    0 TOP-DEFER-U ! ;
 
 \ Every answer but a binding reports the token itself, so BOUND-CALL reports a
@@ -4186,7 +4195,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    STR-LAST-KIND @ 0<> IF 0 FLAG-N ! THEN
    a u s" [if]" STR=CI 0= FLAG-N @ 1 <> or IF false EXIT THEN
    0 FLAGS @ IF true EXIT THEN
-   SKIP-ARM 0= IF a u TOP-OPAQUE THEN
+   SKIP-ARM 0= IF a u 0 TOP-OPAQUE THEN
    true ;
 
 \ A parsing keyword and its operand are one value on the interpret stack, and

@@ -4666,6 +4666,16 @@ CHECKER-REG:}SCRATCH
 61 constant MD-IF-DEPTH      \ an if's arm leaves another data depth than the if started with (CF-THEN)
 62 constant MD-ARMS-DEPTH    \ an if's two arms leave different data depths (CF-THEN-ELSE-MERGE)
 
+\ Why the check left a stretch or definition to the run (DEFER-WHY), each with
+\ its own suggestion (render.f DEFER-SUGGEST$); 0 is no cause recorded.
+1 constant DW-PARSER         \ a top-level word or primitive that parses with no `parses:` row
+2 constant DW-DEFER          \ a top-level call of a deferred word
+3 constant DW-PARSES         \ a top-level word whose `parses:` row bounds what it reads
+4 constant DW-RENDERER       \ a renderer whose text no `generates:` row or group declares
+5 constant DW-RENDERED       \ a name only a rendering statement may define
+6 constant DW-TYPE           \ a type that may arrive with rendered text
+7 constant DW-TICK           \ a tick of a trusted-only word in unknown tick order
+
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
 : STALE-WHY ( n -- n )
@@ -4681,7 +4691,13 @@ variable MDIAG-NEED   \ underflow: cells the refused step's input row needs
 variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepest row
 variable MDIAG-WIDTH  \ input width: the cells of the input row a record would hold
+variable DEFER-WHY    \ the next deferral packet's cause (a DW- code; 0 = none)
 CHECKER-REG:}SCRATCH
+
+\ The source pre-pass records a deferral's cause here before it reports the
+\ deferral; the packet reads and clears it (render.f TOP-DEFERRED-DIAG).
+: CHECKER-DEFER-WHY! ( n -- )
+   DEFER-WHY ! ;
 
 : MDIAG! ( n -- ) {: code:n :}   \ first reason wins, only while the pin is open
    MDIAG @ 0 <> IF EXIT THEN
@@ -12427,6 +12443,14 @@ PRIM: CHECKER-TYPE-SPAN-STEP
 PRIM: CHECKER-TYPE-SPAN-BREAK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-SIG-SPAN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: CHECKER-SIG-UNRES-TAKE PE-PTR-U8 PE-OUT PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: CHECKER-DEFER-WHY! PE-N PE-IN PRIM;
+PRIM: DW-PARSER PE-N PE-OUT PRIM;
+PRIM: DW-DEFER PE-N PE-OUT PRIM;
+PRIM: DW-PARSES PE-N PE-OUT PRIM;
+PRIM: DW-RENDERER PE-N PE-OUT PRIM;
+PRIM: DW-RENDERED PE-N PE-OUT PRIM;
+PRIM: DW-TYPE PE-N PE-OUT PRIM;
+PRIM: DW-TICK PE-N PE-OUT PRIM;
 \ The verifier compares these named quiet-replay outcomes after the prefix is
 \ sealed. Each is a public code; the private checker latch is read only above.
 PRIM: E-CHECKER-RECORD-UNRESOLVED PE-N PE-OUT PRIM;
@@ -28221,20 +28245,22 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ false (CHECKER-VERIFY-TOP below). The token takes the walk a body token takes
 \ and gets a body's verdict, so a qualified token resolves as it does there.
 \ The answer is -1 when it resolves, or 2 when it resolves to a word that may
-\ read the source after it (TOP-RUNS); 3 when it resolves nowhere but a
-\ rendering statement in scope may define it (UNSEEN-COVERS?), the run's to
-\ judge; and 0 when the load refuses it: undefined, a word it runs that has no
-\ row (TOP-ROW?), as the load's step refuses one, or a malformed qualified
-\ name, rendered as a span record at the token (E-UNDEFINED-TOP-LEVEL,
-\ E-BAD-QUALIFIED-TOP-LEVEL) and counted under --all-errors, else thrown as a
-\ definition's refusal is. A refusal the walk answers, a using shadow or
-\ ambiguity among them, is raised as a body's is: rendered at the token and
-\ thrown (CHECKER-RESOLVE:RAISE). A token the walk does not bind is the word
-\ the engine's top-level find selects (CHECKER-TOP-SYM): a bare token the store
-\ does not hold keeps the engine's vote on its global wordlist, the boot prefix
-\ in the verifier's child, where the colliding global need not be one the
-\ checker knows and the subject's words are never compiled; the engine word it
-\ names runs as its global symbol's facts say.
+\ read the source after it (TOP-RUNS); 3 when it resolves to a word it runs
+\ whose effect names a type that may arrive (SYM-EFFECT-UNRESOLVED?), or
+\ resolves nowhere but a rendering statement in scope may define it
+\ (UNSEEN-COVERS?), the run's to judge; and 0 when the load refuses it:
+\ undefined, a word it runs that has no row (TOP-ROW?), as the load's step
+\ refuses one, or a malformed qualified name, rendered as a span record at the
+\ token (E-UNDEFINED-TOP-LEVEL, E-BAD-QUALIFIED-TOP-LEVEL) and counted under
+\ --all-errors, else thrown as a definition's refusal is. A refusal the walk
+\ answers, a using shadow or ambiguity among them, is raised as a body's is:
+\ rendered at the token and thrown (CHECKER-RESOLVE:RAISE). A token the walk
+\ does not bind is the word the engine's top-level find selects
+\ (CHECKER-TOP-SYM): a bare token the store does not hold keeps the engine's
+\ vote on its global wordlist, the boot prefix in the verifier's child, where
+\ the colliding global need not be one the checker knows and the subject's words
+\ are never compiled; the engine word it names runs as its global symbol's facts
+\ say.
 : TOP-ANSWER ( ptr u8 n bool -- n )
    {: a:ptr u:n runs:bool :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}

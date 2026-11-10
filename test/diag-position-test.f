@@ -1375,6 +1375,87 @@ variable RC
    1 s" E-UNDEFINED" s" NOPE" 6 532 598 602 VERIFY-REJECTED-AT
    s" E-UNDEFINED habu: in x: undefined word 'NOPE'" REJECT-RC LOADED ;
 
+\ The fixture's first two lines: GEN renders MADE's definition, and runs.
+: GEN-LINES ( -- )
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+ ;
+
+\ --verify-only of the fixture exits WANT, and its packet k defers TOK to the
+\ run with the suggestion SUG.
+: DEFER-SUGGESTS ( n n ptr u8 n ptr u8 n -- )
+   {: want:n k:n tok:ptr toku:n sug:ptr sugu:n :}
+   s" --verify-only" want CHECK-EXIT
+   k s" code" s" W-CHECK-DEFERRED" FIELD=
+   k s" token" tok toku FIELD=
+   k s" suggestion" sug sugu FIELD= ;
+
+\ A deferral's suggestion names what lifts its cause, recorded where the
+\ source pre-pass decides it. A body the check defers, and a stretch opened at
+\ a name TOP-VERDICT answers 3 for, record none and keep the general text.
+: TEST-DEFER-SUGGEST ( -- )
+   s" a top-level parsing word with no parses: row" T-LABEL
+   SB-RESET
+   s" : PN ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" PN foo" SB-APPEND LF+
+   s" : Y ( -- ) NOPE ;" SB-APPEND LF+
+   s" defer-parser.f" FIXTURE!
+   0 0 s" PN" s" State what this word reads after its definition: `parses: W n` or `parses-through: W n ( END )`; call a primitive through a word that has such a row." DEFER-SUGGESTS
+   s" a top-level call of a deferred word" T-LABEL
+   SB-RESET
+   s" defer D ( -- )" SB-APPEND LF+
+   s" D" SB-APPEND LF+
+   s" : Y ( -- n ) ;" SB-APPEND LF+
+   s" defer-defer.f" FIXTURE!
+   0 0 s" D" s" Call this deferred word from a definition: a top-level `defer` may read any of the source after it, and no row bounds it." DEFER-SUGGESTS
+   s" a top-level parsing word its parses: row bounds" T-LABEL
+   SB-RESET
+   s" : PN ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" parses: PN 1" SB-APPEND LF+
+   s" PN foo" SB-APPEND LF+
+   s" : Y ( -- ) NOPE ;" SB-APPEND LF+
+   s" defer-parses.f" FIXTURE!
+   REJECT-RC 0 s" PN" s" Nothing to write: the check went on after the operands its row states; the run decides what the word reads." DEFER-SUGGESTS
+   s" a renderer no generates: row declares" T-LABEL
+   GEN-LINES
+   s" : Y ( -- ) NOPE ;" SB-APPEND LF+
+   s" defer-renderer.f" FIXTURE!
+   0 0 s" GEN" s" If this renderer reads the name of the word it makes (`D NAME`), declare that word's effect with `generates: D ( effect )` after its definition; a foreign function is declared by a `FUNCTION:` group; other rendered text is the run's to check." DEFER-SUGGESTS
+   s" a deferred word called inside an open stretch" T-LABEL
+   SB-RESET
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s" defer D ( -- )" SB-APPEND LF+
+   s" GEN" SB-APPEND LF+
+   s" MADE" SB-APPEND LF+
+   s" D" SB-APPEND LF+
+   s" : Y ( -- n ) ;" SB-APPEND LF+
+   s" defer-defer-stretch.f" FIXTURE!
+   REJECT-RC 2 s" D" s" Call this deferred word from a definition: a top-level `defer` may read any of the source after it, and no row bounds it." DEFER-SUGGESTS
+   s" a trust of a name only rendered text may define" T-LABEL
+   GEN-LINES
+   s\" s\" MADE\" s\" --\" trust" SB-APPEND LF+
+   s" : Y ( -- n ) ;" SB-APPEND LF+
+   s" defer-trust-rendered.f" FIXTURE!
+   REJECT-RC 1 s" MADE" s" Make this name with a definer called as `D NAME` and declare it with `generates: D ( effect )` after its definition or with a `does>` clause; otherwise the run defines it or refuses a misspelling." DEFER-SUGGESTS
+   s" a deferred word whose signature names a type rendered text may make" T-LABEL
+   GEN-LINES
+   s" defer D ( widget -- )" SB-APPEND LF+
+   s" : Y ( -- n ) ;" SB-APPEND LF+
+   s" defer-type.f" FIXTURE!
+   REJECT-RC 1 s" widget" s" Declare this type in the source before its use (`NEWTYPE`, `STRUCTURE`, `SUMTYPE`); a type only rendered text makes is the run's to check." DEFER-SUGGESTS
+   s" a top-level name only rendered text may define (its cause is habu-a-top-level-63e728e9's)" T-LABEL
+   GEN-LINES
+   s" MADE" SB-APPEND LF+
+   s" : Y ( -- ) NOPE ;" SB-APPEND LF+
+   s" defer-top-rendered.f" FIXTURE!
+   0 1 s" MADE" s" Rewrite with modeled words or isolate an audited primitive." DEFER-SUGGESTS
+   s" a body deferred to the run (its cause is the next commit's)" T-LABEL
+   GEN-LINES
+   s" : X ( -- ) MADE ;" SB-APPEND LF+
+   s" : Y ( -- ) NOPE ;" SB-APPEND LF+
+   s" defer-body.f" FIXTURE!
+   0 1 s" MADE" s" Rewrite with modeled words or isolate an audited primitive." DEFER-SUGGESTS ;
+
 \ A control-flow word with no structure open, or another structure's, is one
 \ the load cannot compile: it refuses the definition at that word, before a
 \ signature that does not parse, an earlier failing check and a later
@@ -1678,6 +1759,7 @@ variable RC
    TEST-TICK-TARGET
    TEST-MADE
    TEST-UNSEEN-UNDEFINED
+   TEST-DEFER-SUGGEST
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON
    TEST-SECOND-ELSE

@@ -1176,10 +1176,23 @@ variable MDV-I   variable MDV-F
    s" more than " DTXT  BINDER-DEPTH-MAX JNUM  s"  nested binders" DTXT ;
 
 
-\ Shared by a token of unknown effect (SUGGEST-TEXT) and a deferred stretch or
-\ definition (TOP-DEFERRED-DIAG).
+\ Shared by a token of unknown effect (SUGGEST-TEXT) and a deferral whose cause
+\ no site recorded (DEFER-SUGGEST$).
 : UNCK-SUGGEST$ ( -- ptr u8 n )
    s" Rewrite with modeled words or isolate an audited primitive." ;
+
+\ What lifts the deferral whose cause DEFER-WHY holds (checker.f DW-PARSER ..).
+: DEFER-SUGGEST$ ( -- ptr u8 n )
+   DEFER-WHY @ case
+      DW-PARSER   of s" State what this word reads after its definition: `parses: W n` or `parses-through: W n ( END )`; call a primitive through a word that has such a row." endof
+      DW-DEFER    of s" Call this deferred word from a definition: a top-level `defer` may read any of the source after it, and no row bounds it." endof
+      DW-PARSES   of s" Nothing to write: the check went on after the operands its row states; the run decides what the word reads." endof
+      DW-RENDERER of s" If this renderer reads the name of the word it makes (`D NAME`), declare that word's effect with `generates: D ( effect )` after its definition; a foreign function is declared by a `FUNCTION:` group; other rendered text is the run's to check." endof
+      DW-RENDERED of s" Make this name with a definer called as `D NAME` and declare it with `generates: D ( effect )` after its definition or with a `does>` clause; otherwise the run defines it or refuses a misspelling." endof
+      DW-TYPE     of s" Declare this type in the source before its use (`NEWTYPE`, `STRUCTURE`, `SUMTYPE`); a type only rendered text makes is the run's to check." endof
+      DW-TICK     of s" Tick this trusted-only word inside a `TRUSTED:` body; checked code may tick it only if the run's checker allows it." endof
+      UNCK-SUGGEST$ rot
+   endcase ;
 
 : TAIL-SUGGEST$ ( -- ptr u8 n )
    s" The callee declares this callable with an implicit input row, [ -- S ], so it may run the callable on any stack and expects S back; a callable that keeps or reads the stack it runs on cannot promise that. Declare the callable [ R -- S ] from the word's input row, as in ( R [ R -- S ] -- S ), or pass a callable whose output does not depend on the stack beneath it." ;
@@ -2123,13 +2136,15 @@ REC-SIG-INSTALL
    ELSE s" E-BAD-QUALIFIED-TOP-LEVEL" s" malformed qualified name" TOP-SPAN-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ Only the verifier's child reports a deferral, and it writes packets.
+\ Only the verifier's child reports a deferral, and it writes packets. Its
+\ cause is cleared once written, so a report that records none prints none.
 : TOP-DEFERRED-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    s" W-CHECK-DEFERRED" s" rewrite_uncheckable" s" deferred"
-   UNCK-SUGGEST$ TOP-SPAN-JSON
+   DEFER-SUGGEST$ TOP-SPAN-JSON
    10 EMIT1
-   RSBUF-FLUSH ;
+   RSBUF-FLUSH
+   0 DEFER-WHY ! ;
 \ checker.f SHADOW-DIAG-XT selects: 0 the using-shadow reference site, 1 the
 \ arity-shadow definition site, 2 a using ambiguity, 3 and 4 a top-level token
 \ undefined or malformed, 5 a deferred top-level stretch or definition. One hook
