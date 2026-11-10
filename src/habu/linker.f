@@ -250,8 +250,20 @@ create OLD-RECS BUF:HDR-BYTES allot
 variable OLD-PATCHES
 DYNAMIC-BUFFER STORED n              \ the stores' cells as distances from NULL-PTR (FIND-STORES)
 variable STORED-N
-DYNAMIC-BUFFER STRS n                \ the file's string bodies as distances from NULL-PTR (DATA+)
-variable STRS-N
+\ The running piece's anchors (ANCHOR+), 3 cells each: the address as a distance from NULL-PTR, its
+\ rank at one address (1 a record, 2 a string), the record's index or the string's body.
+DYNAMIC-BUFFER ANCHORS n
+variable ANCHORS-N
+DYNAMIC-BUFFER ORDER n               \ EXTENTS!'s sorts: anchor numbers, then string extents
+\ The running piece's extents in address order (EXTENTS!), EXT-CELLS cells each: the start as a
+\ distance from NULL-PTR, the kind, sum and count; then, as DATA+ writes it, its span's offset in
+\ PIECES and length, the highest FILES row its cell rows name (TOP-ROW), its first slot in EXT-ROWS
+\ and its cell rows there.
+9 constant EXT-CELLS
+DYNAMIC-BUFFER EXTS n
+variable EXTS-N
+DYNAMIC-BUFFER PICKED n              \ the piece's cell rows in the space's order, each then its extent (GROUP-ROWS)
+DYNAMIC-BUFFER EXT-ROWS n            \ the same rows grouped by extent
 DYNAMIC-BUFFER LAST-HELD n           \ a file's record r's last held facts entry, -1 for none (FACTS+)
 \ Per word as PIECE+ writes it, SPAN-CELLS cells: entry offset and length, emission or -1, text offset and
 \ length (0 0 for none), highest FILES row named (TOP-ROW), the bits of the rows outside its ranges
@@ -363,11 +375,13 @@ TYPED-VARIABLE UNLINKABLE bool
 \ WORDS and TIMES, which hold times, precede PIECES, which test/file-objects.f compares across out roots.
 HEADER-BYTES 32 - constant TIMES-FIELD      \ the header's TIMES pair
 HEADER-BYTES 16 - constant PIECES-FIELD     \ the header's last pair: PIECES' offset, then its length
-\ A word in TIMES, WORD-CELLS cells: its time, its entry, emission and text spans, the time of the
-\ record it binds (0 for none), the bits of the rows that name it from outside (SPAN-CELLS), then
-\ its sum and count (REC-IDS).
+\ TIMES holds the word count, then per word WORD-CELLS cells: its time, its entry, emission and text
+\ spans, the time of the record it binds (0 for none), the bits of the rows that name it from outside
+\ (SPAN-CELLS), then its sum and count (REC-IDS); then the extent count, then per extent EXT-BYTES:
+\ its time, its span's offset and length, its kind, sum and count (EXTENT+).
 11 constant WORD-CELLS
 WORD-CELLS 8 * constant WORD-BYTES
+48 constant EXT-BYTES
 
 \ A record's kind in PIECES.
 0 constant KIND-DEF
@@ -424,7 +438,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 : DISPOSE-OBJECTS ( -- )
    WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
    RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
-   EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
+   EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STORED-RELEASE
+   ANCHORS-RELEASE  ORDER-RELEASE  EXTS-RELEASE  PICKED-RELEASE  EXT-ROWS-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  REC-EMS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
@@ -1688,7 +1703,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    TOP-ROW @  at3 2 + EM-SPANS ! ;
 
 
-\ CODE, after the piece's entries, then DATA and STRINGS (DATA+); every number is 8 bytes, low
+\ CODE, after the piece's entries, then DATA (DATA+); every number is 8 bytes, low
 \ byte first:
 \   E                      emissions this file's compile filed, from the file's first
 \   per emission, in number order:
@@ -1739,22 +1754,204 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 
 : BODY-U ( n -- n ) CELL - BASE @ - SPACE-AT @ ;
 
+\ ---- extents ---------------------------------------------------------------------
+\ A piece's data, [FILE-DP, FILE-END), is cut into extents at its anchors, each running to the next
+\ anchor, the last to FILE-END: kind 1 a record's (its sum and count, REC-ID), kind 2 a string's (the
+\ sum of its body's bytes and its number among the piece's strings with that sum, in address order),
+\ kind 3 the head from FILE-DP to the first anchor (0 0), only when D is above 0 and none sits there.
+
+\ An anchor of the given rank at the address, when it lies in [FILE-DP, FILE-END].
+: ANCHOR+ ( n n n -- )
+   {: at:n rank:n x:n :}
+   at FILE-DP @ <  at FILE-END @ >  or if exit then
+   ANCHORS-N @ 3 * {: k:n :}
+   k 3 + ANCHORS-RESERVE
+   at k ANCHORS !  rank k 1 + ANCHORS !  x k 2 + ANCHORS !
+   1 ANCHORS-N +! ;
+
+\ A string body's length cell as an anchor, when the cell and the body lie in the piece's data.
 : STRING+ ( n -- )
    {: b:n :}
    b CELL - FILE-DP @ <  b FILE-END @ >  or if exit then
    b b BODY-U +  FILE-END @ > if exit then
-   STRS-N @ 1 + STRS-RESERVE
-   b STRS-N @ STRS !  1 STRS-N +! ;
+   b CELL -  2  b ANCHOR+ ;
 
-\ DATA, STRINGS, STORES and FACTS, after CODE:
+
+\ The first data address emission e's code holds, -1 for none.
+: EM-DATA ( n -- n )
+   {: e:n :}
+   e NSHADOW:BYTES {: src:ptr :}
+   e NSHADOW:SIZE {: s:n :}
+   e NSHADOW:ADDR-SITES 0 ?do
+      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
+         e i NSHADOW:ADDR-SITE@ {: c:n :}
+         src c +  src s +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
+         size 0 > if  src c +  size ADDRESS-CARRIER:CHAIN-VALUE  unloop exit  then
+      then
+   loop
+   -1 ;
+
+
+\ Whether anchor j sorts before anchor k: by address, then rank, then record index.
+: ANCHOR< ( n n -- bool )
+   {: j:n k:n :}
+   j 3 * ANCHORS @  k 3 * ANCHORS @ {: a:n b:n :}
+   a b <> if a b < exit then
+   j 3 * 1 + ANCHORS @  k 3 * 1 + ANCHORS @ {: p:n q:n :}
+   p q <> if p q < exit then
+   j 3 * 2 + ANCHORS @  k 3 * 2 + ANCHORS @ < ;
+
+\ Cell f of extent e.
+: EXT ( n n -- ptr n ) swap EXT-CELLS * + EXTS ;
+
+\ Whether string extent j sorts before string extent k: by sum, then address.
+: EXT-SUM< ( n n -- bool )
+   {: j:n k:n :}
+   j 2 EXT @  k 2 EXT @ {: a:n b:n :}
+   a b <> if a b < exit then
+   j k < ;
+
+\ The address where extent e ends: the next one's start, the last FILE-END.
+: EXT-END ( n -- n )
+   {: e:n :}
+   e 1 +  EXTS-N @ < if  e 1 + 0 EXT @  else  FILE-END @  then ;
+
+\ The extent holding the address: the last whose start is at most it.
+: EXT-OF ( n -- n )
+   {: at:n :}
+   0 EXTS-N @
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid 0 EXT @ at <= if mid 1 + hi else lo mid then
+   repeat
+   drop 1 - ;
+
+
+\ FNV-1a over the bytes, as NAME-SUM without its case fold; never 0.
+: BYTES-SUM ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   $811C9DC5  u 0 ?do  a i + c@ xor  $1000193 *  loop
+   dup 0= if 1 + then ;
+
+\ The extent at the address onto EXTS, with no span or rows yet.
+: EXT+ ( n n n n -- )
+   {: at:n kind:n sum:n count:n :}
+   EXTS-N @ {: e:n :}
+   e 1 + EXT-CELLS * EXTS-RESERVE
+   at e 0 EXT !  kind e 1 EXT !  sum e 2 EXT !  count e 3 EXT !
+   EXT-CELLS 4 ?do 0 e i EXT ! loop
+   1 EXTS-N +! ;
+
+\ Each string extent's count: its number, in address order, among the piece's strings with its sum.
+: STRING-COUNTS ( -- )
+   EXTS-N @ ORDER-RESERVE
+   0  EXTS-N @ 0 ?do  i 1 EXT @ 2 = if  i over ORDER !  1 +  then  loop {: n:n :}
+   n 1 > if 0 ORDER n [: EXT-SUM< ;] SORT:SORT! then
+   0 0  n 0 ?do
+      {: prev:n c:n :}
+      i ORDER @ {: e:n :}
+      e 2 EXT @ {: s:n :}
+      s prev = if c 1 + else 0 then {: k:n :}
+      k e 3 EXT !
+      s k
+   loop 2drop ;
+
+
+\ The running piece's extents into EXTS: anchors at each record's body (EM-DATA of its emission, for
+\ a record DNAME-ALLOC marks) and dispatch cell, and each string's length cell (STRING+), sorted
+\ (ANCHOR<), after a head when D is above 0 and no anchor sits at FILE-DP.
+: EXTENTS! ( -- )
+   0 ANCHORS-N !  0 EXTS-N !
+   ndict@ FILE-REC @ ?do
+      i XREF-REC {: rec:ptr :}
+      rec XREF-FLAGS DNAME-ALLOC and 0<> if
+         i OWNER-EM {: e:n :}
+         e 0 >= if  e EM-DATA {: a:n :}  a 0 >= if a 1 i ANCHOR+ then  then
+      then
+      rec NDICT:TRAILER-CELL {: cell:n :}
+      cell 0<> if cell 1 i ANCHOR+ then
+   loop
+   ['] STRING+ INTERN:EACH-STRING
+   ANCHORS-N @ {: n:n :}
+   n ORDER-RESERVE
+   n 0 ?do i i ORDER ! loop
+   n 1 > if 0 ORDER n [: ANCHOR< ;] SORT:SORT! then
+   FILE-END @ FILE-DP @ > if
+      n 0= if true else 0 ORDER @ 3 * ANCHORS @ FILE-DP @ > then
+      if FILE-DP @ 3 0 0 EXT+ then
+   then
+   n 0 ?do
+      i ORDER @ 3 * {: k:n :}
+      k ANCHORS @  k 1 + ANCHORS @  k 2 + ANCHORS @ {: at:n rank:n x:n :}
+      rank 1 = if
+         at 1 x REC-ID EXT+
+      else
+         at 2  NULL-PTR BYTE-VIEW x +  x BODY-U  BYTES-SUM  0 EXT+
+      then
+   loop
+   STRING-COUNTS ;
+
+
+\ The running piece's cell rows inside its data into EXT-ROWS, grouped by extent and in the space's
+\ order within one, in one pass over ROWS: a cell not 8-aligned from FILE-DP, crossing its extent's
+\ end or ending past the data is E-COMP-STATE.
+: GROUP-ROWS ( -- )
+   ROWS {: rows:ptr count:n :}
+   0  count 0 ?do
+      rows i cells + @ {: row:n :}
+      row IN-FILE? if
+         row ROW-AT {: at:n :}
+         at FILE-DP @ - 7 and 0<> if E-COMP-STATE throw then
+         at EXT-OF {: e:n :}
+         at CELL +  e EXT-END > if E-COMP-STATE throw then
+         dup 2 * 2 + PICKED-RESERVE
+         row over 2 * PICKED !  e over 2 * 1 + PICKED !
+         1 e 8 EXT +!
+         1 +
+      else
+         row ROW-AT FILE-DP @ >= if E-COMP-STATE throw then
+      then
+   loop {: n:n :}
+   0  EXTS-N @ 0 ?do  dup i 7 EXT !  i 8 EXT @ +  0 i 8 EXT !  loop drop
+   n EXT-ROWS-RESERVE
+   n 0 ?do
+      i 2 * PICKED @  i 2 * 1 + PICKED @ {: row:n e:n :}
+      row  e 7 EXT @  e 8 EXT @ +  EXT-ROWS !
+      1 e 8 EXT +!
+   loop ;
+
+
+\ Extent e onto PIECES (DATA+), and its span and the highest FILES row its rows name into EXTS.
+: EXTENT+ ( n -- )
+   {: e:n :}
+   PIECES BYTES$ nip {: from:n :}
+   e 0 EXT @ {: at:n :}
+   e EXT-END at - {: u:n :}
+   e 1 EXT @ PIECES U64+  e 2 EXT @ PIECES U64+  e 3 EXT @ PIECES U64+  u PIECES U64+
+   NULL-PTR BYTE-VIEW at +  u  PIECES SPAN+
+   PIECES BYTES$ {: buf:ptr len:n :}
+   buf len + u - {: bytes:ptr :}
+   e 7 EXT @  e 8 EXT @ {: first:n k:n :}
+   k 0 ?do  0  bytes  first i + EXT-ROWS @ ROW-AT at - +  LE:U64!  loop
+   k PIECES U64+
+   0 TOP-ROW !
+   k 0 ?do
+      first i + EXT-ROWS @ {: row:n :}
+      row ROW-AT at - PIECES U64+  row ROW-KIND PIECES U64+  row CELL-REF+
+   loop
+   from e 4 EXT !  PIECES BYTES$ nip from - e 5 EXT !  TOP-ROW @ e 6 EXT ! ;
+
+\ DATA, STORES and FACTS, after CODE:
 \   D                      the bytes the file's compile laid, FILE-END - FILE-DP
-\   D raw bytes            from FILE-DP, unpadded; each address cell's 8 bytes written as 0
-\   K, then K cell rows    offset from FILE-DP, a multiple of 8 (else E-COMP-STATE), kind
-\                          (ROW-KIND), reference (CELL-REF+); in the order of the space's
-\                          address-cell rows, only cells inside the D bytes; a cell at or
-\                          above FILE-DP that ends past them is E-COMP-STATE
-\   N, then N string rows  a body's offset from FILE-DP, then its length; offsets ascending,
-\                          only bodies whose length cell and bytes lie inside the D bytes
+\   X                      the extents (EXTENTS!)
+\   X starts               each extent's offset from FILE-DP, ascending, the first 0
+\   per extent             kind, sum, count, length: the distance to the next start, the last's to D
+\                          length raw bytes, each address cell's 8 bytes written as 0
+\                          K, then K cell rows: offset from the extent's start, kind (ROW-KIND),
+\                          reference (CELL-REF+); in the order of the space's address-cell rows
+\                          (GROUP-ROWS); a kind-2 extent's first 8 bytes are its string's length
+\                          and its body follows
 \   S, then S store rows   each cell below FILE-DP the compile stored into, other than a scratch
 \                          cell, or gave an address-cell row, ascending by address: its
 \                          reference (tag 3 with a FILES row, or 4), kind (ROW-KIND, 3 for
@@ -1765,36 +1962,14 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \                          record's reference and its text as a FIELD+; CHECK:HELD-LAID for a
 \                          laid text or CHECK:HELD-UNDEFINE for an `undefine`, then the text as a
 \                          FIELD+
+\ An extent's span runs from its kind through its last cell row; the starts lie outside every span,
+\ so an extent that only moved keeps its span's bytes.
 : DATA+ ( -- )
-   FILE-DATA {: a:ptr d:n :}
-   d PIECES U64+  a d PIECES SPAN+
-   PIECES BYTES$ {: buf:ptr bufu:n :}
-   buf bufu + d - {: at:ptr :}
-   ROWS {: rows:ptr count:n :}
-   0  count 0 ?do
-      rows i cells + @ {: row:n :}
-      row IN-FILE? if
-         row ROW-AT FILE-DP @ - {: off:n :}
-         off 7 and 0<> if E-COMP-STATE throw then
-         0  at off +  LE:U64!  1 +
-      else
-         row ROW-AT FILE-DP @ >= if E-COMP-STATE throw then
-      then
-   loop  PIECES U64+
-   count 0 ?do
-      rows i cells + @ {: row:n :}
-      row IN-FILE? if
-         row ROW-AT FILE-DP @ - PIECES U64+  row ROW-KIND PIECES U64+  row CELL-REF+
-      then
-   loop
-   0 STRS-N !  ['] STRING+ INTERN:EACH-STRING
-   STRS-N @ {: n:n :}
-   n 0 > if 0 STRS n [: < ;] SORT:SORT! then
-   n PIECES U64+
-   n 0 ?do
-      i STRS @ {: b:n :}
-      b FILE-DP @ - PIECES U64+  b BODY-U PIECES U64+
-   loop ;
+   GROUP-ROWS
+   FILE-END @ FILE-DP @ - PIECES U64+
+   EXTS-N @ PIECES U64+
+   EXTS-N @ 0 ?do  i 0 EXT @ FILE-DP @ - PIECES U64+  loop
+   EXTS-N @ 0 ?do  i EXTENT+  loop ;
 
 \ ---- the stores ----------------------------------------------------------------
 \ A file's compile may store into cells below its data, but must leave earlier records and
@@ -2010,7 +2185,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    STORED-N @ 0 ?do i STORED @ HELD? 0= if E-STORE throw then loop ;
 
 
-\ STORES, after STRINGS (DATA+).
+\ STORES, after DATA's extents (DATA+).
 : STORES+ ( -- )
    STORED-N @ PIECES U64+
    STORED-N @ 0 ?do
@@ -2121,14 +2296,14 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    loop ;
 
 
-\ The running piece into PIECES: entry count; records by index, each late private wordlist (by id)
-\ before the first record marked above its id, so ids mint in entry order; each earlier package the
-\ piece sealed, after every record, so a link seals it once the piece's definitions are in; CODE;
-\ DATA; STRINGS; STORES; FACTS, whose offset in PIECES it leaves in FACTS-AT; ACTS; then
-\ req, 0 when a request ends the part, -1 when the part ends the file.
+\ The running piece's extents (EXTENTS!), then the piece into PIECES: entry count; records by
+\ index, each late private wordlist (by id) before the first record marked above its id, so ids
+\ mint in entry order; each earlier package the piece sealed, after every record, so a link seals
+\ it once the piece's definitions are in; CODE; DATA; STORES; FACTS, whose offset in PIECES it
+\ leaves in FACTS-AT; ACTS; then req, 0 when a request ends the part, -1 when the part ends the file.
 : PIECE+ ( n -- )
    {: req:n :}
-   IDENTIFY
+   IDENTIFY  EXTENTS!
    LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
    LATE-COLLECT
@@ -2252,8 +2427,7 @@ variable ENTRIES-N                    \ the object's entries
 variable RECS-N                       \ its records: entries neither KIND-PRIVATE nor KIND-SEALED
 variable EMS-N                        \ its emissions, E
 variable DATA-AT                      \ the offset in OBJECT of DATA's D
-variable CELLS-AT                     \ of its K
-variable STRS-AT                      \ of STRINGS' N
+variable EXTS-AT                      \ of its X
 variable STORES-AT                    \ of STORES' S
 variable REQS-AT                      \ the offset in OBJECT of its REQUESTS
 variable REQS-N                       \ its REQUESTS rows; it has one piece more
@@ -2652,8 +2826,9 @@ variable RD-END
 
 
 \ TIMES from RD-AT to PIECES at the offset, in an object of len bytes: the piece's block (TIMES+),
-\ each span inside the piece, which runs from PIECES to the object's end; a word's time, bound
-\ record's time, bits, sum and count are skipped.
+\ each word's and each extent's span inside the piece, which runs from PIECES to the object's end;
+\ a word's time, bound record's time, bits, sum and count and an extent's time, kind, sum and count
+\ are skipped.
 : TIMES-CK ( n n -- )
    {: pieces-at:n len:n :}
    GOOD? 0= if exit then
@@ -2661,6 +2836,7 @@ variable RD-END
    WORD-BYTES RD-COUNT 0 ?do
       8 RD-SKIP  plen SPAN-CK  plen SPAN-CK  plen SPAN-CK  32 RD-SKIP
    loop
+   EXT-BYTES RD-COUNT 0 ?do  8 RD-SKIP  plen SPAN-CK  24 RD-SKIP  loop
    RD-AT @ pieces-at <> if BAD then ;
 
 
@@ -3007,24 +3183,43 @@ variable RD-END
    DOES-ENTRY-CK ;
 
 
-\ A cell row of a file's d data bytes.
-: CELL-ROW-CK ( n -- )
-   {: d:n :}
+\ A cell row of the extent of u bytes at offset s in DATA: its cell inside the extent, at an
+\ offset in the part that is a multiple of 8.
+: CELL-ROW-CK ( n n -- )
+   {: s:n u:n :}
    RD-U64 {: off:n :}
-   off 0<  off 7 and 0<>  or  off d 8 - >  or if BAD then
+   off 0<  off u 8 - >  or  s off + 7 and 0<>  or if BAD then
    RD-U64 CELL-REF-CK ;
 
 
-\ A string row after one at offset prev: the 8 bytes before its body in D hold its length. A
-\ string the table already holds was laid by an earlier file since, so the file compiles.
-: STRING-CK ( n n -- n )
-   {: prev:n d:n :}
-   RD-U64 RD-U64 {: off:n u:n :}
-   GOOD? 0= if prev exit then
-   off prev <=  off 8 <  or  off d >  or  u 0<  or  u d off - >  or if BAD prev exit then
-   DATA-AT @ off + OBJ@ u <> if BAD then
-   GOOD? if  OBJECT BYTES$ drop DATA-AT @ 8 + off + +  u  INTERN:FIND 0<> if BAD then  then
-   off ;
+\ A string extent of u bytes at the offset in OBJECT: its first 8 bytes hold its body's length,
+\ which the rest holds. A string the table already holds was laid by an earlier file since, so the
+\ file compiles.
+: STRING-CK ( n n -- )
+   {: at:n u:n :}
+   GOOD? 0= if exit then
+   u 8 < if BAD exit then
+   at OBJ@ {: n:n :}
+   n 0<  n u 8 - >  or if BAD exit then
+   OBJECT BYTES$ drop at 8 + +  n  INTERN:FIND 0<> if BAD then ;
+
+
+\ Extent e of DATA's d bytes, at RD-AT once its starts were read: kind 1 or 2, or 3 first; its
+\ length the distance to the next start, the last's to d; its bytes; its cell rows (CELL-ROW-CK);
+\ a string's length cell (STRING-CK).
+: EXTENT-CK ( n n -- )
+   {: e:n d:n :}
+   GOOD? 0= if exit then
+   EXTS-AT @ 8 + e 8 * + {: at:n :}
+   at OBJ@ {: s:n :}
+   e 1 +  EXTS-AT @ OBJ@ < if at 8 + OBJ@ else d then {: end:n :}
+   RD-U64 RD-U64 RD-U64 RD-U64 {: kind:n sum:n count:n u:n :}
+   kind 1 <  kind 3 >  or  kind 3 =  e 0<>  and  or if BAD exit then
+   u  end s -  <> if BAD exit then
+   RD-AT @ {: bytes:n :}
+   u RD-SKIP
+   kind 2 = if bytes u STRING-CK then
+   24 RD-COUNT 0 ?do s u CELL-ROW-CK loop ;
 
 
 \ A store row: a cell FIND-STORES admits by where it starts, at an aligned offset below an earlier
@@ -3045,15 +3240,21 @@ variable RD-END
    kind CELL-REF-CK ;
 
 
-\ DATA, STRINGS and STORES (DATA+, STORES+).
+\ DATA and STORES (DATA+, STORES+): D at least 0; X starts ascending from 0, none past D, and
+\ none only when D is 0; each extent (EXTENT-CK).
 : DATA-CK ( -- )
    RD-AT @ DATA-AT !
    RD-U64 {: d:n :}
-   d RD-SKIP
-   RD-AT @ CELLS-AT !
-   24 RD-COUNT 0 ?do d CELL-ROW-CK loop
-   RD-AT @ STRS-AT !
-   0  16 RD-COUNT 0 ?do d STRING-CK loop drop
+   d 0< if BAD then
+   RD-AT @ EXTS-AT !
+   8 RD-COUNT {: x:n :}
+   x 0=  d 0<>  and if BAD then
+   0  x 0 ?do
+      RD-U64 {: s:n :}
+      s over <  s d >  or  i 0=  s 0<>  and  or if BAD then
+      s max
+   loop drop
+   x 0 ?do i d EXTENT-CK loop
    RD-AT @ STORES-AT !
    40 RD-COUNT 0 ?do STORE-CK loop
    OWN-DATA-MAX @ d > if BAD then ;
@@ -3225,46 +3426,61 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 : REFS-KEPT? ( -- bool ) KEPT-ROWS  REFS BYTES$ nip FILES-ROW-BYTES /  = ;
 
 
-\ The word count of the PRIOR TIMES block at the offset, which ends by end, and true; 0 and false
-\ when the count or its words pass end.
-: PRIOR-COUNT ( n n -- n bool )
-   {: at:n end:n :}
+\ The count of size-byte rows of the PRIOR TIMES block at the offset, which ends by end, and true;
+\ 0 and false when the count or its rows pass end.
+: PRIOR-COUNT ( n n n -- n bool )
+   {: at:n end:n size:n :}
    at 8 +  end > if 0 false exit then
    at PRIOR@ {: n:n :}
-   n 0<  n  end at - 8 -  WORD-BYTES /  >  or if 0 false exit then
+   n 0<  n  end at - 8 -  size /  >  or if 0 false exit then
    n true ;
+
+\ The offset in PRIOR where its TIMES block ends.
+: PRIOR-TIMES-END ( -- n ) TIMES-FIELD PRIOR@  TIMES-FIELD 8 + PRIOR@ + ;
 
 
 \ PRIOR's TIMES block (PRIOR-READ): the offset of its first word and its word count, and true;
 \ false when the count leaves TIMES.
 : PRIOR-WORDS ( -- n n bool )
    TIMES-FIELD PRIOR@ {: first:n :}
-   first  TIMES-FIELD 8 + PRIOR@ + {: end:n :}
-   first end PRIOR-COUNT {: n:n found:bool :}
+   first PRIOR-TIMES-END WORD-BYTES PRIOR-COUNT {: n:n found:bool :}
    first 8 +  n  found ;
 
+\ PRIOR's extents, after its n words at the offset: the offset of the first and their count; 0 0
+\ when the count leaves TIMES.
+: PRIOR-EXTS ( n n -- n n )
+   {: words:n n:n :}
+   words  n WORD-BYTES * + {: at:n :}
+   at PRIOR-TIMES-END EXT-BYTES PRIOR-COUNT {: x:n found:bool :}
+   found 0= if 0 0 exit then
+   at 8 +  x ;
 
-\ The old piece the running piece's words compare with (PRIOR-PIECE!): its offset in PRIOR, its
-\ length, the offset in PRIOR of its first word in TIMES, its words, 0 for none, the word OLD-WORD
-\ tries first, and KEPT-ROWS.
+
+\ The old piece the running piece's words and extents compare with (PRIOR-PIECE!): its offset in
+\ PRIOR, its length, the offset in PRIOR of its first word in TIMES, its words, 0 for none, the word
+\ OLD-WORD tries first, KEPT-ROWS, and the same three for its extents (OLD-EXT).
 variable PRIOR-AT
 variable PRIOR-SIZE
 variable PRIOR-FIRST-WORD
 variable PRIOR-WORDS-N
 variable PRIOR-NEXT
 variable KEPT-ROWS-N
+variable PRIOR-FIRST-EXT
+variable PRIOR-EXTS-N
+variable PRIOR-EXT-NEXT
 
-\ PRIOR's piece and its TIMES block as the old piece (PRIOR-PIECE, PRIOR-WORDS); none when old is
-\ false or either fails.
+\ PRIOR's piece and its TIMES block as the old piece (PRIOR-PIECE, PRIOR-WORDS, PRIOR-EXTS); none
+\ when old is false or either fails.
 : PRIOR-PIECE! ( bool -- )
    {: old:bool :}
-   0 PRIOR-WORDS-N !  0 PRIOR-NEXT !
+   0 PRIOR-WORDS-N !  0 PRIOR-NEXT !  0 PRIOR-EXTS-N !  0 PRIOR-EXT-NEXT !
    old 0= if exit then
    PRIOR-PIECE {: at:n u:n t:n ok:bool :}
    ok 0= if exit then
    PRIOR-WORDS {: words:n n:n found:bool :}
    found 0= if exit then
-   at PRIOR-AT !  u PRIOR-SIZE !  words PRIOR-FIRST-WORD !  n PRIOR-WORDS-N !  KEPT-ROWS KEPT-ROWS-N ! ;
+   at PRIOR-AT !  u PRIOR-SIZE !  words PRIOR-FIRST-WORD !  n PRIOR-WORDS-N !  KEPT-ROWS KEPT-ROWS-N !
+   words n PRIOR-EXTS  PRIOR-EXTS-N !  PRIOR-FIRST-EXT ! ;
 
 
 \ Word w's text range in the running piece, which starts at the offset in PIECES: its offset from
@@ -3318,16 +3534,21 @@ variable KEPT-ROWS-N
    -1 ;
 
 
-\ Whether word w's range s holds the bytes of the old word's at offset old in PRIOR, a range of the
-\ old piece.
+\ Whether the running piece's range at offset noff, nu bytes long, holds the bytes of the old piece's
+\ range at ooff, ou bytes long, inside the old piece; offsets from each piece's first byte, the
+\ running piece's at the offset start in PIECES.
+: SPAN= ( n n n n n -- bool )
+   {: start:n noff:n nu:n ooff:n ou:n :}
+   ooff 0<  ou 0<  or  ooff PRIOR-SIZE @ >  or  ou PRIOR-SIZE @ ooff - >  or if false exit then
+   nu ou <> if false exit then
+   PIECES BYTES$ drop start + noff +  nu  PRIOR BYTES$ drop PRIOR-AT @ + ooff +  ou  STR= ;
+
+\ Whether word w's range s holds the bytes of the old word's at offset old in PRIOR (SPAN=).
 : SAME-SPAN? ( n n n n -- bool )
    {: start:n w:n old:n s:n :}
    start w s NEW-SPAN {: noff:n nu:n :}
    old 8 +  s 16 * + {: at:n :}
-   at PRIOR@  at 8 + PRIOR@ {: ooff:n ou:n :}
-   ooff 0<  ou 0<  or  ooff PRIOR-SIZE @ >  or  ou PRIOR-SIZE @ ooff - >  or if false exit then
-   nu ou <> if false exit then
-   PIECES BYTES$ drop start + noff +  nu  PRIOR BYTES$ drop PRIOR-AT @ + ooff +  ou  STR= ;
+   start noff nu  at PRIOR@  at 8 + PRIOR@  SPAN= ;
 
 
 \ The time of the record word w binds (WORD-SPANS' cell 7), 0 for none; the record is an earlier
@@ -3364,10 +3585,39 @@ variable KEPT-ROWS-N
    off TIMES U64+  u TIMES U64+ ;
 
 
+\ The offset in PRIOR of the old piece's extent with extent e's kind, sum and count, -1 for none;
+\ searched as OLD-WORD searches, from PRIOR-EXT-NEXT.
+: OLD-EXT ( n -- n )
+   {: e:n :}
+   e 1 EXT @  e 2 EXT @  e 3 EXT @ {: kind:n sum:n count:n :}
+   PRIOR-EXTS-N @ {: n:n :}
+   n 0 ?do
+      PRIOR-EXT-NEXT @ i + n mod {: o:n :}
+      PRIOR-FIRST-EXT @  o EXT-BYTES * + {: at:n :}
+      at 24 + PRIOR@ kind =  at 32 + PRIOR@ sum =  and  at 40 + PRIOR@ count =  and if
+         o 1 + PRIOR-EXT-NEXT !  at unloop exit
+      then
+   loop
+   -1 ;
+
+
+\ Extent e's time: its old extent's (OLD-EXT) when that has one, every FILES row its cell rows name
+\ is within KEPT-ROWS-N and its span holds the old span's bytes (SPAN=); else now.
+: EXT-TIME ( n n n -- n )
+   {: start:n e:n now:n :}
+   e OLD-EXT {: old:n :}
+   old 0< if now exit then
+   old PRIOR@ {: t:n :}
+   t 0=  e 6 EXT @ KEPT-ROWS-N @ >  or if now exit then
+   start  e 4 EXT @ start -  e 5 EXT @  old 8 + PRIOR@  old 16 + PRIOR@  SPAN= 0= if now exit then
+   t ;
+
+
 \ The running piece's TIMES block, the piece starting at the offset in PIECES: its word count, then
 \ per word its time (WORD-TIME), also into WORD-TIMES, its entry, emission and text ranges, the
 \ time of the record it binds (BOUND-TIME), the bits of the rows naming it from outside, and its
-\ sum and count (REC-ID).
+\ sum and count (REC-ID); then its extent count, then per extent its time (EXT-TIME), its span's
+\ offset and length, its kind, sum and count.
 : TIMES+ ( n n -- )
    {: start:n now:n :}
    WORDS-N @ TIMES U64+
@@ -3380,6 +3630,12 @@ variable KEPT-ROWS-N
       FILE-REC @ i + REC-ID {: sum:n count:n :}
       sum TIMES U64+  count TIMES U64+
       t  FILE-REC @ i +  WORD-TIMES !
+   loop
+   EXTS-N @ TIMES U64+
+   EXTS-N @ 0 ?do
+      start i now EXT-TIME TIMES U64+
+      i 4 EXT @ start - TIMES U64+  i 5 EXT @ TIMES U64+
+      i 1 EXT @ TIMES U64+  i 2 EXT @ TIMES U64+  i 3 EXT @ TIMES U64+
    loop ;
 
 
@@ -3791,31 +4047,41 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    E-COMP-STATE throw ;
 
 
-\ The object's DATA bytes at here, then its cells, strings and stores, after the file's
-\ entries; the caller sets FILE-DP to here's distance from NULL-PTR first, as RUN-FILE does.
+\ One pass over the object's extents, each at FILE-DP plus its start: pass 0 copies their bytes, 1
+\ puts their cells (PUT-CELL), 2 adopts their strings' bodies (INTERN:ADOPT).
+: LINK-EXTENTS ( n -- )
+   {: pass:n :}
+   EXTS-AT @  OBJECT BYTES$ nip  RD-OPEN
+   8 RD-COUNT {: x:n :}
+   x 8 * RD-SKIP
+   x 0 ?do
+      EXTS-AT @ 8 + i 8 * + OBJ@  FILE-DP @ + {: at:n :}
+      RD-U64 RD-U64 RD-U64 RD-U64 {: kind:n sum:n count:n u:n :}
+      RD-AT @ {: bytes:n :}
+      u RD-SKIP
+      GOOD? 0= if E-COMP-STATE throw then
+      pass 0 = if  OBJECT BYTES$ drop bytes +  NULL-PTR BYTE-VIEW at +  u BYTE-COPY  then
+      pass 2 =  kind 2 =  and if  at 8 + INTERN:ADOPT  then
+      RD-U64 0 ?do
+         RD-U64 RD-U64 {: off:n ck:n :}
+         RD-REF {: tag:n rx:n ry:n rz:n rw:n :}
+         GOOD? 0= if E-COMP-STATE throw then
+         pass 1 = if  tag rx ry rz rw RESOLVE  ck  at off +  PUT-CELL  then
+      loop
+   loop
+   GOOD? 0= if E-COMP-STATE throw then ;
+
+
+\ The object's DATA at here: every extent's bytes, then their cells, then their strings
+\ (LINK-EXTENTS); then its stores, after the file's entries. The caller sets FILE-DP to here's
+\ distance from NULL-PTR first, as RUN-FILE does.
 : LINK-DATA ( -- )
    LINK-CLEAR
    EDGES-N @ {: start:n :}
    here NULL-PTR -  FILE-DP @ <> if E-COMP-STATE throw then
    DATA-AT @ OBJ@ {: d:n :}
    d allot
-   OBJECT BYTES$ drop DATA-AT @ 8 + +  NULL-PTR BYTE-VIEW FILE-DP @ +  d BYTE-COPY
-   CELLS-AT @  OBJECT BYTES$ nip  RD-OPEN
-   RD-U64 0 ?do
-      RD-U64 RD-U64 {: off:n kind:n :}
-      RD-REF {: tag:n x:n y:n z:n w:n :}
-      GOOD? 0= if E-COMP-STATE throw then
-      tag x y z w RESOLVE  kind  FILE-DP @ off +  PUT-CELL
-   loop
-   GOOD? 0= if E-COMP-STATE throw then
-   STRS-AT @  OBJECT BYTES$ nip  RD-OPEN
-   RD-U64 0 ?do
-      RD-U64 {: off:n :}
-      RD-U64 drop
-      GOOD? 0= if E-COMP-STATE throw then
-      FILE-DP @ off + INTERN:ADOPT
-   loop
-   GOOD? 0= if E-COMP-STATE throw then
+   0 LINK-EXTENTS  1 LINK-EXTENTS  2 LINK-EXTENTS
    STORES-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-REF {: ctag:n cx:n cy:n cz:n cw:n :}

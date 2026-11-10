@@ -163,7 +163,7 @@ package FILE-OBJECTS-TEST
 64 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
 32 constant FILES-ROW                    \ a FILES row's bytes (linker.f FILES-ROW-BYTES)
 24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp, 0 0 -1 if it never links
-8192 constant CAP                        \ an object's bytes
+16384 constant CAP                       \ an object's bytes
 16384 constant STATE-CAP                 \ a build's output before its last line
 262144 constant PROG-CAP                 \ a program's bytes, L's included
 
