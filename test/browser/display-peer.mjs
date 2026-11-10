@@ -150,9 +150,7 @@ async function browser() {
     { detached: true, stdout: "ignore", stderr: Bun.file(join(output, "chrome.log")) });
   let socket, failure;
   try {
-    const active = join(profile, "DevToolsActivePort");
-    await until(() => Bun.file(active).exists());
-    const port = readFileSync(active, "utf8").split("\n")[0];
+    const port = await devtoolsPort(join(profile, "DevToolsActivePort"));
     const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" })).json();
     socket = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
@@ -376,4 +374,16 @@ async function until(check) {
   const limit = performance.now() + 15000;
   while (performance.now() < limit) { if (await check()) return; await Bun.sleep(25); }
   throw new Error("browser condition timed out");
+}
+
+// Chrome creates DevToolsActivePort before it writes the port into it, so the
+// port is taken only from a whole first line.
+async function devtoolsPort(active) {
+  let port;
+  await until(() => {
+    try { port = /^(\d+)\n/.exec(readFileSync(active, "utf8"))?.[1]; }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    return port !== undefined;
+  });
+  return port;
 }
