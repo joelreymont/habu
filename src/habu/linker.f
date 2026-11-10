@@ -374,7 +374,7 @@ variable FILE-DP
 variable FILE-SRC                    \ the compiling file's source, its distance from NULL-PTR (LOAD)
 variable FILE-SRC-U                  \ its length in bytes
 variable FILE-PART                   \ the part compiling or linking, from 0
-variable FILE-OFF                    \ the offset in the source the compiling part starts at
+variable FILE-OFF                    \ the offset in the source the compiling or linking part starts at
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-EVENT                  \ the first event of the loader's log the piece made
 variable FILE-RUN                    \ the first entry of OUTER's run log the piece made
@@ -391,10 +391,11 @@ variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of th
 \ a piece starts or ends off TOP-SCOPE?, or a load it asked for never reached the runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 
-\ The magic, the key, the part's number and time, then per section INPUT FILES REQUESTS NAMES
-\ REACHED PATHS WORDS EXTENTS TIMES PIECES an offset and a length (0 0 for an empty FILES to
-\ REACHED, WORDS or EXTENTS); then the sections, in order.
-8 KEY-BYTES + 16 + 10 2 * 8 * + constant HEADER-BYTES
+\ The magic, the key, the part's number and time, the offset in the source the part starts at
+\ (FILE-OFF), then per section INPUT FILES REQUESTS NAMES REACHED PATHS WORDS EXTENTS TIMES PIECES
+\ an offset and a length (0 0 for an empty FILES to REACHED, WORDS or EXTENTS); then the sections.
+8 KEY-BYTES + 24 + constant PAIRS-AT        \ the header's first pair, INPUT's
+PAIRS-AT 10 2 * 8 * + constant HEADER-BYTES
 \ WORDS, EXTENTS and TIMES, which hold times, precede PIECES, which test/file-objects.f compares
 \ across out roots.
 HEADER-BYTES 32 - constant TIMES-FIELD      \ the header's TIMES pair
@@ -2511,7 +2512,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
    0 OBJECT U64+  FILE-KEY 8 + LE:U64@ OBJECT U64+
-   FILE-PART @ OBJECT U64+  t OBJECT U64+
+   FILE-PART @ OBJECT U64+  t OBJECT U64+  FILE-OFF @ OBJECT U64+
    HEADER-BYTES OBJECT U64+  INPUT-BYTES OBJECT U64+
    refsu 0<> if files-at else 0 then OBJECT U64+  refsu OBJECT U64+
    requ 0<> if reqs-at else 0 then OBJECT U64+  requ OBJECT U64+
@@ -3146,7 +3147,7 @@ variable RD-END
    loop ;
 
 
-\ The header, its part number FILE-PART's, and every section before PIECES as WRITE-OBJECT lays
+\ The header, its part number FILE-PART's and its start FILE-OFF's, and every section before PIECES as WRITE-OBJECT lays
 \ them: INPUT against INPUT-STAMP, NAMES replayed (NAMES-CK, NAMED-CK), REACHED-CK, PATHS skipped as
 \ KEYS-IN read it, WORDS-CK, EXTENTS-CK, TIMES-CK; then PIECE-AT, PIECES' offset.
 : HEADER-CK ( -- )
@@ -3158,7 +3159,7 @@ variable RD-END
    s" HABUFOBJ" RD-SAME
    FILE-KEY KEY-BYTES RD-SAME
    GOOD? 0= if exit then
-   FILE-PART @ RD-EQ  8 RD-SKIP
+   FILE-PART @ RD-EQ  8 RD-SKIP  FILE-OFF @ RD-EQ
    HEADER-BYTES RD-EQ  INPUT-BYTES RD-EQ
    RD-U64 RD-U64 {: off:n refsu:n :}
    refsu 0<  refsu FILES-ROW-BYTES mod 0<>  or  refsu len files-at - >  or if BAD exit then
@@ -3653,7 +3654,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    buf BYTES$ {: a:ptr len:n :}
    len HEADER-BYTES < if false exit then
    a 8  s" HABUFOBJ" STR= 0= if false exit then
-   8 KEY-BYTES + 16 + {: pairs:n :}
+   PAIRS-AT {: pairs:n :}
    a pairs + 16 + LE:U64@  a pairs + 24 + LE:U64@ {: foff:n fu:n :}
    a pairs + 80 + LE:U64@  a pairs + 88 + LE:U64@ {: poff:n pu:n :}
    foff 0<  fu 0<  or  foff len >  or  fu len foff - >  or  fu FILES-ROW-BYTES mod 0<>  or if false exit then
@@ -3692,7 +3693,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    len HEADER-BYTES < if false exit then
    a 8  s" HABUFOBJ" STR= 0= if false exit then
    a 8 + KEY-BYTES  FILE-KEY KEY-BYTES  STR= 0= if false exit then
-   8 KEY-BYTES + 16 + {: pairs:n :}
+   PAIRS-AT {: pairs:n :}
    pairs 16 + PRIOR-PAIR?  pairs 32 + PRIOR-PAIR? and  TIMES-FIELD PRIOR-PAIR? and  PIECES-FIELD PRIOR-PAIR? and
    0= if false exit then
    pairs 24 + PRIOR@ FILES-ROW-BYTES mod 0= ;
@@ -3708,7 +3709,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 \ The count of PRIOR's leading FILES rows from 1 that equal REFS' rows by key and piece number.
 : KEPT-ROWS ( -- n )
    REFS BYTES$ {: refs:ptr refsu:n :}
-   8 KEY-BYTES + 16 + 16 + {: files:n :}
+   PAIRS-AT 16 + {: files:n :}
    PRIOR BYTES$ drop  files PRIOR@ + {: old:ptr :}
    files 8 + PRIOR@ FILES-ROW-BYTES /  refsu FILES-ROW-BYTES /  min {: n:n :}
    n 0 ?do
@@ -4794,7 +4795,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       TOP-SCOPE? CROSS? 0= and if LINK-PART else false then
    while
       REQS-N @ 0= if true exit then
-      drop REPLAY
+      drop REPLAY  dup FILE-OFF !
       path pathu PATH!  MARKS
    repeat
    false ;
@@ -4811,7 +4812,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    path pathu root rootu PATH+
    MARKS
    INPUT!
-   0 FILE-PART !
+   0 FILE-PART !  0 FILE-OFF !
    path pathu LINK-PARTS if drop 1 LINKED-N +! exit then {: off:n :}
    OBJECT-OPEN  COPY-BELOW
    source NULL-PTR - FILE-SRC !  sourceu FILE-SRC-U !  off FILE-OFF !

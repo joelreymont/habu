@@ -560,7 +560,7 @@ PATH-CAP BUFFER: FIFTH-BUF
 \ ---- objects the link refuses or links wrong ----
 \ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
 8192 constant CRAFT-CAP
-184 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
+192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 PATH-CAP BUFFER: CRAFT-BUF
 PATH-CAP BUFFER: CRAFT-PATH   variable CRAFT-PATH-U
 PATH-CAP BUFFER: CRAFT-TAIL   variable CRAFT-TAIL-U   \ the end of the path CRAFT-FIND seeks
@@ -797,7 +797,7 @@ variable SLOT-S                          \ and their count
    space seven FMT:.INT  space eight FMT:.INT  space nine FMT:.INT  space ten FMT:.INT cr ;
 
 \ ---- words a source spells ----
-136 constant WORDS-FIELD                \ the header's WORDS offset, then length (linker.f WRITE-OBJECT)
+144 constant WORDS-FIELD                \ the header's WORDS offset, then length (linker.f WRITE-OBJECT)
 32 constant WORD-ROW-BYTES               \ a WORDS row: FILES row, sum, count, time
 
 : WORDS-A$ ( -- ptr u8 n ) s" words" s" a.f" FIRST-BUF FILE-IN ;

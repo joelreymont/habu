@@ -159,9 +159,9 @@ package FILE-OBJECTS-TEST
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
                                          \ words sequence's five, the ran sequence's four
-200 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
-184 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
-64 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
+208 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
+192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
+72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
 32 constant FILES-ROW                    \ a FILES row's bytes (linker.f FILES-ROW-BYTES)
 24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp, 0 0 -1 if it never links
 16384 constant CAP                       \ an object's bytes
