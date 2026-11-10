@@ -160,7 +160,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ (COMPILED-TIME as it compiled), its first and end record index, its first and end
 \ emission, the data pointer as the piece starts and ends, and 1 when the piece holds a
 \ header-data address (HOLDS-HEADER), else 0. A FILES row is a BUILT row's first
-\ FILES-ROW-BYTES bytes.
+\ FILES-ROW-BYTES bytes, its time 0 when only WORDS rows name the piece (REF-FILE).
 16 constant KEY-BYTES
 KEY-BYTES 72 + constant BUILT-BYTES
 KEY-BYTES constant BUILT-PIECE
@@ -174,6 +174,9 @@ KEY-BYTES 8 + constant LOADER-BYTES
 create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
 create BUILT BUF:HDR-BYTES allot
+\ BUILT's row count as the outermost load starts (ENTER): a later build checks that load's tree
+\ (CHECK-PIECES) while a piece built since can be ROW-PENDING, with no word times.
+variable ROOT-BUILT
 create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
 \ The object's WORDS rows, one per earlier word it refers to: its FILES row k from 1, its
 \ number in that piece and its time (WORD-TIMES); WORD-RECS holds each row's record index.
@@ -637,20 +640,25 @@ variable PENDING-STORERS-N           \ its pairs
 
 : TOPPED ( n -- n ) dup TOP-ROW @ max TOP-ROW ! ;
 
-\ The FILES row naming the BUILT row's piece by its file's key, its number and its time,
-\ 1-based; added on first use.
-: REF-FILE ( n -- n )
-   {: row:n :}
+\ The FILES row, 1-based, naming the BUILT row's piece by its file's key and its number; added
+\ on first use. Its time is the piece's once a use is whole, else 0: only WORDS rows decide.
+: REF-FILE ( n bool -- n )
+   {: row:n whole:bool :}
    row BUILT-AT {: at:ptr :}
    REFS BYTES$ {: refs:ptr refsu:n :}
    refsu FILES-ROW-BYTES / {: n:n :}
    n 0 ?do
-      refs i FILES-ROW-BYTES * +  FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if
+      refs i FILES-ROW-BYTES * + {: r:ptr :}
+      r KEY-BYTES 8 +  at KEY-BYTES 8 +  STR= if
+         whole  r BUILT-TIME + LE:U64@ 0=  and if
+            at BUILT-TIME + LE:U64@  r BUILT-TIME +  LE:U64!
+         then
          i 2 + USED-RESERVE  row 1 +  i 1 + USED !
          i 1 + TOPPED unloop exit
       then
    loop
    at FILES-ROW-BYTES REFS SPAN+
+   whole 0= if  0  REFS BYTES$ drop  n FILES-ROW-BYTES * +  BUILT-TIME +  LE:U64!  then
    n 2 + USED-RESERVE  row 1 +  n 1 + USED !
    n 1 + TOPPED ;
 
@@ -670,14 +678,15 @@ variable PENDING-STORERS-N           \ its pairs
    idx WORD-RECS U64+ ;
 
 \ A record reference: the file, 0 for this one, then the index in that file; an earlier file's
-\ record also gets its WORDS row.
+\ record also gets its WORDS row. Its FILES row is whole (REF-FILE) for a piece built since
+\ ROOT-BUILT, or a word with no time for its WORDS row to check.
 : REF+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ >= if
       0 PIECES U64+  idx FILE-REC @ - PIECES U64+  exit
    then
    idx BUILT-ROW {: row:n :}
-   row REF-FILE {: k:n :}
+   row  row ROOT-BUILT @ >=  idx REC-TIME 0=  or  REF-FILE {: k:n :}
    row BUILT-AT BUILT-FIRST + LE:U64@ {: first:n :}
    k PIECES U64+  idx first - PIECES U64+
    k idx first WORD-ROW+ ;
@@ -935,7 +944,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 \ FILES gains each earlier file the source names, after the files PIECES and REQUESTS reference.
 : NAMED+ ( -- )
    NAMED-ROWS BYTES$ {: a:ptr u:n :}
-   u 8 / 0 ?do a i 8 * + LE:U64@ REF-FILE drop loop ;
+   u 8 / 0 ?do a i 8 * + LE:U64@ true REF-FILE drop loop ;
 
 
 \ ---- dependencies by run --------------------------------------------------------
@@ -1044,7 +1053,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    0 WALK-N !
    RAN-ROWS BYTES$ nip 8 / 0 ?do  RAN-ROWS BYTES$ drop i 8 * + LE:U64@ WALK+  loop
    0 begin  WALK-USES  own WALK-STORERS  dup WALK-N @ =  until drop
-   BUILT-N 0 ?do  i WALKED @ 0<> if i REF-FILE REACHED U64+ then  loop
+   BUILT-N 0 ?do  i WALKED @ 0<> if i true REF-FILE REACHED U64+ then  loop
    own HEADER-REACHED? or if -1 REACHED U64+ then ;
 
 
@@ -1058,7 +1067,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    then
    v DP-ROW {: row:n hit:bool :}
    hit if
-      3 PIECES U64+  row REF-FILE PIECES U64+
+      3 PIECES U64+  row true REF-FILE PIECES U64+
       v  row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ true exit
    then
    v BASE @ >=  v OPEN-DP @ <  and if
@@ -1069,7 +1078,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    then
    v DP-END-ROW {: end-row:n end-hit:bool :}
    end-hit if
-      3 PIECES U64+  end-row REF-FILE PIECES U64+
+      3 PIECES U64+  end-row true REF-FILE PIECES U64+
       v  end-row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ true exit
    then
    false ;
@@ -1422,7 +1431,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
          0 PIECES U64+  qe FILE-EM @ - PIECES U64+
       else
          qe EM-ROW {: row:n :}
-         row REF-FILE PIECES U64+
+         row true REF-FILE PIECES U64+
          qe  row BUILT-AT BUILT-EM + LE:U64@ -  PIECES U64+
       then
       qf PIECES U64+ true exit
@@ -2312,12 +2321,20 @@ variable RD-END
    BAD ;
 
 
-\ The BUILT row with the FILES row's key, piece number and time (REF-FILE), and true; false when
-\ none.
+\ Whether the FILES row names the BUILT row: its key and piece number, and its time 0 (REF-FILE) or
+\ the BUILT row's.
+: ROW-FITS? ( ptr u8 ptr u8 -- bool )
+   {: f:ptr b:ptr :}
+   f KEY-BYTES 8 +  b KEY-BYTES 8 +  STR= 0= if false exit then
+   f BUILT-TIME + LE:U64@ {: t:n :}
+   t 0=  t  b BUILT-TIME + LE:U64@  =  or ;
+
+
+\ The BUILT row the FILES row names (ROW-FITS?), and true; false when none.
 : BUILT-MATCH ( ptr u8 -- n bool )
    {: at:ptr :}
    BUILT-N 0 ?do
-      i BUILT-AT FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if i true unloop exit then
+      at i BUILT-AT ROW-FITS? if i true unloop exit then
    loop
    0 false ;
 
@@ -2567,14 +2584,15 @@ variable RD-END
 
 
 \ WORDS' u bytes from RD-AT, a multiple of WORD-ROW-BYTES (WORD-ROW+): bad when a row's FILES row is
-\ not in FILES, or is built and lacks the word or gives it another time; a pending or absent piece's
-\ rows wait for its FILES row (ROWS-CK).
+\ not in FILES, is time 0 (REF-FILE) and not built, or is built and lacks the word or gives it
+\ another time; a whole row's pending or absent piece waits for its FILES row (ROWS-CK).
 : WORDS-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
    u WORD-ROW-BYTES / 0 ?do
       RD-U64 RD-U64 RD-U64 {: k:n w:n t:n :}
       k FILE-ROW? 0= if BAD unloop exit then
+      k FILES-ROW BUILT-TIME + LE:U64@ 0=  k FILE-ROWS @ 0<  and if BAD unloop exit then
       k FILE-ROWS @ 0 >= if
          w 0<  w k FILE-RECS >=  or if BAD unloop exit then
          k BUILT-FIRST BUILT@ w + REC-TIME  t <> if BAD unloop exit then
@@ -3982,7 +4000,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    {: k:n :}
    REFS BYTES$ drop  k 1 - FILES-ROW-BYTES * + {: r:ptr :}
    BUILT-N 0 ?do
-      r FILES-ROW-BYTES  i BUILT-AT FILES-ROW-BYTES  STR= if i unloop exit then
+      r i BUILT-AT ROW-FITS? if i unloop exit then
    loop
    E-COMP-STATE throw ;
 
@@ -4453,7 +4471,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    PUSH-FRAME
    path pathu root rootu source sourceu q LOAD
    POP-FRAME
-   BUILT-N 1 - REF-FILE REQUESTS U64+
+   BUILT-N 1 - true REF-FILE REQUESTS U64+
    LOADER$ {: k:ptr ku:n :}
    k FILE-KEY ku BYTE-COPY
    align
@@ -4462,6 +4480,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 
 \ The load, nested when a compiling file requested it.
 : ENTER ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   LOADER$ nip 0= if BUILT-N ROOT-BUILT ! then
    LOADER$ nip 0<>  LINKING? 0=  and if NEST else LOAD then
    construct step returned PROGRESS ! ;
 
