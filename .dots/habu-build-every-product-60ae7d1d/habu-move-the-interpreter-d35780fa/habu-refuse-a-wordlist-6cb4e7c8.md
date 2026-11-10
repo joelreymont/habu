@@ -1,11 +1,19 @@
 ---
-title: "Refuse a wordlist id past WID:MAX where ids are made"
+title: Choose the bound a wordlist id may not pass
 status: open
 priority: 3
 issue-type: task
 created-at: "2026-11-01T04:36:12.521118+02:00"
 ---
 
-Problem: wordlist ids are dense counters (WIDN-CELL), and nothing that makes one checks WID:MAX (layout.f WID:MAX = $FFFFFFFE): habu1.f BWORDLIST (~4312), habu2.f NAMESPACE-RECORD (~4044) and C-PACKAGE-ALLOC-WIDS (~9681). The only refusal of id exhaustion is the generated-declaration preflight (src/core/generated-declaration-protection.f ~100), against its own WID-MAX of $FFFFFFFF, one past the layout's. Acceptance: the allocator that hands out an id refuses one past WID:MAX with a named engine error, at both tiers and in the Habu loop; the preflight's private bound goes. Found reading the code (/tmp/jerry-big/protwid-design-opus.md). Files: src/habu/habu1.f, habu2.f, outer.f, src/core/generated-declaration-protection.f. Verify: a row that sets WIDN near the bound and makes two wordlists; candidate build. Related: habu-keep-prot-wid-3dd32ed9. Claim: unassigned.
+Problem: wordlist ids are a dense counter (layout.f WIDN-CELL), and nothing that hands one out checks a bound: arm64 habu1.f:4391 BWORDLIST, habu2.f:4180 NAMESPACE-RECORD (the counter at :4201-4206 and :4228-4229) and habu2.f:10015 C-PACKAGE-ALLOC-WIDS; x86-64 kernel-x64.f:4250 (the `wordlist` row) and :5122 NAMESPACE-RECORD-BODY. The layout's WID:MAX and the generated-declaration preflight's private WID-MAX, which the old text named, are gone. Which bound to refuse at is a choice nobody has made. The candidates in the tree: PROT-WID-MAX (layout.f:709, 8192), past which a package has no protection bit and so can never be sealed (outer.f:530 refuses its policy, habu1.f:5636 answers "never protected"); the u32 wid of the compact AOT dictionary record (layout.f:755), past which a captured id would not fit; and the cell itself, whose wrap would reach the negative retired markers (DICT-WL:RETIRED and its kin). Found reading the code. This is an acceptance case of its parent: fix it in the code that stays, never in the machinery the parent replaces.
 
-Census 2026-11-04: an acceptance case of its parent; fix it in the code that stays (named above), never in the machinery the parent replaces.
+Acceptance: the bound is decided, recorded beside layout.f's wid constants, and an implementation dot is filed: each allocator above refuses an id past it with a named engine error, on both arches.
+
+Files: src/habu/layout.f; later src/habu/habu1.f, src/habu/habu2.f, src/habu/kernel-x64.f.
+
+Verify: the decision is in layout.f and the implementation dot names the bound.
+
+Depends: none.
+
+Ownership: unassigned. Claim: unassigned.

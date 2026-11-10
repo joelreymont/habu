@@ -1,12 +1,21 @@
 ---
-title: Read each definition once
+title: Design checking a definition in the one reading
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-23T18:41:43.070920+03:00"
 ---
 
-Target: docs/compilation.md 'Defining a word' (one reader; the checker records checked events; the platform codegen compiles from them). Today a definition is read three times: the machine-code reader compiles it through tier 0 (src/habu/habu2.f, src/habu/jit.f, pass-2 replay), the check hook re-reads the source into a token tape (src/core/check-hook.f, src/compiler/native/tape.f), and tier 1 rebuilds its structure (src/compiler/native/elaborate.f, hir-word.f). Control-word meaning is written about nine times. ARM64 keeps both tiers (Joel, 2026-10-23); both must read the same events. Acceptance: one reading per definition; tape token stream, second check pass, elaborator and pass-2 replay deleted; native suite and two-generation build green; tools/compile-floor.f before and after. Needs a design before any lane (Codex Astra round 2026-10-23, ~/.cache/tmp/jerry-onereader/). Claim: unassigned.
+Target: docs/compilation.md 'Defining a word' (:21): one reader; the checker records checked events; the platform code generator compiles from them.
 
-Design round 1 (Codex Astra, 2026-10-23, read-only at cc0675c5; full text ~/.cache/tmp/jerry-onereader/out.txt). Events: a resolved, typed program the checker builds while immediates run - function, literal, call, primitive, block, jump/branch/return, local bind/read, tag dispatch, construction, with value layouts (widths, bundle boundaries, quotation windows) only where consumers need them; one reusable chunk arena per definition. Milestones, each green on test/run.f and two-generation: A incremental checking (delete CHECK-RETRY/RESCAN, checker.f:25863); B tier 1 reads events (delete native/tape.f, feed.f, elaborate.f, hir-word.f control tables); C tier 0 reads events at `;` (delete EM-P2-*, LOWER-TXN, replay cells); D the Habu reader is authoritative on ARM64 (definers.f capture, check-hook.f re-check, verify-source.f body parser, TYPE-NAME:CONTROL? list); E the Gforth seed hosts the shared reader (delete forth.fs control dispatch and bootstrap/src checkers). Premise corrections: the Habu loop is already x86-64's product interpreter (runtime-x64.f:22); ARM64 tier 1 does not compile through tier 0, and pass 2 runs only on lowering facts.
-Lead ruling on order: B and the event shape (CFG blocks versus nesting markers) wait for the tier-0-versus-tier-1 measurements (~/.cache/tmp/jerry-tm-census/, ~/.cache/tmp/jerry-tm-run/): if one pass replaces tier 1, B is wasted and a one-pass codegen wants nesting markers. E is weighed separately: its only gain is removing a recovery-only mirror. A is needed either way.
+Problem: the checker still reads a definition apart from the reader that compiles it. The check hook re-reads each definition's source (src/core/check-hook.f, CHECK:DEFINITION), and a retry pass reads a body again (src/core/checker.f:27997 CHECK-RETRY and the RESCAN flag at :26367; 20 lines of checker.f name one or the other). The Habu reader on arm64 is not yet the one reader either: src/habu/definers.f's capture, check-hook.f's re-check, src/habu/verify-source.f's body parser and src/core/type-family.f:2324 TYPE-NAME:CONTROL?'s list of control words each know the language's control words again. The earlier design round (milestones A, incremental checking, and D, the Habu reader authoritative on arm64) lived in a scratch directory, not in the tree. Of its other milestones, E is done (bootstrap/ and forth.fs are gone), tier 1's re-read (B: src/compiler/native/tape.f, feed.f, elaborate.f, hir-word.f) goes with habu-delete-tier-1-f5c44fb4, and the JIT's pass-2 replay (C: the EM-P2 words in src/habu/habu2.f) goes with habu-delete-the-jit-d9fdaf67. Arm64 keeps both tiers until then (Joel), and both must read the same events.
+
+Acceptance: a design, decided, for checking each definition during its one reading: what the checker records, how CHECK-RETRY and RESCAN go, and which of the four arm64 control-word lists become readers of it; then lanes are filed as dots.
+
+Files: docs/compilation.md for the design; later src/core/checker.f, src/core/check-hook.f, src/habu/definers.f, src/habu/verify-source.f, src/core/type-family.f.
+
+Verify: the design is in docs/compilation.md and its lanes are dots with acceptance; each lane then keeps the suite and the convergence check (docs/gate.md) green and runs tools/compile-floor.f before and after.
+
+Depends: none.
+
+Ownership: unassigned. Claim: unassigned.
