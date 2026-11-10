@@ -1,5 +1,5 @@
-\ native-hookless-reject.f - the native compiler refuses an ambiguous bare
-\ callee under the definition's name, and a refused definition keeps no row.
+\ native-hookless-reject.f - a definition the checker refuses is refused naming
+\ it and the token refused, and keeps no row.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -61,6 +61,24 @@ variable RC
    s" E-USING-SHADOW-GLOBAL habu: bare 'SW' is ambiguous under using" SAYS
    s" ncomp: cannot compile UT-SHADOW at SW in" SAYS ;
 
+\ A TRUSTED: row whose stored signature does not parse is refused at that token.
+\ Its own process: the uncaught throw ends it, and its exit status is tested.
+: BAD-SIGNATURE ( -- )
+   s" a refused stored signature is refused naming its token" T-LABEL
+   s" ;package TRUSTED: TB8 ( -- nosuch:fam ) 1 NOSUCHWORD ;" SESSION
+   RC @ RC-REJECT T=
+   s" habu: in tb8: bad stored signature '-- nosuch:fam'" SAYS
+   s" ncomp: cannot compile TB8 at nosuch:fam in" SAYS ;
+
+\ A public whose private twin moves other cells is refused at its own name.
+\ Its own process: the uncaught throw ends it, and its exit status is tested.
+: SHADOWED-ARITY ( -- )
+   s" a public its private tail shadows is refused naming the definition" T-LABEL
+   s" ;package package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
+   RC @ RC-REJECT T=
+   s" E-SHADOWED-ARITY habu: public 'sat-a:f'" SAYS
+   s" ncomp: cannot compile F at F in" SAYS ;
+
 \ ---- a refused definition keeps no row ---------------------------------------
 \ The texts outrun a source line, so TEXT holds them; `;package` first makes
 \ them global.
@@ -95,6 +113,8 @@ create TEXT CAP allot                  variable TEXT-U
    T-RESET
    AMBIGUOUS-CALLEE
    SHADOWING-CALLEE
+   BAD-SIGNATURE
+   SHADOWED-ARITY
    REFUSED-CAUGHT
    T-REPORT ;
 

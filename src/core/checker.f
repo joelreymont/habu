@@ -6473,6 +6473,30 @@ CHECKER-REG:}SCRATCH
    FAILSET @ 0= IF NULL-PTR 0 EXIT THEN
    FAILTK FAILTU @ ;
 
+: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@
+      over d + c!
+      1 +
+   REPEAT drop ;
+
+\ The offset of the text at A U in the checked text, -1 when it lies outside.
+: CHECKED-OFF ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a TBASE @ - {: off:n :}
+   off 0 <  off u + TBLEN @ >  or IF -1 EXIT THEN
+   off ;
+
+\ A refusal raised past the walk pins its own token A U as kind KIND over the
+\ walk's pin: at its offset in the checked text, else at that text's first byte.
+: PIN-REFUSED! ( ptr u8 n n -- )
+   {: a:ptr u:n kind:n :}
+   u TOKBUF-ENSURE
+   a FAILTK u CCOPY  u FAILTU !
+   a u CHECKED-OFF {: off:n :}
+   off 0 < IF 0 FAILB !  0 FAILE ! ELSE off FAILB !  off u + FAILE ! THEN
+   0 FAILIX !  kind REFUSAL !  -1 FAILSET ! ;
+
 \ A token refused twice keeps the first: preflight refuses an unmodeled
 \ immediate before anything resolves it, so one the checker cannot resolve
 \ either is refused as the immediate.
@@ -11012,6 +11036,24 @@ CHECKER-REG:}SCRATCH
 
 : ASIG-MISS-A@ ( n -- ptr u8 ) {: at:n :} ASIG-MISS at 2 + + ;
 
+\ The token SGBAD names in signature SA SU, at its copy in the checked text
+\ when the scan holds SA SU's bytes there at SGA SGU, else where the parse read it.
+: SGBAD-AT ( ptr u8 n -- ptr u8 )
+   {: sa:ptr su:n :}
+   SGBAD-A @ sa - {: off:n :}
+   off 0 <  off SGBAD-U @ + su >  or IF SGBAD-A @ EXIT THEN
+   SGA @ SGU @ CHECKED-OFF 0 < IF SGBAD-A @ EXIT THEN
+   SGA @ SGU @ sa su CORE-STR= 0= IF SGBAD-A @ EXIT THEN
+   SGA @ off + ;
+
+\ A refused stored signature SA SU pins the token SGBAD names, or the declaring
+\ name AT ATU when SGBAD names none or the whole row; never a token the walk pinned.
+: SGBAD-PIN ( ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n at:ptr atu:n :}
+   SGBAD @ 0=  SGBAD-U @ 0=  or  SGBAD-A @ sa =  SGBAD-U @ su =  and  or
+   IF at atu RF-SIG PIN-REFUSED! EXIT THEN
+   sa su SGBAD-AT SGBAD-U @ RF-SIG PIN-REFUSED! ;
+
 \ AT is the declaring name as the caller read it, used to place the record.
 : USIG-ADD-BAD ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
@@ -11020,6 +11062,7 @@ CHECKER-REG:}SCRATCH
    0 RECMI !                             \ ... and no min-in to poke
    sa su na nu at atu BADSIG-XT
    MULTI-ERR? IF SIG-COUNT EXIT THEN
+   sa su at atu SGBAD-PIN
    E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
 
 \ An effect with these rows deeper than a record holds is a stored signature
@@ -16088,6 +16131,7 @@ CHECKER-REG:}SCRATCH
    priv SBA-TWIN !
    nin SBA-NIN !  nout SBA-NOUT !  pin SBA-PIN !  pout SBA-POUT !
    1 SHADOW-DIAG-XT
+   NMOFF @ TADDR NMU @ RF-REJECTED PIN-REFUSED!   \ the definition's name, not the walk's token
    E-SHADOWED-ARITY REFUSE-DEF CHECKER-REFUSE ;
 
 \ CHECKER-DEFCAST hands this a name source gave it, so a length that describes
@@ -18413,13 +18457,6 @@ variable CURSYM
    sym s" cwork-buffer" UNSAFE-NAME? or
    sym s" cwork-span" UNSAFE-NAME? or
    sym s" cwork-variable" UNSAFE-NAME? or ;
-
-: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@
-      over d + c!
-      1 +
-   REPEAT drop ;
 
 \ hb's prefix compiles does-clause.f before the checker exists: its row gives
 \ checked bodies the effect. A build checks the file (PE-SPEC-REPLAY's guard).
@@ -26428,6 +26465,7 @@ public
 \ stored-signature intake refuses one outside a multi-error load (USIG-ADD-BAD).
 : REFUSE-SIGNATURE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu na nu BADSIG-XT
+   sa su na nu SGBAD-PIN
    E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
 \ A multi-error pass counts a refusal the checker already reported and goes on,
 \ as GENERATES-REFUSE does; any other code is thrown on.

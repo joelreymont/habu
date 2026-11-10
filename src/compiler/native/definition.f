@@ -496,13 +496,18 @@ private
    M-SCAN @ b + {: p:ptr :}
    SRC$ + p - 0= if CLOSE$ drop else p then  undefined ;
 
-\ A reject or a using refusal (E-USING-SHADOW-GLOBAL, E-USING-AMBIGUOUS) with
-\ no compiler token is the checker's refusal of the body: name the token it
-\ refused instead.
+\ A refusal the checker pins its own token for: a reject, a using refusal, a bad
+\ stored signature (checker.f SGBAD-PIN) or a shadowed arity (SHADOW-ARITY-CK).
+: PINNED? ( n -- bool )
+   {: rc:n :}
+   rc RC-REJECT =  rc E-USING-SHADOW-GLOBAL = or  rc E-USING-AMBIGUOUS = or
+   rc E-BAD-STORED-SIGNATURE = or  rc E-SHADOWED-ARITY = or ;
+
+\ A pinned refusal with no compiler token is the checker's refusal of the
+\ definition: name the token it refused instead.
 : REPORT-REFUSAL ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n p:ptr rc:n :}
-   rc RC-REJECT =  rc E-USING-SHADOW-GLOBAL = or  rc E-USING-AMBIGUOUS = or
-   0=  u 0<> or
+   rc PINNED? 0=  u 0<> or
    if a u p REPORT-FAILURE exit then
    CHECKER-REFUSED$ {: ca:ptr cu:n cp:ptr undefined:bool :}
    ca cu cp REPORT-FAILURE

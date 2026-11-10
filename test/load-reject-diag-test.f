@@ -599,16 +599,24 @@ variable RC
    EXITED @ TTRUE
    RC @ DUP-RC T= ;
 
-\ The native compiler places a structure the checker finds open at a body's
-\ closing `;`, a plain body's or a does> clause's, on the line of that `;`.
-: ASSERT-CLOSE-LINE ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n line:ptr lineu:n :}
+\ body.f is refused by the native compiler, naming definition NAME, the token
+\ TOK it refused and that token's LINE.
+: ASSERT-NCOMP-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n tok:ptr toku:n line:ptr lineu:n :}
    BODY$ RUN
    SB-RESET  10 SB-APPEND-C  s" ncomp: cannot compile " SB-APPEND  name nameu SB-APPEND
-   s"  at ; in " SB-APPEND  BODY$ SB-APPEND  line lineu SB-APPEND  10 SB-APPEND-C
+   s"  at " SB-APPEND  tok toku SB-APPEND  s"  in " SB-APPEND  BODY$ SB-APPEND
+   line lineu SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ CONTAINS? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ REJECT-RC T= ;
+
+\ The native compiler places a structure the checker finds open at a body's
+\ closing `;`, a plain body's or a does> clause's, on the line of that `;`.
+: ASSERT-CLOSE-LINE ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n line:ptr lineu:n :}
+   name nameu s" ;" line lineu ASSERT-NCOMP-LINE ;
 
 : TEST-OPEN-AT-CLOSE ( -- )
    s" an if open at a later line's ; is refused on the line of the ;" T-LABEL
@@ -617,6 +625,13 @@ variable RC
    s" a does> clause leaving an if open is refused on the line of its ;" T-LABEL
    BODY$ S\" : LRD-MKO ( n -- ) create ,\ndoes> ( -- )\n@ 0= if\n;\n" FS:WRITE-ALL
    s" LRD-MKO" s" :4" ASSERT-CLOSE-LINE ;
+
+\ A stored signature the declaration refuses is placed on its refused token's
+\ line, not the name's.
+: TEST-BAD-SIGNATURE-LINE ( -- )
+   s" a refused stored signature on a later line is refused on that line" T-LABEL
+   BODY$ S\" TRUSTED: LRD-BS\n  ( -- nosuch:fam )\n  1 ;\n" FS:WRITE-ALL
+   s" LRD-BS" s" nosuch:fam" s" :2" ASSERT-NCOMP-LINE ;
 
 \ A name only the checker holds, a PRODUCT replay with no word behind it, is
 \ refused by the checker hook's writer (src/core/check-hook.f AT-SOURCE), which
@@ -789,6 +804,7 @@ variable RC
    TEST-EVALUATED-SLICE
    TEST-REPLAY-DUP-PLACE
    TEST-OPEN-AT-CLOSE
+   TEST-BAD-SIGNATURE-LINE
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
    TEST-IMM-INCLUDE
