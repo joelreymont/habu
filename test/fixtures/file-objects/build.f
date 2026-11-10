@@ -29,7 +29,8 @@
 \ lay s.f's string; private/p.f and private/q.f with p.f's private HELPER, a
 \ name q.f spells, edited; parts/a.f, parts/b.f and parts/c.f with b.f's
 \ private K, which c.f reads, edited; scope/a.f, which leaves its package open,
-\ and scope/b.f, which closes it, with b.f edited. Then four builds of
+\ scope/b.f, which closes it, and scope/c.f, at top level, which names b.f's
+\ word, with b.f edited. Then four builds of
 \ inside/i.f: inside the package inside/p.f leaves open and inside/q.f closes,
 \ alone, inside again, alone. Then twin-x/a.f and twin-y/a.f under the
 \ out root, one name in two directories, are each built alone in turn x, y, x,
@@ -258,6 +259,7 @@ PATH-CAP BUFFER: FOURTH-BUF
 : PARTS-C$ ( -- ptr u8 n ) s" parts" s" c.f" THIRD-BUF FILE-IN ;
 : SCOPE-A$ ( -- ptr u8 n ) s" scope" s" a.f" FIRST-BUF FILE-IN ;
 : SCOPE-B$ ( -- ptr u8 n ) s" scope" s" b.f" SECOND-BUF FILE-IN ;
+: SCOPE-C$ ( -- ptr u8 n ) s" scope" s" c.f" THIRD-BUF FILE-IN ;
 : INSIDE-P$ ( -- ptr u8 n ) s" inside" s" p.f" FIRST-BUF FILE-IN ;
 : INSIDE-I$ ( -- ptr u8 n ) s" inside" s" i.f" SECOND-BUF FILE-IN ;
 : INSIDE-Q$ ( -- ptr u8 n ) s" inside" s" q.f" THIRD-BUF FILE-IN ;
@@ -390,15 +392,16 @@ PATH-CAP BUFFER: FOURTH-BUF
    s" parts: compiled " one two three RESULTS. cr ;
 
 : SCOPE-BUILD ( -- n )
-   [: s" app" [: SCOPE-A$ included  SCOPE-B$ included ;] LINKER:WITH ;] catch RESULT ;
+   [: s" app" [: SCOPE-A$ included  SCOPE-B$ included  SCOPE-C$ included ;] LINKER:WITH ;]
+   catch RESULT ;
 
-\ a.f leaves its package open, and b.f, the next file, defines a public word of it from a.f's
-\ private one, then closes it; b.f is then edited. Neither writes an object, so both compile
-\ each time: a link of a.f would leave no package open for b.f's compile.
+\ a.f leaves its package open for b.f, which closes it and is edited: neither links (linker.f
+\ TOP-SCOPE?), and c.f, which names b.f's SEVEN, links once b.f's piece keeps its time.
 : SCOPES ( -- )
    s" scope" DIR$ FS:MAKE-DIR
    SCOPE-A$ s\" package FILE-OBJECTS-SCOPE : HIDDEN ( -- n ) 7 ;\n" FS:WRITE-ALL
    SCOPE-B$ s\" public : SEVEN ( -- n ) HIDDEN ;\n;package\n" FS:WRITE-ALL
+   SCOPE-C$ s\" : FILE-OBJECTS-EIGHT ( -- n ) FILE-OBJECTS-SCOPE:SEVEN 1 + ;\n" FS:WRITE-ALL
    SCOPE-BUILD {: one:n :}
    SCOPE-B$ s\" public : SEVEN ( -- n ) HIDDEN 1 + ;\n;package\n" FS:WRITE-ALL
    SCOPE-BUILD {: two:n :}
@@ -411,8 +414,8 @@ PATH-CAP BUFFER: FOURTH-BUF
 
 : OUTSIDE-BUILD ( -- n ) [: s" app" [: INSIDE-I$ included ;] LINKER:WITH ;] catch RESULT ;
 
-\ i.f loaded inside the package p.f leaves open and q.f closes, alone, inside again, then alone:
-\ a load inside a package writes no object and links none, so only the last build links i.f.
+\ i.f inside the package p.f leaves open and q.f closes, alone, inside, alone: a load inside never
+\ links and its object replaces the one a load alone wrote, so each build alone compiles i.f.
 : INSIDES ( -- )
    s" inside" DIR$ FS:MAKE-DIR
    INSIDE-P$ s\" package FILE-OBJECTS-INSIDE\n" FS:WRITE-ALL
@@ -594,7 +597,7 @@ variable SLOT-S                          \ and their count
 : CRAFT-FIND ( -- )
    0 CRAFT-PATH-U !
    s" obj" DIR$ ['] CRAFT-SEEN FS:WALK-FILES
-   CRAFT-PATH-U @ 0= if s" build: CRAFTS: no object holds FILE-OBJECTS-CRAFT" 1 die then
+   CRAFT-PATH-U @ 0= if s" build: CRAFTS: no object at crafted/e.f.hfo" 1 die then
    CRAFT-PATH CRAFT-PATH-U @ CRAFT-FIRST CRAFT-CAP FS:READ-ALL CRAFT-U ! ;
 
 

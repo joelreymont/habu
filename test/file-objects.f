@@ -9,7 +9,7 @@
 \ from PIECES on are A's: an absolute index or address in an object shows as
 \ different bytes. B loads pad.f first and writes eight, A's seven and pad.f's.
 \ Build C, in `stop` mode, runs its refused builds, its mixed builds,
-\ three edit sequences, the twins, the order sequence and the crafted sequence
+\ its edit sequences, the twins, the order sequence and the crafted sequence
 \ in one out root: a
 \ build of count.f alone links it, one of count.f and shape.f then compiles
 \ shape.f alone, after count.f links, and the next compiles none; the edit,
@@ -23,17 +23,19 @@
 \ sequence, whose second file's private constant changes, compiles 3, 2 and 0:
 \ the third reopens their package and reads the constant, which leaves no
 \ reference. The scope sequence, whose first file leaves its package open for
-\ the second, which is edited, compiles 2, 2 and 2: neither writes an object.
-\ i.f, built inside a package one file leaves open and another closes, then
-\ alone, inside again and alone, compiles 3, 1, 3 and 0: only a load at top
-\ level writes or links an object. Two files named a.f in two directories,
-\ each built alone in turn twice, compile 1, 1, 0 and 0: each keeps an object
-\ of its own. Four files, two storing into one cell and the fourth reading it
+\ the second, which is edited, compiles 3, 3 and 2: the first two files never
+\ link and compile each time; the third, which names the second's word,
+\ compiles when that word's file is edited and links after. i.f, built inside
+\ a package one file leaves open and another closes, then alone, inside again
+\ and alone, compiles 3, 1, 3 and 1: a load inside a package never links, and
+\ its object replaces the one the load alone wrote. Two files named a.f in two
+\ directories, each built alone in turn twice, compile 1, 1, 0 and 0: each
+\ keeps an object of its own. Four files, two storing into one cell and the fourth reading it
 \ at top level, built in order, twice with the storers swapped and in order
 \ again, compile 4, 3, 0 and 3: of two stores into one cell the later holds, so
 \ the reader compiles again when the storers swap. The crafted sequence's
 \ builds of e.f over seven objects the link refuses or links wrong compile 1,
-\ and a plain build after them links. C writes twenty-three objects, and the
+\ and a plain build after them links. C writes twenty-eight objects, and the
 \ two of A's files, count.f's and shape.f's, have A's bytes from PIECES on: a
 \ refused file writes none. A's
 \ printed state gives FILE-OBJECTS-COUNT:HI's record the facts text `( -- ) `
@@ -80,11 +82,11 @@ package FILE-OBJECTS-TEST
 
 7 constant FILES                         \ build A's objects, and D's
 8 constant FILES-B                       \ build B's: A's and pad.f's
-23 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, the twins',
-                                         \ the order sequence's four, e.f's
+28 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
+                                         \ never link included, the twins', the order sequence's four, e.f's
 144 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 128 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
-24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp
+24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp, 0 0 -1 if it never links
 8192 constant CAP                        \ an object's bytes
 16384 constant STATE-CAP                 \ a build's output before its last line
 65536 constant PROG-CAP
@@ -280,7 +282,7 @@ variable TAIL-N                          \ and the paths that end with it
 \ writes; count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote twenty-three objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote twenty-eight objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -310,10 +312,10 @@ variable TAIL-N                          \ and the paths that end with it
    STATE-W STATE-W-U @ s\" private: compiled 2 1 0\n" CONTAINS? TTRUE
    s" the parts builds compile 3, 2 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" parts: compiled 3 2 0\n" CONTAINS? TTRUE
-   s" the scope builds compile 2, 2 and 2 files" LABEL
-   STATE-W STATE-W-U @ s\" scope: compiled 2 2 2\n" CONTAINS? TTRUE
-   s" the inside builds compile 3, 1, 3 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" inside: compiled 3 1 3 0\n" CONTAINS? TTRUE
+   s" the scope builds compile 3, 3 and 2 files" LABEL
+   STATE-W STATE-W-U @ s\" scope: compiled 3 3 2\n" CONTAINS? TTRUE
+   s" the inside builds compile 3, 1, 3 and 1 files" LABEL
+   STATE-W STATE-W-U @ s\" inside: compiled 3 1 3 1\n" CONTAINS? TTRUE
    s" the twin builds compile 1, 1, 0 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
    s" the order builds compile 4, 3, 0 and 3 files" LABEL

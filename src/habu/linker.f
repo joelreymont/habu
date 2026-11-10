@@ -288,8 +288,8 @@ variable FILE-PATH-N
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
 variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
 variable USES-AT                    \ the offset in OBJECT of USES' count, of the piece checked
-\ The compiling file's object is not written, so the file compiles in every build: a piece starts
-\ or ends off TOP-SCOPE?, or a load it asked for never reached the build's runner (ACTS+).
+\ The compiling file never links, so it compiles in every build (WRITE-OBJECT): it has no stamp,
+\ a piece starts or ends off TOP-SCOPE?, or a load it asked for never reached the runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 
 \ The magic, the key, the last piece's time, then for INPUT FILES REQUESTS NAMES REACHED PATHS PIECES
@@ -1753,17 +1753,11 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
       OBJECT BYTES$ drop files-at + i FILES-ROW-BYTES * +  LE:U64!
    loop ;
 
-\ FILE-KEY's object after its last piece, whose time is t, with INPUT-STAMP as INPUT! left it;
-\ written only when the file is not UNLINKABLE, but built for the facts PIECE-PLACE links. A
-\ REQUESTS row: the time and the length in bytes of the piece the request ends, the kind
-\ (SOURCE-UNIT:LOAD-INCLUDE or LOAD-REQUIRE), the path as spelled and the path loaded, each a
-\ FIELD+, then the FILES row of the requested file's last piece. A sibling renamed into place,
-\ unsynced: an object a crash cut short fails HEADER-CK's and PIECE-CK's bounds checks, and its
-\ file compiles. FILES ends with the files the source names (NAMED+), then the pieces the words
-\ the file ran reach (RAN-FILES+), whose FILES rows REACHED lists. On disk a key's first cell is
-\ its path's offset in PATHS (PATHS-LAY, KEYS-OUT); REFS keeps memory keys for PIECE-PLACE.
+\ FILE-KEY's object after its last piece, whose time is t, built for PIECE-PLACE's facts and written
+\ only with a stamp; an UNLINKABLE file's INPUT is 0 0 -1, so it never links and keeps its times.
 : WRITE-OBJECT ( n -- )
    {: t:n :}
+   \ FILES ends with the named files (NAMED+), then the run words' pieces REACHED lists (RAN-FILES+).
    NAMED+  RAN-FILES+  PATHS-LAY
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
@@ -1789,7 +1783,11 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    rchu 0<> if reached-at else 0 then OBJECT U64+  rchu OBJECT U64+
    paths-at OBJECT U64+  pthu OBJECT U64+
    pieces-at OBJECT U64+  piecesu OBJECT U64+
-   INPUT-STAMP INPUT-BYTES OBJECT SPAN+
+   UNLINKABLE @ if
+      0 OBJECT U64+  0 OBJECT U64+  -1 OBJECT U64+
+   else
+      INPUT-STAMP INPUT-BYTES OBJECT SPAN+
+   then
    refs refsu OBJECT SPAN+
    reqs requ OBJECT SPAN+
    nm nmu OBJECT SPAN+
@@ -1798,7 +1796,8 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    pieces piecesu OBJECT SPAN+
    files-at KEYS-OUT
    pieces-at FACTS-AT +!
-   UNLINKABLE @ if exit then
+   STAMPED? 0= if exit then
+   \ Unsynced: an object a crash cut short fails HEADER-CK's or PIECE-CK's bounds checks and compiles.
    OBJECT$ {: obj:ptr obju:n :}
    obj obju OBJECT-DIR
    obj obju [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
@@ -2806,9 +2805,10 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    t ;
 
 
-\ After INPUT!: true when FILE-KEY's object reads whole and its header, INPUT and FILES check
-\ (HEADER-CK).
+\ After INPUT!: true when FILE-KEY's object reads whole and checks (HEADER-CK); false without a stamp,
+\ since an unstamped source's INPUT-STAMP, 0 0 -1, equals an UNLINKABLE file's INPUT.
 : HEADER-FRESH? ( -- bool )
+   STAMPED? 0= if false exit then
    READ-OBJECT 0= if false exit then
    HEADER-CK  GOOD? ;
 
@@ -2867,7 +2867,6 @@ defer CHECK-OBJECT ( -- )
    WANT-KEY FILE-KEY KEY-BYTES BYTE-COPY
    path pathu PATH!
    INPUT!
-   STAMPED? 0= if BAD exit then
    HEADER-FRESH? 0= if BAD exit then
    -1 PIECE-TIME WANT-TIME @ <>  REQS-N @ WANT-PIECE @ <>  or if BAD exit then
    CHECK-OBJECT ;

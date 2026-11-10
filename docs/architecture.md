@@ -224,9 +224,11 @@ stamp>/<target>/<mode>/<source path>.hfo`, so a new hb compiles every file
 once. hb-build replaces its output only when the image differs apart from its
 signature, and writes a file it generates only when the text differs.
 
-**A file whose load a link could not repeat writes no object** and compiles on
-every build: one that leaves a package open for a later file, or is loaded
-inside one (src/habu/linker.f UNLINKABLE).
+**A file whose load a link could not repeat never links** and compiles on
+every build: one that leaves a package open for a later file, is loaded inside
+one, or catches a load it asks for before the load runs (src/habu/linker.f
+UNLINKABLE). Its object only keeps its pieces' times, so the files that depend
+on it link while those pieces compile to the same bytes.
 
 **An edit during a build is read in due course.** A file already compiled
 keeps the version it read for that build and is rebuilt on the next; a file not
