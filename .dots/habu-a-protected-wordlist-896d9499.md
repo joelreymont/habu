@@ -1,7 +1,7 @@
 ---
 title: A protected-wordlist refusal in a build prints no line
 status: open
-priority: 2
+priority: 3
 issue-type: task
 created-at: "2026-11-10T14:53:31.137822+02:00"
 ---

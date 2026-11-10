@@ -1,7 +1,7 @@
 ---
 title: An unmodeled immediate in a does> clause is refused as undefined at does>
-status: active
-priority: 2
+status: open
+priority: 3
 issue-type: task
 created-at: "2026-11-10T15:25:57.186812+02:00"
 ---
@@ -15,3 +15,5 @@ Settled 2026-11-10 after two workers stopped (/Users/joel/Work/reviews/habu-10x-
 Settled 2026-11-10 by the long-term rule, after the third worker's stop (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/immdoes-stop3.md): (1) in a preflight a head that ends at a clause and that the check neither certifies nor refuses is refused by its own pinned fault and the clause is not checked, as when one walk covered both (v-head-undef stays E-UNDEFINED, mk, NOSUCH in both modes); (2) the preflight moves the diagnostic origin to the clause's start for the clause's check and puts it back after, so the packet names the immediate's own place. Brief /Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/Finish-does-clause-preflight.md; the lane is rebased on master bdeb5574.
 
 Fourth worker 2026-11-10 stopped (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/immdoes-stop4.md; unqylnuy 5168035f): settled point 1 is built (HEAD-REFUSE); point 2 cannot give the true place, because the clause's captured signature is two bytes longer than the source (habu2.f C-CAPTURE-CREATED-SIG :3367-3385). Point 2 (moving the diagnostic origin) is withdrawn: the place comes from the engine's rows once habu-a-preflight-refusal-87f2d9f2's fix lands; this lane then rebases on it and its does.f case asserts the true place (line 2, column 39, bytes 74-81). Depends: habu-a-preflight-refusal-87f2d9f2.
+
+2026-11-10 (bob): no lane is running; it waits for habu-an-evaluate-inside-d3da5e06. The parked commit is unqylnuy 5168035f "WIP: Check a does> clause apart in the immediate preflight" in .jj-ws.noindex/habu-an-unmodeled-immediate-453887c8. Claim: unassigned.

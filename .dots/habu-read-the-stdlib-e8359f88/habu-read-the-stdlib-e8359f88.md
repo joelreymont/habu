@@ -1,9 +1,0 @@
----
-title: Read the stdlib boot order from boot-files.f
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-11-03T11:53:43.363462+02:00"
----
-
-Problem: the stdlib rows the engine provides at boot (src/habu/boot-files.f RESTLIB) are repeated by hand, in order, in src/habu/habu2.f PFX-LOAD-STDLIB-FILES, tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f BF-APPEND-COMMON, bootstrap/cg/forth.fs (the seed's PFX-* lists), src/habu/native-runtime.f (:98-113), tools/wasm-build.f LOAD-BASE (:46-55) and test/aot-payload-native-prepare.f. A family file missing from one of them breaks a registry check far from the edit: enum B (habu-make-the-fixed-fe3899b7) put src/compiler/fixed-body.f in the boot rows and missed aot-payload-native-prepare.f, so aot-payload-graph case 7 died `tfam: a seeded type registry differs from the installed records` (family 57 was the producer's PAYLOAD-NATIVE:pair against the image's COMP:body); earlier a missing memory.f killed hb-stdin at boot (tools/bootstrap.sh comment above SRC_COMMON). The seed-mirror comments (bootstrap/cg/forth.fs above PFX-LOAD-STDLIB-FILES, PFX-PROVIDE-STDLIB-FILES, PFX-FILES, PFX-PATH-FILES; boot-files.f header) claim the seed mirrors the boot rows; it does not (image-lifecycle.f, address-cells.f, layout-buffer-address.f, fixed-body.f are missing). wasm-build.f LOAD-BASE and native-runtime.f also lack fixed-body.f; no row shows either needs it. Acceptance: every Habu list that restates the boot order reads it from boot-files.f's rows instead (bootstrap.sh and the Gforth seed, which run before bin/hb exists, stay explicit and say so), and the false mirror comments are corrected. Files: the lists above. Verify: candidate build, full suite, two-generation chain, Gforth recovery check. Depends: none (enum B landed as master faf06733). Needs a design before dispatch. Ownership: those files. Claim: unassigned.

@@ -1,7 +1,7 @@
 ---
 title: A signature may name one row as data and after |
 status: open
-priority: 2
+priority: 3
 issue-type: task
 created-at: "2026-11-10T20:26:09.853366+02:00"
 ---

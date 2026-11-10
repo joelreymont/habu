@@ -1,7 +1,7 @@
 ---
 title: A stripped program runs with the store guard open
 status: open
-priority: 2
+priority: 4
 issue-type: task
 created-at: "2026-11-10T17:11:58.082469+02:00"
 ---

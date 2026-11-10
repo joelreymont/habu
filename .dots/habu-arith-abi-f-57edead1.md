@@ -1,7 +1,7 @@
 ---
 title: arith-abi.f re-registers E-DIV-ZERO for a load order nobody has shown
 status: open
-priority: 3
+priority: 4
 issue-type: task
 created-at: "2026-11-10T15:58:46.532995+02:00"
 ---

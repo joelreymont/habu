@@ -1,9 +1,0 @@
----
-title: Walk only the cell spans in the stripped data scan
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-11-07T06:50:21.349180+02:00"
----
-
-Problem: DECISIONS "typed data" removes the old byte scan's code ("Remove all of it"); once the stripped build's data scan reads no undeclared bytes as cells (src/habu/aot-common.f SCAN-DATA-CELL skips FREE and NONCELL windows), only CELL windows, whole aligned cells inside cell spans, can be refused, yet its walk (aot-common.f AOT-DATA-TEXTPTR-CHECK) still steps one byte at a time, reads 8 windows per cell and runs SUSPECT?, the mapped-memory lookup included, at offsets that can never be refused; FREE-WINDOW? and NONCELL-WINDOW? (aot-data-cell.f) have one caller each and WINDOW-KIND runs twice per suspect window that is not FREE (review of the scan change, /tmp/carl-briefs/review-kevin-scan.md F4; not measured). Acceptance: the scan walks the cells of the cell spans only, still skipping a cell that a byte span or an allocation start also touches and a declared xt cell; the byte walk, its two-zero-cell skip, FREE-WINDOW?, NONCELL-WINDOW? and what WINDOW-KIND no longer needs are removed; the refusals and messages stay, proved by a stripped build whose declared cell holds a build mapping and is refused naming it (no test asserts either scan refusal today); the stripped build's wall time measured before and after on one subject. Files: src/habu/aot-common.f, src/habu/aot-data-cell.f, src/habu/aot-closure.f (CELL-LITERAL? and its comment, which rests on the scan starting a cell at every byte), docs/forth.md (the CELL-BODY passage), test/aot-shifted-bytes.f. Verify: bin/hb --load test/run.f -- aot-shifted-bytes engine-stack-machine; the full suite at landing. Depends: the scan change (habu-stop-the-stripped-e1bf9fca). Ownership: those files. Claim: unassigned.

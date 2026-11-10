@@ -1,7 +1,7 @@
 ---
 title: forth.md says a covered name in another package is still refused
 status: open
-priority: 2
+priority: 4
 issue-type: task
 created-at: "2026-11-10T15:00:01.988188+02:00"
 ---

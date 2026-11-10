@@ -1,7 +1,7 @@
 ---
 title: "The return seal's reason names a read when no token read"
 status: open
-priority: 2
+priority: 3
 issue-type: task
 created-at: "2026-11-10T20:58:08.773647+02:00"
 ---

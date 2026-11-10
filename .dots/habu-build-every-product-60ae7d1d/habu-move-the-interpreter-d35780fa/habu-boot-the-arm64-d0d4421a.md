@@ -1,9 +1,11 @@
 ---
 title: Boot the ARM64 product through the Habu MAIN
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.697835+03:00"
+closed-at: "2026-11-10T21:52:35.186427+02:00"
+close-reason: "done: the arm64 start ends at ENGINE-MAIN:XT-CELL CALL-EXIT, (src/arch/arm64/boot.f:198) and main.f:274 stores MAIN there; master's engine prints main.f:55's text; the habu2.f steps of its acceptance no longer apply"
 blocks:
   - habu-route-stdin-repl-d7e12895
   - habu-compile-definer-bodies-1292d049

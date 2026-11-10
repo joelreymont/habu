@@ -1,9 +1,11 @@
 ---
 title: Drop the public type fallback
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-06T15:44:52.374735+02:00"
+closed-at: "2026-11-10T21:50:20.613598+02:00"
+close-reason: "done: TFAM-FIND-PUBLIC is gone from type-family.f; c870085e \"Drop the removed type fallback from forth.md\"; the using-test.f refusal case was not checked"
 ---
 
 Problem: DECISIONS.md 'type names' (2026-11-06): a bare type name is found as a bare word is (open package, globals, using imports); the unique-public fallback (src/core/type-family.f:722-746 TFAM-FIND-PUBLIC, reached from TFAM-RESOLVE :787) goes, and its users name the package or import it. Census: /tmp/jerry-tfam/suite-sites.tsv (65 suite sites, 3 in hb's own build). Acceptance: TFAM-FIND-PUBLIC and the checker's any-public type-mark coverage go; every site qualified or imported; the type suites' fallback cases become refusals; a load-path refusal case in test/using-test.f. Files: src/core/type-family.f, src/core/checker.f, src/core/render.f, docs/forth.md, the site files. Verify: native build, then the type suites and edited tests; full suite at landing. Depends: none. Ownership: workspace .jj-ws.noindex/jerry-tfb. Claim: unassigned

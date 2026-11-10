@@ -1,9 +1,11 @@
 ---
 title: "Hash a build's inputs with the CPU's SHA-256 instructions"
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-11-07T09:08:12.458945+02:00"
+closed-at: "2026-11-10T21:50:20.557685+02:00"
+close-reason: "done: landed as 1e746920 \"Add the sha256-blocks primitive\" and 30ae78b6 \"Hash blocks with the CPU's SHA-256 instructions\"; builds no longer hash (DECISIONS.md \"timestamps, not hashes\")"
 ---
 
 Problem: every warm build hashes hb's own file for ENGINE-ID:KEY$ (src/lib/engine-id.f), every source it loads, and every object it links (object self-check, src/habu/linker.f HEADER-CK); a build that writes hb signs it, hashing hb again. src/core/sha256.f runs at 71 MB/s on the T0 hb (/tmp/carl-a2wb/hb, 8.1 MB in 114 ms) and 89 MB/s on the installed tier-1 hb (7.2 MB in 81 ms). On the census of hb's startup rows 0-14 (carl-a2w, `zsh .jj-ws.noindex/carl-dots/.out/kept/c5a2/a2w/run.sh`, profile census-p.f) SHA-256 is 234 of the 517 ms sampled in the warm run: ENGINE-ID 120, object checksums and source sums 93; checker.f's object alone is 3.7 MB.

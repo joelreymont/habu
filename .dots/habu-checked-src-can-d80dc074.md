@@ -1,7 +1,7 @@
 ---
 title: Checked source can store into the global wordlist cells
 status: open
-priority: 1
+priority: 4
 issue-type: task
 created-at: "2026-11-10T16:21:44.149391+02:00"
 ---

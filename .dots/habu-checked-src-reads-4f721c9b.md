@@ -1,7 +1,7 @@
 ---
 title: Checked source reads and writes any address through a base plus an offset
 status: open
-priority: 2
+priority: 1
 issue-type: task
 created-at: "2026-11-10T18:43:12.993249+02:00"
 ---

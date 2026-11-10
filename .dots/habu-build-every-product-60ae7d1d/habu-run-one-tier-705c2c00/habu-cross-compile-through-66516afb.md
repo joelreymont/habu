@@ -1,9 +1,11 @@
 ---
 title: Cross-compile through T0 dual emission
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-28T14:52:51.618180+02:00"
+closed-at: "2026-11-10T21:52:35.495573+02:00"
+close-reason: "obsolete: C0-C2 landed (ef1f85cb, 10ecb68f); C3 and C4 target the deleted capture build; C3 is now Wasm step 2 (0d5dab47) and C4 is x86-64's (3ed6f45d)"
 blocks:
   - habu-move-t0-into-16d2feab
 ---

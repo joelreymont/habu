@@ -1,6 +1,6 @@
 ---
 title: Count only refusals a multi-error load reports
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-30T23:33:22.905972+02:00"
@@ -17,3 +17,5 @@ Hunt in work 2026-11-10 on master beca69b3 (/Users/joel/Work/reviews/habu-10x-20
 Hunt 2026-11-10 (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/multi-error-hunt.md): two causes. Cause A (reproducers 1 and 3): in a multi-error load CHECK counts a refusal it does not render; the render is skipped while DIAG-QUIET is set (a TRUSTED: body's unjudged scan, CHECK-QUIET-CANDIDATE!) and the MULTI-REFUSED call beside it has no such test, so the count is 1 with nothing printed and the word is published. tools/check-verify-child-lib.f VERIFY-ALL and tools/check-all-errors-core.f CA-RUN-DEFS read the count, so a silent count fails a clean subject with no packet. Fix ztqzvxpr 'Count only the refusals a multi-error load renders' in .jj-ws.noindex/habu-count-only-refusals-e8b5dd42 (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/quiet-count-fix.md): the count takes the render's DIAG-QUIET test in CHECK and in DOES-REPORT (the latter by reading: no program reaches it quiet); its new test fails on master (count 3 for 1) and passes; in review. Cause B (reproducer 2): a does> definer whose head is refused is published and its caller is withheld without a report. src/core/check-hook.f DEFINITION answers -1 for a refused definition in a multi-error load, so CHECK-DOES-HEAD (src/compiler/native/definition.f) does not throw; M-HEAD-RECOVERY records only whether the head bound a recovery row; the clause's -1 then overwrites the head's verdict, and VERDICT-CK excludes definers from E-COMP-RECOVERY. The head scan's own verdict is exposed nowhere. Fix of cause B not started. Acceptance for B stays the dot's: the definer is not published, its caller is reported undefined, the count is 2.
 
 Cause A landed 2026-11-10 as "Count only the refusals a multi-error load renders" (review ACCEPT, no finding: /Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/quiet-count-review.md; the full suite and the three-generation chain passed on master 3d003f33). The dot stays open for cause B only.
+
+2026-11-10 (bob): cause A landed; cause B (a does> definer whose head is refused is still published, and its caller is silently withheld) is not started and has no workspace. Claim: unassigned.

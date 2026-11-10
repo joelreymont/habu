@@ -1,7 +1,7 @@
 ---
 title: "A load's prose refusal prints no suggestion"
-status: active
-priority: 2
+status: open
+priority: 3
 issue-type: task
 created-at: "2026-11-10T14:16:42.377615+02:00"
 ---
@@ -11,3 +11,9 @@ Problem: src/core/render.f DIAG-PROSE (:1670) and the other prose writers print 
 Settled 2026-11-10 (bob, by the long-term rule): prose prints the suggestion, since agents read a load's output and see nothing else. A definition's prose refusal ends with '; suggestion: ' and the packet's text on the same line; a prose reason that repeated the instruction (the unmodeled immediate, the source-reading word, the linear local) drops it. Two commits: DIAG-PRINT first, then the other prose writers (render.f BADSIG-DIAG, TDECL-DIAG, REC-REFUSE, USHADOW, SBARITY, UAMB, the top-level token diagnostics, TSTALE, REPLAY-ONLY, BADQUAL and the row diagnostics at :2293, :2353, :2425, :2484, :2517).
 
 Landed 2026-11-10 (bob): commit one, DIAG-PRINT, with its review's four findings folded (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/prose-review.md, prose-fold.md): the bare ptr, minted phantom and trust-boundary reasons no longer repeat their suggestion; docs/forth.md :1940 and docs/debugging.md :36 quote the new lines. The minted-phantom line (render.f :1654) was changed by reading and no program reaches it yet: commit two adds one or shows it unreachable. Open: commit two, the other prose writers listed above.
+
+Acceptance case 2026-11-10 (bob; merged from habu-prose-refusals-written-6362f5a1 "Prose refusals written outside render.f print no suggestion", one cause with this dot): Problem: since habu-a-load-s-99fed2b4 a definition's prose refusal ends with its packet's suggestion, but refusals written by other code print none: the compiler's locals refusals (src/habu/definers.f :434 more than 64 locals, :440 a local name over 16 bytes; their checker arms LOCALBAD-PROSE kinds 1-2 at src/core/render.f :1417-1424 look unreachable under a plain load), tools/check.f's 'missing name after create' (tools/check-verify-core.f :423) and the load's 'hb: reader keyword needs a name'. Programs /Users/joel/Work/reviews/habu-10x-2026-11-10/cases8/prose-review/p (local.f, many.f, noname.f). Found by the review of habu-a-load-s-99fed2b4 (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/prose-review.md, separate issue a). Source: Joel, 2026-11-10: "i want all issues identified to be dotted and fixed". Acceptance: each of these lines says what to write, from the same text its packet carries where it has one; a census lists every prose refusal writer outside render.f with what it prints; a case each. Files: src/habu/definers.f, tools/check-verify-core.f, src/habu/outer.f, src/core/render.f. Verify: the three programs under --load and tools/check.f. Depends: habu-a-load-s-99fed2b4 (its second commit covers render.f's other writers). Ownership: the checker's diagnostics.
+
+Acceptance case 2026-11-10 (bob; merged from habu-a-scalar-mismatch-93517522 "A scalar mismatch's prose ends its row without the space other rows have", one cause with this dot): Problem: src/core/render.f DIAG-PROSE's scalar arm (:1729) prints 'actual: n;' where the row arms print 'actual: n ; suggestion:', so a prose line's row ends two ways. Predates habu-a-load-s-99fed2b4; found by its review (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/prose-review.md, claim 5), which shows eight assertions in test/type-decl-suite.f rest on the trailing space. Source: Joel, 2026-11-10: "i want all issues identified to be dotted and fixed". Acceptance: one form for the end of a printed row in prose, and the tests that pin it. Files: src/core/render.f, test/type-decl-suite.f. Verify: a scalar and a row mismatch under --load. Depends: habu-a-load-s-99fed2b4. Ownership: the checker's diagnostics.
+
+2026-11-10 (bob): no lane is running; part landed, the other prose writers are not started. Claim: unassigned.

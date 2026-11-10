@@ -1,7 +1,7 @@
 ---
 title: No suite runs the shadow lint
 status: open
-priority: 2
+priority: 4
 issue-type: task
 created-at: "2026-11-10T16:21:44.243525+02:00"
 ---

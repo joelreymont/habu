@@ -1,7 +1,7 @@
 ---
 title: Describe a published word in the live REPL
 status: active
-priority: 2
+priority: 1
 issue-type: task
 created-at: "2026-11-09T19:42:25.701245+02:00"
 ---

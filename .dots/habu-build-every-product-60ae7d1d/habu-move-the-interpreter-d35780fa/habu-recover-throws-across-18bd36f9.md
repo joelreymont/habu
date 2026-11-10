@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.957323+03:00"
-blocks:
-  - habu-roll-back-failed-64bf2ba5
 ---
 
 Problem: throw recovery across `evaluate` is assembly (`LEVCORRUPT` validates the handler frame).

@@ -1,7 +1,7 @@
 ---
 title: "Check time grows faster than linearly in a definition's width"
 status: open
-priority: 2
+priority: 4
 issue-type: task
 created-at: "2026-11-10T16:21:44.177067+02:00"
 ---

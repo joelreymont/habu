@@ -1,7 +1,7 @@
 ---
 title: A second does> in a clause is refused with no JSON packet
 status: open
-priority: 2
+priority: 3
 issue-type: task
 created-at: "2026-11-10T19:13:08.233421+02:00"
 ---

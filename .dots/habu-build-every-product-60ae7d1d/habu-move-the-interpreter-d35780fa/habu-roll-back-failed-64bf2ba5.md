@@ -1,9 +1,11 @@
 ---
 title: Roll back failed definitions in Habu
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.948447+03:00"
+closed-at: "2026-11-10T21:52:35.223815+02:00"
+close-reason: "done: the dot's measured case gives the engine's result on master's engine (70, then 5 7, rc 0); the frame rollback is at src/habu/interpret.f:318-398"
 blocks:
   - habu-move-evaluate-and-9119f746
   - habu-compile-definer-bodies-1292d049

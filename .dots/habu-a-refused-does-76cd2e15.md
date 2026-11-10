@@ -1,7 +1,7 @@
 ---
 title: A refused does> definer in a multi-error load stops the load in the native compiler
 status: open
-priority: 2
+priority: 1
 issue-type: task
 created-at: "2026-11-10T20:13:39.391199+02:00"
 ---

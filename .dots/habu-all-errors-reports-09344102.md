@@ -1,7 +1,7 @@
 ---
 title: all-errors reports one of two refusals at evaluated tokens
 status: active
-priority: 2
+priority: 1
 issue-type: task
 created-at: "2026-11-10T18:24:27.425584+02:00"
 ---
@@ -17,3 +17,5 @@ Review of part A 2026-11-10 (vorvvruq cf0f57ea, /Users/joel/Work/reviews/habu-10
 Fold done 2026-11-10 (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/Fold-unrun-immediate-candidate-test.md, /Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/allerrors-foldA.md): finding 6's two candidate assertions stand in test/engine-suite.f after TPN2 (TPC1 answers 2, TPC2 answers 0; on the parent's engine TPC1 answers -1 and the suite fails there alone), and the engine is rebuilt on the folded parent nykylzmy be147d89. Part A still lands only with part B.
 
 Corpus run of part A, 2026-11-10 (the lead's, /Users/joel/Work/reviews/habu-10x-2026-11-10/corpus-run.sh; every .f under /Users/joel/Work/reviews/habu-10x-2026-11-10/cases8 through 'tools/check.f -- --json-errors --verify-only' on part A's engine and its parent's, exit code and packet codes compared): 2 of 1,780 files differ, imm/modeled.f and immdoes/v-modeled.f. Both hold ': PI ( -- ) ; immediate s" PI" 0 parse-imm' and a body that uses PI; both exit 0 on both engines and gain one W-CHECK-DEFERRED at PI on part A's engine: the replay no longer certifies a body by an immediate's declared row without running it, as part A intends. No file changes its exit code. A first run compared exit codes only (the packets are on stderr, which the script did not read): 0 of 1,780.
+
+Acceptance case 2026-11-10 (bob; merged from habu-all-errors-throws-5abfdfdc "all-errors throws again a refusal the replay already reported", one cause with this dot): Problem: packages PA and PB each export a public immediate PW; then 'using PA', 'using PB', 's" PW" 0 parse-imm' (or 'export PW' on the engine before the parse-imm replay). The load is refused 70 with E-USING-AMBIGUOUS and tools/check.f --verify-only gives a placed packet, rc 70; --all-errors exits 67 with 'check.f: uncaught throw code 7144'. Cause as read by the review of nykylzmy (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/pimm-review.md F2, run on that lane's engine and its parent's; not rerun by the lead): tools/check-all-errors-core.f CA-RUN-COMPOSE-DEFS (:582-591) treats a refusal it has already reported as a raw failure and CA-RUN-COMPOSE throws it again with nothing to catch it. Source: Joel, 2026-11-10: "i want all issues identified to be dotted and fixed". Acceptance: --all-errors reports the refusal once, placed, and exits 70 as --verify-only does, for every refusal the replay raises at a top-level statement. Files: tools/check-all-errors-core.f, a case in test/diag-position-test.f. Verify: the two-package file under --all-errors: one packet, rc 70. Depends: none. Ownership: the all-errors tool's handling of a replay refusal.

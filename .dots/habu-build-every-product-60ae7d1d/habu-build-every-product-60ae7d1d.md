@@ -7,7 +7,6 @@ created-at: "2026-11-04T11:48:45.259779+02:00"
 blocks:
   - habu-make-incremental-builds-41fd3214
   - habu-take-checker-working-6703bc4f
-  - habu-make-cross-target-934166cc
   - habu-move-the-interpreter-d35780fa
   - habu-cross-build-a-cb630896
   - habu-name-the-build-abed309a

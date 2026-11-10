@@ -1,7 +1,7 @@
 ---
 title: "One word for a data row that does not fit a step's input"
 status: open
-priority: 3
+priority: 4
 issue-type: task
 created-at: "2026-11-10T19:37:55.938945+02:00"
 ---

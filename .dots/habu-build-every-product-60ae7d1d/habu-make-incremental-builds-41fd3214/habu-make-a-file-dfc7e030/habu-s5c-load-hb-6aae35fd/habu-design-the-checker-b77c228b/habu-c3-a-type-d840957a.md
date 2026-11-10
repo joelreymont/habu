@@ -1,9 +1,11 @@
 ---
 title: "C3: a type is an entry"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-06T21:30:02.478114+02:00"
+closed-at: "2026-11-10T21:50:20.587230+02:00"
+close-reason: "done: src/habu/linker.f has KIND-TYPE entries, type-family.f has no TFAM-FIND-PUBLIC, task.f:1885 qualifies TASK:sem (b5ed59f4, dcd00f50)"
 blocks:
   - habu-c2d-write-declarations-f94670f2
 ---

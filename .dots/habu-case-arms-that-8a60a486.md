@@ -1,7 +1,7 @@
 ---
 title: Case arms that leave different depths are refused without a reason
 status: open
-priority: 2
+priority: 3
 issue-type: task
 created-at: "2026-11-10T13:31:22.403124+02:00"
 ---

@@ -1,7 +1,7 @@
 ---
 title: The stale-read advice is wrong for a stale open layout
 status: open
-priority: 2
+priority: 3
 issue-type: task
 created-at: "2026-11-10T19:25:35.119069+02:00"
 ---

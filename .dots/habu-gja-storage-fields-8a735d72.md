@@ -1,7 +1,7 @@
 ---
 title: GJA-STORAGE-FIELDS repeats GJA-DECL-POSITION inline
 status: open
-priority: 2
+priority: 4
 issue-type: task
 created-at: "2026-11-10T19:01:50.744474+02:00"
 ---

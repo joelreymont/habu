@@ -1,7 +1,7 @@
 ---
 title: "NDICT:TOP-REC repeats the qualified-name lookup two other words hold"
 status: open
-priority: 3
+priority: 4
 issue-type: task
 created-at: "2026-11-10T14:26:10.084083+02:00"
 ---

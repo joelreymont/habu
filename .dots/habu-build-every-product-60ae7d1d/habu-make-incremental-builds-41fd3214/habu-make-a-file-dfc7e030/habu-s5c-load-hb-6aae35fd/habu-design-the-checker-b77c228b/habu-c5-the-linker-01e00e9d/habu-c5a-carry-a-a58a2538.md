@@ -1,9 +1,11 @@
 ---
 title: "C5a: carry a build's facts texts in file objects"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-07T02:50:53.805653+02:00"
+closed-at: "2026-11-10T21:50:20.600631+02:00"
+close-reason: "done: src/habu/linker.f:3600-3620 LINK-FACTS places the held texts at one point, cold and warm alike; 585d9191 \"Read a linked file's facts back\""
 ---
 
 Problem: C2c2 writes a colon definition's facts text only while no build space is open (BOOT:IMAGE-BASE-CELL 0), so a product record keeps entry bytes 32-39 at 0. Laying the text at `;` inside a build would put it in a file's DATA only when no earlier file of the build interned the same bytes (src/habu/intern.f:363-370 STRING through SPACE-STRING; src/habu/intern-table.f TEXT is FIND else LAY), so a file's object would depend on what loaded before it: test/fixtures/file-objects/pad.f (build B only, loaded first) defines MARK ( -- ) and FIRST ( -- n ), count.f defines BUMP ( -- ), HI ( -- ) and FILE-OBJECTS-LATE:ONE ( -- n ); build A's count.f object would hold `( -- ) ` and `( -- n ) ` and build B's would reference pad.f's (src/habu/linker.f DATA-REF+ :503-525), failing test/file-objects.f 'both builds wrote the object's bytes' (evidence /tmp/jerry-strings-objects.md, sent to carl 2026-11-07). Acceptance: inside a build each record's facts text travels by value in its file object's entries (linker.f RECORD+), never in the file's DATA; the link interns each text at one point after the file's DATA ends, the same in a cold and a warm build, so the product holds each text once and both builds write the same bytes; [32] holds the text's offset from the image base; test/file-objects.f passes with facts written in builds. Designed with carl's object format (habu-file-objects-l4-62887595). Files: src/habu/linker.f, src/core/check-hook.f, src/core/checker.f. Verify: test/file-objects.f; the cross-built hb reads a product word's [32]. Depends: C2c2 (habu-c2c2-store-a-34061842), carl's L4 (habu-file-objects-l4-62887595). Ownership: those files, coordinated with carl. Claim: unassigned.

@@ -1,7 +1,7 @@
 ---
 title: "A build whose top level ends the process skips the builder's exit actions"
 status: open
-priority: 2
+priority: 1
 issue-type: task
 created-at: "2026-11-10T12:07:44.371212+02:00"
 ---
@@ -11,3 +11,5 @@ Problem: a program whose top level calls AT-EXIT:ADD and then ends the process (
 Case 2026-11-10 (bob), from the review of habu-a-process-cell-9ddedca3: a file the build's top level writes and registers with FS:CLEANUP+ is removed by neither the builder nor the product (/Users/joel/Work/reviews/habu-10x-2026-11-10/cells-review/probes/p1.f: its nine build-time files remain after the build and after the product runs). What a build-time registration means settles this case too.
 
 Cases 2026-11-10 (bob), from the review of habu-the-builder-dies-5e13e362: if an UNDO step above 'moved' throws (IMAGE-OUT, DISPOSE-OBJECTS, REQUIRE-RESTORE, CHECK:CLOSE; src/habu/linker.f about :3980-3986), CLOSE ends before RESTORE and the space stays mapped with its runner in the exit vector (inferred from the code, not reproduced). linker.f ARM-EXIT spends one of AT-EXIT's 64 slots to arm hb's runner: with 63 hb actions a build now fails 7122 where it succeeded. A design in which a space's AT-EXIT:ADD never writes hb's vector makes ARM-EXIT and SAVED-EXIT-HOOK removable.
+
+Acceptance case 2026-11-10 (bob; merged from habu-a-build-a-4f58862c "A build a FAIL-CLOSED exit refuses leaves its scratch directory in TMPDIR", one cause with this dot): Problem: tools/hb-build.f makes a private directory under TMPDIR (tools/hb-build-lib.f:223-228) that only the exit hook removes; a refusal that ends through FAIL-CLOSED (src/habu/outer.f:388-398: SEALED-FAIL, TASK-GUARD) clears EXIT-HOOK-CELL before it dies, so the hook never runs and an empty hb-build-native-<n>-0 directory stays in the caller's TMPDIR. Reproducer: a build of test/fixtures/file-objects/seal-main.f (after habu-a-load-accepts-db95cbfb lands) with TMPDIR set to an empty directory. Found by the third re-review of the seal commit (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/seal-rereview3.md finding 1, outside the commit). Source: Joel, 2026-11-10: "i want all issues identified to be dotted and fixed". Hunt first: every exit path of a build that skips the hook, as path:line, and where the directory should be removed on each. Acceptance: a refused build leaves nothing in TMPDIR; test/file-objects.f's SEAL-CASE asserts it, and BUILD-RC drops its TMPDIR once Q's build (kept-zip.f's open archive) also leaves nothing in TMPDIR. Files: named by the hunt. Verify: the reproducer. Depends: habu-a-load-accepts-db95cbfb landed. Ownership: the build tool's scratch.

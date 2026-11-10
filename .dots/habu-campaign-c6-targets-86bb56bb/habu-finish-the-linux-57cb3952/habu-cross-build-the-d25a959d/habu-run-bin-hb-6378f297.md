@@ -8,7 +8,6 @@ closed-at: "2026-10-22T12:36:34.424279+03:00"
 close-reason: "Triage 2026-10-22, DONE: The Intel line self-hosted (4a5faaae: \"self-hosting x86-64 engine at b16066cd\"), which runs --load at tier 1. Re-proving it on the merged tree is self-host and pass-the-full."
 blocks:
   - habu-run-a-captured-15728fcc
-  - habu-boot-the-arm64-d0d4421a
   - habu-keep-the-x86-6967d3cf
   - habu-emit-the-x86-e49a3447
 ---

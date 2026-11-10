@@ -1,7 +1,7 @@
 ---
 title: Sibling process tests assert what a capture deadline does not promise
 status: open
-priority: 2
+priority: 4
 issue-type: task
 created-at: "2026-11-10T20:13:39.498684+02:00"
 ---

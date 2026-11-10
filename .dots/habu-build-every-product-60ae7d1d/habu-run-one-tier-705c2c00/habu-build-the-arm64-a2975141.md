@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-10-28T14:52:51.635869+02:00"
 closed-at: "2026-11-04T11:48:49.307685+02:00"
 close-reason: "Census 2026-11-04: goes with habu-move-the-interpreter-d35780fa, one typed interpreter on every machine (DECISIONS \"one compiler\"). Patches habu2.f FIXED-SHADOW-CELL sites (habu2.f:4493) and baked-prefix rows; \"engine compiled by T0\" becomes a cross-build CASE."
-blocks:
-  - habu-cross-compile-through-66516afb
 ---
 
 Problem: the arm64 engine still compiles with the JIT. Acceptance: fixed-body sites call FIXED-SHADOW-CELL with (value kind) = T0:COMPILE-FIXED (habu2.f:4949-4957, 5378, 5603, 5785; does> 3944), XT-CELL always T0:COMPILE, prefix rows (t0-emit.f, t0.f, host emitter in EMIT-HOST-LOAD-PREFIX, native-runtime.f manifest, build-fixpoint.f, xcomp.md mirror list), fixpoint gen2->gen3. Commit carries umbrella section 5 measurements against the JIT: load <= 1.2x instructions, run <= 1.05x on zz and tender, identical outputs. A miss is reported with numbers. Leaf-entry reference: the dropped JIT nop-skip measured zz 12.75G -> 12.62G and tender 277.7G -> 268.8G run instructions (bench g2 builds, 2026-10-28); T0-arm64 leaves without an entry save should show at least that gain over the JIT. Files: src/habu/habu2.f, native-runtime.f, tools/build-fixpoint.f, docs/xcomp.md. Verify: full arm64 suite, two-generation build, bench. Depends: L6. Ownership: those files. Claim: unassigned.

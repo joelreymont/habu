@@ -1,7 +1,7 @@
 ---
 title: file-objects cases assert only an exit code, and none covers pending-row order
-status: active
-priority: 2
+status: open
+priority: 4
 issue-type: task
 created-at: "2026-11-10T15:00:01.976242+02:00"
 ---
@@ -11,3 +11,7 @@ Problem: test/file-objects.f SEALED-CASE and STORED-CASE assert only that the th
 Scope 2026-11-10 (bob): habu-a-pending-piece-1dbfe39f adds RETIRED-CASE (builds V, V2, V3), which also asserts only an exit code: its third build gets the rewritten-object assertion with G3 and T3.
 
 Parts one and two landed ("Assert what a pending piece's file recompiles"): the K, G, T, V cases assert what each rebuilt object names and the O case pins pending-row order. Open: part three (PENDING-HOLDER's encoding). The fixed-buffer readers the review found are habu-file-objects-readers-fd70e8ca.
+
+Acceptance case 2026-11-10 (bob; merged from habu-file-objects-readers-fd70e8ca "file-objects readers hold an object in a fixed 8192-byte buffer", one cause with this dot): Problem: test/file-objects.f SAME-OBJECT, CHECK-STOP and WARM-CUT read build A to D's objects into CAP BUFFER: BYTES-A and BYTES-B (8192 constant CAP). An object holds absolute paths, so a long enough checkout or temp path makes FS:READ-ALL throw E-FS-CAPACITY and the test fails for a reason it does not check. FIXTURE-OBJECT had the same cause and now sizes DYNAMIC-BUFFER FIXTURE-BYTES by FS:FILE-SIZE. Found by the review of habu-file-objects-cases-a0c09cf6 (finding 2). Source: Joel: "i want all issues identified to be dotted and fixed". Acceptance: the three readers size their buffers by the object as FIXTURE-OBJECT does; CAP, BYTES-A and BYTES-B are gone. Files: test/file-objects.f. Verify: bin/hb --load test/file-objects.f rc 0; rg -n 'CAP BUFFER|8192' test/file-objects.f prints nothing. Depends: none. Ownership: test/file-objects.f.
+
+2026-11-10 (bob): no lane is running; part landed, the rest is not started. Claim: unassigned.

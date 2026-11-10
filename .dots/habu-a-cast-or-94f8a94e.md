@@ -1,7 +1,7 @@
 ---
 title: A cast or linear refusal under --load carries a line and no column or bytes
 status: active
-priority: 2
+priority: 1
 issue-type: task
 created-at: "2026-11-10T19:01:50.727592+02:00"
 ---
