@@ -608,15 +608,18 @@ variable SLOT-S                          \ and their count
    tag 3 = if 2 OBJ-SKIP then ;
 
 
-\ An entry (linker.f RECORD+, LATE+); kind 4 is a late private wordlist, no record.
+\ An entry (linker.f RECORD+, LATE+, SEAL+); kind 4 is a late private wordlist and kind 5 a
+\ sealed package, each one reference and no record; kind 6, a type entry, ends at its role.
 : ENTRY-WALK ( -- )
    AT @ {: at:n :}
    OBJ-U64 {: kind:n :}
-   kind 4 = if at LATE-AT !  3 OBJ-SKIP exit then
+   kind 4 = if at LATE-AT ! then
+   kind 4 =  kind 5 =  or if 3 OBJ-SKIP exit then
    OBJ-U64 {: u:n :}
    CRAFT-OBJ AT @ + u {: name:ptr nu:n :}
    u AT +!  1 OBJ-SKIP
-   OBJ-U64 3 >= if 3 OBJ-SKIP then        \ a role 3 or 4 names its package
+   OBJ-U64 {: role:n :}
+   role 3 =  role 4 =  or if 3 OBJ-SKIP then        \ a role 3 or 4 names its package
    name nu s" LOW" STR= if RECS @ LOW-REC ! then
    name nu s" HIGH" STR= if RECS @ HIGH-REC ! then
    name nu s" FILE-OBJECTS-CRAFT" STR= {: craft:bool :}
@@ -633,6 +636,7 @@ variable SLOT-S                          \ and their count
       late if AT @ LATE-FLAG-AT ! then
       1 OBJ-SKIP exit
    then
+   kind 6 = if exit then
    kind 2 = if 3 else 1 then OBJ-SKIP ;
 
 
