@@ -696,7 +696,8 @@ variable KEPT-NS
    CMD:RESET
    L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
-   s" a handle a file kept is refused in the program" LABEL  CMD:OUT$ s\" zip refused\naio refused\n" T$= ;
+   s" a kept handle is refused and word docs read at build and run time count 2 and 1" LABEL
+   CMD:OUT$ s\" zip refused\naio refused\ndocs 2 1\n" T$= ;
 
 \ kept-genio.f's program, run in its own process with empty stdin, which ends its REPL.
 : GENIO-RUN ( CMD:command -- CMD:command )

@@ -5,7 +5,7 @@
 
 \ Each record is one bump allocation from chunks of CHUNK-BYTES, larger for a
 \ larger record, that RESET releases together; answered spans stay valid until
-\ RESET, and FILE keeps none of its text.
+\ RESET. FILE keeps no address of its text and releases the lexer's tables.
 
 require src/lib/string.f
 require src/lib/memory.f
@@ -38,7 +38,7 @@ TYPED-VARIABLE CHUNK ptr u8                   \ the chunk records are taken from
 variable USED                                 \ bytes of CHUNK taken
 variable ROOM                                 \ CHUNK's length; 0 when there is none
 
-TYPED-VARIABLE SRC ptr u8                     \ the text FILE reads
+TYPED-VARIABLE SRC ptr u8                     \ the text FILE reads; null outside FILE
 variable SRC-U
 TYPED-VARIABLE PKG ptr u8                     \ the open package's name, in the text
 variable PKG-U                                \ 0 at top level
@@ -267,6 +267,16 @@ CAST: ITEM>N ( NUM:item-count -- n )
    a u s" private" STR=CI if false PUB ! exit then
    a u s" EXPORT" STR=CI if k EXPORT-AT then ;
 
+: READ-ALL ( -- )
+   SRC@ SRC-U @ LINT-LEX:SOURCE LEXED
+   0 begin dup LINT-LEX:COUNT < while dup STEP 1+ repeat drop ;
+
+: FORGET-TEXT ( -- )
+   NULL-PTR SRC !  0 SRC-U !
+   NULL-PTR PKG !  0 PKG-U !
+   NULL-PTR PART !  0 PART-U !
+   LINT-LEX:RELEASE ;
+
 public
 
 \ Appends one record per definition in source order: `: NAME`, and `EXPORT NAME`
@@ -276,13 +286,13 @@ public
 \ sections; `;package` closes the part or P, a part's returning to P's private
 \ section. A text the lexer refuses (LINT-LEX:ERROR?), or a `:`, `package` or
 \ EXPORT it ends before naming, throws E-SOURCE; the records read before it
-\ stay until RESET.
+\ stay until RESET. Returned or thrown, it leaves no cell holding an address of
+\ the text, and the lexer released (LINT-LEX:RELEASE).
 : FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    LIVE? 0= if INIT then
    a SRC !  u SRC-U !
    a PKG !  0 PKG-U !  a PART !  0 PART-U !  false PUB !
-   a u LINT-LEX:SOURCE LEXED
-   0 begin dup LINT-LEX:COUNT < while dup STEP 1+ repeat drop ;
+   [: READ-ALL ;] [: FORGET-TEXT ;] finally ;
 
 \ Drops every record and releases their storage. A record past COUNT is
 \ E-VEC-BOUNDS, and any record after RESET E-VEC-STATE.
@@ -291,6 +301,7 @@ public
    RELEASE-CHUNKS
    0 CHUNKS VEC:DISPOSE
    0 RECS VEC:DISPOSE
+   NULL-PTR CHUNK !
    0 ROOM !
    0 USED ! ;
 

@@ -3,8 +3,8 @@
 \ tokens. Tokens point into the span SOURCE was given, so that span stays in
 \ place while they are read. It requires src/lib/vector.f, which the engine lacks.
 \ STORAGE CLASS. PROCESS-WIDE: one token table and scan state for the image;
-\ SOURCE replaces the last scan's tokens. The first SOURCE maps the tables, and
-\ they stay mapped for the process.
+\ SOURCE replaces the last scan's tokens. SOURCE maps the tables when none are
+\ mapped; RELEASE unmaps them and forgets the span.
 
 require src/lib/string.f
 require src/lib/memory.f
@@ -126,6 +126,19 @@ TABLES-RELEASED
    0 DEPTH !
    false IN-GROUP !
    false IN-BODY ! ;
+
+: DISPOSE-VECTORS ( -- )
+   KIND-V VEC:DISPOSE
+   0 ADDR-V VEC:DISPOSE
+   LEN-V VEC:DISPOSE
+   BYTE-V VEC:DISPOSE
+   LINE-V VEC:DISPOSE
+   COL-V VEC:DISPOSE
+   0 CADDR-V VEC:DISPOSE
+   CLEN-V VEC:DISPOSE
+   OPND-V VEC:DISPOSE
+   LOCAL-V VEC:DISPOSE
+   LDEPTH-V VEC:DISPOSE ;
 
 \ The state is partial before any table is mapped: a failed map leaves partial,
 \ and the retry maps each table again.
@@ -793,6 +806,14 @@ public
    CLEAR-ERROR
    RESET-TABLES
    SCAN ;
+
+\ Unmaps the tables and forgets the span, so no cell holds an address SOURCE was
+\ given or mapped; the next SOURCE maps them again.
+: RELEASE ( -- )
+   DISPOSE-VECTORS
+   TABLES-RELEASED
+   NULL-PTR SRC!  0 SRC-U !  0 TOK-N !  0 POS !
+   LOCALS-RESET ;
 
 \ Token k is a word that takes the next whitespace-delimited token as its
 \ operand; the caller matched its spelling, so it is a plain word. Token k+1

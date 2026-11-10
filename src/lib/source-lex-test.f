@@ -454,6 +454,19 @@ variable REG-I
    0 LINT-LEX:TOKEN s" :" ASSERT$
    6 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
+\ RELEASE unmaps the tables, and runs again with none mapped; the next SOURCE
+\ maps them again and answers the same tokens.
+: TEST-LEXER-RELEASE ( -- )
+   LEX-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:RELEASE
+   LINT-LEX:COUNT 0 ASSERT=
+   LINT-LEX:RELEASE
+   LEX-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 7 ASSERT=
+   0 LINT-LEX:TOKEN s" :" ASSERT$
+   6 LINT-LEX:TOKEN s" ;" ASSERT$ ;
+
 \ Escaped-quote spans: the S\" opener treats \" as literal text, the plain s"
 \ opener does not. The token that follows each literal pins where it closed, so
 \ neither can be satisfied by counting quotes.
@@ -898,6 +911,7 @@ variable REG-I
    TEST-LEXER-STRING-PAYLOAD
    TEST-LEXER-UNTERM-QUOTE
    TEST-LEXER-REUSE-AFTER-ERROR
+   TEST-LEXER-RELEASE
    TEST-ROW-QUOTE-NAMES
    TEST-ROW-STRING-BODY
    TEST-ROW-PARSED-OPERAND
