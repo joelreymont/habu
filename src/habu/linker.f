@@ -6,11 +6,11 @@
 \ body there with no package of hb's open and closes it. The close undoes
 \ exactly the open steps that ran, in reverse. A file's source is cut into parts
 \ at each request it makes, each part with its own object under the out root.
-\ A load links its parts in turn while each one's object checks (LINK-PART),
-\ loading the file a part requests before the next; the first part that does
-\ not check compiles, with every later one. The loader's log (include.f
-\ EVENT-RECORD) names a compile's requests and its registry acts, which its
-\ object carries and a link repeats.
+\ A load takes its parts in turn: a part whose object checks links (LINK-PART),
+\ and one that does not compiles to its request or the source's end; either way
+\ the file the part requests loads before the next part. The loader's log
+\ (include.f EVENT-RECORD) names a compile's requests and its registry acts,
+\ which its object carries and a link repeats.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -387,9 +387,14 @@ PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused referenc
 variable FILE-PATH-N
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
 variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
-\ The compiling file never links, so it compiles in every build (WRITE-OBJECT): it has no stamp,
-\ a piece starts or ends off TOP-SCOPE?, or a load it asked for never reached the runner (ACTS+).
+\ The compiling part never links, so it compiles in every build (WRITE-OBJECT): the build is a
+\ cross build, its file has no stamp, it starts or ends off TOP-SCOPE?, an earlier part of its file
+\ ended at an unclean cut (NEST), or a load it asked for never reached the runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
+\ What LOAD's loop over the file's parts does next: link part FILE-PART at FILE-OFF, compile it,
+\ or, once NEST cut the compiling part at a clean request, go back to linking the next.
+ENUM turn link compile cut ;ENUM
+TYPED-VARIABLE TURN turn
 
 \ The magic, the key, the part's number and time, the offset in the source the part starts at
 \ (FILE-OFF), then per section INPUT FILES REQUESTS NAMES REACHED PATHS WORDS EXTENTS TIMES PIECES
@@ -4786,25 +4791,11 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    resume ;
 
 
-\ From part 0, each part that links (LINK-PART) while the load starts in TOP-SCOPE? and is not a
-\ cross build, its request replayed (REPLAY): true when every part linked, else the offset in the
-\ source the first part that did not link starts at, and false.
-: LINK-PARTS ( ptr u8 n -- n bool )
-   {: path:ptr pathu:n :}
-   0 begin
-      TOP-SCOPE? CROSS? 0= and if LINK-PART else false then
-   while
-      REQS-N @ 0= if true exit then
-      drop REPLAY  dup FILE-OFF !
-      path pathu PATH!  MARKS
-   repeat
-   false ;
-
-
-\ The file's load: its key and marks, then its parts in turn (LINK-PARTS) until one does not link;
-\ that part and every later one compile from its start to the source's end, NEST ending a part at
-\ each request. A cross build links no object and writes none: an object carries one emission per
-\ definition, and a cross build makes two, the target's and the host's that later files run.
+\ The file's load, its parts in turn from part 0 (TURN): a part links (LINK-PART) in TOP-SCOPE?
+\ outside a cross build, its request then replayed (REPLAY); one that does not compiles to its
+\ request's clean cut (NEST) or the source's end. A cross build links no object and writes none:
+\ an object carries one emission per definition, and a cross build makes two, the target's and
+\ the host's that later files run.
 : LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    path pathu KEY!
@@ -4813,20 +4804,54 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    MARKS
    INPUT!
    0 FILE-PART !  0 FILE-OFF !
-   path pathu LINK-PARTS if drop 1 LINKED-N +! exit then {: off:n :}
-   OBJECT-OPEN  COPY-BELOW
-   source NULL-PTR - FILE-SRC !  sourceu FILE-SRC-U !  off FILE-OFF !
-   CROSS? UNLINKABLE !  STAMPED? 0= if true UNLINKABLE ! then  SCOPE-CK
-   false PUSH-KEY
-   off sourceu q ['] RUN-UNIT ['] POP-KEY finally
-   true GOING                          \ E-FAILED: a request failed and the source caught it
-   SCOPE-CK
-   sourceu PART-NAMES
-   -1 PIECE-END
-   1 COMPILED-N +!
-   0 COMPILED-TIME {: t:n :}
-   t WRITE-OBJECT
-   FILE-PART @ t PIECE-PLACE ;
+   source NULL-PTR - FILE-SRC !  sourceu FILE-SRC-U !
+   construct turn link TURN !
+   false begin
+      {: compiled:bool :}
+      TURN @ MATCH turn
+         link OF
+            TOP-SCOPE? CROSS? 0= and if LINK-PART else false then if
+               REQS-N @ 0= if
+                  compiled true
+               else
+                  REPLAY FILE-OFF !
+                  path pathu PATH!  MARKS
+                  source NULL-PTR - FILE-SRC !  sourceu FILE-SRC-U !
+                  construct turn link TURN !
+                  compiled false
+               then
+            else
+               construct turn compile TURN !
+               compiled false
+            then
+         ENDOF
+         compile OF
+            OBJECT-OPEN  COPY-BELOW
+            CROSS? UNLINKABLE !  STAMPED? 0= if true UNLINKABLE ! then  SCOPE-CK
+            false PUSH-KEY
+            FILE-OFF @ sourceu q ['] RUN-UNIT ['] POP-KEY finally
+            true GOING                    \ E-FAILED: a request failed and the source caught it
+            TURN @ MATCH turn
+               link OF E-COMP-STATE throw ENDOF
+               compile OF                 \ the source ended
+                  SCOPE-CK
+                  sourceu PART-NAMES
+                  -1 PIECE-END
+                  0 COMPILED-TIME dup WRITE-OBJECT
+                  FILE-PART @ swap PIECE-PLACE
+                  true true
+               ENDOF
+               cut OF
+                  path pathu PATH!  MARKS
+                  construct turn link TURN !
+                  true false
+               ENDOF
+            ;MATCH
+         ENDOF
+         cut OF E-COMP-STATE throw ENDOF
+      ;MATCH
+   until
+   if 1 COMPILED-N +! else 1 LINKED-N +! then ;
 
 
 \ Whether event ev of the loader's log is the request that loads path: the piece's, an include or a
@@ -4841,9 +4866,11 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 
 
 \ For request event ev of the compiling file, the offset in its source just past the request's
-\ token, where the interpreter goes on; -1 unless the request is a clean cut there: in TOP-SCOPE?,
-\ no cells on the requester's stack, no definition open, the token inside the source, and the
-\ newest word the piece ran a loader word (include.f SOURCE-UNIT:LOADER-KIND).
+\ token, where the next part starts; -1 unless the request is a clean cut there: in TOP-SCOPE?,
+\ no cells on the requester's stack, no definition open, the token inside the source, the
+\ newest word the piece ran a loader word (include.f SOURCE-UNIT:LOADER-KIND), and the running
+\ reader the file's own range with its cursor at the token's end. NEST ends that reader at a clean
+\ cut, which from an evaluated copy of a slice of the file would end the evaluation instead.
 : RESUME ( n -- n )
    {: ev:n :}
    ev EVENT-TOK@ {: a:n u:n :}
@@ -4856,15 +4883,19 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    OUTER:RUN-COUNT 1 - OUTER:RUN-RECORD@ {: idx:n :}
    \ 5 is OUTER's OBSERVE-WORD, the op its run loop passes for a word about to run
    5 idx  idx XREF-REC XREF-START  SOURCE-UNIT:LOADER-KIND  SOURCE-UNIT:NONE = if -1 exit then
+   SRCLOC:INB-CELL HOST@ src <>  INE-CELL HOST@  src FILE-SRC-U @ +  <>  or
+   INP-CELL HOST@  a u +  <>  or if -1 exit then
    a u + src - ;
 
 
 \ A request of the compiling file, the newest event of the loader's log (REQUEST?, else
 \ E-COMP-STATE), ends its part: the part's names to where its source resumes (RESUME; -1, not a
-\ clean cut, names to the source's end and makes this part and the later ones UNLINKABLE), its one
+\ clean cut, names to the source's end and makes this part and the next UNLINKABLE), its one
 \ REQUESTS row (kind, resume offset, the path as spelled and as loaded), its object and BUILT row.
 \ The requested file then loads (LOAD), and the next part starts at a cell boundary, as a load
-\ leaves here (include.f LOAD-UNIT), with a new object; its source's place waits in locals.
+\ leaves here (include.f LOAD-UNIT); the requester's place waits in locals. At a clean cut NEST
+\ ends the file's reader and leaves the next part to LOAD (TURN cut); at an unclean one the next
+\ part compiles on in this reader, with a new object.
 : NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    EVENT-COUNT 1 - {: ev:n :}
@@ -4883,16 +4914,23 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    STAMP@ {: s:n ns:n size:n :}
    FILE-PART @  FILE-OFF @  FILE-SRC @  FILE-SRC-U @ {: part:n off:n src:n srcu:n :}
    UNLINKABLE @ {: unlinkable:bool :}
+   TURN @ {: was:turn :}
    path pathu root rootu source sourceu q LOAD
    s ns size STAMP!
    part 1 + FILE-PART !  off FILE-OFF !  src FILE-SRC !  srcu FILE-SRC-U !
-   unlinkable UNLINKABLE !
+   resume 0< if unlinkable UNLINKABLE ! then
    resume 0 >= if resume FILE-OFF ! then
    LOADER$ {: k:ptr ku:n :}
    k FILE-KEY ku BYTE-COPY
    FILE-KEY CANON$ PATH!
    align
-   OBJECT-OPEN  MARKS  COPY-BELOW  SCOPE-CK ;
+   resume 0< if
+      was TURN !
+      OBJECT-OPEN  MARKS  COPY-BELOW  SCOPE-CK
+   else
+      INE-CELL HOST@ INP-CELL HOST!
+      construct turn cut TURN !
+   then ;
 
 
 \ The load, nested when a compiling file requested it.
