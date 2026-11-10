@@ -1051,6 +1051,11 @@ learned live in the docs for their subject.
 
 ## Compiler and builds
 
+- 2026-11-10, target: what a build makes, and that side of a build, is the
+  target, never the product: "call it target, not product. it's the target of
+  cross-compilation, even on the same platform". Every build is a
+  cross-compilation from the running hb, the host, to its target. Prose and
+  comments follow (dot habu-say-target-not-268135eb); no word is renamed.
 - 2026-11-09, timestamps, not hashes: told that a warm build decides a file is
   unchanged by the SHA-256 of its source and of the objects of the files it
   names, and shown that make's newer-than rule would link a stale object once
