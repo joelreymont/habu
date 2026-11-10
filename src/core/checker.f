@@ -3373,12 +3373,14 @@ public
 \ linear included, expands to its W hidden physical fields (PUSH-LOGICAL), and
 \ whole-bundle transports move the group by row surgery (XPORT-STEP?). A layout
 \ whose width reads an open argument (LAYOUT-WIDTH-OPEN?) stays one logical
-\ T-PARAM cell; a whole-bundle transport op (dup drop swap over nip rot -rot
-\ tuck 2dup 2drop 2swap 2over, >r r> r@ and kin, locals capture) moves it
-\ through its fresh transport var: DO-TOK1/LOC-BIND set LAYOUT-XPORT only while
-\ checking such an op, and LAYOUT-XPORT-ALLOW? rejects the bind when the layout
-\ may be linear. Every other touch (value-inspecting prims, ?dup, control
-\ predicates, higher-order apply, con/ptr/atom pairings) fails closed.
+\ T-PARAM cell. A whole-bundle transport op (dup drop swap over nip rot -rot
+\ tuck 2dup 2drop 2swap 2over, >r r> r@ and kin, locals capture) would bind it
+\ to its fresh transport var: DO-TOK1/LOC-BIND set LAYOUT-XPORT only while
+\ checking such an op, and LAYOUT-XPORT-ALLOW? refuses the bind when the layout
+\ may be linear, which an open one always may (its width reads a payload var,
+\ OWN-TYPE-N), so no such op accepts it. Every other touch (value-inspecting
+\ prims, ?dup, control predicates, higher-order apply, con/ptr/atom pairings)
+\ fails closed.
 CHECKER-REG:SCRATCH{
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
@@ -3600,10 +3602,10 @@ variable NMOFF                           \ its token's offset in the checked tex
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN     \ only inside a whole-bundle transport op
    a HIDDEN-PARAM? b HIDDEN-PARAM? or IF RES-FALSE EXIT THEN   \ a hidden field is not a single-cell bundle: never binds a var
    a LAYOUT-PARAM? IF                           \ var <-> layout-param bind: absorb the bundle
-      a T-RES LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+      a T-UNSTALE LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
       b ISVAR EXIT THEN
    b LAYOUT-PARAM? IF
-      b T-RES LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+      b T-UNSTALE LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
       a ISVAR EXIT THEN
    RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
 
@@ -20411,11 +20413,11 @@ variable CHECKER-PREFIX-ROLLBACK
 \ group through FRESH+UNIFY; a read below the declared inputs is measured as
 \ CHECKER-STEP measures it (STEP-AT-BASE?, STEP-UNDERFLOW!)), then write the
 \ op's output permutation with MK-PUSH. Any operand carrying proof or lost
-\ metadata (XP-META-IN-K?), scalars included, takes this path. A logical layout cell (LAYOUT-WIDTH-OPEN?) among the operands
-\ rejects here (XG-READ-GROUP); without a hidden group or proof/lost metadata
-\ among the operands (XPORT-STEP?) the op takes the one-cell path, which
-\ LAYOUT-XPORT-ALLOW? refuses when the layout may be linear (TDLIN-VAR-TOR,
-\ TDLIN-VAR-DUP).
+\ metadata (XP-META-IN-K?), scalars included, takes this path. An operand that
+\ is a logical layout cell of open width (LOGICAL-KNOWN? false) sends the op to
+\ the one-cell path whatever else is among the operands (XPORT-STEP?), which
+\ refuses it as it refuses that layout alone: LAYOUT-XPORT-ALLOW? never binds an
+\ open width, which reads a payload var that may bind linear (OWN-TYPE-N).
 64 constant XG-GCAP            \ max logical groups per op (= LOC-CAP for locals capture)
 256 constant XG-TCAP           \ max total cells across one op's groups
 create XG-TERMS XG-TCAP cells allot
@@ -20478,7 +20480,10 @@ variable XG-N   variable XG-TN   variable XG-ROW
                                          \ copy raises it and a drop lowers it (reject). Locals capture
                                          \ (LOC-BIND-GROUPS) removes the bundle from the counted rows at
                                          \ bind, so the same LIN-CHECK still rejects a linear layout local.
-   t LAYOUT-PARAM? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ open-arg layout never transports
+   \ An open layout: XPORT-STEP? sends an op over one to the step path, so only
+   \ locals capture reaches here (LOC-BIND-GROUPS, when an expanded layout is
+   \ among the captured operands), and it refuses with no reason.
+   t LAYOUT-PARAM? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN
    node P>TYPE node XG-T+
    node P>REST XG-ROW !
    RES-TRUE ;
@@ -20685,9 +20690,30 @@ variable XG-N   variable XG-TN   variable XG-ROW
       1 +
    REPEAT 2drop RES-FALSE ;
 
+\ Is one of the top k logical operands an open layout (LOGICAL-KNOWN? false)?
+\ It walks groups, not cells: a hidden group spans its W cells, so a scan of k
+\ cells stops inside a group above the layout and never reaches it.
+: XP-OPEN-IN-K? ( n n -- bool ) {: row0:n k:n :}
+   row0
+   0 BEGIN dup k < WHILE
+      over R-RES TAG S-PUSH <> IF 2drop RES-FALSE EXIT THEN
+      over R-RES P>TYPE T-RES
+      dup HIDDEN-PARAM? IF
+         T-WIDTH rot swap ROW-DROP-N swap        \ skip the whole hidden group
+      ELSE
+         dup LAYOUT-PARAM? swap LOGICAL-KNOWN? 0= and IF 2drop RES-TRUE EXIT THEN
+         swap R-RES P>REST swap
+      THEN
+      1 +
+   REPEAT 2drop RES-FALSE ;
+
+\ An open layout among the operands goes to the one-cell path whatever else is
+\ among them, which refuses it as it refuses that layout alone
+\ (LAYOUT-XPORT-ALLOW?).
 : XPORT-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   dup a u WF-XPORT-K XP-OPEN-IN-K? IF drop RES-FALSE EXIT THEN
    dup a u WF-XPORT-K XP-BUNDLE-IN-K?
    swap a u WF-XPORT-K XP-META-IN-K? or 0= IF RES-FALSE EXIT THEN
    a u XPORT-APPLY
@@ -24128,8 +24154,8 @@ variable IS-PEND-U                   \ and its length
 \ Whole-bundle transport tokens. An EXPANDED layout (width known, linear
 \ included) moves by direct row surgery (XPORT-STEP?), whose LIN-CHECK conserves
 \ a linear bundle; the one logical cell of a layout whose width reads an open
-\ argument (LAYOUT-WIDTH-OPEN?) may be absorbed by the op's effect var, gated by
-\ LAYOUT-XPORT-ALLOW? (refused when the layout may be linear). ?dup is excluded:
+\ argument (LAYOUT-WIDTH-OPEN?) goes to the op's effect var, whose bind
+\ LAYOUT-XPORT-ALLOW? refuses because such a layout may be linear. ?dup is excluded:
 \ it branches on the top (tag) cell, width-breaking for a sum whose tag 0 is a
 \ valid variant. Transport mode keys on the folded token name and DO-TOK consults
 \ user sigs before prims, so a token is admitted only when its binding is the

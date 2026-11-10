@@ -989,6 +989,44 @@ variable RC
    s" E-REJECTED" s" >r" 1 14 13 15 REFUSED-AT
    s" fix_return_stack" s" Balance return-stack transfers before the definition exits." REPAIRED-AS ;
 
+\ The repair of a read of a cell `catch` left stale.
+: STALE-REPAIRED ( -- )
+   s" keep_value_before_catch"
+   s" `catch` puts the stacks back to the DEPTH it was entered at and never to their contents, so a cell the caught body may have written on a throw path holds an unknown machine word afterwards. Bind the value to a local BEFORE the catch and use the local, or drop the cell. A stale cell may still be moved, dropped, or bound to an untyped local."
+   REPAIRED-AS ;
+
+\ A stack word over an open layout is refused by the step path's mismatch,
+\ whatever else is among its operands: a proof or an expanded layout beside it
+\ does not send it to the transport path, which has no reason to give. An open
+\ layout `catch` left stale is refused as a stale read, by a stack word and by
+\ a locals capture, whatever family the signature names first.
+: TEST-OPEN-LAYOUT-XPORT ( -- )
+   s" an open layout under swap" T-LABEL
+   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT : X ( rvbox<a> n -- n rvbox<a> ) swap ;"
+      s" open-layout.f" LINE-FIXTURE
+   s" E-MISMATCH" s" swap" 1 70 69 73 REFUSED-AT
+   s" fix_type" s" Change the body so produced types match the signature." REPAIRED-AS
+   s" an open layout beside a proof under swap" T-LABEL
+   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT : X ( rvbox<a> -- n rvbox<a> ) [: ;] catch swap ;"
+      s" open-layout-proof.f" LINE-FIXTURE
+   s" E-MISMATCH" s" swap" 1 80 79 83 REFUSED-AT
+   s" fix_type" s" Change the body so produced types match the signature." REPAIRED-AS
+   s" an open layout beside an expanded layout under swap" T-LABEL
+   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT : X ( rvbox<a> pr2 -- pr2 rvbox<a> ) swap ;"
+      s" open-layout-pr2.f" LINE-FIXTURE
+   s" E-MISMATCH" s" swap" 1 115 114 118 REFUSED-AT
+   s" fix_type" s" Change the body so produced types match the signature." REPAIRED-AS
+   s" a stale open layout under drop, a non-linear family first" T-LABEL
+   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop drop ;"
+      s" open-layout-stale-pr2.f" LINE-FIXTURE
+   s" E-STALE-READ" s" drop" 1 229 228 232 REFUSED-AT
+   STALE-REPAIRED
+   s" a stale open layout in a locals capture" T-LABEL
+   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop {: x :} ;"
+      s" open-layout-stale-local.f" LINE-FIXTURE
+   s" E-STALE-READ" s" :}" 1 234 233 235 REFUSED-AT
+   STALE-REPAIRED ;
+
 \ A match whose scrutinee does not fit, and a match or case one of whose
 \ branches fails, still has live words, in its branches and after it, that the
 \ load compiles: the first undefined one refuses the definition.
@@ -2017,6 +2055,7 @@ variable RC
    TEST-ESCAPED-PATH
    TEST-REFUSAL-ORDER
    TEST-REPAIR-FOLLOWS
+   TEST-OPEN-LAYOUT-XPORT
    TEST-LIVE-BRANCHES
    TEST-TICK-TARGET
    TEST-MADE
