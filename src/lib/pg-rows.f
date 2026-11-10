@@ -77,7 +77,7 @@ DYNAMIC-BUFFER READ-CHUNK SPAN:span<u8>   \ the newest chunk, empty until the fi
 DYNAMIC-BUFFER READ-TASK n
 DYNAMIC-BUFFER READ-USED n                \ the newest chunk's bytes taken, its header among them
 DYNAMIC-BUFFER REFUSAL SPAN:span<u8>      \ the task's refusal text mapping, empty until its first refusal
-DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last outcome was no refusal
+DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, read only under KIND-REFUSAL
 
 
 \ The scan may pass rows another task takes while it runs: only this task ever
@@ -166,11 +166,13 @@ DYNAMIC-BUFFER REFUSAL-U n                \ its bytes in use, zero when the last
       s" : " at REFUSAL+
    then
    ma mu at REFUSAL+
+   RECORD-REFUSAL
    E-QUERY throw ;
 
 
+\ MY-ARENA takes the task's reader row before the statement is sent.
 : NOT-REFUSED ( -- )
-   0 MY-ARENA REFUSAL-U ! ;
+   MY-ARENA drop RECORD-NONE ;
 
 
 : CELL$ ( PG:result n -- PG:result ptr u8 n ) {: c:n :}
@@ -240,13 +242,13 @@ public
 
 
 \ Starts a read on this task: the spans of its previous read are given up, and
-\ every chunk they took but the first, and the last refusal's text is emptied,
-\ so a query that ends any other way than refused leaves REFUSED$ empty.
+\ every chunk they took but the first, and REFUSED$ is emptied, so a query
+\ that is neither refused nor loses its connection leaves it empty.
 : READ-RESET ( -- )
    MY-ARENA {: at:n :}
    at READ-CHUNK @ SPAN:LEN 0<> if at TRIM then
    HEADER-BYTES at READ-USED !
-   0 at REFUSAL-U ! ;
+   RECORD-NONE ;
 
 
 \ A result that answered rows, or E-QUERY. It runs inside the caller's result
@@ -269,13 +271,14 @@ public
    ROWS COUNT>N 0= if E-ROW throw then ;
 
 
-\ The server's text for the task's last refused query, empty after an outcome
-\ that was no refusal (see REFUSED for its shape). ROWS-OR-THROW, EXEC, QUERY,
-\ BY-ID and ONE-INT record it before they throw E-QUERY. Valid until the task's
-\ next query.
+\ The text of the task's last refused statement or lost connection, valid until
+\ its next PG operation. A statement's start empties it; see pg.f OP-START.
 : REFUSED$ ( -- ptr u8 n )
    MY-ARENA {: at:n :}
-   at REFUSAL @ SPAN:$ drop at REFUSAL-U @ ;
+   REFUSED-KIND @ {: kind:n :}
+   kind KIND-REFUSAL = if at REFUSAL @ SPAN:$ drop at REFUSAL-U @ exit then
+   kind KIND-LOSS = if REFUSED-TEXT BUF:SPAN$ BUF:BLEN>N exit then
+   at REFUSAL @ SPAN:$ drop 0 ;
 
 private
 

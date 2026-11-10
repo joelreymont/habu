@@ -4,6 +4,8 @@
 \ registry CONFIGURE sizes, holding the libpq pointer, the owning task and a
 \ generation: a stale handle is E-CLEARED, another task's E-HANDLE (docs/design.md
 \ "Models taken from other Forths"). A task that needs two databases opens two.
+\ A transport failure that throws E-EXEC closes the connection and keeps libpq's
+\ text for PG:REFUSED$ (src/lib/pg-rows.f); CONN-LOST says when it keeps none.
 
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -150,11 +152,20 @@ TASK:#USER 7 + CELL-MASK and CELL TASK:+USER SCOPE-HEAD drop
 \ The packed handle of the attempt CONNECT waits on, 0 when none. Its cleanup
 \ is a quotation, which cannot read CONNECT's locals.
 TASK:#USER 7 + CELL-MASK and CELL TASK:+USER CONNECT-HEAD drop
-\ The task's last refusal text, a BUF that grows from REFUSED-CAP; REFUSED-REGISTER
-\ says who releases it.
+\ The task's last connect refusal's or lost connection's text, a BUF growing
+\ from REFUSED-CAP; REFUSED-REGISTER says who releases it.
 $1000 constant REFUSED-CAP
 TASK:#USER 7 + CELL-MASK and BUF:HDR-BYTES TASK:+USER REFUSED-TEXT drop
 TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-LIVE drop
+0 constant KIND-NONE
+1 constant KIND-REFUSAL
+2 constant KIND-LOSS
+\ The text PG:REFUSED$ answers: none (zero, as a task starts), a refusal (the
+\ reader row's, pg-rows.f) or a loss (REFUSED-TEXT's). The words below set it.
+TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-KIND drop
+\ Nonzero while ABORT-TX's ROLLBACK runs: an operation's start and CONN-LOST
+\ then leave REFUSED-KIND as the body's failure left it.
+TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-HOLD drop
 
 : CONN-CAP ( -- n ) CONN-CAPACITY @ ;
 : RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
@@ -879,13 +890,24 @@ REGISTER-CHILD-RESET
    res REPORT$ ;
 
 
-: WAITING ( n n -- progress ) {: slot:n events:n :}
-   slot CONN-PG@ LIB-SOCKET {: socket:n :}
-   socket 0 < if slot ABANDON-SLOT E-EXEC throw then
-   socket >FD events PG-PROGRESS:waiting ;
+: RECORD-NONE ( -- )   KIND-NONE REFUSED-KIND ! ;
+: RECORD-REFUSAL ( -- )   KIND-REFUSAL REFUSED-KIND ! ;
+
+: RECORD-LOSS ( -- )
+   REFUSED-TEXT BUF:LEN@ BUF:BLEN>N 0<> if KIND-LOSS REFUSED-KIND ! then ;
+
+: DROP-LOSS ( -- )
+   REFUSED-KIND @ KIND-LOSS = if RECORD-NONE then ;
+
+\ Every word that starts an exchange but CLOSE runs this before it can throw
+\ E-EXEC: a loss is emptied and a refusal stays, unless REFUSED-HOLD is set.
+: OP-START ( -- )
+   REFUSED-HOLD @ 0<> if exit then
+   DROP-LOSS ;
 
 
 : REFUSED-DISPOSE ( -- )
+   RECORD-NONE
    0 REFUSED-LIVE !
    REFUSED-TEXT BUF:DISPOSE ;
 
@@ -904,10 +926,11 @@ REGISTER-CHILD-RESET
    1 REFUSED-LIVE ! ;
 
 
-\ PQerrorMessage points into the PGconn CLOSE-SLOT finishes, so the text is
+\ PQerrorMessage points into the PGconn FINISH-SLOT finishes, so the text is
 \ copied first; a copy that throws still closes the slot.
 : KEEP-REFUSAL ( n -- n )
    {: slot:n :}
+   DROP-LOSS
    REFUSED-OPEN
    REFUSED-TEXT BUF:CLEAR
    slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
@@ -919,6 +942,30 @@ REGISTER-CHILD-RESET
    slot CLOSE-SLOT drop
    code 0<> if code throw then
    REFUSED-TEXT BUF:SPAN$ BUF:BLEN>N PG-PROGRESS:refused ;
+
+
+\ CONN-LOST's copy; one that throws leaves the record empty.
+: KEEP-LOSS ( n -- n )
+   REFUSED-HOLD @ 0<> if exit then
+   RECORD-NONE
+   KEEP-REFUSAL
+   RECORD-LOSS ;
+
+
+\ A transport failure libpq reported: its text, unless empty, is the task's
+\ loss, then the slot closes. Under REFUSED-HOLD it copies nothing.
+: CONN-LOST ( n -- )
+   {: slot:n :}
+   slot ['] KEEP-LOSS catch nip {: code:n :}
+   slot ABANDON-SLOT
+   code 0<> if code throw then
+   E-EXEC throw ;
+
+
+: WAITING ( n n -- progress ) {: slot:n events:n :}
+   slot CONN-PG@ LIB-SOCKET {: socket:n :}
+   socket 0 < if slot CONN-LOST then
+   socket >FD events PG-PROGRESS:waiting ;
 
 
 : POLL-CONNECT ( n -- progress ) {: slot:n :}
@@ -949,7 +996,7 @@ REGISTER-CHILD-RESET
 : QUERY-DONE ( n -- progress ) {: slot:n :}
    slot PENDING@ 1- {: res:n :}
    slot DRAIN-LAST@ {: pg :}
-   pg NULL-ADDR? if slot ABANDON-SLOT E-EXEC throw then
+   pg NULL-ADDR? if slot CONN-LOST then
    NULL-ARG slot DRAIN-LAST!
    0 slot PENDING!
    pg slot res FILL-RES-SLOT N>RESULT PG-PROGRESS:completed ;
@@ -960,10 +1007,10 @@ REGISTER-CHILD-RESET
 \ progress calls; all preceding results are released as a script advances.
 : POLL-QUERY ( n -- progress ) {: slot:n :}
    slot CONN-PG@ LIB-CONSUME-INPUT 0= if
-      slot ABANDON-SLOT E-EXEC throw
+      slot CONN-LOST
    then
    slot CONN-PG@ LIB-FLUSH {: flushing:n :}
-   flushing 0 < if slot ABANDON-SLOT E-EXEC throw then
+   flushing 0 < if slot CONN-LOST then
    flushing 0<> if slot AIO:READABLE AIO:WRITABLE or WAITING exit then
    begin
       slot CONN-PG@ LIB-IS-BUSY 0<> if
@@ -1060,7 +1107,7 @@ REGISTER-CHILD-RESET
 
 \ A failed read is a transport failure, which closes the connection.
 : TAKE-NOTIFIES ( n -- bool ) {: slot:n :}
-   slot CONN-PG@ LIB-CONSUME-INPUT 0= if slot ABANDON-SLOT E-EXEC throw then
+   slot CONN-PG@ LIB-CONSUME-INPUT 0= if slot CONN-LOST then
    slot DRAIN-NOTIFIES ;
 
 
@@ -1068,7 +1115,7 @@ REGISTER-CHILD-RESET
 \ protocol state is in flight, so a failed wait leaves the connection open.
 : READABLE-WITHIN ( n n -- bool ) {: slot:n limit:n :}
    slot CONN-PG@ LIB-SOCKET {: socket:n :}
-   socket 0 < if slot ABANDON-SLOT E-EXEC throw then
+   socket 0 < if slot CONN-LOST then
    socket >FD AIO:READABLE limit >MS AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF drop true ENDOF
@@ -1103,12 +1150,12 @@ REGISTER-CHILD-RESET
 \ A send libpq refused is a transport failure: the connection goes with it.
 : SEND-FAILED ( n n -- ) {: slot:n res:n :}
    res RETIRE-RES-SLOT
-   slot ABANDON-SLOT
-   E-EXEC throw ;
+   slot CONN-LOST ;
 
 
 : EXEC-START ( n ptr u8 n -- )
    {: slot:n a u:n :}
+   OP-START
    slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
    a u slot ARENA-CSTR {: sql-off:n :}
@@ -1124,6 +1171,7 @@ REGISTER-CHILD-RESET
 
 : PREPARED-START ( n ptr u8 n -- )
    {: slot:n a u:n :}
+   OP-START
    slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
    a u slot ARENA-CSTR {: name-off:n :}
@@ -1140,6 +1188,7 @@ REGISTER-CHILD-RESET
 \ The empty name is the unnamed statement, which only DESCRIBE sends.
 : PREPARE-SEND ( n ptr u8 n ptr u8 n -- )
    {: slot:n na nu:n sa su:n :}
+   OP-START
    slot IDLE-CHECK
    su 0 <= if E-STATEMENT throw then
    na nu slot ARENA-CSTR {: name-off:n :}
@@ -1160,6 +1209,7 @@ REGISTER-CHILD-RESET
 
 : DESCRIBE-START ( n -- )
    {: slot:n :}
+   OP-START
    slot IDLE-CHECK
    s" " slot ARENA-CSTR {: name-off:n :}
    CLAIM-RES-SLOT {: res:n :}
@@ -1173,6 +1223,7 @@ REGISTER-CHILD-RESET
 \ parameter list is a caller error with nowhere to go: refusing it by name
 \ beats dropping the values the caller believes it bound.
 : SCRIPT-START ( n ptr u8 n -- ) {: slot:n a u:n :}
+   OP-START
    slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
    slot PARAM-N@ 0 <> if E-STATEMENT throw then
@@ -1208,6 +1259,7 @@ REGISTER-CHILD-RESET
 : RUN-VERB ( n ptr u8 n -- n )
    {: slot:n a u:n :}
    slot OP-DEADLINE {: deadline:n :}
+   OP-START
    slot IDLE-CHECK
    slot a u VERB-TEXT! {: sql :}
    CLAIM-RES-SLOT {: res:n :}
@@ -1358,11 +1410,12 @@ public
 \ is claimed first, so the conninfo it stages is its own. An attempt libpq
 \ rejects at once is refused at the first POLL or AWAIT. A refusal's text, like
 \ a result's report, has no final newline and stays readable until the same
-\ task's next refusal, by CONNECT, AWAIT or POLL. A conninfo libpq cannot parse
-\ throws E-CONNECT and keeps no text, because libpq's parse message can quote
-\ the conninfo's values, a password among them.
+\ task's next refusal, by CONNECT, AWAIT or POLL, or its next lost connection.
+\ A conninfo libpq cannot parse throws E-CONNECT and keeps no text, because
+\ libpq's parse message can quote the conninfo's values, a password among them.
 : CONNECT-START ( ptr u8 n -- connection )
    {: a u:n :}
+   OP-START
    CLAIM-CONN-SLOT {: slot:n :}
    slot OPEN-CONN-SLOT
    a u slot ['] STAGE-CONNINFO catch {: code:n :}
@@ -1457,6 +1510,7 @@ public
 \ waits, needs AIO:START, and leaves notifications it reads for NOTIFIED?.
 : ENDED? ( connection -- bool )
    CONN-SLOT {: slot:n :}
+   OP-START
    slot IDLE-CHECK
    begin slot 0 READABLE-WITHIN while
       slot CONN-PG@ LIB-CONSUME-INPUT 0=
@@ -1647,6 +1701,7 @@ public
    handle CONN-SLOT {: slot:n :}
    timeout MS>N {: limit:n :}
    limit 0 < if E-BOUND throw then
+   OP-START
    slot IDLE-CHECK
    slot CONN-PG@ LIB-TRANSACTION-STATUS {: status:n :}
    status TRANS-INTRANS = status TRANS-INERROR = or if E-TRANSACTION throw then
@@ -1667,7 +1722,10 @@ private
 : ABORT-TX ( connection -- )
    {: handle:connection :}
    handle LIVE? 0= if exit then
-   handle CONN-SLOT [: dup ROLLBACK-TX ;] catch {: stale:n code:n :}
+   handle CONN-SLOT {: slot:n :}
+   1 REFUSED-HOLD !
+   slot [: [: dup ROLLBACK-TX ;] catch ;] [: 0 REFUSED-HOLD ! ;] finally
+   {: stale:n code:n :}
    code 0= if exit then
    handle LIVE? if handle CONN-SLOT ABANDON-SLOT then ;
 

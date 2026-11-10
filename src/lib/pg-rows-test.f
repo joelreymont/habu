@@ -321,6 +321,137 @@ TYPED-VARIABLE CONN PG:connection
    PG:READ-RESET NO-REFUSAL ;
 
 
+\ ---- a lost connection's text ------------------------------------------------
+
+TYPED-VARIABLE LOST-A PG:connection
+TYPED-VARIABLE LOST-B PG:connection
+10000 constant END-MS
+
+
+: OPEN-AB ( -- )
+   CONNINFO$ PG:OPEN LOST-A !
+   CONNINFO$ PG:OPEN LOST-B ! ;
+
+: CLOSE-AB ( -- )
+   LOST-A @ PG:LIVE? if LOST-A @ PG:CLOSE then
+   LOST-B @ PG:LIVE? if LOST-B @ PG:CLOSE then ;
+
+
+: A-PID ( -- n )
+   LOST-A @ PG:PARAMS
+   LOST-A @ s" select pg_backend_pid()" PG:ONE-INT ;
+
+
+: ENDED-ONE ( PG:result -- PG:result )
+   0 0 PG:AT-INT 1 T= ;
+
+\ The two-argument form answers once the backend has exited. WITH-RESULT, not
+\ a pg-rows statement, so the task's refusal text stays.
+: END-A ( n -- ) {: pid:n :}
+   LOST-B @ PG:PARAMS
+   LOST-B @ pid PG:INT+
+   LOST-B @ END-MS PG:INT+
+   LOST-B @ s" select pg_terminate_backend($1, $2)::int" [: ENDED-ONE ;]
+   PG:WITH-RESULT ;
+
+
+: ON-A ( -- )
+   LOST-A @ PG:PARAMS
+   LOST-A @ s" select 1" PG:ONE-INT drop ;
+
+: TRY-A ( -- n )
+   [: ON-A ;] catch ;
+
+
+: SELECT-ON ( PG:connection -- )
+   dup PG:PARAMS
+   s" select 1" [: ;] PG:WITH-RESULT ;
+
+: LOSE-A ( -- n )
+   [: LOST-A @ SELECT-ON ;] catch ;
+
+: SELECT-B ( -- )
+   LOST-B @ SELECT-ON ;
+
+
+: REFUSE-ON ( PG:connection -- )
+   dup PG:PARAMS
+   s" insert into lost_missing_q values (1)" PG:EXEC ;
+
+: REFUSE-A ( -- n )
+   [: LOST-A @ REFUSE-ON ;] catch ;
+
+: REFUSE-B ( -- n )
+   [: LOST-B @ REFUSE-ON ;] catch ;
+
+
+: A-ENDED ( -- )
+   PG:REFUSED$ s" terminating connection due to administrator command"
+   CONTAINS? TTRUE ;
+
+
+: LOST-CASES ( -- )
+   s" a backend ended from another connection" T-LABEL
+   OPEN-AB
+   A-PID END-A
+   s" a statement on an ended backend" T-LABEL
+   TRY-A PG:E-EXEC T=
+   s" a lost connection keeps libpq's text" T-LABEL
+   A-ENDED
+   LOST-A @ PG:LIVE? TFALSE
+   CLOSE-AB ;
+
+
+: LOSS-AFTER-REFUSAL ( -- )
+   s" a loss after a refusal answers the loss" T-LABEL
+   OPEN-AB
+   A-PID END-A
+   REFUSE-B PG:E-QUERY T=
+   LOSE-A PG:E-EXEC T=
+   A-ENDED
+   s" another operation's start empties a loss" T-LABEL
+   [: SELECT-B ;] 0 TTHROWSQ
+   NO-REFUSAL
+   CLOSE-AB ;
+
+
+\ The ROLLBACK under the body's E-QUERY finds A's backend gone.
+: REFUSE-END ( PG:connection -- PG:connection )
+   A-PID {: pid:n :}
+   REFUSE-A {: code:n :}
+   pid END-A
+   code 0<> if code throw then ;
+
+: REFUSE-IN-TX ( -- )
+   LOST-A @ [: REFUSE-END ;] PG:WITH-TRANSACTION ;
+
+: ROLLBACK-LOST ( -- )
+   s" a lost ROLLBACK keeps the body's refusal" T-LABEL
+   OPEN-AB
+   [: REFUSE-IN-TX ;] PG:E-QUERY TTHROWSQ
+   s" lost_missing_q" REFUSAL-NAMES
+   LOST-A @ PG:LIVE? TFALSE
+   CLOSE-AB ;
+
+
+\ The ROLLBACK on B under the body's E-EXEC is itself an operation's start.
+: LOSE-END ( PG:connection -- PG:connection )
+   A-PID END-A
+   LOSE-A {: code:n :}
+   code 0<> if code throw then ;
+
+: LOSE-IN-TX ( -- )
+   LOST-B @ [: LOSE-END ;] PG:WITH-TRANSACTION ;
+
+: ROLLBACK-KEEPS ( -- )
+   s" a ROLLBACK keeps the body's loss" T-LABEL
+   OPEN-AB
+   [: LOSE-IN-TX ;] PG:E-EXEC TTHROWSQ
+   A-ENDED
+   LOST-B @ PG:LIVE? TTRUE
+   CLOSE-AB ;
+
+
 : REFUSED-OPEN ( -- )
    s" host=127.0.0.1 port=1 connect_timeout=2" PG:OPEN PG:CLOSE ;
 
@@ -481,6 +612,10 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    LONG-CASES
    REFUSAL-CASES
    STATEMENT-CASES
+   LOST-CASES
+   LOSS-AFTER-REFUSAL
+   ROLLBACK-LOST
+   ROLLBACK-KEEPS
    DECLARATION-CASES
    TASK-CASES
    CONN @ PG:CLOSE ;
