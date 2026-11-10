@@ -44,8 +44,11 @@ a defect to root-cause, never a longer limit.
 Copy that candidate and its matching `hb.map` into the private tree's `bin/`
 as regular files, not symlinks, and run the tests from that tree: the focused
 tests, and the registry when the rule above calls for it. Keep its `TMPDIR`
-outside the checkout. Tools that name an image's words read the `.map` beside
-it (tools/image-names.f), so a stale map names the wrong words.
+outside the checkout: an object's path repeats its source's, a file walk skips
+`.out` (src/lib/fs.f `SKIP-DIR?`), and under a `TMPDIR` inside `.out`
+test/file-objects.f finds no object of the sources it writes there. Tools
+that name an image's words read the `.map` beside it (tools/image-names.f),
+so a stale map names the wrong words.
 
 ```sh
 bin/hb --load test/run.f </dev/null
