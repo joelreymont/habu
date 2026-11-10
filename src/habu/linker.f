@@ -1373,9 +1373,11 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ 3 a file's data (file, offset from that file's first data byte, at most its data size:
 \ a body of no bytes at the file's end); 4 the open's header data (offset from BASE); 5 none: a
 \ patch target, a cell row's 0 or scratch cell, or a definition with no dispatch cell. A file
-\ field is 0 for this object, else its FILES row from 1 (REF-FILE).
+\ field is 0 for this object, else its FILES row from 1 (REF-FILE). A cross build's E is 0: its
+\ shadow holds the target's code, in the target's site encodings, and it writes no object (LOAD).
 : CODE+ ( -- )
    ENTRIES
+   CROSS? if 0 PIECES U64+ exit then
    NSHADOW:EMISSIONS FILE-EM @ - PIECES U64+
    NSHADOW:EMISSIONS FILE-EM @ ?do i EMISSION-CODE+ loop ;
 
