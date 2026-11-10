@@ -14,6 +14,7 @@ require src/lib/memory.f
 require src/lib/date.f
 require src/lib/fmt.f
 require src/lib/task.f
+require src/lib/image-lifecycle.f
 require src/lib/fd.f
 require src/lib/adt/option.f
 require src/lib/adt/result.f
@@ -69,7 +70,6 @@ variable READY
 HOLDS-CAP TYPED-BUFFER HOLD-ATS n    \ each reserved span's address
 HOLDS-CAP TYPED-BUFFER HOLD-US n     \ and its bytes
 variable HOLDS
-variable AFTER-LOG                  \ set by the statement after a log call
 
 TASK:MIN-STACK TASK:TASK WRITER-A
 TASK:MIN-STACK TASK:TASK WRITER-B
@@ -345,6 +345,24 @@ TASK:MIN-STACK TASK:TASK OPENER
    ROW-CODE @ E-BUF-STATE T= ;
 
 
+\ PREPARE runs the main task's row release while the line is open: the rest of
+\ that line writes nothing, and the next line is written alone.
+: PREPARE-LINE ( -- )
+   LOG:ERROR s" t" LOG:LINE
+   IMAGE-LIFECYCLE:PREPARE
+   s" late" LOG:TEXT+ LOG:;LINE
+   KEPT-LINE ;
+
+
+: PREPARE-CASE ( -- )
+   s" the row's release closes an open line" T-LABEL
+   [: [: PREPARE-LINE ;] catch CODE-A ! ;] CAPTURED
+   FILE$ {: at:ptr u:n :}
+   u DATE:TIME-LEN KEPT-REST$ nip + T=
+   at u KEPT-REST$ LINE-OK nip 0 T=
+   CODE-A @ 0 T= ;
+
+
 \ Reserves an inaccessible span of n bytes for EMPTY; false when none is left.
 : HOLD ( n -- bool )
    {: u:n :}
@@ -551,7 +569,8 @@ TASK:MIN-STACK TASK:TASK OPENER
    PIPE-B BUF:DISPOSE ;
 
 
-\ A pipe's read end refuses writes.
+\ A pipe's read end refuses writes. A refused line leaves fd 2's last line
+\ whole, so no mending LF comes before the next one.
 : REFUSED-CASE ( -- )
    s" a line fd 2 refuses is lost without a throw" T-LABEL
    pipe {: r:n w:n rc:n :}
@@ -559,14 +578,13 @@ TASK:MIN-STACK TASK:TASK OPENER
    r ERR-TO
    [: KEPT-LINE ;] catch CODE-A !
    ERR-BACK
+   [: KEPT-LINE ;] CAPTURED
+   FILE$ {: at:ptr u:n :}
+   u DATE:TIME-LEN KEPT-REST$ nip + T=
+   at u KEPT-REST$ LINE-OK nip 0 T=
    r close-rc 0 T=
    w close-rc 0 T=
    CODE-A @ 0 T= ;
-
-
-: BROKEN-LINE ( -- )
-   KEPT-LINE
-   1 AFTER-LOG ! ;
 
 
 \ A write to a pipe whose reader has gone raises SIGPIPE, which ends the process
@@ -577,11 +595,9 @@ TASK:MIN-STACK TASK:TASK OPENER
    rc 0 T=
    r close-rc 0 T=
    w ERR-TO
-   0 AFTER-LOG !
-   [: BROKEN-LINE ;] catch CODE-A !
+   [: KEPT-LINE ;] catch CODE-A !
    ERR-BACK
    w close-rc 0 T=
-   AFTER-LOG @ 1 T=
    CODE-A @ 0 T= ;
 
 
@@ -660,6 +676,7 @@ TASK:MIN-STACK TASK:TASK OPENER
    OPEN-CASE
    FINISH-CASE
    RELEASE-CASE
+   PREPARE-CASE
    PIPE-CASE
    REFUSED-CASE
    BROKEN-CASE

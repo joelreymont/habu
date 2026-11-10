@@ -9,8 +9,8 @@
 \ it, at once or before the next line, which is lost while fd 2 refuses that LF.
 \ A log call never throws for LOG's own failure: a line fd 2 refuses is lost,
 \ and a refused mapping loses the line, which ;LINE replaces with NOTICE. A LINE
-\ while a line is open abandons that line, as a throw does, so the TEXT+ and
-\ ;LINE that follow it write nothing.
+\ while a line is open abandons that line, as a throw does: once the new line is
+\ closed, the abandoned line's remaining TEXT+ and ;LINE write nothing.
 \ STORAGE CLASS. TASK-LOCAL: the line, a TASK:+USER BUF row kept across lines
 \ and released once a line grows it past START-CAP; ARMED, set once this run
 \ has registered the row's release; PHASE, whether a line is closed, open or
@@ -70,7 +70,8 @@ variable TAIL
 \   OPENED   abandons: OPENED  appends           the row: CLOSED   LOST
 \   LOST     abandons: OPENED  nothing           NOTICE: CLOSED    LOST
 \ LINE leaves LOST when the row's mapping is refused; ;LINE leaves CLOSED also
-\ when its write throws. An abandoned line is never written.
+\ when its write throws. An abandoned line is never written. The row's release
+\ leaves CLOSED.
 0 constant CLOSED
 1 constant OPENED
 2 constant LOST
@@ -85,6 +86,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 : ROW-RELEASE ( -- )
    0 ARMED !
+   CLOSED PHASE !
    ROW BUF:DISPOSE ;
 
 
@@ -207,11 +209,13 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    FD:WITH-NOSIGPIPE ;
 
 
-\ A line is lost when fd 2 or its SIGPIPE hold refuses it. The flag is held only
-\ for the write: other processes share fd 2's file description and its flag.
+\ A line is lost when fd 2's SIGPIPE hold is refused; a write fd 2 refuses is
+\ answered by TAIL's machine (WROTE, MEND). The flag is held only for the
+\ write: other processes share fd 2's file description and its flag, and a hold
+\ of theirs that overlaps this one can undo it (FD:WITH-NOSIGPIPE).
 : OUT ( [ -- ] -- )
    catch {: code:n :}
-   code 0= code E-FS-IO = or code E-PROC-OUTPUT = or if exit then
+   code 0= code E-PROC-OUTPUT = or if exit then
    code throw ;
 
 

@@ -76,6 +76,10 @@ ENUM wrote all none part ;ENUM
 
 \ Holds SIGPIPE off on fd for the quotation, then puts fd's flag back, throw or
 \ not. On Linux F-SETNOSIGPIPE ignores SIGPIPE process-wide: no flag goes back.
+\ On macOS the flag belongs to the open file description, which dups and
+\ inherited copies share: overlapping holds there restore it only when the later
+\ one ends first. When the first to begin ends first it clears the flag under the
+\ other, whose write can then raise SIGPIPE, and the other then leaves it set.
 : WITH-NOSIGPIPE ( fd [ -- ] -- )
    {: f:fd body :}
    HB-TARGET-LINUX-KERNEL? if f FD-NOSIGPIPE! body execute exit then

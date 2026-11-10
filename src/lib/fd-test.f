@@ -397,7 +397,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
 
 
 \ A write to a pipe with no reader inside WITH-NOSIGPIPE is E-FS-IO, not the
-\ process's death, and the flag goes back on a return and on a throw.
+\ process's death, and the flag it found goes back on a return and on a throw.
 : HELD-WRITE ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N close
@@ -409,6 +409,9 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    -1 FLAG-IN !
    [: HELD-NO-READER ;] E-FS-IO TTHROWSQ
    w HELD=
+   w FD-NOSIGPIPE!
+   HELD-RETURN
+   HB-TARGET-MACOS? if w NOSIGPIPE@ 1 T= then
    w FD>N close ;
 
 
