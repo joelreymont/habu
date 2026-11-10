@@ -1,10 +1,10 @@
 \ signature-nesting.f - a signature nested past the parser's limits refuses by
 \ name through the real load path: a 33rd nested binder (checker.f
 \ BINDER-DEPTH-MAX), and pointees or quotations nested past EFFECT-DEPTH-MAX.
-\ A body nested past CF-FRAMES-MAX control frames, and a RECURSE with no
-\ declared effect, are uncheckable for a reason they name too, and each says
-\ so in its JSON packet; the RECURSE's packet has a null declared effect, which
-\ the diagnostics gate accepts.
+\ A body nested past CF-FRAMES-MAX control frames, a RECURSE with no declared
+\ effect and a RECURSE in a does> clause are uncheckable for a reason they name
+\ too, and each says so in its JSON packet; the packet of a RECURSE with no
+\ declared effect has a null one, which the diagnostics gate accepts.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process.
 require src/lib/test.f
@@ -87,6 +87,10 @@ TYPED-VARIABLE SRC-U len
 : RECURSE-NOSIG ( -- )
    SRC-RESET  s" : " S+  RECURSE-TEXT  s"  ;" S+ ;
 
+\ A definer whose does> clause recurses.
+: RECURSE-DOES ( -- )
+   SRC-RESET  s" : SN-MK ( n -- ) create , does> ( -- n ) @ dup 0 > IF RECURSE THEN ;" S+ ;
+
 
 \ The text in SRC-BUF, run as the subject, exits 70 and names why on stderr.
 : REFUSES ( ptr u8 n -- )
@@ -97,28 +101,40 @@ TYPED-VARIABLE SRC-U len
    ERR erru LEN>N why whyu CONTAINS? TTRUE ;
 
 
+create PKT-BUF 8192 allot
+: PACKET-OPEN ( -- )   PKT-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON! ;
+
+
 \ The packet the text in SRC-BUF writes, checked in this process with JSON
 \ diagnostics captured; it stays in PKT-BUF until the next capture.
-create PKT-BUF 8192 allot
 : PACKET$ ( -- ptr u8 n )
-   PKT-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
-   SRC$ CHECK-CANDIDATE! drop
+   PACKET-OPEN  SRC$ CHECK-CANDIDATE! drop
    DIAG-BUFFER$ nip  0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF  PKT-BUF swap ;
 
-\ The text in SRC-BUF writes an E-UNCHECKABLE packet, verdict uncheckable,
-\ that holds TEXT.
-: PACKET-HAS ( ptr u8 n -- )
-   {: text:ptr textu:n :}
-   PACKET$ {: pkt:ptr pktu:n :}
-   pkt pktu S\" \"code\":\"E-UNCHECKABLE\"" CONTAINS? TTRUE
-   pkt pktu S\" \"verdict\":\"uncheckable\"" CONTAINS? TTRUE
-   pkt pktu text textu CONTAINS? TTRUE ;
 
 \ The packet passes the diagnostics gate, which adds to PACKET-HAS's substrings
 \ each field's presence and kind, the declared pair null together, and the
 \ verdict and repair class its code names.
 : PACKET-PASSES ( -- )
    PACKET$ GJA-PARSE dup GJA-OBJ GJA-DIAG-CONTRACT-ROW ;
+
+
+\ A caller passes CODE, VERDICT and WHY as packet fields in text; SRC-BUF's packet
+\ holds all three: checked as a candidate, or compiled to walk a does> clause.
+: PACKET-HOLDS ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu:n verdict:ptr verdictu:n why:ptr whyu:n :}
+   DIAG-BUFFER$ code codeu CONTAINS? TTRUE
+   DIAG-BUFFER$ verdict verdictu CONTAINS? TTRUE
+   DIAG-BUFFER$ why whyu CONTAINS? TTRUE
+   0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
+
+
+: PACKET-HAS ( ptr u8 n ptr u8 n ptr u8 n -- )
+   PACKET-OPEN  SRC$ CHECK-CANDIDATE! drop  PACKET-HOLDS ;
+
+
+: CLAUSE-PACKET-HAS ( ptr u8 n ptr u8 n ptr u8 n -- )
+   PACKET-OPEN  SRC$ TEST-EVAL:RC drop  PACKET-HOLDS ;
 
 public
 
@@ -150,16 +166,26 @@ public
    SRC$ TEST-EVAL:RC 0 T=
    s" 33 nested IFs write an uncheckable packet that names the limit" T-LABEL
    SRC-RESET s" SN-IFS-33" 33 IFS-TEXT
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
    S\" \"reason\":\"control flow nested too deep to check (depth 33, at most 32)\"" PACKET-HAS
    s" a RECURSE with no declared effect is uncheckable for want of one" T-LABEL
    RECURSE-NOSIG
    s" at 'RECURSE' recursion needs a declared stack effect" REFUSES
    s" a RECURSE with no declared effect writes an uncheckable packet that says why" T-LABEL
    SRC-RESET RECURSE-TEXT
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
    S\" \"reason\":\"recursion needs a declared stack effect\"" PACKET-HAS
    s" a RECURSE with no declared effect writes null for its declared effect" T-LABEL
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
    S\" \"declared_effect\":null,\"declared_effect_source\":null," PACKET-HAS
    PACKET-PASSES
+   s" a RECURSE in a does> clause is uncheckable for calling the defining word" T-LABEL
+   RECURSE-DOES
+   s" at 'RECURSE' recurse in a does> clause would call the defining word; move the recursion into a named word with a declared effect and call it from the clause" REFUSES
+   s" a RECURSE in a does> clause writes an uncheckable packet that says why" T-LABEL
+   RECURSE-DOES
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
+   S\" \"reason\":\"recurse in a does> clause would call the defining word; move the recursion into a named word with a declared effect and call it from the clause\"" CLAUSE-PACKET-HAS
    T-REPORT
    s" signature-nesting: ok" type cr ;
 ;package

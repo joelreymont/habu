@@ -4612,6 +4612,7 @@ CHECKER-REG:}SCRATCH
 \ Uncheckable, not refused (UNCK-REASON?): E-UNCHECKABLE.
 58 constant MD-CF-DEPTH      \ an opener found all CF-FRAMES-MAX control frames in use (CF-PUSH)
 59 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
+60 constant MD-RECURSE-DOES  \ a RECURSE in a does> clause, which calls the defining word (CF-RECURSE)
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
@@ -21201,6 +21202,7 @@ SCOPE-INTRO-FENCE-INSTALL
 variable RECEFF   variable RECEFF-ON
 CHECKER-REG:SCRATCH{
 variable RECEFF-UEND   variable RECEFF-SYM
+variable CLAUSE-WALK   \ -1 while CHECK-DOES-RUN walks a does> clause; CHECK-CLEAR zeroes it
 CHECKER-REG:}SCRATCH
 
 : RECEFF-ON? ( -- bool )
@@ -21233,11 +21235,11 @@ CHECKER-REG:}SCRATCH
 
 \ Whether a reason leaves its definition uncheckable, where every other reason
 \ refuses one: an unfit effect's, control nested past the frames, or a RECURSE
-\ with no declared effect.
+\ with no declared effect or in a does> clause.
 : UNCK-REASON? ( n -- bool )
    {: why:n :}
    why MD-EFFECT-DEPTH =  why MD-INPUT-WIDTH =  or
-   why MD-CF-DEPTH =  or  why MD-RECURSE-SIG =  or ;
+   why MD-CF-DEPTH =  or  why MD-RECURSE-SIG =  or  why MD-RECURSE-DOES =  or ;
 
 \ Whether the refusal REFUSAL@ names leaves its definition uncheckable rather
 \ than refused: a token of unknown effect, or a reason UNCK-REASON? names.
@@ -21287,12 +21289,14 @@ CHECKER-REG:}SCRATCH
    od DCUR !  orow RCUR !
    h LIN-EFF-PASS ;
 
-\ A RECURSE instantiates the cached declared effect. With none it is
-\ uncheckable: the declaration is too big to record, or there is none.
+\ A RECURSE instantiates the cached declared effect; without one it is
+\ uncheckable: too big to record, in a does> clause, which caches none, or none.
 : CF-RECURSE
    -1 WRAPBENT !
    RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF EXIT THEN
-   UNFIT @ IF UNFIT-WHY ELSE MD-RECURSE-SIG THEN MDIAG!
+   UNFIT @ IF UNFIT-WHY ELSE
+      CLAUSE-WALK @ 0 <> IF MD-RECURSE-DOES ELSE MD-RECURSE-SIG THEN
+   THEN MDIAG!
    -1 UNCK ! ;
 
 \ Uniform-branch acceptance. A GPU predicate provably identical across every
@@ -25750,7 +25754,7 @@ CHECKER-REG:}SCRATCH
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
    ASIG-MISS-CLEAR                     \ the queue always describes the pass just run
-   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
+   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK ! ;
 
 : CHECK-RESET {: a u :}
    WRITE-WINDOW-CK
@@ -27913,6 +27917,7 @@ package CHECKER-REG
 \ may still declare defers the clause unwalked (verdict 2), pinned at that type.
 : CHECK-DOES-RUN {: ba bu sa su :}
    ba bu CHECK-RESET
+   -1 CLAUSE-WALK !
    0 TOK0 !
    sa SGA !  su SGU !
    sa su PARSE-SIG-RAW

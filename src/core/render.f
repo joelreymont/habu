@@ -1085,6 +1085,7 @@ variable MDV-I   variable MDV-F
       MD-INPUT-WIDTH  of s" E-UNCHECKABLE" endof
       MD-CF-DEPTH     of s" E-UNCHECKABLE" endof
       MD-RECURSE-SIG  of s" E-UNCHECKABLE" endof
+      MD-RECURSE-DOES of s" E-UNCHECKABLE" endof
       MD-IS-UNKNOWN   of s" E-UNDEFINED" endof
       MD-IS-NOT-DEFER of s" E-NOT-DEFERRED" endof
       MD-IS-MISSING   of s" E-MISSING-NAME" endof
@@ -1136,6 +1137,7 @@ variable MDV-I   variable MDV-F
       MD-INPUT-WIDTH  of s" rewrite_uncheckable" endof
       MD-CF-DEPTH     of s" rewrite_uncheckable" endof
       MD-RECURSE-SIG  of s" rewrite_uncheckable" endof
+      MD-RECURSE-DOES of s" rewrite_uncheckable" endof
       MD-IS-UNKNOWN   of s" fix_is_target" endof
       MD-IS-NOT-DEFER of s" fix_is_target" endof
       MD-IS-MISSING   of s" fix_missing_name" endof
@@ -1225,6 +1227,7 @@ variable MDV-I   variable MDV-F
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
       MD-CF-DEPTH     of UNCK-SUGGEST$ endof
       MD-RECURSE-SIG  of UNCK-SUGGEST$ endof
+      MD-RECURSE-DOES of UNCK-SUGGEST$ endof
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
       MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
       MD-IS-MISSING   of s" Write the name of a word declared with defer after is." endof
@@ -1290,6 +1293,7 @@ variable MDV-I   variable MDV-F
       MD-INPUT-WIDTH  of WIDTH-REASON$ endof
       MD-CF-DEPTH     of s" control flow nested too deep to check" endof
       MD-RECURSE-SIG  of s" recursion needs a declared stack effect" endof
+      MD-RECURSE-DOES of s" recurse in a does> clause would call the defining word; move the recursion into a named word with a declared effect and call it from the clause" endof
       MD-IS-UNKNOWN   of s" names no word" endof
       MD-IS-NOT-DEFER of s" is not a deferred word" endof
       MD-IS-MISSING   of s" missing target word after is" endof
