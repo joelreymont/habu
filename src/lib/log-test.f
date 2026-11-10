@@ -74,9 +74,9 @@ variable HOLDS
 TASK:MIN-STACK TASK:TASK WRITER-A
 TASK:MIN-STACK TASK:TASK WRITER-B
 TASK:MIN-STACK TASK:TASK READER
-\ OPEN-CASE's own task: RELEASE-CASE needs WRITER-A to register LOG's release
-\ after ROW-PROBE, and a registration serves later activations.
-TASK:MIN-STACK TASK:TASK OPENER
+\ RELEASE-CASE's own task: LOG's release must register after ROW-PROBE, and a
+\ registration serves later activations (src/lib/task.f AT-EXIT).
+TASK:MIN-STACK TASK:TASK RELEASER
 
 : BLEN ( n -- NUM:byte-len )  BUF:N>BLEN ;
 
@@ -340,8 +340,8 @@ TASK:MIN-STACK TASK:TASK OPENER
 : RELEASE-CASE ( -- )
    s" a task that abandons a line releases its row" T-LABEL
    0 ROW-CODE !
-   [: ABANDON-TASK ;] WRITER-A TASK:ACTIVATE
-   WRITER-A TASK:JOIN JOIN-CODE E-FS-IO T=
+   [: ABANDON-TASK ;] RELEASER TASK:ACTIVATE
+   RELEASER TASK:JOIN JOIN-CODE E-FS-IO T=
    ROW-CODE @ E-BUF-STATE T= ;
 
 
@@ -410,8 +410,8 @@ TASK:MIN-STACK TASK:TASK OPENER
 
 
 : OPEN-LOST-JOIN ( -- )
-   [: OPEN-LOST-TASK ;] OPENER TASK:ACTIVATE
-   OPENER TASK:JOIN JOIN-CODE CODE-C ! ;
+   [: OPEN-LOST-TASK ;] WRITER-A TASK:ACTIVATE
+   WRITER-A TASK:JOIN JOIN-CODE CODE-C ! ;
 
 
 : OPEN-CASE ( -- )
