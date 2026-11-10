@@ -50,27 +50,19 @@ SLOTS TYPED-BUFFER OP-FLUSH  [ -- ]
 SLOTS TYPED-BUFFER OP-CLOSE  [ -- ]
 SLOTS TYPED-BUFFER SLOT-STATE n        \ the device's own data (a socket, an fd)
 SLOTS TYPED-BUFFER SLOT-FAULT n        \ a latched write failure: 0 = healthy
-SLOTS TYPED-BUFFER SLOT-GEN n          \ bumped on close, so a stale handle is caught
+SLOTS TYPED-BUFFER SLOT-GEN n          \ bumped at each claim and each close
 
-\ A row is claimed by winning a compare-and-swap on its own cell (FREE -> LIVE,
-\ LIVE -> CLOSING), never by a read-then-write: two tasks building devices must
-\ not get the same row, and of two tasks closing one handle exactly one runs the
-\ close and bumps the generation. The claim publishes the row as taken; its
-\ owner fills the operations, the state and the engine's write row before any
-\ handle exists. Atomic cells need native alignment; this is dictionary storage
-\ shared by every task, not the per-task DATA header.
+\ One task wins FREE -> CLAIMING or LIVE -> CLOSING by compare-and-swap on the
+\ row's cell; CLAIM-ROW bumps the generation before it stores LIVE.
 0 constant FREE
 1 constant LIVE
 2 constant CLOSING
-here data-base - negate 7 and allot
+3 constant CLAIMING
+here data-base - negate 7 and allot   \ atomic cells need native alignment
 create SLOT-STATUS SLOTS cells SCRATCH-ALLOT
 
-\ A HANDLE IS A ROW AND THE GENERATION THAT ROW HAD WHEN THE HANDLE WAS MINTED.
-\ CLOSE returns the row to the free list and bumps its generation, so the next
-\ device to take that row gets a different handle and the old one is refused
-\ with E-GENIO-STATE instead of being routed to somebody else's connection.
-\ The row is the low byte because SLOTS is 9; the generation is everything
-\ above it, which is 2^55 closes of one row before it could repeat.
+\ A handle is its row in the low byte and the row's generation above it; the
+\ claim and CLOSE bump it, a build carries it: a stale handle is E-GENIO-STATE.
 8 constant GEN-SHIFT
 $FF constant ROW-MASK
 
@@ -166,7 +158,11 @@ CAST: >ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
 \ good, the caller simply has to close a device before opening another.
 : CLAIM-ROW ( -- n )
    SLOTS 1 ?do
-      FREE LIVE i STATUS-CELL atomic-cas 0= if i unloop exit then
+      FREE CLAIMING i STATUS-CELL atomic-cas 0= if
+         i SLOT-GEN @ 1+ i SLOT-GEN !
+         LIVE i STATUS-CELL atomic!
+         i unloop exit
+      then
    loop
    E-FULL throw ;
 

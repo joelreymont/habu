@@ -1,9 +1,11 @@
 ---
 title: Zip, font and genio handle counters restart in a later file
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T15:13:21.925090+02:00"
+closed-at: "2026-11-10T16:24:57.569857+02:00"
+close-reason: "landed as 'Keep handle serials across files'. test/file-objects.f Q prints 'zip refused' and N 'genio refused', cold and warm; they printed 'zip 0' and 'genio 0' before the change. Font has no build case (habu-no-suite-runs-0c90cfb1). Gate at the landing tip (gate-all.sh): engine built twice equal before the signature, maps equal, test/pointer-storage-test.f and test/file-objects.f ok, suite 272 of 272, chain fixpoint at generation 2."
 ---
 
 Problem: the process-state stack (unpushed, tip 259191a9) made src/lib/zip-state.f:54 and src/lib/font.f:98 SERIAL scratch, and src/lib/genio-core.f SLOT-STATUS scratch while SLOT-GEN is carried and bumped only at release (:171-173). A later file and the program read scratch as zero, so the next object opened gets the number an earlier one had: a handle a file's top level kept names the new object instead of being refused. Rule: a counter that makes an old handle stale is not process state; it is carried (as src/lib/pg.f GENERATION). Acceptance: SERIAL is a plain variable in both; genio's claim bumps the row's generation before the row is LIVE (FREE -> CLAIMING -> LIVE); build K of test/file-objects.f (fixtures kept-zip.f, kept-genio.f, kept-main.f) prints 'zip refused' and 'genio refused', cold and warm, and printed otherwise before the change. Files: src/lib/zip-state.f, src/lib/font.f, src/lib/genio-core.f, test/file-objects.f, test/fixtures/file-objects/. Verify: suites zip, genio, log, file-objects. Depends: none. Ownership: those files. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-ida (brief .jj-ws.noindex/jerry-wasm/.out/briefs/ida.md).

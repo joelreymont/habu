@@ -51,7 +51,9 @@ REGISTER-RESET
 
 PTR-VARIABLE ARCHIVES
 PTR-VARIABLE INPUTS
-SCRATCH-VARIABLE SERIAL
+\ Carried into a built program, so no later archive or input gets a kept
+\ handle's number.
+variable SERIAL
 
 : NULL? ( ptr a -- bool ) >CELL 0= ;
 : LINK ( ptr n -- ptr ptr n ) 0 ptr-field ;

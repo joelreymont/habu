@@ -101,6 +101,9 @@
 \ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
 \ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
 \ level leaves a task running, into one out root, and each fails naming that file.
+\ Q builds kept-main.f, whose first file's top level leaves an archive open and keeps its handle;
+\ its program opens another and the kept handle is refused. N builds kept-genio.f with --repl, since
+\ genio-core.f calls the REPL's KEY1, and its program refuses a device handle kept the same way.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -541,12 +544,15 @@ variable KEPT-NS
    SAME-AS-B ;
 
 \ Builds a fixture to L's prog by tools/hb-build.f, since log.f requires and creates through does>
-\ (build.f's files may not), in the fixture out root every fixture build shares; true on rc 0.
-: FIXTURE-BUILD ( CMD:command ptr u8 n -- CMD:command bool )
-   {: src:ptr src-u:n :}
+\ (build.f's files may not), in the fixture out root every fixture build shares, with --repl when
+\ the flag is true; true on rc 0.
+: TOOL-BUILD ( CMD:command ptr u8 n bool -- CMD:command bool )
+   {: src:ptr src-u:n repl:bool :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
-   s" --" CMD:ARG+  src src-u CMD:ARG+
+   s" --" CMD:ARG+
+   repl if s" --repl" CMD:ARG+ then
+   src src-u CMD:ARG+
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
    s" HABU_OUT" F$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
@@ -554,6 +560,9 @@ variable KEPT-NS
    rc 0<> if rc SHOW then
    s" the build exits 0" LABEL  rc 0 T=
    rc 0 = ;
+
+: FIXTURE-BUILD ( CMD:command ptr u8 n -- CMD:command bool ) false TOOL-BUILD ;
+: REPL-BUILD ( CMD:command ptr u8 n -- CMD:command bool ) true TOOL-BUILD ;
 
 \ Builds task-left-main.f as FIXTURE-BUILD builds a fixture; the linker refuses it at its end.
 : TASK-LEFT-BUILD ( CMD:command -- CMD:command )
@@ -638,6 +647,20 @@ variable KEPT-NS
    L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    s" a file's scratch store ends with the file" LABEL  CMD:OUT$ s\" 0\n0\n0\n0\n0\n0\n" T$= ;
+
+\ kept-main.f's program, run in its own process: the boundary under test is the written file.
+: KEPT-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   rc 0<> if rc SHOW then
+   s" a handle a file kept is refused in the program" LABEL  CMD:OUT$ s\" zip refused\n" T$= ;
+
+\ kept-genio.f's program, run in its own process with empty stdin, which ends its REPL.
+: GENIO-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   rc 0<> if rc SHOW then
+   s" a device a file kept is refused in the program" LABEL  CMD:OUT$ s\" genio refused\n" T$= ;
 
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
@@ -769,6 +792,8 @@ variable KEPT-NS
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN
+   s" Q" WHICH!  s" test/fixtures/file-objects/kept-main.f" FIXTURE-BUILD 0= if exit then  KEPT-RUN
+   s" N" WHICH!  s" test/fixtures/file-objects/kept-genio.f" REPL-BUILD 0= if exit then  GENIO-RUN
    s" W" WHICH!  TASK-LEFT-BUILD
    s" W2" WHICH!  TASK-LEFT-BUILD ;
 

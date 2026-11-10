@@ -95,7 +95,9 @@ FUNCTION: DRAW-RENDER hb_vector_draw_render ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 PTR-VARIABLE FONTS
 PTR-VARIABLE IMAGES
-SCRATCH-VARIABLE SERIAL
+\ Carried into a built program, so no later font or image gets a kept
+\ handle's number.
+variable SERIAL
 here data-base - negate 7 and allot
 SCRATCH-VARIABLE LOCK-CELL
 
