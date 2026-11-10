@@ -16,6 +16,9 @@ them waits for lands and is installed alone, ahead of any stack it sits in.
 Work that does not move that measure waits. Suites, the chain check and a
 feature's review run once, before the install, not per change.
 
+Incremental builds ship in the release, rock-solid: a warm build never fails or
+differs where a cold build would not.
+
 ## Repository
 
 - Build and test candidates in a workspace or a temporary directory. Keep one
