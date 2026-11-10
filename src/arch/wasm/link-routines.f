@@ -4,6 +4,7 @@ require src/lib/string.f
 require src/lib/span.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
+require src/lib/error.f
 
 package LINKER
 private
@@ -51,6 +52,18 @@ $40 constant EMPTY-TYPE              \ an if taking and leaving nothing
 
 \ The OUT region ends where the stack starts (test/wasm/harness.f OUT-CAP).
 WPROF:STACK-BASE WPROF:OUT-BASE - constant OUT-CAP
+
+\ ---- division, views and atomics
+$0F constant OP-RETURN
+$50 constant OP-I64-EQZ
+$51 constant OP-I64-EQ
+$7D constant OP-I64-SUB
+$7F constant OP-I64-DIV-S
+$81 constant OP-I64-REM-S
+\ The i64 locals after a store's address: a division's divisor, atomic-cas's
+\ cell as read.
+2 constant L-DIVISOR
+3 constant L-ACTUAL
 
 \ ---- the body being written ----------------------------------------------------
 DYNAMIC-BUFFER BUF u8
@@ -105,25 +118,80 @@ variable BUF-U
    0 I32,  OP-END B, ;
 
 
-\ A store ( x a -- ) by opcode op of alignment al, its address checked as
-\ src/habu/t0-wasm.f CHECKED checks one: at or past WPROF:CTX-BASE with its
-\ high 32 bits zero, else the fault records CRASH-RC with the address.
-: STORE-BODY ( n n -- )
-   {: op:n al:n :}
-   2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
-   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-ADDR SET,
+\ The address in L-ADDR is at or past WPROF:CTX-BASE and below 2^32, else the
+\ fault records CRASH-RC with it, as src/habu/t0-wasm.f CHECKED.
+: ADDRESS-CHECK, ( -- )
    L-ADDR GET,  WPROF:CTX-BASE I64,  OP-I64-LT-U B,
    L-ADDR GET,  $FFFFFFFF I64,  OP-I64-GT-U B,
    OP-I32-OR B,  IF,
       L-CTX GET,  CRASH-RC I32,  OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
       L-CTX GET,  L-ADDR GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
       OP-UNREACHABLE B,
-   OP-END B,
+   OP-END B, ;
+
+\ A store ( x a -- ) by opcode op of alignment al, its address checked.
+: STORE-BODY ( n n -- )
+   {: op:n al:n :}
+   2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-ADDR SET,
+   ADDRESS-CHECK,
    L-ADDR GET,  OP-I32-WRAP-I64 B,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,
    op al 0 MEM,
    SP!,
+   0 I32,  OP-END B, ;
+
+
+\ ---- division, views and atomics
+\ The cell stored at SP is the routine's one result: the top moves past it.
+: ONE-RESULT, ( -- )
+   L-SP GET,  CELL-BYTES I32,  OP-I32-ADD B,  L-SP SET,  SP!, ;
+
+
+\ `/` or `mod` by op, as tier 1's SEL-DIV: a zero divisor throws E-DIV-ZERO, the
+\ stack kept. With neg1 a divisor of -1 answers 0 - a: div_s traps on MIN-N / -1.
+: DIVIDE-BODY ( n bool -- )
+   {: op:n neg1:bool :}
+   2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-DIVISOR SET,
+   L-DIVISOR GET,  OP-I64-EQZ B,  IF,
+      L-CTX GET,  E-DIV-ZERO I64,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+      1 I32,  OP-RETURN B,
+   OP-END B,
+   neg1 if
+      L-DIVISOR GET,  -1 I64,  OP-I64-EQ B,  IF,
+         L-SP GET,  0 I64,  L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I64-SUB B,
+         OP-I64-STORE ALIGN-64 0 MEM,
+         ONE-RESULT,  0 I32,  OP-RETURN B,
+      OP-END B,
+   then
+   L-SP GET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-DIVISOR GET,  op B,
+   OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,
+   0 I32,  OP-END B, ;
+
+\ `cell-view` and `byte-view` ( a -- a ) leave the address as it is.
+: VIEW-BODY ( -- )  0 U32,  0 I32,  OP-END B, ;
+
+
+\ atomic-cas ( expected new a -- actual ), its address checked as a store's; a
+\ module runs one task, so the plain compare and store is atomic.
+: CAS-BODY ( -- )
+   2 U32,  1 U32,  I32 B,  2 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,  L-ADDR SET,
+   ADDRESS-CHECK,
+   L-ADDR GET,  OP-I32-WRAP-I64 B,  OP-I64-LOAD ALIGN-64 0 MEM,  L-ACTUAL SET,
+   L-ACTUAL GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I64-EQ B,  IF,
+      L-ADDR GET,  OP-I32-WRAP-I64 B,
+      L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,
+      OP-I64-STORE ALIGN-64 0 MEM,
+   OP-END B,
+   L-SP GET,  L-ACTUAL GET,  OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,
    0 I32,  OP-END B, ;
 
 : BODY$ ( -- ptr u8 n )  0 BUF BUF-U @ ;
@@ -138,6 +206,13 @@ public
    name u s" emit" STR=CI if EMIT-BODY BODY$ true exit then
    name u s" !" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    name u s" c!" STR=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
+   \ ---- division, views and atomics
+   name u s" /" STR=CI if OP-I64-DIV-S true DIVIDE-BODY BODY$ true exit then
+   name u s" mod" STR=CI if OP-I64-REM-S false DIVIDE-BODY BODY$ true exit then
+   name u s" cell-view" STR=CI if VIEW-BODY BODY$ true exit then
+   name u s" byte-view" STR=CI if VIEW-BODY BODY$ true exit then
+   name u s" atomic!" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name u s" atomic-cas" STR=CI if CAS-BODY BODY$ true exit then
    s" " false ;
 
 ;package

@@ -103,6 +103,36 @@ variable MOD-U
    RAN 2 T= ;
 
 
+\ The program d.f: division, max, atomics and views through words whose operands
+\ are not literals at the call; a failed test reads below WPROF:CTX-BASE.
+: D! ( -- )
+   SB-RESET
+   S\" package D\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable CELL0\nvariable SPOT\n" SB-APPEND
+   S\" : DIV ( n n -- n ) / ;\n: REM ( n n -- n ) mod ;\n: BIG ( n n -- n ) max ;\n" SB-APPEND
+   S\" : MIN-N ( -- n ) 1 63 lshift ;\n: FAIL ( n -- ) >BYTES c@ drop ;\npublic\n" SB-APPEND
+   S\" : MAIN ( -- )\n   17 5 DIV 3 <> if 1 FAIL then  17 5 REM 2 <> if 2 FAIL then\n" SB-APPEND
+   S\"    -17 5 DIV -3 <> if 3 FAIL then  -17 5 REM -2 <> if 4 FAIL then\n" SB-APPEND
+   S\"    MIN-N -1 DIV MIN-N <> if 5 FAIL then  MIN-N -1 REM 0 <> if 6 FAIL then\n" SB-APPEND
+   S\"    -3 7 BIG 7 <> if 7 FAIL then  7 -3 BIG 7 <> if 8 FAIL then\n" SB-APPEND
+   S\"    5 CELL0 atomic!  CELL0 @ 5 <> if 9 FAIL then\n" SB-APPEND
+   S\"    5 9 CELL0 atomic-cas 5 <> if 10 FAIL then  CELL0 @ 9 <> if 11 FAIL then\n" SB-APPEND
+   S\"    5 1 CELL0 atomic-cas 9 <> if 12 FAIL then  CELL0 @ 9 <> if 13 FAIL then\n" SB-APPEND
+   S\"    77 SPOT !  SPOT byte-view c@ 77 <> if 14 FAIL then\n" SB-APPEND
+   S\"    SPOT cell-view @ 77 <> if 15 FAIL then ;\n;package\n: MAIN ( -- ) D:MAIN ;\n" SB-APPEND
+   SB$ s" d.f" SOURCE! ;
+
+: ARITH-CASES ( -- )
+   D!
+   s" division, max, atomics and views build into a module that runs to status 0" T-LABEL
+   s" d.wasm" BUILD 0 T=
+   RAN 0 T=
+   s" : DIV ( n n -- n ) / ;  : MAIN ( -- ) 1 0 DIV drop ;" s" div0.f" SOURCE!
+   s" a zero divisor runs to status 1 and throws E-DIV-ZERO" T-LABEL
+   s" div0.wasm" BUILD 0 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE E-DIV-ZERO T= ;
+
+
 : REFUSAL-CASE ( -- )
    s" : MAIN ( -- ) depth drop ;" s" depth.f" SOURCE!
    s" a kernel word with no routine is refused by name with 74 and no module" T-LABEL
@@ -117,6 +147,7 @@ public
    SETUP
    EMIT-CASE
    PROGRAM-CASES
+   ARITH-CASES
    REFUSAL-CASE
    T-REPORT ;
 

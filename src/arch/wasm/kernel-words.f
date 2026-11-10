@@ -204,6 +204,10 @@ public
    {: a:n b:n :}
    a b < if a else b then ;
 
+: MAXIMUM ( n n -- n )
+   {: a:n b:n :}
+   a b > if a else b then ;
+
 \ A zero divisor throws E-DIV-ZERO from `mod`, as `/mod` throws it.
 : DIVREM ( n n -- n n )
    {: a:n b:n :}

@@ -21,6 +21,7 @@ public
    a u s" negate" STR=CI if s" WKWORDS:NEG" exit then
    a u s" abs" STR=CI if s" WKWORDS:ABSOLUTE" exit then
    a u s" min" STR=CI if s" WKWORDS:MINIMUM" exit then
+   a u s" max" STR=CI if s" WKWORDS:MAXIMUM" exit then
    a u s" /mod" STR=CI if s" WKWORDS:DIVREM" exit then
    a u s" 0<" STR=CI if s" WKWORDS:ZERO-NEG?" exit then
    a u s" 0<>" STR=CI if s" WKWORDS:NONZERO?" exit then
