@@ -42,11 +42,15 @@ require src/lib/time.f
 \ the request with JOURNAL-INPUT$, looks that input up, then sends the request
 \ with CHAT or restores the saved record with REPLAY. COUNT-INPUT counts a
 \ built request and leaves it built for the CHAT or START that sends it;
-\ COMPACT leaves the compacted window built in its place. A task drives many
-\ calls by STARTing each, SERVEing each until it answers true, then AWAITing
-\ it. It TASK:WAITs only straight after a round in which every SERVE answered
-\ false: landing a call runs its journal and recorder, and a wait there takes
-\ the CURL loop's hint for another call. SERVE and AWAIT of a started call run
+\ COMPACT leaves the compacted window built in its place. A chat, count,
+\ compaction or embed that faults keeps its request: PURPOSE! and the same word
+\ send it again, its body and journal input built from the settings then in
+\ force, so the first try's when none changed. A chat that succeeds uses its
+\ request up. A task drives many calls by STARTing each,
+\ SERVEing each until it answers true, then AWAITing it. It TASK:WAITs only
+\ straight after a round in which every SERVE answered false: landing a call
+\ runs its journal and recorder, and a wait there takes the CURL loop's hint
+\ for another call. SERVE and AWAIT of a started call run
 \ on the task that started it; a halt while AWAIT waits lands the call first.
 \ A task that may be halted CANCELs, then AWAITs, each call still started in a
 \ finally, catching each AWAIT's fault.
@@ -682,20 +686,26 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    ;MATCH ;
 
 
-\ Drops the request JOURNAL-INPUT$ finished, leaving no input, and answers
-\ whether there was one; JOURNAL-INPUT$ names the words that discard it.
-: UNPREPARE ( ptr call -- bool )
+\ Makes a call idle and answers whether JOURNAL-INPUT$ had finished its
+\ request, which stays finished for START to send.
+: TAKE-PREPARED ( ptr call -- bool )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
       idle OF false ENDOF
-      prepared OF
-         construct input-state none c MODEL-CALL:CHAT-INPUT ! true
-      ENDOF
+      prepared OF true ENDOF
       started OF E-STATE throw ENDOF
       landed OF E-STATE throw ENDOF
    ;MATCH
    c IDLE! ;
+
+\ Drops the request JOURNAL-INPUT$ finished, leaving no input, and answers
+\ whether there was one; JOURNAL-INPUT$ names the words that discard it.
+: UNPREPARE ( ptr call -- bool )
+   {: c :}
+   c TAKE-PREPARED dup if
+      construct input-state none c MODEL-CALL:CHAT-INPUT !
+   then ;
 
 
 : REPLACE-SOME ( ptr u8 n ptr n -- )
@@ -3819,8 +3829,8 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    c construct send-step looking SEND-MACHINE ;
 
 
-\ AWAIT has used a finished input; one the call refused before finishing it is
-\ kept.
+\ A chat AWAIT ended without a fault has used its finished input; a chat that
+\ ended in a fault keeps it for the next START or CHAT to send again.
 : USED ( ptr call -- )
    {: c :}
    c MODEL-CALL:CHAT-INPUT @ MATCH input-state
@@ -3875,9 +3885,12 @@ public
 
 \ Sends the chat request JOURNAL-INPUT$ finished, else the one built since
 \ PARTS-RESET; a fault before the call begins is thrown, a later one AWAIT's.
+\ A request a failed chat kept is sent again, its body and journal input built
+\ from the settings and pending purpose then in force: the first try's when
+\ neither changed.
 : START ( ptr call -- )
    {: c :}
-   c UNPREPARE {: ready:bool :}
+   c TAKE-PREPARED {: ready:bool :}
    construct call-result none c MODEL-CALL:RESULT !
    c START-LEDGER
    c REQUIRE-GOING
@@ -3927,7 +3940,9 @@ public
 \ Waits for a started call to land, makes it idle and throws its fault, else
 \ keeps its result for CONTENT$ or VECTOR@. A count keeps its finished input
 \ for the next CHAT or START and leaves no result; so does a compaction, its
-\ input the window.
+\ input the window. A chat uses its finished input up only when it ends
+\ without a fault: one that faults keeps it, as a count, a compaction and an
+\ embed keep theirs, and PURPOSE! then START or CHAT sends it again.
 : AWAIT ( ptr call -- )
    {: c :}
    c REQUIRE-OPEN
@@ -3938,16 +3953,10 @@ public
       landed OF ENDOF
    ;MATCH
    c IDLE!
-   c MODEL-CALL:KIND @ MATCH call-kind
-      chat OF c USED ENDOF
-      embed OF ENDOF
-      tally OF ENDOF
-      compaction OF ENDOF
-   ;MATCH
    c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
    fault 0<> if fault throw then
    c MODEL-CALL:KIND @ MATCH call-kind
-      chat OF construct call-result content ENDOF
+      chat OF c USED construct call-result content ENDOF
       embed OF construct call-result vectors ENDOF
       tally OF construct call-result none ENDOF
       compaction OF construct call-result none ENDOF
@@ -3984,12 +3993,16 @@ public
 \ journal lookup and answers the journal input a journal's get and put receive
 \ for it, valid until the next JOURNAL-INPUT$, CHAT, START, COUNT-INPUT, COMPACT,
 \ EMBED, START-EMBED or CLOSE. The pending purpose selects the model and effort
-\ as at CHAT, so PURPOSE! comes first. A second call answers the same input. The
-\ next CHAT or START sends that request, or REPLAY restores a saved reply for
-\ it. A call that changes the chat request (PARTS-RESET, TEXT+, IMAGE+, ITEM+,
-\ PURPOSE!, PURPOSE-MODEL! and the generation model, base URL, system, schema,
-\ tools, effort, service tier, cache key and output limit setters) or EMBED or
-\ START-EMBED first discards it, and it is built again from PARTS-RESET.
+\ as at CHAT, so PURPOSE! comes first. A second call answers the same input.
+\ The next CHAT or START sends that request, or REPLAY restores a saved reply
+\ for it. Until then a call that changes the chat request (PARTS-RESET, TEXT+,
+\ IMAGE+, ITEM+, PURPOSE!, PURPOSE-MODEL! and the generation model, base URL,
+\ system, schema, tools, effort, service tier, cache key and output limit
+\ setters) or EMBED or START-EMBED discards it, and it is built again from
+\ PARTS-RESET. Once CHAT, START or REPLAY takes it, one that faults leaves it
+\ finished and only PARTS-RESET discards it: PURPOSE! then JOURNAL-INPUT$, CHAT
+\ or START answer or send it again under the settings then in force, the same
+\ input when none changed.
 : JOURNAL-INPUT$ ( ptr call -- ptr u8 n )
    {: c :}
    c REQUIRE-OPEN
@@ -4075,10 +4088,11 @@ public
 \ content and the call id its live call recorded; it answers the content as
 \ CHAT does and consumes the pending purpose. A saved refusal throws E-CAPACITY
 \ or E-INCOMPLETE. It sends nothing and records nothing. Without a request
-\ JOURNAL-INPUT$ finished it is E-STATE.
+\ JOURNAL-INPUT$ finished since the last CHAT, START or REPLAY it is E-STATE;
+\ one that throws keeps the request as JOURNAL-INPUT$ says.
 : REPLAY ( ptr u8 n ptr call -- ptr u8 n )
    {: a:ptr u:n c :}
-   c UNPREPARE 0= if E-STATE throw then
+   c TAKE-PREPARED 0= if E-STATE throw then
    construct call-result none c MODEL-CALL:RESULT !
    c START-LEDGER
    c REQUIRE-GOING

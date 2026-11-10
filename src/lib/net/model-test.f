@@ -144,6 +144,11 @@ PTR-VARIABLE BIG
 65536 constant SENT-CAP
 create SENT-BODY SENT-CAP allot
 variable SENT-U
+\ The chat scenario FAIL-NEXT named for the next request, whatever its text,
+\ on any route but Ollama's; none while its length is 0.
+32 constant FAILURE-CAP
+create FAILURE FAILURE-CAP allot
+variable FAILURE-U
 TASK:SEMAPHORE HELD
 \ The handlers share this package's buffers and parsers, so one runs at a time
 \ (ALONE); the held stream gives its turn up while it waits.
@@ -599,10 +604,9 @@ $300000 constant BIG-U
    response [: S\" {\qerror\q:{\qmessage\q:\qYour input exceeds the context window of this model.\q,\qtype\q:\qinvalid_request_error\q,\qparam\q:\qinput\q,\qcode\q:\qcontext_length_exceeded\q}}" JSON:WRITE-RAW ;] HTTP:JSON! ;
 
 
-\ Responds by the request's first text, which names its scenario.
-: REPLY ( HTTP:request HTTP:response -- )
-   {: r:HTTP:request response:HTTP:response :}
-   r FIRST-TEXT {: t:ptr t-u:n :}
+\ Responds as the scenario the text names, a chat request's first text.
+: REPLY ( HTTP:request HTTP:response ptr u8 n -- )
+   {: r:HTTP:request response:HTTP:response t:ptr t-u:n :}
    response t t-u TOOL-REPLY? if exit then
    t t-u s" image" STR= if
       r IMAGE-ECHO
@@ -731,6 +735,17 @@ $300000 constant BIG-U
    response 400 HTTP:STATUS! ;
 
 
+\ Responds to a request, of any route, as the scenario FAIL-NEXT named, once:
+\ true when one was named.
+: FAILED-NEXT? ( HTTP:request HTTP:response -- bool )
+   {: r:HTTP:request response:HTTP:response :}
+   FAILURE-U atomic@ {: u:n :}
+   u 0= if false exit then
+   0 FAILURE-U atomic!
+   r response FAILURE u REPLY
+   true ;
+
+
 : KEEP-BODY ( HTTP:request -- )
    HTTP:BODY$ {: a:ptr u:n :}
    u SENT-CAP <= if a u SENT-BODY SENT-CAP SPAN:MAKE SPAN:COPY u else -1 then
@@ -742,7 +757,8 @@ $300000 constant BIG-U
    1 CALLS atomic-add drop
    r KEEP-BODY
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
-   r response REPLY ;
+   r response FAILED-NEXT? if exit then
+   r response r FIRST-TEXT REPLY ;
 
 
 variable COUNTED-U    \ the byte length of the last count request's body
@@ -762,6 +778,7 @@ variable COUNTED-U    \ the byte length of the last count request's body
    1 CALLS atomic-add drop
    r KEEP-BODY
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
+   r response FAILED-NEXT? if exit then
    r FIRST-TEXT s" too-large" STR= if response TOO-LARGE exit then
    r HTTP:BODY$ nip COUNTED-U !
    response [: COUNTED ;] HTTP:JSON! ;
@@ -831,6 +848,7 @@ variable KEPT-U
    1 CALLS atomic-add drop
    r KEEP-BODY
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
+   r response FAILED-NEXT? if exit then
    r FIRST-TEXT {: t:ptr t-u:n :}
    t t-u s" too-large" STR= if response TOO-LARGE exit then
    t-u 64 > if FAIL then
@@ -927,6 +945,7 @@ variable KEPT-U
    1 CALLS atomic-add drop
    r KEEP-BODY
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
+   r response FAILED-NEXT? if exit then
    r s" encoding_format" BODY-MEMBER
    JSON:READ-TOKEN JSON:T-STR = ASSERT
    s" base64" JSON:READ-STR-EQ? ASSERT JSON:READ-CLOSE
@@ -1036,6 +1055,14 @@ EXPORT WIDE-DIMS
 \ The last chat, count, compaction or embedding request the peer received;
 \ one past SENT-CAP fails the test.
 : SENT$ ( -- ptr u8 n ) SENT-U @ dup 0< if FAIL then SENT-BODY swap ;
+\ Answers the next chat, count, compaction or OpenAI embedding request as the
+\ chat scenario named, whatever its text, as a provider outage does; the request
+\ after it as its own text says.
+: FAIL-NEXT ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0= u FAILURE-CAP > or if FAIL exit then
+   a u FAILURE FAILURE-CAP SPAN:MAKE SPAN:COPY
+   u FAILURE-U atomic! ;
 \ Waits until the peer has sent the held response's in_progress event.
 : AWAIT-HOLD ( -- ) HELD TAKE ;
 
@@ -1693,6 +1720,51 @@ variable REFUSED-BASE-U
    CONTENT-CODE MODEL:E-STATE = ASSERT ;
 
 
+create KEPT 65536 allot    \ the request body the peer received before a resend
+variable KEPT-U
+: KEPT$ ( -- ptr u8 n ) KEPT KEPT-U @ ;
+\ Keeps the body of the last request the peer received.
+: KEEP-SENT ( -- )
+   MODEL-PEER:SENT$ {: a:ptr u:n :}
+   a u KEPT 65536 SPAN:MAKE SPAN:COPY u KEPT-U ! ;
+\ The peer received the body it received before the resend.
+: SENT-AGAIN ( -- ) MODEL-PEER:SENT$ KEPT$ STR= ASSERT ;
+: RETRY ( -- ) s" retry" M MODEL:PURPOSE! ;
+
+
+\ The chat request built under RETRY, which the peer answers as `scenario`,
+\ throws `code`; then RETRY and CHAT send the same body once more, and the
+\ peer's reply to it is returned.
+: RESENT ( ptr u8 n n -- )
+   {: a:ptr u:n code:n :}
+   MODEL-PEER:CALLS@ {: before:n :}
+   a u MODEL-PEER:FAIL-NEXT
+   CHAT-CODE code = ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   KEEP-SENT
+   RETRY M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 2 + = ASSERT
+   SENT-AGAIN ;
+
+
+\ A chat that faults keeps its request, finished by JOURNAL-INPUT$ or built,
+\ whether the provider answered with an error or cut the stream: PURPOSE! and
+\ CHAT send it again byte for byte, and the chat that succeeds uses it up. A
+\ key fault sends nothing, so its resend is the one request the peer receives.
+: FAILED-RESENT ( -- )
+   RETRY s" valid" PREPARE s" http-error" MODEL:E-UNAVAILABLE RESENT
+   CHAT-CODE MODEL:E-STATE = ASSERT
+   RETRY s" valid" PREP s" early-drop" MODEL:E-TRANSPORT RESENT
+   CHAT-CODE MODEL:E-STATE = ASSERT
+   SERVICE$ s" missing" M MODEL:API-KEY!
+   MODEL-PEER:CALLS@ {: before:n :}
+   RETRY s" valid" PREP CHAT-CODE MODEL:E-KEY = ASSERT
+   MODEL-PEER:CALLS@ before = ASSERT
+   FIXTURE-KEY
+   RETRY M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT ;
+
+
 \ SERVE refuses a call not started; a started call answers true once it lands
 \ and again until AWAIT ends it, and a fault before the transfer lands it.
 : SERVED-CALL ( -- )
@@ -1868,6 +1940,17 @@ variable LANDED
    M MODEL:HTTP-STATUS 400 = ASSERT
    0 [: s" " INPUTS ;] CODE-OF MODEL:E-CONFIG = ASSERT
    M MODEL:HTTP-STATUS 0= ASSERT ;
+
+
+\ An embed the provider fails keeps its inputs: EMBED sends the same body
+\ again.
+: EMBED-RESENT ( -- )
+   s" x" INPUTS
+   s" http-error" MODEL-PEER:FAIL-NEXT
+   EMBED-CODE MODEL:E-UNAVAILABLE = ASSERT
+   KEEP-SENT
+   EMBED-CODE 0= ASSERT
+   SENT-AGAIN ;
 
 
 \ A 16 KiB input reaches the provider whole; a call holds MODEL:INPUT-MAX
@@ -2452,12 +2535,52 @@ variable ASKED-U
    ASKED$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY ASSERT s" low" STR-IS
    M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
    s" effort" ROW s" low" STR-IS
-   \ A saved refusal replays as the refusal, with no request and no line.
+   \ A saved refusal replays as the refusal, with no request and no line, and
+   \ keeps the request, which JOURNAL-INPUT$ answers again.
    PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
    MODEL-PEER:CALLS@ {: refused:n :}
    PURPOSE s" too-large" ASK
    [: REPLAY-CODE MODEL:E-CAPACITY = ASSERT ;] QUIET
-   MODEL-PEER:CALLS@ refused = ASSERT ;
+   MODEL-PEER:CALLS@ refused = ASSERT
+   PURPOSE M MODEL:JOURNAL-INPUT$ ASKED$ STR= ASSERT ;
+
+
+create GOT 32768 allot    \ the journal input KEEP-GET last received
+variable GOT-U
+: GOT$ ( -- ptr u8 n ) GOT GOT-U @ ;
+\ A journal getter that never hits and keeps the input it receives.
+: KEEP-GET ( n ptr u8 n ptr n -- bool )
+   {: ctx:n input:ptr input-u:n out:ptr :}
+   input-u 32768 <= ASSERT
+   input input-u GOT 32768 SPAN:MAKE SPAN:COPY input-u GOT-U !
+   false ;
+
+
+\ A recorded, journaled chat that faults records a failed row; PURPOSE! and
+\ CHAT then send the same body, which the journal looks up and puts under the
+\ same input it looked the first try up under, and record an ok row.
+: RECORDED-RESEND ( -- )
+   0 [: KEEP-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
+   ROWS-MADE @ {: rows:n :}
+   MODEL-PEER:CALLS@ {: calls:n :}
+   PURPOSE s" valid" ASK
+   s" http-error" MODEL-PEER:FAIL-NEXT
+   CHAT-CODE MODEL:E-UNAVAILABLE = ASSERT
+   MODEL-PEER:CALLS@ calls 1+ = ASSERT
+   ROWS-MADE @ rows 1+ = ASSERT
+   s" purpose" ROW s" assemble" STR-IS
+   s" outcome" ROW s" failed" STR-IS
+   GOT$ ASKED$ STR= ASSERT
+   KEEP-SENT
+   0 GOT-U ! 0 JOURNAL-INPUT-U !
+   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ calls 2 + = ASSERT
+   ROWS-MADE @ rows 2 + = ASSERT
+   s" purpose" ROW s" assemble" STR-IS
+   s" outcome" ROW s" ok" STR-IS
+   GOT$ ASKED$ STR= ASSERT
+   INPUT$ ASKED$ STR= ASSERT
+   SENT-AGAIN ;
 
 
 \ The user message of the part "valid" as a chat request writes it.
@@ -2809,6 +2932,17 @@ variable COUNTED-U
    M COUNT-CODE MODEL:E-CAPACITY = ASSERT ;
 
 
+\ A count the provider fails keeps its request: COUNT-INPUT sends the same
+\ body again.
+: COUNT-RESENT ( -- )
+   s" valid" PREP
+   s" http-error" MODEL-PEER:FAIL-NEXT
+   M COUNT-CODE MODEL:E-UNAVAILABLE = ASSERT
+   KEEP-SENT
+   M COUNT-CODE 0= ASSERT
+   SENT-AGAIN ;
+
+
 \ A count has no content: CONTENT$ and OUTPUT$ after it are E-STATE. A count
 \ with no request built, as after a CHAT, is E-STATE, and one of a call with
 \ neither schema nor tools E-CONFIG, each sending nothing.
@@ -2942,6 +3076,17 @@ variable COUNTED-U
 : COMPACT-TOO-LARGE ( -- )
    s" too-large" PREP
    M COMPACT-CODE MODEL:E-CAPACITY = ASSERT ;
+
+
+\ A compaction the provider fails keeps its request: COMPACT sends the same
+\ body again.
+: COMPACT-RESENT ( -- )
+   s" valid" PREP
+   s" http-error" MODEL-PEER:FAIL-NEXT
+   M COMPACT-CODE MODEL:E-UNAVAILABLE = ASSERT
+   KEEP-SENT
+   M COMPACT-CODE 0= ASSERT
+   SENT-AGAIN ;
 
 
 \ A compaction has no content: CONTENT$ and OUTPUT$ after it are E-STATE, and
@@ -3163,7 +3308,7 @@ variable COUNTED-U
    M MODEL:CANCEL 0= ASSERT
    BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY INVALID-IMAGE INVALID-SCHEMA
    REPLIES EARLY-ENDS UNREADABLE REFUSED [: CANCELLATION ;] QUIET
-   EMBEDDINGS BAD-VECTORS BASE64-CASES EMBED-TOO-LARGE INPUT-BOUNDS
+   EMBEDDINGS BAD-VECTORS BASE64-CASES EMBED-TOO-LARGE EMBED-RESENT INPUT-BOUNDS
    INPUT-MAX-EMBED
    DIMS-PROPERTY EMBEDDING-NAMED
    STOP-BETWEEN
@@ -3171,19 +3316,21 @@ variable COUNTED-U
    SETUP
    CHAT EMBEDDINGS PREPARED-CHAT
    [: STARTED-CALLS HELD-START LANDED-START ;] QUIET FAILED-START
+   FAILED-RESENT
    SERVED-CALL STARTER-ONLY SETUP HALTED-STARTER
    SETUP HELD-SERVE MANY-CALLS SPOILED-SERVE
    STOP-ACTIVE
    M MODEL:CLOSE
    SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL
+   RECORDED-RESEND
    M MODEL:CLOSE
    SETUP ITEM-TURNS ITEM-ORDER ITEMS-ONLY ITEM-REFUSALS PINNED
    M MODEL:CLOSE
    SETUP TOOLS-BODY FORM-LAST TOOLS-REFUSALS TOOL-REPLIES TOOLS-JOURNAL TOOLS-REPLAY
    M MODEL:CLOSE
-   SETUP COUNT-BODY COUNT-THEN-CHAT COUNT-JOURNAL COUNT-PREPARED COUNT-TOO-LARGE COUNT-RESULT
+   SETUP COUNT-BODY COUNT-THEN-CHAT COUNT-JOURNAL COUNT-PREPARED COUNT-TOO-LARGE COUNT-RESENT COUNT-RESULT
    M MODEL:CLOSE
-   SETUP COMPACT-BODY COMPACT-THEN-CHAT COMPACT-JOURNAL COMPACT-PREPARED COMPACT-TOO-LARGE COMPACT-RESULT COMPACT-REPLY COMPACT-WINDOWS
+   SETUP COMPACT-BODY COMPACT-THEN-CHAT COMPACT-JOURNAL COMPACT-PREPARED COMPACT-TOO-LARGE COMPACT-RESENT COMPACT-RESULT COMPACT-REPLY COMPACT-WINDOWS
    M MODEL:CLOSE
    SETUP EFFORTS CACHE-KEYS MAX-OUTPUTS MAX-OUTPUT-KINDS
    M MODEL:CLOSE
