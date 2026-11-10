@@ -8,9 +8,9 @@
 \ installs; a stripped program loads its source and its entry.
 \ The files written under <out>/hb-build/ load inside the build, so a warm build
 \ links what they do: reset.f, the token hb's prefix runs after include.f;
-\ end-<sha>.f, hb's registry and installs; app-end.f, a stripped program's entry.
-\ Builds sharing an out root write each whole, and only when it changes
-\ (WRITE-CHANGED).
+\ end.f, hb's registry and installs, which under --repl is
+\ end/<the source's path>/end.f; app-end.f, a stripped program's entry. Builds
+\ sharing an out root write each whole, and only when it changes (WRITE-CHANGED).
 
 require src/lib/error.f
 require src/lib/string.f
@@ -18,7 +18,6 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/build-out.f
 require src/core/include.f
-require src/core/sha256.f
 require src/habu/boot-files.f
 require src/habu/linker.f
 require src/habu/link-data.f
@@ -35,9 +34,7 @@ variable OUT-LEN
 create DIR PATH-CAP allot  variable DIR-U
 create RESET-PATH PATH-CAP allot  variable RESET-U
 create END-PATH PATH-CAP allot  variable END-U
-create END-NAME 70 allot                \ end-, 64 hex digits, .f
-create END-SHA SHA256-CTX-BYTES allot
-create END-DIGEST 32 allot
+create END-DIR PATH-CAP allot           \ a --repl end file's directory (REPL-END!)
 create APP-END-PATH PATH-CAP allot  variable APP-END-U
 create KERNEL-PATH PATH-CAP allot  variable KERNEL-U
 TYPED-VARIABLE KERNEL-ENGINE? bool     \ the kernel build writes an engine's kernel
@@ -188,14 +185,18 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    s\" \" REQUIRE-REG:APPEND\n" TEXT+ ;
 
 
-\ The end file's name carries its text's SHA-256, so builds sharing an out root
-\ whose registries differ never load each other's.
-: END-PATH! ( -- )
-   END-SHA 0 TEXT TEXT-U @ END-DIGEST SHA256-IN
-   s" end-" drop END-NAME 4 BYTE-COPY
-   END-DIGEST END-NAME 4 + SHA256>HEX
-   s" .f" drop END-NAME 68 + 2 BYTE-COPY
-   DIR DIR-U @ END-NAME 70 END-PATH FS:JOIN-PATH END-U ! ;
+\ hb's end file is <out>/hb-build/end.f: its text follows from the tree alone.
+: ENGINE-END! ( -- ) DIR DIR-U @ s" end.f" END-PATH FS:JOIN-PATH END-U ! ;
+
+\ A --repl program's end file is <out>/hb-build/end/<its source's canonical
+\ path>/end.f: its text follows from the tree and that source, so two programs
+\ built under one out root never load each other's.
+: REPL-END! ( -- )
+   SRC$ SOURCE-ROOT:CANONICAL drop {: src:ptr srcu:n :}
+   DIR DIR-U @ s" end" END-PATH FS:JOIN-PATH {: endu:n :}
+   END-PATH endu  src 1 +  srcu 1 -  END-DIR FS:JOIN-PATH {: diru:n :}
+   END-DIR diru FS:MAKE-DIRS
+   END-DIR diru s" end.f" END-PATH FS:JOIN-PATH END-U ! ;
 
 
 \ The product's registry is the build's: the end file records each row with the
@@ -213,7 +214,6 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    s\" REQUIRE-BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\n" TEXT+
    entry if s\" ' MAIN APP-ENTRY:XT!\n" TEXT+ then
    s\" IMAGE-LIFECYCLE:PREPARE\n" TEXT+
-   END-PATH!
    END$ 0 TEXT TEXT-U @ WRITE-CHANGED
    TEXT-RELEASE ;
 
@@ -286,7 +286,7 @@ public
 : ENGINE ( ptr u8 n -- )
    {: out:ptr outu:n :}
    out OUT-PATH !  outu OUT-LEN !
-   true KERNEL-BUILD
+   true KERNEL-BUILD  ENGINE-END!
    s" engine" ['] ENGINE-BODY LINKER:WITH ;
 
 \ Build hb with the source's files, the source's MAIN its entry, and write it to
@@ -294,7 +294,7 @@ public
 : REPL ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
-   true KERNEL-BUILD
+   true KERNEL-BUILD  REPL-END!
    s" engine" ['] REPL-BODY LINKER:WITH ;
 
 \ Build the source as a stripped program and write it to the second path.

@@ -1827,30 +1827,22 @@ learned live in the docs for their subject.
   building of habu itself". On 2026-11-03, shown that under the linker model
   hb is itself the linked result of its startup files, so the same check is
   the linker's out-of-date rule applied to hb while Habu's own build still
-  links file by file, he chose "Yes, hb is linked (Recommended)": hb-build
-  skips the reload while every startup file hashes as hb recorded.
+  links file by file, he chose "Yes, hb is linked (Recommended)". hb-build
+  loads its startup files through the linker in every build, and each links
+  while its stamp and the times of the files it depends on are equal
+  ("timestamps, not hashes"); hb records nothing about them.
 - 2026-10-31, what makes a file stale: offered an engine hook that hands each
   word read, comments skipped, to the build so a comment edit in memory.f
   would rebuild nothing, Joel answered "why are you inventing hooks instead of
   a system that tracks file dependencies, like make does? if everything truly
   depends on memory, which i doubt it is, then we rebuild everything, comment
-  or no comment!" A compiled file is stale when a file it depends on changed,
-  whole file, as in make; a comment edit counts. The compiler requires
-  memory.f (src/compiler/ir/context.f:9), so in an engine build a memory.f
-  edit rebuilds every file the tree's compiler compiles.
-- 2026-10-31, files built into hb: asked to let the hb build record a
-  fingerprint for each file built into it, so an app build knows which of
-  them changed, Joel asked "are you keeping dependencies BETWEEN files,
-  though? because you could do with a simple timestamp, no hashes needed".
-  Told that each stored file already lists the files it read, checked by
-  change time and size first and re-hashed only when those moved, and that
-  times recorded in hb would rebuild every app file after a same-content hb
-  rebuild and make hb's bytes vary by checkout, Joel chose "Hash, word
-  FILE-HASH": the hb build records each built-in file's path and SHA-256, and
-  `SOURCE-PRODUCER:FILE-HASH` looks one up. Joel added: "fine, use hashes
-  everywhere if that's best for long term and keep track of habu files too,
-  dependencies, etc." A built-in file's recorded hash covers the files it
-  required, so a change reaches every file that depends on it, as in make.
+  or no comment!" A build tracks which file depends on which, whole file, as
+  make does, and nothing reads a file's words to tell a comment from code: a
+  file compiles when it changed, a comment edit included. Under "timestamps,
+  not hashes" the files that depend on it compile when its compiled result
+  changed, so a comment edit compiles its own file alone and a code edit in
+  memory.f, which the compiler requires (src/compiler/ir/context.f:9),
+  rebuilds in an engine build every file that uses what changed.
 - 2026-11-03, where timings run: told that build timings waited for a quiet
   machine while this Mac ran at load 26 on 12 cores, Joel wrote "spark is
   doing nothing". A before-and-after timing runs on an idle host (spark, Linux
@@ -1894,6 +1886,8 @@ learned live in the docs for their subject.
   bytes and a block count and answers how many blocks it compressed: all of
   them where the CPU has the instructions, 0 elsewhere, and sha256.f's own
   code compresses what is left. x86-64's body answers 0 until it gets one.
+  Under "timestamps, not hashes" a build hashes nothing; the word stays for
+  src/core/sha256.f's other callers, the seed check among them.
 
 ## Processes
 

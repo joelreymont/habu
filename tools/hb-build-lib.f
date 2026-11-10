@@ -215,7 +215,7 @@ variable HBB-ELAPSED-NS
 \ The out root is made before a build starts, so a root that cannot be made
 \ fails the build up front as a path error rather than midway as a file error.
 : HBB-PREPARE-OUT ( -- )
-   [: BUILD-OUT:ROOT$ 2drop ;] catch {: rc:n :}
+   [: BUILD-OUT:BASE$ 2drop ;] catch {: rc:n :}
    rc 0= if exit then
    rc E-FS-IO = rc E-FS-CAPACITY = or if E-BUILD-PATH throw then
    rc throw ;

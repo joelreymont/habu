@@ -1,8 +1,8 @@
 \ build-out.f - where a build writes what it makes, under <out>: $HABU_OUT when set
 \ and non-empty (relative to SOURCE-ROOT:CWD$), else .out under the working
 \ directory. <out>/obj/<hb's stamp>/ holds the objects that hb wrote, each under the
-\ name its writer gives (OBJ$). <out>/<engine-key>/, named by ENGINE-ID:KEY$,
-\ hb's stamp, keeps that engine's images under img/<family> (IMG$). Outputs a later engine must find live under <out> itself (BASE$).
+\ name its writer gives (OBJ$). Outputs a later engine must find live under <out>
+\ itself (BASE$).
 \ PROCESS-WIDE: cleared before image capture.
 require src/lib/error.f
 require src/lib/fs.f
@@ -11,21 +11,14 @@ require src/lib/image-lifecycle.f
 require src/lib/engine-id.f
 require src/os/env-base.f
 require src/core/include.f
-require src/core/sha256.f
 
 package BUILD-OUT
 
 private
 
-64 constant KEY-LEN
-
 create OUT-BUF PATH-CAP allot     variable OUT-U
-create ROOT-BUF PATH-CAP allot    variable ROOT-U
 create OBJ-BUF PATH-CAP allot     variable OBJ-U
 create PATH-BUF PATH-CAP allot
-create IMG-BUF PATH-CAP allot
-create IMG-PATH-BUF PATH-CAP allot
-create KEY-CTX SHA256-FILE-CTX-BYTES allot
 variable CLEANUP-LIVE
 
 : CLEAR-SPAN ( ptr u8 n -- )
@@ -34,13 +27,9 @@ variable CLEANUP-LIVE
 
 : CLEAR ( -- )
    OUT-BUF PATH-CAP CLEAR-SPAN
-   ROOT-BUF PATH-CAP CLEAR-SPAN
    OBJ-BUF PATH-CAP CLEAR-SPAN
-   IMG-BUF PATH-CAP CLEAR-SPAN
-   IMG-PATH-BUF PATH-CAP CLEAR-SPAN
    PATH-BUF PATH-CAP CLEAR-SPAN
-   KEY-CTX SHA256-FILE-CTX-BYTES CLEAR-SPAN
-   0 OUT-U ! 0 ROOT-U ! 0 OBJ-U ! 0 CLEANUP-LIVE ! ;
+   0 OUT-U ! 0 OBJ-U ! 0 CLEANUP-LIVE ! ;
 
 : REGISTER-CLEANUP ( -- )
    CLEANUP-LIVE @ 0= if
@@ -69,14 +58,6 @@ public
    then
    OUT-BUF OUT-U @ ;
 
-: ROOT$ ( -- ptr u8 n )
-   ROOT-U @ 0= if
-      BASE$ ENGINE-ID:KEY$ ROOT-BUF FS:JOIN-PATH {: rootu:n :}
-      ROOT-BUF rootu FS:MAKE-DIRS
-      rootu ROOT-U !
-   then
-   ROOT-BUF ROOT-U @ ;
-
 : OBJ$ ( ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n :}
    nameu 0 <= if E-FS-PATH throw then
@@ -88,28 +69,5 @@ public
    then
    OBJ-BUF OBJ-U @ name nameu PATH-BUF FS:JOIN-PATH
    PATH-BUF swap ;
-
-
-\ The engine key of the binary at the path into a KEY-LEN-byte buffer: the
-\ lowercase hex SHA-256 of its bytes. An unopenable file throws E-FS-OPEN and a
-\ failed read E-FS-IO.
-: KEY-OF! ( ptr u8 n ptr u8 -- )
-   {: path:ptr pathu:n dst:ptr :}
-   REGISTER-CLEANUP
-   KEY-CTX path pathu dst SHA256-FILE-HEX-IN {: rc:n :}
-   rc SHA-E-OPEN = if E-FS-OPEN throw then
-   rc 0<> if E-FS-IO throw then ;
-
-
-\ The path of a family's image, or of a record named after it, under the img/
-\ directory of the engine whose key is given; the directory is made.
-: IMG$ ( ptr u8 n ptr u8 -- ptr u8 n )
-   {: fam:ptr famu:n key:ptr :}
-   famu 0 <= if E-FS-PATH throw then
-   BASE$ key KEY-LEN IMG-PATH-BUF FS:JOIN-PATH {: rootu:n :}
-   IMG-PATH-BUF rootu s" img" IMG-BUF FS:JOIN-PATH {: imgu:n :}
-   IMG-BUF imgu FS:MAKE-DIRS
-   IMG-BUF imgu fam famu IMG-PATH-BUF FS:JOIN-PATH
-   IMG-PATH-BUF swap ;
 
 ;package

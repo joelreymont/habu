@@ -19,7 +19,6 @@ require src/lib/fs-mutate.f
 require src/lib/byte-buffer.f
 require src/lib/le.f
 require src/lib/sort.f
-require src/lib/engine-id.f
 require src/lib/build-out.f
 require src/lib/fmt.f
 require src/habu/layout.f
@@ -174,7 +173,6 @@ create PARKED BUF:HDR-BYTES allot    \ each checked or linking file's place in i
 create PENDING BUF:HDR-BYTES allot   \ the pieces a root's check passed, in load order, as FILES rows
 create PENDING-PATHS BUF:HDR-BYTES allot \ the paths those pieces registered, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
-create SRC-COPY BUF:HDR-BYTES allot  \ a checked request's bytes as the loader runs them
 256 constant OBJECT-DEPTHS
 OBJECT-DEPTHS BUF:HDR-BYTES * BUFFER: OBJECTS \ OBJECT at each depth of requests (PARK)
 variable OBJECT-DEPTH                \ the frames on PARKED, and OBJECT's index in OBJECTS
@@ -353,7 +351,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    FILE-ROWS-RELEASE  USED-RELEASE  USES-RELEASE  BUILT-USES-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
-   LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
+   LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  REQ-PATH BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-ROWS BUF:DISPOSE
    SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE
@@ -375,7 +373,6 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    PENDING 256 BUF:N>BLEN BUF:INIT
    PENDING-PATHS 256 BUF:N>BLEN BUF:INIT
    REQ-PATH 256 BUF:N>BLEN BUF:INIT
-   SRC-COPY 256 BUF:N>BLEN BUF:INIT
    OBJECT-DEPTHS 0 ?do i OBJECT-AT 256 BUF:N>BLEN BUF:INIT loop  0 OBJECT-DEPTH !
    PRIOR 256 BUF:N>BLEN BUF:INIT
    CODE-COPY 256 BUF:N>BLEN BUF:INIT
@@ -797,8 +794,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 \ After KEY!, before FRESH?: INPUT-STAMP, the active file's change time seconds, nanoseconds and
 \ size, and HITS-CLEAR, NAMES first taking the records the build's body made since the last file.
-: INPUT! ( ptr u8 n -- )
-   {: src:ptr u:n :}
+: INPUT! ( -- )
    SOURCE-ROOT:ACTIVE-STAMP {: sec:n ns:n size:n :}
    sec INPUT-STAMP LE:U64!  ns INPUT-STAMP 8 + LE:U64!  size INPUT-STAMP 16 + LE:U64!
    FILE-REC @ -1 INDEX-RECS
@@ -2861,17 +2857,6 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    req PIECE-N PENDING U64+  req PIECE-TIME PENDING U64+ ;
 
 
-\ The bytes as the loader runs them: a copy in SRC-COPY whose `#!` line is a comment when they
-\ start with one (SOURCE-ROOT:SHEBANG-COMMENT).
-: EXEC-BYTES ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
-   u 2 < if a u exit then
-   a c@ $23 <>  a 1 + c@ $21 <>  or if a u exit then
-   SRC-COPY BUF:CLEAR  a u SRC-COPY SPAN+
-   SRC-COPY BYTES$ SOURCE-ROOT:SHEBANG-COMMENT
-   SRC-COPY BYTES$ ;
-
-
 \ Forward: a request's check runs its file's pieces (CHECK-PIECES).
 defer CHECK-OBJECT ( -- )
 
@@ -2881,7 +2866,7 @@ defer CHECK-OBJECT ( -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    WANT-KEY FILE-KEY KEY-BYTES BYTE-COPY
    path pathu PATH!
-   src srcu EXEC-BYTES INPUT!
+   INPUT!
    STAMPED? 0= if BAD exit then
    HEADER-FRESH? 0= if BAD exit then
    -1 PIECE-TIME WANT-TIME @ <>  REQS-N @ WANT-PIECE @ <>  or if BAD exit then
@@ -3731,7 +3716,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    path pathu PATH!
    path pathu root rootu PATH+
    MARKS
-   source sourceu INPUT!
+   INPUT!
    TOP-SCOPE? if LINKED? if 1 LINKED-N +! exit then then
    LINKING? if E-STALE throw then
    HITS-CLEAR  source sourceu SPELLED  NAMED!   \ a failed check left its replay in HITS
