@@ -5594,7 +5594,11 @@ CHECKER-REG:}SCRATCH
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    tv rest MK-PUSH {: din:n :}
    din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
-   DCUR @  din  UNIFY OK @ and OK !
+   DCUR @ {: pre:n :}
+   pre din UNIFY {: fit:bool :}
+   \ a cell that does not fit names the mismatch as a data stack word's step does
+   fit 0=  FAILSET @ 0=  and  OK @ and  IF din pre UF-CAPTURE THEN
+   fit OK @ and OK !
    OK @ borrows and IF
       STEP-UNDERFLOW!
       \ an unjudged scan keeps these rows, one raw cell each as the runtime moves;
@@ -5623,7 +5627,10 @@ CHECKER-REG:}SCRATCH
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    t2 t1 rest MK-PUSH MK-PUSH {: din:n :}
    din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
-   DCUR @  din  UNIFY OK @ and OK !
+   DCUR @ {: pre:n :}
+   pre din UNIFY {: fit:bool :}
+   fit 0=  FAILSET @ 0=  and  OK @ and  IF din pre UF-CAPTURE THEN   \ as RS->R
+   fit OK @ and OK !
    OK @ borrows and IF
       STEP-UNDERFLOW!
       UNJ-ARMED? IF -1 UNJ-SPLICED ! THEN   \ as RS->R

@@ -978,12 +978,33 @@ variable RC
    0 s" suggestion" sug sugu FIELD= ;
 
 \ The repair class and the suggestion name the refusal the code names: a
-\ mismatch before an unbalanced return row is the mismatch's to repair.
+\ mismatch before an unbalanced return row is the mismatch's to repair, and a
+\ >r or 2>r whose cells do not fit names the mismatch a data stack word names.
 : TEST-REPAIR-FOLLOWS ( -- )
    s" a mismatch before an unbalanced return row" T-LABEL
    s" : X ( n -- ) >r 1 c@ ;" s" mismatch-rstack.f" LINE-FIXTURE
    s" E-MISMATCH" s" c@" 1 19 18 20 REFUSED-AT
    s" fix_type" s" Change the body so produced types match the signature." REPAIRED-AS
+   s" a >r whose cell does not fit, as dup over that cell" T-LABEL
+   SB-RESET
+   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT" SB-APPEND LF+
+   s" : X ( rvbox<a> -- ) >r r> drop ;" SB-APPEND LF+
+   s" rvbox-tor.f" FIXTURE!
+   s" E-MISMATCH" s" >r" 2 21 56 58 REFUSED-AT
+   s" fix_type" s" Change the body so produced types match the signature." REPAIRED-AS
+   0 s" expected" s" b " FIELD=
+   0 s" actual" s" rvbox<a> " FIELD=
+   0 s" family" s" rvbox" FIELD=
+   s" a 2>r whose pair does not fit, as 2dup over that pair" T-LABEL
+   SB-RESET
+   s" PRODUCT rvbox<a> FIELD v a ;PRODUCT" SB-APPEND LF+
+   s" : X ( n rvbox<a> -- ) 2>r 2r> 2drop ;" SB-APPEND LF+
+   s" rvbox-2tor.f" FIXTURE!
+   s" E-MISMATCH" s" 2>r" 2 23 58 61 REFUSED-AT
+   s" fix_type" s" Change the body so produced types match the signature." REPAIRED-AS
+   0 s" expected" s" b c " FIELD=
+   0 s" actual" s" n rvbox<a> " FIELD=
+   0 s" family" s" rvbox" FIELD=
    s" that unbalanced return row alone" T-LABEL
    s" : X ( n -- ) >r ;" s" rstack.f" LINE-FIXTURE
    s" E-REJECTED" s" >r" 1 14 13 15 REFUSED-AT
