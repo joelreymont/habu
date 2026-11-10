@@ -13,10 +13,9 @@
 \ closed, the abandoned line's remaining TEXT+ and ;LINE write nothing.
 \ STORAGE CLASS. TASK-LOCAL: the line, a TASK:+USER BUF row kept across lines
 \ and released once a line grows it past START-CAP; ARMED, set once this run
-\ has registered the row's release; PHASE, whether a line is closed, open or
-\ lost. A line logged from a TASK:AT-EXIT cleanup releases its row too: the
-\ release LINE registers then runs in the same ending (src/lib/task.f
-\ TASK-RUN-EXIT).
+\ has run REGISTER; PHASE, whether a line is closed, open or lost. A line
+\ logged from a TASK:AT-EXIT cleanup releases its row too: the release LINE
+\ registers then runs in the same ending (src/lib/task.f TASK-RUN-EXIT).
 \ PROCESS-WIDE: LOCK, held for each line's write, which keeps this process's
 \ lines whole (another process writing the same fd can still split a line
 \ longer than PIPE_BUF); NOTICE, written under it; and TAIL, whether fd 2's
@@ -26,7 +25,6 @@ require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
 require src/lib/task.f
-require src/lib/image-lifecycle.f
 require src/lib/byte-buffer.f
 require src/lib/span.f
 require src/lib/date.f
@@ -90,10 +88,10 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    ROW BUF:DISPOSE ;
 
 
-\ A task's row is released at its exit; the main task has no exit chain, and a
-\ capture must not carry its row.
+\ A task's row is released at its exit; the main task has no exit chain, and its
+\ row lives as long as the process.
 : REGISTER ( -- )
-   TASK:SELF-N 0= if [: ROW-RELEASE ;] IMAGE-LIFECYCLE:REGISTER exit then
+   TASK:SELF-N 0= if exit then
    [: ROW-RELEASE ;] TASK:SELF TASK:AT-EXIT ;
 
 

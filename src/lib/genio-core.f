@@ -7,7 +7,6 @@
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
-require src/lib/image-lifecycle.f
 \ A device's write row is stored through QUOTATION-STORAGE:STORE, not `xt!`:
 \ see PUBLISH-WRITE below.
 require src/core/quotation-storage.f
@@ -64,7 +63,7 @@ SLOTS TYPED-BUFFER SLOT-GEN n          \ bumped on close, so a stale handle is c
 1 constant LIVE
 2 constant CLOSING
 here data-base - negate 7 and allot
-create SLOT-STATUS SLOTS cells allot
+create SLOT-STATUS SLOTS cells SCRATCH-ALLOT
 
 \ A HANDLE IS A ROW AND THE GENERATION THAT ROW HAD WHEN THE HANDLE WAS MINTED.
 \ CLOSE returns the row to the free list and bumps its generation, so the next
@@ -75,7 +74,7 @@ create SLOT-STATUS SLOTS cells allot
 8 constant GEN-SHIFT
 $FF constant ROW-MASK
 
-variable TERMINAL-READY                \ the built-in row is installed once
+SCRATCH-VARIABLE TERMINAL-READY        \ the built-in row is installed once
 
 \ One byte of scratch per task, for the operations that move a single character
 \ and for the readable-count ioctl. Task-local for the reason TCP4's endpoint
@@ -274,42 +273,6 @@ private
    LIVE TERMINAL-ROW STATUS-CELL atomic!
    1 TERMINAL-READY ! ;
 
-\ Routing goes back to the terminal and every registered row is forgotten before
-\ an image is captured, so no capture carries a socket, a descriptor or a code
-\ address belonging to a device that will not exist in the restored process.
-\ Zero is the answer both capture paths already understand: the snapshot rebase
-\ leaves a zero declared cell zero (habu2.f, "a cleared hook survives a snapshot
-\ as a cleared hook") and an AOT capture records a zero target instead of
-\ refusing one outside its window (aot-capture.f ACAP-TARGET-OFFSET).
-
-: CLEAR-ROWS ( -- )
-   SLOTS 1 ?do i ENGINE-ROW-CLEAR loop ;
-
-variable RESET-REGISTERED
-
-\ Every device is forgotten, and every row's generation moves on so a handle
-\ minted before the capture cannot address a row in the restored process.
-\ PREPARE removes this one-shot hook once it returns, so the flag goes with it:
-\ a capture carries the flag but no registration, and a flag left set would
-\ stop the next DEVICE - in this process or the restored image - from arming
-\ the next capture's reset.
-: RESET-ROUTING ( -- )
-   0 OUT-PTR !
-   0 IN-PTR !
-   0 ACTIVE-PTR !
-   0 data-base GENIO-ABI:BUSY-CELL + !
-   CLEAR-ROWS
-   SLOTS 1 ?do
-      i SLOT-GEN @ 1+ i SLOT-GEN !
-      FREE i STATUS-CELL atomic!
-   loop
-   0 RESET-REGISTERED ! ;
-
-: REGISTER-RESET ( -- )
-   RESET-REGISTERED @ 0 <> if exit then
-   [: RESET-ROUTING ;] IMAGE-LIFECYCLE:REGISTER
-   1 RESET-REGISTERED ! ;
-
 public
 
 
@@ -324,7 +287,6 @@ public
 : DEVICE ( [ n -- ] [ -- n ] [ -- bool ] [ ptr u8 n -- n ] [ ptr u8 n -- ] [ ptr u8 n -- n ] [ -- ] [ -- ] n -- device )
    {: qemit qkey qready qread qwrite qaccept qflush qclose state:n :}
    INSTALL-TERMINAL
-   REGISTER-RESET
    CLAIM-ROW {: idx:n :}
    qemit idx OP-EMIT !
    qkey idx OP-KEY !

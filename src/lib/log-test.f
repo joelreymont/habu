@@ -14,7 +14,6 @@ require src/lib/memory.f
 require src/lib/date.f
 require src/lib/fmt.f
 require src/lib/task.f
-require src/lib/image-lifecycle.f
 require src/lib/fd.f
 require src/lib/adt/option.f
 require src/lib/adt/result.f
@@ -327,9 +326,11 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ Runs after LOG's release, which the task registers later: the exit chain runs
-\ newest first. LEN@ of a disposed row is E-BUF-STATE.
+\ newest first. LEN@ of a disposed row is E-BUF-STATE, and the rest of the line
+\ the release closed writes nothing.
 : ROW-PROBE ( -- )
-   [: LOG-TEST:ROW BUF:LEN@ drop ;] catch ROW-CODE ! ;
+   [: LOG-TEST:ROW BUF:LEN@ drop ;] catch ROW-CODE !
+   [: s" late" LOG:TEXT+ LOG:;LINE ;] catch CODE-A ! ;
 
 
 : ABANDON-TASK ( -- )
@@ -337,30 +338,18 @@ TASK:MIN-STACK TASK:TASK RELEASER
    ABANDON ;
 
 
-: RELEASE-CASE ( -- )
-   s" a task that abandons a line releases its row" T-LABEL
-   0 ROW-CODE !
+: RELEASE-TASK ( -- )
    [: ABANDON-TASK ;] RELEASER TASK:ACTIVATE
-   RELEASER TASK:JOIN JOIN-CODE E-FS-IO T=
-   ROW-CODE @ E-BUF-STATE T= ;
+   RELEASER TASK:JOIN JOIN-CODE E-FS-IO T= ;
 
 
-\ PREPARE runs the main task's row release while the line is open: the rest of
-\ that line writes nothing, and the next line is written alone.
-: PREPARE-LINE ( -- )
-   LOG:ERROR s" t" LOG:LINE
-   IMAGE-LIFECYCLE:PREPARE
-   s" late" LOG:TEXT+ LOG:;LINE
-   KEPT-LINE ;
-
-
-: PREPARE-CASE ( -- )
-   s" the row's release closes an open line" T-LABEL
-   [: [: PREPARE-LINE ;] catch CODE-A ! ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
-   u DATE:TIME-LEN KEPT-REST$ nip + T=
-   at u KEPT-REST$ LINE-OK nip 0 T=
-   CODE-A @ 0 T= ;
+: RELEASE-CASE ( -- )
+   s" a task that abandons a line releases its row and closes the line" T-LABEL
+   0 ROW-CODE !  -1 CODE-A !
+   [: RELEASE-TASK ;] CAPTURED
+   ROW-CODE @ E-BUF-STATE T=
+   CODE-A @ 0 T=
+   PATH$ FS:FILE-SIZE 0 T= ;
 
 
 \ Reserves an inaccessible span of n bytes for EMPTY; false when none is left.
@@ -676,7 +665,6 @@ TASK:MIN-STACK TASK:TASK RELEASER
    OPEN-CASE
    FINISH-CASE
    RELEASE-CASE
-   PREPARE-CASE
    PIPE-CASE
    REFUSED-CASE
    BROKEN-CASE

@@ -7,7 +7,6 @@
 require src/lib/prelude.f
 require src/lib/num-types.f
 require src/lib/task.f
-require src/lib/image-lifecycle.f
 require src/lib/byte-buffer.f
 require src/lib/net/tcp4.f
 require src/lib/genio-core.f
@@ -19,9 +18,9 @@ private
 $A constant LF
 
 \ The line is a BUF (src/lib/byte-buffer.f) that grows to the longest line its
-\ task has read. LINE-OPEN marks it live once its release is registered: the
-\ task's exit chain for a task, image preparation for the main task, which has
-\ no exit chain and whose row a capture would otherwise carry.
+\ task has read. LINE-OPEN marks it live once its release is registered on the
+\ task's exit chain; the main task has no exit chain, and its line lives as long
+\ as the process.
 $100 constant CHUNK-CAP
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CHUNK-CAP TASK:+USER IO-CHUNK drop
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and BUF:HDR-BYTES TASK:+USER IO-LINE drop
@@ -35,11 +34,11 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-LINE-LIVE drop
    IO-LINE BUF:DISPOSE ;
 
 : LINE-REGISTER ( -- )
-   TASK:SELF-N 0= if [: LINE-DISPOSE ;] IMAGE-LIFECYCLE:REGISTER exit then
+   TASK:SELF-N 0= if exit then
    [: LINE-DISPOSE ;] TASK:SELF TASK:AT-EXIT ;
 
-\ A refused registration releases the line it would have released, so a live
-\ line always has its release armed.
+\ A refused registration releases the line it would have released, so a task's
+\ live line always has its release armed.
 : LINE-OPEN ( -- )
    IO-LINE-LIVE @ 0<> if exit then
    IO-LINE CHUNK-CAP BUF:N>BLEN BUF:INIT
