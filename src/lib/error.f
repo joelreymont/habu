@@ -189,7 +189,6 @@ require src/lib/prelude.f
 -3610 constant E-TASK-MAILBOX       \ message operation no mailbox can serve: no TCB, target not running, or self
 -3611 constant E-TASK-SEM-POOL      \ pooled semaphore: the handle is not a pooled record
 -3612 constant E-TASK-NO-RESULT     \ the task ended without storing a result; carried by the err arm of a join
--3613 constant E-TASK-EXIT-TABLE    \ more cleanup rows held at capture than the image's table carries
 -3614 constant E-TASK-SLEEP-MS      \ TASK:SLEEP or TASK:WAIT-MS duration below zero or past the last deadline a cell holds
 
 \ Engine self-identity: -3800..-3899
@@ -1115,12 +1114,6 @@ require src/lib/prelude.f
 -9296 constant E-AIO-BOUNDS       \ a transfer count past its allocation or below zero, a file offset below -1, or a socket address length not positive
 -9297 constant E-AIO-POLL-BOUND   \ Darwin's poll(2) takes at most OPEN_MAX (10240) descriptors per call, and one more would be needed
 
-\ Image lifecycle hooks (package IMAGE-LIFECYCLE, src/lib/image-lifecycle.f):
-\ -9310..-9319. -9300..-9309 is src/habu/debug.f's.
--9310 constant E-LIFECYCLE-FIRST
--9319 constant E-LIFECYCLE-LAST
--9310 constant E-LIFECYCLE-LATE   \ a persistent hook registered a one-shot hook during PREPARE, after the one-shot phase: nothing runs it before the capture
-
 \ Package PG's row readers: -9320..-9329, minted by src/lib/pg-rows.f.
 
 \ The WebSocket frame codec, RFC 6455 (package WS, src/lib/net/ws-frame.f):
@@ -1156,7 +1149,6 @@ require src/lib/prelude.f
 \ Private C2 owner-frame runtime.
 -9360 constant E-C2-CAPACITY       \ this task has no owner frame left
 -9361 constant E-C2-STATE          \ a frame operation contradicts its transition state
--9364 constant E-C2-CAPTURE        \ capture saw an active owner or loan in main
 
 \ File URIs (package URI, src/lib/uri.f): -9370..-9379.
 -9370 constant E-URI-FIRST

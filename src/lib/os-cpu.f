@@ -1,7 +1,6 @@
 \ os-cpu.f - processor facts the running host reports. ONLINE reads
 \ sysconf(_SC_NPROCESSORS_ONLN); below one is E-ONLINE. LOAD1 is getloadavg(3)'s
-\ first sample as binary64; a return below one is E-LOAD. Image preparation
-\ forgets the FFI addresses (src/lib/ffi-abi.f FORGET-SYMBOLS).
+\ first sample as binary64; a return below one is E-LOAD.
 \ STORAGE CLASS. CALLER-OWNED: constants only; LOAD1's sample is a
 \ MEM:WITH-BYTES scope.
 

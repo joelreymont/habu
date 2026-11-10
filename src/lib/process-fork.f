@@ -7,12 +7,11 @@
 
 require src/lib/error.f
 require src/lib/task.f                       \ TASK:CHILD-RESET, registered below
-require src/lib/image-lifecycle.f            \ the three locks RAW holds while it forks
 require src/core/dynamic-storage.f
 require src/habu/address-cells.f
 require src/lib/process.f
 require src/lib/fd.f                         \ FD:PIPE, the death pipe
-require src/lib/fd-lock.f                    \ the fourth lock RAW holds while it forks
+require src/lib/fd-lock.f                    \ the third lock RAW holds while it forks
 require src/lib/fs-mutate.f                  \ FS:CLEANUP-RESET, registered below
 require src/lib/process-tree.f               \ PROC-TREE:CHILD-RESET, registered below
 require src/lib/fork-child.f                 \ the resets RAW runs in the child
@@ -50,22 +49,19 @@ FORK-CALL-DEFAULT
 
 private
 
-\ The fork, made with the engine's three registry locks held. Each guards a
+\ The fork, made with the engine's two registry locks held. Each guards a
 \ table that is unmapped and republished over several stores, so no reset in
 \ the child could tell where a task it interrupted had stopped; held here,
-\ nobody is inside one when the process is copied. Outermost first, the order
-\ they nest in: a lifecycle registration takes the other two inside its own,
-\ and neither of those takes another. Only ACROSS-FORK runs a caller's word
-\ under one of them - IMAGE-LIFECYCLE:PREPARE runs its hooks unlocked - so the
-\ thread forking here holds none of them already. A fork made on a task holds
-\ the task-local address-cell lock, not the registrar's
-\ (ADDRESS-CELLS:ACROSS-FORK).
-\ Outside all three, FD-LOCK:WITH (src/lib/fd-lock.f): the child copies
+\ nobody is inside one when the process is copied. DYNAMIC-STORAGE's nests
+\ outside ADDRESS-CELLS's, and neither takes the other. Only ACROSS-FORK runs a
+\ caller's word under one of them, so the thread forking here holds neither
+\ already. A fork made on a task holds the task-local address-cell lock, not
+\ the registrar's (ADDRESS-CELLS:ACROSS-FORK).
+\ Outside both, FD-LOCK:WITH (src/lib/fd-lock.f): the child copies
 \ no descriptor another task has created but not yet marked close-on-exec. The
 \ child is the forking thread's copy, so the same finally releases it there.
 : FORK-REGISTRIES-HELD ( -- n )
-   [: [: [: FORK-CALL ;] ADDRESS-CELLS:ACROSS-FORK ;] DYNAMIC-STORAGE:ACROSS-FORK ;]
-   IMAGE-LIFECYCLE:ACROSS-FORK ;
+   [: [: FORK-CALL ;] ADDRESS-CELLS:ACROSS-FORK ;] DYNAMIC-STORAGE:ACROSS-FORK ;
 
 : FORK-HELD ( -- n )
    [: FORK-REGISTRIES-HELD ;] FD-LOCK:WITH ;

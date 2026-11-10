@@ -13,7 +13,7 @@ require src/lib/float.f
 require src/lib/task.f
 require src/lib/pg.f
 
-\ PG's row readers: -9320..-9329, the decade after IMAGE-LIFECYCLE's. Minted
+\ PG's row readers: -9320..-9329. Minted
 \ here, beside the words that throw them (docs/forth-card.md § 6). A refused
 \ OPEN is E-CONNECT and a declaration out of range or changed after use is
 \ E-CAPACITY, PG's own codes.

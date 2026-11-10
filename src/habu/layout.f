@@ -651,10 +651,9 @@ $688 constant FD-CELL
 \ pointing into the builder's region.
 \ The write table holds execution tokens in the engine header, where SNAP-RELOC
 \ canonicalises declared cells: genio-core.f publishes a device's write through
-\ QUOTATION-STORAGE:STORE and clears every row through IMAGE-LIFECYCLE before a
-\ capture. TASK-REGION-INIT copies the rows too, sound because a task region is
-\ never snapshotted or captured. DEVICES is small so the table costs no
-\ allocation on a microcontroller.
+\ QUOTATION-STORAGE:STORE. TASK-REGION-INIT copies the rows too, sound because a
+\ task region is never snapshotted or captured. DEVICES is small so the table
+\ costs no allocation on a microcontroller.
 \ BUSY-CELL stops re-entry: a device write may reach `type`, and while one runs
 \ the funnel takes the terminal path.
 \ ACTIVE-CELL names the device an operation runs for: devices share their eight

@@ -222,17 +222,14 @@ public
 \ storage never holds an address"). A chunk is ARENA-HDR bytes of header cells, then its records; the
 \ first holds ARENA-FIRST records, each next one twice its predecessor's, and
 \ records never move. The first chunk carries the declaration's name and links
-\ the arena into ARENAS, which capture refuses while it is not empty
-\ (ARENA-GUARD). NEW and RELEASE take no lock on the owner: tasks sharing one
-\ arena serialise NAME-NEW and NAME-RELEASE themselves.
+\ the arena into ARENAS. NEW and RELEASE take no lock on the owner: tasks
+\ sharing one arena serialise NAME-NEW and NAME-RELEASE themselves.
 \ ARENA-NEW and ARENA-RELEASE are INTRINSIC-tagged: checked code may call or
 \ tick them only inside the generated NAME-NEW and NAME-RELEASE, the definitions
 \ LBUF-EVAL arms (checker.f ARENA-CALL-REFUSE?, E-ARENA-CALL). Those reach the
 \ head through the engine's own `field-project`, a name no sealed-engine
 \ definition takes (STRUCTURE-MAKE:PROJECT-NAME$), so each head serves one
 \ declared type and a record's size always comes from it.
-
-7211 constant E-ARENA-LIVE
 
 private
 
@@ -344,18 +341,6 @@ public
    munmap 0< if E-UNMAP throw then ;  INTRINSIC-RECORD-RELEASE INTRINSIC
 
 
-\ Capture refuses a live arena: its records would be lost with the mapping.
-\ IMAGE-LIFECYCLE:PREPARE calls this last, after every hook has run, so a hook
-\ can release its arena.
-: ARENA-GUARD ( -- )
-   ARENAS @ {: top:ptr :}
-   top NULL-PTR = if exit then
-   2 s" hb: capture: live arena " write drop
-   2 top CH-NAME-A @ top CH-NAME-U @ write drop
-   2 S\" \n" write drop
-   E-ARENA-LIVE throw ;
-
-
 \ Runs a fork with the registry held; PROC-FORK:RAW is its caller. Growth,
 \ release and membership changes each take several stores under this lock, and a
 \ child forked mid-change could neither wait for that task nor carry on where it
@@ -403,10 +388,10 @@ private
 public
 
 \ Removal shrinks the registry, so each successful release consumes its last
-\ entry. A refused unmap preserves that entry for the next preparation attempt.
-\ Capture runs after tasks stop, as IMAGE-LIFECYCLE:PREPARE requires, so registry
-\ walks need no second lock. Concurrent mutation of one buffer remains its
-\ caller's responsibility; the lock protects membership of distinct controls.
+\ entry. A refused unmap preserves that entry for the next call.
+\ Its caller runs it after every task has stopped, so registry walks need no
+\ second lock. Concurrent mutation of one buffer remains its caller's
+\ responsibility; the lock protects membership of distinct controls.
 : RELEASE-ALL ( -- )
    begin REG-U @ 0 > while
       REG-U @ 1- {: last:n :}

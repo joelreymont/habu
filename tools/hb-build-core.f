@@ -214,10 +214,7 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 \ The product's registry is the build's: the end file records each row with the
 \ product's own include.f and packs them into its DATA; then the installs, and
 \ under --repl the program's MAIN as hb's entry, which hb runs before its REPL
-\ or standard input (src/habu/main.f ROUTED). Last the product's
-\ IMAGE-LIFECYCLE:PREPARE releases what its files' top levels acquired in this
-\ process (FFI's library handles, mappings), which the written program must not
-\ carry.
+\ or standard input (src/habu/main.f ROUTED).
 : END-WRITE ( n bool -- )
    {: app:n entry:bool :}
    0 TEXT-U !
@@ -225,7 +222,6 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    REQUIRE-N @ REQUIRE-BASE @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ i app < REG-ROW loop
    s\" REQUIRE-BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\n" TEXT+
    entry if s\" ' MAIN APP-ENTRY:XT!\n" TEXT+ then
-   s\" IMAGE-LIFECYCLE:PREPARE\n" TEXT+
    END$ 0 TEXT TEXT-U @ WRITE-CHANGED
    TEXT-RELEASE ;
 
@@ -250,9 +246,9 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 
 \ A program's entry is its global MAIN, whose effect APP-ENTRY:XT! holds to ( -- ):
 \ the checker refuses app-end.f at MAIN when there is none or it takes or leaves
-\ cells. The product's IMAGE-LIFECYCLE:PREPARE then runs, as END-WRITE's does.
+\ cells.
 : APP-END-WRITE ( -- )
-   APP-END$ s\" ' MAIN APP-ENTRY:XT!\nIMAGE-LIFECYCLE:PREPARE\n" WRITE-CHANGED ;
+   APP-END$ s\" ' MAIN APP-ENTRY:XT!\n" WRITE-CHANGED ;
 
 : APP-BODY ( -- )
    STARTUP

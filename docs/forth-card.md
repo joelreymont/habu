@@ -514,7 +514,7 @@ forth.md: **Errors**, **Integer arithmetic**.
   starts and when a `require` or `include` that ran a file returns: data never
   spans a load.
 - The engine provides `src/lib/prelude.f`, `error.f`, `string.f`, `span.f`,
-  `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and the
+  `memory.f`, `num-types.f`, `num-arithmetic.f` and the
   `src/` files its boot prefix loads: their words resolve with no require and
   a `require` is a no-op, and `tools/check.f` answers `E-ENGINE-PROVIDED` for
   one (rebuild `bin/hb` to check a change to it). Write it

@@ -36,7 +36,6 @@ s" src/lib/error.f" required
 s" src/lib/memory.f" required
 s" src/lib/ffi-abi.f" required
 require src/lib/le.f
-s" src/lib/image-lifecycle.f" required
 s" src/lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 s" src/lib/adt/result.f" required     \ TASK:JOIN answers result<n,n>
 \ The AT-EXIT registry is a checked quotation store, which the optimizing tier

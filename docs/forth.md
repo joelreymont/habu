@@ -2175,10 +2175,7 @@ documentation-only edits need no rebuild.
   definition can take, so an element's size always comes from the declared
   type.
   NAME-NEW and NAME-RELEASE take no lock: tasks sharing one arena serialise
-  them. `IMAGE-LIFECYCLE:PREPARE` runs every capture hook and then refuses an
-  arena still live: it prints `hb: capture: live arena PKG:NAME` (`NAME` at top
-  level) and throws `DYNAMIC-STORAGE:E-ARENA-LIVE`, so a hook registered with
-  `IMAGE-LIFECYCLE:REGISTER` can release its arena first.
+  them.
 - **`HEAP NAME Type` for a record with its own lifetime**: `NAME-NEW ( -- ptr
   Type )` answers a fresh zero-filled record on its own OS mapping, rounded up
   to a page, and `NAME-RELEASE ( ptr Type -- )` unmaps it. A pointer kept

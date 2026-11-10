@@ -47,7 +47,6 @@ public
    s" src/lib/prelude.f" required
    s" src/lib/error.f" required
    s" src/lib/span.f" required
-   s" src/lib/image-lifecycle.f" required
    s" src/lib/adt/option.f" required
    s" src/lib/num-types.f" required
    s" src/lib/num-arithmetic.f" required
