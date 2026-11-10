@@ -17,7 +17,7 @@ require src/arch/wasm/kernel.f
 require test/wasm/harness.f
 require test/wasm/w03.f
 
-require test/wasm/dynamic.f                    \ installs the backend WKERNEL builds under
+require test/wasm/calls-test.f
 require test/wasm/build.f
 require test/wasm/hb-build.f
 require test/wasm/data-test.f
