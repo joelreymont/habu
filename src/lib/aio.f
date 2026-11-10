@@ -9,13 +9,12 @@
 
 require src/lib/error.f
 require src/lib/memory.f
-require src/lib/string.f               \ BUFFER:, the record and group tables
+require src/lib/string.f               \ SCRATCH-BUFFER:, the record and group tables
 require src/lib/le.f                   \ the ring and SQE fields are little-endian
 require src/lib/ffi-abi.f
 require src/lib/codegen.f             \ the one stderr line a refused syscall prints
 require src/lib/num-types.f           \ the ms role the timeouts carry
 require src/lib/task.f
-require src/lib/image-lifecycle.f    \ the capture sweep of grown record and group chunks
 require src/lib/adt/result.f          \ the loop task's join answers result<n,n>
 
 package AIO
@@ -239,22 +238,22 @@ BEGIN-STRUCTURE G-BYTES
    CELL +FIELD G.OWNER
 END-STRUCTURE
 
-\ BUFFER: allots a zeroed buffer on a cell-rounded address, which is the
+\ SCRATCH-BUFFER: allots a zeroed buffer on a cell-rounded address, which is the
 \ alignment the record states need: REC.STATE is read and written with
 \ atomic@ / atomic! / atomic-cas, and those want their cell aligned. A grown
 \ chunk is a mapping, page-aligned.
-CHUNK-HEAD RECS-FIRST REC-BYTES * + BUFFER: AIO-RECS
-CHUNK-HEAD GROUPS-FIRST G-BYTES * + BUFFER: AIO-GROUPS
+CHUNK-HEAD RECS-FIRST REC-BYTES * + SCRATCH-BUFFER: AIO-RECS
+CHUNK-HEAD GROUPS-FIRST G-BYTES * + SCRATCH-BUFFER: AIO-GROUPS
 PARAMS-BYTES BUFFER: PARAMS
 create NL-BYTE $0A c,
 
-\ The records the published chunks hold. Grown under the facility, after the
-\ chunk's link; read with atomic@ by an owner checking a handle.
-variable REC-CAP
-RECS-FIRST REC-CAP !
-variable REC-LIVE                   \ records claimed and not yet freed: URING-CLAIM's bound
-variable GEN-FLOOR                  \ the generation a grown chunk's records start at
-variable MAPS-ARMED                 \ the capture sweep below is registered
+\ The records the grown chunks hold, so zero is the first chunk alone. Grown
+\ under the facility, after the chunk's link; read with atomic@ by an owner
+\ checking a handle.
+SCRATCH-VARIABLE REC-GROWN
+SCRATCH-VARIABLE REC-LIVE           \ records claimed and not yet freed: URING-CLAIM's bound
+
+: REC-CAP ( -- n ) REC-GROWN atomic@ RECS-FIRST + ;
 
 variable GROUP-N
 variable RING-FD
@@ -422,32 +421,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : REC-BUF-LEN@ ( n -- NUM:alloc-byte-len )
    REC REC.BUF-LEN @ MEM:BYTES-ALLOC-LEN ;
 
-\ A grown chunk is this process's: a capture gives it back so the image carries
-\ only the static first chunk. A record in flight in one is the program's
-\ defect, named here: await or cancel every operation before a capture.
-\ GEN-FLOOR rises past every generation the chunk carried, so the chunk that
-\ grows in its place mints none of them again and a handle kept across the
-\ capture stays stale.
-: CHUNK-RETIRE ( n n -- ) {: c:n len:n :}
-   len 0 ?do
-      c i CHUNK-REC REC.STATE atomic@ STATE-FREE <> if
-         s" aio: operation in flight at capture - await or cancel it before the build or snapshot captures"
-         E-AIO-STATE die
-      then
-      c i CHUNK-REC REC.GEN @ 1 + GEN-FLOOR @ max GEN-FLOOR !
-   loop
-   c AIO-N>PTR BYTE-VIEW len CHUNK-LEN MEM:RELEASE-BYTES ;
-
-: RECS-SWEEP ( -- )
-   CHUNK-FIRST CHUNK-NEXT RECS-FIRST 2 *
-   0 CHUNK-FIRST AIO-N>PTR atomic!
-   begin over 0<> while
-      over CHUNK-NEXT -rot
-      swap over CHUNK-RETIRE 2 *
-   repeat
-   2drop
-   RECS-FIRST REC-CAP atomic! ;
-
 \ ---- group entries -----------------------------------------------------------
 : GROUPS-HEAD ( -- n )
    AIO-GROUPS CELL-VIEW FFI:>CELL ;
@@ -467,44 +440,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    e G.ROW @ 0= if exit then
    e G.ROW @ AIO-N>PTR BYTE-VIEW e G.CAP @ ROW-LEN MEM:RELEASE-BYTES ;
 
-\ A group still holding a ticket at capture holds a handle no record will carry
-\ in the restored image: the program's defect, named as CHUNK-RETIRE names one.
-: G-RETIRE ( ptr n -- ) {: e:ptr :}
-   e G.COUNT @ 0<> if
-      s" aio: group holds a ticket at capture - await or remove it before the build or snapshot captures"
-      E-AIO-STATE die
-   then
-   e ROW-RELEASE
-   0 e G.ROW !
-   0 e G.CAP ! ;
-
-: G-CHUNK-RETIRE ( n -- ) {: c:n :}
-   GROUPS-FIRST 0 ?do c i G-AT G-RETIRE loop ;
-
-\ Every row goes back and every appended chunk with it; the definitions stay,
-\ and a group used again after the capture maps what it needs then.
-: GROUPS-SWEEP ( -- )
-   GROUPS-HEAD dup G-CHUNK-RETIRE CHUNK-NEXT
-   0 GROUPS-HEAD AIO-N>PTR atomic!
-   begin dup 0<> while
-      dup G-CHUNK-RETIRE
-      dup CHUNK-NEXT swap AIO-N>PTR BYTE-VIEW G-CHUNK-LEN MEM:RELEASE-BYTES
-   repeat
-   drop ;
-
-: MAPS-SWEEP ( -- )
-   RECS-SWEEP
-   GROUPS-SWEEP
-   0 MAPS-ARMED atomic! ;
-
-\ Armed before a chunk or row is mapped, so no mapping exists without its
-\ cleanup; the flag is set only after REGISTER completes, as src/lib/task.f's
-\ SEM-CHUNKS-ARM.
-: MAPS-ARM ( -- )
-   MAPS-ARMED atomic@ 0<> if exit then
-   [: MAPS-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
-   1 MAPS-ARMED atomic! ;
-
 \ Links a chunk after the last one. Two tasks appending at the same moment each
 \ link their own; the one that loses the race walks on to the new last.
 : G-CHUNK-APPEND ( n -- ) {: c:n :}
@@ -519,7 +454,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 \ mapping is zero, every entry empty.
 : G-NEXT ( n -- n ) {: c:n :}
    c CHUNK-NEXT dup 0<> if exit then drop
-   MAPS-ARM
    G-CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL G-CHUNK-APPEND
    c CHUNK-NEXT ;
 
@@ -532,18 +466,17 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    G-AT ;
 
 \ A fresh mapping is zero: every record free. The chunk is linked once its
-\ records are whole, and REC-CAP grows after the link, so a reader that sees
+\ records are whole, and REC-GROWN grows after the link, so a reader that sees
 \ the capacity finds the chunk.
 : REC-GROW ( -- )
-   MAPS-ARM
-   REC-CAP @ RECS-FIRST + {: len:n :}
+   REC-CAP RECS-FIRST + {: len:n :}
    len CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
    len 0 ?do
       -1 c i CHUNK-REC REC.PEER !
-      GEN-FLOOR @ c i CHUNK-REC REC.GEN !
+      0 c i CHUNK-REC REC.GEN !
    loop
    c CHUNK-LAST AIO-N>PTR atomic!
-   REC-CAP @ len + REC-CAP atomic! ;
+   REC-GROWN @ len + REC-GROWN atomic! ;
 
 \ ---- handles -----------------------------------------------------------------
 \ A ticket and an xfer name the record they were minted over and the
@@ -911,7 +844,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    0 RING-FD ! ;
 
 : RECS-CLEAR ( -- )
-   REC-CAP @ 0 ?do i REC-RESET loop
+   REC-CAP 0 ?do i REC-RESET loop
    0 REC-LIVE atomic! ;
 
 \ ---- the public operations' locked bodies ------------------------------------
@@ -1072,7 +1005,7 @@ INSTALL-HOST
    RING-LIVE @ 0= if exit then
    TASK:SELF-N dup 0= if drop exit then {: me:n :}
    AIO-LOCK TASK:GET
-   REC-CAP @ 0 ?do i me SCRUB-ONE loop
+   REC-CAP 0 ?do i me SCRUB-ONE loop
    AIO-LOCK TASK:RELEASE ;
 
 : ENSURE-SCRUB ( -- )
@@ -1115,7 +1048,7 @@ INSTALL-HOST
 \ record and a generation the record no longer carries are all E-AIO-STATE.
 : OWNED-CHECK ( n -- n ) {: h:n :}
    h HANDLE>IDX {: idx:n :}
-   idx REC-CAP atomic@ >= if E-AIO-STATE throw then
+   idx REC-CAP >= if E-AIO-STATE throw then
    idx REC-STATE@ STATE-FREE = if E-AIO-STATE throw then
    idx REC-OWNER @ FFI:>CELL TASK:SELF-N <> if E-AIO-STATE throw then
    idx IDX>HANDLE h <> if E-AIO-STATE throw then
@@ -1228,7 +1161,6 @@ INSTALL-HOST
 \ back. Only the group's owner reaches here (G-CLAIM), so no other task reads
 \ the row while it moves and the move needs no facility.
 : ROW-GROW ( ptr n -- ) {: e:ptr :}
-   MAPS-ARM
    e G.CAP @ 2 * ROW-FIRST max {: cap:n :}
    cap ROW-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: row:n :}
    e G.COUNT @ 0 ?do

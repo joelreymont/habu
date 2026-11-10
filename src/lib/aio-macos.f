@@ -358,7 +358,7 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    MAC-READ-FD @ EV-READABLE 0 MAC-PFD!
    1 MAC-POLL-COUNT !
    -1
-   REC-CAP @ 0 ?do
+   REC-CAP 0 ?do
       i MR {: row:ptr :}
       -1 row MR.GEN !
       -1 row MR.SLOT !
@@ -377,7 +377,7 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
 
 : MAC-COLLECT ( -- )
    0 MAC-PFD 6 + LE:U16@ EV-READABLE and 0<> if MAC-CLEAR-WAKE then
-   REC-CAP @ 0 ?do
+   REC-CAP 0 ?do
       i MAC-ACTIVE? i REC REC.GEN @ i MR MR.GEN @ = and if
          i MR MR.SLOT @ dup 0 >= if
             MAC-PFD 6 + LE:U16@ i MR MR.EVENTS @ $38 or and
