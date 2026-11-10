@@ -457,6 +457,40 @@ CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
    CDD-WIDE-ROW  s" ) drop ;" CDD-WIDE CODEGEN:APPEND-STRING
    CDD-WIDE CODEGEN:CONTENTS ;
 
+\ A clause declaring 255 input cells, whose body takes 256 with the data field;
+\ its packet declares the signature as written.
+$800 constant CDD-FIT-CAP
+CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT
+CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
+: CDD-FIT-ROW ( ptr n -- )
+   {: d:ptr :}
+   255 0 do s" n " d CODEGEN:APPEND-STRING loop ;
+: CDD-FIT$ ( -- ptr u8 n )
+   CDD-FIT CODEGEN:RESET
+   s" -1 JSON-DIAGS ! : CDD-F1 ( n -- ) create , does> ( " CDD-FIT CODEGEN:APPEND-STRING
+   CDD-FIT CDD-FIT-ROW  s" -- n ) " CDD-FIT CODEGEN:APPEND-STRING
+   255 0 do s" drop " CDD-FIT CODEGEN:APPEND-STRING loop
+   s" ;" CDD-FIT CODEGEN:APPEND-STRING
+   CDD-FIT CODEGEN:CONTENTS ;
+
+\ The packet field named by its key text, holding the 255-input row then the tail.
+: CDD-FIT-FIELD ( ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n ta:ptr tu:n :}
+   CDD-FIT-WANT CODEGEN:RESET
+   ka ku CDD-FIT-WANT CODEGEN:APPEND-STRING
+   CDD-FIT-WANT CDD-FIT-ROW
+   ta tu CDD-FIT-WANT CODEGEN:APPEND-STRING
+   DIAG-BUFFER$ CDD-FIT-WANT CODEGEN:CONTENTS CONTAINS? TTRUE ;
+
+: CDD-FIT-DECLARED ( -- )
+   CDD-DIAG 4096 DIAG-BUFFER!
+   CDD-FIT$ TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
+   DIAG-BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
+   s\" \"declared_effect\":\"" s\" -- n \"" CDD-FIT-FIELD
+   s\" \"declared_effect_source\":\"" s\" -- n\"" CDD-FIT-FIELD
+   DIAG-BUFFER-OFF
+   s" 0 JSON-DIAGS !" TEST-EVAL:RC 0 T= ;
+
 : CDD-SECTION-CLAUSE-TAIL ( -- )
    s" a clause that specializes a declared quantifier is refused" T-LABEL
    s" : CDD-NP1 ( n -- ) create , does> ( a -- n ) drop ;" CDD-NP-REFUSED
@@ -471,6 +505,8 @@ CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
    s" : CDD-NP5 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;" CDD-NP-REFUSED
    s" a clause too wide to record is uncheckable, and the load goes on" T-LABEL
    CDD-WIDE$ s" input row too wide to record (257 cells, at most 255)" CDD-NOT-CERTIFIED
+   s" a clause whose signature fits a record declares it, though its body is too wide" T-LABEL
+   CDD-FIT-DECLARED
    s" a clause's unknown signature type is reported at that type, as its colon twin's is" T-LABEL
    s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       s" unknown type 'cdd-zz'" CDD-NOT-CERTIFIED

@@ -899,9 +899,6 @@ variable DSUGE  variable DSUGA
    THEN ;
 
 
-: JEFFECT ( n n n n bool -- ) JOPEN JEFFECT-TEXT JCLOSE ;
-
-
 \ One DECL-EFFECT pass over the declared rows, written from RSN at with the
 \ names it started from.
 : DECL-PASS ( n n n n bool n n n n -- )
@@ -913,7 +910,6 @@ variable DSUGE  variable DSUGA
 \ The record SIG-EFF-CACHE! kept, rendered in two passes as REND-EFFECT is; the
 \ live declared rows then take its names, unprinted, for the later fields.
 : DECL-EFFECT ( -- )
-   RECEFF-ON? 0= IF  SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT  EXIT THEN
    RECEFF @ {: off:n :}
    NLET @ RROW-N @ RATOM-N @ {: nlet:n rrow:n ratom:n :}
    off E-PTR E-INST-RESET
@@ -1813,9 +1809,9 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DLOC-FIELDS
    s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
    s" declared_effect" JKEY
-   SGSEEN @ IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" DTXT THEN  44 EMIT1
+   RECEFF-ON? IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" DTXT THEN  44 EMIT1
    s" declared_effect_source" JKEY
-   SGSEEN @ IF SGA @ SGU @ SIG-TRIM JSTR ELSE s" null" DTXT THEN  44 EMIT1
+   RECEFF-ON? IF SGA @ SGU @ SIG-TRIM JSTR ELSE s" null" DTXT THEN  44 EMIT1
    s" inferred_effect" JKEY
    MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ JSTR ELSE JOPEN INFERRED-EFFECT JCLOSE THEN
    44 EMIT1

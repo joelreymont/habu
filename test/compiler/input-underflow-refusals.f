@@ -72,6 +72,11 @@ create DIAG-BUF 8192 allot
    S\" \"declared_effect\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    SB$ HAS? ;
 
+: SOURCED? ( ptr u8 n -- )
+   SB-RESET
+   S\" \"declared_effect_source\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
+   SB$ HAS? ;
+
 : ROWS? ( ptr u8 n ptr u8 n -- )   \ the packet's expected and actual rows
    {: e:ptr eu:n a:ptr au:n :}
    SB-RESET
@@ -173,6 +178,46 @@ create DIAG-BUF 8192 allot
    s" a forall<b,[ read-view<b,b,u8> -- ]> -- a " DECLARED?
    DISARM ;
 
+\ A does> clause declares its own signature, not the created word's runtime
+\ effect the checker walks it against (its inputs and the data-field address).
+: CASE-DECLARED-CLAUSE ( -- )
+   s" a refused does> clause's declared effect is its signature as written" T-LABEL
+   ARM
+   [: s" : IUF-DOES-UF ( n -- ) create , does> ( n -- n ) @ + + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   NAMED  s" n -- n " DECLARED?  s" n -- n" SOURCED?
+   DISARM ;
+
+: CASE-DECLARED-CLAUSE-MISMATCH ( -- )
+   s" a mismatched does> clause's declared effect is its signature as written" T-LABEL
+   ARM
+   [: s" : IUF-DOES-MM ( n -- ) create , does> ( n -- n ) @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   MISMATCH$ HAS?  s" n -- n " DECLARED?  s" n -- n" SOURCED?
+   DISARM ;
+
+\ RECURSE in a does> clause leaves it uncheckable (MD-RECURSE-DOES).
+: CASE-DECLARED-CLAUSE-RECURSE ( -- )
+   s" an uncheckable does> clause's packet declares its signature too" T-LABEL
+   ARM
+   [: s" : IUF-DOES-RC ( n -- ) create , does> ( n -- n ) drop dup 0 > IF 1 - RECURSE THEN ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-UNCHECKABLE\"" HAS?  S\" \"verdict\":\"uncheckable\"" HAS?
+   s" n -- n " DECLARED?  s" n -- n" SOURCED?
+   DISARM ;
+
+\ A malformed signature declares nothing, whatever cells the body leaves.
+: CASE-DECLARED-BAD-SIG ( -- )
+   s" a malformed signature's packet declares no effect" T-LABEL
+   ARM
+   [: s" : IUF-BAD-SIG ( ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   S\" \"declared_effect\":null" HAS?  S\" \"declared_effect_source\":null" HAS?
+   DISARM ;
+
+: CASE-DECLARED-CLAUSE-BAD-SIG ( -- )
+   s" a malformed does> clause signature's packet declares no effect" T-LABEL
+   ARM
+   [: s" : IUF-DOES-BAD ( n -- ) create , does> ( n n ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   S\" \"declared_effect\":null" HAS?  S\" \"declared_effect_source\":null" HAS?
+   DISARM ;
+
 \ ---- the refusal's rows ------------------------------------------------------
 
 \ The drops after a refused `then` reach under the declared inputs and bind the
@@ -250,6 +295,11 @@ public
    CASE-DECLARED-QUOTATION-ROWS
    CASE-DECLARED-FRESH
    CASE-DECLARED-BINDER
+   CASE-DECLARED-CLAUSE
+   CASE-DECLARED-CLAUSE-MISMATCH
+   CASE-DECLARED-CLAUSE-RECURSE
+   CASE-DECLARED-BAD-SIG
+   CASE-DECLARED-CLAUSE-BAD-SIG
    CASE-ROWS-AT-REFUSAL
    CASE-ROWS-NAMES
    CASE-ROWS-REPAIR

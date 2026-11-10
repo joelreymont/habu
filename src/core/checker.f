@@ -21378,8 +21378,8 @@ CHECKER-REG:}SCRATCH
    od DCUR !  orow RCUR !
    h LIN-EFF-PASS ;
 
-\ A RECURSE instantiates the cached declared effect; without one it is
-\ uncheckable: too big to record, in a does> clause, which caches none, or none.
+\ A RECURSE instantiates a colon body's cached declared effect. Anywhere else it
+\ is uncheckable: an effect too big to record, a does> clause, or none declared.
 : CF-RECURSE
    -1 WRAPBENT !
    RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF EXIT THEN
@@ -28035,12 +28035,18 @@ package CHECKER-REG
    NP-COLLECT
    SGIN @ DOES-DIN dup BROW !
    SGOUT @ CHECK-DOES-EFFECT!
-   SGBAD @ 0= IF BROW @ SGOUT @ SGRIN @ SGROUT @ ROWS-FIT? drop THEN   \ as SIG-EFF-CACHE! measures
+   \ The record is the signature's as written, whatever the runtime row below
+   \ measures; a refused or uncheckable clause keeps it for its packet
+   \ (DOES-REPORT, SRC-DOES-THREW drop it); other verdicts drop it below.
+   SIG-EFF-CACHE!
+   \ The runtime row holds the signature's and the data-field address, so its
+   \ counts replace any the signature set and name the unfit clause.
+   SGBAD @ 0= IF BROW @ SGOUT @ SGRIN @ SGROUT @ ROWS-FIT? drop THEN
    BROW @ DCUR !
    SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
    SIG-BODY-FRESH
    s" ;" CHECK-SCAN
-   TORDER-SCAN-UNKNOWN @ IF WRAP-CLEAR 2 EXIT THEN
+   TORDER-SCAN-UNKNOWN @ IF WRAP-CLEAR SIG-EFF-DROP 2 EXIT THEN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
@@ -28057,6 +28063,7 @@ package CHECKER-REG
    OK @ IF NP-CHECK THEN
    UNFIT-UNCHECKABLE
    CHECK-VERDICT dup DVERD !
+   dup VERDICT-CHECKED =  over VERDICT-DEFERRED =  or IF SIG-EFF-DROP THEN
    dup 0= IF RIGID-DIAG-CLASSIFY THEN
    dup -1 = IF CALL-FINALIZE THEN
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN
@@ -28120,6 +28127,7 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    v -1 = v 2 = or IF v EXIT THEN
    na nu DOES-NAME!
    DIAG-QUIET @ 0= IF DIAGXT THEN
+   SIG-EFF-DROP
    MULTI-ERR? IF 1 MULTI-ERR-N +! THEN
    v ;
 
@@ -28148,6 +28156,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    SRC-DOES-VERDICT ! ;
 
 : SRC-DOES-THREW ( n -- n )
+   SIG-EFF-DROP
    DEF-REFUSED
    WRAP-CLEAR
    1 MULTI-ERR-N +!
