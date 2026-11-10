@@ -1169,7 +1169,9 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   signature is one type. `n`, `f` and `r` are concrete types, not type vars.
 - Type, role and family names are lower case and case-sensitive: `I64` and
   `IDX` reject as bad signatures.
-- `<`, `>` and `,` are single-token delimiters, so `pkg:result<pkg:index>` and
+- Blanks separate tokens, and a line break or a tab is one, so a long effect
+  may continue on the next line. `<`, `>`, `,`, `[` and `]` are single-token
+  delimiters, so `pkg:result<pkg:index>` and
   `pkg:result < pkg:index >` parse identically. Do not nest `( )`: the inner
   `)` closes the comment.
 

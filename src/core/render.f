@@ -877,7 +877,7 @@ variable DSUGE  variable DSUGA
 : JKEY ( ptr u8 n -- ) {: a:ptr u:n :}
    a u JSTR  58 EMIT1 ;
 : JROW {: s :}  JOPEN  s DROW  JCLOSE ;
-: SIG-WS? {: c :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
+: SIG-WS? {: c :}  c 32 <= ;
 : SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE
       dup a + c@ SIG-WS? 0= IF dup a + u rot - EXIT THEN

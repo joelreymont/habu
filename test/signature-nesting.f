@@ -7,9 +7,11 @@
 \ packet of a RECURSE with no declared effect has a null declared_effect, which
 \ the diagnostics gate accepts.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
-\ are stored rows (`trust`). A packet is read in this process.
+\ are stored rows (`trust`). A packet is read in this process. An effect split
+\ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
 require src/lib/test.f
 require src/lib/string.f
+require src/lib/adt/result.f
 require src/lib/test/subject.f
 require src/lib/test/ending.f
 require tools/gate-json-assert-core.f
@@ -91,6 +93,15 @@ TYPED-VARIABLE SRC-U len
 \ A definer whose does> clause recurses.
 : RECURSE-DOES ( -- )
    SRC-RESET  s" : SN-MK ( n -- ) create , does> ( -- n ) @ dup 0 > IF RECURSE THEN ;" S+ ;
+
+
+\ Effects whose blanks are line breaks and tabs: `S\"` writes bytes 10 and 9.
+: ADD-BLANKS ( -- )
+   SRC-RESET  S\" : SN-ADD (\nn\tn\n-- n\n) + ;" S+ ;
+: RESULT-LINE ( -- )
+   SRC-RESET  S\" : SN-RESULT-LINE ( result<n,\nn> -- result<n,n> ) ;" S+ ;
+: UNKNOWN-LINE ( -- )
+   SRC-RESET  S\" : SN-UNKNOWN-LINE ( n sn-nosuch\n-- ) drop drop ;" S+ ;
 
 
 \ The text in SRC-BUF, run as the subject, exits 70 and names why on stderr.
@@ -198,6 +209,13 @@ public
    RECURSE-DOES
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
    S\" \"suggestion\":\"Move the recursion into a named word with a declared effect and call it from the clause.\"" CLAUSE-PACKET-HAS
+   s" an effect with line breaks after (, before -- and before ) and a tab between its inputs loads" T-LABEL
+   ADD-BLANKS  SRC$ TEST-EVAL:RC 0 T=   s" 1 2 SN-ADD" TEST-EVAL:N 3 T=
+   s" a line break after a comma inside a family loads" T-LABEL
+   RESULT-LINE  SRC$ TEST-EVAL:RC 0 T=
+   s" an unknown type that ends a line refuses by its name alone" T-LABEL
+   UNKNOWN-LINE
+   s" at 'sn-nosuch'" REFUSES
    T-REPORT
    s" signature-nesting: ok" type cr ;
 ;package

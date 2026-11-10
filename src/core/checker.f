@@ -6860,9 +6860,8 @@ variable PKHAVE
 
 : PKRESET ( -- )
    0 PKHAVE ! ;
-\ Signature tokens: whitespace separates them and `<`, `>`, `,` are single-token
-\ delimiters, so `span<space-global,f32,extent-n>` needs no spaces. NEXT-SIG-TOK
-\ answers ( a 0 ) at end and honors one pushed-back token.
+\ A blank, a byte at or below 32 (habu1.f EMIT-TOK), ends a signature token;
+\ `<` `>` `,` `[` `]` are tokens alone, so `span<a,b>` needs no spaces.
 : SIG-DELIM-CHAR? ( n -- bool ) {: c:n :}
    c 60 = IF RES-TRUE EXIT THEN
    c 62 = IF RES-TRUE EXIT THEN
@@ -6874,10 +6873,11 @@ variable PKHAVE
 \ ends where its mapping does.
 : SIG-SPACE? ( -- bool )
    SI @ SL @ >= IF RES-FALSE EXIT THEN
-   SB@ SI @ + c@ 32 = ;
+   SB@ SI @ + c@ 32 <= ;
 : SIG-INK? ( -- bool )
    SI @ SL @ >= IF RES-FALSE EXIT THEN
-   SB@ SI @ + c@ dup 32 <> swap SIG-DELIM-CHAR? 0= and ;
+   SB@ SI @ + c@ dup 32 > swap SIG-DELIM-CHAR? 0= and ;
+\ ( a 0 ) at the text's end; a token PK! pushed back comes first.
 : NEXT-SIG-TOK ( -- ptr u8 n )
    PKHAVE @ IF 0 PKHAVE ! PKA@ PKU @ EXIT THEN
    BEGIN SIG-SPACE? WHILE SI @ 1 + SI ! REPEAT
@@ -26158,17 +26158,20 @@ package CHECKER-REG
 ' CHECKER-RESOLUTION:NS-DEFAULT DECLARATIONS CHECKER-OWNER-ABI:RESOLUTION-NS-DEFAULT-OFF + xt!
 ;package
 
-\ Whether byte i of the text exists and is c (TBYTE=?), and whether a token
-\ breaks at i, where the text ends or byte i is a space (TBREAK?). Each reads
-\ byte i only when i is inside TBLEN: `and` evaluates both operands, so a bound
-\ test beside the read reads the byte past a text that ends where its mapping
-\ does.
+\ These three read byte i only inside TBLEN: `and` evaluates both operands, so a
+\ bound test beside the read reads past a text that ends where its mapping does.
 : TBYTE=? ( n n -- bool ) {: i:n c:n :}
    i TBLEN @ >= IF RES-FALSE EXIT THEN
    i TBYTE@ c = ;
+\ A captured token ends at a space: prims.f body-append joins tokens with one.
 : TBREAK? ( n -- bool ) {: i:n :}
    i TBLEN @ >= IF RES-TRUE EXIT THEN
    i TBYTE@ 32 = ;
+\ The byte after the head's `(` is the source's (definers.f DEF-SIG-PASS), and
+\ the engine ends a token at any byte at or below 32 (habu1.f EMIT-TOK).
+: TBLANK? ( n -- bool ) {: i:n :}
+   i TBLEN @ >= IF RES-TRUE EXIT THEN
+   i TBYTE@ 32 <= ;
 
 \ ---- completion: the cursor in the body walk ------------------------------------
 \ The walk places the cursor where it delimits a token (CUR-TOKEN), a signature
@@ -26222,7 +26225,7 @@ variable CUR-OPEN   variable CUR-PSIG
      TI @ CUR-GAP !
      BEGIN TI @ 32 TBYTE=? WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
-       TI @ TBYTE@ 40 =  TI @ 1 + TBREAK?  and IF   \ '( ' (not '(CMP)') -> sig or comment
+       TI @ TBYTE@ 40 =  TI @ 1 + TBLANK?  and IF   \ '(' then a blank (not '(CMP)') -> sig or comment
          CUR-PAREN-AT
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
          BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
