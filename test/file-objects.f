@@ -580,8 +580,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    FOUND$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    size i KEPT-SIZE !  cs i KEPT-S !  cns i KEPT-NS ! ;
 
-\ Whether KEEP and FOUND? each found the build's object of tail i; the label is the next, and
-\ fails when either found none.
+\ Whether KEEP and FOUND? each found the build's object of tail i; a miss fails the label, else the
+\ label names the caller's next assertion.
 : KEPT-FOUND? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
    i KEPT-SIZE @ 0 < if a u LABEL false TTRUE false exit then
    F$ WHICH WHICH-U @ i FOUND? {: one:bool :}
@@ -794,9 +794,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" O4" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
    s" the build links order-x2.f" ORDER-X2 LINKED ;
 
-\ Guards linking parts after a compiled part, each from its own start, and a part retiring its own records;
-\ compiling a part whose start moves with no edit (linked, it defines Q twice) or whose number shifts after
-\ an unclean cut at top scope (linked, it skips the request).
+\ Guards linking parts after a compiled part, each from its own start, and a part retiring its own records; compiling a
+\ part whose start moves unedited (linked: Q twice) or number shifts after an unclean top-scope cut (linked: no request).
 : PART-LINK-CASE ( CMD:command -- CMD:command )
    s" Y" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
    MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  UNCLEAN-FIRST KEEP  UNCLEAN-SECOND KEEP  REDO-MAIN KEEP
@@ -815,8 +814,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n"
    s" the program prints flip-a.f's F, P, Q, R, A, C, S and T" PRINTS-RUN ;
 
-\ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the
-\ program, and a task left running or a run word that loads, provides or reads a file fails the build.
+\ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the program,
+\ word docs keep no address of a freed text, a task left running or a run word that loads, provides or reads a file fails it.
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN

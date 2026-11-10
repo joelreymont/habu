@@ -607,8 +607,7 @@ TYPED-VARIABLE REC ptr n
    1 f DNAME-IMM and 0<> if 2 or then
    f MIN-IN 8 lshift or ;
 
-\ The engine's twins: habu2.f C-SOURCE-EXEC-BEFORE and EMIT-SOURCE-EXEC-FINISH.
-\ This loop stores the frame fields source-exec-boundary? and -loader-cut? read.
+\ This loop stores the frame fields source-exec-boundary?, -loader-cut? and -position read.
 4 constant OBSERVE-TICK          \ the before callback's op for a tick's target
 public
 5 constant OBSERVE-WORD          \ the before callback's op for a word about to run; the linker's RESUME passes it too
