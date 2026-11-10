@@ -21,14 +21,14 @@ package FILE-OBJECTS-TEST
 10 constant STALE-SPELL                  \ retired-spell.f's, order-x2.f's, hidden-spell.f's and
 11 constant SEALED-SPELL                 \ seal-second.f's objects, mid-four.f's last part's,
 12 constant STORED-RUN                   \ unclean.f's last part's, flip.f's second part's and
-13 constant RETIRED-SPELL                \ redo-main.f's
+13 constant RETIRED-SPELL                \ redo.f's
 14 constant ORDER-X2
 15 constant HIDDEN-SPELL
 16 constant SEAL-SECOND
 17 constant MID-FOUR-LAST
 18 constant UNCLEAN-LAST
 19 constant FLIP-SECOND
-20 constant REDO-MAIN
+20 constant REDO
 21 constant UNCLEAN-FIRST                \ unclean.f's first part's, which an unclean cut ends,
 22 constant UNCLEAN-SECOND               \ and its second's, which follows that cut
 23 constant FFI-SECOND                   \ src/lib/ffi-abi.f's second part's, which the kernel lacks
@@ -186,7 +186,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    i MID-FOUR-LAST = if s" /test/fixtures/file-objects/mid-four.f+3.hfo" exit then
    i UNCLEAN-LAST = if s" /test/fixtures/file-objects/unclean.f+2.hfo" exit then
    i FLIP-SECOND = if s" /test/fixtures/file-objects/flip.f+1.hfo" exit then
-   i REDO-MAIN = if s" /test/fixtures/file-objects/redo-main.f.hfo" exit then
+   i REDO = if s" /test/fixtures/file-objects/redo.f.hfo" exit then
    i UNCLEAN-FIRST = if s" /test/fixtures/file-objects/unclean.f.hfo" exit then
    i UNCLEAN-SECOND = if s" /test/fixtures/file-objects/unclean.f+1.hfo" exit then
    i FFI-SECOND = if s" /src/lib/ffi-abi.f+1.hfo" exit then
@@ -798,16 +798,16 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
 \ part whose start moves unedited (linked: Q twice) or number shifts after an unclean top-scope cut (linked: no request).
 : PART-LINK-CASE ( CMD:command -- CMD:command )
    s" Y" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
-   MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  UNCLEAN-FIRST KEEP  UNCLEAN-SECOND KEEP  REDO-MAIN KEEP
+   MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  UNCLEAN-FIRST KEEP  UNCLEAN-SECOND KEEP  REDO KEEP
    s" Y2" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
    s" the build links mid-four.f's last part" MID-FOUR-LAST LINKED
    s" the build links unclean.f's last part after an unclean request and a clean one"
    UNCLEAN-LAST LINKED
    s" unclean.f's part an unclean request ends never links" UNCLEAN-FIRST COMPILED
    s" unclean.f's part after an unclean request never links" UNCLEAN-SECOND COMPILED
-   s" the build links redo-main.f's part" REDO-MAIN LINKED
+   s" the build links redo.f's part" REDO LINKED
    s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n"
-   s" the program prints mid-four.f's words with mid-w2.f's W, redo-main.f's second Y, S and T" PRINTS-RUN
+   s" the program prints mid-four.f's words with mid-w2.f's W, redo.f's second Y, S and T" PRINTS-RUN
    FLIP-SECOND KEEP
    s" Y3" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
    s" the build links the part that starts at [then]" FLIP-SECOND LINKED

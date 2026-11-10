@@ -1,4 +1,4 @@
-\ redo-main.f - one part defines Y and X, which calls Y, undefines both and defines them again,
+\ redo.f - one part defines Y and X, which calls Y, undefines both and defines them again,
 \ Y answering 2 the second time.
 
 package FILE-OBJECTS-REDO

@@ -6,7 +6,7 @@ require test/fixtures/file-objects/mid-four.f
 require test/fixtures/file-objects/flip-a.f
 require test/fixtures/file-objects/flip.f
 require test/fixtures/file-objects/unclean.f
-require test/fixtures/file-objects/redo-main.f
+require test/fixtures/file-objects/redo.f
 require test/fixtures/file-objects/cut-stack.f
 
 : MAIN ( -- )
