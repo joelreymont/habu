@@ -342,20 +342,24 @@ variable HSTORES-N
 \ -1 for header data, and at 2p + 1 the piece's row.
 DYNAMIC-BUFFER STORERS n
 variable STORERS-N                   \ its pairs
-DYNAMIC-BUFFER WALKED n              \ BUILT row r's mark: RAN-FILES+'s walk reached its data
+\ BUILT row r's marks from RAN-FILES+'s walk: 1 an extent of its data reached, 2 its stores
+\ reached (WALK-STORERS).
+DYNAMIC-BUFFER WALKED n
 DYNAMIC-BUFFER REACH n               \ the cells the walk reached, each once, in EDGES' form (EDGE+)
 variable REACH-N
-\ A record's or emission's cell holds REACH-STAMP once the running walk reached it; each walk
-\ takes the next stamp, so no cell is cleared.
+\ A record's, emission's or build-table row's cell holds REACH-STAMP once the running walk reached
+\ it; each walk takes the next stamp, so no cell is cleared.
 DYNAMIC-BUFFER REC-SEEN n
 DYNAMIC-BUFFER EM-SEEN n
+DYNAMIC-BUFFER EXT-SEEN n
 variable REACH-STAMP
 TYPED-VARIABLE HEADER-SEEN bool      \ the walk reached a header-data reference
 DYNAMIC-BUFFER EDGES n               \ the build's references, compiled or linked, in order (EDGE+)
 variable EDGES-N                     \ its cells
 DYNAMIC-BUFFER REC-EDGES n           \ record r's EDGES: the first at 2r, the count at 2r + 1
 DYNAMIC-BUFFER EM-EDGES n            \ the same by emission number
-DYNAMIC-BUFFER ROW-EDGES n           \ the same by BUILT row, for its DATA cells and STORES values
+DYNAMIC-BUFFER ROW-EDGES n           \ the same by BUILT row, for its STORES values
+DYNAMIC-BUFFER EXT-EDGES n           \ the same by build-table row, for its cell rows
 
 \ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR,
 \ WIDN-CELL, the loader's EVENT-COUNT and OUTER:RUN-COUNT as a file's load or its piece after a
@@ -457,8 +461,8 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 
 : DISPOSE-OBJECTS ( -- )
    WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  USED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
-   RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
-   EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STORED-RELEASE
+   RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  EXT-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
+   EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  EXT-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STORED-RELEASE
    ANCHORS-RELEASE  ORDER-RELEASE  EXTS-RELEASE  PICKED-RELEASE  EXT-ROWS-RELEASE  BUILT-EXTS-RELEASE  ROW-EXTS-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  REC-EMS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE
@@ -1129,9 +1133,10 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 \ ---- dependencies by run --------------------------------------------------------
 \ A file that runs an earlier word while it compiles keeps the word's answer, so it depends on
-\ each word that word reaches through the build's references (EDGES), by its WORDS row, and on
-\ each piece whose data it reaches, whole, with the pieces that stored into that data or changed
-\ its records (STORERS). xt! and ptr-cell! into hb's header store into the space's (habu2.f
+\ each word that word reaches through the build's references (EDGES), by its WORDS row; on each
+\ extent of an earlier piece's data it reaches, by its EXTENTS row, or whole for a laid text; and
+\ whole on each piece that stored into a reached piece or changed its records (STORERS), with what
+\ its stores reach. xt! and ptr-cell! into hb's header store into the space's (habu2.f
 \ ROUTE-HEADER) and a run word reads hb's (xref.f SEAL-NDICT@ reads the space's only to refuse),
 \ so a store into header data counts once the walk reaches a header-data reference or the
 \ compiling file holds a header-data address.
@@ -1155,8 +1160,30 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : CELL-ID ( n -- n n ) dup 4 /  swap 3 and ;
 
 
+\ FILES row k's EXTENTS row for build-table row b, unless the object already has one for it
+\ (USED-BY).
+: USED-EXT+ ( n n -- )
+   {: k:n b:n :}
+   b 1 + USED-BY-RESERVE
+   b USED-BY @ OBJECT-SERIAL @ = if exit then
+   OBJECT-SERIAL @ b USED-BY !
+   k USED-EXTS U64+  b 1 BUILT-EXT @ USED-EXTS U64+  b 2 BUILT-EXT @ USED-EXTS U64+
+   b 3 BUILT-EXT @ USED-EXTS U64+  b 6 BUILT-EXT @ USED-EXTS U64+ ;
+
+\ The FILES row of BUILT row row, which holds build-table row b, asked for by b's EXTENTS row, or
+\ whole for a laid text, which has no time.
+: EXT-FILE ( n n -- n )
+   {: b:n row:n :}
+   b 6 BUILT-EXT @ 0<> {: timed:bool :}
+   row  timed 0=  REF-FILE {: k:n :}
+   timed if  k b USED-EXT+  then
+   k ;
+
+
 \ A reached cell onto REACH once. A record, unless hb's, gets its FILES and WORDS rows when an
-\ earlier piece holds it (NAMED-REC+); a piece's data may be the running piece's, at BUILT-N.
+\ earlier piece holds it (NAMED-REC+); an earlier piece's extent marks its BUILT row's data in
+\ WALKED and gets its FILES row (EXT-FILE). The running piece's extents have no build-table row
+\ yet: from BUILT-EXTS-N on, they are followed and list nothing.
 : SEE ( n -- )
    {: cell:n :}
    cell CELL-ID {: id:n kind:n :}
@@ -1173,8 +1200,14 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
       REACH-STAMP @ id EM-SEEN !
    then
    kind 2 = if
-      id WALKED @ 0<> if exit then
-      1 id WALKED !
+      id 1 + EXT-SEEN-RESERVE
+      id EXT-SEEN @ REACH-STAMP @ = if exit then
+      REACH-STAMP @ id EXT-SEEN !
+      id BUILT-EXTS-N @ < if
+         id 0 BUILT-EXT @ {: row:n :}
+         row WALKED @ 1 or  row WALKED !
+         id row EXT-FILE drop
+      then
    then
    REACH-N @ 1 + REACH-RESERVE
    cell REACH-N @ REACH !  1 REACH-N +!
@@ -1189,8 +1222,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    first count +  first ?do i EDGES @ SEE loop ;
 
 
-\ A reached cell's references: a record's REC-EDGES span, an emission's EM-EDGES span, a piece's
-\ ROW-EDGES span.
+\ A reached cell's references: a record's REC-EDGES span, an emission's EM-EDGES span, an
+\ extent's EXT-EDGES span.
 : FOLLOW ( n -- )
    CELL-ID {: id:n kind:n :}
    kind 0 = if
@@ -1201,8 +1234,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
       id 1 + 2 * EM-EDGES-RESERVE
       id 2 * EM-EDGES @  id 2 * 1 + EM-EDGES @  SEE-SPAN exit
    then
-   id 1 + 2 * ROW-EDGES-RESERVE
-   id 2 * ROW-EDGES @  id 2 * 1 + ROW-EDGES @  SEE-SPAN ;
+   id 1 + 2 * EXT-EDGES-RESERVE
+   id 2 * EXT-EDGES @  id 2 * 1 + EXT-EDGES @  SEE-SPAN ;
 
 
 \ REACH's cells from k on, each followed; REACH-N once every cell is followed.
@@ -1221,21 +1254,28 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    false ;
 
 
-\ The piece of each STORERS pair whose holder is a row whose data is reached, or the header data
-\ once own is true or the walk reached a header-data reference, given to SEE as its data.
-: WALK-STORERS ( bool -- )
+\ Each STORERS pair's piece whose stores are not yet reached, when its holder row has a WALKED
+\ mark, or is the header data once own is true or the walk reached a header-data reference: its
+\ stores marked reached and their ROW-EDGES span given to SEE. True when it marked one.
+: WALK-STORERS ( bool -- bool )
    {: own:bool :}
    own if true else HEADER-SEEN @ then {: header:bool :}
-   STORERS-N @ 0 ?do
-      i 2 * STORERS @ {: held:n :}
-      held -1 = if header else held WALKED @ 0<> then if  i 2 * 1 + STORERS @ 4 * 2 + SEE  then
+   false  STORERS-N @ 0 ?do
+      i 2 * STORERS @  i 2 * 1 + STORERS @ {: held:n row:n :}
+      held -1 = if header else held WALKED @ 0<> then  row WALKED @ 2 and 0=  and if
+         row WALKED @ 2 or  row WALKED !
+         row 1 + 2 * ROW-EDGES-RESERVE
+         row 2 * ROW-EDGES @  row 2 * 1 + ROW-EDGES @  SEE-SPAN
+         drop true
+      then
    loop ;
 
 
-\ The walk from RAN-RECS' records, after NAMED+: a word reached gets its FILES and WORDS rows
-\ (SEE); FILES gains each piece whose data is reached, in BUILT order, and REACHED takes each
-\ one's FILES row, then -1 when the header data's storers count: REACHED-CK runs before any piece
-\ the file requests is built.
+\ The walk from RAN-RECS' records, after NAMED+: a word reached gets its FILES and WORDS rows, an
+\ extent its FILES row (SEE); REACHED takes, in BUILT order, the FILES row of each piece with a
+\ WALKED mark, whole when its stores are reached, then -1 when the header data's storers count:
+\ REACHED-CK runs before any piece the file requests is built. A pass of WALK-STORERS that marks
+\ nothing saw no span.
 : RAN-FILES+ ( -- )
    REACHED BUF:CLEAR
    RAN-RECS BYTES$ nip 0= if exit then
@@ -1244,13 +1284,17 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    BUILT-N 1 + 0 ?do 0 i WALKED ! loop
    1 REACH-STAMP +!  0 REACH-N !  false HEADER-SEEN !
    RAN-RECS BYTES$ nip 8 / 0 ?do  RAN-RECS BYTES$ drop i 8 * + LE:U64@ 4 * SEE  loop
-   0 begin  FOLLOW-REST  own WALK-STORERS  dup REACH-N @ =  until drop
-   BUILT-N 0 ?do  i WALKED @ 0<> if i true REF-FILE REACHED U64+ then  loop
+   0 begin  FOLLOW-REST  own WALK-STORERS 0=  until drop
+   BUILT-N 0 ?do
+      i WALKED @ {: marks:n :}
+      marks 0<> if  i  marks 2 and 0<>  REF-FILE REACHED U64+  then
+   loop
    own HEADER-SEEN @ or if -1 REACHED U64+ then ;
 
 
 \ One reference onto EDGES as 4 * id + kind: kind 0 a record by its index, 1 an emission by its
-\ shadow number, 2 a piece's data by its BUILT row (the running piece's is BUILT-N), 3 the header data.
+\ shadow number, 2 an extent by its build-table row (the running piece's extent e will be
+\ BUILT-EXTS-N plus e), 3 the header data.
 : EDGE+ ( n -- )
    {: cell:n :}
    EDGES-N @ {: n:n :}
@@ -1281,13 +1325,20 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    start row 2 * ROW-EDGES !  EDGES-N @ start -  row 2 * 1 + ROW-EDGES ! ;
 
 
+: EXT-EDGES! ( n n -- )
+   {: b:n start:n :}
+   b 1 + 2 * EXT-EDGES-RESERVE
+   start b 2 * EXT-EDGES !  EDGES-N @ start -  b 2 * 1 + EXT-EDGES ! ;
+
+
 \ An address in the running part's data: a word's or a string's extent (EXT-OF) holding it as tag 3
-\ or 6 and the offset in it, else tag 7 and the offset from FILE-DP (the head, or no extent).
+\ or 6 and the offset in it, else tag 7 and the offset from FILE-DP (the head, or no extent). Its
+\ edge names the extent holding it, the head included; an address in no extent has none.
 : OWN-DATA-REF+ ( n -- )
    {: v:n :}
-   BUILT-N DATA-EDGE+
    v EXT-OF {: e:n :}
    e 0 >= if
+      BUILT-EXTS-N @ e + DATA-EDGE+
       e 1 EXT @ {: kind:n :}
       kind 1 =  kind 2 =  or if
          kind 1 = if 3 else 6 then PIECES U64+  0 PIECES U64+
@@ -1296,31 +1347,19 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    then
    7 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ ;
 
-\ FILES row k's EXTENTS row for build-table row b, unless the object already has one for it
-\ (USED-BY).
-: USED-EXT+ ( n n -- )
-   {: k:n b:n :}
-   b 1 + USED-BY-RESERVE
-   b USED-BY @ OBJECT-SERIAL @ = if exit then
-   OBJECT-SERIAL @ b USED-BY !
-   k USED-EXTS U64+  b 1 BUILT-EXT @ USED-EXTS U64+  b 2 BUILT-EXT @ USED-EXTS U64+
-   b 3 BUILT-EXT @ USED-EXTS U64+  b 6 BUILT-EXT @ USED-EXTS U64+ ;
-
 \ An address in BUILT row row's data, and true: a word's, a string's or a laid text's build-table
 \ row (ROW-EXT-OF) holding it, its end included, as tag 3 or 6 and the offset in it, or the head's
-\ as tag 7 and the offset from the part's first data byte. Its FILES row is asked for by the
-\ extent's EXTENTS row, or whole for a laid text, which has no time. False, writing nothing, for
-\ an address no row holds: one between the D bytes and a text, or in a part with no row.
+\ as tag 7 and the offset from the part's first data byte; its FILES row (EXT-FILE) and its edge
+\ name that build-table row. False, writing nothing, for an address no row holds: one between the
+\ D bytes and a text, or in a part with no row.
 : ROW-DATA-REF+ ( n n -- bool )
    {: v:n row:n :}
    v row ROW-EXT-OF {: b:n :}
    b 0< if false exit then
    b 1 BUILT-EXT @  b 4 BUILT-EXT @ {: kind:n start:n :}
    v  start b 5 BUILT-EXT @ +  > if false exit then
-   b 6 BUILT-EXT @ 0<> {: timed:bool :}
-   row  timed 0=  REF-FILE {: k:n :}
-   timed if  k b USED-EXT+  then
-   row DATA-EDGE+
+   b row EXT-FILE {: k:n :}
+   b DATA-EDGE+
    kind 3 = if  7 PIECES U64+  k PIECES U64+  v start - PIECES U64+  true exit  then
    kind 1 = if 3 else 6 then PIECES U64+  k PIECES U64+
    b 2 BUILT-EXT @ PIECES U64+  b 3 BUILT-EXT @ PIECES U64+  v start - PIECES U64+  true ;
@@ -2018,7 +2057,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    loop ;
 
 
-\ Extent e onto PIECES (DATA+), and its span and the highest FILES row its rows name into EXTS.
+\ Extent e onto PIECES (DATA+), its span and the highest FILES row its rows name into EXTS, and
+\ its rows' references as the EXT-EDGES of its build-table row to be, BUILT-EXTS-N plus e.
 : EXTENT+ ( n -- )
    {: e:n :}
    PIECES BYTES$ nip {: from:n :}
@@ -2032,10 +2072,12 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    k 0 ?do  0  bytes  first i + EXT-ROWS @ ROW-AT at - +  LE:U64!  loop
    k PIECES U64+
    0 TOP-ROW !
+   EDGES-N @ {: start:n :}
    k 0 ?do
       first i + EXT-ROWS @ {: row:n :}
       row ROW-AT at - PIECES U64+  row ROW-KIND PIECES U64+  row CELL-REF+
    loop
+   BUILT-EXTS-N @ e +  start EXT-EDGES!
    from e 4 EXT !  PIECES BYTES$ nip from - e 5 EXT !  TOP-ROW @ e 6 EXT ! ;
 
 \ DATA, STORES and FACTS, after CODE:
@@ -2411,7 +2453,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    LATE-REST
    LATE-N 0 ?do i LATE-P CHANGER+ loop
    OLD-RECS-N 0 ?do i OLD-REC SEAL+ loop
-   CODE+  EDGES-N @ {: start:n :}  DATA+  STORES+  BUILT-N start ROW-EDGES!
+   CODE+  DATA+  EDGES-N @ {: start:n :}  STORES+  BUILT-N start ROW-EDGES!
    PIECES BYTES$ nip FACTS-AT !  FACTS+
    req ACTS+
    req PIECES U64+ ;
@@ -2531,12 +2573,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ix CHECK:HELD-AMENDED = if at 32 + else at 8 + then {: text:n :}
    text 8 +  obj text + LE:U64@ +  text ;
 
-\ BUILT row row's build-table row for the text laid at start, FACTS row count's, with no time, put
-\ into PLACES under -3; TEXT-EXTS+ sets its length.
+\ BUILT row row's build-table row for the text laid at start, FACTS row count's, with no time and
+\ no references, put into PLACES under -3; TEXT-EXTS+ sets its length.
 : TEXT-EXT+ ( n n n -- )
    {: count:n start:n row:n :}
    BUILT-EXTS-N @ {: b:n :}
    b 1 + BUILT-EXT-CELLS * BUILT-EXTS-RESERVE
+   b 1 + 2 * EXT-EDGES-RESERVE  0 b 2 * EXT-EDGES !  0 b 2 * 1 + EXT-EDGES !
    1 PLACES-ROOM
    row b 0 BUILT-EXT !  2 b 1 BUILT-EXT !  0 b 2 BUILT-EXT !  count b 3 BUILT-EXT !
    start b 4 BUILT-EXT !  0 b 5 BUILT-EXT !  0 b 6 BUILT-EXT !
@@ -4028,16 +4071,26 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
       x 0= if
          kind y z OWN-EXT {: e:n :}
          e 0< if E-COMP-STATE throw then
-         BUILT-N DATA-EDGE+  e 0 EXT @ w + exit
+         BUILT-EXTS-N @ e + DATA-EDGE+  e 0 EXT @ w + exit
       then
       x FILE-ROWS @ {: row:n :}
       row kind y z ROW-EXT {: b:n :}
       b 0< if E-COMP-STATE throw then
-      row DATA-EDGE+  b 4 BUILT-EXT @ w + exit
+      b DATA-EDGE+  b 4 BUILT-EXT @ w + exit
    then
+   \ A tag-7 edge names the extent holding the address as the compile found it (OWN-DATA-REF+,
+   \ ROW-DATA-REF+), none for an address in no extent.
    tag 7 = if
-      x 0= if BUILT-N DATA-EDGE+  FILE-DP @ y + exit then
-      x FILE-ROWS @ DATA-EDGE+  x BUILT-DP BUILT@ y + exit
+      x 0= if
+         FILE-DP @ y + {: at:n :}
+         at EXT-OF {: e:n :}
+         e 0 >= if BUILT-EXTS-N @ e + DATA-EDGE+ then
+         at exit
+      then
+      x BUILT-DP BUILT@ y + {: at:n :}
+      at  x FILE-ROWS @  ROW-EXT-OF {: b:n :}
+      b 0 >= if b DATA-EDGE+ then
+      at exit
    then
    tag 4 = if true HOLDS-HEADER !  HEADER-EDGE+  BASE @ x + exit then
    tag 5 = if 0 exit then
@@ -4313,7 +4366,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 
 
 \ One pass over the object's extents, each at FILE-DP plus its start: pass 0 copies their bytes, 1
-\ puts their cells (PUT-CELL), 2 adopts their strings' bodies (INTERN:ADOPT).
+\ puts their cells (PUT-CELL) and keeps extent i's references as the EXT-EDGES of its build-table
+\ row to be, BUILT-EXTS-N plus i, 2 adopts their strings' bodies (INTERN:ADOPT).
 : LINK-EXTENTS ( n -- )
    {: pass:n :}
    EXTS-AT @  OBJECT BYTES$ nip  RD-OPEN
@@ -4327,12 +4381,14 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       GOOD? 0= if E-COMP-STATE throw then
       pass 0 = if  OBJECT BYTES$ drop bytes +  NULL-PTR BYTE-VIEW at +  u BYTE-COPY  then
       pass 2 =  kind 2 =  and if  at 8 + INTERN:ADOPT  then
+      EDGES-N @ {: start:n :}
       RD-U64 0 ?do
          RD-U64 RD-U64 {: off:n ck:n :}
          RD-REF {: tag:n rx:n ry:n rz:n rw:n :}
          GOOD? 0= if E-COMP-STATE throw then
          pass 1 = if  tag rx ry rz rw RESOLVE  ck  at off +  PUT-CELL  then
       loop
+      pass 1 = if  BUILT-EXTS-N @ i +  start EXT-EDGES!  then
    loop
    GOOD? 0= if E-COMP-STATE throw then ;
 
@@ -4342,11 +4398,11 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ distance from NULL-PTR first, as RUN-FILE does.
 : LINK-DATA ( -- )
    LINK-CLEAR
-   EDGES-N @ {: start:n :}
    here NULL-PTR -  FILE-DP @ <> if E-COMP-STATE throw then
    DATA-AT @ OBJ@ {: d:n :}
    d allot
    0 LINK-EXTENTS  1 LINK-EXTENTS  2 LINK-EXTENTS
+   EDGES-N @ {: start:n :}
    STORES-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-REF {: ctag:n cx:n cy:n cz:n cw:n :}
