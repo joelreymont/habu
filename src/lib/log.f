@@ -14,8 +14,8 @@
 \ STORAGE CLASS. TASK-LOCAL: the line, a TASK:+USER BUF row kept across lines
 \ and released once a line grows it past START-CAP; ARMED, set once this run
 \ has registered the row's release; PHASE, whether a line is closed, open or
-\ lost. A line logged from a TASK:AT-EXIT cleanup leaks its row: the release
-\ LINE registers then joins a chain already running (src/lib/task.f
+\ lost. A line logged from a TASK:AT-EXIT cleanup releases its row too: the
+\ release LINE registers then runs in the same ending (src/lib/task.f
 \ TASK-RUN-EXIT).
 \ PROCESS-WIDE: LOCK, held for each line's write, which keeps this process's
 \ lines whole (another process writing the same fd can still split a line
