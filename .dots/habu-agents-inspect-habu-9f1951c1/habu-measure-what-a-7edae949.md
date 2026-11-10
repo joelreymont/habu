@@ -11,3 +11,5 @@ Acceptance: two reports from the transcripts since 2026-11-01 for habu, maki, te
 Files: none in the repository; briefs /Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/Measure-landed-change-cost.md and Measure-waiting-rounds-waste.md; scratch /Users/joel/.cache/tmp/bob-measure-c1 and bob-measure-c2; reports /Users/joel/Work/reviews/habu-10x-2026-11-10/measure-c1.md and measure-c2.md.
 Verify: each report's hand-check and its counts given beside every share.
 Depends: none. Ownership: the two reports. Claim: agent=bob scratch=/Users/joel/.cache/tmp/bob-measure-c1,/Users/joel/.cache/tmp/bob-measure-c2
+
+2026-11-10: the full-run gap is partly counted (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/measure-c2-gap-stop1.md): 608 code commits went out in 225 pushes; 390 of them (64%) after a full run in the push's window, 156 after focused runs only, 62 after none. Its hand-check and the per-tree check are in work; the dot closes when they are in.
