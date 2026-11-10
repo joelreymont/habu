@@ -22,8 +22,7 @@ require src/lib/test/subject.f
    T-NEXT
    T-FAIL
    s" assert: expected " type want wantu type
-   s"  got " type got gotu type space code FMT:.INT cr
-   T-LABEL-CLEAR ;
+   s"  got " type got gotu type space code FMT:.INT cr ;
 
 : T-CODE-MISS ( n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: code:n want:n src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}

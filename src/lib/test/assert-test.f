@@ -90,10 +90,10 @@ variable TAT-SCRIPT-U
    s" T-REPORT" SB-APPEND TAT-LF
    SB$ ;
 
-: TAT-PREPARE ( -- )
-   s" habu-assert-line" GT-START
-   s" fail.f" TAT-SCRIPT-PATH GT-PATH TAT-SCRIPT-U !
-   TAT-SCRIPT$ TAT-FAIL-SRC$ FS:WRITE-ALL ;
+: TAT-PREPARE ( ptr u8 n ptr u8 n -- )
+   {: prefix:ptr prefixu:n name:ptr nameu:n :}
+   prefix prefixu GT-START
+   name nameu TAT-SCRIPT-PATH GT-PATH TAT-SCRIPT-U ! ;
 
 : TAT-RUN ( -- )
    PROC-ARGV-RESET
@@ -122,10 +122,30 @@ variable TAT-SCRIPT-U
    2 TAT-EXPECT-FAILURES ;
 
 : TAT-TEST-ONE-LINE ( -- )
-   TAT-PREPARE
+   s" habu-assert-line" s" fail.f" TAT-PREPARE
+   TAT-SCRIPT$ TAT-FAIL-SRC$ FS:WRITE-ALL
    TAT-RUN
    T-EX-FAIL s" assert-line rc" GT-RC=
    s" assert: expected 3 got 9" s" assert-line one line" GT-STDOUT-HAS
+   GT-CLEANUP
+   GT-FAILURES 0 T= ;
+
+\ The second T= is the boundary under test: the label set before the passing
+\ first one must name its failure, as `case: two-asserts`.
+: TAT-LABEL-SUBJECT ( -- )
+   s" two-asserts" T-LABEL
+   1 1 T=
+   9 3 T= ;
+
+: TAT-TEST-LABEL-SPAN ( -- )
+   s" habu-assert-label" GT-START
+   [: TAT-LABEL-SUBJECT ;] GT-ROOT
+   GT-OUT-BUF GT-OUT-CAP SPAN:MAKE GT-ERR-BUF GT-ERR-CAP SPAN:MAKE
+   GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
+   1 TAT-EXPECT-FAILURES T-RESET
+   outu LEN>N GT-OUT-U !
+   rc 0 s" assert-label rc" GT-CHECK-N
+   s" case: two-asserts" s" assert-label second assertion" GT-STDOUT-HAS
    GT-CLEANUP
    GT-FAILURES 0 T= ;
 
@@ -168,17 +188,24 @@ TAT-COUNT-CONCURRENT
 
 T-RESET
 
+\ The label rule is in src/lib/test/assert.f's header. T-RESET also zeroes the
+\ failure count, so 0 TAT-EXPECT-FAILURES checks these first.
 T-LABEL$ s" " T$=
 s" alpha-label" T-LABEL
 T-LABEL$ s" alpha-label" T$=
-T-LABEL$ s" " T$=
-s" clear-label" T-LABEL
+T-LABEL$ s" alpha-label" T$=
+true TTRUE
+T-LABEL$ s" alpha-label" T$=
+s" beta-label" T-LABEL
+T-LABEL$ s" beta-label" T$=
 T-LABEL-CLEAR
 T-LABEL$ s" " T$=
-s" true label" T-LABEL
-true TTRUE
+s" reset-label" T-LABEL
+0 TAT-EXPECT-FAILURES
+T-RESET
 T-LABEL$ s" " T$=
 
 TAT-TEST-ONE-LINE
+TAT-TEST-LABEL-SPAN
 
 T-REPORT

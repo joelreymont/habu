@@ -2,7 +2,8 @@
 \ one case and never throws on a mismatch: it prints `F<case>`, the label, a TFAIL
 \ record (src/lib/test/record.f) and an `assert:` line, and the run continues; a
 \ string mismatch prints both strings whole. T-REPORT prints `test: ok` or exits
-\ T-EX-FAIL. T-LABEL (at most T-LABEL-CAP bytes, else T-EX-FAIL) names the next one.
+\ T-EX-FAIL. T-LABEL (at most T-LABEL-CAP bytes, else T-EX-FAIL) names every
+\ assertion until the next T-LABEL, T-LABEL-CLEAR or T-RESET.
 \ STORAGE CLASS. PROCESS-WIDE: static counters, label and report; see below.
 
 require src/lib/error.f
@@ -71,8 +72,7 @@ variable T-LABEL-U
 
 : T-ASSERT ( bool -- )
    T-NEXT
-   0= if s" expected true got false" T-ASSERT-DETAIL then
-   T-LABEL-CLEAR ;
+   0= if s" expected true got false" T-ASSERT-DETAIL then ;
 
 : T= ( n n -- ) {: got:n want:n :}
    T-NEXT
@@ -81,8 +81,7 @@ variable T-LABEL-U
       s" assert: expected " type want FMT:.INT
       s"  got " type got FMT:.INT
       cr
-   then
-   T-LABEL-CLEAR ;
+   then ;
 
 : T<> ( n n -- ) {: got:n want:n :}
    T-NEXT
@@ -91,16 +90,14 @@ variable T-LABEL-U
       s" assert: expected not " type want FMT:.INT
       s"  got " type got FMT:.INT
       cr
-   then
-   T-LABEL-CLEAR ;
+   then ;
 
 : TTRUE ( bool -- )
    T-ASSERT ;
 
 : TFALSE ( bool -- )
    T-NEXT
-   if s" expected false got true" T-ASSERT-DETAIL then
-   T-LABEL-CLEAR ;
+   if s" expected false got true" T-ASSERT-DETAIL then ;
 
 : T-STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
    u v <> if 0 0= 0= exit then
@@ -118,8 +115,7 @@ variable T-LABEL-U
       b v type cr
       s" got string:" type cr
       a u type cr
-   then
-   T-LABEL-CLEAR ;
+   then ;
 
 : T$<> ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n b:ptr v:n :}
@@ -128,8 +124,7 @@ variable T-LABEL-U
       T-FAIL
       s" assert: expected different string:" type cr
       a u type cr
-   then
-   T-LABEL-CLEAR ;
+   then ;
 
 : T-REPORT ( -- )
    T-FAIL# @ 0= if s" test: ok" type cr exit then

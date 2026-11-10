@@ -177,7 +177,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 \ The client.
 
-\ A setter's refusal throws: an assertion here would take the case's T-LABEL.
+\ A setter's refusal throws: the case cannot make its request on that handle.
 : OK ( CURL:status -- )
    MATCH CURL:status
       ok OF ENDOF

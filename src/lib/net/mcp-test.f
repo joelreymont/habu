@@ -114,7 +114,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : ARM ( -- ) 0 ENTERED atomic! 0 RELEASED atomic! 0 LEFT atomic! ;
 : SETTLE ( -- ) [: LEFT atomic@ 0<> ;] DEADLINE s" mcp-test LEFT" TEST-WAIT:POLL ;
 
-\ A setter's refusal throws: an assertion here would take the case's T-LABEL.
+\ A setter's refusal throws: the case cannot make its request on that handle.
 : OK ( CURL:status -- )
    MATCH CURL:status
       ok OF ENDOF
