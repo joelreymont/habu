@@ -1,0 +1,12 @@
+---
+title: A stack word over a cell that carries a proof refuses with no reason
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-11-10T17:49:32.232525+02:00"
+---
+
+Problem: when one of a stack word's operands carries a proof or lost-ownership mark, the check moves the cells by the transport path (src/core/checker.f XPORT-STEP?, XPORT-APPLY, XG-READ-GROUP, XG-READ-VAR) and not by the word's effect row, and that path's refusals carry no reason. On master: ': X ( -- ) [: ;] catch swap drop drop ;' (the catch code cell carries a proof) is refused E-REJECTED, unknown_rejection, pinned at a later 'drop', where the same shape without a proof (': X ( -- ) 1 swap drop drop ;') is E-INPUT-UNDERFLOW, supply_missing_input, at 'swap', needs 2, has 1. The number-literal commit (habu-an-i64-reaches-d5f2806b, lpprtklu) puts a fact on every number, so with it ': X ( -- ) 1 swap drop drop ;', '1 over', '( n -- ) 1 rot' and an open layout under '1 swap nip' (E-MISMATCH fix_type before) all become E-REJECTED. Found by its review (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/litfact1-review.md finding 1; cause as the reviewer read it: XG-READ-VAR sets OK false with no underflow diagnosis, XG-READ-GROUP refuses an open layout with no reason; not yet confirmed by a trace). Source: Joel, 2026-11-10: "i want all issues identified to be dotted and fixed".
+Acceptance: a stack word that reaches under the declared inputs, or meets an open layout, gives the same code, repair class, token, counts and rows whether or not an operand carries a proof; the comment above the transport words (checker.f 'whole-bundle transport row surgery') says what the path does. The number-literal commit lands after this.
+Files: src/core/checker.f; a case in test/diag-position-test.f. Verify: the reproducers above under --load and --load tools/check.f -- --json-errors. Hunt first, then the fix.
+Depends: none. Ownership: the transport path's refusals. Claim: agent=bob workspace=.jj-ws.noindex/habu-a-stack-word-5dd345f9
