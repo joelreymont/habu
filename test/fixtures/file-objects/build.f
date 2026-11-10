@@ -779,7 +779,7 @@ variable SLOT-S                          \ and their count
 
 \ ---- words a source spells ----
 128 constant WORDS-FIELD                 \ the header's WORDS offset, then length (linker.f WRITE-OBJECT)
-24 constant WORD-ROW-BYTES               \ a WORDS row: FILES row, word number, time
+32 constant WORD-ROW-BYTES               \ a WORDS row: FILES row, sum, count, time
 
 : WORDS-A$ ( -- ptr u8 n ) s" words" s" a.f" FIRST-BUF FILE-IN ;
 : WORDS-B$ ( -- ptr u8 n ) s" words" s" b.f" SECOND-BUF FILE-IN ;
@@ -802,10 +802,10 @@ variable SLOT-S                          \ and their count
 
 \ b.f's first WORDS row with its time one more; then a build.
 : WORD-RETIMED ( -- n )
-   FIRST-WORD-ROW 16 + {: at:n :}
+   FIRST-WORD-ROW 24 + {: at:n :}
    at OBJ@ 1 +  at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;
 
-\ b.f's first WORDS row naming word 1000, which its piece lacks; then a build.
+\ b.f's first WORDS row naming sum 1000, which no word of its piece has; then a build.
 : WORD-MISSING ( -- n )
    FIRST-WORD-ROW 8 + {: at:n :}
    1000 at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;

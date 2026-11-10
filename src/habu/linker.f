@@ -179,7 +179,7 @@ create BUILT BUF:HDR-BYTES allot
 variable ROOT-BUILT
 create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
 \ The object's WORDS rows, one per earlier word it refers to, spells or reaches from a word it
-\ ran: its FILES row k from 1, its number in that piece and its time (WORD-TIMES); WORD-RECS
+\ ran: its FILES row k from 1, its sum and count (REC-IDS) and its time (WORD-TIMES); WORD-RECS
 \ holds each row's record index.
 create WORD-ROWS BUF:HDR-BYTES allot
 create WORD-RECS BUF:HDR-BYTES allot
@@ -279,6 +279,17 @@ DYNAMIC-BUFFER EM-SPANS n
 variable WORDS-N                     \ the piece's words
 variable TOP-ROW                     \ the highest FILES row REF-FILE answered since it was zeroed
 DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0 for none (REC-TIME)
+\ Record r's identity, which no insertion before it changes: its NAME-SUM at 2r, 0 for no name, its
+\ count at 2r + 1, from 0, among the earlier records of its file with that sum (IDENTIFY).
+DYNAMIC-BUFFER REC-IDS n
+variable IDENTIFIED                  \ every record below it that a piece holds has its identity
+\ PLACES finds a record by its file's key and identity: slot s holds at 5s the key's first cell plus
+\ 1, 0 while empty, then its second cell, the sum, the count and the record; half its slots at most
+\ are filled, so a probe ends.
+DYNAMIC-BUFFER PLACES n
+DYNAMIC-BUFFER OLD-PLACES n          \ PLACES' slots as it grows
+variable PLACES-CAP                  \ its slots, a power of two
+variable PLACES-N                    \ its filled slots
 \ Record r's mark: the serial of the object that last gave it a WORDS row (WORD-ROW+), 0 for none.
 \ Each OBJECT-OPEN takes the next of SERIALS, which only grows, so no object takes another's mark;
 \ POP-FRAME gives back the marks a nested object overwrote (RELIST).
@@ -296,7 +307,7 @@ variable OBJECT-SERIAL
 \ Record r's mark: the serial of the object that last took it as a seed (RAN-RECORD). A nested
 \ object overwrites marks, so after POP-FRAME a record can be a seed twice; the walk visits it once.
 DYNAMIC-BUFFER RAN-BY n
-3 8 * constant WORD-ROW-BYTES
+4 8 * constant WORD-ROW-BYTES
 DYNAMIC-BUFFER RETIRED n             \ the piece's retired records (RETIRED!): index, then wordlist cell
 variable RETIRED-N                   \ its records
 DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-copy.f), zero-padded cells
@@ -361,8 +372,9 @@ TYPED-VARIABLE UNLINKABLE bool
 HEADER-BYTES 32 - constant TIMES-FIELD      \ the header's TIMES pair
 HEADER-BYTES 16 - constant PIECES-FIELD     \ the header's last pair: PIECES' offset, then its length
 \ A word in TIMES, WORD-CELLS cells: its time, its entry, emission and text spans, the time of the
-\ record it binds (0 for none), then the bits of the rows that name it from outside (SPAN-CELLS).
-9 constant WORD-CELLS
+\ record it binds (0 for none), the bits of the rows that name it from outside (SPAN-CELLS), then
+\ its sum and count (REC-IDS).
+11 constant WORD-CELLS
 WORD-CELLS 8 * constant WORD-BYTES
 
 \ A record's kind in PIECES.
@@ -441,7 +453,7 @@ variable PENDING-STORERS-N           \ its pairs
 : PENDING-RECS-CLEAR ( -- ) 0 PENDING-RECS-N !  0 PENDING-STORERS-N !  64 PENDING-SLOTS-CLEAR ;
 
 : DISPOSE-OBJECTS ( -- )
-   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
+   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
    RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
    EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
@@ -487,7 +499,8 @@ variable PENDING-STORERS-N           \ its pairs
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
    0 EDGES-N !
-   1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED !  FIRST-REC @ REC-ROW-N !  PENDING-RECS-CLEAR ;
+   1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED !  0 IDENTIFIED !  FIRST-REC @ REC-ROW-N !
+   1024 5 * PLACES-RESERVE  1024 5 * 0 ?do 0 i PLACES ! loop  1024 PLACES-CAP !  0 PLACES-N !  PENDING-RECS-CLEAR ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
 : INIT-OBJECTS ( -- )
@@ -708,14 +721,20 @@ variable PENDING-STORERS-N           \ its pairs
    {: r:n :}
    r 1 + WORD-TIMES-RESERVE  r WORD-TIMES @ ;
 
-\ The object's WORDS row for record idx of FILES row k's piece, whose first record is first,
-\ unless the object already has one for the record (LISTED-BY).
-: WORD-ROW+ ( n n n -- )
-   {: k:n idx:n first:n :}
+\ Record r's sum and count in REC-IDS, which IDENTIFY wrote.
+: REC-ID ( n -- n n )
+   {: r:n :}
+   r 2 * REC-IDS @  r 2 * 1 + REC-IDS @ ;
+
+\ The object's WORDS row for record idx of FILES row k's piece, unless the object already has one
+\ for the record (LISTED-BY).
+: WORD-ROW+ ( n n -- )
+   {: k:n idx:n :}
    idx 1 + LISTED-BY-RESERVE
    idx LISTED-BY @ OBJECT-SERIAL @ = if exit then
    OBJECT-SERIAL @ idx LISTED-BY !
-   k WORD-ROWS U64+  idx first - WORD-ROWS U64+  idx REC-TIME WORD-ROWS U64+
+   idx REC-ID {: sum:n count:n :}
+   k WORD-ROWS U64+  sum WORD-ROWS U64+  count WORD-ROWS U64+  idx REC-TIME WORD-ROWS U64+
    idx WORD-RECS U64+ ;
 
 \ An earlier record's FILES row k and its piece's first record. The row is whole (REF-FILE) for a
@@ -735,7 +754,7 @@ variable PENDING-STORERS-N           \ its pairs
    then
    idx WORD-REF {: k:n first:n :}
    k PIECES U64+  idx first - PIECES U64+
-   k idx first WORD-ROW+ ;
+   k idx WORD-ROW+ ;
 
 \ ---- dependencies by name -------------------------------------------------------
 \ A file depends on the files its object references and on every earlier record that defines a
@@ -752,6 +771,64 @@ variable PENDING-STORERS-N           \ its pairs
       c 97 >=  c 122 <=  and if c 32 - else c then  xor  $1000193 *
    loop
    dup 0= if 1 + then ;
+
+\ The slot of PLACES that holds the key's two cells, that sum and that count, else the empty slot
+\ the probe from their hash ends at.
+: PLACE-SLOT ( n n n n -- n )
+   {: path:n seen:n sum:n count:n :}
+   PLACES-CAP @ 1 - {: mask:n :}
+   sum  path $9E3779B1 * +  seen $C2B2AE3D * +  count $85EBCA77 * +  mask and
+   begin
+      dup 5 * PLACES @ 0<> if
+         dup 5 * PLACES @ path 1 + <>  over 5 * 1 + PLACES @ seen <>  or
+         over 5 * 2 + PLACES @ sum <>  or  over 5 * 3 + PLACES @ count <>  or
+      else false then
+   while 1 + mask and repeat ;
+
+\ The record of the file whose key is at the address with that sum and count, -1 for none.
+: PLACE ( ptr u8 n n -- n )
+   {: key:ptr sum:n count:n :}
+   key LE:U64@  key 8 + LE:U64@  sum count PLACE-SLOT 5 * {: s:n :}
+   s PLACES @ 0= if -1 exit then
+   s 4 + PLACES @ ;
+
+
+\ Each record from the larger of FILE-REC and IDENTIFIED, the running piece's: its sum and count,
+\ which carries on across FILE-KEY's pieces, into REC-IDS, the record into PLACES, grown first to
+\ stay half empty.
+: IDENTIFY ( -- )
+   FILE-REC @ IDENTIFIED @ max {: start:n :}
+   ndict@ 2 * REC-IDS-RESERVE
+   FILE-KEY LE:U64@  FILE-KEY 8 + LE:U64@ {: path:n seen:n :}
+   PLACES-CAP @ {: cap:n :}
+   ndict@ start - 0 max  PLACES-N @ +  2 * {: need:n :}
+   cap begin dup need < while 2 * repeat {: grown:n :}
+   grown cap > if
+      cap 5 * OLD-PLACES-RESERVE
+      cap 5 * 0 ?do  i PLACES @  i OLD-PLACES !  loop
+      grown 5 * PLACES-RESERVE
+      grown 5 * 0 ?do  0 i PLACES !  loop
+      grown PLACES-CAP !
+      cap 0 ?do
+         i 5 * {: o:n :}
+         o OLD-PLACES @ 0<> if
+            o OLD-PLACES @ 1 -  o 1 + OLD-PLACES @  o 2 + OLD-PLACES @  o 3 + OLD-PLACES @
+            PLACE-SLOT 5 * {: s:n :}
+            5 0 ?do  o i + OLD-PLACES @  s i + PLACES !  loop
+         then
+      loop
+   then
+   ndict@ start ?do
+      i XREF-REC XREF-NAME$ {: a:ptr u:n :}
+      u 0= if 0 else a u NAME-SUM then {: sum:n :}
+      0 begin dup FILE-KEY sum rot PLACE 0 >= while 1 + repeat {: count:n :}
+      sum i 2 * REC-IDS !  count i 2 * 1 + REC-IDS !
+      path seen sum count PLACE-SLOT 5 * {: s:n :}
+      path 1 + s PLACES !  seen s 1 + PLACES !  sum s 2 + PLACES !  count s 3 + PLACES !
+      i s 4 + PLACES !
+      1 PLACES-N +!
+   loop
+   ndict@ IDENTIFIED ! ;
 
 : SAME? ( n n n n -- bool )
    {: s:n sum:n row:n pkg:n :}
@@ -1003,8 +1080,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    {: idx:n :}
    idx 1 + LISTED-BY-RESERVE
    idx LISTED-BY @ OBJECT-SERIAL @ = if exit then
-   idx WORD-REF {: k:n first:n :}
-   k idx first WORD-ROW+ ;
+   idx WORD-REF drop  idx WORD-ROW+ ;
 
 \ After the files PIECES and REQUESTS reference: FILES gains a whole row for each piece the source
 \ names whole, then each record of NAMED-RECS gains its rows (NAMED-REC+).
@@ -2075,6 +2151,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ the REQUESTS row that ends the piece, from 0, or -1 after the file's last piece.
 : PIECE+ ( n -- )
    {: req:n :}
+   IDENTIFY
    LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
    LATE-COLLECT
@@ -2188,6 +2265,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    FILE-REC @ REC-ROW-N @ ?do  0 i REC-ROW !  loop
    ndict@ FILE-REC @ ?do  BUILT-N 1 + i REC-ROW !  loop
    ndict@ REC-ROW-N !
+   IDENTIFY
    ndict@ BUILT-N INDEX-RECS
    BUILT-N 1 + BUILT-PATHS-RESERVE  KEY-PATH BUILT-N BUILT-PATHS !
    FILE-KEY KEY-BYTES BUILT SPAN+
@@ -2666,7 +2744,7 @@ variable RD-END
 
 \ TIMES from RD-AT to PIECES at the offset, in an object of len bytes: a block per piece (TIMES+),
 \ each span inside its piece, as long as its REQUESTS row says or to the object's end for the last;
-\ a word's time, bound record's time and bits are skipped.
+\ a word's time, bound record's time, bits, sum and count are skipped.
 : TIMES-CK ( n n -- )
    {: pieces-at:n len:n :}
    GOOD? 0= if exit then
@@ -2676,7 +2754,7 @@ variable RD-END
       i REQS-N @ < if i PIECE-LEN else len first - then {: plen:n :}
       plen 0<  plen len first - >  or if BAD then
       WORD-BYTES RD-COUNT 0 ?do
-         8 RD-SKIP  plen SPAN-CK  plen SPAN-CK  plen SPAN-CK  16 RD-SKIP
+         8 RD-SKIP  plen SPAN-CK  plen SPAN-CK  plen SPAN-CK  32 RD-SKIP
       loop
       first plen +
    loop drop
@@ -2691,19 +2769,19 @@ variable RD-END
    HIT-STAMP @ 1 + r HIT-STAMPS !  -1 HIT-N +! ;
 
 \ WORDS' u bytes from RD-AT, a multiple of WORD-ROW-BYTES (WORD-ROW+): bad when a row's FILES row is
-\ not in FILES, is time 0 (REF-FILE) and not built, or is built and lacks the word or gives it
-\ another time, or when the source spells a record with a time no row lists (NAMES-CK); a whole
-\ row's pending or absent piece waits for its FILES row (ROWS-CK).
+\ not in FILES, is time 0 (REF-FILE) and not built, or is built and has no record of the row's sum
+\ and count (PLACE) or gives it another time, or when the source spells a record with a time no row
+\ lists (NAMES-CK); a whole row's pending or absent piece waits for its FILES row (ROWS-CK).
 : WORDS-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
    u WORD-ROW-BYTES / 0 ?do
-      RD-U64 RD-U64 RD-U64 {: k:n w:n t:n :}
+      RD-U64 RD-U64 RD-U64 RD-U64 {: k:n sum:n count:n t:n :}
       k FILE-ROW? 0= if BAD unloop exit then
       k FILES-ROW BUILT-TIME + LE:U64@ 0=  k FILE-ROWS @ 0<  and if BAD unloop exit then
       k FILE-ROWS @ 0 >= if
-         w 0<  w k FILE-RECS >=  or if BAD unloop exit then
-         k BUILT-FIRST BUILT@ w + {: r:n :}
+         k FILES-ROW sum count PLACE {: r:n :}
+         r 0< if BAD unloop exit then
          r REC-TIME  t <> if BAD unloop exit then
          r FOUND-LISTED
       then
@@ -3319,18 +3397,20 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 
 
 \ The old piece the running piece's words compare with (PRIOR-PIECE!): its offset in PRIOR, its
-\ length, the offset in PRIOR of its first word in TIMES, its words, 0 for none, and KEPT-ROWS.
+\ length, the offset in PRIOR of its first word in TIMES, its words, 0 for none, the word OLD-WORD
+\ tries first, and KEPT-ROWS.
 variable PRIOR-AT
 variable PRIOR-SIZE
 variable PRIOR-FIRST-WORD
 variable PRIOR-WORDS-N
+variable PRIOR-NEXT
 variable KEPT-ROWS-N
 
 \ Piece k of PRIOR and its TIMES block as the old piece (PRIOR-PIECE, PRIOR-WORDS); none when old
 \ is false or either fails.
 : PRIOR-PIECE! ( n bool -- )
    {: k:n old:bool :}
-   0 PRIOR-WORDS-N !
+   0 PRIOR-WORDS-N !  0 PRIOR-NEXT !
    old 0= if exit then
    k PRIOR-PIECE {: at:n u:n t:n ok:bool :}
    ok 0= if exit then
@@ -3373,11 +3453,29 @@ variable KEPT-ROWS-N
    top  em 3 * 2 + EM-SPANS @  max ;
 
 
-\ Whether word w's range s holds the bytes of the old word w's, a range of the old piece.
-: SAME-SPAN? ( n n n -- bool )
-   {: start:n w:n s:n :}
+\ The offset in PRIOR of the old piece's word with word w's sum and count, -1 for none. The search
+\ starts at PRIOR-NEXT, after the last word found, and wraps: an unchanged file finds each word at
+\ once, and an added word costs one pass over the old words.
+: OLD-WORD ( n -- n )
+   {: w:n :}
+   FILE-REC @ w + REC-ID {: sum:n count:n :}
+   PRIOR-WORDS-N @ {: n:n :}
+   n 0 ?do
+      PRIOR-NEXT @ i + n mod {: o:n :}
+      PRIOR-FIRST-WORD @  o WORD-BYTES * + {: at:n :}
+      at 9 8 * + PRIOR@ sum =  at 10 8 * + PRIOR@ count =  and if
+         o 1 + PRIOR-NEXT !  at unloop exit
+      then
+   loop
+   -1 ;
+
+
+\ Whether word w's range s holds the bytes of the old word's at offset old in PRIOR, a range of the
+\ old piece.
+: SAME-SPAN? ( n n n n -- bool )
+   {: start:n w:n old:n s:n :}
    start w s NEW-SPAN {: noff:n nu:n :}
-   PRIOR-FIRST-WORD @  w WORD-BYTES * +  8 +  s 16 * + {: at:n :}
+   old 8 +  s 16 * + {: at:n :}
    at PRIOR@  at 8 + PRIOR@ {: ooff:n ou:n :}
    ooff 0<  ou 0<  or  ooff PRIOR-SIZE @ >  or  ou PRIOR-SIZE @ ooff - >  or if false exit then
    nu ou <> if false exit then
@@ -3393,21 +3491,21 @@ variable KEPT-ROWS-N
    b REC-TIME ;
 
 
-\ Word w's time: the old word w's when it has one, every FILES row the word names is within
-\ KEPT-ROWS-N, so names the same file in both objects, its ranges hold the same bytes, and the
-\ bound record's time and the bits of the rows naming it from outside are the old word's; else
-\ now, as for a word binding a record with no time.
+\ Word w's time: its old word's, the one of the same sum and count (OLD-WORD), when that has one,
+\ every FILES row the word names is within KEPT-ROWS-N, so names the same file in both objects,
+\ its ranges hold the same bytes, and the bound record's time and the bits of the rows naming it
+\ from outside are the old word's; else now, as for a word binding a record with no time.
 : WORD-TIME ( n n n -- n )
    {: start:n w:n now:n :}
    w BOUND-TIME {: bt:n :}
    w 7 WORD-SPAN @ 0 >=  bt 0=  and if now exit then
-   w PRIOR-WORDS-N @ >= if now exit then
-   PRIOR-FIRST-WORD @  w WORD-BYTES * + {: old:n :}
+   w OLD-WORD {: old:n :}
+   old 0< if now exit then
    old PRIOR@ {: t:n :}
    t 0=  w WORD-TOP KEPT-ROWS-N @ >  or if now exit then
-   start w 0 SAME-SPAN? 0= if now exit then
-   start w 1 SAME-SPAN? 0= if now exit then
-   start w 2 SAME-SPAN? 0= if now exit then
+   start w old 0 SAME-SPAN? 0= if now exit then
+   start w old 1 SAME-SPAN? 0= if now exit then
+   start w old 2 SAME-SPAN? 0= if now exit then
    old 7 8 * + PRIOR@  bt <> if now exit then
    old 8 8 * + PRIOR@  w 6 WORD-SPAN @ <> if now exit then
    t ;
@@ -3420,7 +3518,8 @@ variable KEPT-ROWS-N
 
 \ The running piece's TIMES block, the piece starting at the offset in PIECES: its word count, then
 \ per word its time (WORD-TIME), also into WORD-TIMES, its entry, emission and text ranges, the
-\ time of the record it binds (BOUND-TIME) and the bits of the rows naming it from outside.
+\ time of the record it binds (BOUND-TIME), the bits of the rows naming it from outside, and its
+\ sum and count (REC-ID).
 : TIMES+ ( n n -- )
    {: start:n now:n :}
    WORDS-N @ TIMES U64+
@@ -3430,6 +3529,8 @@ variable KEPT-ROWS-N
       t TIMES U64+
       start i 0 SPAN-TIMES+  start i 1 SPAN-TIMES+  start i 2 SPAN-TIMES+
       i BOUND-TIME TIMES U64+  i 6 WORD-SPAN @ TIMES U64+
+      FILE-REC @ i + REC-ID {: sum:n count:n :}
+      sum TIMES U64+  count TIMES U64+
       t  FILE-REC @ i +  WORD-TIMES !
    loop ;
 
