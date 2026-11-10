@@ -31,8 +31,7 @@ package FILE-OBJECTS-TEST
 20 constant REDO
 21 constant UNCLEAN-FIRST                \ unclean.f's first part's, which an unclean cut ends,
 22 constant UNCLEAN-SECOND               \ and its second's, which follows that cut
-23 constant FFI-SECOND                   \ src/lib/ffi-abi.f's second part's, which the kernel lacks
-24 constant TAILS                        \ TAIL$'s tails
+23 constant TAILS                        \ TAIL$'s tails
 46 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -59,7 +58,7 @@ PATH-CAP 2 * BUFFER: NEST-SRC  variable NEST-SRC-U  \ the text NEST-WRITE writes
 PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
 PATH-CAP BUFFER: ROOT    variable ROOT-U     \ the obj directory a walk starts at
-PATH-CAP BUFFER: FOUND   variable FOUND-U    \ the walk's last path that ends with its tail
+PATH-CAP BUFFER: FOUND   variable FOUND-U    \ the walk's last path that ends with its tail, or REWRITTEN's
 CAP BUFFER: BYTES-A
 CAP BUFFER: BYTES-B
 DYNAMIC-BUFFER FIXTURE-BYTES u8
@@ -79,9 +78,12 @@ PATH-CAP 128 + BUFFER: REFUSAL  variable REFUSAL-U  \ the loader refusal REFUSED
 variable OBJ-N                          \ the walk's objects
 variable TAIL-I                          \ the tail the walk looks for (TAIL$)
 variable TAIL-N                          \ and the paths that end with it
+variable MARK-S                          \ the newest object change time MARK saw, seconds
+variable MARK-NS                         \ and nanoseconds
+variable NEWER-N                         \ the objects REWRITTEN saw changed after it
 TAILS TYPED-BUFFER KEPT-SIZE n          \ by tail, the object's size and its change time's
 TAILS TYPED-BUFFER KEPT-S n             \ seconds and nanoseconds, as KEEP read them; size -1
-TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
+TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
 
 
 : A$ ( -- ptr u8 n ) OUT-A OUT-A-U @ ;
@@ -189,7 +191,6 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    i REDO = if s" /test/fixtures/file-objects/redo.f.hfo" exit then
    i UNCLEAN-FIRST = if s" /test/fixtures/file-objects/unclean.f.hfo" exit then
    i UNCLEAN-SECOND = if s" /test/fixtures/file-objects/unclean.f+1.hfo" exit then
-   i FFI-SECOND = if s" /src/lib/ffi-abi.f+1.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -594,6 +595,33 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    FOUND$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    size i KEPT-SIZE @ =  cs i KEPT-S @ =  and  cns i KEPT-NS @ =  and ;
 
+\ Whether a change time, seconds and nanoseconds, is later than the one MARK holds.
+: LATER? ( n n -- bool ) {: sec:n nsec:n :}
+   sec MARK-S @ >  sec MARK-S @ =  nsec MARK-NS @ >  and  or ;
+
+: MARK-SEEN ( ptr u8 n -- )
+   {: p:ptr pu:n :}
+   p pu s" .hfo" ENDS-WITH? 0= if exit then
+   p pu FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   cs cns LATER? 0= if exit then
+   cs MARK-S !  cns MARK-NS ! ;
+
+: NEWER-SEEN ( ptr u8 n -- )
+   {: p:ptr pu:n :}
+   p pu s" .hfo" ENDS-WITH? 0= if exit then
+   p pu FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   cs cns LATER? 0= if exit then
+   1 NEWER-N +!  p FOUND pu BYTE-COPY  pu FOUND-U ! ;
+
+: MARK-WALK ( -- ) ROOT ROOT-U @ ['] MARK-SEEN FS:WALK-FILES ;
+: NEWER-WALK ( -- ) ROOT ROOT-U @ ['] NEWER-SEEN FS:WALK-FILES ;
+
+\ MARK holds the newest change time among the fixture builds' objects.
+: MARK ( -- ) F$ ROOT!  0 MARK-S !  0 MARK-NS !  ['] MARK-WALK WALKED ;
+
+\ The fixture builds' objects changed after MARK's time; FOUND$ is the last of them.
+: REWRITTEN ( -- n ) F$ ROOT!  0 NEWER-N !  0 FOUND-U !  ['] NEWER-WALK WALKED  NEWER-N @ ;
+
 \ The label holds when the build's object of tail i is the one KEEP held.
 : LINKED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
    a u i KEPT-FOUND? 0= if exit then  i KEPT? TTRUE ;
@@ -663,15 +691,18 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
 \ Guards a lock across a build: L's program holds no mutex the build locked and takes HELD, which log-first.f left
-\ held; L2, after M rewrites app-end.f's object, links log-first.f and ffi-abi.f's second part (linker.f OWNED-RECORDS).
+\ held; and linker.f OWNED-RECORDS: L2, after M rewrites app-end.f's object, rewrites only that object.
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
-   LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP  FFI-SECOND KEEP
+   LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP
    s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
-   BARE-RUN
+   BARE-RUN  MARK
    s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    s" the build links log-first.f" LOG-FIRST LINKED
-   s" the build links ffi-abi.f's second part" FFI-SECOND LINKED  LOG-RUN ;
+   REWRITTEN {: n:n :}
+   s" the build rewrites only app-end.f's object" LABEL  n 1 T=
+   s" the object it rewrites is app-end.f's" LABEL  FOUND$ s" /app-end.f.hfo" ENDS-WITH? TTRUE
+   LOG-RUN ;
 
 \ Guards a linked file's top-level cache: P2 links path-main.f after M2, and its program reports its own path;
 \ H's program dies on a bad tag though part-main.f's NFETCH-CHECK has a BAD-TAG that returns.
@@ -1006,12 +1037,15 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    b OUT-B u BYTE-COPY  u OUT-B-U !
    ['] WITH-C ['] REMOVE-B finally ;
 
+\ Every tail starts unkept, so a label on a tail no KEEP ran fails.
+: UNKEPT ( -- ) TAILS 0 ?do -1 i KEPT-SIZE ! loop ;
+
 public
 
 \ Builds A to E link the stripped kernel object this process writes once and BUILD passes, so their out
 \ roots hold only the files' objects.
 : RUN ( -- )
-   T-RESET
+   T-RESET  UNKEPT
    false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD
    s" habu-file-objects-a" FS:MKTEMP-DIR {: a:ptr u:n :}
    a OUT-A u BYTE-COPY  u OUT-A-U !
