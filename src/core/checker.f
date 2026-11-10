@@ -27441,8 +27441,10 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
       SGA @ SGU @  NMA @ NMU @  NMOFF @ TADDR NMU @  RES-TRUE CHECKER-USIG-CERT-ADD-AS
    THEN
    \ A refusal in multi-error mode, rejected or uncheckable alike, once the last
-   \ pass of a retried check has judged it:
-   dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and  CK-AOT-RETRY-DUE @ 0= and IF
+   \ pass of a retried check has judged it. The count is the number of refusals
+   \ rendered, so a quiet scan's (DIAG-QUIET, as above) is not counted:
+   dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and  CK-AOT-RETRY-DUE @ 0= and
+   DIAG-QUIET @ 0= and IF
       MULTI-REFUSED
    THEN ;
 
@@ -28458,8 +28460,8 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    UNJ-DOES-VERDICT @ ;
 
 \ The pre-verifier's entry also reports what it refuses, since CHECK-DOES-RUN
-\ renders nothing: as CHECK reports a body (rendered unless the scope is quiet,
-\ counted in a multi-error load), under the name of the record the clause
+\ renders nothing: as CHECK reports a body (unless the scope is quiet, rendered
+\ and, in a multi-error load, counted), under the name of the record the clause
 \ publishes, the definer's folded with the companion suffix (CLAUSE-NAME). An
 \ uncheckable clause is rendered here too: CHECK leaves that verdict to its
 \ callers outside JSON and a multi-error load, and the pre-pass renders nothing
@@ -28474,7 +28476,7 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    v DVERD !
    DIAG-QUIET @ 0= IF DIAGXT THEN
    SIG-EFF-DROP
-   MULTI-ERR? IF 1 MULTI-ERR-N +! THEN
+   MULTI-ERR? DIAG-QUIET @ 0= and IF 1 MULTI-ERR-N +! THEN
    v ;
 
 \ Both compilers report a clause their check refused the same way

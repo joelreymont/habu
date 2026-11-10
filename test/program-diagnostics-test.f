@@ -127,9 +127,24 @@ package PROGRAM-DIAGNOSTICS
    s" habu: in pdb-wide: bad stored signature" path pathu GE-EXPECT-ERR-HAS
    s" input row too wide to record (256 cells, at most 255)" path pathu GE-EXPECT-ERR-HAS ;
 
+\ A multi-error load counts the refusals it renders: a quiet scan's refusal is
+\ neither printed nor counted, so the count is 1 and stderr holds BADC's line.
+: QUIET-COUNT-ONCE ( -- )
+   s" test/program-diagnostic-quiet-count.f" {: path:ptr pathu:n :}
+   path pathu RUN-LOAD
+   path pathu GE-EXPECT-OK
+   GT-OUT$ S\" 0\n1\n1\nok\n" STR= 0= if s" quiet count" GE-FAIL then
+   SB-RESET
+   s" habu: in badc: at 'drop' input underflow: the call takes more cells than " SB-APPEND
+   s" the definition's declared inputs leave (needs 1, has 0); suggestion: " SB-APPEND
+   s" Push the missing inputs before the call, or declare them in the signature; " SB-APPEND
+   S\" a definition may not consume below its declared inputs.\n" SB-APPEND
+   GT-ERR$ SB$ STR= 0= if s" quiet count reports" GE-FAIL then ;
+
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
    BADSIG-WIDE-ONCE
+   QUIET-COUNT-ONCE
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
    s" test/native-multi-error-recovery.f" s" habu: in bad:" HABU-DIAGNOSTIC
    s" native-multi-error-recovery.f: at 'c@' expected: ptr u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
