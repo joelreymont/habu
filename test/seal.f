@@ -1,6 +1,7 @@
 \ seal.f - friend-arena seal regressions: the post-seal raw-write guard
 \ (PROT-GUARD, exit ENGINE-ERROR:SEAL-VIOLATION) traps every store sink into a
-\ sealed band, and engine primitives that update protected cells still work.
+\ sealed band, and engine primitives that update protected cells still work. A sealed
+\ package refuses a definition into it, under --load and in an evaluated source.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal.f
 
@@ -454,6 +455,43 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 84" T-LABEL
    SLV-OWNER-PUB-FORGE$ SLV-SUBJECT s" E-SEALED-PACKAGE: OWNERFORGE at " SLV-ASSERT-PROT-PUBLISH ;
 
+: SLV-LINE ( ptr u8 n -- )
+   SB-APPEND SLV-LF ;
+
+\ Package SP with A in its public wordlist, sealed and left open.
+: SLV-SP-SEALED ( -- )
+   SB-RESET
+   s" package SP" SLV-LINE  s" public" SLV-LINE  s" : A ( -- ) ;" SLV-LINE
+   s" seal-package" SLV-LINE ;
+
+: SLV-SP-COLON$ ( -- ptr u8 n )
+   SLV-SP-SEALED  s" ;package" SLV-LINE  s" : SP:B ( -- ) ;" SLV-LINE  SB$ ;
+
+: SLV-SP-VAR$ ( -- ptr u8 n )
+   SLV-SP-SEALED  s" ;package" SLV-LINE  s" variable SP:V" SLV-LINE  SB$ ;
+
+: SLV-SP-INSIDE$ ( -- ptr u8 n )
+   SLV-SP-SEALED  s" : C ( -- ) ;" SLV-LINE  s" ;package" SLV-LINE  SB$ ;
+
+: SLV-SP-EXPORT$ ( -- ptr u8 n )
+   SB-RESET
+   s" package SP2" SLV-LINE  s" public" SLV-LINE  s" : Z ( -- ) ;" SLV-LINE
+   s" ;package" SLV-LINE
+   s" package SP" SLV-LINE  s" public" SLV-LINE  s" : A ( -- ) ;" SLV-LINE
+   s" seal-package" SLV-LINE  s" EXPORT SP2:Z" SLV-LINE  s" ;package" SLV-LINE  SB$ ;
+
+\ A sealed package's record refuses a definition, a variable and an export into its
+\ wordlists, and a bare name inside it, naming the name token as written.
+: SLV-SEALED-DEFINE ( -- )
+   s" : SP:B after SP's seal-package -> E-SEALED-PACKAGE: SP:B, exit 84" T-LABEL
+   SLV-SP-COLON$ SLV-RUN-LOAD s" E-SEALED-PACKAGE: SP:B at " SLV-ASSERT-PROT-PUBLISH
+   s" variable SP:V after SP's seal-package -> E-SEALED-PACKAGE: SP:V, exit 84" T-LABEL
+   SLV-SP-VAR$ SLV-SUBJECT s" E-SEALED-PACKAGE: SP:V at " SLV-ASSERT-PROT-PUBLISH
+   s" : C inside SP after its seal-package -> E-SEALED-PACKAGE: C, exit 84" T-LABEL
+   SLV-SP-INSIDE$ SLV-SUBJECT s" E-SEALED-PACKAGE: C at " SLV-ASSERT-PROT-PUBLISH
+   s" EXPORT SP2:Z into SP after its seal-package -> E-SEALED-PACKAGE: SP2:Z, exit 84" T-LABEL
+   SLV-SP-EXPORT$ SLV-SUBJECT s" E-SEALED-PACKAGE: SP2:Z at " SLV-ASSERT-PROT-PUBLISH ;
+
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;
 
@@ -592,6 +630,7 @@ public
    SLV-POSITIVES
    SLV-PWID-BOUND
    SLV-OWNER-FORGE
+   SLV-SEALED-DEFINE
    SLV-CLEANUP
    T-REPORT
    s" seal-test: ok" type cr ;

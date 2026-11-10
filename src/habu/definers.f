@@ -118,14 +118,15 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    TOKEN if exit then
    s" hb: : missing definition name after " ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
 
-\ The engine's twin: habu2.f EMIT-QUALIFY-DEF. A head with no row makes a
-\ top-level package with a public wordlist and no private one.
-: DEF-NAMESPACE ( ptr u8 n -- n ) {: a:ptr q:n :}
+\ The engine's twin: habu2.f EMIT-QUALIFY-DEF, with whether the head's row is
+\ sealed. A head with no row makes a top-level package with a public wordlist
+\ and no private one.
+: DEF-NAMESPACE ( ptr u8 n -- n bool ) {: a:ptr q:n :}
    a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
-   row XREF-FOUND? if row XREF-PKG-PUBLIC exit then
+   row XREF-FOUND? if row XREF-PKG-PUBLIC  row XREF:SEALED? exit then
    PKG-DICT-ROOM
    a q PKG-CODE-ROOM
-   a q false namespace-record XREF-REC XREF-PKG-PUBLIC ;
+   a q false namespace-record XREF-REC XREF-PKG-PUBLIC false ;
 
 \ A selected unit owns its definitions: a name with a colon anywhere in it,
 \ at an edge too, refuses before the qualifier could send it to another
@@ -133,6 +134,12 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-UNIT-GUARD ( -- )
    UNIT? 0= if exit then
    TOKEN$ 0 COLON-AT 0 >= if UNIT-REFUSE then ;
+
+\ A wordlist of a sealed package refuses the name token. Checked as source names
+\ a definition, not in DEF-RECORD, which a file object's link replays.
+: DEF-SEAL-GUARD ( n ptr u8 n -- n ) {: wid:n a:ptr u:n :}
+   wid PKG-WID-SEALED? if a u SEALED-FAIL then
+   wid ;
 
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
 \ DEF-TKL take the name token, which the refusals after them name, as TKA and
@@ -148,9 +155,9 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    TOKEN$ {: a:ptr u:n :}
    a u 0 COLON-AT {: q:n :}
-   q 1 <  q 1+ u >=  or if a u get-current exit then
+   q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
    a u q 1+ COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
-   a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE ;
+   a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u SEALED-FAIL then ;
 
 \ The engine's twin: habu2.f EMIT-DEF-KW-GUARD.
 \ The keywords a body's compiler reads before it looks a word up
@@ -336,9 +343,10 @@ private
    s" hb: native compiler dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
 
 public
-\ The tail passes the wall, room, duplicate, code room and seal tests before def-open writes; the
-\ wall and code room name the tail, the rest the token. kind: 0 (compiled), DKIND:ADDR, VAL or CAST.
-\ def-open refuses a sealed package's wordlist too, but without a word (habu2.f DEFWRITE:DEF-OPEN).
+\ The tail passes the wall, room, duplicate, code room and protected-wordlist tests before def-open
+\ writes; the wall, code room and protected-wordlist test name the tail, the rest the token. kind: 0
+\ (compiled), DKIND:ADDR, VAL or CAST. def-open refuses a protected wordlist too, but without a word
+\ (habu2.f DEFWRITE:DEF-OPEN).
 : DEF-RECORD ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
    a u DEF-WALL
    PKG-DICT-ROOM

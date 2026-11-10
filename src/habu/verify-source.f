@@ -849,7 +849,7 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    at 1 + PEND-N ! ;
 
 \ The packages this scan's source sealed, cleared by RUN-IN-SCOPE. A reopening stops as packages.f PKG-SEAL-GUARD
-\ does; a definition or export into one as the arm64 engine loop does (habu2.f C-SEAL-PACKAGE protects the wordlists).
+\ does; a definition or export into one as definers.f DEF-SEAL-GUARD and packages.f PKG-EXPORT do.
 DYNAMIC-BUFFER SEALS u8                       \ the sealed packages' names
 DYNAMIC-BUFFER SEALS-AT n                     \ a name's offset
 DYNAMIC-BUFFER SEALS-U n                      \ and its length
@@ -890,6 +890,7 @@ variable SEALS-N
    q 0 < IF at SEALED-OPEN EXIT THEN
    a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN SEAL-LISTED? IF at SEAL-STOP THEN
+   row NULL-PTR <> IF row XREF:SEALED? IF at SEAL-STOP THEN THEN
    SEALED-LOAD? 0= IF EXIT THEN
    row NULL-PTR = IF EXIT THEN
    row XREF-PKG-PUBLIC XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
@@ -2185,8 +2186,11 @@ DUPLICATE-INIT
    1 MULTI-ERR-N +! ;
 
 \ Whether the scan refused the definition the name names, and goes on past it.
-: REFUSE-DUPLICATE ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+\ A name that lands in a sealed package stops first, as the load's DEF-QUALIFY
+\ and PKG-EXPORT ask the seal before the duplicate.
+: REFUSE-DUPLICATE ( ptr u8 n n -- bool )
+   {: a:ptr u:n at:n :}
+   a u at SEALED-NAME
    a u CHECKER-CERT-DUP? dup IF u DUPLICATE! THEN ;
 
 \ Whether the scan refused the definition NAME, written from byte AT, now that
@@ -2204,8 +2208,9 @@ DUPLICATE-INIT
    u DUPLICATE!
    true ;
 
-\ A definer asks the seal after REFUSE-DUPLICATE, as its load does: through ARM,
-\ or SEALED-NAME where a refusal can come before its ARM.
+\ A definer asks the seal before the duplicate, as DEF-QUALIFY and PKG-EXPORT
+\ do at load: REFUSE-DUPLICATE asks SEALED-NAME first, and ARM asks it again,
+\ which is the only ask where no duplicate test comes first.
 
 \ The public wordlist of the package NAME names, -1 when it has no row.
 : PUBLIC-WID ( ptr u8 n -- n )
@@ -2263,7 +2268,7 @@ DUPLICATE-INIT
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
    name nameu NAME-DECLARED
-   name nameu REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    -1 SIG-RAW-MODE!
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
@@ -2283,7 +2288,7 @@ DUPLICATE-INIT
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu REFUSE-DUPLICATE IF 0 0= EXIT THEN
+   name nameu at REFUSE-DUPLICATE IF 0 0= EXIT THEN
    name nameu at nameu ARM
    name nameu dsym RECORD-CREATED
    DISARM
@@ -2294,7 +2299,7 @@ DUPLICATE-INIT
 : TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
    {: name:ptr nameu:n at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   name nameu REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
@@ -2371,10 +2376,9 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu REFUSE-DUPLICATE IF
+   name nameu at REFUSE-DUPLICATE IF
       REQUIRE-SIGNATURE 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
    THEN
-   name nameu at SEALED-NAME
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
@@ -2396,7 +2400,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
-   name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
+   name nameu at REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
@@ -2431,8 +2435,9 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? DEFINER-RETIRE ;
 
-\ `seal-package` protects the open package's wordlists (habu2.f
-\ C-SEAL-PACKAGE); outside a package it refuses.
+\ `seal-package` lists the open package in SEALS, the scan's twin of the
+\ DNAME-SEALED bit packages.f PKG-SEAL sets on its record; outside a package it
+\ refuses.
 : SEAL-ROW ( -- )
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-PKG-CONTEXT throw THEN
    CHECKER-AUTH-PACKAGE$ SEAL-ADD ;
@@ -2727,7 +2732,7 @@ variable STG-TYPE-U
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    2dup NAME-DECLARED
    2dup CHECKER-LBUF-NAME-OK? IF
-      2dup REFUSE-DUPLICATE 0= IF 2dup TOKEN-BYTE @ SEALED-NAME EXIT THEN
+      2dup TOKEN-BYTE @ REFUSE-DUPLICATE 0= IF EXIT THEN
    THEN
    2drop SCAN-STORAGE-TYPE 2drop SOURCE@ 0 ;
 
@@ -3493,14 +3498,14 @@ variable FILE-USE
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
-   name nameu REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu sig sigu TRUST-STRUCTURE-FIELD
    DISARM
    IF kind kindu name nameu sig sigu at at nameu + DEF-WORD DEFINED THEN ;
 
 : STRUCTURE-SIZE ( ptr u8 n n -- ) {: name:ptr nameu:n at:n :}
-   name nameu REFUSE-DUPLICATE IF EXIT THEN
+   name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu s" -- n" DECL-SIGNATURE
    DISARM
@@ -3676,7 +3681,7 @@ variable FFI-LIT-B                          \ and the newer
    NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
    FFI-SIGNATURE {: sig:ptr sigu:n :}
    at TOKEN-BYTE !
-   name nameu REFUSE-DUPLICATE IF true FFI-GROUP ! EXIT THEN
+   name nameu at REFUSE-DUPLICATE IF true FFI-GROUP ! EXIT THEN
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
@@ -4006,8 +4011,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    TOKEN-U @ 0= if E-MISSING-NAME throw then
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
-   DEF-NAME-A @ DEF-NAME-U @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
-   DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ SEALED-NAME
+   DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
    WRAP-RESET
    BODY-LOAD-RESET
    LOCALS-RESET

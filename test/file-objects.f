@@ -97,6 +97,9 @@
 \ object names order-q2.f first; O3 checks it while order-ha.f, order-hb.f and order-hc.f are built
 \ and order-q1.f and order-q2.f are checked and not yet linked, and compiles it to name order-q1.f
 \ first; O4 links it.
+\ F builds seal-main.f, whose definition into the package seal-second.f seals is refused: exit 84,
+\ E-SEALED-PACKAGE at its line. F2, the same build again, links seal-second.f's object, which keeps
+\ its size and change time, and is refused the same way: the link carries the seal.
 \ R builds scratch-main.f, whose second file stores 7 into the first's scratch cell, SCRATCH-VARIABLE and
 \ SCRATCH-BUFFER: at top level; its program prints 0 for each, read at the third file's top level and
 \ again in the program: the stores end with that file. W and W2 build task-left-main.f, whose top
@@ -124,12 +127,13 @@ package FILE-OBJECTS-TEST
 8 constant FILES-B                       \ build B's: A's and pad.f's
 8 constant LOG-FIRST                     \ TAIL$'s numbers for log-first.f's, path-main.f's,
 9 constant PATH-MAIN                     \ stale-spell.f's, sealed-spell.f's, stored-run.f's,
-10 constant STALE-SPELL                  \ retired-spell.f's, order-x2.f's and hidden-spell.f's
-11 constant SEALED-SPELL                 \ objects
+10 constant STALE-SPELL                  \ retired-spell.f's, order-x2.f's, hidden-spell.f's and
+11 constant SEALED-SPELL                 \ seal-second.f's objects
 12 constant STORED-RUN
 13 constant RETIRED-SPELL
 14 constant ORDER-X2
 15 constant HIDDEN-SPELL
+16 constant SEAL-SECOND
 28 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four, e.f's
 144 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
@@ -258,7 +262,7 @@ variable KEPT-NS
 \ The tail of object i's path, from 0: A's count.f, shape.f, main.f, reopen.f, mark.f and again.f's
 \ two loads; 7 pad.f's, which B adds; 8 log-first.f's; 9 path-main.f's; 10 stale-spell.f's, which S
 \ writes; 11 sealed-spell.f's, G's; 12 stored-run.f's, T's; 13 retired-spell.f's, V's; 14
-\ order-x2.f's, O's; 15 hidden-spell.f's, K's.
+\ order-x2.f's, O's; 15 hidden-spell.f's, K's; 16 seal-second.f's, F's.
 : TAIL$ ( n -- ptr u8 n )
    {: i:n :}
    i 0 = if s" /test/fixtures/file-objects/count.f.hfo" exit then
@@ -276,7 +280,8 @@ variable KEPT-NS
    i STORED-RUN = if s" /test/fixtures/file-objects/stored-run.f.hfo" exit then
    i RETIRED-SPELL = if s" /test/fixtures/file-objects/retired-spell.f.hfo" exit then
    i ORDER-X2 = if s" /test/fixtures/file-objects/order-x2.f.hfo" exit then
-   s" /test/fixtures/file-objects/hidden-spell.f.hfo" ;
+   i HIDDEN-SPELL = if s" /test/fixtures/file-objects/hidden-spell.f.hfo" exit then
+   s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" obj" ROOT FS:JOIN-PATH ROOT-U ! ;
@@ -546,7 +551,9 @@ variable KEPT-NS
    SAME-AS-B ;
 
 \ Builds a fixture to L's prog in the shared fixture out root by tools/hb-build.f, since log.f
-\ requires and creates through does> (build.f's files may not); --repl when the flag is true.
+\ requires and creates through does> (build.f's files may not); --repl when the flag is true. Its
+\ TMPDIR is L's directory: a build SEALED-FAIL refuses runs no exit hook (outer.f FAIL-CLOSED), so
+\ its scratch goes with L.
 : BUILD-RC ( CMD:command ptr u8 n bool -- CMD:command n )
    {: src:ptr src-u:n repl:bool :}
    CMD:RESET
@@ -555,7 +562,7 @@ variable KEPT-NS
    repl if s" --repl" CMD:ARG+ then
    src src-u CMD:ARG+
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
-   s" HABU_OUT" F$ CMD:ENV+
+   s" HABU_OUT" F$ CMD:ENV+  s" TMPDIR" L$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N ;
 
@@ -807,11 +814,27 @@ variable KEPT-NS
    s" W2" WHICH!  TASK-LEFT-BUILD
    s" X" WHICH!  WORD-LOAD-BUILD ;
 
+\ seal-main.f's build, in a fresh hb since SEALED-FAIL ends the process it refuses in: it exits 84
+\ with E-SEALED-PACKAGE naming the definition and seal-main.f's line.
+: SEAL-REFUSED ( CMD:command -- CMD:command )
+   s" test/fixtures/file-objects/seal-main.f" false BUILD-RC {: rc:n :}
+   CMD:ERR$ s" E-SEALED-PACKAGE: FILE-OBJECTS-SEAL:D at " CONTAINS? {: named:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:6" CONTAINS? {: placed:bool :}
+   named placed and  rc ENGINE-ERROR:SEAL-PACKAGE =  and 0= if rc SHOW then
+   s" the build exits 84" LABEL  rc ENGINE-ERROR:SEAL-PACKAGE T=
+   s" the build refuses FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
+   s" the refusal names seal-main.f's line 6" LABEL  placed TTRUE ;
+
+: SEAL-CASE ( CMD:command -- CMD:command )
+   s" F" WHICH!  SEAL-REFUSED  SEAL-SECOND KEEP
+   s" F2" WHICH!  SEAL-REFUSED
+   s" the build links seal-second.f" LINKED ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
-      STORED-CASE RETIRED-CASE ORDER-CASE PIECE-CASE ;]
+      STORED-CASE RETIRED-CASE ORDER-CASE PIECE-CASE SEAL-CASE ;]
    CMD:WITH-COMMAND ;
 
 

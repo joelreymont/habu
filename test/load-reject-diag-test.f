@@ -520,15 +520,20 @@ variable RC
    s" DEFER-LAYOUT-BUFFER LRD-STG-DL lrd-stg-none" s" in LRD-STG-DL" STORAGE-REJECT ;
 
 \ SRC as the body is refused with exit RC by its code and the token it stops
-\ at, located on the body's first line.
-: CODE-REJECT ( ptr u8 n ptr u8 n n -- ) {: src:ptr srcu:n line:ptr lineu:n rc:n :}
+\ at, located at AT.
+: CODE-REJECT-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: src:ptr srcu:n line:ptr lineu:n at:ptr atu:n rc:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    ERR$ line lineu CONTAINS? TTRUE
-   ERR$ s" body.f:1" CONTAINS? TTRUE
+   ERR$ at atu CONTAINS? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ rc T= ;
+
+\ CODE-REJECT-AT located on the body's first line.
+: CODE-REJECT ( ptr u8 n ptr u8 n n -- ) {: src:ptr srcu:n line:ptr lineu:n rc:n :}
+   src srcu line lineu s" body.f:1" rc CODE-REJECT-AT ;
 
 \ A definer with no signature stops at the word being defined, or at `does>`
 \ for a clause.
@@ -541,6 +546,25 @@ variable RC
 : TEST-SEALED-PACKAGE ( -- )
    s" a sealed package's reopening names its code and package" T-LABEL
    S\" package NDICT\n;package" s" E-SEALED-PACKAGE: NDICT at " SEALED-RC CODE-REJECT ;
+
+\ A definition into a package the engine sealed stops at its whole name.
+: TEST-SEALED-DEFINE ( -- )
+   s" a definition into a sealed package names its code and whole name" T-LABEL
+   s" : NDICT:FOO ( -- ) ;" s" E-SEALED-PACKAGE: NDICT:FOO at " SEALED-RC CODE-REJECT ;
+
+\ A name a sealed package already holds is refused as sealed, as the check
+\ refuses it: the seal is asked before the duplicate.
+: TEST-SEALED-DUPLICATE ( -- )
+   s" a duplicate definition into a sealed package names the seal" T-LABEL
+   S\" package SP\npublic\n: A ( -- ) ;\nseal-package\n;package\n: SP:A ( -- ) ;\n"
+   s" E-SEALED-PACKAGE: SP:A at " s" body.f:6" SEALED-RC CODE-REJECT-AT
+   s" a duplicate export into a sealed package names the seal" T-LABEL
+   SB-RESET
+   S\" package SP2\npublic\n: A ( -- ) ;\n" SB-APPEND
+   S\" : MK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" SB-APPEND
+   S\" package SP\npublic\n: A ( -- ) ;\nseal-package\nEXPORT SP2:A\n" SB-APPEND
+   S\" s\" ACCEPTED\" type cr\n;package\n" SB-APPEND
+   SB$ s" E-SEALED-PACKAGE: SP2:A at " s" body.f:10" SEALED-RC CODE-REJECT-AT ;
 
 \ A string `s"` copies out of the file, which its line 3 `evaluate`s, is not
 \ the file's bytes, so its refusal names the file alone, with no line.
@@ -800,6 +824,8 @@ variable RC
    TEST-CAST
    TEST-UNSAFE
    TEST-SEALED-PACKAGE
+   TEST-SEALED-DEFINE
+   TEST-SEALED-DUPLICATE
    TEST-EVALUATED-PLACE
    TEST-EVALUATED-SLICE
    TEST-REPLAY-DUP-PLACE

@@ -1766,6 +1766,71 @@ variable RC
    s" undefined-ambig.f" FIXTURE!
    s" E-UNDEFINED" s" NOPE" 13 4 136 140 REFUSED-AT ;
 
+\ Package SP, holding A and sealed, in 53 bytes over five lines.
+: SEALED-SP+ ( -- )
+   s" package SP" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : A ( -- ) ;" SB-APPEND LF+
+   s" seal-package" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+ ;
+
+\ A definition into a package whose record is sealed, by the engine or by the checked
+\ source, stops at its whole name.
+: TEST-SEALED-DEFINE ( -- )
+   s" a definition into an engine-sealed package names its whole name" T-LABEL
+   s" : ENGINE-INTERNAL:FOO ( -- ) ;" s" sealed-engine.f" LINE-FIXTURE
+   s" " CHECK
+   s" E-SEALED-PACKAGE" REJECTED-AS
+   0 s" ENGINE-INTERNAL:FOO" 1 3 2 21 AT
+   s" a definition into a package the source sealed names its whole name" T-LABEL
+   SB-RESET
+   SEALED-SP+
+   s" : SP:B ( -- ) ;" SB-APPEND LF+
+   s" sealed-source.f" FIXTURE!
+   s" " CHECK
+   s" E-SEALED-PACKAGE" REJECTED-AS
+   0 s" SP:B" 6 3 55 59 AT ;
+
+\ A name a sealed package already holds is refused as sealed, as the load
+\ refuses it: the seal is asked before the duplicate.
+: TEST-SEALED-DUPLICATE ( -- )
+   s" a duplicate definition into a sealed package names the seal" T-LABEL
+   SB-RESET
+   SEALED-SP+
+   s" : SP:A ( -- ) ;" SB-APPEND LF+
+   s" sealed-dup-define.f" FIXTURE!
+   s" " CHECK
+   s" E-SEALED-PACKAGE" REJECTED-AS
+   0 s" SP:A" 6 3 55 59 AT
+   s" a duplicate variable into a sealed package names the seal" T-LABEL
+   SB-RESET
+   s" package SP" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" variable X" SB-APPEND LF+
+   s" seal-package" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" variable SP:X" SB-APPEND LF+
+   s" sealed-dup-variable.f" FIXTURE!
+   s" E-SEALED-PACKAGE" s" SP:X" 6 10 60 64 REFUSED-MODES
+   s" a duplicate export into a sealed package names the seal" T-LABEL
+   SB-RESET
+   s" package SP2" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : A ( -- ) ;" SB-APPEND LF+
+   s" : MK ( n -- ) create , does> ( -- n ) @ ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" package SP" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : A ( -- ) ;" SB-APPEND LF+
+   s" seal-package" SB-APPEND LF+
+   s" EXPORT SP2:A" SB-APPEND LF+
+   S\" s\" ACCEPTED\" type cr" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" sealed-dup-export.f" FIXTURE!
+   s" " CHECK
+   s" E-SEALED-PACKAGE" REJECTED-AS
+   0 s" SP2:A" 10 8 134 139 AT ;
+
 : MAIN ( -- )
    T-RESET
    ROOT!
@@ -1819,6 +1884,8 @@ variable RC
    TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER
    TEST-TOP-MISMATCH
+   TEST-SEALED-DEFINE
+   TEST-SEALED-DUPLICATE
    FS:CLEANUP-RUN
    T-REPORT
    s" diag-position-test: ok" type cr ;

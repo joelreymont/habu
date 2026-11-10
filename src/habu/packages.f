@@ -271,6 +271,18 @@ private
    PKG-PUB-CELL CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
    PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEAL ;
 
+\ XREF:WID-SEALED?, with the open package's two wids read from its record and
+\ the global and types wordlists, no package's, answered without its walk.
+: PKG-WID-SEALED? ( n -- bool ) {: wid:n :}
+   wid FIRST-DYNAMIC-WID < if false exit then
+   wid BOOT:GLOBAL-WL =  wid BOOT:TYPES-WL =  or if false exit then
+   PKG-PUB-CELL CELL@ 0<> if
+      wid PKG-PUB-CELL CELL@ =  wid PKG-PRI-CELL CELL@ =  or if
+         PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEALED? exit
+      then
+   then
+   wid XREF:WID-SEALED? ;
+
 \ A throw puts the package scope back (habu1.f B-EVAL, habu2.f LEVALREC).
 \ The enclosing package's row and parent wordlist, the open package's row and
 \ parent wordlist, the current wordlist and the open package's using floor:
@@ -447,6 +459,7 @@ private
    OVERLAY-GUARD
    PKG-EXPORT-SOURCE {: src:ptr :}
    TOKEN$ {: operand:ptr operand-u:n :}
+   get-current PKG-WID-SEALED? if operand operand-u SEALED-FAIL then
    PKG-DICT-ROOM
    PKG-TAIL {: ta:ptr tu:n :}
    ta tu get-current WL-PROBE XREF-FOUND? if

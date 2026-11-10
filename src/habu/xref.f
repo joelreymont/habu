@@ -508,6 +508,28 @@ public
 
 : SEALED? ( ptr n -- bool ) XREF-FLAGS DNAME-SEALED and 0= 0= ;
 
+private
+\ Whether rec is a live namespace row whose public or private wid is wid.
+: NS-WID? ( ptr n n -- bool ) {: rec:ptr wid:n :}
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL =
+   rec XREF-PKG-PUBLIC wid =  rec XREF-PKG-PRIVATE wid =  or  and ;
+
+public
+\ Whether wid is the public or private wordlist of a live package whose record
+\ is SEALED?. namespace-record and namespace-private mint a package's wids from
+\ WIDN-CELL, which counts up from FIRST-DYNAMIC-WID, so a lower wid is no
+\ package's and answers without walking the dictionary. A build's global and
+\ types wordlists are dynamic too (linker.f MOVE-IN), and packages.f
+\ PKG-WID-SEALED? answers those before it asks here.
+: WID-SEALED? ( n -- bool ) {: wid:n :}
+   wid FIRST-DYNAMIC-WID < if XREF-FALSE exit then
+   ndict@ 1-
+   begin dup 0 >= while
+      dup XREF-REC wid NS-WID? if XREF-REC SEALED? exit then
+      1-
+   repeat drop
+   XREF-FALSE ;
+
 ;package
 
 : XREF-RETIRE-WL ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
