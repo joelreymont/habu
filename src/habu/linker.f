@@ -308,6 +308,11 @@ variable STORERS-N                   \ its pairs
 DYNAMIC-BUFFER WALKED n              \ row r's mark in RAN-FILES+'s walk and REACHED-CK's, PENDING row q's at BUILT-N + q
 DYNAMIC-BUFFER WALK n                \ the rows the walk reached, in the order it reached them
 variable WALK-N
+DYNAMIC-BUFFER EDGES n               \ the build's references, compiled or linked, in order (EDGE+)
+variable EDGES-N                     \ its cells
+DYNAMIC-BUFFER REC-EDGES n           \ record r's EDGES: the first at 2r, the count at 2r + 1
+DYNAMIC-BUFFER EM-EDGES n            \ the same by emission number
+DYNAMIC-BUFFER ROW-EDGES n           \ the same by BUILT row, for its DATA cells and STORES values
 
 \ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR,
 \ WIDN-CELL, the loader's EVENT-COUNT and OUTER:RUN-COUNT as a file's load or its piece after a
@@ -425,7 +430,8 @@ variable PENDING-STORERS-N           \ its pairs
 
 : DISPOSE-OBJECTS ( -- )
    WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  TIMES BUF:DISPOSE
-   WALKED-RELEASE  WALK-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
+   WALKED-RELEASE  WALK-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
+   EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  USED-RELEASE  USES-RELEASE  BUILT-USES-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
@@ -468,7 +474,7 @@ variable PENDING-STORERS-N           \ its pairs
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    0 HSTORES-N !  0 STORERS-N !  0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
-   0 USES-N !  0 USES-FROM !
+   0 USES-N !  0 USES-FROM !  0 EDGES-N !
    1024 NAMES-CLEAR  1024 RUN-CLEAR  FIRST-REC @ INDEXED !  PENDING-RECS-CLEAR ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
@@ -1090,28 +1096,60 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    own HEADER-REACHED? or if -1 REACHED U64+ then ;
 
 
+\ One reference onto EDGES as 4 * id + kind: kind 0 a record by its index, 1 an emission by its
+\ shadow number, 2 a piece's data by its BUILT row (the running piece's is BUILT-N), 3 the header data.
+: EDGE+ ( n -- )
+   {: cell:n :}
+   EDGES-N @ {: n:n :}
+   n 1 + EDGES-RESERVE  cell n EDGES !  n 1 + EDGES-N ! ;
+
+: REC-EDGE+ ( n -- ) 4 * EDGE+ ;
+: EM-EDGE+ ( n -- ) 4 * 1 + EDGE+ ;
+: DATA-EDGE+ ( n -- ) 4 * 2 + EDGE+ ;
+: HEADER-EDGE+ ( -- ) 3 EDGE+ ;
+
+
+\ An owner's span of EDGES, from the EDGES-N its references began at to EDGES-N now.
+: REC-EDGES! ( n n -- )
+   {: r:n start:n :}
+   r 1 + 2 * REC-EDGES-RESERVE
+   start r 2 * REC-EDGES !  EDGES-N @ start -  r 2 * 1 + REC-EDGES ! ;
+
+
+: EM-EDGES! ( n n -- )
+   {: e:n start:n :}
+   e 1 + 2 * EM-EDGES-RESERVE
+   start e 2 * EM-EDGES !  EDGES-N @ start -  e 2 * 1 + EM-EDGES ! ;
+
+
+: ROW-EDGES! ( n n -- )
+   {: row:n start:n :}
+   row 1 + 2 * ROW-EDGES-RESERVE
+   start row 2 * ROW-EDGES !  EDGES-N @ start -  row 2 * 1 + ROW-EDGES ! ;
+
+
 \ A data address's reference, and true: a file's data, or the open's header data; false,
 \ writing nothing, for any other address. A file's end names it only after every span, so
 \ a later file's first byte names that later file.
 : DATA-REF+ ( n -- bool )
    {: v:n :}
    v FILE-DP @ >=  v FILE-END @ <  and if
-      3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ true exit
+      BUILT-N DATA-EDGE+  3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ true exit
    then
    v DP-ROW {: row:n hit:bool :}
    hit if
-      3 PIECES U64+  row true REF-FILE PIECES U64+
+      row DATA-EDGE+  3 PIECES U64+  row true REF-FILE PIECES U64+
       v  row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ true exit
    then
    v BASE @ >=  v OPEN-DP @ <  and if
-      true HOLDS-HEADER !  4 PIECES U64+  v BASE @ - PIECES U64+ true exit
+      true HOLDS-HEADER !  HEADER-EDGE+  4 PIECES U64+  v BASE @ - PIECES U64+ true exit
    then
    v FILE-END @ = if
-      3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ true exit
+      BUILT-N DATA-EDGE+  3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ true exit
    then
    v DP-END-ROW {: end-row:n end-hit:bool :}
    end-hit if
-      3 PIECES U64+  end-row true REF-FILE PIECES U64+
+      end-row DATA-EDGE+  3 PIECES U64+  end-row true REF-FILE PIECES U64+
       v  end-row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ true exit
    then
    false ;
@@ -1347,12 +1385,16 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx FILE-REC @ - {: w:n :}
    PIECES BYTES$ nip {: at:n :}
    0 TOP-ROW !
+   EDGES-N @ {: start:n :}
    idx RECORD+ {: bound:n :}
    idx SHADOW-ROW {: row:n :}
    idx row KIND {: kind:n :}
    kind KIND-DEF =  kind KIND-DOES =  or {: coded:bool :}
    coded if row NSHADOW:EMISSION@ FILE-EM @ - else -1 then {: em:n :}
    coded  em 0<  em NSHADOW:EMISSIONS FILE-EM @ - >=  or  and if E-COMP-STATE throw then
+   bound 0 >= if bound REC-EDGE+ then
+   coded if row NSHADOW:EMISSION@ EM-EDGE+ then
+   idx start REC-EDGES!
    at  w 0 WORD-SPAN !
    PIECES BYTES$ nip at -  w 1 WORD-SPAN !
    em  w 2 WORD-SPAN !
@@ -1456,10 +1498,12 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 : CODE-REF+ ( n -- bool )
    {: a:n :}
    a REC-AT {: r:n :}
-   r 0 >= if 0 PIECES U64+  r NSHADOW:RECORD@ REF+ true exit then
+   r 0 >= if
+      r NSHADOW:RECORD@ REC-EDGE+  0 PIECES U64+  r NSHADOW:RECORD@ REF+ true exit
+   then
    a NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
    qe 0 >= if
-      2 PIECES U64+
+      qe EM-EDGE+  2 PIECES U64+
       qe FILE-EM @ >= if
          0 PIECES U64+  qe FILE-EM @ - PIECES U64+
       else
@@ -1541,7 +1585,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    at3 3 + EM-SPANS-RESERVE
    PIECES BYTES$ nip {: at:n :}
    0 TOP-ROW !
+   EDGES-N @ {: start:n :}
    e EMISSION-CODE+
+   e start EM-EDGES!
    at  at3 EM-SPANS !
    PIECES BYTES$ nip at -  at3 1 + EM-SPANS !
    TOP-ROW @  at3 2 + EM-SPANS ! ;
@@ -1879,9 +1925,9 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    STORED-N @ PIECES U64+
    STORED-N @ 0 ?do
       i STORED @ {: v:n :}
-      HOLDS-HEADER @ {: held:bool :}              \ the store's cell is no address the piece holds
+      HOLDS-HEADER @ {: held:bool :}  EDGES-N @ {: edges:n :}
       v DATA-REF+ 0= if E-COMP-STATE throw then   \ FIND-STORES refused a cell nothing holds
-      held HOLDS-HEADER !
+      held HOLDS-HEADER !  edges EDGES-N !        \ the store's cell is no address or edge the piece holds
       v ROW-OF {: row:n hit:bool :}
       hit if
          row ROW-KIND PIECES U64+  0 PIECES U64+  row CELL-REF+
@@ -2024,7 +2070,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    LATE-REST
    LATE-N 0 ?do i LATE-P CHANGER+ loop
    OLD-RECS-N 0 ?do i OLD-REC SEAL+ loop
-   CODE+  DATA+  STORES+
+   CODE+  EDGES-N @ {: start:n :}  DATA+  STORES+  BUILT-N start ROW-EDGES!
    PIECES BYTES$ nip FACTS-AT !  FACTS+
    req ACTS+
    USES+
@@ -3713,15 +3759,18 @@ variable LINK-EM                     \ that emission's number in this object, -1
       x y REC-INDEX {: r:n :}
       r ndict@ >= if E-COMP-STATE throw then
       r PKG? if E-COMP-STATE throw then
-      r XREF-REC XREF-START exit
+      r REC-EDGE+  r XREF-REC XREF-START exit
    then
    tag 1 = if rbase x + exit then
-   tag 2 = if x y z FN-ADDR exit then
-   tag 3 = if
-      x 0= if FILE-DP @ y + exit then
-      x BUILT-DP BUILT@ y + exit
+   tag 2 = if
+      x 0= if FILE-EM @ y + else x BUILT-EM BUILT@ y + then EM-EDGE+
+      x y z FN-ADDR exit
    then
-   tag 4 = if true HOLDS-HEADER !  BASE @ x + exit then
+   tag 3 = if
+      x 0= if BUILT-N DATA-EDGE+  FILE-DP @ y + exit then
+      x FILE-ROWS @ DATA-EDGE+  x BUILT-DP BUILT@ y + exit
+   then
+   tag 4 = if true HOLDS-HEADER !  HEADER-EDGE+  BASE @ x + exit then
    tag 5 = if 0 exit then
    E-COMP-STATE throw ;
 
@@ -3805,6 +3854,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    ndict@ {: want:n :}
    a u src wid OUTER:ALIAS-RECORD
    flags want SET-FLAGS
+   EDGES-N @ {: start:n :}  src REC-EDGE+  want start REC-EDGES!
    ALIASES-N @ 2 + ALIASES-RESERVE
    want ALIASES-N @ ALIASES !  src ALIASES-N @ 1 + ALIASES !  2 ALIASES-N +! ;
 
@@ -3819,8 +3869,11 @@ variable LINK-EM                     \ that emission's number in this object, -1
    ROLE-WID {: wid:n :}
    GOOD? 0= if E-COMP-STATE throw then
    ndict@ {: want:n :}
-   a u TYPE-SOURCE wid OUTER:ALIAS-RECORD
+   TYPE-SOURCE {: src:n :}
+   a u src wid OUTER:ALIAS-RECORD
    flags want SET-FLAGS
+   EDGES-N @ {: start:n :}
+   src 0 >= if src REC-EDGE+ then  want start REC-EDGES!
    TFAM:ENTRY-LINKED ;
 
 \ ---- linking code --------------------------------------------------------------
@@ -3923,7 +3976,10 @@ variable LINK-EM                     \ that emission's number in this object, -1
    a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  OUTER:DEF-RECORD
    NPUB:NEXT-SLOT {: fn:n :}
    fn LINK-FN !  e LINK-EM !
+   EDGES-N @ {: em-start:n :}
    e NEMIT-FILL {: patch:n :}
+   FILE-EM @ e +  em-start EM-EDGES!
+   EDGES-N @ {: start:n :}
    does if j NSHADOW:TAKE-DOES else NSHADOW:TAKE then
    fn NSHADOW:SOURCE-FUNS
    NEMIT:CLEAR
@@ -3952,10 +4008,13 @@ variable LINK-EM                     \ that emission's number in this object, -1
    \ After publication, as PENDING-CK refuses IMM and INT on a pending row; it also restores the
    \ wide and min-in bits the imports were given false 0 for.
    flags want SET-FLAGS
+   FILE-EM @ e + EM-EDGE+  want start REC-EDGES!
    does if
       want 1 + XREF-REC {: rec:ptr :}
       rec XREF-NAME$ da du STR= 0=  rec XREF-WORDLIST dwid <>  or if E-COMP-STATE throw then
       dflags want 1 + SET-FLAGS
+      EDGES-N @ {: does-start:n :}
+      FILE-EM @ e + EM-EDGE+  want 1 + does-start REC-EDGES!
    then
    LINK-CLEAR ;
 
@@ -3987,6 +4046,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ entries; the caller sets FILE-DP to here's distance from NULL-PTR first, as RUN-FILE does.
 : LINK-DATA ( -- )
    LINK-CLEAR
+   EDGES-N @ {: start:n :}
    here NULL-PTR -  FILE-DP @ <> if E-COMP-STATE throw then
    DATA-AT @ OBJ@ {: d:n :}
    d allot
@@ -4013,13 +4073,14 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       RD-U64 RD-U64 {: kind:n v:n :}
       RD-REF {: tag:n x:n y:n z:n :}
       GOOD? 0= if E-COMP-STATE throw then
-      HOLDS-HEADER @ {: held:bool :}              \ the store's cell, as STORES+ keeps it
+      HOLDS-HEADER @ {: held:bool :}  EDGES-N @ {: edges:n :}
       ctag cx cy cz RESOLVE {: at:n :}
-      held HOLDS-HEADER !
+      held HOLDS-HEADER !  edges EDGES-N !        \ the store's cell, as STORES+ keeps it
       kind 3 = if v else tag x y z RESOLVE then  kind  at  PUT-CELL
       at HSTORE+  at STORER+
    loop
-   GOOD? 0= if E-COMP-STATE throw then ;
+   GOOD? 0= if E-COMP-STATE throw then
+   BUILT-N start ROW-EDGES! ;
 
 
 \ Entry i of the read object linked by its kind; a KIND-DOES entry went with the KIND-DEF before it.
