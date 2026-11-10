@@ -17,6 +17,8 @@ private
 20 constant REPORT-FD-MIN              \ keep the saved stdout clear of the build's own descriptors
 0 constant F-DUPFD                     \ fcntl: duplicate to the lowest descriptor at or above the argument
 
+100 constant TICK-US                   \ 13,000 samples of a 1.3 s warm build, for a tenth more wall time
+
 variable SAVED-OUT
 variable REPORT-FD
 
@@ -55,7 +57,7 @@ variable REPORT-FD
 public
 : MAIN ( -- )
    ARGS-OK? 0= if USAGE then
-   0 prof-on
+   TICK-US prof-rate  0 prof-on
    ['] BUILD catch {: rc:n :}
    prof-off
    TEXT-REPORT
