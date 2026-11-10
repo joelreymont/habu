@@ -1,9 +1,9 @@
-\ storage-test.f - test/wasm/storage.f's entries, each built into a module by
-\ tools/wasm-build.f's command line, validated by wasm-tools and run by bun
+\ storage-test.f - test/wasm/storage.f's entries, each the MAIN of a module
+\ `hb-build --target wasm` builds, validated by wasm-tools and run by bun
 \ (test/wasm/harness.f); each module's output must be its entry's lines and its
 \ status the entry's: 0, or a trap for a page freed twice. Both tools must be on
-\ PATH, so test/wasm/device.f runs it, not the ordinary gate. The modules, the
-\ expected and the actual output stay in the printed directory.
+\ PATH, so test/wasm/device.f runs it, not the ordinary gate. The sources, the
+\ modules, the expected and the actual output stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -25,6 +25,8 @@ PATH-CAP BUFFER: DIR
 variable DIR-U
 PATH-CAP BUFFER: MOD
 variable MOD-U
+PATH-CAP BUFFER: SRC
+variable SRC-U
 PATH-CAP BUFFER: FILE
 variable FILE-U
 
@@ -40,14 +42,20 @@ variable FILE-U
    DIR DIR-U @ name nu FILE FS:JOIN-PATH FILE-U !
    FILE FILE-U @ a u FS:WRITE-ALL ;
 
-\ storage.f built into the module file name in DIR, whose run calls entry;
-\ answers the driver's status.
+\ The source name.f in DIR, whose MAIN is storage.f's entry, built into
+\ name.wasm there; answers the build's status.
 : BUILD ( ptr u8 n ptr u8 n -- n )
    {: entry:ptr eu:n name:ptr nu:n :}
-   DIR DIR-U @ name nu MOD FS:JOIN-PATH MOD-U !
+   SB-RESET name nu SB-APPEND s" .wasm" SB-APPEND
+   DIR DIR-U @ SB$ MOD FS:JOIN-PATH MOD-U !
+   SB-RESET name nu SB-APPEND s" .f" SB-APPEND
+   DIR DIR-U @ SB$ SRC FS:JOIN-PATH SRC-U !
+   SB-RESET S\" require test/wasm/storage.f\n: MAIN ( -- ) " SB-APPEND
+   entry eu SB-APPEND  S\"  ;\n" SB-APPEND
+   SRC SRC-U @ SB$ FS:WRITE-ALL
    PROC-ARGV-RESET
-   s" --load" ARG+  s" tools/wasm-build.f" ARG+  s" --" ARG+
-   s" test/wasm/storage.f" ARG+  entry eu ARG+  MOD MOD-U @ ARG+
+   s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
+   SRC SRC-U @ ARG+  s" -o" ARG+  MOD MOD-U @ ARG+
    s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
@@ -61,8 +69,7 @@ variable FILE-U
    {: entry:ptr eu:n name:ptr nu:n want:ptr wu:n status:n :}
    SB-RESET name nu SB-APPEND s" -expected.txt" SB-APPEND
    want wu SB$ FILE!
-   SB-RESET name nu SB-APPEND s" .wasm" SB-APPEND
-   entry eu SB$ BUILD 0 T=
+   entry eu name nu BUILD 0 T=
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    MOD MOD-U @ WASM-HARNESS:RUN status T=
    SB-RESET name nu SB-APPEND s" -actual.txt" SB-APPEND

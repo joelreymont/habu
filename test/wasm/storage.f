@@ -119,10 +119,10 @@ public
    GROW REFUSE REUSE
    BYTES-RELEASE CELLS-RELEASE PTRS-RELEASE ;
 
-\ Frees three one-page neighbours A, B, C as A, C, B: B joins both into one run
-\ of three pages, which a three-page buffer then takes whole. Freed again, a
-\ one-page buffer takes its first page and a two-page one the rest.
+\ One-page neighbours A, B, C, freed as A, C, B, join into one run. BYTES is held first:
+\ a first reserve maps the registry's page after its own (src/core/dynamic-storage.f REG-ROOM).
 : HOLES ( -- )
+   1 BYTES-RESERVE
    65536 A-RESERVE  65536 B-RESERVE  65536 C-RESERVE
    0 A FIRST !  0 B SECOND !
    5 100 B c!
@@ -135,7 +135,7 @@ public
    0 B FIRST @ SAME .
    131072 C-RESERVE
    0 C SECOND @ SAME .
-   B-RELEASE  C-RELEASE ;
+   B-RELEASE  C-RELEASE  BYTES-RELEASE ;
 
 \ TWICE frees a mapped page twice, and INSIDE the second of two neighbouring
 \ pages again after both joined one run. Each run then overlaps a free one, so
