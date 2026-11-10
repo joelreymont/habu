@@ -1048,6 +1048,99 @@ variable RC
    s" E-STALE-READ" s" :}" 1 234 233 235 REFUSED-AT
    STALE-REPAIRED ;
 
+
+\ Fixture literal.f: words taking one cell of each width, EQ2 taking two cells of
+\ one type, K running a callable on two cells, then the line TEXT.
+: LIT-FIXTURE ( ptr u8 n -- )
+   {: text:ptr textu:n :}
+   SB-RESET
+   s" : U8C ( u8 -- ) drop ;" SB-APPEND LF+
+   s" : U16C ( u16 -- ) drop ;" SB-APPEND LF+
+   s" : U32C ( u32 -- ) drop ;" SB-APPEND LF+
+   s" : I64C ( i64 -- ) drop ;" SB-APPEND LF+
+   s" : NC ( n -- ) drop ;" SB-APPEND LF+
+   s" : EQ2 ( a a -- ) 2drop ;" SB-APPEND LF+
+   s" : K ( a b [ a b -- ] -- ) execute ;" SB-APPEND LF+
+   text textu SB-APPEND LF+
+   s" literal.f" FIXTURE! ;
+
+
+\ TEXT is refused: a number literal does not fit, as REASON says.
+: LIT-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: text:ptr textu:n why:ptr whyu:n :}
+   text textu T-LABEL
+   text textu LIT-FIXTURE
+   s" " CHECK
+   s" E-MISMATCH" REJECTED-AS
+   0 s" reason" why whyu FIELD=
+   s" fix_type" s" Write a value in range, or widen the declared type." REPAIRED-AS ;
+
+
+: LIT-ACCEPTED ( ptr u8 n -- )
+   {: text:ptr textu:n :}
+   text textu T-LABEL
+   text textu LIT-FIXTURE
+   s" " 0 CHECK-EXIT ;
+
+
+\ A number literal in a body passes into a fixed-width input or output only when
+\ it fits; its fact rides stack words, the return stack, a local and equal joins.
+: TEST-LITERAL-REFUSED ( -- )
+   s" : X ( -- ) -1 U8C ;" s" literal `-1` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" : X ( -- ) 256 U8C ;" s" literal `256` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" : X ( -- ) 65536 U16C ;"
+   s" literal `65536` does not fit `u16` (`0`..`65535`)" LIT-REFUSED
+   s" : X ( -- ) 4294967296 U32C ;"
+   s" literal `4294967296` does not fit `u32` (`0`..`4294967295`)" LIT-REFUSED
+   s" : X ( -- ) 300 dup U8C drop ;"
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" : X ( -- ) 0 300 swap drop U8C ;"
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" : X ( -- ) 300 >r r> U8C ;"
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" : X ( bool -- ) if 300 else 300 then U8C ;"
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED
+   s" : X ( ptr u16 -- ) 70000 swap ! ;"
+   s" literal `70000` does not fit `u16` (`0`..`65535`)" LIT-REFUSED
+   \ The callable's variable takes `u16` from the pointee, which is demanded; a
+   \ rule that treats every link between variables as provided accepts this.
+   s" : X ( ptr u16 -- ) 70000 swap [: ! ;] K ;"
+   s" literal `70000` does not fit `u16` (`0`..`65535`)" LIT-REFUSED
+   s" : X ( -- ) 300 {: c :} c U8C ;"
+   s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED ;
+
+
+\ A literal that fits, arithmetic, a join of different literals and a loop's
+\ carried cell give no refusal.
+: TEST-LITERAL-ACCEPTED ( -- )
+   s" : X ( -- ) 255 U8C ;" LIT-ACCEPTED
+   s" : X ( -- ) 0 U8C ;" LIT-ACCEPTED
+   s" : X ( -- ) -1 I64C ;" LIT-ACCEPTED
+   s" : X ( -- ) -1 NC ;" LIT-ACCEPTED
+   s" : X ( -- ) 300 1 - U8C ;" LIT-ACCEPTED
+   s" : X ( ptr u16 -- ) 65 swap ! ;" LIT-ACCEPTED
+   s" : X ( bool -- ) if 5 else 300 then U8C ;" LIT-ACCEPTED
+   \ The carried cell is an `n`, which passes into `u8`; a rule that refuses an
+   \ `n` there refuses this.
+   s" : X ( -- ) 300 begin dup U8C 1+ dup 310 = until drop ;" LIT-ACCEPTED
+   s" : X ( -- ) 0 begin drop 5 dup 3 = until drop ;" LIT-ACCEPTED
+   s" : X ( -- ) 300 0 swap drop U8C ;" LIT-ACCEPTED
+   \ A variable bound from the stack's own cell demands nothing of the literal,
+   \ whichever argument binds it first.
+   s" : X ( u8 -- ) 300 EQ2 ;" LIT-ACCEPTED
+   s" : X ( u8 -- ) 300 swap EQ2 ;" LIT-ACCEPTED
+   \ Through a callable's shared variable the `u8` still comes from the stack's
+   \ cell: the chain is provided as its last variable is.
+   s" : X ( u8 -- ) 300 [: EQ2 ;] K ;" LIT-ACCEPTED
+   s" : X ( u8 -- ) 300 swap [: EQ2 ;] K ;" LIT-ACCEPTED
+   \ A chain the pointee demands still admits a literal that fits.
+   s" : X ( ptr u16 -- ) 65 swap [: ! ;] K ;" LIT-ACCEPTED ;
+
+
+: TEST-LITERAL-FIT ( -- )
+   TEST-LITERAL-REFUSED
+   TEST-LITERAL-ACCEPTED ;
+
 \ A match whose scrutinee does not fit, and a match or case one of whose
 \ branches fails, still has live words, in its branches and after it, that the
 \ load compiles: the first undefined one refuses the definition.
@@ -2127,6 +2220,7 @@ variable RC
    TEST-SEALED-DUPLICATE
    TEST-STALE-PARSE-IMM
    TEST-OWN-PARSE-IMM
+   TEST-LITERAL-FIT
    FS:CLEANUP-RUN
    T-REPORT
    s" diag-position-test: ok" type cr ;

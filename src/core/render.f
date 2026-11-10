@@ -856,6 +856,13 @@ variable DSUGE  variable DSUGA
    JNN @ BEGIN dup 0 > WHILE
       1 - dup JNBUF + c@ EMIT1
    REPEAT drop ;
+
+\ A signed number in decimal, as JNUM prints one from 0 up.
+: SNUM ( n -- ) {: v:n :}
+   v 0 >= IF v JNUM EXIT THEN
+   45 EMIT1
+   v 1 63 lshift = IF s" 9223372036854775808" DTXT EXIT THEN
+   v negate JNUM ;
 \ A tool's label (checker.f DIAG-FILE!) names a top step's file in place of its
 \ path while the load reads that file or none.
 : TOP-FILE$ ( -- ptr u8 n )
@@ -1067,6 +1074,7 @@ variable MDV-I   variable MDV-F
       MD-STALE-READ   of s" E-STALE-READ" endof
       MD-TOP-UNKNOWN  of s" E-STALE-READ" endof
       MD-TAIL-ESCAPE  of s" E-MISMATCH" endof
+      MD-LIT-FIT      of s" E-MISMATCH" endof
       MD-SCOPE-STORE  of s" E-SCOPED-STORAGE" endof
       MD-SCOPE-KIND   of s" E-SCOPE-TYPE" endof
       MD-C2-COPY      of s" E-C2-COPY" endof
@@ -1121,6 +1129,7 @@ variable MDV-I   variable MDV-F
       MD-STALE-READ   of s" keep_value_before_catch" endof
       MD-TOP-UNKNOWN  of s" drop_unknown_cell" endof
       MD-TAIL-ESCAPE  of s" fix_type" endof
+      MD-LIT-FIT      of s" fix_type" endof
       MD-SCOPE-STORE  of s" keep_scoped_value_on_stack" endof
       MD-SCOPE-KIND   of s" fix_scope_parameter" endof
       MD-C2-COPY      of s" move_exclusive_value" endof
@@ -1231,6 +1240,7 @@ variable MDV-I   variable MDV-F
       MD-STALE-READ   of s" `catch` puts the stacks back to the DEPTH it was entered at and never to their contents, so a cell the caught body may have written on a throw path holds an unknown machine word afterwards. Bind the value to a local BEFORE the catch and use the local, or drop the cell. A stale cell may still be moved, dropped, or bound to an untyped local." endof
       MD-TOP-UNKNOWN  of s" The interpret row knows only the cells pushed while it checks; a cell beneath them was left before checking began or by a `0 set-check` window, so its type is unknown. Push the value with checking on, or drop the cell. An unknown cell may still be moved, dropped, or bound to an untyped local." endof
       MD-TAIL-ESCAPE  of TAIL-SUGGEST$ endof
+      MD-LIT-FIT      of s" Write a value in range, or widen the declared type." endof
       MD-SCOPE-STORE  of s" Keep the scoped value on the stack or in a local; ordinary memory has no scope dependency declaration." endof
       MD-SCOPE-KIND   of s" Use a scope parameter only in a declared scope slot; it is neither a value type nor an allocation identity." endof
       MD-C2-COPY      of s" Move the exclusive value once instead of copying it." endof
@@ -1294,6 +1304,7 @@ variable MDV-I   variable MDV-F
       MD-STALE-READ   of s" stale cell: this reads a cell `catch` left stale (a throw path of the caught body may have overwritten it)" endof
       MD-TOP-UNKNOWN  of s" unknown cell: this reads a cell beneath the cells the interpret row knows (left before checking began or by a `0 set-check` window)" endof
       MD-TAIL-ESCAPE  of s" callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on" endof
+      MD-LIT-FIT      of s" literal" endof
       MD-SCOPE-STORE  of s" scoped storage: ordinary memory cannot retain a scope dependency" endof
       MD-SCOPE-KIND   of s" scope parameter: a scope identity cannot stand in for a value type" endof
       MD-C2-COPY      of s" exclusive value copied" endof
@@ -1349,12 +1360,6 @@ variable MDV-I   variable MDV-F
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
 
-\ The counts a reason carries: the underflow's shortfall, or a too-deep effect's
-\ depth or a too-wide input row's width against its ceiling, a definition's
-\ (MDIAG-DEPTH, MDIAG-WIDTH) or a stored signature's (SGBAD-SIZE), or the
-\ control frames a too-deep opener would have nested, always one past
-\ CF-FRAMES-MAX. One word serves the prose line and the JSON string, where EMIT1
-\ escapes it.
 : MDIAG-UF-COUNTS ( -- )
    s"  (needs " DTXT  MDIAG-NEED @ JNUM
    s" , has " DTXT  MDIAG-HAVE @ JNUM  s" )" DTXT ;
@@ -1372,9 +1377,19 @@ variable MDV-I   variable MDV-F
    s"  (" DTXT  width JNUM
    s"  cells, at most " DTXT  EFFECT-MIN-IN-MAX JNUM  s" )" DTXT ;
 
+\ The literal that does not fit and its type's range, after the reason's
+\ `literal`: `300` does not fit `u8` (`0`..`255`).
+: LIT-FIT-COUNTS ( -- )
+   s"  `" DTXT  MDIAG-LITV @ SNUM
+   s" ` does not fit `" DTXT  MDIAG-LITT @ CT-NAME$ DTXT
+   s" ` (`0`..`" DTXT  MDIAG-LITT @ LIT-HI JNUM  s" `)" DTXT ;
 
+
+\ What a reason carries after its prose: a held row, a literal's range, or the
+\ counts of an underflow, depth, width or frames, for prose and JSON alike.
 : MDIAG-COUNTS ( -- )
    MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " DTXT  TCAP-HELD$ DTXT EXIT THEN
+   MDIAG @ MD-LIT-FIT = IF LIT-FIT-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
    MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS EXIT THEN

@@ -44,6 +44,9 @@ defer GET-I64 ( -- i64 )
 \ Generic one-of-two: a join of its two arguments' types.
 : TAIL-PICK1 ( a a -- a ) nip ;
 : TAIL-PICK2 ( a a -- a ) drop ;
+\ Generic two-argument call: its callable takes both arguments' types.
+: TAIL-EQ2 ( a a -- ) 2drop ;
+: TAIL-K ( a b [ a b -- ] -- ) execute ;
 \ Three deep: an output's output, an input's input, and both.
 : TAIL-N3 ( R [ R -- R [ R -- R [ -- S ] ] ] -- S ) execute execute execute ;
 : TAIL-D3 ( R [ R [ R [ -- S ] -- S ] -- S ] -- S ) [: TAIL-G ;] swap execute ;
@@ -208,6 +211,10 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" CS-K35 ( R [ R [ R -- R ] -- R ] [ R -- R ] -- R ) >r [: CHECKER-SOUNDNESS:TAIL-UNDER ;] CHECKER-SOUNDNESS:TAIL-PICK1 r> CHECKER-SOUNDNESS:TAIL-APPLY"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K36 ( R [ R [ R -- R ] -- R ] [ R -- R ] -- R ) >r [: CHECKER-SOUNDNESS:TAIL-UNDER ;] swap CHECKER-SOUNDNESS:TAIL-PICK2 r> CHECKER-SOUNDNESS:TAIL-APPLY"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K92 ( R [ R [ R -- R ] -- R ] -- R ) [: CHECKER-SOUNDNESS:TAIL-UNDER ;] [: CHECKER-SOUNDNESS:TAIL-EQ2 ;] CHECKER-SOUNDNESS:TAIL-K"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K93 ( R [ R [ R -- R ] -- R ] -- R ) [: CHECKER-SOUNDNESS:TAIL-UNDER ;] swap [: CHECKER-SOUNDNESS:TAIL-EQ2 ;] CHECKER-SOUNDNESS:TAIL-K"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" the refusal names the side whose row escaped, whichever branch holds it" T-LABEL
    s" : CS-K71 ( R [ R [ R -- R ] -- R ] [ R -- R ] f -- R ) swap >r IF drop [: CHECKER-SOUNDNESS:TAIL-UNDER ;] ELSE THEN r> CHECKER-SOUNDNESS:TAIL-APPLY ;" 70

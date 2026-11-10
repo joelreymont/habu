@@ -706,11 +706,12 @@ CHECKER-REG:}SCRATCH
 variable TOP-UNKNOWN
 
 \ Unification trail: one entry (var-id << 4 | tag) per binding, compression
-\ link, kind raise or scope raise; TRAIL-UNWIND and AT-PIN restore any height.
+\ link or provenance, kind raise or scope raise; TRAIL-UNWIND and AT-PIN
+\ restore any height.
 4096 constant TRAIL-INIT        \ trail entries (grows on demand)
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
-PTR-VARIABLE TRAIL-OLD-P   \ by trail index: the stored link a compression entry replaced
+PTR-VARIABLE TRAIL-OLD-P   \ by trail index: the stored link or provenance a compression entry replaced
 variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (ROWS-PIN), 0 none
 CHECKER-REG:}SCRATCH
 : TRAIL ( -- ptr n ) TRAIL-P @ ;
@@ -727,14 +728,15 @@ CHECKER-REG:}SCRATCH
 \ The tag says what to put back, so a kind raise restores the kind it displaced:
 \ resetting a fenced var to TVK-ANY on rollback would drop the base-address
 \ fence on every row an abandoned prim-overload trial touched.
-: TRAIL-PUSH ( n n -- )   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY, 12=TVT link, 13=RVT link
+: TRAIL-PUSH ( n n -- )   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY, 12=TVT link, 13=RVT link, 14=TVP provenance
    {: id:n tag:n :}
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 16 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
 
 
-\ A compression entry (tag 12 or 13) keeps the stored link it replaces.
+\ A compression entry (tag 12, 13 or 14) keeps the stored link or provenance it
+\ replaces.
 : TRAIL-LINK ( n n n -- )
    {: old:n id:n tag:n :}
    id tag TRAIL-PUSH
@@ -757,6 +759,7 @@ CHECKER-REG:}SCRATCH
    tag 0=  tag 12 = or IF TVT off + EXIT THEN
    tag 1 =  tag 13 = or IF RVT off + EXIT THEN
    tag 8 = IF NSCOPE off + EXIT THEN
+   tag 14 = IF TVP off + EXIT THEN
    TVK off + ;
 
 
@@ -764,7 +767,7 @@ CHECKER-REG:}SCRATCH
    {: i:n :}
    i cells TRAIL + @ {: e:n :}
    e 15 and {: tag:n :}
-   tag 12 =  tag 13 = or IF i cells TRAIL-OLD + @  e TRAIL-SLOT !  EXIT THEN
+   tag 12 =  tag 13 = or  tag 14 = or IF i cells TRAIL-OLD + @  e TRAIL-SLOT !  EXIT THEN
    tag 0=  tag 1 = or  tag 8 = or IF 0 ELSE tag TRAIL-KIND-OF THEN
    e TRAIL-SLOT ! ;
 
@@ -1570,6 +1573,9 @@ CHECKER-REG:}SCRATCH
 3 constant CP-NORMAL
 4 constant CP-FACT
 5 constant CP-LOCAL
+\ A body's number token pushes a cell holding its value in CP-ID; stack words
+\ and equal joins carry it, LIT-FITS? judges it, no effect record keeps it.
+6 constant CP-LIT
 : CP-BASE ( -- ptr n ) CP-P @ ;
 : CP-AT ( n -- ptr n ) 1- 32 * CP-BASE + ;
 : CP-KIND ( n -- n ) CP-AT @ ;
@@ -1623,6 +1629,14 @@ variable FM-CUR  variable FM-ACC
 : ROW-VALUE? ( n -- bool )
    dup 0= IF drop RES-TRUE EXIT THEN
    ROW-NODE? ;
+
+: CP-LIT? ( n -- bool ) {: pf:n :}
+   pf 0= IF RES-FALSE EXIT THEN
+   pf CP-KIND CP-LIT = ;
+
+\ A loop's carried-cell comparison reads a literal fact as none: a loop entry
+\ drops every literal fact (ROW-NO-LIT).
+: PF-NO-LIT ( n -- n ) dup CP-LIT? IF drop 0 THEN ;
 
 : CP-SAME? ( n n -- bool ) {: a:n b:n :}
    a b = IF RES-TRUE EXIT THEN
@@ -1765,8 +1779,16 @@ PTX-BARRIER-DEFAULT
    v ISVAR 0= IF RES-FALSE EXIT THEN
    v PAY TV@ UNBOUND <> ;
 
-\ Each link that changes is trailed (TRAIL-LINK), so an unwind or AT-PIN puts it back.
+\ A bound var's chain is provided as its last bound var is: the one bound to a
+\ term that is not a var, or to a var still unbound (TV-BIND).
+: T-PROV? ( n -- bool )
+   BEGIN dup PAY TV@ dup T-BOUND-VAR? WHILE nip REPEAT drop PAY TV-PROV? ;
+
+\ Each link and each provenance that changes is trailed (TRAIL-LINK), so an
+\ unwind or AT-PIN puts it back. Each shortcut var takes the chain's
+\ provenance (T-PROV?).
 : T-COMPRESS ( n n -- ) {: root:n :}
+   dup T-BOUND-VAR? IF dup T-PROV? ELSE RES-FALSE THEN {: prov:bool :}
    TCMP !
    BEGIN TCMP @ T-BOUND-VAR? WHILE
       TCMP @ PAY {: id:n :}
@@ -1774,6 +1796,10 @@ PTX-BARRIER-DEFAULT
       nxt root <> IF
          id cells TVT + @  id 12 TRAIL-LINK
          root 1+ id cells TVT + !
+         id TV-PROV? prov xor IF
+            id cells TVP + @  id 14 TRAIL-LINK
+            id prov TV-PROV!
+         THEN
       THEN
       nxt TCMP !
    REPEAT ;
@@ -1828,6 +1854,16 @@ PTX-BARRIER-DEFAULT
    node P>REST RECURSE node swap P-COPY {: copy:n :}
    0 copy P-PROOF!
    copy ;
+\ The row with every literal fact taken off its cells; a row holding none is
+\ answered as it is.
+: ROW-NO-LIT ( n -- n )
+   R-RES {: node:n :}
+   node TAG S-PUSH <> IF node EXIT THEN
+   node P>REST RECURSE {: rest:n :}
+   node P>PROOF CP-LIT? 0=  rest node P>REST R-RES =  and IF node EXIT THEN
+   node rest P-COPY {: copy:n :}
+   node P>PROOF CP-LIT? IF 0 copy P-PROOF! THEN
+   copy ;
 
 CHECKER-REG:SCRATCH{
 variable JOIN-FACTS
@@ -1847,8 +1883,8 @@ CHECKER-REG:}SCRATCH
 : T-UNSTALE ( n -- n )
    T-RES dup TAG T-STALE = IF STALE>INNER T-RES THEN ;
 
-\ MAXUWL sizes six parallel worklist arrays (UWL and the five per-pair flag
-\ tables below), 48 bytes of boot DP per cell. There is no grow path (U-PUSH
+\ MAXUWL sizes eight parallel worklist arrays (UWL and the seven per-pair
+\ tables below), 64 bytes of boot DP per cell. There is no grow path (U-PUSH
 \ refuses by name when full), so the margin is wide: measured high-water of USP
 \ is 12 pairs over a self-build and 48 over every checker suite
 \ (test/enum-decl-suite.f); 1024 is 21x that.
@@ -1861,6 +1897,8 @@ variable UOK
 variable UF-ACT   variable UF-EXP   variable UF-SET
 variable TAIL-HIT   \ this unify let a declared callable's implicit tail escape (QUOT-PAIR); CELL-DIAG! names it
 variable TAIL-SKOLEM   variable TAIL-ROW   \ TAIL-HIT: the held tail and the row it escaped into (HOLD-ESCAPE?)
+variable LIT-HIT   \ this unify met a literal that does not fit its type (LIT-FITS?); CELL-DIAG! names it
+variable LIT-V   variable LIT-T   \ LIT-HIT: the literal's value and the type code it did not fit
 \ Parallel per-pair strictness flag, keyed by the pair's base worklist index.
 \ Strict pairs (pointer pointees) unify by equality/var-binding only — integer
 \ widening (INT-WIDENS?) applies to top-level scalar stack cells, never to a
@@ -1887,6 +1925,9 @@ create UWL-ARG MAXUWL cells allot    variable CUR-ARG
 \ a set bit is demanded (a declaration), a clear one provided (a value).
 \ QUOT-PAIR holds a demanded quotation's implicit tails rigid.
 create UWL-ROLE MAXUWL cells allot   variable CUR-ROLE
+\ Parallel per-pair literal fact: the actual cell's CP-LIT proof, 0 for none or
+\ when the wanted side's chain is provided (U-TYPE); LIT-FITS? reads it.
+create UWL-LIT MAXUWL cells allot    variable CUR-LIT
 1 constant ROLE-D1   2 constant ROLE-D2
 variable CALL-DIN   variable CALL-DOUT
 CHECKER-REG:SCRATCH{
@@ -1921,6 +1962,7 @@ CWIN-BOOT-DEFAULT
    CUR-QUOT @ USP @ cells UWL-QUOT + !
    CUR-ARG @ USP @ cells UWL-ARG + !
    CUR-ROLE @ USP @ cells UWL-ROLE + !
+   CUR-LIT @ USP @ cells UWL-LIT + !
    swap U-PUSH U-PUSH ;
 
 
@@ -1931,6 +1973,7 @@ CWIN-BOOT-DEFAULT
    CUR-QUOT @ USP @ cells UWL-QUOT + !
    CUR-ARG @ USP @ cells UWL-ARG + !
    CUR-ROLE @ USP @ cells UWL-ROLE + !
+   0 USP @ cells UWL-LIT + !
    swap U-PUSH U-PUSH ;
 
 
@@ -1948,7 +1991,8 @@ CWIN-BOOT-DEFAULT
    USP @ cells UWL-CALL + @ CUR-CALL !
    USP @ cells UWL-QUOT + @ CUR-QUOT !
    USP @ cells UWL-ARG + @ CUR-ARG !
-   USP @ cells UWL-ROLE + @ CUR-ROLE ! ;
+   USP @ cells UWL-ROLE + @ CUR-ROLE !
+   USP @ cells UWL-LIT + @ CUR-LIT ! ;
 
 
 \ A refused unification can stop with pairs still queued. A source load has
@@ -1962,7 +2006,8 @@ CWIN-BOOT-DEFAULT
    UWL-CALL 0 MAXUWL ARENA-CELLS-ZERO
    UWL-QUOT 0 MAXUWL ARENA-CELLS-ZERO
    UWL-ARG 0 MAXUWL ARENA-CELLS-ZERO
-   UWL-ROLE 0 MAXUWL ARENA-CELLS-ZERO ;
+   UWL-ROLE 0 MAXUWL ARENA-CELLS-ZERO
+   UWL-LIT 0 MAXUWL ARENA-CELLS-ZERO ;
 
 
 : U-FAIL ( n n -- ) {: act:n exp:n :}
@@ -2599,6 +2644,25 @@ public
    UNIFY-KIND @ UK-INPUT = IF RES-TRUE EXIT THEN
    UNIFY-KIND @ UK-COERCE = ;
 
+\ The largest literal a fixed-width unsigned type takes, each from 0; -1 for a
+\ type that takes any literal or is not this rule's (a role, a non-integer).
+: LIT-HI ( n -- n ) {: code:n :}
+   code CC-U8 =  code CC-CHAR =  or IF 255 EXIT THEN
+   code CC-U16 = IF 65535 EXIT THEN
+   code CC-U32 = IF 4294967295 EXIT THEN
+   -1 ;
+
+\ A literal on the compared cell (CUR-LIT) passes into the demanded type code
+\ want only when it fits; a misfit latches LIT-HIT for CELL-DIAG!.
+: LIT-FITS? ( n -- bool ) {: want:n :}
+   CUR-LIT @ 0= IF RES-TRUE EXIT THEN
+   want LIT-HI {: hi:n :}
+   hi 0 < IF RES-TRUE EXIT THEN
+   CUR-LIT @ CP-ID {: v:n :}
+   v 0 >=  v hi <=  and IF RES-TRUE EXIT THEN
+   v LIT-V !  want LIT-T !  -1 LIT-HIT !
+   RES-FALSE ;
+
 \ Exact joins require the same concrete code except for generic n/int-family
 \ interaction. Input/output checks use the integer lattice: a narrower concrete
 \ int flows into a wider one; widening never applies to nominal roles
@@ -2609,7 +2673,10 @@ public
 : CON-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 PAY t2 PAY = IF RES-TRUE EXIT THEN
    CUR-STRICT @ 0 <> IF RES-FALSE EXIT THEN
-   UNIFY-WIDEN? IF t1 PAY t2 PAY INT-WIDENS? EXIT THEN
+   UNIFY-WIDEN? IF
+      t2 PAY LIT-FITS? 0= IF RES-FALSE EXIT THEN
+      t1 PAY t2 PAY INT-WIDENS? EXIT
+   THEN
    t1 PAY CC-N = t2 PAY INT-FAM? and IF RES-TRUE EXIT THEN
    t2 PAY CC-N = t1 PAY INT-FAM? and IF RES-TRUE EXIT THEN
    RES-FALSE ;
@@ -4299,21 +4366,20 @@ defer U-DRAIN-XT ( n -- )
    -1 HOLD-N +! ;
 
 
-\ A quotation reached through a type variable bound from a provided side is
-\ provided, whichever position it takes: X-PICK1's `( a a -- a )` binds a from
-\ its first argument, so its second meets the first as a join. A variable bound
-\ from a demanded side (the pointee of `!`) keeps the side's role. A pointer
-\ pair and a family argument pair hand over resolved terms, so it never
-\ relaxes a side of storage: a provided binding does not make a pointee one.
+\ A side holding a quotation through a provided chain (T-PROV?) is provided;
+\ pointee and family argument pairs hand over resolved terms and keep roles.
 : ROLE-ALIAS ( n n -- n n )
    {: a:n b:n :}
-   a T-BOUND-VAR? IF a T-RES TAG T-QUOT = a PAY TV-PROV? and IF CUR-ROLE @ ROLE-D1 invert and CUR-ROLE ! THEN THEN
-   b T-BOUND-VAR? IF b T-RES TAG T-QUOT = b PAY TV-PROV? and IF CUR-ROLE @ ROLE-D2 invert and CUR-ROLE ! THEN THEN
+   a T-BOUND-VAR? IF a T-RES TAG T-QUOT = a T-PROV? and IF CUR-ROLE @ ROLE-D1 invert and CUR-ROLE ! THEN THEN
+   b T-BOUND-VAR? IF b T-RES TAG T-QUOT = b T-PROV? and IF CUR-ROLE @ ROLE-D2 invert and CUR-ROLE ! THEN THEN
    a b ;
 
 
+\ A wanted side that is a variable whose chain is provided (T-PROV?) demands
+\ nothing of a literal: the pair then reads no literal fact (CUR-LIT, LIT-FITS?).
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
-   ROLE-ALIAS T-RES swap T-RES swap
+   ROLE-ALIAS  dup T-BOUND-VAR? IF dup T-PROV? IF 0 CUR-LIT ! THEN THEN
+   T-RES swap T-RES swap
    over NO-SCOPE-PTR? over NO-SCOPE-PTR? and 0= IF 1 SCOPE-HIT ! U-FAIL EXIT THEN
    2dup = IF 2drop EXIT THEN
    2dup SCOPE-INTRO-READY? IF SCOPE-INTRO-PAIR-XT EXIT THEN
@@ -4392,12 +4458,13 @@ defer U-DRAIN-XT ( n -- )
 
 
 \ The row below the group at grp, true when each field has node's proof (as
-\ CELL-FIELDS gives a field) and lost lineage.
+\ CELL-FIELDS gives a field) and lost lineage; a literal fact is none (PF-NO-LIT).
 : GROUP-META= ( n n -- n bool )
    {: node:n grp:n :}
    grp  grp P>TYPE T-RES T-WIDTH 0 ?do
       R-RES dup TAG S-PUSH <> IF RES-FALSE unloop EXIT THEN
-      dup P>TYPE T-UNSTALE node P>PROOF swap FIELD-PROOF  over P>PROOF CP-SAME?
+      dup P>TYPE T-UNSTALE node P>PROOF PF-NO-LIT swap FIELD-PROOF
+      over P>PROOF PF-NO-LIT CP-SAME?
       0= IF RES-FALSE unloop EXIT THEN
       dup P>LOST node P>LOST <> IF RES-FALSE unloop EXIT THEN
       P>REST
@@ -4405,7 +4472,7 @@ defer U-DRAIN-XT ( n -- )
 
 
 \ Two edges carry the same proofs and lost lineage; a logical cell compares
-\ with each field of its group (LOGHID-JOIN?).
+\ with each field of its group (LOGHID-JOIN?), and a literal fact is none.
 : ROW-META= ( n n -- bool )
    {: a:n b:n :}
    a R-RES {: an:n :}  b R-RES {: bn:n :}
@@ -4418,7 +4485,7 @@ defer U-DRAIN-XT ( n -- )
    an bn LOGHID-JOIN? IF
       bn an GROUP-META= IF bn P>REST RECURSE ELSE drop RES-FALSE THEN EXIT
    THEN
-   an P>PROOF bn P>PROOF CP-SAME? 0= IF RES-FALSE EXIT THEN
+   an P>PROOF PF-NO-LIT bn P>PROOF PF-NO-LIT CP-SAME? 0= IF RES-FALSE EXIT THEN
    an P>LOST bn P>LOST <> IF RES-FALSE EXIT THEN
    an P>REST bn P>REST RECURSE ;
 
@@ -4457,8 +4524,10 @@ defer U-DRAIN-XT ( n -- )
 
 : U-ROW-DESCEND ( n n -- ) {: r1:n r2:n :}
    CUR-UPOS @ {: e:n :}
+   0 CUR-LIT !
    e UPOS-REST CUR-UPOS !  r1 P>REST r2 P>REST PAIR
    0 CUR-CALL !
+   r1 P>PROOF dup CP-LIT? 0= IF drop 0 THEN CUR-LIT !
    e UPOS-TYPE CUR-UPOS !  r1 P>TYPE r2 P>TYPE PAIR ;
 
 : U-CALL-TAIL ( n n -- ) {: r1:n r2:n :}
@@ -4522,7 +4591,7 @@ U-DRAIN-INSTALL
    0 FORALL-OPEN-N !
    SCOPE-INTRO-ON @ UNIFY-KIND @ UK-INPUT = and CUR-ARG !
    CALL-ARMED @ CUR-CALL !
-   0 UF-ACT !  0 UF-EXP !  0 UF-SET !  0 TAIL-HIT !
+   0 UF-ACT !  0 UF-EXP !  0 UF-SET !  0 TAIL-HIT !  0 LIT-HIT !  0 CUR-LIT !
    UNIFY-KIND @ UK-JOIN = IF 0 ELSE ROLE-D2 THEN CUR-ROLE !   0 HOLD-N !   0 HOLD-I-N !
    -2 CUR-UPOS !  -1 UF-POSN !   \ root row pair opens the spine at cursor 0
    PAIR  0 U-DRAIN
@@ -4829,33 +4898,34 @@ CHECKER-REG:}SCRATCH
 39 constant MD-INPUT-WIDTH   \ an input row wider than EFFECT-MIN-IN-MAX cells (CHECK-DEPTH-FITS)
 40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN); same E-STALE-READ code, its own prose and repair class
 41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
-42 constant MD-IN-PLACE      \ `@`/`!` would move a layout holding an arena head whole (IN-PLACE?)
-43 constant MD-ARENA-CALL    \ the storage runtime named outside ARENA's or HEAP's generated words (ARENA-CALL-REFUSE?)
-44 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
-45 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
-46 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code as check.f's
+42 constant MD-LIT-FIT       \ a literal reached a fixed-width type it does not fit (LIT-FITS? LIT-HIT); same E-MISMATCH code, its own prose and suggestion
+43 constant MD-IN-PLACE      \ `@`/`!` would move a layout holding an arena head whole (IN-PLACE?)
+44 constant MD-ARENA-CALL    \ the storage runtime named outside ARENA's or HEAP's generated words (ARENA-CALL-REFUSE?)
+45 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
+46 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
+47 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code as check.f's
 \ The control-flow refusals (CF-FAIL). A data depth change is E-MISMATCH and
 \ prints the loop's start row and the row at its back edge or leave; the others
 \ are E-REJECTED.
-47 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
-48 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
-49 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose proof or lineage differs, at the same depths (CF-CARRIED=)
-50 constant MD-NO-LOOP       \ i, leave, unloop, loop or +loop with no loop open
-51 constant MD-NO-OUTER-LOOP \ j with fewer than two loops open
-52 constant MD-CLOSES-NOTHING \ a closer over no frame or another kind's (CF-AT?); a loop or +loop only where a DO is open in its body (CF-LOOP-WHY)
-53 constant MD-NO-CASE       \ of over no case frame (CF-AT?)
-54 constant MD-ELSE-TWICE    \ a second else in one if (CF-ELSE)
-55 constant MD-EXIT-LOOP     \ exit while a loop no unloop closed is open (CF-EXIT)
-56 constant MD-UNLOOP-JOIN   \ paths meet with different loops unlooped (CF-LOOPS=)
-57 constant MD-CF-OPEN       \ a control structure open at the definition's end
+48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
+49 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
+50 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose proof or lineage differs, at the same depths (CF-CARRIED=)
+51 constant MD-NO-LOOP       \ i, leave, unloop, loop or +loop with no loop open
+52 constant MD-NO-OUTER-LOOP \ j with fewer than two loops open
+53 constant MD-CLOSES-NOTHING \ a closer over no frame or another kind's (CF-AT?); a loop or +loop only where a DO is open in its body (CF-LOOP-WHY)
+54 constant MD-NO-CASE       \ of over no case frame (CF-AT?)
+55 constant MD-ELSE-TWICE    \ a second else in one if (CF-ELSE)
+56 constant MD-EXIT-LOOP     \ exit while a loop no unloop closed is open (CF-EXIT)
+57 constant MD-UNLOOP-JOIN   \ paths meet with different loops unlooped (CF-LOOPS=)
+58 constant MD-CF-OPEN       \ a control structure open at the definition's end
 
 \ Uncheckable, not refused (UNCK-REASON?): E-UNCHECKABLE.
-58 constant MD-CF-DEPTH      \ an opener found all CF-FRAMES-MAX control frames in use (CF-PUSH)
-59 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
-60 constant MD-RECURSE-DOES  \ a RECURSE in a does> clause, which calls the defining word (CF-RECURSE)
+59 constant MD-CF-DEPTH      \ an opener found all CF-FRAMES-MAX control frames in use (CF-PUSH)
+60 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
+61 constant MD-RECURSE-DOES  \ a RECURSE in a does> clause, which calls the defining word (CF-RECURSE)
 
-61 constant MD-IF-DEPTH      \ an if's arm leaves another data depth than the if started with (CF-THEN)
-62 constant MD-ARMS-DEPTH    \ an if's two arms leave different data depths (CF-THEN-ELSE-MERGE)
+62 constant MD-IF-DEPTH      \ an if's arm leaves another data depth than the if started with (CF-THEN)
+63 constant MD-ARMS-DEPTH    \ an if's two arms leave different data depths (CF-THEN-ELSE-MERGE)
 
 \ Why the check left a stretch or definition to the run (DEFER-WHY), each with
 \ its own suggestion (render.f DEFER-SUGGEST$); 0 is no cause recorded.
@@ -4882,6 +4952,8 @@ variable MDIAG-NEED   \ underflow: cells the refused step's input row needs
 variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepest row
 variable MDIAG-WIDTH  \ input width: the cells of the input row a record would hold
+variable MDIAG-LITV   \ literal misfit: the literal's value
+variable MDIAG-LITT   \ literal misfit: the type code it does not fit
 variable DEFER-WHY    \ the next deferral packet's cause (a DW- code; 0 = none)
 CHECKER-REG:}SCRATCH
 
@@ -4942,6 +5014,9 @@ TAIL-CAPTURE-DEFAULT
    BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN   \ each with the base it was raised on
    TAIL-HIT @ IF   \ captured only when this refusal latches the reason
       MDIAG @  MD-TAIL-ESCAPE MDIAG!  MDIAG @ <> IF TAIL-CAPTURE-XT THEN
+   THEN
+   LIT-HIT @ IF   \ the value and type copied only when this refusal latches the reason
+      MDIAG @  MD-LIT-FIT MDIAG!  MDIAG @ <> IF LIT-V @ MDIAG-LITV !  LIT-T @ MDIAG-LITT ! THEN
    THEN ;
 
 
@@ -19069,13 +19144,22 @@ defer C2-STOW-BORROW-HOOK ( -- )
    THEN
    RES-TRUE ;
 
+\ The literal fact v (CP-LIT) on the cell the token just pushed.
+: LIT-FACT! ( n -- ) {: v:n :}
+   OK @ 0= IF EXIT THEN
+   DCUR @ R-RES {: top:n :}
+   top TAG S-PUSH <> IF EXIT THEN
+   top top P>REST P-COPY {: copy:n :}
+   CP-LIT v 0 0 CP-NEW copy P-PROOF!
+   copy DCUR ! ;
+
 \ A literal the engine does not admit fails and files nothing: EV-UNJUDGED makes
 \ it a name with no record.
 : LITERAL-TOK? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u ALLDIG? IF
       a u INTEGER-LITERAL-ADMITTED? IF
-         CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT
+         dup CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT  LIT-FACT!
       ELSE drop  0 OK !  -1 FAILSET ! THEN
       RES-TRUE EXIT
    THEN
@@ -21904,7 +21988,13 @@ CHECKER-REG:}SCRATCH
    dup 0 < IF drop MD-NO-LOOP CF-FAIL EXIT THEN
    CF-LOOP-BIT invert CF-LOOPS @ and CF-LOOPS ! ;
 
+\ A loop entry drops every literal fact: a carried cell is not a literal on the
+\ second pass.
+: CF-LOOP-ENTRY ( -- )
+   DCUR @ ROW-NO-LIT DCUR !  RCUR @ ROW-NO-LIT RCUR ! ;
+
 : CF-BEGIN ( -- )
+   CF-LOOP-ENTRY
    3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 
 
@@ -21953,6 +22043,7 @@ CHECKER-REG:}SCRATCH
 
 : CF-DO ( -- )
    STEP-NN-IN
+   CF-LOOP-ENTRY
    5 DCUR @ 0 RCUR @ 0 CF-PUSH
    0 CF-TOP CF.DED !
    #CFC @ 1 - CF-LOOP-BIT CF-LOOPS @ or CF-LOOPS ! ;
@@ -26168,7 +26259,7 @@ CHECKER-REG:}SCRATCH
    0 ZSHAPE !
    0 CHECKER-MATCH-MODE !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
-   0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 UNFIT !
+   0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
