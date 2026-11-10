@@ -1109,16 +1109,6 @@ private
 
 public
 
-: OWNED-BASES ( [ ptr u8 -- ] -- )
-   {: claim :}
-   FN-TABLE BYTE-VIEW claim execute
-   LIB-TABLE BYTE-VIEW claim execute ;
-
-: OWNED-CAPS ( [ ptr u8 -- ] -- )
-   {: claim :}
-   FN-CAP BYTE-VIEW claim execute
-   LIB-CAP BYTE-VIEW claim execute ;
-
 \ A stripped build loads its linker after the application's DATA span closes.
 \ Remember the application's declaration boundary and current table allocation.
 : IMAGE-MARK ( -- n n ptr u8 ptr u8 )
@@ -1126,11 +1116,6 @@ public
 
 : IMAGE-CAPS ( -- n n )
    FN-CAP @ LIB-CAP @ ;
-
-: OWNED-COUNTS ( [ ptr u8 -- ] -- )
-   {: claim :}
-   FN-N BYTE-VIEW claim execute
-   LIB-N BYTE-VIEW claim execute ;
 
 
 \ FUNCTION: - declare a foreign function, get a checked word.

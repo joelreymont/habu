@@ -73,9 +73,6 @@ public
 : OBSERVE ( ptr u8 n ptr u8 n -- )
    OBSERVER @ dup 0= if drop 2drop 2drop exit then OBSERVER-XT execute ;
 
-: OWNED-CELLS ( [ ptr u8 -- ] -- )
-   OBSERVER BYTE-VIEW swap execute ;
-
 ;package
 
 : GETENV ( ptr u8 n -- ptr u8 n )

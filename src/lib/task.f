@@ -200,9 +200,6 @@ CAST: TASK-CELL>PTR-SLOT ( ptr n -- ptr ptr n )
 \ fixed pthread entry ABI; every store and load uses the declared empty effect.
 CAST: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] )
 
-\ A watermark reader's execution token, as OWNED-USER-READERS hands it out.
-CAST: READER>N ( [ -- n ] -- n )
-
 : TCB.XT ( ptr n -- ptr [ -- ] )
    TCB.XT-CELL TASK-CELL>XT-SLOT ;
 
@@ -2023,9 +2020,7 @@ SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
    parse-name dup 0= if E-TASK-USER throw then ;
 
 \ 0, or the quotation OBSERVE-SLOTS stored: +USER hands it each slot word it
-\ generates with the word's offset and size, so a build tool knows the record
-\ by TASK's own account of it, never by its spelling. An image carries 0
-\ (OWNED-CELLS fresh).
+\ generates with the word's offset and size.
 variable SLOT-OBSERVER
 CAST: SLOT-OBSERVER-FN ( n -- [ [ -- ptr n ] n n -- ] )
 CAST: SLOT-OBSERVER-N ( [ [ -- ptr n ] n n -- ] -- n )
@@ -2520,54 +2515,8 @@ TASK-MIN-STACK constant MIN-STACK
 : MSG? ( ptr n -- bool )
    MBOX-MSG? ;
 
-\ An engine that bakes TASK keeps these cells below a stripped application's
-\ DATA window. The user-slot cursor is a declaration; the chain head points to
-\ the application's fixed-address TCBs. A TASK loaded inside the application's
-\ window owns its own cells, so the baked-state guards apply only below that
-\ window.
-\ Callback rows are process state too: ROWS-SWEEP refuses a row in flight at
-\ capture and unbinds the rest, so every row restarts at zero, and the store
-\ counts beside them (MOVES) are compared only within one process.
-: CHECK-OWNED ( n -- )
-   {: window:n :}
-   TASK-USER-NEXT FFI:>CELL window < if
-      SEM-POOL-FIRST SEM-CHAIN-LIVE? if
-         s" task: stripped image cannot carry a live semaphore" 74 die
-      then
-   then ;
-
-\ Enumerating the declarations does not inspect process state. The linker sizes
-\ its carried run before cleanup, then checks live resources before collection.
-: OWNED-CELLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: carry fresh :}
-   TASK-USER-NEXT BYTE-VIEW CELL carry execute
-   TASK-CHAIN BYTE-VIEW CELL carry execute
-   TCB-POOL BYTE-VIEW CELL fresh execute
-   TCB-CHUNKS BYTE-VIEW CELL fresh execute
-   SWEEP-ARMED BYTE-VIEW CELL fresh execute
-   TASK-SEM-POOL TASK-SEM-CHUNK-BYTES fresh execute
-   SEM-CHUNKS-ARMED BYTE-VIEW CELL fresh execute
-   MAIN-PARK-REC TASK-SEMAPHORE-BYTES fresh execute
-   MAIN-PARK-READY BYTE-VIEW CELL fresh execute
-   ROW-TABLE BYTE-VIEW CELL carry execute
-   ROW-CAP BYTE-VIEW CELL carry execute
-   ROW-N BYTE-VIEW CELL carry execute
-   ROW-CAP @ 0 > if
-      ROW-TABLE @ ROW-CAP @ ROW-BYTES * carry execute
-   then
-   0 TASK-EXIT-QT BYTE-VIEW TASK-EXIT-TABLE-N cells carry execute
-   TASK-EXIT-LINK TASK-EXIT-TABLE-N cells carry execute
-   TASK-EXIT-OWED TASK-EXIT-TABLE-N cells fresh execute
-   TASK-EXIT-N BYTE-VIEW CELL carry execute
-   TASK-EXIT-FREE BYTE-VIEW CELL carry execute
-   TASK-EXIT-LOCK BYTE-VIEW CELL fresh execute
-   EXIT-CHUNKS BYTE-VIEW CELL fresh execute
-   TASK-EXIT-SCRATCH BYTE-VIEW CELL fresh execute
-   SLOT-OBSERVER BYTE-VIEW CELL fresh execute ;
-
-\ The FILE range owner needs these fixed callback controls before FFI-CB is
-\ published: a later declaration changes both table bases, even when TASK
-\ itself was loaded by an earlier file.
+\ Hands keep the callback tables' control cells and, when rows exist, the row table: the built
+\ program of src/lib/ffi-callback-test.f reads a row's binding through it.
 : OWNED-CALLBACK-ROWS ( [ ptr u8 n -- ] -- ) {: keep :}
    ROW-TABLE BYTE-VIEW CELL keep execute
    ROW-CAP BYTE-VIEW CELL keep execute
@@ -2578,42 +2527,15 @@ TASK-MIN-STACK constant MIN-STACK
       ROW-TABLE @ ROW-CAP @ ROW-BYTES * keep execute
    then ;
 
-\ The linker relocates only the active declaration rows. Each destination is
-\ inside its carried run, while the typed source keeps the quotation's proof.
-\ The linker reads it after the capture sweep, when every row in use lies in
-\ the table (EXIT-ROWS-SWEEP); before that it counts the chunks' rows too.
+\ TASK-EXIT-N, the first AT-EXIT row never handed out: src/lib/task-test.f reads it
+\ to see the rows grow past the table and freed rows serve again.
 : OWNED-EXIT-N ( -- n ) TASK-EXIT-N @ ;
 
-\ The linker restores the application-close user-slot watermark into the
-\ carried copy when TASK itself was loaded before the capture window.
-: OWNED-USER-NEXT ( [ ptr u8 -- ] -- )
-   {: claim :}
-   TASK-USER-NEXT BYTE-VIEW claim execute ;
-
-\ The words whose answer is that watermark, each handed to claim as its
-\ execution token: a claimant that records the watermark a run read
-\ accounts for that run. The qualified tick names the public #USER; the bare
-\ one would name the private word it calls.
-: OWNED-USER-READERS ( [ n -- ] -- )
-   {: claim :}
-   ['] TASK:#USER READER>N claim execute ;
-
 \ Hand every slot word +USER generates, as its execution token with the slot's
-\ offset and size, to a quotation; a captured image holds 0.
+\ offset and size, to a quotation.
 : OBSERVE-SLOTS ( [ [ -- ptr n ] n n -- ] -- ) SLOT-OBSERVER-N SLOT-OBSERVER ! ;
 : UNOBSERVE-SLOTS ( -- ) 0 SLOT-OBSERVER ! ;
-\ The observer's cell.
 : SLOT-OBSERVER-CELL ( -- ptr n ) SLOT-OBSERVER ;
-
-\ A copied ROW-TABLE control points into its carried row allocation. The
-\ linker marks the copy so ordinary DATA relocation maps it to that copy.
-: OWNED-ROW-BASE ( [ ptr u8 -- ] -- )
-   {: claim :}
-   ROW-TABLE BYTE-VIEW claim execute ;
-
-: OWNED-EXIT-AT ( n -- ptr u8 [ -- ] ) {: idx:n :}
-   0 TASK-EXIT-QT BYTE-VIEW idx cells +
-   idx TASK-EXIT-QT @ ;
 
 seal-package
 

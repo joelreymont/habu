@@ -90,28 +90,4 @@ public
    N @ 0 > if E-LIFECYCLE-LATE throw then
    DYNAMIC-STORAGE:ARENA-GUARD ;
 
-\ The six spans a stripped image reaches this registry through, each handed to
-\ the caller's claim. This file is baked into the engine, so its cells sit below
-\ any capture window, and the AOT list admits a cell only by name: COUNT spells
-\ the lock and both counters, REGISTER, REGISTER-PERSISTENT and PREPARE the two
-\ buffer bases and HOOKS's control block. An unclaimed one is refused
-\ `caller=<unknown> value=13964713400 target=<unknown>` (measured from a program
-\ whose only call was UNICODE:CASEFOLD=, which registers its cleanup on first use).
-\ A fresh mapping's zero is the right start for all six: an open lock, two zero
-\ counts, no hook mapping or capacity, an empty table. Declaration-time
-\ registrations belong to the builder process that ran them.
-\ Only cells code spells are named: HOOKS, a DYNAMIC-BUFFER, passes `HOOKS#base
-\ HOOKS#ctl` (src/core/layout-buffer.f DBUF-SOURCE), the block claimed with its
-\ extent; PERSISTENT's accessor is `#base i 8 * +` (LBUF-SOURCE), so its 64
-\ cells are reached by offset and never named.
-\ As in src/core/dynamic-storage.f, the cells are named here because they are
-\ declared here.
-: OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: claim :}
-   N BYTE-VIEW CELL claim execute
-   PERSISTENT-N BYTE-VIEW CELL claim execute
-   MUTEX BYTE-VIEW CELL claim execute
-   HOOKS#base BYTE-VIEW CELL claim execute
-   HOOKS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
-   PERSISTENT#base BYTE-VIEW CELL claim execute ;
-
 ;package

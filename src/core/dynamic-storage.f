@@ -131,9 +131,6 @@ variable MUTEX
    last REG-U !
    0 ctl SLOT ! ;
 
-\ The registry's own cell, for OWNED-CELLS below: the claim takes a cell's bytes.
-CAST: CELL-BYTES ( ptr ptr ptr u8 -- ptr u8 )
-
 public
 
 : BOUNDS ( n n -- n ) {: idx:n count:n :}
@@ -368,18 +365,6 @@ public
    LOCK [: UNLOCK ;] finally ;
 
 : REGISTERED-N ( -- n ) REG-U @ ;
-
-\ The five cells these registries are, handed one at a time to the caller's
-\ claim. A fresh instance's zero (no mapping, no rows, no members, no live arena,
-\ open lock) is correct, so a claimant may zero them. The naming happens here
-\ because the cells are private here: this hands out the five and nothing else,
-\ no entry and no address that outlives the call.
-: OWNED-CELLS ( [ ptr u8 -- ] -- ) {: claim :}
-   REG CELL-BYTES claim execute
-   REG-CAP BYTE-VIEW claim execute
-   REG-U BYTE-VIEW claim execute
-   ARENAS byte-view claim execute
-   MUTEX BYTE-VIEW claim execute ;
 
 private
 
