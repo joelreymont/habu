@@ -17,6 +17,7 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/build-out.f
+require src/core/sha256.f
 require src/core/include.f
 require src/habu/boot-files.f
 require src/compiler/target/model.f
@@ -38,6 +39,8 @@ create END-PATH PATH-CAP allot  variable END-U
 create END-DIR PATH-CAP allot           \ a --repl end file's directory (REPL-END!)
 create APP-END-PATH PATH-CAP allot  variable APP-END-U
 create KERNEL-PATH PATH-CAP allot  variable KERNEL-U
+7 64 + 4 + constant KERNEL-NAME-U   \ kernel-<64 hex digits>.hko
+create KERNEL-NAME KERNEL-NAME-U allot
 TYPED-VARIABLE KERNEL-ENGINE? bool     \ the kernel build writes an engine's kernel
 \ the build's target, stored by KERNEL-BUILD, which every build runs first
 TYPED-VARIABLE TARGET RTARGET:resolved-target
@@ -257,27 +260,42 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    APP-END$ INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 
-\ The tree's KERNEL-OBJECT:WRITE, which the kernel build compiled.
-CAST: >WRITER ( n -- [ ptr u8 n ptr u8 bool -- n ] )
+\ The tree's KERNEL-OBJECT:WRITE, which the kernel build compiled; it lays the
+\ object's bytes and this tool writes the file (KERNEL-WRITE).
+CAST: >WRITER ( n -- [ bool [ ptr u8 n -- ] -- ] )
 
-: WRITER ( -- [ ptr u8 n ptr u8 bool -- n ] )
+: WRITER ( -- [ bool [ ptr u8 n -- ] -- ] )
    s" KERNEL-OBJECT" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
    pkg XREF-FOUND? 0= if s" hb-build: the tree has no package KERNEL-OBJECT" 1 die then
    s" WRITE" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec XREF-FOUND? 0= if s" hb-build: KERNEL-OBJECT has no public WRITE" 1 die then
    rec XREF-START >WRITER ;
 
+\ Writes the object as <DIR>/kernel-<the SHA-256 in its bytes 8-39, in hex>.hko
+\ and that path into KERNEL-PATH.
+: KERNEL-WRITE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 40 < if s" hb-build: the kernel object is too short" 1 die then
+   s" kernel-" {: k:ptr ku:n :}
+   k KERNEL-NAME ku BYTE-COPY
+   a 8 +  KERNEL-NAME 7 +  SHA256>HEX
+   s" .hko" {: h:ptr hu:n :}
+   h  KERNEL-NAME 71 +  hu BYTE-COPY
+   DIR DIR-U @ KERNEL-NAME KERNEL-NAME-U KERNEL-PATH FS:JOIN-PATH KERNEL-U !
+   KERNEL-PATH KERNEL-U @  a u  FS:ATOMIC-WRITE-FILE ;
+
 : KERNEL-BODY ( -- )
    STARTUP
    s" src/arch/arm64/kernel-object.f" REQUIRE-FILE
-   DIR DIR-U @ KERNEL-PATH KERNEL-ENGINE? @ WRITER execute KERNEL-U ! ;
+   KERNEL-ENGINE? @ ['] KERNEL-WRITE WRITER execute ;
 
 public
 
 \ Writes this tree's kernel object, an engine's or a stripped program's, under
-\ <out>/hb-build/<target>/ and reads it for the builds that follow. A build's
-\ registry starts empty, so the writer's files load from this tree; a kernel
-\ build shares a program build's objects.
+\ <out>/hb-build/<target>/, the tree's writer laying its bytes and this tool
+\ writing the file, and reads it for the builds that follow. A build's registry
+\ starts empty, so the writer's files load from this tree; a kernel build shares
+\ a program build's objects.
 : KERNEL-BUILD ( bool RTARGET:resolved-target -- )
    {: engine:bool target:RTARGET:resolved-target :}
    engine KERNEL-ENGINE? !  target TARGET !

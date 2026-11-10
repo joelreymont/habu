@@ -16,9 +16,6 @@
 \   presets     n, then each header cell's offset and the value the link writes
 
 require src/lib/le.f
-require src/lib/string.f
-require src/lib/fs.f
-require src/lib/fs-mutate.f
 require src/core/bytes.f
 require src/core/sha256.f
 require src/habu/layout.f
@@ -42,8 +39,6 @@ variable COUNT-N
 8 TYPED-BUFFER TAIL n                \ the labels START, and ENGINE-START, take, in their order
 variable K0                          \ the kernel's first word position
 SHA256-CTX-BYTES BUFFER: SHA-CTX
-7 64 + 4 + constant NAME-U           \ kernel-<64 hex digits>.hko
-NAME-U BUFFER: NAME
 
 
 : U64+ ( n -- )
@@ -217,34 +212,26 @@ NAME-U BUFFER: NAME
    ;SECTION ;
 
 
-\ OUT's sum into its checksum field and the name the object goes by.
+\ OUT's sum into its checksum field.
 : SUM ( -- )
-   SHA-CTX  0 OUT 40 +  OUT-U @ 40 -  0 OUT 8 +  SHA256-IN
-   s" kernel-" {: a:ptr u:n :}
-   a NAME u BYTE-COPY
-   0 OUT 8 +  NAME 7 +  SHA256>HEX
-   s" .hko" {: b:ptr v:n :}
-   b  NAME 71 +  v BYTE-COPY ;
+   SHA-CTX  0 OUT 40 +  OUT-U @ 40 -  0 OUT 8 +  SHA256-IN ;
 
-: WRITE-OUT ( ptr u8 n ptr u8 bool -- n )
-   {: dir:ptr diru:n path:ptr engine:bool :}
+: WRITE-OUT ( bool [ ptr u8 n -- ] -- )
+   {: engine:bool sink :}
    engine EMIT
    0 OUT-U !
    s" HBKERNEL" SPAN+  4 0 ?do 0 U64+ loop
    CODE+ LABELS+ REFS+ FIXUPS+ PRIMS+
    engine SCOPES+  engine SYMBOLS+  engine PRESETS+
    SUM
-   dir diru NAME NAME-U path FS:JOIN-PATH {: pathu:n :}
-   path pathu  0 OUT OUT-U @  FS:ATOMIC-WRITE-FILE
-   pathu ;
+   0 OUT OUT-U @ sink execute ;
 
 : RELEASE ( -- ) OUT-RELEASE A64ICODE:ASM-RELEASE ;
 
 public
 
-\ Writes the kernel object as <dir>/kernel-<its SHA-256 in hex>.hko and that
-\ path into the PATH-CAP buffer; answers the path's length.
-: WRITE ( ptr u8 n ptr u8 bool -- n ) ['] WRITE-OUT ['] RELEASE finally ;
+\ The object's bytes go once to the sink, valid only during the call.
+: WRITE ( bool [ ptr u8 n -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
 
 ;package
 ;using
