@@ -185,7 +185,8 @@ create WORD-RECS BUF:HDR-BYTES allot
 create REQUESTS BUF:HDR-BYTES allot  \ the object's REQUESTS rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create TIMES BUF:HDR-BYTES allot     \ the object's TIMES, a block per piece compiled so far
-create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's source names, 8 bytes each
+create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's source names whole, 8 bytes each
+create NAMED-RECS BUF:HDR-BYTES allot \ the records with a time the running scan hit, 8 bytes each, in hit order
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
 create RAN-ROWS BUF:HDR-BYTES allot  \ the BUILT rows whose words the compiling file's pieces ran, each once
 create REACHED BUF:HDR-BYTES allot   \ the object's REACHED: the FILES rows of the pieces RAN-FILES+ walked, 8 bytes each
@@ -356,19 +357,23 @@ WORD-CELLS 8 * constant WORD-BYTES
 5 constant KIND-SEALED               \ an earlier file's package this file sealed
 6 constant KIND-TYPE                 \ a type entry: a family's record in the types wordlist
 
-\ NAMES maps each name the build's records define, by its NAME-SUM, to the BUILT row holding the
-\ record, -1 for a record the build's body made (INDEX-RECS), and to its package's key when the
-\ record is private (NAME-PKG); HITS marks the rows whose records the running file's source names
-\ (NAMED).
-DYNAMIC-BUFFER NAMES n               \ slot s: the sum at 3s, 0 while empty, the row, the package key
+\ NAMES maps each name the build's records define, by its NAME-SUM, to the record (INDEX-RECS), and
+\ to its package's key when the record is private (NAME-PKG). HIT marks what the running file's
+\ source names: a record with a time in HIT-STAMPS, a piece named whole in HITS.
+DYNAMIC-BUFFER NAMES n               \ slot s: the sum at 3s, 0 while empty, the record (INDEX-RECS), the package key
 DYNAMIC-BUFFER OLD-NAMES n           \ NAMES' slots as it grows
 variable NAMES-CAP                   \ its slots, a power of two
 variable NAMES-N                     \ its filled slots
 variable INDEXED                     \ the record index NAMES holds every record below
 DYNAMIC-BUFFER OPENED n              \ the keys of the packages the running file's source opens
 variable OPENED-N
-DYNAMIC-BUFFER HITS n                \ BUILT row r's mark: 0, or named by the running file's source
+DYNAMIC-BUFFER HITS n                \ BUILT row r's mark: 0, or named whole by the running file's source
 TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's body made
+\ Record r's stamp: HIT-STAMP once the running scan hit it, HIT-STAMP + 1 once WORDS-CK found it
+\ listed; any other value is a mark of an earlier scan, since HITS-CLEAR adds 2 to HIT-STAMP.
+DYNAMIC-BUFFER HIT-STAMPS n
+variable HIT-STAMP
+variable HIT-N                       \ the records the running scan hit and WORDS-CK has not found listed
 \ The sums SPELLS holds since its last open, the running run: slot s holds a sum at 2s and its
 \ run's id at 2s+1, and a slot of an earlier run is empty.
 DYNAMIC-BUFFER RUN-SUMS n
@@ -427,8 +432,8 @@ variable PENDING-STORERS-N           \ its pairs
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  REQ-PATH BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-ROWS BUF:DISPOSE
-   SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  REFS BUF:DISPOSE
-   BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE
+   SPELLS BUF:DISPOSE  NAMED-RECS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  REFS BUF:DISPOSE
+   BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HIT-STAMPS-RELEASE  HITS-RELEASE  OPENED-RELEASE
    OLD-NAMES-RELEASE  NAMES-RELEASE
    PENDING-RECS-RELEASE  PENDING-FIRST-RELEASE  PENDING-STORERS-RELEASE  PENDING-OWN-RELEASE  PENDING-SLOTS-RELEASE  PENDING-HITS-RELEASE ;
 
@@ -443,6 +448,7 @@ variable PENDING-STORERS-N           \ its pairs
    PIECES 256 BUF:N>BLEN BUF:INIT
    TIMES 256 BUF:N>BLEN BUF:INIT
    NAMED-ROWS 256 BUF:N>BLEN BUF:INIT
+   NAMED-RECS 256 BUF:N>BLEN BUF:INIT
    SPELLS 256 BUF:N>BLEN BUF:INIT
    RAN-ROWS 256 BUF:N>BLEN BUF:INIT
    REACHED 256 BUF:N>BLEN BUF:INIT
@@ -677,25 +683,31 @@ variable PENDING-STORERS-N           \ its pairs
    k WORD-ROWS U64+  idx first - WORD-ROWS U64+  idx REC-TIME WORD-ROWS U64+
    idx WORD-RECS U64+ ;
 
+\ An earlier record's FILES row k and its piece's first record. The row is whole (REF-FILE) for a
+\ piece built since ROOT-BUILT, or a word with no time for its WORDS row to check.
+: WORD-REF ( n -- n n )
+   {: idx:n :}
+   idx BUILT-ROW {: row:n :}
+   row  row ROOT-BUILT @ >=  idx REC-TIME 0=  or  REF-FILE
+   row BUILT-AT BUILT-FIRST + LE:U64@ ;
+
 \ A record reference: the file, 0 for this one, then the index in that file; an earlier file's
-\ record also gets its WORDS row. Its FILES row is whole (REF-FILE) for a piece built since
-\ ROOT-BUILT, or a word with no time for its WORDS row to check.
+\ record also gets its WORDS row.
 : REF+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ >= if
       0 PIECES U64+  idx FILE-REC @ - PIECES U64+  exit
    then
-   idx BUILT-ROW {: row:n :}
-   row  row ROOT-BUILT @ >=  idx REC-TIME 0=  or  REF-FILE {: k:n :}
-   row BUILT-AT BUILT-FIRST + LE:U64@ {: first:n :}
+   idx WORD-REF {: k:n first:n :}
    k PIECES U64+  idx first - PIECES U64+
    k idx first WORD-ROW+ ;
 
 \ ---- dependencies by name -------------------------------------------------------
-\ A file depends on the files its object references and on every earlier piece that defines, or
-\ changed (CHANGER+), a public name its source spells or a private name of a package it opens
-\ after `package`, whose parts share scope: a value T0 inlined, a word that now shadows another
-\ and a package an earlier file now declares change a compile without leaving a reference.
+\ A file depends on the files its object references and on every earlier record that defines a
+\ public name its source spells or a private name of a package it opens after `package`, whose
+\ parts share scope: a value T0 inlined, a word that now shadows another and a package an earlier
+\ file now declares change a compile without leaving a reference. A record with a time is a WORDS
+\ row; one with none, or one a later piece changed (CHANGER+), names its whole piece.
 
 \ FNV-1a over the name folded to upper case, as the dictionary compares names; never 0.
 : NAME-SUM ( ptr u8 n -- n )
@@ -758,18 +770,16 @@ variable PENDING-STORERS-N           \ its pairs
    p XREF-REC XREF-PKG-PRIVATE wid <> if 0 exit then
    p XREF-REC XREF-NAME$ TOP-NAME NAME-SUM ;
 
-\ The records [INDEXED, end) into NAMES as the row's.
+\ The records [INDEXED, end) of the row into NAMES, each as -1 when the row is negative, the
+\ build's body; -2 - row, its piece named whole, when it has no time (REC-TIME); else its index.
 : INDEX-RECS ( n n -- )
    {: end:n row:n :}
    end INDEXED @ ?do
       i XREF-REC XREF-NAME$ {: a:ptr u:n :}
-      u 0<> if a u NAME-SUM row i NAME-PKG NAME+ then
+      row 0< if -1 else i REC-TIME 0= if -2 row - else i then then {: v:n :}
+      u 0<> if a u NAME-SUM v i NAME-PKG NAME+ then
    loop
    end INDEXED ! ;
-
-: MARK-ROW ( n -- )
-   {: row:n :}
-   row 0< if true BODY-HIT ! else 1 row HITS ! then ;
 
 \ True for a public name's key, 0, and for a package the running file's source opened.
 : OPENED? ( n -- bool )
@@ -808,7 +818,17 @@ variable PENDING-STORERS-N           \ its pairs
       1 + mask and
    repeat drop ;
 
-\ Marks every row NAMES holds the sum for, a private name's only once its package is open, then
+\ A NAMES slot's record hit: the build's body's in BODY-HIT, a piece named whole in HITS, else
+\ the record once per scan in HIT-STAMPS, HIT-N and NAMED-RECS.
+: HIT-SLOT ( n -- )
+   {: v:n :}
+   v -1 = if true BODY-HIT ! exit then
+   v -1 < if 1  -2 v -  HITS ! exit then
+   v 1 + HIT-STAMPS-RESERVE
+   v HIT-STAMPS @ HIT-STAMP @ = if exit then
+   HIT-STAMP @ v HIT-STAMPS !  1 HIT-N +!  v NAMED-RECS U64+ ;
+
+\ Marks every record NAMES holds the sum for, a private name's only once its package is open, then
 \ each pending row holding a record of the sum, by the same rule (PENDING-HIT).
 : HIT ( n -- )
    {: sum:n :}
@@ -816,7 +836,7 @@ variable PENDING-STORERS-N           \ its pairs
    sum mask and
    begin dup SLOT-SUM @ 0<> while
       dup SLOT-SUM @ sum = if
-         dup SLOT-PKG @ OPENED? if dup SLOT-ROW @ MARK-ROW then
+         dup SLOT-PKG @ OPENED? if dup SLOT-ROW @ HIT-SLOT then
       then
       1 + mask and
    repeat drop
@@ -918,12 +938,13 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    loop
    SKIP @ 0= if src u 32 WORD-END then ;
 
-\ No row marked, BUILT's or PENDING's, nor the build's body.
+\ A new scan: no row marked, BUILT's or PENDING's, nor the build's body, nor a record (HIT-STAMPS).
 : HITS-CLEAR ( -- )
    BUILT-N 1 + HITS-RESERVE
    BUILT-N 0 ?do 0 i HITS ! loop
    PENDING-N 0 ?do 0 i PENDING-HITS ! loop
-   false BODY-HIT ! ;
+   false BODY-HIT !
+   2 HIT-STAMP +!  0 HIT-N !  NAMED-RECS BUF:CLEAR ;
 
 \ After KEY!, before FRESH?: INPUT-STAMP, the active file's change time seconds, nanoseconds and
 \ size, and HITS-CLEAR, NAMES first taking the records the build's body made since the last file.
@@ -936,15 +957,27 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 \ False for bytes no file stamp covers (size -1): such a file never links.
 : STAMPED? ( -- bool ) INPUT-STAMP 16 + LE:U64@ -1 <> ;
 
-\ After SPELLED, before the compile: NAMED-ROWS from HITS, which a requested file's load overwrites.
+\ After SPELLED, before the compile: NAMED-ROWS from HITS, the pieces the source names whole, which
+\ a requested file's load overwrites.
 : NAMED! ( -- )
    NAMED-ROWS BUF:CLEAR
    BUILT-N 0 ?do i HITS @ 0<> if i NAMED-ROWS U64+ then loop ;
 
-\ FILES gains each earlier file the source names, after the files PIECES and REQUESTS reference.
+\ A record the source spells: its FILES row and WORDS row (WORD-REF), unless the object lists it.
+: NAMED-REC+ ( n -- )
+   {: idx:n :}
+   idx 1 + LISTED-BY-RESERVE
+   idx LISTED-BY @ OBJECT-SERIAL @ = if exit then
+   idx WORD-REF {: k:n first:n :}
+   k idx first WORD-ROW+ ;
+
+\ After the files PIECES and REQUESTS reference: FILES gains a whole row for each piece the source
+\ names whole, then each record of NAMED-RECS gains its rows (NAMED-REC+).
 : NAMED+ ( -- )
    NAMED-ROWS BYTES$ {: a:ptr u:n :}
-   u 8 / 0 ?do a i 8 * + LE:U64@ true REF-FILE drop loop ;
+   u 8 / 0 ?do a i 8 * + LE:U64@ true REF-FILE drop loop
+   NAMED-RECS BYTES$ {: r:ptr ru:n :}
+   ru 8 / 0 ?do r i 8 * + LE:U64@ NAMED-REC+ loop ;
 
 
 \ ---- dependencies by run --------------------------------------------------------
@@ -1753,13 +1786,14 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    v OPEN-DP @ < if -1 else v DP-ROW 0= if E-COMP-STATE throw then then  PAIR+ ;
 
 \ The running piece changed record idx of an earlier piece (its facts, a retirement, a seal, a
-\ late private wordlist): NAMES takes the record's name as the piece's, so a file that spells it
-\ depends on the piece, and STORERS the piece against the record's row. Nothing for its own.
+\ late private wordlist): NAMES takes the record's name as naming the piece whole, so a file that
+\ spells it depends on the whole piece, and STORERS the piece against the record's row. Nothing for
+\ its own.
 : CHANGER+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ >= if exit then
    idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
-   u 0<> if  a u NAME-SUM  BUILT-N  idx NAME-PKG  NAME+  then
+   u 0<> if  a u NAME-SUM  -2 BUILT-N -  idx NAME-PKG  NAME+  then
    idx BUILT-ROW PAIR+ ;
 
 
@@ -2031,8 +2065,8 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 \ never links and keeps its times.
 : WRITE-OBJECT ( n -- )
    {: t:n :}
-   \ FILES ends with the named files (NAMED+), then the run words' pieces REACHED lists (RAN-FILES+),
-   \ rows no WORDS row names: WORDS lists the words the pieces refer to (REF+).
+   \ FILES ends with the pieces the source names (NAMED+), then the run words' pieces REACHED lists
+   \ (RAN-FILES+); WORDS lists the words the pieces refer to (REF+) and the source spells (NAMED+).
    NAMED+  RAN-FILES+  PATHS-LAY
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
@@ -2411,14 +2445,18 @@ variable RD-END
    FILES-N @ 0 ?do i 1 + FILE-ROWS @ ROW-ABSENT = if BAD unloop exit then loop ;
 
 
-\ After FILES-CK: bad when the source names a record of the build's body or of a file FILES
-\ does not list (NAMES-CK), built or pending (PENDING-HIT): the pending piece links before it.
+\ After FILES-CK: bad when the source names a record of the build's body, names a piece whole
+\ (NAMES-CK) that no whole FILES row, one with the BUILT row's time, lists, or names a pending
+\ piece (PENDING-HIT) FILES does not list: the pending piece links before it.
 : NAMED-CK ( -- )
    GOOD? 0= if exit then
    BODY-HIT @ if BAD exit then
    FILES-N @ 0 ?do
       i 1 + FILE-ROWS @ {: row:n :}
-      row 0 >= if  row HITS @ 0<> if 2 row HITS ! then  then
+      row 0 >= if
+         i 1 + FILES-ROW BUILT-TIME + LE:U64@  row BUILT-AT BUILT-TIME + LE:U64@  =
+         row HITS @ 0<>  and if 2 row HITS ! then
+      then
       row ROW-PENDING = if
          i 1 + FILES-ROW PENDING-AT if 2 swap PENDING-HITS ! else drop then
       then
@@ -2497,7 +2535,8 @@ variable RD-END
 
 
 \ NAMES' u bytes from RD-AT (SPELLS), u a multiple of 8, run as SPELLED ran them: HIT for each
-\ sum, OPENED+ for the sum after a 0. Against the source INPUT-STAMP stamps, HITS ends as a scan's.
+\ sum, OPENED+ for the sum after a 0. Against the source INPUT-STAMP stamps, HITS, HIT-STAMPS and
+\ HIT-N end as a scan's.
 : NAMES-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
@@ -2583,9 +2622,17 @@ variable RD-END
    RD-AT @ pieces-at <> if BAD then ;
 
 
+\ A WORDS row's built record: found listed when the running scan hit it (HIT-STAMPS).
+: FOUND-LISTED ( n -- )
+   {: r:n :}
+   r 1 + HIT-STAMPS-RESERVE
+   r HIT-STAMPS @ HIT-STAMP @ <> if exit then
+   HIT-STAMP @ 1 + r HIT-STAMPS !  -1 HIT-N +! ;
+
 \ WORDS' u bytes from RD-AT, a multiple of WORD-ROW-BYTES (WORD-ROW+): bad when a row's FILES row is
 \ not in FILES, is time 0 (REF-FILE) and not built, or is built and lacks the word or gives it
-\ another time; a whole row's pending or absent piece waits for its FILES row (ROWS-CK).
+\ another time, or when the source spells a record with a time no row lists (NAMES-CK); a whole
+\ row's pending or absent piece waits for its FILES row (ROWS-CK).
 : WORDS-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
@@ -2595,9 +2642,12 @@ variable RD-END
       k FILES-ROW BUILT-TIME + LE:U64@ 0=  k FILE-ROWS @ 0<  and if BAD unloop exit then
       k FILE-ROWS @ 0 >= if
          w 0<  w k FILE-RECS >=  or if BAD unloop exit then
-         k BUILT-FIRST BUILT@ w + REC-TIME  t <> if BAD unloop exit then
+         k BUILT-FIRST BUILT@ w + {: r:n :}
+         r REC-TIME  t <> if BAD unloop exit then
+         r FOUND-LISTED
       then
-   loop ;
+   loop
+   HIT-N @ 0<> if BAD then ;
 
 
 \ The header and every section before PIECES as WRITE-OBJECT lays them: INPUT against INPUT-STAMP, NAMES
@@ -4352,9 +4402,10 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    piece t BUILT+ ;
 
 
-\ The compiling file's object so far onto FRAMES while a file it requested loads, which reuses its
-\ buffers; FRAME-TAIL bytes end each frame, so POP-FRAME finds the lengths from FRAMES' end.
-13 8 * constant FRAME-TAIL
+\ The compiling file's object so far and the records its source spells (NAMED-RECS) onto FRAMES
+\ while a file it requested loads and scans, which reuses those buffers; FRAME-TAIL bytes end each
+\ frame, so POP-FRAME finds the lengths from FRAMES' end.
+14 8 * constant FRAME-TAIL
 
 : SAVE+ ( ptr a -- n )
    {: buf:ptr :}
@@ -4362,14 +4413,14 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    a u FRAMES SPAN+  u ;
 
 : PUSH-FRAME ( -- )
-   PIECES SAVE+  REFS SAVE+  REQUESTS SAVE+  NAMED-ROWS SAVE+  SPELLS SAVE+  RAN-ROWS SAVE+  TIMES SAVE+
-   WORD-ROWS SAVE+  WORD-RECS SAVE+
-   {: p:n r:n rq:n m:n s:n ran:n tm:n wr:n wc:n :}
+   PIECES SAVE+  REFS SAVE+  REQUESTS SAVE+  NAMED-ROWS SAVE+  NAMED-RECS SAVE+  SPELLS SAVE+
+   RAN-ROWS SAVE+  TIMES SAVE+  WORD-ROWS SAVE+  WORD-RECS SAVE+
+   {: p:n r:n rq:n m:n nr:n s:n ran:n tm:n wr:n wc:n :}
    INPUT-STAMP INPUT-BYTES FRAMES SPAN+
    FILE-PATH FILE-PATH-N @ FRAMES SPAN+
-   p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+  s FRAMES U64+  ran FRAMES U64+
-   tm FRAMES U64+  wr FRAMES U64+  wc FRAMES U64+  FILE-PATH-N @ FRAMES U64+  REQ-N @ FRAMES U64+
-   UNLINKABLE @ if 1 else 0 then FRAMES U64+  OBJECT-SERIAL @ FRAMES U64+ ;
+   p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+  nr FRAMES U64+  s FRAMES U64+
+   ran FRAMES U64+  tm FRAMES U64+  wr FRAMES U64+  wc FRAMES U64+  FILE-PATH-N @ FRAMES U64+
+   REQ-N @ FRAMES U64+  UNLINKABLE @ if 1 else 0 then FRAMES U64+  OBJECT-SERIAL @ FRAMES U64+ ;
 
 
 \ FRAMES' u bytes from at into the buffer, and the offset after them.
@@ -4391,13 +4442,13 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 : POP-FRAME ( -- )
    FRAMES BYTES$ {: f:ptr fu:n :}
    f fu + FRAME-TAIL - {: t:ptr :}
-   t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@ {: p:n r:n rq:n m:n :}
-   t 32 + LE:U64@  t 40 + LE:U64@  t 48 + LE:U64@ {: s:n ran:n tm:n :}
-   t 56 + LE:U64@  t 64 + LE:U64@ {: wr:n wc:n :}
-   t 72 + LE:U64@  t 80 + LE:U64@  t 88 + LE:U64@  t 96 + LE:U64@ {: pn:n reqs:n unlinkable:n serial:n :}
-   fu FRAME-TAIL -  p r + rq + m + s + ran + tm + wr + wc + INPUT-BYTES + pn + - {: start:n :}
+   t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@  t 32 + LE:U64@ {: p:n r:n rq:n m:n nr:n :}
+   t 40 + LE:U64@  t 48 + LE:U64@  t 56 + LE:U64@ {: s:n ran:n tm:n :}
+   t 64 + LE:U64@  t 72 + LE:U64@ {: wr:n wc:n :}
+   t 80 + LE:U64@  t 88 + LE:U64@  t 96 + LE:U64@  t 104 + LE:U64@ {: pn:n reqs:n unlinkable:n serial:n :}
+   fu FRAME-TAIL -  p r + rq + m + nr + s + ran + tm + wr + wc + INPUT-BYTES + pn + - {: start:n :}
    start p PIECES RESTORE+  r REFS RESTORE+  rq REQUESTS RESTORE+  m NAMED-ROWS RESTORE+
-   s SPELLS RESTORE+  ran RAN-ROWS RESTORE+  tm TIMES RESTORE+
+   nr NAMED-RECS RESTORE+  s SPELLS RESTORE+  ran RAN-ROWS RESTORE+  tm TIMES RESTORE+
    wr WORD-ROWS RESTORE+  wc WORD-RECS RESTORE+ {: at:n :}
    f at + INPUT-STAMP INPUT-BYTES BYTE-COPY
    f at + INPUT-BYTES + FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !

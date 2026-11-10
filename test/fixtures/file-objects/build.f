@@ -46,9 +46,13 @@
 \ `private: compiled `, `parts: compiled `, `scope: compiled `, `inside: compiled `,
 \ `twins: compiled `, `order: compiled `, `header: compiled `, `same: compiled ` and
 \ `held: compiled ` print each build's result: its LINKER:COMPILED, or the code it
-\ threw. `crafted: compiled ` prints nine: crafted/e.f's build, seven
+\ threw. `crafted: compiled ` prints ten: crafted/e.f's build, eight
 \ over an edit of its object the link refuses or links wrong, then a plain
-\ build. With `facts`, a build loads count.f and facts.f, then its body compiles
+\ build. `words: compiled ` prints seven builds of words/a.f, b.f, c.f, d.f
+\ and e.f, which spell a.f's words, b.f's A1, c.f's A2, d.f's re-export of A1:
+\ as written, with A1's body edited, again, with a.f gaining C, over b.f's
+\ object with its first word's time and then its word number edited, again.
+\ With `facts`, a build loads count.f and facts.f, then its body compiles
 \ FOB-AFTER, a caller of count.f's words, and FOB-WRAP, a caller of facts.f's
 \ definer BOX, each line printing the code its compile threw (`after: 0`), runs
 \ FOB-AFTER when it compiled and prints `after ran`, writes the program with
@@ -240,6 +244,7 @@ PATH-CAP BUFFER: FIRST-BUF
 PATH-CAP BUFFER: SECOND-BUF
 PATH-CAP BUFFER: THIRD-BUF
 PATH-CAP BUFFER: FOURTH-BUF
+PATH-CAP BUFFER: FIFTH-BUF
 
 : DIR$ ( ptr u8 n -- ptr u8 n )
    {: d:ptr du:n :}
@@ -555,6 +560,7 @@ PATH-CAP BUFFER: FOURTH-BUF
 160 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
 PATH-CAP BUFFER: CRAFT-BUF
 PATH-CAP BUFFER: CRAFT-PATH   variable CRAFT-PATH-U
+PATH-CAP BUFFER: CRAFT-TAIL   variable CRAFT-TAIL-U   \ the end of the path CRAFT-FIND seeks
 CRAFT-CAP BUFFER: CRAFT-FIRST   variable CRAFT-U
 CRAFT-CAP BUFFER: CRAFT-OBJ
 variable AT                              \ the walk's offset in CRAFT-OBJ
@@ -664,24 +670,28 @@ variable SLOT-S                          \ and their count
    then ;
 
 
-\ The edited object, u bytes, into e.f's object; then a build.
-: CRAFTED-BUILD ( n -- n )
+\ The edited object, u bytes, into the object CRAFT-FIND found.
+: CRAFT-WRITE ( n -- )
    {: u:n :}
-   CRAFT-PATH CRAFT-PATH-U @ CRAFT-OBJ u FS:WRITE-ALL
-   CRAFT-BUILD ;
+   CRAFT-PATH CRAFT-PATH-U @ CRAFT-OBJ u FS:WRITE-ALL ;
+
+\ The edited object, u bytes, into e.f's object; then a build.
+: CRAFTED-BUILD ( n -- n ) CRAFT-WRITE  CRAFT-BUILD ;
 
 
-\ A path of the walk that ends with e.f's object's tail into CRAFT-PATH.
+\ A path of the walk that ends with CRAFT-TAIL into CRAFT-PATH.
 : CRAFT-SEEN ( ptr u8 n -- )
    {: p:ptr pu:n :}
-   p pu s" /crafted/e.f.hfo" ENDS-WITH? 0= if exit then
+   p pu CRAFT-TAIL CRAFT-TAIL-U @ ENDS-WITH? 0= if exit then
    p CRAFT-PATH pu BYTE-COPY  pu CRAFT-PATH-U ! ;
 
-\ e.f's object under <out>/obj, into CRAFT-FIRST and CRAFT-PATH.
-: CRAFT-FIND ( -- )
+\ The object under <out>/obj whose path ends with the tail, into CRAFT-FIRST and CRAFT-PATH.
+: CRAFT-FIND ( ptr u8 n -- )
+   {: t:ptr tu:n :}
+   t CRAFT-TAIL tu BYTE-COPY  tu CRAFT-TAIL-U !
    0 CRAFT-PATH-U !
    s" obj" DIR$ ['] CRAFT-SEEN FS:WALK-FILES
-   CRAFT-PATH-U @ 0= if s" build: CRAFTS: no object at crafted/e.f.hfo" 1 die then
+   CRAFT-PATH-U @ 0= if s" build: CRAFT-FIND: no object ends with the tail" 1 die then
    CRAFT-PATH CRAFT-PATH-U @ CRAFT-FIRST CRAFT-CAP FS:READ-ALL CRAFT-U ! ;
 
 
@@ -750,7 +760,7 @@ variable SLOT-S                          \ and their count
    CRAFT-E$ s\" public : MID ( -- n ) LOW 1 + ; : HIGH ( -- n ) 3 ; ;package\n" FS:APPEND-FILE
    CRAFT-E$ s\" package FILE-OBJECTS-CRAFT-LATE public variable V ;package\n" FS:APPEND-FILE
    CRAFT-BUILD {: one:n :}
-   CRAFT-FIND
+   s" /crafted/e.f.hfo" CRAFT-FIND
    NO-PRIVATE {: two:n :}
    SITE-MOVED {: three:n :}
    LATER-RECORD {: four:n :}
@@ -764,6 +774,61 @@ variable SLOT-S                          \ and their count
    space four FMT:.INT  space five FMT:.INT  space six FMT:.INT
    space seven FMT:.INT  space eight FMT:.INT  space nine FMT:.INT  space ten FMT:.INT cr ;
 
+\ ---- words a source spells ----
+128 constant WORDS-FIELD                 \ the header's WORDS offset, then length (linker.f WRITE-OBJECT)
+24 constant WORD-ROW-BYTES               \ a WORDS row: FILES row, word number, time
+
+: WORDS-A$ ( -- ptr u8 n ) s" words" s" a.f" FIRST-BUF FILE-IN ;
+: WORDS-B$ ( -- ptr u8 n ) s" words" s" b.f" SECOND-BUF FILE-IN ;
+: WORDS-C$ ( -- ptr u8 n ) s" words" s" c.f" THIRD-BUF FILE-IN ;
+: WORDS-D$ ( -- ptr u8 n ) s" words" s" d.f" FOURTH-BUF FILE-IN ;
+: WORDS-E$ ( -- ptr u8 n ) s" words" s" e.f" FIFTH-BUF FILE-IN ;
+
+: WORDS-BUILD ( -- n )
+   [: s" app" RTARGET:HOST-TARGET
+      [: WORDS-A$ included  WORDS-B$ included  WORDS-C$ included  WORDS-D$ included  WORDS-E$ included ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ b.f's object, read afresh, in CRAFT-OBJ, and the offset of its first WORDS row.
+: FIRST-WORD-ROW ( -- n )
+   s" /words/b.f.hfo" CRAFT-FIND
+   CRAFT-FIRST CRAFT-OBJ CRAFT-U @ BYTE-COPY
+   WORDS-FIELD 8 + OBJ@ WORD-ROW-BYTES < if s" build: BY-WORD: b.f's object lists no word" 1 die then
+   WORDS-FIELD OBJ@ ;
+
+\ b.f's first WORDS row with its time one more; then a build.
+: WORD-RETIMED ( -- n )
+   FIRST-WORD-ROW 16 + {: at:n :}
+   at OBJ@ 1 +  at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;
+
+\ b.f's first WORDS row naming word 1000, which its piece lacks; then a build.
+: WORD-MISSING ( -- n )
+   FIRST-WORD-ROW 8 + {: at:n :}
+   1000 at OBJ!  CRAFT-U @ CRAFT-WRITE  WORDS-BUILD ;
+
+\ A file depends on each earlier word its source spells, not on the word's whole piece: A1's edit
+\ compiles b.f, d.f and e.f, not c.f, which spells A2; a new C in a.f compiles c.f, which spells C.
+: BY-WORD ( -- )
+   s" words" DIR$ FS:MAKE-DIR
+   WORDS-A$ s\" package FILE-OBJECTS-WORDS public : A1 ( -- n ) 1 ; : A2 ( -- n ) 2 ; ;package\n" FS:WRITE-ALL
+   WORDS-B$ s\" package FILE-OBJECTS-WORDS-B public : B ( -- n ) FILE-OBJECTS-WORDS:A1 ; ;package\n" FS:WRITE-ALL
+   WORDS-C$ s\" package FILE-OBJECTS-WORDS-C public : C ( -- n ) FILE-OBJECTS-WORDS:A2 ; ;package\n" FS:WRITE-ALL
+   WORDS-D$ s\" package FILE-OBJECTS-WORDS-D public EXPORT FILE-OBJECTS-WORDS:A1 ;package\n" FS:WRITE-ALL
+   WORDS-E$ s\" package FILE-OBJECTS-WORDS-E public : E ( -- n ) FILE-OBJECTS-WORDS-D:A1 ; ;package\n" FS:WRITE-ALL
+   WORDS-BUILD {: one:n :}
+   WORDS-A$ s\" package FILE-OBJECTS-WORDS public : A1 ( -- n ) 3 ; : A2 ( -- n ) 2 ; ;package\n" FS:WRITE-ALL
+   WORDS-BUILD {: two:n :}
+   WORDS-BUILD {: three:n :}
+   WORDS-A$ s\" package FILE-OBJECTS-WORDS public : A1 ( -- n ) 3 ; : A2 ( -- n ) 2 ; : C ( -- n ) 9 ; ;package\n"
+   FS:WRITE-ALL
+   WORDS-BUILD {: four:n :}
+   WORD-RETIMED {: five:n :}
+   WORD-MISSING {: six:n :}
+   WORDS-BUILD {: seven:n :}
+   s" words: compiled " one two three RESULTS.
+   space four FMT:.INT  space five FMT:.INT  space six FMT:.INT  space seven FMT:.INT cr ;
+
 : STOPS ( -- )
    s" app" RTARGET:HOST-TARGET [: STOP-FILE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-BODY ;] LINKER:WITH
@@ -774,7 +839,7 @@ variable SLOT-S                          \ and their count
    s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----
