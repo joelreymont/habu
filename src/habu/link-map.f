@@ -106,7 +106,7 @@ variable MAP-AT                      \ the first code byte no row written so far
 : REC-FILE ( n -- n )
    {: r:n :}
    begin
-      MAP-WALK @ BUILT-N < if r  MAP-WALK @ BUILT-AT KEY-BYTES 8 + + LE:U64@  >= else false then
+      MAP-WALK @ BUILT-N < if r  MAP-WALK @ BUILT-AT BUILT-FIRST 8 + + LE:U64@  >= else false then
    while 1 MAP-WALK +! repeat
    MAP-WALK @ BUILT-N < if
       r MAP-WALK @ HOLDS? if MAP-WALK @ exit then

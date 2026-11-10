@@ -146,13 +146,19 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ LOADERS stacks a row per file whose compile or link is running: its key, then 1
 \ for a link, 0 for a compile. LOADS holds a row per load: the loader's key,
 \ zeros for the build's body, then the SHA-256 of the path. BUILT holds a row per
-\ piece compiled or linked: its file's key, its first and end record index, its
-\ sum (the object's checksum for a file's last piece, PIECE-SUM! for an earlier
-\ one), its first and end emission, and the data pointer as the piece starts and
-\ ends.
+\ piece compiled or linked: its file's key, its number in the file, its time (NOW as
+\ it compiled), its first and end record index, its first and end emission, and the
+\ data pointer as the piece starts and ends. A FILES row is a BUILT row's first
+\ FILES-ROW-BYTES bytes.
 32 constant KEY-BYTES
 KEY-BYTES 2 * constant ROW-BYTES
-ROW-BYTES 48 + constant BUILT-BYTES
+KEY-BYTES 64 + constant BUILT-BYTES
+KEY-BYTES constant BUILT-PIECE
+BUILT-PIECE 8 + constant BUILT-TIME
+BUILT-TIME 8 + constant BUILT-FIRST
+BUILT-FIRST 16 + constant BUILT-EM
+BUILT-EM 16 + constant BUILT-DP
+KEY-BYTES 16 + constant FILES-ROW-BYTES
 KEY-BYTES 8 + constant LOADER-BYTES
 create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
@@ -164,7 +170,7 @@ create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's sour
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
 create FRAMES BUF:HDR-BYTES allot    \ each compiling loader's object so far while its request loads
 create PARKED BUF:HDR-BYTES allot    \ each checked or linking file's place in its object while its request is checked or loads
-create PENDING BUF:HDR-BYTES allot   \ the pieces a root's check passed, in load order: key, then sum
+create PENDING BUF:HDR-BYTES allot   \ the pieces a root's check passed, in load order, as FILES rows
 create PENDING-PATHS BUF:HDR-BYTES allot \ the paths those pieces registered, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
 create SRC-COPY BUF:HDR-BYTES allot  \ a checked request's bytes as the loader runs them
@@ -183,12 +189,25 @@ KEY-BYTES BUFFER: FILE-KEY
 ROW-BYTES BUFFER: ROW
 3 8 * constant INPUT-BYTES
 INPUT-BYTES BUFFER: INPUT-STAMP      \ the source's stamp (INPUT!), the object's INPUT
-KEY-BYTES BUFFER: CK-SUM             \ the SHA-256 of the object past its checksum (HEADER-CK)
-KEY-BYTES BUFFER: PIECE-SUM          \ the sum of a piece a request ends (PIECE-SUM!)
-KEY-BYTES BUFFER: WANT-KEY           \ a checked request's key and sum, as its loader's FILES row names them
-KEY-BYTES BUFFER: WANT-SUM
+KEY-BYTES BUFFER: WANT-KEY           \ a checked request's FILES row as its loader names it: key, piece, time
+variable WANT-PIECE
+variable WANT-TIME
 variable REQ-N                       \ the compiling file's requests so far, REQUESTS' rows
 KEY-BYTES 2 * BUFFER: KEY-HEX
+
+\ clock_gettime writes a struct timespec: seconds, then nanoseconds, eight bytes each.
+$10 constant TIMESPEC-BYTES
+TIMESPEC-BYTES BUFFER: CLOCK-SPEC
+PROCESS-SYMBOLS
+FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
+   1 TIMESPEC-BYTES WRITES-BYTES
+;FUNCTION
+
+\ Nanoseconds since the epoch on clock 0, CLOCK_REALTIME on macOS and Linux: a piece's time.
+: NOW ( -- n )
+   0 CLOCK-SPEC CLOCK-GETTIME-CALL 0<> if E-COMP-STATE throw then
+   CLOCK-SPEC LE:U64@ 1000000000 *  CLOCK-SPEC 8 + LE:U64@ + ;
+
 DYNAMIC-BUFFER ENTRY-OFFS n          \ a read object's entries' offsets in OBJECT (FRESH?)
 DYNAMIC-BUFFER REC-KINDS n           \ its record r's kind
 DYNAMIC-BUFFER EM-RECS n             \ its emission e's record index
@@ -214,7 +233,6 @@ DYNAMIC-BUFFER OWNED n
 variable OWNED-N
 DYNAMIC-BUFFER OWNED-TEXT u8
 variable OWNED-TEXT-N
-KEY-BYTES BUFFER: OPEN-SUM           \ the open's BUILT row's sum (OWNED-SUM)
 
 \ As a file's compile starts (COPY-BELOW): the space's cells below its data, the records
 \ [FIRST-REC - 1, FILE-REC), and NSHADOW:PATCHES.
@@ -259,9 +277,9 @@ variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of th
 \ or ends off TOP-SCOPE?, or a load it asked for never reached the build's runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 
-\ The magic, the key, the SHA-256 of every byte after it, then for INPUT FILES REQUESTS NAMES PIECES
-\ an offset from the file's start and a length (U64+), 0 0 while empty; then those sections in order.
-8 KEY-BYTES 2 * + 5 2 * 8 * + constant HEADER-BYTES
+\ The magic, the key, the last piece's time, then for INPUT FILES REQUESTS NAMES PIECES an offset
+\ from the file's start and a length (U64+), 0 0 while empty; then those sections in order.
+8 KEY-BYTES + 8 + 5 2 * 8 * + constant HEADER-BYTES
 
 \ A record's kind in PIECES.
 0 constant KIND-DEF
@@ -451,7 +469,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 
 : HOLDS? ( n n -- bool )
    {: idx:n row:n :}
-   row BUILT-AT KEY-BYTES + {: at:ptr :}
+   row BUILT-AT BUILT-FIRST + {: at:ptr :}
    at LE:U64@ idx <=  at 8 + LE:U64@ idx >  and ;
 
 \ The BUILT row whose [first, end) holds the record index.
@@ -466,7 +484,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 : EM-ROW ( n -- n )
    {: e:n :}
    BUILT-N 0 ?do
-      i BUILT-AT ROW-BYTES 16 + + {: at:ptr :}
+      i BUILT-AT BUILT-EM + {: at:ptr :}
       at LE:U64@ e <=  at 8 + LE:U64@ e >  and if i unloop exit then
    loop
    E-COMP-STATE throw ;
@@ -475,7 +493,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 : DP-ROW ( n -- n bool )
    {: v:n :}
    BUILT-N 0 ?do
-      i BUILT-AT ROW-BYTES 32 + + {: at:ptr :}
+      i BUILT-AT BUILT-DP + {: at:ptr :}
       at LE:U64@ v <=  at 8 + LE:U64@ v >  and if i true unloop exit then
    loop
    0 false ;
@@ -486,25 +504,22 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    {: v:n :}
    BUILT-N 0 ?do
       BUILT-N 1 - i - {: row:n :}
-      row BUILT-AT ROW-BYTES 32 + + {: at:ptr :}
+      row BUILT-AT BUILT-DP + {: at:ptr :}
       at 8 + LE:U64@ v =  at LE:U64@ v <>  and if row true unloop exit then
    loop
    0 false ;
 
-\ The FILES row naming the BUILT row's piece by its file's key and its sum, 1-based; added on
-\ first use.
+\ The FILES row naming the BUILT row's piece by its file's key, its number and its time,
+\ 1-based; added on first use.
 : REF-FILE ( n -- n )
    {: row:n :}
    row BUILT-AT {: at:ptr :}
    REFS BYTES$ {: refs:ptr refsu:n :}
-   refsu ROW-BYTES / {: n:n :}
+   refsu FILES-ROW-BYTES / {: n:n :}
    n 0 ?do
-      refs i ROW-BYTES * + {: r:ptr :}
-      r KEY-BYTES  at KEY-BYTES  STR=
-      r KEY-BYTES +  KEY-BYTES  at KEY-BYTES 16 + +  KEY-BYTES  STR=  and if i 1 + unloop exit then
+      refs i FILES-ROW-BYTES * +  FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if i 1 + unloop exit then
    loop
-   at KEY-BYTES REFS SPAN+
-   at KEY-BYTES 16 + + KEY-BYTES REFS SPAN+
+   at FILES-ROW-BYTES REFS SPAN+
    n 1 + ;
 
 \ A record reference: the file, 0 for this one, then the index in that file.
@@ -515,7 +530,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    then
    idx BUILT-ROW {: row:n :}
    row REF-FILE PIECES U64+
-   idx  row BUILT-AT KEY-BYTES + LE:U64@ -  PIECES U64+ ;
+   idx  row BUILT-AT BUILT-FIRST + LE:U64@ -  PIECES U64+ ;
 
 \ ---- dependencies by name -------------------------------------------------------
 \ A file depends on the files its object references and on every earlier file that defines a
@@ -756,7 +771,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    v DP-ROW {: row:n hit:bool :}
    hit if
       3 PIECES U64+  row REF-FILE PIECES U64+
-      v  row BUILT-AT ROW-BYTES 32 + + LE:U64@ -  PIECES U64+ true exit
+      v  row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ true exit
    then
    v BASE @ >=  v OPEN-DP @ <  and if 4 PIECES U64+  v BASE @ - PIECES U64+ true exit then
    v FILE-END @ = if
@@ -765,7 +780,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    v DP-END-ROW {: end-row:n end-hit:bool :}
    end-hit if
       3 PIECES U64+  end-row REF-FILE PIECES U64+
-      v  end-row BUILT-AT ROW-BYTES 32 + + LE:U64@ -  PIECES U64+ true exit
+      v  end-row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ true exit
    then
    false ;
 
@@ -1070,7 +1085,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       else
          qe EM-ROW {: row:n :}
          row REF-FILE PIECES U64+
-         qe  row BUILT-AT ROW-BYTES 16 + + LE:U64@ -  PIECES U64+
+         qe  row BUILT-AT BUILT-EM + LE:U64@ -  PIECES U64+
       then
       qf PIECES U64+ true exit
    then
@@ -1528,21 +1543,20 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    REFS BUF:CLEAR  REQUESTS BUF:CLEAR  PIECES BUF:CLEAR  0 REQ-N !
    0 PIECES U64+ ;
 
-\ OBJECT as REFS then PIECES, FACTS-AT moved into it, and PIECE-SUM their SHA-256: the sum of the
-\ piece a request ends, by which a later file's FILES row names it.
-: PIECE-SUM! ( -- )
+\ OBJECT as REFS then PIECES, FACTS-AT moved into it, as a request ends a piece.
+: PIECE-LAY ( -- )
    REFS BYTES$ {: refs:ptr refsu:n :}
    OBJECT BUF:CLEAR  refs refsu OBJECT SPAN+  PIECES BYTES$ OBJECT SPAN+
-   refsu FACTS-AT +!
-   SHA-CTX OBJECT BYTES$ PIECE-SUM SHA256-IN ;
+   refsu FACTS-AT +! ;
 
-\ FILE-KEY's object after its last piece, with INPUT-STAMP as INPUT! left it; its checksum sums
-\ every byte after it; written only when the file is not UNLINKABLE, but built for its sum, which
-\ names its last piece in BUILT. A REQUESTS row: the sum of the piece the request ends
-\ (PIECE-SUM!), the kind (SOURCE-UNIT:LOAD-INCLUDE or LOAD-REQUIRE), the path as spelled and the
-\ path loaded, each a FIELD+, then the FILES row of the requested file's last piece. A sibling renamed
-\ into place, unsynced: an object a crash cut short fails its checksum, and its file compiles.
-: WRITE-OBJECT ( -- )
+\ FILE-KEY's object after its last piece, whose time is t, with INPUT-STAMP as INPUT! left it;
+\ written only when the file is not UNLINKABLE, but built for the facts PIECE-PLACE links. A
+\ REQUESTS row: the time of the piece the request ends, the kind (SOURCE-UNIT:LOAD-INCLUDE or
+\ LOAD-REQUIRE), the path as spelled and the path loaded, each a FIELD+, then the FILES row of the
+\ requested file's last piece. A sibling renamed into place, unsynced: an object a crash cut short
+\ fails HEADER-CK's and PIECE-CK's bounds checks, and its file compiles.
+: WRITE-OBJECT ( n -- )
+   {: t:n :}
    NAMED+
    REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
@@ -1556,7 +1570,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
    FILE-KEY KEY-BYTES OBJECT SPAN+
-   KEY-BYTES 0 ?do 0 OBJECT BUF:APPEND-BYTE loop
+   t OBJECT U64+
    HEADER-BYTES OBJECT U64+  INPUT-BYTES OBJECT U64+
    refsu 0<> if files-at else 0 then OBJECT U64+  refsu OBJECT U64+
    requ 0<> if reqs-at else 0 then OBJECT U64+  requ OBJECT U64+
@@ -1568,23 +1582,18 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    nm nmu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
    pieces-at FACTS-AT +!
-   OBJECT BYTES$ {: obj:ptr len:n :}
-   SHA-CTX  obj 8 KEY-BYTES 2 * + +  len 8 - KEY-BYTES 2 * -  obj 8 KEY-BYTES + +  SHA256-IN
    UNLINKABLE @ if exit then
    FILE-KEY KEY-HEX SHA256>HEX
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$  [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
 
-\ The checksum of OBJECT, the object written or read.
-: OBJECT-SUM ( -- ptr u8 ) OBJECT BYTES$ drop 8 KEY-BYTES + + ;
-
-\ The piece's BUILT row with its sum and its file's path; NAMES takes its records.
-: BUILT+ ( ptr u8 -- )
-   {: sum:ptr :}
+\ The piece's BUILT row with its number and time and its file's path; NAMES takes its records.
+: BUILT+ ( n n -- )
+   {: piece:n t:n :}
    ndict@ BUILT-N INDEX-RECS
    BUILT-N 1 + BUILT-PATHS-RESERVE  KEY-PATH BUILT-N BUILT-PATHS !
    FILE-KEY KEY-BYTES BUILT SPAN+
+   piece BUILT U64+  t BUILT U64+
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
-   sum KEY-BYTES BUILT SPAN+
    FILE-EM @ BUILT U64+  NSHADOW:EMISSIONS BUILT U64+
    FILE-DP @ BUILT U64+  FILE-END @ BUILT U64+ ;
 
@@ -1701,17 +1710,17 @@ variable RD-END
 
 : FILE-RECS ( n -- n )
    {: k:n :}
-   k KEY-BYTES 8 + BUILT@  k KEY-BYTES BUILT@ - ;
+   k BUILT-FIRST 8 + BUILT@  k BUILT-FIRST BUILT@ - ;
 
 
 : FILE-EMS ( n -- n )
    {: k:n :}
-   k ROW-BYTES 24 + BUILT@  k ROW-BYTES 16 + BUILT@ - ;
+   k BUILT-EM 8 + BUILT@  k BUILT-EM BUILT@ - ;
 
 
 : FILE-BYTES ( n -- n )
    {: k:n :}
-   k ROW-BYTES 40 + BUILT@  k ROW-BYTES 32 + BUILT@ - ;
+   k BUILT-DP 8 + BUILT@  k BUILT-DP BUILT@ - ;
 
 
 \ This object's emission e's F, after its S, R and S bytes.
@@ -1769,7 +1778,7 @@ variable RD-END
    file FILE-IN? 0= if BAD exit then
    file PENDING? if exit then
    e file FILE-EMS >= if BAD exit then
-   f  file ROW-BYTES 16 + BUILT@ e + NSHADOW:FUNCTIONS  >= if BAD then ;
+   f  file BUILT-EM BUILT@ e + NSHADOW:FUNCTIONS  >= if BAD then ;
 
 
 \ A code reference (RD-REF) whose own emission is at most top and own record below bound: the
@@ -1782,7 +1791,7 @@ variable RD-END
       GOOD? 0= if exit then
       x 0= if y REC-KIND KIND-PACKAGE = if BAD then exit then
       x PENDING? if exit then
-      x KEY-BYTES BUILT@ y + PKG? if BAD then exit
+      x BUILT-FIRST BUILT@ y + PKG? if BAD then exit
    then
    tag 1 = if rbase x + ARM64:HOST-KERNEL? 0= if BAD then exit then
    tag 2 = if x y z top FN-REF-CK exit then
@@ -1806,13 +1815,12 @@ variable RD-END
    BAD ;
 
 
-\ The BUILT row with the FILES row's key and object checksum (REF-FILE), and true; false when none.
+\ The BUILT row with the FILES row's key, piece number and time (REF-FILE), and true; false when
+\ none.
 : BUILT-MATCH ( ptr u8 -- n bool )
    {: at:ptr :}
    BUILT-N 0 ?do
-      i BUILT-AT {: row:ptr :}
-      row KEY-BYTES  at KEY-BYTES  STR=
-      row KEY-BYTES 16 + + KEY-BYTES  at KEY-BYTES + KEY-BYTES  STR=  and if i true unloop exit then
+      i BUILT-AT FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if i true unloop exit then
    loop
    0 false ;
 
@@ -1820,14 +1828,14 @@ variable RD-END
 \ FILES row k, from 1, in OBJECT.
 : FILES-ROW ( n -- ptr u8 )
    {: k:n :}
-   OBJECT BYTES$ drop  HEADER-BYTES INPUT-BYTES +  k 1 - ROW-BYTES * +  + ;
+   OBJECT BYTES$ drop  HEADER-BYTES INPUT-BYTES +  k 1 - FILES-ROW-BYTES * +  + ;
 
 
 : PENDING-HAS? ( ptr u8 -- bool )
    {: at:ptr :}
    PENDING BYTES$ {: a:ptr u:n :}
-   u ROW-BYTES / 0 ?do
-      a i ROW-BYTES * + ROW-BYTES  at ROW-BYTES  STR= if true unloop exit then
+   u FILES-ROW-BYTES / 0 ?do
+      a i FILES-ROW-BYTES * + FILES-ROW-BYTES  at FILES-ROW-BYTES  STR= if true unloop exit then
    loop
    false ;
 
@@ -1850,7 +1858,7 @@ variable RD-END
    {: u:n :}
    0 FILES-N !
    GOOD? 0= if exit then
-   u ROW-BYTES / {: n:n :}
+   u FILES-ROW-BYTES / {: n:n :}
    u RD-SKIP
    GOOD? 0= if exit then
    n FILES-N !
@@ -1891,7 +1899,7 @@ variable RD-END
    0 REQS-N !
    RD-AT @ u + {: end:n :}
    begin GOOD?  RD-AT @ end <  and while
-      KEY-BYTES RD-SKIP
+      8 RD-SKIP
       RD-U64 {: kind:n :}
       kind SOURCE-UNIT:LOAD-INCLUDE <>  kind SOURCE-UNIT:LOAD-REQUIRE <>  and if BAD then
       NAME-CK  NAME-CK
@@ -1916,17 +1924,17 @@ variable RD-END
    repeat ;
 
 
-\ REQUESTS row k's offset in OBJECT, from 0; the row starts with the sum of the piece it ends.
+\ REQUESTS row k's offset in OBJECT, from 0; the row starts with the time of the piece it ends.
 : REQ-AT ( n -- n )
    {: k:n :}
    REQS-AT @  k 0 ?do
-      KEY-BYTES 8 + +  dup OBJ@ 8 + +  dup OBJ@ 8 + +  8 +
+      16 +  dup OBJ@ 8 + +  dup OBJ@ 8 + +  8 +
    loop ;
 
 
 \ REQUESTS row k's kind, the offsets of its spelled and loaded paths, and its FILES row.
 : REQ-FIELDS ( n -- n n n n )
-   REQ-AT KEY-BYTES + {: at:n :}
+   REQ-AT 8 + {: at:n :}
    at 8 + {: spelled:n :}
    spelled 8 + spelled OBJ@ + {: loaded:n :}
    at OBJ@  spelled  loaded  loaded 8 + loaded OBJ@ + OBJ@ ;
@@ -1938,15 +1946,22 @@ variable RD-END
    OBJECT BYTES$ drop at 8 + +  at OBJ@ ;
 
 
-\ The sum of the piece that ends with REQUESTS row req, or of the last (-1): the object's checksum.
-: PIECE-SUM$ ( n -- ptr u8 )
+\ The number of the piece that ends with REQUESTS row req, or of the last (-1).
+: PIECE-N ( n -- n )
    {: req:n :}
-   req 0< if OBJECT-SUM exit then
-   OBJECT BYTES$ drop  req REQ-AT + ;
+   req 0< if REQS-N @ exit then
+   req ;
+
+\ The time in OBJECT of the piece that ends with REQUESTS row req, or of the last (-1): the
+\ header's.
+: PIECE-TIME ( n -- n )
+   {: req:n :}
+   req 0< if 8 KEY-BYTES + OBJ@ exit then
+   req REQ-AT OBJ@ ;
 
 
-\ The header, its checksum, INPUT against INPUT-STAMP, the sections before PIECES and its piece count, as
-\ WRITE-OBJECT lays them, NAMES replayed (NAMES-CK) and checked against FILES (NAMED-CK); then PIECE-AT.
+\ The header, INPUT against INPUT-STAMP, the sections before PIECES and its piece count, as WRITE-OBJECT
+\ lays them, NAMES replayed (NAMES-CK) and checked against FILES (NAMED-CK); then PIECE-AT.
 : HEADER-CK ( -- )
    0 FILES-N !  0 REQS-N !
    OBJECT BYTES$ nip {: len:n :}
@@ -1956,12 +1971,10 @@ variable RD-END
    s" HABUFOBJ" RD-SAME
    FILE-KEY KEY-BYTES RD-SAME
    GOOD? 0= if exit then
-   OBJECT BYTES$ drop {: obj:ptr :}
-   SHA-CTX  obj 8 KEY-BYTES 2 * + +  len 8 - KEY-BYTES 2 * -  CK-SUM  SHA256-IN
-   CK-SUM KEY-BYTES RD-SAME
+   8 RD-SKIP
    HEADER-BYTES RD-EQ  INPUT-BYTES RD-EQ
    RD-U64 RD-U64 {: off:n refsu:n :}
-   refsu 0<  refsu ROW-BYTES mod 0<>  or  refsu len files-at - >  or if BAD exit then
+   refsu 0<  refsu FILES-ROW-BYTES mod 0<>  or  refsu len files-at - >  or if BAD exit then
    off  refsu 0<> if files-at else 0 then  <> if BAD then
    files-at refsu + {: reqs-at:n :}
    RD-U64 RD-U64 {: roff:n requ:n :}
@@ -1990,7 +2003,7 @@ variable RD-END
       file 0= if
          idx REC-KIND KIND-PACKAGE <> if BAD then
       else
-         file PENDING? 0= if  file KEY-BYTES BUILT@ idx + PKG? 0= if BAD then  then
+         file PENDING? 0= if  file BUILT-FIRST BUILT@ idx + PKG? 0= if BAD then  then
       then
    then
    file idx ;
@@ -2024,7 +2037,7 @@ variable RD-END
    loop
    file 0= if false exit then
    file PENDING? if true exit then
-   file KEY-BYTES BUILT@ idx + {: r:n :}
+   file BUILT-FIRST BUILT@ idx + {: r:n :}
    r GRANTED?  r XREF-REC XREF-PKG-PRIVATE 0<>  or ;
 
 
@@ -2035,7 +2048,7 @@ variable RD-END
    GOOD? 0= if exit then
    file 0= if BAD exit then
    file PENDING? if exit then
-   file KEY-BYTES BUILT@ idx + XREF-REC XREF:SEALED? if BAD then ;
+   file BUILT-FIRST BUILT@ idx + XREF-REC XREF:SEALED? if BAD then ;
 
 
 \ An entry's flags, which RECORD+ writes without the name length and EXT.
@@ -2116,7 +2129,7 @@ variable RD-END
          else
             file idx PRIVATE? if BAD else
                file idx PRIV+
-               file 0<> if  file KEY-BYTES BUILT@ idx + GRANT+  then
+               file 0<> if  file BUILT-FIRST BUILT@ idx + GRANT+  then
             then
          then
       then
@@ -2202,7 +2215,7 @@ variable RD-END
    GOOD? 0= if exit then
    x 0= if  y REC-KIND KIND-DOES <> if BAD then  exit  then
    x PENDING? if exit then
-   x KEY-BYTES BUILT@ y + {: r:n :}
+   x BUILT-FIRST BUILT@ y + {: r:n :}
    r 1 <  if BAD exit then
    r 1 - XREF-DOES-COMPANION? 0= if BAD then ;
 
@@ -2432,11 +2445,12 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    f start BUF:N>BLEN PARKED BUF:REPLACE ;
 
 
-\ The piece ending with REQUESTS row req, or the last (-1), passed: PENDING gains FILE-KEY and its sum.
+\ The piece ending with REQUESTS row req, or the last (-1), passed: PENDING gains FILE-KEY and its
+\ number and time.
 : PENDING+ ( n -- )
    {: req:n :}
    FILE-KEY KEY-BYTES PENDING SPAN+
-   req PIECE-SUM$ KEY-BYTES PENDING SPAN+ ;
+   req PIECE-N PENDING U64+  req PIECE-TIME PENDING U64+ ;
 
 
 \ The bytes as the loader runs them: a copy in SRC-COPY whose `#!` line is a comment when they
@@ -2454,7 +2468,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 defer CHECK-OBJECT ( -- )
 
 \ A requested file's bytes and path, from SOURCE-ROOT:WITH-BYTES: its object, under the key and with
-\ the sum its loader's FILES row names, checked as its loader's.
+\ the last piece's number and time its loader's FILES row names, checked as its loader's.
 : CHECKED ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    WANT-KEY FILE-KEY KEY-BYTES BYTE-COPY
@@ -2462,7 +2476,7 @@ defer CHECK-OBJECT ( -- )
    src srcu EXEC-BYTES INPUT!
    STAMPED? 0= if BAD exit then
    HEADER-FRESH? 0= if BAD exit then
-   CK-SUM KEY-BYTES  WANT-SUM KEY-BYTES  STR= 0= if BAD exit then
+   -1 PIECE-TIME WANT-TIME @ <>  REQS-N @ WANT-PIECE @ <>  or if BAD exit then
    CHECK-OBJECT ;
 
 : CHECK-FILE ( ptr u8 n -- ) [: CHECKED ;] SOURCE-ROOT:WITH-BYTES ;
@@ -2498,7 +2512,7 @@ defer CHECK-OBJECT ( -- )
    k REQ-FIELDS {: kind:n spelled:n loaded:n file:n :}
    file FILES-ROW {: at:ptr :}
    at WANT-KEY KEY-BYTES BYTE-COPY
-   at KEY-BYTES + WANT-SUM KEY-BYTES BYTE-COPY
+   at BUILT-PIECE + LE:U64@ WANT-PIECE !  at BUILT-TIME + LE:U64@ WANT-TIME !
    spelled FIELD$ SOURCE-ROOT:RESOLVE {: canon:ptr canonu:n known:bool :}
    canon canonu  loaded FIELD$  STR= 0= if BAD exit then
    canon canonu FS:FILE? 0= if BAD exit then
@@ -2569,7 +2583,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
 : REC-INDEX ( n n -- n )
    {: file:n idx:n :}
    file 0= if FILE-REC @ idx + exit then
-   file KEY-BYTES BUILT@ idx + ;
+   file BUILT-FIRST BUILT@ idx + ;
 
 
 \ A quotation reference's address: function f of the file's emission e, the host
@@ -2580,7 +2594,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    file 0= if
       FILE-EM @ e +  dup NSHADOW:EMISSIONS >= if E-COMP-STATE throw then
    else
-      file ROW-BYTES 16 + BUILT@ e +
+      file BUILT-EM BUILT@ e +
    then {: em:n :}
    em f NSHADOW:FUNCTION-SOURCE@ {: addr:n :}
    addr 0= if E-COMP-STATE throw then
@@ -2602,7 +2616,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    tag 2 = if x y z FN-ADDR exit then
    tag 3 = if
       x 0= if FILE-DP @ y + exit then
-      x ROW-BYTES 32 + BUILT@ y + exit
+      x BUILT-DP BUILT@ y + exit
    then
    tag 4 = if BASE @ x + exit then
    tag 5 = if 0 exit then
@@ -2947,11 +2961,9 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ whose rows no FILES-CK mapped.
 : REFS-ROW ( n -- n )
    {: k:n :}
-   REFS BYTES$ drop  k 1 - ROW-BYTES * + {: r:ptr :}
+   REFS BYTES$ drop  k 1 - FILES-ROW-BYTES * + {: r:ptr :}
    BUILT-N 0 ?do
-      i BUILT-AT {: at:ptr :}
-      r KEY-BYTES  at KEY-BYTES  STR=
-      r KEY-BYTES +  KEY-BYTES  at KEY-BYTES 16 + +  KEY-BYTES  STR=  and if i unloop exit then
+      r FILES-ROW-BYTES  i BUILT-AT FILES-ROW-BYTES  STR= if i unloop exit then
    loop
    E-COMP-STATE throw ;
 
@@ -2962,7 +2974,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    RD-U64 RD-U64 {: file:n idx:n :}
    RD-NAME {: a:ptr u:n :}
    GOOD? 0=  file 0=  or if E-COMP-STATE throw then
-   read if file idx REC-INDEX else  file REFS-ROW BUILT-AT KEY-BYTES + LE:U64@ idx +  then {: r:n :}
+   read if file idx REC-INDEX else  file REFS-ROW BUILT-AT BUILT-FIRST + LE:U64@ idx +  then {: r:n :}
    a u r CHECK:FACTS!
    read if a u r CHECK:READ-FACTS then ;
 
@@ -3167,8 +3179,8 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 
 \ The fresh object as the file's result, piece by piece: each piece checked against the files
-\ linked before it, linked with its registry acts and added to BUILT with its placed texts and its
-\ sum, then the file its request loaded linked in turn (LINK-REQUEST).
+\ linked before it, linked with its registry acts and added to BUILT with its placed texts, its
+\ number and its time, then the file its request loaded linked in turn (LINK-REQUEST).
 : LINK-FILE ( -- )
    PIECES-FIELD OBJ@ 8 + PIECE-AT !
    REQS-N @ 1 + 0 ?do
@@ -3179,7 +3191,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
       GOOD? 0= if E-STALE throw then
       LINK-OBJECT  true LINK-FACTS  READ-ALIASES  LINK-ACTS
       here NULL-PTR - FILE-END !
-      req PIECE-SUM$ BUILT+
+      req PIECE-N  req PIECE-TIME  BUILT+
       req 0 >= if req LINK-REQUEST then
    loop ;
 
@@ -3230,12 +3242,13 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    req PIECE+ ;
 
 
-\ The piece's texts placed from OBJECT, as a link places them, then its BUILT row with the sum.
-: PIECE-PLACE ( ptr u8 -- )
-   {: sum:ptr :}
+\ The piece's texts placed from OBJECT, as a link places them, then its BUILT row with its number
+\ and time.
+: PIECE-PLACE ( n n -- )
+   {: piece:n t:n :}
    FILE-HELD @ CHECK:DROP-FACTS  false LINK-FACTS
    here NULL-PTR - FILE-END !          \ the piece's span ends after its texts
-   sum BUILT+ ;
+   piece t BUILT+ ;
 
 
 \ The compiling file's object so far onto FRAMES while a file it requested loads, which reuses its
@@ -3300,8 +3313,9 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    SCOPE-CK
    -1 PIECE-END
    1 COMPILED-N +!
-   WRITE-OBJECT
-   OBJECT-SUM PIECE-PLACE ;
+   NOW {: t:n :}
+   t WRITE-OBJECT
+   REQ-N @ t PIECE-PLACE ;
 
 
 \ Whether event ev of the loader's log is the request that loads path: the piece's, an include or a
@@ -3316,10 +3330,10 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 
 \ A request of the compiling file, the newest event of the loader's log (REQUEST?, else
-\ E-COMP-STATE): its piece ends here, placed with its sum, which starts the request's row with its
-\ kind and the path as spelled and as loaded; its object so far waits on FRAMES while the file
-\ loads; then the row ends with the FILES row of that file's last piece, and the next piece starts
-\ at a cell boundary, as a load leaves here (include.f LOAD-UNIT).
+\ E-COMP-STATE): its piece ends here, placed with its number and its time, which starts the
+\ request's row with its kind and the path as spelled and as loaded; its object so far waits on
+\ FRAMES while the file loads; then the row ends with the FILES row of that file's last piece, and
+\ the next piece starts at a cell boundary, as a load leaves here (include.f LOAD-UNIT).
 : NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    EVENT-COUNT 1 - {: ev:n :}
@@ -3327,8 +3341,9 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
    SCOPE-CK
    REQ-N @ PIECE-END
-   PIECE-SUM!  PIECE-SUM PIECE-PLACE
-   PIECE-SUM KEY-BYTES REQUESTS SPAN+  mode REQUESTS U64+
+   PIECE-LAY  NOW {: t:n :}
+   REQ-N @ t PIECE-PLACE
+   t REQUESTS U64+  mode REQUESTS U64+
    ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+
    1 REQ-N +!
    align
@@ -3466,29 +3481,18 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    [: dup MAKE-OWNED ;] catch {: r:n rc:n :}
    rc 0<> if OUTER:DEF-ABORT rc throw then ;
 
-\ The open's sum: each owned row's package, name and facts text.
-: OWNED-SUM ( -- )
-   OBJECT BUF:CLEAR
-   OWNED-N @ 0 ?do
-      i 0 OWNED@ {: k:n :}
-      k PRIM-SPEC:PKG$ OBJECT FIELD+  k PRIM-SPEC:NAME$ OBJECT FIELD+
-      i 2 OWNED@ OWNED-TEXT  i 3 OWNED@  OBJECT FIELD+
-   loop
-   SHA-CTX OBJECT BYTES$ OPEN-SUM SHA256-IN ;
-
 \ After IMAGE-IN, so the texts are held, then laid before any file as the open's header data.
 \ The records are BUILT row 0, as a file's piece is, so an object names them by that row: its
-\ key is a load's with no path and no loader, which no file's load has; its sum is OWNED-SUM;
-\ it has no emission and no data of its own.
+\ key is a load's with no path and no loader, which no file's load has; it is piece 0 at time 0,
+\ since what it holds follows from hb, which KEY-SUM covers; it has no emission and no data.
 : OWNED-RECORDS ( -- )
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !
    OWNED-N @ 0 ?do i LINK-OWNED loop
    0 CHECK:PLACE-FACTS
-   OWNED-SUM
    s" " s" " 0 KEY-SUM
    FILE-KEY KEY-BYTES LOAD-PATHS SPAN+  s" " LOAD-PATHS FIELD+
    here NULL-PTR - dup FILE-DP !  FILE-END !
-   OPEN-SUM BUILT+ ;
+   0 0 BUILT+ ;
 
 : OPEN ( -- )
    0 COMPILED-N !  0 LINKED-N !

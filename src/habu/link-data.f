@@ -135,7 +135,7 @@ variable STR-N
 
 \ BUILT row r's data span, the data pointer as its piece starts and ends.
 : PIECE-SPAN ( n -- n n )
-   BUILT-AT ROW-BYTES 32 + + {: at:ptr :}
+   BUILT-AT BUILT-DP + {: at:ptr :}
    at LE:U64@  at 8 + LE:U64@ ;
 
 
