@@ -231,6 +231,24 @@ variable RP-ROW-OBJECT
    RP-W JSON:WRITE-OBJECT-END drop
    row rowu RP-ROW! ;
 
+\ Fails when the diagnostic holds the field KEY.
+: RP-NO-FIELD ( ptr u8 n -- )
+   RP-FIND 0= if JSON:READ-CLOSE exit then JSON:READ-CLOSE
+   s" repair-packet: unexpected diagnostic field" RP-E-IO RP-FAIL ;
+
+\ A definition, storage, record or using diagnostic carries all four place
+\ fields, when its token locates in the file, or none.
+: RP-PLACE ( -- )
+   s" line" RP-FIND 0= if
+      JSON:READ-CLOSE
+      s" column" RP-NO-FIELD  s" byte_start" RP-NO-FIELD  s" byte_end" RP-NO-FIELD
+      exit
+   then JSON:READ-CLOSE
+   RP-W JSON:WRITE-COMMA drop s" line" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" column" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" byte_start" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" byte_end" RP-REQ-NUM-FIELD ;
+
 \ A null word is a top-level step's: it has no definition to repair.
 : RP-DEF-PACKET ( n -- ptr u8 n )
    {: count:n :}
@@ -245,10 +263,7 @@ variable RP-ROW-OBJECT
    RP-W JSON:WRITE-COMMA drop s" token" RP-REQ-STR-FIELD
    RP-W JSON:WRITE-COMMA drop s" token_index" RP-REQ-NUM-FIELD
    RP-W JSON:WRITE-COMMA drop s" file" RP-REQ-STR-FIELD
-   RP-W JSON:WRITE-COMMA drop s" line" RP-REQ-NUM-FIELD
-   RP-W JSON:WRITE-COMMA drop s" column" RP-REQ-NUM-FIELD
-   RP-W JSON:WRITE-COMMA drop s" byte_start" RP-REQ-NUM-FIELD
-   RP-W JSON:WRITE-COMMA drop s" byte_end" RP-REQ-NUM-FIELD
+   RP-PLACE
    RP-W JSON:WRITE-COMMA drop s" declared_effect" RP-OPT-STR-FIELD
    RP-W JSON:WRITE-COMMA drop s" declared_effect_source" RP-OPT-STR-FIELD
    RP-W JSON:WRITE-COMMA drop s" inferred_effect" RP-REQ-STR-FIELD
@@ -307,15 +322,6 @@ variable RP-ROW-OBJECT
    RP-W JSON:WRITE-COMMA drop s" suggestion" RP-REQ-STR-FIELD
    count s" Rebuild bin/hb to check this source; no code change answers this diagnostic."
    RP-PACKET-END ;
-
-\ A record carries all four place fields, when its token locates in the file,
-\ or none.
-: RP-PLACE ( -- )
-   s" line" RP-FIND 0= if JSON:READ-CLOSE exit then JSON:READ-CLOSE
-   RP-W JSON:WRITE-COMMA drop s" line" RP-REQ-NUM-FIELD
-   RP-W JSON:WRITE-COMMA drop s" column" RP-REQ-NUM-FIELD
-   RP-W JSON:WRITE-COMMA drop s" byte_start" RP-REQ-NUM-FIELD
-   RP-W JSON:WRITE-COMMA drop s" byte_end" RP-REQ-NUM-FIELD ;
 
 : RP-STORAGE-PACKET ( n -- ptr u8 n )
    {: count:n :}

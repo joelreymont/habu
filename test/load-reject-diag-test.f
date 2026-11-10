@@ -768,6 +768,25 @@ variable RC
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    s" lrd-trust-body" s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
 
+\ A refusal at a token an immediate evaluated into the body, which no source
+\ holds, gets a record and a repair packet that meet the contract with no place.
+: TEST-UNSOURCED-PACKET ( -- )
+   s" a refusal at an evaluated token gets a repair packet with no place" T-LABEL
+   BODY$ S\" true DIAG-JSON!\nTRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate\ns\" EV\" 0 parse-imm\n: P ( -- ) ( a comment here ) 1 drop EV ;\n" FS:WRITE-ALL
+   BODY$ RUN
+   s" E-INPUT-UNDERFLOW" ASSERT-NAMED
+   ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
+   root GJA-DIAG-CONTRACT-ROW
+   root s" token" GJA-REQ s" drop" GJA-ASSERT-STR
+   root s" line" GJA-HAS? TFALSE
+   ERR$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
+   {: pa:ptr pu:n :}
+   pa OUT pu BYTE-COPY
+   OUT pu GJA-PARSE dup GJA-OBJ {: packet:SPAN:span<u8> :}
+   packet s" supply_missing_input" GJA-REPAIR-HEAD
+   packet GJA-REPAIR-DEF
+   packet s" line" GJA-HAS? TFALSE ;
+
 : TEST-UNREPORTED-REJECT ( -- )
    s" a silent diagnostic defer retains the hook fallback" T-LABEL
    BODY$ s" TRUSTED: LRD-MUTE-DIAG ( -- ) [: ;] is DIAGXT ; LRD-MUTE-DIAG -1 JSON-DIAGS ! : LRD-MUTED ( -- n ) ;" FS:WRITE-ALL
@@ -837,6 +856,7 @@ variable RC
    TEST-IMM-REQUIRE
    TEST-IMM-CALLER
    TEST-IMM-TRUSTED
+   TEST-UNSOURCED-PACKET
    TEST-UNREPORTED-REJECT
    TEST-BIG-LITERAL
    HB-TARGET-LINUX-X86-64? 0= if

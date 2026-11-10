@@ -1790,8 +1790,9 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
       CHECK:TOP-SITE IF s" line" JKEY  JNUM  44 EMIT1 ELSE drop THEN
       EXIT
    THEN
-   TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE 0= IF JLOC-ORIGIN THEN
-   JLOC-FIELDS ;
+   TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE IF JLOC-FIELDS EXIT THEN
+   DIAG-MAPPED? IF EXIT THEN   \ mapped text no source holds
+   JLOC-ORIGIN JLOC-FIELDS ;
 
 \ The reason a signature too large to record names its bound, count and limit
 \ by: a definition's packet (DIAG-JSON) and a stored row's (BADSIG-JSON).

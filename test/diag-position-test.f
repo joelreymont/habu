@@ -1106,11 +1106,11 @@ variable RC
    textu 0= IF ERR-U @ 0 T= EXIT THEN
    ERR$ text textu CONTAINS? TTRUE ;
 
-\ Packet k of the last check is E-TRUST-UNRESOLVED for TOK in the file PATH,
-\ with no position: the checked text does not hold TOK.
-: UNPLACED-STALE ( n ptr u8 n ptr u8 n -- )
-   {: k:n tok:ptr toku:n path:ptr pathu:n :}
-   k s" code" s" E-TRUST-UNRESOLVED" FIELD=
+\ Packet k of the last check is CODE for TOK in the file PATH, with no position,
+\ and meets the packet contract.
+: UNPLACED ( n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: k:n c:ptr cu:n tok:ptr toku:n path:ptr pathu:n :}
+   k s" code" c cu FIELD=
    k s" token" tok toku FIELD=
    k s" file" path pathu FIELD=
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
@@ -1119,7 +1119,14 @@ variable RC
    root s" line" FIELD-ABSENT
    root s" column" FIELD-ABSENT
    root s" byte_start" FIELD-ABSENT
-   root s" byte_end" FIELD-ABSENT ;
+   root s" byte_end" FIELD-ABSENT
+   root GJA-DIAG-CONTRACT-ROW ;
+
+\ Packet k of the last check is E-TRUST-UNRESOLVED for TOK in the file PATH,
+\ with no position: the checked text does not hold TOK.
+: UNPLACED-STALE ( n ptr u8 n ptr u8 n -- )
+   {: k:n tok:ptr toku:n path:ptr pathu:n :}
+   k s" E-TRUST-UNRESOLVED" tok toku path pathu UNPLACED ;
 
 \ Each check of the fixture, plain, --all-errors and --verify-only, refuses its
 \ trust row as stale at TOK, that packet alone and unplaced.
@@ -1404,6 +1411,92 @@ variable RC
    GJA-LINE# @ 1 T=
    0 21 MK-DEFERRED
    s" x at 'zz'" REJECT-RC LOADED ;
+
+\ The fixture's first line: RAW-IMM, an immediate the checker has no model for,
+\ so the load refuses each body that compiles it before it runs.
+: RAW-IMM-LINE ( -- )
+   SB-RESET
+   s" TRUSTED: RAW-IMM ( -- ) ; immediate" SB-APPEND LF+ ;
+
+\ A refusal in the run, before an immediate runs or at `;`, names its token's
+\ place in the file though comments, blank lines, tabs and runs of spaces
+\ before it are not in the text the load checks.
+: TEST-RUN-CAPTURED ( -- )
+   s" an unmodeled immediate after comments of both kinds" T-LABEL
+   RAW-IMM-LINE
+   s" : P ( -- ) s" SB-APPEND 34 SB-APPEND-C s"  a does> b" SB-APPEND 34 SB-APPEND-C
+   s"  2drop ( does> here ) " SB-APPEND 92 SB-APPEND-C s"  x does>" SB-APPEND LF+
+   s"    RAW-IMM ;" SB-APPEND LF+
+   s" imm-comments.f" FIXTURE!
+   s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 3 4 95 102 RUN-REFUSED-AT
+   s" an unmodeled immediate after a paren comment on its line" T-LABEL
+   RAW-IMM-LINE
+   s" : P ( -- ) 1 drop ( a note ) RAW-IMM ;" SB-APPEND LF+
+   s" imm-paren.f" FIXTURE!
+   s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 2 30 65 72 RUN-REFUSED-AT
+   s" an unmodeled immediate after blank lines and tabs" T-LABEL
+   RAW-IMM-LINE
+   s" : P ( -- )" SB-APPEND TAB+ s" 1" SB-APPEND TAB+ TAB+ s" drop" SB-APPEND LF+
+   LF+ LF+
+   TAB+ s"   RAW-IMM ;" SB-APPEND LF+
+   s" imm-blanks.f" FIXTURE!
+   s" E-UNMODELED-IMMEDIATE" s" RAW-IMM" 5 4 60 67 RUN-REFUSED-AT
+   s" a call of MADE, whose address X does not declare, after comments" T-LABEL
+   SB-RESET
+   s" : MK ( -- ) create ; parses: MK 1" SB-APPEND LF+
+   s" MK MADE" SB-APPEND LF+
+   s" : X ( -- ) ( c ) " SB-APPEND 92 SB-APPEND-C s"  c" SB-APPEND LF+
+   s"    MADE ;" SB-APPEND LF+
+   s" made-call-comments.f" FIXTURE!
+   s" E-MISMATCH" s" MADE" 4 4 66 70 RUN-REFUSED-AT ;
+
+\ The fixture's first two lines: EV, an immediate the checker models as parsing
+\ nothing, which evaluates `drop` into the body it runs in.
+: EV-LINES ( -- )
+   SB-RESET
+   s\" TRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate" SB-APPEND LF+
+   s\" s\" EV\" 0 parse-imm" SB-APPEND LF+ ;
+
+\ The plain check and --all-errors each refuse the fixture at TOK with CODE,
+\ one packet with no position.
+: RUN-REFUSED-UNPLACED ( ptr u8 n ptr u8 n -- )
+   {: c:ptr cu:n tok:ptr toku:n :}
+   s" " CHECK
+   c cu REJECTED-AS
+   0 c cu tok toku FX-PATH$ UNPLACED
+   s" --all-errors" CHECK
+   c cu REJECTED-AS
+   0 c cu tok toku FX-PATH$ UNPLACED ;
+
+\ A refusal at a token an immediate evaluated into the run, which no source
+\ holds, names no place; a token after it in the file keeps its true place.
+: TEST-RUN-UNSOURCED ( -- )
+   s" an underflow at a drop an immediate evaluated, after a comment" T-LABEL
+   EV-LINES
+   s" : P ( -- ) ( a comment here ) 1 drop EV ;" SB-APPEND LF+
+   s" ev-none.f" FIXTURE!
+   s" E-INPUT-UNDERFLOW" s" drop" RUN-REFUSED-UNPLACED
+   s" a mismatch at a drop in the file after an evaluated one" T-LABEL
+   EV-LINES
+   s" : P ( -- n ) ( a comment here ) 1 1 EV" SB-APPEND LF+
+   s"   drop ;" SB-APPEND LF+
+   s" ev-after.f" FIXTURE!
+   s" E-MISMATCH" s" drop" 4 3 109 113 RUN-REFUSED-AT ;
+
+\ A structure a definer's head leaves open is refused at the `does>` that ends
+\ the head: the load's packet names its place in the file though a comment
+\ earlier in the body is not in the text the load checks. The fixture sets the
+\ origin as the check tool's marked copy does.
+: TEST-HEAD-CLOSER ( -- )
+   s" an if open at the does> ending a definer's head, after a comment" T-LABEL
+   SB-RESET
+   s" true DIAG-JSON!" SB-APPEND LF+
+   s" 3 3 38 DIAG-ORIGIN!" SB-APPEND LF+
+   s" : CONST ( n -- ) ( a note ) create dup ," SB-APPEND LF+
+   s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
+   s" head-open-cmt.f" FIXTURE!
+   s\" \"line\":4,\"column\":10,\"byte_start\":86,\"byte_end\":91" REJECT-RC LOADED
+   ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
 
 \ A word nothing defines after a name another package's public mark covers, in
 \ a definition too wide to record, is refused there as the load refuses it.
@@ -1875,6 +1968,9 @@ variable RC
    TEST-LIVE-BRANCHES
    TEST-TICK-TARGET
    TEST-MADE
+   TEST-RUN-CAPTURED
+   TEST-RUN-UNSOURCED
+   TEST-HEAD-CLOSER
    TEST-UNSEEN-UNDEFINED
    TEST-DEFER-SUGGEST
    TEST-CONTROL-ORPHAN

@@ -9,9 +9,13 @@
 \ certified definition writes no record. A record names one refusal, the first
 \ the engine's own load reports.
 \ line and column are one-based, column in bytes; byte_start and byte_end are
-\ zero-based, end exclusive, in the labeled file. Text with no file bytes behind
-\ it (the engine's own load, `evaluate`, checker-generated definitions) reports
-\ its definition's origin plus the token's offset in the checked text.
+\ zero-based, end exclusive, in the labeled file. A definition the engine read
+\ from a file is placed by the rows its capture records (src/core/check-hook.f
+\ ROWS-ARM); a token the rows give no source, as one an immediate evaluated
+\ into the body, has none of the four fields. Other text with no file bytes
+\ behind it (`evaluate` text other than a slice of the file being loaded,
+\ stdin, a program file read without `--load`, checker-generated definitions)
+\ reports its definition's origin plus the token's offset in the checked text.
 \ A definition record whose word is null is a top-level step's: token_index,
 \ definition_source, declared_effect, declared_effect_source and inferred_effect
 \ are null with it, and its place is a line alone, none when no file holds it.

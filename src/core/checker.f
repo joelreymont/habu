@@ -22725,9 +22725,13 @@ variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
 \ built before each check with a table of the runs it copied: one two-cell row
 \ per run (text offset, source offset), ascending from text offset 0.
 \ DIAG-LOCATE maps a pointer into that text, or into the source, to a file
-\ position. Text with no map keeps the DIAG-ORIGIN! rule: the engine's own load
-\ (captured definitions keep no source addresses), `evaluate` text, and the
-\ definitions the checker generates for a declaration.
+\ position. The engine's hook (check-hook.f ROWS-ARM) arms the map for a
+\ definition the engine captured from a file buffer, from the rows the capture
+\ records, and gives a body its closer (CLOSER-ARM). Text with no map keeps
+\ the DIAG-ORIGIN! rule: `evaluate` text other than a slice of the file being
+\ loaded, stdin and a program file read without `--load`, a definition whose
+\ name lies outside the buffer being read, and the definitions the checker
+\ generates for a declaration.
 \ DIAG-CLOSER! takes the source token that closes the mapped definition (its `;`
 \ or a definer's `does>`), which the text does not hold: a control structure
 \ still open there is refused at that token, as the load's compiler refuses it
@@ -22736,11 +22740,18 @@ PTR-VARIABLE DSRC-A  variable DSRC-U
 variable DSRC-L  variable DSRC-C  variable DSRC-B
 PTR-VARIABLE DMAP-A  variable DMAP-U
 PTR-VARIABLE DROW-A  variable DROW-N
+\ The rows' source offset of the armed source's first byte, subtracted from
+\ each row's: the engine's rows count from the input buffer's start.
+variable DROW-BIAS
+\ A row's source offset for a run read outside the buffer that holds the
+\ definition's name (src/habu/layout.f BODY-SOURCE, which loads after this
+\ file).
+-1 constant DROW-NONE                      \ = layout.f BODY-SOURCE:NONE
 PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
 : DIAG-CLOSER-OFF ( -- )
    NULL-PTR DCLOSE-A !  0 DCLOSE-U ! ;
 : DIAG-MAP-OFF ( -- )
-   NULL-PTR DMAP-A !  0 DMAP-U !  NULL-PTR DROW-A !  0 DROW-N !
+   NULL-PTR DMAP-A !  0 DMAP-U !  NULL-PTR DROW-A !  0 DROW-N !  0 DROW-BIAS !
    DIAG-CLOSER-OFF ;
 : DIAG-SOURCE-OFF ( -- )
    NULL-PTR DSRC-A !  0 DSRC-U !
@@ -22752,23 +22763,33 @@ PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
    DIAG-MAP-OFF ;
 : DIAG-MAP! ( ptr u8 n ptr n n -- )
    {: a:ptr u:n rows:ptr count:n :}
-   a DMAP-A !  u DMAP-U !  rows DROW-A !  count DROW-N !
+   a DMAP-A !  u DMAP-U !  rows DROW-A !  count DROW-N !  0 DROW-BIAS !
    DIAG-CLOSER-OFF ;
+\ Set after DIAG-MAP!, which clears it.
+: DIAG-MAP-BIAS! ( n -- )
+   DROW-BIAS ! ;
 : DIAG-CLOSER! ( ptr u8 n -- )
    {: a:ptr u:n :}
    a DCLOSE-A !  u DCLOSE-U ! ;
 : DROW@ ( n -- n )
    DROW-A @ {: i:n rows:ptr :}
    i cells rows + @ ;
-\ The separator after a run maps to the byte after the run, where its last
-\ token ends.
-: DMAP>SRC ( n -- n )
+\ The first cell of the last row at or before text offset x.
+: DMAP-ROW ( n -- n )
    {: x:n :}
    0 BEGIN
       dup 1 + DROW-N @ < IF dup 1 + 2 * DROW@ x <= ELSE 0 0= 0= THEN
    WHILE 1 + REPEAT
-   2 * {: row:n :}
-   row 1 + DROW@  x +  row DROW@ - ;
+   2 * ;
+\ Whether text offset x lies in a run with no source.
+: DMAP-NONE? ( n -- bool )
+   DMAP-ROW 1 + DROW@ DROW-NONE = ;
+\ The separator after a run maps to the byte after the run, where its last
+\ token ends.
+: DMAP>SRC ( n -- n )
+   {: x:n :}
+   x DMAP-ROW {: row:n :}
+   row 1 + DROW@  x +  row DROW@ -  DROW-BIAS @ - ;
 : DLOC-IN? ( n n -- bool )  \ an end pointer sits at len
    {: off:n len:n :}
    off 0 >=  off len <= and ;
@@ -22779,12 +22800,15 @@ PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
    {: p:ptr :}
    DSRC-U @ 0 = IF 0 0 0= 0= EXIT THEN
    DROW-N @ 0 >  p DMAP-A @ -  DMAP-U @ DLOC-IN?  and IF
+      p DMAP-A @ - DMAP-NONE? IF 0 0 0= 0= EXIT THEN
       p DMAP-A @ - DMAP>SRC 0 0= EXIT
    THEN
    p DSRC-A @ -  DSRC-U @ DLOC-IN? IF
       p DSRC-A @ - 0 0= EXIT
    THEN
    0 0 0= 0= ;
+\ Whether the text being checked is the one DIAG-MAP! armed, with rows.
+: DIAG-MAPPED? ( -- bool )  TBASE @ DMAP-A @ - 0=  DROW-N @ 0 > and ;
 
 \ The pre-verifier needs the pinned token in the source it read, not in its
 \ reused body buffer: it may check a does> parent after its clause, then report
@@ -24230,7 +24254,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 : CLOSER-REFUSE ( ptr u8 n -- )
    {: ca:ptr cu:n :}
    CF-OPEN? 0=  RCOMPILE @ 0 <>  or  CF-OVER @ 0 <>  or IF EXIT THEN
-   TBASE @ DMAP-A @ - 0= {: mapped:bool :}
+   DIAG-MAPPED? {: mapped:bool :}
    mapped IF DCLOSE-U @ ELSE cu THEN 0= IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN

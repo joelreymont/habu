@@ -393,8 +393,9 @@ variable GJA-DIRECT
 : GJA-CODE$ ( SPAN:span<u8> -- ptr u8 n )
    s" code" GJA-REQ dup GJA-NONEMPTY-STR GJA-STRING$ ;
 
-\ A declaration diagnostic carries all four position fields when its token
-\ locates in the file, and none when it does not.
+\ A declaration, definition, record, using or warning diagnostic, and the
+\ repair packet of a definition, record or using refusal, carries all four
+\ position fields when its token locates in the file, and none when it does not.
 : GJA-DECL-POSITION ( SPAN:span<u8> -- )
    dup s" line" GJA-HAS? IF
       dup s" line" GJA-REQ-INTF
@@ -443,8 +444,9 @@ variable GJA-DIRECT
    root s" used_packages" GJA-REQ GJA-PACKAGES ;
 
 \ A refused checker record names the token it would have described, with the
-\ field its code adds, and has no place for that token. The field is text, and
-\ empty only as the signature of a row that stored none.
+\ field its code adds, and places that token as any diagnostic does
+\ (GJA-DECL-POSITION). The field is text, and empty only as the signature of a
+\ row that stored none.
 : GJA-RECORD-FIELDS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-NO-DEF
    root GJA-DECL-POSITION
@@ -486,10 +488,7 @@ variable GJA-DIRECT
    root s" word" GJA-REQ GJA-NONEMPTY-STR
    root s" token" GJA-REQ GJA-NONEMPTY-STR
    root s" token_index" GJA-REQ-INTF
-   root s" line" GJA-REQ-INTF
-   root s" column" GJA-REQ-INTF
-   root s" byte_start" GJA-REQ-INTF
-   root s" byte_end" GJA-REQ-INTF
+   root GJA-DECL-POSITION
    root s" declared_effect" GJA-REQ-NULL-OR-STRF
    root s" declared_effect_source" GJA-REQ-NULL-OR-STRF
    root GJA-DECLARED-PAIR
@@ -611,10 +610,7 @@ variable GJA-DIRECT
    dup s" word" GJA-REQ GJA-NONEMPTY-STR
    dup s" token" GJA-REQ GJA-NONEMPTY-STR
    dup s" token_index" GJA-REQ-INTF
-   dup s" line" GJA-REQ-INTF
-   dup s" column" GJA-REQ-INTF
-   dup s" byte_start" GJA-REQ-INTF
-   dup s" byte_end" GJA-REQ-INTF
+   dup GJA-DECL-POSITION
    dup s" definition_source" GJA-REQ GJA-NONEMPTY-STR
    \ null when the definition declares no effect
    dup s" declared_effect" GJA-REQ-NULL-OR-NONEMPTY-STRF

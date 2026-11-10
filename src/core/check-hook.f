@@ -6,19 +6,6 @@ package CHECK
 
 70 constant CHECK-RC
 
-public
-
-\ An immediate word met inside a definition, before it runs: one the checker
-\ has no model for is refused unless it parses nothing.
-: IMMEDIATE ( ptr u8 n ptr u8 n bool -- )
-   drop
-   {: ba:ptr bu:n ta:ptr tu:n :}
-   ta tu NEUTRAL-PARSE-IMM? if exit then
-   ba bu ta tu CHECKER-PREFLIGHT:CHECK-TARGET! 0 <> if
-      s" checker: preflight did not reject unmodeled immediate" 76 die
-   then
-   CHECK-RC throw ;
-
 private
 
 \ ---- a duplicate only the checker sees ----------------------------------------
@@ -39,6 +26,86 @@ $4E constant DUP-RC
 STGT-INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 $3688 constant PEND-OFF
 $2850 RESERVED-PTR-U8-CELL SRC-NAME
+
+\ The body text block and the buffer being read, spelled the same way: the
+\ block's base, its text capacity and its row count are layout.f
+\ BODY-TEXT:BASE-CELL, CAP-CELL and ROWS-CELL; the buffer is SRCLOC:INB-CELL up
+\ to INE-CELL.
+$800 RESERVED-PTR-U8-CELL BODY-BASE
+$808 constant BODY-CAP-OFF
+$818 constant BODY-ROWS-OFF
+$2810 RESERVED-PTR-U8-CELL INPUT-START
+$36A8 RESERVED-PTR-U8-CELL INPUT-END
+\ The token the engine read last (checker.f CK-TKA-OFF, CK-TKL-OFF).
+CK-TKA-OFF RESERVED-PTR-U8-CELL LAST-TOKEN
+
+\ Arms the checker's source map (checker.f DIAG-SOURCE!, DIAG-MAP!) for the
+\ check of text a u, from the rows the engine's capture records (layout.f
+\ BODY-SOURCE), and answers whether it did. It arms only for the pending
+\ definition's text from the body text's base, its name in the buffer being
+\ read, that buffer a file's (SRCLOC:FILE-BUFFER?), with no source armed. The
+\ source starts at the name, whose place the check tool's marker sets as the
+\ origin (DIAG-ORIGIN!), so bytes before the name never count.
+: ROWS-ARM ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   DSRC-U @ 0 <> if RES-FALSE exit then
+   SRCLOC:FILE-BUFFER? 0= if RES-FALSE exit then
+   data-base PEND-OFF + @ 0= if RES-FALSE exit then
+   BODY-BASE @ {: base:ptr :}
+   base NULL-PTR = if RES-FALSE exit then
+   a base - 0 <> if RES-FALSE exit then
+   data-base BODY-ROWS-OFF + @ {: rows:n :}
+   rows 0 <= if RES-FALSE exit then
+   SRC-NAME @ INPUT-START @ INPUT-END @ {: nm:ptr b:ptr e:ptr :}
+   nm b - 0 <  e nm - 0 <= or if RES-FALSE exit then
+   nm  e nm -  DIAGL0 @ DIAGC0 @ DIAGB0 @  DIAG-SOURCE!
+   a u  base data-base BODY-CAP-OFF + @ + CELL-VIEW  rows  DIAG-MAP!
+   nm b - DIAG-MAP-BIAS!
+   RES-TRUE ;
+
+\ Gives the checker the token that closes the text a u ROWS-ARM armed, which
+\ the text does not hold (checker.f DIAG-CLOSER!), so a structure still open
+\ there is refused at it as the load refuses it. A definer's head (DOES-SPLIT,
+\ as checker.f CHECK tells it) ends at the `does>` just past it in the captured
+\ body, placed by the rows; any other body ends at the `;` the engine read last.
+\ A token outside the armed source is not given.
+: CLOSER-ARM ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   DOES-SPLIT @ 0 <> if
+      a u + DIAG>SRC 0= if drop exit then
+      DSRC-A @ + 5                                  \ `does>`
+   else
+      LAST-TOKEN @  data-base CK-TKL-OFF + @
+   then {: c:ptr cu:n :}
+   c DSRC-A @ - {: off:n :}
+   off 0 <  off cu + DSRC-U @ > or if exit then
+   c cu DIAG-CLOSER! ;
+
+\ ROWS-ARM, then CLOSER-ARM when it armed.
+: BODY-ARM ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u ROWS-ARM dup if a u CLOSER-ARM then ;
+
+\ The cleanup that takes back what BODY-ARM or ROWS-ARM armed, or nothing.
+: DISARMER ( bool -- [ -- ] )
+   if [: DIAG-SOURCE-OFF ;] else [: ;] then ;
+
+
+public
+
+\ An immediate word met inside a definition, before it runs: one the checker
+\ has no model for is refused unless it parses nothing.
+: IMMEDIATE ( ptr u8 n ptr u8 n bool -- )
+   drop
+   {: ba:ptr bu:n ta:ptr tu:n :}
+   ta tu NEUTRAL-PARSE-IMM? if exit then
+   ba bu ta tu [: CHECKER-PREFLIGHT:CHECK-TARGET! ;]  ba bu ROWS-ARM DISARMER
+   finally 0 <> if
+      s" checker: preflight did not reject unmodeled immediate" 76 die
+   then
+   CHECK-RC throw ;
+
+private
 
 \ The name as written, which is what the wall prints: the first token of the
 \ source the engine hands the hook.
@@ -227,7 +294,7 @@ public
    a u FIRST-TOKEN {: na:ptr nu:n :}
    na nu CHECKER-CERT-DUP? if na nu REPORT-DUPLICATE DUP-RC throw then
    UEND @ {: mark:n :}
-   a u CHECK! REPORT-UNCHECKABLE
+   a u [: CHECK! REPORT-UNCHECKABLE ;]  a u BODY-ARM DISARMER  finally
    dup -1 = if na nu mark CHECK-FACTS then
    MULTI-ERR? if drop -1 exit then
    dup -1 <> if

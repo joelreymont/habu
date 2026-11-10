@@ -373,16 +373,16 @@ $3680 constant ENVP-CELL
 \ main.f RUN) runs it as the program file, else 0; src/core/include.f reads it.
 \ It takes $2DB0, the first cell after TASK-CHAIN-CELL.
 $2DB0 constant PROGRAM-FILE-CELL
-$3688 constant PEND-CELL
+$3688 constant PEND-CELL         \ mirrored: src/core/check-hook.f PEND-OFF, src/core/checker.f CK-DEF-PEND-OFF, src/habu/engine-origin-early.f PEND-OFF
 \ A definition whose capture ran a parsing immediate has construction inputs
 \ outside the body text. The native cache reads this only through the running engine's
 \ native-pending-opaque? primitive. The cell is transient and clears with
 \ PEND-CELL on close or abandonment. $2D48 follows NATIVE-HOST-CELLS:DIVISION-PRIM.
 $2D48 constant PEND-OPAQUE-CELL
-$3690 constant TKA-CELL
-$3698 constant TKL-CELL
+$3690 constant TKA-CELL          \ mirrored: src/core/checker.f CK-TKA-OFF
+$3698 constant TKL-CELL          \ mirrored: src/core/checker.f CK-TKL-OFF
 $36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL, src/core/checker.f CK-INP-OFF
-$36A8 constant INE-CELL          \ mirrored: src/core/checker.f CK-INE-OFF
+$36A8 constant INE-CELL          \ mirrored: src/core/checker.f CK-INE-OFF, src/core/check-hook.f INPUT-END
 \ FWDTGT-CELL: where the last forward branch tier 0 patched lands, as an
 \ offset from DBASE (habu2.f LPAT). jit.f LVFUSE refuses to rewind code a
 \ branch lands in. Definition-scoped like JIT-SNAP:SP-CELL: the colon entries,
@@ -491,7 +491,7 @@ package SRCLOC
 public
 $2800 constant PATH-CELL
 $2808 constant PATHLEN-CELL
-$2810 constant INB-CELL          \ mirrored: src/core/checker.f SRCLOC INB-OFF
+$2810 constant INB-CELL          \ mirrored: src/core/checker.f SRCLOC INB-OFF, src/core/check-hook.f INPUT-START
 \ The loader alone publishes the execution bytes owned by the active file.
 \ An inner evaluate changes INB, but never changes this file span.
 $2D68 constant OWNED-CELL        \ mirrored: src/core/checker.f SRCLOC OWNED-OFF
@@ -1066,10 +1066,10 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ them, as the engine stores them only in the running hb's header.
 package BODY-TEXT
 public
-$800 constant BASE-CELL     \ the block's address, 0 before the first capture
-$808 constant CAP-CELL      \ the text capacity in bytes, 0 before
+$800 constant BASE-CELL     \ the block's address, 0 before the first capture; mirrored: src/core/check-hook.f BODY-BASE
+$808 constant CAP-CELL      \ the text capacity in bytes, 0 before; mirrored: src/core/check-hook.f BODY-CAP-OFF
 $810 constant SIZE-CELL     \ the block's length in bytes, 17 * cap, 0 before; guards read BASE and SIZE
-$818 constant ROWS-CELL     \ the BODY-SOURCE row count
+$818 constant ROWS-CELL     \ the BODY-SOURCE row count; mirrored: src/core/check-hook.f BODY-ROWS-OFF
 8192 constant FIRST-CAP     \ the capacity mapped at the first capture, doubled as it grows
 ;package
 \ The latest `,` run of a created body, defined in src/habu/created-body-abi.f,
@@ -1238,7 +1238,7 @@ $2848 constant TOKFRF-CELL
 \ within their keyword, so no source can end inside them. A transient address
 \ like TKA-CELL, zeroed at snapshot: no native-layout row, no stripped-image
 \ claim.
-$2850 constant PENDTKA-CELL
+$2850 constant PENDTKA-CELL      \ mirrored: src/core/check-hook.f SRC-NAME, src/habu/engine-origin-early.f PENDNAME-OFF
 \ JIT-QUOT: quotations open inside quotations on tier 0. QPATCH-CELL, QENT-CELL,
 \ QXH-CELL and QFRAME-CELL describe the INNERMOST open quotation, which is all
 \ that J-EXIT, the locals guards and `;]` read. A `[:` opened while one is open
@@ -2062,6 +2062,6 @@ OFF SLOTS-REL + CAP SLOT * + constant END
 package BODY-SOURCE
 public
 16 constant ROW                     \ bytes per row
--1 constant NONE
+-1 constant NONE                    \ mirrored: src/core/checker.f DROW-NONE
 ;package
 DECLARED-LOG:END constant DATA-START
