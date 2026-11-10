@@ -3,13 +3,15 @@
 \ BINDER-DEPTH-MAX), and pointees or quotations nested past EFFECT-DEPTH-MAX.
 \ A body nested past CF-FRAMES-MAX control frames, and a RECURSE with no
 \ declared effect, are uncheckable for a reason they name too, and each says
-\ so in its JSON packet.
+\ so in its JSON packet; the RECURSE's packet has a null declared effect, which
+\ the diagnostics gate accepts.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/test/subject.f
 require src/lib/test/ending.f
+require tools/gate-json-assert-core.f
 
 package SIGNATURE-NESTING
 
@@ -95,17 +97,28 @@ TYPED-VARIABLE SRC-U len
    ERR erru LEN>N why whyu CONTAINS? TTRUE ;
 
 
-\ The text in SRC-BUF, checked in this process with JSON diagnostics captured,
-\ writes an E-UNCHECKABLE packet, verdict uncheckable, whose reason is WHY.
+\ The packet the text in SRC-BUF writes, checked in this process with JSON
+\ diagnostics captured; it stays in PKT-BUF until the next capture.
 create PKT-BUF 8192 allot
-: PACKET-HAS ( ptr u8 n -- )
-   {: why:ptr whyu:n :}
+: PACKET$ ( -- ptr u8 n )
    PKT-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
    SRC$ CHECK-CANDIDATE! drop
-   DIAG-BUFFER$ S\" \"code\":\"E-UNCHECKABLE\"" CONTAINS? TTRUE
-   DIAG-BUFFER$ S\" \"verdict\":\"uncheckable\"" CONTAINS? TTRUE
-   DIAG-BUFFER$ why whyu CONTAINS? TTRUE
-   0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
+   DIAG-BUFFER$ nip  0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF  PKT-BUF swap ;
+
+\ The text in SRC-BUF writes an E-UNCHECKABLE packet, verdict uncheckable,
+\ that holds TEXT.
+: PACKET-HAS ( ptr u8 n -- )
+   {: text:ptr textu:n :}
+   PACKET$ {: pkt:ptr pktu:n :}
+   pkt pktu S\" \"code\":\"E-UNCHECKABLE\"" CONTAINS? TTRUE
+   pkt pktu S\" \"verdict\":\"uncheckable\"" CONTAINS? TTRUE
+   pkt pktu text textu CONTAINS? TTRUE ;
+
+\ The packet passes the diagnostics gate, which adds to PACKET-HAS's substrings
+\ each field's presence and kind, the declared pair null together, and the
+\ verdict and repair class its code names.
+: PACKET-PASSES ( -- )
+   PACKET$ GJA-PARSE dup GJA-OBJ GJA-DIAG-CONTRACT-ROW ;
 
 public
 
@@ -144,6 +157,9 @@ public
    s" a RECURSE with no declared effect writes an uncheckable packet that says why" T-LABEL
    SRC-RESET RECURSE-TEXT
    S\" \"reason\":\"recursion needs a declared stack effect\"" PACKET-HAS
+   s" a RECURSE with no declared effect writes null for its declared effect" T-LABEL
+   S\" \"declared_effect\":null,\"declared_effect_source\":null," PACKET-HAS
+   PACKET-PASSES
    T-REPORT
    s" signature-nesting: ok" type cr ;
 ;package

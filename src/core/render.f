@@ -1766,11 +1766,10 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    s" file" JKEY  DFILE$ JSTR  44 EMIT1
    DLOC-FIELDS
    s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
-   SGSEEN @ IF
-     s" declared_effect" JKEY  DECL-EFFECT  44 EMIT1
-     s" declared_effect_source" JKEY
-     SGA @ SGU @ SIG-TRIM JSTR  44 EMIT1
-   THEN
+   s" declared_effect" JKEY
+   SGSEEN @ IF DECL-EFFECT ELSE s" null" DTXT THEN  44 EMIT1
+   s" declared_effect_source" JKEY
+   SGSEEN @ IF SGA @ SGU @ SIG-TRIM JSTR ELSE s" null" DTXT THEN  44 EMIT1
    s" inferred_effect" JKEY
    MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ JSTR ELSE JOPEN INFERRED-EFFECT JCLOSE THEN
    44 EMIT1

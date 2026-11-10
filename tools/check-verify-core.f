@@ -390,8 +390,8 @@ variable CHK-NOM-JSON-READY
    tok LINT-LEX:BYTE@ s" byte_start" CHK-NOM-JU
    tok CHK-TOK-END s" byte_end" CHK-NOM-JU
    s" definition_source" def tok CHK-NOM-SRC$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" declared_effect" s" unknown " CHK-NOM-JSTR
-   s" declared_effect_source" s" unknown" CHK-NOM-JSTR
+   s" declared_effect" JSON:WRITE-FIELD-NULL JSON:WRITE-COMMA
+   s" declared_effect_source" JSON:WRITE-FIELD-NULL JSON:WRITE-COMMA
    s" inferred_effect" s" unknown " CHK-NOM-JSTR
    s" return_stack" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
    s" expected" s" " JSON:WRITE-FIELD-S JSON:WRITE-COMMA

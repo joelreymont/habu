@@ -249,6 +249,9 @@ variable GJA-DIRECT
 : GJA-REQ-NULL-OR-STRF ( SPAN:span<u8> ptr u8 n -- )
    GJA-REQ GJA-NULL-OR-STR ;
 
+: GJA-REQ-NULL-OR-NONEMPTY-STRF ( SPAN:span<u8> ptr u8 n -- )
+   GJA-REQ dup GJA-KIND JSON:T-NULL = IF drop exit THEN GJA-NONEMPTY-STR ;
+
 : GJA-SCHEMA1 ( SPAN:span<u8> -- )
    s" schema_version" GJA-REQ GJA-INT 1 <> IF s" schema_version is not 1" GJA-FAIL THEN ;
 
@@ -457,6 +460,12 @@ variable GJA-DIRECT
    root s" file" GJA-REQ GJA-NONEMPTY-STR
    root class classu GJA-DIAG-CLASS-FIELDS ;
 
+\ The two are null together: a definition declares an effect or does not.
+: GJA-DECLARED-PAIR ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
+   root s" declared_effect" GJA-REQ GJA-KIND JSON:T-NULL =
+   root s" declared_effect_source" GJA-REQ GJA-KIND JSON:T-NULL =
+   xor IF s" declared_effect and declared_effect_source disagree on null" GJA-FAIL THEN ;
+
 : GJA-REPAIR-DEF ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root s" word" GJA-REQ GJA-NONEMPTY-STR
    root s" token" GJA-REQ GJA-NONEMPTY-STR
@@ -467,6 +476,7 @@ variable GJA-DIRECT
    root s" byte_end" GJA-REQ-INTF
    root s" declared_effect" GJA-REQ-NULL-OR-STRF
    root s" declared_effect_source" GJA-REQ-NULL-OR-STRF
+   root GJA-DECLARED-PAIR
    root s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR
    root s" family" GJA-REQ-NULL-OR-STRF
    root s" reason" GJA-REQ-NULL-OR-STRF
@@ -591,8 +601,10 @@ variable GJA-DIRECT
    dup s" byte_start" GJA-REQ-INTF
    dup s" byte_end" GJA-REQ-INTF
    dup s" definition_source" GJA-REQ GJA-NONEMPTY-STR
-   dup s" declared_effect" GJA-REQ GJA-NONEMPTY-STR
-   dup s" declared_effect_source" GJA-REQ GJA-NONEMPTY-STR
+   \ null when the definition declares no effect
+   dup s" declared_effect" GJA-REQ-NULL-OR-NONEMPTY-STRF
+   dup s" declared_effect_source" GJA-REQ-NULL-OR-NONEMPTY-STRF
+   dup GJA-DECLARED-PAIR
    dup s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR
    dup s" return_stack" GJA-REQ dup GJA-OBJ
    dup s" expected" GJA-REQ-STRF
