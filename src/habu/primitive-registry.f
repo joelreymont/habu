@@ -16,8 +16,7 @@ package ENGINE-PRIMS
 7 constant ROW-CELLS
 $7FFFFFFFFFFFFFFF constant MAX-N
 \ The generated storage accessors' size and index refusals: src/core/
-\ layout-buffer.f's codes, which every chain that reaches this file (the native
-\ prefix, the Gforth recovery prefix) has loaded before it.
+\ layout-buffer.f's codes, which this file requires.
 E-LAYOUT-BUFFER constant E-SIZE
 E-LAYOUT-BOUNDS constant E-INDEX
 \ Both specification gates exit with the table's own refusal status.

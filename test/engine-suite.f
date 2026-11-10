@@ -1,5 +1,5 @@
-\ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
-\ gforth. A failure prints F<index>, assertion detail, and exits 1 via T-REPORT.
+\ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb). A
+\ failure prints F<index>, assertion detail, and exits 1 via T-REPORT.
 
 require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
 require src/lib/fs-mutate.f            \ FS:MKTEMP-DIR - the filesystem block's private root

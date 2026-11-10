@@ -253,8 +253,9 @@ Cross-build first, self-host second.
    relocation runs at boot or snapshot restore.
 4. **The cross-built engine self-hosts** on an x86-64 host, two
    generations building the same image.
-5. **Recovery.** The Gforth chain emits ARM64 only and refuses x86-64 by name;
-   x86-64 recovery is a cross-build from a working ARM64 engine.
+5. **Recovery.** A trusted native hb of the same OS and machine rebuilds the
+   engine ([bootstrap.md](bootstrap.md#recovery)); while x86-64 builds are off,
+   no route recovers an x86-64 engine.
 
 ### Gates and acceptance
 

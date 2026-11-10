@@ -13,10 +13,10 @@ package RT
 
 \ The data-stack register is stated twice: mnem.f XDS, build-side vocabulary the
 \ booted engine never re-reads, and layout.f ENGINE-GPR:DSTACK, re-read at every
-\ load, from which the reserved-register mask derives. Both build chains
-\ (hb-build and Gforth recovery) load mnem.f, layout.f, then this file, the
-\ first consumer of XDS, so a mismatch dies here instead of shipping an engine
-\ whose allocator can be handed the stack register.
+\ load, from which the reserved-register mask derives. src/arch/arm64/boot.f
+\ loads mnem.f, layout.f, then this file, the first consumer of XDS, so a
+\ mismatch dies here instead of shipping an engine whose allocator can be
+\ handed the stack register.
 : DSTACK-AGREE ( -- )
    XDS ENGINE-GPR:DSTACK <>
    if s" rt: mnem.f XDS and layout.f ENGINE-GPR:DSTACK disagree" EXIT-RC die then ;

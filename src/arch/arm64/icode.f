@@ -4,8 +4,6 @@
 \ a branch or ADR distance reaches its asm.f encoder in bytes. Every label
 \ reference, DLBL, cells included, is recorded until ARESET; CUT removes code
 \ and re-encodes the references that stay.
-\ No locals: the Gforth recovery compiler checks this file before the native
-\ checker exists.
 require src/arch/arm64/asm.f
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f

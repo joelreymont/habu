@@ -69,7 +69,7 @@ constant X64-MASK
 
 \ Fixed budget for dictionary and code, including the retained build host and
 \ its replacement core. The larger record band leaves the code band at its
-\ measured 30,404,608 bytes. Keep the Gforth recovery mirror in step.
+\ measured 30,404,608 bytes.
 $2300000 constant REGION
 \ RBASE-VA: the snapshot's canonical region base, a fixed sentinel, not the map
 \ address. The live region maps at __text base + REGION-OFF (habu2.f

@@ -1177,8 +1177,7 @@ public
    TFM-EPOCH+
    id ;
 
-\ Constructor package name (docs/forth.md "Structures And Enums"): the same bytes
-\ native, habu1 and the Gforth mirror produce (all three parse this file).
+\ Constructor package name (docs/forth.md "Structures And Enums").
 \ Uppercase every segment (package and family tail), double a literal '-' inside
 \ each, join with single '-'. Escaping the tail too makes the map injective:
 \ canonical segments never start or end with '-', so hyphen runs inside escaped

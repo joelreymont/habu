@@ -45,9 +45,8 @@ variable IMK-NDICT0
 \ FS-TEST-PATH-CAP-EDGE); Linux keeps 1023 because the per-task FS-ABI and
 \ FS-MUT-ABI bands (src/habu/layout.f) hold path buffers of this size inside
 \ USER-REGION-END. Buffers of another size are fixed by an OS limit
-\ (src/lib/pty.f SLAVE-PATH-CAP, src/habu/proc-maps.f MAPS-PATH-MAX), a foreign
-\ ABI field (src/habu/habu1.f SPAWN-CHDIR-PATH-CAP) or a bootstrap stage that
-\ cannot see this file (the Gforth fixture's NF-PATH-CAP).
+\ (src/lib/pty.f SLAVE-PATH-CAP, src/habu/proc-maps.f MAPS-PATH-MAX) or a
+\ foreign ABI field (src/habu/habu1.f SPAWN-CHDIR-PATH-CAP).
 1023 constant PATH-CAP
 7134 constant E-PATH-RANGE   \ path length negative, or no room for it and its NUL
 7165 constant E-PATH-NUL     \ a path holds a 0 byte, which would end it early
