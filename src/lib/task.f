@@ -772,8 +772,7 @@ EXIT-CHUNK-BYTES EXIT-CHUNK-HEAD - EXIT-ROW-BYTES / constant EXIT-CHUNK-ROWS
 \ The one cell a registration compares against. The checker refuses `=` on two
 \ quotations (E-MISMATCH, "expected n n actual [ -- ] [ -- ]"), but a quotation
 \ in declared storage reads as a cell through the views, and the same `['] W`
-\ stored twice reads the same cell. This scratch, not the chain, is what
-\ registration takes the lock for.
+\ stored twice reads the same cell.
 TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 
 : TASK-DONE-SEM ( ptr n -- sem )
@@ -807,10 +806,10 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    0 tcb TCB.RESULT-SET atomic!
    0 tcb TCB.JOINER atomic! ;
 
-\ An acquire load: the rows the head names, and the chunks they sit in, were
-\ published before it (TASK-AT-EXIT, EXIT-GROW).
+\ Read and written under TASK-EXIT-LOCK, which orders the head and its rows,
+\ but by TCB-CLEAR and EXIT-CHAIN-HOME, where no other task reaches the record.
 : TASK-EXIT-SLOT@ ( ptr n -- n )
-   TCB.EXIT-SLOT atomic@ ;
+   TCB.EXIT-SLOT @ ;
 
 : EXIT-CHUNK-FIRST ( n -- n )
    CELL + TASK-N>PTR @ ;
@@ -905,7 +904,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
       1 + TASK-EXIT-FREE !
    repeat
    drop
-   0 tcb TCB.EXIT-SLOT atomic!
+   0 tcb TCB.EXIT-SLOT !
    TASK-EXIT-UNLOCK ;
 
 \ A cleanup that throws ends nothing else: its code becomes the task's error when
@@ -1398,7 +1397,8 @@ variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
 
 \ Maps outside the lock, since a mapping may block or throw, and appends under
 \ it: the chunk starts where the rows end, and its header (first row index, link
-\ to the chunk before) is stored before the release store that publishes it.
+\ to the chunk before) is stored before the release store that publishes it to
+\ EXIT-ROW-AT, which TASK-RUN-EXIT-ONE calls outside the lock.
 \ Two registrations growing at once append two chunks. The sweep is armed before
 \ the mapping exists, as TCB-GROW does.
 : EXIT-GROW ( -- )
@@ -1410,17 +1410,13 @@ variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
    c EXIT-CHUNKS atomic!
    TASK-EXIT-UNLOCK ;
 
-\ Registration is additive and the chain runs newest first. A quotation the task
-\ already holds is not registered twice: AIO registers its scrub at each
-\ activation's first submission. Either way the row is marked owed. With no row
-\ left it grows the rows and asks again. The row, its mark and its link to the
-\ old head are stored before the head is published with atomic! (STLR,
-\ src/habu/habu1.f BATSTORE), read back by TASK-EXIT-SLOT@'s acquire load. The
-\ ending scans its chain under the lock, so a registration from another thread
-\ lands before a scan or after it; one landing after the last scan found no row
-\ owed stays owed for the task's next activation. The lock covers the scratch
-\ cell, so two threads registering on one task at once (AIO from the task, the
-\ program from its starter) both land.
+\ With no row left it grows the rows and asks again. The row, its mark, its link
+\ to the old head and the head are stored under TASK-EXIT-LOCK (TASK-EXIT-SLOT@).
+\ The ending scans its chain under the lock, so a registration from another
+\ thread lands before a scan or after it; one landing after the last scan found
+\ no row owed stays owed for the task's next activation. The lock covers the
+\ scratch cell, so two threads registering on one task at once (AIO from the
+\ task, the program from its starter) both land.
 : TASK-AT-EXIT ( [ -- ] ptr n -- ) {: q tcb:ptr :}
    begin
       TASK-EXIT-LOCK-GET
@@ -1435,7 +1431,7 @@ variable SWEEP-ARMED   SWEEP-ARMED scratch-cell-mark
    q idx EXIT-QT !
    idx EXIT-OWE
    tcb TASK-EXIT-SLOT@ idx TASK-EXIT-LINK-AT !
-   idx 1 + tcb TCB.EXIT-SLOT atomic!
+   idx 1 + tcb TCB.EXIT-SLOT !
    TASK-EXIT-UNLOCK ;
 
 : TASK-COPY-CELL ( ptr n ptr n n -- )
