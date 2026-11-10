@@ -794,8 +794,9 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" O4" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
    s" the build links order-x2.f" ORDER-X2 LINKED ;
 
-\ Guards linking parts after a compiled part, each from its own start; compiling a part whose start
-\ moves with no edit (linked, it defines Q twice); linking a part that retires its own records.
+\ Guards linking parts after a compiled part, each from its own start, and a part retiring its own records;
+\ compiling a part whose start moves with no edit (linked, it defines Q twice) or whose number shifts after
+\ an unclean cut at top scope (linked, it skips the request).
 : PART-LINK-CASE ( CMD:command -- CMD:command )
    s" Y" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
    MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  UNCLEAN-FIRST KEEP  UNCLEAN-SECOND KEEP  REDO-MAIN KEEP
@@ -806,13 +807,13 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    s" unclean.f's part an unclean request ends never links" UNCLEAN-FIRST COMPILED
    s" unclean.f's part after an unclean request never links" UNCLEAN-SECOND COMPILED
    s" the build links redo-main.f's part" REDO-MAIN LINKED
-   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n"
-   s" the program prints mid-four.f's words with mid-w2.f's W and redo-main.f's second Y" PRINTS-RUN
+   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n"
+   s" the program prints mid-four.f's words with mid-w2.f's W, redo-main.f's second Y, S and T" PRINTS-RUN
    FLIP-SECOND KEEP
    s" Y3" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
    s" the build links the part that starts at [then]" FLIP-SECOND LINKED
-   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n"
-   s" the program prints flip-a.f's F, P, Q, R, A and C" PRINTS-RUN ;
+   s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n6\n11\n"
+   s" the program prints flip-a.f's F, P, Q, R, A, C, S and T" PRINTS-RUN ;
 
 \ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the
 \ program, and a task left running or a run word that loads, provides or reads a file fails the build.
