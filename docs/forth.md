@@ -2233,24 +2233,6 @@ documentation-only edits need no rebuild.
   row.** A colon definition's `;` may lay its facts text at `here`, a length
   cell then its bytes, then `align`; data written after that `;` lands past
   the text instead of after the body.
-- **A created body's `,` cells are its cell grid; `CELL-BODY` names the
-  rest.** On ARM64, the cells `,` writes from a created body's start up to
-  the first other allocation are that body's grid, closed at the next created
-  word, at the end of the file that wrote them, at the start of another file's
-  load, at an image capture and at a storage cell read, whichever comes first;
-  a `require` of an already loaded file loads nothing and closes nothing. On
-  x64 `,` and `create` record no run, so only `CELL-BODY` declares a grid. After
-  `create` and the final `,` or `allot`, `n CELL-BODY` records exactly `n`
-  cells in that live word's body, and wins over the `,` run. The body must
-  be cell-aligned, `n` must be positive and within cell-size multiplication,
-  and `here` must equal its end; otherwise the declaration throws `E-LAYOUT-BUFFER`. In a checked definer such as `:
-  GRID: ( n -- ) create , 2 , 2 CELL-BODY does> ( -- SPAN:span<u8> ) cell+
-  byte-view CELL SPAN:MAKE ;`, the declaration stays with the created
-  allocation when `does>` changes the callable result. A stripped image's
-  capture value-checks those complete cells and reads undeclared raw bytes as
-  bytes, never as cells. `CELL-BODY` does not declare their values or
-  authorize a pointer: an aligned cell containing a build-time mapping
-  address remains refused in a stripped image.
 - **Missing convenience words are not bugs in the standard.** Core lacks `pick`,
   `within`, `s>number?`, `move`, `fill`, `erase`, `bl`, `*/`, `0>`, `0>=`,
   `2*`, `hex`, `.r`, `value`, `to`, `cmove` and `bye`; each is

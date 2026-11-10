@@ -17812,7 +17812,7 @@ PENDING-MARKED 0 CELL-ROW+
    off 1 + ;
 
 \ Binds the anonymous storage grid [base, base + count cells) to ORD's current
-\ dictionary occurrence: CELL-BODY's declaration and a closed `,` run.
+\ dictionary occurrence: a closed `,` run.
 : CHECKER-GRID-ATTACH ( n ptr a n -- )
    {: ord:n base:ptr count:n :}
    s" -- ptr a" CREATED-RECORD-BUILD {: grid:n :}
@@ -17842,10 +17842,8 @@ BODY-PEND-BASE 0 CELL-ROW+
    ord CHECKER-RESOLVE:REC-AT CK-REC-FLAGS-SLOT cells + @
    CREATED-BODY-ABI:DNAME-ALLOC and 0 <> ;
 
-\ The cells `,` wrote into the pending created body, from its start up to the
-\ first other allocation, become its storage grid; then nothing is pending. A
-\ CELL-BODY grid wins, and a record that left the dictionary or a run broken
-\ by a DP lowering attaches nothing.
+\ The pending created body's `,` cells, up to the first other allocation, become its storage
+\ grid; a record that left the dictionary or a run broken by a DP lowering attaches nothing.
 : CHECKER-BODY-CLOSE ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN
    BODY-PEND-ORD @ BODY-PEND-OCC @ BODY-PEND-BASE @
@@ -28458,29 +28456,6 @@ package CHECKER-REG
 ' CHECKER-DEFCAST DECLARATIONS CAST-OFF + xt!
 ' CHECKER-LINEAR DECLARATIONS LINEAR-OFF + xt!
 ;package
-
-
-\ CELL-BODY owns an anonymous storage row and binds it to the exact native
-\ dictionary occurrence. Its caller's package and any same-spelled word there
-\ have no part in the declaration.
-: CHECKER-CELL-BODY-BIND ( ptr a n ptr n -- )
-   {: base:ptr count:n owner:ptr :}
-   count 0 <= count $7FFFFFFFFFFFFFFF CELL / > or IF
-      E-CHECKER-LAYOUT-BUFFER throw THEN
-   base DATA-OFF {: off:n :}
-   off 0 < off CELL mod 0 <> or IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   off count cells + here BYTE-VIEW data-base BYTE-VIEW - <>
-      IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   owner CHECKER-RESOLVE:REC>INDEX {: ord:n :}
-   ord 0 < ord ndict@ >= or IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   ord CHECKER-RESOLVE:REC-AT owner <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   ord RECORD-LINK-OCC {: slot:n occurrence:n :}
-   slot ord <> occurrence 0= or IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   ord RECORD-LINK-CAP @ < IF
-      ord RECORD-LINK-CELL RLINK.GRID cells + @ 0 <>
-         IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   THEN
-   ord base count CHECKER-GRID-ATTACH ;
 
 \ The tail of CHECK-DOES! and the only writer of the DOESEFF latch: the clause
 \ is certified against its body by then, so what is left is the effect the

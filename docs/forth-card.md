@@ -588,5 +588,5 @@ forth.md: **Testing**, **Verification before committing**.
 | Diagnosing a checker miss | find the layer that is wrong |
 | Verification before committing | where the gates are |
 | Comments & hygiene | debug prints, a refused definition's report |
-| Habu Native Tooling Gotchas | debugger, xref, `DYNAMIC-BUFFER`, `ARENA`, `HEAP`, alignment, `CELL-BODY`, absent words, escapes |
+| Habu Native Tooling Gotchas | debugger, xref, `DYNAMIC-BUFFER`, `ARENA`, `HEAP`, alignment, absent words, escapes |
 | Native Forth Gotchas … | compile-only words, `case`, `parse-name` |
