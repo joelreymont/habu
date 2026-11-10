@@ -184,11 +184,17 @@ private
 
 : NAME? ( ptr u8 n ptr u8 n -- bool ) STR= ;
 
+\ A platform name's profile and true; else false over a filler profile the caller drops.
+: PLATFORM ( ptr u8 n -- profile-id bool )
+   {: name:ptr size:n :}
+   name size s" macos-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN true exit then
+   name size s" linux-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU true exit then
+   name size s" linux-x86-64" NAME? if RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU true exit then
+   RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN false ;
+
 : PROFILE ( ptr u8 n -- profile-id )
    {: name:ptr size:n :}
-   name size s" macos-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN exit then
-   name size s" linux-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU exit then
-   name size s" linux-x86-64" NAME? if RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU exit then
+   name size PLATFORM if exit then drop
    name size s" aarch64-apple-darwin" NAME? if RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN exit then
    name size s" aarch64-unknown-linux-gnu" NAME? if RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU exit then
    name size s" x86_64-unknown-linux-gnu" NAME? if RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU exit then
@@ -237,6 +243,9 @@ public
    dup 0= if drop true exit then
    dup E-UNKNOWN = if drop false exit then
    throw ;
+
+\ True for a platform name, one per target (PLATFORM); false for a triple.
+: PLATFORM? ( ptr u8 n -- bool ) PLATFORM nip ;
 
 : RESOLVE ( ptr u8 n -- resolved-target )
    PROFILE dup DEFAULT-FEATURES RTARGET-RESOLVED--TARGET:MAKE ;
