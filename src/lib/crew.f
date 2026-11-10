@@ -85,10 +85,8 @@ DYNAMIC-BUFFER ROW-LIVE bool        \ the row holds a task not yet given back
    LOCK TASK:RELEASE
    execute ;
 
-\ A task's root. A throw is reported here, in the body: a LOG line from an
-\ exit cleanup registers LOG's row release on a chain already running, which
-\ never runs it. A halt never resumes the catch (forth.md `finally`), so a
-\ stopped task reports nothing.
+\ A task's root. A throw is reported here, in the body. A halt never resumes
+\ the catch (forth.md `finally`), so a stopped task reports nothing.
 : RUN-ROW ( -- )
    [: RUN-ONE ;] catch {: code:n :}
    code 0= if exit then
