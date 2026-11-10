@@ -3,6 +3,7 @@
 \ (src/compiler/target.f MASK-WASM), so these numbers live here.
 
 require src/habu/layout.f
+require src/habu/stack-abi.f
 
 package WPROF
 public
@@ -33,7 +34,12 @@ $31000 constant DATA-BASE
 DATA-BASE STACK-BASE - constant STACK-BYTES
 DATA-BASE constant STACK-END
 DATA-START PAGE-BYTES 1- + PAGE-BYTES / PAGE-BYTES * constant DATA-BYTES
-DATA-BASE DATA-BYTES + constant IMAGE-BASE
+
+\ The return stack and the DO frames follow the DATA region, each its STACK-ABI
+\ size; a push checks the region's end, since Wasm memory has no guard page.
+DATA-BASE DATA-BYTES + constant RETURN-BASE
+RETURN-BASE STACK-ABI:RETURN-BYTES + constant LOOP-BASE
+LOOP-BASE STACK-ABI:LOOP-BYTES + constant IMAGE-BASE
 
 \ One eight-byte slot per field, so i64 and i32 fields are all naturally aligned.
 0 constant CTX-STACK-BASE

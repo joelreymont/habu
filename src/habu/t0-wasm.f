@@ -1,17 +1,18 @@
 \ t0-wasm.f - the Wasm generator of the tier 0 compiler, part WASM of package
 \ COMP.
 \
-\ Implements the straight-line and control EMIT- operations src/habu/t0-emit.f
-\ states for every target; this file holds only Wasm encodings and local
-\ choices. FILL-SLOT stores its words into the EMIT- cells for
-\ CTARGET-ARCH:WASM. Later work: the quotation and does> units (QUOT-OPEN,
-\ UNIT-OPEN, ADDR-QUOT), the callback stub, CALL-SELF, the return stack, the DO
-\ loops and `leave`, which stay unset.
+\ Implements the straight-line, control, return-stack and loop EMIT- operations
+\ src/habu/t0-emit.f states for every target; this file holds only Wasm
+\ encodings and local choices. FILL-SLOT stores its words into the EMIT- cells
+\ for CTARGET-ARCH:WASM. Later work: the quotation and does> units (QUOT-OPEN,
+\ UNIT-OPEN, ADDR-QUOT), the callback stub and CALL-SELF, which stay unset.
 
 require src/lib/error.f
 require src/lib/byte-buffer.f
 require src/lib/span.f
 require src/core/engine-error.f
+require src/habu/layout.f
+require src/habu/stack-abi.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
 require src/compiler/target.f
@@ -61,7 +62,9 @@ $56 constant OP-I64-GT-U
 $57 constant OP-I64-LE-S
 $59 constant OP-I64-GE-S
 $6A constant OP-I32-ADD
+$6B constant OP-I32-SUB
 $72 constant OP-I32-OR
+$74 constant OP-I32-SHL
 $7C constant OP-I64-ADD
 $7D constant OP-I64-SUB
 $7E constant OP-I64-MUL
@@ -81,14 +84,16 @@ $40 constant EMPTY-TYPE              \ a block, loop or if taking and leaving no
 3 constant ALIGN-64
 8 constant CELL-BYTES
 
-\ The locals: ctx, the unit's parameter; SP, the data stack pointer; the
-\ vregs; CA and CB, the operands of the last compare; then frame slot k.
+\ The locals: ctx, the unit's parameter; SP, the data stack pointer; AT, the
+\ address a return-stack or loop word works at; the vregs; CA and CB, the
+\ operands of the last compare; then frame slot k.
 0 constant L-CTX
 1 constant L-SP
-2 constant L-VREG
-17 constant L-CA
-18 constant L-CB
-19 constant L-SLOT
+2 constant L-AT
+3 constant L-VREG
+18 constant L-CA
+19 constant L-CB
+20 constant L-SLOT
 17 constant FIXED-I64                \ the i64 locals before the frame
 
 \ ---- the sink ------------------------------------------------------------------
@@ -97,6 +102,7 @@ SCRATCH-VARIABLE SINK-LIVE            \ nonzero once SINK holds storage
 variable FRAME-CELLS                  \ frame slots this unit uses
 variable COUNT-AT                     \ the unit's padded i64 count field
 DYNAMIC-BUFFER CF-KIND n              \ the open blocks' kinds, innermost last
+DYNAMIC-BUFFER CF-ENTRY n             \ at a DO-HEAD: its `?do` compare's offset, or -1
 variable CF-N
 
 4096 constant SINK-START-BYTES
@@ -184,12 +190,12 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    CRASH-RC FAULT-KIND,  a GET-REG  FAULT-END,  END, ;
 
 \ Every unit is a function of type (i32 ctx) -> (i32 status) as WLINK takes a
-\ body: one i32 local, SP, then FIXED-I64 + FRAME-CELLS i64 locals, a padded
-\ count CLOSE writes.
+\ body: two i32 locals, SP and AT, then FIXED-I64 + FRAME-CELLS i64 locals, a
+\ padded count CLOSE writes.
 : UNIT-BEGIN ( -- )
    HERE-OFF EMIT-UNIT+
    0 FRAME-CELLS !
-   2 B,  1 B,  I32 B,
+   2 B,  2 B,  I32 B,
    HERE-OFF COUNT-AT !  FIXED-I64 PAD32,  I64 B,
    SP@, ;
 
@@ -389,10 +395,14 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ `loop A <flag> if B br 1 end end`, and `begin A while B while C repeat D then`
 \ is `loop A <flag> if B <flag> if C br 2 end D end end`. A back branch makes
 \ its LOOP a LOOP-DONE, whose `end` CLOSE-DONE writes once it is innermost.
+\ A DO level is a `block` around a `loop`: `leave` and the `?do` entry branch to
+\ the block, and LOOP-CLOSE pops the frame after both ends.
 0 constant CF-IF
 1 constant CF-LOOP
 2 constant CF-LOOP-DONE
 3 constant CF-CASE
+4 constant CF-DO
+5 constant CF-DO-HEAD
 
 : CF-PUSH ( n -- ) {: kind:n :}
    CF-N @ {: k:n :}
@@ -451,6 +461,119 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : ENDOF, ( -- ) CF-CASE DEPTH-OF BR,  END,  CF-POP  CLOSE-DONE ;
 : ENDCASE, ( -- ) END,  CF-POP  CLOSE-DONE ;
 
+\ ---- the return stack ----------------------------------------------------------
+\ A module runs one task, so the stacks are WPROF's fixed regions; each depth is
+\ an i64 in the DATA cell native code keeps it in, the return stack's in cells
+\ and the loop stack's in frames.
+: RDEPTH-AT ( -- n ) WPROF:DATA-BASE RSP-CELL + ;
+: LDEPTH-AT ( -- n ) WPROF:DATA-BASE LOOPSP-CELL + ;
+
+: DEPTH, ( n -- ) I32,  LD64, ;
+
+: DEPTH+ ( n n -- ) {: c:n k:n :}
+   c I32,  c DEPTH,  k I64,  OP-I64-ADD B,  ST64, ;
+
+\ AT becomes base plus the depth at c, the depth shifted left by sh.
+: TOP, ( n n n -- ) {: c:n base:n sh:n :}
+   c DEPTH,  OP-I32-WRAP-I64 B,  sh I32,  OP-I32-SHL B,
+   base I32,  OP-I32-ADD B,  L-AT SET, ;
+
+: RTOP ( -- ) RDEPTH-AT WPROF:RETURN-BASE 3 TOP, ;
+
+\ AT moves down k bytes; a memory offset is unsigned.
+: AT-, ( n -- ) {: k:n :}
+   L-AT GET,  k I32,  OP-I32-SUB B,  L-AT SET, ;
+
+: AT-STORE ( vreg n -- ) {: s:vreg off:n :}
+   L-AT GET,  s GET-REG  OP-I64-STORE ALIGN-64 off MEM, ;
+
+: AT-LOAD ( vreg n -- ) {: d:vreg off:n :}
+   L-AT GET,  OP-I64-LOAD ALIGN-64 off MEM,  d SET-REG ;
+
+\ AT above the address most records STACK-BOUNDS with AT, as ROOM does: Wasm
+\ memory has no guard page, so a push checks before its stores.
+: BOUND ( n -- ) {: most:n :}
+   L-AT GET,  most I32,  OP-I32-GT-U B,  OP-IF OPENER,
+   ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-AT GET,  OP-I64-EXTEND-I32-U B,
+   FAULT-END,  END, ;
+
+: TOR ( ptr vreg n -- ) {: p:ptr n:n :}
+   RTOP
+   WPROF:RETURN-BASE STACK-ABI:RETURN-BYTES +  n CELL-BYTES * -  BOUND
+   n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-STORE  loop
+   RDEPTH-AT n DEPTH+ ;
+
+: RFROM ( ptr vreg n -- ) {: p:ptr n:n :}
+   RDEPTH-AT n negate DEPTH+
+   RTOP
+   n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-LOAD  loop ;
+
+: RFETCH ( ptr vreg n n -- ) {: p:ptr n:n k:n :}
+   RTOP  n k + CELL-BYTES * AT-,
+   n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-LOAD  loop ;
+
+\ ---- loops ---------------------------------------------------------------------
+0 constant INDEX-OFF
+8 constant LIMIT-OFF
+
+: LTOP ( -- ) LDEPTH-AT WPROF:LOOP-BASE 4 TOP, ;
+
+\ AT becomes the frame k levels out of the innermost.
+: FRAME ( n -- ) LTOP  1 + STACK-ABI:LOOP-FRAME-BYTES * AT-, ;
+
+: LIMIT, ( -- ) L-AT GET,  OP-I64-LOAD ALIGN-64 LIMIT-OFF MEM, ;
+
+: LOOP-PUSH ( vreg vreg -- ) {: s:vreg l:vreg :}
+   LTOP
+   WPROF:LOOP-BASE STACK-ABI:LOOP-BYTES +  STACK-ABI:LOOP-FRAME-BYTES -  BOUND
+   s INDEX-OFF AT-STORE  l LIMIT-OFF AT-STORE
+   LDEPTH-AT 1 DEPTH+ ;
+
+: LOOP-POP ( -- ) LDEPTH-AT -1 DEPTH+ ;
+: LOOP-I ( vreg -- ) 0 FRAME  INDEX-OFF AT-LOAD ;
+: LOOP-J ( vreg -- ) 1 FRAME  INDEX-OFF AT-LOAD ;
+
+\ The DO-HEAD entry keeps the offset of its `?do` compare in CF-ENTRY.
+: HEAD-PUSH ( n -- ) {: at:n :}
+   CF-N @ {: k:n :}
+   k 1 + CF-ENTRY-RESERVE
+   at k CF-ENTRY !
+   OP-LOOP OPENER,  CF-DO-HEAD CF-PUSH ;
+
+: LOOP-OPEN ( vreg vreg bool -- ) {: s:vreg l:vreg entry:bool :}
+   OP-BLOCK OPENER,  CF-DO CF-PUSH
+   entry if
+      s GET-REG  l GET-REG  HERE-OFF  OP-I64-GE-S B,  0 BR-IF,
+   else -1 then
+   HEAD-PUSH ;
+
+: LEAVE, ( -- ) CF-DO DEPTH-OF BR, ;
+
+: LOOP-NEXT ( vreg -- ) {: t:vreg :}
+   0 FRAME
+   t INDEX-OFF AT-LOAD  t 1 OP-I64-ADD LIT-OP  t INDEX-OFF AT-STORE
+   t GET-REG  LIMIT,  OP-I64-LT-S B,  CF-DO-HEAD DEPTH-OF BR-IF, ;
+
+\ `+loop` skips equal bounds only: its `?do` compare becomes i64.eq.
+: ENTRY-EQ ( -- )
+   CF-DO-HEAD CF-FIND CF-ENTRY @ {: at:n :}
+   at 0 < if exit then
+   OP-I64-EQ  SINK BUF:SPAN$ drop at + c! ;
+
+\ With t = index - limit before the step, the index crossed the boundary when
+\ (t xor t + s) and (t xor s) is negative.
+: LOOP-STEP ( vreg vreg -- ) {: s:vreg t:vreg :}
+   0 FRAME
+   t INDEX-OFF AT-LOAD  t GET-REG  LIMIT,  OP-I64-SUB B,  t SET-REG
+   L-AT GET,  L-AT GET,  OP-I64-LOAD ALIGN-64 INDEX-OFF MEM,  s GET-REG  OP-I64-ADD B,
+   OP-I64-STORE ALIGN-64 INDEX-OFF MEM,
+   t GET-REG  t GET-REG  s GET-REG  OP-I64-ADD B,  OP-I64-XOR B,
+   t GET-REG  s GET-REG  OP-I64-XOR B,  OP-I64-AND B,
+   0 I64,  OP-I64-GE-S B,  CF-DO-HEAD DEPTH-OF BR-IF,
+   ENTRY-EQ ;
+
+: LOOP-CLOSE ( -- ) END,  CF-POP  END,  CF-POP  LOOP-POP  CLOSE-DONE ;
+
 \ ---- the seam ----------------------------------------------------------------
 : FILL-SLOT ( n -- )
    {: k:n :}
@@ -508,7 +631,19 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    ['] OF, k EMIT-OF,-XT !
    ['] OF-LIT k EMIT-OF-LIT-XT !
    ['] ENDOF, k EMIT-ENDOF,-XT !
-   ['] ENDCASE, k EMIT-ENDCASE,-XT ! ;
+   ['] ENDCASE, k EMIT-ENDCASE,-XT !
+   ['] TOR k EMIT-TOR-XT !
+   ['] RFROM k EMIT-RFROM-XT !
+   ['] RFETCH k EMIT-RFETCH-XT !
+   ['] LOOP-PUSH k EMIT-LOOP-PUSH-XT !
+   ['] LOOP-POP k EMIT-LOOP-POP-XT !
+   ['] LOOP-I k EMIT-LOOP-I-XT !
+   ['] LOOP-J k EMIT-LOOP-J-XT !
+   ['] LOOP-OPEN k EMIT-LOOP-OPEN-XT !
+   ['] LEAVE, k EMIT-LEAVE,-XT !
+   ['] LOOP-NEXT k EMIT-LOOP-NEXT-XT !
+   ['] LOOP-STEP k EMIT-LOOP-STEP-XT !
+   ['] LOOP-CLOSE k EMIT-LOOP-CLOSE-XT ! ;
 
 CTARGET-ARCH:WASM ' FILL-SLOT EMIT-PROVIDE
 
