@@ -84,7 +84,9 @@
 \ is checked and not yet linked, so S3 compiles it. K, K2 and K3 build hidden-root.f, hidden-alone.f
 \ and hidden-root.f, and K3 exits 0: hidden-spell.f spells W, which hidden-def.f defines privately.
 \ G, G2 and G3 build sealed-root.f, sealed-alone.f and sealed-root.f, and G3 exits 0: sealed-spell.f
-\ spells FILE-OBJECTS-SEALED, which sealed-seal.f seals.
+\ spells FILE-OBJECTS-SEALED, which sealed-seal.f seals. T, T2 and T3 build stored-root.f,
+\ stored-alone.f and stored-root.f, and T3 exits 0: stored-run.f runs stored-pkg.f's SGET, which
+\ reads the variable stored-store.f stores into.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -632,10 +634,16 @@ variable KEPT-NS
    s" G2" WHICH!  s" test/fixtures/file-objects/sealed-alone.f" FIXTURE-BUILD 0= if exit then
    s" G3" WHICH!  s" test/fixtures/file-objects/sealed-root.f" FIXTURE-BUILD drop ;
 
+\ Guards a store a checked-but-unlinked piece makes: T3 checks stored-store.f's store unlinked.
+: STORED-CASE ( CMD:command -- CMD:command )
+   s" T" WHICH!  s" test/fixtures/file-objects/stored-root.f" FIXTURE-BUILD 0= if exit then
+   s" T2" WHICH!  s" test/fixtures/file-objects/stored-alone.f" FIXTURE-BUILD 0= if exit then
+   s" T3" WHICH!  s" test/fixtures/file-objects/stored-root.f" FIXTURE-BUILD drop ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE ;]
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE STORED-CASE ;]
    CMD:WITH-COMMAND ;
 
 

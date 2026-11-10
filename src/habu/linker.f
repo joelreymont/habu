@@ -269,12 +269,11 @@ variable LISTED-N
 DYNAMIC-BUFFER HSTORE-AT n
 DYNAMIC-BUFFER HSTORE-ROW n
 variable HSTORES-N
-\ Each store a piece made below its own data (STORER+) and each earlier record it changed
-\ (CHANGER+), compiled or linked: pair p holds at 2p the BUILT row holding the cell or the record,
-\ -1 for header data, and at 2p + 1 the piece's row.
+\ A built piece's stores below its own data (STORER+) and changed earlier records (CHANGER+): pair
+\ p holds at 2p the cell's or record's BUILT row, -1 for header data, and at 2p + 1 the piece's row.
 DYNAMIC-BUFFER STORERS n
 variable STORERS-N                   \ its pairs
-DYNAMIC-BUFFER WALKED n              \ BUILT row r's mark in RAN-FILES+'s walk
+DYNAMIC-BUFFER WALKED n              \ row r's mark in RAN-FILES+'s walk and REACHED-CK's, PENDING row q's at BUILT-N + q
 DYNAMIC-BUFFER WALK n                \ the rows the walk reached, in the order it reached them
 variable WALK-N
 
@@ -344,6 +343,10 @@ DYNAMIC-BUFFER PENDING-OWN n         \ PENDING row p's own record count, the rec
 DYNAMIC-BUFFER PENDING-SLOTS n       \ the records by sum: slot s holds 1 + a record, 0 while empty
 variable PENDING-CAP                 \ its slots, a power of two
 DYNAMIC-BUFFER PENDING-HITS n        \ PENDING row p's mark, as HITS marks a BUILT row
+\ STORERS' pairs for the pending pieces: at 2i the holder, -1 for header data, a BUILT row or -2 - q
+\ for PENDING row q (PENDING-HOLDER), and at 2i + 1 the storing PENDING row.
+DYNAMIC-BUFFER PENDING-STORERS n
+variable PENDING-STORERS-N           \ its pairs
 
 : SLOT-SUM ( n -- ptr n ) 3 * NAMES ;
 : SLOT-ROW ( n -- ptr n ) 3 * 1 + NAMES ;
@@ -370,8 +373,8 @@ DYNAMIC-BUFFER PENDING-HITS n        \ PENDING row p's mark, as HITS marks a BUI
    cap 0 ?do 0 i PENDING-SLOTS ! loop
    cap PENDING-CAP ! ;
 
-\ No pending record.
-: PENDING-RECS-CLEAR ( -- ) 0 PENDING-RECS-N !  64 PENDING-SLOTS-CLEAR ;
+\ No pending record nor pending pair.
+: PENDING-RECS-CLEAR ( -- ) 0 PENDING-RECS-N !  0 PENDING-STORERS-N !  64 PENDING-SLOTS-CLEAR ;
 
 : DISPOSE-OBJECTS ( -- )
    WALKED-RELEASE  WALK-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
@@ -384,7 +387,7 @@ DYNAMIC-BUFFER PENDING-HITS n        \ PENDING row p's mark, as HITS marks a BUI
    SPELLS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE
    OLD-NAMES-RELEASE  NAMES-RELEASE
-   PENDING-RECS-RELEASE  PENDING-FIRST-RELEASE  PENDING-OWN-RELEASE  PENDING-SLOTS-RELEASE  PENDING-HITS-RELEASE ;
+   PENDING-RECS-RELEASE  PENDING-FIRST-RELEASE  PENDING-STORERS-RELEASE  PENDING-OWN-RELEASE  PENDING-SLOTS-RELEASE  PENDING-HITS-RELEASE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
@@ -2122,6 +2125,32 @@ variable RD-END
    0 false ;
 
 
+\ FILES row k's piece, built or pending, as a PENDING-STORERS holder: its BUILT row, else -2 - q
+\ for its PENDING row q.
+: PENDING-HOLDER ( n -- n )
+   {: k:n :}
+   k PENDING? if  k FILES-ROW PENDING-AT drop  -2 swap -  exit  then
+   k FILE-ROWS @ ;
+
+\ The row a holder other than header data has once the pending pieces link: PENDING row q's is
+\ BUILT-N + q, as LINK-FILE adds each piece's BUILT row in the order the check passed them.
+: HOLDER-ROW ( n -- n )
+   {: held:n :}
+   held 0 >= if held exit then
+   BUILT-N  -2 held -  + ;
+
+\ The pair (holder held, PENDING row p) onto PENDING-STORERS unless it is the newest pair, as PAIR+.
+: PENDING-PAIR+ ( n n -- )
+   {: held:n p:n :}
+   PENDING-STORERS-N @ {: n:n :}
+   n 0 > if
+      n 1 - 2 * PENDING-STORERS @ held =  n 1 - 2 * 1 + PENDING-STORERS @ p =  and if exit then
+   then
+   n 1 + 2 * PENDING-STORERS-RESERVE
+   held n 2 * PENDING-STORERS !  p n 2 * 1 + PENDING-STORERS !
+   n 1 + PENDING-STORERS-N ! ;
+
+
 \ FILE-ROWS from 1 for OBJECT's FILES rows: each its BUILT row, else ROW-PENDING or ROW-ABSENT.
 : MAP-FILES ( -- )
    FILES-N @ 0 ?do
@@ -2168,20 +2197,20 @@ variable RD-END
    PENDING-N 0 ?do i PENDING-HITS @ 1 = if BAD then loop ;
 
 
-\ REACHED's u bytes from RD-AT, each a FILES row; bad when a piece that stored into header data or
-\ into a reached piece's data (STORERS) is not reached, as RAN-FILES+ would now reach it, or when
-\ the reached pieces are built in another order than RAN-FILES+ listed them: of two stores into
-\ one cell the later holds.
+\ REACHED's u bytes, FILES rows: bad when a built or pending piece that stored into header data or into
+\ a reached piece's data or records is unreached, or reached pieces link out of order (the later store holds).
 : REACHED-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
    u 0= if exit then
-   BUILT-N 1 + WALKED-RESERVE  BUILT-N 0 ?do 0 i WALKED ! loop
+   BUILT-N PENDING-N + 1 + {: marks:n :}
+   marks WALKED-RESERVE  marks 0 ?do 0 i WALKED ! loop
    -1  u 8 / 0 ?do
       {: last:n :}
       RD-U64 {: k:n :}
       k FILE-ROW? 0= if BAD unloop exit then
-      k FILE-ROWS @ {: row:n :}
+      k FILE-ROWS @ {: at:n :}
+      at ROW-PENDING = if k PENDING-HOLDER HOLDER-ROW else at then {: row:n :}
       row 0 >= if
          row last <= if BAD unloop exit then
          1 row WALKED !  row
@@ -2194,6 +2223,12 @@ variable RD-END
       i 2 * STORERS @ {: held:n :}
       held -1 = if true else held WALKED @ 0<> then if
          i 2 * 1 + STORERS @ WALKED @ 0= if BAD then
+      then
+   loop
+   PENDING-STORERS-N @ 0 ?do
+      i 2 * PENDING-STORERS @ {: held:n :}
+      held -1 = if true else held HOLDER-ROW WALKED @ 0<> then if
+         BUILT-N  i 2 * 1 + PENDING-STORERS @ +  WALKED @ 0= if BAD then
       then
    loop ;
 
@@ -2958,8 +2993,8 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    at 8 + FIELD$ {: a:ptr u:n :}
    a u NAME-SUM  at 24 + u + p PENDING-KEY  a u TOP-NAME NAME-SUM  p PENDING-REC+ ;
 
-\ Record idx of an earlier file, which PENDING row p changes, as a record of p with its name's sum
-\ and package key; its TOP-NAME sum is 0, as nothing indexes it. Nothing for p's own (file 0).
+\ Record idx of an earlier file, which PENDING row p changes, as a pair (PENDING-PAIR+) and, named,
+\ a record of p: its name's sum, its package key and 0 as TOP-NAME sum, which nothing indexes.
 : PENDING-CHANGED+ ( n n n -- )
    {: file:n idx:n p:n :}
    file 0= if exit then
@@ -2967,8 +3002,10 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
       file FILES-ROW PENDING-AT drop {: q:n :}
       q PENDING-FIRST @ idx + {: r:n :}
       r  q PENDING-FIRST @  q PENDING-OWN @ +  >= if exit then
+      file PENDING-HOLDER p PENDING-PAIR+
       r 0 PENDING-REC@  r 1 PENDING-REC@  0  p PENDING-REC+ exit
    then
+   file PENDING-HOLDER p PENDING-PAIR+
    file BUILT-FIRST BUILT@ idx + {: d:n :}
    d XREF-REC XREF-NAME$ {: a:ptr u:n :}
    u 0= if exit then
@@ -3011,11 +3048,24 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    p PENDING-FACTS+ ;
 
 
-\ The piece ending with REQUESTS row req, or the last (-1), passed: its records into the pending
-\ records (PENDING-NAMES+), then PENDING gains FILE-KEY and its number and time.
+\ The checked piece's STORES rows (STORE-CK passed them) as PENDING row p's pairs, read as
+\ LINK-DATA reads them: header data -1, else the holder of the target's FILES row.
+: PENDING-STORES+ ( n -- )
+   {: p:n :}
+   STORES-AT @  OBJECT BYTES$ nip  RD-OPEN
+   RD-U64 0 ?do
+      RD-REF {: tag:n x:n y:n z:n :}
+      RD-U64 drop  RD-U64 drop  RD-REF drop drop drop drop
+      tag 4 = if -1 else x PENDING-HOLDER then  p PENDING-PAIR+
+   loop ;
+
+
+\ The piece ending with REQUESTS row req, or the last (-1), passed: its records (PENDING-NAMES+)
+\ and stores (PENDING-STORES+) pending, then PENDING gains FILE-KEY and its number and time.
 : PENDING+ ( n -- )
    {: req:n :}
    PENDING-N PENDING-NAMES+
+   PENDING-N PENDING-STORES+
    FILE-KEY KEY-BYTES PENDING SPAN+
    req PIECE-N PENDING U64+  req PIECE-TIME PENDING U64+ ;
 
