@@ -902,7 +902,16 @@ learned live in the docs for their subject.
   and records them as scratch, Joel chose "SCRATCH-ALLOT (Recommended)" over
   SCRATCH-BYTES; the definer of one scratch cell, "SCRATCH-VARIABLE
   (Recommended)" over PROCESS-VARIABLE; the definer of a scratch byte buffer,
-  "SCRATCH-BUFFER: (Recommended)" over PROCESS-BUFFER:.
+  "SCRATCH-BUFFER: (Recommended)" over PROCESS-BUFFER:. He then asked "why
+  shouldn't ALLOT by scratch allot by default? are they are cases where it
+  shouldn't?" Shown that a file's top level fills 20 of the 1,250 buffers
+  declared `create X ... allot` under src and tools for the program to read
+  (the syscall stencils of src/os/macos/sys.f, ERROR:CODE's message bytes),
+  that the cells that leaked are mostly `variable`s, which a top level also
+  fills, and that Etch and Tender would change meaning silently, with the
+  recommendation to keep one rule for all storage (it keeps what the build
+  stored unless its declaration says scratch), he wrote "fine, keep going":
+  `allot` stays kept.
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
   zero-fills the record, so the XML C2 reader stops casting bytes into XML's
