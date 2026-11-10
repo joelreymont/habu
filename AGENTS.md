@@ -94,7 +94,9 @@ add.
 - Stacks that are ready together land together: one engine built at the
   combined tip, and the full suite and the chain check once there. A lane before
   that runs only its focused test, and a rebase over commits that change only
-  `.dots/` reruns nothing.
+  `.dots/` reruns nothing. Batch fixes before a suite run: a fix waits for the
+  others in work and for its review's fold-ins, and the batch takes one run,
+  never one per fix or per fold.
 - Report actual results and untested boundaries; never weaken a claim to make a
   check pass. Keep each verification claim within the limits
   [docs/gate.md](docs/gate.md) "Verification claims" states.
