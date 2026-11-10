@@ -1867,11 +1867,11 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ a cross build's capture runs INSTALL on another machine than the target's.
 \ The shadow walk runs only for a machine an emitter provided (EMIT-PROVIDED?):
 \ for any other a T0 colon definition has no shadow routine, and the capture
-\ refuses one a shadow routine reaches (a fixed body's is FIXED-SHADOW's). A
-\ refusal in either walk refuses the definition, as tier 1's SHADOWED. Each
-\ walk starts clean: WALK and FIXED-BODY set their own cells and RESET-STATE's,
-\ EMIT-OPEN clears the seam's rows and the selected emitter's sink and LABEL
-\ state; the tape, the measures and the NFETCH facts are only read.
+\ refuses one a shadow routine reaches. A refusal in either walk refuses the
+\ definition, as tier 1's SHADOWED. Each walk starts clean: WALK and FIXED-BODY
+\ set their own cells and RESET-STATE's, EMIT-OPEN clears the seam's rows and the
+\ selected emitter's sink and LABEL state; the tape, the measures and the NFETCH
+\ facts are only read.
 \ INTERN:STRING finds before it adds, so a string gets one address in both
 \ routines, but each walk interns it: a source-row recording
 \ (INTERN:SOURCE-BEGIN) would list it twice.
@@ -2020,14 +2020,6 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 : FIXED-RUN ( -- ) [: FIXED-LOWER ;] [: SHUT ;] finally ;
 
-\ A shadow for a machine T0 has no emitter for (Wasm) is tier 1's: its compiler
-\ files the published record idx, or a `does>` patch of it dies E-NSHADOW-ROW.
-: FIXED-SHADOW ( n body n -- ) {: val:n kind:body idx:n :}
-   NSHADOW:OPEN? 0= if exit then
-   NSHADOW:NATIVE? if exit then
-   SHADOW-ARCH EMIT-PROVIDED? if exit then
-   val kind idx NCOMP:SHADOW-FIXED ;
-
 : REFUSED$ ( n -- ptr u8 n ) {: rc:n :}
    rc E-T0-UNSUPPORTED =  rc E-UNMODELED-IMMEDIATE = or  rc E-T0-CONTROL = or
    rc E-T0-MATCH = or  rc E-T0-DEFER = or
@@ -2040,7 +2032,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    {: val:n kind:body :}
    kind FIXED-KIND? 0= if E-COMP-STATE throw then
    IDLE-CK
-   ndict@ {: idx:n :}
    NULL-PTR 0 STAGE-UNIT
    val FIXED-VAL !  kind BODY-KIND !
    CHECKER-OWNER:RESET-REPORT
@@ -2050,8 +2041,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    STUB-END
    NFETCH:RELEASE
    NHOST:SOURCE-ABANDON
-   0 rc false NULL-PTR 0 NULL-PTR SETTLE-UNIT
-   val kind idx FIXED-SHADOW ;
+   0 rc false NULL-PTR 0 NULL-PTR SETTLE-UNIT ;
 
 \ Compile the pending definition whose body text the engine captured.
 : COMPILE ( ptr u8 n -- )

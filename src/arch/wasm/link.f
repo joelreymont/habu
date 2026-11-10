@@ -1,10 +1,9 @@
 \ link.f - WLINK, the Wasm backend's linker: encoded functions, a data image and
 \ table slots written as one Wasm module (docs/xcomp.md "Linking"); the rows come
-\ from LINKER's Wasm writer (src/arch/wasm/link-module.f) and
-\ src/habu/link-wasm.f. The image's byte at offset off is memory's byte at
-\ WPROF:DATA-BASE + off. LINK checks every row before it writes, stores the data
-\ cells into its copy of the image and patches only the module, so LINK can run
-\ again.
+\ from LINKER's Wasm writer (src/arch/wasm/link-module.f). The image's byte at
+\ offset off is memory's byte at WPROF:DATA-BASE + off. LINK checks every row
+\ before it writes, stores the data cells into its copy of the image and patches
+\ only the module, so LINK can run again.
 \ STORAGE CLASS. MODULE-OWNED: the rows, bodies and image live in this package's
 \ buffers until RESET, and the module LINK answers until the next LINK.
 \
@@ -41,7 +40,7 @@ require src/compiler/native/emission.f
 -9834 constant E-WLINK-LAST
 -9830 constant E-WLINK-UNRESOLVED  \ an entry, site, cell or slot naming no function, image byte or table slot of the link
 -9831 constant E-WLINK-MEMORY      \ an image whose end, from WPROF's DATA base, passes memory32's 65536 pages
--9832 constant E-WLINK-ARITY       \ an entry that takes or answers a lane, or a reserve callee of lanes without map-anon's
+-9832 constant E-WLINK-ARITY       \ an entry that takes or answers a lane, or a reserve callee outside the aligned frame
 -9833 constant E-WLINK-KIND        \ an address kind outside NONE, DATA and CODE
 
 package WLINK
@@ -320,7 +319,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    WPROF:CTX-BASE I32-CONST
    op PUT-BYTE  al PUT-U32  off PUT-U32 ;
 
-\ Each body but reserve's for a callee of lanes declares no local.
+\ The export bodies below declare no local.
 : RUN-BODY ( -- )
    0 PUT-U32
    WPROF:STACK-BASE STACK-ABI:BASE-CELL DATA-CELL!
@@ -359,9 +358,9 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    OP-I64-LOAD ALIGN-64 WPROF:CTX-FAULT-ADDR CTX@
    OP-END PUT-BYTE ;
 
-\ A frame callee takes the count at the data stack's first cell and answers
-\ the address there, the ior above it; the stack is empty between runs.
-: FRAME-RESERVE ( -- )
+\ Reserve's body. Its callee, in the aligned frame, takes the count at the data
+\ stack's first cell, empty between runs, and leaves the address there, ior above.
+: RESERVE-BODY ( -- )
    0 PUT-U32
    WPROF:STACK-BASE CELL-BYTES + WPROF:CTX-STACK-TOP CTX!
    0 STACK-CELL!
@@ -370,24 +369,6 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    OP-DROP PUT-BYTE
    STACK-CELL@
    OP-END PUT-BYTE ;
-
-\ A callee of lanes answers status, address and ior; local 1, an i64, holds the
-\ address while the status under it drops.
-: LANES-RESERVE ( -- )
-   1 PUT-U32  1 PUT-U32  I64 PUT-BYTE
-   WPROF:CTX-BASE I32-CONST
-   OP-LOCAL-GET PUT-BYTE  0 PUT-U32
-   OP-CALL PUT-BYTE  RES-FN @ FN-IDX @ PUT-U32
-   OP-DROP PUT-BYTE
-   OP-LOCAL-SET PUT-BYTE  1 PUT-U32
-   OP-DROP PUT-BYTE
-   OP-LOCAL-GET PUT-BYTE  1 PUT-U32
-   OP-END PUT-BYTE ;
-
-\ Reserve's body, by its callee's frame variant.
-: RESERVE-BODY ( -- )
-   RES-FN @ FN-VAR @ FRAME-ALIGNED = if  FRAME-RESERVE exit  then
-   LANES-RESERVE ;
 
 \ ---- the sections -------------------------------------------------------------
 : BODY$ ( n -- ptr u8 n )
@@ -480,11 +461,10 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ ---- reading the rows ------------------------------------------------------------
 \ An entry, site, cell or slot naming no function, image byte or slot, and an
 \ address of kind NONE, are E-WLINK-UNRESOLVED; a kind outside NONE, DATA and
-\ CODE is E-WLINK-KIND. A reserve callee naming no function is
-\ E-WLINK-UNRESOLVED, and one of lanes without map-anon's (one in, two out)
-\ E-WLINK-ARITY, as is an entry that takes or answers a lane. A field that is not
-\ a padded LEB of its width inside its body is WLEB's refusal, and a cell outside
-\ the image E-SPAN-RANGE.
+\ CODE is E-WLINK-KIND. A reserve callee naming no function is E-WLINK-UNRESOLVED,
+\ and one outside the aligned frame E-WLINK-ARITY, as is an entry that takes or
+\ answers a lane. A field that is not a padded LEB of its width inside its body is
+\ WLEB's refusal, and a cell outside the image E-SPAN-RANGE.
 \ A handle of a function the link holds.
 : RESOLVED ( n -- n )
    {: k:n :}
@@ -538,8 +518,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 : RESERVE-CK ( -- )
    RESERVES @ 0= if exit then
    RES-FN @ RESOLVED {: f:n :}
-   f FN-VAR @ FRAME-ALIGNED = if exit then
-   f FN-IN @ 1 <>  f FN-OUT @ 2 <> or if E-WLINK-ARITY throw then ;
+   f FN-VAR @ FRAME-ALIGNED <> if E-WLINK-ARITY throw then ;
 
 : ROWS-CK ( n -- )
    ENTRY-CK
@@ -595,8 +574,7 @@ variable RUN-LAST                    \ its last non-zero byte's offset
 \ A call site is a padded five-byte field in its caller's body and gets its
 \ callee's index. An address site, a padded ten-byte field, gets its kind and
 \ target's FINAL value. An indirect site, the padded five-byte field after
-\ call_indirect, gets the index of (i32) -> (i32), every table slot's type
-\ (src/arch/wasm/dynamic.f).
+\ call_indirect, gets the index of (i32) -> (i32), every table slot's type.
 : MODULE ( -- SPAN:span<u8> )
    0 OUT AT @ SPAN:MAKE ;
 
@@ -698,8 +676,8 @@ public
    1 NSLOTS +!
    k FIRST-SLOT + ;
 
-\ The module exports reserve, calling map-anon, function f: tier 0's routine in
-\ the aligned frame or WKERNEL's of lanes; ( bytes -- address ior ) either way.
+\ The module exports reserve, calling map-anon, function f, tier 0's routine in
+\ the aligned frame: ( bytes -- address ior ).
 : RESERVE! ( n -- )
    RES-FN !  1 RESERVES ! ;
 

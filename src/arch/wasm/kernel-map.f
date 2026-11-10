@@ -1,6 +1,6 @@
 \ kernel-map.f - WKMAP, the map from an engine word's name to the word of
-\ src/arch/wasm/kernel-words.f that provides it in a Wasm module. WKERNEL's
-\ PROVIDER and the linker's reach (src/arch/wasm/link-kernel.f) both read it.
+\ src/arch/wasm/kernel-words.f that provides it in a Wasm module. The linker's
+\ reach (src/arch/wasm/link-kernel.f) reads it.
 
 require src/lib/string.f
 
@@ -36,10 +36,6 @@ public
    a u s" +!" STR=CI if s" WKWORDS:ADD-STORE" exit then
    a u s" BYTE-COPY-LEN" STR=CI if s" WKWORDS:COPY-LEN" exit then
    a u s" BYTE-COPY" STR=CI if s" WKWORDS:COPY-BYTES" exit then
-   a u s" DYNAMIC-STORAGE:BOUNDS" STR=CI if s" WKWORDS:DYN-BOUNDS" exit then
-   a u s" DYNAMIC-STORAGE:ADDRESS" STR=CI if s" WKWORDS:DYN-ADDRESS" exit then
-   a u s" DYNAMIC-STORAGE:RESERVE" STR=CI if s" WKWORDS:DYN-RESERVE" exit then
-   a u s" DYNAMIC-STORAGE:RELEASE" STR=CI if s" WKWORDS:DYN-RELEASE" exit then
    s" " ;
 
 ;package

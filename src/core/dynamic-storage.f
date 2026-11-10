@@ -10,8 +10,7 @@
 package DYNAMIC-STORAGE
 public
 
-\ A refused map and a refused unmap, which src/arch/wasm/kernel-words.f's
-\ provider throws too.
+\ A refused map and a refused unmap.
 7138 constant E-MAP
 7139 constant E-UNMAP
 

@@ -1,8 +1,7 @@
-\ kernel-words.f - WKWORDS, engine primitives a Wasm module calls, written in
-\ checked Habu over the kernel's rows; WKERNEL's map (src/arch/wasm/kernel.f)
-\ names each by the engine name it answers for. The Wasm driver loads this file
-\ into the capture window ahead of the program, so each word it loads uses only
-\ words HIR models, the rows emit, map-anon, munmap, die and one another.
+\ kernel-words.f - WKWORDS, kernel words a Wasm module calls, written in checked
+\ Habu over the module's routines (src/arch/wasm/link-routines.f); WKMAP
+\ (src/arch/wasm/kernel-map.f) names each by the kernel word it answers for. A
+\ Wasm build loads this file ahead of the program (tools/hb-build-core.f).
 
 require src/arch/wasm/profile.f
 \ Tier 1 stages a call to NFETCH-CHECK:TAGS before a module fetches a tagged
@@ -11,41 +10,6 @@ require src/compiler/native/fetch-check.f
 
 package WKWORDS
 private
-
-$7FFFFFFFFFFFFFFF constant MAX-BYTES
-\ src/core/dynamic-storage.f's codes, so a refusal throws what it does natively.
-E-LAYOUT-BUFFER constant E-SIZE
-E-LAYOUT-BOUNDS constant E-BOUNDS
-DYNAMIC-STORAGE:E-MAP constant E-MAP
-DYNAMIC-STORAGE:E-UNMAP constant E-UNMAP
-
-: EXTENT ( n n -- n )
-   {: count:n width:n :}
-   count 0 < width 0 <= or if E-SIZE throw then
-   count MAX-BYTES width / > if E-SIZE throw then
-   count width * ;
-
-: CELL-CEIL ( n -- n )
-   {: bytes:n :}
-   bytes 8 mod {: part:n :}
-   part 0= if bytes exit then
-   bytes MAX-BYTES 8 part - - > if E-SIZE throw then
-   bytes 8 part - + ;
-
-: CAPACITY ( n n -- n )
-   {: need:n old:n :}
-   old MAX-BYTES 2 / > if need CELL-CEIL exit then
-   need old 2 * 64 max max CELL-CEIL ;
-
-\ The control block's cells after the capacity, which is its first cell.
-16 constant TAG-OFF
-24 constant BOUND-OFF
-
-: TAG ( ptr n -- ptr n )
-   TAG-OFF + ;
-
-: BOUND ( ptr n -- ptr n )
-   BOUND-OFF + ;
 
 \ A real's bits: a rename HIR models (hir-word.f DECLARE-BOUND-CAST), where
 \ IEEE754:F64>BITS would be a call the map does not answer.
@@ -100,61 +64,6 @@ public
 : COPY-BYTES ( ptr u8 ptr u8 n -- )
    dup 0 < if s" byte: negative length" E-BYTE-RANGE die then
    >LEN COPY-LEN ;
-
-\ The DYN- words keep src/core/dynamic-storage.f's record contract (a declared
-\ head and a control block of capacity, slot, width tag and cached bound, both
-\ passed by the generated accessor) without its registry or lock: a module saves
-\ no image, so nothing releases its buffers before one, and the slot stays zero.
-: DYN-BOUNDS ( n n -- n ) {: idx:n count:n :}
-   idx 0 < if E-BOUNDS throw then
-   idx count >= if E-BOUNDS throw then
-   idx ;
-
-: DYN-ADDRESS ( n ptr ptr a ptr n n -- ptr a )
-   {: idx:n cb:ptr ctl:ptr width:n :}
-   idx 0 < if E-BOUNDS throw then
-   ctl TAG-OFF + @ width = if
-      idx ctl BOUND-OFF + @ >= if E-BOUNDS throw then
-   else
-      width 0 <= if E-SIZE throw then
-      idx ctl @ width / >= if E-BOUNDS throw then
-   then
-   cb @ idx width * + ;
-
-\ Every capacity is CELL-CEIL'd, so the old one is a cell multiple: copying
-\ whole cells keeps every byte, and moves the cells as `a`, pointers as pointers.
-: DYN-GROW ( n ptr ptr a ptr n n n -- )
-   {: need:n cb:ptr ctl:ptr old:n width:n :}
-   need old CAPACITY {: cap:n :}
-   cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
-   old 0 > if
-      cb @ {: src:ptr :}
-      old CELL / 0 ?do src i CELL * + @ fresh i CELL * + ! loop
-      src old munmap 0< if
-         fresh cap munmap drop E-UNMAP throw
-      then
-   then
-   fresh cb !
-   cap ctl !
-   width ctl TAG !
-   cap width / ctl BOUND ! ;
-
-: DYN-RESERVE ( n ptr ptr a ptr n n -- )
-   {: count:n cb:ptr ctl:ptr width:n :}
-   count width EXTENT {: need:n :}
-   ctl @ {: old:n :}
-   need old <= if exit then
-   need cb ctl old width DYN-GROW ;
-
-: DYN-RELEASE ( ptr ptr a ptr n -- )
-   {: cb:ptr ctl:ptr :}
-   ctl @ {: cap:n :}
-   cap 0= if exit then
-   cb @ cap munmap 0< if E-UNMAP throw then
-   NULL-PTR cb !
-   0 ctl !
-   0 ctl TAG !
-   0 ctl BOUND ! ;
 
 \ The printers match the engine's (src/habu/rt.f G-PRINT9, G-PRINTU9; habu1.f
 \ BFDOT): the digits, then a newline. F-DOT prints the integer part of the

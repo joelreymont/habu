@@ -398,7 +398,7 @@ $350000 constant PAGE-53-END
 : RESERVE-ROWS ( -- )
    s" a reserve callee past the functions is refused" T-LABEL
    BASE  3 WLINK:RESERVE!  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
-   s" a reserve callee without map-anon's lanes is refused" T-LABEL
+   s" a reserve callee outside the aligned frame is refused" T-LABEL
    BASE  0 WLINK:RESERVE!  [: LINK0 ;] E-WLINK-ARITY TTHROWSQ ;
 
 : CALL-ROWS ( -- )
