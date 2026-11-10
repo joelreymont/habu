@@ -4,6 +4,7 @@
 \ number to the descriptor the process-wide fd word holds.
 \ PROCESS-WIDE: one pipe, one caught set and one armed fd word, owned by the task
 \ that ran INIT (NEED-OWNER); the staging span WAIT and TAKE read into is per task.
+\ The facility's cells are scratch: a built program starts unarmed and runs INIT.
 
 s" src/lib/error.f" required
 s" src/lib/process.f" required                \ PROCESS:KILL-RAW, PROCESS:NO-FD, PROCESS:DEADLINE-AT and PROCESS:LEFT-MS
@@ -11,7 +12,6 @@ s" src/lib/fd.f" required                     \ FD:PIPE, the close-on-exec self-
 s" src/lib/aio.f" required                    \ the loop the WAIT window runs on
 s" src/lib/task.f" required                   \ TASK:+USER carries the staging span, TASK:SELF-N the owner
 s" src/lib/ffi-abi.f" required                \ sigaction is declared here, not assumed
-s" src/lib/image-lifecycle.f" required        \ a restored image is a different process
 require src/habu/layout.f                 \ package SIGNAL-ABI publishes the two cells
 
 package SIGNAL
@@ -91,18 +91,13 @@ create SA-OLD SA-BUF-BYTES allot   \ sigaction fills this; its prior content is 
 \ FD-WORD-A holds a POINTER and is declared as one: a raw `variable` read through
 \ `0 ptr-field` is a raw base the pointer rule refuses, and PTR-VARIABLE gives
 \ the slot the pointer type outright, for the cost of a bare cell load.
-variable STUB-A                    \ the stub's runtime address, as sa_handler
+SCRATCH-VARIABLE STUB-A            \ the stub's runtime address, as sa_handler
 PTR-VARIABLE FD-WORD-A             \ the ADDRESS of the process-wide fd word
-variable CAUGHT                    \ bit (sig-1) per signal RELEASE restores
-variable READ-FD-CELL
-variable WRITE-FD-CELL
-variable OWNER                     \ TASK:SELF-N at INIT; read only while READY
-
-TYPED-VARIABLE READY bool
-false READY !
-
-TYPED-VARIABLE REGISTERED bool
-false REGISTERED !
+SCRATCH-VARIABLE CAUGHT            \ bit (sig-1) per signal RELEASE restores
+SCRATCH-VARIABLE READ-FD-CELL
+SCRATCH-VARIABLE WRITE-FD-CELL
+SCRATCH-VARIABLE OWNER             \ TASK:SELF-N at INIT; read only while READY
+SCRATCH-VARIABLE READY             \ 1 from INIT to RELEASE, else 0
 
 \ One staging span per task: WAIT reads the number into its own row.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER SIGNO-STORAGE drop
@@ -286,38 +281,19 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    HB-TARGET-MACOS? if exit then
    E-PROC-HOST throw ;
 
-\ A restored image is a different process: its descriptors and its sigaction
-\ table are gone and the engine's boot has already cleared the fd word, so the
-\ facility's own cells are dropped and INIT arms the new process from scratch.
-: RESET ( -- )
-   0 STUB-A !
-   NULL-PTR FD-WORD-A !
-   0 CAUGHT !
-   0 OWNER !
-   FORGET-FDS
-   false READY !
-   \ REGISTER is one-shot: the next INIT must arm the next capture's reset.
-   false REGISTERED ! ;
-
-: REGISTER-CLEANUP ( -- )
-   REGISTERED @ if exit then
-   [: RESET ;] IMAGE-LIFECYCLE:REGISTER
-   true REGISTERED ! ;
-
 public
 
 \ From the MAIN task: the two published cells are read once here and kept.
 \ The fd word is armed last, so a signal that arrives while INIT is opening the
 \ pipe is absorbed rather than written to a half-built facility.
 : INIT ( -- )
-   READY @ if E-SIGNAL-STATE throw then
+   READY @ 0<> if E-SIGNAL-STATE throw then
    NEED-HOST
-   REGISTER-CLEANUP
    KEEP-ABI
    OPEN-PIPE
    0 CAUGHT !
    TASK:SELF-N OWNER !
-   true READY !
+   1 READY !
    WRITE-FD-CELL @ ARM ;
 
 \ Deliver signal n to the descriptor instead of its default disposition.
@@ -394,7 +370,7 @@ public
    RESTORE-ALL
    READ-FD-CELL @ WRITE-FD-CELL @ {: r:n w:n :}
    FORGET-FDS
-   false READY !
+   0 READY !
    r w CLOSE-PIPE ;
 
 \ SIGTERM, SIGINT and SIGHUP ask a process to stop. Under the default action a

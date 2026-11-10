@@ -1,13 +1,9 @@
 \ zip-ffi.f - exact libzip/libc ABI bindings, private to ZIP.
-\ STORAGE CLASS. PROCESS-WIDE: the REGISTERED lifecycle flag, set under the
-\ ZIP state lock; image preparation retires every live archive and clears it.
+\ STORAGE CLASS. None of its own: the registries it walks are zip-state.f's.
 require src/lib/ffi-abi.f
-require src/lib/image-lifecycle.f
 require src/lib/zip-state.f
 
 package ZIP
-
-variable REGISTERED
 
 \ The only asserted effects are exact C entry points. Habu owns all policy,
 \ range checks and storage. Pointer results are libzip-owned opaque objects.
@@ -69,27 +65,6 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
    node SOURCE-LIVE @ 0<> if node SOURCE-PTR @ unlink 0<> or then
    node FORGET-ARCHIVE
    if E-READ throw then ;
-
-
-: RETIRE-ARCHIVES ( -- )
-   begin ARCHIVES @ dup NULL? 0= while DISCARD-NODE repeat drop ;
-
-
-\ Archive descriptors and optional libzip objects are process-local: preparing
-\ an image discards every live archive, and later opens register again.
-: CLEANUP-NATIVE ( -- )
-   RETIRE-ARCHIVES
-   0 REGISTERED ! ;
-
-
-: REGISTER-CLEANUP-LOCKED ( -- )
-   REGISTERED @ 0= if
-      [: CLEANUP-NATIVE ;] IMAGE-LIFECYCLE:REGISTER
-      1 REGISTERED !
-   then ;
-
-: REGISTER-CLEANUP ( -- )
-   STATE-GET [: REGISTER-CLEANUP-LOCKED ;] [: STATE-RELEASE ;] finally ;
 
 
 : C-OPEN ( ptr u8 n -- ptr u8 ) {: path:ptr flags:n :}

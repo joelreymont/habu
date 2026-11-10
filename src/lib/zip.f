@@ -101,7 +101,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 
 : OPEN-CHECKED ( ptr u8 n n -- archive )
    {: path:ptr len:n flags:n :}
-   len PATH-CHECK REGISTER-CLEANUP REGISTER {: archive:archive :}
+   len PATH-CHECK REGISTER {: archive:archive :}
    archive ARCHIVE-NODE {: node:ptr :}
    node path len flags OPEN-ATTEMPT {: code:n :}
    code 0<> if node code DISCARD-FAILED then

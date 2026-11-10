@@ -1,6 +1,6 @@
 \ zip-state.f - checked archive identities and owned storage.
 \ Copies returned by NAME$/READ, and copied replacement inputs, remain owned by
-\ the archive until COMMIT, CLOSE, or image preparation. Failed COMMIT stays live.
+\ the archive until COMMIT or CLOSE. Failed COMMIT stays live.
 \ Handles are inspectable identities, validated on every operation, not pointers.
 \ STORAGE CLASS. Read scratch is task-local; archive buffers and entries belong
 \ to their handle; the identity registry and serial are process-wide and locked.
@@ -33,7 +33,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and STAT-BYTES CELL + TASK:+USER ZIP-SCRATCH dr
 \ Archive identities span tasks. Only the short registry operations take this
 \ lock; decompression and archive-owned buffers remain independent.
 here data-base - negate 7 and allot
-variable STATE-LOCK
+SCRATCH-VARIABLE STATE-LOCK
 \ A contended PAUSE must not end a task between native disposal and unlinking.
 : STATE-GET ( -- )
    TASK:DEFER-ENTER
@@ -51,7 +51,7 @@ REGISTER-RESET
 
 PTR-VARIABLE ARCHIVES
 PTR-VARIABLE INPUTS
-variable SERIAL
+SCRATCH-VARIABLE SERIAL
 
 : NULL? ( ptr a -- bool ) >CELL 0= ;
 : LINK ( ptr n -- ptr ptr n ) 0 ptr-field ;

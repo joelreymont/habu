@@ -1,13 +1,12 @@
 \ f64-text.f - exact finite binary64 text on glibc and Darwin libc: PARSE and a
 \ shortest round-trip FORMAT. No task yields while thread-local locale or
 \ rounding state is borrowed, and caller output is copied only after success.
-\ The immutable C numeric locale lives until the process image is prepared.
-\ STORAGE CLASS. PROCESS-WIDE: the library and the C locale, made by the first
-\ call, then only read; no conversion yields. TASK-LOCAL: the work buffers.
+\ STORAGE CLASS. PROCESS-WIDE: the library and the immutable C numeric locale,
+\ made by the first call, then only read; the locale is scratch, so a built
+\ program makes its own. No conversion yields. TASK-LOCAL: the work buffers.
 
 require src/lib/ffi-abi.f
 require src/lib/fmath.f
-require src/lib/image-lifecycle.f
 require src/lib/ieee754.f
 require src/lib/memory.f
 require src/lib/span.f
@@ -31,8 +30,7 @@ private
 $7FFFFFFFFFFFFFFF constant MAGNITUDE-MASK
 512 constant WORK-BYTES
 64 constant NATIVE-BYTES
-variable REGISTERED
-variable C-LOCALE
+SCRATCH-VARIABLE C-LOCALE
 
 \ The locale calls and the text conversions are libc's, which every process
 \ holds. glibc formats through strfromd; Darwin through snprintf_l, whose double
@@ -60,33 +58,12 @@ FUNCTION: GET-ROUND fegetround ( -- i32 ) ;FUNCTION
 FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
 
 
-: FREE-C-LOCALE ( -- )
-   C-LOCALE @ 0= if exit then
-   C-LOCALE @ FREELOCALE-CALL
-   0 C-LOCALE ! ;
-
-
-\ The locale is a process-local address: an IMAGE-LIFECYCLE hook frees it and
-\ closes the library when the image is prepared; the next call makes them anew.
-: CLEANUP-NATIVE ( -- )
-   FREE-C-LOCALE
-   0 REGISTERED ! ;
-
-
-: REGISTER-CLEANUP ( -- )
-   REGISTERED @ 0= if
-      [: CLEANUP-NATIVE ;] IMAGE-LIFECYCLE:REGISTER
-      1 REGISTERED !
-   then ;
-
-
 : NEW-LOCALE ( -- n )
    HB-TARGET-MACOS? if 16 else 2 then s\" C\z" drop 0 NEWLOCALE-CALL ;
 
 
 : INITIALIZE ( -- )
    C-LOCALE @ 0<> if exit then
-   REGISTER-CLEANUP
    NEW-LOCALE dup 0= if drop E-NATIVE throw then C-LOCALE ! ;
 
 

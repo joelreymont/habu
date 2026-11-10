@@ -3,14 +3,13 @@
 \ searches for a font, replaces a missing glyph or splits a run. The font file
 \ and HarfBuzz version are inputs to the SVG bytes: pin both for byte-identical
 \ replay. Tests: test/font-native.f, test/font-image-subject.f. STORAGE CLASS.
-\ TASK-LOCAL scratch rows; PROCESS-WIDE registries freed before image capture.
+\ TASK-LOCAL scratch rows; PROCESS-WIDE registries, which a build leaves out.
 require src/lib/ffi-abi.f
 require src/lib/utf8-scalar.f
 require src/lib/float32.f
 require src/lib/ieee754.f
 require src/lib/le.f
 require src/lib/memory.f
-require src/lib/image-lifecycle.f
 require src/lib/task.f
 require src/lib/string.f
 require src/lib/f64-text.f
@@ -96,10 +95,9 @@ FUNCTION: DRAW-RENDER hb_vector_draw_render ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 PTR-VARIABLE FONTS
 PTR-VARIABLE IMAGES
-variable SERIAL
-variable REGISTERED
+SCRATCH-VARIABLE SERIAL
 here data-base - negate 7 and allot
-variable LOCK-CELL
+SCRATCH-VARIABLE LOCK-CELL
 
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 5 cells TASK:+USER RENDER-STATE drop
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER OPEN-STATE drop
@@ -151,27 +149,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 7 cells TASK:+USER HULL-STATE drop
 : IMAGE-NODE ( image -- ptr n )
    IMAGE>N IMAGES @ FIND dup NULL? if E-HANDLE throw then ;
 
-: FREE-FONTS ( -- )
-   begin FONTS @ dup NULL? 0= while
-      dup LINK @ FONTS !
-      dup OBJECT @ FACE-DESTROY DROP-NODE
-   repeat drop ;
-: FREE-IMAGES ( -- )
-   begin IMAGES @ dup NULL? 0= while
-      dup LINK @ IMAGES !
-      dup OBJECT @ BLOB-DESTROY DROP-NODE
-   repeat drop ;
-: CLEANUP ( -- )
-   LOCK FREE-IMAGES FREE-FONTS 0 REGISTERED ! UNLOCK ;
-: REGISTER-CLEANUP ( -- )
-   REGISTERED @ 0= if
-      [: CLEANUP ;] IMAGE-LIFECYCLE:REGISTER
-      1 REGISTERED !
-   then ;
 : KEEP-FONT ( ptr u8 -- font )
    {: face:ptr :}
-   LOCK
-   [: REGISTER-CLEANUP ;] [: UNLOCK ;] finally
    LOCK [: NEXT-ID ;] [: UNLOCK ;] finally {: ident:n :}
    face NEW-NODE {: node:ptr :}
    ident node IDENT !
@@ -180,8 +159,6 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 7 cells TASK:+USER HULL-STATE drop
    UNLOCK ident >FONT ;
 : KEEP-IMAGE ( ptr u8 r r r r -- image )
    {: blob:ptr x:r y:r w:r h:r :}
-   LOCK
-   [: REGISTER-CLEANUP ;] [: UNLOCK ;] finally
    LOCK [: NEXT-ID ;] [: UNLOCK ;] finally {: ident:n :}
    blob NEW-NODE {: node:ptr :}
    x IEEE754:F64>BITS node BX !
