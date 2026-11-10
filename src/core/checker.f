@@ -4608,6 +4608,8 @@ CHECKER-REG:}SCRATCH
 55 constant MD-EXIT-LOOP     \ exit while a loop no unloop closed is open (CF-EXIT)
 56 constant MD-UNLOOP-JOIN   \ paths meet with different loops unlooped (CF-LOOPS=)
 57 constant MD-CF-OPEN       \ a control structure open at the definition's end
+
+\ Uncheckable, not refused (UNCK-REASON?): E-UNCHECKABLE.
 58 constant MD-CF-DEPTH      \ an opener found all CF-FRAMES-MAX control frames in use (CF-PUSH)
 59 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
 

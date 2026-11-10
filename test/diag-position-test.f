@@ -1380,12 +1380,10 @@ variable RC
    s" a loop that meets an if inside its do" T-LABEL
    s" : X ( -- ) 3 0 do 0 0= if loop then ;" s" loop-in-if.f" LINE-FIXTURE
    s" E-REJECTED" s" loop" 1 27 26 30 REFUSED-AT
-   0 s" repair_class" s" fix_control_flow" FIELD=
    0 s" reason" s" this word closes nothing open here" FIELD=
    s" a loop that meets an if with no do open" T-LABEL
    s" : X ( -- ) 0 0= if loop then ;" s" loop-no-do.f" LINE-FIXTURE
    s" E-REJECTED" s" loop" 1 20 19 23 REFUSED-AT
-   0 s" repair_class" s" fix_control_flow" FIELD=
    0 s" reason" s" no loop is open here" FIELD=
    s" match arms that unloop different loops" T-LABEL
    SB-RESET

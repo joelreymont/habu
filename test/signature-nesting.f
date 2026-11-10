@@ -70,14 +70,14 @@ TYPED-VARIABLE SRC-U len
    SRC-RESET
    s" : SN-LOCAL-DEEP ( n -- ) {: x:" S+  s" [" k S+N  s"  :} ;" S+ ;
 
-\ A definition whose body nests k `IF`s, from its name to its last token.
-: IFS-TEXT ( n -- )
-   {: k:n :}
-   s" SN-IFS ( bool -- ) " S+  s" dup IF " k S+N  s" THEN " k S+N  s" drop" S+ ;
+\ A definition NAME whose body nests k `IF`s, from its name to its last token.
+: IFS-TEXT ( ptr u8 n n -- )
+   {: name:ptr nameu:n k:n :}
+   name nameu S+  s"  ( bool -- ) " S+  s" dup IF " k S+N  s" THEN " k S+N  s" drop" S+ ;
 
-: NESTED-IFS ( n -- )
-   {: k:n :}
-   SRC-RESET  s" : " S+  k IFS-TEXT  s"  ;" S+ ;
+: NESTED-IFS ( ptr u8 n n -- )
+   {: name:ptr nameu:n k:n :}
+   SRC-RESET  s" : " S+  name nameu k IFS-TEXT  s"  ;" S+ ;
 
 \ A definition with no signature that recurses, from its name to its last token.
 : RECURSE-TEXT ( -- )   s" SN-DOWN dup 0 > IF 1 - RECURSE THEN" S+ ;
@@ -96,14 +96,15 @@ TYPED-VARIABLE SRC-U len
 
 
 \ The text in SRC-BUF, checked in this process with JSON diagnostics captured,
-\ writes a packet holding CODE and VERDICT.
+\ writes an E-UNCHECKABLE packet, verdict uncheckable, whose reason is WHY.
 create PKT-BUF 8192 allot
-: PACKET-HAS ( ptr u8 n ptr u8 n -- )
-   {: code:ptr codeu:n verdict:ptr verdictu:n :}
+: PACKET-HAS ( ptr u8 n -- )
+   {: why:ptr whyu:n :}
    PKT-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
    SRC$ CHECK-CANDIDATE! drop
-   DIAG-BUFFER$ code codeu CONTAINS? TTRUE
-   DIAG-BUFFER$ verdict verdictu CONTAINS? TTRUE
+   DIAG-BUFFER$ S\" \"code\":\"E-UNCHECKABLE\"" CONTAINS? TTRUE
+   DIAG-BUFFER$ S\" \"verdict\":\"uncheckable\"" CONTAINS? TTRUE
+   DIAG-BUFFER$ why whyu CONTAINS? TTRUE
    0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
 
 public
@@ -129,17 +130,20 @@ public
    2049 LOCAL-QUOTATIONS
    s" effect too deep to record (depth 4097, at most 4096) at '" REFUSES
    s" 33 nested IFs are uncheckable by the control-frame limit" T-LABEL
-   33 NESTED-IFS
+   s" SN-IFS-33" 33 NESTED-IFS
    s" at 'IF' control flow nested too deep to check (depth 33, at most 32)" REFUSES
-   s" 33 nested IFs write an uncheckable packet" T-LABEL
-   SRC-RESET 33 IFS-TEXT
-   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\"" PACKET-HAS
+   s" 32 nested IFs check" T-LABEL
+   s" SN-IFS-32" 32 NESTED-IFS
+   SRC$ TEST-EVAL:RC 0 T=
+   s" 33 nested IFs write an uncheckable packet that names the limit" T-LABEL
+   SRC-RESET s" SN-IFS-33" 33 IFS-TEXT
+   S\" \"reason\":\"control flow nested too deep to check (depth 33, at most 32)\"" PACKET-HAS
    s" a RECURSE with no declared effect is uncheckable for want of one" T-LABEL
    RECURSE-NOSIG
    s" at 'RECURSE' recursion needs a declared stack effect" REFUSES
-   s" a RECURSE with no declared effect writes an uncheckable packet" T-LABEL
+   s" a RECURSE with no declared effect writes an uncheckable packet that says why" T-LABEL
    SRC-RESET RECURSE-TEXT
-   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\"" PACKET-HAS
+   S\" \"reason\":\"recursion needs a declared stack effect\"" PACKET-HAS
    T-REPORT
    s" signature-nesting: ok" type cr ;
 ;package
