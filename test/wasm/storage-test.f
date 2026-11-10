@@ -8,19 +8,13 @@
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process.f
-require src/lib/process-argv.f
 require src/lib/test.f
 require test/wasm/harness.f
 
 package WASM-STORAGE-TEST
 private
 
-60000 constant DEADLINE-MS
 2 constant TRAPPED                     \ test/wasm/run.mjs's status for a trap
-4096 constant CAP
-CAP BUFFER: OUT
-CAP BUFFER: ERR
 PATH-CAP BUFFER: DIR
 variable DIR-U
 PATH-CAP BUFFER: MOD
@@ -34,8 +28,6 @@ variable FILE-U
    s" wasm-storage" FS:MKTEMP-DIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm storage: modules and output in " type  DIR u type cr ;
-
-: ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
 : FILE! ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n name:ptr nu:n :}
@@ -53,14 +45,7 @@ variable FILE-U
    SB-RESET S\" require test/wasm/storage.f\n: MAIN ( -- ) " SB-APPEND
    entry eu SB-APPEND  S\"  ;\n" SB-APPEND
    SRC SRC-U @ SB$ FS:WRITE-ALL
-   PROC-ARGV-RESET
-   s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
-   SRC SRC-U @ ARG+  s" -o" ARG+  MOD MOD-U @ ARG+
-   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
-   {: outu:len erru:len rc:n :}
-   rc 0<> if  ERR erru LEN>N type cr  then
-   rc ;
+   SRC SRC-U @ MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 \ The entry's module, the file name with .wasm, builds, validates and runs to
 \ status, printing want; want and the output stay as name-expected.txt and

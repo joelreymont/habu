@@ -4,6 +4,7 @@
 \ the tree's root; a missing tool or a passed deadline throws
 \ src/lib/process.f's code.
 \
+\ BUILD answers `hb-build --target wasm`'s exit status, run from the tree's root.
 \ VALID? answers wasm-tools validate's verdict under core Wasm and WPROF's
 \ features. RUN answers run.mjs's exit status: 0 or 1, the entry's status, 2 for
 \ a trap and 3 for a compile or link error. OUT$ answers the OUT bytes the run
@@ -34,14 +35,18 @@ variable ADDR
 
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
-\ The tool named, run with the arguments staged after PROC-ARGV-RESET; answers
-\ its exit status, or 128 plus the signal that ended it.
-: SPAWN ( ptr u8 n -- n )
-   >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
-   EXE u  OUT WPROF:OUT-CAP >LEN  ERR ERR-CAP >LEN  DEADLINE-MS >MS
+\ The program at the path, run with the arguments staged after PROC-ARGV-RESET;
+\ answers its exit status, or 128 plus the signal that ended it.
+: RUN-AT ( ptr u8 len -- n )
+   OUT WPROF:OUT-CAP >LEN  ERR ERR-CAP >LEN  DEADLINE-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
+
+\ The tool named, found on PATH and run as RUN-AT runs a program.
+: SPAWN ( ptr u8 n -- n )
+   >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
+   EXE u RUN-AT ;
 
 \ run.mjs's stderr for status 1 is its throw line; bun's own failures exit 1 as
 \ well, so any other text ends the check.
@@ -104,6 +109,16 @@ variable ADDR
    rc 0= ;
 
 public
+
+\ Prints what a failed build wrote to stderr.
+: BUILD ( ptr u8 n ptr u8 n -- n )
+   {: src:ptr su:n mod:ptr mu:n :}
+   PROC-ARGV-RESET
+   s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
+   src su ARG+  s" -o" ARG+  mod mu ARG+
+   s" bin/hb" >LEN RUN-AT {: rc:n :}
+   rc 0<> if  ERR ERR-U @ type cr  then
+   rc ;
 
 : VALID? ( ptr u8 n -- bool )  false VALIDATE ;
 
