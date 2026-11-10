@@ -136,9 +136,11 @@ application against newer source while still compiling the current engine.
 
 Keep the checkout's `bin/hb` for development and build candidates privately.
 Use one installed tree at a stable path for the executable, map and matching
-library sources, with `~/.local/bin/hb` pointing to its `bin/hb`. Update that
-installation when needed. Do not create per-revision release directories;
-ordinary development does not require installation or publication.
+library sources, `~/.local/lib/habu`, with `~/.local/bin/hb` pointing to its
+`bin/hb`. Update it by running `bin/hb --load tools/install.f` from the root of
+the tree that passed its checks; the tool's header says what it writes. Do not
+create per-revision release directories; ordinary development does not require
+installation or publication.
 
 Libraries loaded from source must match the installed engine. Relative paths
 resolve by the source-root rule in [forth.md](forth.md#packages), so an
@@ -148,20 +150,13 @@ installed engine runs source-based tools from any directory:
 ~/.local/bin/hb --load /absolute/path/to/etch/etch.f
 ```
 
-Keep the installed executable, map and sources together when updating the
-installation. Running applications retain their loaded executable; restart
-long-running source-loading tools against the updated installation.
+Restart long-running source-loading tools against the updated installation.
 
 On macOS every build signs its product with the team identity
 (src/lib/codesign.f), and an install keeps that signature; a host without the
 identity fails the build with `CODESIGN:E-IDENTITY`. The login keychain
 partitions an item by its filer's team, so each build reads the items any other
-build filed with at most one prompt per identifier. Install by renaming a copy
-into place, never copy onto the live file. Renaming leaves running engines on
-their old file. An overwrite in place keeps the inode whose code signature the
-kernel cached, and the kernel kills the new executable at launch:
-`echo bye | hb` dies by SIGKILL (rc 137) within milliseconds, while the same
-bytes renamed in as a new file run.
+build filed with at most one prompt per identifier.
 
 Run the gate after recovery or refresh (`bin/hb --load test/run.f`,
 [gate.md](gate.md)). It runs in the product `bin/hb` engine.

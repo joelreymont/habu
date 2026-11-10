@@ -2044,4 +2044,15 @@ learned live in the docs for their subject.
   The public Habu is ~/.local/lib/habu, updated in place.
 - 2026-10-28: "nobody should ask to hold anything. they should have their own
   copy of habu to run if they need". An install never waits on a client.
+- 2026-11-10, the install command: under "timestamps, not hashes" above and
+  Joel's "review the 2 designs and pick the best one for long term", the lead
+  settled it. `bin/hb --load tools/install.f`, run with no arguments from the
+  root of the tree that passed its checks, installs into ~/.local/lib/habu:
+  it checks the tree has bin/hb, bin/hb.map, src/, tools/ and test/ before it
+  writes, locks the destination, removes everything there the tree does not
+  carry apart from .out, leaves a file that is already equal byte for byte
+  (and an hb equal apart from its signature) untouched so client builds keep
+  their objects, writes every other file beside the old one and renames it
+  into place, and places hb last. It signs nothing: the build signs. A failed
+  install is finished by running it again.
 
