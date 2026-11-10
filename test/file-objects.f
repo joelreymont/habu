@@ -83,11 +83,20 @@
 \ naming no file, and S3 checks it while stale-def.f, which defines V, a name stale-spell.f spells,
 \ is checked and not yet linked, so S3 compiles it. K, K2 and K3 build hidden-root.f, hidden-alone.f
 \ and hidden-root.f, and K3 exits 0: hidden-spell.f spells W, which hidden-def.f defines privately.
-\ G, G2 and G3 build sealed-root.f, sealed-alone.f and sealed-root.f, and G3 exits 0: sealed-spell.f
-\ spells FILE-OBJECTS-SEALED, which sealed-seal.f seals. T, T2 and T3 build stored-root.f,
+\ K2 leaves hidden-spell.f's object naming hidden-pkg.f alone, and K3 compiles it to name
+\ hidden-def.f too. G, G2 and G3 build sealed-root.f, sealed-alone.f and sealed-root.f, and G3 exits 0: sealed-spell.f
+\ spells FILE-OBJECTS-SEALED, which sealed-seal.f seals. G2 leaves sealed-spell.f's object naming
+\ sealed-pkg.f alone, and G3 compiles it to name sealed-seal.f too. T, T2 and T3 build stored-root.f,
 \ stored-alone.f and stored-root.f, and T3 exits 0: stored-run.f runs stored-pkg.f's SGET, which
-\ reads the variable stored-store.f stores into. V, V2 and V3 build retired-root.f, retired-alone.f
-\ and retired-root.f, and V3 exits 0: retired-spell.f spells RW, which retired-undefine.f retires.
+\ reads the variable stored-store.f stores into. T2 leaves stored-run.f's object naming no
+\ stored-store.f, and T3 compiles it to name that file. V, V2 and V3 build retired-root.f,
+\ retired-alone.f and retired-root.f, and V3 exits 0: retired-spell.f spells RW, which
+\ retired-undefine.f retires. V2 leaves retired-spell.f's object naming no file, and V3 compiles it
+\ to name retired-undefine.f. O to O4 build order-root-a.f, order-root-b.f, order-root-a.f and
+\ order-root-a.f, and each exits 0: O2 compiles order-x2.f after order-q2.f and order-q1.f, so its
+\ object names order-q2.f first; O3 checks it while order-ha.f, order-hb.f and order-hc.f are built
+\ and order-q1.f and order-q2.f are checked and not yet linked, and compiles it to name order-q1.f
+\ first; O4 links it.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -104,9 +113,14 @@ package FILE-OBJECTS-TEST
 
 7 constant FILES                         \ build A's objects, and D's
 8 constant FILES-B                       \ build B's: A's and pad.f's
-8 constant LOG-FIRST                     \ TAIL$'s numbers for log-first.f's, path-main.f's and
-9 constant PATH-MAIN                     \ stale-spell.f's objects
-10 constant STALE-SPELL
+8 constant LOG-FIRST                     \ TAIL$'s numbers for log-first.f's, path-main.f's,
+9 constant PATH-MAIN                     \ stale-spell.f's, sealed-spell.f's, stored-run.f's,
+10 constant STALE-SPELL                  \ retired-spell.f's, order-x2.f's and hidden-spell.f's
+11 constant SEALED-SPELL                 \ objects
+12 constant STORED-RUN
+13 constant RETIRED-SPELL
+14 constant ORDER-X2
+15 constant HIDDEN-SPELL
 28 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four, e.f's
 144 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
@@ -132,6 +146,7 @@ PATH-CAP BUFFER: FOUND   variable FOUND-U    \ the walk's last path that ends wi
 PATH-CAP BUFFER: KEPT    variable KEPT-U     \ the object KEEP found, 0 long if none
 CAP BUFFER: BYTES-A
 CAP BUFFER: BYTES-B
+DYNAMIC-BUFFER FIXTURE-BYTES u8
 INPUT-BYTES BUFFER: EXPECT
 STATE-CAP BUFFER: STATE-A  variable STATE-A-U
 STATE-CAP BUFFER: STATE-B  variable STATE-B-U
@@ -142,6 +157,7 @@ PROG-CAP BUFFER: PROG-1
 PROG-CAP BUFFER: PROG-2
 8 BUFFER: WHICH          variable WHICH-U  \ the build the labels name
 96 BUFFER: TEXT-BUF
+T-LABEL-CAP BUFFER: HELD-LABEL           \ a label FIXTURE-OBJECT keeps across FOUND?
 128 BUFFER: LABEL-BUF
 variable OBJ-N                          \ the walk's objects
 variable TAIL-I                          \ the tail the walk looks for (TAIL$)
@@ -232,7 +248,8 @@ variable KEPT-NS
 
 \ The tail of object i's path, from 0: A's count.f, shape.f, main.f, reopen.f, mark.f and again.f's
 \ two loads; 7 pad.f's, which B adds; 8 log-first.f's; 9 path-main.f's; 10 stale-spell.f's, which S
-\ writes.
+\ writes; 11 sealed-spell.f's, G's; 12 stored-run.f's, T's; 13 retired-spell.f's, V's; 14
+\ order-x2.f's, O's; 15 hidden-spell.f's, K's.
 : TAIL$ ( n -- ptr u8 n )
    {: i:n :}
    i 0 = if s" /test/fixtures/file-objects/count.f.hfo" exit then
@@ -245,7 +262,12 @@ variable KEPT-NS
    i 7 = if s" /test/fixtures/file-objects/pad.f.hfo" exit then
    i LOG-FIRST = if s" /test/fixtures/file-objects/log-first.f.hfo" exit then
    i PATH-MAIN = if s" /test/fixtures/file-objects/path-main.f.hfo" exit then
-   s" /test/fixtures/file-objects/stale-spell.f.hfo" ;
+   i STALE-SPELL = if s" /test/fixtures/file-objects/stale-spell.f.hfo" exit then
+   i SEALED-SPELL = if s" /test/fixtures/file-objects/sealed-spell.f.hfo" exit then
+   i STORED-RUN = if s" /test/fixtures/file-objects/stored-run.f.hfo" exit then
+   i RETIRED-SPELL = if s" /test/fixtures/file-objects/retired-spell.f.hfo" exit then
+   i ORDER-X2 = if s" /test/fixtures/file-objects/order-x2.f.hfo" exit then
+   s" /test/fixtures/file-objects/hidden-spell.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" obj" ROOT FS:JOIN-PATH ROOT-U ! ;
@@ -607,50 +629,121 @@ variable KEPT-NS
    s" H" WHICH!  s" test/fixtures/file-objects/part-main.f" FIXTURE-BUILD 0= if exit then
    PART-RUN ;
 
-\ The FILES length of stale-spell.f's object in the fixture out root, -1 if there is not one.
-: SPELL-FILES ( -- n )
-   F$ WHICH WHICH-U @ STALE-SPELL FOUND? 0= if -1 exit then
-   FOUND$ BYTES-A CAP FS:READ-ALL {: u:n :}
+\ FIXTURE-BYTES gets the fixture out root's object of tail i; answers its length, -1 if there is not
+\ one or it is shorter than a header. FOUND? asserts under its own label, then the caller's is back.
+: FIXTURE-OBJECT ( n -- n )
+   {: i:n :}
+   T-LABEL$ {: la:ptr lu:n :}
+   la HELD-LABEL lu BYTE-COPY
+   F$ WHICH WHICH-U @ i FOUND? {: one:bool :}
+   HELD-LABEL lu T-LABEL
+   one 0= if -1 exit then
+   FOUND$ FS:FILE-SIZE {: size:n :}
+   size HEADER-BYTES < if -1 exit then
+   size FIXTURE-BYTES-RESERVE
+   FOUND$ 0 FIXTURE-BYTES size FS:READ-ALL {: u:n :}
    u HEADER-BYTES < if -1 exit then
-   BYTES-A FILES-LEN-FIELD + LE:U64@ ;
+   u ;
+
+\ The FILES length of the fixture out root's object of tail i, -1 if there is not one.
+: OBJECT-FILES ( n -- n )
+   FIXTURE-OBJECT 0 < if -1 exit then
+   0 FIXTURE-BYTES FILES-LEN-FIELD + LE:U64@ ;
+
+\ The offset of the text in the fixture out root's object of tail i, -1 if it holds none or there
+\ is not one.
+: OBJECT-TEXT-AT ( n ptr u8 n -- n )
+   {: i:n a:ptr u:n :}
+   i FIXTURE-OBJECT {: ou:n :}
+   ou 0 < if -1 exit then
+   0 FIXTURE-BYTES ou a u FIND-SUB MATCH option
+      none OF -1 ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH ;
+
+\ Whether the fixture out root's object of tail i holds the text, as it holds each path it names.
+: OBJECT-HOLDS? ( n ptr u8 n -- bool ) OBJECT-TEXT-AT 0 >= ;
+
+
+\ Whether order-x2.f's object holds the first path before the second: it lays the paths of the
+\ storers it read in the order they linked.
+: X2-BEFORE? ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr au:n b:ptr bu:n :}
+   ORDER-X2 a au OBJECT-TEXT-AT {: x:n :}
+   ORDER-X2 b bu OBJECT-TEXT-AT {: y:n :}
+   x 0 >=  y 0 >=  and  x y <  and ;
+
 
 \ Three builds are the boundary: S gives stale-def.f an object, S2 gives stale-spell.f one naming no
 \ file, and only S3 checks both in one walk, before either links; a reused object would name no file.
 : STALE-CASE ( CMD:command -- CMD:command )
    s" S" WHICH!  s" test/fixtures/file-objects/stale-root.f" FIXTURE-BUILD 0= if exit then
    s" S2" WHICH!  s" test/fixtures/file-objects/stale-alone.f" FIXTURE-BUILD 0= if exit then
-   s" stale-spell.f's object names no file" LABEL  SPELL-FILES 0 T=
+   s" stale-spell.f's object names no file" LABEL  STALE-SPELL OBJECT-FILES 0 T=
    s" S3" WHICH!  s" test/fixtures/file-objects/stale-root.f" FIXTURE-BUILD 0= if exit then
-   s" stale-spell.f compiles: its object names stale-def.f" LABEL  SPELL-FILES FILES-ROW T= ;
+   s" stale-spell.f compiles: its object names stale-def.f" LABEL
+   STALE-SPELL OBJECT-FILES FILES-ROW T= ;
 
 \ Guards a private name of a checked-but-unlinked piece: K3 checks hidden-def.f's W unlinked.
 : HIDDEN-CASE ( CMD:command -- CMD:command )
    s" K" WHICH!  s" test/fixtures/file-objects/hidden-root.f" FIXTURE-BUILD 0= if exit then
    s" K2" WHICH!  s" test/fixtures/file-objects/hidden-alone.f" FIXTURE-BUILD 0= if exit then
-   s" K3" WHICH!  s" test/fixtures/file-objects/hidden-root.f" FIXTURE-BUILD drop ;
+   s" hidden-spell.f's object names hidden-pkg.f alone" LABEL
+   HIDDEN-SPELL OBJECT-FILES FILES-ROW T=
+   s" K3" WHICH!  s" test/fixtures/file-objects/hidden-root.f" FIXTURE-BUILD 0= if exit then
+   s" hidden-spell.f compiles: its object names hidden-def.f too" LABEL
+   HIDDEN-SPELL OBJECT-FILES FILES-ROW 2 * T= ;
 
 \ Guards a name a checked-but-unlinked piece changes: G3 checks sealed-seal.f's seal unlinked.
 : SEALED-CASE ( CMD:command -- CMD:command )
    s" G" WHICH!  s" test/fixtures/file-objects/sealed-root.f" FIXTURE-BUILD 0= if exit then
    s" G2" WHICH!  s" test/fixtures/file-objects/sealed-alone.f" FIXTURE-BUILD 0= if exit then
-   s" G3" WHICH!  s" test/fixtures/file-objects/sealed-root.f" FIXTURE-BUILD drop ;
+   s" sealed-spell.f's object names sealed-pkg.f alone" LABEL
+   SEALED-SPELL OBJECT-FILES FILES-ROW T=
+   s" G3" WHICH!  s" test/fixtures/file-objects/sealed-root.f" FIXTURE-BUILD 0= if exit then
+   s" sealed-spell.f compiles: its object names sealed-seal.f too" LABEL
+   SEALED-SPELL OBJECT-FILES FILES-ROW 2 * T= ;
 
 \ Guards a store a checked-but-unlinked piece makes: T3 checks stored-store.f's store unlinked.
+\ stored-run.f's object also names the kernel's files its run reaches, so a path is pinned, not a count.
 : STORED-CASE ( CMD:command -- CMD:command )
    s" T" WHICH!  s" test/fixtures/file-objects/stored-root.f" FIXTURE-BUILD 0= if exit then
    s" T2" WHICH!  s" test/fixtures/file-objects/stored-alone.f" FIXTURE-BUILD 0= if exit then
-   s" T3" WHICH!  s" test/fixtures/file-objects/stored-root.f" FIXTURE-BUILD drop ;
+   s" stored-run.f's object names no stored-store.f" LABEL
+   STORED-RUN s" /test/fixtures/file-objects/stored-store.f" OBJECT-HOLDS? TFALSE
+   s" T3" WHICH!  s" test/fixtures/file-objects/stored-root.f" FIXTURE-BUILD 0= if exit then
+   s" stored-run.f compiles: its object names stored-store.f" LABEL
+   STORED-RUN s" /test/fixtures/file-objects/stored-store.f" OBJECT-HOLDS? TTRUE ;
 
 \ Guards a name a checked-but-unlinked piece retires: V3 checks retired-undefine.f's undefine unlinked.
 : RETIRED-CASE ( CMD:command -- CMD:command )
    s" V" WHICH!  s" test/fixtures/file-objects/retired-root.f" FIXTURE-BUILD 0= if exit then
    s" V2" WHICH!  s" test/fixtures/file-objects/retired-alone.f" FIXTURE-BUILD 0= if exit then
-   s" V3" WHICH!  s" test/fixtures/file-objects/retired-root.f" FIXTURE-BUILD drop ;
+   s" retired-spell.f's object names no file" LABEL  RETIRED-SPELL OBJECT-FILES 0 T=
+   s" V3" WHICH!  s" test/fixtures/file-objects/retired-root.f" FIXTURE-BUILD 0= if exit then
+   s" retired-spell.f compiles: its object names retired-undefine.f" LABEL
+   RETIRED-SPELL OBJECT-FILES FILES-ROW T= ;
+
+\ Guards a file's check against built and pending pieces' rows in ascending order: O3 checks order-x2.f.
+: ORDER-CASE ( CMD:command -- CMD:command )
+   s" O" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
+   s" O2" WHICH!  s" test/fixtures/file-objects/order-root-b.f" FIXTURE-BUILD 0= if exit then
+   s" order-x2.f's object names order-q2.f before order-q1.f" LABEL
+   s" /test/fixtures/file-objects/order-q2.f" s" /test/fixtures/file-objects/order-q1.f"
+   X2-BEFORE? TTRUE
+   s" O3" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
+   s" order-x2.f compiles: its object names order-q1.f before order-q2.f" LABEL
+   s" /test/fixtures/file-objects/order-q1.f" s" /test/fixtures/file-objects/order-q2.f"
+   X2-BEFORE? TTRUE
+   ORDER-X2 KEEP
+   s" O4" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
+   s" the build links order-x2.f" LINKED ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE STORED-CASE RETIRED-CASE ;]
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
+      STORED-CASE RETIRED-CASE ORDER-CASE ;]
    CMD:WITH-COMMAND ;
 
 
