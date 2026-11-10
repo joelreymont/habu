@@ -646,7 +646,6 @@ variable CASE-EXP
    s" : PROP-PC ( -- bool ) wf-needs-p2? ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) wf-w-at ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) locw-hw-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) schema-reg:schema-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) schema-reg:schema-root-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n -- r ) s>f ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( n -- ) emit ; " s" 7 " 0 CHECK-CASE

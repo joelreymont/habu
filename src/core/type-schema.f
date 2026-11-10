@@ -60,7 +60,6 @@ private
 16 constant SCH-CAP-INIT        \ holds the built-ins' schemas (TF-CAP-INIT)
 16 constant SCH-ROOT-INIT       \ cells; holds the built-ins' schema roots
 
-\ Read the registry control cells through SCHEMA-N@ / SCHEMA-ROOT-N@.
 public
 
 variable SCH-CAP-V   SCH-CAP-INIT SCH-CAP-V !
@@ -171,9 +170,6 @@ public
 : SCHEMA-A@ ( n -- n ) SCH-REC@ SCH.A @ ;
 : SCHEMA-B@ ( n -- n ) SCH-REC@ SCH.B @ ;
 : SCHEMA-C@ ( n -- n ) SCH-REC@ SCH.C @ ;
-\ Publics carry no checker effect, so checked code cannot call them; SCHEMA-N@ and
-\ SCHEMA-ROOT-N@ alone carry PPRIM: axioms (checker.f).
-: SCHEMA-N@ ( -- n ) SCH-N @ ;             \ node high-water (for rollback/tests)
 
 : SCHEMA-PARAM? ( n -- bool ) SCHEMA-TAG@ SCH-PARAM = ;
 : SCHEMA-CON? ( n -- bool ) SCHEMA-TAG@ SCH-CON = ;
@@ -194,6 +190,8 @@ public
    idx 0 < IF s" tfam: bad schema root index" 76 die THEN
    idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
    idx cells SCH-ROOT-BASE + @ ;
+\ Publics carry no checker effect, so checked code cannot call them; this one
+\ alone carries a PPRIM: axiom (checker.f).
 : SCHEMA-ROOT-N@ ( -- n ) SCH-ROOT-N @ ;
 
 \ --- SCH-ROW effect-side node: one ordered row of schema element type nodes,

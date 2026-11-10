@@ -13143,11 +13143,8 @@ PPRIM: TFAM SUMV-N@ PE-N PE-OUT PPRIM;
 PPRIM: TFAM TF-STR-U@ PE-N PE-OUT PPRIM;
 PPRIM: TFAM TF-PK-N@ PE-N PE-OUT PPRIM;
 PPRIM: TFAM LAY-N@ PE-N PE-OUT PPRIM;
-\ type-schema.f is package SCHEMA-REG, so these rows are PPRIM: (key
-\ SCHEMA-REG:SCHEMA-N@). The two high-water reads are the package's whole
-\ checked surface; every other public is reached only from a pre-hook body or a
-\ TRUSTED: forwarder.
-PPRIM: SCHEMA-REG SCHEMA-N@ PE-N PE-OUT PPRIM;
+\ SCHEMA-REG's whole checked surface: every other public of type-schema.f is
+\ reached only from a pre-hook body or a TRUSTED: forwarder.
 PPRIM: SCHEMA-REG SCHEMA-ROOT-N@ PE-N PE-OUT PPRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PARSE-IMM PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PRIM;
