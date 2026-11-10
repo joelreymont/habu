@@ -16,6 +16,7 @@
 \   presets     n, then each header cell's offset and the value the link writes
 
 require src/lib/le.f
+require src/lib/string.f
 require src/core/bytes.f
 require src/core/sha256.f
 require src/habu/layout.f

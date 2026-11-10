@@ -1,5 +1,5 @@
 \ link-kernel.f - the arm64 kernel a build's link adopts from the kernel object
-\ the tree's writer wrote (src/arch/arm64/kernel-object.f, which states its
+\ a kernel build writes (src/arch/arm64/kernel-object.f lays it and states its
 \ format), the map from the running hb's kernel primitive entries to the
 \ object's, and the cut that keeps only the kernel code a program reaches. The
 \ two kernels bake different inputs, so the map goes by name and wordlist.
