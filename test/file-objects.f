@@ -31,7 +31,8 @@ package FILE-OBJECTS-TEST
 20 constant REDO-MAIN
 21 constant UNCLEAN-FIRST                \ unclean.f's first part's, which an unclean cut ends,
 22 constant UNCLEAN-SECOND               \ and its second's, which follows that cut
-23 constant TAILS                        \ TAIL$'s tails
+23 constant FFI-SECOND                   \ src/lib/ffi-abi.f's second part's, which the kernel lacks
+24 constant TAILS                        \ TAIL$'s tails
 46 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -40,7 +41,7 @@ package FILE-OBJECTS-TEST
 192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
 32 constant FILES-ROW                    \ a FILES row's bytes (linker.f FILES-ROW-BYTES)
-24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp, 0 0 -1 if it never links
+24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp
 16384 constant CAP                       \ an object's bytes
 16384 constant STATE-CAP                 \ a build's output before its last line
 262144 constant PROG-CAP                 \ a program's bytes, L's included
@@ -188,6 +189,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    i REDO-MAIN = if s" /test/fixtures/file-objects/redo-main.f.hfo" exit then
    i UNCLEAN-FIRST = if s" /test/fixtures/file-objects/unclean.f.hfo" exit then
    i UNCLEAN-SECOND = if s" /test/fixtures/file-objects/unclean.f+1.hfo" exit then
+   i FFI-SECOND = if s" /src/lib/ffi-abi.f+1.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -578,26 +580,27 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    FOUND$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    size i KEPT-SIZE !  cs i KEPT-S !  cns i KEPT-NS ! ;
 
-\ The label holds when the build's object of tail i keeps the size and change time KEEP held: a compile
-\ replaces a file's object (linker.f WRITE-OBJECT) and a link leaves it.
-: LINKED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
-   i KEPT-SIZE @ 0 < if a u LABEL false TTRUE exit then
+\ Whether KEEP and FOUND? each found the build's object of tail i; the label is the next, and
+\ fails when either found none.
+: KEPT-FOUND? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
+   i KEPT-SIZE @ 0 < if a u LABEL false TTRUE false exit then
    F$ WHICH WHICH-U @ i FOUND? {: one:bool :}
    a u LABEL
-   one 0= if false TTRUE exit then
-   FOUND$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
-   size i KEPT-SIZE @ =  cs i KEPT-S @ =  and  cns i KEPT-NS @ =  and TTRUE ;
+   one 0= if false TTRUE then  one ;
 
-\ The label holds when the build's object of tail i holds INPUT 0 0 -1, which no file's stamp
-\ equals: the part compiles in every build (linker.f WRITE-OBJECT).
-: UNSTAMPED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
-   F$ WHICH WHICH-U @ i FOUND? {: one:bool :}
-   a u LABEL
-   one 0= if false TTRUE exit then
-   FOUND$ BYTES-B CAP FS:READ-ALL {: len:n :}
-   0 EXPECT LE:U64!  0 EXPECT 8 + LE:U64!  -1 EXPECT 16 + LE:U64!
-   len HEADER-BYTES - 0 max INPUT-BYTES min {: v:n :}
-   BYTES-B HEADER-BYTES + v EXPECT INPUT-BYTES T$= ;
+\ Whether FOUND$ keeps the size and change time KEEP held for tail i: a compile replaces a file's
+\ object (linker.f WRITE-OBJECT) and a link leaves it.
+: KEPT? ( n -- bool ) {: i:n :}
+   FOUND$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   size i KEPT-SIZE @ =  cs i KEPT-S @ =  and  cns i KEPT-NS @ =  and ;
+
+\ The label holds when the build's object of tail i is the one KEEP held.
+: LINKED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
+   a u i KEPT-FOUND? 0= if exit then  i KEPT? TTRUE ;
+
+\ The label holds when the build's object of tail i replaces the one KEEP held.
+: COMPILED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
+   a u i KEPT-FOUND? 0= if exit then  i KEPT? TFALSE ;
 
 \ path-main.f's program, run in its own process: the path it reports is the written
 \ file's, and the park it wakes is its own.
@@ -659,15 +662,16 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
    rc 0<> if rc SHOW then
    label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
-\ Guards a lock across a build: L's program holds no mutex the build locked and takes HELD, which
-\ log-first.f left held; L2, after M rewrites app-end.f's object, links log-first.f.
+\ Guards a lock across a build: L's program holds no mutex the build locked and takes HELD, which log-first.f left
+\ held; L2, after M rewrites app-end.f's object, links log-first.f and ffi-abi.f's second part (linker.f OWNED-RECORDS).
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
-   LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP
+   LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP  FFI-SECOND KEEP
    s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
    BARE-RUN
    s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
-   s" the build links log-first.f" LOG-FIRST LINKED  LOG-RUN ;
+   s" the build links log-first.f" LOG-FIRST LINKED
+   s" the build links ffi-abi.f's second part" FFI-SECOND LINKED  LOG-RUN ;
 
 \ Guards a linked file's top-level cache: P2 links path-main.f after M2, and its program reports its own path;
 \ H's program dies on a bad tag though part-main.f's NFETCH-CHECK has a BAD-TAG that returns.
@@ -794,13 +798,13 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none
 \ moves with no edit (linked, it defines Q twice); linking a part that retires its own records.
 : PART-LINK-CASE ( CMD:command -- CMD:command )
    s" Y" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
-   MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  REDO-MAIN KEEP
+   MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  UNCLEAN-FIRST KEEP  UNCLEAN-SECOND KEEP  REDO-MAIN KEEP
    s" Y2" WHICH!  s" test/fixtures/file-objects/parts-root-2.f" FIXTURE-BUILD 0= if exit then
    s" the build links mid-four.f's last part" MID-FOUR-LAST LINKED
    s" the build links unclean.f's last part after an unclean request and a clean one"
    UNCLEAN-LAST LINKED
-   s" unclean.f's part an unclean request ends never links" UNCLEAN-FIRST UNSTAMPED
-   s" unclean.f's part after an unclean request never links" UNCLEAN-SECOND UNSTAMPED
+   s" unclean.f's part an unclean request ends never links" UNCLEAN-FIRST COMPILED
+   s" unclean.f's part after an unclean request never links" UNCLEAN-SECOND COMPILED
    s" the build links redo-main.f's part" REDO-MAIN LINKED
    s\" 10\n2\n30\n40\n5\n1\n2\n3\n7\n9\n2\n"
    s" the program prints mid-four.f's words with mid-w2.f's W and redo-main.f's second Y" PRINTS-RUN
