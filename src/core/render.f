@@ -1014,22 +1014,22 @@ REG-SCRATCH-SNAP-INSTALL
 \ declaration-order tags index the family's contiguous SUMV rows.
 variable MDV-I   variable MDV-F
 
-\ A row pair's repair by depth (REPAIR-CLASS, SUGGEST-TEXT, a loop's depth
-\ change): the actual row holds more cells than the expected, fewer, or as many
-\ of other types.
-: ROWS-DEPTHS ( -- )
+\ A row pair's repair by depth, counted in the unit its rows were judged in:
+\ ROW-VALUES for a mismatch, as ROW-COVER pairs; ROW-CELLS for a depth reason.
+: ROWS-DEPTHS ( [ n -- n ] -- )
+   {: measure :}
    AT-PIN
-   DEXP @ REND-COLLECT RBN @ DSUGE !
-   DACT @ REND-COLLECT RBN @ DSUGA !
+   DEXP @ measure execute DSUGE !
+   DACT @ measure execute DSUGA !
    ;AT-PIN ;
 
-: ROWS-CLASS$ ( -- ptr u8 n )
+: ROWS-CLASS$ ( [ n -- n ] -- ptr u8 n )
    ROWS-DEPTHS
    DSUGA @ DSUGE @ > IF s" remove_producer" EXIT THEN
    DSUGA @ DSUGE @ < IF s" add_producer" EXIT THEN
    s" fix_type" ;
 
-: ROWS-SUGGEST$ ( -- ptr u8 n )
+: ROWS-SUGGEST$ ( [ n -- n ] -- ptr u8 n )
    ROWS-DEPTHS
    DSUGA @ DSUGE @ > IF s" Remove an extra producer or drop the surplus value." EXIT THEN
    DSUGA @ DSUGE @ < IF s" Add the missing producer or stop consuming a required value." EXIT THEN
@@ -1141,9 +1141,9 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" fix_is_target" endof
       MD-IS-NOT-DEFER of s" fix_is_target" endof
       MD-IS-MISSING   of s" fix_missing_name" endof
-      MD-LOOP-DEPTH   of ROWS-CLASS$ endof
-      MD-IF-DEPTH     of ROWS-CLASS$ endof
-      MD-ARMS-DEPTH   of ROWS-CLASS$ endof
+      MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
+      MD-IF-DEPTH     of ['] ROW-CELLS ROWS-CLASS$ endof
+      MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-LOOP-RDEPTH  of s" fix_return_stack" endof
       MD-LOOP-CARRIED of s" fix_control_flow" endof
       MD-NO-LOOP      of s" fix_control_flow" endof
@@ -1246,9 +1246,9 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
       MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
       MD-IS-MISSING   of s" Write the name of a word declared with defer after is." endof
-      MD-LOOP-DEPTH   of ROWS-SUGGEST$ endof
-      MD-IF-DEPTH     of ROWS-SUGGEST$ endof
-      MD-ARMS-DEPTH   of ROWS-SUGGEST$ endof
+      MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
+      MD-IF-DEPTH     of ['] ROW-CELLS ROWS-SUGGEST$ endof
+      MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-LOOP-RDEPTH  of s" Take back with r> in the loop body every cell it pushes with >r, so each pass leaves the return stack as it found it." endof
       MD-LOOP-CARRIED of s" Make each pass leave the cells it carries as it found them, of the same types and with the same facts known of them; keep a value that changes per pass in a variable." endof
       MD-NO-LOOP      of s" Use i, leave, unloop, loop and +loop only inside a do or ?do this definition opened and has not closed." endof
@@ -1514,7 +1514,7 @@ variable MDV-I   variable MDV-F
    k RF-UNCHECKABLE = IF s" rewrite_uncheckable" EXIT THEN
    k RF-RETURN = IF s" fix_return_stack" EXIT THEN
    k RF-MISMATCH <> IF s" unknown_rejection" EXIT THEN
-   ROWS-CLASS$ ;
+   ['] ROW-VALUES ROWS-CLASS$ ;
 \ Shared by SUGGEST-TEXT, a bad stored signature's diagnostic and a refused
 \ `generates:` row's.
 : SGBAD-SUGGEST$ ( -- ptr u8 n )
@@ -1570,7 +1570,7 @@ variable MDV-I   variable MDV-F
       s" Balance return-stack transfers before the definition exits." EXIT
    THEN
    k RF-MISMATCH <> IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
-   ROWS-SUGGEST$ ;
+   ['] ROW-VALUES ROWS-SUGGEST$ ;
 \ A packet's position: the file line, column and byte of its token's first byte,
 \ and the byte after its last.
 variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E

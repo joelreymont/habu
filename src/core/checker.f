@@ -3128,6 +3128,34 @@ public
       P>REST
    REPEAT drop ;
 
+\ A value is one entry of a row as a program sees it: a hidden group whole, its
+\ tag on top (slot W-1 of W cells, as LOGHID-AT? reads it), or one other cell.
+: VALUE-CELLS ( n -- n )                 \ cells of the value on top of push p
+   {: p:n :}
+   p P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF 1 EXIT THEN
+   t HIDDEN-SLOT@ t T-WIDTH 1 - <> IF 1 EXIT THEN
+   t T-WIDTH ;
+
+\ The row below the value on top of row s; false when s holds no push or ends
+\ inside that value's group.
+: VALUE-REST ( n -- n bool )
+   {: s:n :}
+   s R-RES dup TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   dup VALUE-CELLS 0 ?do
+      R-RES dup TAG S-PUSH <> IF RES-FALSE unloop EXIT THEN
+      P>REST
+   loop RES-TRUE ;
+
+\ The values in a row's fixed entries, following a bound tail as ROW-CELLS
+\ does; a group the tail cuts counts as one.
+: ROW-VALUES ( n -- n )
+   {: s:n :}
+   0 s R-RES
+   BEGIN dup TAG S-PUSH = WHILE
+      swap 1 + swap  VALUE-REST drop R-RES
+   REPEAT drop ;
+
 \ The width vocabulary's absent answer: a row nothing can state a width for.
 \ EFF-ROW-CELLS answers it for a stored row whose cells carry no recorded width,
 \ and RSCATCH answers it for the output row of a caught body that never returns.
@@ -4754,13 +4782,51 @@ TAIL-CAPTURE-DEFAULT
    THEN ;
 
 
+\ One pairing of COVER-BELOW: one value (VALUE-REST) off each side, whatever
+\ its width on the other.
+: COVER-STEP ( n n -- n n bool )
+   {: e:n a:n :}
+   e VALUE-REST {: er:n eok:bool :}
+   a VALUE-REST {: ar:n aok:bool :}
+   er ar  eok aok and ;
+
+\ The part of act below exp's own values; false when act runs out first or exp's
+\ tail cuts one of its hidden groups.
+: COVER-BELOW ( n n -- n bool )
+   {: exp:n act:n :}
+   exp act
+   BEGIN over R-RES TAG S-PUSH = WHILE
+      COVER-STEP 0= IF nip RES-FALSE EXIT THEN
+   REPEAT nip RES-TRUE ;
+
+\ Copies of exp's own pushes, in order, over below.
+: COVER-COPY ( n n -- n )
+   {: exp:n below:n :}
+   exp R-RES 0 P-COPY {: head:n :}
+   head  exp R-RES P>REST
+   BEGIN R-RES dup TAG S-PUSH = WHILE      \ ( last e )
+      dup 0 P-COPY  rot  over swap P-REST!  swap P>REST
+   REPEAT drop
+   below swap P-REST!  head ;
+
+\ exp's own values over the values of act below them, binding nothing: a failed
+\ step leaves its input row's tail unbound (U-DRAIN stops at the failed pair).
+: ROW-COVER ( n n -- n )
+   {: exp:n act:n :}
+   exp ROW-TAIL {: tail:n :}
+   tail ISROW 0=  tail act ROW-TAIL =  or IF exp EXIT THEN
+   exp R-RES TAG S-PUSH <> IF exp EXIT THEN
+   exp act COVER-BELOW 0= IF drop exp EXIT THEN
+   exp swap COVER-COPY ;
+
+
 \ The first failure, captured once. Every site that judges a row (the token
 \ step, the locals annotation bind, the three boundary unifies) pins the
 \ expected/actual pair the renderer prints, then the reason the refusal raised,
 \ then FAILSET, which freezes the pin. The reason must be named before that last
 \ store: MDIAG! is silent once the pin is closed.
 : UF-CAPTURE ( n n -- ) {: exp:n act:n :}
-   exp DEXP !  act DACT !  ROWS-PIN
+   exp act ROW-COVER DEXP !  act DACT !  ROWS-PIN
    UF>DIAG
    CELL-DIAG!
    -1 FAILSET ! ;

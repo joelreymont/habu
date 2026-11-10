@@ -12,7 +12,9 @@
 \ name alone defers its definition, or makes an unfit one uncheckable for its
 \ width. An undefined word is refused in packet and answer, alone or after a
 \ covered name in an unfit definition. A refusal's prose line ends with its
-\ packet's suggestion, after the rows when it prints them.
+\ packet's suggestion, after the rows when it prints them. A mismatch over cells
+\ below prints its expected row over them too, so it is classed by type and a
+\ surplus by depth.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
@@ -101,6 +103,12 @@ TYPED-VARIABLE SRC-U len
 : NESTED-BADCOND ( n -- )
    {: k:n :}
    SRC-RESET  s" : " S+  k BADCOND-TEXT  s"  ;" S+ ;
+
+\ A loop over 70 cells, more than a diagnostic prints of a row (RBUF-CAP), whose
+\ body leaves one more cell, from its name to its last token.
+: BIGLOOP-TEXT ( -- )
+   SRC-RESET  s" SN-BIGLOOP ( -- ) " S+  s" 1 " 70 S+N  s" 10 0 DO 1 LOOP" S+
+   s"  drop" 70 S+N ;
 
 \ A definition with no signature that recurses, from its name to its last token.
 : RECURSE-TEXT ( -- )   s" SN-DOWN dup 0 > IF 1 - RECURSE THEN" S+ ;
@@ -215,11 +223,11 @@ public
    VERDICT-UNCHECKABLE PACKET-HAS
    s" a wrong condition at the 33rd nested IF reports the mismatch" T-LABEL
    33 NESTED-BADCOND
-   s" at 'IF' expected: bool" REFUSES
+   s" at 'IF' expected: bool bool actual: bool n ; suggestion: Change the body so produced types match the signature." REFUSES
    s" a wrong condition at the 33rd nested IF writes a rejected packet" T-LABEL
    SRC-RESET 33 BADCOND-TEXT
-   S\" \"code\":\"E-MISMATCH\"" S\" \"verdict\":\"rejected\""
-   S\" \"actual\":\"bool n \"" VERDICT-REFUSED PACKET-HAS
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"bool bool \",\"actual\":\"bool n \"" VERDICT-REFUSED PACKET-HAS
    s" an undefined word is refused and writes a rejected packet" T-LABEL
    SRC-RESET  s" SN-UNDEF ( -- ) SN-NO-SUCH-WORD" S+
    S\" \"code\":\"E-UNDEFINED\"" S\" \"verdict\":\"rejected\""
@@ -232,6 +240,56 @@ public
    SRC-RESET  s" SN-QDUP ( n -- ) ?dup drop" S+
    S\" \"code\":\"E-UNDEFINED\"" S\" \"verdict\":\"rejected\""
    S\" \"token\":\"?dup\"" VERDICT-REFUSED PACKET-HAS
+   s" a call's wrong input over cells below is a type fault over the same cells" T-LABEL
+   SRC-RESET  s" : SN-CF ( n bool -- ) drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
+   SRC-RESET  s" SN-CALLB ( n -- ) 1 2 SN-CF drop" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"n n bool \",\"actual\":\"n n n \"" VERDICT-REFUSED PACKET-HAS
+   s" a RECURSE's wrong input over cells below is a type fault over the same cells" T-LABEL
+   SRC-RESET  s" SN-RC1 ( n bool -- ) IF dup 1 RECURSE THEN drop" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"n n bool \",\"actual\":\"n n n \"" VERDICT-REFUSED PACKET-HAS
+   s" a quotation's wrong condition over cells below is a type fault over the same cells" T-LABEL
+   SRC-RESET  s" SN-Q1 ( -- ) [: 0 0= 1 IF THEN drop ;] drop" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"bool bool \",\"actual\":\"bool n \"" VERDICT-REFUSED PACKET-HAS
+   s" a does> clause's wrong condition over cells below is a type fault over the same cells" T-LABEL
+   SRC-RESET  s" : SN-DO1 ( n -- ) create , does> ( -- ) drop 0 0= 1 IF THEN drop ;" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"bool bool \",\"actual\":\"bool n \"" CLAUSE-PACKET-HAS
+   s" a loop body that leaves one more cell over 70 cells is a surplus" T-LABEL
+   BIGLOOP-TEXT
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"remove_producer\"" S\" \"verdict\":\"rejected\""
+   S\" \"suggestion\":\"Remove an extra producer or drop the surplus value.\"" VERDICT-REFUSED PACKET-HAS
+   s" a surplus value over cells below stays a surplus" T-LABEL
+   SRC-RESET  s" SN-SU1 ( n -- n ) 1" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"remove_producer\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"n \",\"actual\":\"n n \"" VERDICT-REFUSED PACKET-HAS
+   s" a generic bundle input over a caller's group is a type fault over the same cells" T-LABEL
+   SRC-RESET  s" PRODUCT snz<a,b> FIELD fst a FIELD snd b ;PRODUCT" S+  SRC$ TEST-EVAL:RC 0 T=
+   SRC-RESET  s" : SN-SNZ ( n n -- snz<n,n> ) SNZ:MAKE ;" S+  SRC$ TEST-EVAL:RC 0 T=
+   SRC-RESET  s" : SN-LHT ( snz<a,b> bool -- ) drop SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
+   SRC-RESET  s" SN-LH1 ( n -- ) 1 2 SN-SNZ 3 SN-LHT drop" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"n snz<a,b> bool \",\"actual\":\"n snz<n,n> n \"" VERDICT-REFUSED PACKET-HAS
+   s" a group input over a generic bundle is a type fault over the same cells" T-LABEL
+   SRC-RESET  s" : SN-LHN ( snz<n,n> bool -- ) drop SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
+   SRC-RESET  s" SN-LH2 ( n snz<a,b> -- ) 3 SN-LHN drop" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"expected\":\"n snz<n,n> bool \",\"actual\":\"n snz<a,b> n \"" VERDICT-REFUSED PACKET-HAS
+   s" a scalar input over a generic bundle is a type fault" T-LABEL
+   SRC-RESET  s" SN-GL0 ( snz<a,b> -- ) 1+ drop" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"suggestion\":\"Change the body so produced types match the signature.\"" VERDICT-REFUSED PACKET-HAS
+   s" a generic bundle input over scalars is a type fault" T-LABEL
+   SRC-RESET  s" : SN-TGL ( snz<a,b> -- ) SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
+   SRC-RESET  s" SN-GM2 ( n -- ) 7 8 9 SN-TGL drop" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\"" S\" \"verdict\":\"rejected\""
+   S\" \"suggestion\":\"Change the body so produced types match the signature.\"" VERDICT-REFUSED PACKET-HAS
+   s" an if arm that turns a cell into a group is a depth fault counted in cells" T-LABEL
+   SRC-RESET  s" SN-IFZ ( n bool -- n ) IF dup SN-SNZ THEN" S+
+   S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"remove_producer\"" S\" \"verdict\":\"rejected\""
+   S\" \"reason\":\"the if arm changes the stack's depth\"" VERDICT-REFUSED PACKET-HAS
    s" a RECURSE with no declared effect is uncheckable for want of one, and says to declare one" T-LABEL
    RECURSE-NOSIG
    S\" habu: in sn-down: at 'RECURSE' recursion needs a declared stack effect; suggestion: Declare the definition's stack effect after its name.\n" REFUSES
