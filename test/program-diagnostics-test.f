@@ -77,6 +77,8 @@ package PROGRAM-DIAGNOSTICS
       s" LAYOUT-BUFFER-FORGE-ARMED" s" E-UNDEFINED: LBUF-PEND!" NEGATIVE
    s" test/layout-valid-w1-bad.f" 85
       s" LAYOUT-VALID-ARMED" s" hb: bad layout tag" NEGATIVE
+   s" test/layout-valid-w1-neg-bad.f" 85
+      s" LAYOUT-VALID-ARMED" s" hb: bad layout tag" NEGATIVE
    s" test/layout-valid-product-bad.f" 85
       s" LAYOUT-VALID-ARMED" s" hb: bad layout tag" NEGATIVE
    s" test/layout-valid-active-bad.f" 85

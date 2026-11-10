@@ -7,13 +7,15 @@
 \ src/habu/t0-emit.f's EMIT- words to the selected emitter. A name, a tick's
 \ operand and `is`'s operand lower from the record the checker bound, as tier
 \ 1's src/compiler/native/hir-word.f RESOLVE-SITE does; spelling is looked up
-\ only by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?) and VALIDATE (NFETCH-CHECK:TAGS).
+\ only by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?), VALIDATE (NFETCH-CHECK:TAGS) and
+\ TAG-INLINE (NFETCH-CHECK:BAD-TAG).
 \ COMPILE-FIXED builds the body of a `constant`, `create` or `defer`, which has
 \ no text, through the same step.
 
 require src/lib/prelude.f
 require src/lib/error.f
 require src/core/bytes.f
+require src/lib/le.f
 require src/compiler/native/checker-owner.f
 require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
@@ -168,13 +170,13 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
 \ meet at an `else` or `then`, a `begin` loop's head and exits and a counted
 \ loop's head and exit keep their values in registers: the opener records a
 \ layout (SNAPSHOT, every entry in a vreg of its own) and each joining path
-\ reconciles to it (RECONCILE). Every call, `case` and MATCH join spills the
-\ whole virtual stack, so those paths meet with it empty. Entries may share a
-\ vreg (`dup`, `over`, a wide move's cell), and a vreg is free only once no
-\ entry holds it (RELEASE). An in-place write takes the entry through OWN,
-\ which copies a shared vreg first; a whole overwrite takes it through
-\ WRITE-TARGET, which relabels it to a fresh vreg. A comparison followed by
-\ `if`, `while` or `until` leaves its condition in the flags; otherwise it
+\ reconciles to it (RECONCILE). Every call that returns, and every `case` and
+\ MATCH join, spills the whole virtual stack, so those paths meet with it empty.
+\ Entries may share a vreg (`dup`, `over`, a wide move's cell), and a vreg is
+\ free only once no entry holds it (RELEASE). An in-place write takes the entry
+\ through OWN, which copies a shared vreg first; a whole overwrite takes it
+\ through WRITE-TARGET, which relabels it to a fresh vreg. A comparison followed
+\ by `if`, `while` or `until` leaves its condition in the flags; otherwise it
 \ pushes its flag into a fresh vreg.
 0 constant K-REG
 1 constant K-CONST
@@ -469,8 +471,8 @@ variable FREE                       \ bit k set: no entry holds vreg k
 \ return stack and `r>` restores their order. `@` and `!` move the measured
 \ cells as tier 1's WIDE-LOAD and WIDE-STORE (src/compiler/native/elaborate.f),
 \ `!` by the engine's guarded store once per cell. An `@` with a layout fact
-\ (NFETCH:AT) calls NFETCH-CHECK:TAGS first, as tier 1's VALIDATE-FETCH; a fact
-\ whose width is not the token's is E-T0-BUNDLE. Any other inlined operation
+\ (NFETCH:AT) checks its tags first (VALIDATE); a fact whose width is not the
+\ token's is E-T0-BUNDLE. Any other inlined operation
 \ over a width other than one cell, and `@` or `!` under one cell, is
 \ E-T0-BUNDLE, as tier 1's DO-OP refuses it.
 \
@@ -1161,17 +1163,43 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    v o r EMIT-ADDR-DATA
    r PUSH-REG ;
 
-\ A fetch the checker filed a layout fact for calls NFETCH-CHECK:TAGS with a
-\ copy of the address and the fact's descriptor before any cell is loaded, as
-\ tier 1's VALIDATE-FETCH (src/compiler/native/elaborate.f), whose comment says
-\ why the descriptor's address literal is the compiler's own trusted producer of
-\ a frozen value. NFETCH:CAPTURE keys each fact by its offset in the whole text,
-\ the clause's base added, so the key is the token's offset with no cut taken.
+\ Cell k of a fact's descriptor, read while compiling: INTERN laid the bytes in
+\ this process at any alignment, in a build's space too (intern-table.f LAY).
+: DESC@ ( ptr u8 n -- n ) cells + LE:U64@ ;
+
+: PLAIN? ( ptr u8 -- bool ) {: d:ptr :}
+   d 0 DESC@ 1 =  d 3 DESC@ 0=  and ;
+
+\ BAD-TAG runs when c holds and never returns, so only the path that skips it
+\ reaches `then`, every entry and vreg as before: no reconcile.
+: TRAP-IF ( cc n n -- ) {: c:cc entry:n at:n :}
+   c EMIT-IF-CC,  entry at EMIT-CALL  EMIT-THEN, ;
+
+\ A descriptor of one row and no guards checks inline that 0 <= tag < limit;
+\ every entry it pushes is gone again, so the address is on top.
+: TAG-INLINE ( ptr u8 n -- ) {: d:ptr at:n :}
+   s" NFETCH-CHECK:BAD-TAG" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if E-HIR-UNMODELED throw then
+   d 2 DESC@ {: limit:n :}
+   0 DEEP  d 1 DESC@ ADDR+  CELL-W FETCH
+   TOP MAT 0 EMIT-CMP-LIT  CC-LT entry at TRAP-IF
+   limit EMIT-IMM? if
+      TOP MAT limit EMIT-CMP-LIT
+   else
+      limit PUSH-CONST  TOP 1- MAT TOP MAT EMIT-CMP  TOP REMOVE
+   then
+   CC-GE entry at TRAP-IF
+   TOP REMOVE ;
+
+\ Any other fact calls NFETCH-CHECK:TAGS as tier 1's VALIDATE-FETCH does (its
+\ comment covers the frozen value); NFETCH:CAPTURE keys facts by whole-text offset.
 : VALIDATE ( ptr u8 n -- ) {: a:ptr w:n :}
    a TXT$ - {: at:n :}
    at NFETCH:AT {: address:n bytes:n width:n origin:n :}
    bytes 0= if exit then
    width w <> if E-T0-BUNDLE throw then
+   NULL-PTR BYTE-VIEW address + {: d:ptr :}
+   d PLAIN? if d at TAG-INLINE exit then
    s" NFETCH-CHECK:TAGS" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
    0 DEEP

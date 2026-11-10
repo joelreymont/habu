@@ -14,6 +14,11 @@ public
 \ sanctioned pointer-minus-pointer distance from the null address.
 NEWTYPE frozen
 
+\ Tier 0 calls this from its inline check of a one-row descriptor with no
+\ guards (t0.f TAG-INLINE).
+: BAD-TAG ( -- )
+   s" hb: bad layout tag" ENGINE-ERROR:BAD-TAG die ;
+
 private
 
 CAST: >FROZEN ( n -- frozen )
@@ -23,9 +28,6 @@ CAST: FROZEN>N ( frozen -- n )
 
 : BAD-DESCRIPTOR ( -- )
    s" hb: bad layout descriptor" 76 die ;
-
-: BAD-TAG ( -- )
-   s" hb: bad layout tag" ENGINE-ERROR:BAD-TAG die ;
 
 \ Every certified limit is positive; a negative cell is above that domain when
 \ read unsigned, including the all-bits-set representation.
