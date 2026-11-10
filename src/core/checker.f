@@ -4594,6 +4594,8 @@ CHECKER-REG:}SCRATCH
 44 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
 45 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
 46 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code as check.f's
+47 constant MD-CF-DEPTH      \ an opener found all CF-FRAMES-MAX control frames in use (CF-PUSH)
+48 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
@@ -20905,8 +20907,9 @@ $A8 constant CFS-REC
 : CF.XFA ( ptr a -- ptr a ) CF.XFA-OFF + ;
 
 
+32 constant CF-FRAMES-MAX   \ control frames one body may nest
 CHECKER-REG:SCRATCH{
-create CFS 32 CFS-REC * allot
+create CFS CF-FRAMES-MAX CFS-REC * allot
 variable INDO
 \ One bit per CFS slot; all 32 slots fit a cell. A quotation owns a fresh mask.
 variable CF-LOOPS
@@ -21027,7 +21030,8 @@ SCOPE-INTRO-FENCE-INSTALL
 \ takes nothing from a body that pushed one.
 : CF-PUSH {: k s0 s1 r0 r1 :}
    -1 WRAPBENT !
-   #CFC @ 31 > IF -1 UNCK !  -1 CF-OVER ! ELSE
+   #CFC @ CF-FRAMES-MAX >= IF
+     MD-CF-DEPTH MDIAG!  -1 UNCK !  -1 CF-OVER ! ELSE
      #CFC @ CF-ROW {: rec:ptr :}
      k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
      r0 rec CF.RA !  r1 rec CF.RB !
@@ -21207,17 +21211,19 @@ CHECKER-REG:}SCRATCH
 : UNFIT-WHY ( -- n )
    MDIAG-DEPTH @ 0 <> IF MD-EFFECT-DEPTH ELSE MD-INPUT-WIDTH THEN ;
 
-\ Whether a reason is an unfit effect's: its definition is uncheckable, where
-\ every other reason refuses one.
-: UNFIT-REASON? ( n -- bool )
+\ Whether a reason leaves its definition uncheckable, where every other reason
+\ refuses one: an unfit effect's, control nested past the frames, or a RECURSE
+\ with no declared effect.
+: UNCK-REASON? ( n -- bool )
    {: why:n :}
-   why MD-EFFECT-DEPTH =  why MD-INPUT-WIDTH =  or ;
+   why MD-EFFECT-DEPTH =  why MD-INPUT-WIDTH =  or
+   why MD-CF-DEPTH =  or  why MD-RECURSE-SIG =  or ;
 
 \ Whether the refusal REFUSAL@ names leaves its definition uncheckable rather
-\ than refused: a token of unknown effect, or an unfit effect's reason.
+\ than refused: a token of unknown effect, or a reason UNCK-REASON? names.
 : REFUSAL-UNCHECKABLE? ( -- bool )
    REFUSAL@ {: k:n :}
-   k RF-UNCHECKABLE =  k RF-REASON = MDIAG @ UNFIT-REASON? and  or ;
+   k RF-UNCHECKABLE =  k RF-REASON = MDIAG @ UNCK-REASON? and  or ;
 
 \ Cache the parsed declared sig as an arena effect record so recurse sites
 \ instantiate it via E-INST. The record carries sym 0 so signature lookup never
@@ -21261,11 +21267,11 @@ CHECKER-REG:}SCRATCH
    h LIN-EFF-PASS ;
 
 \ A RECURSE instantiates the cached declared effect. With none it is
-\ uncheckable, and when the declaration is too big to record that is the reason.
+\ uncheckable: the declaration is too big to record, or there is none.
 : CF-RECURSE
    -1 WRAPBENT !
    RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF EXIT THEN
-   UNFIT @ IF UNFIT-WHY MDIAG! THEN
+   UNFIT @ IF UNFIT-WHY ELSE MD-RECURSE-SIG THEN MDIAG!
    -1 UNCK ! ;
 
 \ Uniform-branch acceptance. A GPU predicate provably identical across every
@@ -21884,7 +21890,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    a u MATCH-FAM-XT 0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
    {: fam:n :}
    CHECKER-TAPE:K-MATCH fam 0 EVENT!
-   #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-ABANDON EXIT THEN   \ two CFS frames per match: reject, never UNCK
+   #CFC @ CF-FRAMES-MAX 2 - > IF MD-DEPTH MDIAG! MATCH-ABANDON EXIT THEN   \ two CFS frames per match: reject, never UNCK
    fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-FAIL EXIT THEN
    DCUR @ MTCH-W @ ROW-TOP-LOST {: lost:n :}
    MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop
@@ -23747,7 +23753,7 @@ variable IS-PEND-U                   \ and its length
    DCUR-TOP-LAYOUT? IF
       0 OK !  -1 FAILSET !  -1 QDUPBAD !         \ width-breaking touch of a layout value
    ELSE
-      -1 UNDEFERR !  -1 UNCK !                   \ scalar ?dup unmodeled (pre-existing gap; dotted)
+      -1 UNDEFERR !  -1 UNCK !                   \ no row models a scalar ?dup: refused as an undefined word
    THEN ;
 
 \ --- construct form (docs/forth.md "Structures And Enums"): `construct family

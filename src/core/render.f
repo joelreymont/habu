@@ -1012,6 +1012,8 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" E-RIGID-DOMAIN-CONFUSION" endof
       MD-EFFECT-DEPTH of s" E-UNCHECKABLE" endof
       MD-INPUT-WIDTH  of s" E-UNCHECKABLE" endof
+      MD-CF-DEPTH     of s" E-UNCHECKABLE" endof
+      MD-RECURSE-SIG  of s" E-UNCHECKABLE" endof
       MD-IS-UNKNOWN   of s" E-UNDEFINED" endof
       MD-IS-NOT-DEFER of s" E-NOT-DEFERRED" endof
       MD-IS-MISSING   of s" E-MISSING-NAME" endof
@@ -1060,6 +1062,8 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" fix_rigid_domain" endof
       MD-EFFECT-DEPTH of s" rewrite_uncheckable" endof
       MD-INPUT-WIDTH  of s" rewrite_uncheckable" endof
+      MD-CF-DEPTH     of s" rewrite_uncheckable" endof
+      MD-RECURSE-SIG  of s" rewrite_uncheckable" endof
       MD-IS-UNKNOWN   of s" fix_is_target" endof
       MD-IS-NOT-DEFER of s" fix_is_target" endof
       MD-IS-MISSING   of s" fix_missing_name" endof
@@ -1084,6 +1088,11 @@ variable MDV-I   variable MDV-F
 : BINDERS-REASON ( -- )
    s" more than " DTXT  BINDER-DEPTH-MAX JNUM  s"  nested binders" DTXT ;
 
+
+\ Shared by a token of unknown effect (SUGGEST-TEXT) and a reason that leaves
+\ no effect to check (MDIAG-SUGGEST$).
+: UNCK-SUGGEST$ ( -- ptr u8 n )
+   s" Rewrite with modeled words or isolate an audited primitive." ;
 
 : TAIL-SUGGEST$ ( -- ptr u8 n )
    s" The callee declares this callable with an implicit input row, [ -- S ], so it may run the callable on any stack and expects S back; a callable that keeps or reads the stack it runs on cannot promise that. Declare the callable [ R -- S ] from the word's input row, as in ( R [ R -- S ] -- S ), or pass a callable whose output does not depend on the stack beneath it." ;
@@ -1131,6 +1140,8 @@ variable MDV-I   variable MDV-F
       MD-ARENA-CALL   of s" Declare the storage with ARENA NAME TYPE or HEAP NAME TYPE and call its generated NAME-NEW and NAME-RELEASE: only those words call ARENA-NEW, ARENA-RELEASE, RECORD-NEW and RECORD-RELEASE, because only they tie the record size to the declared type." endof
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
+      MD-CF-DEPTH     of UNCK-SUGGEST$ endof
+      MD-RECURSE-SIG  of UNCK-SUGGEST$ endof
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
       MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
       MD-IS-MISSING   of s" Write the name of a word declared with defer after is." endof
@@ -1183,6 +1194,8 @@ variable MDV-I   variable MDV-F
       MD-UNDERFLOW    of s" input underflow: the call takes more cells than the definition's declared inputs leave" endof
       MD-EFFECT-DEPTH of DEPTH-REASON$ endof
       MD-INPUT-WIDTH  of WIDTH-REASON$ endof
+      MD-CF-DEPTH     of s" control flow nested too deep to check" endof
+      MD-RECURSE-SIG  of s" recursion needs a declared stack effect" endof
       MD-IS-UNKNOWN   of s" names no word" endof
       MD-IS-NOT-DEFER of s" is not a deferred word" endof
       MD-IS-MISSING   of s" missing target word after is" endof
@@ -1208,18 +1221,23 @@ variable MDV-I   variable MDV-F
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
 
-\ The counts a reason latches: the underflow's shortfall, or a too-deep effect's
+\ The counts a reason carries: the underflow's shortfall, or a too-deep effect's
 \ depth or a too-wide input row's width against its ceiling, a definition's
-\ (MDIAG-DEPTH, MDIAG-WIDTH) or a stored signature's (SGBAD-SIZE). Digits,
-\ letters and spaces only, so one word serves the prose line and the JSON string.
+\ (MDIAG-DEPTH, MDIAG-WIDTH) or a stored signature's (SGBAD-SIZE), or the
+\ control frames a too-deep opener would have nested, always one past
+\ CF-FRAMES-MAX. One word serves the prose line and the JSON string, where EMIT1
+\ escapes it.
 : MDIAG-UF-COUNTS ( -- )
    s"  (needs " DTXT  MDIAG-NEED @ JNUM
    s" , has " DTXT  MDIAG-HAVE @ JNUM  s" )" DTXT ;
 
-: DEPTH-COUNTS ( n -- )
-   {: depth:n :}
+: CAP-DEPTH-COUNTS ( n n -- )
+   {: depth:n cap:n :}
    s"  (depth " DTXT  depth JNUM
-   s" , at most " DTXT  EFFECT-DEPTH-MAX JNUM  s" )" DTXT ;
+   s" , at most " DTXT  cap JNUM  s" )" DTXT ;
+
+: DEPTH-COUNTS ( n -- )
+   EFFECT-DEPTH-MAX CAP-DEPTH-COUNTS ;
 
 : WIDTH-COUNTS ( n -- )
    {: width:n :}
@@ -1231,6 +1249,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " DTXT  TCAP-HELD$ DTXT EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
+   MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS EXIT THEN
    MDIAG @ MD-INPUT-WIDTH = IF MDIAG-WIDTH @ WIDTH-COUNTS THEN ;
 
 
@@ -1417,7 +1436,7 @@ variable MDV-I   variable MDV-F
    k RF-UNSAFE = IF s" Remove it from the checked body; to evaluate text there, use evaluate-closed." EXIT THEN
    k RF-LINLOCAL = IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
    k RF-REASON = IF MDIAG-SUGGEST$ EXIT THEN
-   k RF-UNCHECKABLE = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
+   k RF-UNCHECKABLE = IF UNCK-SUGGEST$ EXIT THEN
    k RF-RETURN = IF
       RSBAD @ 2 = IF s" Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame." EXIT THEN
       RSBAD @ 3 = IF s" Balance return-stack transfers before the quotation returns." EXIT THEN
@@ -1999,7 +2018,7 @@ REC-SIG-INSTALL
 : TOP-DEFERRED-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    s" W-CHECK-DEFERRED" s" rewrite_uncheckable" s" deferred"
-   s" Rewrite with modeled words or isolate an audited primitive." TOP-SPAN-JSON
+   UNCK-SUGGEST$ TOP-SPAN-JSON
    10 EMIT1
    RSBUF-FLUSH ;
 \ checker.f SHADOW-DIAG-XT selects: 0 the using-shadow reference site, 1 the

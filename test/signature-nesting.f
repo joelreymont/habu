@@ -1,8 +1,11 @@
 \ signature-nesting.f - a signature nested past the parser's limits refuses by
 \ name through the real load path: a 33rd nested binder (checker.f
 \ BINDER-DEPTH-MAX), and pointees or quotations nested past EFFECT-DEPTH-MAX.
+\ A body nested past CF-FRAMES-MAX control frames, and a RECURSE with no
+\ declared effect, are uncheckable for a reason they name too, and each says
+\ so in its JSON packet.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
-\ are stored rows (`trust`).
+\ are stored rows (`trust`). A packet is read in this process.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/test/subject.f
@@ -67,6 +70,21 @@ TYPED-VARIABLE SRC-U len
    SRC-RESET
    s" : SN-LOCAL-DEEP ( n -- ) {: x:" S+  s" [" k S+N  s"  :} ;" S+ ;
 
+\ A definition whose body nests k `IF`s, from its name to its last token.
+: IFS-TEXT ( n -- )
+   {: k:n :}
+   s" SN-IFS ( bool -- ) " S+  s" dup IF " k S+N  s" THEN " k S+N  s" drop" S+ ;
+
+: NESTED-IFS ( n -- )
+   {: k:n :}
+   SRC-RESET  s" : " S+  k IFS-TEXT  s"  ;" S+ ;
+
+\ A definition with no signature that recurses, from its name to its last token.
+: RECURSE-TEXT ( -- )   s" SN-DOWN dup 0 > IF 1 - RECURSE THEN" S+ ;
+
+: RECURSE-NOSIG ( -- )
+   SRC-RESET  s" : " S+  RECURSE-TEXT  s"  ;" S+ ;
+
 
 \ The text in SRC-BUF, run as the subject, exits 70 and names why on stderr.
 : REFUSES ( ptr u8 n -- )
@@ -75,6 +93,18 @@ TYPED-VARIABLE SRC-U len
    {: outu:len erru:len oc :}
    SRC$ OUT outu LEN>N ERR erru LEN>N oc 70 T-ENDING-EXITED=
    ERR erru LEN>N why whyu CONTAINS? TTRUE ;
+
+
+\ The text in SRC-BUF, checked in this process with JSON diagnostics captured,
+\ writes a packet holding CODE and VERDICT.
+create PKT-BUF 8192 allot
+: PACKET-HAS ( ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu:n verdict:ptr verdictu:n :}
+   PKT-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
+   SRC$ CHECK-CANDIDATE! drop
+   DIAG-BUFFER$ code codeu CONTAINS? TTRUE
+   DIAG-BUFFER$ verdict verdictu CONTAINS? TTRUE
+   0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
 
 public
 
@@ -98,6 +128,18 @@ public
    s" a local's type nested past the depth limit refuses by it" T-LABEL
    2049 LOCAL-QUOTATIONS
    s" effect too deep to record (depth 4097, at most 4096) at '" REFUSES
+   s" 33 nested IFs are uncheckable by the control-frame limit" T-LABEL
+   33 NESTED-IFS
+   s" at 'IF' control flow nested too deep to check (depth 33, at most 32)" REFUSES
+   s" 33 nested IFs write an uncheckable packet" T-LABEL
+   SRC-RESET 33 IFS-TEXT
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\"" PACKET-HAS
+   s" a RECURSE with no declared effect is uncheckable for want of one" T-LABEL
+   RECURSE-NOSIG
+   s" at 'RECURSE' recursion needs a declared stack effect" REFUSES
+   s" a RECURSE with no declared effect writes an uncheckable packet" T-LABEL
+   SRC-RESET RECURSE-TEXT
+   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\"" PACKET-HAS
    T-REPORT
    s" signature-nesting: ok" type cr ;
 ;package
