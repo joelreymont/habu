@@ -4785,8 +4785,7 @@ variable DUE-MADE
    a src <  a u +  src FILE-SRC-U @ +  >  or if -1 exit then
    OUTER:RUN-COUNT FILE-RUN @ <= if -1 exit then
    OUTER:RUN-COUNT 1 - OUTER:RUN-RECORD@ {: idx:n :}
-   \ 5 is OUTER's OBSERVE-WORD, the op its run loop passes for a word about to run
-   5 idx  idx XREF-REC XREF-START  SOURCE-UNIT:LOADER-KIND  SOURCE-UNIT:NONE = if -1 exit then
+   OUTER:OBSERVE-WORD idx  idx XREF-REC XREF-START  SOURCE-UNIT:LOADER-KIND  SOURCE-UNIT:NONE = if -1 exit then
    SRCLOC:INB-CELL HOST@ src <>  INE-CELL HOST@  src FILE-SRC-U @ +  <>  or
    INP-CELL HOST@  a u +  <>  or if -1 exit then
    a u + src - ;
