@@ -1,0 +1,9 @@
+---
+title: "A program can set the deleted build cache's hooks: FILE-REF-USE, FILE-CON-USE, CON-DECLARED-USE"
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-11-11T00:14:48.890967+02:00"
+---
+
+Problem: TFAM:FILE-REF-USE and FILE-REF-RESET (src/core/type-family.f:54-72), CHECKER-REG:CON-DECLARED-USE (src/core/checker.f:18368) and CHECKER-REG:FILE-CON-USE and FILE-CON-RESET (checker.f:29543-29556) are public words that store hooks into the running hb's checker defers. Their caller was the per-definition build cache, which is deleted: rg -i --no-ignore over src, tools and test finds only the definitions, FILE-CON-RESET's own top-level call (checker.f:29559), the two calls of CON-DECLARED-USE inside FILE-REF-RESET and FILE-REF-USE, and the keep rows src/habu/aot-capture.f:712-713 and :717-719; no .f file of Zen, Tender, Maki or Etch names them. A program part that calls one changes the hb that builds it and no object carries the change, the case dot habu-a-program-s-0bc285e7 removed for PUBLICATION-USE. Found by the review of that removal (2026-11-11). Acceptance: FILE-REF-USE, FILE-REF-RESET, CON-DECLARED-USE and FILE-CON-USE are gone with their keep rows, FILE-CON-RESET is private, a program that says any of the five is refused as undefined, the engine reaches a fixpoint. Not this dot: the hook defers themselves and their default bodies go with the per-definition cache (habu-make-a-file-dfc7e030); the keep rows for TFAM:FILE-IDENTITY$ and FILE-FIND, public words with no caller that set nothing, go with habu-remove-words-only-50ae44e0; src/core/checker-owner-abi.f:298 states PUBLICATION-USE's effect for a slot that holds the observer ( n -- ) and goes with the slot. Files: src/core/type-family.f, src/core/checker.f, src/habu/aot-capture.f. Verify: the chain check; three probes refused. Depends: none. Ownership: carl. Claim: agent=carl workspace=.jj-ws.noindex/carl-hooks.
