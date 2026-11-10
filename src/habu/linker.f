@@ -2434,8 +2434,8 @@ variable RD-END
    n 0 ?do i ENTRY-CK loop ;
 
 
-\ A call row of an emission of s bytes, numbered top; its site in the object's copy of the
-\ emission holds the zeroed call EMISSION-CODE+ writes.
+\ A call row of emission top, s bytes; its site in the object's copy holds the zeroed call EMISSION-CODE+
+\ writes. A record target precedes top's own: a body naming its word is E-UNDEFINED, RECURSE files no row.
 : CALL-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: site:n :}
@@ -2445,7 +2445,7 @@ variable RD-END
    then
    RD-U64 {: kind:n :}
    kind 0<>  kind 1 <>  and if BAD then
-   RD-REF top  top EM-RECS @ 1 +  CODE-REF-CK ;
+   RD-REF top  top EM-RECS @  CODE-REF-CK ;
 
 
 \ ADDRESS-CARRIER:CHAIN-SIZE (0, 12 or 16) of the chain at an address row's site in the object's
@@ -2457,7 +2457,7 @@ variable RD-END
 
 
 \ An address row of an emission of s bytes, numbered top: a code chain is ADDR-CHAIN-BYTES long,
-\ as the link requires, and a data chain is whole.
+\ as the link requires, and a data chain is whole. A record target precedes top's own, as a call's.
 : ADDR-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: site:n :}
@@ -2468,7 +2468,7 @@ variable RD-END
       kind 0=  size ADDRESS-CARRIER:ADDR-CHAIN-BYTES <>  and if BAD then
       kind 1 =  size 0=  and if BAD then
    then
-   kind 0= if RD-REF top  top EM-RECS @ 1 +  CODE-REF-CK exit then
+   kind 0= if RD-REF top  top EM-RECS @  CODE-REF-CK exit then
    kind 1 = if RD-REF DATA-REF-CK exit then
    BAD ;
 
@@ -2973,11 +2973,10 @@ INSTALL-CHECK
 \ ---- linking an object ---------------------------------------------------------
 \ The words a link of a fresh object applies it with, once FRESH? answers true: each
 \ reference's value (RESOLVE) and the entries that are not code.
-variable LINK-SELF                   \ the record index of the entry being linked, -1 for none
 variable LINK-FN                     \ the emission being linked's address: SOURCE-FUNS' at
 variable LINK-EM                     \ that emission's number in this object, -1 for none
 
-: LINK-CLEAR ( -- ) -1 LINK-SELF !  -1 LINK-EM !  0 LINK-FN ! ;
+: LINK-CLEAR ( -- ) -1 LINK-EM !  0 LINK-FN ! ;
 
 
 \ A record reference's file and index as a dictionary index.
@@ -3003,12 +3002,10 @@ variable LINK-EM                     \ that emission's number in this object, -1
 
 
 \ A reference's value, from RD-REF's tag and fields (CODE+ states them); 0 for none.
-\ The entry being linked enters its emission's first function, before its record exists.
 : RESOLVE ( n n n n -- n )
    {: tag:n x:n y:n z:n :}
    tag 0 = if
       x y REC-INDEX {: r:n :}
-      r LINK-SELF @ = if LINK-FN @  LINK-EM @ 0 OWN-FUN-AT + exit then
       r ndict@ >= if E-COMP-STATE throw then
       r PKG? if E-COMP-STATE throw then
       r XREF-REC XREF-START exit
@@ -3231,7 +3228,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    ndict@ {: want:n :}
    a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  OUTER:DEF-RECORD
    NPUB:NEXT-SLOT {: fn:n :}
-   want LINK-SELF !  fn LINK-FN !  e LINK-EM !
+   fn LINK-FN !  e LINK-EM !
    e NEMIT-FILL {: patch:n :}
    does if j NSHADOW:TAKE-DOES else NSHADOW:TAKE then
    fn NSHADOW:SOURCE-FUNS
