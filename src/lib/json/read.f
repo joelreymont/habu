@@ -937,12 +937,25 @@ private
    state CURSOR-SRC @ start +
    state CURSOR-POS @ start - ;
 
+: ANY-SPAN-INNER ( ptr cursor -- ptr u8 n )
+   {: state:ptr :}
+   state CURSOR-KIND @ OPENER? if state VALUE-SPAN-INNER exit then
+   state CURSOR-KIND @ SCALAR? 0= if E-JSON-READ-STATE throw then
+   state CURSOR-KIND @ T-STR <> if state RAW-SPAN$ exit then
+   state RAW-SPAN$ {: a:ptr u:n :}
+   a 1- u 2 + ;
+
 public
 
 \ On an opener, the source bytes through the matching close; the cursor moves
 \ past the value.
 : READ-VALUE-SPAN$ ( JSON:reader -- JSON:reader ptr u8 n )
    READER>STATE VALUE-SPAN-INNER ;
+
+\ On an opener, as READ-VALUE-SPAN$; on a scalar, its bytes as written, a string's
+\ quotes and escapes included, the cursor staying; else E-JSON-READ-STATE.
+: READ-ANY-SPAN$ ( JSON:reader -- JSON:reader ptr u8 n )
+   READER>STATE ANY-SPAN-INNER ;
 
 \ Searches only the current object, skipping each unmatched value, and stops at
 \ its close. It and READ-STR-EQ? compare decoded bytes without a buffer, so key

@@ -103,11 +103,11 @@ STRUCTURE envelope
    {: k:n :}
    k T-OBJ = k T-ARR = or ;
 
-\ The current value as a member: a container whole, a string with its quotes.
+\ The current value as a member, its text from READ-ANY-SPAN$; the kind is read
+\ first, as that word leaves a container's reader on its close.
 : >MEMBER ( JSON:reader -- JSON:reader member )
    READ-TOKEN {: kind:n :}
-   kind CONTAINER? if READ-VALUE-SPAN$ else READ-SPAN$ then {: a:ptr u:n :}
-   kind T-STR = if kind a 1- u 2 + MEMBER-MAKE exit then
+   READ-ANY-SPAN$ {: a:ptr u:n :}
    kind a u MEMBER-MAKE ;
 
 : V2? ( JSON:reader -- JSON:reader bool )

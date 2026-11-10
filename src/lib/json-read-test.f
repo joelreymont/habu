@@ -425,6 +425,45 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-NEXT JSON:T-END T=
    JSON:READ-CLOSE ;
 
+: JRT-ANY-SPAN$ ( -- ptr u8 n )
+   s\" {\"o\":{\"k\":1},\"a\":[1,2],\"s\":\"x\\\"y\",\"i\":-12,\"f\":1.5e-3,\"t\":true,\"u\":false,\"n\":null}" ;
+
+\ The next value's span is this text, and the token after it is this key.
+: JRT-ANY-KEY ( JSON:reader ptr u8 n ptr u8 n -- JSON:reader )
+   {: va:ptr vu:n ka:ptr ku:n :}
+   JSON:READ-NEXT drop
+   JSON:READ-ANY-SPAN$ va vu T$=
+   JSON:READ-NEXT JSON:T-KEY T= ka ku JRT-STR= ;
+
+: JRT-BAD-ANY-KEY ( -- )
+   JRT-ANY-SPAN$ JRT-OPEN-A
+   JSON:READ-NEXT drop JSON:READ-NEXT drop
+   JSON:READ-ANY-SPAN$ drop drop JSON:READ-CLOSE ;
+
+: JRT-BAD-ANY-END ( -- )
+   s" {}" JRT-OPEN-A
+   JSON:READ-NEXT drop JSON:READ-NEXT drop
+   JSON:READ-ANY-SPAN$ drop drop JSON:READ-CLOSE ;
+
+: JRT-TEST-ANY-SPAN ( -- )
+   JRT-ANY-SPAN$ JRT-OPEN-A
+   JSON:READ-NEXT JSON:T-OBJ T=
+   JSON:READ-NEXT JSON:T-KEY T= s" o" JRT-STR=
+   s\" {\"k\":1}" s" a" JRT-ANY-KEY
+   s" [1,2]" s" s" JRT-ANY-KEY
+   s\" \"x\\\"y\"" s" i" JRT-ANY-KEY
+   s" -12" s" f" JRT-ANY-KEY
+   s" 1.5e-3" s" t" JRT-ANY-KEY
+   s" true" s" u" JRT-ANY-KEY
+   s" false" s" n" JRT-ANY-KEY
+   JSON:READ-NEXT drop JSON:READ-ANY-SPAN$ s" null" T$=
+   JSON:READ-NEXT JSON:T-OBJ-END T=
+   JSON:READ-CLOSE
+   [: JRT-BAD-ANY-KEY ;] E-JSON-READ-STATE TTHROWSQ
+   JRT-A JSON:READ-DISPOSE
+   [: JRT-BAD-ANY-END ;] E-JSON-READ-STATE TTHROWSQ
+   JRT-A JSON:READ-DISPOSE ;
+
 : JRT-TEST-WS ( -- )
    JRT-WS$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
@@ -1263,6 +1302,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-TEST-EMPTY
    JRT-TEST-NESTED
    JRT-TEST-VALUE-SPAN
+   JRT-TEST-ANY-SPAN
    JRT-TEST-KIND-NAMES
    JRT-TEST-WS
    JRT-TEST-DEEP
