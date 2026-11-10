@@ -1,19 +1,14 @@
 ---
-title: Locate the remaining load refusals and bare throws
+title: Locate the engine's interpret-level refusals
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-25T14:31:40.370636+01:00"
 ---
 
-Follow-up to habu-name-the-err-f8c7f3ac, whose lane locates E-UNDEFINED (both loops) and names residue with file and count. Still unlocated: the ten other LDIAGRET sites in src/habu/habu2.f (LWIDE, LINTERNAL, LTRUSTTICK, LMININ, LFLOORREC, LPREFMISS with its baked newline, LORPHAN, LCFKIND, LCFCAP, LLOCWIDE, LLOCMANY) and their Habu twin REFUSE in src/habu/outer.f; route them through LCOMPILEDIE / THROW-AT. Pins to sweep: test/outer-interpret.f ~306, 315, 322, 373, 437, 667, 674, 682, 694, 1075, 1101, 1910. Also a bare library throw during --load ('-2001 throw' in a file) prints only 'hb: uncaught throw code -2001', rc 67: no name (src/lib/errors.f is constants only, no code-to-name table) and no file (include frames are popped before the uncaught reporter runs). Plain-program refusals (`bin/hb file.f`, the root stream with no include frame) still print `E-UNDEFINED: nosuchword` with no file or line (test/main-argv.f ~201, 205 pin it). A tier-1 undefined word inside a checked body prints `habu: in f: undefined word 'x'` with no file or line (the checker's diagnostic path, not LDIAGRET). Acceptance: each such load failure names its file and, where the site knows it, its error name.
-
-`FUNCTION:` under --load is one of these (lane nsig, public hb 1a41c5ee): with no library selected, `require src/lib/ffi-abi.f` then `FUNCTION: CKF getpid` prints only `hb: uncaught throw code -3503` (E-FFI-LIBRARY from OPEN-FUNCTION's CHECK-SCOPE, rc 67); with a library selected and no signature, `-3501` (E-FFI-SYNTAX from EFFECT). tools/check.f refuses the same source first as a missing signature (7157 at `FUNCTION:`), so the two front ends also disagree on which fault comes first. Probes: /tmp/jerry-find/f4.f, f5.f.
-
-A refused declaration under --load prints its diagnostic and then `hb: uncaught throw code N`, rc 70, while a refused colon body or a top-level E-UNDEFINED prints the diagnostic alone: STRUCTURE (7109), SUMTYPE (7107), TRUSTED: with a bad stored signature (7156), and since lane casterr cast:/linear: (7129). Probes /tmp/jerry-casterrrv2-tmp/p (st1.f, sum1.f, t1.f, n1.f against u1.f, s1.f, u2.f).
-
-An uncaught `0 throw` under --load exits 109 (ENGINE-ERROR:THROW-ZERO, habu1.f BTHROWPRIM) with no line at all: `: ZT ( -- ) 0 throw ; ZT` on the public hb prints nothing, rc 109.
-
-Census 2026-11-04: an acceptance case of its parent; fix it in the code that stays (named above), never in the machinery the parent replaces.
-
-Case from Maki (tim, 2026-11-05): a Maki build failed with only `hb: uncaught throw code -30422`, which is Maki's MODEL:E-MODEL-HANDLE (maki src/model-types.f:18), thrown at maki src/feature.f:780 during a require. THROW-REPORT (src/habu/main.f:204-210) prints only the number: no constant name, no file or line. Reproducer: `printf 'require .out/edit2.f\n' | <maki image> repl` from /Users/joel/Work/maki/.jj-ws.noindex/sheet-history. Acceptance: that run names the code and the throwing file and line.
+Problem: ten interpret-level refusals in src/habu/habu2.f EM-COMPILE-UNDEF (:12703-12781: LWIDE, LINTERNAL, LTRUSTTICK, LMININ, LPREFMISS, LORPHAN, LCFKIND, LCFCAP, LLOCWIDE, LLOCMANY) print their message, the token and a newline (LPREFMISS a message with a baked newline and no token), then branch to the shared LDIAGRET tail (:12708), which prints no place; LFLOORREC (:12748-12753, a data-stack underflow caught by the guard page) prints the same way and throws through LEVALREC, also with no place. An undefined word instead branches to LCOMPILEDIE (:12807), whose LSRCAT (:12818) prints ` at <path>:<line>`. Their Habu twin, src/habu/outer.f REFUSE (:349-351), likewise prints message and token only, though outer.f AT-SOURCE (:359) prints the place as LSRCAT does. It is an acceptance case of its parent, habu-move-the-interpreter-d35780fa: fix in the code that stays, never in the machinery the parent replaces. Split from this dot: habu-a-refused-declaration-6fe9ce8d, habu-hb-and-check-c9dd044e, habu-an-uncaught-0-1798b11a, habu-a-plain-program-491d1dd9, habu-a-checked-body-e57cadb7; bare library throws and the Maki case are habu-uncaught-throws-name-1a43b055's.
+Acceptance: each of these eleven refusals, in the engine and in outer.f, prints its file and line through the one located tail (LCOMPILEDIE and LSRCAT, AT-SOURCE in outer.f), with its exit status and throw code unchanged.
+Files: src/habu/habu2.f, src/habu/outer.f, the tests that pin these messages.
+Verify: a file holding the one line `then` (an orphan closer, LORPHAN) under bin/hb --load on a rebuilt hb prints its path and line 1 and exits 70.
+Depends: none.
+Ownership: unassigned. Claim: unassigned.

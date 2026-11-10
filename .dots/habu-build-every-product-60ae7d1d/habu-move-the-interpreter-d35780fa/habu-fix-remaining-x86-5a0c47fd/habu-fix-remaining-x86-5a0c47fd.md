@@ -1,17 +1,16 @@
 ---
-title: Fix remaining x86 rows outside the open lanes
+title: Split the x86-64 failures left once the x86-64 tests run again
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-22T13:12:42.407093+03:00"
+blocks:
+  - habu-re-enable-the-959502b5
 ---
 
-Problem: x86 reds not owned by another child: test/outer-interpret.f stops at row 'numbers' (ncomp: cannot compile OI-UF, -8304); runtime-regression GE-DOES-WIDE (does>-split wide facts rc 0, expected 75); hb-build-stripped asserts 28-30 (HBT-STRIPPED-PTR-MARK 'ptrmark: stack') and ffi-callback-file-cache; stripped-image 393216 cap; queue rows after capture lands: minin (sumtype-unchecked 9,10, checker.f MULTI-ERR MIN-IN byte), ownerxt (structure-opaque-e2e 3,5-7 OWNER-XT), checker-surface 7, internal-word-gate 56,530,581,660-668,709,717,783,845, snapshot-writer, hb-build-repl-twin, hb-build-fixtures 108, aot-wid-refuse-address-span, aot-wid-capture-refusal, check-verify F930/F2575-2578, native-create-does F5/F6, build-fixpoint-source, dictionary-capacity (x86 app image 64295 < 65536 premise), gate-pool F40. Split into one lane per root cause after the next full pulsar probe. Depends: habu-review-and-land-2437d9b0. Ownership: per lane. Recipes: ~/.cache/tmp/jerry-c/lane-recipe.md (Mac/pulsar build+run), ~/.cache/tmp/jerry-c/lane-queue.md. Rule: master (ARM) behaviour and tests win; fix x86, never rewrite a master test. Claim: unassigned.
-
-Found under C4a on pulsar, the same on master's x86 engine (/tmp/jerry-x86base/bin/hb): compiler-native-create-does stops with E-UNDEFINED 'UNPATCHED' at line 72; one definition `create 99 , if exit then does>` reproduces it at tier 0 and tier 1 (x86 drops the created word when `exit` precedes `does>`; master's engine segfaults on the whole row, rc 139). outer-interpret's oi-package-part case exits 83 with no output, through both the engine loop and the Habu loop: opening any part does it, `1 . package OI-A private 2 . package OI-B 3 .` prints `1 2` and exits 83 (master's x86 engine and the C4 stack alike; /tmp/jerry-c4rv-tmp/jerry-pp6.f on pulsar). Master's outer-interpret stops earlier, at `numbers`, so only the C4 stack reaches this case.
-
-hb-build-aot on x86 (master efef8267's x86 engine and the t0x86 stack alike): the linker image build fails, `E-UNDEFINED habu: in map-rows: undefined word 'CODE-END'` at tools/aot-code-map.f:186 (`end CODE-END @ end - MAP-RUNTIME`): the x86 engine does not define CODE-END. Log: /tmp/jerry-big/x86base-suite.log ~42.
-
-test/compiler/native-string-forms.f PACKAGE-CASE (master 6626a525) opens a package part and exits 83 with no output on x86, as oi-package-part does; it fails the rows compiler-native-string-forms and 'native string form compiles and runs' on the T0 x86 stack.
-
-Census 2026-11-04: an acceptance case of its parent; fix it in the code that stays (named above), never in the machinery the parent replaces.
+Problem: an old pulsar probe listed many x86-64 failures with several causes in this one dot; most of the tests it named are gone (test/outer-interpret.f in d4d9e6c6a4, tools/aot-code-map.f in 1d97c3f21c, and the rest of its list no longer exist as test files or suites), and the package-part exit 83 is fixed (habu-open-a-pkg-208310aa). The x86-64 tests are disabled until habu-re-enable-the-959502b5 re-enables them, so no current list exists. Still to check from the old list: one definition `create 99 , if exit then does>` made x86-64 drop the created word when `exit` precedes `does>` (E-UNDEFINED 'UNPATCHED', at tier 0 and tier 1); test/structure-opaque-e2e.f cases 3 and 5-7 (OWNER-XT); test/gate-pool.f case F40. It is an acceptance case of its parent, habu-move-the-interpreter-d35780fa: fix in the code that stays, never in the machinery the parent replaces. Master's arm64 behaviour and tests win: fix x86-64, never rewrite a master test.
+Acceptance: from the first full x86-64 suite run after habu-re-enable-the-959502b5 lands, each failure that dot does not fix has its own dot under this one, one per root cause, with its reproducer; the three cases above are each filed or shown passing; then this dot closes.
+Files: .dots only.
+Verify: on pulsar, the x86-64 build and its full suite run; each failure in the run log maps to a filed dot.
+Depends: habu-re-enable-the-959502b5.
+Ownership: unassigned. Claim: unassigned.
