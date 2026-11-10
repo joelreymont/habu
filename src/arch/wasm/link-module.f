@@ -87,6 +87,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    a NAME-AT ROUTINE-BODY {: body:ptr bu:n has:bool :}
    has 0= if -1 exit then
    body bu  0 0 1 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ {: h:n :}
+   ROUTINE-SITES 0 ?do  h  i ROUTINE-SITE  WLINK:INDIRECT+  loop
    h NFUN @ <> if E-COMP-STATE throw then
    h 1+ SLOTS-RESERVE  0 h SLOTS !
    1 NFUN +!

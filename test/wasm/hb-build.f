@@ -12,6 +12,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/test.f
+require src/core/engine-error.f
 require test/wasm/harness.f
 
 package WASM-HB-BUILD-TEST
@@ -175,6 +176,43 @@ variable MOD-U
    ERR ERR-U @ s" link: a Wasm module has no depth" CONTAINS? TTRUE
    MOD MOD-U @ FS:EXISTS? TFALSE ;
 
+
+\ The program execute.f: execute of a named word's xt, of a quotation and of a
+\ quotation kept in a variable; a failed test reads below WPROF:CTX-BASE.
+: EXECUTE-CASE ( -- )
+   SB-RESET
+   S\" package X\nprivate\nCAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
+   S\" TYPED-VARIABLE HOOK [ n -- n ]\n: DOUBLE ( n -- n ) 2 * ;\npublic\n" SB-APPEND
+   S\" : MAIN ( -- )\n   3 ['] DOUBLE execute 6 <> if 1 >BYTES c@ drop then\n" SB-APPEND
+   S\"    4 [: 1 + ;] execute 5 <> if 2 >BYTES c@ drop then\n" SB-APPEND
+   S\"    [: 10 * ;] HOOK !  7 HOOK @ execute 70 <> if 3 >BYTES c@ drop then ;\n" SB-APPEND
+   S\" ;package\n: MAIN ( -- ) X:MAIN ;\n" SB-APPEND
+   SB$ s" execute.f" SOURCE!
+   s" execute runs a named word's xt, a quotation and a stored quotation" T-LABEL
+   s" execute.wasm" BUILD 0 T=
+   RAN 0 T= ;
+
+: THROW-CASES ( -- )
+   s" : MAIN ( -- ) 9 throw ;" s" throw.f" SOURCE!
+   s" an uncaught `9 throw` ends run with status 1 and throw-code 9" T-LABEL
+   s" throw.wasm" BUILD 0 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE 9 T=
+   s" : MAIN ( -- ) 0 throw ;" s" throw-zero.f" SOURCE!
+   s" `0 throw` ends run with status 1 and throw-code ENGINE-ERROR:THROW-ZERO" T-LABEL
+   s" throw-zero.wasm" BUILD 0 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:THROW-ZERO T= ;
+
+\ run.mjs shows OUT after a trap but not the throw code, which it prints only
+\ for status 1.
+: DIE-CASE ( -- )
+   S\" : MAIN ( -- ) s\" boom\" 3 die ;" s" die.f" SOURCE!
+   s" die writes its message to OUT and traps" T-LABEL
+   s" die.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ s" boom" T$= ;
+
 public
 
 : RUN ( -- )
@@ -185,6 +223,9 @@ public
    ARITH-CASES
    FLOAT-CASE
    REFUSAL-CASE
+   EXECUTE-CASE
+   THROW-CASES
+   DIE-CASE
    T-REPORT ;
 
 ;package

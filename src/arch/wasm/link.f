@@ -284,14 +284,15 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    NINDS @ 0 > if  0 TY-U !  FUNC-FORM TY-BYTE  0 ROW  0 ROW  INTERN WR-DYN !  then ;
 
 \ ---- the wrappers ---------------------------------------------------------------
-\ The exports are memory and the wrappers. run initializes the
-\ task DATA stack header, stores WPROF's stack base in ctx's stack base and top
-\ and 0 in its out-len, calls the entry with WPROF's ctx base and answers its
-\ status; throw-code answers ctx's throw code, out-base WPROF's out base, out-len
-\ ctx's out-len. reserve, (i64 bytes) -> (i64 address), calls map-anon with
-\ WPROF's ctx base and the count and answers its address, 0 when refused,
-\ dropping status and ior: a host copies each delivery into pages the module
-\ reserved (src/lib/browser/turn.js).
+\ The exports are memory and the wrappers. run initializes the task DATA stack
+\ header and zeroes its return and loop depths, so a throw uncaught inside a
+\ loop leaves no depth for the next host turn; it stores WPROF's stack base in
+\ ctx's stack base and top and 0 in its out-len, calls the entry with WPROF's
+\ ctx base and answers its status; throw-code answers ctx's throw code,
+\ out-base WPROF's out base, out-len ctx's out-len. reserve, (i64 bytes) ->
+\ (i64 address), calls map-anon with WPROF's ctx base and the count and answers
+\ its address, 0 when refused, dropping status and ior: a host copies each
+\ delivery into pages the module reserved (src/lib/browser/turn.js).
 \ ctx's field at off := v, an i32.
 : CTX! ( n n -- )
    {: v:n off:n :}
@@ -316,6 +317,8 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    0 PUT-U32
    WPROF:STACK-BASE STACK-ABI:BASE-CELL DATA-CELL!
    WPROF:STACK-BYTES STACK-ABI:CAP-CELL DATA-CELL!
+   0 RSP-CELL DATA-CELL!
+   0 LOOPSP-CELL DATA-CELL!
    WPROF:STACK-BASE WPROF:CTX-STACK-BASE CTX!
    WPROF:STACK-BASE WPROF:CTX-STACK-TOP CTX!
    0 WPROF:CTX-OUT-LEN CTX!

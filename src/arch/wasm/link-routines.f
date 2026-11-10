@@ -2,6 +2,7 @@
 \ program reaches its word and shaped as tier 0's code is (src/habu/t0-wasm.f).
 require src/lib/string.f
 require src/lib/span.f
+require src/core/engine-error.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
 require src/lib/error.f
@@ -83,7 +84,7 @@ $A2 constant OP-F64-MUL
 $A3 constant OP-F64-DIV
 $AD constant OP-I64-EXTEND-I32-U
 $B9 constant OP-F64-CONVERT-I64-S
-$FC constant OP-MISC                 \ the prefix of the saturating truncations
+$FC constant OP-MISC                 \ the prefix each MISC- opcode follows
 6 constant MISC-I64-TRUNC-SAT-F64-S
 $7C constant F64
 
@@ -95,6 +96,15 @@ $7C constant F64
 \ The NaN every float operation that makes one answers, src/arch/wasm/select.f
 \ NAN-MADE.
 $7FF8000000000000 constant NAN-MADE
+
+\ ---- throw, die and execute
+$11 constant OP-CALL-INDIRECT
+$22 constant OP-LOCAL-TEE
+$0A constant MISC-MEMORY-COPY
+0 constant TABLE0                    \ call_indirect's table, the module's one
+4 constant HIGH-HALF                 \ a cell's upper 32 bits, little-endian
+2 constant L-CODE                    \ throw's code
+3 constant L-U                       \ die's message length
 
 \ ---- the body being written ----------------------------------------------------
 DYNAMIC-BUFFER BUF u8
@@ -312,6 +322,79 @@ variable BUF-U
    OP-I64-STORE ALIGN-64 0 MEM,
    DONE, ;
 
+
+\ ---- throw, die and execute
+\ Where each call_indirect's padded type index starts in the body, for
+\ WLINK:INDIRECT+ to name (i32) -> (i32) there.
+DYNAMIC-BUFFER SITES n
+variable SITES-N
+
+: TYPE-PAD, ( -- )
+   SITES-N @ 1+ SITES-RESERVE
+   BUF-U @ SITES-N @ SITES !
+   1 SITES-N +!
+   0 ROOM WLEB:U32-PAD! BUF-U +! ;
+
+
+\ throw ( n -- ) pops its code into ctx.throw-code and answers status 1; a zero
+\ code is stored as ENGINE-ERROR:THROW-ZERO, as tier 1's (kernel.f THROW-ROW).
+: THROW-BODY ( -- )
+   2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-CODE SET,
+   SP!,
+   L-CODE GET,  OP-I64-EQZ B,  IF,
+      ENGINE-ERROR:THROW-ZERO I64,  L-CODE SET,
+   OP-END B,
+   L-CTX GET,  L-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+   1 I32,  OP-END B, ;
+
+
+\ die ( a u code -- ) appends its message to OUT, leaves its code in ctx.throw-code
+\ and traps, which no catch consumes; a message past OUT's room traps uncopied.
+: DIE-BODY ( -- )
+   2 U32,  2 U32,  I32 B,  1 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-CTX GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,
+   OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-U SET,
+   WPROF:CTX-OUT-LEN CTX@,  L-LEN SET,
+   L-U GET,  OUT-CAP I32,  L-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
+   OP-I64-GT-U B,  IF,  OP-UNREACHABLE B,  OP-END B,
+   WPROF:OUT-BASE I32,  L-LEN GET,  OP-I32-ADD B,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I32-WRAP-I64 B,
+   L-U GET,  OP-I32-WRAP-I64 B,
+   OP-MISC B,  MISC-MEMORY-COPY U32,  0 B,  0 B,
+   L-CTX GET,  L-LEN GET,  L-U GET,  OP-I32-WRAP-I64 B,  OP-I32-ADD B,
+   OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-LEN MEM,
+   OP-UNREACHABLE B,  OP-END B, ;
+
+
+\ Pops an xt, the callee's table slot, and calls through it for its status, as
+\ tier 1's (dynamic.f DISPATCH,); an xt with a nonzero upper half traps first.
+: DISPATCH, ( -- )
+   L-CTX GET,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,
+   OP-LOCAL-TEE B,  L-SP U32,
+   OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM,
+   L-SP GET,  OP-I32-LOAD ALIGN-32 HIGH-HALF MEM,
+   IF,  OP-UNREACHABLE B,  OP-END B,
+   L-CTX GET,
+   L-SP GET,  OP-I32-LOAD ALIGN-32 0 MEM,
+   OP-CALL-INDIRECT B,  TYPE-PAD,  TABLE0 B, ;
+
+
+\ execute ( xt -- ) answers the callee's status.
+: EXECUTE-BODY ( -- )
+   1 U32,  1 U32,  I32 B,
+   DISPATCH,
+   OP-END B, ;
+
+\ The count of call_indirect sites in the last body ROUTINE-BODY answered, and
+\ site k's offset in it.
+: ROUTINE-SITES ( -- n )  SITES-N @ ;
+: ROUTINE-SITE ( n -- n )  SITES @ ;
+
 : BODY$ ( -- ptr u8 n )  0 BUF BUF-U @ ;
 
 public
@@ -320,7 +403,7 @@ public
 \ until the next call, and true; an empty span and false when it has none.
 : ROUTINE-BODY ( ptr u8 n -- ptr u8 n bool )
    {: name:ptr u:n :}
-   0 BUF-U !
+   0 BUF-U !  0 SITES-N !
    name u s" emit" STR=CI if EMIT-BODY BODY$ true exit then
    name u s" !" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    name u s" c!" STR=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
@@ -346,6 +429,10 @@ public
    name u s" f0=" STR=CI if OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
    name u s" s>f" STR=CI if S>F-BODY BODY$ true exit then
    name u s" f>s" STR=CI if F>S-BODY BODY$ true exit then
+   \ ---- throw, die and execute
+   name u s" throw" STR=CI if THROW-BODY BODY$ true exit then
+   name u s" die" STR=CI if DIE-BODY BODY$ true exit then
+   name u s" execute" STR=CI if EXECUTE-BODY BODY$ true exit then
    s" " false ;
 
 ;package
