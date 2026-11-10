@@ -146,10 +146,10 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ LOADERS stacks a row per file whose compile or link is running: its key, then 1
 \ for a link, 0 for a compile. LOADS holds a row per load: the loader's key,
 \ zeros for the build's body, then the SHA-256 of the path. BUILT holds a row per
-\ piece compiled or linked: its file's key, its number in the file, its time (NOW as
-\ it compiled), its first and end record index, its first and end emission, and the
-\ data pointer as the piece starts and ends. A FILES row is a BUILT row's first
-\ FILES-ROW-BYTES bytes.
+\ piece compiled or linked: its file's key, its number in the file, its time
+\ (COMPILED-TIME as it compiled), its first and end record index, its first and end
+\ emission, and the data pointer as the piece starts and ends. A FILES row is a BUILT
+\ row's first FILES-ROW-BYTES bytes.
 32 constant KEY-BYTES
 KEY-BYTES 2 * constant ROW-BYTES
 KEY-BYTES 64 + constant BUILT-BYTES
@@ -180,6 +180,7 @@ variable OBJECT-DEPTH                \ the frames on PARKED, and OBJECT's index 
 : OBJECT-AT ( n -- ptr u8 ) BUF:HDR-BYTES * OBJECTS + ;
 \ A key's fields, then the object of the file at this depth; a parked loader's stays in its own (PARK).
 : OBJECT ( -- ptr u8 ) OBJECT-DEPTH @ OBJECT-AT ;
+create PRIOR BUF:HDR-BYTES allot     \ the compiling file's object as the last build left it
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
 create LATE BUF:HDR-BYTES allot      \ the file's late private wordlists
 create LOAD-PATHS BUF:HDR-BYTES allot \ each load's key, then its path below its root as a FIELD+
@@ -277,8 +278,8 @@ variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of th
 \ or ends off TOP-SCOPE?, or a load it asked for never reached the build's runner (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 
-\ The magic, the key, the last piece's time, then for INPUT FILES REQUESTS NAMES PIECES an offset
-\ from the file's start and a length (U64+), 0 0 while empty; then those sections in order.
+\ The magic, the key, the last piece's time, then for INPUT FILES REQUESTS NAMES PIECES an offset and
+\ a length (U64+), 0 0 while empty; then those sections in order, PIECES' last piece ending the object.
 8 KEY-BYTES + 8 + 5 2 * 8 * + constant HEADER-BYTES
 
 \ A record's kind in PIECES.
@@ -334,7 +335,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
-   LATE BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
+   LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT-DEPTHS 0 ?do i OBJECT-AT BUF:DISPOSE loop  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  SPELLS BUF:DISPOSE
    NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
    LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HITS-RELEASE  OPENED-RELEASE  OLD-NAMES-RELEASE
@@ -356,6 +357,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    REQ-PATH 256 BUF:N>BLEN BUF:INIT
    SRC-COPY 256 BUF:N>BLEN BUF:INIT
    OBJECT-DEPTHS 0 ?do i OBJECT-AT 256 BUF:N>BLEN BUF:INIT loop  0 OBJECT-DEPTH !
+   PRIOR 256 BUF:N>BLEN BUF:INIT
    CODE-COPY 256 BUF:N>BLEN BUF:INIT
    LATE 256 BUF:N>BLEN BUF:INIT
    LOAD-PATHS 256 BUF:N>BLEN BUF:INIT
@@ -1551,10 +1553,11 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 
 \ FILE-KEY's object after its last piece, whose time is t, with INPUT-STAMP as INPUT! left it;
 \ written only when the file is not UNLINKABLE, but built for the facts PIECE-PLACE links. A
-\ REQUESTS row: the time of the piece the request ends, the kind (SOURCE-UNIT:LOAD-INCLUDE or
-\ LOAD-REQUIRE), the path as spelled and the path loaded, each a FIELD+, then the FILES row of the
-\ requested file's last piece. A sibling renamed into place, unsynced: an object a crash cut short
-\ fails HEADER-CK's and PIECE-CK's bounds checks, and its file compiles.
+\ REQUESTS row: the time and the length in bytes of the piece the request ends, the kind
+\ (SOURCE-UNIT:LOAD-INCLUDE or LOAD-REQUIRE), the path as spelled and the path loaded, each a
+\ FIELD+, then the FILES row of the requested file's last piece. A sibling renamed into place,
+\ unsynced: an object a crash cut short fails HEADER-CK's and PIECE-CK's bounds checks, and its
+\ file compiles.
 : WRITE-OBJECT ( n -- )
    {: t:n :}
    NAMED+
@@ -1678,6 +1681,7 @@ variable RD-END
 
 
 : OBJ@ ( n -- n ) OBJECT BYTES$ drop swap + LE:U64@ ;
+: PRIOR@ ( n -- n ) PRIOR BYTES$ drop swap + LE:U64@ ;
 
 
 \ FILE-ROWS' value for a FILES row whose piece a root's check passed but no BUILT row holds yet
@@ -1899,7 +1903,7 @@ variable RD-END
    0 REQS-N !
    RD-AT @ u + {: end:n :}
    begin GOOD?  RD-AT @ end <  and while
-      8 RD-SKIP
+      16 RD-SKIP
       RD-U64 {: kind:n :}
       kind SOURCE-UNIT:LOAD-INCLUDE <>  kind SOURCE-UNIT:LOAD-REQUIRE <>  and if BAD then
       NAME-CK  NAME-CK
@@ -1924,17 +1928,21 @@ variable RD-END
    repeat ;
 
 
-\ REQUESTS row k's offset in OBJECT, from 0; the row starts with the time of the piece it ends.
+\ REQUESTS row k's offset in OBJECT, from 0; the row starts with the time and the length of the
+\ piece it ends.
 : REQ-AT ( n -- n )
    {: k:n :}
    REQS-AT @  k 0 ?do
-      16 +  dup OBJ@ 8 + +  dup OBJ@ 8 + +  8 +
+      24 +  dup OBJ@ 8 + +  dup OBJ@ 8 + +  8 +
    loop ;
+
+\ The length in bytes of the piece that ends with REQUESTS row k.
+: PIECE-LEN ( n -- n ) REQ-AT 8 + OBJ@ ;
 
 
 \ REQUESTS row k's kind, the offsets of its spelled and loaded paths, and its FILES row.
 : REQ-FIELDS ( n -- n n n n )
-   REQ-AT 8 + {: at:n :}
+   REQ-AT 16 + {: at:n :}
    at 8 + {: spelled:n :}
    spelled 8 + spelled OBJ@ + {: loaded:n :}
    at OBJ@  spelled  loaded  loaded 8 + loaded OBJ@ + OBJ@ ;
@@ -2345,13 +2353,16 @@ variable RD-END
 
 
 \ The piece at PIECE-AT after MAP-FILES, then the REQUESTS row req that ends it, or -1 at the
-\ object's end; PIECE-AT then the next piece's offset.
+\ object's end; a piece a request ends is as long as that row says (PIECE-LEN). PIECE-AT then
+\ the next piece's offset.
 : PIECE-CK ( n -- )
    {: req:n :}
    GOOD? 0= if exit then
-   PIECE-AT @  OBJECT BYTES$ nip  RD-OPEN
+   PIECE-AT @ {: start:n :}
+   start  OBJECT BYTES$ nip  RD-OPEN
    ENTRIES-CK  CODE-CK  DATA-CK  FACTS-CK  ACTS-CK
    req RD-EQ
+   req 0 >=  if  RD-AT @ start -  req PIECE-LEN <>  if BAD then  then
    req 0<  RD-AT @ RD-END @ <>  and if BAD then
    req 0< if ROWS-CK then
    RD-AT @ PIECE-AT ! ;
@@ -2400,6 +2411,101 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 : READ-OBJECT ( -- bool )
    FILE-KEY KEY-HEX SHA256>HEX
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ OBJECT READ-WHOLE ;
+
+
+\ ---- the last build's object ----------------------------------------------------
+\ As a piece compiles, PRIOR holds its file's object as the last build left it: a piece whose
+\ bytes and references equal its old piece's keeps that piece's time (COMPILED-TIME).
+
+\ The header pair at the offset in PRIOR, an offset and a length, inside PRIOR's length.
+: PRIOR-PAIR? ( n -- bool )
+   {: at:n :}
+   PRIOR BYTES$ nip {: len:n :}
+   at PRIOR@  at 8 + PRIOR@ {: off:n u:n :}
+   off 0<  u 0<  or  off len >  or  u len off - >  or  0= ;
+
+
+\ FILE-KEY's object into PRIOR, and true when it read with the magic, FILE-KEY and the FILES,
+\ REQUESTS and PIECES pairs inside it, FILES whole rows; the header's offsets, not WRITE-OBJECT's
+\ layout, place the sections.
+: PRIOR-READ ( -- bool )
+   FILE-KEY KEY-HEX SHA256>HEX
+   KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ PRIOR READ-WHOLE 0= if false exit then
+   PRIOR BYTES$ {: a:ptr len:n :}
+   len HEADER-BYTES < if false exit then
+   a 8  s" HABUFOBJ" STR= 0= if false exit then
+   a 8 + KEY-BYTES  FILE-KEY KEY-BYTES  STR= 0= if false exit then
+   8 KEY-BYTES + 8 + {: pairs:n :}
+   pairs 16 + PRIOR-PAIR?  pairs 32 + PRIOR-PAIR? and  pairs 64 + PRIOR-PAIR? and 0= if false exit then
+   pairs 24 + PRIOR@ FILES-ROW-BYTES mod 0= ;
+
+
+\ The PRIOR REQUESTS row at the offset, which ends by rend: time, length, kind, two paths (a
+\ length, then its bytes) and a FILES row. The offset after it, and true; false when it passes rend.
+: PRIOR-ROW ( n n -- n bool )
+   {: at:n rend:n :}
+   at 32 + rend > if 0 false exit then
+   at 24 + PRIOR@ {: u:n :}
+   u 0<  u rend at - 32 - >  or if 0 false exit then
+   at 32 + u + {: at2:n :}
+   at2 8 + rend > if 0 false exit then
+   at2 PRIOR@ {: u2:n :}
+   u2 0<  u2 rend at2 - 16 - >  or if 0 false exit then
+   at2 16 + u2 + true ;
+
+
+\ Piece k of PRIOR (PRIOR-READ): its offset, length and time, and true; zeros and false when
+\ PRIOR has no such piece or a row leaves REQUESTS. Row k gives the time and length; the piece
+\ the rows end at is the last, with the header's time, running to PRIOR's end.
+: PRIOR-PIECE ( n -- n n n bool )
+   {: k:n :}
+   PRIOR BYTES$ nip {: len:n :}
+   8 KEY-BYTES + 8 + {: pairs:n :}
+   pairs 32 + PRIOR@ {: roff:n :}
+   roff  pairs 40 + PRIOR@ + {: rend:n :}
+   roff  pairs 64 + PRIOR@ 8 +
+   k 0 ?do
+      {: at:n piece:n :}
+      at rend PRIOR-ROW {: next:n ok:bool :}
+      ok 0= if 0 0 0 false unloop exit then
+      at 8 + PRIOR@ {: u:n :}
+      u 0<  piece len > or  u len piece - > or if 0 0 0 false unloop exit then
+      next  piece u +
+   loop
+   {: row:n first:n :}
+   first len > if 0 0 0 false exit then
+   row rend = if first  len first -  8 KEY-BYTES + PRIOR@  true exit then
+   row rend PRIOR-ROW nip 0= if 0 0 0 false exit then
+   row 8 + PRIOR@ {: size:n :}
+   size 0<  size len first - >  or if 0 0 0 false exit then
+   first size  row PRIOR@  true ;
+
+
+\ PRIOR's FILES rows from 1 equal REFS' rows by key and piece number, every row REFS holds.
+: REFS-KEPT? ( -- bool )
+   REFS BYTES$ {: refs:ptr refsu:n :}
+   8 KEY-BYTES + 8 + 16 + {: files:n :}
+   files 8 + PRIOR@ refsu < if false exit then
+   PRIOR BYTES$ drop  files PRIOR@ + {: old:ptr :}
+   refsu FILES-ROW-BYTES / 0 ?do
+      refs i FILES-ROW-BYTES * +  KEY-BYTES 8 +
+      old i FILES-ROW-BYTES * +  KEY-BYTES 8 +  STR= 0= if false unloop exit then
+   loop
+   true ;
+
+
+\ The time of the running piece, number k, which starts at the offset in PIECES: its old piece's
+\ when PRIOR has one with a time, the same bytes and REFS-KEPT?, else NOW.
+: COMPILED-TIME ( n n -- n )
+   {: start:n k:n :}
+   PRIOR-READ 0= if NOW exit then
+   k PRIOR-PIECE {: at:n u:n t:n ok:bool :}
+   ok 0=  t 0=  or if NOW exit then
+   PIECES BYTES$ {: a:ptr len:n :}
+   len start - u <> if NOW exit then
+   a start + u  PRIOR BYTES$ drop at + u  STR= 0= if NOW exit then
+   REFS-KEPT? 0= if NOW exit then
+   t ;
 
 
 \ After INPUT!: true when FILE-KEY's object reads whole and its header, INPUT and FILES check
@@ -3311,9 +3417,10 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
    true GOING                          \ E-FAILED: a request failed and the source caught it
    SCOPE-CK
+   PIECES BYTES$ nip {: start:n :}
    -1 PIECE-END
    1 COMPILED-N +!
-   NOW {: t:n :}
+   start REQ-N @ COMPILED-TIME {: t:n :}
    t WRITE-OBJECT
    REQ-N @ t PIECE-PLACE ;
 
@@ -3330,20 +3437,23 @@ HEADER-BYTES 16 - constant PIECES-FIELD
 
 
 \ A request of the compiling file, the newest event of the loader's log (REQUEST?, else
-\ E-COMP-STATE): its piece ends here, placed with its number and its time, which starts the
-\ request's row with its kind and the path as spelled and as loaded; its object so far waits on
-\ FRAMES while the file loads; then the row ends with the FILES row of that file's last piece, and
-\ the next piece starts at a cell boundary, as a load leaves here (include.f LOAD-UNIT).
+\ E-COMP-STATE): its piece ends here, placed with its number and its time (COMPILED-TIME), which
+\ starts the request's row with the piece's length, its kind and the path as spelled and as
+\ loaded; its object so far waits on FRAMES while the file loads; then the row ends with the
+\ FILES row of that file's last piece, and the next piece starts at a cell boundary, as a load
+\ leaves here (include.f LOAD-UNIT).
 : NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    EVENT-COUNT 1 - {: ev:n :}
    ev path pathu REQUEST? 0= if E-COMP-STATE throw then
    ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
    SCOPE-CK
+   PIECES BYTES$ nip {: start:n :}
    REQ-N @ PIECE-END
-   PIECE-LAY  NOW {: t:n :}
+   PIECE-LAY  start REQ-N @ COMPILED-TIME {: t:n :}
+   PIECES BYTES$ nip start - {: size:n :}
    REQ-N @ t PIECE-PLACE
-   t REQUESTS U64+  mode REQUESTS U64+
+   t REQUESTS U64+  size REQUESTS U64+  mode REQUESTS U64+
    ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+
    1 REQ-N +!
    align
