@@ -2,7 +2,8 @@
 \ the link's copy of its data, handed to WLINK and written as one module. It
 \ refuses by name a defer, a does> clause, a routine entered inside a function
 \ and every kernel word the program reaches that no kernel-words.f word
-\ provides.
+\ provides and no routine of link-routines.f answers; a kernel word resolves to
+\ its routine when the module has one.
 require src/lib/error.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
@@ -12,6 +13,7 @@ require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
 require src/arch/wasm/link.f
 require src/arch/wasm/link-kernel.f
+require src/arch/wasm/link-routines.f
 require src/habu/linker.f
 require src/habu/link-band.f
 require src/habu/link-copy.f
@@ -29,6 +31,9 @@ DYNAMIC-BUFFER SLOTS n               \ function handle h's table slot, 0 for non
 variable NFUN                        \ the handles added
 DYNAMIC-BUFFER REFUSED n             \ the host addresses no function answers, each once
 variable REFUSED-N
+DYNAMIC-BUFFER KERNEL-HOST n         \ kernel routine r's host address
+DYNAMIC-BUFFER KERNEL-HANDLE n       \ kernel routine r's function handle
+variable KERNEL-N                    \ the kernel routines this link added
 
 
 \ The end of emission e's function k: the next function's offset, or e's size.
@@ -74,8 +79,26 @@ variable REFUSED-N
    s" link: a routine is entered inside a function" 74 die ;
 
 
+\ Host address a's kernel routine handle, or -1 when the module has no routine
+\ for the kernel word entering there; each routine is added once per link.
+: KERNEL-FUNCTION ( n -- n )
+   {: a:n :}
+   KERNEL-N @ 0 ?do i KERNEL-HOST @ a = if i KERNEL-HANDLE @ unloop exit then loop
+   a NAME-AT ROUTINE-BODY {: body:ptr bu:n has:bool :}
+   has 0= if -1 exit then
+   body bu  0 0 1 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ {: h:n :}
+   h NFUN @ <> if E-COMP-STATE throw then
+   h 1+ SLOTS-RESERVE  0 h SLOTS !
+   1 NFUN +!
+   KERNEL-N @ 1+ KERNEL-HOST-RESERVE  KERNEL-N @ 1+ KERNEL-HANDLE-RESERVE
+   a KERNEL-N @ KERNEL-HOST !  h KERNEL-N @ KERNEL-HANDLE !
+   1 KERNEL-N +!
+   h ;
+
+
 \ Host address a's function handle, or -1 once a is refused; resolved in
-\ LINK-ADDRESS's order, a record's entry before a quotation's function.
+\ LINK-ADDRESS's order, a record's entry before a quotation's function, then a
+\ kernel word's routine when the module has one.
 : CALLEE ( n -- n )
    {: a:n :}
    a TARGET-REC {: r:n :}
@@ -90,6 +113,8 @@ variable REFUSED-N
    qe 0 >= if
       qe PLACED @ 0<> if qe FIRST @ f + exit then
    then
+   a KERNEL-FUNCTION {: k:n :}
+   k 0 >= if k exit then
    a REFUSE -1 ;
 
 
@@ -186,7 +211,7 @@ variable REFUSED-N
 
 \ Every placed emission's functions, in emission order, before any site is read.
 : EMISSIONS+ ( -- )
-   WLINK:RESET  0 NFUN !  0 REFUSED-N !
+   WLINK:RESET  0 NFUN !  0 REFUSED-N !  0 KERNEL-N !
    NSHADOW:EMISSIONS FIRST-RESERVE
    NSHADOW:EMISSIONS 0 ?do
       -1 i FIRST !
