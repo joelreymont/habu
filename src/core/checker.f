@@ -13019,6 +13019,7 @@ PPRIM: TFAM LAY-N@ PE-N PE-OUT PPRIM;
 PPRIM: SCHEMA-REG SCHEMA-N@ PE-N PE-OUT PPRIM;
 PPRIM: SCHEMA-REG SCHEMA-ROOT-N@ PE-N PE-OUT PPRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-PARSE-IMM PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USING PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USING-PUSH PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -23286,9 +23287,11 @@ CHECKER-REG:}SCRATCH
 \ and contributes no runtime step (GRID: eats one header token, WHERE eats
 \ three). Only a live immediate with an exact `( -- )` semantic row is admitted.
 \ A wrong count skips live code or eats real tokens, so `parse-imm` is
-\ UNSAFE-TOK?-listed: top-level declarations only. Symbol-keyed and never
-\ rolled back: a retired symbol id is never reused. A build numbers its symbols
-\ anew, so it gets empty tables of its own, as DFERS.
+\ UNSAFE-TOK?-listed: top-level declarations only. Symbol-keyed. A rollback
+\ lowers SYM-N and hands the retired ids out again, so a checker frame saves
+\ PIMM-N and its restore drops the rows made since (PIMM-REWIND), as it drops
+\ DFERS': no row outlives the scope of the id it names. A build numbers its
+\ symbols anew, so it gets empty tables of its own, as DFERS.
 16 constant PIMM-CAP
 create PIMM-SYMS-BOOT PIMM-CAP cells allot
 create PIMM-NS-BOOT PIMM-CAP cells allot
@@ -23310,6 +23313,18 @@ PIMM-NS-P PIMM-CAP-V CELL CHECK:TABLE+
 
 : PIMM-CNT@ ( n -- n )             \ payload token count at declaration index
    cells PIMM-NS + @ ;
+
+\ A frame's restore lowers PIMM-N to n (RBF-RESTORE-FROM), zeroing the retired
+\ rows as DFER-REWIND does; the sweep compacts the table, then rewinds it to
+\ the rows it kept (PIMM-FILTER).
+: PIMM-REWIND ( n -- )
+   {: n:n :}
+   n 0 < n PIMM-N @ > or IF
+      s" checker: parse-imm table rewind outside the table" 76 die
+   THEN
+   PIMM-SYMS n PIMM-N @ ARENA-CELLS-ZERO
+   PIMM-NS n PIMM-N @ ARENA-CELLS-ZERO
+   n PIMM-N ! ;
 
 \ A frozen primitive schema is supplied by CHECKER-ROLE. A primitive call must
 \ name the live global record it bound, through its original global symbol or a
@@ -23424,6 +23439,16 @@ variable ACTIVE
 \ declares its parsing immediates at top level (UNSAFE-TOK? bars it from
 \ checked bodies).
 s" parse-imm" s" ptr u8 n n --" TRUST
+
+\ PARSE-IMM's row, added by the verifier's replay (verify-source.f PARSE-IMM-ROW)
+\ in a verifier window only; an unbound name or negative count adds nothing.
+: CHECKER-PARSE-IMM ( ptr u8 n n -- )
+   {: a:ptr u:n cnt:n :}
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF EXIT THEN
+   cnt 0 < IF EXIT THEN
+   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym 0= IF EXIT THEN
+   sym cnt PIMM-ADD ;
 
 : PIMM-SKIP ( n -- ) {: cnt:n :}   \ skip cnt payload tokens of a declared parsing immediate
    0 BEGIN dup cnt < WHILE
@@ -27466,16 +27491,17 @@ $68 constant RBF.VSIG-OFF
 $70 constant RBF.PKGMODE-OFF
 $78 constant RBF.PKGU-OFF
 $80 constant RBF.DFEREND-OFF
-$88 constant RBF.COORD-OFF
-$90 constant RBF.OVNDICT-OFF               \ the checker overlay's NDICT, log count,
-$98 constant RBF.OVLOG-OFF                 \ CP and WIDN (CHECKER-OVERLAY:MARKS)
-$A0 constant RBF.OVCP-OFF
-$A8 constant RBF.OVWIDN-OFF
-$B0 constant RBF.FLOOR-OFF
-$B8 constant RBF.VDEFN-OFF
-$C0 constant RBF.VPRSN-OFF
-$C8 constant RBF.NDICT-OFF                 \ the dictionary's record count
-$D0 constant RBF-REC
+$88 constant RBF.PIMMN-OFF                 \ the parse-imm table's row count
+$90 constant RBF.COORD-OFF
+$98 constant RBF.OVNDICT-OFF               \ the checker overlay's NDICT, log count,
+$A0 constant RBF.OVLOG-OFF                 \ CP and WIDN (CHECKER-OVERLAY:MARKS)
+$A8 constant RBF.OVCP-OFF
+$B0 constant RBF.OVWIDN-OFF
+$B8 constant RBF.FLOOR-OFF
+$C0 constant RBF.VDEFN-OFF
+$C8 constant RBF.VPRSN-OFF
+$D0 constant RBF.NDICT-OFF                 \ the dictionary's record count
+$D8 constant RBF-REC
 \ RBF.COORD distinguishes an ordinary checker scope (-1) from a declaration
 \ frame's START tag. The declaration runner uses zero: declarations do not nest.
 -1 constant RBF-NO-COORDINATOR
@@ -27497,6 +27523,7 @@ $D0 constant RBF-REC
 : RBF.PKGMODE ( ptr a -- ptr a ) RBF.PKGMODE-OFF + ;
 : RBF.PKGU ( ptr a -- ptr a ) RBF.PKGU-OFF + ;
 : RBF.DFEREND ( ptr a -- ptr a ) RBF.DFEREND-OFF + ;
+: RBF.PIMMN ( ptr a -- ptr a ) RBF.PIMMN-OFF + ;
 : RBF.COORD ( ptr a -- ptr a ) RBF.COORD-OFF + ;
 : RBF.OVNDICT ( ptr a -- ptr a ) RBF.OVNDICT-OFF + ;
 : RBF.OVLOG ( ptr a -- ptr a ) RBF.OVLOG-OFF + ;
@@ -27598,6 +27625,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-OVERLAY:MARKS
    r RBF.OVWIDN !  r RBF.OVCP !  r RBF.OVLOG !  r RBF.OVNDICT !
    DFER-END @ r RBF.DFEREND !
+   PIMM-N @ r RBF.PIMMN !
    PASS-FLOOR @ r RBF.FLOOR !
    VERIFY-DEFINER-N @ r RBF.VDEFN !
    VERIFY-PARSES-N @ r RBF.VPRSN !
@@ -27626,7 +27654,8 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.FLOOR @ PASS-FLOOR !
    r RBF.VDEFN @ VERIFY-DEFINER-N !
    r RBF.VPRSN @ VERIFY-PARSES-N !
-   r RBF.DFEREND @ DFER-REWIND ;
+   r RBF.DFEREND @ DFER-REWIND
+   r RBF.PIMMN @ PIMM-REWIND ;
 
 : RBF-PUSH ( -- )          \ save every current high-water mark into a new frame
    RBF-ENSURE
@@ -32241,10 +32270,7 @@ variable MARK-U                          \ the map's length in bytes
          DST @ 1 + DST !
       THEN
    loop
-   PIMM-N @ DST @ ?do
-      0 i cells PIMM-SYMS + !  0 i cells PIMM-NS + !
-   loop
-   DST @ PIMM-N ! ;
+   DST @ PIMM-REWIND ;
 
 public
 

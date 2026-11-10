@@ -94,6 +94,9 @@ variable STR-LAST-AT
 variable STR-LAST-END
 PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
+PTR-VARIABLE TOP-PREV-STR-A               \ the ring's last literal as TOP-PREV's
+variable TOP-PREV-STR-U                  \ statement ended, its kind 0 for none
+variable TOP-PREV-STR-KIND               \ (PARSE-IMM-ROW)
 PTR-VARIABLE TOP-REFUSED                 \ the top-level token refused last (TOP-RESOLVE)
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
@@ -339,8 +342,10 @@ variable FLAG-N
 \ Skipped top-level string literals feed a two-slot ring so the strings the
 \ scanner would otherwise discard reach the rows that replay them: a bare
 \ top-level `s" NAME" s" SIG" TRUST` (RECORD-TRUST), a string loader's path,
-\ `s" FILE" included` (COMPOSE-STRING-PATH), and a name before a call of a word
-\ a names: row marks (TOP-NAMED). A slot holds the bytes the engine's
+\ `s" FILE" included` (COMPOSE-STRING-PATH), a name before a call of a word
+\ a names: row marks (TOP-NAMED), and the name of a top-level
+\ `s" X" n parse-imm`, kept past the count's statement (TOP-PREV-STR,
+\ PARSE-IMM-ROW). A slot holds the bytes the engine's
 \ literal makes: a plain literal's source span, an escaped one's decoded payload
 \ (RECORD-ESCAPED-STRING). The ring resets per NEXT-SCAN call, so at a TRUST
 \ token it holds exactly the two preceding literals from the same statement.
@@ -405,9 +410,11 @@ variable FLAG-N
 \ buffer the next decode writes, or that a reserve for it moves. No reader
 \ reads an older answer after the next decode. A top-level literal's answer
 \ goes to the ring, which the handler of the token NEXT-SCAN answers reads
-\ before the next NEXT-SCAN resets it: only STR-PREV may hold an older answer,
-\ and the push after the next decode drops it. Only `trust`, the string
-\ loaders, a call of a word a names: row marks and a quiet composition's
+\ before the next NEXT-SCAN resets it: only STR-PREV and TOP-PREV-STR may hold
+\ an older answer. The push after the next decode drops STR-PREV's, and
+\ PARSE-IMM-ROW reads TOP-PREV-STR's only when no literal came before its
+\ token, so no decode came between. Only `trust`, the string loaders, a call of
+\ a word a names: row marks, a top-level `parse-imm` and a quiet composition's
 \ `UNDEFINE-IF-DEFINED` read the ring, and none of them reads a body. A body
 \ literal's answer is BODY-LIT, which the body's next token clears or consumes
 \ (PEND-PUSH keeps a copy), and a body token is read with SKIP-STRINGS off, so
@@ -3878,6 +3885,21 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u WRITES-ARG-XT @ s" WRITES-ARG" LIBRARY-DEFINER? IF true EXIT THEN
    a u VARIADIC-XT @ s" VARIADIC" LIBRARY-DEFINER? ;
 
+\ `parse-imm` is the engine's word only where the load binds the token to its
+\ code, read as the storage definers are (LIBRARY-DEFINER?).
+variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
+
+\ A top-level `s" X" n parse-imm` adds X's row as its load does, since nothing
+\ of the subject runs: n the previous token, X the last literal before it.
+: PARSE-IMM-ROW ( -- bool )
+   STR-LAST-KIND @ 0<> IF false EXIT THEN
+   TOP-PREV-STR-KIND @ LIT-PATH <> IF false EXIT THEN
+   TOP-PREV-U @ 0= IF false EXIT THEN
+   TOP-PREV-A @ TOP-PREV-U @ num-parse {: cnt:n flt:bool num:bool :}
+   num 0= flt or IF false EXIT THEN
+   TOP-PREV-STR-A @ TOP-PREV-STR-U @ cnt CHECKER-PARSE-IMM
+   true ;
+
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
@@ -3958,6 +3980,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u s" FUNCTION:" STR=CI IF RECORD-FFI-FUNCTION 0 0= EXIT THEN
    a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN
    a u s" immediate" STR=CI IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
+   a u PARSE-IMM-XT @ s" parse-imm" LIBRARY-DEFINER? IF PARSE-IMM-ROW IF 0 0= EXIT THEN THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
    \ A word that renders source when it runs (`;FUNCTION`, TASK:+USER) defines
    \ text this scan never reads: the checker marks the statement's wordlist and
@@ -4216,6 +4239,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    0 DUPLICATE-U !
    SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ CHECKER-VERIFY-SOURCE!
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
+   NULL-PTR TOP-PREV-STR-A !  0 TOP-PREV-STR-U !  0 TOP-PREV-STR-KIND !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
    0 SHADOWED !  0 RETIRED !
    TOP-CLOSE
@@ -4235,6 +4259,8 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
       TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP      \ after any file this token loaded
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
+      STR-LAST-A @ TOP-PREV-STR-A !  STR-LAST-U @ TOP-PREV-STR-U !
+      STR-LAST-KIND @ TOP-PREV-STR-KIND !
    REPEAT 2drop
    TICK-REMAINDER @ IF EXIT THEN
    CSR-TOP                                      \ a cursor in the blanks the source ends with

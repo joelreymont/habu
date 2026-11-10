@@ -2014,6 +2014,36 @@ variable RC
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP2:A" 10 8 134 139 AT ;
 
+\ Q-TWO takes the symbol id Q-ONE's rolled-back scope retired; the restore drops
+\ Q-ONE's parse-imm row (PIMM-REWIND), so Q-TWO is refused as never declared.
+: TEST-STALE-PARSE-IMM ( -- )
+   s" a parse-imm row made in a scope that rolls back" T-LABEL
+   SB-RESET
+   s" CHECKER-SCOPE-START" SB-APPEND LF+
+   s\" : Q-ONE ( -- ) ; immediate s\" Q-ONE\" 0 parse-imm" SB-APPEND LF+
+   s" CHECKER-SCOPE-DONE" SB-APPEND LF+
+   s" : Q-TWO ( -- ) ; immediate" SB-APPEND LF+
+   s" : USE-TWO ( -- n ) Q-TWO 73 ;" SB-APPEND LF+
+   s" stale-parse-imm.f" FIXTURE!
+   s" E-UNMODELED-IMMEDIATE habu: in use-two: compile-time immediate 'Q-TWO'"
+   REJECT-RC LOADED ;
+
+\ PK's own word spelt `parse-imm` is the call the load makes, not the engine's
+\ word. Replayed as the engine's, its 17 calls would fill the 16-row parse-imm
+\ table and every check would refuse a file the load accepts.
+: TEST-OWN-PARSE-IMM ( -- )
+   s" a package's own word spelt parse-imm" T-LABEL
+   SB-RESET
+   s" : W1 ( -- ) ; immediate" SB-APPEND LF+
+   s" package PK" SB-APPEND LF+
+   s" : parse-imm ( ptr u8 n n -- ) drop drop drop ;" SB-APPEND LF+
+   17 0 ?do s\" s\" W1\" 0 parse-imm" SB-APPEND LF+ loop
+   s" ;package" SB-APPEND LF+
+   s" : USE ( -- n ) 73 ;" SB-APPEND LF+
+   s" own-parse-imm.f" FIXTURE!
+   CERTIFIED
+   s" " 0 LOADED ;
+
 : MAIN ( -- )
    T-RESET
    ROOT!
@@ -2074,6 +2104,8 @@ variable RC
    TEST-TOP-MISMATCH
    TEST-SEALED-DEFINE
    TEST-SEALED-DUPLICATE
+   TEST-STALE-PARSE-IMM
+   TEST-OWN-PARSE-IMM
    FS:CLEANUP-RUN
    T-REPORT
    s" diag-position-test: ok" type cr ;
