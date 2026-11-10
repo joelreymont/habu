@@ -14,7 +14,8 @@
 \ covered name in an unfit definition. A refusal's prose line ends with its
 \ packet's suggestion, after the rows when it prints them. A mismatch over cells
 \ below prints its expected row over them too, so it is classed by type and a
-\ surplus by depth.
+\ surplus by depth. The tokens after a refusal check in CPU time linear in
+\ their count.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
@@ -24,6 +25,7 @@ require src/lib/adt/result.f
 require src/lib/test/subject.f
 require src/lib/test/ending.f
 require tools/gate-json-assert-core.f
+require src/lib/time-cpu.f
 
 package SIGNATURE-NESTING
 
@@ -109,6 +111,20 @@ TYPED-VARIABLE SRC-U len
 : BIGLOOP-TEXT ( -- )
    SRC-RESET  s" SN-BIGLOOP ( -- ) " S+  s" 1 " 70 S+N  s" 10 0 DO 1 LOOP" S+
    s"  drop" 70 S+N ;
+
+
+\ A definition refused at a `THEN` whose arm changes the depth over an empty
+\ stack, followed by k `1 drop` pairs the walk still steps through.
+: STRAY-THEN ( n -- )
+   {: k:n :}
+   SRC-RESET  s" SN-STRAY ( bool -- ) IF 1 THEN" S+  s"  1 drop" k S+N ;
+
+
+\ This thread's CPU nanoseconds for one quiet check of k pairs, which refuses.
+: STRAY-NS ( n -- n )
+   STRAY-THEN
+   TIME:THREAD-CPU-NS  SRC$ CHECK-QUIET-CANDIDATE! VERDICT-REFUSED T=
+   TIME:THREAD-CPU-NS swap - ;
 
 \ A definition with no signature that recurses, from its name to its last token.
 : RECURSE-TEXT ( -- )   s" SN-DOWN dup 0 > IF 1 - RECURSE THEN" S+ ;
@@ -290,6 +306,11 @@ public
    SRC-RESET  s" SN-IFZ ( n bool -- n ) IF dup SN-SNZ THEN" S+
    S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"remove_producer\"" S\" \"verdict\":\"rejected\""
    S\" \"reason\":\"the if arm changes the stack's depth\"" VERDICT-REFUSED PACKET-HAS
+   s" the tokens after a refusal check in time linear in their count" T-LABEL
+   \ Eight times the tokens takes about 8 times the CPU time when each token's
+   \ cost is bounded, and up to 64 when it grows with the tokens before it.
+   1000 STRAY-NS {: small:n :}   8000 STRAY-NS {: big:n :}
+   big  small 24 *  < TTRUE
    s" a RECURSE with no declared effect is uncheckable for want of one, and says to declare one" T-LABEL
    RECURSE-NOSIG
    S\" habu: in sn-down: at 'RECURSE' recursion needs a declared stack effect; suggestion: Declare the definition's stack effect after its name.\n" REFUSES

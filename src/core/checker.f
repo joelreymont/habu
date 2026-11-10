@@ -705,31 +705,40 @@ CHECKER-REG:}SCRATCH
 \ cell `catch` left stale (STALE-WHY).
 variable TOP-UNKNOWN
 
-\ Unification trail: TV!/RV! record each speculative binding here so a failed
-\ prim-overload trial undoes them (TRIAL-REST) instead of copying the TVT/RVT
-\ pool. Each entry packs (var-id << 4 | tag); per-definition scratch.
+\ Unification trail: one entry (var-id << 4 | tag) per binding, compression
+\ link, kind raise or scope raise; TRAIL-UNWIND and AT-PIN restore any height.
 4096 constant TRAIL-INIT        \ trail entries (grows on demand)
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
+PTR-VARIABLE TRAIL-OLD-P   \ by trail index: the stored link a compression entry replaced
 variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (ROWS-PIN), 0 none
 CHECKER-REG:}SCRATCH
 : TRAIL ( -- ptr n ) TRAIL-P @ ;
+: TRAIL-OLD ( -- ptr n ) TRAIL-OLD-P @ ;
 : TRAIL-RESET ( -- ) 0 TRAIL-N !  0 TRAIL-PIN ! ;
 : TRAIL-ENSURE ( n -- ) {: need:n :}
    need TRAIL-CAP @ <= IF exit THEN
    need TRAIL-CAP @ 2 * max TRAIL-INIT max {: nc:n :}
    TRAIL-P @ TRAIL-CAP @ cells nc cells SR-GROW TRAIL-P !
+   TRAIL-OLD-P @ TRAIL-CAP @ cells nc cells SR-GROW TRAIL-OLD-P !
    nc TRAIL-CAP ! ;
 
 
 \ The tag says what to put back, so a kind raise restores the kind it displaced:
 \ resetting a fenced var to TVK-ANY on rollback would drop the base-address
 \ fence on every row an abandoned prim-overload trial touched.
-: TRAIL-PUSH ( n n -- )   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY
+: TRAIL-PUSH ( n n -- )   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY, 12=TVT link, 13=RVT link
    {: id:n tag:n :}
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 16 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
+
+
+\ A compression entry (tag 12 or 13) keeps the stored link it replaces.
+: TRAIL-LINK ( n n n -- )
+   {: old:n id:n tag:n :}
+   id tag TRAIL-PUSH
+   old  TRAIL-N @ 1 - cells TRAIL-OLD + ! ;
 
 
 : TRAIL-KIND-OF ( n -- n )   \ the kind a kind-tag puts back
@@ -745,15 +754,17 @@ CHECKER-REG:}SCRATCH
 : TRAIL-SLOT ( n -- ptr n )   \ the cell a trail entry changed
    {: e:n :}
    e 15 and {: tag:n :}   e 4 rshift cells {: off:n :}
-   tag 0= IF TVT off + EXIT THEN
-   tag 1 = IF RVT off + EXIT THEN
+   tag 0=  tag 12 = or IF TVT off + EXIT THEN
+   tag 1 =  tag 13 = or IF RVT off + EXIT THEN
    tag 8 = IF NSCOPE off + EXIT THEN
    TVK off + ;
 
 
-: TRAIL-UNDO ( n -- )   \ put back what one trail entry changed
-   {: e:n :}
+: TRAIL-UNDO ( n -- )   \ put back what trail entry i changed
+   {: i:n :}
+   i cells TRAIL + @ {: e:n :}
    e 15 and {: tag:n :}
+   tag 12 =  tag 13 = or IF i cells TRAIL-OLD + @  e TRAIL-SLOT !  EXIT THEN
    tag 0=  tag 1 = or  tag 8 = or IF 0 ELSE tag TRAIL-KIND-OF THEN
    e TRAIL-SLOT ! ;
 
@@ -764,12 +775,13 @@ CHECKER-REG:}SCRATCH
    TRAIL-PIN @ mark 1 + > IF mark 1 + TRAIL-PIN ! THEN
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
-      TRAIL-N @ cells TRAIL + @ TRAIL-UNDO
+      TRAIL-N @ TRAIL-UNDO
    REPEAT ;
 
 
-\ Between AT-PIN and ;AT-PIN every binding made since ROWS-PIN is undone; past
-\ the pin COMPRESS? is false, so the trail holds every binding a row reads.
+\ Between AT-PIN and ;AT-PIN every store made since ROWS-PIN is undone, so the
+\ tables read as they stood at the pin; ;AT-PIN takes back the view's own
+\ compression stores before it restores.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE PIN-SAVE-P   variable PIN-SAVE-CAP   variable PIN-TOP
 CHECKER-REG:}SCRATCH
@@ -791,12 +803,13 @@ CHECKER-REG:}SCRATCH
       1 -
       dup cells TRAIL + @ {: e:n :}
       e TRAIL-SLOT @  over mark - cells PIN-SAVE + !
-      e TRAIL-UNDO
+      dup TRAIL-UNDO
    REPEAT drop ;
 
 : ;AT-PIN ( -- )
    TRAIL-PIN @ 0= IF EXIT THEN
    TRAIL-PIN @ 1 - {: mark:n :}
+   PIN-TOP @ TRAIL-UNWIND
    mark BEGIN dup PIN-TOP @ < WHILE
       dup mark - cells PIN-SAVE + @  over cells TRAIL + @ TRAIL-SLOT !
       1 +
@@ -861,13 +874,14 @@ CHECKER-REG:}SCRATCH
    LTNT-N @ cells LTNT + !
    LTNT-N @ 1 + LTNT-N ! ;
 
-\ TRIAL-DEPTH counts open trials, HOLD-N open QUOT-PAIR comparisons; neither an
-\ unwind nor AT-PIN undoes a compression store, so COMPRESS? waits for both and TRAIL-PIN at 0.
+\ TRIAL-DEPTH counts open trials, HOLD-N open QUOT-PAIR comparisons.
 variable TRIAL-DEPTH   0 TRIAL-DEPTH !
 CHECKER-REG:SCRATCH{
 variable HOLD-N
 CHECKER-REG:}SCRATCH
-: COMPRESS? ( -- bool ) TRIAL-DEPTH @ HOLD-N @ or  TRAIL-PIN @ or  0= ;
+\ Cost only: every compression store is trailed, but the unwind that ends a failed
+\ trial or refused comparison undoes it, so compression waits until both close.
+: COMPRESS? ( -- bool ) TRIAL-DEPTH @ HOLD-N @ or 0= ;
 variable TCMP                            \ path-compression walk cursor
 
 \ Only storage uses the +1 encoding. Logical terms (including term zero) and
@@ -1745,12 +1759,16 @@ PTX-BARRIER-DEFAULT
    v ISVAR 0= IF RES-FALSE EXIT THEN
    v PAY TV@ UNBOUND <> ;
 
-\ Direct TVT stores under COMPRESS? only, so permanent: no trail entry.
+\ Each link that changes is trailed (TRAIL-LINK), so an unwind or AT-PIN puts it back.
 : T-COMPRESS ( n n -- ) {: root:n :}
    TCMP !
    BEGIN TCMP @ T-BOUND-VAR? WHILE
-      TCMP @ PAY TV@ {: nxt:n :}
-      root 1+ TCMP @ PAY cells TVT + !
+      TCMP @ PAY {: id:n :}
+      id TV@ {: nxt:n :}
+      nxt root <> IF
+         id cells TVT + @  id 12 TRAIL-LINK
+         root 1+ id cells TVT + !
+      THEN
       nxt TCMP !
    REPEAT ;
 
@@ -1772,8 +1790,12 @@ PTX-BARRIER-DEFAULT
 : R-COMPRESS ( n n -- ) {: root:n :}
    TCMP !
    BEGIN TCMP @ R-BOUND-VAR? WHILE
-      TCMP @ PAY RV@ {: nxt:n :}
-      root 1+ TCMP @ PAY cells RVT + !
+      TCMP @ PAY {: id:n :}
+      id RV@ {: nxt:n :}
+      nxt root <> IF
+         id cells RVT + @  id 13 TRAIL-LINK
+         root 1+ id cells RVT + !
+      THEN
       nxt TCMP !
    REPEAT ;
 
@@ -18847,7 +18869,7 @@ CHECKER-REG:}SCRATCH
    loop RES-FALSE ;
 
 : TRY-EFF ( ptr u8 -- bool ) {: h:ptr :}
-   TRIAL-DEPTH @ 1 + TRIAL-DEPTH !       \ open a trial: disables path compression
+   TRIAL-DEPTH @ 1 + TRIAL-DEPTH !       \ open a trial
    TRIAL-SAVE
    h EFF-APPLY
    OK @ SGBAD @ 0= and  SV-FV @ BASE-ONLY-OPEN? 0= and
@@ -20962,9 +20984,7 @@ CHECKER-REG:}SCRATCH
    t T-RES {: tl:n :}
    ann tl LOGHID-FAMILY? 0= IF RES-FALSE EXIT THEN
    TRAIL-N @ {: mark:n :}
-   1 TRIAL-DEPTH +!   \ no path compression past a binding the unwind takes back
    tl ann MK-LOGICAL UNIFY   \ binds open arguments first, so the width is the annotation's
-   -1 TRIAL-DEPTH +!
    dup 0= IF mark TRAIL-UNWIND THEN ;   \ a failed trial leaves no binding
 : LOC-BUNDLE-ROW ( n n -- n ) {: row:n gi:n :}   \ groups gi.. of row, such cells expanded
    gi #LOC @ LGRP @ - >= IF row EXIT THEN
