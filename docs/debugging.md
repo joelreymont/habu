@@ -281,11 +281,13 @@ phase measurement:
 
 ### Profiling the build
 
-`tools/build-profile.f` runs the engine self-build under the profiler and writes
-both reports to files:
+`tools/build-profile.f` runs hb's build under `--engine`, or a program's with a
+source, for the host or `--target name` under the profiler and writes both
+reports to files:
 
 ```
-bin/hb --load tools/build-profile.f -- /tmp/engine /tmp/build.txt /tmp/build.json
+bin/hb --load tools/build-profile.f -- --engine /tmp/engine /tmp/build.txt /tmp/build.json
+bin/hb --load tools/build-profile.f -- --target wasm app.f /tmp/app.wasm /tmp/app.txt /tmp/app.json
 ```
 
 It samples every 100 us, so a warm build of 1.3 s gives about 13,000 samples

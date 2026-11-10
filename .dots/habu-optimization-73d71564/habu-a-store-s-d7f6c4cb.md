@@ -1,0 +1,9 @@
+---
+title: "A store's guard takes 13 to 14% of a build"
+status: open
+priority: 3
+issue-type: task
+created-at: "2026-11-10T21:26:33.303815+02:00"
+---
+
+Problem (measured 2026-11-10, tools/build-profile.f, 100 us samples): (PROT-SPAN) is the top self row of both builds profiled: 5002 of 37,215 samples (13.4%) in a cold Wasm build of Maki's viewer and 22,137 of 156,737 (14.1%) in hb's own build; 94 to 95% of them come through `!`, the rest through c! and +!. `!` itself has 1849 self samples in the viewer build, so the guard costs about 2.7 times the store it guards. Cause, read from src/habu/habu1.f: every store primitive (`!` :2131, +! :2138, c! :2144 and the rest) moves its address and length into x10/x11 and calls the one guard body (PROT-GUARD:CALL :347, EMIT-PROT-SPAN :5585). GUARD-SPAN (:310-337) scans nothing: it loads the friend latch, tests the length and the wrap, makes the two hull tests against DATA-BANDS:LO/HI, then loads BODY-TEXT:BASE-CELL (and SIZE-CELL for an address above the base) for the live-text test. A heap store therefore runs the call, about fifteen instructions and two or three loads, and the return, for one STR. The share is the same on every target and build: it is not a Wasm cost. Not measured: the number of stores per build, and which callers a compiler could prove outside the hull (BYTE-COPY-LEN is 20% of `!`'s self samples). Acceptance: a design for a cheaper store guard (what the guard must still refuse, and where a compiler may omit or shorten it), settled before any change, since it changes a security mechanism; then the two profiles above show the guard's share fallen. Files: src/habu/habu1.f, src/habu/layout.f DATA-BANDS, src/habu/kernel-x64.f (its twin). Verify: the two profiles by tools/build-profile.f; the suite's seal tests. Depends: none. Ownership: none. Claim: unassigned.
