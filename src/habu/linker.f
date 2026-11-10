@@ -287,7 +287,8 @@ variable IDENTIFIED                  \ every record below it that a piece holds 
 \ 1-3 an extent's (EXTS). Key -2 and OWN-SERIAL is a check's (OWN-IDS!): a record's number or an
 \ extent's in its part; a piece's link reads the slots its PIECE-CK filled, since LINK-PART runs
 \ PIECE-CK right before LINK-OBJECT. Key -3 and a BUILT row is a built part's extent, the value its
-\ BUILT-EXTS row (BUILT+): a string's count is its number in its part, so the key is the part's.
+\ BUILT-EXTS row (BUILT+): a string's count is its number in its part, a laid text's its FACTS row,
+\ so the key is the part's.
 DYNAMIC-BUFFER PLACES n
 DYNAMIC-BUFFER OLD-PLACES n          \ PLACES' slots as it grows
 variable PLACES-CAP                  \ its slots, a power of two
@@ -306,7 +307,9 @@ DYNAMIC-BUFFER REC-ROW n
 variable REC-ROW-N
 \ The build table (BUILT+): BUILT-EXT-CELLS cells per extent of every built part, its BUILT row,
 \ kind, sum, count, start as a distance from NULL-PTR and length; a part's rows together and in
-\ address order. ROW-EXTS: BUILT row r's first build-table row at 2r, its count at 2r + 1.
+\ address order, its extents, then each text it laid past them (TEXT-EXTS+): kind 2, sum 0, which
+\ no string has (BYTES-SUM), and its FACTS row's number as count. ROW-EXTS: BUILT row r's first
+\ build-table row at 2r, its count at 2r + 1.
 6 constant BUILT-EXT-CELLS
 DYNAMIC-BUFFER BUILT-EXTS n
 variable BUILT-EXTS-N
@@ -1284,36 +1287,35 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    then
    7 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ ;
 
-\ An address in BUILT row row's data, k its FILES row: a word's or a string's extent (ROW-EXT-OF)
-\ holding it, its end included, as tag 3 or 6 and the offset in it; else tag 7 and the offset from
-\ the part's first data byte (the head, no extent, or a text the part laid past its extents).
-: ROW-DATA-REF+ ( n n n -- )
+\ An address in BUILT row row's data, k its FILES row, and true: a word's, a string's or a laid
+\ text's build-table row (ROW-EXT-OF) holding it, its end included, as tag 3 or 6 and the offset in
+\ it, or the head's as tag 7 and the offset from the part's first data byte. False, writing nothing,
+\ for an address no row holds: one between the D bytes and a text, or in a part with no row.
+: ROW-DATA-REF+ ( n n n -- bool )
    {: v:n row:n k:n :}
-   row DATA-EDGE+
    v row ROW-EXT-OF {: b:n :}
-   b 0 >= if
-      b 1 BUILT-EXT @  b 4 BUILT-EXT @ {: kind:n start:n :}
-      v  start b 5 BUILT-EXT @ +  <=  kind 1 =  kind 2 =  or  and if
-         kind 1 = if 3 else 6 then PIECES U64+  k PIECES U64+
-         b 2 BUILT-EXT @ PIECES U64+  b 3 BUILT-EXT @ PIECES U64+  v start - PIECES U64+ exit
-      then
-   then
-   7 PIECES U64+  k PIECES U64+  v  row BUILT-AT BUILT-DP + LE:U64@ -  PIECES U64+ ;
+   b 0< if false exit then
+   b 1 BUILT-EXT @  b 4 BUILT-EXT @ {: kind:n start:n :}
+   v  start b 5 BUILT-EXT @ +  > if false exit then
+   row DATA-EDGE+
+   kind 3 = if  7 PIECES U64+  k PIECES U64+  v start - PIECES U64+  true exit  then
+   kind 1 = if 3 else 6 then PIECES U64+  k PIECES U64+
+   b 2 BUILT-EXT @ PIECES U64+  b 3 BUILT-EXT @ PIECES U64+  v start - PIECES U64+  true ;
 
-\ A data address's reference, and true: a file's data, or the open's header data; false,
-\ writing nothing, for any other address. A file's end names it only after every span, so
-\ a later file's first byte names that later file.
+\ A data address's reference, and true: a file's data a row names (ROW-DATA-REF+), or the open's
+\ header data; false, writing nothing, for any other address. A file's end names it only after
+\ every span, so a later file's first byte names that later file.
 : DATA-REF+ ( n -- bool )
    {: v:n :}
    v FILE-DP @ >=  v FILE-END @ <  and if  v OWN-DATA-REF+ true exit  then
    v DP-ROW {: row:n hit:bool :}
-   hit if  v row  row true REF-FILE  ROW-DATA-REF+ true exit  then
+   hit if  v row  row true REF-FILE  ROW-DATA-REF+ exit  then
    v BASE @ >=  v OPEN-DP @ <  and if
       true HOLDS-HEADER !  HEADER-EDGE+  4 PIECES U64+  v BASE @ - PIECES U64+ true exit
    then
    v FILE-END @ = if  v OWN-DATA-REF+ true exit  then
    v DP-END-ROW {: end-row:n end-hit:bool :}
-   end-hit if  v end-row  end-row true REF-FILE  ROW-DATA-REF+ true exit  then
+   end-hit if  v end-row  end-row true REF-FILE  ROW-DATA-REF+ exit  then
    false ;
 
 
@@ -1795,12 +1797,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ A reference is a tag, then its fields: 0 a dictionary record (file, its name sum, its count
 \ among that file's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation
 \ (file, its owning definition's name sum and count as tag 0's, function); 3 a word's data and 6 a
-\ string's (file, the extent's sum and count, offset in the extent, at most its length); 7 a
-\ file's data no word or string owns (file, offset from that file's first data byte, at most its
-\ data size); 4 the open's header data (offset from BASE); 5 none: a patch target, a cell row's 0
-\ or scratch cell, or a definition with no dispatch cell. A file field is 0 for this object, else
-\ its FILES row from 1 (REF-FILE). Tags 3 and 6 name data by its owner, so data that only moved
-\ keeps its references' bytes.
+\ string's (file, the extent's sum and count, offset in the extent, at most its length) or a text
+\ an earlier part laid (sum 0 and its FACTS row's number for the extent's); 7 a file's head (file,
+\ offset from that file's first data byte, at most the head's length, 0 for this object's part
+\ with no extent); 4 the open's header data (offset from BASE); 5 none: a patch target, a cell
+\ row's 0 or scratch cell, or a definition with no dispatch cell. A file field is 0 for this
+\ object, else its FILES row from 1 (REF-FILE). Tags 3 and 6 name data by its owner, so data that
+\ only moved keeps its references' bytes.
 \ A cross build's E is 0: its shadow holds the target's code, in the target's site encodings, and
 \ it writes no object (LOAD).
 : CODE+ ( -- )
@@ -2491,11 +2494,62 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    row 1 + 2 * ROW-EXTS-RESERVE
    first row 2 * ROW-EXTS !  n row 2 * 1 + ROW-EXTS ! ;
 
-\ The piece's BUILT row with its number and time, its file's path and HOLDS-HEADER, its extents in
-\ the build table (BUILT-EXTS+); NAMES takes its records, REC-ROW gives each its row, rows rising.
+\ The FACTS row at the offset in OBJECT (FACTS-CK): the next row's offset, and the offset of its
+\ text's length cell, -1 for a retirement, which has no text.
+: FACT-ROW ( n -- n n )
+   {: at:n :}
+   OBJECT BYTES$ drop {: obj:ptr :}
+   obj at + LE:U64@ {: ix:n :}
+   ix CHECK:HELD-RETIRED = if  at 32 +  -1 exit  then
+   ix CHECK:HELD-AMENDED = if at 32 + else at 8 + then {: text:n :}
+   text 8 +  obj text + LE:U64@ +  text ;
+
+\ BUILT row row's build-table row for the text laid at start, FACTS row count's, put into PLACES
+\ under -3; TEXT-EXTS+ sets its length.
+: TEXT-EXT+ ( n n n -- )
+   {: count:n start:n row:n :}
+   BUILT-EXTS-N @ {: b:n :}
+   b 1 + BUILT-EXT-CELLS * BUILT-EXTS-RESERVE
+   1 PLACES-ROOM
+   row b 0 BUILT-EXT !  2 b 1 BUILT-EXT !  0 b 2 BUILT-EXT !  count b 3 BUILT-EXT !
+   start b 4 BUILT-EXT !  0 b 5 BUILT-EXT !
+   -3 row 2 0 count b PLACE!
+   1 BUILT-EXTS-N +! ;
+
+\ After BUILT-EXTS+, each text the running part laid past its D bytes (LINK-FACTS lays them in
+\ FACTS row order) as BUILT row BUILT-N's: a FACTS row's text whose length cell lies past the text
+\ added last and below FILE-END. A text an earlier row named or an earlier part laid lies lower.
+\ Its length runs to the next text, the last's to FILE-END.
+: TEXT-EXTS+ ( -- )
+   EXTS-N @ 0= if FILE-DP @ else EXTS-N @ 1 - EXT-END then {: dend:n :}
+   FILE-END @ {: end:n :}
+   dend end = if exit then
+   BUILT-N {: row:n :}
+   BUILT-EXTS-N @ {: first:n :}
+   OBJECT BYTES$ drop {: obj:ptr :}
+   FACTS-AT @ 8 +  dend 1 -
+   obj FACTS-AT @ + LE:U64@ 0 ?do
+      {: at:n last:n :}
+      at FACT-ROW {: next:n text:n :}
+      text 0< if next last else
+         obj text 8 + +  obj text + LE:U64@  INTERN:FIND 8 - {: cell:n :}
+         cell last >  cell end <  and if
+            i cell row TEXT-EXT+  next cell
+         else next last then
+      then
+   loop 2drop
+   BUILT-EXTS-N @ {: stop:n :}
+   stop first ?do
+      i 1 + stop < if i 1 + 4 BUILT-EXT @ else end then  i 4 BUILT-EXT @ -  i 5 BUILT-EXT !
+   loop
+   row 2 * 1 + ROW-EXTS @  stop first - +  row 2 * 1 + ROW-EXTS ! ;
+
+\ The piece's BUILT row with its number and time, its file's path and HOLDS-HEADER, its extents and
+\ laid texts in the build table (BUILT-EXTS+, TEXT-EXTS+); NAMES takes its records, REC-ROW gives
+\ each its row, rows rising.
 : BUILT+ ( n n -- )
    {: piece:n t:n :}
-   BUILT-EXTS+
+   BUILT-EXTS+  TEXT-EXTS+
    ndict@ REC-ROW-RESERVE
    FILE-REC @ REC-ROW-N @ ?do  0 i REC-ROW !  loop
    ndict@ FILE-REC @ ?do  BUILT-N 1 + i REC-ROW !  loop
@@ -2617,9 +2671,15 @@ variable RD-END
    k FILE-ROWS @ ROW-ABSENT <> ;
 
 
-: FILE-BYTES ( n -- n )
+\ The head's length in FILES row k's part, -1 when the part's first build-table row is no head
+\ or it has none.
+: HEAD-LEN ( n -- n )
    {: k:n :}
-   k BUILT-DP 8 + BUILT@  k BUILT-DP BUILT@ - ;
+   k FILE-ROWS @ {: row:n :}
+   row 2 * 1 + ROW-EXTS @ 0= if -1 exit then
+   row 2 * ROW-EXTS @ {: b:n :}
+   b 1 BUILT-EXT @ 3 <> if -1 exit then
+   b 5 BUILT-EXT @ ;
 
 
 \ This object's emission e's F, after its S, R and S bytes.
@@ -2708,9 +2768,9 @@ variable RD-END
    BAD ;
 
 
-\ A data reference (RD-REF): a word's (tag 3) or a string's (tag 6) extent of this part (OWN-EXT)
-\ or of a built one (ROW-EXT), the offset at most its length; a part's data (tag 7), at most the
-\ head's length in this part, 0 when it has no extent, or the data size of another; or the open's
+\ A data reference (RD-REF): a word's (tag 3) or a string's or laid text's (tag 6) extent of this
+\ part (OWN-EXT) or of a built one (ROW-EXT), the offset at most its length; a part's head (tag 7),
+\ the offset at most its length, 0 in this part when it has no extent (HEAD-LEN); or the open's
 \ header data.
 : DATA-REF-CK ( n n n n n -- )
    {: tag:n x:n y:n z:n w:n :}
@@ -2736,7 +2796,7 @@ variable RD-END
          y 0 9 EXT @ > if BAD then exit
       then
       x FILE-IN? 0= if BAD exit then
-      y x FILE-BYTES > if BAD then exit
+      y x HEAD-LEN > if BAD then exit
    then
    tag 4 = if
       x 0<  x OPEN-DP @ BASE @ - >=  or if BAD then exit
@@ -3339,9 +3399,10 @@ variable RD-END
 
 
 \ Extent e of DATA's d bytes, at RD-AT once its starts were read: where TIMES' span for e starts;
-\ kind 1 or 2, or 3 first; its length the distance to the next start, the last's to d; its start,
-\ kind, sum, count and length those OWN-IDS! put into EXTS; its bytes; its cell rows (CELL-ROW-CK);
-\ a string's length cell (STRING-CK).
+\ kind 1 or 2, or 3 first; a string's sum not 0, a laid text's identity (TEXT-EXTS+); its length
+\ the distance to the next start, the last's to d; its start, kind, sum, count and length those
+\ OWN-IDS! put into EXTS; its bytes; its cell rows (CELL-ROW-CK); a string's length cell
+\ (STRING-CK).
 : EXTENT-CK ( n n -- )
    {: e:n d:n :}
    GOOD? 0= if exit then
@@ -3350,7 +3411,7 @@ variable RD-END
    e 1 +  EXTS-AT @ OBJ@ < if at 8 + OBJ@ else d then {: end:n :}
    RD-AT @  PIECE-AT @  e TIMES-EXT 8 + OBJ@ +  <> if BAD exit then
    RD-U64 RD-U64 RD-U64 RD-U64 {: kind:n sum:n count:n u:n :}
-   kind 1 <  kind 3 >  or  kind 3 =  e 0<>  and  or if BAD exit then
+   kind 1 <  kind 3 >  or  kind 3 =  e 0<>  and  or  kind 2 =  sum 0=  and  or if BAD exit then
    u  end s -  <> if BAD exit then
    kind e 1 EXT @ <>  sum e 2 EXT @ <>  or  count e 3 EXT @ <>  or  u e 9 EXT @ <>  or
    s FILE-DP @ +  e 0 EXT @ <>  or if BAD exit then
@@ -3361,9 +3422,9 @@ variable RD-END
 
 
 \ A store row: a cell FIND-STORES admits by where it starts, at an offset from an earlier part's
-\ first data byte that is a multiple of 8: inside a word's or a string's extent (tag 3 or 6) or
-\ below the part's data end (tag 7; a cell may run past an unaligned end: main.f's D is 98); or in
-\ the header data.
+\ first data byte that is a multiple of 8: inside a word's, a string's or a laid text's extent (tag
+\ 3 or 6) or the head (tag 7; a cell may run past an unaligned end: main.f's D is 98); or in the
+\ header data.
 : STORE-CK ( -- )
    RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 3 =  tag 6 =  tag 7 =  or or  x 1 >=  and  tag 4 =  or 0= if BAD exit then
@@ -3376,7 +3437,7 @@ variable RD-END
    then
    tag 7 = if
       y 7 and 0<> if BAD exit then
-      y x FILE-BYTES >= if BAD exit then
+      y x HEAD-LEN >= if BAD exit then
    then
    tag 4 = if x 7 and 0<> if BAD exit then then
    RD-U64 RD-U64 {: kind:n v:n :}
