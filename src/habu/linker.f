@@ -740,13 +740,12 @@ variable PENDING-STORERS-N           \ its pairs
    k WORD-ROWS U64+  sum WORD-ROWS U64+  count WORD-ROWS U64+  idx REC-TIME WORD-ROWS U64+
    idx WORD-RECS U64+ ;
 
-\ An earlier record's FILES row k and its piece's first record. The row is whole (REF-FILE) for a
+\ An earlier record's FILES row. The row is whole (REF-FILE) for a
 \ piece built since ROOT-BUILT, or a word with no time for its WORDS row to check.
-: WORD-REF ( n -- n n )
+: WORD-REF ( n -- n )
    {: idx:n :}
    idx BUILT-ROW {: row:n :}
-   row  row ROOT-BUILT @ >=  idx REC-TIME 0=  or  REF-FILE
-   row BUILT-AT BUILT-FIRST + LE:U64@ ;
+   row  row ROOT-BUILT @ >=  idx REC-TIME 0=  or  REF-FILE ;
 
 \ A record reference: the file, 0 for this one, then the record's sum and count (REC-ID), which no
 \ insertion before it changes; an earlier piece's record also gets its WORDS row.
@@ -756,7 +755,7 @@ variable PENDING-STORERS-N           \ its pairs
    idx FILE-REC @ >= if
       0 PIECES U64+  sum PIECES U64+  count PIECES U64+  exit
    then
-   idx WORD-REF drop {: k:n :}
+   idx WORD-REF {: k:n :}
    k PIECES U64+  sum PIECES U64+  count PIECES U64+
    k idx WORD-ROW+ ;
 
@@ -1107,7 +1106,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    {: idx:n :}
    idx 1 + LISTED-BY-RESERVE
    idx LISTED-BY @ OBJECT-SERIAL @ = if exit then
-   idx WORD-REF drop  idx WORD-ROW+ ;
+   idx WORD-REF  idx WORD-ROW+ ;
 
 \ After the files PIECES and REQUESTS reference: FILES gains a whole row for each piece the source
 \ names whole, then each record of NAMED-RECS gains its rows (NAMED-REC+).
@@ -2417,11 +2416,6 @@ variable RD-END
    k FILE-ROWS @ ROW-PENDING = ;
 
 
-: FILE-RECS ( n -- n )
-   {: k:n :}
-   k BUILT-FIRST 8 + BUILT@  k BUILT-FIRST BUILT@ - ;
-
-
 : FILE-EMS ( n -- n )
    {: k:n :}
    k BUILT-EM 8 + BUILT@  k BUILT-EM BUILT@ - ;
@@ -2445,16 +2439,17 @@ variable RD-END
    at 24 + at OBJ@ +  j 8 * + OBJ@ ;
 
 
-\ A reference: its tag and fields, 0 for absent ones (CODE+ states them).
-: RD-REF ( -- n n n n )
+\ A reference: its tag and four fields, 0 for absent ones (CODE+ states them); every tag's fourth
+\ is absent.
+: RD-REF ( -- n n n n n )
    RD-U64 {: tag:n :}
-   tag 0 = if tag RD-U64 RD-U64 RD-U64 exit then
-   tag 1 = if tag RD-U64 0 0 exit then
-   tag 2 = if tag RD-U64 RD-U64 RD-U64 exit then
-   tag 3 = if tag RD-U64 RD-U64 0 exit then
-   tag 4 = if tag RD-U64 0 0 exit then
-   tag 5 = if tag 0 0 0 exit then
-   BAD tag 0 0 0 ;
+   tag 0 = if tag RD-U64 RD-U64 RD-U64 0 exit then
+   tag 1 = if tag RD-U64 0 0 0 exit then
+   tag 2 = if tag RD-U64 RD-U64 RD-U64 0 exit then
+   tag 3 = if tag RD-U64 RD-U64 0 0 exit then
+   tag 4 = if tag RD-U64 0 0 0 exit then
+   tag 5 = if tag 0 0 0 0 exit then
+   BAD tag 0 0 0 0 ;
 
 
 \ The kind of this object's record r, an entry already read; -1 for none.
@@ -2498,8 +2493,8 @@ variable RD-END
 \ A code reference (RD-REF) whose own emission is at most top and own record below bound: the
 \ records RESOLVE finds when the link resolves it, a record by its file, sum and count (OWN-REC,
 \ PLACE). It names no package, which RESOLVE refuses.
-: CODE-REF-CK ( n n n n n n -- )
-   {: tag:n x:n y:n z:n top:n bound:n :}
+: CODE-REF-CK ( n n n n n n n -- )
+   {: tag:n x:n y:n z:n w:n top:n bound:n :}
    GOOD? 0= if exit then
    tag 0 = if
       x y z bound ID-REF-CK {: r:n :}
@@ -2513,8 +2508,8 @@ variable RD-END
 
 
 \ A data reference (RD-REF): a file's data, at most its size, or the open's header data.
-: DATA-REF-CK ( n n n n -- )
-   drop {: tag:n x:n y:n :}
+: DATA-REF-CK ( n n n n n -- )
+   drop drop {: tag:n x:n y:n :}
    GOOD? 0= if exit then
    tag 3 = if
       y 0< if BAD exit then
@@ -2990,16 +2985,16 @@ variable RD-END
 \ A cell's kind, 0-2 (ROW-KIND), and its value's reference (CELL-REF+).
 : CELL-REF-CK ( n -- )
    {: kind:n :}
-   RD-REF {: tag:n x:n y:n z:n :}
+   RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 5 = if kind 0<  kind 2 >  or if BAD then exit then
-   kind 0= if tag x y z EMS-N @ 1 - RECS-N @ CODE-REF-CK exit then
-   kind 1 = if tag x y z DATA-REF-CK exit then
+   kind 0= if tag x y z w EMS-N @ 1 - RECS-N @ CODE-REF-CK exit then
+   kind 1 = if tag x y z w DATA-REF-CK exit then
    BAD ;
 
 
 \ A definition's dispatch cell (DISPATCH+): none, or a whole cell of this file's data.
 : DISPATCH-CK ( -- )
-   RD-REF {: tag:n x:n y:n z:n :}
+   RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 5 = if exit then
    tag 3 <>  x 0<>  or  y 0<  or  y 7 and 0<>  or  y 8 + 0<  or if BAD exit then
    y 8 + OWN-DATA-MAX @ max OWN-DATA-MAX ! ;
@@ -3099,10 +3094,10 @@ variable RD-END
    GOOD? if
       OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  p +  LE:U32@ 0<> if BAD then
    then
-   RD-REF {: tag:n x:n y:n z:n :}
+   RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 5 = if exit then
    tag 0 <> if BAD exit then
-   tag x y z top  top EM-RECS @ 1 +  CODE-REF-CK
+   tag x y z w top  top EM-RECS @ 1 +  CODE-REF-CK
    GOOD? 0= if exit then
    x 0= if  y z OWN-REC REC-KIND KIND-DOES <> if BAD then  exit  then
    x PENDING? if exit then
@@ -3178,9 +3173,9 @@ variable RD-END
 \ A store row: a cell FIND-STORES admits by where it starts, at an aligned offset below an earlier
 \ file's data end (a cell may run past an unaligned end: main.f's D is 98) or in the header data.
 : STORE-CK ( -- )
-   RD-REF {: tag:n x:n y:n z:n :}
+   RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 3 =  x 1 >=  and  tag 4 =  or 0= if BAD exit then
-   tag x y z DATA-REF-CK
+   tag x y z w DATA-REF-CK
    GOOD? 0= if exit then
    tag 3 = if
       y 7 and 0<> if BAD exit then
@@ -3188,7 +3183,7 @@ variable RD-END
    then
    tag 4 = if x 7 and 0<> if BAD exit then then
    RD-U64 RD-U64 {: kind:n v:n :}
-   kind 3 = if RD-REF {: t:n a:n b:n c:n :}  t 5 <> if BAD then exit then
+   kind 3 = if RD-REF {: t:n a:n b:n c:n d:n :}  t 5 <> if BAD then exit then
    v 0<> if BAD exit then
    kind CELL-REF-CK ;
 
@@ -3907,8 +3902,8 @@ variable LINK-EM                     \ that emission's number in this object, -1
 
 
 \ A reference's value, from RD-REF's tag and fields (CODE+ states them); 0 for none.
-: RESOLVE ( n n n n -- n )
-   {: tag:n x:n y:n z:n :}
+: RESOLVE ( n n n n n -- n )
+   {: tag:n x:n y:n z:n w:n :}
    tag 0 = if
       x y z ID-REC {: r:n :}
       r ndict@ >= if E-COMP-STATE throw then
@@ -4084,10 +4079,10 @@ variable LINK-EM                     \ that emission's number in this object, -1
    loop
    RD-U64 {: p:n :}
    p 0 >= if
-      RD-REF {: tag:n x:n y:n z:n :}
+      RD-REF {: tag:n x:n y:n z:n w:n :}
       A64ASM:ENC-RET  copy p +  LE:U32!
       p NEMIT:PATCH-SLOT!
-      tag 5 = if 0 else tag x y z RESOLVE then
+      tag 5 = if 0 else tag x y z w RESOLVE then
    else
       0
    then {: patch:n :}
@@ -4115,7 +4110,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    RD-NAME {: a:ptr u:n :}
    RD-U64 {: flags:n :}
    ROLE-WID {: wid:n :}
-   RD-REF {: tag:n x:n y:n z:n :}
+   RD-REF {: tag:n x:n y:n z:n w:n :}
    GOOD? 0= if E-COMP-STATE throw then
    i 1 + ENTRIES-N @ < if i 1 + ENTRY-OFFS @ OBJ@ KIND-DOES = else false then {: does:bool :}
    does if
@@ -4153,7 +4148,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
       copy s recorded calls calln addrs addrn false 0 off NPUB:IMPORT-PENDING-DOES
    else
       tag 5 <> if
-         copy s calls calln addrs addrn false 0  tag x y z RESOLVE  NPUB:IMPORT-PENDING-DEFER
+         copy s calls calln addrs addrn false 0  tag x y z w RESOLVE  NPUB:IMPORT-PENDING-DEFER
       else
          copy s recorded calls calln addrs addrn false 0 NPUB:IMPORT-PENDING
       then
@@ -4209,9 +4204,9 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    CELLS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 RD-U64 {: off:n kind:n :}
-      RD-REF {: tag:n x:n y:n z:n :}
+      RD-REF {: tag:n x:n y:n z:n w:n :}
       GOOD? 0= if E-COMP-STATE throw then
-      tag x y z RESOLVE  kind  FILE-DP @ off +  PUT-CELL
+      tag x y z w RESOLVE  kind  FILE-DP @ off +  PUT-CELL
    loop
    GOOD? 0= if E-COMP-STATE throw then
    STRS-AT @  OBJECT BYTES$ nip  RD-OPEN
@@ -4224,14 +4219,14 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    GOOD? 0= if E-COMP-STATE throw then
    STORES-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
-      RD-REF {: ctag:n cx:n cy:n cz:n :}
+      RD-REF {: ctag:n cx:n cy:n cz:n cw:n :}
       RD-U64 RD-U64 {: kind:n v:n :}
-      RD-REF {: tag:n x:n y:n z:n :}
+      RD-REF {: tag:n x:n y:n z:n w:n :}
       GOOD? 0= if E-COMP-STATE throw then
       HOLDS-HEADER @ {: held:bool :}  EDGES-N @ {: edges:n :}
-      ctag cx cy cz RESOLVE {: at:n :}
+      ctag cx cy cz cw RESOLVE {: at:n :}
       held HOLDS-HEADER !  edges EDGES-N !        \ the store's cell, as STORES+ keeps it
-      kind 3 = if v else tag x y z RESOLVE then  kind  at  PUT-CELL
+      kind 3 = if v else tag x y z w RESOLVE then  kind  at  PUT-CELL
       at HSTORE+  at STORER+
    loop
    GOOD? 0= if E-COMP-STATE throw then
