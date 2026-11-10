@@ -2,7 +2,8 @@
 \ In its owner's private section `LINEAR: NAME ( payload -- PKG:tok )` mints and
 \ `( PKG:tok -- payload )` erases once CHECKER-LINEAR certifies the row; nothing
 \ mints a top-level DEFLINEAR. Fronts: the engine keyword, the source pre-pass,
-\ tools/check.f fixtures in fork children, and an hb built with --repl.
+\ tools/check.f fixtures in fork children, an hb built with --repl, and a
+\ program tools/hb-build.f builds from files that name a linear type.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -210,7 +211,7 @@ s" package LCH public DEFLINEAR LCH:tok ;package package LCH LINEAR: LCM ( n -- 
    LIN-CHILD:RUN 70 T=
 LIN-CHILD:ERR$ s" hb: interpret stack underdepth: LCM" CONTAINS? TTRUE
 
-\ ---- tools/check.f and an hb built with --repl -----------------------------------
+\ ---- tools/check.f, an hb built with --repl and a built program -----------------
 package LIN-FILES
 4096 constant CAP
 $2000 constant PROG-CAP
@@ -224,6 +225,7 @@ variable RC
 create ROOT-BUF PATH-CAP allot  variable ROOT-U
 create PATH-BUF PATH-CAP allot  variable PATH-U
 create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
+create OBJ-BUF PATH-CAP allot  variable OBJ-U
 PROG-CAP BUFFER: PROG
 variable PROG-U
 
@@ -231,6 +233,7 @@ variable PROG-U
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 : PATH$ ( -- ptr u8 n ) PATH-BUF PATH-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
+: OBJ$ ( -- ptr u8 n ) OBJ-BUF OBJ-U @ ;
 : PROG$ ( -- ptr u8 n ) PROG PROG-U @ ;
 
 : PROG+ ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -320,6 +323,104 @@ variable PROG-U
    PROC-ARGV-ENV-RESET
    IMAGE$ IMAGE-MS RUN ;
 
+: AT-ROOT ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U ! ;
+
+: WRITE-PROG ( ptr u8 n -- )
+   AT-ROOT  PATH$ PROG$ FS:WRITE-ALL  0 PROG-U ! ;
+
+: LOAD-LINE+ ( ptr u8 n ptr u8 n -- ) {: word:ptr wordu:n name:ptr nameu:n :}
+   name nameu AT-ROOT
+   word wordu PROG+  s"  " PROG+  PATH$ PROG+  10 PROG-C+ ;
+
+\ lb-main.f; with `more` it gains a word naming `tok`, so a build after the edit links
+\ lb-own.f and lb-use.f and compiles a file whose type comes from an object.
+: MAIN-SOURCE ( bool -- ) {: more:bool :}
+   0 PROG-U !
+   s" require" s" lb-use.f" LOAD-LINE+
+   more if S\" : MORE ( LB:tok -- LB:tok ) LB-USE:USE ;\n" PROG+ then
+   S\" : MAIN ( -- ) 42 LB:RT . ;\n" PROG+
+   s" lb-main.f" WRITE-PROG ;
+
+\ The owner's file names its type in a later `LINEAR:` row; another file names
+\ `aux` in a SUMTYPE payload and `tok` in an effect, the reverse of their order.
+: LINK-SOURCES ( -- )
+   0 PROG-U !
+   S\" package LB\npublic\nDEFLINEAR LB:tok\nDEFLINEAR LB:aux\n: PASS ( LB:tok -- LB:tok ) ;\n" PROG+
+   S\" private\nLINEAR: MINT ( n -- LB:tok )\nLINEAR: ERASE ( LB:tok -- n )\n" PROG+
+   S\" public\n: RT ( n -- n ) MINT ERASE ;\n;package\n" PROG+
+   s" lb-own.f" WRITE-PROG
+   s" require" s" lb-own.f" LOAD-LINE+
+   S\" package LB-USE\npublic\nSUMTYPE box\n   VARIANT hold LB:aux ;VARIANT\n;SUMTYPE\n" PROG+
+   S\" : USE ( LB:tok -- LB:tok ) LB:PASS ;\n;package\n" PROG+
+   s" lb-use.f" WRITE-PROG
+   false MAIN-SOURCE ;
+
+: TWICE-SOURCE ( -- )
+   0 PROG-U !
+   s" include" s" lb-own.f" LOAD-LINE+
+   s" include" s" lb-own.f" LOAD-LINE+
+   S\" : MAIN ( -- ) ;\n" PROG+
+   s" lb-twice.f" WRITE-PROG ;
+
+\ Builds a source under ROOT to ROOT/lb over the objects directory ROOT/<objs>. Each build is a
+\ fresh hb because the build of a program is what is under test.
+: LINK-BUILD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n objs:ptr objsu:n :}
+   ROOT-BUF ROOT-U @ objs objsu OBJ-BUF FS:JOIN-PATH OBJ-U !
+   ROOT-BUF ROOT-U @ s" lb" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
+   src srcu AT-ROOT
+   0 PROG-U !
+   PROC-ARGV-ENV-RESET
+   s" --load" >LEN PROC-ARGV+  s" tools/hb-build.f" >LEN PROC-ARGV+  s" --" >LEN PROC-ARGV+
+   PATH$ >LEN PROC-ARGV+  s" -o" >LEN PROC-ARGV+  IMAGE$ >LEN PROC-ARGV+
+   s" HABU_OUT" >LEN OBJ$ >LEN PROC-ENV+
+   ENGINE-CANDIDATE:PATH$ IMAGE-MS RUN ;
+
+: LINK-RUN ( -- )
+   0 PROG-U !
+   PROC-ARGV-ENV-RESET
+   IMAGE$ CHECK-MS RUN ;
+
+\ The tail a walk of OBJ$ looks for, the last path ending with it and how many paths do.
+create TAIL-BUF PATH-CAP allot  variable TAIL-U
+create FOUND-BUF PATH-CAP allot  variable FOUND-U  variable FOUND-N
+\ Slot i holds an object's path, 0 long if none, its size and its change time.
+2 constant SLOTS
+create KEPT-BUF SLOTS PATH-CAP * allot
+SLOTS TYPED-BUFFER KEPT-U n
+SLOTS TYPED-BUFFER KEPT-SIZE n
+SLOTS TYPED-BUFFER KEPT-S n
+SLOTS TYPED-BUFFER KEPT-NS n
+
+: TAIL$ ( -- ptr u8 n ) TAIL-BUF TAIL-U @ ;
+: KEPT-PATH ( n -- ptr u8 ) PATH-CAP * KEPT-BUF swap + ;
+: KEPT$ ( n -- ptr u8 n ) {: i:n :} i KEPT-PATH i KEPT-U @ ;
+
+: TAIL-SEEN ( ptr u8 n -- ) {: p:ptr pu:n :}
+   p pu TAIL$ ENDS-WITH? 0= if exit then
+   1 FOUND-N +!  p FOUND-BUF pu BYTE-COPY  pu FOUND-U ! ;
+
+\ Holds in slot i the size and change time of the one object under OBJ$ whose path ends with
+\ the tail; the slot stays empty when none or several do.
+: KEEP ( ptr u8 n n -- ) {: t:ptr tu:n i:n :}
+   0 i KEPT-U !
+   t TAIL-BUF tu BYTE-COPY  tu TAIL-U !
+   0 FOUND-N !  0 FOUND-U !
+   OBJ$ FS:DIR? if OBJ$ [: TAIL-SEEN ;] FS:WALK-FILES then
+   FOUND-N @ 1 <> if exit then
+   FOUND-BUF i KEPT-PATH FOUND-U @ BYTE-COPY  FOUND-U @ i KEPT-U !
+   i KEPT$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   size i KEPT-SIZE !  cs i KEPT-S !  cns i KEPT-NS ! ;
+
+\ The label holds when the object in slot i keeps the size and change time KEEP read: the
+\ build linked it, since a compile replaces the object.
+: LINKED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
+   a u T-LABEL
+   i KEPT-U @ 0= if false TTRUE exit then
+   i KEPT$ FS:FILE? 0= if false TTRUE exit then
+   i KEPT$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   size i KEPT-SIZE @ =  cs i KEPT-S @ =  and  cns i KEPT-NS @ =  and TTRUE ;
+
 : MAIN ( -- )
    FS:CLEANUP-RESET
    ROOT
@@ -353,6 +454,35 @@ variable PROG-U
    OUT$ s\" 42\n" CONTAINS? TTRUE
    ERR$ S\" E-LINEAR-OWNER habu: linear: 'XM': the linear type belongs to package 'LIM'\nhb: uncaught throw code 7196\n" CONTAINS? TTRUE
    RC @ 70 T=
+   s" a build compiles a linear type its own file and another file name" T-LABEL
+   LINK-SOURCES
+   s" lb-main.f" s" objs" LINK-BUILD
+   RC @ 0 T=
+   IMAGE$ FS:EXECUTABLE? TTRUE
+   LINK-RUN
+   OUT$ s" 42" CONTAINS? TTRUE
+   RC @ 0 T=
+   s" /lb-own.f.hfo" 0 KEEP
+   s" /lb-use.f.hfo" 1 KEEP
+   s" and a build over the same objects after the main file gains a use of the type" T-LABEL
+   true MAIN-SOURCE
+   s" lb-main.f" s" objs" LINK-BUILD
+   RC @ 0 T=
+   s" and links the file that owns the type" 0 LINKED
+   s" and links the file that uses it" 1 LINKED
+   LINK-RUN
+   OUT$ s" 42" CONTAINS? TTRUE
+   RC @ 0 T=
+   s" and a type declared twice is refused the same by both" T-LABEL
+   TWICE-SOURCE
+   s" lb-twice.f" s" twice-objs" LINK-BUILD
+   RC @  dup 0 T<>
+   ERR$ s" checker: bad or duplicate signature type" CONTAINS? TTRUE
+   s" /lb-own.f.hfo" 0 KEEP
+   s" lb-twice.f" s" twice-objs" LINK-BUILD
+   RC @ T=
+   ERR$ s" checker: bad or duplicate signature type" CONTAINS? TTRUE
+   s" and the second build links the file's first load" 0 LINKED
    FS:CLEANUP-RUN ;
 
 MAIN

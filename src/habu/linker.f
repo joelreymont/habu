@@ -285,6 +285,7 @@ variable WALK-N
 variable FILE-REC
 variable FILE-HELD
 variable FILE-TFAM                   \ TFAM:TFAM-N@ as the running piece starts
+variable FILE-TYPES                  \ CHECK:TYPE-END as the running piece starts
 variable FILE-ROW
 variable FILE-EM
 variable FILE-DP
@@ -3746,7 +3747,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ As a file's load or its piece after a request starts.
 : MARKS ( -- )
    ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !  0 RETIRED-N !
-   TFAM:TFAM-N@ FILE-TFAM !
+   TFAM:TFAM-N@ FILE-TFAM !  CHECK:TYPE-END FILE-TYPES !
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
@@ -3848,7 +3849,8 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    linked ;
 
 
-\ A type entry for each family the piece declared; its name sits at CP, so `here` stays.
+\ A type entry for each family and linear type the piece declared, none for a linear type
+\ its compile read from an entry; its name sits at CP, so `here` stays.
 : TYPE-ENTRIES ( -- )
    TFAM:TFAM-N@ FILE-TFAM @ ?do
       i TFAM:ENTRY? 0= if
@@ -3856,6 +3858,15 @@ HEADER-BYTES 16 - constant PIECES-FIELD
          i TFAM:ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL OUTER:ALIAS-RECORD
          i TFAM:ENTRY-TEXT$ ix CHECK:FACTS!
          i ix TFAM:ENTRY!
+      then
+   loop
+   CHECK:TYPE-END FILE-TYPES @ ?do
+      i CHECK:LINEAR? if
+         i CHECK:TYPE-NAME$ CHECK:LINEAR-ENTRY 0 < if
+            ndict@ {: ix:n :}
+            i CHECK:TYPE-NAME$ TYPE-SOURCE BOOT:TYPES-WL OUTER:ALIAS-RECORD
+            i CHECK:LINEAR-TEXT$ ix CHECK:FACTS!
+         then
       then
    loop ;
 

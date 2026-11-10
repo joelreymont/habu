@@ -382,10 +382,6 @@ public
 
 variable TFAM-N   0 TFAM-N !
 
-\ Set while the program's types wordlist may hold an entry the registry lacks:
-\ a program starts with its entries unread (TFAM-FIND, READ-PENDING).
-variable ENTRIES-PENDING   -1 ENTRIES-PENDING !
-
 private
 
 : TF-GROW ( n -- ) {: need:n :}
@@ -5141,7 +5137,7 @@ create ER-MSG ER-MSG-CAP allot
 
 public
 
-\ TFAM-FIND-IN, else the type entry `pkg:tail` read into the registry; the
+\ TFAM-FIND-IN, else the family's type entry `pkg:tail` read into the registry; the
 \ rows read are written out again and must equal the entry's text.
 : TFAM-FIND ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
@@ -5151,9 +5147,11 @@ public
    wid 0= IF 0 RES-FALSE EXIT THEN
    pa pu na nu EN-NAME wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
+   rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   \ A linear type's entry shares the wordlist; its text starts `linear`, which is no family.
+   ix CHECK:FACTS@ CHECK:LINEAR-TEXT? IF 0 RES-FALSE EXIT THEN
    PF-TX-DEPTH @ 0 <> IF s" tfam: type entry read inside a declaration" 76 die THEN
    ER-P @ ER-U @ ER-NAME @ ER-NAME-U @ {: sp:ptr su:n sn:ptr snu:n :}
-   rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: ra:ptr ru:n :}
    ra ER-NAME !  ru ER-NAME-U !
    ix CHECK:FACTS@ ER-U ! ER-P !
@@ -5169,8 +5167,8 @@ public
    id RES-TRUE ;
 
 
-\ Reads every type entry the registry lacks, so no lookup inside a declaration
-\ that follows reads one.
+\ Reads every type entry the family registry or the type table lacks, so no
+\ lookup inside a declaration that follows reads one.
 : READ-PENDING ( -- )
    ENTRIES-PENDING @ 0= IF EXIT THEN
    BOOT:TYPES-WL {: wid:n :}
@@ -5178,9 +5176,13 @@ public
       ndict@ 0 ?do
          i CHECKER-RESOLVE:REC-AT {: rec:ptr :}
          rec CK-REC-WID wid = IF
-            rec CHECKER-RESOLVE:CK-REC-NAME$ SPLIT-NAME 0= IF
-               s" tfam: bad type entry name" 76 die THEN
-            TFAM-FIND drop drop
+            i CHECK:FACTS@ CHECK:LINEAR-TEXT? IF
+               rec CHECKER-RESOLVE:CK-REC-NAME$ CT-FIND drop
+            ELSE
+               rec CHECKER-RESOLVE:CK-REC-NAME$ SPLIT-NAME 0= IF
+                  s" tfam: bad type entry name" 76 die THEN
+               TFAM-FIND drop drop
+            THEN
          THEN
       loop
    THEN
@@ -7484,7 +7486,6 @@ FVX-READY 0 CHECK:CELL-ROW+
 FVX-HI 0 CHECK:CELL-ROW+
 FVX-CAP 0 CHECK:CELL-ROW+
 LAY-A-P LAY-CAP-V LAY-REC LAY-N CHECK:STORE+
-ENTRIES-PENDING 0 CHECK:CELL-ROW+
 ;package
 
 package SCHEMA-REG

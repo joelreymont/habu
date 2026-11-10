@@ -849,10 +849,16 @@ CHECKER-REG:}SCRATCH
 \   (b) LIN-TAINT / LIN-TAINT-SCAN: a var copied or dropped while polymorphic is
 \       tainted, and rejected if it later resolves to a linear con
 \       (`[: dup FREE ;]`).
-\ The discipline runs only once a DEFLINEAR type is declared, so non-linear code
-\ (the whole self-build) pays nothing.
+\ The discipline runs once a DEFLINEAR type is declared, and also while a type
+\ entry may be unread, since a body checked before the read would escape it.
 variable LIN-NDECL   0 LIN-NDECL !     \ count of declared DEFLINEAR types (in scope)
-: LIN-ANY? ( -- bool ) LIN-NDECL @ 0 <> ;
+
+\ Set while the program's types wordlist may hold an entry the family registry or
+\ the type table lacks: a program starts with its entries unread (TFAM-FIND,
+\ CT-FIND, READ-PENDING).
+variable ENTRIES-PENDING   -1 ENTRIES-PENDING !
+
+: LIN-ANY? ( -- bool ) LIN-NDECL @ 0 <> ENTRIES-PENDING @ 0 <> or ;
 
 \ Taint list: canonical var ids duplicated/dropped while still polymorphic. Only
 \ appended on a COMMITTED step (LIN-EFF-PASS runs at OK true), so no failed prim
@@ -2345,15 +2351,15 @@ CT-ARENA-BOOT
    0 code cells CT-PKG-U + !
    code CT-ADVANCE ;
 
-\ CT-REWIND ( ctn ctu -- ) : THE type table's rewind; the checker frame's
-\ restore lowers CTN and CT-STR-U only through here. An image carries the
-\ columns' and the pool's slack, so the rows [ctn, CTN) and the pool bytes
-\ [ctu, CT-STR-U) it retires are zeroed first: a later image then bakes no
-\ retired type and matches a run that never declared one.
+\ The checker frame's one rewind of CTN and CT-STR-U: it zeroes what it retires, so an image bakes no
+\ retired type, and sets ENTRIES-PENDING for a retired linear row, which an entry may still hold.
 : CT-REWIND ( n n -- ) {: ctn:n ctu:n :}
    ctn 1 < ctn CTN @ > or ctu 0 < or ctu CT-STR-U @ > or IF
       s" checker: type table rewind outside the registry" 76 die
    THEN
+   CTN @ ctn ?do
+      i cells CT-CLASS + @ CT-LINEAR = IF -1 ENTRIES-PENDING ! THEN
+   loop
    CT-NAME-A ctn CTN @ ARENA-CELLS-ZERO   CT-NAME-U ctn CTN @ ARENA-CELLS-ZERO
    CT-CLASS ctn CTN @ ARENA-CELLS-ZERO    CT-WIDTH ctn CTN @ ARENA-CELLS-ZERO
    CT-SIGN ctn CTN @ ARENA-CELLS-ZERO
@@ -2400,6 +2406,19 @@ CT-ARENA-BOOT
 
 CT-INIT
 
+\ A build's type table starts with CT-INIT's rows (CHECK:OPEN): a target declares its
+\ own linear types, so a name hb declared is free there and none stays in hb.
+CT-NAME-A-P CT-CAP-V CELL CTN CHECK:STORE+
+CT-NAME-U-P CT-CAP-V CELL CTN CHECK:STORE+
+CT-CLASS-P CT-CAP-V CELL CTN CHECK:STORE+
+CT-WIDTH-P CT-CAP-V CELL CTN CHECK:STORE+
+CT-SIGN-P CT-CAP-V CELL CTN CHECK:STORE+
+CT-PKG-A-P CT-CAP-V CELL CTN CHECK:STORE+
+CT-PKG-U-P CT-CAP-V CELL CTN CHECK:STORE+
+CT-STR-P CT-STR-CAP-V 1 CT-STR-U CHECK:STORE+
+LIN-NDECL 0 CHECK:CELL-ROW+
+ENTRIES-PENDING 0 CHECK:CELL-ROW+
+
 : CT-CLASS@ ( n -- n )
    cells CT-CLASS + @ ;
 
@@ -2434,12 +2453,132 @@ CT-INIT
 : CT-NAME= ( ptr u8 n n -- bool ) {: a:ptr u:n code:n :}
    code CT-NAME$ a u CORE-STR= ;
 
+package CHECKER-RESOLVE
+public
+\ The record a wordlist holds under a name, NULL-PTR for none: the engine's
+\ one-wordlist probe, whose primitive row this package owns (prims.f).
+: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
+;package
+
+\ The wordlist a dictionary record was published into.
+: CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT DICT-CELL@ ;
+
+\ Dictionary record slots and flags (src/habu/layout.f DREC).
+2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
+3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
+4 constant CK-REC-FACTS-SLOT                \ the facts text's offset from its DATA (CHECK:FACTS@), 0 for none
+$00001FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
+$2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
+
+\ The dictionary record at index IX, as src/habu/xref.f XREF-REC mints it, which the boot prefix loads
+\ after this file (habu2.f); a record spans DICT-WORDLIST-SLOT and the slots before it.
+package CHECKER-RESOLVE
+CAST: N>REC ( n -- ptr n )
+\ A DNAME-EXT record's name cell holds the byte address of its name.
+CAST: REC-CELLS ( ptr n -- ptr ptr u8 )
+public
+: REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + N>REC ;
+\ Its inverse, the index the bound window and the tape's K-TICK and K-IS name a
+\ record by. Every index from 0 names a record; -1 names none.
+: REC>INDEX ( ptr n -- n )
+   {: rec:ptr :}
+   rec NULL-PTR = IF -1 EXIT THEN
+   rec NULL-PTR - dbase@ - DICT-WORDLIST-SLOT 1+ cells / ;
+\ A record's name: its length under DNAME-LEN-MASK in the flags cell, inline from the name cell or,
+\ with DNAME-EXT set, behind the pointer that cell holds (xref.f XREF-NAME-A).
+: CK-REC-NAME$ ( ptr n -- ptr u8 n )
+   {: rec:ptr :}
+   rec CK-REC-FLAGS-SLOT DICT-CELL@ {: flags:n :}
+   flags CK-REC-LEN-MASK and {: u:n :}
+   flags CK-REC-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
+   rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
+;package
+
+\ A new linear type `a u` owned by package `pa pu` ("" for none): the declaring package, the one a
+\ type entry's text names (CHECK:READ-LINEAR), or none for an imported graph (CK-GRAPH-CON-INSTALL).
+: CT-LINEAR-SET ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n pa:ptr pu:n :}
+   CTN @ {: code:n :}
+   a u code CT-LINEAR 64 CS-NONE CT-SET
+   pa pu code CT-PKG!
+   LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
+
+package CHECK
+private
+\ ndict@ at the open: records from here on are the build's, their facts in its space.
+variable BUILD-FIRST   0 BUILD-FIRST !
+\ hb's DP ceiling at the open (the linker's SAVED-CEILING): it bounds hb's records'
+\ facts while a build's space is open, when DP-CEILING-CELL holds the build's.
+variable HB-CEILING   0 HB-CEILING !
+: IMAGE-BASE ( -- n ) data-base BOOT:IMAGE-BASE-CELL + @ ;
+\ While a build's space is open the facts words hold each write for the linker:
+\ a text laid then lands in DATA only if no earlier file of the build has it.
+: BUILDING? ( -- bool ) IMAGE-BASE 0 <> ;
+\ A linear type's type entry (the linker's TYPE-ENTRIES) is named for the type, its text
+\ `linear pkg`, `-` for none; a family's text starts with a number (TFAM:ENTRY-TEXT$).
+: HEAD$ ( -- ptr u8 n ) s" linear " ;
+\ The package a linear type entry's text `a u` names after HEAD$, empty for `-`.
+: ENTRY-PKG$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   HEAD$ nip {: hu:n :}
+   a hu + u hu - {: pa:ptr pu:n :}
+   pa pu s" -" CORE-STR= IF pa 0 EXIT THEN
+   pa pu ;
+
+public
+\ Record ix's facts text, empty for none: bytes 32-39 hold its offset in the DATA
+\ owning it, and a text outside that DATA dies: the kernel bounds only writes.
+: FACTS@ ( n -- ptr u8 n )
+   {: ix:n :}
+   ix CHECKER-RESOLVE:REC-AT CK-REC-FACTS-SLOT cells + @ {: off:n :}
+   off 0= IF NULL-PTR BYTE-VIEW 0 EXIT THEN
+   data-base BOOT:DP-CEILING-CELL + @ {: ceiling:n :}
+   BUILDING? ix BUILD-FIRST @ >= and IF
+      IMAGE-BASE ceiling
+   ELSE
+      data-base NULL-PTR -  BUILDING? IF HB-CEILING @ ELSE ceiling THEN
+   THEN {: base:n top:n :}
+   top base - {: size:n :}
+   off CELL < off size >= or IF s" checker: facts text outside DATA" 76 die THEN
+   NULL-PTR BYTE-VIEW base + off + {: a:ptr :}
+   a CELL - CELL-VIEW @ {: u:n :}
+   u 0 < u size off - > or IF s" checker: facts text outside DATA" 76 die THEN
+   a u ;
+
+: LINEAR-TEXT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   HEAD$ nip {: hu:n :}
+   u hu < IF RES-FALSE EXIT THEN
+   a hu HEAD$ CORE-STR= ;
+
+\ The index of the record the program's types wordlist holds under exactly the
+\ name `a u` with a linear type entry's text, else -1.
+: LINEAR-ENTRY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   BOOT:TYPES-WL {: wid:n :}
+   wid 0= IF -1 EXIT THEN
+   a u wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF -1 EXIT THEN
+   rec CHECKER-RESOLVE:CK-REC-NAME$ a u CORE-STR= 0= IF -1 EXIT THEN
+   rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   ix FACTS@ LINEAR-TEXT? 0= IF -1 EXIT THEN
+   ix ;
+
+\ The code of the linear type `a u` names, read from its type entry into the type
+\ table, or 0 for none. The compile that wrote the entry checked the name.
+: READ-LINEAR ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u LINEAR-ENTRY {: ix:n :}
+   ix -1 = IF 0 EXIT THEN
+   CTN @ {: code:n :}
+   a u ix FACTS@ ENTRY-PKG$ CT-LINEAR-SET
+   code ;
+;package
+
+\ The type table's code for `a u`, else a linear type entry's read into it, else 0.
 : CT-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    1 CT-I !
    begin CT-I @ CTN @ < while
       a u CT-I @ CT-NAME= IF CT-I @ exit THEN
       CT-I @ 1 + CT-I !
-   repeat 0 ;
+   repeat
+   ENTRIES-PENDING @ 0= IF 0 EXIT THEN
+   a u CHECK:READ-LINEAR ;
 
 : INT-FAM? ( n -- bool ) {: code:n :}
    code CT-INT? ;
@@ -7135,16 +7274,31 @@ variable PKHAVE
    a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-BAD-CHAR? ;
 
-\ A new linear type `a u` declared by package `pa pu` ("" for none). The owner is
-\ the caller's to name: a declaration records the package declaring it, while an
-\ imported graph (CK-GRAPH-CON-INSTALL) records none, since whatever package is
-\ being checked when the graph arrives did not declare the type.
 : CT-ADD-LINEAR ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n pa:ptr pu:n :}
    a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
-   CTN @ {: code:n :}
-   a u code CT-LINEAR 64 CS-NONE CT-SET
-   pa pu code CT-PKG!
-   LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
+   a u pa pu CT-LINEAR-SET ;
+
+\ A linear type's type entry text, the form CHECK:HEAD$ states.
+package CHECK
+private
+CHECKER-PACKAGE-CAP 2 * 8 + constant LINEAR-TEXT-CAP   \ a part's `a:b` and the head
+create LINEAR-TEXT LINEAR-TEXT-CAP allot
+: TEXT+ ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+   u 0 ?do a i + c@ LINEAR-TEXT at + i + c! loop ;
+public
+: TYPE-END ( -- n ) CTN @ ;
+: LINEAR? ( n -- bool ) CT-LINEAR? ;
+: TYPE-NAME$ ( n -- ptr u8 n ) CT-NAME$ ;
+
+\ Linear type code's entry text, in a buffer the next call reuses.
+: LINEAR-TEXT$ ( n -- ptr u8 n )
+   CT-PKG$ {: pa:ptr pu:n :}
+   pu 0= IF s" -" ELSE pa pu THEN {: a:ptr u:n :}
+   HEAD$ {: ha:ptr hu:n :}
+   hu u + LINEAR-TEXT-CAP > IF s" checker: linear type entry too long" 76 die THEN
+   ha hu 0 TEXT+  a u hu TEXT+
+   LINEAR-TEXT hu u + ;
+;package
 
 \ SIG-QUOT-XT parses a quotation ([ in -- out | rin -- rout ]) as a family
 \ argument. It needs PSTACK, defined below SIG-TYPE, so it is bound to
@@ -9226,12 +9380,6 @@ package CHECK
 \ SYM-GROW's drop: the next lookup indexes the stores as they are now.
 : DROP-INDEX ( -- )
    HIDX-MEM-CLEAR  0 HIDX-VALID !  HIDX-EPOCH+ ;
-
-\ ndict@ at the open: records from here on are the build's, their facts in its space.
-variable BUILD-FIRST   0 BUILD-FIRST !
-\ hb's DP ceiling at the open (the linker's SAVED-CEILING): it bounds hb's records'
-\ facts while a build's space is open, when DP-CEILING-CELL holds the build's.
-variable HB-CEILING   0 HB-CEILING !
 
 
 public
@@ -12332,13 +12480,6 @@ variable PE-SPEC-I   variable PE-SPEC-J
       PE-SPEC-I @ 1 + PE-SPEC-I !
    REPEAT ;
 
-package CHECKER-RESOLVE
-public
-\ The record a wordlist holds under a name, NULL-PTR for none: the engine's
-\ one-wordlist probe, whose primitive row this package owns (prims.f).
-: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
-;package
-
 \ The rows of each primitive the running hb's kernel lacks.
 : PE-SPEC-NEW ( -- )
    0 PE-SPEC-I !
@@ -13119,46 +13260,6 @@ public
    u d cells CK-USE-LENS + ! ;
 ;package
 
-\ The wordlist a dictionary record was published into.
-: CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT DICT-CELL@ ;
-
-\ Dictionary record slots and flags (src/habu/layout.f DREC).
-2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
-3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
-4 constant CK-REC-FACTS-SLOT                \ the facts text's offset from its DATA (CHECK:FACTS@), 0 for none
-$00001FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
-$2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
-
-\ The dictionary record at index IX, minted as src/habu/xref.f XREF-REC mints it
-\ (XREF:REC). This file cannot use XREF-REC: the boot prefix loads it before
-\ xref.f (src/habu/habu2.f), and everywhere else it reaches a record only by a
-\ lookup by name (scope-find, CHECKER-RESOLVE:WL-PROBE), which cannot list a
-\ wordlist. A record spans CK-REC-WID's slot and those before it, the size the
-\ bound window divides by to name a record's index.
-package CHECKER-RESOLVE
-CAST: N>REC ( n -- ptr n )
-\ A DNAME-EXT record's name cell holds the byte address of its name.
-CAST: REC-CELLS ( ptr n -- ptr ptr u8 )
-public
-: REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + N>REC ;
-\ Its inverse, the index the bound window and the tape's K-TICK and K-IS name a
-\ record by. Every index from 0 names a record; -1 names none.
-: REC>INDEX ( ptr n -- n )
-   {: rec:ptr :}
-   rec NULL-PTR = IF -1 EXIT THEN
-   rec NULL-PTR - dbase@ - DICT-WORDLIST-SLOT 1+ cells / ;
-\ A dictionary record's name: the flags cell holds its length under
-\ DNAME-LEN-MASK, and the name sits inline from the name cell or, with
-\ DNAME-EXT set, behind the pointer that cell holds, as src/habu/xref.f
-\ XREF-NAME-A reads it.
-: CK-REC-NAME$ ( ptr n -- ptr u8 n )
-   {: rec:ptr :}
-   rec CK-REC-FLAGS-SLOT DICT-CELL@ {: flags:n :}
-   flags CK-REC-LEN-MASK and {: u:n :}
-   flags CK-REC-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
-   rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
-;package
-
 package CHECK
 public
 \ A held entry's kind, where a record's facts carry the record's index.
@@ -13178,7 +13279,6 @@ NULL-PTR HELD-TEXT-P !   $10000 HELD-TEXT-CAP !   0 HELD-TEXT-N !
 HELD-P HELD-CAP HELD-ROW HELD-N STORE+
 HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 
-: IMAGE-BASE ( -- n ) data-base BOOT:IMAGE-BASE-CELL + @ ;
 : HELD-ROWS ( -- ptr u8 ) HELD-P @ ;
 : HELD-TEXT ( -- ptr u8 ) HELD-TEXT-P @ ;
 : HELD-CELL ( n n -- ptr n )
@@ -13247,29 +13347,8 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    ix 0 < IF EXIT THEN
    u 0= IF 0 ix record-facts! EXIT THEN
    a u INTERN:TEXT IMAGE-BASE - ix record-facts! ;
-\ While a build's space is open the facts words hold each write for the linker:
-\ a text laid then lands in DATA only if no earlier file of the build has it.
-: BUILDING? ( -- bool ) IMAGE-BASE 0 <> ;
 
 public
-\ Record ix's facts text, empty for none: bytes 32-39 hold its offset in the DATA
-\ owning it, and a text outside that DATA dies: the kernel bounds only writes.
-: FACTS@ ( n -- ptr u8 n )
-   {: ix:n :}
-   ix CHECKER-RESOLVE:REC-AT CK-REC-FACTS-SLOT cells + @ {: off:n :}
-   off 0= IF NULL-PTR BYTE-VIEW 0 EXIT THEN
-   data-base BOOT:DP-CEILING-CELL + @ {: ceiling:n :}
-   BUILDING? ix BUILD-FIRST @ >= and IF
-      IMAGE-BASE ceiling
-   ELSE
-      data-base NULL-PTR -  BUILDING? IF HB-CEILING @ ELSE ceiling THEN
-   THEN {: base:n top:n :}
-   top base - {: size:n :}
-   off CELL < off size >= or IF s" checker: facts text outside DATA" 76 die THEN
-   NULL-PTR BYTE-VIEW base + off + {: a:ptr :}
-   a CELL - CELL-VIEW @ {: u:n :}
-   u 0 < u size off - > or IF s" checker: facts text outside DATA" 76 die THEN
-   a u ;
 \ Stores the interned text's offset in the record's bytes 32-39.
 : FACTS! ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
