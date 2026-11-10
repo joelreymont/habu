@@ -1,6 +1,6 @@
 ---
 title: "Inline T0's tag check for a plain ENUM fetch"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-10T06:43:24.578219+02:00"

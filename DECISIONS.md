@@ -20,7 +20,12 @@ learned live in the docs for their subject.
   working, then tackle wasm and x86, in that order". The same day, asked of
   a library fix and a state-machine word whether they were incremental-build
   work, Joel wrote "fix incremental builds first, work in parallel if you
-  can, then tackle everything else when incremental builds 100% work".
+  can, then tackle everything else when incremental builds 100% work". On
+  2026-11-10, shown the open warm-build gaps (a file that bakes in a number
+  taken from the data layout, two kernel changes never checked against a warm
+  build, a lock taken while a build loads, a row naming its own definition,
+  the spark install), Joel wrote "dot and fix now, before continuing with
+  wasm, etc. do this in parallel if you can".
 - 2026-11-09, Wasm and x86-64 after arm64: told that one Wasm failure on the
   landing tree is a tier-0 defect of the stack and the other's cause is
   unknown, and asked whether to hold the Wasm work until arm-to-arm lands, Joel
