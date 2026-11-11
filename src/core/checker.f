@@ -6891,6 +6891,7 @@ variable VRC-RVN
          VR-VAR VREC-NODE-NEW {: node:n :}
          x VREC-RES PAY VREC-TV-ID node VN.A!
          x VREC-RES PAY NSCOPE@ Q-FLAG>N node VN.B!
+         x VREC-RES PAY NLINEAR@ Q-FLAG>N node VN.C!
          node
       endof
       S-ROW of
@@ -7020,6 +7021,7 @@ variable VRC-RVN
       VR-VAR of
          node VN.A@ VREC-I-TV
          node VN.B@ 0 <> IF dup PAY NSCOPE! THEN
+         node VN.C@ 0 <> IF dup PAY NLINEAR! THEN
       endof
       VR-ROW of
          node VN.A@ VREC-I-RV
@@ -8351,8 +8353,9 @@ CHECKER-REG:}SCRATCH
    ta tu s" noblock" CORE-STR= IF ta tu SIG-NOBLOCK-TAG EXIT THEN
    ta tu TAG>KIND {: kind:n :}
    ta tu s" noscope" CORE-STR= {: ns:bool :}
+   ta tu s" nolinear" CORE-STR= {: nl:bool :}
    kind RVK-QUOT =  kind RVK-INFERRED =  or {: rk:bool :}
-   kind TVK-ANY =  ns 0=  and IF
+   kind TVK-ANY =  ns 0=  and  nl 0=  and IF
       ta tu SIG-CTL-TAG 0= IF ta tu SGBAD-SYNTAX! THEN EXIT
    THEN
    NEXT-SIG-TOK {: la:ptr lu:n :}
@@ -8360,6 +8363,7 @@ CHECKER-REG:}SCRATCH
    la lu  rk 0=  ns rk or  TAG-VAR {: id:n :}
    id 0 < IF la lu SGBAD-SYNTAX! EXIT THEN
    ns IF id NSCOPE! EXIT THEN
+   nl IF id NLINEAR! EXIT THEN
    kind id TVK! ;
 
 
@@ -10083,7 +10087,7 @@ UIX-RESET
 : E-KEY-N ( n -- n ) {: p:n :}
    p E-NODE-TAG {: tg:n :}
    tg EN-CON = IF 1 EXIT THEN
-   tg EN-VAR = IF 3 EXIT THEN
+   tg EN-VAR = IF 4 EXIT THEN
    tg EN-ROW = IF 3 EXIT THEN
    tg EN-PTR = IF 1 EXIT THEN
    tg EN-PUSH = IF 3 EXIT THEN
@@ -10332,6 +10336,7 @@ UIX-RESET
          x E-RES PAY E-TV-ID r@ E-WPTR EN.A !
          x E-RES PAY TVK@ r@ E-WPTR EN.B !   \ persist the var kind for freshening + snapshot
          x E-RES PAY NSCOPE@ Q-FLAG>N r@ E-WPTR EN.C !
+         x E-RES PAY NLINEAR@ Q-FLAG>N r@ E-WPTR EN.D !
          r>
       endof
       S-ROW of
@@ -11704,6 +11709,7 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
          r@ EN.B @ TVK-BASE-ONLY = IF dup PAY TVK-BASE-ONLY! THEN
          r@ EN.B @ TVK-STORED = IF dup PAY TVK-STORED! THEN
          r@ EN.C @ 0 <> IF dup PAY NSCOPE! THEN
+         r@ EN.D @ 0 <> IF dup PAY NLINEAR! THEN
          r> drop
       endof
       EN-ROW of
@@ -23690,8 +23696,11 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
 
 : CK-GRAPH-BOOL? ( n -- ) dup 0 <> swap -1 <> and IF ASIG-GRAPH-DIE THEN ;
 
-: CK-GRAPH-VAR? ( n n n bool -- ) {: id:n kind:n no-scope:n row:bool :}
+: CK-GRAPH-VAR? ( n n n n bool -- )
+   {: id:n kind:n no-scope:n no-linear:n row:bool :}
    no-scope CK-GRAPH-BOOL?
+   no-linear CK-GRAPH-BOOL?
+   row no-linear 0 <> and IF ASIG-GRAPH-DIE THEN
    kind TVK-SCOPE = kind TVK-REGION = or no-scope 0 <> and IF ASIG-GRAPH-DIE THEN
    row IF 0 CK-GRAPH-PTR EW.RVN @ ELSE 0 CK-GRAPH-PTR EW.TVN @ THEN {: count:n :}
    id 0 < id count >= or IF ASIG-GRAPH-DIE THEN
@@ -23702,7 +23711,8 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
         kind TVK-REGION <> and IF ASIG-GRAPH-DIE THEN THEN
    row IF id 0 CK-GRAPH-PTR EW.TVN @ + ELSE id THEN cells
    CK-GRAPH-MAP-U @ + CK-GRAPH-SLOT {: slot:ptr :}
-   kind 1+ no-scope 0 <> IF $100 or THEN {: meta:n :}
+   kind 1+ no-scope 0 <> IF $100 or THEN
+   no-linear 0 <> IF $200 or THEN {: meta:n :}
    slot @ 0 <> slot @ meta <> and IF ASIG-GRAPH-DIE THEN
    meta slot ! ;
 
@@ -23769,8 +23779,10 @@ variable CK-GRAPH-UNIT-MAP
    tag 0 < tag EN-BVAR > or IF ASIG-GRAPH-DIE THEN
    tag row CK-GRAPH-KIND?
    tag EN-CON = IF node CK-GRAPH-CON?
-   ELSE tag EN-VAR = IF node EN.A @ node EN.B @ node EN.C @ RES-FALSE CK-GRAPH-VAR?
-   ELSE tag EN-ROW = IF node EN.A @ node EN.B @ node EN.C @ RES-TRUE CK-GRAPH-VAR?
+   ELSE tag EN-VAR = IF
+      node EN.A @ node EN.B @ node EN.C @ node EN.D @ RES-FALSE CK-GRAPH-VAR?
+   ELSE tag EN-ROW = IF
+      node EN.A @ node EN.B @ node EN.C @ 0 RES-TRUE CK-GRAPH-VAR?
    ELSE tag EN-PTR = IF
       node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
    ELSE tag EN-PUSH = IF

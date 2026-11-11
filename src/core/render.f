@@ -674,7 +674,8 @@ LOCSHOW-INSTALL
 : VAR-SCOPE-TAG ( n -- ) {: idx:n :}
    idx SEEN-VAR {: id:n :}
    id 0 < IF EXIT THEN
-   id NSCOPE@ IF s" noscope" idx VAR-FACT-TAG THEN ;
+   id NSCOPE@ IF s" noscope" idx VAR-FACT-TAG THEN
+   id NLINEAR@ IF s" nolinear" idx VAR-FACT-TAG THEN ;
 
 : ROW-SCOPE-TAG ( n -- ) {: idx:n :}
    idx cells RROW-KEY + @ NSCOPE@ IF s" noscope" idx 65 + FACT-TAG THEN ;
@@ -707,8 +708,9 @@ LOCSHOW-INSTALL
    q RQUOT@ PAY NSCOPE@ 0= IF EXIT THEN
    s" noblock " DTXT  q RNUM  32 EMIT1 ;
 
-\ Facts text for checker.f SIG-TAGS, `( E ) offset a noscope A block 1 2 noblock 1 `,
-\ written from the RSN it is called with: a caller that wants a fresh text sets `0 RSN !` first.
+\ Facts text, `( E ) offset a noscope A nolinear a block 1 2 noblock 1 `,
+\ written from the RSN it is called with: a caller that wants a fresh text sets
+\ `0 RSN !` first.
 : REND-FACTS ( n n n n bool -- ptr u8 n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
    1 RDST !  s" ( " DTXT
