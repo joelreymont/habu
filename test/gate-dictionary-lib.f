@@ -372,16 +372,20 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" GE-SRC-CHECK-LINE
-   s" hb rejects local capture in quotation" GE-EVAL-RUN-STDIN
+   s" hb admits a quotation's read of a local" GE-EVAL-RUN-STDIN
    SB-RESET
-   s" 0" GE-OUT-LINE
-   SB$ s" hb rejects local capture in quotation output" GE-EXPECT-OUT ;
+   s" -1" GE-OUT-LINE
+   SB$ s" hb admits a quotation's read of a local output" GE-EXPECT-OUT ;
 
-: LOCAL-QUOT-FAIL ( -- )
+: LOCAL-QUOT-RUN ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" : QLOCAL {: x:n :} [: x ;] execute ;" GE-SRC-LINE
-   70 s" E-BAD-LOCAL-SHAPE habu: in qlocal: at 'x'" s" hb checker rejects local capture in quotation diagnostic" GE-EVAL-FORK-BAD ;
+   s" : QLOCAL ( n -- n ) {: x:n :} [: x ;] execute ;" GE-SRC-LINE
+   s" 7 QLOCAL ." GE-SRC-LINE
+   s" hb quotation reads a local" GE-EVAL-RUN-STDIN
+   SB-RESET
+   s" 7" GE-OUT-LINE
+   SB$ s" hb quotation reads a local output" GE-EXPECT-OUT ;
 
 : LOCAL-FIRST ( -- )
    GE-HB-RESET
@@ -1448,7 +1452,7 @@ public
    RETURN-CHECKS
    COMBINATOR-CHECKS
    LOCAL-QUOT-CHECKS
-   LOCAL-QUOT-FAIL
+   LOCAL-QUOT-RUN
    LOCAL-FIRST
    LITERAL-FLOAT-FIRST
    LITERAL-FLOAT-EVAL

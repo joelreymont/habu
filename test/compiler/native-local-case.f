@@ -63,12 +63,10 @@ variable EXITED
    S\" 104\n99\n99\n10\n0\n11\n-6\n" EXPECT-OUT ;
 
 : QUOTATION-CASE ( -- )
-   s" a local reference cannot escape into a quotation" T-LABEL
-   S\" : REVIEW-WIDTH ( -- n ) 3 ;\n: BAD-QLOCAL ( n -- n ) {: review-width:n :} [: review-width ;] execute ;\n"
+   s" inside a quotation the local's spelling is the local, not the word" T-LABEL
+   S\" : REVIEW-WIDTH ( -- n ) 3 ;\n: OK-QLOCAL ( n -- n ) {: review-width:n :} [: review-width ;] execute ;\n17 OK-QLOCAL .\n"
    RUN-SOURCE
-   70 EXPECT-RC
-   OUT-U @ 0 T=
-   ERR$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE
+   S\" 17\n" EXPECT-OUT
 
    s" the other spelling in a quotation is the word, which a quotation may call" T-LABEL
    S\" : REVIEW-WIDTH ( -- n ) 3 ;\n: OK-QWORD ( n -- n ) {: review-width:n :} [: REVIEW-WIDTH ;] execute ;\n17 OK-QWORD .\n"

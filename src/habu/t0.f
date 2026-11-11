@@ -581,7 +581,6 @@ variable WS-K                        \ operands the word moves
 \ unit's scan: a K-LOCAL-DECL row names the next one, a K-LOCAL-REF row the
 \ one it reads.
 DYNAMIC-BUFFER L-SLOT n              \ by sequence: the first of its frame slots
-DYNAMIC-BUFFER L-WIDTH n             \ by sequence: its cells
 variable L-N                         \ the frame slots the locals in scope hold
 variable G-CELLS                     \ the cells the open group's names hold so far
 variable BINDS                       \ binds so far: the next one's sequence
@@ -592,8 +591,8 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
    seq count >= if E-T0-BINDS throw then
    first seq + BIND-WIDTHS @ {: w:n :}
    seq 1+ BINDS !
-   seq 1+ L-SLOT-RESERVE  seq 1+ L-WIDTH-RESERVE
-   L-N @ G-CELLS @ +  seq L-SLOT !  w seq L-WIDTH !
+   seq 1+ L-SLOT-RESERVE
+   L-N @ G-CELLS @ +  seq L-SLOT !
    w G-CELLS +! ;
 
 \ Pop c cells into slots base .. base+c-1, the top cell into the last.
@@ -620,12 +619,9 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
    base cells + L-N !
    0 G-CELLS ! ;
 
-: DO-LOCAL ( n -- ) {: k:n :}
-   k L-WIDTH @ 0 ?do
-      ROOM ALLOC {: r:vreg :}
-      r k L-SLOT @ i + EMIT-SLOT-LOAD
-      r PUSH-REG
-   loop ;
+\ The cells of bind sequence seq in the scan that holds text offset at.
+: LOCAL-CELLS ( n n -- n ) {: seq:n at:n :}
+   at SPLIT-BINDS drop seq + BIND-WIDTHS @ ;
 
 \ ---- comparisons -------------------------------------------------------------
 \ The compare's operands are removed, so a vreg is free and ALLOC emits nothing
@@ -1062,6 +1058,7 @@ variable DO-N                       \ the open levels
 \ ---- the rest of the keywords ------------------------------------------------
 \ True once the body has left through a tail call: nothing follows it.
 variable TAILED
+variable REC-NEXT                    \ the open unit's next free record cell
 
 : DO-EXIT ( -- ) SPILL-ALL EMIT-RETURN 1 DEAD ! ;
 : DO-RECURSE ( -- ) SPILL-ALL EMIT-CALL-SELF ;
@@ -1138,10 +1135,12 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 \ A call spills first; the last token of a body outside every structure leaves
 \ through the callee when the callee lies in the code region, as tier 1's
 \ (src/compiler/native/compiler.f LINKAGE): publication refuses a tail branch
-\ out of it. loc is the calling token's offset in the text.
+\ out of it. A unit that built a record calls instead: the callee may run the
+\ quotation, whose record a tail call would free with the frame. loc is the
+\ calling token's offset in the text.
 : DO-CALL ( n n -- ) {: to:n loc:n :}
    SPILL-ALL
-   CS-N @ 0= AT-END? and to NPUB:IN-REGION? and if
+   CS-N @ 0= AT-END? and to NPUB:IN-REGION? and REC-NEXT @ 0= and if
       to loc EMIT-TAIL
       1 TAILED ! exit
    then
@@ -1296,13 +1295,102 @@ CAST: XT>N ( xt -- n )
 \ compiled from its first row (QORD), in the order the `[:` tokens were met,
 \ nested ones after their parent. Each unit starts with an empty virtual
 \ stack, no structure, loop level or local, as the checker reads a quotation.
-\ A local group inside a quotation, or a read of an enclosing local, never
-\ reaches T0 as one: the checker refuses it in a checked body
-\ (E-BAD-LOCAL-SHAPE), and in a TRUSTED: body its tokens bind no record,
-\ refused E-T0-UNSUPPORTED at the first.
+\
+\ A reading quotation's `[:` builds its record in the frame of the unit it is written in
+\ (MAKE-RECORD): the unit's address, then the cells of each local read, in first-read order.
 variable NQ                         \ units met so far, the definition's included
 DYNAMIC-BUFFER QORD n               \ each quotation's first ordinal
 variable NESTED                     \ the `[:` rows skipped inside quotations so far
+DYNAMIC-BUFFER QR-AT n              \ each quotation's first entry in READS
+DYNAMIC-BUFFER QR-N n               \ each quotation's locals read, 0 for a plain one
+DYNAMIC-BUFFER READS n              \ the quotations' read lists end to end, by sequence
+variable READS-N                    \ the entries READS holds
+variable READER                     \ the unit being compiled if it reads locals, else -1
+
+\ 1 at a `[:`, -1 at a `;]`, else 0.
+: ROW-NEST ( n -- n ) {: k:n :}
+   k ROW-KIND @ CHECKER-TAPE:K-CONTROL <> if 0 exit then
+   k ROW-A0 @ CF-QUOT-OPEN = if 1 exit then
+   k QUOT-END? if -1 exit then
+   0 ;
+
+\ The ordinal of the `;]` closing the quotation whose body starts at row lo.
+: SPAN-END ( n -- n )
+   1 swap begin over 0 >  over ROWS @ <  and while
+      dup ROW-NEST rot + swap 1+
+   repeat nip 1- ;
+
+\ Whether row j is the first read of its local in rows lo .. j.
+: FIRST-READ? ( n n -- bool ) {: lo:n j:n :}
+   j ROW-KIND @ CHECKER-TAPE:K-LOCAL-REF <> if false exit then
+   j lo ?do
+      i ROW-KIND @ CHECKER-TAPE:K-LOCAL-REF =  i ROW-A0 @ j ROW-A0 @ =  and if
+         false unloop exit
+      then
+   loop
+   true ;
+
+\ How many locals the quotation whose body starts at row lo reads, and their
+\ cells.
+: READS-OF ( n -- n n ) {: lo:n :}
+   lo 1- ROW-OFF @ {: at:n :}
+   0 0  lo SPAN-END lo ?do
+      lo i FIRST-READ? if  swap 1+ swap  i ROW-A0 @ at LOCAL-CELLS +  then
+   loop ;
+
+\ Whether row j belongs to the unit being opened: short of the tape's end, the
+\ split's `does>` and the unit's `;]`.
+: UNIT-ROW? ( n -- bool ) {: j:n :}
+   j ROWS @ >= if false exit then
+   j SPLIT @ <>  j QUOT-END? 0=  and ;
+
+\ The record cells of the open unit, whose rows start at from: for each reading
+\ quotation written directly in it, its address and its locals' cells.
+: OPEN-RECORD ( n -- )
+   0 swap begin dup UNIT-ROW? while
+      dup ROW-NEST 1 = if
+         1+ dup READS-OF swap 0 > if 1+ rot + swap else drop then
+         SPAN-END
+      then
+      1+
+   repeat drop
+   dup 0 > if EMIT-REC-CELLS else drop then ;
+
+\ Append the reads of the quotation whose body starts at row lo to READS: how
+\ many.
+: KEEP-READS ( n -- n ) {: lo:n :}
+   READS-N @ {: at:n :}
+   lo SPAN-END lo ?do
+      lo i FIRST-READ? if
+         READS-N @ 1+ READS-RESERVE
+         i ROW-A0 @ READS-N @ READS !
+         1 READS-N +!
+      then
+   loop
+   READS-N @ at - ;
+
+\ The cell of READER's record that holds the first cell of local seq, at a text
+\ offset in its scan; -1 when READER reads no such local.
+: ENV-CELL ( n n -- n ) {: seq:n at:n :}
+   READER @ {: q:n :}
+   1  q QR-AT @ dup q QR-N @ + swap ?do
+      i READS @ seq = if unloop exit then
+      i READS @ at LOCAL-CELLS +
+   loop
+   drop -1 ;
+
+\ A vreg holding cell i of local seq: from its frame slot, or in a reading quotation from its
+\ record. A local the record lacks is refused at the token before the cursor.
+: LOCAL-CELL ( n n n -- vreg ) {: seq:n i:n at:n :}
+   READER @ 0< if seq L-SLOT @ else seq at ENV-CELL then {: c:n :}
+   c 0< if ORD @ 1- ROW$ UNSUPPORTED then
+   ALLOC {: r:vreg :}
+   READER @ 0< if r c i + EMIT-SLOT-LOAD else r c i + EMIT-ENV-LOAD then
+   r ;
+
+: DO-LOCAL ( n -- ) {: k:n :}
+   ORD @ 1- ROW-OFF @ {: at:n :}
+   k at LOCAL-CELLS 0 ?do  ROOM k i at LOCAL-CELL PUSH-REG  loop ;
 
 : SKIP-ROW ( n -- n ) {: k:n :}
    k ROWS @ >= if NDEFINITION:CLOSE$ E-T0-CONTROL REFUSE then
@@ -1320,13 +1408,35 @@ variable NESTED                     \ the `[:` rows skipped inside quotations so
    k r EMIT-ADDR-QUOT
    r PUSH-REG ;
 
+\ At the open unit's next free record cell, the record of reading quotation k,
+\ whose body starts at row lo; its value pushed.
+: MAKE-RECORD ( n n -- ) {: k:n lo:n :}
+   lo 1- ROW-OFF @ {: at:n :}
+   REC-NEXT @ {: base:n :}
+   ALLOC {: r:vreg :}
+   k r EMIT-ADDR-QUOT  r base EMIT-REC-STORE  r RELEASE
+   base 1+  k QR-AT @ dup k QR-N @ + swap ?do
+      i READS @ {: seq:n :}
+      seq at LOCAL-CELLS 0 ?do
+         seq i at LOCAL-CELL {: v:vreg :}
+         dup v swap EMIT-REC-STORE  v RELEASE  1+
+      loop
+   loop
+   REC-NEXT !
+   ROOM ALLOC {: q:vreg :}
+   base q EMIT-REC-QUOT
+   q PUSH-REG ;
+
 : DO-QUOT ( -- )
    NQ @ {: k:n :}
-   k 1+ QORD-RESERVE
+   k 1+ QORD-RESERVE  k 1+ QR-AT-RESERVE  k 1+ QR-N-RESERVE
    ORD @ k QORD !
    k 1+ NQ !
-   SKIP-QUOT
-   k PUSH-UNIT ;
+   READS-N @ k QR-AT !
+   ORD @ KEEP-READS k QR-N !
+   k QR-N @ 0= if SKIP-QUOT k PUSH-UNIT exit then
+   k ORD @ MAKE-RECORD
+   SKIP-QUOT ;
 
 \ ---- the does> split ---------------------------------------------------------
 \ A `does>` definer is one text split at M-DOES, just past its `does> `, which
@@ -1657,7 +1767,7 @@ variable OP-REC                      \ the last of them
 : RESET-STATE ( -- )
    EMIT-VREGS VS-KIND-RESERVE  EMIT-VREGS VS-VAL-RESERVE  EMIT-VREGS RS-V-RESERVE
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
-   0 DEAD !  0 PENDING !  0 G-CELLS ! ;
+   0 DEAD !  0 PENDING !  0 G-CELLS !  0 REC-NEXT ! ;
 
 \ The token that ended a body short of a `;]`: the split's `does>`, or `;` past
 \ the last row.
@@ -1674,6 +1784,8 @@ variable OP-REC                      \ the last of them
    k QORD @ ORD !
    RESET-STATE
    k EMIT-QUOT-OPEN
+   k QORD @ OPEN-RECORD
+   k QR-N @ 0 > if k READER !  EMIT-ENV-OPEN else -1 READER ! then
    BODY 0= if END$ E-T0-CONTROL REFUSE then
    ORD @ 1- ROW$ FINISH ;
 
@@ -1688,8 +1800,9 @@ variable OP-REC                      \ the last of them
 \ An empty clause's unit is still built, with no address bound to it: the
 \ parent pushed 0.
 : DO-CLAUSE ( n -- ) {: k:n :}
-   CLAUSE-ORD @ ORD !  k 1+ NQ !  RESET-STATE  0 BINDS !
+   CLAUSE-ORD @ ORD !  k 1+ NQ !  RESET-STATE  0 BINDS !  -1 READER !
    EMPTY-CLAUSE @ if EMIT-UNIT-OPEN else k EMIT-QUOT-OPEN then
+   CLAUSE-ORD @ OPEN-RECORD
    BODY if CONTROL-FAULT then
    END$ FINISH
    CUT @ BINDS-CK ;
@@ -1699,11 +1812,12 @@ variable OP-REC                      \ the last of them
    NDEFINITION:SRC$ drop TXT !
    NDEFINITION:M-DOES @ {: cut:n :}
    1 NQ !  0 BINDS !
-   cut CUT !  -1 CLAUSE !  0 NESTED !
+   cut CUT !  -1 CLAUSE !  0 NESTED !  0 READS-N !  -1 READER !
    cut 0<> if CLAUSE-EMPTY? else false then EMPTY-CLAUSE !
    1 ORD !
    RESET-STATE
    EMIT-OPEN
+   1 OPEN-RECORD
    BODY if CONTROL-FAULT then
    cut 0<> if
       ORD @ SPLIT @ <> if SPLIT @ ROW$ E-T0-CONTROL REFUSE then
