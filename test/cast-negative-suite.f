@@ -64,6 +64,23 @@ s" cast: CNC5 ( n -- ptr [ -- extent-a ] )" CN-RUN:DECL E-CAST-CLASS T=
 s" cast: CNC6 ( n -- cnpbox<extent-a> )"    CN-RUN:DECL E-CAST-CLASS T=
 s" cast: CNC7 ( n -- [ extent-a -- ] )"     CN-RUN:DECL 0 T=
 ;package
+\ No cast yields a width<t>, bare or behind a pointer, even in a private
+\ section. A cast out of one reads its bytes.
+s" cast: CNWD1 ( n -- width<n> )"     CN-RUN:DECL E-CAST-CLASS T=
+package CN-WIDTH
+s" cast: CNWD2 ( n -- width<n> )"     CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD3 ( n -- ptr width<n> )" CN-RUN:DECL E-CAST-CLASS T=
+;package
+s" cast: CNWD4 ( width<n> -- n )"     CN-RUN:DECL 0 T=
+\ A quotation's consumed rows are fed by the cast's result: none is handed an
+\ atom or a width. A width the source produces is read, not introduced.
+package CN-WIDTH
+private
+s" cast: CNWD5 ( [ width<n> -- n ] -- [ n -- n ] )" CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD6 ( [ xt -- ] -- [ n -- ] )"           CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD7 ( [ extent-a -- ] -- [ n -- ] )"     CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD8 ( [ n -- width<n> ] -- [ n -- n ] )" CN-RUN:DECL 0 T=
+;package
 \ undeclared family in the signature.
 s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL E-CAST-FAM T=
 \ A family applied to the wrong number of arguments is malformed the same way:

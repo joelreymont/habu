@@ -65,6 +65,9 @@ PTR-VARIABLE GATE-A   variable GATE-U
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
+   id WIDTH-FAM @ = IF
+      s" a width is not stored: keep its bytes (width>n)"
+      E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id FAM @ = POINTEE @ 0= and IF
       s" field type cannot recursively name its owner"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN

@@ -1985,6 +1985,7 @@ variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM !
 variable C2-READ-FAM   -1 C2-READ-FAM ! \ reserved bounded shared-view family
 variable C2-MUT-FAM    -1 C2-MUT-FAM ! \ reserved bounded exclusive-view family
 variable C2-INIT-FAM   -1 C2-INIT-FAM ! \ reserved initialized-storage element family
+variable WIDTH-FAM  -1 WIDTH-FAM !
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
 variable C2-STOW-FAM -1 C2-STOW-FAM ! \ private C2 descriptor product
 
@@ -8315,6 +8316,7 @@ CHECKER-REG:}SCRATCH
 variable LBI-BAD
 variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
 variable LBI-XT       \ the refused stored type parsed and names `xt`
+variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
 
 \ A stored `xt` would be an engine code address, which no image relocation kind
 \ follows across a restore. A quotation's rows hold no cell.
@@ -8332,10 +8334,24 @@ variable LBI-XT       \ the refused stored type parsed and names `xt`
    RES-FALSE ;
 : XT-STORED? ( n -- bool ) TWALK-RESET XT-STORED?* ;
 
+: WIDTH-STORED?* ( n -- bool )
+   {: t:n :}
+   t T-RES {: x:n :}
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   x PARAM>FAM WIDTH-FAM @ = IF RES-TRUE EXIT THEN
+   0 BEGIN dup x PARAM>ARGC < WHILE
+      x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop
+   RES-FALSE ;
+: WIDTH-STORED? ( n -- bool ) TWALK-RESET WIDTH-STORED?* ;
+
 \ A scheme is a callback input only, so no storage holds one at any depth of
 \ its stored type.
 : STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 LBI-SCHEME !  0 LBI-XT !
+   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !
    NEW
    SGBAD-CLEAR SIG-UNRES-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
@@ -8348,6 +8364,7 @@ variable LBI-XT       \ the refused stored type parsed and names `xt`
    LBI-T @ SCHEME-TYPE? IF -1 LBI-SCHEME ! RES-FALSE EXIT THEN
    SIG-UNRES @ IF RES-FALSE EXIT THEN
    LBI-T @ XT-STORED? IF -1 LBI-XT ! RES-FALSE EXIT THEN
+   LBI-T @ WIDTH-STORED? IF -1 LBI-WIDTH ! RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? 0= ;
 
 \ The allocation-certificate gate. Ordinary unification never receives this
@@ -13412,6 +13429,7 @@ package CHECKER-REG
 12 constant STG-XT-TYPE         \ the type parses and names `xt`, which no storage holds
 13 constant STG-NO-PACKAGE      \ the definer mints its records in the declaring package's private section
 14 constant STG-QUALIFIED-NAME  \ the definer declares its words in its own package, by a bare name
+15 constant STG-WIDTH-TYPE      \ the type parses and holds a `width<t>`, which no storage holds
 PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
 variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where it starts in its file
 defer STORAGE-DIAG-XT ( ptr u8 n ptr u8 n n -- )   \ declared name, refused token, STG- reason
@@ -13905,7 +13923,8 @@ package CHECKER-REG
    na nu ta tu
    SGBAD @ IF STG-MALFORMED-TYPE ELSE
       LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE
-      LBI-XT @ IF STG-XT-TYPE ELSE STG-UNSTORABLE-TYPE THEN THEN
+      LBI-XT @ IF STG-XT-TYPE ELSE
+      LBI-WIDTH @ IF STG-WIDTH-TYPE ELSE STG-UNSTORABLE-TYPE THEN THEN THEN
    THEN
    CHECKER-STORAGE-REFUSE ;
 
@@ -24745,8 +24764,13 @@ DIAG-DEFAULT
 \ its callers.
 0 constant INTRO-ATOM      \ an atom: E-CAST-CLASS
 1 constant INTRO-MINT      \ a pointer or a quotation: E-CAST-MINT unless private
+2 constant INTRO-WIDTH     \ a width<t>, which no cast yields: E-CAST-CLASS
 : CAST-INTRO-HIT? ( n n -- bool ) {: t:n q:n :}
    q INTRO-ATOM = IF t TAG T-ATOM = EXIT THEN
+   q INTRO-WIDTH = IF
+      t TAG T-PARAM <> IF RES-FALSE EXIT THEN
+      t PARAM>FAM WIDTH-FAM @ = EXIT
+   THEN
    t TAG T-PTR =  t TAG T-QUOT =  or ;
 64 constant CAST-PATH-CAP
 create CAST-PATH-TERM CAST-PATH-CAP cells allot
@@ -24875,6 +24899,19 @@ variable CAST-PATH-N
    THEN
    SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF
       s" the output hands out an atom, a phantom index" E-CAST-CLASS CAST-ERROR:RAISE
+   THEN
+   SGOUT @ CAST-ROW-TERM INTRO-WIDTH CAST-INTRODUCES? IF
+      s" the output is a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
+   THEN
+   \ The source's consumed rows introduce values too: what the result is fed
+   \ reaches the source's code as the source's type.
+   CAST-WALK-RESET
+   SGIN @ CAST-ROW-TERM RES-FALSE INTRO-ATOM CAST-INTRO? IF
+      s" the input is handed an atom, a phantom index" E-CAST-CLASS CAST-ERROR:RAISE
+   THEN
+   CAST-WALK-RESET
+   SGIN @ CAST-ROW-TERM RES-FALSE INTRO-WIDTH CAST-INTRO? IF
+      s" the input is handed a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    CAST-WALK-RESET
    SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF

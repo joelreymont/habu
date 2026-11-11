@@ -4626,6 +4626,12 @@ variable VIEW-FIELD-BASE
    INIT-FAM @ 1 TFAM-SLOTS!
    VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
 
+\ `width<t>`: one cell holding the bytes t takes in storage. Its slot is
+\ PK-TYPE, so t may be a type of any width, a record's included.
+: REGISTER-WIDTH ( -- )
+   s" " CHECKER-PACKAGE-PUBLIC s" width" 1 TK-CELL TFAM-DECL WIDTH-FAM !
+   WIDTH-FAM @ 0 PK-TYPE TFAM-PK! ;
+
 
 : REGISTER-RECORDS ( -- )
    s" " CHECKER-PACKAGE-PUBLIC s" records" 4 TK-PRODUCT TFAM-DECL RECORDS-FAM !
@@ -4660,6 +4666,7 @@ variable VIEW-FIELD-BASE
 REGISTER-READ-VIEW
 REGISTER-MUT-VIEW
 REGISTER-INIT
+REGISTER-WIDTH
 REGISTER-RECORDS
 REGISTER-STOW
 
