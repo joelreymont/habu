@@ -8,8 +8,10 @@ Habu directly.
 Zen, Tender and Maki build, test and run on Habu without issues. A dot that
 removes an issue one of them meets goes before any other work.
 
-Until the three are released, dot `habu-until-zen-tender-31e8d2a1` says how a
-Habu change is measured and lands.
+Until the three are released, a Habu change is measured by what they do on it,
+and work that does not move that measure waits:
+[docs/gate.md](docs/gate.md#until-zen-tender-and-maki-are-released) says how a
+change is measured and lands.
 
 Incremental builds ship in the release, rock-solid: a warm build never fails or
 differs where a cold build would not.

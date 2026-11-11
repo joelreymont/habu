@@ -11,6 +11,19 @@ when the changed behavior is baked into it. Documentation and mechanical
 changes need proportionate checks. [Etch](../../etch) owns its downstream
 checks.
 
+## Until Zen, Tender and Maki are released
+
+Until the three are released, a Habu change is measured by what they do on it:
+Maki's image and viewer, Zen's server and Tender's server built from their
+masters, cold then warm, and Tender's `tender.f` loaded, on the candidate
+engine before it lands and on the installed one after. A fix one of them waits
+for lands and is installed alone, ahead of any stack it sits in. Work that does
+not move that measure waits. Suites, the chain check and a feature's review run
+once, before the install, not per change.
+
+This rule replaces the per-change checks below and is deleted when the three
+are released.
+
 ## Focused tests
 
 Run a test file directly with `bin/hb --load`, naming on one command line the
