@@ -307,11 +307,11 @@ variable FESK5
    lmainlbl B,
    FESK5 LABEL@ LBL, ;
 
-public
 : EMIT-FOPKW ( -- )
    LKWFPLUS LABEL@ LBL,  s" f+" BYTES,   LKWFMINUS LABEL@ LBL,  s" f-" BYTES,
    LKWFSTAR LABEL@ LBL,  s" f*" BYTES,   LKWFSLASH LABEL@ LBL,  s" f/" BYTES, ;
 
+public
 variable LVSNAP  variable LVRECON  variable LVRECONAT  variable LVFPOP  variable LVSETF  variable LVRESNAP
 
 private

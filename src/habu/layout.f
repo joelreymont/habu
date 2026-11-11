@@ -346,7 +346,7 @@ $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
 STACK-ABI:BASE-CELL constant S0-CELL
-$3640 constant REPLH-CELL
+$3640 constant REPLH-CELL               \ claimed; no code reads or writes it
 $3648 constant RSAVCP-CELL
 $3650 constant RSAVND-CELL
 $3658 constant RSAVDP-CELL

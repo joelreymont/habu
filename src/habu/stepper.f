@@ -109,8 +109,7 @@ public
    SINE@ SINP! ;
 
 : S-INSTALL ( -- )
-   [: SRD-LINE ;] is REPL-READ
-   REPL-ENABLE ;
+   [: SRD-LINE ;] is REPL-READ ;
 S-INSTALL
 
 ;package

@@ -805,7 +805,7 @@ create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 here BCHAR-KW - constant BCHAR-LEN
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
-variable LRDIE  variable LRREC
+variable LRREC
 create TICK-KW   39 c,
 here TICK-KW - constant TICK-LEN
 create BTICK-KW  91 c, 39 c, 93 c,
@@ -4034,7 +4034,6 @@ private
    9 DATA EXIT-HOOK-CELL LDR,  9 nohk CBZ,
    SP SP 16 SUBI,  30 SP 0 STR,  0 SP 8 STR,
    10 0 MOVZ,  10 DATA EXIT-HOOK-CELL STR,  10 DATA HND-CELL STR,
-   10 DATA REPLH-CELL STR,
    9 BLR,
    0 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI,
    nohk LBL,
@@ -6948,9 +6947,8 @@ private
 
 public
 \ An undefined word in a `:` body is a rejected definition: 70 is both the
-\ catchable throw code and the uncaught exit (the top-level LRDIE exit and
-\ driver-io's "check reject 70"); the uncaught-throw reporter below exits it for
-\ a refusal the checker rendered.
+\ catchable throw code and the uncaught exit, as driver-io's "check reject 70";
+\ the uncaught-throw reporter below exits it for a refusal the checker rendered.
 70 constant RC-REJECT
 
 private
@@ -7104,10 +7102,8 @@ private
    \ fd 2. x15 keeps the code across the write (the kernel preserves x2-x15).
    \ Never returns: no RET keeps the FPRIM-L throw leaf-safe.
      LUNCAUGHT LABEL@ LBL,
-   9 15 0 ADDI,                                        \ x9 = the code
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
-   15 9 0 ADDI,                                        \ x15 = code (survives writes; x9-x14 are itoa scratch)
-   0 9 0 ADDI,                                         \ x0 = code for the passthrough exit
+   0 9 0 ADDI,                                        \ x0 = code for the passthrough exit
    \ One hook call serves both legs below. x0 is the trampoline's to preserve;
    \ x9 and x15 are re-derived from it because the hook is compiled code and
    \ owns every caller-saved register.
@@ -7168,7 +7164,6 @@ private
       15 RC-REJECT MOVZ,                                    \ x15 = throw code
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (frame unwind + deliver)
    LUN0 LABEL@ LBL,
-   LRDIE LABEL@ LBL,
    LRREC LABEL@ LBL,                                        \ nothing branches here: kernel-object.f ENGINE-SYMBOLS names it
    0 70 MOVZ,  NR-EXIT-GROUP SYS,
    LWIDE LABEL@ LBL,                                   \ branch target: TKA/TKL still hold the token
@@ -7497,7 +7492,7 @@ package LABELS
 
 : RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !  LBL LGENIOOUT !
-   LBL LRDIE !  LBL LRREC !
+   LBL LRREC !
    LBL LUN0 !  LBL LEVALREC !  LBL LEXITHOOK !
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
    LBL LOPENNL !

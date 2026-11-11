@@ -91,7 +91,6 @@ public
 \ CLEANUP-AT-EXIT removes only what the child itself registers.
 : CHILD-MAIN ( [ -- ] -- ) {: q :}
    0 data-base HND-CELL + !
-   0 data-base REPLH-CELL + !
    \ A refusal the parent caught would make a throw of its code exit RC-REJECT.
    0 data-base REFUSAL-ABI:CODE-CELL + !
    q execute

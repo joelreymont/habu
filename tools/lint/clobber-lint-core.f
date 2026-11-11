@@ -136,7 +136,6 @@ variable RX  variable RACC
    a u s" Lloc-find" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lsrcrd" LINT-STR=CI if 0 9 CL-ADD exit then
-   a u s" Lreplroute" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lfind" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lfindused" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    \ LFIND's hit shape (x5, x11-x13) plus x6 = records met; at two, x16 and
@@ -203,7 +202,6 @@ variable RX  variable RACC
    a u s" Lcemit" LINT-STR=CI if
       0 0 CL-ADD 1 CL-ADD 2 CL-ADD 8 CL-ADD 12 CL-ADD 13 CL-ADD
         16 CL-ADD 30 CL-ADD exit then
-   a u s" Laotwidgate" LINT-STR=CI if 0 11 CL-ADD exit then
    \ LHEADROW frames x0, x1, x9, x10, x13, x17 and x30 around its probes.
    a u s" Lheadrow" LINT-STR=CI if
       0 0 CL-ADD 1 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 17 CL-ADD 30 CL-ADD exit then

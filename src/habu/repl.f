@@ -1,10 +1,10 @@
 \ repl.f - the terminal line reader for INTERPRETER:REPL
-\ (src/habu/interpreter.f). INSTALL makes RD-LINE the default REPL-READ defer and
-\ puts its xt in REPLH-CELL; genio may replace the defer, so INTERPRETER:REPL
-\ calls it again before each line. The session owns prompts, pending definitions
-\ and recovery; this file owns editing, with the tty raw per line and canonical
-\ while the line executes. A line longer than LLINE-MAX is refused by name and
-\ read again, never truncated.
+\ (src/habu/interpreter.f). INSTALL makes RD-LINE the default REPL-READ defer;
+\ genio may replace the defer, so INTERPRETER:REPL calls it again before each
+\ line. The session owns prompts, pending definitions and recovery; this file
+\ owns editing, with the tty raw per line and canonical while the line executes.
+\ A line longer than LLINE-MAX is refused by name and read again, never
+\ truncated.
 
 create TIOB0 80 allot           \ original (canonical) termios, saved at INSTALL
 create TIOB 80 allot            \ working termios
@@ -194,14 +194,6 @@ defer REPL-READ ( -- ptr u8 n )
    while LINE-FULL repeat
    DONE @ 2 = IF NULL$ ELSE HSAVE  LBUF LLEN @ THEN ;
 
-\ REPLH-CELL is an image-ABI offset (layout.f names it), so it
-\ cannot become a TYPED-VARIABLE; `xt!` declares what it holds (docs/forth.md
-\ "An undeclared cell holds no execution token"). Nothing reads it back as code,
-\ so no accessor hands its address out.
-: REPL-ENABLE ( -- )
-   [: REPL-READ ;] data-base REPLH-CELL + xt! ;
-
 : INSTALL ( -- )
-   [: RD-LINE ;] is REPL-READ
-   REPL-ENABLE ;
+   [: RD-LINE ;] is REPL-READ ;
 INSTALL
