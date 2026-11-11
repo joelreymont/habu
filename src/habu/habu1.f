@@ -1,6 +1,6 @@
 \ habu1.f, engine builder part 1: emits the native engine's primitive bodies,
 \ helper routines and seed dictionary for arm64 (Linux and macOS). The
-\ interpreter loop, keyword JIT and ENGINE-EMIT:FORTH are in habu2.f.
+\ interpreter loop and keyword JIT are in habu2.f.
 \ Requests run before any package or `using` opens, so each file links
 \ (linker.f TOP-SCOPE?). A64ASM's encoders live in src/arch/arm64/asm.f.
 require src/arch/arm64/icode.f
@@ -25,14 +25,6 @@ using CRASH
 using RT
 using SYSCALL
 
-package ENGINE-BUILD
-variable ACTIVE
-: ACTIVE? ( -- bool ) ACTIVE @ ;
-: ARM ( -- ) 0 0= ACTIVE ! ;
-: DISARM ( -- ) 0 0= 0= ACTIVE ! ;
-public
-: BUILDING? ( -- bool ) ACTIVE? ;
-;package
 package ENGINE-EMIT
 public
 $D65F03C0 constant W-RET
@@ -461,7 +453,6 @@ package ENGINE-EMIT
 1024 constant LINUX-F-LINUX-SPECIFIC-BASE
 6 constant LINUX-F-DUPFD-CLOEXEC-OFF
 2 constant LINUX-F-SETFD
-1 constant LINUX-FD-CLOEXEC
 $80000 constant LINUX-O-CLOEXEC
 LINUX-F-LINUX-SPECIFIC-BASE LINUX-F-DUPFD-CLOEXEC-OFF + constant LINUX-F-DUPFD-CLOEXEC
 
@@ -469,13 +460,8 @@ variable LNX-ERR
 variable LNX-FD
 variable LNX-NEW
 variable LNX-CWD
-variable LNX-SKIP
 variable LNX-OK
-variable LNX-FAIL
 variable LNX-DONE
-variable LNX-CHILD
-variable LNX-CLOSEFAIL
-variable LNX-WAIT
 variable LNX-REAL
 variable LNX-PNEG
 variable LNX-PCALL
@@ -1184,11 +1170,10 @@ SPAWN-ACTIONS-OFF SPAWN-FA-ACTS-OFF + SPAWN-ACTION-CAP SPAWN-ACTION-SIZE * +
 variable SDA-FD  variable SDA-NEW  variable SDA-SKIP
 variable SCA-CWD  variable SCA-FAIL
 variable SCA-COPY  variable SCA-OVER  variable SCA-DONE
-variable SAD-HAS
 variable SPD-PATH  variable SAE-ARGV  variable SAE-ENVP
 variable SDEF-PATH  variable SADV-ARGV
 variable SFIN-OK  variable SFIN-FAIL
-variable BSP-OK  variable BSP-DN  variable BSP-SAD
+variable BSP-OK  variable BSP-DN
 variable SZA-I
 
 \ Point x14 at the next record of the runtime file-actions blob at x13.
@@ -1379,7 +1364,7 @@ variable SZA-I
    9 G-PUSH ;
 
 : BSP-LABELS3 ( -- )
-   LBL BSP-OK !  LBL BSP-DN !  LBL BSP-SAD ! ;
+   LBL BSP-OK !  LBL BSP-DN ! ;
 
 : BSP-LABELS2 ( -- )
    LBL BSP-OK !  LBL BSP-DN ! ;
@@ -1500,7 +1485,6 @@ SPAWN-ACTIONS-OFF constant SPAWN-FDS-BLOB-OFF
 SPAWN-ACTIONS-OFF 8 + constant SPAWN-FDS-BLOB-U-OFF
 SPAWN-ACTIONS-OFF 16 + constant SPAWN-FDS-REQ-OFF
 SPAWN-ACTIONS-OFF 32 + constant SPAWN-FDS-FRAME
-3 constant SPAWN-FDS-SLOT-ACTIONS       \ the lift, the place, the temporary's close
 $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 63 constant SPAWN-ENAMETOOLONG
 

@@ -1,6 +1,6 @@
 \ habu2.f — engine-builder part 2: the JIT compiler
 \ emitters (literal/call/keywords/locals/strings/do-loop), the outer-interpreter
-\ main loop, and ENGINE-EMIT:FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
+\ main loop and kernel emission. Needs habu1.f (part 1). EMIT-MAIN is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 require src/lib/fmt.f
@@ -1388,7 +1388,6 @@ private
 \ SEAL-CAPTURE tokens (habu1.f) record the watermark. MODE-BUILD leaves the
 \ latch open; the certified payload executes SEAL-FRIEND before its driver.
 : EMIT-SEAL-FRIEND-TOKEN ( label -- ) {: fail:label :}
-   ENGINE-BUILD:BUILDING? if exit then
    LBL {: done:label :}
    12 DATA SNAP-CELL LDR,
    12 done CBNZ,
@@ -14164,8 +14163,8 @@ public
 \ Open a kernel emission at code offset 0 with the labels LABELS:INIT allocates.
 \ Code emitted before KERNEL precedes the start-up, in icode.f's first part.
 : OPEN ( ptr u8 n -- )
-   \ Every ordinary emission chooses no scoped entry; only a complete runtime
-   \ binds entries, through FORTH-C2, and a link through LINK-SCOPE-ENTRIES.
+   \ An emission chooses no scoped entry; a link binds entries through
+   \ LINK-SCOPE-ENTRIES.
    0 LINKED-SCOPES !
    -1 EM-SCOPE-CHILD-OFF !
    -1 EM-C2-MUT-OFF !
@@ -14187,52 +14186,6 @@ public
    LIMGEND LABEL@ LBL,                    \ nothing follows: this label IS the content length
    FILL-KERNEL-DIGEST ;
 
-: FORTH ( ptr u8 n -- )
-   OPEN KERNEL ;
-
-: FORTH-C2 ( ptr u8 n n n n n n n n -- )
-   {: read:n mut:n loan:n init:n records:n record:n field:n :}
-   SEEDED-RUNTIME? 0= if s" habu2: C2 entries require complete runtime" 74 die then
-   read 0 < read AOT-BLOB-LEN @ >= or
-   mut 0 < mut AOT-BLOB-LEN @ >= or or
-   loan 0 < loan AOT-BLOB-LEN @ >= or or
-   init 0 < init AOT-BLOB-LEN @ >= or or if
-      s" habu2: C2 entry outside captured code" 74 die
-   then
-   records 0 < records AOT-BLOB-LEN @ >= or
-   record 0 < record AOT-BLOB-LEN @ >= or
-   field 0 < field AOT-BLOB-LEN @ >= or or or if
-      s" habu2: C2 record entry outside captured code" 74 die
-   then
-   read mut = read loan = or mut loan = or
-   read init = or mut init = or loan init = or
-   read records = or mut records = or loan records = or init records = or
-   read record = or mut record = or loan record = or init record = or records record = or
-   read field = or mut field = or loan field = or init field = or
-   records field = or record field = or if
-      s" habu2: duplicate C2 entry" 74 die
-   then
-   OPEN
-   read EM-SCOPE-CHILD-OFF !
-   mut EM-C2-MUT-OFF !
-   loan EM-C2-MUT-LOAN-OFF !
-   init EM-C2-INIT-OFF !
-   records EM-C2-RECORDS-OFF !
-   record EM-C2-RECORD-OFF !
-   field EM-C2-FIELD-OFF !
-   KERNEL ;
-
-;package
-
-package ENGINE-BUILD
-public
-\ An escaped emitter throw is caught only by the internal driver, which exits;
-\ the process-local build flag is therefore never observed after that edge.
-: BUILD ( ptr u8 n -- )
-   ARM
-   ENGINE-EMIT:FORTH
-   DISARM
-   ;
 ;package
 
 ;using

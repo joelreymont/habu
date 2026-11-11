@@ -157,7 +157,6 @@ public
 : G-POP ( n -- )
    XDS -8 LDRPRE, ;
 private
-variable DOT-LBL  variable ATOI-LBL
 variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
 
 public
@@ -216,11 +215,6 @@ public
    G-OUT
    SP SP $20 ADDI, ;
 
-private
-: EMIT-DOT ( -- )
-   DOT-LBL LABEL@ LBL,  9 G-POP  G-PRINT9  RET, ;
-
-public
 \ Print x9 as UNSIGNED decimal + newline. Clobbers x9-x13 + 32 bytes of sp
 \ scratch.
 : G-PRINTU9 ( -- )
@@ -244,29 +238,6 @@ public
    1 SP 0 ADDI,  2 1 MOVZ,
    G-OUT
    SP SP $10 ADDI, ;
-
-private
-\ ATOI: NUL-terminated decimal string at x9 -> push i64 (leading '-' ok). Leaf.
-: EMIT-ATOI ( -- )
-   ATOI-LBL LABEL@ LBL,
-   LBL RT-LPOS !  LBL RT-LLOOP !  LBL RT-LDONE !
-   10 0 MOVZ,
-   11 1 MOVZ,
-   12 9 0 LDRB,  12 $2D CMPI,
-   C-NE RT-LPOS LABEL@ BCOND,
-   11 0 MOVN,  9 9 1 ADDI,
-   RT-LPOS LABEL@ LBL,
-   RT-LLOOP LABEL@ LBL,
-   12 9 0 LDRB,
-   12 $30 CMPI,  C-LT RT-LDONE LABEL@ BCOND,
-   12 $39 CMPI,  C-GT RT-LDONE LABEL@ BCOND,
-   12 12 $30 SUBI,
-   13 $A MOVZ,  10 10 13 MUL,  10 10 12 ADD,
-   9 9 1 ADDI,  RT-LLOOP LABEL@ B,
-   RT-LDONE LABEL@ LBL,
-   10 10 11 MUL,
-   10 G-PUSH
-   RET, ;
 ;package
 
 ;using

@@ -46,16 +46,6 @@ public
    dst COPY-OWNED
    dst size AOT--OWNED-CAPTURE:MAKE ;
 
-\ Called immediately after the real capture audits, with its frozen live code
-\ bounds and the compactor's exact copied extent.
-: OWN-WINDOW ( n n n -- AOT-OWNED:capture )
-   {: first:n end:n copied:n :}
-   first 0 < end first < or if
-      s" aot-owned: invalid live code window" DIE then
-   copied 0 < copied end first - > or copied AOT-BLOB-LEN @ <> or if
-      s" aot-owned: copied code differs from the compacted window extent" DIE then
-   OWN ;
-
 : IMPORT ( AOT-OWNED:capture -- )
    AOT-OWNED:BYTES$ {: src:ptr size:n :}
    size SEC-N ROW-BYTES * < if s" aot-owned: capture has no section table" DIE then
