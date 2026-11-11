@@ -6,7 +6,7 @@ description: Use when running Habu focused tests or the full native gate.
 # Habu Gate
 
 Use native `bin/hb` for all gate work. Select checks using the repository's
-[testing policy](../../AGENTS.md#verification-and-documentation) and run focused
+[testing policy](../../AGENTS.md#testing) and run focused
 tests through their owning load paths.
 
 When changed behavior is baked into the engine, build a private product from
