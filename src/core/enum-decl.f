@@ -339,11 +339,8 @@ public
 
 : ED-RUN ( -- ) ED-FRONT DECL-FRONT:RUN ;
 
-\ ED-REPLAY registers an ENUM from tokens a tool already lexed (tools/check-core.f,
-\ verify-source.f) with ED-RUN's grammar, validation and reject packet, defining
-\ no word: constructors are registered, not rendered. Both modes replay. The body
-\ includes its ;ENUM terminator. ED-REPLAY-OUTCOME answers the first type the
-\ body named that may still arrive instead of raising.
+\ Registers an ENUM from a body a tool lexed, by ED-RUN's grammar, defining no
+\ word; a body without ;ENUM is refused "missing ;ENUM" (enum-decl-suite 23e).
 : ED-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    ED-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 : ED-REPLAY ( ptr u8 n ptr u8 n -- )

@@ -2463,6 +2463,11 @@ private
 
 public
 
+: TDECL-DEFPRODUCT-NOEND ( ptr u8 n ptr u8 n -- )   \ name, partial body -> declaration packet
+   {: na:ptr nu:n ba:ptr bu:n :}
+   s" product" na nu ba bu TDECL-CTX!
+   [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN ;
+
 : TDECL-PRODUCT ( -- )
    parse-name {: na:ptr nu:n :}
    TDECL-CLEAR
@@ -2475,11 +2480,8 @@ public
 
 using TYPE-DECL
 
-\ --- the global surface: these seven names are the only part of this file a
-\ user program can spell. They stay global because a user declaration must
-\ register without opening any package (test/type-decl-suite.f declares from
-\ top level). Each is a one-line entry into package TYPE-DECL, as ENUM is in
-\ enum-decl.f.
+\ --- the global surface, the only names in this file a user program can spell:
+\ global so a declaration registers from top level (test/type-decl-suite.f).
 : NEWTYPE ( -- ) TDECL-NEWTYPE ;
 : SUMTYPE ( -- ) TDECL-SUMTYPE ;
 : PRODUCT ( -- ) TDECL-PRODUCT ;
@@ -2492,6 +2494,7 @@ NOMINAL-PROVIDER
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
 NOMINAL-PROVIDER
 : CHECKER-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM-NOEND ;
+: CHECKER-DEFPRODUCT-NOEND ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT-NOEND ;
 : CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT ;
 NOMINAL-PROVIDER
 

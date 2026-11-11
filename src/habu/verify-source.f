@@ -67,7 +67,10 @@ private
 7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
 7158 constant E-VS-BARE-TRUST              \ TRUST with no name and signature
 7199 constant E-VS-EFFECT-SIZE             \ a generates: effect past GENR-SIG-CAP
-TYPE-DECL:E-TDECL-SYNTAX constant E-VS-DECL-SYNTAX \ a declaration never ends
+
+\ A declaration the source ends inside: BEGIN-STRUCTURE's scan stops with it at
+\ its opener, RECORD-VALUE-RECORD refuses with it in the declaration packet.
+TYPE-DECL:E-TDECL-SYNTAX constant E-VS-DECL-SYNTAX
 
 PTR-VARIABLE SOURCE-A
 variable SOURCE-U
@@ -2599,34 +2602,24 @@ variable SUM-VAR-NEXT
 \ the definer names NAME-TOKEN reads; every other scan keeps NEXT-SCAN.
 : DECL-TOKEN ( -- ptr u8 n ) NEXT-RAW ;
 
-\ Registration-only replay of `ENUM name .. ;ENUM` (mirrors RECORD-SUMTYPE):
-\ buffer the body through ;ENUM and register the family through the ENUM front
-\ end's replay entry, which runs the real grammar, the full `arity VARIANT name
-\ FIELD f t ;VARIANT` form included. The terminator is buffered with the body
-\ because the front end parses its own terminator.
+\ The body keeps its ;ENUM, which the front end parses itself; one the input
+\ ends inside replays without it, and the front end refuses "missing ;ENUM".
 : RECORD-ENUM ( -- )
    DECL-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    BODY-RESET
    BEGIN
       DECL-TOKEN
-      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
-      2dup ENUM-END? IF
-         BODY-APPEND
-         name nameu BODY$ ENUM-DECL:ED-REPLAY-OUTCOME
-         IF DW-TYPE DEFER-AT ELSE 2drop THEN
-         EXIT
-      THEN
-      BODY-APPEND
-   AGAIN ;
+      dup 0= IF 2drop 0 0= ELSE 2dup BODY-APPEND ENUM-END? THEN
+   UNTIL
+   name nameu BODY$ ENUM-DECL:ED-REPLAY-OUTCOME
+   IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
 
 : STRUCTURE-DECL-END? ( ptr u8 n -- bool )
    s" ;STRUCTURE" STR=CI ;
 
-\ Registration-only replay of the unified `STRUCTURE name[<params>] FIELD f t ..
-\ ;STRUCTURE` (mirrors RECORD-ENUM). Registration includes the family's
-\ MAKE/UNMAKE variant rows and constructor package, so `FAMILY:MAKE` in the same
-\ source resolves; no dictionary word is defined.
+\ The replay registers MAKE/UNMAKE, so `FAMILY:MAKE` resolves later in this
+\ source; an unclosed body replays as RECORD-ENUM's does: "missing ;STRUCTURE".
 : RECORD-STRUCTURE-DECL ( -- )
    DECL-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -2634,15 +2627,10 @@ variable SUM-VAR-NEXT
    BODY-RESET
    BEGIN
       DECL-TOKEN
-      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
-      2dup STRUCTURE-DECL-END? IF
-         BODY-APPEND
-         name nameu BODY$ STRUCTURE-DECL:SD-REPLAY-OUTCOME
-         IF DW-TYPE DEFER-AT ELSE 2drop THEN
-         EXIT
-      THEN
-      BODY-APPEND
-   AGAIN ;
+      dup 0= IF 2drop 0 0= ELSE 2dup BODY-APPEND STRUCTURE-DECL-END? THEN
+   UNTIL
+   name nameu BODY$ STRUCTURE-DECL:SD-REPLAY-OUTCOME
+   IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
 
 : PRODUCT-END? ( ptr u8 n -- bool )
    s" ;PRODUCT" STR=CI ;
@@ -2659,7 +2647,11 @@ variable SUM-VAR-NEXT
    BODY-RESET
    BEGIN
       NEXT-SCAN
-      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
+      dup 0= IF                        \ EOF before ;PRODUCT -> declaration packet
+         2drop
+         name nameu BODY$ CHECKER-DEFPRODUCT-NOEND
+         EXIT
+      THEN
       2dup PRODUCT-END? IF
          2drop
          name nameu BODY$ CHECKER-DEFPRODUCT
@@ -2917,6 +2909,8 @@ variable STG-TYPE-U
    at BODY-U @ < IF at BODY>BYTE TOKEN-BYTE ! THEN
    E-BAD-RECORD-FIELD throw ;
 
+\ A record the input ends inside is refused in the declaration packet, at its
+\ name, as an unclosed SUMTYPE is.
 : RECORD-VALUE-RECORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -2924,7 +2918,15 @@ variable STG-TYPE-U
    BODY-RESET
    BEGIN
       NEXT-SCAN
-      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
+      dup 0= IF
+         2drop
+         s" value-record" DECL-REJECT:OPEN
+         name nameu DECL-REJECT:FAMILY!
+         DECL-REJECT:AT-FAMILY
+         s" missing END-VALUE-RECORD" E-VS-DECL-SYNTAX DECL-REJECT:REJECT
+         DECL-REJECT:GUARD-CODE
+         EXIT
+      THEN
       2dup VALUE-RECORD-END? IF
          2drop
          name nameu byte VALUE-RECORD-ADD

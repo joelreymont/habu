@@ -774,6 +774,29 @@ variable RC
    s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
    s" E-BAD-RECORD-FIELD" s" fix_record_field" s" x" 1 21 20 21 PREPASS-REFUSED ;
 
+\ A family declaration its file never closes is refused at the family's name.
+: TEST-PREPASS-OPEN ( -- )
+   s" an unclosed VALUE-RECORD under --verify-only" T-LABEL
+   s" VALUE-RECORD vr x n" s" vrec-open.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" vr" 1 14 13 15 PREPASS-REFUSED
+   0 s" reason" s" missing END-VALUE-RECORD" FIELD=
+   s" an unclosed SUMTYPE under --verify-only" T-LABEL
+   s" SUMTYPE shape" s" sum-open.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" shape" 1 9 8 13 PREPASS-REFUSED
+   0 s" reason" s" missing ;SUMTYPE" FIELD=
+   s" an unclosed ENUM under --verify-only" T-LABEL
+   s" ENUM color red green" s" enum-open.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" color" 1 6 5 10 PREPASS-REFUSED
+   0 s" reason" s" missing ;ENUM" FIELD=
+   s" an unclosed STRUCTURE under --verify-only" T-LABEL
+   s" STRUCTURE rec FIELD id n" s" struct-open.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" rec" 1 11 10 13 PREPASS-REFUSED
+   0 s" reason" s" missing ;STRUCTURE" FIELD=
+   s" an unclosed PRODUCT under --verify-only" T-LABEL
+   s" PRODUCT pt FIELD x n" s" prod-open.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" pt" 1 9 8 10 PREPASS-REFUSED
+   0 s" reason" s" missing ;PRODUCT" FIELD= ;
+
 \ The load compiles a body before it checks the definition at `;`, so a body
 \ word it cannot compile, undefined or a local it cannot bind, refuses a
 \ definition whose signature does not parse, at that word; any other error in
@@ -2286,6 +2309,7 @@ variable RC
    TEST-ENUM-CLOSE
    TEST-STRUCTURE
    TEST-PREPASS-NOMINAL
+   TEST-PREPASS-OPEN
    TEST-BAD-SIGNATURE
    TEST-LOCAL-GROUP
    TEST-STORED-SIGNATURE

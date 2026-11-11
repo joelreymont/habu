@@ -425,11 +425,8 @@ public
    rc DECL-REJECT:GUARD-CODE
    rc 0= ;
 
-\ SD-REPLAY registers a STRUCTURE from tokens a tool already lexed
-\ (tools/check-core.f, verify-source.f) with SD-RUN's grammar, validation and
-\ reject packet, defining no word: MAKE / UNMAKE are registered, not rendered.
-\ The body includes its ;STRUCTURE terminator. SD-REPLAY-OUTCOME answers the first
-\ type the body named that may still arrive instead of raising.
+\ Registers a STRUCTURE from a body a tool lexed, by SD-RUN's grammar, defining
+\ no word; a body without ;STRUCTURE is refused "missing ;STRUCTURE".
 : SD-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    SD-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 : SD-REPLAY ( ptr u8 n ptr u8 n -- )
