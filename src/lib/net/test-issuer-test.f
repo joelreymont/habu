@@ -6,7 +6,8 @@
 \ assertion and its invalid_grant refusals, /mint against MINT, and
 \ tools/test-issuer.f as a child process.
 \ BEARER's client against it: TOKEN before CLIENT!, for each grant admitted by
-\ ADMIT? with the caller's claims, a 400 and a 401 refusal, an assertion inside
+\ ADMIT? with the caller's claims, a 400 and a 401 refusal, the 400 leaving no
+\ byte of the longer answer before it past the BUF's length, an assertion inside
 \ the BUF; REFRESH from a public client admitted with the refresh token's oid,
 \ again with the new refresh token it answered, an expired and a foreign
 \ refresh token refused invalid_grant, a refresh token inside the BUF; a closed port,
@@ -104,12 +105,13 @@ create GOT-HEAD BUF:HDR-BYTES allot
 : GOT ( -- ptr n ) GOT-HEAD CELL-VIEW ;
 GOT $100 BUF:N>BLEN BUF:INIT
 
-\ Whether GOT's storage holds only zero bytes through its capacity. GOT is empty
-\ before and after, so the GROW spans the whole storage and moves nothing.
+\ Whether GOT's storage past its length holds only zero bytes. The GROW spans that
+\ storage within the capacity, so nothing moves, and GOT keeps its length.
 : GOT-ZEROED? ( -- bool )
-   GOT GOT BUF:CAP@ BUF:GROW SPAN:$ {: p:ptr u:n :}
+   GOT BUF:LEN@ {: len:NUM:byte-len :}
+   GOT GOT BUF:CAP@ BUF:BLEN>N len BUF:BLEN>N - BUF:N>BLEN BUF:GROW SPAN:$ {: p:ptr u:n :}
    true u 0 ?do p i + c@ 0<> if drop false then loop
-   GOT BUF:CLEAR ;
+   len GOT BUF:LEN! ;
 
 \ /token-fault's answers, by FAULT-MODE.
 0 constant ECHO                     \ keeps the form in POSTED and answers a token
@@ -531,6 +533,8 @@ $A constant LF
    s" a 400 is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
    [: UP s" a.b.c" BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
    GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$=
+   s" it leaves no byte of the earlier answer past the BUF's length" T-LABEL
+   GOT-ZEROED? TTRUE
    s" a wrong secret is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
    ENDPOINT$ s" app" s" wrong" BEARER:CLIENT!
    [: [: OWN-TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ ;] CAPTURED

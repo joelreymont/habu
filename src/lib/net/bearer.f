@@ -633,8 +633,14 @@ private
 \ A text TOKEN or REFRESH reads must not lie in the BUF it writes.
 : OUTSIDE ( ptr u8 n ptr n -- ) BUF:BORROWED? if E-BUF-BOUNDS throw then ;
 
-\ Room for a form within TOKEN-CAP: its secret never sits in storage a grow releases.
-: EMPTIED ( ptr n -- ) {: buf:ptr :} buf BUF:CLEAR buf TOKEN-CAP BUF:N>BLEN BUF:ENSURE ;
+: WIPE ( ptr n -- )
+   {: buf:ptr :}
+   0 buf BUF:SPAN SPAN:FILL
+   buf BUF:CLEAR ;
+
+\ What the BUF held is wiped, and it has room for a form within TOKEN-CAP: the
+\ secret and the earlier answer never sit in storage a grow releases.
+: EMPTIED ( ptr n -- ) {: buf:ptr :} buf WIPE buf TOKEN-CAP BUF:N>BLEN BUF:ENSURE ;
 
 \ The form TOKEN posts, written into the BUF: client credentials (RFC 6749
 \ 4.4.2) or On-Behalf-Of (RFC 7523 2.1 with Entra's requested_token_use).
@@ -667,11 +673,6 @@ private
    buf CREDENTIALS+
    s" refresh_token" r ru buf PAIR+
    s" scope" scope su buf PAIR+ ;
-
-: WIPE ( ptr n -- )
-   {: buf:ptr :}
-   0 buf BUF:SPAN SPAN:FILL
-   buf BUF:CLEAR ;
 
 : OPEN-LINE ( -- )  LOG:ERROR s" bearer" LOG:LINE ;
 
