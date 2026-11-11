@@ -827,8 +827,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    s" O4" WHICH!  s" test/fixtures/file-objects/order-root-a.f" FIXTURE-BUILD 0= if exit then
    s" the build links order-x2.f" ORDER-X2 LINKED ;
 
-\ Guards parts linking after a compiled part, each from its own start, retiring their own records and requesting from the root
-\ a compiled part set (linked: no root); compiling a part that moves unedited (linked: Q twice) or shifts after an unclean cut.
+\ Guards parts linking after a compiled part, each from its own start, retiring their own records and requesting from the
+\ root a linked part set (LINK-ROOT); compiling a part that moves unedited (linked: Q twice) or shifts after an unclean cut.
 : PART-LINK-CASE ( CMD:command -- CMD:command )
    s" Y" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
    MID-FOUR-LAST KEEP  UNCLEAN-LAST KEEP  UNCLEAN-FIRST KEEP  UNCLEAN-SECOND KEEP  REDO KEEP

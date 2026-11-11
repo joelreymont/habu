@@ -534,10 +534,12 @@ private
 
 public
 
-\ The one root lookup ROOT! and WITH share, of an absolute spelling: its
-\ canonical directory and true, else false; the answer lasts until the next canon.
+\ ROOT-N's lookup, `.` being the working directory: the canonical directory and
+\ true; false too for an empty or too long spelling. Lasts until the next canon.
 : ROOT? ( ptr u8 n -- ptr u8 n bool )
-   ROOT-N {: n:n :}
+   {: a:ptr u:n :}
+   u 1 <  u WORK-BYTES >=  or if CANON-BUF 0 INCLUDE-FALSE exit then
+   a u ROOT-N {: n:n :}
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
    CANON-BUF n INCLUDE-TRUE ;
 
@@ -584,11 +586,8 @@ private
 
 public
 
-\ Each scope maps its root string at entry and releases the root current at its
-\ exit; a throw restores the caller before releasing it. A program's WITH records
-\ its lookup; a load's own entry to the loaded file's root (LOAD-RAW, WITH-BYTES,
-\ WITH-SUPPLIED) records none. There is no root-count or depth limit. A root that
-\ does not resolve to a searchable directory is refused by name.
+\ The caller's root is back before the scope's is released, on a throw too.
+\ WITH records its lookup; LOAD-RAW, WITH-BYTES and WITH-SUPPLIED record none.
 : WITH ( ptr u8 n [ -- ] -- ) {: q :}
    ROOT-ENTER {: old:ptr oldu:n :}
    JOIN-BUF JOIN-U @ CURRENT$ COMPILE-READS:ROOT+
@@ -636,12 +635,8 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 
 public
 
-\ The current root, which a relative require searches first, becomes the
-\ directory, relative to the current root when relative. Legal at the top
-\ level, inside a load and inside a WITH body: a file sets its root with ROOT!,
-\ which its load's end undoes, or scopes one with WITH. It never changes the
-\ process's directory or the engine root. A refusal names the absolute
-\ spelling tried; an answer is recorded as the lookup of that spelling.
+\ The directory is the current root, searched first by a relative require, until
+\ the load or WITH body it runs in ends. hb's directory and engine root stay.
 : ROOT! ( ptr u8 n -- )
    {: a:ptr u:n :}
    u INCLUDE-PATH-CAP > if s" source root: path is too long" INCLUDE-IO-RC die then
@@ -1468,11 +1463,8 @@ $4D constant INCLUDE-EVENT-RC
 0 constant EV-STATE-FRESH
 1 constant EV-STATE-KNOWN
 
-\ The records, and the pool that holds each event's paths and, unless an
-\ earlier event stored the same one, the root it resolved under and the current
-\ root, are mappings
-\ that grow as events arrive, so a discovery records every act however many
-\ there are. Each CAP counts the bytes its mapping holds, 0 while unmapped.
+\ Mappings that grow as events arrive; the pool holds each event's paths and
+\ roots, a root stored once. Each CAP counts its mapping's bytes, 0 unmapped.
 PTR-VARIABLE EVENT-RECS
 PTR-VARIABLE EVENT-POOL
 variable EVENT-RECS-CAP

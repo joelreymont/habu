@@ -2360,8 +2360,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ev EVENT-KIND@ EV-PROVIDED =
    ev EVENT-KIND@ EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-KNOWN =  and  or ;
 
-\ ACTS from the loader's log (include.f EVENT-RECORD), each row a kind, the spelled path and the root current as it
-\ was spelled (SOURCE-EVENT:CURRENT@); req >= 0 leaves out the newest event, the ending request's own.
+\ ACTS from the loader's log (include.f EVENT-RECORD); req >= 0 leaves out the newest event, the ending request's own.
 \ Any other event is a load the source caught before the build's runner ran it, which a link cannot repeat: UNLINKABLE.
 : ACTS+ ( n -- )
    {: req:n :}
@@ -3138,12 +3137,18 @@ variable RD-END
    i 0 ?do dup OBJ@ 8 + + loop ;
 
 \ Whether the spelling resolves to the canonical directory it resolved to; ROOT? resolves `.` against the working
-\ directory.
+\ directory and answers false for a spelling it cannot take.
 : ROOT-HOLDS? ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
    a u SOURCE-ROOT:ROOT? {: c:ptr cu:n ok:bool :}
    ok 0= if false exit then
    c cu b v STR= ;
+
+\ Whether an object's root is the current one or still resolves to itself, as SOURCE-ROOT:WITH and ROOT! need.
+: ROOT-STANDS? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u SOURCE-ROOT:CURRENT$ STR= if true exit then
+   a u a u ROOT-HOLDS? ;
 
 \ Whether the environment variable holds the value it held, or is absent when value is NULL-PTR.
 : ENV-HOLDS? ( ptr u8 n ptr u8 n -- bool )
@@ -3952,13 +3957,15 @@ variable PRIOR-EXT-NEXT
    a u PENDING-PATH? ;
 
 
-\ The piece's ACTS rows (ACTS-CK), each path resolved under the root it was spelled in: a
-\ require's must be REGISTERED?, as its compile found it; a provide's is registered.
+\ The piece's ACTS rows (ACTS-CK), each path resolved under the root it was spelled in, BAD when that root no longer
+\ stands (ROOT-STANDS?): a require's must be REGISTERED?, as its compile found it; a provide's is registered.
 : ACTS-WALK ( -- )
    ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
-      RD-NAME RD-NAME RESOLVE-UNDER {: canon:ptr canonu:n known:bool :}
+      RD-NAME RD-NAME {: a:ptr u:n root:ptr rootu:n :}
+      root rootu ROOT-STANDS? 0= if BAD unloop exit then
+      a u root rootu RESOLVE-UNDER {: canon:ptr canonu:n known:bool :}
       kind EV-PROVIDED = if
          canon canonu PENDING-PATHS FIELD+
       else
@@ -3967,9 +3974,8 @@ variable PRIOR-EXT-NEXT
    loop ;
 
 
-\ After INPUT!: true when part FILE-PART's object reads whole and checks with the source stamped (unstamped, INPUT-STAMP
-\ is 0 0 -1, an UNLINKABLE part's INPUT), starts in the root current and its compile's reads hold; a request resolves
-\ under the exit root to the existing file it loaded, a require's not REGISTERED?
+\ After INPUT!: true when part FILE-PART's object can stand for its compile: stamped (an UNLINKABLE part's INPUT-STAMP
+\ is 0 0 -1), whole and checked, in the current root, its reads, roots and request answering as they did.
 : PART-FRESH? ( -- bool )
    STAMPED? 0= if false exit then
    HITS-CLEAR                          \ the check replays NAMES into HITS
@@ -3982,6 +3988,7 @@ variable PRIOR-EXT-NEXT
    READS-HOLD? 0= if false exit then
    ACTS-WALK
    GOOD? 0= if false exit then
+   1 INPUT-AT FIELD$ ROOT-STANDS? 0= if false exit then
    REQS-N @ 0= if true exit then
    REQ-FIELDS {: kind:n spelled:n loaded:n :}
    spelled FIELD$  1 INPUT-AT FIELD$  RESOLVE-UNDER {: canon:ptr canonu:n known:bool :}
@@ -4667,9 +4674,8 @@ variable DUE-MADE
 : SCOPE-CK ( -- ) TOP-SCOPE? 0= if true UNLINKABLE ! then ;
 
 
-\ The piece's ACTS rows (ACTS-CK) applied as its compile made them, under the root each was
-\ spelled in: a provide through `provided`; a require the registry must hold, as PART-FRESH?
-\ found it, else E-COMP-STATE.
+\ The piece's ACTS rows (ACTS-CK) applied as its compile made them, under the root each was spelled in: a provide
+\ through `provided`; a require the registry must hold, as PART-FRESH? found it, else E-COMP-STATE.
 : LINK-ACTS ( -- )
    ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
@@ -4754,14 +4760,20 @@ variable DUE-MADE
    loop ;
 
 
-\ The piece's checks, RESET-SCRATCH, then PIECES (PIECE+): E-FAILED once DP moved back, E-LIVE-TASK
-\ for a task left running, E-STORE (CHECK-EARLIER, FIND-STORES), E-WORDLIST for an id no record holds.
-: PIECE-END ( n -- )
-   {: req:n :}
+\ E-FAILED once DP moved back, then E-LIVE-TASK for a task left running. Both run before READS-KEEP, so a task
+\ cannot read after the part's reads are kept and end before the refusal.
+: END-CK ( -- )
    DPHW-CELL HOST@ 0<> if E-FAILED throw then
    TASKS-LIVE-CELL HOST@ OPEN-TASKS @ > if
       REFUSAL s" a task is still running at the file's end" SAY SAY-CR  E-LIVE-TASK throw
-   then
+   then ;
+
+
+\ The piece's checks, RESET-SCRATCH, then PIECES (PIECE+): END-CK, E-STORE (CHECK-EARLIER, FIND-STORES),
+\ E-WORDLIST for an id no record holds.
+: PIECE-END ( n -- )
+   {: req:n :}
+   END-CK
    FILE-HELD @ CHECK:AMENDED   \ the facts its `TRUST` rows and amenders changed
    TYPE-ENTRIES
    here NULL-PTR - FILE-END !
@@ -4853,8 +4865,16 @@ variable DUE-MADE
             OBJECT-OPEN  COPY-BELOW
             CROSS? UNLINKABLE !  STAMPED? 0= if true UNLINKABLE ! then  SCOPE-CK
             false PUSH-KEY
-            [: FILE-OFF @ sourceu q ['] RUN-UNIT ['] POP-KEY finally  READS-KEEP ;] COMPILE-READS:RECORD
-            true GOING                    \ E-FAILED: a request failed and the source caught it
+            [:
+               FILE-OFF @ sourceu q ['] RUN-UNIT ['] POP-KEY finally
+               true GOING                 \ E-FAILED: a request failed and the source caught it
+               TURN @ MATCH turn          \ the source ended: END-CK as PIECE-END would, before READS-KEEP
+                  link OF ENDOF
+                  compile OF END-CK ENDOF
+                  cut OF ENDOF
+               ;MATCH
+               READS-KEEP
+            ;] COMPILE-READS:RECORD
             TURN @ MATCH turn
                link OF E-COMP-STATE throw ENDOF
                compile OF                 \ the source ended
