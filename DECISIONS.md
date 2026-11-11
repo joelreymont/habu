@@ -1095,6 +1095,24 @@ learned live in the docs for their subject.
   prot-wid-add` becomes `seal-package`. The image's own words stay
   unremovable through the dictionary floor, which the linker writes into the
   image it builds instead of the startup text setting it.
+- 2026-11-11, quotations read locals: shown a word beside `finally` whose
+  cleanup receives one value, for a scope that otherwise parks its object in a
+  global, and asked its name, Joel wrote "are you fixing the cause or the
+  symptoms? how do you fix the cause? fixing the cause is always best for long
+  term". The cause is that a quotation cannot read the locals of the word it
+  is written in. Shown the design that removes it, Joel chose "Approve
+  (Recommended)": "Reads locals while they live; never kept; one cell; no new
+  word." A quotation may read the locals of the word it is written in. The
+  word copies the locals read into a record in its own stack frame, and the
+  quotation stays one cell, the record's address with the top bit set, which
+  `execute`, `catch`, `finally` and `c2-invoke` follow. The checker refuses
+  one that would outlive its locals: stored, installed with `is`, passed to a
+  word that keeps its argument, handed to a task, returned, or held past the
+  local's block. A quotation that reads no local is unchanged, so stored
+  quotations, images and objects are too. The lead decided: one error code,
+  `E-LOCAL-ESCAPE`, for every such case; a quotation binding a group of its
+  own is a separate limit, left out; T0 only, arm64 first, then Wasm, then
+  x86-64, each refusing the form until its emitter and kernel carry it.
 
 ## Compiler and builds
 
