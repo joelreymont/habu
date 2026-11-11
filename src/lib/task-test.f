@@ -1,17 +1,23 @@
 \ task-test.f - CPU tasking smoke, isolation, and exit fixtures.
+\
+\ The claim TASK:SLEEP makes is not "it waited" - a PAUSE loop waits too - but
+\ "it waited without running". Wall time proves the duration, the calling task's
+\ own CPU time proves it was parked in the kernel rather than spinning, and the
+\ concurrent case proves that being parked costs the tasks beside it nothing.
+\ The CPU time counts only the calling OS thread.
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/fmt.f                 \ TASK-CODE$ renders the named code the child prints
+require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require src/lib/task.f
-require src/lib/time-cpu.f            \ TIME:THREAD-CPU-NS, the clock the sleeping cases read
-require src/habu/task-abi.f       \ the baked TCB size this suite pins
-require src/habu/code-bytes.f     \ CODE-BYTES:AT: the byte view the entry is read through
-require src/lib/adt/result.f          \ the join's answer is MATCHed here
+require src/lib/time-cpu.f
+require src/habu/task-abi.f
+require src/habu/code-bytes.f
+require src/lib/adt/result.f
 require src/lib/test/ending.f
 require src/lib/test/wait.f
 
@@ -21,14 +27,14 @@ package TASK-TEST
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
 
 1000000 constant NS-PER-MS
-50 constant SLEEP-MS                 \ the duration every sleeping case asks for
+50 constant SLEEP-MS
 SLEEP-MS NS-PER-MS * constant SLEEP-LEAST-NS
 \ nanosleep promises a minimum duration. Scheduling and Darwin timer coalescing
 \ can delay the return; the suite timeout bounds liveness, not this measurement.
-5000000 constant SLEEP-CPU-NS        \ a PAUSE loop over the same 50 ms costs ten times this
-20000000 constant SPIN-NS            \ the wall time the spinning case keeps its thread busy
+5000000 constant SLEEP-CPU-NS
+20000000 constant SPIN-NS
 1000000 constant SLEEP-ZERO-NS       \ a zero sleep never enters the kernel
-$7FFFFFFFFFFFFFFF constant CELL-NS-MAX \ the latest deadline a cell holds
+$7FFFFFFFFFFFFFFF constant CELL-NS-MAX
 \ The clock's advance between reading DEADLINE-LAST-MS and the call it bounds:
 \ the call takes its own mono-ns, so the last value it accepts is only known to
 \ within this. The refused row one past the bound needs no slack.
@@ -123,7 +129,7 @@ $80000000 constant SEM-OVER-MAX      \ SEM_VALUE_MAX + 1
 16 constant BUILD-RUN
 97 constant BUILD-A-C
 98 constant BUILD-B-C
-20000 constant BUILD-FMT-ITERS       \ the render never yields; the window is one preemption wide
+20000 constant BUILD-FMT-ITERS
 111111 constant BUILD-A-V
 222222 constant BUILD-B-V
 $80 constant POOL-CAP                \ handles this fixture holds: two of the pool's chunks
@@ -222,7 +228,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 : APP-BAD+ ( -- )
    1 APP-BAD atomic-add drop ;
 
-: JOIN-UNWRAP ( result<n,n> -- n n )     \ the payload, then 0 for ok and 1 for err
+: JOIN-UNWRAP ( result<n,n> -- n n )
    MATCH result ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;
 
 : JOIN-DROP ( result<n,n> -- )
@@ -344,10 +350,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
       APP-KILL
    loop ;
 
-\ MAIN COMPILES WHILE A TASK RUNS. The child starts a worker that runs every xt
-\ a queue brings it on 100 and sums the answers. With the worker running, main
-\ defines a word, allots a variable, evaluates a definition and points a defer
-\ at it with `is`, then sends the first word's xt and the defer's: 101 + 200.
+\ MAIN COMPILES WHILE A TASK RUNS.
 : TASK-MAIN-COMPILES$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
@@ -465,7 +468,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SB$ ;
 
 \ The diagnostic a child prints for an uncaught code, built from the named
-\ constant so a pinned message follows src/lib/error.f instead of repeating its
+\ constant so a pinned message follows the constant instead of repeating its
 \ number. It lands in its own buffer because the caller builds the child's
 \ source in SB straight afterwards.
 : TASK-CODE$ ( n -- ptr u8 n ) {: code:n :}
@@ -487,7 +490,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s" variable GOT  variable CTX  variable DIST  variable REGU" SB-APPEND TASK-LF
    s" : REGION-U ( ptr n -- n ) BYTE-VIEW TASK-ABI:REGION-U-OFF + CELL-VIEW @ ;" SB-APPEND TASK-LF ;
 
-\ FITS: BIG lies past the region's $10000-byte header, inside its REGU bytes.
 : TASK-USER-SLOT ( n -- ) {: size:n :}
    s" TASK:#USER 7 + -8 and " SB-APPEND size FMT:SB-INT
    s"  TASK:+USER BIG drop" SB-APPEND TASK-LF
@@ -524,7 +526,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SB$ ;
 
 \ As TASK-USER-LATE$, but EXPOSE must give W its new region and a foreign
-\ thread stores through BIG; it prints pthread's two answers, GOT and FITS.
+\ thread stores through BIG.
 : TASK-USER-EXPOSE$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/ffi-callback.f" SB-APPEND TASK-LF
@@ -584,8 +586,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s" TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER LIVE drop" SB-APPEND TASK-LF
    SB$ ;
 
-\ Runs the source on a fresh engine's stdin and asserts its exit code, leaving
-\ the stdout and stderr lengths.
 : TASK-RUN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
@@ -599,7 +599,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-OUT outu LEN>N S\" 301\n" T$=
    erru LEN>N 0 T= ;
 
-\ Exit $4F, the word main defined printed and nothing on stderr.
 : TASK-EXPECT-REFUSED-EXIT ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    src srcu TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
@@ -628,20 +627,16 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 : TASK-TEST-WORKER-DIE ( -- )
    TASK-DIE$ TASK-DIE-RC s" task died" TASK-EXPECT-FAIL ;
 
-\ SB and fmt's render buffer are task-local: SB in the STRING-ABI band, fmt's
-\ buffer and scratch cells in FMT-ABI beside it. The two workers run two
-\ phases, each opened by its own barrier.
+\ SB and fmt's render buffer are task-local.
 \
 \ The SB phase appends different bytes and yields between every append, so a
-\ shared builder shows as the other task's byte or a wrong length: 265 of 400
-\ rounds corrupt with one builder for all tasks.
+\ shared builder shows as the other task's byte or a wrong length.
 \
 \ The FMT phase renders in a tight loop with no yield, because nothing inside a
-\ render yields and the window is one preemption wide: 1961, 10787, 6069, 0 and
-\ 879 corrupt of 40000 over five runs with one buffer for all tasks. A busy
-\ machine can miss it, so the phase is a regression net, not the proof. The
-\ proof is that DATA-CLAIMS asserts FMT-ABI disjoint from every other claim and
-\ both fmt accessors read `data-base`, the running task's region.
+\ render yields and the window is one preemption wide. A busy machine can miss
+\ it, so the phase is a regression net, not the proof. The proof is that the
+\ data claims hold FMT-ABI disjoint from every other claim and both fmt
+\ accessors read `data-base`, the running task's region.
 : BUILD-BAD+ ( -- )
    1 BUILD-BAD atomic-add drop ;
 
@@ -687,7 +682,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    outu LEN>N 0 T=
    erru LEN>N 0 T= ;
 
-\ A claim's case ends in the child's output, a refusal's in its code on stderr.
 : TASK-TEST-USER-SLOTS ( -- )
    TASK-USER-BIG$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" 77\n0\n" T$=
@@ -706,8 +700,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-OUT hugeu LEN>N S\" 76\n0\n76\n76\n5\n" T$=
    TASK-ERR hugerr LEN>N s" data space out of range" CONTAINS? TTRUE ;
 
-\ One worker throws while the other completes: the throw ends that task alone
-\ and its code outlives the join.
 : TASK-TEST-WORKER-THROW ( -- )
    0 TASK-OK-CELL !
    ['] TASK-THROW-WORK WORKER-A TASK:ACTIVATE
@@ -722,7 +714,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    WORKER-B TASK:KILL
    WORKER-A TASK:THROW@ E-TASK-STATE T= ;
 
-\ Reactivating the task that threw starts it with a clean slot.
 : TASK-TEST-THROW-CLEARED ( -- )
    ['] TASK-OK-WORK WORKER-A TASK:ACTIVATE
    WORKER-A APP-WAIT-DONE
@@ -761,8 +752,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SEM-ITEMS TASK:SEMAPHORE-DESTROY
    SEM-SPACE TASK:SEMAPHORE-DESTROY ;
 
-\ An initial count of SEM-TICKET-N is drawn without any signal; the draw after
-\ it blocks on an empty semaphore until the main task signals once.
 : SEM-DRAW ( -- )
    SEM-TICKET-N 0 ?do
       SEM-TICKETS TASK:WAIT-SEM
@@ -787,9 +776,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SEM-TICKETS TASK:SEMAPHORE-DESTROY
    SEM-GATE TASK:SEMAPHORE-DESTROY ;
 
-\ Every named semaphore failure: an uninitialized handle, a count outside
-\ 0..SEM_VALUE_MAX either way, a second init of a live semaphore, and a handle
-\ whose object has been destroyed. Destroying twice is the documented no-op.
 : TASK-TEST-SEM-NEGATIVE ( -- )
    [: SEM-COLD TASK:WAIT-SEM ;] E-TASK-SEM-STATE TTHROWSQ
    [: SEM-COLD TASK:SIGNAL-SEM ;] E-TASK-SEM-STATE TTHROWSQ
@@ -824,8 +810,6 @@ $33 constant MSG-LATE-VALUE
    msg MSG-PING-GOT !
    from FFI:>CELL MSG-PING-FROM ! ;
 
-\ A message and its answer between two tasks: each end reads the other's TCB
-\ out of the mailbox and replies to it.
 : TASK-TEST-MSG-ROUND-TRIP ( -- )
    0 MSG-PING-GOT ! 0 MSG-PING-FROM !
    0 MSG-ECHO-GOT ! 0 MSG-ECHO-FROM !
@@ -904,8 +888,7 @@ $33 constant MSG-LATE-VALUE
    [: MSG-SEED TASK:SELF TASK:SEND-MESSAGE ;] catch MSG-REFUSE-SELF !
    [: MSG-SEED MSG-IDLE TASK:SEND-MESSAGE ;] catch MSG-REFUSE-IDLE ! ;
 
-\ Both ends of a send are running tasks: a task cannot post to itself, nobody
-\ can post to a task that is not running, and the main thread has no mailbox.
+\ Both ends of a send are running tasks.
 : TASK-TEST-MSG-REFUSED ( -- )
    0 MSG-REFUSE-SELF ! 0 MSG-REFUSE-IDLE !
    ['] MSG-REFUSE-WORK MSG-REFUSER TASK:ACTIVATE
@@ -968,7 +951,7 @@ $33 constant MSG-LATE-VALUE
 
 \ A stale handle names its record still, so it counts again exactly when the
 \ record went to a new owner who initialized it; otherwise it is
-\ E-TASK-SEM-STATE. The handle crosses the quotation on the stack.
+\ E-TASK-SEM-STATE.
 : POOL-REUSED ( TASK:sem -- )
    [: dup TASK:TRY-WAIT-SEM TTRUE ;] catch {: rc:n :}
    drop
@@ -988,10 +971,8 @@ $33 constant MSG-LATE-VALUE
    early POOL-REUSED
    late POOL-REUSED ;
 
-\ The pool grows past its first chunk of $40 records: this fixture holds twice
-\ that many live at once, and records given back are handed out again from
-\ whichever chunk holds them before the pool grows. A handle that never came
-\ from the pool - a defined semaphore - cannot be given to it.
+\ The pool grows past its first chunk of $40 records: records given back are
+\ handed out again from whichever chunk holds them before the pool grows.
 : TASK-TEST-SEM-POOL ( -- )
    0 POOL-N ! 0 POOL-RC !
    POOL-FILL
@@ -1090,8 +1071,6 @@ variable JOIN-TWICE-RC
    JOIN-TWICE-RC @ E-TASK-STATE T=
    [: JOIN-AGAIN-N TASK:RETURN ;] E-TASK-STATE TTHROWSQ ;
 
-\ A worker that ends with an uncaught throw answers err with that code - the same
-\ code TASK:THROW@ keeps.
 : TASK-TEST-JOIN-THROW ( -- )
    ['] TASK-THROW-WORK JOIN-SILENT TASK:ACTIVATE
    JOIN-SILENT APP-WAIT-DONE
@@ -1106,7 +1085,6 @@ variable JOIN-TWICE-RC
    JOIN-SILENT TASK:JOIN E-TASK-NO-RESULT JOIN-ERR=
    JOIN-SILENT-RAN @ 1 T= ;
 
-\ One registration serves every activation of that task and runs on both endings.
 \ The mark is read while the task still holds the region that carries it - the
 \ join releases it - and it counts from zero again because each activation gets a
 \ fresh region.
@@ -1121,9 +1099,6 @@ variable JOIN-TWICE-RC
    JOIN-CLEAN TASK-EXIT-MARK TASK:HIS @ 1 T=
    JOIN-CLEAN TASK:JOIN E-TASK-STATE JOIN-ERR= ;
 
-\ A cleanup that throws ends nothing but the task: its code becomes the task's
-\ error when the body left none, which overtakes a value the body had stored, and
-\ a body that already failed keeps its own code.
 : TASK-TEST-JOIN-CLEANUP-THROWS ( -- )
    [: E-TASK-USER throw ;] JOIN-BAD-CLEAN TASK:AT-EXIT
    ['] JOIN-VALUE-WORK JOIN-BAD-CLEAN TASK:ACTIVATE
@@ -1153,9 +1128,6 @@ variable JOIN-TWICE-RC
    JOIN-SAME TASK-EXIT-MARK TASK:HIS @ 1 T=
    JOIN-SAME TASK:JOIN JOIN-AGAIN-N JOIN-OK= ;
 
-\ A throwing cleanup ends nothing else in the chain: the one registered before it
-\ runs after it and sets its mark, the first throw is the task's error when the
-\ body left none, and a body that already failed keeps its own code.
 : TASK-TEST-EXIT-CHAIN-THROWS ( -- )
    ['] JOIN-MARK JOIN-CHAIN-BAD TASK:AT-EXIT
    [: E-TASK-USER throw ;] JOIN-CHAIN-BAD TASK:AT-EXIT
@@ -1176,7 +1148,6 @@ variable EXIT-SEEDING
    TASK-EXIT-MARK @ 10 * 3 + TASK-EXIT-MARK !
    EXIT-SEEDING @ 0 <> if ['] JOIN-ORDER2 TASK:SELF TASK:AT-EXIT then ;
 
-\ Registers JOIN-ORDER1 again after it ran in this ending.
 : EXIT-REDO ( -- )
    TASK-EXIT-MARK @ 10 * 4 + TASK-EXIT-MARK !
    ['] JOIN-ORDER1 TASK:SELF TASK:AT-EXIT ;
@@ -1248,19 +1219,15 @@ TASK:MIN-STACK TASK:TASK HALTED-TASK
    HALTED-SEEN @ 1 T=
    HALTED-TASK TASK:KILL ;
 
-\ A HALTED TASK:PAUSE UNWINDS THE BODY THROUGH EVERY FINALLY AROUND IT,
-\ innermost first, and past every catch between it and the task's root: the
-\ code after such a catch never runs. The AT-EXIT chain runs after the unwind,
-\ and the halt is no body error: THROW@ stays 0 and the join answers
-\ E-TASK-NO-RESULT. The inner cleanup pauses twice before taking its turn, so a
-\ cleanup that pauses during the unwind yields and completes. Each cleanup takes
-\ the next turn of one counter, so the turns give the order they ran in.
+\ The inner cleanup pauses twice before taking its turn, so a cleanup that
+\ pauses during the unwind yields and completes. Each cleanup takes the next
+\ turn of one counter, so the turns give the order they ran in.
 TASK-TEST-ALIGN8
-variable UNWIND-TURN                  \ the last turn taken
-variable UNWIND-INNER                 \ the inner finally's turn
-variable UNWIND-OUTER                 \ the outer finally's turn
-variable UNWIND-AFTER                 \ set by the code after the catch
-variable SWALLOW-CAUGHT               \ codes the swallowing catch received
+variable UNWIND-TURN
+variable UNWIND-INNER
+variable UNWIND-OUTER
+variable UNWIND-AFTER
+variable SWALLOW-CAUGHT
 TASK:MIN-STACK TASK:TASK HALT-SWALLOW
 
 : UNWIND-RESET ( -- )
@@ -1318,9 +1285,6 @@ TASK:MIN-STACK TASK:TASK HALT-SWALLOW
    JOIN-HALT TASK:THROW@ 0 T=
    JOIN-HALT TASK:JOIN E-TASK-NO-RESULT JOIN-ERR= ;
 
-\ A CLEANUP THAT THROWS DURING THE UNWIND supersedes as it does for any throw:
-\ its code continues the unwind past the catch, the outer finally still runs,
-\ and the code is the task's error.
 : TASK-TEST-HALT-CLEANUP-THROWS ( -- )
    UNWIND-RESET
    ['] UNWIND-THROW-NESTED JOIN-HALT TASK:ACTIVATE
@@ -1336,11 +1300,6 @@ TASK:MIN-STACK TASK:TASK HALT-SWALLOW
    JOIN-HALT TASK:THROW@ E-TASK-USER T=
    JOIN-HALT TASK:JOIN E-TASK-USER JOIN-ERR= ;
 
-\ A HALT THAT BEGINS INSIDE A FINALLY'S CLEANUP cuts the cleanup short at its
-\ TASK:PAUSE and keeps the body's error: a body that threw ends the task with
-\ that code, and a body that returned ends it with no error. The cleanup takes
-\ its turn, then pauses until the halt ends it. The halt keeps unwinding past a
-\ catch around the finally.
 : UNWIND-PAUSE-CLEAN ( -- )
    UNWIND-INNER UNWIND-TAKE
    begin TASK:PAUSE again ;
@@ -1391,14 +1350,13 @@ TASK:MIN-STACK TASK:TASK HALT-SWALLOW
    HALT-SWALLOW TASK:THROW@ 0 T=
    HALT-SWALLOW TASK:KILL ;
 
-\ A HALT THAT MEETS A TASK'S CLEANUP RUNS IT ONCE, AND THE CLEANUP SEES IT.
 TASK-TEST-ALIGN8
-variable EXIT-HALT-RUNS               \ times the cleanup started
-variable EXIT-HALT-IN                 \ the cleanup has started
-variable EXIT-HALT-SENT               \ the owner's HALT has returned
+variable EXIT-HALT-RUNS
+variable EXIT-HALT-IN
+variable EXIT-HALT-SENT
 variable EXIT-HALT-PAST               \ a cleanup PAUSE began after SENT
-variable EXIT-HALT-GO                 \ the owner lets the cleanup return
-variable EXIT-HALT-SEEN               \ TASK:HALTED? was true in the cleanup
+variable EXIT-HALT-GO
+variable EXIT-HALT-SEEN
 TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
 
 : EXIT-HALT-CLEAN ( -- )
@@ -1417,8 +1375,6 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    0 EXIT-HALT-GO atomic!
    0 EXIT-HALT-SEEN atomic! ;
 
-\ Halts the task in the cleanup it is running, lets the cleanup return once it
-\ has paused past the request, and reads what the cleanup saw.
 : EXIT-HALT-FINISH ( -- )
    EXIT-HALT-IN 1 EXIT-HALT-TASK TEST-WAIT:FOR-CELL
    EXIT-HALT-TASK TASK:HALT
@@ -1486,16 +1442,9 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    s" TASK-TH-BOOL ( ptr n -- bool ) TASK:THROW@"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ The claim TASK:SLEEP makes is not "it waited" - a PAUSE loop waits too - but
-\ "it waited without running". Wall time proves the duration, the calling task's
-\ own CPU time proves it was parked in the kernel rather than spinning, and the
-\ concurrent case proves that being parked costs the tasks beside it nothing.
-\ The CPU time is TIME:THREAD-CPU-NS, which counts only the calling OS thread.
-
-\ The clock the sleeping cases trust has to move. A spin costs the spinning
-\ task CPU time, and never more than the wall time the spin spanned, so a
-\ clock that never advanced or misread its timespec fails here although it
-\ passes every sleep.
+\ A spin costs the spinning task CPU time, and never more than the wall time
+\ the spin spanned, so a clock that never advanced or misread its timespec
+\ fails here although it passes every sleep.
 : TASK-TEST-SPIN-CPU ( -- )
    mono-ns {: t0:n :}
    TIME:THREAD-CPU-NS {: cpu0:n :}
@@ -1505,8 +1454,6 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    cpu 0 > TTRUE
    cpu wall <= TTRUE ;
 
-\ One sleep, measured from inside whichever task takes it: the wall time it
-\ spanned and the CPU time it cost that task.
 : SLEEP-MEASURE ( -- n n )
    TIME:THREAD-CPU-NS {: cpu0:n :}
    mono-ns {: t0:n :}
@@ -1532,9 +1479,6 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    SLEEP-WORKER TASK:KILL
    SLEEP-W-NS @ SLEEP-W-CPU @ SLEEP-CHECK ;
 
-\ Zero returns without entering the kernel; a duration below zero, or the first
-\ whose deadline would not fit a cell, is the named operand refusal, not a sleep
-\ of some other length.
 : TASK-TEST-SLEEP-EDGES ( -- )
    mono-ns 0 >MS TASK:SLEEP mono-ns swap - SLEEP-ZERO-NS < TTRUE
    [: -1 >MS TASK:SLEEP ;] E-TASK-SLEEP-MS TTHROWSQ
@@ -1563,9 +1507,8 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    again ;
 
 \ A sleeping task holds nothing, so the counter ticks inside the sleeper's
-\ sleep. The claim is progress, not a tick rate: a gate at load 21 counted under
-\ $100 ticks in a 50 ms sleep three runs of three, because the counter's thread
-\ had barely started when the sleep ended.
+\ sleep. The claim is progress, not a tick rate: the counter's thread may
+\ have barely started when the sleep ends.
 : TASK-TEST-SLEEP-CONCURRENT ( -- )
    0 SLEEP-TICKS ! 0 SLEEP-DONE-CELL !
    ['] SLEEP-COUNTER-BODY SLEEP-COUNTER TASK:ACTIVATE
