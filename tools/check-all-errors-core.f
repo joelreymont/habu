@@ -645,7 +645,10 @@ public
 : SESSION ( [ -- ] -- ) {: q :}
    MULTI-ERR-BEGIN
    CHECKER-SCOPE-START-NEUTRAL
+   WARN-DIAGS @ {: warn:n :}
+   -1 WARN-DIAGS !   \ the session's warnings, whatever the caller's switch
    q catch {: rc:n :}
+   warn WARN-DIAGS !
    CHECKER-SCOPE-DONE
    MULTI-ERR-END drop
    rc 0 <> IF rc throw THEN ;

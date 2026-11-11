@@ -2055,8 +2055,8 @@ BADSIG-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
-\ tools/check.f's run turns WARN-DIAGS off: the run loads what the check before
-\ it checked, and that check wrote the warnings with their positions.
+\ Check's run turns this off, as the check before it wrote the placed warnings;
+\ a session the run's program starts turns it on (CHECK-ALL-ERRORS:SESSION).
 variable WARN-DIAGS   -1 WARN-DIAGS !
 
 : REC-REFUSE-DIAG ( ptr u8 n -- )
