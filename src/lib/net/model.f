@@ -107,7 +107,7 @@ public
 \ the provider may still finish and bill the response.
 -9703 constant E-TRANSPORT
 \ A status other than 200, or a failed response's error code, that no code
-\ above or E-UNAVAILABLE names.
+\ above, E-UNAVAILABLE or E-TIER names.
 -9704 constant E-HTTP
 \ The provider's response, or a journal record replayed for it, is malformed
 \ or inconsistent.
@@ -125,6 +125,9 @@ public
 \ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
 \ response's error code rate_limit_exceeded or server_error.
 -9711 constant E-UNAVAILABLE
+\ The provider cannot serve the request at the service tier it names for now:
+\ a failed response's error code flex_unavailable. Nothing was generated.
+-9712 constant E-TIER
 \ OpenAI's limits: https://platform.openai.com/docs/api-reference/embeddings
 \ MODEL counts no embed input's tokens; INPUT-MAX bounds an Ollama call too.
 \ The most inputs one EMBED call takes.
@@ -2236,6 +2239,7 @@ private
    s" context_length_exceeded" JSON:READ-STR-EQ? if E-CAPACITY exit then
    s" rate_limit_exceeded" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
    s" server_error" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
+   s" flex_unavailable" JSON:READ-STR-EQ? if E-TIER exit then
    E-HTTP ;
 
 \ A failed reply keeps its error message as the call's error text.
@@ -2703,6 +2707,7 @@ private
    code E-REFUSED = if s" MODEL:E-REFUSED" exit then
    code E-INCOMPLETE = if s" MODEL:E-INCOMPLETE" exit then
    code E-UNAVAILABLE = if s" MODEL:E-UNAVAILABLE" exit then
+   code E-TIER = if s" MODEL:E-TIER" exit then
    code E-CANCELLED = if s" MODEL:E-CANCELLED" exit then
    code FMT:INT$ ;
 
@@ -3329,6 +3334,7 @@ ENUM poll none fed spoiled done ;ENUM
    w SHA256-CTX-BYTES + 32 + 64 ;
 
 \ The call's accounting record, the JSON object RECORDER!'s record receives.
+\ outcome is ok, cancelled, tier_unavailable for E-TIER, else failed.
 : CALL-RECORD ( ptr call -- )
    {: c :}
    c LEDGER {: l :}
@@ -3370,7 +3376,8 @@ ENUM poll none fed spoiled done ;ENUM
    else JSON:WRITE-FIELD-NULL then
    JSON:WRITE-COMMA s" purpose" c LABEL$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" outcome" l LEDGER-CANCELLED @ if s" cancelled"
-   else fault 0<> if s" failed" else s" ok" then then JSON:WRITE-FIELD-S
+   else fault E-TIER = if s" tier_unavailable"
+   else fault 0<> if s" failed" else s" ok" then then then JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" fault" fault NONZERO COUNT-FIELD
    JSON:WRITE-COMMA s" http_status" c MODEL-CALL:HTTP-STATUS @ NONZERO COUNT-FIELD
    JSON:WRITE-COMMA s" incomplete_reason" c MODEL-CALL:INCOMPLETE-U @ 0<> if

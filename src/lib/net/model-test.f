@@ -581,6 +581,9 @@ $300000 constant BIG-U
    S\" {\qtype\q:\qerror\q,\qsequence_number\q:2,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null}" ;
 : NESTED-ERROR$ ( -- ptr u8 n )
    S\" {\qtype\q:\qerror\q,\qsequence_number\q:2,\qerror\q:{\qtype\q:\qserver_error\q,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null}}" ;
+\ OpenAI's error event when the flex tier has no room for the request.
+: FLEX-OUT$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qerror\q,\qerror\q:{\qtype\q:\qresource_unavailable\q,\qcode\q:\qflex_unavailable\q,\qheaders\q:{\qretry-after\q:\q300\q,\qretry-after-ms\q:\q300000\q,\qx-retry-metadata\q:\qNO_MORE_RETRY\q},\qmessage\q:\qFlex processing is temporarily unavailable. Please try again later or use standard processing.\q,\qparam\q:null},\qsequence_number\q:2}" ;
 \ resp_1's created event, then an event whose data is not UTF-8. MODEL-TEST
 \ writes the line logging it.
 : BAD-UTF8$ ( -- ptr u8 n )
@@ -670,6 +673,7 @@ $300000 constant BIG-U
    then
    t t-u s" error-event" STR= if response FLAT-ERROR$ true BAD-STREAM exit then
    t t-u s" error-nested" STR= if response NESTED-ERROR$ true BAD-STREAM exit then
+   t t-u s" flex-out" STR= if response FLEX-OUT$ true BAD-STREAM exit then
    t t-u s" plain-json" STR= if response [: PLAIN$ JSON:WRITE-RAW ;] HTTP:JSON! exit then
    t t-u s" bad-type" STR= if response BAD-TYPE$ true BAD-STREAM exit then
    t t-u s" no-id" STR= if response NO-ID$ false BAD-STREAM exit then
@@ -1046,6 +1050,7 @@ EXPORT PLAIN$
 EXPORT BAD-TYPE$
 EXPORT FLAT-ERROR$
 EXPORT NESTED-ERROR$
+EXPORT FLEX-OUT$
 EXPORT NO-ID$
 EXPORT WIDE-DIMS
 : BASE-URL$ ( -- ptr u8 n ) BASE-URL BASE-URL-U @ ;
@@ -2462,8 +2467,9 @@ variable KEYLESS-U
 \ names the tier the reply names, NULL when it names none or is null, and the
 \ tier a generation request sent, NULL when it sent none; an embedding sends
 \ none whatever tier generation requests, and names none after a tiered reply. An
-\ empty or non-string reply tier is refused. A purpose's row sets the tier of
-\ that purpose's calls in place of the call's, an empty one sending none; a
+\ empty or non-string reply tier is refused. A tier with no room fails E-TIER
+\ and records tier_unavailable. A purpose's row sets the tier of that
+\ purpose's calls in place of the call's, an empty one sending none; a
 \ negative tier length is refused.
 : TIERS ( -- )
    CAPTURE
@@ -2480,6 +2486,18 @@ variable KEYLESS-U
    PURPOSE s" http-error" MODEL:E-UNAVAILABLE FAILS
    s" service_tier" ROW NULL-IS
    s" requested_tier" ROW s" flex" STR-IS
+   PURPOSE s" flex-out" MODEL:E-TIER FAILS
+   M MODEL:ERROR$ s" Flex processing is temporarily unavailable. Please try again later or use standard processing." STR= ASSERT
+   s" error" CHAT-ID-LINE
+   s" MODEL:E-TIER status 200: Flex processing is temporarily unavailable. Please try again later or use standard processing. body: " SB-APPEND
+   MODEL-PEER:FLEX-OUT$ SB-APPEND
+   s" ; events response.created=1 response.in_progress=1 error=1; no output" SB-APPEND
+   SB-LOGGED
+   s" outcome" ROW s" tier_unavailable" STR-IS
+   s" fault" ROW MODEL:E-TIER INT-IS
+   s" http_status" ROW 200 INT-IS
+   s" requested_tier" ROW s" flex" STR-IS
+   s" service_tier" ROW NULL-IS
    s" auto" M MODEL:SERVICE-TIER!
    PURPOSE s" tiered" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
    s" service_tier" SENT s" auto" STR-IS
