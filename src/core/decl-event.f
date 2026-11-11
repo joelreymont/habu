@@ -4,6 +4,7 @@
 \ differs. The field name gate is the field record's (type-family.f TYPE-FIELD),
 \ surfaced unchanged. State is process-local and re-seeded at load.
 
+using SCHEMA-REG
 using TFAM
 
 package DECL-EVENT
@@ -604,6 +605,32 @@ public
 
 : DEPTH ( -- n ) DEV-TX-DEPTH @ ;
 
+\ A pointer does not own (TFCL-NODE? stops at it), so `ptr <linear>` would let
+\ its family copy and drop a linear value: E-PAYLOAD with the caller's text.
+: REQUIRE-POINTEE ( n ptr u8 n -- n )
+   {: node:n why:ptr whyu:n :}
+   node TFCL-NODE? IF why whyu DECL-FRONT:E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   node ;
+
+\ REQUIRE-POINTEE on each pointee in a field type, as SCH-STORE-MASK walks it;
+\ again at close, as a pointee naming the declared family was judged fieldless.
+: REQUIRE-POINTEES ( n ptr u8 n -- )
+   {: node:n why:ptr whyu:n :}
+   node SCHEMA-PTR? IF
+      node SCHEMA-A@ why whyu REQUIRE-POINTEE why whyu RECURSE EXIT THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-B@ {: start:n :}
+      node SCHEMA-C@ 0 ?do start i + SCHEMA-ROOT@ why whyu RECURSE loop EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      SCH-QUOT-ROWS 0 ?do
+         node i SCHEMA-QUOT-ROW@ {: row:n :}
+         row SCHEMA-ROW-OK? IF
+            row SCHEMA-ROW-COUNT@ 0 ?do row i SCHEMA-ROW-ELEM@ why whyu RECURSE loop
+         THEN
+      loop
+   THEN ;
+
 private
 
 \ The front ends reach this module only through these hooks, which go through the
@@ -621,4 +648,5 @@ DEV-EVENT-HOOKS-INSTALL
 
 ;package
 
+;using
 ;using

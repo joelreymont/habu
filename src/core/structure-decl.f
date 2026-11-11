@@ -84,32 +84,6 @@ PTR-VARIABLE GATE-A   variable GATE-U
       FAM @ idx want TFAM-PK! THEN
    SCHEMA-PARAM ;
 
-\ A pointer is a non-owning boundary (TFCL-NODE? stops at it), so `ptr <linear>`
-\ would let the containing family copy and drop a linear resource: refused here,
-\ for the family and the con spelling alike. SD-CLOSE judges every pointee again
-\ once the declared family's fields are committed.
-: REQUIRE-POINTEE ( n -- n )
-   dup TFCL-NODE? IF
-      s" field type is a pointer to a linear value and cannot own it"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
-
-\ REQUIRE-POINTEE on every pointer's pointee in a field type, as SCH-STORE-MASK walks it.
-: REQUIRE-POINTEES ( n -- )
-   {: node:n :}
-   node SCHEMA-PTR? IF node SCHEMA-A@ REQUIRE-POINTEE RECURSE EXIT THEN
-   node SCHEMA-APP? IF
-      node SCHEMA-B@ {: start:n :}
-      node SCHEMA-C@ 0 ?do start i + SCHEMA-ROOT@ RECURSE loop EXIT
-   THEN
-   node SCHEMA-QUOT? IF
-      SCH-QUOT-ROWS 0 ?do
-         node i SCHEMA-QUOT-ROW@ {: row:n :}
-         row SCHEMA-ROW-OK? IF
-            row SCHEMA-ROW-COUNT@ 0 ?do row i SCHEMA-ROW-ELEM@ RECURSE loop
-         THEN
-      loop
-   THEN ;
-
 : SD-ARG+ ( n -- )
    SD-ARG-N @ SD-ARG-CAP >= IF
       s" field type application is too deep" E-PAYLOAD DECL-REJECT:REJECT throw THEN
@@ -252,7 +226,8 @@ defer SD-QUOT-ELEM ( ptr u8 n -- n )
       NEXT RECURSE
       outer POINTEE !
       FIELD-MISS @ IF drop 0 EXIT THEN
-      REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
+      s" field type is a pointer to a linear value and cannot own it"
+      DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    0 SD-ARG-N !
    2dup 0 PK-CELL SD-PARSE-NODE {: node:n j:n :}
    j over <> IF
@@ -383,7 +358,9 @@ SD-QUOT-INSTALL
    MISSING? IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do
-      TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@ REQUIRE-POINTEES
+      TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@
+      s" field type is a pointer to a linear value and cannot own it"
+      DECL-EVENT:REQUIRE-POINTEES
    loop
    FAM @ SD-CELLS @ TFAM-SLOTS!
    FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF

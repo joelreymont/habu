@@ -23,9 +23,10 @@ variable NFLD       \ total field count across all variants
 variable VCELLS     \ running payload cell width WITHIN the open variant
 variable MAXSLOTS   \ widest variant payload cell width (the sum's payload slots)
 variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede variants)
+variable POINTEE    \ resolving the pointee of `ptr`: the declared family may be named
 
 : ED-RESET ( -- )
-   0 TOK !   0 SEEN-VARIANT ! ;
+   0 TOK !   0 SEEN-VARIANT !   0 POINTEE ! ;
 ED-RESET
 
 \ The reserved list is TYPE-NAME:FAMILY-RESERVED?, the one every family definer
@@ -48,6 +49,9 @@ ED-RESET
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
+   id FAM @ = POINTEE @ 0= and IF   \ its own family only beneath `ptr`
+      s" payload type cannot recursively name its owner"
+      E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id TFAM-ARITY@ 0 <> IF
       s" payload type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
@@ -61,19 +65,16 @@ ED-RESET
       drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    SCHEMA-PARAM ;
 
-\ `ptr <linear>` is refused for a payload by the rule structure-decl.f
-\ REQUIRE-POINTEE applies to a field: TFCL-NODE? stops at a pointer node.
-: REQUIRE-POINTEE ( n -- n )
-   dup TFCL-NODE? IF
-      s" payload type is a pointer to a linear value and cannot own it"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
-
 : RESOLVE-TYPE ( ptr u8 n -- n )
    dup 0= IF 2drop s" missing payload type" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ptr" CORE-STR=CI IF
-      2drop NEXT RECURSE
+      2drop POINTEE @ {: outer:n :}
+      -1 POINTEE !
+      NEXT RECURSE
+      outer POINTEE !
       FIELD-MISS @ IF drop 0 EXIT THEN
-      REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
+      s" payload type is a pointer to a linear value and cannot own it"
+      DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    dup 1 = IF LETTER-TYPE EXIT THEN
    2dup CON-OF dup 0 <> IF nip nip SCHEMA-CON EXIT THEN drop
    2dup FIELD-FAM? IF nip nip 0 0 SCHEMA-APP EXIT THEN drop
@@ -272,6 +273,11 @@ ED-RESET
    MISSING? IF E-UNRESOLVED throw THEN
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
+   NFLD @ 0 ?do
+      TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@
+      s" payload type is a pointer to a linear value and cannot own it"
+      DECL-EVENT:REQUIRE-POINTEES
+   loop
    FAM @ MAXSLOTS @ TFAM-SLOTS!
    FAM @ TDECL-LAYOUT-DESC
    \ No reason is armed for the constructor participant's collide check: it runs at

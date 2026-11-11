@@ -819,6 +819,18 @@ DECL-DIAG:PROSE
 s" ENUM edlptrtail VARIANT hold FIELD p ptr edlmodel ( note ) ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrtail': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? TTRUE
+
+\ A payload names its own family only inside a `ptr` pointee, and that pointer is
+\ a pointer to a linear value when the enum holds one: judged at ;ENUM.
+DECL-DIAG:PROSE
+s" ENUM edsval VARIANT hold FIELD x edsval ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" habu: bad enum declaration 'edsval': payload type cannot recursively name its owner at 'edsval'"
+DECL-DIAG:HAS? TTRUE
+s" ENUM edsptr VARIANT hold FIELD next ptr edsptr ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" ENUM edslin VARIANT hold FIELD next ptr edslin ;VARIANT VARIANT own FIELD t EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
+s" habu: bad enum declaration 'edslin': payload type is a pointer to a linear value and cannot own it at 'edslin'"
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ A failure prints F<index>; T-REPORT exits 1.

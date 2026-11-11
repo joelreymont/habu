@@ -585,8 +585,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   declared (inline, through `ptr` or bare) is `E-TDECL-RECURSIVE` under either
   accepted policy, and a payload naming a family not yet declared is
   `E-TDECL-PAYLOAD`, which also keeps mutual recursion out.
-- A `STRUCTURE` field may name its own family only inside a `ptr` pointee, as a
-  linked record does: `STRUCTURE node FIELD id n FIELD next ptr node ;STRUCTURE`.
+- A `STRUCTURE` field or `ENUM` payload may name its own family only inside a
+  `ptr` pointee, as a linked record does:
+  `STRUCTURE node FIELD id n FIELD next ptr node ;STRUCTURE`.
   Named by value or as another family's argument (`FIELD o option<node>`, and
   `FIELD s SPAN:span<node>` though a span only points at its element), it is
   `E-TDECL-PAYLOAD` (7109), and so is a pointer to its own family when that

@@ -2903,15 +2903,18 @@ package TFAM
 \ Pointer and quotation nodes are non-owning boundaries.
 defer TFCL-NODE-XT ( n -- bool )
 
+\ Field rows go through PF-ROW, as ;STRUCTURE and ;ENUM judge their own family
+\ before its rows commit; a sum's positional payloads go through SUMV-PAY-ROOT.
 : TFAM-CONCRETE-LINEAR-WALK? ( n -- bool ) {: fam:n :}
-   fam TFAM-PRODUCT? IF
+   fam TFAM-SUM? fam TFAM-ENUM? or {: sum:bool :}
+   fam TFAM-PRODUCT?  sum fam TFAM-FLD-COUNT@ 0 > and  or IF
       0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
          fam TFAM-FLD-START@ over + PF-ROW PF.SCH @ SCHEMA-ROOT@ TFCL-NODE-XT IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
       RES-FALSE EXIT
    THEN
-   fam TFAM-SUM? fam TFAM-ENUM? or IF
+   sum IF
       0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
          fam TFAM-VAR-START@ over + {: vid:n :}
          0 BEGIN dup vid SUMV-PAY-N < WHILE
