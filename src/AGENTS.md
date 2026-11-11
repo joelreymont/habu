@@ -1,8 +1,8 @@
 # src
 
 Everything `hb` is made of, in checked Habu; each module has a real package and
-states its contract in its header comment. Every program starts from the
-`--load` prefix in `habu/habu2.f`.
+states its contract in its header comment. An engine starts in
+`arch/arm64/boot.f` ENGINE-START, which calls the MAIN `habu/main.f` installs.
 
 - `habu/` — the engine: primitive table, engine builders, interpreter, images.
 - `core/` — the checker, type families, typed definers and source loading; the
