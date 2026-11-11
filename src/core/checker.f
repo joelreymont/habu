@@ -5001,6 +5001,7 @@ CHECKER-REG:}SCRATCH
 63 constant MD-ARMS-DEPTH    \ an if's two arms leave different data depths (CF-THEN-ELSE-MERGE)
 64 constant MD-LOCAL-ESCAPE  \ a quotation that reads a local would outlive it (LSC-CK, STORE-HIT)
 65 constant MD-BINDER-PLACE  \ an inferred effect holds a callback binder outside a callback input (CHECK)
+66 constant MD-DEPTH-WIDE    \ depth or .s over a row holding a wide value or one of open width (HIDROW-STEP?)
 
 \ Why the check left a stretch or definition to the run (DEFER-WHY), each with
 \ its own suggestion (render.f DEFER-SUGGEST$); 0 is no cause recorded.
@@ -5029,6 +5030,8 @@ variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepe
 variable MDIAG-WIDTH  \ input width: the cells of the input row a record would hold
 variable MDIAG-LITV   \ literal misfit: the literal's value
 variable MDIAG-LITT   \ literal misfit: the type code it does not fit
+variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
+variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
 variable DEFER-WHY    \ the next deferral packet's cause (a DW- code; 0 = none)
 CHECKER-REG:}SCRATCH
 
@@ -20213,16 +20216,34 @@ variable XG-N   variable XG-TN   variable XG-ROW
    a u XPORT-APPLY
    RES-TRUE ;
 
-: ROW-ANY-HIDDEN? ( n -- bool )    \ any hidden cell above the row's tail var?
+\ The type of the topmost cell above the row's tail var holding a layout value
+\ wider than one cell or of open width, and whether there is one.
+: ROW-UNCOUNTABLE ( n -- n bool )
    BEGIN R-RES dup TAG S-PUSH = WHILE
-      dup P>TYPE T-RES HIDDEN-PARAM? IF drop RES-TRUE EXIT THEN
-      P>REST
-   REPEAT drop RES-FALSE ;
+      dup P>TYPE T-RES
+      dup LAYOUT-PARAM? IF
+         dup HIDDEN-PARAM? 0= IF
+            dup T-UNSTALE LAYOUT-WIDTH-OPEN? IF nip RES-TRUE EXIT THEN
+         THEN
+         dup T-WIDTH 1 > IF nip RES-TRUE EXIT THEN
+      THEN
+      drop P>REST
+   REPEAT RES-FALSE ;
 
-\ depth/.s report raw physical cells: over a row holding hidden fields they
-\ would expose a logical value's expansion, so they fail closed.
+\ depth/.s count raw cells, so over a wide value or one of open width they fail
+\ closed; the type and pin are taken only when this refusal names the reason.
 : HIDROW-STEP? ( -- bool )
-   DCUR @ ROW-ANY-HIDDEN? 0= IF RES-FALSE EXIT THEN
+   DCUR @ ROW-UNCOUNTABLE 0= IF drop RES-FALSE EXIT THEN
+   {: wide:n :}
+   MDIAG @  MD-DEPTH-WIDE MDIAG!  MDIAG @ <> IF
+      wide HIDDEN-PARAM? IF
+         wide MK-LOGICAL MDIAG-WIDE !  0 MDIAG-OPEN !
+      ELSE
+         wide MDIAG-WIDE !
+         wide T-UNSTALE LAYOUT-WIDTH-OPEN? IF -1 ELSE 0 THEN MDIAG-OPEN !
+      THEN
+      ROWS-PIN
+   THEN
    0 OK !  -1 FAILSET !
    RES-TRUE ;
 
@@ -23935,7 +23956,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    sym ARENA-CALL-REFUSE? IF RES-TRUE EXIT THEN
    id INTRINSIC-QDUP = IF QDUP-STEP RES-TRUE EXIT THEN
    LAYOUT-XPORT @ IF a u WF-XPORT-RECORD THEN   \ width facts from the pre-op row
-   id INTRINSIC-HIDE-ROW = IF HIDROW-STEP? EXIT THEN   \ depth/.s fail closed over hidden cells
+   id INTRINSIC-HIDE-ROW = IF HIDROW-STEP? EXIT THEN   \ depth/.s fail closed over a wide or open-width value
    a u XPORT-STEP? IF RES-TRUE EXIT THEN        \ whole-bundle transport row surgery
    a u a u TOK-CORE-OP? RS-TOK? IF RES-TRUE EXIT THEN
    id INTRINSIC-RECORD-AT = IF RECORD-AT-STEP? EXIT THEN   \ FAMILY:AT stride: ptr family<args> n -> ptr family<args>

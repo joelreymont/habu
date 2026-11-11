@@ -1192,6 +1192,7 @@ variable MDV-I   variable MDV-F
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-LOCAL-ESCAPE of s" run_quotation_while_locals_live" endof
       MD-BINDER-PLACE of s" call_scope_operation_directly" endof
+      MD-DEPTH-WIDE   of s" count_values" endof
       MD-LOOP-RDEPTH  of s" fix_return_stack" endof
       MD-LOOP-CARRIED of s" fix_control_flow" endof
       MD-NO-LOOP      of s" fix_control_flow" endof
@@ -1300,6 +1301,7 @@ variable MDV-I   variable MDV-F
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-LOCAL-ESCAPE of s" Run the quotation inside the block of the locals it reads; a quotation that is stored, kept or returned takes its values from the stack." endof
       MD-BINDER-PLACE of s" Call the scope operation directly in the word that supplies its callback; only a scope operation's callback input may hold a callback binder." endof
+      MD-DEPTH-WIDE   of s" Count the values another way, or take the wide value apart first: MATCH a sum or an enum whose arguments are concrete, UNMAKE a product; a stale value can only be moved or dropped. `depth` and `.s` count raw cells, and a wide value is one value held in several." endof
       MD-LOOP-RDEPTH  of s" Take back with r> in the loop body every cell it pushes with >r, so each pass leaves the return stack as it found it." endof
       MD-LOOP-CARRIED of s" Make each pass leave the cells it carries as it found them, of the same types and with the same facts known of them; keep a value that changes per pass in a variable." endof
       MD-NO-LOOP      of s" Use i, leave, unloop, loop and +loop only inside a do or ?do this definition opened and has not closed." endof
@@ -1371,6 +1373,7 @@ variable MDV-I   variable MDV-F
       MD-ARMS-DEPTH   of s" the if and else arms leave different stack depths" endof
       MD-LOCAL-ESCAPE of s" a quotation that reads a local would outlive it: stored, kept, returned or held past the local's block" endof
       MD-BINDER-PLACE of s" a callback binder would sit outside a scope operation's callback input in the word's effect" endof
+      MD-DEPTH-WIDE   of s" cannot count" endof
       MD-LOOP-RDEPTH  of s" the loop body changes the return stack's depth" endof
       MD-LOOP-CARRIED of s" the loop body leaves a carried cell different from the one it entered with" endof
       MD-NO-LOOP      of s" no loop is open here" endof
@@ -1427,12 +1430,24 @@ variable MDV-I   variable MDV-F
    s" ` does not fit `" DTXT  MDIAG-LITT @ CT-NAME$ DTXT
    s" ` (`0`..`" DTXT  MDIAG-LITT @ LIT-HI JNUM  s" `)" DTXT ;
 
+\ The wide value `depth` or `.s` met and its cells, or that they are not known
+\ where its width is open, after the reason's `cannot count`.
+: DEPTH-WIDE-COUNTS ( -- )
+   AT-PIN
+   s"  `" DTXT  MDIAG-WIDE @ REND-TYPE
+   MDIAG-OPEN @ IF
+      s" `: it is one value, and how many cells it holds is not known here" DTXT
+   ELSE
+      s" `: it is one value held in " DTXT  MDIAG-WIDE @ T-WIDTH JNUM  s"  cells" DTXT
+   THEN
+   ;AT-PIN ;
 
-\ What a reason carries after its prose: a held row, a literal's range, or the
-\ counts of an underflow, depth, width or frames, for prose and JSON alike.
+
+\ What a reason carries after its prose, in text and JSON alike.
 : MDIAG-COUNTS ( -- )
    MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " DTXT  TCAP-HELD$ DTXT EXIT THEN
    MDIAG @ MD-LIT-FIT = IF LIT-FIT-COUNTS EXIT THEN
+   MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
    MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS EXIT THEN

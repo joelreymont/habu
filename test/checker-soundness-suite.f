@@ -4,8 +4,10 @@
 \ a quotation whose output keeps the input stack a declared callable leaves open,
 \ a return-row read or pop below the frame this definition may see, a
 \ declared row unified with another or given fixed cells, a local over a
-\ cell whose width is open, and a signature with tokens after its output side.
+\ cell whose width is open, a signature with tokens after its output side, and
+\ a raw cell count over a wide value or one of open width.
 
+require src/lib/adt/option.f
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/adt/option.f
@@ -378,6 +380,18 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" CS-S3 ( n [ n -- n ] -- n ) execute" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 
+: WIDE-COUNT ( -- )
+   s" depth and .s over a wide value or one of open width are refused, naming the word and the value; a one-cell value is counted" T-LABEL
+   s" ENUM csdone solo pair ;ENUM : CS-D2 ( -- option<a> option<a> ) OPTION:NONE OPTION:NONE ; : CS-D3 ( option<n> -- ) drop ; : CS-D5 ( -- option<n> csdone n ) CS-D2 CS-D3 CHECKER--SOUNDNESS-CSDONE:SOLO depth ;" 70
+   s" at 'depth' cannot count `option<n>`: it is one value held in 2 cells" SUBJECT:REFUSED? TTRUE
+   s\" ENUM csdone solo pair ;ENUM : CS-D6 ( -- csdone n ) CHECKER--SOUNDNESS-CSDONE:SOLO depth ; : CS-D7 ( -- ) CS-D6 nip 1 <> IF s\" depth counted a one-cell enum as other than 1\" 1 die THEN ; CS-D7" 0
+      SUBJECT:EXITED? TTRUE
+   s" -1 JSON-DIAGS ! : CS-D4 ( -- option<n> ) 3 OPTION:SOME .s ;" 70
+   s\" \"code\":\"E-REJECTED\",\"repair_class\":\"count_values\",\"verdict\":\"rejected\",\"word\":\"cs-d4\",\"token\":\".s\",\"reason\":\"cannot count `option<n>`: it is one value held in 2 cells\"" SUBJECT:REFUSED? TTRUE
+   s" : CS-D8 ( option<a> -- option<a> n ) depth ;" 70
+   s" at 'depth' cannot count `option<a>`: it is one value, and how many cells it holds is not known here" SUBJECT:REFUSED? TTRUE ;
+
+
 : RUN ( -- )
    T-RESET
    QUOTATION-INPUTS
@@ -388,6 +402,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    ROW-QUANTIFIERS
    OPEN-WIDTH-LOCALS
    SIGNATURE-END
+   WIDE-COUNT
    T-REPORT ;
 
 RUN

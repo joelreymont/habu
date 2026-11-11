@@ -2676,6 +2676,16 @@ sections above.
   or consume it before rethrowing. A multi-cell value is one logical stale
   value (`stale<option<pt>>`): one `drop` removes it, an untyped local can
   transport it, and a typed use or `MATCH` is `E-STALE-READ`.
+- **`depth` and `.s` count no value held in several cells.** They count raw
+  cells, so over a layout value held in more than one cell, or one whose width
+  is open in the word (`( option<a> -- ) depth`), both are `E-REJECTED`,
+  `count_values`: ``cannot count `option<n>`: it is one value held in 2
+  cells``, or ``cannot count `option<a>`: it is one value, and how many cells
+  it holds is not known here``. A one-cell enum or product is counted. The rule
+  judges the values the word's own row holds: a helper `: F ( -- n ) depth ;`
+  called over `3 OPTION:SOME` answers its 2 cells. Take the value apart first
+  (`MATCH` once its arguments are concrete, `UNMAKE`), or count the values
+  another way.
 - **`evaluate-closed ( ptr u8 n -- )` isolates a checked caller's stack.**
   A checked body calling `evaluate` is `E-UNSAFE`. Text under
   `evaluate-closed` starts at depth 0, cannot reach caller cells even through
