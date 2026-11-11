@@ -1,6 +1,6 @@
 ---
 title: "Check a call to an FSM:DEFINE machine as the load does"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-11T14:18:07.229235+02:00"
@@ -10,3 +10,5 @@ Problem (mcall fix worker, confirmed by the lead on master 8f6ec543 with its ins
 
 
 Commit A landed (ptnztypx "Place a file's definitions without markers", with the batch on e22910b0). B2 and B1 (.jj-ws.noindex/carl-layout/.out/handoff-notes-42.md "hfsm commit B plan") are not started: no consumer meets this, so they wait (AGENTS.md "Work that does not move that measure waits").
+
+Workspace carl-hfsm is retired (commit A landed as e3c91ae2). B1 and B2 wait. Claim: none.
