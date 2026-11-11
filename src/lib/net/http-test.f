@@ -1873,8 +1873,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    0 HTTP:BODY-TIMEOUT! ;
 
 
-\ A preopened body header makes SLOT-RESET's BODY-OPEN fail while reading a
-\ real request. The error reply must describe the connection the worker closes.
+\ The error reply must describe the connection the worker closes.
 : READ-FAULT-CASE ( -- )
    1 HTTP:TEST-READ-FAULT !
    [: HTTP:TEST-READ-FAULT-START ;] HTTP:ON-WORKER-START
@@ -1911,12 +1910,8 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    quiet TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-$C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resumes
+$C8 constant STALL-MARGIN-MS
 
-\ Bytes that arrived before the deadline are served, however late the worker
-\ reads them: the AIO loop is held while the whole request is sent and freed
-\ only after IDLE-MS. IDLE-CASE and BODY-TIMEOUT-CASES are the control: a
-\ request that has not arrived by its deadline gets no answer.
 : STALLED-WORKER-CASE ( -- )
    [: HTTP-TEST:SERVING? 0= ;]
    mono-ns COLLECT-MS NS-PER-MS * + s" http-test IDLE-AWAIT" TEST-WAIT:POLL
@@ -1932,7 +1927,6 @@ $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resu
    stalled TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-\ A HEAD answer carries the head a GET would carry, and no body after it.
 : HEAD-CASE ( -- )
    s\" HEAD /index.html HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s" HTTP/1.1 200 OK" BEGINS? TTRUE
@@ -1942,8 +1936,6 @@ $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resu
    RES$ S\" \r\n\r\n" ENDS-WITH? TTRUE ;
 
 
-\ Connection: close ends the connection after its own answer, so the request
-\ that follows it on the same connection is never read.
 : CLOSE-CASE ( -- )
    REQ-RESET
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" REQ+
@@ -1954,8 +1946,7 @@ $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resu
 
 
 \ A body that throws with its writer open leaves nothing behind: the same
-\ worker, on the same connection, answers the next request with its whole body
-\ and nothing of the half-written object.
+\ worker, on the same connection, answers the next request with its whole body.
 : WRITER-RECOVERY-CASE ( -- )
    REQ-RESET
    s\" GET /api/boom-json HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
@@ -1975,18 +1966,14 @@ $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resu
    name nu TRANSCRIBE ;
 
 
-\ The blank line that ends a head is found when it straddles two reads, cut
-\ after each of its first three bytes.
 : SPLIT-HEAD-CASE ( -- )
    1 s" split-head-1" SPLIT-PING
    2 s" split-head-2" SPLIT-PING
    3 s" split-head-3" SPLIT-PING ;
 
 
-\ Read from the answers while the pool is live: both start hooks ran, in the
-\ order they were registered, before this worker's first request, however many
-\ requests it has answered since. Installing a hook or a rule on a running
-\ server is refused by name, because every worker already started would miss it.
+\ Installing a hook or a rule on a running server is refused, because every
+\ worker already started would miss it.
 : HOOK-LIVE-CASES ( -- )
    s" GET" s" /api/trace" FETCH 200 T=
    S\" {\qtrace\q:\qabr" HAS? TTRUE
@@ -2009,8 +1996,7 @@ $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resu
 
 
 \ Read after STOP, when every worker has ended: each worker ran both start hooks
-\ once in order and both exit hooks once in reverse, with nothing between them
-\ but the requests it answered, and the three traced requests are all there.
+\ once in order and both exit hooks once in reverse.
 : HOOK-TRACE-CASES ( -- )
    0
    ONE-WORKER 0 ?do
@@ -2025,11 +2011,6 @@ $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resu
    3 T= ;
 
 
-\ The caller's policy, installed between servers: errors rendered as JSON - the
-\ router's 404, a refusal and a handler fault alike, the last two rendered
-\ outside the handler's boundary - the hashed asset directory cached for a
-\ year, and a client route answered with the one page, while /api/ keeps the
-\ router's own 404.
 : POLICY-CASES ( -- )
    INSTALL-POLICY
    ROOT$ HTTP:STATIC-ROOT
@@ -2057,14 +2038,6 @@ $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resu
 $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under a hang
 
 
-\ A worker parked inside a handler is the one task a cooperative stop cannot
-\ wait out: the stop waits its own bound (under a second for this IDLE-MS) and
-\ kills it, which KILLED-TASKS counts; the listener and the other worker end
-\ themselves, so ENDED-TASKS is one short. The killed worker's exit closes its
-\ connection, so the peer reads the end of the stream within the collect
-\ deadline. The next server answers the HTTP/1.0 its request line named and
-\ ends every task itself. These servers start after the first ones stop and
-\ before the controlled start hook is added; the trace rows are emptied first.
 : PARKED-WORKER-CASE ( -- )
    TRACE-RESET
    0 PARKED !
@@ -2093,13 +2066,11 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T= ;
 
 
-$3E8 constant IDLE-STOP-MS        \ ACCEPT-WAIT-MS and scheduling slack, a fifth of LARGE-IDLE-MS
+$3E8 constant IDLE-STOP-MS        \ accept wait and slack: LARGE-IDLE-MS / 5
 
 
 \ A worker waiting for the next request on a connection its peer keeps open
-\ reads the stop flag while it waits: the stop returns far inside LARGE-IDLE-MS,
-\ every task ended itself, and the worker's close ends the held peer's
-\ stream.
+\ reads the stop flag while it waits.
 : IDLE-STOP-CASE ( -- )
    TRACE-RESET
    LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS HTTP:START
@@ -2118,11 +2089,10 @@ $3E8 constant IDLE-STOP-MS        \ ACCEPT-WAIT-MS and scheduling slack, a fifth
 
 
 HTTP-TEST:QUEUED TYPED-BUFFER QUEUED-CONN TCP4:connection
-variable OPENED                   \ the peers whose connect succeeded, first in QUEUED-CONN
+variable OPENED
 
 
-\ Waits until the listener has taken n connections since its server started;
-\ past COLLECT-MS the wait names itself and throws E-PROC-TIMEOUT.
+\ Waits until the listener has taken n connections since its server started.
 : TAKEN-AWAIT ( n -- )
    [: HTTP-TEST:TAKEN over >= ;]
    mono-ns COLLECT-MS NS-PER-MS * + s" http-test TAKEN-AWAIT" TEST-WAIT:POLL
@@ -2138,9 +2108,7 @@ variable OPENED                   \ the peers whose connect succeeded, first in 
 
 
 \ Each peer opens once the listener has taken the one before: back to back they
-\ would overflow the listen backlog, and the kernel may reset the peers past it
-\ (macOS does, during the connect or just after it). Past COLLECT-MS without a
-\ take it throws E-PROC-TIMEOUT.
+\ would overflow the listen backlog, and the kernel may reset the peers past it.
 : QUEUE-PEERS ( -- )
    0 OPENED !
    HTTP-TEST:TAKEN {: before:n :}
@@ -2159,12 +2127,7 @@ variable OPENED                   \ the peers whose connect succeeded, first in 
    OPENED @ 0 ?do i QUEUED-CONN @ TCP4:CLOSE DROP-TCP-STATUS loop ;
 
 
-\ With its one worker parked inside a handler, the server queues silent peers
-\ until its job queue is full and its listener holds one more. The stop still
-\ ends within its own bound instead of waiting on that queue, kills the parked
-\ worker, and closes every connection no worker took, so each of those peers
-\ reads the end of its stream. The trace rows the inherited hooks mark are
-\ emptied first.
+\ The trace rows the inherited hooks mark are emptied first.
 : FULL-QUEUE-CASE ( -- )
    TRACE-RESET
    0 PARKED !
@@ -2190,8 +2153,8 @@ variable OPENED                   \ the peers whose connect succeeded, first in 
    DROP-PEERS ;
 
 
-$1000 constant CHUNK-BYTES        \ what the peer that keeps sending writes at a time
-$1F4 constant SEND-ON-MS          \ how long it sends before the stop: past the linger deadline
+$1000 constant CHUNK-BYTES
+$1F4 constant SEND-ON-MS          \ past the linger deadline
 
 create CHUNK-BUF CHUNK-BYTES allot
 1 TYPED-BUFFER SENDER-CONN TCP4:connection
@@ -2211,8 +2174,6 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
    again ;
 
 
-\ Waits until the task has ended; past COLLECT-MS the wait names itself and
-\ throws E-PROC-TIMEOUT.
 : TASK-AWAIT ( ptr n -- )
    [: dup TASK:DONE? ;]
    mono-ns COLLECT-MS NS-PER-MS * + s" http-test TASK-AWAIT" TEST-WAIT:POLL
@@ -2220,9 +2181,7 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
 
 
 \ A peer that reads its answer to the end of the stream and then keeps sending
-\ is read until the linger deadline and no longer: the worker closes however
-\ long the peer goes on, which resets it, and is back on its queue well before
-\ a stop that then kills nothing. The peer's writes fail on the reset.
+\ is read until the linger deadline and no longer.
 : SENDING-PEER-CASE ( -- )
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    RAW-OPEN {: conn:TCP4:connection :}
@@ -2242,32 +2201,26 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
    conn TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-$1B58 constant FLOOD-EXTENSION    \ a chunk line's extension: most of the input window
+$1B58 constant FLOOD-EXTENSION    \ most of the input window
 \ The flooded server's deadline: long enough for the receive buffer to grow
-\ past what parses within STOP-MARGIN-MS (measured: without FILL's stop
-\ check, the second flood read on for 0.3 to 0.4 s past the stop; with a
-\ 100 ms deadline, under 0.1 s).
+\ past what parses within STOP-MARGIN-MS.
 $3E8 constant FLOOD-IDLE-MS
-\ The parse of one full receive buffer, what the worker may still read past its
-\ deadline: macOS autotunes one to at most 4 MiB, and this framing parses at
-\ about 2 MB/s (measured: read by 0.1 to 0.3 s past this deadline).
+\ The parse of one full receive buffer: macOS autotunes one to at most 4 MiB,
+\ and this framing parses at about 2 MB/s.
 $BB8 constant FLOOD-MARGIN-MS
-variable FLOOD-ENDED              \ mono-ns once the flooding peer's write has failed
+variable FLOOD-ENDED
 TASK:MIN-STACK TASK:TASK FLOOD-TASK
 
 
-\ Waits until the flooding peer has ended, which the worker's close does; past
-\ the flooded deadline and FLOOD-MARGIN-MS the wait names itself and throws
-\ E-PROC-TIMEOUT.
+\ Waits until the flooding peer has ended, which the worker's close does.
 : FLOOD-AWAIT ( n -- ) {: began:n :}
    FLOOD-TASK [: dup TASK:DONE? ;]
    began FLOOD-IDLE-MS FLOOD-MARGIN-MS + NS-PER-MS * + s" http-test FLOOD-AWAIT" TEST-WAIT:POLL
    drop ;
 
 
-\ Waits until the flooded worker reads past the deadline of the connection opened
-\ at the given time, short of its budget. The slot keeps the first flood's
-\ budget until the second's deadline starts, so that start is awaited first.
+\ The slot keeps the first flood's budget until the second's deadline starts,
+\ so that start is awaited first.
 : LATE-AWAIT ( n -- ) {: opened:n :}
    [: HTTP-TEST:LATE-UNTAKEN? ;]
    mono-ns COLLECT-MS NS-PER-MS * + s" http-test DEADLINE-AWAIT" TEST-WAIT:POLL
@@ -2278,7 +2231,7 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
 \ Opens a connection and floods it: a chunked head, then FLOOD-TASK writing
 \ chunk lines faster than the worker reads, each carrying FLOOD-EXTENSION bytes
 \ of extension and one byte of data, so neither the body cap nor the window ends
-\ the request. Answers the connection and when it was opened.
+\ the request.
 : FLOOD ( -- TCP4:connection n )
    RAW-OPEN {: conn:TCP4:connection :}
    mono-ns {: began:n :}
@@ -2288,12 +2241,6 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    conn began ;
 
 
-\ A peer that keeps sending past the deadline is read no further than what had
-\ arrived when the worker first found the deadline passed: the worker closes
-\ the connection once it has read that, which resets the peer's writes. A stop
-\ raised while a second flooded worker reads past its deadline, still short of
-\ what had arrived by it, ends that work at its next read: the peer is reset
-\ after the stop and within STOP-MARGIN-MS of it, and the stop kills nothing.
 : FLOOD-CASE ( -- )
    LOOPBACK 0 ONE-WORKER FLOOD-IDLE-MS HTTP:START
    REQ-RESET
@@ -2359,8 +2306,6 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    0 HTTP:BODY-TIMEOUT! ;
 
 
-\ One hook fails while its peer succeeds. The returned code and both complete
-\ traces prove the caller observes the whole startup outcome before catch ends.
 \ An exit hook that throws, run first as the last registered, keeps none of the
 \ hooks registered before it from running in either worker.
 : THROWING-HOOK-CASE ( -- )
@@ -2461,13 +2406,8 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    HTTP:STOP ;
 
 
-\ An error hook that throws, on a refusal and on a handler fault alike, costs
-\ its client the rendered answer and nothing more: each is answered with the
-\ plain-text fallback and the status it was owed, the one worker serves the
-\ next request, every task ends itself, and stderr names each failure under the
-\ id its client was given. A handler that lets its failed body read's throw out
-\ is that read's refusal alone: the hook runs once for it and no fault is
-\ logged. The trace rows the inherited hooks mark are emptied first.
+\ A handler that lets its failed body read's throw out is that read's refusal
+\ alone: the hook runs once for it and no fault is logged.
 : ERROR-HOOK-CASE ( -- )
    TRACE-RESET
    0 RENDERS !
@@ -2489,7 +2429,7 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
 
 $C0000201 constant TEST-NET-1     \ 192.0.2.1, reserved for documentation: no host holds it
 
-variable HELD                    \ the listener REFUSED-LISTEN-CASE holds, as n
+variable HELD
 variable HELD-PORT
 variable REFUSED-ADDRESS
 variable REFUSED-PORT
@@ -2532,7 +2472,6 @@ variable REFUSED-CODE
    s"  failed, errno " SB-APPEND ;
 
 
-\ Stderr is one line: a stamp, the want text, the errno's digits and LF.
 : REFUSED-LINE? ( -- bool )
    ERR$ {: err:ptr errlen:n :}
    SB$ {: want:ptr wantlen:n :}
@@ -2543,10 +2482,6 @@ variable REFUSED-CODE
    err head + errlen head - 1- STR-DIGITS? ;
 
 
-\ A start the OS will not let listen throws E-HTTP-SOCKET after one line on fd
-\ 2 naming the refused step, the address, the port and the errno: on a loopback
-\ port this test already listens on, and on an address no local interface has.
-\ The line is checked before the code.
 : REFUSED-LISTEN-CASE ( -- )
    HOLD
    LOOPBACK HELD-PORT @ s" 127.0.0.1" REFUSED-START
@@ -2562,27 +2497,21 @@ variable REFUSED-CODE
    HELD @ TCP4:>LISTENER TCP4:CLOSE-LISTENER DROP-TCP-STATUS ;
 
 
-\ Before the loop: a start whose tasks have no loop to ride their readiness
-\ waits on is refused by AIO's own code, with nothing of the server taken. The
-\ same code thrown inside the listener's own task would be a report nobody
-\ reads and a suite hanging on its first request.
+\ A start whose tasks have no loop to ride their readiness waits on is refused
+\ by AIO's own code. The same code thrown inside the listener's own task would
+\ be a report nobody reads and a suite hanging on its first request.
 : NO-LOOP-CASE ( -- )
    AIO:RUNNING? TFALSE
    [: LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START ;] E-AIO-STATE TTHROWSQ
    HTTP:RUNNING? TFALSE ;
 
 
-$3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
+$3E8 constant DRAIN-MS
 10 constant RETRY-MS              \ between tries, so the loop task gets the core
 
 
 \ A task killed inside a wait leaves its record in flight until the loop drains
-\ the kernel's cancel completion, and AIO:STOP is E-AIO-BUSY until it does, so
-\ the stop after the last join is retried to a bound rather than asserted on the
-\ first try (src/lib/aio-test.f STOP-LOOP). A ring still busy past the bound is
-\ a deadline, not a failure: the wait names itself on stdout and throws
-\ E-PROC-TIMEOUT. Any other code from AIO:STOP is a fault and is rethrown
-\ at once.
+\ the kernel's cancel completion, and AIO:STOP is E-AIO-BUSY until it does.
 : AIO-STOP ( -- )
    mono-ns DRAIN-MS NS-PER-MS * + {: deadline:n :}
    begin
@@ -2593,10 +2522,6 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
       RETRY-MS >MS TASK:SLEEP
    again ;
 
-
-\ The big static tree: 41 directories, 161 files, a directory whose 80 names
-\ take 9680 bytes, 21608 bytes of paths and ETags and a file one byte over 4 MiB.
-\ Each small file holds its own relative path.
 
 40 constant BIG-DIRS
 80 constant LONG-NAMES
@@ -2657,8 +2582,6 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    BIG-FILE ;
 
 
-\ The trace rows the installed hooks mark are emptied first, as for every
-\ server PARKED-WORKER-CASE starts.
 : BIG-TREE-CASE ( -- )
    TRACE-RESET
    MAKE-BIG
@@ -2698,7 +2621,6 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    target targetlen PATH-BUF len FS:MAKE-SYMLINK ;
 
 
-\ The refusal leaves nothing loaded, so a good tree loads next.
 : CYCLE-REFUSED ( -- )
    [: TREE$ HTTP:STATIC-ROOT ;] HTTP:E-STATIC TTHROWSQ
    HTTP:STATIC-COUNT 0 T=
@@ -2730,8 +2652,6 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    CYCLE-REFUSED ;
 
 
-\ The root is site/. linked/ reaches a directory outside it; one/ and two/ both
-\ reach real/, which is their sibling and no ancestor.
 : LINKED-TREE-CASE ( -- )
    TRACE-RESET
    NEW-TREE
@@ -2763,14 +2683,14 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
 
 
 variable LATER-U
-variable LATER-STATUS             \ the status the task answers with
-variable LATER-GONE               \ the peer closes before the task answers
-variable LATER-TAKEN              \ the handler has taken its connection
-variable LATER-GO                 \ the case lets the task answer
-variable LATER-RESULT             \ 1 when REPLY answered true, 2 when false
-variable LATER-SLOT-CODE          \ what HTTP:WORKER-SLOT threw on the task
-variable LATER-LONG               \ the task's content type is past its builder's room
-variable LATER-CODE               \ what HTTP:REPLY threw on the task
+variable LATER-STATUS
+variable LATER-GONE
+variable LATER-TAKEN
+variable LATER-GO
+variable LATER-RESULT
+variable LATER-SLOT-CODE
+variable LATER-LONG
+variable LATER-CODE
 1 TYPED-BUFFER LATER-CONN TCP4:connection
 TASK:MIN-STACK TASK:TASK LATER-TASK
 $40 constant LATER-CAP
@@ -2813,7 +2733,6 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    [: LATER-REPLY ;] catch LATER-CODE ! ;
 
 
-\ Takes the connection over and leaves the answer to a task that is no worker.
 \ The request's body is the answer's, copied out: the request's bytes end with
 \ the handler.
 : LATER ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
@@ -2853,9 +2772,6 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    S\" HTTP/1.1 204 No Content\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n" ;
 
 
-\ The one worker answers another request while a task holds the connection it
-\ handed over, and the task's answer is all the peer reads before the end of
-\ the stream. The task is no worker, so WORKER-SLOT refuses it.
 : TAKE-OVER-CASE ( -- )
    200 LATER-ASK {: conn:TCP4:connection :}
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
@@ -2871,7 +2787,6 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    LATER-SLOT-CODE @ HTTP:E-HANDLE T= ;
 
 
-\ A 204 answer carries no length and none of the body it was given.
 : NO-CONTENT-CASE ( -- )
    204 LATER-ASK {: conn:TCP4:connection :}
    1 LATER-GO !
@@ -2883,7 +2798,6 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    LATER-RESULT @ 1 T= ;
 
 
-\ A peer that reset the connection before its answer: REPLY answers false.
 : GONE-PEER-CASE ( -- )
    200 LATER-ASK {: conn:TCP4:connection :}
    1 LATER-GONE !
@@ -2929,8 +2843,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
 
 
 \ The loop first: the listener's own wait and this suite's raw READABLE? ride
-\ it, and it is stopped once every server has been stopped, which is when every
-\ task this suite started has been joined.
+\ it, and it is stopped once every server has been stopped.
 : LIFECYCLE ( -- )
    NO-LOOP-CASE
    AIO:START
