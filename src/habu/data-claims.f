@@ -90,13 +90,9 @@ create TAB
    STACK-ABI:BASE-CELL                1 cells                 CLAIM STACK-ABI-BASE-CELL
    SSCR-CELL                          1 cells                 CLAIM SSCR-CELL
    GTOD-SCRATCH                       2 cells                 CLAIM GTOD-SCRATCH
-   DOESP-CELL                         1 cells                 CLAIM DOESP-CELL
    VSP-CELL                           1 cells                 CLAIM VSP-CELL
-   VTAG-OFF                           VSMAX                   CLAIM VTAG-STACK
    CREATEP-CELL                       1 cells                 CLAIM CREATEP-CELL
    QPATCH-CELL                        1 cells                 CLAIM QPATCH-CELL
-   QENT-CELL                          1 cells                 CLAIM QENT-CELL
-   QXH-CELL                           1 cells                 CLAIM QXH-CELL
    VVAL-OFF                           VSMAX cells             CLAIM VVAL-STACK
    NCOMP-DISPATCH:XT-CELL             1 cells                 CLAIM NCOMP-XT-CELL
    NCOMP-DISPATCH:COMP-CELL           1 cells                 CLAIM NCOMP-COMP-CELL
@@ -111,16 +107,12 @@ create TAB
    RSP-CELL                           1 cells                 CLAIM RSP-CELL
    EXITH-CELL                         1 cells                 CLAIM EXITH-CELL
    LVD-CELL                           1 cells                 CLAIM LVD-CELL
-   LVH-OFF                            LV-LEVELS cells         CLAIM LVH-LEVELS
    GENIO-ABI:OUT-CELL                 GENIO-ABI:END GENIO-ABI:OUT-CELL -  CLAIM GENIO-ABI
    AOT-CELLS:SPAN-TABLE-CELL          3 cells                 CLAIM AOT-SPAN
    SIGNAL-ABI:STUB-CELL               3 cells                 CLAIM SIGNAL-ABI
-   LVS-OFF                            LV-LEVELS               CLAIM LVS-LEVELS
    COMMA-RUN-CELL                     1 cells                 CLAIM COMMA-RUN-CELL
    COMMA-END-CELL                     1 cells                 CLAIM COMMA-END-CELL
    COMMA-BASE-CELL                    1 cells                 CLAIM COMMA-BASE-CELL
-   LVF-OFF                            LV-LEVELS cells         CLAIM LVF-LEVELS
-   LVQ-OFF                            LV-LEVELS cells         CLAIM LVQ-LEVELS
    FRAME-CELL                         1 cells                 CLAIM FRAME-CELL
    QFRAME-CELL                        1 cells                 CLAIM QFRAME-CELL
    BODY-TEXT:BASE-CELL                4 cells                 CLAIM BODY-TEXT

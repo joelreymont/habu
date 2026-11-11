@@ -3486,11 +3486,11 @@ package ENGINE-EMIT
    above LBL,
    B G-PUSH ;
 
-\ catch ( xt -- exc ): a HNDF-SIZE handler frame chained through HND-CELL saves
-\ the complete caller execution frame so a caught throw resumes it. Frame: 0
-\ prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc | 32 link | 40
-\ saved-RSP | 48 saved-LOOPSP | 56 sentinel | 64 saved base | 72 saved
-\ capacity. BTHROW and EM-EVAL-THROW-RECOVER restore all of it.
+\ catch ( xt -- exc ): a STACK-ABI:CATCH-BYTES handler frame chained through
+\ HND-CELL saves the complete caller execution frame so a caught throw resumes
+\ it. Frame: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc |
+\ 32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel | 64 saved base |
+\ 72 saved capacity. BTHROW and EM-EVAL-THROW-RECOVER restore all of it.
 \ BCATCH-RUN is the frame alone: push, call, unlink. A normal return branches
 \ to CATCH-PUSH with x9 = 0; a throw resumes at CATCH-RES, where it ends, with
 \ the code in x9 and the frame already unlinked. Its caller places CATCH-PUSH.
@@ -3877,7 +3877,7 @@ private
    done LBL, ;
 
 : BSOURCEEXECRUN ( -- )
-   LBL LBL LBL LBL {: bad:label checked:label done:label no-parent:label :}
+   LBL LBL LBL {: bad:label checked:label done:label :}
    SP SP SOURCE-EXEC-FRAME-BYTES SUBI,  30 SP SX-LR STR,
    9 G-POP  9 SP SX-CONT STR,
    9 G-POP  9 SP SX-AFTER STR,
@@ -3893,12 +3893,9 @@ private
    9 SP SX-CONT LDR,  9 DBASE CMP,  C-CC bad BCOND,
    9 CP CMP,  C-CS bad BCOND,
    9 DATA SOURCE-EXEC-CTX-CELL LDR,  9 SP SX-PREV STR,
-   9 no-parent CBZ,
-      10 0 MOVN,  10 9 SX-CONSTRUCTION STR,
-   no-parent LBL,
    9 0 MOVZ,
    9 SP SX-ARMED STR,  9 SP SX-PENDING STR,  9 SP SX-SUSPEND STR,
-   9 0 MOVN,  9 SP SX-CONSTRUCTION STR,  9 SP SX-POS STR,
+   9 0 MOVN,  9 SP SX-POS STR,
    9 SP 0 ADDI,  9 DATA SOURCE-EXEC-CTX-CELL STR,
    9 SP SX-CONT LDR,  9 G-PUSH
    BCATCH

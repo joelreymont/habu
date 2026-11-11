@@ -716,7 +716,6 @@ $3850 constant KEYWORD-CELL
 $1D8 constant SSCR-CELL
 $1E0 constant GTOD-SCRATCH
 $200 constant VSP-CELL
-$210 constant VTAG-OFF
 $250 constant VVAL-OFF
 32 constant VSMAX
 
@@ -797,14 +796,9 @@ CHECKER-OWNER-ABI:PACKAGE-OFF constant DECL-PACKAGE-OFF
 CHECKER-OWNER-ABI:PUBLIC-OFF constant DECL-PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant DECL-PRIVATE-OFF
 CHECKER-OWNER-ABI:END-PACKAGE-OFF constant DECL-END-PACKAGE-OFF
-CHECKER-OWNER-ABI:SOURCE-ROW-OFF constant DECL-SOURCE-ROW-OFF
-CHECKER-OWNER-ABI:SOURCE-CON-OFF constant DECL-SOURCE-CON-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant DECL-EXPORT-OFF
-CHECKER-OWNER-ABI:WIDE-OFF constant DECL-WIDE-OFF
-CHECKER-OWNER-ABI:CAPTURE-OFF constant DECL-CAPTURE-OFF
 CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
 CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
-CHECKER-OWNER-ABI:PREFIX-BIND-OFF constant DECL-PREFIX-BIND-OFF
 \ The rest is the optimizing front end's half of the record. That front end is
 \ the checker's scan (the source tape, the does> split, per-call-site facts, the
 \ effect store), reached through the record rather than by name so that a run
@@ -842,7 +836,6 @@ CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF constant DECL-CALL-QUOT-OUT-OFF
 CHECKER-OWNER-ABI:INIT-LAYOUT-OFF constant DECL-INIT-LAYOUT-OFF
 CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant DECL-FIELD-SPAN-OFF
 CHECKER-OWNER-ABI:C2-STOW-OFF constant DECL-C2-STOW-OFF
-CHECKER-OWNER-ABI:TRUST-DECL-OFF constant DECL-TRUST-DECL-OFF
 CHECKER-OWNER-ABI:PARSE-IMM-OFF constant DECL-PARSE-IMM-OFF
 \ EFFECT-QUERY resolves a name into the
 \ instance's query state and every reader below reads THAT state, so all of them
@@ -874,8 +867,6 @@ CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 \ happen in the instance that renders; the counter itself is unreachable from a
 \ baked compiler, which is the whole reason this is an operation and not a cell.
 CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant DECL-CHECK-UNJUDGED-OFF
-\ A hook-less definition's declaration, recorded as its row without authority.
-CHECKER-OWNER-ABI:DECLARED-ROW-OFF constant DECL-DECLARED-ROW-OFF
 \ A refused definition's cut back to the store end it began at, and that end.
 CHECKER-OWNER-ABI:RETRACT-ROWS-OFF constant DECL-RETRACT-ROWS-OFF
 CHECKER-OWNER-ABI:ROWS-END-OFF constant DECL-ROWS-END-OFF
@@ -885,7 +876,6 @@ CHECKER-OWNER-ABI:WRITE-WINDOW-OFF constant DECL-WRITE-WINDOW-OFF
 \ Family/variant ids and all metadata about them share the live source owner.
 CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant DECL-FAMILY-MATCH-OFF
 CHECKER-OWNER-ABI:FAMILY-CON-OFF constant DECL-FAMILY-CON-OFF
-CHECKER-OWNER-ABI:FAMILY-CVAR-OFF constant DECL-FAMILY-CVAR-OFF
 CHECKER-OWNER-ABI:FAMILY-VARIANT-OFF constant DECL-FAMILY-VARIANT-OFF
 CHECKER-OWNER-ABI:FAMILY-SLOTS-OFF constant DECL-FAMILY-SLOTS-OFF
 CHECKER-OWNER-ABI:FAMILY-VARIANTS-OFF constant DECL-FAMILY-VARIANTS-OFF
@@ -914,7 +904,6 @@ CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF constant DECL-VERIFY-DEFERRED-BODY-OF
 CHECKER-OWNER-ABI:VERIFY-DECL-OFF constant DECL-VERIFY-DECL-OFF
 CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF constant DECL-VERIFY-DECL-ARM-OFF
 CHECKER-OWNER-ABI:VERIFY-CTOR-DECL-OFF constant DECL-VERIFY-CTOR-DECL-OFF
-CHECKER-OWNER-ABI:EXPORT-ACCEPT-OFF constant DECL-EXPORT-ACCEPT-OFF
 CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF constant DECL-VERIFY-DECL-DISARM-OFF
 CHECKER-OWNER-ABI:VERIFY-USES-OFF constant DECL-VERIFY-USES-OFF
 \ Native multi-error recovery and diagnostics, answered by the live checker.
@@ -923,7 +912,6 @@ CHECKER-OWNER-ABI:RESET-REPORT-OFF constant DECL-RESET-REPORT-OFF
 CHECKER-OWNER-ABI:JSON-REPORTED-OFF constant DECL-JSON-REPORTED-OFF
 CHECKER-OWNER-ABI:RECOVERY-USED-OFF constant DECL-RECOVERY-USED-OFF
 CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF constant DECL-DOES-UNJUDGED-OFF
-CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF constant DECL-NATIVE-DOES-FINISH-OFF
 CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF constant DECL-NATIVE-DOES-REPORT-OFF
 \ Completion: the names a top-level cursor sees.
 CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF constant DECL-VERIFY-EACH-VISIBLE-OFF
@@ -933,9 +921,9 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 
 
 \ Below BODY-TEXT:BASE-CELL: $600..$690 is GENIO-ABI, AOT-SPAN and SIGNAL-ABI,
-\ $690 NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 LVS-OFF, $6A8..$6C0 the `,` run,
-\ $6C0 NCOMP-DISPATCH:FIXED-COMP-CELL, $6C8 BOOT:IMAGE-BASE-CELL, $6D0..$750
-\ LVF-OFF, $750..$7D0 LVQ-OFF, $7D0..$7E0 FRAME-CELL and QFRAME-CELL,
+\ $690 NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 free, $6A8..$6C0 the `,` run,
+\ $6C0 NCOMP-DISPATCH:FIXED-COMP-CELL, $6C8 BOOT:IMAGE-BASE-CELL, $6D0..$7D0
+\ free, $7D0..$7E0 FRAME-CELL and QFRAME-CELL,
 \ $7E0..$7F0 BOOT:DP-FLOOR-CELL and DP-CEILING-CELL and $7F0..$800
 \ BOOT:GLOBAL-WL-CELL and NAMESPACE-WL-CELL.
 \ The open definition's body text lives in one mapped block the engine grows
@@ -961,30 +949,13 @@ CREATED-BODY-ABI:COMMA-BASE-CELL constant COMMA-BASE-CELL
 $568 constant RSP-CELL
 $570 constant EXITH-CELL
 $578 constant LVD-CELL
-$580 constant LVH-OFF
-\ LVF-OFF: the locals-frame bytes open when each DO level was entered, which
-\ that level's `leave` releases back to. It takes the top LV-LEVELS cells of
-\ the $698..$750 hole below LVQ-OFF.
-$6D0 constant LVF-OFF
-$750 constant LVQ-OFF      \ `?do` entry-branch offset per DO level; 0 for `do`
-\ LVS-OFF: one byte per DO level, the JIT-SNAP frame index that level's `do` or
-\ `?do` took, written when the level opens and read by `leave` to reconcile to
-\ it without popping the frames above. LV-LEVELS bytes.
-$698 constant LVS-OFF
-\ LVH, LVF and LVQ hold one cell per level up to GENIO-ABI ($600), LVQ-OFF
-\ ($750) and FRAME-CELL ($7D0): a definition nests at most this many `do`/`?do`
-\ levels.
-16 constant LV-LEVELS
 $560 constant LASTC-CELL
-$1F0 constant DOESP-CELL
 $230 constant CREATEP-CELL
 $238 constant QPATCH-CELL
-$240 constant QENT-CELL
-$248 constant QXH-CELL
 \ FRAME-CELL: the open body's entry slot, where `:` emitted the link-register
 \ save; EM-COMPILE-RET rewrites it to a nop at `;`.
-\ Zero means no frame. QFRAME-CELL scopes it across a quotation as QXH-CELL
-\ scopes the EXIT chain. Definition-scoped, cleared by EM-RESET-COMPILE-STATE.
+\ Zero means no frame. QFRAME-CELL scopes it across a quotation.
+\ Definition-scoped, cleared by EM-RESET-COMPILE-STATE.
 $7D0 constant FRAME-CELL
 $7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL
@@ -1103,25 +1074,12 @@ $2838 constant TOKVSP-CELL
 \ like TKA-CELL, zeroed at snapshot: no native-layout row, no stripped-image
 \ claim.
 $2850 constant PENDTKA-CELL
-\ JIT-QUOT: quotations open inside quotations on tier 0. QPATCH-CELL, QENT-CELL,
-\ QXH-CELL and QFRAME-CELL describe the INNERMOST open quotation, which is all
-\ that J-EXIT, the locals guards and `;]` read. A `[:` opened while one is open
-\ parks those four cells in the next frame, in that order, before it reuses
-\ them, and its `;]` pops the frame back after closing its own body: the AOT
-\ scanner's open row and the enclosing row each opener records
-\ (src/compiler/native/elaborate.f QOPEN-ROW and QCLOSE-ROW). LEVELS is the most
-\ quotations open at once, the checker's control-frame capacity (src/core/checker.f
-\ CF-PUSH holds 32 frames and each `[:` takes one), so the loader refuses no
-\ nesting the checker certifies; one more is refused by name. SP-CELL counts the parked frames. It is definition-scoped
-\ like QPATCH-CELL and is zeroed beside it in every reset run, so a definition
-\ that fails with quotations open leaves nothing parked. The innermost
-\ quotation never needs a frame, so there are LEVELS-1. Both sit after
-\ PENDTKA-CELL in the $2800..$3000 free header band, below $7FF8 for the 12-bit
-\ scaled `DATA <off> LDR/STR` form, and below DATA-START.
+\ JIT-QUOT: both kernels' compile reset zeroes SP-CELL; nothing else reads
+\ the band.
 package JIT-QUOT
 public
 32 constant LEVELS                                  \ quotations open at once
-32 constant FRAME-BYTES                             \ QPATCH, QENT, QXH, QFRAME
+32 constant FRAME-BYTES
 $2858 constant SP-CELL                              \ frames parked
 $2860 constant STK-OFF                              \ base of the frame area
 STK-OFF LEVELS 1- FRAME-BYTES * + constant END
@@ -1253,22 +1211,16 @@ $4CA8 constant CLAUSE-CELL
 4 constant TOP-EV-CHAR      \ char literal pushed ( n )
 5 constant TOP-EV-TICK      \ ' pushed a found word's xt
 6 constant TOP-EV-WORD      \ found word about to execute (pre-BLR)
-\ The user return stack is a guarded mapping (STACK-ABI): a band inside the
-\ $8000 header cannot carry an inaccessible page. A slot is
-\ [STACK-ABI:RETURN-BASE-CELL] + depth*8, the depth in RSP-CELL.
-\ $2800..$3000 is free header space.
-STACK-ABI:RETURN-CELLS constant RSTK-CELLS
 
 \ The catch/throw handler frame (habu1.f BCATCH/BTHROW, habu2.f
 \ EM-EVAL-THROW-RECOVER).
-\ A HNDF-SIZE machine-stack frame chained through HND-CELL ([DATA+8]). It saves
-\ RSP-CELL, LOOPSP-CELL and the active data-stack allocation, so a caught throw
-\ restores the complete caller frame. Every delivery site (BTHROW, LEVLD)
+\ A STACK-ABI:CATCH-BYTES machine-stack frame chained through HND-CELL
+\ ([DATA+8]). It saves RSP-CELL, LOOPSP-CELL and the active data-stack
+\ allocation, so a caught throw restores the complete caller frame. Every delivery site (BTHROW, LEVLD)
 \ validates the sentinel, saved depths and allocation before any restore
 \ store. The native catch family (habu1.f BCATCH-FORWARD, BFINALLY, BC2-INVOKE;
 \ kernel-x64.f twins) reads HALT-UNWIND-CELL to keep a halt unwinding; the frame
 \ carries nothing for it.
-STACK-ABI:CATCH-BYTES constant HNDF-SIZE
 \ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
 \               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel
 \               64 saved-base | 72 saved-capacity
@@ -1276,24 +1228,15 @@ STACK-ABI:CATCH-BYTES constant HNDF-SIZE
 \ Compiler lowering transaction: all mutable pass-2 authority lives in one engine
 \ band.
 $5000 constant TXN-STATE-OFF
-\ The declared extent: the cells end at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells =
-\ $5300. DATA-BANDS guards this length, so PROT-GUARD refuses a store anywhere in
-\ it, and data-claims.f refuses a transaction cell past it: growing the
-\ transaction is a layout edit the build checks.
+\ The declared extent ends at $5300. DATA-BANDS guards this length, so
+\ PROT-GUARD refuses a store anywhere in it, and data-claims.f refuses a
+\ transaction cell past it: growing the transaction is a layout edit the build
+\ checks.
 $300 constant TXN-STATE-LEN
 STACK-ABI:PAGE-BYTES constant PROT-PAGE-MAX   \ the mapping alignment
 
 TXN-STATE-OFF       constant TXN-ACTIVE-CELL
-TXN-STATE-OFF $8  + constant TXN-SRC-A-CELL
-TXN-STATE-OFF $10 + constant TXN-SRC-U-CELL
-TXN-STATE-OFF $18 + constant TXN-CERT-A-CELL
-TXN-STATE-OFF $20 + constant TXN-CERT-U-CELL
-TXN-STATE-OFF $28 + constant TXN-BIND-I-CELL
 TXN-STATE-OFF $30 + constant P2-CELL
-TXN-STATE-OFF $38 + constant TXN-WF-I-CELL
-TXN-STATE-OFF $88 + constant TXN-FETCH-I-CELL
-TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
-64 constant TXN-LIVE-W-CAP
 
 \ The run the transaction reserved and never used, handed to the libraries that
 \ need storage a task owns. Every other candidate below TASK-REGION-BYTES ($10000,
@@ -1496,7 +1439,6 @@ public
 $9C08 constant USE-BAND-OFF
 USE-BAND-OFF          constant USE-DEPTH-CELL      \ live using depth (u64)
 USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` open (`;package` restores)
-USE-BAND-OFF 16 +     constant USE-RPKG-SAVE-CELL  \ claimed; no code reads or writes it
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
@@ -1713,13 +1655,7 @@ $2CA8 constant SOURCE-EXEC-CTX-CELL
 112 constant SX-TICKET
 120 constant SX-DEPTH
 128 constant SX-RDEPTH
-136 constant SX-OP
-144 constant SX-REC
-152 constant SX-ENTRY
 160 constant SX-SUSPEND
-168 constant SX-WRITES
-176 constant SX-CONSTRUCTION
-184 constant SX-HANDLER
 192 constant SX-POS
 
 \ The checker overlay's replay scope (habu2.f DEFWRITE:REPLAY-OPEN /
@@ -1730,7 +1666,7 @@ $2CA8 constant SOURCE-EXEC-CTX-CELL
 \ than the saved one. The band is zero whenever no overlay is open. It is a
 \ guarded band (DATA-BANDS below), not scratch: a raw store that forged the
 \ saved NDICT, HW or WIDN would turn replay-close into a record eraser and
-\ either into a WIDN setter. USE-RPKG-SAVE-CELL is not saved.
+\ either into a WIDN setter.
 \ A fixed offset, because source reads LATCH: xref.f XREF-UNDEFINE-GUARD and
 \ interpreter.f OVERLAY-GUARD read it as a DATA offset. The band
 \ takes the start of the unclaimed run $4208..$4398 below DECLARED-LOG:ADDR-CELL;

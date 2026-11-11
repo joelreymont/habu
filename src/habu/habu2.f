@@ -1193,7 +1193,7 @@ package DEFWRITE
 \ The scope replay-open saves and replay-close restores, beside NDICT and CP:
 \ WIDN, CURRENT, the open package's four cells, the enclosing package's four
 \ and the using band's depth, the depth `package` saved and the used wids.
-\ USE-RPKG-SAVE-CELL is not in the scope. x8 = the band. Clobbers
+\ x8 = the band. Clobbers
 \ x10 and x14.
 : SCOPE, ( bool -- ) {: save:bool :}
    DATA WIDN-CELL REPLAY-SCOPE:WIDN save SAVED,
