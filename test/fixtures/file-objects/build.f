@@ -910,6 +910,58 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
    s" ran: compiled " one two three RESULTS.
    space four FMT:.INT  space five FMT:.INT  space six FMT:.INT cr ;
 
+\ ---- data a storer stored ----
+: STORES-H$ ( -- ptr u8 n ) s" stores" s" h.f" FIRST-BUF FILE-IN ;
+: STORES-S$ ( -- ptr u8 n ) s" stores" s" s.f" SECOND-BUF FILE-IN ;
+: STORES-R$ ( -- ptr u8 n ) s" stores" s" r.f" THIRD-BUF FILE-IN ;
+
+\ pointer-storage.f loads first for the PERSISTED- definers h.f and s.f use: a file here cannot require them, as the
+\ kernel defines no require (h.f's `require` is E-UNDEFINED).
+: STORES-BUILD ( -- n )
+   [: s" app" RTARGET:HOST-TARGET
+      [: s" src/core/pointer-storage.f" included  STORES-H$ included  STORES-S$ included  STORES-R$ included ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ s.f with NOTE's and ALPHA's strings, the word whose string table entry 0 points at, and the size it stores.
+: STORES-S! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: note:ptr noteu:n alpha:ptr alphau:n entry:ptr entryu:n size:ptr sizeu:n :}
+   STORES-S$ s\" package FILE-OBJECTS-STORES-S public\n: NOTE ( -- ptr u8 n ) s\" " FS:WRITE-ALL
+   STORES-S$ note noteu FS:APPEND-FILE
+   STORES-S$ s\" \" ;\n: ALPHA ( -- ptr u8 n ) s\" " FS:APPEND-FILE
+   STORES-S$ alpha alphau FS:APPEND-FILE
+   STORES-S$ s\" \" ;\n: BETA ( -- ptr u8 n ) s\" beta\" ;\n2 PERSISTED-PTR-U8-TABLE T\n;package\nFILE-OBJECTS-STORES-S:"
+   FS:APPEND-FILE
+   STORES-S$ entry entryu FS:APPEND-FILE
+   STORES-S$ s\"  drop FILE-OBJECTS-STORES-S:T 0 ptr-field !\nFILE-OBJECTS-STORES-S:BETA drop FILE-OBJECTS-STORES-S:T 1 ptr-field !\n"
+   FS:APPEND-FILE
+   STORES-S$ s" FILE-OBJECTS-STORES-S:T FILE-OBJECTS-STORES:TABLE !  " FS:APPEND-FILE
+   STORES-S$ size sizeu FS:APPEND-FILE
+   STORES-S$ s\"  FILE-OBJECTS-STORES:SIZE !\n" FS:APPEND-FILE ;
+
+\ A file that reads data another file stored into depends on what that file stored, not on its whole piece: s.f
+\ stores h.f's TABLE and SIZE, and r.f reads them. NOTE's edit compiles s.f alone; entry 0's new string, a new SIZE
+\ and new bytes in entry 0's string each compile r.f too. The cold build compiles pointer-storage.f as well.
+: BY-STORES ( -- )
+   s" stores" DIR$ FS:MAKE-DIR
+   STORES-H$ s\" package FILE-OBJECTS-STORES public PERSISTED-PTR-U8-TABLE-VARIABLE TABLE variable SIZE ;package\n"
+   FS:WRITE-ALL
+   s" note" s" alpha" s" ALPHA" s" 2" STORES-S!
+   STORES-R$ s\" package FILE-OBJECTS-STORES-R public\nFILE-OBJECTS-STORES:SIZE @ constant N\nFILE-OBJECTS-STORES:TABLE @ 0 ptr-field @ c@ constant C\n;package\n"
+   FS:WRITE-ALL
+   STORES-BUILD {: one:n :}
+   s" nota" s" alpha" s" ALPHA" s" 2" STORES-S!
+   STORES-BUILD {: two:n :}
+   s" nota" s" alpha" s" BETA" s" 2" STORES-S!
+   STORES-BUILD {: three:n :}
+   s" nota" s" alpha" s" BETA" s" 3" STORES-S!
+   STORES-BUILD {: four:n :}
+   s" nota" s" olpha" s" ALPHA" s" 3" STORES-S!
+   STORES-BUILD {: five:n :}
+   STORES-BUILD {: six:n :}
+   s" stores: compiled " one two three RESULTS.
+   space four FMT:.INT  space five FMT:.INT  space six FMT:.INT cr ;
+
 : STOPS ( -- )
    s" app" RTARGET:HOST-TARGET [: STOP-FILE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-BODY ;] LINKER:WITH
@@ -921,6 +973,7 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
    MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD BY-RUN
+   BY-STORES
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----

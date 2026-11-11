@@ -33,10 +33,10 @@ package FILE-OBJECTS-TEST
 22 constant UNCLEAN-SECOND               \ and its second's, which follows that cut
 23 constant ROOT-SET-LAST                \ root-set.f's last part's, after its request from the root its first part sets
 24 constant TAILS                        \ TAIL$'s tails
-46 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
+50 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
-                                         \ words sequence's five, the ran sequence's four
+                                         \ words sequence's five, the ran and stores sequences' four each
 208 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
@@ -271,7 +271,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
 \ writes; a refused file writes none, and count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote forty-six objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote fifty objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -321,7 +321,9 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    s" the words builds compile 5, 4, 0, 2, 1, 1 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" words: compiled 5 4 0 2 1 1 0\n" CONTAINS? TTRUE
    s" the ran builds compile 4, 1, 3, 0, 3 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" ran: compiled 4 1 3 0 3 0\n" CONTAINS? TTRUE ;
+   STATE-W STATE-W-U @ s\" ran: compiled 4 1 3 0 3 0\n" CONTAINS? TTRUE
+   s" the stores builds compile 4, 1, 2, 2, 2 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" stores: compiled 4 1 2 2 2 0\n" CONTAINS? TTRUE ;
 
 \ Whether A's printed state holds the line, a record's name line with its newlines, followed
 \ by a fields line that ends in the text, the record's facts text.

@@ -181,7 +181,8 @@ create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's sour
 create NAMED-RECS BUF:HDR-BYTES allot \ the records with a time the running scan hit, 8 bytes each, in hit order
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
 create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling part ran, 8 bytes each (RAN-RECORD)
-create REACHED BUF:HDR-BYTES allot   \ the object's REACHED: the FILES rows of the pieces whose data RAN-FILES+ reached, 8 bytes each
+\ The object's REACHED: per piece whose data RAN-FILES+ reached, its FILES row and its stores time, 8 bytes each.
+create REACHED BUF:HDR-BYTES allot
 create PENDING-PATHS BUF:HDR-BYTES allot \ the paths the checked part's earlier acts provided, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
 create UNDER-PATH BUF:HDR-BYTES allot \ RESOLVE-UNDER's answer under another root
@@ -685,7 +686,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    n ;
 
 \ The FILES row from 1 naming the BUILT row's piece, added on first use and marked in REF-OF. Its time is the piece's
-\ once a use is whole, else 0: only WORDS and EXTENTS rows decide.
+\ once a use is whole, else 0: only WORDS and EXTENTS rows and REACHED's stores times decide.
 : REF-FILE ( n bool -- n )
    {: row:n whole:bool :}
    row BUILT-AT {: at:ptr :}
@@ -1259,8 +1260,9 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    loop ;
 
 
-\ The walk from RAN-RECS' records, after NAMED+; REACHED takes each WALKED piece's FILES row, whole when its stores are
-\ reached, then -1 when header storers count. REACHED-CK runs before any piece the file requests is built.
+\ The walk from RAN-RECS' records, after NAMED+; REACHED takes each WALKED piece's FILES row, then its stores time
+\ (BUILT-STORES) when its stores are reached, else 0; then -1 when header storers count. REACHED-CK runs before any
+\ piece the file requests is built.
 : RAN-FILES+ ( -- )
    REACHED BUF:CLEAR
    RAN-RECS BYTES$ nip 0= if exit then
@@ -1272,7 +1274,10 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    0 begin  FOLLOW-REST  own WALK-STORERS 0=  until drop
    BUILT-N 0 ?do
       i WALKED @ {: marks:n :}
-      marks 0<> if  i  marks 2 and 0<>  REF-FILE REACHED U64+  then
+      marks 0<> if
+         i false REF-FILE REACHED U64+
+         marks 2 and 0<> if  i BUILT-AT BUILT-STORES + LE:U64@  else 0 then  REACHED U64+
+      then
    loop
    own HEADER-SEEN @ or if -1 REACHED U64+ then ;
 
@@ -2895,30 +2900,30 @@ variable RD-END
    BUILT-N 0 ?do i HITS @ 1 = if BAD then loop ;
 
 
-\ REACHED's u bytes, FILES rows then -1 (RAN-FILES+): bad unless each storer (STORERS) into reached data, or header
-\ data once the -1 is read, is reached, and rows run in build order: of two stores into a cell the later holds.
+\ REACHED's u bytes, pairs of a FILES row and a stores time, then -1 (RAN-FILES+): bad unless each storer (STORERS)
+\ into reached data, or header data once the -1 is read, is reached, a stores time other than 0 is its BUILT row's,
+\ and rows run in build order: of two stores into a cell the later holds.
 : REACHED-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
    u 0= if exit then
    BUILT-N 1 + WALKED-RESERVE  BUILT-N 0 ?do 0 i WALKED ! loop
-   false -1  u 8 / 0 ?do
-      {: own:bool last:n :}
-      RD-U64 {: k:n :}
-      k -1 =  i 1 + 8 * u =  and if
-         true last
+   -1  u 16 / 0 ?do
+      {: last:n :}
+      RD-U64 RD-U64 {: k:n st:n :}
+      k FILE-ROW? 0= if BAD unloop exit then
+      k FILE-ROWS @ {: row:n :}
+      row 0 >= if
+         row last <= if BAD unloop exit then
+         st 0<>  st  row BUILT-AT BUILT-STORES + LE:U64@  <>  and if BAD unloop exit then
+         1 row WALKED !  row
       else
-         k FILE-ROW? 0= if BAD unloop exit then
-         k FILE-ROWS @ {: row:n :}
-         row 0 >= if
-            row last <= if BAD unloop exit then
-            1 row WALKED !  own row
-         else
-            own last
-         then
+         last
       then
    loop
-   drop {: header:bool :}
+   drop
+   u 16 mod 8 = {: header:bool :}
+   header if  RD-U64 -1 <> if BAD exit then  then
    STORERS-N @ 0 ?do
       i 2 * STORERS @ {: held:n :}
       held -1 = if header else held WALKED @ 0<> then if
