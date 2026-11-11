@@ -3624,7 +3624,9 @@ variable NMOFF                           \ its token's offset in the checked tex
 
 
 \ A field's proof from its cell's: a normal proof names the field's own type,
-\ as ROW-NORMAL-PROOF gives a closed cell.
+\ as ROW-NORMAL-PROOF gives a closed cell. A catch does not reach that branch:
+\ RSCATCH expands its window (CWIN-LIVE) and normal row (ROW-EXPAND-TERMS)
+\ before ROW-NORMAL-PROOF, so each field gets a normal proof of its own.
 : FIELD-PROOF ( n n -- n )
    {: pf:n t:n :}
    pf 0= IF 0 EXIT THEN
