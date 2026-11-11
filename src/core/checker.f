@@ -4983,7 +4983,7 @@ CHECKER-REG:}SCRATCH
 41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
 42 constant MD-LIT-FIT       \ a literal reached a fixed-width type it does not fit (LIT-FITS? LIT-HIT); same E-MISMATCH code, its own prose and suggestion
 43 constant MD-IN-PLACE      \ `@`/`!` would move a layout holding an arena head whole (IN-PLACE?)
-44 constant MD-ARENA-CALL    \ the storage runtime named outside ARENA's or HEAP's generated words (ARENA-CALL-REFUSE?)
+44 constant MD-ARENA-CALL    \ the storage runtime named outside HEAP's generated words (ARENA-CALL-REFUSE?)
 45 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
 46 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
 47 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code as check.f's
@@ -5425,8 +5425,6 @@ CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 CHECKER-OWNER-ABI:BINDING-PARSES-ID constant INTRINSIC-PARSES    \ parses: (src/core/cell-effects.f)
 CHECKER-OWNER-ABI:BINDING-THROUGH-ID constant INTRINSIC-PARSES-THROUGH \ parses-through: (src/core/cell-effects.f)
 CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names: (src/core/cell-effects.f)
-14 constant INTRINSIC-ARENA-NEW                \ ARENA-NEW (src/core/dynamic-storage.f)
-15 constant INTRINSIC-ARENA-RELEASE            \ ARENA-RELEASE (src/core/dynamic-storage.f)
 16 constant INTRINSIC-XT-STORE                 \ xt!
 17 constant INTRINSIC-ATOMIC-STORE             \ atomic!
 18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
@@ -5488,8 +5486,6 @@ CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
    id INTRINSIC-PARSES = IF s" parses" EXIT THEN
    id INTRINSIC-PARSES-THROUGH = IF s" parses-through" EXIT THEN
    id INTRINSIC-NAMES = IF s" names" EXIT THEN
-   id INTRINSIC-ARENA-NEW = IF s" arena-new" EXIT THEN
-   id INTRINSIC-ARENA-RELEASE = IF s" arena-release" EXIT THEN
    id INTRINSIC-XT-STORE = IF s" xt-store" EXIT THEN
    id INTRINSIC-ATOMIC-STORE = IF s" atomic-store" EXIT THEN
    id INTRINSIC-ATOMIC-CAS = IF s" atomic-cas" EXIT THEN
@@ -23762,13 +23758,12 @@ variable IS-PEND-U                   \ and its length
 \ The intrinsic id of the word SYM names, through any export.
 : SYM-INTRINSIC ( n -- n ) CHECKER-SYM-SOURCE CTL-FLAGS-SYM CTL>INTRINSIC ;
 
-\ ARENA's and HEAP's runtime words trust the head or width passed in: a call or tick
-\ of one, through any export, is admitted only while LBUF-EVAL checks a generated word.
+\ HEAP's runtime words trust the width passed in: a call or tick of one, through
+\ any export, is admitted only while LBUF-EVAL checks a generated word.
 : ARENA-CALL-DENIED? ( n -- bool )
    {: sym:n :}
    sym SYM-INTRINSIC {: id:n :}
-   id INTRINSIC-ARENA-NEW <>  id INTRINSIC-ARENA-RELEASE <>  and
-   id INTRINSIC-RECORD-NEW <>  and  id INTRINSIC-RECORD-RELEASE <>  and IF RES-FALSE EXIT THEN
+   id INTRINSIC-RECORD-NEW <>  id INTRINSIC-RECORD-RELEASE <>  and IF RES-FALSE EXIT THEN
    LBUF-PEND-MATCH? 0= ;
 
 \ ARENA-CALL-DENIED?, recording the reason for a body's walk.

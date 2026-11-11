@@ -1,5 +1,5 @@
-\ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER,
-\ ARENA and HEAP. A buffer record is the head NAME#base (a PTR-VARIABLE holding the
+\ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER
+\ and HEAP. A buffer record is the head NAME#base (a PTR-VARIABLE holding the
 \ mapping, `ptr ptr a`) and the control block NAME#ctl behind it (capacity,
 \ registry slot + 1, width tag, bound for that width; `ptr n`). No word views a
 \ pointer cell as bytes or cells. Release zeroes the record, so no process
@@ -61,8 +61,6 @@ $40 constant REG-INIT
 PTR-U8-TABLE-VARIABLE REG
 variable REG-CAP   REG-CAP scratch-cell-mark
 variable REG-U   REG-U scratch-cell-mark
-\ The newest live arena's first chunk, NULL-PTR when none is live (ARENA-NEW).
-PTR-VARIABLE ARENAS
 here data-base - negate 7 and allot
 variable MUTEX
 
@@ -210,123 +208,6 @@ public
    0 ctl BOUND !
    UNLOCK ;
 
-\ ---- arenas ------------------------------------------------------------------
-\ An ARENA declaration (src/core/arena.f) is a record whose one field is an
-\ arena-head (src/core/type-family.f REGISTER-ARENA-HEAD), one cell holding the
-\ newest chunk's base, NULL-PTR while the arena is empty. The checker refuses
-\ to fetch or store a head, or any layout holding one, whole (checker.f
-\ IN-PLACE?), and refuses any cast that reaches one outside this module
-\ (checker.f CAST-REACHES-HEAD?), so no typed access and no other cast copies
-\ or forges a head; address arithmetic still reaches one (docs/forth.md "Raw
-\ storage never holds an address"). A chunk is ARENA-HDR bytes of header cells, then its records; the
-\ first holds ARENA-FIRST records, each next one twice its predecessor's, and
-\ records never move. The first chunk carries the declaration's name and links
-\ the arena into ARENAS. NEW and RELEASE take no lock on the owner: tasks
-\ sharing one arena serialise NAME-NEW and NAME-RELEASE themselves.
-\ ARENA-NEW and ARENA-RELEASE are INTRINSIC-tagged: checked code may call or
-\ tick them only inside the generated NAME-NEW and NAME-RELEASE, the definitions
-\ LBUF-EVAL arms (checker.f ARENA-CALL-REFUSE?, E-ARENA-CALL). Those reach the
-\ head through the engine's own `field-project`, a name no sealed-engine
-\ definition takes (STRUCTURE-MAKE:PROJECT-NAME$), so each head serves one
-\ declared type and a record's size always comes from it.
-
-private
-
-64 constant ARENA-HDR
-32 constant ARENA-FIRST
-
-CAST: >N-CELL ( ptr u8 -- ptr n )
-CAST: >P-CELL ( ptr u8 -- ptr ptr u8 )
-CAST: >HEAD-CELL ( ptr arena-head -- ptr ptr u8 )
-
-\ The header cells, each at its offset from the chunk base.
-: CH-PREV ( ptr u8 -- ptr ptr u8 ) >P-CELL ;
-: CH-USED ( ptr u8 -- ptr n ) CELL + >N-CELL ;
-: CH-CAP ( ptr u8 -- ptr n ) 2 cells + >N-CELL ;
-: CH-BYTES ( ptr u8 -- ptr n ) 3 cells + >N-CELL ;
-: CH-LINK-PREV ( ptr u8 -- ptr ptr u8 ) 4 cells + >P-CELL ;
-: CH-LINK-NEXT ( ptr u8 -- ptr ptr u8 ) 5 cells + >P-CELL ;
-: CH-NAME-A ( ptr u8 -- ptr ptr u8 ) 6 cells + >P-CELL ;
-: CH-NAME-U ( ptr u8 -- ptr n ) 7 cells + >N-CELL ;
-
-
-: ARENA-EXTENT ( n n -- n )
-   {: count:n width:n :}
-   count 0 < width 0 <= or if E-SIZE throw then
-   count MAX-BYTES ARENA-HDR - width / > if E-SIZE throw then
-   count width * ARENA-HDR + ;
-
-
-: ARENA-LINK ( ptr u8 -- )
-   {: first:ptr :}
-   ARENAS @ {: top:ptr :}
-   top first CH-LINK-NEXT !
-   top NULL-PTR <> if first top CH-LINK-PREV ! then
-   first ARENAS ! ;
-
-
-: ARENA-UNLINK ( ptr u8 -- )
-   {: first:ptr :}
-   first CH-LINK-PREV @ {: before:ptr :}
-   first CH-LINK-NEXT @ {: after:ptr :}
-   before NULL-PTR = if after ARENAS ! else after before CH-LINK-NEXT ! then
-   after NULL-PTR <> if before after CH-LINK-PREV ! then ;
-
-
-: ARENA-OLDEST ( ptr u8 -- ptr u8 )
-   begin dup CH-PREV @ NULL-PTR <> while CH-PREV @ repeat ;
-
-public
-
-
-\ The next zeroed record of `width` bytes in the given owner's arena. A full or
-\ empty arena maps its next chunk first: a refused size or mapping throws with
-\ nothing written, and the head is published last. The record's pointee is
-\ free in this row; the call gate above admits only the generated NAME-NEW,
-\ which passes its type's width and binds the pointee from its own signature.
-: ARENA-NEW ( ptr arena-head n ptr u8 n -- ptr a )
-   {: owner:ptr width:n name:ptr nameu:n :}
-   owner >HEAD-CELL {: cell:ptr :}
-   cell @ {: head:ptr :}
-   head NULL-PTR <> if
-      head CH-USED @ {: at:n :}
-      at head CH-CAP @ < if
-         at 1+ head CH-USED !
-         cell 0 ptr-field @ ARENA-HDR + at width * + exit
-      then
-   then
-   head NULL-PTR = if ARENA-FIRST else head CH-CAP @ 2 * then {: cap:n :}
-   cap width ARENA-EXTENT {: bytes:n :}
-   bytes map-anon 0< if drop E-MAP throw then byte-view {: fresh:ptr :}
-   cap fresh CH-CAP !
-   bytes fresh CH-BYTES !
-   1 fresh CH-USED !
-   head NULL-PTR = if
-      name fresh CH-NAME-A !
-      nameu fresh CH-NAME-U !
-      LOCK fresh ARENA-LINK fresh cell ! UNLOCK
-   else
-      head fresh CH-PREV !
-      fresh cell !
-   then
-   cell 0 ptr-field @ ARENA-HDR + ;  INTRINSIC-ARENA-NEW INTRINSIC
-
-
-\ Empties the given owner's arena: its head is cleared and it leaves ARENAS
-\ before any chunk is unmapped, so a refused unmap (E-UNMAP, after every chunk
-\ was tried) leaves no live arena naming the chunk.
-: ARENA-RELEASE ( ptr arena-head -- )
-   {: owner:ptr :}
-   owner >HEAD-CELL {: cell:ptr :}
-   cell @ {: head:ptr :}
-   head NULL-PTR = if exit then
-   LOCK head ARENA-OLDEST ARENA-UNLINK NULL-PTR cell ! UNLOCK
-   0 head
-   begin dup NULL-PTR <> while
-      dup CH-PREV @ swap dup CH-BYTES @ munmap 0< if swap 1+ swap then
-   repeat drop
-   0 <> if E-UNMAP throw then ;  INTRINSIC-ARENA-RELEASE INTRINSIC
-
 
 \ A zero-filled record of `bytes` on its own mapping, its pointee free: only HEAP's
 \ generated NAME-NEW calls it, passing its type's width (checker.f ARENA-CALL-REFUSE?).
@@ -412,8 +293,6 @@ public
    then
    REG-U @ 0= if REG-CLOSE then ;
 
-\ A cast reaching an arena head is admitted only here (checker.f
-\ CAST-HEAD-OWNER?), so no later source may reopen the package.
 seal-package
 
 ;package

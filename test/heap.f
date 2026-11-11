@@ -29,6 +29,11 @@ STRUCTURE holder DERIVE addr FIELD arena ptr ARENA:arena ;STRUCTURE
 HEAP HOLDERS holder
 
 
+package RECORD-PX
+public
+EXPORT DYNAMIC-STORAGE:RECORD-RELEASE
+;package
+
 \ An ordinary word with RECORD-RELEASE's generic pointee.
 : TAKE ( ptr a n -- ) 2drop ;
 
@@ -102,7 +107,7 @@ variable EVAL-U
 
 \ Were Z1 admitted, a 1-byte record would stand for a cell. The pointee is a
 \ plain cell, which the layout fence would let through, so the call gate alone
-\ refuses these.
+\ refuses these, in a body, a quotation, at top level and through a re-export.
 : CALLS ( -- )
    s" checked code neither calls nor ticks the record runtime words" T-LABEL
    s" : Z1 ( -- ptr n ) 1 DYNAMIC-STORAGE:RECORD-NEW ;" EVAL CHECKER-REJECT-RC T=
@@ -112,6 +117,11 @@ variable EVAL-U
    s" : Z3 ( -- ptr n ) 1 ['] DYNAMIC-STORAGE:RECORD-NEW execute ;" EVAL CHECKER-REJECT-RC T=
    s" Z3" UNDEFINED? TTRUE
    s" ' DYNAMIC-STORAGE:RECORD-RELEASE drop" EVAL CHECKER-REJECT-RC T=
+   s" : Z5 ( -- ptr n ) 1 [: DYNAMIC-STORAGE:RECORD-NEW ;] execute ;" EVAL CHECKER-REJECT-RC T=
+   s" Z5" UNDEFINED? TTRUE
+   s" NULL-PTR 16 DYNAMIC-STORAGE:RECORD-RELEASE" EVAL CHECKER-REJECT-RC T=
+   s" : Z6 ( -- ) NULL-PTR 16 RECORD-PX:RECORD-RELEASE ;" EVAL CHECKER-REJECT-RC T=
+   s" Z6" UNDEFINED? TTRUE
    s" a record pointer enters no other generic-pointer word" T-LABEL
    s" : Z4 ( ptr note -- ) 16 TAKE ;" EVAL CHECKER-REJECT-RC T=
    s" Z4" UNDEFINED? TTRUE ;
