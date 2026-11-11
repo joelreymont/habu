@@ -6,8 +6,21 @@
 \ value, an atom or a width, at every binding, through a generic caller too.
 require src/lib/test.f
 require src/lib/string.f
+require src/core/bytes.f
 
 DEFLINEAR stored-type-lin
+
+\ The recursive callers reopen RC-CAST at run time to reach its private words.
+package RC-CAST
+DEFLINEAR RC-CAST:tok
+private
+LINEAR: ERASE ( RC-CAST:tok -- n )
+CAST: >ELEM ( ptr u8 -- ptr t )
+: TOK-STEP ( ptr [ -- RC-CAST:tok ] -- ) @ execute ERASE drop ;
+: N-STEP ( ptr [ -- n ] -- ) @ execute drop ;
+public
+TYPED-VARIABLE NV n
+;package
 
 \ Public: the refused callers compile at run time, outside the package.
 package STORED
@@ -274,6 +287,46 @@ create DIAG-BUF DIAG-CAP allot
    [: s" : STORED-QC2 ( -- ) [: STORED:QC-ANY ;] is STORED:QC-D ;" evaluate-closed ;]
       0 TTHROWSQ ;
 
+256 constant RC-CAP
+RC-CAP BUFFER: RC-SRC
+variable RC-LEN
+
+\ The texts below are joined from pieces that each fit a line; RC-CAP holds
+\ the longest.
+: RC+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a  RC-SRC RC-LEN @ +  u BYTE-COPY
+   RC-LEN @ u + RC-LEN ! ;
+
+\ A word in RC-CAST whose recursive call's instance of t the step word binds,
+\ before the body hands t to the cast >ELEM.
+: RC-RECURSE$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: na:ptr nu:n sa:ptr su:n :}
+   0 RC-LEN !
+   s" package RC-CAST : " RC+  na nu RC+
+   s"  ( ptr u8 n -- ptr t ) 0 <> IF dup 0 RECURSE " RC+  sa su RC+
+   s"  THEN >ELEM ; ;package" RC+
+   RC-SRC RC-LEN @ ;
+
+: RC-OTHER$ ( -- ptr u8 n )
+   0 RC-LEN !
+   s" : RC-OTHER ( ptr t n -- ptr t ) dup 0 = IF drop EXIT THEN " RC+
+   s" drop RC-CAST:NV 0 RECURSE drop ;" RC+
+   RC-SRC RC-LEN @ ;
+
+: CASE-RC-LINEAR ( -- )
+   s" a recursive call meets the restriction the body adds later" T-LABEL
+   ARM
+   [: s" RC-FORGE" s" TOK-STEP" RC-RECURSE$ evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-CAST-LINEAR\"" HAS?
+   DISARM
+   [: s" RC-KEEP" s" N-STEP" RC-RECURSE$ evaluate-closed ;] 0 TTHROWSQ ;
+
+: CASE-RC-OTHER ( -- )
+   s" a recursive call at another instance the body leaves free" T-LABEL
+   [: RC-OTHER$ evaluate-closed ;] 0 TTHROWSQ ;
+
 public
 
 \ A generic word that passes the cast's stored variable on to its caller.
@@ -299,6 +352,8 @@ public
    CASE-ELEM-LINEAR
    CASE-ELEM-CLASS
    CASE-IS-STORED
+   CASE-RC-LINEAR
+   CASE-RC-OTHER
    T-REPORT ;
 
 ;package

@@ -11950,6 +11950,114 @@ create NP-ORIG NP-CAP cells allot   variable NP-ORIG-N   \ distinct declared qua
       1 +
    REPEAT drop RES-FALSE ;
 
+\ A recursive call instantiates the effect SIG-EFF-CACHE! built before the body
+\ ran, so the kind and restrictions the body later gives a declared quantifier
+\ reach no instance: RECUR-CHECK meets each instance with them after the body.
+\ RECUR-MAP pairs a declared id with the cached effect's number for it,
+\ RECUR-INST a declared id with one call's instance.
+CHECKER-REG:SCRATCH{
+create RECUR-MAP NP-CAP 2 * cells allot   variable RECUR-MAP-N
+PTR-VARIABLE RECUR-INST-P   variable RECUR-INST-CAP   variable RECUR-INST-N
+create RECUR-MARK NP-CAP cells allot
+CHECKER-REG:}SCRATCH
+
+\ The number E-BUILD-EFFECT just gave declared id, -1 for none.
+: RECUR-LOCAL ( n -- n )
+   MK-VAR T-RES dup ISVAR 0= IF drop -1 EXIT THEN
+   PAY {: r:n :}
+   r EC-TV-LW @ <  r EC-TV-HW @ >=  or IF -1 EXIT THEN
+   r cells EC-TV + @ 1 - ;
+
+: RECUR-MAP+ ( n n -- ) {: id:n loc:n :}
+   id RECUR-MAP-N @ 2 * cells RECUR-MAP + !
+   loc RECUR-MAP-N @ 2 * 1 + cells RECUR-MAP + !
+   RECUR-MAP-N @ 1 + RECUR-MAP-N ! ;
+
+\ The letter slots are the ids NP-ORIG+ admits.
+: RECUR-MAP-KEEP ( -- )
+   0 RECUR-MAP-N !
+   26 0 ?do
+      i cells NMAP + @ dup 0 >= IF
+         dup RECUR-LOCAL dup 0 >= IF RECUR-MAP+ ELSE 2drop THEN
+      ELSE drop THEN
+   loop ;
+
+: RECUR-MAP-FIND ( n -- n ) {: id:n :}
+   RECUR-MAP-N @ 0 ?do
+      i 2 * cells RECUR-MAP + @ id = IF
+         i 2 * 1 + cells RECUR-MAP + @ unloop EXIT
+      THEN
+   loop -1 ;
+
+: RECUR-INST+ ( n n -- ) {: id:n v:n :}
+   RECUR-INST-N @ 1 + 2 * RECUR-INST-CAP @ > IF
+      RECUR-INST-CAP @ 2 * 16 max {: nc:n :}
+      RECUR-INST-P @ RECUR-INST-CAP @ cells nc cells SR-GROW RECUR-INST-P !
+      nc RECUR-INST-CAP !
+   THEN
+   id RECUR-INST-N @ 2 * cells RECUR-INST-P @ + !
+   v RECUR-INST-N @ 2 * 1 + cells RECUR-INST-P @ + !
+   RECUR-INST-N @ 1 + RECUR-INST-N ! ;
+
+\ After the E-INST calls of one recursive call.
+: RECUR-INST-KEEP ( -- )
+   NP-ORIG-N @ 0 ?do
+      i cells NP-ORIG + @ dup RECUR-MAP-FIND
+      dup 0 < IF 2drop ELSE E-I-TV RECUR-INST+ THEN
+   loop ;
+
+\ A declared quantifier's root kind and restrictions as one number.
+: RECUR-MARK@ ( n -- n )
+   MK-VAR T-RES dup ISVAR 0= IF drop -1 EXIT THEN
+   PAY {: r:n :}
+   r TVK@ 4 lshift
+   r NSCOPE@ IF 1 or THEN
+   r NLINEAR@ IF 2 or THEN ;
+
+: RECUR-MARKS! ( -- )
+   NP-ORIG-N @ 0 ?do
+      i cells NP-ORIG + @ RECUR-MARK@ i cells RECUR-MARK + !
+   loop ;
+
+: RECUR-MOVED? ( -- bool )
+   NP-ORIG-N @ 0 ?do
+      i cells NP-ORIG + @ RECUR-MARK@ i cells RECUR-MARK + @ <> IF
+         RES-TRUE unloop EXIT
+      THEN
+   loop RES-FALSE ;
+
+\ A new variable with declared id's final kind and restrictions.
+: RECUR-WANT ( n -- n )
+   MK-VAR T-RES PAY {: r:n :}
+   FRESH {: f:n :}
+   r TVK@ f TVK!
+   r NSCOPE@ IF f NSCOPE! THEN
+   r NLINEAR@ IF f NLINEAR! THEN
+   f MK-VAR ;
+
+\ The rows only carry the pair to the diagnostic; their shared tail binds nothing.
+: RECUR-MEET ( n -- ) {: k:n :}
+   FRESH MK-ROW {: tail:n :}
+   k 2 * cells RECUR-INST-P @ + @ RECUR-WANT tail MK-PUSH {: exp:n :}
+   k 2 * 1 + cells RECUR-INST-P @ + @ tail MK-PUSH {: act:n :}
+   act exp UNIFY-EXACT
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF exp act UF-CAPTURE THEN
+   OK @ and OK ! ;
+
+: RECUR-PASS ( -- )
+   RECUR-INST-N @ 0 ?do
+      i RECUR-MEET
+      OK @ 0= IF unloop EXIT THEN
+   loop ;
+
+\ An instance may be another declared quantifier, which a pass restricts: the
+\ passes repeat until no root kind or restriction moves.
+: RECUR-CHECK ( -- )
+   BEGIN
+      RECUR-MARKS!  RECUR-PASS
+      OK @ 0=  RECUR-MOVED? 0=  or
+   UNTIL ;
+
 \ The domain of the identity a bound name holds, -1 for none. A caller's
 \ quantifier proves one only by its kind, which only a region has; any other
 \ variable takes the name's domain de unless SCOPE-BLOCK? keeps it from a region.
@@ -20031,6 +20139,7 @@ CHECKER-REG:}SCRATCH
    CHECKER-REC-SYM @ RECEFF-SYM !
    0 CHECKER-REC-SYM !
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ E-BUILD-EFFECT RECEFF !
+   RECUR-MAP-KEEP
    OWN-BLOCKS
    RECEFF-SYM @ CHECKER-REC-SYM !
    -1 RECEFF-ON ! ;
@@ -20052,6 +20161,7 @@ CHECKER-REG:}SCRATCH
    h E-DOUT@ E-INST {: dout:n :}
    hasr 0 <> IF h E-RIN@ E-INST h E-ROUT@ E-INST ELSE 0 0 THEN
    {: rin:n rout:n :}
+   RECUR-INST-KEEP
    mark din dout rin rout E-AK-LIST
    din SUNI-IN
    OK @ IF OWNB-LOCAL? IF MD-LOCAL-ESCAPE CF-FAIL THEN THEN
@@ -23178,7 +23288,8 @@ variable NP-OUT-I
       1 +
    REPEAT drop
    NP-ROWS-CHECK
-   NP-MINT-CHECK ;
+   NP-MINT-CHECK
+   NPBAD @ 0=  OK @ and  IF RECUR-CHECK THEN ;
 
 \ ---- the source-tape observer ---------------------------------------------------
 \ CHECK-SCAN is the reader that turns a checked definition into tokens, so it
@@ -24420,7 +24531,8 @@ CHECKER-REG:}SCRATCH
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
    0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
-   0 NP-ORIG-N !  0 CALL-MINT-N !  CHECKER-QUOT-FRESH:CLEAR  SG-ROWS-RESET
+   0 NP-ORIG-N !  0 CALL-MINT-N !  0 RECUR-MAP-N !  0 RECUR-INST-N !
+   CHECKER-QUOT-FRESH:CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
