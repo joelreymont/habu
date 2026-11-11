@@ -6,14 +6,31 @@
 \ Run: bin/hb --load test/prop-test.f
 \ bin/hb --load test/prop-test.f -- <seed> <count> runs one seed serially to
 \ reproduce a run.
+\
+\ Shrinking: on a false-cert, delta-debug BBUF down to a minimal body that still
+\ satisfies a predicate (certify-and-mismatch in real use; "still certifies" in
+\ the self-test). Drops one trailing token per step, restoring any drop that
+\ breaks the predicate. Token surgery moves BLEN only; the bytes stay put.
+\
+\ Primitive semantic properties compile typed candidates through the production
+\ checker, execute the real operations on valid operands, and compare runtime
+\ output depth while preserving a guard below the declared inputs.
+\
+\ Seed sweep: PROP-SHARD-N forked slots, each a distinct seed for DEFAULT-COUNT
+\ iterations. Self-tests and baits run once in the parent; children run silently
+\ (SWEEP-QUIET) and die 1 on a false-cert or metamorphic inconsistency. One red
+\ shard fails the phase. Seeds come from a per-run base spread by a 32-bit
+\ golden-ratio step, so no two slots share an LCG walk. The golden-ratio step is
+\ odd, so i*STEP mod 2^31 is injective over the shard range, and the LCG's odd
+\ multiplier makes each step a bijection on the state space.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-fork.f
-require src/lib/fmt.f                        \ FMT:.INT - one-line number text
-require src/lib/test/eval.f                  \ TEST-EVAL:RC - a closed text's throw code
+require src/lib/fmt.f
+require src/lib/test/eval.f
 
 \ The harness and its candidates compile at tier 0 whatever the caller chose:
 \ tier 1 refuses CLEAR-MEAS's untyped row drain (E-NELAB-UNDER).
@@ -36,9 +53,7 @@ $4D3C2B1A constant CANARY
 
 2000 constant DEFAULT-COUNT
 
-\ The default seed varies per run (mono-ns clock), so each gate explores a fresh
-\ space; RUN-SEED is printed (POS.) and the `bin/hb <seed> <count>` argv
-\ override reproduces any run.
+\ The default seed varies per run, so each gate explores a fresh space.
 : FRESH-SEED ( -- n )
    mono-ns $7FFFFFFF and dup 0= if drop 1 then ;
 3 constant LOG-LIMIT
@@ -48,7 +63,6 @@ variable SEED   1 SEED !
 : RND%  ( n -- n ) {: bound:n :}
    RND bound mod ;
 
-\ Byte buffers. Loops use per-loop counter variables, not ?do and `i`.
 512 constant BBUF-CAP
 1024 constant PBUF-CAP
 create BBUF BBUF-CAP allot   variable BLEN     \ the body
@@ -84,7 +98,6 @@ variable TFLAG                             \ sig element type: 0 = i64 (concrete
 : DEF. ( -- )  PBUF PBUF-U @ type cr ;
 : BODY. ( -- )  BBUF BLEN @ type cr ;
 
-\ Depth-tracked generator over the integer sublanguage.
 variable DEP  variable NIN  variable DOUT  variable K
 variable LOCN                              \ fresh mid-body local name counter (z0, z1, ...)
 variable LOC?                              \ inputs bound as locals a/b/c at the body top?
@@ -92,26 +105,23 @@ variable PERT?                             \ declared out perturbed away from th
 : BLET  ( n -- ) {: idx:n :}
    idx 97 + BBUF BLEN @ + c!
    BLEN @ 1+ BLEN !
-   s"  " PROP-B+ ;   \ emit letter a+i then space
-\ Emit a mid-body local round-trip `{: zN :} zN` (net-0, needs DEP>=1): binds
-\ the data top to a fresh local zN then pushes it back. LOCN keeps names unique
-\ within a body (z0, z1, ...), never colliding with input locals a/b/c.
+   s"  " PROP-B+ ;
+\ Emit a mid-body local round-trip `{: zN :} zN` (net-0, needs DEP>=1).
 : STEP-LOCAL  ( -- )
    s" {: z" PROP-B+  LOCN @ BD  s"  :} z" PROP-B+  LOCN @ BD  s"  " PROP-B+
    LOCN @ 1+ LOCN ! ;
 \ Named structural (net-0) op texts: PROP-STEP emits them and the alphabet
-\ self-test asserts each one is generated and certifies, so a class cannot
-\ silently fall out of the fuzzer's reach.
-: OP-LOOP$   ( -- ptr u8 n )  s" 3 0 ?do loop " ;                \ bounded neutral loop
-: OP-LEAVE$  ( -- ptr u8 n )  s" 3 0 ?do leave loop " ;          \ valid leave inside a loop
-: OP-STR$    ( -- ptr u8 n )  S\" s\" x\" 2drop " ;              \ string literal, then dropped
-: OP-QUOT0$  ( -- ptr u8 n )  s" [: ;] execute " ;               \ empty row-poly quotation
-: OP-BRANCH$ ( -- ptr u8 n )  s" dup 0= if 1+ else 1- then " ;   \ balanced branch
-: OP-RSTK$   ( -- ptr u8 n )  s" >r r> " ;                       \ balanced return stack
-: OP-RCOPY$  ( -- ptr u8 n )  s" >r r@ drop r> " ;               \ return-stack copy via r@
-: OP-QUOT1$  ( -- ptr u8 n )  s" [: 1+ ;] execute " ;            \ quotation applied
+\ self-test asserts each one is generated and certifies.
+: OP-LOOP$   ( -- ptr u8 n )  s" 3 0 ?do loop " ;
+: OP-LEAVE$  ( -- ptr u8 n )  s" 3 0 ?do leave loop " ;
+: OP-STR$    ( -- ptr u8 n )  S\" s\" x\" 2drop " ;
+: OP-QUOT0$  ( -- ptr u8 n )  s" [: ;] execute " ;
+: OP-BRANCH$ ( -- ptr u8 n )  s" dup 0= if 1+ else 1- then " ;
+: OP-RSTK$   ( -- ptr u8 n )  s" >r r> " ;
+: OP-RCOPY$  ( -- ptr u8 n )  s" >r r@ drop r> " ;
+: OP-QUOT1$  ( -- ptr u8 n )  s" [: 1+ ;] execute " ;
 : PROP-STEP  ( -- )   \ append one depth-feasible op to BBUF, update DEP
-   5 RND% 0 = IF                          \ 1-in-5: a net-0 STRUCTURAL op (DEP unchanged)
+   5 RND% 0 = IF
       DEP @ 1 >= IF 9 ELSE 4 THEN RND% K !     \ DEP>=1: ops 0..8; DEP=0: depth-free 0..3
       K @ 0 = IF OP-LOOP$ PROP-B+ exit THEN
       K @ 1 = IF OP-LEAVE$ PROP-B+ exit THEN
@@ -121,9 +131,9 @@ variable PERT?                             \ declared out perturbed away from th
       K @ 5 = IF OP-RSTK$ PROP-B+ exit THEN
       K @ 6 = IF OP-RCOPY$ PROP-B+ exit THEN
       K @ 7 = IF OP-QUOT1$ PROP-B+ exit THEN
-               STEP-LOCAL exit THEN                               \ mid-body local round-trip
+               STEP-LOCAL exit THEN
    DEP @ 2 >= IF 15 RND% ELSE  DEP @ 1 >= IF 6 RND% ELSE 0 THEN  THEN  K !
-   K @ 0 = IF                                                  \ push a value: a local ref, or a literal
+   K @ 0 = IF
       LOC? @ 0= 0= IF NIN @ RND% BLET ELSE 10 RND% BD s"  " PROP-B+ THEN
       DEP @ 1+ DEP !  exit THEN
    K @ 1 = IF s" 1+ " PROP-B+      exit THEN
@@ -144,19 +154,19 @@ variable STEPS  variable GI
 : GEN-BODY  ( n n -- ) {: in-count:n use-flag:n :}  \ fill BBUF with a body, set NIN and the true residual DEP
    in-count 0 > if use-flag 0= if 0 else -1 then else 0 then LOC? !
    in-count NIN !  0 BLEN !  0 LOCN !
-   LOC? @ 0= 0= IF                          \ {: a b c :} prefix binds the NIN inputs as locals
+   LOC? @ 0= 0= IF
       s" {: " PROP-B+  0 GI ! begin GI @ NIN @ < while GI @ BLET GI @ 1+ GI ! repeat  s" :} " PROP-B+  0 DEP !
    ELSE NIN @ DEP ! THEN
    6 RND% 3 + STEPS !
-   0 GI ! begin GI @ STEPS @ < while  PROP-STEP  GI @ 1+ GI !  repeat ;   \ build body, compute true DEP
-: HEAD  ( n n n -- ) {: name-ch:n in-arity:n out-arity:n :}  \ PBUF += ": <nch> ( din -- dout ) "  (TFLAG picks i64/n)
+   0 GI ! begin GI @ STEPS @ < while  PROP-STEP  GI @ 1+ GI !  repeat ;
+: HEAD  ( n n n -- ) {: name-ch:n in-arity:n out-arity:n :}
    0 PBUF-U !  s" : " P+  name-ch PC  s"  ( " P+  in-arity PTY  s" -- " P+  out-arity PTY  s" ) " P+ ;
 : BODY+  ( -- )  BBUF BLEN @ P+  s" ; " P+ ;
 : GEN  ( -- )   \ PBUF := ": G ( i64*NIN -- i64*DOUT ) <body> ;"
    0 TFLAG !
-   4 RND%  3 RND% 0 = if -1 else 0 then GEN-BODY  \ 0..3 inputs, bound as locals 1-in-3
-   DEP @ DOUT !  0 PERT? !                 \ declared = true residual depth ...
-   10 RND% 3 < IF                          \ ... perturbed 30% of the time (intended-reject)
+   4 RND%  3 RND% 0 = if -1 else 0 then GEN-BODY
+   DEP @ DOUT !  0 PERT? !
+   10 RND% 3 < IF
       2 RND% 0= 0= IF DOUT @ 1+ ELSE DOUT @ 1- THEN
       dup 0 < IF drop 0 THEN  DOUT !
       DOUT @ DEP @ <> IF -1 PERT? ! THEN THEN
@@ -170,7 +180,7 @@ TYPED-VARIABLE HELD [ -- ]
 
 public
 
-\ Public only so TRIAL's closed text can reach it, as TEST-EVAL's SRC$ and N! are.
+\ Public only so TRIAL's closed text can reach it.
 : RUN-HELD ( -- )
    HELD @ execute  UNDO-RC throw ;
 
@@ -266,8 +276,7 @@ variable MEAS-OUT
 \ children do not interleave them on the shared stdout; false-cert lines
 \ (FC-LINE) stay unconditional because a false-cert fails the phase. The logs
 \ are capped/quiet but the finding is fatal either way: the NSI/NCI
-\ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD)
-\ — an inconsistency-reporting property tester that exits 0 is error masking.
+\ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD).
 variable SWEEP-QUIET
 : LOG-META  ( ptr u8 n -- ) {: a:ptr u:n :}
    SWEEP-QUIET @ if exit then
@@ -296,7 +305,7 @@ variable CAI  variable CAO  variable CBO
    [: 0 TFLAG !
    3 RND% 0 GEN-BODY  NIN @ CAI !  DEP @ CAO !  88 CAI @ CAO @ HEAD  BODY+  PBUF PBUF-U @ CHK   \ X=88
    VERD @ -1 = IF
-      CAO @ 0 GEN-BODY  DEP @ CBO !  89 CAO @ CBO @ HEAD  BODY+  PBUF PBUF-U @ CHK              \ Y=89, in=CAO
+      CAO @ 0 GEN-BODY  DEP @ CBO !  89 CAO @ CBO @ HEAD  BODY+  PBUF PBUF-U @ CHK              \ Y=89
       VERD @ -1 = IF
          0 PBUF-U ! s" : Z ( " P+  CAI @ PTY  s" -- " P+  CBO @ PTY  s" ) X Y ; " P+  PBUF PBUF-U @ CHK   \ Z=90
          VERD @ -1 = IF  NCMP @ 1+ NCMP !  90 CAI @ CBO @ MEASURE
@@ -305,12 +314,8 @@ variable CAI  variable CAO  variable CBO
    THEN
    ;] TRIAL ;
 
-\ Shrinking: on a false-cert, delta-debug BBUF down to a minimal body that still
-\ satisfies a predicate (certify-and-mismatch in real use; "still certifies" in
-\ the self-test). Drops one trailing token per step, restoring any drop that
-\ breaks the predicate. Token surgery moves BLEN only; the bytes stay put.
 variable BSAVE
-: LAST-SPACE? ( -- bool )   \ BBUF has a last byte and it is a space
+: LAST-SPACE? ( -- bool )
    BLEN @ 0= IF 0 0= 0= exit THEN
    BBUF BLEN @ 1- + c@ 32 = ;
 : TRIM-TRAIL ( -- )  begin LAST-SPACE? while  BLEN @ 1- BLEN !  repeat ;
@@ -326,8 +331,6 @@ TYPED-VARIABLE TRIAL-FLAG bool
       LAST-TRAP @ 0= 0= IF  0 0=  ELSE  LAST-MEAS @ DOUT @ <>  THEN
    ELSE  0 0= 0=  THEN  TRIAL-FLAG ! ;] TRIAL  TRIAL-FLAG @ ;
 : STILLCERT? ( -- bool )  [: REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  TRIAL-FLAG ! ;] TRIAL  TRIAL-FLAG @ ;
-\ Differential boundary: compiles a checker-rejected body as TRUSTED:
-\ (COMPILE-TRUSTED) to confirm a false reject.
 : CONFIRM-FR? ( -- bool )
    [: PBUF PBUF-U @ COMPILE-TRUSTED
    0 = IF  71 NIN @ RUN-MEAS
@@ -336,7 +339,7 @@ TYPED-VARIABLE TRIAL-FLAG bool
 : LOG-FR ( -- )
    s" prop-test: false-reject confirmed: " type POS. cr
    s" definition: " type REBUILD-G DEF. ;
-: SHRINK  ( R [ -- bool ] -- R ) {: pred :}  \ minimize BBUF keeping (pred) true
+: SHRINK  ( R [ -- bool ] -- R ) {: pred :}
    begin
       BLEN @ BSAVE !
       DROP-LAST if
@@ -347,17 +350,17 @@ TYPED-VARIABLE TRIAL-FLAG bool
    while repeat ;
 
 variable NFC0
-: CHECK-G  ( -- )   \ build, check and run one ": G ( ... ) <body> ;"
+: CHECK-G  ( -- )
    GEN
    PBUF PBUF-U @ CHK
    VERD @ -1 = IF                            \ CERTIFIED: measured out-arity must equal declared
       NCERT @ 1+ NCERT !
-      PROP-NFC @ NFC0 !  71 NIN @ DOUT @ MEASURE   \ base run-and-compare
+      PROP-NFC @ NFC0 !  71 NIN @ DOUT @ MEASURE
       PROP-NFC @ NFC0 @ > IF                       \ a FALSE-CERT: shrink to a minimal counterexample & print
          s" original: " type  REBUILD-G  DEF.
          [: FCFAIL? ;] SHRINK
          s" minimized counterexample: " type  REBUILD-G  DEF. THEN
-      SUBSUME                                 \ metamorphic amplifier on the certified body
+      SUBSUME
    ELSE VERD @ 0 = PERT? @ 0= and IF         \ rejected but NOT perturbed -> the generator declared the
       CONFIRM-FR? IF                          \ true arity and execution agree: a FALSE-REJECT
          NFR @ LOG-LIMIT < IF LOG-FR THEN
@@ -366,11 +369,11 @@ variable NFC0
    THEN THEN ;
 : ONE  ( -- )
    ['] CHECK-G TRIAL
-   COMPOSE ;                                  \ independent two-body composition probe
-: RUN-CORE  ( n n -- )   \ generate + measure across N programs; prints only findings
+   COMPOSE ;
+: RUN-CORE  ( n n -- )   \ prints only findings
    N !  dup RUN-SEED !  SEED !  0 NCERT ! 0 PROP-NFC ! 0 NFR !  0 NSUB ! 0 NSI ! 0 NCMP ! 0 NCI !
    0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat ;
-: REPRO  ( n n -- )   \ RUN-CORE plus the per-run summary (serial repro path)
+: REPRO  ( n n -- )
    RUN-CORE
    s" prop-test: " type N @ FMT:.INT s"  programs, " type
    NCERT @ FMT:.INT s"  certified, " type  PROP-NFC @ FMT:.INT s"  FALSE-CERT(s), " type
@@ -379,9 +382,7 @@ variable NFC0
    NCMP @ FMT:.INT s"  composition runs; " type
    NSI @ NCI @ +  FMT:.INT s"  inconsistency(ies)" type cr ;
 
-\ Regression baits: programs a sound checker rejects. If a regression ever
-\ certifies one, either arity or type/signature soundness regressed.
-: BAIT  ( ptr u8 n -- )   \ MUST NOT certify
+: BAIT  ( ptr u8 n -- )
    CHK
    VERD @ -1 = IF s" prop-test: BAIT certified - checker soundness regressed!" 1 die THEN ;
 : BAITS ( -- )
@@ -393,9 +394,6 @@ variable NFC0
    s" : G ( [ -- ) ;"                                BAIT   \ malformed quotation sig
    s" prop-test: baits OK (control/type/signature regressions rejected)" type cr ;
 
-\ Alphabet self-test: every structural op class must (a) certify as a minimal
-\ ( i64 -- i64 ) body - the checker accepts the class - and (b) be generated by
-\ the fuzzer within a capped deterministic-seed sweep - the class is reachable.
 \ A renumbered K table or a narrowed RND% bound that silently dropped a class
 \ from the explored space dies here instead of shrinking coverage unnoticed.
 9 constant ALPHA-N
@@ -428,7 +426,7 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
    i 8 = IF s" {: z0 :} z0 " exit THEN
    i ALPHA-DET$ ;
 variable CERT-I
-: ALPHA-CERT1 ( n -- )   \ ": G ( i64 -- i64 ) <class-op> ;" must certify
+: ALPHA-CERT1 ( n -- )
    CERT-I !
    [: 0 BLEN !  CERT-I @ ALPHA-CERT$ PROP-B+
    0 LOC? !  0 TFLAG !  1 NIN !  1 DOUT !
@@ -442,7 +440,7 @@ variable CERT-I
    0 ALPHA-J ! begin ALPHA-J @ ALPHA-N < while
       0 ALPHA-SEEN ALPHA-J @ + c!  ALPHA-J @ 1+ ALPHA-J !
    repeat ;
-: ALPHA-SCAN ( -- )   \ mark every class whose op text appears in the generated BBUF
+: ALPHA-SCAN ( -- )
    0 ALPHA-J ! begin ALPHA-J @ ALPHA-N < while
       BBUF BLEN @ ALPHA-J @ ALPHA-DET$ PROP-HAS? IF 1 ALPHA-SEEN ALPHA-J @ + c! THEN
       ALPHA-J @ 1+ ALPHA-J !
@@ -465,18 +463,16 @@ variable CERT-I
       s" prop-test: alphabet self-test FAILED (class unreachable)" 1 die THEN
    s" prop-test: alphabet OK (" type ALPHA-N FMT:.INT s"  op classes generated + certified)" type cr ;
 
-\ Shrink self-test: a long certified ( i64 -- i64 ) body must reduce under the
-\ "still certifies" predicate — proves the delta-debug loop + token surgery work
-\ (a sound checker never hands us a real false-cert to shrink, so exercise the
-\ machinery on an achievable predicate).
+\ A sound checker never hands us a real false-cert to shrink, so exercise the
+\ machinery on an achievable predicate.
 : SELFTEST-SHRINK ( -- )
    0 BLEN !  s" dup drop 1+ 1- negate 1+ 1- " PROP-B+  1 NIN !  1 DOUT !
    BLEN @  [: STILLCERT? ;] SHRINK  BLEN @  >  0= IF
       s" prop-test: self-test SHRINK BROKEN (no reduction)" 1 die THEN
    s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PBUF-U @ type s" )" type cr ;
 
-\ No generated seed (1..40 and 123, 2000 programs each) reaches CONFIRM-FR?, so
-\ this drives it: a bool into `+` is refused yet leaves the declared one cell.
+\ No generated seed reaches CONFIRM-FR?, so this drives it: a bool into `+` is
+\ refused yet leaves the declared one cell.
 : SELFTEST-FR ( -- )
    0 BLEN !  s" 0 0= + " PROP-B+  1 NIN !  1 DOUT !  REBUILD-G
    PBUF PBUF-U @ CHK  VERD @ -1 = IF
@@ -507,11 +503,6 @@ variable ARG-N  variable ARG-I  variable ARG-L
      none OF USAGE ENDOF
      some OF ENDOF
    ;MATCH ;
-
-\ Primitive semantic properties compile typed candidates through the production
-\ checker, execute the real operations on valid operands, and compare runtime
-\ output depth while preserving a guard below the declared inputs. Cases are
-\ ordinary tests grouped by operand domain; they assert no registry metadata.
 
 create BUF 64 allot
 
@@ -634,8 +625,7 @@ variable CASE-EXP
    s" : PROP-PC ( -- n ) dbase@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) ndict@ ; " s" " 1 CHECK-CASE
    \ data-base's pointee is a base address, which no definition may publish
-   \ under a type variable; the case is about its arity, so it names a pointee
-   \ the way any honest caller does.
+   \ under a type variable; the case is about its arity, so it names a pointee.
    s" : PROP-PC ( -- ptr n ) data-base ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) prot-wid-room ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
@@ -698,13 +688,7 @@ variable CASE-EXP
    REPRO
    FINISH ;
 
-\ Seed sweep: PROP-SHARD-N forked slots, each a distinct seed for DEFAULT-COUNT
-\ iterations, so one direct run covers N x DEFAULT-COUNT programs in parallel.
-\ Self-tests and baits run once in the parent; children run silently
-\ (SWEEP-QUIET) and die 1 on a false-cert or metamorphic inconsistency. One red
-\ shard fails the phase. Seeds come from a per-run base spread by a 32-bit
-\ golden-ratio step, so no two slots share an LCG walk. The gate runs this row
-\ in one pool slot beside other rows, so the sweep keeps its 4,000 programs in
+\ The gate runs this row in one pool slot beside other rows, so the sweep keeps
 \ two shards: a wider fan-out covers nothing more and takes the other rows' CPU.
 2 constant PROP-SHARD-N
 $9E3779B1 constant PROP-SHARD-STEP
@@ -719,10 +703,10 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
    i cells PROP-SHARD-PIDS + @ >PID ;
 1 constant PROP-O-WRONLY   \ O_WRONLY (macOS/Linux)
 \ Point a descriptor at /dev/null (best effort): a shard checks thousands of
-\ intentionally-rejected fuzz programs, and the checker's per-reject
-\ diagnostics on stderr (x N shards) would overflow the gate's bounded stderr
-\ capture. A false-cert reports on stdout (FC-LINE) and via the shard's
-\ nonzero exit, so muting stderr is safe.
+\ intentionally-rejected fuzz programs, and the checker's per-reject diagnostics
+\ on stderr would overflow the gate's bounded stderr capture. A false-cert
+\ reports on stdout (FC-LINE) and via the shard's nonzero exit, so muting
+\ stderr is safe.
 : MUTE-FD ( n -- )
    {: dst:n :}
    s" /dev/null" FS:>PATHZ PROP-O-WRONLY 0 open {: fd:n :}
@@ -733,7 +717,7 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
    2 MUTE-FD ;
 \ The named failure line goes to stdout (fd 2 is muted in shards; `die` writes
 \ stderr, so its message would vanish) and carries the shard seed so any red is
-\ reproducible serially via `bin/hb <seed> <count>`.
+\ reproducible serially.
 : SHARD-FAIL ( ptr u8 n -- )
    type s"  in shard seed " type RUN-SEED @ .
    s" " 1 die ;
@@ -759,19 +743,16 @@ variable SHARD-FAULT
 : SHARD-JOIN ( n -- ) {: i:n :}
    i SHARD-PID@ PROCESS:WAIT PROCESS:STATUS>RC RC>N 0<> IF
       SWEEP-RED @ 1+ SWEEP-RED ! THEN ;
-: SWEEP  ( n -- )   \ base seed -> fork all shards, join all, fail on any red
+: SWEEP  ( n -- )
    SWEEP-BASE !  0 SWEEP-RED !  -1 SWEEP-QUIET !
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-FORK  SWEEP-I @ 1+ SWEEP-I ! repeat
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-JOIN  SWEEP-I @ 1+ SWEEP-I ! repeat
    SWEEP-RED @ IF s" prop-test: sweep FAILED (a shard reported above: FALSE-CERT or METAMORPHIC-INCONSISTENCY)" SWEEP-RED @ die THEN
    s" prop-test: sweep OK — " type PROP-SHARD-N FMT:.INT s"  shards x " type DEFAULT-COUNT FMT:.INT s"  iters, distinct seeds" type cr ;
 
-\ shard-seed self-test: distinct per-slot streams. The golden-ratio step is
-\ odd, so i*STEP mod 2^31 is injective over the shard range, and the LCG's odd
-\ multiplier makes each step a bijection on the state space - distinct seeds
-\ can never merge into one walk. Pin pairwise distinctness and the 31-bit
-\ nonzero clamp across representative bases, including one where base + STEP
-\ wraps to exactly 0 and exercises the 0->1 clamp.
+\ Pin pairwise distinctness and the 31-bit nonzero clamp across representative
+\ bases, including one where base + STEP wraps to exactly 0 and exercises the
+\ 0->1 clamp.
 variable SS-I  variable SS-J  variable SS-BAD
 : SHARD-SEEDS-CHECK ( n -- ) {: base:n :}
    base SWEEP-BASE !
@@ -792,9 +773,8 @@ variable SS-I  variable SS-J  variable SS-BAD
    SS-BAD @ IF s" prop-test: shard-seed self-test FAILED (duplicate or out-of-range slot seed)" 1 die THEN
    s" prop-test: shard-seeds OK (distinct per-slot seed streams)" type cr ;
 
-\ sweep red-path self-test: one shard dies red and the others exit cleanly.
 \ The sweep exits with its red-shard count, so an all-red sweep cannot satisfy
-\ this test. The probe costs only the forks.
+\ this test.
 : SWEEP-RED-CHILD ( -- )   \ never returns
    1 MUTE-FD  2 MUTE-FD
    PROP-SHARD-N 2 / SHARD-FAULT !
@@ -804,11 +784,10 @@ variable SS-I  variable SS-J  variable SS-BAD
    PROC-FORK:RAW {: p:pid :}
    p PID>N 0= IF SWEEP-RED-CHILD THEN
    p PROCESS:WAIT PROCESS:STATUS>RC RC>N 1 <> IF
-      \ completion code; a red shard must exit 1
       s" prop-test: sweep-red self-test FAILED (a red shard did not fail the sweep)" 1 die THEN
    s" prop-test: sweep-red OK (one red shard fails the sweep)" type cr ;
 
-: RUN-DEFAULT ( -- )   \ sharded sweep: self-tests once, then N slots
+: RUN-DEFAULT ( -- )
    SELFTEST-SHRINK
    BAITS
    SELFTEST-ALPHABET
