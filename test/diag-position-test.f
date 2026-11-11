@@ -109,6 +109,7 @@ variable RC
 \ deadline prints src and the capture and throws E-PROC-TIMEOUT (T-TIMED-OUT).
 : STORE! ( ptr u8 n len len PROCESS:ending -- )
    {: src:ptr srcu:n outu:len erru:len oc :}
+   outu LEN>N OUT-U !
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
      exited OF RC ! ENDOF
@@ -2209,6 +2210,19 @@ variable RC
    CERTIFIED
    s" " 0 LOADED ;
 
+\ The load prints each `?` local's type on its output: a layout local's is the
+\ layout type, not the tag term its group's top cell carries.
+: TEST-SHOW-LAYOUT-LOCAL ( -- )
+   s" a ? local over an option<n> and over an n" T-LABEL
+   SB-RESET
+   s" require src/lib/adt/option.f" SB-APPEND LF+
+   s" : Q ( option<n> -- ) {: c:? :} ;" SB-APPEND LF+
+   s" : Q1 ( n -- ) {: c:? :} ;" SB-APPEND LF+
+   s" show-layout-local.f" FIXTURE!
+   s" " 0 LOADED
+   OUT$ s\" inferred c: option<n>\n" CONTAINS? TTRUE
+   OUT$ s\" inferred c: n\n" CONTAINS? TTRUE ;
+
 : MAIN ( -- )
    T-RESET
    ROOT!
@@ -2271,6 +2285,7 @@ variable RC
    TEST-SEALED-DUPLICATE
    TEST-STALE-PARSE-IMM
    TEST-OWN-PARSE-IMM
+   TEST-SHOW-LAYOUT-LOCAL
    TEST-LITERAL-FIT
    FS:CLEANUP-RUN
    T-REPORT

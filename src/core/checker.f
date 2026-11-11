@@ -20979,9 +20979,15 @@ CHECKER-REG:}SCRATCH
       t idx cells LOCTV + !  EXIT THEN      \ (a layout binds no var outside a transport;
    t idx cells LOCTV + @ UNIFY OK @ and OK ! ;   \ the capture in LOC-BIND checks it)
 
+: LOC-DECL-TERM ( n -- n ) {: t:n :}   \ the logical term a declared local type pushes
+   t HIDDEN-PARAM? IF t MK-LOGICAL ELSE t THEN ;
+
+\ A local bound over a hidden group holds its tag term (LOC-BUNDLE-BIND).
 : LOC-SHOW-ONE ( n -- ) {: idx:n :}
    idx cells LOCSHOW + @ 0= if exit then
-   LOCNB idx LOC-NAME-W * +  idx cells LOCLN + @  idx cells LOCTV + @
+   idx cells LOCTV + @ {: t:n :}
+   LOCNB idx LOC-NAME-W * +  idx cells LOCLN + @
+   t LOC-DECL-TERM
    LOCSHOWXT ;
 
 : LOC-SHOW-GROUP ( -- )
@@ -21169,8 +21175,6 @@ CHECKER-REG:}SCRATCH
    w 0= IF row EXIT THEN
    at R-RES {: node:n :}
    node  row node P>REST  w 1 -  RECURSE  P-COPY ;
-: LOC-DECL-TERM ( n -- n ) {: t:n :}   \ the logical term a declared local type pushes
-   t HIDDEN-PARAM? IF t MK-LOGICAL ELSE t THEN ;
 : LOC-DECL-CELLS ( n n -- n ) {: at:n t:n :}   \ cells local type t binds over `at`; 0 unknown
    t ISVAR IF at PRE-GROUP EXIT THEN
    t SPLICE-OPEN? IF 0 EXIT THEN
