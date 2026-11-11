@@ -2,6 +2,17 @@
 \ root, REQUIRE-REG records loaded files (engine rows frozen at boot), the event
 \ log feeds a discovery pass, and the frames hold each open file. `include` only
 \ composes source; package reopening owns shared namespace.
+\
+\ The engine's own source root: the working directory when it carries the
+\ engine's first row; else the executable's tree when that does (`%`, two
+\ levels above <tree>/bin/hb); else the working directory. The working
+\ directory comes first because a stdin session's requires search it before
+\ the root and only the root's physical copy of a row is frozen: with `%`
+\ first, a copied tree there would load as application source. A build's fresh
+\ registry holds no row, so its rows are relative to the working directory.
+\ Derived on first need from the executable's path and realpath, not through
+\ SOURCE-INPUT: it is a fact of this process. Deriving touches only JOIN, WORK,
+\ Z and CANON scratch, so NORMAL-BUF and CANDIDATE-BUF survive.
 
 PATH-CAP constant INCLUDE-PATH-CAP
 $46 constant INCLUDE-EVAL-RC
@@ -12,9 +23,8 @@ package REQUIRE-REG
 private
 
 \ FROZEN holds a DATA block of (offset,length) pairs followed by path bytes.
-\ Process rows use two movable columns, mapped and grown together at ROW-CAP
-\ cells: ROWS holds row i's path pointer at cell i and ROW-LENS its length at
-\ cell i. The paths live in chunks that never move.
+\ Process rows use two movable columns: ROWS holds row i's path pointer and
+\ ROW-LENS its length. The paths live in chunks that never move.
 PERSISTED-PTR-VARIABLE FROZEN
 PERSISTED-PTR-U8-TABLE-VARIABLE ROWS
 PERSISTED-PTR-VARIABLE ROW-LENS
@@ -47,8 +57,7 @@ variable REQUIRE-SAVE-BASE
 
 \ Rows recorded while the boot registry is open describe what the ENGINE
 \ carries; every other row, what a process loaded. Only the boot prefix opens
-\ it, with a token of its own (tools/hb-build-core.f END-WRITE) between the
-\ loader's text and the first row. Loading this file is not the signal: a build
+\ it. Loading this file is not the signal: a build
 \ re-loads it into a booted engine, which would then record every later require
 \ portably and stop recognising its own canonical rows.
 : REQUIRE-BOOT-OPEN ( -- )
@@ -58,9 +67,7 @@ variable REQUIRE-SAVE-BASE
    REQUIRE-BOOT-V @ 0= 0= ;
 
 \ While the registry is open every row so far is the engine's, because only the
-\ prefix records there; once closed, the frozen count says. The prefix requires
-\ engine files while recording them, so bounding by REQUIRE-BOOT-N alone made it
-\ reload its own checker (`duplicate definition: RAW-OFF`, exit 78).
+\ prefix records there; once closed, the frozen count says.
 : REQUIRE-BOOT-LIMIT ( -- n )
    REQUIRE-BOOT-OPEN? if REQUIRE-N @ exit then
    REQUIRE-BOOT-N @ ;
@@ -134,16 +141,16 @@ variable NORMAL-U
 variable CANDIDATE-U
 variable JOIN-U
 variable OWNER-U
-\ The loader's record: top frame, current root and length, open scopes.
-\ Readers reach it by SRCLOC:SOURCE-CELL, the running hb's in a build.
+\ Readers reach the loader's record by SRCLOC:SOURCE-CELL, the running hb's
+\ in a build.
 0 constant REC-TOP
 CELL constant REC-ROOT
 2 cells constant REC-ROOTLEN
 3 cells constant REC-SCOPES
 4 cells constant REC-BYTES
-create LOADER-REC REC-BYTES SCRATCH-ALLOT   \ a saved program starts with it empty
+create LOADER-REC REC-BYTES SCRATCH-ALLOT
 SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER-CELL
-LOADER-REC LOADER-CELL ptr-cell!            \ a build's store goes to its image (habu2.f ROUTE-HEADER)
+LOADER-REC LOADER-CELL ptr-cell!            \ a build's store goes to its image
 CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
 : LOADER ( -- ptr u8 ) LOADER-CELL @ ;
 : TOP ( -- ptr ptr u8 ) LOADER REC-CELLS REC-TOP CELL / ptr-field ;
@@ -207,14 +214,12 @@ private
 : CANON$ ( -- ptr u8 n ) CANON-BUF CANON-U @ ;
 
 
-\ The working directory is the root of every command-line entry, a root of every
-\ relative require and the engine root's first candidate, so it must fit
-\ PATH-CAP as every root does; every path below a longer one is longer still,
-\ so the engine refuses it by name rather than resolve without it. realpath
-\ does not say why it fails, so the refusal names what a removed, unsearchable
-\ or long directory all are not; macOS's refuses a result of 1023 bytes or
-\ more, and glibc answers a longer path whole, which the canon answer refuses
-\ with E-PATH-RANGE.
+\ The working directory must fit PATH-CAP as every root does; every path below
+\ a longer one is longer still, so the engine refuses it by name rather than
+\ resolve without it. realpath does not say why it fails, so the refusal names
+\ what a removed, unsearchable or long directory all are not. macOS's realpath
+\ refuses a result of 1023 bytes or more, and glibc answers a longer path whole,
+\ which the canon answer refuses with E-PATH-RANGE.
 : CWD-DIE ( -- )
    s" source root: the working directory does not resolve to a searchable directory within PATH-CAP bytes"
    INCLUDE-IO-RC die ;
@@ -232,7 +237,6 @@ private
    rc E-PATH-RANGE = if CWD-DIE then
    rc 0= 0= if rc throw then ;
 
-\ Records the working directory as the lookup of `.`.
 : CWD-RECORD ( -- )
    CWD-INIT
    s" ." CWD-BUF CWD-U @ COMPILE-READS:ROOT+ ;
@@ -252,14 +256,11 @@ private
 
 
 \ The program file `hb prog.f` runs: argv[1], which the launcher leaves in
-\ PROGRAM-FILE-CELL only on that route
-\ (src/habu/main.f RUN). Its canonical path, against the working directory no
-\ Habu word changes, is derived on first need, as ENGINE$ is. Its directory is
-\ the top-level root (CURRENT$) and PROGRAM? counts it as loaded: RUN-PROGRAM
-\ gives it a frame but no registry row names it, since a row appended on first
-\ use would vanish under the rollback of a failed require or a discovery pass.
-\ With the cell clear nothing is derived. Deriving writes only PROGRAM-BUF, so
-\ the caller's scratch survives.
+\ PROGRAM-FILE-CELL only on that route. PROGRAM? counts it as loaded:
+\ RUN-PROGRAM gives it a frame but no registry row names it, since a row
+\ appended on first use would vanish under the rollback of a failed require or
+\ a discovery pass. Deriving writes only PROGRAM-BUF, so the caller's scratch
+\ survives.
 PROGRAM-FILE-CELL RESERVED-PTR-U8-CELL PROGRAM-ARG
 create PROGRAM-BUF PATH-BYTES allot
 variable PROGRAM-U
@@ -375,30 +376,23 @@ private
 
 : NORMALIZE ( ptr u8 n -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
 
-\ A source-root refusal: its reason, then the path it names, on one line. The
-\ reason is written first, so a path of any length a caller holds is named whole.
+\ The reason is written first, so a path of any length a caller holds is named
+\ whole.
 : PATH-DIE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n path:ptr pathu:n :}
    2 a u write drop
    path pathu INCLUDE-IO-RC die ;
 
-\ Whether the process's loader record is this copy's own. A build compiles a
-\ second copy of this file into the program it builds, and there LOADER answers
-\ hb's record: the copy's loading words would run its own registry, buffers and
-\ frames over hb's. The build's loader does every load, at a file's top level,
-\ so in a build the copy's loads refuse (BUILD-REFUSE): LOAD-RESULT, and so
-\ every load of a file (included, required, LOAD, script-required);
-\ RUN-PROGRAM; WITH-BYTES; WITH-SUPPLIED; provided, before it stores a row.
-\ READ-OS is refused by its frame's state instead (READ-REFUSE), in a build as
-\ elsewhere.
+\ A build compiles a second copy of this file into the program it builds, and
+\ there LOADER answers hb's record: the copy's loading words would run its own
+\ registry, buffers and frames over hb's. The build's loader does every load,
+\ at a file's top level, so in a build the copy's loads refuse (BUILD-REFUSE).
 : OWN-LOADER? ( -- bool ) LOADER LOADER-REC = ;
 
 public
 
-\ The build refusal for the path a loading word was handed, unless this copy's
-\ record is the process's. The resolver does not refuse: RESOLVE loads nothing,
-\ and in a build it searches the process's current root, so a word may ask
-\ where a file lies (test/aot-shifted-bytes.f RESOLVES-BUILD; test/file-objects.f
-\ WORD-LOAD-BUILD). Public so provided, which this file defines outside
+\ The resolver does not refuse: RESOLVE loads nothing, and in a build it
+\ searches the process's current root, so a word may ask where a file lies.
+\ Public so provided, which this file defines outside
 \ SOURCE-ROOT, refuses here too: its row would lie outside the build's space,
 \ which only the linker would catch.
 : BUILD-REFUSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
@@ -488,8 +482,7 @@ private
 \ read permission on it. macOS realpath answers a file's own path for
 \ `<file>/.`, so the kernel's lookup of `<path>/.` decides, and it passes only
 \ through a searchable directory. It opens nothing, so a FIFO cannot make it
-\ wait. Without errno a file and an unsearchable directory fail alike, and the
-\ refusal names what both are not.
+\ wait.
 : ENGINE-DIR? ( n -- bool )
    {: n:n :}
    CANON-BUF WORK-BUF n BYTE-COPY
@@ -543,7 +536,6 @@ public
 
 private
 
-\ A fresh mapping holding n path bytes and the NUL after them.
 : MAP-COPY ( ptr u8 n -- ptr u8 )
    {: a:ptr u:n :}
    u 1+ map-anon 0= 0= if drop s" source root: cannot map a path copy" INCLUDE-IO-RC die then
@@ -575,7 +567,6 @@ private
 public
 
 \ The caller's root is back before the scope's is released, on a throw too.
-\ WITH records its lookup; LOAD-RAW, WITH-BYTES and WITH-SUPPLIED record none.
 : WITH ( ptr u8 n [ -- ] -- ) {: q :}
    ROOT-ENTER {: old:ptr oldu:n :}
    JOIN-BUF JOIN-U @ CURRENT$ COMPILE-READS:ROOT+
@@ -605,13 +596,12 @@ private
 : SLOT-U! ( n n -- )
    cells SLOT-U + ! ;
 
-\ The interpreter's input cursor and end (src/habu/layout.f).
 INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
 INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 
-\ Whether the rest of the input line holds no name. The tokenizer reads a
-\ newline as a blank and a piped stdin session is one buffer, so a bare CD
-\ would otherwise take the next line's first word as its directory.
+\ The tokenizer reads a newline as a blank and a piped stdin session is one
+\ buffer, so a bare CD would otherwise take the next line's first word as its
+\ directory.
 : LINE-BLANK? ( -- bool )
    INPUT-AT @ INPUT-END @ {: e:ptr :}
    begin dup e < while
@@ -639,17 +629,12 @@ public
    RELEASE-CURRENT
    fresh n CURRENT! ;
 
-\ SwiftForth's path words, at the top level of a stdin session or of a program
-\ file run as `bin/hb file.f`; inside a load (`--load`, `require`) or a WITH
-\ body they are refused, and a file sets its root with ROOT! or scopes one with
-\ WITH. `CD <dir>` on its own line is `ROOT!` of that directory, and a bare CD
-\ prints the current root.
 : CD ( -- )
    s" CD: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH" TOP-ONLY
    LINE-BLANK? if CURRENT$ type cr exit then
    parse-name ROOT! ;
 
-\ PUSHPATH saves the current path; a null slot is the top-level root.
+\ A null slot is the top-level root.
 : PUSHPATH ( -- )
    s" PUSHPATH: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH" TOP-ONLY
    SLOT-N @ PATH-DEPTH >= if
@@ -734,7 +719,6 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
 : ROW-LEN@ ( n -- n )
    ROW-LEN-ADDR @ ;
 
-\ FROZEN's DATA block opens with one (offset,length) pair per row.
 : FROZEN-BYTES ( n -- n )
    2 * cells ;
 
@@ -754,8 +738,6 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
       s" require: cannot release the row table" INCLUDE-DIE
    then ;
 
-\ Both columns move to fresh mappings of CAP cells; each live cell is copied
-\ as its own type before the old pair is released.
 : ROW-GROW ( n -- ) {: need:n :}
    need ROW-LIMIT > if SIZE-DIE then
    need ROW-NEW-CAP {: cap:n :}
@@ -913,9 +895,8 @@ public
    keep REQUIRE-N !
    CLAMP ;
 
-\ Evaluation rollback removes its own rows, including nested requires. The
-\ core-prefix rewind uses this same seam before capture. Four other cells are
-\ cursors into rows; a bare REQUIRE-N ! would leave them past the new end.
+\ Four other cells are cursors into rows; a bare REQUIRE-N ! would leave them
+\ past the new end.
 : TRUNCATE ( n -- )
    {: keep:n :}
    keep 0 < keep REQUIRE-N @ > or if
@@ -1005,10 +986,9 @@ public
    fresh FROZEN !
    REQUIRE-N @ PREFIX-N ! ;
 
-\ The cells this registry writes, each handed to keep with its byte extent: its
-\ own eight, the row count, and the four cursors TRUNCATE and REMOVE keep inside
-\ the rows. The rows and chunks are mapped, never DATA, and PERSIST's block is
-\ allotted fresh, so no other span is written.
+\ The cells this registry writes, each handed to keep with its byte extent.
+\ The rows and chunks are mapped, never DATA, and PERSIST's block is allotted
+\ fresh, so no other span is written.
 : CELL-SPANS ( [ ptr u8 n -- ] -- ) {: keep :}
    FROZEN BYTE-VIEW CELL keep execute
    ROWS BYTE-VIEW CELL keep execute
@@ -1055,22 +1035,10 @@ private
    a u PROGRAM? if INCLUDE-TRUE exit then
    a u REQUIRE-KNOWN? ;
 
-\ The engine's own source root: the working directory when it carries the
-\ engine's first row; else the executable's tree when that does (`%`, two levels
-\ above <tree>/bin/hb, as SwiftForth places it); else the working directory.
-\ The working directory comes first because a stdin session's requires search it
-\ before the root and only the root's physical copy of a row is frozen: with `%`
-\ first, a copied tree there would load as application source. A build's fresh
-\ registry holds no row, so its rows are relative to the working directory.
-\ Derived on first need from the executable's path and realpath, not through
-\ SOURCE-INPUT: it is a fact of this process. Deriving touches only JOIN, WORK,
-\ Z and CANON scratch, so NORMAL-BUF and CANDIDATE-BUF survive.
-
 \ The running engine's path: on macOS the one execve received, in the
 \ executable_path= apple string past envp's terminator; on Linux
 \ /proc/self/exe. Both name the engine, not the script, for a `#!` program
-\ file. src/lib/engine-id.f asks proc_pidpath through FUNCTION:, which this layer
-\ cannot use.
+\ file. proc_pidpath needs FUNCTION:, which this layer cannot use.
 : ENVP-END ( -- n )
    0 begin dup ENVP 0= 0= while 1+ repeat 1+ ;
 
@@ -1084,23 +1052,20 @@ private
       1+
    repeat drop NULL$ ;
 
-\ `%` in CANON-BUF, as a length: the canonical executable cut twice to its
-\ parent. 0 when there is no path, it does not fit or realpath refuses it;
-\ never a throw: the length is checked before CANON-N, and neither path
-\ holds a NUL.
+\ `%` in CANON-BUF, as a length. 0 when there is no path, it does not fit or
+\ realpath refuses it; never a throw: the length is checked before CANON-N, and
+\ neither path holds a NUL.
 : EXE-ROOT ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= u INCLUDE-PATH-CAP > or if 0 exit then
    a u CANON-N {: n:n :}
    n 0 <= if 0 exit then
    CANON-BUF CANON-BUF n PARENT-U PARENT-U ;
 
-\ Whether a directory carries the engine's first row: one access, no read.
 : TREE? ( ptr u8 n -- bool )
    0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZBUF WORK-BYTES PATHZ
    ZBUF 0 access 0= ;
 
-\ The root's length in CANON-BUF, 0 for the working directory. The same
-\ CWD-first rule applies when a tool selects another executable as its child.
+\ The root's length in CANON-BUF, 0 for the working directory.
 : ENGINE-FIND-FOR ( ptr u8 n -- n )
    REQUIRE-BOOT-LIMIT 0= if 2drop 0 exit then
    CWD$ TREE? if 2drop 0 exit then
@@ -1135,8 +1100,7 @@ public
    ENGINE-FIND-FOR dup 0= if drop CWD$ exit then
    CANON-BUF swap ;
 
-\ Override the fallback root; the caller restores the old one after its load
-\ (tools/check-verify-child.f).
+\ Override the fallback root; the caller restores the old one after its load.
 : ENGINE! ( ptr u8 n -- )
    ROOT-CANON
    CANON-BUF ENGINE-BUF CANON-U @ BYTE-COPY
@@ -1223,11 +1187,9 @@ private
    then
    CURRENT$ first CANDIDATE drop ;
 
-\ The root a load of an absolute path opens: the first root it lies below, in
-\ SEARCH-ROOTS order, else its directory. A missing file's directory need not
-\ be a root at all (missing, a file, unsearchable), so its load keeps the
-\ current root and INCLUDE-OPEN names the file, as ENTRY-RESOLVE does for an
-\ entry.
+\ A missing file's directory need not be a root at all (missing, a file,
+\ unsearchable), so its load keeps the current root and INCLUDE-OPEN names the
+\ file.
 : ABS-OWNER ( ptr u8 n bool -- )
    {: a:ptr u:n exists:bool :}
    a u CURRENT$ BELOW? if CURRENT$ OWNER! exit then
