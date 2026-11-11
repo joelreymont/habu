@@ -3840,6 +3840,141 @@ public
 ;package
 
 
+\ A one-cell primitive (dup, drop, swap, over, nip, >r, ...) that would bind or
+\ consume a logical layout cell fails closed in U-TYPE; only a var, con, ptr or
+\ atom pairing reaches this guard.
+: LAYOUT-PARAM? ( n -- bool ) {: t:n :}
+   t T-UNSTALE {: r:n :}                    \ a stale cell is still a cell of its family
+   r TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   r PARAM>FAM dup 0 < IF drop RES-FALSE EXIT THEN
+   TFAM-LAYOUT?* ;
+: LAYOUT-EITHER? ( n n -- bool ) {: t1:n t2:n :}
+   t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
+   t2 LAYOUT-PARAM? ;
+
+\ A pointer or a quotation asserts that a cell is an address or code, which no
+\ check can see: a class mint, declared only where its package's own words are
+\ its callers.
+0 constant INTRO-ATOM      \ an atom: E-CAST-CLASS
+1 constant INTRO-MINT      \ a pointer or a quotation: E-CAST-MINT unless private
+2 constant INTRO-WIDTH     \ a width<t>, which no cast yields: E-CAST-CLASS
+: CAST-INTRO-HIT? ( n n -- bool ) {: t:n q:n :}
+   q INTRO-ATOM = IF t TAG T-ATOM = EXIT THEN
+   q INTRO-WIDTH = IF
+      t TAG T-PARAM <> IF RES-FALSE EXIT THEN
+      t PARAM>FAM WIDTH-FAM @ = EXIT
+   THEN
+   t TAG T-PTR =  t TAG T-QUOT =  or ;
+64 constant CAST-PATH-CAP
+create CAST-PATH-TERM CAST-PATH-CAP cells allot
+create CAST-PATH-SIGN CAST-PATH-CAP cells allot
+variable CAST-PATH-N
+: CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-PATH-N ! ;
+\ A file reused from the object cache runs no walk, so a saved image holds no
+\ path and a reused file captures as its compiled one does.
+: CAST-PATH-SNAP-RESET ( -- )
+   CAST-PATH-TERM 0 CAST-PATH-CAP ARENA-CELLS-ZERO
+   CAST-PATH-SIGN 0 CAST-PATH-CAP ARENA-CELLS-ZERO
+   CAST-WALK-RESET ;
+: CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
+   a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
+   a PARAM>ARGC b PARAM>ARGC <> IF RES-FALSE EXIT THEN
+   0 BEGIN dup a PARAM>ARGC < WHILE
+      a over PARAM>ARG  over b swap PARAM>ARG  <> IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop RES-TRUE ;
+0 constant CAST-NEG
+1 constant CAST-POS
+2 constant CAST-BOTH
+: CAST-FLIP ( n -- n )
+   dup CAST-NEG = IF drop CAST-POS EXIT THEN
+   dup CAST-POS = IF drop CAST-NEG THEN ;
+: CAST-ON-PATH? ( n n -- bool ) {: t:n sign:n :}
+   0 BEGIN dup CAST-PATH-N @ < WHILE
+      dup cells CAST-PATH-SIGN + @ sign = IF
+         dup cells CAST-PATH-TERM + @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
+      THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+: CAST-PATH-PUSH ( n n -- ) {: t:n sign:n :}
+   CAST-PATH-N @ CAST-PATH-CAP >= IF
+      s" checker: cast walk nests layouts too deep" 76 die THEN
+   t CAST-PATH-N @ cells CAST-PATH-TERM + !
+   sign CAST-PATH-N @ cells CAST-PATH-SIGN + !
+   CAST-PATH-N @ 1 + CAST-PATH-N ! ;
+: CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
+\ A destination position introduces unless negative; consumed rows flip the sign
+\ and a pointee counts at both. Cell-family arguments and row bases yield none.
+: CAST-INTRO? ( n n n -- bool ) {: t0:n sign:n q:n :}
+   t0 R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+   THEN
+   ISROW IF RES-FALSE EXIT THEN
+   t0 T-RES {: t:n :}
+   sign CAST-NEG <> IF t q CAST-INTRO-HIT? IF RES-TRUE EXIT THEN THEN
+   t TAG T-PTR = IF t PTR>INNER CAST-BOTH q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN sign CAST-FLIP q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN sign CAST-FLIP q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   0 BEGIN dup t PARAM>ARGC < WHILE               \ data-stack index (RECURSE-safe)
+      t over PARAM>ARG sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop
+   t sign CAST-ON-PATH? IF RES-FALSE EXIT THEN
+   t sign CAST-PATH-PUSH
+   t TFAM-MEMBERS-XT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   CAST-PATH-POP ;
+: CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
+   CAST-WALK-RESET t CAST-POS q CAST-INTRO? ;
+\ Fail closed over the complete signature term: CAST is an authority boundary.
+\ A direct unresolved var may later bind linear. Cell-family parameters are
+\ phantom and own no payload. Pointers and quotations own nothing themselves,
+\ but what they reach is walked: a linear value behind a field's pointer or in
+\ a field's quotation row is one a projection hands out. A quotation in a
+\ signature shares one base between its in and out rows, so the tail it passes
+\ through owns nothing. A scope or region variable binds a scope or a region,
+\ never a value.
+: CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
+   t0 R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+   THEN
+   ISROW IF RES-FALSE EXIT THEN
+   t0 T-RES {: t:n :}
+   t TAG T-VAR = IF t PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or 0= EXIT THEN
+   t TAG T-CON = IF t PAY CT-LINEAR? EXIT THEN
+   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   t TAG T-PARAM = IF
+      t PARAM>FAM dup 0 < IF drop RES-TRUE EXIT THEN
+      TFAM-CON-LIN-XT IF RES-TRUE EXIT THEN
+      t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+      0 BEGIN dup t PARAM>ARGC < WHILE
+         t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+      t CAST-POS CAST-ON-PATH? IF RES-FALSE EXIT THEN
+      t CAST-POS CAST-PATH-PUSH
+      t TFAM-MEMBERS-XT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      CAST-PATH-POP EXIT
+   THEN
+   RES-FALSE ;
+
+
 \ Whether variable id is a body-supplied fresh name's (SIG-BODY-FRESH).
 : FB-VAR? ( n -- bool ) {: id:n :}
    0 BEGIN dup FB-N @ < WHILE
@@ -3872,18 +4007,6 @@ public
    {: term:n id:n mask:n :}
    term id TV!  id CUR-ROLE @ mask and 0= TV-PROV! ;
 
-
-\ A one-cell primitive (dup, drop, swap, over, nip, >r, ...) that would bind or
-\ consume a logical layout cell fails closed in U-TYPE; only a var, con, ptr or
-\ atom pairing reaches this guard.
-: LAYOUT-PARAM? ( n -- bool ) {: t:n :}
-   t T-UNSTALE {: r:n :}                    \ a stale cell is still a cell of its family
-   r TAG T-PARAM <> IF RES-FALSE EXIT THEN
-   r PARAM>FAM dup 0 < IF drop RES-FALSE EXIT THEN
-   TFAM-LAYOUT?* ;
-: LAYOUT-EITHER? ( n n -- bool ) {: t1:n t2:n :}
-   t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
-   t2 LAYOUT-PARAM? ;
 
 \ Every bit pattern is a valid value, so it lowers as a plain scalar cell;
 \ LAYOUT-BUFFER is the only checked source of `ptr <nominal-scalar>`.
@@ -8436,128 +8559,6 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
 : CHECKER-DYNAMIC-INFO ( ptr u8 n -- n bool )
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
    DYNAMIC-BYTES ;
-
-\ A pointer or a quotation asserts that a cell is an address or code, which no
-\ check can see: a class mint, declared only where its package's own words are
-\ its callers.
-0 constant INTRO-ATOM      \ an atom: E-CAST-CLASS
-1 constant INTRO-MINT      \ a pointer or a quotation: E-CAST-MINT unless private
-2 constant INTRO-WIDTH     \ a width<t>, which no cast yields: E-CAST-CLASS
-: CAST-INTRO-HIT? ( n n -- bool ) {: t:n q:n :}
-   q INTRO-ATOM = IF t TAG T-ATOM = EXIT THEN
-   q INTRO-WIDTH = IF
-      t TAG T-PARAM <> IF RES-FALSE EXIT THEN
-      t PARAM>FAM WIDTH-FAM @ = EXIT
-   THEN
-   t TAG T-PTR =  t TAG T-QUOT =  or ;
-64 constant CAST-PATH-CAP
-create CAST-PATH-TERM CAST-PATH-CAP cells allot
-create CAST-PATH-SIGN CAST-PATH-CAP cells allot
-variable CAST-PATH-N
-: CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-PATH-N ! ;
-\ A file reused from the object cache runs no walk, so a saved image holds no
-\ path and a reused file captures as its compiled one does.
-: CAST-PATH-SNAP-RESET ( -- )
-   CAST-PATH-TERM 0 CAST-PATH-CAP ARENA-CELLS-ZERO
-   CAST-PATH-SIGN 0 CAST-PATH-CAP ARENA-CELLS-ZERO
-   CAST-WALK-RESET ;
-: CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
-   a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
-   a PARAM>ARGC b PARAM>ARGC <> IF RES-FALSE EXIT THEN
-   0 BEGIN dup a PARAM>ARGC < WHILE
-      a over PARAM>ARG  over b swap PARAM>ARG  <> IF drop RES-FALSE EXIT THEN
-      1 +
-   REPEAT drop RES-TRUE ;
-0 constant CAST-NEG
-1 constant CAST-POS
-2 constant CAST-BOTH
-: CAST-FLIP ( n -- n )
-   dup CAST-NEG = IF drop CAST-POS EXIT THEN
-   dup CAST-POS = IF drop CAST-NEG THEN ;
-: CAST-ON-PATH? ( n n -- bool ) {: t:n sign:n :}
-   0 BEGIN dup CAST-PATH-N @ < WHILE
-      dup cells CAST-PATH-SIGN + @ sign = IF
-         dup cells CAST-PATH-TERM + @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
-      THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-: CAST-PATH-PUSH ( n n -- ) {: t:n sign:n :}
-   CAST-PATH-N @ CAST-PATH-CAP >= IF
-      s" checker: cast walk nests layouts too deep" 76 die THEN
-   t CAST-PATH-N @ cells CAST-PATH-TERM + !
-   sign CAST-PATH-N @ cells CAST-PATH-SIGN + !
-   CAST-PATH-N @ 1 + CAST-PATH-N ! ;
-: CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
-\ A destination position introduces unless negative; consumed rows flip the sign
-\ and a pointee counts at both. Cell-family arguments and row bases yield none.
-: CAST-INTRO? ( n n n -- bool ) {: t0:n sign:n q:n :}
-   t0 R-RES dup TAG S-PUSH = IF
-      BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
-         P>REST R-RES
-      REPEAT
-   THEN
-   ISROW IF RES-FALSE EXIT THEN
-   t0 T-RES {: t:n :}
-   sign CAST-NEG <> IF t q CAST-INTRO-HIT? IF RES-TRUE EXIT THEN THEN
-   t TAG T-PTR = IF t PTR>INNER CAST-BOTH q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   t TAG T-QUOT = IF
-      t Q>DIN sign CAST-FLIP q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>RIN sign CAST-FLIP q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>DOUT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>ROUT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
-   THEN
-   t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
-   0 BEGIN dup t PARAM>ARGC < WHILE               \ data-stack index (RECURSE-safe)
-      t over PARAM>ARG sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop
-   t sign CAST-ON-PATH? IF RES-FALSE EXIT THEN
-   t sign CAST-PATH-PUSH
-   t TFAM-MEMBERS-XT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER
-   CAST-PATH-POP ;
-: CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
-   CAST-WALK-RESET t CAST-POS q CAST-INTRO? ;
-\ Fail closed over the complete signature term: CAST is an authority boundary.
-\ A direct unresolved var may later bind linear. Cell-family parameters are
-\ phantom and own no payload. Pointers and quotations own nothing themselves,
-\ but what they reach is walked: a linear value behind a field's pointer or in
-\ a field's quotation row is one a projection hands out. A quotation in a
-\ signature shares one base between its in and out rows, so the tail it passes
-\ through owns nothing. A scope or region variable binds a scope or a region,
-\ never a value.
-: CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
-   t0 R-RES dup TAG S-PUSH = IF
-      BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
-         P>REST R-RES
-      REPEAT
-   THEN
-   ISROW IF RES-FALSE EXIT THEN
-   t0 T-RES {: t:n :}
-   t TAG T-VAR = IF t PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or 0= EXIT THEN
-   t TAG T-CON = IF t PAY CT-LINEAR? EXIT THEN
-   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   t TAG T-QUOT = IF
-      t Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
-   THEN
-   t TAG T-PARAM = IF
-      t PARAM>FAM dup 0 < IF drop RES-TRUE EXIT THEN
-      TFAM-CON-LIN-XT IF RES-TRUE EXIT THEN
-      t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
-      0 BEGIN dup t PARAM>ARGC < WHILE
-         t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
-         1 +
-      REPEAT drop
-      t CAST-POS CAST-ON-PATH? IF RES-FALSE EXIT THEN
-      t CAST-POS CAST-PATH-PUSH
-      t TFAM-MEMBERS-XT TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      CAST-PATH-POP EXIT
-   THEN
-   RES-FALSE ;
 
 \ CHECKER-DYNAMIC-INFO's answer, false for a type that may hold a linear value,
 \ an open type variable, or an atom or a width it hands out as a pointee.
