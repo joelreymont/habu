@@ -3508,11 +3508,18 @@ ENUM poll none fed spoiled done ;ENUM
 \ finish: a fault the caller may answer by asking for less.
 : REFUSAL? ( n -- bool ) dup E-CAPACITY = swap E-INCOMPLETE = or ;
 
+\ A refusal's record holds the call's configuration, the refusal, capacity or
+\ incomplete, the provider's reply as received, a reply cut short with the
+\ output it streamed or the size rejection's body, and the recorded call id
+\ when there is one. A replay reads only the refusal.
 : REFUSAL-PUT ( n ptr call -- )
    {: code:n c :}
    c RECORD-OPEN
    JSON:WRITE-COMMA s" refusal" code E-CAPACITY = if s" capacity" else
       s" incomplete" then JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" response" c RESPONSE$ JSON:WRITE-FIELD-S
+   c LEDGER LEDGER-CALL-ID @ {: id:n :}
+   id 0<> if JSON:WRITE-COMMA s" call_id" id JSON:WRITE-FIELD-INT then
    JSON:WRITE-OBJECT-END drop
    c WRITER JSON:WRITE-CLOSE
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$

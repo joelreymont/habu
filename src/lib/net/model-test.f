@@ -487,6 +487,12 @@ $300000 constant BIG-U
    s" }" JSON:WRITE-RAW ;
 
 
+\ A reply cut at the output limit, its message holding the text streamed
+\ before the cut.
+: CUT$ ( -- ptr u8 n )
+   S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qincomplete\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qstatus\q:\qincomplete\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\q{\\\qans\q,\qannotations\q:[]}]}],\qincomplete_details\q:{\qreason\q:\qmax_output_tokens\q},\qerror\q:null}" ;
+
+
 \ A completed reply whose message part is a refusal.
 : REFUSAL$ ( -- ptr u8 n )
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qrefusal\q,\qrefusal\q:\qcannot comply\q}]}],\qincomplete_details\q:null,\qerror\q:null}" ;
@@ -640,7 +646,7 @@ $300000 constant BIG-U
    t t-u s" tier-number" STR= if response [: s" 7" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
    t t-u s" tier-empty" STR= if response [: S\" \q\q" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
    t t-u s" length" STR= if
-      response [: s" max_output_tokens" INCOMPLETE ;] INCOMPLETE$ STREAMED exit
+      response [: CUT$ JSON:WRITE-RAW ;] INCOMPLETE$ STREAMED exit
    then
    t t-u s" filtered" STR= if
       response [: s" content_filter" INCOMPLETE ;] INCOMPLETE$ STREAMED
@@ -1077,6 +1083,7 @@ variable KEPT-U
 public
 EXPORT LONG-FINISH$
 EXPORT REFUSAL$
+EXPORT CUT$
 EXPORT BAD-CONTENT$
 EXPORT REASONING$
 EXPORT FUNCTION-CALL$
@@ -2706,6 +2713,19 @@ variable LOOKUPS    \ COUNT-GET's lookups
    M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT ;
 
 
+\ Keeps only the journaled record's configuration and an incomplete refusal,
+\ a record with no reply and no call id.
+: BARE-REFUSAL ( -- )
+   RECORD$ s" configuration" MEMBER
+   JSON:READ-TOKEN JSON:T-OBJ = ASSERT
+   JSON:READ-VALUE-SPAN$ {: a:ptr u:n :}
+   SB-RESET S\" {\qconfiguration\q:" SB-APPEND a u SB-APPEND
+   JSON:READ-CLOSE
+   S\" ,\qrefusal\q:\qincomplete\q}" SB-APPEND
+   SB$ JOURNAL-RECORD 65536 SPAN:MAKE SPAN:COPY
+   SB$ nip JOURNAL-RECORD-U ! ;
+
+
 \ A journal hit, here of a journal input past 16 KiB, returns the stored
 \ content; it sends nothing and records nothing, and restores the call id its
 \ live call recorded, so a refusal of the replayed reply marks that row. A
@@ -2741,7 +2761,22 @@ variable LOOKUPS    \ COUNT-GET's lookups
    PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
    MODEL-PEER:CALLS@ {: refused:n :}
    [: PURPOSE s" too-large" MODEL:E-CAPACITY FAILS ;] QUIET
-   MODEL-PEER:CALLS@ refused = ASSERT ;
+   MODEL-PEER:CALLS@ refused = ASSERT
+   \ A cut reply's record holds the provider's reply as received, the text
+   \ streamed before the cut included, and the call's id. It replays as the
+   \ cut, and so does a record holding neither.
+   false JOURNAL-READY !
+   PURPOSE s" length" MODEL:E-INCOMPLETE FAILS
+   M MODEL:CALL-ID {: cut:n :}
+   cut 0<> ASSERT
+   RECORD$ s" refusal" MEMBER s" incomplete" STR-IS
+   RECORD$ s" response" MEMBER MODEL-PEER:CUT$ STR-IS
+   RECORD$ s" call_id" MEMBER cut INT-IS
+   MODEL-PEER:CALLS@ {: sent:n :}
+   [: PURPOSE s" length" MODEL:E-INCOMPLETE FAILS ;] QUIET
+   BARE-REFUSAL
+   [: PURPOSE s" length" MODEL:E-INCOMPLETE FAILS ;] QUIET
+   MODEL-PEER:CALLS@ sent = ASSERT ;
 
 
 : FAILING-PUT ( n ptr u8 n ptr u8 n -- ) 2drop 2drop drop E-RECORDER throw ;
