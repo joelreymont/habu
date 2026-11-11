@@ -689,8 +689,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    addr slot SQE-AT SQE-ADDR + LE:U64!
    off slot SQE-AT SQE-OFF + LE:U64! ;
 
-\ The SQE's per-operation flag word, which an accept uses for the flags it wants
-\ on the new descriptor - the same word SQE-POLL writes its event mask into.
 : SQE-OPFLAGS! ( n n -- ) {: slot:n v:n :}
    v slot SQE-AT SQE-OPFLAGS + LE:U32! ;
 
@@ -770,13 +768,11 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    PARAMS P-CQ-ENTRIES + LE:U32@ ;
 
 \ The masks live in the rings themselves, so they are read once the mappings
-\ exist; the entry counts are what io_uring_params answered.
+\ exist.
 : RING-OFFSETS ( -- )
    RO-MASK P-SQ@ 4 SQ-AT LE:U32@ SQ-MASK !
    RO-MASK P-CQ@ 4 CQ-AT LE:U32@ CQ-MASK ! ;
 
-\ The three mappings' lengths come from the entry counts and offsets
-\ io_uring_params reported, which bound every access above.
 : RING-LENGTHS ( -- )
    P-SQ-N SQ-ENTRIES-N !
    P-CQ-N CQ-ENTRIES-N !
@@ -824,24 +820,19 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 \ Each answers a code instead of throwing, because it runs with the facility
 \ held and a throw would leave it locked. The caller releases and then throws.
 
-\ A record for an io_uring operation; past half the ring the kernel sized it
-\ is E-AIO-FULL (the ring's sizes above).
 : URING-CLAIM ( -- n n )
    REC-LIVE @ CQ-ENTRIES-N @ 2 / >= if E-AIO-FULL -1 exit then
    REC-CLAIM ;
 
-\ The prologue every single-SQE stage shares: room for one more entry and a
-\ record to put it on. Answers a code and the index, as REC-CLAIM; a stage that
-\ cannot claim has claimed nothing, and answers the code in the shape its own
-\ word returns.
+\ Answers a code and the index, as REC-CLAIM; a stage that cannot claim has
+\ claimed nothing.
 : CLAIM-ONE ( -- n n )
    1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
    URING-CLAIM ;
 
 \ A poll with no deadline is one SQE on one record. A poll with one carries an
 \ IORING_OP_LINK_TIMEOUT behind IOSQE_IO_LINK, on a second record whose only job
-\ is to say which of the two ended the wait: the kernel always posts both CQEs,
-\ so the poll's record owes two completions and settles on the last of them.
+\ is to say which of the two ended the wait.
 : POLL-LINKED ( n n n n -- n n ) {: f:n events:n ms:n idx:n :}
    URING-CLAIM {: rc:n link:n :}
    rc 0<> if idx REC-FREE rc -1 exit then
@@ -873,13 +864,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 
 \ The record takes the caller's allocation: the pair and REC.HOLD are written
 \ before the entry is published, and a refused claim writes no entry, so there
-\ the allocation is still the caller's. E-AIO-ENTER keeps it: the entry is in
-\ the ring and the next io_uring_enter from anyone may take it, so the record is
-\ forgotten and its late completion releases the bytes through REC-DISCARD. No
-\ test provokes E-AIO-ENTER: without SQPOLL the kernel refuses a non-empty
-\ submission only on a CQ overflow it cannot flush (-EBUSY) or a dead ring, and
-\ URING-CLAIM keeps the records in flight within the CQ. src/lib/aio-test.f pins
-\ that the next submission takes an entry nobody entered for.
+\ the allocation is still the caller's.
 : XFER-STAGE ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
    CLAIM-ONE {: rc:n idx:n :}
@@ -893,9 +878,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    SQ-PUBLISH
    idx SUBMIT-OR-FORGET idx ;
 
-\ An accept or a connect: one SQE on one record and no memory of the caller's
-\ that this module owns. The bytes a connect names stay the caller's, and the
-\ caller keeps them unchanged until the outcome is taken.
 : SOCK-STAGE ( n n n n -- n n ) {: f:n addr:n off:n kind:n :}
    CLAIM-ONE {: rc:n idx:n :}
    rc 0<> if rc -1 exit then
@@ -905,7 +887,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    SQ-PUBLISH
    idx SUBMIT-OR-FORGET idx ;
 
-\ A cancel claims no record: its completion is one more the target settles on.
 \ A link (its poll's cancel ends it), an ended or a cancelled record answers 0.
 : CANCEL-STAGE ( n -- n ) {: target:n :}
    target REC {: r:ptr :}
@@ -939,7 +920,7 @@ INSTALL-HOST
 \ ---- the cleanup a submitting task registers ---------------------------------
 \ Without it a task that ends while one of its operations is in flight would be
 \ woken by the loop through a TCB whose memory the join has released. It is one
-\ entry in that task's TASK:AT-EXIT chain, so a task that submits keeps its own
+\ entry in that task's exit chain, so a task that submits keeps its own
 \ cleanups: they run beside this one, newest registration first.
 
 \ A cancel is refused only by a failed ring (an SQ full of entries nobody
@@ -1017,8 +998,7 @@ INSTALL-HOST
    AIO-LOCK TASK:RELEASE ;
 
 \ The one boundary between a public handle and a record index: a handle goes in
-\ and the index it names comes out. A bad range, a free record, another task's
-\ record and a generation the record no longer carries are all E-AIO-STATE.
+\ and the index it names comes out.
 : OWNED-CHECK ( n -- n ) {: h:n :}
    h HANDLE>IDX {: idx:n :}
    idx REC-CAP >= if E-AIO-STATE throw then
@@ -1084,7 +1064,6 @@ INSTALL-HOST
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then ;
 
-\ A count must fit the allocation it names and an offset must be a real one:
 \ -1 is the file's own position and nothing is below it.
 : XFER-BOUNDS ( n NUM:alloc-byte-len n -- )
    {: count:n cap:NUM:alloc-byte-len off:n :}
@@ -1122,9 +1101,6 @@ INSTALL-HOST
 : G-COUNT@ ( n -- n )
    G-ENTRY G.COUNT @ ;
 
-\ A slot holds the handle cell the caller gave GROUP+, not the record index, so
-\ a stale ticket matches nothing the group holds and GROUP- of one is
-\ E-AIO-GROUP.
 : G-FIND ( n n -- n ) {: g:n h:n :}
    g G-ENTRY {: e:ptr :}
    e G.COUNT @ 0 ?do
@@ -1132,8 +1108,7 @@ INSTALL-HOST
    loop
    -1 ;
 
-\ A full row doubles: the entries move to a fresh mapping and the old one goes
-\ back. Only the group's owner reaches here (G-CLAIM), so no other task reads
+\ Only the group's owner reaches here (G-CLAIM), so no other task reads
 \ the row while it moves and the move needs no facility.
 : ROW-GROW ( ptr n -- ) {: e:ptr :}
    e G.CAP @ 2 * ROW-FIRST max {: cap:n :}
@@ -1148,15 +1123,13 @@ INSTALL-HOST
 : G-DISOWN-EMPTY ( ptr n -- ) {: e:ptr :}
    e G.COUNT @ 0= if 0 e G.OWNER atomic! then ;
 
-\ True when the calling task holds the group, false when it is empty and no
-\ task's; another task's group is E-AIO-STATE.
 : G-MINE? ( ptr n -- bool ) {: e:ptr :}
    e G.OWNER atomic@ {: holder:n :}
    holder 0<> holder TASK:SELF-CONTEXT <> and if E-AIO-STATE throw then
    holder 0<> ;
 
-\ Holds the group for the calling task. Two tasks adding to one empty group
-\ race on the cell; the one whose swap loses is E-AIO-STATE.
+\ Two tasks adding to one empty group race on the cell; the one whose swap
+\ loses is E-AIO-STATE.
 : G-CLAIM ( ptr n -- ) {: e:ptr :}
    e G-MINE? if exit then
    0 TASK:SELF-CONTEXT e G.OWNER atomic-cas 0<> if E-AIO-STATE throw then ;
@@ -1185,9 +1158,6 @@ INSTALL-HOST
 : G-REGISTER ( -- n )
    GROUP-N @ dup 1 + GROUP-N ! ;
 
-\ The first ticket of the group whose record is done, or -1. Every ticket in the
-\ group must belong to the calling task and still name the record it was minted
-\ over, which is what OWNED-CHECK answers the index for.
 : G-READY ( n -- n ) {: g:n :}
    g G-ENTRY {: e:ptr :}
    e G.COUNT @ 0 ?do
@@ -1245,10 +1215,9 @@ public
    [: ['] LOOP-BODY AIO-LOOP TASK:ACTIVATE ;] catch {: code:n :}
    code 0 <> if HOST-CLOSE 0 RING-LIVE ! code throw then ;
 
-\ Stops the loop and gives the ring back. Every ticket must have been awaited or
-\ cancelled and drained first: a record still in flight is E-AIO-BUSY, because
-\ unmapping the ring under the kernel is not a thing a caller can be allowed to
-\ ask for. The NOP is what wakes the loop out of its blocking wait.
+\ Every ticket must have been awaited or cancelled and drained first: a record
+\ still in flight is E-AIO-BUSY, because unmapping the ring under the kernel is
+\ not a thing a caller can be allowed to ask for.
 : STOP ( -- )
    RUNNING-CHECK
    ANY-BUSY? if E-AIO-BUSY throw then
@@ -1264,17 +1233,15 @@ public
    HOST-CLOSE
    0 RING-LIVE ! ;
 
-\ True between a START that returned and the STOP that gives the ring back - the
-\ same state every submission below checks, so a caller can refuse by name
-\ instead of catching E-AIO-STATE from the first wait it makes.
+\ True between a START that returned and the STOP that gives the ring back.
 : RUNNING? ( -- bool )
    RING-LIVE @ 0 <> ;
 
 \ Waits for a descriptor to carry one of the events in the mask. ms is a
-\ deadline in milliseconds, linked to the poll as an IORING_OP_LINK_TIMEOUT, or
-\ -1 for no deadline. A submission with no loop running is E-AIO-STATE; a full
-\ kernel ring on Linux is E-AIO-FULL, and a descriptor past Darwin's per-call
-\ poll bound is E-AIO-POLL-BOUND. Either leaves nothing submitted.
+\ deadline in milliseconds, or -1 for no deadline. A submission with no loop
+\ running is E-AIO-STATE; a full kernel ring on Linux is E-AIO-FULL, and a
+\ descriptor past Darwin's per-call poll bound is E-AIO-POLL-BOUND. Either
+\ leaves nothing submitted.
 : POLL ( fd n ms -- ticket ) {: f:fd events:n timeout:ms :}
    SUBMIT-ENTER
    f FD>N events timeout MS>N HOST-POLL SUBMIT-LEAVE >TICKET ;
@@ -1300,20 +1267,19 @@ public
 \ record. Only the task that submitted the ticket may await it, and only once:
 \ a ticket whose record is free, one another task owns, and one whose record has
 \ since been reused - even by this task - are E-AIO-STATE.
-\ The wait is a TASK:WAIT loop, so the main thread may await too.
+\ The main thread may await too.
 : AWAIT ( ticket -- outcome ) {: t:ticket :}
    RUNNING-CHECK
    t TICKET>N OWNED-CHECK AWAIT-ONE ;
 
 \ ---- the completion operations -----------------------------------------------
-\ READ and WRITE hand the transfer a MEM allocation - the pointer and the extent
-\ exactly as MEM:ALLOC-BYTES answered them - and it owns those bytes until
-\ AWAIT-XFER gives them back. Nothing else in this module answers them again, so
-\ while the kernel is reading or writing that memory no checked code holds a way
-\ to touch it. count is the bytes to transfer and must fit the allocation; off
-\ is a file offset, or -1 for the descriptor's own position, which the operation
-\ uses and advances the way read(2) and write(2) do. A count past the
-\ allocation, a count below zero or an offset below -1 is E-AIO-BOUNDS.
+\ READ and WRITE hand the transfer a MEM allocation and it owns those bytes
+\ until AWAIT-XFER gives them back. Nothing else in this module answers them
+\ again, so while the kernel is reading or writing that memory no checked code
+\ holds a way to touch it. count is the bytes to transfer and must fit the
+\ allocation; off is a file offset, or -1 for the descriptor's own position,
+\ which the operation uses and advances the way read(2) and write(2) do. A count
+\ past the allocation, a count below zero or an offset below -1 is E-AIO-BOUNDS.
 \ E-AIO-BOUNDS, E-AIO-STATE, E-AIO-FULL and E-AIO-POLL-BOUND happen before any
 \ entry is written and leave the allocation the caller's. E-AIO-ENTER does not: the entry is
 \ published and the kernel may yet run it, so the transfer keeps the allocation
@@ -1332,7 +1298,7 @@ public
 \ Accepts one connection on a listening descriptor. The ready arm carries the
 \ new descriptor, which the caller owns and closes; no peer address is asked
 \ for, so nothing of the caller's has to outlive the submission. The accepted
-\ descriptor is close-on-exec, exactly as TCP4:ACCEPT's is.
+\ descriptor is close-on-exec.
 : ACCEPT ( fd -- ticket ) {: f:fd :}
    f FD>N 0 0 KIND-ACCEPT SOCK-SUBMIT ;
 
@@ -1340,31 +1306,26 @@ public
 \ THE CALLER'S AND MUST STAY MAPPED AND UNCHANGED UNTIL THE TICKET'S OUTCOME IS
 \ TAKEN: this module does not copy them and does not model when the kernel
 \ does. The ready arm carries zero; a refused connect is `refused` with the
-\ errno. A length that is not positive is not a socket address: E-AIO-BOUNDS.
+\ errno.
 : CONNECT ( fd ptr u8 n -- ticket ) {: f:fd addr alen:n :}
    alen 0 <= if E-AIO-BOUNDS throw then
    f FD>N addr FFI:>CELL alen KIND-CONNECT SOCK-SUBMIT ;
 
-\ Waits for that transfer and answers the allocation with its outcome, in that
-\ order. This is the only word that gives the bytes back. Only the task that
-\ submitted the transfer may await it, and only once, and only while its record
-\ is still the one it was minted over: all three are E-AIO-STATE, exactly as for
-\ a ticket.
+\ This is the only word that gives the bytes back. Only the task that submitted
+\ the transfer may await it, and only once, as for a ticket.
 : AWAIT-XFER ( xfer -- ptr u8 NUM:alloc-byte-len outcome ) {: x:xfer :}
    RUNNING-CHECK
    x XFER>N OWNED-CHECK AWAIT-XFER-ONE ;
 
-\ Defines one group:  AIO:GROUP WAITERS   \ WAITERS ( -- AIO:group )
 : GROUP ( -- )
    create G-REGISTER ,
    does> ( -- AIO:group ) @ >GROUP ;
 
-\ Adds a ticket of the calling task's. A group belongs to the task that adds to
-\ it while empty until it is empty again; any other task's GROUP+, GROUP- or
-\ AWAIT-ANY on it meanwhile is E-AIO-STATE. When the holder ends, AIO's exit
-\ cleanup empties every group it holds, so a cleanup of the caller's that runs
-\ after AIO's finds them empty. The number is the caller's, any value; AWAIT-ANY
-\ hands it back for this wait.
+\ A group belongs to the task that adds to it while empty until it is empty
+\ again; any other task's GROUP+, GROUP- or AWAIT-ANY on it meanwhile is
+\ E-AIO-STATE. When the holder ends, AIO's exit cleanup empties every group it
+\ holds, so a cleanup of the caller's that runs after AIO's finds them empty.
+\ The number is the caller's, any value; AWAIT-ANY hands it back for this wait.
 : GROUP+ ( ticket n group -- ) {: t:ticket tag:n g:group :}
    t TICKET>N {: h:n :}
    h OWNED-CHECK drop
