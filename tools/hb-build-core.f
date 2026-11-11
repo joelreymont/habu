@@ -6,11 +6,13 @@
 \ startup files in hb's own order (src/habu/habu2.f EMIT-HOST-LOAD-PREFIX); hb then loads
 \ the runtime's files, --repl the program's source, and both their registry and
 \ installs; a stripped program loads its source and its entry.
-\ The files written under <out>/hb-build/<target>/ load inside the build, so a
-\ warm build links what they do: reset.f, the token hb's prefix runs after
-\ include.f; end.f, hb's registry and installs, which under --repl is
-\ end/<the source's path>/end.f; app-end.f, a stripped program's entry. Builds
-\ sharing an out root write each whole, and only when it changes (WRITE-CHANGED).
+\ The build loads src/core/source-reset.f and src/habu/app-end.f from the tree;
+\ a stripped program's build loads nothing from under the out. Under
+\ <out>/hb-build/<target>/ it writes the kernel object and hb's end file, its
+\ registry and installs (end.f; under --repl end/<the source's path>/end.f),
+\ which it loads like a source, so a warm build links the end file's object.
+\ Builds sharing an out root write an end file whole, and only when it changes
+\ (WRITE-CHANGED).
 
 require src/lib/error.f
 require src/lib/string.f
@@ -34,10 +36,8 @@ variable SRC-LEN
 PTR-VARIABLE OUT-PATH
 variable OUT-LEN
 create DIR PATH-CAP allot  variable DIR-U
-create RESET-PATH PATH-CAP allot  variable RESET-U
 create END-PATH PATH-CAP allot  variable END-U
 create END-DIR PATH-CAP allot           \ a --repl end file's directory (REPL-END!)
-create APP-END-PATH PATH-CAP allot  variable APP-END-U
 create KERNEL-PATH PATH-CAP allot  variable KERNEL-U
 7 64 + 4 + constant KERNEL-NAME-U   \ kernel-<64 hex digits>.hko
 create KERNEL-NAME KERNEL-NAME-U allot
@@ -48,9 +48,7 @@ DYNAMIC-BUFFER TEXT u8                  \ the end file's text until it is writte
 variable TEXT-U
 DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE? compares them
 
-: RESET$ ( -- ptr u8 n ) RESET-PATH RESET-U @ ;
 : END$ ( -- ptr u8 n ) END-PATH END-U @ ;
-: APP-END$ ( -- ptr u8 n ) APP-END-PATH APP-END-U @ ;
 : SRC$ ( -- ptr u8 n ) SRC-PATH @ SRC-LEN @ ;
 : OUT$ ( -- ptr u8 n ) OUT-PATH @ OUT-LEN @ ;
 
@@ -76,13 +74,11 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 
 
 \ The tool's files sit under the target's name, since their text follows from the target.
+\ END-PATH holds <out>/hb-build until ENGINE-END! or REPL-END! fills it.
 : PATHS ( -- )
-   BUILD-OUT:BASE$ s" hb-build" RESET-PATH FS:JOIN-PATH {: u:n :}
-   RESET-PATH u  TARGET @ RTARGET:PROFILE$  DIR FS:JOIN-PATH DIR-U !
-   DIR DIR-U @ FS:MAKE-DIRS
-   DIR DIR-U @ s" reset.f" RESET-PATH FS:JOIN-PATH RESET-U !
-   DIR DIR-U @ s" app-end.f" APP-END-PATH FS:JOIN-PATH APP-END-U !
-   RESET$ s\" SOURCE-INPUT:RESET\n" WRITE-CHANGED ;
+   BUILD-OUT:BASE$ s" hb-build" END-PATH FS:JOIN-PATH {: u:n :}
+   END-PATH u  TARGET @ RTARGET:PROFILE$  DIR FS:JOIN-PATH DIR-U !
+   DIR DIR-U @ FS:MAKE-DIRS ;
 
 
 : TARGET? ( RTARGET:profile-id -- bool )
@@ -113,13 +109,11 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    a u included ;
 
 
-\ include.f defines both source vectors; hb's prefix resets them right after it
-\ (habu2.f PFX-LOAD-CORE-ROW).
 : ROW ( n n ptr u8 n -- )
    {: idx:n kind:n a:ptr u:n :}
    kind LOAD? 0= if exit then
    a u INCLUDE-FILE
-   a u s" src/core/include.f" STR= if RESET$ INCLUDE-FILE then ;
+   a u s" src/core/include.f" STR= if s" src/core/source-reset.f" INCLUDE-FILE then ;
 
 : PROVIDE ( n n ptr u8 n -- )
    {: idx:n kind:n a:ptr u:n :}
@@ -252,19 +246,13 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    OUT$ LINKER:WRITE ;
 
 
-\ A program's entry is its global MAIN, whose effect APP-ENTRY:XT! holds to ( -- ):
-\ the checker refuses app-end.f at MAIN when there is none or it takes or leaves
-\ cells.
-: APP-END-WRITE ( -- )
-   APP-END$ s\" ' MAIN APP-ENTRY:XT!\n" WRITE-CHANGED ;
-
 \ A Wasm module's kernel words (WKWORDS) load ahead of the program, so its words
 \ and the link reach them.
 : APP-BODY ( -- )
    STARTUP
    WASM? if s" src/arch/wasm/kernel-words.f" REQUIRE-FILE then
    SRC$ INCLUDE-FILE
-   APP-END$ INCLUDE-FILE
+   s" src/habu/app-end.f" INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 
 \ The tree's KERNEL-OBJECT:WRITE, which the kernel build compiled; it lays the
@@ -351,8 +339,7 @@ public
    {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
    target TARGET !
-   WASM? if PATHS else false target KERNEL-BUILD then
-   APP-END-WRITE
+   WASM? 0= if false target KERNEL-BUILD then
    NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" app" target ['] APP-BODY LINKER:WITH ;
 
