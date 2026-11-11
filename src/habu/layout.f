@@ -1,5 +1,5 @@
 \ layout.f - shared native image, dictionary, and snapshot layout constants.
-\ The cold prefix loads stack-abi.f first; require is not defined at this stage.
+\ A start-up row loaded before require exists, so it requires nothing.
 
 20 constant XREG-RBASE
 26 constant DBASE
@@ -363,8 +363,8 @@ $3688 constant PEND-CELL
 $2D48 constant PEND-OPAQUE-CELL
 $3690 constant TKA-CELL
 $3698 constant TKL-CELL
-$36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL
-$36A8 constant INE-CELL          \ mirrored: src/core/check-hook.f INPUT-END
+$36A0 constant INP-CELL
+$36A8 constant INE-CELL
 \ FWDTGT-CELL: where the last forward branch tier 0 patched lands, as an
 \ offset from DBASE; nothing reads it. Definition-scoped like
 \ JIT-SNAP:SP-CELL: the colon entries,
@@ -447,8 +447,7 @@ $178 constant PKG-OUTSIDE
 ;package
 
 \ Every engine load refusal reaching the LCOMPILEDIE tail names its source as
-\ `<message> at <path>`, then `:<line>` under SRCLOC:FILE-BUFFER?; emitted code
-\ reads these cells as it reads INCLUDE-EVALERR-CELL.
+\ `<message> at <path>`, then `:<line>` under SRCLOC:FILE-BUFFER?.
 \ PATH-CELL / PATHLEN-CELL: the innermost open include frame's path, 0/0 with
 \ no include frame open: the root source stream's own text (src/habu/main.f:
 \ stdin, tty or piped, or the `--load` and `--build` streams) and the boot
@@ -466,7 +465,7 @@ package SRCLOC
 public
 $2800 constant PATH-CELL
 $2808 constant PATHLEN-CELL
-$2810 constant INB-CELL          \ mirrored: src/core/check-hook.f INPUT-START
+$2810 constant INB-CELL
 \ The loader alone publishes the execution bytes owned by the active file.
 \ An inner evaluate changes INB, but never changes this file span.
 $2D68 constant OWNED-CELL
@@ -1034,10 +1033,10 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ them, as the engine stores them only in the running hb's header.
 package BODY-TEXT
 public
-$800 constant BASE-CELL     \ the block's address, 0 before the first capture; mirrored: src/core/check-hook.f BODY-BASE
-$808 constant CAP-CELL      \ the text capacity in bytes, 0 before; mirrored: src/core/check-hook.f BODY-CAP-OFF
+$800 constant BASE-CELL     \ the block's address, 0 before the first capture
+$808 constant CAP-CELL      \ the text capacity in bytes, 0 before
 $810 constant SIZE-CELL     \ the block's length in bytes, 17 * cap, 0 before; guards read BASE and SIZE
-$818 constant ROWS-CELL     \ the BODY-SOURCE row count; mirrored: src/core/check-hook.f BODY-ROWS-OFF
+$818 constant ROWS-CELL     \ the BODY-SOURCE row count
 8192 constant FIRST-CAP     \ the capacity mapped at the first capture, doubled as it grows
 ;package
 \ The latest `,` run of a created body, defined in src/habu/created-body-abi.f,
@@ -1330,9 +1329,8 @@ $2DA8 constant TASK-CHAIN-CELL
 \ PROT-WID-MAX before it addresses the band. habu1.f BPOLICYADMIT and
 \ BPOLICYSEAL write the vocabulary; SOURCE-ROOT:POLICY-ROOT writes the ordinary
 \ require xt before the seal. All three refuse mutation once sealed.
-\ The readers are the places a source token is read: src/habu/interpreter.f.
-\ The native compiler never reads them. The loader reads the watermark through
-\ its own copy of the offset, src/core/include.f INCLUDE-POLICY-NDICT-CELL.
+\ Only the engine's token reader tests the vocabulary; the native compiler
+\ never reads it.
 \ Below $7FF8 for `DATA <off> LDR` and below DATA-START; data-claims.f proves
 \ neither field overlaps a neighbour. The snapshot writer zeros its DATA copy
 \ and the warm loader zeros the restored fields, so a fresh process is unsealed.

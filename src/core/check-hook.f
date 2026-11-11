@@ -16,15 +16,9 @@ private
 \ CHECKER-CERT-DUP? (which interns nothing) first and refuses it as the
 \ wall does (REFUSE-DUPLICATE).
 
-\ The body text block and the buffer being read, as data-base offsets: the
-\ block's base, its text capacity and its row
-\ count are layout.f BODY-TEXT:BASE-CELL, CAP-CELL and ROWS-CELL; the buffer is
-\ SRCLOC:INB-CELL up to INE-CELL.
-$800 RESERVED-PTR-U8-CELL BODY-BASE
-$808 constant BODY-CAP-OFF
-$818 constant BODY-ROWS-OFF
-$2810 RESERVED-PTR-U8-CELL INPUT-START
-$36A8 RESERVED-PTR-U8-CELL INPUT-END
+BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
+SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
+INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 \ The token the engine read last (TKA-CELL, TKL-CELL).
 TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
 
@@ -42,12 +36,12 @@ TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
    BODY-BASE @ {: base:ptr :}
    base NULL-PTR = if RES-FALSE exit then
    a base - 0 <> if RES-FALSE exit then
-   data-base BODY-ROWS-OFF + @ {: rows:n :}
+   data-base BODY-TEXT:ROWS-CELL + @ {: rows:n :}
    rows 0 <= if RES-FALSE exit then
    SRC-NAME @ INPUT-START @ INPUT-END @ {: nm:ptr b:ptr e:ptr :}
    nm b - 0 <  e nm - 0 <= or if RES-FALSE exit then
    nm  e nm -  nm FILE-POS  DIAG-SOURCE!
-   a u  base data-base BODY-CAP-OFF + @ + CELL-VIEW  rows  DIAG-MAP!
+   a u  base data-base BODY-TEXT:CAP-CELL + @ + CELL-VIEW  rows  DIAG-MAP!
    nm b - DIAG-MAP-BIAS!
    RES-TRUE ;
 

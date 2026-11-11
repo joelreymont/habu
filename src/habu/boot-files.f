@@ -54,7 +54,6 @@ private
    CHECKER COMMON s" src/core/checker-owner-extension.f" ROW
    CHECKER COMMON s" src/core/checker-owner-abi.f" ROW
    CHECKER COMMON s" src/habu/boot-cells.f" ROW
-   CHECKER COMMON s" src/habu/intern-table.f" ROW
    CHECKER COMMON s" src/habu/wl.f" ROW
    CHECKER COMMON s" src/habu/created-body-abi.f" ROW
    CHECKER COMMON s" src/habu/prims.f" ROW
@@ -73,6 +72,7 @@ private
    CHECKER WASM s" src/arch/wasm/profile.f" ROW
    CHECKER WASM s" src/os/wasm/layout.f" ROW
    CHECKER COMMON s" src/habu/layout.f" ROW
+   CHECKER COMMON s" src/habu/intern-table.f" ROW
    CHECKER COMMON s" src/core/checker.f" ROW
    CHECKER COMMON s" src/core/engine-error-effects.f" ROW
    CHECKER COMMON s" src/core/lower-cert-base.f" ROW

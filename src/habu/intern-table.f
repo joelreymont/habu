@@ -9,9 +9,6 @@ private
 \ registered here, as error-code-lint admits; test/linker.f CASE-F checks it.
 -8638 constant E-INTERN-REWIND
 
-\ src/habu/layout.f DPHW-CELL, which loads after this file.
-$2D58 constant DPHW-OFF
-
 variable HV
 
 \ FNV-1a; the top bit can run into the sign.
@@ -188,7 +185,7 @@ private
 \ a lowered DP.
 : REWIND-REFUSE ( -- )
    SPACE? if
-      data-base DPHW-OFF + @ 0 <> if E-INTERN-REWIND throw then
+      data-base DPHW-CELL + @ 0 <> if E-INTERN-REWIND throw then
    then ;
 
 

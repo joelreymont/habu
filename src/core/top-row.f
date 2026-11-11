@@ -7,13 +7,9 @@
 
 package CHECK
 
-\ ---- event-class ABI (src/habu/layout.f TOP-EV-*, loaded after this file) -----
-1 constant TR-EV-NUM     2 constant TR-EV-STR     3 constant TR-EV-CSTR
-4 constant TR-EV-CHAR    5 constant TR-EV-TICK    6 constant TR-EV-WORD
-
 : TR-PUSHED ( n -- n ) {: cls:n :}
-   cls TR-EV-WORD = IF 0 EXIT THEN
-   cls TR-EV-STR = IF 2 EXIT THEN
+   cls TOP-EV-WORD = IF 0 EXIT THEN
+   cls TOP-EV-STR = IF 2 EXIT THEN
    1 ;
 
 public
@@ -25,8 +21,8 @@ public
    {: a:ptr u:n cls:n flg:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
    depth cls TR-PUSHED - {: live:n :}
-   cls TR-EV-WORD <>  cls TR-EV-TICK <>  and IF a u cls live CHECKER-TOP-PUSH EXIT THEN
-   cls TR-EV-WORD = IF a u live CHECKER-TOP-WORD ELSE a u live CHECKER-TOP-TICK THEN
+   cls TOP-EV-WORD <>  cls TOP-EV-TICK <>  and IF a u cls live CHECKER-TOP-PUSH EXIT THEN
+   cls TOP-EV-WORD = IF a u live CHECKER-TOP-WORD ELSE a u live CHECKER-TOP-TICK THEN
    CHECKER-TOP-SAVE ;
 
 private

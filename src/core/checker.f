@@ -18964,7 +18964,7 @@ variable CHECKER-PREFIX-ROLLBACK
 \ the one-cell path whatever else is among the operands (XPORT-STEP?), which
 \ refuses it as it refuses that layout alone: LAYOUT-XPORT-ALLOW? never binds an
 \ open width, which reads a payload var that may bind linear (OWN-TYPE-N).
-64 constant XG-GCAP            \ max logical groups per op (= LOC-RECS for locals capture)
+LOC-RECS constant XG-GCAP      \ max logical groups per op
 256 constant XG-TCAP           \ max total cells across one op's groups
 create XG-TERMS XG-TCAP cells allot
 create XG-NODES XG-TCAP cells allot

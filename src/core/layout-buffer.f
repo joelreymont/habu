@@ -253,17 +253,15 @@ STORAGE-CAPTURE-INSTALL
 \ name is refused at the definer (CHECKER-STORAGE-NAME-REFUSE), an empty type by
 \ the checker (CHECKER-STORAGE-TYPE-REFUSE).
 
-\ The engine's input cursor, src/habu/layout.f INP-CELL. Pointing it back at a
-\ token parse-name read leaves that token to the next statement.
-$36A0 constant STGT-INP-CELL
+\ Leaves a token parse-name read to the next statement.
 : STORAGE-UNREAD ( ptr u8 -- )
-   NULL-PTR - data-base STGT-INP-CELL + ! ;
+   NULL-PTR - data-base INP-CELL + ! ;
 
 \ The next token, as parse-name reads one, when it stands on the cursor's line:
 \ the bytes the read skips hold no line feed (CHECKER-TYPE-SPAN-BREAK?). A token
 \ on a later line goes back to the input, and none is read.
 : STORAGE-LINE-TOKEN ( -- ptr u8 n )
-   data-base STGT-INP-CELL + @ {: at:n :}
+   data-base INP-CELL + @ {: at:n :}
    parse-name {: a:ptr u:n :}
    a NULL-PTR - at - {: gap:n :}
    a gap - gap CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD a 0 exit then

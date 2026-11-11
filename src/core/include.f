@@ -6,18 +6,6 @@
 PATH-CAP constant INCLUDE-PATH-CAP
 $46 constant INCLUDE-EVAL-RC
 -2110 constant INCLUDE-RANGE-RC
-$37D8 constant INCLUDE-EVALERR-CELL
-\ The innermost open source file's path for the engine's refusal tail
-\ (src/habu/habu2.f LCOMPILEDIE): fixed data-base offsets, reserved in
-\ src/habu/layout.f as SRCLOC:PATH-CELL / SRCLOC:PATHLEN-CELL.
-$2800 constant INCLUDE-SRCLOC-PATH-CELL
-$2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
-$2D68 constant INCLUDE-SRCLOC-OWNED-CELL
-$2D70 constant INCLUDE-SRCLOC-OWNEDLEN-CELL
-\ The design seal's watermark (src/lib/vocabulary.f), spelled here the same way and
-\ reserved in src/habu/layout.f as POLICY-NDICT-CELL: 0 while nothing is sealed.
-$4898 constant INCLUDE-POLICY-NDICT-CELL
-$4CA0 constant INCLUDE-POLICY-REQUIRE-CELL
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
 
 package REQUIRE-REG
@@ -545,7 +533,7 @@ public
 
 : CONFINE ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
-   data-base INCLUDE-POLICY-REQUIRE-CELL + @ 0= if a u exit then
+   data-base POLICY-REQUIRE-CELL + @ 0= if a u exit then
    a u CANONICAL drop {: path:ptr pathu:n :}
    path pathu POLICY-ROOT-BUF POLICY-ROOT-U @ BELOW? if path pathu exit then
    2 s" hb: policy: source outside root: " write drop
@@ -1387,7 +1375,7 @@ variable SCRIPT-NAMED-PEND
    INCLUDE-FD @ 0 < if INCLUDE-OPEN-DIE then ;
 
 : INCLUDE-EVALERR? ( -- bool )
-   data-base INCLUDE-EVALERR-CELL + @ 0 = 0= ;
+   data-base EVALERR-CELL + @ 0 = 0= ;
 
 \ Generated source (TYPE-DECL:TDECL-EVAL-XT) runs as a closed program, refused
 \ E-EVAL-RESIDUE for what it leaves; files run in LOAD-UNIT (RESIDUE-CHECK).
@@ -1690,26 +1678,26 @@ variable LAST-LOAD-EVAL-OK
 \ they name the file being read, or 0 for none (the REPL, a stdin session, the
 \ boot prefix, a root program run over an open file: FR-ROOT-RUNS).
 : PUBLISH-NONE ( -- )
-   0 data-base INCLUDE-SRCLOC-PATH-CELL + !
-   0 data-base INCLUDE-SRCLOC-PATHLEN-CELL + !
-   0 data-base INCLUDE-SRCLOC-OWNED-CELL + !
-   0 data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + ! ;
+   0 data-base SRCLOC:PATH-CELL + !
+   0 data-base SRCLOC:PATHLEN-CELL + !
+   0 data-base SRCLOC:OWNED-CELL + !
+   0 data-base SRCLOC:OWNEDLEN-CELL + ! ;
 
 : PUBLISH-LOCATION ( -- )
    CHECK:FILE-POS-CLEAR
    TOP@ 0= if PUBLISH-NONE exit then
    TOP@ {: frame:ptr :}
    frame FR-ROOT-RUNS + CELL-VIEW @ 0 > if PUBLISH-NONE exit then
-   frame FR-PATH + NULL-PTR - data-base INCLUDE-SRCLOC-PATH-CELL + !
-   frame FR-PATHLEN + CELL-VIEW @ data-base INCLUDE-SRCLOC-PATHLEN-CELL + !
+   frame FR-PATH + NULL-PTR - data-base SRCLOC:PATH-CELL + !
+   frame FR-PATHLEN + CELL-VIEW @ data-base SRCLOC:PATHLEN-CELL + !
    frame FR-SIZE + CELL-VIEW @ dup 0 < if
-      drop 0 data-base INCLUDE-SRCLOC-OWNED-CELL + !
-      0 data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + !
+      drop 0 data-base SRCLOC:OWNED-CELL + !
+      0 data-base SRCLOC:OWNEDLEN-CELL + !
       exit
    then
-   data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + !
+   data-base SRCLOC:OWNEDLEN-CELL + !
    frame FRAME-EXEC-SOURCE NULL-PTR -
-      data-base INCLUDE-SRCLOC-OWNED-CELL + ! ;
+      data-base SRCLOC:OWNED-CELL + ! ;
 
 : MAPPED ( ptr u8 -- n ) FR-ROOM + CELL-VIEW @ HEADER-BYTES + ;
 
@@ -1862,7 +1850,7 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 \ by the engine's loop whatever INCLUDE-INTERPRET holds. `0 <>`, not `0<>`: the
 \ prefix loads src/lib/prelude.f, which defines `0<>`, after this file.
 : POLICY-SEALED? ( -- bool )
-   data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> ;
+   data-base POLICY-NDICT-CELL + @ 0 <> ;
 
 \ Holds a load's U source bytes at A in its frame and records their length
 \ there. The OS reader (READ-OS) has filled the frame already, learning the size
@@ -2253,7 +2241,7 @@ private
    107 throw ;
 
 : POLICY-ROOT-SET ( [ -- ] -- )
-   data-base INCLUDE-POLICY-REQUIRE-CELL + xt!
+   data-base POLICY-REQUIRE-CELL + xt!
    CANON-BUF POLICY-ROOT-BUF CANON-U @ BYTE-COPY
    CANON-U @ POLICY-ROOT-U ! ;
 
@@ -2266,7 +2254,7 @@ public
 \ the ordinary require xt it captured when loaded.
 : POLICY-ROOT ( ptr u8 n [ -- ] -- )
    {: path:ptr u:n require-xt :}
-   data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
+   data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
    path u ROOT-CANON
    require-xt POLICY-ROOT-SET ;
 
@@ -2274,14 +2262,14 @@ public
 \ seals leaves the new policy root and refuses the attempted return to the old.
 : POLICY-WITH-ROOT ( ptr u8 n [ -- ] [ -- ] -- )
    {: path:ptr u:n q require-xt :}
-   data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
+   data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
    path u ROOT-ENTER {: prior:ptr prioru:n :}
-   data-base INCLUDE-POLICY-REQUIRE-CELL + @ 0= 0= {: had:bool :}
+   data-base POLICY-REQUIRE-CELL + @ 0= 0= {: had:bool :}
    POLICY-ROOT-U @ {: old-u:n :}
    POLICY-ROOT-BUF old-u MAP-COPY {: old:ptr :}
    require-xt POLICY-ROOT-SET
    q catch {: rc:n :}
-   data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> if
+   data-base POLICY-NDICT-CELL + @ 0 <> if
       prior prioru 0 ROOT-LEAVE
       old old-u POLICY-ROOT-RELEASE POLICY-SEALED
    then
@@ -2290,7 +2278,7 @@ public
       old-u POLICY-ROOT-U !
    else
       0 POLICY-ROOT-U !
-      0 data-base INCLUDE-POLICY-REQUIRE-CELL + xt!
+      0 data-base POLICY-REQUIRE-CELL + xt!
    then
    old old-u POLICY-ROOT-RELEASE
    prior prioru rc ROOT-LEAVE ;

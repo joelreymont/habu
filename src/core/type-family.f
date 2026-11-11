@@ -5169,14 +5169,13 @@ public
 
 public
 
-$100 constant TFQ-CAP            \ folded qualifier bytes (PACKAGE-PATH:CAP)
-create TFQ-BUF TFQ-CAP allot
+create TFQ-BUF PACKAGE-PATH:CAP allot
 variable TFQ-U
 PTR-VARIABLE TFQ-TA   variable TFQ-TU  \ qualified tail token
 variable TFQ-COLON
 
 : TFQ-FOLD-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
-   u TFQ-CAP > IF s" tfam: qualifier too long" 76 die THEN
+   u PACKAGE-PATH:CAP > IF s" tfam: qualifier too long" 76 die THEN
    0 BEGIN dup u < WHILE
       {: i:n :}
       a i + c@ CORE-FOLD-C  TFQ-BUF i + c!
@@ -5207,7 +5206,7 @@ variable TFQ-COLON
    TFQ-COLON @ 0 < IF RES-FALSE EXIT THEN
    TFQ-COLON @ 0 = IF RES-FALSE EXIT THEN            \ leading ':'
    TFQ-COLON @ u 1 - = IF RES-FALSE EXIT THEN        \ trailing ':'
-   TFQ-COLON @ TFQ-CAP > IF RES-FALSE EXIT THEN      \ names no package
+   TFQ-COLON @ PACKAGE-PATH:CAP > IF RES-FALSE EXIT THEN      \ names no package
    a TFQ-COLON @ TFQ-FOLD-COPY
    a TFQ-COLON @ + 1 + TFQ-TA !
    u TFQ-COLON @ - 1 - TFQ-TU !
@@ -5431,7 +5430,7 @@ REG-EXT-PERSIST-INSTALL
 : TFAM-SCRATCH-RETIRE ( -- )
    \ A caught FILE dependency refusal leaves only an invocation diagnostic.
    NULL-PTR REG-AOT-ERROR-A ! 0 REG-AOT-ERROR-U !
-   TFQ-CAP 0 ?do 0 TFQ-BUF i + c! loop
+   PACKAGE-PATH:CAP 0 ?do 0 TFQ-BUF i + c! loop
    0 TFQ-U !  NULL-PTR TFQ-TA !  0 TFQ-TU !  0 TFQ-COLON !
    NULL-PTR TFSR-PA !  0 TFSR-PU !
    NULL-PTR TFSR-NA !  0 TFSR-NU !
