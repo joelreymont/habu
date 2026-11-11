@@ -346,67 +346,47 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 : CHK-TOK-END ( n -- n ) {: k:n :}
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
 
-\ The declaration from token def to the end of token name, in the bytes the
-\ lex read.
-: CHK-NOM-SRC$ ( n n -- ptr u8 n ) {: def:n name:n :}
-   def LINT-LEX:TOKEN drop
-   name CHK-TOK-END def LINT-LEX:BYTE@ - ;
+create CHK-NONAME-BUF BUF:HDR-BYTES allot
+TYPED-VARIABLE CHK-NONAME-W JSON:writer
+variable CHK-NONAME-READY
 
-: CHK-NOM-JSTR ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
-   {: key:ptr keyu:n val:ptr valu:n :}
-   key keyu val valu JSON:WRITE-FIELD-S JSON:WRITE-COMMA ;
-
-: CHK-NOM-JU ( ptr JSON:writer n ptr u8 n -- ptr JSON:writer )
-   {: value:n key:ptr keyu:n :}
-   key keyu value JSON:WRITE-FIELD-U JSON:WRITE-COMMA ;
-
-create CHK-NOM-JSON-BUF BUF:HDR-BYTES allot
-TYPED-VARIABLE CHK-NOM-JSON-W JSON:writer
-variable CHK-NOM-JSON-READY
-
-: CHK-NOM-JSON-WRITER ( -- ptr JSON:writer )
-   CHK-NOM-JSON-READY @ 0= if
-      CHK-NOM-JSON-BUF 1 BUF:N>BLEN BUF:INIT
-      1 CHK-NOM-JSON-READY !
+: CHK-NONAME-WRITER ( -- ptr JSON:writer )
+   CHK-NONAME-READY @ 0= if
+      CHK-NONAME-BUF 1 BUF:N>BLEN BUF:INIT
+      1 CHK-NONAME-READY !
    then
-   CHK-NOM-JSON-W CHK-NOM-JSON-BUF JSON:WRITE-OPEN-BUF ;
-
-\ A declaration packet up to its suggestion: the declaration from def to token
-\ tok of the lex of the file the label names, which the packet names and
-\ locates.
-: CHK-PACKET-START ( n n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: def:n tok:n code:ptr codeu:n class:ptr classu:n word:ptr wordu:n label:ptr labelu:n :}
-   CHK-NOM-JSON-WRITER JSON:WRITE-OBJECT-START
-   1 s" schema_version" CHK-NOM-JU
-   s" code" code codeu CHK-NOM-JSTR
-   s" repair_class" class classu CHK-NOM-JSTR
-   s" verdict" s" rejected" CHK-NOM-JSTR
-   s" word" word wordu CHK-NOM-JSTR
-   s" token" tok LINT-LEX:TOKEN JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   tok s" token_index" CHK-NOM-JU
-   s" file" label labelu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   tok LINT-LEX:LINE@ s" line" CHK-NOM-JU
-   tok LINT-LEX:COL@ s" column" CHK-NOM-JU
-   tok LINT-LEX:BYTE@ s" byte_start" CHK-NOM-JU
-   tok CHK-TOK-END s" byte_end" CHK-NOM-JU
-   s" definition_source" def tok CHK-NOM-SRC$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" declared_effect" JSON:WRITE-FIELD-NULL JSON:WRITE-COMMA
-   s" declared_effect_source" JSON:WRITE-FIELD-NULL JSON:WRITE-COMMA
-   s" inferred_effect" s" unknown " CHK-NOM-JSTR
-   s" return_stack" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
-   s" expected" s" " JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" actual" s" " JSON:WRITE-FIELD-S
-   JSON:WRITE-OBJECT-END JSON:WRITE-COMMA drop ;
-
-\ The packet CHK-PACKET-START began, ended by its suggestion: one JSON object,
-\ no line feed.
-: CHK-PACKET$ ( ptr u8 n -- ptr u8 n ) {: sug:ptr sugu:n :}
-   CHK-NOM-JSON-W
-   s" suggestion" sug sugu JSON:WRITE-FIELD-S
-   JSON:WRITE-OBJECT-END JSON:WRITTEN$ ;
+   CHK-NONAME-W CHK-NONAME-BUF JSON:WRITE-OPEN-BUF ;
 
 : CHK-NONAME-SUG$ ( -- ptr u8 n )
    s" Give the definer a name: the next whitespace-delimited token." ;
+
+\ The missing-name packet for definer k of the lex of the file the label
+\ names: one JSON object, no line feed.
+: CHK-NONAME-PACKET$ ( n ptr u8 n -- ptr u8 n )
+   {: k:n label:ptr labelu:n :}
+   CHK-NONAME-WRITER JSON:WRITE-OBJECT-START
+   s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" code" s" E-MISSING-NAME" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" repair_class" s" fix_missing_name" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" word" k LINT-LEX:TOKEN JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" token" k LINT-LEX:TOKEN JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" token_index" k JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" file" label labelu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" line" k LINT-LEX:LINE@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" column" k LINT-LEX:COL@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_start" k LINT-LEX:BYTE@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_end" k CHK-TOK-END JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" definition_source" k LINT-LEX:TOKEN JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" declared_effect" JSON:WRITE-FIELD-NULL JSON:WRITE-COMMA
+   s" declared_effect_source" JSON:WRITE-FIELD-NULL JSON:WRITE-COMMA
+   s" inferred_effect" s" unknown " JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" return_stack" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
+   s" expected" s" " JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" actual" s" " JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END JSON:WRITE-COMMA
+   s" suggestion" CHK-NONAME-SUG$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END JSON:WRITTEN$ ;
 
 \ The token of the source LINT-LEX read last that starts at the given byte, or
 \ -1 when none does.
@@ -422,12 +402,8 @@ variable CHK-NOM-JSON-READY
 \ names. The record is a packet when json, else a prose line; no line feed.
 : CHK-NONAME-RECORD$ ( n ptr u8 n bool -- ptr u8 n )
    {: k:n label:ptr labelu:n json:bool :}
-   json if
-      k k s" E-MISSING-NAME" s" fix_missing_name" k LINT-LEX:TOKEN label labelu
-      CHK-PACKET-START
-      CHK-NONAME-SUG$ CHK-PACKET$ exit
-   then
-   CHK-NOM-JSON-WRITER
+   json if k label labelu CHK-NONAME-PACKET$ exit then
+   CHK-NONAME-WRITER
    s" check.f: " JSON:WRITE-RAW label labelu JSON:WRITE-RAW
    s" :" JSON:WRITE-RAW k LINT-LEX:LINE@ JSON:WRITE-U
    s" :" JSON:WRITE-RAW k LINT-LEX:COL@ JSON:WRITE-U

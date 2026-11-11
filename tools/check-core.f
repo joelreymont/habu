@@ -33,12 +33,6 @@ require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 \ run stage, which --verify-only makes.
 require tools/check-verify-core.f
 
-\ Checker axioms.
-\ CHECKER-SCOPE-START-NEUTRAL/DONE isolate, then roll back, generated dependency
-\ effects.
-s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
-s" CHECKER-SCOPE-DONE" s" --" TRUST
-
 package LSP-CHECK
 using SOURCE                             \ the shared source-string emitters
 using SOURCE-ROOT
@@ -1216,13 +1210,10 @@ private
    CHK-RC @ {: rc:n :}
    rc 0<> if rc CHK-THROW then ;
 
-: CHK-RUN-LINTS ( -- )
-   CHK-RUN-RESERVED-NAMES
-   CHK-RUN-BOUNDARY ;
-
 : CHK-RUN-STATIC-LINTS ( -- )
    \ Zero-byte input traverses every phase; a bypass is publicly unobservable.
-   CHK-RUN-LINTS
+   CHK-RUN-RESERVED-NAMES
+   CHK-RUN-BOUNDARY
    CHK-ALL @ if CHK-RUN-ALL then ;
 
 : CHK-RUN-CURRENT ( -- )

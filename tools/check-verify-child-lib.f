@@ -18,10 +18,6 @@ ENTRY-ORDER !
 \ that tree, not the client's.
 require src/habu/verify-source.f
 
-\ Engine words with no checked effect; tools/check-core.f declares them alike.
-s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
-s" CHECKER-SCOPE-DONE" s" --" TRUST
-
 package CHECK-VERIFY-CHILD
 
 ENTRY-ORDER @ ENTRY-OWNER @ VERIFY:ENTRY-TICK-ORDER!
