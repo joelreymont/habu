@@ -10,7 +10,7 @@ require src/lib/type/deftype.f
 require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/aio.f
-require src/lib/le.f                  \ the socklen cell the endpoint carries
+require src/lib/le.f
 
 package TCP4
 public
@@ -64,8 +64,6 @@ SUMTYPE read-result
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
-\ One receive that never waits: as read-result, and `empty` when there was
-\ nothing to receive.
 SUMTYPE try-read-result
    VARIANT data NUM:byte-len ;VARIANT
    VARIANT closed NUM:byte-len ;VARIANT
@@ -178,12 +176,11 @@ $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option
 1 constant SHUT-WR
 2 constant SHUT-RDWR
 
-\ Endpoint storage is per task, matching FFI's argument/extent tables: a $10
-\ sockaddr_in, a $04 socklen_t, the $04 int a socket option is set from, and the
-\ $08 pollfd a transfer waits through (int fd, short events, short revents),
-\ which end on the cell so the row after this one still starts aligned. Calls
-\ must not nest within one task; readers sharing a connection coordinate
-\ themselves.
+\ Endpoint storage is per task: a $10 sockaddr_in, a $04 socklen_t, the $04
+\ int a socket option is set from, and the $08 pollfd a transfer waits through
+\ (int fd, short events, short revents), which end on the cell so the row after
+\ this one still starts aligned. Calls must not nest within one task; readers
+\ sharing a connection coordinate themselves.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
 : SOCKADDR ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
 : ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
@@ -277,10 +274,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    ;MATCH ;
 
 
-\ The exact Linux AArch64 libc schemas. RTLD_DEFAULT borrows process symbols;
-\ the native executable already needs libc.so.6, so no library reference is
-\ acquired or retained here. src/lib/net/tcp4-test.f drives every binding over
-\ a loopback connection.
+\ RTLD_DEFAULT borrows process symbols; the native executable already needs
+\ libc.so.6, so no library reference is acquired or retained here.
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
@@ -298,28 +293,28 @@ FUNCTION: DARWIN-ACCEPT accept ( n ptr u8 ptr u8 -- i32 )
 ;FUNCTION
 
 FUNCTION: ACCEPT-CALL accept4 ( n ptr u8 ptr u8 n -- i32 )
-   1 $10 WRITES-BYTES                     \ sockaddr_in
-   2 $04 WRITES-BYTES                     \ socklen_t
+   1 $10 WRITES-BYTES
+   2 $04 WRITES-BYTES
 ;FUNCTION
 
 FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
-   1 $10 WRITES-BYTES                     \ sockaddr_in
-   2 $04 WRITES-BYTES                     \ socklen_t
+   1 $10 WRITES-BYTES
+   2 $04 WRITES-BYTES
 ;FUNCTION
 
 FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
-   1 2 WRITES-ARG                         \ the caller's payload span
+   1 2 WRITES-ARG
 ;FUNCTION
 
 \ ioctl's third argument is variadic: Darwin passes it on the stack.
 FUNCTION: QUEUE-CALL ioctl ( n n ptr u8 -- i32 )
    2 VARIADIC
-   2 $04 WRITES-BYTES                     \ the int count
+   2 $04 WRITES-BYTES
 ;FUNCTION
 
 FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
-   3 $04 WRITES-BYTES                     \ the int value
-   4 $04 WRITES-BYTES                     \ socklen_t
+   3 $04 WRITES-BYTES
+   4 $04 WRITES-BYTES
 ;FUNCTION
 
 
@@ -331,7 +326,6 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    ERRNO>N EINTR = ;
 
 
-\ The call would have waited: no room to send, or nothing to receive.
 : WOULD-BLOCK? ( errno -- bool )
    ERRNO>N EAGAIN = ;
 
@@ -344,10 +338,9 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    fd ;
 
 
-\ Makes a connection non-blocking, or closes it and throws. The status flags are
-\ set outright: a fresh or just-connected socket has no other to keep, and
-\ Darwin's accepted socket, which inherits its listener's, is left with this one
-\ alone, as Linux's accept4 leaves it.
+\ The status flags are set outright: a fresh or just-connected socket has no
+\ other to keep, and Darwin's accepted socket, which inherits its listener's, is
+\ left with this one alone, as Linux's accept4 leaves it.
 : NONBLOCK ( n -- n ) {: fd:n :}
    fd F-SETFL O-NONBLOCK fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
    fd ;
@@ -365,7 +358,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    fd SOL-SOCKET SO-REUSEADDR OPTION 4 OPTION-CALL ;
 
 
-: LISTEN-RAW ( n n -- n )                 \ fd backlog
+: LISTEN-RAW ( n n -- n )
    LISTEN-CALL ;
 
 
@@ -396,7 +389,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    fd bytes size MSG-NOSIGNAL SEND-CALL ;
 
 
-: SHUTDOWN-RAW ( n n -- n )               \ fd how
+: SHUTDOWN-RAW ( n n -- n )
    SHUTDOWN-CALL ;
 
 
@@ -412,7 +405,6 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    0 < if LAST-ERROR TCP4-STATUS:failed else TCP4-STATUS:ok then ;
 
 
-\ The count the call that answered rc wrote into the option int, or its errno.
 : QUEUED ( n -- queue-result )
    0 < if LAST-ERROR TCP4-QUEUE--RESULT:failed exit then
    OPTION LE:U32@ LENGTH TCP4-QUEUE--RESULT:queued ;
@@ -425,13 +417,12 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    TCP4-READY--RESULT:idle ;
 
 
-\ The one readiness path: every wait a listener or a connection asks for reaches
-\ the AIO loop here, differing only in the timeout. The deadline is the poll's
-\ own linked timeout, so a signal does not cut the wait short; a zero timeout
-\ still answers `ready` for a descriptor already ready. A wait without AIO:START
-\ is E-AIO-STATE. `cancelled` cannot arrive (nothing here cancels, the ticket
-\ never leaves this word, and AIO's cleanup on a submitting task runs only after
-\ the task ends), so it is a broken foreign result.
+\ The deadline is the poll's own linked timeout, so a signal does not cut the
+\ wait short; a zero timeout still answers `ready` for a descriptor already
+\ ready. A wait without AIO:START is E-AIO-STATE. `cancelled` cannot arrive
+\ (nothing here cancels, the ticket never leaves this word, and AIO's cleanup on
+\ a submitting task runs only after the task ends), so it is a broken foreign
+\ result.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
    timeout MS>N 0 MAX-TIMEOUT WITHIN-RANGE
    fd >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
@@ -453,7 +444,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 
 \ One poll(2) of the descriptor for the events, on this task's own thread with
 \ no AIO loop: how many descriptors are ready, 0 once the timeout in
-\ milliseconds has passed, or the errno negated. NO-TIMEOUT waits until ready.
+\ milliseconds has passed, or the errno negated.
 : POLL-FD ( n n n -- n ) {: fd:n events:n timeout:n :}
    fd POLLFD LE:U32!
    events POLLFD 4 + LE:U16!
@@ -471,9 +462,8 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    again ;
 
 
-\ One receive that never waits, tried again after an interrupt: `empty` when
-\ there is nothing to receive yet. A stream read of zero bytes is the peer's
-\ orderly end of stream, never an empty message.
+\ A stream read of zero bytes is the peer's orderly end of stream, never an
+\ empty message.
 : TRY-CHUNK ( n ptr u8 n -- try-read-result ) {: fd:n bytes size:n :}
    begin
       fd bytes size RECEIVE-RAW dup 0 > if size RECEIVED TCP4-TRY--READ--RESULT:data exit then
@@ -508,8 +498,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    conn CONNECTION-FD bytes got + want BLEN>N got - READ-CHUNK ;
 
 
-\ One send of the span that never waits for room. A count past the span is a
-\ broken foreign result.
+\ A count past the span is a broken foreign result.
 : SEND-STEP ( n ptr u8 n -- n ) {: fd:n bytes size:n :}
    fd bytes size SEND-RAW
    dup size > if E-RESULT throw then ;
@@ -530,8 +519,6 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    again ;
 
 
-\ The part of a send span one call hands the OS: at most MAX-TRANSFER bytes. An
-\ empty span is E-OPERAND.
 : SEND-SPAN ( NUM:byte-len -- n )
    BLEN>N dup 1 < if E-OPERAND throw then
    MAX-TRANSFER min ;
@@ -558,8 +545,6 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    again ;
 
 
-\ The rest of a slice whose first send found no room: a wait for some until the
-\ slice's mono-ns deadline, then one more send that never waits.
 : AFTER-ROOM ( n ptr u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    fd deadline ROOM-BY
    MATCH ready-result
@@ -602,7 +587,7 @@ public
 
 
 \ A numeric IPv4 address, e.g. $7F000001 for 127.0.0.1. Address zero binds every
-\ local IPv4 interface. Host names and dotted decimal are not this module's job.
+\ local IPv4 interface.
 : ADDRESS ( n -- address )
    dup 0 MAX-ADDRESS WITHIN-RANGE >ADDRESS ;
 
@@ -633,8 +618,7 @@ public
 \ BIND returns an owned listener; the caller closes it exactly once. Port zero
 \ asks the OS for an ephemeral port, which LOCAL then reports. SO_REUSEADDR
 \ permits an immediate restart while the prior server peer remains in TIME_WAIT.
-\ A failed BIND closes its new socket and keeps the first errno. A listener
-\ stays blocking.
+\ A listener stays blocking.
 : BIND ( address port -- bind-result )
    ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-BIND--RESULT:failed exit then
    {: fd:n :}
@@ -643,8 +627,6 @@ public
    fd >LISTENER TCP4-BIND--RESULT:bound ;
 
 
-\ The backlog is the queue of connections completed but not yet accepted; Linux
-\ caps it at SOMAXCONN.
 : LISTEN ( listener n -- status ) {: lis:listener backlog:n :}
    backlog 1 MAX-BACKLOG WITHIN-RANGE
    lis LISTENER-FD backlog LISTEN-RAW RC>STATUS ;
@@ -657,7 +639,7 @@ public
 
 
 \ Blocks until a connection arrives. The accepted connection is owned by the
-\ caller and closed separately from the listener. Use PENDING? to avoid waiting.
+\ caller and closed separately from the listener.
 : ACCEPT ( listener -- accept-result )
    LISTENER-FD ACCEPT-LOOP ;
 
@@ -669,12 +651,11 @@ public
    construct accept-fault broken ;
 
 
-\ Blocks until the handshake completes or the OS refuses it. A refused peer
-\ answers failed with ECONNREFUSED; the failed socket is closed here and the
-\ first errno kept. An interrupted CONNECT is `failed` with EINTR and its socket
-\ closed, because Linux goes on completing that connection asynchronously. The
-\ connection turns non-blocking only once connected, so the connect itself still
-\ blocks and answers the refusal.
+\ Blocks until the handshake completes or the OS refuses it. An interrupted
+\ CONNECT is `failed` with EINTR and its socket closed, because Linux goes on
+\ completing that connection asynchronously. The connection turns non-blocking
+\ only once connected, so the connect itself still blocks and answers the
+\ refusal.
 : CONNECT ( address port -- connect-result )
    ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-CONNECT--RESULT:failed exit then
    {: fd:n :}
@@ -694,8 +675,8 @@ public
 \ One receive of 1..capacity bytes that never waits: `empty` when the stream
 \ has nothing to answer yet, so one task can serve many connections from its own
 \ readiness loop even where the OS reports readiness spuriously, as Linux may.
-\ The caller owns the writable span. `closed` carries zero bytes. An interrupt
-\ retries. The connection must be non-blocking, as SEND-SLICE says.
+\ The caller owns the writable span. `closed` carries zero bytes. The connection
+\ must be non-blocking.
 : TRY-READ ( connection ptr u8 NUM:byte-len -- try-read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
    capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
@@ -729,8 +710,7 @@ public
 \ >CONNECTION sets no flag, so on a descriptor made elsewhere it holds once the
 \ descriptor's owner has set O_NONBLOCK; a send on a blocking one waits in the
 \ kernel for as long as the peer takes. Nothing here pauses or weighs a bound;
-\ a caller writing a span in slices does both between them. An empty span is
-\ E-OPERAND.
+\ a caller writing a span in slices does both between them.
 : SEND-SLICE ( connection ptr u8 NUM:byte-len -- slice-result )
    {: conn:connection bytes size:NUM:byte-len :}
    size SEND-SPAN {: span:n :}
@@ -746,8 +726,7 @@ public
 
 \ One send of the span's first MAX-TRANSFER bytes at most that never waits:
 \ `moved` carries the bytes the OS took, `empty` says there was no room, and
-\ `failed` carries the errno. An interrupt retries. The connection must be
-\ non-blocking, as SEND-SLICE says. An empty span is E-OPERAND.
+\ `failed` carries the errno. The connection must be non-blocking.
 : TRY-SEND ( connection ptr u8 NUM:byte-len -- slice-result )
    {: conn:connection bytes size:NUM:byte-len :}
    size SEND-SPAN {: span:n :}
@@ -783,8 +762,6 @@ public
    conn CONNECTION-FD IPPROTO-TCP TCP-NODELAY OPTION 4 OPTION-CALL RC>STATUS ;
 
 
-\ The bytes the peer has sent that the connection holds and this end has not
-\ read yet: FIONREAD.
 : UNREAD ( connection -- queue-result )
    CONNECTION-FD {: fd:n :}
    fd FIONREAD OPTION QUEUE-CALL QUEUED ;
@@ -809,7 +786,7 @@ public
 
 
 \ Parks the task on the AIO loop until the stream would answer a READ or the
-\ deadline passes, which is `idle`. A timeout below zero is refused.
+\ deadline passes, which is `idle`.
 : READABLE-WITHIN? ( connection ms -- ready-result )
    {: conn:connection timeout:ms :}
    conn CONNECTION-FD timeout WAIT-READY ;
@@ -844,8 +821,8 @@ public
    LISTENER-FD CLOSE-RAW RC>STATUS ;
 
 \ The descriptor under a listener or a connection, for a readiness or completion
-\ loop (src/lib/aio.f). A descriptor read out still belongs to its handle; CLOSE
-\ or CLOSE-LISTENER ends it.
+\ loop. A descriptor read out still belongs to its handle; CLOSE or
+\ CLOSE-LISTENER ends it.
 : LISTENER-FD ( listener -- fd )
    LISTENER-FD >FD ;
 
