@@ -16,6 +16,12 @@
 \ scratch; the client CLIENT! states, written before any TOKEN or REFRESH; and
 \ the cursor that reads a token answer, under ANSWER-LOCK.
 \ TASK-LOCAL: the admitted request, TASK:+USER rows.
+\
+\ Key lookup: a worker looks for the token's kid in the cached key set under
+\ KEYS-LOCK. When the set is empty or lacks the kid, no worker is fetching and
+\ no fetch returned within the last REFETCH-MS, that worker becomes the one
+\ fetcher: it fetches outside the lock, an accepted set replaces the cached one,
+\ and it looks again. The others answer from the set as it stands.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -24,7 +30,7 @@ require src/lib/base64.f
 require src/lib/json.f
 require src/lib/log.f
 require src/lib/task.f
-require src/lib/adt/option.f                  \ an exchange's status, none without an answer
+require src/lib/adt/option.f
 require src/lib/crypto/evp.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
@@ -33,9 +39,9 @@ package BEARER
 public
 
 -9630 constant E-TRANSFER           \ no answer from the token endpoint
--9631 constant E-REFUSED            \ the issuer refused with a 4xx CURL:UNAVAILABLE? does not accept
+-9631 constant E-REFUSED            \ the issuer refused with a 4xx a retry will not change
 -9632 constant E-OPERAND            \ a METADATA! text holding a byte its quoted challenge value cannot carry, or a scope that is not space-separated scope tokens
--9633 constant E-UNAVAILABLE        \ the token endpoint answered a status CURL:UNAVAILABLE? accepts
+-9633 constant E-UNAVAILABLE        \ the token endpoint answered a status a retry may change
 -9634 constant E-RESPONSE           \ a reply TOKEN or REFRESH cannot use
 private
 -9630 constant E-FIRST
@@ -44,7 +50,7 @@ private
 60 constant LEEWAY-S                \ seconds of clock skew between issuer and server
 $10000 constant KEYS-CAP            \ the largest key set text accepted
 5000 constant KEYS-TIMEOUT-MS
-1000 constant REFETCH-MS            \ at most one fetch a window, after the last returned
+1000 constant REFETCH-MS
 1000000 constant NS-PER-MS
 8 constant EXPONENT-CAP
 
@@ -73,7 +79,7 @@ variable NAMED-U   NAMED-U scratch-cell-mark
 KEYS-CAP BUFFER: KEYS
 variable KEYS-U
 variable KEYS-AT                    \ when the last fetch returned, a mono-ns; 0 before any
-TYPED-VARIABLE FETCHING bool        \ a worker is fetching
+TYPED-VARIABLE FETCHING bool
 KEYS-CAP BUFFER: FETCHED
 variable FETCHED-U
 TYPED-VARIABLE ACCEPTED bool        \ FETCHED holds a key set of FETCHED-U bytes
@@ -89,7 +95,7 @@ MODULUS-OFF CRYPTO:RS256-MAX-BYTES + constant EXPONENT-OFF
 EXPONENT-OFF EXPONENT-CAP + constant SCRATCH-BYTES
 HTTP:MAX-WORKERS SCRATCH-BYTES * SPAN-BUFFER: SCRATCH
 
-\ A row to each HTTP worker; PRESENTED and SIGNED borrow the request's header.
+\ PRESENTED and SIGNED borrow the request's header.
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER OUTER JSON:cursor       \ the key set's, while READER reads a key
 HTTP:MAX-WORKERS TYPED-BUFFER PRESENTED SPAN:span<u8>
@@ -102,7 +108,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER MODULUS SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER EXPONENT SPAN:span<u8>
 
 \ The running task's: PASSED is nonzero once ADMIT? admitted FROM, a request's
-\ number (HTTP:REQUEST>N).
+\ number.
 TASK:#USER
 CELL TASK:+USER PASSED
 CELL TASK:+USER FROM
@@ -132,7 +138,6 @@ drop
    code E-JSON-READ-LAST >= code E-JSON-READ-FIRST <= and
    code E-BASE64-LAST >= code E-BASE64-FIRST <= and or ;
 
-\ One step over untrusted text: malformed is false, any other throw passes.
 : STEP ( [ bool -- bool ] -- bool )
    false swap catch {: ok:bool code:n :}
    code 0= if ok exit then
@@ -150,8 +155,6 @@ drop
 
 : KIND-OF ( ptr u8 n ptr u8 n -- n ) MEMBER {: kind:n :} JSON:READ-CLOSE kind ;
 
-\ Whether an object text's member is a string decoding to the wanted bytes; an
-\ absent one answers the given flag.
 : MEMBER-IS? ( ptr u8 n ptr u8 n ptr u8 n bool -- bool )
    {: t:ptr tu:n k:ptr ku:n w:ptr wu:n absent:bool :}
    t tu k ku MEMBER {: kind:n :}
@@ -159,19 +162,14 @@ drop
    kind JSON:T-STR <> if JSON:READ-CLOSE false exit then
    w wu JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same ;
 
-\ An object text's string member as sent, escapes encoded; empty when absent or
-\ not a string.
 : MEMBER$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    MEMBER JSON:T-STR <> if JSON:READ-CLOSE s" " exit then
    JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u ;
 
-\ An object text's integer member; false when absent or not an integer.
 : MEMBER-INT ( ptr u8 n ptr u8 n -- n bool )
    MEMBER JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
-\ An object text's string member decoded into the worker's note; false when
-\ absent or not a string.
 : NOTE$ ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    NOTE-OFF HTTP:HEAD-CAP ROOM {: note :}
    MEMBER JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
@@ -190,12 +188,10 @@ drop
    v 6 + c@ 32 <> if false exit then
    v 7 + vu 7 - SPAN:MAKE SLOT PRESENTED ! true ;
 
-\ The index of the first dot at or after from, else the text's length.
 : DOT ( ptr u8 n n -- n )
    {: t:ptr u:n from:n :}
    u from ?do t i + c@ [char] . = if i unloop exit then loop u ;
 
-\ A segment decoded into the scratch's segments at off.
 : SEGMENT ( ptr u8 n n -- SPAN:span<u8> )
    {: a:ptr u:n off:n :}
    a u off HTTP:HEAD-CAP off - ROOM DECODED ;
@@ -231,9 +227,8 @@ drop
    k ku SPAN:MAKE SLOT KID ! named ;
 
 
-\ A key set member for the token's kid: kty RSA, and use sig and alg RS256 when
-\ stated. Its n and e are decoded into the worker's scratch; ones that will not
-\ decode throw, since a key the issuer publishes broken is not the caller's.
+\ Its n and e are decoded into the worker's scratch; ones that will not decode
+\ throw, since a key the issuer publishes broken is not the caller's.
 : PICK? ( ptr u8 n -- bool )
    {: m:ptr mu:n :}
    m mu s" kid" SLOT KID @ SPAN:$ false MEMBER-IS? 0= if false exit then
@@ -252,7 +247,6 @@ drop
    kind JSON:T-ARR = if JSON:READ-VALUE-SPAN$ 2drop then
    0 ;
 
-\ The token's key from the cached set, decoded into the worker's scratch.
 : SELECT? ( -- bool )
    KEYS-U @ 0= if false exit then
    OUTER-CURSOR KEYS KEYS-U @ JSON:READ-INIT
@@ -267,7 +261,6 @@ drop
       failed OF drop false ENDOF
    ;MATCH ;
 
-\ A whole 200 answer's length, else -1.
 : FETCHED-LEN ( CURL:fetch-result -- n )
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
@@ -282,8 +275,6 @@ drop
    h KEYS-TIMEOUT-MS >MS CURL:TIMEOUT! OK? 0= if -1 exit then
    h FETCHED KEYS-CAP >LEN CURL:PERFORM FETCHED-LEN ;
 
-\ A fetched text whose value is an object with a keys array, well formed
-\ throughout.
 : KEY-SET? ( -- bool )
    OUTER-CURSOR FETCHED FETCHED-U @ JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
@@ -325,14 +316,13 @@ drop
    SELECT? if ADMITTED else INVALID then ;
 
 \ Under KEYS-LOCK: the cached answer, and whether this worker becomes the one
-\ fetcher, for a set that is empty or lacks the kid, once a REFETCH-MS window.
+\ fetcher.
 : LOOKUP ( -- n bool )
    CACHED {: found:n :}
    found ADMITTED = FETCHING @ or DUE? 0= or if found false exit then
    true FETCHING ! found true ;
 
-\ Under KEYS-LOCK: the fetch has returned, by a throw too; an accepted set
-\ replaces the cached one.
+\ Under KEYS-LOCK: the fetch has returned, by a throw too.
 : RETURNED ( -- )
    ACCEPTED @ if FETCHED KEYS FETCHED-U @ BYTE-COPY FETCHED-U @ KEYS-U ! then
    mono-ns KEYS-AT !
@@ -340,8 +330,7 @@ drop
 
 : SETTLE ( -- ) [: RETURNED ;] LOCKED ;
 
-\ The token's key into the worker's scratch, as CACHED answers. While one
-\ worker fetches, the others answer from the set as it stands.
+\ The token's key into the worker's scratch, as CACHED answers.
 : KEY ( -- n )
    [: LOOKUP ;] LOCKED {: found:n fetcher:bool :}
    fetcher 0= if found exit then
@@ -365,7 +354,6 @@ drop
    kind JSON:T-OBJ = kind JSON:T-ARR = or if JSON:READ-VALUE-SPAN$ 2drop then
    0 ;
 
-\ aud is the audience or an array holding it.
 : AUDIENCE? ( -- bool )
    CLAIMS$ s" aud" MEMBER {: kind:n :}
    kind JSON:T-STR = if
@@ -375,8 +363,6 @@ drop
    begin AUDIENCE-ELEMENT dup 0= while drop repeat
    {: found:n :} JSON:READ-CLOSE found 0 > ;
 
-\ The claims hold at now: iss is the issuer, aud holds the audience, exp is
-\ later and nbf, when stated, not later, each by LEEWAY-S (RFC 7519 4.1).
 : VALID? ( n -- bool )
    {: now:n :}
    CLAIMS$ s" iss" ISSUER @ SPAN:$ false MEMBER-IS? 0= if false exit then
@@ -424,7 +410,6 @@ drop
 : SCOPE-NAME ( -- ptr u8 n ) s" scope" ;
 : SEPARATOR ( -- ptr u8 n ) s" , " ;
 
-\ The bytes copied into the span at off; answers the offset past them.
 : PUT ( ptr u8 n SPAN:span<u8> n -- n )
    {: a:ptr u:n row off:n :}
    a u row off SPAN:SKIP SPAN:COPY
@@ -438,7 +423,6 @@ drop
    nu vu + 3 + ;
 
 
-\ `name="value"` written into the span at off; answers the offset past it.
 \ Writes nothing for an empty value, as PARAM-LEN measures nothing.
 : PARAM ( ptr u8 n ptr u8 n SPAN:span<u8> n -- n )
    {: name:ptr nu:n value:ptr vu:n row off:n :}
@@ -449,9 +433,6 @@ drop
    S\" \"" row past-value PUT ;
 
 
-\ The prefix, then resource_metadata for a nonempty URL and scope for a
-\ nonempty scope, joined by SEPARATOR when both are present, written into the
-\ span at off; answers the offset past them.
 : NAMING ( ptr u8 n ptr u8 n ptr u8 n SPAN:span<u8> n -- n )
    {: pre:ptr pu:n url:ptr uu:n scope:ptr su:n row off:n :}
    pre pu row off PUT {: past-pre:n :}
@@ -460,8 +441,6 @@ drop
    {: past-sep:n :}
    SCOPE-NAME scope su row past-sep PARAM ;
 
-\ The challenges naming the URL and scope, in a new allocation, and the
-\ no-token one's length; an empty span when both are empty.
 : COMPOSED ( ptr u8 n ptr u8 n -- SPAN:span<u8> n )
    {: url:ptr uu:n scope:ptr su:n :}
    uu 0= su 0= and if s" " SPAN:MAKE 0 exit then
