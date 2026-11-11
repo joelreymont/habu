@@ -81,6 +81,40 @@ s" data cell text" drop DATA-CELL !
 : READ-EXECUTE ( -- ) 40 {: a:n :} 2 [: a + ;] execute throw ;
 : READ-CATCH ( -- ) 50 {: a:n :} [: a 1 + throw ;] catch throw ;
 : READ-NESTED ( -- ) 3 4 {: a:n b:n :} [: [: a 10 * b + ;] execute ;] execute throw ;
+: READ-FINALLY ( -- )
+   0 RUNS !  5 7 {: a:n b:n :}
+   [: a 2 * ;] [: b RUNS ! ;] finally RUNS @ 100 * + throw ;
+: READ-FINALLY-THROWN ( -- )
+   0 RUNS !  41 3 {: a:n b:n :}
+   [: [: a throw ;] [: b RUNS ! ;] finally ;] catch RUNS @ 100 * + throw ;
+: READ-SCOPE ( -- )
+   0 RUNS !  6 {: a:n :}  a 1 + {: b:n :}
+   [: a b * ;] [: a b + RUNS ! ;] finally RUNS @ 100 * + throw ;
+: DESCEND ( n -- n )
+   {: k:n :}
+   k 0= if 0 exit then
+   k 1 - RECURSE [: k + ;] execute ;
+: READ-DESCEND ( -- ) 10 DESCEND throw ;
+: READ-RSTACK ( -- ) 30 {: a:n :} 5 >r [: 7 >r a r> + ;] execute r> + throw ;
+: READ-LOOP ( -- )
+   0 RUNS !
+   4 0 ?do i 1 + {: k:n :} [: k RUNS +! ;] execute loop RUNS @ throw ;
+: READ-BESIDE ( -- )
+   8 {: a:n :}
+   [: ;] >BITS 0< if 99 throw then
+   a [: a + ;] execute [: 2 * ;] execute throw ;
+: LEAVES ( n -- n )
+   {: k:n :}
+   k 1 and 0<> if [: k ;] execute exit then
+   [: k 1 + ;] execute ;
+: THROWS ( n -- )
+   {: k:n :}
+   [: k 1 + throw ;] execute ;
+: READ-RELEASE ( -- )
+   10000 0 ?do
+      i LEAVES drop
+      i {: k:n :} [: k THROWS ;] catch k 1 + <> if 98 throw then
+   loop 77 throw ;
 package OWN
 : execute ( n -- n ) 1 + ;
 : catch ( n -- n ) 1 + ;
@@ -109,7 +143,11 @@ public
    [: FIN-N-SHRINK ;] 106 21 WANT
    [: OWN:EXECUTED ;] 5 22 WANT  [: OWN:CAUGHT ;] 5 23 WANT
    [: TEXT ;] 10116 24 WANT  [: READ-EXECUTE ;] 42 25 WANT
-   [: READ-CATCH ;] 51 26 WANT  [: READ-NESTED ;] 34 27 WANT ;
+   [: READ-CATCH ;] 51 26 WANT  [: READ-NESTED ;] 34 27 WANT
+   [: READ-FINALLY ;] 710 28 WANT  [: READ-FINALLY-THROWN ;] 341 29 WANT
+   [: READ-SCOPE ;] 1342 30 WANT  [: READ-DESCEND ;] 55 31 WANT
+   [: READ-RSTACK ;] 42 32 WANT  [: READ-LOOP ;] 10 33 WANT
+   [: READ-BESIDE ;] 32 34 WANT  [: READ-RELEASE ;] 77 35 WANT ;
 
 : TRAPPED ( -- ) [: 0 >CELL @ drop ;] catch throw ;
 : ZERO ( -- ) 0 >VOID execute ;
