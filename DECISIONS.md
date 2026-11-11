@@ -530,7 +530,10 @@ learned live in the docs for their subject.
   second, unsealed build and a hunt, Joel wrote "disable name stripping if it's
   slowing you down and make a dot to re-enable it later". It was: the hb build
   keeps every name until the privacy design strips private names again; a dot
-  tracks re-enabling it.
+  tracks re-enabling it. On 2026-11-11, shown that the strip was still off and
+  its dot unassigned, Joel wrote "carl has bugs no one is working on": the
+  strip is in work, after the engine's internal primitives move into private
+  sections, because an hb without its private names cannot yet build an engine.
 - 2026-10-27, formats: "why do you need to version any schemas? we have no
   legacy. hard cutover only!" On 2026-11-03, told that a cached native unit
   file carries a format number that the family-words change alters, and that
