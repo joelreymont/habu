@@ -257,6 +257,34 @@
 \ next statement: a missing name or type is refused by name
 \ (CHECKER-STORAGE-NAME-REFUSE, CHECKER-STORAGE-TYPE-REFUSE) and SIG-TYPE
 \ refuses a span left open.
+\
+\ Callable contracts: a stored callable must implement every instantiation its
+\ declared quotation admits. QCON-BEGIN saves the contract's type and row
+\ variables before ordinary unification; QCON-OK? then checks that fitting the
+\ implementation did not specialize, narrow, or merge them. Both `is` and a
+\ typed quotation cell use this same contract rule.
+\
+\ Declaration locations: the armed location (CHECKER-DECL-AT!) is the declaring
+\ token of the statement being registered: its name, borrowed from the arming
+\ caller, its file visit and its byte range. A named registrar attaches it to
+\ the record it retained (DL-TAKE), copying the name; DL-NEW is that record when
+\ the registrar's own step built one, and the registrar zeroes it before a step
+\ that may retain nothing. DECL-LOCS holds one row per located record,
+\ ascending by offset, its names appended in row order to their own bytes; a
+\ use copies a row out when it binds (NAV-USE). The tables are process-local:
+\ no record field, wire format, unit file or image carries them.
+\
+\ The symbol hash index: a process-local mmap cache; SYMS and the
+\ USIGS/NORETS/DFERS/PES stores stay authoritative. Buckets map folded
+\ (pkg,vis,name) to a symbol id and mirror SYMS exactly: SYM-INTERN pushes new
+\ rows front, scope exit retires rows newest-first (each retired row is at its
+\ bucket head), anything else rebuilds from SYMS. The table is sized and masked
+\ by SYM-CAP and is rehashed at a new cap on the next lookup. Per-symbol cells
+\ memoize the current effect record offset, control flags, defer flag and first
+\ prim slot, valid only while their epoch cell equals HIDX-EPOCH; the sync
+\ words catch every store rewind or swap (UEND/USIGS-P, NORET-END) and bump the
+\ epoch, invalidating the whole cache at once. Snapshot prepare drops the
+\ mapping; a restored image rebuilds lazily.
 package CHECKER-REG
 \ SOURCE-CELL (layout.f DECL-CELL) is the record the engine certifies through;
 \ TARGET-CELL is the one a replacement checker publishes itself into.
@@ -6977,9 +7005,8 @@ public
    LINEAR-TEXT hu u + ;
 ;package
 
-\ SIG-QUOT-XT parses a quotation ([ in -- out | rin -- rout ]) as a family
-\ argument. It needs PSTACK, defined below SIG-TYPE, so it is bound to
-\ SIG-PARSE-QUOT just after PSTACK; nothing reaches it before then.
+\ SIG-QUOT-XT needs PSTACK, defined below SIG-TYPE, so it is bound just after
+\ PSTACK; nothing reaches it before then.
 defer SIG-QUOT-XT ( -- n )
 defer SIG-BINDER-BODY-XT ( -- n )
 defer SIG-TYPE-XT ( ptr u8 n -- n )
@@ -7019,8 +7046,7 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
    SL @ SI !  PKRESET ;
 
 \ The binder's name shadows only its NMAP slot. Row names inside the
-\ quotation still share their surrounding R/S/U map. A binder inside
-\ BINDER-DEPTH-MAX others is refused by that limit (SGBAD-BINDERS-KIND).
+\ quotation still share their surrounding R/S/U map.
 : SIG-FORALL-DOMAIN ( n -- n ) {: domain:n :}
    NEXT-SIG-TOK 2dup s" <" CORE-STR= 0= IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN 2drop
    NEXT-SIG-TOK {: name:ptr width:n :}
@@ -7049,16 +7075,14 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
 : SIG-FORALL ( -- n ) BIND-SCOPE SIG-FORALL-DOMAIN ;
 : SIG-FORALL-REGION ( -- n ) BIND-REGION SIG-FORALL-DOMAIN ;
 
-\ `redx<E>` marks extent E as a contraction axis; it is ill-formed when E is a
-\ FREE (outer, batch) extent or a whole `extprod<..>`, because summing the free
-\ factor of a folded #B*#T row is the cross-sequence leak. A type-var arg
-\ (redx<e>, the generic contraction-entry cast) names no concrete extent and passes.
+\ `redx<E>` is ill-formed when E is a FREE extent or a whole `extprod<..>`,
+\ because summing the free factor of a folded row is the cross-sequence leak.
 : EXT-REDX-BAD-ARG? ( n -- bool ) {: t:n :}
    t T-RES {: r:n :}
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN         \ var/con: not a concrete extent
    r PARAM>FAM {: f:n :}
-   f EXT-PROD-FAM @ = EXT-PROD-FAM @ 0 <> and IF RES-TRUE EXIT THEN   \ contracting a whole product
-   f EXT-FREE? ;                                   \ contracting the free (batch) factor
+   f EXT-PROD-FAM @ = EXT-PROD-FAM @ 0 <> and IF RES-TRUE EXIT THEN
+   f EXT-FREE? ;
 
 : SIG-END-PARAM {: base:n a:ptr u:n fam:n :}
    PARAM-SCR-N @ base - {: got:n :}
@@ -7094,23 +7118,20 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
    base a u fam MK-PARAM ;
 
 \ `base` marks the shared scratch depth on entry, so a nested family's MK-PARAM
-\ rewinds to its own base and leaves the parent's pushed args intact. A bare
-\ family token builds a zero-arg application, which arity>0 families refuse.
-\ `ptr<space,elem>` resolves as a family, but `ptr elem` must always reach the
-\ MK-PTR case below, even when `ptr` is no live family (a suite that
-\ TFAM-RESETs the registry): only `family<...>` takes the family branch.
-\ A type nested in this one is read by SIG-TYPE-XT, which counts its level.
+\ rewinds to its own base and leaves the parent's pushed args intact. `ptr elem`
+\ must always reach the MK-PTR case below, even when `ptr` is no live family:
+\ only `family<...>` takes the family branch.
 : SIG-TYPE-ONE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" [" CORE-STR= IF SIG-QUOT-XT EXIT THEN   \ `[ in -- out ]` xt<effect> quot (opener consumed)
+   a u s" [" CORE-STR= IF SIG-QUOT-XT EXIT THEN
    a u s" forall" CORE-STR= IF SIG-FORALL EXIT THEN
    a u s" forall-region" CORE-STR= IF SIG-FORALL-REGION EXIT THEN
-   a u SIG-FAM? IF {: fam:n :}                        \ ( id ) resolved family; build application
+   a u SIG-FAM? IF {: fam:n :}
       NEXT-SIG-TOK 2dup s" <" CORE-STR= IF
          2drop PARAM-SCR-N @ {: base:n :}
          BEGIN
             NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT THEN
             2dup DELIM? IF SGBAD-SYNTAX! base a u fam MK-PARAM EXIT THEN
-            SIG-TYPE-XT  \ quotation arg or nested type
+            SIG-TYPE-XT
             PARAM-SCR+
             NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE
             2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT ELSE
@@ -7118,12 +7139,12 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
             THEN THEN
          AGAIN
       ELSE
-         PK!                                          \ push back the non-'<' token
-         a u SIG-PTR-TOK? 0= IF                       \ non-ptr family, no '<' -> 0-arg (arity reject)
+         PK!
+         a u SIG-PTR-TOK? 0= IF
             PARAM-SCR-N @ a u fam SIG-END-PARAM EXIT
-         THEN                                         \ `ptr` (no '<') -> MK-PTR fall-through below
+         THEN
       THEN
-   ELSE drop THEN                                     \ not a family: drop the 0 family-id
+   ELSE drop THEN
    a u SIG-PTR-TOK? IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE SIG-TYPE-XT MK-PTR THEN
    ELSE
@@ -7148,12 +7169,9 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
       term
    THEN ;
 
-\ One type and all it nests: a binder's body, a quotation's entries, a pointee,
-\ a family's arguments, each a level as TERM-DEPTH counts it. A type opened past
-\ EFFECT-DEPTH-MAX levels latches the depth refusal (MD-EFFECT-DEPTH for a
-\ definition, SGBAD-FAIL!) and stops the text, so no deeper term reaches the
-\ walkers or the stacks; a row's earlier entries, which TERM-DEPTH also counts,
-\ are bounded once the row is built (CHECK-DEPTH-FITS, USIG-ADD-AS).
+\ A type opened past EFFECT-DEPTH-MAX levels stops the text, so no deeper term
+\ reaches the walkers; a row's earlier entries are bounded once the row is
+\ built.
 : SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    SIG-LEVEL @ EFFECT-DEPTH-MAX >= IF
       a u SGBAD-DEPTH-KIND SIG-LEVEL @ 1 + SGBAD-SIZE!  SIG-STOP  1 MK-CON EXIT
@@ -7169,38 +7187,30 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
 SIG-BINDER-BODY-INSTALL
 
 \ ---- typed local annotations -------------------------------------------------
-\ `{: name:type :}` reads its type with the signature grammar, including the
-\ definition's own type variables; it sits below SIG-TYPE so the locals scanner
-\ can call it. The one spelling a signature lacks is a bare `ptr`: `{: p:ptr :}`
-\ means an inferred pointee, which SIG-TYPE would refuse (SGBAD-BAREPTR!), so
-\ the shorthand is taken ahead of the delegation.
+\ `{: p:ptr :}` means an inferred pointee, which SIG-TYPE would refuse, so the
+\ shorthand is taken ahead of the delegation.
 : BAD-LOC-ANN ( ptr u8 n -- n )    \ unusable local annotation: fail fast so the
    BAD-SIG-TYPE                    \ pinned token is the annotation itself, not ':}'
    0 OK !  -1 FAILSET ! ;
 
-\ LOCAL-TYPE saves the signature cursor and push-back, points them at the
-\ annotation's bytes and restores them, so cursor ownership is no implicit
-\ calling convention. NMAP and the family registry are shared on purpose: that
-\ is how an annotation names the definition's type variables.
+\ NMAP and the family registry are shared on purpose: that is how an annotation
+\ names the definition's type variables.
 
-: LOC-ANN-END? ( -- bool )         \ the annotation held exactly one type
+: LOC-ANN-END? ( -- bool )
    NEXT-SIG-TOK {: ea:ptr eu:n :}
    eu 0 = ;
 
-: LOC-ANN-READ ( ptr u8 n -- n )   \ one complete type over the annotation's bytes
+: LOC-ANN-READ ( ptr u8 n -- n )
    {: a:ptr u:n :}
    NEXT-SIG-TOK {: ta:ptr tu:n :}
-   tu 0 = IF a u BAD-LOC-ANN EXIT THEN          \ nothing after the ':'
+   tu 0 = IF a u BAD-LOC-ANN EXIT THEN
    ta tu SIG-TYPE
    LOC-ANN-END? IF EXIT THEN
-   a u BAD-LOC-ANN nip ;                        \ a trailing token: not one type
+   a u BAD-LOC-ANN nip ;
 
-\ The term the local's row cell will hold, by PUSH-LOGICAL's rule: a layout the
-\ row EXPANDS is recorded as its TOP hidden term — the tag — so the group bind
-\ (LOC-BUNDLE-BIND) validates the captured bundle and records its full cell
-\ count, whatever the width; a layout whose width the row cannot read stays the
-\ one logical cell the row pushes; a cell family stays its nominal scalar and a
-\ type var stays a var.
+\ The term the local's row cell will hold: a layout the row EXPANDS is recorded
+\ as its TOP hidden term — the tag — so the group bind validates the captured
+\ bundle and records its full cell count.
 : LOC-ANN-TERM ( n -- n ) {: t:n :}
    t T-RES {: rt:n :}
    rt LAYOUT-PARAM? 0= IF rt EXIT THEN
@@ -7209,7 +7219,7 @@ SIG-BINDER-BODY-INSTALL
 
 : LOCAL-TYPE ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   a u SIG-PTR-TOK? IF FRESH MK-VAR MK-PTR EXIT THEN        \ `:ptr` = inferred pointee
+   a u SIG-PTR-TOK? IF FRESH MK-VAR MK-PTR EXIT THEN
    SGBAD @ {: sg0:n :}        \ only a NEW verdict is this annotation's: a signature
                               \ that already failed keeps its own diagnostic
    SB@ SL @ SI @ SS@ PKA@ PKU @ PKHAVE @
@@ -7248,9 +7258,8 @@ create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
       ELSE drop THEN
    loop ;
 
-\ Replace each declared row with its root, following the aliases the
-\ successful check established. NP-ROWS-CHECK refused a root bound to fixed
-\ cells, so each root is an unbound row, which E-ROW-KIND publishes as TVK-ANY.
+\ NP-ROWS-CHECK refused a root bound to fixed cells, so each root is an unbound
+\ row, which E-ROW-KIND publishes as TVK-ANY.
 : SG-ROWS-RESOLVE ( -- )
    SG-ROWS-N @ 0 ?do
       i cells SG-ROWS + @ R-RES-WALK
@@ -7265,38 +7274,25 @@ create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
    THEN
    id TVK@ ;
 
-\ SGBAD: the declared signature is malformed. A malformed contract must refuse,
-\ never parse as some other effect: EXPECT-SIG fails closed when the next token
-\ is not the expected delimiter (end of text reads as a 0-length token).
+\ A malformed contract must refuse, never parse as some other effect.
 : EXPECT-SIG {: ea eu :}
    NEXT-SIG-TOK 2dup ea eu CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
 
-\ The single seam for logical-vs-physical layout (type-family.f TFAM-WIDTH@): an
-\ ordinary type or cell family pushes one logical cell; a resolved logical
-\ sum/enum/product layout expands to its W hidden fields, slot0 deepest and tag
-\ on top, and XPORT-STEP? and U-TYPE keep the group intact. Only a layout whose
-\ width is not yet known, an open argument the width reads
-\ (LAYOUT-WIDTH-OPEN?), stays one cell; one the width cannot read (a parameter
-\ only under a pointer) expands, so `( span<t> n -- span<t> )` has one term per
-\ cell.
+\ Only a layout whose width is not yet known stays one cell; one the width
+\ cannot read (a parameter only under a pointer) expands.
 : PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
    t T-RES {: r:n :}
    \ In facts text a variable's kind is its tag alone.
    r ISVAR  SIG-FACTS-MODE @ 0=  and IF r PAY TVK-CELL TVK-RAISE-TO THEN
    r LAYOUT-PARAM?  r HIDDEN-PARAM? 0= and IF
       r LAYOUT-WIDTH-OPEN? 0= IF
-         r row LAYOUT-PUSH-FIELDS EXIT   \ width known (incl. linear and width-free open args): rows tell the truth
+         r row LAYOUT-PUSH-FIELDS EXIT
       THEN
    THEN
    t row MK-PUSH ;
 
-\ A source signature declares no return-stack cell (docs/forth.md "The
-\ return-stack clause"): a `|` clause, at the top or in a quotation type,
-\ carries one row, the same on both sides. A cell after `|`, two different rows,
-\ or a bar on one side only would let a body read cells its caller parked,
-\ which the native compiler cannot reach. `>r`, `r>`, `2>r` and the loop words
-\ build their rows structurally and never come here; PSTACK, SIG-PARSE-QUOT and
-\ PSIG ask it of every clause.
+\ A cell after `|`, two different rows, or a bar on one side only would let a
+\ body read cells its caller parked, which the native compiler cannot reach.
 : RCLAUSE-NEUTRAL? ( n n -- bool ) {: rin:n rout:n :}
    rin 0=  rout 0=  or IF RES-FALSE EXIT THEN
    rin R-RES TAG S-PUSH = IF RES-FALSE EXIT THEN
@@ -7304,18 +7300,14 @@ create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
 : RCLAUSE-CHECK ( n n -- )
    RCLAUSE-NEUTRAL? 0= IF SB@ SL @ SGBAD-RETURN! THEN ;
 
-\ A leading single upper-case token names the row (shared by letter), else the
-\ implicit tail is used. Each entry but a value record's name, a quotation
-\ included, is read by SIG-TYPE, which counts its nesting; only the row is held
-\ on the data stack meanwhile.
 : PSTACK ( n -- n ) {: tail:n :}
    NEXT-SIG-TOK 2dup ROW-LEAD? IF
-      drop c@ RVAR-OF                                 \ row = named var
-   ELSE PK! tail THEN                                 \ push back token; row = tail
+      drop c@ RVAR-OF
+   ELSE PK! tail THEN
    BEGIN
-     NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN        \ ( row a u )->PK!->( row ), return
+     NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN
      2dup s" [" CORE-STR= IF
-        SIG-TYPE swap MK-PUSH                         \ a quotation (SIG-PARSE-QUOT), one level
+        SIG-TYPE swap MK-PUSH
      ELSE
         2dup VREC-FIND IF
            >r 2drop r> VREC-PUSH-FIELDS
@@ -7325,19 +7317,16 @@ create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
      THEN
    AGAIN ;
 
-\ The opening '[' is already consumed. in/out share one fresh data base row and
-\ rin/rout one fresh return base row; no '|' means rin = rout = that base. A
-\ missing '--' or ']' sets SGBAD-SYNTAX! so the whole signature refuses. Its
-\ rows are a level below it and their entries one more, as TERM-DEPTH counts
-\ them, so SIG-TYPE bounds a quotation's nesting by that depth.
+\ The opening '[' is already consumed. Its rows are a level below it and their
+\ entries one more, as TERM-DEPTH counts them.
 : SIG-PARSE-QUOT ( -- n )
    SQUOT-N @ 1 + dup SQUOT-N ! {: num:n :}
    SIG-LEVEL @ 1 + SIG-LEVEL !
    FRESH MK-QROW {: qdbase:n :}
    FRESH MK-QROW {: qrbase:n :}
-   qdbase PSTACK {: qin:n :}                 \ data-in row (stops at '--')
+   qdbase PSTACK {: qin:n :}
    s" --" EXPECT-SIG
-   qdbase PSTACK {: qout:n :}                \ data-out row (same base tail)
+   qdbase PSTACK {: qout:n :}
    NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
       2drop
       qrbase PSTACK {: qrin:n :}
@@ -7348,7 +7337,7 @@ create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
       qin qout qrin qrout MK-QUOT
    ELSE
       2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
-      qin qout qrbase qrbase MK-QUOT         \ no return clause: rin = rout = base
+      qin qout qrbase qrbase MK-QUOT
    THEN
    dup num SQUOT!
    SIG-LEVEL @ 1 - SIG-LEVEL ! ;
@@ -7365,9 +7354,8 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 variable PD-ATOM0                        \ the first atom index this signature parsed
 CHECKER-REG:}SCRATCH
 
-\ Scope parameters occur only in declared scope slots. Checking the complete
-\ rows after parsing also catches a variable used as an element/value before a
-\ later read-view occurrence assigned its scope kind.
+\ Checking the complete rows after parsing also catches a variable used as an
+\ element/value before a later read-view occurrence assigned its scope kind.
 : SCOPE-SORT?* ( n -- bool ) {: t:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -7442,9 +7430,8 @@ CHECKER-REG:}SCRATCH
    BEGIN T-RES dup TAG T-FORALL = WHILE F>BODY REPEAT
    TAG T-QUOT = ;
 
-\ A forall is a callback value in an effect's data input. Nested callbacks
-\ have the same position in their quotation effect. Everything else merely
-\ carries types and cannot move a scheme behind storage or onto an output.
+\ A forall is a callback value in an effect's data input. Everything else
+\ cannot move a scheme behind storage or onto an output.
 : FORALL-PLACE* ( n bool n -- bool ) {: t:n input:bool depth:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -7478,32 +7465,27 @@ CHECKER-REG:}SCRATCH
    RES-TRUE ;
 : FORALL-PLACE? ( n bool -- bool ) TWALK-RESET 0 FORALL-PLACE* ;
 
-: RRTAIL ( -- n )                        \ shared return row (allocate once, on demand)
+: RRTAIL ( -- n )
    RR-SHARED @ dup 0= IF drop FRESH MK-ROW dup RR-SHARED ! THEN ;
 
 \ No '|' leaves the shared return row so far (0 when no clause anywhere), which
-\ CHECK ignores; the row is allocated only when a '|' appears, so ordinary
-\ signatures cost no extra type vars.
+\ CHECK ignores.
 : PSIDE ( n -- n n ) {: dtail:n :}
-   dtail PSTACK                                   \ data part (stops at | -- ])
+   dtail PSTACK
    NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
-      2drop  -1 SGHASR !  RRTAIL PSTACK           \ ( drow rrow ) explicit return
-   ELSE PK! RR-SHARED @ THEN ;                    \ no | here -> shared tail (untouched)
+      2drop  -1 SGHASR !  RRTAIL PSTACK
+   ELSE PK! RR-SHARED @ THEN ;
 
 : PSIG ( -- n n n n )
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SQUOT-N !  0 BIND-DEPTH !  0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
    ATOMN @ PD-ATOM0 !
    dr PSIDE  PR-IN ! PD-IN !
-   s" --" EXPECT-SIG                              \ require the top-level '--'
+   s" --" EXPECT-SIG
    dr PSIDE  PR-OUT ! PD-OUT !
-   NEXT-SIG-TOK dup 0 <> IF SGBAD-SYNTAX! ELSE 2drop THEN   \ nothing may follow the output side
-   \ Malformed family applications have already supplied their diagnostic;
-   \ dependency walks consume only admitted parameter slots. The supplied check
-   \ runs last and SGBAD-SET is first-wins, so its own kind is latched only when
-   \ the return-clause, sort and forall checks passed: an unsupplied output
-   \ variable is then the row's only fault. Every check records the same span,
-   \ so the order changes nothing any other row records.
+   NEXT-SIG-TOK dup 0 <> IF SGBAD-SYNTAX! ELSE 2drop THEN
+   \ The supplied check runs last and SGBAD-SET is first-wins, so its own kind
+   \ is latched only when the return-clause, sort and forall checks passed.
    SGBAD @ 0= IF
       SGHASR @ IF PR-IN @ PR-OUT @ RCLAUSE-CHECK THEN
       PD-IN @ SCOPE-SORT? PD-OUT @ SCOPE-SORT? and
@@ -7519,8 +7501,6 @@ CHECKER-REG:}SCRATCH
    THEN
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
-\ The variable a tag's letter or ordinal operand names in PSIG's maps, NMAP when
-\ vars is set and ROWMAP when rows is; -1 for a name the effect did not give.
 : TAG-VAR ( ptr u8 n bool bool -- n )
    {: a:ptr u:n vars:bool rows:bool :}
    vars IF
@@ -7532,8 +7512,6 @@ CHECKER-REG:}SCRATCH
    -1 ;
 
 
-\ The control flag a plain facts tag names (CTL-BIT>TAG$), 0 for any other
-\ token.
 : TAG>CTL-FLAG ( ptr u8 n -- n )
    {: a:ptr u:n :}
    19 0 ?do
@@ -7542,8 +7520,6 @@ CHECKER-REG:}SCRATCH
    0 ;
 
 
-\ A `throws` mask operand after tag ta tu: any spelling num-parse reads as a
-\ whole number, hex, a sign and leading zeros included, from 0 to XFER-MASK-ALL.
 : SIG-MASK ( ptr u8 n -- n )
    {: ta:ptr tu:n :}
    NEXT-SIG-TOK {: a:ptr u:n :}
@@ -7574,8 +7550,6 @@ CHECKER-REG:}SCRATCH
    a u SGBAD-SYNTAX! ;
 
 
-\ Reads control tag ta tu (render.f REND-CTL) into SIG-CTL, refusing a repeated
-\ one; false for a token that is no control tag.
 : SIG-CTL-TAG ( ptr u8 n -- bool )
    {: ta:ptr tu:n :}
    ta tu TAG>CTL-FLAG {: flag:n :}
@@ -7588,7 +7562,6 @@ CHECKER-REG:}SCRATCH
    RES-FALSE ;
 
 
-\ The PE flag a facts tag names, 0 for any other token.
 : TAG>PE ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u s" primitive" CORE-STR= IF PE-ACTIVE EXIT THEN
@@ -7607,8 +7580,6 @@ CHECKER-REG:}SCRATCH
    v SIG-PIMM ! ;
 
 
-\ Reads a PE flag or parse-imm tag, each at most once; false for a token that
-\ is neither.
 : SIG-PE-TAG ( ptr u8 n -- bool )
    {: ta:ptr tu:n :}
    ta tu TAG>PE {: bit:n :}
@@ -7619,8 +7590,6 @@ CHECKER-REG:}SCRATCH
    RES-FALSE ;
 
 
-\ The quotation number after tag ta tu, from 1 to the effect's count; 0, the
-\ tag refused, for none.
 : SIG-QUOT-NUM ( ptr u8 n -- n )
    {: ta:ptr tu:n :}
    NEXT-SIG-TOK {: ca:ptr cu:n :}
@@ -7667,8 +7636,6 @@ CHECKER-REG:}SCRATCH
    kind id TVK! ;
 
 
-\ The rest of the text after tag ta tu and its space; false, the tag refused,
-\ when nothing follows.
 : SIG-REST ( ptr u8 n -- ptr u8 n bool )
    {: ta:ptr tu:n :}
    SIG-SPACE? 0= IF ta tu SGBAD-SYNTAX!  NULL-PTR 0 RES-FALSE EXIT THEN
@@ -7678,8 +7645,7 @@ CHECKER-REG:}SCRATCH
 
 
 \ The tags after a facts text's effect, read while NMAP and ROWMAP still hold
-\ PSIG's names; `creates-effect` or `overload` and its space end them, the rest
-\ held in SIG-CREATES-A or SIG-OVERLOAD-A.
+\ PSIG's names.
 : SIG-TAGS ( -- )
    BEGIN NEXT-SIG-TOK dup 0 <> WHILE
       2dup s" creates-effect" CORE-STR= IF
@@ -7692,15 +7658,14 @@ CHECKER-REG:}SCRATCH
    REPEAT 2drop ;
 
 
-\ The SI just past the first `)` token from SI on, -1 for none.
 : FACTS-CLOSE ( -- n )
    BEGIN NEXT-SIG-TOK dup 0 <> WHILE
       s" )" CORE-STR= IF SI @ EXIT THEN
    REPEAT 2drop -1 ;
 
 
-\ A text of tags alone, a primitive's the checker types by what it does
-\ (check-hook.f TAGS-TEXT?), answers no rows.
+\ A text of tags alone, a primitive's the checker types by what it does,
+\ answers no rows.
 : PARSE-TAGS ( -- n n n n )
    RES-TRUE SIG-TAGS-ONLY !
    NMAP-RESET  ROWMAP-RESET  0 SQUOT-N !  0 SGHASR !
@@ -7709,9 +7674,6 @@ CHECKER-REG:}SCRATCH
    0 0 0 0 ;
 
 
-\ PSIG reads the effect between the opening `(` and the first `)` token,
-\ SIG-TAGS what follows; a text opening with another token is tags alone. An
-\ empty text, or one with no `)`, parses as empty, refused.
 : PARSE-FACTS ( -- n n n n )
    SL @ {: len:n :}
    0 SIG-CTL !  0 SIG-PE !  -1 SIG-PIMM !  RES-FALSE SIG-TAGS-ONLY !
@@ -7729,10 +7691,8 @@ CHECKER-REG:}SCRATCH
    SIG-TAGS ;
 
 
-\ The declared effect as four rows without CHECKER-STEP, to verify a body
-\ against its own signature. CHECK-DOES! and CHECKER-DEFCAST pass their callers'
-\ signature, so a length that describes no memory parses as the empty text,
-\ which has no `--` and is refused unread.
+\ A length that describes no memory parses as the empty text, which has no `--`
+\ and is refused unread.
 : PARSE-SIG-RAW ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
    SIG-UNRES-CLEAR
    a SB!
@@ -7741,7 +7701,7 @@ CHECKER-REG:}SCRATCH
    SIG-FACTS-MODE @ IF PARSE-FACTS EXIT THEN
    PSIG ;
 
-: ATOM-REKEY ( n n n -- ) {: from:n key:n id:n :}   \ atoms from `from` on keyed `key` take `id`
+: ATOM-REKEY ( n n n -- ) {: from:n key:n id:n :}
    ATOMN @ from ?do
       i cells ATOMK + dup @ key = IF id swap ! ELSE drop THEN
    loop ;
@@ -7763,8 +7723,8 @@ variable FB-PASS                     \ 0 mints the caller's names, else makes th
    THEN
    idx cells FB-VAR + @ cell ! ;
 
-\ Visits each fresh-name atom in a signature cell, as NP-COLLECT-TERM walks. The
-\ caller supplies it on the input side; an input quotation's input flips that.
+\ Visits each fresh-name atom in a signature cell. The caller supplies it on
+\ the input side; an input quotation's input flips that.
 : FB-WALK ( ptr n bool -- ) {: cell:ptr caller:bool :}
    cell @ {: t:n :}
    t TAG T-ATOM = IF t ATOM>K 0 < IF cell caller FB-SITE THEN EXIT THEN
@@ -7796,14 +7756,13 @@ variable FB-PASS                     \ 0 mints the caller's names, else makes th
    SGHASR @ IF PR-IN RES-TRUE FB-WALK  PR-OUT RES-FALSE FB-WALK THEN ;
 
 \ A fresh name the caller supplies is one identity in the whole body. RGN-MARK
-\ follows the last input mint: parsing makes no other rigid atom (FRESH-ATOM>TYPE).
+\ follows the last input mint: parsing makes no other rigid atom.
 : SIG-INPUT-FRESH ( -- )
    0 FB-PASS !  FB-WALK-SIG
    RGN-N @ RGN-MARK ! ;
 
-\ Each body-supplied name becomes one variable for the body to bind, which
-\ FRESH-CLAIM resolves at its end. Run after SIG-EFF-CACHE!, so a recursive
-\ call still mints the name per call.
+\ Each body-supplied name becomes one variable for the body to bind. Run after
+\ SIG-EFF-CACHE!, so a recursive call still mints the name per call.
 : SIG-BODY-FRESH ( -- )
    FB-VAR 0 FAM-CAP ARENA-CELLS-ZERO
    FB-NAME 0 FAM-CAP ARENA-CELLS-ZERO
@@ -7817,8 +7776,7 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
 variable LBI-XT       \ the refused stored type parsed and names `xt`
 
 \ A stored `xt` would be an engine code address, which no image relocation kind
-\ follows across a restore. A layout's schema cannot name `xt`, so a field holds
-\ one only through an argument; a quotation's rows hold no cell.
+\ follows across a restore. A quotation's rows hold no cell.
 : XT-STORED?* ( n -- bool ) {: t:n :}
    t T-RES {: x:n :}
    x OPAQUE-XT? IF RES-TRUE EXIT THEN
@@ -7833,11 +7791,9 @@ variable LBI-XT       \ the refused stored type parsed and names `xt`
    RES-FALSE ;
 : XT-STORED? ( n -- bool ) TWALK-RESET XT-STORED?* ;
 
-\ Every storage gate below parses its stored type here, into LBI-T. A scheme is
-\ a callback input only (FORALL-PLACE?), so no storage holds one at any depth
-\ of its stored type, nor an `xt` (XT-STORED?); LBI-SCHEME and LBI-XT name
-\ those refusals for CHECKER-STORAGE-TYPE-REFUSE.
-: STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ one closed stored type, resolved into LBI-T
+\ A scheme is a callback input only, so no storage holds one at any depth of
+\ its stored type.
+: STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 LBI-SCHEME !  0 LBI-XT !
    NEW
    SGBAD-CLEAR SIG-UNRES-CLEAR
@@ -7853,10 +7809,8 @@ variable LBI-XT       \ the refused stored type parsed and names `xt`
    LBI-T @ XT-STORED? IF -1 LBI-XT ! RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? 0= ;
 
-\ The allocation-certificate gate for LAYOUT-BUFFER: only a closed, non-linear,
-\ addressable layout, or an arity-0 nominal-scalar cell family (width 1, no
-\ variants, zero image = family id 0), is admitted, and its family id and width
-\ go to the fixed definer. Ordinary unification never receives this authority.
+\ The allocation-certificate gate. Ordinary unification never receives this
+\ authority.
 : CHECKER-LAYOUT-INFO ( ptr u8 n -- n n bool )
    STORAGE-RESOLVE? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ NOM-SCALAR? IF LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE EXIT THEN
@@ -7864,45 +7818,29 @@ variable LBI-XT       \ the refused stored type parsed and names `xt`
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE ;
 
-\ Gate for TYPED-VARIABLE / TYPED-BUFFER: everything CHECKER-LAYOUT-INFO admits,
-\ a closed typed pointer (pointee chain ending at a nominal scalar or closed
-\ non-linear layout), a closed `[ in -- out ]` code cell (its @ recovers the
-\ declared T-QUOT, so `HK @ execute` and a typed store fit-check against it),
-\ and a closed structural cell. An open var or arg (`a`, `ptr a`), a linear
-\ value, a hidden field or a trailing token refuses; a malformed quotation
-\ refuses through SGBAD. Width is 1 cell, or the registry width for a layout.
-\ A bare `n` is admitted: a raw cell's type is an open var each site
-\ instantiates, so one raw cell certifies six contradictory readings
-\ (`( n -- ) V !`, `( -- ptr u8 ) V @`, `( -- bool ) V @`, ...), and pinning is
-\ what removes the trust. The nominal fence is untouched: structural cons were
-\ never fenced, so a structural accessor never needs the LAYOUT-INTRO mint.
 \ A sub-cell integer con is refused as the direct stored type: a stored `u8`
-\ would mint `( -- ptr u8 )`, and cell `@` over `ptr u8` is refused (measured:
-\ `( ptr u8 -- n ) @` refuses, `( ptr ptr u8 -- ptr u8 ) @` certifies). Inside
-\ a pointer chain it is admitted (`ptr u8` yields `( -- ptr ptr u8 )`). The
-\ DYNAMIC definer (CHECKER-DYNAMIC-INFO) is the exception: its accessor scales
-\ the index by the element width, so a `u8` element mints `ptr u8` at byte i.
-: STORAGE-SUBCELL-CON? ( n -- bool ) {: c:n :}   \ con addresses bytes, not a whole cell
+\ would mint `( -- ptr u8 )`, and cell `@` over `ptr u8` is refused.
+: STORAGE-SUBCELL-CON? ( n -- bool ) {: c:n :}
    c CC-U8 = c CC-U16 = or c CC-U32 = or c CC-CHAR = or ;
-: STORAGE-STRUCT-CON? ( n -- bool ) {: t:n :}   \ resolved term is a closed one-cell structural con
+: STORAGE-STRUCT-CON? ( n -- bool ) {: t:n :}
    t TAG T-CON <> IF RES-FALSE EXIT THEN
    t PAY CT-LINEAR? IF RES-FALSE EXIT THEN
    t PAY STORAGE-SUBCELL-CON? 0= ;
-: STORAGE-PTR-POINTEE-OK? ( n -- bool )   \ resolved pointee admissible for a stored typed pointer
+: STORAGE-PTR-POINTEE-OK? ( n -- bool )
    dup NOM-SCALAR? IF drop RES-TRUE EXIT THEN
    dup LAYOUT-PARAM? IF
       dup LAYOUT-MAYBE-LINEAR? IF drop RES-FALSE EXIT THEN
       LAYOUT-ARGS-OPEN? 0= EXIT THEN
    dup TAG T-PTR = IF PTR>INNER T-RES RECURSE EXIT THEN
-   dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN   \ ptr u8 / ptr n / ptr bool; a linear pointee still rejects
+   dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN
    drop RES-FALSE ;
-: STORAGE-TYPED-PTR? ( n -- bool )   \ resolved term is a closed typed pointer
+: STORAGE-TYPED-PTR? ( n -- bool )
    dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
    PTR>INNER T-RES STORAGE-PTR-POINTEE-OK? ;
-: STORAGE-CELL-W ( -- n bool )   \ width in CELLS of the term STORAGE-RESOLVE? left in LBI-T
+: STORAGE-CELL-W ( -- n bool )   \ width in CELLS
    LBI-T @ SCOPED-TYPE? IF 0 RES-FALSE EXIT THEN
-   LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN       \ closed xt<effect> cell: one code cell
-   LBI-T @ STORAGE-STRUCT-CON? IF 1 RES-TRUE EXIT THEN   \ closed structural cell: one cell
+   LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN
+   LBI-T @ STORAGE-STRUCT-CON? IF 1 RES-TRUE EXIT THEN
    LBI-T @ NOM-SCALAR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ STORAGE-TYPED-PTR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN
@@ -7913,19 +7851,16 @@ variable LBI-XT       \ the refused stored type parsed and names `xt`
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
    STORAGE-CELL-W ;
 
-\ Return the same admitted, instantiated term for the storage allocator's
-\ image marks. The term is live until the next checker parse; its family name
-\ alone loses the arguments of an applied product such as entry<n>.
+\ The term is live until the next checker parse; its family name alone loses
+\ the arguments of an applied product such as entry<n>.
 : CHECKER-STORAGE-TERM ( ptr u8 n -- n bool )
    CHECKER-STORAGE-INFO 0= IF drop 0 RES-FALSE EXIT THEN
    drop LBI-T @ RES-TRUE ;
 
-\ Admissibility for the DYNAMIC definer (layout-buffer.f DBUF-VALIDATE), in
-\ bytes, because its accessor scales the index by the element width: the
-\ CHECKER-STORAGE-INFO surface plus `u8`, the one sub-cell con with an accessor
-\ pair (c@ `( ptr u8 -- n )`, c! `( n ptr u8 -- )`). `u16`, `u32` and `char`
-\ have none and stay refused, as for TYPED-BUFFER.
-: STORAGE-BYTE-CON? ( n -- bool ) {: t:n :}   \ resolved term is the byte con u8
+\ Admissibility for the DYNAMIC definer, in bytes, because its accessor scales
+\ the index by the element width: the CHECKER-STORAGE-INFO surface plus `u8`,
+\ the one sub-cell con with an accessor pair.
+: STORAGE-BYTE-CON? ( n -- bool ) {: t:n :}
    t TAG T-CON <> IF RES-FALSE EXIT THEN
    t PAY CC-U8 = ;
 
@@ -7963,7 +7898,7 @@ variable LBI-XT       \ the refused stored type parsed and names `xt`
    rec recu MK-ATOM PARAM-SCR+
    fld fldu MK-ATOM PARAM-SCR+
    typ PARAM-SCR+
-   base s" field" FIELD-FAM @ MK-PARAM ;   \ base a u fam -> field<rec,name,inner>
+   base s" field" FIELD-FAM @ MK-PARAM ;
 
 : VREC-FIELD-STORE ( ptr u8 n ptr u8 n n -- )
    {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
@@ -7989,20 +7924,15 @@ variable LBI-XT       \ the refused stored type parsed and names `xt`
    u 0= IF RES-TRUE EXIT THEN
    a u DELIM? ;
 
-\ A refused field is answered, not died on, so the loader and tools/check.f
-\ share this one rule: CHECKER-DEFRECORD dies with the refusal, and the check
-\ tool names the field it refuses. VREC-AT is the byte offset in the field text
-\ of the field being parsed.
+\ A refused field is answered, not died on. VREC-AT is the byte offset in the
+\ field text of the field being parsed.
 variable VREC-AT
 
 : VREC-REFUSE ( ptr u8 n -- n ptr u8 n ) {: msg:ptr msgu:n :}
    VREC-AT @ msg msgu ;
 
-\ Parse and store the fields of record id. Answer the end of the field text and
-\ an empty refusal, or the offset of the field refused and the refusal. A field
-\ text whose length describes no memory holds no field, so its record is refused
-\ as an empty one before a byte of it is read. A field type with a scoped
-\ dependency is refused before the field is stored.
+\ A field text whose length describes no memory holds no field, so its record
+\ is refused as an empty one before a byte of it is read.
 : VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- n ptr u8 n )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
    SIG-UNRES-CLEAR
@@ -8036,12 +7966,9 @@ variable VREC-AT
    id VREC-FINISH
    at msg msgu ;
 
-\ CHECKER-TRY-RECORD ( name fields -- at refusal ) registers the record, or
-\ leaves every record table as it found it and answers the byte offset in the
-\ field text of the field it refuses (the end of the text for a record with no
-\ field, 0 for a name TYPE-RESERVED? refuses) and the refusal; an empty refusal
-\ means registered. On a refusal it rewinds, through VREC-REWIND, the five marks
-\ a rollback frame rewinds (RBF.VRECN .. RBF.VRECU).
+\ CHECKER-TRY-RECORD registers the record, or leaves every record table as it
+\ found it and answers the byte offset of the field it refuses and the refusal;
+\ an empty refusal means registered.
 : CHECKER-TRY-RECORD ( ptr u8 n ptr u8 n -- n ptr u8 n )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
    name nameu TYPE-RESERVED? IF 0 s" checker: bad or duplicate value-record type" EXIT THEN
@@ -8095,10 +8022,6 @@ variable VREC-AT
 : STEP-NN-IN ( -- )
    CC-N MK-CON CC-N MK-CON STEP-TYPE2-IN ;
 
-\ A stored callable must implement every instantiation its declared quotation
-\ admits. Save the contract's type and row variables before ordinary unification,
-\ then check that fitting the implementation did not specialize, narrow, or merge
-\ them. Both `is` and a typed quotation cell use this same contract rule.
 CHECKER-REG:SCRATCH{
 variable QCON-N
 variable QCON-RN
@@ -8201,8 +8124,8 @@ CHECKER-REG:}SCRATCH
    t MK-PTR swap MK-PUSH
    t rest MK-PUSH RECORDED-STEP ;
 
-\ The boot holds the grammar's effects a product starts with (KEYWORD-ROWS); a
-\ load grows the store on demand.
+\ The boot holds the grammar's effects a product starts with; a load grows the
+\ store on demand.
 $1000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
@@ -8212,30 +8135,22 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !
 variable USIGS-USER-OFF
 variable CHK-CAND
 
-\ Per-symbol effect-record index state; the index lives in the symbol hash
-\ mapping (HT-USX). USX-GEN is the mapping generation it was built at (a dropped
-\ or re-laid-out mapping, HIDX-GEN, invalidates it); USX-HI is the UEND it was
-\ last exact at (a foreign rewind shows as non-monotone growth); USX-BASE is the
-\ store its offsets were read against (an arena swap shows as identity change).
-\ Declared here so USIGS-CLEAR, far below, can drop it. Every index rebuilds on
-\ demand, so these rest at 0 at a file boundary: generation 0 is never
-\ HIDX-GEN's, and a null base is no store's.
+\ Per-symbol effect-record index state. USX-GEN is the mapping generation it was
+\ built at; USX-HI is the UEND it was last exact at; USX-BASE is the store its
+\ offsets were read against. These rest at 0 at a file boundary: generation 0 is
+\ never HIDX-GEN's, and a null base is no store's.
 CHECKER-REG:SCRATCH{
 variable USX-GEN   variable USX-HI
 PTR-VARIABLE USX-BASE
-\ The same three for the no-return/control-flag store (NORETS, far below).
+\ The same three for the no-return/control-flag store.
 variable NRX-GEN   variable NRX-HI
 PTR-VARIABLE NRX-BASE
-\ The node-intern index's store stamp (the UIX-* words). Its entries are store
-\ offsets, so a verbatim relocation changes only the address: USIGS-GROW carries
-\ this stamp down with the store, as an E-INTERN hit carries the table's end
-\ mark down with its rewind. Declared here because USIGS-GROW is far above the
-\ index words; read through a cell-indexed ptr-field view so the nested pointer
-\ role survives the fetch, as USX-BASE does.
+\ The node-intern index's store stamp. Its entries are store offsets, so a
+\ verbatim relocation changes only the address. Read through a cell-indexed
+\ ptr-field view so the nested pointer role survives the fetch.
 PTR-VARIABLE UIX-BASE
 PTR-VARIABLE CHX-BASE
-\ The effect-cache owner (HIDX-EFF-SYNC, far below): the store its memo cells
-\ were read against. Declared here so USIGS-GROW can drop it.
+\ The effect-cache owner: the store its memo cells were read against.
 PTR-VARIABLE HIDX-EFF-BASE
 variable CHX-HI
 CHECKER-REG:}SCRATCH
@@ -8273,9 +8188,7 @@ CHECKER-REG:}SCRATCH
    HIDX-EFF-BASE-FIELD ! ;
 
 \ USIGS is a byte-addressed store (ptr u8), but its head cell holds a real cell
-\ value the checker metadata writes with `!`. USIGS-CELL-AT views a cell-aligned
-\ offset into that byte store as a cell (CELL-VIEW) so the head/metadata stores
-\ stay typed while the byte-copy paths keep ptr u8.
+\ value the checker metadata writes with `!`.
 : USIGS-CELL-AT ( n -- ptr n )
    USIGS swap + CELL-VIEW ;
 
@@ -8286,30 +8199,18 @@ CHECKER-REG:}SCRATCH
 0 CHK-CAND !
 
 \ Staged lowering fails closed for a parametric multi-cell construct or
-\ constructor: lowering keys pads off the declared family width (TFL-VPADS, the
-\ generated constructor body), which is wrong for a wide instantiation
-\ (option<tdpbw2> has its tag at slot 2, not 1). A real definition
-\ (CHK-CAND = 0) that would reach codegen refuses with E-REJECTED; a
-\ CHECK-CANDIDATE probe still certifies the type.
+\ constructor: lowering keys pads off the declared family width, which is wrong
+\ for a wide instantiation. A CHECK-CANDIDATE probe still certifies the type.
 : CONSTRUCT-WIDE-STAGED-REJECT ( -- )
    CHK-CAND @ 0 <> IF EXIT THEN
    0 OK !  -1 FAILSET ! ;
 
-\ The smallest grain multiple holding the content.
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
    need 1 - USIGS-GRAIN / 1 + USIGS-GRAIN * ;
 
 \ ---- navigation: where a named declaration was written ----------------------
-\ The armed location (CHECKER-DECL-AT!) is the declaring token of the statement
-\ being registered: its name (borrowed from the arming caller), file visit and
-\ byte range. A named registrar attaches it to the record it retained (DL-TAKE),
-\ copying the name. DECL-LOCS holds one row per located record, ascending by
-\ offset, its names appended in row order to their own bytes; a use copies a row
-\ out when it binds (NAV-USE). The tables are process-local: no record field,
-\ wire format, unit file or image carries them (CHECKER-CAPTURE-PREPARE
-\ releases them).
 variable DL-ON   variable DL-VISIT   variable DL-START   variable DL-END
 PTR-VARIABLE DL-NA   variable DL-NU    \ the armed name, until DL-TAKE copies it
 variable DL-NEW                        \ offset+1 of the record E-ADD-EFFECT built last
@@ -8319,7 +8220,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 6 constant DL-ROW                      \ record offset, visit, start, end, name offset, length
 7 constant PU-ROW                      \ use start, end, record offset, symbol, visit, start, end
 
-: NAV-CELL ( ptr ptr n n n -- ptr n )   \ row i's first cell
+: NAV-CELL ( ptr ptr n n n -- ptr n )
    {: pv:ptr i:n row:n :}
    pv @ i row * cells + ;
 
@@ -8341,7 +8242,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 : CHECKER-DECL-AT-OFF ( -- )
    0 DL-ON !  NULL-PTR DL-NA !  0 DL-NU ! ;
 
-: DL-ROW-OFF ( n -- n )                 \ row i's record offset
+: DL-ROW-OFF ( n -- n )
    {: i:n :}
    DL-P i DL-ROW NAV-CELL @ ;
 
@@ -8367,8 +8268,8 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    dst u + DLB-N !
    dst ;
 
-\ A row for record offset OFF. Records only append above the rows a rewind
-\ kept, so the table stays ascending; a row out of order is a lost truncation.
+\ Records only append above the rows a rewind kept, so the table stays
+\ ascending; a row out of order is a lost truncation.
 : DL-ROW+ ( n n n n n n -- )
    {: off:n visit:n start:n end:n noff:n nu:n :}
    DL-N @ 0 > IF
@@ -8383,9 +8284,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    DL-N @ 1 + DL-N ! ;
 
 \ The record a named registrar just retained takes the armed location, spelled
-\ A U: the armed name, or the part of it the record is kept under. DL-NEW is
-\ that record when the registrar's own step built one (the registrar zeroes it
-\ before a step that may retain nothing), else 0.
+\ A U: the armed name, or the part of it the record is kept under.
 : DL-TAKE-AS ( ptr u8 n -- )
    {: a:ptr u:n :}
    DL-NEW @ {: rec1:n :}
@@ -8398,8 +8297,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    DL-NA @ DL-NU @ DL-TAKE-AS ;
 
 \ A generated registrar takes no location: it runs between NAV-PAUSE and
-\ NAV-RESUME, which restore the declaring registrar's latch on either exit, so
-\ neither its arming nor its newest record reaches DL-TAKE.
+\ NAV-RESUME, so neither its arming nor its newest record reaches DL-TAKE.
 : NAV-PAUSE ( -- n n )
    DL-ON @  DL-NEW @  0 DL-ON !  0 DL-NEW ! ;
 
@@ -8421,7 +8319,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    PU-P to PU-ROW NAV-CELL {: dst:ptr :}
    PU-ROW 0 ?do src i cells + @  dst i cells + ! loop ;
 
-\ A pending use bound to a record at or above offset N goes with that record.
 \ A primitive has no record; its offset is -1 and survives a store rewind.
 : PU-TRUNCATE ( n -- )
    {: n:n :}
@@ -8430,7 +8327,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    loop
    PU-N ! ;
 
-\ The location of record REC1 (offset+1). DECL-LOCS is ascending by offset:
 \ DL-SEEK halves [lo, hi) to the first row whose offset is not below OFF.
 : DL-SEEK ( n -- n )
    {: off:n :}
@@ -8439,17 +8335,17 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
       2dup + 2 /  dup DL-ROW-OFF off < IF rot drop 1 + swap ELSE nip THEN
    REPEAT drop ;
 
-: DL-AT ( n -- n n n bool )            \ row i's location
+: DL-AT ( n -- n n n bool )
    {: i:n :}
    DL-P i DL-ROW NAV-CELL {: p:ptr :}
    p CELL + @  p 2 cells + @  p 3 cells + @  RES-TRUE ;
 
-: DL-NAME-AT ( n -- n n )               \ row i's name: offset, length
+: DL-NAME-AT ( n -- n n )
    {: i:n :}
    DL-P i DL-ROW NAV-CELL {: p:ptr :}
    p 4 cells + @  p 5 cells + @ ;
 
-: DL-NAME$ ( n -- ptr u8 n )            \ row i's name, borrowed until the next row
+: DL-NAME$ ( n -- ptr u8 n )            \ borrowed until the next row
    DL-NAME-AT {: off:n u:n :}
    DLB-P @ off +  u ;
 
@@ -8482,11 +8378,9 @@ USIGS-CLEAR
    n allot
    dst ;
 
-\ Bake the store at the grain above its content plus one grain of room;
-\ USIGS-GROW still doubles at runtime. The spare grain is zero and the grid
-\ stores no zero group, so it costs bitmap bytes, not heap. Without it a capture
-\ just under a grain boundary leaves a restored program a few rows before its
-\ first definitions regrow the store.
+\ Bake the store at the grain above its content plus one grain of room. Without
+\ it a capture just under a grain boundary leaves a restored program a few rows
+\ before its first definitions regrow the store.
 : USIGS-PERSIST-CAP ( n -- n )
    USIGS-GRAIN + USIGS-ROUND-CAP ;
 
@@ -8502,23 +8396,17 @@ USIGS-CLEAR
       cap USIGS-CAP-U !
    THEN
    \ Interning and rejected definitions rewind UEND without clearing bytes.
-   \ An existing DATA allocation is reused above; its unused tail is not part
-   \ of the effect graph and must not preserve the last compile's scratch.
    USIGS CELL-VIEW USIGS-SNAPSHOT-SIZE CELL / USIGS-CAP-U @ CELL / ARENA-CELLS-ZERO ;
 
-\ At least double the cap, so regrowth copies the store O(log) times. No address
-\ into the store survives a grow: a record being built is held as its offset
-\ (E-BUILD-EFFECT) and atom and param terms keep their names in TERM-NAMES.
+\ No address into the store survives a grow: a record being built is held as its
+\ offset and atom and param terms keep their names in TERM-NAMES.
 : USIGS-GROW {: need :}
    need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP {: cap:n :}
    USIGS {: old:ptr :}
    USIGS-P USIGS-CAP-U @ cap CHECKER-REG:GROW
    USIGS {: next:ptr :}
-   \ The copy is verbatim, so every offset a valid stamp covers is still its own
-   \ node. Carry only a valid stamp: an invalidation (CLEAR, a retire's null)
-   \ must survive a grow. Any other stamp is dropped: the abandoned address may
-   \ be mapped again, and a stamp still naming it would then match a store it
-   \ never indexed.
+   \ Carry only a valid stamp: an invalidation must survive a grow. Any other
+   \ stamp is dropped: the abandoned address may be mapped again.
    old CHX-BASE@ = IF next ELSE NULL-PTR THEN CHX-BASE!
    old UIX-BASE@ = IF next ELSE NULL-PTR THEN UIX-BASE!
    NULL-PTR USX-BASE!   NULL-PTR HIDX-EFF-BASE!
@@ -8548,10 +8436,6 @@ USIGS-CLEAR
 
 : UTERM! 0 UEND @ USIGS-CELL-AT ! ;
 
-\ USIGS-RESTORE-END is the store's truncation seam and is defined with the
-\ per-symbol index it has to repair (search USX-TRUNCATE), because the repair
-\ needs the record accessors declared further down this file.
-
 : USIGS-USER ( -- ptr u8 )
    USIGS USIGS-USER-OFF @ + ;
 
@@ -8569,17 +8453,13 @@ USIGS-CLEAR
    repeat drop
    RES-TRUE ;
 
-\ SYM-CAP is a live power-of-2 cap (HIDX masks by SYM-CAP 1 -). It grows
-\ geometrically; the HIDX table (sized/masked by SYM-CAP) is rebuilt — rehashed —
-\ at the new cap on the next lookup. PKG-A/NAME-A hold offsets into SYM-STR,
-\ like CT's and VREC's name columns, so moving the pool changes only its base.
-\ Symbol table records, pow2. The boot holds the grammar a product starts with
-\ (KEYWORD-ROWS); a load grows it on demand.
+\ SYM-CAP is a live power-of-2 cap. PKG-A/NAME-A hold offsets into SYM-STR, so
+\ moving the pool changes only its base.
 $40 constant SYM-CAP-INIT
 \ Keep the boot pool above the self-build's live span: once the prefix outgrows
-\ it, capture copies the used span into fresh image DATA (REG-PERSIST-MOVE) and
-\ the dead boot buffer stays, so crossing it costs DP rather than saving it.
-$60000 constant SYM-STR-INIT    \ symbol string pool (grows on demand)
+\ it, capture copies the used span into fresh image DATA and the dead boot
+\ buffer stays.
+$60000 constant SYM-STR-INIT
 variable SYM-CAP-V   SYM-CAP-INIT SYM-CAP-V !
 : SYM-CAP ( -- n ) SYM-CAP-V @ ;
 variable SYM-STR-CAP-V   SYM-STR-INIT SYM-STR-CAP-V !
@@ -8615,7 +8495,7 @@ create SYMS-BOOT SYM-CAP-INIT SYM-REC * allot
 create SYM-STR-BOOT SYM-STR-INIT allot
 PERSISTED-PTR-VARIABLE SYMS-P     SYMS-BOOT SYMS-P !
 PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
-\ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
+\ The string pool's home, the DATA block it was last baked in.
 PERSISTED-PTR-VARIABLE SYM-STR-HOME   SYM-STR-BOOT SYM-STR-HOME !
 variable SYM-STR-HOME-CAP   SYM-STR-INIT SYM-STR-HOME-CAP !
 variable SYM-N
@@ -8631,11 +8511,8 @@ variable SYM-ID
 : SYM-ROW ( n -- ptr u8 )
    SYM-REC * SYMS + ;
 
-\ A retired row keeps its id and answers no lookup: it is in no index chain, so
-\ no spelling can reach it and no string of its is shared. It is all zero, so it
-\ costs a captured image no DATA value. SYM-INTERN refuses an empty name, so a
-\ live row always has one and an empty name marks a retired row; id 0 names
-\ nothing and reads as retired.
+\ SYM-INTERN refuses an empty name, so an empty name marks a retired row; id 0
+\ names nothing and reads as retired.
 : SYM-RETIRED? ( n -- bool )
    SYM-ROW SYM.NAME-U @ 0= ;
 
@@ -8665,13 +8542,12 @@ variable SYM-ID
    nc SYM-STR-CAP-V ! ;
 
 \ Every name the checker records is copied here from declaration words any
-\ source can call (CHECKER-DEFER, CHECKER-UNDEFINE), so the length is compared
-\ with the room left, never added to the used mark: a length of -1 would move
-\ the mark back, and one ending past the largest cell would wrap the grow size.
+\ source can call, so the length is compared with the room left, never added to
+\ the used mark: a length of -1 would move the mark back.
 : SYM-STR-OVERFLOW ( -- )
    s" checker: symbol string capacity overflow" 76 die ;
 
-: SYM-STR-ENSURE ( n -- ) {: add:n :}   \ ensure room for `add` more string bytes
+: SYM-STR-ENSURE ( n -- ) {: add:n :}
    add 0 < SYM-STR-U @ add + 0 < or IF SYM-STR-OVERFLOW THEN
    add SYM-STR-CAP-V @ SYM-STR-U @ - <= IF exit THEN
    SYM-STR-U @ add + SYM-STR-GROW ;
@@ -8684,8 +8560,7 @@ variable SYM-ID
    SYM-STR-U @ u + SYM-STR-U !
    off u ;
 
-\ SOURCE-ROW crosses checker owners, including an older retained checker. Its
-\ five-cell wire row still carries pointers, independent of SYMS storage. The
+\ SOURCE-ROW crosses checker owners, including an older retained checker. The
 \ caller consumes it before asking for another row; capture clears the view.
 create SYM-XFER SYM-REC allot
 
@@ -8693,9 +8568,7 @@ create SYM-XFER SYM-REC allot
    SYM-XFER CELL-VIEW 0 SYM-REC CELL / ARENA-CELLS-ZERO ;
 
 package CHECKER-REG
-\ Cell rows whose pointer cells hold byte addresses: the wire row's
-\ SYM-PKG-A-CELL and SYM-NAME-A-CELL, and in a unit plan every cell
-\ UP-PTR@/! names and a chunk's cell 0 (UP-CH-NEXT).
+\ Cell rows whose pointer cells hold byte addresses.
 CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
 : SYM-XFER.PKG-A ( ptr u8 -- ptr ptr u8 )
    REG-PTR-CELLS SYM-PKG-A-CELL ptr-field ;
@@ -8715,16 +8588,7 @@ CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
    id SYM-PKG$ pkg pkgu SYM-STR=CI 0= IF RES-FALSE EXIT THEN
    id SYM-NAME$ name nameu SYM-STR=CI ;
 
-\ --- symbol hash index and current-state cache: a process-local mmap cache;
-\ SYMS and the USIGS/NORETS/DFERS/PES stores stay authoritative. Buckets map
-\ folded (pkg,vis,name) to a symbol id and mirror SYMS exactly: SYM-INTERN
-\ pushes new rows front, scope exit retires rows newest-first (each retired row
-\ is at its bucket head), anything else rebuilds from SYMS. Per-symbol cells
-\ memoize the current effect record offset, control flags, defer flag and first
-\ prim slot, valid only while their epoch cell equals HIDX-EPOCH; the sync
-\ words catch every store rewind or swap (UEND/USIGS-P, NORET-END) and bump the
-\ epoch, invalidating the whole cache in O(1). Snapshot prepare drops the
-\ mapping; a restored image rebuilds lazily.
+\ --- symbol hash index and current-state cache
 0 constant HT-BKT
 1 constant HT-NEXT
 2 constant HT-EFF-V
