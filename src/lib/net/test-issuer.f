@@ -1,14 +1,19 @@
 \ test-issuer.f - a token issuer for tests on Habu's HTTP server, never a
 \ production one: it answers on loopback as Entra v2 does, with OIDC discovery,
-\ a JWK Set and a token endpoint for client credentials and On-Behalf-Of, and
-\ signs RS256 with JWS-FIXTURE's key under kid "test-issuer". Issued tokens
-\ carry tid "test-tenant" for client credentials. The host states its clients
-\ with CLIENT+ and calls ROUTES before HTTP:START; MINT signs any claims text.
+\ a JWK Set and a token endpoint for client credentials, On-Behalf-Of and the
+\ refresh grant, and signs RS256 with JWS-FIXTURE's key under kid
+\ "test-issuer". Issued tokens carry tid "test-tenant" for client credentials.
+\ A refresh token is a JWS the issuer signed whose aud is the client id; a
+\ refresh answers a new one for the same client, oid and tid. A client stated
+\ with an empty secret is public: it presents none and may only refresh. The
+\ host states its clients with CLIENT+ and calls ROUTES before HTTP:START; MINT
+\ signs any claims text, a refresh token's included.
 \ STORAGE CLASS. PROCESS-WIDE: the clients, set up by the first CLIENT+ and
 \ written before HTTP serves; the fixture key's n and e, written at load; and
 \ rows indexed by HTTP:WORKER-SLOT, whose buffers a slot's first request makes
 \ and the process keeps.
 \ https://learn.microsoft.com/entra/identity-platform/v2-oauth2-on-behalf-of-flow
+\ https://learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow
 
 require src/lib/error.f
 require src/lib/string.f
@@ -77,10 +82,11 @@ DYNAMIC-BUFFER SECRET-LEN n
 \ A worker's buffers, by index.
 0 constant FORM                     \ the form's wanted values, decoded
 1 constant NOTE                     \ a form name, decoded
-2 constant SCRATCH                  \ an assertion's decoded claims and signature
+2 constant SCRATCH                  \ an assertion's or refresh token's decoded claims and signature
 3 constant CLAIMS                   \ the claims of the token being issued
 4 constant TOKEN                    \ the token issued
-5 constant BUFS
+5 constant RENEWAL                  \ the refresh token issued
+6 constant BUFS
 
 \ The form fields /token reads, by index.
 0 constant CLIENT-ID
@@ -89,14 +95,15 @@ DYNAMIC-BUFFER SECRET-LEN n
 3 constant SCOPE
 4 constant ASSERTION
 5 constant TOKEN-USE
-6 constant FIELDS
+6 constant REFRESH-TOKEN
+7 constant FIELDS
 
 HTTP:MAX-WORKERS BUFS * BUF:HDR-BYTES * BUFFER: HEADS
 HTTP:MAX-WORKERS TYPED-BUFFER MADE bool
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 HTTP:MAX-WORKERS TYPED-BUFFER WHY SPAN:span<u8>      \ an error answer's code
-HTTP:MAX-WORKERS TYPED-BUFFER ASSERTED SPAN:span<u8> \ the assertion's claims, in SCRATCH
+HTTP:MAX-WORKERS TYPED-BUFFER ASSERTED SPAN:span<u8> \ the assertion's or refresh token's claims, in SCRATCH
 HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-AT n    \ a value's offset in FORM, -1 absent
 HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
@@ -146,7 +153,8 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    k GRANT-TYPE = if s" grant_type" exit then
    k SCOPE = if s" scope" exit then
    k ASSERTION = if s" assertion" exit then
-   s" requested_token_use" ;
+   k TOKEN-USE = if s" requested_token_use" exit then
+   s" refresh_token" ;
 
 \ The field a decoded name is, else -1.
 : WHICH ( ptr u8 n -- n )
@@ -194,10 +202,14 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    k FIELD$ 0= if 2drop false exit then
    w wu STR= ;
 
+\ A form without client_secret presents a public client's empty one.
 : CLIENT? ( -- bool )
    CLIENT-ID FIELD$ 0= if 2drop false exit then {: id:ptr iu:n :}
-   CLIENT-SECRET FIELD$ 0= if 2drop false exit then {: secret:ptr su:n :}
+   CLIENT-SECRET FIELD$ drop {: secret:ptr su:n :}
    id iu secret su KNOWN? ;
+
+\ Under CLIENT?: the client is a public one, its secret empty.
+: PUBLIC? ( -- bool ) CLIENT-SECRET FIELD$ drop nip 0= ;
 
 : OBO? ( -- bool )
    GRANT-TYPE s" urn:ietf:params:oauth:grant-type:jwt-bearer" FIELD=
@@ -210,7 +222,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    s su ;
 
 
-\ Malformed JSON or base64url: the assertion's fault.
+\ Malformed JSON or base64url: the assertion's or refresh token's fault.
 : MALFORMED? ( n -- bool )
    {: code:n :}
    code E-JSON-READ-LAST >= code E-JSON-READ-FIRST <= and
@@ -295,9 +307,9 @@ private
 
 : ASSERTED$ ( -- ptr u8 n ) SLOT ASSERTED @ SPAN:$ ;
 
-\ The assertion's claims and signature decoded into SCRATCH, the claims kept in
-\ ASSERTED: the signed text's length and the signature, true for three segments
-\ and a modulus-wide signature.
+\ The assertion's or refresh token's claims and signature decoded into
+\ SCRATCH, the claims kept in ASSERTED: the signed text's length and the
+\ signature, true for three segments and a modulus-wide signature.
 : SPLIT ( ptr u8 n -- n SPAN:span<u8> bool )
    {: t:ptr u:n :}
    SCRATCH BUF-OF BUF:CLEAR
@@ -312,10 +324,11 @@ private
    t d2 + 1+ u d2 - 1- rest BASE64:DECODE-URL {: sn:n :}
    d2 rest 0 sn SPAN:SUB sn MODULUS-U @ = ;
 
-\ The assertion verifies against the fixture key, and its claims are one
-\ object whose aud is the client id and whose exp is later than now.
-: VERIFIED? ( -- bool )
-   ASSERTION FIELD$ 0= if 2drop false exit then {: t:ptr u:n :}
+\ The token in the field, an assertion or a refresh token, verifies against the
+\ fixture key, and its claims are one object whose aud is the client id and
+\ whose exp is later than now.
+: VERIFIED? ( n -- bool )
+   FIELD$ 0= if 2drop false exit then {: t:ptr u:n :}
    t u SPLIT 0= if drop drop false exit then {: signed:n sig :}
    MODULUS-ROW MODULUS-U @ EXPONENT-ROW EXPONENT-U @
    t signed sig SPAN:$ CRYPTO:RS256-VERIFY? 0= if false exit then
@@ -347,26 +360,49 @@ private
    JSON:WRITE-COMMA s" tid" TENANT$ JSON:WRITE-FIELD-S
    CLAIMS-CLOSE ;
 
-\ The assertion's claim copied as sent, when it has one.
+\ The assertion's or refresh token's claim copied as sent, when it has one.
 : COPIED ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: k:ptr ku:n :}
    ASSERTED$ k ku MEMBER-RAW 0= if 2drop exit then {: v:ptr vu:n :}
    JSON:WRITE-COMMA k ku v vu JSON:WRITE-FIELD-RAW ;
 
-\ The client acts for the assertion's user.
+\ The client acts for the user of the assertion or refresh token.
 : ON-BEHALF ( -- )
    CLAIMS-OPEN s" oid" COPIED s" tid" COPIED CLAIMS-CLOSE ;
 
-: ISSUED-BODY ( ptr JSON:writer -- ptr JSON:writer )
+\ The refresh token's claims: the client's, for the presented one's oid and tid.
+: RENEWAL-CLAIMS ( -- )
+   SLOT WRITER CLAIMS BUF-OF JSON:WRITE-OPEN-BUF
    JSON:WRITE-OBJECT-START
+   s" aud" CLIENT-ID FIELD$ drop JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" exp" epoch-seconds LIFE-S + JSON:WRITE-FIELD-INT
+   s" oid" COPIED s" tid" COPIED CLAIMS-CLOSE ;
+
+: TOKEN-FIELDS ( ptr JSON:writer -- ptr JSON:writer )
    s" access_token" TOKEN BUF-OF BUF$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" token_type" s" Bearer" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" expires_in" LIFE-S JSON:WRITE-FIELD-INT
+   s" expires_in" LIFE-S JSON:WRITE-FIELD-INT ;
+
+: ISSUED-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START TOKEN-FIELDS JSON:WRITE-OBJECT-END ;
+
+: RENEWED-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START TOKEN-FIELDS JSON:WRITE-COMMA
+   s" refresh_token" RENEWAL BUF-OF BUF$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
 
+\ The token of the claims written into the buffer, minted into another.
+: MINTED ( n n -- ) {: from:n into:n :} from BUF-OF BUF$ into BUF-OF MINT 2drop ;
+
 : ISSUE ( HTTP:response -- )
-   CLAIMS BUF-OF BUF$ TOKEN BUF-OF MINT 2drop
+   CLAIMS TOKEN MINTED
    [: ISSUED-BODY ;] HTTP:JSON! ;
+
+\ A new access token and refresh token for the refresh token's user.
+: RENEW ( HTTP:response -- )
+   ON-BEHALF CLAIMS TOKEN MINTED
+   RENEWAL-CLAIMS CLAIMS RENEWAL MINTED
+   [: RENEWED-BODY ;] HTTP:JSON! ;
 
 : ERROR-BODY ( ptr JSON:writer -- ptr JSON:writer )
    JSON:WRITE-OBJECT-START s" error" SLOT WHY @ SPAN:$ JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END ;
@@ -386,15 +422,21 @@ private
 
 \ The grant the form asks for, issued or refused as Entra v2 answers; no
 \ audience, or one that is not UTF-8 (claims are JSON text), no token
-\ (RFC 6749 §5.2).
+\ (RFC 6749 §5.2). A public client may only refresh.
 : GRANT ( HTTP:response -- )
    {: answer:HTTP:response :}
    GRANT-TYPE s" client_credentials" FIELD= {: credentials:bool :}
-   credentials OBO? or 0= if answer 400 s" unsupported_grant_type" REFUSE exit then
+   GRANT-TYPE s" refresh_token" FIELD= {: refreshing:bool :}
+   credentials OBO? or refreshing or 0= if answer 400 s" unsupported_grant_type" REFUSE exit then
+   refreshing 0= PUBLIC? and if answer 401 s" invalid_client" REFUSE exit then
    AUDIENCE$ {: aud:ptr au:n :}
    au 0= aud au UTF8:VALID? 0= or if answer 400 s" invalid_request" REFUSE exit then
    credentials if CREDENTIALS answer ISSUE exit then
-   [: drop VERIFIED? ;] STEP 0= if answer 400 s" invalid_grant" REFUSE exit then
+   refreshing if
+      [: drop REFRESH-TOKEN VERIFIED? ;] STEP 0= if answer 400 s" invalid_grant" REFUSE exit then
+      answer RENEW exit
+   then
+   [: drop ASSERTION VERIFIED? ;] STEP 0= if answer 400 s" invalid_grant" REFUSE exit then
    ON-BEHALF answer ISSUE ;
 
 : TOKEN-ROUTE ( HTTP:request HTTP:response -- )
@@ -439,8 +481,9 @@ public
    s" POST" s" /token" [: TOKEN-ROUTE ;] HTTP:ROUTE
    s" POST" s" /mint" [: MINT-ROUTE ;] HTTP:ROUTE ;
 
-\ A client id and secret /token accepts, copied. E-HTTP-STATE while HTTP
-\ serves.
+\ A client id and secret /token accepts, copied; an empty secret states a
+\ public client, which presents none and may only refresh. E-HTTP-STATE while
+\ HTTP serves.
 : CLIENT+ ( ptr u8 n ptr u8 n -- )
    {: id:ptr iu:n secret:ptr su:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then

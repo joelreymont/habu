@@ -1,15 +1,23 @@
 \ test-issuer-test.f - TEST-ISSUER over a real loopback port: discovery, the key
-\ set, client credentials verified against the served key, invalid_client,
-\ unsupported_grant_type, invalid_request for a repeated field and a wrong
-\ media type, On-Behalf-Of with a minted assertion and its invalid_grant
-\ refusals, /mint against MINT, and tools/test-issuer.f as a child process.
+\ set, client credentials verified against the served key, invalid_client for
+\ a confidential client without its secret and for a public client asking for
+\ client credentials or On-Behalf-Of, unsupported_grant_type, invalid_request
+\ for a repeated field and a wrong media type, On-Behalf-Of with a minted
+\ assertion and its invalid_grant refusals, /mint against MINT, and
+\ tools/test-issuer.f as a child process.
 \ BEARER's client against it: TOKEN before CLIENT!, for each grant admitted by
 \ ADMIT? with the caller's claims, a 400 and a 401 refusal, an assertion inside
-\ the BUF, a closed port, and on /token-fault the form's exact bytes, the
-\ answer's lifetime and the answers TOKEN refuses: a 503, a 429 and a 302, a
-\ 2xx that is not JSON, one without access_token, one whose access_token is not
-\ a string, one without expires_in, one whose expires_in is a string, one whose
-\ expires_in is 0, and a 200 and a 503 past TOKEN-CAP.
+\ the BUF; REFRESH from a public client admitted with the refresh token's oid,
+\ again with the new refresh token it answered, an expired and a foreign
+\ refresh token refused invalid_grant, a refresh token inside the BUF; a closed port,
+\ and on /token-fault the form's exact bytes, the answer's lifetime and the
+\ answers TOKEN refuses: a 503, a 429 and a 302, a 2xx that is not JSON, one
+\ without access_token, one whose access_token is not a string, one without
+\ expires_in, one whose expires_in is a string, one whose expires_in is 0, and
+\ a 200 and a 503 past TOKEN-CAP; REFRESH's form from a confidential and a
+\ public client, an answer without refresh_token, an escaped refresh token
+\ decoded after an escaped token, and a refresh_token that is not a string,
+\ E-RESPONSE logged for REFRESH and ignored by TOKEN.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
 require src/lib/test.f
@@ -108,6 +116,8 @@ GOT $100 BUF:N>BLEN BUF:INIT
 9 constant NO-TOKEN
 10 constant MOVED
 11 constant BUSY-OVERSIZED
+12 constant RENEWED                 \ an escaped token and an escaped refresh token
+13 constant RENEWAL-NUMBER          \ a refresh_token that is a number
 variable FAULT-MODE
 CAP BUFFER: POSTED
 variable POSTED-U
@@ -337,6 +347,12 @@ PAST-CAP BUFFER: OVERSIZE
    ASK 401 s" invalid_client" REFUSED
    s" a form's + is a space" T-LABEL
    FORM-RESET s" client_id=app&client_secret=s3cr%26t+1&grant_type=client_credentials" FORM+
+   ASK 401 s" invalid_client" REFUSED
+   s" a confidential client that leaves out its secret is invalid_client" T-LABEL
+   FORM-RESET s" client_id=app&grant_type=client_credentials&scope=api%3A%2F%2Fup%2F.default" FORM+
+   ASK 401 s" invalid_client" REFUSED
+   s" a public client asking for client credentials is invalid_client" T-LABEL
+   FORM-RESET s" client_id=cli&grant_type=client_credentials&scope=api%3A%2F%2Fup%2F.default" FORM+
    ASK 401 s" invalid_client" REFUSED ;
 
 : REQUESTS ( -- )
@@ -371,7 +387,12 @@ PAST-CAP BUFFER: OVERSIZE
    s" an assertion for another audience is invalid_grant" T-LABEL
    s" other" LATER ASSERT ON-BEHALF ASK 400 s" invalid_grant" REFUSED
    s" an expired assertion is invalid_grant" T-LABEL
-   s" app" epoch-seconds 10 - ASSERT ON-BEHALF ASK 400 s" invalid_grant" REFUSED ;
+   s" app" epoch-seconds 10 - ASSERT ON-BEHALF ASK 400 s" invalid_grant" REFUSED
+   s" a public client asking On-Behalf-Of is invalid_client" T-LABEL
+   s" cli" LATER ASSERT
+   FORM-RESET s" client_id=cli&grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer" FORM+
+   s" &requested_token_use=on_behalf_of&scope=api%3A%2F%2Fdown%2F.default&assertion=" FORM+ ASSERTION$ FORM+
+   ASK 401 s" invalid_client" REFUSED ;
 
 : MINTS ( -- )
    s" /mint answers MINT's token for the same claims" T-LABEL
@@ -425,6 +446,8 @@ OVERSIZE-FILL
    mode NO-LIFETIME = if answer S\" {\"access_token\":\"t\"}" HTTP:BODY! exit then
    mode LIFETIME-STRING = if answer S\" {\"access_token\":\"t\",\"expires_in\":\"3600\"}" HTTP:BODY! exit then
    mode LIFETIME-ZERO = if answer S\" {\"access_token\":\"t\",\"expires_in\":0}" HTTP:BODY! exit then
+   mode RENEWED = if answer S\" {\"access_token\":\"fault\\/token\",\"expires_in\":60,\"refresh_token\":\"r\\/2\\u0041\"}" HTTP:BODY! exit then
+   mode RENEWAL-NUMBER = if answer S\" {\"access_token\":\"t\",\"expires_in\":60,\"refresh_token\":1}" HTTP:BODY! exit then
    asked HTTP:BODY$ POSTED COPY POSTED-U !
    answer S\" {\"expires_in\":60,\"access_token\":\"fault\\/token\"}" HTTP:BODY! ;
 
@@ -443,8 +466,9 @@ OVERSIZE-FILL
 
 : UP ( -- ptr u8 n ) s" api://up/.default" ;
 : OWN-TOKEN ( -- ptr u8 n n ) UP BEARER-GRANT:own GOT BEARER:TOKEN ;
+: ZEN ( -- ptr u8 n ) s" api://zen/.default" ;
 : FAULT-TOKEN ( -- ptr u8 n n )
-   s" api://zen/.default" s" a.b-c_d~e" BEARER-GRANT:for-person GOT BEARER:TOKEN ;
+   ZEN s" a.b-c_d~e" BEARER-GRANT:for-person GOT BEARER:TOKEN ;
 \ /token-fault answering as the mode makes TOKEN throw the code.
 : FAULT-THROWS ( n n -- )
    {: mode:n code:n :}
@@ -509,7 +533,28 @@ $A constant LF
    S\" {\"error\":\"invalid_client\"}\n" FORM+
    LINE$ FORM$ T$=
    s" an assertion inside the BUF is E-BUF-BOUNDS" T-LABEL
-   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] E-BUF-BOUNDS TTHROWSQ ;
+   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] E-BUF-BOUNDS TTHROWSQ
+   ENDPOINT$ s" cli" s" " BEARER:CLIENT!
+   s" REFRESH from a public client is admitted with the refresh token's oid, for expires_in" T-LABEL
+   s" cli" LATER ASSERT
+   UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= {: r:ptr ru:n :}
+   s" oid" CLAIM 200 T= BODY$ s" user-1" T$=
+   s" its new refresh token refreshes again" T-LABEL
+   r ru ASSERTION$ T$<>
+   r ru ASSERTION COPY ASSERTION-U !
+   ASSERTION-U @ 0 > TTRUE
+   UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= 2drop
+   s" oid" CLAIM 200 T= BODY$ s" user-1" T$=
+   s" an expired refresh token is E-REFUSED, the BUF holding invalid_grant" T-LABEL
+   s" cli" epoch-seconds 10 - ASSERT
+   [: UP ASSERTION$ GOT BEARER:REFRESH drop 2drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$=
+   s" another client's refresh token is E-REFUSED, the BUF holding invalid_grant" T-LABEL
+   s" app" LATER ASSERT
+   [: UP ASSERTION$ GOT BEARER:REFRESH drop 2drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$=
+   s" a refresh token inside the BUF is E-BUF-BOUNDS" T-LABEL
+   [: UP GOT BUF:SPAN$ BUF:BLEN>N GOT BEARER:REFRESH drop 2drop 2drop ;] E-BUF-BOUNDS TTHROWSQ ;
 
 : BEARER-FAULTS ( -- )
    FAULT-URL$ s" app" s" s3cr&t+1" BEARER:CLIENT!
@@ -555,7 +600,32 @@ $A constant LF
    s" its one line names the status and TOKEN-CAP" T-LABEL
    LINES 1 T=
    FORM-RESET S\"  error bearer: token answer 503 past 65536 bytes\n" FORM+
-   LINE$ FORM$ T$= ;
+   LINE$ FORM$ T$=
+   s" REFRESH decodes the token, and an answer without refresh_token gives an empty one" T-LABEL
+   ECHO FAULT-MODE !
+   ZEN s" r.1-x" GOT BEARER:REFRESH 60 T= 0 T= drop s" fault/token" T$=
+   s" REFRESH from a confidential client posts its secret in the refresh form" T-LABEL
+   FORM-RESET s" grant_type=refresh_token&client_id=app&client_secret=s3cr%26t%2B1" FORM+
+   s" &refresh_token=r.1-x&scope=api%3A%2F%2Fzen%2F.default" FORM+
+   POSTED POSTED-U @ FORM$ T$=
+   s" REFRESH decodes an escaped refresh token after an escaped token" T-LABEL
+   RENEWED FAULT-MODE !
+   ZEN s" r.1-x" GOT BEARER:REFRESH 60 T= s" r/2A" T$= s" fault/token" T$=
+   s" a 200 whose refresh_token is not a string is E-RESPONSE, its one line naming the member" T-LABEL
+   RENEWAL-NUMBER FAULT-MODE !
+   [: [: ZEN s" r.1-x" GOT BEARER:REFRESH drop 2drop 2drop ;] BEARER:E-RESPONSE TTHROWSQ ;] CAPTURED
+   LINES 1 T=
+   FORM-RESET s"  error bearer: token answer 200 lacks " FORM+ S\" a refresh_token string\n" FORM+
+   LINE$ FORM$ T$=
+   s" TOKEN ignores a refresh_token that is not a string" T-LABEL
+   FAULT-TOKEN 60 T= s" t" T$=
+   ECHO FAULT-MODE !
+   FAULT-URL$ s" cli" s" " BEARER:CLIENT!
+   s" REFRESH from a public client posts no client_secret" T-LABEL
+   ZEN s" r.1-x" GOT BEARER:REFRESH 2drop 2drop drop
+   FORM-RESET s" grant_type=refresh_token&client_id=cli" FORM+
+   s" &refresh_token=r.1-x&scope=api%3A%2F%2Fzen%2F.default" FORM+
+   POSTED POSTED-U @ FORM$ T$= ;
 
 \ Run once the server has stopped: its port is closed.
 : BEARER-UNREACHED ( -- )
@@ -639,6 +709,7 @@ $A constant LF
 : SERVE-CASES ( -- )
    AIO:START LOG-INIT
    s" app" s" s3cr&t+1" TEST-ISSUER:CLIENT+
+   s" cli" s" " TEST-ISSUER:CLIENT+
    HTTP:ROUTES-RESET
    TEST-ISSUER:ROUTES
    s" POST" s" /claim" [: CLAIM-ROUTE ;] HTTP:ROUTE

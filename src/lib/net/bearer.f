@@ -7,13 +7,14 @@
 \ CLAIM$. METADATA! names this server's protected-resource metadata (RFC 9728
 \ 5.1) and the scope its tokens need (RFC 6750 3) in each 401 challenge. As a
 \ client, TOKEN gets a token from the token endpoint CLIENT! names, for the
-\ client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of).
+\ client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of), and
+\ REFRESH renews one with a refresh grant (RFC 6749 6).
 \ STORAGE CLASS. PROCESS-WIDE: the issuer and the challenges naming the
 \ metadata and scope, written before HTTP serves; the key set, read and
 \ replaced under KEYS-LOCK and fetched over CURL outside it by one worker at a
 \ time; tables indexed by HTTP:WORKER-SLOT holding each request's token and
-\ scratch; the client CLIENT! states, written before any TOKEN; and the cursor
-\ that reads a token answer, under ANSWER-LOCK.
+\ scratch; the client CLIENT! states, written before any TOKEN or REFRESH; and
+\ the cursor that reads a token answer, under ANSWER-LOCK.
 \ TASK-LOCAL: the admitted request, TASK:+USER rows.
 
 require src/lib/string.f
@@ -35,7 +36,7 @@ public
 -9631 constant E-REFUSED            \ the issuer refused with a 4xx CURL:UNAVAILABLE? does not accept
 -9632 constant E-OPERAND            \ a METADATA! text holding a byte its quoted challenge value cannot carry, or a scope that is not space-separated scope tokens
 -9633 constant E-UNAVAILABLE        \ the token endpoint answered a status CURL:UNAVAILABLE? accepts
--9634 constant E-RESPONSE           \ a reply TOKEN cannot use
+-9634 constant E-RESPONSE           \ a reply TOKEN or REFRESH cannot use
 private
 -9630 constant E-FIRST
 -9639 constant E-LAST
@@ -584,8 +585,9 @@ ENUM grant
 ;ENUM
 
 \ The token endpoint's URL, and the client id and secret this process presents
-\ there, written before any TOKEN, not while a TOKEN runs. The texts are
-\ borrowed and outlive every TOKEN, as literals do.
+\ there, written before any TOKEN or REFRESH, not while one runs. An empty
+\ secret states a public client, which presents none (RFC 6749 2.3.1). The
+\ texts are borrowed and outlive every TOKEN and REFRESH, as literals do.
 : CLIENT! ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: url:ptr uu:n id:ptr iu:n secret:ptr su:n :}
    url uu SPAN:MAKE ENDPOINT !
@@ -621,12 +623,14 @@ private
    [char] = buf BUF:APPEND-BYTE
    vu 0 ?do v i + c@ buf ENCODED+ loop ;
 
+\ The client's id, and its secret unless it is a public client.
 : CREDENTIALS+ ( ptr n -- )
    {: buf:ptr :}
    s" client_id" CLIENT-ID @ SPAN:$ buf PAIR+
+   SECRET @ SPAN:LEN 0= if exit then
    s" client_secret" SECRET @ SPAN:$ buf PAIR+ ;
 
-\ A text TOKEN reads must not lie in the BUF it writes.
+\ A text TOKEN or REFRESH reads must not lie in the BUF it writes.
 : OUTSIDE ( ptr u8 n ptr n -- ) BUF:BORROWED? if E-BUF-BOUNDS throw then ;
 
 \ Room for a form within TOKEN-CAP: its secret never sits in storage a grow releases.
@@ -652,6 +656,17 @@ private
          s" scope" scope su buf PAIR+
          s" requested_token_use" s" on_behalf_of" buf PAIR+ ENDOF
    ;MATCH ;
+
+\ The form REFRESH posts, written into the BUF (RFC 6749 6).
+: REFRESH-FORM ( ptr u8 n ptr u8 n ptr n -- )
+   {: scope:ptr su:n r:ptr ru:n buf:ptr :}
+   scope su buf OUTSIDE
+   r ru buf OUTSIDE
+   buf EMPTIED
+   s" grant_type" s" refresh_token" buf PAIR+
+   buf CREDENTIALS+
+   s" refresh_token" r ru buf PAIR+
+   s" scope" scope su buf PAIR+ ;
 
 : WIPE ( ptr n -- )
    {: buf:ptr :}
@@ -691,7 +706,8 @@ private
 \ OPTION:NONE is E-REJECTED at the 2drop (rc 70).
 : UNANSWERED ( -- option<CURL:http-status> ) OPTION:NONE ;
 
-\ The error TOKEN throws for an answer it cannot use, by the answer's status.
+\ The error TOKEN and REFRESH throw for an answer they cannot use, by the
+\ answer's status.
 : STATUS-ERROR ( CURL:http-status -- n )
    {: status:CURL:http-status :}
    status CURL:UNAVAILABLE? if E-UNAVAILABLE exit then
@@ -767,17 +783,31 @@ private
    JSON:READ-INT {: secs:n :} JSON:READ-CLOSE
    secs 0 > if secs else -1 then ;
 
-\ ACCESS-TOKEN's and LIFETIME's answers in place of the last two cells, the
-\ texts kept for catch.
-: KEPT ( SPAN:span<u8> SPAN:span<u8> n n -- SPAN:span<u8> SPAN:span<u8> n n )
-   2drop {: text room :} text room text room ACCESS-TOKEN text LIFETIME ;
+\ Under ANSWER-LOCK: the refresh_token string of a JSON object text decoded
+\ into room, its length; 0 when the text lacks it, -1 when it is no string.
+: RENEWAL ( SPAN:span<u8> SPAN:span<u8> -- n )
+   {: text room :}
+   text s" refresh_token" ANSWER-MEMBER {: kind:n :}
+   kind -1 = if JSON:READ-CLOSE 0 exit then
+   kind JSON:T-STR <> if JSON:READ-CLOSE -1 exit then
+   room SPAN:$ JSON:READ-STR {: got:n :} JSON:READ-CLOSE got ;
 
-\ Under ANSWER-LOCK: ACCESS-TOKEN and LIFETIME, both -1 for malformed JSON.
-: PARSED ( SPAN:span<u8> SPAN:span<u8> -- n n )
-   -1 -1 [: KEPT ;] catch {: code:n :}
-   code 0= if {: text room got:n secs:n :} got secs exit then
-   2drop 2drop
-   code MALFORMED? if -1 -1 exit then
+\ ACCESS-TOKEN's, LIFETIME's and RENEWAL's answers in place of the last three
+\ cells, the texts and flag kept for catch. RENEWAL decodes into the room past
+\ the access token, and only when renewing after an access token: else 0.
+: KEPT ( SPAN:span<u8> SPAN:span<u8> bool n n n -- SPAN:span<u8> SPAN:span<u8> bool n n n )
+   drop 2drop {: text room renew:bool :}
+   text room renew
+   text room ACCESS-TOKEN {: got:n :}
+   got text LIFETIME
+   renew got 0 >= and if text room got SPAN:SKIP RENEWAL else 0 then ;
+
+\ Under ANSWER-LOCK: KEPT's three answers, each -1 for malformed JSON.
+: PARSED ( SPAN:span<u8> SPAN:span<u8> bool -- n n n )
+   -1 -1 -1 [: KEPT ;] catch {: code:n :}
+   code 0= if {: text room renew:bool got:n secs:n kept:n :} got secs kept exit then
+   2drop 2drop 2drop
+   code MALFORMED? if -1 -1 -1 exit then
    code throw ;
 
 : PARSING ( R [ R -- S ] -- S )
@@ -791,22 +821,43 @@ private
    s"  lacks " LOG:TEXT+  what wu LOG:TEXT+  LOG:;LINE
    E-RESPONSE throw ;
 
-\ The 2xx answer's access_token decoded into the BUF past the answer's bytes,
-\ which a decoded string never outgrows, and its expires_in.
-: ISSUED ( n ptr n -- ptr u8 n n )
-   {: status:n buf:ptr :}
+\ The 2xx answer's access_token and, when renewing, its refresh_token, empty
+\ when absent, decoded into the BUF past the answer's bytes, the refresh token
+\ right after the access token, and its expires_in. They are disjoint parts of
+\ the answer and a decoded string never outgrows its text, so both fit.
+: ISSUED ( n ptr n bool -- ptr u8 n ptr u8 n n )
+   {: status:n buf:ptr renew:bool :}
    buf BUF:LEN@ {: u:NUM:byte-len :}
    buf u BUF:GROW {: room :}
-   buf BUF:SPAN u BUF:BLEN>N SPAN:TAKE room [: PARSED ;] PARSING {: got:n secs:n :}
+   buf BUF:SPAN u BUF:BLEN>N SPAN:TAKE room renew [: PARSED ;] PARSING
+   {: got:n secs:n kept:n :}
    got 0< if status s" an access_token string" LACKS then
+   kept 0< if status s" a refresh_token string" LACKS then
    secs 0< if status s" a positive integer expires_in" LACKS then
-   room SPAN:$ drop got secs ;
+   room SPAN:$ drop {: at:ptr :}
+   at got at got + kept secs ;
 
 \ The issuer's status and answer for a non-2xx.
 : ANSWERED ( n ptr n -- )
    {: status:n buf:ptr :}
    OPEN-LINE s" token request answered " LOG:TEXT+  status LOG:INT+
    s" : " LOG:TEXT+  buf BUF:SPAN$ BUF:BLEN>N LOG:TEXT+  LOG:;LINE ;
+
+\ E-HTTP-STATE before CLIENT!.
+: STATED ( -- ) ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then ;
+
+\ The BUF's form posted, the BUF then holding the answer: its 2xx status;
+\ any other outcome throws as TOKEN states.
+: ASKED ( ptr n -- n )
+   {: buf:ptr :}
+   buf EXCHANGE MATCH option
+      none OF E-TRANSFER throw ENDOF
+      some OF ENDOF
+   ;MATCH {: status:CURL:http-status :}
+   status CURL:HTTP-STATUS>N {: code:n :}
+   code 200 >= code 300 < and if code exit then
+   code buf ANSWERED
+   status STATUS-ERROR throw ;
 
 public
 
@@ -822,15 +873,23 @@ public
 \ E-HTTP-STATE before CLIENT!.
 : TOKEN ( ptr u8 n grant ptr n -- ptr u8 n n )
    {: scope:ptr su:n g buf:ptr :}
-   ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then
+   STATED
    scope su g buf FORM
-   buf EXCHANGE MATCH option
-      none OF E-TRANSFER throw ENDOF
-      some OF ENDOF
-   ;MATCH {: status:CURL:http-status :}
-   status CURL:HTTP-STATUS>N {: code:n :}
-   code 200 >= code 300 < and if code buf ISSUED exit then
-   code buf ANSWERED
-   status STATUS-ERROR throw ;
+   buf ASKED buf false ISSUED {: a:ptr u:n r:ptr ru:n secs:n :}
+   a u secs ;
+
+
+\ A new access token for the scope from the endpoint CLIENT! names, by the
+\ refresh grant with the refresh token (RFC 6749 6), then the answer's refresh
+\ token, empty when it has none (the old one then stays the one to present),
+\ then expires_in. Both texts are borrowed from the BUF until the caller writes
+\ to it again. It fails as TOKEN does, and E-RESPONSE for a 2xx whose
+\ refresh_token is not a string; a scope or refresh token lying in the BUF
+\ throws E-BUF-BOUNDS.
+: REFRESH ( ptr u8 n ptr u8 n ptr n -- ptr u8 n ptr u8 n n )
+   {: scope:ptr su:n r:ptr ru:n buf:ptr :}
+   STATED
+   scope su r ru buf REFRESH-FORM
+   buf ASKED buf true ISSUED ;
 
 ;package
