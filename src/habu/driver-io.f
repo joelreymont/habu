@@ -4,6 +4,7 @@
 \ src/habu/sign-id.f.
 
 require src/habu/sign-id.f
+require src/os/image-bytes.f
 using IMAGE-BYTES
 
 package DRIVER
@@ -32,11 +33,8 @@ public
    s" " 0 die ;
 
 private
-\ Uncaught-throw reporting at the driver boundary, so a build failure names its
-\ throw code (an image-buffer overrun once exited 75 with no output). The exit
-\ code stays the raw throw code when the kernel can represent it (check reject
-\ 70, image bounds 75); die maps any other to UNCAUGHT-RC, never `code & 0xFF`
-\ (which turned -2816 into rc 0).
+\ DRV-FAIL prints the throw code: die exits UNCAUGHT-RC for one outside [0,255]
+\ (src/habu/habu1.f BDIE), so the exit status alone can lose it.
 create DRV-FC 1 allot
 create DRV-FB 24 allot
 variable DRV-FV

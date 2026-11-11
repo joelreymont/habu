@@ -21,22 +21,14 @@ PTR-VARIABLE M-SRC
 variable M-N
 variable M-O
 public
-\ A stripped linker may keep immutable payload bytes outside __text. The image
-\ writer receives the code/payload boundary once; other emitters leave it empty.
+\ The code/payload boundary macho.f reads to put payload bytes in __DATA_CONST;
+\ only IMG-PAYLOAD-CLEAR stores it, as zero, so no image carries a payload.
 PTR-VARIABLE IMG-PAYLOAD-A
 variable IMG-PAYLOAD-N
 variable IMG-CODE-N
-\ The target writer supplies the byte prefix between __TEXT and its payload.
-\ It is fixed for a writer, while IMG-PAYLOAD-CLEAR resets per-image state.
-variable IMG-PAYLOAD-PREFIX
 
 : IMG-PAYLOAD-CLEAR ( -- )
    0 IMG-PAYLOAD-N !  0 IMG-CODE-N ! ;
-
-: IMG-PAYLOAD! ( n ptr u8 n -- ) {: code:n payload:ptr bytes:n :}
-   code 0 < bytes 0 <= or if
-      s" image: invalid code/payload boundary" 73 die then
-   code IMG-CODE-N !  payload IMG-PAYLOAD-A !  bytes IMG-PAYLOAD-N ! ;
 
 private
 : M-ALLOC-BUF ( -- ptr u8 )

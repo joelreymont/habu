@@ -2,7 +2,6 @@
 \ in icode's CODE (BUILD-IMAGE), under the Mach-O writer's public names.
 \ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
 \ tail never share a kernel page on any supported page size.
-\ Retirement: habu-campaign-c2-mem-c3d7662b.
 
 require src/arch/arm64/icode.f
 require src/os/image-bytes.f
@@ -58,11 +57,7 @@ $401 constant ELF-R-AARCH64-GLOB-DAT
 30 constant DT-FLAGS
 8 constant DF-BIND-NOW
 \ The generated executable window: everything the assembler can emit, behind the
-\ header page it sits at. It is DERIVED from the assembler's own buffer rather
-\ than written out again, because the two are one fact and a second spelling of
-\ one fact is a drift waiting for an editor. What used to hold them together was
-\ a load-time comparison of two hand-written literals; the comparison is gone
-\ with the second literal, and the drift it watched for is now unwritable.
+\ header page it sits at.
 CODE-CAP-BYTES CODE-OFF + constant MPAGE
 public
 variable CODELEN
@@ -211,7 +206,6 @@ private
    ELF-DYNAMIC,
    ELF-GOT, ;
 
-public
 : BUILD-ELF ( -- )
    ASM-CODELEN!  M-RESET
    CODELEN @  MPAGE CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
@@ -224,6 +218,7 @@ public
    ELF-TEXT-SIZE @ ELF-RW-AT,
    M-HERE MLEN! ;
 
+public
 \ The program in icode's CODE as an ELF file whose code maps at the address.
 : BUILD-IMAGE ( asm n -- img )
    CODE-OFF - VMBASE !
@@ -231,26 +226,6 @@ public
    BUILD-ELF
    IMG-PHASE ;
 
-private
-\ ---------------------------------------------------------------------------
-\ Size-attribution tail: the bytes past the page-aligned text that the driver
-\ (src/habu/driver-io.f DRV-SIZE-MARKS) has to attribute so the emitted size map
-\ reconciles to the exact file length. Mirrors the Mach-O IMG-TAIL surface in
-\ src/os/macos/sign2.f; a Linux image has no code signature, so its whole tail is
-\ the read-write segment (DYNAMIC + GOT) BUILD-ELF appends after the text pad.
-73 constant ELF-TAIL-RC
-1 constant ELF-TAIL-N
-
-: IMG-TAIL-N ( -- n )
-   ELF-TAIL-N ;
-
-: IMG-TAIL-NAME ( n -- ptr u8 n ) {: i:n :}
-   i 0 = if s" container/rw-segment" exit then
-   s" elf: size tail index out of range" ELF-TAIL-RC die ;
-
-: IMG-TAIL-BYTES ( n -- n ) {: i:n :}
-   i 0 = if ELF-RW-SZ exit then
-   s" elf: size tail index out of range" ELF-TAIL-RC die ;
 ;package
 ;using
 ;using

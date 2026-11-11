@@ -95,30 +95,5 @@ public
 : CODESIG2 ( img -- img )
    CODESIG2-BODY ;
 
-private
-\ ---------------------------------------------------------------------------
-\ Size-attribution tail: the bytes past the page-aligned __TEXT that the driver
-\ (src/habu/driver-io.f DRV-SIZE-MARKS) has to attribute so the emitted size map
-\ reconciles to the exact file length. Both image writers expose the same
-\ IMG-TAIL-N / IMG-TAIL-NAME / IMG-TAIL-BYTES surface (elf.f defines the ELF
-\ variant) so the target-neutral driver reads whichever one this build loaded.
-\ IMG-TAIL-BYTES/2 reads SB-SIZE, so it is only valid after CODESIG2 has run.
-73 constant MACHO-TAIL-RC
-3 constant MACHO-TAIL-N
-
-: IMG-TAIL-N ( -- n )
-   MACHO-TAIL-N ;
-
-: IMG-TAIL-NAME ( n -- ptr u8 n ) {: i:n :}
-   i 0 = if s" container/data-const" exit then
-   i 1 = if s" container/linkedit" exit then
-   i 2 = if s" container/signature" exit then
-   s" macho: size tail index out of range" MACHO-TAIL-RC die ;
-
-: IMG-TAIL-BYTES ( n -- n ) {: i:n :}
-   i 0 = if MACHO-DATA-WROTE @ exit then
-   i 1 = if MACHO-FIXUPS-WROTE @ exit then
-   i 2 = if SB-SIZE exit then
-   s" macho: size tail index out of range" MACHO-TAIL-RC die ;
 ;package
 ;using

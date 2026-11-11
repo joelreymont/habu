@@ -42,17 +42,11 @@ $80000034 constant LC-DYLD-CHAINED-FIXUPS
 \ Where the file's first byte maps; BUILD-IMAGE stores it.
 variable VMBASE
 \ The maximum generated executable window: everything the assembler can emit,
-\ behind the header page it sits at. It is DERIVED from the assembler's own
-\ buffer rather than written out again, because the two are one fact and a
-\ second spelling of one fact is a drift waiting for an editor. What used to
-\ hold them together was a load-time comparison of two hand-written literals;
-\ the comparison is gone with the second literal, and the drift it watched for
-\ is now unwritable.
+\ behind the header page it sits at.
 CODE-CAP-BYTES CODE-OFF + constant MPAGE
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
 16        constant MACHO-GOT-BYTES
-MACHO-GOT-BYTES IMG-PAYLOAD-PREFIX !
 104       constant MACHO-FIXUPS-SIZE
 \ One chained start belongs to each __DATA_CONST page. The first starts the two
 \ GOT binds; remaining pages contain only the immutable stripped DATA payload.
@@ -63,23 +57,8 @@ CODE-CAP-BYTES MACHO-GOT-BYTES + MACHO-PAGE 1- + MACHO-PAGE / 1- 2 * 3 + -4 and
 \ Code and payload share the assembler window. Their two separately rounded
 \ segments can therefore exceed MPAGE + one DATA_CONST page by one more page.
 MPAGE DATA-CONST-SIZE + MACHO-PAGE + constant MACHO-IMAGE-MAX
-\ Upper bound for the CODESIG2 ad-hoc signature appended into MBUF, COMPUTED
-\ from the window rather than chosen, because it is a function of the window and
-\ a number chosen against one window size is wrong at the next. sign2.f hashes
-\ the finished file in CS-PAGE slots ($1000) and writes one CS-HASH digest ($20,
-\ SHA-256) per slot, after a 20-byte SuperBlob header ($14) and an 88-byte
-\ CodeDirectory header ($58, sign2.f CD-HDR) and the id string. The largest file
-\ this writer can hand the signer is a full MPAGE of __TEXT plus __DATA_CONST
-\ and the chained-fixups tail, so that is the slot count to price. $40 is the id
-\ allowance: every writer signs with src/habu/sign-id.f SIGN-ID:PROG$ or
-\ SIGN-ID:ENGINE$, and the longer, SIGN-ID:PROG$ `hb-prog`, is 7 bytes.
-\
-\ THE FOUR FORMAT NUMBERS ARE A MIRROR OF sign2.f AND NOTHING CHECKS THE MIRROR.
-\ They cannot be read from their owner here because sign2.f loads after this file
-\ and needs MACHO-SIG-MAX at load. So the mirror is stated, not
-\ enforced: if sign2.f's CS-PAGE, CS-HASH or CD-HDR ever moved without this line,
-\ the failure is the loud 73 die below or the 75 image-cursor bounds throw, never
-\ a bad image. A dot for the cross-check is owed.
+\ CODESIG2's largest signature, spelt from sign2.f's CS-PAGE, CS-HASH, CD-HDR and
+\ $14 SuperBlob header, which load later, and a $40 id; more throws M-BOUNDS-RC.
 MACHO-IMAGE-MAX MACHO-FIXUPS-MAX +
    $FFF + $1000 / $20 *   $14 + $58 + $40 +   constant MACHO-SIG-MAX
 $10       constant SG-READ-ONLY
@@ -88,8 +67,6 @@ $6        constant S-NON-LAZY-SYMBOL-POINTERS
 public
 variable CODELEN
 private
-variable MACHO-DATA-WROTE
-variable MACHO-FIXUPS-WROTE
 
 : DATA-CONST-BYTES ( -- n )
    MACHO-GOT-BYTES IMG-PAYLOAD-N @ + MACHO-PAGE 1- + MACHO-PAGE 1- invert and
@@ -263,8 +240,6 @@ variable NCMDS
    TEXTSZ M-OFF M-PAD-OFF
    TEXTSZ TEXTSZ MACHO-EXTRA,
    M-HERE MLEN!
-   DATA-CONST-BYTES MACHO-DATA-WROTE !
-   MACHO-FIXUPS-BYTES MACHO-FIXUPS-WROTE !
    IMG-PAYLOAD-CLEAR ;
 
 public
