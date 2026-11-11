@@ -466,7 +466,10 @@ GT-POOL-ABORT-BARE!
 \ would add about 27 bytes per level; postgres refuses a socket path past 103
 \ bytes on macOS.
 \
-\ A pool without HB_SOCK_TMP makes its root under TMPDIR at its first spawn, and
+\ A pool without HB_SOCK_TMP makes its root under /tmp, not TMPDIR: TMPDIR's
+\ length is the caller's, and sun_path holds 103 bytes on macOS. It spells /tmp
+\ canonically, since a row compares the paths it builds there with the
+\ canonical ones the engine answers. It makes the root at its first spawn, and
 \ again if a GT-CLEANUP removed it, and registers it once
 \ (FS:CLEANUP-TREE+): one entry per test would keep hundreds in the registry
 \ until a FS:CLEANUP-RUN. So an uncaught throw or a die still removes every
@@ -484,7 +487,7 @@ variable GT-POOL-SOCK-ROOT-U
    0 GT-POOL-SOCK-ROOT-U ! ;
 
 : GT-POOL-SOCK-ROOT-NEW ( -- ptr u8 n )
-   s" hb-sock" FS:MKTEMP-DIR ;
+   s" /tmp" SOURCE-ROOT:CANONICAL drop s" hb-sock" FS:MKTEMP-DIR-IN ;
 
 \ The directory the children's socket directories go in.
 : GT-POOL-SOCK-ROOT-MAKE ( -- ptr u8 n )
