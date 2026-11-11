@@ -2128,8 +2128,8 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
 
 \ ---- a --repl application: the code band, by package ---------------------------
 \ The band holds the code of every word the image compiled into its region and
-\ the out-of-line bytes of every name too long for a record (src/habu/habu2.f
-\ C-STORE-NAME and DOES-REC:COPY-NAME write them at CP, padded to a word); the
+\ the out-of-line bytes of every name too long for a record (written at CP,
+\ padded to a word); the
 \ two are separated before either is attributed. Each band byte is charged at
 \ most once: spans are walked in order and a record is charged only the bytes
 \ no earlier span covered, since an EXPORT alias or a `does>` clause puts a

@@ -51,8 +51,7 @@ private
 public
 
 \ A tick refuses an internal record outside a TRUSTED: body, and in every body a
-\ scope entry, as interpreter.f SCOPE-ENTRY-GUARD and habu2.f
-\ C-SCOPE-ENTRY-GUARD do.
+\ scope entry, as interpreter.f SCOPE-ENTRY-GUARD does.
 : TICK-REFUSED? ( ptr n -- bool )
    {: rec:ptr :}
    rec XREF-FLAGS DNAME-INT and 0<>  rec VISIBLE-RECORD? 0= and if

@@ -11,7 +11,7 @@ private
 \ ---- a duplicate only the checker sees ----------------------------------------
 \ A replay entry (CHECKER-DEFPRODUCT with GENERATED-DECL-CTOR:REPLAY-LEGACY,
 \ STRUCTURE-DECL:SD-REPLAY, ...) publishes a checked effect without defining the
-\ word, so a later definition passes the engine's wall (habu2.f C-REJECT-DUP-DEF)
+\ word, so a later definition passes the engine's duplicate wall
 \ and checker.f CHECK-REC-ADMIT refuses it with $4E and no message. The hook asks
 \ CHECKER-CERT-DUP? (which interns nothing) first and refuses it as the
 \ wall does (REFUSE-DUPLICATE).
@@ -361,7 +361,7 @@ public
 
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
 \ ordinary checked code cannot type execution-token installation. Only the
-\ machine-code interpreter (habu2.f C-DEFHOOK) reads the two cells; inside a
+\ engine reads the two cells; inside a
 \ build the builder's own checker checks, so a product's never replaces it.
 TRUSTED: INSTALL ( -- )
    BUILDING? if exit then

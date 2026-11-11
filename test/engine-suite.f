@@ -1590,10 +1590,8 @@ TJB 28 T=
 1 TJIOVER 4097 T=
 : TJINEG ( n -- n ) -1 + ;      \ negative top -> probe tail-branches to base
 5 TJINEG 4 T=
-\ spill-on-full through the shared push body: 33 pending constants overflow the
-\ 32-slot VS so the 33rd push takes the LVSPILL path. First with the integer tag,
-\ then with the float tag (which must survive the spill call in the frame - the
-\ tag save/restore the shared body adds):
+\ 33 values live at once, more than a body keeps in registers: first integers,
+\ then floats.
 : TJSI ( -- n )
    1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
    + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + ;
@@ -1812,7 +1810,7 @@ s" ESNP-FETCH-N-2 ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ x18 is Darwin-reserved: XNU zeroes it on any trap return, so an escaped
 \ literal whose copy crosses a fresh DATA page (interpret mode) or a code page
-\ (compile mode, LPAT) must not depend on it. Direct top-level fixtures:
+\ (compile mode) must not depend on it. Direct top-level fixtures:
 \ evaluate cannot carry escaped literals.
 : TX18-CHK ( ptr u8 n -- ) 150 T=  c@ [char] A T= ;
 : TX18-QCHK ( ptr u8 n -- ) 180 T=  c@ [char] B T= ;

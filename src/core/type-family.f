@@ -1222,7 +1222,7 @@ public
 \ collision with an existing private word, or between two families of one
 \ package, dies "generated declaration already defined".
 \ A qualified private spelling is impossible: the engine routes a qualified
-\ definition name to the namespace's PUBLIC wid (habu2.f C-QUALIFY-DEF), and the
+\ definition name to the namespace's PUBLIC wid, and the
 \ checker records any single-non-edge-colon name as that package's public
 \ symbol before it consults the open package (checker.f CHECKER-RECORD-SYM).
 : TF-CTOR-PRIV$ ( ptr u8 n ptr u8 n -- ptr u8 n )

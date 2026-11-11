@@ -2046,8 +2046,8 @@ defer SUPPLIED ( ptr u8 n -- ptr u8 n bool )
 
 private
 
-\ These declaration arms are dispatched by EM-INTERPRET-DEFINE-KEYWORDS before
-\ dictionary lookup. Their scanner counterparts do no arbitrary execution.
+\ These declaration arms are dispatched before dictionary lookup. Their scanner
+\ counterparts do no arbitrary execution.
 \ A word-backed loader or library definer has no such structural guarantee:
 \ even the original include/require entry can call replaced source providers.
 : TICK-NATIVE-DEFINER? ( ptr u8 n -- bool )
@@ -3939,7 +3939,6 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
       [: RECORD-CWORK-SPAN ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER? IF
       [: RECORD-CWORK-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
-   \ `constant` bakes one cell, trusted `-- a` as C-CONSTANT records it.
    a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN

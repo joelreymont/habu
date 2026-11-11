@@ -2,8 +2,8 @@
 \ Build-only, as prof-abi.f: runtime images need only layout.f. Not rows in
 \ layout.f: it is baked into every image and a building host's `require` of it
 \ is a no-op, so a cell moved there is undefined to the host that builds the
-\ first engine carrying it. regalloc.f fills and reads the cells, jit.f and
-\ habu2.f reset the free masks, data-claims.f refuses an overlap at build.
+\ first engine carrying it. habu2.f resets the free masks, interpreter.f saves
+\ and restores them, data-claims.f refuses an overlap at build.
 package REGALLOC-ABI
 public
 

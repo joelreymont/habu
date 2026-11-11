@@ -782,7 +782,7 @@ public
    kind COMP-BODY:compiled COMP-BODY:EQ if E-COMP-STATE throw then
    val kind [: FIXED-LEASED ;] NLEASE:WITH ;
 
-\ LCREATE has already published its ARM body.
+\ `create` has already published its ARM body.
 \ Compile the same fixed one-row HIR for the open target shadow, then attach
 \ that emission to the created record. No second ARM publication occurs.
 : SHADOW-FIXED ( n COMP:body n -- ) {: val:n kind:COMP:body idx:n :}

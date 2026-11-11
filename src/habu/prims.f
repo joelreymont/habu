@@ -920,24 +920,13 @@ EPPRIM: INTERPRETER def-create ECLOSE-PRIVATE
 EPRIM: imm-mark EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
-\ def-cast ( -- ): end the pending DKIND:CAST definition as the engine's
-\ `cast:` ends its record (habu2.f C-IDENTITY): the code at CP is the empty
-\ checked body, an entry slot that a leaf leaves a nop and a return; [8] takes its length, the record is counted and indexed, and the
-\ state def-open set clears, PEND-CELL with it. Asking the checker's registrar
-\ before and draining the record facts it latched after are the caller's. It
-\ refuses no pending definition, a pending one of another kind and CP at or
-\ past the code ceiling.
+\ def-cast ( -- ): end the pending DKIND:CAST definition with the empty checked
+\ body. Refuses none pending, another kind, and CP at or past the code ceiling.
 EPRIM: def-cast EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-cast ECLOSE-PRIVATE
-\ def-defer ( n -- ): end the pending kind-0 definition as the engine's `defer`
-\ ends its record (habu2.f C-DEFER), n its dispatch cell: the code at CP loads
-\ the cell and calls what it holds, an address-map site; [8] takes the code's
-\ length; the DEFER-MAGIC trailer naming the cell follows; the record is
-\ counted and indexed, the fixed shadow learns
-\ it and the state def-open set clears, PEND-CELL with it. It refuses no
-\ pending definition, a pending one of a nonzero kind and CP at or past the
-\ code ceiling.
+\ def-defer ( n -- ): end the pending kind-0 definition as a call through
+\ dispatch cell n. Refuses none pending, a nonzero kind, and CP at the ceiling.
 EPRIM: def-defer PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 \ Only CHECKER-OVERLAY types these six: elsewhere a checked call is E-UNDEFINED

@@ -16,7 +16,7 @@ The goal is a tier-1-only Linux x86-64 engine:
   source loading and a `MAIN` entry move out of ARM64 assembly into checked
   Habu. They are captured into both the ARM64 and the x86-64 product. The
   seeded boot enters them through the DATA cell `ENGINE-MAIN:XT-CELL`, so
-  `habu2.f` and `jit.f` get no x86 twin.
+  `habu2.f` gets no x86 twin.
 - **Dual-emission cross-build.** spark cross-builds the first x86 engine by
   dual emission: each definition's single HIR is lowered and emitted twice,
   ARM64 into the live region and x86 into a shadow keyed by record, and the

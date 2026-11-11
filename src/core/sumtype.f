@@ -2139,7 +2139,7 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
    TDINIT-NAME-END ;
 
 \ The recorded span is the effect between the parentheses, the text TRUSTED:
-\ hands TRUST-DECL (habu2.f C-SIG-INNER$), so a replay row declares it as is.
+\ hands TRUST-DECL, so a replay row declares it as is.
 : TDINIT-SIG-BEGIN ( -- )
    s" ( " TDGEN-APP
    TDGEN-U @ TDINIT-SIG-OFF ! ;

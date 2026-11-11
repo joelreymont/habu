@@ -42,7 +42,6 @@ $550 constant DOES-UNJUDGED-OFF
 $558 constant NATIVE-DOES-REPORT-OFF
 \ The lowering certificate the owner's last scan produced, the keep of a does>
 \ clause's certificate while its definer's head is scanned, and the kept one.
-\ Tier 0 freezes them from the owner that scanned (habu2.f LOWER-TXN FREEZE).
 $560 constant CERT-BYTES-OFF
 $568 constant CERT-KEEP-OFF
 $570 constant CERT-KEPT-OFF

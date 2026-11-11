@@ -41,8 +41,8 @@ create NEG-A 3 cells allot
 -3 cells allot
 create NEG-B 3 cells allot
 
-\ The ARM64 engine's `variable` takes its cell without `allot` (habu2.f
-\ C-VARIABLE), so it is a case of its own.
+\ The ARM64 engine's `variable` takes its cell without `allot`, so it is a
+\ case of its own.
 create NEGV-A 1 cells allot
 -1 NEGV-A !
 -1 cells allot

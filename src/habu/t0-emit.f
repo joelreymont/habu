@@ -465,10 +465,9 @@ ARCHES TYPED-BUFFER EMIT-RFETCH-XT [ ptr vreg n n -- ]
 \ The return stack grows up from STACK-ABI:RETURN-BASE-CELL and is RSP-CELL
 \ cells deep (src/habu/layout.f RSP-CELL). Each operation moves the cells of the
 \ n vregs at p, at most EMIT-VREGS, the first the deepest of n adjacent slots,
-\ and reads the depth once, as the JIT's LP2RS (src/habu/habu2.f) moves a block:
-\ EMIT-TOR stores them in the slots above the top and EMIT-RFROM loads the top n
-\ slots, each writing the depth once; EMIT-RFETCH loads the n slots whose
-\ highest is k under the top and writes nothing.
+\ and reads the depth once: EMIT-TOR stores them in the slots above the top and
+\ EMIT-RFROM loads the top n slots, each writing the depth once; EMIT-RFETCH
+\ loads the n slots whose highest is k under the top and writes nothing.
 : EMIT-TOR ( ptr vreg n -- ) CUR @ EMIT-TOR-XT @ execute ;
 : EMIT-RFROM ( ptr vreg n -- ) CUR @ EMIT-RFROM-XT @ execute ;
 : EMIT-RFETCH ( ptr vreg n n -- ) CUR @ EMIT-RFETCH-XT @ execute ;
@@ -487,8 +486,8 @@ ARCHES TYPED-BUFFER EMIT-LOOP-STEP-XT [ vreg vreg -- ]
 ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 
 \ The DO/LOOP frames live on the DATA loop stack, where `j`, catch
-\ (src/habu/kernel-x64.f CAUGHT,) and the arm64 tier 0 (src/habu/habu2.f
-\ J-FRAME) find them: LOOPSP-CELL counts the frames and frame k, 16 bytes at
+\ (src/habu/kernel-x64.f CAUGHT,) and the arm64 tier 0 find them: LOOPSP-CELL
+\ counts the frames and frame k, 16 bytes at
 \ STACK-ABI:LOOP-BASE-CELL's base + 16k, holds the index, its home, then the
 \ limit. `loop` steps while index < limit, signed; `+loop` steps until the index
 \ crosses the boundary between limit - 1 and limit in the step's direction;

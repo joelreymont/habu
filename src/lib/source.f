@@ -171,16 +171,8 @@ public
 : PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u SOURCE-SYNTAX:PARSING-KEYWORD? ;
 
-\ The interpret keywords of src/habu/habu2.f EM-INTERPRET-DEFINE-KEYWORDS that
-\ read a name take the next whitespace-delimited token raw, whatever it spells,
-\ and open no definition, but for `trusted:`, which opens one as `:` does, and
-\ the parsing keywords above. An engine definer makes a word of that name; a
-\ package keyword makes none: `package` and `using` take a package's name, and
-\ `export` an existing word's, which it re-exports as that word. Matched
-\ case-folded as the engine's keyword compare folds. They are keywords only
-\ while the engine interprets: in a body `create` is a call that reads its name
-\ when the word runs and the others are undefined, so a scanner asks these
-\ outside a definition.
+\ Keywords only while the engine interprets: in a body `create` is a call and
+\ the others are undefined, so a scanner asks these outside a definition.
 : DEFINER-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" cast:" STR=CI if STR-TRUE exit then
    a u s" linear:" STR=CI if STR-TRUE exit then
@@ -194,12 +186,8 @@ public
    a u s" using" STR=CI if STR-TRUE exit then
    a u s" export" STR=CI ;
 
-\ The control words that open and close a block in a body, matched case-folded.
-\ The engine and the checker keep the live locals count on their control-flow
-\ stack (src/habu/habu2.f LCFPUSH and LCFPOP, src/core/checker.f CF-PUSH), so a
-\ local a block declares ends with the block; `else` ends the true arm's. A
-\ quotation is a block too. A scanner that knows the locals asks these after its
-\ local lookup, since a local of a control word's name is that local.
+\ A local a block declares ends with the block, and `else` ends the true arm's.
+\ A local of a control word's name is that local: ask after the local lookup.
 : BLOCK-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u SOURCE-SYNTAX:BLOCK-OPENER? ;
 

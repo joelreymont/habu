@@ -391,7 +391,7 @@ CAST: CURSOR>BYTES ( ptr XML:cursor -- ptr u8 )
 \ exceptional edge is not part of a quotation's TYPE, so that route keeps the
 \ window typed until callee evidence lets the checker prove the handle intact.
 \ ATTR-RESET already has that shape and is ticked by its bare name, the one a
-\ `using` import resolves (src/habu/habu2.f C-BTICK).
+\ `using` import resolves.
 : NEXT-ONE ( XML:reader -- XML:reader ) NEXT drop ;
 : ATTR-NEXT-ONE ( XML:reader -- XML:reader ) ATTR-NEXT drop ;
 : NAME-READ ( XML:reader -- XML:reader ) NAME$ 2drop ;

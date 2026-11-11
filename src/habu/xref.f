@@ -91,7 +91,7 @@ public
 
 \ A namespace row has no code, so it reuses a word's two code-span cells for its
 \ two wordlist ids: the public wid where a word keeps its start, the private wid
-\ where a word keeps its length (habu2.f C-PACKAGE-NEW-RECORD writes both).
+\ where a word keeps its length.
 \ Reading them as XREF-START / XREF-RAW-LEN says the opposite of what is meant.
 : XREF-PKG-PUBLIC ( ptr n -- n )
    XREF-START-SLOT XREF-CELL@ ;
@@ -274,7 +274,7 @@ private
    LIVE-PKG ;
 
 \ The package whose public wordlist wid is: the live namespace row that
-\ publishes it (habu2.f C-PACKAGE-NEW-RECORD writes the wid there).
+\ publishes it.
 : NS-PUB? ( ptr n n -- bool ) {: rec:ptr wid:n :}
    rec XREF-WORDLIST BOOT:NAMESPACE-WL =  rec XREF-PKG-PUBLIC wid =  and ;
 

@@ -31,7 +31,6 @@ HB-TARGET-MACOS? [if]
 
 require src/habu/regalloc.f
 require src/habu/habu1.f
-require src/habu/jit.f
 require src/habu/prof.f
 require src/habu/fdio.f
 require src/habu/aot-decl.f

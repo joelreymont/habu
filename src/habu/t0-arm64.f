@@ -34,16 +34,15 @@ using A64ASM
 4 constant REC-ARG                    \ x4, a reading quotation's record on entry
                                       \ (src/habu/habu1.f BRECORD)
 
-\ Registers. x19 is the data stack and grows up (src/habu/jit.f W-PUSHR,
-\ W-POPR). x19, x20 (DATA), x26, x27 and x28 are the engine's
+\ Registers. x19 is the data stack and grows up.
+\ x19, x20 (DATA), x26, x27 and x28 are the engine's
 \ (src/habu/layout.f ENGINE-GPR:A64-MASK); compiled code writes none of them
 \ except x19 as the stack. x18 is Darwin's (src/arch/arm64/asm.f XREG? refuses
-\ it). x29 caches the innermost loop index as it does for the JIT
-\ (src/habu/regalloc.f LIDX), and any callee may write it. The vregs are the
-\ JIT's register pool in its order (src/habu/regalloc.f VRPACK, VRPACK2). x16
-\ and x17 are this file's temporaries, a literal and an address, and hold no
-\ value between two of its words. A body is entered by `bl` or `blr` and
-\ leaves by `ret` through x30.
+\ it). x29 caches the innermost loop index, and any callee may write it. The
+\ vregs are the register pool in its order (src/habu/regalloc.f VRPACK,
+\ VRPACK2). x16 and x17 are this file's temporaries, a literal and an address,
+\ and hold no value between two of its words. A body is entered by `bl` or
+\ `blr` and leaves by `ret` through x30.
 \
 \ The machine register of each vreg; an index past it throws E-LAYOUT-BOUNDS.
 NVREG TYPED-BUFFER REGS n
@@ -147,8 +146,8 @@ DYNAMIC-BUFFER BR-ARG n
    inv if r h $FFFF xor hw MOVNHW W false exit then
    r h hw MOVZHW W false ;
 
-\ Load the constant v into r with the shortest move-wide chain (src/habu/jit.f
-\ LVMOVK): the inverted form when more halves are $FFFF than are zero, and
+\ Load the constant v into r with the shortest move-wide chain: the
+\ inverted form when more halves are $FFFF than are zero, and
 \ every half equal to the form's fill skipped.
 : LIT-R ( n n -- ) {: v:n r:n :}
    v $FFFF HALVES v 0 HALVES > {: inv:bool :}
@@ -573,7 +572,7 @@ DYNAMIC-BUFFER BR-ARG n
    v TMP LIT-R
    d REG d REG TMP ENC-MUL W ;
 
-\ x16 = n ; sdiv xd,xd,x16 (src/habu/jit.f EI/). `sdiv` appears only here and
+\ x16 = n ; sdiv xd,xd,x16. `sdiv` appears only here and
 \ in MOD-LIT, whose divisor is never 0 or -1 (t0-emit.f DIVISION): the hardware
 \ answers 0 for a zero divisor.
 : DIV-LIT ( vreg n -- )
@@ -582,7 +581,7 @@ DYNAMIC-BUFFER BR-ARG n
    d REG d REG TMP ENC-SDIV W ;
 
 \ x16 = n ; sdiv x17,xd,x16 ; msub xd,x17,x16,xd: the dividend less the
-\ truncated quotient times n (src/habu/jit.f EIMOD).
+\ truncated quotient times n.
 : MOD-LIT ( vreg n -- )
    {: d:vreg v:n :}
    d REG {: r:n :}
@@ -622,8 +621,7 @@ DYNAMIC-BUFFER BR-ARG n
    d REG a REG 0 ENC-LDR W ;
 
 \ ---- the return stack --------------------------------------------------------
-\ RSP-CELL cells deep from STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d, as
-\ habu2.f J-TOR and J-RPOP reach it.
+\ RSP-CELL cells deep from STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d.
 \ Vreg i of p moved to or from the slot at x17 + off.
 : RS-XFER ( ptr vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
    p i VREG-AT REG ADR off st ACCESS ;
@@ -729,7 +727,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 \ ---- loops -------------------------------------------------------------------
 \ The frame cell stays the index's home (`j` and the runtime read it); x29 is a
-\ copy written beside every store of it, as habu2.f J-FRAME keeps it. HELD says
+\ copy written beside every store of it. HELD says
 \ whether the code emitted next may read x29: a loop head sets it, and so do
 \ `i` and a step once they load it. Every call clears it, since the callee may
 \ run a loop, and so does every label a branch lands on (MARK and RESOLVE),
@@ -739,7 +737,7 @@ DYNAMIC-BUFFER BR-ARG n
 \ next one clear.
 \
 \ x16 holds the loop stack's depth and x17 the address one frame past the
-\ innermost, base + 16 * depth (habu2.f J-FRAME's layout).
+\ innermost, base + 16 * depth.
 : LDEPTH ( -- ) TMP XREG-RBASE LOOPSP-CELL ENC-LDR W ;
 : LDEPTH! ( -- ) TMP XREG-RBASE LOOPSP-CELL ENC-STR W ;
 

@@ -110,9 +110,8 @@ $601000 constant DICT-SIZE
 \ DBASE+REGION). The two bands share one budget: lifting DICT-CAP alone once
 \ left 36 KB of code band. A core rebuild retains its running compiler while
 \ compiling the replacement; the 35 MiB region gives the two generations
-\ 30,404,608 code bytes (a 10 MiB region left 7,335,936 and failed the guarded
-\ core rebuild at EM-COMPILE-UNDEF). The budget is fixed at run time; anonymous
-\ pages populate on demand and snapshots write only [SDB, CP).
+\ 30,404,608 code bytes. The budget is fixed at run time; anonymous pages
+\ populate on demand and snapshots write only [SDB, CP).
 package CODE-BAND
 public
 REGION DICT-SIZE - constant BYTES
@@ -210,8 +209,7 @@ $600000 constant CFSTK-OFF
 8 constant CF-LOCN
 16 constant CF-LOCF
 24 constant CF-KIND
-\ CF-KIND names the structure that pushed the entry, so a closer refuses an
-\ entry it does not close before popping or patching (habu2.f C-CF-AT): `begin`
+\ CF-KIND names the structure that pushed the entry: `begin`
 \ and `if` both record a CP. One kind serves every opener the same closers
 \ accept: `else` leaves an IF entry, `?do` a DO entry, a match variant arm an OF.
 1 constant CFK-IF      \ if, else: closed by then or else
@@ -225,12 +223,9 @@ $600000 constant CFSTK-OFF
 9 constant CFK-QUOT    \ [: closed by ;]
 \ Control-flow stack region [CFSTK-OFF, DICT-SIZE): cell 0 is the depth counter,
 \ then CF-REC-byte records. CFSTK-REGION-CAP is how many records fit above the
-\ counter without spilling into the JIT code area at DBASE+DICT-SIZE. LCFPUSH
-\ rejects (named rc-70) at depth == CFSTK-DEPTH-MAX, BEFORE the write, so a push
-\ can never overflow the region (the opposite-direction sibling of the LCFPOP
-\ orphan-underflow guard). The cap is min(region capacity, a sane ceiling) and
-\ always exceeds the checker's CFS cap 31 (CF-PUSH marks UNCK past 31), so no
-\ checker-certified nesting is rejected.
+\ counter without spilling into the JIT code area at DBASE+DICT-SIZE.
+\ CFSTK-DEPTH-MAX is min(region capacity, a sane ceiling) and
+\ always exceeds the checker's CFS cap 31 (CF-PUSH marks UNCK past 31).
 DICT-SIZE CFSTK-OFF - 1 cells - CF-REC / constant CFSTK-REGION-CAP   \ 127 records fit
 256 constant CFSTK-SANE-MAX                                          \ forward sanity ceiling
 CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 127 = min(region, sane)
@@ -318,9 +313,7 @@ $A0 constant DEFER-XT-CELL
 \ DEFER-MAGIC: the first cell of the meta trailer `defer` writes just past a
 \ deferred word's code, followed by the address of its dispatch cell. A reader
 \ holding a record recognises a defer's trailer by this word, never by the
-\ shape of what follows the code (an ordinary integer can hold any value). Its
-\ readers are habu2.f C-DEFER-META-WRITE and C-DEFER-TARGET-META (build) and
-\ src/compiler/native/dict.f (an `is` at run time); this is its one statement.
+\ shape of what follows the code (an ordinary integer can hold any value).
 $4842444546455201 constant DEFER-MAGIC
 \ CMFAM-CELL: resolved construct family id, live only between the family and
 \ variant operand tokens of one `construct` form (CMM-CELL state 1 -> 2). Eager
@@ -373,13 +366,13 @@ $3698 constant TKL-CELL
 $36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL
 $36A8 constant INE-CELL          \ mirrored: src/core/check-hook.f INPUT-END
 \ FWDTGT-CELL: where the last forward branch tier 0 patched lands, as an
-\ offset from DBASE (habu2.f LPAT); nothing reads it. Definition-scoped like
+\ offset from DBASE; nothing reads it. Definition-scoped like
 \ JIT-SNAP:SP-CELL: the colon entries,
 \ and EM-ABORT-COMPILE-STATE zero it.
 $36B8 constant FWDTGT-CELL
 \ LIDX-CELL: 1 while the code tier 0 emits next may read the innermost open
-\ loop's index from x29 (regalloc.f LIDX), 0 when the index must be reloaded
-\ from its memory frame (habu2.f J-I). Definition-scoped like FWDTGT-CELL and
+\ loop's index from x29, 0 when the index must be reloaded
+\ from its memory frame. Definition-scoped like FWDTGT-CELL and
 \ zeroed beside it; every call and every control-flow push and pop zeroes it
 \ too. It sits at JIT-QUOT:END, the first cell after the quotation frames;
 \ data-claims.f proves it disjoint.
@@ -413,9 +406,8 @@ $48 constant EVAL-PKG
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
-\ USE-FLOOR: the buffer's entry using depth (interpreter.f FRAME-OPEN), read
-\ only by the machine-code loop (habu2.f C-END-USING); interpreter.f USE-FLOOR
-\ is the Habu loop's floor.
+\ USE-FLOOR: the buffer's entry using depth (interpreter.f FRAME-OPEN);
+\ interpreter.f USE-FLOOR is the Habu loop's floor.
 $98 constant USE-FLOOR
 \ USE-WIDS: the includer's USE-MAX used-public wids (USE-WIDS-OFF), which a
 \ throw puts back with the depth and the floor (habu2.f LEVALREC). A buffer
@@ -813,8 +805,8 @@ $250 constant VVAL-OFF
 32 constant VSMAX
 
 
-\ A latch whose compiler cell (XT-CELL or COMP-CELL) is zero dies at
-\ NCOMP-EMIT:LOAD with ENGINE-ERROR:AOT-SEED.
+\ A latch whose compiler cell (XT-CELL or COMP-CELL) is zero dies with
+\ ENGINE-ERROR:AOT-SEED.
 package NCOMP-DISPATCH
 public
 $358 constant XT-CELL
@@ -829,8 +821,7 @@ $3818 constant CALLBACK-ENTRY-CELL
 \ The optional three-cell origin record follows at $3820..$3837, read through
 \ the three-cell native-origin-cell getter.
 \ BODY-HOOK-CELL, when nonzero, is an xt `( -- ptr u8 bool )` the `:` and
-\ TRUSTED: heads call with their record pending (src/habu/habu2.f
-\ C-BODY-HOOK).
+\ TRUSTED: heads call with their record pending.
 $3838 constant BODY-HOOK-CELL
 \ Tier 0's compiler: COMP's COMPILE, installed by COMP:INSTALL through
 \ RUNTIME:INSTALL.
@@ -1080,7 +1071,7 @@ $248 constant QXH-CELL
 \ FRAME-CELL: the open body's link-register frame. The JIT is single pass, so
 \ `:` emits the save at entry and records the slot here, and every emitter that
 \ puts a call in the body counts it in the low two bits (bit 0 one call, bit 1 a
-\ second; habu2.f FRAME-CALL,), free because code addresses are four-byte
+\ second), free because code addresses are four-byte
 \ aligned. At `;` EM-COMPILE-RET reads where the slot is and whether x30 can be
 \ destroyed.
 \ Zero means no frame. QFRAME-CELL scopes it across a quotation as QXH-CELL
@@ -1320,9 +1311,7 @@ $2D58 constant DPHW-CELL
 $2D60 constant NDICT-HW-CELL
 
 \ INTERN-CELL holds the xt of the literal interner (src/habu/intern.f
-\ INTERN:STRING), 0 until that file installs it with xt!. Tier 0 reads it with
-\ `DATA <off> LDR` (src/habu/habu2.f C-SDQ and its siblings): a zero cell keeps
-\ the literal's bytes in the code.
+\ INTERN:STRING), 0 until that file installs it with xt!.
 package NSTR-ABI
 public
 $2D90 constant INTERN-CELL
@@ -1341,9 +1330,9 @@ $2DA8 constant TASK-CHAIN-CELL
 \ PROT-WID-MAX before it addresses the band. habu1.f BPOLICYADMIT and
 \ BPOLICYSEAL write the vocabulary; SOURCE-ROOT:POLICY-ROOT writes the ordinary
 \ require xt before the seal. All three refuse mutation once sealed.
-\ The readers are the places a source token is read: src/habu/interpreter.f
-\ and habu2.f LKWCMP and LUNDEF. The native compiler never reads them. The loader reads the watermark through its own copy
-\ of the offset, src/core/include.f INCLUDE-POLICY-NDICT-CELL.
+\ The readers are the places a source token is read: src/habu/interpreter.f.
+\ The native compiler never reads them. The loader reads the watermark through
+\ its own copy of the offset, src/core/include.f INCLUDE-POLICY-NDICT-CELL.
 \ Below $7FF8 for `DATA <off> LDR` and below DATA-START; data-claims.f proves
 \ neither field overlaps a neighbour. The snapshot writer zeros its DATA copy
 \ and the warm loader zeros the restored fields, so a fresh process is unsealed.
@@ -1566,10 +1555,10 @@ TXN-STATE-OFF TXN-STATE-LEN + constant START
 MEM-ABI:START constant END
 ;package
 
-\ A `defer NAME ( E )` in src/core/checker.f before `: TRUST` cannot call
-\ C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER: their LFIND of `trust` and
-\ `checker-defer` fails. C-DEFER and the Habu loop's `defer` (src/habu/interpreter.f
-\ PD-HOLD) then copy the qualified name and effect signature into a slot here;
+\ A `defer NAME ( E )` in src/core/checker.f before `: TRUST` cannot register
+\ itself: the lookup of `trust` and `checker-defer` fails. The Habu loop's
+\ `defer` (src/habu/interpreter.f PD-HOLD) then copies the qualified name
+\ and effect signature into a slot here;
 \ DRAIN-PRETRUST, right after `: TRUST`, replays both registrations per slot, so
 \ the table is empty by snapshot time. Overflow or an over-long name or sig dies
 \ at declaration; a non-empty table at SEAL-CAPTURE dies. The table sits after
@@ -1612,7 +1601,7 @@ public
 \ `using NAME` makes package NAME's public wordlist visible to bare lookup until
 \ `;using`, `;package`, or the end of the load file. A fixed stack of public
 \ wordlist IDs plus a depth cell, the one count of live usings: engine code owns
-\ it (C-USING pushes, C-END-USING pops, `package`/`;package` and the eval-frame
+\ it (`using` pushes, `;using` pops, `package`/`;package` and the eval-frame
 \ and REPL boundaries save and restore it), and the checker reads the same cell
 \ through `data-base USE-DEPTH-CELL +`, so its package-name mirror (checker.f
 \ CK-USE-NAMES) has no counter of its own to drift. The depth is 0 at rest:
@@ -1677,8 +1666,7 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ pushes. A separate map, not a second call-map bit: the shapes, addresses and
 \ rewritten fields differ, and each pass keeps the same bit-scan loop.
 \ Recorded where the compiler decides a literal is an address: habu2.f
-\ C-CODE-ADDR, C-DATA-ADDR, C-DATA-ADDR-RAW and the native chain's publication
-\ seam.
+\ C-DATA-ADDR, C-DATA-ADDR-RAW and the native chain's publication seam.
 \ DATA sites are recorded for the AOT capture: the captured blob lands at a
 \ different DP in the seeded engine, so a DATA chain needs rebasing there, while
 \ fixed-VA DATA needs nothing on snapshot restore. habu2.f EMIT-ADDRS runs once
@@ -1764,7 +1752,7 @@ XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 \ EMIT-MARK) and the loader's relocate each access the eight
 \ bytes at the DATA base plus the offset, so the whole cell must lie inside the
 \ region; the unsigned compare also rejects negative offsets.
-\ The cell need not be cell-aligned: `create` rounds its field (habu2.f LCREATE),
+\ The cell need not be cell-aligned: `create` rounds its field,
 \ but a cell reached through `allot` after byte-sized data, or inside a copied
 \ DATA window, keeps its residue (two adjacent `create X 4 cells allot` tables
 \ measured 7 mod 8), and unaligned cell loads and stores are defined here.
@@ -1793,11 +1781,8 @@ $43A8 constant T0-CELL           \ first wordlist id the seed allocated for the 
 $43B8 constant B0-CELL           \ first address of the open window's code span
 ;package
 
-\ src/habu/jit.f LVSNAP and LVRECON snapshot the virtual stack at BEGIN and
-\ reconcile to it at the back edge. The frames sit far above $7FF8, so jit.f
-\ reaches them with LIT64 and an add, not `DATA <off> LDR` (12-bit scaled) or
-\ `ADDI` (12-bit unscaled): two instructions per BEGIN and back edge at compile
-\ time, for a band no header growth can collide with. Snapshot capture requires
+\ The frames sit far above $7FF8, in a band no header growth can collide
+\ with. Snapshot capture requires
 \ zero compile depth; the loader clears the frames, which are live only inside a
 \ definition.
 \ The depth cell stays low: it is definition-scoped like VSP-CELL, LVD-CELL and
@@ -1808,9 +1793,8 @@ $43B8 constant B0-CELL           \ first address of the open window's code span
 \ depth raised.
 package JIT-SNAP
 public
-\ One frame per open IF, BEGIN, WHILE or DO entry, pushed after C-CF-ROOM admits
-\ the entry (`else` pops one and pushes one), so SP-CELL <= the CF depth <=
-\ CFSTK-DEPTH-MAX and no push needs a check.
+\ One frame per open IF, BEGIN, WHILE or DO entry (`else` pops one and pushes
+\ one), as many as the control-flow stack holds.
 CFSTK-DEPTH-MAX constant FRAMES
 24 constant FRAME-BYTES                             \ one frame is (k, p0, p1)
 $378 constant SP-CELL                               \ depth; low, beside TIER-CELL
@@ -1903,7 +1887,7 @@ PARENT CELL + constant REC
 REC CELL + constant END
 ;package
 
-\ The path `A:B` habu2.f C-PACKAGE-PATH builds for `package B` inside package A;
+\ The path `A:B` built for `package B` inside package A;
 \ a path of CAP bytes or more is refused.
 package PACKAGE-PATH
 public
@@ -1961,8 +1945,8 @@ public
 
 ;package
 
-\ Pending storage is private to the pre-trust capture (habu2.f C-PD-CAPTURE,
-\ interpreter.f PD-HOLD) and DRAIN-PRETRUST. Its capacity may grow without
+\ Pending storage is private to the pre-trust capture
+\ (interpreter.f PD-HOLD) and DRAIN-PRETRUST. Its capacity may grow without
 \ moving any published engine slot or live map.
 JIT-SNAP:END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END

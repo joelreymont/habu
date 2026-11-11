@@ -618,7 +618,6 @@ private
 
 : PS-MAYBE-TRUST-DEFINER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    PS-TRUST @ 0= IF PS-FALSE exit THEN
-   \ `constant` bakes one cell, trusted `-- a` as C-CONSTANT records it.
    a u s" constant" LINT-STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" create" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN

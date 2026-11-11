@@ -244,10 +244,8 @@ s" TD12-WIDE-SWAP ( tdmix<n,n> n -- n tdmix<n,n> ) swap" CHECK-QUIET-CANDIDATE! 
 s" TD12-SWAP-SPLIT ( tdres<n,n> n -- tdres<n,n> tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ --- branch-scoped locals lower ----------
-\ Branch-scoped locals pop from #LOC at their join and the scalar emitter reuses
-\ their frame slots (habu2.f LCFPUSH/LCFPOP), so pass 2 reads widths from the
-\ bind-sequence width table (checker LOCW-HW, the P2-CARVE-W replay), not the
-\ live LOCW index. Execution proof: test/type-layout-lower-pending.f TLPX-BR*.
+\ Branch-scoped locals pop from #LOC at their join, so a local's width is read
+\ by bind sequence, not by the live LOCW index.
 s" TD12-BRLOC-IF ( tdres<n,n> n -- tdres<n,n> ) 0 > if {: a :} a else then" CHECK-QUIET-CANDIDATE! -1 T=
 s" TD12-BRLOC-CASE ( tdres<n,n> n -- tdres<n,n> ) case 0 of {: a :} a endof endcase" CHECK-QUIET-CANDIDATE! -1 T=
 \ a scalar AND a wide local bound in the same branch: certifies.
@@ -619,9 +617,8 @@ s" TDW34-NEST ( tdw34nest -- tdw34nest )" TD-MIN-IN 34 T=
 \ defs); the NEXT check resets the table, so no stale row can leak forward.
 s" WF6 ( tdres<n,n> -- ) ?dup drop drop" 0 TD-WF-N 1 T=
 s" WF7 ( n -- n )" -1 TD-WF-N 0 T=
-\ TFAM, TYPE and MATCH are reserved in the native RESTAB-BUF (src/habu/habu2.f),
-\ so each accepting declaration also proves user source registers families
-\ without opening a reserved package.
+\ TFAM, TYPE and MATCH are reserved, so each accepting declaration also proves
+\ user source registers families without opening a reserved package.
 \ package-scoped declarations: family rows carry the active package and the
 \ active visibility mode. Plain user packages — no reserved package is opened.
 package tdpa

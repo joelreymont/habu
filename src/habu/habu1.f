@@ -41,9 +41,6 @@ private
 \ pre-indexed load. Encoded through asm.f so an out-of-field offset fails at
 \ build time.
  9 XDS   8 ENC-STRPOST constant W-PUSH9    \ str x9,[x19],#8
- 9 XDS  -8 ENC-LDRPRE  constant W-POP9     \ ldr x9,[x19,#-8]!
-16 XDS  -8 ENC-LDRPRE  constant W-POP16    \ ldr x16,[x19,#-8]!
-17 XDS  -8 ENC-LDRPRE  constant W-POP17    \ ldr x17,[x19,#-8]!
 
 public
 \ A compiled word saves LR with one pre-indexed store and restores it with one
@@ -117,7 +114,7 @@ variable FP-WID
 public
 \ label ids (forward refs)
 variable LFIND  variable LNUM  variable LDICT
-variable LCEMIT   variable LCEMITBL      variable LTOK   variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
+variable LCEMIT  variable LTOK  variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 private
 \ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder (habu2.f)
@@ -133,7 +130,6 @@ private
 \ before callback-entry is emitted, then register its own span afterward.
 variable LCALLBACKTHUNK
 variable LCALLBACKADDR
-public
 ;package
 package ENGINE-EMIT
 public
@@ -186,31 +182,8 @@ variable LNEWEST
 ;package
 package ENGINE-EMIT
 public
-variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
-variable LBCHAIN  variable LCREATE  variable LDOESPATCH
-variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
-variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
-variable LKWCASE  variable LKWOF    variable LKWENDOF variable LKWENDCASE
-variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
-variable LKWESQ variable LKWECQ variable LKWEDOTQ
-variable LKWTICK variable LKWBTICK
-variable LKWTYPE
-variable LKWLBRACE variable LKWENDLOC  variable LKWCONST
-variable LKWDO variable LKWLOOP variable LKWI
-variable LKWTOR variable LKWRFROM variable LKWRFET
-variable LKWEXIT variable LKWREC
-variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUNLOOP
-variable LKWCHAR variable LKWBCHAR variable LKWBPACKAGE
-variable LKWIMM
-variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
-variable LKWTRUSTED variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWSEALPACKAGE variable LKWDUPDEF
-variable LKWEXPORT variable LCHKEXPORT
-variable LKWUSING variable LKWSEMIUSING  variable LFINDUSED variable LFINDUSED-CORE variable LSCOPEREC
-;package
-\ The interpreter's shadow leaf, which habu2.f C-TICK calls on LFIND's hit path.
-package INTERP-EMIT
-public
-variable LFINDSHADOW
+variable LBCS  variable LDOESPATCH
+variable LFINDUSED-CORE variable LSCOPEREC
 ;package
 package ENGINE-EMIT
 public
@@ -1579,22 +1552,8 @@ private
    ok LBL, ;
 ;package
 
-\ While a checker overlay is open the engine defines nothing (layout.f
-\ REPLAY-SCOPE): replay-close and an overlay rollback restore NDICT, CP and WIDN
-\ (src/core/checker.f CHECKER-OVERLAY ROLLBACK), so only the overlay's writers
-\ (namespace-record, replay-record, replay-private) may grow them; a record
-\ another writer appended would be dropped and a wid it took handed out again.
-\ Every other writer runs GUARD, first: LQUALIFYDEF (each named definer, both
-\ tiers), `package` making a row or a missing private wid, EXPORT, `wordlist`,
-\ def-open, alias-record, namespace-private and native-unit-publish.
-\ ndict-append needs none: it publishes the pending record, which replay-open
-\ refuses and no head opens under the latch. Guarding at LHIDXADD is too late:
-\ at `;` the check hook, trust registration and pass 2 precede it and
-\ replay-close restores none of them. The refusal names the token and throws
-\ ENGINE-ERROR:OVERLAY-OPEN (habu2.f EM-COMPILE-DIE); a live `undefine` throws
-\ it before retiring anything (xref.f XREF-UNDEFINE-GUARD): replay-close gives
-\ back only the retirements the overlay logged. interpreter.f OVERLAY-GUARD
-\ reads the same latch. Clobbers x9.
+\ An open checker overlay restores NDICT, CP and WIDN at its close or rollback,
+\ so every writer but its own runs GUARD, first and is refused. Clobbers x9.
 package OVERLAY-EMIT
 public
 variable LDIE
@@ -1719,24 +1678,10 @@ private
 
 package ENGINE-EMIT
 public
-\ The USE-MAX used-public wids between the using band (layout.f USE-WIDS-OFF)
-\ and a snapshot at off from base. They are the includer's slots: a buffer
-\ that closes the includer's package and then opens a using writes into one
-\ (habu2.f LEVALREC). band and tmp are scratch registers.
-: USE-WIDS-SAVE, ( n n n n -- ) {: base:n off:n band:n tmp:n :}
-   band USE-WIDS-OFF LIT64,  band DATA band ADD,
-   USE-MAX 0 do  tmp band i cells LDR,  tmp base off i cells + STR,  loop ;
 
 : USE-WIDS-RESTORE, ( n n n n -- ) {: base:n off:n band:n tmp:n :}
    band USE-WIDS-OFF LIT64,  band DATA band ADD,
    USE-MAX 0 do  tmp base off i cells + LDR,  tmp band i cells STR,  loop ;
-
-\ The enclosing package's cells (layout.f ENCLOSING) and a copy at off from
-\ base, in the band's order. tmp is scratch.
-: ENCLOSING-SAVE, ( n n n -- ) {: base:n off:n tmp:n :}
-   ENCLOSING:END ENCLOSING:PUB - 0 do
-      tmp DATA ENCLOSING:PUB i + LDR,  tmp base off i + STR,
-   CELL +loop ;
 
 : ENCLOSING-RESTORE, ( n n n -- ) {: base:n off:n tmp:n :}
    ENCLOSING:END ENCLOSING:PUB - 0 do
@@ -1771,16 +1716,7 @@ public
    11 11 off LDR,
    done LBL, ;
 
-\ Store the checker's record end at [base+off] as a mark: end+1, popped into
-\ x<r>, or 0 when no owner records rows.
-: MARK-END ( n n n -- ) {: r:n base:n off:n :}
-   LBL {: unmarked:label :}
-   9 0 MOVZ,  9 base off STR,
-   NCOMP-DISPATCH:DECL-ROWS-END-OFF FIND  11 unmarked CBZ,
-      11 BLR,  r G-POP  r r 1 ADDI,  r base off STR,
-   unmarked LBL, ;
-
-\ Cut the checker's records back to the mark MARK-END left at [base+off],
+\ Cut the checker's records back to the mark at [base+off],
 \ through x9; a 0 mark or no owner branches to kept, which the caller places.
 : RETRACT-TO ( n n label -- ) {: base:n off:n kept:label :}
    9 base off LDR,  9 kept CBZ,
@@ -3430,7 +3366,7 @@ public
    13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
 
 \ addrmap-set ( addr -- ): record the MOVZ/MOVK address carrier at addr, as
-\ C-CODE-ADDR does (habu2.f EMIT-ADDR-SITE). One map serves code and DATA
+\ habu2.f EMIT-ADDR-SITE does. One map serves code and DATA
 \ addresses: the passes need only where a chain starts; the kind is per
 \ relocation window, written beside it (src/compiler/native/publish.f).
 \ EMIT-ADDRS runs once per moving band and leaves a chain whose value is
@@ -4442,8 +4378,8 @@ package ENGINE-EMIT
    9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
 
 \ wide-mark ( -- ): set DNAME-WIDE on the newest record: its effect carries a
-\ wider-than-cell layout value, so interpret-mode execute and tick refuse it
-\ (habu2.f LWIDE). Like `immediate` (habu2.f C-IMMEDIATE) it stores through the
+\ wider-than-cell layout value, so interpret-mode execute and tick refuse it.
+\ Like `immediate` it stores through the
 \ region's RW alias: the record's own address is read-only. The checker calls
 \ it at signature-record time.
 : BWIDEMARK ( -- )
@@ -4452,7 +4388,7 @@ package ENGINE-EMIT
    10 12 16 LDR,  10 10 DNAME-WIDE ORRI,  10 12 16 STR, ;
 
 \ int-mark ( n -- ): set DNAME-INT on record n; interpret-mode execute and tick
-\ refuse it (habu2.f LINTERNAL). Stored through the alias as in BWIDEMARK.
+\ refuse it. Stored through the alias as in BWIDEMARK.
 \ Monotonic: no clear prim exists.
 : BINTMARK ( -- )
    A G-POP
@@ -4726,8 +4662,8 @@ public
 \ slot per (name, wid), answers the first validated row. They agree only where
 \ a wid holds one live row per folded name:
 \   - a real wordlist (the global wid, a package's private or public wid, a
-\     package-row marker) is guarded by duplicate walls at its definers
-\     (habu2.f C-REJECT-DUP-DEF, DOES-REC:REJECT-DUP). native-unit-publish can
+\     package-row marker) is guarded by duplicate walls at its definers.
+\     native-unit-publish can
 \     still append duplicates;
 \     XREF's indexed probe below scans the whole chain for its newest-record
 \     rule;
@@ -5286,16 +5222,14 @@ package ENGINE-EMIT
    15 SP 120 LDR, 17 SP 128 LDR,
    SP SP 144 ADDI,  RET, ;
 
-\ LBCAP appends TKA/TKL and a space to the body text, LBCS ( x11=a x12=u ) any
-\ run, each with a layout.f BODY-SOURCE row at base + cap. When BODY-TEXT's BASE
+\ LBCS ( x11=a x12=u ) appends a run and a space to the body text, with a
+\ layout.f BODY-SOURCE row at base + cap. When BODY-TEXT's BASE
 \ is 0 or BODYLEN + u + 1 passes its CAP, it maps a larger
 \ block first (BCAP-GROW); a refused map dies rc 71 at LBGROWFAIL (habu2.f EM-BODY-GROW-DIE)
 \ before anything is stored, so the refusal is catchable inside evaluate.
 : EMIT-BCAP ( -- )
    LBL LBL LBL LBL LBL LBL {: pop put seed none src rowed :}
    LBL LBL {: grow:label gsub:label :}
-   LBCAP LABEL@ LBL,
-   11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS LABEL@ LBL,
    LBL BCAP-OK !
    LBL BCAP-CP !
@@ -5541,45 +5475,6 @@ private
       8 8 1 SUBI,  8 hnone CBZ,
       6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  hloop B,
    hnone LBL, ;
-
-\ C-HIDX-DUP?: x14 = live table ptr (caller ensures != 0). Sets x13 = 1 when a
-\ live record with this definition's wordlist (DEF-WL-CELL) and folded name
-\ (TKA/TKL) is already in the hash table, else 0, then falls through. The
-\ ordinary definition refuses any live match in the chain; retired records
-\ carry wid -2 and are skipped by the wid check. Same fold/compare as the
-\ linear C-REJECT-DUP-DEF, so the two agree on every candidate.
-: C-HIDX-DUP? ( -- )
-   LBL LBL LBL LBL LBL LBL {: dloop:label dnext:label dinl:label dcmp:label dfound:label dret:label :}
-   16 DATA TKA-CELL LDR,  15 DATA TKL-CELL LDR,
-   16 15 3 4 5 7 C-HIDX-HASH
-   4 DATA DEF-WL-CELL LDR,  6 3 4 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
-   13 0 MOVZ,
-   8 HIDX-SLOTS LIT64,
-   dloop LBL,
-      4 6 2 LSLI,  4 14 4 ADD,  3 4 0 LDRW,                  \ x3 = slot value
-      3 dret CBZ,                                            \ empty slot -> no dup
-      4 3 1 SUBI,  4 NDICT CMP,  C-GE dnext BCOND,           \ stale index
-      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,               \ x5 = record ptr
-      4 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,          \ wid mismatch
-      4 5 16 LDR,  4 4 DNAME-FLAG-BITS LSLI,  4 4 DNAME-FLAG-BITS LSRI,  15 DATA TKL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,  \ len mismatch
-      16 5 24 ADDI,
-      4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 dinl CBZ,
-         16 5 24 LDR,
-      dinl LBL,
-      7 0 MOVZ,
-      dcmp LBL,
-         15 DATA TKL-CELL LDR,  7 15 CMP,  C-GE dfound BCOND,
-         15 16 7 ADD,  15 15 0 LDRB,
-         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-         4 DATA TKA-CELL LDR,  4 4 7 ADD,  4 4 0 LDRB,
-         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE dnext BCOND,
-         7 7 1 ADDI,  dcmp B,
-      dnext LBL,
-         8 8 1 SUBI,  8 dret CBZ,
-         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  dloop B,
-   dfound LBL,  13 1 MOVZ,
-   dret LBL, ;
 
 \ The frame LHIDXADD and HIDX-EMIT:LREKEY open: x30 and every register their
 \ walks, insert and load bound clobber. EMIT-HIDX's aret closes it.

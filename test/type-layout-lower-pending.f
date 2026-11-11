@@ -141,8 +141,8 @@ TLP-LOCAL-TEST:DEEP 1 T= 7 T= 4 T= 3 T= 2 T= 1 T=
 -3 TLPX-REF-BRANCH 1 T= 7 T=
 
 \ branch-scoped bundle locals: a bundle local BOUND inside
-\ a branch arm lowers by bind sequence (checker LOCW-HW + the P2-CARVE-W live
-\ replay), so sibling arms may reuse the same frame slot — at different widths.
+\ a branch arm lowers by bind sequence, so sibling arms may reuse the same frame
+\ slot — at different widths.
 \ Each subject runs BOTH arms; values prove whole-bundle capture + reference.
 : TLPX-BRIF ( n -- n n ) 0 > if TLP-MK2 {: r :} r TLP-UN2
    else TLP-MK2B {: r :} r TLP-UN2 then ;

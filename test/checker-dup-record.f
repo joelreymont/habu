@@ -1,8 +1,7 @@
 \ checker-dup-record.f - a duplicate the checker refuses in the caller's scope
-\ (VERIFY:SOURCE-BUF-IN-SCOPE; the engine's walls stop it first at habu2.f
-\ C-REJECT-DUP-DEF) leaves the record it collided with intact. CHECK refuses
-\ before its record step's first write: a later-wins entry without the first
-\ word's source authority fails its later callers E-CAP-TRUSTED (checker.f
+\ (VERIFY:SOURCE-BUF-IN-SCOPE) leaves the record it collided with intact. CHECK
+\ refuses before its record step's first write: a later-wins entry without the
+\ first word's source authority fails its later callers E-CAP-TRUSTED (checker.f
 \ CHECK-REC-ADMIT).
 
 require src/lib/error.f
@@ -25,8 +24,7 @@ variable DIAG-U
 
 public
 
-\ The duplicate's own code: habu2.f C-DUP-DEF-FAIL and checker.f
-\ CHECKER-DUP-DEFINITION both throw it.
+\ The duplicate's own code: checker.f CHECKER-DUP-DEFINITION throws it.
 $4E constant DUP-RC
 
 \ Verify one span in the caller's scope with the checker's diagnostics

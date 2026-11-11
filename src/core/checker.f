@@ -12125,7 +12125,7 @@ package CHECKER-RESOLVE
    top dbase@ - DREC / REC-AT CK-REC-NAME$ ;
 
 \ The key `A:<head>`. `package` refuses a part's path of PACKAGE-PATH:CAP
-\ bytes or more (habu2.f C-PACKAGE-PATH), so a longer key names no part.
+\ bytes or more, so a longer key names no part.
 CHECKER-REG:SCRATCH{
 create HEAD-KEY PACKAGE-PATH:CAP allot
 CHECKER-REG:}SCRATCH
@@ -12852,8 +12852,8 @@ ROW-CELLS cells constant SCOPE-BYTES
    ix 0 <  ix MARK @ >=  or IF RES-FALSE EXIT THEN
    ix CLAUSE-OF 0 >=  clause xor ;
 
-\ The clause of the replayed `create ... does>` definer NAME, as habu2.f
-\ DOES-REC makes it, or of a replayed export of one, as C-EXPORT publishes it:
+\ The clause of the replayed `create ... does>` definer NAME, or of a replayed
+\ export of one:
 \ a record in NAME's wordlist named NAME's tail plus the companion suffix, so a
 \ later `trust` or `undefine` of either binds as it would live. The caller
 \ composes CNAME with DOES-CLAUSE:SUFFIX$ (CLAUSE-NAME) because that word's
@@ -12880,15 +12880,15 @@ ROW-CELLS cells constant SCOPE-BYTES
 
 \ Whether REC, the record a lookup bound, has its does> clause still in its
 \ wordlist (CLAUSE-OF): an export of it publishes that clause beside its own
-\ record (src/habu/habu2.f C-EXPORT, DOES-REC:CLAUSE-OF). No record has none.
+\ record. No record has none.
 : CARRIES? ( ptr n -- bool ) {: rec:ptr :}
    rec NULL-PTR = IF RES-FALSE EXIT THEN
    rec REC>IX CLAUSE-OF 0 >= ;
 
 \ The room an export NAME of a does> definer needs for its clause CNAME in the
 \ current wordlist: the live engine refuses the export when a word there holds
-\ the clause's name, E-DUPLICATE-DEFINITION, before the checker hears of it
-\ (src/habu/habu2.f C-EXPORT-CLAUSE-ROOM), so the caller asks before it records
+\ the clause's name, E-DUPLICATE-DEFINITION, before the checker hears of it,
+\ so the caller asks before it records
 \ the export. A wordlist already holding NAME holds the export's twin, and
 \ CLAUSE asks whether it has the clause.
 : EXPORT-ROOM ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
@@ -12964,7 +12964,7 @@ create PATH-KEY PACKAGE-PATH:CAP allot
 CHECKER-REG:}SCRATCH
 public
 \ A part opens in its package's private section, in its buffer, under no using
-\ it opened, inside no part (habu2.f C-PACKAGE-PART-GUARD); else E-PKG-CONTEXT.
+\ it opened, inside no part; else E-PKG-CONTEXT.
 : PART-GUARD ( -- )
    data-base PKG-PUB-CELL + @ 0= IF EXIT THEN
    data-base PKG-OUTSIDE-CELL + @ 0 <>  data-base ENCLOSING:PUB + @ 0 <>  or
@@ -12972,8 +12972,8 @@ public
    CK-USE-ENGINE-DEPTH data-base USE-PKG-SAVE-CELL + @ <>  or
    IF E-PKG-CONTEXT throw THEN ;
 
-\ NAME, or `A:NAME` in package A, refused as habu2.f C-PACKAGE refuses it, a
-\ path too long for a row by its length alone.
+\ NAME, or `A:NAME` in package A, refused as `package` refuses it, a path too
+\ long for a row by its length alone.
 : PART-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    TOP-NAME$ {: pa:ptr pu:n :}
    pu 0 <>  u PACKAGE-PATH:CAP pu 1 + - < 0=  and IF E-PKG-CONTEXT throw THEN
@@ -16619,8 +16619,8 @@ RECORD-GRID-HOOKS
    ord RECORD-PEND-IX @ = IF
       ord RECORD-PEND-EFF@ RECORD-PEND-SYM @ NORET-NEWEST
       RECORD-PEND-SYM @ DFER-FIND-SYM RECORD-LINK-SET
-      \ An EXPORT alias copies a constant's DKIND:VAL stamp with its body
-      \ (habu2.f C-EXPORT), so the export keeps the constant's fixed value.
+      \ An EXPORT alias copies a constant's DKIND:VAL stamp with its body,
+      \ so the export keeps the constant's fixed value.
       ord RECORD-LINK-CURRENT? IF
          ord ord CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED!
       THEN
@@ -16868,8 +16868,8 @@ CHECKER-REG:}SCRATCH
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
 
 \ The return-stack transfers and the control words the walk types by spelling.
-\ `>r` `r>` `r@` are compile keywords the engine matches before any lookup (habu2.f
-\ EM-COMPILE-META-KEYWORDS), so their spelling is the word. Every other row is
+\ `>r` `r>` `r@` are compile keywords the engine matches before any lookup, so
+\ their spelling is the word. Every other row is
 \ an engine word a package or a redefinition can shadow, asked only when `core`
 \ says the token binds the engine's own word (CTL-CORE-OP, TOK-CORE-OP?).
 : RS-TOK? {: a u core :}
@@ -17411,7 +17411,7 @@ variable CURSYM
    src CHECKER-SYM-SOURCE NORET-APPEND ;
 
 \ An export of a does> definer publishes the definer's clause too, under the
-\ clause's name in the export's wordlist (src/habu/habu2.f C-EXPORT). The live
+\ clause's name in the export's wordlist. The live
 \ engine writes that record itself; a replay has the overlay write it
 \ (CHECKER-OVERLAY:CLAUSE), so a later `trust` or definition of the clause's
 \ name binds or is refused as the live load does. Whether the source carries a
@@ -19341,40 +19341,11 @@ create LOCSEQIX LOC-RECS cells allot
    need LOC-HW-GROW-CAP {: cap:n :}
    LOC-HW-P @ LOC-HW-CAP @ cells cap cells SR-GROW LOC-HW-P !
    cap LOC-HW-CAP ! ;
-: LOCW-HW@ ( n -- n ) {: s:n :}    \ final width of bind occurrence s (die 76 = pass-2 misalignment)
+: LOCW-HW@ ( n -- n ) {: s:n :}    \ final width of bind occurrence s
    s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
    s cells LOC-HW + @ ;
 : LOCW-HW-N@ ( -- n ) LOCSEQ @ ;
-\ Pass-2 live-width table: the width-aware recompiler (habu2.f EM-P2-CARVE-W /
-\ EM-P2-LIVE-W) replays the certified body's {: groups in bind order — each
-\ carve consumes the next bind seq (P2-CARVE-W) and records that local's width
-\ under its ENGINE live frame index, so a frame slot reused by a sibling branch
-\ reads its own width; checker #LOC joins never skew the frame math.
-create P2LW LOC-RECS cells allot
-variable P2SEQ
-: P2LW-IX-GUARD ( n -- )           \ die 76 outside the engine locals frame
-   dup 0 <  over LOC-RECS >=  or IF s" checker: bad pass-2 local index" 76 die THEN
-   drop ;
-: P2-LOCSEQ-RESET ( -- )           \ restart the pass-2 bind sequence at 0; nothing calls it
-   0 P2SEQ ! ;
-: P2-CARVE-W ( n -- n ) {: i:n :}  \ next bind's width, recorded as live local i's width
-   i P2LW-IX-GUARD
-   P2SEQ @ LOCW-HW@ {: w:n :}
-   P2SEQ @ 1 + P2SEQ !
-   w i cells P2LW + !
-   w ;
-: P2-LIVE-W@ ( n -- n ) {: i:n :}  \ live local i's width (recorded at its carve)
-   i P2LW-IX-GUARD
-   i cells P2LW + @ ;
-: P2-LIVE-CUM@ ( n -- n ) {: i:n :}   \ frame cells from the frame top through live local i
-   i P2LW-IX-GUARD
-   0
-   0 BEGIN dup i <= WHILE
-      dup cells P2LW + @  rot +  swap
-      1 +
-   REPEAT drop ;
-\ Capture follows the caller's last pass-2 width and diagnostic read. A new
-\ check starts with #LOC at zero; no local binding survives this seam.
+\ A new check starts with #LOC at zero; no local binding survives this seam.
 \ Retire the fixed columns; the width arena and LOCSEQ rest through SR-RETIRE.
 : LOC-SNAP-RESET ( -- )
    LOCNB BYTE-VIEW CELL-VIEW 0 LOC-RECS LOC-NAME-CAP * CELL / ARENA-CELLS-ZERO
@@ -19384,10 +19355,8 @@ variable P2SEQ
    LOCW 0 LOC-RECS ARENA-CELLS-ZERO
    LOCVAL 0 LOC-RECS ARENA-CELLS-ZERO
    LOCSEQIX 0 LOC-RECS ARENA-CELLS-ZERO
-   P2LW 0 LOC-RECS ARENA-CELLS-ZERO
    0 LOC-CAP-HEAD !
-   0 #LOC !  0 LMODE !  0 LGRP !  0 LI !  0 LRF !
-   0 P2SEQ ! ;
+   0 #LOC !  0 LMODE !  0 LGRP !  0 LI !  0 LRF ! ;
 \ Per-local type display hook (render.f installs SHOW-LOCAL-TYPE). The no-op
 \ default keeps the call effect-known and drops the name span, length and type.
 defer LOCSHOWXT ( ptr u8 n n -- )
@@ -19647,7 +19616,7 @@ CHECKER-REG:}SCRATCH
 \ the runtime bound and the lowering binds the widths recorded here; the
 \ token's width facts, recorded from the row from mark wf0 on, state the
 \ declared groups instead, as the pass-2 carve cross-checks them against those
-\ widths (habu2.f EM-P2-CARVE). The one splice pops the declared row's
+\ widths. The one splice pops the declared row's
 \ physical cells off the pre-token rows. A bind with an unknown width is
 \ lost: what the runtime bound is unknown. A lost bind is incomplete where a
 \ width is at stake: a wide cell in the pre-token rows (UNJ-LOST), or a local
@@ -20084,8 +20053,7 @@ SCOPE-INTRO-FENCE-INSTALL
 
 \ Whether the open frame is of kind k1 or k2, the kinds that stand for the frame
 \ the load's compiler requires there. A control-flow word over no frame or
-\ another kind's is one the compiler refuses (src/habu/habu2.f C-CF-AT2), for
-\ the reason why.
+\ another kind's is one the compiler refuses, for the reason why.
 : CF-AT? ( n n n -- bool )
    {: k1:n k2:n why:n :}
    CF-MT? 0= IF
@@ -20505,7 +20473,7 @@ CHECKER-REG:}SCRATCH
    THEN ;
 
 \ An if's frame and an else's are both the compiler's IF frame, which its else
-\ takes and leaves (src/habu/habu2.f J-ELSE): a second else compiles, and the
+\ takes and leaves: a second else compiles, and the
 \ check, which models one, fails there.
 : CF-ELSE
    1 2 MD-CLOSES-NOTHING CF-AT? IF CF@K 1 <> IF MD-ELSE-TWICE CF-FAIL ELSE
@@ -20693,7 +20661,7 @@ CHECKER-REG:}SCRATCH
    1 CF-LOOP-FIND 0 < IF MD-NO-OUTER-LOOP CF-FAIL ELSE STEP-N-OUT THEN ;
 
 \ Whether a DO is open anywhere in the definition. The load's compiler refuses
-\ a `leave` while compiling it only when none is (src/habu/habu2.f LVREQUIRE):
+\ a `leave` while compiling it only when none is:
 \ one a quotation keeps from its DO compiles, and its check refuses it.
 : CF-ANY-DO? ( -- bool )
    0 BEGIN dup #CFC @ < WHILE
@@ -21657,7 +21625,7 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
    RES-TRUE ;
 
 \ Whether that token lies in the checked text or in a signature text SGA SGU the source
-\ map places; not J-DOES's interned copy (C-PLACE-CREATED-SIG).
+\ map places; not an interned copy.
 : SGBAD-IN-SOURCE? ( -- bool )
    TBASE @ TBLEN @ SGBAD-IN? IF RES-TRUE EXIT THEN
    SGA @ SGU @ SGBAD-IN? 0= IF RES-FALSE EXIT THEN
@@ -21918,7 +21886,7 @@ package CHECKER-REG
    DL-TAKE
    linked 0= IF na nu CHECKER-RECORD-SYM? ELSE linked THEN {: sym:n :}
    \ A created word takes no CTL-INHERITED fact: those come from the hook's walk
-   \ of an interpret-mode `create` (habu2.f C-DEFHOOK), read as a call to it.
+   \ of an interpret-mode `create`, read as a call to it.
    sym CTL-FLAGS-SYM {: flags:n :}
    flags CTL-INHERITED and 0 <> IF
       sym flags CTL-INHERITED invert and sym CTL-MASKS-SYM NORET-ADD-SYM
@@ -26831,7 +26799,7 @@ CHECKER-REG:}SCRATCH
    ;
 
 \ Certifies `cast:` and `linear:` for both front ends, the engine's reader
-\ keyword (habu2.f REGISTER-IDENTITY) and verify-source's pre-pass.
+\ keyword and verify-source's pre-pass.
 package CHECKER-IDENTITY
 \ A row that did not parse is refused before a gate walks it; family tails read
 \ the engine's open namespace (SIG-SCOPE$).
@@ -27292,14 +27260,13 @@ GENERATES-DIAG-DEFAULT
    rec 0= IF na nu GENR-BADSIG GENERATES-REFUSE THEN
    sym rec ;
 
-\ A signature is read as a definition head reads one (habu2.f C-SIG-START,
-\ C-SIG-END): past the blanks (bytes up to 32, line feeds included), a `(` opens
-\ it whether or not a token is glued to it, and the first `)` byte closes it on
-\ any later line, whatever follows it. PARSE-SIG-RAW splits the effect at spaces
-\ only, so a line feed inside it fuses the tokens around it. Answers the offset
-\ of the `(` (the text's length when none opens) and the offset just past the
-\ `)` (0 when none closes). `generates:` and verify-source.f SCAN-SIG read a
-\ signature here.
+\ A signature is read as a definition head reads one: past the blanks (bytes
+\ up to 32, line feeds included), a `(` opens it whether or not a token is
+\ glued to it, and the first `)` byte closes it on any later line, whatever
+\ follows it. PARSE-SIG-RAW splits the effect at spaces only, so a line feed
+\ inside it fuses the tokens around it. Answers the offset of the `(` (the
+\ text's length when none opens) and the offset just past the `)` (0 when none
+\ closes). `generates:` and verify-source.f SCAN-SIG read a signature here.
 : CHECKER-SIG-SPAN ( ptr u8 n -- n n )
    {: a:ptr u:n :}
    0 BEGIN dup u < IF a over + c@ 33 < ELSE RES-FALSE THEN WHILE 1 + REPEAT
@@ -30190,7 +30157,7 @@ FILE-POS-CLEAR
    FPOS-LN @ FPOS-CL @ at ;
 ;package
 
-\ The wall's line and code (habu2.f C-DUP-DEF-FAIL) for a duplicate refused off
+\ The wall's line and code for a duplicate refused off
 \ the wall: check-hook.f DEFINITION, layout-buffer.f LBUF-NAME-OK? (before allot).
 package CHECK
 private
@@ -30206,7 +30173,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 \ The line of the definition's name, where the wall places a duplicate. At a
 \ colon definition's closing `;` the definition is pending (PEND-CELL) and its
 \ opener kept where its name starts (PENDTKA-CELL); create, variable and
-\ constant run the hook with nothing pending (habu2.f C-DEFHOOK), PENDTKA-CELL
+\ constant run the hook with nothing pending, PENDTKA-CELL
 \ still at the last colon definition's name and the cursor just past their own.
 \ A name not between the file's first owned byte and the cursor is not counted
 \ to, since the count would read outside the file: it is placed at the cursor.

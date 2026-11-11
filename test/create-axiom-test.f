@@ -140,8 +140,6 @@ private
 \ `variable` and `constant` are parser-only keywords, rejected in colon bodies
 \ through E-UNDEFINED. `variable` needs no primitive row: its hook body uses
 \ `create`.
-\ `constant` keeps its one-cell input row because C-CONSTANT still checks the
-\ synthetic body `NAME constant` before publishing the created word's effect.
 \ `variable` and `constant` are parser-only defining keywords: the engine cannot
 \ compile either spelling in a colon body. Exercise the production source
 \ verifier, including inert spellings that would fool a text search.

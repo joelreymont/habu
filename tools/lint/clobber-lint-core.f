@@ -69,7 +69,6 @@ variable RX  variable RACC
 : CL-ROR  ( n -- )  RMSK @ or RMSK ! ;
 
 0 28 CL-ADD 31 CL-ADD constant CONTRACT-MASK
-0 0 CL-ADD 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD constant KWCMP-MASK
 0 8 CL-ADD 16 CL-ADD constant SYS-SCRATCH-MASK
 
 : CL-DIGIT?  ( n -- bool )  dup 47 > swap 58 < and ;
@@ -130,34 +129,13 @@ variable RX  variable RACC
    a u s" Lcallbackaddr" LINT-STR=CI if 0 9 CL-ADD exit then
    \ The source observer leaves the original or callback status in x15.
    a u s" Lsourceexecfinish" LINT-STR=CI if 0 15 CL-ADD exit then
-   a u s" Lcfpop" LINT-STR=CI if 0 9 CL-ADD exit then
-   a u s" Lkwcmp" LINT-STR=CI if 0 0 CL-ADD exit then
-   a u s" Lloc-find" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
-   a u s" Lsrcrd" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lfind" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
-   a u s" Lfindused" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    \ LFIND's hit shape (x5, x11-x13) plus x6 = records met; at two, x16 and
    \ x12 name the first and second record.
    a u s" Lfindused-core" LINT-STR=CI if
       0 5 CL-ADD 6 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 16 CL-ADD exit then
    a u s" Lnum" LINT-STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
-   a u s" Lvralloc" LINT-STR=CI if 0 14 CL-ADD exit then
-   a u s" Lfralloc" LINT-STR=CI if 0 14 CL-ADD exit then
-   a u s" Lvpushf" LINT-STR=CI if 0 exit then
-   a u s" Lfforcek" LINT-STR=CI if 0 14 CL-ADD exit then
-   a u s" Lfbinprep" LINT-STR=CI if 0 13 CL-ADD 14 CL-ADD 15 CL-ADD exit then
-   a u s" Lvbit" LINT-STR=CI if 0 8 CL-ADD exit then
-   a u s" Lvforcek" LINT-STR=CI if 0 14 CL-ADD exit then
-   a u s" Lvtop2c" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
-   a u s" Lvbinprep" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD exit then
-   a u s" Lvdrop" LINT-STR=CI if 0 13 CL-ADD exit then
-   a u s" Lvswapx" LINT-STR=CI if 0 13 CL-ADD exit then
-   a u s" Lvnipx" LINT-STR=CI if 0 13 CL-ADD exit then
-   a u s" Lvcopy" LINT-STR=CI if 0 13 CL-ADD exit then
-   a u s" Lvshared?" LINT-STR=CI if 0 13 CL-ADD exit then
-   a u s" Lvdest" LINT-STR=CI if 0 12 CL-ADD 14 CL-ADD exit then
-   a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD 11 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
    \ LROOM restores x9-x12; its exhaustion branch throws without returning.
@@ -183,19 +161,11 @@ variable RX  variable RACC
    a u s" RELOC-EMIT:Lmark" LINT-STR=CI if $3FFFF exit then
    a u s" RELOC-EMIT:Lptrmark" LINT-STR=CI if $3FFFF exit then
    a u s" RELOC-EMIT:Lscratchmark" LINT-STR=CI if $3FFFF exit then
-   a u s" RELOC-EMIT:Lindexrelease" LINT-STR=CI if $3FFFF exit then
    \ Recovery uses the same MARK-SAVE/RESTORE register frame as the registrars.
    a u s" RELOC-EMIT:Lrollback" LINT-STR=CI if $3FFFF exit then
    \ EM-CODE-INVALIDATE saves these recovery registers around its observer call.
    a u s" Lcodeinv" LINT-STR=CI if
       0 10 CL-ADD 11 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD 30 CL-ADD exit then
-   a u s" Lvpushc" LINT-STR=CI if 0 11 CL-ADD exit then
-   a u s" Lvpushr" LINT-STR=CI if 0 14 CL-ADD exit then
-   a u s" Lvforcek" LINT-STR=CI if 0 5 CL-ADD exit then
-   a u s" Lfforcek" LINT-STR=CI if 0 5 CL-ADD exit then
-   a u s" Lvpushf" LINT-STR=CI if 0 11 CL-ADD exit then
-   a u s" Lvbit" LINT-STR=CI if 0 7 CL-ADD exit then
-   a u s" Lbcap" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
    a u s" Lbcs" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
    \ EMIT-CEMIT frames x12/x13 and writes no other register but CP.
    a u s" Lcemit" LINT-STR=CI if
@@ -204,8 +174,6 @@ variable RX  variable RACC
    \ LHEADROW frames x0, x1, x9, x10, x13, x17 and x30 around its probes.
    a u s" Lheadrow" LINT-STR=CI if
       0 0 CL-ADD 1 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 17 CL-ADD 30 CL-ADD exit then
-   \ INTERP-EMIT:LFINDSHADOW reloads LFIND's outputs from its frame before it returns.
-   a u s" INTERP-EMIT:Lfindshadow" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lprotwidq" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD exit then
    a u s" Lhidxadd" LINT-STR=CI if
       0 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD
@@ -272,7 +240,6 @@ public
 package CLOBBER
 
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" TADR," LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-save" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-restore" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-header" LINT-STR=CI if LINT-TRUE exit then
@@ -287,23 +254,7 @@ package CLOBBER
    a u s" g-pop" LINT-STR=CI if LINT-TRUE exit then
    a u s" c-hidx-hash" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-print9" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-lit" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-call" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-popflag" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-pushcp" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-emitw" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-bback" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-qualify-seal-guard" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-trusted-tick?" LINT-STR=CI if LINT-TRUE exit then
-   a u s" does-rec:clause-of" LINT-STR=CI if LINT-TRUE exit then
-   a u s" cf-entry" LINT-STR=CI if LINT-TRUE exit then
-   a u s" cfb-entry" LINT-STR=CI if LINT-TRUE exit then
-   a u s" fold-entry" LINT-STR=CI if LINT-TRUE exit then
-   a u s" vop-entry" LINT-STR=CI if LINT-TRUE exit then
-   a u s" vcmp-entry" LINT-STR=CI if LINT-TRUE exit then
-   a u s" vshuf-entry" LINT-STR=CI if LINT-TRUE exit then
-   a u s" p2w-entry" LINT-STR=CI if LINT-TRUE exit then
-   a u s" vun-entry" LINT-STR=CI ;
+   a u s" c-emitw" LINT-STR=CI ;
 : INSTR?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u PSEUDO? if LINT-TRUE exit then
    a u ENDS-COMMA?  a u START-DOLLAR? 0= and  a u UPPERISH? and ;
@@ -447,8 +398,6 @@ DYNAMIC-BUFFER ROLES u8
 : ER  ( n -- )  RR@ dup 0 >= if RMSK @ swap CL-ADD RMSK ! else drop then ;
 
 : PSEUDO-EFFECTS  {: a u :}  ( -- )
-   \ TADR, writes its destination and scratch; the text base is read via DATA.
-   a u s" TADR," LINT-STR=CI if 0 EW 1 EW 0 20 CL-ADD CL-ROR exit then
    \ These inline registrar helpers use a fixed machine-register ABI.
    a u s" mark-save" LINT-STR=CI if
       $3FFFF 31 CL-ADD CL-ROR 0 16 CL-ADD 31 CL-ADD CL-WOR exit then
@@ -484,34 +433,7 @@ DYNAMIC-BUFFER ROLES u8
    a u s" c-hidx-hash" LINT-STR=CI if 0 ER 1 ER 2 EW 3 EW 4 EW 5 EW exit then
    a u s" g-pop" LINT-STR=CI if 0 EW exit then
    a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
-   a u s" c-lit" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 30 CL-ADD CL-WOR  0 11 CL-ADD CL-ROR exit then
-   a u s" c-call" LINT-STR=CI if 0 5 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD 30 CL-ADD CL-WOR  0 11 CL-ADD 12 CL-ADD CL-ROR exit then
-   a u s" c-popflag" LINT-STR=CI if 0 9 CL-ADD 19 CL-ADD CL-WOR exit then
-   a u s" c-pushcp" LINT-STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then
-   a u s" c-emitw" LINT-STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then
-   a u s" c-bback" LINT-STR=CI if 0 5 CL-ADD 9 CL-ADD 10 CL-ADD 30 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
-   \ habu2.f C-QUALIFY-SEAL-GUARD frames x30 across its LHEADROW call.
-   a u s" c-qualify-seal-guard" LINT-STR=CI if
-      0 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD
-        11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD 16 CL-ADD 17 CL-ADD
-        24 CL-ADD 25 CL-ADD CL-WOR exit then
-   \ habu2.f C-TRUSTED-TICK? answers in x17; its query runs through a raw BLR
-   \ and only x5 and x11-x13 are restored.
-   a u s" c-trusted-tick?" LINT-STR=CI if
-      0 0 CL-ADD 1 CL-ADD 2 CL-ADD 3 CL-ADD 4 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD
-        9 CL-ADD 10 CL-ADD 14 CL-ADD 15 CL-ADD 16 CL-ADD 17 CL-ADD CL-WOR exit then
-   \ habu2.f DOES-REC:CLAUSE-OF reads the record in x5 and answers in x6.
-   a u s" does-rec:clause-of" LINT-STR=CI if
-      0 6 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 10 CL-ADD 12 CL-ADD 14 CL-ADD
-        15 CL-ADD 16 CL-ADD CL-WOR  0 5 CL-ADD CL-ROR exit then
-   a u s" cf-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" cfb-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" fold-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" vop-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" vcmp-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" vshuf-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" p2w-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" vun-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then ;
+   a u s" c-emitw" LINT-STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then ;
 
 : SYS-EXIT-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" NR-EXIT" LINT-STR= if LINT-TRUE exit then
@@ -1519,7 +1441,7 @@ variable LBL#  variable LX  variable GROWN
 : EACH-FILE ( [ ptr u8 n -- ] -- ) {: visit :}
    s" src/habu/rt.f" visit execute  s" src/habu/crash.f" visit execute
    s" src/habu/regalloc.f" visit execute  s" src/habu/habu1.f" visit execute
-   s" src/habu/jit.f" visit execute  s" src/habu/prof.f" visit execute
+   s" src/habu/prof.f" visit execute
    s" src/habu/habu2.f" visit execute ;
 
 : FRESH-SCAN  ( -- )

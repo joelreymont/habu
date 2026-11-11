@@ -905,7 +905,7 @@ $14000000 constant ACAP-GBR-TERM
    len $FFE0001F and $D2800002 <> if false exit then
    len 5 rshift $FFFF and 3 + -4 and end at 4 + - = ;
 
-\ The bootstrap compiler's C-SDQ/C-CQ and escaped forms emit exactly
+\ An in-code string literal is exactly
 \ B after-bytes; padded bytes; ADR x9,first-byte; STR x9,[x19],#8. The target
 \ and the address must agree before the skipped interval is treated as data.
 \ Tier 1 interns its literals in DATA and has no such in-code interval.

@@ -427,8 +427,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" prot-wid-add refuses an id at the bitmap bound and names it" T-LABEL
    PWG-OOR-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PWID-OOR ;
 
-\ Publishing into a protected WID dies 84 with `E-SEALED-PACKAGE: <word>` from
-\ C-STORE-DEF-NAME.
+\ Publishing into a protected WID dies 84 with `E-SEALED-PACKAGE: <word>`.
 : SLV-ASSERT-PROT-PUBLISH ( ptr u8 n -- ) {: line:ptr lineu:n :}   \ child died ENGINE-ERROR:SEAL-PACKAGE with LINE
    SLV-EXITED @ TTRUE
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=

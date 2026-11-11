@@ -23,7 +23,7 @@ require src/lib/verify-diagnostics.f
 \ so verify-source.f is required here at top level; every checker scope below
 \ replays source through VERIFY. It is not in the engine's baked prefix: the
 \ require registry's dedupe of co-loaded sites is the only one this line has.
-\ A replayed `constant` gets VERIFY's `-- a` effect (habu2.f C-CONSTANT).
+\ A replayed `constant` gets VERIFY's `-- a` effect.
 require src/habu/verify-source.f
 
 package CHECK-ALL-ERRORS
