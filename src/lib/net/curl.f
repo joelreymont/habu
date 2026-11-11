@@ -5,19 +5,32 @@
 \ and STREAM-START/NEXT run on one CURL loop task (the multi interface below).
 \ NEXT-ARM, NEXT-READY? and NEXT-TAKE let one task have several streams armed
 \ and take each as it answers.
-\ Only HABU_NET_TESTS=1 runs the case that leaves the machine (TLS, CA bundle).
+\
+\ Habu cannot hand libcurl a callback into checked code, and none is needed:
+\ libcurl's default write callback is fwrite. A whole body's CURLOPT_WRITEDATA
+\ is an fmemopen stream over the caller's span; the header capture and a
+\ streamed body are open_memstream streams, and memcpy moves their bytes into
+\ caller spans. For the same reason the loop task uses no
+\ CURLMOPT_SOCKETFUNCTION or CURLMOPT_TIMERFUNCTION. It wakes a stream's owner
+\ for every chunk and end, and parks in package AIO and not in libcurl: after
+\ every curl_multi_perform it asks curl_multi_fdset which descriptors libcurl
+\ is waiting on and curl_multi_timeout how long it may wait, turns those into
+\ AIO tickets, and takes the first one that ends. A streamed record's memstream
+\ is rewound once all it holds is copied into spans NEXT-ARM armed, and its
+\ receive is paused while it holds uncopied bytes, so a fast server waits in
+\ the kernel's window and not in this process's memory.
 require src/lib/error.f
-require src/lib/string.f                      \ BUFFER:, SCRATCH-BUFFER:, the transfer table's byte rows
-require src/lib/le.f                          \ the foreign cells are little-endian
+require src/lib/string.f
+require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
-require src/lib/memory.f                      \ the grown record chunks, the text copies
-require src/lib/span.f                        \ a text copy's reach
-require src/lib/num-types.f                   \ the alloc-byte-len a chunk carries
+require src/lib/memory.f
+require src/lib/span.f
+require src/lib/num-types.f
 require src/lib/task.f
-require src/lib/fd.f                          \ FD:PIPE, the wake pipe
-require src/lib/aio.f                         \ the loop waits on AIO tickets
-require src/lib/adt/result.f                  \ TASK:JOIN's answer, read by LOOP-STOP
+require src/lib/fd.f
+require src/lib/aio.f
+require src/lib/adt/result.f
 
 package CURL
 public
@@ -26,7 +39,6 @@ DEFTYPE HANDLE
 DEFTYPE CODE
 DEFTYPE HTTP-STATUS
 
-\ Whether the server reports itself unavailable for now: 408, 429 or 5xx.
 : UNAVAILABLE? ( http-status -- bool )
    HTTP-STATUS>N {: status:n :}
    status 408 = status 429 = or status 500 >= status 600 < and or ;
@@ -81,8 +93,6 @@ E-CURL-RESULT constant E-RESULT
 
 private
 
-\ curl.h writes every option as its type's base plus the option's own number, so
-\ each line below is checkable against /usr/include/curl/curl.h on sight.
 0 constant OPT-LONG                       \ CURLOPTTYPE_LONG
 10000 constant OPT-OBJECT                 \ CURLOPTTYPE_OBJECTPOINT
 $100000 constant INFO-STRING              \ CURLINFO_STRING
@@ -127,7 +137,7 @@ $7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 999 constant MAX-STATUS
 $08 constant CELL-BYTES
 
-\ Foreign out-parameter cells, per task like FFI's own argument staging.
+\ Foreign out-parameter cells, per task.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $28 TASK:+USER IO-STORAGE drop
 : INFO-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
 : BUF-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $08 + ;
@@ -136,15 +146,10 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $28 TASK:+USER IO-STORAGE drop
 : HLEN-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $20 + ;
 
 
-\ libcurl's easy interface. CURL* and FILE* are OPAQUE here - nothing in this
-\ package dereferences one - and so is curl_slist* outside SLIST-RELEASE, which
-\ reads its documented layout to wipe it; all three are declared `n`: both host
-\ ABIs pass a pointer and an integer in the same register, and a cell is what the
-\ nominal handle types wrap. Only a span Habu or the callee really reads or
-\ writes is declared `ptr u8`.
-\
-\ The two fixed arguments precede a variadic value. VARIADIC selects Apple's
-\ stack convention or Linux's register convention and preserves pointer extents.
+\ CURL* and FILE* are OPAQUE here, and so is curl_slist* outside SLIST-RELEASE;
+\ all three are declared `n`: both host ABIs pass a pointer and an integer in
+\ the same register. Only a span Habu or the callee really reads or writes is
+\ declared `ptr u8`. The two fixed arguments precede a variadic value.
 VERSIONED-LIBRARY curl 4
 
 FUNCTION: GLOBAL-INIT curl_global_init ( n -- i32 ) ;FUNCTION
@@ -164,13 +169,11 @@ FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- i32 )
 ;FUNCTION
 
 
-\ libcurl's multi interface, the transfer driver the loop at the end of this
-\ file runs on. CURLM* is opaque like CURL*, every answer is a CURLMcode, and
-\ each out-parameter is a C int, so each line is checkable against
-\ /usr/include/curl/multi.h on sight. curl_multi_info_read answers a CURLMsg*
-\ or zero, which is foreign memory this package copies before it reads, and
-\ curl_multi_fdset fills three fd_sets the CALLER cleared, which is why each of
-\ them is declared as the whole FD_SETSIZE bitmap it writes into.
+\ CURLM* is opaque like CURL*, every answer is a CURLMcode.
+\ curl_multi_info_read answers a CURLMsg* or zero, which is foreign memory this
+\ package copies before it reads, and curl_multi_fdset fills three fd_sets the
+\ CALLER cleared, which is why each of them is declared as the whole
+\ FD_SETSIZE bitmap it writes into.
 FUNCTION: MULTI-INIT curl_multi_init ( -- n ) ;FUNCTION
 FUNCTION: MULTI-CLEANUP curl_multi_cleanup ( n -- i32 ) ;FUNCTION
 FUNCTION: MULTI-ADD curl_multi_add_handle ( n n -- i32 ) ;FUNCTION
@@ -196,12 +199,6 @@ FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 )
 ;FUNCTION
 
 
-\ The process's own libc. Habu cannot hand libcurl a callback into checked code,
-\ and none is needed: libcurl's default write callback is fwrite. A whole
-\ body's CURLOPT_WRITEDATA is an fmemopen stream over the caller's span; the
-\ header capture and a streamed body are open_memstream streams, and memcpy
-\ moves their bytes into caller spans. strlen measures the request list's
-\ lines for their wipe.
 PROCESS-SYMBOLS
 
 FUNCTION: STREAM-CLOSE fclose ( n -- i32 ) ;FUNCTION
@@ -221,11 +218,11 @@ FUNCTION: MEMSTREAM open_memstream ( ptr u8 ptr u8 -- n )
 ;FUNCTION
 
 FUNCTION: SPAN-STREAM fmemopen ( ptr u8 n ptr u8 -- n )
-   0 1 WRITES-ARG                         \ the caller's span, length from arg 1
+   0 1 WRITES-ARG
 ;FUNCTION
 
 FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
-   0 2 WRITES-ARG                         \ the caller's span, length from arg 2
+   0 2 WRITES-ARG
 ;FUNCTION
 
 
@@ -234,17 +231,12 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 
 
 \ A request body, a destination span, a string option and a header line are the
-\ caller's own storage, bounded only by what the caller allocated: a whole body
-\ past its span is `truncated`, the header capture grows in a memstream, and
-\ libcurl refuses a string option past its own input limit with a code, which
-\ answers `failed`.
+\ caller's own storage, bounded only by what the caller allocated.
 : AT-LEAST ( n n -- ) {: value:n minimum:n :}
    value minimum < if E-OPERAND throw then ;
 
 
-\ Every foreign cell here is little-endian and LE: reads it: LE:U64@ for a
-\ pointer or a C long, LE:U32@ for the C int every multi out-parameter and both
-\ CURLMsg enums are.
+\ Every foreign cell here is little-endian.
 : CELL-CLEAR ( ptr u8 -- ) {: target :}
    CELL-BYTES 0 do 0 target i + c! loop ;
 
@@ -288,9 +280,7 @@ CAST: >BYTES ( n -- ptr u8 )
 
 
 \ libcurl reads a NUL-terminated copy and duplicates it for itself, so the copy
-\ is a MEM:WITH-BYTES scope that lasts only for the call. FFI:CSTR refuses an
-\ embedded NUL (E-FFI-NUL), which would silently shorten a URL or header line,
-\ before it writes a byte, so a refused copy is released still zero.
+\ is a scope that lasts only for the call.
 : TEXT-ROOM ( n -- NUM:alloc-byte-len )
    {: u:n :}
    u 0 AT-LEAST
@@ -300,8 +290,7 @@ CAST: >BYTES ( n -- ptr u8 )
 : TEXT-WIPE ( SPAN:span<u8> -- ) 0 swap SPAN:FILL ;
 
 
-\ A request list is curl_slist { char *data; struct curl_slist *next; }, and
-\ its header lines can carry a credential, so they are wiped before it is freed.
+\ A request list is curl_slist { char *data; struct curl_slist *next; }.
 : SLIST-RELEASE ( n -- )
    {: list:n :}
    list begin dup 0 <> while
@@ -428,12 +417,11 @@ CAST: >BYTES ( n -- ptr u8 )
    buf LE:U64@ len LE:U64@ rot ;
 
 
-\ The caller's span as the stream libcurl writes a whole body into. fmemopen
-\ "r+b" writes no NUL and nothing past the span on either libc, where the "w"
-\ modes put a NUL in the span's last byte on glibc. macOS refuses a zero-byte
-\ fmemopen, so an empty span is /dev/null opened read-only, which refuses every
-\ write on both. Unbuffered, a byte libcurl hands fwrite is in the span or
-\ refused at that call. Zero answers a stream that could not be opened.
+\ fmemopen "r+b" writes no NUL and nothing past the span on either libc, where
+\ the "w" modes put a NUL in the span's last byte on glibc. macOS refuses a
+\ zero-byte fmemopen, so an empty span is /dev/null opened read-only, which
+\ refuses every write on both. Unbuffered, a byte libcurl hands fwrite is in
+\ the span or refused at that call.
 : SPAN-OPEN ( ptr u8 n -- n ) {: target capacity:n :}
    capacity 0= if
       S\" /dev/null\z" drop S\" rb\z" drop FILE-OPEN
@@ -444,9 +432,8 @@ CAST: >BYTES ( n -- ptr u8 )
    dup 0 UNBUFFERED 0 STREAM-BUFFERING 0 <> if STREAM-CLOSE drop 0 then ;
 
 
-\ The body bytes the span holds, whether the span refused a write for want of
-\ room, and the close's code. A full span sets the stream's error flag on both
-\ libcs while fclose still answers 0.
+\ A full span sets the stream's error flag on both libcs while fclose still
+\ answers 0.
 : SPAN-TAKE ( n -- n bool n ) {: stream:n :}
    stream STREAM-POSITION {: u:n :}
    stream STREAM-ERROR 0 <> {: refused:bool :}
@@ -456,7 +443,7 @@ CAST: >BYTES ( n -- ptr u8 )
 
 
 \ A refused write is `truncated` whatever code ends the transfer: 23 over
-\ HTTP/1.1, 56 over HTTP/2 on libcurl 8.7.1 (curl-test.f's HTTP/2 span cases).
+\ HTTP/1.1, 56 over HTTP/2 on libcurl 8.7.1.
 : BODY-RC ( n bool -- n ) {: rc:n refused:bool :}
    refused if CURLE-OK else rc then ;
 
@@ -532,8 +519,6 @@ SCRATCH-VARIABLE GLOBAL-DONE
 
 public
 
-\ A handle that cannot be initialised or configured is cleaned up before INIT
-\ answers, so a failure never leaves one allocated.
 : INIT ( -- init-result )
    GLOBAL-READY dup CURLE-OK <> if >CODE CURL-INIT--RESULT:failed exit then drop
    EASY-INIT dup 0= if
@@ -568,7 +553,7 @@ public
 \ overrides the verb without changing anything else about the request, and the
 \ override is sent on every request, redirected ones included: METHOD! "POST"
 \ stays POST across a 302 or 303. A POST that should follow 302 or 303 as GET
-\ uses BODY! alone. GET! returns a reused handle to plain GET.
+\ uses BODY! alone.
 : METHOD! ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
    u 1 AT-LEAST
    subject OPT-METHOD text u SET-TEXT ;
@@ -589,8 +574,7 @@ public
 
 
 \ The span is borrowed for this call: libcurl copies the body out of it, and its
-\ declared length is set first because the copy reads that length. Any length
-\ libcurl can hold is taken; a copy it cannot allocate is its out-of-memory status.
+\ declared length is set first because the copy reads that length.
 : BODY! ( handle ptr u8 n -- status ) {: subject:handle bytes u:n :}
    u 0 AT-LEAST
    subject OPT-BODY-SIZE u SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
@@ -634,8 +618,7 @@ public
    subject OPT-FOLLOW on FLAG>N SET-NUM-RAW CODE>STATUS ;
 
 
-\ Force a new connection for the next transfer when enabled. Zero restores
-\ libcurl's default attempt to reuse a connection from its pool.
+\ False restores libcurl's default attempt to reuse a connection from its pool.
 : FRESH-CONNECT! ( handle bool -- status ) {: subject:handle on:bool :}
    subject OPT-FRESH-CONNECT on FLAG>N SET-NUM-RAW CODE>STATUS ;
 
@@ -648,44 +631,28 @@ public
 
 private
 
-\ PERFORM holds its task for a whole transfer, so ten transfers that way cost
-\ ten threads parked in libcurl. The words below are the other shape: ONE
-\ package-owned task drives libcurl's multi interface and a task that starts a
-\ transfer is free until it asks for the answer. The loop wakes a stream's owner
-\ for every chunk and end, so with NEXT-ARM, NEXT-READY? and NEXT-TAKE one task
-\ has several streams armed and takes each as it answers. That loop task parks
-\ in package AIO and not in libcurl: after every curl_multi_perform it asks
-\ curl_multi_fdset which descriptors libcurl is waiting on and curl_multi_timeout
-\ how long it may wait, turns those into AIO tickets, and takes the first one
-\ that ends. No CURLMOPT_SOCKETFUNCTION and no CURLMOPT_TIMERFUNCTION: those are
-\ callbacks, and Habu hands libcurl no callback - the same rule PERFORM's
-\ memstream answers. A streamed record's memstream is rewound once all it holds
-\ is copied into spans NEXT-ARM armed, and its receive is paused while it holds
-\ uncopied bytes, so a fast server waits in the kernel's window and not in this
-\ process's memory.
-
-$400 constant FD-SETSIZE                  \ an fd_set holds bits 0..1023
-$80 constant FD-SET-BYTES                 \ those bits, eight to the byte
+$400 constant FD-SETSIZE
+$80 constant FD-SET-BYTES
 $40 constant WAKE-CHUNK                   \ bytes taken off the wake pipe at once
 100 constant IDLE-MS                      \ the turn to take when libcurl names none
 1000 constant LONGEST-MS                  \ the longest turn to take at all
 1 constant SHORTEST-MS                    \ and the shortest, so zero is not a spin
 
-0 constant CURLM-OK                       \ CURLM_OK
+0 constant CURLM-OK
 1 constant MSG-DONE                       \ CURLMSG_DONE
 42 constant CURLE-ABORTED                 \ CURLE_ABORTED_BY_CALLBACK
-1 constant CURLPAUSE-RECV                 \ CURLPAUSE_RECV
-0 constant CURLPAUSE-CONT                 \ CURLPAUSE_CONT
-0 constant SEEK-SET                       \ SEEK_SET
+1 constant CURLPAUSE-RECV
+0 constant CURLPAUSE-CONT
+0 constant SEEK-SET
 
 \ struct CURLMsg {int msg; CURL *easy_handle; union {void *whatever; CURLcode
-\ result;} data;}, /usr/include/curl/multi.h, on AArch64 with its int padded.
+\ result;} data;}, on AArch64 with its int padded.
 $00 constant MSG.KIND
 $08 constant MSG.EASY
 $10 constant MSG.RESULT
 $18 constant MSG-BYTES
 
-\ A record's life. Only the submitter moves FREE -> CLAIMING, and only with one
+\ Only the submitter moves FREE -> CLAIMING, and only with one
 \ atomic-cas; every other move is made under the facility below.
 0 constant STATE-FREE                     \ nobody owns this record
 1 constant STATE-CLAIMING                 \ a submitter owns it and is filling it
@@ -726,11 +693,11 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.BODY
    CELL +FIELD R.DELIVERED
    CELL +FIELD R.PAUSED                   \ the loop paused the handle's receive
-   CELL +FIELD R.OWNER                    \ the TCB pointer TASK:WAKE takes
+   CELL +FIELD R.OWNER                    \ the TCB pointer
    CELL +FIELD R.TARGET                   \ the span's address
    \ open_memstream's buffer and length, for the body and for the header
    \ capture, because the loop is what closes the streams and the opening
-   \ task's row is not where it can read. The FFI writes them as bytes.
+   \ task's row is not where it can read.
    CELL +FIELD R.BUF
    CELL +FIELD R.BUF-LEN
    CELL +FIELD R.HBUF
@@ -738,7 +705,7 @@ BEGIN-STRUCTURE REC-BYTES
 END-STRUCTURE
 
 \ One record per transfer, in cells the loop reads with atomic@ and atomic!.
-\ The records live in a chain of chunks, as AIO's do: a link cell, then the
+\ The records live in a chain of chunks: a link cell, then the
 \ records. The first chunk is static and each grown one holds as many records
 \ as all before it plus RECS-FIRST, so REC passes at most log2 links. A chunk
 \ never moves or goes back, so a record's index is stable for the loop and for
@@ -802,7 +769,6 @@ TYPED-VARIABLE TIMER-TICKET AIO:ticket
 \ A record chunk, which this module names by address as n: 0 ends the chain.
 CAST: CURL-N>PTR ( n -- ptr n )
 
-\ A record's two pointer cells, as the slots they are.
 CAST: OWNER-SLOT ( ptr n -- ptr ptr n )
 CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
