@@ -59,6 +59,18 @@
 \ it throws. A declaration grows the row table before a task can run. No C
 \ entry embeds a row address: the main region's CB-ROWS publishes the current
 \ base for the thunk on every call.
+\
+\ BIND AND UNEXPOSE. UNEXPOSE takes the state out of EXPOSED first, in one CAS,
+\ because a CONTEXT-BIND on another thread may have checked EXPOSED and not
+\ yet named its row; another thread can read CONSTRUCTED until a refusal puts
+\ EXPOSED back. The bind names its row (STLR) and then reads the task's state
+\ and region again (LDAR); UNEXPOSE writes the state (CASAL) and then reads the
+\ rows (LDAR). An acquire load never moves above an earlier release write, so
+\ at least one side sees the other's write: the bind sees the state gone, its
+\ row goes back to 0 and it is refused, or UNEXPOSE's claim sees the row,
+\ still BUSY or already bound, and refuses on it or drops it. No row is left
+\ naming an unexposed region, and the bind holds its row BUSY until the
+\ re-read passes, so no thunk enters a region UNEXPOSE has already swept.
 
 s" src/lib/error.f" required
 s" src/lib/memory.f" required
@@ -998,8 +1010,7 @@ variable ROW-N
       then
    loop ;
 
-\ Claim every row naming the region before any is dropped. A moving or active
-\ row refuses the entire claim and releases all rows already held.
+\ Claim every row naming the region before any is dropped.
 : ROWS-CLAIM ( n -- bool ) {: reg:n :}
    ROW-N @ 0 ?do
       i reg ROW-NAMES? if
@@ -1030,8 +1041,7 @@ variable ROW-N
 \ thread value comes only from that thread's own claim, and the thread entered
 \ by the region the row named then, which nothing moves until it leaves: bind,
 \ unbind, a claim and another task's end all take the row from 0, a drop moves
-\ only rows its caller holds, and the thunk only reads the region. The count
-\ is read before the region and again after the owner, each an acquire load.
+\ only rows its caller holds, and the thunk only reads the region.
 \ Every region store is counted before its mover hands the row back, and a
 \ claim acquires that hand-back, so an unchanged count leaves no store between
 \ the one the thread entered by and the one read here: they are the same. The
@@ -1058,8 +1068,7 @@ variable ROW-N
 \ inside by this region: the row may have moved since the first read, and the
 \ thread may have left it and entered again by another. A BUSY row is held by
 \ a mover for a few steps that wait on nothing, so the task yields and reads it
-\ again. A row that no longer names the region is skipped, and one that moved
-\ before a claim that succeeds is handed back as ROWS-CLAIM hands it.
+\ again.
 : ROW-END ( n n -- ) {: k:n reg:n :}
    begin k reg ROW-NAMES? while
       0 CB-ROW-BUSY k ROW ROW-OWNER atomic-cas {: seen:n :}
@@ -1089,15 +1098,8 @@ variable ROW-N
    data-base FFI:>CELL ROWS-END
    TASK-SELF TASK-DONE-SEM SEM-SIGNAL ;
 
-\ LOWERING WHILE A TASK IS LIVE. `cp!` and `ndict!` exit $4F
-\ while this count is nonzero (habu1.f B-LOWER-GUARD), every exposed task and
-\ the AIO loop task included: a forget frees code a task may be running. The
-\ count is the main region's, so a worker activating or exposing a task counts
-\ there too. Activations and releases race, so each moves it in one atomic
-\ step. No clamp below zero: a negative count is a pairing defect, which must
-\ surface as $4F. While it is nonzero the engine's own rollbacks (a failed
-\ `evaluate` or REPL line, replay-close) lower nothing either: they retire the
-\ text's records in place and keep CP, NDICT and DP (habu1.f EM-DEF-OCC:LRETIRE).
+\ No clamp below zero: a negative count is a pairing defect, which must
+\ surface as $4F.
 : TASK-LIVE+ ( -- )
    1 MAIN-BASE TASKS-LIVE-CELL + atomic-add drop ;
 
@@ -1108,12 +1110,9 @@ variable ROW-N
    MUNMAP-CALL TASK-RC0 ;
 
 \ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives every
-\ release (PARK-CREATE). The mailbox and the done semaphore are destroyed, the
-\ five mappings go back, and the five cells cleared last are what the run
-\ acquired: the pthread_t, the value the join wrote, and the data base, record
-\ count and code end ACTIVATE or EXPOSE took. Clearing them changes no run:
-\ ACTIVATE writes THREAD again, the join writes RET and ACTIVATE or EXPOSE
-\ writes the other three.
+\ release (PARK-CREATE). The five cells cleared last are what the run
+\ acquired; clearing them changes no run: ACTIVATE writes THREAD again, the
+\ join writes RET, and ACTIVATE or EXPOSE writes DBASE, NDICT and CP.
 : TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
    tcb MBOX-DESTROY
    tcb DONE-DESTROY
@@ -1162,8 +1161,8 @@ TASK-CHAIN-PUBLISH
 : TASK-CHAIN! ( ptr n -- )
    TASK-CHAIN ! ;
 
-\ The link cell sits one cell past TCB.DONE. Nothing after the TCB belongs to
-\ TASK-ABI, so the layout check above answers for the structure unchanged.
+\ Nothing after the TCB belongs to TASK-ABI, so the layout check above answers
+\ for the structure unchanged.
 : TASK-LINK@ ( ptr n -- n )
    TASK-TCB-BYTES + 0 ptr-field @ FFI:>CELL ;
 
@@ -1176,7 +1175,7 @@ TASK-CHAIN-PUBLISH
 \ nothing is unlinked or unmapped under EXPOSED-TCB and TCB-POOLED?, which walk
 \ it with no lock, and a WAKE or HALT that read a TCB before TASK:FREE still
 \ posts a live park. The heads are scratch, so a program starts with an empty
-\ pool. The x86-64 crash handler walks TASK-CHAIN only (src/habu/boot-x64.f), so
+\ pool. The x86-64 crash handler walks TASK-CHAIN only, so
 \ a guard-page fetch in a NEW task's stack reaches its generic dump instead of
 \ the stack-bounds report.
 TASK-ALIGN8
@@ -1212,8 +1211,6 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    c EXIT-CHUNKS atomic!
    TASK-EXIT-UNLOCK ;
 
-\ With no row left it grows the rows and asks again. The row, its mark, its link
-\ to the old head and the head are stored under TASK-EXIT-LOCK (TASK-EXIT-SLOT@).
 \ The ending scans its chain under the lock, so a registration from another
 \ thread lands before a scan or after it; one landing after the last scan found
 \ no row owed stays owed for the task's next activation. The lock covers the
@@ -1267,17 +1264,15 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    data-base reg ARGV-CELL TASK-COPY-CELL
    data-base reg ENVP-CELL TASK-COPY-CELL
    data-base reg PROGRAM-FILE-CELL TASK-COPY-CELL
-   \ The loader's record is the process's (src/core/include.f LOADER).
+   \ The loader's record is the process's.
    data-base reg SRCLOC:SOURCE-CELL TASK-COPY-CELL
-   \ So is the compile-reads record (src/core/compile-reads.f RECORD).
+   \ So is the compile-reads record.
    data-base reg SRCLOC:READS-CELL TASK-COPY-CELL
-   \ SCRIPT-ARGV picks the application convention from this cell
-   \ (src/os/script-argv.f SCRIPT-ARG-START); a task left at the region's zero
-   \ reads the engine's and loses argument 0.
+   \ SCRIPT-ARGV picks the application convention from this cell; a task left
+   \ at the region's zero reads the engine's and loses argument 0.
    data-base reg APP-ENTRY:XT-CELL TASK-COPY-CELL
-   \ policy-admit calls the interpreter's keyword test through this cell.
    data-base reg POLICY-ABI:KEYWORD-CELL TASK-COPY-CELL
-   \ A task starts on its creator's I/O devices (src/lib/genio-core.f). The cells
+   \ A task starts on its creator's I/O devices. The cells
    \ hold a device INDEX, so copying them into a fresh region needs no
    \ relocation. The funnel's re-entrancy guard and the active-device cell start
    \ clear: the new task is not inside an operation.
@@ -1299,19 +1294,16 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    0 reg EVALD-CELL + !
    0 reg EVALERR-CELL + !
    tcb reg TASK-TCB-CELL TASK-PTR!
-   \ x86-64's TASK-LIVE-GUARD (kernel-x64.f) reads this cell; arm64's
-   \ B-TASK-GUARD reads TASK-TCB-CELL.
    1 reg TASKS-LIVE-CELL + ! ;
 
 : TASK-CONSTRUCTED? ( ptr n -- bool )
    TASK-STATE@ TASK-EMPTY <> ;
 
-\ Every stack a task runs on is a guarded mapping (src/lib/memory.f), so the
-\ requested data-stack size rounds up to whole guard pages.
+\ Every stack a task runs on is a guarded mapping, so the requested data-stack
+\ size rounds up to whole guard pages.
 : TASK-STACK-BYTES ( n -- n ) {: want:n :}
    want STACK-ABI:PAGE-BYTES 1 - + STACK-ABI:PAGE-BYTES negate and ;
 
-\ A region's bytes: the header, then the slot area every claim so far fits in.
 : TASK-REGION-TOTAL ( -- n )
    TASK-USER-NEXT @ STACK-ABI:PAGE-BYTES 1 - + STACK-ABI:PAGE-BYTES negate and
    TASK-REGION-BYTES + ;
@@ -1377,7 +1369,6 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    tcb TASK-RELEASE-MEM
    TASK-EMPTY tcb TCB.STATUS atomic! ;
 
-\ A failed registration is the run's throw, as the body's is.
 : TASK-RUN-USER ( -- n )
    [: KEY-ENSURE CALLER-REGISTER TASK-SELF TCB.USER-XT @ execute ;] catch ;
 
@@ -1389,8 +1380,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    TASK-END ;
 
 \ A create attempt that failed started no thread, so this takes back what
-\ ACTIVATE published for one: the live count and RUNNING. The task stays
-\ prepared, its stacks and region kept for the next ACTIVATE.
+\ ACTIVATE published for one: the live count and RUNNING.
 : TASK-CREATE-ROLLBACK ( ptr n -- ) {: tcb:ptr :}
    TASK-LIVE-
    TASK-CONSTRUCTED tcb TASK-STATE! ;
@@ -1398,10 +1388,9 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ The code end a task takes as it goes live, in ACTIVATE and EXPOSE: the
 \ lowest code not yet flushed. An immediate word may activate or expose inside
 \ an open definition, whose body below CP is patched and flushed only at `;`,
-\ after the thread exists, and CP may move back within it (habu2.f LEVALREC's
-\ PEND leg). So with a definition pending it is the pending record's body
-\ start ([0] of the record PEND-CELL names), and an xt into that body fences
-\ (habu1.f BCALLABLE).
+\ after the thread exists, and CP may move back within it. So with a definition
+\ pending it is the pending record's body start ([0] of the record PEND-CELL
+\ names), and an xt into that body fences.
 : LIVE-CP ( -- n )
    data-base PEND-CELL + @ {: pend:n :}
    pend 0= if cp@ else pend TASK-N>PTR @ then ;
@@ -1418,7 +1407,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    \ The dictionary the task runs on is taken here, as it goes live, not at
    \ PREPARE: main may still compile between a public PREPARE and this ACTIVATE,
    \ or after a failed create, and the task's NDICT and CP registers, loaded
-   \ from these (BTASK-ENTRY), bound what LIBC-OS:FORK copies on the task.
+   \ from these, bound what LIBC-OS:FORK copies on the task.
    dbase@ tcb TCB.DBASE !
    ndict@ tcb TCB.NDICT !
    LIVE-CP tcb TCB.CP !
@@ -1460,12 +1449,11 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ (TASK:HALT-UNWIND): the stop mark goes first, so every cleanup the unwind runs
 \ and the AT-EXIT chain may pause and only yield. With HALT-UNWIND-CELL set,
 \ `n throw` runs each finally around it, innermost first, and rethrows past
-\ every other catch (src/habu/layout.f HALT-UNWIND-CELL), so no code after a
-\ catch observes the halt and a body that swallows errors still ends.
+\ every other catch, so no code after a catch observes the halt and a body that
+\ swallows errors still ends.
 \ TASK-RUNNER's catch takes n, or a code a cleanup threw during the unwind, or,
 \ when the halt began inside a cleanup, the body's error that cleanup ran for.
-\ PAUSE carries 0: the halt is not a body error. Where the halt cannot be
-\ served it drops n and returns.
+\ PAUSE carries 0: the halt is not a body error.
 \
 \ Inside a callback the request stays pending: a throw there would unwind
 \ through C's frames, holding the slot it entered through, with C's call never
@@ -1515,9 +1503,9 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ ---- exposed tasks: regions C enters through a callback ----------------------
 \ An EXPOSED task runs no body of its own: its prepared region is a context a
 \ foreign thread enters through a callback slot bound to it. The resting frame
-\ is the one BTASK-ENTRY would start the task on - the base of its data stack
-\ and the dictionary as it stands when EXPOSE runs - so a callback arriving
-\ with no outbound call in flight still has a VM to run on. The region counts
+\ is the base of its data stack and the dictionary as it stands when EXPOSE
+\ runs, so a callback arriving with no outbound call in flight still has a VM
+\ to run on. The region counts
 \ as live on main while exposed, as an activated task does, so no definition
 \ moves the dictionary under it. EXPOSED goes out with a release store: another
 \ task's CONTEXT-BIND reads it. An exposure is woken like a run, so it opens its park
@@ -1550,21 +1538,11 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    E-TASK-STATE throw ;
 
 \ Refused while a thread is inside or a row naming the region is moving, and a
-\ refusal leaves the state and every binding as it was. The state leaves
-\ EXPOSED first, EXPOSED -> CONSTRUCTED in one CAS, because a CONTEXT-BIND on
-\ another thread may have checked EXPOSED and not yet named its row. The bind
-\ names the row (STLR) and then reads the state again (LDAR); this word writes
-\ the state (CASAL) and then reads the rows (LDAR). An acquire load never
-\ moves above an earlier release write, so at least one side sees the other's
-\ write: the bind sees the state gone and hands its row back, or the claim
-\ below sees the row and claims it or refuses on it. No row is left naming a
-\ region this word unexposed. Another thread can read CONSTRUCTED until a
-\ refusal puts EXPOSED back. The CAS also refuses a second UNEXPOSE.
-\ The rows are claimed together, before any is dropped, so a refusal hands
-\ every one back. A thread inside holds the row it entered by, and it holds the
-\ region's owner only while it holds that row - the thunk takes its row before
-\ the owner and releases it after - so a thread holding either refuses the
-\ claim, and a claim of every row finds the owner free.
+\ refusal leaves the state and every binding as it was. A thread inside holds
+\ the row it entered by, and it holds the region's owner only while it holds
+\ that row - the thunk takes its row before the owner and releases it after -
+\ so a thread holding either refuses the claim, and a claim of every row finds
+\ the owner free.
 : UNEXPOSE ( ptr n -- ) {: tcb:ptr :}
    TASK-EXPOSED TASK-CONSTRUCTED tcb TCB.STATUS atomic-cas
    TASK-EXPOSED <> if E-TASK-STATE throw then
@@ -1648,21 +1626,11 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    then
    CB-ROW-CALLER k ROW ROW-OWNER atomic! ;
 
-\ Binding a named context publishes the row table first. The row
-\ moves 0 -> BUSY before it is read, and the bind decides on what it reads
-\ under BUSY, where nothing else moves the row. A row that is not idle - a
+\ The row moves 0 -> BUSY before it is read, and the bind decides on what it
+\ reads under BUSY, where nothing else moves the row. A row that is not idle - a
 \ thread inside, or another bind, unbind, claim or drop moving it - refuses
 \ the bind, even when it names this context: a mover can still drop the row it
-\ holds, so its binding is not final. A named row goes back as found, a no-op
-\ when it names this context and refused when it names another. So a bind
-\ answers only a binding that is published and final, and names only a row
-\ that was free under its own BUSY, named and released each by release store.
-\ An exposed task is read again between the naming and the release, the other
-\ half of UNEXPOSE's protocol: the re-read (LDAR) follows the naming (STLR), so
-\ either it sees the state UNEXPOSE took out of EXPOSED and the row goes back
-\ to 0 with the bind refused, or UNEXPOSE's claim sees the row, still BUSY or
-\ already bound, and refuses on it or drops it. Held BUSY until the re-read
-\ passes, the row admits no thunk into a region an UNEXPOSE has already swept.
+\ holds, so its binding is not final.
 \ The re-read checks the region too, so the task unexposed, released and
 \ exposed again elsewhere is refused as well. The main region is never
 \ unexposed, and a thread binding its own region holds a row naming it, which
