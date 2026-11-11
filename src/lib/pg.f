@@ -16,6 +16,25 @@
 \ libpq returns, and by the next PARAMS and CLOSE. Parameters are recorded as
 \ offsets, never pointers, so growing the arena may move it without
 \ invalidating anything staged.
+\
+\ CONNECT-START, SEND and POLL let one task drive many connections: the caller
+\ owns readiness and deadlines (libpq ignores connect_timeout while polling),
+\ registers the descriptor each POLL answers afresh, and uses a Unix socket or
+\ a numeric hostaddr so DNS cannot block startup. POLL advances an attempt to
+\ connected or refused; CLOSE abandons it at any earlier point. CONNECT and the
+\ WITH- scopes wait through AIO:AWAIT and need AIO:START. One operation may be
+\ pending per connection; a send copies its statement and parameters. A SQL
+\ rejection is the result's `failed` outcome with SQLSTATE and message. A
+\ TASK:HALT ends a wait and leaves the connection to the task's own cleanup:
+\ CLOSE, or ABANDON under a halt. Each WITH- word runs one operation and the
+\ body over its result, then clears it whether the body returns or throws; the
+\ body hands the token back. The token does not survive a throw out of the
+\ body, so the scope keeps its packed handle in the running task's SCOPE-HEAD
+\ cell, where the cleanup reads it. A nested scope saves the cell in RES-OUTER
+\ under its own slot and its cleanup puts it back, so each cleanup retires its
+\ own result. Zero is no scope: a packed handle is at least one HANDLE-STRIDE.
+\ A close under the body leaves the token E-CLEARED; a halted task unwinds its
+\ open result scopes through their `finally` at TASK:PAUSE, as a throw does.
 
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -1230,9 +1249,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 
 \ Readable bytes need not hold a notification (a notice, a parameter status, a
-\ partial message), so the wait goes on until one arrives or the deadline. The
-\ monotonic clock, not the poll's timeout, decides that the deadline passed. A
-\ wait longer than one poll takes several.
+\ partial message), so the wait goes on until one arrives or the deadline.
 : NOTIFY-WAIT ( n n -- bool ) {: slot:n deadline:n :}
    begin deadline LEFT-MS WAIT-MAX min dup 0 > while
       slot swap READABLE-WITHIN if
@@ -1243,9 +1260,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 
 \ The result slot is claimed BEFORE libpq runs, so a full registry refuses
-\ without ever leaving a PGresult nobody can clear, and the arena is released
-\ the instant libpq returns - it has copied everything into its own message by
-\ then. A throw before that leaves the arena for the next PARAMS or CLOSE.
+\ without ever leaving a PGresult nobody can clear.
 : CLAIM-STATEMENT ( n -- n n n n )
    {: slot:n :}
    slot PARAM-ARRAY CLAIM-RES-SLOT ;
@@ -1324,8 +1339,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 
 \ The simple-query protocol. It takes no parameters at all, so a pending
-\ parameter list is a caller error with nowhere to go: refusing it by name
-\ beats dropping the values the caller believes it bound.
+\ parameter list is a caller error with nowhere to go.
 : SCRIPT-START ( n ptr u8 n -- ) {: slot:n a u:n :}
    OP-START
    slot IDLE-CHECK
@@ -1422,7 +1436,6 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    slot RES-PG@ ri ci LIB-GETISNULL 0 <> ;
 
 
-\ A column of the result's descriptor: the PGresult and the column index.
 : COLUMN-AT ( n col -- ptr u8 n )
    {: slot:n c:col :}
    slot RES-PG@ {: res :}
@@ -1448,12 +1461,6 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    res RES-PG@ FAILED-SPANS PG-OUTCOME:failed ;
 
 
-\ The token does not survive a throw out of the body, so the scope keeps its
-\ packed handle in the running task's SCOPE-HEAD cell, where the cleanup reads
-\ it. A nested scope saves the cell in RES-OUTER under its own slot and its
-\ cleanup puts it back, so each cleanup retires its own result. Zero is no
-\ scope: a packed handle is at least one HANDLE-STRIDE.
-
 : SCOPE-ENTER ( n -- n ) {: raw:n :}
    raw HANDLE-SLOT {: slot:n :}
    SCOPE-HEAD @ slot RES-OUTER!
@@ -1472,7 +1479,6 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    slot RETIRE-RES-SLOT ;
 
 
-\ The body hands back the token it was given; any other is refused.
 : RUN-SCOPED ( R PG:result [ R PG:result -- S PG:result ] -- S )
    execute RESULT>N SCOPE-HEAD @ <> if E-HANDLE throw then ;
 
@@ -1481,13 +1487,12 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    raw SCOPE-ENTER N>RESULT body [: RUN-SCOPED ;] [: SCOPE-LEAVE ;] finally ;
 
 
-\ The accessors resolve the token's slot and hand the token back.
 : PEEK ( PG:result -- PG:result n )
    RESULT>N dup RESULT-SLOT swap N>RESULT swap ;
 
 
-\ A caught staging refusal still owns the claimed slot. The new arena starts
-\ at offset zero, so the staging helper can preserve its catch input row.
+\ The new arena starts at offset zero, so the staging helper can preserve its
+\ catch input row.
 : STAGE-CONNINFO ( ptr u8 n n -- ptr u8 n n ) {: a u:n slot:n :}
    a u slot ARENA-CSTR drop
    a u slot ;
@@ -1500,21 +1505,11 @@ public
 : CONFIGURE ( n n -- )
    CONFIG-LOCK [: CONFIGURE-REGISTRY ;] [: CONFIG-UNLOCK ;] finally ;
 
-\ CONNECT-START, SEND and POLL let one task drive many connections: the caller
-\ owns readiness and deadlines (libpq ignores connect_timeout while polling),
-\ registers the descriptor each POLL answers afresh, and uses a Unix socket or
-\ a numeric hostaddr so DNS cannot block startup. CONNECT and the WITH- scopes
-\ wait through AIO:AWAIT and need AIO:START. One operation may be pending per
-\ connection; a send copies its statement and parameters. A transport failure
-\ closes the connection and throws E-EXEC; a SQL rejection is the result's
-\ `failed` outcome with SQLSTATE and message. A TASK:HALT ends a wait and leaves
-\ the connection to the task's own cleanup: CLOSE, or ABANDON under a halt.
-\ CONNECT-START hands back an attempt owned by the calling task. POLL advances
-\ it to connected or refused; CLOSE abandons it at any earlier point. The slot
-\ is claimed first, so the conninfo it stages is its own. An attempt libpq
-\ rejects at once is refused at the first POLL or AWAIT. A refusal's text, like
-\ a result's report, has no final newline and stays readable until the same
-\ task's next refusal, by CONNECT, AWAIT or POLL, or its next lost connection.
+\ CONNECT-START hands back an attempt owned by the calling task. An attempt
+\ libpq rejects at once is refused at the first POLL or AWAIT. A refusal's text,
+\ like a result's report, has no final newline and stays readable until the
+\ same task's next refusal, by CONNECT, AWAIT or POLL, or its next lost
+\ connection.
 \ A conninfo libpq cannot parse throws E-CONNECT and keeps no text, because
 \ libpq's parse message can quote the conninfo's values, a password among them.
 : CONNECT-START ( ptr u8 n -- connection )
@@ -1555,8 +1550,7 @@ public
 
 \ A task retaining a CONNECT-START handle may need to clean it up after AWAIT
 \ or POLL retired it internally. Check the registry before reading a slot: a
-\ process that has not configured it has no buffers. A reused slot has a
-\ different generation.
+\ process that has not configured it has no buffers.
 : LIVE? ( connection -- bool ) {: handle:connection :}
    CONFIGURED @ 0= if false exit then
    handle CONNECTION>N {: raw:n :}
@@ -1588,7 +1582,7 @@ public
 
 
 \ A TASK:HALT of the waiting task ends the attempt at once, sending nothing, and
-\ frees its slot; the join answers as for any halt (pg-test HALT-CONNECT-CASES).
+\ frees its slot; the join answers as for any halt.
 : CONNECT ( ptr u8 n -- connect-result )
    CONNECT-START dup CONNECTION>N CONNECT-HEAD !
    [: AWAIT-ATTEMPT ;] [: FINISH-ATTEMPT ;] finally MATCH progress
@@ -1701,14 +1695,10 @@ public
    handle CONN-SLOT a u PREPARED-START ;
 
 
-\ Each WITH- word runs one operation and the body over its result, then clears
-\ it whether the body returns or throws; the body hands the token back.
-
 \ A COPY fails: FROM STDIN with the server's 57014; TO STDOUT with 0A000 and the
 \ report "COPY is not supported" though its whole script ran and stands.
 
-\ WITH-RESULT runs exactly one statement on the extended protocol and consumes
-\ the parameter list.
+\ WITH-RESULT runs exactly one statement on the extended protocol.
 : WITH-RESULT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
@@ -1718,10 +1708,10 @@ public
 
 
 \ WITH-SCRIPT runs several statements on the simple-query protocol, the only one
-\ that takes them (MULTI-VIA-EXEC-CASES); pending parameters are E-STATEMENT.
+\ that takes them; pending parameters are E-STATEMENT.
 
 \ The script is one implicit transaction: a failure rolls it back, stops it and
-\ is the outcome, else the last result is, or a COPY TO STDOUT's (WITH-RESULT).
+\ is the outcome, else the last result is, or a COPY TO STDOUT's.
 : WITH-SCRIPT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
@@ -1747,11 +1737,9 @@ public
 
 
 \ WITH-DESCRIPTION prepares a text as the unnamed statement and describes it
-\ without running it: the result answers COLS, NAME$ and OID and has no rows.
-\ Two round trips under one deadline; a rejected prepare is the body's result,
-\ with its `failed` outcome. A pending parameter list is E-STATEMENT. Only
-\ WITH-DESCRIPTION names the unnamed statement, since WITH-PREPARE and
-\ WITH-PREPARED refuse an empty name.
+\ without running it: the result answers COLS, NAME$ and OID and has no rows. A
+\ rejected prepare is the body's result, with its `failed` outcome. A pending
+\ parameter list is E-STATEMENT.
 : WITH-DESCRIPTION ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
@@ -1775,11 +1763,10 @@ public
 \ sets no bound; a bound outside 0..$7FFFFFFF ms is E-BOUND. CONNECT, AWAIT and
 \ NOTIFIED? are not bounded. On expiry the connection closes and the operation
 \ throws E-DEADLINE. While the bound is nonzero, every close but an explicit
-\ CLOSE - expiry, a transport or readiness failure, an
-\ exception caught while waiting, a failed ROLLBACK under a body's throw -
-\ finishes it without the cancel, as ABANDON does, since a cancel to an
-\ unreachable server would stretch the bound; the primary exception stands. The
-\ server may go on running the abandoned statement under its statement_timeout.
+\ CLOSE - expiry, a transport or readiness failure, an exception caught while
+\ waiting, a failed ROLLBACK under a body's throw - finishes it without the
+\ cancel, as ABANDON does, since a cancel to an unreachable server would
+\ stretch the bound; the primary exception stands.
 : DEADLINE! ( connection ms -- )
    {: handle:connection bound:ms :}
    handle CONN-SLOT {: slot:n :}
@@ -1788,7 +1775,6 @@ public
    v slot BOUND! ;
 
 
-\ The bound the last DEADLINE! set, so a caller can restore it.
 : DEADLINE@ ( connection -- ms )
    {: handle:connection :}
    handle CONN-SLOT BOUND@ >MS ;
@@ -1800,11 +1786,9 @@ public
 \ NOTIFYs, and keeps neither channel nor payload. It waits through AIO:AWAIT,
 \ so it needs AIO:START and ends at a TASK:HALT. A connecting or pending
 \ connection is E-STATEMENT; one inside a transaction, which holds
-\ notifications back until it ends, is E-TRANSACTION; a negative ms is
-\ E-BOUND, and a bound longer than one poll's WAIT-MAX waits in successive
-\ polls until it passes. A failed read closes the connection and throws E-EXEC;
-\ a readiness wait the AIO loop refuses throws E-EXEC, or the loop's own code,
-\ and leaves it open.
+\ notifications back until it ends, is E-TRANSACTION; a negative ms is E-BOUND.
+\ A failed read closes the connection and throws E-EXEC; a readiness wait the
+\ AIO loop refuses throws E-EXEC, or the loop's own code, and leaves it open.
 : NOTIFIED? ( connection ms -- bool )
    {: handle:connection timeout:ms :}
    handle CONN-SLOT {: slot:n :}
@@ -1899,9 +1883,6 @@ public
 
 \ The span, like NAME$, is libpq's bytes in the result, valid until the scope
 \ ends (CLEAR for a progress token) or the connection closes; a body copies it.
-
-\ A close under the body leaves the token E-CLEARED; a halted task unwinds its
-\ open result scopes through their `finally` at TASK:PAUSE, as a throw does.
 : TEXT$ ( PG:result row col -- PG:result ptr u8 n ) {: r:row c:col :}
    PEEK r c CELL-AT VALUE$ ;
 
