@@ -1,5 +1,18 @@
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb). A
 \ failure prints F<index>, assertion detail, and exits 1 via T-REPORT.
+\
+\ `search-wl` names the LAST row of one wordlist whose folded name matches. The
+\ definer's duplicate wall keeps every real wordlist at one live row per folded
+\ tail; `undefine` stamps every row it retires with one shared value that is no
+\ wordlist, so retiring a tail twice leaves two rows under it. Cases pin rows by
+\ ROW IDENTITY, the index the row was published at. The engine reads an empty
+\ hash slot as PROOF that a name is absent, which holds only while the table
+\ covers every record below NDICT, so raising the mark with ndict! rebuilds the
+\ table from scratch; only then does the claim count equal ndict. The ndict!
+\ block is last in the file and leaves the index rebuilt: the search-wl battery
+\ is answered before it and again after it, and the two captures must agree row
+\ for row. No case writes a wid down: every wid is read out of the row that
+\ owns it.
 
 require src/lib/type/deftype.f
 require src/lib/fs-mutate.f
@@ -993,16 +1006,13 @@ NEWTYPE scq-fam<a,b>
 s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
 s" COK-SCQ-RET ( scq-fam<[ n -- n | U -- U ],f32> -- scq-fam<[ n -- n | U -- U ],f32> )" T-CHECK-PASSES
 s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n ],f32> )" T-CHECK-PASSES
-\ Malformed rows assert their first cause: a missing '--' is refused at ']'; a
-\ missing ']' first meets the stray ',' as an unknown type; an extra '--' after a
-\ full return clause is refused at that '--'.
+\ Malformed rows assert their first cause: a missing ']' first meets the stray
+\ ',' as an unknown type.
 s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" s" at ']'" T-CHECK-SAYS
 s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" s" unknown type ',' in signature" T-CHECK-SAYS
 s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | U -- U -- ],f32> -- ) drop" s" at '--'" T-CHECK-SAYS
-\ Render acceptance: a mismatch diagnostic must render the
-\ full parametric type — all six args of an arity-6 application, and an SC-QUOT
-\ arg's din/dout rows, where a neutral return clause renders as none — never a
-\ collapsed string or '?'.
+\ A mismatch diagnostic must render an SC-QUOT arg's din/dout rows, where a
+\ neutral return clause renders as none.
 defer T-BIG6-MK ( -- tfam6r-big<n,f32,u8,u16,i64,bool> )
 defer T-SCQ-MK ( -- scq-fam<[ n -- n | U -- U ],f32> )
 RSD-BUF RSD-CAP DIAG-BUFFER!
@@ -1038,10 +1048,8 @@ s" COK-NODE-ROLE ( n -- n ) T->NODE T-NODE>N" T-CHECK-PASSES
 s" CBAD-NODE-LEN ( n -- len ) T->NODE" T-CHECK-REJECTS
 s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
 s" CBAD-UNKNOWN-ROLE ( n -- track ) T->NODE" T-CHECK-REJECTS
-\ ES-OWN declares the linear `own`, so T-MAKE-OWN and T-FREE-OWN, the abstract
-\ producer and consumer, are checked words over the package's private LINEAR:
-\ mint and erase rows. The cases name the type and both words by their
-\ qualified spelling, which a typed local reads exactly as a signature does.
+\ The cases name the type and both words by their qualified spelling, which a
+\ typed local reads exactly as a signature does.
 package ES-OWN
 public
 DEFLINEAR ES-OWN:own
@@ -1060,9 +1068,6 @@ s" CBAD-OWN-DROP ( ES-OWN:own -- ) drop" T-CHECK-REJECTS
 s" CBAD-OWN-OVER ( ES-OWN:own n -- ES-OWN:own n ES-OWN:own ) over" T-CHECK-REJECTS
 s" CBAD-OWN-FETCH ( ptr ES-OWN:own -- ES-OWN:own ) @" T-CHECK-REJECTS
 s" CBAD-OWN-STORE ( ES-OWN:own ptr ES-OWN:own -- ) !" T-CHECK-REJECTS
-\ execute (quotation application) enforces the same linear conservation as a
-\ direct step: a polymorphic quotation applied to a linear that copies or drops
-\ it is rejected; an explicit linear consumer/producer and a passthrough certify.
 s" COK-OWN-EXEC-FREE ( ES-OWN:own -- ) [: ES-OWN:T-FREE-OWN ;] execute" T-CHECK-PASSES
 s" COK-OWN-EXEC-ID ( ES-OWN:own -- ES-OWN:own ) [: ;] execute" T-CHECK-PASSES
 s" COK-OWN-EXEC-MAKE ( -- ES-OWN:own ) [: ES-OWN:T-MAKE-OWN ;] execute" T-CHECK-PASSES
@@ -1070,31 +1075,19 @@ s" COK-N-EXEC-DUP ( n -- n n ) [: dup ;] execute" T-CHECK-PASSES
 s" CBAD-OWN-EXEC-DUP ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) [: dup ;] execute" T-CHECK-REJECTS
 s" CBAD-OWN-EXEC-DROP ( ES-OWN:own -- ) [: drop ;] execute" T-CHECK-REJECTS
 s" CBAD-OWN-EXEC-NEST ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) [: [: dup ;] execute ;] execute" T-CHECK-REJECTS
-\ acquire/release pairing proven through a work quotation: balanced certifies;
-\ leak (missing release) and double release are rejected.
 s" COK-OWN-FRAME-WORK ( -- ) ES-OWN:T-MAKE-OWN [: ;] execute ES-OWN:T-FREE-OWN" T-CHECK-PASSES
 s" CBAD-OWN-FRAME-LEAK ( -- ) ES-OWN:T-MAKE-OWN [: ;] execute" T-CHECK-REJECTS
 s" CBAD-OWN-FRAME-DOUBLE ( -- ) ES-OWN:T-MAKE-OWN [: ;] execute ES-OWN:T-FREE-OWN ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
-\ Polymorphic linear laundering: a linear copied or
-\ dropped while its type is still a polymorphic var — through KEEP/BI's `over` or
-\ an intra-quotation `dup`/`over`, before it binds linear — is rejected by the
-\ linear kind discipline, even though concrete-count conservation stays neutral
-\ at the call site. KEEP/BI copy `a` into a consumer quotation and also return it;
-\ the intra-quot cases copy the var, then FREE binds it linear (deferred taint).
+\ A linear copied or dropped while its type is still a polymorphic var is
+\ rejected, even though concrete-count conservation stays neutral.
 s" CBAD-OWN-KEEP-LAUNDER ( ES-OWN:own -- ES-OWN:own ) [: ES-OWN:T-FREE-OWN ;] KEEP" T-CHECK-REJECTS
 s" CBAD-OWN-BI-LAUNDER ( ES-OWN:own -- ES-OWN:own ) [: ;] [: ES-OWN:T-FREE-OWN ;] BI" T-CHECK-REJECTS
 s" CBAD-OWN-QUOT-DUP-FREE ( ES-OWN:own -- ES-OWN:own ) [: dup ES-OWN:T-FREE-OWN ;] execute" T-CHECK-REJECTS
 s" CBAD-OWN-QUOT-OVER-FREE ( ES-OWN:own n -- ES-OWN:own n ) [: over ES-OWN:T-FREE-OWN ;] execute" T-CHECK-REJECTS
-\ Positives the discipline must not touch: KEEP over non-linear data still
-\ certifies, and a sound DIP that only MOVES the linear (1-in / 1-out) certifies.
 s" COK-N-KEEP ( n -- n ) [: 1+ ;] KEEP drop" T-CHECK-PASSES
 s" COK-OWN-DIP-PASS ( n ES-OWN:own -- n ES-OWN:own ) [: 1+ ;] DIP" T-CHECK-PASSES
-\ Linear values may not launder through {: :} locals: a local reference
-\ re-pushes its binding outside the LIN-SNAPSHOT/LIN-CHECK count discipline, so
-\ a linear local would hide duplication, a leak and a double consume. Binding a
-\ value that concretely resolves linear is rejected outright with
-\ E-LINEAR-LOCAL; the value must stay on the stack and be factored. Non-linear
-\ locals are untouched.
+\ A local reference re-pushes its binding outside the count discipline, so
+\ a linear local would hide duplication, a leak and a double consume.
 s" CBAD-OWN-LOCAL-DUP ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x:ES-OWN:own :} x x" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-LEAK ( ES-OWN:own -- ) {: x:ES-OWN:own :}" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-DOUBLE-FREE ( ES-OWN:own -- ) {: x:ES-OWN:own :} x ES-OWN:T-FREE-OWN x ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
@@ -1102,24 +1095,16 @@ s" CBAD-OWN-LOCAL-ONCE ( ES-OWN:own -- ) {: x:ES-OWN:own :} x ES-OWN:T-FREE-OWN"
 s" CBAD-OWN-LOCAL-UNTYPED ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x :} x x" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-BRANCH ( bool ES-OWN:own -- ) {: x:ES-OWN:own :} if x ES-OWN:T-FREE-OWN then" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-MAKE ( -- ) ES-OWN:T-MAKE-OWN {: x:ES-OWN:own :} x ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
-\ Deferred laundering: a local bound to a still-polymorphic var referenced twice,
-\ that only later resolves linear, must reject through the taint discipline.
 s" CBAD-OWN-LOCAL-POLY-DUP ( a -- ) {: x :} x x ES-OWN:T-FREE-OWN ES-OWN:T-FREE-OWN" T-CHECK-REJECTS
-\ Positive controls: the linear kept on the stack still certifies, a non-linear
-\ local still binds/references (single AND duplicate), and a poly local that never
-\ resolves linear is untouched.
 s" COK-OWN-STACK-KEEP ( ES-OWN:own -- ) ES-OWN:T-FREE-OWN" T-CHECK-PASSES
 s" COK-N-LOCAL-DUP ( n -- n n ) {: x:n :} x x" T-CHECK-PASSES
 s" COK-POLY-LOCAL-DUP ( a -- a a ) {: x :} x x" T-CHECK-PASSES
-\ The reject carries the dedicated E-LINEAR-LOCAL code and factor_linear_local class.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" linear-local reject carries E-LINEAR-LOCAL" T-LABEL
 s" CBAD-OWN-LOCAL-DIAG ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x:ES-OWN:own :} x x" CHECK-CANDIDATE! 0 T=
 s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
 DIAG-BUFFER$ s" E-LINEAR-LOCAL" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
-\ A qualified name its package declares no type for stays an unknown type in a
-\ typed local, as it is in a signature.
 s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" s" unknown type 'x:ES-OWN:nosuch' in signature" T-CHECK-SAYS
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
@@ -1157,25 +1142,17 @@ s" CBAD-POINT-DUP ( point -- point point ) dup" T-CHECK-REJECTS
 s" CBAD-POINT-PARTIAL ( n -- point )" T-CHECK-REJECTS
 s" CBAD-BOX-RECT ( box -- rect )" T-CHECK-REJECTS
 s" CBAD-HDL-DUP ( hdl -- hdl hdl ) over over" T-CHECK-REJECTS
-\ Value-record with an arity-6 family field type:
-\ the field wrapper field<rec,q,tfam6r-big<6>> stores its 6-arg inner param in the
-\ VNARG pool; the roundtrip forces VREC-PUSH-FIELDS/VREC-INST to read it back.
+\ The field wrapper stores its 6-arg inner param in the VNARG pool.
 VALUE-RECORD tfam6r-vr q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
 : T->BIG6VR ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-vr ) ;
 : T-BIG6VR> ( tfam6r-vr -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6VR-ID ( tfam6r-vr -- tfam6r-vr )" T-CHECK-PASSES
 s" COK-BIG6VR-ROUNDTRIP ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) T->BIG6VR T-BIG6VR>" T-CHECK-PASSES
-\ Value-record with a quotation-family (SC-QUOT) field type: VREC-COPY persists the
-\ field's T-QUOT arg subtree (VR-QUOT node) and VREC-INST reads it back on roundtrip.
 VALUE-RECORD scq-vr q scq-fam<[ n -- n ],f32> END-VALUE-RECORD
 : T->SCQVR ( scq-fam<[ n -- n ],f32> -- scq-vr ) ;
 : T-SCQVR> ( scq-vr -- scq-fam<[ n -- n ],f32> ) ;
 s" COK-SCQVR-ID ( scq-vr -- scq-vr )" T-CHECK-PASSES
 s" COK-SCQVR-ROUNDTRIP ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) T->SCQVR T-SCQVR>" T-CHECK-PASSES
-\ VNARG rollback parity: a VALUE-RECORD defined inside a
-\ rolled-back scope allocates VR-PARAM nodes AND their VNARG runs; RBF-POP must
-\ rewind VNARG-N in lockstep with VREC-NODE-N, and a record defined BEFORE the
-\ scope must still instantiate from its (surviving, below-the-mark) VNARG run.
 variable TR-VNARG-RB   variable TR-VNODE-RB
 VNARG-N @ TR-VNARG-RB !   VREC-NODE-N @ TR-VNODE-RB !
 CHECKER-SCOPE-START
@@ -1237,14 +1214,14 @@ s" CBAD-FIELD ( ptr n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
 s" CBAD-LOCAL-SCOPE ( i64 bool -- i64 ) if {: drop:i64 :} drop else drop 0 then drop" T-CHECK-REJECTS
 s" CBAD-LOCAL-DEAD ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 
-\ run-rc spawns a child and waits (paths need a NUL); it has no checker row
-\ (src/habu/prims.f UNROWED: run-rc), so only a TRUSTED: body reaches it.
+\ run-rc spawns a child and waits (paths need a NUL); it has no checker row, so
+\ only a TRUSTED: body reaches it.
 TRUSTED: ES-RUN-RC ( ptr u8 n -- n ) PATH0 run-rc ;
 s" /usr/bin/true" ES-RUN-RC 0 T=
 s" /usr/bin/false" ES-RUN-RC 1 T=
 
 \ spawn-fds: the child's descriptor table is exactly the request's map, through
-\ the primitive itself. Each child is /bin/sh -c with the script in ES-SFZ.
+\ the primitive itself.
 require src/habu/spawn-abi.f
 1 constant ES-F-GETFD
 16 constant ES-SF-SCRIPT
@@ -1262,7 +1239,6 @@ variable ES-FA  variable ES-FB
 : ES-SFZ! ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
    0 begin dup u < while  dup a + c@  over off + ES-SFZ + c!  1 + repeat drop
    0 ES-SFZ off u + + c! ;
-\ Put fd n's decimal digit at offset off of the script.
 : ES-SFDIGIT ( n n -- ) {: fd:n off:n :}  fd 48 +  ES-SFZ ES-SF-SCRIPT off + + c! ;
 : ES-SFSETUP ( -- )
    s" /bin/sh" 0 ES-SFZ!  s" -c" 8 ES-SFZ!
@@ -1317,7 +1293,7 @@ ES-R1 @ close  ES-R2 @ close
 ES-SFPID @ wait-status 0 T=
 
 \ A descriptor open in the parent at or above NFDS and absent from the map is
-\ closed in the child: the write fails, the shell exits 9, the pipe sees EOF.
+\ closed in the child.
 s" spawn-fds-closes-unmapped" T-LABEL
 pipe 0 T=  ES-W1 !  ES-R1 !
 3 ES-FREE-FD ES-FA !
@@ -1352,16 +1328,14 @@ s" /nonexistent-habu-x" PATH0 ES-ADDR SPAWN-ABI:PATH ES-REQ!
 s" spawn-fds-negative-nfds" T-LABEL
 -1 ES-SFSPAWN -22 T=
 
-\ filesystem syscalls
 create ES-STB 256 allot
 create DBUF 4096 allot
 create RLB 64 allot
 create ES-TARGETZ
    65 c, 71 c, 69 c, 78 c, 84 c, 83 c, 46 c, 109 c, 100 c, 0 c,
 create DIRBASE 8 allot
-\ The directory and the link are made inside a fresh root under TMPDIR: two
-\ gates share one machine, and a fixed /tmp name collides with the other run's
-\ mkdir (EEXIST) or rmdir.
+\ Two gates share one machine, and a fixed /tmp name collides with the other
+\ run's mkdir (EEXIST) or rmdir.
 create ES-ROOT PATH-CAP allot
 variable ES-ROOT-U
 create ES-JOIN PATH-CAP allot
@@ -1407,7 +1381,6 @@ CAST: MAP>BYTES ( n -- ptr u8 )
 0 4096 3 $1002 -1 0 mmap dup 0 < TFALSE MAP>BYTES dup 65 swap c! c@ 65 T=
 ;package
 
-\ floats
 : TFP ( -- bool ) 1.5 2.5 f+ 4.0 f= ;
 TFP TTRUE
 : TFL ( -- bool ) 1.5 2.5 f< ;
@@ -1415,18 +1388,15 @@ TFL TTRUE
 : TFNEG ( -- bool ) -1.5 -2.5 f+ -4.0 f= ;
 TFNEG TTRUE
 
-\ exit inside a quotation targets the QUOTATION's epilogue (scoped chain)
+\ exit inside a quotation targets the QUOTATION's epilogue
 : TQX ( n -- n ) [: dup 0 > if exit then drop 99 ;] execute ;
 5 TQX 5 T=
 0 TQX 99 T=
 
-\ empty interpret string
 s" " nip 0 T=
 
-\ run-rc spawn failure -> -1 (not a hang or garbage status)
 s" /nonexistent-habu-x" ES-RUN-RC -1 T=
 
-\ snapshot-writer intrinsics are sane
 $340000000 constant ES-LINUX-DATA-VA
 $44000000000 constant ES-MACOS-DATA-VA
 : ES-TARGET-UNKNOWN ( -- )
@@ -1437,8 +1407,8 @@ $44000000000 constant ES-MACOS-DATA-VA
    HB-TARGET-LINUX-X86-64? if ES-LINUX-DATA-VA exit then
    HB-TARGET-MACOS? if ES-MACOS-DATA-VA exit then
    ES-TARGET-UNKNOWN ;
-dbase@ rbase > TTRUE                                 \ live JIT region sits above __text (hinted at __text + REGION-OFF)
-dbase@ PROT-PAGE-MAX 1 - and 0= TTRUE                \ region base is PROT-PAGE-MAX-aligned (the mapping alignment)
+dbase@ rbase > TTRUE                                 \ live JIT region sits above __text
+dbase@ PROT-PAGE-MAX 1 - and 0= TTRUE
 dbase@ REGION + rbase - BL-REACH < TTRUE             \ whole region within BL's +/-128 MiB of __text
 data-base NULL-PTR - ES-DATA-VA = TTRUE
 cp@ dbase@ - 0 > TTRUE
@@ -1458,22 +1428,19 @@ mono-ns mono-ns <= TTRUE
 : TMONO-ELAPSED ( -- n ) mono-ns 0 100000 0 do i + loop drop mono-ns swap - ;
 TMONO-ELAPSED 0 > TTRUE
 
-\ register pool stress: 14 live VS values exceed the 13-reg pool (x9..x15,
-\ x29, x25, x23, x24, x21, x22) mid-expression -> the 14th allocation takes
-\ the spill path; sum proves no value was lost or aliased (1+..+14 = 105)
+\ register pool stress: 14 live VS values exceed the 13-reg pool
+\ mid-expression -> the 14th allocation takes the spill path
 : TRP ( -- n )
    1 2 3 4 5 6 7 8 9 10 11 12 13 14  + + + + + + + + + + + + + ;
 TRP 105 T=
 
 \ loop-resident registers: 12 loop-carried values + the counter (13 = the
-\ full pool) survive a BEGIN/UNTIL back edge via the two-cell packed snapshot
+\ full pool) survive a BEGIN/UNTIL back edge
 : TLR ( -- n )
    1 2 3 4 5 6 7 8 9 10 11 12  0 begin 1 + dup 3 = until drop
    + + + + + + + + + + + ;
 TLR 78 T=
 
-\ Binary operators on constants: both operands constant, a live operand under a
-\ constant inside, at and past the imm12 range, and a negative constant top.
 : TJF ( -- n ) 2 3 +  10 4 -  +  6 7 *  + ;   \ fold: 5 + 6 + 42
 TJF 53 T=
 : TJB ( -- n ) 12 10 and  12 10 or  12 10 xor  +  + ;   \ fold: 8 + 14 + 6
@@ -1555,8 +1522,8 @@ TFQ TTRUE
 : TFG ( -- bool ) 5.0 3.0 f> ;
 TFG TTRUE
 
-\ A definition the checker refuses inside evaluate throws 70 (check-hook.f
-\ CHECK-RC); the evaluate frame rolls CP and NDICT back (EM-EVAL-THROW-RECOVER).
+\ A definition the checker refuses inside evaluate throws 70; the evaluate frame
+\ rolls CP and NDICT back.
 variable ES-CPX-CP
 variable ES-CPX-ND
 \ unsigned body with an unsafe token: the checker refuses it E-UNSAFE
@@ -1586,32 +1553,22 @@ ES-CPX-BAD-EXT-RUN
 s" cpx-reject-ext-3" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
 -1 DIAG-QUIET +!
-\ after the refusals, new definitions compile and run, one with a name longer
-\ than DNAME-INL
 : CPX-GOOD ( n -- n ) 1 + ;
 6 CPX-GOOD 7 T=
 : ES-CPX-GOOD-EXTENDED-NAME ( n -- n ) 2 + ;
 6 ES-CPX-GOOD-EXTENDED-NAME 8 T=
 
-\ Candidate dictionary smoke, independent T= probes: a checked def compiles and
-\ runs, and a representative baked process primitive resolves. Runs on both the
-\ candidate and bin/hb.
 : ES-SMOKE-SQ ( i64 -- i64 ) dup * ;
 s" smoke-checked-compile-run" T-LABEL 7 ES-SMOKE-SQ 49 T=
 s" smoke-baked-word-resolves" T-LABEL ' spawn-argv-env-cwd-io drop true TTRUE
 
-\ --- declared-effect parametricity seal. After body checking, every declared
-\ type-variable quantifier must still resolve to a DISTINCT variable. Any
-\ concrete specialization or alias between two declared quantifiers rejects
-\ E-NONPARAMETRIC-EFFECT. Verdict 0 = rejected, -1 = certified. `esnp` is an
-\ arity-0 nominal-scalar family; ESNP-AT is its generated LAYOUT-BUFFER pointee
-\ accessor (the only checked source of `ptr esnp`).
+\ After body checking, every declared type-variable quantifier must still
+\ resolve to a DISTINCT variable.
 NEWTYPE esnp
 4 LAYOUT-BUFFER ESNP-AT esnp                  \ ESNP-AT ( n -- ptr esnp ) accessor
-: ESNP-ID ( esnp -- esnp ) ;                  \ concrete nominal identity wrapper
-: ESNP-MERGE ( g g -- g ) nip ;               \ collapses its two inputs to one type
+: ESNP-ID ( esnp -- esnp ) ;
+: ESNP-MERGE ( g g -- g ) nip ;
 
-\ negatives — the three laundering shapes reject
 s" specialize declared quantifier to a nominal family rejects" T-LABEL
 s" ESNP-SPEC ( a -- a ) ESNP-ID" CHECK-QUIET-CANDIDATE! 0 T=
 s" specialize declared ptr pointee to a nominal family rejects" T-LABEL
@@ -1619,7 +1576,6 @@ s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-QUIET-CANDIDATE! 0 T=
 s" aliasing two declared quantifiers rejects" T-LABEL
 s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ Genuine polymorphism and concrete scalar signatures certify.
 s" generic ID wrapper certifies" T-LABEL
 s" ESNP-GEN-ID ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
 s" generic LOAD wrapper certifies" T-LABEL
@@ -1629,7 +1585,6 @@ s" ESNP-FETCH-N ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" concrete numeric pointee fetch certifies" T-LABEL
 s" ESNP-FETCH-N-OK ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ specialization diagnostic: E-NONPARAMETRIC-EFFECT, offending quantifier + family
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" ESNP-SPEC ( a -- a ) ESNP-ID" CHECK-CANDIDATE! 0 T=
 s" specialize diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
@@ -1640,7 +1595,6 @@ s" specialize diag: names the forged family" T-LABEL
 DIAG-BUFFER$ s" family 'esnp'" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 
-\ aliasing diagnostic: E-NONPARAMETRIC-EFFECT, both quantifier letters
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-CANDIDATE! 0 T=
 s" aliasing diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
@@ -1649,7 +1603,6 @@ s" aliasing diag: names both quantifiers" T-LABEL
 DIAG-BUFFER$ s" 'a' and 'b'" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 
-\ row diagnostics: the named pair, the unnamed row and fixed cells
 LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
 s" ESNP-ROW-PAIR ( R [ R -- S ] -- S ) drop" CHECK-CANDIDATE! 0 T=
 s" row alias diag: names both rows" T-LABEL
@@ -1686,17 +1639,13 @@ DIAG-BUFFER$ s\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" CONTAINS? TTRUE
 DIAG-BUFFER$ s\" \"quantifier\"" CONTAINS? TFALSE
 DIAG-BUFFER-OFF
 
-\ pointer-pointee path stays stable: the ptr instance rejects via the NOMPTR
-\ mismatch diagnostic, which names the family.
+\ the ptr instance rejects via the mismatch diagnostic, which names the family.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-CANDIDATE! 0 T=
 s" ptr-family diag names the forged family" T-LABEL
 DIAG-BUFFER$ s" esnp" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 
-\ rollback/isolation: a rejected non-parametric definition leaves no residue —
-\ the immediately following generic definition still certifies (NPBAD cleared,
-\ specialization bindings unwound by the next check's NEW/TV-RESET).
 s" reject then re-reject is stable" T-LABEL
 s" ESNP-SPEC-2 ( a -- a ) ESNP-ID" CHECK-QUIET-CANDIDATE! 0 T=
 s" clean generic check after a reject certifies (state rolled back)" T-LABEL
@@ -1705,9 +1654,8 @@ s" plain-scalar fetch after a reject certifies" T-LABEL
 s" ESNP-FETCH-N-2 ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ x18 is Darwin-reserved: XNU zeroes it on any trap return, so an escaped
-\ literal whose copy crosses a fresh DATA page (interpret mode) or a code page
-\ (compile mode) must not depend on it. Direct top-level fixtures:
-\ evaluate cannot carry escaped literals.
+\ literal whose copy crosses a DATA page or a code page must not depend on it.
+\ The fixtures sit at top level: evaluate cannot carry escaped literals.
 : TX18-CHK ( ptr u8 n -- ) 150 T=  c@ [char] A T= ;
 : TX18-QCHK ( ptr u8 n -- ) 180 T=  c@ [char] B T= ;
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
@@ -2107,22 +2055,10 @@ S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 TX18-DA TX18-DB TX18-DC TX18-DD TX18-DE TX18-DF TX18-DG TX18-DH TX18-DI TX18-DJ TX18-DK TX18-DL
 TX18-DM TX18-DN TX18-DO TX18-DP TX18-DQ TX18-DR TX18-DS TX18-DT TX18-DU TX18-DV TX18-DW TX18-DX
 
-\ ---- search-wl: the answer, and the ORDER it is the answer of ---------------
-\ `search-wl` names the LAST row of one wordlist whose folded name matches. The
-\ definer's duplicate wall keeps every real wordlist at one live row per folded
-\ tail, so there last and first coincide; `undefine` stamps every row it
-\ retires with one shared value that is no wordlist, so retiring a tail twice
-\ leaves two rows under it. Both halves are pinned by ROW IDENTITY, the index
-\ the row was published at, so a lookup that returns the other row of a pair
-\ fails here.
-\ The battery is answered twice: here, and at the end of this file after the
-\ ndict! block has rebuilt the hash index. The two captures must agree row for
-\ row. No case writes a wid down: every wid is read out of the row that owns it.
 package ES-SWL
 
-\ Whitebox: a row by index. A row's index is ndict@ in the instant before it is
-\ published, which is how a case here can name a row without searching for it -
-\ searching for it being the thing under test.
+\ A row's index is ndict@ in the instant before it is published, which is how a
+\ case here can name a row without searching for it.
 : REC-ADDR ( n -- n )   DREC * dbase@ + ;
 \ A dictionary row's address is an integer offset from dbase@.
 CAST: N>REC ( n -- ptr n )
@@ -2132,7 +2068,7 @@ CAST: N>REC ( n -- ptr n )
 5 constant WL-SLOT
 
 2 constant OWNER-PRIVATE-WID     \ the reserved wordlist search-wl reports empty
-$7FFFFF constant NO-SUCH-WID     \ never allocated: wids count up from FIRST-DYNAMIC-WID
+$7FFFFF constant NO-SUCH-WID     \ never allocated
 
 24 constant ANS-CAP
 create ANS-A ANS-CAP cells allot
@@ -2174,9 +2110,6 @@ public
 : SET-NDX-WID ( n -- )  NDX-WID ! ;
 : NDX-WID@ ( -- n )     NDX-WID @ ;
 
-\ A package's own row carries its public wid in the cell a word's row carries
-\ its code address in, its private wid in the next one, and the namespace
-\ marker where a word carries its wordlist.
 : NS-WID ( -- n )       NS-IDX @ ROW-WID ;
 : PKG-PUB-WID ( -- n )  NS-IDX @ ROW-XT ;
 : PKG-PRI-WID ( -- n )  NS-IDX @ PRI-WID-SLOT ROW-CELL ;
@@ -2213,7 +2146,6 @@ public
 
 : N ( -- n )  ANS-I @ ;
 
-\ The first battery index the two captures disagree at, or -1 for none.
 : DIFF ( -- n )
    0 begin dup ANS-I @ < while
       dup cells ANS-A + @  over cells ANS-B + @ <> if exit then
@@ -2246,13 +2178,8 @@ s" search-wl: a prefix of a live tail is not that tail" T-LABEL
 s" T-LABEL-CA" 0 search-wl 0 T=
 s" T-LABEL-CAPX" 0 search-wl 0 T=
 
-\ The retired key is the one key a wordlist's one-row-per-tail rule does not
-\ cover: `undefine` stamps it on a published row, and doing it twice to one
-\ tail leaves two rows under it; the last of the two is the answer.
-\ Both rows are published through the engine's own evaluate path
-\ (ES-RES-REFUSE:OUTCOME above), as every source here that must land in the
-\ GLOBAL wordlist is. Evaluating a source publishes what it defines and nothing
-\ else, so a row's index is still ndict@ in the instant before it.
+\ Evaluating a source publishes what it defines and nothing else, so a row's
+\ index is still ndict@ in the instant before it.
 ES-SWL:MARK-RET1
 s" : ES-SWL-U ( -- n ) 1 ;" ES-RES-REFUSE:OUTCOME 0 T=
 s" search-wl: a live global tail is its own row" T-LABEL
@@ -2277,19 +2204,8 @@ s" ES-SWL-U" 0 search-wl 0 T=
 s" search-wl: the battery ran with the index live" T-LABEL
 ES-SWL:CAPTURE  ES-SWL:N ES-SWL:BATTERY-N T=
 
-\ ---- ndict! and the authority of the lookup index ---------------------------
-\ The engine reads an empty hash slot as PROOF that a name is absent, and that
-\ proof holds only while the table covers every record below NDICT. Every
-\ ndict! in the tree lowers the mark; raising it re-exposes records whose index
-\ slots a later publication was free to reuse, so BNDSET rebuilds the table
-\ from the raised [0,NDICT) in place rather than trusting its callers.
-\ This block is last in the file: it leaves the index rebuilt, and the lookups
-\ and battery re-run after the raise assert that the rebuilt table answers
-\ exactly what the original answered over the shared tails the resolution block
-\ pinned. The claim count equals ndict only after a from-scratch rebuild.
 package ES-NDX
 
-\ Whitebox: a fixed engine header cell, and the FORGET sink itself.
 : HIDXP@ ( -- n )  data-base HIDXP-CELL + @ ;
 : ND! ( n -- )     ndict! ;
 
@@ -2320,10 +2236,8 @@ ES-NDX:MARK-HIGH
 s" ndict!: the fresh record resolves through the index" T-LABEL
 ES-NDX:FRESH 7 T=
 ES-NDX:LOWER
-\ Lowering keeps the table: the slot for the row above the mark is still
-\ occupied and still holds its index. What makes the row absent is that the
-\ index is out of range, which a lookup has to notice - the row's own bytes are
-\ untouched and would still match on wid and name.
+\ What makes the row absent is that the index is out of range, which a lookup
+\ has to notice: the row's own bytes would still match on wid and name.
 s" ndict!: a lowered mark keeps the index live" T-LABEL
 ES-NDX:INDEXED? TTRUE
 s" ndict!: a slot above a lowered mark reads as absent" T-LABEL
@@ -2342,21 +2256,14 @@ ES-RESO:T-LABEL-CAP 3 T=
 s" ndict!: the rebuilt index still refuses a bare package public" T-LABEL
 s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
 
-\ The table was rebuilt from scratch by the raise, so this capture is the
-\ rebuilt table's own answer to every question the original table answered.
-\ Row for row, or the rebuild changed a lookup somewhere in the dictionary
-\ they share.
 ES-SWL:CAPTURE-SECOND
 s" search-wl: the rebuilt index ran the same battery" T-LABEL
 ES-SWL:N ES-SWL:BATTERY-N T=
 s" search-wl: the rebuilt index answers the battery the original answered" T-LABEL
 ES-SWL:DIFF -1 T=
 
-\ Data space: `create` rounds the data pointer up to a cell before it publishes
-\ the data field (standard CREATE), so a `variable` or a `create ... allot`
-\ block that follows byte-sized storage is cell-aligned. With the odd allots
-\ between them, an engine that does not align cannot place both B and C on a
-\ cell boundary, so the pair fails on such an engine whatever the pointer was.
+\ With the odd allots between them, an engine that does not align cannot place
+\ both B and C on a cell boundary.
 create ES-ALIGN-A 1 allot
 create ES-ALIGN-B 1 allot
 create ES-ALIGN-C 3 allot
@@ -2368,12 +2275,8 @@ ES-ALIGN-C NULL-PTR - CELL 1- and 0 T=
 s" variable: a variable after byte-sized storage is cell-aligned" T-LABEL
 ES-ALIGN-V NULL-PTR - CELL 1- and 0 T=
 
-\ Typed storage: the layout-buffer definers and the deferred binder `align` the
-\ data pointer before they measure or allot at it, so a layout buffer, a typed
-\ variable or a bound column that follows byte-sized storage is cell-aligned,
-\ and the generated `create` leaves the measured pointer in place. The three
-\ regions sit at consecutive odd offsets from one another on an engine that
-\ does not align, so at least two of the three cases fail there.
+\ The three regions sit at consecutive odd offsets from one another on an engine
+\ that does not align, so at least two of the three cases fail there.
 package ES-ALIGN-TEST
 public
 SUMTYPE esal
@@ -2394,7 +2297,6 @@ ES-ALIGN-TEST:TV NULL-PTR - CELL 1- and 0 T=
 s" defer-layout-buffer: a column bound after a byte-sized allot is cell-aligned" T-LABEL
 0 ES-ALIGN-TEST:DC NULL-PTR - CELL 1- and 0 T=
 
-\ `align` itself: standard ALIGN, the rounding `create` applies, on request.
 \ An interpreted `s"` allots its bytes, so the label goes down before the align.
 create ES-ALIGN-D 1 allot
 s" align: rounds the data pointer up to a cell" T-LABEL
