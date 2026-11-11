@@ -4,27 +4,40 @@
 \ loopback stream this process is both ends of; no clock but the monotonic one.
 \ Every wait in this file is bounded: a wait that never finishes ends the row as a
 \ timeout and not a hung suite, and what a finished wait leaves is asserted.
+\
+\ Every transfer hands its allocation to the operation and takes it back from
+\ AWAIT-XFER, which is the only word that answers one, and releases it itself.
+\ A buffer a case still holds after a refusal was never submitted.
+\
+\ A handle is the record's index and the generation that record carried when
+\ the handle was minted, and freeing a record bumps its generation, so a handle
+\ whose record this very task has reclaimed is E-AIO-STATE - the one case the
+\ index and the owner cannot tell apart from a live handle. The stale-handle
+\ cases reuse the record on purpose: the settle each of them starts with leaves
+\ nothing of an earlier case in flight, the claim takes the lowest free record,
+\ and nothing frees a record between the await and the next submission, so the
+\ second operation lands on the record the first one just gave back. Each case
+\ asserts that before it asserts a refusal.
 
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/wait.f
-require src/lib/fd.f                \ FD:FD-NOSIGPIPE! for the broken-pipe write
+require src/lib/fd.f
 require src/lib/task.f
-require src/lib/memory.f              \ the allocations the transfers own
-require src/lib/num-types.f           \ the alloc-byte-len those allocations carry
+require src/lib/memory.f
+require src/lib/num-types.f
 require test/host-threads.f
-require src/lib/fs-mutate.f           \ the temporary directory the READ file lives in
-require src/lib/net/tcp4.f            \ the loopback listener ACCEPT and CONNECT run on
+require src/lib/fs-mutate.f
+require src/lib/net/tcp4.f
 require src/lib/aio.f
 
 \ White-box helpers, compiled in package AIO to reach its private plumbing;
 \ each qualified name lands in AIO-TEST, so AIO's public surface gains nothing.
 package AIO
 
-\ One OP-NOP published and nobody entered for: NOP-STAGE's entry without its
-\ io_uring_enter, so the ring carries an entry the kernel has not been asked to
-\ take. Its user_data is NOP-ID, which no record answers to, so COMPLETE drops
-\ the completion it gets once some submission takes it.
+\ One OP-NOP published and nobody entered for: the ring carries an entry the
+\ kernel has not been asked to take. Its user_data is NOP-ID, which no record
+\ answers to, so its completion is dropped once some submission takes it.
 : AIO-TEST:PLANT-NOP ( -- )
    AIO-LOCK TASK:GET
    SQ-SLOT dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
@@ -63,14 +76,13 @@ $11 constant DEFS-N                  \ more groups than the first $10 definition
 -1 constant MARK-TIMED-OUT
 -2 constant MARK-CANCELLED
 
-$1000 constant XFER-N                \ the pattern file, and every transfer buffer
+$1000 constant XFER-N
 $800 constant XFER-HALF
-251 constant PAT-MOD                 \ a period no multiple of XFER-N, so the bytes
-                                     \ at one file offset never match another's
+251 constant PAT-MOD
 $7F000001 constant LOOPBACK
-$10 constant SOCKADDR-N              \ sockaddr_in, as src/lib/net/udp4.f lays it out
+$10 constant SOCKADDR-N              \ sockaddr_in
 4 constant STREAM-BACKLOG
-$10 constant REUSE-N                  \ the bytes the reused socket's peer sends
+$10 constant REUSE-N
 
 : AIO-TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
@@ -126,13 +138,13 @@ GROW-N TYPED-BUFFER GROW-TICKETS AIO:ticket
 FULL-CAP TYPED-BUFFER FULL-TICKETS AIO:ticket
 AIO-TEST-ALIGN8
 create GROW-IDX GROW-N cells allot
-GROW-N TYPED-BUFFER WIDE-SEEN n          \ how often AWAIT-ANY handed back each number
+GROW-N TYPED-BUFFER WIDE-SEEN n
 TYPED-VARIABLE ANY-CUR AIO:ticket
 TYPED-VARIABLE LONE-TICKET AIO:ticket
 TYPED-VARIABLE LONE-XFER AIO:xfer
 TYPED-VARIABLE THIEF-TICKET AIO:ticket
-TYPED-VARIABLE STALE-TICKET AIO:ticket  \ a handle whose record has been reused,
-TYPED-VARIABLE STALE-XFER AIO:xfer      \ and the live operation now on it
+TYPED-VARIABLE STALE-TICKET AIO:ticket
+TYPED-VARIABLE STALE-XFER AIO:xfer
 TYPED-VARIABLE LIVE-TICKET AIO:ticket
 TYPED-VARIABLE LIVE-XFER AIO:xfer
 TYPED-VARIABLE XB-PTR ptr u8          \ an allocation a quotation has to reach, and
@@ -219,7 +231,6 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 : THREADS ( -- n ) TEST-HOST:THREADS ;
 
-\ The end of a wait's WAIT-MS window, an absolute mono-ns.
 : DEADLINE ( -- n )
    mono-ns WAIT-MS NS-PER-MS * + ;
 
@@ -233,8 +244,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 \ The scrub a halted task runs cancels its operations, and the cancels have to
 \ reach the kernel and come back before the ring is idle, so the stop is retried
-\ to a bound rather than asserted on the first try. Only E-AIO-BUSY is retried:
-\ any other code from AIO:STOP is a fault and is rethrown at once.
+\ to a bound rather than asserted on the first try.
 : STOPPED? ( -- bool )
    [: AIO:STOP ;] catch {: code:n :}
    code 0= if true exit then
@@ -296,8 +306,8 @@ TASK:MIN-STACK TASK:TASK FAN7
 \ is the entry a refused enter leaves behind: the count has to be zero right
 \ after the next submission, which is what says that submission's own entry
 \ reached the kernel. Both cases assert the count before the await, because a
-\ submission that left its entry in the ring has nobody to submit it - the
-\ loop's wait asks for nothing - and the await would hang instead of failing.
+\ submission that left its entry in the ring has nobody to submit it and the
+\ await would hang instead of failing.
 : CASE-PLANTED-TIMER ( -- )
    PENDING 0 T=
    PLANT-NOP
@@ -483,9 +493,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
    P-R P-W PIPE-CLOSE ;
 
-\ Every transfer below hands its allocation to the operation and takes it back
-\ from AWAIT-XFER, which is the only word that answers one, and releases it
-\ itself. A buffer a case still holds after a refusal was never submitted.
 : PAT-C ( n -- n )
    PAT-MOD mod ;
 
@@ -551,7 +558,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    XFER-FD @ XFER-N XFER-N 0 READ-ONCE 0 T=
    XFER-FD @ close-rc drop ;
 
-\ A pipe, with both transfers in flight at once.
 \ The WRITE is submitted first and awaited second: a transfer is not a call, and
 \ nothing about the order they are awaited in changes what they answer.
 : CASE-XFER-PIPE ( -- )
@@ -679,8 +685,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    XC @ TCP4:CLOSE STATUS-OK
    XL @ TCP4:CLOSE-LISTENER STATUS-OK ;
 
-\ A refused submission never happened, so the allocation is still the caller's
-\ and this case releases it itself.
 : CASE-XFER-BOUNDS ( -- )
    P-R P-W PIPE-OPEN
    XB-ALLOC
@@ -710,21 +714,11 @@ TASK:MIN-STACK TASK:TASK FAN7
    [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
    P-R P-W PIPE-CLOSE ;
 
-\ A handle is the record's index and the generation that record carried when the
-\ handle was minted, and REC-FREE bumps the generation, so a handle whose record
-\ this very task has reclaimed is E-AIO-STATE - the one case the index and the
-\ owner cannot tell apart from a live handle. The three cases reuse the record
-\ on purpose: the settle each of them starts with leaves nothing of an earlier
-\ case in flight, the claim takes the lowest free record, and nothing frees a
-\ record between the await and the next submission, so the second operation
-\ lands on the record the first one just gave back. Each case asserts that
-\ before it asserts a refusal.
 \ Projecting a foreign nominal out is allowed anywhere; minting one is not, so
 \ these two read a handle without being able to make one.
 CAST: TICKET>N ( AIO:ticket -- n )
 CAST: XFER>N ( AIO:xfer -- n )
 
-\ Two handles over one record, minted over different generations of it.
 : REUSED ( n n -- ) {: live:n stale:n :}
    live AIO-TEST:HANDLE-IDX stale AIO-TEST:HANDLE-IDX T=
    live stale <> TTRUE ;
@@ -760,11 +754,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R P-W PIPE-CLOSE ;
 
 \ The other order, which is where the allocation would leak: the record a stale
-\ ticket names now holds a transfer that owns a MEM allocation. The refusal is
-\ in OWNED-CHECK and AWAIT reaches TAKE only after it, so the record is not
-\ freed under the transfer's feet and REC.HOLD is not cleared without a
-\ RELEASE-BYTES - the bytes come back out of AWAIT-XFER below, which is the only
-\ word that answers them, and this case releases them itself.
+\ ticket names now holds a transfer that owns a MEM allocation.
 : CASE-STALE-OVER-XFER ( -- )
    P-R P-W PIPE-OPEN
    SETTLE-MS TASK:SLEEP
@@ -852,7 +842,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    WIDE-DRAIN
    P-R P-W PIPE-CLOSE ;
 
-\ Each group answers the one wait it holds and no other.
 : CASE-GROUP-DEFS ( -- )
    P-R P-W PIPE-OPEN
    DEFS-N 0 ?do
@@ -929,9 +918,9 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R @ >FD buf cap XFER-N 0 AIO:READ XFER-TICKET-DROP
    1 XFER-FORGET-DONE atomic! ;
 
-\ Two things are observable. The ring goes idle, so STOP is not E-AIO-BUSY:
-\ the record came back. And a write(2) out of the pages the transfer held is
-\ EFAULT instead of a byte into the pipe: the mapping is gone.
+\ The ring goes idle, so STOP is not E-AIO-BUSY: the record came back. And a
+\ write(2) out of the pages the transfer held is EFAULT instead of a byte into
+\ the pipe: the mapping is gone.
 : CASE-XFER-FORGOTTEN ( -- )
    0 XFER-FORGET-DONE !
    P-R P-W PIPE-OPEN
@@ -967,9 +956,9 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R P-W PIPE-CLOSE
    AIO:START ;
 
-\ A task halted while parked in AWAIT: the wait's finally cancels the record and
-\ SCRUB later discards it, so the loop never wakes a TCB the join has released
-\ and the ring goes idle without it.
+\ A task halted while parked in AWAIT: the wait's finally cancels the record, so
+\ the loop never wakes a TCB the join has released and the ring goes idle
+\ without it.
 : HALT-WORK ( -- )
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
    1 HALT-PARKED atomic!
