@@ -758,6 +758,79 @@
 \ something to import: a window that did not claim would compile its own
 \ source with no source owner, which the optimizing front end refuses, and
 \ re-claiming an owned record is the same store.
+\
+\ The interpret row: a segment is a saved row and the row's two buffers, keyed
+\ by the evaluator stack base (a closed `evaluate` reads a different floor) and
+\ the evaluate levels ENTRY..LEVEL it spans (the engine's EVALD). Text a running
+\ word evaluates on the same base fires one level deeper, before the word's
+\ outputs exist, so it gets its own segment: the word's step already saved
+\ them. A top-level `evaluate` step widens its segment one level
+\ (TOP-WORD-STEP), so the text it reads continues the row. The live segment
+\ sits in TOP-READ-P / TOP-WRITE-P and their kin; the enclosing segments are
+\ parked in TOP-SEG rows, newest last. EVALD is process-wide, so an event at
+\ level lvl means no evaluate frame deeper than lvl is linked: a segment that
+\ entered deeper is dead and is released (TOP-SEG-PRUNE). A fresh segment
+\ enters at the event's level, which no surviving segment exceeds, so the
+\ parked rows and the live one are ordered by ENTRY and the dead ones are
+\ always on top. An event selects the segment spanning its stack base at its
+\ evaluate level, once the dead ones are gone: the live one, a parked one
+\ (dropping the segments above it), or a fresh empty one parked over the live
+\ one (CHECKER-TOP-SEGMENT).
+\
+\ Seeded words at top level: a seeded engine's rows come in at first
+\ reference (CK-AOT-INTAKE), and a body takes them between its passes
+\ (CHECK-RETRY). The interpret row takes them between passes of one step
+\ (TOP-STEP-RETRY): a step over a name the checker does not bind queues it
+\ (CALL-UNDEFINED, TOP-TICK-STEP). A tick step is admitted checked with an
+\ opaque xt. A word step is held while a seeded row answers the name
+\ (TOP-JUDGE), admitted when a rendering statement in scope may define it, and
+\ refused otherwise. When a seeded row answers the queue, the step's terms are
+\ released, the row taken and the step run again over a fresh load. The saved
+\ row the step loads from is not written between passes, so a pass costs the
+\ step alone. Each pass takes a row the tables lacked, so the loop ends as a
+\ body's does.
+\
+\ The surface a capture keeps: a capture keeps a checker symbol, and every row
+\ keyed on it, only when some spelling can still reach it in the engine it
+\ writes. Two reasons are this file's own, with or without a dictionary
+\ record: a primitive axiom row names the symbol (PES), or the primitive
+\ control prefix does (NORETS below NORET-PRIM-END), which is how `>r` or
+\ `2>r` resolve at all. Every other symbol is decided by the policy installed
+\ through CHECKER-SWEEP:INSTALL, which reads the dictionary and the seal pass's
+\ verdict. Until a policy is installed the sweep does nothing, so an engine
+\ whose closure does not load one captures every symbol it holds. Which
+\ records ship with a name is the capture's answer: the policy asks NAMED? of
+\ the record a symbol's spelling resolves to. SWEEP, CHECKER-CAPTURE-PREPARE's
+\ call, answers yes for every record. The native build's capture decides which
+\ records keep their names (a retained DNAME-INT word included) and then runs
+\ STRIP with its own answer, before it copies DATA. A stripped name leaves no
+\ spelling, so its symbol goes; a kept one is a callee a TRUSTED: body can
+\ call, whose arity the native compiler asks this checker for. A dropped
+\ symbol is retired in place, never renumbered: ids are held outside this
+\ table (a variant's constructor symbol), and a retired row answers no lookup,
+\ so a stale id names nothing. The string pool is rebuilt from the kept rows
+\ in id order. Its rows go with it: control rows at NORET-COMPACT; defer and
+\ parse-immediate rows filtered by the sweep; effect bindings zeroed in place
+\ (RETIRE-BINDINGS). CHECKER-REG CHECKED-ROW walks every id of a host that
+\ builds an engine, and a binding still keyed on a retired row would hand the
+\ target a symbol with an empty name.
+\
+\ Retired bindings, zeroed in place: every walker of the effect store steps
+\ record to record through ER.NEXT and every saved store position is a record
+\ boundary, so a retired binding keeps its link and nothing moves: no offset,
+\ position, USIGS-USER-OFF or UEND changes. What stays is marked from what
+\ stays: every record of a kept symbol and every record a root names (a
+\ definer's created effect in its control row, a record link's effect and
+\ grid, the DOESEFF latch, RECEFF, a primitive's effect in PES) keeps its
+\ header, content and every node, name string and argument run its rows
+\ reach, by the shape walk UIX-NODE-ADD makes. Every other granule of the user
+\ region is zeroed, leaving a retired binding its ER.NEXT alone: ACTIVE 0
+\ (EFF-DELETED), SYM 0, SYMPREV 0 and CONTENT 0, the record without content
+\ UIX-REC-ADD skips. A content or node a kept record shares stays. A store
+\ offset any other cell holds must be a root here, or its reader finds zeros.
+\ The map is one byte per eight-byte granule of [0, UEND), mmap scratch
+\ released before the sweep returns, so the sweep allots nothing in the image
+\ it cleans.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -28778,19 +28851,6 @@ variable RECORD-CTL-MAP-N
    NRX-RESET ;                         \ every entry moved: rebuild at the next lookup
 
 \ ---- the interpret row: saved between top-level events -----------------------
-\ A segment is a saved row and the row's two buffers, keyed by the evaluator
-\ stack base (a closed `evaluate` reads a different floor) and the evaluate
-\ levels ENTRY..LEVEL it spans (the engine's EVALD). Text a running word
-\ evaluates on the same base fires one level deeper, before the word's outputs
-\ exist, so it gets its own segment: the word's step already saved them. A
-\ top-level `evaluate` step widens its segment one level (TOP-WORD-STEP), so the
-\ text it reads continues the row. The live segment sits in TOP-READ-P /
-\ TOP-WRITE-P and their kin; the enclosing segments are parked in TOP-SEG rows,
-\ newest last. EVALD is process-wide, so an event at level lvl means no evaluate
-\ frame deeper than lvl is linked: a segment that entered deeper is dead and is
-\ released (TOP-SEG-PRUNE). A fresh segment enters at the event's level, which
-\ no surviving segment exceeds, so the parked rows and the live one are ordered
-\ by ENTRY and the dead ones are always on top.
 0 constant TS.BASE   1 constant TS.RP    2 constant TS.RC   3 constant TS.WP
 4 constant TS.WC     5 constant TS.OFF   6 constant TS.TV   7 constant TS.RV
 8 constant TS.ENTRY  9 constant TS.LEVEL  10 constant TS.END  11 constant TS.CELLS
@@ -28807,16 +28867,16 @@ public
 : TS-PTR ( n n -- ptr ptr u8 ) TS-AT BYTE-VIEW REG-PTR-CELLS ;
 ;package
 
-: TOP-SEG-UNMAP ( n -- ) {: ix:n :}       \ a parked segment's buffers
+: TOP-SEG-UNMAP ( n -- ) {: ix:n :}
    ix TS.RP CHECKER-REG:TS-PTR @ CELL-VIEW ix TS.RC TS-AT @ cells ARENA-UNMAP
    ix TS.WP CHECKER-REG:TS-PTR @ CELL-VIEW ix TS.WC TS-AT @ cells ARENA-UNMAP ;
 
-: TOP-SEG-RELEASE ( -- )                  \ the live segment's buffers and row
+: TOP-SEG-RELEASE ( -- )
    TOP-READ-P TOP-READ-CAP 1 ARENA-ROWS-RELEASE
    TOP-WRITE-P TOP-WRITE-CAP 1 ARENA-ROWS-RELEASE
    0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !  0 TOP-RROW-OFF ! ;
 
-: TOP-SEG-PARK ( -- )                     \ park the live segment; an empty one goes live
+: TOP-SEG-PARK ( -- )
    TOP-SEG-P TOP-SEG-CAP TOP-SEG-N @ 1 + TS-ROW ARENA-ROWS-ENSURE
    TOP-SEG-N @ {: ix:n :}
    TOP-BASE @ ix TS.BASE TS-AT !
@@ -28831,7 +28891,7 @@ public
    NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP !  0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !
    0 TOP-RROW-OFF ! ;
 
-: TOP-SEG-UNPARK ( n -- ) {: at:n :}      \ drop the live segment and those above at; at goes live
+: TOP-SEG-UNPARK ( n -- ) {: at:n :}
    TOP-SEG-RELEASE
    TOP-SEG-N @ at 1 + ?DO i TOP-SEG-UNMAP LOOP
    at TS.BASE TS-AT @ TOP-BASE !
@@ -28846,7 +28906,7 @@ public
 : TOP-SEG-SPANS? ( n n n -- bool ) {: ix:n base:n lvl:n :}
    ix TS.BASE TS-AT @ base =  ix TS.ENTRY TS-AT @ lvl <= and  lvl ix TS.LEVEL TS-AT @ <= and ;
 
-: TOP-SEG-FIND ( n n -- n ) {: base:n lvl:n :}  \ the newest parked row spanning both, else -1
+: TOP-SEG-FIND ( n n -- n ) {: base:n lvl:n :}
    TOP-SEG-N @ BEGIN dup 0 > WHILE
       1 - dup base lvl TOP-SEG-SPANS? IF EXIT THEN
    REPEAT drop -1 ;
@@ -28891,10 +28951,8 @@ public
       TKF TKFU @ TOK-CORE-OP?
    ELSE RES-FALSE THEN LAYOUT-XPORT ! ;
 
-\ Whether the token is the engine's `evaluate`, which widens the segment one
-\ level: the text it reads continues the row, checked or not. The spelling is
-\ tested first, so no other token is bound for it; a checked step needs the
-\ test here, and the window tests it before it steps at all.
+\ The spelling is tested first, so no other token is bound for it; a checked
+\ step needs the test here, and the window tests it before it steps at all.
 : TOP-WIDEN? ( -- bool )
    TKF TKFU @ s" evaluate" CORE-STR= 0= IF RES-FALSE EXIT THEN
    TKF TKFU @ TOK-CORE-OP? dup IF 1 TOP-LEVEL +! THEN ;
@@ -28931,9 +28989,7 @@ public
 \ True while the buffer read, [INB, INE), lies inside the bytes the loader owns
 \ for the open file: an `evaluate` of a slice of the file reads file text, any
 \ other string does not. Only then does an error's place carry `:<line>`,
-\ counted from the first owned byte (test/load-reject-diag-test.f
-\ TEST-EVALUATED-PLACE, TEST-EVALUATED-SLICE); habu2.f LSRCAT tests the same in
-\ machine code.
+\ counted from the first owned byte.
 : FILE-BUFFER? ( -- bool )
    data-base OWNED-CELL + @ {: o:n :}
    data-base INB-CELL + @ {: b:n :}
@@ -28944,16 +29000,15 @@ public
 package CHECK
 public
 
-\ The line of byte t, counted as the engine's refusal tail counts it; false
-\ unless SRCLOC:FILE-BUFFER? holds and t lies in the bytes the loader owns.
+\ The line of byte t, counted as the engine's refusal tail counts it.
 : LINE-AT ( ptr u8 -- n bool ) {: t:ptr :}
    SRCLOC:FILE-BUFFER? 0= IF 0 RES-FALSE EXIT THEN
    SRC-OWNED @ {: b:ptr :}
    t b - {: at:n :}
    at 0 <  at data-base SRCLOC:OWNEDLEN-CELL + @ >= or IF 0 RES-FALSE EXIT THEN
    b t 1 1 0 DIAG-POS drop drop RES-TRUE ;
-\ A top step is placed by its line alone: the source map (check-hook.f
-\ ROWS-ARM) places only a definition's tokens.
+\ A top step is placed by its line alone: the source map places only a
+\ definition's tokens.
 : TOP-SITE ( -- n bool ) TOK-SPELL-A @ LINE-AT ;
 
 private
@@ -28961,8 +29016,8 @@ private
 variable FPOS-OFF  variable FPOS-LN  variable FPOS-CL
 public
 
-\ Forgets FILE-POS's last answer; include.f PUBLISH-LOCATION calls it each
-\ time it publishes the owned bytes.
+\ Forgets FILE-POS's last answer, which counts over the owned bytes: every
+\ publication of the owned bytes runs it.
 : FILE-POS-CLEAR ( -- )
    0 FPOS-OFF !  1 FPOS-LN !  1 FPOS-CL ! ;
 FILE-POS-CLEAR
@@ -28986,16 +29041,14 @@ FILE-POS-CLEAR
    FPOS-LN @ FPOS-CL @ at ;
 ;package
 
-\ The wall's line and code for a duplicate refused off
-\ the wall: check-hook.f DEFINITION, layout-buffer.f LBUF-NAME-OK? (before allot).
+\ The wall's line and code for a duplicate refused off the wall.
 package CHECK
 private
-\ The source tools classify $4E themselves (check-all-errors-core.f DUP-RC).
+\ The source tools classify $4E themselves.
 $4E constant DUP-RC
 INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 
-\ The line of a byte of the open file, counted from its first owned byte.
 : BYTE-LINE ( ptr u8 -- n )
    SRC-OWNED @ swap ERROR-TEXT:LINE ;
 
@@ -29022,8 +29075,6 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    s" :" ERROR-TEXT:TYPE
    NAME-LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 public
-\ Writes the wall's line, `duplicate definition: <name>` and the place, then
-\ throws DUP-RC.
 : REFUSE-DUPLICATE ( ptr u8 n -- )
    s" duplicate definition: " ERROR-TEXT:TYPE
    ERROR-TEXT:TYPE
@@ -29084,17 +29135,11 @@ CHECKER-REG:}SCRATCH
    {: rc:n :}
    rc 0 <> IF TOP-RELEASE rc throw THEN ;
 
-\ Release the segments that entered deeper than lvl: the live one while it did,
-\ with the parked row under it going live.
 : TOP-SEG-PRUNE ( n -- ) {: lvl:n :}
    BEGIN TOP-ENTRY @ lvl >  TOP-LIVE @ 0 <> and WHILE
       TOP-SEG-N @ 0 > IF TOP-SEG-N @ 1 - TOP-SEG-UNPARK ELSE TOP-SEG-RELEASE  0 TOP-LIVE ! THEN
    REPEAT ;
 
-\ Select the segment spanning a stack base at the current evaluate level, once
-\ the dead ones are gone: the live one, a parked one (dropping the segments
-\ above it), or a fresh empty one parked over the live one. The selected
-\ segment ends at that level.
 : CHECKER-TOP-SEGMENT ( n -- ) {: base:n :}
    data-base EVALD-CELL + @ {: lvl:n :}
    lvl TOP-SEG-PRUNE
@@ -29175,24 +29220,11 @@ CHECKER-REG:}SCRATCH
    TOP-RELEASE  rc throw ;
 
 
-\ A seeded engine's rows come in at first reference (CK-AOT-INTAKE), and a
-\ body takes them between its passes (CHECK-RETRY). The interpret row takes
-\ them between passes of one step: a step over a name the checker does not bind
-\ queues it (CALL-UNDEFINED, TOP-TICK-STEP). A tick step is admitted checked
-\ with an opaque xt. A word step is held while a seeded row answers the name
-\ (TOP-JUDGE), admitted when a rendering statement in scope may define it, and
-\ refused otherwise. When a seeded row answers the queue, the step's terms are
-\ released, the row taken and the step run again over a fresh load. The saved
-\ row the step loads from is not written between passes, so a pass costs the
-\ step alone. Each pass takes a row the tables lacked, so the loop ends as a
-\ body's does.
 : TOP-STEP-RETRY ( [ -- ] n -- )
    {: live:n :}
    BEGIN live CHECKER-TOP-LOAD  dup TOP-RUN  TOP-TAKE 0= UNTIL drop ;
 
 
-\ Step the saved row over one top-level event, or refuse it (TOP-JUDGE). A word
-\ about to run and the name a tick read are judged as a body judges them.
 : CHECKER-TOP-WORD ( ptr u8 n n -- )
    {: a:ptr u:n live:n :}
    a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-WORD-STEP live TOP-STEP-RETRY ;
@@ -29245,8 +29277,7 @@ CHECKER-REG:}SCRATCH
    REPEAT ;
 
 \ A literal of class cls: STR pushes ptr u8 and n, CSTR ptr u8, NUM n or r,
-\ CHAR n. TOP-READ-LIT writes them over the saved row; TOP-LIT-STEP pushes them
-\ onto the loaded row.
+\ CHAR n.
 : TOP-READ-LIT ( ptr u8 n n -- ) {: a:ptr u:n cls:n :}
    cls TOP-EV-NUM = IF
       a u FLOAT-LITERAL-ADMITTED? nip IF CC-R ELSE CC-N THEN TOP-READ-CON TOP-READ-PUSH EXIT
@@ -29279,32 +29310,6 @@ CHECKER-REG:}SCRATCH
    0 TOP-LIVE !  0 TOP-BASE !  0 TOP-COPYING ! ;
 
 \ ---- the surface a capture keeps ---------------------------------------------
-\ A capture keeps a checker symbol, and every row keyed on it, only when some
-\ spelling can still reach it in the engine it writes. Two reasons are this
-\ file's own, with or without a dictionary record: a primitive axiom row names
-\ the symbol (PES), or the primitive control prefix does (NORETS below
-\ NORET-PRIM-END), which is how `>r` or `2>r` resolve at all. Every other symbol
-\ is decided by src/core/checker-surface.f, which reads the dictionary and the
-\ seal pass's verdict and loads after this file. Until it installs its policy
-\ the sweep does nothing, so an engine whose closure does not load it captures
-\ every symbol it holds.
-\ Which records ship with a name is the capture's answer: the policy asks NAMED?
-\ of the record a symbol's spelling resolves to. SWEEP, CHECKER-CAPTURE-PREPARE's
-\ call, answers yes for every record. The native build's
-\ capture decides in src/habu/aot-capture.f which records keep their names (a
-\ retained DNAME-INT word included) and then runs STRIP with its own answer,
-\ before it copies DATA. A stripped name leaves no spelling, so its symbol goes;
-\ a kept one is a callee a TRUSTED: body can call, whose arity the native
-\ compiler asks this checker for.
-\ A DROPPED SYMBOL IS RETIRED IN PLACE, never renumbered: ids are held outside
-\ this table (a variant's constructor symbol in src/core/type-family.f), and a
-\ retired row answers no lookup, so a stale id names nothing. The string pool is
-\ rebuilt from the kept rows in id order.
-\ Its rows go with it: control rows at NORET-COMPACT; defer, unsafe and
-\ parse-immediate rows filtered here; effect bindings zeroed in place
-\ (RETIRE-BINDINGS). CHECKER-REG CHECKED-ROW walks every id of a product host
-\ that builds an engine, and a binding still keyed on a retired row would hand
-\ the target a symbol with an empty name.
 package CHECKER-SWEEP
 private
 
@@ -29378,20 +29383,6 @@ variable CUR                             \ the binding walk's record cursor
    map BYTE-VIEW oldu cells ASIG-RELEASE ;
 
 \ ---- retired bindings, zeroed in place ------------------------------------------
-\ Every walker of the store steps record to record through ER.NEXT and every
-\ saved store position is a record boundary, so a retired binding keeps its link
-\ and nothing moves: no offset, position, USIGS-USER-OFF or UEND changes.
-\ What stays is marked from what stays: every record of a kept symbol and every
-\ record a root names (a definer's created effect in its control row, the
-\ DOESEFF latch, RECEFF, a primitive's effect in PES) keeps its
-\ header, content and every node, name string and argument run its rows reach,
-\ by the shape walk UIX-NODE-ADD makes. Every other granule of the user region
-\ is zeroed, leaving a retired binding its ER.NEXT alone: ACTIVE 0
-\ (EFF-DELETED), SYM 0, SYMPREV 0 and CONTENT 0, the record without content
-\ UIX-REC-ADD skips. A content or node a kept record shares stays. A store offset any other cell holds must be a root
-\ here, or its reader finds zeros.
-\ The map is one byte per eight-byte granule of [0, UEND), mmap scratch released
-\ before the sweep returns, so the sweep allots nothing in the image it cleans.
 PTR-VARIABLE MARK-P
 variable MARK-U                          \ the map's length in bytes
 1 constant KEEP-BIT                      \ the granule survives
@@ -29586,8 +29577,8 @@ public
    PIMM-FILTER
    0 HIDX-VALID ! ;
 
-\ Granted once, like CHECKER-CERT:INSTALL: a second policy cannot quietly
-\ replace the one the build installed.
+\ Granted once: a second policy cannot quietly replace the one the build
+\ installed.
 : INSTALL ( [ ptr u8 n bool ptr u8 n -- bool ] -- )
    KEEP-SET @ IF s" checker: capture keep policy already installed" 76 die THEN
    is KEEP-XT
@@ -29596,7 +29587,6 @@ public
 : NAMED? ( n -- bool )
    NAMED-XT ;
 
-\ The capture seam's sweep, for a capture that writes every live record.
 : SWEEP ( -- )
    KEEP-SET @ 0= IF EXIT THEN
    NAMED-DEFAULT
@@ -29682,7 +29672,7 @@ public
    TV-SNAP-RESET
    DECOUPLED-ARENA-SNAP-RESET
    SR-RETIRE
-   LOC-SNAP-RESET                       \ the local tables
+   LOC-SNAP-RESET
    CHECKER-CAPTURE-SCRATCH-PREPARE
    RWIN-DEFAULT                         \ a captured image observes no file
    ASIG-POOL-RELEASE
@@ -29749,12 +29739,11 @@ package CHECKER-REG
 ;package
 
 \ ---- the optimizing front end's half of the owner record ---------------------
-\ Installed at this file's own load, as src/core/lower-cert-base.f installs its
-\ certificate producer at its own: every checker instance wires its own seams,
-\ so the instance that owns the source is complete whoever loaded it. The
-\ compiler reads these through NCOMP-DISPATCH:DECL-*-OFF, never by name
-\ (src/habu/layout.f says what the name cost); a field this file forgets is a
-\ named refusal there, not a silent answer from the retired instance.
+\ Installed at this file's own load: every checker instance wires its own
+\ seams, so the instance that owns the source is complete whoever loaded it.
+\ The compiler reads these through NCOMP-DISPATCH:DECL-*-OFF, never by name; a
+\ field this file forgets is a named refusal there, not a silent answer from
+\ the retired instance.
 package CHECKER-REG
 ' CHECK!                            DECLARATIONS CHECK-OFF + xt!
 ' CHECKER-TAPE:INSTALL              DECLARATIONS TAPE-INSTALL-OFF + xt!
@@ -29862,12 +29851,12 @@ package CHECKER-REG
 ' CHECKER-TAPE:EVENT DECLARATIONS CHECKER-OWNER-EXT:TAPE-EVENT-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
-\ The claim below drains the declared-row log (src/habu/layout.f DECLARED-LOG),
-\ which no engine code appends to. It records each logged row by
-\ CHECKER-DECLARED-ROW!'s rule - active, without authority, only where no live
-\ row states the symbol - so a cold boot's checker holds the rows the build host records
-\ for the definitions of this file and the files before it. A TRUSTED:
-\ declaration before the claim is not logged: the claim grants no authority.
+\ The claim below drains the declared-row log, which no engine code appends to.
+\ It records each logged row by CHECKER-DECLARED-ROW!'s rule - active, without
+\ authority, only where no live row states the symbol - so a cold boot's
+\ checker holds the rows the build host records for the definitions of this
+\ file and the files before it. A TRUSTED: declaration before the claim is not
+\ logged: the claim grants no authority.
 0 constant CK-NS-PUBLIC-SLOT            \ = xref.f XREF-START-SLOT
 1 constant CK-NS-PRIVATE-SLOT           \ = xref.f XREF-LEN-SLOT
 
@@ -29878,16 +29867,16 @@ DECLARED-LOG:ADDR-CELL RESERVED-PTR-U8-CELL CK-DLOG-FIELD
    {: log:ptr i:n off:n :}
    log DECLARED-LOG:SLOTS-REL + i DECLARED-LOG:SLOT * + off + ;
 
-\ A slot's REC, PKG and SIG-A fields hold addresses (layout.f DECLARED-LOG).
+\ A slot's REC, PKG and SIG-A fields hold addresses.
 CAST: DLOG-CELL ( ptr n -- ptr ptr n )
 
 \ The symbol a logged definition's row is keyed by. REC names the word and the
 \ wordlist it was published into; NS is the open package's namespace record,
 \ NULL-PTR outside one, holding that package's public and private wordlist ids
-\ in the slots where a word keeps its code span (xref.f XREF-PKG-PUBLIC,
-\ XREF-PKG-PRIVATE). A record in neither a global wordlist nor NS's is a
-\ qualified definition, which no file before the claim makes: its row would be
-\ keyed in a scope no lookup of the engine reaches, so the boot stops.
+\ in the slots where a word keeps its code span. A record in neither a global
+\ wordlist nor NS's is a qualified definition, which no file before the claim
+\ makes: its row would be keyed in a scope no lookup of the engine reaches, so
+\ the boot stops.
 : CK-DLOG-SYM ( ptr n ptr n -- n )
    {: rec:ptr ns:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
@@ -29970,8 +29959,7 @@ CLAIM-COLD-SOURCE
 \ Engine-build annotation, run immediately after a real registrar definition.
 \ The dictionary's last record and its defining wordlist identify the binding;
 \ neither the source spelling nor an active-package guess does. It has no PRIM
-\ row and the prefix's internal-word gate keeps it from ordinary source. Only
-\ the control may-effect is added, never an effect row.
+\ row and the prefix's internal-word gate keeps it from ordinary source.
 : NOMINAL-PROVIDER ( -- )
    ndict@ 0= IF s" checker: nominal provider has no dictionary record" 76 die THEN
    ndict@ 1- CHECKER-RESOLVE:REC-AT NOMINAL-ADD-REC ;
@@ -30026,9 +30014,8 @@ CHECKER-REG:}SCRATCH
    row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
    ns CK-REC-WID BOOT:NAMESPACE-WL =  wid ns @ =  wid ns CELL + @ =  or  and ;
 
-\ One plus the index of the newest namespace record holding wid, 0 for none. The
-\ global and namespace wordlists are no package's: a miss on them would index
-\ every record again.
+\ The global and namespace wordlists are no package's: a miss on them would
+\ index every record again.
 : NS-FIND ( n -- n ) {: wid:n :}
    wid WL:GLOBAL?  wid BOOT:NAMESPACE-WL =  or IF 0 EXIT THEN
    NS-INDEX
@@ -30036,9 +30023,6 @@ CHECKER-REG:}SCRATCH
    wid NS-ROW@ {: row:n :}
    wid row NS-HOLDS? IF row ELSE 0 THEN ;
 
-\ The checker symbol of record rec, interned: a global's, else the package
-\ symbol of the newest namespace whose public or private wordlist holds it; 0
-\ when none does.
 : REC-SYM ( ptr n -- n ) {: rec:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
    rec CK-REC-WID {: wid:n :}
@@ -30064,8 +30048,6 @@ GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS
 variable GUEST-OPEN
 CHECKER-REG:}SCRATCH
 
-\ Copies the cnt cells at p to the saved cells from k on when save holds, else
-\ back; answers the next k.
 : GUEST-CELLS ( n ptr n n bool -- n )
    {: k:n p:ptr cnt:n save:bool :}
    k cnt + GUEST-CAP > IF s" checker: guest cells full" 76 die THEN
@@ -30094,7 +30076,6 @@ CHECKER-REG:}SCRATCH
    RIGID-N save GUEST-CELL  RGN-N save GUEST-CELL  EXT-N save GUEST-CELL
    GEN-N save GUEST-CELL  RGN-MARK save GUEST-CELL  FB-N save GUEST-CELL ;
 
-\ The signature parser's cells (PSIG, PARSE-FACTS).
 : GUEST-PARSER ( n bool -- n ) {: save:bool :}
    PD-IN save GUEST-CELL  PR-IN save GUEST-CELL  PD-OUT save GUEST-CELL  PR-OUT save GUEST-CELL
    PD-BASE save GUEST-CELL  PD-ATOM0 save GUEST-CELL  SGHASR save GUEST-CELL
@@ -30136,8 +30117,7 @@ CHECKER-REG:}SCRATCH
 
 \ A read's records are what an earlier file's compile taught, not the host
 \ check's scratch: the drop of the host's signature cache (SIG-EFF-DROP) stops
-\ above them, and the cache record stays, unnamed. A dropped created effect left
-\ a wrapper of the read definer (WRAPC) naming a record the next one overwrote.
+\ above them, and the cache record stays, unnamed.
 : READ-LEAVE ( -- )
    GUEST-SAVED @ TV-CLEAR-FROM
    RES-FALSE GUEST-KEEP  0 GUEST-OPEN !
@@ -30158,14 +30138,12 @@ CHECKER-REG:}SCRATCH
    a u din dout rin rout SGBAD-UNFIT!
    din dout rin rout SGBAD @ 0= ;
 
-\ Refuses text a u stored for name na nu, as a bad stored signature.
 : READ-REFUSE ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n na:ptr nu:n :}
    SGBAD @ 0= IF a u SGBAD-SYNTAX! THEN
    a u na nu na nu USIG-ADD-BAD ;
 
-\ The created words' effect, offset+1, under symbol 0 as render.f FACTS-BUILD
-\ builds one; 0 for none. False when its text is refused.
+\ The created words' effect, offset+1, under symbol 0; 0 for none.
 : READ-MADE ( ptr u8 n -- n bool )
    {: ca:ptr cu:n :}
    cu 0= IF 0 RES-TRUE EXIT THEN
@@ -30174,8 +30152,8 @@ CHECKER-REG:}SCRATCH
    0 CHECKER-REC-SYM !
    din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + RES-TRUE ;
 
-\ A primitive row of sym as the table states one (PE-CLOSE-SYM), its quotation inputs kept
-\ (KEEP-QUOTS), its record under symbol 0, so a call tries every row (TRY-PRIMS). Sym's cached row goes.
+\ A primitive row of sym as the table states one, its quotation inputs kept,
+\ its record under symbol 0, so a call tries every row (TRY-PRIMS).
 : READ-ROW ( n n n n bool n n -- )
    {: din:n dout:n rin:n rout:n hasr:bool sym:n pe:n :}
    0 CHECKER-REC-SYM !
@@ -30183,10 +30161,10 @@ CHECKER-REG:}SCRATCH
    sym  din dout rin rout hasr E-BUILD-EFFECT  pe PE-ACTIVE or  PRIM-ADD
    HIDX-VALID @ IF  HIDX-EPOCH @ 1- sym HT-PRM-E HIDX-CELL !  THEN ;
 
-\ The first row of sym's text: a primitive row (READ-ROW) when the text has
-\ primitive tags (render.f REND-PE) or rows after it, else the word's external
-\ declaration. A prefix symbol's rows are the build's prefix's. The caller's
-\ PE-LAST stays: a read is its guest.
+\ The first row of sym's text: a primitive row when the text has primitive tags
+\ or rows after it, else the word's external declaration. A prefix symbol's
+\ rows are the build's prefix's. The caller's PE-LAST stays: a read is its
+\ guest.
 : READ-FIRST ( n n n n bool n n bool -- )
    {: din:n dout:n rin:n rout:n hasr:bool sym:n pe:n more:bool :}
    pe 0=  more 0=  and  sym PREFIX-SYM? or IF
@@ -30198,10 +30176,9 @@ CHECKER-REG:}SCRATCH
    last PE-LAST ! ;
 
 
-\ One more primitive row of sym from the text after `overload` (render.f
-\ REND-OVERLOAD): its effect and PE tags (READ-ROW). Answers the text of the
-\ row after it; false when the text is refused or carries a tag only a first
-\ row may.
+\ One more primitive row of sym from the text after `overload`: its effect and
+\ PE tags. Answers the text of the row after it; false when the text is
+\ refused or carries a tag only a first row may.
 : READ-OVERLOAD ( ptr u8 n n -- ptr u8 n bool )
    {: a:ptr u:n sym:n :}
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
@@ -30212,7 +30189,6 @@ CHECKER-REG:}SCRATCH
    din dout rin rout hasr sym pe READ-ROW
    ra ru RES-TRUE ;
 
-\ Sym's rows after its first, from text a u; false when one is refused.
 : READ-OVERLOADS ( ptr u8 n n -- bool )
    {: a:ptr u:n sym:n :}
    sym PREFIX-SYM? IF RES-TRUE EXIT THEN
@@ -30244,7 +30220,6 @@ CHECKER-REG:}SCRATCH
    ix 0 sym NORET-NEWEST sym DFER-FIND-SYM occurrence RECORD-LINK-WRITE
    ix mark 1 + RECORD-LINK-READ! ;
 
-\ A text of tags alone states sym's control word only.
 : READ-TAGS ( ptr n n n n n -- ) {: rec:ptr ix:n sym:n ctl:n mark:n :}
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 NORET-ADD-CREATES
    rec ix sym mark READ-LINK ;
@@ -30328,15 +30303,12 @@ FACTS-READ-INSTALL
    ix RECORD-LINK-CURRENT? IF ix ix CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED! THEN ;
 
 public
-\ The index of the newest package record whose public or private wordlist is wid,
-\ and true; false when none is.
 : WORDLIST-PACKAGE ( n -- n bool )
    NS-FIND {: row:n :}
    row 0= IF 0 RES-FALSE EXIT THEN
    row 1 - RES-TRUE ;
 
-\ Export record ix of record src, as a compile of its file recorded it; src's
-\ facts are read first.
+\ Export record ix of record src, as a compile of its file recorded it.
 : READ-ALIAS ( n n -- ) {: ix:n src:n :}
    src CHECKER-RESOLVE:REC-AT READ-BOUND
    ix src  READ-ENTER  [: ALIAS-BODY ;] [: READ-LEAVE ;] finally ;
@@ -30348,8 +30320,8 @@ public
    u 0= IF EXIT THEN
    a u ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;
 
-\ The kernel object's rows, stated before a build's first file (link-kernel.f
-\ STATE-PRIMS) as READ-ROW states one: never a user record, which answers alone.
+\ The kernel object's rows, stated before a build's first file as READ-ROW
+\ states one: never a user record, which answers alone.
 
 \ A row with no effect: its symbol alone.
 : PRIM-NAME ( ptr u8 n -- ) PE-SYM-OF drop ;
@@ -30359,8 +30331,9 @@ public
 
 : PRIM-ATOM ( n -- ) PE-SPEC-ATOM ;
 
-\ Closes the open row on pkg's private symbol (CLOSE-PRIVATE), or the global one for an empty
-\ pkg, with its flags and stow kind; a symbol the prefix holds, a grammar word's, states nothing.
+\ Closes the open row on pkg's private symbol, or the global one for an empty
+\ pkg, with its flags and stow kind; a symbol the prefix holds, a grammar
+\ word's, states nothing.
 : PRIM-CLOSE ( ptr u8 n bool bool n -- )
    {: pkg:ptr pkgu:n trusted:bool fixed:bool stow:n :}
    PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" 76 die THEN
