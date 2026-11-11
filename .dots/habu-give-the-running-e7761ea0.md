@@ -1,6 +1,6 @@
 ---
 title: Give the running task a growable typed buffer of its own
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-11T11:30:37.339339+02:00"
