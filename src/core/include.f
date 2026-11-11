@@ -98,21 +98,11 @@ private
 
 TYPED-VARIABLE CANON-XT [ ptr u8 n -- ptr u8 n bool ]
 TYPED-VARIABLE READ-XT [ ptr u8 n ptr u8 n -- ptr u8 n ]
-defer OBSERVE-XT ( ptr u8 n ptr u8 n ptr u8 n -- )
-defer CLEAR-XT ( -- )
-
-: NO-OBSERVE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   2drop 2drop 2drop ;
-: NO-CLEAR ( -- ) ;
 
 public
 
 : CANON ( ptr u8 n -- ptr u8 n bool ) CANON-XT @ execute ;
-: READ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n root:ptr rootu:n :}
-   path pathu root rootu READ-XT @ execute {: bytes:ptr size:n :}
-   path pathu root rootu bytes size OBSERVE-XT
-   bytes size ;
+: READ ( ptr u8 n ptr u8 n -- ptr u8 n ) READ-XT @ execute ;
 
 : USE ( [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
    {: canon read :}
@@ -127,19 +117,7 @@ public
    old-canon old-read USE
    rc 0 <> if rc throw then ;
 
-: USE-OBSERVER ( [ ptr u8 n ptr u8 n ptr u8 n -- ] [ -- ] -- )
-   {: observe clear :}
-   observe is OBSERVE-XT
-   clear is CLEAR-XT ;
-
-: CLEAR-OBSERVED ( -- ) CLEAR-XT ;
-
-: OBSERVER-DEFAULT ( -- )
-   [: NO-OBSERVE ;] [: NO-CLEAR ;] USE-OBSERVER ;
-
 ;package
-
-SOURCE-INPUT:OBSERVER-DEFAULT
 
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
@@ -268,9 +246,14 @@ private
    rc E-PATH-RANGE = if CWD-DIE then
    rc 0= 0= if rc throw then ;
 
+\ Records the working directory as the lookup of `.`.
+: CWD-RECORD ( -- )
+   CWD-INIT
+   s" ." CWD-BUF CWD-U @ COMPILE-READS:ROOT+ ;
+
 public
 
-: CWD$ ( -- ptr u8 n ) CWD-INIT CWD-BUF CWD-U @ ;
+: CWD$ ( -- ptr u8 n ) CWD-RECORD CWD-BUF CWD-U @ ;
 
 
 private
@@ -529,6 +512,15 @@ private
    WORK-BUF n 2 + ZBUF WORK-BYTES PATHZ
    ZBUF 0 access 0= ;
 
+\ A root's lookup: the canonical length in CANON-BUF of the spelling, or -2 when
+\ it does not fit, -1 when it does not resolve, -3 when ENGINE-DIR? refuses it.
+: ROOT-N ( ptr u8 n -- n )
+   CANON-N {: n:n :}
+   n -2 = if -2 exit then
+   n 0 < if -1 exit then
+   n ENGINE-DIR? 0= if -3 exit then
+   n ;
+
 \ ENGINE-DIR? decides a root on every platform; the canon of a path does not.
 \ Neither says why a path fails, so the refusal names the absolute spelling
 \ tried and what a missing, unsearchable or long directory and a file all are not.
@@ -538,10 +530,18 @@ private
 
 : ROOT-CANON ( ptr u8 n -- )
    ABSOLUTE!
-   JOIN-BUF JOIN-U @ TRY-CANON 0= if ROOT-DIE then
-   CANON-U @ ENGINE-DIR? 0= if ROOT-DIE then ;
+   JOIN-BUF JOIN-U @ ROOT-N {: n:n :}
+   n 0 < if ROOT-DIE then
+   n CANON-U ! ;
 
 public
+
+\ The one root lookup ROOT! and WITH share, of an absolute spelling: its
+\ canonical directory and true, else false; the answer lasts until the next canon.
+: ROOT? ( ptr u8 n -- ptr u8 n bool )
+   ROOT-N {: n:n :}
+   n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
+   CANON-BUF n INCLUDE-TRUE ;
 
 : CONFINE ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
@@ -587,11 +587,13 @@ private
 public
 
 \ Each scope maps its root string at entry and releases the root current at its
-\ exit. There is no additional root-count/depth limit, and a throw restores the
-\ caller before releasing it. A root that does not resolve to a searchable
-\ directory is refused by name.
+\ exit; a throw restores the caller before releasing it. A program's WITH records
+\ its lookup; a load's own entry to the loaded file's root (LOAD-RAW, WITH-BYTES,
+\ WITH-SUPPLIED) records none. There is no root-count or depth limit. A root that
+\ does not resolve to a searchable directory is refused by name.
 : WITH ( ptr u8 n [ -- ] -- ) {: q :}
    ROOT-ENTER {: old:ptr oldu:n :}
+   JOIN-BUF JOIN-U @ CURRENT$ COMPILE-READS:ROOT+
    q catch {: rc:n :}
    old oldu rc ROOT-LEAVE ;
 
@@ -641,16 +643,17 @@ public
 \ level, inside a load and inside a WITH body: a file sets its root with ROOT!,
 \ which its load's end undoes, or scopes one with WITH. It never changes the
 \ process's directory or the engine root. A refusal names the absolute
-\ spelling tried.
+\ spelling tried; an answer is recorded as the lookup of that spelling.
 : ROOT! ( ptr u8 n -- )
    {: a:ptr u:n :}
    u INCLUDE-PATH-CAP > if s" source root: path is too long" INCLUDE-IO-RC die then
    CURRENT$ a u JOIN {: p:ptr pu:n :}
    pu INCLUDE-PATH-CAP > if s" source root: path is too long" INCLUDE-IO-RC die then
-   p pu CANON-N {: n:n :}
+   p pu ROOT-N {: n:n :}
    n -2 = if s" source root: path is too long" INCLUDE-IO-RC die then
-   n 0 < if s" source root: does not resolve to a directory: " p pu PATH-DIE then
-   n ENGINE-DIR? 0= if s" source root: is not a searchable directory: " p pu PATH-DIE then
+   n -1 = if s" source root: does not resolve to a directory: " p pu PATH-DIE then
+   n -3 = if s" source root: is not a searchable directory: " p pu PATH-DIE then
+   p pu CANON-BUF n COMPILE-READS:ROOT+
    CANON-BUF n MAP-COPY {: fresh:ptr :}
    RELEASE-CURRENT
    fresh n CURRENT!
@@ -1142,10 +1145,12 @@ private
 
 public
 
+\ The root is derived once, from whether the working directory is a Habu tree, so every answer
+\ records that read: a part's reads do not depend on which part asked first.
 : ENGINE$ ( -- ptr u8 n )
    ENGINE-INIT
    ENGINE-U @ 0= if CWD$ exit then
-   ENGINE-BUF ENGINE-U @ ;
+   CWD-RECORD ENGINE-BUF ENGINE-U @ ;
 
 \ A selected child executable uses this same fallback rule after it starts.
 \ CANON-BUF is scratch; callers copy the answer before resolving another path.
@@ -1458,7 +1463,7 @@ SOURCE-UNIT:RESET
 \ to DISC-TOK!; a real load reads TKA-CELL and TKL-CELL. A build's linker reads
 \ the depth to tell a request made with cells on the stack.
 
-11 constant EVENT-FIELDS
+13 constant EVENT-FIELDS
 EVENT-FIELDS cells constant EVENT-BYTES          \ one record
 $1000 constant EVENT-ROOM-MIN                    \ a first mapping's bytes
 $4D constant INCLUDE-EVENT-RC
@@ -1470,7 +1475,8 @@ $4D constant INCLUDE-EVENT-RC
 1 constant EV-STATE-KNOWN
 
 \ The records, and the pool that holds each event's paths and, unless an
-\ earlier event stored the same one, the root it resolved under, are mappings
+\ earlier event stored the same one, the root it resolved under and the current
+\ root, are mappings
 \ that grow as events arrive, so a discovery records every act however many
 \ there are. Each CAP counts the bytes its mapping holds, 0 while unmapped.
 PTR-VARIABLE EVENT-RECS
@@ -1574,13 +1580,21 @@ public
 : ROOT@ ( n -- ptr u8 n ) {: ix:n :}
    ix 6 EVENT-FIELD@ EVENT-POOL-AT ix 7 EVENT-FIELD@ ;
 
+\ The current root (SOURCE-ROOT:CURRENT$) when the event was recorded.
+: CURRENT@ ( n -- ptr u8 n ) {: ix:n :}
+   ix 11 EVENT-FIELD@ EVENT-POOL-AT ix 12 EVENT-FIELD@ ;
+
 private
 
-: COPY-ROOT ( -- n n )
-   RESOLVED-ROOT$ {: a:ptr u:n :}
+\ The pool offset and length of an earlier event's root or current root equal
+\ to the bytes, else of a new copy.
+: COPY-SHARED ( ptr u8 n -- n n ) {: a:ptr u:n :}
    0 begin dup EVENT-N @ < while
       dup ROOT@ a u CORE-STR= if
          dup 6 EVENT-FIELD@ swap 7 EVENT-FIELD@ exit
+      then
+      dup CURRENT@ a u CORE-STR= if
+         dup 11 EVENT-FIELD@ swap 12 EVENT-FIELD@ exit
       then
       1+
    repeat drop
@@ -1588,10 +1602,14 @@ private
 
 public
 
+\ The event's resolved root and current root.
 : STORE-ROOT ( n -- ) {: ix:n :}
-   COPY-ROOT {: off:n len:n :}
+   RESOLVED-ROOT$ COPY-SHARED {: off:n len:n :}
    off ix 6 EVENT-FIELD!
-   len ix 7 EVENT-FIELD! ;
+   len ix 7 EVENT-FIELD!
+   SOURCE-ROOT:CURRENT$ COPY-SHARED {: coff:n clen:n :}
+   coff ix 11 EVENT-FIELD!
+   clen ix 12 EVENT-FIELD! ;
 
 ;package
 
@@ -2109,7 +2127,9 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 : LOAD-RAW ( ptr u8 n -- )
    CONFINE
    INCLUDE-PATH0 drop
-   RESOLVED-ROOT$ [: LOAD-CURRENT ;] WITH ;
+   RESOLVED-ROOT$ ROOT-ENTER {: old:ptr oldu:n :}
+   [: LOAD-CURRENT ;] catch {: rc:n :}
+   old oldu rc ROOT-LEAVE ;
 
 public
 

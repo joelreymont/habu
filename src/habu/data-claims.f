@@ -141,6 +141,7 @@ create TAB
    SRCLOC:OWNED-CELL                  1 cells                 CLAIM SRCLOC-OWNED
    SRCLOC:OWNEDLEN-CELL               1 cells                 CLAIM SRCLOC-OWNEDLEN
    SRCLOC:SOURCE-CELL                 1 cells                 CLAIM SRCLOC-SOURCE
+   SRCLOC:READS-CELL                  1 cells                 CLAIM SRCLOC-READS
    TOKBODY-CELL                       1 cells                 CLAIM TOKBODY-CELL
    TOKLOCN-CELL                       1 cells                 CLAIM TOKLOCN-CELL
    TOKCP-CELL                         1 cells                 CLAIM TOKCP-CELL

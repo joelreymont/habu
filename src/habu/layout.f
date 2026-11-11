@@ -502,6 +502,11 @@ INP-CELL RESERVED-PTR-U8-CELL CURSOR
 \ record. It sits at JIT-QUOT:END + 8, after LIDX-CELL, in the $2800..$3000
 \ free header band.
 $2C48 constant SOURCE-CELL
+\ READS-CELL: the address of the process's compile-reads record
+\ (src/core/compile-reads.f), stored with `ptr-cell!` as SOURCE-CELL is, so a
+\ cross-build's copy of that file reads and writes the running hb's record. It
+\ sits after SOURCE-CELL in the $2800..$3000 free header band.
+$2C50 constant READS-CELL
 ;package
 
 \ RPKG-* / PKGRESYNC-CELL: the REPL line's package snapshot. EM-REPL-READ

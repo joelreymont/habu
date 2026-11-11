@@ -96,6 +96,7 @@ private
    CORE WASM s" src/arch/wasm/profile.f" ROW
    CORE WASM s" src/os/wasm/layout.f" ROW
    CORE COMMON s" src/habu/layout.f" ROW
+   CORE COMMON s" src/core/compile-reads.f" ROW
    CORE COMMON s" src/os/env-base.f" ROW
    CORE COMMON s" src/core/quotation-storage.f" ROW
    CORE COMMON s" src/core/include.f" ROW

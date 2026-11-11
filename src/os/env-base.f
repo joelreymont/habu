@@ -46,15 +46,9 @@ $2D constant ENV-DASH
 : NULL$ ( -- ptr u8 n )
    NULL-PTR 0 ;
 
-\ Source loaders observe environment reads alongside their filesystem inputs.
-\ The optional callback starts empty in each process, including saved images.
+\ CURRENT$ reads a variable unrecorded; GETENV records the read in the active
+\ compile-reads recording (src/core/compile-reads.f).
 package ENV-INPUT
-private
-
-variable OBSERVER
-CAST: OBSERVER-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
-CAST: OBSERVER-N ( [ ptr u8 n ptr u8 n -- ] -- n )
-
 public
 
 : CURRENT$ ( ptr u8 n -- ptr u8 n )
@@ -66,19 +60,12 @@ public
    repeat
    drop NULL$ ;
 
-: USE ( [ ptr u8 n ptr u8 n -- ] -- ) OBSERVER-N OBSERVER xt! ;
-
-: RESET ( -- ) 0 OBSERVER ! ;
-
-: OBSERVE ( ptr u8 n ptr u8 n -- )
-   OBSERVER @ dup 0= if drop 2drop 2drop exit then OBSERVER-XT execute ;
-
 ;package
 
 : GETENV ( ptr u8 n -- ptr u8 n )
    {: query:ptr queryu:n :}
    query queryu ENV-INPUT:CURRENT$ {: value:ptr valueu:n :}
-   query queryu value valueu ENV-INPUT:OBSERVE
+   query queryu value valueu COMPILE-READS:ENV+
    value valueu ;
 
 \ TMP-PATH's answer is a path of at most PATH-CAP bytes (src/core/util.f) with
@@ -120,5 +107,4 @@ variable TPU
 
 \ Clear transient path cursors before capturing an image.
 : ENV-SNAPSHOT-PREPARE ( -- )
-   ENV-INPUT:RESET
    NULL$ drop TPP !  0 TPQ !  NULL$ drop TPS!  0 TPU ! ;
