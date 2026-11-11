@@ -17,3 +17,5 @@ Acceptance case 2026-11-10 (bob; merged from habu-delete-the-arm64-b319376e "Del
 From L4's census: drop the definers.f tier rules (DEF-TIER-0 86-88, checks 379/681), the kernel tier checks (kernel-x64.f:3786, 5097-5129) and boot-x64.f:283's tier store with the tier cells, updating outer-interpret.f's tier-0 rows.
 
 Acceptance from the arm64 assembler (DECISIONS 2026-11-05): the Gforth seed's own encoders and reach bounds (bootstrap/cg/asm.fs ?REL26, ?REL19, ADR-BUDGET) go with the seed; no second arm64 assembler remains.
+
+Joel, 2026-11-11, on the answer that the JIT meets the speed bar on zz with the Tender measure and the census of the 38 `0 set-tier` tests still to do: "do it! make sure you retire it to the jit branch before removing it". So: run the Tender measure and the census now, not after the other consumer work; before the deleting commit lands, a bookmark `jit` is pushed at the last commit that still holds the JIT (check `jj bookmark list` for an existing one first), then the deletion. Claim: agent=jerry, no workspace yet.
