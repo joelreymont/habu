@@ -14,10 +14,11 @@
 \ answers TOKEN refuses: a 503, a 429 and a 302, a 2xx that is not JSON, one
 \ without access_token, one whose access_token is not a string, one without
 \ expires_in, one whose expires_in is a string, one whose expires_in is 0, and
-\ a 200 and a 503 past TOKEN-CAP; REFRESH's form from a confidential and a
-\ public client, an answer without refresh_token, an escaped refresh token
-\ decoded after an escaped token, and a refresh_token that is not a string,
-\ E-RESPONSE logged for REFRESH and ignored by TOKEN.
+\ a 200 and a 503 past TOKEN-CAP, each leaving only zero bytes in the BUF's
+\ storage; REFRESH's form from a confidential and a public client, an answer
+\ without refresh_token, an escaped refresh token decoded after an escaped
+\ token, and a refresh_token that is not a string, E-RESPONSE logged for
+\ REFRESH and ignored by TOKEN.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
 require src/lib/test.f
@@ -102,6 +103,13 @@ variable AUTH-U
 create GOT-HEAD BUF:HDR-BYTES allot
 : GOT ( -- ptr n ) GOT-HEAD CELL-VIEW ;
 GOT $100 BUF:N>BLEN BUF:INIT
+
+\ Whether GOT's storage holds only zero bytes through its capacity. GOT is empty
+\ before and after, so the GROW spans the whole storage and moves nothing.
+: GOT-ZEROED? ( -- bool )
+   GOT GOT BUF:CAP@ BUF:GROW SPAN:$ {: p:ptr u:n :}
+   true u 0 ?do p i + c@ 0<> if drop false then loop
+   GOT BUF:CLEAR ;
 
 \ /token-fault's answers, by FAULT-MODE.
 0 constant ECHO                     \ keeps the form in POSTED and answers a token
@@ -595,12 +603,16 @@ $A constant LF
    LINES 1 T=
    FORM-RESET S\"  error bearer: token answer 200 past 65536 bytes\n" FORM+
    LINE$ FORM$ T$=
+   s" it leaves no answer byte in the BUF's storage" T-LABEL
+   GOT-ZEROED? TTRUE
    s" a 503 past TOKEN-CAP is E-UNAVAILABLE" T-LABEL
    [: BUSY-OVERSIZED BEARER:E-UNAVAILABLE FAULT-THROWS ;] CAPTURED
    s" its one line names the status and TOKEN-CAP" T-LABEL
    LINES 1 T=
    FORM-RESET S\"  error bearer: token answer 503 past 65536 bytes\n" FORM+
    LINE$ FORM$ T$=
+   s" it leaves no answer byte in the BUF's storage" T-LABEL
+   GOT-ZEROED? TTRUE
    s" REFRESH decodes the token, and an answer without refresh_token gives an empty one" T-LABEL
    ECHO FAULT-MODE !
    ZEN s" r.1-x" GOT BEARER:REFRESH 60 T= 0 T= drop s" fault/token" T$=

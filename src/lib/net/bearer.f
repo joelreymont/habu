@@ -717,24 +717,26 @@ private
 
 \ The answer read into the BUF, which then holds exactly its bytes: its HTTP
 \ status, none for a failed transfer, which it logs. An answer past TOKEN-CAP
-\ is logged and throws its status's STATUS-ERROR.
+\ is logged and throws its status's STATUS-ERROR. A truncated or failed
+\ transfer's bytes are wiped from the BUF's storage.
 : RECEIVED ( CURL:handle ptr n -- option<CURL:http-status> )
    {: h:CURL:handle buf:ptr :}
    buf TOKEN-CAP BUF:N>BLEN BUF:GROW {: room :}
    h room SPAN:$ >LEN CURL:PERFORM
-   buf BUF:CLEAR
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
+         buf BUF:CLEAR
          room SPAN:$ drop got LEN>N BUF:N>BLEN buf BUF:APPEND-SPAN
          status OPTION:SOME ENDOF
       truncated OF
          drop {: status:CURL:http-status :}
+         buf WIPE
          OPEN-LINE
          s" token answer " LOG:TEXT+  status CURL:HTTP-STATUS>N LOG:INT+
          s"  past " LOG:TEXT+  TOKEN-CAP LOG:INT+  s"  bytes" LOG:TEXT+
          LOG:;LINE
          status STATUS-ERROR throw ENDOF
-      failed OF CURL-FAULT UNANSWERED ENDOF
+      failed OF buf WIPE CURL-FAULT UNANSWERED ENDOF
    ;MATCH ;
 
 : POST ( CURL:handle ptr n -- option<CURL:http-status> )
