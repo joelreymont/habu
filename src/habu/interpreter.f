@@ -1802,7 +1802,6 @@ private
    slot occurrence DEF-OCC:RESOLVE {: rec:ptr :}
    rec XREF-NULL - XREF-ADDR>INDEX RUN+
    rec NHOST:RUN-REC
-   -1 PEND-OPAQUE-CELL CELL!
    execute-floor FLOORED ;
 
 : DEF-IMMEDIATE? ( -- bool )
@@ -2628,7 +2627,6 @@ public
    then
    prior ENTRY-PEND !
    code 0<> if
-      entry 0= if 0 PEND-OPAQUE-CELL CELL! then
       entry PEND-CELL CELL@ <> if CLEAR-BODY-TAKE then
       entry PEND-CELL CELL!
    then

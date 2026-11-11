@@ -3966,7 +3966,6 @@ private
    s" native-origin-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
    s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
-   s" native-pending-opaque?" [: RAX PEND-OPAQUE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" cp!" [:
       TASK-LIVE-GUARD,  RCX POP,  RCX CODE-SLOT-GUARD,
       RDI RCX ASM-SINK ENC-MOV-RR
@@ -5228,7 +5227,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
 \ PEND-CELL the record;
-\ TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE and TRUSTED clear; DEF-TIER-CELL takes
+\ TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear; DEF-TIER-CELL takes
 \ the latch as habu1.f TIER-LATCH computes it. A DKIND:ADDR kind carries
 \ DNAME-ALLOC, and DNAME-CELL as well for a variable, as habu2.f
 \ DEFWRITE:DEF-OPEN admits them.
@@ -5260,7 +5259,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX ZERO-REG,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
-   RAX PEND-OPAQUE-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
    RAX NCOMP-DISPATCH:TIER-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE latched JCC,
@@ -5536,7 +5534,7 @@ variable GROW-CELL
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
 
 \ def-close ( -- ): the pending definition of the native tier ends:
-\ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL
+\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and PEND-CELL
 \ clear; before they clear, LASTC-CELL takes the record for a nonzero kind
 \ other than DKIND:CAST. Nothing pending, and DEF-TIER-CELL 0 (no compiler),
 \ are refused. Unlike arm64's (habu2.f NATIVE-CLOSE, through C-CLEAR-LOCALS) it
@@ -5558,7 +5556,6 @@ variable GROW-CELL
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
-   RAX PEND-OPAQUE-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
    RAX PEND-CELL CELL!, ;
 

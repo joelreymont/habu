@@ -161,7 +161,6 @@ create TAB
    NATIVE-HOST-CELLS:SCALAR-PRIM      1 cells                 CLAIM NATIVE-HOST-CELLS:SCALAR-PRIM
    NATIVE-HOST-CELLS:FACTS            1 cells                 CLAIM NATIVE-HOST-CELLS:FACTS
    NATIVE-HOST-CELLS:DIVISION-PRIM    1 cells                 CLAIM NATIVE-HOST-CELLS:DIVISION-PRIM
-   PEND-OPAQUE-CELL                   1 cells                 CLAIM PEND-OPAQUE-CELL
    DEF-OCC:PTR-CELL                   1 cells                 CLAIM DEF-OCC:PTR-CELL
    LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL

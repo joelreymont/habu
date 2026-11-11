@@ -732,7 +732,6 @@ EPPRIM: CHECK set-top-check
 \ body anywhere may call set-tier.
 EPRIM: set-tier       PE-N PE-IN EPRIM; REACH build
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
-EPRIM: native-pending-opaque? PE-F PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
@@ -841,7 +840,7 @@ ETRUSTED-ONLY!
 EPPRIM: INTERPRETER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-close ( -- ): end the pending definition the native compiler compiled,
 \ as the engine's tier-1 `;` ends one: the state def-open set clears:
-\ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
+\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
 \ PEND-CELL clears, LASTC-CELL takes the record for a nonzero kind other than
 \ DKIND:CAST, the record `does-patch` reads. It refuses when
 \ no definition is pending and when the pending one is not a native compiler's

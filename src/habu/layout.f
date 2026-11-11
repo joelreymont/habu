@@ -256,11 +256,6 @@ $2DB0 constant PROGRAM-FILE-CELL
 \ PEND-CELL: the record of the definition the engine holds open and not yet
 \ published, 0 when none.
 $3688 constant PEND-CELL
-\ A definition whose capture ran a parsing immediate has construction inputs
-\ outside the body text. The native cache reads this only through the running engine's
-\ native-pending-opaque? primitive. The cell is transient and clears with
-\ PEND-CELL on close or abandonment.
-$2D48 constant PEND-OPAQUE-CELL
 $3690 constant TKA-CELL
 $3698 constant TKL-CELL
 $36A0 constant INP-CELL
