@@ -1,17 +1,17 @@
 \ fs.f - checked filesystem helpers.
 \ STORAGE CLASS. TASK-LOCAL: the per-call slots, the FS cause, PATHZ-BUF,
-\ STAT-BUF, the read probe and ERRNO$'s text are the FS-ABI band of the per-task DATA region
-\ (src/habu/layout.f). The data buffers READ-ALL and WRITE-ALL take are
-\ CALLER-OWNED. Each walk (WALK-FILES, WALK-FILES-IF, fs-mutate.f REMOVE-TREE)
-\ maps a context of its own for one call and releases it on return or throw.
+\ STAT-BUF, the read probe and ERRNO$'s text are the FS-ABI band of the
+\ per-task DATA region. The data buffers READ-ALL and WRITE-ALL take are
+\ CALLER-OWNED. Each walk maps a context of its own for one call and releases
+\ it on return or throw.
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/adt/option.f                        \ option<n> for TRY-*STAT-MODE
-require src/lib/le.f                                \ stat and dirent fields
-require src/lib/span.f                              \ the module's own buffers carry their reach
-require src/lib/ffi-abi.f                           \ fstat on an open descriptor
-require src/lib/memory.f                            \ each walk's handle scope and frames
+require src/lib/adt/option.f
+require src/lib/le.f
+require src/lib/span.f
+require src/lib/ffi-abi.f
+require src/lib/memory.f
 
 package FS
 
@@ -128,13 +128,9 @@ public
    0 data-base FS-ABI:ERRNO-OFF + ! ;
 
 private
-\ The per-call slots are the FS-ABI band of the per-task DATA region, read
-\ through data-base, the running task's region. The band is declared in
-\ src/habu/layout.f below FMT-ABI rather than as TASK:+USER rows, so this file
-\ does not require src/lib/task.f. A region is a fresh
-\ zeroed mapping, so a new task's cells start at zero. layout.f loads before
-\ this file and cannot see STAT-CAP, READ-PROBE-CAP, PATHZ-CAP or TEXT-CAP, so
-\ BAND-AGREE checks those widths once at load.
+\ A region is a fresh zeroed mapping, so a new task's cells start at zero.
+\ layout.f loads before this file and cannot see STAT-CAP, READ-PROBE-CAP,
+\ PATHZ-CAP or TEXT-CAP, so BAND-AGREE checks those widths once at load.
 : BAND-AGREE ( -- )
    STAT-CAP FS-ABI:STAT-BYTES <> if E-FS-BAND throw then
    READ-PROBE-CAP FS-ABI:PROBE-BYTES <> if E-FS-BAND throw then
@@ -163,13 +159,12 @@ BAND-AGREE
 : READ-PROBE ( -- ptr u8 )
    data-base FS-ABI:PROBE-OFF + BYTE-VIEW ;
 
-\ The reach is the band width BAND-AGREE asserted against src/habu/layout.f.
 : PATHZ-BUF ( -- SPAN:span<u8> )
    data-base FS-ABI:PATHZ-OFF + BYTE-VIEW PATHZ-CAP SPAN:MAKE ;
 
 \ THE HANDLE is WALK-HANDLE-CELLS cells and does not move for the whole call:
 \   FRAMES  cell 0   the frames mapping, a ptr-field cell, the one raw storage
-\                    that may hold an address (docs/forth-card.md § 5)
+\                    that may hold an address
 \   CAP     cell 1   the frames the mapping holds
 \   DEPTH   cell 2   the depth being walked
 \
@@ -375,8 +370,7 @@ public
 private
 \ fstatat(2): the NUL-terminated name relative to a directory descriptor (or
 \ AT-CWD) into a buffer of STAT-CAP bytes, in libc's struct stat layout,
-\ not lstat64's, so its mode is LIBC-MODE@'s to read. Zero on success, else
-\ -1 with the cause in FFI:ERRNO.
+\ not lstat64's, so its mode is LIBC-MODE@'s to read.
 PROCESS-SYMBOLS
 FUNCTION: STAT-AT-CALL fstatat ( n ptr u8 ptr u8 n -- i32 )
    2 STAT-CAP WRITES-BYTES
@@ -387,18 +381,17 @@ FUNCTION: STAT-AT-CALL fstatat ( n ptr u8 ptr u8 n -- i32 )
 : AT-NOFOLLOW ( -- n )
    HB-TARGET-MACOS? if $20 else $100 then ;
 
-\ The mode field of libc's struct stat, which FSTAT-CALL and STAT-AT-CALL
-\ write; fs-mutate.f and fs-anchored.f read their stat buffers through it.
-\ STAT-MODE@ reads lstat64's layout instead, whose mode sits elsewhere on Linux.
+\ The mode field of libc's struct stat. STAT-MODE@ reads lstat64's layout
+\ instead, whose mode sits elsewhere on Linux.
 : LIBC-MODE@ ( ptr u8 -- n )
    HB-TARGET-MACOS? if 4 + LE:U16@ exit then
    HB-TARGET-LINUX-X86-64? if 24 + LE:U16@ exit then
    16 + LE:U16@ ;
 
-: TRY-STAT-MODE ( ptr u8 n -- option<n> )   \ SOME stat mode, NONE if missing/unstatable
+: TRY-STAT-MODE ( ptr u8 n -- option<n> )
    TRY-STAT if STAT-MODE@ OPTION:SOME else OPTION:NONE then ;
 
-: TRY-LSTAT-MODE ( ptr u8 n -- option<n> )   \ SOME lstat mode, NONE if missing/unstatable
+: TRY-LSTAT-MODE ( ptr u8 n -- option<n> )
    TRY-LSTAT if STAT-MODE@ OPTION:SOME else OPTION:NONE then ;
 
 public
@@ -483,11 +476,10 @@ public
 
 \ The destination is a bare ptr, so CHECK-JOIN-CAP stays: E-FS-CAPACITY is what
 \ JOIN-PATH promises its callers, and the reach minted below is the PATH-CAP
-\ destination they owe. Destinations this module owns pass JOIN-PATH-INTO a
-\ span. A negative length is refused first; each length then meets the
-\ capacity on its own before the sum, since a length near the maximum cell
-\ would wrap the join under PATH-CAP, and the parent's last byte is read only
-\ once the parent fits.
+\ destination they owe. A negative length is refused first; each length then
+\ meets the capacity on its own before the sum, since a length near the
+\ maximum cell would wrap the join under PATH-CAP, and the parent's last byte
+\ is read only once the parent fits.
 : JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: pa:ptr pu na:ptr nu dst:ptr :}
    CAUSE-CLEAR
    pu 0 < if E-FS-PATH throw then
@@ -501,7 +493,6 @@ private
 : PATH= ( ptr u8 n ptr u8 n -- bool )
    STR= ;
 
-\ readlink gets the span's base and reach, so the kernel cannot write past it.
 \ E-FS-CAPACITY is a semantic refusal: a link that does not fit would be
 \ silently truncated.
 : READ-LINK ( ptr u8 n SPAN:span<u8> -- n ) {: pa:ptr pu dst :}
@@ -515,8 +506,7 @@ private
 : IO-FAIL ( -- )
    IO-FD @ close E-FS-IO throw ;
 
-\ A FUNCTION: syscall saves no cause of its own: record libc's errno as this
-\ task's FS:ERRNO, then throw the code.
+\ A FUNCTION: syscall saves no cause of its own.
 : ERRNO-FAIL ( n -- )
    FFI:ERRNO data-base FS-ABI:ERRNO-OFF + ! throw ;
 
@@ -525,8 +515,6 @@ private
 : CAUSE-FAIL ( n n -- )
    data-base FS-ABI:ERRNO-OFF + ! throw ;
 
-\ Read IO-FD into dst until cap bytes or end of file; the count read. A read
-\ error closes the descriptor and throws E-FS-IO.
 : READ-FILL ( ptr u8 n -- n ) {: dst:ptr cap :}
    0 IO-LEN !
    begin IO-LEN @ cap < while
@@ -538,7 +526,6 @@ private
    repeat
    IO-LEN @ ;
 
-\ True when IO-FD holds a byte past what READ-FILL read.
 : READ-MORE? ( -- bool )
    IO-FD @ READ-PROBE READ-PROBE-CAP read IO-RD !
    IO-RD @ 0 < if IO-FAIL then
@@ -555,13 +542,12 @@ public
    got ;
 
 private
-\ The size field of libc's struct stat, which FSTAT-CALL writes.
+\ The size field of libc's struct stat.
 : LIBC-SIZE@ ( ptr u8 -- n )
    HB-TARGET-MACOS? if 96 + LE:U64@ exit then
    48 + LE:U64@ ;
 
-\ The change time of libc's struct stat, seconds then nanoseconds, which
-\ FSTAT-CALL writes; offsets measured as LIBC-SIZE@'s were.
+\ The change time of libc's struct stat, seconds then nanoseconds.
 : LIBC-CTIME@ ( ptr u8 -- n n ) {: buf:ptr :}
    HB-TARGET-MACOS? if buf 64 + LE:U64@ buf 72 + LE:U64@ exit then
    buf 104 + LE:U64@ buf 112 + LE:U64@ ;
@@ -664,8 +650,7 @@ public
 
 private
 \ openat(2) and unlinkat(2): the NUL-terminated name relative to a directory
-\ descriptor, or to the working directory for AT-CWD. openat answers the
-\ new descriptor, unlinkat zero; either answers -1 with the cause in FFI:ERRNO.
+\ descriptor, or to the working directory for AT-CWD.
 PROCESS-SYMBOLS
 FUNCTION: OPEN-AT-CALL openat ( n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
@@ -714,7 +699,6 @@ public
    then
    TARGET-UNKNOWN ;
 
-\ Darwin dirent64 stores d_type at byte 20; Linux getdents64 stores it at 18.
 \ Keep the kernel byte, including zero for DT_UNKNOWN.
 : DIRENT-TYPE ( ptr u8 -- u8 )
    HB-TARGET-LINUX-KERNEL? if 18 + c@ exit then
@@ -722,10 +706,8 @@ public
    TARGET-UNKNOWN ;
 
 private
-\ The dirent decoders below are shared with src/lib/fs-list.f, which lists one
-\ directory with no walk context at all, so a malformed record throws plainly
-\ here: closing descriptors belongs to whoever opened them (WALK-UNMAP in
-\ this file, CLOSE in fs-list.f).
+\ A malformed record throws plainly here: closing descriptors belongs to
+\ whoever opened them.
 : LINUX-DIRENT-NAMELEN-SCAN ( ptr u8 n -- n ) {: ent:ptr rec :}
    0 begin dup LINUX-DIRENT-NAME-OFF + rec < while
       ent over LINUX-DIRENT-NAME-OFF + BYTE@ 0= if exit then
@@ -808,8 +790,7 @@ private
 
 \ The child frame exists before anything is read, because making it may move
 \ the frames: the parent path and the entry name come from the frames as they
-\ stand after ENSURE-DEPTH. The context comes back under the child path so
-\ the recursive call reads ( ctx path ).
+\ stand after ENSURE-DEPTH.
 : DESCEND-PATH ( ptr n -- ptr n ptr u8 n ) {: ctx:ptr :}
    ctx WALK-DEPTH@ 1 + {: d :}
    ctx d ENSURE-DEPTH
@@ -870,10 +851,10 @@ private
 public
 \ The walk visits regular files only, depth-first, in the order the directory
 \ stream returns (a caller that needs lexical order sorts), skips SKIP-DIR?'s
-\ directories (.out holds src/lib/build-out.f's outputs) and closes every
-\ descriptor it opened however it ends. A callback's path is valid only during
-\ the callback. Two walks in flight cover disjoint trees: getdirentries64 on a
-\ directory removed meanwhile answers -1 and the walk reports E-FS-DIR.
+\ directories and closes every descriptor it opened however it ends. A
+\ callback's path is valid only during the callback. Two walks in flight cover
+\ disjoint trees: getdirentries64 on a directory removed meanwhile answers -1
+\ and the walk reports E-FS-DIR.
 : WALK-FILES-IF ( ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
    WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: WALK-SCOPE ;] MEM:WITH-BYTES ;
 
