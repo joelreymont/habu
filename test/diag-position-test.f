@@ -757,6 +757,16 @@ variable RC
    s" a reserved DEFLINEAR name under --verify-only" T-LABEL
    s" DEFLINEAR n" s" deflinear-reserved.f" LINE-FIXTURE
    s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type" s" n" 1 11 10 11 PREPASS-REFUSED
+   s" a reserved DEFTYPE name under --verify-only, at the name it folds" T-LABEL
+   s" DEFTYPE N" s" deftype-reserved.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" N" 1 9 8 9 PREPASS-REFUSED
+   0 s" family" s" n" FIELD=
+   s" an upper-case NEWTYPE name with parameters, at its bare name" T-LABEL
+   s" NEWTYPE Foo<a>" s" newtype-case-params.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" Foo" 1 9 8 11 REFUSED-MODES
+   s" a NEWTYPE header with parameters and no name, at the header" T-LABEL
+   s" NEWTYPE <a>" s" newtype-params-no-name.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" <a>" 1 9 8 11 REFUSED-MODES
    s" a duplicate VALUE-RECORD field under --verify-only" T-LABEL
    s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
    s" E-BAD-RECORD-FIELD" s" fix_record_field" s" x" 1 21 20 21 PREPASS-REFUSED ;

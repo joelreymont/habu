@@ -108,6 +108,7 @@ TDECL-SEEN-CLEAR
 \ --- declaration context, set before TDECL-RUN, read by bodies and diagnostics.
 PTR-VARIABLE TDK-A   variable TDK-U   \ decl kind token ("newtype"/"sumtype")
 PTR-VARIABLE TDN-A   variable TDN-U   \ family name token
+PTR-VARIABLE TDS-A   variable TDS-U   \ source token naming the family (DEFFAMILY)
 PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token)
 PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
@@ -169,8 +170,14 @@ private
    TDM-SCH @ TDM-ROOT @ SCHEMA-REG:REWIND
    QUOT-ROLLBACK ;
 
+\ A DEFFAMILY packet points at the name whatever the refusal, as the source
+\ token TDS: the folded DEFTYPE header the body checks has no place.
+: TDECL-REPORT-TOK ( -- ptr u8 n )
+   TDS-U @ 0 > IF TDS-A @ TDS-U @ EXIT THEN
+   TDT-A @ TDT-U @ ;
+
 : TDECL-REPORT ( -- )
-   TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDT-A @ TDT-U @  TDW-A @ TDW-U @
+   TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  TDW-A @ TDW-U @
    TDECL-DIAG ;
 
 \ TDECL-RUN ( [ -- ] -- ) : run one declaration body quotation transactionally. On
@@ -202,6 +209,7 @@ private
    2dup BYTE-SPAN? 0= IF drop 0 THEN
    TDN-U ! TDN-A !
    TDK-U ! TDK-A !
+   0 TDS-U !  NULL-PTR TDS-A !
    0 TDT-U !  NULL-PTR TDT-A !
    SIG-UNRES-CLEAR
    TDECL-SEEN-CLEAR
@@ -319,7 +327,12 @@ variable TDECL-FAM-ARITY
       TDN-A @ TDN-U @ s" invalid type parameter header" E-TDECL-ARITY TDECL-THROW
    THEN
    {: ar:n :}
+   \ The bare name is empty only after the split, and an empty token has no place.
+   dup 0= IF
+      2drop TDN-A @ TDN-U @ s" missing name" E-TDECL-SYNTAX TDECL-THROW
+   THEN
    TDN-U ! TDN-A !
+   TDS-U @ 0 > IF TDN-U @ TDS-U ! THEN
    ar TDECL-FAM-ARITY !
    ar ;
 
@@ -1006,9 +1019,13 @@ private
 
 public
 
-: TDECL-DEFFAMILY ( ptr u8 n -- )   \ family header
-   {: na:ptr nu:n :}
+\ The family header and the source token that names it, the same bytes up to
+\ case: a DEFTYPE name folds to its header, a NEWTYPE name is its own token.
+: TDECL-DEFFAMILY ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n ta:ptr tu:n :}
    s" newtype" na nu s" " TDECL-CTX!
+   ta tu 2dup BYTE-SPAN? 0= IF drop 0 THEN
+   TDS-U ! TDS-A !
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
 \ include.f binds TDECL-EVAL-XT, the evaluator of core declarations' generated source.
@@ -1464,6 +1481,7 @@ variable TDECL-U
    0 TDPV-NODES !
    NULL-PTR TDK-A !  0 TDK-U !
    NULL-PTR TDN-A !  0 TDN-U !
+   NULL-PTR TDS-A !  0 TDS-U !
    NULL-PTR TDB-A !  0 TDB-U !
    NULL-PTR TDT-A !  0 TDT-U !
    NULL-PTR TDW-A !  0 TDW-U !
@@ -2386,7 +2404,7 @@ public
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN ;
 
 : TDECL-NEWTYPE ( -- )
-   parse-name TDECL-DEFFAMILY ;
+   parse-name 2dup TDECL-DEFFAMILY ;
 
 
 private
@@ -2469,7 +2487,7 @@ using TYPE-DECL
 \ Reached by the preverify and all-errors replay paths (verify-source.f,
 \ tools/check-core.f) and by checked declarers built on them
 \ (src/lib/type/deftype.f DEFTYPE).
-: CHECKER-DEFFAMILY ( ptr u8 n -- ) TDECL-DEFFAMILY ;
+: CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- ) TDECL-DEFFAMILY ;
 NOMINAL-PROVIDER
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
 NOMINAL-PROVIDER

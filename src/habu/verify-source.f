@@ -2495,7 +2495,7 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
-   tail tailu CHECKER-DEFFAMILY
+   tail tailu name nameu CHECKER-DEFFAMILY
    name nameu tail tailu DTC-BUILD-IN
    DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
    CAST-TRUST
@@ -2522,7 +2522,7 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
 \ Missing names and malformed headers are reported by CHECKER-DEFFAMILY through
 \ the declaration packet (E-BAD-DECLARATION), as on the native path.
 : RECORD-NEWTYPE ( -- )
-   NAME-TOKEN CHECKER-DEFFAMILY ;
+   NAME-TOKEN 2dup CHECKER-DEFFAMILY ;
 
 \ A SUMTYPE defines its constructors when it loads, so after the registration
 \ the scan replays their checked effects: a later definition that calls one, as

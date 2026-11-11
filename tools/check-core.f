@@ -1089,7 +1089,7 @@ variable CHK-EXP-ROWS
    s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-FAIL ;
 
 : CHK-TFAM-DO-DEF ( -- )         \ one family header
-   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
+   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN 2dup
    CHECKER-DEFFAMILY ;
 
 : CHK-SUM-DO-DEF ( -- )
@@ -1131,7 +1131,8 @@ variable CHK-EXP-ROWS
    k 2 + ;
 
 : CHK-NOM-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ CHK-NOM-TAIL$ CHECKER-DEFFAMILY ;
+   CHK-TFAM-NAME-I @ CHK-NOM-TAIL$
+   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN CHECKER-DEFFAMILY ;
 
 \ A DEFTYPE name is refused exactly when CHECKER-DEFFAMILY refuses its tail,
 \ which is the loader's rule. TYPE-RESERVED? is not that rule: it refuses any
