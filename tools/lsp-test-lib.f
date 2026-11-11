@@ -1509,9 +1509,6 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
    JSON:READ-TOKEN >r JSON:READ-SPAN$ rot JSON:READ-CLOSE r> JSON:T-STR = ;
 
-\ The message the packet's diagnostic carries: the packet's message, or else
-\ its code, its suggestion when not empty, and its expected and actual, each on
-\ a line of its own.
 : MESSAGE+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    s\" \"" EXP+
@@ -1533,8 +1530,6 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    v 0 >= if s\" \"version\":" EXP+ v INT$ EXP+ s" ," EXP+ then
    s\" \"diagnostics\":[" EXP+ ;
 
-\ The diagnostic the list holds next, begun: its range, from line L1,
-\ character C1 to line L2, character C2.
 : RANGE+ ( n n n n -- )
    {: l1:n c1:n l2:n c2:n :}
    EXP$ s" [" ENDS-WITH? 0= if s" ," EXP+ then
@@ -1553,15 +1548,12 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    PACKET-NEXT @ u + 1+ PACKET-NEXT !
    a u ;
 
-\ The diagnostic ended: this code, then its packet's message and data.
 : CODED+ ( ptr u8 n ptr u8 n -- )
    {: c:ptr cu:n a:ptr u:n :}
    s\" ,\"code\":\"" EXP+ c cu EXP+
    s\" \",\"source\":\"habu\",\"message\":" EXP+ a u MESSAGE+
    s\" ,\"data\":" EXP+ a u EXP+ s" }" EXP+ ;
 
-\ The diagnostic the list holds next: the check's next packet, from line L1,
-\ character C1 to line L2, character C2, with this severity and code.
 : DIAG+ ( n n n n n ptr u8 n -- )
    {: l1:n c1:n l2:n c2:n sev:n c:ptr cu:n :}
    c cu PACKET-FOR {: a:ptr u:n :}
@@ -1583,8 +1575,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    HEAR
    EXP$ HEARD ;
 
-\ A batch of independent opens can publish in any order. Keep every exact
-\ diagnostic body, then match each document once against that batch.
+\ A batch of independent opens can publish in any order.
 3 PTR-U8-TABLE PUB-BODIES
 3 TYPED-BUFFER PUB-LENS n
 3 TYPED-BUFFER PUB-USED bool
@@ -1717,10 +1708,6 @@ variable PUB-COUNT
    HEAR s" 3" JSON-RPC:INVALID-REQUEST REFUSED
    HEAR s" 4" JSON-RPC:INVALID-REQUEST REFUSED ;
 
-\ The document opened under its URI escaped is changed and closed under it
-\ plain, and the close echoes the URI decoded with its percent escapes kept. A
-\ second open replaces the first, so one close publishes and the next is
-\ refused.
 : SYNC-TURNS ( -- )
    s\" \"file:\\/\\/\\/habu-lsp-test\\/a.f\"" OPEN-DOC
    URI-A CHANGE-DOC
@@ -1748,7 +1735,6 @@ variable PUB-COUNT
    HEAR URI-A PUBLISHED
    HEAR URI-A PUBLISHED ;
 
-\ didOpen params the server cannot read, each logged.
 : BAD-OPENS ( -- )
    s" textDocument/didOpen" s" " LSP:E-LSP-PARAMS UNAPPLIED
    s" textDocument/didOpen" s" [1]" LSP:E-LSP-PARAMS UNAPPLIED
@@ -1764,7 +1750,6 @@ variable PUB-COUNT
    s\" \"file:///habu-lsp-test/a%00.f\"" s" 1" s\" \"\"" OPEN-PARAMS
    s" textDocument/didOpen" PAR$ E-PATH-NUL UNAPPLIED ;
 
-\ didChange and didClose params the server cannot read, each logged.
 : BAD-CHANGES ( -- )
    URI-A s" []" CHANGE-PARAMS
    s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
@@ -1794,7 +1779,6 @@ variable PUB-COUNT
    p pu s" refused" COMPLETED
    p pu v EXPECT 0 15 0 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-\ The first turn: initialize and A opened as F.
 : F-OPENED ( -- )
    SESSION-INITIALIZE
    A-PATH TEXT-F 1 OPENS
@@ -1808,7 +1792,6 @@ variable PUB-COUNT
 : TEXT-U ( -- ptr u8 n )
    s\" : LSPT-U1 ( n -- n ) NOPE ;\n: LSPT-U2 ( n -- n ) LSPT-U1 1 + ;\n: LSPT-U3 ( -- n ) LSPT-U1 ;\n: LSPT-U4 ( n -- n ) drop ;\n" ;
 
-\ A opened as F, then changed to U: every refusal listed, in order.
 : OPEN-TURNS ( -- )
    F-OPENED
    A-PATH TEXT-U 2 CHANGES
@@ -1821,7 +1804,6 @@ variable PUB-COUNT
    3 21 3 25 1 s" E-MISMATCH" DIAG+
    PUBLISHES ;
 
-\ Three changes in one turn: the last alone is checked.
 : SUPERSEDE-TURNS ( -- )
    F-OPENED
    A-PATH s" : S ( n -- n ) ;" 2 CHANGES
@@ -1847,8 +1829,6 @@ variable PUB-COUNT
 : REQUIRES-FMT ( -- ptr u8 n )  s\" require src/lib/fmt.f\n: G ( n -- ) FMT:SB-U ;\n" ;
 : UNDERFLOWS-FMT ( -- ptr u8 n )  s\" require src/lib/fmt.f\n: G ( -- ) FMT:SB-U ;\n" ;
 
-\ A requires a file of the tree: checked in A's load context, it verifies, and
-\ changed to call that file's word without its input, it is refused.
 : REQUIRE-TURNS ( -- )
    SESSION-INITIALIZE
    A-PATH REQUIRES-FMT 1 OPENS
@@ -1863,8 +1843,6 @@ variable PUB-COUNT
    A-PATH s" refused" COMPLETED
    A-PATH 2 EXPECT 1 11 1 19 1 s" E-INPUT-UNDERFLOW" DIAG+ PUBLISHES ;
 
-\ A close publishes an empty list without a version. A opened and closed in one
-\ turn is never checked: that list is all it gets.
 : CLOSE-TURNS ( -- )
    F-OPENED
    A-PATH CLOSES
@@ -1897,14 +1875,11 @@ variable PUB-COUNT
 
 : BIG-PATH ( -- ptr u8 n )  s" big.f" FIXTURE ;
 
-\ big-frame's document, about 700 KB: BIG-LINES comment lines, then F.
 : BIG-TEXT ( -- )
    TXT-B CLEAR
    BIG-LINES 0 ?do s\" ( twenty-byte line )\n" N>BLEN TXT-B APPEND-SPAN loop
    TEXT-F N>BLEN TXT-B APPEND-SPAN ;
 
-\ SAY streams this oversized turn; F's packet on its last line proves the
-\ document was received whole and checked.
 : BIG-TURNS ( -- )
    SESSION-INITIALIZE
    SAY
@@ -1922,7 +1897,6 @@ variable PUB-COUNT
 : DEP-BROKEN ( -- ptr u8 n )  s\" : D ( n -- n ) drop ;\n" ;
 : DEP-FIXED ( -- ptr u8 n )  s\" : D ( n -- n ) ;\n" ;
 
-\ S calling D, and a D its call does not give enough cells.
 : TEXT-SD ( -- ptr u8 n )  s\" require dep.f\n: S ( -- n ) 1 D ;\n" ;
 : DEP-TWO ( -- ptr u8 n )  s\" : D ( n n -- n ) + ;\n" ;
 
@@ -1933,8 +1907,6 @@ variable PUB-COUNT
 \ The path the packets name dep.f by: its canonical one.
 : DEP-CANON ( -- ptr u8 n )  DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 
-\ The empty list of the document at PATH at this version, after the test's
-\ own check of this text there, with this verdict.
 : LISTED ( ptr u8 n ptr u8 n n ptr u8 n -- )
    {: t:ptr tu:n p:ptr pu:n v:n w:ptr wu:n :}
    t tu p pu CHECKS
@@ -1981,8 +1953,6 @@ variable PUB-COUNT
    S-PATH s" verified" COMPLETED
    S-PATH 2 EXPECT PUBLISHES ;
 
-\ A watched disk dependency changes without a document edit or save. Its
-\ reader is checked again and retracts the now stale dependency diagnostic.
 : DEP-WATCH-TURNS ( -- )
    DEP-BROKEN DEP-WRITTEN
    SESSION-INITIALIZE
@@ -2087,8 +2057,6 @@ variable PUB-COUNT
    SV-PATH 1 EXPECT PUBLISHES
    TEXT-SV-NEW SV-NEW-PATH 1 s" verified" LISTED ;
 
-\ A watched file that did not exist at the prior check is now available.
-\ The open requester must be checked again without a document edit or save.
 : MISSING-WATCH-TURNS ( -- )
    SESSION-INITIALIZE
    MW-PATH TEXT-MW 1 OPENS
@@ -2140,9 +2108,6 @@ variable PUB-COUNT
 : ALONE-S ( -- ptr u8 n )  s\" : S ( -- ) ;\n" ;
 : ALONE-T ( -- ptr u8 n )  s\" : T ( -- ) ;\n" ;
 
-\ S and T both require dep.f, broken on disk, and each one's check publishes
-\ dep.f's list. S dropping its require leaves that list to T, whose check
-\ publishes it again; T dropping its require too withdraws it.
 : DEP-SHARED-TURNS ( -- )
    DEP-BROKEN DEP-WRITTEN
    SESSION-INITIALIZE
@@ -2168,7 +2133,6 @@ variable PUB-COUNT
 : DEFINES-A ( -- ptr u8 n )  s" : LSPT-ONLY-A ( -- ) ;" ;
 : CALLS-A ( -- ptr u8 n )  s" : LSPT-B ( -- ) LSPT-ONLY-A ;" ;
 
-\ B calls the word only A defines: each check sees its own document alone.
 : TWO-TURNS ( -- )
    SESSION-INITIALIZE
    A-PATH DEFINES-A 1 OPENS
@@ -2182,9 +2146,6 @@ variable PUB-COUNT
    B-PATH s" refused" COMPLETED
    B-PATH 1 EXPECT 0 16 0 27 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
-\ A definition never ended: the verifier stops at its opener and refuses the
-\ document, and the stop's record, the one `check.f --verify-only` writes, is
-\ published there.
 : UNENDED ( -- ptr u8 n )  s" : H6 ( n -- n ) 1" ;
 
 : UNENDED-TURNS ( -- )
@@ -2196,9 +2157,6 @@ variable PUB-COUNT
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
-\ A definer with nothing after it: the verifier stops at it and refuses the
-\ document, and the stop's record, the packet `check.f --verify-only` writes,
-\ is published there.
 : MISSING-NAME ( -- ptr u8 n )  s" :" ;
 
 : MISSING-NAME-TURNS ( -- )
@@ -2210,9 +2168,8 @@ variable PUB-COUNT
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-MISSING-NAME" DIAG+ PUBLISHES ;
 
-\ One `using` more than the checker holds open at once (USE-MAX): the
-\ verifier dies in CHECKER-USING (`76 die`) and exits without a verdict, where
-\ `--load` refuses that using as ENGINE-ERROR:USING-OVERFLOW.
+\ One `using` more than the checker holds open at once: the verifier dies and
+\ exits without a verdict, where `--load` refuses that using.
 USE-MAX 1 + constant OVER-USINGS
 
 : OVER-USINGS+ ( -- )
@@ -2232,8 +2189,7 @@ USE-MAX 1 + constant OVER-USINGS
    LOGGED ;
 
 \ H1 is refused, then one `using` more than the checker holds open: the
-\ verifier dies in CHECKER-USING (`76 die`) after writing H1's packet, which is
-\ published.
+\ verifier dies after writing H1's packet, which is published.
 : REFUSED-OVER-TEXT ( -- )
    TXT-B CLEAR
    s\" : H1 ( n -- n ) NOSUCHWORD ;\n" N>BLEN TXT-B APPEND-SPAN
