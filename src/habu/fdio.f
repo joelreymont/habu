@@ -1,9 +1,7 @@
 \ fdio.f - write a whole span to a file descriptor, or die naming the failure.
 \ Its own file so a booted engine can require it: driver-io.f reaches MBUF and
-\ the image writer. driver-io.f calls FDIO:WALL without requiring this file, so
-\ its loader requires this one first (src/habu/link-data.f). A short write is
-\ retried; a write returning zero or an error stops the process,
-\ unretried and unlogged.
+\ the image writer. A short write is retried; a write returning zero or an
+\ error stops the process, unretried and unlogged.
 
 package FDIO
 

@@ -1,8 +1,8 @@
 \ driver-io.f - shared fail-closed I/O for internal build drivers. It reaches
 \ MBUF, so a booted engine cannot load it; what a booted engine needs lives in
-\ src/habu/fdio.f (FDIO:WALL, loaded just before this file) and
-\ src/habu/sign-id.f.
+\ src/habu/fdio.f (FDIO:WALL) and src/habu/sign-id.f.
 
+require src/habu/fdio.f
 require src/habu/sign-id.f
 require src/os/image-bytes.f
 using IMAGE-BYTES

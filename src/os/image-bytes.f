@@ -8,10 +8,8 @@ variable MSIZE-N
 public
 : MSIZE ( -- n ) MSIZE-N @ ;
 75 constant M-BOUNDS-RC
-\ Four image cursors hold addresses inside the mapped image buffer, so they are
-\ declared pointer cells (dot habu-refuse-a-ptr-5ad2734e). They belong to the
-\ creating process: a snapshot builder clears them in a named reset before
-\ fresh image emission, never by replay or redefinition.
+\ The image cursors hold addresses in the creating process's mapped buffer, so
+\ they are pointer cells; a snapshot builder clears them in a named reset.
 PTR-VARIABLE MBUF-A
 PTR-VARIABLE MP
 variable MLEN
@@ -97,10 +95,8 @@ public
 private
 create M-FAIL-NL 1 allot
 
-\ Report before throwing: the stage/maker drivers exit with the raw throw
-\ code, so a swallowed message here becomes a silent build failure (proven:
-\ the 104-byte MSIZE overrun exited 75 with no output). The write rc has
-\ nowhere further to report on this diagnostic path.
+\ Reports before throwing: the drivers exit with the raw throw code, so an
+\ unreported overrun exits 75 silently. The write's rc has nowhere to go.
 : M-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
    2 a u write drop
    10 M-FAIL-NL c!
