@@ -539,8 +539,6 @@ public
    CLAIMS$ name nu NOTE$ ;
 
 
-\ Getting a token.
-
 10000 constant TOKEN-TIMEOUT-MS     \ protective: the bound on the token endpoint's whole answer
 $10000 constant TOKEN-CAP           \ protective: the largest token answer read
 
@@ -585,8 +583,6 @@ private
 
 : HEX-DIGIT ( n -- n ) dup 10 < if [char] 0 + else 10 - [char] A + then ;
 
-\ A byte of a form value appended to the BUF, percent-encoded unless
-\ unreserved (RFC 6749 Appendix B).
 : ENCODED+ ( n ptr n -- )
    {: c:n buf:ptr :}
    c UNRESERVED? if c buf BUF:APPEND-BYTE exit then
@@ -594,7 +590,6 @@ private
    c 4 rshift HEX-DIGIT buf BUF:APPEND-BYTE
    c 15 and HEX-DIGIT buf BUF:APPEND-BYTE ;
 
-\ name=value appended to the BUF's form, after an & unless it is the first.
 : PAIR+ ( ptr u8 n ptr u8 n ptr n -- )
    {: k:ptr ku:n v:ptr vu:n buf:ptr :}
    buf BUF:LEN@ BUF:BLEN>N 0 > if [char] & buf BUF:APPEND-BYTE then
@@ -602,7 +597,6 @@ private
    [char] = buf BUF:APPEND-BYTE
    vu 0 ?do v i + c@ buf ENCODED+ loop ;
 
-\ The client's id, and its secret unless it is a public client.
 : CREDENTIALS+ ( ptr n -- )
    {: buf:ptr :}
    s" client_id" CLIENT-ID @ SPAN:$ buf PAIR+
@@ -621,8 +615,6 @@ private
 \ secret and the earlier answer never sit in storage a grow releases.
 : EMPTIED ( ptr n -- ) {: buf:ptr :} buf WIPE buf TOKEN-CAP BUF:N>BLEN BUF:ENSURE ;
 
-\ The form TOKEN posts, written into the BUF: client credentials (RFC 6749
-\ 4.4.2) or On-Behalf-Of (RFC 7523 2.1 with Entra's requested_token_use).
 : FORM ( ptr u8 n grant ptr n -- )
    {: scope:ptr su:n g buf:ptr :}
    scope su buf OUTSIDE
@@ -642,7 +634,6 @@ private
          s" requested_token_use" s" on_behalf_of" buf PAIR+ ENDOF
    ;MATCH ;
 
-\ The form REFRESH posts, written into the BUF (RFC 6749 6).
 : REFRESH-FORM ( ptr u8 n ptr u8 n ptr n -- )
    {: scope:ptr su:n r:ptr ru:n buf:ptr :}
    scope su buf OUTSIDE
@@ -662,7 +653,6 @@ private
    s" : " LOG:TEXT+  rc CURL:ERROR$ LOG:TEXT+
    LOG:;LINE ;
 
-\ Whether the setting took; logs one that did not.
 : SET? ( CURL:status -- bool )
    MATCH CURL:status
       ok OF true ENDOF
@@ -686,8 +676,6 @@ private
 \ OPTION:NONE is E-REJECTED at the 2drop (rc 70).
 : UNANSWERED ( -- option<CURL:http-status> ) OPTION:NONE ;
 
-\ The error TOKEN and REFRESH throw for an answer they cannot use, by the
-\ answer's status.
 : STATUS-ERROR ( CURL:http-status -- n )
    {: status:CURL:http-status :}
    status CURL:UNAVAILABLE? if E-UNAVAILABLE exit then
@@ -695,10 +683,6 @@ private
    code 400 >= code 500 < and if E-REFUSED exit then
    E-RESPONSE ;
 
-\ The answer read into the BUF, which then holds exactly its bytes: its HTTP
-\ status, none for a failed transfer, which it logs. An answer past TOKEN-CAP
-\ is logged and throws its status's STATUS-ERROR. A truncated or failed
-\ transfer's bytes are wiped from the BUF's storage.
 : RECEIVED ( CURL:handle ptr n -- option<CURL:http-status> )
    {: h:CURL:handle buf:ptr :}
    buf TOKEN-CAP BUF:N>BLEN BUF:GROW {: room :}
@@ -727,9 +711,6 @@ private
 : POSTED ( CURL:handle ptr n option<CURL:http-status> -- CURL:handle ptr n option<CURL:http-status> )
    drop {: h:CURL:handle buf:ptr :} h buf h buf POST ;
 
-\ The form posted and the answer read into the BUF: its HTTP status, none when
-\ there is no answer, which is logged. The handle is cleaned up on every exit,
-\ and a throw wipes the BUF too.
 : EXCHANGE ( ptr n -- option<CURL:http-status> )
    {: buf:ptr :}
    CURL:INIT
@@ -819,17 +800,13 @@ private
    room SPAN:$ drop {: at:ptr :}
    at got at got + kept secs ;
 
-\ The issuer's status and answer for a non-2xx.
 : ANSWERED ( n ptr n -- )
    {: status:n buf:ptr :}
    OPEN-LINE s" token request answered " LOG:TEXT+  status LOG:INT+
    s" : " LOG:TEXT+  buf BUF:SPAN$ BUF:BLEN>N LOG:TEXT+  LOG:;LINE ;
 
-\ E-HTTP-STATE before CLIENT!.
 : STATED ( -- ) ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then ;
 
-\ The BUF's form posted, the BUF then holding the answer: its 2xx status;
-\ any other outcome throws as TOKEN states.
 : ASKED ( ptr n -- n )
    {: buf:ptr :}
    buf EXCHANGE MATCH option
