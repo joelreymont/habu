@@ -4954,8 +4954,6 @@ variable WS-ROOT-U
    REFS-ALIAS-B URI-OF 0 2 6 REF+
    SYMBOLS-END ;
 
-\ ld.f loads at top level a path its command line names, which no walk can
-\ read: named with discovery's reason, the answer coming without it.
 : REFS-LD-TURNS ( -- )
    s" refs-ld" REFS-DIR s" refs-ld/w" REFS-DIR
    s" refs-ld/w/f.f" TEXT-RF REFS-FILE
@@ -4974,8 +4972,6 @@ variable WS-ROOT-U
    s" refs-ld/w/d.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ f.f open a line down, unsaved: s.f's check reads the open text, so the
-\ answer is whole, with no warning.
 : REFS-UNSAVED-TURNS ( -- )
    s" refs-uns" REFS-DIR s" refs-uns/w" REFS-DIR
    s" refs-uns/w/f.f" TEXT-RF REFS-FILE
@@ -4992,8 +4988,6 @@ variable WS-ROOT-U
    s" refs-uns/w/s.f" DISK-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ A disk dependency gets an unrelated trailing comment after d.f's check.
-\ The request rechecks d.f and still finds the declaration and both uses.
 : REFS-DIGEST-TURNS ( -- )
    s" refs-dig" REFS-DIR s" refs-dig/w" REFS-DIR
    s" refs-dig/w/f.f" TEXT-RF REFS-FILE
@@ -5015,8 +5009,6 @@ variable WS-ROOT-U
 : TEXT-RDB ( -- ptr u8 n )  s\" require b.f\n: DU ( -- n ) ROOK ;\n" ;
 : TEXT-RSTL ( -- ptr u8 n )  s\" require ../lib/f.f\n: DU ( -- n ) ROOK ;\n" ;
 
-\ A declaration moved on disk after d.f's check; the request rechecks d.f
-\ and reports the new location without an edit to the requester.
 : REFS-STALE-TURNS ( -- )
    s" refs-stl" REFS-DIR s" refs-stl/lib" REFS-DIR s" refs-stl/w" REFS-DIR
    s" refs-stl/lib/f.f" TEXT-RF REFS-FILE
@@ -5035,8 +5027,6 @@ variable WS-ROOT-U
    s" refs-stl/w/d.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ d.f reaches f.f through b.f, which on disk then loads nothing. The request
-\ rechecks d.f, publishes its undefined use, and selects no declaration.
 : REFS-REQ-TURNS ( -- )
    s" refs-req" REFS-DIR s" refs-req/w" REFS-DIR
    s" refs-req/w/f.f" TEXT-RF REFS-FILE
@@ -5057,8 +5047,6 @@ variable WS-ROOT-U
    1 14 1 18 1 s" E-UNDEFINED" DIAG+ PUBLISHES
    s" 3" SYMBOLS-START SYMBOLS-END ;
 
-\ An empty workspaceFolders beside a rootUri: no folder, so s.f, on disk in
-\ rootUri's folder, is no subject.
 : REFS-FE-TURNS ( -- )
    s" refs-fe" REFS-DIR s" refs-fe/w" REFS-DIR
    s" refs-fe/w/f.f" TEXT-RF REFS-FILE
@@ -5085,10 +5073,6 @@ variable WS-ROOT-U
 : TEXT-RXX ( -- ptr u8 n )  s\" require y.f\n: XU ( -- n ) ROOK ;\n" ;
 : TEXT-RXY ( -- ptr u8 n )  s\" require ../f.f\n" ;
 
-\ ROOK's use in b.f is answered with its declaration, b.f's use and x.f's,
-\ which b.f's check reads; GROOK's in e.f with its declaration, h.f's use at
-\ the URI the client opened h.f by, which e.f's check reads, and e.f's.
-\ Neither x.f nor h.f is named.
 : REFS-RCH-TURNS ( -- )
    s" refs-rch" REFS-DIR s" refs-rch/w" REFS-DIR s" refs-rch/w/q" REFS-DIR
    s" refs-rch/w/s" REFS-DIR s" refs-rch/w/lib" REFS-DIR
@@ -5125,16 +5109,11 @@ variable WS-ROOT-U
    s" refs-rch/w/e.f" OPEN-URI 1 14 19 REF+
    SYMBOLS-END ;
 
-\ d.f, open in the folder w, declares ROOK, requires ../z.f, above the folder,
-\ then y.f, in it, and uses ROOK; z.f and y.f use ROOK and load nothing, so
-\ neither one's own loads reach d.f.
 : TEXT-RFD ( -- ptr u8 n )
    s\" : ROOK ( -- n ) 1 ;\nrequire ../z.f\nrequire y.f\n: DU ( -- n ) ROOK ;\n" ;
 : TEXT-RFZ ( -- ptr u8 n )  s\" : ZU ( -- n ) ROOK ;\n" ;
 : TEXT-RFY ( -- ptr u8 n )  s\" : YU ( -- n ) ROOK ;\n" ;
 
-\ ROOK's declaring token in d.f is answered with the declaration, d.f's use,
-\ then y.f's and z.f's, which d.f's check reads, and nothing named.
 : REFS-FRG-TURNS ( -- )
    s" refs-frg" REFS-DIR s" refs-frg/w" REFS-DIR
    s" refs-frg/w/d.f" TEXT-RFD REFS-FILE
@@ -5154,17 +5133,11 @@ variable WS-ROOT-U
    s" refs-frg/z.f" DISK-URI 0 14 18 REF+
    SYMBOLS-END ;
 
-\ d.f and e.f, in the folder w, each declare a ROOK of their own and then
-\ require z.f, which uses ROOK and whose own check, declaring none, is
-\ refused. E-BAD is e.f with an undefined word after its load, refused.
 : TEXT-RCD ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\nrequire z.f\n" ;
 : TEXT-RCE ( -- ptr u8 n )  s\" : ROOK ( -- n ) 2 ;\nrequire z.f\n" ;
 : TEXT-RCE-BAD ( -- ptr u8 n )
    s\" : ROOK ( -- n ) 2 ;\nrequire z.f\n: EU ( -- n ) NOPE ;\n" ;
 
-\ ROOK's declaring token in d.f is answered with the declaration and z.f's
-\ use, which d.f's check reads, after a warning naming z.f, whose token
-\ e.f's check binds to e.f's ROOK.
 : REFS-CNF-TURNS ( -- )
    s" refs-cnf" REFS-DIR s" refs-cnf/w" REFS-DIR
    s" refs-cnf/w/d.f" TEXT-RCD REFS-FILE
@@ -5234,10 +5207,7 @@ variable WS-ROOT-U
 : TEXT-RPKG ( -- ptr u8 n )
    s\" package RQ\npublic\ninclude f.f\n: QU ( -- n ) ROOK ;\n;package\n" ;
 
-\ q.f includes f.f into package RQ: its check read f.f's bytes, but declares
-\ RQ's ROOK at the token, not the global one, and binds QU's use to RQ's. A
-\ rename of the token would change q.f's composition, so q.f is named, and
-\ its use, not the global ROOK's, is not listed.
+\ A rename of the token would change q.f's composition, so q.f is named.
 : REFS-PKG-TURNS ( -- )
    s" refs-pkg" REFS-DIR s" refs-pkg/w" REFS-DIR
    s" refs-pkg/w/f.f" TEXT-RF REFS-FILE
@@ -5253,10 +5223,7 @@ variable WS-ROOT-U
    s" declares another word at the declaration's token" NAMED+ NAMED-END
    s" 3" SYMBOLS-START s" refs-pkg/w/f.f" OPEN-URI 0 2 6 REF+ SYMBOLS-END ;
 
-\ q2.f includes f.f twice: first at the top, where it declares the global
-\ ROOK at the token, then into RQ's public section, where it declares RQ's
-\ ROOK there. QU uses both words. A rename of the token would change RQ's
-\ word too, so q2.f is named, and its use of the global ROOK is listed.
+\ A rename of the token would change RQ's word too, so q2.f is named.
 : TEXT-RVIS ( -- ptr u8 n )
    TXT-B CLEAR
    s\" include f.f\npackage RQ\npublic\ninclude f.f\n;package\n" HV+
@@ -5278,9 +5245,6 @@ variable WS-ROOT-U
    s" 3" SYMBOLS-START s" refs-vis/w/f.f" OPEN-URI 0 2 6 REF+
    s" refs-vis/w/q2.f" DISK-URI 5 22 26 REF+ SYMBOLS-END ;
 
-\ ROOK named by two literals: one before LOOK, whose names: row the text
-\ declares, and one before the engine's XREF-FIND, whose row the engine's own
-\ source declares; then called.
 : TEXT-RN ( -- ptr u8 n )
    TXT-B CLEAR
    s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ptr u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
@@ -5294,9 +5258,6 @@ variable WS-ROOT-U
    RN-PATH URI-OF l c1 c2 REF+ ;
 : RN-USES+ ( -- )  3 17 21 RN-REF+  4 18 22 RN-REF+  5 15 19 RN-REF+ ;
 
-\ ROOK's declaring token and its name in LOOK's literal, each answered with
-\ the declaration and every use, the name between each literal's quotes among
-\ them; its name in XREF-FIND's literal with the uses alone.
 : REFS-NAMED-TURNS ( -- )
    SESSION-INITIALIZE
    RN-PATH TEXT-RN 1 OPENS
@@ -5588,15 +5549,11 @@ variable WS-ROOT-U
    s" refs-prim-conflict/w/z.f" OPEN-URI 0 18 21 REF+
    SYMBOLS-END ;
 
-variable PROBE-DECLS                     \ the decls a gather saw in the probe
+variable PROBE-DECLS
 
 : PROBE-SEEN ( -- )  LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE - PROBE-DECLS ! ;
 : PROBE-THROWN ( -- )  PROBE-SEEN LSP:E-LSP-PARAMS throw ;
 
-\ id-probe.f's text checked for its uses, as references checks a subject,
-\ with no word's uses in the files it reads: its gather sees the check's
-\ decls as the probe's, and the store keeps none once the check returns, or
-\ once the gather throws, the throw going on.
 : REFS-PROBE ( -- )
    0 PROBE-DECLS !
    TEXT-ID-PROBE ID-PROBE-PATH s" " -1 [: PROBE-SEEN ;] LSP-CHECK:USES
@@ -5964,8 +5921,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    AIO-PTR-PATH URI-OF 0 2 14 REF+
    SYMBOLS-END ;
 
-\ A failed check after a change has no current positions to invalidate from
-\ its earlier stamps. References answer from the incomplete check's bindings.
 : REFS-INCOMPLETE-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
@@ -5997,8 +5952,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    {: i:ptr iu:n p:ptr pu:n l:n c:n :}
    s" textDocument/prepareRename" i iu p pu l c AT-ASK ;
 
-\ The next frame answers the request with this id's JSON text with the Range
-\ from character C1 to C2 of line L.
 : RANGED ( ptr u8 n n n n -- )
    {: i:ptr iu:n l:n c1:n c2:n :}
    MSG-B CLEAR
@@ -6010,19 +5963,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    HEAR
    MSG$ HEARD ;
 
-\ rn-prep.f: ROOK, public in RNP, used twice there and qualified outside it in
-\ Q:Y, which defines Y into the wordlist Q, used in RU.
 : RN-PREP-PATH ( -- ptr u8 n )  s" rn-prep.f" FIXTURE ;
 : TEXT-RN-PREP ( -- ptr u8 n )
    s\" package RNP\npublic\n: ROOK ( -- n ) 1 ;\n: TWO ( -- n ) ROOK ROOK  + ;\n;package\n: Q:Y ( -- n ) RNP:ROOK ;\n: RU ( -- n ) Q:Y 1 + ;\n" ;
 
-\ ROOK's use at its first character and at its last, Q:Y's declaring token and
-\ RNP:ROOK asked on its qualifier, each answered with the range of the tail a
-\ rename edits, including at the exact trailing edge of a use or its
-\ declaration; a space beyond that edge and the space before a use null. A use
-\ of the converter >CVT-T, whose declaring token CVT-T does not spell it, -32803
-\ naming hover-cvt.f; a use in hu.f, whose check was refused, -32803 naming it;
-\ ref-a.f, never opened, -32602.
 : RENAME-PREPARE-TURNS ( -- )
    SESSION-INITIALIZE
    RN-PREP-PATH TEXT-RN-PREP 1 OPENS
@@ -6069,7 +6013,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    {: i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
    s" textDocument/rename" i iu p pu l c x xu AT-ASK-WITH ;
 
-\ The new name the renames here ask for.
 : CROW ( -- ptr u8 n )  s\" ,\"newName\":\"CROW\"" ;
 
 : SUMTYPE-RENAME-TURNS ( -- )
@@ -6086,9 +6029,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    HEAR s" 4" -32803 REFUSED
    HEAR s" 5" -32803 REFUSED ;
 
-\ The answer the next frame must be to the request with this id's JSON text,
-\ begun in MSG: EDITS-IN starts each document's edits, EDIT+ adds each,
-\ EDITS-END hears it.
 : EDITS-START ( ptr u8 n -- )
    {: i:ptr iu:n :}
    MSG-B CLEAR
@@ -6100,8 +6040,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    MSG$ s" {" ENDS-WITH? 0= if s" ]," MSG+ then
    s\" \"" MSG+ u uu MSG+ s\" \":[" MSG+ ;
 
-\ The edit that writes this text from character C1 to C2 of line L, and
-\ the one that writes CROW.
 : EDIT-AS+ ( n n n ptr u8 n -- )
    {: l:n c1:n c2:n t:ptr tu:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
@@ -6133,18 +6071,11 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    1 10 15 EDIT+  2 22 27 EDIT+
    EDITS-END ;
 
-\ rn-prep.f's ROOK edited where it is declared and used, RNP:ROOK's qualifier
-\ kept, in the answer to the request with this id's JSON text.
 : ROOK-EDITS ( ptr u8 n -- )
    EDITS-START RN-PREP-PATH URI-OF EDITS-IN
    2 2 6 EDIT+  3 15 19 EDIT+  3 20 24 EDIT+  5 19 23 EDIT+
    EDITS-END ;
 
-\ ROOK asked at a use's first character, at its last and on RNP:ROOK's
-\ qualifier, each answered with the edits of the declaring token's tail and
-\ each use's; Q:Y's declaring token with those of its tail and its use's;
-\ the exact trailing edges of a use and its declaration also select those
-\ edits; the space after the last use and the space before a use null.
 : RENAME-TURNS ( -- )
    SESSION-INITIALIZE
    RN-PREP-PATH TEXT-RN-PREP 1 OPENS
@@ -6169,9 +6100,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 9" ROOK-EDITS
    HEAR s" 10" NULL-RESULT ;
 
-\ newName missing or a number, each -32602; empty, or holding a space, a tab, a
-\ colon that qualifies it, a quote or a backslash, each -32803. All are answered
-\ before the document's check, whose list comes after them.
 : RENAME-PARAMS-TURNS ( -- )
    SESSION-INITIALIZE
    RN-PREP-PATH TEXT-RN-PREP 1 OPENS
@@ -6195,9 +6123,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    HEAR s" 10" -32803 REFUSED
    RN-PREP-PATH 1 CLEAN ;
 
-\ rn-ws/w, the folder: f.f declares ROOK, d.f, open, and s.f, on disk, use
-\ it. ROOK's use in d.f is answered with the edits of f.f, then of d.f and
-\ s.f in the order of their paths, each under the URI references gives it.
 : RENAME-WS-TURNS ( -- )
    s" rn-ws" REFS-DIR s" rn-ws/w" REFS-DIR
    s" rn-ws/w/f.f" TEXT-RF REFS-FILE
@@ -6216,9 +6141,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-ws/w/s.f" DISK-URI EDITS-IN 1 14 18 EDIT+
    EDITS-END ;
 
-\ ld.f loads at top level a path its command line names, which no walk can
-\ read: the rename is refused -32803, naming it with discovery's reason, and
-\ no edit comes.
 : RENAME-LD-TURNS ( -- )
    s" rn-ld" REFS-DIR s" rn-ld/w" REFS-DIR
    s" rn-ld/w/f.f" TEXT-RF REFS-FILE
