@@ -5891,36 +5891,41 @@ CHECKER-REG:}SCRATCH
    node P>REST cnt 1 - lost RECURSE  node swap lost OUTPUT-COPY ;
 
 
-\ The edge a throwing call leaves. `ROW-COMMON pre post` is what popping the
-\ callee's declared inputs leaves of the caller's row; nothing below it is in
-\ the callee's reach. For the popped cells the callee's record answers: `keep`
-\ bit i, counted from the top of its declared input row (the top of `pre`),
-\ says every throw path of its body left input i in place. The edge is `pre`
-\ measured against the base with the popped and not kept window positions
-\ cleared: window position j holds `pre` position j + s, s = ROW-TERMS pre -
-\ ROW-TERMS base. With keep = 0 this equals `XMASK-OF common base`: XMASK-OF's
-\ own skip clears the same set { j : 0 <= j + s < popped }, and below the
-\ popped region `pre` and `common` are the same row nodes.
+\ A popped caller value pairs with `din` value by value (VALUE-CELLS); it stays
+\ intact only if `keep` holds each term of its pair (CS-SECTION-WIDTHS).
 CHECKER-REG:SCRATCH{
-variable XM-K
+variable XM-K   variable XM-CT   variable XM-ET   \ callee term; a pair's caller and callee terms
 CHECKER-REG:}SCRATCH
-: CALL-EDGE-MASK ( n n n n -- n ) {: pre:n post:n keep:n base:n :}
+: CALL-EDGE-MASK ( n n n n n -- n ) {: pre:n post:n keep:n base:n din:n :}
    pre base XMASK-OF XM-ACC !
    XM-ACC @ 0= IF 0 EXIT THEN                \ not comparable, or nothing intact
    base ROW-TERMS {: k:n :}
    pre ROW-TERMS {: p:n :}
    p  pre post ROW-COMMON ROW-TERMS -  {: popped:n :}
    p k - {: s:n :}
-   0 XM-I !
-   BEGIN XM-I @ k < WHILE
-      XM-I @ s + XM-K !
-      XM-K @ 0 >=  XM-K @ popped <  and IF
-         XM-K @ XMASK-BITS >= IF XM-I @ XM-CLEAR ELSE   \ no bit speaks for it
-            1 XM-K @ lshift keep and 0= IF XM-I @ XM-CLEAR THEN
-         THEN
+   0 XM-I !  0 XM-K !
+   pre din
+   BEGIN XM-I @ popped < WHILE               \ ( caller row, callee row or 0 )
+      over R-RES VALUE-CELLS XM-CT !
+      dup 0= IF 0 ELSE
+         dup R-RES dup TAG S-PUSH = IF VALUE-CELLS ELSE drop 0 THEN
+      THEN XM-ET !
+      XM-ET @ 0 >
+      XM-K @ XM-ET @ + XMASK-BITS <= and
+      XM-I @ XM-CT @ + popped <= and IF      \ a whole value on both sides
+         1 XM-ET @ lshift 1 -  XM-K @ lshift  dup keep and =
+      ELSE RES-FALSE THEN
+      IF ELSE
+         XM-CT @ 0 ?do
+            XM-I @ i + s -  dup 0 >=  over k < and  XM-I @ i + popped < and
+            IF XM-CLEAR ELSE drop THEN
+         loop
       THEN
-      XM-I @ 1 + XM-I !
-   REPEAT
+      swap VALUE-REST drop swap
+      XM-ET @ 0 > IF VALUE-REST IF ELSE drop 0 THEN THEN
+      XM-I @ XM-CT @ + XM-I !
+      XM-K @ XM-ET @ + XM-K !
+   REPEAT 2drop
    XM-ACC @ ;
 
 : THROW-EDGE ( n n -- )         \ intact data mask, intact return mask
@@ -18120,13 +18125,12 @@ variable CURSYM
 : THROW-CUR? ( -- bool )
    CTL-FLAGS-CUR CTL-THROW and 0 <> ;
 
-\ The edge the token the walk just applied leaves, with whatever its own body
-\ proved about the inputs it was given (CALL-EDGE-MASK). A symbol with no entry
-\ answers 0 0 and the edge is the conservative one: every input overwritten.
+\ A symbol with no entry answers 0 0: every input overwritten. The return row
+\ pairs nothing: a signature declares no return input (`| U -- U` only).
 : CALL-THROW-EDGE ( -- )
    CURSYM @ CTL-MASKS-SYM {: dk:n rk:n :}
-   XE-PD @ DCUR @ dk XBASE-D CALL-EDGE-MASK
-   XE-PR @ RCUR @ rk XBASE-R CALL-EDGE-MASK
+   XE-PD @ DCUR @ dk XBASE-D CALL-DIN @ CALL-EDGE-MASK
+   XE-PR @ RCUR @ rk XBASE-R 0 CALL-EDGE-MASK
    THROW-EDGE ;
 
 \ The current token is a block collective (CTL-BARRIER, set by E-ADD-EFFECT).

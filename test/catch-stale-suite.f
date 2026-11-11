@@ -401,6 +401,31 @@ PRODUCT cspt
       CS-CODE<  CS-STALE?  CS-CODE-END
    CS-INLINE-RT 0 T= ;
 
+\ Kept inputs map onto the caller by value (checker.f CALL-EDGE-MASK): an option
+\ is one term at open width, two as option<n>; CS-OPEN-KEEP keeps its deepest.
+: CS-OPEN-KEEP ( n n option<b> [ n option<b> -- option<b> ] -- n n option<b> [ n option<b> -- option<b> ] )
+   execute E-CS-BOOM throw ;
+: CS-WIDE-KEEP ( n n option<n> [ n option<n> -- option<n> ] -- n n option<n> [ n option<n> -- option<n> ] )
+   CS-OPEN-KEEP ;
+: CS-REPL-OPT ( n option<n> -- option<n> ) drop drop 77 OPTION:SOME ;
+\ Declared over the two-term option; replaces the bool, keeps the rest.
+: CS-EXP-KEEP ( n bool option<n> -- n bool option<n> ) swap drop 55 swap E-CS-BOOM throw ;
+: CS-OPT-ID ( option<a> -- option<a> ) ;     \ leaves the option's width open
+
+: CS-SECTION-WIDTHS ( -- )
+   \ the cell above the deepest was consumed: reading it is refused ...
+   s" W1 ( -- n ) 1 2 9 OPTION:SOME ['] CS-REPL-OPT ['] CS-WIDE-KEEP catch drop drop {: o :} nip"
+      CS-CODE<  CS-STALE?  CS-CODE-END
+   \ ... and the deepest is intact
+   s" W2 ( -- n ) 1 2 9 OPTION:SOME ['] CS-REPL-OPT ['] CS-WIDE-KEEP catch drop drop {: o :} drop 1+"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ the window holds the option as one open cell: the bool is stale ...
+   s" W3 ( -- n ) 1 false 9 OPTION:SOME [: CS-OPT-ID CS-EXP-KEEP ;] catch drop {: o :} IF 1 ELSE 0 THEN nip"
+      CS-CODE<  CS-STALE?  s\" \"token\":\"IF\"" CS-CODE?  CS-CODE-END
+   \ ... and the n below it is intact
+   s" W4 ( -- n ) 1 false 9 OPTION:SOME [: CS-OPT-ID CS-EXP-KEEP ;] catch drop {: o :} drop 1+"
+      CHECK-QUIET-CANDIDATE! -1 T= ;
+
 \ A4's shape, run: the caught body reads the address and throws, and the catch
 \ hands back the SAME address with the throw code on top.
 16 BUFFER: CS-BUF
@@ -486,6 +511,7 @@ TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
    CS-SECTION-CALLEES
    CS-SECTION-ADMITS
    CS-SECTION-BUNDLES
+   CS-SECTION-WIDTHS
    CS-SECTION-RUNTIME
    CS-SECTION-TICK
    CS-SECTION-IMAGE
