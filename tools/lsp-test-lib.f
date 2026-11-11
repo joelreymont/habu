@@ -3060,7 +3060,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" NOWHERE
    s" 4" NOWHERE ;
 
-\ No engine word has a source location, so these prefix paths are not locatable.
 : PREFIX-SOURCE-PATH ( -- ptr u8 n )  s" src/core/sumtype.f" IN-TREE ;
 : PREFIX-TARGET-PATH ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" src/os/macos/target.f" IN-TREE exit then
@@ -3128,8 +3127,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ A definer still binds at its call when its operand declares a word with the
 \ same spelling. The newly declared private word must not replace that use.
-\ Its image origin's layout-buffer.f contains top-level allocation calls, so
-\ the conservative no-hash index supplies no source location.
 : PREFIX-SHADOW-PATH ( -- ptr u8 n )  s" prefix-shadow.f" FIXTURE ;
 : PREFIX-SHADOW ( -- ptr u8 n )
    s\" package REVIEW\nTYPED-VARIABLE a n\nTYPED-VARIABLE TYPED-VARIABLE n\n;package\n" ;
@@ -3144,9 +3141,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    s" 3" NOWHERE ;
 
-\ def-od-dep.f on disk, and the text its open document holds: three lines
-\ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
-\ tokens lie on lines the text on disk does not have.
 : DEF-OD-DEP-PATH ( -- ptr u8 n )  s" def-od-dep.f" FIXTURE ;
 : DEF-OD-DEP-CANON ( -- ptr u8 n )  DEF-OD-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 : DEF-OD-PATH ( -- ptr u8 n )  s" def-od.f" FIXTURE ;
@@ -3157,10 +3151,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : TEXT-DEF-OD ( -- ptr u8 n )
    s\" require def-od-dep.f\n: DEF-USE ( -- n ) DEF-DEPA DEF-DEPB + + ;\n" ;
 
-\ def-od-dep.f open with its edit, unsaved, then def-od.f, which requires it
-\ and whose check reads its open text: the uses of DEF-DEPA and DEF-DEPB, each
-\ answered with its declaring token's range in that text, at the URI the
-\ client opened def-od-dep.f by.
 : DEF-OPEN-DEP-TURNS ( -- )
    DEF-OD-DEP-PATH TEXT-DEF-OD-DISK FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -3177,7 +3167,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" DEF-OD-DEP-PATH URI-OF 4 2 10 LOCATED
    s" 4" DEF-OD-DEP-PATH URI-OF 3 2 10 LOCATED ;
 
-\ A position in a document the client never opened: -32602.
 : DEF-NOT-OPEN-TURNS ( -- )
    SESSION-INITIALIZE
    s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
@@ -3185,10 +3174,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED ;
 
-\ A use asked about with the document's opening, before the server checked
-\ it: the request checks it first, so its list comes before the answer, the
-\ declaration's. A malformed queued close is ignored during currentness
-\ inspection and logged when its own notification is served.
 : DEF-BEFORE-CHECK-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
@@ -3199,14 +3184,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
    DEF-A-PATH 1 CLEAN
    s" 3" DEF-A-PATH URI-OF 0 2 9 LOCATED ;
 
-\ TEXT-DEF-A two lines down.
 : TEXT-DEF-A-MOVED ( -- ptr u8 n )
    s\" \\ two lines\n\\ above\n: DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE 1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
 
-\ DEF-ONE's use in DEF-TWO asked about at its new place in the turn of the
-\ change that moved it and DEF-ONE two lines down, with no check between
-\ them: the request checks the changed text first, so its list comes before
-\ the answer, DEF-ONE's new declaring token.
 : DEF-AFTER-CHANGE-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
@@ -3219,7 +3199,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    DEF-A-PATH 2 CLEAN
    s" 3" DEF-A-PATH URI-OF 2 2 9 LOCATED ;
 
-\ DEF-ONE and DEF-TWO, used in that order.
 : TEXT-DEF-C ( -- ptr u8 n )
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-ONE DEF-TWO + ;\n" ;
 
@@ -3233,10 +3212,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    OVER-USINGS+
    TXT$ ;
 
-\ DEF-TWO's use, at the bytes of DEF-ONE's before the change, asked about in
-\ the turn of a change whose check did not complete: the uses of the text
-\ before it would answer DEF-ONE's declaring token, so the answer is no
-\ Location; the definitions of the last completed check are still listed.
 : DEF-INCOMPLETE-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
@@ -3262,12 +3237,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : SYM-NONE-PATH ( -- ptr u8 n )  s" sym-none.f" FIXTURE ;
 : TEXT-SYM-NONE ( -- ptr u8 n )  s\" \\ no definition\n" ;
 
-\ Three open documents, A and B requiring sym-dep.f, on disk only, and one
-\ with no definition. Each outline lists its own document's definitions in
-\ source order, each as workspace symbols give it, and none of the other
-\ document's or of sym-dep.f, which both checks read; the document with none
-\ answers an empty list. A document never opened, and params naming no
-\ document, are -32602.
 : OUTLINE-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -3305,12 +3274,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" {\"textDocument\":{\"documentSymbol\":{\"hierarchicalDocumentSymbolSupport\":true}}}}}" MSG+
    MSG$ FRAMED ;
 
-\ From a client that supports hierarchical document symbols, answered the same
-\ flat list. A's outline asked in the turn of the change that removed QUX-A
-\ and ZED: the request checks the changed text first, so its list comes before
-\ the answer, QUX-AA alone. Asked again with a change of A read behind it, the
-\ request is -32801 and the change is applied and checked after it; asked once
-\ more, the restored definitions are answered without a check.
 : OUTLINE-AFTER-CHANGE-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
    HIERARCHICAL-CLIENT
@@ -3337,9 +3300,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" ZED" 12 SYM-A-PATH URI-OF 2 2 5 s" " SYMBOL+
    SYMBOLS-END ;
 
-\ The outline asked in the turn of a change whose check did not complete: the
-\ definitions of the text before it are not of the document's text, so the
-\ answer is an empty list, while workspace symbols still list them.
 : OUTLINE-INCOMPLETE-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
@@ -3362,8 +3322,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- hover -------------------------------------------------------------------
 
-\ initialize from a client whose hovers take the formats this JSON array
-\ text lists.
 : INITIALIZE-AS ( ptr u8 n -- )
    {: f:ptr fu:n :}
    MSG-B CLEAR
@@ -3401,13 +3359,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR
    MSG$ HEARD ;
 
-\ hover-a.f, in the tree, the working directory the server shares, never on
-\ disk: HV-ONE, private in package HV, and its use in HV-TWO.
 : HOVER-A-PATH ( -- ptr u8 n )  s" hover-a.f" IN-TREE ;
 : TEXT-HOVER-A ( -- ptr u8 n )
    s\" package HV\n: HV-ONE ( -- n ) 1 ;\n: HV-TWO ( -- n ) HV-ONE 1 + ;\n;package\n" ;
 
-\ TEXT-HOVER-A two lines down.
 : TEXT-HOVER-A-MOVED ( -- ptr u8 n )
    s\" \\ two lines\n\\ above\npackage HV\n: HV-ONE ( -- n ) 1 ;\n: HV-TWO ( -- n ) HV-ONE 1 + ;\n;package\n" ;
 
@@ -3420,8 +3375,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : HV-ONE-MD ( n -- )
    TXT-B CLEAR s\" ```habu\n" HV+ HV-ONE-LINES s\" \n```" HV+ ;
 
-\ HV-ONE's use, at its first character and its last, answered with HV-ONE's
-\ kind, word, effect, package and place, over the use.
 : HOVER-TURNS ( -- )
    MARKDOWN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
@@ -3434,8 +3387,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    2 HV-ONE-MD s" 3" s" markdown" 2 18 24 HOVERED
    2 HV-ONE-MD s" 4" s" markdown" 2 18 24 HOVERED ;
 
-\ The uses of def-dep.f's global and, qualified, of its public word, each
-\ answered with its declaration in the file on disk.
 : HOVER-DEP-TURNS ( -- )
    DEF-DEP-PATH TEXT-DEF-DEP FS:WRITE-ALL
    MARKDOWN-CLIENT
@@ -3451,9 +3402,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    TXT-B CLEAR s\" ```habu\n: DEF-PUB ( -- n )\n\\ package dd, " HV+ DEF-DEP-CANON WHERE+ s\" :3\n```" HV+
    s" 4" s" markdown" 1 27 37 HOVERED ;
 
-\ def-od-dep.f open with its edit, unsaved, then def-od.f, which requires it
-\ and whose check reads its open text: the uses of DEF-DEPA and DEF-DEPB, each
-\ answered with its declaration in that text.
 : HOVER-OPEN-DEP-TURNS ( -- )
    DEF-OD-DEP-PATH TEXT-DEF-OD-DISK FS:WRITE-ALL
    MARKDOWN-CLIENT
@@ -3472,8 +3420,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    TXT-B CLEAR s\" ```habu\n: DEF-DEPB ( -- n n )\n\\ " HV+ DEF-OD-DEP-CANON WHERE+ s\" :4\n```" HV+
    s" 4" s" markdown" 1 28 36 HOVERED ;
 
-\ HV-ONE's declaring token, at its first character and its last, answered
-\ with HV-ONE, over the token.
 : HOVER-DEF-TURNS ( -- )
    MARKDOWN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
@@ -3486,9 +3432,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    2 HV-ONE-MD s" 3" s" markdown" 1 2 8 HOVERED
    2 HV-ONE-MD s" 4" s" markdown" 1 2 8 HOVERED ;
 
-\ hover-cvt.f, in the tree, never on disk: DEFTYPE CVT-T, public in package
-\ HV-P, whose converters >CVT-T and CVT-T>N the check states at CVT-T's token;
-\ a use of each in upper case and in lower case, and qualified ones outside HV-P.
 : HOVER-CVT-PATH ( -- ptr u8 n )  s" hover-cvt.f" IN-TREE ;
 : TEXT-HOVER-CVT ( -- ptr u8 n )
    s\" require src/lib/type/deftype.f\npackage HV-P\npublic\nDEFTYPE CVT-T\n: HV-CVT ( -- n ) 5 >CVT-T CVT-T>N >cvt-t cvt-t>n ;\n;package\n: HV-Q ( -- n ) 5 HV-P:>CVT-T HV-P:CVT-T>N ;\n" ;
@@ -3499,9 +3442,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    TXT-B CLEAR s\" ```habu\nDEFTYPE " HV+ w wu HV+
    s"  ( " HV+ e eu HV+ s\"  )\n\\ package hv-p, hover-cvt.f:4\n```" HV+ ;
 
-\ The use of each converter, in either case and qualified, answered with its
-\ own definition, over the use: the two share one token, so the token alone
-\ tells neither. A qualified use's whole spelling is neither converter's word,
+\ A qualified use's whole spelling is neither converter's word,
 \ so the server compares its tail, the bytes after its colon.
 : HOVER-DEFTYPE-TURNS ( -- )
    MARKDOWN-CLIENT
@@ -3523,7 +3464,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" >CVT-T" s" n -- cvt-t" CVT-MD s" 7" s" markdown" 6 18 29 HOVERED
    s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 8" s" markdown" 6 30 42 HOVERED ;
 
-\ A comment, the space before a use and a stack comment: null.
 : HOVER-NONE-TURNS ( -- )
    MARKDOWN-CLIENT
    DEF-A-PATH TEXT-DEF-A-MOVED 1 OPENS
@@ -3538,7 +3478,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR s" 4" NULL-RESULT
    HEAR s" 5" NULL-RESULT ;
 
-\ A client whose hovers take plain text only: HV-ONE's lines, unfenced.
 : HOVER-PLAIN-TURNS ( -- )
    PLAIN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
@@ -3550,7 +3489,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    TXT-B CLEAR 2 HV-ONE-LINES
    s" 3" s" plaintext" 2 18 24 HOVERED ;
 
-\ A position in a document the client never opened: -32602.
 : HOVER-NOT-OPEN-TURNS ( -- )
    MARKDOWN-CLIENT
    s" 3" HOVER-A-PATH 2 18 HOVER-ASK
@@ -3558,9 +3496,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED ;
 
-\ HV-ONE's use asked about at its new place in the turn of the change that
-\ moved it and HV-ONE two lines down: the request checks the changed text
-\ first, so its list comes before the answer, HV-ONE on its new line.
 : HOVER-AFTER-CHANGE-TURNS ( -- )
    MARKDOWN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
@@ -3599,11 +3534,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    down 2 + 33 40 HIGHLIGHT+
    SYMBOLS-END ;
 
-\ DEF-ONE's use in DEF-TWO, at its first character and its last, and DEF-ONE's
-\ declaring token, each answered with that token and both uses of DEF-ONE;
-\ DEF-TWO's token, which no use names, with itself alone; the character after
-\ the use still selects it, the next space selects none; a negative character
-\ -32602.
 : HIGHLIGHT-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
@@ -3626,10 +3556,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 8" SYMBOLS-START SYMBOLS-END
    HEAR s" 9" -32602 REFUSED ;
 
-\ A use of >CVT-T and a qualified use of CVT-T>N, each answered with CVT-T's
-\ token and the uses of its own converter, in either case and qualified, and
-\ none of the other's: the check states both converters at that one token. The
-\ token itself selects neither word, so it answers null.
 : HIGHLIGHT-DEFTYPE-TURNS ( -- )
    SESSION-INITIALIZE
    HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
@@ -3648,9 +3574,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SYMBOLS-END
    HEAR s" 5" NULL-RESULT ;
 
-\ The uses of def-dep.f's global and, qualified, of its public word, each
-\ answered with itself alone: the declarations are in the file on disk, not in
-\ the document.
 : HIGHLIGHT-DEP-TURNS ( -- )
    DEF-DEP-PATH TEXT-DEF-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -3664,7 +3587,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" SYMBOLS-START 1 19 26 HIGHLIGHT+ SYMBOLS-END
    s" 4" SYMBOLS-START 1 27 37 HIGHLIGHT+ SYMBOLS-END ;
 
-\ A position in a document the client never opened: -32602.
 : HIGHLIGHT-NOT-OPEN-TURNS ( -- )
    SESSION-INITIALIZE
    s" 3" DEF-A-PATH 1 19 HIGHLIGHT-ASK
@@ -3672,12 +3594,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED ;
 
-\ DEF-ONE's use asked about at its new place in the turn of the change that
-\ moved it and DEF-ONE two lines down: the request checks the changed text
-\ first, so its list comes before the answer, from the moved text. Asked again
-\ with a change back read behind it, the request is -32801 and the change is
-\ applied and checked after it; asked once more, the uses of the restored text
-\ are answered without a check.
 : HIGHLIGHT-AFTER-CHANGE-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
@@ -3698,18 +3614,12 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    s" 5" 0 DEF-ONE-LIT ;
 
-\ hu.f, refused for HU-BAD, whose body leaves the cell HU-ONE gives, and
-\ hd.f, deferred at the top-level PN, which parses: neither verdict says the
-\ check reported every use in the document.
 : HU-PATH ( -- ptr u8 n )  s" hu.f" FIXTURE ;
 : HD-PATH ( -- ptr u8 n )  s" hd.f" FIXTURE ;
 : TEXT-HU ( -- ptr u8 n )  s\" : HU-ONE ( -- n ) 1 ;\n: HU-BAD ( -- ) HU-ONE ;\n" ;
 : TEXT-HD ( -- ptr u8 n )
    s\" : HD-ONE ( -- n ) 1 ;\n: HD-TWO ( -- n ) HD-ONE ;\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
 
-\ The use of HU-ONE in the refused document and of HD-ONE in the deferred
-\ one, each answered null, while go to definition at the same byte answers
-\ its declaration from the same check.
 : HIGHLIGHT-UNPROVED-TURNS ( -- )
    SESSION-INITIALIZE
    HU-PATH TEXT-HU 1 OPENS
@@ -3733,9 +3643,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR s" 5" NULL-RESULT
    s" 6" HD-PATH URI-OF 0 2 8 LOCATED ;
 
-\ DEF-ONE's use asked about in the turn of a change whose check did not
-\ complete: no check of the document's text was verified, so the answer is
-\ null, not the uses of the text before it.
 : HIGHLIGHT-INCOMPLETE-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
@@ -3750,13 +3657,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR s" 3" NULL-RESULT
    LOGGED ;
 
-\ hl-common.f, on disk only, defines HL-K in the package and section that
-\ include it. hl-twice.f includes it into HLP's public section and HLQ's,
-\ hl-vis.f into HLV's public section and then its private one, hl-undef.f
-\ into the globals, then again after `undefine HL-K`, and each uses both
-\ words: the check states two words at HL-K's one token, of two packages, of
-\ one package under two visibilities, then of one wordlist one after the
-\ other.
 : HL-COMMON-PATH ( -- ptr u8 n )  s" hl-common.f" FIXTURE ;
 : HL-TWICE-PATH ( -- ptr u8 n )  s" hl-twice.f" FIXTURE ;
 : HL-VIS-PATH ( -- ptr u8 n )  s" hl-vis.f" FIXTURE ;
