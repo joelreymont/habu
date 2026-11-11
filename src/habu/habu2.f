@@ -2798,7 +2798,7 @@ public
 \ The active native compiler retains its checker even while a build replaces
 \ the source dictionary. The record's fields are the actual checker operations;
 \ a distinct target checker owns a second record during source replacement.
-\ FIND, MARK-END and RETRACT-TO open the package in habu1.f, before EMIT-EVAL-BODY.
+\ FIND, MARK-END and RETRACT-TO open the package in habu1.f, before their first use.
 package DECL-OWNER
 public
 
@@ -9154,7 +9154,7 @@ private
    9 LDOESPATCH LABEL@ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE LABEL@ ADR,  9 DATA CREATEP-CELL STR,
    9 LRREC LABEL@ ADR,  9 DATA RRECP-CELL STR,
-   9 LMAIN LABEL@ ADR,  9 DATA LMAINP-CELL STR,            \ interpret-loop top (B-EVAL branches here)
+   9 LMAIN LABEL@ ADR,  9 DATA LMAINP-CELL STR,            \ interpret-loop top
    9 LEVALREC LABEL@ ADR,  9 DATA EVALREC-CELL STR,       \ evaluate throw-recovery entry (BTHROW branches here)
    9 LFLOORREC LABEL@ ADR,  9 DATA FLOORREC-CELL STR,     \ underdepth throw entry (the crash handler resumes an access below the base here)
    9 LUNCAUGHT LABEL@ ADR,  9 DATA UNCGH-CELL STR,        \ uncaught top-level throw reporter (BTHROW THROW-NOREC branches here)
@@ -12477,7 +12477,7 @@ private
 \ read once because EM-RESET-COMPILE-STATE zeroes HND-CELL) is inside the
 \ current frame; delivery then matches the non-evaluate path.
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unowned:label unrefused:label kept:label :}
+   LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unrefused:label kept:label :}
    LBL {: retired:label :}
    S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
    LEVALREC LABEL@ LBL,
@@ -12487,13 +12487,11 @@ private
    LEVLL LABEL@ LBL,
       12 DATA EVALD-CELL LDR,  12 LEVLD LABEL@ CBZ,   \ no eval frame left → unwind to handler
       13 DATA EVAL-TOP-CELL LDR,                     \ x13 = current frame
-      14 13 24 LDR,                                   \ x14 = eval-entry SP (boundary); x13 stays &frame
+      14 13 24 LDR,                                   \ x14 = the frame's boundary (interpreter.f FR-BOUND); x13 stays &frame
       11 LEVLP LABEL@ CBZ,                            \ no handler → pop (escape)
-      \ Handler strictly inside this frame -> unwind to it. B-EVAL stores the
-      \ pre-frame SP as the boundary and BCATCH records that same SP for a
-      \ handler installed just outside (`' evaluate catch` at top level), so
-      \ equal is outside: treating it as inside left the frame unpopped and CP
-      \ at the abandoned definition's.
+      \ Handler strictly inside this frame -> unwind to it. The boundary is the
+      \ evaluate's own catch handler (interpreter.f FRAME-LINK), so an equal
+      \ handler lies outside the buffer and the frame pops.
       11 14 CMP,  C-CC LEVLD LABEL@ BCOND,
    LEVLP LABEL@ LBL,
       14 13 STACK-ABI:EVAL-BASE LDR,  10 13 STACK-ABI:EVAL-CAP LDR,
@@ -12504,20 +12502,6 @@ private
       12 13 8 LDR,   12 DATA INE-CELL STR,
       12 13 EVAL-INB LDR,  12 DATA SRCLOC:INB-CELL STR,
       XDS 13 32 LDR,
-      \ A closed frame returns its text's data stack to the pool, whether or
-      \ not it owns the compile; the extent in force becomes its caller's, kept
-      \ in habu1.f B-EVAL-CLOSED's frame at [frame+24] (base, capacity, cursor
-      \ at [0], [8], [16]). Compiled code runs before a handler's own extent is
-      \ back (EM-PKG-RESYNC at LEVLD) and none may run on a pooled stack: the pool
-      \ links an idle stack through its first cell.
-      10 13 STACK-ABI:EVAL-SEG LDR,  10 unowned CBZ,
-      9 DATA CLOSED-FREE-CELL LDR,  9 10 0 STR,  10 DATA CLOSED-FREE-CELL STR,
-      9 13 24 LDR,
-      14 9 0 LDR,  10 9 8 LDR,  12 9 16 LDR,  0 bounds STACK-GUARD:CHECK-CURSOR
-      14 DATA STACK-ABI:BASE-CELL STR,
-      12 9 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-      XDS 9 16 LDR,
-      unowned LBL,
       12 13 EVAL-FRAME:PEND LDR,  12 owned CBZ,       \ no definition open as it began: it owns the compile
          \ The outer definition as the interrupted token began (TOKBODY-CELL).
          12 DATA TOKBODY-CELL LDR,  12 DATA BODYLEN-CELL STR,

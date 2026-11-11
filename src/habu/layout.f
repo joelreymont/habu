@@ -399,11 +399,9 @@ $36C0 constant BPTRAMP-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
-\ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest. habu1.f
-\ EMIT-EVAL-BODY (`evaluate-closed`, and ARM64's `evaluate`) pushes its frame on
-\ the native stack; x86-64's Habu `evaluate`
-\ (src/habu/interpreter.f INTERPRETER:EVAL-FRAMED) writes the same fields into a
-\ mapping of its own. EVAL-PREV links each to the frame it nests in.
+\ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest, each a mapping
+\ src/habu/interpreter.f INTERPRETER:FRAME-OPEN fills. EVAL-PREV links each to
+\ the frame it nests in.
 $43C0 constant EVAL-TOP-CELL
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
@@ -413,7 +411,7 @@ $48 constant EVAL-PKG
 \ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
 \ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
 \ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; $128 is held for the
-\ frame's saved next wordlist id (WIDN), STACK-ABI:EVAL-SEG takes $130,
+\ frame's saved next wordlist id (WIDN), $130 is free,
 \ EVAL-FRAME:ROWS $138, EVAL-FRAME:SX-CTX..SX-SRC $140..$158 and
 \ EVAL-FRAME:ENCLOSING $158..$178 and EVAL-FRAME:PKG-OUTSIDE $178, which ends
 \ the frame at STACK-ABI:EVAL-BYTES ($180) and keeps the native stack 16-byte
@@ -421,13 +419,9 @@ $48 constant EVAL-PKG
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
-\ USE-FLOOR: the using depth the buffer may close down to. B-EVAL starts it at
-\ the depth the buffer enters at, so a `;using` at or below it, which would
-\ close a using the includer opened, is refused (habu2.f C-END-USING). A
-\ `;package` that closes a package opened before the buffer restores a lower
-\ depth; the buffer's next `using` lowers the floor to meet it (C-USING-PUSH),
-\ and the clean exit restores the depth to the lower of the two
-\ (EM-EVAL-CLEAN-EXIT), so no using the buffer opened stays open.
+\ USE-FLOOR: the buffer's entry using depth (interpreter.f FRAME-OPEN), read
+\ only by the machine-code loop (habu2.f C-END-USING); interpreter.f USE-FLOOR
+\ is the Habu loop's floor.
 $98 constant USE-FLOOR
 \ USE-WIDS: the includer's USE-MAX used-public wids (USE-WIDS-OFF), which a
 \ throw puts back with the depth and the floor (habu2.f LEVALREC). A buffer
@@ -442,14 +436,14 @@ $A0 constant USE-WIDS
 \ (habu2.f EM-EVAL-THROW-RECOVER).
 $120 constant PEND
 \ ROWS: the checker's record end as the buffer began, plus one, read through
-\ the source owner (habu1.f EMIT-EVAL-BODY); 0 when no owner records. A throw that
+\ the source owner (interpreter.f ROWS-MARK); 0 when no owner records. A throw that
 \ unwinds a buffer owning the compile cuts the records back to it as it rolls
 \ the dictionary back (habu2.f EM-EVAL-THROW-RECOVER), so no definition the
 \ rollback drops keeps a record or a pending window.
 $138 constant ROWS
 \ SX-CTX: the source observer this buffer adopted, 0 when it adopted none. An
 \ observed word that evaluates a buffer hands the observer to that buffer
-\ (habu1.f EMIT-EVAL-BODY, interpreter.f OBSERVE-ARM): SX-TICKET and SX-SRC keep
+\ (interpreter.f OBSERVE-ADOPT): SX-TICKET and SX-SRC keep
 \ the word's ticket and its source start, which the clean exit and the throw
 \ recovery put back with the word's run pending again (habu1.f
 \ ENGINE-EMIT:SX-RESTORE,, interpreter.f OBSERVE-RESTORE). The observer's frame
@@ -477,8 +471,8 @@ $178 constant PKG-OUTSIDE
 \ republishes the parent's. The address is the frame's, not INCLUDE-PATH's,
 \ because a nested include overwrites that buffer.
 \ INB-CELL: the start of the buffer INP walks, which SRCLOC:FILE-BUFFER? tests
-\ against the file's owned bytes. habu1.f B-EVAL sets it and saves the outer
-\ value in EVAL-INB. It is not beside INP/INE: $36B0 is regalloc.f
+\ against the file's owned bytes. interpreter.f EVAL-FRAMED-RANGE sets it, its
+\ frame keeping the outer value in EVAL-INB. It is not beside INP/INE: $36B0 is regalloc.f
 \ FRFREE-CELL and $36C8 is address-cells.f INDEX-CELL.
 \ All three sit in the $2800..$3000 free header band, below $7FF8 for a
 \ `DATA <off> LDR` and below DATA-START.
@@ -812,7 +806,7 @@ $3868 constant ARENA-CELL
 \ x86-64 boot as a fixed address row (src/habu/link-x64.f FIXED-CELLS). A seeded
 \ x86-64 row is a stub that jumps through it (src/habu/kernel-x64.f
 \ X64KERNEL:PROVIDED-ROW), and x86-64's `evaluate-closed` calls EVALUATE-CELL's
-\ word; arm64's evaluate words use the cells once set (habu1.f B-EVAL,
+\ word; arm64's evaluate words run the cells' words (habu1.f B-EVAL,
 \ B-EVAL-RANGE, B-EVAL-CLOSED). EVALUATE-CELL follows the NCOMP-DISPATCH cells,
 \ which end at $3847.
 package PROVIDED-XT
@@ -1284,11 +1278,10 @@ STK-OFF LEVELS 1- FRAME-BYTES * + constant END
 $2CD0 constant FLOORREC-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
-\ the list is empty) and gives it back on the clean return, and habu2.f
-\ LEVALREC gives back the stack of every closed frame a throw pops. The stacks
-\ are this process's mappings, so boot (habu2.f EM-STARTUP-RUNTIME-STATE)
-\ zeroes the cell. It sits beside
-\ FLOORREC-CELL in the free header band.
+\ the list is empty) and gives it back as it returns or throws on
+\ (CLOSED-LEAVE). The stacks are this process's mappings, so boot (habu2.f
+\ EM-STARTUP-RUNTIME-STATE) zeroes the cell. It sits beside FLOORREC-CELL in
+\ the free header band.
 $2CD8 constant CLOSED-FREE-CELL
 \ CODE-END-CELL: the end of the kernel's code, [RBASE-CELL, CODE-END-CELL); a
 \ linked program's words follow it. The linker maps the running hb's kernel

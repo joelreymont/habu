@@ -278,7 +278,7 @@ create NL NEWLINE c,
 : CELL! ( n n -- )
    data-base + ! ;
 
-\ The input cells hold byte addresses (habu1.f B-EVAL, LTOK). These two are
+\ The input cells hold byte addresses (EVAL-FRAMED-RANGE, habu1.f LTOK). These two are
 \ interpreter.f's one crossing between such a cell and a byte pointer, through
 \ `ptr-field`, the declared door to a DATA cell that holds an address.
 : ADDR@ ( n -- ptr u8 ) data-base + 0 ptr-field @ ;
@@ -615,7 +615,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
 \ in (EVAL-TOP-CELL until FRAME-LINK makes it f's EVAL-PREV), the word's run
 \ is pending, no callback and no definition is open. f keeps the observer, the
 \ word's ticket and its source start; the buffer's tokens are observed with
-\ offsets relative to src (habu1.f EMIT-EVAL-BODY).
+\ offsets relative to src.
 : OBSERVE-ADOPT ( ptr u8 ptr u8 ptr u8 -- ) {: ctx:ptr src:ptr f:ptr :}
    ctx SX-EVAL FR@ LOOP-EVAL @ <> if exit then
    ctx SX-EVAL FR@ EVAL-TOP-CELL CELL@ <> if exit then
@@ -630,7 +630,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    0 ctx SX-PENDING FR! ;
 
 \ Arm the frame when the range this evaluate opens is the owned one: the
-\ frame, the depth floor and the return-stack floor (habu1.f EMIT-EVAL-BODY).
+\ frame, the depth floor and the return-stack floor.
 : OBSERVE-ARM ( ptr u8 n ptr u8 -- ) {: src:ptr len:n f:ptr :}
    OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
    ctx SX-ARMED FR@ 0<> if ctx src f OBSERVE-ADOPT exit then
@@ -1235,7 +1235,7 @@ private
    then
    wid XREF:WID-SEALED? ;
 
-\ A throw puts the package scope back (habu1.f B-EVAL, habu2.f LEVALREC).
+\ A throw puts the package scope back (FRAME-OPEN, habu2.f LEVALREC).
 \ The enclosing package's row and parent wordlist, the open package's row and
 \ parent wordlist, the current wordlist and the open package's using floor:
 \ what the engine's evaluate frame keeps of the package scope beside the using
@@ -2673,13 +2673,12 @@ private
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then
    PKG-OUTSIDE-CELL CELL@ 0<> if outside PKG-OUTSIDE-CELL CELL! then ;
 
-\ `evaluate` keeps the frame the engine's evaluate pushes, field for field, in a
-\ mapping of its own, linked through EVAL-TOP-CELL and counted in EVALD-CELL, so
-\ a throw out of its buffer reaches habu2.f LEVALREC, which pops the frame and
-\ restores it. Fields layout.f does not name sit where EMIT-EVAL-BODY's code
-\ stores them. The clean-exit continuation at $10 stays
-\ zero: only the engine's loop reads it (habu2.f EM-EVAL-CLEAN-EXIT), never for
-\ a buffer this frame bounds.
+\ `evaluate` keeps its frame in a mapping of its own, linked through
+\ EVAL-TOP-CELL and counted in EVALD-CELL, so a throw out of its buffer reaches
+\ habu2.f LEVALREC, which pops the frame and restores it. Fields layout.f does
+\ not name sit where LEVALREC reads them. The clean-exit continuation at $10
+\ stays zero: only the engine's loop reads it (habu2.f EM-EVAL-CLEAN-EXIT),
+\ never for a buffer this frame bounds.
 0 constant FR-INP                  \ the includer's input cursor
 8 constant FR-INE                  \ and the end of its input
 $18 constant FR-BOUND              \ the evaluate's own catch handler
@@ -2731,7 +2730,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    DP-CELL CELL@ f FR-DP FR!
    STACK-ABI:BASE-CELL CELL@ f STACK-ABI:EVAL-BASE FR!
    STACK-ABI:CAP-CELL CELL@ f STACK-ABI:EVAL-CAP FR!
-   0 f STACK-ABI:EVAL-SEG FR!
    0 f EVAL-FRAME:SX-CTX FR!
    PEND-CELL CELL@ f EVAL-FRAME:PEND FR!
    f EVAL-PKG + {: snap:ptr :}
@@ -2902,15 +2900,15 @@ public
       a u REPL-LINE REPL-OK !
    again ;
 
-\ Interpret the range [first, end) as the engine's evaluate-range does (habu1.f
-\ B-EVAL-RANGE), under the evaluate frame: a throw out of it is rolled back in
+\ The engine's `evaluate-range` (habu1.f B-EVAL-RANGE): interpret the range
+\ [first, end) under the evaluate frame: a throw out of it is rolled back in
 \ LEVALREC, which pops the frame before the catch here sees the code. Either
 \ way the frame's mapping goes back, and so do the buffer's using floor and the
 \ record the step that ran the word looked up (REC). The input base
 \ stays the buffer's first byte, so a refusal's line counts from the start of
 \ the whole source. An owned source range arms the observer here, and a buffer
-\ an observed word evaluates adopts it until the catch (habu1.f
-\ EMIT-EVAL-BODY); LOOP-EVAL names this frame while its loop reads.
+\ an observed word evaluates adopts it until the catch (OBSERVE-ADOPT);
+\ LOOP-EVAL names this frame while its loop reads.
 : EVAL-FRAMED-RANGE ( ptr u8 n n n -- ) {: a:ptr u:n first:n end:n :}
    EVAL-TASK-GUARD
    depth FRAME-OPEN {: f:ptr :}
@@ -2950,7 +2948,7 @@ public
    f FRAME-FREE
    code 0<> if code throw then ;
 
-\ The whole buffer, as the engine's evaluate reads it (habu1.f B-EVAL).
+\ The engine's `evaluate` (habu1.f B-EVAL): the whole buffer.
 : EVAL-FRAMED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u 0 u EVAL-FRAMED-RANGE ;
 

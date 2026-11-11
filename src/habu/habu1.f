@@ -1812,9 +1812,9 @@ public
       tmp base off i + LDR,  tmp DATA ENCLOSING:PUB i + STR,
    CELL +loop ;
 
-\ Give the observer the evaluate frame in x<f> adopted (EMIT-EVAL-BODY) back
-\ its frame (the one x<f> nests in, which adoption required), the evaluating
-\ word's ticket and its source start, with that
+\ Give the observer the evaluate frame in x<f> adopted (src/habu/interpreter.f
+\ OBSERVE-ADOPT) back its frame (the one x<f> nests in, which adoption
+\ required), the evaluating word's ticket and its source start, with that
 \ word's run pending again and no callback open (habu2.f EM-EVAL-CLEAN-EXIT,
 \ LEVALREC). Nothing when the frame adopted none. ctx and tmp are scratch.
 : SX-RESTORE, ( n n n -- ) {: f:n ctx:n tmp:n :}
@@ -1828,8 +1828,8 @@ public
    kept LBL, ;
 ;package
 
-\ The source checker's operations and the record mark EMIT-EVAL-BODY takes;
-\ habu2.f DECL-OWNER holds the rest of the package.
+\ The source checker's operations and its record mark; habu2.f DECL-OWNER
+\ holds the rest of the package.
 package DECL-OWNER
 public
 
@@ -1858,114 +1858,19 @@ public
 ;package
 
 package ENGINE-EMIT
-\ B-EVAL and B-EVAL-RANGE jump through a set PROVIDED-XT cell with their
-\ arguments on the data stack; else the interpret loop is entered through
-\ LMAINP-CELL (a prim names no label) and LEXIT returns with EVALERR-CELL 0.
-\
-\ EMIT-EVAL-BODY: a u in x9 x10, in x13 the data stack the frame owns (0 for
-\ evaluate); the clean exit returns to x30. The checker's record end
-\ (EVAL-FRAME:ROWS) is read last, once x9, x10, x13, x14 and x30 are spent: the
-\ owner's ROWS-END field is checked code.
-variable LEVALBODY
 public
 variable LSOURCEEXECFINISH
 
 private
+\ B-EVAL and B-EVAL-RANGE jump, their arguments on the data stack, through the
+\ PROVIDED-XT cell src/habu/runtime.f RUNTIME:INSTALL sets.
 : B-EVAL ( -- )
-   LBL {: own:label :}
    B-TASK-GUARD
-   9 DATA PROVIDED-XT:EVALUATE-CELL LDR,  9 own CBZ,  9 BR,
-   own LBL,
-   B G-POP  A G-POP
-   13 0 MOVZ,
-   6 0 MOVZ,  7 10 0 ADDI,
-   LEVALBODY LABEL@ B, ;
+   9 DATA PROVIDED-XT:EVALUATE-CELL LDR,  9 BR, ;
 
 : B-EVAL-RANGE ( -- )
-   LBL {: own:label :}
    B-TASK-GUARD
-   9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 own CBZ,  9 BR,
-   own LBL,
-   7 G-POP  6 G-POP  B G-POP  A G-POP
-   13 0 MOVZ,
-   LEVALBODY LABEL@ B, ;
-
-: EMIT-EVAL-BODY ( -- )
-   LBL LBL LBL {: end:label sx-done:label sx-adopt:label :}
-   s" (EVALUATE)" LEVALBODY LABEL@ LABEL>N
-      end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   LEVALBODY LABEL@ LBL,
-   SP SP STACK-ABI:EVAL-BYTES SUBI,
-   14 SP 0 ADDI,
-   11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
-   14 DATA EVAL-TOP-CELL STR,
-   11 DATA INP-CELL LDR,  11 14 0 STR,
-   12 DATA INE-CELL LDR,  12 14 8 STR,
-   11 DATA SRCLOC:INB-CELL LDR,  11 14 EVAL-INB STR,   \ buffer START, for the refusal line number
-   11 DATA PEND-CELL LDR,  11 14 EVAL-FRAME:PEND STR,   \ the definition open as this buffer begins
-   30 14 16 STR,                                     \ x30 = where the clean exit returns
-   11 SP STACK-ABI:EVAL-BYTES ADDI,  11 14 24 STR,
-   XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
-   11 DATA DP-CELL LDR,  11 14 56 STR,
-   11 DATA STACK-ABI:BASE-CELL LDR,  11 14 STACK-ABI:EVAL-BASE STR,
-   11 DATA STACK-ABI:CAP-CELL LDR,  11 14 STACK-ABI:EVAL-CAP STR,
-   13 14 STACK-ABI:EVAL-SEG STR,
-   \ The source observer. An unarmed one arms when this range is the owned one.
-   \ An armed one whose reading frame is the one this buffer nests in, with a
-   \ word's run pending, no callback open and no definition open, is adopted:
-   \ that word evaluates this buffer, so its tokens are observed in their own
-   \ right, their offsets relative to this buffer's first byte, until the clean
-   \ exit or the throw recovery gives the word's run back
-   \ (ENGINE-EMIT:SX-RESTORE,). Only x11, x12 and x15 are free here.
-   15 0 MOVZ,  15 14 EVAL-FRAME:SX-CTX STR,
-   11 DATA SOURCE-EXEC-CTX-CELL LDR,  11 sx-done CBZ,
-   12 11 SX-ARMED LDR,  12 sx-adopt CBNZ,
-   12 11 SX-SRC LDR,  15 9 6 ADD,  12 15 CMP,  C-NE sx-done BCOND,
-   12 11 SX-LEN LDR,  15 7 6 SUB,  12 15 CMP,  C-NE sx-done BCOND,
-   14 11 SX-EVAL STR,
-   12 DATA S0-CELL LDR,  12 XDS 12 SUB,  12 12 3 LSRI,  12 11 SX-FLOOR STR,
-   12 DATA RSP-CELL LDR,  12 11 SX-RFLOOR STR,
-   12 1 MOVZ,  12 11 SX-ARMED STR,
-   sx-done B,
-   sx-adopt LBL,
-   12 11 SX-EVAL LDR,  15 14 EVAL-PREV LDR,  12 15 CMP,  C-NE sx-done BCOND,
-   12 11 SX-PENDING LDR,  12 sx-done CBZ,
-   12 11 SX-SUSPEND LDR,  12 sx-done CBNZ,
-   12 DATA PEND-CELL LDR,  12 sx-done CBNZ,
-   11 14 EVAL-FRAME:SX-CTX STR,
-   12 11 SX-TICKET LDR,  12 14 EVAL-FRAME:SX-TICKET STR,
-   12 11 SX-SRC LDR,  12 14 EVAL-FRAME:SX-SRC STR,
-   14 11 SX-EVAL STR,
-   15 9 6 ADD,  15 11 SX-SRC STR,
-   12 0 MOVZ,  12 11 SX-PENDING STR,
-   sx-done LBL,
-   12 14 EVAL-PKG ADDI,
-   11 DATA CUR-CELL LDR,        11 12 PKGSNAP-CUR STR,
-   11 DATA PKG-PUB-CELL LDR,    11 12 PKGSNAP-PUB STR,
-   11 DATA PKG-PRI-CELL LDR,    11 12 PKGSNAP-PRI STR,
-   11 DATA PKG-PARENT-CELL LDR, 11 12 PKGSNAP-PARENT STR,
-   11 DATA PKG-REC-CELL LDR,    11 12 PKGSNAP-REC STR,
-   14 EVAL-FRAME:ENCLOSING 11 ENGINE-EMIT:ENCLOSING-SAVE,
-   \ The `using` depth, rolled back to this boundary on clean exit
-   \ (EM-EVAL-CLEAN-EXIT) and on throw (LEVALREC): usings are file-local.
-   11 USE-DEPTH-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-USE STR,
-   \ and starts the buffer's using floor there: it closes only the usings it opens
-   11 14 EVAL-FRAME:USE-FLOOR STR,
-   \ A package open now was opened outside the buffer (layout.f PKG-OUTSIDE-CELL)
-   11 DATA PKG-OUTSIDE-CELL LDR,  11 14 EVAL-FRAME:PKG-OUTSIDE STR,
-   11 1 MOVZ,  11 DATA PKG-OUTSIDE-CELL STR,
-   12 14 EVAL-PKG ADDI,
-   \ and the open package's using floor, which a throw restores with the package
-   11 USE-PKG-SAVE-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP:FLOOR STR,
-   \ and the includer's used publics, which a throw puts back with the depth
-   14 EVAL-FRAME:USE-WIDS 11 12 ENGINE-EMIT:USE-WIDS-SAVE,
-   11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
-   11 9 6 ADD,  11 DATA INP-CELL STR,               \ INP = full base + first
-   9 DATA SRCLOC:INB-CELL STR,                       \ INB = full source base
-   11 9 7 ADD,  11 DATA INE-CELL STR,               \ INE = full base + end
-   10 SP EVAL-FRAME:ROWS DECL-OWNER:MARK-END
-   9 DATA LMAINP-CELL LDR,  9 BR,
-   end LBL, ;
+   9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 BR, ;
 
 : BCREATE ( -- )
    B-TASK-GUARD                                   \ only main defines
@@ -4030,12 +3935,11 @@ private
 
 \ evaluate-closed ( ptr u8 n -- ): the text runs on a guarded stack of its own
 \ from the CLOSED-FREE-CELL pool; this frame holds the caller's base, capacity
-\ and cursor at [0] [8] [16] and the text's stack at [24], which habu2.f
-\ EM-EVAL-THROW-RECOVER reads. A set PROVIDED-XT:EVALUATE-CELL runs the text
-\ under this frame's catch, which gives the stack back before throwing on.
+\ and cursor at [0] [8] [16] and the text's stack at [24], which CLOSED-LEAVE
+\ reads. PROVIDED-XT:EVALUATE-CELL runs the text under this frame's catch,
+\ which gives the stack back before throwing on.
 : B-EVAL-CLOSED ( -- )
-   LBL LBL LBL LBL {: have:label take:label back:label done:label :}
-   LBL LBL {: cell:label thrown:label :}
+   LBL LBL LBL LBL {: have:label take:label done:label thrown:label :}
    B-TASK-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    SP SP 32 SUBI,
@@ -4054,16 +3958,11 @@ private
    13 DATA STACK-ABI:BASE-CELL STR,
    12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
-   12 DATA PROVIDED-XT:EVALUATE-CELL LDR,  12 cell CBNZ,
-   6 0 MOVZ,  7 10 0 ADDI,
-   30 back ADR,
-   LEVALBODY LABEL@ B,
-   cell LBL,
+   12 DATA PROVIDED-XT:EVALUATE-CELL LDR,
    9 G-PUSH  10 G-PUSH  12 G-PUSH                    \ a u for the cell's word, under its xt
    BCATCH-RUN
    CLOSED-LEAVE  thrown B,                           \ x9 = the code
    CATCH-PUSH LABEL@ LBL,
-   back LBL,
    CLOSED-LEAVE
    13 11 CMP,  C-EQ done BCOND,
    9 STACK-ABI:E-EVAL-RESIDUE LIT64,
@@ -4198,9 +4097,10 @@ private
 \ A loader cut may carry parent data cells across the child's guarded stack.
 \ All compiler state and the return stack must still be closed at that cut.
 \ The floors are the owned range's, so a loop reading a buffer an observed
-\ word evaluates (its frame's EVAL-FRAME:SX-CTX set, EMIT-EVAL-BODY) is never
-\ clean: no boundary, no cut and no balanced position there. x10 = the
-\ observer, whose SX-EVAL every caller has matched to EVAL-TOP-CELL.
+\ word evaluates (its frame's EVAL-FRAME:SX-CTX set, interpreter.f
+\ OBSERVE-ADOPT) is never clean: no boundary, no cut and no balanced position
+\ there. x10 = the observer, whose SX-EVAL every caller has matched to
+\ EVAL-TOP-CELL.
 : BSOURCEEXECCLEAN ( -- )
    LBL LBL {: bad:label done:label :}
    9 10 SX-EVAL LDR,  9 9 EVAL-FRAME:SX-CTX LDR,  9 bad CBNZ,
@@ -5191,7 +5091,6 @@ package ENGINE-EMIT
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
-   LBL LEVALBODY !
    s" evaluate" ['] B-EVAL FPRIM-L
    s" evaluate-range" ['] B-EVAL-RANGE FPRIM-L
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
@@ -5201,8 +5100,7 @@ package ENGINE-EMIT
    s" source-exec-boundary?" ['] BSOURCEEXECBOUNDARY FPRIM
    s" source-exec-loader-cut?" ['] BSOURCEEXECLOADERCUT FPRIM
    s" source-exec-position" ['] BSOURCEEXECPOSITION FPRIM
-   s" source-exec-handler" ['] BSOURCEEXECHANDLER FPRIM
-   EMIT-EVAL-BODY ;
+   s" source-exec-handler" ['] BSOURCEEXECHANDLER FPRIM ;
 
 : EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L
