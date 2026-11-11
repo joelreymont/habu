@@ -1341,6 +1341,8 @@ private
 \ lifetime only; CF is the JIT's patch stack.
 LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
 variable BODY-DEPTH
+\ The raw capture: 0 none, -1 one raw token (the operand of `[char]` or
+\ `[']`), and depth+1 inside a `[type]` span at that type-nesting depth.
 variable BODY-RAW-NEXT
 variable TOK-BODY-DEPTH
 variable TOK-BODY-RAW
@@ -1453,7 +1455,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ The keywords a body's compiler reads before it looks a word up: a word named
 \ by one could never be called from a body.
 : DEF-KEYWORDS ( -- ptr u8 n )
-   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {:" ;
+   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {:" ;
 
 \ A design may define none of the engine's dispatch-row names. The thirteen
 \ admitted syntax rows keep the ordinary reserved-name error; every other
@@ -1777,6 +1779,7 @@ private
    S\" s\q" TOKEN-IS? if exit then
    S\" s\\\q" TOKEN-IS? if exit then
    s" [package]" TOKEN-IS? if exit then
+   s" [type]" TOKEN-IS? if exit then
    s" {:" TOKEN-IS? if exit then
    POLICY-REFUSE ;
 
@@ -1929,6 +1932,14 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   BODY-RAW-NEXT @ 0 > if
+      TOKEN$ TYPE-SPAN-END? if 0 BODY-RAW-NEXT ! then
+   then
+   BODY-RAW-NEXT @ 0 > if
+      BODY-RAW-NEXT @ 1- TOKEN$ CHECKER-TYPE-SPAN-STEP
+      if drop 0 else 1+ then BODY-RAW-NEXT !
+      TOKEN$ DEF-CAPTURE  DEF-PREFIX-BIND  true exit
+   then
    BODY-RAW-NEXT @ if
       0 BODY-RAW-NEXT !
       TOKEN$ DEF-CAPTURE  DEF-PREFIX-BIND  true exit
@@ -1945,6 +1956,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-DOES? if true exit then
    DEF-STRING-TEXT
    TOKEN$ SOURCE-SYNTAX:BODY-PARSING-KEYWORD? if -1 BODY-RAW-NEXT ! then
+   s" [type]" TOKEN-IS? if 1 BODY-RAW-NEXT ! then
    DEF-PREFIX-BIND
    true ;
 

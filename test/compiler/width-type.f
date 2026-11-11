@@ -1,12 +1,15 @@
 \ width-type.f - the built-in type `width<t>`: one cell holding the bytes t
 \ takes in storage, read with `width>n`. Its slot takes a type of any width, a
-\ width of one type is not a width of another, and no storage holds one.
+\ width of one type is not a width of another, and no storage holds one. A
+\ body's `[type] t` makes one for a closed type storage holds.
 require src/lib/test.f
 require src/lib/string.f
 
 \ File-global: the programs below compile at run time, in the scope a real
 \ program writes them in.
 STRUCTURE turn DERIVE addr FIELD alive bool FIELD angle r ;STRUCTURE
+DEFLINEAR wtlin
+STRUCTURE wtbox FIELD t wtlin FIELD k n ;STRUCTURE
 
 package WIDTH-TYPE-TEST
 
@@ -96,6 +99,57 @@ create DIAG-BUF 8192 allot
    s" a width is not stored: keep its bytes (width>n)" HAS?
    DISARM ;
 
+: CASE-TYPE-FORM ( -- )
+   s" [type] t in a body is the bytes t takes in storage" T-LABEL
+   s" : TW1 ( -- width<turn> ) [type] turn ; TW1 width>n" TEST-EVAL:N 16 T=
+   s" : TW2 ( -- width<n> ) [type] n ; TW2 width>n" TEST-EVAL:N 8 T=
+   s" : TW3 ( -- width<u8> ) [type] u8 ; TW3 width>n" TEST-EVAL:N 1 T=
+   s" : TW4 ( -- n ) [type] ptr turn width>n ; TW4" TEST-EVAL:N 8 T=
+   s" : TW5 ( -- n ) [: [type] turn ;] execute width>n ; TW5" TEST-EVAL:N 16 T=
+   s" : TW6 ( -- n ) [type] turn W1 ; TW6" TEST-EVAL:N 16 T= ;
+
+: FORM-REFUSED ( ptr u8 n -- )   \ the text is refused for its [type] span
+   {: a:ptr u:n :}
+   ARM
+   [: a u evaluate-closed ;] CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-BAD-STORAGE\"" HAS?
+   s" [type] names no type storage holds" HAS?
+   DISARM ;
+
+: FORM-PINNED ( ptr u8 n ptr u8 n -- )   \ the refusal's JSON holds fragment f
+   {: a:ptr u:n f:ptr fu:n :}
+   ARM
+   [: a u evaluate-closed ;] CHECK-RC TTHROWSQ
+   f fu HAS?
+   DISARM ;
+
+: CASE-TYPE-FORM-REFUSED ( -- )
+   s" [type] refuses a type storage cannot hold" T-LABEL
+   s" : TX1 ( ptr t -- n ) drop [type] t width>n ;" FORM-REFUSED
+   s" : TX2 ( ptr t -- n ) drop [type] ptr t width>n ;" FORM-REFUSED
+   s" : TX3 ( -- n ) [type] wtlin width>n ;" FORM-REFUSED
+   s" : TX4 ( -- n ) [type] wtbox width>n ;" FORM-REFUSED
+   s" : TX5 ( -- n ) [type] xt width>n ;" FORM-REFUSED
+   s" : TX6 ( -- n ) [type] width<n> width>n ;" FORM-REFUSED
+   s" : TX7 ( -- n ) [type] nosuch width>n ;" FORM-REFUSED
+   s" : TX8 ( -- n ) [type] ;" FORM-REFUSED
+   s" : TX11 ( -- n ) drop [type] u32 width>n ;"
+   S\" \"token\":\"u32\"" FORM-PINNED
+   s" : TX12 ( -- n ) drop [type] ;"
+   S\" \"token\":\"[type]\"" FORM-PINNED
+   s" : TX13 ( -- n ) [type] u32 then ;"
+   S\" \"token\":\"u32\"" FORM-PINNED ;
+
+: CASE-TYPE-FORM-END ( -- )
+   s" a [type] span ends where its definition or quotation ends" T-LABEL
+   s" : TX9 [type] ptr ;" FORM-REFUSED
+   s" : TX10 ( -- n ) [: [type] ptr ;] drop 1 ;"
+   S\" \"token\":\"ptr\"" FORM-PINNED ;
+
+: CASE-TYPE-FORM-NAME ( -- )
+   s" [type] is a keyword no definition is named" T-LABEL
+   s" : [type] ;" TEST-EVAL:RC CHECK-RC T= ;
+
 : CASE-MEMBER ( -- )
    s" no declaration holds a width member" T-LABEL
    s" STRUCTURE sw1 FIELD w width<n> ;STRUCTURE" DECL-REFUSED
@@ -114,6 +168,10 @@ public
    CASE-NOT-N
    CASE-STORAGE
    CASE-MEMBER
+   CASE-TYPE-FORM
+   CASE-TYPE-FORM-REFUSED
+   CASE-TYPE-FORM-END
+   CASE-TYPE-FORM-NAME
    T-REPORT ;
 
 ;package

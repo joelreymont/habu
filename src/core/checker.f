@@ -5254,6 +5254,7 @@ CHECKER-REG:}SCRATCH
 45 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
 46 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
 47 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code
+67 constant MD-TYPE-FORM     \ a body's `[type]` names no closed type storage holds (TYPE-LIT-TOK); E-BAD-STORAGE
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -7486,6 +7487,10 @@ variable PKHAVE
    depth u 0 ?do a i + c@ SIG-NEST loop {: after:n :}
    after 0 > IF after RES-FALSE EXIT THEN
    after a u SIG-PTR-TOK? 0= ;
+\ No type spelling holds `;` or `;]`, so a body's `[type]` span ends before
+\ one, never past the end of its definition or quotation.
+: TYPE-SPAN-END? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" ;" CORE-STR=  a u s" ;]" CORE-STR=  or ;
 : CHECKER-TYPE-SPAN-BREAK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    RES-FALSE u 0 ?do a i + c@ 10 = or loop ;
 
@@ -7737,20 +7742,16 @@ SIG-BINDER-BODY-INSTALL
    BAD-SIG-TYPE                    \ pinned token is the annotation itself, not ':}'
    0 OK !  -1 FAILSET ! ;
 
-\ NMAP and the family registry are shared on purpose: that is how an annotation
-\ names the definition's type variables.
-
-: LOC-ANN-END? ( -- bool )
-   NEXT-SIG-TOK {: ea:ptr eu:n :}
-   eu 0 = ;
-
-: LOC-ANN-READ ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   NEXT-SIG-TOK {: ta:ptr tu:n :}
-   tu 0 = IF a u BAD-LOC-ANN EXIT THEN
-   ta tu SIG-TYPE
-   LOC-ANN-END? IF EXIT THEN
-   a u BAD-LOC-ANN nip ;
+\ A text's one type and whether nothing follows it, read against NMAP and the
+\ family registry as they stand, so it names the definition's type variables.
+: TYPE-SPAN-READ ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   SB@ SL @ SI @ SS@ PKA@ PKU @ PKHAVE @
+   {: sb:ptr sl:n si:n ss:ptr pka:ptr pku:n pkh:n :}
+   a SB!  u SL !  0 SI !  PKRESET
+   NEXT-SIG-TOK SIG-TYPE
+   NEXT-SIG-TOK nip 0=
+   sb SB!  sl SL !  si SI !  ss SS!
+   pka PKA!  pku PKU !  pkh PKHAVE ! ;
 
 \ The term the local's row cell will hold: a layout the row EXPANDS is recorded
 \ as its TOP hidden term — the tag — so the group bind validates the captured
@@ -7768,12 +7769,8 @@ SIG-BINDER-BODY-INSTALL
    a u SIG-PTR-TOK? IF FRESH dup TVK-STORED! MK-VAR MK-PTR EXIT THEN
    SGBAD @ {: sg0:n :}        \ only a NEW verdict is this annotation's: a signature
                               \ that already failed keeps its own diagnostic
-   SB@ SL @ SI @ SS@ PKA@ PKU @ PKHAVE @
-   {: sb:ptr sl:n si:n ss:ptr pka:ptr pku:n pkh:n :}
-   a SB!  u SL !  0 SI !  PKRESET
-   a u LOC-ANN-READ
-   sb SB!  sl SL !  si SI !  ss SS!
-   pka PKA!  pku PKU !  pkh PKHAVE !
+   u 0 = IF 0 RES-FALSE ELSE a u TYPE-SPAN-READ THEN
+   0= IF drop a u BAD-LOC-ANN THEN
    SGBAD @ sg0 0= and IF a u BAD-LOC-ANN nip THEN
    dup SCHEME-TYPE? IF drop a u BAD-LOC-ANN EXIT THEN
    LOC-ANN-TERM ;
@@ -8352,9 +8349,7 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
    RES-FALSE ;
 : WIDTH-STORED? ( n -- bool ) TWALK-RESET WIDTH-STORED?* ;
 
-\ A scheme is a callback input only, so no storage holds one at any depth of
-\ its stored type.
-: STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: STORAGE-PARSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !
    NEW
    SGBAD-CLEAR SIG-UNRES-CLEAR
@@ -8364,12 +8359,20 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
    NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
-   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF RES-FALSE EXIT THEN
+   SGBAD @ 0 <> LBI-BAD @ 0 <> or 0= ;
+
+\ A scheme is a callback input only, so no storage holds one at any depth of
+\ its stored type.
+: STORAGE-TERM-OK? ( -- bool )
    LBI-T @ SCHEME-TYPE? IF -1 LBI-SCHEME ! RES-FALSE EXIT THEN
    SIG-UNRES @ IF RES-FALSE EXIT THEN
    LBI-T @ XT-STORED? IF -1 LBI-XT ! RES-FALSE EXIT THEN
    LBI-T @ WIDTH-STORED? IF -1 LBI-WIDTH ! RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? 0= ;
+
+: STORAGE-RESOLVE? ( ptr u8 n -- bool )
+   STORAGE-PARSE? 0= IF RES-FALSE EXIT THEN
+   STORAGE-TERM-OK? ;
 
 \ The allocation-certificate gate. Ordinary unification never receives this
 \ authority.
@@ -8426,11 +8429,14 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
    t TAG T-CON <> IF RES-FALSE EXIT THEN
    t PAY CC-U8 = ;
 
-: CHECKER-DYNAMIC-INFO ( ptr u8 n -- n bool )
-   STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
+: DYNAMIC-BYTES ( -- n bool )
    LBI-T @ STORAGE-BYTE-CON? IF 1 RES-TRUE EXIT THEN
    STORAGE-CELL-W 0= IF drop 0 RES-FALSE EXIT THEN
    CELL * RES-TRUE ;
+
+: CHECKER-DYNAMIC-INFO ( ptr u8 n -- n bool )
+   STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
+   DYNAMIC-BYTES ;
 
 \ A pointer or a quotation asserts that a cell is an address or code, which no
 \ check can see: a class mint, declared only where its package's own words are
@@ -8556,14 +8562,19 @@ variable CAST-PATH-N
 
 \ CHECKER-DYNAMIC-INFO's answer, false for a type that may hold a linear value,
 \ an open type variable or an atom it hands out as a pointee.
-: CHECKER-ARENA-INFO ( ptr u8 n -- n bool )
-   CHECKER-DYNAMIC-INFO 0= IF RES-FALSE EXIT THEN
+: ARENA-TERM-INFO ( -- n bool )
+   STORAGE-TERM-OK? 0= IF 0 RES-FALSE EXIT THEN
+   DYNAMIC-BYTES 0= IF RES-FALSE EXIT THEN
    CAST-WALK-RESET
    LBI-T @ CAST-MAY-LINEAR? IF drop 0 RES-FALSE EXIT THEN
    CAST-WALK-RESET LBI-T @ CAST-BOTH INTRO-ATOM CAST-INTRO? IF
       drop 0 RES-FALSE EXIT
    THEN
    RES-TRUE ;
+
+: CHECKER-ARENA-INFO ( ptr u8 n -- n bool )
+   STORAGE-PARSE? 0= IF 0 RES-FALSE EXIT THEN
+   ARENA-TERM-INFO ;
 
 : VREC-ROOM ( -- )
    VREC-ENSURE ;
@@ -20838,6 +20849,13 @@ variable PKG-LIT-U
 CHECKER-REG:}SCRATCH
 variable PPAY-ON      \ did the token just judged compile PKG-LIT-NAME?
 
+\ A `[type]` row's spelling: its width in decimal.
+CHECKER-REG:SCRATCH{
+create TYPE-LIT-DIGITS 20 allot
+variable TYPE-LIT-U
+CHECKER-REG:}SCRATCH
+variable TPAY-ON      \ did the token just judged compile TYPE-LIT-DIGITS?
+
 : SKIP-STRING-PAYLOAD
    TI @ SKI !  0 SKF !
    BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
@@ -22558,6 +22576,74 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    REPEAT drop
    u PKG-LIT-U !  -1 PPAY-ON ! ;
 
+\ One token of a `[type]` span read at depth d: the depth after it, then 0 to
+\ read on, 1 when the spelling is done, 2 when the text ended or a `;` or
+\ `;]` came first, which is left unread.
+: TYPE-SPAN-TOK ( n -- n n ) {: d:n :}
+   TI @ {: back:n :}
+   IS-NEXT-TOKEN {: a:ptr u:n got:bool :}
+   got 0= IF 0 PARSE-COMPLETE !  d 2 EXIT THEN
+   a u TYPE-SPAN-END? IF back TI !  d 2 EXIT THEN
+   d a u CHECKER-TYPE-SPAN-STEP IF 1 ELSE 0 THEN ;
+
+\ The span after `[type]` as the offsets of its first byte and of the byte
+\ after it, and whether it holds a whole spelling.
+: TYPE-LIT-SPAN ( -- n n bool )
+   IS-SKIP-WS  TI @ {: start:n :}
+   0 BEGIN TYPE-SPAN-TOK dup 0= WHILE drop REPEAT nip
+   {: code:n :}
+   start TI @ code 1 = ;
+
+\ The span's bytes in storage, through the gate CHECKER-ARENA-INFO asks, for a
+\ closed type. The definition's own SGBAD and SIG-UNRES verdicts outlive the
+\ read; LBI-T holds the term.
+: TYPE-LIT-INFO ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   SGBAD @ SGBAD-A @ SGBAD-U @ SGBAD-KIND @ {: sg:n sga:ptr sgu:n sgk:n :}
+   SGBAD-AR-DECL @ SGBAD-AR-GOT @ SGBAD-SIZE @ {: ard:n arg:n sgs:n :}
+   SIG-UNRES @ SIG-UNRES-A @ SIG-UNRES-U @ {: un:n una:ptr unu:n :}
+   SGBAD-CLEAR SIG-UNRES-CLEAR
+   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !
+   a u TYPE-SPAN-READ swap T-RES {: one:bool t:n :}
+   t LBI-T !
+   SGBAD @ 0= one and IF ARENA-TERM-INFO ELSE 0 RES-FALSE THEN
+   sg SGBAD !  sga SGBAD-A !  sgu SGBAD-U !  sgk SGBAD-KIND !
+   ard SGBAD-AR-DECL !  arg SGBAD-AR-GOT !  sgs SGBAD-SIZE !
+   un SIG-UNRES !  una SIG-UNRES-A !  unu SIG-UNRES-U !
+   dup IF drop t TYPE-CLOSED? THEN ;
+
+: TYPE-LIT-WIDTH ( n -- n ) {: t:n :}
+   PARAM-SCR-N @ {: base:n :}
+   t PARAM-SCR+
+   base s" width" WIDTH-FAM @ MK-PARAM ;
+
+: TYPE-LIT-DIGITS! ( n -- )
+   ERROR-TEXT:DIGITS$ {: a:ptr u:n :}
+   a TYPE-LIT-DIGITS u CCOPY  u TYPE-LIT-U ! ;
+
+\ A refused span is the load's refusal unless an earlier compile refusal holds
+\ it, pinned on the span, or on `[type]` when the span is empty.
+: TYPE-LIT-FAIL ( n n -- ) {: s:n e:n :}
+   RCOMPILE @ 0=  CREFUSE @ 0=  and IF
+      MD-TYPE-FORM MDIAG !  RF-REASON REFUSAL-TAKE  -1 RCOMPILE !
+      e s > IF
+         s TADDR e s - FAIL-PIN!  s FAILB !  FAILB @ FAILTU @ + FAILE !
+      ELSE
+         TOK-SPELL-A @ TOK-SPELL-U @ FAIL-PIN!
+      THEN
+   THEN
+   0 OK !  -1 FAILSET ! ;
+
+\ A body's `[type] T` compiles the bytes T takes in storage as a number typed
+\ width<T>.
+: TYPE-LIT-TOK ( -- )
+   TYPE-LIT-SPAN {: s:n e:n whole:bool :}
+   whole IF s TADDR e s - TYPE-LIT-INFO ELSE 0 RES-FALSE THEN
+   {: bytes:n ok:bool :}
+   ok 0= IF s e TYPE-LIT-FAIL EXIT THEN
+   bytes CHECKER-TAPE:K-INT swap 0 EVENT!
+   LBI-T @ TYPE-LIT-WIDTH STEP-TYPE-OUT
+   bytes TYPE-LIT-DIGITS!  -1 TPAY-ON ! ;
+
 : DO-TOK1 {: a u :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
@@ -22590,6 +22676,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    a u LOC-REF? IF ELSE
    TKF TKFU @ PARSE-LIT? IF TKF TKFU @ CHAR-LIT-TOK ELSE
    TKF TKFU @ PKG-LIT? IF TKF TKFU @ PKG-LIT-TOK ELSE
+   TKF TKFU @ s" [type]" CORE-STR= IF TYPE-LIT-TOK ELSE
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
@@ -22617,7 +22704,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   THEN THEN
+   THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are
@@ -23130,6 +23217,12 @@ public
 
 : CHARACTER ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
    a u off ru K-CHAR 0 TOKEN-XT
+   REC-STEP ;
+
+\ A number the checker computed: its spelling is the value in decimal, its span
+\ the source that names it (`[type] T`).
+: INTEGER ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
+   a u off ru K-INT 0 TOKEN-XT
    REC-STEP ;
 
 \ What the checker judged the token at ordinal ORD to be, in the vocabulary
@@ -24338,6 +24431,10 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
       PKG-LIT-NAME$  TSTART @  TI @ TSTART @ -  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT
    THEN
+   TPAY-ON @ IF
+      TYPE-LIT-DIGITS TYPE-LIT-U @  TSTART @  TI @ TSTART @ -  CHECKER-TAPE:INTEGER
+      SCAN-PEND-REPORT EXIT
+   THEN
    TSTART @ TADDR  SCAN-U @  TSTART @  SCAN-TOK0 @  CHECKER-TAPE:TOKEN
    SCAN-PEND-REPORT ;
 
@@ -24586,7 +24683,7 @@ variable CUR-OPEN   variable CUR-PSIG
    0 TOKIX !  0 FAILIX !  0 FAILB !  0 FAILE !
    0 CUR-OPEN !  0 CUR-PSIG !
    0 TKFU !  0 SCAN-U !  0 SCAN-TOK0 !  0 SCAN-TOKS !
-   0 CPAY-B !  0 CPAY-U !  0 CPAY-ON !
+   0 CPAY-B !  0 CPAY-U !  0 CPAY-ON !  0 TPAY-ON !
    0 IS-TOFF !  0 IS-PEND !  0 IS-PEND-OFF !  0 IS-PEND-U !
    0 CURSYM !  0 XROW !  0 XRROW ! ;
 : CUR-PAREN-AT ( -- )
@@ -24657,7 +24754,7 @@ variable CUR-OPEN   variable CUR-PSIG
          TI @ TSTART !
          BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
          CHECKER-TAPE:ARMED @ IF
-            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !  0 PPAY-ON !
+            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !  0 PPAY-ON !  0 TPAY-ON !
             0 IS-PEND !  0 EV-HIT !
          THEN
          CUR-TOKEN

@@ -1221,6 +1221,12 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   `width<n>`: a width's argument pairs exactly, as a pointee does, and a width
   is not an `n`. Storage starts as zero bytes, so no storage, field or variant
   payload holds one (`a width is not stored`), and no cast yields one.
+- `[type] τ` in a body reads one type spelling, the definition's type variables
+  in scope, and compiles the number `width<τ>` holds: `[type] p` gives 16 for a
+  record `p` of two cells. It refuses (`E-BAD-STORAGE`, `[type] names no type
+  storage holds`) a type `ARENA` refuses, a quotation type, one holding a type
+  variable, an unknown name, and a spelling cut short by the `;` or `;]` that
+  ends its definition or quotation.
 
 An unknown type token is never interned: it rejects with `unknown type 'tok' in
 signature` (`E-UNKNOWN-SIGNATURE-TYPE`). The other signature codes are

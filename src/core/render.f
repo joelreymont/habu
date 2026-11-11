@@ -1129,6 +1129,7 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" E-UNDEFINED" endof
       MD-IS-NOT-DEFER of s" E-NOT-DEFERRED" endof
       MD-IS-MISSING   of s" E-MISSING-NAME" endof
+      MD-TYPE-FORM    of s" E-BAD-STORAGE" endof
       MD-LOOP-DEPTH   of s" E-MISMATCH" endof
       MD-IF-DEPTH     of s" E-MISMATCH" endof
       MD-ARMS-DEPTH   of s" E-MISMATCH" endof
@@ -1185,6 +1186,7 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" fix_is_target" endof
       MD-IS-NOT-DEFER of s" fix_is_target" endof
       MD-IS-MISSING   of s" fix_missing_name" endof
+      MD-TYPE-FORM    of s" fix_type_form" endof
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
@@ -1293,6 +1295,7 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
       MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
       MD-IS-MISSING   of s" Write the name of a word declared with defer after is." endof
+      MD-TYPE-FORM    of s" Name a closed type ARENA stores: one cell or more, or u8, with no type variable, quotation, linear value, atom, xt or width<t> in it, and no cell family with arguments as the type or a pointer's pointee." endof
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
@@ -1364,6 +1367,7 @@ variable MDV-I   variable MDV-F
       MD-IS-UNKNOWN   of s" names no word" endof
       MD-IS-NOT-DEFER of s" is not a deferred word" endof
       MD-IS-MISSING   of s" missing target word after is" endof
+      MD-TYPE-FORM    of s" [type] names no type storage holds" endof
       MD-LOOP-DEPTH   of s" the loop body changes the stack's depth" endof
       MD-IF-DEPTH     of s" the if arm changes the stack's depth" endof
       MD-ARMS-DEPTH   of s" the if and else arms leave different stack depths" endof

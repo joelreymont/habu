@@ -99,6 +99,8 @@ cannot execute: `E-EXEC-OPAQUE-XT`.
 `width<t>` is one cell holding the bytes `t` takes in storage; `width>n` reads
 them, `width<u8>` is not `width<u32>` or `width<n>`, and no storage, field or
 cast holds or yields one.
+`[type] t` in a body makes one for a closed type `ARENA` stores; it refuses an
+open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 
 - A string is `ptr u8 n`, a cell address `ptr a`, `n` only a genuine scalar.
   `ptr a` needs a body that keeps the pointee parametric — a `ptr` local admits
