@@ -2945,6 +2945,33 @@ CHECKER-REG:}SCRATCH
    T-RES dup TAG T-PTR <> IF drop RES-TRUE EXIT THEN
    PTR>INNER NO-SCOPE? ;
 
+\ A kept quotation may outlive its caller, so its block reads no local (NSCOPE). A signature
+\ with no checked body cannot show a use, so each quotation in its inputs counts as kept.
+: KEEP-QUOTS* ( n -- ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>BLOCK T-RES dup ISVAR IF PAY NSCOPE-RAISE ELSE drop THEN
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop
+   THEN ;
+: KEEP-QUOTS ( n -- ) TWALK-RESET KEEP-QUOTS* ;
+
 
 \ One rigid identity: the same id in the same domain name (ATOM-OK?).
 : E-AK-SAME? ( n n -- bool ) {: t1:n t2:n :}
@@ -11665,6 +11692,7 @@ CHECKER-REG:}SCRATCH
    din SCHEME-TYPE? dout SCHEME-TYPE? or
    rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF
       s" checker: asserted signature cannot publish a scope scheme" 76 die THEN
+   din KEEP-QUOTS
    din dout rin rout SGHASR @ external E-ADD-EFFECT
    sa su CHECKER-ASIG-CAPTURE
    RES-TRUE ;
@@ -12424,6 +12452,7 @@ variable PE-EFF-ID
    dup PREFIX-SYM? IF  drop  -1 PE-LAST !  EXIT  THEN
    PE-DIN @ EFFECT-MIN-IN drop
    dup PE-SYM-ID ! CHECKER-REC-SYM !
+   PE-DIN @ KEEP-QUOTS
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
    E-BUILD-EFFECT PE-EFF-ID !
    PE-SYM-ID @ PE-EFF-ID @ PE-ACTIVE PRIM-ADD
@@ -16671,6 +16700,7 @@ CHECKER-REG:}SCRATCH
    {: sa:ptr su:n na:ptr nu:n :}
    na nu na nu USIG-CERT-ADMIT
    sa su na nu na nu  SGIN @ SGOUT @ SGRIN @ SGROUT @  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
+   SGIN @ KEEP-QUOTS
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ RES-TRUE E-ADD-EFFECT DL-TAKE
    sa su CHECKER-ASIG-CAPTURE ;
 
@@ -17873,6 +17903,8 @@ PENDING-MARKED 0 CELL-ROW+
    {: din:n dout:n rin:n rout:n :}
    sa su din dout rin rout SGBAD-UNFIT!
    SGBAD @ IF was CHECKER-REC-SYM !  0 EXIT THEN
+   \ This parse holds nothing a clause's check learned of a quotation input.
+   din KEEP-QUOTS
    din dout rin rout SGHASR @ E-BUILD-EFFECT
    {: off:n :}
    was CHECKER-REC-SYM !
@@ -23283,6 +23315,7 @@ package CHECKER-REG
    rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF EXIT THEN
    sa su din dout rin rout SGBAD-UNFIT!
    SGBAD @ IF EXIT THEN
+   din KEEP-QUOTS
    din dout rin rout SGHASR @ RES-FALSE E-ADD-EFFECT
    sa su CHECKER-ASIG-CAPTURE
    \ An unchecked body may throw after replacing a scoped input, as TRUST-DECL
