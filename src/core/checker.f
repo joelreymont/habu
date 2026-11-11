@@ -4998,6 +4998,7 @@ CHECKER-REG:}SCRATCH
 62 constant MD-IF-DEPTH      \ an if's arm leaves another data depth than the if started with (CF-THEN)
 63 constant MD-ARMS-DEPTH    \ an if's two arms leave different data depths (CF-THEN-ELSE-MERGE)
 64 constant MD-LOCAL-ESCAPE  \ a quotation that reads a local would outlive it (LSC-CK, STORE-HIT)
+65 constant MD-BINDER-PLACE  \ an inferred effect holds a callback binder outside a callback input (CHECK)
 
 \ Why the check left a stretch or definition to the run (DEFER-WHY), each with
 \ its own suggestion (render.f DEFER-SUGGEST$); 0 is no cause recorded.
@@ -27728,7 +27729,13 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    CHECK-SIG? CHECK-RETURNS? 0= and IF FRESH-CLAIM THEN   \ a body that never returns resolves its fresh names too
-   CHECK-SIG? 0= IF INFER-FRESH-CLAIM THEN
+   \ An inferred effect records its data rows only (CHECKER-USIG-CERT-CURRENT);
+   \ they hold a binder only where a declared one may (PSIG).
+   CHECK-SIG? 0= IF
+      INFER-FRESH-CLAIM
+      BROW @ RES-TRUE FORALL-PLACE?  DCUR @ RES-FALSE FORALL-PLACE? and
+      0= IF MD-BINDER-PLACE CF-FAIL THEN
+   THEN
    DEF-LSC-CK
    CF-OPEN? IF MD-CF-OPEN CF-FAIL THEN
    CHECK-RBALANCE

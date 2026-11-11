@@ -797,6 +797,14 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" an inner reading quotation left on its enclosing one's stack rejects" T-LABEL
 s" CBAD-QL-INNER-LEFT ( n -- ) {: a:n :} [: [: a . ;] ;] execute execute" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+\ A word that returns a quotation literal taking a callback would record its binder.
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" an inferred effect holding a misplaced binder rejects" T-LABEL
+s" CBAD-QB [: T-UN ;]" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a callback binder would sit outside" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a binder only on a word's return row certifies" T-LABEL
+s" COK-QB-RET ['] T-FQ >r 1 throw" CHECK-CANDIDATE! 0 T<>
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a reading quotation run where it is written certifies" T-LABEL
 s" COK-QL-RUN-HERE ( n -- ) {: a:n :} [: a . ;] execute" CHECK-CANDIDATE! 0 T<>

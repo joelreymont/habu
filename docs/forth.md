@@ -1919,7 +1919,10 @@ stored fields, quotation payloads or the return stack. Ordinary helpers
 quantify over scopes their inputs supply and cannot return one no input or
 live binder supplies. No ordinary declaration, `fresh-region-*` included, mints
 scope authority: an annotation alone is not authentication, and a higher-order
-wrapper must keep the scope operation and its whole callback contract.
+wrapper must keep the scope operation and its whole callback contract. A word
+with no declared effect whose inferred effect would carry such a binder outside
+a callback input, as a word that returns `[: WITH-SCOPE ;]` does, is refused
+(`E-BINDER-PLACE`).
 
 ## Integer arithmetic
 
