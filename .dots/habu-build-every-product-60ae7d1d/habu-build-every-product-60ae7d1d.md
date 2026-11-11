@@ -8,7 +8,6 @@ blocks:
   - habu-make-incremental-builds-41fd3214
   - habu-take-checker-working-6703bc4f
   - habu-move-the-interpreter-d35780fa
-  - habu-cross-build-a-cb630896
   - habu-name-the-build-abed309a
   - habu-run-one-tier-705c2c00
   - habu-read-each-def-f7ce769a

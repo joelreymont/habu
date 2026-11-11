@@ -1,9 +1,11 @@
 ---
 title: ZIP asks Linux for libzip.so.5, which Debian and Ubuntu do not ship
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-11T09:12:26.528562+02:00"
+closed-at: "2026-11-11T10:50:55.507438+02:00"
+close-reason: "landed f9acccedb7b0 in master 5c2ebfc1: a library's versions are tried in the order written; spark (Ubuntu 24.04, libzip.so.4 only, no LD_LIBRARY_PATH): zip-test, zip-lifecycle-test, zip-remove-source, file-objects rc 0 and the suite 273 of 273 green"
 ---
 
 Problem: on spark (Ubuntu 24.04) every ZIP open that reaches libzip throws E-FFI-DLOPEN 'libzip.so.5: cannot open shared object file' (zip-test, zip-lifecycle-test, zip-remove-source, file-objects case Q; logs spark:~/carl-runs/xos4/o/red/). Ubuntu's package libzip4t64 1.7.3 'Provides: libzip4': Debian and Ubuntu ship upstream libzip under the name libzip.so.4, so installing the package does not give the name Habu opens. Tender runs on spark only with LD_LIBRARY_PATH=~/stuart-runs/lib, a private copy named libzip.so.5. Not traced: where src/lib/zip-ffi.f's library name is rendered for Linux, and whether the FFI can try a second name. Decided by the lead (2026-11-11, not Joel's words): ZIP opens libzip.so.5 and, when that name is absent, libzip.so.4. Acceptance: on a Linux host with only the distribution's libzip package the zip tests and file-objects Q pass with no LD_LIBRARY_PATH; macOS unchanged. Files: src/lib/zip-ffi.f, the FFI library declarer (trace first). Verify: the three zip tests and file-objects on spark after 'sudo apt-get install libzip4t64'. Consumers: Tender meets it on Linux today and works around it with a private library copy. Checked 2026-11-11 on spark: Ubuntu's file is /usr/lib/aarch64-linux-gnu/libzip.so.4 (libzip 1.7.3); with a symlink named libzip.so.5 to it on LD_LIBRARY_PATH, zip-test, zip-lifecycle-test, zip-remove-source and file-objects are rc 0, so Habu's calls work on that build. Where the name comes from: src/lib/zip-ffi.f `VERSIONED-LIBRARY zip 5`, rendered by FFI:LIBRARY-NAME$ (src/lib/ffi-abi.f) into one path per library row, opened at the first call (ffi-abi.f, the DLOPEN-RAW site that throws E-FFI-DLOPEN). Depends: none. Ownership: carl. Design (lead, not Joel's words): the version token is a comma list tried in order at the first call (`VERSIONED-LIBRARY zip 5,4`); a library row gains a next cell; brief .out/briefs/zip-version-list.md. Claim: agent=carl workspace=.jj-ws.noindex/carl-zip

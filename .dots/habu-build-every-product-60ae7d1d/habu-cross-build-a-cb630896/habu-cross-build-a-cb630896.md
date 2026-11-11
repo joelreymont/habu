@@ -1,9 +1,11 @@
 ---
 title: Cross-build a linux-aarch64 engine from macOS
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-30T10:56:42.187456+02:00"
+closed-at: "2026-11-11T10:50:55.560493+02:00"
+close-reason: "landed with its children: the Mac-built Linux arm64 engine booted on spark, built itself there, and the engines built from that line run test/run.f 273 of 273 green on master 5c2ebfc1 (spark:~/carl-runs/zip/o/suite.log); spark's installed Habu is that tree"
 ---
 
 Problem: native-build --target linux-aarch64 on macOS stops with 'not executable here' (timer lane 1, 2026-10-30), so a Linux engine cannot be produced on the Mac; the roadmap's finish line says a cross-built engine starts. Acceptance: the cross build writes a Linux arm64 engine on macOS and that engine boots on spark. Files: tools/native-build-core.f, tools/native-build.f. Verify: the cross-built engine on spark runs bin/hb --load test/run.f. Depends: none. Ownership: tools/native-build*.f. Claim: agent=carl workspace=.jj-ws.noindex/carl-layout (design for Joel; no lane before he approves it).
