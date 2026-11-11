@@ -4259,8 +4259,6 @@ create WAS-B HDR-BYTES allot
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
 
-\ The link the answer holds next, begun: over characters C1 to C2 of line L,
-\ to the file URI of the path at P.
 : LINK+ ( n n n ptr u8 n -- )
    {: l:n c1:n c2:n p:ptr pu:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
@@ -4270,11 +4268,8 @@ create WAS-B HDR-BYTES allot
    s\" ,\"character\":" MSG+ c2 INT$ MSG+
    s\" }},\"target\":\"" MSG+ p pu URI-OF MSG+ s\" \"" MSG+ ;
 
-\ The link of a loader that read the file at P: no tooltip.
 : READ-LINK+ ( n n n ptr u8 n -- )  LINK+ s" }" MSG+ ;
 
-\ The link of a loader that held the file at P: its tooltip names the file as
-\ a hover does.
 : HELD-LINK+ ( n n n ptr u8 n -- )
    {: l:n c1:n c2:n p:ptr pu:n :}
    l c1 c2 p pu LINK+
@@ -4315,11 +4310,6 @@ create WAS-B HDR-BYTES allot
    3 8 16 LK-INC-PATH LK-CANON READ-LINK+
    LINKS-END ;
 
-\ lk.f, opened through lk-link, a symlink to lk-real, requires lk-dep.f, on
-\ disk there: its link is at lk-dep.f's canonical file URI, under lk-real,
-\ until lk-dep.f is opened through lk-link, and then at the URI the client
-\ opened it by. That open has lk.f, whose check read lk-dep.f, checked again
-\ before the links are answered, and lk-dep.f checked after them.
 : LINK-OPEN-TURNS ( -- )
    s" lk-real" FIXTURE FS:MAKE-DIR
    s" lk-real" s" lk-link" FIXTURE FS:MAKE-SYMLINK
@@ -4339,7 +4329,6 @@ create WAS-B HDR-BYTES allot
    s" 4" LINKS-START 0 8 16 LK-LINK-DEP READ-LINK+ LINKS-END
    TEXT-LK-LOADED LK-LINK-DEP 1 s" verified" LISTED ;
 
-\ A document the client never opened, and params naming no document: -32602.
 : LINK-NOT-OPEN-TURNS ( -- )
    SESSION-INITIALIZE
    s" 3" LK-PATH LINKS-ASK
@@ -4349,8 +4338,6 @@ create WAS-B HDR-BYTES allot
    HEAR s" 3" -32602 REFUSED
    HEAR s" 4" -32602 REFUSED ;
 
-\ Links asked with the document's opening, before the server checked it: the
-\ request checks it first, so its list comes before the answer.
 : LINK-BEFORE-CHECK-TURNS ( -- )
    LK-DEP-PATH TEXT-LK-LOADED FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -4361,10 +4348,6 @@ create WAS-B HDR-BYTES allot
    TEXT-LK-ONE LK-PATH 1 s" verified" LISTED
    s" 3" LINKS-START 0 8 16 LK-DEP-PATH LK-CANON READ-LINK+ LINKS-END ;
 
-\ Links asked in the turn of a change that moved the loader a line down: the
-\ request checks the changed text first, so its list comes before the answer,
-\ the link at the loader's new place. Asked with a change of the document read
-\ behind them, they are -32801, and the change is applied and checked after.
 : LINK-AFTER-CHANGE-TURNS ( -- )
    LK-DEP-PATH TEXT-LK-LOADED FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -4383,10 +4366,6 @@ create WAS-B HDR-BYTES allot
    HEAR s" 4" -32801 REFUSED
    TEXT-LK-ONE LK-PATH 3 s" verified" LISTED ;
 
-\ Links asked in the turn of a change whose check did not complete: neither
-\ the load lines of the text before it nor the one that check reported before
-\ it stopped are of a text a check completed on, so the answer is an empty
-\ list.
 : LINK-INCOMPLETE-TURNS ( -- )
    LK-DEP-PATH TEXT-LK-LOADED FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -4404,13 +4383,10 @@ create WAS-B HDR-BYTES allot
 
 \ ---- the files that reach a file -----------------------------------------------
 
-\ The fixture tree lies under graph/ of the artifact directory: the workspace
-\ is w/, with dyn/ added for case 8 and a root that is not there for the
-\ last, and out/ lies outside them. The number in a file's name is the case
-\ it serves: f1 is the file case 1 asks about. A case names a path by its
-\ bytes after the tree's canonical path and its slash.
-create WS-B HDR-BYTES allot              \ an answer, as a case states it
-variable WS-ROOT-U                       \ the bytes a case's names drop
+\ The number in a file's name is the case it serves. A case names a path by
+\ its bytes after the tree's canonical path and its slash.
+create WS-B HDR-BYTES allot
+variable WS-ROOT-U
 
 : WS+ ( ptr u8 n -- )  N>BLEN WS-B APPEND-SPAN ;
 : WS$ ( -- ptr u8 n )  WS-B SPAN$ BLEN>N ;
@@ -4427,7 +4403,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 
 : WS-CANON ( ptr u8 n -- ptr u8 n )  IN-GRAPH SOURCE-ROOT:CANONICAL drop ;
 
-\ A path of the tree by its name there; any other whole.
 : WS-NAME ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    u WS-ROOT-U @ < if a u exit then
@@ -4478,15 +4453,11 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" dyn/z8.f" s\" : Z8 ( -- ) ;\n" WS-FILE
    s" dyn/z8.f" IN-GRAPH 0 FS:CHMOD-MODE ;
 
-\ The open documents, as the server would hand them over: b2 without its
-\ load, c3 with one.
 : WS-OPENS ( [ ptr u8 n ptr u8 n -- ] -- )
    {: q :}
    s" w/b2.f" WS-CANON s\" : B2 ( -- ) ;\n" q execute
    s" w/c3.f" WS-CANON s\" require f3.f\n" q execute ;
 
-\ The last answer: its files by name, in its order, then each file it could
-\ not read and why; or the root it refused.
 : WS-ANSWER$ ( -- ptr u8 n )
    WS-B CLEAR
    LSP-WORKSPACE:REFUSED? if
@@ -4513,8 +4484,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SB$ T-LABEL
    WS-ANSWER$ w wu T$= ;
 
-\ The files that reach the file of this name, over the last answer's graph,
-\ must be these.
 : REACHES-AGAIN ( ptr u8 n ptr u8 n -- )
    {: f:ptr fu:n w:ptr wu:n :}
    WS-B CLEAR f fu WS-CANON WS+
@@ -4523,11 +4492,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SB$ T-LABEL
    WS-ANSWER$ w wu T$= ;
 
-\ Each case's document is one the walk gives anyway, but for a2, whose loads
-\ reach no f2 once b2's open text drops its load, and p/a7, whose loads reach
-\ no f7: each is given in its place by path. Asked again of b1, then of s/x7,
-\ which p/a7 and q/b7 load under their roots, over the graph just found: the
-\ files that reach that file, and none that reach only the first.
 : WORKSPACE-REACHING ( -- )
    WS-TREE
    s" graph" FIXTURE SOURCE-ROOT:CANONICAL drop nip 1+ WS-ROOT-U !
@@ -4602,9 +4566,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : TEXT-RVH ( -- ptr u8 n )  s\" require lib/g.f\n: HU ( -- n ) GROOK ;\n" ;
 : TEXT-RVE ( -- ptr u8 n )  s\" require ../h.f\n: EU ( -- n ) GROOK ;\n" ;
 
-\ g.f included into RP's and RQ's public sections and RV's public and
-\ private ones, each use naming one, then EK, private in EX, used, exported
-\ and used through the export, in TXT.
 : TEXT-RID ( -- ptr u8 n )
    TXT-B CLEAR
    s\" package RP\npublic\ninclude g.f\n: PU ( -- n ) KAY ;\n;package\n" HV+
@@ -4616,7 +4577,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    TXT$ ;
 
 \ A shared workspace session has already initialized with its fixed root.
-\ An isolated case sends its own initialize members after the capabilities.
 : INITIALIZE-WITH ( ptr u8 n -- )
    {: m:ptr mu:n :}
    SHARED? @ if exit then
@@ -4640,8 +4600,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    {: i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
    s" textDocument/references" i iu p pu l c x xu AT-ASK-WITH ;
 
-\ The Location the answer SYMBOLS-START began lists next: this URI, from
-\ character C1 to C2 of line L.
 : REF+ ( ptr u8 n n n n -- )
    {: u:ptr uu:n l:n c1:n c2:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
@@ -4651,8 +4609,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c2 INT$ MSG+ s" }}}" MSG+ ;
 
-\ The count of N files left out, in EXP, as a message states it before
-\ naming them.
 : NOT-COVERED ( n -- )
    {: n:n :}
    n INT$ EXP+
@@ -4695,8 +4651,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    HEAR
    NEXT-BODY EXP$ STR= ;
 
-\ The file of this name left out for its token at line L, which a check of
-\ the file of the other name binds to another word.
 : ELSEWHERE+ ( ptr u8 n n ptr u8 n -- )
    {: p:ptr pu:n l:n s:ptr su:n :}
    p pu CANON s" the token at line " NAMED+
@@ -4704,9 +4658,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s"  is bound to another word under " EXP+
    s su CANON SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE EXP+ ;
 
-\ The next frame refuses the request with this id's JSON text -32803, its
-\ message naming the file at this canonical path relative to the working
-\ directory.
 : FAILED ( ptr u8 n ptr u8 n -- )
    {: i:ptr iu:n p:ptr pu:n :}
    HEAR
@@ -4721,10 +4672,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    REF-A-PATH URI-OF 1 15 19 REF+
    REF-A-PATH URI-OF 1 21 25 REF+ ;
 
-\ ROOK's use at its first character and at its last, and its declaring
-\ token, including each exact trailing edge, each answered with both uses,
-\ the declaration first when asked for; a further space has no binding, and
-\ the engine's + selects the primitive.
 : REFS-TURNS ( -- )
    SESSION-INITIALIZE
    REF-A-PATH TEXT-REF-A 1 OPENS
@@ -4759,8 +4706,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED ;
 
-\ No context, a context without includeDeclaration, one that is a string,
-\ and a negative character: each -32602.
 : REFS-PARAMS-TURNS ( -- )
    SESSION-INITIALIZE
    REF-A-PATH TEXT-REF-A 1 OPENS
@@ -4777,9 +4722,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    HEAR s" 5" -32602 REFUSED
    HEAR s" 6" -32602 REFUSED ;
 
-\ refs-ws/w, the folder: f.f declares ROOK; d.f and e.f, open and on disk,
-\ use it; s.f does, and t.f through s.f; o.f through out/m.f, outside the
-\ folder; y.f declares and uses a private ROOK of its own.
 : REFS-WS-TREE ( -- )
    s" refs-ws" REFS-DIR s" refs-ws/w" REFS-DIR s" refs-ws/out" REFS-DIR
    s" refs-ws/w/f.f" TEXT-RF REFS-FILE
@@ -4800,10 +4742,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-ws/w/s.f" DISK-URI 1 14 18 REF+
    s" refs-ws/w/t.f" DISK-URI 1 14 18 REF+ ;
 
-\ The folders are an untitled: one, passed over, and refs-ws/w. ROOK's use in
-\ d.f is answered with its declaration in f.f and every use in the folder,
-\ the open documents' at the URIs the client opened them by. No warning
-\ comes: out/m.f, which o.f's check reads, holds no use.
+\ No warning comes: out/m.f, which o.f's check reads, holds no use.
 : REFS-WS-TURNS ( -- )
    REFS-WS-TREE
    PAR-B CLEAR
@@ -4825,13 +4764,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    {: l:n c1:n c2:n :}
    s" refs-id/id.f" OPEN-URI l c1 c2 REF+ ;
 
-\ RP:KAY, RQ:KAY, RV's private KAY and RV:KAY, one token of g.f each
-\ declares, each answered with that declaration and its own word's uses
-\ alone, g.f and id.f named: g.f's own check declares the global KAY there,
-\ and id.f's declares the other three there in its other visits, which a
-\ rename of the token would change too. EK's EXPORT operand, a use of the
-\ private EK, answered with the private word's; the use of the export with
-\ the export's.
 : KAY-NAMED ( -- )
    2 NAMED s" refs-id/g.f" CANON
    s" declares another word at the declaration's token" NAMED+
@@ -4864,9 +4796,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    {: l:n c1:n c2:n :}
    HOVER-CVT-PATH URI-OF l c1 c2 REF+ ;
 
-\ A use of >CVT-T and a qualified use of CVT-T>N, each answered with its own
-\ converter's uses, in either case and qualified, CVT-T's token first when
-\ asked for; that token, which declares both, -32803.
 : REFS-DEFTYPE-TURNS ( -- )
    SESSION-INITIALIZE
    HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
@@ -4885,10 +4814,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SYMBOLS-END
    s" 5" HOVER-CVT-PATH FAILED ;
 
-\ life.f includes g.f, undefines KAY and includes it again: its check
-\ declares KAY at g.f's token in two visits, so life.f is named and its use
-\ not listed, while the declaration is. g.f, which no folder holds, is not
-\ named: a verified check reads it.
+\ g.f, which no folder holds, is not named: a verified check reads it.
 : REFS-LIFE-TURNS ( -- )
    s" refs-life" REFS-DIR
    s" refs-life/g.f" TEXT-RG REFS-FILE
@@ -4911,9 +4837,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    1 at at 4 + REF+
    SYMBOLS-END ;
 
-\ s.f on disk, refused, then deferred: named with its verdict each time, and
-\ the answer includes the known use. Opened deferred, a request at its use
-\ returns those known locations, while its unresolved operand selects none.
 : REFS-UNV-TURNS ( -- )
    s" refs-unv" REFS-DIR s" refs-unv/w" REFS-DIR
    s" refs-unv/w/f.f" TEXT-RF REFS-FILE
@@ -4944,7 +4867,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" 5" true 14 UNV-ANSWER
    s" 6" SYMBOLS-START SYMBOLS-END ;
 
-\ A refused open document still selects a binding checked before the refusal.
 : REFS-REFUSED-TURNS ( -- )
    s" refs-refused" REFS-DIR s" refs-refused/w" REFS-DIR
    s" refs-refused/w/f.f" TEXT-RF REFS-FILE
@@ -4964,8 +4886,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-refused/w/s.f" OPEN-URI 1 12 16 REF+
    SYMBOLS-END ;
 
-\ The deferred subject s.f reached u.f outside the workspace folder before
-\ stopping at PN, so its known binding in u.f is part of the answer.
 : REFS-DEP-TURNS ( -- )
    s" refs-dep" REFS-DIR s" refs-dep/w" REFS-DIR s" refs-dep/out" REFS-DIR
    s" refs-dep/w/f.f" TEXT-RF REFS-FILE
@@ -4992,8 +4912,6 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : TEXT-REFS-READ-EDIT ( -- ptr u8 n )
    s\" \\ changed after the probe read it\n" ;
 
-\ A refused probe consumed x.f before its verdict. A queued edit of x.f
-\ invalidates the references answer even though that probe cannot cover it.
 : REFS-PARTIAL-EDIT-TURNS ( -- )
    s" refs-read" REFS-DIR s" refs-read/w" REFS-DIR
    s" refs-read/w/d.f" TEXT-RF REFS-FILE
