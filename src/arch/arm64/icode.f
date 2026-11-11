@@ -7,6 +7,7 @@
 require src/arch/arm64/asm.f
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
+require src/habu/layout.f
 package A64ICODE
 using A64ASM
 public
@@ -27,7 +28,7 @@ public
 \ the per-section refusal is dead. At CODE-BAND:BYTES 30,404,608 the minimum is
 \ 30,536,128.
 $1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
-$2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + SOURCE-ARENA-CAP ($400000) + AOT-SECTION-CAP
+ADR-HI SOURCE-ARENA-CAP + AOT-SECTION-CAP + constant CODE-CAP-BYTES
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS
 \ The fixup tables FXS, FXN and FXK hold $2000 rows each: the native recovery
 \ build's identity shadow branches pass 4096 labels, and their pending fixups
