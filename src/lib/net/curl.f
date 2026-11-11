@@ -19,6 +19,12 @@
 \ is rewound once all it holds is copied into spans NEXT-ARM armed, and its
 \ receive is paused while it holds uncopied bytes, so a fast server waits in
 \ the kernel's window and not in this process's memory.
+\
+\ One byte on the wake pipe says "a record changed": a START, a CANCEL, an
+\ abandoned record or the stop. The loop holds one AIO POLL ticket on the read
+\ end, and after it reads whatever is there it scans the table, so a byte that
+\ arrives between the read and the scan costs one extra turn and never a missed
+\ record.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
@@ -846,9 +852,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 \ The first free record of the chunk at c, whose records start at index base,
-\ claimed, or -1. One claim wins: the state cell moves FREE -> CLAIMING in one
-\ step, so two tasks starting a transfer at the same moment are handed
-\ different records. CLAIMING is a state the loop passes over, so a record is
+\ claimed, or -1. CLAIMING is a state the loop passes over, so a record is
 \ never added to the multi handle before the submitter has finished filling it.
 : CHUNK-CLAIM ( n n n -- n ) {: c:n base:n len:n :}
    len 0 ?do
@@ -870,10 +874,9 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    again ;
 
 
-\ A free record, grown into when every one is taken. Every claim runs under
-\ CURL-LOCK, which is what lets REC-GROW append without a race. Answers a code
-\ and the index: 0 and the record, or the code the growth threw and -1, which
-\ the claim answers because it holds the facility.
+\ Every claim runs under CURL-LOCK, which is what lets REC-GROW append without
+\ a race. Answers a code and the index: 0 and the record, or the code the
+\ growth threw and -1, which the claim answers because it holds the facility.
 : REC-CLAIM ( -- n n )
    FREE-CLAIM dup 0 < if
       drop [: REC-GROW ;] catch dup 0<> if -1 exit then drop
@@ -899,8 +902,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 \ closed both streams and published it before the halt reached AWAIT. Runs
 \ under CURL-LOCK once the handle is out of the multi handle. An owner waiting
 \ in ABANDON, halted or in CLEANUP, is woken to free the record itself; the lock
-\ it takes to do so keeps it alive until this wake has landed. Any other record
-\ is free.
+\ it takes to do so keeps it alive until this wake has landed.
 : LEAVE-DONE ( n -- ) {: idx:n :}
    idx REC-EASY@ STATE-GET STATE-CLEAR-RESPONSE
    idx REC R.BODY @ idx REC R.LEN @ BYTES-RELEASE
@@ -921,10 +923,10 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    REC-COUNT 0 ?do i REC-RELEASE loop ;
 
 
-\ The record a handle is in, or -1. A handle is in at most one record at a time
-\ - START refuses a second one - so the first match is the only match. This is
-\ how a task finds its own transfer: asking libcurl about a handle the loop may
-\ be driving is exactly what it must not do.
+\ A handle is in at most one record at a time - START refuses a second one - so
+\ the first match is the only match. This is how a task finds its own transfer:
+\ asking libcurl about a handle the loop may be driving is exactly what it must
+\ not do.
 : REC-FIND ( n -- n ) {: easy:n :}
    REC-COUNT 0 ?do
       i REC-STATE@ STATE-FREE <> if
@@ -960,11 +962,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    0 idx REC R.DELIVERED !
    0 idx REC R.PAUSED ! ;
 
-
-\ One byte says "a record changed": a START, a CANCEL, an abandoned record or
-\ the stop. The loop holds one AIO POLL ticket on the read end, and after it
-\ reads whatever is there it scans the table, so a byte that arrives between the
-\ read and the scan costs one extra turn and never a missed record.
 
 : WAKE-POKE ( -- )
    WAKE-W @ WAKE-BYTE 1 write drop ;
@@ -1099,8 +1096,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURLM-OK ;
 
 
-\ A finished whole transfer: libcurl already wrote the body into the owner's
-\ span, exactly as PERFORM's. An owner that left gets no result.
+\ libcurl already wrote the body into the owner's span, exactly as PERFORM's.
 : WHOLE-FINISH ( n n -- n ) {: idx:n rc:n :}
    idx REC-STREAM@ SPAN-TAKE {: u:n refused:bool bodyrc:n :}
    idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
@@ -1174,8 +1170,8 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURLM-OK ;
 
 
-\ The loop comment's two rules, as a CURLcode. A rewind first wipes what reads
-\ NEXT-ARM armed copied, before the resume, so what libcurl held lands at start.
+\ A rewind first wipes what reads NEXT-ARM armed copied, before the resume, so
+\ what libcurl held lands at start.
 : PACE-STEP ( n -- n ) {: idx:n :}
    idx REC-STREAM@ STREAM-FLUSH 0<> if CURLE-WRITE-ERROR exit then
    idx REC-LEN-CELL LE:U64@ idx REC R.OFFSET @ > if
@@ -1199,8 +1195,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    idx rc FAIL-RUN ;
 
 
-\ The owner asked for this transfer to end: libcurl's own code for a transfer an
-\ application ended is the answer it gets.
 : CANCEL-RUN ( n -- n ) {: idx:n :}
    idx CURLE-ABORTED FAIL-RUN ;
 
@@ -1230,7 +1224,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 \ CURLMsg is libcurl's memory, so the struct is copied into this loop's own
-\ bytes with the same bounded memcpy the body copy uses and read from the copy.
+\ bytes and read from the copy.
 : MSG-TAKE ( n -- n ) {: msg:n :}
    MSG-BUF msg MSG-BYTES COPY-OUT drop
    MSG-BUF MSG.KIND + LE:U32@ MSG-DONE <> if CURLM-OK exit then
@@ -1253,9 +1247,8 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    SERVICE-RECORDS ;
 
 
-\ Every record access but the claim runs under this one facility, and the two
-\ locked bodies answer a CURLMcode rather than throwing, so a refusal never
-\ leaves it held.
+\ A throw out of either locked body still holds CURL-LOCK: LOOP-BODY's FAIL-ALL,
+\ whose GET is idempotent for the loop task, releases it.
 : LOCKED-SERVICE ( -- n )
    CURL-LOCK TASK:GET
    SERVICE-RECORDS
@@ -1294,8 +1287,8 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    SET-KEPT fd + c@ 0 <> ;
 
 
-\ The mask an fd is wanted with. An exception is neither readable nor writable
-\ to the kernel this loop polls with, so it is asked for as both.
+\ An exception is neither readable nor writable to the kernel this loop polls
+\ with, so it is asked for as both.
 : WANT-MASK ( n -- n ) {: fd:n :}
    SET-EXC fd SET-BIT? if AIO:READABLE AIO:WRITABLE or exit then
    0
@@ -1376,8 +1369,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURLM-OK MAXFD-CELL LE:S32@ ;
 
 
-\ An fd still wanted with the mask its ticket holds keeps that ticket; one whose
-\ mask changed, or that left the sets, gives it up.
 : SLOT-REVIEW ( n -- ) {: slot:n :}
    slot FD-MASK@ dup 0= if drop exit then {: mask:n :}
    slot FD-FD@ {: fd:n :}
@@ -1460,9 +1451,6 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    again ;
 
 
-\ A multi call that refuses the handle it was given is a contract violation, and
-\ the transfers in flight are ended here rather than left with an owner parked
-\ on a loop that is gone.
 : FAIL-ONE ( n -- ) {: idx:n :}
    idx REC-STATE@ {: st:n :}
    st STATE-FREE = st STATE-CLAIMING = or st STATE-LEFT = or if exit then
@@ -1574,12 +1562,12 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 \ An owner that leaves, halted or in CLEANUP, gives its record up and returns
-\ only once the loop holds no part of it: the loop takes the handle out of the multi handle, cleans it up
-\ and marks it LEFT before the span is the owner's to free or reuse. The wait
-\ is a TASK:WAIT loop, which parks normally once the halt's hint is taken, and
-\ the owner frees the record itself. A DONE record is already out of the multi
-\ handle with nothing left to write, and is freed here without the loop, which
-\ after a FAIL-ALL is no longer there to answer.
+\ only once the loop holds no part of it: the loop takes the handle out of the
+\ multi handle, cleans it up and marks it LEFT before the span is the owner's
+\ to free or reuse. The wait is a TASK:WAIT loop, which parks normally once the
+\ halt's hint is taken. A DONE record is already out of the multi handle with
+\ nothing left to write, and is freed here without the loop, which after a
+\ FAIL-ALL is no longer there to answer.
 : ABANDON ( n -- ) {: idx:n :}
    CURL-LOCK TASK:GET
    idx REC-STATE@ STATE-DONE = if
@@ -1644,9 +1632,8 @@ public
 
 
 \ Ends the loop and gives the multi handle and the pipe back. Every transfer
-\ must have been awaited first: a record that is not free is E-STATE, exactly as
-\ AIO:STOP refuses a ring the kernel still owns. What ended the loop is
-\ rethrown here. After a stop the loop can be started again.
+\ must have been awaited first: a record that is not free is E-STATE. What
+\ ended the loop is rethrown here. After a stop the loop can be started again.
 : LOOP-STOP ( -- )
    LOOP-LIVE atomic@ 0= if E-STATE throw then
    CURL-LOCK TASK:GET
@@ -1667,15 +1654,6 @@ public
    mrc CURLM-OK <> if E-RESULT throw then ;
 
 
-\ Hands one prepared handle and one writable span to the loop and answers as
-\ soon as the record is queued. Every per-handle option - URL!, METHOD!, GET!,
-\ PROXY!, HEADER+, BODY!, COOKIE-FILE!, COOKIE-JAR!, TIMEOUT!, LOW-SPEED!, FOLLOW!,
-\ FRESH-CONNECT! and the scheme restriction - is set before this and holds for
-\ that transfer alone.
-\ From here until AWAIT answers, the handle and the span belong to the loop: no
-\ other task may touch either. A START with no loop running, and a second START
-\ on a handle already in flight, are E-STATE. The records grow with the
-\ transfers in flight, so no count of them is refused.
 private
 
 \ A whole body goes straight into the owner's span; a streamed one grows in the
@@ -1754,6 +1732,13 @@ private
 
 public
 
+\ Hands one prepared handle and one writable span to the loop and answers as
+\ soon as the record is queued. Every per-handle option is set before this and
+\ holds for that transfer alone.
+\ From here until AWAIT answers, the handle and the span belong to the loop: no
+\ other task may touch either. A START with no loop running, and a second START
+\ on a handle already in flight, are E-STATE. The records grow with the
+\ transfers in flight, so no count of them is refused.
 : START ( handle ptr u8 len -- status ) {: subject:handle target capacity:len :}
    subject target capacity MODE-WHOLE START-WITH ;
 
