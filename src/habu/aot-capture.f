@@ -1,9 +1,20 @@
 \ aot-capture.f - host build-time AOT capture: the window's code, records, name
-\ pool and call-site rows into the AOT buffers (src/habu/aot-decl.f). The seed
-\ re-links each call site by name at boot (LFIND), so captured code holds no
-\ host address and each site's imm26 is zeroed for determinism. ARM code reach
+\ pool and call-site rows into the AOT buffers. Captured code holds no host
+\ address and each site's imm26 is zeroed for determinism. ARM code reach
 \ comes from BL scans; CAPTURE-NATIVE takes x86 reach from the native
 \ compiler's routine graph. Never baked in.
+\
+\ The shadow reach. A shadowed record the capture ships no row for keeps its
+\ routine only while live code reaches it. The ARM64 reach cannot say so: a
+\ retired record has no row (ACAP-ADD-REC), so its body is a gap the gap sweep
+\ scans as a root. The shadow reach starts from ACAP-GRAPH-ROOTS, the declared
+\ code cells and every gap but a retired body, follows edges only out of
+\ reached bodies and marks only its own nodes, leaving ARM64 retention and the
+\ payload alone. A node is a capture record, or a retired window record
+\ numbered ACAP-REC-ALL plus its window offset. Reached code reaches its owner
+\ (ACAP-GOWNER) and the lowest retired record covering it, and a shared entry
+\ names the lowest record (ACAP-TGT>REC), so an EXPORT alias reaches the
+\ body's record. A retired id is a window offset plus one, 0 for none.
 
 require src/habu/address-cells.f
 require src/habu/aot-arm.f
@@ -18,8 +29,6 @@ require src/lib/sort.f
 
 package AOT-CAPTURE
 
-\ Package AOT-BUF's public surface (src/habu/aot-decl.f); the import closes with
-\ the package.
 using AOT-BUF
 
 \ The raw dict/code boundary is confined to these TRUST casts. AOT-DBASE names
@@ -29,8 +38,6 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 : AOT-DBASE ( -- ptr n ) dbase@ AOT-N>U8 CELL-VIEW ;
 : AOT-DBASE-N ( -- n ) dbase@ ;
 : AOT-DATA-N ( -- n ) data-base BYTE-VIEW NULL-PTR BYTE-VIEW - ;
-\ habu1.f WLFIND's hash index. xref-search-wl's row is this package's own
-\ (src/habu/prims.f), as INTERPRETER's is for interpreter.f WL-PROBE.
 : AOT-WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 : AOT-LIVE-DATA ( -- ptr n ) data-base ;
 : AOT-CELL@ ( ptr n -- n ) @ ;
@@ -69,8 +76,7 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
    p ACAP-W32@ $FC000000 and $94000000 = ;
 : ACAP-BRANCH? ( ptr u8 -- bool ) {: p:ptr :}
    p ACAP-W32@ $FC000000 and $14000000 = ;
-\ Internal targets need no name: the capture compactor retargets them before the
-\ seed copies the final blob.
+\ Internal targets need no name: the capture compactor retargets them.
 : ACAP-IN-CODE? ( n -- bool ) {: t:n :}
    t AOT-CODE-B0 @ < if 0 0= 0= exit then
    t AOT-CODE-B0 @ AOT-BLOB-LEN @ + < ;
@@ -78,12 +84,7 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
    p ACAP-W32@ $FC000000 and  p AOT-P32! ;
 
 \ Reverse lookup: call target (host xt) -> dict record index.
-\ An index, not a scan: the BL scan and ACAP-OUT-CHAIN ask once per site. As a
-\ scan, the REPL window cost 217 sites x 8,545 records (7.6 ms) and the compiler
-\ chain 13,674 x 14,481 (198M reads, 1.16 s of every `install --force`). The
-\ engine's hash index (habu1.f C-HIDX-HASH) is keyed on name and wordlist, not
-\ code address.
-\ `EXPORT` gives one body a second record (habu2.f C-EXPORT), so two records can
+\ `EXPORT` gives one body a second record, so two records can
 \ carry one xt: records are inserted ascending and an insert meeting its xt does
 \ nothing, so the lowest record index wins.
 \ A slot holds a record index and the probe re-reads that record's live [0].
@@ -155,15 +156,11 @@ variable ACAP-EQ                                             \ pool-compare mism
    else 1 ACAP-EQ ! then
    ACAP-EQ @ 0= ;
 \ The pool is deduped, so a name has at most one entry and no tie-break is
-\ needed. As a walk it cost 18,737 asks against a 37,779-byte pool on the
-\ compiler chain, 0.29 s in ACAP-COMPACT-RECS alone.
-\ The bound is derived: every name reaching ACAP-POOL-ADD is a host record's
-\ (ACAP-ADD-SITE the callee's, ACAP-COMPACT-RECS the captured record's,
-\ ACAP-ADD-XTSITE the named word's), so entries cannot outnumber the dictionary
+\ needed.
+\ The bound is derived: every name reaching ACAP-POOL-ADD is a host record's,
+\ so entries cannot outnumber the dictionary
 \ and 2x DICT-CAP slots keep the load at most half. A producer adding a name
 \ from elsewhere must re-derive that; the refusal below is what it meets.
-\ ACAP-POOL-RESET clears the pool and its index together, so no index offset
-\ points into emptied bytes.
 DICT-CAP 2 * constant ACAP-NIDX-SLOTS
 create ACAP-NIDX ACAP-NIDX-SLOTS 4 * allot                   \ u32: 0 empty, else entry off + 1
 variable ACAP-NIDX-N                                         \ entries in the pool
@@ -174,7 +171,7 @@ variable ACAP-NS                                             \ probe cursor
 : ACAP-NIDX! ( n n -- ) {: v:n s:n :} v  s 4 * ACAP-NIDX +  AOT-P32! ;
 : ACAP-NIDX-STEP ( -- ) ACAP-NS @ 1+ ACAP-NIDX-SLOTS 1 - and ACAP-NS ! ;
 
-\ FNV-1a, the engine dictionary index's key derivation (habu1.f C-HIDX-HASH),
+\ FNV-1a, the engine dictionary index's key derivation,
 \ with the high half folded down before the mask so short names do not crowd one
 \ end of the table.
 : ACAP-NIDX-HASH ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -227,10 +224,8 @@ variable ACAP-NS                                             \ probe cursor
    off ACAP-NIDX+
    off ;
 
-\ Call-site rows: blob-off u32 + name-off u32 (into pool) + scope u32.
 \ The u32 fields need no range check: the copy refuses past AOT-BLOB-CAP and
-\ ACAP-POOL-ADD past AOT-NAMES-CAP, both megabytes below 2^32. The scope is the
-\ wordlist the seed searches the name in; ACAP-SITE-SCOPE is its only producer.
+\ ACAP-POOL-ADD past AOT-NAMES-CAP, both megabytes below 2^32.
 : ACAP-SITE-ROW ( n -- ptr u8 ) SITE-ROW * AOT-SITE-BUF@ + ;
 
 \ Site kinds by original instruction offset, for the reach pass: an external
@@ -255,12 +250,10 @@ variable ACAP-W-B0                       \ the window's code base, latched at CA
 variable ACAP-W-R0  variable ACAP-W-R1   \ its record span
 variable ACAP-W-D0                       \ its first DATA address
 
-\ Records: copy the host record (48 bytes), rebase an ordinary [0] xt to its blob offset.
 : ACAP-REC-DST ( n -- ptr u8 ) 48 * AOT-REC-BUF@ swap + ;
 
 \ A record has two indices: its dictionary index (live dictionary, a compiler's
-\ map) and its capture index (its row of the verbatim table, taken by
-\ ACAP-REC-DST, ACAP-NAMED-BIT, ACAP-GRAPH-LIVE? and every ACAP-REC-ALL walk).
+\ map) and its capture index (its row of the verbatim table).
 \ ACAP-ADD-REC leaves retired records out, so the two differ past one.
 DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index, or -1
 : ACAP-DICT>CAP ( n -- n ) {: idx:n :}          \ -1 outside the window or retired
@@ -268,7 +261,6 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
    idx ACAP-W-R0 @ - ACAP-REC-OF @ ;
 
 \ A record carries no file, so the definition's name is the whole locator.
-\ ACAP-NAME. prints the same pair but is defined below.
 : ACAP-REC-REFUSE ( n -- ) {: k:n :}
    s" aot-capture: records captured " type AOT-REC-N @ .
    s" aot-capture: record bound " type AOT-REC-MAX .
@@ -293,9 +285,7 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 \ code-len-or-package-private u32 + name-off u32 + (flags u8 | min-in u8<<8 |
 \ dkind u8<<16) u32 + wid u32; the dkind byte holds the DKIND pair in bits 0-1,
 \ DNAME-CELL in bit 2, DNAME-ALLOC in bit 3 and DNAME-REP in bit 4. Names go to
-\ the deduped pool. The seed expands each back to a 48-byte record
-\ at boot, rebuilding the derivable fields (flags nibble, min-in byte, DKIND
-\ pair, wid, name length, the [24..40) name padding). The wid is a full u32 so
+\ the deduped pool. The wid is a full u32 so
 \ wordlist IDs above 255 round-trip; the min-in byte (record [16] bits 52-59)
 \ carries certified arity.
 : ACAP-CREC-DST ( n -- ptr u8 ) AOT-CREC-ROW * AOT-REC-MAX 48 * +  AOT-REC-BUF@ swap + ;
@@ -304,27 +294,22 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
    v 20 + ACAP-W32@ 28 rshift 2 and 0= 0= ;
 
 \ The source record's name: inline at [24], or at the address [24] holds when
-\ DNAME-EXT is set (habu2.f C-STORE-NAME). Both go into the pool the seed reads.
+\ DNAME-EXT is set.
 : ACAP-REC-NAME ( ptr u8 bool -- ptr u8 ) {: v:ptr ext:bool :}
    ext 0= if v 24 + exit then
    v 24 + ACAP-W32@  v 28 + ACAP-W32@ 32 lshift or  AOT-N>U8 ;
 \ Audit (c): every wid a record carries is a window coordinate. Wid 0, the global
 \ wordlist, is the only number that names the same wordlist in two processes; a
-\ wordlist the window did not create has no counterpart the seed could rebase it
-\ to, so it is refused here rather than registered into whatever the target keeps
-\ at that number. A package's private slot is 0 when it has none.
+\ wordlist the window did not create has no counterpart, so it is refused here
+\ rather than registered into whatever the target keeps at that number. A
+\ package's private slot is 0 when it has none.
 : ACAP-WID-IN? ( n -- bool ) {: w:n :}
    w 0= if 0 0= exit then
    w AOT-WID-W0 @ < if 0 0= 0= exit then
    w AOT-WID-W0 @ AOT-WID-SPAN @ + < ;
 
-\ The payload carries only the window's own wid numbering: a record ships `wid -
-\ W0 + WID-REL-BASE`, wid 0 ships as 0, and the seed adds the booting engine's
-\ WIDN back. The host's W0 belongs to the building process: one extra host
-\ package moved every wid field, 3305 bytes of one image. The fields are an
-\ ordinary record's [40] and a package row's [0] and [8]. The protected-wordlist
-\ rows (ACAP-PWIN-CAPTURE) are relative and zero-based: that table has no marker
-\ value to collide with.
+\ The payload carries only the window's own wid numbering. The fields are an
+\ ordinary record's [40] and a package row's [0] and [8].
 : ACAP-REL-WID ( n -- n ) {: w:n :}
    w 0= if 0 exit then
    w AOT-WID-W0 @ - WID-REL-BASE + ;
@@ -365,11 +350,10 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
    len 0 ?do bstart AOT-N>U8 i + c@  AOT-BLOB-BUF@ i + c!  loop
    len AOT-BLOB-LEN ! ;
 
-\ A captured call site travels as a name that the seed LFINDs in the booting
-\ engine, so a callee must be a capturing-process word the target's prefix also
-\ defines, or a window word (registered before patching). A capture in a booted
+\ A callee must be a capturing-process word the target's prefix also
+\ defines, or a window word. A capture in a booted
 \ bin/hb has a third kind, the capture tool's own files, which exist in no
-\ target: a call into them would fail at the shipped binary's boot.
+\ target.
 \ The producer's marks (record index and DATA cursor when its prelude began)
 \ and the window's rstart and d0 bound the prelude; below it is the engine the
 \ target shares. The band is two-sided: a window word reaches a prelude word as
@@ -408,8 +392,7 @@ private
    k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN  type ;
 
 \ Audit (a): every call a window word makes. A callee below the prelude mark is
-\ in the target's prefix; one inside the window is registered by the seed before
-\ the patch pass. Anything else ends the capture.
+\ in the target's prefix.
 : ACAP-SITE-BAND ( n n -- ) {: boff:n k:n :}
    k ACAP-PRE-R @ < if exit then
    k ACAP-W-R0 @ >= k ACAP-W-R1 @ < and if exit then
@@ -426,13 +409,12 @@ private
    v ACAP-W-D0 @ < if s" in the prelude band, which no target carries" type exit then
    s" above the window's DATA span" type ;
 
-\ A bare name is not an identity: on the chain SLOT@ lives in five wordlists and
-\ none globally. A site carries one of four scopes: a wid below
-\ FIRST-DYNAMIC-WID is a layout.f or wl.f constant, the same in every engine, as
-\ wid 0 is; an in-window wid is rebased like a record's; a wid the window did
+\ A bare name is not an identity. A wid below
+\ FIRST-DYNAMIC-WID is a constant, the same in every engine, as
+\ wid 0 is; a wid the window did
 \ not create is carried by qualifying the name with its package's name, resolved
 \ through the compile qualifier path. Anything left is refused by name.
-$3A constant ACAP-QUAL-SEP                        \ ':' - the separator LFIND's qualifier scan looks for
+$3A constant ACAP-QUAL-SEP                        \ ':'
 256 constant ACAP-QUAL-CAP
 create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
 
@@ -446,12 +428,10 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
    loop
    -1 ;
 
-\ From the target index rather than the walk above, because the call scan asks
-\ once per site into a package (417 of the compiler chain's 7020 capture samples
-\ were that walk). A package row's [0] is its public wid and an ordinary
+\ A package row's [0] is its public wid and an ordinary
 \ record's [0] a code entry no wid reaches, so the lowest record for w is the
-\ walk's row unless it is retired, and a wid is allocated once (habu1.f
-\ BWORDLIST counts up), so no live row carries a retired one's wid.
+\ walk's row unless it is retired, and a wid is allocated once,
+\ so no live row carries a retired one's wid.
 : ACAP-PKG-PUB ( n -- n ) {: w:n :}
    w ACAP-TGT>REC {: p:n :}
    p 0 < if -1 exit then
@@ -502,15 +482,12 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
 
 variable ACAP-P
 
-\ Refused when no record carrying the callee's entry is in a scope the seed can
-\ search: the qualifier reaches only a public wordlist, and an `undefine`d
-\ record is in none (producer: a window word compiled against a word later
-\ retired and replaced). A private callee with no public alias never arrives
+\ Refused when no record carrying the callee's entry is in a searchable scope:
+\ the qualifier reaches only a public wordlist, and an `undefine`d
+\ record is in none. A private callee with no public alias never arrives
 \ here (ACAP-?WID refuses first), nor does a branch into a private definer's
 \ does> clause made through its public alias: EXPORT publishes the clause with
-\ the definer (habu2.f package DOES-REC, "the clause an export carries"), so
-\ ACAP-SITE-REC finds the public record, also after `undefine` retired the
-\ private pair.
+\ the definer.
 : ACAP-REFUSE-SCOPE ( n n -- ) {: k:n w:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
    s"  calls " type k ACAP-NAME.
@@ -539,7 +516,7 @@ variable ACAP-P
    w ACAP-WID-IN? if false exit then
    w ACAP-PKG-PUB 0 >= ;
 
-\ `EXPORT` gives a body a second, public record (habu2.f C-EXPORT), so the first
+\ `EXPORT` gives a body a second, public record, so the first
 \ record carrying an entry (ACAP-TGT>REC's answer) can be private. When its
 \ scope is unsearchable, the site travels under the first later record of the
 \ entry whose scope is, taken from below the prelude mark (a record above it is
@@ -565,8 +542,7 @@ variable ACAP-P
    p 0 < if k w ACAP-REFUSE-SCOPE then
    p AOT-REC AOT-RNPTR  p AOT-REC AOT-RNLEN  a u ACAP-QUAL$  WID-QUAL ;
 
-\ Audit (f): each checked window word's signature travels, checked per record:
-\ a `:` naming a seeded word with none dies E-UNDEFINED.
+\ Audit (f): each checked window word's signature travels, checked per record.
 
 \ Package and retired records are exempt by their negative WL marker, not by
 \ name; a `0 set-check` word is uncallable from checked code, so no finding.
@@ -574,8 +550,6 @@ variable ACAP-P
 \ The scope half of SYM-FIND's key ( pkg$, public?, found? ) from the record's
 \ own wordlist, not the open package; an empty package name is the global
 \ scope. A wid no package row claims is refused rather than answered "global".
-\ The memo turns 6892 linear walks over the compiler chain into 94, because
-\ records arrive grouped by package; it is keyed on the wid.
 variable ACAP-PKG-MEMO-W                          \ the wid the memo answers for, 0 = none
 variable ACAP-PKG-MEMO-ROW                        \ ... and the package row it answered
 variable ACAP-PKG-MEMO-PUB
@@ -602,12 +576,12 @@ variable ACAP-PKG-MEMO-PUB
 \ A package's private word is unreachable by name in the image, and so is a
 \ part's public word: no source can qualify into a private wordlist, nor into a
 \ part from outside its package, and call sites carry a record index, so its
-\ record (20 bytes here, 48 booted, plus its name) buys nothing. Its code
+\ record buys nothing. Its code
 \ stays only when the reach graph finds a caller or a declared code address.
 \ A record ships when the payload names it: the boot-run entry list and the
-\ named code sites (resolved by name at boot), and the address cells holding a
-\ word's entry. Package rows always ship: they carry the wordlist roles the seed
-\ rebases and the sealed-WID gate reads.
+\ named code sites, and the address cells holding a
+\ word's entry. Package rows always ship: they carry the wordlist roles the
+\ sealed-WID gate reads.
 variable ACAP-BP
 
 : ACAP-POOL$ ( n -- ptr u8 n ) {: noff:n :}
@@ -728,9 +702,8 @@ variable ACAP-ALL-NAMES
 \ span) for the application linker; an unreachable body carries neither. The
 \ sidecar marks a removed body's start -1, never an old coordinate that could
 \ name other code after compaction.
-\ Reserved at first use: AOT-REC-MAX cells is 262,144 bytes that a static allot
-\ would spend in the build host's DATA prefix below the window; the bound is
-\ still AOT-REC-MAX.
+\ Reserved at first use: AOT-REC-MAX cells that a static allot
+\ would spend in the build host's DATA prefix below the window.
 DYNAMIC-BUFFER ACAP-NAMED-STORAGE n
 : ACAP-NAMED-BIT ( n -- ptr n )                 \ record k's cell: 1 retains its name
    AOT-REC-MAX ACAP-NAMED-STORAGE-RESERVE
@@ -1246,9 +1219,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 
 \ The same walk emits the rows.
 \ The copy is the audit's walk, not a pass over the store, so the artifact
-\ cannot name a word the target lacks: copying the store added 723 rows (the
-\ capture tool's post-window words), and a signature for an absent word
-\ certifies a definition that then calls nothing.
+\ cannot name a word the target lacks.
 \ The row (four u32: name, signature and package offsets into the pool's string
 \ arena, then visibility) is copied with the arena verbatim, so nothing is
 \ re-interned. The checker owns the format and is its only reader.
@@ -1297,15 +1268,11 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    AOT-REG-BUF@ AOT-REG-CAP AOT-ARM:PAYLOAD-REG-SAVE AOT-REG-LEN ! ;
 
 \ Runs last of the audits: the call and address scans ask whether what travels
-\ is sound, this whether it is complete, and running it earlier masked them
-\ (measured: an address refusal came back as an uncarried signature).
-\ The arming has no separate test: a window compiled disarmed has an empty pool
-\ and the walk names its first checked word; an armed-now guard would be wrong,
-\ since capture tools close the signature window (AOT-ARM:SIG-CLOSE) first.
+\ is sound, this whether it is complete, and running it earlier masked them.
 \ Rows are chosen per record of [R0,R1), but the registry's delta is two
-\ high-waters subtracted. AOT-ARM:SIG-CLOSE latches them at the window, so the
-\ families a capture tool loads after its window stay out: counted, the seeded
-\ engine refuses its own registry. A closed window keeps its end.
+\ high-waters subtracted, latched at the window, so the
+\ families a capture tool loads after its window stay out. A closed window keeps
+\ its end.
 : ACAP-AUDIT-SIGS ( -- )
    0 ACAP-SIG-KNOWN !  0 ACAP-SIG-EXEMPT !  0 AOT-SIG-N !
    0 ACAP-PKG-MEMO-W !  0 ACAP-PKG-MEMO-ROW !  0 ACAP-PKG-MEMO-PUB !
@@ -1313,23 +1280,18 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    ACAP-SIG-STRINGS
    ACAP-SIG-REGISTRY ;
 
-\ Audit (d): the row resolves the way the seed will ask.
-\ The seed's boot question, asked here of the row just written
-\ (pooled name, stored scope, the engine's own find), so a wrong scope (dot
-\ 9d7d8e72), a wrong pool offset or a shadowed name fails at the build, not at
-\ a boot that says only that a name was not found. `search-wl` refuses
-\ OWNER-API-PRI-WID, which the seed does search, so a site there must name a
+\ Audit (d): the row just written resolves
+\ (pooled name, stored scope, the engine's own find), so a wrong scope,
+\ a wrong pool offset or a shadowed name fails at the build. `search-wl` refuses
+\ OWNER-API-PRI-WID, so a site there must name a
 \ pre-window record, an engine helper whose wid is a layout constant.
 : ACAP-XREF-XT ( ptr n -- n )
    dup XREF-FOUND? if XREF-START exit then drop 0 ;
 
-\ The engine's one-wordlist hash search (habu1.f WLFIND), as the seed calls it
-\ for a scoped site. xref.f XREF-FIND-WL walks
-\ every record and, once per site, was 99% of CAPTURE's samples on a
-\ 1024-filler window and 92% on the compiler chain.
+\ The engine's one-wordlist hash search.
 : ACAP-WL-XT ( ptr u8 n n -- n ) AOT-WL-RECORD ACAP-XREF-XT ;
 
-\ Split where xref.f XREF-FIND splits: at the one colon (a second resolves
+\ Split at the one colon (a second resolves
 \ nothing, an edge colon leaves the name bare); the qualifier probes the
 \ namespace wordlist, the tail the package row's public wordlist.
 : ACAP-QUAL-XT ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -1344,12 +1306,12 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    w WID-QUAL = if a u ACAP-QUAL-XT exit then
    a u w ACAP-WL-XT ;
 
-\ The probe misses a live callee only for a does>-clause record, which J-DOES
-\ names after its definer (habu2.f DOES-REC) without the duplicate wall: a
+\ The probe misses a live callee only for a does>-clause record, which is
+\ named after its definer without the duplicate wall: a
 \ public definer whose tail ends in a colon gives a two-colon spelling the
 \ qualifier path refuses, and a clause's name can already be held by a word
 \ defined as X;does before X. A definer `undefine` replaced is not one: its
-\ clause retires with it (xref.f XREF-RETIRE-INDEX).
+\ clause retires with it.
 : ACAP-REFUSE-SITE ( n n ptr u8 n n -- ) {: s:n k:n a:ptr u:n w:n :}
    s" aot-capture: call site " type s .INT
    s"  bakes the name " type a u type
@@ -1370,11 +1332,10 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    a u w ACAP-SITE-XT  k AOT-REC AOT-RXT = if exit then
    s k a u w ACAP-REFUSE-SITE ;
 
-\ Both BL and an out-of-window B travel by name. LDOESPATCH plants `b D` at a
-\ created word's RET, D the defining word's does> clause; outside the window its
-\ displacement measures against code the target lacks (three chain words
-\ branched into PATHZ that way). Such a
-\ B must name a record entry (habu2.f J-DOES gives the clause one) and is
+\ Both BL and an out-of-window B travel by name. A created word's RET is patched
+\ to `b D`, D the defining word's does> clause; outside the window its
+\ displacement measures against code the target lacks. Such a
+\ B must name a record entry and is
 \ refused by name otherwise, as an unresolved BL is. The compactor retargets
 \ in-window branches.
 : ACAP-SITE-ADD ( n -- ) {: k:n :}
@@ -1456,11 +1417,10 @@ variable ACAP-SWEEP-B1
    boff dn cn + 4 * AOT-DSITE-BUF@ + AOT-P32!
    AOT-CSITE-N @ 1+ AOT-CSITE-N ! ;
 
-\ A named code site: the seed resolves the word called `a u` in the booting
-\ engine instead of rebasing the chain, which is zeroed (a host address is
-\ builder-dependent and wrong in the seed) so the boot patch alone fills it. The
+\ A named code site: the chain is zeroed (a host address is
+\ builder-dependent). The
 \ producer is ACAP-OUT-CHAIN: a code literal a window word creates for a
-\ pre-window word (`['] X` on a prefix word; C-BTICK calls C-CODE-ADDR). An
+\ pre-window word (`['] X` on a prefix word). An
 \ in-window code literal is rebased by the code delta instead.
 : ACAP-ADD-XTSITE ( n ptr u8 n -- ) {: boff:n a:ptr u:n :}
    AOT-XTSITE:N @ AOT-XTSITE:MAX >= if s" aot-capture: too many named code sites" 74 die then
@@ -1497,8 +1457,8 @@ variable ACAP-SWEEP-B1
    then 2drop
    boff v ACAP-UNCLASSIFIED ;
 
-\ Every recorded site is classified: one in the DATA span is recorded for the
-\ boot DATA-reloc pass, every other one goes to ACAP-OUT-CHAIN. A named row's
+\ Every recorded site is classified: one in the DATA span is recorded,
+\ every other one goes to ACAP-OUT-CHAIN. A named row's
 \ chain holds 0, which fails ACAP-SCAN-CSITES's in-span test, so it is not also
 \ rebased; SITES yields only chain starts.
 : ACAP-DSITE-YIELD ( n n -- ) {: off:n kind:n :}
@@ -1543,11 +1503,9 @@ variable ACAP-SWEEP-B1
    loop ;
 
 \ The CODE half: quotation entry addresses, stored b0-relative with captureB0 =
-\ 0. The boot pass rebases by (seedCP - captureB0), so only (value - b0) must be
-\ preserved; the region base is __text-relative (ASLR on macOS, fixed VMBASE on
-\ Linux), so a raw absolute would keep the seed from reaching a fixpoint. A
-\ second sweep, because the DATA offsets precede every code offset in one buffer
-\ (ACAP-ADD-CSITE appends past AOT-DSITE-N).
+\ 0. The region base is __text-relative (ASLR on macOS, fixed VMBASE on
+\ Linux). A second sweep, because the DATA offsets precede every code offset in
+\ one buffer.
 : ACAP-CSITE-YIELD ( n n -- ) {: off:n kind:n :}
    kind SNAP-RELOC:SITE-ADDR <> if exit then
    off ACAP-SITE-BOFF {: boff:n :}
@@ -1568,8 +1526,7 @@ variable ACAP-SWEEP-B1
    bstart bend [: ACAP-CSITE-YIELD ;] ACAP-SWEEP ;
 
 \ After both sweeps classify live addresses: a window-relative DATA value could
-\ otherwise read as a live CODE address. D0 keeps its 8-residue, so the seed's
-\ (seed-DP - D0) delta preserves alignment.
+\ otherwise read as a live CODE address. D0 keeps its 8-residue.
 : ACAP-NORMALIZE-DSITES ( -- )
    AOT-DATA-D0 @ {: d0:n :}
    d0 7 and {: base:n :}
@@ -1586,13 +1543,10 @@ variable ACAP-SWEEP-B1
    base AOT-DATA-D0 ! ;
 
 \ The bytes travel: a TRUST row's name and signature are `s"` literals in the DP
-\ heap (the metabuild window: 5726 bytes of span, 24 nonzero). The span does
-\ not: the compiler chain's 1,531,045-byte span holds 32 bytes of content,
-\ so only present cells travel and the seed
-\ zeroes the span first.
+\ heap. The span does
+\ not: only present cells travel.
 \ A declared address cell's value is owned by its declaration, never by the
-\ window's bytes: the seed recreates the exact null or window-relative target
-\ and re-registers the kind, and a non-null target the window does not place is
+\ window's bytes: a non-null target the window does not place is
 \ refused. The set comes from the table, written where a cell's kind is
 \ decided. ACAP-BAKE-DATA says which cells outside the window may travel.
 : ACAP-ADD-XTOFF ( n n -- ) {: celloff:n meta:n :}
@@ -1716,17 +1670,6 @@ variable ACAP-SWEEP-B1
    ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
    count 0 ?do rows i cells + @ ACAP-GRAPH-CELL-OFF ACAP-GRAPH-MARK-OFF loop ;
 
-\ A shadowed record the capture ships no row for keeps its routine only while
-\ live code reaches it (src/habu/aot-shadow.f SH-STRIP). The reach above cannot
-\ say so: a retired record has no row (ACAP-ADD-REC), so its body is a gap the
-\ gap sweep scans as a root. This reach starts from ACAP-GRAPH-ROOTS, the
-\ declared code cells and every gap but a retired body, follows edges only out
-\ of reached bodies and marks only its own nodes, leaving ARM64 retention and
-\ the payload alone. A node is a capture record, or a retired window record
-\ numbered ACAP-REC-ALL plus its window offset. Reached code reaches its owner
-\ (ACAP-GOWNER) and the lowest retired record covering it, and a shared entry
-\ names the lowest record (ACAP-TGT>REC), so an EXPORT alias reaches the body's
-\ record. A retired id is a window offset plus one, 0 for none.
 DYNAMIC-BUFFER ACAP-RWORD n          \ blob word -> retired id over it
 DYNAMIC-BUFFER ACAP-SMARK n          \ node -> 1 once reached
 DYNAMIC-BUFFER ACAP-SWORK n          \ the nodes reached and not yet scanned
@@ -1878,7 +1821,7 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
    AOT-WINDOW:CELL-N @ 1+ AOT-WINDOW:CELL-N ! ;
 
 \ The span is rounded up to a whole cell, so the last cell can reach above the
-\ builder's DP; those bytes read as the zeros the seed leaves there.
+\ builder's DP.
 : ACAP-CELL@ ( n n -- n )
    {: d0:n c:n :}
    c AOT-WINDOW:CELL-BYTES * {: off:n :}
@@ -1892,9 +1835,9 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
       then
    loop ;
 
-\ One gap between declared cells: a declared cell keeps its bit clear and the
-\ seed writes its row's value. Both bounds are cell multiples (cell-aligned
-\ base, grid-checked cells, span rounded up).
+\ One gap between declared cells: a declared cell keeps its bit clear. Both
+\ bounds are cell multiples (cell-aligned base, grid-checked cells, span rounded
+\ up).
 : ACAP-SCAN-SEG ( n n n -- ) {: d0:n from:n to:n :}
    to AOT-WINDOW:CELL-BYTES /  from AOT-WINDOW:CELL-BYTES / ?do
       d0 i ACAP-CELL@ {: v:n :}
@@ -1914,9 +1857,8 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 
 
 \ Rows go out in location order, fixed cells first, never in registration
-\ order: a fixed cell the build host's prefix or seed declared keeps the
-\ registry slot it took there, so registration order is the host's history (a
-\ native host and a source-only recovery host built one tree into two tables).
+\ order: a fixed cell the build host's prefix declared keeps the
+\ registry slot it took there, so registration order is the host's history.
 \ Each row's location is distinct, so the order is total.
 : ACAP-SORT-XTOFF ( -- )
    AOT-WINDOW:XTOFF-N @ {: count:n :}
@@ -1926,21 +1868,14 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 
 
 \ Whose cell it is. A cell inside the captured DATA span travels with the
-\ window: its row is window-relative, the seed recreates its value and kind, and
+\ window: its row is window-relative, and
 \ ACAP-CLASSIFY-XTCELL keeps its bytes out of every sparse run. A cell outside
 \ belongs to the engine the window was loaded into, and a row travels only when
 \ the window's load stored a window address there, a load-time effect no byte
-\ carries: `set-check` storing the recompiled checker's xt into HOOK-CELL is row
-\ 0. Any other target is state the window did not create (a booted engine's own
-\ hook cells, its own captured window's cells): the seeded engine's state is
-\ already right, so the cell is left alone: refusing it would end every capture
-\ in a booted engine on HOOK-CELL. The refusal (ACAP-TARGET-REFUSE, exit 74)
-\ stays for a cell inside the window whose target the window does not place.
-\ The span is whole cells; the rounding bytes are above the captured DP and
-\ zero in the seed. The base is cell-aligned (src/habu/aot-arm.f LATCH-OPEN
-\ aligns DP before latching D0; ACAP-START admits only the latched span) so
-\ every declared cell falls on one grid cell (release engine: all 33,324 window
-\ cells eight-byte aligned).
+\ carries. Any other target is state the window did not create (a booted
+\ engine's own hook cells, its own captured window's cells), so the cell is left
+\ alone. The refusal (ACAP-TARGET-REFUSE, exit 74) stays for a cell inside the
+\ window whose target the window does not place.
 : ACAP-BAKE-DATA ( n n n n -- )
    {: b0:n b1:n d0:n d1:n :}
    d1 d0 - {: len:n :}
@@ -1988,13 +1923,8 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
    loop
    ACAP-RQ @ len < if d0 ACAP-RQ @ len ACAP-SCAN-SEG then ;
 
-\ The boot-run list: a 0-terminated [len][name] list the seed walks (LFIND +
-\ blr) after it installs the REPL; the live trailing 0 is uncounted, so
-\ the bake needs no pad. It runs at the end of the engine prefix on every boot
-\ (src/habu/aot-decl.f, AOT-BOOTRUN-CAP), before the first user token of a piped
-\ program, a `--load` run and a tty REPL alike, so a capture-window fixture can
-\ be a batch fixture; a pty is needed only for an interactive claim (the entry
-\ words ask TTY?).
+\ The boot-run list: a 0-terminated [len][name] list; the live trailing 0 is
+\ uncounted, so the bake needs no pad.
 public
 
 \ Native x86 keeps the copied window intact, so its coordinate is the source
@@ -2039,9 +1969,7 @@ public
 : MAP-LEN ( n -- n )                               \ code length in bytes, or a package's private wid
    dup ACAP-REC-DST 8 + ACAP-W32@ swap MAP-PKG? ACAP-WID-FIELD ;
 
-\ The wid the image carries, not the host's: a sidecar of the building engine's
-\ ids made two builds of one tree on two hosts differ in 197 map rows (measured,
-\ the only difference left once the image matched).
+\ The wid the image carries, not the host's.
 : MAP-WID ( n -- n )                               \ window offset, or -1 for a package row
    ACAP-REC-DST {: v:ptr :}
    v CELL-VIEW AOT-RWID -1 = if -1 exit then
@@ -2063,8 +1991,7 @@ public
 \ not taken from it: a row never written, written twice, or for a cell in
 \ neither population. The two are disjoint: a cell inside the window counts
 \ here however its target is placed. DECLARED-IN:
-\ cells inside the window's DATA span, whose bytes stay out of every sparse run,
-\ so the seed's value comes only from their row.
+\ cells inside the window's DATA span, whose bytes stay out of every sparse run.
 : DECLARED-IN ( n n -- n )
    {: d0:n d1:n :}
    d0 AOT-DATA-N - {: d0off:n :}
@@ -2094,8 +2021,7 @@ public
    loop ;
 
 \ Declared address cells below the window holding an address inside it: each is
-\ a boot-run row owed, because the seeded engine's cell holds what its prefix
-\ put there and only a boot-run entry restores the window's routine. A caller
+\ a boot-run row owed. A caller
 \ declaring fewer rows has an undeclared installer. It counts content, not kind,
 \ so an installer of a new kind counts too, and an install made after the window
 \ closes points elsewhere and is not counted.
@@ -2156,7 +2082,7 @@ private
    0 ACAP-NATIVE-MODE !  0 ACAP-GOLDLEN !  0 ACAP-GNEWLEN !
    0 AOT-XTSITE:N !  0 AOT-PWIN-N !  0 ACAP-GRAPH-READY !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c!
-   AOT-SHADOW:RESET ;                           \ src/habu/aot-shadow.f fills it after CAPTURE
+   AOT-SHADOW:RESET ;
 public
 
 \ AOT-ARM owns the captured cursors and frozen checker payload; producers latch
@@ -2205,10 +2131,10 @@ public
    d0 AOT-N>U8 d1 d0 - range ACAP-RANGE-XT execute ;
 
 \ The window's checker keeps a symbol only while a record the image ships with
-\ its name resolves to it (src/core/checker-surface.f). CHECKER-CAPTURE-PREPARE
+\ its name resolves to it. CHECKER-CAPTURE-PREPARE
 \ answered as a snapshot does (every record named); the names this capture keeps
 \ are final after ACAP-GRAPH-NAME-DOES, so the checker sweeps again
-\ (src/core/checker.f CHECKER-SWEEP STRIP) with ACAP-NAMED-BIT before its DATA
+\ with ACAP-NAMED-BIT before its DATA
 \ is copied. Records below the prelude band always ship named; the band
 \ [ACAP-PRE-R, ACAP-W-R0) and records defined after the window never ship.
 : ACAP-SHIPS-NAMED? ( n -- bool ) {: idx:n :}

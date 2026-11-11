@@ -1,13 +1,8 @@
 \ aot-decl.f - the AOT capture format's storage: every buffer the capture fills,
 \ every cap that bounds it, and the code-window budget derived from those caps.
-\ Two processes fill these buffers: the metabuild host (src/habu/aot-capture.f)
-\ and a capture inside bin/hb from the booting engine's dictionary, since a
-\ host-captured name does not exist in bin/hb. One declaration file keeps both
-\ on one format.
 
 \ In a booted bin/hb the icode.f require loads the section budget AOT-SECTION-CAP,
-\ which the engine does not keep. AOT-SECTION checks actual encoded lengths
-\ against it.
+\ which the engine does not keep.
 require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/address-carrier.f
@@ -15,26 +10,21 @@ require src/habu/code-span.f
 require src/habu/cell-grid.f
 
 \ The public tails keep their AOT- prefix: a bare tail can clash with a global
-\ word (layout.f publishes MAX), so a rename checks each. New names drop it.
+\ word, so a rename checks each.
 package AOT-BUF
 public
 
-\ A capture must hold any code window the fixed runtime region admits (the fully
-\ guarded core measured 7,159,360 bytes), so the blob cap is the code band.
-\ Capture, file and merge bounds checks and the aggregate section budget stay.
+\ A capture must hold any code window the fixed runtime region admits.
 CODE-BAND:BYTES constant AOT-BLOB-CAP
-\ Capture storage belongs to the build, not the target DATA heap. A host and a
-\ later source-bound writer can both be live without consuming two heap-sized
-\ sets of buffers. The existing transient registry owns these mappings.
+\ Capture storage belongs to the build, not the target DATA heap.
 DYNAMIC-BUFFER BLOB-STORAGE n
 : AOT-BLOB-BUF ( -- ptr u8 )
    AOT-BLOB-CAP CELL / BLOB-STORAGE-RESERVE
    0 BLOB-STORAGE BYTE-VIEW ;
 variable AOT-BLOB-LEN
-\ AOT capture has a separate 32,768-record window within the live dictionary.
 \ REPL snapshots retain the full dictionary and do not use this window.
 32768 constant AOT-REC-MAX
-\ AOT-REC-BUF holds two regions (both viewed via AOT-REC-BUF@, no extra TRUST):
+\ AOT-REC-BUF holds two regions:
 \   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)
 \   [MAX*48 .. +MAX*CREC-ROW)  compact 20B records (three u32 role/code/name fields + metadata + wid)
 DYNAMIC-BUFFER REC-STORAGE n
@@ -43,69 +33,44 @@ DYNAMIC-BUFFER REC-STORAGE n
    0 REC-STORAGE BYTE-VIEW ;
 variable AOT-REC-N
 \ A compact row's wid word on a package row, whose first two words are then its
-\ public and private wids (the linkers' PKG?).
+\ public and private wids.
 $FFFFFFFF constant PKG-MARK
 \ The packed little-endian u32 every row field of this format is.
 : W32@ ( ptr u8 -- n )
    {: p:ptr :}
    0 4 0 ?do p i + c@ i 8 * lshift or loop ;
-\ A call-site row: three u32 words - blob-off, name-off, and the callee's SCOPE,
-\ the wordlist the seed resolves the name in. A wid below FIRST-DYNAMIC-WID is a
-\ layout constant and passes through, a window coordinate is rebased like a
-\ record's, and WID-QUAL says the pooled name is qualified and carries its own
-\ scope (a pre-window package's word, whose id is that engine's own number).
+\ A call-site row: three u32 words - blob-off, name-off, and the callee's SCOPE.
+\ WID-QUAL says the pooled name is qualified and carries its own scope.
 12 constant SITE-ROW
 \ The IMAGE's row is the same three words, but its middle word is a TARGET
-\ rather than a name: the build resolves the callee against the two tables the
-\ image carries - the seeded primitives and the payload's own records - and
-\ stores its index in the dictionary the boot builds, so the seed relocates the
-\ site with a load instead of a lookup.
-\ A CALLEE THE IMAGE DOES NOT CARRY KEEPS ITS NAME, and that is not an edge
-\ case: a partial capture - a stripped application, a chain capture, any window
-\ smaller than the whole tree - calls words the ENGINE it boots into has from
-\ its own prefix, and no index of this payload can name one. Such a row sets
-\ SITE-NAME-TAG on the target and carries the pool offset in the low bits; the
-\ scope word is the wordlist the seed resolves the name in. Both generic kinds
-\ travel in one table. A complete runtime whose
-\ every site is a primitive BL can instead carry SITE-BOUND-TAG and four-byte
-\ offsets: its emitted BLs already hold their canonical target displacement.
-\ THE TWO INDEX KINDS ARE NOT THE SAME NUMBER. A primitive's index is absolute:
-\ the seed copies LDICT to dict[0..LNCOUNT) in every image. A payload record's
-\ is RELATIVE to wherever the records pass put them, and that is not LNCOUNT in
-\ a partial image: a stripped application or a chain capture compiles its own
-\ cold prefix into the dictionary before the payload registers. So the row says
-\ which kind it carries and the seed derives the payload base from the table it
-\ just wrote, never from a build-time count.
+\ rather than a name. A CALLEE THE IMAGE DOES NOT CARRY KEEPS ITS NAME: such a
+\ row sets SITE-NAME-TAG on the target and carries the pool offset in the low
+\ bits. THE TWO INDEX KINDS ARE NOT THE SAME NUMBER: a primitive's index is
+\ absolute, a payload record's is RELATIVE to wherever the records pass put
+\ them, so the row says which kind it carries.
 $80000000 constant SITE-NAME-TAG
 $40000000 constant SITE-REC-TAG
 $C0000000 constant SITE-SHADOW-TAG
 $3FFFFFFF constant SITE-TARGET-MASK
 $FFFFFFFE constant WID-QUAL
 
-\ The guarded core captures 124,137 call rows. Add 25% headroom and round up
-\ to 32,768-row units: 163,840 rows, a fixed 1,966,080-byte table.
 $28000 constant AOT-SITE-MAX
-create AOT-SITE-BUF AOT-SITE-MAX SITE-ROW * allot    variable AOT-SITE-N   \ packed rows: blob-off u32 + name-off u32 + callee scope u32
-\ THE ONE DYNAMIC BUFFER THE CAPTURE'S WALK NEVER SEES, exempt by structure and
-\ not by a list. Its cap is DICT-CAP * 256 (16 MiB) against a measured ~51 KiB
-\ need, so it cannot be static. aot-file.f MERGE reads and writes it after
-\ AOT-CAPTURE:CAPTURE returns: releasing it inside the capture would emit an
-\ empty name pool. A capture tool loads this file before AOT-ARM:WINDOW-OPEN,
-\ so its control record sits BELOW the captured DATA window and registers in
-\ the HOST's DYNAMIC-STORAGE instance; the capture walks the window's instance
-\ only (src/habu/aot-capture.f ACAP-RELEASE-DYNAMIC).
-\ A declaration moved above a window open would be released mid-capture.
+create AOT-SITE-BUF AOT-SITE-MAX SITE-ROW * allot    variable AOT-SITE-N
+\ The merge reads and writes this buffer after the capture returns: releasing it
+\ inside the capture would emit an empty name pool. A capture tool loads this
+\ file before the window opens, so its control record sits BELOW the captured
+\ DATA window. A declaration moved above a window open would be released
+\ mid-capture.
 DYNAMIC-BUFFER AOT-NAMES-STORAGE n
 variable AOT-NAMES-LEN
 : AOT-NAMES-RESERVE ( n -- ) CELL 1- + CELL / AOT-NAMES-STORAGE-RESERVE ;
 \ DATA relocation rows contain a blob offset. Bit 31 selects a raw address
 \ cell in a recognised metadata trailer; otherwise it names an address chain.
-\ Both move by (seed-DP - AOT-DATA-D0), preserving their window coordinate.
 $80000000 constant AOT-DSITE-CELL
 $7FFFFFFF constant AOT-DSITE-OFF-MASK
 \ DATA and CODE rows partition the aligned relocation starts in the blob.
 \ At most one row can name each four-byte word, including deduplicated defer
-\ metadata cells. This is a format bound; allocate only the rows actually used.
+\ metadata cells.
 AOT-BLOB-CAP 4 / constant AOT-DSITE-MAX
 DYNAMIC-BUFFER DSITE-STORAGE n
 variable AOT-DSITE-N                            \ packed u32 offsets, DATA then CODE
@@ -122,54 +87,28 @@ variable AOT-DSITE-N                            \ packed u32 offsets, DATA then 
 variable AOT-DATA-D0    variable AOT-DATA-SIZE
 \ The window's wordlist span, [W0, W0+SPAN). A captured wid is a window-relative
 \ coordinate the same way a blob offset is: only wid 0, the global wordlist, means
-\ the same thing in two processes, so the seed maps an in-window wid to
-\ T0 + (wid - W0) and refuses every other non-zero wid by name.
-\
-\ THE ROWS STORE THE OFFSET, NOT THE ID, and these two cells are the capturing
-\ process's own and do not travel. W0 is whatever the BUILDING engine had already
-\ allocated when the window opened, so a row that stored an id would carry that
-\ engine's history: measured, an engine built from a tree with one package more
-\ than its host wrote 3305 different wid bytes for the same tree. A row therefore
-\ holds `wid - W0 + WID-REL-BASE`, wid 0 holds 0, and the payload's own base cell
-\ is that constant. One-based, because the window's FIRST wordlist is one
-\ records name and a zero-based offset would spell it the way the global
-\ wordlist is spelled. The protected-wordlist rows are offsets
-\ too, and zero-based: that table lists ids and has no marker to collide with.
+\ the same thing in two processes. These two cells are the capturing process's
+\ own and do not travel. A row holds `wid - W0 + WID-REL-BASE`, wid 0 holds 0.
+\ One-based, because the window's FIRST wordlist is one records name and a
+\ zero-based offset would spell it the way the global wordlist is spelled. The
+\ protected-wordlist rows are offsets too, and zero-based.
 1 constant WID-REL-BASE
 variable AOT-WID-W0    variable AOT-WID-SPAN
-\ The window's DATA SPAN, and the offsets the seed must not take from its content.
-\ The content carries real bytes (a TRUST row's `s"` name and signature are
-\ interned into DP), so it travels as present cells rather than as the span
-\ (AOT-WINDOW below); AOT-DATA-SIZE is the span itself and, with a sparse payload, the only
-\ authority for it.
 \ A DECLARED ADDRESS CELL IS THE ONE THING THE CONTENT MAY NOT CARRY RAW. An XT
 \ cell holds a code address in the BUILDING host; a DATA-pointer cell can hold an
-\ address in that host's captured window. Neither address is valid after seeding.
-\ Both cells are therefore excluded from the content and listed with their kind.
-\ The seed reconstructs nulls and window-relative targets; an exact prefix CODE
-\ entry travels under its resolving global or public name. The first u32 locates
-\ the cell, and the second carries the target kind and offset or name-pool entry.
+\ address in that host's captured window. Both cells are therefore excluded from
+\ the content and listed with their kind.
 
 ;package
 
 package AOT-WINDOW
 public
-\ THE WINDOW'S CONTENT TRAVELS AS CELLS, AND THE SPAN IS A NUMBER. The window is
-\ mostly `allot`ed room nothing wrote: the compiler chain's window measures
-\ 1,531,045 bytes of span and 32 bytes of content, in four cells.
-\ What is stored is a presence bitmap over
-\ the window's cells and one varint per non-zero cell; the seed zeroes the span
-\ and lays those cells into it.
-\
+\ THE WINDOW'S CONTENT TRAVELS AS CELLS, AND THE SPAN IS A NUMBER: a presence
+\ bitmap over the window's cells and one varint per non-zero cell.
 \ AOT-DATA-SIZE is a scalar in the artifact, not a section's length. SPAN-CAP
 \ bounds only it: it keeps the u32 offsets in the two tables below honest and
-\ fails closed on a span no engine could reserve. 16 MiB against the full
-\ runtime's measured 8,310,765 bytes.
+\ fails closed on a span no engine could reserve.
 $1000000 constant SPAN-CAP
-\ THE ENCODING IS src/habu/cell-grid.f's, shared with the snapshot writer: a
-\ presence bitmap over the window's cells, grouped, and one varint per present
-\ cell. These names are its constants under the window's own package, where
-\ the capture, both emitted readers and the tools read them.
 CELL-GRID:CELL-BYTES constant CELL-BYTES
 CELL-GRID:CELL-BITS constant CELL-BITS
 CELL-GRID:BM-BYTE-SPAN constant BM-BYTE-SPAN
@@ -179,34 +118,24 @@ CELL-GRID:VMAX constant VMAX
 \ THE GRID IS THE DATA CELL GRID, NOT THE WINDOW'S OWN. Every declared address
 \ cell in the window is eight-byte aligned in DATA - the atomics fault on a
 \ misaligned cell - and each must fall on exactly one grid cell, because the
-\ capture leaves its bits clear and lets the seed write the value. So a window
-\ opens on a cell-aligned base (src/habu/aot-arm.f LATCH-OPEN), and a span is rounded
-\ UP to a whole number of cells: the bytes it gains are above the captured DP,
-\ never read, and zero by construction. One grid also makes a merge a splice:
-\ two windows captured against cell-aligned bases share it, so an appended
-\ artifact's bitmap and values concatenate once its base is padded to a bitmap
-\ byte (src/habu/aot-file.f PLACE-WDATA).
-\ The bitmap's byte ceiling is the span cap's own arithmetic, so a window this
-\ refuses is one no engine could reserve. Measured: 130,417 bytes for the
-\ release engine's 8,346,672-byte window.
+\ capture leaves its bits clear. So a window opens on a cell-aligned base, and a
+\ span is rounded UP to a whole number of cells: the bytes it gains are above
+\ the captured DP, never read, and zero by construction.
 SPAN-CAP BM-BYTE-SPAN / constant BM-CAP
 DYNAMIC-BUFFER BM-STORAGE n
 : BM-BUF ( -- ptr u8 )
    BM-CAP CELL / BM-STORAGE-RESERVE
    0 BM-STORAGE BYTE-VIEW ;
-variable CELL-N                      \ present cells, which the encoded bytes no longer state
+variable CELL-N                      \ present cells
 variable BM-LEN                      \ bytes of bitmap, trailing absent cells dropped
 variable CONTENT-END                 \ one past the last present cell: where a merge may pad to
 
 \ The image's second level: a presence bit per GROUP-BYTES bitmap bytes.
 \ THE GROUPING IS AN IMAGE ENCODING, NOT THE CAPTURE FORMAT. The capture, the
 \ artifact sections and a merge keep the flat bitmap, where appending a window is
-\ a concatenation (src/habu/aot-file.f PLACE-WDATA) and a cell's bit is at a
-\ fixed place; BM-COMPACT groups that bitmap once for a writer, and the image's
-\ reader decodes it with one outer loop over the presence bits around the flat
-\ per-byte walk.
-\ Image form: [groups G][stored bytes S] and then the src/habu/cell-grid.f
-\ form: presence map, present groups, values.
+\ a concatenation and a cell's bit is at a fixed place.
+\ Image form: [groups G][stored bytes S] and then presence map, present groups,
+\ values.
 BM-CAP GROUP-BYTES / constant GROUP-CAP
 GROUP-CAP CELL-BITS / constant PMAP-CAP
 PMAP-CAP BM-CAP + constant CBM-CAP
@@ -219,21 +148,16 @@ variable CBM-STORED                  \ bytes of stored groups, GROUP-BYTES each
 
 : CBM-PMAP-BYTES ( -- n ) CBM-GROUPS @ CELL-GRID:PMAP-BYTES ;
 
-\ The one run the image carries for the bitmap: the presence map and the groups
-\ it says are there. Derived, never stored, so it cannot disagree with them.
 : CBM-LEN ( -- n ) CBM-PMAP-BYTES CBM-STORED @ + ;
 
-\ A flat bitmap in, the compact form in CBM-BUF. It is a function of the bitmap
-\ it is handed and holds nothing between calls, which is why a merge that
-\ extends the bitmap needs no invalidation here - the next accounting rebuilds
-\ it (AOT-SECTION:BODY-BYTES). The group cap keeps both halves inside CBM-CAP.
+\ A flat bitmap in, the compact form in CBM-BUF. The group cap keeps both halves
+\ inside CBM-CAP.
 : BM-COMPACT ( ptr u8 n -- ) {: bm:ptr len:n :}
    len CELL-GRID:GROUPS GROUP-CAP > if
       s" aot: the window bitmap exceeds the AOT group map" 74 die then
    bm len CBM-BUF CELL-GRID:COMPACT CBM-STORED ! CBM-GROUPS ! ;
 
 \ Every cell in an admitted window may be present and use VMAX bytes.
-\ Reserve that bound; the dynamic buffer only touches the encoded values.
 SPAN-CAP CELL-BYTES / VMAX * constant VAL-CAP
 DYNAMIC-BUFFER VAL-STORAGE n
 : VAL-BUF ( -- ptr u8 )
@@ -241,21 +165,16 @@ DYNAMIC-BUFFER VAL-STORAGE n
    0 VAL-STORAGE BYTE-VIEW ;
 variable VAL-LEN
 
-\ Every producer of a window table starts from the same four numbers, so no
-\ caller can zero three of them and leave the fourth describing the last capture.
 : WINDOW-RESET ( -- )
    0 CELL-N !  0 BM-LEN !  0 CONTENT-END !  0 VAL-LEN ! ;
 
-\ src/habu/cell-grid.f owns the varint; these are its words under the window's
-\ package, where the capture, the packer and the linker call them.
 : CELL-VLEN ( n -- n ) CELL-GRID:CELL-VLEN ;
 
 : CELL-V! ( n ptr u8 -- n ) CELL-GRID:CELL-V! ;
 
 : CELL-V@ ( ptr u8 n -- n n ) CELL-GRID:CELL-V@ ;
 
-\ Address rows grow independently of the engine's declaration registry. The
-\ artifact's aggregate byte budget, checked before copy or emission, is the
+\ The artifact's aggregate byte budget, checked before copy or emission, is the
 \ limit; this single-section ceiling also bounds each allocation request.
 8 constant XTOFF-ROW
 A64ICODE:AOT-SECTION-CAP XTOFF-ROW / constant XTOFF-MAX
@@ -286,29 +205,15 @@ variable XTOFF-N
 package AOT-BUF
 public
 
-\ CODE-literal relocation table (fourth relocation class): blob offsets of the
-\ movz/movk x9 literals whose value lands in the captured code range [B0,B1) --
-\ anonymous quotation-body entry addresses (J-SEMIQUOT `C-CODE-ADDR QENT`). Rebased by
-\ the code delta (seedCP - captureB0); no name (quotations are anonymous). Stored in
-\ the DATA-site buffer right after the AOT-DSITE-N DATA offsets (one fewer scratch
-\ view), and baked as its own contiguous section.
+\ CODE-literal relocation table: blob offsets of the movz/movk x9 literals whose
+\ value lands in the captured code range [B0,B1). Stored in the DATA-site buffer
+\ right after the AOT-DSITE-N DATA offsets, and baked as its own contiguous
+\ section.
 variable AOT-CSITE-N
 variable AOT-CODE-B0
-\ NAMED code sites (fifth relocation class): blob offsets of movz/movk literals
-\ whose value is the ENTRY OF A WORD, paired with that word's name in the pool.
-\ The seed LFINDs the name in the engine it is booting and writes the xt into the
-\ four immediate lanes -- the same answer the call-site table gets for a BL, for a
-\ site that is not a BL. A capture stores 0 in the lanes, so the baked blob carries
-\ no host address and the patch is the only thing that can put a real one there.
-\ ITS PRODUCER IS ACAP-OUT-CHAIN (aot-capture.f), which classifies every recorded
-\ chain the window's DATA span does not hold: in-window code goes to the CODE sweep,
-\ a value ACAP-TGT>REC resolves to a record's entry becomes a row here, and anything
-\ else ends the build. The class the row exists for is a code literal naming a
-\ PRE-WINDOW word (`['] X`), which no delta relates to the target and
-\ the inliner decline cannot reach; ACAP-OUT-CHAIN carries that argument. The format
-\ is baked into the engine, so it migrates once - a row kind added later is a second
-\ migration of every baked-code route. In-window code literals stay b0-relative:
-\ rebasing them is correct and costs no lookup.
+\ NAMED code sites: blob offsets of movz/movk literals whose value is the ENTRY
+\ OF A WORD, paired with that word's name in the pool. A capture stores 0 in the
+\ lanes, so the baked blob carries no host address.
 
 ;package
 
@@ -318,26 +223,14 @@ public
 create BUF MAX 8 * allot    variable N   \ 8B rows: blob-off u32 + name-off u32
 ;package
 
-\ THE CODE SPANS OF THE WORDS THE IMAGE SHIPS NO RECORD FOR. A record is what
-\ makes a word reachable by name, and a private word nothing can qualify into is
-\ reachable by nothing - so its record buys no caller anything and does not
-\ travel (aot-capture.f ACAP-NAMED? decides). Its CODE does travel, called by a
-\ displacement the blob carries. A row here accounts for that code, and only
-\ that: the two u32 a record row would have carried, and none of the eighteen
-\ bytes of name, flags, kind and wordlist that only a lookup needs. 20 bytes a
-\ word becomes 8, and 48 bytes of booted dictionary become none.
-\ A ROW IS (blob offset u32, raw code span u32), in capture order, the same two
-\ fields and the same CODE-SPAN encoding a compact record's first two words hold.
-\ The seed publishes the table's address, this count and the blob's landing base
-\ in the three AOT-CELLS cells layout.f set aside (SPAN-TABLE-CELL, SPAN-N-CELL,
-\ SPAN-BASE-CELL).
+\ THE CODE SPANS OF THE WORDS THE IMAGE SHIPS NO RECORD FOR. A ROW IS (blob
+\ offset u32, raw code span u32), in capture order, the same two fields and the
+\ same CODE-SPAN encoding a compact record's first two words hold.
 package AOT-SPAN
 private
-\ RESERVED AT FIRST USE, NOT ALLOTTED, as every table only the capture fills is.
-\ A static `create BUF MAX ROW * allot` would spend MAX * ROW = 262,144 bytes of
-\ the build host's DATA prefix, the DATA below the captured window
-\ (AOT-ARM:WINDOW-OPEN takes D0 from `here`), in every process that loads this
-\ file. A mapping costs the prefix nothing and the bound is unchanged.
+\ RESERVED AT FIRST USE, NOT ALLOTTED. A static `create BUF MAX ROW * allot`
+\ would spend MAX * ROW bytes of the build host's DATA prefix, the DATA below
+\ the captured window, in every process that loads this file.
 DYNAMIC-BUFFER STORAGE n
 public
 AOT-BUF:AOT-REC-MAX constant MAX      \ at most one row per window record
@@ -348,12 +241,8 @@ variable N
    0 STORAGE BYTE-VIEW ;
 ;package
 
-\ THE SHADOW: A SECOND TARGET'S ROUTINES FOR THE WINDOW'S RECORDS. A cross-build
-\ compiles every tier-1 definition twice, the host's routine into the live region
-\ and the target's into src/compiler/native/shadow.f's map (docs/xcomp.md "Dual
-\ emission"), and the target's image is written from the capture, so the capture
-\ carries that map. src/habu/aot-shadow.f fills these tables; a capture taken with
-\ no shadow open leaves all four empty, and the ARM64 seed reads none of them.
+\ THE SHADOW: A SECOND TARGET'S ROUTINES FOR THE WINDOW'S RECORDS. A capture
+\ taken with no shadow open leaves all four tables empty.
 \
 \ FOUR TABLES, AND NO HOST ADDRESS IN ANY OF THEM. CODE is every emission's bytes,
 \ each emission once, as its own unplaced routine: a call's field is the zero an
@@ -453,11 +342,7 @@ public
 
 \ The row whose emission holds shadow code byte n: the first row of the last
 \ emission that starts at or below it. The rows' starts ascend because each
-\ capture appends an emission after the last and rows its records at that start
-\ (src/habu/aot-shadow.f SH-COPY, src/arch/wasm/capture.f WC-COPY, both through
-\ SH-REC+). A `does>` companion follows its definer at
-\ the definer's start, so the row is the definer's: an emission is placed as
-\ one, whichever of its rows enters it.
+\ capture appends an emission after the last and rows its records at that start.
 : ROW-AT ( n -- n )
    {: n:n :}
    0 LO !  REC-N @ HI !
@@ -474,51 +359,27 @@ public
 
 \ boot-run name list: 0-terminated [len][name-bytes] records of the top-level entry
 \ words (the REPL's INSTALL) the metabuild ran at the tail of the REPL
-\ source. With the source dropped, the seed LFINDs and calls each after
-\ RX/flush so the seeded engine installs the REPL with no embedded source.
-\ THIS LIST RUNS ON EVERY BOOT. The seed fires at the end of the engine prefix
-\ stream whatever the mode, so a piped program, a `--load` tool run and a tty
-\ REPL all reach their first user token with this list walked. The entry words
-\ self-guard: INSTALL asks TTY? before installing a REPL.
+\ source.
 $400 constant AOT-BOOTRUN-CAP
 create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
-\ Protected WIDs owned by the captured runtime, window-relative.  The cold
-\ baseline starts with an empty bitmap; the seed rebases these rows after it has
-\ registered the window's wordlists.  No build-host WID survives the cut.
+\ Protected WIDs owned by the captured runtime, window-relative.
 \ One row can exist per protected WID below PROT-WID-MAX, so the bitmap's own
 \ bound is also a fixed sufficient row bound.
 PROT-WID-MAX constant AOT-PWIN-MAX
 create AOT-PWIN-BUF AOT-PWIN-MAX 4 * allot    variable AOT-PWIN-N   \ packed u32
 
 \ The checker payload holds signatures and the type-family registry.
-\ WHY AN AOT ENGINE NEEDS THEM. A seed puts a word in the RUNTIME dictionary and
-\ nothing in the checker's record set, so a `:` definition naming a seeded word
-\ dies E-UNDEFINED at that token even though the engine can call it. These three
-\ buffers carry what closes that: one row per checked window word, the strings
-\ those rows name, and the type-family registry delta the signatures resolve
-\ against.
-\
 \ THE ROW FORMAT IS THE CHECKER'S, NOT THIS FILE'S. A row is four u32 - name
 \ offset, signature offset, package offset, visibility - and each offset names a
-\ `[len u16][bytes]` record in the string section, which is src/core/checker.f's
-\ signature-pool arena copied verbatim. The artifact is a courier for that arena:
-\ the only thing a merge does to a row is move its three offsets by the length of
-\ the pool it is appended behind.
-\ SIG-MAX IS THE RECORD BOUND, not a measurement: the capture emits at most one
-\ row per window dictionary record, so a window that fits AOT-REC-MAX records
-\ cannot produce more rows than that.
+\ `[len u16][bytes]` record in the string section.
+\ SIG-MAX IS THE RECORD BOUND: the capture emits at most one row per window
+\ dictionary record.
 16 constant SIG-ROW
 AOT-REC-MAX constant AOT-SIG-MAX
-\ AOT-SIG-MAX * SIG-ROW is 524,288 bytes, the largest of the three tables that
-\ only the capture fills, so it is reserved at first use for the reason
-\ AOT-SPAN:BUF@ above carries: a static allot spends those bytes of the build
-\ host's DATA prefix in every process that loads this file.
 DYNAMIC-BUFFER SIG-STORAGE n
 variable AOT-SIG-N
-\ The opaque pool carries verified effect graphs beside its names. Its format
-\ bound is the section budget; allocate only the admitted bytes, like names
-\ and relocation rows.
+\ The opaque pool carries verified effect graphs beside its names.
 A64ICODE:AOT-SECTION-CAP constant AOT-SIG-STR-CAP
 DYNAMIC-BUFFER SIG-STR-STORAGE n
 variable AOT-SIG-STR-LEN
@@ -530,11 +391,7 @@ variable AOT-SIG-STR-LEN
 
 : AOT-SIG-STR-BUF ( -- ptr u8 ) 0 SIG-STR-STORAGE BYTE-VIEW ;
 \ The registry delta travels as OPAQUE BYTES with its own internal table, written
-\ and read by the registry that owns those records (src/core/type-family.f and
-\ src/core/type-schema.f through the checker's REG-EXT hook). Record widths and
-\ store count live with the stores; this file carries the bytes and the cap.
-\ $20000 against the chain's measured 45,666: 70 families, 317 sum variants, 43
-\ product fields, 43 schema nodes and 3,778 bytes of interned type-name string.
+\ and read by the registry that owns those records.
 $20000 constant AOT-REG-CAP
 create AOT-REG-BUF AOT-REG-CAP allot    variable AOT-REG-LEN
 
@@ -572,8 +429,6 @@ public
 : AOT-BOOTRUN-BUF@ ( -- ptr u8 ) AOT-BOOTRUN-BUF ;
 : AOT-PWIN-BUF@ ( -- ptr u8 ) AOT-PWIN-BUF ;
 
-\ Compact record k, AOT-CREC-ROW bytes each behind the verbatim records (the
-\ regions AOT-REC-BUF lists), and field f of it.
 : CREC ( n -- ptr u8 )
    {: k:n :}
    AOT-REC-BUF@ AOT-REC-MAX 48 * + k AOT-CREC-ROW * + ;
@@ -624,8 +479,7 @@ public
 
 : +ROWS ( n n n -- n ) ROW-BYTES +BYTES ;
 
-\ Seventeen scalar/count cells frame the common baked section. BYTES, rounds
-\ each byte run to four bytes; packed rows already have that alignment.
+\ Seventeen scalar/count cells frame the common baked section.
 \ THE BITMAP IS CHARGED IN ITS IMAGE FORM, which is the grouped one, so this
 \ rebuilds it from the flat capture first: a merge can still have extended that
 \ bitmap after the capture.
@@ -665,15 +519,10 @@ public
 
 ;package
 
-\ The number printer every AOT refusal shares: capture, shadow, x86-64 link and
-\ artifact merge all require this file, and their diagnostics print wids,
-\ offsets and counts in the middle of a line. The engine's `.` ends its line
-\ (measured: `1 . 2 .` writes "1\n2\n"), and src/lib/fmt.f FMT:.INT is not in the
-\ engine: requiring it here would load fmt (56 records, measured) below every
-\ capture window a test opens after this file, where a window word that calls
-\ FMT calls into the prelude band the capture refuses (aot-capture.f
-\ ACAP-SITE-BAND). So the AOT layer carries its own: signed decimal, no space,
-\ no newline.
+\ The engine's `.` ends its line, and FMT:.INT is not in the engine: requiring
+\ it here would load fmt below every capture window a test opens after this
+\ file.
+\ So the AOT layer carries its own: signed decimal, no space, no newline.
 \ The digits come from the value made nonpositive, which keeps MIN-N in range.
 package AOT-BUF
 private
