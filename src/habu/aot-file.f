@@ -4,6 +4,17 @@
 \ buffers, FDIO:WALL): the host carries no src/lib/ and the capture cannot load
 \ src/habu/driver-io.f. READ fills the buffers with the artifact; MERGE appends
 \ it to a capture already made, in that capture's coordinates.
+\
+\ The artifact is a header, then a payload. All scalars are u64 little-endian
+\ and nothing is padded. The header (HDR-BYTES, offsets O-*) is the only part
+\ the payload digest does not cover; MAGIC, VERSION, TARGET and SECTION-COUNT
+\ are hard equality, and the producer key is checked before any payload byte.
+\ The payload, with offsets relative to its own start, is a table of SEC-N rows
+\ (offset u64, length u64) in the S- order, then the sections, contiguous, in
+\ that order. Counts are not stored: a section's count is its length over its
+\ row width (SEC-ROW), and a length that is not a whole number of rows is
+\ refused by name. VERSION changes whenever a section is added, dropped or
+\ reinterpreted, because the table is positional.
 
 require src/habu/layout.f
 require src/habu/fdio.f
@@ -14,28 +25,8 @@ package AOT-FILE
 using AOT-BUF
 using AOT-WINDOW
 
-\ IDENTITY IS NOT THE FORMAT'S. WRITE takes the producer key and READ takes the
-\ key it will accept; the two are compared for hard equality here.
-\
-\ THE THREE DIGESTS:
-\   PRODUCER  - sha256 of the engine binary that produced the capture: refuses an
-\               artifact another engine made, checked before any payload byte.
-\   CHAIN     - versioned digest of ordered paths and per-file content digests.
-\               The artifact carries the FILE LIST and the reader RE-DERIVES the
-\               digest from disk (?CHAIN), so a mismatch means the sources moved.
-\   PAYLOAD   - sha256 over everything after the header, verified after the
-\               bounded sections load and before they are interpreted; the size
-\               arithmetic only catches truncation.
-\
-\ THE LAYOUT. All scalars are u64 little-endian and nothing is padded. The header
-\ (HDR-BYTES, offsets O-*) is the only part the payload digest does not cover;
-\ MAGIC, VERSION, TARGET and SECTION-COUNT are hard equality. The payload, with
-\ offsets relative to its own start, is a table of SEC-N rows (offset u64, length
-\ u64) in the S- order below, then the sections, contiguous, in that order.
-\ VERSION changes whenever a section is added, dropped or reinterpreted: the
-\ table is positional, and an older artifact is refused by name on its version.
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-15 constant VERSION  \ anonymous shadow routines have tagged references
+15 constant VERSION
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 3 constant TARGET-LINUX-X86-64
@@ -52,7 +43,7 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 32 constant SHA-BYTES
 
 22 constant SEC-N
-16 constant ROW-BYTES                \ one section-table row: offset u64 + length u64
+16 constant ROW-BYTES
 
 0 constant S-SCALARS
 1 constant S-BLOB
@@ -68,48 +59,42 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 11 constant S-SPANS                  \ the code spans of the records the image does not ship
 12 constant S-BOOTRUN
 13 constant S-PWIN
-\ S-SIGS, S-SIGSTR and S-REG are the checker's: src/core/checker.f's signature
-\ pool carried verbatim and one opaque registry span whose table belongs to
-\ src/core/type-family.f. This file reads none of them; a merge moves a
-\ signature row's three string offsets behind the pool it is appended to.
+\ S-SIGS, S-SIGSTR and S-REG are the checker's. This file reads none of them; a
+\ merge moves a signature row's three string offsets behind the pool it is
+\ appended to.
 14 constant S-SIGS
 15 constant S-SIGSTR
 16 constant S-REG
 17 constant S-CLOSURE
 \ The four shadow sections follow the closure list because no seed reads them. A
-\ capture with no shadow open carries all four empty; ARM64 MERGE refuses a
-\ shadow, native x86-64 MERGE appends and rebases all four.
-18 constant S-SHRECS                 \ the shadow: its records
-19 constant S-SHCODE                 \ ... its routines' bytes
-20 constant S-SHSITES                \ ... their sites
-21 constant S-SHXTS                  \ ... and the address cells keyed by record
+\ capture with no shadow open carries all four empty.
+18 constant S-SHRECS
+19 constant S-SHCODE
+20 constant S-SHSITES
+21 constant S-SHXTS                 \ the shadow's address cells, keyed by record
 
-\ COUNTS ARE NOT STORED: a section's count is its length over its row width
-\ (SEC-ROW), and a length that is not a whole number of rows is refused by name.
-\ Five numbers are genuine scalars and travel in S-SCALARS: the capture-time DATA
-\ base, the canonical code base, the window's wordlist base and span, and the
-\ window's DATA SPAN, which no section's length fixes (the window travels as
-\ present cells, S-WDATA and S-WVALS).
+\ Five numbers are genuine scalars and travel in S-SCALARS: the capture-time
+\ DATA base, the canonical code base, the window's wordlist base and span, and
+\ the window's DATA SPAN, which no section's length fixes (the window travels
+\ as present cells, S-WDATA and S-WVALS).
 40 constant SCAL-BYTES
 \ AOT-IDENT holds at most AOT-IDENT:MAX paths of at most PATH-CAP bytes, and the
 \ list is a count and then each path's length and bytes, so this is its largest.
-\ The overflow is still refused rather than truncated.
 8 AOT-IDENT:MAX PATH-CAP 8 + * + constant CLOSURE-CAP
 $4B constant REFUSE-RC
 
-create HDR HDR-BYTES allot           \ the header as written or read
+create HDR HDR-BYTES allot
 create TBL SEC-N ROW-BYTES * allot
 create SCAL SCAL-BYTES allot
-create CBUF CLOSURE-CAP allot        \ the closure list, assembled or read back
+create CBUF CLOSURE-CAP allot
 create EOF-BYTE 1 allot
-\ This file's own digest context. One artifact is written or read at a time here.
+\ One artifact is written or read at a time here.
 create SHA-CTX SHA256-CTX-BYTES allot
 create PAYSHA SHA-BYTES allot        \ the payload digest this process computed
 create FILESHA SHA-BYTES allot       \ sha256 of the whole file WRITE just wrote
 create DERIVED SHA-BYTES allot       \ the chain digest re-derived from disk
 
-variable CLEN                        \ the closure section's length: staged on the way
-                                     \ out, taken from the table on the way in
+variable CLEN                        \ the closure section's length
 variable FD
 variable RD
 variable GOT                         \ GET's own cursor: it runs inside loops that use CUR
@@ -121,8 +106,6 @@ variable CUR
 : U64! ( n ptr u8 -- ) {: v:n p:ptr :}
    8 0 ?do  v i 8 * rshift $FF and  p i + c!  loop ;
 
-\ Most significant byte first into the accumulator, so the shift is the running
-\ value's and not the byte's.
 : U64@ ( ptr u8 -- n ) {: p:ptr :}
    0 8 0 ?do  8 lshift  p 7 i - + c@ or  loop ;
 
@@ -146,14 +129,6 @@ variable CUR
 : ROW! ( n n n -- ) {: off:n len:n k:n :}
    off  k ROW-BYTES * TBL +      U64!
    len  k ROW-BYTES * TBL + 8 +  U64! ;
-
-\ The section table is read off the live buffers.
-\ Both directions ask these two words, so a section's source and its size cannot
-\ come apart. The two assembled sections (the scalars and the closure list) are
-\ staged into buffers of their own first, which is what keeps the pair uniform.
-\ SEC-PTR answers a BUFFER, never a position inside one: where a section's bytes
-\ sit in that buffer is the BASE table below, which is the one thing READ and
-\ MERGE disagree about.
 
 : SEC-PTR ( n -- ptr u8 ) {: k:n :}
    k S-SCALARS = if SCAL exit then
@@ -208,8 +183,7 @@ variable CUR
    k S-SHXTS   = if AOT-SHADOW:XT-N @ AOT-SHADOW:XT-ROW ROW-BYTES-CHECKED exit then
    CLEN @ ;
 
-\ How many bytes one row of a section is, so a length that is not a whole number
-\ of them is refused rather than silently rounded. 1 means the section is bytes.
+\ 1 means the section is bytes.
 : SEC-ROW ( n -- n ) {: k:n :}
    k S-SCALARS = if 8 exit then
    k S-RECS    = if AOT-CREC-ROW exit then
@@ -226,9 +200,6 @@ variable CUR
    k S-SHXTS   = if AOT-SHADOW:XT-ROW exit then
    1 ;
 
-\ How much of each buffer there is. The CODE-literal sites share the DATA-site
-\ buffer, so both name the whole of it and their BASEs are what keeps them apart
-\ - which is also what makes the room check `base + length` rather than length.
 : SEC-CAP-TAIL ( n -- n ) {: k:n :}
    k S-WVALS   = if VAL-CAP exit then
    k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
@@ -284,11 +255,8 @@ variable CUR
    k SEC-NAME-TAIL ;
 
 \ A refusal that names a section has to arrive on ONE stream. `type` writes to
-\ stdout and `die`'s message to stderr, so a caller keeping only stderr read
-\ " has a negative length" with no subject and could not say which section. The
-\ sentence is composed here instead. The cap covers the longest name and the
-\ longest tail with room to spare, and outgrowing it is a refusal of its own
-\ rather than a truncated one.
+\ stdout and `die`'s message to stderr. The cap covers the longest name and the
+\ longest tail with room to spare.
 $80 constant MSG-CAP
 create MSG MSG-CAP allot
 create MSG-SP 1 allot
@@ -310,11 +278,9 @@ $20 MSG-SP c!
    t tu MSG+
    MSG MSG-U @ DIE ;
 
-\ THE ONE THING READ AND MERGE DISAGREE ABOUT. Every other question - which
-\ buffer, how long, how wide a row, what it is called - has one answer for both,
-\ so the table below is the whole of the parameterization and the loading,
-\ digesting and room-checking machinery is shared.
-
+\ Where each section's bytes start inside the buffer SEC-PTR answers. The
+\ CODE-literal sites share the DATA-site buffer, behind its DATA rows, so a
+\ room check is base + length rather than length.
 create BASE SEC-N cells allot
 : BASE@ ( n -- n ) cells BASE + @ ;
 : BASE! ( n n -- ) cells BASE + ! ;
@@ -387,8 +353,6 @@ variable MERGE-SHXT-EXTRA
 
 : STAGE ( -- ) STAGE-SCALARS STAGE-CLOSURE ;
 
-\ The payload's shape is computed from the live buffers.
-
 : BUILD-TABLE ( -- )
    SEC-N ROW-BYTES * CUR !
    SEC-N 0 ?do
@@ -420,11 +384,6 @@ variable MERGE-SHXT-EXTRA
    DERIVED  HDR O-CHAIN +  SHA-BYTES BYTE-COPY
    PAYSHA  HDR O-PAYSHA +  SHA-BYTES BYTE-COPY ;
 
-\ Every span goes out through FDIO:WALL, which loops until the descriptor has
-\ taken all of it, and the same spans feed a running SHA-256 so the caller learns
-\ the digest of the file that was actually written - which is what the round-trip
-\ acceptance compares and what the fixpoint loop compares between generations.
-
 : PUT ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if exit then
    SHA-CTX a u SHA256-FEED
@@ -434,8 +393,7 @@ variable MERGE-SHXT-EXTRA
    SHA-CTX SHA256-BEGIN
    HDR HDR-BYTES PUT
    TBL SEC-N ROW-BYTES * PUT
-   \ Empty sections may have no allocated buffer. Do not request its first
-   \ element just to pass a zero length to PUT (notably the name pool).
+   \ Empty sections may have no allocated buffer.
    SEC-N 0 ?do
       i SEC-LEN 0 > if i SEC-PTR i BASE@ + i SEC-LEN PUT then
    loop
@@ -469,8 +427,6 @@ private
    path pathu PATH0 0 0 open FD !
    FD @ 0 < if s" aot-file: cannot open the artifact" DIE then ;
 
-\ Exactly n bytes into dst, however many reads that takes. Short is the kernel's
-\ right; short at end of file is a truncated artifact and is refused.
 : GET ( ptr u8 n -- ) {: dst:ptr n:n :}
    0 GOT !
    begin GOT @ n < while
@@ -559,16 +515,13 @@ private
    k SEC-PTR k BASE@ + k ROW-LEN@ GET
    SHA-CTX k SEC-PTR k BASE@ + k ROW-LEN@ SHA256-FEED ;
 
-\ The window's cells, which the table's own shape cannot state.
-\ ?TABLE divides a section by its row width, and a varint value has none. What
-\ has to hold is that every present cell lies inside the span, every value is a
+\ The window's cells: every present cell lies inside the span, every value is a
 \ well-formed varint ending inside S-WVALS, and the values spend that section
 \ exactly, because the decoder walks them with one cursor in cell order.
 variable RN-AT   variable RN-END   variable RN-SUM   variable RN-COUNT
 
-\ One cell value, refused by name rather than guessed at. `avail` is what is
-\ left of the section, so a varint that runs off its end is a malformation here
-\ and never a read past it.
+\ `avail` is what is left of the section, so a varint that runs off its end is
+\ a malformation here and never a read past it.
 : WIN-V ( n n -- n n ) {: at:n avail:n :}
    VAL-BUF@ at + avail CELL-V@ {: v:n w:n :}
    w 0= if s" aot-file: a window DATA cell value is not a well-formed varint" DIE then
@@ -660,12 +613,7 @@ variable NAME-BOUNDARY-LEN
 : SEC-ROWS ( n -- n ) {: k:n :} k ROW-LEN@ k SEC-ROW / ;
 
 \ No seed reads them, and the target's writer trusts them as the capture wrote
-\ them, so they are refused here if they do not fit what they index: a record's
-\ routine and its entry inside the shadow code, records ascending, a site's whole
-\ instruction inside the code with a kind this format names and a target the
-\ kind allows - a window record or a name-pool entry - and a code-cell row naming
-\ an address-cell row, in order, whose target is window code. Every record index
-\ names a window record, so it is below the artifact's own record count.
+\ them, so they are refused here if they do not fit what they index.
 variable SH-PREV
 variable SH-PREV-AT
 variable SH-PREV-END
@@ -711,7 +659,6 @@ DYNAMIC-BUFFER SH-SEEN u8
    loop
    SH-SEEN-RELEASE ;
 
-\ A site's instruction width, or 0 for a kind this format does not name.
 : SH-WIDTH ( n -- n ) {: kind:n :}
    kind AOT-SHADOW:CALL = kind AOT-SHADOW:TAIL = or if 5 exit then
    kind AOT-SHADOW:DATA =  kind AOT-SHADOW:CODE = or  kind AOT-SHADOW:FUN = or if
@@ -784,8 +731,7 @@ DYNAMIC-BUFFER SH-SEEN u8
 
 \ `at` is the first byte of the artifact's own bitmap block and `len` its length:
 \ a plain read puts it at 0 and a merge behind the host's bitmap, whose decode
-\ the capture that produced it already proved. The walk's cell count and last
-\ cell end are what CELL-N and CONTENT-END are published from.
+\ the capture that produced it already proved.
 : ?CELLS ( n n n -- ) {: at:n len:n span:n :}
    S-WVALS BASE@ RN-AT !
    S-WVALS BASE@ S-WVALS ROW-LEN@ + {: stop:n :}
@@ -806,10 +752,6 @@ DYNAMIC-BUFFER SH-SEEN u8
    RN-AT @ stop = if exit then
    s" aot-file: the window DATA cells do not fill their own value section" DIE ;
 
-\ Every count is the length the table gave, divided by the row the format fixes,
-\ except three: the window's DATA SPAN (the scalars section is its only
-\ authority) and the present-cell count and content end (the ?CELLS walk is
-\ theirs).
 : RESTORE-COUNTS ( -- )
    SCAL U64@ AOT-DATA-D0 !
    SCAL 8 + U64@ AOT-CODE-B0 !
@@ -840,9 +782,6 @@ DYNAMIC-BUFFER SH-SEEN u8
    S-SHXTS ROW-LEN@ AOT-SHADOW:XT-ROW / AOT-SHADOW:XT-N !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
-\ The list walks to its own end or the artifact is refused: a count that promises
-\ more entries than the bytes hold, or bytes left after the last entry, are both a
-\ list this reader will not guess at.
 : RESTORE-CLOSURE ( -- )
    AOT-IDENT:RESET
    CBUF U64@ {: n:n :}
@@ -852,9 +791,8 @@ DYNAMIC-BUFFER SH-SEEN u8
          s" aot-file: the closure list ends inside an entry" DIE
       then
       CBUF CUR @ + U64@ {: pu:n :}
-      \ pu is the artifact's: a negative one is refused, and the rest is compared
-      \ with the bytes left after its length cell. Added to the cursor, a length
-      \ near the maximum cell wraps back inside the section.
+      \ Added to the cursor, a length near the maximum cell wraps back inside
+      \ the section.
       pu 0 <  pu CLEN @ CUR @ 8 + - >  or if
          s" aot-file: the closure list ends inside a path" DIE
       then
@@ -866,8 +804,7 @@ DYNAMIC-BUFFER SH-SEEN u8
    then ;
 
 \ The stored chain digest is never trusted: it is recomputed from the files the
-\ artifact names, as they are on disk right now. A mismatch means the chain moved
-\ since the capture, and the cure is a recapture, not a weaker check.
+\ artifact names, as they are on disk right now.
 : ?CHAIN ( -- )
    DERIVED AOT-IDENT:CHAIN-DIGEST
    DERIVED HDR O-CHAIN + SHA-BYTES BYTES= if exit then
