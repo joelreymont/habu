@@ -9691,7 +9691,8 @@ $28 constant EN-E-OFF
 $30 constant EN-F-OFF
 $38 constant EN-G-OFF
 $40 constant EN-H-OFF
-$48 constant EFF-NODE
+$48 constant EN-I-OFF
+$50 constant EFF-NODE
 : EN.TAG ( ptr u8 -- ptr n ) EN-TAG-OFF + CELL-VIEW ;
 : EN.A ( ptr u8 -- ptr n ) EN-A-OFF + CELL-VIEW ;
 : EN.B ( ptr u8 -- ptr n ) EN-B-OFF + CELL-VIEW ;
@@ -9701,6 +9702,8 @@ $48 constant EFF-NODE
 : EN.F ( ptr u8 -- ptr n ) EN-F-OFF + CELL-VIEW ;
 : EN.G ( ptr u8 -- ptr n ) EN-G-OFF + CELL-VIEW ;
 : EN.H ( ptr u8 -- ptr n ) EN-H-OFF + CELL-VIEW ;
+\ EN.I: an EN-QUOT node's block part, a plain EN-VAR; 0 in every other node.
+: EN.I ( ptr u8 -- ptr n ) EN-I-OFF + CELL-VIEW ;
 
 \ EC-TV/EC-RV/EI-TV/EI-RV are var-id maps in the growable TV arena (top).
 64 constant EI-AK-CAP
@@ -9839,7 +9842,8 @@ EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
 : E-NODE-INIT ( n ptr u8 -- ) {: tag:n p :}
    tag p EN.TAG !
    0 p EN.A !  0 p EN.B !  0 p EN.C !  0 p EN.D !
-   0 p EN.E !  0 p EN.F !  0 p EN.G !  0 p EN.H ! ;
+   0 p EN.E !  0 p EN.F !  0 p EN.G !  0 p EN.H !
+   0 p EN.I ! ;
 
 : E-NODE-NEW ( n -- ptr u8 ) {: tag:n :}
    E-ENSURE-NODE
@@ -9963,7 +9967,7 @@ UIX-RESET
    tg EN-ROW = IF 3 EXIT THEN
    tg EN-PTR = IF 1 EXIT THEN
    tg EN-PUSH = IF 3 EXIT THEN
-   tg EN-QUOT = IF 8 EXIT THEN
+   tg EN-QUOT = IF 9 EXIT THEN
    tg EN-FORALL = IF 4 EXIT THEN
    tg EN-BVAR = IF 1 EXIT THEN
    tg EN-ATOM = IF 2 EXIT THEN
@@ -10149,6 +10153,7 @@ UIX-RESET
       off E-PTR EN.B @ RECURSE
       off E-PTR EN.C @ RECURSE
       off E-PTR EN.D @ RECURSE
+      off E-PTR EN.I @ RECURSE
    THEN
    tg EN-FORALL = IF
       off E-PTR EN.A @ RECURSE
@@ -10324,6 +10329,7 @@ UIX-RESET
          x E-RES Q>XDEAD Q-FLAG>N r@ E-WPTR EN.F !
          x E-RES Q>XDFIELD r@ E-WPTR EN.G !
          x E-RES Q>XRFIELD r@ E-WPTR EN.H !
+         x E-RES Q>BLOCK TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.I !
          r>
       endof
       T-FORALL of
@@ -11807,6 +11813,7 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
          r@ EN.D @ pool RECURSE
          MK-QUOT
          dup r@ EN.E @ 0 <> r@ EN.F @ 0 <> r@ EN.G @ r@ EN.H @ QX!
+         r@ EN.I @ pool RECURSE over Q-BLOCK!
          r> drop
       endof
       EN-FORALL of
@@ -25316,6 +25323,7 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
       src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
       src E-PTR EN.C @ RECURSE dst ASIG-GRAPH-PTR EN.C !
       src E-PTR EN.D @ RECURSE dst ASIG-GRAPH-PTR EN.D !
+      src E-PTR EN.I @ RECURSE dst ASIG-GRAPH-PTR EN.I !
       \ Effect records hold transient exception-row IDs in G/H, whose
       \ type/last-write contract does not travel: a graph carrying them is
       \ refused rather than silently dropping those exceptional rows.
@@ -25678,6 +25686,9 @@ variable CK-GRAPH-UNIT-MAP
       node EN.B @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       node EN.C @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       node EN.D @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      node EN.I @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      node EN.I @ CK-GRAPH-PTR
+      dup EN.TAG @ EN-VAR <> swap EN.B @ TVK-ANY <> or IF ASIG-GRAPH-DIE THEN
    ELSE tag EN-FORALL = IF
       node CK-GRAPH-FORALL-SHAPE? 0= IF ASIG-GRAPH-DIE THEN
       node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
@@ -26085,6 +26096,7 @@ CK-AOT-REC-CONTROL-INSTALL
    ELSE tag EN-QUOT = IF
       node EN.A base CK-GRAPH-REBASE node EN.B base CK-GRAPH-REBASE
       node EN.C base CK-GRAPH-REBASE node EN.D base CK-GRAPH-REBASE
+      node EN.I base CK-GRAPH-REBASE
    ELSE tag EN-FORALL = IF
       node EN.A base CK-GRAPH-REBASE
       node EN.B base CK-GRAPH-REBASE
@@ -29692,7 +29704,8 @@ FILE-CON-RESET
    tag EN-QUOT = IF
       node EN.E @ node EN.G @ or node EN.H @ or 0 <> IF UNIT-BAD THEN
       node EN.A @ RECURSE node EN.B @ RECURSE
-      node EN.C @ RECURSE node EN.D @ RECURSE EXIT
+      node EN.C @ RECURSE node EN.D @ RECURSE
+      node EN.I @ RECURSE EXIT
    THEN
    UNIT-BAD ;
 
@@ -32262,7 +32275,8 @@ variable MARK-U                          \ the map's length in bytes
       off E-PTR EN.A @ RECURSE
       off E-PTR EN.B @ RECURSE
       off E-PTR EN.C @ RECURSE
-      off E-PTR EN.D @ RECURSE EXIT
+      off E-PTR EN.D @ RECURSE
+      off E-PTR EN.I @ RECURSE EXIT
    THEN
    tg EN-ATOM = IF off E-PTR EN.A @  off E-PTR EN.B @ UALIGN MARK-EXTENT EXIT THEN
    tg EN-PARAM = IF
