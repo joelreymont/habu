@@ -1,6 +1,7 @@
 ----------------------------- MODULE ModelCall -----------------------------
 (* MODEL's call (src/lib/net/model.f: START, SERVE, AWAIT, CLOSE, CANCEL,  *)
-(* REQUEST-STOP, ACCOUNT), over CURL's record and request machines         *)
+(* REQUEST-STOP, ACCOUNT, and the resend TIER-RESEND! turns on), over      *)
+(* CURL's record and request machines                                      *)
 (* (src/lib/net/curl.f: NEXT-ARM, NEXT-READY?, NEXT-TAKE, ABANDON,         *)
 (* CLEANUP, OWNER-END, SERVICE-ONE) and TASK's halt and wait               *)
 (* (src/lib/task.f: HALT, PAUSE, HALT-UNWIND, DEFER-ENTER, DEFER-LEAVE,    *)
@@ -12,25 +13,32 @@ EXTENDS Naturals
 
 CONSTANTS Calls, MaxChunks, MaxStarts
 
+(* tier is the call's TIER-MACHINE state, kept in its receipt; tierOut,    *)
+(* whether its landed send ended E-TIER with TIER-SENSE's other conditions *)
+(* holding (TIER-RESEND! on, a tier named, its record kept). A send that   *)
+(* ended E-TIER without them steps as one that did not.                    *)
 VARIABLES
     lc, rest, cancelled, stopped, transport, span, starts,
     opc, hints, halted, deferred, unwound,
     rec, req, left, held, ends,
-    wroteFreed, wokeEnded, rule
+    wroteFreed, wokeEnded, rule, tier, tierOut
 
 vars == <<lc, rest, cancelled, stopped, transport, span, starts,
           opc, hints, halted, deferred, unwound,
-          rec, req, left, held, ends, wroteFreed, wokeEnded, rule>>
+          rec, req, left, held, ends, wroteFreed, wokeEnded, rule,
+          tier, tierOut>>
 
 Lifecycles == {"idle", "started", "landed", "closed"}
 Records == {"none", "claimed", "running", "cancel", "done",
             "abandoned", "leaving", "left"}
 Requests == {"none", "waiting", "chunk", "response", "failed"}
 Answered == {"chunk", "response", "failed"}
+Tiers == {"preferred", "standard", "done"}
 Places == {<<"free">>, <<"parked">>, <<"halting">>, <<"unwinding">>,
            <<"finally">>, <<"ended">>}
           \cup ({"dispatch", "await", "abandon"} \X Calls)
-          \cup ({"cleanup", "account"} \X Calls \X {"serve", "await"})
+          \cup ({"cleanup", "account", "resend"} \X Calls
+                 \X {"serve", "await"})
 
 TypeOK ==
     /\ lc \in [Calls -> Lifecycles]
@@ -53,6 +61,8 @@ TypeOK ==
     /\ wroteFreed \in BOOLEAN
     /\ wokeEnded \in BOOLEAN
     /\ rule \in BOOLEAN
+    /\ tier \in [Calls -> Tiers]
+    /\ tierOut \in [Calls -> BOOLEAN]
 
 Init ==
     /\ lc = [c \in Calls |-> "idle"]
@@ -75,6 +85,8 @@ Init ==
     /\ wroteFreed = FALSE
     /\ wokeEnded = FALSE
     /\ rule \in BOOLEAN
+    /\ tier = [c \in Calls |-> "preferred"]
+    /\ tierOut = [c \in Calls |-> FALSE]
 
 -----------------------------------------------------------------------------
 (* Shared steps *)
@@ -132,13 +144,15 @@ TakeFault(c) ==
            ELSE /\ rec' = [rec EXCEPT ![c] = "leaving"]
                 /\ req' = [req EXCEPT ![c] = t[1]]
                 /\ UNCHANGED <<held, lc>>
-        /\ UNCHANGED rest
+        /\ UNCHANGED <<rest, tierOut>>
 
 (* NEXT-TAKE of an answered request (STREAM-RESULT-TAKE), as SERVE and     *)
 (* AWAIT do it: a chunk is fed and the next read armed at once, or it      *)
 (* spoils the reply (DROP: CURL:CANCEL, rest dropping, re-arm); an end     *)
 (* releases the record, ends the transfer (END-TRANSFER) and lands; or the *)
-(* receive throws (TakeFault).                                             *)
+(* receive throws (TakeFault). Only an end the provider sent may land      *)
+(* E-TIER, and only when the call was not cut (LAND-CUT lands a cancelled  *)
+(* one E-CANCELLED): whether it does is chosen here.                       *)
 Take(c) ==
     \/ /\ req[c] = "chunk"
        /\ \/ /\ req' = [req EXCEPT ![c] = ArmFor(c, rec[c])]
@@ -147,12 +161,14 @@ Take(c) ==
              /\ rest' = [rest EXCEPT ![c] = "dropping"]
              /\ CancelMark(c)
              /\ req' = [req EXCEPT ![c] = ArmFor(c, rec'[c])]
-       /\ UNCHANGED <<lc, transport, held>>
+       /\ UNCHANGED <<lc, transport, held, tierOut>>
     \/ /\ req[c] \in {"response", "failed"}
        /\ rec' = [rec EXCEPT ![c] = "none"]
        /\ req' = [req EXCEPT ![c] = "none"]
        /\ transport' = [transport EXCEPT ![c] = FALSE]
        /\ lc' = [lc EXCEPT ![c] = "landed"]
+       /\ \E t \in IF cancelled[c] THEN {FALSE} ELSE BOOLEAN :
+             tierOut' = [tierOut EXCEPT ![c] = t]
        /\ UNCHANGED <<rest, held>>
     \/ TakeFault(c)
 
@@ -185,8 +201,9 @@ Back ==
 (* (TCB-HALT-PENDING? reads TCB.STOP), outside every DEFER-ENTER.          *)
 Pending == halted /\ ~unwound /\ ~deferred
 
-(* The end of SERVE's RECEIVE-STARTED (model.f) after DEFER-LEAVE and *)
-(* ACCOUNT: 0 TASK:HALT-UNWIND starts the unwind on a pending halt. *)
+(* The end of SERVE's RECEIVE-STARTED (model.f) after DEFER-LEAVE,         *)
+(* ACCOUNT and TIER-STEP: 0 TASK:HALT-UNWIND starts the unwind on a        *)
+(* pending halt.                                                           *)
 ServeEnd ==
     IF Pending
     THEN /\ unwound' = TRUE
@@ -208,6 +225,8 @@ PauseAfter(c) ==
 
 Free == opc = <<"free">> /\ ~halted
 
+(* START: START-LEDGER sets the tier machine to preferred, SEND-BEGUN      *)
+(* clears the outcome.                                                     *)
 Start(c) ==
     /\ Free
     /\ lc[c] = "idle"
@@ -216,10 +235,24 @@ Start(c) ==
     /\ lc' = [lc EXCEPT ![c] = "started"]
     /\ cancelled' = [cancelled EXCEPT ![c] = FALSE]
     /\ starts' = [starts EXCEPT ![c] = @ + 1]
+    /\ tier' = [tier EXCEPT ![c] = "preferred"]
+    /\ tierOut' = [tierOut EXCEPT ![c] = FALSE]
     /\ opc' = <<"dispatch", c>>
     /\ UNCHANGED <<rest, stopped, transport, span, hints, halted, deferred,
                    unwound, rec, req, left, held, ends, wroteFreed, wokeEnded,
                    rule>>
+
+(* START-LOCKED's claim of a transfer: its reply's end and length are      *)
+(* chosen here.                                                            *)
+Claim(c) ==
+    /\ rec' = [rec EXCEPT ![c] = "claimed"]
+    /\ transport' = [transport EXCEPT ![c] = TRUE]
+    /\ req' = [req EXCEPT ![c] = "waiting"]
+    /\ rest' = [rest EXCEPT ![c] = "reading"]
+    /\ held' = [held EXCEPT ![c] = FALSE]
+    /\ \E e \in {"ok", "fail"}, n \in 0..MaxChunks:
+          /\ ends' = [ends EXCEPT ![c] = e]
+          /\ left' = [left EXCEPT ![c] = n]
 
 (* START-LOCKED (model.f): a cancel since begin means no transfer. *)
 Dispatch(c) ==
@@ -228,23 +261,16 @@ Dispatch(c) ==
     /\ IF cancelled[c]
        THEN /\ lc' = [lc EXCEPT ![c] = "landed"]
             /\ UNCHANGED <<rest, transport, rec, req, left, held, ends>>
-       ELSE /\ rec' = [rec EXCEPT ![c] = "claimed"]
-            /\ transport' = [transport EXCEPT ![c] = TRUE]
-            /\ req' = [req EXCEPT ![c] = "waiting"]
-            /\ rest' = [rest EXCEPT ![c] = "reading"]
-            /\ held' = [held EXCEPT ![c] = FALSE]
-            /\ \E e \in {"ok", "fail"}, n \in 0..MaxChunks:
-                  /\ ends' = [ends EXCEPT ![c] = e]
-                  /\ left' = [left EXCEPT ![c] = n]
+       ELSE /\ Claim(c)
             /\ UNCHANGED lc
     /\ UNCHANGED <<cancelled, stopped, span, starts, hints, halted, deferred,
-                   unwound, wroteFreed, wokeEnded, rule>>
+                   unwound, wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* SERVE's started arm (RECEIVE-STARTED) as one step: the receive only     *)
 (* polls, deferred; a take that throws may wait in CLEANUP's ABANDON; then *)
 (* DEFER-LEAVE, and a landed call's recorder and journal put (ACCOUNT)     *)
-(* before HALT-UNWIND. A halted owner's poll that takes nothing leaves the *)
-(* call started and the owner unwinding.                                   *)
+(* and TIER-STEP (PutDone) before HALT-UNWIND. A halted owner's poll that  *)
+(* takes nothing leaves the call started and the owner unwinding.          *)
 (* REQUIRE-STARTER passes: the one owner starts every call.                *)
 (* OWNED-INDEX's refusal of a left owner's record never fires: no TCB is   *)
 (* reused.                                                                 *)
@@ -255,7 +281,7 @@ Serve(c) ==
           /\ Take(c)
        \/ /\ halted
           /\ req[c] = "waiting"
-          /\ UNCHANGED <<lc, rest, transport, rec, req, held>>
+          /\ UNCHANGED <<lc, rest, transport, rec, req, held, tierOut>>
     /\ IF rec'[c] = "leaving"
        THEN /\ opc' = <<"cleanup", c, "serve">>
             /\ UNCHANGED unwound
@@ -264,7 +290,7 @@ Serve(c) ==
                  /\ UNCHANGED unwound
             ELSE ServeEnd
     /\ UNCHANGED <<cancelled, stopped, span, starts, hints, halted,
-                   deferred, left, ends, wroteFreed, wokeEnded, rule>>
+                   deferred, left, ends, wroteFreed, wokeEnded, rule, tier>>
 
 WaitAny ==
     /\ Free
@@ -273,7 +299,7 @@ WaitAny ==
     /\ opc' = <<"parked">>
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                    hints, halted, deferred, unwound, rec, req, left, held,
-                   ends, wroteFreed, wokeEnded, rule>>
+                   ends, wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* TASK:WAIT returns by taking one hint, whoever posted it. *)
 Resume ==
@@ -283,9 +309,10 @@ Resume ==
     /\ opc' = <<"free">>
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                    halted, deferred, unwound, rec, req, left, held, ends,
-                   wroteFreed, wokeEnded, rule>>
+                   wroteFreed, wokeEnded, rule, tier, tierOut>>
 
-(* AWAIT: a landed call goes idle; a started one enters RECEIVE-STARTED.   *)
+(* AWAIT: a landed call goes idle; a started one enters RECEIVE-STARTED,   *)
+(* again after each resend TIER-STEP makes (Resend).                       *)
 (* REQUIRE-STARTER passes: the one owner starts every call.                *)
 (* OWNED-INDEX's refusal of a left owner's record never fires: no TCB is   *)
 (* reused.                                                                 *)
@@ -299,7 +326,7 @@ Await(c) ==
           /\ UNCHANGED lc
     /\ UNCHANGED <<rest, cancelled, stopped, transport, span, starts, hints,
                    halted, deferred, unwound, rec, req, left, held, ends,
-                   wroteFreed, wokeEnded, rule>>
+                   wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* AWAIT's started arm, deferred: take what is answered, else NEXT-TAKE's  *)
 (* TASK:WAIT and its TASK:HALT-PENDING? check, which starts ABANDON        *)
@@ -307,13 +334,14 @@ Await(c) ==
 (* as an unhalted owner does. After TASK:WAIT, NEXT-TAKE checks the halt   *)
 (* before an answered read, so an owner with a halt pending gives the      *)
 (* record up even when its read was answered. Once the call lands,         *)
-(* DEFER-LEAVE, then its recorder and journal put (ACCOUNT).               *)
+(* DEFER-LEAVE, then its recorder and journal put (ACCOUNT) and TIER-STEP  *)
+(* (PutDone).                                                              *)
 AwaitStep(c) ==
     /\ opc = <<"await", c>>
     /\ \/ /\ lc[c] = "landed"
           /\ opc' = <<"account", c, "await">>
           /\ UNCHANGED <<lc, rest, transport, hints, unwound, rec, req,
-                         held>>
+                         held, tierOut>>
        \/ /\ lc[c] = "started"
           /\ req[c] \in Answered
           /\ Take(c)
@@ -323,6 +351,7 @@ AwaitStep(c) ==
           /\ req[c] = "waiting" \/ (halted /\ ~unwound /\ req[c] \in Answered)
           /\ hints > 0
           /\ hints' = hints - 1
+          /\ UNCHANGED tierOut
           /\ IF ~(halted /\ ~unwound)
              THEN UNCHANGED <<lc, rest, transport, opc, unwound, rec, req, held>>
              ELSE IF rec[c] = "done"
@@ -336,7 +365,7 @@ AwaitStep(c) ==
                        /\ opc' = <<"abandon", c>>
                        /\ UNCHANGED <<lc, rest, transport, unwound, req, held>>
     /\ UNCHANGED <<cancelled, stopped, span, starts, halted, deferred, left,
-                   ends, wroteFreed, wokeEnded, rule>>
+                   ends, wroteFreed, wokeEnded, rule, tier>>
 
 (* ABANDON's wait: the span is the owner's again only once the loop has   *)
 (* let go (LEFT); the owner frees the record itself.                       *)
@@ -353,7 +382,7 @@ AbandonStep(c) ==
           /\ hints' = hints - 1
           /\ UNCHANGED <<lc, transport, opc, unwound, rec, req, held>>
     /\ UNCHANGED <<rest, cancelled, stopped, span, starts, halted, deferred,
-                   left, ends, wroteFreed, wokeEnded, rule>>
+                   left, ends, wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* CLEANUP's ABANDON in LAND-FAULT's SETTLE-SENSE: the same wait; once the *)
 (* owner has freed the record, END-CALL lands the call, then its recorder  *)
@@ -374,28 +403,69 @@ CleanupStep(c) ==
               /\ UNCHANGED <<lc, opc, unwound, rec, req, held>>
         /\ UNCHANGED <<rest, cancelled, stopped, transport, span, starts,
                        halted, deferred, left, ends, wroteFreed, wokeEnded,
-                       rule>>
+                       rule, tier, tierOut>>
 
 (* ACCOUNT (model.f): a landed call's recorder and journal put, which may  *)
-(* wait, run after RECEIVE-STARTED's DEFER-LEAVE. The put ends: SERVE's    *)
-(* arm ends (ServeEnd); AWAIT's starts the unwind on a pending halt with   *)
-(* the call landed, else makes the call idle and returns.                  *)
+(* wait, run after RECEIVE-STARTED's DEFER-LEAVE. The put ends, then       *)
+(* TIER-STEP steps the call's TIER-MACHINE. From preferred, a send that    *)
+(* ended E-TIER runs TIER-STANDARD and the machine is standard: under the  *)
+(* call's gate RESEND-LOCKED leaves a stopped call landed (E-CANCELLED),   *)
+(* else starts the call again with BEGIN-RESET's resets, its cancelled     *)
+(* flag cleared, for SEND-BEGUN's dispatch (Resend); MaxStarts does not    *)
+(* count it. Any other send is sent no more (done). With nothing sent,     *)
+(* SERVE's arm ends (ServeEnd); AWAIT's starts the unwind on a pending     *)
+(* halt with the call landed, else makes the call idle and returns.        *)
 PutDone(c) ==
     \E f \in {"serve", "await"} :
         /\ opc = <<"account", c, f>>
-        /\ IF f = "serve"
-           THEN /\ ServeEnd
+        /\ tier' = [tier EXCEPT ![c] =
+                      IF tier[c] = "preferred" /\ tierOut[c]
+                      THEN "standard" ELSE "done"]
+        /\ IF tier[c] = "preferred" /\ tierOut[c] /\ ~stopped[c]
+           THEN /\ lc' = [lc EXCEPT ![c] = "started"]
+                /\ cancelled' = [cancelled EXCEPT ![c] = FALSE]
+                /\ tierOut' = [tierOut EXCEPT ![c] = FALSE]
+                /\ opc' = <<"resend", c, f>>
+                /\ UNCHANGED unwound
+           ELSE /\ UNCHANGED <<cancelled, tierOut>>
+                /\ IF f = "serve"
+                   THEN /\ ServeEnd
+                        /\ UNCHANGED lc
+                   ELSE IF Pending
+                        THEN /\ unwound' = TRUE
+                             /\ opc' = Unwind
+                             /\ UNCHANGED lc
+                        ELSE /\ lc' = [lc EXCEPT ![c] = "idle"]
+                             /\ opc' = Back
+                             /\ UNCHANGED unwound
+        /\ UNCHANGED <<rest, stopped, transport, span, starts, hints, halted,
+                       deferred, rec, req, left, held, ends, wroteFreed,
+                       wokeEnded, rule>>
+
+(* TIER-STANDARD's SEND-BEGUN dispatches the resend as START-LOCKED does   *)
+(* in Dispatch: a cancel since RESEND-LOCKED lands the call with no        *)
+(* transfer, else a transfer is claimed. Then RECEIVE-STARTED's            *)
+(* 0 TASK:HALT-UNWIND: SERVE's arm ends (ServeEnd); AWAIT's starts the     *)
+(* unwind on a pending halt, else its loop receives the started call again *)
+(* (AwaitStep), or makes a call that landed here idle and returns.         *)
+Resend(c) ==
+    \E f \in {"serve", "await"} :
+        /\ opc = <<"resend", c, f>>
+        /\ IF cancelled[c]
+           THEN /\ lc' = [lc EXCEPT ![c] =
+                      IF f = "await" /\ ~Pending THEN "idle" ELSE "landed"]
+                /\ UNCHANGED <<rest, transport, rec, req, left, held, ends>>
+           ELSE /\ Claim(c)
                 /\ UNCHANGED lc
+        /\ IF f = "serve"
+           THEN ServeEnd
            ELSE IF Pending
                 THEN /\ unwound' = TRUE
                      /\ opc' = Unwind
-                     /\ UNCHANGED lc
-                ELSE /\ lc' = [lc EXCEPT ![c] = "idle"]
-                     /\ opc' = Back
+                ELSE /\ opc' = IF cancelled[c] THEN Back ELSE <<"await", c>>
                      /\ UNCHANGED unwound
-        /\ UNCHANGED <<rest, cancelled, stopped, transport, span, starts,
-                       hints, halted, deferred, rec, req, left, held, ends,
-                       wroteFreed, wokeEnded, rule>>
+        /\ UNCHANGED <<cancelled, stopped, span, starts, hints, halted,
+                       deferred, wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* A halt served while the recorder or put waits: the task unwinds there,  *)
 (* and LANDING-END leaves the call landed (outcome E-CANCELLED).           *)
@@ -407,7 +477,7 @@ PutCut(c) ==
         /\ opc' = Unwind
         /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                        hints, halted, deferred, rec, req, left, held, ends,
-                       wroteFreed, wokeEnded, rule>>
+                       wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* CLOSE (model.f) frees an idle or landed call's arena; a started one is  *)
 (* refused.                                                                *)
@@ -421,7 +491,7 @@ Close(c) ==
     /\ CloseBody(c)
     /\ UNCHANGED <<rest, cancelled, stopped, transport, starts, opc, hints,
                    halted, deferred, unwound, rec, req, left, held, ends,
-                   wroteFreed, wokeEnded, rule>>
+                   wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* An owner that does not follow the rule ends its body with calls still   *)
 (* started (a fault no cleanup awaits): CLOSE refuses those, so their      *)
@@ -433,7 +503,7 @@ Quit ==
     /\ OwnerEnd
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                    hints, halted, deferred, unwound, req, left, held, ends,
-                   wroteFreed, wokeEnded, rule>>
+                   wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* The serve loop finds the halt: DEFER-ENTER, then cancel and await      *)
 (* every call.                                                             *)
@@ -444,7 +514,7 @@ HaltEnter ==
     /\ opc' = <<"halting">>
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                    hints, halted, unwound, rec, req, left, held, ends,
-                   wroteFreed, wokeEnded, rule>>
+                   wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* One step of the owner's cleanup of its calls, in halt handling or in   *)
 (* the unwind: cancel a started call, await a cancelled one, await a       *)
@@ -474,7 +544,7 @@ HaltStep ==
           /\ opc' = Unwind
           /\ UNCHANGED <<lc, cancelled, transport, rec>>
     /\ UNCHANGED <<rest, stopped, span, starts, hints, halted, req, left,
-                   held, ends, wroteFreed, wokeEnded, rule>>
+                   held, ends, wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* The unwind's cleanups of an owner that does not follow the rule (their *)
 (* PAUSE only yields): settle every call, close every call, then          *)
@@ -490,7 +560,8 @@ UnwindStep ==
           /\ OwnerEnd
           /\ UNCHANGED <<lc, cancelled, transport, span>>
     /\ UNCHANGED <<rest, stopped, starts, hints, halted, deferred, unwound,
-                   req, left, held, ends, wroteFreed, wokeEnded, rule>>
+                   req, left, held, ends, wroteFreed, wokeEnded, rule, tier,
+                   tierOut>>
 
 (* The unwind of an owner that follows the rule runs its finally: for each *)
 (* call still started, CANCEL (CANCEL-LOCKED), then AWAIT, catching        *)
@@ -507,7 +578,7 @@ FinallyStep ==
           /\ UNCHANGED <<cancelled, transport>>
     /\ UNCHANGED <<lc, rest, stopped, span, starts, hints, halted, deferred,
                    unwound, req, left, held, ends, wroteFreed, wokeEnded,
-                   rule>>
+                   rule, tier, tierOut>>
 
 -----------------------------------------------------------------------------
 (* The environment and another task *)
@@ -520,7 +591,7 @@ Halt ==
     /\ hints' = hints + 1
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                    opc, deferred, unwound, rec, req, left, held, ends,
-                   wroteFreed, wokeEnded, rule>>
+                   wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* CANCEL: E-STATE on a closed call (its arena is gone). *)
 Cancel(c) ==
@@ -528,7 +599,7 @@ Cancel(c) ==
     /\ CancelBody(c)
     /\ UNCHANGED <<lc, rest, stopped, span, starts, opc, hints, halted,
                    deferred, unwound, req, left, held, ends, wroteFreed,
-                   wokeEnded, rule>>
+                   wokeEnded, rule, tier, tierOut>>
 
 Stop(c) ==
     /\ lc[c] /= "closed"
@@ -536,7 +607,7 @@ Stop(c) ==
     /\ CancelBody(c)
     /\ UNCHANGED <<lc, rest, span, starts, opc, hints, halted, deferred,
                    unwound, req, left, held, ends, wroteFreed, wokeEnded,
-                   rule>>
+                   rule, tier, tierOut>>
 
 -----------------------------------------------------------------------------
 (* The CURL loop: SERVICE-ONE and the finish of a transfer *)
@@ -546,7 +617,7 @@ Add(c) ==
     /\ rec' = [rec EXCEPT ![c] = "running"]
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                    opc, hints, halted, deferred, unwound, req, left, held,
-                   ends, wroteFreed, wokeEnded, rule>>
+                   ends, wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 Produce(c) ==
     /\ rec[c] = "running"
@@ -556,7 +627,7 @@ Produce(c) ==
     /\ left' = [left EXCEPT ![c] = @ - 1]
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                    opc, hints, halted, deferred, unwound, rec, req, ends,
-                   wroteFreed, wokeEnded, rule>>
+                   wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* STREAM-DELIVER, reached only past SERVICE-ONE's CANCEL and LEAVING?     *)
 (* checks: a held chunk is copied into the armed span, or a done record    *)
@@ -574,7 +645,8 @@ Deliver(c) ==
           /\ UNCHANGED <<held, wroteFreed>>
     /\ Wake
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
-                   opc, halted, deferred, unwound, rec, left, ends, rule>>
+                   opc, halted, deferred, unwound, rec, left, ends, rule, tier,
+                   tierOut>>
 
 (* STREAM-FINISH, then SETTLE: a streamed record is not woken here. *)
 Finish(c) ==
@@ -583,7 +655,7 @@ Finish(c) ==
     /\ rec' = [rec EXCEPT ![c] = "done"]
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                    opc, hints, halted, deferred, unwound, req, left, held,
-                   ends, wroteFreed, wokeEnded, rule>>
+                   ends, wroteFreed, wokeEnded, rule, tier, tierOut>>
 
 (* CANCEL-RUN: FAIL-RUN drops what is held, then SETTLE-FAILED answers a  *)
 (* waiting request.                                                        *)
@@ -597,7 +669,8 @@ CancelRun(c) ==
             /\ Wake
        ELSE UNCHANGED <<req, hints, wokeEnded>>
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
-                   opc, halted, deferred, unwound, left, wroteFreed, rule>>
+                   opc, halted, deferred, unwound, left, wroteFreed, rule,
+                   tier, tierOut>>
 
 (* LEAVE-RUN, then LEAVE-DONE: only a LEAVING owner, still waiting in      *)
 (* ABANDON, is woken; an abandoned record's owner has ended.               *)
@@ -613,7 +686,7 @@ LeaveRun(c) ==
             /\ UNCHANGED <<hints, wokeEnded>>
     /\ UNCHANGED <<lc, rest, cancelled, stopped, transport, span, starts,
                    opc, halted, deferred, unwound, left, ends, wroteFreed,
-                   rule>>
+                   rule, tier, tierOut>>
 
 -----------------------------------------------------------------------------
 
@@ -626,7 +699,7 @@ OwnerStep ==
     \/ \E c \in Calls :
           Start(c) \/ Dispatch(c) \/ Serve(c) \/ Await(c) \/ AwaitStep(c)
           \/ AbandonStep(c) \/ CleanupStep(c) \/ PutDone(c) \/ PutCut(c)
-          \/ Close(c)
+          \/ Resend(c) \/ Close(c)
     \/ WaitAny \/ Resume \/ Quit \/ HaltEnter \/ HaltStep \/ UnwindStep
     \/ FinallyStep
 
@@ -648,7 +721,7 @@ Fairness ==
           /\ WF_vars(Await(c)) /\ WF_vars(AwaitStep(c))
           /\ WF_vars(AbandonStep(c)) /\ WF_vars(CleanupStep(c))
           /\ WF_vars(PutDone(c) /\ ~Pending) /\ WF_vars(PutCut(c))
-          /\ WF_vars(Close(c))
+          /\ WF_vars(Resend(c)) /\ WF_vars(Close(c))
           /\ WF_vars(Add(c)) /\ WF_vars(Produce(c)) /\ WF_vars(Deliver(c))
           /\ WF_vars(Finish(c)) /\ WF_vars(CancelRun(c))
           /\ WF_vars(LeaveRun(c))
@@ -667,7 +740,8 @@ Unwinding == unwound \/ opc = <<"ended">>
 OneRequest ==
     \A c \in Calls :
         (lc[c] = "started" /\ ~Unwinding /\ opc /= <<"dispatch", c>>
-             /\ \A f \in {"serve", "await"} : opc /= <<"cleanup", c, f>>)
+             /\ \A f \in {"serve", "await"} :
+                    opc \notin {<<"cleanup", c, f>>, <<"resend", c, f>>})
             => /\ rec[c] /= "none"
                /\ req[c] \in {"waiting"} \cup Answered
 

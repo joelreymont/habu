@@ -31,7 +31,10 @@ SERVE that lands nothing leaves the call started and the owner unwinding. A
 landed call's recorder and journal put (ACCOUNT) run after the deferred
 section: a halt pending while they wait unwinds the owner there, and the call
 still ends landed. OwnerEnds, with the put's end fair only while no halt is
-pending, shows that a halt does not wait for the recorder or put to end.
+pending, shows that a halt does not wait for the recorder or put to end. With
+TIER-RESEND!, a landed call whose send ended E-TIER is started again once by
+its starter inside SERVE or AWAIT, uncounted in its starts, never when it is
+stopped or was cancelled as it landed; the same properties hold.
 Whether the owner follows the caller rule is fixed for a run: one that does
 unwinds through a finally that CANCELs, then AWAITs, each call still started,
 catching each AWAIT's fault; one that does not may end with calls still
@@ -44,7 +47,9 @@ Serve and Await for MODEL's START, SERVE and AWAIT, Close for CLOSE, Cancel
 and Stop for CANCEL and REQUEST-STOP; the takes and re-arms in Serve and Await
 for CURL's NEXT-ARM, NEXT-READY? and NEXT-TAKE, the halted wait and
 CleanupStep for ABANDON, PutDone and PutCut for ACCOUNT's recorder and
-journal put ending or cut by a halt, the owner's end for OWNER-END, and Add, Produce,
+journal put ending or cut by a halt, PutDone's end for TIER-STEP and
+TIER-MACHINE, Resend for TIER-STANDARD's dispatch by SEND-BEGUN after
+RESEND-LOCKED, the owner's end for OWNER-END, and Add, Produce,
 Deliver, Finish, CancelRun and LeaveRun for SERVICE-ONE and the finish of a
 transfer; Halt, the halt handling, the unwind and FinallyStep for TASK's HALT,
 DEFER-ENTER, DEFER-LEAVE, HALT-UNWIND and PAUSE and the caller's finally; and

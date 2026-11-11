@@ -50,8 +50,10 @@ require src/lib/time.f
 \ SERVEing each until it answers true, then AWAITing it. It TASK:WAITs only
 \ straight after a round in which every SERVE answered false: landing a call
 \ runs its journal and recorder, and a wait there takes the CURL loop's hint
-\ for another call. SERVE and AWAIT of a started call run
-\ on the task that started it; a halt while AWAIT waits lands the call first.
+\ for another call. With TIER-RESEND!, a call that ends E-TIER is sent again
+\ inside SERVE or AWAIT, and SERVE keeps answering false. SERVE and AWAIT of
+\ a started call run on the task that started it; a halt while AWAIT waits
+\ lands the call first.
 \ A task that may be halted CANCELs, then AWAITs, each call still started in a
 \ finally, catching each AWAIT's fault.
 
@@ -127,6 +129,7 @@ public
 -9711 constant E-UNAVAILABLE
 \ The provider cannot serve the request at the service tier it names for now:
 \ a failed response's error code flex_unavailable. Nothing was generated.
+\ TIER-RESEND! sends such a call again.
 -9712 constant E-TIER
 \ OpenAI's limits: https://platform.openai.com/docs/api-reference/embeddings
 \ MODEL counts no embed input's tokens; INPUT-MAX bounds an Ollama call too.
@@ -183,6 +186,7 @@ STRUCTURE call DERIVE addr
    FIELD journal-get [ n ptr u8 n ptr n -- bool ]
    FIELD journal-put [ n ptr u8 n ptr u8 n -- ]
    FIELD journal-ready bool
+   FIELD tier-resend bool
    FIELD replay-kind option<call-kind>
    FIELD starter n
 ;STRUCTURE
@@ -241,9 +245,14 @@ CAST: >STREAM ( ptr u8 -- ptr stream )
 \ The land machine's steps: settling ends the call's transfer and lands it;
 \ recording runs the recorder; serving and refusing run it, then the put.
 ENUM land-step settling recording serving refusing landed ;ENUM
+\ The tier machine's states: preferred sends the call's tier; standard sends
+\ none, after a send that ended E-TIER; done sends no more.
+ENUM tier-step preferred standard done ;ENUM
+ENUM tier-event settled tier-out ;ENUM
 
 \ END-TRANSFER's status, code, spoiling fault and cut; outcome, the fault it
-\ throws; step, the land machine's next; outer, the LANDING ACCOUNT replaced.
+\ throws; step, the land machine's next; tier, the tier machine's; outer, the
+\ LANDING ACCOUNT replaced.
 STRUCTURE receipt DERIVE addr
    FIELD status CURL:http-status
    FIELD code n
@@ -252,6 +261,7 @@ STRUCTURE receipt DERIVE addr
    FIELD replayed bool
    FIELD outcome n
    FIELD step land-step
+   FIELD tier tier-step
    FIELD outer n
 ;STRUCTURE
 
@@ -600,8 +610,17 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    c EFFORT-BUF BUFFER$ ;
 : CACHE-KEY$ ( ptr call -- ptr u8 n ) CACHE-KEY-BUF BUFFER$ ;
 : RESPONSE-ID$ ( ptr call -- ptr u8 n ) RESPONSE-ID-BUF BUFFER$ ;
+\ Whether the call's sends name its tier: not once its tier machine left
+\ preferred.
+: TIER-NAMED? ( ptr call -- bool )
+   RECEIPT RECEIPT-TIER @ MATCH tier-step
+      preferred OF true ENDOF
+      standard OF false ENDOF
+      done OF false ENDOF
+   ;MATCH ;
 : TIER$ ( ptr call -- ptr u8 n )
    {: c :}
+   c TIER-NAMED? 0= if s" " exit then
    c PICK-CELL @ {: r:n :}
    r 0<> if r 1- 3 c ROW$ exit then
    c TIER-BUF BUFFER$ ;
@@ -777,6 +796,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    construct reply-form none c MODEL-CALL:FORM !
    construct call-result none c MODEL-CALL:RESULT !
    false c MODEL-CALL:JOURNAL-READY !
+   false c MODEL-CALL:TIER-RESEND !
+   construct tier-step preferred c RECEIPT RECEIPT-TIER !
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    0 c PICK-CELL !
    0 c MAX-OUTPUT-CELL !
@@ -975,6 +996,14 @@ public
    {: a:ptr u:n c :}
    c UNPREPARE drop
    u 0= if c TIER-BUF BUF:CLEAR else a u c TIER-BUF REPLACE-SOME then ;
+
+\ Whether a call that ends E-TIER is sent again at once, once, with no service
+\ tier, so the provider serves its default: each send is recorded, the first
+\ tier_unavailable. A second E-TIER, a stopped call or a failed recorder ends it.
+: TIER-RESEND! ( bool ptr call -- )
+   {: on:bool c :}
+   c REQUIRE-REST
+   on c MODEL-CALL:TIER-RESEND ! ;
 
 \ The generation model, effort and service tier of every later call for the
 \ purpose, in place of the call's own; empty effort or tier sends none, even
@@ -2620,17 +2649,10 @@ private
    code JSON-FAULT? if E-RESPONSE throw then
    code throw ;
 
-: BEGIN-LOCKED ( ptr call -- ptr call )
+: BEGIN-RESET ( ptr call -- ptr call )
    {: c :}
-   c MODEL-CALL:STOPPED @ if E-CANCELLED throw then
-   c MODEL-CALL:STATE @ MATCH call-state
-      idle OF ENDOF
-      prepared OF E-STATE throw ENDOF
-      started OF E-STATE throw ENDOF
-      landed OF E-STATE throw ENDOF
-   ;MATCH
    \ The reply buffers keep the room the last call's reply took. They are
-   \ resized before the call is started, so a failed resize leaves it idle.
+   \ resized before the call is started, so a failed resize leaves it as it was.
    c CONTENT-BUF c MODEL-CALL:CONTENT-U @ c MODEL-CALL:INCOMPLETE-U @ max c RESET-SIZED
    c RESPONSE-BUF c MODEL-CALL:RESPONSE-U @ c RESET-SIZED
    c ERROR-BUF c RESET-SCRATCH
@@ -2654,13 +2676,39 @@ private
    c RESET-USAGE
    c ;
 
-: BEGIN-CALL ( ptr call -- )
+: BEGIN-LOCKED ( ptr call -- ptr call )
    {: c :}
+   c MODEL-CALL:STOPPED @ if E-CANCELLED throw then
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF ENDOF
+      prepared OF E-STATE throw ENDOF
+      started OF E-STATE throw ENDOF
+      landed OF E-STATE throw ENDOF
+   ;MATCH
+   c BEGIN-RESET ;
+
+\ Begins a landed call's next send, as BEGIN-LOCKED begins an idle call.
+: RESEND-LOCKED ( ptr call -- ptr call )
+   {: c :}
+   c MODEL-CALL:STOPPED @ if E-CANCELLED throw then
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF E-STATE throw ENDOF
+      prepared OF E-STATE throw ENDOF
+      started OF E-STATE throw ENDOF
+      landed OF ENDOF
+   ;MATCH
+   c BEGIN-RESET ;
+
+\ Runs begin under the call's gate.
+: BEGIN-GATED ( ptr call [ ptr call -- ptr call ] -- )
+   {: c begin :}
    c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
-   c [: BEGIN-LOCKED ;] catch {: code:n :} drop
+   c begin catch {: code:n :} drop
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> if code throw then ;
+
+: BEGIN-CALL ( ptr call -- ) [: BEGIN-LOCKED ;] BEGIN-GATED ;
 
 \ A stopped call is E-CANCELLED before its request is checked.
 : REQUIRE-GOING ( ptr call -- )
@@ -3439,6 +3487,7 @@ ENUM poll none fed spoiled done ;ENUM
    0 l LEDGER-CALL-ID !
    0 l LEDGER-FAULT !
    0 l LEDGER-TRANSPORT !
+   construct tier-step preferred c RECEIPT RECEIPT-TIER !
    l LEDGER-READY @ u 0= and if E-STATE throw then ;
 
 \ Keeps a dispatched request's fault and cut for its record.
@@ -3937,13 +3986,79 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    FINAL ended  LAND
 ;DEFINE
 
-: BEGIN-SEND ( ptr call -- )
+: SEND-BEGUN ( ptr call -- )
    {: c :}
-   c BEGIN-CALL
    false c RECEIPT RECEIPT-REPLAYED !
    0 c RECEIPT RECEIPT-OUTCOME !
    construct land-step settling c STEP!
    c construct send-step looking SEND-MACHINE ;
+
+: BEGIN-SEND ( ptr call -- ) dup BEGIN-CALL SEND-BEGUN ;
+
+
+: LANDED? ( ptr call -- bool )
+   MODEL-CALL:STATE @ MATCH call-state
+      idle OF false ENDOF
+      prepared OF false ENDOF
+      started OF false ENDOF
+      landed OF true ENDOF
+   ;MATCH ;
+
+: STARTED? ( ptr call -- bool )
+   MODEL-CALL:STATE @ MATCH call-state
+      idle OF false ENDOF
+      prepared OF false ENDOF
+      started OF true ENDOF
+      landed OF false ENDOF
+   ;MATCH ;
+
+\ Whether the send that landed ended E-TIER at a tier it named, with
+\ TIER-RESEND! on and its record kept.
+: TIER-SENSE ( ptr call -- tier-event )
+   {: c :}
+   c RECEIPT RECEIPT-OUTCOME @ E-TIER =
+   c MODEL-CALL:TIER-RESEND @ and
+   c TIER$ nip 0<> and
+   c LEDGER LEDGER-FAULT @ 0= and
+   if construct tier-event tier-out else construct tier-event settled then ;
+
+\ Sends the landed call's request again under its label and purpose row,
+\ naming no tier: the send reads that from the state, so the state moves
+\ first. A fault beginning it, E-CANCELLED for a stopped call, becomes its
+\ outcome and it stays landed.
+: TIER-STANDARD ( ptr call -- )
+   {: c :}
+   c [: dup [: RESEND-LOCKED ;] BEGIN-GATED ;] catch {: code:n :} drop
+   code 0<> if code c RECEIPT RECEIPT-OUTCOME ! exit then
+   construct tier-step standard c RECEIPT RECEIPT-TIER !
+   c LEDGER {: l :}
+   false l LEDGER-DISPATCHED !
+   0 l LEDGER-CALL-ID !
+   0 l LEDGER-FAULT !
+   0 l LEDGER-TRANSPORT !
+   c SEND-BEGUN ;
+
+\ Sends a call that ended E-TIER once more with no tier. Stepped once each
+\ time a send of the call has landed and been recorded.
+FSM:DEFINE TIER-MACHINE ( ptr call ) tier-step tier-event
+   IN preferred  TIER-SENSE
+      settled   -              >done
+      tier-out  TIER-STANDARD  >standard
+   IN standard  TIER-SENSE
+      settled   -  >done
+      tier-out  -  >done
+   FINAL done  -
+;DEFINE
+
+\ Steps a landed call's tier machine, keeping its next state until
+\ START-LEDGER begins the next call: a resend leaves the call started, or
+\ landed on a journal hit or a failed dispatch.
+: TIER-STEP ( ptr call -- )
+   {: c :}
+   c LANDED? 0= if exit then
+   c RECEIPT {: r :}
+   c r RECEIPT-TIER @ TIER-MACHINE-STEP drop
+   r RECEIPT-TIER ! ;
 
 
 \ A chat AWAIT ended without a fault has used its finished input; a chat that
@@ -3970,13 +4085,15 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
 
 
 \ The receive runs deferred: a halt pending while AWAIT waits settles the call,
-\ one in SERVE leaves it started; ACCOUNT follows outside it, where it is served.
+\ one in SERVE leaves it started; ACCOUNT and the tier machine's step follow
+\ outside it, where it is served.
 : RECEIVE-STARTED ( [ ptr call -- ptr call ] ptr call -- )
    {: receive c :}
    c REQUIRE-STARTER
    TASK:DEFER-ENTER
    receive c [: RECEIVE-CAUGHT ;] [: TASK:DEFER-LEAVE ;] finally
    c ACCOUNT
+   c TIER-STEP
    0 TASK:HALT-UNWIND ;
 
 public
@@ -4060,16 +4177,18 @@ public
 \ for the next CHAT or START and leaves no result; so does a compaction, its
 \ input the window. A chat uses its finished input up only when it ends
 \ without a fault: one that faults keeps it, as a count, a compaction and an
-\ embed keep theirs, and PURPOSE! then START or CHAT sends it again.
+\ embed keep theirs, and PURPOSE! then START or CHAT sends it again. It waits
+\ through a resend TIER-RESEND! makes.
 : AWAIT ( ptr call -- )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
       idle OF E-STATE throw ENDOF
       prepared OF E-STATE throw ENDOF
-      started OF [: dup RECEIVE ;] c RECEIVE-STARTED ENDOF
+      started OF ENDOF
       landed OF ENDOF
    ;MATCH
+   begin c STARTED? while [: dup RECEIVE ;] c RECEIVE-STARTED repeat
    c IDLE!
    c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
    fault 0<> if fault throw then
@@ -4136,8 +4255,9 @@ public
    ;MATCH
    c JOURNAL-INPUT-SPAN$ ;
 
-\ A journal hit replays the recorded reply; otherwise one streaming request is
-\ read event by event until the response ends. START, AWAIT and CONTENT$.
+\ A journal hit replays the recorded reply; otherwise the streaming request,
+\ and its tier resend when one is due, is read event by event until the
+\ response ends. START, AWAIT and CONTENT$.
 : CHAT ( ptr call -- ptr u8 n )
    {: c :}
    c START

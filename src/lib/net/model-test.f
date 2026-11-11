@@ -153,6 +153,8 @@ TASK:SEMAPHORE HELD
 \ The handlers share this package's buffers and parsers, so one runs at a time
 \ (ALONE); the held stream gives its turn up while it waits.
 TASK:SEMAPHORE TURN
+\ LET-GO lets a gated reply go.
+TASK:SEMAPHORE GO
 \ An event stream being written.
 create STREAM-B BUF:HDR-BYTES allot
 TYPED-VARIABLE STREAM-W JSON:writer
@@ -209,6 +211,15 @@ $300000 constant BIG-U
 : BODY-MEMBER ( HTTP:request ptr u8 n -- JSON:reader )
    {: r:HTTP:request key:ptr key-u:n :}
    PARSER r HTTP:BODY$ key key-u MEMBER ;
+
+
+\ Whether a request body names a service tier.
+: TIERED? ( HTTP:request -- bool )
+   {: r:HTTP:request :}
+   PARSER r HTTP:BODY$ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ = ASSERT
+   s" service_tier" JSON:READ-FIND-KEY {: named:bool :}
+   JSON:READ-CLOSE named ;
 
 
 \ A reader at the content array of a chat request's user input.
@@ -392,6 +403,13 @@ $300000 constant BIG-U
       failed OF TCP4:ERRNO>N drop FAIL ENDOF
    ;MATCH
    conn RAW-CLOSE ;
+
+
+\ Signals HELD and waits, with the turn given up, until LET-GO.
+: GATE ( -- )
+   HELD TASK:SIGNAL-SEM
+   TURN TASK:SIGNAL-SEM
+   [: GO TAKE ;] [: TURN TASK:WAIT-SEM ;] finally ;
 
 
 \ A reply object's members through its first output item, a reasoning item.
@@ -674,6 +692,23 @@ $300000 constant BIG-U
    t t-u s" error-event" STR= if response FLAT-ERROR$ true BAD-STREAM exit then
    t t-u s" error-nested" STR= if response NESTED-ERROR$ true BAD-STREAM exit then
    t t-u s" flex-out" STR= if response FLEX-OUT$ true BAD-STREAM exit then
+   \ flex-out to a request that names a service tier, else valid's reply.
+   t t-u s" flex-then" STR= if
+      r TIERED? if response FLEX-OUT$ true BAD-STREAM exit then
+      response [: CHAT-RESPONSE ;] COMPLETED$ STREAMED exit
+   then
+   \ flex-out to a request that names a service tier, else valid's reply
+   \ once the gate lets it go.
+   t t-u s" flex-gate" STR= if
+      r TIERED? if response FLEX-OUT$ true BAD-STREAM exit then
+      GATE
+      response [: CHAT-RESPONSE ;] COMPLETED$ STREAMED exit
+   then
+   \ flex-out to a request that names a service tier, else hold's stream.
+   t t-u s" flex-hold" STR= if
+      r TIERED? if response FLEX-OUT$ true BAD-STREAM exit then
+      r STREAM-OPEN s" resp_hold" OPENING RAW-STREAM HOLD-OPEN exit
+   then
    t t-u s" plain-json" STR= if response [: PLAIN$ JSON:WRITE-RAW ;] HTTP:JSON! exit then
    t t-u s" bad-type" STR= if response BAD-TYPE$ true BAD-STREAM exit then
    t t-u s" no-id" STR= if response NO-ID$ false BAD-STREAM exit then
@@ -1070,6 +1105,8 @@ EXPORT WIDE-DIMS
    u FAILURE-U atomic! ;
 \ Waits until the peer has sent the held response's in_progress event.
 : AWAIT-HOLD ( -- ) HELD TAKE ;
+\ Lets the reply flex-gate holds go.
+: LET-GO ( -- ) GO TASK:SIGNAL-SEM ;
 
 
 \ Four workers serve MANY-CALLS' four calls at once, one of them held.
@@ -1078,6 +1115,7 @@ EXPORT WIDE-DIMS
    BIG-FILL
    0 HELD TASK:SEMAPHORE-INIT
    1 TURN TASK:SEMAPHORE-INIT
+   0 GO TASK:SEMAPHORE-INIT
    0 CALLS atomic!
    STREAM-B 1 BUF:N>BLEN BUF:INIT
    HTTP:ROUTES-RESET
@@ -1095,6 +1133,7 @@ EXPORT WIDE-DIMS
    HTTP:STOP
    HELD TASK:SEMAPHORE-DESTROY
    TURN TASK:SEMAPHORE-DESTROY
+   GO TASK:SEMAPHORE-DESTROY
    STREAM-B BUF:DISPOSE
    BIG$ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 ;using
@@ -2463,6 +2502,134 @@ variable KEYLESS-U
 : NEGATIVE-TIER ( n -- n ) s" y" s" m" s" " s" " drop -1 M MODEL:PURPOSE-MODEL! ;
 
 
+variable SENDS-AT    \ MODEL-PEER:CALLS@ at RESEND-MARK
+variable ROWS-AT     \ ROWS-MADE at RESEND-MARK
+: RESEND-MARK ( -- ) MODEL-PEER:CALLS@ SENDS-AT ! ROWS-MADE @ ROWS-AT ! ;
+: SENDS-SINCE ( -- n ) MODEL-PEER:CALLS@ SENDS-AT @ - ;
+: ROWS-SINCE ( -- n ) ROWS-MADE @ ROWS-AT @ - ;
+\ A recorder that stops the call as it records.
+: STOP-RECORD ( n ptr u8 n -- n ) TEST-RECORD M MODEL:REQUEST-STOP ;
+\ A recorder that records one row and fails every one after it.
+: ONCE-RECORD ( n ptr u8 n -- n ) TEST-RECORD true ROW-FAIL ! ;
+variable LOOKUPS    \ COUNT-GET's lookups
+\ A journal that never hits and counts its lookups.
+: COUNT-GET ( n ptr u8 n ptr n -- bool ) CAPTURE-GET 1 LOOKUPS +! ;
+
+
+\ Serves M, each SERVE answering false, until the peer has had n requests
+\ since RESEND-MARK.
+: SERVE-TO ( n -- )
+   {: n:n :}
+   mono-ns {: t0:n :}
+   begin SENDS-SINCE n < while
+      M MODEL:SERVE 0= ASSERT
+      t0 SERVE-OVER? if exit then
+   repeat ;
+
+
+\ With TIER-RESEND! a call that ends E-TIER at a tier it named is sent once
+\ more naming none, each send recorded and looked up in the journal: CHAT and
+\ AWAIT give the second send's reply, CALL-ID names its row, 0 when it has
+\ none, and SERVE answers false while it is out, the tier the call's or a
+\ purpose row's. A CANCEL then ends the call E-CANCELLED. A second E-TIER, a
+\ failed recorder or a stopped call ends it; off, or with no tier named, E-TIER
+\ ends the call after one request. It leaves the call open with the setting
+\ off and its tier flex, recording as TIERS does.
+: TIER-RESENDS ( -- )
+   true M MODEL:TIER-RESEND!
+   0 [: COUNT-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
+   0 LOOKUPS !
+   RESEND-MARK
+   PURPOSE s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   LOOKUPS @ 2 = ASSERT
+   M MODEL:CALL-ID ROWS-MADE @ = ASSERT
+   s" outcome" ROW s" ok" STR-IS
+   s" requested_tier" ROW NULL-IS
+   NO-TIER
+   CAPTURE
+   0 [: ONCE-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   RESEND-MARK
+   PURPOSE s" flex-then" E-RECORDER FAILS
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   M MODEL:CALL-ID 0= ASSERT
+   M MODEL:RECORD-FAULT E-RECORDER = ASSERT
+   false ROW-FAIL !
+   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   RESEND-MARK
+   PURPOSE s" flex-gate" PREP M MODEL:START
+   2 SERVE-TO
+   MODEL-PEER:AWAIT-HOLD
+   M MODEL:SERVE 0= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   s" outcome" ROW s" tier_unavailable" STR-IS
+   MODEL-PEER:LET-GO
+   M MODEL:AWAIT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" ok" STR-IS
+   RESEND-MARK
+   PURPOSE s" flex-hold" PREP M MODEL:START
+   2 SERVE-TO
+   MODEL-PEER:AWAIT-HOLD
+   ROWS-SINCE 1 = ASSERT
+   s" outcome" ROW s" tier_unavailable" STR-IS
+   M MODEL:CANCEL ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" cancelled" STR-IS
+   RESEND-MARK
+   PURPOSE s" flex-out" MODEL:E-TIER FAILS
+   SENDS-SINCE 2 = ASSERT
+   s" outcome" ROW s" tier_unavailable" STR-IS
+   s" requested_tier" ROW NULL-IS
+   s" flexed" s" test-generation" s" " s" flex" M MODEL:PURPOSE-MODEL!
+   s" " M MODEL:SERVICE-TIER!
+   RESEND-MARK
+   s" flexed" M MODEL:PURPOSE!
+   s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" ok" STR-IS
+   s" requested_tier" ROW NULL-IS
+   s" purpose" ROW s" flexed" STR-IS
+   NO-TIER
+   RESEND-MARK
+   PURPOSE s" flex-out" MODEL:E-TIER FAILS
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   s" outcome" ROW s" tier_unavailable" STR-IS
+   s" requested_tier" ROW NULL-IS
+   s" flex" M MODEL:SERVICE-TIER!
+   true ROW-FAIL !
+   RESEND-MARK
+   PURPOSE s" flex-then" MODEL:E-TIER FAILS
+   SENDS-SINCE 1 = ASSERT
+   M MODEL:RECORD-FAULT E-RECORDER = ASSERT
+   false ROW-FAIL !
+   false M MODEL:TIER-RESEND!
+   RESEND-MARK
+   PURPOSE s" flex-then" MODEL:E-TIER FAILS
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   \ A stop stays with the call: CLOSE and SETUP give the rest of TIERS a new one.
+   true M MODEL:TIER-RESEND!
+   0 [: STOP-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   RESEND-MARK
+   PURPOSE s" flex-then" MODEL:E-CANCELLED FAILS
+   SENDS-SINCE 1 = ASSERT
+   M MODEL:CLOSE
+   SETUP
+   CAPTURE
+   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   s" flex" M MODEL:SERVICE-TIER! ;
+
+
 \ A service tier reaches a generation request only when set. The record
 \ names the tier the reply names, NULL when it names none or is null, and the
 \ tier a generation request sent, NULL when it sent none; an embedding sends
@@ -2498,6 +2665,7 @@ variable KEYLESS-U
    s" http_status" ROW 200 INT-IS
    s" requested_tier" ROW s" flex" STR-IS
    s" service_tier" ROW NULL-IS
+   TIER-RESENDS
    s" auto" M MODEL:SERVICE-TIER!
    PURPOSE s" tiered" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
    s" service_tier" SENT s" auto" STR-IS
