@@ -6,7 +6,7 @@ require src/lib/string.f
 require src/lib/float.f
 require src/lib/memory.f
 require src/lib/test.f
-require src/lib/time.f
+require src/lib/time-cpu.f
 require src/lib/json.f
 require src/lib/byte-buffer.f
 require src/lib/test/ending.f
@@ -793,18 +793,19 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    0 100000 JRT-DIGIT-1 JRT-DEEP-ONE$
    200001 100000 JRT-DIGIT-2 JRT-DEEP-ONE$ JSON:VALUE= TFALSE ;
 
-\ The least of five VALUE= calls on each pair of equal texts, in nanoseconds; the
-\ pairs alternate, so a move between core kinds reaches both sizes alike.
+\ The least of five VALUE= calls on each pair of equal texts, in this thread's CPU nanoseconds, so
+\ descheduling adds nothing; the pairs alternate, so a move between core kinds reaches both alike.
 : JRT-EQ-LEASTS ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n n )
    {: a:ptr u:n b:ptr v:n c:ptr x:n d:ptr y:n :}
    MEM-MAX-N MEM-MAX-N  5 0 ?do
-      swap  TIME:MONO-NS  a u b v JSON:VALUE= TTRUE  TIME:MONO-NS swap -  min
-      swap  TIME:MONO-NS  c x d y JSON:VALUE= TTRUE  TIME:MONO-NS swap -  min
+      swap  TIME:THREAD-CPU-NS  a u b v JSON:VALUE= TTRUE  TIME:THREAD-CPU-NS swap -  min
+      swap  TIME:THREAD-CPU-NS  c x d y JSON:VALUE= TTRUE  TIME:THREAD-CPU-NS swap -  min
    loop ;
 
 \ Objects 4000 and 8000 deep against copies: the bound is 3 because a walk n log n in the bytes
 \ grows under 2.2 times, and one that rereads each enclosing object for every level quadruples it.
 : JRT-TEST-VALUE-EQ-DEPTH-TIME ( -- )
+   s" VALUE= on objects twice as deep takes under three times the time" T-LABEL
    200000 4000 JRT-NEST-AT$  300000 4000 JRT-NEST-AT$
    0 8000 JRT-NEST-AT$  100000 8000 JRT-NEST-AT$  JRT-EQ-LEASTS {: t4:n t8:n :}
    t8  t4 3 *  < TTRUE ;
@@ -812,6 +813,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 \ One object of 4000 and of 8000 members against a reversed copy: the bound is 3 because a walk
 \ n log n in the members grows under 2.2 times; one that rescans b's object per key quadruples it.
 : JRT-TEST-VALUE-EQ-MEMBERS-TIME ( -- )
+   s" VALUE= on twice the members takes under three times the time" T-LABEL
    200000 4000 false JRT-FLAT-AT$  300000 4000 true JRT-FLAT-AT$
    0 8000 false JRT-FLAT-AT$  100000 8000 true JRT-FLAT-AT$  JRT-EQ-LEASTS {: t4:n t8:n :}
    t8  t4 3 *  < TTRUE ;
