@@ -257,7 +257,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ Habu, which reads no seal: a sealed load is read by the engine's loop all the
 \ same (src/core/include.f INTERPRET-SAVED-RANGE), so it runs and refuses as it does there.
 : SEAM ( -- )
-   s" allow-outer" HARNESS!
+   s" allow-interpreter" HARNESS!
    s" ok" 0 s" " OK-OUT$ RUNS
    s" bypass" s" hb: not in vocabulary: require at test/policy/bypass.f:2" REFUSES ;
 

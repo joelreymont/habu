@@ -2655,8 +2655,8 @@ public
 
 \ Habu supplies the interpreter-bound rows on x86-64. The provided evaluate
 \ and evaluate-range entries are installed by that evaluator
-\ (src/habu/interpreter.f OUTER:INSTALL-EVALUATE); evaluate-closed gives the
-\ first a guarded stack. Rows still tied to ARM's interpreter refuse until
+\ (src/habu/interpreter.f INTERPRETER:INSTALL-EVALUATE); evaluate-closed gives
+\ the first a guarded stack. Rows still tied to ARM's interpreter refuse until
 \ supplied in Habu: the source-exec observer attaches to that interpreter's
 \ evaluator and token dispatch.
 \ The source runs under the kernel catch frame while its guard owns the unit
@@ -4181,9 +4181,10 @@ private
 
 : WIDE-MARK-BODY ( -- ) DNAME-WIDE NEWEST-MARK-BODY ;
 
-\ The design seal is enforced by the captured OUTER interpreter. Admission
-\ checks the same package row ARM64 reads, asks OUTER's one dispatch-keyword
-\ table for a collision, and publishes the bit only after both checks pass.
+\ The design seal is enforced by the captured interpreter. Admission
+\ checks the same package row ARM64 reads, asks INTERPRETER's one
+\ dispatch-keyword table for a collision, and publishes the bit only after both
+\ checks pass.
 : POLICY-OPEN, ( -- )
    X64CODE:LBL {: open:label :}
    RAX POLICY-NDICT-CELL CELL@,

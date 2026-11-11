@@ -1,9 +1,10 @@
-\ repl.f - the terminal line reader for OUTER:REPL (src/habu/interpreter.f).
-\ INSTALL makes RD-LINE the default REPL-READ defer and puts its xt in REPLH-CELL;
-\ genio may replace the defer, so OUTER:REPL calls it again before each line. The
-\ session owns prompts, pending definitions and recovery; this file owns editing,
-\ with the tty raw per line and canonical while the line executes. A line longer
-\ than LLINE-MAX is refused by name and read again, never truncated.
+\ repl.f - the terminal line reader for INTERPRETER:REPL
+\ (src/habu/interpreter.f). INSTALL makes RD-LINE the default REPL-READ defer and
+\ puts its xt in REPLH-CELL; genio may replace the defer, so INTERPRETER:REPL
+\ calls it again before each line. The session owns prompts, pending definitions
+\ and recovery; this file owns editing, with the tty raw per line and canonical
+\ while the line executes. A line longer than LLINE-MAX is refused by name and
+\ read again, never truncated.
 
 create TIOB0 80 allot           \ original (canonical) termios, saved at INSTALL
 create TIOB 80 allot            \ working termios

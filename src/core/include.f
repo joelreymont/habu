@@ -1854,10 +1854,10 @@ public
    $20 a 1 + c! ;
 
 \ The loop a loaded file's bytes go through, inside LOAD-UNIT's source-unit-run:
-\ the owner binds its native evaluator, and test/outer-loop-on.f binds the loop
-\ written in Habu through its framed entry, src/habu/interpreter.f
-\ OUTER:EVAL-FRAMED-RANGE, for the files loaded after it. A file loaded under
-\ the design seal does not go through it (INTERPRET-SAVED-RANGE).
+\ the owner binds its native evaluator, and test/interpreter-loop-on.f binds the
+\ loop written in Habu through its framed entry, src/habu/interpreter.f
+\ INTERPRETER:EVAL-FRAMED-RANGE, for the files loaded after it. A file loaded
+\ under the design seal does not go through it (INTERPRET-SAVED-RANGE).
 private
 
 defer INCLUDE-INTERPRET ( ptr u8 n n n -- )

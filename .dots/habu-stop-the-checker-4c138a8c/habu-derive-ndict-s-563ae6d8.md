@@ -8,7 +8,7 @@ blocks:
   - habu-move-evaluate-and-9119f746
 ---
 
-Problem: after I9a two chains apply the same lookup order: `OUTER:FIND` (I2, the interpreter's) and NDICT's private chain (`src/compiler/native/dict.f:29-110`, the compiler's). They differ in one contract: NDICT applies `VISIBLE-RECORD?` (`dict.f:47-53`) at every step and continues past an internal or START-0 row, where `OUTER:FIND` stops at the first match and reports the flag.
+Problem: after I9a two chains apply the same lookup order: `INTERPRETER:FIND` (I2, the interpreter's) and NDICT's private chain (`src/compiler/native/dict.f:29-110`, the compiler's). They differ in one contract: NDICT applies `VISIBLE-RECORD?` (`dict.f:47-53`) at every step and continues past an internal or START-0 row, where `INTERPRETER:FIND` stops at the first match and reports the flag.
 Acceptance: `OUTER` exposes a per-wordlist visibility predicate or a filtered probe, and NDICT's chain becomes `OUTER`'s order over it, so the order rules exist once; `test/outer-find.f` and the compiler suites that read NDICT pass unchanged.
 Files: `src/compiler/native/dict.f`, `src/habu/outer.f`.
 Verify: rebuild; chain; gate.

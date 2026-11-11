@@ -22,8 +22,8 @@ private
 \ the kernel's `create` until the typed loop's definer is installed there, as
 \ RUNTIME:INSTALL does. Generated text (TYPED-VARIABLE's accessor) reaches the
 \ typed loop through the evaluate cells, which RUNTIME:INSTALL installs as well.
-OUTER:INSTALL-CREATE
-OUTER:INSTALL-EVALUATE
+INTERPRETER:INSTALL-CREATE
+INTERPRETER:INSTALL-EVALUATE
 
 variable ND0                         \ the first record the fixture can make
 variable ND1                         \ and one past its last
@@ -92,7 +92,7 @@ CAST: CODE>BYTES ( n -- ptr u8 )
 : READ-SECTION ( n n -- ) {: first:n end:n :}
    first SEC-FIRST !  end SEC-END !
    NSHADOW:RECORDS {: rows:n :}
-   [: SRC SRC-U @ SEC-FIRST @ SEC-END @ OUTER:EVAL-FRAMED-RANGE ;] catch {: rc:n :}
+   [: SRC SRC-U @ SEC-FIRST @ SEC-END @ INTERPRETER:EVAL-FRAMED-RANGE ;] catch {: rc:n :}
    rc 0<> if
       s" FAIL " type first .SECTION s" : threw " type rc .N
       s"  after filing " type NSHADOW:RECORDS rows - .N s"  shadow rows" type cr

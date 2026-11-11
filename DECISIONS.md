@@ -500,10 +500,10 @@ learned live in the docs for their subject.
   plus undoing a failed text's requires), he answered "keep it but name it
   EVAL instead of EVALUATE": `SOURCE:EVAL ( ptr u8 n -- )`. Asked "why do you
   need eval-range? where and how is it used? and when", and shown that
-  INCLUDE-EVALUATE-RANGE and OUTER:INTERPRET-RANGE have only test callers, he
-  chose "Drop it; tests use loads (Recommended)": no SOURCE:EVAL-RANGE,
-  INCLUDE-EVALUATE-RANGE, OUTER:INTERPRET and INTERPRET-RANGE go, and the tests
-  run the Habu loop over file loads through SOURCE:USE-INTERPRETER. Shown
+  INCLUDE-EVALUATE-RANGE and INTERPRETER:INTERPRET-RANGE have only test callers,
+  he chose "Drop it; tests use loads (Recommended)": no SOURCE:EVAL-RANGE,
+  INCLUDE-EVALUATE-RANGE, INTERPRETER:INTERPRET and INTERPRET-RANGE go, and the
+  tests run the Habu loop over file loads through SOURCE:USE-INTERPRETER. Shown
   SOURCE:E-RANGE, the code thrown when the build cache's runner asks for a
   byte range outside its file or after the load ended (today -2110, also
   E-FS-TIMEOUT's number), he chose "Public, own number (Recommended)". Asked
@@ -655,7 +655,7 @@ learned live in the docs for their subject.
   precise than another. He chose "Keep num-parse (Recommended)": one reader
   in checked Habu, `num-parse ( ptr u8 n -- n bool bool bool )`, the last
   flag a number-shaped token out of range, replaces the machine-code readers
-  and OUTER:NUMBER. It lands with arm64's move onto the typed interpreter.
+  and INTERPRETER:NUMBER. It lands with arm64's move onto the typed interpreter.
 - 2026-11-05, durable atomic writes (relayed by kevin from Tender): shown
   that FS:ATOMIC-WRITE-FILE renamed its sibling over the destination with no
   sync, so after a crash or power loss the destination could stand empty
@@ -980,12 +980,12 @@ learned live in the docs for their subject.
   holds no parts.
 - 2026-10-31, a part's head resolver: inside package A, `: B:Q … ;` defines
   into part A:B, but the native compiler's name check found only top-level
-  packages and the Habu loop's resolver was private to OUTER. Asked whether
-  xref.f's XREF package may get a public `XREF:HEAD-ROW ( ptr u8 n -- ptr n )`,
-  the row a qualifier's head names (the open package's part first, then a
-  top-level package), called by the Habu loop and the compiler, Joel chose
-  "Add XREF:HEAD-ROW". Shown that the lane wrote a second copy of the rule in
-  the checker under top-level CK- names, and that the checker loads before
+  packages and the Habu loop's resolver was private to INTERPRETER. Asked
+  whether xref.f's XREF package may get a public `XREF:HEAD-ROW ( ptr u8 n --
+  ptr n )`, the row a qualifier's head names (the open package's part first,
+  then a top-level package), called by the Habu loop and the compiler, Joel
+  chose "Add XREF:HEAD-ROW". Shown that the lane wrote a second copy of the rule
+  in the checker under top-level CK- names, and that the checker loads before
   the Habu loop and the compiler, Joel chose one word there,
   `CHECKER-RESOLVE:HEAD-ROW`, for all three: XREF:HEAD-ROW and the CK- copies
   go, and the helpers are private.
@@ -1596,25 +1596,26 @@ learned live in the docs for their subject.
   read counts as stale, and its file compiles; so does one a crash cut short or
   left zero-filled, which fails the bounds checks. The link remakes
   the compile's result through the owners' words, with no owner rows and no new
-  object section: `OUTER:DEF-RECORD ( ptr u8 n n n -- )`, `OUTER:PACKAGE-RECORD
-  ( ptr u8 n bool -- n )`, `OUTER:PACKAGE-PRIVATE ( n -- )`, `OUTER:ALIAS-RECORD
-  ( ptr u8 n n n -- )`, `OUTER:DEF-CLOSE ( -- )` and `OUTER:DEF-ABORT ( -- )`
-  are public; `INTERN:ADOPT ( n -- )` adds each string the file laid; NEMIT's
-  fill words and NSHADOW's take, pairing and publish file the shadow emission;
+  object section: `INTERPRETER:DEF-RECORD ( ptr u8 n n n -- )`,
+  `INTERPRETER:PACKAGE-RECORD ( ptr u8 n bool -- n )`,
+  `INTERPRETER:PACKAGE-PRIVATE ( n -- )`, `INTERPRETER:ALIAS-RECORD ( ptr u8 n n
+  n -- )`, `INTERPRETER:DEF-CLOSE ( -- )` and `INTERPRETER:DEF-ABORT ( -- )` are
+  public; `INTERN:ADOPT ( n -- )` adds each string the file laid; NEMIT's fill
+  words and NSHADOW's take, pairing and publish file the shadow emission;
   ARM64:PLACE places the host copy, and `NPUB:IMPORT-PENDING`,
   `IMPORT-PENDING-DOES` and `IMPORT-PENDING-DEFER` import it. The host copy
   lists only its data address chains: ARM64:PLACE turns a code chain into
   adrp+add, which moves with the code. A link that throws drops its open
   definition and any emission the shadow has not filed, the build fails
   (LINKER:E-FAILED), and its close drops the shadow emissions, records and code
-  the link made. A file found stale after a linked one compiles (the next
-  entry) instead of ending the build. A file that makes a
-  wordlist its records do not account for ends the build with `-9693
-  LINKER:E-WORDLIST`. LINKER:WRITE sorts the program's address-cell list by
-  offset, so the program does not depend on the order cells were marked. Left to
-  later steps: a does> slot a clause patched, loader state at a file's start,
-  and a value a file read from an earlier file's cell at its start, such as
-  the newest error row its own row links to.
+  the link made. A file found stale after a linked one compiles (the next entry)
+  instead of ending the build. A file that makes a wordlist its records do not
+  account for ends the build with `-9693 LINKER:E-WORDLIST`. LINKER:WRITE sorts
+  the program's address-cell list by offset, so the program does not depend on
+  the order cells were marked. Left to later steps: a does> slot a clause
+  patched, loader state at a file's start, and a value a file read from an
+  earlier file's cell at its start, such as the newest error row its own row
+  links to.
 - 2026-11-07, a warm build after an edit: shown that a build read
   `<out>/loads`, the previous build's started loads, at its first file and
   then linked every file or compiled every file, each object stale once any

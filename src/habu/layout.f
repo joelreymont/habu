@@ -402,7 +402,7 @@ $37F0 constant BPWN-CELL
 \ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest. habu1.f
 \ EMIT-EVAL-BODY (`evaluate-closed`, and ARM64's `evaluate`) pushes its frame on
 \ the native stack; x86-64's Habu `evaluate`
-\ (src/habu/interpreter.f OUTER:EVAL-FRAMED) writes the same fields into a
+\ (src/habu/interpreter.f INTERPRETER:EVAL-FRAMED) writes the same fields into a
 \ mapping of its own. EVAL-PREV links each to the frame it nests in.
 $43C0 constant EVAL-TOP-CELL
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
@@ -800,9 +800,9 @@ $3868 constant ARENA-CELL
 
 \ PROVIDED-XT: the dispatch cell of each src/habu/prims.f row a captured
 \ runtime provides (EPREFIX-PROVIDED!), stored with `xt!`
-\ (src/habu/interpreter.f OUTER:INSTALL-EVALUATE) and restored on every x86-64
-\ boot as a fixed address row (src/habu/link-x64.f FIXED-CELLS). A seeded x86-64
-\ row is a stub that jumps through it (src/habu/kernel-x64.f
+\ (src/habu/interpreter.f INTERPRETER:INSTALL-EVALUATE) and restored on every
+\ x86-64 boot as a fixed address row (src/habu/link-x64.f FIXED-CELLS). A seeded
+\ x86-64 row is a stub that jumps through it (src/habu/kernel-x64.f
 \ X64KERNEL:PROVIDED-ROW), and x86-64's `evaluate-closed` calls EVALUATE-CELL's
 \ word; arm64's evaluate words use the cells once set (habu1.f B-EVAL,
 \ B-EVAL-RANGE, B-EVAL-CLOSED). EVALUATE-CELL follows the NCOMP-DISPATCH cells,
@@ -811,7 +811,7 @@ package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
 \ A seeded x86-64 `evaluate-range` jumps through its own cell the same way
-\ (src/habu/interpreter.f OUTER:EVAL-FRAMED-RANGE). It follows
+\ (src/habu/interpreter.f INTERPRETER:EVAL-FRAMED-RANGE). It follows
 \ ENGINE-MAIN:REPORT-CELL ($3858) below $3A00.
 $3860 constant EVALUATE-RANGE-CELL
 ;package

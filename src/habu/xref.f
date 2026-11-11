@@ -406,8 +406,8 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
 
 \ One wordlist's record for a name, from the dictionary's hash index (habu1.f
 \ WLFIND), the index the definer's own duplicate wall asks. xref-search-wl's
-\ row is this package's own (src/habu/prims.f), as OUTER's is for interpreter.f
-\ WL-PROBE.
+\ row is this package's own (src/habu/prims.f), as INTERPRETER's is for
+\ interpreter.f WL-PROBE.
 : WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 \ The record a generated name would meet in the scope it will LAND in: a

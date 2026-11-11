@@ -247,11 +247,11 @@ private
 : ROUTED ( -- )
    APP? if
       APP-RUN
-      TTY? if REPL-ENABLE OUTER:REPL else STDIN RUN-TEXT then
+      TTY? if REPL-ENABLE INTERPRETER:REPL else STDIN RUN-TEXT then
       exit
    then
    ARGC 1 > if ARGV-BASE ARGC RUN exit then
-   TTY? if REPL-ENABLE OUTER:REPL exit then
+   TTY? if REPL-ENABLE INTERPRETER:REPL exit then
    STDIN RUN-TEXT ;
 
 public

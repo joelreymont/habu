@@ -334,7 +334,7 @@ DYNAMIC-BUFFER ROW-EDGES n           \ the same by BUILT row, for its STORES val
 DYNAMIC-BUFFER EXT-EDGES n           \ the same by build-table row, for its cell rows
 
 \ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR, WIDN-CELL,
-\ the loader's EVENT-COUNT and OUTER:RUN-COUNT as a file's load or its piece after a request starts (MARKS).
+\ the loader's EVENT-COUNT and INTERPRETER:RUN-COUNT as a file's load or its piece after a request starts (MARKS).
 variable FILE-REC
 variable FILE-HELD
 variable FILE-TFAM                   \ TFAM:TFAM-N@ as the running piece starts
@@ -348,7 +348,7 @@ variable FILE-PART                   \ the part compiling or linking, from 0
 variable FILE-OFF                    \ the offset in the source the compiling or linking part starts at
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-EVENT                  \ the first event of the loader's log the piece made
-variable FILE-RUN                    \ the first entry of OUTER's run log the piece made
+variable FILE-RUN                    \ the first entry of INTERPRETER's run log the piece made
 variable FILE-ROOTS                  \ SOURCE-ROOT:CHANGE-COUNT as the piece starts
 variable FILE-END                    \ here's distance as the piece ends
 \ The running piece holds a header-data address outside its STORES rows' cells: a tag-4
@@ -1115,7 +1115,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 
 \ After PIECE+: the records of the words the piece ran onto RAN-RECS, its own among them.
-: RAN+ ( -- ) OUTER:RUN-COUNT FILE-RUN @ ?do i OUTER:RUN-RECORD@ RAN-RECORD loop ;
+: RAN+ ( -- ) INTERPRETER:RUN-COUNT FILE-RUN @ ?do i INTERPRETER:RUN-RECORD@ RAN-RECORD loop ;
 
 
 \ The cell's id and kind (EDGE+).
@@ -3232,7 +3232,7 @@ variable RD-END
    RD-U64 {: kind:n :}
    kind 0<  kind KIND-TYPE >  or if BAD exit then
    kind KIND-PRIVATE = if
-      \ A package holding a private wordlist gains none (OUTER:PACKAGE-PRIVATE refuses it).
+      \ A package holding a private wordlist gains none (INTERPRETER:PACKAGE-PRIVATE refuses it).
       PKG-REF-CK {: file:n n:n :}
       GOOD? if
          file n PRIVATE? if BAD else
@@ -4031,7 +4031,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    RD-U64 {: own:n :}
    GOOD? 0=  wid BOOT:NAMESPACE-WL <>  or if E-COMP-STATE throw then
    ndict@ {: want:n :}
-   a u  own 1 =  OUTER:PACKAGE-RECORD  want <> if E-COMP-STATE throw then
+   a u  own 1 =  INTERPRETER:PACKAGE-RECORD  want <> if E-COMP-STATE throw then
    flags want SET-FLAGS ;
 
 
@@ -4042,7 +4042,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    RD-U64 KIND-PRIVATE <> if E-COMP-STATE throw then
    RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
    GOOD? 0= if E-COMP-STATE throw then
-   file sum count ID-REC dup CHANGER+ OUTER:PACKAGE-PRIVATE ;
+   file sum count ID-REC dup CHANGER+ INTERPRETER:PACKAGE-PRIVATE ;
 
 
 \ Entry i, an earlier file's package this file sealed (SEAL+), sealed again.
@@ -4067,7 +4067,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    GOOD? 0= if E-COMP-STATE throw then
    file sum count ID-REC {: src:n :}
    ndict@ {: want:n :}
-   a u src wid OUTER:ALIAS-RECORD
+   a u src wid INTERPRETER:ALIAS-RECORD
    flags want SET-FLAGS
    EDGES-N @ {: start:n :}  src REC-EDGE+  want start REC-EDGES!
    ALIASES-N @ 2 + ALIASES-RESERVE
@@ -4085,7 +4085,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    GOOD? 0= if E-COMP-STATE throw then
    ndict@ {: want:n :}
    TYPE-SOURCE {: src:n :}
-   a u src wid OUTER:ALIAS-RECORD
+   a u src wid INTERPRETER:ALIAS-RECORD
    flags want SET-FLAGS
    EDGES-N @ {: start:n :}
    src 0 >= if src REC-EDGE+ then  want start REC-EDGES!
@@ -4188,7 +4188,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    does  tag 5 <>  and if E-COMP-STATE throw then
    does if e off DOES-FUN else 0 then {: j:n :}
    ndict@ {: want:n :}
-   a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  OUTER:DEF-RECORD
+   a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  INTERPRETER:DEF-RECORD
    NPUB:NEXT-SLOT {: fn:n :}
    fn LINK-FN !  e LINK-EM !  want LINK-OWNER !
    EDGES-N @ {: em-start:n :}
@@ -4219,7 +4219,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
       then
    then
    want <> if E-COMP-STATE throw then
-   OUTER:DEF-CLOSE
+   INTERPRETER:DEF-CLOSE
    \ After publication, as PENDING-CK refuses IMM and INT on a pending row; it also restores the
    \ wide and min-in bits the imports were given false 0 for.
    flags want SET-FLAGS
@@ -4239,7 +4239,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
 \ the code (FORGET-SPACE).
 : LINK-DEF ( n -- )
    [: dup MAKE-DEF ;] catch {: i:n rc:n :}
-   rc 0<> if NEMIT:CLEAR  NSHADOW:ABANDON  OUTER:DEF-ABORT  LINK-CLEAR  rc throw then ;
+   rc 0<> if NEMIT:CLEAR  NSHADOW:ABANDON  INTERPRETER:DEF-ABORT  LINK-CLEAR  rc throw then ;
 
 \ ---- linking data --------------------------------------------------------------
 \ An xt cell's value is a code address the link writes with xt!.
@@ -4439,8 +4439,8 @@ variable DUE-MADE
 \ Installed while IMAGE-BASE-CELL is 0, so its xt! stores reach hb's own cells.
 \ Installing again adds no address-cell row: EMIT-MARK keeps one row per cell.
 : INSTALL-LOOP ( -- )
-   OUTER:INSTALL-EVALUATE
-   OUTER:INSTALL-CREATE ;
+   INTERPRETER:INSTALL-EVALUATE
+   INTERPRETER:INSTALL-CREATE ;
 
 \ The address-cell header the boot lays (habu2.f), so EMIT-MARK records the
 \ space's address cells in the space.
@@ -4522,9 +4522,9 @@ variable DUE-MADE
    construct step checked PROGRESS ! ;
 
 \ The build's registry starts empty (include.f REQUIRE-SNAPSHOT), the loader logs each act,
-\ which a compiling file's object carries (ACTS+), and OUTER logs each word run (RAN+).
+\ which a compiling file's object carries (ACTS+), and INTERPRETER logs each word run (RAN+).
 : REQUIRE-FRESH ( -- )
-   REQUIRE-SNAPSHOT  EVENTS-RESET EVENT-ON  OUTER:RECORD-RUNS
+   REQUIRE-SNAPSHOT  EVENTS-RESET EVENT-ON  INTERPRETER:RECORD-RUNS
    construct step required PROGRESS ! ;
 
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
@@ -4569,7 +4569,7 @@ variable DUE-MADE
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
-   EVENT-COUNT FILE-EVENT !  SOURCE-ROOT:CHANGE-COUNT FILE-ROOTS !  OUTER:RUN-COUNT FILE-RUN ! ;
+   EVENT-COUNT FILE-EVENT !  SOURCE-ROOT:CHANGE-COUNT FILE-ROOTS !  INTERPRETER:RUN-COUNT FILE-RUN ! ;
 
 
 \ The scope a build's top-level file starts in: no package or part open, the build's global
@@ -4635,7 +4635,7 @@ variable DUE-MADE
    TFAM:TFAM-N@ FILE-TFAM @ ?do
       i TFAM:ENTRY? 0= if
          ndict@ {: ix:n :}
-         i TFAM:ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL OUTER:ALIAS-RECORD
+         i TFAM:ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL INTERPRETER:ALIAS-RECORD
          i TFAM:ENTRY-TEXT$ ix CHECK:FACTS!
          i ix TFAM:ENTRY!
       then
@@ -4644,7 +4644,7 @@ variable DUE-MADE
       i CHECK:LINEAR? if
          i CHECK:TYPE-NAME$ CHECK:LINEAR-ENTRY 0 < if
             ndict@ {: ix:n :}
-            i CHECK:TYPE-NAME$ TYPE-SOURCE BOOT:TYPES-WL OUTER:ALIAS-RECORD
+            i CHECK:TYPE-NAME$ TYPE-SOURCE BOOT:TYPES-WL INTERPRETER:ALIAS-RECORD
             i CHECK:LINEAR-TEXT$ ix CHECK:FACTS!
          then
       then
@@ -4804,9 +4804,9 @@ variable DUE-MADE
    ev EVENT-DEPTH@ 0<> if -1 exit then
    PEND-CELL HOST@ 0<> if -1 exit then
    a src <  a u +  src FILE-SRC-U @ +  >  or if -1 exit then
-   OUTER:RUN-COUNT FILE-RUN @ <= if -1 exit then
-   OUTER:RUN-COUNT 1 - OUTER:RUN-RECORD@ {: idx:n :}
-   OUTER:OBSERVE-WORD idx  idx XREF-REC XREF-START  SOURCE-UNIT:LOADER-KIND  SOURCE-UNIT:NONE = if -1 exit then
+   INTERPRETER:RUN-COUNT FILE-RUN @ <= if -1 exit then
+   INTERPRETER:RUN-COUNT 1 - INTERPRETER:RUN-RECORD@ {: idx:n :}
+   INTERPRETER:OBSERVE-WORD idx  idx XREF-REC XREF-START  SOURCE-UNIT:LOADER-KIND  SOURCE-UNIT:NONE = if -1 exit then
    SRCLOC:INB-CELL HOST@ src <>  INE-CELL HOST@  src FILE-SRC-U @ +  <>  or
    INP-CELL HOST@  a u +  <>  or if -1 exit then
    a u + src - ;
@@ -4973,7 +4973,7 @@ variable DUE-MADE
    {: a:ptr u:n :}
    a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
    pkg XREF-FOUND? if pkg exit then
-   a u true OUTER:PACKAGE-RECORD XREF-REC ;
+   a u true INTERPRETER:PACKAGE-RECORD XREF-REC ;
 
 \ Owned row r's record, published as MAKE-DEF publishes a definition's, with the kernel's code
 \ and hb's record's immediate, wide and minimum-input bits, the ones alias-record keeps.
@@ -4982,16 +4982,16 @@ variable DUE-MADE
    r 0 OWNED@ XREF-REC {: src:ptr :}
    r 1 OWNED$ OWNER XREF-PKG-PRIVATE {: wid:n :}
    ndict@ {: want:n :}
-   r 3 OWNED$ wid 0 OUTER:DEF-RECORD
+   r 3 OWNED$ wid 0 INTERPRETER:DEF-RECORD
    src XREF-START  src XREF-RAW-LEN  NPUB:IMPORT-ENTRY  want <> if E-COMP-STATE throw then
-   OUTER:DEF-CLOSE
+   INTERPRETER:DEF-CLOSE
    src XREF-FLAGS  DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or  and  want SET-FLAGS
    r 5 OWNED$  want CHECK:FACTS! ;
 
 \ MAKE-OWNED; a throw drops the open definition and passes on, failing the open.
 : LINK-OWNED ( n -- )
    [: dup MAKE-OWNED ;] catch {: r:n rc:n :}
-   rc 0<> if OUTER:DEF-ABORT rc throw then ;
+   rc 0<> if INTERPRETER:DEF-ABORT rc throw then ;
 
 \ After IMAGE-IN, the records OWNED+ gathered as BUILT row 0, laid before any file as header data: key the empty path's, which no
 \ load has; piece 0 at time 0, its content following from hb, whose stamp names the objects' dir (BUILD-OUT:OBJ$).
@@ -5069,7 +5069,7 @@ variable DUE-MADE
          CHECK:CLOSE construct step moved PROGRESS ! true
       ENDOF
       required OF
-         OUTER:;RECORD-RUNS  EVENT-OFF EVENTS-RESET REQUIRE-RESTORE construct step checked PROGRESS ! true
+         INTERPRETER:;RECORD-RUNS  EVENT-OFF EVENTS-RESET REQUIRE-RESTORE construct step checked PROGRESS ! true
       ENDOF
       objects OF
          DISPOSE-OBJECTS construct step required PROGRESS ! true
@@ -5118,7 +5118,7 @@ public
    mode modeu s" engine" STR= ENGINE? !
    mode modeu s" kernel" STR= KERNEL? !
    body BODY !
-   [: ['] RUN ['] CLOSE finally ;] OUTER:WITHOUT-PACKAGE ;
+   [: ['] RUN ['] CLOSE finally ;] INTERPRETER:WITHOUT-PACKAGE ;
 
 \ The kernel object at the path, written by a kernel build: the engine and
 \ program builds that follow lay their space as its kernel reads it and link it.

@@ -1,9 +1,9 @@
 \ interpreter.f - the interpreter written in Habu: numbers, the dictionary
 \ search and the token readers, the package keywords, the definition heads and
-\ body capture, then the loop, OUTER:INTERPRET, which reads a buffer token by
-\ token. OUTER:EVAL-FRAMED runs the loop under the engine's evaluate frame, and
-\ OUTER:INSTALL-EVALUATE stores it in the engine's evaluate cells
-\ (src/habu/layout.f PROVIDED-XT).
+\ body capture, then the loop, INTERPRETER:INTERPRET, which reads a buffer token
+\ by token. INTERPRETER:EVAL-FRAMED runs the loop under the engine's evaluate
+\ frame, and INTERPRETER:INSTALL-EVALUATE stores it in the engine's evaluate
+\ cells (src/habu/layout.f PROVIDED-XT).
 
 require src/lib/prelude.f
 require src/core/bytes.f
@@ -26,7 +26,7 @@ require src/core/top-row.f
 \ when negative; a hex integer keeps all 64 bits and negates modulo 2^64. A
 \ float's integer part is at most MAX-N and its fraction at most 18 digits.
 
-package OUTER
+package INTERPRETER
 private
 
 $7FFFFFFFFFFFFFFF constant MAX-N
@@ -194,17 +194,17 @@ public
 
 ;package
 
-\ OUTER:FIND answers the record the engine's own lookup binds one token to, or
-\ XREF-NULL: NDICT:SCOPE-REC, which is the `scope-find` primitive (habu2.f
-\ LSCOPEREC) - LFIND and then the used publics, the leaves the JIT's call site
-\ runs. The row comes back whatever its flags, and the caller reads the
-\ immediate, wide, internal and min-in facts from its XREF-FLAGS, as LFIND's
+\ INTERPRETER:FIND answers the record the engine's own lookup binds one token
+\ to, or XREF-NULL: NDICT:SCOPE-REC, which is the `scope-find` primitive
+\ (habu2.f LSCOPEREC) - LFIND and then the used publics, the leaves the JIT's
+\ call site runs. The row comes back whatever its flags, and the caller reads
+\ the immediate, wide, internal and min-in facts from its XREF-FLAGS, as LFIND's
 \ flag output folds them: the interpreter must see an internal row in order to
 \ refuse it. Two used publics that both export the tail are E-USING-AMBIGUOUS.
 \ FIND-SCOPE answers LFIND's record alone, which a body's immediate and the
 \ operand of `export` are looked up with.
 
-package OUTER
+package INTERPRETER
 
 private
 
@@ -213,7 +213,7 @@ private
 \ `checker-export`, and the tail a definition or `export` would add, which must
 \ not be there yet.
 \ xref-search-wl walks the dictionary's hash index under the key the engine's
-\ own probe uses; its row is OUTER's own (src/habu/prims.f).
+\ own probe uses; its row is INTERPRETER's own (src/habu/prims.f).
 : WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 \ The index of the first colon at or after `from`, or -1: the shape the
@@ -247,7 +247,7 @@ public
 
 ;package
 
-\ OUTER:INTERPRET reads a buffer token by token with the
+\ INTERPRETER:INTERPRET reads a buffer token by token with the
 \ words below, as the engine's interpret loop does (habu2.f EM-COMMENT's LMAIN,
 \ EM-INTERPRET-WORDS) for comments, the literal keywords (`s"`, `c"`, `."`,
 \ their escaped forms, `char` and `'`), numbers and dictionary words, and with
@@ -270,7 +270,7 @@ public
 \ recorded at evaluate entry (SX-RFLOOR), so the loop keeps its own state in
 \ locals and cells, never on the return stack.
 
-package OUTER
+package INTERPRETER
 
 private
 
@@ -447,7 +447,7 @@ create NL NEWLINE c,
 \ A word or the hook runs through execute-floor, which answers whether it left
 \ the stack below its base and then resets the stack to the base: the floor the
 \ engine checks after every token. The prim's row states no effect for the xt,
-\ so it is OUTER's alone (src/habu/prims.f).
+\ so it is INTERPRETER's alone (src/habu/prims.f).
 : FLOORED ( bool -- )
    if s" E-UNDERFLOW: " REFUSE then ;
 
@@ -988,9 +988,9 @@ public
 \ writers and CUR through set-current; the using band, DEF-TKA, DEF-TKL and
 \ layout.f PKG-OUTSIDE-CELL are not sealed and are written here. A writer
 \ refuses silently, so the words here refuse first where they can. It also
-\ exports OUTER:WITHOUT-PACKAGE, which runs a quotation as at top level.
+\ exports INTERPRETER:WITHOUT-PACKAGE, which runs a quotation as at top level.
 
-package OUTER
+package INTERPRETER
 
 private
 
@@ -1509,7 +1509,7 @@ require src/core/does-clause.f
 require src/compiler/fixed-body.f
 require src/compiler/native/compiler.f
 
-package OUTER
+package INTERPRETER
 
 private
 
@@ -1529,7 +1529,7 @@ variable TOK-BODY-RAW
 72 constant DEF-RC-PD-FULL       \ habu2.f C-PD-DIE-FULL: no pending slot holds the defer
 
 \ def-open, body-append, created-sig!, def-close, def-abort, imm-mark and
-\ min-in-mark are OUTER's own rows (src/habu/prims.f), called
+\ min-in-mark are INTERPRETER's own rows (src/habu/prims.f), called
 \ below by name. trust-sig! has none: it is the `trusted:`, `cast:`,
 \ `linear:` and `defer` heads' alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
@@ -2097,13 +2097,13 @@ private
 
 \ The engine's twins: habu2.f C-DEF-SOURCE-CLOSE and C-DEF-SOURCE-END.
 \ A definition closes in the buffer that opened it. ENTRY-PEND is the record
-\ pending as the buffer OUTER:INTERPRET reads began (habu1.f EMIT-EVAL-BODY,
-\ layout.f EVAL-FRAME:PEND); a pending record other than it is the buffer's
-\ own. A throw out of the buffer, these refusals included, puts the entry
-\ record back in PEND-CELL (OUTER:INTERPRET): the buffer's own definition is
-\ abandoned, so no later `;` publishes it, and an outer one stays pending, as
-\ habu2.f EM-EVAL-THROW-RECOVER leaves them. Unlike the engine's, this loop
-\ puts no CP, NDICT or DP back.
+\ pending as the buffer INTERPRETER:INTERPRET reads began (habu1.f
+\ EMIT-EVAL-BODY, layout.f EVAL-FRAME:PEND); a pending record other than it is
+\ the buffer's own. A throw out of the buffer, these refusals included, puts the
+\ entry record back in PEND-CELL (INTERPRETER:INTERPRET): the buffer's own
+\ definition is abandoned, so no later `;` publishes it, and an outer one stays
+\ pending, as habu2.f EM-EVAL-THROW-RECOVER leaves them. Unlike the engine's,
+\ this loop puts no CP, NDICT or DP back.
 variable ENTRY-PEND
 
 \ A `;` that would close the record pending as the buffer began, one an outer
@@ -2527,7 +2527,7 @@ require src/habu/native-body-abi.f
 require src/habu/native-body.f
 require src/habu/repl.f
 
-package OUTER
+package INTERPRETER
 
 private
 
@@ -2887,7 +2887,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 create REPL-QNL 63 c, 10 c,
 variable REPL-OK
 
-\ stack-clear is OUTER's own row (src/habu/prims.f).
+\ stack-clear is INTERPRETER's own row (src/habu/prims.f).
 : REPL-STACK-CLEAR ( -- )
    stack-clear ;
 

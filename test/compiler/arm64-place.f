@@ -88,7 +88,7 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
 
 : LOAD-FIXTURE ( -- )
    s" test/compiler/arm64-place-fixture.f" SRC SRC-CAP FS:READ-ALL SRC-U !
-   SRC SRC-U @ 0 SRC-U @ OUTER:EVAL-FRAMED-RANGE ;
+   SRC SRC-U @ 0 SRC-U @ INTERPRETER:EVAL-FRAMED-RANGE ;
 
 
 \ The last shadow row filed since the open whose record is named a u, or -1.
@@ -613,7 +613,7 @@ public
    INTERIOR-CASE
    \ PL-MAKE's `create` calls CREATEP-CELL's definer; the kernel's, there until
    \ this line, throws E-COMP-STATE in SHADOW-FIXED under a native shadow.
-   OUTER:INSTALL-CREATE
+   INTERPRETER:INSTALL-CREATE
    NABI:BINDING NSHADOW:OPEN-NATIVE
    NSHADOW:RECORDS RECS0 !
    LOAD-FIXTURE

@@ -17,7 +17,7 @@ package PROGRAM-DIAGNOSTICS
 : RUN-LOAD-HABU ( ptr u8 n -- ) {: path:ptr pathu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
-   s" test/outer-loop-on.f" GE-ARG+
+   s" test/interpreter-loop-on.f" GE-ARG+
    path pathu GE-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
 

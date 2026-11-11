@@ -33,7 +33,7 @@ variable RECS0                       \ shadow records filed before the load
 
 : LOAD-FIXTURE ( -- )
    s" test/compiler/arm64-place-fixture.f" SRC SRC-CAP FS:READ-ALL SRC-U !
-   SRC SRC-U @ 0 SRC-U @ OUTER:EVAL-FRAMED-RANGE ;
+   SRC SRC-U @ 0 SRC-U @ INTERPRETER:EVAL-FRAMED-RANGE ;
 
 
 \ The last shadow row filed since the open whose record is named a u, or -1.
@@ -48,7 +48,7 @@ variable RECS0                       \ shadow records filed before the load
 public
 
 : RUN ( -- )
-   OUTER:INSTALL-CREATE
+   INTERPRETER:INSTALL-CREATE
    NABI:BINDING NSHADOW:OPEN-NATIVE
    NSHADOW:RECORDS RECS0 !
    LOAD-FIXTURE

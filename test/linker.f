@@ -432,10 +432,10 @@ CASE-K
 
 variable RAN-L
 \ The package it opens writes 0 into PKG-OUTSIDE-CELL; WITHOUT-PACKAGE restores the caller's.
-: OPEN-L ( -- ) [: s" package LK-PX" evaluate-closed ;] OUTER:WITHOUT-PACKAGE ;
+: OPEN-L ( -- ) [: s" package LK-PX" evaluate-closed ;] INTERPRETER:WITHOUT-PACKAGE ;
 
 : CASE-L ( -- )
-   [: [: s" : LK-L1 ( -- ) ;" evaluate-closed ;] OUTER:WITHOUT-PACKAGE ;] catch 0 T=
+   [: [: s" : LK-L1 ( -- ) ;" evaluate-closed ;] INTERPRETER:WITHOUT-PACKAGE ;] catch 0 T=
    s" LK-L1" LOOKUP -1 T<>
    s" package LK-PB ;package" TEST-EVAL:RC 75 T=
    0 RAN-L !

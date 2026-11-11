@@ -29,7 +29,7 @@ variable OUTER-U
 
 : OUTER-RC ( ptr u8 n -- n )
    OUTER-U !  OUTER-A !
-   [: OUTER-A @ OUTER-U @ OUTER:EVAL-FRAMED ;] catch ;
+   [: OUTER-A @ OUTER-U @ INTERPRETER:EVAL-FRAMED ;] catch ;
 
 \ Each released block records its address so the reallotted block can prove it
 \ reuses the same bytes, not fresh zero pages.

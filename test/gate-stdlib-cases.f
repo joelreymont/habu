@@ -333,8 +333,8 @@ SUITE compiler-integer-literals
    test/compiler/integer-literals.f
 ;SUITE
 
-SUITE outer-number
-   test/outer-number.f
+SUITE interpreter-number
+   test/interpreter-number.f
 ;SUITE
 
 SUITE compiler-native-eval

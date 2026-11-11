@@ -1,12 +1,13 @@
-\ OUTER:NUMBER against num-parse's value, float flag and ok; the name wall, which
-\ refuses a name the reader reads or refuses for range, checks its range flag.
+\ INTERPRETER:NUMBER against num-parse's value, float flag and ok; the name
+\ wall, which refuses a name the reader reads or refuses for range, checks its
+\ range flag.
 require src/lib/test.f
 require src/lib/fmt.f
 require src/lib/f64-text.f
 require test/gate-common.f
 require src/habu/interpreter.f
 
-package OUTER-NUMBER-TEST
+package INTERPRETER-NUMBER-TEST
 
 variable COMPARED
 variable REFUSALS
@@ -18,7 +19,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    {: a:ptr u:n bits:n :}
    a u num-parse {: got:n flt:bool ok:bool :}
    a u T-LABEL got bits T= flt TTRUE ok TTRUE
-   a u OUTER:NUMBER {: outer:n outer-flt:bool outer-ok:bool range:bool :}
+   a u INTERPRETER:NUMBER {: outer:n outer-flt:bool outer-ok:bool range:bool :}
    a u T-LABEL outer bits T= outer-flt TTRUE outer-ok TTRUE range TFALSE ;
 
 : ROUNDING ( -- )
@@ -50,7 +51,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 
 : RANGE? ( ptr u8 n -- bool )
-   OUTER:NUMBER {: v:n flt:bool ok:bool range:bool :} range ;
+   INTERPRETER:NUMBER {: v:n flt:bool ok:bool range:bool :} range ;
 
 
 : FLAG= ( bool bool -- ) {: got:bool want:bool :}
@@ -59,7 +60,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 : SAME-PARSE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u num-parse {: want:n want-flt:bool want-ok:bool :}
-   a u OUTER:NUMBER drop {: got:n flt:bool ok:bool :}
+   a u INTERPRETER:NUMBER drop {: got:n flt:bool ok:bool :}
    a u T-LABEL got want T=
    a u T-LABEL flt want-flt FLAG=
    a u T-LABEL ok want-ok FLAG= ;
@@ -148,7 +149,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 
 : SUMMARY ( -- )
-   s" outer-number: " type COMPARED @ FMT:.INT
+   s" interpreter-number: " type COMPARED @ FMT:.INT
    s"  spellings compared with num-parse, " type REFUSALS @ FMT:.INT
    s"  refused as definition names" type cr ;
 

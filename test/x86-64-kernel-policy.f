@@ -25,8 +25,9 @@ using X64RT
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : ROW, ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
 
-\ The callback has the captured OUTER policy check's effect: a public wid in,
-\ the first colliding spelling and a flag out. The normal arm returns no name.
+\ The callback has the captured INTERPRETER policy check's effect: a public wid
+\ in, the first colliding spelling and a flag out. The normal arm returns no
+\ name.
 : NO-KEYWORD ( -- label )
    [: 0 G-POP
       0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH, ;]
