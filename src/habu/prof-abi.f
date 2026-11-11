@@ -108,10 +108,8 @@ PROF-DEFER-SLOTS PROF-DEFER-ENT * constant ARN-DEF-BYTES
 ARN-CALL ARN-CALL-BYTES + constant ARN-INCL    \ inclusive samples, one per RECORD
 ARN-INCL ARN-INCL-BYTES + constant ARN-STAMP   \ the sample serial each record was last counted in
 ARN-STAMP ARN-INCL-BYTES + constant ARN-DEF    \ the deferred samples
-\ One identity owns its copied name and code span even after its dictionary
-\ ordinal is reused. RID-OWNER is -1 when there is no current dictionary owner:
-\ a nonempty stored span is seed-retained code, an empty span is excluded.
-\ Ordinary retired records keep their owner but have no live index entry.
+\ An ID keeps its copied name after its ordinal is reused; RID-OWNER -1 marks
+\ a trimmed or reclaimed record, which, like a retired one, has no index entry.
 40 constant PROF-ID-ENT
 0  constant RID-OWNER
 8  constant RID-NAME

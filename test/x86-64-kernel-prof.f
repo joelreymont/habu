@@ -622,8 +622,8 @@ variable ENTRY-AT
    past LBL,
    start end ;
 
-\ The donor waits for its own stable counter to move. All three cases put
-\ it at ordinal 1 before prof-on gives that ordinal its initial identity.
+\ The donor waits for its own stable counter to move. Both cases put it
+\ at ordinal 1 before prof-on gives that ordinal its initial identity.
 : DONOR-SPAN, ( -- label label )
    LBL LBL LBL {: start:label end:label past:label :}
    past JMP,
@@ -632,37 +632,6 @@ variable ENTRY-AT
    ASM-SINK ENC-RET  end LBL,
    past LBL,
    start end ;
-
-\ The seed rewind reuses both a package row and its long-name donor's row.
-\ A retained donor still executes and takes samples, but has no live ordinal;
-\ prof-row of ordinal 1 must resolve the target, whose fresh counter is zero.
-: REWIND-CASE ( -- )
-   DONOR-SPAN, {: donor:label donor-end:label :}
-   COLD-SPAN, {: target:label target-end:label :}
-   NDICT-REG ZERO-REG,
-   s" PROF-DONOR-QUALIFIER-LONG" WL:NAMESPACE 0 X64HARNESS:RECORD,
-   1 0 0 RECORD-CELL!,  2 0 CELL RECORD-CELL!,
-   s" DONOR-WITH-EXTERNAL-NAME" donor donor-end X64HARNESS:CODE-RECORD,
-   1 1 DICT-WL-OFF RECORD-CELL!,
-   FD:STDOUT FD>N N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
-   0 N,  s" prof-on" ROW
-   donor CALL,  0 G-PUSH  1 WANT
-   0 N,  s" seed-ndict!" ROW
-   s" PROF-TARGET-QUALIFIER-LONG" WL:NAMESPACE 0 X64HARNESS:RECORD,
-   3 0 0 RECORD-CELL!,  4 0 CELL RECORD-CELL!,
-   s" TARGET-NEW" target target-end X64HARNESS:CODE-RECORD,
-   3 1 DICT-WL-OFF RECORD-CELL!,
-   donor CALL,  0 G-PUSH  1 WANT
-   s" prof-off" ROW
-   [: s" prof-json" ROW ;] REPORT-TEXT,
-   s\" {\"word\":\"PROF-DONOR-QUALIFIER-LONG:DONOR-WITH-EXTERNAL-NAME\",\"excl\":" true HAS,
-   s\" {\"word\":\"PROF-TARGET-QUALIFIER-LONG:TARGET-NEW\",\"excl\":" false HAS,
-   donor 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  -1 WANT
-   target 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  1 WANT
-   IDENTITY,
-   [: 1 N,  s" prof-row" ROW ;] REPORT-TEXT,
-   s" PROF-TARGET-QUALIFIER-LONG:TARGET-NEW" true HAS,
-   s" DONOR-WITH-EXTERNAL-NAME" false HAS, ;
 
 \ An ordinary count trim is HIDE's boundary. Reuse its ordinal before any
 \ report can observe the lowered count: the target gets its own copied name
@@ -697,10 +666,8 @@ variable ENTRY-AT
    [: 1 N,  s" prof-row" ROW ;] REPORT-TEXT,
    s" profiler: no row for that record" true HAS, ;
 
-\ The kernel has no undefine evaluator. Stamp its RETIRED representation,
-\ as XREF:RETIRE does, after prof-on cached the donor's live span. The seed
-\ rewind syncs that retirement before detaching the ordinal; a later report
-\ must not treat the stale cached span as a retained donor.
+\ The kernel has no undefine evaluator: stamp RETIRED in place, as XREF:RETIRE
+\ does, after prof-on indexed the donor; the next report must not index it.
 : RETIRED-CASE ( -- )
    COLD-SPAN, {: keep:label keep-end:label :}
    DONOR-SPAN, {: donor:label donor-end:label :}
@@ -712,7 +679,6 @@ variable ENTRY-AT
    donor CALL,  0 G-PUSH  1 WANT
    s" prof-off" ROW
    WL:RETIRED 1 DICT-WL-OFF RECORD-CELL!,
-   1 N,  s" seed-ndict!" ROW
    [: s" prof-json" ROW ;] REPORT-TEXT,
    s\" ,\"indexed\":1," true HAS,
    s\" {\"word\":\"prof-retired-donor\",\"excl\":" false HAS,
@@ -901,7 +867,6 @@ variable ENTRY-AT
 \    hb-x64-kernel-prof-negative      21  B's spin is expected to fail
 \    hb-x64-kernel-prof-shared-stack   0
 \    hb-x64-kernel-prof-report         0
-\    hb-x64-kernel-prof-rewind         0
 \    hb-x64-kernel-prof-trim           0
 \    hb-x64-kernel-prof-retired        0
 \    hb-x64-kernel-prof-limit          0  its forked child exits 99
@@ -922,7 +887,6 @@ public
    [: SAMPLES-CASE ;] true s" hb-x64-kernel-prof-negative" TMP-PATH BUILD
    [: SHARED-STACK-CASE ;] false s" hb-x64-kernel-prof-shared-stack" TMP-PATH BUILD
    [: REPORT-CASE ;] false s" hb-x64-kernel-prof-report" TMP-PATH BUILD
-   [: REWIND-CASE ;] false s" hb-x64-kernel-prof-rewind" TMP-PATH BUILD
    [: TRIM-CASE ;] false s" hb-x64-kernel-prof-trim" TMP-PATH BUILD
    [: RETIRED-CASE ;] false s" hb-x64-kernel-prof-retired" TMP-PATH BUILD
    [: LIMIT-CASE ;] false s" hb-x64-kernel-prof-limit" TMP-PATH BUILD

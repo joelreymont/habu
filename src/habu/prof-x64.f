@@ -61,7 +61,6 @@ variable JSON-CELL
 variable ROW-CELL
 variable SNAP-CELL
 variable SESSION-CELL
-variable REWIND-CELL
 : HANDLER-LBL ( -- label ) HANDLER-CELL @ >LABEL ;
 : RESTORER-LBL ( -- label ) RESTORER-CELL @ >LABEL ;
 : FIND-LBL ( -- label ) FIND-CELL @ >LABEL ;
@@ -76,7 +75,6 @@ variable REWIND-CELL
 : ROW-LBL ( -- label ) ROW-CELL @ >LABEL ;
 : SNAP-LBL ( -- label ) SNAP-CELL @ >LABEL ;
 : SESSION-LBL ( -- label ) SESSION-CELL @ >LABEL ;
-: REWIND-LBL ( -- label ) REWIND-CELL @ >LABEL ;
 
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
@@ -1148,7 +1146,6 @@ public
 : FIND, ( -- ) FIND-LBL CALL, ;
 : EDGE, ( -- ) EDGE-LBL CALL, ;
 : INDEX, ( -- ) INDEX-LBL CALL, ;
-: REWIND-BODY ( -- ) REWIND-LBL CALL, ;
 
 private
 
@@ -1252,37 +1249,6 @@ private
    ARENA>RSI,  TIMER-START,
    stopped LBL, ;
 
-\ seed-ndict! calls this with the new count in rdi before lowering NDICT.
-\ SYNC names deferred donor PCs while their dictionary rows still exist. The
-\ retired ID rows keep their names and spans; only the live ordinal slots go.
-: REWIND-HELPER, ( -- )
-   REWIND-LBL LBL,
-   LBL LBL LBL LBL {: absent:label turn:label next:label done:label :}
-   RBX ASM-SINK ENC-PUSH  R12 ASM-SINK ENC-PUSH  R13 ASM-SINK ENC-PUSH
-   R12 BAND-VA IMM,  R12 R12 PROF-ARENA MEM-OFF LOAD,
-   R12 TEST,  C-E absent JCC,
-   RAX R12 ARN-IDS MEM-OFF LOAD,  RAX TEST,  C-E absent JCC,
-   RDI ASM-SINK ENC-PUSH
-   DISARM,
-   SYNC-LBL CALL,
-   RBX ASM-SINK ENC-POP
-   turn LBL,
-      RBX NDICT-REG CMP-REG,  C-AE done JCC,
-      R13 R12 RBX CELL ARN-LIVE MEM-IDX LEA,
-      RAX R13 MEM-AT LOAD,
-      RAX TEST,  C-S next JCC,
-      RDX RAX PROF-ID-ENT SCALE,
-      RCX R12 ARN-RECS MEM-OFF LEA,  RDX RCX ASM-SINK ENC-ADD-RR
-      RAX ALL-ONES,
-      RAX RDX RID-OWNER MEM-OFF STORE,
-      RAX R13 MEM-AT STORE,
-   next LBL,  RBX INC,  turn JMP,
-   done LBL,
-   RESUME,
-   absent LBL,
-   R13 ASM-SINK ENC-POP  R12 ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP
-   RET, ;
-
 public
 
 \ Make labels before any primitive section references them, then emit each
@@ -1292,11 +1258,11 @@ public
    LBL FIND-CELL !  LBL EDGE-CELL !  LBL INDEX-CELL !  LBL SYNC-CELL !
    LBL NUM-CELL !  LBL PCT-CELL !  LBL NAME-CELL !
    LBL DUMP-CELL !  LBL JSON-CELL !  LBL ROW-CELL !
-   LBL SNAP-CELL !  LBL SESSION-CELL !  LBL REWIND-CELL !
+   LBL SNAP-CELL !  LBL SESSION-CELL !
    HANDLER,
    RESTORER-LBL X64BOOT:RESTORER,
    FIND-HELPER,  EDGE-HELPER,  SNAP-HELPER,  SESSION-HELPER,
-   INDEX-HELPER,  SYNC-HELPER,  REWIND-HELPER,
+   INDEX-HELPER,  SYNC-HELPER,
    NUM-HELPER,  PCT-HELPER,  NAME-HELPER,
    false REPORT-HELPER,  true REPORT-HELPER,  ROW-HELPER, ;
 

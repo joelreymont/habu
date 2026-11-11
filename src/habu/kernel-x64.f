@@ -3210,8 +3210,7 @@ variable SITE-TRAP-CELL
    down X64CODE:LBL,
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
       R11 RDX RCX CELL CELL MEM-IDX ASM-SINK ENC-MOV-MR
-      \ Seed rewind has already detached its retained donors. Ordinary
-      \ trimming excludes the removed IDs' spans before slots can be reused.
+      \ Trimming excludes the removed IDs' spans before slots can be reused.
       R8 R8 ASM-SINK ENC-TEST-RR  C-E prof-next JCC,
       R9 R8 RCX CELL PROF-ABI:ARN-LIVE MEM-IDX ASM-SINK ENC-MOV-RM
       R9 R9 ASM-SINK ENC-TEST-RR  C-S prof-next JCC,
@@ -3779,11 +3778,10 @@ private
    s" set-top-check" [: SET-TOP-CHECK-BODY ;] PRIM
    s" top-check@" [: RAX TOP-HOOK-CELL CELL@,  RAX PUSH, ;] PRIM ;
 
-\ The twins of habu1.f BCPFETCH .. BDATAFETCH, BRBASE, BCPSET, BNDSET,
-\ BSEEDNDICTSET and BNDAPPEND. A row that moves r14 keeps the dictionary index
-\ authoritative through the HIDX calls.
+\ The twins of habu1.f BCPFETCH .. BDATAFETCH, BRBASE, BCPSET, BNDSET and
+\ BNDAPPEND; a row that moves r14 keeps the index authoritative through HIDX.
 
-74 constant COUNT-RC                   \ BNDSET's and BSEEDNDICTSET's refusal
+74 constant COUNT-RC                   \ BNDSET's refusal
 
 \ The twin of habu1.f GUARD-CODE-WORD, over code slots where ARM64 takes
 \ instruction words: a new CP must be a CODE-SLOT multiple in
@@ -3941,28 +3939,6 @@ private
    LASTC-TRIM,
    done X64CODE:LBL, ;
 
-\ seed-ndict! ( n -- ): lower the count below the live one, rebuild the index
-\ and clear the seal floor; the build rewinds call it from top-level text or
-\ a TRUSTED: body.
-\ A negative count or one that does not lower exits COUNT-RC.
-: SEED-NDICT-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL {: lower:label bad:label :}
-   TASK-LIVE-GUARD,
-   RAX 0 PEEK,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-L bad JCC,
-   RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-L lower JCC,
-   bad X64CODE:LBL,
-   COUNT-RC EXIT-GROUP,
-   lower X64CODE:LBL,
-   RDI RAX ASM-SINK ENC-MOV-RR  X64PROF:REWIND-BODY
-   RAX 0 PEEK,
-   RECORD-GUARD,
-   RAX POP,
-   OCC-COUNT,
-   LASTC-TRIM,
-   HIDX-REBUILD,
-   RAX ZERO-REG,  RAX SEAL-NDICT-CELL CELL!, ;
-
 \ ndict-append ( n -- ): count the native tier's pending record, which must
 \ be record n at the count, or its does> companion one record past it while
 \ a does> body is pending, and index it. Anything else, or a count below the
@@ -4026,7 +4002,6 @@ private
       DEF-CODE-RECLAIM-BODY
       CP-REG RDI ASM-SINK ENC-MOV-RR ;] PRIM
    s" ndict!" [: NDICT-SET-BODY ;] PRIM
-   s" seed-ndict!" [: SEED-NDICT-BODY ;] PRIM
    s" ndict-append" [: NDICT-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-occ-select" [: DEF-SELECT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-occ-resolve" [: DEF-RESOLVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;

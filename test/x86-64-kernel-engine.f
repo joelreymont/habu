@@ -339,27 +339,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    4 NDICT!,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-: SEED-NDICT!, ( n -- ) X64HARNESS:PUSH,  s" seed-ndict!" ROW ;
-
-\ seed-ndict! lowers the count through the seal floor and clears the floor.
-: BUILD-SEED-NDICT ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   SEED,  X64KERNEL:HIDX-BUILD,  s" SEAL-CAPTURE" ROW
-   4 DREC * LASTC-CELL X64HARNESS:REGION-ADDR!,
-   2 SEED-NDICT!,  2 NDICT?,
-   0 LASTC-CELL X64HARNESS:EXPECT-CELL,
-   0 SEAL-NDICT-CELL X64HARNESS:EXPECT-CELL,
-   s" alpha" OTHER-WID SEARCH,  2 X64HARNESS:EXPECT-POP,
-   LONG$ 0 SEARCH,  0 X64HARNESS:EXPECT-POP,
-   0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ A count that does not lower the live one exits 74.
-: BUILD-SEED-NDICT-HIGH ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   SEED,  5 SEED-NDICT!,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
 : APPEND, ( n -- ) X64HARNESS:PUSH,  s" ndict-append" ROW ;
 
 \ Record 5, delta, written and pending but not counted, under the native tier.
@@ -720,8 +699,6 @@ public
    s" hb-x64-kernel-ndict" TMP-PATH BUILD-NDICT
    s" hb-x64-kernel-ndict-cap" TMP-PATH BUILD-NDICT-CAP
    s" hb-x64-kernel-ndict-floor" TMP-PATH BUILD-NDICT-FLOOR
-   s" hb-x64-kernel-seed-ndict" TMP-PATH BUILD-SEED-NDICT
-   s" hb-x64-kernel-seed-ndict-high" TMP-PATH BUILD-SEED-NDICT-HIGH
    s" hb-x64-kernel-append" TMP-PATH BUILD-APPEND
    s" hb-x64-kernel-append-foreign" TMP-PATH BUILD-APPEND-FOREIGN
    s" hb-x64-kernel-seal" TMP-PATH BUILD-SEAL
