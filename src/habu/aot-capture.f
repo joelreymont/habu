@@ -687,20 +687,6 @@ variable ACAP-ENTRY-N
    k ACAP-REC-DST {: v:ptr :}
    v  v ACAP-REC-EXT?  ACAP-REC-NAME  v 16 + ACAP-W32@ ;
 
-\ Dynamic name uses the derived rule cannot see: consumers resolve these names
-\ after this engine is captured.
-\ DEFER-UNSET: habu2.f C-DEFER-FIND-UNSET resolves it by name for every new
-\ defer from a lookup string outside the named-site tables; without the record
-\ `defer SETUP ( -- )` fails.
-\ CHECKER-STORAGE-CELLS: FILE and stripped AOT load aot-data-cell.f after
-\ capture, and its scan resolves this checker export by name.
-: ACAP-KEEP? ( n -- bool ) {: k:n :}
-   k ACAP-REC-NAME$ {: a:ptr u:n :}
-   a u s" DEFER-UNSET" CORE-STR=CI  k ACAP-REC-DST 40 + ACAP-W32@ 0= and
-   if true exit then
-   a u s" CHECKER-STORAGE-CELLS" CORE-STR=CI
-   k ACAP-REC-DST 40 + ACAP-W32@ 0= and ;
-
 variable ACAP-ALL-NAMES
 
 : ACAP-INTERNAL? ( ptr u8 -- bool )
@@ -712,7 +698,6 @@ variable ACAP-ALL-NAMES
    v CELL-VIEW AOT-RWID -1 = if true exit then
    v 40 + ACAP-W32@ ACAP-PRIVATE? 0= v ACAP-INTERNAL? 0= and if true exit then
    v ACAP-W32@ ACAP-XTOFF-ENTRY? if true exit then
-   k ACAP-KEEP? if true exit then
    k ACAP-REC-NAME$ {: a:ptr u:n :}
    a u ACAP-XTSITE-NAMES? if true exit then
    a u ACAP-BOOTRUN-NAMES? ;

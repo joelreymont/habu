@@ -14636,10 +14636,6 @@ STORAGE-DIAG-DEFAULT
 : CHECKER-PKG-SYM? ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-FIND IF EXIT THEN drop 0 ;
 
-\ Lookup by the saved package/visibility/tail key without interning a symbol.
-: CHECKER-ORIGIN-SYM ( ptr u8 n n ptr u8 n -- n )
-   SYM-FIND IF EXIT THEN drop 0 ;
-
 \ Interning stores the name, so a length that describes no memory is refused
 \ with the symbol pool's own refusal before the split reads it.
 : CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a u:n :}
@@ -14667,14 +14663,6 @@ STORAGE-DIAG-DEFAULT
 : CHECKER-SYM-IDENTITY ( n -- ptr u8 n ptr u8 n n )
    {: sym:n :}
    sym SYM-PKG$ sym SYM-NAME$ sym SYM-ROW SYM.VIS @ ;
-
-package CHECKER-REG
-public
-\ Borrow a recorded symbol's exact lookup key for portable origin rows.
-: ORIGIN-KEY ( n -- ptr u8 n n ptr u8 n )
-   CHECKER-SYM-IDENTITY {: pkg:ptr pkgu:n name:ptr nameu:n vis:n :}
-   pkg pkgu vis name nameu ;
-;package
 
 \ The definition's own record: the newest record its name would be recorded
 \ under, when that record is a source record. A tombstone means the name is
@@ -32638,7 +32626,6 @@ package CHECKER-REG
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
 ' CHECKER-SYM-IDENTITY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-IDENTITY-OFF + xt!
-' CHECKER-ORIGIN-SYM DECLARATIONS CHECKER-OWNER-ABI:ORIGIN-SYM-OFF + xt!
 ' CHECKER-UNIT-SYM? DECLARATIONS CHECKER-OWNER-ABI:UNIT-SYM-OFF + xt!
 ' PRIMITIVE-STATE DECLARATIONS CHECKER-OWNER-ABI:PRIMITIVE-STATE-OFF + xt!
 ' CHECKER-SYM-SOURCE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-SOURCE-OFF + xt!

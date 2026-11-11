@@ -4,8 +4,7 @@
 \ own: NAME-NEW ( -- ptr t ) answers a fresh zero-filled record and
 \ NAME-RELEASE ( ptr t -- ) unmaps it; a pointer kept across RELEASE is stale, and
 \ releasing it again can unmap whatever was mapped there since. Nothing registers a
-\ record: release it before an image save (a stripped image refuses a typed cell
-\ holding one, src/habu/aot-data-cell.f REFUSE-MAPPED).
+\ record: release it before an image save.
 \ Each record is its own OS mapping, so the OS rounds it up to a page. The width
 \ is the declared type's, fixed per declaration.
 \ Checked code reaches DYNAMIC-STORAGE:RECORD-NEW and RECORD-RELEASE only from

@@ -3,8 +3,8 @@
 \ kernel sees every area (mmap is reached from many libraries and foreign
 \ allocators); a failed query invents no range. A question is answered for the
 \ areas the process holds when it is asked. A freed area is invisible, and no
-\ cell value tells an integer from a pointer into a live area. The caller is
-\ aot-data-cell.f MAPPED?. An application must not require this file (PEND-LO).
+\ cell value tells an integer from a pointer into a live area. Only
+\ test/proc-maps.f requires this file; an application must not (PEND-LO).
 
 require src/lib/ffi-abi.f
 require src/lib/le.f
@@ -39,11 +39,7 @@ variable EXT-N                   \ areas the read in progress has listed
 variable ST
 variable ACC
 \ NOT WINDOW-SAFE: the table heads are mmap addresses and PEND-LO holds a line's
-\ start until it ends, so a stripped build requiring this file is refused at
-\ word=PEND-LO, rc 70 (measured). The FILE producer loads it before the capture
-\ window to decline caching a mapped pointer (strict export names and refuses
-\ the cell) and retires it before the window opens; the linker loads its own
-\ copy above the captured span.
+\ start, so a stripped build requiring this file is refused at word=PEND-LO, rc 70.
 variable PEND-LO                 \ the line's pair, held until its path is known
 variable PEND-HI
 variable FLD                     \ which field after the address pair
