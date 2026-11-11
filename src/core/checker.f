@@ -581,6 +581,56 @@
 \ hidden to hidden. A nominal-scalar pointee (an arity-0 cell parameter) takes
 \ the same arm with parameter-to-parameter rows but records no width fact:
 \ every raw cell is a valid value of the family, so it lowers as a scalar.
+\
+\ Layout transport: a layout value is W consecutive hidden cells, tag on top
+\ and slot 0 deepest. A stack op (`swap`, `rot`, `>r` and the rest) whose top
+\ k logical operands include such a group cannot use the primitive's
+\ variable-based effect, since a hidden field never binds a variable, so the
+\ checker reads k logical groups off the row and pushes them back in the op's
+\ output order. A hidden tag opens a group of exactly W cells, checked from
+\ slot W-1 down to 0 as one family; a malformed group dies 76. Any other cell
+\ is a one-cell group, and a row variable yields a fresh one-cell variable
+\ group. A read below the declared inputs, or below the return cells the
+\ definition pushed, is an underflow measured as a plain step measures it. An
+\ operand carrying a proof or lost metadata takes this path too, scalars
+\ included. An operand that is a layout cell of open width sends the whole op
+\ to the one-cell path, which refuses it: an open width reads a payload
+\ variable that may bind linear. A group moves whole, and the op's linear
+\ count is taken before and checked after: a move keeps it, while a copy
+\ raises it and a drop lowers it, both refused. A hidden group's linear
+\ payload counts once, at its tag. A one-cell variable group the op copies or
+\ drops may launder a linear value, so it is tainted. An argument still open
+\ in an expanded group is one the width does not read: it occurs only under a
+\ pointer, a quotation or an unread slot, owns no payload, and has nothing to
+\ launder. A linear group captured into a local leaves the counted rows, so
+\ the same check refuses the bind.
+\
+\ Locals: `{: a b :}` pops and binds names to type variables, and a reference
+\ pushes its binding; a later group binds only its own names. A local is known
+\ by its declared spelling: a reference must match the declaration's raw bytes
+\ byte for byte, while word lookup stays case-insensitive, so a body that
+\ declares `text` and writes `TEXT` names the word TEXT. The token reader hands
+\ the locals words the raw token beside the folded one; folding changes no
+\ byte count and moves no `:`, so one colon position serves both.
+\
+\ Unjudged local binds: a local bind refused in an unjudged scan still binds at
+\ run time, so each local takes the cells the run binds into it. A declared
+\ local takes its type's cells, and a layout its full group, though the local
+\ holds the group's one-cell tag term; an undeclared local takes the cell group
+\ it lies over in the row before the token, one cell or a whole hidden group,
+\ read as a transport reads a group. That row is read from the top local down,
+\ before the bind unifies anything, and reads no width for a declared layout
+\ of open width, or for an undeclared local over a logical layout cell, part
+\ of a hidden group, or the row's open tail. A later reference then pushes the
+\ cells the run bound, and the lowering binds the widths recorded here. The
+\ token's width facts state the declared groups instead, and the second
+\ compile pass checks them against those widths. One splice pops the declared
+\ row's cells off the rows before the token. A bind with an unknown width is
+\ lost, since what the run bound is unknown, and leaves the scan incomplete
+\ where a width is at stake: a wide cell in the rows before the token, or a
+\ local declared wide, hidden or of open width, which binds more cells than
+\ the row shows. An undeclared local is one cell unless those rows hold a wide
+\ one.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -17949,18 +17999,9 @@ defer NAMED-OPERAND-XT ( -- )
    sym CTL-FLAGS-SYM CTL-IDENTITY and ;
 
 
-\ The body token's one resolution: the symbol the shared lookup binds it to
-\ (CHECKER-BIND), whether it bound the engine's record (WALK-REC) and the
-\ identity that symbol carries (TOK-IDENTITY). Made on the first ask for the
-\ token DO-TOK1 is reading, and read by every later reader of that token.
-\ TOK-SPELL-A and TOK-SPELL-U hold that token as DO-TOK1 read it, in the
-\ checked text. TOK-REC retains the bound record for the compiler owner;
-\ TOK-LIVE-REC retains the live lookup result for refusal selection.
-\ A literal is claimed before any scope is asked, as the engine claims it
-\ (LITERAL-TOK? below), so its shape is never
-\ resolved as a name. A refusal the lookup raises names the token as DO-TOK1
-\ read it, which locates in the file; `a u` may be the fold the body walk keeps
-\ in scratch.
+\ Made on the first ask for the token DO-TOK1 is reading, and read by every
+\ later reader of that token. A refusal the lookup raises names the token as
+\ DO-TOK1 read it; `a u` may be the fold the body walk keeps in scratch.
 : BIND-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
    TOK-DONE @ IF EXIT THEN
@@ -17985,11 +18026,9 @@ defer NAMED-OPERAND-XT ( -- )
    TOK-SYM @ a u TOK-IDENTITY TOK-CTL ! ;
 
 
-\ The engine's `>r` `r>` `r@` are compile keywords with no record, as `i` and
-\ `exit` are (src/habu/habu2.f's keyword table): a call bound to one of their
-\ axiom symbols (CK-AXIOM-SYM) is filed as a control event, 25 through 27 after
-\ CF-TOK?'s list, so a codegen tells them from an unbound name. No definition
-\ can take their names: the engine refuses a compile keyword as one.
+\ The engine's `>r` `r>` `r@` are compile keywords with no record: a call bound
+\ to one is filed as a control event, 25 through 27 after CF-TOK?'s list, so a
+\ codegen tells them from an unbound name.
 : RS-KEYWORD ( -- )
    TOK-SYM @ {: sym:n :}
    sym 0= IF EXIT THEN
@@ -17999,9 +18038,7 @@ defer NAMED-OPERAND-XT ( -- )
 
 \ Once a token's role is a source call, keep its original resolution even when
 \ a later type step refuses. The declared ABI is selected by that symbol,
-\ before judgment or publication can change the active name. Its event names
-\ the record the call bound (TOK-REC); a step that judges the call further
-\ latches its own event after this one.
+\ before judgment or publication can change the active name.
 : BIND-SOURCE-CALL ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BIND-TOK
    a u ALLDIG? a u FLODIG? or IF EXIT THEN
@@ -18014,27 +18051,15 @@ defer NAMED-OPERAND-XT ( -- )
    -1 TOK-ABI-DONE !
    TOK-SYM @ FIND-SIG-SYM IF FEP @ TOK-ABI-EFF ! THEN ;
 
-\ The INTRINSIC id (CTL-INTRINSIC) of the engine word the token binds, 0 for
-\ any other word.
 : TOK-INTRINSIC ( ptr u8 n -- n )
    BIND-TOK  TOK-CTL @ CTL>INTRINSIC ;
 
-\ Whether the token binds the engine's own word of its spelling (CTL-CORE-OP).
 : TOK-CORE-OP? ( ptr u8 n -- bool )
    BIND-TOK  TOK-CTL @ CTL-CORE-OP and 0 <> ;
 
-\ ---- what a checked call may do with the row its symbol's lookup found --------
-\ Asked once FEP holds that row (FEP-HIT?). A trusted-only primitive behind the
-\ symbol refuses the call by name (E-CAP-TRUSTED). This run's recovery fact
-\ applies and is a recovery use under any authority, an unjudged scan's too: the
-\ native compiler withholds the definition that used it. Otherwise the row
-\ applies while authority is unenforced or when it is an external declaration.
-\ Any other row records only the word's ABI (a build window records one for
-\ every prefix word): the primitive rows behind it decide. With none, the row
-\ applies unless it is a failed declaration's, which serves only its own run
-\ (RECOVERY-ROW? above): a kernel word's type is the one declared at its
-\ definition.
-\ OWNED-TICK-REFUSED? asks the same of a tick.
+\ This run's recovery fact applies and is a recovery use under any authority, an
+\ unjudged scan's too: the native compiler withholds the definition that used
+\ it.
 0 constant CALL-REFUSED
 1 constant CALL-APPLIES
 2 constant CALL-RECOVERS
@@ -18125,8 +18150,8 @@ defer NAMED-OPERAND-XT ( -- )
    [: C2-STOW-BORROW ;] is C2-STOW-BORROW-HOOK ;
 C2-STOW-BORROW-INSTALL
 
-\ A prefix probe (CHECKER-PREFIX:BIND?) observes only misses in the token it just
-\ captured; earlier body text is the caller's and may still await its own `;`.
+\ A prefix probe observes only misses in the token it just captured; earlier
+\ body text is the caller's and may still await its own `;`.
 variable CHECKER-PREFIX-ACTIVE
 variable CHECKER-PREFIX-CUT
 variable CHECKER-PREFIX-MISS
@@ -18139,26 +18164,22 @@ variable CHECKER-PREFIX-ROLLBACK
       rollback CHECKER-PREFIX-ROLLBACK !
    THEN ;
 
-\ A name no row answers is E-UNDEFINED (E-BAD-QUALIFIED when malformed) and joins
-\ the intake queue (ASIG-MISS+); true when the run may define it (UNSEEN-RAISE).
+\ A name no row answers is E-UNDEFINED (E-BAD-QUALIFIED when malformed); true
+\ when the run may define it.
 : CALL-UNDEFINED ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    TSTART @ dup PREFIX-MISS-AT
-   a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
+   a u ASIG-MISS+
    -1 UNDEFERR !
-   a u UNSEEN-COVERS?                              \ the run's to judge: see UNSEEN-MARK$
+   a u UNSEEN-COVERS?
    {: unseen:bool :}
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    unseen IF UNSEEN-RAISE ELSE UNCK-RAISE THEN
    unseen ;
 
-\ The load's compiler finds no word named A U: it refuses the definition there
-\ while compiling, unless the run may define the name. A name the walk refused
-\ for a `using` (CUSING) is not undefined. Nor is one whose record the engine's
-\ lookup found (WALK-REC), though no checker symbol or row types it, as a word
-\ defined without a declaration under `0 set-check`, so neither caller asks
-\ this of it: the load compiles the call, which only fails its check
-\ (CALL-UNDEFINED in DO-TOK-BODY), and the tick, which BTICK-TOK admits.
+\ A name the walk refused for a `using` is not undefined. Nor is one whose
+\ record the engine's lookup found, though no checker symbol or row types it,
+\ so neither caller asks this of it.
 : REFUSE-UNDEFINED ( ptr u8 n -- )
    CUSING @ 0 <> IF 2drop EXIT THEN
    CALL-UNDEFINED IF EXIT THEN
@@ -18176,7 +18197,7 @@ variable CHECKER-PREFIX-ROLLBACK
    THEN
    \ What the call may do at run time is its symbol's, read before an identity
    \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
-   \ its axiom (NORET-AXIOMS).
+   \ its axiom.
    TOK-SYM @ CTL-FLAGS-SYM CTL-INHERITED and INHSET @ or INHSET !
    id DEFINER-TOK IF EXIT THEN
    id INTRINSIC-CELL-FETCH = IF CELL-FETCH-TOK EXIT THEN
@@ -18193,19 +18214,16 @@ variable CHECKER-PREFIX-ROLLBACK
    dup 7 = IF drop SCOPE-RECORD-STEP EXIT THEN
    dup 8 = IF drop REC-IX @ FIELD-LOAN-ORD ! TSTART @ FIELD-LOAN-OFF !
       -1 FIELD-LOAN-PENDING ! EXIT THEN drop
-   \ a call to a definer, counted for the straight-line-wrapper rule above. One
-   \ per-symbol head load, on the resolved symbol: a tick is not a call here
-   \ (BTICK-TOK never reaches this word) and the create-family tokens leave
-   \ through DEFINER-TOK before it, so neither is counted. Nor is a top-level
-   \ step's: it walks no body, and the next record published is the one the
-   \ definer makes when it runs, which is no wrapper.
+   \ a call to a definer, counted for the straight-line-wrapper rule above. A
+   \ top-level step's is not: it walks no body, and the next record published is
+   \ the one the definer makes when it runs, which is no wrapper.
    TOP-STEP @ 0= IF
       CURSYM @ NORET-CREATES@ dup 0 <> IF WRAPC !  WRAPN @ 1 + WRAPN ! ELSE drop THEN
    THEN
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF FEP @ TOK-EFF ! THEN
-   CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ direct-layout generated-constructor call -> seeded step (default rejects pre-registry)
+   CURSYM @ CTOR-STEP-XT IF EXIT THEN
    FEP-HIT? IF
       CURSYM @ CALL-AUTHORITY
       dup CALL-REFUSED = IF drop C2-STOW-BORROW  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
@@ -18243,39 +18261,34 @@ variable CHECKER-PREFIX-ROLLBACK
    a u DO-TOK-BODY
    pre prer ZERO-USE-TEST ;
 
-: ROW-DROP-1 ( n -- n )            \ row below the top cell; die 76 if it is not a push
+: ROW-DROP-1 ( n -- n )
    R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
    P>REST ;
-: ROW-DROP-N ( n n -- n ) {: w:n :}   \ ( row -- row ) below the top w cells
+: ROW-DROP-N ( n n -- n ) {: w:n :}
    0 BEGIN dup w < WHILE
       swap ROW-DROP-1 swap
       1 +
    REPEAT drop ;
 
-\ One logical operand at a resolved S-PUSH node: record a width fact when it is
-\ a layout value (an expanded hidden group, whose width = group cell count =
-\ registry width, or the one logical cell of a layout whose width reads an open
-\ argument, LAYOUT-WIDTH-OPEN?) and return the row below the whole operand.
+\ An expanded hidden group's cell count is its registry width.
 : WF-POS-RECORD ( n -- n ) {: node:n :}
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? IF
       t CELL>FAM {: fam:n :}                    \ a stale window cell is still this family's
-      t T-WIDTH {: w:n :}                       \ arg-aware bundle width (fact + row drop)
+      t T-WIDTH {: w:n :}
       WF-POS-I @  fam  w  WF-ADD
       node  w  ROW-DROP-N EXIT
    THEN
    t LAYOUT-PARAM? IF WF-POS-I @  t CELL>FAM  t T-WIDTH  WF-ADD THEN
    node P>REST ;
 
-: WF-ROW-SCAN ( n n -- ) {: row:n k:n :}   \ record facts for the top-k logical positions of row
+: WF-ROW-SCAN ( n n -- ) {: row:n k:n :}
    row WF-CURROW !  0 WF-POS-I !
    BEGIN WF-POS-I @ k <  WF-CURROW @ R-RES TAG S-PUSH =  and WHILE
       WF-CURROW @ R-RES WF-POS-RECORD WF-CURROW !
       WF-POS-I @ 1 + WF-POS-I !
    REPEAT ;
 
-\ operand count each transport op moves as logical values, and the row it reads
-\ (r>/r@/2r>/2r@ consume from the return row; everything else the data row).
 : WF-XPORT-K ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" rot"   CORE-STR= IF 3 EXIT THEN
    a u s" -rot"  CORE-STR= IF 3 EXIT THEN
@@ -18301,8 +18314,8 @@ variable CHECKER-PREFIX-ROLLBACK
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
    a u WF-XPORT-K  WF-ROW-SCAN ;
 
-\ --- emitter-facing width-fact queries. The facts are the last checked
-\ definition's per-CHECK scratch, still live until the next CHECK.
+\ The facts are the last checked definition's per-CHECK scratch, still live
+\ until the next CHECK.
 : WF-WIDE? ( -- bool )
    0 BEGIN dup WF-N @ < WHILE
       dup WF-WIDTH@ 1 > IF drop RES-TRUE EXIT THEN
@@ -18333,7 +18346,7 @@ variable CHECKER-PREFIX-ROLLBACK
       dup WF-FETCH? IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
-: WF-HIT? ( n n n -- bool ) {: i:n off:n pos:n :}   \ row i records (off,pos)?
+: WF-HIT? ( n n n -- bool ) {: i:n off:n pos:n :}
    i WF-OFF@ off <> IF RES-FALSE EXIT THEN
    i WF-POS@ pos = ;
 : WF-W-AT ( n n -- n ) {: off:n pos:n :}   \ width at raw source offset and operand position
@@ -18342,22 +18355,6 @@ variable CHECKER-PREFIX-ROLLBACK
       1 +
    REPEAT drop 1 ;
 
-\ --- whole-bundle transport row surgery (type-family.f TFAM-WIDTH@) ----------
-\ A layout value is W consecutive hidden cells (tag on top, slot0 deepest). A
-\ transport op whose top-k logical operands include such a group cannot use the
-\ var-based prim effect (a hidden field never binds a var), so the checker
-\ rebuilds the consumed row: read k logical groups (a hidden tag opens an
-\ exactly-W run validated slot W-1..0 as one family, die 76 on a malformed run;
-\ any other cell is a 1-cell group; a row var materializes a fresh 1-cell var
-\ group through FRESH+UNIFY; a read below the declared inputs is measured as
-\ CHECKER-STEP measures it (STEP-AT-BASE?, STEP-UNDERFLOW!), and one below the
-\ return cells pushed here as RSR> measures it (RS-AT-BASE?, RS-UNDERFLOW!)), then write the
-\ op's output permutation with MK-PUSH. Any operand carrying proof or lost
-\ metadata (XP-META-IN-K?), scalars included, takes this path. An operand that
-\ is a logical layout cell of open width (LOGICAL-KNOWN? false) sends the op to
-\ the one-cell path whatever else is among the operands (XPORT-STEP?), which
-\ refuses it as it refuses that layout alone: LAYOUT-XPORT-ALLOW? never binds an
-\ open width, which reads a payload var that may bind linear (OWN-TYPE-N).
 LOC-RECS constant XG-GCAP      \ max logical groups per op
 256 constant XG-TCAP           \ max total cells across one op's groups
 create XG-TERMS XG-TCAP cells allot
@@ -18379,10 +18376,10 @@ variable XG-N   variable XG-TN   variable XG-ROW
    node XG-TN @ cells XG-NODES + !
    XG-TN @ 1 + XG-TN ! ;
 
-: XG-TERM0@ ( n -- n ) {: gi:n :}   \ first (top) cell term of group gi
+: XG-TERM0@ ( n -- n ) {: gi:n :}
    XG-START gi cells + @ cells XG-TERMS + @ ;
 
-: XG-CELL-HID@ ( n n -- ) {: fam:n slot:n :}   \ consume one hidden fam/slot cell off XG-ROW
+: XG-CELL-HID@ ( n n -- ) {: fam:n slot:n :}
    XG-ROW @ R-RES {: node:n :}
    node TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
    node P>TYPE T-RES {: t:n :}
@@ -18392,16 +18389,16 @@ variable XG-N   variable XG-TN   variable XG-ROW
    t node XG-T+               \ the stale wrapper and metadata travel with this cell
    node P>REST XG-ROW ! ;
 
-: XG-READ-HID ( n -- ) {: t:n :}   \ read the whole W-cell group whose resolved tag is t
+: XG-READ-HID ( n -- ) {: t:n :}
    t CELL>FAM {: fam:n :}
-   t T-WIDTH {: w:n :}                          \ arg-aware bundle width
+   t T-WIDTH {: w:n :}
    t HIDDEN-SLOT@ w 1 - <> IF s" checker: hidden tag not on group top" 76 die THEN
    w 1 - BEGIN dup 0 >= WHILE
       fam over XG-CELL-HID@
       1 -
    REPEAT drop ;
 
-: XG-READ-VAR ( -- bool )      \ materialize one 1-cell var group out of the row var
+: XG-READ-VAR ( -- bool )
    FRESH MK-VAR {: tv:n :}
    FRESH MK-ROW {: rest:n :}
    XG-ROW @  tv rest MK-PUSH  UNIFY 0= IF 0 OK ! RES-FALSE EXIT THEN
@@ -18409,19 +18406,14 @@ variable XG-N   variable XG-TN   variable XG-ROW
    rest XG-ROW !
    RES-TRUE ;
 
-: XG-READ-GROUP ( -- bool )    \ one logical group at XG-ROW; false = rejected
+: XG-READ-GROUP ( -- bool )
    XG-ROW @ R-RES {: node:n :}
    node TAG S-ROW = IF XG-READ-VAR EXIT THEN
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? IF
-      t XG-READ-HID RES-TRUE EXIT THEN   \ linear bundles transport too: the whole M+1 group moves
-                                         \ atomically, and XPORT-APPLY's LIN-SNAPSHOT/LIN-CHECK conserves
-                                         \ the bundle count — a move keeps before=after (accept), a
-                                         \ copy raises it and a drop lowers it (reject). Locals capture
-                                         \ (LOC-BIND-GROUPS) removes the bundle from the counted rows at
-                                         \ bind, so the same LIN-CHECK still rejects a linear layout local.
-   \ Every caller expands a known layout and stops at an open one before reading
-   \ (XPORT-STEP?, LOC-BUNDLE-ROW, LOC-BIND, LOC-DECL-ROW): one here is a checker bug.
+      t XG-READ-HID RES-TRUE EXIT THEN
+   \ Every caller expands a known layout and stops at an open one before
+   \ reading: one here is a checker bug.
    t LAYOUT-PARAM? IF s" checker: logical layout cell in a transport group" 76 die THEN
    node P>TYPE node XG-T+
    node P>REST XG-ROW !
@@ -18457,25 +18449,17 @@ variable XG-N   variable XG-TN   variable XG-ROW
       1 +
    REPEAT drop ;
 
-: XG-GROUP-VAR? ( n -- bool ) {: gi:n :}   \ group gi is one still-unbound var cell?
+: XG-GROUP-VAR? ( n -- bool ) {: gi:n :}
    XG-LEN gi cells + @ 1 <> IF RES-FALSE EXIT THEN
    gi XG-TERM0@ T-RES ISVAR ;
 
-: XG-SEQ-COUNT ( n ptr u8 n -- n ) {: gi:n a:ptr u:n :}   \ occurrences of gi in the digit seq
+: XG-SEQ-COUNT ( n ptr u8 n -- n ) {: gi:n a:ptr u:n :}
    0
    0 BEGIN dup u < WHILE
       dup a + c@ 48 - gi = IF swap 1 + swap THEN
       1 +
    REPEAT drop ;
 
-\ a var-typed scalar group copied or dropped by the permutation is a potential
-\ linear launder: taint it, exactly as LIN-EFF-PASS taints a prim-effect var
-\ with unequal in/out multiplicity. A concrete linear con and a hidden group's
-\ linear payload, which LIN-TYPE-COUNT counts once at the tag, hit XPORT-APPLY's
-\ LIN-CHECK conservation. An argument still open in an expanded group is one the
-\ width does not read (LAYOUT-WIDTH-OPEN?): it occurs only under a pointer, a
-\ quotation or an unread slot, owns no payload (OWN-TYPE-N), and has nothing
-\ to launder.
 : XG-TAINT-SEQ ( ptr u8 n -- ) {: a:ptr u:n :}
    LIN-ANY? 0= IF EXIT THEN
    0 BEGIN dup XG-N @ < WHILE
@@ -18504,12 +18488,12 @@ variable XG-N   variable XG-TN   variable XG-ROW
    a u s" 2over" CORE-STR= IF s" 321032" EXIT THEN
    s" checker: transport seq for non-transport" 76 die ;
 
-: XP-RS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ return-stack transfer op?
+: XP-RS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u WF-XPORT-RROW? IF RES-TRUE EXIT THEN
    a u s" >r" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" 2>r" CORE-STR= ;
 
-: XP-RS-KEEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ r@/2r@ re-push the groups on the return row
+: XP-RS-KEEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" r@" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" 2r@" CORE-STR= ;
 
@@ -18517,14 +18501,14 @@ variable XG-N   variable XG-TN   variable XG-ROW
    WF-XPORT-K 1 = IF s" 0" ELSE s" 10" THEN ;
 
 : XPORT-RS-APPLY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u WF-XPORT-RROW? IF                          \ r> r@ 2r> 2r@ : consumed from RCUR
+   a u WF-XPORT-RROW? IF
       a u XP-RS-KEEP? IF
          XG-ROW @ a u XP-RS-SEQ$ XG-REPLAY RCUR !
       ELSE
          XG-ROW @ RCUR !
       THEN
       DCUR @ a u XP-RS-SEQ$ XG-REPLAY DCUR !
-   ELSE                                           \ >r 2>r : consumed from DCUR
+   ELSE
       XG-ROW @ DCUR !
       RCUR @ a u XP-RS-SEQ$ XG-REPLAY RCUR !
    THEN ;
@@ -18562,11 +18546,8 @@ variable XG-N   variable XG-TN   variable XG-ROW
       1 -
    REPEAT drop ;
 
-\ A wide transport's call: the groups it takes from the data row and the ones it
-\ leaves there, over one open tail, latched as a core op's instantiated effect
-\ is (CALL-FREEZE), so CWIN-COMMIT and CALL-FINALIZE file its call and glue
-\ rows. The return row is no call row's to describe: r> and its kin take
-\ nothing from the data row, and >r leaves nothing on it.
+\ The return row is no call row's to describe: r> and its kin take nothing from
+\ the data row, and >r leaves nothing on it.
 : XPORT-CALL ( ptr u8 n -- )
    {: a:ptr u:n :}
    FRESH MK-ROW {: base:n :}
@@ -18591,8 +18572,6 @@ variable XG-N   variable XG-TN   variable XG-ROW
       2dup ROW-DROP-N R-RES P>TYPE T-RES  dup HIDDEN-PARAM? IF T-WIDTH ELSE drop 1 THEN  +
    loop drop
    a u WF-XPORT-K  XG-READ 0= IF EXIT THEN
-   \ unjudged, this refusal settles (UNJ-SETTLE): a data-row word compiles at the token's raw effect, whose rows replace the logical ones;
-   \ a cut inside a multi-cell value, or a return-row transfer, leaves the scan incomplete where a wide cell is at stake (UNJ-LOST)
    based IF XG-TN @ UF-NEED ! THEN
    based  UF-NEED @ UF-HAVE @ >  and {: under:bool :}   \ the read spent the caller's frame
    OK @ under and  a u WF-XPORT-RROW? 0= and IF STEP-UNDERFLOW! THEN
@@ -18629,15 +18608,13 @@ variable XG-N   variable XG-TN   variable XG-ROW
       1 +
    REPEAT 2drop RES-FALSE ;
 
-\ The index of the first open layout (LOGICAL-KNOWN? false) among the top k
-\ logical operands, or -1; a hidden group is one operand, skipped whole.
 : XP-OPEN-GROUP ( n n -- n ) {: row0:n k:n :}
    row0
    0 BEGIN dup k < WHILE
       over R-RES TAG S-PUSH <> IF 2drop -1 EXIT THEN
       over R-RES P>TYPE T-RES
       dup HIDDEN-PARAM? IF
-         T-WIDTH rot swap ROW-DROP-N swap        \ skip the whole hidden group
+         T-WIDTH rot swap ROW-DROP-N swap
       ELSE
          dup LAYOUT-PARAM? swap LOGICAL-KNOWN? 0= and IF nip EXIT THEN
          swap R-RES P>REST swap
@@ -18647,9 +18624,6 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 : XP-OPEN-IN-K? ( n n -- bool ) XP-OPEN-GROUP 0 >= ;
 
-\ An open layout among the operands goes to the one-cell path whatever else is
-\ among them, which refuses it as it refuses that layout alone
-\ (LAYOUT-XPORT-ALLOW?).
 : XPORT-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
@@ -18690,35 +18664,20 @@ variable XG-N   variable XG-TN   variable XG-ROW
    0 OK !  -1 FAILSET !
    RES-TRUE ;
 
-\ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
-\ its binding. Groups accumulate (a later group binds only its own names).
-\ A local is known by its DECLARED SPELLING: LOCNB holds the declaration's raw
-\ bytes and a reference must match them byte for byte, while word lookup stays
-\ case-insensitive. A body that declares `text` and writes `TEXT` therefore
-\ names the word TEXT, and `text` names the local. DO-TOK1 hands the locals
-\ words the RAW token beside the folded one the dictionary gets; the fold
-\ changes no byte count and moves no ':', so one colon position serves both
-\ spans.
 create LOCNB LOC-RECS LOC-NAME-CAP * allot   create LOCLN LOC-RECS cells allot   create LOCTV LOC-RECS cells allot
 create LOCSHOW LOC-RECS cells allot
 \ LOCW: logical width of each local's binding. 1 = one cell: LOCTV holds a
 \ scalar's type var or a one-cell bundle's tag term (an enum). >1 = a whole
-\ hidden-field bundle:
-\ LOCTV holds the group's TAG term and a reference re-expands slot0..tag from it
-\ via MK-HIDDEN (LOC-PUSH-REF). A linear bundle captured into a local leaves the
-\ counted rows, so LOC-BIND-GROUPS's LIN-CHECK rejects the bind
-\ (test/type-linear-suite.f R5).
+\ hidden-field bundle: LOCTV holds the group's TAG term.
 create LOCW LOC-RECS cells allot
 create LOCVAL LOC-RECS cells allot  \ per-local chain of captured physical cells
 variable LOC-CAP-HEAD
 variable #LOC  variable LMODE  variable LGRP  variable LI  variable LRF
-\ Emitter-facing width queries: LOCW is
-\ live-indexed and branch-scoped locals are popped at their join (CF-LOC-REST)
-\ with their slots rebound by sibling arms, so the pass-2 recompiler must not
-\ read LOCW by live index after the verdict. LOCW-HW records every bind
+\ LOCW is live-indexed and branch-scoped locals are popped at their join with
+\ their slots rebound by sibling arms, so the pass-2 recompiler must not read
+\ LOCW by live index after the verdict. LOCW-HW records every bind
 \ occurrence's FINAL width keyed by a monotone bind sequence that is never
-\ popped; LOCSEQIX maps a live index to its bind seq while the local is live
-\ (written at LOC-ADD, read at the group's :} bind).
+\ popped.
 LOC-RECS 4 * constant LOC-HW-INIT
 $0FFFFFFFFFFFFFFF constant LOC-HW-MAX-CELLS
 CHECKER-REG:SCRATCH{
@@ -18735,11 +18694,10 @@ create LOCSEQIX LOC-RECS cells allot
    need LOC-HW-GROW-CAP {: cap:n :}
    LOC-HW-P @ LOC-HW-CAP @ cells cap cells SR-GROW LOC-HW-P !
    cap LOC-HW-CAP ! ;
-: LOCW-HW@ ( n -- n ) {: s:n :}    \ final width of bind occurrence s
+: LOCW-HW@ ( n -- n ) {: s:n :}
    s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
    s cells LOC-HW + @ ;
 : LOCW-HW-N@ ( -- n ) LOCSEQ @ ;
-\ A new check starts with #LOC at zero; no local binding survives this seam.
 \ Retire the fixed columns; the width arena and LOCSEQ rest through SR-RETIRE.
 : LOC-SNAP-RESET ( -- )
    LOCNB BYTE-VIEW CELL-VIEW 0 LOC-RECS LOC-NAME-CAP * CELL / ARENA-CELLS-ZERO
@@ -18751,8 +18709,8 @@ create LOCSEQIX LOC-RECS cells allot
    LOCSEQIX 0 LOC-RECS ARENA-CELLS-ZERO
    0 LOC-CAP-HEAD !
    0 #LOC !  0 LMODE !  0 LGRP !  0 LI !  0 LRF ! ;
-\ Per-local type display hook (render.f installs SHOW-LOCAL-TYPE). The no-op
-\ default keeps the call effect-known and drops the name span, length and type.
+\ The no-op default keeps the call effect-known and drops the name span,
+\ length and type.
 defer LOCSHOWXT ( ptr u8 n n -- )
 : LOCSHOW-DEFAULT ( -- ) [: 2drop drop ;] is LOCSHOWXT ;
 LOCSHOW-DEFAULT
@@ -18761,17 +18719,15 @@ CHECKER-REG:SCRATCH{
 variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
 CHECKER-REG:}SCRATCH
 
-: LCOLON ( ptr u8 n -- n ) {: a:ptr u:n :}   \ first ':' in a/u, or u
+: LCOLON ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE
       dup a + c@ 58 = IF EXIT THEN
       1 +
    REPEAT ;
 
-\ a typed local `a:n` stores the BARE name (matching the engine) and unifies
-\ the local's type var with the asserted type — a wrong use then rejects. The
-\ type is read from the declaration's raw bytes, as a signature reads its own:
-\ CT-FIND matches a DEFLINEAR name by its declared spelling, so the folded
-\ `pkg:own` names nothing where `PKG:own` names the linear type.
+\ The type is read from the declaration's raw bytes: CT-FIND matches a
+\ DEFLINEAR name by its declared spelling, so the folded `pkg:own` names
+\ nothing where `PKG:own` names the linear type.
 : LOC-SHOW-SUFFIX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = if a c@ 63 = exit then
    RES-FALSE ;
@@ -18795,10 +18751,10 @@ CHECKER-REG:}SCRATCH
       t idx cells LOCTV + !  EXIT THEN      \ (a layout binds no var outside a transport;
    t idx cells LOCTV + @ UNIFY OK @ and OK ! ;   \ the capture in LOC-BIND checks it)
 
-: LOC-DECL-TERM ( n -- n ) {: t:n :}   \ the logical term a declared local type pushes
+: LOC-DECL-TERM ( n -- n ) {: t:n :}
    t HIDDEN-PARAM? IF t MK-LOGICAL ELSE t THEN ;
 
-\ A local bound over a hidden group holds its tag term (LOC-BUNDLE-BIND).
+\ A local bound over a hidden group holds its tag term.
 : LOC-SHOW-ONE ( n -- ) {: idx:n :}
    idx cells LOCSHOW + @ 0= if exit then
    idx cells LOCTV + @ {: t:n :}
@@ -18813,14 +18769,9 @@ CHECKER-REG:}SCRATCH
       1 +
    repeat drop ;
 
-\ Over-cap locals fail closed: a definition whose local count or name width
-\ exceeds the compiler-matched frame is rejected (LOCALBAD forces verdict 0)
-\ with a diagnostic naming the limit (LOCALBAD-KIND selects the text in
-\ render.f), not left uncheckable. The load refuses such a local while
-\ compiling the body, so the fault refuses the definition at its token unless
-\ an earlier compile-time refusal holds the diagnostic (REFUSAL-STEP); only then
-\ are its kind and width recorded, so a later local fault cannot relabel the
-\ refused token. The verdict is forced either way.
+\ The load refuses such a local while compiling the body, so the fault refuses
+\ the definition at its token unless an earlier compile-time refusal holds the
+\ diagnostic.
 : LOC-REJECT ( n n -- ) {: len:n kind:n :}
    RCOMPILE @ 0= IF
       kind LOCALBAD-KIND !  len LOCALBAD-LEN !  RF-LOCAL CREFUSE!
@@ -18828,10 +18779,8 @@ CHECKER-REG:}SCRATCH
    -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
 
 \ A locals group names only locals: `--` declares no outputs, the signature
-\ does, and `|` opens no uninitialised locals, which Habu has none of. The load
-\ binds either token as a local, so this is a check failure, not a compile-time
-\ refusal: the first failure keeps the diagnostic, and the kind is recorded only
-\ when this is it.
+\ does, and `|` opens no uninitialised locals. The load binds either token as a
+\ local, so this is a check failure, not a compile-time refusal.
 : LOC-GROUP-REJECT ( n -- ) {: kind:n :}
    FAILSET @ 0=  RCOMPILE @ 0=  and IF kind LOCALBAD-KIND !  0 LOCALBAD-LEN ! THEN
    -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
@@ -18848,55 +18797,47 @@ CHECKER-REG:}SCRATCH
      FRESH MK-VAR #LOC @ cells LOCTV + !
      0 #LOC @ cells LOCVAL + !
      1 #LOC @ cells LOCW + !
-     LOCSEQ @ #LOC @ cells LOCSEQIX + !    \ this bind's monotone sequence
+     LOCSEQ @ #LOC @ cells LOCSEQIX + !
      1 LOCSEQ @ cells LOC-HW + !
      CHECKER-TAPE:K-LOCAL-DECL LOCSEQ @ 0 EVENT!
      LOCSEQ @ 1 + LOCSEQ !
      col u < IF
-      ra u col #LOC @ LOC-ANN                      \ the type as written, as a signature reads it
+      ra u col #LOC @ LOC-ANN
      THEN
      #LOC @ 1 + #LOC ! THEN THEN ;
 
 \ Linear values may not launder through locals: a local reference re-pushes its
 \ binding outside LIN-SNAPSHOT/LIN-CHECK, so two references would duplicate and
-\ an unreferenced local would leak. Binding a value that concretely resolves
-\ linear at bind time is refused (E-LINEAR-LOCAL); keep the linear on the stack.
+\ an unreferenced local would leak.
 : LIN-LOCAL-REJECT ( -- )  0 OK !  -1 FAILSET !  -1 LINLOCBAD ! ;
 
-: LIN-LOCAL-BIND-CHECK ( -- )       \ reject if any just-bound local resolves linear
+: LIN-LOCAL-BIND-CHECK ( -- )
    LIN-ANY? 0= IF exit THEN
    LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @ LIN-CON? IF LIN-LOCAL-REJECT THEN
      1 + REPEAT drop ;
 
 \ A local bound to a still-polymorphic var that only LATER resolves to a linear
-\ con (deferred laundering, e.g. `( a -- ) {: x :} x x T-FREE-OWN T-FREE-OWN`)
-\ escapes the bind-time check. Taint each such reference's var like a stack copy;
-\ LIN-TAINT-SCAN then rejects it once the var binds linear.
+\ con escapes the bind-time check. Taint each such reference's var like a stack
+\ copy; LIN-TAINT-SCAN then rejects it once the var binds linear.
 : LIN-LOCAL-REF-TAINT ( n -- )
    LIN-ANY? 0= IF drop exit THEN
    T-RES dup TAG T-VAR = IF PAY LIN-TAINT ELSE drop THEN ;
 
-\ Bundle-aware bind: when any captured operand is an expanded
-\ hidden-field group, the generic var-row CHECKER-STEP cannot bind it (a hidden
-\ field never binds a var). Read the k logical groups directly: a scalar group
-\ unifies with its local's type var exactly as the step would - under the same
-\ LAYOUT-XPORT transport the step runs in, so a `:ptr` local whose captured
-\ pointee is a layout param binds beside a bundle as it does without one; a
-\ hidden group stores its TAG term in LOCTV and its cell count in LOCW (an
-\ annotated local cannot hold a bundle — reject). Group i (0 = stack top) binds
-\ local #LOC-1-i.
-: LOC-ANN-BIND-CHECK ( n n -- ) {: gi:n idx:n :}   \ assert the annotation against the bundle
+\ A scalar group unifies with its local's type var exactly as the step would -
+\ under the same LAYOUT-XPORT transport the step runs in. Group i (0 = stack
+\ top) binds local #LOC-1-i.
+: LOC-ANN-BIND-CHECK ( n n -- ) {: gi:n idx:n :}
    gi XG-TERM0@  idx cells LOCTV + @  UNIFY
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF        \ first failure: capture the exact pair
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF
       idx cells LOCTV + @ FRESH MK-ROW MK-PUSH
       gi XG-TERM0@ FRESH MK-ROW MK-PUSH
       UF-CAPTURE
    THEN
    OK @ and OK ! ;
-: LOC-WIDTH! ( n n -- ) {: w:n idx:n :}   \ local idx holds w cells
+: LOC-WIDTH! ( n n -- ) {: w:n idx:n :}
    w idx cells LOCW + !
-   w  idx cells LOCSEQIX + @ cells LOC-HW + ! ;   \ final width at the bind seq
+   w  idx cells LOCSEQIX + @ cells LOC-HW + ! ;
 : LOC-BUNDLE-BIND ( n n -- ) {: gi:n idx:n :}
    idx cells LOCTV + @ T-RES ISVAR 0= IF
       gi idx LOC-ANN-BIND-CHECK    \ annotated local: the annotation term must accept
@@ -18920,9 +18861,9 @@ CHECKER-REG:}SCRATCH
 : LOC-SCALAR-BIND ( n n -- )
    {: gi:n idx:n :}
    1 LAYOUT-XPORT !
-   gi XG-TERM0@  idx cells LOCTV + @  UNIFY   \ the captured value meets the local's type
+   gi XG-TERM0@  idx cells LOCTV + @  UNIFY
    0 LAYOUT-XPORT !
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF        \ first failure: capture the exact pair
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF
       idx cells LOCTV + @ FRESH MK-ROW MK-PUSH
       gi XG-TERM0@ FRESH MK-ROW MK-PUSH
       UF-CAPTURE
@@ -18949,18 +18890,8 @@ CHECKER-REG:}SCRATCH
    XG-ROW @ DCUR !
    OK @ IF bef LIN-CHECK THEN ;
 
-\ A rejected local bind in an unjudged scan still binds at runtime (the
-\ splice header above CHECKER-STEP): each local takes the cells the runtime
-\ binds into it. A declared local takes its type's cells, a layout its full
-\ group (LOCTV holds an expanded layout's tag term, LOC-ANN-TERM, which is one
-\ cell); an undeclared local takes the pre-token cell group it lies over, a
-\ one-cell term or a whole hidden group, as XG-READ-GROUP would read it.
-\ LOC-DECL-ROW reads that row from the top local down, before the bind unifies
-\ anything, and is 0 when it reads no width: a declared layout whose width is
-\ open, or an undeclared local over a logical layout cell, part of a hidden
-\ group, or the pre row's open tail. `at` is the pre row below the locals
-\ above, 0 once that is unknown.
-: PRE-SKIP ( n n -- n ) {: at:n w:n :}   \ `at` less its top w cells
+\ `at` is the pre row below the locals above, 0 once that is unknown.
+: PRE-SKIP ( n n -- n ) {: at:n w:n :}
    at 0= IF 0 EXIT THEN
    w 0= IF at EXIT THEN
    at R-RES {: node:n :}
@@ -18970,7 +18901,7 @@ CHECKER-REG:}SCRATCH
    t ROW-TERM-CELLS {: tw:n :}
    tw w > IF 0 EXIT THEN
    node P>REST  w tw -  RECURSE ;
-: PRE-HID-RUN? ( n n n -- bool ) {: at:n fam:n slot:n :}   \ fam's cells slot..0 from `at` down
+: PRE-HID-RUN? ( n n n -- bool ) {: at:n fam:n slot:n :}
    slot 0 < IF RES-TRUE EXIT THEN
    at R-RES {: node:n :}
    node TAG S-PUSH <> IF RES-FALSE EXIT THEN
@@ -19006,16 +18937,6 @@ CHECKER-REG:}SCRATCH
 : LOC-DECL-ROW ( n -- n )   \ the pre-token row -> the row the locals bind
    #LOC @ 1 - LOC-DECL-FROM ;
 
-\ Each local takes its declared group, so a later reference pushes the cells
-\ the runtime bound and the lowering binds the widths recorded here; the
-\ token's width facts, recorded from the row from mark wf0 on, state the
-\ declared groups instead, as the pass-2 carve cross-checks them against those
-\ widths. The one splice pops the declared row's
-\ physical cells off the pre-token rows. A bind with an unknown width is
-\ lost: what the runtime bound is unknown. A lost bind is incomplete where a
-\ width is at stake: a wide cell in the pre-token rows (UNJ-LOST), or a local
-\ declared wide, hidden or open-width, which binds more cells than the row
-\ shows. An undeclared local is one cell unless the pre rows hold a wide one.
 : WF-TOKEN-CUT ( n -- ) {: wf0:n :}   \ drop this token's facts, the table's last rows
    WF-N @ wf0 ?do
       i WF-OFF@ TSTART @ <> IF s" checker: width fact past the current token" 76 die THEN
@@ -19056,21 +18977,21 @@ CHECKER-REG:}SCRATCH
       1 -
    REPEAT 2drop ;
 
-\ A layout whose width read an open argument is one logical cell (PUSH-LOGICAL); a
-\ transport bind cannot meet the annotation's tag with it, so it binds whole here.
-: LOC-AS-BUNDLE? ( n n -- bool ) {: t:n idx:n :}   \ local idx's annotation takes cell t whole
+\ A layout whose width read an open argument is one logical cell; a transport
+\ bind cannot meet the annotation's tag with it, so it binds whole here.
+: LOC-AS-BUNDLE? ( n n -- bool ) {: t:n idx:n :}
    idx cells LOCTV + @ T-RES {: ann:n :}
    t T-RES {: tl:n :}
    ann tl LOGHID-FAMILY? 0= IF RES-FALSE EXIT THEN
    TRAIL-N @ {: mark:n :}
    tl ann MK-LOGICAL UNIFY   \ binds open arguments first, so the width is the annotation's
-   dup 0= IF mark TRAIL-UNWIND THEN ;   \ a failed trial leaves no binding
+   dup 0= IF mark TRAIL-UNWIND THEN ;
 : LOC-BUNDLE-ROW ( n n -- n ) {: row:n gi:n :}   \ groups gi.. of row, such cells expanded
    gi #LOC @ LGRP @ - >= IF row EXIT THEN
    row R-RES {: node:n :}
    node TAG S-PUSH <> IF row EXIT THEN
    node P>TYPE {: t:n :}
-   t LOGICAL-KNOWN? IF row t CELL-TERMS ROW-EXPAND-TERMS gi RECURSE EXIT THEN   \ as its hidden fields
+   t LOGICAL-KNOWN? IF row t CELL-TERMS ROW-EXPAND-TERMS gi RECURSE EXIT THEN
    t T-RES HIDDEN-PARAM? IF row PRE-GROUP ELSE 1 THEN {: w:n :}
    w 0= IF row EXIT THEN
    row w ROW-DROP-N {: below:n :}
@@ -19092,9 +19013,9 @@ CHECKER-REG:}SCRATCH
    DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}  WF-N @ {: wf0:n :}
    unj IF pre LOC-DECL-ROW ELSE 0 THEN {: decl:n :}
    pre 0 LOC-BUNDLE-ROW {: cap:n :}  cap DCUR !
-   cap  #LOC @ LGRP @ -  WF-ROW-SCAN   \ width facts at the :} token
-   \ A captured cell LOC-BUNDLE-ROW leaves open-width binds as one cell of a wider
-   \ value: the bind refuses it, typed or not (checker-soundness-suite OPEN-WIDTH-LOCALS).
+   cap  #LOC @ LGRP @ -  WF-ROW-SCAN
+   \ A captured cell LOC-BUNDLE-ROW leaves open-width binds as one cell of a
+   \ wider value: the bind refuses it, typed or not.
    cap  #LOC @ LGRP @ -  XP-OPEN-GROUP {: open:n :}
    open 0 >= IF
       drop
@@ -19107,7 +19028,7 @@ CHECKER-REG:}SCRATCH
       0 OK !
    ELSE cap  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
       drop
-      LOC-BIND-GROUPS                  \ a captured operand is a hidden-field bundle
+      LOC-BIND-GROUPS
    ELSE
       1 LAYOUT-XPORT !                 \ capturing a local moves the value as one bundle
       tail MK-ROW RES-FALSE CHECKER-STEP-UNJ   \ a failure settles below, by declared widths
@@ -19123,7 +19044,7 @@ CHECKER-REG:}SCRATCH
 \ `--` and `|` bind as in the load, so a body reference finds them and they
 \ count toward LOC-RECS. In a checked body the token has failed, so LOC-BIND
 \ exits on OK 0 and binds no cell to them; an unjudged scan sets OK afresh for
-\ each token (DO-TOK1), so its LOC-BIND binds them as the runtime does.
+\ each token, so its LOC-BIND binds them as the runtime does.
 : LOC-TOK
    {: ra a u :}
    a u s" :}" CORE-STR= IF CHECKER-TAPE:K-LOCAL-CLOSE 0 0 EVENT!  0 LMODE ! LOC-BIND ELSE
@@ -19136,12 +19057,6 @@ CHECKER-REG:}SCRATCH
    QDEPTH @ 0 >  DEADP @ or IF 0 0 LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
 
-\ LOC-PUSH-REF: a bundle local (LOCW > 1) re-expands its whole group, slot0
-\ deepest up to the stored tag term on top; a scalar local pushes its var/term
-\ with the deferred-linear taint. A stale bundle re-pushes stale in every cell:
-\ the captured cells were all wrapped, MK-HIDDEN mints from the family term the
-\ wrapper hides, and a payload cell minted plain would launder the value a
-\ throw path may have overwritten.
 : LOC-REF-ROW ( n n -- n ) {: head:n rest:n :}
    head 0= IF rest EXIT THEN
    head CP-OTHER rest RECURSE {: tail:n :}
@@ -19223,8 +19138,8 @@ variable INDO
 \ One bit per CFS slot; all 32 slots fit a cell. A quotation owns a fresh mask.
 variable CF-LOOPS
 CHECKER-REG:}SCRATCH
-\ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
-\ incl. the fall-through at ';', must unify). DEADP marks the current linear path
+\ XROW accumulates the data row at each exit (all returns, incl. the
+\ fall-through at ';', must unify). DEADP marks the current linear path
 \ terminated by exit, so the enclosing THEN excludes it from the branch join.
 \ CF.DED saves the if-branch's deadness across CF-ELSE. CF.LA/LB save the
 \ live loop obligations beside the corresponding data and return rows.
@@ -19301,8 +19216,9 @@ SCOPE-INTRO-FENCE-INSTALL
 : CF-TOP ( -- ptr n )
    #CFC @ 1 - CF-ROW ;
 
-\ The deepest open frame owning local LI, -1 for the definition's own block: a frame pushed
-\ after LI starts with more locals than its index. No quotation owns one (LOC-BEGIN refuses).
+\ The deepest open frame owning local LI, -1 for the definition's own block: a
+\ frame pushed after LI starts with more locals than its index. No quotation
+\ owns one.
 : LOC-OWNER ( n -- n ) {: li:n :}
    #CFC @ 1 - BEGIN dup 0 >= WHILE
       dup CF-ROW CF.LN @ li <= IF EXIT THEN
@@ -19318,8 +19234,6 @@ SCOPE-INTRO-FENCE-INSTALL
 : QRD-MARK ( n -- ) {: owner:n :}
    #CFC @ owner 1 + ?do owner 2 + i QRD-RAISE loop ;
 
-\ A token binds a local by raw spelling, byte for byte. A read marks the
-\ quotations open above its owner (CF.QRD); an unjudged scan files none (TEST-UNCERTIFIED-MALFORMED).
 : LOC-REF?
    {: a u :}
    0 LRF !  #LOC @ LI !
@@ -19369,9 +19283,8 @@ SCOPE-INTRO-FENCE-INSTALL
 : CF-CASE-RET! ( n n -- ) {: row:n idx:n :}
    row idx CF-ROW CF.RB ! ;
 
-\ Every frame kind bends the line, quotations (CF-QUOT, which opens its nested
-\ inference through this word) included: the straight-line-wrapper rule above
-\ takes nothing from a body that pushed one.
+\ Every frame kind bends the line, quotations included: the
+\ straight-line-wrapper rule above takes nothing from a body that pushed one.
 : CF-PUSH {: k s0 s1 r0 r1 :}
    -1 WRAPBENT !
    #CFC @ CF-FRAMES-MAX >= IF
@@ -19413,7 +19326,6 @@ SCOPE-INTRO-FENCE-INSTALL
       1 +
    REPEAT drop RES-TRUE ;
 
-\ A control-flow check fails for the MD-* reason why.
 : CF-FAIL ( n -- )
    MDIAG!
    0 OK !
@@ -19437,17 +19349,15 @@ SCOPE-INTRO-FENCE-INSTALL
    #LOC @ {: live:n :}
    0 #LOC !  DEF-LSC @ LSC-CK  live #LOC ! ;
 
-\ A control-flow word the load's compiler refuses while compiling it: the token
-\ is refused for the reason why. The frames are the compiler's only while every
-\ token was walked and every opener kept one: a word after a terminating word is
-\ skipped (DEADERR), and an opener skipped so, or one past the deepest frame
-\ (CF-OVER), leaves its closer no frame here though the compiler has one.
+\ The frames are the compiler's only while every token was walked and every
+\ opener kept one: a word after a terminating word is skipped (DEADERR), and an
+\ opener skipped so, or one past the deepest frame (CF-OVER), leaves its closer
+\ no frame here though the compiler has one.
 : CF-REFUSE ( n -- )
    DEADERR @ 0=  CF-OVER @ 0=  and IF MDIAG-COMPILE! ELSE drop THEN ;
 
-\ Whether the open frame is of kind k1 or k2, the kinds that stand for the frame
-\ the load's compiler requires there. A control-flow word over no frame or
-\ another kind's is one the compiler refuses, for the reason why.
+\ A control-flow word over no frame or another kind's is one the compiler
+\ refuses, for the reason why.
 : CF-AT? ( n n n -- bool )
    {: k1:n k2:n why:n :}
    CF-MT? 0= IF
@@ -19481,7 +19391,7 @@ SCOPE-INTRO-FENCE-INSTALL
    REPEAT drop -1 ;
 
 
-: SUNI-JOIN ( n -- )   \ two branches' data rows meet (UK-JOIN)
+: SUNI-JOIN ( n -- )
    {: s:n :}
    DCUR @ s UNIFY-JOIN
    dup 0=  FAILSET @ 0=  and  OK @ and  IF s DCUR @ UF-CAPTURE THEN
@@ -19507,12 +19417,8 @@ SCOPE-INTRO-FENCE-INSTALL
    dup 0= IF drop RES-FALSE EXIT THEN
    ROW-OPEN? 0= ;
 
-\ The body bound a base it may not bind: the declared data base (none without
-\ a signature, whose inputs are inferred) or the return base. A read below the
-\ return base is refused at its own token (RS-BORROWS?); this catches a return
-\ base bound with no read (RSBAD 2): by a call whose signature names one row as
-\ data and after `|`, or by `execute` of a quotation literal that runs, over
-\ cells it pushed, a quotation parameter whose `|` row is the base.
+\ A read below the return base is refused at its own token; this catches a
+\ return base bound with no read.
 : CHECK-NO-BORROW ( -- )
    SGDBASE @ ROW-BORROWED? IF 0 OK ! THEN
    SGRBASE @ ROW-BORROWED? IF
@@ -19520,18 +19426,13 @@ SCOPE-INTRO-FENCE-INSTALL
       0 OK !
    THEN ;
 
-\ Some path through the body returns.
 : CHECK-RETURNS? ( -- bool )
    DEADP @ 0= XSET @ 0 <> or ;
 
-\ A quotation literal declares no return clause, so `;]` seals its return row as
-\ `;` seals a definition's that has none (CHECK-NO-BORROW, CHECK-RBALANCE): it
-\ leaves the row as it found it. Unsealed, `[: >r ;] execute r>` and
-\ `>r [: r> ;] execute` would certify and fail in the native compiler
-\ (E-NELAB-UNDER, E-NELAB-JOIN). Asked with the literal's own rows, before
-\ CF-SEMIQ restores the outer ones. A read below the literal's own cells is
-\ refused at the read (RS-BORROWS?, RSBAD 4); a base bound with no read is
-\ refused here, also RSBAD 4.
+\ A quotation literal declares no return clause, so `;]` seals its return row:
+\ it leaves the row as it found it. Unsealed, `[: >r ;] execute r>` and
+\ `>r [: r> ;] execute` would certify and fail in the native compiler. Asked
+\ with the literal's own rows, before CF-SEMIQ restores the outer ones.
 : QUOT-RSEAL ( -- )
    RBROW @ ROW-BORROWED? IF 4 ELSE
       CHECK-RETURNS? 0= IF EXIT THEN
@@ -19564,9 +19465,6 @@ CHECKER-REG:}SCRATCH
    SGSEEN? 0= IF RES-FALSE EXIT THEN
    RECEFF-ON? ;
 
-\ Whether an effect with these rows fits a record: at most EFFECT-DEPTH-MAX
-\ levels deep and EFFECT-MIN-IN-MAX cells in. One that does not sets UNFIT and
-\ keeps the count its refusal names, the depth first.
 : ROWS-FIT? ( n n n n -- bool )
    {: in:n out:n rin:n rout:n :}
    in out rin rout ROWS-DEPTH {: d:n :}
@@ -19579,15 +19477,12 @@ CHECKER-REG:}SCRATCH
    MDIAG-DEPTH @ 0 <> IF MD-EFFECT-DEPTH ELSE MD-INPUT-WIDTH THEN ;
 
 \ Whether a reason leaves its definition uncheckable, where every other reason
-\ refuses one: an unfit effect's, control nested past the frames, or a RECURSE
-\ with no declared effect or in a does> clause.
+\ refuses one.
 : UNCK-REASON? ( n -- bool )
    {: why:n :}
    why MD-EFFECT-DEPTH =  why MD-INPUT-WIDTH =  or
    why MD-CF-DEPTH =  or  why MD-RECURSE-SIG =  or  why MD-RECURSE-DOES =  or ;
 
-\ Whether the refusal REFUSAL@ names leaves its definition uncheckable rather
-\ than refused: a token of unknown effect, or a reason UNCK-REASON? names.
 : REFUSAL-UNCHECKABLE? ( -- bool )
    REFUSAL@ {: k:n :}
    k RF-UNCHECKABLE =  k RF-REASON = MDIAG @ UNCK-REASON? and  or ;
@@ -19604,8 +19499,8 @@ CHECKER-REG:}SCRATCH
    id rec !  term rec CELL + !
    OWNB-N @ 1+ OWNB-N ! ;
 
-\ Records the block part of every quotation in type or row t, at any depth, as
-\ KEEP-QUOTS* walks one. Run while E-BUILD-EFFECT's variable map holds.
+\ Records the block part of every quotation in type or row t, at any depth.
+\ Run while E-BUILD-EFFECT's variable map holds.
 : OWN-BLOCKS* ( n -- ) {: t:n :}
    t 0= IF EXIT THEN
    t R-RES dup TAG S-PUSH = IF
@@ -19632,13 +19527,13 @@ CHECKER-REG:}SCRATCH
    THEN ;
 
 \ The block variables of the declared rows' quotations, which the body's walk
-\ constrains and a RECURSE instance shares (OWNB-SHARE).
+\ constrains and a RECURSE instance shares.
 : OWN-BLOCKS ( -- )
    TWALK-RESET SGIN @ OWN-BLOCKS*  SGOUT @ OWN-BLOCKS*
    SGHASR @ IF SGRIN @ OWN-BLOCKS*  SGROUT @ OWN-BLOCKS* THEN ;
 
 \ The instance E-INST-RESET opened takes the signature's own block variables in
-\ place of fresh ones (E-I-TV answers a filled slot).
+\ place of fresh ones.
 : OWNB-SHARE ( -- )
    0 BEGIN dup OWNB-N @ < WHILE
       dup 2 * cells OWNB-P @ + dup CELL + @ swap @ cells EI-TV + !
