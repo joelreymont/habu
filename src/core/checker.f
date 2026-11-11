@@ -33483,11 +33483,13 @@ public
 
 : PRIM-ATOM ( n -- ) PE-SPEC-ATOM ;
 
-\ Closes the open row with its trusted-only and fixed-ABI flags and its stow
-\ kind. A symbol the prefix holds, a grammar word's, states nothing.
-: PRIM-CLOSE ( bool bool n -- ) {: trusted:bool fixed:bool stow:n :}
+\ Closes the open row on pkg's private symbol (CLOSE-PRIVATE), or the global one for an empty
+\ pkg, with its flags and stow kind; a symbol the prefix holds, a grammar word's, states nothing.
+: PRIM-CLOSE ( ptr u8 n bool bool n -- )
+   {: pkg:ptr pkgu:n trusted:bool fixed:bool stow:n :}
    PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" 76 die THEN
-   PE-NA@ PE-NU @ PE-SYM-OF {: sym:n :}
+   pkgu 0= IF  PE-NA@ PE-NU @ PE-SYM-OF
+   ELSE  pkg pkgu SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN  THEN {: sym:n :}
    sym BUILD-SYM-END @ < IF  -1 PE-LAST !  EXIT  THEN
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @ sym 0 READ-ROW
    trusted IF PRIM-TRUSTED-ONLY! THEN

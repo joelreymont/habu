@@ -227,10 +227,9 @@ variable ALIASES-N
 DYNAMIC-BUFFER HOST-ADDRS n          \ its data address sites
 variable HOST-ADDRS-N
 
-\ The owned primitives' records the open lays (OWNED-RECORDS), gathered before MOVE-IN: per
-\ prims.f package row, OWNED-CELLS cells: the row, hb's record of the primitive, then its
-\ facts text's offset in OWNED-TEXT and length.
-4 constant OWNED-CELLS
+\ The owned primitives' records the open lays (OWNED-RECORDS), OWNED-CELLS cells each: hb's
+\ kernel record's index, then the offset in OWNED-TEXT and length of its package, name and facts text.
+7 constant OWNED-CELLS
 DYNAMIC-BUFFER OWNED n
 variable OWNED-N
 DYNAMIC-BUFFER OWNED-TEXT u8
@@ -4908,7 +4907,7 @@ variable DUE-MADE
 \ package the open made (interpreter.f PKG-ENSURE).
 
 \ hb's own record of owned primitive row k in its package's private wordlist, which an hb a build
-\ wrote holds; else NULL-PTR.
+\ wrote holds; else NULL-PTR. Only a build that states no object, which reads no tree rows, uses it.
 : HB-OWNED ( n -- ptr n )
    {: k:n :}
    k PRIM-SPEC:PKG$ BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
@@ -4917,39 +4916,57 @@ variable DUE-MADE
    wid 0= if XREF-NULL exit then
    k PRIM-SPEC:NAME$ wid CHECKER-RESOLVE:WL-PROBE ;
 
-\ Row k, hb's kernel record of its primitive and the facts text hb's checker gives it, copied:
-\ a rendered text lies in a buffer the next render reuses. A primitive no text says would leave
-\ its package's calls unchecked in the program the build writes, so the open fails.
-: OWNED+ ( n -- )
-   {: k:n :}
-   k PRIM-SPEC:NAME$ WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: src:ptr :}
-   src XREF-FOUND? 0= if E-COMP-STATE throw then
-   k HB-OWNED  k PRIM-SPEC:PKG$  k PRIM-SPEC:NAME$  CHECK:OWNED-FACTS {: a:ptr u:n :}
-   u 0= if
-      s" linker: no facts text says owned primitive " SAY
-      k PRIM-SPEC:PKG$ SAY  s" :" SAY  k PRIM-SPEC:NAME$ SAY  SAY-CR
-      E-COMP-STATE throw
-   then
+: OWNED-COPY ( ptr u8 n -- n n )
+   {: a:ptr u:n :}
    OWNED-TEXT-N @ {: off:n :}
    off u + OWNED-TEXT-RESERVE
    a  off OWNED-TEXT  u BYTE-COPY
    off u + OWNED-TEXT-N !
+   off u ;
+
+\ Gathers package pa pu's primitive na nu: hb's kernel record of it, and copies of both names and of the facts text
+\ CHECK:OWNED-FACTS gives (rec's, else the current rows'). With no text its calls would go unchecked: the open fails.
+: OWNED+ ( ptr n ptr u8 n ptr u8 n -- )
+   {: rec:ptr pa:ptr pu:n na:ptr nu:n :}
+   na nu WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: src:ptr :}
+   src XREF-FOUND? 0= if
+      s" linker: hb has no primitive " SAY  na nu SAY
+      s" , which an owned row of " SAY  pa pu SAY  s"  names" SAY  SAY-CR
+      E-COMP-STATE throw
+   then
+   rec pa pu na nu CHECK:OWNED-FACTS {: a:ptr u:n :}
+   u 0= if
+      s" linker: no facts text says owned primitive " SAY
+      pa pu SAY  s" :" SAY  na nu SAY  SAY-CR
+      E-COMP-STATE throw
+   then
    OWNED-N @ OWNED-CELLS * {: at:n :}
    at OWNED-CELLS + OWNED-RESERVE
-   k at OWNED !
-   src CHECKER-RESOLVE:REC>INDEX  at 1 + OWNED !
-   off at 2 + OWNED !
-   u at 3 + OWNED !
+   src CHECKER-RESOLVE:REC>INDEX  at OWNED !
+   pa pu OWNED-COPY  at 2 + OWNED !  at 1 + OWNED !
+   na nu OWNED-COPY  at 4 + OWNED !  at 3 + OWNED !
+   a u OWNED-COPY  at 6 + OWNED !  at 5 + OWNED !
    1 OWNED-N +! ;
 
-\ Before MOVE-IN, while hb's namespace and checker stores are current.
+\ A build that links the object ARM64:READ read types the kernel's primitives by
+\ its rows; a kernel build and a Wasm target's link no arm64 object. WASM? needs the shadow open.
+: STATES-PRIMS? ( -- bool ) KERNEL? @ 0=  ARM64:READ? and  WASM? 0= and ;
+
+\ Before MOVE-IN, while hb's namespace and checker stores are current: a build that states no
+\ object types its owned primitives by hb's rows and records.
 : OWNED-TEXTS ( -- )
    0 OWNED-N !  0 OWNED-TEXT-N !
+   STATES-PRIMS? if exit then
    PRIM-SPEC:COUNT 0 ?do
-      i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if i OWNED+ then
+      i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if
+         i HB-OWNED  i PRIM-SPEC:PKG$  i PRIM-SPEC:NAME$  OWNED+
+      then
    loop ;
 
 : OWNED@ ( n n -- n ) {: r:n f:n :} r OWNED-CELLS * f + OWNED @ ;
+
+\ Owned row r's text at field f: its offset, then its length.
+: OWNED$ ( n n -- ptr u8 n ) {: r:n f:n :} r f OWNED@ OWNED-TEXT  r f 1 + OWNED@ ;
 
 \ Package a u's build record, made with its private wordlist when no earlier row made it.
 : OWNER ( ptr u8 n -- ptr n )
@@ -4962,22 +4979,21 @@ variable DUE-MADE
 \ and hb's record's immediate, wide and minimum-input bits, the ones alias-record keeps.
 : MAKE-OWNED ( n -- )
    {: r:n :}
-   r 0 OWNED@ {: k:n :}
-   r 1 OWNED@ XREF-REC {: src:ptr :}
-   k PRIM-SPEC:PKG$ OWNER XREF-PKG-PRIVATE {: wid:n :}
+   r 0 OWNED@ XREF-REC {: src:ptr :}
+   r 1 OWNED$ OWNER XREF-PKG-PRIVATE {: wid:n :}
    ndict@ {: want:n :}
-   k PRIM-SPEC:NAME$ wid 0 OUTER:DEF-RECORD
+   r 3 OWNED$ wid 0 OUTER:DEF-RECORD
    src XREF-START  src XREF-RAW-LEN  NPUB:IMPORT-ENTRY  want <> if E-COMP-STATE throw then
    OUTER:DEF-CLOSE
    src XREF-FLAGS  DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or  and  want SET-FLAGS
-   r 2 OWNED@ OWNED-TEXT  r 3 OWNED@  want CHECK:FACTS! ;
+   r 5 OWNED$  want CHECK:FACTS! ;
 
 \ MAKE-OWNED; a throw drops the open definition and passes on, failing the open.
 : LINK-OWNED ( n -- )
    [: dup MAKE-OWNED ;] catch {: r:n rc:n :}
    rc 0<> if OUTER:DEF-ABORT rc throw then ;
 
-\ After IMAGE-IN, the open's records as BUILT row 0, laid before any file as header data: key the empty path's, which no
+\ After IMAGE-IN, the records OWNED+ gathered as BUILT row 0, laid before any file as header data: key the empty path's, which no
 \ load has; piece 0 at time 0, its content following from hb, whose stamp names the objects' dir (BUILD-OUT:OBJ$).
 : OWNED-RECORDS ( -- )
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !  false HOLDS-HEADER !
@@ -4988,19 +5004,17 @@ variable DUE-MADE
    here NULL-PTR - dup FILE-DP !  FILE-END !
    0 EXTS-N !  0 BUILT+ ;
 
-\ A build that links the object ARM64:READ read types the kernel's primitives by
-\ its rows; a kernel build and a Wasm target's link no arm64 object.
+\ The object's rows, then its owned primitives' texts, which those rows render.
 : PRIMS-IN ( -- )
-   KERNEL? @ if exit then
-   ARM64:READ? 0= if exit then
-   WASM? if exit then
-   ARM64:STATE-PRIMS ;
+   STATES-PRIMS? 0= if exit then
+   ARM64:STATE-PRIMS
+   ARM64:OWNED-N 0 ?do  XREF-NULL  i ARM64:OWNED-PKG$  i ARM64:OWNED-NAME$  OWNED+  loop ;
 
+\ OWNED-TEXTS runs once the shadow is open (STATES-PRIMS?) and before MOVE-IN replaces hb's namespace.
 : OPEN ( -- )
    0 COMPILED-N !  0 LINKED-N !
    INSTALL-LOOP
-   OWNED-TEXTS
-   MAP SHADOW MOVE-IN CHECK-IN PRIMS-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN
+   MAP SHADOW OWNED-TEXTS MOVE-IN CHECK-IN PRIMS-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN
    OWNED-RECORDS
    here NULL-PTR - OPEN-DP !
    TASKS-LIVE-CELL HOST@ OPEN-TASKS ! ;

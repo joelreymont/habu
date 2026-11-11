@@ -100,7 +100,11 @@ below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 
 A build types the primitives by the tree's kernel object, not by the running
 hb's rows (src/arch/arm64/link-kernel.f STATE-PRIMS), so an engine carries the
-facts of a primitive its tree adds after one build. The running hb's no-return
+facts of a primitive its tree adds after one build. A primitive with a package
+row is the exception: the link takes its record from the running hb's kernel
+(src/habu/linker.f OWNED+), so hb must hold the primitive before the tree gives
+it a package row, or the build stops with `linker: hb has no primitive <name>,
+which an owned row of <pkg> names`. The running hb's no-return
 axioms each name a primitive (src/core/checker.f NORET-AXIOMS): a tree that
 drops one needs a stage that drops the axiom first, or the build stops with
 `checker: the kernel object has no row for <name>, which a no-return axiom

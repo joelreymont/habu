@@ -60,6 +60,8 @@ variable PRESETS-AT
 variable PRESETS-N
 variable CHECK-ROWS-AT               \ the checker rows' bytes in KOBJ
 variable CHECK-ROWS-U
+DYNAMIC-BUFFER OWNED-AT n            \ each package-private row's package, then name: offset in KOBJ, length
+variable OWNED-ROWS
 SHA256-CTX-BYTES BUFFER: SHA-CTX
 32 BUFFER: SUM
 PATH-CAP BUFFER: PATH                \ READ's path, for its error lines
@@ -156,23 +158,33 @@ variable PATH-U
    u SKIP
    0 KOBJ at +  u ;
 
-\ One row as kernel-object.f CHECK-ROW+ lays it, stated by kind (PRIM-SPEC:K-*);
-\ a package's private row is its owner's record's (linker.f OWNED-TEXTS).
+\ One row as kernel-object.f CHECK-ROW+ lays it, stated by kind (PRIM-SPEC:K-*): a package's
+\ private row on its package's private symbol, kept for the record linker.f OWNED+ lays of it.
 : STATE-ROW ( -- )
    NEXT NEXT NEXT NEXT {: kind:n trusted:n fixed:n stow:n :}
+   AT @ 8 + {: name-at:n :}
    NAME-NEXT {: name:ptr nameu:n :}
-   NAME-NEXT 2drop
+   AT @ 8 + {: pkg-at:n :}
+   NAME-NEXT {: pkg:ptr pkgu:n :}
    NEXT {: atoms:n :}
    atoms 0<  atoms KOBJ-U @ > or if BAD then
-   kind PRIM-SPEC:K-PRIM = if
+   kind PRIM-SPEC:K-PKG-PRIVATE = {: owned:bool :}
+   owned if
+      OWNED-ROWS @ 4 * {: o:n :}
+      o 4 + OWNED-AT-RESERVE
+      pkg-at o OWNED-AT !  pkgu o 1 + OWNED-AT !
+      name-at o 2 + OWNED-AT !  nameu o 3 + OWNED-AT !
+      1 OWNED-ROWS +!
+   then
+   kind PRIM-SPEC:K-PRIM =  owned or if
       name nameu CHECK:PRIM-OPEN
       atoms 0 ?do NEXT CHECK:PRIM-ATOM loop
-      trusted 0<>  fixed 0<>  stow CHECK:PRIM-CLOSE
+      pkg  pkgu  trusted 0<>  fixed 0<>  stow CHECK:PRIM-CLOSE
       exit
    then
    atoms 8 * SKIP
    kind PRIM-SPEC:K-ELAB = if name nameu CHECK:PRIM-NAME exit then
-   kind PRIM-SPEC:K-UNROWED =  kind PRIM-SPEC:K-PKG-PRIVATE = or if exit then
+   kind PRIM-SPEC:K-UNROWED = if exit then
    BAD ;
 
 
@@ -215,6 +227,11 @@ public
    PRIM-AT @ 24 + {: at:n :}
    0 KOBJ at 8 + +  at KOBJ@ ;
 
+\ The package-private rows STATE-PRIMS stated: row k's package and name.
+: OWNED-N ( -- n ) OWNED-ROWS @ ;
+: OWNED-PKG$ ( n -- ptr u8 n ) 4 * {: o:n :}  0 KOBJ o OWNED-AT @ +  o 1 + OWNED-AT @ ;
+: OWNED-NAME$ ( n -- ptr u8 n ) 4 * {: o:n :}  0 KOBJ o 2 + OWNED-AT @ +  o 3 + OWNED-AT @ ;
+
 \ The label of the chain holding the entry scope-kind? answers kind k for, k
 \ from 2 to 8.
 : SCOPE-SITE ( n -- label )
@@ -254,6 +271,7 @@ public
    CHECK-ROWS-AT @ CHECK-ROWS-U @ + {: end:n :}
    NEXT {: count:n :}
    count 0<  count KOBJ-U @ > or if BAD then
+   0 OWNED-ROWS !
    count 0 ?do STATE-ROW loop
    AT @ end <> if BAD then
    CHECK:PRIMS-END ;
