@@ -193,6 +193,7 @@ STRUCTURE tokens DERIVE addr
    FIELD seen bool
    FIELD input option<n>
    FIELD cached option<n>
+   FIELD written option<n>
    FIELD output option<n>
    FIELD reasoning option<n>
 ;STRUCTURE
@@ -744,6 +745,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    false t TOKENS-SEEN !
    OPTION:NONE t TOKENS-INPUT !
    OPTION:NONE t TOKENS-CACHED !
+   OPTION:NONE t TOKENS-WRITTEN !
    OPTION:NONE t TOKENS-OUTPUT !
    OPTION:NONE t TOKENS-REASONING ! ;
 
@@ -2558,6 +2560,8 @@ private
    a u c s" output_tokens" USAGE-AT c TOKENS TOKENS-OUTPUT !
    a u c s" input_tokens_details" s" cached_tokens" DETAIL-AT
    c TOKENS TOKENS-CACHED !
+   a u c s" input_tokens_details" s" cache_write_tokens" DETAIL-AT
+   c TOKENS TOKENS-WRITTEN !
    a u c s" output_tokens_details" s" reasoning_tokens" DETAIL-AT
    c TOKENS TOKENS-REASONING ! ;
 
@@ -3253,6 +3257,7 @@ ENUM poll none fed spoiled done ;ENUM
    ;MATCH JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" input_tokens" c TOKENS TOKENS-INPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
+   JSON:WRITE-COMMA s" cache_write_tokens" c TOKENS TOKENS-WRITTEN @ COUNT-FIELD
    JSON:WRITE-COMMA s" output_tokens" c TOKENS TOKENS-OUTPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" reasoning_tokens" c TOKENS TOKENS-REASONING @ COUNT-FIELD
    JSON:WRITE-OBJECT-END ;
@@ -3386,6 +3391,7 @@ ENUM poll none fed spoiled done ;ENUM
    JSON:WRITE-FIELD-INT
    JSON:WRITE-COMMA s" input_tokens" c TOKENS TOKENS-INPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
+   JSON:WRITE-COMMA s" cache_write_tokens" c TOKENS TOKENS-WRITTEN @ COUNT-FIELD
    JSON:WRITE-COMMA s" output_tokens" c TOKENS TOKENS-OUTPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" reasoning_tokens" c TOKENS TOKENS-REASONING @ COUNT-FIELD
    JSON:WRITE-OBJECT-END drop

@@ -453,7 +453,7 @@ $300000 constant BIG-U
 
 \ A reply's usage member, its fixed counts, after a member before it.
 : FIXED-USAGE ( ptr JSON:writer -- ptr JSON:writer )
-   S\" ,\qusage\q:{\qinput_tokens\q:11,\qinput_tokens_details\q:{\qcached_tokens\q:4},\qoutput_tokens\q:6,\qoutput_tokens_details\q:{\qreasoning_tokens\q:2},\qtotal_tokens\q:17}" JSON:WRITE-RAW ;
+   S\" ,\qusage\q:{\qinput_tokens\q:11,\qinput_tokens_details\q:{\qcached_tokens\q:4,\qcache_write_tokens\q:3},\qoutput_tokens\q:6,\qoutput_tokens_details\q:{\qreasoning_tokens\q:2},\qtotal_tokens\q:17}" JSON:WRITE-RAW ;
 
 
 : USAGE-RESPONSE ( ptr JSON:writer -- ptr JSON:writer )
@@ -2243,6 +2243,7 @@ variable PAUSED-ROWS
    s" incomplete_reason" ROW NULL-IS
    s" input_tokens" ROW 11 INT-IS
    s" cached_tokens" ROW 4 INT-IS
+   s" cache_write_tokens" ROW 3 INT-IS
    s" output_tokens" ROW 6 INT-IS
    s" reasoning_tokens" ROW 2 INT-IS
    s" prefix_hash" ROW HASH 64 JSON:READ-STR 64 = ASSERT JSON:READ-CLOSE
@@ -2251,6 +2252,7 @@ variable PAUSED-ROWS
    s" model" USAGE s" test-generation" STR-IS
    s" input_tokens" USAGE 11 INT-IS
    s" cached_tokens" USAGE 4 INT-IS
+   s" cache_write_tokens" USAGE 3 INT-IS
    s" output_tokens" USAGE 6 INT-IS
    s" reasoning_tokens" USAGE 2 INT-IS
    s" usage" MODEL:E-STATE FAILS
@@ -2281,6 +2283,7 @@ variable PAUSED-ROWS
    s" model" USAGE s" test-embedding" STR-IS
    s" input_tokens" USAGE 2 INT-IS
    s" cached_tokens" USAGE NULL-IS
+   s" cache_write_tokens" USAGE NULL-IS
    s" output_tokens" USAGE NULL-IS
    s" reasoning_tokens" USAGE NULL-IS
    s" Read other evidence." M MODEL:SYSTEM!
