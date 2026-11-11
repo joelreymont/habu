@@ -923,9 +923,10 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
       LINKER:WITH ;]
    catch RESULT ;
 
-\ s.f with NOTE's and ALPHA's strings, the word whose string table entry 0 points at, and the size it stores.
-: STORES-S! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: note:ptr noteu:n alpha:ptr alphau:n entry:ptr entryu:n size:ptr sizeu:n :}
+\ s.f with NOTE's and ALPHA's strings, the word whose string table entry 0 points at, the size it stores and the
+\ literal the quotation it stores in HOOK answers.
+: STORES-S! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: note:ptr noteu:n alpha:ptr alphau:n entry:ptr entryu:n size:ptr sizeu:n lit:ptr litu:n :}
    STORES-S$ s\" package FILE-OBJECTS-STORES-S public\n: NOTE ( -- ptr u8 n ) s\" " FS:WRITE-ALL
    STORES-S$ note noteu FS:APPEND-FILE
    STORES-S$ s\" \" ;\n: ALPHA ( -- ptr u8 n ) s\" " FS:APPEND-FILE
@@ -937,30 +938,59 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
    FS:APPEND-FILE
    STORES-S$ s" FILE-OBJECTS-STORES-S:T FILE-OBJECTS-STORES:TABLE !  " FS:APPEND-FILE
    STORES-S$ size sizeu FS:APPEND-FILE
-   STORES-S$ s\"  FILE-OBJECTS-STORES:SIZE !\n" FS:APPEND-FILE ;
+   STORES-S$ s\"  FILE-OBJECTS-STORES:SIZE !\n: INSTALL ( -- ) [: " FS:APPEND-FILE
+   STORES-S$ lit litu FS:APPEND-FILE
+   STORES-S$ s\"  ;] FILE-OBJECTS-STORES:HOOK xt! ;\nINSTALL\n" FS:APPEND-FILE ;
 
-\ A file that reads data another file stored into depends on what that file stored, not on its whole piece: s.f
-\ stores h.f's TABLE and SIZE, and r.f reads them. NOTE's edit compiles s.f alone; entry 0's new string, a new SIZE
-\ and new bytes in entry 0's string each compile r.f too. The cold build compiles pointer-storage.f as well.
+\ r.f reads h.f's TABLE, SIZE and HOOK, which s.f stores: NOTE's edit compiles s.f alone, and a new entry 0, SIZE, entry
+\ 0 string's bytes or code in HOOK's quotation each compile r.f too. The cold build compiles pointer-storage.f as well.
 : BY-STORES ( -- )
    s" stores" DIR$ FS:MAKE-DIR
-   STORES-H$ s\" package FILE-OBJECTS-STORES public PERSISTED-PTR-U8-TABLE-VARIABLE TABLE variable SIZE ;package\n"
+   STORES-H$ s\" package FILE-OBJECTS-STORES public PERSISTED-PTR-U8-TABLE-VARIABLE TABLE variable SIZE variable HOOK ;package\n"
    FS:WRITE-ALL
-   s" note" s" alpha" s" ALPHA" s" 2" STORES-S!
-   STORES-R$ s\" package FILE-OBJECTS-STORES-R public\nFILE-OBJECTS-STORES:SIZE @ constant N\nFILE-OBJECTS-STORES:TABLE @ 0 ptr-field @ c@ constant C\n;package\n"
+   s" note" s" alpha" s" ALPHA" s" 2" s" 42" STORES-S!
+   STORES-R$ s\" package FILE-OBJECTS-STORES-R\nCAST: XT ( n -- [ -- n ] )\npublic\nFILE-OBJECTS-STORES:SIZE @ constant N\nFILE-OBJECTS-STORES:TABLE @ 0 ptr-field @ c@ constant C\nFILE-OBJECTS-STORES:HOOK @ XT execute constant Q\n;package\n"
    FS:WRITE-ALL
    STORES-BUILD {: one:n :}
-   s" nota" s" alpha" s" ALPHA" s" 2" STORES-S!
+   s" nota" s" alpha" s" ALPHA" s" 2" s" 42" STORES-S!
    STORES-BUILD {: two:n :}
-   s" nota" s" alpha" s" BETA" s" 2" STORES-S!
+   s" nota" s" alpha" s" BETA" s" 2" s" 42" STORES-S!
    STORES-BUILD {: three:n :}
-   s" nota" s" alpha" s" BETA" s" 3" STORES-S!
+   s" nota" s" alpha" s" BETA" s" 3" s" 42" STORES-S!
    STORES-BUILD {: four:n :}
-   s" nota" s" olpha" s" ALPHA" s" 3" STORES-S!
+   s" nota" s" olpha" s" ALPHA" s" 3" s" 42" STORES-S!
    STORES-BUILD {: five:n :}
    STORES-BUILD {: six:n :}
+   s" nota" s" olpha" s" ALPHA" s" 3" s" 43" STORES-S!
+   STORES-BUILD {: seven:n :}
    s" stores: compiled " one two three RESULTS.
-   space four FMT:.INT  space five FMT:.INT  space six FMT:.INT cr ;
+   space four FMT:.INT  space five FMT:.INT  space six FMT:.INT  space seven FMT:.INT cr ;
+
+\ ---- a piece that gains a store into reached data ----
+: GAIN-H$ ( -- ptr u8 n ) s" gain" s" h.f" FIRST-BUF FILE-IN ;
+: GAIN-S$ ( -- ptr u8 n ) s" gain" s" s.f" SECOND-BUF FILE-IN ;
+: GAIN-R$ ( -- ptr u8 n ) s" gain" s" r.f" THIRD-BUF FILE-IN ;
+
+: GAIN-BUILD ( -- n )
+   [: s" app" RTARGET:HOST-TARGET [: GAIN-H$ included  GAIN-S$ included  GAIN-R$ included ;] LINKER:WITH ;]
+   catch RESULT ;
+
+\ A file that reached a piece's data depends on that piece's stores once it stores into data the file reads: r.f
+\ reads h.f's SLOT and s.f's SEEN, and adding or dropping s.f's store into SLOT compiles s.f and r.f.
+: BY-GAIN ( -- )
+   s" gain" DIR$ FS:MAKE-DIR
+   GAIN-H$ s\" package FILE-OBJECTS-GAIN public variable SLOT ;package\n" FS:WRITE-ALL
+   GAIN-S$ s\" package FILE-OBJECTS-GAIN-S public variable SEEN ;package\n7 FILE-OBJECTS-GAIN-S:SEEN !\n" FS:WRITE-ALL
+   GAIN-R$ s\" package FILE-OBJECTS-GAIN-R public FILE-OBJECTS-GAIN:SLOT @ constant A FILE-OBJECTS-GAIN-S:SEEN @ constant B ;package\n"
+   FS:WRITE-ALL
+   GAIN-BUILD {: one:n :}
+   GAIN-S$ s\" package FILE-OBJECTS-GAIN-S public variable SEEN ;package\n7 FILE-OBJECTS-GAIN-S:SEEN !\n9 FILE-OBJECTS-GAIN:SLOT !\n"
+   FS:WRITE-ALL
+   GAIN-BUILD {: two:n :}
+   GAIN-S$ s\" package FILE-OBJECTS-GAIN-S public variable SEEN ;package\n7 FILE-OBJECTS-GAIN-S:SEEN !\n" FS:WRITE-ALL
+   GAIN-BUILD {: three:n :}
+   GAIN-BUILD {: four:n :}
+   s" gain: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
 : STOPS ( -- )
    s" app" RTARGET:HOST-TARGET [: STOP-FILE ;] LINKER:WITH
@@ -973,7 +1003,7 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
    MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD BY-RUN
-   BY-STORES
+   BY-STORES BY-GAIN
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----

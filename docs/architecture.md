@@ -219,8 +219,9 @@ each is in the build with the time the part's object recorded:
 - a part that changes a record an earlier part made, which counts as defining
   that record's name;
 - when it ran an earlier word while it compiled, every word that word's code
-  reaches, every stretch of data it reaches and every part that stored into
-  that data, those loading in the order they did then;
+  reaches, every stretch of data it reaches and what every part stored into
+  that data, which carries its own time, those parts loading in the order they
+  did then;
 - the source root it starts in, each root its compile looked up and each
   environment variable it read, which must answer as they did.
 

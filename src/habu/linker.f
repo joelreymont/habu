@@ -181,7 +181,7 @@ create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's sour
 create NAMED-RECS BUF:HDR-BYTES allot \ the records with a time the running scan hit, 8 bytes each, in hit order
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
 create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling part ran, 8 bytes each (RAN-RECORD)
-\ The object's REACHED: per piece whose data RAN-FILES+ reached, its FILES row and its stores time, 8 bytes each.
+\ The object's REACHED: per piece whose data or stores RAN-FILES+ reached, its FILES row and its stores time, 8 bytes each.
 create REACHED BUF:HDR-BYTES allot
 create PENDING-PATHS BUF:HDR-BYTES allot \ the paths the checked part's earlier acts provided, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
@@ -365,8 +365,8 @@ variable FILE-END                    \ here's distance as the piece ends
 \ reference written (DATA-REF+) or resolved (RESOLVE).
 TYPED-VARIABLE HOLDS-HEADER bool
 TYPED-VARIABLE UNDER-KNOWN bool     \ whether RESOLVE-UNDER's path under another root is known
-\ The running piece changes a record below FILE-REC (CHANGER+, FACT+): exactly the records PIECE-PLACE's
-\ `false LINK-FACTS` hands CHANGER+ (LINK-RETIRED, LINK-TEXT), which runs after COMPILED-TIME reads this.
+\ The running piece changes a record below FILE-REC (CHANGER+). FACT+ sets it too, for the records PIECE-PLACE's
+\ `false LINK-FACTS` hands CHANGER+ (LINK-RETIRED, LINK-TEXT) only after COMPILED-TIME reads this.
 TYPED-VARIABLE CHANGED-EARLIER bool
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
@@ -1260,9 +1260,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    loop ;
 
 
-\ The walk from RAN-RECS' records, after NAMED+; REACHED takes each WALKED piece's FILES row, then its stores time
-\ (BUILT-STORES) when its stores are reached, else 0; then -1 when header storers count. REACHED-CK runs before any
-\ piece the file requests is built.
+\ The walk from RAN-RECS' records, after NAMED+; REACHED takes each WALKED piece's FILES row and its stores time
+\ (BUILT-STORES), 0 unless its stores are reached, then -1 when header storers count; REACHED-CK reads it before requests.
 : RAN-FILES+ ( -- )
    REACHED BUF:CLEAR
    RAN-RECS BYTES$ nip 0= if exit then
@@ -2900,9 +2899,8 @@ variable RD-END
    BUILT-N 0 ?do i HITS @ 1 = if BAD then loop ;
 
 
-\ REACHED's u bytes, pairs of a FILES row and a stores time, then -1 (RAN-FILES+): bad unless each storer (STORERS)
-\ into reached data, or header data once the -1 is read, is reached, a stores time other than 0 is its BUILT row's,
-\ and rows run in build order: of two stores into a cell the later holds.
+\ REACHED's u bytes, (FILES row, stores time) pairs then -1 (RAN-FILES+), marked in WALKED as it marks: bad unless rows
+\ rise in build order, a stores time is 0 or its BUILT row's, and each storer into listed or header data has one not 0.
 : REACHED-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
@@ -2916,7 +2914,7 @@ variable RD-END
       row 0 >= if
          row last <= if BAD unloop exit then
          st 0<>  st  row BUILT-AT BUILT-STORES + LE:U64@  <>  and if BAD unloop exit then
-         1 row WALKED !  row
+         st 0<> if 3 else 1 then  row WALKED !  row
       else
          last
       then
@@ -2927,7 +2925,7 @@ variable RD-END
    STORERS-N @ 0 ?do
       i 2 * STORERS @ {: held:n :}
       held -1 = if header else held WALKED @ 0<> then if
-         i 2 * 1 + STORERS @ WALKED @ 0= if BAD then
+         i 2 * 1 + STORERS @ WALKED @ 2 and 0= if BAD then
       then
    loop ;
 
