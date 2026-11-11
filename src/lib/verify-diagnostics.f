@@ -133,8 +133,9 @@ public
    s" suggestion" sug sugu JSON:WRITE-FIELD-S
    END$ ;
 
-: THROW-RECORD$ ( n n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rc:n at:n name:ptr nameu:n src:ptr srcu:n :}
+\ WHY is the refusal's reason, written as "reason" unless it is empty.
+: THROW-RECORD$ ( n n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: rc:n at:n name:ptr nameu:n src:ptr srcu:n why:ptr whyu:n :}
    src at ORIGIN {: line:n col:n :}
    src srcu at TOKEN-END {: last:n :}
    rc THROW-CODE$ nip {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n msgu:n :}
@@ -143,6 +144,9 @@ public
    s" repair_class" class classu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" token" src at + last at - JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   whyu 0<> if
+      s" reason" why whyu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   then
    s" file" name nameu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" line" line JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    s" column" col JSON:WRITE-FIELD-U JSON:WRITE-COMMA
@@ -178,7 +182,7 @@ public
       VERIFY:SOURCE-COMPOSE-STOPPED$ VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$
       LEX-RECORD$ dup 0<> if exit then 2drop
       rc RC>N VERIFY:TOKEN-BYTE@ VERIFY:SOURCE-COMPOSE-STOPPED$
-      VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ THROW-RECORD$ exit
+      VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ s" " THROW-RECORD$ exit
    then
    rc RC>N E-DUP-DEFINITION = if
       VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ drop

@@ -420,18 +420,10 @@ variable CHK-NONAME-READY
    k 0< if NULL$ exit then
    k label labelu json CHK-NONAME-RECORD$ ;
 
-\ The record of what stopped a check with the given code, at the given byte of
-\ the given bytes of the file the label names, a packet when json, else a prose
-\ line, with no line feed, and whether it refuses the source by itself. A reader
-\ with no name after it is the missing-name record where it stands, a refusal.
-\ Any other throw out of a statement is the lexer's record of the file, when
-\ the lexer finds a defect there, for a code that record goes before
-\ (CHECK-ALL-ERRORS:LEX-FIRST?: an open string, row or locals group, a bad
-\ escape) and for a reader whose token the lexer reads into another one, a
-\ refusal; else the record --all-errors writes for a statement that throws, at
-\ the token that starts at that byte. Any other code has no record.
-: STOP-RECORD$ ( n n ptr u8 n ptr u8 n bool -- ptr u8 n bool )
-   {: rc:n at:n label:ptr labelu:n src:ptr srcu:n json:bool :}
+\ The record of a stop at byte AT of SRC, the file LABEL names: a packet when
+\ JSON, else prose, with no line feed, and whether it refuses the source itself.
+: STOP-RECORD$ ( n n ptr u8 n ptr u8 n ptr u8 n bool -- ptr u8 n bool )
+   {: rc:n at:n label:ptr labelu:n src:ptr srcu:n why:ptr whyu:n json:bool :}
    rc VERIFY:E-MISSING-NAME = if
       at label labelu src srcu json CHK-NONAME-AT$
       dup 0<> if true exit then
@@ -449,7 +441,7 @@ variable CHK-NONAME-READY
       2drop
    then
    json if
-      rc at label labelu src srcu VERIFY-DIAGNOSTICS:THROW-RECORD$
+      rc at label labelu src srcu why whyu VERIFY-DIAGNOSTICS:THROW-RECORD$
    else
       rc at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$
    then
@@ -679,7 +671,7 @@ variable VFY-TARGET-U
 
 : VFY-STOP-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: label:ptr labelu:n src:ptr srcu:n :}
-   VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu true STOP-RECORD$ drop ;
+   VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu s" " true STOP-RECORD$ drop ;
 
 
 TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the check

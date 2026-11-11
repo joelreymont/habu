@@ -546,10 +546,9 @@ private
    subj if CHK-SOURCE-BYTES exit then
    a u CHK-SRC-READ CHK-SRC-BUF swap ;
 
-\ What stopped the pre-pass or discovery with the given code, at the given byte
-\ of the given bytes of the file the label names, by its record in the run's
-\ mode (STOP-RECORD$): the check fails as a refusal when the record is one.
-: CHK-STOP-WRITE ( n n ptr u8 n ptr u8 n -- )
+\ Write the record of a pre-pass or discovery stop in the run's mode
+\ (STOP-RECORD$); the check fails as a refusal when the record is one.
+: CHK-STOP-WRITE ( n n ptr u8 n ptr u8 n ptr u8 n -- )
    CHK-JSON @ STOP-RECORD$ {: rec:ptr recu:n refusal:bool :}
    recu 0<> if rec recu CHK-ERR-LN then
    refusal if CHK-E-CHECK CHK-THROW then ;
@@ -563,7 +562,7 @@ private
 : CHK-DISC-STOPPED ( -- )
    CHK-DISC-ID @ {: id:n :}
    E-DISC-UNTERM DISCOVER:OPENER-AT id CHK-FILE-NAME$
-   id CHK-DEP$ id CHK-BYTES-ID @ = CHK-STOP-BYTES CHK-STOP-WRITE
+   id CHK-DEP$ id CHK-BYTES-ID @ = CHK-STOP-BYTES s" " CHK-STOP-WRITE
    CHK-E-CHECK CHK-THROW ;
 
 \ A closure the walk cannot follow fails the check as a refusal. Under
@@ -1087,7 +1086,7 @@ private
 \ refusal when the record is one; any other stop returns.
 : CHK-STOP-RECORD ( n -- ) {: rc:n :}
    rc CHECK-ALL-ERRORS:THREW? 0= if exit then
-   rc VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE CHK-STOP-WRITE ;
+   rc VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE s" " CHK-STOP-WRITE ;
 
 \ The checker reports nothing for a duplicate definition, so it is reported by
 \ the record --all-errors writes in the run's mode, naming the file that defined

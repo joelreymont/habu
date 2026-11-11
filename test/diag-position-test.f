@@ -772,7 +772,11 @@ variable RC
    s" E-BAD-DECLARATION" s" <a>" 1 9 8 11 REFUSED-MODES
    s" a duplicate VALUE-RECORD field under --verify-only" T-LABEL
    s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
-   s" E-BAD-RECORD-FIELD" s" fix_record_field" s" x" 1 21 20 21 PREPASS-REFUSED ;
+   s" E-BAD-RECORD-FIELD" s" fix_record_field" s" x" 1 21 20 21 PREPASS-REFUSED
+   s" a duplicate VALUE-RECORD field's reason under --all-errors" T-LABEL
+   s" --all-errors" CHECK
+   s" E-BAD-RECORD-FIELD" REJECTED-AS
+   0 s" reason" s" checker: duplicate value-record field" FIELD= ;
 
 \ A family declaration its file never closes is refused at the family's name.
 : TEST-PREPASS-OPEN ( -- )

@@ -78,8 +78,11 @@ variable SCAN-I
 variable SKIP-STRINGS
 variable FOUND
 variable TOKEN-START
-\ The stopped token survives scanner restoration after a nested file throws.
+\ The stopped token survives scanner restoration after a nested file throws,
+\ and so does the reason a declaration refusal keeps beside it (REASON$).
 variable TOKEN-BYTE
+PTR-VARIABLE REASON-A
+variable REASON-U
 PTR-VARIABLE TOKEN-A
 variable TOKEN-U
 variable BODY-U
@@ -246,7 +249,10 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    BASE-RESET
    SOURCE-U !
    SOURCE-A !
-   0 TOKEN-BYTE ! ;
+   0 TOKEN-BYTE !  0 REASON-U ! ;
+
+: REASON! ( ptr u8 n -- )
+   REASON-U !  REASON-A ! ;
 
 : SOURCE-AT! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
    a u SOURCE!
@@ -2515,7 +2521,7 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu TYPE-RESERVED? IF E-BAD-NOMINAL-TYPE throw THEN
+   name nameu TYPE-RESERVED? IF s" reserved name" REASON!  E-BAD-NOMINAL-TYPE throw THEN
    name nameu CHECKER-DEFLINEAR ;
 
 : VALUE-RECORD-END? ( ptr u8 n -- bool )
@@ -2893,15 +2899,18 @@ variable STG-TYPE-U
    {: row:n :}
    row 2 * 1 + BODY-ROW @  at +  row 2 * BODY-ROW @ -  BASE-BYTE @ + ;
 
-\ A refusal stops at the name, at the field the checker refuses, or, for a
-\ record with no field, at END-VALUE-RECORD, the token read last.
+\ A refusal stops at the name, at the field the checker refuses or, with no
+\ field, at END-VALUE-RECORD; a checker refusal's message is its reason.
 : VALUE-RECORD-ADD ( ptr u8 n n -- )
    {: name:ptr nameu:n byte:n :}
-   name nameu TYPE-RESERVED? IF byte TOKEN-BYTE !  E-BAD-NOMINAL-TYPE throw THEN
+   name nameu TYPE-RESERVED? IF
+      byte TOKEN-BYTE !  s" reserved name" REASON!  E-BAD-NOMINAL-TYPE throw
+   THEN
    name nameu BODY$ CHECKER-TRY-RECORD
    {: at:n msg:ptr msgu:n :}
    msgu 0= IF EXIT THEN
    at BODY-U @ < IF at BODY>BYTE TOKEN-BYTE ! THEN
+   msg msgu REASON!
    E-BAD-RECORD-FIELD throw ;
 
 \ A record the input ends inside is refused in the declaration packet, at its
@@ -4543,6 +4552,11 @@ public
 \ statement, where the statement stood.
 : TOKEN-BYTE@ ( -- n )
    TOKEN-BYTE @ ;
+
+\ Why the scan refused the declaration it stopped at with E-BAD-NOMINAL-TYPE or
+\ E-BAD-RECORD-FIELD, empty for any other stop.
+: REASON$ ( -- ptr u8 n )
+   REASON-A @ REASON-U @ ;
 
 \ The name of the definition the last scan stopped at because its scope
 \ already held it (ON-DUPLICATE): the byte where it starts, at the same base as
