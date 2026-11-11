@@ -6220,10 +6220,8 @@ variable RSH
 
 64 constant VREC-CAP-INIT       \ value-record table records (grows on demand)
 512 constant VREC-FIELD-INIT     \ field-node index pool (grows on demand)
-\ VREC-NODE-INIT sizes nine parallel node arrays (VRN-TAG plus VRN-A..VRN-H),
-\ 72 bytes of boot DP per node. The prefix's high-water is one node (the
-\ reserved id 0); the measured high-water over every checker suite is 64 nodes
-\ (test/engine-suite.f). 512 is 8x that; past it VREC-NODE-GROW doubles.
+\ Ten parallel node arrays (VRN-TAG, VRN-A..VRN-I; VRN-I a quotation's block part), 80 bytes a
+\ node. Measured high-water 64 nodes (test/engine-suite.f); past 512 VREC-NODE-GROW doubles.
 $200 constant VREC-NODE-INIT    \ instantiation nodes (grows on demand)
 \ Value-record name bytes. Measured high-water: 0 in the prefix, 189 bytes over
 \ every checker suite (test/engine-suite.f). $2000 is 43x that mark.
@@ -6256,13 +6254,14 @@ create VRN-E-BOOT VREC-NODE-INIT cells allot
 create VRN-F-BOOT VREC-NODE-INIT cells allot
 create VRN-G-BOOT VREC-NODE-INIT cells allot
 create VRN-H-BOOT VREC-NODE-INIT cells allot
+create VRN-I-BOOT VREC-NODE-INIT cells allot
 create VREC-STR-BOOT VREC-STR-INIT allot
 PERSISTED-PTR-VARIABLE VREC-NAME-A-P   PERSISTED-PTR-VARIABLE VREC-NAME-U-P   PERSISTED-PTR-VARIABLE VREC-START-P
 PERSISTED-PTR-VARIABLE VREC-COUNT-P    PERSISTED-PTR-VARIABLE VREC-TVN-P      PERSISTED-PTR-VARIABLE VREC-RVN-P
 PERSISTED-PTR-VARIABLE VREC-FIELDS-P
 PERSISTED-PTR-VARIABLE VRN-TAG-P   PERSISTED-PTR-VARIABLE VRN-A-P   PERSISTED-PTR-VARIABLE VRN-B-P   PERSISTED-PTR-VARIABLE VRN-C-P
 PERSISTED-PTR-VARIABLE VRN-D-P     PERSISTED-PTR-VARIABLE VRN-E-P   PERSISTED-PTR-VARIABLE VRN-F-P   PERSISTED-PTR-VARIABLE VRN-G-P
-PERSISTED-PTR-VARIABLE VRN-H-P     PERSISTED-PTR-VARIABLE VREC-STR-P
+PERSISTED-PTR-VARIABLE VRN-H-P     PERSISTED-PTR-VARIABLE VRN-I-P   PERSISTED-PTR-VARIABLE VREC-STR-P
 \ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
 PERSISTED-PTR-VARIABLE VREC-STR-HOME   variable VREC-STR-HOME-CAP
 
@@ -6274,6 +6273,7 @@ PERSISTED-PTR-VARIABLE VREC-STR-HOME   variable VREC-STR-HOME-CAP
    VRN-TAG-BOOT VRN-TAG-P !   VRN-A-BOOT VRN-A-P !   VRN-B-BOOT VRN-B-P !
    VRN-C-BOOT VRN-C-P !       VRN-D-BOOT VRN-D-P !   VRN-E-BOOT VRN-E-P !
    VRN-F-BOOT VRN-F-P !       VRN-G-BOOT VRN-G-P !   VRN-H-BOOT VRN-H-P !
+   VRN-I-BOOT VRN-I-P !
    VREC-STR-BOOT VREC-STR-P !
    VREC-STR-BOOT VREC-STR-HOME !   VREC-STR-INIT VREC-STR-HOME-CAP ! ;
 VREC-ARENA-BOOT
@@ -6289,6 +6289,7 @@ VREC-ARENA-BOOT
 : VRN-C ( -- ptr n ) VRN-C-P @ ;   : VRN-D ( -- ptr n ) VRN-D-P @ ;
 : VRN-E ( -- ptr n ) VRN-E-P @ ;   : VRN-F ( -- ptr n ) VRN-F-P @ ;
 : VRN-G ( -- ptr n ) VRN-G-P @ ;   : VRN-H ( -- ptr n ) VRN-H-P @ ;
+: VRN-I ( -- ptr n ) VRN-I-P @ ;
 : VREC-STR ( -- ptr u8 ) VREC-STR-P @ ;
 \ VRC-TV/VRC-RV/VRI-TV/VRI-RV are var-id maps in the growable TV arena (top).
 64 constant VRI-AK-INIT
@@ -6361,7 +6362,7 @@ variable VRC-RVN
    VRN-TAG-P ob nb CHECKER-REG:GROW
    VRN-A-P ob nb CHECKER-REG:GROW   VRN-B-P ob nb CHECKER-REG:GROW   VRN-C-P ob nb CHECKER-REG:GROW
    VRN-D-P ob nb CHECKER-REG:GROW   VRN-E-P ob nb CHECKER-REG:GROW   VRN-F-P ob nb CHECKER-REG:GROW
-   VRN-G-P ob nb CHECKER-REG:GROW   VRN-H-P ob nb CHECKER-REG:GROW
+   VRN-G-P ob nb CHECKER-REG:GROW   VRN-H-P ob nb CHECKER-REG:GROW   VRN-I-P ob nb CHECKER-REG:GROW
    nc VREC-NODE-CAP-V ! ;
 : VREC-NODE-ENSURE ( -- )
    VREC-NODE-N @ VREC-NODE-CAP-V @ < IF exit THEN
@@ -6433,6 +6434,7 @@ variable VRC-RVN
 : VN.F@ ( n -- n ) VRN-F VREC-NODE-SLOT @ ;
 : VN.G@ ( n -- n ) VRN-G VREC-NODE-SLOT @ ;
 : VN.H@ ( n -- n ) VRN-H VREC-NODE-SLOT @ ;
+: VN.I@ ( n -- n ) VRN-I VREC-NODE-SLOT @ ;
 : VN.TAG! ( n n -- ) VRN-TAG VREC-NODE-SLOT ! ;
 : VN.A! ( n n -- ) VRN-A VREC-NODE-SLOT ! ;
 : VN.B! ( n n -- ) VRN-B VREC-NODE-SLOT ! ;
@@ -6442,6 +6444,7 @@ variable VRC-RVN
 : VN.F! ( n n -- ) VRN-F VREC-NODE-SLOT ! ;
 : VN.G! ( n n -- ) VRN-G VREC-NODE-SLOT ! ;
 : VN.H! ( n n -- ) VRN-H VREC-NODE-SLOT ! ;
+: VN.I! ( n n -- ) VRN-I VREC-NODE-SLOT ! ;
 : VN>ARG ( n n -- n ) {: node:n i:n :}
    node VN.D@ i + cells VNARG + @ ;
 
@@ -6474,7 +6477,7 @@ variable VRC-RVN
    id 1 + VREC-NODE-N !
    tag id VN.TAG!
    0 id VN.A! 0 id VN.B! 0 id VN.C! 0 id VN.D!
-   0 id VN.E! 0 id VN.F! 0 id VN.G! 0 id VN.H!
+   0 id VN.E! 0 id VN.F! 0 id VN.G! 0 id VN.H! 0 id VN.I!
    id ;
 
 : VREC-FIELD@ ( n -- n ) {: idx:n :}
@@ -6508,6 +6511,7 @@ variable VRC-RVN
    VRN-C dn VREC-NODE-N @ ARENA-CELLS-ZERO    VRN-D dn VREC-NODE-N @ ARENA-CELLS-ZERO
    VRN-E dn VREC-NODE-N @ ARENA-CELLS-ZERO    VRN-F dn VREC-NODE-N @ ARENA-CELLS-ZERO
    VRN-G dn VREC-NODE-N @ ARENA-CELLS-ZERO    VRN-H dn VREC-NODE-N @ ARENA-CELLS-ZERO
+   VRN-I dn VREC-NODE-N @ ARENA-CELLS-ZERO
    VNARG an VNARG-N @ ARENA-CELLS-ZERO
    VREC-STR su +  VREC-STR-U @ su -  ARENA-ZERO
    rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U ! ;
@@ -6586,6 +6590,7 @@ variable VRC-RVN
          x VREC-RES Q>XDEAD Q-FLAG>N node VN.F!
          x VREC-RES Q>XDFIELD node VN.G!
          x VREC-RES Q>XRFIELD node VN.H!
+         x VREC-RES Q>BLOCK RECURSE node VN.I!
          node
       endof
       T-FORALL of
@@ -6700,6 +6705,7 @@ variable VRC-RVN
          node VN.D@ RECURSE
          MK-QUOT
          dup node VN.E@ 0 <> node VN.F@ 0 <> node VN.G@ node VN.H@ QX!
+         node VN.I@ RECURSE over Q-BLOCK!
       endof
       VR-FORALL of
          node VN.B@ RECURSE
@@ -17206,6 +17212,7 @@ CHECKER-REG:}SCRATCH
    VRN-F-P nb REG-PERSIST-BUF drop
    VRN-G-P nb REG-PERSIST-BUF drop
    VRN-H-P nb REG-PERSIST-BUF drop
+   VRN-I-P nb REG-PERSIST-BUF drop
    VNARG-P VNARG-CAP-V @ cells REG-PERSIST-BUF drop
    VREC-STR-P VREC-STR-HOME VREC-STR-HOME-CAP VREC-STR-U VREC-STR-CAP-V REG-POOL-PERSIST ;
 
