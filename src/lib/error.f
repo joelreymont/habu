@@ -775,54 +775,35 @@ require src/lib/prelude.f
 -8597 constant E-NUNIT-PROFILE  \ package state or relocation that this native artifact format cannot represent
 -8599 constant E-NUNIT-FILE     \ malformed or incompatible native package artifact
 
-\ Data-stack residency: -8610..-8619
-\
-\ A value the routine only hands on stays in the caller's data-stack slot it
-\ arrived in. The selector computes which slot holds which value and the
-\ allocation validator derives it AGAIN from the module; these are the second
-\ derivation's refusals. Whether the slot holds the value the program meant is
-\ the selector's; this validator does not check it.
-\
 \ Asking the running dictionary about a spelling: -8600..-8609
-\
-\ src/compiler/native/dict.f walks the engine's resolution order for a name and,
-\ for a data word or a constant, takes what the record it found leaves. Both
-\ refusals are the question having no answer.
 -8600 constant E-NDICT-NAME     \ a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent
 -8601 constant E-NDICT-VALUE    \ the word a spelling denoted did not leave exactly one value where it was entered, so it is not a word whose whole meaning is the value it pushes and what it left is not its answer
 -8602 constant E-NDICT-KIND     \ the record a spelling denoted carries no definer kind: it was not made by `constant`, `create` or `variable`, or a `does>` clause took that kind away from it, so entering it would run a body rather than collect a decided value
 
+\ Data-stack residency: -8610..-8619
+\
+\ A value the routine only hands on stays in the caller's data-stack slot it
+\ arrived in. The selector computes which slot holds which value and the allocation
+\ validator derives it AGAIN from the module; these are the second derivation's
+\ refusals. Whether the slot holds the value the program meant is the
+\ selector's; this validator does not check it.
 -8610 constant E-A64RAV-DRES    \ a data-stack slot published with no store in front of it that no path defines: an omitted store for a slot nothing ever wrote, one a call between the write and the publication destroyed, or a read of such a slot - and, fail-closed rather than reachable, a residency descent that was still moving after every cell of the map could have fallen as far as it can
 -8611 constant E-A64RAV-DKEEP   \ a data-stack access the emission had no reason to make: a store writing a slot that already holds that very value, a load of a slot whose value is already in a register, or a load whose result nothing reads
 
 \ Leaving a routine through its last callee: -8620..-8629
-\
-\ A routine whose final call hands back exactly what it hands back branches to
-\ the callee instead. The elaborator and the contract decide which routines, and
-\ src/compiler/native/select.f derives it again; this is the second
-\ derivation's refusal, about the SITE: NEFF refuses a contract declaring both a
-\ tail call and a destroyed link register, and
-\ src/compiler/native/regalloc-verify.f a module whose terminator and contract
-\ disagree.
 -8620 constant E-A64SEL-TAIL    \ a call the selector was told to leave through that it cannot: a value live across it, a callee whose arity is not this routine's own, a data-stack adjustment the branch would have had to carry, or a contract declaring a tail call over a module with no such site in it - and the other way round, a site built under a contract that declares an ordinary return
+\ Native publication, continued: -8621..-8623
 -8621 constant E-NPUB-RELOC   \ an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement
 -8622 constant E-NPUB-PENDING \ the pending record is not the unpublished slot the dictionary count points at
 -8623 constant E-NPUB-TARGET  \ a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are refused before anything about the record is asked
 
 \ Native emission and string storage: -8635..-8639
-\ A multiply-add with the zero register as addend encodes a different operation.
 -8635 constant E-A64EMIT-ADDEND  \ a multiply-add whose addend register is the zero register: that word is a plain multiply, so emitting one would encode a different operation
--8636 constant E-NSTR-CAP       \ a string literal body larger than one segment's arena (512 KB), or one a stripped link copies into its window's closed pool past the room that pool kept (src/habu/intern.f WINDOW-CLOSE): a pool opens another segment for any other body its last one cannot hold. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
+-8636 constant E-NSTR-CAP       \ a string literal body larger than one segment's arena (512 KB), or one a stripped link copies into its window's closed pool past the room that pool kept: a pool opens another segment for any other body its last one cannot hold. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
 -8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
--8638 constant E-INTERN-REWIND  \ a string interned while a build's data space is open after DP moved back inside it (src/habu/layout.f DPHW-CELL nonzero): a build does not go on once DP moves back inside its space (src/habu/linker.f GOING), so a text interned after that is refused (re-registered as the same (code, name) in src/habu/intern-table.f package INTERN, which compiles before src/lib/)
+-8638 constant E-INTERN-REWIND  \ a string interned while a build's data space is open after DP moved back inside it: a build does not go on once DP moves back inside its space, so a text interned after that is refused (re-registered as the same (code, name) in src/habu/intern-table.f package INTERN, which compiles before src/lib/)
 
 \ The counted-loop closed form: -8660..-8669
-\
-\ src/compiler/native/loop.f rewrites a counted loop whose whole body accumulates
-\ an affine function of the index into the arithmetic it would compute. A loop
-\ it cannot PROVE closed-formable is not an error (the scan answers zero and the
-\ module passes untouched), so every code here is about input the pass cannot
-\ read.
 -8660 constant E-NLOOP-BIND     \ a rewrite attempted before the source dialect's identities were bound, or a second binding over a live one
 -8661 constant E-NLOOP-SHAPE    \ a module this pass cannot rewrite: a span naming another source, a value used before it is defined, or a value of a type this dialect does not declare
 -8663 constant E-NLOOP-OPCODE   \ an operation whose opcode is none of the source dialect's family, so this pass has no form to rebuild it as
@@ -831,63 +812,43 @@ require src/lib/prelude.f
 
 \ The register-file description, the machine description over it and the
 \ dialect's vocabulary beside them: -8670..-8672
-\
-\ src/compiler/native/regfile.f is the one declaration a backend makes about its
-\ register files. Its checked constructor is the single moment it can be wrong,
-\ so it has a single code and nothing downstream re-judges it.
 -8670 constant E-NREGFILE       \ a register-file description that cannot describe a machine: a file of no registers or more than one set's bit mask holds, a reserved register outside the file it is reserved from, a file whose every register is reserved so nothing is allocatable at all, a call-destroyed register that is not allocatable in the first place, or a spill slot width that is not a positive power of two
-\ src/compiler/native/machine.f adds the facts a routine contract needs over the
-\ register files, with the same single moment and single code.
 -8671 constant E-NMACH          \ a machine description that cannot describe a machine: a link register set holding more than one register, a link register or a stack pointer that is not a register of the general file or that the file says is allocatable, a stack alignment that is not a positive power of two, a frame bound that is negative or not a multiple of that alignment, or a negative offset-field reach
-\ src/compiler/native/dialect.f is the vocabulary a machine dialect hands the
-\ register allocator, built whole or not at all: it is wrong only when a reader
-\ asks for a key the dialect declared absent.
 -8672 constant E-NDIALECT       \ a dialect's vocabulary asked for a key it declared absent - x86-64 has no write-back addressing and interns no symbol for one - so there is no symbol to answer with and naming another key would be worse than saying nothing
 
 \ The shadow target's routines: -8680..-8689
 \
-\ src/compiler/native/shadow.f keeps the routine a definition compiles to for a
-\ second machine and the map from each published record to it. Refusals of the
-\ shadow chain's stages and of publication keep their own names.
+\ Refusals of the shadow chain's stages and of publication keep their own
+\ names.
 -8680 constant E-NSHADOW-STATE  \ a shadow opened over an open one or natively with no address rewriter installed, or its binding, an emission or a row asked of none
 -8681 constant E-NSHADOW-ROW    \ a record, emission or row index at or past what the shadow holds, or a `does>` clause function the taken emission does not have or that starts where the definer enters
 -8682 constant E-NSHADOW-TARGET \ an emission taken for another machine than the one the shadow's binding names
 
 \ The trap terminator's message: -8640..-8649
-\
-\ src/compiler/native/trap.f owns the routine every compiled trap branches to and
-\ the message each trap site carries.
 -8641 constant E-NTRAP-NAME     \ an empty family or callee name, which no trap message could name
 -8643 constant E-A64SEL-ORDER   \ a block whose edges disagree about the memory order it is entered with, or that no edge reaches at all. The machine two-way branch carries no operands, so an order two paths differ on cannot be handed over as an argument here; a source that needs one says so among the block's own arguments
 
 \ The tag-dispatch forms: -8650..-8659
 \
-\ `MATCH … ;MATCH`, `case … endcase` and `construct`: the elaborator reads their
-\ operands with a pre-pass that mirrors the checker's token machine. A form the
-\ checker refuses never reaches the chain, so a refusal here means the chain and
-\ the checker read one body differently.
-\ A quotation body is a second FUNCTION of the module. Every quotation shape the
-\ elaborator cannot take apart is one refusal, distinct from E-HIR-UNMODELED so
-\ a census tells a declined quotation from an unknown word.
+\ A form the checker refuses never reaches the chain, so a refusal here means
+\ the chain and the checker read one body differently.
+\ Every quotation shape the elaborator cannot take apart is one refusal,
+\ distinct from E-HIR-UNMODELED so a census tells a declined quotation from an
+\ unknown word.
 -8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes (a cast whose input is a quotation does), or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; or a body holding a locals group or reading an enclosing local
 
-\ `is NAME` stores into the defer's dispatch cell, whose address is read from the
-\ record's meta trailer. The trailer's magic is checked: a record that is not a
-\ defer's has whatever follows its code there.
+\ The trailer's magic is checked: a record that is not a defer's has whatever
+\ follows its code there.
 -8653 constant E-NELAB-DEFER    \ an `is` this elaborator cannot bind: no token after it, a token after it that is not a name, a name that denotes no word where the definition is compiled, a record whose meta trailer does not carry the defer magic, or a deferred word whose declared effect the checker cannot state in cells
 
-\ src/compiler/native/elaborate.f QROW-CK throws it for a quotation row outside
-\ the definition's QN rows.
 -8652 constant E-NELAB-QUOT-CAP \ more quotation bodies in one definition than a module of the native chain holds functions for
 
 -8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, a scrutinee whose bundle on that vector does not begin, hold together and end where its family's width says - which is what an instantiation wider than the declared one looks like from here - or an arm whose payload has several FIELDS in more CELLS, where no per-field width says where its values begin
 
 \ Native x86-64 machine dialect (package X64IR): -8740..-8759.
 \
-\ Operand bounds are the x86-64 fields: a signed 32-bit immediate, disp32, a
-\ six-bit shift count and a four-bit tttn condition. The relocatable literal has
-\ no immediate refusal because `mov r64, imm64` holds every cell, so the ARM64
-\ move-wide refusals have no counterpart.
+\ The relocatable literal has no immediate refusal because `mov r64, imm64`
+\ holds every cell.
 -8740 constant E-X64IR-DIALECT  \ a module whose schema table was created for another dialect or another schema version
 -8741 constant E-X64IR-OPCODE   \ an ordinal outside the machine dialect's closed opcode vocabulary
 -8742 constant E-X64IR-IMM      \ an immediate outside the signed thirty-two bits the ALU and compare forms hold
@@ -901,10 +862,6 @@ require src/lib/prelude.f
 -8750 constant E-X64IR-ENTRY    \ a callee entry address the call form cannot name: zero or negative, so it is the address of no emitted routine
 
 \ Native x86-64 instruction selection (package X64SEL): -8760..-8779.
-\
-\ The first eleven answer the ARM64 selector's refusals on this machine. The last
-\ has no ARM64 counterpart: a contract carries the machine it is about. -8772 and
-\ -8773 unassigned.
 -8760 constant E-X64SEL-BIND    \ selection attempted before the source dialect's opcode identities were bound, or a second binding over a live one
 -8761 constant E-X64SEL-SOURCE  \ a frozen module that is not the bound one, or a builder holding a dialect that is not HIR
 -8762 constant E-X64SEL-OPCODE  \ an operation whose opcode is none of the source dialect's
@@ -920,11 +877,6 @@ require src/lib/prelude.f
 -8774 constant E-X64SEL-MACHINE \ a routine contract whose machine is not the one this backend lowers for
 
 \ Native x86-64 instruction emission (package X64EMIT): -8780..-8799.
-\
-\ The emitter owns its byte sink and places an emission at a slot the caller
-\ names. Besides the forms every emitter refuses, it refuses an emission out of
-\ order (bound, placed, sealed, retired), a cursor that disagrees with the
-\ measured start and a displacement no rel32 holds.
 -8780 constant E-X64EMIT-FORM   \ an operation this emitter does not render: a negate, which no selection reaches, or a double comparison whose condition and result count are not `gt` with one result or `equal` with two
 -8781 constant E-X64EMIT-SHAPE  \ a module this emitter cannot write: no function at all, a function ordinal outside the module, an empty block, a block that does not end in a terminator, or a terminator that is not its block's last operation
 -8782 constant E-X64EMIT-ACCEPT \ no accepted register assignment at all, or one accepted for a different module
@@ -1210,11 +1162,11 @@ require src/lib/prelude.f
 \ src/compiler/native/definition.f MALFORMED? reads them.
 -9600 constant E-T0-FIRST
 -9609 constant E-T0-LAST
--9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile: COMP's UNSUPPORTED$
--9601 constant E-T0-CONTROL      \ a control word without its opener, a body ending inside one, or a token no path reaches: COMP's UNSUPPORTED$
+-9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile
+-9601 constant E-T0-CONTROL      \ a control word without its opener, a body ending inside one, or a token no path reaches
 -9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
--9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH: COMP's UNSUPPORTED$
--9607 constant E-T0-DEFER        \ `is` names no deferred word: COMP's UNSUPPORTED$
+-9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
+-9607 constant E-T0-DEFER        \ `is` names no deferred word
 -9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE
 
 \ HEAD and each row's first cell are declared address cells holding the newest
@@ -1244,7 +1196,6 @@ create NL $0A c,
    r 4 cells + BYTE-VIEW r 2 cells + @ + r 3 cells + @ ;
 
 
-\ The newest row with this code, NULL-PTR for none.
 : FIND ( n -- ptr n ) {: code:n :}
    HEAD @
    begin dup NULL-PTR <> while
@@ -1267,7 +1218,6 @@ create NL $0A c,
    ERROR-TEXT:DIGITS$ SAY ;
 
 
-\ The name as the row keeps it: `PKG:E-X` in a package, else `E-X`.
 : SAY-NAME ( ptr u8 n -- ) {: name:ptr nameu:n :}
    PKG$ {: p:ptr pu:n :}
    pu 0<> if p pu SAY s" :" SAY then
@@ -1280,8 +1230,6 @@ create NL $0A c,
    s" " 70 die ;
 
 
-\ Whether the row carries the name this declaration gives: PKG$, `:` and the
-\ name in a package, else the name.
 : SAME-NAME? ( ptr n ptr u8 n -- bool )
    {: at:ptr name:ptr nameu:n :}
    at ROW-NAME$ {: r:ptr ru:n :}
