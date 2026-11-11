@@ -71,6 +71,82 @@
 \ (RENEW). A binding that takes such an identity out of its quotation fails as
 \ a mismatch in that identity's domain (HELD); a declared fresh name may take
 \ one, which FRESH-CLAIM judges against its signature.
+\
+\ Hidden layout fields: a layout value of known width W, linear included,
+\ stands in a row as W hidden physical field terms (PUSH-LOGICAL), payload
+\ slots 0 to W-2 and the tag at W-1 on top. Each reuses the logical family id,
+\ name and argument terms and carries its slot plus one in PARAMHID, 0 meaning
+\ logical. A hidden term pairs only with the same family and slot and never
+\ binds a var, con, ptr or atom. A call expands a logical cell whose width it
+\ resolved the same way (OUTPUT-COPY). Whole-bundle transports (dup, swap,
+\ >r and kin) move the group by row surgery (XPORT-STEP?). A layout whose
+\ width reads an open argument (LAYOUT-WIDTH-OPEN?) stays one logical cell: a
+\ transport would bind it to a fresh var, which LAYOUT-XPORT-ALLOW? refuses
+\ because an open layout may be linear, and LOC-BIND refuses a locals capture
+\ of one; every other touch fails closed. The width and group questions see
+\ through a stale wrapper and the type question does not: `catch` stales a
+\ window one cell at a time, and a group walker asked on the wrapper would
+\ stop seeing the group, leaving W cells no single `drop` removes. A stale
+\ cell pairs only with a var or an equally stale cell, so every typed use of
+\ the group is still E-STALE-READ.
+\
+\ The field-projection window: a generated FAMILY:FIELD accessor body may mint
+\ `ptr <field-type>` from a `ptr family<args>` and a committed field id, a
+\ retyping no checked operation performs. The structure definer arms the
+\ window around the one accessor eval it audits, keyed on the accessor's
+\ name; the window fires once at that body's `field-project` token and
+\ disarms. Its trusted-only effect and record protection keep the arming
+\ closed even when a source owner supplies a user signature.
+\
+\ Raw cells: a raw storage definer (create, variable, constant) mints a RAW
+\ type var, and a fetch from the cell yields that var. RAW-OK? admits a plain
+\ scalar, a role con or an atom and raises a var argument to RAW; it refuses a
+\ nominal family or layout value, which would forge an arity-0 family
+\ identity, a linear con, a pointer and an executable value. Role cons stay
+\ admitted because the engine's code generator raw-stores them. Each mention
+\ of an undeclared cell re-freshens its scheme's var, so an admitted pointer
+\ would launder an integer into an address (`V ! V @ @`); refusing the value
+\ at the binding fences every consumer at once. A cell that holds an address
+\ or code is declared (PTR-VARIABLE, TYPED-VARIABLE, TYPED-BUFFER,
+\ DYNAMIC-BUFFER, `defer`, `xt!`) and its storage word mints the type, so
+\ nothing else writes the cell at another type. TVK-ANY vars are unaffected,
+\ so a typed fetch, a constructor and role or converter words still bind a
+\ family. FENCE-WHY answers for every fenced kind, so the base addresses keep
+\ TVK-RAW's admissibility; it meets a var with the kind instead of judging
+\ it, which carries the kind through `+`, `cell+`, `1+` and out through `@`.
+\
+\ Base addresses: neither the null nor the DATA base addresses a declared
+\ element, so nothing read through one may be a nominal identity or an
+\ address. The null keeps a permissive pointee arm under CUR-STRICT: `ptr
+\ thing NULL-PTR =`, the store, the distance and `0=` certify, and only the
+\ value position is fenced. The DATA base has no permissive arm: NOMPTR-BLOCK?
+\ stops a nominal only at the first pointee, so blocking the pointer term
+\ itself closes every depth. The permissive arm still meets, so a wrapper
+\ that publishes a derived pointer as `( -- ptr a )` restricts its own
+\ quantifier and NP-CHECK refuses it. An executable value is fenced before
+\ the null's permissive arm, or `( -- ptr [ -- n ] ) NULL-PTR 8 +` would run
+\ at address 8; so a declared code cell cannot be compared with the null, and
+\ an empty one is read through a number-typed accessor of the same address.
+\ That refusal latches RAW-EXEC-HIT: at every base the repair is to declare
+\ the cell that holds the xt.
+\
+\ Hold frames: while a quotation is compared with a declared callable, the
+\ callable's implicit data tail is rigid. The callee runs it on whatever
+\ stack it holds and expects the declared rows back, so no row that outlives
+\ the comparison may come to equal the tail or hold it. Each comparison
+\ pushes a hold frame (HOLD-PUSH): its trail mark, its var floor (a var at or
+\ above it was made by the comparison) and K, the unbound implicit tails of
+\ the data input and output it holds rigid. The instantiable tails of one
+\ UNIFY share one list, which a popped frame leaves in place. By side role, a
+\ demanded side's declared tails are rigid; a value's own tails (a literal's
+\ or a tick's) are instantiable on either side, since the value runs on any
+\ stack; a provided side's declared tails are instantiated on a copy when the
+\ other side is demanded, never bound in place, since another value may share
+\ the declared var; in a join both sides' declared tails are rigid. A tail
+\ already held keeps its role. Return rows are exempt: a quotation literal's
+\ return rows are its enclosing definition's. execute and catch instantiate
+\ every implicit tail on a copy the same way (QUOT-APPLY-INST) and renew the
+\ per-execution identities in its value types; named rows stay shared.
 package CHECKER-REG
 \ SOURCE-CELL (layout.f DECL-CELL) is the record the engine certifies through;
 \ TARGET-CELL is the one a replacement checker publishes itself into.
@@ -3147,12 +3223,9 @@ public
    t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
    t2 LAYOUT-PARAM? ;
 
-\ A nominal scalar is an arity-0 TK-CELL family T-PARAM: one raw cell whose
-\ meaning is its family identity. Every bit pattern is a valid value (id 0
-\ included), so it lowers as a plain scalar cell; the identity is
-\ introduction-governed like a layout: LAYOUT-BUFFER is the only checked source
-\ of `ptr <nominal-scalar>`.
-: NOM-SCALAR? ( n -- bool ) {: t0:n :}   \ term resolves to a nominal-scalar family param
+\ Every bit pattern is a valid value, so it lowers as a plain scalar cell;
+\ LAYOUT-BUFFER is the only checked source of `ptr <nominal-scalar>`.
+: NOM-SCALAR? ( n -- bool ) {: t0:n :}
    t0 T-RES {: t:n :}
    t TAG T-PARAM <> IF RES-FALSE EXIT THEN
    t PARAM>HID 0 > IF RES-FALSE EXIT THEN
@@ -3160,66 +3233,35 @@ public
    dup TFAM-CELL?* 0= IF drop RES-FALSE EXIT THEN
    TFAM-ARITY* 0 = ;
 
-\ Logical width in stack cells of a resolved type term (type-family.f TFAM-WIDTH@
-\ WIDTH function). Every non-layout term is one cell; a layout-family T-PARAM
-\ asks the instantiated width: the registry substitutes each param slot by its
-\ resolved arg width, so a layout arg widens the sum payload or product body.
-\ The registry-not-loaded default answers the declared family width;
-\ type-family.f rebinds the hook to TFAM-INST-WIDTH@. The WF- surface records
-\ this fact.
+\ Logical width in stack cells of a resolved type term. The registry-not-loaded
+\ default answers the declared family width.
 : T-WIDTH ( n -- n ) {: t:n :}
-   t T-UNSTALE {: r:n :}                         \ a stale cell occupies what it occupied
+   t T-UNSTALE {: r:n :}
    r TAG T-PARAM <> IF 1 EXIT THEN
    r PARAM>FAM {: fam:n :}
    fam 0 < IF 1 EXIT THEN
    fam TFAM-LAYOUT?* 0= IF 1 EXIT THEN
    r TFAM-INST-WIDTH-XT ;
 
-\ --- hidden physical-field substrate (type-family.f TFAM-WIDTH@).
-\ PUSH-LOGICAL expands a logical layout T-PARAM in a signature into W hidden
-\ physical field terms: payload slots 0..W-2, then the tag at W-1. Each reuses
-\ the logical family id, name string and arg terms, and carries slot+1 in
-\ PARAMHID (0 = logical). A hidden term pairs only with the same family and
-\ slot and never binds a var, con, ptr or atom (U-TYPE). Whole-bundle transports
-\ move the W-cell group by row surgery (XPORT-STEP?).
-\ The physical questions see through a stale wrapper; the type question does
-\ not. `catch` wraps each window cell it cannot vouch for one cell at a time
-\ (ROW-STALE-FROM), so an option<pt> window is three stale cells: CWIN-LIVE first
-\ expands a window cell whose width the unify resolved. Answered on the wrapper,
-\ every group walker (XG-READ-GROUP, LOGHID-AT?, WF-POS-RECORD,
-\ locals capture, the renderer's compaction) would stop seeing a group and a
-\ W-cell bundle would become W cells no single `drop` removes. U-TYPE pairs a
-\ stale cell only with a var or an equally stale cell, so every typed use of the
-\ group is still E-STALE-READ.
-: HIDDEN-PARAM? ( n -- bool ) {: t:n :}     \ resolved term is a hidden physical field
+: HIDDEN-PARAM? ( n -- bool ) {: t:n :}
    t T-UNSTALE {: r:n :}
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN
    r PARAM>HID 0 > ;
-: HIDDEN-SLOT@ ( n -- n ) {: t:n :}         \ physical slot index; dies on a non-hidden term
+: HIDDEN-SLOT@ ( n -- n ) {: t:n :}
    t HIDDEN-PARAM? 0= IF s" checker: hidden-slot@ on non-hidden param" 76 die THEN
    t T-UNSTALE PARAM>HID 1 - ;
 \ The family a row cell belongs to, stale or not: a raw PARAM>FAM on a wrapper
 \ reads the stale arena index as a param index (a fail-open garbage family).
 : CELL>FAM ( n -- n ) T-UNSTALE PARAM>FAM ;
 
-\ ---- the one authority for a row's width in stack cells ------------------------
-\ E-COPY* records each fixed term's width, EFFECT-MIN-IN the floor a call must provide,
-\ CWIN-LIVE a unified window's cells.
-\
 \ A hidden layout parameter already denotes one physical cell; charging its
 \ family's full logical width again would turn a W-cell bundle into W^2 cells.
 : ROW-TERM-CELLS ( n -- n ) {: t:n :}
    t T-RES dup HIDDEN-PARAM? if drop 1 exit then
    T-WIDTH ;
 
-\ Total physical width of a row's fixed entries: the minimum depth any call
-\ must provide. Row-polymorphic tails match zero cells, so the fixed prefix is
-\ the floor.
-\
-\ It follows a bound tail: a bound row variable is the row it was bound to, so
-\ a row measured after a fit-check against a deeper stack reports that whole
-\ stack. A caller that wants a row's own entries asks before the check binds the
-\ tail; afterwards the two rows are one row.
+\ The minimum depth any call must provide. It follows a bound tail: a caller
+\ that wants a row's own entries asks before the check binds the tail.
 : ROW-CELLS ( n -- n ) {: s:n :}
    0 s                                   \ ( acc cur )
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -3228,8 +3270,8 @@ public
    REPEAT drop ;
 
 \ A value is one entry of a row as a program sees it: a hidden group whole, its
-\ tag on top (slot W-1 of W cells, as LOGHID-AT? reads it), or one other cell.
-: VALUE-CELLS ( n -- n )                 \ cells of the value on top of push p
+\ tag on top (slot W-1 of W cells), or one other cell.
+: VALUE-CELLS ( n -- n )
    {: p:n :}
    p P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? 0= IF 1 EXIT THEN
@@ -3246,8 +3288,8 @@ public
       P>REST
    loop RES-TRUE ;
 
-\ The values in a row's fixed entries, following a bound tail as ROW-CELLS
-\ does; a group the tail cuts counts as one.
+\ The values in a row's fixed entries, following a bound tail; a group the tail
+\ cuts counts as one.
 : ROW-VALUES ( n -- n )
    {: s:n :}
    0 s R-RES
@@ -3256,29 +3298,24 @@ public
    REPEAT drop ;
 
 \ The width vocabulary's absent answer: a row nothing can state a width for.
-\ EFF-ROW-CELLS answers it for a stored row whose cells carry no recorded width,
-\ and RSCATCH answers it for the output row of a caught body that never returns.
 -1 constant CELLS-NONE
 
-\ `slot` ranges over [0,W): 0..W-2 payload slots, W-1 the tag. A non-layout src
-\ or an out-of-range slot fails closed (die 76).
+\ `slot` ranges over [0,W): 0..W-2 payload slots, W-1 the tag.
 : MK-HIDDEN ( n n -- n ) {: src0:n slot:n :}
    src0 T-RES {: src:n :}
    src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" 76 die THEN
-   src T-WIDTH {: w:n :}                     \ instantiated (arg-aware) hidden-field count
+   src T-WIDTH {: w:n :}
    slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" 76 die THEN
    PARAM-SCR-N @ {: base:n :}
-   0 BEGIN dup src PARAM>ARGC < WHILE        \ copy src's arg run into the reentrant scratch
+   0 BEGIN dup src PARAM>ARGC < WHILE
       src over PARAM>ARG PARAM-SCR+
       1 +
    REPEAT drop
    base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: t:n :}
    slot 1 + t PAY cells PARAMHID + !
    t ;
-\ Renderer compaction folds a full hidden run back to this logical type
-\ (type-family.f TFAM-WIDTH@); checking never consumes it. A stale cell's logical
-\ type is stale: the wrapper belongs to the value, so a group `catch` left stale
-\ prints stale<option<pt>>, never three cells.
+\ Renderer compaction folds a full hidden run back to this logical type;
+\ checking never consumes it. The wrapper belongs to the value.
 : MK-LOGICAL ( n -- n ) {: src0:n :}
    src0 T-UNSTALE {: src:n :}
    src HIDDEN-PARAM? 0= IF s" checker: mk-logical on non-hidden param" 76 die THEN
@@ -3289,17 +3326,15 @@ public
    REPEAT drop
    base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: lg:n :}
    src0 T-RES TAG T-STALE = IF lg MK-STALE ELSE lg THEN ;
-\ Physical order: slot 0 deepest, tag (W-1) on top (type-family.f TFAM-WIDTH@).
+\ Physical order: slot 0 deepest, tag (W-1) on top.
 : LAYOUT-PUSH-FIELDS ( n n -- n ) {: type:n row:n :}
    type T-RES {: src:n :}
-   src T-WIDTH {: w:n :}                     \ instantiated (arg-aware) hidden-field count
+   src T-WIDTH {: w:n :}
    row 0 BEGIN dup w < WHILE                 \ ( row slot )
       dup src swap MK-HIDDEN                 \ ( row slot hid )
       rot MK-PUSH swap                       \ push hid onto row -> ( row' slot )
       1 +
    REPEAT drop ;
-\ Neither hidden: an ordinary logical pair; exactly one hidden: reject (a hidden
-\ field must not unify with the logical value); both hidden: the same slot.
 \ PARAM-PAIR-ARGS still enforces family equality.
 : PARAM-HID-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 PARAM>HID t2 PARAM>HID {: h1:n h2:n :}
@@ -3307,41 +3342,18 @@ public
    h1 0 > h2 0 > and 0= IF RES-FALSE EXIT THEN
    h1 h2 = ;
 
-\ --- layout expansion (type-family.f TFAM-WIDTH@): a layout value of known width,
-\ linear included, expands to its W hidden physical fields (PUSH-LOGICAL), and
-\ whole-bundle transports move the group by row surgery (XPORT-STEP?). A layout
-\ whose width reads an open argument (LAYOUT-WIDTH-OPEN?) stays one logical
-\ T-PARAM cell. A whole-bundle transport op (dup drop swap over nip rot -rot
-\ tuck 2dup 2drop 2swap 2over, >r r> r@ and kin) would bind it to its fresh
-\ transport var: DO-TOK1/LOC-BIND set LAYOUT-XPORT only while checking such an
-\ op, and LAYOUT-XPORT-ALLOW? refuses the bind when the layout may be linear,
-\ which an open one always may (its width reads a payload var, OWN-TYPE-N), so
-\ no such op accepts it, and LOC-BIND refuses a locals capture of one before any
-\ pairing. Every other touch (value-inspecting prims, ?dup, control predicates,
-\ higher-order apply, con/ptr/atom pairings) fails closed.
 CHECKER-REG:SCRATCH{
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
 \ Set only across the RECORD-RELEASE call in HEAP's generated NAME-RELEASE: the
-\ one generic-pointer call a layout pointer may enter (LAYOUT-BLOCK?).
+\ one generic-pointer call a layout pointer may enter.
 variable LAYOUT-RELEASE
 CHECKER-REG:}SCRATCH
-\ --- field-projection armed window: a sealed, schema-aware window that lets a
-\ generated FAMILY:FIELD accessor body mint `ptr <field-type>` from a
-\ `ptr family<args>` input and a committed field id, the one retyping no checked
-\ operation performs (`+` and `cell+` keep the pointee; a pointer CAST: is an
-\ unchecked private class mint). Armed only by the generative crossing
-\ (structure-make.f) around the one audited accessor eval, keyed on the
-\ accessor word name; it fires once at the `field-project` token in that body
-\ and disarms. Its trusted-only effect and record protection keep the arming
-\ boundary closed even when source-owner transfer supplies a user signature.
 PTR-VARIABLE FIELD-PROJ-A
-variable FIELD-PROJ-U   0 FIELD-PROJ-U !   \ armed accessor word name span
+variable FIELD-PROJ-U   0 FIELD-PROJ-U !
 variable FIELD-PROJ-FID \ committed field id (the authority: offset/type/role derive from it)
 variable FIELD-PROJ-OFF \ baked byte offset (cross-checked against the committed offset)
 
-\ The retained owner enforces these cells' policy during a native rebuild too.
-\ Keep raw state access here; the matching and schema checks remain checked.
 TRUSTED: FIELD-PROJ-SCRATCH-RESET ( -- )
    NULL-PTR FIELD-PROJ-A !  0 FIELD-PROJ-U !  0 FIELD-PROJ-FID !  0 FIELD-PROJ-OFF ! ;
 TRUSTED: FIELD-PROJ-NAME$ ( -- ptr u8 n ) FIELD-PROJ-A @ FIELD-PROJ-U @ ;
@@ -3353,16 +3365,12 @@ CHECKER-REG:SCRATCH{
 PTR-VARIABLE NMA  variable NMU           \ current definition name (set by DO-TOK1)
 CHECKER-REG:}SCRATCH
 variable NMOFF                           \ its token's offset in the checked text (NAME-TOK)
-\ The definition being checked is the one LBUF-EVAL armed (LBUF-PEND! below).
 : LBUF-PEND-MATCH? ( -- bool )
    LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
    LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
 
-\ Count only owning schema positions. Scope, region, read-view element, pointer,
-\ and quotation parameters describe access or representation, not payload.
 \ An unresolved value parameter is possibly linear for a guard, but contributes
-\ nothing to the concrete count until it binds. The registry instantiates each
-\ field schema, so repeated owning occurrences count separately.
+\ nothing to the concrete count until it binds.
 : OWN-TYPE-N ( n bool -- n ) {: t:n maybe:bool :}
    t T-RES {: r:n :}
    r ISVAR IF
@@ -3386,17 +3394,8 @@ variable NMOFF                           \ its token's offset in the checked tex
       1 +
    REPEAT drop RES-FALSE ;
 
-\ --- an open argument hides the width only when the width reads it. The
-\ instantiated width (type-family.f TFW-NODE) reads an argument where a schema
-\ root reads its slot: a root that is the parameter node, or a nested
-\ application whose family reads that slot. A parameter only under a pointer, a
-\ quotation or an unread slot cannot move the width: `span<t>` (`FIELD base
-\ ptr t  FIELD len n`) is two cells for every `t`, as is `sx<t>` for
-\ `FIELD f init<t,leaf>`. Such an instance expands into its physical cells with
-\ the argument still a var, so the native chain reads per-cell slots
-\ (dict.f ROW-GLUE). A family whose parameter is a payload cell (`FIELD a t`)
-\ answers open and stays one conservative cell. Recurse only through slots the
-\ width reads; the registry owns that occurrence question.
+\ A parameter only under a pointer, a quotation or an unread slot cannot move
+\ the width; the registry owns that occurrence question.
 : LAYOUT-WIDTH-OPEN? ( n -- bool ) {: p:n :}
    0 BEGIN dup p PARAM>ARGC < WHILE
       p PARAM>FAM over TFAM-WIDTH-SLOT-XT IF
@@ -3409,9 +3408,6 @@ variable NMOFF                           \ its token's offset in the checked tex
       1 +
    REPEAT drop RES-FALSE ;
 
-\ ---- a cell whose width a call resolved is expanded there --------------------
-\ A call pushes a logical cell of resolved width as its W hidden fields (OUTPUT-COPY), as
-\ PUSH-LOGICAL does; ROW-JOIN-PREP, CWIN-LIVE, LOC-BIND and XPORT-APPLY expand one too.
 
 : LOGICAL-KNOWN? ( n -- bool )
    {: t:n :}
@@ -3421,10 +3417,8 @@ variable NMOFF                           \ its token's offset in the checked tex
    r T-UNSTALE LAYOUT-WIDTH-OPEN? 0= ;
 
 
-\ A field's proof from its cell's: a normal proof names the field's own type,
-\ as ROW-NORMAL-PROOF gives a closed cell. A catch does not reach that branch:
-\ RSCATCH expands its window (CWIN-LIVE) and normal row (ROW-EXPAND-TERMS)
-\ before ROW-NORMAL-PROOF, so each field gets a normal proof of its own.
+\ A field's proof from its cell's: a normal proof names the field's own type.
+\ A catch does not reach that branch: each field gets a normal proof of its own.
 : FIELD-PROOF ( n n -- n )
    {: pf:n t:n :}
    pf 0= IF 0 EXIT THEN
@@ -3432,7 +3426,6 @@ variable NMOFF                           \ its token's offset in the checked tex
    CP-NORMAL pf CP-ID t dup MK-STALE CP-NEW ;
 
 
-\ Each push above base takes src's lineage.
 : FIELDS-LINEAGE! ( n n n -- )
    {: src:n top:n base:n :}
    top BEGIN dup base <> WHILE
@@ -3441,8 +3434,6 @@ variable NMOFF                           \ its token's offset in the checked tex
    REPEAT drop ;
 
 
-\ The layout cell at `node` as its W hidden fields over rest, slot 0 deepest, each
-\ with node's lineage; a stale cell gives stale fields, as `catch` wraps a group.
 : CELL-FIELDS ( n n -- n )
    {: node:n rest:n :}
    node P>TYPE T-RES {: t:n :}
@@ -3454,8 +3445,6 @@ variable NMOFF                           \ its token's offset in the checked tex
    node over rest FIELDS-LINEAGE! ;
 
 
-\ One output cell copied over rest with no proof and its lost lineage widened
-\ by `lost`; a logical cell the step resolved the width of is copied expanded.
 : OUTPUT-COPY ( n n n -- n )
    {: node:n rest:n lost:n :}
    node P>TYPE LOGICAL-KNOWN? IF node rest CELL-FIELDS ELSE node rest P-COPY THEN
@@ -3465,7 +3454,6 @@ variable NMOFF                           \ its token's offset in the checked tex
    top ;
 
 
-\ The cells a term occupies once expanded: W for a logical cell of known width.
 : CELL-TERMS ( n -- n ) dup LOGICAL-KNOWN? IF T-WIDTH ELSE drop 1 THEN ;
 
 
@@ -3483,8 +3471,7 @@ variable NMOFF                           \ its token's offset in the checked tex
 
 
 \ Typed memory keeps the fail-closed rule for every family argument, phantom
-\ ones included: a payload count alone does not make a generic instantiation
-\ safe to store while an argument is open.
+\ ones included.
 : LAYOUT-MEM-ARG-BLOCK? ( n -- bool ) {: t:n :}
    t T-RES {: r:n :}
    r ISVAR IF r PAY TVK@ TVK-SCOPE <> EXIT THEN
@@ -3500,11 +3487,8 @@ variable NMOFF                           \ its token's offset in the checked tex
    r TAG T-CON <> IF RES-FALSE EXIT THEN
    r PAY CT-LINEAR? ;
 
-\ --- storable layouts: every closed non-linear layout with a physical cell may
-\ cross typed memory. W=1 uses scalar lowering; W>1 lowers from the token's WF
-\ fact. W=0 products have no addressable representation and reject. Possibly
-\ linear, open args that might become linear included, stays rejected until
-\ whole-bundle linear accounting covers it.
+\ W=1 uses scalar lowering; W>1 lowers from the token's WF fact. W=0 products
+\ have no addressable representation and reject.
 : LAYOUT-MEM-OK? ( n -- bool ) {: t:n :}        \ resolved logical layout T-PARAM
    t SCOPED-TYPE? IF RES-FALSE EXIT THEN
    t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
@@ -3515,20 +3499,18 @@ variable NMOFF                           \ its token's offset in the checked tex
    t T-WIDTH 0 > ;
 
 : LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
-   LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN     \ only inside a whole-bundle transport op
-   a HIDDEN-PARAM? b HIDDEN-PARAM? or IF RES-FALSE EXIT THEN   \ a hidden field is not a single-cell bundle: never binds a var
-   a LAYOUT-PARAM? IF                           \ var <-> layout-param bind: absorb the bundle
+   LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN
+   a HIDDEN-PARAM? b HIDDEN-PARAM? or IF RES-FALSE EXIT THEN
+   a LAYOUT-PARAM? IF
       a T-UNSTALE LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
       b ISVAR EXIT THEN
    b LAYOUT-PARAM? IF
       b T-UNSTALE LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
       a ISVAR EXIT THEN
-   RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
+   RES-FALSE ;
 
 \ A call may instantiate its generic pointee from an existing nominal input.
-\ The reverse direction would introduce an identity through an untyped pointer,
-\ and output coercion is never an input. RAW variables remain fenced here and
-\ by RAW-BLOCK?; declared variables must also pass the parametricity check.
+\ The reverse direction would introduce an identity through an untyped pointer.
 : NOMPTR-BLOCK? ( n n -- bool ) {: actual:n expected:n :}
    CUR-STRICT @ 0= IF RES-FALSE EXIT THEN
    LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN
@@ -3540,7 +3522,7 @@ variable NMOFF                           \ its token's offset in the checked tex
    THEN
    expected NOM-SCALAR? actual ISVAR and ;
 
-: LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
+: LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}
    a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
    \ Let RAW-BLOCK? apply the literal null's existing pointee exception.
    CUR-STRICT @ 0 <> IF
@@ -3556,84 +3538,37 @@ variable NMOFF                           \ its token's offset in the checked tex
    THEN
    RES-TRUE ;
 
-\ --- nominal-storage RAW value discipline. A RAW type var is minted by a raw
-\ storage definer (here create variable constant); a fetch from that cell yields
-\ the same var, so `RAW-var ~ nominal-family` in value position is a mint the
-\ checker refuses, else raw dictionary storage forges validated arity-0 family
-\ identities. This is the value-position mirror of NOMPTR-BLOCK? (the pointee
-\ position). TVK-ANY vars are unaffected, so a typed LAYOUT-BUFFER fetch, a
-\ constructor and role or converter words keep binding a family. RAW-OK?
-\ decides admissibility and propagates the kind (a var arg is raised RAW). It
-\ rejects a nominal-family or layout value (a T-PARAM), a linear con, a pointer
-\ and an executable value (a T-QUOT, FENCE-EXEC), and admits a plain scalar or
-\ role con and an atom: the engine's codegen raw-stores role cons
-\ (`LBL RT-LPOS !`). Fencing role atoms (idx/len) too needs that scratch moved
-\ to typed cells first.
-\
-\ A raw cell never holds an address. Each mention of an undeclared cell
-\ re-freshens the published scheme's var (E-INST), so a pointer admitted here
-\ would launder an integer into an address (`V ! V @ @`). Refusing T-PTR fences
-\ the value instead of each consumer, so `V @ @`, `V @ c@`, `V @ 8 + @`,
-\ `K @` and `here @ @` die at the same binding, as does a pointer stored into a
-\ plain cell (RSEXEC makes the same move for an opaque xt). A cell that holds an
-\ address is declared: PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE NAME
-\ ptr t, or TYPED-BUFFER. `create BUF 256 allot  BUF 4 type` certifies: the
-\ pointee binds to the `u8` con.
 CHECKER-REG:SCRATCH{
 variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
 \ Which base address refused a nominal or a pointer in this token's unify:
-\ 0 none, TVK-NULL the null, TVK-DBASE the DATA region. UF-CAPTURE names the one
-\ that hit, so the two rules answer with their own prose.
+\ 0 none, TVK-NULL the null, TVK-DBASE the DATA region.
 variable BASE-PTR-HIT
 \ An undeclared cell or a base address was declared to hold an executable value
-\ in this token's unify. Its own latch, because the E-RAW-CELL-PTR family gives
-\ it its own reason and repair: a declared code cell, not a pointer cell.
+\ in this token's unify.
 variable RAW-EXEC-HIT
-\ A `stale<t>` met a type this token's unify demanded: the token read a cell a
-\ caught throw may have overwritten. Latched and named the same way (CELL-DIAG!),
-\ as a rule, not a shape mismatch. It holds the stale term read, 0 for none.
+\ A `stale<t>` met a type this token's unify demanded. It holds the stale term
+\ read, 0 for none.
 variable STALE-HIT
 
-\ `xt!` is the sanctioned code-cell mint, exempt from FENCE-EXEC as LAYOUT-INTRO
-\ is from the nominal rules: it declares that the persisted cell it writes, at
-\ an address computed from a table base and row index
-\ (`' W DECLARATIONS <off> + xt!`), holds an execution token. No TVK kind admits
-\ only quotations, so its row cannot say so: DO-TOK1 opens the window on the
-\ token and the token's latches close it. Every other way of putting a quotation
-\ into an undeclared cell or base-derived address, `!` included, is refused.
+\ `xt!` is the sanctioned code-cell mint: DO-TOK1 opens the window on the
+\ token and the token's latches close it.
 variable XT-DECL
 CHECKER-REG:}SCRATCH
 
-\ FENCE-WHY's answers, and the whole vocabulary of the cell disciplines.
 0 constant FENCE-OK       \ the cell may absorb the term
 1 constant FENCE-FAMILY   \ a nominal family or a layout value (the mint)
 2 constant FENCE-PTR      \ a pointer, in either direction
-3 constant FENCE-LINEAR   \ a linear con
+3 constant FENCE-LINEAR
 4 constant FENCE-EXEC     \ an executable value: a quotation or opaque tick
 5 constant FENCE-STALE    \ a caught throw may have overwritten this cell
 
-\ A selected tick without a usable effect is still code. Keep that provenance
-\ through generic calls instead of treating it as a number or a caught stale cell.
+\ A selected tick without a usable effect is still code.
 : OPAQUE-XT ( -- n ) s" xt" MK-ATOM ;
 : OPAQUE-XT? ( n -- bool )
    T-RES {: t:n :}
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
    t ATOM>K 0= IF t ATOM>A t ATOM>U s" xt" CORE-STR= ELSE RES-FALSE THEN ;
 
-\ FENCE-WHY answers one question for all three fenced kinds, so neither base
-\ address drifts from TVK-RAW's admissibility. A var argument is met with
-\ `kind` (trailed) rather than judged, which is how the kind rides `+`, `-`,
-\ `cell+`, `char+`, `1+`, `1-` (whose rows keep the base's pointee var) and out
-\ through `@`. `term` is already resolved.
-\
-\ An undeclared cell holds no executable value (FENCE-EXEC). Admissibility is
-\ provenance, not what the store instruction carries: a DATA word or `variable`
-\ declared `( -- ptr [ -- n ] )` would hand its caller a certified code cell
-\ whose fetched value has a declared quotation type, so MD-EXEC-OPAQUE never
-\ fires and `1 V ! FIRE` branched to address 1 (SIGBUS). The declared code cells
-\ (TYPED-VARIABLE, TYPED-BUFFER and DYNAMIC-BUFFER over `[ in -- out ]`,
-\ `defer`/`is`, `xt!`) mint the T-QUOT at the storage word, so nothing else may
-\ write the cell at another type.
 : FENCE-WHY ( n n -- n ) {: t:n kind:n :}
    t ISVAR IF t PAY kind TVK-RAISE-TO FENCE-OK EXIT THEN
    t TAG T-PARAM = IF FENCE-FAMILY EXIT THEN
@@ -3644,41 +3579,15 @@ CHECKER-REG:}SCRATCH
    t OPAQUE-XT? IF XT-DECL @ IF FENCE-OK ELSE FENCE-EXEC THEN EXIT THEN
    FENCE-OK ;                                         \ other atoms have no code-cell provenance
 
-: RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var RAW)
+: RAW-OK? ( n -- bool )
    T-RES {: t:n :}
    t TVK-RAW FENCE-WHY
-   dup FENCE-PTR  = IF -1 RAW-PTR-HIT ! THEN          \ ptr: a raw cell is never an address
-   dup FENCE-EXEC = IF -1 RAW-EXEC-HIT ! THEN         \ quotation: nor a code cell
+   dup FENCE-PTR  = IF -1 RAW-PTR-HIT ! THEN
+   dup FENCE-EXEC = IF -1 RAW-EXEC-HIT ! THEN
    dup FENCE-STALE = IF t STALE-HIT ! THEN
    0= ;
 
-\ Neither base address addresses a declared element, so nothing read through one
-\ may be a nominal identity or an address. The kinds differ in how deep that
-\ reaches.
-\
-\ TVK-NULL keeps the permissive pointee arm (CUR-STRICT): `ptr thing NULL-PTR =`
-\ binds `thing` inside a `ptr` and certifies, as do the store, the distance and
-\ `0=`. Only the value position is fenced (`NULL-PTR + @` read as a `thing` or
-\ a `ptr n`).
-\
-\ TVK-DBASE has no permissive arm. NOMPTR-BLOCK? stops a nominal only at the
-\ first pointee, so `( -- ptr ptr dthing ) data-base 8 +` with `F @ @` minted
-\ one a `ptr` deeper, and `( -- ptr ptr ptr n )` an address; blocking the
-\ pointer term itself, strict or not, closes every depth.
-\
-\ The permissive arm still meets, so a wrapper publishing the derived pointer as
-\ `( -- ptr a )` restricts its own declared quantifier and NP-CHECK refuses it:
-\ such a wrapper mints whatever its caller asks for.
-\ An executable value is fenced through the null's permissive arm too, so the
-\ FENCE-EXEC arm below is tested before it: `( -- ptr [ -- n ] ) NULL-PTR 8 +`
-\ is a pointee bind, and without this the fetched value executes at address 8.
-\ The price: a declared code cell cannot be compared with the null (`HK
-\ NULL-PTR =` and `<>` are refused; the distance `HK NULL-PTR -` never pairs the
-\ pointees, see TVK-BASE-ONLY). An empty code cell is read through a
-\ number-typed accessor of the same address, as src/lib/genio-core.f does for
-\ its device rows. It latches RAW-EXEC-HIT, the RAW rule's refusal, because the
-\ repair is the same at every base: declare the cell that holds the xt.
-: BASE-BLOCK? ( n n -- bool )   \ resolved term + base kind; may that cell NOT absorb the term?
+: BASE-BLOCK? ( n n -- bool )
    {: t:n kind:n :}
    t kind FENCE-WHY
    dup FENCE-OK   = IF drop RES-FALSE EXIT THEN
@@ -3687,20 +3596,10 @@ CHECKER-REG:}SCRATCH
    drop
    kind TVK-NULL =  CUR-STRICT @ 0 <> and IF RES-FALSE EXIT THEN   \ the null inside a pointee: the pointer, not the cell
    kind BASE-PTR-HIT ! RES-TRUE ;
-\ The armed window is the sanctioned mint, exempt here as in NOMPTR-BLOCK?:
 \ LAYOUT-INTRO is set only while CHECK coerces the output row of the accessor a
-\ storage definer just generated, keyed on the pending name, and user source
-\ cannot arm it (xref erases LBUF-PEND! and its siblings after boot). Without
-\ it a generated accessor could not name its storage through its `create`d
-\ word, and `data-base <baked offset> +` is an address no relocation pass sees
-\ (it put another table's writes on BMID's cells in a merged engine;
-\ src/core/layout-buffer.f LBUF-SOURCE).
-\ Offset provenance rides the other way too. U-TYPE binds one var side to the
-\ other in call-argument order, so an offset row's pointee var sometimes
-\ survives (FENCE-WHY raises it and the meet answers DBASE) and sometimes is
-\ bound away, where `NULL-PTR n +` would keep the null's permissive arm on the
-\ survivor. Meeting the term with TVK-OFF closes that: the meet is identity for
-\ every kind but the null.
+\ storage definer just generated, and user source cannot arm it.
+\ U-TYPE binds one var side to the other in call-argument order; the meet is
+\ identity for every kind but the null.
 : OFF-RIDE ( n -- ) T-RES dup ISVAR IF PAY TVK-OFF TVK-RAISE-TO ELSE drop THEN ;
 : REGION-ATOM? ( n -- bool ) {: t:n :}
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
@@ -3732,10 +3631,8 @@ CHECKER-REG:}SCRATCH
    THEN
    THEN THEN
    RES-FALSE ;
-\ A distance row's base operand (TVK-BASE-ONLY) pairs only with a base address's
-\ own pointee. Bound away, it joins that class and changes nothing; kept, it takes
-\ the base address's kind, so the class keeps its fence. Any other pairing fails
-\ the row, and the overload trial moves on to `ptr a ptr a -- n`.
+\ A distance row's base operand pairs only with a base address's own pointee.
+\ Any other pairing fails the row, and the overload trial moves on.
 : BASE-ONLY-VAR? ( n -- bool ) T-RES dup ISVAR IF PAY TVK@ TVK-BASE-ONLY = ELSE drop RES-FALSE THEN ;
 : BASE-VAR? ( n -- bool ) T-RES dup ISVAR IF PAY TVK@ BASE-KIND? ELSE drop RES-FALSE THEN ;
 : BASE-ONLY-BLOCK? ( n n -- bool ) {: vid:n term:n :}
@@ -3743,7 +3640,7 @@ CHECKER-REG:}SCRATCH
    vid TVK@ BASE-KIND? 0= IF RES-TRUE EXIT THEN
    term T-RES PAY vid TVK@ TVK-RAISE-TO RES-FALSE ;
 
-: RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates a cell discipline?
+: RAW-BLOCK? ( n n -- bool )
    {: vid:n term:n :}
    vid TVK@ TVK-BASE-ONLY =  term BASE-ONLY-VAR? or IF vid term BASE-ONLY-BLOCK? EXIT THEN
    vid term SCOPE-BLOCK? IF RES-TRUE EXIT THEN
@@ -3753,21 +3650,14 @@ CHECKER-REG:}SCRATCH
       dup TAG T-STALE = IF STALE-HIT ! RES-TRUE EXIT THEN
       T-WIDTH 1 <> EXIT
    THEN
-   LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN        \ the definer's own introduction form
-   vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN         \ RAW var: `term` must be RAW-admissible
+   LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN
+   vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN
    vid TVK@ TVK-OFF = IF term OFF-RIDE RES-FALSE EXIT THEN   \ offset row's pointee: provenance, never a fence
-   vid TVK@ dup BASE-KIND? 0= IF drop RES-FALSE EXIT THEN   \ ordinary var: never blocks
-   term T-RES swap BASE-BLOCK? ;                     \ base-address var: fenced by its own kind
+   vid TVK@ dup BASE-KIND? 0= IF drop RES-FALSE EXIT THEN
+   term T-RES swap BASE-BLOCK? ;
 
 \ A generated constructor's result can ground one of its effect variables before
-\ that same variable meets the payload value. Permit that grounding only inside
-\ equal-family argument pairing and only when the direct logical layout term has
-\ a stable one-cell representation, or when the declared slot is a phantom
-\ element type whose width cannot change the family value. TYPE-CLOSED? rejects
-\ unresolved descendants under pointers, quotation rows, and nested families;
-\ LAYOUT-MAYBE-LINEAR? rejects possible linear payloads. Pointer-strict pairing,
-\ hidden fields, wide value terms, RAW vars, and occurs cycles retain ordinary
-\ PAIR and its fail-closed rules.
+\ that same variable meets the payload value.
 : PARAM-BIND-OK? ( n n n n -- bool ) {: v:n p:n fam:n slot:n :}
    v ISVAR 0= IF RES-FALSE EXIT THEN
    p LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
@@ -3784,12 +3674,8 @@ CHECKER-REG:}SCRATCH
    RES-TRUE ;
 
 
-\ A family argument's variance: one that reaches storage (TFAM-STORE-SLOT-XT:
-\ a `FIELD data ptr a`, an OPAQUE record, an element-type slot) is
-\ read and written, so both sides are demanded, as a pointee's are; one held
-\ only by value (`FIELD fn a`) takes the pair's roles, so a family built around
-\ a literal is provided as the literal is. Each side pairs resolved, so
-\ ROLE-ALIAS, which reads a binding variable, leaves these roles as set.
+\ A family argument's variance: one that reaches storage is read and written,
+\ so both sides are demanded; one held only by value takes the pair's roles.
 : PARAM-PAIR-SLOT ( n n n -- )
    {: t1:n t2:n slot:n :}
    t1 slot PARAM>ARG T-RES {: a:n :}
@@ -3863,7 +3749,6 @@ CHECKER-REG:}SCRATCH
       a i PARAM>ARG b i PARAM>ARG RECURSE 0= IF RES-FALSE unloop EXIT THEN
    loop
    RES-TRUE ;
-\ A generic scope or region must already occur in the caller's value inputs.
 \ Read the source terms without resolving their nodes: a callback's own binder
 \ and a variable created only while matching its quotation are not authority.
 : FORALL-INPUT-VAR* ( n n -- bool ) {: scope:n term:n :}
@@ -3908,11 +3793,8 @@ CHECKER-REG:}SCRATCH
    count 0 ?do i FORALL-OPEN-VALID? 0= IF RES-FALSE unloop EXIT THEN loop
    RES-TRUE ;
 
-\ A stale cell may be MOVED and DROPPED (both meet a plain type variable, which
-\ binds to the wrapper) and it may meet an equally stale cell at a control-flow
-\ join, where the two lost types have to agree. Nothing else: reaching this last
-\ arm with a stale on either side is a READ of the cell, and it is named rather
-\ than reported as a shape mismatch.
+\ Reaching this last arm with a stale on either side is a READ of the cell, and
+\ it is named rather than reported as a shape mismatch.
 : STALE-NOTE ( n n -- n n ) {: a:n b:n :}
    a TAG T-STALE = IF a STALE-HIT ! ELSE
    b TAG T-STALE = IF b STALE-HIT ! THEN THEN
@@ -3928,36 +3810,11 @@ CHECKER-REG:}SCRATCH
    got F>BODY want F>BODY PAIR-STRICT ;
 
 
-\ The live-graph twin of EFF-ROW-TAIL: what a row ends in once its fixed cells
-\ are walked off. Two rows are the same stack only if they share this tail.
+\ Two rows are the same stack only if they share this tail.
 : ROW-TAIL ( n -- n )
    R-RES BEGIN dup TAG S-PUSH = WHILE P>REST R-RES REPEAT ;
 
 
-\ A declared callable's implicit data tail is rigid while a quotation is
-\ compared with it: the callee runs the callable on whatever stack it holds and
-\ expects the declared rows back, so no row that outlives the comparison may
-\ come to equal the tail or hold it. Each comparison (QUOT-PAIR) pushes a hold
-\ frame: its trail mark and var floor (FV; a var at or above it was made by the
-\ comparison) and the rigid tails K, the unbound implicit tails of the data
-\ input and output that the frame holds rigid. The instantiable tails I of one
-\ UNIFY share one list, which a popped frame leaves in place: a nested frame's
-\ instantiable tail stays its ancestors' own. By side role (CUR-ROLE):
-\ - a demanded side's declared tails (RVK-QUOT) are rigid;
-\ - a value's own tails (RVK-INFERRED: a literal's or a tick's) are
-\   instantiable on either side, since the value runs on any stack (a literal
-\   stored into a `[ n -- n ]` cell takes the cell's tail);
-\ - a provided side's declared tails are instantiated on a copy when the other
-\   side is demanded (QUOT-PROV-INST: a provided callable is instantiated at
-\   its use), never bound in place, since a pointer's pointee or another value
-\   may share the declared var;
-\ - in a join (both provided) both sides' declared tails are rigid, since
-\   neither may narrow the other's quantifier.
-\ A tail already held keeps its role: a literal's tail recurring in a callable
-\ it demands (WB-BODY's `[ R ptr u8 n -- S ]` inside `[: WB-BODY ;]`,
-\ src/lib/memory.f) stays the literal's to instantiate.
-\ Return rows are exempt: a quotation literal's return rows are its enclosing
-\ definition's by construction, and the return-row rules check their balance.
 8 constant HOLD-FRAME   \ cells: mark, floor, K count, 4 K ids, I start
 2 constant HF-NK   7 constant HF-IS
 8 HOLD-FRAME * constant HOLD-INIT
@@ -4029,15 +3886,7 @@ CHECKER-REG:}SCRATCH
    1 HOLD-I-N +! ;
 
 
-\ A callable's implicit tails quantify its untouched stacks. Instantiate those
-\ tails on a copy for each use, keeping explicit named rows and value types
-\ shared; binding the declared tail itself would retype every term that shares
-\ it (the pointee of the cell the callable was fetched from). execute and catch
-\ instantiate every implicit tail and renew the per-execution identities in the
-\ value types (QUOT-APPLY-INST, CHECKER-QUOT-FRESH); a provided side of a
-\ comparison instantiates the declared tails no frame holds (QUOT-PROV-INST),
-\ the ones HOLD-TAIL would otherwise make instantiable in place. There are four
-\ rows in a quotation, hence at most four distinct terminal tails.
+\ There are four rows in a quotation, hence at most four terminal tails.
 create QAPP-OLD 4 cells allot
 create QAPP-NEW 4 cells allot
 variable QAPP-N
@@ -4090,7 +3939,7 @@ variable QAPP-N
 : QUOT-PROV-INST ( n -- n ) RES-TRUE QUOT-INST ;
 
 
-: HOLD-TAIL ( n bool bool -- )   \ hold row's unheld implicit tail by its side's role
+: HOLD-TAIL ( n bool bool -- )
    {: row:n d?:bool join?:bool :}
    row ROW-TAIL {: t:n :}
    t ISROW 0= IF EXIT THEN
@@ -4121,11 +3970,8 @@ variable QAPP-N
    g w ;
 
 
-\ Which var of an unbound var-to-var row pair binds while frames hold: an
-\ instantiable tail when exactly one side is one; a rigid tail never, unless
-\ the other side is a rigid tail of the same frame, so the other side when it
-\ is that frame's own (above its floor). Any other pair binds as it comes and
-\ the post-drain check judges it.
+\ Which var of an unbound var-to-var row pair binds while frames hold. Any other
+\ pair binds as it comes and the post-drain check judges it.
 : HOLD-SECOND? ( n n -- bool )   \ bind b rather than a
    {: a:n b:n :}
    HOLD-N @ 0= IF RES-FALSE EXIT THEN
@@ -4148,11 +3994,8 @@ variable QAPP-N
    f HF-IS HF @ id HOLD-I-FROM? ;
 
 
-\ After the top frame's pairs drain, a rigid tail escaped when (a) it resolves
-\ to anything but an unbound row of the frame's own, or (b) a var bound since
-\ the mark that is not the frame's own now holds it. The check reads the
-\ drained graph, so the order the rows bound in cannot hide the escape.
-\ TAIL-SKOLEM and TAIL-ROW record the tail and the row it escaped into.
+\ The check reads the drained graph, so the order the rows bound in cannot hide
+\ the escape.
 : HOLD-ESCAPE? ( -- bool )
    HOLD-N @ 1 - {: f:n :}
    f HF-NK HF @ 0 ?do
