@@ -1671,16 +1671,12 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 
 \ ONE read of the state decides: the state moves while the owner reads it, and
 \ re-reading per arm can find every arm false, leaving the task unjoined and
-\ counted live for the life of the image (the next dictionary mutation exits
-\ $4F).
+\ counted live for the life of the image.
 \
-\ KILL discards the outcome and JOIN collects it; both release the task. EMPTY
-\ has nothing to release and CONSTRUCTED has memory but no thread. Every other
-\ state was activated and is released the same way, whichever state it reaches
-\ first: HALT unless the read said DONE, then the join, which waits for the
-\ thread however it ends. A task parked in WAIT, WAIT-SEM, SLEEP or a host call
-\ observes the halt only when released, so KILL waits for it; an owner may KILL
-\ a body that signalled its own end and is still finishing.
+\ KILL discards the outcome and JOIN collects it; both release the task. A task
+\ parked in WAIT, WAIT-SEM, SLEEP or a host call observes the halt only when
+\ released, so KILL waits for it; an owner may KILL a body that signalled its
+\ own end and is still finishing.
 : TASK-KILL ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-STATE@ {: st:n :}
    st TASK-EMPTY = if exit then
@@ -1696,11 +1692,10 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 : TASK-DONE? ( ptr n -- bool )
    TASK-STATE@ TASK-DONE = ;
 
-\ A join needs a task that is running or has ended, and exactly one joiner: the
-\ claim moves 0 -> 1 in one step, so a second joiner is refused instead of being
-\ made to wait for a signal the first has already taken. A task that was never
-\ activated and a task whose join has released it are the same EMPTY task and
-\ get the same refusal.
+\ A join needs a task that is running or has ended, and exactly one joiner: a
+\ second joiner is refused instead of being made to wait for a signal the first
+\ has already taken. A task that was never activated and a task whose join has
+\ released it are the same EMPTY task and get the same refusal.
 : TASK-JOIN-CHECK ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-STATE@ {: st:n :}
    st TASK-RUNNING <> st TASK-HALT-REQ <> and st TASK-DONE <> and
@@ -1708,20 +1703,17 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    0 1 tcb TCB.JOINER atomic-cas 0 <> if E-TASK-JOIN throw then ;
 
 \ An error beats a value: a body that returned and then failed in its cleanup did
-\ not finish, and the code that ended it is the honest answer. A task that ended
-\ without calling TASK:RETURN has no value to give, and saying so with a named
-\ code keeps ok meaning "the worker answered".
+\ not finish.
 : TASK-JOIN-ANSWER ( ptr n -- result<n,n> ) {: tcb:ptr :}
    tcb TASK-THROW@ dup 0 <> if RESULT:ERR exit then
    drop
    tcb TASK-RESULT? if tcb TCB.RESULT @ RESULT:OK exit then
    E-TASK-NO-RESULT RESULT:ERR ;
 
-\ Blocks in the done semaphore, so a joiner is parked in the kernel rather than
-\ polling DONE?. The release is the one TASK:KILL does, which is why a joined
-\ task needs no kill. The outcome is read before it: the release stores EMPTY,
-\ and from then a TASK:FREE on another thread may clear the record and TASK:NEW
-\ hand it to a new task.
+\ The release is the one TASK:KILL does, which is why a joined task needs no
+\ kill. The outcome is read before it: the
+\ release stores EMPTY, and from then a TASK:FREE on another thread may clear
+\ the record.
 : TASK-JOIN ( ptr n -- result<n,n> ) {: tcb:ptr :}
    tcb TASK-JOIN-CHECK
    tcb TASK-DONE-SEM SEM-WAIT
@@ -1729,9 +1721,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    tcb TASK-JOIN-RELEASE ;
 
 \ ---- making and giving back pool tasks ---------------------------------------
-\ The link takes the head this turn read before the head moves to the first
-\ entry, so a walker reading the new head finds the whole run and the old list
-\ behind it; a concurrent push fails the swap and the turn retries.
+\ The link takes the head before the head moves to the first entry, so a
+\ walker reading the new head finds the whole run and the old list behind it.
 : LIST-PUSH ( n ptr n ptr n -- ) {: first:n link:ptr head:ptr :}
    begin
       head atomic@ dup link !
@@ -1750,7 +1741,6 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    c 0 TCB-REC c TCB-POOL-N 1 - TCB-REC TCB-POOL-LINK TCB-POOL LIST-PUSH
    c 0 TCB-REC ;
 
-\ One claim wins: two threads asking at the same moment take different records.
 : TCB-TAKE? ( n -- bool ) {: rec:n :}
    CLAIM-FREE CLAIM-HELD rec TASK-N>PTR TCB-CLAIM atomic-cas CLAIM-FREE = ;
 
@@ -1768,7 +1758,6 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    size tcb TCB.SIZE !
    tcb ;
 
-\ Whether the TCB is a pool record: a defined task and the null TCB are not.
 : TCB-POOLED? ( ptr n -- bool ) {: tcb:ptr :}
    tcb FFI:>CELL {: want:n :}
    TCB-POOL atomic@
@@ -1783,10 +1772,9 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    TASK-ABI:PARK-OFF 0 ?do 0 tcb i + ! CELL +loop
    TASK-TCB-BYTES TASK-ABI:PARK-OFF TASK-SEMAPHORE-BYTES + ?do 0 tcb i + ! CELL +loop ;
 
-\ The claim moves HELD -> FREEING first, so of two TASK:FREEs on one task only
-\ one proceeds and the other is refused; a task in any state but EMPTY is
-\ handed back HELD and refused. The record is cleared before its claim says
-\ FREE, so TASK:NEW never takes a record holding the last task's rows.
+\ Of two TASK:FREEs on one task only one proceeds and the other is refused; a
+\ task in any state but EMPTY is refused. The record is cleared before its claim
+\ says FREE, so TASK:NEW never takes a record holding the last task's rows.
 : TASK-FREE ( ptr n -- ) {: tcb:ptr :}
    tcb TCB-POOLED? 0= if E-TASK-STATE throw then
    CLAIM-HELD CLAIM-FREEING tcb TCB-CLAIM atomic-cas CLAIM-HELD <> if
@@ -1804,11 +1792,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ A `create ... does> ( -- ptr n ) ;` word, as TASK and FACILITY make, answers
 \ the absolute address of its storage, the same in every thread.
 
-\ The body is TASK-TCB-BYTES; the cell after it is this TCB's chain link, taking
-\ the head the definition found and leaving its own address there. Every body
-\ cell but the size and the cleanup chain's head is this process's (the thread,
-\ the mappings, the semaphores, the state), so a program starts with each
-\ defined task EMPTY.
+\ Every body cell but the size and the cleanup chain's head is this process's,
+\ so a program starts with each defined task EMPTY.
 : TASK ( n -- )
    dup TASK-CHECK-SIZE
    TASK-ALIGN8
@@ -1828,7 +1813,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 MEM-MAX-N TASK-REGION-BYTES - STACK-ABI:PAGE-BYTES - constant USER-END-MAX
 
 \ Only main claims, and only while no task is live: a live task's area cannot
-\ grow (TASK-REGION-FIT replaces only a CONSTRUCTED task's region).
+\ grow.
 : USER-NEXT ( n n -- n ) {: off:n size:n :}
    off TASK-USER-NEXT @ < if E-TASK-USER throw then
    size 0 < if E-TASK-USER throw then
@@ -1843,7 +1828,6 @@ CELL constant SLOT-SIZE
 2 cells constant SLOT-PREV
 3 cells constant SLOT-DATA
 
-\ The newest slot body, null before the first.
 PERSISTED-PTR-VARIABLE SLOT-LAST
 
 : SLOT-LAST@ ( -- ptr n )
@@ -1877,12 +1861,10 @@ public
 
 private
 
-\ Whether address at lies in main's copy of the slot whose body is b.
 : SLOT-HOLDS? ( ptr n ptr n -- bool ) {: at:ptr b:ptr :}
    at b SLOT-DATA + - {: d:n :}
    d 0 >= d b SLOT-SIZE + @ < and ;
 
-\ The area offset of address at, which lies in main's copy of a slot.
 : MAIN-SLOT-OFF ( ptr n -- n ) {: at:ptr :}
    SLOT-LAST@
    begin
@@ -1950,8 +1932,6 @@ private
    0 f FACILITY-OWNER!
    f FACILITY-MUTEX BYTE-VIEW MUTEX-UNLOCK-CALL TASK-RC0 ;
 
-\ The child's `does>` body converts the record address to the handle in checked
-\ code, so the only address a caller sees is already a SEM.
 : SEMAPHORE ( -- )
    TASK-ALIGN8
    create TASK-SEMAPHORE-BYTES allot
@@ -1967,8 +1947,6 @@ private
 : SLEEP-REM ( -- ptr n )
    SLEEP-SPECS TASK-TIMESPEC-BYTES + ;
 
-\ Nanoseconds as a timespec, and back. The kernel's remainder is read the way the
-\ request was written, so nothing outside these two words handles the fields.
 : SPEC! ( n ptr n -- ) {: ns:n spec:ptr :}
    ns TASK-NS-PER-S /   spec TASK-SPEC-SEC-OFF + !
    ns TASK-NS-PER-S mod spec TASK-SPEC-NSEC-OFF + ! ;
@@ -1977,12 +1955,8 @@ private
    spec TASK-SPEC-SEC-OFF + @ TASK-NS-PER-S *
    spec TASK-SPEC-NSEC-OFF + @ + ;
 
-\ The deadline shape src/lib/process.f states as PROCESS:DEADLINE-AT and PROCESS:LEFT-MS,
-\ in nanoseconds because a sleep resumes on the nanosecond the kernel hands back
-\ and not on a millisecond boundary. Same arithmetic, same floor at zero. A
-\ duration below zero, or one whose deadline lies past TASK-NS-MAX, is
-\ E-TASK-SLEEP-MS: the bound is tested by division before the multiply and the
-\ add, so neither can wrap.
+\ The bound is tested by division before the multiply and the add, so neither
+\ can wrap.
 : SLEEP-DEADLINE-AT ( ms -- n ) {: timeout:ms :}
    timeout MS>N {: want:n :}
    mono-ns {: now:n :}
@@ -1993,19 +1967,15 @@ private
 : SLEEP-LEFT-NS ( n -- n ) {: deadline:n :}
    deadline mono-ns - dup 0 <= if drop 0 then ;
 
-\ Zero, or the errno the call refused with.
 : SLEEP-CALL ( -- n )
    SLEEP-REQ BYTE-VIEW SLEEP-REM BYTE-VIEW NANOSLEEP-CALL
    0= if 0 exit then
    FFI:ERRNO ;
 
-\ A signal wakes the thread early, and nanosleep reports EINTR with the time it
-\ did not serve in the second timespec: the retry asks for exactly that
-\ remainder, so no signal can shorten the sleep. The remainder is capped by what
-\ is left of an absolute deadline taken before the first call, so no storm of
-\ signals can stretch the total either - the retries converge on the deadline
-\ from below. Zero returns without entering the kernel; a duration below zero or
-\ past the last deadline a cell holds is an operand nothing could serve.
+\ nanosleep reports EINTR with the time it did not serve: the retry asks for
+\ exactly that remainder, so no signal can shorten the sleep. The remainder is
+\ capped by what is left of an absolute deadline taken before the first call,
+\ so no storm of signals can stretch the total either.
 : TASK-SLEEP ( ms -- ) {: timeout:ms :}
    timeout MS>N 0= if exit then
    timeout SLEEP-DEADLINE-AT {: deadline:n :}
@@ -2056,10 +2026,10 @@ private
 
 \ Each wait asks for what is left of one absolute mono-ns deadline taken before
 \ the first, so a signal that cuts a wait short neither shortens nor stretches
-\ the total and a host timer that fires early waits again for the rest: false
+\ the total, and a host timer that fires early waits again for the rest: false
 \ comes only once mono-ns reaches the deadline. A hint posted as the deadline
 \ passes is either taken by the last wait or stays in the count for the next
-\ WAIT or WAIT-MS, as PARK-DRAIN leaves it.
+\ WAIT or WAIT-MS.
 : TASK-STOP-FOR ( ms -- bool ) {: timeout:ms :}
    timeout SLEEP-DEADLINE-AT {: deadline:n :}
    PARK-SELF {: park:sem :}
@@ -2078,9 +2048,6 @@ TASK-MIN-STACK constant MIN-STACK
 : PREPARE ( ptr n -- )
    PREPARE ;
 
-\ Takes the xt rather than parsing a body as SwiftForth's ACTIVATE does, so the
-\ body is checked before a worker runs it. SwiftForth's CONSTRUCT is
-\ TASK:PREPARE because `construct` is a keyword.
 : ACTIVATE ( [ -- ] ptr n -- )
    ACTIVATE ;
 
@@ -2090,7 +2057,7 @@ TASK-MIN-STACK constant MIN-STACK
 : SELF-N ( -- n )
    TASK-SELF-N ;
 
-\ ---- callback contexts (src/lib/ffi-callback.f) ------------------------------
+\ ---- callback contexts -------------------------------------------------------
 \ The main region, from any task.
 : MAIN-BASE ( -- ptr n )
    MAIN-BASE ;
@@ -2159,13 +2126,13 @@ TASK-MIN-STACK constant MIN-STACK
    TASK-DEFER-LEAVE ;
 
 \ True for the whole of a halted run, cleanups included; a callback body reads
-\ it to return to C, where TASK:PAUSE only yields. False on main, with no TCB.
+\ it to return to C, where TASK:PAUSE only yields.
 : HALTED? ( -- bool )
    TASK-SELF-N dup 0= if drop false exit then
    TASK-N>PTR TASK-STATE@ TASK-HALT-REQ = ;
 
 \ True from a halt's request until its unwind starts or the body has ended, in
-\ a callback or a DEFER-ENTER section too. False on main, with no TCB.
+\ a callback or a DEFER-ENTER section too.
 : HALT-PENDING? ( -- bool )
    TASK-SELF-N dup 0= if drop false exit then
    TASK-N>PTR TCB-HALT-PENDING? ;
@@ -2191,8 +2158,7 @@ TASK-MIN-STACK constant MIN-STACK
 \    begin  MY-STATE @ DONE = if exit then  TASK:WAIT  again
 \
 \ A loop that must also answer TASK:HALT calls TASK:PAUSE in that loop and gives
-\ its resources back in a finally around the wait. The hint lets one loop wake
-\ many owners by TCB with no semaphore per waiter.
+\ its resources back in a finally around the wait.
 : WAIT ( -- )
    TASK-STOP ;
 
@@ -2284,8 +2250,7 @@ TASK-MIN-STACK constant MIN-STACK
 \ tasks do not cross a fork.
 \ fork copies only the thread that called it: the exit-chain lock another task
 \ held stays held in the child with nobody to free it, and the main thread's
-\ park is the parent's (MAIN-PARK-FORGET). src/lib/process-fork.f registers this
-\ with src/lib/fork-child.f.
+\ park is the parent's.
 : CHILD-RESET ( -- )
    TASK-EXIT-UNLOCK
    MAIN-PARK-FORGET ;
@@ -2298,9 +2263,8 @@ TASK-MIN-STACK constant MIN-STACK
 
 \ A facility excludes (owner-tracked mutex: GET is idempotent for its owner,
 \ RELEASE a no-op for anyone else); a semaphore counts; a mailbox is a one-cell
-\ rendezvous carrying the sender; src/lib/queue.f buffers cells between any
-\ tasks. None substitutes for another. Atomic cells shared across tasks are
-\ 8-byte aligned.
+\ rendezvous carrying the sender. Atomic cells shared across tasks are 8-byte
+\ aligned.
 : FACILITY ( -- )
    FACILITY ;
 
@@ -2363,8 +2327,6 @@ TASK-MIN-STACK constant MIN-STACK
 : MSG? ( ptr n -- bool )
    MBOX-MSG? ;
 
-\ Hands keep the callback tables' control cells and, when rows exist, the row table: the built
-\ program of src/lib/ffi-callback-test.f reads a row's binding through it.
 : OWNED-CALLBACK-ROWS ( [ ptr u8 n -- ] -- ) {: keep :}
    ROW-TABLE BYTE-VIEW CELL keep execute
    ROW-CAP BYTE-VIEW CELL keep execute
@@ -2375,8 +2337,7 @@ TASK-MIN-STACK constant MIN-STACK
       ROW-TABLE @ ROW-CAP @ ROW-BYTES * keep execute
    then ;
 
-\ TASK-EXIT-N, the first AT-EXIT row never handed out: src/lib/task-test.f reads it
-\ to see the rows grow past the table and freed rows serve again.
+\ TASK-EXIT-N, the first AT-EXIT row never handed out.
 : OWNED-EXIT-N ( -- n ) TASK-EXIT-N @ ;
 
 seal-package
