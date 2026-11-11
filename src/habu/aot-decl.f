@@ -24,9 +24,8 @@ DYNAMIC-BUFFER BLOB-STORAGE n
 variable AOT-BLOB-LEN
 \ REPL snapshots retain the full dictionary and do not use this window.
 32768 constant AOT-REC-MAX
-\ AOT-REC-BUF holds two regions:
-\   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)
-\   [MAX*48 .. +MAX*CREC-ROW)  compact 20B records (three u32 role/code/name fields + metadata + wid)
+\ AOT-REC-BUF holds MAX verbatim 48-byte dictionary records, then MAX compact
+\ AOT-CREC-ROW-byte ones.
 DYNAMIC-BUFFER REC-STORAGE n
 : AOT-REC-BUF ( -- ptr u8 )
    AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + CELL / REC-STORAGE-RESERVE

@@ -1203,8 +1203,6 @@ $14000000 constant ACAP-GBR-TERM
    loop
    ACAP-ENTRY-OFF-RELEASE 0 ACAP-ENTRY-N ! ;
 
-variable ACAP-SIG-KNOWN                            \ window records the checker knows an effect for
-variable ACAP-SIG-EXEMPT                           \ package, retired, and unrecorded records
 
 : ACAP-REFUSE-SIG-WID ( n n -- ) {: k:n w:n :}
    s" aot-capture: window record " type k ACAP-NAME.
@@ -1239,15 +1237,12 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 
 : ACAP-?SIG ( n -- ) {: k:n :}
    k AOT-REC AOT-RWID {: w:n :}
-   w 0 < if ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit then
+   w 0 < if exit then
    w ACAP-REC-PKG {: pa:ptr pu:n pub:bool ok:bool :}
    ok 0= if k w ACAP-REFUSE-SIG-WID then
    k AOT-REC AOT-RNPTR k AOT-REC AOT-RNLEN {: na:ptr nu:n :}
    pa pu pub na nu AOT-ARM:PAYLOAD-LOOKUP {: row:n known:bool :}
-   known 0= if
-      ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit
-   then
-   ACAP-SIG-KNOWN @ 1 + ACAP-SIG-KNOWN !
+   known 0= if exit then
    row 0= if k ACAP-REFUSE-SIG then
    row 1 - ACAP-SIG-ROW+ ;
 
@@ -1274,7 +1269,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ families a capture tool loads after its window stay out. A closed window keeps
 \ its end.
 : ACAP-AUDIT-SIGS ( -- )
-   0 ACAP-SIG-KNOWN !  0 ACAP-SIG-EXEMPT !  0 AOT-SIG-N !
+   0 AOT-SIG-N !
    0 ACAP-PKG-MEMO-W !  0 ACAP-PKG-MEMO-ROW !  0 ACAP-PKG-MEMO-PUB !
    ACAP-W-R1 @ ACAP-W-R0 @ ?do i ACAP-?SIG loop
    ACAP-SIG-STRINGS
@@ -1986,64 +1981,6 @@ public
    off u + 1+ AOT-BOOTRUN-LEN !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;      \ live terminator (uncounted)
 
-\ What the row table must hold, recounted off the live table with
-\ ACAP-BAKE-DATA's arithmetic, so a producer checks the table against a reading
-\ not taken from it: a row never written, written twice, or for a cell in
-\ neither population. The two are disjoint: a cell inside the window counts
-\ here however its target is placed. DECLARED-IN:
-\ cells inside the window's DATA span, whose bytes stay out of every sparse run.
-: DECLARED-IN ( n n -- n )
-   {: d0:n d1:n :}
-   d0 AOT-DATA-N - {: d0off:n :}
-   d1 d0 - {: len:n :}
-   0
-   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
-   count 0 ?do
-      rows i cells + @ ACAP-XTCELL-OFF d0off - {: woff:n :}
-      woff 0 >= woff len < and if 1+ then
-   loop ;
-
-\ TARGETED-OUT: cells outside the window whose declared target is inside their
-\ kind's span. TRAPPED-BELOW asks a narrower question of the same population
-\ (the CODE cells below the window a boot-run installer must refill).
-: TARGETED-OUT ( n n n n -- n )
-   {: b0:n b1:n d0:n d1:n :}
-   d0 AOT-DATA-N - {: d0off:n :}
-   d1 d0 - {: len:n :}
-   0
-   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
-   count 0 ?do
-      rows i cells + @ {: row:n :}
-      row ACAP-XTCELL-OFF d0off - {: woff:n :}
-      woff 0 >= woff len < and 0= if
-         row b0 b1 d0 d1 ACAP-XTCELL-TARGET-IN? if 1+ then
-      then
-   loop ;
-
-\ Declared address cells below the window holding an address inside it: each is
-\ a boot-run row owed. A caller
-\ declaring fewer rows has an undeclared installer. It counts content, not kind,
-\ so an installer of a new kind counts too, and an install made after the window
-\ closes points elsewhere and is not counted.
-: TRAPPED-BELOW ( n n n -- n )
-   {: b0:n b1:n d0:n :}
-   d0 AOT-DATA-N - {: d0off:n :}
-   0
-   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
-   count 0 ?do
-      rows i cells + @ {: row:n :}
-      row ACAP-XTCELL-OFF {: off:n :}
-      row ACAP-XTCELL-DATA? 0= off d0off < and if
-         row ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
-         v b0 >= v b1 < and if 1+ then
-      then
-   loop ;
-
-\ The signature audit's counts: records with a known checker effect, and those
-\ exempted (package, retired, no effect). They sum to the window's record
-\ count.
-: SIG-KNOWN ( -- n ) ACAP-SIG-KNOWN @ ;
-: SIG-EXEMPT ( -- n ) ACAP-SIG-EXEMPT @ ;
 
 private
 
@@ -2220,7 +2157,6 @@ public
       -1 AOT-ARM:PAYLOAD-EXPORTED ! exit
    then
    ACAP-PERSISTENT-OWNER
-   0 ACAP-SIG-KNOWN ! 0 ACAP-SIG-EXEMPT !
    0 AOT-SIG-N ! 0 AOT-SIG-STR-LEN ! 0 AOT-REG-LEN ! ;
 
 private
