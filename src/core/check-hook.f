@@ -13,24 +13,13 @@ private
 \ STRUCTURE-DECL:SD-REPLAY, ...) publishes a checked effect without defining the
 \ word, so a later definition passes the engine's wall (habu2.f C-REJECT-DUP-DEF)
 \ and checker.f CHECK-REC-ADMIT refuses it with $4E and no message. The hook asks
-\ CHECKER-CERT-DUP? (which interns nothing) first and writes what the wall writes.
-\ The source tools classify $4E themselves (check-all-errors-core.f DUP-RC).
-$4E constant DUP-RC
+\ CHECKER-CERT-DUP? (which interns nothing) first and refuses it as the
+\ wall does (REFUSE-DUPLICATE).
 
-\ This file loads before src/habu/layout.f, so the pending definition's two
-\ cells are spelled here as data-base offsets, as src/core/include.f spells the
-\ SRCLOC pair. layout.f reserves them as PEND-CELL and PENDTKA-CELL; the
-\ cursor, INP-CELL, is src/core/layout-buffer.f STGT-INP-CELL. The path pair,
-\ SRC-PATH and SRC-PATHLEN-OFF, and the file's bytes, SRC-OWNED, are this
-\ package's from src/core/checker.f.
-STGT-INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
-$3688 constant PEND-OFF
-$2850 RESERVED-PTR-U8-CELL SRC-NAME
-
-\ The body text block and the buffer being read, spelled the same way: the
-\ block's base, its text capacity and its row count are layout.f
-\ BODY-TEXT:BASE-CELL, CAP-CELL and ROWS-CELL; the buffer is SRCLOC:INB-CELL up
-\ to INE-CELL.
+\ The body text block and the buffer being read, as data-base offsets (this
+\ file loads before layout.f): the block's base, its text capacity and its row
+\ count are layout.f BODY-TEXT:BASE-CELL, CAP-CELL and ROWS-CELL; the buffer is
+\ SRCLOC:INB-CELL up to INE-CELL.
 $800 RESERVED-PTR-U8-CELL BODY-BASE
 $808 constant BODY-CAP-OFF
 $818 constant BODY-ROWS-OFF
@@ -50,7 +39,7 @@ CK-TKA-OFF RESERVED-PTR-U8-CELL LAST-TOKEN
    {: a:ptr u:n :}
    DSRC-U @ 0 <> if RES-FALSE exit then
    SRCLOC:FILE-BUFFER? 0= if RES-FALSE exit then
-   data-base PEND-OFF + @ 0= if RES-FALSE exit then
+   data-base CK-DEF-PEND-OFF + @ 0= if RES-FALSE exit then
    BODY-BASE @ {: base:ptr :}
    base NULL-PTR = if RES-FALSE exit then
    a base - 0 <> if RES-FALSE exit then
@@ -112,39 +101,6 @@ private
 : FIRST-TOKEN ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 begin dup u < if a over + c@ 32 > else 0 0= 0= then while 1 + repeat
    a swap ;
-
-\ The line of a byte of the open file, counted from its first owned byte.
-: BYTE-LINE ( ptr u8 -- n )
-   SRC-OWNED @ swap ERROR-TEXT:LINE ;
-
-\ The line of the definition's name, where the wall places a duplicate. At a
-\ colon definition's closing `;` the definition is pending (PEND-CELL) and its
-\ opener kept where its name starts (PENDTKA-CELL); create, variable and
-\ constant run the hook with nothing pending (habu2.f C-DEFHOOK), PENDTKA-CELL
-\ still at the last colon definition's name and the cursor just past their own.
-\ A name not between the file's first owned byte and the cursor is not counted
-\ to, since the count would read outside the file: it is placed at the cursor.
-: NAME-LINE ( -- n )
-   SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:ptr nm:ptr p:ptr :}
-   data-base PEND-OFF + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
-   if nm BYTE-LINE else p BYTE-LINE then ;
-
-\ ` at <path>` while a source file is open, then `:<line>` under
-\ SRCLOC:FILE-BUFFER?, as the tail writes it; nothing on stdin or at the REPL.
-: AT-SOURCE ( -- )
-   data-base SRC-PATHLEN-OFF + @ {: u:n :}
-   u 0= if exit then
-   s"  at " ERROR-TEXT:TYPE
-   SRC-PATH @ u ERROR-TEXT:TYPE
-   SRCLOC:FILE-BUFFER? 0= if exit then
-   s" :" ERROR-TEXT:TYPE
-   NAME-LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
-
-: REPORT-DUPLICATE ( ptr u8 n -- )
-   s" duplicate definition: " ERROR-TEXT:TYPE
-   ERROR-TEXT:TYPE
-   AT-SOURCE
-   S\" \n" ERROR-TEXT:TYPE ;
 
 
 \ Appends sym's tags at RSN, after the effect FACTS-SAME? left in RSBUF.
@@ -292,7 +248,7 @@ public
    {: a:ptr u:n :}
    CHECKER-REPORT-RESET
    a u FIRST-TOKEN {: na:ptr nu:n :}
-   na nu CHECKER-CERT-DUP? if na nu REPORT-DUPLICATE DUP-RC throw then
+   na nu CHECKER-CERT-DUP? if na nu REFUSE-DUPLICATE then
    UEND @ {: mark:n :}
    a u [: CHECK! REPORT-UNCHECKABLE ;]  a u BODY-ARM DISARMER  finally
    dup -1 = if na nu mark CHECK-FACTS then

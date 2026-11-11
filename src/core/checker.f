@@ -32085,6 +32085,53 @@ public
 : TOP-SITE ( -- n bool ) TOK-SPELL-A @ LINE-AT ;
 ;package
 
+\ The wall's line and code (habu2.f C-DUP-DEF-FAIL) for a duplicate refused off
+\ the wall: check-hook.f DEFINITION, layout-buffer.f LBUF-NAME-OK? (before allot).
+package CHECK
+private
+\ The source tools classify $4E themselves (check-all-errors-core.f DUP-RC).
+$4E constant DUP-RC
+CK-INP-OFF RESERVED-PTR-U8-CELL SRC-CURSOR
+\ layout.f, which loads after this file, names this cell PENDTKA-CELL.
+$2850 RESERVED-PTR-U8-CELL SRC-NAME
+
+\ The line of a byte of the open file, counted from its first owned byte.
+: BYTE-LINE ( ptr u8 -- n )
+   SRC-OWNED @ swap ERROR-TEXT:LINE ;
+
+\ The line of the definition's name, where the wall places a duplicate. At a
+\ colon definition's closing `;` the definition is pending (PEND-CELL) and its
+\ opener kept where its name starts (PENDTKA-CELL); create, variable and
+\ constant run the hook with nothing pending (habu2.f C-DEFHOOK), PENDTKA-CELL
+\ still at the last colon definition's name and the cursor just past their own.
+\ A name not between the file's first owned byte and the cursor is not counted
+\ to, since the count would read outside the file: it is placed at the cursor.
+: NAME-LINE ( -- n )
+   SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:ptr nm:ptr p:ptr :}
+   data-base CK-DEF-PEND-OFF + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
+   if nm BYTE-LINE else p BYTE-LINE then ;
+
+\ ` at <path>` while a source file is open, then `:<line>` under
+\ SRCLOC:FILE-BUFFER?, as the tail writes it; nothing on stdin or at the REPL.
+: AT-SOURCE ( -- )
+   data-base SRC-PATHLEN-OFF + @ {: u:n :}
+   u 0= if exit then
+   s"  at " ERROR-TEXT:TYPE
+   SRC-PATH @ u ERROR-TEXT:TYPE
+   SRCLOC:FILE-BUFFER? 0= if exit then
+   s" :" ERROR-TEXT:TYPE
+   NAME-LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
+public
+\ Writes the wall's line, `duplicate definition: <name>` and the place, then
+\ throws DUP-RC.
+: REFUSE-DUPLICATE ( ptr u8 n -- )
+   s" duplicate definition: " ERROR-TEXT:TYPE
+   ERROR-TEXT:TYPE
+   AT-SOURCE
+   S\" \n" ERROR-TEXT:TYPE
+   DUP-RC throw ;
+;package
+
 \ The token's verdict as DO-TOK1 and CHECK take it: a checked step runs, as
 \ does one deferred to the run; a refused or uncheckable one renders the
 \ diagnostic the same token gets in a body and throws the checker's rc, so the

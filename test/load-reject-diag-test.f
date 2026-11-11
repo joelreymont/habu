@@ -658,8 +658,8 @@ variable RC
    s" LRD-BS" s" nosuch:fam" s" :2" ASSERT-NCOMP-LINE ;
 
 \ A name only the checker holds, a PRODUCT replay with no word behind it, is
-\ refused by the checker hook's writer (src/core/check-hook.f AT-SOURCE), which
-\ names an evaluated string's file alone too.
+\ refused by check-hook.f DEFINITION through src/core/checker.f
+\ REFUSE-DUPLICATE, which names an evaluated string's file alone too.
 : TEST-REPLAY-DUP-PLACE ( -- )
    s" an evaluated checker-only duplicate names its file and no line" T-LABEL
    BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL

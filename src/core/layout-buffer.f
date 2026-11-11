@@ -65,8 +65,8 @@ variable LBUF-BYTES
 \ the checker has reported it (src/core/checker.f CHECKER-STORAGE-REFUSE).
 : LBUF-NAME-OK? ( ptr u8 n -- bool ) {: name:ptr nameu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
-   name nameu CHECKER-DEFINED-HERE? if E-DUP-DEFINITION throw then
-   name nameu get-current search-wl 0 <> if E-DUP-DEFINITION throw then
+   name nameu CHECKER-DEFINED-HERE? if name nameu CHECK:REFUSE-DUPLICATE then
+   name nameu get-current search-wl 0 <> if name nameu CHECK:REFUSE-DUPLICATE then
    LBUF-TRUE ;
 
 : LBUF-ZERO ( ptr n n -- ) {: base:ptr bytes:n :}

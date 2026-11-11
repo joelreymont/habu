@@ -851,6 +851,13 @@ variable CANDIDATE-VERDICT
    s" : GD-HDUP ( -- n ) 3 ;" GE-SRC-LINE
    $4E s" GD-HDUP" s" hash dup-probe rejects duplicate behind a retired slot" RUN-BAD-SOURCE
    GE-SRC-RESET
+   s" variable GD-TV" GE-SRC-LINE
+   s" TYPED-VARIABLE GD-TV n" GE-SRC-LINE
+   $4E s" duplicate definition: GD-TV" s" TYPED-VARIABLE names a defined name it refuses" RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" TYPED-VARIABLE over n" GE-SRC-LINE
+   $4E s" duplicate definition: over" s" TYPED-VARIABLE names an engine word it refuses" RUN-BAD-SOURCE
+   GE-SRC-RESET
    s" : dup ( n -- n n ) dup ;" GE-SRC-LINE
    $4E s" duplicate definition" s" primitive shadow attempt rejects without undefine" RUN-BAD-SOURCE
    GE-SRC-RESET

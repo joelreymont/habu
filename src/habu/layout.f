@@ -368,7 +368,7 @@ $3680 constant ENVP-CELL
 \ main.f RUN) runs it as the program file, else 0; src/core/include.f reads it.
 \ It takes $2DB0, the first cell after TASK-CHAIN-CELL.
 $2DB0 constant PROGRAM-FILE-CELL
-$3688 constant PEND-CELL         \ mirrored: src/core/check-hook.f PEND-OFF, src/core/checker.f CK-DEF-PEND-OFF
+$3688 constant PEND-CELL         \ mirrored: src/core/checker.f CK-DEF-PEND-OFF
 \ A definition whose capture ran a parsing immediate has construction inputs
 \ outside the body text. The native cache reads this only through the running engine's
 \ native-pending-opaque? primitive. The cell is transient and clears with
@@ -1235,7 +1235,7 @@ $2848 constant TOKFRF-CELL
 \ within their keyword, so no source can end inside them. A transient address
 \ like TKA-CELL, zeroed at snapshot: no native-layout row, no stripped-image
 \ claim.
-$2850 constant PENDTKA-CELL      \ mirrored: src/core/check-hook.f SRC-NAME
+$2850 constant PENDTKA-CELL      \ mirrored: src/core/checker.f SRC-NAME
 \ JIT-QUOT: quotations open inside quotations on tier 0. QPATCH-CELL, QENT-CELL,
 \ QXH-CELL and QFRAME-CELL describe the INNERMOST open quotation, which is all
 \ that J-EXIT, the locals guards and `;]` read. A `[:` opened while one is open
