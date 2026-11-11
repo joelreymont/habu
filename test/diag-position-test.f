@@ -1261,8 +1261,6 @@ variable RC
    s" literal `300` does not fit `u8` (`0`..`255`)" LIT-REFUSED ;
 
 
-\ A literal that fits, arithmetic, a join of different literals and a loop's
-\ carried cell give no refusal.
 : TEST-LITERAL-ACCEPTED ( -- )
    s" : X ( -- ) 255 U8C ;" LIT-ACCEPTED
    s" : X ( -- ) 0 U8C ;" LIT-ACCEPTED
@@ -1293,8 +1291,7 @@ variable RC
    TEST-LITERAL-ACCEPTED ;
 
 \ A match whose scrutinee does not fit, and a match or case one of whose
-\ branches fails, still has live words, in its branches and after it, that the
-\ load compiles: the first undefined one refuses the definition.
+\ branches fails, still has live words that the load compiles.
 : TEST-LIVE-BRANCHES ( -- )
    s" an undefined word in a match whose scrutinee does not fit" T-LABEL
    s" SUMTYPE mres VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF FIRST ENDOF ;MATCH SECOND ;"
@@ -1312,7 +1309,6 @@ variable RC
    s" : X ( n -- n ) CASE 1 OF 1 c@ ENDOF ENDCASE NOPE ;" s" case-branch-after.f" LINE-FIXTURE
    s" E-UNDEFINED" s" NOPE" 1 45 44 48 REFUSED-AT ;
 
-\ Each check of the fixture certifies it: rc 0 and no packet.
 : CERTIFIED ( -- )
    s" " 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
@@ -1321,9 +1317,8 @@ variable RC
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 0 T= ;
 
-\ A word `[']` ticks that does not exist refuses the definition at that word,
-\ as an undefined call does: before a signature that does not parse and
-\ before an earlier failing check.
+\ A word `[']` ticks that does not exist refuses the definition at that word
+\ before a signature that does not parse and before an earlier failing check.
 : TEST-TICK-TARGET ( -- )
    s" a signature that does not parse and an undefined ticked word" T-LABEL
    s" : X ( n -- zz ) ['] NOPE ;" s" badsig-tick.f" LINE-FIXTURE
@@ -1338,8 +1333,6 @@ variable RC
    s" : X ( -- ) ['] dup drop ;" s" tick-defined.f" LINE-FIXTURE
    CERTIFIED ;
 
-\ The fixture NAME holding the line TEXT after MK, the create caller the line
-\ DEF defines, made MADE, which that run types `-- ptr a`.
 : MK-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: def:ptr defu:n text:ptr textu:n name:ptr nameu:n :}
    SB-RESET
@@ -1354,15 +1347,12 @@ variable RC
    {: text:ptr textu:n name:ptr nameu:n :}
    s" : MK ( -- ) create ; parses: MK 1" text textu name nameu MK-FIXTURE ;
 
-\ Packet k of the last check defers MK's call, at byte BS, to the run.
 : MK-DEFERRED ( n n -- )
    {: k:n bs:n :}
    k s" code" s" W-CHECK-DEFERRED" FIELD=
    k s" verdict" s" deferred" FIELD=
    k s" MK" 2 1 bs bs 2 + FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ The plain check and --all-errors each give one packet, a rejection: CODE at
-\ TOK, on LINE at COL, in bytes [BS, BE).
 : RUN-REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
    {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" " CHECK
@@ -1383,7 +1373,6 @@ variable RC
    1 s" verdict" s" deferred" FIELD=
    1 tok toku 3 12 53 53 toku + FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ RUN-REFUSED-AT, and --verify-only gives that rejection after the deferral.
 : VERIFY-REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
    {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    c cu tok toku line col bs be RUN-REFUSED-AT
@@ -1394,8 +1383,6 @@ variable RC
    1 s" verdict" s" rejected" FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ The load of the fixture exits WANT, its error output holding TEXT, or empty
-\ when TEXT is.
 : LOADED ( ptr u8 n n -- )
    {: text:ptr textu:n want:n :}
    PROC-ARGV-RESET
@@ -1409,8 +1396,6 @@ variable RC
    textu 0= IF ERR-U @ 0 T= EXIT THEN
    ERR$ text textu CONTAINS? TTRUE ;
 
-\ Packet k of the last check is CODE for TOK in the file PATH, with no position,
-\ and meets the packet contract.
 : UNPLACED ( n ptr u8 n ptr u8 n ptr u8 n -- )
    {: k:n c:ptr cu:n tok:ptr toku:n path:ptr pathu:n :}
    k s" code" c cu FIELD=
@@ -1425,14 +1410,10 @@ variable RC
    root s" byte_end" FIELD-ABSENT
    root GJA-DIAG-CONTRACT-ROW ;
 
-\ Packet k of the last check is E-TRUST-UNRESOLVED for TOK in the file PATH,
-\ with no position: the checked text does not hold TOK.
 : UNPLACED-STALE ( n ptr u8 n ptr u8 n -- )
    {: k:n tok:ptr toku:n path:ptr pathu:n :}
    k s" E-TRUST-UNRESOLVED" tok toku path pathu UNPLACED ;
 
-\ Each check of the fixture, plain, --all-errors and --verify-only, refuses its
-\ trust row as stale at TOK, that packet alone and unplaced.
 : STALE-UNPLACED ( ptr u8 n -- )
    {: tok:ptr toku:n :}
    s" " CHECK
@@ -1445,23 +1426,20 @@ variable RC
    GJA-LINE# @ 1 T=
    0 tok toku FX-PATH$ CANON$ UNPLACED-STALE ;
 
-\ Packet k of the last --verify-only check is a rejection: CODE at TOK, on LINE
-\ at COL, in bytes [BS, BE).
 : VERIFY-REJECTED-AT ( n ptr u8 n ptr u8 n n n n n -- )
    {: k:n c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    k s" code" c cu FIELD=
    k s" verdict" s" rejected" FIELD=
    k tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ A top-level row the check replays gets the bytes the load's literals make: an
-\ escaped literal's escapes decoded (hex or letter), in either slot of a `trust`
-\ row. A decoded name nothing defines is stale and unplaced: the checked text
-\ does not hold it. A bad escape is refused at the literal's opener by each
-\ check, as the throw of its statement. The check's lexer reads no escape and
-\ reports a defect anywhere in the file in place before an earlier one, so an
-\ unclosed string after the bad escape is reported there, as after a definition
-\ that does not check; --verify-only composes the file as it reads it and keeps
-\ that definition's refusal before the string's.
+\ A top-level row the check replays gets the bytes the load's literals make. A
+\ decoded name nothing defines is stale and unplaced: the checked text does not
+\ hold it. A bad escape is refused at the literal's opener by each check, as the
+\ throw of its statement. The check's lexer reads no escape and reports a defect
+\ anywhere in the file in place before an earlier one, so an unclosed string
+\ after the bad escape is reported there, as after a definition that does not
+\ check; --verify-only composes the file as it reads it and keeps that
+\ definition's refusal before the string's.
 : TEST-ESCAPED-ROW ( -- )
    s" an escaped trust row: a hex escape" T-LABEL
    SB-RESET
@@ -1515,12 +1493,9 @@ variable RC
    a FX FX-U @ + u BYTE-COPY
    FX-U @ u + FX-U ! ;
 
-\ Fixture NAME: `included` of an escaped literal of STEPS `.\x2F` escapes (the
-\ step `./`, five bytes written, two decoded) before inc-target.f, then a use of
-\ the word that file defines. 250 steps exceed PATH-CAP (1023 bytes) as written
-\ only, 600 decoded too. The resolver measures the path decoded and refuses it
-\ only at 2048 bytes joined to a searched root or over PATH-CAP normalized, so
-\ the engine loads both.
+\ 250 steps exceed PATH-CAP (1023 bytes) as written only, 600 decoded too. The
+\ resolver measures the path decoded and refuses it only at 2048 bytes joined to
+\ a searched root or over PATH-CAP normalized, so the engine loads both.
 : STEPS-FIXTURE ( n ptr u8 n -- ) {: steps:n name:ptr nameu:n :}
    BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
    0 FX-U !
@@ -1529,9 +1504,6 @@ variable RC
    s\" inc-target.f\" included\nINCLUDED-WORD drop\n" FX+
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
-\ --verify-only gives two deferrals: the call CALL the run decides, at the start
-\ of line CLINE from byte CBS, then the stretch or definition deferred at TOK,
-\ on LINE at COL, in bytes [BS, BE).
 : VERIFY-ONLY-AT ( ptr u8 n n n ptr u8 n n n n n -- )
    {: call:ptr callu:n cline:n cbs:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" --verify-only" 0 CHECK-EXIT
@@ -1543,8 +1515,6 @@ variable RC
    1 s" verdict" s" deferred" FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ The plain check and --all-errors certify the fixture; --verify-only defers
-\ the call CALL of a body's loader and the stretch at TOK (VERIFY-ONLY-AT).
 : VERIFY-DEFERRED-AT ( ptr u8 n n n ptr u8 n n n n n -- )
    {: call:ptr callu:n cline:n cbs:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" " 0 CHECK-EXIT
@@ -1553,19 +1523,16 @@ variable RC
    GJA-LINE# @ 0 T=
    call callu cline cbs tok toku line col bs be VERIFY-ONLY-AT ;
 
-\ A string loader's path is the bytes the load's literal makes: escapes decoded,
-\ followed through `included` and `required`; a plain literal's spelling is
-\ kept, backslash and all. PATH-CAP bounds the decoded path: one that fits only
-\ decoded is followed, one over it decoded is refused at its loader. A loader in
-\ a body loads when the word runs: the plain check and --all-errors follow its
+\ A string loader's path is the bytes the load's literal makes. A loader in a
+\ body loads when the word runs: the plain check and --all-errors follow its
 \ path after the definition, kept for that load whatever the check decodes
 \ first. --verify-only runs no body, so it defers a call of the body's word and
 \ the first later use of a word that file defines. A bad escape at top level
 \ stops the load: each check refuses that literal once, at its opener, and
-\ follows nothing after it. In a body (`:` or `kernel:`) it is one more error of
-\ a rejected definition: its loader is neither followed nor refused, the missing
-\ file required after the body is refused at its `require`, and
-\ --verify-only keeps the definition's refusal before it.
+\ follows nothing after it. In a body it is one more error of a rejected
+\ definition: its loader is neither followed nor refused, the missing file
+\ required after the body is refused at its `require`, and --verify-only keeps
+\ the definition's refusal before it.
 : TEST-ESCAPED-PATH ( -- )
    SB-RESET
    s" : INCLUDED-WORD ( -- n ) 7 ;" SB-APPEND LF+
@@ -1671,13 +1638,11 @@ variable RC
    s" bad string literal" 74 LOADED ;
 
 \ A word a create caller made is bound, and typed `-- ptr a`, by the run of that
-\ caller (docs/forth.md, "A `create … does>` clause declares its created words'
-\ effects"): its tick is admitted, and a call to it fails its check in source
-\ order, after a signature that does not parse and an earlier failing check, as
-\ the load reports. A name nothing defines is still the load's compiler's to
-\ refuse, before any check. --verify-only does not run MK: MK's row bounds its
-\ call, so it checks what follows it; with no row the call may read any of the
-\ rest, and --verify-only discovers nothing after it.
+\ caller: its tick is admitted, and a call to it fails its check in source
+\ order, after a signature that does not parse and an earlier failing check. A
+\ name nothing defines is still the load's compiler's to refuse, before any
+\ check. --verify-only does not run MK: with no row the call may read any of
+\ the rest, and --verify-only discovers nothing after it.
 : TEST-MADE ( -- )
    s" a ticked word a create caller made" T-LABEL
    s" : X ( -- ) ['] MADE drop ; X" s" made-tick.f" MADE-FIXTURE
@@ -1766,8 +1731,6 @@ variable RC
    s\" TRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate" SB-APPEND LF+
    s\" s\" EV\" 0 parse-imm" SB-APPEND LF+ ;
 
-\ The plain check and --all-errors each refuse the fixture at TOK with CODE,
-\ one packet with no position.
 : RUN-REFUSED-UNPLACED ( ptr u8 n ptr u8 n -- )
    {: c:ptr cu:n tok:ptr toku:n :}
    s" " CHECK
@@ -1792,10 +1755,7 @@ variable RC
    s" ev-after.f" FIXTURE!
    s" E-MISMATCH" s" drop" 4 3 109 113 RUN-REFUSED-AT ;
 
-\ A structure a definer's head leaves open is refused at the `does>` that ends
-\ the head: the load's packet names its place in the file though a comment
-\ earlier in the body is not in the text the load checks. The fixture sets the
-\ origin as the check tool's marked copy does.
+\ The fixture sets the origin as the check tool's marked copy does.
 : TEST-HEAD-CLOSER ( -- )
    s" an if open at the does> ending a definer's head, after a comment" T-LABEL
    SB-RESET
@@ -1828,14 +1788,11 @@ variable RC
    1 s" E-UNDEFINED" s" NOPE" 6 532 598 602 VERIFY-REJECTED-AT
    s" E-UNDEFINED habu: in x: undefined word 'NOPE'" REJECT-RC LOADED ;
 
-\ The fixture's first two lines: GEN renders MADE's definition, and runs.
 : GEN-LINES ( -- )
    SB-RESET
    s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
    s" GEN" SB-APPEND LF+ ;
 
-\ --verify-only of the fixture exits WANT, and its packet k defers TOK to the
-\ run with the suggestion SUG.
 : DEFER-SUGGESTS ( n n ptr u8 n ptr u8 n -- )
    {: want:n k:n tok:ptr toku:n sug:ptr sugu:n :}
    s" --verify-only" want CHECK-EXIT
@@ -1843,9 +1800,9 @@ variable RC
    k s" token" tok toku FIELD=
    k s" suggestion" sug sugu FIELD= ;
 
-\ A deferral's suggestion names what lifts its cause, recorded where the
-\ source pre-pass decides it. A body the check defers, and a stretch opened at
-\ a name TOP-VERDICT answers 3 for, record none and keep the general text.
+\ A deferral's suggestion names what lifts its cause. A body the check defers,
+\ and a stretch opened at a name with no known cause, record none and keep the
+\ general text.
 : TEST-DEFER-SUGGEST ( -- )
    s" a top-level parsing word with no parses: row" T-LABEL
    SB-RESET
@@ -1910,9 +1867,7 @@ variable RC
    0 1 s" MADE" s" Rewrite with modeled words or isolate an audited primitive." DEFER-SUGGESTS ;
 
 \ A control-flow word with no structure open, or another structure's, is one
-\ the load cannot compile: it refuses the definition at that word, before a
-\ signature that does not parse, an earlier failing check and a later
-\ undefined word.
+\ the load cannot compile: it refuses the definition at that word.
 : TEST-CONTROL-ORPHAN ( -- )
    s" a signature that does not parse and a then with no if" T-LABEL
    s" : X ( n -- zz ) then ;" s" badsig-then.f" LINE-FIXTURE
@@ -1948,8 +1903,6 @@ variable RC
    s" if-deep.f" FIXTURE! ;
 
 
-\ A control-flow refusal names its reason: a depth change is a mismatch of the
-\ start row, or the else arm's, and the changed row; others name their repair.
 : TEST-CONTROL-REASON ( -- )
    s" a loop body that changes the stack's depth" T-LABEL
    s" : X ( n -- n ) 3 0 do dup loop ;" s" loop-depth.f" LINE-FIXTURE
@@ -2055,10 +2008,9 @@ variable RC
 
 \ A structure still open where its definition ends is one the load cannot
 \ compile: it refuses the definition at the `;`, or at the `does>` ending a
-\ definer's body, before a signature that does not parse, a called shadowed
-\ name, a trust-boundary word and dead code. A definer whose head calls a word
-\ the run decides is refused as the load refuses it, never as a duplicate of
-\ itself, and --verify-only defers that head. An open match keeps its reason.
+\ definer's body. A definer whose head calls a word the run decides is refused
+\ as the load refuses it, never as a duplicate of itself, and --verify-only
+\ defers that head.
 : TEST-CONTROL-OPEN ( -- )
    s" a signature that does not parse and an if open at ;" T-LABEL
    s" : X ( n -- zz ) dup if ;" s" badsig-open.f" LINE-FIXTURE
@@ -2161,9 +2113,6 @@ variable RC
    s" depth-char.f" FIXTURE!
    s" E-MATCH-DEPTH" s" shade" 3 7 286 291 REFUSED-AT ;
 
-\ AMB, which packages PA and PB both publish, and with GLOBAL the global
-\ wordlist too (line 9 defines AMC otherwise), and on line 13 the body BODY of
-\ a definition under `using PA` and `using PB`.
 : AMBIG-FIXTURE ( bool ptr u8 n -- )
    {: global:bool body:ptr bodyu:n :}
    SB-RESET
@@ -2222,8 +2171,6 @@ variable RC
    s" seal-package" SB-APPEND LF+
    s" ;package" SB-APPEND LF+ ;
 
-\ A definition into a package whose record is sealed, by the engine or by the checked
-\ source, stops at its whole name.
 : TEST-SEALED-DEFINE ( -- )
    s" a definition into an engine-sealed package names its whole name" T-LABEL
    s" : ENGINE-INTERNAL:FOO ( -- ) ;" s" sealed-engine.f" LINE-FIXTURE
@@ -2280,7 +2227,7 @@ variable RC
    0 s" SP2:A" 10 8 134 139 AT ;
 
 \ Q-TWO takes the symbol id Q-ONE's rolled-back scope retired; the restore drops
-\ Q-ONE's parse-imm row (PIMM-REWIND), so Q-TWO is refused as never declared.
+\ Q-ONE's parse-imm row, so Q-TWO is refused as never declared.
 : TEST-STALE-PARSE-IMM ( -- )
    s" a parse-imm row made in a scope that rolls back" T-LABEL
    SB-RESET
