@@ -283,6 +283,81 @@
 \ words catch every store rewind or swap (UEND/USIGS-P, NORET-END) and bump the
 \ epoch, invalidating the whole cache at once. Snapshot prepare drops the
 \ mapping; a restored image rebuilds lazily.
+\
+\ The interpret row: CHECKER-TOP-SAVE and CHECKER-TOP-LOAD copy it with the
+\ same node copier as stored effects, but into two process-owned buffers instead
+\ of USIGS, while TOP-COPYING is set. A save writes the write buffer from terms
+\ whose atom and family names still borrow the read buffer, then the two swap.
+\ A literal event appends to the read buffer at TOP-READ-END.
+\
+\ Node interning: when E-COPY* finishes a subterm at the top of the arena, an
+\ identical node below wins: UEND rewinds over the fresh copy and the older
+\ offset is answered. The hash only chooses a chain; every hit compares the
+\ nodes, since a hash collision would certify a word against another word's
+\ signature. Children are interned before their parent, so equal tags and key
+\ cells at the roots mean equal subterms; only an atom's or param's name bytes,
+\ written per copy, are compared by content. E-KEY-N and E-KEY are the one
+\ description of a node's identity, read by both hash and compare. Var ids are
+\ the stored ones: E-COPY* renumbers vars in first-appearance order, and
+\ E-TV-ID/E-RV-ID still run for a subterm interned away, since it is built
+\ before it is discarded. The rewind is safe: a finished subterm spans its root
+\ to UEND and names only offsets below that top, so no surviving node names a
+\ byte above a truncation point. A forgotten intern (rewind, snapshot) costs
+\ hits, never correctness.
+\
+\ The intern index is made exact before each lookup (UIX-EXACT). With no table,
+\ in a fresh process or after a snapshot boot, it is allocated and built from
+\ the store, which may already be full. After a rewind this file did not
+\ perform (UEND below the mark), or under a base no relocation carried the
+\ stamp to (a fresh mapping, an arena swapped in), the entries are forgotten
+\ and rebuilt from the current store. Otherwise the store only grew and the new
+\ end is marked. A verbatim relocation is no move: USIGS-GROW carries the stamp.
+\ The rebuild walks the store's records, and the store's layout is the visited
+\ set: a record owns the bytes up to the next record, exactly the nodes, name
+\ bytes and arg runs E-COPY wrote for its rows (a discarded node was rewound
+\ before the next append), so each span is reachable from its record's four row
+\ roots and a child outside it is an older record's, already visited. Each span
+\ is walked once with a range test per older reference; a record that appended
+\ nothing is skipped whole. The table's lookup still gates the span, since a
+\ record may name one of its nodes twice.
+\
+\ The per-symbol effect-record index (USX): a symbol lookup needs one record,
+\ the newest carrying that symbol; older ones are shadowed and its state
+\ (active or deleted) is the answer. HT-USX keeps its offset+1 per symbol id.
+\ It is exact, not a memo, kept by three seams. On append, E-REC-START links the
+\ new record (ER.SYMPREV = old head) and makes it the head. On truncation,
+\ USIGS-RESTORE-END walks only the discarded records and resets each affected
+\ head to the surviving record below. An arena swap, a foreign rewind or a
+\ symbol-table grow is detected structurally (non-monotone UEND, changed store
+\ identity, dropped mapping) and the index is rebuilt. The append seam syncs
+\ before it writes, so regrowth over truncated offsets cannot mask a rewind.
+\
+\ Source-order visibility under the binding horizon: a replay checks a
+\ definition as the engine compiles it and sees exactly the records that existed
+\ then. A reconstruction checks recorded source in an engine already holding it
+\ and everything after, so a token would bind the newest record of its
+\ spelling, maybe a later shadow (a package word declared after a definition
+\ that named its global twin). Inside a verifier scope CHECK latches the
+\ definition's own record as BIND-HORIZON and lookups see only records before
+\ it. Outside one (the live load path, a candidate probe whose name is a label)
+\ the whole store is seen, and so is it for a definition the store does not
+\ know. Nothing is hidden by name or for being older, so a package dependency
+\ still binds. Always visible: what the pass itself recorded (PASS-FLOOR), since
+\ the text verified may differ from the text on record and a word it defined
+\ earlier is what a cold compile would see; and a seeded record, whose offset
+\ says when the pool was first missed on its name, not when the word was
+\ defined (boot).
+\
+\ Navigation, what a use bound: a use is reported at the five places one source
+\ occurrence resolves: a body token (BIND-TOK), a swallowed `[']` or `is` target
+\ (IS-TARGET-SYM), a top-level token or tick (TOP-ANSWER), an export operand
+\ (EXPORT-RESOLVE) and a `generates:` definer (CHECKER-GENERATES), never from
+\ CHECKER-BIND itself. It takes the location of the record the binding selects
+\ at that moment, the newest one under BIND-HORIZON, never an older row's, and
+\ 0 0 0 when that record has none: a word the image holds has none. A primitive
+\ has no record, but its binding still reports its symbol. A tombstone reports
+\ nothing. The use is the spelling's byte range in its source (NAV-SRC-XT); a
+\ spelling the source map does not hold reports nothing.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -8559,17 +8634,14 @@ CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
 7 constant HT-DFR-E
 8 constant HT-PRM-V
 9 constant HT-PRM-E
-\ HT-USX is no epoch-memoized answer: it is the exact per-symbol head of the
-\ USIGS user region (offset+1 of the newest effect record, 0 for none),
-\ maintained at the store's append and truncation seams and rebuilt only when it
-\ cannot be, so an epoch bump leaves it alone.
+\ HT-USX is no epoch-memoized answer: it is the per-symbol head of the USIGS
+\ user region (offset+1 of the newest effect record, 0 for none).
 10 constant HT-USX
 \ HT-NRX is the same kind of head for the no-return/control-flag store: offset+1
 \ of the newest NORETS entry for the symbol, 0 when it has none.
 11 constant HT-NRX
-\ HT-SVX belongs to src/core/type-family.f's variant store: the FIRST variant id
-\ (+1) whose generated constructor is that symbol. It is keyed by symbol id like
-\ everything else in this mapping, which is why it is sized and dropped here.
+\ HT-SVX belongs to the variant store: the FIRST variant id (+1) whose
+\ generated constructor is that symbol.
 12 constant HT-SVX
 \ The package-only chains share spellings across visibility and name keys.
 \ They contain every live symbol, so the same LIFO retirement removes them.
@@ -8582,21 +8654,14 @@ CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
 17 constant HIDX-TABLES
 $CBF29CE484222325 constant HIDX-FNV-BASIS
 $100000001B3 constant HIDX-FNV-PRIME
-\ The mapping survives a file boundary and HIDX-BUILD reuses it; it goes only
-\ where it is dropped (HIDX-MEM-CLEAR), so it lives outside the spans.
+\ The mapping survives a file boundary, so it lives outside the spans.
 PTR-VARIABLE HIDX-MEM
 variable HIDX-MEM-U    \ its bytes: SYM-GROW changes SYM-CAP before it drops it
-\ HIDX-GEN counts the times this mapping was dropped or re-laid-out. HIDX-EPOCH
-\ below invalidates the memoized ANSWERS in it; HIDX-GEN invalidates the tables
-\ THEMSELVES, so an index built on the mapping — including the ones
-\ src/core/type-family.f builds — rebuilds when the cells it addresses moved.
-\ Starts at 1 so a never-built index recorded as 0 can never look current, and
-\ only grows, so it too lives outside the spans.
+\ HIDX-GEN counts the times this mapping was dropped or re-laid-out. Starts at 1
+\ so a never-built index recorded as 0 can never look current.
 variable HIDX-GEN
-\ The index rests invalid at a file boundary and in an image, and rebuilds at
-\ the next lookup; HIDX-BUILD gives the epoch its first live value. The effect
-\ owner rests unbound, so an image bakes no store address through it, and
-\ HIDX-EFF-SYNC binds the live store at the next read.
+\ The index rests invalid at a file boundary and in an image. The effect owner
+\ rests unbound, so an image bakes no store address through it.
 CHECKER-REG:SCRATCH{
 variable HIDX-VALID
 variable HIDX-EPOCH
@@ -8609,9 +8674,8 @@ variable HIDX-I
 variable HIDX-CUR
 CHECKER-REG:}SCRATCH
 
-\ HIDX-MEM holds a typed pointer into the mmap cache. A plain variable @ yields
-\ a bare cell value, so the base is read through a cell-indexed ptr-field view
-\ (ptr ptr a) to preserve the nested pointer role.
+\ A plain variable @ yields a bare cell value, so the base is read through a
+\ cell-indexed ptr-field view to preserve the nested pointer role.
 : HIDX-MEM-FIELD ( -- ptr ptr n )
    HIDX-MEM 0 ptr-field ;
 
@@ -8627,7 +8691,7 @@ CHECKER-REG:}SCRATCH
    HIDX-GEN @ 1 + HIDX-GEN ! ;
 
 \ Unmapping drops the HT-USX, HT-NRX and HT-SVX indexes that live in it, so
-\ this is the one place HIDX-GEN moves; SYM-GROW reaches it before HIDX-ALLOC.
+\ this is the one place HIDX-GEN moves.
 : HIDX-MEM-CLEAR ( -- )
    HIDX-GEN+
    HIDX-MEM@ HIDX-MEM-U @ ARENA-UNMAP  0 HIDX-MEM-U !
@@ -8703,7 +8767,7 @@ HIDX-MEM-CLEAR
    id HT-NAME-NEXT HIDX-CELL @ nb ! ;
 
 \ Pops rows [n, SYM-N) before a scope restores SYM-N; a retired row was never
-\ pushed (HIDX-BUILD skips it), so it has nothing to pop.
+\ pushed, so it has nothing to pop.
 : HIDX-SYMS-RETIRE {: keep:n :}
    HIDX-VALID @ 0= IF EXIT THEN
    SYM-N @ 1 -
@@ -8718,8 +8782,6 @@ HIDX-MEM-CLEAR
    0 HIDX-CTL-HI !
    0 HIDX-DFR-HI ! ;
 
-\ HIDX-EFF-SYNC ( -- ) : flush the cache when USIGS rewound below a cached
-\ dependency or the store was swapped (grow, reset, external restore).
 : HIDX-EFF-SYNC
    UEND @ HIDX-EFF-HI @ <
    USIGS HIDX-EFF-BASE@ <> or IF
@@ -8733,8 +8795,7 @@ HIDX-MEM-CLEAR
       drop s" checker: symbol index mmap failed" 76 die THEN
    HIDX-MEM!  u HIDX-MEM-U ! ;
 
-\ The epoch restarts at a file boundary while the mapping stays, so every row's
-\ stamps go with its buckets: HIDX-BUILD pushes no retired row, and a stamp left
+\ The epoch restarts at a file boundary while the mapping stays, so a stamp left
 \ from an earlier run of epochs could equal a new one.
 : HIDX-ROWS-CLEAR ( -- )
    0 begin dup SYM-CAP < while
@@ -8767,8 +8828,6 @@ HIDX-MEM-CLEAR
    v id vt HIDX-CELL !
    HIDX-EPOCH @ id et HIDX-CELL ! ;
 
-\ HIDX-B@/HIDX-B! store a boolean payload (the defer-active flag) so the cached
-\ value keeps its bool role instead of a bare cell.
 : HIDX-B@ ( n n n -- bool bool ) {: id:n vt:n et:n :}
    id et HIDX-CELL @ HIDX-EPOCH @ = 0= IF RES-FALSE RES-FALSE EXIT THEN
    id vt HIDX-CELL @ 0 <> RES-TRUE ;
@@ -8838,10 +8897,9 @@ HIDX-MEM-CLEAR
    name nameu id SYM-NAME!
    vis id SYM-ROW SYM.VIS ! ;
 
-: SYM-CAP-NEXT ( n -- n ) {: need:n :}   \ smallest pow2 >= need, growing from cap
+: SYM-CAP-NEXT ( n -- n ) {: need:n :}
    SYM-CAP-V @ BEGIN dup need < WHILE 2 * REPEAT ;
 
-\ Growing drops the HIDX mapping, so the next lookup rehashes at the new cap.
 : SYM-GROW ( n -- ) {: need:n :}
    need SYM-CAP-NEXT {: nc:n :}
    SYMS-P SYM-CAP-V @ SYM-REC * nc SYM-REC * CHECKER-REG:GROW
@@ -8872,7 +8930,6 @@ package CHECK
    row COUNTED? IF row ROW.COUNT LINK@ NUM-CELL @ row ROW.SAVED-COUNT ! THEN ;
 
 
-\ The prefix copy is rounded up to cells, as ARENA-CELLS-COPY says it may be.
 : FRESH-ROW ( n -- )
    {: row:n :}
    row row ROW.SAVED-CAP @ ROW-BYTES FRESH-ARENA {: dst:ptr :}
@@ -8914,14 +8971,12 @@ package CHECK
    0 row CELL-ROW.SAVED ! ;
 
 
-\ SYM-GROW's drop: the next lookup indexes the stores as they are now.
 : DROP-INDEX ( -- )
    HIDX-MEM-CLEAR  0 HIDX-VALID !  HIDX-EPOCH+ ;
 
 
 public
-\ Saves every row's cells, then gives each store a fresh arena holding its
-\ prefix and each cell its value: two passes, since stores may share cells.
+\ Two passes, since stores may share cells.
 : OPEN ( n -- )
    HB-CEILING !
    ndict@ BUILD-FIRST !
@@ -8932,7 +8987,6 @@ public
    DROP-INDEX ;
 
 
-\ Unmaps every build arena before any cell goes back, then restores hb's cells.
 : CLOSE ( -- )
    ROW-N @ 0 ?do i DROP-ROW loop
    ROW-N @ 0 ?do i RESTORE-ROW loop
@@ -8940,7 +8994,7 @@ public
    DROP-INDEX ;
 ;package
 
-: SYM-ENSURE ( -- )             \ ensure room for the next id (SYM-N)
+: SYM-ENSURE ( -- )
    SYM-N @ SYM-CAP-V @ < IF exit THEN
    SYM-N @ 1 + SYM-GROW ;
 
@@ -9094,10 +9148,7 @@ CHECKER-REG:SCRATCH{
 variable EC-TVN
 variable EC-RVN
 \ A record's rigid identities in first-seen order. E-COPY* stores each as the
-\ slot key -(idx+1) that E-I-AK-IDX inverts, so a record says which outputs
-\ share an allocation and never holds a live counter value: counters reset per
-\ check in NEW, so a stored live id would collide with the next check's mints.
-\ The capacity is the instantiation table's, which reads these slots back.
+\ slot key -(idx+1), so a record never holds a live counter value.
 create EC-AK EI-AK-CAP cells allot
 variable EC-AKN
 PTR-VARIABLE FEP
@@ -9106,20 +9157,13 @@ variable FEP-OFF
 variable CHECKER-REC-SYM
 CHECKER-REG:}SCRATCH
 
-\ The written span of EC-TV / EC-RV is [LW, HW); HW 0 means none is written.
-\ The low mark matters for the interpret row: a top step mints variable ids
+\ The written span of EC-TV / EC-RV is [LW, HW): a top step mints variable ids
 \ from the last definition's FV mark, which can sit far above 0.
 variable EC-TV-HW   variable EC-TV-LW
 variable EC-RV-HW   variable EC-RV-LW
 
-\ The interpret row (CHECKER-TOP-SAVE / CHECKER-TOP-LOAD) is copied by the same
-\ node copier as stored effects, but into two process-owned buffers instead of
-\ USIGS, while TOP-COPYING is set. A save writes the write buffer from terms
-\ whose atom and family names still borrow the read buffer, then the two swap.
-\ Capacities are in cells (ARENA-ROWS-ENSURE rows of one cell). A literal
-\ event appends to the read buffer at TOP-READ-END; TOP-ROW-CELLS is the saved
-\ row's cell count, 0 when TOP-ROW-OFF is (CHECKER-TOP-PUSH). TOP-RROW-OFF is the
-\ saved return row, copied beside the data row under the same maps; 0 is none.
+\ Capacities are in cells. TOP-ROW-CELLS is the saved row's cell count, 0 when
+\ TOP-ROW-OFF is. TOP-RROW-OFF is the saved return row; 0 is none.
 PTR-VARIABLE TOP-READ-P   variable TOP-READ-CAP
 PTR-VARIABLE TOP-WRITE-P  variable TOP-WRITE-CAP
 variable TOP-WRITE-END    variable TOP-ROW-OFF
@@ -9148,10 +9192,10 @@ NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !  NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP
       1 +
    repeat drop ;
 
-\ Allocation establishes zero maps; E-COPY-MAPS-RESET clears the dirty span.
+\ Allocation establishes zero maps.
 0 EC-TV-HW !   0 EC-RV-HW !   0 EC-TV-LW !   0 EC-RV-LW !
-\ EI-AK is the same shape and needs the same init: a high-water reset restores
-\ only what was written, so every cell above the mark has to be UNBOUND already.
+\ A high-water reset restores only what was written, so every cell above the
+\ mark has to be UNBOUND already.
 EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
 EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
 
@@ -9164,9 +9208,6 @@ EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
    0 EC-RVN !
    0 EC-AKN ! ;
 
-\ E-INST-RESET runs per instantiated effect - once per checked call site - and
-\ these tables are 64 cells against the handful of fresh atoms a signature
-\ actually holds, usually none. Clear the written span, not the capacity.
 : E-I-AK-RESET ( -- )
    EI-AK EI-AK-HW @ E-MAP-CLEAR
    EI-AK-VAR 0 EI-AK-HW @ ARENA-CELLS-ZERO
@@ -9229,8 +9270,7 @@ EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
 : E-NODE-OFF ( n -- n )
    E-NODE-NEW E-WOFF ;
 
-\ The run is a byte offset (E-OFF-relative), stable across USIGS relocation;
-\ children copied after the reserve allocate past it, so arity is uncapped.
+\ The run is a byte offset (E-OFF-relative), stable across USIGS relocation.
 : E-ARGS-RESERVE ( n -- n ) {: argc:n :}
    E-WEND@ argc cells + CELL + E-WENSURE
    E-WEND@ dup argc cells + E-WEND! ;
@@ -9246,32 +9286,14 @@ EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
 
 \ --- node interning ------------------------------------------------------------
-\ When E-COPY* finishes a subterm at the top of the arena, an identical node
-\ below wins: UEND rewinds over the fresh copy and the older offset is answered.
-\ Measured on the compiler chain load: 115,948 nodes of 1,593 shapes and
-\ 10,462,080 bytes became 1,593 nodes (the floor) and 1,988,912 bytes.
-\ The hash only chooses a chain; every hit compares the nodes, since a hash
-\ collision would certify a word against another word's signature.
-\ Children are interned before their parent, so equal tags and key cells at the
-\ roots mean equal subterms; only an atom's or param's name bytes, written per
-\ copy, are compared by content. A forgotten intern (rewind, snapshot) costs
-\ hits, never correctness.
-\ E-KEY-N/E-KEY are the one description of a node's identity, read by both hash
-\ and compare, so a new field joins both.
-\ Var ids are the stored ones: E-COPY* renumbers vars in first-appearance order.
-\ E-TV-ID/E-RV-ID still run for a subterm interned away, since it is built
-\ before it is discarded.
-\ The rewind is safe: a finished subterm spans its root to UEND and names only
-\ offsets below that top, so no surviving node names a byte above a truncation
-\ point (USIGS-RESTORE-END relies on the same fact).
 $1000 constant UIX-BKT-INIT       \ buckets; a power of two
 $400 constant UIX-ENT-INIT        \ entries; grows geometrically
 3 constant UIX-ENT-CELLS
 0 constant UIX-E-OFF              \ the interned node's store offset
 1 constant UIX-E-BKT              \ the bucket it is chained in
 2 constant UIX-E-NEXT             \ the next entry in that bucket, +1; 0 ends it
-\ The mappings and their capacities survive a file boundary: UIX-DROP and
-\ UIX-BUILD reuse them, and only UIX-RESET gives them up, for an image.
+\ The mappings and their capacities survive a file boundary, and only UIX-RESET
+\ gives them up, for an image.
 PTR-VARIABLE UIX-BKT-P   PTR-VARIABLE UIX-ENT-P
 variable UIX-BKT-CAP variable UIX-ENT-CAP
 \ At a file boundary UIX-N rests 0 and the null base mismatches USIGS, so
@@ -9285,9 +9307,6 @@ variable UIX-C
 variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 CHECKER-REG:}SCRATCH
 
-\ UIX-BASE, the store the entry offsets were taken against, is declared with the
-\ store's other index stamps above USIGS-GROW: the relocation there has to carry
-\ this one with the store.
 : UIX-BKT ( -- ptr n ) UIX-BKT-P @ ;
 : UIX-ENT ( -- ptr n ) UIX-ENT-P @ ;
 
@@ -9299,14 +9318,14 @@ CHECKER-REG:}SCRATCH
 : UIX-READY? ( -- bool )
    UIX-BKT-P @ 0= 0= ;
 
-\ UIX-STAMP ( -- ) : the table is exact at this end. Every entry sits strictly
-\ below the mark, so a later UEND at or above it leaves every entry live and a
-\ UEND below it is a rewind this file did not perform.
+\ Every entry sits strictly below the mark, so a later UEND at or above it
+\ leaves every entry live and a UEND below it is a rewind this file did not
+\ perform.
 : UIX-STAMP ( -- )
    UEND @ UIX-HI !
    USIGS UIX-BASE! ;
 
-: UIX-DROP ( -- )                 \ forget every entry; the mapping stays allocated
+: UIX-DROP ( -- )
    0 UIX-N !
    UIX-BKT 0 UIX-BKT-CAP @ ARENA-CELLS-ZERO
    UIX-STAMP ;
@@ -9318,8 +9337,7 @@ CHECKER-REG:}SCRATCH
    UIX-ENT-INIT UIX-ENT-CAP !
    UIX-DROP ;
 
-\ UIX-RESET ( -- ) : snapshot prepare. The mapping is process-local mmap memory,
-\ so a baked image must carry no address for it; the next append re-allocates.
+\ Snapshot prepare: the next append re-allocates.
 : UIX-RESET ( -- )
    NULL-PTR UIX-BKT-P !
    NULL-PTR UIX-ENT-P !
@@ -9331,9 +9349,8 @@ UIX-RESET
 : E-NODE-TAG ( n -- n )
    E-PTR EN.TAG @ ;
 
-\ E-KEY-N ( n -- n ) : how many cells decide this node's shape. 0 means the tag
-\ is not one this file writes, and E-INTERN refuses to intern such a node rather
-\ than guess at its fields.
+\ How many cells decide this node's shape. 0 means the tag is not one this file
+\ writes, and E-INTERN refuses to intern such a node.
 : E-KEY-N ( n -- n ) {: p:n :}
    p E-NODE-TAG {: tg:n :}
    tg EN-CON = IF 1 EXIT THEN
@@ -9348,11 +9365,8 @@ UIX-RESET
    tg EN-PARAM = IF p E-PTR EN.C @ 4 + EXIT THEN
    0 ;
 
-\ E-KEY ( n n -- n ) : key cell i. CON/VAR/ROW/PTR/PUSH/QUOT key on the cells
-\ after the tag in order; ATOM skips EN.A because that is its private copy of the
-\ name (compared as bytes below); PARAM skips EN.A for the same reason and EN.D
-\ because that is its private arg run, whose CONTENTS — already-interned child
-\ offsets — are the remaining key cells.
+\ ATOM skips EN.A, its private copy of the name; PARAM skips EN.A and EN.D, its
+\ private arg run, whose CONTENTS are the remaining key cells.
 : E-KEY ( n n -- n ) {: p:n i:n :}
    p E-NODE-TAG {: tg:n :}
    tg EN-ATOM = IF p E-PTR i 2 + cells + CELL-VIEW @ EXIT THEN
@@ -9365,8 +9379,6 @@ UIX-RESET
    THEN
    p E-PTR i 1 + cells + CELL-VIEW @ ;
 
-\ ATOM and PARAM are the only kinds carrying bytes of their own; EN.A/EN.B is
-\ that span for both.
 : E-KEY-STR? ( n -- bool ) {: p:n :}
    p E-NODE-TAG {: tg:n :}
    tg EN-ATOM = tg EN-PARAM = or ;
@@ -9450,10 +9462,8 @@ UIX-RESET
    UIX-N @ 0= IF RES-FALSE EXIT THEN
    UIX-N @ 1 - UIX-E-OFF UIX-E @ newend >= ;
 
-\ UIX-POP ( -- ) : drop the newest entry. Entries are pushed at their bucket's
-\ head and popped newest first, so the entry being dropped IS its bucket's head;
-\ anything else means the table and the store disagree and no later answer could
-\ be trusted through it.
+\ Entries are pushed at their bucket's head and popped newest first, so the
+\ entry being dropped IS its bucket's head.
 : UIX-POP ( -- )
    UIX-N @ 1 - UIX-I !
    UIX-I @ UIX-E-BKT UIX-E @ {: b:n :}
@@ -9469,15 +9479,11 @@ UIX-RESET
    newend UIX-HI @ min UIX-HI ! ;
 
 \ --- finding the twin, and the one table state every caller asks for -----------
-\ UIX-BUCKET/UIX-CHAIN-FIND are the one lookup: E-INTERN asks it of the arena
-\ top's subterm, the rebuild of a node the store already holds.
 : UIX-BUCKET ( n -- n )
    E-NODE-HASH UIX-BKT-CAP @ 1 - and ;
 
-\ UIX-CHAIN-FIND ( n n -- n ) : the offset+1 of a stored node with this node's
-\ shape, chained in bucket b, or 0. The store opens with a record, so no node
-\ ever sits at offset 0 and offset+1 is a total answer. Newest entry first: a
-\ bucket keeps its head newest, which is the order UIX-POP relies on.
+\ The store opens with a record, so no node ever sits at offset 0 and offset+1
+\ is a total answer.
 : UIX-CHAIN-FIND ( n n -- n ) {: noff:n b:n :}
    b UIX-B @ UIX-J !
    BEGIN UIX-J @ 0 <> WHILE
@@ -9488,25 +9494,9 @@ UIX-RESET
    0 ;
 
 \ --- rebuilding the index from the store it indexes ----------------------------
-\ An image carries no table (UIX-RESET) but bakes the whole store, and an empty
-\ table over a full store re-records every boot-prefix shape the first
-\ definitions name (measured: 1,717 nodes for 1,690 shapes without this walk).
-\ A baked table would still need re-chaining by hash at boot, the same cost,
-\ and the walk also covers every other way the table empties over a full store.
-\ The store's layout is the visited set: a record owns the bytes up to the next
-\ record, exactly the nodes, name bytes and arg runs E-COPY wrote for its rows
-\ (a discarded node was rewound before the next append), so each span is
-\ reachable from its record's four row roots and a child outside it is an older
-\ record's, already visited. Each span is walked once with a range test per
-\ older reference; a record that appended nothing is skipped whole. The table's
-\ lookup still gates the span, since a record may name one of its nodes twice.
-\ Measured on this engine's baked store: 1,688 nodes over 20,567 records in
-\ 1.7 ms, once, at the first definition.
 
-\ UIX-OWN? ( n -- bool ) : is this offset a whole live node of the span being
-\ walked? The span is clamped to UEND below, and a node needs every one of its
-\ EFF-NODE bytes inside the live store: UEND is the store's true top, so a node
-\ reaching past it is not in the store this index is being made exact for.
+\ UEND is the store's true top, so a node reaching past it is not in the store
+\ this index is being made exact for.
 : UIX-OWN? ( n -- bool ) {: off:n :}
    off UIX-SPAN-LO @ >=
    off UIX-SPAN-HI @ < and
@@ -9514,7 +9504,7 @@ UIX-RESET
 
 : UIX-NODE-ADD ( n -- ) {: off:n :}
    off UIX-OWN? 0= IF EXIT THEN           \ 0, or a node an older record already gave the index
-   off E-KEY-N 0= IF EXIT THEN            \ not a node this file writes; E-INTERN skips it too
+   off E-KEY-N 0= IF EXIT THEN
    off dup UIX-BUCKET UIX-CHAIN-FIND 0 <> IF EXIT THEN   \ named twice inside this record
    off E-NODE-TAG {: tg:n :}
    tg EN-PTR = IF off E-PTR EN.A @ RECURSE THEN
@@ -9545,14 +9535,10 @@ UIX-RESET
                                           \ may have re-sized the buckets, and an entry
                                           \ chained by a stale mask is invisible for good
 
-\ Empty content has four zero roots, so a record with no row effect names 0 in
-\ E-RIN@/E-ROUT@ and is skipped; reading them without the E-HASR@ gate can only
-\ offer more nodes, never a wrong one, since every answer compares the nodes. A
-\ content cell of 0 is a record without content: E-REC-INIT starts a record so,
-\ and the capture's sweep (CHECKER-SWEEP RETIRE-BINDINGS) leaves a retired
-\ binding so. Known gap: a node a kept record shares with a retired one stays in
-\ the retired record's span, so after a rebuild the index lacks it and a later
-\ definition of its shape interns a twin.
+\ A content cell of 0 is a record without content. Known gap: a node a kept
+\ record shares with a retired one stays in the retired record's span, so after
+\ a rebuild the index lacks it and a later definition of its shape interns a
+\ twin.
 : UIX-REC-ADD ( n n -- ) {: rec:n next:n :}
    rec EFF-REC + {: lo:n :}
    next UEND @ min {: hi:n :}             \ the span is the record's own bytes AND live: a
@@ -9560,7 +9546,7 @@ UIX-RESET
                                           \ readable, and its nodes are dead
    hi lo <= IF EXIT THEN                  \ the record appended nothing of its own, so it
                                           \ interned nothing: every row it names is older
-   rec E-PTR ER.CONTENT @ 0= IF EXIT THEN \ no content, so no rows
+   rec E-PTR ER.CONTENT @ 0= IF EXIT THEN
    lo UIX-SPAN-LO !
    hi UIX-SPAN-HI !
    rec E-PTR E-DIN@ UIX-NODE-ADD
@@ -9568,49 +9554,27 @@ UIX-RESET
    rec E-PTR E-RIN@ UIX-NODE-ADD
    rec E-PTR E-ROUT@ UIX-NODE-ADD ;
 
-\ Walks the store's chain from the first record to the terminator, as USX-BUILD
-\ does. A record still being built has ER.NEXT 0
-\ until E-REC-FINISH, so the walk ends there and the nodes above belong to
-\ E-INTERN. UEND bounds the walk, not the chain alone: a rewind leaves the bytes
-\ above UEND readable (E-INTERN's hit assigns UEND directly), so a record is
-\ walked only while its whole header is below UEND, and a link that does not
-\ advance or leaves the live store ends it; else the index would offer nodes the
-\ next append overwrites.
+\ A record still being built has ER.NEXT 0 until E-REC-FINISH, so the walk ends
+\ there and the nodes above belong to E-INTERN.
 : UIX-BUILD ( -- )
    0 UIX-BP !
    BEGIN UIX-BP @ EFF-REC + UEND @ <= WHILE
       UIX-BP @ E-PTR E-NEXT@ UIX-BN !
       UIX-BN @ UIX-BP @ <= IF EXIT THEN            \ 0, or a link that does not advance
-      UIX-BN @ UEND @ > IF EXIT THEN               \ the next record is above the live store
+      UIX-BN @ UEND @ > IF EXIT THEN
       UIX-BP @ UIX-BN @ UIX-REC-ADD
       UIX-BN @ UIX-BP !
    REPEAT ;
 
-\ UIX-EXACT makes the index exact for the store as it is now, the one question
-\ every caller has:
-\   no table      a fresh process or snapshot boot: allocate and build it from
-\                 the store, which may already be full.
-\   store moved   a rewind this file did not perform (UEND below the mark), or a
-\                 base no relocation carried the stamp to (a fresh mapping, an
-\                 arena swapped in): forget the entries and rebuild, which reads
-\                 only the current store and is as valid as at boot.
-\   otherwise     the store only grew: mark the new end.
-\ A verbatim relocation is no move: USIGS-GROW carries the stamp. The base and
-\ mark together keep every entry naming the node interned at that offset in the
-\ store being asked about.
 : UIX-EXACT ( -- )
    UIX-READY? 0= IF UIX-ALLOC UIX-BUILD EXIT THEN
    UEND @ UIX-HI @ <
    USIGS UIX-BASE@ <> or IF UIX-DROP UIX-BUILD EXIT THEN
    UIX-STAMP ;
 
-\ The finished subterm at `noff` spans [noff, UEND); a stored twin wins and this
-\ copy is rewound. The hit carries the table's mark down with the store
-\ (UIX-TRUNCATE): a bare `noff UEND !` leaves UIX-HI above the end, and the next
-\ sync drops the whole table as a foreign rewind (measured: 22% saving instead
-\ of 87%). A hit means every child hit too, so the discarded span holds no
-\ entry. It bypasses USIGS-RESTORE-END, which also repairs the per-symbol index:
-\ this rewind is mid-record, before the record has an ER.NEXT to follow.
+\ The hit carries the table's mark down with the store: a bare `noff UEND !`
+\ leaves UIX-HI above the end, and the next sync drops the whole table as a
+\ foreign rewind. It bypasses USIGS-RESTORE-END: this rewind is mid-record.
 : E-INTERN ( n -- n ) {: noff:n :}
    TOP-COPYING @ IF noff EXIT THEN     \ the interpret row is scratch, never interned
    noff 0= IF 0 EXIT THEN
@@ -9654,11 +9618,9 @@ UIX-RESET
          r>
       endof
       S-PUSH of
-         \ A row's spine is a loop, so its length costs no depth: only each
-         \ cell's type recurses. Until the tail is copied, a node's EN.B links
-         \ back to the node above it; the walk back then links each node to the
-         \ copy below it and interns the nodes deepest first, the order nested
-         \ copies would, so the store holds the same bytes.
+         \ Until the tail is copied, a node's EN.B links back to the node above
+         \ it; the walk back interns the nodes deepest first, the order nested
+         \ copies would.
          0 x E-RES                                   \ ( back cur )
          BEGIN
             EN-PUSH E-NODE-NEW E-WOFF >r
@@ -9668,11 +9630,8 @@ UIX-RESET
                EN-STALE E-NODE-OFF r@ E-WPTR EN.A !  -1 r@ E-WPTR EN.D !
             ELSE TOP-COPYING @ IF over P>LOST r@ E-WPTR EN.D ! THEN THEN
             TOP-SCOPE-SEEN @ or TOP-SCOPE-SEEN !     \ ( back cur )
-            \ The cell's physical width, asked of ROW-TERM-CELLS while the live term
-            \ is in hand, the authority ROW-CELLS asks for E-MINI@, so the two cannot
-            \ drift: the stored graph keeps a term's identity, not its layout
-            \ registry, and a portable graph carries that registry and revalidates
-            \ the claim before publication. Held as width+1; readers fail closed on 0.
+            \ The cell's physical width. Held as width+1; readers fail
+            \ closed on 0.
             dup P>TYPE ROW-TERM-CELLS 1 + r@ E-WPTR EN.C !
             swap r@ E-WPTR EN.B !                    \ ( cur )
             P>REST R-RES r> swap                     \ ( off rest )
@@ -9721,7 +9680,7 @@ UIX-RESET
       endof
       T-SCOPE of
          \ A live scope cannot outlive its event: the enclosing interpret-row
-         \ cell is saved as a lost stale cell (the S-PUSH arm above).
+         \ cell is saved as a lost stale cell.
          TOP-COPYING @ 0= IF s" checker: live scope in stored effect" 76 die THEN
          -1 TOP-SCOPE-SEEN !  EN-STALE E-NODE-OFF
       endof
@@ -9733,9 +9692,9 @@ UIX-RESET
       endof
       T-PARAM of
          EN-PARAM E-NODE-NEW E-WOFF {: noff:n :}      \ node offset (stable across USIGS grow)
-         \ The resolved family owns the stored spelling. Source qualifications
-         \ are aliases of that identity: retaining CBIND:binding here while
-         \ unit export writes binding makes warm replay append duplicate nodes.
+         \ The resolved family owns the stored spelling: retaining CBIND:binding
+         \ here while unit export writes binding makes warm replay append
+         \ duplicate nodes.
          x E-RES PARAM>FAM REG-EXT-AOT-FAMILY-NAME-XT noff E-WPTR E-COPY-STR
          x E-RES PARAM>ARGC {: argc:n :}
          argc noff E-WPTR EN.C !
@@ -9754,15 +9713,11 @@ UIX-RESET
       endof
       0 swap
    endcase
-   E-INTERN ;                          \ the finished subterm; older twin wins
+   E-INTERN ;
 : E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
 
 \ TERM-DEPTH: the depth EFFECT-DEPTH-MAX bounds for a recursive walk of a
-\ recorded term (UIX-NODE-ADD). A level down is an entry's type and the rest of
-\ its row, a quotation's rows, a pointer's target, a binder's parts or a
-\ family's arguments, so a row of k plain entries is k deep. A row is a loop and
-\ only nesting recurses; past EFFECT-DEPTH-MAX the walk stops descending, but a
-\ row it entered is counted to its end.
+\ recorded term. A row of k plain entries is k deep.
 variable TD-MAX                         \ the deepest level TERM-DEPTH* reached
 
 : TERM-DEPTH* ( n n -- )
@@ -9797,26 +9752,21 @@ variable TD-MAX                         \ the deepest level TERM-DEPTH* reached
 : TERM-DEPTH ( n -- n )
    0 TD-MAX !  0 TERM-DEPTH*  TD-MAX @ ;
 
-\ The depth of an effect with these rows, its deepest row's: the count
-\ EFFECT-DEPTH-MAX bounds in a definition's effect (ROWS-FIT?) and in a stored
-\ one (USIG-ADD-AS).
 : ROWS-DEPTH ( n n n n -- n )
    {: in:n out:n rin:n rout:n :}
    in TERM-DEPTH  out TERM-DEPTH max  rin TERM-DEPTH max  rout TERM-DEPTH max ;
 
 \ --- immutable effect content interning ---------------------------------------
-\ Entries identify content, never bindings. Both hash and equality read all
-\ eight cells, including variable counts and external minimum. The index is
-\ transient; rebuilding follows every binding, preserving all history roots.
+\ Entries identify content, never bindings. The index is transient; rebuilding
+\ follows every binding, preserving all history roots.
 $1000 constant CHX-BKT-INIT       \ buckets; a power of two
 $400 constant CHX-ENT-INIT        \ entries; grows geometrically
 3 constant CHX-ENT-CELLS
 0 constant CHX-E-OFF              \ the interned content's store offset
 1 constant CHX-E-BKT              \ the bucket it is chained in
 2 constant CHX-E-NEXT             \ the next entry in that bucket, +1; 0 ends it
-\ The mappings and their capacities survive a file boundary as UIX's do. CHX-N
-\ rests 0 and the null base (CHX-BASE, above USIGS-GROW) mismatches USIGS, so
-\ CHX-EXACT drops the stale buckets before any chain walk.
+\ CHX-N rests 0 and the null base mismatches USIGS, so CHX-EXACT drops the
+\ stale buckets before any chain walk.
 PTR-VARIABLE CHX-BKT-P   PTR-VARIABLE CHX-ENT-P
 variable CHX-BKT-CAP variable CHX-ENT-CAP
 CHECKER-REG:SCRATCH{
@@ -9842,7 +9792,7 @@ CHECKER-REG:}SCRATCH
    UEND @ CHX-HI !
    USIGS CHX-BASE! ;
 
-: CHX-DROP ( -- )                 \ forget every entry; the mapping stays allocated
+: CHX-DROP ( -- )
    0 CHX-N !
    CHX-BKT 0 CHX-BKT-CAP @ ARENA-CELLS-ZERO
    CHX-STAMP ;
@@ -9979,8 +9929,8 @@ CHX-RESET
 : USIG-OFF ( ptr u8 -- n )
    E-OFF ;
 
-\ FEP holds the found active effect record; FEP-OFF stores its USIGS offset+1 so
-\ 0 means "no active record" even when a real record lives at offset 0.
+\ FEP-OFF stores its USIGS offset+1 so 0 means "no active record" even when a
+\ real record lives at offset 0.
 : FEP-CLEAR ( -- )
    0 FEP-OFF ! ;
 
@@ -9998,22 +9948,8 @@ CHX-RESET
    ER.NEXT @ 0= ;
 
 \ --- per-symbol effect-record index (USX) --------------------------------------
-\ A symbol lookup needs one record, the newest carrying that symbol; older ones
-\ are shadowed and its state (active or deleted) is the answer. HT-USX keeps its
-\ offset+1 per symbol id. It is exact, not a memo, kept by three seams:
-\   append      E-REC-START links the new record (ER.SYMPREV = old head) and
-\               makes it the head.
-\   truncation  USIGS-RESTORE-END walks only the discarded records and resets
-\               each affected head to the surviving record below.
-\   rebuild     an arena swap, a foreign rewind or a symbol-table grow is
-\               detected structurally (non-monotone UEND, changed store
-\               identity, dropped mapping) and the index is rebuilt.
-\ The append seam syncs before it writes, so regrowth over truncated offsets
-\ cannot mask a rewind (as HIDX-EFF-SYNC does for the memo cells).
 
-\ --- the shared cell layer for symbol-keyed store heads. One table id per store;
-\ everything else about a store — stride, fields, base, end mark — stays concrete
-\ in that store's own words.
+\ --- the shared cell layer for symbol-keyed store heads.
 
 : IDX-HEAD@ ( n n -- n ) {: sym:n tbl:n :}
    sym tbl HIDX-CELL @ ;
@@ -10027,9 +9963,6 @@ CHX-RESET
       1 +
    repeat drop ;
 
-\ Every record an index touches must name a symbol the mapping has a cell for.
-\ A symbol id outside [1, SYM-CAP) means a store and the symbol table have
-\ disagreed, which no later answer could be trusted through.
 : IDX-SYM-OK ( n -- ) {: sym:n :}
    sym 1 <  sym SYM-CAP >=  or IF
       s" checker: store record symbol outside index range" 76 die
@@ -10060,8 +9993,8 @@ CHECKER-REG:}SCRATCH
    sym USX@ off E-PTR ER.SYMPREV !
    off 1 + sym USX! ;
 
-\ UEND bounds the walk, as in UIX-BUILD: an unbounded one answers from the dead
-\ region, a duplicate of the next definition of that name (rc 78, `CAST: >IMG`).
+\ UEND bounds the walk: an unbounded one answers from the dead region, a
+\ duplicate of the next definition of that name.
 : USX-BUILD ( -- )
    HT-USX IDX-HEADS-CLEAR
    USIGS-USER-OFF @ USX-BP !
@@ -10082,10 +10015,8 @@ CHECKER-REG:}SCRATCH
    USX-SYNC
    USX-GEN @ HIDX-GEN @ <> IF USX-BUILD THEN ;
 
-\ Repairs the heads before the store rewinds to `newend`. Walking forward from
-\ newend visits discarded records oldest-first, so each symbol's first discarded
-\ record back-links to its surviving head; later ones link to discarded records
-\ and write nothing.
+\ Walking forward from newend visits discarded records oldest-first, so each
+\ symbol's first discarded record back-links to its surviving head.
 : USX-TRUNCATE ( n -- ) {: newend:n :}
    USX-GEN @ HIDX-GEN @ <> IF EXIT THEN
    newend E-PTR USX-P !
@@ -10117,7 +10048,6 @@ RECORD-HOOK-DEFAULTS
    sym USX@ ;
 
 \ The verifier learns a generated constructor's declaring token after replay.
-\ Locate its checked effect record just as an ordinary declaration would.
 : CHECKER-CTOR-DECL-AT! ( n ptr u8 n n n n -- )
    {: sym:n name:ptr nameu:n visit:n start:n end:n :}
    sym USIG-NEWEST {: rec1:n :}
@@ -10126,21 +10056,7 @@ RECORD-HOOK-DEFAULTS
    rec1 1 - visit start end noff nameu DL-ROW+ ;
 
 \ ---- source-order visibility under the binding horizon ------------------------
-\ A replay checks a definition as the engine compiles it and sees exactly the
-\ records that existed then. A reconstruction checks recorded source in an engine
-\ already holding it and everything after, so a token would bind the newest
-\ record of its spelling, maybe a later shadow (a package word declared after a
-\ definition that named its global twin). Inside a verifier scope CHECK latches
-\ the definition's own record as BIND-HORIZON and lookups see only records
-\ before it. Outside one (the live load path, a candidate probe whose name is a
-\ label) the whole store is seen, and so is it for a definition the store does
-\ not know. Nothing is hidden by name or for being older, so a package
-\ dependency still binds.
-\ Always visible: what the pass itself recorded (PASS-FLOOR), since the text
-\ verified may differ from the text on record and a word it defined earlier is
-\ what a cold compile would see; and a seeded record, whose offset says when the
-\ pool was first missed on its name, not when the word was defined (boot).
-: HORIZON-VISIBLE? ( n -- bool ) {: off1:n :}   \ record offset+1: visible under the horizon?
+: HORIZON-VISIBLE? ( n -- bool ) {: off1:n :}   \ record offset+1
    BIND-HORIZON @ 0= IF RES-TRUE EXIT THEN
    off1 BIND-HORIZON @ < IF RES-TRUE EXIT THEN
    PASS-FLOOR @ 0 >  off1 PASS-FLOOR @ >=  and IF RES-TRUE EXIT THEN
@@ -10158,17 +10074,7 @@ RECORD-HOOK-DEFAULTS
    1 - E-PTR ER.ACTIVE @ EFF-UNRESOLVED = ;
 
 \ ---- navigation: what a use bound ---------------------------------------------
-\ A use is reported at the five places one source occurrence resolves: a body
-\ token (BIND-TOK), a swallowed `[']` or `is` target (IS-TARGET-SYM), a
-\ top-level token or tick (TOP-ANSWER), an export operand (EXPORT-RESOLVE) and a
-\ `generates:` definer (CHECKER-GENERATES), never from CHECKER-BIND itself. It
-\ takes the location of the record the binding selects at that moment, the
-\ newest one under BIND-HORIZON, never an older row's, and 0 0 0 when that
-\ record has none: a word the image holds has none. A primitive has no record,
-\ but its binding still reports its symbol. A tombstone reports nothing.
-\ The use is the spelling's byte range in its source (NAV-SRC-XT); a spelling
-\ the source map does not hold reports nothing.
-defer NAV-SRC-XT ( ptr u8 -- n bool )   \ DIAG>SRC, bound beside it (NAV-SRC-INSTALL)
+defer NAV-SRC-XT ( ptr u8 -- n bool )
 \ A use: its start and end, selected symbol, and its declaration's visit,
 \ start and end, 0 0 0 when it has no location.
 defer CHECKER-ON-USE ( n n n n n n -- )
@@ -10178,9 +10084,8 @@ variable USES-OPEN                      \ a CHECKER-WITH-USES scope is running
    ['] NO-USE is CHECKER-ON-USE  0 USES-OPEN ! ;
 ON-USE-DEFAULT
 
-\ One uses scope at a time, as one certificate producer (INSTALL): src/core has
-\ no action-of to save a caller's handler, so a nested scope is refused before
-\ it touches the open one's handler.
+\ One uses scope at a time: src/core has no action-of to save a caller's
+\ handler, so a nested scope is refused.
 7183 constant E-USES-NESTED   \ CHECKER-WITH-USES inside a running uses scope
 : USES-INSTALL ( [ n n n n n n -- ] -- )
    USES-OPEN @ 0 <> IF E-USES-NESTED throw THEN
@@ -10190,8 +10095,8 @@ ON-USE-DEFAULT
 : NAV-NO-USE ( -- n n n n n n n bool )
    0 0 0 0 0 0 0 RES-FALSE ;
 
-\ The first prims.f row with this symbol's package and name; overloads share a
-\ symbol. A package's primitive is private (EPPRIM:): a public symbol has none.
+\ The first row with this symbol's package and name; overloads share a symbol.
+\ A package's primitive is private: a public symbol has none.
 : NAV-PRIM-ROW ( n -- n )
    {: sym:n :}
    sym SYM-ROW SYM.VIS @ {: vis:n :}
