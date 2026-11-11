@@ -233,16 +233,6 @@ variable MAKER-FN-N
 variable MAKER-LIB-N
 variable MAKER-DEPTH
 $4000000000000000 constant MAKER-TAG
-\ 0, or the xt OBSERVE stored.
-variable OBSERVER
-CAST: OBSERVER-FN ( n -- [ n n -- ] )
-CAST: OBSERVER-N ( [ n n -- ] -- n )
-1 constant OBS-LIB
-2 constant OBS-FN
-3 constant OBS-SCOPE
-
-: NOTIFY ( n n -- ) {: kind:n idx:n :}
-   OBSERVER @ dup 0<> if kind idx rot OBSERVER-FN execute else drop then ;
 PERSISTED-PTR-VARIABLE PIN-FN
 PERSISTED-PTR-VARIABLE PIN-LIB
 variable PIN-FN-CAP
@@ -750,7 +740,7 @@ private
    {: path:ptr u:n next:n :}
    u PATH-ROOM
    DECL-TAG {: tag:n :}
-   path u next LIB-INDEX dup 0<> if OBS-LIB over NOTIFY exit then drop
+   path u next LIB-INDEX dup 0<> if exit then drop
    LIB-NEW
    path u tag LIB-N-CELL @ tag or PATH-FIELD CSTR drop
    tag LIB-N-CELL @ 1+ tag LIB-N-CELL !
@@ -759,8 +749,6 @@ private
    0 row 1- tag or LIB-HANDLE!
    0 row 1- tag or LIB-FAILED!
    next row 1- tag or LIB-NEXT!
-   \ Keep the row: an observer that declares rows of its own moves the count.
-   OBS-LIB row tag or NOTIFY
    row tag or ;
 
 public
@@ -1004,7 +992,7 @@ public
    argc FFI-MAX-ARGS FFI-CHECK-COUNT
    spills FFI-MAX-ARGS FFI-CHECK-COUNT
    reloc argc spills RELOC-OWNED? 0= if E-FFI-ARITY throw then
-   name u lib argc spills reloc FN-INDEX dup 0 >= if OBS-FN over NOTIFY exit then drop
+   name u lib argc spills reloc FN-INDEX dup 0 >= if exit then drop
    FN-NEW
    tag FN-N-CELL @ tag or {: idx:n :}
    name u idx NAME-FIELD CSTR drop
@@ -1014,8 +1002,6 @@ public
    lib idx FN-LIB-OFF FN-FIELD !
    argc idx FN-ARGC-OFF FN-FIELD !
    0 idx FN-ADDR!
-   \ Keep the row: an observer that declares rows of its own moves the count.
-   OBS-FN idx NOTIFY
    idx ;
 
 : DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
@@ -1038,15 +1024,6 @@ public
 \ The bit a builder-support row's index carries.
 : MAKER-BANK ( -- n ) MAKER-TAG ;
 : SYMBOL-CAP ( -- n ) FN-NAME-CAP 1- ;
-
-\ Hand every completed declaration, reused or appended, to an xt as
-\ `( kind idx )`: 1 a library (LIBRARY-PATH), 2 a function (DECLARE), 3 a
-\ selection write, unchanged ones included, with idx 0.
-: OBSERVE ( [ n n -- ] -- ) OBSERVER-N OBSERVER ! ;
-: UNOBSERVE ( -- ) 0 OBSERVER ! ;
-: NOTIFY-SCOPE ( -- ) OBS-SCOPE 0 NOTIFY ;
-\ The observer's cell.
-: OBSERVER-CELL ( -- ptr n ) OBSERVER ;
 
 \ errno is this package's own binding, written by hand because the declarer is
 \ defined after this package closes. libc's location is thread-local and the
@@ -1085,8 +1062,7 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
    PIN-LIB-CAP BYTE-VIEW CELL fresh execute
    RETIRED-BASE#base BYTE-VIEW CELL fresh execute
    RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
-   RETIRED-COUNT BYTE-VIEW CELL fresh execute
-   OBSERVER BYTE-VIEW CELL fresh execute ;
+   RETIRED-COUNT BYTE-VIEW CELL fresh execute ;
 
 
 \ Stripped application runtime starts with no maker declarations. The
@@ -1830,8 +1806,7 @@ private
 \ scratch: every saved program, a cross-built one included, starts with none.
 : RECORD-SCOPE ( -- )
    get-current SCOPE-WID !
-   1 SCOPE-SET !
-   NOTIFY-SCOPE ;
+   1 SCOPE-SET ! ;
 
 : CHECK-SCOPE ( -- )
    SCOPE-SET @ 0= if E-FFI-LIBRARY throw then
