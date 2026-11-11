@@ -767,6 +767,15 @@ TYPE-FIELD:COUNT PFB @ T=
 s" STRUCTURE sdaroll DERIVE addr FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" SDAR1 ( ptr sdaroll -- ptr n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
 
+\ An accessor's text calls `field-project` unqualified, so a package's own is
+\ refused at its definition (70, `hb: reserved word cannot be a definition
+\ name: field-project` on fd 2) and no accessor can bind it.
+package SDAFP
+variable V
+s" : field-project ( a n -- ptr n ) drop drop V ;" TEST-EVAL:RC 70 T=
+s" field-project" get-current search-wl 0= TTRUE      \ the definition did not take
+;package
+
 \ 16. OPAQUE is refused after a field, twice, on a fieldless family, in an ENUM and
 \     outside a package; each reject keeps the field rows at their mark and renders.
 : REJ-MARK ( -- ) TYPE-FIELD:COUNT PFB ! ;

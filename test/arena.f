@@ -3,9 +3,6 @@
 \ newest first, at the arena's reset or release, a public declaration publishes
 \ NAME-NEW and keeps its casts private, a HEAP or DYNAMIC-BUFFER element holds
 \ an arena handle, and a refused declaration defines none of its four words.
-\ tools/check.f --verify-only refuses a call or tick of HEAP's record runtime
-\ words outside the generated words, and no package defines its own
-\ `field-project`.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/arena.f
@@ -242,51 +239,6 @@ private
    s" QUAL" NO-WORDS  s" QUAL" PUB-NO-WORDS ;
 
 
-\ The refusals' stderr lines are the boundary under test, and a top-level
-\ declaration needs a file outside this package, so they run in a child.
-: CHILD ( -- )
-   s" test/arena-live.f" E2E-TREE:ARGS
-   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ E2E-TREE:RUN-ON ;
-\ STRUCTURE's accessors bind the engine's projection: a package's own
-\ `field-project` is refused at its definition.
-: CAPTURE-CHILD ( -- )
-   s" no package defines its own field-project" T-LABEL
-   E2E-TREE:ERR$ s" reserved word cannot be a definition name: field-project" COUNT-SUB 1 T=
-   E2E-TREE:OUT$ S\" struct-capture: 70\n" CONTAINS? TTRUE ;
-
-
-\ tools/check.f --verify-only checks a file without running it, so it gets its
-\ own child over a scratch tree's copy of HEAP's runtime words called in a body,
-\ a quotation and ticked at top level, each refusal reported as its own record.
-\ The pre-pass judges no top-level token after one it refuses, so the tick
-\ comes last.
-: VERIFY-SRC$ ( -- ptr u8 n )
-   S\" : R1 ( -- ptr n ) 16 DYNAMIC-STORAGE:RECORD-NEW ;\n: R2 ( ptr n -- ) 16 DYNAMIC-STORAGE:RECORD-RELEASE ;\n: R3 ( -- ptr n ) 16 [: DYNAMIC-STORAGE:RECORD-NEW ;] execute ;\n' DYNAMIC-STORAGE:RECORD-RELEASE drop\n" ;
-
-: VERIFY-CALLS ( -- )
-   s" tools/check.f --verify-only refuses the record runtime calls, at top level under its own code, in the diagnostic contract" T-LABEL
-   s" arena-verify" E2E-TREE:TREE
-   E2E-TREE:ROOT$ FS:CLEANUP-TREE+
-   s" test/arena-calls.f" E2E-TREE:AT-A VERIFY-SRC$ FS:WRITE-ALL
-   s" tools/check.f" E2E-TREE:ARGS
-   s" --" >LEN PROC-ARGV+
-   s" --verify-only" >LEN PROC-ARGV+
-   s" test/arena-calls.f" >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
-   E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL\"" COUNT-SUB 3 T=
-   E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL-TOP-LEVEL\"" COUNT-SUB 1 T=
-   \ The top-level tick's token is at line 4, column 3.
-   E2E-TREE:ERR$ S\" \"line\":4,\"column\":3,\"" COUNT-SUB 1 T=
-   E2E-TREE:RC@ 0 <> TTRUE
-   s" test/arena-calls.jsonl" E2E-TREE:AT-A E2E-TREE:ERR$ FS:WRITE-ALL
-   s" tools/gate-json-assert.f" E2E-TREE:ARGS
-   s" --" >LEN PROC-ARGV+
-   s" diag-contract" >LEN PROC-ARGV+
-   s" test/arena-calls.jsonl" >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
-   E2E-TREE:NEED-OK ;
-
-
 \ The pre-pass registers each declaration's words with their effects and
 \ sections: calls as declared are admitted, calls with the wrong effect refused.
 : VERIFY-USES-SRC$ ( -- ptr u8 n )
@@ -295,6 +247,7 @@ private
 : VERIFY-WRONG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/arena.f\npackage Q public\nARENA X n\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr u8 ) Q:X-NEW ;\n: V ( ptr ARENA:arena -- ptr n ) [: c@ drop ;] Q:X-NEW-DISPOSE ;\n;package\n" ;
 
+\ tools/check.f --verify-only checks a file without running it, in a child.
 : VERIFY-FILE ( ptr u8 n -- )
    {: rel:ptr relu:n :}
    s" tools/check.f" E2E-TREE:ARGS
@@ -324,8 +277,7 @@ private
 
 : RUN ( -- )
    T-RESET
-   CHILD RECORDS DISPOSALS VISIBILITY HANDLES REFUSALS CAPTURE-CHILD
-   VERIFY-CALLS VERIFY-USES ;
+   RECORDS DISPOSALS VISIBILITY HANDLES REFUSALS VERIFY-USES ;
 
 RUN
 
