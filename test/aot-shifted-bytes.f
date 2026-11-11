@@ -26,6 +26,19 @@
 \ `hb --load` prints.
 \ The fourth subject's top level reads an environment variable: a build reuses
 \ its object only while the variable reads as its compile read it.
+\ The fifth subject's top level sets its root with ROOT! and requires a file only
+\ that root reaches; a second build into the same out root reuses its object, so
+\ it runs none of the file's top-level code. That file then requires a second
+\ file only its root reaches, which the first required file loaded already, so
+\ the requiring file's object holds a registry act made under the set root, not
+\ a request; the rebuild reuses it all the same. A third build after the first
+\ required file changes prints its new line.
+\ Three more files set their root and require a helper: under a root through a
+\ symlink the second build finds repointed, under one from an environment
+\ variable the second build changes, and by its absolute path after setting the
+\ longest root ROOT! takes. Each builds
+\ twice into one out root, and its program prints what a fresh build's program
+\ and `hb --load` print.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 
@@ -50,6 +63,12 @@ create RESOLVES-IMAGE PATH-CAP allot
 create ENVTOP PATH-CAP allot
 create ENVTOP-OUT PATH-CAP allot
 create ENVTOP-IMAGE PATH-CAP allot
+create ROOTED PATH-CAP allot
+create ROOTED-DIR PATH-CAP allot
+create ROOTED-HELPER PATH-CAP allot
+create ROOTED-SHARED PATH-CAP allot
+create ROOTED-OUT PATH-CAP allot
+create ROOTED-IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 variable RECORD-U
@@ -65,6 +84,12 @@ variable RESOLVES-IMAGE-U
 variable ENVTOP-U
 variable ENVTOP-OUT-U
 variable ENVTOP-IMAGE-U
+variable ROOTED-U
+variable ROOTED-DIR-U
+variable ROOTED-HELPER-U
+variable ROOTED-SHARED-U
+variable ROOTED-OUT-U
+variable ROOTED-IMAGE-U
 \ what `hb --load` printed, which the build must print too
 4096 constant LOADED-CAP
 create LOADED LOADED-CAP allot
@@ -86,6 +111,12 @@ variable LOADED-U
 : ENVTOP$ ( -- ptr u8 n ) ENVTOP ENVTOP-U @ ;
 : ENVTOP-OUT$ ( -- ptr u8 n ) ENVTOP-OUT ENVTOP-OUT-U @ ;
 : ENVTOP-IMAGE$ ( -- ptr u8 n ) ENVTOP-IMAGE ENVTOP-IMAGE-U @ ;
+: ROOTED$ ( -- ptr u8 n ) ROOTED ROOTED-U @ ;
+: ROOTED-DIR$ ( -- ptr u8 n ) ROOTED-DIR ROOTED-DIR-U @ ;
+: ROOTED-HELPER$ ( -- ptr u8 n ) ROOTED-HELPER ROOTED-HELPER-U @ ;
+: ROOTED-SHARED$ ( -- ptr u8 n ) ROOTED-SHARED ROOTED-SHARED-U @ ;
+: ROOTED-OUT$ ( -- ptr u8 n ) ROOTED-OUT ROOTED-OUT-U @ ;
+: ROOTED-IMAGE$ ( -- ptr u8 n ) ROOTED-IMAGE ROOTED-IMAGE-U @ ;
 \ a line the probe's --load output must hold, naming its canonical directory
 create WANT PATH-CAP 2 * allot
 variable WANT-U
@@ -118,6 +149,26 @@ variable WANT-U
 \ MAIN prints.
 : ENVTOP-SOURCE$ ( -- ptr u8 n )
    S\" s\q envtop top level\q type cr\ns\q HABU_TEST_SIDE\q GETENV nip constant SIDE\n: MAIN ( -- ) SIDE . ;\n" ;
+
+\ A file that prints a line at top level, sets its root to beside/ and requires
+\ helper.f and then shared.f, which only that root resolves and helper.f has
+\ loaded; MAIN prints a word each of them defines.
+: ROOTED-SOURCE$ ( -- ptr u8 n )
+   S\" s\q rooted top level\q type cr\ns\q beside\q SOURCE-ROOT:ROOT!\nrequire helper.f\nrequire shared.f\n: MAIN ( -- ) s\q rooted main \q type BESIDE-WORD type s\q  and \q type SHARED-WORD type cr ;\n" ;
+
+: HELPER-SOURCE$ ( -- ptr u8 n )
+   S\" require shared.f\n: BESIDE-WORD ( -- ptr u8 n ) s\q from beside\q ;\n" ;
+
+\ helper.f rewritten: its word answers another line.
+: HELPER-CHANGED-SOURCE$ ( -- ptr u8 n )
+   S\" require shared.f\n: BESIDE-WORD ( -- ptr u8 n ) s\q from beside, changed\q ;\n" ;
+
+: SHARED-SOURCE$ ( -- ptr u8 n )
+   S\" : SHARED-WORD ( -- ptr u8 n ) s\q shared\q ;\n" ;
+
+\ The helpers a case's main.f requires under the root it sets.
+: HELPER-1$ ( -- ptr u8 n ) S\" : HELPER-K ( -- n ) 1 ;\n" ;
+: HELPER-2$ ( -- ptr u8 n ) S\" : HELPER-K ( -- n ) 2 ;\n" ;
 
 \ Each subject is its own hb-build: a refusal ends the build.
 : BUILD-ARGV ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n out:ptr outu:n :}
@@ -240,6 +291,230 @@ variable WANT-U
    s" abcd" false S\" 4\n" ENVTOP-BUILD
    NULL-PTR 0 true S\" 0\n" ENVTOP-BUILD ;
 
+: EXPECT-OUT-LACKS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
+   GT-OUT$ want wantu CONTAINS? if label labelu GE-FAIL then ;
+
+: ROOTED-LOAD ( -- )
+   ROOTED-DIR$ FS:MAKE-DIRS
+   ROOTED-HELPER$ HELPER-SOURCE$ FS:WRITE-ALL
+   ROOTED-SHARED$ SHARED-SOURCE$ FS:WRITE-ALL
+   ROOTED$ ROOTED-SOURCE$ FS:WRITE-ALL
+   GE-HB-RESET
+   ENGINE-CANDIDATE:PATH$ GE-ARGV+
+   s" --load" GE-ARG+ ROOTED$ GE-ARG+
+   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" hb --load of a file that requires a file only its ROOT! reaches" GE-EXPECT-OK ;
+
+\ The program run, printing MAIN's line.
+: ROOTED-RUN ( ptr u8 n -- ) {: want:ptr wantu:n :}
+   GE-HB-RESET
+   ROOTED-IMAGE$ GE-ARGV+
+   ROOTED-IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" the program built from a file whose ROOT! reaches its require" GE-EXPECT-OK
+   want wantu s" MAIN's line, from the words the ROOT!-reached files define" GE-EXPECT-OUT ;
+
+: ROOTED-LINE$ ( -- ptr u8 n ) S\" rooted main from beside and shared\n" ;
+
+\ Both builds share ROOTED-OUT: the first compiles the file, running its top
+\ level; the second reuses its cached object, which runs no top-level code.
+: ROOTED-BUILD ( -- )
+   GE-HB-RESET
+   s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
+   ROOTED$ ROOTED-IMAGE$ BUILD-ARGV BUILD-RUN
+   s" stripped build of a file that requires a file only its ROOT! reaches" GE-EXPECT-OK
+   s" rooted top level" s" the first build runs the file's top level" GE-EXPECT-OUT-HAS
+   ROOTED-LINE$ ROOTED-RUN ;
+
+: ROOTED-REBUILD ( -- )
+   GE-HB-RESET
+   s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
+   ROOTED$ ROOTED-IMAGE$ BUILD-ARGV BUILD-RUN
+   s" second build of it into the same out root" GE-EXPECT-OK
+   s" rooted top level" s" the second build reuses the cached object, running no top-level code" EXPECT-OUT-LACKS
+   ROOTED-LINE$ ROOTED-RUN ;
+
+\ A third build into the same out root, after helper.f under the set root changed, links its new word.
+: ROOTED-CHANGED ( -- )
+   ROOTED-HELPER$ HELPER-CHANGED-SOURCE$ FS:WRITE-ALL
+   GE-HB-RESET
+   s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
+   ROOTED$ ROOTED-IMAGE$ BUILD-ARGV BUILD-RUN
+   s" third build of it into the same out root, after its required file changed" GE-EXPECT-OK
+   S\" rooted main from beside, changed and shared\n" ROOTED-RUN ;
+
+\ ---- a case: a directory whose main.f sets its root and requires a helper under it
+\ Each build and run is its own process: the out root and the file tree between builds are the boundary under test.
+create C-DIR PATH-CAP allot
+create C-MAIN PATH-CAP allot
+create C-OUT PATH-CAP allot
+create C-FRESH PATH-CAP allot
+create C-IMAGE PATH-CAP allot
+create C-FRESH-IMAGE PATH-CAP allot
+create C-CALL PATH-CAP allot
+create C-A PATH-CAP allot
+create C-B PATH-CAP allot
+create C-H PATH-CAP allot
+create C-LINK PATH-CAP allot
+create C-ENV PATH-CAP allot           \ HABU_TEST_ROOT for every run, unset while C-ENV-U is 0
+create C-REL PATH-CAP allot
+variable C-DIR-U
+variable C-MAIN-U
+variable C-OUT-U
+variable C-FRESH-U
+variable C-IMAGE-U
+variable C-FRESH-IMAGE-U
+variable C-CALL-U
+variable C-A-U
+variable C-B-U
+variable C-H-U
+variable C-LINK-U
+variable C-ENV-U
+variable C-REL-U
+: C-DIR$ ( -- ptr u8 n ) C-DIR C-DIR-U @ ;
+: C-MAIN$ ( -- ptr u8 n ) C-MAIN C-MAIN-U @ ;
+: C-OUT$ ( -- ptr u8 n ) C-OUT C-OUT-U @ ;
+: C-FRESH$ ( -- ptr u8 n ) C-FRESH C-FRESH-U @ ;
+: C-IMAGE$ ( -- ptr u8 n ) C-IMAGE C-IMAGE-U @ ;
+: C-FRESH-IMAGE$ ( -- ptr u8 n ) C-FRESH-IMAGE C-FRESH-IMAGE-U @ ;
+: C-CALL$ ( -- ptr u8 n ) C-CALL C-CALL-U @ ;
+: C-A$ ( -- ptr u8 n ) C-A C-A-U @ ;
+: C-B$ ( -- ptr u8 n ) C-B C-B-U @ ;
+: C-H$ ( -- ptr u8 n ) C-H C-H-U @ ;
+: C-LINK$ ( -- ptr u8 n ) C-LINK C-LINK-U @ ;
+: C-ENV$ ( -- ptr u8 n ) C-ENV C-ENV-U @ ;
+: C-REL$ ( -- ptr u8 n ) C-REL C-REL-U @ ;
+
+4096 constant TXT-CAP
+create TXT TXT-CAP allot
+variable TXT-U
+: TXT$ ( -- ptr u8 n ) TXT TXT-U @ ;
+64 constant NAME-CAP
+create C-NAME NAME-CAP allot
+variable C-NAME-U
+256 constant LBL-CAP
+create LBL LBL-CAP allot
+variable LBL-U
+
+: APPEND ( ptr u8 n ptr u8 ptr n n -- ) {: a:ptr u:n dst:ptr up:ptr cap:n :}
+   up @ u + cap > if s" a case's text fits its buffer" GE-FAIL then
+   a dst up @ + u BYTE-COPY  u up +! ;
+
+: TXT+ ( ptr u8 n -- ) TXT TXT-U TXT-CAP APPEND ;
+
+\ The check's label after the case's name.
+: LABEL ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 LBL-U !  C-NAME C-NAME-U @ LBL LBL-U LBL-CAP APPEND
+   s" : " LBL LBL-U LBL-CAP APPEND  a u LBL LBL-U LBL-CAP APPEND
+   LBL LBL-U @ ;
+
+: IN-CASE ( ptr u8 n ptr u8 -- n ) {: name:ptr nameu:n dst:ptr :} C-DIR$ name nameu dst FS:JOIN-PATH ;
+
+: CASE-OPEN ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   0 C-NAME-U !  name nameu C-NAME C-NAME-U NAME-CAP APPEND
+   name nameu C-DIR GT-PATH C-DIR-U !  C-DIR$ FS:MAKE-DIRS
+   s" main.f" C-MAIN IN-CASE C-MAIN-U !
+   s" out" C-OUT IN-CASE C-OUT-U !
+   s" fresh-out" C-FRESH IN-CASE C-FRESH-U !
+   s" program" C-IMAGE IN-CASE C-IMAGE-U !
+   s" fresh-program" C-FRESH-IMAGE IN-CASE C-FRESH-IMAGE-U !
+   0 C-ENV-U ! ;
+
+\ Directory name under the case's, its helper.f holding the text.
+: HELPER-DIR ( ptr u8 n ptr u8 ptr n ptr u8 n -- ) {: name:ptr nameu:n dst:ptr up:ptr text:ptr textu:n :}
+   name nameu dst IN-CASE up !  dst up @ FS:MAKE-DIRS
+   dst up @ s" helper.f" C-H FS:JOIN-PATH C-H-U !
+   C-H$ text textu FS:WRITE-ALL ;
+
+\ main.f: a top-level line, then the root expression TXT holds after MAIN-START, ROOT!, a
+\ require of the helper and a MAIN that prints its value.
+: MAIN-START ( -- ) 0 TXT-U !  S\" s\q case top level\q type cr\n" TXT+ ;
+: MAIN-END ( ptr u8 n -- ) {: h:ptr hu:n :}
+   S\"  SOURCE-ROOT:ROOT!\nrequire " TXT+  h hu TXT+  S\" \n: MAIN ( -- ) HELPER-K . ;\n" TXT+
+   C-MAIN$ TXT$ FS:WRITE-ALL ;
+
+: C-ENV! ( ptr u8 n -- ) 0 C-ENV-U !  C-ENV C-ENV-U PATH-CAP APPEND ;
+: CASE-ENV ( -- ) C-ENV-U @ 0<> if s" HABU_TEST_ROOT" >LEN C-ENV$ >LEN PROC-ENV-SET then ;
+
+: CASE-BUILD ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n image:ptr imageu:n :}
+   GE-HB-RESET
+   s" HABU_OUT" >LEN out outu >LEN PROC-ENV-SET  CASE-ENV
+   C-MAIN$ image imageu BUILD-ARGV BUILD-RUN
+   s" the build of main.f" LABEL GE-EXPECT-OK ;
+
+: CASE-RUN ( ptr u8 n ptr u8 n -- ) {: image:ptr imageu:n want:ptr wantu:n :}
+   GE-HB-RESET
+   image imageu GE-ARGV+
+   image imageu GE-TIMEOUT-MS GE-RUN-ENV
+   s" the program built from main.f" LABEL GE-EXPECT-OK
+   want wantu s" the program prints the value of the helper its root reaches" LABEL GE-EXPECT-OUT ;
+
+: WARM ( -- ) C-OUT$ C-IMAGE$ CASE-BUILD ;
+: WARM-RUN ( ptr u8 n -- ) {: want:ptr wantu:n :} C-IMAGE$ want wantu CASE-RUN ;
+
+\ A build into an out root of its own and hb --load of main.f, each printing want, as the
+\ warm build's program did.
+: CASE-FRESH ( ptr u8 n -- ) {: want:ptr wantu:n :}
+   C-FRESH$ C-FRESH-IMAGE$ CASE-BUILD
+   C-FRESH-IMAGE$ want wantu CASE-RUN
+   GE-HB-RESET  CASE-ENV
+   ENGINE-CANDIDATE:PATH$ GE-ARGV+
+   s" --load" GE-ARG+ C-MAIN$ GE-ARG+ C-CALL$ GE-ARG+
+   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" hb --load of main.f" LABEL GE-EXPECT-OK
+   want wantu s" hb --load prints the value of the helper its root reaches" LABEL GE-EXPECT-OUT-HAS ;
+
+\ main.f's root is the symlink beside, to v1 for the first build and to v2 for the second.
+: SYMLINK-CASE ( -- )
+   s" symlink" CASE-OPEN
+   s" v1" C-A C-A-U HELPER-1$ HELPER-DIR
+   s" v2" C-B C-B-U HELPER-2$ HELPER-DIR
+   s" beside" C-LINK IN-CASE C-LINK-U !
+   s" v1" C-LINK$ FS:MAKE-SYMLINK
+   MAIN-START  S\" s\q beside\q" TXT+  s" helper.f" MAIN-END
+   WARM  S\" 1\n" WARM-RUN
+   C-LINK$ FS:REMOVE-FILE  s" v2" C-LINK$ FS:MAKE-SYMLINK
+   WARM  S\" 2\n" WARM-RUN
+   S\" 2\n" CASE-FRESH ;
+
+\ main.f's root is HABU_TEST_ROOT, directory a for the first build and b for the second.
+: ENV-CASE ( -- )
+   s" env" CASE-OPEN
+   s" a" C-A C-A-U HELPER-1$ HELPER-DIR
+   s" b" C-B C-B-U HELPER-2$ HELPER-DIR
+   MAIN-START  S\" s\q HABU_TEST_ROOT\q GETENV" TXT+  s" helper.f" MAIN-END
+   C-A$ C-ENV!  WARM  S\" 1\n" WARM-RUN
+   C-B$ C-ENV!  WARM  S\" 2\n" WARM-RUN
+   S\" 2\n" CASE-FRESH ;
+
+\ bytes: the longest root ROOT! takes; its searchable test appends /. to it.
+PATH-CAP 2 - constant LONG-ROOT
+
+\ C-REL: u bytes of 200-byte directory names under the case's directory.
+: REL! ( n -- ) {: u:n :}
+   u 0 ?do i 1 + 201 mod 0= if 47 else 100 then C-REL i + c! loop
+   C-REL u 1 - + c@ 47 = if 100 C-REL u 1 - + c! then
+   u C-REL-U ! ;
+
+\ main.f's root is LONG-ROOT bytes long, canonical; nothing changes between the builds, so
+\ the second reuses main.f's object: its top level does not run, and the link sets the root.
+\ The helper sits in the case's directory, required by its absolute path: under that root
+\ its path, and its object's under the out root, would pass PATH-CAP.
+: LONG-CASE ( -- )
+   s" long" CASE-OPEN
+   C-DIR$ SOURCE-ROOT:CANONICAL drop {: c:ptr cu:n :}
+   LONG-ROOT cu - 1 - REL!
+   c cu C-REL$ C-A FS:JOIN-PATH C-A-U !
+   C-A-U @ LONG-ROOT <> if s" the long root is LONG-ROOT bytes" LABEL GE-FAIL then
+   C-A$ FS:MAKE-DIRS
+   s" h.f" C-H IN-CASE C-H-U !
+   C-H$ HELPER-1$ FS:WRITE-ALL
+   MAIN-START  S\" s\q " TXT+  C-A$ TXT+  S\" \q" TXT+  C-H$ MAIN-END
+   WARM  S\" 1\n" WARM-RUN
+   WARM
+   s" case top level" s" the second build reuses main.f's object, running no top-level code" LABEL EXPECT-OUT-LACKS
+   S\" 1\n" WARM-RUN
+   S\" 1\n" CASE-FRESH ;
+
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -257,11 +532,21 @@ variable WANT-U
    s" envtop.f" ENVTOP GT-PATH ENVTOP-U !
    s" envtop-out" ENVTOP-OUT GT-PATH ENVTOP-OUT-U !
    s" envtop" ENVTOP-IMAGE GT-PATH ENVTOP-IMAGE-U !
+   s" rooted.f" ROOTED GT-PATH ROOTED-U !
+   s" beside" ROOTED-DIR GT-PATH ROOTED-DIR-U !
+   s" beside/helper.f" ROOTED-HELPER GT-PATH ROOTED-HELPER-U !
+   s" beside/shared.f" ROOTED-SHARED GT-PATH ROOTED-SHARED-U !
+   s" rooted-out" ROOTED-OUT GT-PATH ROOTED-OUT-U !
+   s" rooted" ROOTED-IMAGE GT-PATH ROOTED-IMAGE-U !
+   s" call.f" C-CALL GT-PATH C-CALL-U !
+   C-CALL$ S\" MAIN\n" FS:WRITE-ALL
    BUILD RUN-IMAGE BUILD-RECORD
    PROBE-WRITE PROBE-LOAD PROBE-PLAIN PROBE-BUILD
    RESOLVES-LOAD RESOLVES-BUILD
    ENVTOP-BUILDS
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, and builds that reuse a part only while the environment variable its top level read holds" type cr ;
+   ROOTED-LOAD ROOTED-BUILD ROOTED-REBUILD ROOTED-CHANGED
+   SYMLINK-CASE ENV-CASE LONG-CASE
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, loaded, built, rebuilt from its cached object and rebuilt after its required file changed, and warm builds of a root set through a symlink, from an environment variable and at the longest root, as a fresh build and hb --load print" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

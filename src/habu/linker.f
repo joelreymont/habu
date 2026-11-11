@@ -356,7 +356,6 @@ variable FILE-OFF                    \ the offset in the source the compiling or
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-EVENT                  \ the first event of the loader's log the piece made
 variable FILE-RUN                    \ the first entry of INTERPRETER's run log the piece made
-variable FILE-ROOTS                  \ SOURCE-ROOT:CHANGE-COUNT as the piece starts
 variable FILE-END                    \ here's distance as the piece ends
 \ The running piece holds a header-data address outside its STORES rows' cells: a tag-4
 \ reference written (DATA-REF+) or resolved (RESOLVE).
@@ -368,7 +367,7 @@ variable FILE-PATH-N
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
 variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
 \ The compiling part never links (WRITE-OBJECT): a cross build, no stamp, a start or end off TOP-SCOPE?, an unclean cut
-\ ending it or the part before (NEST), a load it asked for the runner never ran (ACTS+), a source root it set (ROOT-CK).
+\ ending it or the part before (NEST), a load it asked for the runner never ran (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 \ What LOAD's loop over the file's parts does next: link part FILE-PART at FILE-OFF, compile it,
 \ or, once NEST cut the compiling part at a clean request, go back to linking the next.
@@ -4653,7 +4652,7 @@ variable DUE-MADE
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
-   EVENT-COUNT FILE-EVENT !  SOURCE-ROOT:CHANGE-COUNT FILE-ROOTS !  INTERPRETER:RUN-COUNT FILE-RUN !
+   EVENT-COUNT FILE-EVENT !  INTERPRETER:RUN-COUNT FILE-RUN !
    SOURCE-ROOT:CURRENT$ BUF:N>BLEN ENTRY-ROOT BUF:REPLACE ;
 
 
@@ -4666,10 +4665,6 @@ variable DUE-MADE
    PKG-REC-CELL HOST@ 0=  get-current BOOT:GLOBAL-WL =  and  USE-DEPTH-CELL HOST@ 0=  and ;
 
 : SCOPE-CK ( -- ) TOP-SCOPE? 0= if true UNLINKABLE ! then ;
-
-\ A piece that set the source root (SOURCE-ROOT:ROOT!) is UNLINKABLE: its request and the file's later ones
-\ resolve from that root, and a link runs none of the piece's code.
-: ROOT-CK ( -- ) SOURCE-ROOT:CHANGE-COUNT FILE-ROOTS @ <> if true UNLINKABLE ! then ;
 
 
 \ The piece's ACTS rows (ACTS-CK) applied as its compile made them, under the root each was
@@ -4717,6 +4712,12 @@ variable DUE-MADE
    ;] catch {: linked rc:n :}
    rc 0<> if DROP-OBJECT rc throw then
    linked ;
+
+\ The root the linked object's compile left (INPUT's exit root) made current, as its ROOT! made it then, so the
+\ request REPLAY loads and the next part resolve from it.
+: LINK-ROOT ( -- )
+   1 INPUT-AT FIELD$ {: x:ptr xu:n :}
+   x xu SOURCE-ROOT:CURRENT$ STR= 0= if x xu SOURCE-ROOT:ROOT! then ;
 
 
 \ A type entry for each family and linear type the piece declared, none for a linear type
@@ -4833,6 +4834,7 @@ variable DUE-MADE
       TURN @ MATCH turn
          link OF
             TOP-SCOPE? CROSS? 0= and if LINK-PART else false then if
+               LINK-ROOT                  \ outside COMPILE-READS:RECORD, so its ROOT! records nothing
                REQS-N @ 0= if
                   compiled true
                else
@@ -4856,7 +4858,7 @@ variable DUE-MADE
             TURN @ MATCH turn
                link OF E-COMP-STATE throw ENDOF
                compile OF                 \ the source ended
-                  SCOPE-CK  ROOT-CK
+                  SCOPE-CK
                   sourceu PART-NAMES
                   -1 PIECE-END
                   SOURCE-ROOT:CURRENT$ BUF:N>BLEN EXIT-ROOT BUF:REPLACE   \ the file's load scope is still open
@@ -4915,7 +4917,6 @@ variable DUE-MADE
    ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
    ev RESUME {: resume:n :}
    resume 0< if true UNLINKABLE ! then
-   ROOT-CK
    resume 0< if FILE-SRC-U @ else resume then PART-NAMES
    mode REQUESTS U64+  resume REQUESTS U64+
    ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+

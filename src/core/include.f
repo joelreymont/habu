@@ -146,14 +146,13 @@ variable NORMAL-U
 variable CANDIDATE-U
 variable JOIN-U
 variable OWNER-U
-\ The loader's record: top frame, current root and length, open scopes, ROOT!'s
-\ count. Readers reach it by SRCLOC:SOURCE-CELL, the running hb's in a build.
+\ The loader's record: top frame, current root and length, open scopes.
+\ Readers reach it by SRCLOC:SOURCE-CELL, the running hb's in a build.
 0 constant REC-TOP
 CELL constant REC-ROOT
 2 cells constant REC-ROOTLEN
 3 cells constant REC-SCOPES
-4 cells constant REC-CHANGES
-5 cells constant REC-BYTES
+4 cells constant REC-BYTES
 create LOADER-REC REC-BYTES SCRATCH-ALLOT   \ a saved program starts with it empty
 SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER-CELL
 LOADER-REC LOADER-CELL ptr-cell!            \ a build's store goes to its image (habu2.f ROUTE-HEADER)
@@ -163,7 +162,6 @@ CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
 : CURRENT-A ( -- ptr ptr u8 ) LOADER REC-CELLS REC-ROOT CELL / ptr-field ;
 : CURRENT-U ( -- ptr n ) LOADER REC-ROOTLEN + CELL-VIEW ;
 : SCOPES ( -- ptr n ) LOADER REC-SCOPES + CELL-VIEW ;
-: CHANGES ( -- ptr n ) LOADER REC-CHANGES + CELL-VIEW ;
 create ENGINE-BUF PATH-BYTES allot
 variable ENGINE-U
 variable ENGINE-READ
@@ -656,11 +654,7 @@ public
    p pu CANON-BUF n COMPILE-READS:ROOT+
    CANON-BUF n MAP-COPY {: fresh:ptr :}
    RELEASE-CURRENT
-   fresh n CURRENT!
-   1 CHANGES +! ;
-
-\ How many times ROOT! has set a root (src/habu/linker.f ROOT-CK).
-: CHANGE-COUNT ( -- n ) CHANGES @ ;
+   fresh n CURRENT! ;
 
 \ SwiftForth's path words, at the top level of a stdin session or of a program
 \ file run as `bin/hb file.f`; inside a load (`--load`, `require`) or a WITH
