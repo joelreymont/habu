@@ -4,11 +4,17 @@
 \ the routed REPL reader in the same package.
 \ STORAGE CLASS. TASK-LOCAL: the device indices (GENIO-ABI) and the byte scratch.
 \ PROCESS-WIDE: the device table, so a task inherits its creator's devices.
+\
+\ Dispatch: each dispatcher (KEY, READ, CLOSE and the rest) stores the row it
+\ runs for in ACTIVE-CELL, runs the operation and puts the caller's row back,
+\ also when the operation throws, so an operation of the caller's device that
+\ runs afterwards still sees itself as SELF. An operation that may throw runs
+\ under `catch` through a RUN-*-OP word that reads its row from ACTIVE-CELL,
+\ because a quotation cannot reference a local. EMIT, WRITE, FORWARD and
+\ FORWARD-EMIT skip that catch, because their operations do not throw.
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
-\ A device's write row is stored through QUOTATION-STORAGE:STORE, not `xt!`:
-\ see PUBLISH-WRITE below.
 require src/core/quotation-storage.f
 require src/lib/task.f
 
@@ -16,10 +22,9 @@ package GENIO
 
 public
 
-\ A device handle is its row: 0 is the terminal, 1..GENIO-ABI:DEVICES are the
-\ registered devices. Like every value nominal the raw converters are not
-\ validators; DEVICE, TERMINAL and TCP-DEVICE (src/lib/genio.f) are the ways
-\ to obtain one.
+\ A device handle carries its row: 0 is the terminal, 1..GENIO-ABI:DEVICES are
+\ the registered devices. Like every value nominal the raw converters are not
+\ validators; DEVICE, TERMINAL and TCP-DEVICE are the ways to obtain one.
 DEFTYPE DEVICE
 
 E-GENIO-OPERAND constant E-OPERAND
@@ -30,13 +35,12 @@ E-GENIO-FULL constant E-FULL
 private
 
 GENIO-ABI:DEVICES constant MAX-DEVICES
-MAX-DEVICES 1+ constant SLOTS          \ row 0 is the terminal
+MAX-DEVICES 1+ constant SLOTS
 0 constant TERMINAL-ROW
 1 constant STDOUT-FD
 0 constant STDIN-FD
 
-\ FIONREAD, the "how many bytes can I read without waiting" ioctl. The number
-\ is the host's, not a wire format; Linux and macOS spell it differently.
+\ FIONREAD, the "how many bytes can I read without waiting" ioctl.
 $541B constant FIONREAD-LINUX
 $4004667F constant FIONREAD-MACOS
 
@@ -50,7 +54,7 @@ SLOTS TYPED-BUFFER OP-FLUSH  [ -- ]
 SLOTS TYPED-BUFFER OP-CLOSE  [ -- ]
 SLOTS TYPED-BUFFER SLOT-STATE n        \ the device's own data (a socket, an fd)
 SLOTS TYPED-BUFFER SLOT-FAULT n        \ a latched write failure: 0 = healthy
-SLOTS TYPED-BUFFER SLOT-GEN n          \ bumped at each claim and each close
+SLOTS TYPED-BUFFER SLOT-GEN n
 
 \ One task wins FREE -> CLAIMING or LIVE -> CLOSING by compare-and-swap on the
 \ row's cell; CLAIM-ROW bumps the generation before it stores LIVE.
@@ -66,11 +70,9 @@ create SLOT-STATUS SLOTS cells SCRATCH-ALLOT
 8 constant GEN-SHIFT
 $FF constant ROW-MASK
 
-SCRATCH-VARIABLE TERMINAL-READY        \ the built-in row is installed once
+SCRATCH-VARIABLE TERMINAL-READY
 
-\ One byte of scratch per task, for the operations that move a single character
-\ and for the readable-count ioctl. Task-local for the reason TCP4's endpoint
-\ storage is: two tasks may hold two devices and neither may see the other's
+\ Task-local: two tasks may hold two devices and neither may see the other's
 \ byte.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-SCRATCH drop
 
@@ -81,9 +83,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-SCRATCH drop
    IO-SCRATCH BYTE-VIEW ;
 
 \ The current task's input and output devices are two cells of the engine's DATA
-\ header (src/habu/layout.f GENIO-ABI): the engine swaps DATA for each task,
-\ src/lib/task.f copies them into a new task's region, and the engine's output
-\ funnel reads the output cell directly. A handle is a row, never an address.
+\ header: the engine swaps DATA for each task, and the engine's output funnel
+\ reads the output cell directly.
 
 : OUT-PTR ( -- ptr n )
    data-base GENIO-ABI:OUT-CELL + ;
@@ -95,18 +96,15 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-SCRATCH drop
    data-base GENIO-ABI:ACTIVE-CELL + ;
 
 \ Row i-1 of the engine's write table, which only the output funnel reads; the
-\ terminal has none. The row is in the running task's DATA, which makes the
-\ funnel's dispatch per task. The cell holds the handler the funnel calls, and a
-\ cleared row is ZERO (habu2.f reads zero as no device): two element types for
-\ one DATA cell, so two accessors, each declaring what it touches.
+\ terminal has none. The cell holds the handler the funnel calls, and a cleared
+\ row is ZERO: two element types for one DATA cell, so two accessors, each
+\ declaring what it touches.
 : ENGINE-ROW-OFF ( n -- n ) {: idx:n :}
    GENIO-ABI:WRITE-OFF idx 1- 8 * + ;
 
 \ GENIO-ABI:WRITE-OFF is an image-ABI offset, so this row cannot become a
 \ TYPED-VARIABLE, and no checked word may give a DATA address a quotation
-\ pointee except through a private CAST:. The cast is the address computation
-\ alone -- the same declaration `xt!` makes in QUOTATION-STORAGE:STORE below.
-\ ENGINE-ROW-CLEAR touches the same cell as a number.
+\ pointee except through a private CAST:.
 CAST: >ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
 
 : ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
@@ -118,11 +116,9 @@ CAST: >ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
 \ In the main task the row is a cell of the engine's own DATA, so it is a
 \ DECLARED address that a snapshot or an AOT capture has to canonicalise, and
 \ `xt!` is its declaration point. In a worker the row is a cell of that task's
-\ region, which no capture ever sees and which the declared-address table
-\ bounds exclude -- `xt!` there refuses with "snapshot address cell out of
-\ range". QUOTATION-STORAGE:STORE is the shipped word that asks which of the
-\ two a cell is and stores it the right way, and the native compiler routes
-\ every proven quotation store through it for exactly this reason.
+\ region, which the declared-address table bounds exclude -- `xt!` there refuses
+\ with "snapshot address cell out of range". QUOTATION-STORAGE:STORE asks which
+\ of the two a cell is and stores it the right way.
 : PUBLISH-WRITE ( n -- ) {: idx:n :}
    idx OP-WRITE @ idx ENGINE-ROW QUOTATION-STORAGE:STORE ;
 
@@ -143,9 +139,6 @@ CAST: >ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
 : ROW-HANDLE ( n -- device ) {: idx:n :}
    idx idx SLOT-GEN @ HANDLE ;
 
-\ The one place a handle becomes a row. A row outside the table is an operand
-\ error; a row whose generation has moved on, or which nothing occupies, is a
-\ state error -- the handle named a device that is gone.
 : ROW ( device -- n )
    DEVICE>N {: h:n :}
    h ROW-MASK and BOUNDED {: idx:n :}
@@ -180,7 +173,6 @@ CAST: >ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
 : ACTIVE-ROW ( -- n )
    ACTIVE-PTR @ BOUNDED ;
 
-\ A zero is no failure, and a latched failure stays (FAULT-CHECK).
 : LATCH-ROW ( n n -- ) {: errno:n idx:n :}
    errno 0= if exit then
    idx SLOT-FAULT @ 0 <> if exit then
@@ -205,8 +197,8 @@ public
 \ throw. The engine reaches a write from inside `emit` and `type`, where a throw
 \ would unwind through engine internals with the funnel's re-entrancy guard set,
 \ and EMIT and FORWARD-EMIT raise that guard around an emit with no catch. The
-\ next KEY, READ, ACCEPT or FLUSH on the device raises E-GENIO-IO. A zero is
-\ ignored, and a failure already latched is kept.
+\ device's next EMIT, WRITE, FLUSH, KEY, KEY?, READ or ACCEPT raises
+\ E-GENIO-IO. A zero is ignored, and a failure already latched is kept.
 : FAULT! ( n -- )
    ACTIVE-ROW LATCH-ROW ;
 
@@ -230,8 +222,6 @@ private
 : TERMINAL-READ ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
    STDIN-FD bytes cap read dup 0 < if drop E-IO throw then ;
 
-\ KEY1 and RD-LINE are src/habu/repl.f's: the line editor IS the terminal's
-\ accept, exactly as a socket device supplies its own.
 : TERMINAL-KEY ( -- n )
    KEY1 ;
 
@@ -276,10 +266,10 @@ public
 \ emit, key, key?, read, write, accept, flush, close -- and the final cell is the
 \ device's own data: a TCP4 connection, a descriptor, a buffer identity. One task
 \ builds and closes a device: its write row lives in that task's DATA. emit,
-\ type, ., cr and the REPL's ok funnel through src/habu/rt.f G-OUT to the
-\ current output device; diagnostics (crash reports, die, E-* lines) stay on
-\ descriptor 2. The funnel falls back to descriptor 1 for a write that
-\ re-entered type, a routing cell outside 1..DEVICES and an unregistered row.
+\ type, ., cr and the REPL's ok funnel through to the current output device;
+\ diagnostics (crash reports, die, E-* lines) stay on descriptor 2. The funnel
+\ falls back to descriptor 1 for a write that re-entered type, a routing cell
+\ outside 1..DEVICES and an unregistered row.
 : DEVICE ( [ n -- ] [ -- n ] [ -- bool ] [ ptr u8 n -- n ] [ ptr u8 n -- ] [ ptr u8 n -- n ] [ -- ] [ -- ] n -- device )
    {: qemit qkey qready qread qwrite qaccept qflush qclose state:n :}
    INSTALL-TERMINAL
@@ -360,8 +350,6 @@ private
 
 public
 
-\ Run the quotation with these devices current and put the caller's back,
-\ whether it returns or throws.
 : WITH-IO ( device device [ -- ] -- ) {: in:device out:device body :}
    INPUT@ {: previn:device :}
    OUTPUT@ {: prevout:device :}
@@ -371,10 +359,6 @@ public
    code 0 <> if code throw then ;
 
 private
-
-\ Each dispatcher publishes the row it is about to run for and puts the
-\ caller's back, also when the operation throws. Only EMIT, WRITE, FORWARD and
-\ FORWARD-EMIT skip that catch, because their operations do not throw.
 
 : BUSY-PTR ( -- ptr n )
    data-base GENIO-ABI:BUSY-CELL + ;
@@ -397,15 +381,9 @@ private
    IN-PTR @ LIVE-ROW ;
 
 
-\ The close operation runs for the row CLOSE published in ACTIVE-CELL, which is
-\ how this reaches it with no local of its own: a quotation cannot reference
-\ one (docs/forth.md), and the operation has to run under `catch`.
 : RUN-CLOSE-OP ( -- )
    ACTIVE-ROW OP-CLOSE @ execute ;
 
-\ The operations that may throw run the same way, so the dispatcher puts the
-\ caller's ACTIVE-CELL back before the error leaves it: an operation of the
-\ caller's device that runs afterwards must still see itself as SELF.
 : RUN-FLUSH-OP ( -- )
    ACTIVE-ROW OP-FLUSH @ execute ;
 : RUN-KEY-OP ( n -- n )
@@ -455,10 +433,8 @@ public
 
 \ From inside a device's write operation, hand the bytes to another device's
 \ write operation as the output funnel would, with no fault check, then latch
-\ that device's fault on the running device (SELF) as FAULT! does: SELF's next
-\ EMIT, WRITE or FLUSH raises what the other device's would, and a fault SELF
-\ latched stays. A closed device answers the terminal. Like any write
-\ operation, it does not throw.
+\ that device's fault on the running device (SELF). A closed device answers the
+\ terminal. Like any write operation, it does not throw.
 : FORWARD ( ptr u8 n device -- ) {: bytes:ptr len:n dev:device :}
    ACTIVE-ROW {: self:n :}
    dev LIVE-DEVICE ROW {: idx:n :}
@@ -532,17 +508,16 @@ public
    code 0<> if code throw then
    nip ;
 
-\ Release the device's own resource and give its row back. The handle is dead
-\ afterwards: the row's generation moves on, so a later device that takes the
-\ row answers a different handle and this one is refused with E-GENIO-STATE
-\ rather than routed to somebody else's connection. Closing the terminal is a
-\ no-op and never frees row 0. A device that was this task's current input or
-\ output leaves it on the terminal.
+\ The handle is dead afterwards: the row's generation moves on, so a later
+\ device that takes the row answers a different handle and this one is refused
+\ with E-GENIO-STATE rather than routed to somebody else's connection. Closing
+\ the terminal is a no-op and never frees row 0. A device that was this task's
+\ current input or output leaves it on the terminal.
 \
 \ The row is released whether the operation returns or throws, and the error is
-\ raised afterwards: a failing close is the ordinary way a device dies (TCP-CLOSE
-\ answers E-GENIO-IO when the descriptor is gone), and a row held in CLOSING
-\ would be neither live nor free for the life of the process.
+\ raised afterwards: a failing close is the ordinary way a device dies, and a
+\ row held in CLOSING would be neither live nor free for the life of the
+\ process.
 : CLOSE ( device -- )
    ROW {: idx:n :}
    idx TERMINAL-ROW <> if idx CLAIM-CLOSE then
