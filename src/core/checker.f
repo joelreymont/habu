@@ -26150,11 +26150,7 @@ CHECKER-REG:}SCRATCH
 
 : RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
-   SGHASR @ IF
-      SGROUT !  SGRIN !  SGOUT !  SGIN !
-   ELSE
-      2drop  SGOUT !  SGIN !
-   THEN
+   SGROUT !  SGRIN !  SGOUT !  SGIN !   \ no `|` anywhere: both return rows are 0
    SGHASR @ IF SGRIN @ ELSE RBROW @ THEN SGRBASE !   \ no `|`: the implicit base is the sealed tail
    ;
 
