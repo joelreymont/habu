@@ -707,14 +707,13 @@
 \ The cast walk: CAST-INTRO? and CAST-MAY-LINEAR? walk a cast's terms through
 \ pointees, quotation rows and layout members. A layout's members can name the
 \ layout again (an ENUM variant may hold a pointer to its own family), so the
-\ walk keeps the path of layouts it is expanding, outermost first, each with
-\ the direction it was reached in, and expands an instance once per path: the
-\ same family over the same argument terms, reached in the same direction, has
-\ the same members and gives the same answer. A member is instantiated over
-\ its owner's own argument terms, so a recursive member names the same terms,
-\ not copies; past CAST-PATH-CAP nested layouts the walk dies rather than
-\ guess. An expansion pops what it pushed; CAST-WALK-RESET empties the path
-\ after a throw.
+\ walk keeps the path of layouts it is expanding, outermost first, each with the
+\ sign it was reached at, and expands an instance once per path: the same family
+\ over the same argument terms, reached at the same sign, has the same members
+\ and gives the same answer. A member is instantiated over its owner's own
+\ argument terms, so a recursive member names the same terms, not copies; past
+\ CAST-PATH-CAP nested layouts the walk dies rather than guess. An expansion
+\ pops what it pushed; CAST-WALK-RESET empties the path after a throw.
 \
 \ Rollback frames: every checker scope and candidate probe pushes a frame
 \ holding every mutable high-water mark, and its end pops it, so nested
@@ -8453,14 +8452,14 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
    t TAG T-PTR =  t TAG T-QUOT =  or ;
 64 constant CAST-PATH-CAP
 create CAST-PATH-TERM CAST-PATH-CAP cells allot
-create CAST-PATH-POS CAST-PATH-CAP cells allot
+create CAST-PATH-SIGN CAST-PATH-CAP cells allot
 variable CAST-PATH-N
 : CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-PATH-N ! ;
 \ A file reused from the object cache runs no walk, so a saved image holds no
 \ path and a reused file captures as its compiled one does.
 : CAST-PATH-SNAP-RESET ( -- )
    CAST-PATH-TERM 0 CAST-PATH-CAP ARENA-CELLS-ZERO
-   CAST-PATH-POS 0 CAST-PATH-CAP ARENA-CELLS-ZERO
+   CAST-PATH-SIGN 0 CAST-PATH-CAP ARENA-CELLS-ZERO
    CAST-WALK-RESET ;
 : CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
    a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
@@ -8477,7 +8476,7 @@ variable CAST-PATH-N
    dup CAST-POS = IF drop CAST-NEG THEN ;
 : CAST-ON-PATH? ( n n -- bool ) {: t:n sign:n :}
    0 BEGIN dup CAST-PATH-N @ < WHILE
-      dup cells CAST-PATH-POS + @ sign = IF
+      dup cells CAST-PATH-SIGN + @ sign = IF
          dup cells CAST-PATH-TERM + @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
       THEN
       1 +
@@ -8486,7 +8485,7 @@ variable CAST-PATH-N
    CAST-PATH-N @ CAST-PATH-CAP >= IF
       s" checker: cast walk nests layouts too deep" 76 die THEN
    t CAST-PATH-N @ cells CAST-PATH-TERM + !
-   sign CAST-PATH-N @ cells CAST-PATH-POS + !
+   sign CAST-PATH-N @ cells CAST-PATH-SIGN + !
    CAST-PATH-N @ 1 + CAST-PATH-N ! ;
 : CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
 \ A destination position introduces unless negative; consumed rows flip the sign
