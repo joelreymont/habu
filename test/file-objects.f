@@ -995,6 +995,35 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    true WRITE-G
    s" I3" WHICH!  s" main.f" s" prog-s" NEST-BUILD 0= if exit then  SAME-RUN ;
 
+\ The retire sequence's s.f: a package with no store, and an undefine of h.f's W when the flag is true.
+: WRITE-RETIRE-S ( bool -- ) {: retire:bool :}
+   s\" package FILE-OBJECTS-RETIRE-S public variable Z ;package\n" SRC+
+   retire if s\" undefine FILE-OBJECTS-RETIRE-W\n" SRC+ then
+   s" s.f" NEST-WRITE ;
+
+\ r.f's K is 1 when h.f's W is in the current wordlist as r.f loads, else 0; r.f names neither W nor s.f.
+: WRITE-RETIRE ( -- )
+   L$ s" retire" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" : FILE-OBJECTS-RETIRE-W ( -- n ) 1 ;\npackage FILE-OBJECTS-RETIRE public\n" SRC+
+   s\" : FOUND ( -- n ) s\" FILE-OBJECTS-RETIRE-W\" get-current search-wl 0= if 0 else 1 then ;\n" SRC+
+   s\" ;package\n" SRC+  s" h.f" NEST-WRITE
+   true WRITE-RETIRE-S
+   s\" FILE-OBJECTS-RETIRE:FOUND constant FILE-OBJECTS-RETIRE-K\n" SRC+  s" r.f" NEST-WRITE
+   s" h.f" REQUIRE+  s" s.f" REQUIRE+  s" r.f" REQUIRE+
+   s\" : MAIN ( -- ) FILE-OBJECTS-RETIRE-K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a piece that stops changing an earlier record and has no stores: Z2 must compile r.f, whose K
+\ read W's record while s.f retired it, and print a cold build's 1.
+: RETIRE-CASE ( CMD:command -- CMD:command )
+   WRITE-RETIRE
+   s" Z" WHICH!  s" main.f" s" prog-r" NEST-BUILD 0= if exit then
+   s" prog-r" s\" 0\n" s" the program prints K" NEST-RUN
+   false WRITE-RETIRE-S
+   s" Z2" WHICH!  s" main.f" s" prog-r" NEST-BUILD 0= if exit then
+   s" prog-r" s\" 1\n" s" the program prints K" NEST-RUN
+   s" Z3" WHICH!  s" main.f" s" prog-r" NEST-BUILD 0= if exit then
+   s" prog-r" s\" 1\n" s" the program prints K" NEST-RUN ;
+
 \ Guards a cross build, whose words have no emission (linker.f WORD-RECORD+): bare-main.f for Wasm in a
 \ fresh hb, since the process fixes the build's target. The module never runs.
 : CROSS-CASE ( CMD:command -- CMD:command )
@@ -1009,7 +1038,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE
-      NEST-CASE SAME-CASE CROSS-CASE ;]
+      NEST-CASE SAME-CASE RETIRE-CASE CROSS-CASE ;]
    CMD:WITH-COMMAND ;
 
 

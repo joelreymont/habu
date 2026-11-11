@@ -148,7 +148,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ piece compiled or linked: its file's key, its number in the file, its time
 \ (COMPILED-TIME as it compiled), its first and end record index, its first and end
 \ emission, the data pointer as the piece starts and ends, 1 when the piece holds a
-\ header-data address (HOLDS-HEADER), else 0, then the piece's stores time (STORES-TIMES+).
+\ header-data address (HOLDS-HEADER), else 0, then the piece's stores time (PIECE-STORES-TIME).
 \ A FILES row is a BUILT row's first FILES-ROW-BYTES bytes, its time 0 while no use names
 \ the piece whole (REF-FILE).
 16 constant KEY-BYTES
@@ -3010,8 +3010,11 @@ variable RD-END
    TIMES-AT {: at:n :}
    at 8 +  at OBJ@ WORD-BYTES * +  OBJ@ TIMES-EXT ;
 
-\ The part's stores time in OBJECT: its TIMES stores entry's.
-: PIECE-STORES-TIME ( -- n ) TIMES-STORES OBJ@ ;
+\ The part's stores time in OBJECT: its TIMES stores entry's, or its time (PIECE-TIME) for a changer's 0.
+: PIECE-STORES-TIME ( -- n )
+   TIMES-STORES OBJ@ {: st:n :}
+   st 0= if PIECE-TIME exit then
+   st ;
 
 
 \ Places the part's records (TIMES order, key -2, a new OWN-SERIAL) and extents (EXTS, laid from FILE-DP); bad on a
@@ -3052,7 +3055,7 @@ variable RD-END
 
 
 \ TIMES (TIMES+, STORES-TIMES+) from RD-AT to PIECES at pieces-at: each word's and extent's spans and the stores
-\ entry's lie in the piece, which runs to the object's end at len; the other fields are skipped.
+\ entry's lie in the piece, which runs to the object's end at len; other fields, a changer's 0 too, are skipped.
 : TIMES-CK ( n n -- )
    {: pieces-at:n len:n :}
    GOOD? 0= if exit then
@@ -4034,11 +4037,11 @@ variable PRIOR-STORES-SIZE
    drop true ;
 
 
-\ The stores time of the piece at the offset in PIECES, of time t: t when CHANGED-EARLIER; else the old entry's when
-\ it has one, REFS-KEPT?, STORES holds the old STORES' bytes (SPAN=) and STORES-KEPT?; else now.
-: STORES-TIME ( n n n n n -- n )
-   {: start:n off:n u:n t:n now:n :}
-   CHANGED-EARLIER @ if t exit then
+\ The stores time of the piece at the offset in PIECES: 0 when CHANGED-EARLIER, an entry no later compile keeps; else
+\ the old entry's when nonzero, REFS-KEPT?, STORES holds the old bytes (SPAN=) and STORES-KEPT?; else now.
+: STORES-TIME ( n n n n -- n )
+   {: start:n off:n u:n now:n :}
+   CHANGED-EARLIER @ if 0 exit then
    PRIOR-STORES-TIME @ {: old:n :}
    old 0= if now exit then
    REFS-KEPT? 0= if now exit then
@@ -4047,13 +4050,12 @@ variable PRIOR-STORES-SIZE
    old ;
 
 
-\ The TIMES block's stores entry for the piece at the offset in PIECES, of time t: its stores time (STORES-TIME), then
-\ its STORES section's offset from the piece's first byte and its length; STORES-AT and FACTS-AT are PIECES offsets
-\ until WRITE-OBJECT.
-: STORES-TIMES+ ( n n n -- )
-   {: start:n t:n now:n :}
+\ The TIMES block's stores entry for the piece at the offset in PIECES: its stores time (STORES-TIME), its STORES'
+\ offset from the piece and length; STORES-AT and FACTS-AT are PIECES offsets until WRITE-OBJECT.
+: STORES-TIMES+ ( n n -- )
+   {: start:n now:n :}
    STORES-AT @ start -  FACTS-AT @ STORES-AT @ - {: off:n u:n :}
-   start off u t now STORES-TIME TIMES U64+
+   start off u now STORES-TIME TIMES U64+
    off TIMES U64+  u TIMES U64+ ;
 
 
@@ -4065,7 +4067,7 @@ variable PRIOR-STORES-SIZE
    old PRIOR-PIECE!
    start now TIMES+
    start now old KEPT-TIME {: t:n :}
-   start t now STORES-TIMES+
+   start now STORES-TIMES+
    t ;
 
 
