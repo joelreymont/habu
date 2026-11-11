@@ -35,8 +35,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed` is `E-RAW-CELL-PTR`
   at `!` and throws 70 before V changes. A `0 set-check` in the text or before
   it leaves every later definition and token checked.
-- Existing TRUST forms are legacy awaiting removal; mentions below describe
-  legacy syntax only.
+- `TRUST` forms mentioned below are legacy syntax awaiting removal.
 
 ## Naming
 
@@ -56,8 +55,8 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
 - **Conventional affixes**: predicates end `?` (`TYVAR?`); conversions `>X`
   (`TERM>TAG`); fetch/store `X@`/`X!` (`TV@`/`TV!`); allocate/reset
   `X-ALLOC`/`X-RESET`.
-- **Short names**: `buf`, `ctx`, `idx`, `nv`, `ki`, `ko`; single letters only in
-  a tight, readable scope; `idx`, `len`, `value` where clearer.
+- **Short names**: `buf`, `ctx`, `idx`, `len`; single letters only in a tight
+  scope.
 - **Locals are lexical and local-first.** A local named `i`, `count` or `dup`
   resolves to the local in its scope; never encode collision workarounds into
   local names. A reference binds a local only in its DECLARED spelling, byte for
@@ -70,11 +69,11 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   resolve to the latest live binding; mentions before the closer resolve in the
   preceding scope. A local named `;]` is `E-NELAB-LOCAL`; a group that writes
   `[:` is `E-NELAB-QUOT`.
-- **Check for collisions with built-ins**: the dictionary is case-insensitive,
-  so `CON?`/`VAR?` clash; prefix (`TYCON?`, `TYVAR?`). If `' NAME` resolves in a
-  REPL, the name is taken.
-- **Never shadow a native primitive name**.
-- **Never define a parser or control reserved word** as a published name (by
+- **Names fold case, and a wordlist holds each once**: a top-level `: dup` is
+  `duplicate definition: dup`, rc 78. A package's own word may spell a global
+  or an engine word; a public one that does is refused at a bare call through
+  `using` (`E-USING-SHADOW-GLOBAL`), so name it otherwise.
+- **A parser or control word cannot be a definition name** (by
   `:`, `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`, `defer`): `I`,
   `J`, `DO`, `LOOP`, `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`,
   `REPEAT`, `TRUST`, `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`,
@@ -86,7 +85,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   spelling it reads to skip the arms of an `if` the engine's target never
   runs. Lexical locals such as `{: i:n :}` stay legal. `tools/check.f` reports `E-RESERVED-DEFINITION`
   with file, line and token.
-- **Never define a number-shaped word.** Every definer refuses a name the
+- **A number-shaped name is refused.** Every definer refuses a name the
   number reader claims, a number out of range included: `: 42` writes
   `hb: number cannot be a definition name: 42` and exits 70. Dot-letter
   printers (`.U`, `.INT`, `F.N`) and names such as `1STNZ`, `0<>`, `2DUP`
@@ -103,22 +102,19 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   checks it.
 - **Namespaces are wordlists.** A qualified name has exactly one non-edge colon
   (`HB:COUNT`, `PTX:COUNT`, `MAKI:COUNT`): the qualifier names the wordlist, the
-  record stores the tail. Qualifier case matches the vocabulary: project words
-  uppercase (`HB:COUNT`), built-in vocabularies lowercase (`forth:count`), never
-  mixed (`hb:COUNT`, `HB:count`); `hb:count` only for an intentionally lowercase
-  vocabulary. Names starting or ending with `:` are ordinary words.
+  record stores the tail. Write qualifier and tail in one case (`HB:COUNT`).
+  Names starting or ending with `:` are ordinary words.
 
 ### Packages
 
-**Modules are packages**, wordlist namespaces at file/module scope: new library,
-tool, test-support and subsystem code lives in `package NAME` unless it is a
-documented core prelude file. Keywords are lowercase language words; package
-names and project words are uppercase unless the package is a lowercase
-vocabulary. Helpers go before `public` or after `private`. The `public` section
-is the module boundary: the real interface as short domain words (`TASK:KILL`,
-`TASK:DONE?`, `PTX:BROADCAST`, `MAP:GET`), without the package name in the tail
-unless the domain spelling requires it. Never fake a namespace with global
-prefixes (`TASK-KILL`); prefix-style global APIs are legacy debt.
+**Modules are packages**, wordlist namespaces at file/module scope: new
+library, tool, test-support and subsystem code lives in `package NAME` unless
+it is a documented core prelude file. Keywords are lowercase; package names and
+project words are uppercase. Helpers go before `public` or after `private`. The
+`public` section is the module boundary: the real interface as short domain
+words (`TASK:KILL`, `TASK:DONE?`, `PTX:BROADCAST`, `MAP:GET`), without the
+package name in the tail unless the domain spelling requires it. Never fake a
+namespace with global prefixes (`TASK-KILL`).
 
 **A package is named for its subject**, the format, device or domain its words
 act on (`JSON`, `ZIP`, `TASK`), by the name it is commonly called (`STR`,
@@ -244,12 +240,8 @@ public
   path.f` (`s" path.f" required`) loads once, keyed by canonical absolute
   pathname, so absolute, relative, `.`/`..` and symlink spellings are one
   identity. Both compose source and share no namespace. Use `require` for
-  dependencies; entry, tool and test files own their setup with it, and a test
-  file owns its assertions. A small helper many files need becomes a narrow
-  `src/core/*.f` prelude loaded before stdlib and tools, not a broad library
-  order. Never include a file so two files share private helpers; reopening the
-  package does that. Gate source lists are for cross-file integration subjects
-  and generated build-stage source, not unit-test dependency plumbing.
+  dependencies. Never include a file so two files share private helpers;
+  reopening the package does that.
 - A loaded file is a closed program: `include`, `require` and `--load`
   evaluate it with `evaluate-closed`. Its top level starts at `depth` 0, a
   token reaching its includer's cells throws 70, and a file that ends with
@@ -257,8 +249,7 @@ public
   only as a word the file defines. A file that ends inside a definition it
   opened is refused at its end, as every source is (**Rules learned by
   refusal**): `hb: source ended inside definition: D at <path>:<line>`, so no
-  definition spans a load. Fix a file that leaves cells or a definition; never
-  loosen the loader. The program file of `hb prog.f` is a loaded file, so a
+  definition spans a load. The program file of `hb prog.f` is a loaded file, so a
   refusal in it names `prog.f:<line>`, but it keeps its top-level stack; a
   program on stdin is no file and keeps its stack too.
 - **Source roots.** Relative dependencies search the root of the file that
@@ -357,13 +348,10 @@ public
 #### Importing a package's public words with `using`
 
 `using NAME` makes package `NAME`'s **public** wordlist visible to bare lookup
-in the current scope without opening `NAME`. `require` loads source; it imports
-nothing and does not justify repeating `NAME:WORD`. Every new or changed
-consumer that calls two or more public words of one required package MUST import
-it once, `using NAME … ;using`, and call them bare; scratch files, reproducers,
-performance scripts and generated files included. Untouched legacy consumers
-stay explicit debt until owner-scoped migration. PREFER `NAME:WORD`, unchanged
-and always available, for a one-off call or to escape a collision.
+in the current scope without opening `NAME`; `require` loads source and
+imports nothing. A file that calls two or more public words of one package
+imports it once, `using NAME … ;using`, and calls them bare; `NAME:WORD`
+serves a one-off call or escapes a collision.
 
 - `using NAME` consumes the next token and rejects a missing name, a name with
   `:` and an unknown package; it is valid at top level and inside an open
@@ -939,35 +927,14 @@ DEFINE GETAFIX ( ptr line ) entry key
 
 ## Words & factoring
 
-Write checked, typed words with current `( in -- out )` effects. Keep related
-one-line definitions together; separate multiline definitions with two blank
-lines and place each word's comment directly above it. A readable word is
-usually about five lines. A trivial straight-line wrapper may fit on one line;
-`if`, loops, `case`, locals and multi-step stack work belong on separate lines.
-Factor raw compiler and emitter code to the same standard.
+A word is usually about five lines and takes at most five or six inputs, a
+pointer and its length counting as two. A straight-line wrapper may fit on one
+line; `if`, loops, `case` and locals go on lines of their own.
 
-- Build domain words or a checked DSL for structured rows, JSON/TSV, generated
-  source, diagnostics, packets and repeated assertions. A named DSL construct
-  executes the body it names (`[: ITEM ;] NAME-FILES`, `TEST:SUITE name …
-  TEST:;SUITE`); keep helper and dispatch effects checked with typed
-  quotations. Large `s"` literals and escaping logic belong at a tested
-  boundary, not scattered through consumers.
-- Guard a dependent read, index, owner or bounds operation with control flow
-  before doing it. `and`/`or` combine already evaluated values, so combine
-  predicates only when each is safe alone. Compute one argument per concept:
-  extract `if/else`, comparisons and repeated `@`/`F@` from a dense call
-  into a named word or local. A bool substituted for `n` may otherwise fail
-  only at the later call.
-- Prefer a classification table and named transitions to long `dup`/`over`
-  token ladders. Split multi-pass work into named cursor, classification,
-  validation, update and rendering words, then one orchestration word. `ROT`
-  and `-ROT` chains call for factoring or locals. `PICK`, `ROLL`, `?DUP` and
+- `and`/`or` take values already computed and do not short-circuit: guard a
+  dependent read, index or bounds operation with `if` before it.
+- `rot`/`-rot` chains call for a local or a helper. `PICK`, `ROLL`, `?DUP` and
   `WITHIN` do not exist (`E-UNDEFINED`): name the value with a local.
-- About five or six input values is a useful upper bound for a word, counting
-  a typed pointer as one value and its length as another. Pass each stage's
-  result onward; derive metadata from its owner. A record should represent a
-  domain value, not a bag of unrelated context. Apply the same judgment to
-  allocation callbacks and low-level helpers.
 - Locals `{: a:type b:type :}` bind inputs only, left to right from the
   deepest item: `1 2 {: a:n b:n :}` gives `a`=1 and `b`=2. Keep outputs in
   the stack effect. Annotate a known concrete type; use a bare local when
@@ -981,15 +948,14 @@ Factor raw compiler and emitter code to the same standard.
      v lo max hi min ;
   ```
 
-  New and changed definitions follow this layout. A local name is at most
+  A local name is at most
   16 bytes and a definition binds at most 64 locals. The compiler refuses
   either before storing anything; the checker reports
   `E-LOCAL-NAME-TOO-LONG` or `E-TOO-MANY-LOCALS` with the limit.
 - A local binds once. Keep a loop's changing cursor on the stack or in a cell:
   `begin {: cursor:n :} … cursor' again` pushes the next value before the
   back edge. Use `RECURSE` for a cursor only when depth is bounded; a
-  peer-controlled count can overflow the task stack. Keep locals shallow so
-  nested helpers cannot clobber caller indexes.
+  peer-controlled count can overflow the task stack.
 - A `ptr` annotation does not fit a byte span. Under `( ptr u8 n -- n )`,
   `{: p:ptr :}` is refused at `:}` (`expected: ptr n actual: ptr u8 n`).
   Bind a bare local or factor a helper retaining the detailed effect. Give
@@ -1005,10 +971,9 @@ Factor raw compiler and emitter code to the same standard.
 
 - **One concern per file**: parser, renderer, DB, data table and driver are
   separate files, split at responsibility boundaries.
-- **Reusable helpers live in libraries**; shared behaviour lives in one owned
-  file. Run multi-file tools as `hb --load src/lib/a.f src/lib/b.f tool.f -- args…`:
+- Run a multi-file tool as `hb --load src/lib/a.f src/lib/b.f tool.f -- args…`:
   sources before `--`, `SCRIPT-ARGV$` after it, fd 0 tool data, as it is
-  whenever hb has an argument. Use `--load` only with more than one source file.
+  whenever hb has an argument.
 - **Data never spans a load.** The loader aligns `here` to a cell when a loaded
   file starts and when it ends, so a file's data bytes depend only on its own
   source and its stored object installs whatever earlier files allotted. A live
@@ -1029,9 +994,6 @@ Factor raw compiler and emitter code to the same standard.
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
   standard input, in every file `--load`, `include` and `require` load, and in
   the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.
-- **Keep physical lines short.** Factor long `--load` builders and check-source
-  appenders; a line near the interpreter input buffer truncates and surfaces
-  later as unrelated top-level words.
 - **Script argv is explicit.** `hb tool.f arg…` treats `arg…` as script
   arguments; `SCRIPT-ARGC` counts them, and `SCRIPT-ARGV$` for a missing one
   throws `E-SCRIPT-ARGV-RANGE`.
@@ -1045,8 +1007,8 @@ Factor raw compiler and emitter code to the same standard.
 - **Checked definitions use type tokens only**: `( n n -- )`, `( bool -- )`, `(
   ptr u8 n -- )`, never role prose such as `( got want -- )`. Nominal roles such
   as `idx`, `len`, `count`, `fd`, `rc`, `reg`, `label`, `va`, `symidx`, `asm`,
-  `img` and `snap` are real types; same-cell values need them, with negative
-  fixtures, because `( n n -- )` hides swaps. Informal names go in locals (`{:
+  `img` and `snap` are real types; same-cell values need them, because
+  `( n n -- )` hides swaps. Informal names go in locals (`{:
   got want :}`), helper names or prose.
 - **Real types, not reflexive `n`.** A string is `ptr u8 n`; a dereferenced cell
   address is `ptr a`; a pointer-valued cell keeps its nested pointer role; `n`
@@ -1081,10 +1043,6 @@ Factor raw compiler and emitter code to the same standard.
 - **Raw role casts are not validators.** `>LEN`, `>IDX`, `>COUNT`, `>OFF`,
   `>ASM`, `>IMG`, `>SNAP` are trusted identity boundaries; libraries expose
   checked constructors and role helpers so swaps fail under `CHECK!`.
-- Unchecked prose-only comments may name roles when no hook consumes them; keep
-  the shape obvious. Add inline `( … )` at non-obvious points in a longer word.
-  Standard notation: `x` cell, `n`/`u` signed/unsigned, `d` double, `c-addr u`
-  string, `xt`, `nt`, `f`/`bool` flag, `?` maybe-present.
 
 ## Stack effects
 
@@ -1679,27 +1637,15 @@ defined again binds its earlier text against every later record too.
   exclusive `mut-view<p,q,a,T>` values, lexical loans, initialized fields and
   task-local cleanup. A view occupies two cells and travels as one value through
   stack permutations. Ordinary `ptr T` and `SPAN` remain lifetime-free.
-- **Prefer owner-scoped bump allocation when practical.** Many small objects
-  sharing a lifetime belong in chunks released together. Allocate a chunk with
-  `capacity MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES`; keep its original base,
-  returned `NUM:alloc-byte-len` and used byte offset in the owner. These raw
-  mappings are caller-owned; the owner supplies their cleanup.
-  For cell-bearing objects, compute padding to the next `CELL` boundary.
-  Check padding against the remaining extent, then the object's size against
-  the remainder after padding, before advancing the cursor. Return
-  the chunk base plus that aligned offset. When it does not fit, allocate
-  another chunk; never resize or move a chunk whose pointers have escaped.
-  Pointers stay valid until the owner closes. On close or failure cleanup,
-  release each original `(base, allocation length)` exactly once through
-  `MEM:RELEASE-BYTES`, not an interior pointer or the used length. Individual
-  allocations remain appropriate for independent lifetimes or when bulk
-  ownership would retain significant dead storage.
+- **Records that share a lifetime go in an arena, one with its own in a
+  `HEAP`**: `ARENA NAME Type` and `ARENA:ALLOC` for raw bytes, `HEAP NAME
+  Type` (**Habu Native Tooling Gotchas**).
 - **`CHECK!` is the user contract.** `CHECK` proves internal consistency; user
   builds verify the body against the declared effect and make rejection fatal.
   Tests for bad programs assert build rejection, not runtime failure.
-- **Typed booleans are `bool`**: produce them with `0 0=`, `0 0= 0=` or domain
-  helpers; never store raw `0`/`-1` in a `ptr bool` cell or compare bools with
-  `=` (`bool bool` is refused).
+- **Typed booleans are `bool`**: produce them with `true`, `false` or a
+  comparison; never store a raw `0`/`-1` in a `ptr bool` cell or compare bools
+  with `=` (`bool bool` is refused).
 - **A quotation reads its word's locals while the word runs.** `[: … ;]` may
   read the locals of the word it is written in, nested quotations included, so
   a `catch`, `finally` or locked body finds its object without a global:
@@ -1983,13 +1929,10 @@ backend answers alike.
   catch drop`, no `catch 2drop`, no masking.
 - A proven-impossible state throws its owning module's named state code
   (`E-QUEUE-STATE`, `E-IR-TYPE-STATE`). Habu has no `abort"`.
-- **Interactive support recovers; builders may exit.** Recoverable interactive
-  failures `throw` into REPL recovery (`?`, rollback, reread); `die` is for
-  build-time makers and CLI boundaries where exiting is the contract.
-- **`throw` and `die` are different control effects**: `throw` is catchable, the
-  checker's exception edge; `die` terminates, no-return metadata. Never add
-  dummy outputs after `throw` to balance a branch; fix the exception model or
-  track the gap.
+- **`throw` is catchable, `die` ends the process.** `throw` is the checker's
+  exception edge, for recoverable and interactive paths (REPL recovery: `?`,
+  rollback, reread); `die` is no-return, for build makers and CLI boundaries
+  where exiting is the contract.
 - **`die` consumes a real message and code**, `( ptr u8 n n -- )`, never `0 0`
   as a fake string; model exits as no-return only at certified wrappers.
 - **`die` writes its message as one line**: the span and then exactly one
@@ -2072,20 +2015,15 @@ to <n> bytes`.
   constants in the module that owns them, stdlib throw codes in
   `src/lib/error.f`; a literal is acceptable only for a true primitive of the
   encoding (the `3`/`7` of the 3-bit tag), with a comment.
-- **Default to `$hex`**: byte values, masks, addresses, memory, struct and byte
-  offsets, field strides, syscall and exit constants, instruction encodings,
-  ASCII codes (`$FF and`, `$D10043FF`, `$200`, `$40`). Decimal only for genuine
-  small counts (loop bounds, arities, shift amounts, register indices) and
-  ordinary human quantities. Crypto and format constants follow the spec's hex
-  spelling. `$hex` parses case-insensitively with an optional leading `-`.
+- **`$hex` for bit patterns, addresses, offsets and encodings; decimal for
+  counts and quantities.** A format's constants keep its spec's spelling.
+  `$hex` parses case-insensitively with an optional leading `-`.
 
 ## Testing
 
-- Exercise changed behaviour through checked assertions, meaningful errors and
-  edges included, through public entry points rather than a test per trivial
-  helper. `T=`/`T<>` for scalars, `T$=` for strings, `TTRUE`/`TFALSE` for flags
-  (not `T=`), `TTHROWS` for codes; several results compared top down, one
-  assertion each. A regression distinguishes the defect it prevents.
+- What to test: [gate.md](gate.md) "Writing tests". `T=`/`T<>` for scalars,
+  `T$=` for strings, `TTRUE`/`TFALSE` for flags (not `T=`), `TTHROWS` for
+  codes; several results compared top down, one assertion each.
 - `src/lib/test.f` is the test framework; a test file requires its own
   dependencies. A suite file installs its hooks, declares groups and rows and
   runs them once; the `src/lib/test/suite.f` header states the hook set, the
@@ -2131,14 +2069,12 @@ T-REPORT
   (it runs a `( -- )` quotation) or another stack-preserving `catch` with the
   exact code; top-level scripts that cannot push quotations use `' WORD
   TTHROWS`; diagnostics are captured and matched by substring.
-- Run a focused fixture through its owning test tool so assertion failures set
-  the exit code.
 - Property generators use `src/lib/property.f`: `PROP:SEED!` makes a run
   reproducible, and `PROP:RND%` bounds a draw without inheriting the raw
   generator's short low-bit cycles. The generator is deterministic, not
   independent or cryptographic randomness.
-- A claimed false reject needs a reduced checked refusal and a matching
-  unchecked execution of the declared effect.
+- A claimed false reject is shown by a reduced program the checker refuses
+  though its body keeps the declared effect.
 
 ### Diagnosing a checker miss
 
@@ -2146,7 +2082,7 @@ Reduce the failing checked program, identify the violated contract, decide
 whether the defect is in a declaration, the checker, generated code or runtime,
 fix that layer, and add a regression through the actual load path. A property
 outside the type system's contract is stated as such and checked at the right
-runtime or analysis layer. No template or task record is required.
+runtime or analysis layer.
 
 ## Verification before committing
 
@@ -2260,8 +2196,7 @@ documentation-only edits need no rebuild.
   increments and comparisons, and the checked byte and string helpers. `0<>`,
   `true`, `false`, `fdup`, `fover`, `fdrop`, `f<=` and `f>=` come from
   `src/lib/prelude.f`, which the engine already provides: writing `require
-  src/lib/prelude.f` documents the dependency but is not load-bearing. Never
-  re-derive `0 0=` / `0 0= 0=` by hand.
+  src/lib/prelude.f` documents the dependency but is not load-bearing.
 - **Escaped literals for readable snapshots**: `s"` reads no escapes; `S\"`,
   `C\"`, `.\"` accept C-style escapes (`\\`, `\"`/`\q`, `\n`, `\r`, `\t`,
   `\xNN`, `\z`, …) for direct JSON/source expected strings. `S\"` needs its

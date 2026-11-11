@@ -117,21 +117,17 @@ cannot execute: `E-EXEC-OPAQUE-XT`.
   to `u32`, while `i64` needs an explicit conversion. In a definition's body a
   number literal passes into a fixed-width input or a declared output only when
   it fits: `65` into `u8`, never `300`. Pointer pointees stay exact; roles
-  (`idx`, `len`, `fd`) never widen. Booleans are real `bool`s: `0 0=`, never a
-  raw `0`/`-1`; a `bool` never passes as `n`, so convert it with `bool>n` (-1
-  or 0).
+  (`idx`, `len`, `fd`) never widen. Booleans are real `bool`s: `true`, `false` or a
+  comparison, never a raw `0`/`-1`; a `bool` never passes as `n`, so convert
+  it with `bool>n` (-1 or 0).
 - Locals `{: a b:ptr :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Names are at most 16 bytes, 64 per
   definition, block-scoped, bindable after a closed early-exit guard. A local
   hides the word of its spelling, the loop index included:
   `{: i:n :} 3 0 ?do i . loop` prints the local three times.
-- Keep related one-line definitions together. Separate multiline definitions
-  with two blank lines; place each word's comment directly above it.
-- A `{: … :}` group that binds at entry goes on its own line after the line
-  holding the name and stack effect, indented as the body: three spaces, as in
-  `src/lib/` and `tools/`. New and changed definitions follow this; existing files
-  are not reformatted for it.
+- A `{: … :}` group that binds at entry goes on its own line after the name
+  and stack effect, indented three spaces as the body.
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
   Destructure only to compute; pass the whole local between words.
 - Quotations `[: … ;]` are xts. The token `[ in -- out ]` works as
@@ -544,9 +540,8 @@ forth.md: **Files**, **Packages**.
 
 ## 8 Tests
 
-Follow the testing policy in [AGENTS.md](../AGENTS.md). Exercise a complete
-feature through its real load/build path and retain a repeatable artifact.
-Use `require src/lib/test.f` for assertions and keep fixtures package-scoped.
+What to test: [gate.md](gate.md) "Writing tests". Use `require
+src/lib/test.f` for assertions and keep fixtures package-scoped.
 
 `T=` / `T<>` scalars, `T$=` strings, `TTRUE` / `TFALSE` flags, `TTHROWSQ` /
 `TTHROWS` throw codes. `TEST-EVAL:N` / `FLAG` / `RC` take one cell, a flag or
@@ -558,21 +553,21 @@ forth.md: **Testing**, **Verification before committing**.
 
 ## 9 Comments
 
-- A `\` comment is one or two lines and says only what the code cannot: units,
-  an ownership or ordering invariant, a hardware encoding, a checker boundary,
-  why a non-obvious choice is required. Meaning lives in names and factoring;
-  design belongs in `docs/`.
-- It states what is true now; a claim that needs proof names the test, the
-  refusal and its code, or the measured behaviour that proves it.
-- No history: no "used to", "no longer", earlier designs, what was tried,
-  dates, dot, commit or review ids, agent or person names. A failure behind a
-  rule is a present fact: "a stage without X dies `E-UNDEFINED` at Y".
-- No restating the code, no design essays, no arguments for a design. A fact
-  lives in one comment or one doc section; others point to it. Cite a word,
-  not a line number.
-- Any edit that touches a comment, a conflict merge or a moved definition
+- A `\` comment is one or two lines and says only what the code does not
+  show: units, an ownership or ordering invariant, a hardware encoding, a
+  checker boundary, why a non-obvious choice is required. One that says what
+  the code says is deleted. Design belongs in `docs/`.
+- A complicated algorithm is described once, in its file's header.
+- It states what is true now. No history: no "used to", "no longer", earlier
+  designs, what was tried, dates, dot, commit or review ids, agent or person
+  names. A failure behind a rule is a present fact: "a stage without X dies
+  `E-UNDEFINED` at Y".
+- A fact lives in one comment, on the code that owns it. No other comment
+  repeats it or points at another file's word for it: nothing checks the
+  name.
+- An edit that touches a comment, a conflict merge or a moved definition
   included, brings it to these rules; a change that makes a comment false
-  corrects it in the same change. A review reports a breach as a finding.
+  corrects it in the same change.
 
 ## 10 Open forth.md at this heading when …
 
