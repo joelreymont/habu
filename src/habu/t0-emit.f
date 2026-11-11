@@ -14,7 +14,6 @@ require src/compiler/native/callback-stub.f
 
 package COMP
 
-\ Tier 0 emitter seam: -9590..-9599, the block src/lib/error.f names.
 -9590 constant E-FIRST
 -9599 constant E-LAST
 -9590 constant E-T0-TARGET   \ EMIT-SELECT of an architecture with no emitter
@@ -25,11 +24,11 @@ package COMP
 -9593 constant E-T0-SLOT     \ code after the does> patch slot
 -9594 constant E-T0-OPERAND  \ a vreg, operation, shift or condition outside its type
 
-DEFTYPE VREG       \ a virtual register, 0 .. EMIT-VREGS - 1
-DEFTYPE ALU        \ a two-operand operation EMIT-OP applies
-DEFTYPE SHIFTER    \ a shift EMIT-SHIFT applies
-DEFTYPE CC         \ a condition EMIT-SET-FLAG reads from the last compare
-DEFTYPE WIDTH      \ the width EMIT-LOAD moves
+DEFTYPE VREG
+DEFTYPE ALU
+DEFTYPE SHIFTER
+DEFTYPE CC
+DEFTYPE WIDTH
 
 : OP-ADD ( -- alu ) 0 >ALU ;
 : OP-SUB ( -- alu ) 1 >ALU ;
@@ -64,8 +63,6 @@ DEFTYPE WIDTH      \ the width EMIT-LOAD moves
 \ comparison with its negation, EQ NE, LT GE, LE GT.
 : CC-NOT ( cc -- cc ) CC>N 1 xor >CC ;
 
-\ The address row kind of a quotation, past every NEMIT address kind: sealing
-\ files it as NEMIT:ADDR-CODE.
 NEMIT:ADDR-KIND-MAX 1+ constant ADDR-QUOT-KIND
 
 \ ---- the architectures -------------------------------------------------------
@@ -87,10 +84,8 @@ ARCHES TYPED-BUFFER INSTALLED bool
 \ The selected architecture's slot; -1, no slot, until EMIT-SELECT.
 variable CUR
 -1 CUR !
-TYPED-VARIABLE CUR-ARCH CTARGET:arch  \ and the architecture itself
+TYPED-VARIABLE CUR-ARCH CTARGET:arch
 
-\ The selected slot, for a layer that keeps per-architecture cells of its own
-\ (src/habu/t0-label.f).
 : EMIT-SELECTED ( -- n ) CUR @ ;
 
 \ ---- the rows ----------------------------------------------------------------
@@ -98,22 +93,21 @@ TYPED-VARIABLE CUR-ARCH CTARGET:arch  \ and the architecture itself
 \ kind NEMIT:CALL or NEMIT:TAIL, loc the calling token's byte offset in the body
 \ text. EMIT-ADDR-ROW+ files an address site ( at kind target origin ), kind
 \ NEMIT:ADDR-DATA, NEMIT:ADDR-CODE or ADDR-QUOT-KIND; a data address's origin
-\ comes with it through EMIT-ADDR-DATA (a string literal's is the one
-\ INTERN:INTERN-SOURCE answers), and a code or quotation address's is -1. at is
-\ the instruction's first byte from the emission's byte 0. A quotation's target
-\ is its unit number; on x86-64 its instruction holds the unit's offset, which
-\ EMIT-QUOT-OPEN writes. An emitter whose quotation address is relative to its
-\ own site (arm64's `adr`) files no row for it.
+\ comes with it through EMIT-ADDR-DATA, and a code or quotation address's is
+\ -1. at is the instruction's first byte from the emission's byte 0. A
+\ quotation's target is its unit number; on x86-64 its instruction holds the
+\ unit's offset, which EMIT-QUOT-OPEN writes. An emitter whose quotation address
+\ is relative to its own site (arm64's `adr`) files no row for it.
 variable N-UNITS
-DYNAMIC-BUFFER UNIT-AT n              \ where each unit starts
+DYNAMIC-BUFFER UNIT-AT n
 variable N-CALLS
-DYNAMIC-BUFFER CALL-AT n              \ call row: first byte, kind, target, loc
+DYNAMIC-BUFFER CALL-AT n
 DYNAMIC-BUFFER CALL-KIND-AT n
 DYNAMIC-BUFFER CALL-TO n
 DYNAMIC-BUFFER CALL-LOC n
 variable N-ADDRS
-DYNAMIC-BUFFER ADDR-AT n              \ address row: first byte, kind, target,
-DYNAMIC-BUFFER ADDR-KIND-AT n         \ origin
+DYNAMIC-BUFFER ADDR-AT n
+DYNAMIC-BUFFER ADDR-KIND-AT n
 DYNAMIC-BUFFER ADDR-TO n
 DYNAMIC-BUFFER ADDR-ORIGIN n
 variable SLOT-AT                      \ the patch slot's offset, or -1
@@ -123,13 +117,12 @@ variable STUB-AT                      \ the callback stub's offset once stamped,
 \ placed from EMIT-PLACE; only these three words write it.
 ENUM emission shut open placed ;ENUM
 TYPED-VARIABLE PHASE emission
-variable PLACED-AT                    \ the placed address while placed
+variable PLACED-AT
 
 : ROWS-CLEAR ( -- )
    0 N-UNITS !  0 N-CALLS !  0 N-ADDRS !  -1 SLOT-AT !  -1 STUB-AT ! ;
 : SLOT? ( -- bool ) SLOT-AT @ 0 >= ;
 
-\ File a unit's start, a call or tail site and an address site.
 : EMIT-UNIT+ ( n -- ) {: at:n :}
    N-UNITS @ {: k:n :}
    k 1+ UNIT-AT-RESERVE
@@ -150,12 +143,8 @@ variable PLACED-AT                    \ the placed address while placed
    at k ADDR-AT !  kind k ADDR-KIND-AT !  to k ADDR-TO !  origin k ADDR-ORIGIN !
    k 1+ N-ADDRS ! ;
 
-\ File the offset of the does> patch slot EMIT-SLOT-CLOSE emitted: the
-\ instruction the target's does-patch rewrites.
 : EMIT-PATCH-SLOT! ( n -- ) SLOT-AT ! ;
 
-\ The rows read back, for an emitter's PATCH: unit k's start, and call row and
-\ address row k as ( at kind target ).
 : EMIT-UNIT ( n -- n ) UNIT-AT @ ;
 : EMIT-CALL-ROWS ( -- n ) N-CALLS @ ;
 : EMIT-CALL-ROW ( n -- n n n ) {: k:n :}
@@ -169,10 +158,10 @@ ARCHES TYPED-BUFFER EMIT-VREGS-N n
 
 \ ---- the body ----------------------------------------------------------------
 \ THE SINK. EMIT-OPEN empties the emitter's sink and the seam's rows; EMIT-CLOSE
-\ ends a unit; EMIT-SEAL hands the emission to NEMIT
-\ (src/compiler/native/emission.f). The caller runs NEMIT:CLEAR before the next
-\ EMIT-OPEN, on the accepting and the refusing path alike. NEMIT reads the bytes
-\ in place, so they stay the emitter's until the next EMIT-OPEN.
+\ ends a unit; EMIT-SEAL hands the emission to NEMIT. The caller runs
+\ NEMIT:CLEAR before the next EMIT-OPEN, on the accepting and the refusing path
+\ alike. NEMIT reads the bytes in place, so they stay the emitter's until the
+\ next EMIT-OPEN.
 \
 \ THE UNITS. A definition and its quotations are one emission: unit 0 is the
 \ definition at byte 0, and each quotation is a later unit that EMIT-QUOT-OPEN
@@ -182,9 +171,9 @@ ARCHES TYPED-BUFFER EMIT-VREGS-N n
 \ unit calls byte 0, as both tiers run it, and files no row.
 \
 \ THE PATCH SLOT. EMIT-SLOT-CLOSE closes a unit whose return is the does> patch
-\ slot (EMIT-PATCH-SLOT!, sealed as NEMIT:PATCH-SLOT!). The kernel finds the
-\ slot from the record's length, so the slot ends the emission: a unit begun
-\ after it, or a callback stub with it, throws E-T0-SLOT.
+\ slot (EMIT-PATCH-SLOT!). The kernel finds the slot from the record's length,
+\ so the slot ends the emission: a unit begun after it, or a callback stub with
+\ it, throws E-T0-SLOT.
 ARCHES TYPED-BUFFER EMIT-OPEN-XT [ -- ]
 ARCHES TYPED-BUFFER EMIT-QUOT-OPEN-XT [ n -- ]
 ARCHES TYPED-BUFFER EMIT-UNIT-OPEN-XT [ -- ]
@@ -198,7 +187,6 @@ ARCHES TYPED-BUFFER EMIT-CB-STUB-XT [ -- n ]
 \ An xt as the number its cell holds: 0 while unset.
 CAST: CALLABLE>N ( [ R -- S ] -- n )
 
-\ The xt of an operation not every emitter provides; unset, E-T0-UNFILLED.
 : FILLED ( [ R -- S ] -- [ R -- S ] )
    dup CALLABLE>N 0= if E-T0-UNFILLED throw then ;
 
@@ -286,7 +274,7 @@ ARCHES TYPED-BUFFER EMIT-SLOT-LOAD-XT [ vreg n -- ]
 
 \ A reading quotation's record lies in the frame of the unit it is written in, on Wasm in
 \ return-stack cells that unit takes: cell 0 its unit's code, then the locals. Its value
-\ is the address with bit 63 set (habu1.f BRECORD, link-routines.f DISPATCH,).
+\ is the address with bit 63 set.
 ARCHES TYPED-BUFFER EMIT-REC-CELLS-XT [ n -- ]
 ARCHES TYPED-BUFFER EMIT-ENV-OPEN-XT [ -- ]
 ARCHES TYPED-BUFFER EMIT-REC-STORE-XT [ vreg n -- ]
@@ -363,10 +351,7 @@ ARCHES TYPED-BUFFER EMIT-IMM?-XT [ n -- bool ]
 \ that reads its codes the front end emits only moves: EMIT-PUSH, EMIT-PUSH-LIT,
 \ EMIT-SPILL, EMIT-SPILL-LIT, EMIT-FILL, EMIT-POP, EMIT-LIT, EMIT-ADDR-DATA,
 \ EMIT-ADDR-CODE, EMIT-ADDR-QUOT, EMIT-DSP+, EMIT-MOV and EMIT-EXCHANGE. Every
-\ emitter keeps those condition-preserving (x86-64's EMIT-DSP+ is an lea, its
-\ zero literal a mov, its exchange an xchg, its pop an lea and a mov; arm64's
-\ exchange is three movs, its stack and address offsets add and sub without
-\ flags).
+\ emitter keeps those condition-preserving.
 : EMIT-CMP ( vreg vreg -- ) CUR @ EMIT-CMP-XT @ execute ;
 : EMIT-CMP-LIT ( vreg n -- ) CUR @ EMIT-CMP-LIT-XT @ execute ;
 : EMIT-SET-FLAG ( vreg cc -- ) CUR @ EMIT-SET-FLAG-XT @ execute ;
@@ -463,11 +448,11 @@ ARCHES TYPED-BUFFER EMIT-RFROM-XT [ ptr vreg n -- ]
 ARCHES TYPED-BUFFER EMIT-RFETCH-XT [ ptr vreg n n -- ]
 
 \ The return stack grows up from STACK-ABI:RETURN-BASE-CELL and is RSP-CELL
-\ cells deep (src/habu/layout.f RSP-CELL). Each operation moves the cells of the
-\ n vregs at p, at most EMIT-VREGS, the first the deepest of n adjacent slots,
-\ and reads the depth once: EMIT-TOR stores them in the slots above the top and
-\ EMIT-RFROM loads the top n slots, each writing the depth once; EMIT-RFETCH
-\ loads the n slots whose highest is k under the top and writes nothing.
+\ cells deep. Each operation moves the cells of the n vregs at p, at most
+\ EMIT-VREGS, the first the deepest of n adjacent slots, and reads the depth
+\ once: EMIT-TOR stores them in the slots above the top and EMIT-RFROM loads the
+\ top n slots, each writing the depth once; EMIT-RFETCH loads the n slots whose
+\ highest is k under the top and writes nothing.
 : EMIT-TOR ( ptr vreg n -- ) CUR @ EMIT-TOR-XT @ execute ;
 : EMIT-RFROM ( ptr vreg n -- ) CUR @ EMIT-RFROM-XT @ execute ;
 : EMIT-RFETCH ( ptr vreg n n -- ) CUR @ EMIT-RFETCH-XT @ execute ;
@@ -485,18 +470,17 @@ ARCHES TYPED-BUFFER EMIT-LOOP-NEXT-XT [ vreg -- ]
 ARCHES TYPED-BUFFER EMIT-LOOP-STEP-XT [ vreg vreg -- ]
 ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 
-\ The DO/LOOP frames live on the DATA loop stack, where `j`, catch
-\ (src/habu/kernel-x64.f CAUGHT,) and the arm64 tier 0 find them: LOOPSP-CELL
-\ counts the frames and frame k, 16 bytes at
-\ STACK-ABI:LOOP-BASE-CELL's base + 16k, holds the index, its home, then the
-\ limit. `loop` steps while index < limit, signed; `+loop` steps until the index
-\ crosses the boundary between limit - 1 and limit in the step's direction;
-\ `?do` enters while start < limit, and EMIT-LOOP-STEP makes the entry of its
-\ level skip equal bounds only. EMIT-LOOP-OPEN opens a level; EMIT-LOOP-NEXT,
-\ EMIT-LOOP-STEP and EMIT-LEAVE, branch to the innermost level's head or past
-\ its end; EMIT-LOOP-CLOSE lands its exits on the pop of its frame. The loop
-\ words write no vreg but those passed in, so values in the others live across
-\ every head, back edge and exit.
+\ The DO/LOOP frames live on the DATA loop stack, where `j`, catch and the
+\ arm64 tier 0 find them: LOOPSP-CELL counts the frames and frame k, 16 bytes
+\ at STACK-ABI:LOOP-BASE-CELL's base + 16k, holds the index, whose home it is,
+\ then the limit. `loop` steps while index < limit, signed; `+loop` steps until
+\ the index crosses the boundary between limit - 1 and limit in the step's
+\ direction; `?do` enters while start < limit, and EMIT-LOOP-STEP makes the
+\ entry of its level skip equal bounds only. EMIT-LOOP-OPEN opens a level;
+\ EMIT-LOOP-NEXT, EMIT-LOOP-STEP and EMIT-LEAVE, branch to the innermost level's
+\ head or past its end; EMIT-LOOP-CLOSE lands its exits on the pop of its frame.
+\ The loop words write no vreg but those passed in, so values in the others live
+\ across every head, back edge and exit.
 
 \ Push a frame of index s and limit l; pop the innermost frame.
 : EMIT-LOOP-PUSH ( vreg vreg -- ) CUR @ EMIT-LOOP-PUSH-XT @ execute ;
@@ -544,14 +528,11 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 
 \ ---- sealing -----------------------------------------------------------------
 \ A placed seal patches addresses as EMIT-PLACE's address plus the unit's
-\ offset, since publish.f only copies bytes; an unplaced one keeps the bytes
-\ aot-shadow.f reads.
+\ offset, since publishing only copies bytes; an unplaced one keeps the bytes.
 \
-\ THE CALLBACK STUB. While NCBSTUB (src/compiler/native/callback-stub.f) is
-\ armed, the emission's first seal has the emitter append tier 1's stub after
-\ the last unit and files it as the last function, and later seals reuse it, so
-\ an unplaced seal's copy holds it; a placed seal records its placed address as
-\ NCBSTUB:ENTRY!.
+\ THE CALLBACK STUB. While NCBSTUB is armed, the emission's first seal has the
+\ emitter append tier 1's stub after the last unit and files it as the last
+\ function, and later seals reuse it, so an unplaced seal's copy holds it.
 
 : EMIT-PLACE ( n -- )
    {: at:n :}
