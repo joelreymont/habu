@@ -147,6 +147,48 @@
 \ return rows are its enclosing definition's. execute and catch instantiate
 \ every implicit tail on a copy the same way (QUOT-APPLY-INST) and renew the
 \ per-execution identities in its value types; named rows stay shared.
+\
+\ Logical and hidden layout cells: a stored effect keeps a layout value as one
+\ logical cell only when its width reads an open argument. At a boundary, a
+\ call site, a join or a loop's back edge that cell can meet the hidden
+\ expansion of the same family, W cells wide with a known width. The logical
+\ cell expands into hidden fields at its own width (an open argument measures
+\ one cell) and the rows pair cell for cell, so a width that disagrees fails
+\ the slot pairing; at a join the edge binds the width and both sides join as
+\ the W-cell group. A linear payload is counted once, at the group's tag.
+\ Transport mode keeps its own group surgery and takes no part.
+\
+\ Input underflow: the cells below a definition's declared inputs are the
+\ caller's. The declared base is an open row, so a step that reaches under it
+\ binds it and checking goes on; the boundary check alone would pin the last
+\ token, so the token that spends the frame is asked instead. Both depths are
+\ read before that step's unify, since afterwards a bound tail makes the two
+\ rows one, and the refusal waits for the unify to succeed, so a step both
+\ short and mistyped is answered as a mismatch.
+\
+\ Throw masks: `catch` restores both stacks' depth, never their contents, so a
+\ cell of the caught quotation's window (its declared fixed input prefix) keeps
+\ its input type only if every throw path of the body left it alone. Each body
+\ records one intact mask per stack: bit j, counted from the top of the window,
+\ is set while every edge so far left window cell j alone. Bits count from the
+\ top because the window grows downward as the body pops and is final only at
+\ `;]`: a cell popped after an edge lay below that edge's stack pointer and is
+\ intact there, and top-relative bits keep naming the same cell as the window
+\ deepens. Bits above the recorded width mean intact too, so a window wider
+\ than the mask, or a row an edge cannot be compared against, records zero. A
+\ cell is intact only when the edge holds the same term, not one that unifies
+\ with it: a quotation literal's window cells are unbound until the catch site
+\ fits them, and binding one would choose a type for the caller.
+\
+\ Engine-word identity: a rule that types an engine word by what it does may
+\ judge a token only when the token binds that word, since `@` in a package
+\ that defines `@`, or `dup` after `undefine dup`, is another word of the same
+\ spelling. The identity is kept apart from the effect, registered where the
+\ engine defines the word, and travels with the control flags in two forms:
+\ CTL-CORE-OP marks the engine's own word of a spelling within a family a rule
+\ chooses by spelling, and CTL-INTRINSIC holds a five-bit id naming one engine
+\ word, for the rules that dispatch on the word itself. `undefine` retires
+\ both, a redefinition records none, and an export does not copy them.
 package CHECKER-REG
 \ SOURCE-CELL (layout.f DECL-CELL) is the record the engine certifies through;
 \ TARGET-CELL is the one a replacement checker publishes itself into.
@@ -4024,20 +4066,14 @@ variable QAPP-N
    RES-FALSE ;
 
 
-\ A quotation pair's output rows keep the outer roles; its input rows flow
-\ into the quotation from whoever executes it, so their pairs are pushed
-\ flipped: the expected effect's inputs take the actual position and the
-\ widening lattice reads supplied-into-consumed, and each side's role turns
-\ over (what a declaration demands of its callable's input, the callee
-\ provides). A refusal unwinds every binding the comparison made and TAIL-HIT
-\ names it (MD-TAIL-ESCAPE), so CELL-DIAG! renders the two quotations as they
-\ were.
+\ A quotation pair's input rows flow into the quotation from whoever executes
+\ it, so their pairs are pushed flipped.
 defer U-DRAIN-XT ( n -- )
 : ROLE-FLIP ( n -- n ) dup 1 and 2 * swap 1 rshift 1 and or 3 xor ;
 
 
-\ Two quotations that unify share one block part. A block part that must read
-\ no local refuses a block's scope as a local's escape (SCOPE-HIT 3).
+\ A block part that must read no local refuses a block's scope as a local's
+\ escape (SCOPE-HIT 3).
 : BLOCK-PAIR ( n n -- ) {: got:n want:n :}
    got Q>BLOCK T-RES {: a:n :}   want Q>BLOCK T-RES {: b:n :}
    a ISVAR b ISVAR and IF
@@ -4070,8 +4106,6 @@ defer U-DRAIN-XT ( n -- )
    -1 HOLD-N +! ;
 
 
-\ A side holding a quotation through a provided chain (T-PROV?) is provided;
-\ pointee and family argument pairs hand over resolved terms and keep roles.
 : ROLE-ALIAS ( n n -- n n )
    {: a:n b:n :}
    a T-BOUND-VAR? IF a T-RES TAG T-QUOT = a T-PROV? and IF CUR-ROLE @ ROLE-D1 invert and CUR-ROLE ! THEN THEN
@@ -4088,9 +4122,9 @@ defer U-DRAIN-XT ( n -- )
    oka okb and ;
 
 
-\ A wanted side that is a variable whose chain is provided (T-PROV?) demands
-\ nothing of a literal: the pair then reads no literal fact (CUR-LIT, LIT-FITS?).
-: U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
+\ A wanted side that is a variable whose chain is provided demands nothing of a
+\ literal.
+: U-TYPE   \ ( t1 t2 -- )
    ROLE-ALIAS  dup T-BOUND-VAR? IF dup T-PROV? IF 0 CUR-LIT ! THEN THEN
    T-RES swap T-RES swap
    2dup NO-SCOPE-PAIR? 0= IF STORE-HIT SCOPE-HIT ! U-FAIL EXIT THEN
@@ -4103,7 +4137,8 @@ defer U-DRAIN-XT ( n -- )
      2dup FORALL-PAIR 2drop ELSE
    over TAG T-QUOT =  over TAG T-QUOT =  and IF
      QUOT-PAIR ELSE
-   over TAG T-PTR =  over TAG T-PTR =  and IF   \ a pointee is read and written: both sides demanded, paired resolved past ROLE-ALIAS
+   \ a pointee is read and written: both sides demanded
+   over TAG T-PTR =  over TAG T-PTR =  and IF
      CUR-ARG @ >r 0 CUR-ARG !   CUR-ROLE @ >r  ROLE-D1 ROLE-D2 or CUR-ROLE !
      over PTR>INNER T-RES over PTR>INNER T-RES PAIR-STRICT
      r> CUR-ROLE !  r> CUR-ARG ! 2drop ELSE
@@ -4113,15 +4148,13 @@ defer U-DRAIN-XT ( n -- )
    2dup FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
-     2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE U-FAIL THEN ELSE   \ hidden field pairs only same-family same-slot
-   2dup LAYOUT-BLOCK? IF STALE-NOTE U-FAIL ELSE   \ only a whole-bundle transport op may bind a layout cell
-                                       \ a stale layout cell reaches here (its family answers
-                                       \ through the wrapper): a typed use of the bundle, named
-                                       \ E-STALE-READ through STALE-NOTE's latch, which CELL-DIAG!
-                                       \ (below) reads before any rule about WHICH type it is
+     2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE U-FAIL THEN ELSE
+   \ only a whole-bundle transport op may bind a layout cell; a stale layout
+   \ cell reaches here: a typed use of the bundle, named E-STALE-READ
+   2dup LAYOUT-BLOCK? IF STALE-NOTE U-FAIL ELSE
    over ISVAR IF
      over PAY over TY-OCC? IF U-FAIL ELSE
-       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY ROLE-D2 TV-BIND THEN THEN ELSE   \ raw discipline: RAW var rejects nominal/atom/layout
+       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY ROLE-D2 TV-BIND THEN THEN ELSE
    dup ISVAR IF
      dup PAY  rot  tuck TY-OCC? IF U-FAIL ELSE
        over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY ROLE-D1 TV-BIND THEN THEN ELSE
@@ -4130,48 +4163,32 @@ defer U-DRAIN-XT ( n -- )
    ELSE STALE-NOTE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 
-\ --- logical<->hidden bundle coercion (type-family.f TFAM-WIDTH@). A stored effect
-\ keeps a layout value as one logical cell only when its width reads an open
-\ argument (PUSH-LOGICAL, LAYOUT-WIDTH-OPEN?). At a boundary or call site that
-\ cell can meet the W-cell hidden expansion of the same family, whose width is
-\ known and whose args may be linear. The logical cell expands to hidden fields
-\ at its own width (an open argument measures one cell) and the rows re-pair
-\ cell for cell; a width that disagrees fails the slot pairing (PARAM-HID-OK?).
-\ A linear payload is ordinary linear accounting: LIN-TYPE-COUNT counts the
-\ bundle once at its tag for each LIN-CHECK, and LIN-EFF-PASS rejects unequal
-\ in/out multiplicity (EN-MULT walks family args). Transport mode
-\ (LAYOUT-XPORT) keeps its own group surgery and is excluded.
-: LOGHID-FAMILY? ( n n -- bool ) {: th:n tl:n :}   \ th hidden, tl a logical layout of th's family
+: LOGHID-FAMILY? ( n n -- bool ) {: th:n tl:n :}
    th HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
    tl TAG T-PARAM = 0= IF RES-FALSE EXIT THEN
    tl HIDDEN-PARAM? IF RES-FALSE EXIT THEN
    tl LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
    th CELL>FAM tl PARAM>FAM = ;   \ th may be a stale window cell
-: LOGHID-AT? ( n n -- bool ) {: rh:n rl:n :}   \ rh top = group tag, rl top = logical same-family layout
+: LOGHID-AT? ( n n -- bool ) {: rh:n rl:n :}
    LAYOUT-XPORT @ 0 <> IF RES-FALSE EXIT THEN
    rh P>TYPE T-RES {: th:n :}
    th rl P>TYPE T-RES LOGHID-FAMILY? 0= IF RES-FALSE EXIT THEN
-   th HIDDEN-SLOT@ th T-WIDTH 1 - = ;   \ whole group: tag on top (arg-aware bundle width)
-: LOGHID-ROWS ( n n -- n n ) {: rh:n rl:n :}   \ expand rl's logical top
+   th HIDDEN-SLOT@ th T-WIDTH 1 - = ;   \ whole group: tag on top
+: LOGHID-ROWS ( n n -- n n ) {: rh:n rl:n :}
    rl P>TYPE T-RES {: tl:n :}
    tl rl P>REST LAYOUT-PUSH-FIELDS {: re:n :}
    rh re ;
 : LOGHID-EXPAND ( n n -- ) LOGHID-ROWS PAIR ;
 : LOGHID-EXPAND-REV ( n n -- ) LOGHID-ROWS swap PAIR ;
 
-\ ---- an open layout cell meets its known group at a join or back edge -------
-\ One edge holds the logical cell, the other the whole group at the same width:
-\ the edge binds the width, so both compare and join as the W-cell group.
-
-\ rh's top is the group's tag, rl's top its logical cell.
 : LOGHID-JOIN? ( n n -- bool )
    {: rh:n rl:n :}
    rh rl LOGHID-AT? 0= IF RES-FALSE EXIT THEN
    rl P>TYPE T-RES T-WIDTH  rh P>TYPE T-RES T-WIDTH = ;
 
 
-\ Loop edge proof b carries entry proof a on a cell of type t: equal, or none where a is normal
-\ and t is not stale, so the edge cell holds t itself (catch-stale-suite.f P22 refuses a stale t).
+\ Loop edge proof b carries entry proof a on a cell of type t: equal, or none
+\ where a is normal and t is not stale, so the edge cell holds t itself.
 : CP-CARRIES? ( n n n -- bool ) {: a:n b:n t:n :}
    a b CP-SAME? IF RES-TRUE EXIT THEN
    a 0= b 0= 0= or IF RES-FALSE EXIT THEN
@@ -4179,8 +4196,8 @@ defer U-DRAIN-XT ( n -- )
    t T-RES TAG T-STALE <> ;
 
 
-\ The row below the group at grp, true when each field and node's proof as CELL-FIELDS gives it
-\ pass CP-CARRIES?, the entry side first (node when `entry`), and match node's lineage.
+\ The row below the group at grp, true when each field and node's proof pass
+\ CP-CARRIES?, the entry side first (node when `entry`).
 : GROUP-META= ( n n bool -- n bool )
    {: node:n grp:n entry:bool :}
    grp  grp P>TYPE T-RES T-WIDTH 0 ?do
@@ -4194,8 +4211,8 @@ defer U-DRAIN-XT ( n -- )
    loop RES-TRUE ;
 
 
-\ Loop edge b carries entry row a's proofs (CP-CARRIES?) and lost lineage; a logical cell
-\ compares with each field of its group (LOGHID-JOIN?), and a literal fact is none.
+\ Loop edge b carries entry row a's proofs and lost lineage; a logical cell
+\ compares with each field of its group, and a literal fact is none.
 : ROW-META= ( n n -- bool )
    {: a:n b:n :}
    a R-RES {: an:n :}  b R-RES {: bn:n :}
@@ -4213,8 +4230,8 @@ defer U-DRAIN-XT ( n -- )
    an P>REST bn P>REST RECURSE ;
 
 
-\ A logical cell meeting its group (LOGHID-JOIN?) joins as its W fields, each
-\ merged with the group's field, so the joined row holds the group.
+\ A logical cell meeting its group joins as its W fields, each merged with the
+\ group's field, so the joined row holds the group.
 : ROW-JOIN-PREP ( n n -- n n )
    {: a:n b:n :}
    a R-RES {: an:n :}  b R-RES {: bn:n :}
@@ -4237,13 +4254,11 @@ defer U-DRAIN-XT ( n -- )
    ao bo ;
 
 
-\ Root-spine position plumbing: a spine row pair carries encoded cursor
-\ -(c+2); its type pair gets slot c, its rest pair cursor c+1. Non-spine row
-\ pairs (nested rows inside a slot's quotation/param subterm) inherit the
-\ enclosing slot unchanged, so nested descent never bumps the cursor.
+\ A spine row pair carries encoded cursor -(c+2); its type pair gets slot c,
+\ its rest pair cursor c+1. Non-spine row pairs inherit the enclosing slot.
 : UPOS-SPINE? ( n -- bool ) -1 < ;
-: UPOS-REST ( n -- n ) dup UPOS-SPINE? IF 1 - THEN ;         \ ENC(c)-1 = ENC(c+1)
-: UPOS-TYPE ( n -- n ) dup UPOS-SPINE? IF negate 2 - THEN ;  \ ENC(c) -> slot c
+: UPOS-REST ( n -- n ) dup UPOS-SPINE? IF 1 - THEN ;
+: UPOS-TYPE ( n -- n ) dup UPOS-SPINE? IF negate 2 - THEN ;
 
 : U-ROW-DESCEND ( n n -- ) {: r1:n r2:n :}
    CUR-UPOS @ {: e:n :}
@@ -4263,7 +4278,6 @@ defer U-DRAIN-XT ( n -- )
 
 \ Implicit callback tails describe a fixed window. During quotation comparison
 \ they may share another tail, but may not absorb a visible input or output.
-\ Executing the quotation still instantiates its tail against the caller stack.
 : QUOT-ROW-BLOCK? ( n n -- bool )
    {: v:n row:n :}
    CUR-QUOT @ 0= IF RES-FALSE EXIT THEN
@@ -4289,15 +4303,14 @@ defer U-DRAIN-XT ( n -- )
    THEN
    \ Zero terminates a closed evaluator row; it has no cell to descend into.
    over TAG S-PUSH <> over TAG S-PUSH <> or IF U-FAIL EXIT THEN
-   \ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells, actual
-   \ and required kept in order for directional input matching. The spine
-   \ cursor is not slot-aligned past it: drop to no-position.
+   \ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells. The
+   \ spine cursor is not slot-aligned past it: drop to no-position.
    2dup LOGHID-AT? IF -1 CUR-UPOS ! LOGHID-EXPAND EXIT THEN
    2dup swap LOGHID-AT? IF -1 CUR-UPOS ! swap LOGHID-EXPAND-REV EXIT THEN
    U-ROW-DESCEND ;
 
 
-: U-DRAIN ( n -- )   \ process the pairs queued above base
+: U-DRAIN ( n -- )
    {: base:n :}
    BEGIN USP @ base > UOK @ and WHILE
      UNPAIR  over ROW-NODE? over ROW-NODE? or IF U-ROW ELSE U-TYPE THEN
@@ -4308,7 +4321,7 @@ defer U-DRAIN-XT ( n -- )
 U-DRAIN-INSTALL
 
 
-: UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
+: UNIFY ( n n -- bool )
    over FORALL-INPUT-ROOT !
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  0 CUR-QUOT !
    0 FORALL-OPEN-N !
@@ -4343,8 +4356,7 @@ U-DRAIN-INSTALL
 
 
 \ Every var id comes from FRESH, so only cells 0..FV-1 can be bound since
-\ the previous reset. Allocation initializes the cold pool; TRIAL-REST and a
-\ top step (TOP-RELEASE) clear their own FV delta.
+\ the previous reset.
 : TV-CLEAR-FROM ( n -- )
    BEGIN dup FV @ < WHILE
      dup cells TVT + 0 swap !
@@ -4358,19 +4370,18 @@ U-DRAIN-INSTALL
 
 : TV-RESET ( -- ) 0 TV-CLEAR-FROM ;
 \ THDMASK/THRMASK: the running AND-fold of the intact masks of every throw edge
-\ of the body being checked (THROW-EDGE). THSET says whether any edge was seen,
-\ and only then do the masks mean anything.
+\ of the body being checked. THSET says whether any edge was seen.
 CHECKER-REG:SCRATCH{
 variable THDMASK  variable THRMASK  variable THSET
-\ INHSET: the CTL-INHERITED flags of the words the body called, a word that
-\ defines words no source text spells or reads the source after it. Sticky per
-\ body like UNSAFE: a call on any path is enough for the may-claim.
+\ INHSET: the CTL-INHERITED flags of the words the body called. Sticky per
+\ body: a call on any path is enough for the may-claim.
 variable INHSET
 CHECKER-REG:}SCRATCH
 variable XROW  variable XRROW
 CHECKER-REG:SCRATCH{
 variable XSET  variable DEADP
-variable DEF-LSC         \ the scope of the definition's own locals block, 0 for none (LSC-CK)
+\ the scope of the definition's own locals block, 0 for none
+variable DEF-LSC
 variable DEADERR
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
@@ -4379,8 +4390,7 @@ PTR-VARIABLE DEADTA  variable DEADTU
 variable WAS
 CHECKER-REG:}SCRATCH
 
-\ A fresh check's walk state over the term pools as they stand. NEW resets the
-\ pools and id counters first; a top step runs NEW-WALK alone (TOP-GUEST).
+\ A fresh check's walk state over the term pools as they stand.
 : NEW-WALK ( -- )
    0 CALL-ARMED !  0 CALL-HIT !
    -1 OK ! 0 UNCK ! 0 CATCH-PF-N ! 0 CATCH-N ! 0 FACTS ! 0 XFACT ! 0 USP !
@@ -4398,21 +4408,15 @@ variable VSIG
 CHECKER-REG:SCRATCH{
 variable DEXP   variable DACT   variable FAILSET
 variable DF-ACT   variable DF-EXP
-\ ADT variant capture (docs/forth.md "Structures And Enums"): CVLIVE holds the
-\ SUMV id of the variant a `construct family variant` step is applying;
-\ UF>DIAG latches it into DVAR when the first failure is captured (beside
-\ DF-ACT/DF-EXP). -1 is no variant in scope, so a scalar or non-construct
-\ mismatch renders no variant or tag. CHECK-CLEAR stores -1 into DVAR, CVLIVE
-\ and DPOS at each check's start, CAPTURE-CLEAR into DVAR and DPOS.
+\ CVLIVE holds the SUMV id of the variant a `construct family variant` step is
+\ applying; UF>DIAG latches it into DVAR. -1 is no variant in scope.
 variable DVAR
 variable CVLIVE
-\ The construct form's token state (CONSTRUCT-TOK).
+\ The construct form's token state.
 variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant token
 variable CONFAM    \ resolved family id while CONM = 2
-\ Payload slot of the captured mismatch: UF-POSN's slot from the top of the
-\ failed expected-row element, latched beside DVAR. Render converts it to the
-\ declaration-order payload index; -1 is unknown (a row-level or post-LOGHID
-\ failure), and the packet omits payload_pos.
+\ Payload slot of the captured mismatch from the top of the failed expected-row
+\ element; -1 is unknown (a row-level or post-LOGHID failure).
 variable DPOS
 variable SGSEEN   variable SGDECL-BAD   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
@@ -4424,10 +4428,8 @@ $7FFFFFFFFFFFFFFF constant TOKBUF-MAX-CAP
 create FAILTK-BOOT TOKBUF-INIT-CAP allot
 create TKF-BOOT TOKBUF-INIT-CAP allot
 create NMB-BOOT TOKBUF-INIT-CAP allot
-\ The fourth buffer holds a string literal's decoded body and rides the same
-\ growth: CHECK-RESET ensures the family for the whole scan text, and a decoded
-\ payload is never longer than its raw slice of that text, so it needs no
-\ ceiling or refusal of its own.
+\ CHECK-RESET ensures the family for the whole scan text, and a decoded payload
+\ is never longer than its raw slice of that text, so it needs no ceiling.
 create SDEC-BOOT TOKBUF-INIT-CAP allot
 PERSISTED-PTR-VARIABLE FAILTK-P   PERSISTED-PTR-VARIABLE TKF-P   PERSISTED-PTR-VARIABLE NMB-P   PERSISTED-PTR-VARIABLE SDEC-P   variable TOKBUF-CAP-U
 variable FAILTU
@@ -4507,8 +4509,6 @@ variable JSON-DIAGS   0 JSON-DIAGS !
    T-RES dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
    PAY CT-LINEAR? ;
 
-\ Deferred taint scan: reject if any var tainted by a polymorphic copy or drop
-\ (LIN-TAINT) now resolves to a linear con (`[: dup FREE ;]`).
 : LIN-TAINT-SCAN ( -- )
    LIN-ANY? 0= IF exit THEN
    OK @ 0= IF exit THEN
@@ -4517,12 +4517,8 @@ variable JSON-DIAGS   0 JSON-DIAGS !
       1 +
    REPEAT drop ;
 
-\ FIELD-INNER (and every PARAM>ARG accessor) requires a RESOLVED param term:
-\ it indexes the param arena by the term's payload. `t` here is a stack type
-\ that is usually a bound var whose payload is a VAR id, not a param index —
-\ so the inner descent must go through `t T-RES`, matching the FIELD-PARAM?
-\ guard just before it. Descending on the raw var reads an unrelated arena slot
-\ and, under accumulated arena state, can point back at `t` (infinite recursion).
+\ FIELD-INNER requires a RESOLVED param term: `t` here is usually a bound var
+\ whose payload is a VAR id, so the inner descent must go through `t T-RES`.
 CHECKER-REG:SCRATCH{
 variable LTC-P
 CHECKER-REG:}SCRATCH
@@ -4570,17 +4566,8 @@ CHECKER-REG:}SCRATCH
 : LIN-CHECK ( n -- )
    DCUR @ RCUR @ LIN-TOTAL <> IF 0 OK ! THEN ;
 
-\ --- reject reasons (docs/forth.md "Structures And Enums"). A failure site
-\ latches a reason code beside the token pin; render.f maps it to a stable
-\ code, repair class, suggestion and prose. The first reason wins, only while
-\ the pin is open (FAILSET clear), so it describes the pinned token. The
-\ nonexhaustive reason also latches family, seen-bitset offset and variant
-\ count so the renderer can name the unseen tags.
-\
-\ The vocabulary sits above the first-failure capture because that is the only
-\ place a value-position refusal can name itself: CHECKER-STEP sets FAILSET the
-\ instant UNIFY-IN fails, after which MDIAG! is silent. UF-CAPTURE names the
-\ refusal in the one instruction between the failure and the pin closing.
+\ A failure site latches a reason code beside the token pin. The first reason
+\ wins, only while the pin is open, so it describes the pinned token.
 1 constant MD-FAM-UNKNOWN     \ match family token resolves nothing in signature scope
 2 constant MD-FAM-KIND        \ match family is not a sum or enum
 3 constant MD-SCRUT           \ top of stack is not a sum/enum bundle
@@ -4626,10 +4613,9 @@ CHECKER-REG:}SCRATCH
 44 constant MD-ARENA-CALL    \ the storage runtime named outside HEAP's generated words (ARENA-CALL-REFUSE?)
 45 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
 46 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
-47 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code as check.f's
-\ The control-flow refusals (CF-FAIL). A data depth change is E-MISMATCH and
-\ prints the loop's start row and the row at its back edge or leave; the others
-\ are E-REJECTED.
+47 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code
+\ A data depth change is E-MISMATCH and prints the loop's start row and the
+\ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
 49 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
 50 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose lineage differs or whose proof does not carry the entry's (CP-CARRIES?), at the same depths (CF-CARRIED=)
@@ -4653,8 +4639,8 @@ CHECKER-REG:}SCRATCH
 65 constant MD-BINDER-PLACE  \ an inferred effect holds a callback binder outside a callback input (CHECK)
 66 constant MD-DEPTH-WIDE    \ depth or .s over a row holding a wide value or one of open width (HIDROW-STEP?)
 
-\ Why the check left a stretch or definition to the run (DEFER-WHY), each with
-\ its own suggestion (render.f DEFER-SUGGEST$); 0 is no cause recorded.
+\ Why the check left a stretch or definition to the run, each with its own
+\ suggestion; 0 is no cause recorded.
 1 constant DW-PARSER         \ a top-level word or primitive that parses with no `parses:` row
 2 constant DW-DEFER          \ a top-level call of a deferred word
 3 constant DW-PARSES         \ a top-level word whose `parses:` row bounds what it reads
@@ -4686,11 +4672,11 @@ variable DEFER-WHY    \ the next deferral packet's cause (a DW- code; 0 = none)
 CHECKER-REG:}SCRATCH
 
 \ The source pre-pass records a deferral's cause here before it reports the
-\ deferral; the packet reads and clears it (render.f TOP-DEFERRED-DIAG).
+\ deferral; the packet reads and clears it.
 : CHECKER-DEFER-WHY! ( n -- )
    DEFER-WHY ! ;
 
-: MDIAG! ( n -- ) {: code:n :}   \ first reason wins, only while the pin is open
+: MDIAG! ( n -- ) {: code:n :}
    MDIAG @ 0 <> IF EXIT THEN
    FAILSET @ 0 <> IF EXIT THEN
    code MDIAG ! ;
@@ -4718,29 +4704,30 @@ CHECKER-REG:}SCRATCH
    ELSE
       0 DF-ACT !  0 DF-EXP !  -1 DPOS !
    THEN
-   CVLIVE @ DVAR ! ;   \ the variant live at the first-failure capture (-1 = none)
+   CVLIVE @ DVAR ! ;
 
-\ The escape refusal's rows render the instant it is named (render.f
-\ TAIL-CAPTURE): later tokens go on binding the rows it compared, so a render
-\ at the end would show their bindings, not the refusal. xref.f retires the seam.
+\ The escape refusal's rows render the instant it is named: later tokens go on
+\ binding the rows it compared.
 defer TAIL-CAPTURE-XT ( -- )
 : TAIL-CAPTURE-DEFAULT ( -- ) [: ;] is TAIL-CAPTURE-XT ;
 TAIL-CAPTURE-DEFAULT
 
 
 \ The cell disciplines refuse INSIDE the unify, so both captures below ask the
-\ same question the instant their unify answers false and while the pin is still
-\ open. The base-address refusal names itself exactly as the raw one does
-\ (BASE-BLOCK?).
+\ same question the instant their unify answers false and while the pin is open.
 : CELL-DIAG! ( -- )
    SCOPE-HIT @ 1 = IF MD-SCOPE-STORE MDIAG! THEN
    SCOPE-HIT @ 2 = IF MD-SCOPE-KIND MDIAG! THEN
    SCOPE-HIT @ 3 = IF MD-LOCAL-ESCAPE MDIAG! THEN
-   STALE-HIT @ 0 <> IF STALE-HIT @ STALE-WHY MDIAG! THEN    \ a cell with no type left to read answers before any rule about which type it is
-   RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN   \ the executable value first: it is the one rule that names a base and a raw cell alike
+   \ a cell with no type left to read answers before any rule about which type
+   \ it is
+   STALE-HIT @ 0 <> IF STALE-HIT @ STALE-WHY MDIAG! THEN
+   \ the executable value first: it is the one rule that names a base and a raw
+   \ cell alike
+   RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
-   BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN   \ the base-address refusals name themselves the same way (BASE-BLOCK?),
-   BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN   \ each with the base it was raised on
+   BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN
+   BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN
    TAIL-HIT @ IF   \ captured only when this refusal latches the reason
       MDIAG @  MD-TAIL-ESCAPE MDIAG!  MDIAG @ <> IF TAIL-CAPTURE-XT THEN
    THEN
@@ -4749,17 +4736,13 @@ TAIL-CAPTURE-DEFAULT
    THEN ;
 
 
-\ Named declaration rows start unrestricted. Body inference may alias them to
-\ a quotation's fixed-window/literal tail; that temporary kind must not become
-\ the reusable provider's kind. Keep their identities across nested parsers.
-\ SG-ROWS-LET holds each row's source letter, for NP-ROWS-CHECK's diagnostic.
 create SG-ROWS 26 cells allot
 create SG-ROWS-LET 26 cells allot
 variable SG-ROWS-N
 variable SG-ROWS-PUBLISH
 
-\ One pairing of COVER-WALK: one value (VALUE-REST) off each side, whatever
-\ its width on the other.
+\ One pairing of COVER-WALK: one value off each side, whatever its width on the
+\ other.
 : COVER-STEP ( n n -- n n bool )
    {: e:n a:n :}
    e VALUE-REST {: er:n eok:bool :}
@@ -4786,9 +4769,8 @@ variable SG-ROWS-PUBLISH
    below swap P-REST!  head ;
 
 
-\ Row s ends in a tail the check could still extend: unbound and none of the
-\ signature's bases, the implicit one (SGDBASE) or a named row (SG-ROWS), as a
-\ quotation's input or an unsigned definition's.
+\ Row s ends in a tail the check could still extend, as a quotation's input or
+\ an unsigned definition's.
 : TAIL-OPEN? ( n -- bool )
    {: s:n :}
    s ROW-TAIL {: t:n :}
@@ -4799,8 +4781,8 @@ variable SG-ROWS-PUBLISH
    loop RES-TRUE ;
 
 
-\ The pair as the bindings U-DRAIN stops before (at the failed pair) would leave it,
-\ binding nothing: exp's values over act's below, or an open act's over exp's rest.
+\ The pair as the bindings U-DRAIN stops before would leave it, binding nothing:
+\ exp's values over act's below, or an open act's over exp's rest.
 : ROWS-COVER ( n n -- n n )
    {: exp:n act:n :}
    exp ROW-TAIL {: tail:n :}
@@ -4813,11 +4795,8 @@ variable SG-ROWS-PUBLISH
    act er COVER-COPY  exp swap ;
 
 
-\ The first failure, captured once. Every site that judges a row (the token
-\ step, the locals annotation bind, the three boundary unifies) pins the
-\ expected/actual pair the renderer prints, then the reason the refusal raised,
-\ then FAILSET, which freezes the pin. The reason must be named before that last
-\ store: MDIAG! is silent once the pin is closed.
+\ Every site that judges a row pins the expected/actual pair, then the reason,
+\ then FAILSET, which freezes the pin. MDIAG! is silent once the pin is closed.
 : UF-CAPTURE ( n n -- )
    {: exp:n act:n :}
    exp act ROWS-COVER DACT !  DEXP !  ROWS-PIN
@@ -4825,13 +4804,8 @@ variable SG-ROWS-PUBLISH
    CELL-DIAG!
    -1 FAILSET ! ;
 
-\ The return row's twin: judged by the same unifier and cell rules, so its
-\ refusal is named in the same instruction between failure and pin closing
-\ (`variable RV  : RS3 ( | -- | ptr n ) RV @ >r ;` otherwise answers a bare
-\ return-stack imbalance). It latches the reason and RSBAD only: the row pair is
-\ rendered from the declared and inferred return rows (`return_stack`), and
-\ claiming DEXP/DACT too would relabel every return-stack mismatch as a value
-\ mismatch.
+\ The return row's twin latches the reason and RSBAD only: claiming DEXP/DACT
+\ too would relabel every return-stack mismatch as a value mismatch.
 CHECKER-REG:SCRATCH{
 variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit, 2 a frame borrowed below; 3 and 4 the same for a quotation literal's own row
 CHECKER-REG:}SCRATCH
@@ -4844,10 +4818,7 @@ variable QRS-EXP   variable QRS-ACT
    -1 FAILSET ! ;
 
 
-\ The return row's twins of SUNI-JOIN and SUNI-IN, here rather than beside them
-\ because the recorded call step, where a called word's declared return input
-\ meets the caller's return row (RSUNI-IN), comes far above them.
-: RSUNI-JOIN ( n -- )   \ two branches' return rows meet (UK-JOIN)
+: RSUNI-JOIN ( n -- )
    {: s:n :}
    RCUR @ s UNIFY-JOIN
    dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
@@ -4864,33 +4835,24 @@ variable QRS-EXP   variable QRS-ACT
    dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
    OK @ and OK ! ;
 
-\ --- input underflow -------------------------------------------------------------
-\ The cells below a definition's declared inputs are the caller's. A body that
-\ reaches under them does not fail where it reaches: the declared base is an
-\ open row, so the step binds it and checking continues. CHECK-NO-BORROW
-\ catches it only at the boundary, where the pin is on the last token and no
-\ reason survives (`: CONSUME ( n -- ) drop ;  : G ( -- n ) CONSUME 0 ;`
-\ answered `at '0'`), so the token that spends the frame is asked. Both depths
-\ are read before the unify: ROW-CELLS follows a bound tail, so afterwards the
-\ two rows are one. The refusal waits for the unify to succeed: a step short
-\ and mistyped gets the better mismatch answer (`( r -- n ) CONSUME2 0` says
-\ `expected: n n actual: r`).
 CHECKER-REG:SCRATCH{
 variable UF-NEED   variable UF-HAVE
 CHECKER-REG:}SCRATCH
 
-: STEP-AT-BASE? ( -- bool )   \ does the data row still end in the declared base? UF-HAVE = its cells
+: STEP-AT-BASE? ( -- bool )
    SGDBASE @ 0= IF RES-FALSE EXIT THEN            \ no declared signature: no sealed base
-   DCUR @ ROW-TAIL  SGDBASE @ ROW-TAIL  <> IF RES-FALSE EXIT THEN   \ another base: a quotation body's own (CF-QUOT) or a row the signature names (SG-ROWS); a locals bind keeps the declared one
+   \ another base: a quotation body's own or a row the signature names; a locals
+   \ bind keeps the declared one
+   DCUR @ ROW-TAIL  SGDBASE @ ROW-TAIL  <> IF RES-FALSE EXIT THEN
    DCUR @ ROW-CELLS UF-HAVE !
    RES-TRUE ;
 
-: STEP-BORROWS? ( n -- bool ) {: din:n :}   \ would this step reach under the declared inputs?
+: STEP-BORROWS? ( n -- bool ) {: din:n :}
    STEP-AT-BASE? 0= IF RES-FALSE EXIT THEN
    din ROW-CELLS UF-NEED !
    UF-NEED @ UF-HAVE @ > ;
 
-: STEP-UNDERFLOW! ( -- )   \ the step fit only by spending the caller's frame
+: STEP-UNDERFLOW! ( -- )
    FAILSET @ 0=  OK @ and IF
       MDIAG @ 0= IF UF-NEED @ MDIAG-NEED !  UF-HAVE @ MDIAG-HAVE ! THEN
       MD-UNDERFLOW MDIAG!
@@ -4898,8 +4860,8 @@ CHECKER-REG:}SCRATCH
    THEN
    0 OK ! ;
 
-\ The first resolved hidden-field bundle of FAM in the declared output; an open one (option<a>) is
-\ one logical cell and skipped. Which seed wins: type-family.f TFC-SEED.
+\ The first resolved hidden-field bundle of FAM in the declared output; an open
+\ one (option<a>) is one logical cell and skipped.
 : CONSTRUCT-DECL-TERM ( n -- n bool )
    {: fam:n :}
    SGOUT @
@@ -4910,8 +4872,7 @@ CHECKER-REG:}SCRATCH
    REPEAT
    drop 0 RES-FALSE ;
 
-\ Whether a constructor seeded by family term T takes the arg-aware step: a direct arg wider than a
-\ cell, or a layout-family arg of a closed non-linear T, whose hidden input binds no payload var.
+\ Whether a constructor seeded by family term T takes the arg-aware step.
 : SEED-TERM? ( n -- bool ) {: t:n :}
    0 BEGIN dup t PARAM>ARGC < WHILE
       t over PARAM>ARG T-WIDTH 1 > IF drop RES-TRUE EXIT THEN
@@ -4932,9 +4893,7 @@ CHECKER-REG:}SCRATCH
    0 RES-FALSE ;
 
 \ The live top of the data row when it is a term of FAM, a hidden cell of its
-\ bundle or a logical term. A row with no pushed top (a quotation body's fresh
-\ row), a stale cell (its wrapper is no T-PARAM), a variable or another type is
-\ no term.
+\ bundle or a logical term.
 : UNMAKE-LIVE-TERM ( n -- n bool )
    {: fam:n :}
    DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 RES-FALSE EXIT THEN
@@ -4943,13 +4902,8 @@ CHECKER-REG:}SCRATCH
    t PARAM>FAM fam <> IF 0 RES-FALSE EXIT THEN
    t RES-TRUE ;
 
-\ The same question for a product's generated UNMAKE, which runs the construct
-\ step backwards (type-family.f TFAM-UNMAKE-STEP?). The seed is only the live
-\ input it takes apart, so the logical term an ordinary MAKE leaves is no seed.
 \ The enclosing definition's declared input is no substitute for a quotation
 \ body's missing live input: that value may be consumed before UNMAKE runs.
-\ With no seed, UNMAKE keeps the stored-effect word path, where a stale live
-\ cell is refused as a stale read.
 : UNMAKE-SEED-LAYOUT ( n -- n bool )
    {: fam:n :}
    fam TFAM-ARITY* 0= IF 0 RES-FALSE EXIT THEN
@@ -4960,37 +4914,17 @@ CHECKER-REG:}SCRATCH
 
 variable QTT  variable QD2  variable QR2
 
-\ ---- what a throw path leaves of the window it was entered with ---------------
-\ `catch` restores both stacks' depth, never their contents, so a cell of the
-\ caught quotation's window (its declared fixed input prefix, the cells CWIN-IN
-\ counts) keeps its input type only if every throw path of the body left it
-\ alone. Each body records one intact mask per stack: bit j, counted from the
-\ top of the window, is set while every edge so far left window cell j alone.
-\ From the top because the window grows downward as the body pops and is final
-\ only at `;]`: a cell popped after an edge lay below that edge's stack pointer
-\ and is intact there by construction, and top-relative bits keep pointing at
-\ the same cell as the window deepens. Bits above the recorded width mean
-\ intact too, so a window wider than the mask, or a row an edge cannot be
-\ compared against, records zero: nothing proved, everything stale.
 48 constant XMASK-BITS          \ window cells a mask can speak for
-$FFFFFFFFFFFF constant XMASK-ALL         \ 2^48-1: every window cell intact
+$FFFFFFFFFFFF constant XMASK-ALL         \ every window cell intact
 
 \ A mask built by XMASK-OF carries ones above its base row's width, for cells
-\ that do not exist; a mask about to be STORED is cut to the width it speaks for
-\ so the recorded word is as small as the fact it holds. Nothing reads the cut
-\ bits: a call consults exactly the positions it popped, which is the callee's
-\ declared input count.
+\ that do not exist; a mask STORED is cut to the width it speaks for.
 : XMASK-LOW ( n n -- n ) {: mask:n k:n :}
    k XMASK-BITS >= IF mask EXIT THEN
    mask 1 k lshift 1 - and ;
 
-\ A symbol's control word is one cell: control flags in bits 0-15, a defer flag
-\ in bit 16, CTL-NAMES in bit 17, CTL-GENERATES in bit 18, the shape the
-\ owner-ABI handover (CHECKED-ROW / TRANSFER-ROW) travels in. The intact masks
-\ ride above them, 20 bits each, and the NORET store keeps entries in this
-\ shape, so a proved fact reaches a later engine without a wider record. A word
-\ with more than 20 declared inputs keeps no evidence for the deeper ones, the
-\ conservative answer, which a producer that never sets masks also gives.
+\ A word with more than 20 declared inputs keeps no evidence for the deeper
+\ ones, the conservative answer.
 20 constant XFER-MASK-BITS
 $FFFFF constant XFER-MASK-ALL
 20 constant XFER-DMASK-SHIFT
@@ -5006,49 +4940,25 @@ $7FFFF constant XFER-FLAG-MASK       \ the control flags, the defer bit, CTL-NAM
 : XFER-DMASK ( n -- n ) XFER-DMASK-SHIFT rshift XFER-MASK-ALL and ;
 : XFER-RMASK ( n -- n ) XFER-RMASK-SHIFT rshift XFER-MASK-ALL and ;
 
-\ Control-effect flags are append-only and later-wins, so a redefinition can
-\ clear stale metadata. CTL-DEAD: a call has no normal continuation. CTL-THROW:
-\ a call may reach a catchable throw edge. CTL-BARRIER: the call is a block
-\ collective whose emitter contains bar.sync, sound only under block-uniform
-\ control (refused inside an open control frame, BARRIER-CUR?).
+\ Control-effect flags are append-only and later-wins. CTL-DEAD: a call has no
+\ normal continuation. CTL-THROW: a call may reach a catchable throw edge.
 1 constant CTL-DEAD
 2 constant CTL-THROW
 4 constant CTL-BARRIER
 \ Positive provenance: this binding's effect was explicitly declared or its
-\ check was enforced. An ABI-only or old producer row carries no grant.
+\ check was enforced.
 $8 constant EFFECT-EXTERNAL
 CHECKER-OWNER-ABI:BINDING-CORE-OP constant CTL-CORE-OP
 $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
 \ CTL-RENDERS means a call may hand rendered source to INCLUDE-EVALUATE and so
-\ define words at run time that no source text spells. The loader's audited
-\ evaluate boundaries carry it by axiom (NORET-AXIOMS) and every checked body
-\ that calls a flagged word inherits it; the source pre-pass asks for it
-\ (CHECKER-VERIFY-RENDERS) and leaves such words to the run.
+\ define words at run time that no source text spells.
 $80 constant CTL-RENDERS
 
-\ Which engine word a symbol is: identity, not spelling. A rule that types an
-\ engine word by what it does (CELL-FETCH-TOK for `@`, RECORD-AT-STEP for
-\ `record-at`) may judge a token only when the token binds that word: `@` in a
-\ package that defines `@`, or `dup` after `undefine dup`, is another word of
-\ the same spelling. The identity is kept apart from the effect and registered
-\ where the engine defines the word: NORET-AXIOMS for a primitive, INTRINSIC
-\ right after a source definition. Two forms carry it:
-\   CTL-CORE-OP    the engine's own word of a spelling within a family the
-\                  rule chooses by spelling: the transport shuffles, the
-\                  return-stack transfers with execute/catch/finally, the
-\                  zero tests, and `evaluate` (a top-level step, TOP-WORD-STEP).
-\   CTL-INTRINSIC  a five-bit id naming one engine word (the INTRINSIC-* rows
-\                  below), for the rules that dispatch on the word itself.
-\ Both sit inside XFER-FLAG-MASK and travel with the control flags (owner
-\ handover, unit import, captured graph). `undefine` retires them
-\ (CHECKER-UNDEFINE), a redefinition records none, and an export does not copy
-\ them (EXPORT-META-COPY).
 \ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13
-\ CTL-PARSES and 14 CTL-CREATES (below), 15 CTL-NOMINAL, 16 the defer bit
-\ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17 CTL-NAMES and 18 CTL-GENERATES
-\ (below), 19 free outside the flag mask, 20-39 and 40-59 the intact masks
-\ (XFER-PACK).
+\ CTL-PARSES and 14 CTL-CREATES, 15 CTL-NOMINAL, 16 the defer bit, 17
+\ CTL-NAMES and 18 CTL-GENERATES, 19 free outside the flag mask, 20-39 and
+\ 40-59 the intact masks.
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -5057,60 +4967,45 @@ CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 3 constant INTRINSIC-QDUP                      \ ?dup
 4 constant INTRINSIC-HIDE-ROW                  \ depth .s
 5 constant INTRINSIC-RAW-FIELD                 \ ptr-field
-6 constant INTRINSIC-RECORD-AT                 \ record-at (src/core/structure-make.f)
-7 constant INTRINSIC-FIELD-PROJECT             \ field-project (src/core/structure-make.f)
+6 constant INTRINSIC-RECORD-AT                 \ record-at
+7 constant INTRINSIC-FIELD-PROJECT             \ field-project
 8 constant INTRINSIC-CREATE                    \ create
 9 constant INTRINSIC-VARIABLE                  \ variable
 10 constant INTRINSIC-CONSTANT                 \ constant
-CHECKER-OWNER-ABI:BINDING-PARSES-ID constant INTRINSIC-PARSES    \ parses: (src/core/cell-effects.f)
-CHECKER-OWNER-ABI:BINDING-THROUGH-ID constant INTRINSIC-PARSES-THROUGH \ parses-through: (src/core/cell-effects.f)
-CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names: (src/core/cell-effects.f)
+CHECKER-OWNER-ABI:BINDING-PARSES-ID constant INTRINSIC-PARSES    \ parses:
+CHECKER-OWNER-ABI:BINDING-THROUGH-ID constant INTRINSIC-PARSES-THROUGH \ parses-through:
+CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names:
 16 constant INTRINSIC-XT-STORE                 \ xt!
 17 constant INTRINSIC-ATOMIC-STORE             \ atomic!
 18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
-19 constant INTRINSIC-RECORD-NEW               \ RECORD-NEW (src/core/dynamic-storage.f)
-20 constant INTRINSIC-RECORD-RELEASE           \ RECORD-RELEASE (src/core/dynamic-storage.f)
+19 constant INTRINSIC-RECORD-NEW               \ RECORD-NEW
+20 constant INTRINSIC-RECORD-RELEASE           \ RECORD-RELEASE
 : INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
 : CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
 
 \ CTL-PARSES means a call may read the source after it, so which tokens it takes
-\ cannot be known without running it. parse-name carries it by axiom, the
-\ operand declarers by their id (INTRINSIC-CTL), and every checked body that
-\ calls a flagged word inherits it, as CTL-RENDERS is inherited; the source
-\ pre-pass stops at such a top-level word unless a source row bounds what it
-\ reads (CHECKER-VERIFY-TOP, CHECKER-VERIFY-TOP-BINDING).
+\ cannot be known without running it.
 CHECKER-OWNER-ABI:BINDING-PARSES constant CTL-PARSES
-\ CTL-CREATES means a call may define the name it reads: `create` carries it by
-\ axiom, inherited alike. Unlike rendered text it defines exactly that name,
-\ which a definer the pre-pass learned names where it takes the statement
-\ (src/habu/verify-source.f RECORD-DEFINER?), so it marks only a statement no
-\ such definer takes (TOP-TOKEN, CHECKER-VERIFY-RENDERS).
+\ CTL-CREATES means a call may define the name it reads. Unlike rendered text it
+\ defines exactly that name.
 $4000 constant CTL-CREATES
-\ A call may register a nominal type without rendering source. The flag is a
-\ may-effect of the selected word, inherited by a wrapper as the other control
-\ effects are; it grants no registration authority to checked code.
+\ A call may register a nominal type without rendering source. The flag grants
+\ no registration authority to checked code.
 $8000 constant CTL-NOMINAL
-\ CTL-GENERATES means the symbol's created effect (NORET-CREATES@) is what a
-\ `generates:` row states: its own row (CHECKER-GENERATES) or the exported
-\ word's (EXPORT-META-COPY). The source pre-pass then reads a call of it as
-\ declared, not as text it never reads (src/habu/verify-source.f
-\ DECLARED-RENDER?). It describes that cell, not what a call may do, so
-\ CTL-INHERITED leaves it out and a wrapper never takes it (STORE).
+\ CTL-GENERATES means the symbol's created effect is what a `generates:` row
+\ states. It describes that cell, not what a call may do.
 CHECKER-OWNER-ABI:BINDING-GENERATES constant CTL-GENERATES
 CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or constant CTL-INHERITED
-\ CTL-NAMES means a `names:` row declared that the word looks its top string
-\ operand up as XREF-FIND does, so a string literal just before a call of it
-\ is a use of the word it names (NAMED-OPERAND-USE, CHECKER-NAMED-USE). The
-\ row is a trusted claim about that word alone: a caller passing its own
-\ operand on inherits nothing and declares its own row.
+\ CTL-NAMES means the word looks its top string operand up, so a string literal
+\ just before a call of it is a use of the word it names.
 CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
 $1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
 CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
    constant CTL-GRAPH-FLAGS
 
 
-\ The `intrinsic` tag's operand for intrinsic id n (render.f CTL-INTRINSIC-TAG,
-\ SIG-INTRINSIC), empty for an id no INTRINSIC-* constant names.
+\ The `intrinsic` tag's operand for intrinsic id n, empty for an id no
+\ INTRINSIC-* constant names.
 : INTRINSIC-NAME$ ( n -- ptr u8 n )
    {: id:n :}
    id INTRINSIC-CELL-FETCH = IF s" cell-fetch" EXIT THEN
@@ -5134,10 +5029,8 @@ CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
    s" " ;
 
 
-\ The facts tag of control word bit n, empty for CTL-THROW's and the intrinsic
-\ id's bits, whose tags carry operands (render.f REND-CTL, SIG-CTL-TAG), and for
-\ CTL-BARRIER and EFFECT-EXTERNAL, which follow from the rows and from a text
-\ being stored: a created word's text then equals the one its definer laid.
+\ The facts tag of control bit n, empty for CTL-THROW's and the intrinsic id's
+\ bits, and for CTL-BARRIER and EFFECT-EXTERNAL, which follow from the rows.
 : CTL-BIT>TAG$ ( n -- ptr u8 n )
    {: bit:n :}
    1 bit lshift {: f:n :}
@@ -5158,8 +5051,6 @@ CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
 CHECKER-REG:SCRATCH{
 variable XM-I   variable XM-ACC   variable XS-I
 variable XE-PD  variable XE-PR       \ the rows a token step started from
-\ QDEPTH — the quotation nesting of the walk (CF-QUOT/CF-SEMIQ) — is declared
-\ here because which row a mask's bits index depends on it: see XBASE-D.
 variable QDEPTH
 CHECKER-REG:}SCRATCH
 
@@ -5169,26 +5060,18 @@ CHECKER-REG:}SCRATCH
       P>REST swap 1 + swap
    REPEAT drop ;
 
-: ROW-SKIP ( n n -- n ) {: r:n cnt:n :}      \ the row with its top cnt entries dropped
+: ROW-SKIP ( n n -- n ) {: r:n cnt:n :}
    0 XS-I !  r
    BEGIN XS-I @ cnt < WHILE
       R-RES P>REST  XS-I @ 1 + XS-I !
    REPEAT ;
 
-: XM-CLEAR ( n -- )             \ mark window position j stale in the mask being built
+: XM-CLEAR ( n -- )
    1 swap lshift invert XM-ACC @ and XM-ACC ! ;
 
 
-\ The mask an edge contributes: `x` is the exceptional row (the live row with the
-\ throwing token's inputs already popped and its outputs not yet pushed) and `b`
-\ is the body's base row, whose fixed entries are the window known so far. Both
-\ end in the same tail because every row in a body descends from that base by
-\ pushes and pops; an edge whose row does not is not comparable and proves
-\ nothing. Position j is intact when the exceptional row still holds a cell at
-\ that depth and it is THE SAME TERM: identity, not unification, because the
-\ window cells of a quotation literal are unbound variables until the catch site
-\ fits them, and a unification that binds one would be the checker choosing a
-\ type for the caller rather than finding one.
+\ `x` is the exceptional row and `b` the body's base row. Position j is intact
+\ when it is THE SAME TERM: identity, not unification.
 : XMASK-OF ( n n -- n ) {: x:n b:n :}
    x ROW-TAIL b ROW-TAIL <> IF 0 EXIT THEN
    b ROW-TERMS {: k:n :}
@@ -5210,28 +5093,18 @@ CHECKER-REG:}SCRATCH
    REPEAT
    2drop XM-ACC @ ;
 
-\ WHICH ROW A MASK'S BITS INDEX. Inside a quotation body it is BROW, the base
-\ the window grows on. At definition level it is the DECLARED input row: a
-\ signature is parsed onto a base of its own (PSIG's PD-BASE), so the live rows
-\ of a body do not descend from the bare row NEW made and an edge measured
-\ against that one is not comparable at all. The bare row is still the answer
-\ where nothing was declared (k = 0 claims nothing a caller can use) and where
-\ the declared row IS the base row, which is how a DOES> body is set up
-\ (CHECK-DOES! puts its own input row in BROW and never records masks).
+\ WHICH ROW A MASK'S BITS INDEX. At definition level it is the DECLARED input
+\ row: a signature is parsed onto a base of its own.
 : XBASE-D ( -- n )
    QDEPTH @ 0=  SGSEEN @ 0 <>  and IF SGIN @ ELSE BROW @ THEN ;
 
-\ A signature with no `| rin -- rout` clause leaves SGRIN 0 (CHECK-RESET zeroes
-\ it and only a return clause fills it) and its sealed base row IS RBROW.
+\ A signature with no `| rin -- rout` clause leaves SGRIN 0 and its sealed base
+\ row IS RBROW.
 : XBASE-R ( -- n )
    QDEPTH @ 0=  SGRIN @ 0 <>  and IF SGRIN @ ELSE RBROW @ THEN ;
 
-\ The row a throwing TOKEN leaves: its inputs are popped and its outputs are not
-\ pushed yet, and the token step has already run by the time the edge is taken.
-\ Both the pre-op and the post-op row are the same chain below the token's own
-\ cells, so the deepest row node the two share IS that row -- no declared input
-\ count has to be recovered. Aligning the two by length puts the shared part at
-\ the same offset in both, so the first node they agree on starts it.
+\ The row a throwing TOKEN leaves: the pre-op and the post-op row are the same
+\ chain below the token's cells, so the deepest node the two share IS that row.
 : ROW-COMMON ( n n -- n )
    {: pre:n post:n :}
    pre ROW-TERMS {: p:n :}
