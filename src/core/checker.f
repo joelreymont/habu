@@ -15300,8 +15300,8 @@ CHECKER-REG:}SCRATCH
    ELSE CHECKER-PUBLISH-PARSED THEN
    sa su CHECKER-ASIG-CAPTURE ;
 
-\ Publishes VIEW-CAST-CERTIFY's rows asserted: a pack's output binds variables
-\ no input supplies; of USIG-ADD-AS's bounds only depth can trip.
+\ Publishes a cast's certified rows as parsed: a reparse refuses a view pack
+\ and drops the marks a gate raised. Only USIG-ADD-AS's depth bound can trip.
 : CHECKER-USIG-CERT-ROWS ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
    na nu na nu USIG-CERT-ADMIT
@@ -26200,6 +26200,17 @@ package CHECKER-IDENTITY
    THEN
    SIG-UNRES @ IF E-CHECKER-IDENTITY-UNRESOLVED throw THEN ;
 
+\ A variable STORED-DERIVE left stored binds no view and no linear value, so a
+\ cast through it hands out neither: TV! checks every binding.
+: STORED-RAISE ( -- )
+   0 BEGIN dup 26 < WHILE
+      dup cells NMAP + @
+      dup 0 >= IF
+         dup TVK@ TVK-STORED = IF dup NSCOPE-RAISE dup NLINEAR-RAISE THEN
+      THEN drop
+      1 +
+   REPEAT drop ;
+
 \ An unscoped cast that mints nothing is a representation cast: its pending
 \ record takes DNAME-REP, and the compiler lowers it as identity.
 TRUSTED: MARK-REP ( n -- ) rep-mark ;
@@ -26218,8 +26229,13 @@ public
       sa su na nu CHECKER-USIG-CERT-ROWS
    ELSE
       na nu sa su ROWS
+      STORED-DERIVE STORED-RAISE
       CAST-CERTIFY {: mint:bool :}
-      sa su na nu CHECKER-USIG-CERT-ADD
+      mint na nu CHECKER-QUALIFIED? and IF
+         s" a qualified name publishes past the private section"
+         E-CAST-MINT CAST-ERROR:RAISE
+      THEN
+      sa su na nu CHECKER-USIG-CERT-ROWS
       mint 0= CK-LIVE-PEND? and IF ndict@ MARK-REP THEN
    THEN
    CHECKER-REC-SYM @ CK-CLOSE! ;

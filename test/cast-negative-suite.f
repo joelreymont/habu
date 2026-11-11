@@ -106,13 +106,16 @@ s" cast: CNL2 ( CAST-NEG:lease -- n )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL3 ( CAST-NEG:lease -- CAST-NEG:lease )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL4 ( n -- CAST-NEG:nested )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL5 ( CAST-NEG:nested -- n )" CN-RUN:DECL E-CAST-LINEAR T=
-\ A type variable may bind linear, so one anywhere in either term is refused the
-\ same way: `( n -- ptr a )` would forge a pointer to any nominal,
-\ `( ptr a -- n )` reads one, and a quotation producing `a` forges the value
-\ itself.
-s" cast: CNL6 ( n -- ptr a )"        CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL7 ( ptr a -- n )"        CN-RUN:DECL E-CAST-LINEAR T=
+\ A variable only behind a pointer binds no linear value, so the cast admits it;
+\ one a quotation produces may bind one. `( n -- ptr a )` mints a pointer.
+s" cast: CNL6 ( n -- ptr a )"        CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNL7 ( ptr a -- n )"        CN-RUN:DECL 0 T=
 s" cast: CNL8 ( n -- [ -- a ] )"     CN-RUN:DECL E-CAST-LINEAR T=
+\ A private section admits the mint under a bare name only.
+package CN-STORED
+s" cast: CNL18 ( n -- ptr a )"       CN-RUN:DECL 0 T=
+s" cast: CNQ:FORGE ( n -- ptr u8 )"  CN-RUN:DECL E-CAST-MINT T=
+;package
 \ A linear type behind a pointer, or in either of a quotation's rows, is
 \ carried ownership too, on either side of the cast.
 s" cast: CNL9 ( n -- ptr ptr CAST-NEG:lease )"      CN-RUN:DECL E-CAST-LINEAR T=
