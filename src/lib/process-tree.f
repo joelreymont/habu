@@ -1,18 +1,49 @@
 \ process-tree.f - end a process and every process descended from it
-\ (KILL-TREE), or read the CPU time they have run (CPU-NS). Beneath
-\ src/lib/process.f, which requires it to end a capture's child. macOS asks
+\ (KILL-TREE), or read the CPU time they have run (CPU-NS). macOS asks
 \ libproc; Linux reads /proc, written from proc(5) and run on no host here.
 \ STORAGE CLASS. PROCESS-WIDE, one walk or CPU reading at a time (WALKING): the
 \ member table and listings grow with the tree and are released as each ends.
+\
+\ THE TREE is the process named, every process whose parent is in it, and every
+\ process whose group a member leads (a forked orphan keeps its group). A zombie
+\ is a member: the group it led may hold what it forked and nothing else names.
+\ Never the caller or another child of the caller, zombie or not: a pool's
+\ reaper joins its row's group and is the pool's to end. Out of reach: a
+\ process whose parent is outside the tree and whose group names no member,
+\ such as a daemon that called setsid.
+\ FREEZE, THEN LIST. A process killed while its children run leaves them to
+\ init, where no link names them again, and a process listed while it runs may
+\ spawn one more the moment after, so a process is stopped before its children
+\ are asked for. A stopped process spawns nothing and reaps nothing, so a dying
+\ member's child stays a zombie under it and its pid is not handed on. An orphan
+\ member, reached through its group, has no such pin: a stranger handed its pid
+\ before the walk ends is killed with the tree, which takes the host's pid
+\ counter coming round within SETTLE-MS and the pass that crosses it. SIGKILL
+\ ends a stopped process without running it again.
+\ A STOPPED PROCESS STILL FINISHES THE SYSTEM CALL IT WAS IN, and a spawn is
+\ one. So a member is settled only when it is stopped and no thread of it runs
+\ in the kernel, and the walk ends on QUIET-PASSES such passes in a row.
+\
+\ CPU-NS adds up the CPU time, user and system, that a process and every live
+\ process descended from it have run, each with the time of the children it
+\ reaped: a child's time passes to its parent when the parent waits for it, so
+\ the tree's work is counted whole while its processes come and go. Nothing is
+\ stopped; a reading is a moment of a running tree.
+\ THROUGH PARENTS ONLY. A member's children join it; the groups KILL-TREE also
+\ follows do not. A process whose parent exited before it - an orphan - has
+\ left the tree, and its time with it.
+\ EACH MEMBER IS READ BEFORE ITS CHILDREN ARE LISTED. A child its parent reaps
+\ between the two is in neither count rather than in both, so a reading may
+\ fall short of the tree's time and never exceeds it.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/adt/option.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
-require src/lib/fs.f                    \ FS:>PATHZ, the /proc paths' C copies
+require src/lib/fs.f
 require src/lib/fs-list.f
-require src/lib/task.f                  \ TASK:SLEEP, while another task walks
+require src/lib/task.f
 
 package PROC-TREE
 
@@ -22,12 +53,12 @@ private
 1000000 constant NS-PER-MS
 2 constant QUIET-PASSES
 
-DYNAMIC-BUFFER MEMBERS n            \ MEMBER-N of them in use
+DYNAMIC-BUFFER MEMBERS n
 variable MEMBER-N
 variable SELF
-variable ROOT                       \ the pid a walk was named, killed whether or not it joined
-variable ADDED                      \ members the pass in progress found
-variable AWAKE                      \ what the pass in progress saw that is not yet settled
+variable ROOT
+variable ADDED
+variable AWAKE
 variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS holds the storage above and below
 
 \ SIGKILL is 9 on every host; SIGSTOP is not one number.
@@ -52,8 +83,8 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
    MEMBER-N @ 1+ MEMBER-N !
    ADDED @ 1+ ADDED ! ;
 
-\ A member is stopped as it joins. The answer is not read: one that ended since
-\ the scan saw it has nothing left to stop.
+\ The answer is not read: one that ended since the scan saw it has nothing left
+\ to stop.
 : MEMBER+ ( n -- ) {: pid:n :}
    pid JOIN
    pid SIGSTOP kill drop ;
@@ -68,9 +99,7 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
 \ PROC_PIDTASKINFO (4) fills a proc_taskinfo of 96 bytes whose pti_numrunning,
 \ at 88, counts the threads that are runnable.
 \
-\ Measured here: a process reads SSTOP as soon as SIGSTOP is sent, whatever it
-\ was doing, so the status alone does not say its system call is over. Both
-\ lists hold zombies, and a zombie's group listing holds what it forked and
+\ Both lists hold zombies, and a zombie's group listing holds what it forked and
 \ left. proc_pidinfo's third argument, 1, asks for a zombie's record as well
 \ (the short flavor only: the task flavor answers ESRCH for one), and a zombie
 \ answers with its own parent and group and status SZOMB; with 0 it answers
@@ -80,12 +109,12 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
 \
 \ A REFUSAL IS NOT AN ABSENCE. libproc answers a refused call the way it
 \ answers an empty one - 0 bytes - and says which it was only in errno, which a
-\ call that succeeds leaves as it found it. Measured here: a zombie or a
-\ missing pid leaves ESRCH, a sandbox that denies the call EPERM, and a pid or
-\ group nobody has lists nothing and leaves errno alone. So errno is cleared
-\ before each call and read after a short answer, and anything but a plain
-\ absence throws: a walk that took a refusal for "nobody there" would kill a
-\ tree it had not seen and report it whole (src/lib/process-tree-test.f).
+\ call that succeeds leaves as it found it. A zombie or a missing pid leaves
+\ ESRCH, a sandbox that denies the call EPERM, and a pid or group nobody has
+\ lists nothing and leaves errno alone. So errno is cleared before each call
+\ and read after a short answer, and anything but a plain absence throws: a
+\ walk that took a refusal for "nobody there" would kill a tree it had not
+\ seen and report it whole.
 
 2 constant LIST-GROUP
 6 constant LIST-CHILDREN
@@ -98,12 +127,12 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
 96 constant TASK-BYTES
 88 constant TASK-RUNNING
 4 constant PID-BYTES
-3 constant ESRCH                    \ no such process
+3 constant ESRCH
 0 constant LIVE-ONLY                \ proc_pidinfo's third argument
 1 constant ZOMBIE-TOO
-4096 constant LIST-FIRST            \ bytes a walk's first listing offers; a full one doubles
+4096 constant LIST-FIRST
 
-DYNAMIC-BUFFER LIST u8              \ the pids of the last listing
+DYNAMIC-BUFFER LIST u8
 variable LIST-BYTES                 \ what LIST offers the kernel, 0 outside a walk
 create SHORT SHORT-BYTES allot
 create TASK TASK-BYTES allot
@@ -167,9 +196,8 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    then
    pid RUNNING 0 > if AWAKE @ 1+ AWAKE ! then ;
 
-\ One listed pid. A child of the caller is the caller's own, zombie or not; an
-\ unborn process keeps the pass from counting as quiet and is met again, born,
-\ on the next.
+\ A child of the caller is the caller's own, zombie or not; an unborn process
+\ keeps the pass from counting as quiet and is met again, born, on the next.
 : CANDIDATE ( n -- ) {: pid:n :}
    pid MEMBER? if exit then
    pid SELF @ = if exit then
@@ -177,10 +205,9 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    SHORT SHORT-PPID + LE:U32@ SELF @ = if exit then
    pid MEMBER+ ;
 
-\ The pids of pid's children or group, in LIST; answers how many. A full buffer
-\ is a list that may have been cut: the kernel fills what fits and says nothing
-\ of the rest. So a full one is asked again in twice the room, which a walk
-\ keeps for the listings after it.
+\ A full buffer is a list that may have been cut: the kernel fills what fits
+\ and says nothing of the rest. So a full one is asked again in twice the room,
+\ which a walk keeps for the listings after it.
 : LIST! ( n n -- n ) {: kind:n pid:n :}
    LIST-BYTES @ 0= if LIST-FIRST LIST-BYTES ! then
    begin
@@ -214,22 +241,22 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 \ end within the first 400 bytes: comm is at most 64 and no number is longer
 \ than 20 digits.
 \
-\ That state is the main thread's alone, and any thread may spawn: src/lib/process.f
-\ runs children from any task. /proc/<pid>/task/<tid>/stat holds each thread's,
-\ in the same form. A thread shows T, stopped by a signal, or t, by a tracer,
-\ only on its way back out of the kernel, so a clone it was in has returned and
-\ the child it made, if any, is already listed; Z and X are a thread that has
-\ exited. A member is settled when every thread of it shows one of the four.
+\ That state is the main thread's alone, and any thread may spawn.
+\ /proc/<pid>/task/<tid>/stat holds each thread's, in the same form. A thread
+\ shows T, stopped by a signal, or t, by a tracer, only on its way back out of
+\ the kernel, so a clone it was in has returned and the child it made, if any,
+\ is already listed; Z and X are a thread that has exited. A member is settled
+\ when every thread of it shows one of the four.
 \
 \ A stat file or a task directory that will not open is taken to be a process
 \ or thread that ended since it was listed. That is the one reading open
-\ allows here: the engine's open answers a bare -1 with no errno
-\ (src/habu/habu1.f, THE ERRNO RULE), so a refusal - /proc mounted with
-\ hidepid, say - cannot be told from an absence as it is on macOS.
+\ allows here: the engine's open answers a bare -1 with no errno, so a refusal
+\ - /proc mounted with hidepid, say - cannot be told from an absence as it is
+\ on macOS.
 
 512 constant STAT-CAP
 64 constant STAT-PATH-CAP           \ /proc/<pid>/task/<tid>/stat, each id at most seven digits
-32 constant TASK-DIR-CAP            \ /proc/<pid>/task
+32 constant TASK-DIR-CAP
 $29 constant CLOSE-PAREN
 10 constant RADIX
 
@@ -239,7 +266,7 @@ create TASK-DIR TASK-DIR-CAP allot
 variable STAT-U
 variable STAT-PATH-U
 variable TASK-DIR-U
-variable CUR                        \ the read position in STAT
+variable CUR
 
 : PATH+ ( ptr u8 n -- )
    STAT-PATH STAT-PATH-CAP STAT-PATH-U BUF-APPEND ;
@@ -252,8 +279,6 @@ variable CUR                        \ the read position in STAT
    s" /stat" PATH+
    STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ ;
 
-\ Reads the stat file pathz names into STAT: FALSE when it will not open or
-\ holds nothing, as for a process or thread that ended since it was listed.
 : LOAD-STAT? ( ptr u8 -- bool ) {: pathz:ptr :}
    pathz open-rd {: fd:n :}
    fd 0 < if false exit then
@@ -289,7 +314,6 @@ variable CUR                        \ the read position in STAT
       some OF ENDOF
    ;MATCH ;
 
-\ The state letter of the line in STAT, which leaves CUR past it.
 : TAKE-STATE ( -- n )
    LAST-PAREN {: close:n :}
    close 0 < if E-PROC-OUTPUT throw then
@@ -299,8 +323,6 @@ variable CUR                        \ the read position in STAT
    STAT CUR @ + c@
    CUR @ 1+ CUR ! ;
 
-\ One process of the /proc walk: its pid, its parent and the leader of its
-\ group.
 : VISIT ( n n n -- ) {: pid:n ppid:n pgid:n :}
    pid MEMBER? if exit then
    pid SELF @ = if exit then
@@ -313,7 +335,6 @@ variable CUR                        \ the read position in STAT
    TAKE-INT TAKE-INT {: ppid:n pgid:n :}
    pid ppid pgid VISIT ;
 
-\ /proc holds more than processes; an entry whose name is no number is not one.
 : VISIT-LINUX ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu STR>NUMBER? MATCH option
       none OF ENDOF
@@ -326,7 +347,6 @@ variable CUR                        \ the read position in STAT
 : TASK-DIR+ ( ptr u8 n -- )
    TASK-DIR TASK-DIR-CAP TASK-DIR-U BUF-APPEND ;
 
-\ The decimal digits of pid, most significant first.
 : DIGITS+ ( n -- ) {: pid:n :}
    1 begin dup RADIX * pid <= while RADIX * repeat
    begin dup 0 > while
@@ -334,7 +354,6 @@ variable CUR                        \ the read position in STAT
       RADIX /
    repeat drop ;
 
-\ One thread of the member whose task directory is being listed.
 : THREAD-VISIT ( ptr u8 n -- )
    {: tid:ptr tidu:n :}
    STAT-PATH-U BUF-RESET
@@ -365,35 +384,11 @@ variable CUR                        \ the read position in STAT
       i MEMBER MEMBER-SETTLE-LINUX
    loop ;
 
-\ FREEZE, THEN LIST. A process killed while its children run leaves them to
-\ init, where no link names them again, and a process listed while it runs may
-\ spawn one more the moment after, so a process is stopped before its children
-\ are asked for. A stopped process spawns nothing and reaps nothing, so a dying
-\ member's child stays a zombie under it and its pid is not handed on. An orphan
-\ member, reached through its group, has no such pin: a stranger handed its pid
-\ before the walk ends is killed with the tree, which takes the host's pid
-\ counter coming round within SETTLE-MS and the pass that crosses it. SIGKILL
-\ ends a stopped process without running it again.
-\ A STOPPED PROCESS STILL FINISHES THE SYSTEM CALL IT WAS IN, and a spawn is one:
-\ measured on macOS under load, test/gate-signal-row.f's leaf read stopped, two
-\ passes found nothing new, and a writer it was spawning appeared after the
-\ kill, in two runs of ten. So a member is settled only when it is stopped and
-\ no thread of it runs in the kernel, and the walk ends on QUIET-PASSES such
-\ passes in a row.
-\ THE TREE is the process named, every process whose parent is in it, and every
-\ process whose group a member leads (a forked orphan keeps its group). A zombie
-\ is a member: the group it led may hold what it forked and nothing else names
-\ (test/gate-signal-row.f's helper). Never the caller or another child of the
-\ caller, zombie or not: a pool's reaper joins its row's group and is the pool's
-\ to end. Out of reach: a process whose parent is outside the tree and whose
-\ group names no member, such as a daemon that called setsid.
-
 : SCAN ( -- )
    HB-TARGET-MACOS? if SCAN-MACOS exit then
    HB-TARGET-LINUX-KERNEL? if SCAN-LINUX exit then
    E-PROC-HOST throw ;
 
-\ TRUE when the pass added nobody and found every member settled.
 : PASS ( -- bool )
    0 ADDED !
    0 AWAKE !
@@ -416,16 +411,15 @@ variable CUR                        \ the read position in STAT
       i MEMBER SIGKILL kill drop
    loop ;
 
-\ One walk or query at a time: src/lib/process.f ends a capture's child from
-\ whichever task ran the capture. A task that finds WALKING held sleeps a
-\ millisecond a turn rather than spin through a walk of up to SETTLE-MS.
+\ A task that finds WALKING held sleeps a millisecond a turn rather than spin
+\ through a walk of up to SETTLE-MS.
 : WALK-GET ( -- )
    begin 0 1 WALKING atomic-cas 0<> while 1 >MS TASK:SLEEP repeat ;
 
 : WALK-RELEASE ( -- )
    0 WALKING atomic! ;
 
-\ Unmaps the member table and the listing. Safe to repeat.
+\ Safe to repeat.
 : STORAGE-RELEASE ( -- )
    MEMBERS-RELEASE
    LIST-RELEASE
@@ -441,20 +435,15 @@ variable CUR                        \ the read position in STAT
    pid PID>N SELF @ = if E-PROC-OUTPUT throw then
    pid PID>N [: WALK-MEMBERS ;] [: STORAGE-RELEASE ;] finally ;
 
-\ A signal a process catches runs its handler; any other takes the default
-\ action or is ignored. Each host keeps the caught set as one bit per signal,
-\ bit n-1 for signal n.
+\ Each host keeps the caught set as one bit per signal, bit n-1 for signal n.
 \
 \ macOS: sysctl {CTL_KERN, KERN_PROC, KERN_PROC_PID, pid} fills a struct
 \ kinfo_proc of 648 bytes whose kp_proc.p_sigcatch, a u32, sits at 236
 \ (sys/sysctl.h and sys/proc.h in the local SDK; size and offset measured with
-\ its clang). Measured here: an engine that ran SIGNAL:CATCH on SIGTERM reads
-\ $4698, one that did not $698. A pid nobody has fills nothing and still
-\ answers 0.
+\ its clang). A pid nobody has fills nothing and still answers 0.
 \
 \ Linux: /proc/<pid>/status holds the set as the line `SigCgt:` and sixteen hex
 \ digits (proc(5)). A status file that will not open is a process that ended.
-\ Written from proc(5); it has run on no host here.
 
 1 constant CTL-KERN
 14 constant KERN-PROC
@@ -493,7 +482,6 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
    c [char] a >= c [char] f <= and if c [char] a - 10 + exit then
    -1 ;
 
-\ The offset just past `SigCgt:` at the start of a line of STATUS.
 : SIGCGT-AT ( -- n )
    s" SigCgt:" {: key:ptr keyu:n :}
    STATUS-U @ 0 ?do
@@ -507,7 +495,6 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
 : BLANK? ( n -- bool ) {: c:n :}
    c 9 = c STR-SPACE = or ;
 
-\ The hex number at offset at in STATUS, past the tab or spaces before it.
 : HEX-AT ( n -- n ) {: at:n :}
    at begin
       dup STATUS-U @ < if STATUS over + c@ BLANK? else false then
@@ -537,35 +524,18 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
    HB-TARGET-LINUX-KERNEL? if pid sig CATCHES-LINUX? exit then
    E-PROC-HOST throw ;
 
-\ CPU-NS adds up the CPU time, user and system, that a process and every live
-\ process descended from it have run, each with the time of the children it
-\ reaped: a child's time passes to its parent when the parent waits for it, so
-\ the tree's work is counted whole while its processes come and go. Nothing is
-\ stopped; a reading is a moment of a running tree.
-\
-\ THROUGH PARENTS ONLY. A member's children join it; the groups KILL-TREE also
-\ follows do not. A process whose parent exited before it - an orphan - has
-\ left the tree, and its time with it.
-\
-\ EACH MEMBER IS READ BEFORE ITS CHILDREN ARE LISTED. A child its parent reaps
-\ between the two is in neither count rather than in both, so a reading may
-\ fall short of the tree's time and never exceeds it.
-\
 \ macOS: proc_pid_rusage with RUSAGE_INFO_V2 (2) fills a struct rusage_info_v2
 \ of 160 bytes (sys/resource.h in the local SDK): ri_user_time and
 \ ri_system_time at 16 and 24 are the process's own, ri_child_user_time and
 \ ri_child_system_time at 96 and 104 what it reaped. They count mach absolute
-\ time units, which mach_timebase_info's numer/denom scales to nanoseconds:
-\ 125/3 on the Apple silicon host here, where a child's time read this way
-\ matched the parent's getrusage of it once reaped. A zombie answers with its
-\ final times, a pid already reaped with ESRCH, another user's process with
-\ EPERM (measured).
+\ time units, which mach_timebase_info's numer/denom scales to nanoseconds. A
+\ zombie answers with its final times, a pid already reaped with ESRCH,
+\ another user's process with EPERM (measured).
 \
 \ Linux: fields 14 to 17 of /proc/<pid>/stat are utime, stime, cutime and
 \ cstime, in clock ticks of USER_HZ, 100 on every architecture this engine
 \ targets (proc(5)). A child may be listed before its parent, so /proc is read
-\ again until a pass adds nobody. Written from proc(5); it has run on no host
-\ here.
+\ again until a pass adds nobody.
 
 2 constant RUSAGE-FLAVOR
 160 constant RUSAGE-BYTES
@@ -579,7 +549,7 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
 
 create RUSAGE RUSAGE-BYTES allot
 create TIMEBASE TIMEBASE-BYTES allot
-variable TICKS                      \ the reading in progress
+variable TICKS
 
 FUNCTION: PID-RUSAGE proc_pid_rusage ( n n ptr u8 -- i32 )
    2 RUSAGE-BYTES WRITES-BYTES
@@ -623,8 +593,6 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
    9 0 ?do TAKE-INT drop loop
    TAKE-INT TAKE-INT + TAKE-INT + TAKE-INT + ;
 
-\ One process of a pass of /proc: it joins, with its time, once its parent is
-\ a member.
 : CPU-ROW ( ptr u8 n n -- ) {: name:ptr nameu:n pid:n :}
    pid MEMBER? if exit then
    name nameu STAT-PATHZ LOAD-STAT? 0= if exit then
@@ -674,25 +642,20 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
 public
 
 \ SIGKILL pid and every process descended from it. A spawned child leads a
-\ process group of its own (src/lib/process.f), so PROC-FORK:KILL-GROUP misses
-\ what a process spawned: measured on the native gate, after SIGTERM to the
-\ root, eight rows' own children (engine builds) ran on ten seconds and more
-\ under init. A pid at or below 1 names init or a group rather than a process,
-\ and the caller cannot be its own tree.
+\ process group of its own, so a kill of pid's group misses what it spawned. A
+\ pid at or below 1 names init or a group rather than a process, and the caller
+\ cannot be its own tree.
 \ Whatever the walk throws - a process table it could not read, memory the
 \ host would not map - every member found by then is still killed, so none is
 \ left stopped. A SIGKILL of the caller runs no finally: what the walk had
-\ stopped is left stopped (docs/gate.md "Signals and servers").
+\ stopped is left stopped.
 : KILL-TREE ( pid -- ) {: pid:pid :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    WALK-GET
    pid [: WALK ;] [: WALK-RELEASE ;] finally ;
 
 \ TRUE when pid runs a handler for signal sig; FALSE when the default action
-\ or SIG_IGN takes it, or when nobody has pid. A pool asks a row's root to end
-\ itself with SIGTERM only when it catches it (test/gate-pool.f
-\ GT-POOL-ASK-END): the default action would end the root at once and leave
-\ what it spawned, each leading its own group, to init before a walk lists it.
+\ or SIG_IGN takes it, or when nobody has pid.
 : CATCHES? ( pid n -- bool ) {: pid:pid sig:n :}
    WALK-GET
    pid PID>N sig [: CATCHES-HOST? ;] [: WALK-RELEASE ;] finally ;
@@ -700,14 +663,14 @@ public
 \ The CPU time, in nanoseconds, pid and every live process descended from it
 \ have run, user and system, with what each of them reaped; 0 once pid is
 \ reaped. Nothing is stopped. A refusal throws, as in a walk; an absence is
-\ none. The pool's WAIT line reports it (test/gate-pool.f GT-POOL-CPU-READ).
+\ none.
 : CPU-NS ( pid -- n ) {: pid:pid :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    WALK-GET
    pid PID>N [: CPU-READ ;] [: WALK-RELEASE ;] finally ;
 
 \ Frees the walk a forked child inherits held (no walk forks), or its first walk
-\ waits for ever; it runs in the child alone (src/lib/fork-child.f).
+\ waits for ever; it runs in the child alone.
 : CHILD-RESET ( -- )
    WALK-RELEASE ;
 
