@@ -2,8 +2,9 @@
 
 Load order is the engine's prefix list, `src/habu/boot-files.f` (FILL).
 
-- `checker.f` — the stack-effect checker: effect grammar, the primitive rows it
-  replays from `src/habu/prims.f`, unification; `check-hook.f` installs it.
+- `checker.f` — the stack-effect checker: effect grammar, the words through
+  which a build states the kernel object's primitive rows (`src/habu/prims.f`),
+  unification; `check-hook.f` installs it.
 - `type-schema.f`, `type-family.f` — the schema arena and the family, variant,
   field and layout registries.
 - `sumtype.f`, `structure-decl.f`, `enum-decl.f` — typed declaration definers,

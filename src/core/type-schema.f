@@ -190,8 +190,6 @@ public
    idx 0 < IF s" tfam: bad schema root index" 76 die THEN
    idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
    idx cells SCH-ROOT-BASE + @ ;
-\ Publics carry no checker effect, so checked code cannot call them; this one
-\ alone carries a PPRIM: axiom (checker.f).
 : SCHEMA-ROOT-N@ ( -- n ) SCH-ROOT-N @ ;
 
 \ --- SCH-ROW effect-side node: one ordered row of schema element type nodes,

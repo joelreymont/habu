@@ -1,9 +1,11 @@
 \ prims.f - the engine primitive specification, one machine-independent table.
-\ Each row names one primitive and states its checker effect once: checker.f
-\ replays the table onto its own `PE-*` constructors, each backend registers a
-\ body under the row's name (src/habu/primitive-registry.f SPEC-CHECK refuses a
-\ body with no row, COMPLETE a row with no body), and a REF names its checked
-\ reference. Loads ahead of src/core/checker.f, over engine primitives only.
+\ Each row names one primitive and states its checker effect once: a build
+\ states the table, as the kernel object carries it, onto checker.f's `PE-*`
+\ constructors (src/arch/arm64/link-kernel.f STATE-PRIMS), each backend
+\ registers a body under the row's name (src/habu/primitive-registry.f
+\ SPEC-CHECK refuses a body with no row, COMPLETE a row with no body), and a
+\ REF names its checked reference. Loads ahead of src/core/checker.f, over
+\ engine primitives only.
 
 package PRIM-SPEC
 
@@ -372,11 +374,6 @@ private
 \ row with none (every syscall, control, defining-word, image, FFI and atomic
 \ row) is held only by the engine rebuilding itself through these rows and by
 \ the programs the gate runs on it.
-\ A row must be registered before checker.f's `PTABLE-END`: that word sets
-\ `USIGS-USER-OFF`, and a row appended past it is a USER effect record, which
-\ collapses an overload set (`+` has three rows) to the newest record. Hence
-\ this file loads BEFORE checker.f and holds the rows as an atom-code stream
-\ that checker.f replays.
 EPRIM: finally PE-FINALLY EPRIM; REACH run
 2 EMIN-IN!                           \ the body xt and the cleanup xt
 EPRIM: c2-invoke PE-C2-INVOKE EPRIM;

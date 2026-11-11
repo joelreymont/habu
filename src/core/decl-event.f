@@ -3,7 +3,6 @@
 \ Both emit the same DEV-K-FIELD event; only the variant selector, held here,
 \ differs. The field name gate is the field record's (type-family.f TYPE-FIELD),
 \ surfaced unchanged. State is process-local and re-seeded at load.
-\ TYPE-FIELD-OWNER and TYPE-FIELD calls are checked through checker.f PPRIM axioms.
 
 using TFAM
 

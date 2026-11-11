@@ -2468,8 +2468,7 @@ using TYPE-DECL
 
 \ Reached by the preverify and all-errors replay paths (verify-source.f,
 \ tools/check-core.f) and by checked declarers built on them
-\ (src/lib/type/deftype.f DEFTYPE). Their PRIM: rows live in checker.f and stay
-\ PRIM: because the names stay global.
+\ (src/lib/type/deftype.f DEFTYPE).
 : CHECKER-DEFFAMILY ( ptr u8 n -- ) TDECL-DEFFAMILY ;
 NOMINAL-PROVIDER
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
