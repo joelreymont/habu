@@ -237,7 +237,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-FILL-SRC+ ( -- )
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-BASE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
-   s\" : ZZ-FN-N ( -- n ) FFI:IMAGE-MARK 2drop drop ;\n" FFI-T-SRC+
+   s\" : ZZ-FN-N ( -- n ) FFI:NEXT-FN ;\n" FFI-T-SRC+
    s\" 128 CODEGEN:BUFFER ZZ-DECL\n: ZZ-FILL ( -- ) 270 0 ?do\n" FFI-T-SRC+
    s\"    ZZ-DECL CODEGEN:RESET\n" FFI-T-SRC+
    s\"    s\" FUNCTION: ZZ-OVER habu-ffi-fill-\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+

@@ -170,9 +170,6 @@ require src/lib/prelude.f
 \ src/lib/ffi-callback.f: a callback frame accessor used outside a live callback,
 \ a descriptor no declaration made, or a dispatch whose body was never stored.
 -3507 constant E-FFI-CALLBACK-STATE
-\ dlclose refused an owned library reference while preparing an image; the
-\ handle stays and the next PREPARE retries it.
--3508 constant E-FFI-DLCLOSE
 
 \ Tasking/threads: -3600..-3699
 -3600 constant E-TASK-FIRST

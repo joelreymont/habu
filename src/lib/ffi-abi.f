@@ -233,15 +233,6 @@ variable MAKER-FN-N
 variable MAKER-LIB-N
 variable MAKER-DEPTH
 $4000000000000000 constant MAKER-TAG
-PERSISTED-PTR-VARIABLE PIN-FN
-PERSISTED-PTR-VARIABLE PIN-LIB
-variable PIN-FN-CAP
-variable PIN-LIB-CAP
-\ Retired row blocks wait in DATA, so a link carries them with their count.
-\ Tables double, so 64 slots outlast any four tables a process can map.
-64 TYPED-BUFFER RETIRED-BASE ptr u8
-64 TYPED-BUFFER RETIRED-SIZE n
-variable RETIRED-COUNT
 
 : MAKER-TOKEN? ( n -- bool ) MAKER-TAG and 0<> ;
 : ROW-INDEX ( n -- n ) MAKER-TAG invert and ;
@@ -268,29 +259,17 @@ private
    size allot
    rows ;
 
-\ The loader may still read a row's inline name or path when a callback grows a
-\ table. Keep retired declarations until the next quiescent cleanup.
-\ A full table refuses E-LAYOUT-BOUNDS here, before the grow changes anything.
-: RETIRE-ROOM ( -- ) RETIRED-COUNT @ RETIRED-BASE drop ;
-
-: RETIRE ( ptr u8 n -- ) {: base:ptr size:n :}
-   base RETIRED-COUNT @ RETIRED-BASE !
-   size RETIRED-COUNT @ RETIRED-SIZE !
-   1 RETIRED-COUNT +! ;
-
-\ A resolved address, a library handle and its failure are this process's:
-\ scratch cells, which a link writes zero, so the first call resolves again.
+\ An old block stays allotted: a callback the loader runs may grow the table
+\ while the loader still reads a row's name or path there.
 : FN-GROW ( -- )
    DECL-TAG {: token:n :}
    token FN-CAP-CELL @ {: oldcap:n :}
    oldcap 0= if 1 else oldcap 2 * then {: next:n :}
-   oldcap 0 > if RETIRE-ROOM then
    next FN-ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
    next 0 ?do rows i FN-ROW-BYTES * + FN-ADDR-OFF + scratch-cell-mark loop
    oldcap 0 > if
       token FN-TABLE-CELL @ {: old:ptr :}
       old rows token FN-N-CELL @ FN-ROW-BYTES * BYTE-COPY
-      old oldcap FN-ROW-BYTES * RETIRE
       token FN-N-CELL @ 0 ?do 0 old i FN-ROW-BYTES * + FN-ADDR-OFF + CELL-VIEW ! loop
    then
    rows token FN-TABLE-CELL !
@@ -300,7 +279,6 @@ private
    DECL-TAG {: token:n :}
    token LIB-CAP-CELL @ {: oldcap:n :}
    oldcap 0= if 1 else oldcap 2 * then {: next:n :}
-   oldcap 0 > if RETIRE-ROOM then
    next LIB-ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
    next 0 ?do
       rows i LIB-ROW-BYTES * + LIB-HANDLE-OFF + scratch-cell-mark
@@ -309,7 +287,6 @@ private
    oldcap 0 > if
       token LIB-TABLE-CELL @ {: old:ptr :}
       old rows token LIB-N-CELL @ LIB-ROW-BYTES * BYTE-COPY
-      old oldcap LIB-ROW-BYTES * RETIRE
       token LIB-N-CELL @ 0 ?do
          old i LIB-ROW-BYTES * + {: row:ptr :}
          0 row LIB-HANDLE-OFF + CELL-VIEW !
@@ -443,11 +420,6 @@ private
    idx LIB-CHECK
    value idx LIB-NEXT-OFF LIB-FIELD ! ;
 
-\ Clears a staged buffer (registers, spills, dlopen/dlsym, lengths); kernel
-\ params stay until FFI-KPARAM-RESET.
-: FORGET-STAGED ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 ?do 0 a i + c! loop ;
-
 : PROCESS-HANDLE ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 0 exit then
    HB-TARGET-MACOS? if -2 exit then
@@ -526,7 +498,6 @@ private
    REPORT-LINE ;
 
 variable ERRNO-FN-CELL
-variable DLCLOSE-FN-CELL
 variable DLERROR-FN-CELL
 
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
@@ -757,55 +728,6 @@ public
 
 private
 
-\ dlclose answers a C int, which fills only the low half of the return register,
-\ and zero is success. A refused close keeps the handle for the next
-\ FORGET-CACHE to retry.
-: CLOSE-SLOT ( n -- bool ) {: slot:n :}
-   RESET slot LIB-HANDLE@ 0 VALUE!
-   DLCLOSE-FN-CELL @ {: row:n :}
-   row FN-LOOKUP {: fn:n :}
-   FFI-BUF FFI-REG-LEN-BUF row FN-ARGC@ fn ffi-call-bounded
-   $FFFFFFFF and 0 <> if false exit then
-   0 slot LIB-HANDLE!
-   true ;
-
-\ Library handles are owned references, released here; function addresses are
-\ borrowed and only cleared, so the next call resolves again.
-: CLOSE-BANK ( n -- bool ) {: tag:n :}
-   true
-   tag LIB-N-CELL @ 0 ?do
-      i tag or LIB-HANDLE@ 0 <> if i tag or CLOSE-SLOT and then
-   loop ;
-
-: CLEAR-BANK ( n -- ) {: tag:n :}
-   tag FN-N-CELL @ 0 ?do 0 i tag or FN-ADDR! loop
-   tag LIB-N-CELL @ 0 ?do 0 i tag or LIB-FAILED! loop ;
-
-: ZERO-ROWS ( ptr u8 n -- ) {: rows:ptr bytes:n :}
-   bytes 0 ?do 0 rows i + c! loop ;
-
-: DRAIN-RETIRED ( -- )
-   RETIRED-COUNT @ 0 ?do
-      i RETIRED-BASE @ {: base:ptr :}
-      base PIN-FN @ <> base PIN-LIB @ <> and if
-         base i RETIRED-SIZE @ ZERO-ROWS
-      then
-      NULL-PTR i RETIRED-BASE !
-      0 i RETIRED-SIZE !
-   loop
-   0 RETIRED-COUNT ! ;
-
-: FORGET-SYMBOLS ( -- )
-   0 CLOSE-BANK MAKER-TAG CLOSE-BANK and {: closed:bool :}
-   \ Closing a maker library can resolve the ordinary dlclose row again.
-   \ Clear both banks only after all handles have been attempted.
-   0 CLEAR-BANK MAKER-TAG CLEAR-BANK
-   FFI-BUF BYTE-VIEW FFI-KPARAM-PBUF-OFF FFI-BUF-OFF - FORGET-STAGED
-   FFI-DLBUF BYTE-VIEW FFI-KPARAM#-OFF FFI-DLBUF-OFF - FORGET-STAGED
-   FFI-REG-LEN-BUF BYTE-VIEW FFI-SCRATCH-END FFI-REG-LEN-BUF-OFF - FORGET-STAGED
-   closed 0= if E-FFI-DLCLOSE throw then
-   DRAIN-RETIRED ;
-
 \ A function address is scratch, so a program's first call through a row
 \ resolves it here.
 : FN-RESOLVE ( n -- n ) {: idx:n :}
@@ -814,30 +736,6 @@ private
    idx FN-LOOKUP ;
 
 public
-
-\ A source import/export boundary has no foreign call in flight, so the cache is
-\ released there before declarations are copied.
-: FORGET-CACHE ( -- ) FORGET-SYMBOLS ;
-
-\ An AOT window retains the application-close allocation even if later linker
-\ declarations grow the live table. Release it only after LINK has serialized
-\ the image, or when a new window abandons the prior one.
-: IMAGE-PIN ( ptr u8 n ptr u8 n -- )
-   {: fn:ptr fncap:n lib:ptr libcap:n :}
-   fn FN-TABLE @ <> fncap FN-CAP @ <> or
-   lib LIB-TABLE @ <> libcap LIB-CAP @ <> or or if E-FFI-SYNTAX throw then
-   fn PIN-FN ! fncap PIN-FN-CAP !
-   lib PIN-LIB ! libcap PIN-LIB-CAP ! ;
-
-: IMAGE-UNPIN ( -- )
-   PIN-FN-CAP @ 0 > PIN-FN @ FN-TABLE @ <> and if
-      PIN-FN @ PIN-FN-CAP @ FN-ROW-BYTES * ZERO-ROWS
-   then
-   PIN-LIB-CAP @ 0 > PIN-LIB @ LIB-TABLE @ <> and if
-      PIN-LIB @ PIN-LIB-CAP @ LIB-ROW-BYTES * ZERO-ROWS
-   then
-   NULL-PTR PIN-FN ! NULL-PTR PIN-LIB !
-   0 PIN-FN-CAP ! 0 PIN-LIB-CAP ! ;
 
 : CALL ( n -- n ) {: idx:n :}
    idx FN-RESOLVE {: fn:n :}
@@ -972,10 +870,7 @@ public
    -1 ;
 
 \ Validation precedes reading a row's name. A match keeps its cached address;
-\ only a new descriptor appends to the selected bank. Declaring registers FFI's
-\ cleanup: loading this file declares the errno row before any module can
-\ register a persistent hook, so FFI's hook is the first and runs last, and a
-\ full image keeps the entry and the flag.
+\ only a new descriptor appends to the selected bank.
 : DECLARE-ROW ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
    DECL-TAG {: tag:n :}
@@ -1033,19 +928,8 @@ public
 
 ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
 
-\ FORGET-SYMBOLS closes the library handles through this row.
-s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
-
 \ OPEN-REPORT reads a failed dlopen's reason through this row.
 s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
-
-\ A stripped build loads its linker after the application's DATA span closes.
-\ Remember the application's declaration boundary and current table allocation.
-: IMAGE-MARK ( -- n n ptr u8 ptr u8 )
-   FN-N @ LIB-N @ FN-TABLE @ LIB-TABLE @ ;
-
-: IMAGE-CAPS ( -- n n )
-   FN-CAP @ LIB-CAP @ ;
 
 
 \ FUNCTION: - declare a foreign function, get a checked word.
