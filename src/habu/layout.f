@@ -354,7 +354,7 @@ $2C50 constant READS-CELL
 ;package
 
 \ PKGRESYNC-CELL: LEVALREC arms it and EM-PKG-RESYNC drains it before the
-\ throw is delivered, making the checker re-read the restored scope (habu2.f).
+\ throw is delivered, making the checker re-read the restored scope.
 $27C0 constant PKGRESYNC-CELL
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
@@ -363,11 +363,9 @@ $37D8 constant EVALERR-CELL
 $3C88 constant TASK-TCB-CELL
 \ HALT-UNWIND-CELL: nonzero while a TASK:HALT unwinds the task that observed it,
 \ else 0, which a fresh task region and every non-task region hold. Only that
-\ task's own thread writes it: src/lib/task.f HALT-UNWIND, which PAUSE calls,
-\ sets it before it throws, and the catch family reads it on its throw-resume
-\ path (habu1.f BCATCH-FORWARD, BFINALLY, BC2-INVOKE; their kernel-x64.f
-\ twins), and the `throw` primitive keeps a halt's 0 instead of refusing it
-\ (habu1.f BTHROWPRIM, kernel-x64.f THROW-CODE,). An inner
+\ task's own thread writes it: HALT-UNWIND, which PAUSE calls, sets it before it
+\ throws, and the catch family reads it on its throw-resume path, and the
+\ `throw` primitive keeps a halt's 0 instead of refusing it. An inner
 \ catch rethrows at once and never pushes; the task's root catch, whose frame's
 \ prev HND is 0, clears it and delivers the code; finally and c2-invoke clear it
 \ while their cleanup runs and set it again to continue the unwind. $3870
@@ -383,7 +381,7 @@ package HIDX
 public
 $27C8 constant CLAIMS
 ;package
-\ PROT: the x86-64 kernel's write-window cells (src/habu/kernel-x64.f).
+\ PROT: the x86-64 kernel's write-window cells.
 package PROT
 public
 $27D0 constant WINDOW
@@ -394,17 +392,12 @@ $47C8 constant CF
 ;package
 
 \ REGION-ALIAS:DELTA-CELL: the region's RW alias minus its RX base (DBASE). The
-\ region is mapped twice (habu2.f EM-MMAP-CODE-REGION): code runs from DBASE and
-\ every store into the region goes to its address plus this delta. Each run maps
-\ its own alias, so the cell is live state: the boot (src/arch/arm64/boot.f)
-\ publishes it and every task region copies it. A
+\ region is mapped twice: code runs from DBASE and every store into the region
+\ goes to its address plus this delta. Each run maps its own alias, so the cell
+\ is live state: the boot publishes it and every task region copies it. A
 \ forked child maps its own alias at the parent's alias address, so the delta it
-\ inherits stays true (habu1.f LIBC-OS:FORK). Below $7FF8 so `DATA <off> LDR`
-\ names it directly.
+\ inherits stays true. Below $7FF8 so `DATA <off> LDR` names it directly.
 \ Neither view changes protection after boot: compiling never calls mprotect.
-\ Measured on macos-arm64 with `/usr/bin/time -l`: a source-prefix boot (the
-\ hb-stdin engine `install` promotes) takes 2101 page reclaims and 0.01 s system
-\ time, and `install --force` 40120 page reclaims and 0.5 s system time.
 package REGION-ALIAS
 public
 $43B0 constant DELTA-CELL
@@ -413,12 +406,10 @@ $43B0 constant DELTA-CELL
 \ AOT-CELLS:SIG-POOL-CELL / SIG-LEN-CELL: the baked signature pool's address and
 \ length, read by the checker's lazy intake for a word it has no effect for.
 \ Nothing publishes a pool, so both stay zero and the intake is a no-op.
-\ The pool is __text, the same at every boot, so it is never copied. They take
-\ $47D0/$47D8.
+\ The pool is __text, the same at every boot, so it is never copied.
 \ AOT-CELLS holds every AOT cell this file declares: the engine bakes this file,
 \ so a cell declared in AOT-SIG, AOT-SPAN or AOT-WINDOW would make aot-decl.f,
-\ habu1.f and habu2.f reopen a baked package in a native build
-\ (docs/forth-card.md § 6).
+\ habu1.f and habu2.f reopen a baked package in a native build.
 package AOT-CELLS
 public
 $47D0 constant SIG-POOL-CELL
@@ -427,9 +418,9 @@ $47D8 constant SIG-LEN-CELL
 
 \ AOT-CELLS:SPAN-TABLE-CELL / SPAN-N-CELL / SPAN-BASE-CELL: the baked CODE-SPAN
 \ table, its row count and the address the blob was copied to; only the x86-64
-\ linker writes them (link-x64.f SPAN-TABLE). A word with no dictionary
-\ record is accounted for only by its row. A row is a blob offset; the base
-\ makes it an address. Zero in all three means no stripped spans.
+\ linker writes them. A word with no dictionary record is accounted for only by
+\ its row. A row is a blob offset; the base makes it an address. Zero in all
+\ three means no stripped spans.
 \ They sit in the $600..$800 header hole below BODY-TEXT:BASE-CELL, above
 \ GENIO-ABI's band. The run above BOOT:HEAP-START-CELL is not free:
 \ stack-abi.f holds $47E8..$4810, then the transaction and USER-BAND.
@@ -440,20 +431,17 @@ $668 constant SPAN-N-CELL
 $670 constant SPAN-BASE-CELL
 ;package
 
-\ SIGNAL-ABI: the baked async-signal-safe handler stub (src/habu/crash.f
-\ EMIT-SIGNAL-HANDLER, label LSIGH) and the word it reads. STUB-CELL is the
-\ stub's address, a program's sa_handler; FD-PTR-CELL is the address of the fd
-\ word, through which a program stores its self-pipe's write end; FD-CELL is the
-\ word's offset, claimed so nothing else takes it. Every boot writes the two
-\ published cells and none writes the fd word: DATA is mapped fresh, so it
-\ starts zero.
+\ SIGNAL-ABI: the baked async-signal-safe handler stub and the word it reads.
+\ STUB-CELL is the stub's address, a program's sa_handler; FD-PTR-CELL is the
+\ address of the fd word, through which a program stores its self-pipe's write
+\ end; FD-CELL is the word's offset, claimed so nothing else takes it. Every
+\ boot writes the two published cells and none writes the fd word: DATA is
+\ mapped fresh, so it starts zero.
 \ The stub reads the fd word at the absolute address DATA-VA + FD-CELL, never
 \ through x20: a handler runs on whichever thread receives the signal, and that
-\ thread's x20 is its own task region (src/lib/task.f PREPARE maps it zeroed).
-\ DATA-VA is fixed (src/os/<target>/layout.f; EM-MMAP-DATA-REGION refuses another
-\ address): the LOCK-CELL class of process-wide cell. A spawned task's region
-\ carries neither published cell, so a library reads them once from the main
-\ task and keeps them.
+\ thread's x20 is its own task region.
+\ DATA-VA is fixed. A spawned task's region carries neither published cell, so
+\ a library reads them once from the main task and keeps them.
 \ The cells follow AOT-SPAN's in the $600..$800 hole, below $7FF8 (the boot
 \ stores them as `DATA <off> STR`) and below DATA-START.
 package SIGNAL-ABI
@@ -464,31 +452,28 @@ $688 constant FD-CELL
 ;package
 
 
-\ GENIO-ABI: the routing cells of the generic I/O layer (src/lib/genio-core.f)
-\ that engine code reads; everything else about a device is library storage.
+\ GENIO-ABI: the routing cells of the generic I/O layer that engine code reads;
+\ everything else about a device is library storage.
 \ OUT-CELL and IN-CELL hold a device index, never an address: 0 is the built-in
-\ terminal, 1..DEVICES a row of the write table. They are per task (task.f
-\ TASK-REGION-INIT copies them), and nothing canonicalises a code address in a
-\ task region, so an execution token there would survive a snapshot or capture
-\ pointing into the builder's region.
+\ terminal, 1..DEVICES a row of the write table. They are per task, and nothing
+\ canonicalises a code address in a task region, so an execution token there
+\ would survive a snapshot or capture pointing into the builder's region.
 \ The write table holds execution tokens in the engine header, where SNAP-RELOC
-\ canonicalises declared cells: genio-core.f publishes a device's write through
-\ QUOTATION-STORAGE:STORE. TASK-REGION-INIT copies the rows too, sound because a
-\ task region is never snapshotted or captured. DEVICES is small so the table
-\ costs no allocation on a microcontroller.
+\ canonicalises declared cells. TASK-REGION-INIT copies the rows too, sound
+\ because a task region is never snapshotted or captured. DEVICES is small so
+\ the table costs no allocation on a microcontroller.
 \ BUSY-CELL stops re-entry: a device write may reach `type`, and while one runs
 \ the funnel takes the terminal path.
 \ ACTIVE-CELL names the device an operation runs for: devices share their eight
-\ quotations and a quotation cannot capture a local (docs/forth.md). The funnel
+\ quotations and a quotation cannot capture a local. The funnel
 \ publishes it around the write, genio-core.f around every other operation.
 \ The band is $600..$660 of the header hole below BODY-TEXT:BASE-CELL, below $7FF8
-\ (the funnel's first instruction is `DATA <off> LDR`) and below DATA-START; the
-\ word-frame lane's $7D0/$7D8 are untouched.
+\ (the funnel's first instruction is `DATA <off> LDR`) and below DATA-START.
 package GENIO-ABI
 public
-8 constant DEVICES                 \ device rows; a device index is 1..DEVICES
-$600 constant OUT-CELL             \ per-task current output device index (0 = terminal)
-$608 constant IN-CELL              \ per-task current input device index (0 = terminal)
+8 constant DEVICES
+$600 constant OUT-CELL
+$608 constant IN-CELL
 $610 constant BUSY-CELL            \ output-funnel re-entrancy guard (0 = idle)
 $618 constant ACTIVE-CELL          \ device index an operation is running for (0 = none)
 $620 constant WRITE-OFF            \ DEVICES cells: row i-1 = device i's write operation
@@ -496,45 +481,45 @@ WRITE-OFF DEVICES 8 * + constant END
 ;package
 
 
-\ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (habu2.f
-\ LEVALREC), set at startup so the leaf throw primitive can
-\ branch to it. $3CA0..$3CB8 are engine cells no compiled source writes, between
-\ the FFI buffer block ($3A00..$3C88, src/lib/ffi-abi.f), the task TCB cells
-\ ($3C88..$3CA0) and the protected-WID registry ($3CB8..$40C0).
+\ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry, set at
+\ startup so the leaf throw primitive can branch to it. $3CA0..$3CB8 are engine
+\ cells no compiled source writes, between the FFI buffer block ($3A00..$3C88),
+\ the task TCB cells ($3C88..$3CA0) and the protected-WID registry
+\ ($3CB8..$40C0).
 $3CA0 constant EVALREC-CELL
 \ The protected-WID registry records the WIDs of sealed system / generated
-\ constructor packages created in the friend window; habu1.f LPROTWIDQ
-\ membership (EMIT-PROTWID) gates the sealed-WID guards.
+\ constructor packages created in the friend window; membership gates the
+\ sealed-WID guards.
 \ Bit w of the $400-byte band at PROT-BITS-OFF is set exactly when wordlist w is
 \ protected, so the set holds any subset of the WIDs the engine indexes.
 \ PROT-WID-MAX is a WID bound: $400 bytes index 8192 WIDs, and prot-wid-add
 \ names the bound when handed a WID at or above it. A wider bitmap must first
-\ move the FFI length buffers: $40C8..$41C8 is FFI:FFI-REG-LEN-BUF-OFF
-\ (src/lib/ffi-abi.f), and APP-ENTRY:XT-CELL, the AOT capture window and the
-\ evaluator-pointer band follow from $43A0; growing it also moves UNCGH-CELL.
+\ move the FFI length buffers: $40C8..$41C8 is FFI:FFI-REG-LEN-BUF-OFF, and
+\ APP-ENTRY:XT-CELL, the AOT capture window and the evaluator-pointer band
+\ follow from $43A0; growing it also moves UNCGH-CELL.
 \ No compiled source writes the band, the DP heap is bounded >= DATA-START, and
 \ snapshots save it. [PROT-REG-OFF, +PROT-REG-LEN) is a second PROT-GUARD range,
 \ refusing user stores into the tag cell, the bitmap or the uncaught-throw hook;
-\ cp!/ndict! (habu1.f BCPSET/BNDSET) PROT-GUARD the address they redirect writes
-\ to, so a post-seal cp!/ndict! into either band fails closed.
+\ cp!/ndict! PROT-GUARD the address they redirect writes to, so a post-seal
+\ cp!/ndict! into either band fails closed.
 $3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag; capture requires this exact runtime shape
 $50574249544D4150 constant PROT-REG-TAG \ "PWBITMAP": written by every path that publishes the band
-$3CC0 constant PROT-BITS-OFF            \ protected-WID bitmap base
-8192 constant PROT-WID-MAX              \ WID bound: bits 0..8191 span $3CC0..$40C0, the exact band the 256-slot table held
+$3CC0 constant PROT-BITS-OFF
+8192 constant PROT-WID-MAX
 PROT-WID-MAX 8 / constant PROT-BITS-BYTES
 PROT-BITS-OFF PROT-BITS-BYTES + constant PROT-BITS-END
-PROT-REG-TAG-CELL constant PROT-REG-OFF \ second PROT-GUARD band base (= tag cell)
-PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: tag + bitmap + UNCGH-CELL = $3CB8..$40C8
-\ UNCGH-CELL: runtime address of the uncaught-throw reporter (habu2.f LUNCAUGHT),
-\ written by the link (link-data.f HEADER-CELLS): BTHROW, a leaf, branches through it.
+PROT-REG-TAG-CELL constant PROT-REG-OFF
+PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN
+\ UNCGH-CELL: runtime address of the uncaught-throw reporter, written by the
+\ link: BTHROW, a leaf, branches through it.
 $40C0 constant UNCGH-CELL
-\ The callback band: C calling back into checked code (src/lib/ffi-callback.f).
+\ The callback band: C calling back into checked code.
 \ Eight cells every region carries at the same offset, in the run between the
 \ FFI length buffers ($40C8..$41C8) and APP-ENTRY:XT-CELL ($43A0). Every cell is
 \ correct at zero, which is what a fresh task region, a fresh DATA mapping and a
 \ stripped image's anonymous DATA all hold.
 \   CB-XDS..CB-CP  the VM frame an outbound FFI core publishes after its pops and
-\                  restores after its BLR (habu1.f BCB-ENTER / BCB-LEAVE), LIFO
+\                  restores after its BLR, LIFO
 \                  through the core's own $30 stack frame. CB-XDS 0 = no frame.
 \   CB-OWNER       the thread pointer (TPIDR_EL0 on Linux, TPIDRRO_EL0 on macOS)
 \                  of the one thread allowed on this region; 0 = free.
@@ -570,64 +555,53 @@ $4338 constant CB-TLS-KEY
 $40 constant CB-FRAME-FLOATS
 \ Compact AOT dict record: five u32 words (blob-off/public-WID, code-len/private-WID,
 \ name-off, flags|min-in, wid). The name-off word is a full u32 so the deduped name
-\ pool can outgrow 64 KiB with the captured window; the compiler chain needs ~51 KiB
-\ of names where the metabuild REPL window needs 953 bytes.
+\ pool can outgrow 64 KiB with the captured window.
 20 constant AOT-CREC-ROW
 \ The deduplicated pool admits at most DICT-CAP entries, each containing a
 \ one-byte length and at most 255 name bytes. Storage grows to the used size.
 DICT-CAP 256 * constant AOT-NAMES-CAP
-\ Dict-name hash index: slots are a power of 2 (LFIND probes with the
+\ Dict-name hash index: slots are a power of 2 (probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP, so the load factor stays <= 50% and
-\ DICT-CAP stays a power of two; bytes = slots * 4 (u32 entries). HIDX-SLOTS
-\ exceeds MOVZ imm16, so the habu1.f probe sites load it with LIT64.
+\ DICT-CAP stays a power of two; bytes = slots * 4 (u32 entries).
 DICT-CAP 2 * constant HIDX-SLOTS
 HIDX-SLOTS 4 * constant HIDX-BYTES
 \ HIDX:LOAD-MAX: the claimed-slot count at which LHIDXADD compacts the table
 \ in place instead of letting chains grow toward a full wrap. Three quarters of
-\ the file: strictly above DICT-CAP, so a compaction always lands the
+\ the table: strictly above DICT-CAP, so a compaction always lands the
 \ count back at NDICT with room to spare and can never itself be at the bound,
 \ and strictly below HIDX-SLOTS, so an insert always meets an empty slot within
-\ its chain and the full-wrap path is unreachable (HIDX-EMIT:LFULL dies loudly
-\ if it is reached).
+\ its chain and the full-wrap path is unreachable.
 package HIDX
 public
 HIDX-SLOTS 3 * 4 / constant LOAD-MAX
 ;package
 $37F8 constant SNAP-CELL
-\ ENGINE-MAIN:XT-CELL is the DATA cell an engine's boot calls its MAIN through
-\ (src/habu/main.f COMMAND-LINE:INSTALL stores it; src/arch/arm64/boot.f and
-\ src/habu/boot-x64.f read it). It is a separate cell from APP-ENTRY:XT-CELL
-\ because that one also switches the argv and stdin conventions to a saved
-\ application's. It sits in the single-cell run above SNAP-CELL ($37F8); a
-\ fresh DATA mapping reads it zero until set.
+\ ENGINE-MAIN:XT-CELL is the DATA cell an engine's boot calls its MAIN through.
+\ It is a separate cell from APP-ENTRY:XT-CELL because that one also switches
+\ the argv and stdin conventions to a saved application's. It sits in the
+\ single-cell run above SNAP-CELL ($37F8); a fresh DATA mapping reads it zero
+\ until set.
 package ENGINE-MAIN
 public
 $3808 constant XT-CELL
 \ The captured x86 reporter is written here while the ARM build host is
 \ sealed. The linker publishes its translated XT in protected UNCGH-CELL.
-\ $3858 follows POLICY-ABI:KEYWORD-CELL and is outside PROT-REG.
+\ $3858 is outside PROT-REG.
 $3858 constant REPORT-CELL
-\ The x86-64 Habu loop's source arena (src/habu/main.f SOURCE-ARENA): a mapping this
-\ process made, which every boot reads zero until MAIN maps its stream.
-\ $3868 follows PROVIDED-XT:EVALUATE-RANGE-CELL ($3860).
+\ The x86-64 Habu loop's source arena: a mapping this process made, which every
+\ boot reads zero until MAIN maps its stream.
 $3868 constant ARENA-CELL
 ;package
 
 \ PROVIDED-XT: the dispatch cell of each src/habu/prims.f row a captured
-\ runtime provides (EPREFIX-PROVIDED!), stored with `xt!`
-\ (src/habu/interpreter.f INTERPRETER:INSTALL-EVALUATE) and restored on every
-\ x86-64 boot as a fixed address row (src/habu/link-x64.f FIXED-CELLS). A seeded
-\ x86-64 row is a stub that jumps through it (src/habu/kernel-x64.f
-\ X64KERNEL:PROVIDED-ROW), and x86-64's `evaluate-closed` calls EVALUATE-CELL's
-\ word; arm64's evaluate words run the cells' words (habu1.f B-EVAL,
-\ B-EVAL-RANGE, B-EVAL-CLOSED). EVALUATE-CELL follows the NCOMP-DISPATCH cells,
-\ which end at $3847.
+\ runtime provides, stored with `xt!` and restored on every x86-64 boot as a
+\ fixed address row. A seeded x86-64 row is a stub that jumps through it, and
+\ x86-64's `evaluate-closed` calls EVALUATE-CELL's word; arm64's evaluate words
+\ run the cells' words.
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
-\ A seeded x86-64 `evaluate-range` jumps through its own cell the same way
-\ (src/habu/interpreter.f INTERPRETER:EVAL-FRAMED-RANGE). It follows
-\ ENGINE-MAIN:REPORT-CELL ($3858) below $3A00.
+\ A seeded x86-64 `evaluate-range` jumps through its own cell the same way.
 $3860 constant EVALUATE-RANGE-CELL
 ;package
 
@@ -656,7 +630,6 @@ $358 constant XT-CELL
 \ compilers; TIER-CELL selects which compiles the accessor. A fresh source
 \ compiler may coexist with a retained active compiler in a build window; both
 \ operations must follow the active compiler rather than dictionary names.
-\ These two free header cells sit after ENGINE-MAIN:XT-CELL and before FFI.
 $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
 \ The optional three-cell origin record follows at $3820..$3837, read through
@@ -674,9 +647,9 @@ $6C0 constant FIXED-COMP-CELL
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \
 \   0 = tier 0: the compiler in COMP-CELL; with COMP-CELL zero, the Habu loop
-\       refuses a definition (interpreter.f DEF-TIER-0). Every `--load` and
+\       refuses a definition. Every `--load` and
 \       the REPL; every process starts at 0.
-\   1 = tier 1, the IR pipeline reached through XT-CELL (NCOMP:COMPILE).
+\   1 = tier 1, the IR pipeline reached through XT-CELL.
 \       Selected deliberately with `1 set-tier`. An executable build compiles
 \       at its caller's tier; the engine build selects tier 1 for its target,
 \       whose capture requires native code.
@@ -686,8 +659,7 @@ $6C0 constant FIXED-COMP-CELL
 \ when it meets a body the JIT compiled.
 \
 \ Read by emitted code as `DATA TIER-CELL LDR` (12-bit scaled immediate), so it
-\ stays 8-aligned and below $7FF8 -- see the measurement recorded at the AOT
-\ window cells further down this file.
+\ stays 8-aligned and below $7FF8.
 $370 constant TIER-CELL
 \ Latched at the colon (0 JIT or no compiler, 1 XT-CELL, 2 COMP-CELL); an
 \ immediate may only select the NEXT definition.
@@ -697,16 +669,16 @@ $388 constant DEF-TIER-CELL
 $390 constant BUILD-DEPTH-CELL
 $398 constant BUILD-TIER-CELL
 \ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler
-\ recovers from a refused definition: src/habu/interpreter.f DEF-SEMI? sets it
-\ around its compile, catches E-COMP-RECOVERY and reads on. In a multi-error
-\ run the compiler then abandons a refused definition unpublished without a
-\ second report; under any other reader it refuses with E-COMP-VERDICT
-\ (compiler.f RECORD). Zero outside that compile, so no image carries it set.
+\ recovers from a refused definition: DEF-SEMI? sets it around its compile,
+\ catches E-COMP-RECOVERY and reads on. In a multi-error run the compiler then
+\ abandons a refused definition unpublished without a second report; under any
+\ other reader it refuses with E-COMP-VERDICT. Zero outside that compile, so no
+\ image carries it set.
 $690 constant RECOVER-CELL
 \ One owner record keeps every engine declaration registrar paired with the
 \ active compiler, including while the source dictionary/checker is replaced.
 \ The record is DATA; its fields are execution tokens of existing private
-\ checker operations, with no new checked-callable trust alias.
+\ checker operations.
 $360 constant DECL-CELL
 $368 constant TARGET-DECL-CELL
 \ The two cells as declared names: each holds an owner record pointer.
@@ -730,9 +702,6 @@ CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
 \ effect store), reached through the record rather than by name so that a run
 \ which replaces the source dictionary scans its files with its own checker
 \ instance, not the one the engine was built against.
-\ Fields are appended, so no offset moves; checker-owner-abi.f owns the offsets
-\ and the byte count, and checker.f checks the count against the cells it
-\ commits.
 CHECKER-OWNER-ABI:CHECK-OFF constant DECL-CHECK-OFF
 CHECKER-OWNER-ABI:TAPE-INSTALL-OFF constant DECL-TAPE-INSTALL-OFF
 CHECKER-OWNER-ABI:TAPE-ARM-OFF constant DECL-TAPE-ARM-OFF
@@ -799,7 +768,6 @@ CHECKER-OWNER-ABI:ROWS-END-OFF constant DECL-ROWS-END-OFF
 \ The compile window: opened with the code a callback's checker write is refused
 \ with once the definition's rows are recorded, shut with 0 before its own.
 CHECKER-OWNER-ABI:WRITE-WINDOW-OFF constant DECL-WRITE-WINDOW-OFF
-\ Family/variant ids and all metadata about them share the live source owner.
 CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant DECL-FAMILY-MATCH-OFF
 CHECKER-OWNER-ABI:FAMILY-CON-OFF constant DECL-FAMILY-CON-OFF
 CHECKER-OWNER-ABI:FAMILY-VARIANT-OFF constant DECL-FAMILY-VARIANT-OFF
@@ -810,9 +778,6 @@ CHECKER-OWNER-ABI:VARIANT-TAG-OFF constant DECL-VARIANT-TAG-OFF
 CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant DECL-VARIANT-PADS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant DECL-VARIANT-PAY-CELLS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
-\ The verifier pre-pass: the symbol, definer and top-level questions it asks
-\ the live checker, the stretch it reports, the clause a TRUSTED: definer
-\ publishes, and the frame around one run.
 CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant DECL-VERIFY-RECORD-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant DECL-VERIFY-CREATES-SYM-OFF
@@ -832,7 +797,6 @@ CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF constant DECL-VERIFY-DECL-ARM-OFF
 CHECKER-OWNER-ABI:VERIFY-CTOR-DECL-OFF constant DECL-VERIFY-CTOR-DECL-OFF
 CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF constant DECL-VERIFY-DECL-DISARM-OFF
 CHECKER-OWNER-ABI:VERIFY-USES-OFF constant DECL-VERIFY-USES-OFF
-\ Native multi-error recovery and diagnostics, answered by the live checker.
 CHECKER-OWNER-ABI:MULTI-ERROR-OFF constant DECL-MULTI-ERROR-OFF
 CHECKER-OWNER-ABI:RESET-REPORT-OFF constant DECL-RESET-REPORT-OFF
 CHECKER-OWNER-ABI:JSON-REPORTED-OFF constant DECL-JSON-REPORTED-OFF
