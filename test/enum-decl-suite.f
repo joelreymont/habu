@@ -1,16 +1,13 @@
 \ enum-decl-suite.f - behavior and rollback suite for the ENUM declaration front
-\ end (src/core/enum-decl.f, package ENUM-DECL), driven through
-\ ENUM-DECL:ED-RUN, which the global `ENUM` keyword calls: `ENUM` and ED-RUN
-\ rows run one path. It asserts reject codes, rendered diagnostics, field-row
-\ counts and the generated constructors.
+\ end, driven through ENUM-DECL:ED-RUN, which the global `ENUM` keyword calls:
+\ `ENUM` and ED-RUN rows run one path. It asserts reject codes, rendered
+\ diagnostics, field-row counts and the generated constructors.
 
-require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path's verdict
-require test/replay-scope.f         \ TOOL-REPLAY: the check tool's replay scope
-require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
+require src/habu/verify-source.f
+require test/replay-scope.f
+require test/decl-diag-capture.f
 require src/lib/test.f
 
-\ Capture every reject's declaration diagnostic from the start; section 22
-\ asserts the rendered lines.
 DECL-DIAG:PROSE
 
 T-RESET
@@ -20,16 +17,12 @@ variable PFB
 \ A declared family name is reserved in the variant-name rejects below.
 s" ENUM-DECL:ED-RUN color red green blue ;ENUM" evaluate-closed
 
-\ 10. A duplicate FIELD name inside a variant rejects through the field record
-\    (E-TFAM-DUP 7102) and its field rows roll back.
 TYPE-FIELD:COUNT PFB !
 s" ENUM-DECL:ED-RUN dupf VARIANT alpha FIELD z n FIELD z n ;VARIANT ;ENUM" TEST-EVAL:RC 7102 T=
-TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
+TYPE-FIELD:COUNT PFB @ T=
 
-\ 11. A duplicate variant name rejects (E-TFAM-DUP 7102 from SUMV-ADD).
 s" ENUM-DECL:ED-RUN dupv red red ;ENUM" TEST-EVAL:RC 7102 T=
 
-\ 12. Grammar / mode / arity / name / field rejects, each at the offending token.
 s" ENUM-DECL:ED-RUN emix red VARIANT alpha ;VARIANT ;ENUM" TEST-EVAL:RC 7107 T=  \ mixed modes (block token in compact)
 s" ENUM-DECL:ED-RUN eac<a,b> red ;ENUM" TEST-EVAL:RC 7107 T=                \ parameterized compact form
 s" ENUM-DECL:ED-RUN ech red POLICY packed-tag ;ENUM" TEST-EVAL:RC 7107 T=  \ header clause after a compact variant
@@ -51,7 +44,6 @@ s" ENUM-DECL:ED-RUN euc VARIANT alpha FIELD x Q ;VARIANT ;ENUM" TEST-EVAL:RC 710
 s" ENUM-DECL:ED-RUN epa VARIANT alpha FIELD x a ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=  \ parameter outside declared arity
 s" ENUM-DECL:ED-RUN epg<a,b,c,d,e,g> VARIANT alpha FIELD x h ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=  \ parameter 6 is outside arity 6
 
-\ 13. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
 s" ENUM-DECL:ED-RUN twice red ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN twice red ;ENUM" TEST-EVAL:RC 7102 T=
 
@@ -120,14 +112,9 @@ s" ENUM-DECL:ED-RUN ptr ready ;ENUM" 7110 REJECT-CODE
 
 ;package
 
-\ 20. Constructor generation. A public ENUM family with variants owns one sealed
-\     checked FAMILY:VARIANT constructor per variant, generated inside the
-\     declaration's own transaction by the constructor participant
-\     (src/core/generated-declaration.f, package GENERATED-DECL-CTOR). It
-\     commits after DECL-EVENT has promoted the TYPE-FIELD rows past
-\     PF-COMMIT-N, so it reads the committed provider. Both ENUM modes generate
-\     (the sumtype.f definer publishes constructors for a compact payloadless
-\     enum too); TK-PRODUCT is excluded: STRUCTURE generates its own.
+\ 20. A public ENUM family with variants owns one sealed checked
+\     FAMILY:VARIANT constructor per variant, generated inside the declaration's
+\     own transaction.
 package enum-ctor-test
 public
 
@@ -151,9 +138,7 @@ variable CT-DICT   variable CT-CP
 private
 ;package
 
-\ 20a. A full payload ENUM publishes a mixed set: a nullary constructor for the
-\      payloadless variant and a two-input one for the variant with two FIELDs.
-\      Generation moves the native dictionary, which is what the dictionary
+\ 20a. Generation moves the native dictionary, which is what the dictionary
 \      participant's savepoint has to be able to undo.
 enum-ctor-test:DICT-MARK
 s" ENUM-DECL:ED-RUN msgctor VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" evaluate-closed
@@ -162,25 +147,18 @@ enum-ctor-test:DICT-MOVED
 s" C1 ( -- msgctor ) MSGCTOR:QUIT" CHECK-QUIET-CANDIDATE! -1 T=
 s" C2 ( n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ the effect is pinned in both directions: one input too few, one too many, and a
-\ wrong result type all reject
 s" C3 ( n -- msgctor ) MSGCTOR:QUIT" CHECK-QUIET-CANDIDATE! 0 T=
 s" C4 ( n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
 s" C5 ( n n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
 s" C6 ( n n -- n ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ 20b. DERIVE rides the same commit. TDECL-DERIVE-REQUIRE reads committed SUMV /
-\      TYPE-FIELD rows, which is exactly what the constructor commit gives it, so a payload
-\      family that derives publishes its constructors AND its derived tag and
-\      equality words from one pass.
+\ 20b. DERIVE rides the same commit.
 s" ENUM-DECL:ED-RUN dctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM" evaluate-closed
 s" D1 ( n -- dctor ) DCTOR:ONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" D2 ( -- dctor ) DCTOR:TWO" CHECK-QUIET-CANDIDATE! -1 T=
 s" D3 ( dctor -- n ) DCTOR:TAG" CHECK-QUIET-CANDIDATE! -1 T=
 s" D4 ( dctor dctor -- f ) DCTOR:EQ" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ 20c. Compact mode: the same three variant names declared through `ENUM` and
-\      through ED-RUN produce constructors that certify and reject identically.
 s" ENUM lgpar red green blue ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN fepar red green blue ;ENUM" evaluate-closed
 s" P1 ( -- lgpar ) LGPAR:RED" CHECK-QUIET-CANDIDATE! -1 T=
@@ -203,8 +181,6 @@ s" ENUM-DECL:ED-RUN rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
    7110 enum-ctor-test:CTOR-REJECT
 
 \ A later constructor collides after the first has entered the generation plan.
-\ The whole declaration must roll back; the unrelated word that owns the
-\ colliding name remains callable.
 : ROLLCOLL:TAKEN ( -- n ) 37 ;
 s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM"
    TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
@@ -236,15 +212,9 @@ s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" ENUM-DECL:ED-RUN lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM-DECL:ED-RUN lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 7119 T=
 
-\ 22. Reject diagnostics render through render.f's TDECL-DIAG; the assertions
-\     read the bytes captured through DIAG-BUFFER! / DIAG-BUFFER$, the pair
-\     tools/check-all-errors-core.f CA-DIAG-FULL-START and CA-DIAG-FINISH use. This proves
-\     the channel, not a check-tool run. Each case asserts the whole rendered
-\     line, so text the declaration supplies cannot satisfy it by appearing
-\     elsewhere in the buffer.
+\ 22. Each case asserts the whole rendered line, so text the declaration
+\     supplies cannot satisfy it by appearing elsewhere in the buffer.
 
-\ 22a. One case per reject code this suite pins, each rendering family + reason +
-\      token and rethrowing the exact code.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgempty ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'dgempty': empty enum at 'dgempty'" DECL-DIAG:HAS? TTRUE
@@ -293,14 +263,10 @@ s" ENUM-DECL:ED-RUN dgkw alpha variant ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'dgkw': block keyword in a compact enum at 'variant'"
 DECL-DIAG:HAS? TTRUE
 
-\ a terminator that never arrives anchors on the family, as SUMTYPE's
-\ unterminated-declaration packet does (sumtype.f TDECL-NOEND-BODY).
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgnoend red" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'dgnoend': missing ;ENUM at 'dgnoend'" DECL-DIAG:HAS? TTRUE
 
-\ 22b. The same malformed shape through `ENUM` and through ED-RUN produces the
-\      same code and message, differing only in the family name.
 DECL-DIAG:PROSE
 s" ENUM dglegacy red red ;ENUM" TEST-EVAL:RC 7102 T=
 s" habu: bad enum declaration 'dglegacy': duplicate variant at 'red'" DECL-DIAG:HAS? TTRUE
@@ -315,21 +281,15 @@ DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgunified2 ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'dgunified2': empty enum at 'dgunified2'" DECL-DIAG:HAS? TTRUE
 
-\ 22c. Clause nesting inside one declaration. A FIELD inside a VARIANT inside an
-\      ENUM reports the ENUM's family, not the variant or the field it is nested
-\      in, while the token moves to the offending payload token.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgnest VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'dgnest': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? TTRUE
 s" declaration 'nestvar'" DECL-DIAG:HAS? TFALSE
 s" declaration 'nestfld'" DECL-DIAG:HAS? TFALSE
 
-\ 22d. A declaration that ends before its own name reports an empty family, not
-\      the family dgnest declared just above. What this pins is DRIVE's ordering:
-\      the front end names the family from the token it just read, unconditionally
-\      and before validating it, so the empty token replaces the previous family.
-\      It does NOT exercise OPEN's clear — DRIVE reaches FAMILY! on this path — so
-\      OPEN's own contract is pinned directly in 22g below.
+\ 22d. The front end names the family from the token it just read,
+\      unconditionally and before validating it, so the empty token replaces the
+\      previous family.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration '': missing name" DECL-DIAG:HAS? TTRUE
@@ -364,7 +324,6 @@ s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? TTRUE
 s\" \"family\":\"dgquote\"" DECL-DIAG:HAS? TTRUE
 s\" \"code\":\"E-BAD-DECLARATION\"" DECL-DIAG:HAS? TTRUE
 
-\ 22f. Accepted declarations stay silent, and a reject still renders its line.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgok1 red green ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM-DECL:ED-RUN dgok2 VARIANT okvar FIELD okfld n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
@@ -378,12 +337,7 @@ s" habu: bad enum declaration 'dgroll': duplicate variant at 'red'" DECL-DIAG:HA
 
 DECL-DIAG:OFF
 
-\ 22g. The packet's own contract, asserted on DECL-REJECT's public surface rather
-\      than inferred from a front end that happens to exercise it.
-\
-\      An armed reason describes ONE code. It answers for that code, the table
-\      answers for any other, and reading a new token retires the arming outright
-\      — an arming names a fault expected AT a token, so once the front end has
+\ 22g. An arming names a fault expected AT a token, so once the front end has
 \      moved on it can no longer explain anything.
 s" enum" DECL-REJECT:OPEN
 s" armed-for-7102" 7102 DECL-REJECT:EXPECT
@@ -392,9 +346,6 @@ s" armed-for-7102" 7102 DECL-REJECT:EXPECT
 s" moved-on" DECL-REJECT:TOKEN!
 7102 DECL-REJECT:REASON$ s" duplicate name in this package" DECL-DIAG:SAME? TTRUE
 
-\      OPEN clears every field. The packet below is fully populated first, so a
-\      clear that stopped happening would leave one of these three assertions
-\      reading the previous declaration's value.
 s" enum" DECL-REJECT:OPEN
 s" leaked-family" DECL-REJECT:FAMILY!
 s" leaked-token" DECL-REJECT:TOKEN!
@@ -404,11 +355,11 @@ DECL-REJECT:FAMILY$ nip 0 T=
 DECL-REJECT:TOKEN$ nip 0 T=
 7102 DECL-REJECT:REASON$ s" duplicate name in this package" DECL-DIAG:SAME? TTRUE
 
-\ 22h. SLOT! bounds. A span longer than the 96-byte slot is capped and MARKED
-\      with a trailing "...", so the packet never presents a prefix as if it were
-\      the whole name, and the copy never runs past its own slot into the next
-\      one. The token is written FIRST here and the over-long family SECOND,
-\      because S-FAMILY sits immediately below S-TOKEN: an unclamped copy would
+\ 22h. A span longer than the 96-byte slot is capped and MARKED with a
+\      trailing "...", so the packet never presents a prefix as if it were
+\      the whole name.
+\      The token is written FIRST here and the over-long family SECOND, because
+\      S-FAMILY sits immediately below S-TOKEN: an unclamped copy would
 \      overwrite the token that was already there.
 s" enum" DECL-REJECT:OPEN
 s" survivor" DECL-REJECT:TOKEN!
@@ -420,7 +371,6 @@ DECL-REJECT:FAMILY$
 s" qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwe..."
 DECL-DIAG:SAME? TTRUE
 
-\      and the marked cap reaches the rendered line through the real front end.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop ;ENUM"
 TEST-EVAL:RC 7107 T=
