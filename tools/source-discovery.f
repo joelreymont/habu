@@ -4,6 +4,14 @@
 \ RUN replays every literal loader form, colon bodies included, in the core
 \ loader's record-only mode (src/core/include.f event log): the closure is a
 \ superset of the runtime one. Recorded loader-token spans are entry-file offsets.
+\
+\ A harvest collects all declarations and retirements the walk understands, even
+\ before their row is known, and decides a row's safety from the complete set.
+\ Every walk tracks the open package from the package records and the sites the
+\ replay learned. Passes repeat until the rows settle: a changed candidate set
+\ needs a complete scan under its new assumptions, and a fixed one can only lose
+\ enabled rows; finite source occurrences make this settle without a pass count.
+\ Re-enabling a row could hide evidence exposed by a disable.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -50,10 +58,10 @@ variable SD-PATH-AT                     \ where the last string literal's payloa
 variable SD-PATH-SPAN                   \ and its length in the source
 variable SD-PEND
 variable SD-EMIT-LEN
-variable SD-OPENER                       \ where the last string or group opener starts
-variable SD-TOK-OFF                      \ the token read last: where it starts
-variable SD-TOK-LEN                      \ and its length
-variable SD-CALL-KIND                    \ the loader SD-CALL-LOADER calls
+variable SD-OPENER
+variable SD-TOK-OFF
+variable SD-TOK-LEN
+variable SD-CALL-KIND
 variable SD-DEF                          \ 1 from a definition's opener to its ;
 variable SD-DEF-NAME
 variable SD-DEF-STAGE
@@ -153,7 +161,7 @@ variable SD-SCOPES
 : SD-BUF ( -- ptr u8 )
    SD-A @ ;
 
-\ The read grows this span as it fills it (src/lib/source.f READ-WHOLE-SAMPLED),
+\ The read grows this span as it fills it,
 \ installing a larger one before the old is released: no scanner pointer
 \ survives a read.
 : SD-ROOM ( n -- ptr u8 ) {: need:n :}
@@ -206,7 +214,6 @@ variable SD-SCOPES
 : SD-R-OUTER$ ( n -- ptr u8 n ) {: r:n :}
    r SD-R-OUTER @ SD-R-BYTES r SD-R-OUTER-U @ ;
 
-\ A package row's name bytes, at 0 0 for no row or an unknown one.
 : SD-C-NAME ( n -- n n ) {: row:n :}
    row 0 < if 0 0 exit then
    row SD-R-NAME @ row SD-R-NAME-U @ ;
@@ -221,10 +228,6 @@ variable SD-SCOPES
       SD-R-NEXT @
    repeat ;
 
-\ All declarations and retirements the walk understands are collected, even
-\ before their row is known. A row's safety is decided from the complete set.
-\ Every walk tracks the open package in SD-C-PKG, the replay's own state, from
-\ the package records and the sites the replay learned (SD-S-SEED).
 : SD-R-RECORD ( n n n n -- n ) {: off:n noff:n nu:n kind:n :}
    SD-HARVESTING @ 0= if -1 exit then
    off SD-R-AT 0 >= if -1 exit then
@@ -306,7 +309,7 @@ variable SD-SCOPES
    r SD-R-PKG$ ;
 
 \ A qualified-name record `B:Q` made inside top-level package T, or a part of T,
-\ names part T:B or top-level B (card section 1): two packages.
+\ names part T:B or top-level B: two packages.
 : SD-R-IDS ( n -- n ) {: r:n :}
    r SD-R-NAME$ SD-QCOLON 0 < if 1 exit then
    r SD-R-TOP$ nip 0= if 1 exit then
@@ -362,7 +365,7 @@ variable SD-SCOPES
 \ A package opened inside another, even one left open by a prior file, is a part
 \ (the engine refuses every other nested `package`), whose close returns to it.
 \ A file cannot open a package while one open when it started loading is still
-\ open (card section 1, "package at").
+\ open.
 : SD-C-PACKAGE-OPEN ( n -- ) {: row:n :}
    SD-C-PKG @ SD-C-UNKNOWN = if SD-C-OUTER @ SD-C-PKG ! then
    SD-C-PKG @ -1 <> if SD-C-PKG @ SD-C-OUTER ! then
@@ -788,10 +791,6 @@ variable SD-SCOPES
       then
       drop
    loop
-   \ A changed candidate set needs a complete scan under its new assumptions.
-   \ A fixed candidate set can only lose enabled rows. New candidates need
-   \ another full pass; finite source occurrences make this settle without a
-   \ pass count. Re-enabling a row could hide evidence exposed by a disable.
    SD-R-PASS-STABLE @ if
       SD-R-N @ 0 ?do
          i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and
@@ -977,8 +976,7 @@ DYNAMIC-BUFFER SD-DEC u8
    0 SD-PEND ! ;
 
 \ An escaped literal's path is what the engine's literal makes of its payload,
-\ the payload decoded by the engine's escape table (src/core/checker.f
-\ ESC-DECODE), unless an escape is bad.
+\ the payload decoded by the engine's escape table, unless an escape is bad.
 : SD-DECODE-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
    u 1+ SD-DEC-RESERVE
    0 SD-DEC {: dst:ptr :}
@@ -986,9 +984,7 @@ DYNAMIC-BUFFER SD-DEC u8
    ok 0= if SD-REFUSED-LITERAL exit then
    dst k SD-PATH-FILL ;
 
-\ The literal whose opener SD-I stands after: SD-I steps past its closing quote,
-\ and its path is its payload, decoded when the opener is an escaped one, where
-\ a backslash and the byte after it never close the literal.
+\ The literal whose opener SD-I stands after: SD-I steps past its closing quote.
 : SD-SCAN-STRING ( bool -- ) {: escaped:bool :}
    SD-I @ SD-AT? if SD-I @ SD-BYTE SD-SP = if SD-I @ 1+ SD-I ! then then
    SD-I @ {: start:n :}
@@ -1054,8 +1050,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-PATH$ provided ;
 
 \ False, and nothing recorded, for a path the loader's resolver refuses
-\ (E-PATH-NUL, a NUL in the path: src/core/util.f PATHZ; E-PATH-RANGE:
-\ src/core/include.f SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and NORMALIZE).
+\ (E-PATH-NUL, a NUL in the path; E-PATH-RANGE).
 : SD-LOAD? ( n n n -- bool )
    {: off:n len:n kind:n :}
    off len DISC-TOK!
@@ -1089,9 +1084,9 @@ $FF constant SD-NAMES                    \ loaders and family openers
 
 \ A loader word in a body is a call the word makes when it runs, which no check
 \ runs: right after a path literal the resolver takes it is recorded, the
-\ superset an ordinary composition loads (src/habu/verify-source.f, a loader in
-\ a definition). After anything else, or after a path the resolver refuses,
-\ which the call loads nothing from, it is nothing to follow or refuse.
+\ superset an ordinary composition loads. After anything else, or after a path
+\ the resolver refuses, which the call loads nothing from, it is nothing to
+\ follow or refuse.
 \ At top level the load runs while the file loads, so a path the walk cannot
 \ follow is refused: a dynamic one (E-DISC-DYNAMIC) and a C\" or .\" literal
 \ (E-DISC-OPENER). A form the walk reads, any at top level and one right after
@@ -1110,8 +1105,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
    off len kind SD-CALL-LOADER ;
 
 \ `include` and `require` take the next token as their path and refuse one
-\ over INCLUDE-PATH-CAP bytes, which is PATH-CAP, before they resolve it
-\ (src/core/include.f INCLUDE-CHECK-PATH); the resolver decides the rest. The
+\ over PATH-CAP bytes before they resolve it; the resolver decides the rest. The
 \ walk reads either wherever it stands, refused first when the file has
 \ replaced it.
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
@@ -1407,7 +1401,7 @@ public
 \ unchanged, because the code alone (E-FS-STAT or E-FS-OPEN for a missing file)
 \ does not say which closure member it was. RUN-IN's reader refuses through it,
 \ so the line names no tool. The write result is dropped because the next step
-\ raises the refusal itself, as src/core/checker.f's compile rejects do.
+\ raises the refusal itself.
 : READ-THROW ( ptr u8 n n -- ) {: pa:ptr pu:n rc:n :}
    rc 0= if exit then
    2 s" cannot read " write drop
