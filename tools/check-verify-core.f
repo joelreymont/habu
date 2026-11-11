@@ -4,6 +4,27 @@
 \ as the subject's identity, so a dependency that requires PATH back meets the bytes; a load of an
 \ open document other than PATH meets its text, the first of two for one path holding. A child
 \ (VFY-EXE) runs the check; LSP-CHECK:PREVERIFY-BYTES is check.f's pre-pass on the same child.
+\
+\ The closure walk is check.f's walk before its pre-pass, kept here so a caller
+\ of VERIFY-BYTES loads none of check.f's lints; VERIFY-BYTES walks none, its
+\ child's composition refusing the same forms. Discovery records one event per
+\ literal loader form in every token of a file, colon bodies included, so the
+\ closure is a superset of the runtime load set. A top-level dynamic loader
+\ form, or a loader form whose word the file defined or retired, is refused; one
+\ in a body is otherwise a call no check makes. The walk first harvests: it
+\ grows the dependency set without ordered edges, and repeats until no file or
+\ source occurrence is added, since a later dependency's row can let an earlier
+\ file read past a parsing call. It then follows direct dependencies depth
+\ first from the top, recording each file after its dependencies. It ends at
+\ the first file it cannot follow: discovery refuses it, with an E-DISC-* code,
+\ it does not exist, CHK-E-NOINPUT, or the file system will not read it,
+\ CHK-E-IOERR. CHK-DISC-ID names it. The file CHK-BYTES-ID names is read from
+\ the caller's bytes, never from disk.
+\
+\ A batch wave assembles one immutable input snapshot per lane on the calling
+\ task before it starts; capture tasks touch only their lane's output buffers
+\ and command context. The ordinary batch parser is restored and run on the
+\ calling task, in subject order, after every capture has joined.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -28,19 +49,18 @@ require src/habu/verify-source.f
 package LSP-CHECK
 using SOURCE-ROOT
 
-\ check.f's exit statuses. The closure walk refuses a source that does not exist
-\ with CHK-E-NOINPUT, and one the file system will not read with CHK-E-IOERR.
+\ check.f's exit statuses.
 64 constant CHK-E-USAGE
 66 constant CHK-E-NOINPUT
 69 constant CHK-E-UNAVAILABLE
 70 constant CHK-E-CHECK
 74 constant CHK-E-IOERR
 
-\ The closure's files, as many as it holds: each one's path and the root that
-\ resolved it, PATH-CAP bytes apiece, their lengths and its walk state (0
-\ not walked, 1 walking, 2 walked); the direct dependencies found and not yet
-\ followed, each with the file whose loader word names it, where that word
-\ starts there and its length; and the files walked, dependencies first.
+\ The closure's files: each one's path and the root that resolved it, PATH-CAP
+\ bytes apiece, their lengths and its walk state (0 not walked, 1 walking, 2
+\ walked); the direct dependencies found and not yet followed, each with the
+\ file whose loader word names it, where that word starts there and its length;
+\ and the files walked, dependencies first.
 \ Growth moves a buffer, so a path is read through its id, never kept.
 DYNAMIC-BUFFER CHK-DEP-PATHS u8
 DYNAMIC-BUFFER CHK-DEP-US n
@@ -149,18 +169,6 @@ variable CHK-EXPAND-TOP
    {: a:ptr u:n root:ptr rootu:n at:n len:n :}
    a u root rootu CHK-DEP-ID at len CHK-DIR-PUSH ;
 
-\ Dependency closure, as check.f walks it before its pre-pass (tools/check-core.f), kept here so a
-\ caller of VERIFY-BYTES loads none of check.f's lints; VERIFY-BYTES walks none, its child's
-\ composition refusing the same forms. tools/source-discovery.f records one event per literal
-\ loader form in every token of a file, colon bodies included, so the closure is a superset of the
-\ runtime load set. A top-level dynamic loader form, or a loader form whose word the file defined
-\ or retired, is refused; one in a body is otherwise a call no check makes.
-\
-\ A walk ends at the first file it cannot follow: discovery refuses it, with an
-\ E-DISC-* code, it does not exist, CHK-E-NOINPUT, or the file system will not
-\ read it, CHK-E-IOERR. CHK-DISC-ID names it. The file CHK-BYTES-ID names is
-\ read from the caller's bytes, never from disk.
-
 : CHK-DISC-RC? ( n -- bool ) {: rc:n :}
    rc E-DISC-FIRST <= rc E-DISC-LAST >= and ;
 
@@ -209,9 +217,6 @@ variable CHK-EXPAND-TOP
       1+
    repeat drop ;
 
-\ The harvest grows the same dependency set as expansion, but creates no
-\ ordered edges. A later dependency's row can let an earlier file read past a
-\ parsing call, so repeat until no node or source occurrence is added.
 : CHK-HARVEST-ACT ( -- )
    CHK-DISC-ID @ {: id:n :}
    id CHK-BYTES-ID @ = if
@@ -305,23 +310,19 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 
 \ The bytes of the file at PATH, read to its end however it grows while it is
 \ read. Its size, whose refusal (E-FS-STAT) stays a missing or irregular file's,
-\ is only the first room (src/lib/source.f READ-WHOLE-SAMPLED), and the bytes are
-\ taken after the read, which may move the storage.
+\ is only the first room, and the bytes are taken after the read, which may move
+\ the storage.
 : CHK-FILE-READ ( ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n :}
    path pathu  path pathu FS:FILE-SIZE  [: CHK-FILE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
    {: u:n :}
    0 CHK-FILE-SRC u ;
 
-\ The bytes of the file with this id: the caller's for CHK-BYTES-ID, else the
-\ file's own.
 : CHK-FILE-BYTES ( n -- ptr u8 n )
    {: id:n :}
    id CHK-BYTES-ID @ = if CHK-BYTES-A @ CHK-BYTES-U @ exit then
    id CHK-DEP$ CHK-FILE-READ ;
 
-\ The name a packet gives the file with this id: the caller's label for
-\ CHK-BYTES-ID, else its path.
 : CHK-FILE-NAME$ ( n -- ptr u8 n )
    {: id:n :}
    id CHK-BYTES-ID @ = if CHK-BYTES-LABEL-A @ CHK-BYTES-LABEL-U @ exit then
@@ -410,9 +411,6 @@ variable CHK-NONAME-READY
    s" : missing name after '" JSON:WRITE-RAW k LINT-LEX:TOKEN JSON:WRITE-RAW
    s" '" JSON:WRITE-RAW JSON:WRITTEN$ ;
 
-\ The record of a reader with no name after it, which starts at the given byte
-\ of the given bytes of the file the label names; empty when their lex has no
-\ token there.
 : CHK-NONAME-AT$ ( n ptr u8 n ptr u8 n bool -- ptr u8 n )
    {: at:n label:ptr labelu:n src:ptr srcu:n json:bool :}
    src srcu LINT-LEX:SOURCE
@@ -465,7 +463,7 @@ ENUM verdict
 
 private
 
-$40000 constant VFY-ERR-CAP             \ the child's stderr
+$40000 constant VFY-ERR-CAP
 $0A constant VFY-LF
 
 \ The child's answer, from its result line.
@@ -477,17 +475,17 @@ $0A constant VFY-LF
 5 constant VFY-DEFERRED
 
 DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
-DYNAMIC-BUFFER VFY-LOG u8               \ VERIFY-LOG$
+DYNAMIC-BUFFER VFY-LOG u8
 DYNAMIC-BUFFER VFY-REC u8               \ VFY-OUT, each duplicate line its record
 DYNAMIC-BUFFER VFY-STOP-PATH u8         \ preserve the final stop across duplicate records
 DYNAMIC-BUFFER VFY-STOP-REASON u8       \ the stop's reason line's text, kept out of VFY-OUT
-DYNAMIC-BUFFER VFY-DEFS u8              \ VERIFY-DEFS$
-DYNAMIC-BUFFER VFY-FILES u8             \ VERIFY-FILES$
-DYNAMIC-BUFFER VFY-USES u8              \ VERIFY-USES$
-DYNAMIC-BUFFER VFY-LOADS u8             \ VERIFY-LOADS$
-DYNAMIC-BUFFER VFY-CANDS u8             \ VERIFY-CANDIDATES$
-DYNAMIC-BUFFER VFY-INDEX u8             \ VERIFY-INDEX$
-DYNAMIC-BUFFER VFY-IN u8                \ the child's stdin: the open documents, then the subject's bytes
+DYNAMIC-BUFFER VFY-DEFS u8
+DYNAMIC-BUFFER VFY-FILES u8
+DYNAMIC-BUFFER VFY-USES u8
+DYNAMIC-BUFFER VFY-LOADS u8
+DYNAMIC-BUFFER VFY-CANDS u8
+DYNAMIC-BUFFER VFY-INDEX u8
+DYNAMIC-BUFFER VFY-IN u8
 DYNAMIC-BUFFER VFY-OPEN-AT n            \ each open document's path's offset in VFY-IN and length, then its text's
 variable VFY-IN-U
 variable VFY-OPEN-N
@@ -505,7 +503,7 @@ variable VFY-AT                         \ the child's completion cursor, -1 for 
 variable VFY-OUT-U
 variable VFY-LOG-U
 variable VFY-ANSWER
-TYPED-VARIABLE VFY-DEADLINE ms          \ the child's, for VFY-CAPTURE
+TYPED-VARIABLE VFY-DEADLINE ms
 create VFY-PATH PATH-CAP allot
 variable VFY-PATH-U
 create VFY-CHILD PATH-CAP allot
@@ -594,9 +592,6 @@ variable VFY-TARGET-U
    VFY-LOG+ s\" \n" VFY-LOG+ ;
 
 
-\ The status line of the loader's fault RC, as the closure walk classes it
-\ (VFY-FAULT-CLASS), about the file at PATH: `cannot read` PATH, or PATH and
-\ why: no such source, or discovery's reason.
 : VFY-CLOSURE-LOG ( n ptr u8 n -- )
    {: rc:n path:ptr pathu:n :}
    rc CHK-E-IOERR = if
@@ -617,8 +612,8 @@ variable VFY-TARGET-U
    VFY-IN-U @ u + VFY-IN-U ! ;
 
 
-\ An open document after VFY-IN, as tools/check-verify-child.f reads it: the
-\ byte counts of its canonical path and of its text on a line, then both.
+\ An open document after VFY-IN: the byte counts of its canonical path and of
+\ its text on a line, then both.
 : VFY-OPEN+ ( ptr u8 n ptr u8 n -- )
    {: p:ptr pu:n t:ptr tu:n :}
    SB-RESET pu FMT:SB-U SB$ VFY-IN+
@@ -682,10 +677,9 @@ variable VFY-TARGET-U
    VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu VFY-STOP-REASON$ true STOP-RECORD$ drop ;
 
 
-TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the check
+TYPED-VARIABLE CHK-ENGINE-REFUSED bool
 
-\ The engine a child of the check runs on, ENGINE-CANDIDATE:PATH$. A selection
-\ the resolver refuses goes on as the resolver's own throw, and
+\ A selection the resolver refuses goes on as the resolver's own throw, and
 \ CHK-ENGINE-REFUSED, held while the resolver runs, stays set: the check ended
 \ there, where a failure of the source may share that code, and check.f's
 \ command line reports it apart.
@@ -695,10 +689,11 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    false CHK-ENGINE-REFUSED ! ;
 
 
-\ The child's executable, the engine src/lib/engine-candidate.f names, loading this tree's
-\ tools/check-verify-child.f, named absolutely, in this process's working directory, so neither
-\ this process's words nor an earlier check's can stand in for a word of the subject. hb carries
-\ the verifier, so the child loads only its body.
+\ The child's executable, the engine CHK-ENGINE$ answers, loading this tree's
+\ tools/check-verify-child.f, named absolutely, in this process's working
+\ directory, so neither this process's words nor an earlier check's can stand
+\ in for a word of the subject. hb carries the verifier, so the child loads
+\ only its body.
 create VFY-EXE PATH-CAP allot
 variable VFY-EXE-U
 
@@ -893,8 +888,6 @@ variable VFY-EXE-U
    VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
 
 
-\ That file's bytes: the subject's, an open document's text, or the file's own
-\ (CHK-FILE-READ).
 : VFY-STOP-SOURCE ( -- ptr u8 n )
    VFY-STOP-SUBJ @ if CHK-BYTES-A @ CHK-BYTES-U @ exit then
    VFY-STOP-FILE$ VFY-OPEN-TEXT if exit then
@@ -914,9 +907,6 @@ variable VFY-EXE-U
    CHK-E-NOINPUT ;
 
 
-\ The record of the child's stop: for a loader's fault, but a string or a
-\ locals group never closed, the packet at the loader form, as the closure walk
-\ writes it (VERIFY-DIAGNOSTICS:LOADER-RECORD$); else the stop's record (STOP-RECORD$).
 : VFY-STOP-REC$ ( n -- ptr u8 n ) {: class:n :}
    VFY-STOP-RC @ {: rc:n :}
    rc VERIFY:LOADER-FAULT? rc E-DISC-UNTERM <> and if
@@ -927,9 +917,7 @@ variable VFY-EXE-U
 
 
 \ The child's stop: its record ends the packets, and the file the stopped line
-\ named stays after them, where VFY-STOP-FILE$ reads it. A loader's fault adds
-\ its status line to the log, about the file the loader could not read or the
-\ one that holds the form.
+\ named stays after them, where VFY-STOP-FILE$ reads it.
 : VFY-STOP-LINE ( -- )
    VFY-STOP-RC @ {: rc:n :}
    rc VFY-FAULT-CLASS {: class:n :}
@@ -1144,8 +1132,6 @@ variable VFY-EXE-U
    o ;
 
 
-\ The child's answer once it has given one of the first form's and exited
-\ clean, a stop refused; any other end is incomplete.
 : VFY-VERDICT ( PROCESS:ending -- verdict ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if LSP--CHECK-VERDICT:verified exit then
@@ -1157,8 +1143,6 @@ variable VFY-EXE-U
    o LSP--CHECK-VERDICT:incomplete ;
 
 
-\ The pre-pass's answer once it has given one and exited clean: 0 verified,
-\ else the code it stopped with. Any other end is the error.
 : VFY-PREVERDICT ( PROCESS:ending -- result<n,PROCESS:ending> ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if 0 RESULT:OK exit then
@@ -1186,11 +1170,12 @@ variable VFY-EXE-U
 
 public
 
-\ The packets of the last VERIFY-BYTES or PREVERIFY-BYTES, the checker's schema-1 packets, one JSON
-\ object per line: the subject's name PATH's canonical absolute path and count positions in the
-\ bytes, a dependency's name its file and count there. A duplicate definition, which the checker
-\ writes no packet for, is the record --all-errors writes (CHECK-ALL-ERRORS:DUP-RECORD$); the stop's
-\ record (STOP-RECORD$) is the last line. Every VERIFY-*$ holds until the next call.
+\ The packets of the last VERIFY-BYTES or PREVERIFY-BYTES, the checker's
+\ schema-1 packets, one JSON object per line: the subject's name PATH's
+\ canonical absolute path and count positions in the bytes, a dependency's name
+\ its file and count there. A duplicate definition, which the checker writes no
+\ packet for, is the record --all-errors writes; the stop's record
+\ (STOP-RECORD$) is the last line. Every VERIFY-*$ holds until the next call.
 : VERIFY-OUT$ ( -- ptr u8 n )
    VFY-OUT-U @ 0= if NULL$ exit then
    0 VFY-OUT VFY-OUT-U @ ;
@@ -1201,38 +1186,34 @@ public
    VFY-LOG-U @ 0= if NULL$ exit then
    0 VFY-LOG VFY-LOG-U @ ;
 
-\ The definitions the last VERIFY-BYTES retained, one JSON object per line as
-\ tools/check-verify-child.f's definition line states it, in the order the
-\ verifier read them.
+\ The definitions the last VERIFY-BYTES retained, one JSON object per line, in
+\ the order the verifier read them.
 : VERIFY-DEFS$ ( -- ptr u8 n )
    VFY-DEFS-U @ 0= if NULL$ exit then
    0 VFY-DEFS VFY-DEFS-U @ ;
 
-\ The file visits the last VERIFY-BYTES read, one JSON object per visit as
-\ tools/check-verify-child.f states it, in acquisition order.
+\ The file visits the last VERIFY-BYTES read, one JSON object per visit, in
+\ acquisition order.
 : VERIFY-FILES$ ( -- ptr u8 n )
    VFY-FILES-U @ 0= if NULL$ exit then
    0 VFY-FILES VFY-FILES-U @ ;
 
 \ The uses the last VERIFY-BYTES's subject bound to source targets or identified
 \ as engine primitives, and for VERIFY-BYTES-OF those of its tail in the files
-\ the subject loads, one
-\ JSON object per line as tools/check-verify-child.f's use line states it, in
-\ the order the checker published them.
+\ the subject loads, one JSON object per line, in the order the checker
+\ published them.
 : VERIFY-USES$ ( -- ptr u8 n )
    VFY-USES-U @ 0= if NULL$ exit then
    0 VFY-USES VFY-USES-U @ ;
 
 \ The top-level loaders of the last VERIFY-BYTES's subject that reached a file,
-\ one JSON object per line as tools/check-verify-child.f's load line states
-\ it, in the subject's order; none for PREVERIFY-BYTES.
+\ one JSON object per line, in the subject's order; none for PREVERIFY-BYTES.
 : VERIFY-LOADS$ ( -- ptr u8 n )
    VFY-LOADS-U @ 0= if NULL$ exit then
    0 VFY-LOADS VFY-LOADS-U @ ;
 
 \ The spellings the last VERIFY-BYTES-AT's cursor offered, one JSON object per
-\ line as tools/check-verify-child.f's candidate line states it, in the order
-\ the checker offered them; none for VERIFY-BYTES.
+\ line, in the order the checker offered them; none for VERIFY-BYTES.
 : VERIFY-CANDIDATES$ ( -- ptr u8 n )
    VFY-CANDS-U @ 0= if NULL$ exit then
    0 VFY-CANDS VFY-CANDS-U @ ;
@@ -1412,10 +1393,6 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
    VFY-BATCH-BROKEN @ if VFY-NONE VFY-ANSWER ! then
    VFY-BATCH-OUTCOME @ VFY-VERDICT ;
 
-\ Twelve immutable input snapshots are assembled on the calling task before a
-\ wave starts. Only each lane's output buffers and command context are
-\ touched by capture tasks. The ordinary batch parser is restored and run on
-\ the calling task, in subject order, after every capture has joined.
 12 constant VFY-LANES
 DYNAMIC-BUFFER VFY-LANE-IN u8
 DYNAMIC-BUFFER VFY-LANE-META n
@@ -1740,7 +1717,7 @@ public
    VFY-RUN VFY-PREVERDICT ;
 
 \ The code a throw stopped the last VERIFY-BYTES or PREVERIFY-BYTES with, the
-\ child's, a loader's fault's among them (VERIFY:LOADER-FAULT?), 0 when none did.
+\ child's, a loader's fault's among them, 0 when none did.
 : VERIFY-STOP ( -- n )
    VFY-STOP-RC @ ;
 
@@ -1757,8 +1734,7 @@ public
    VFY-STOP-AT @ ;
 
 \ The name the last PREVERIFY-BYTES refused as a duplicate, in the same file:
-\ the byte where it starts and its length, 0 when it kept no name
-\ (VERIFY:DUPLICATE).
+\ the byte where it starts and its length, 0 when it kept no name.
 : PREVERIFY-DUPLICATE ( -- n n )
    VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ ;
 
@@ -1768,8 +1744,8 @@ public
 : VERIFY-STOPPED$ ( -- ptr u8 n )
    VFY-STOP-FILE$ ;
 
-\ Why the scan refused the declaration it stopped at (VERIFY:REASON$), empty
-\ when the child gave no reason.
+\ Why the scan refused the declaration it stopped at, empty when the child gave
+\ no reason.
 : VERIFY-STOP-REASON$ ( -- ptr u8 n )
    VFY-STOP-REASON$ ;
 
