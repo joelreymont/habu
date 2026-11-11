@@ -206,19 +206,6 @@ $0002000000000000 constant DNAME-OWNED
 131072 constant DICT-CAP
 $600000 constant CFSTK-OFF
 32 constant CF-REC
-24 constant CF-KIND
-\ CF-KIND names the structure that pushed the entry: `begin`
-\ and `if` both record a CP. One kind serves every opener the same closers
-\ accept: `else` leaves an IF entry, `?do` a DO entry, a match variant arm an OF.
-1 constant CFK-IF      \ if, else: closed by then or else
-2 constant CFK-BEGIN   \ begin: closed by until, again, or by repeat under a WHILE
-3 constant CFK-WHILE   \ while, opened on a BEGIN: closed by repeat
-4 constant CFK-DO      \ do, ?do: closed by loop or +loop
-5 constant CFK-CASE    \ case: closed by endcase through its ENDOF entries
-6 constant CFK-OF      \ of, a match variant arm: closed by endof
-7 constant CFK-ENDOF   \ endof: closed by endcase or ;match, continued by of
-8 constant CFK-MATCH   \ match: closed by ;match through its ENDOF entries
-9 constant CFK-QUOT    \ [: closed by ;]
 \ Control-flow stack region [CFSTK-OFF, DICT-SIZE): cell 0 is the depth counter,
 \ then CF-REC-byte records. CFSTK-REGION-CAP is how many records fit above the
 \ counter without spilling into the JIT code area at DBASE+DICT-SIZE.
@@ -243,7 +230,6 @@ DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 \ The cold prefix, argv files and stdin share this allowance, less an EOF probe;
 \ overflow exits 74 `hb: source prefix buffer full`.
 $400000 constant SOURCE-ARENA-CAP
-SOURCE-ARENA-CAP constant IBUFSZ
 20 constant DATA
 
 0 constant DP-CELL
@@ -258,14 +244,12 @@ LOC-REC 8 - constant LOC-NAME-CAP
 64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes)
 \ Tier 1's arm64 body capture scopes the locals it records by block, as
 \ src/habu/interpreter.f BODY-BLOCK-STEP does on x86-64:
-\ CAPDEPTH-CELL is the block depth, LOCDEPTHS the depth each LOCNAMES record
-\ was declared at (one cell per LOC-REC), and TOKDEPTH-CELL the depth as the
-\ current token began, restored with TOKLOCN-CELL's mark. A definition opener
-\ zeroes the depth with LOCN-CELL. They sit in the $2800..$3000 free header
-\ band past PROGRAM-FILE-CELL ($2DB0).
+\ CAPDEPTH-CELL is the block depth and TOKDEPTH-CELL the depth as the current
+\ token began, restored with TOKLOCN-CELL's mark. A definition opener zeroes
+\ the depth with LOCN-CELL. They sit in the $2800..$3000 free header band past
+\ PROGRAM-FILE-CELL ($2DB0).
 $2DB8 constant CAPDEPTH-CELL
 $2DC0 constant TOKDEPTH-CELL
-$2DC8 constant LOCDEPTHS
 \ The friend arena: one write-protected band [FRIEND-ARENA,
 \ FRIEND-ARENA+FRIEND-ARENA-LEN) holding the boot-seal latch and every
 \ checker/wordlist crown-jewel cell (CUR/WIDN/HOOK/DEF-WL, the TRUSTED:
@@ -294,7 +278,6 @@ $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark; 0 until SEA
 $28 constant CUR-CELL
 $30 constant WIDN-CELL             \ the next wordlist id the engine hands out
 $38 constant HOOK-CELL
-$40 constant DEF-WL-CELL
 $48 constant TSIG-A-CELL
 $50 constant TSIG-U-CELL
 $58 constant TCSIG-A-CELL
@@ -305,7 +288,6 @@ $78 constant PKG-PUB-CELL
 $80 constant PKG-PRI-CELL
 $88 constant PKG-PARENT-CELL
 $90 constant PKG-REC-CELL
-$98 constant DEFER-META-CELL
 $A0 constant DEFER-XT-CELL
 \ DEFER-MAGIC: the first cell of the meta trailer `defer` writes just past a
 \ deferred word's code, followed by the address of its dispatch cell. A reader
@@ -313,20 +295,10 @@ $A0 constant DEFER-XT-CELL
 \ shape of what follows the code (an ordinary integer can hold any value).
 $4842444546455201 constant DEFER-MAGIC
 \ $1A0 is the seal suite's deliberate poke hole.
-\ MATCH-lowering compile state, DATA-relative in the $B0..$1B0 band above the
-\ friend arena; the fam stack tops out at $D0+CMFR-MAX*8 = $1A0. CMBK-CELL is a
-\ 64-bit branch-kind bitstack (J-OF pushes 0, J-ENDOF pops and checks), so ENDOF re-arms the match token machine (CMM=4) only for a
-\ MATCH variant branch: the compiler analogue of the checker's
-\ CF-ENDOF-DISPATCH. CMTAG/CMPADS hold the pending variant (tag, M-p) between a
-\ variant token and its OF. CMFR is the fam stack indexed by CMFRD (match
-\ depth); a level's fam feeds variant resolution and the ;MATCH bad-tag die.
-\ CMFRD/CMBK clear at colon/TRUSTED: entry and in EM-RESET-COMPILE-STATE.
+\ CMBK-CELL and CMFRD-CELL: zeroed by both kernels' compile reset; nothing
+\ reads them.
 $B0 constant CMBK-CELL                  \ ENDOF branch-kind bitstack (0=case arm, 1=match branch)
-$B8 constant CMTAG-CELL                 \ pending MATCH variant tag (VAR -> OF)
-$C0 constant CMPADS-CELL                \ pending MATCH variant zero pads M-p (VAR -> OF)
 $C8 constant CMFRD-CELL                 \ MATCH nesting depth (0 = not in a match)
-$D0 constant CMFR-OFF                   \ MATCH fam stack base (one cell per open match)
-26 constant CMFR-MAX                    \ levels: $D0..$1A0 = 26 cells (checker caps CF frames at 30)
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
@@ -455,36 +427,13 @@ $2C48 constant SOURCE-CELL
 $2C50 constant READS-CELL
 ;package
 
-\ RPKG-*: claimed, and no code reads or writes them. PKGRESYNC-CELL: LEVALREC
-\ arms it and EM-PKG-RESYNC drains it before the throw is delivered, making the
-\ checker re-read the restored scope (habu2.f). The six cells take $2780..$27C0.
-$2780 constant RPKG-CUR
-$2788 constant RPKG-PUB
-$2790 constant RPKG-PRI
-$2798 constant RPKG-PARENT
-$27A0 constant RPKG-REC
+\ PKGRESYNC-CELL: LEVALREC arms it and EM-PKG-RESYNC drains it before the
+\ throw is delivered, making the checker re-read the restored scope (habu2.f).
 $27C0 constant PKGRESYNC-CELL
-package RPKG
-public
-\ FLOOR: the line-start using floor (USE-PKG-SAVE-CELL), restored with the five
-\ RPKG-* cells above; PKGSNAP:FLOOR below says why. It takes $4810, the first
-\ cell above STACK-ABI:LOOP-BASE-CELL below TXN-STATE-OFF ($5000), claimed in
-\ src/habu/data-claims.f.
-$4810 constant FLOOR
-\ WIDS: the line-start used-public wids, USE-MAX cells, restored with the depth
-\ and the floor; EVAL-FRAME:USE-WIDS above says why. It takes the run after
-\ FLOOR, claimed in data-claims.f.
-$4818 constant WIDS
-\ ENCLOSING: the line-start enclosing package's four cells (ENCLOSING below),
-\ in its order. It takes the run after layout.f CLAUSE-CELL, claimed in
-\ data-claims.f.
-$4CB0 constant ENCLOSING
-;package
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
 $37D8 constant EVALERR-CELL
-$37E0 constant LMAINP-CELL
 $3C88 constant TASK-TCB-CELL
 \ HALT-UNWIND-CELL: nonzero while a TASK:HALT unwinds the task that observed it,
 \ else 0, which a fresh task region and every non-task region hold. Only that
@@ -622,13 +571,11 @@ WRITE-OFF DEVICES 8 * + constant END
 
 
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (habu2.f
-\ LEVALREC), set at startup like LMAINP-CELL so the leaf throw primitive can
+\ LEVALREC), set at startup so the leaf throw primitive can
 \ branch to it. $3CA0..$3CB8 are engine cells no compiled source writes, between
 \ the FFI buffer block ($3A00..$3C88, src/lib/ffi-abi.f), the task TCB cells
 \ ($3C88..$3CA0) and the protected-WID registry ($3CB8..$40C0).
 $3CA0 constant EVALREC-CELL
-\ AOT-SEED-DONE-CELL: claimed, and no code reads or writes it.
-$3CA8 constant AOT-SEED-DONE-CELL
 \ The protected-WID registry records the WIDs of sealed system / generated
 \ constructor packages created in the friend window; habu1.f LPROTWIDQ
 \ membership (EMIT-PROTWID) gates the sealed-WID guards.

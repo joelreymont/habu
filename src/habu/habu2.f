@@ -2655,7 +2655,7 @@ public
 private
 
 \ Checker package-scope resync drain. A throw's recovery rolls the engine
-\ package scope back (PKGSNAP / RPKG), but the checker's own mirror
+\ package scope back (PKGSNAP), but the checker's own mirror
 \ (CHECKER-PACKAGE-MODE/NAME/U) moved with the failed input. Recovery arms
 \ PKGRESYNC-CELL; this drain clears it and has the checker re-read the restored
 \ scope (checker.f CHECKER-RESYNC) whatever it is: resyncing only a global scope

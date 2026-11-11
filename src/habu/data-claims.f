@@ -82,10 +82,7 @@ create TAB
    LOCN-CELL                          1 cells                 CLAIM LOCN-CELL
    FRIEND-ARENA                       FRIEND-ARENA-LEN        CLAIM FRIEND-ARENA
    CMBK-CELL                          1 cells                 CLAIM CMBK-CELL
-   CMTAG-CELL                         1 cells                 CLAIM CMTAG-CELL
-   CMPADS-CELL                        1 cells                 CLAIM CMPADS-CELL
    CMFRD-CELL                         1 cells                 CLAIM CMFRD-CELL
-   CMFR-OFF                           CMFR-MAX cells          CLAIM CMFR-STACK
    ADDRESS-CELLS:LOCK-CELL            1 cells                 CLAIM ADDRESS-CELLS-LOCK
    BODYLEN-CELL                       1 cells                 CLAIM BODYLEN-CELL
    RBASE-CELL                         1 cells                 CLAIM RBASE-CELL
@@ -127,7 +124,6 @@ create TAB
    FRAME-CELL                         1 cells                 CLAIM FRAME-CELL
    QFRAME-CELL                        1 cells                 CLAIM QFRAME-CELL
    BODY-TEXT:BASE-CELL                4 cells                 CLAIM BODY-TEXT
-   RPKG-CUR                           RPKG-REC RPKG-CUR - 1 cells +  CLAIM RPKG-SNAPSHOT
    CMM-CELL                           1 cells                 CLAIM CMM-CELL
    DOESB-CELL                         1 cells                 CLAIM DOESB-CELL
    TRUSTED-CELL                       1 cells                 CLAIM TRUSTED-CELL
@@ -178,7 +174,6 @@ create TAB
    LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL
    TOKDEPTH-CELL                      1 cells                 CLAIM TOKDEPTH-CELL
-   LOCDEPTHS                          LOC-RECS cells          CLAIM LOCDEPTHS
    REPLH-CELL                         1 cells                 CLAIM REPLH-CELL
    ARGC-CELL                          1 cells                 CLAIM ARGC-CELL
    ARGV-CELL                          1 cells                 CLAIM ARGV-CELL
@@ -194,7 +189,6 @@ create TAB
    BPTAB-OFF                          EVALD-CELL BPTAB-OFF -  CLAIM BPTAB
    EVALD-CELL                         1 cells                 CLAIM EVALD-CELL
    EVALERR-CELL                       1 cells                 CLAIM EVALERR-CELL
-   LMAINP-CELL                        1 cells                 CLAIM LMAINP-CELL
    BPWBASE-CELL                       1 cells                 CLAIM BPWBASE-CELL
    BPWN-CELL                          1 cells                 CLAIM BPWN-CELL
    SNAP-CELL                          1 cells                 CLAIM SNAP-CELL
@@ -216,7 +210,6 @@ create TAB
    TASKS-LIVE-CELL                    1 cells                 CLAIM TASKS-LIVE-CELL
    HIDXP-CELL                         1 cells                 CLAIM HIDXP-CELL
    EVALREC-CELL                       1 cells                 CLAIM EVALREC-CELL
-   AOT-SEED-DONE-CELL                 1 cells                 CLAIM AOT-SEED-DONE-CELL
    BOOT:USER-END                      1 cells                 CLAIM BOOT-USER-END
    PROT-REG-OFF                       PROT-REG-LEN            CLAIM PROT-REG
    $40C8                              $100                    CLAIM FFI-LEN-BUFFERS
@@ -262,13 +255,10 @@ create TAB
    REPLAY-SCOPE:LATCH                 REPLAY-SCOPE:END REPLAY-SCOPE:LATCH -  CLAIM REPLAY-SCOPE
    ENCLOSING:PUB                      ENCLOSING:END ENCLOSING:PUB -  CLAIM ENCLOSING
    REPLAY-SCOPE:ENCLOSING             ENCLOSING:END ENCLOSING:PUB -  CLAIM REPLAY-SCOPE:ENCLOSING
-   RPKG:FLOOR                         1 cells                 CLAIM RPKG:FLOOR
-   RPKG:WIDS                          USE-MAX cells           CLAIM RPKG:WIDS
    POLICY-NDICT-CELL                  1 cells                 CLAIM POLICY-NDICT-CELL
    POLICY-BITS-OFF                    PROT-BITS-BYTES         CLAIM POLICY-BITS
    POLICY-REQUIRE-CELL                1 cells                 CLAIM POLICY-REQUIRE-CELL
    CLAUSE-CELL                        1 cells                 CLAIM CLAUSE-CELL
-   RPKG:ENCLOSING                     ENCLOSING:END ENCLOSING:PUB -  CLAIM RPKG:ENCLOSING
    PACKAGE-PATH:OFF                   PACKAGE-PATH:CAP        CLAIM PACKAGE-PATH
    PKG-OUTSIDE-CELL                   1 cells                 CLAIM PKG-OUTSIDE-CELL
    \ The profiler band stays the last row, where BAND-ASSERT places it again.
