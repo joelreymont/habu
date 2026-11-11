@@ -1039,73 +1039,6 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
 \ OPEN-REPORT reads a failed dlopen's reason through this row.
 s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 
-\ A stripped image whose host includes FFI carries the declarations made while
-\ loading the application in its DATA window, with foreign addresses unresolved
-\ for the new process; the linker gets the table's exact storage through the two
-\ callbacks. A stripped entry publishes the two table bases after restoring
-\ DATA: their addresses vary with the maker's window, while the descriptor
-\ bytes and counts stay identical for one application source.
-: AOT-CONTROLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: carry fresh :}
-   FN-N BYTE-VIEW CELL carry execute
-   LIB-N BYTE-VIEW CELL carry execute
-   FN-CAP BYTE-VIEW CELL carry execute
-   LIB-CAP BYTE-VIEW CELL carry execute
-   ERRNO-FN-CELL BYTE-VIEW CELL carry execute
-   DLCLOSE-FN-CELL BYTE-VIEW CELL carry execute
-   DLERROR-FN-CELL BYTE-VIEW CELL carry execute
-   FN-TABLE BYTE-VIEW CELL fresh execute
-   LIB-TABLE BYTE-VIEW CELL fresh execute
-   PIN-FN BYTE-VIEW CELL fresh execute
-   PIN-LIB BYTE-VIEW CELL fresh execute
-   PIN-FN-CAP BYTE-VIEW CELL fresh execute
-   PIN-LIB-CAP BYTE-VIEW CELL fresh execute
-   RETIRED-BASE#base BYTE-VIEW CELL fresh execute
-   RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
-   RETIRED-COUNT BYTE-VIEW CELL fresh execute ;
-
-
-\ Stripped application runtime starts with no maker declarations. The
-\ conditional lookup branch can still name these cells, so claim them fresh.
-: MAKER-FRESH-CONTROLS ( [ ptr u8 n -- ] -- ) {: fresh :}
-   MAKER-FN-N BYTE-VIEW CELL fresh execute
-   MAKER-LIB-N BYTE-VIEW CELL fresh execute
-   MAKER-FN-CAP BYTE-VIEW CELL fresh execute
-   MAKER-LIB-CAP BYTE-VIEW CELL fresh execute
-   MAKER-FN-TABLE BYTE-VIEW CELL fresh execute
-   MAKER-LIB-TABLE BYTE-VIEW CELL fresh execute
-   MAKER-DEPTH BYTE-VIEW CELL fresh execute ;
-
-\ The fixed row headers contain cells; symbol names and library paths are
-\ bytes. AOT sizes and copies these same extents before scanning header cells.
-: AOT-TABLES-AT ( ptr u8 n ptr u8 n [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: fn:ptr fncap:n lib:ptr libcap:n cells bytes :}
-   fncap 0 ?do
-      fn i FN-ROW-BYTES * + {: row:ptr :}
-      row FN-NAME-OFF cells execute
-      row FN-NAME-OFF + FN-NAME-CAP bytes execute
-   loop
-   libcap 0 ?do
-      lib i LIB-ROW-BYTES * + {: row:ptr :}
-      row LIB-PATH-OFF cells execute
-      row LIB-PATH-OFF + LIB-ROW-BYTES LIB-PATH-OFF - bytes execute
-   loop ;
-
-private
-
-: TABLE-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: cells bytes :}
-   cells cells AOT-CONTROLS
-   cells MAKER-FRESH-CONTROLS
-   FN-TABLE @ FN-CAP @ LIB-TABLE @ LIB-CAP @
-      cells bytes AOT-TABLES-AT
-   MAKER-FN-TABLE @ MAKER-FN-CAP @
-      MAKER-LIB-TABLE @ MAKER-LIB-CAP @ cells bytes AOT-TABLES-AT
-   PIN-FN @ PIN-FN-CAP @ PIN-LIB @ PIN-LIB-CAP @
-      cells bytes AOT-TABLES-AT ;
-
-public
-
 \ A stripped build loads its linker after the application's DATA span closes.
 \ Remember the application's declaration boundary and current table allocation.
 : IMAGE-MARK ( -- n n ptr u8 ptr u8 )
@@ -1812,24 +1745,6 @@ private
    SCOPE-SET @ 0= if E-FFI-LIBRARY throw then
    get-current SCOPE-WID @ <> if E-FFI-LIBRARY throw then ;
 
-\ These context cells survive in a baked engine even when their private
-\ variable records do not. FILE replay and admission use the same extents.
-: CONTEXT-CELLS ( [ ptr u8 n -- ] -- ) {: keep :}
-   CUR-LIB BYTE-VIEW CELL keep execute
-   SCOPE-WID BYTE-VIEW CELL keep execute
-   SCOPE-SET BYTE-VIEW CELL keep execute
-   OPEN BYTE-VIEW CELL keep execute
-   NAME-U BYTE-VIEW CELL keep execute
-   SYM-U BYTE-VIEW CELL keep execute
-   ARG-KIND ARG-MAX cells keep execute
-   ARG-EXT ARG-MAX cells keep execute
-   ARG-EXT-ARG ARG-MAX cells keep execute
-   ARG-SBYTES ARG-MAX cells keep execute
-   ARG-N BYTE-VIEW CELL keep execute
-   RES-KIND BYTE-VIEW CELL keep execute
-   VAR-START BYTE-VIEW CELL keep execute
-   STRUCT-BYTES BYTE-VIEW CELL keep execute ;
-
 public
 
 \ The declaration between FUNCTION: and ;FUNCTION: 0 when none is open, else
@@ -1858,18 +1773,6 @@ public
    GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
 private
-
-: PARSER-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: cells bytes :}
-   cells CONTEXT-CELLS
-   LIB-NAME cells CODEGEN:SCAN-SPANS
-   GEN cells CODEGEN:SCAN-SPANS
-   EFF cells CODEGEN:SCAN-SPANS
-   DIAG cells CODEGEN:SCAN-SPANS
-   NAME-BUF TOK-CAP bytes execute
-   SYM-BUF TOK-CAP bytes execute
-   TOK-BUF TOK-CAP bytes execute
-   BASE-BUF TOK-CAP bytes execute ;
 
 \ A refused clause ABANDONS the declaration rather than leaving it half open:
 \ the next FUNCTION: in the file would otherwise refuse too, and the first
@@ -1964,13 +1867,6 @@ public
 : SELECT-PROCESS ( -- )
    PROCESS CUR-LIB !
    RECORD-SCOPE ;
-
-\ The storage FFI restores itself: the registry tables and the declaration
-\ parser's cells and buffers.
-: SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: cells bytes :}
-   cells bytes TABLE-SPANS
-   cells bytes PARSER-SPANS ;
 
 \ Both wordlists are protected here, after FFI's last definition: an engine
 \ that loads this file after its seal refuses any definition into a protected

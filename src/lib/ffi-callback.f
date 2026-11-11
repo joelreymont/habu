@@ -383,16 +383,6 @@ public
    0 k FAULTS !
    k EMIT ;
 
-\ The callback descriptor table holds whole cells, including numeric fallback
-\ values; every span here is cells.
-: SCAN-SPANS ( [ ptr u8 n -- ] -- )
-   {: cells :}
-   CAP @ 0 > if TABLE @ BYTE-VIEW CAP @ ROW-BYTES * cells execute then
-   GEN cells CODEGEN:SCAN-SPANS
-   QTYPE cells CODEGEN:SCAN-SPANS
-   READS cells CODEGEN:SCAN-SPANS
-   NAME cells CODEGEN:SCAN-SPANS ;
-
 ;package
 
 \ CALLBACK: NAME ( in -- out ) clauses ;CALLBACK generates

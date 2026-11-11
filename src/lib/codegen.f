@@ -79,10 +79,4 @@ public
 
 : CONTENTS ( ptr n -- ptr u8 n ) {: d:ptr :}  d CB-DATA d CB-LEN@ ;
 
-\ A descriptor is one cell span: the header and the control record. Its text
-\ is a mapping capture releases, outside DATA.
-: SCAN-SPANS ( ptr n [ ptr u8 n -- ] -- )
-   {: d:ptr cells :}
-   d BYTE-VIEW CB-CELLS CELL * cells execute ;
-
 ;package
