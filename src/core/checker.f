@@ -13199,7 +13199,7 @@ USE-SLOT-BOOT
 \ src/habu/xref.f retires the name.
 package CHECKER-RESYNC
 
-\ A throw's recovery (habu2.f LEVALREC, EM-REPL-RECOVER; interpreter.f FRAME-RESTORE-SCOPE) restores the engine's wids, not
+\ A throw's recovery (habu2.f LEVALREC; interpreter.f FRAME-RESTORE-SCOPE) restores the engine's wids, not
 \ the names here, so each slot's name is read back from its wid; a wid no live row publishes names nothing.
 : SLOT ( n -- ) {: d:n :}
    d USE-SLOT-XT {: a:ptr u:n ok:bool :}

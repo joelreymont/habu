@@ -84,9 +84,9 @@ public
 \ returns: the child exits 0 once q returns, and a throw out of q ends it as an
 \ uncaught throw ends a fresh process, through habu2.f LUNCAUGHT - the engine's
 \ report on fd 2 and layout.f's UNCAUGHT-RC (67), or the code itself from 1 to
-\ 255. The fork copied the parent's catch frames (HND-CELL) and its tty REPL
-\ recovery route (REPLH-CELL), so a throw would otherwise resume the parent's
-\ catch, or its prompt, in the child; both are cleared before q runs. The exit
+\ 255. The fork copied the parent's catch frames (HND-CELL), so a throw
+\ would otherwise resume the parent's catch in the child; they are cleared
+\ before q runs. The exit
 \ hook stays: RAW's child resets ran FS:CLEANUP-RESET, so the inherited
 \ CLEANUP-AT-EXIT removes only what the child itself registers.
 : CHILD-MAIN ( [ -- ] -- ) {: q :}

@@ -67,7 +67,7 @@ OUTER-RC  create OU-B 3 cells allot  constant OU-RC
    CLOSE-MASTER ;
 
 
-\ The REPL line boundary has its own recovery (habu2.f EM-REPL-RECOVER) and
+\ The REPL line boundary has its own recovery (interpreter.f REPL-LINE) and
 \ needs a terminal, so this case runs in one child on a pty. The answer, 3000
 \ only when all three cells read zero, appears nowhere in the echoed input.
 : REPL-CASE ( -- )

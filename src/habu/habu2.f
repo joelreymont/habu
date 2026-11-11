@@ -1,6 +1,6 @@
 \ habu2.f — engine-builder part 2: the JIT compiler
 \ emitters (literal/call/keywords/locals/strings/do-loop), the outer-interpreter
-\ main loop and kernel emission. Needs habu1.f (part 1). EMIT-MAIN is split into
+\ main loop and kernel emission. Needs habu1.f (part 1). Emission is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 require src/lib/fmt.f
@@ -1236,8 +1236,7 @@ private
 
 \ Raw ioctl TTY probe: x0 = 0 when fd 0 is a terminal. The attributes land in an
 \ 80-byte machine-stack frame (macOS termios is 72 bytes, Linux 36) and are
-\ dropped, never written to the body text block: EMIT-REPL-ROUTE runs at every
-\ line end, while a definition open across lines holds its body capture there.
+\ dropped.
 : C-EMIT-TTY-PROBE ( -- )
    SP SP 80 SUBI,
    0 0 MOVZ,
@@ -1248,33 +1247,9 @@ private
    NR-IOCTL SYS,
    SP SP 80 ADDI, ;
 
-\ x9 = true only for the live interactive route: a successful fd-0 terminal
-\ probe plus ARGC == 1 or the application startup entry. A writable REPL hook is
-\ not authority (batch source can name its installer; --load may inherit a tty).
-\ A sealed engine helper (LREPLROUTE), like (PROT-SPAN) and (LP2VEXEC): habu1.f
-\ BTHROW reaches it by a direct BL. The record is system-private
-\ (OWNER-API-PRI-WID).
-: EMIT-REPL-ROUTE ( -- )
-   LBL LBL LBL {: no:label tty:label end:label :}
-   LREPLROUTE LABEL@ {: start:label :}
-   s" (LREPLROUTE)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   start LBL,
-   9 DATA REPLH-CELL LDR,  9 no CBZ,
-   9 DATA INP-CELL LDR,  9 no CBZ,       \ startup has no source frame to recover into
-   9 DATA APP-ENTRY:XT-CELL LDR,  9 tty CBNZ,
-   9 DATA ARGC-CELL LDR,  9 1 CMPI,  C-NE no BCOND,
-   tty LBL,
-   C-EMIT-TTY-PROBE
-   0 0 CMPI,  9 C-EQ CSET,
-   RET,
-   no LBL,
-   9 0 MOVZ,
-   RET,
-   end LBL, ;
-
 \ (GENIO-OUT): the device half of src/habu/rt.f's output funnel, reached when
 \ the task's output device index is non-zero (x0 = index, x1 = span address,
-\ x2 = length). A sealed engine helper for the reason (LREPLROUTE) is: seven
+\ x2 = length). A sealed engine helper for the reason (PROT-SPAN) is: seven
 \ direct BLs from prim bodies and interpreter code reach it.
 \ ACTIVE-CELL holds the device during the call, so a write shared by several
 \ devices finds its own; the caller's value is restored from the frame.
@@ -5814,7 +5789,7 @@ private
 \ The hook ( -- ) runs on the data stack as it stands, without a reset to S0:
 \ BDIE may run on a task thread with its own stack. x0 and LR are saved; every
 \ other caller-saved register is the caller's to re-derive.
-\ A sealed engine helper, like (LREPLROUTE): habu1.f BDIE reaches it by a
+\ A sealed engine helper, like (PROT-SPAN): habu1.f BDIE reaches it by a
 \ direct BL. The record is system-private.
 : EMIT-EXITHOOK ( -- )
    LBL LBL {: nohk:label end:label :}
@@ -9244,8 +9219,7 @@ private
 \ PKGRESYNC-CELL; this drain clears it and has the checker re-read the restored
 \ scope (checker.f CHECKER-RESYNC) whatever it is: resyncing only a global scope
 \ left a package open across the boundary refusing E-PKG-CONTEXT. LEVALREC
-\ drains before delivering the throw; the LMAIN loop top drains the REPL leg's.
-\ One LDR + CBZ per token when clear.
+\ drains before delivering the throw.
 : EM-PKG-RESYNC ( -- )
    LBL {: nosync:label :}
    9 DATA PKGRESYNC-CELL LDR,  9 nosync CBZ,
@@ -12485,8 +12459,8 @@ private
       EM-RESET-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
       LEVLL LABEL@ B,
    LEVLD LABEL@ LBL,
-   \ The handler is compiled code and may ask the checker before any LMAIN top,
-   \ so the checker re-reads the restored package scope here. The call owns
+   \ The handler is compiled code and may ask the checker before the loop reads
+   \ on, so the checker re-reads the restored package scope here. The call owns
    \ every caller-saved register, so x11 and x15 ride on the stack.
    SP SP 16 SUBI,  11 SP 0 STR,  15 SP 8 STR,
    EM-PKG-RESYNC
@@ -12510,11 +12484,9 @@ private
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
    LEVLN LABEL@ LBL,
-   LREPLROUTE LABEL@ BL,  9 LEVLR LABEL@ CBZ,
-   10 DATA RRECP-CELL LDR,  10 BR,
-   \ No handler and no REPL: the shared uncaught-throw exit (x9 = code). LEVLR
-   \ (eval-frame path) and LUNCAUGHT (BTHROW THROW-NOREC, via UNCGH-CELL stored
-   \ at boot, since a leaf prim cannot name this label) share one address. A
+   \ No handler: the shared uncaught-throw exit (x15 = code). LEVLN (eval-frame
+   \ path) falls in and LUNCAUGHT (BTHROW THROW-NOREC, via UNCGH-CELL stored
+   \ at boot, since a leaf prim cannot name this label) branches in. A
    \ code in [1,255] is a deliberate exit contract (src/lib/argv.f usage 64,
    \ check hook 70, lint findings 1) and exits as itself with no output. Any
    \ other code would be masked to `code & 0xFF` (-2816 exited 0, -2802 exited
@@ -12524,7 +12496,7 @@ private
    \ fd 2. x15 keeps the code across the write (the kernel preserves x2-x15).
    \ Never returns: no RET keeps the FPRIM-L throw leaf-safe.
    LEVLR LABEL@ LBL,  LUNCAUGHT LABEL@ LBL,
-   9 15 0 ADDI,                                        \ restore code after the route's ioctl
+   9 15 0 ADDI,                                        \ x9 = the code
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
    15 9 0 ADDI,                                        \ x15 = code (survives writes; x9-x14 are itoa scratch)
    0 9 0 ADDI,                                         \ x0 = code for the passthrough exit
@@ -12566,52 +12538,6 @@ private
    LEVCORRUPTMSG LABEL@ LBL,  ma mu BYTES,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
-\ The recovery runs checked code (the invalidation callback and the checker's
-\ retract) in place: the region stays executable through its read-execute view
-\ while stores go to its alias. The underflow path (EM-INTERPRET-UNDERFLOW)
-\ arrives as an immediate word left it.
-: EM-REPL-RECOVER ( -- )
-   LBL LBL LBL {: bounds:label kept:label retired:label :}
-   LRREC LABEL@ LBL,
-   14 DATA STACK-ABI:REPL-BASE-CELL LDR,  10 DATA STACK-ABI:REPL-CAP-CELL LDR,
-   12 14 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
-   14 DATA STACK-ABI:BASE-CELL STR,
-   12 DATA STACK-ABI:REPL-CAP-CELL LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   XDS 14 0 ADDI,                                  \ callback argument needs the recovered cursor
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
-   DATA RSAVROWS-CELL kept DECL-OWNER:RETRACT-TO     \ the checker's records go with the line's definitions
-   kept LBL,
-   9 DATA RSAVND-CELL LDR,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 retired CBNZ,
-   10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
-   9 DATA RSAVCP-CELL LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
-   CP DATA RSAVCP-CELL LDR,
-   9 DATA RSAVND-CELL LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,
-   NDICT DATA RSAVND-CELL LDR,
-   12 DATA RSAVDP-CELL LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
-   RELOC-EMIT:LROLLBACK LABEL@ BL,
-   9 10 DP-LOWER,
-   12 DATA DP-CELL STR,
-   9 10 LASTC-TRIM,
-   retired LBL,
-   EM-RESET-COMPILE-STATE
-   \ Roll the open-package scope back to this REPL line's boundary (RPKG
-   \ snapshot) beside the RSAVCP/RSAVND/RSAVDP/RSAVSP rollback, and arm the resync.
-   9 DATA RPKG-CUR LDR,      9 DATA CUR-CELL STR,
-   9 DATA RPKG-PUB LDR,      9 DATA PKG-PUB-CELL STR,
-   9 DATA RPKG-PRI LDR,      9 DATA PKG-PRI-CELL STR,
-   9 DATA RPKG-PARENT LDR,   9 DATA PKG-PARENT-CELL STR,
-   9 DATA RPKG-REC LDR,      9 DATA PKG-REC-CELL STR,
-   DATA RPKG:ENCLOSING 9 ENGINE-EMIT:ENCLOSING-RESTORE,
-   10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,     \ roll the using-scope depth back to this REPL line's snapshot
-   10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
-   9 DATA RPKG:FLOOR LDR,                                         \ and the line-start using floor
-   10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
-   DATA RPKG:WIDS 10 9 ENGINE-EMIT:USE-WIDS-RESTORE,              \ and the line-start used publics, which the resync names
-   9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
-   9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
-   LREAD LABEL@ B,
-   bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
-
 \ Interpret-level reject diagnostics. LUNDEF: undefined token; its message and
 \ the token end through the LCOMPILEDIE tail, which names the file and line and
 \ throws RC-REJECT (70); interpreter.f UNDEFINED writes the same bytes. LWIDE: a
@@ -12619,8 +12545,8 @@ private
 \ multi-cell bundle on the untyped interpret stack, where scalar dup/drop/swap
 \ corrupt it; checked definitions own bundle work. LWIDE and the rejects after
 \ it print their diagnostic, the token and a newline, then share the LDIAGRET
-\ tail: a catchable RC-REJECT throw inside evaluate (via LEVALREC), else tty
-\ REPL recovery, else exit 70.
+\ tail: a catchable RC-REJECT throw inside evaluate (via LEVALREC), else exit
+\ 70.
 : EM-COMPILE-UNDEF ( -- )
    LUNDEF LABEL@ LBL,
    9 DATA POLICY-NDICT-CELL LDR,  9 LPOLICY LABEL@ CBNZ,    \ under the design seal a token nothing resolves is outside the vocabulary like any other: the same located line and code
@@ -12634,9 +12560,8 @@ private
       15 RC-REJECT MOVZ,                                    \ x15 = throw code
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (frame unwind + deliver)
    LUN0 LABEL@ LBL,
-   LREPLROUTE LABEL@ BL,  9 LRDIE LABEL@ CBZ,
-   EM-REPL-RECOVER
    LRDIE LABEL@ LBL,
+   LRREC LABEL@ LBL,                                        \ nothing branches here: kernel-object.f ENGINE-SYMBOLS names it
    0 70 MOVZ,  NR-EXIT-GROUP SYS,
    LWIDE LABEL@ LBL,                                   \ branch target: TKA/TKL still hold the token
    0 2 MOVZ,  1 LWIDEMSG LABEL@ ADR,  2 WIDEMSG-LEN MOVZ,  NR-WRITE SYS,
@@ -12722,19 +12647,16 @@ private
 \ (C-SEAL-PACKAGE-FAIL, EMIT-STORE-DEF-NAME, EM-AOTWIDGATE) calls it before its
 \ own exit_group.
 : EM-COMPILE-DIE ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: ldie:label rdie:label noloc:label located:label nlloop:label nldone:label digloop:label :}
+   LBL LBL LBL LBL LBL LBL {: ldie:label noloc:label located:label nlloop:label nldone:label digloop:label :}
    LBL S" hb: definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
    LBL {: dpbad-end:label :}
    LCOMPILEDIE LABEL@ LBL,                                  \ entry: x0 = sysexits exit/throw code (die site just wrote its diagnostic, newline NOT written)
    15 0 0 ADDI,                                             \ x15 = code (LEVALREC delivers it as the throw code)
    LSRCAT LABEL@ BL,
-   9 DATA EVALD-CELL LDR,  9 ldie CBZ,                      \ EVALD==0 -> no eval frame (top level / tty REPL); EVALD>0 -> unwind escaped eval frames
+   9 DATA EVALD-CELL LDR,  9 ldie CBZ,                      \ EVALD==0 -> no eval frame (top level); EVALD>0 -> unwind escaped eval frames
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
    ldie LBL,
-   LREPLROUTE LABEL@ BL,  9 rdie CBZ,
-      LRREC LABEL@ B,                                       \ -> EM-REPL-RECOVER: roll back to the REPL line-start snapshot (same CP/NDICT/DP/XDS/compile-state surface + HIDX stale-skip as the eval-frame recovery) and re-read
-   rdie LBL,
-   0 15 0 ADDI,                                             \ restore code after the route's ioctl
+   0 15 0 ADDI,                                             \ x0 = the code again
    NR-EXIT-GROUP SYS,
    LSRCAT LABEL@ LBL,
    9 DATA SRCLOC:PATHLEN-CELL LDR,  9 noloc CBZ,            \ no open source file -> newline only
@@ -13014,7 +12936,7 @@ private
    CP DATA RSAVCP-CELL STR,
    NDICT DATA RSAVND-CELL STR,
    9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
-   \ Snapshot the open-package scope for this REPL line (EM-REPL-RECOVER restores it).
+   \ Snapshot the open-package scope for this REPL line.
    9 DATA CUR-CELL LDR,       9 DATA RPKG-CUR STR,
    9 DATA PKG-PUB-CELL LDR,   9 DATA RPKG-PUB STR,
    9 DATA PKG-PRI-CELL LDR,   9 DATA RPKG-PRI STR,
@@ -13408,8 +13330,7 @@ public
 \ `kernel:` (EM-INTERPRET-COLON) and `;match` (EM-ADT-MATCH-VAR), since such a
 \ word would be the keyword in one place and the word in another (a body's `:}`
 \ is a call at tier 0 and the closer at tier 1); so is any spelling a new bare
-\ LKWCMP compares. Writes x0-x5 only. Callers: EMIT-QUALIFY-DEF's sealed
-\ definition-name wall and habu1.f BPOLICYADMIT.
+\ LKWCMP compares. Writes x0-x5 only. Caller: habu1.f BPOLICYADMIT.
 : EMIT-ROW-WALK ( -- )
    LBL LBL {: hit:label back:label :}
    LROWWALK LABEL@ LBL,
@@ -13430,34 +13351,23 @@ public
 
 ;package
 
-\ EMIT-CODE-SECTIONS resolves the main-loop emitter bare in the reopened
-\ emitter package habu1.f opens for the primitive sections.
+\ EMIT-CODE-SECTIONS resolves EMIT-ROUTINES bare in the reopened emitter
+\ package habu1.f opens for the primitive sections.
 package ENGINE-EMIT
 
-: EMIT-MAIN ( -- )
+\ The routines primitives and the Habu loop's helpers branch to, and the label
+\ allocations replayed registrars still read.
+: EMIT-ROUTINES ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LCAPBIND !
    LBL LCODEINV !
-   EM-STARTUP
-   \ Boot enters the interpret loop explicitly: EM-STARTUP ends at SRC-DONE with
-   \ no branch, and the emission order of the compile loops is not a contract.
-   LMAIN LABEL@ B,
-   NCOMP-EMIT:EM-COMPILE
-   COMPILE-EMIT:EM-COMPILE-LEGACY
    EM-CODE-INVALIDATE
    EM-COMPILE-UNDEF
    EM-COMPILE-DIE
    EM-POLICY
    EMIT-DIAGU
-   EMIT-DIAGDEF
    EM-BODY-GROW-DIE
-   EM-QUOT-NEST-DIE
-   EM-SOURCE-END-DIE
-   EM-COMPILE-EXIT
    EM-EVAL-THROW-RECOVER
-   EMIT-SOURCE-EXEC-FINISH
-   EM-COMMENT
-   INTERP-EMIT:EM-INTERPRET
-   EM-INTERPRET-UNDERFLOW ;
+   EMIT-SOURCE-EXEC-FINISH ;
 
 ;package
 
@@ -14080,8 +13990,6 @@ variable KERNEL-CODE-END
    EMIT-FP-PRIMS
    ENGINE-PRIMS:COMPLETE
    EMIT-CEMIT
-   EMIT-CEMITBL
-   EMIT-CINLINE
    EMIT-ADDSUB-IMM
    EMIT-BCAP
    EMIT-TOK
@@ -14093,7 +14001,6 @@ variable KERNEL-CODE-END
    WLFIND:EMIT
    EMIT-HEAD-ROW
    EMIT-FIND-USED
-   INTERP-EMIT:FIND-SHADOW
    EMIT-SCOPE-REC
    DEFWRITE:EMIT-REPLAY-TRAP
    EMIT-HIDX
@@ -14101,33 +14008,26 @@ variable KERNEL-CODE-END
    EMIT-DEF-OCC-OVERLAP
    EMIT-DEF-OCC-RECLAIM
    EMIT-DEF-OCC-RETIRE
-   EMIT-QUALIFY-DEF
-   EMIT-STORE-DEF-NAME
    EMIT-NUM
-   EMIT-TOPHOOK
    EMIT-EXITHOOK ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
-   EMIT-CREATE
    DOESPATCH:EMIT
    EMIT-CF-HELPERS  COMPILE-EMIT:EMIT-DEF-KW-GUARD  COMPILE-EMIT:EMIT-ROW-WALK
-   EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY  EMIT-NSTR-INTERN
-   EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE  EMIT-AOT-PROT-RESTORE
+   EM-SNAPSHOT-REBASE-DICT
    RELOC-EMIT:EMIT-CALLS  RELOC-EMIT:EMIT-MARK
    RELOC-EMIT:EMIT-ROLLBACK
-   RELOC-EMIT:EMIT-INDEX-RELEASE  RELOC-EMIT:EMIT-XT
    RELOC-EMIT:EMIT-ADDR-SITE  RELOC-EMIT:EMIT-ADDRS
-   EMIT-LOC-FIND
    KWDATA:EMIT
    EMIT-FOLDKW
    EMIT-SHUFKW
    EMIT-CMPKW
    EMIT-UNKW
    EMIT-MEMKW
+   EMIT-FOPKW
    EMIT-P2KW ;
 
 : EMIT-RUNTIME-SECTIONS ( -- )
-   EMIT-REPL-ROUTE
    EMIT-GENIO-OUT
    EMIT-CRASH-HANDLER
    EMIT-SIGNAL-HANDLER
@@ -14136,18 +14036,10 @@ variable KERNEL-CODE-END
    PROF:EMIT-PROFFIND
    PROF:EMIT-PROFEDGE
    PROF:EMIT-PROF-REPORTS
-   PROF:EMIT-PROF
-   EMIT-SHEBANG-COMMENT
-   EMIT-SOURCE-READ
-   EMIT-SOURCE-READ-PREFIX
-   EMIT-FLAGS
-   EMIT-JIT
-   EMIT-P2-HELPERS
-   LOWER-TXN:EMIT-VALIDATOR
-   LOWER-TXN:EMIT-TO-CLAUSE ;
+   PROF:EMIT-PROF ;
 
 : EMIT-CODE-SECTIONS ( -- )
-   EMIT-MAIN
+   EMIT-ROUTINES
    EMIT-PRIMITIVE-SECTIONS
    EMIT-DICTIONARY-SECTIONS
    EMIT-RUNTIME-SECTIONS
@@ -14182,7 +14074,6 @@ public
    EMIT-CODE-SECTIONS
    ASM-LEN KERNEL-CODE-END !
    EMIT-SOURCE-BYTES
-   EMIT-AOT-SEED
    LIMGEND LABEL@ LBL,                    \ nothing follows: this label IS the content length
    FILL-KERNEL-DIGEST ;
 

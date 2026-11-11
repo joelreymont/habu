@@ -17,7 +17,7 @@ $0000800000000000 constant DNAME-ALLOC
 \ (habu1.f BCOMMA).
 \ COMMA-RUN-CELL: written by habu1.f BCOMMA; zeroed by SND-ZERO-LIVE and by
 \ every path that lowers DP, beside the DPHW-CELL raise: habu1.f DP-LOWER, (and
-\ so BALLOT, habu2.f EM-EVAL-THROW-RECOVER and EM-REPL-RECOVER), interpreter.f
+\ so BALLOT and habu2.f EM-EVAL-THROW-RECOVER), interpreter.f
 \ FRAME-ROLLBACK-CODE and src/core/generated-declaration-dictionary.f
 \ DICTIONARY-DP!. A zero RUN never equals a body start.
 $6A8 constant COMMA-RUN-CELL

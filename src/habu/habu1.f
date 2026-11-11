@@ -1775,7 +1775,7 @@ public
 \ The USE-MAX used-public wids between the using band (layout.f USE-WIDS-OFF)
 \ and a snapshot at off from base. They are the includer's slots: a buffer
 \ that closes the includer's package and then opens a using writes into one
-\ (habu2.f LEVALREC, EM-REPL-RECOVER). band and tmp are scratch registers.
+\ (habu2.f LEVALREC). band and tmp are scratch registers.
 : USE-WIDS-SAVE, ( n n n n -- ) {: base:n off:n band:n tmp:n :}
    band USE-WIDS-OFF LIT64,  band DATA band ADD,
    USE-MAX 0 do  tmp band i cells LDR,  tmp base off i cells + STR,  loop ;
@@ -3679,10 +3679,7 @@ public
    10 DATA EVALREC-CELL LDR,  10 BR,                   \ x15 = code → LEVALREC (habu2.f)
    THROW-NOH LABEL@ LBL,
    LBL THROW-NOREC !  LBL THROW-NOREC-FB !  LBL THROW-NOREC-FB2 !
-   LREPLROUTE LABEL@ BL,  9 THROW-NOREC LABEL@ CBZ,      \ only a live bare tty REPL may recover
-   10 DATA RRECP-CELL LDR,  10 BR,
    THROW-NOREC LABEL@ LBL,
-   9 15 0 ADDI,                                           \ restore the throw code after the route's ioctl
    10 DATA UNCGH-CELL LDR,  10 THROW-NOREC-FB LABEL@ CBZ, \ reporter installed? branch with x9 = code
    10 BR,                                                 \ LUNCAUGHT (habu2.f): rc-map + report out-of-range codes
    THROW-NOREC-FB LABEL@ LBL,                             \ pre-install boot fallback: silent but never masked

@@ -189,6 +189,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    s" RECS-END" 5 TAIL@ LSYM+
    s" RLIST" 6 TAIL@ LSYM+
    s" RLIST-END" 7 TAIL@ LSYM+
+   \ RREC and RRECP-CELL are for the hb that builds this tree, whose linker reads
+   \ both (docs/bootstrap.md "Staged hosts"); this tree's link-data.f reads neither.
    s" EVALREC" LEVALREC A64ICODE:LABEL@ LSYM+
    s" RREC" LRREC A64ICODE:LABEL@ LSYM+
    s" FLOORREC" LFLOORREC A64ICODE:LABEL@ LSYM+

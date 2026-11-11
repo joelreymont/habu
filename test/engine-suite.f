@@ -9,10 +9,10 @@ require src/lib/test.f
 T-RESET
 
 \ A registered engine helper is sealed system-private: search-wl must never
-\ surface (PROT-SPAN), (LP2VEXEC) or (NUM) in any wordlist, so no checked
-\ program can name or call it. (NUM) is the engine's number reader, which
-\ `num-parse` reaches by a direct branch; the record exists so an ahead-of-time
-\ image can carry the reader, not so source can name it.
+\ surface (PROT-SPAN) or (NUM) in any wordlist, so no checked program can name
+\ or call it. (NUM) is the engine's number reader, which `num-parse` reaches by
+\ a direct branch; the record exists so an ahead-of-time image can carry the
+\ reader, not so source can name it.
 using TFAM
 
 package ENGINE-SUITE
@@ -23,9 +23,6 @@ package ENGINE-SUITE
 : PROT-SPAN-WID-HIDDEN? ( n -- bool )
    s" (PROT-SPAN)" rot search-wl 0= ;
 
-: LP2VEXEC-WID-HIDDEN? ( n -- bool )
-   s" (LP2VEXEC)" rot search-wl 0= ;
-
 : NUM-WID-HIDDEN? ( n -- bool )
    s" (NUM)" rot search-wl 0= ;
 
@@ -34,10 +31,6 @@ public
 : PROT-SPAN-HIDDEN? ( -- bool )
    OWNER-PUBLIC-WID PROT-SPAN-WID-HIDDEN?
    OWNER-PRIVATE-WID PROT-SPAN-WID-HIDDEN? and ;
-
-: LP2VEXEC-HIDDEN? ( -- bool )
-   OWNER-PUBLIC-WID LP2VEXEC-WID-HIDDEN?
-   OWNER-PRIVATE-WID LP2VEXEC-WID-HIDDEN? and ;
 
 : NUM-HIDDEN? ( -- bool )
    OWNER-PUBLIC-WID NUM-WID-HIDDEN?
@@ -56,8 +49,6 @@ s" E-CODE-CERT" 0 search-wl 0 T=
 s" private engine helpers absent from the public wordlist" T-LABEL
 s" (PROT-SPAN)" 0 search-wl 0 T=
 ENGINE-SUITE:PROT-SPAN-HIDDEN? TTRUE
-s" (LP2VEXEC)" 0 search-wl 0 T=
-ENGINE-SUITE:LP2VEXEC-HIDDEN? TTRUE
 s" (NUM)" 0 search-wl 0 T=
 ENGINE-SUITE:NUM-HIDDEN? TTRUE
 

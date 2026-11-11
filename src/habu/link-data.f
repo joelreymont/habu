@@ -54,7 +54,6 @@ variable LSIGH
 variable LNCOUNT
 variable LDICT
 variable LEVALREC
-variable LRREC
 variable LFLOORREC
 \ The kernel's code end, in bytes from the text's start: the product's words follow.
 variable KERNEL-END
@@ -159,11 +158,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ An engine's throw recoveries, as hb's boot stores them (habu2.f
 \ EM-STARTUP-RUNTIME-STATE): its kernel's throw branches through these cells
-\ inside an evaluate, at a live tty REPL and after a data-stack underdepth. A
-\ stripped program's cut keeps none of the three.
+\ inside an evaluate and after a data-stack underdepth. A stripped program's
+\ cut keeps neither.
 : RECOVERY-CELLS ( -- )
    ARM64:TEXT-VA LEVALREC LABEL-OFFSET +  s" EVALREC-CELL" ARM64:SYM HEADER!
-   ARM64:TEXT-VA LRREC LABEL-OFFSET +  s" RRECP-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA LFLOORREC LABEL-OFFSET +  s" FLOORREC-CELL" ARM64:SYM HEADER! ;
 
 \ The header cells HEADER-CELLS and RECOVERY-CELLS give a code address.
@@ -174,7 +172,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    s" CODE-END-CELL" ARM64:SYM A64ICODE:DCQ,
    ENGINE? @ if
       s" EVALREC-CELL" ARM64:SYM A64ICODE:DCQ,
-      s" RRECP-CELL" ARM64:SYM A64ICODE:DCQ,
       s" FLOORREC-CELL" ARM64:SYM A64ICODE:DCQ,
    then ;
 
@@ -406,7 +403,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    s" RLIST" ARM64:SYM-LABEL LRLIST A64ICODE:LABEL!
    s" RLIST-END" ARM64:SYM-LABEL LRLIST-END A64ICODE:LABEL!
    s" EVALREC" ARM64:SYM-LABEL LEVALREC A64ICODE:LABEL!
-   s" RREC" ARM64:SYM-LABEL LRREC A64ICODE:LABEL!
    s" FLOORREC" ARM64:SYM-LABEL LFLOORREC A64ICODE:LABEL! ;
 
 

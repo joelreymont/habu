@@ -356,9 +356,7 @@ $3660 constant RSAVSP-CELL
 $3668 constant RRECP-CELL
 \ RSAVROWS-CELL: the checker's record end as the REPL line began, plus one,
 \ read through the source owner (habu2.f EM-REPL-READ); 0 when no owner
-\ records. A failed line cuts the records back to it as it rolls CP, NDICT and
-\ DP back (EM-REPL-RECOVER), so no definition the line drops keeps a record or
-\ a pending window. It sits in the $2800..$3000 free header band, below $7FF8
+\ records. It sits in the $2800..$3000 free header band, below $7FF8
 \ for the `DATA <off> LDR` form.
 $2D38 constant RSAVROWS-CELL
 $3670 constant ARGC-CELL
@@ -503,12 +501,9 @@ $2C50 constant READS-CELL
 
 \ RPKG-* / PKGRESYNC-CELL: the REPL line's package snapshot. EM-REPL-READ
 \ (LREAD) saves the five live package-scope cells at line start, and the
-\ enclosing package's in RPKG:ENCLOSING;
-\ EM-REPL-RECOVER (LRREC) restores them on a compile error, beside the
-\ RSAVCP/RSAVND/RSAVDP/RSAVSP rollback. Both recovery legs arm PKGRESYNC-CELL
-\ and EM-PKG-RESYNC drains it, making the checker re-read the restored scope:
-\ LEVALREC drains before it delivers the throw, the LMAIN top drains the REPL
-\ leg's (habu2.f). The six cells take $2780..$27C0.
+\ enclosing package's in RPKG:ENCLOSING. LEVALREC arms PKGRESYNC-CELL and
+\ EM-PKG-RESYNC drains it before the throw is delivered, making the checker
+\ re-read the restored scope (habu2.f). The six cells take $2780..$27C0.
 $2780 constant RPKG-CUR
 $2788 constant RPKG-PUB
 $2790 constant RPKG-PRI
@@ -1291,8 +1286,7 @@ $2CE0 constant CODE-END-CELL
 \ for none. The literal store (src/habu/intern.f PUBLISH) opens a
 \ segment at `here` inside whatever is running and raises the floor to the
 \ segment's end, so the segment and every address it answered outlive a failed
-\ evaluation and a failed REPL line (habu2.f EM-EVAL-THROW-RECOVER,
-\ EM-REPL-RECOVER) and a rolled-back generated declaration
+\ evaluation (habu2.f EM-EVAL-THROW-RECOVER) and a rolled-back generated declaration
 \ (src/core/generated-declaration-dictionary.f DICTIONARY-DP!): each puts DP at
 \ the higher of its saved value and the floor. An offset rather than an
 \ address, so nothing relocates it: a snapshot carries it with the rest of
@@ -1336,7 +1330,7 @@ DICT-CAP 1+ cells constant STATE-BYTES
 $2D50 constant TEXT-SIZE-CELL
 \ DPHW-CELL: the release high-water, the highest DP (a DATA offset) that any
 \ path lowering DP has lowered it from. Every such path updates it: habu1.f
-\ DP-LOWER and BALLOT, habu2.f EM-EVAL-THROW-RECOVER and EM-REPL-RECOVER,
+\ DP-LOWER and BALLOT, habu2.f EM-EVAL-THROW-RECOVER,
 \ interpreter.f FRAME-ROLLBACK-CODE, src/core/generated-declaration-dictionary.f
 \ DICTIONARY-DP!, kernel-x64.f ALLOT-BODY. Space above both HERE and it is still
 \ the zero of a fresh page, so `allot` zeroes only the part of its request below
@@ -1377,12 +1371,9 @@ $2DA8 constant TASK-CHAIN-CELL
 \ BPOLICYSEAL write the vocabulary; SOURCE-ROOT:POLICY-ROOT writes the ordinary
 \ require xt before the seal. All three refuse mutation once sealed.
 \ The readers are the places a source token is read: habu2.f LPOLICYREC for a
-\ found record, LKWCMP for a matched keyword, LUNDEF for a miss,
-\ NCOMP-EMIT:CAPTURE-IMMEDIATE for every tier-1 body token, and EMIT-QUALIFY-DEF
-\ for a definition name, which under the seal may spell no dispatch row
-\ (LROWWALK). The native compiler never reads them. The loader reads the
-\ watermark through its own copy of the offset, src/core/include.f
-\ INCLUDE-POLICY-NDICT-CELL.
+\ found record, LKWCMP for a matched keyword and LUNDEF for a miss. The native
+\ compiler never reads them. The loader reads the watermark through its own copy
+\ of the offset, src/core/include.f INCLUDE-POLICY-NDICT-CELL.
 \ Below $7FF8 for `DATA <off> LDR` and below DATA-START; data-claims.f proves
 \ neither field overlaps a neighbour. The snapshot writer zeros its DATA copy
 \ and the warm loader zeros the restored fields, so a fresh process is unsealed.
