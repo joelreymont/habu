@@ -3492,7 +3492,8 @@ variable TWALK-D
 : SCHEME-TYPE? ( n -- bool ) TWALK-RESET SCHEME-TYPE?* ;
 
 CHECKER-REG:SCRATCH{
-variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type, 3 = a quotation's block part
+variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type, 3 = a quotation's block part,
+\ 4 = a cast's stored type may hold a linear value, 5 = it hands out an atom or a width
 variable QUOT-HIT        \ true when the last NO-SCOPE? walk failed at a quotation's block part
 CHECKER-REG:}SCRATCH
 
@@ -3945,7 +3946,8 @@ variable CAST-PATH-N
 : CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
    CAST-WALK-RESET t CAST-POS q CAST-INTRO? ;
 \ Fail closed over the complete signature term: CAST is an authority boundary.
-\ A direct unresolved var may later bind linear. Cell-family parameters are
+\ A direct unresolved var may later bind linear; one carrying NLINEAR may not,
+\ since TV! checks each of its bindings. Cell-family parameters are
 \ phantom and own no payload. Pointers and quotations own nothing themselves,
 \ but what they reach is walked: a linear value behind a field's pointer or in
 \ a field's quotation row is one a projection hands out. A quotation in a
@@ -3961,7 +3963,10 @@ variable CAST-PATH-N
    THEN
    ISROW IF RES-FALSE EXIT THEN
    t0 T-RES {: t:n :}
-   t TAG T-VAR = IF t PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or 0= EXIT THEN
+   t TAG T-VAR = IF
+      t PAY NLINEAR@ IF RES-FALSE EXIT THEN
+      t PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or 0= EXIT
+   THEN
    t TAG T-CON = IF t PAY CT-LINEAR? EXIT THEN
    t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-QUOT = IF
@@ -3985,6 +3990,13 @@ variable CAST-PATH-N
    THEN
    RES-FALSE ;
 
+\ 0 when a cast's stored position may name term t, 4 when t may hold a linear
+\ value, 5 when it hands out an atom or a width (SCOPE-HIT's codes).
+: STORED-TERM-HIT ( n -- n ) {: t:n :}
+   CAST-WALK-RESET t CAST-MAY-LINEAR? IF 4 EXIT THEN
+   CAST-WALK-RESET t CAST-BOTH INTRO-ATOM CAST-INTRO? IF 5 EXIT THEN
+   CAST-WALK-RESET t CAST-BOTH INTRO-WIDTH CAST-INTRO? IF 5 EXIT THEN
+   0 ;
 
 \ Whether variable id is a body-supplied fresh name's (SIG-BODY-FRESH).
 : FB-VAR? ( n -- bool ) {: id:n :}
@@ -3993,11 +4005,45 @@ variable CAST-PATH-N
       1 +
    REPEAT drop RES-FALSE ;
 
+\ Raises NLINEAR on every type variable in term t; row variables pass through.
+: NLINEAR-SPREAD* ( n -- ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN
+   ISROW IF EXIT THEN
+   t T-RES {: x:n :}
+   x ISVAR IF x PAY NLINEAR-RAISE EXIT THEN
+   x TAG T-STALE = IF
+      x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop
+   THEN ;
+
 : TV! ( n n -- )
    {: term:n id:n :}
    id NSCOPE@ IF term NO-SCOPE? 0= IF
       STORE-HIT SCOPE-HIT ! term id MK-VAR U-FAIL EXIT
    THEN THEN
+   id NLINEAR@ IF
+      TWALK-RESET term NLINEAR-SPREAD*
+      term STORED-TERM-HIT dup 0 <> IF
+         SCOPE-HIT ! term id MK-VAR U-FAIL EXIT
+      THEN drop
+   THEN
    term CHECKER-QUOT-FRESH:HELD {: held:n :}
    held 0 <> IF id FB-VAR? 0= IF held  held FB-MINT  U-FAIL EXIT THEN THEN
    id 0 TRAIL-PUSH term 1+ id cells TVT + !  0 id cells TVP + ! ;
@@ -5389,6 +5435,8 @@ CHECKER-REG:}SCRATCH
 46 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
 47 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code
 67 constant MD-TYPE-FORM     \ a body's `[type]` names no closed type storage holds (TYPE-LIT-TOK); E-BAD-STORAGE
+68 constant MD-STORED-LINEAR \ a type bound to a cast's stored type variable may hold a linear value (TV! STORED-TERM-HIT); E-CAST-LINEAR
+69 constant MD-STORED-CLASS  \ it hands out an atom or a width (TV! STORED-TERM-HIT); E-CAST-CLASS
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -5494,6 +5542,8 @@ TAIL-CAPTURE-DEFAULT
    SCOPE-HIT @ 1 = IF MD-SCOPE-STORE MDIAG! THEN
    SCOPE-HIT @ 2 = IF MD-SCOPE-KIND MDIAG! THEN
    SCOPE-HIT @ 3 = IF MD-LOCAL-ESCAPE MDIAG! THEN
+   SCOPE-HIT @ 4 = IF MD-STORED-LINEAR MDIAG! THEN
+   SCOPE-HIT @ 5 = IF MD-STORED-CLASS MDIAG! THEN
    \ a cell with no type left to read answers before any rule about which type
    \ it is
    STALE-HIT @ 0 <> IF STALE-HIT @ STALE-WHY MDIAG! THEN
@@ -8577,14 +8627,7 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
 : ARENA-TERM-INFO ( -- n bool )
    STORAGE-TERM-OK? 0= IF 0 RES-FALSE EXIT THEN
    DYNAMIC-BYTES 0= IF RES-FALSE EXIT THEN
-   CAST-WALK-RESET
-   LBI-T @ CAST-MAY-LINEAR? IF drop 0 RES-FALSE EXIT THEN
-   CAST-WALK-RESET LBI-T @ CAST-BOTH INTRO-ATOM CAST-INTRO? IF
-      drop 0 RES-FALSE EXIT
-   THEN
-   CAST-WALK-RESET LBI-T @ CAST-BOTH INTRO-WIDTH CAST-INTRO? IF
-      drop 0 RES-FALSE EXIT
-   THEN
+   LBI-T @ STORED-TERM-HIT 0 <> IF drop 0 RES-FALSE EXIT THEN
    RES-TRUE ;
 
 : CHECKER-ARENA-INFO ( ptr u8 n -- n bool )
