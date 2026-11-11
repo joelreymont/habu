@@ -11,6 +11,7 @@ require src/lib/test/subject.f
 require src/lib/task.f
 require src/lib/test/wait.f
 require src/lib/adt/result.f                 \ a halted task's join answer is MATCHed
+require src/lib/ffi-abi.f
 
 64 constant MEMT-BUFS
 16 constant MEMT-SPAN-BUFS
@@ -105,6 +106,22 @@ variable MEMT-HERE
    MEMT-SPANS 1 - MEMT-LIVE-SPAN-FRAME
    here data-base - MEMT-HERE @ T= ;
 
+4 constant MEMT-RLIMIT-CORE
+create MEMT-CORE-LIMIT 16 allot
+
+PROCESS-SYMBOLS
+FUNCTION: MEMT-SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
+
+\ A faulting child must not wait for the host's core helper; Linux skips a
+\ piped helper only when the core limit is exactly 1 byte.
+: MEMT-NO-CORE ( -- )
+   1 MEMT-CORE-LIMIT !
+   1 MEMT-CORE-LIMIT cell+ !
+   MEMT-RLIMIT-CORE MEMT-CORE-LIMIT MEMT-SET-LIMIT 0 <> if
+      s" memory-test: cannot set the core limit" 78 die
+   then ;
+
+MEMT-NO-CORE
 T-RESET
 MEM-64K $10000 T=
 MEM-MAP-SHARED 1 T=
