@@ -4255,16 +4255,8 @@ private
 : BSOURCEEXECHANDLER ( -- )
    9 0 MOVZ,  9 G-PUSH ;
 
-\ finally ( body cleanup -- ): preserve the body's result row on success;
-\ cleanup runs outside the body's handler so its throw supersedes that body's.
-\ Frame: [0] cleanup | [8] code | [16] halt, the HALT-UNWIND-CELL value the
-\ body's throw carried. Neither catch forwards a halt. The frame takes the cell
-\ and clears it, so the cleanup's own catches resume as usual; a halt that
-\ begins inside the cleanup abandons it and lands in the frame as a halt the
-\ body carried, keeping [8], so the body's error survives it. A halt taken here
-\ is set again and [8] thrown on, even 0; a cleanup's nonzero code supersedes.
-\ The cleanup is refused here if unset and kept as popped: BCATCH-RUN follows
-\ its record when it runs.
+\ finally ( body cleanup -- ). Frame: [0] cleanup | [8] the body's code | [16] the halt its throw carried,
+\ set again once the cleanup ends or halts. The cleanup's nonzero code supersedes [8]; unset, it is refused here.
 : BFINALLY ( -- )
    LBL LBL LBL {: keep:label calm:label throw:label :}
    LBL FINALLY-DONE !

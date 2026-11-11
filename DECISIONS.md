@@ -1115,7 +1115,10 @@ learned live in the docs for their subject.
   quotations, images and objects are too. The lead decided: one error code,
   `E-LOCAL-ESCAPE`, for every such case; a quotation binding a group of its
   own is a separate limit, left out; T0 only, arm64 first, then Wasm, then
-  x86-64, each refusing the form until its emitter and kernel carry it.
+  x86-64, each refusing the form until its emitter and kernel carry it. A
+  built word's saved effect text carries the dependency in two tags that
+  number quotations by the order of their `[`: `block N M`, M shares N's
+  block, and `noblock N`, N must read no local.
 
 ## Compiler and builds
 

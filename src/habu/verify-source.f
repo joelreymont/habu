@@ -456,22 +456,8 @@ variable STR-DEC-TURN
    raw rawu ESC-BYTES 0= IF E-BAD-ESCAPE throw THEN
    kind raw rawu STR-RING-PUSH ;
 
-\ The engine and the checker look a body token up among the live locals before
-\ every keyword but `;` (src/habu/habu2.f EM-COMPILE-LOCAL, src/core/checker.f
-\ LOC-REF?), byte for byte, so a local named `char`, `[']`, `s"`, `.(` or
-\ `does>` is that local: one ordinary body token. Only the `\` and `(` comments
-\ come first, so NEXT looks a body token up between them and `.(`. Only a body
-\ reader consults the table, and each resets it first: between bodies it still
-\ holds the last body's names, which point into a source that may be gone. A
-\ `{: … :}` group reads its names raw (C-LBRACE-PARSE-NAMES), and a name ends at
-\ its first `:`. A local lives to the end of the control block that declared it,
-\ as the engine's control-flow stack restores the count (LCFPUSH, LCFPOP), and
-\ `else` drops the true arm's. An enclosing local is still that local inside a
-\ quotation, where the checker admits the read and the engine refuses it.
-\ src/lib/source.f BLOCK-OPENER? and BLOCK-CLOSER? hold the same block words for the
-\ tools' scanners. Blocks are counted only while a local lives: one opened with
-\ none live drops none, and a local only needs the count to change from its own
-\ group on.
+\ A body token is looked up among the live locals, byte for byte, after comments and before every
+\ keyword but `;` (checker.f LOC-REF?). Each body reader resets the table; a block's end retires its locals.
 LOC-RECS TYPED-BUFFER LOCAL-A ptr u8          \ a live local's name
 LOC-RECS TYPED-BUFFER LOCAL-U n               \ and its length
 LOC-RECS TYPED-BUFFER LOCAL-D n               \ the block depth that declared it

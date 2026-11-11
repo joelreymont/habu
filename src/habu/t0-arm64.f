@@ -312,20 +312,8 @@ DYNAMIC-BUFFER BR-ARG n
 
 
 \ ---- the body ----------------------------------------------------------------
-\ A unit's body is emitted into RAW at unit-relative offsets; CLOSE copies it
-\ into OUT with the prologue in front and the epilogue before every `ret`.
-\
-\ The frame is fixed at CLOSE, so the body holds no frame size to patch. It
-\ holds, lowest first, the env cell when ENV is 1 (the record's address the
-\ unit was called with), REC-CELLS record cells, then FRAME-CELLS slots: record
-\ cell n at sp + 8 * (ENV + n), slot k at sp + 8 * (ENV + REC-CELLS + k). Its
-\ cells are rounded to 16 bytes, reserved and given back in 4095-page chunks
-\ then the remainder: a frame has no cap. A unit with no cells and no call is a
-\ leaf and has neither. A LINKED unit also
-\ saves x30 above its slots, keeping sp 16-byte aligned at every call; a TAIL
-\ leaves with x30 as the unit found it. CLOSE inserts the epilogue at each
-\ EPI-AT offset and moves every row of the unit by the prologue and by the
-\ epilogues inserted at or before it.
+\ CLOSE copies a unit's body from RAW to OUT, prologue first, an epilogue before
+\ each `ret`. Frame, lowest first: env cell, record cells, slots (REC-OFF); LINKED adds x30.
 \
 \ A control branch is a placeholder word in RAW and an entry in the open
 \ unit's branch list. CLOSE writes each, since the epilogues it inserts move

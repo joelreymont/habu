@@ -1695,16 +1695,21 @@ defined again binds its earlier text against every later record too.
 - **Typed booleans are `bool`**: produce them with `0 0=`, `0 0= 0=` or domain
   helpers; never store raw `0`/`-1` in a `ptr bool` cell or compare bools with
   `=` (`bool bool` is refused).
-- **Quotations are xts, not closures.** `[: … ;]` cannot read surrounding
-  locals: declaring or referencing a local inside a quotation is
-  `E-BAD-LOCAL-SHAPE`, checker and compiler reject local references while any
-  quotation is open, including in an enclosing quotation after an inner `;]`,
-  and on the JIT tier a `{:` group inside `[: ;]` is refused. A body that needs
-  locals inside a quotation becomes a named private word. A value a `catch`,
-  `finally` or locked body needs travels through storage it can address; where
-  it differs per task, that storage is the task's own slot (a `TASK:+USER` cell
-  or a typed-buffer row indexed by the task) that the quotation reads for the
-  running task. Quotations nest: each `[:` inside another opens its own body,
+- **A quotation reads its word's locals while the word runs.** `[: … ;]` may
+  read the locals of the word it is written in, nested quotations included, so
+  a `catch`, `finally` or locked body finds its object without a global:
+  `{: v :} [: v RENDER ;] [: v CLOSE ;] finally`. The body the `[:` is written
+  in, the word's or an enclosing quotation's, copies the locals read into a
+  record in its own stack frame; the quotation stays one cell, which
+  `execute`, `catch`, `finally` and `c2-invoke` follow. It must outlive
+  neither those locals nor that body: storing it, installing it with `is`,
+  passing it to a word that keeps its argument or to `RECURSE`, handing it to
+  a task, returning it, or holding it past the local's block or its own
+  enclosing quotation is `E-LOCAL-ESCAPE`. A quotation that reads no
+  local is a plain xt: storable, and saved in images. Declaring a local inside
+  a quotation is `E-BAD-LOCAL-SHAPE`: a body that needs locals of its own
+  becomes a named private word. T0 compiles the read for arm64; a Wasm or
+  x86-64 build and tier 1 refuse it. Quotations nest: each `[:` inside another opens its own body,
   with its own inputs, calls and `exit`, and the enclosing body resumes after
   its `;]`; at most 32 are open at once (**Engine limits ordinary source
   reaches**).
@@ -1768,7 +1773,8 @@ defined again binds its earlier text against every later record too.
      CLEANUP rc 0 <> if rc throw then ;
   ```
 - **`finally`** is `( R [ R -- S ] [ -- ] -- S )`: body, then cleanup on return
-  or catchable throw; cleanup takes and leaves nothing; a body error rethrows
+  or catchable throw; cleanup takes and leaves nothing, and both may read the
+  calling word's locals; a body error rethrows
   after cleanup, a cleanup error supersedes it; `die` skips cleanup. A
   `TASK:HALT` observed at `TASK:PAUSE` unwinds through `finally` the same way; a
   `catch` between the `PAUSE` and the task's root never resumes. A halt observed
@@ -2382,7 +2388,7 @@ sections above.
   lexical local takes precedence byte-for-byte over a keyword of the same
   spelling; `{: char :} char` reads the local and consumes no operand. A local
   declared in a block dies at its closer; an enclosing local in a quotation
-  still binds and is refused there (`E-BAD-LOCAL-SHAPE`). A dictionary word
+  still binds and is read there. A dictionary word
   that parses, such as `require` or `SEE`, is resolved by scope and is not
   inferred to be a keyword from its spelling.
 - **Definer names are raw `parse-name` operands.** `package (` names `(` and

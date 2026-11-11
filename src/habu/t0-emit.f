@@ -526,19 +526,8 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 : EMIT-LOOP-CLOSE ( -- ) CUR @ EMIT-LOOP-CLOSE-XT @ execute ;
 
 \ ---- the registry ------------------------------------------------------------
-\ THE SEAM. Each operation executes the xt its cell holds for the selected
-\ architecture; every cell, EMIT-VREGS-N among them, has one slot per
-\ architecture. An emitter calls EMIT-PROVIDE with its architecture and an
-\ installer that stores its words into that slot of every cell. EMIT-SELECT
-\ picks the slot the operations run, per definition if need be, and throws
-\ E-T0-TARGET for an architecture no emitter provided. An unset cell stays unset
-\ in its slot, so an operation never runs another target's code: EMIT-UNIT-OPEN,
-\ EMIT-SLOT-CLOSE, the callback stub, EMIT-REC-CELLS, EMIT-ENV-OPEN,
-\ EMIT-REC-STORE, EMIT-REC-QUOT and EMIT-ENV-LOAD throw E-T0-UNFILLED, and any
-\ other unset cell ends the process with `hb: unset quotation` (exit 86,
-\ ENGINE-ERROR:CALLABLE-ABI). An operation before any EMIT-SELECT throws
-\ E-LAYOUT-BOUNDS (7122). EMIT-PROVIDED? answers whether EMIT-SELECT would
-\ admit an architecture, so a caller compiles for a machine only when it can.
+\ THE SEAM. Every cell has one slot per architecture: EMIT-PROVIDE fills one, EMIT-SELECT picks it
+\ (E-T0-TARGET for none). An unset optional operation throws E-T0-UNFILLED (FILLED); any other exits 86.
 : EMIT-PROVIDE ( CTARGET:arch [ n -- ] -- )
    swap ARCH>INDEX {: k:n :}
    k swap execute

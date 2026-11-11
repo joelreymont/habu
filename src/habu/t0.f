@@ -1132,12 +1132,8 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 \ 195 that begins its UTF-8.
 : DO-CHAR ( n -- ) ROW-A0 @ PUSH-CONST ;
 
-\ A call spills first; the last token of a body outside every structure leaves
-\ through the callee when the callee lies in the code region, as tier 1's
-\ (src/compiler/native/compiler.f LINKAGE): publication refuses a tail branch
-\ out of it. A unit that built a record calls instead: the callee may run the
-\ quotation, whose record a tail call would free with the frame. loc is the
-\ calling token's offset in the text.
+\ A call spills first. A body's last token outside every structure tail-calls a callee in the code
+\ region; a unit that built a record calls instead, since a tail call would free the record's frame.
 : DO-CALL ( n n -- ) {: to:n loc:n :}
    SPILL-ALL
    CS-N @ 0= AT-END? and to NPUB:IN-REGION? and REC-NEXT @ 0= and if

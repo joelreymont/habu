@@ -130,12 +130,13 @@ cannot execute: `E-EXEC-OPAQUE-XT`.
   are not reformatted for it.
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
   Destructure only to compute; pass the whole local between words.
-- Quotations `[: … ;]` are xts, not closures. The token `[ in -- out ]` works as
+- Quotations `[: … ;]` are xts. The token `[ in -- out ]` works as
   a parameter, a `TYPED-VARIABLE` or `TYPED-BUFFER` element, and a
   `STRUCTURE FIELD` value. A derived field accessor returns `ptr [ in -- out ]`.
   `: A ( n [ n -- n ] -- n ) execute ;` certifies and `2 [: 1 + ;] A` runs. A
-  quotation may not touch an enclosing local (`E-BAD-LOCAL-SHAPE`) —
-  pass the value on the stack or through a cell.
+  quotation may read the locals of the word it is written in while that word
+  runs: `{: v :} [: v RENDER ;] [: v CLOSE ;] finally`. It may not outlive
+  them (`E-LOCAL-ESCAPE`) and binds no group of its own.
 
 forth.md: **Stack comments**, **Stack effects**, **Words & factoring**.
 
@@ -154,7 +155,8 @@ before any `require`.
 | `evaluate` in a checked body (top level is fine) | `E-UNSAFE` — use `evaluate-closed` |
 | `variable V  : F ( -- ) V @ execute ;` | `E-EXEC-OPAQUE-XT` |
 | an `if` arm or loop body that changes depth | `E-MISMATCH` at `then`/`loop`/`repeat` |
-| a local read or declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE` |
+| a local declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE` |
+| a quotation that reads a local and is stored, installed with `is`, passed to a word that keeps it or to `RECURSE`, handed to a task, returned, or held past the local's block | `E-LOCAL-ESCAPE`, `a quotation that reads a local would outlive it` |
 | `--` or `\|` in a locals group: `{: a -- b :}`, `{: a \| :}` | `E-BAD-LOCAL-SHAPE` at the token, `a locals group names only locals; …` — the signature declares the outputs, and Habu has no uninitialised locals |
 | a `[:` past the quotation nesting ceiling | `E-UNCHECKABLE`; `--load` exits, `hb: quotation nesting full at <cap> levels` |
 | a definition whose effect, a returned quotation's row included, is deeper than the ceiling | `E-UNCHECKABLE`, `effect too deep to record (depth <depth>, at most <cap>)` |

@@ -79,9 +79,12 @@ sequence of disposals may return a `result` instead, so one failure does not
 unwind past owners not yet disposed; it must still free its own record before
 the call that can fail.
 
-**Quotations are not closures.** `[: … ;]` is an execution token and cannot
-read the enclosing word's locals; a value it needs travels on the data stack.
-There is then no hidden environment to type, own or capture in an image.
+**A quotation reads locals only while they live.** `[: … ;]` is an execution
+token of one cell. One that reads locals carries a record in the stack frame
+of the body it is written in, the word's or an enclosing quotation's, and the
+checker refuses any use that would let it outlive those locals or that body.
+There is then no heap environment to own, and only plain
+execution tokens reach storage or an image.
 
 **`catch` takes a stack-preserving quotation.** Its inputs must equal its
 outputs, so the stack has one shape whether the body returned or threw, and a

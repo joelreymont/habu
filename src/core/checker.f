@@ -2838,9 +2838,8 @@ variable TWALK-D
    T-UNSTALE dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
    PARAM>FAM C2-RECORDS-FAM @ = ;
 
-\ Dependencies travel with the complete type, including phantom wrappers and
-\ every quotation row and block part. Scope identity and linear ownership are separate facts:
-\ a copied shared view retains its scopes without copying an owned resource.
+\ Scopes travel with the whole type: phantom wrappers, quotation rows and block parts. Linear
+\ ownership is a separate fact: a copied shared view keeps its scopes and copies no owner.
 : SCOPED-TYPE?* ( n -- bool ) {: t:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -23550,9 +23549,8 @@ DRAIN-PRETRUST
    FAILSET @ 0= IF -1 UNSAFE ! THEN
    0 OK !  -1 FAILSET ! ;
 
-\ A live local's DECLARED SPELLING, scanned without LOC-REF?'s side effects (that
-\ word also pushes the reference and marks the quotations reading it). The caller hands
-\ it the raw token: a differently-cased spelling is not this local.
+\ Whether the raw token is a live local's declared spelling, without LOC-REF?'s reference push
+\ and quotation marks; a differently-cased spelling is not this local.
 variable RTL-I                        \ retired-token local scan index
 : LOC-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 RTL-I !
