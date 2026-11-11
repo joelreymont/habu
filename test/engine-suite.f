@@ -766,7 +766,55 @@ s" locals inside a quotation reject" T-LABEL
 s" CBAD-LOC-QUOTE ( -- n ) [: 1 {: x:n :} x ;] execute" CHECK-CANDIDATE! 0 T=
 s" quotation locals keep E-BAD-LOCAL-SHAPE" T-LABEL
 DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE
-DIAG-BUFFER$ s" a local cannot be bound or referenced inside a quotation, or bound on a dead path" CONTAINS? TTRUE
+DIAG-BUFFER$ s" a local cannot be bound inside a quotation, or bound on a dead path" CONTAINS? TTRUE
+\ A quotation may read its definition's locals; one that would outlive them is
+\ refused, E-LOCAL-ESCAPE. QL-KEEP keeps its argument, QL-RUN only runs it.
+defer QL-ACT ( -- )
+TYPED-VARIABLE QL-KEPT [ -- ]
+: QL-KEEP ( [ -- ] -- ) is QL-ACT ;
+: QL-RUN ( [ -- ] -- ) execute ;
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a stored reading quotation rejects" T-LABEL
+s" CBAD-QL-STORED ( n -- ) {: a:n :} [: a . ;] QL-KEPT !" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" an installed reading quotation rejects" T-LABEL
+s" CBAD-QL-INSTALLED ( n -- ) {: a:n :} [: a . ;] is QL-ACT" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to a keeper rejects" T-LABEL
+s" CBAD-QL-KEEPER ( n -- ) {: a:n :} [: a . ;] QL-KEEP" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a returned reading quotation rejects" T-LABEL
+s" CBAD-QL-RETURNED ( n -- [ -- ] ) {: a:n :} [: a . ;]" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation held past its local's block rejects" T-LABEL
+s" CBAD-QL-PAST-BLOCK ( n -- ) 1 = if 7 {: a:n :} [: a . ;] else [: ;] then execute" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" an inner reading quotation left on its enclosing one's stack rejects" T-LABEL
+s" CBAD-QL-INNER-LEFT ( n -- ) {: a:n :} [: [: a . ;] ;] execute execute" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation run where it is written certifies" T-LABEL
+s" COK-QL-RUN-HERE ( n -- ) {: a:n :} [: a . ;] execute" CHECK-CANDIDATE! 0 T<>
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to a runner certifies" T-LABEL
+s" COK-QL-RUNNER ( n -- ) {: a:n :} [: a . ;] QL-RUN" CHECK-CANDIDATE! 0 T<>
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" an inner reading quotation run inside its enclosing one certifies" T-LABEL
+s" COK-QL-INNER-RUN ( n -- ) {: a:n :} [: [: a . ;] execute ;] execute" CHECK-CANDIDATE! 0 T<>
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" two arms each making a reading quotation certify" T-LABEL
+s" COK-QL-ARMS ( n n -- ) {: a:n :} 0<> if [: a . ;] else [: a 1 + . ;] then execute" CHECK-CANDIDATE! 0 T<>
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" an inner block's local read and run in that block certifies" T-LABEL
+s" COK-QL-INNER-BLOCK ( n -- ) 0<> if 7 {: a:n :} [: a . ;] execute then" CHECK-CANDIDATE! 0 T<>
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation copied and bound to a local certifies" T-LABEL
+s" COK-QL-COPIED ( n -- ) {: a:n :} [: a . ;] dup {: q :} execute q execute" CHECK-CANDIDATE! 0 T<>
 \ A locals group names only locals: `--` and `|` are refused at the token with the reason.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" -- in a locals group rejects" T-LABEL
@@ -1160,7 +1208,6 @@ s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
 s" CBAD-TIMES ( i64 -- i64 i64 ) 5 [: 1+ ;] TIMES" T-CHECK-REJECTS
 s" CBAD-MAP ( ptr i64 i64 -- i64 ) [: 1+ ;] MAP" T-CHECK-REJECTS
-s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
 s" COK-CASE ( i64 -- i64 ) case 1 of 10 endof 2 of 20 endof 30 swap endcase" T-CHECK-PASSES
 s" CBAD-CASE-ARM ( i64 -- i64 ) case 1 of 10 11 endof 20 swap endcase" T-CHECK-REJECTS
 s" CBAD-CASE-MISSING ( i64 -- i64 ) case 1 of 10 endof" T-CHECK-REJECTS

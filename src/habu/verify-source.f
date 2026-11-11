@@ -467,7 +467,7 @@ variable STR-DEC-TURN
 \ its first `:`. A local lives to the end of the control block that declared it,
 \ as the engine's control-flow stack restores the count (LCFPUSH, LCFPOP), and
 \ `else` drops the true arm's. An enclosing local is still that local inside a
-\ quotation, where the engine and the checker refuse it at that token.
+\ quotation, where the checker admits the read and the engine refuses it.
 \ src/lib/source.f BLOCK-OPENER? and BLOCK-CLOSER? hold the same block words for the
 \ tools' scanners. Blocks are counted only while a local lives: one opened with
 \ none live drops none, and a local only needs the count to change from its own

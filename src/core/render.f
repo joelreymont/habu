@@ -1486,7 +1486,7 @@ variable MDV-I   variable MDV-F
      s"  locals a definition may bind" DTXT EXIT
    THEN
    s" at '" DTXT  FAILTK FAILTU @ DTXT
-   s" ': a local cannot be bound or referenced inside a quotation, or bound on a dead path" DTXT ;
+   s" ': a local cannot be bound inside a quotation, or bound on a dead path" DTXT ;
 
 \ A definition's signature, a local's type or a stored signature that does not
 \ parse; SGBAD's state from the failed parse names the kind.

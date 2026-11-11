@@ -21452,24 +21452,6 @@ CHECKER-REG:}SCRATCH
    idx cells LOCTV + @ LIN-LOCAL-REF-TAINT
    idx cells LOCVAL + @ DCUR @ LOC-REF-ROW DCUR ! ;
 
-\ A reference binds a local only in the local's DECLARED SPELLING: the raw token
-\ against the raw declaration, byte for byte. The engine's own lookup
-\ (src/habu/habu2.f EMIT-LOC-FIND) compares the same two spans the same way, so
-\ the checker's reading of a body and the compiled body's own reading agree.
-: LOC-REF?
-   {: a u :}
-   0 LRF !  #LOC @ LI !
-   BEGIN LI @ 0 >  LRF @ 0=  and WHILE
-     LI @ 1 - LI !
-     a u  LOCNB LI @ LOC-NAME-W * +  LI @ cells LOCLN + @  CORE-STR= IF
-       QDEPTH @ 0 > IF
-          0 0 LOC-REJECT
-       ELSE
-          CHECKER-TAPE:K-LOCAL-REF  LI @ cells LOCSEQIX + @  0 EVENT!
-          LI @ LOC-PUSH-REF
-       THEN
-       -1 LRF ! THEN
-   REPEAT  LRF @ ;
 \ --- control flow: branch states saved on a CF stack and unified at joins.
 \ Both rows are snapshot: A/B = data, RA/RB = return (net growth on
 \ either row at a back edge is a row-occurs failure).
@@ -21499,7 +21481,8 @@ $90 constant CF.FB-OFF
 $98 constant CF.FT-OFF
 $A0 constant CF.XFA-OFF
 $A8 constant CF.LSC-OFF
-$B0 constant CFS-REC
+$B0 constant CF.QRD-OFF
+$B8 constant CFS-REC
 : CF.KND ( ptr a -- ptr a ) CF.KND-OFF + ;
 : CF.SA ( ptr a -- ptr a ) CF.SA-OFF + ;
 : CF.SB ( ptr a -- ptr a ) CF.SB-OFF + ;
@@ -21526,6 +21509,8 @@ $B0 constant CFS-REC
 : CF.XFA ( ptr a -- ptr a ) CF.XFA-OFF + ;
 \ CF.LSC: the scope of the locals block the frame opens, 0 for none (LSC-CK).
 : CF.LSC ( ptr a -- ptr a ) CF.LSC-OFF + ;
+\ CF.QRD: on a quotation frame, 0 until it reads a local, else 2 + the deepest owner (LOC-OWNER) of one.
+: CF.QRD ( ptr a -- ptr a ) CF.QRD-OFF + ;
 
 
 32 constant CF-FRAMES-MAX   \ control frames one body may nest
@@ -21613,6 +21598,41 @@ SCOPE-INTRO-FENCE-INSTALL
 : CF-TOP ( -- ptr n )
    #CFC @ 1 - CF-ROW ;
 
+\ The deepest open frame owning local LI, -1 for the definition's own block: a frame pushed
+\ after LI starts with more locals than its index. No quotation owns one (LOC-BEGIN refuses).
+: LOC-OWNER ( n -- n ) {: li:n :}
+   #CFC @ 1 - BEGIN dup 0 >= WHILE
+      dup CF-ROW CF.LN @ li <= IF EXIT THEN
+      1 -
+   REPEAT ;
+
+: QRD-RAISE ( n n -- ) {: dep:n idx:n :}
+   idx CF-ROW {: rec:ptr :}
+   rec CF.KND @ 6 <> IF EXIT THEN
+   rec CF.QRD @ dep max rec CF.QRD ! ;
+
+\ Every quotation open above OWNER reads OWNER's local.
+: QRD-MARK ( n -- ) {: owner:n :}
+   #CFC @ owner 1 + ?do owner 2 + i QRD-RAISE loop ;
+
+\ A token binds a local by raw spelling, byte for byte, as habu2.f EMIT-LOC-FIND. A read marks the
+\ quotations open above its owner (CF.QRD); an unjudged scan files none (TEST-UNCERTIFIED-MALFORMED).
+: LOC-REF?
+   {: a u :}
+   0 LRF !  #LOC @ LI !
+   BEGIN LI @ 0 >  LRF @ 0=  and WHILE
+     LI @ 1 - LI !
+     a u  LOCNB LI @ LOC-NAME-W * +  LI @ cells LOCLN + @  CORE-STR= IF
+       QDEPTH @ 0 >  BWIN-UNJUDGED @ 0 <>  and IF
+          0 0 LOC-REJECT
+       ELSE
+          QDEPTH @ 0 > IF LI @ LOC-OWNER QRD-MARK THEN
+          CHECKER-TAPE:K-LOCAL-REF  LI @ cells LOCSEQIX + @  0 EVENT!
+          LI @ LOC-PUSH-REF
+       THEN
+       -1 LRF ! THEN
+   REPEAT  LRF @ ;
+
 : CF@DED ( -- n )
    CF-TOP CF.DED @ ;
 
@@ -21656,7 +21676,7 @@ SCOPE-INTRO-FENCE-INSTALL
      #CFC @ CF-ROW {: rec:ptr :}
      k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
      r0 rec CF.RA !  r1 rec CF.RB !
-     #LOC @ rec CF.LN !  0 rec CF.LSC !
+     #LOC @ rec CF.LN !  0 rec CF.LSC !  0 rec CF.QRD !
      CF-LOOPS @ rec CF.LA !  0 rec CF.LB !
      FACTS @ rec CF.FA !  0 rec CF.FB !  0 rec CF.FT !
      0 rec CF.UNI !                        \ default non-uniform; CF-IF marks a uniform<bool> branch
@@ -22312,6 +22332,30 @@ CHECKER-REG:SCRATCH{
 variable QTMP
 CHECKER-REG:}SCRATCH
 
+\ 2 + the nearest quotation frame below the top one, 0 for none.
+: QUOT-OUTER ( -- n )
+   #CFC @ 2 - BEGIN dup 0 >= WHILE
+      dup CF-ROW CF.KND @ 6 = IF 2 + EXIT THEN
+      1 -
+   REPEAT drop 0 ;
+
+\ The scope of the block CF.QRD's encoding DEP names, minted on first use.
+: DEP-SCOPE ( n -- n ) {: dep:n :}
+   dep 1 = IF
+      DEF-LSC @ 0= IF SCOPE-FRESH DEF-LSC ! THEN
+      DEF-LSC @ EXIT
+   THEN
+   dep 2 - CF-ROW {: rec:ptr :}
+   rec CF.LSC @ 0= IF SCOPE-FRESH rec CF.LSC ! THEN
+   rec CF.LSC @ ;
+
+\ A reading quotation is bound to the deeper of its locals' innermost block and the body it is
+\ written in, whose frame holds its record: an enclosing quotation's body bounds it too.
+: QUOT-BLOCK-BIND ( -- )
+   CF-TOP CF.QRD @ {: qrd:n :}
+   qrd 0= IF EXIT THEN
+   qrd QUOT-OUTER max DEP-SCOPE  QTMP @ Q>BLOCK T-RES PAY  TV! ;
+
 : CF-SEMIQ  \ ;] — quot<nested effect> pushed onto the restored outer row
    6 6 MD-CLOSES-NOTHING CF-AT? IF
      XSET @ IF                                   \ fold the quote's OWN early returns into its effect
@@ -22323,6 +22367,7 @@ CHECKER-REG:}SCRATCH
      QUOT-RSEAL
      DCUR @ ROW-NO-PROOF DCUR !  RCUR @ ROW-NO-PROOF RCUR !
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
+     QUOT-BLOCK-BIND
      \ A literal infers its fixed window before its implicit tails generalize.
      QTMP @ QUOT-ROWS-GENERALIZE
      QTMP @ CHECKER-QUOT-FRESH:MARK
@@ -23506,7 +23551,7 @@ DRAIN-PRETRUST
    0 OK !  -1 FAILSET ! ;
 
 \ A live local's DECLARED SPELLING, scanned without LOC-REF?'s side effects (that
-\ word also pushes the reference or latches a quotation reject). The caller hands
+\ word also pushes the reference and marks the quotations reading it). The caller hands
 \ it the raw token: a differently-cased spelling is not this local.
 variable RTL-I                        \ retired-token local scan index
 : LOC-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -23966,9 +24011,10 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 \ VIS-PICK restores the resolver's scratch before the pre-pass resumes.
 : CHECKER-VERIFY-TOP-BINDING ( ptr u8 n -- n n n ) TOP-BINDING ;
 
-\ Locals answer here: a body token outside a quotation, unqualified.
+\ Locals answer here: an unqualified body token, inside a quotation too, where
+\ a token that spells a live local is that local.
 : VIS-LOCALS? ( -- bool )
-   VIS-KIND @ CHECKER-OWNER-ABI:VISIBLE-BODY =  QDEPTH @ 0 = and  VIS-QUAL @ 0 = and ;
+   VIS-KIND @ CHECKER-OWNER-ABI:VISIBLE-BODY =  VIS-QUAL @ 0 = and ;
 
 : VIS-LOCAL= ( ptr u8 n n -- bool )
    {: a:ptr u:n ix:n :}

@@ -353,15 +353,19 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    s" CMPLOC" LOCAL
    s" CMPA" VISIT AT-START AT-END PLACED ;
 
-\ Inside a quotation, and for a tick or `is` target, no local binds.
-: CASE-NO-LOCAL ( -- )
+\ Inside a quotation a local binds as outside it.
+: CASE-QUOT-LOCAL ( -- )
    s" cmp" KEPT-RESET
    s" : CMPQ ( n -- n ) {: CMPLOC:n :} [: CMPA ;] drop CMPLOC ;" 2dup s" CMPA ;]" 2 AT
    [: KEEP ;] ARMED
    s" the quotation's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPA" VISIT AT-START AT-END PLACED
-   s" cmploc" ABSENT
+   s" CMPLOC" LOCAL ;
+
+
+\ For a tick or `is` target no local binds.
+: CASE-NO-LOCAL ( -- )
    s" cmp" KEPT-RESET
    s" : CMPT ( n -- n ) {: CMPLOC:n :} ['] CMPA drop CMPLOC ;" 2dup s" ['] CMPA" 6 AT
    [: KEEP ;] ARMED
@@ -875,6 +879,7 @@ variable DOES-USES
    CASE-ENGINE
    CASE-LOCAL-CASE
    CASE-LOCAL
+   CASE-QUOT-LOCAL
    CASE-NO-LOCAL
    CASE-AMBIGUOUS
    CASE-QUALIFIED
