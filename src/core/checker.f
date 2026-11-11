@@ -742,6 +742,22 @@
 \ end at the refusal, what the walk left set is cleared, the record step runs
 \ as CHECK runs it for a refusal, and the load goes on to the next definition.
 \ The packet is the definition's diagnostic; nothing else renders.
+\
+\ The checked-prefix transfer: the retained checker checked the replacement
+\ prefix before the new owner's hooks existed, so TRANSFER-CHECKED copies those
+\ graphs into the new owner before the hooks are enabled. Symbols and
+\ constructors cross by name, never by id. The copies land in the source's
+\ record order, not its symbol order: each copy appends a record, a no-return
+\ row and, for a deferred word, a defer row, and interns its name when this
+\ owner lacks it, so copy order is image order. A host numbers every name it
+\ holds a PRIM: row for ahead of all others, so a walk by source id would make
+\ the image depend on the host's primitive count; sorting by the store offset
+\ just past each record (EW.NEXT) orders the copies the same way on every
+\ host. The source's record links are then remapped through the copies, looked
+\ up by source handle. Claiming the source owner does not depend on having
+\ something to import: a window that did not claim would compile its own
+\ source with no source owner, which the optimizing front end refuses, and
+\ re-claiming an owned record is the same store.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -25724,7 +25740,6 @@ CHECKER-REG:}SCRATCH
    t HIDDEN-PARAM? 0= IF 0 EXIT THEN
    t HIDDEN-SLOT@ 1 + ;
 
-\ Terms past the cap are counted and not recorded.
 : CD-ROW-CAPTURE ( n ptr n -- n ) {: s:n a:ptr :}
    0 CD-I !
    s
@@ -25750,8 +25765,6 @@ CHECKER-REG:}SCRATCH
 : CHECK-DOES-DIN-N ( -- n ) CD-DIN-N @ ;
 : CHECK-DOES-DOUT-N ( -- n ) CD-DOUT-N @ ;
 
-\ A term the captured row does not have answers 0, the same "not a bundle cell"
-\ EFFECT-DIN-SLOT answers for an index past a stored row's terms.
 : CD-SLOT@ ( n ptr n -- n ) {: i:n a:ptr :}
    i 0 < i CD-SLOT-CAP >= or IF 0 EXIT THEN
    i cells a + @ ;
@@ -25773,7 +25786,7 @@ CHECKER-REG:}SCRATCH
 \ keyword and verify-source's pre-pass.
 package CHECKER-IDENTITY
 \ A row that did not parse is refused before a gate walks it; family tails read
-\ the engine's open namespace (SIG-SCOPE$).
+\ the engine's open namespace.
 : PARSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    sa su BYTE-SPAN? 0= IF
       s" the signature's length describes no memory" E-CAST-ARITY CAST-ERROR:RAISE
@@ -25792,8 +25805,8 @@ package CHECKER-IDENTITY
       sa su na nu CAST-ERROR:REFUSE-SIGNATURE
    THEN ;
 
-\ One term a side over one tail, else E-CAST-ARITY; an unsupplied output
-\ variable, a view pack's shape CAST sends elsewhere, is a bad row here.
+\ An unsupplied output variable, a view pack's shape CAST sends elsewhere, is a
+\ bad row here.
 : ROWS ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    SGBAD-UNSUPPLIED? IF sa su na nu CAST-ERROR:REFUSE-SIGNATURE THEN
    SGHASR @ 0 <> IF
@@ -25812,11 +25825,11 @@ package CHECKER-IDENTITY
    SIG-UNRES @ IF E-CHECKER-IDENTITY-UNRESOLVED throw THEN ;
 
 \ An unscoped cast that mints nothing is a representation cast: its pending
-\ record (CK-LIVE-PEND?) takes DNAME-REP, and the compiler lowers it as identity.
+\ record takes DNAME-REP, and the compiler lowers it as identity.
 TRUSTED: MARK-REP ( n -- ) rep-mark ;
 public
-\ Refuse first, register second: a refusal throws before CHECKER-USIG-CERT-ADD
-\ or -ROWS and before the engine counts the record, so it leaves no name.
+\ Refuse first, register second: a refusal throws before the engine counts the
+\ record, so it leaves no name.
 : CAST ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su PARSE
    CAST-SCOPED? IF
@@ -25857,14 +25870,10 @@ package CHECKER-REG
 ' CHECKER-LINEAR DECLARATIONS LINEAR-OFF + xt!
 ;package
 
-\ The tail of CHECK-DOES! and the only writer of the DOESEFF latch: the clause
-\ is certified against its body by then, so what is left is the effect the
-\ created word carries, the clause signature as CREATED-RECORD-BUILD builds it.
-\ A candidate scope latches nothing: its records are truncated when it ends
-\ (CHECK-CANDIDATE-DONE), so a stored offset would name a record that no longer
-\ exists. The source pre-verifier has its own entry and never reaches this word.
+\ A candidate scope latches nothing: its records are truncated when it ends, so
+\ a stored offset would name a record that no longer exists.
 : DOES-EFF-LATCH! ( ptr u8 n -- ) {: sa:ptr su:n :}
-   DOES-EFF-CLEAR                            \ a refused clause latches nothing
+   DOES-EFF-CLEAR
    DVERD @ VERDICT-CHECKED <> IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
    sa su CREATED-RECORD-BUILD
@@ -25872,12 +25881,9 @@ package CHECKER-REG
    rec 0= IF EXIT THEN                       \ unresolvable family: no row, no latch
    rec DOES-EFF-ARM ;
 
-\ CHECK-DOES! verifies a DOES> body against a created-word runtime effect: a
-\ created word declared `( in -- out )` needs a DOES> body typing as
-\ `( in ptr a -- out )`, since the native CREATE stub pushes the data-field
-\ address before branching to the body. The body's head and end are CHECK's
-\ for a colon body declared so: a signature naming a type a rendering statement
-\ may still declare defers the clause unwalked (verdict 2), pinned at that type.
+\ A created word declared `( in -- out )` needs a DOES> body typing as
+\ `( in ptr a -- out )`, since the CREATE stub pushes the data-field address
+\ before the body.
 : CHECK-DOES-RUN {: ba bu sa su :}
    ba bu CHECK-RESET
    -1 CLAUSE-WALK !
@@ -25899,8 +25905,7 @@ package CHECKER-REG
    SGIN @ DOES-DIN dup BROW !
    SGOUT @ CHECK-DOES-EFFECT!
    \ The record is the signature's as written, whatever the runtime row below
-   \ measures; a refused or uncheckable clause keeps it for its packet
-   \ (DOES-REPORT, SRC-DOES-THREW drop it); other verdicts drop it below.
+   \ measures; a refused or uncheckable clause keeps it for its packet.
    SIG-EFF-CACHE!
    \ The runtime row holds the signature's and the data-field address, so its
    \ counts replace any the signature set and name the unfit clause.
@@ -25935,34 +25940,24 @@ package CHECKER-REG
    dup -1 = IF CALL-FINALIZE THEN
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN
    \ A clause body is walked like any other but is nobody's definition body, and
-   \ the next record after it is the CREATED word's (CHECKER-RECORD-CREATED,
-   \ which never CHECK-RESETs), so what this walk armed dies here.
+   \ the next record after it is the CREATED word's, so what this walk armed
+   \ dies here.
    WRAP-CLEAR
    ba bu DVERD @ CHECKER-CERT:PRODUCE ;
 
-\ THE TWO FRONT ENDS ARE TWO WORDS, because only one may latch. The retained
-\ engine reaches CHECK-DOES! at the `;` of a definition it is compiling, before
-\ that definition's own body is checked and recorded, so the certified effect
-\ belongs to the record that follows. Native compilation scans the parent first
-\ and uses CHECKER-NATIVE-DOES-FINISH. The source pre-verifier reaches the
-\ clause after the definer's body (verify-source VERIFY-DOES), so its next
-\ record is the next definition's, which would take a latch left armed
-\ (measured: a conditional wrapper in test/certify-does-definer.f section 3 was
-\ handed the preceding definer's clause). Its entry clears the latch instead;
-\ the pre-pass learns from the text, in its own table.
+\ The retained engine reaches CHECK-DOES! at the `;` of a definition it is
+\ compiling, before that definition's own body is checked and recorded, so the
+\ certified effect belongs to the record that follows. The source pre-verifier
+\ reaches the clause after the definer's body, so its next record is the next
+\ definition's, which would take a latch left armed.
 : CHECK-DOES! {: ba bu sa su :}
    ba bu sa su CHECK-DOES-RUN
    sa su DOES-EFF-LATCH! ;            \ last: that parse reopens the term arena
 
-\ A CLAUSE IS CHECKED IN ITS PARENT'S REGIME. The native compiler scans the body
-\ of a TRUSTED: or hookless definer with CHECK-UNJUDGED! and reads both halves'
-\ call bindings from the unjudged window (src/compiler/native/checker-owner.f
-\ SOURCE-BINDING), so its clause is scanned the same way: unjudged bindings and
-\ no call authority, as tier 0 checks it. With authority, a clause would be
-\ refused a call its parent's body may make (E-CAP-TRUSTED on a colon word
-\ defined with checking off). The compiler still requires the clause's verdict,
-\ so its diagnostic is not suppressed; the parent's window validity stands, as
-\ BWIN-VALID does for a clause CHECK-DOES! scans.
+\ A CLAUSE IS CHECKED IN ITS PARENT'S REGIME: unjudged bindings and no call
+\ authority, as tier 0 checks it. With authority, a clause would be refused a
+\ call its parent's body may make (E-CAP-TRUSTED on a colon word defined with
+\ checking off).
 PTR-VARIABLE UNJ-DOES-BA   variable UNJ-DOES-BU
 PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
 
@@ -25980,12 +25975,8 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    UNJ-DOES-VERDICT @ ;
 
 \ The pre-verifier's entry also reports what it refuses, since CHECK-DOES-RUN
-\ renders nothing: as CHECK reports a body (unless the scope is quiet, rendered
-\ and, in a multi-error load, counted), under the name of the record the clause
-\ publishes, the definer's folded with the companion suffix (CLAUSE-NAME). An
-\ uncheckable clause is rendered here too: CHECK leaves that verdict to its
-\ callers outside JSON and a multi-error load, and the pre-pass renders nothing
-\ of its own for a clause.
+\ renders nothing. An uncheckable clause is rendered here too: the pre-pass
+\ renders nothing of its own for a clause.
 : DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu TOKFOLD drop
    TKF nu CLAUSE-NAME NMU !  NMA ! ;
@@ -25999,12 +25990,10 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    MULTI-ERR? DIAG-QUIET @ 0= and IF 1 MULTI-ERR-N +! THEN
    v ;
 
-\ Both compilers report a clause their check refused the same way
-\ (src/compiler/native/compiler.f CHECK-DOES-SPLIT, src/habu/t0.f
-\ CHECK-UNIT), but they name the definer only after the scan, so the
-\ token buffers are sized for the clause name here.
-\ A grown buffer starts empty and the old one stays mapped, so the refused token
-\ is carried over from it.
+\ Both compilers report a clause their check refused the same way, but they name
+\ the definer only after the scan, so the token buffers are sized for the clause
+\ name here. A grown buffer starts empty and the old one stays mapped, so the
+\ refused token is carried over from it.
 : CHECKER-NATIVE-DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
    FAILTK {: tk:ptr :}
    nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
@@ -26012,14 +26001,13 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    v na nu DOES-REPORT ;
 
 \ A clause is inside its definer's definition, so a refusal of the definition
-\ (REFUSE-DEF) that leaves the clause's walk by a throw is, in a multi-error
-\ load, a refused clause like one its verdict refuses (DEF-REFUSED): what the
-\ walk armed dies, as at CHECK-DOES-RUN's end, and it is counted. Its packet,
-\ rendered where the refusal was found, is its diagnostic.
+\ that leaves the clause's walk by a throw is, in a multi-error load, a refused
+\ clause like one its verdict refuses. Its packet, rendered where the refusal
+\ was found, is its diagnostic.
 PTR-VARIABLE SRC-DOES-BA   variable SRC-DOES-BU
 PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
-: SRC-DOES-BODY ( -- )       \ ( -- ) closure: check the stashed clause, stash the verdict
+: SRC-DOES-BODY ( -- )
    SRC-DOES-BA @ SRC-DOES-BU @ SRC-DOES-SA @ SRC-DOES-SU @ CHECK-DOES-RUN
    SRC-DOES-VERDICT ! ;
 
@@ -26032,8 +26020,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 \ The clause's name is written after the scan, so the token buffers are sized
 \ for it first: growing them afterwards would drop the refused token being
-\ reported. A clause that certifies or is left to the run gets its record in a
-\ replay (CHECKER-SOURCE-CLAUSE).
+\ reported.
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
    WRITE-WINDOW-CK
@@ -26048,8 +26035,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    [: SRC-DOES-BODY ;] catch {: rc:n :}
    -1 TORDER-DEPTH +!
    oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
-   pu0 took PUBLISH-EXIT {: prc:n :}   \ the clause's uses, its resolved prefix if it stopped,
-   DOES-EFF-CLEAR                      \ and its candidates; the arm goes either way
+   pu0 took PUBLISH-EXIT {: prc:n :}
+   DOES-EFF-CLEAR
    rc 0 <> IF rc SRC-DOES-THREW  prc 0 <> IF prc throw THEN  EXIT THEN
    prc 0 <> IF prc throw THEN
    SRC-DOES-VERDICT @ {: v:n :}
@@ -26057,9 +26044,6 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    v na nu DOES-REPORT ;
 
 
-\ Whether a word step over SYM, the token A U, finds a row, as DO-TOK-BODY asks
-\ before it refuses the name (CALL-UNDEFINED): an effect record, a primitive
-\ row, or an identity the step types by what the word does (TOK-IDENTITY).
 : TOP-ROW? ( n ptr u8 n -- bool )
    {: sym:n a:ptr u:n :}
    sym CHECKER-FIND-USIG-SYM IF RES-TRUE EXIT THEN
@@ -26067,15 +26051,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sym a u TOK-IDENTITY 0 <> ;
 
 
-\ Take the seeded rows the name A U lacks, as the step's retry does
-\ (TOP-STEP-RETRY): true when one was taken.
 : TOP-TAKE-ROW? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
    a u RES-TRUE CK-AOT-SERVE ;
 
-\ TOP-ANSWER's refusal of the token by SHADOW-DIAG-XT's selector: rendered at the
-\ token, then counted under --all-errors (answer 0), else thrown.
 : TOP-REFUSE ( ptr u8 n n -- n )
    {: a:ptr u:n sel:n :}
    a USH-TOK-A !  u USH-TOK-U !
@@ -26084,27 +26064,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    CHECKER-REJECT-RC throw ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
-\ false (CHECKER-VERIFY-TOP below). The token takes the walk a body token takes
-\ and gets a body's verdict, so a qualified token resolves as it does there.
-\ The answer is -1 when it resolves, or 2 when it resolves to a word that may
-\ read the source after it (TOP-RUNS); 3 when it resolves to a word it runs
-\ whose effect names a type that may arrive (SYM-EFFECT-UNRESOLVED?), or
-\ resolves nowhere but a rendering statement in scope may define it
-\ (UNSEEN-COVERS?), the run's to judge; and 0 when the load refuses it:
-\ undefined, a word it runs that has no row (TOP-ROW?), as the load's step
-\ refuses one, a malformed qualified name, or a token naming the storage runtime
-\ outside a generated word, as the load refuses it (ARENA-CALL-DENIED?),
-\ rendered as a span record at the token (E-UNDEFINED-TOP-LEVEL,
-\ E-BAD-QUALIFIED-TOP-LEVEL, E-ARENA-CALL-TOP-LEVEL) and counted under
-\ --all-errors, else thrown as a definition's refusal is. A refusal the walk
-\ answers, a using shadow or ambiguity among them, is raised as a body's is:
-\ rendered at the token and thrown (CHECKER-RESOLVE:RAISE). A token the walk
-\ does not bind is the word the engine's top-level find selects
-\ (CHECKER-TOP-SYM): a bare token the store does not hold keeps the engine's
-\ vote on its global wordlist, the boot prefix in the verifier's child, where
-\ the colliding global need not be one the checker knows and the subject's words
-\ are never compiled; the engine word it names runs as its global symbol's facts
-\ say.
+\ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
+\ may read the source after it; 3 when it resolves to a word it runs whose
+\ effect names a type that may arrive, or resolves nowhere but a rendering
+\ statement in scope may define it, the run's to judge; and 0 when the load
+\ refuses it.
 : TOP-ANSWER ( ptr u8 n bool -- n )
    {: a:ptr u:n runs:bool :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
@@ -26127,16 +26091,10 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    THEN
    a u  CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN  TOP-REFUSE ;
 
-\ The pre-pass's question about a top-level token (src/habu/verify-source.f
-\ TOP-TOKEN): TOP-ANSWER's answer. A using refusal leaves the token's walk by
-\ the throw that rendered its packet, as it leaves a definition's, and refuses
-\ the token by the same rule (DEF-REFUSED): in a multi-error load the token is
-\ counted and answers 0, as an undefined one does, and the scan goes on;
-\ outside one the refusal stops the load, and DEF-STOPPED keeps it.
 PTR-VARIABLE TOP-ASK-A   variable TOP-ASK-U   variable TOP-ASK-RUNS
 variable TOP-ASK-ANSWER
 
-: TOP-ASK-BODY ( -- )        \ ( -- ) closure: answer the stashed token, stash the answer
+: TOP-ASK-BODY ( -- )
    TOP-ASK-A @ TOP-ASK-U @ TOP-ASK-RUNS @ TOP-ANSWER TOP-ASK-ANSWER ! ;
 
 : CHECKER-VERIFY-TOP ( ptr u8 n bool -- n )
@@ -26177,46 +26135,28 @@ variable TOP-ASK-ANSWER
    RBF-FINALIZE ;
 
 \ ---- generates: rows ----------------------------------------------------------
-\ A definer that writes its word as text (src/lib/error.f ERROR:CODE evaluates
-\ a `constant` line) has no clause, and the source pre-verifier never runs that
-\ text. `generates: D ( effect )` states it: the row's record lands on D's
-\ CREATES cell as a certified clause's does, so every clause reader (the
-\ wrapper walk, the pre-pass's resident lookup) reads it unchanged. The row is
-\ checked for its own four claims under one code: D names a word here, nothing
-\ already states what D makes (its clause, an earlier row, the definer it
-\ wraps), D is seen to read the source after it (CTL-PARSES, which a call
-\ through a defer or an executed xt does not carry) and is not deferred, since
-\ the pre-pass takes the token after a call of D as the made name, and the
-\ effect parses.
-\ It is the third writer of the cell, beside STORE's latch take and
-\ CHECKER-NATIVE-DOES-PUBLISH, and appends through NORET-ADD-CREATES like them,
-\ carrying D's flags and masks forward with CTL-GENERATES set, so the pre-pass
-\ reads a call of D as declared (verify-source.f DECLARED-RENDER?).
+\ A definer that writes its word as text has no clause, and the source
+\ pre-verifier never runs that text. `generates: D ( effect )` states it: the
+\ row's record lands on D's CREATES cell as a certified clause's does, so every
+\ clause reader reads it unchanged. D is seen to read the source after it and is
+\ not deferred, since the pre-pass takes the token after a call of D as the made
+\ name.
 0 constant GENR-UNRESOLVED                \ D names no word here
 1 constant GENR-CREATES                   \ something already states what D makes
 2 constant GENR-BADSIG                    \ the effect does not parse or no record
                                           \ holds it (SGBAD-UNFIT!); SGBAD says why
 3 constant GENR-READS-NONE                \ D lacks CTL-PARSES, or is deferred
-defer GENERATES-DIAG-XT ( ptr u8 n n -- ) \ render.f installs the diagnostic: row name, kind
+defer GENERATES-DIAG-XT ( ptr u8 n n -- )
 : GENERATES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is GENERATES-DIAG-XT ;
 GENERATES-DIAG-DEFAULT
 
-\ A refused row is rendered and then behaves as a stale `trust` row does
-\ (TRUST-STALE): a hard stop on the ordinary load path, counted under a
-\ MULTI-ERROR load so the pass reaches every other error in the file.
 : GENERATES-REFUSE ( ptr u8 n n -- )
    GENERATES-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-GENERATES-ROW throw ;
 
-\ The checks every row passes, for the engine's `generates:` and for the source
-\ pre-verifier (verify-source GENERATES-SIGNATURE). D resolves through
-\ CHECKER-BIND as a use does, so a name the used scopes refuse
-\ (E-USING-SHADOW-GLOBAL, E-USING-AMBIGUOUS) is that refusal on both paths: the
-\ pre-pass's resolver defers those two to the check after a use
-\ (CHECKER-FIND-QUIET-SYM), and a row has none. `already` is what the caller
-\ knows of D beyond the checker (the pre-pass's definer table). Answers D's
-\ symbol and the created word's record offset+1, 0 for a refused row.
+\ `already` is what the caller knows of D beyond the checker. Answers D's symbol
+\ and the created word's record offset+1, 0 for a refused row.
 : CHECKER-GENERATES ( ptr u8 n ptr u8 n bool -- n n )
    {: na:ptr nu:n sa:ptr su:n already:bool :}
    na nu CHECKER-FIND-ACTIVE-SYM
@@ -26231,13 +26171,8 @@ GENERATES-DIAG-DEFAULT
    rec 0= IF na nu GENR-BADSIG GENERATES-REFUSE THEN
    sym rec ;
 
-\ A signature is read as a definition head reads one: past the blanks (bytes
-\ up to 32, line feeds included), a `(` opens it whether or not a token is
-\ glued to it, and the first `)` byte closes it on any later line, whatever
-\ follows it. PARSE-SIG-RAW splits the effect at spaces only, so a line feed
-\ inside it fuses the tokens around it. Answers the offset of the `(` (the
-\ text's length when none opens) and the offset just past the `)` (0 when none
-\ closes). `generates:` and verify-source.f SCAN-SIG read a signature here.
+\ A signature is read as a definition head reads one. PARSE-SIG-RAW splits the
+\ effect at spaces only, so a line feed inside it fuses the tokens around it.
 : CHECKER-SIG-SPAN ( ptr u8 n -- n n )
    {: a:ptr u:n :}
    0 BEGIN dup u < IF a over + c@ 33 < ELSE RES-FALSE THEN WHILE 1 + REPEAT
@@ -26250,12 +26185,9 @@ GENERATES-DIAG-DEFAULT
    open close 1 + ;
 
 \ The longest effect a row states. The source pre-verifier refuses a longer one
-\ at the same bound (verify-source.f RECORD-GENERATES).
+\ at the same bound.
 $100 constant GENR-SIG-CAP
 
-\ The engine word reads the row's effect from the input at `at`, the cursor past
-\ D, and moves the cursor past the `)`. The effect is the text inside the
-\ parentheses, in the input itself.
 : GENR-SIG-READ ( ptr u8 -- ptr u8 n )
    {: at:ptr :}
    data-base INE-CELL + @  at NULL-PTR - -
@@ -26272,10 +26204,7 @@ $100 constant GENR-SIG-CAP
 
 \ generates: D ( effect ) at top level, after D's definition: a declared
 \ boundary, not a checked body. UNSAFE-TOK? bars both `checker-generates` and
-\ `generates:` from checked bodies; this is the engine's one caller of the
-\ registrar, as verify-source.f GENERATES-SIGNATURE is the pre-pass's. Its
-\ header is the word's whole published effect, which the axiom row beside
-\ CHECKER-GENERATES's states where no checker reads this header.
+\ `generates:` from checked bodies.
 TRUSTED: generates: ( -- )
    parse-name
    {: na:ptr nu:n :}
@@ -26294,11 +26223,8 @@ TRUSTED: generates: ( -- )
 \ scan knows without running it. `parses: W n` states that W reads n raw tokens,
 \ `parses-through: W n ( E1 E2 )` that it reads n and then every token through
 \ the first one equal to a listed terminator. Only the source pre-verifier keeps
-\ the shape (verify-source.f PARSES-ROW); the engine words
-\ (src/core/cell-effects.f) check a row and keep nothing. Both check here, so
-\ the pre-pass and the load accept the same rows, under one code whose kind says
-\ which check failed: the first five the target's (fix_parses_row), the last
-\ three the row's syntax (fix_parses_syntax).
+\ the shape; the engine words check a row and keep nothing. Both check here, so
+\ the pre-pass and the load accept the same rows.
 0 constant PARSES-UNDEFINED               \ the target names no word here
 1 constant PARSES-QUALIFIED               \ the target is a malformed qualified name
 2 constant PARSES-SHADOW                  \ a used public shadows the global it names
@@ -26307,23 +26233,15 @@ TRUSTED: generates: ( -- )
 5 constant PARSES-NO-TARGET               \ nothing follows the declarer
 6 constant PARSES-COUNT                   \ the count is no number, or negative
 7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
-defer PARSES-DIAG-XT ( ptr u8 n n -- )   \ render.f installs the diagnostic: the token it names, kind
+defer PARSES-DIAG-XT ( ptr u8 n n -- )
 : PARSES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is PARSES-DIAG-XT ;
 PARSES-DIAG-DEFAULT
 
-\ A refused row is rendered and then stops the load, as a refused generates:
-\ row does (GENERATES-REFUSE): counted under a MULTI-ERROR load instead.
 : PARSES-REFUSE ( ptr u8 n n -- )
    PARSES-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-PARSES-ROW throw ;
 
-\ A row's target the top-level find binds to no word: the kind of the load's
-\ reason, which the walk answers before the find falls back
-\ (CHECKER-RESOLVE:WALK, TOP-ANSWER), for the row to refuse; or -1 when the
-\ walk's refusal is raised here, or for a name only a rendering statement in
-\ scope may define, the run's to judge, as a call of it is (UNSEEN-COVERS?): no
-\ refusal, and no row. The names: rows share it (CHECKER-NAMES-ROW).
 : ROW-UNBOUND ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u CHECKER-RESOLVE:WALK nip {: why:n :}
@@ -26339,14 +26257,11 @@ PARSES-DIAG-DEFAULT
    a u ROW-UNBOUND {: kind:n :}
    kind 0 >= IF a u kind PARSES-REFUSE THEN ;
 
-\ The binding a row's target selects, as the top-level find selects it for a
-\ call (TOP-BINDING): its symbol and visible record's offset + 1, both 0 when
-\ the row bounds nothing. A target the load refuses, or a live word that reads
-\ no source, refuses the row. A deferred word stays opaque, whatever word is
-\ set in it, and so does a word with no record (a primitive or an axiom),
-\ whose replacement no record tells apart. A cold selected dictionary record
-\ can likewise have control but no checker symbol to key a row: the row stands
-\ and bounds nothing until a checked use materializes that binding.
+\ A deferred word stays opaque, whatever word is set in it, and so does a word
+\ with no record (a primitive or an axiom), whose replacement no record tells
+\ apart. A cold selected dictionary record can likewise have control but no
+\ checker symbol to key a row: the row stands and bounds nothing until a checked
+\ use materializes that binding.
 : PARSES-TARGET ( ptr u8 n -- n n )
    {: a:ptr u:n :}
    a u TOP-BINDING {: sym:n eff1:n ctl:n :}
@@ -26362,13 +26277,9 @@ PARSES-DIAG-DEFAULT
    eff1 0= IF 0 0 EXIT THEN
    sym eff1 ;
 
-\ The checks every row passes, for the engine words (src/core/cell-effects.f)
-\ and the source pre-verifier (verify-source.f PARSES-CHECK), each of which has
-\ read the whole row first, so a row refused under --all-errors leaves none of
-\ its tokens to what follows. BAD is true when the row has a malformed
-\ terminator list (PARSES-LIST). The packet names the target, or the keyword
-\ when no target follows. Answers the binding the row bounds and its count, the
-\ symbol 0 when it bounds nothing.
+\ The checks every row passes, for the engine words and the source pre-verifier,
+\ each of which has read the whole row first, so a row refused under
+\ --all-errors leaves none of its tokens to what follows.
 : CHECKER-PARSES-ROW ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
    {: ka:ptr ku:n ta:ptr tu:n ca:ptr cu:n bad:bool :}
    tu 0= IF ka ku PARSES-NO-TARGET PARSES-REFUSE 0 0 0 EXIT THEN
@@ -26386,9 +26297,6 @@ PARSES-DIAG-DEFAULT
    a u s" )" CORE-STR= IF 1 EXIT THEN
    0 ;
 
-\ The engine word's reading of a terminator list (src/core/cell-effects.f
-\ parses-through:): `(`, then tokens through a standalone `)`, at least one
-\ before it: true when it is malformed (CHECKER-PARSES-ROW's BAD).
 : PARSES-LIST-LOAD ( -- bool )
    parse-name s" (" CORE-STR= 0= IF RES-TRUE EXIT THEN
    0 BEGIN parse-name PARSES-ITEM dup 0= WHILE drop 1 + REPEAT
@@ -26396,20 +26304,13 @@ PARSES-DIAG-DEFAULT
    end 2 =  terms 0=  or ;
 
 \ ---- names: rows --------------------------------------------------------------
-\ A WORD THAT LOOKS ITS STRING OPERAND UP AS A NAME MAKES A STRING A USE.
 \ `names: W` states that W finds the word its top string operand ( ptr u8 n )
-\ names as XREF-FIND (src/habu/xref.f) finds one, so a string literal just
-\ before a call of W is a use of that word, at the bytes between its quotes:
-\ in a body (NAMED-OPERAND-USE) and at top level, where the source
-\ pre-verifier finds the literal (verify-source.f TOP-NAMED). The row is a
-\ trusted claim, as a parses: row is, never compared with W's body; it marks
-\ W's symbol (CTL-NAMES), so a redefinition drops it, an export carries it
-\ (EXPORT-META-COPY), and a caller passing its own operand on declares its own
-\ row. A refused row has the parses: rows' kinds under its own code:
-\ PARSES-NO-TARGET at the keyword (fix_names_syntax), ROW-UNBOUND's and
-\ NAMES-NO-STRING at the target (fix_names_row).
+\ names, so a string literal just before a call of W is a use of that word, at
+\ the bytes between its quotes. The row is a trusted claim, never compared with
+\ W's body; it marks W's symbol, so a redefinition drops it, an export carries
+\ it, and a caller passing its own operand on declares its own row.
 8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in ptr u8 n
-defer NAMES-DIAG-XT ( ptr u8 n n -- )    \ render.f installs the diagnostic: the token it names, kind
+defer NAMES-DIAG-XT ( ptr u8 n n -- )
 : NAMES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is NAMES-DIAG-XT ;
 NAMES-DIAG-DEFAULT
 
@@ -26418,9 +26319,7 @@ NAMES-DIAG-DEFAULT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-NAMES-ROW throw ;
 
-\ Effect record REC's input row ends in the string pair a lookup takes, as
-\ XREF-FIND declares it: n on top and ptr u8 below it. A record quiet TRUST
-\ left unresolved holds no row.
+\ A record quiet TRUST left unresolved holds no row.
 : STRING-IN? ( ptr u8 -- bool )
    {: rec:ptr :}
    rec ER.ACTIVE @ EFF-UNRESOLVED = IF RES-FALSE EXIT THEN
@@ -26432,9 +26331,6 @@ NAMES-DIAG-DEFAULT
    t EFF-A@ {: p:n :}
    p EFF-TAG@ EN-CON =  p EFF-A@ CC-U8 =  and ;
 
-\ The binding TOP-BINDING selected takes that string: its visible record's row,
-\ else, for a primitive or an axiom, which has none, its first primitive row,
-\ the one FIND-SIG-SYM answers. A word with neither declares no row.
 : NAMES-TAKES-STRING? ( n n -- bool )
    {: sym:n eff1:n :}
    eff1 0 <> IF eff1 1 - E-PTR STRING-IN? EXIT THEN
@@ -26442,14 +26338,11 @@ NAMES-DIAG-DEFAULT
    off 0= IF RES-FALSE EXIT THEN
    off E-PTR STRING-IN? ;
 
-\ The check of a names: row, for the engine word (src/core/cell-effects.f
-\ names:) and the source pre-verifier (verify-source.f NAMES-CHECK). A target
-\ the top-level find binds is a use. Its symbol takes the mark when its declared
-\ input row ends in the string pair ( ptr u8 n ) XREF-FIND takes; any other
-\ word, one with no inputs among them, refuses the row (NAMES-NO-STRING), so a
-\ row on the wrong word cannot make every string before it a use. A cold
-\ selected record with no checker symbol to key the mark leaves the row standing
-\ and binding nothing, as a parses: row does (PARSES-TARGET).
+\ A target the top-level find binds is a use. Its symbol takes the mark when its
+\ declared input row ends in the string pair ( ptr u8 n ); any other word, one
+\ with no inputs among them, refuses the row, so a row on the wrong word cannot
+\ make every string before it a use. A cold selected record with no checker
+\ symbol to key the mark leaves the row standing and binding nothing.
 : CHECKER-NAMES-ROW ( ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n ta:ptr tu:n :}
    tu 0= IF ka ku PARSES-NO-TARGET NAMES-REFUSE EXIT THEN
@@ -26465,11 +26358,9 @@ NAMES-DIAG-DEFAULT
    sym  sym CTL-FLAGS-SYM CTL-NAMES or  sym CTL-MASKS-SYM  NORET-ADD-SYM
    selected sym RECORD-CONTROL-AT! ;
 
-\ The word a string names, as XREF-FIND finds it: PKG:TAIL is PKG's public
-\ TAIL, a bare name a global and never a package's own word, and a name with a
-\ second colon none, though the checker's split reads one whose first colon is
-\ at an edge as bare (XREF-QUAL-INDEX). NAV-USE-AT then takes the record
-\ visible where the string is.
+\ PKG:TAIL is PKG's public TAIL, a bare name a global and never a package's own
+\ word, and a name with a second colon none, though the checker's split reads
+\ one whose first colon is at an edge as bare.
 : NAMED-SYM ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
@@ -26477,10 +26368,10 @@ NAMES-DIAG-DEFAULT
    a u CHECKER-COLON-SCAN drop 1 > IF 0 EXIT THEN
    a u CHECKER-GLOBAL-SYM? ;
 
-\ The call BIND-TOK bound, right after an `s"` literal (SPAY-ARMED): the
-\ literal's body as written names the word. One with an escape binds nothing,
-\ since a rename could not edit it as written, and every escape is shorter than
-\ its spelling, so the body is as written when the bytes it makes are as long.
+\ The call BIND-TOK bound, right after an `s"` literal: the literal's body as
+\ written names the word. One with an escape binds nothing, since a rename could
+\ not edit it as written, and every escape is shorter than its spelling, so the
+\ body is as written when the bytes it makes are as long.
 : NAMED-OPERAND-USE ( -- )
    SPAY-ARMED @ 0= IF EXIT THEN
    SPAY-BYTES nip SPAY-U @ <> IF EXIT THEN
@@ -26490,17 +26381,13 @@ NAMES-DIAG-DEFAULT
 NAMED-OPERAND-INSTALL
 
 \ A top-level literal's body the source pre-verifier found before a call of a
-\ marked word (verify-source.f TOP-NAMED) is a use of the word it names,
-\ published at once.
+\ marked word is a use of the word it names, published at once.
 : CHECKER-NAMED-USE ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u NAMED-SYM a u NAV-USE-NOW ;
 
-\ The retained compiler checked the replacement prefix before its new hooks
-\ existed. Transfer those actual graphs into the new owner before enabling
-\ the hooks. Symbols and constructors cross by semantic name, never by ID.
-\ SOURCE-ROW is consumed synchronously before the next call. Node offsets
-\ remain relative to the returned source pool, not this transient flat view.
+\ SOURCE-ROW is consumed synchronously before the next call. Node offsets remain
+\ relative to the returned source pool, not this transient flat view.
 create EFFECT-XFER EFF-WIRE allot
 : EFFECT-XFER-CLEAR ( -- ) EFFECT-XFER EFF-WIRE ARENA-ZERO ;
 
@@ -26549,8 +26436,9 @@ variable TRANSFER-FACTS 0 TRANSFER-FACTS !
 : CLAIM-SOURCE-OWNER ( -- )
    DECLARATIONS SOURCE-OWNER-A ! ;
 
-\ The owner's two callbacks are stored as raw cells in its record; these casts
-\ are the one crossing from a stored execution token to the quotation each defer takes.
+\ The owner's callbacks are stored as raw cells in its record; these casts are
+\ the one crossing from a stored execution token to the quotation each defer
+\ takes.
 CAST: AS-SOURCE-ROW ( n -- [ n -- ptr u8 ptr u8 ptr u8 n bool ] )
 CAST: AS-CON-NAME ( n -- [ n -- ptr u8 n ] )
 CAST: AS-SOURCE-HANDLES ( n -- [ n -- n n bool ] )
@@ -26599,10 +26487,9 @@ CAST: AS-SOURCE-LINK ( n -- [ n -- ptr n ] )
       s" checker: a failed declaration's row does not transfer" 76 die
    then
    name TRANSFER-SYMBOL {: sym:n :}
-   \ Cold loading resets retained user effects and reconstructs this prefix.
    \ Target-checked rows win. An ordinary source row still carries its checked
-   \ graph when the target has only that symbol's exact active PRIM: axiom.
-   \ Keep the axiom for primitive call authority.
+   \ graph when the target has only that symbol's exact active PRIM: axiom. Keep
+   \ the axiom for primitive call authority.
    sym USIG-NEWEST {: target:n :}
    target 0 <> if
       \ Callers check against the kept row, so the source links bind to it too.
@@ -26621,13 +26508,6 @@ CAST: AS-SOURCE-LINK ( n -- [ n -- ptr n ] )
    sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM
    sym USIG-NEWEST sym NORET-NEWEST ;
 
-\ THE COPIES LAND IN THE SOURCE'S RECORD ORDER, NOT ITS SYMBOL ORDER. Each copy
-\ appends a record and a no-return row, a defer row for a deferred word, and
-\ interns its name when this owner lacks it, so copy order is image order. A
-\ host numbers every name it holds a PRIM: row for ahead of all others, so a
-\ walk by source id makes the image depend on the host's primitive count. The
-\ host certified the prefix in source order, so EW.NEXT (the store offset just
-\ past each record) orders the copies the same way on every host.
 \ ORDER-P: ORDER-N rows of handles, then ORDER-RUNS runs of ORDER-N pairs; a
 \ private mapping TRANSFER-CHECKED releases on every way out, never imaged.
 4 cells constant ORDER-ROW
@@ -26676,15 +26556,12 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    a i ORDER-PAIR@ a j ORDER-PAIR@  a i ORDER-PAIR!  a j ORDER-PAIR! ;
 
 
-\ Whichever of pairs i and j sorts later, i when j lies past the first n.
 : ORDER-LATER ( ptr n n n n -- n )
    {: a:ptr i:n j:n n:n :}
    j n >= if i exit then
    a i j ORDER-BEFORE? if j else i then ;
 
 
-\ One sift-down step in the heap of the first n pairs: the child pair at took
-\ the place of, or -1 when pair at already sorts after both its children.
 : ORDER-STEP ( ptr n n n -- n )
    {: a:ptr at:n n:n :}
    a at at 2 * 1 + n ORDER-LATER {: big:n :}
@@ -26698,8 +26575,7 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    root begin dup 0 >= while a swap n ORDER-STEP repeat drop ;
 
 
-\ Heapsort n pairs by ORDER-BEFORE?; every run's second cells are distinct, so
-\ the result is the one total order.
+\ Every run's second cells are distinct, so the result is the one total order.
 : ORDER-SORT ( ptr n n -- )
    {: a:ptr n:n :}
    n 2 / 0 ?do a  n 2 / 1 - i -  n ORDER-SIFT loop
@@ -26709,7 +26585,6 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    loop ;
 
 
-\ The first of n sorted pairs whose first cell is not below k, n when none is.
 : ORDER-FIRST ( ptr n n n -- n )
    {: a:ptr n:n k:n :}
    0 n begin 2dup < while
@@ -26719,10 +26594,8 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    repeat drop ;
 
 
-\ The store offset just past the source's record for a symbol, 0 for a symbol
-\ it holds none for; false past its last symbol. Only a record still being
-\ built has offset 0 (E-NEXT@), and the source has finished every record it
-\ hands over, so 0 never stands for a record.
+\ Only a record still being built has offset 0, and the source has finished
+\ every record it hands over, so 0 never stands for a record.
 : SOURCE-AT ( n -- n bool )
    SOURCE-ROW {: pool:ptr rec:ptr name:ptr packed:n more:bool :}
    rec 0= if 0 more exit then
@@ -26735,8 +26608,8 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    repeat 2drop ;
 
 
-\ The walk's pairs, in source id order. The ids' newest records are distinct
-\ (one ER.SYM each), so no two pairs share an EW.NEXT.
+\ The ids' newest records are distinct (one ER.SYM each), so no two pairs share
+\ an EW.NEXT.
 : ORDER-FILL ( -- )
    ORDER-WALK ORDER-PAIRS {: walk:ptr :}
    0 1 begin dup SOURCE-AT while
@@ -26794,8 +26667,7 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    ORDER-SOURCE-CONTROL ORDER-CONTROLS ORDER-INDEX ;
 
 
-\ The target handle of the first copied or kept row carrying a source handle;
-\ false when none does. A kept row may hold no control row: control 0, found.
+\ A kept row may hold no control row: control 0, found.
 : ORDER-MAP ( n n n -- n bool )
    {: handle:n run:n target:n :}
    handle 0= IF 0 RES-FALSE EXIT THEN
@@ -26807,9 +26679,7 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    row target ORDER-FIELD @ RES-TRUE ;
 
 
-\ Copy source's fixed kind into target, and its value only for a fixed
-\ value, as RECORD-LINK-FIXED! keeps it: a pre-change source can still
-\ hold an address record's live value.
+\ A pre-change source can still hold an address record's live value.
 : TRANSFER-FIXED ( ptr n ptr n -- ) {: source:ptr target:ptr :}
    source RLINK.FIXED-KIND cells + @ {: kind:n :}
    kind target RLINK.FIXED-KIND cells + !
@@ -26865,12 +26735,6 @@ CAST: AS-PENDING-DISCARD ( n -- [ -- ] )
       CELL-VIEW !
    0 owner CHECKER-OWNER-EXT:PUBLICATION-USE-OFF + CELL-VIEW ! ;
 
-\ CLAIMING IS NOT CONDITIONAL ON HAVING SOMETHING TO IMPORT. A host that never
-\ published an owner record (a bootstrap seed) leaves nothing to transfer; a
-\ window that did not claim would compile its own source with no source owner,
-\ which the optimizing front end refuses by name
-\ (src/compiler/native/checker-owner.f). Seed-hosted and product-hosted builds
-\ reach the same state; re-claiming an owned record is the same store.
 : TRANSFER-CHECKED ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if CLAIM-SOURCE-OWNER exit then
    owner DECLARATIONS = if CLAIM-SOURCE-OWNER exit then
@@ -26998,8 +26862,8 @@ FILE-CON-RESET
    -1 UNIT-MARKED ! ;
 
 \ An open package does not stop a mark: the export names each symbol's package
-\ and visibility (UNIT-EXPORT-SYMS) and the import interns those, never the live
-\ mode; the build tool keys the package scope the unit was compiled in.
+\ and visibility and the import interns those, never the live mode; the build
+\ tool keys the package scope the unit was compiled in.
 : CHECKER-UNIT-MARK ( -- )
    UNIT-PENDING @ UNIT-PREP-PENDING @ or UNIT-PLAN-OPEN @ or
       0 <> IF UNIT-BAD THEN
@@ -27104,8 +26968,6 @@ FILE-CON-RESET
    1 UNIT-PREFIX-N +! ;
 
 public
-\ The ordinal of a symbol this unit defined, which UNIT-EXPORT-SYMS always
-\ writes. Any other symbol has no ordinal the unit owns.
 : UNIT-OWN-SYM-ORD ( n -- n bool ) {: sym:n :}
    sym UNIT-SYMN @ < sym SYM-N @ >= or IF 0 RES-FALSE EXIT THEN
    sym SYM-RETIRED? IF 0 RES-FALSE EXIT THEN
@@ -27459,8 +27321,8 @@ private
       swap UNIT-CELL+ UNIT-CELL+
    row RLINK.DEFER cells + @ 0 <> IF 1 ELSE 0 THEN UNIT-CELL+
    \ The kind travels as it is, -1 (no reader yet) included, so an installed
-   \ link states the contract its source build stated. Only a value belongs
-   \ to the link; an address is the live owner's, as in the shipped rows.
+   \ link states the contract its source build stated. Only a value belongs to
+   \ the link; an address is the live owner's.
    row RLINK.FIXED-KIND cells + @ {: kind:n :}
    kind UNIT-CELL+
    kind CHECKER-OWNER-ABI:RECORD-FIXED-VAL = IF
@@ -27616,12 +27478,10 @@ private
 
 \ The checker facts a unit export carries, summed: a tool compares the sum
 \ around a top-level run to learn whether the run declared anything. Each term
-\ only grows inside a unit (UNIT-BASE? refuses one that shrank). Effects come
-\ from UEND, constants from CTN and LIN-NDECL, controls from NORET-END (the
-\ export writes UNIT-NEND..NORET-END, per-symbol facts appended by NORET-APPEND),
-\ then dfers, pimms and type families. SYM-N and ndict are left out: any token
-\ interns a symbol and any record grows ndict. VREC-N is left out because the
-\ export carries no section for it and UNIT-BASE? refuses any change to it.
+\ only grows inside a unit (UNIT-BASE? refuses one that shrank). SYM-N and ndict
+\ are left out: any token interns a symbol and any record grows ndict. VREC-N is
+\ left out because the export carries no section for it and UNIT-BASE? refuses
+\ any change to it.
 : CHECKER-UNIT-FACTS ( -- n )
    UEND @ CTN @ + DFER-END @ + PIMM-N @ + UNIT-TFAM-N@ + LIN-NDECL @ +
    NORET-END @ + ;
@@ -28477,7 +28337,7 @@ UNIT-CON-PROJECT-INSTALL
    plan UP.NPIMMS UP@ UNIT-PROJ-PIMM-N +! ;
 
 \ An imported variant's constructor cell holds one of the unit's symbol
-\ ordinals + 1 (type-family.f UNIT-FAM-CTOR-ORDS).
+\ ordinals + 1.
 : UP-CTOR-ORD ( ptr u8 n -- n ) {: plan:ptr v:n :}
    v 1 < v plan UP.NSYMS UP@ > or IF UNIT-FORMAT-BAD THEN v ;
 
@@ -28776,11 +28636,9 @@ private
 
 
 \ Capture's resets for checker scratch declared after
-\ CHECKER-CAPTURE-SCRATCH-PREPARE and held outside the spans: the XG and
-\ cast-path tables, the scan cells, the transfer wire and the unit plan. RECEFF
-\ stays out of the spans: a CHECK that exits before SIG-EFF-DROP leaves the
-\ recurse cache armed, and the capture mark pass keeps its record while
-\ RECEFF-ON says so.
+\ CHECKER-CAPTURE-SCRATCH-PREPARE and held outside the spans. RECEFF stays out
+\ of the spans: a CHECK that exits before SIG-EFF-DROP leaves the recurse cache
+\ armed, and the capture mark pass keeps its record while RECEFF-ON says so.
 : CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ( -- )
    XG-SNAP-RESET
    CAST-PATH-SNAP-RESET
@@ -28792,10 +28650,10 @@ private
 
 \ A capture keeps the primitive control prefix verbatim and the state now: the
 \ newest row per symbol after it; a zero row is a retraction and must survive
-\ just like a nonzero one. A retired symbol keeps no row at
-\ all: no spelling reaches it, so no row of its can ever be read again. Effect
-\ offsets in CREATES never change: the sweep zeroes retired bindings in place
-\ and moves nothing.
+\ just like a nonzero one. A retired symbol keeps no row at all: no spelling
+\ reaches it, so no row of its can ever be read again. Effect offsets in
+\ CREATES never change: the sweep zeroes retired bindings in place and moves
+\ nothing.
 PTR-VARIABLE RECORD-CTL-MAP-P
 variable RECORD-CTL-MAP-N
 
