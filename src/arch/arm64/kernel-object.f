@@ -14,6 +14,9 @@
 \   scope sites n, then the label of scope-kind?'s chain for each kind from 2
 \   symbols     n, then each one's name and value
 \   presets     n, then each header cell's offset and the value the link writes
+\   checker rows their length in bytes, then n, then each src/habu/prims.f row's
+\               kind, trusted-only, fixed-ABI, stow kind, name, package name,
+\               atom count and atoms
 
 require src/lib/le.f
 require src/lib/string.f
@@ -23,6 +26,7 @@ require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/wl.f
 require src/habu/regalloc-abi.f
+require src/habu/prims.f
 require src/habu/primitive-registry.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/boot.f
@@ -217,6 +221,28 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    ;SECTION ;
 
 
+: FLAG+ ( bool -- ) if 1 else 0 then U64+ ;
+
+: CHECK-ROW+ ( n -- )
+   {: row:n :}
+   row PRIM-SPEC:KIND@ U64+
+   row PRIM-SPEC:TRUSTED-ONLY? FLAG+
+   row PRIM-SPEC:FIXED-ABI? FLAG+
+   row PRIM-SPEC:C2-STOW-KIND U64+
+   row PRIM-SPEC:NAME$ NAME+
+   row PRIM-SPEC:PKG$ NAME+
+   row PRIM-SPEC:CODE-LEN@ dup U64+
+   0 ?do row i PRIM-SPEC:CODE@ U64+ loop ;
+
+\ The table in its own order: an overloaded name's rows replay in it.
+: CHECK-ROWS+ ( -- )
+   OUT-U @ {: at:n :}
+   0 U64+
+   PRIM-SPEC:COUNT dup U64+
+   0 ?do i CHECK-ROW+ loop
+   OUT-U @ at - 8 -  0 OUT at + LE:U64! ;
+
+
 \ OUT's sum into its checksum field.
 : SUM ( -- )
    SHA-CTX  0 OUT 40 +  OUT-U @ 40 -  0 OUT 8 +  SHA256-IN ;
@@ -227,7 +253,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT-U !
    s" HBKERNEL" SPAN+  4 0 ?do 0 U64+ loop
    CODE+ LABELS+ REFS+ FIXUPS+ PRIMS+
-   engine SCOPES+  engine SYMBOLS+  engine PRESETS+
+   engine SCOPES+  engine SYMBOLS+  engine PRESETS+  CHECK-ROWS+
    SUM
    0 OUT OUT-U @ sink execute ;
 

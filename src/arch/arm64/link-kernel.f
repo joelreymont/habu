@@ -129,7 +129,7 @@ variable PATH-U
    1 TABLE SCOPES-N ! SCOPES-AT !
    SYMBOLS
    2 TABLE PRESETS-N ! PRESETS-AT !
-   \ An optional last section, the primitives' checker rows; the writer lays none.
+   \ The last section, the primitives' checker rows, when the object has it.
    0 CHECK-ROWS-AT !  0 CHECK-ROWS-U !
    AT @ KOBJ-U @ < if
       NEXT {: rowsu:n :}
