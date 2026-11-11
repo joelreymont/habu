@@ -22,6 +22,13 @@
 \ each pass takes the largest count below the one before it. No second array is
 \ needed, and the counters are left exactly as they were, so a later prof-report
 \ says the same thing.
+\
+\ Inclusive counts live in two places. The handler bumps them in the index
+\ entry it just searched, already in a register, since the walk does so once
+\ per stack frame. A sync rebuilds the index to name code compiled after
+\ prof-on, and a rebuild moves every entry, so C-PROF-INCL-FOLD first empties
+\ the entries into the per-record array, the durable home, and historical rows
+\ remain readable after their code leaves the searchable index.
 require src/habu/prof-abi.f
 
 require src/arch/arm64/icode.f
@@ -602,43 +609,33 @@ public
    C-PROF-REP-CLOSE ;
 
 \ THE HANDLER TAKES NOTHING FROM THE LIVE REGISTERS: a foreign callee (libc's
-\ dlsym, libzip's inflate) reuses x20 (DATA), x26 (DBASE) and x27 (NDICT), and a
-\ handler that read them walked garbage. The band is reached through the fixed
-\ DATA-VA; the interrupted x20 and x26 are read from the signal frame and compared
-\ with the base prof-on recorded, and any other context is a "(foreign)" sample.
-\ The handler runs on the crash handler's alternate signal stack (src/habu/crash.f
-\ C-SIGNAL-STACK), so a deep machine stack never pushes the frame over the data
-\ stack.
+\ dlsym, libzip's inflate) reuses x20 (DATA), x26 (DBASE) and x27 (NDICT).
+\ The handler runs on the crash handler's alternate signal stack, so a deep
+\ machine stack never pushes the frame over the data stack.
 \
-\ A tick that arrives while the clock is held or stopped counts nothing
-\ (prof-abi.f, PROF-ARMED). Attribute the interrupted pc FIRST (a dict word's
-\ counter, the deferred buffer, PROF-OTHER or PROF-FOREIGN), THEN bump PROF-TOT
-\ once and test the limit, so every sample the running clock delivers is counted:
-\ sum(word counters) + ARN-NEW + ARN-DEFER + ARN-SPILL + PROF-OTHER +
-\ PROF-FOREIGN == PROF-TOT exactly, including the sample that reaches the limit,
-\ and that identity is the report's header line. Below the limit we sigreturn;
-\ at it we report + exit(99), but only from a validated sample; a foreign sample
-\ at the limit sigreturns and the next validated one reports.
+\ Attribute the interrupted pc FIRST, THEN bump PROF-TOT once and test the
+\ limit, so every sample the running clock delivers is counted, including the
+\ sample that reaches the limit.
 : EMIT-PROF ( -- )
    LPROFH LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL {: pnew pother pdone pforeign psig pexit :}
    7 PROF-BAND-VA LIT64,
-   9 7 PROF-ARMED LDR,  9 ARMED-RUNS CMPI,  C-NE pexit BCOND,   \ a held or stopped clock counts nothing
+   9 7 PROF-ARMED LDR,  9 ARMED-RUNS CMPI,  C-NE pexit BCOND,
    C-PROF-MCTX>R21  C-PROF-PC>R9
-   20 10 C-PROF-CTX-X>R  11 DATA-VA VA>N LIT64,  10 11 CMP,  C-NE pforeign BCOND,   \ context x20 must be DATA
-   26 10 C-PROF-CTX-X>R  11 7 PROF-DBASE LDR,  10 11 CMP,  C-NE pforeign BCOND,   \ context x26 must be the recorded DBASE
+   20 10 C-PROF-CTX-X>R  11 DATA-VA VA>N LIT64,  10 11 CMP,  C-NE pforeign BCOND,
+   26 10 C-PROF-CTX-X>R  11 7 PROF-DBASE LDR,  10 11 CMP,  C-NE pforeign BCOND,
    17 1 MOVZ,                                        \ x17 = 1: a Habu context, its count may report (x16 is the Darwin syscall number, never kept across a sys)
-   8 7 PROF-ARENA LDR,  8 pdone CBZ,                 \ no index: the sample is still counted
+   8 7 PROF-ARENA LDR,  8 pdone CBZ,
    LPROFFIND LABEL@ BL,                              \ the handler never returns, so x30 needs no frame
    6 pnew CBZ,
-   12 6 ENT-IDX LDR,                                 \ the record owning the pc: bump its counter
+   12 6 ENT-IDX LDR,
    14 PROF-CNT-VA LIT64,  13 12 3 LSLI,  14 14 13 ADD,
    12 14 0 LDR,  12 12 1 ADDI,  12 14 0 STR,
    10 6 ENT-IDX LDR,  C-PROF-INCL-ONCE                \ a word is inside itself
    22 6 ENT-IDX LDR,
    C-PROF-WALK
    psig B,
-   pnew LBL,                                         \ Habu code the index does not name
+   pnew LBL,
    22 0 MOVN,                                        \ no record of its own: callers only
    11 8 ARN-HI LDR,  9 11 CMP,  C-CC pother BCOND,   \ below the index's high mark: engine helpers, main loop, a gap
    C-PROF-DEFER                                      \ at or above it: compiled after prof-on built the index
@@ -648,7 +645,7 @@ public
    12 7 PROF-OTHER LDR,  12 12 1 ADDI,  12 7 PROF-OTHER STR,
    C-PROF-WALK
    psig B,
-   pdone LBL,                                        \ no arena at all: count and leave
+   pdone LBL,
    12 7 PROF-OTHER LDR,  12 12 1 ADDI,  12 7 PROF-OTHER STR,
    psig B,
    pforeign LBL,
@@ -685,10 +682,8 @@ private
 
 \ x0 = arena: the interval prof-rate left there, or the 1000 us default, which
 \ prof-on writes back so the report states the rate it actually sampled at.
-\ setitimer takes whole seconds and the microseconds below USEC-PER-SEC, so the
-\ interval splits into the two; the signed divide keeps an interval below 0
-\ negative, which C-PROF-TIMER's arm refuses rather than reading it as years.
-\ Clobbers x9-x11.
+\ The signed divide keeps an interval below 0 negative, which C-PROF-TIMER's
+\ arm refuses rather than reading it as years. Clobbers x9-x11.
 : C-PROF-TIMER-FRAME ( -- )
    LBL {: dflt :}
    10 0 ARN-USEC LDR,  10 dflt CBNZ,  10 1000 MOVZ,
@@ -699,8 +694,8 @@ private
    9 SP 0 STR,  10 SP 8 STR,
    9 SP 16 STR,  10 SP 24 STR, ;
 
-\ The arm. A refused setitimer is named and fatal, as a refused mapping is: the
-\ phase would sample nothing and report zeros.
+\ A refused setitimer is named and fatal: the phase would sample nothing and
+\ report zeros.
 : C-PROF-TIMER ( -- )
    LBL LBL {: ok msg :}
    0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
@@ -713,9 +708,6 @@ private
 : C-PROF-TIMER-DONE ( -- )
    SP SP 32 ADDI, ;
 
-\ The arena, mapped on the first prof-on of the process and kept in the band.
-\ A refused mapping is named and fatal: a profiler that silently kept the old
-\ dictionary walk would report numbers nobody could trust.
 : C-PROF-ARENA-MAP ( -- )
    LBL LBL LBL {: have mok amsg :}
    7 PROF-BAND-VA LIT64,  9 7 PROF-ARENA LDR,  9 have CBNZ,
@@ -752,9 +744,8 @@ private
       1 1 1 ADDI,  2 2 1 ADDI,  3 3 1 SUBI,  cp B,
    done LBL, ;
 
-\ x17 = arena, x6 = the first new ordinal. Build WID -> namespace row in
-\ the sort scratch before copying names; keep x6 and x17. A namespace has
-\ at most two WIDs, so the cell table remains at most half full.
+\ x17 = arena. Build WID -> namespace row in the sort scratch; keep x6 and x17.
+\ A namespace has at most two WIDs, so the cell table remains at most half full.
 : C-PROF-QUAL-INDEX ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: clear cleared recs next insert probe store keydone :}
    LBL {: done :}
@@ -787,9 +778,10 @@ private
    done LBL, ;
 
 \ x0 = arena. Assign a stable ID to each newly live ordinal and copy its
-\ complete qualified name into session-owned mmap chunks. The live map is -1
-\ for an unassigned ordinal. Prepare namespace lookup only when new IDs need
-\ names; the later merge sort reuses its scratch. Reports keep copied names.
+\ qualified name into session-owned mmap chunks. The live map is -1 for an
+\ unassigned ordinal. Prepare namespace
+\ lookup only when new IDs need names; the later merge sort reuses its scratch.
+\ Reports keep copied names.
 : C-PROF-SNAPSHOT ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: recs next qscan qfound qdone usechunk newchunk :}
    LBL LBL LBL LBL LBL LBL LBL {: idok sized mapok qready owncopy copydone done :}
@@ -871,8 +863,6 @@ private
    next LBL,  6 6 1 ADDI,  recs B,
    done LBL,  0 17 0 ADDI, ;
 
-\ A new prof-on starts a new identity session. Release old copied names and
-\ clear every ordinal map entry before assigning IDs from the live dictionary.
 : C-PROF-SESSION-START ( -- )
    LBL LBL LBL {: chunks clear done :}
    17 0 0 ADDI,
@@ -897,8 +887,8 @@ private
    zeroed LBL,  0 17 0 ADDI, ;
 
 \ One index entry per profile ID with code of its own. A live ID takes its
-\ current dictionary span; a seed-retired ID takes its stored span. Ordinary
-\ retired rows have no entry. The old index's inclusive counts are folded first.
+\ current dictionary span; a seed-retired ID takes its stored span; any other
+\ retired ID has no entry. The old index's inclusive counts are folded first.
 : C-PROF-INDEX-BUILD ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: bl bnext bdone blo bhi retained span :}
    9 ARN-IDX LIT64,  9 0 9 ADD,
@@ -935,8 +925,8 @@ private
    11 0 ARN-COUNT STR,  1 0 ARN-LO STR,  2 0 ARN-HI STR,
    NDICT 0 ARN-NDICT STR, ;
 
-\ The counters a phase accumulates. Cleared by prof-on and prof-reset, and NEVER
-\ by C-PROF-INDEX-BUILD, which a report runs again over a phase already counted.
+\ Cleared by prof-on and prof-reset, and NEVER by C-PROF-INDEX-BUILD, which a
+\ report runs again over a phase already counted.
 : C-PROF-COUNTERS-CLEAR ( -- )
    LBL LBL LBL LBL {: il idone el edone :}
    15 0 MOVZ,
@@ -999,11 +989,10 @@ private
       3 3 8 ADDI,  cpl B,
    fin LBL, ;
 
-\ Bottom-up merge sort of x11 entries by start address, arena in x0, using the
-\ second half of the arena as the other side of each pass. Stable, so records
-\ that share a start stay in dictionary order and the search's "last start <= pc"
-\ answer is the same one an exhaustive scan in record order reports. O(n log n)
-\ once per prof-on rather than O(n) in every tick.
+\ Bottom-up merge sort of x11 entries by start address, arena in x0. Stable,
+\ so records that share a start stay in dictionary order and the search's
+\ "last start <= pc" answer is the same one an exhaustive scan in record order
+\ reports.
 : C-PROF-SORT ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL {: pass block mrg ta tb arest brest bfin cb done skip :}
    11 1 CMPI,  C-LS skip BCOND,
@@ -1030,36 +1019,21 @@ private
          brest LBL,  5 16 CMP,  C-CS cb BCOND,  C-PROF-ENT-COPY-B  brest B,
          cb LBL,  13 16 0 ADDI,  block B,
       bfin LBL,
-      3 9 0 ADDI,  9 10 0 ADDI,  10 3 0 ADDI,        \ this pass's output is the next pass's input
+      3 9 0 ADDI,  9 10 0 ADDI,  10 3 0 ADDI,
       12 12 1 LSLI,  pass B,
    done LBL,
    C-PROF-SORT-LAND
    skip LBL, ;
 
 \ x8 = arena, x10 = a record index: one inclusive sample for that record.
-\
-\ WHY INCLUSIVE COUNTS LIVE IN TWO PLACES. The handler takes them in the index
-\ ENTRY, where the entry it just searched is already in a register and the bump
-\ costs three instructions - the walk does this once per stack frame, about
-\ fourteen times a tick, so it is the profiler's hottest store. But a report
-\ REBUILDS the index to name code compiled after prof-on, and a rebuild moves
-\ every entry. So the durable home is this per-RECORD array, and C-PROF-INCL-FOLD
-\ empties the entries into it before a rebuild or a report, so historical rows
-\ remain readable after their code leaves the searchable index.
 \ Clobbers x11 and x12, and preserves x10 for the caller.
 : C-PROF-INCL+ ( -- )
    11 ARN-INCL LIT64,  11 8 11 ADD,  12 10 3 LSLI,  11 11 12 ADD,
    12 11 0 LDR,  12 12 1 ADDI,  12 11 0 STR, ;
 
-\ x0 = arena. Replay the deferred samples through the rebuilt index: the pc names
-\ a record now and the interrupted x30 names the caller. A pc that still resolves
-\ to nothing is counted in ARN-NEW, which is what the report's "new" field means
-\ after a sync - code that ran, was sampled, and belongs to no live record.
-\
-\ INCLUSIVE IS COUNTED ONCE. The handler already took an inclusive sample for
-\ every frame the OLD index could name, so replay adds one only for a record that
-\ index did not reach - start at or above ARN-OLDHI. Counting a caller twice
-\ would be a worse answer than the one this leaves.
+\ x0 = arena. The handler already took an inclusive sample for every frame the
+\ OLD index could name, so replay adds one only for a record that index did not
+\ reach - start at or above ARN-OLDHI.
 : C-PROF-REPLAY ( -- )
    LBL LBL LBL LBL LBL LBL {: rl rdone rmiss rnocall rgo rnext :}
    8 0 0 ADDI,                                       \ LPROFFIND and LPROFEDGE take the arena in x8
@@ -1092,14 +1066,10 @@ private
    12 0 MOVZ,  12 8 ARN-DEFER STR, ;
 
 \ LPROFSYNC ( -- ): rebuild the pc index from the dictionary as it now stands and
-\ replay the deferred samples through it. This is the whole answer to code
-\ compiled after prof-on: the report is the first moment at which every word the
-\ phase compiled exists, so it is the moment to name them.
-\
+\ replay the deferred samples through it.
 \ IT RUNS FROM HABU CODE ONLY, never from the handler's auto-report at the limit:
 \ the build reads NDICT, and the handler validates the interrupted x20 and x26
-\ but not x27. An auto-report therefore leaves its deferred samples in the
-\ header's "defer" bucket, which is exactly what that field says.
+\ but not x27.
 : EMIT-PROFSYNC ( -- )
    LPROFSYNC LABEL@ LBL,
    LBL {: nosync :}
@@ -1118,10 +1088,8 @@ private
    23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
    SP SP 96 ADDI,  RET, ;
 
-\ prof-on runs as Habu code, where DBASE and NDICT are live: it records the base
-\ the handler will trust, clears one counter per current record, and builds the
-\ index the handler searches. The handler counts nothing until the arm: a clock
-\ already running keeps ticking through the clears and the rebuild.
+\ The handler counts nothing until the arm: a clock already running keeps
+\ ticking through the clears and the rebuild.
 : BPROF-ON ( -- )
    LBL LBL {: zl zd :}
    7 PROF-BAND-VA LIT64,
@@ -1149,16 +1117,16 @@ private
    C-PROF-TIMER
    C-PROF-TIMER-DONE ;
 
-\ Disarm the interval timer. Clobbers x0-x2 and x9.
+\ Clobbers x0-x2 and x9.
 : C-PROF-TIMER-STOP ( -- )
    SP SP 32 SUBI,
    9 0 MOVZ,  9 SP 0 STR,  9 SP 8 STR,  9 SP 16 STR,  9 SP 24 STR,
    0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
    SP SP 32 ADDI, ;
 
-\ Hold the clock for a walk or a clear: an armed clock goes to ARMED-HELD, so
-\ the handler counts nothing from here on, and then the timer stops. Clobbers
-\ x0-x2, x7 and x9.
+\ Hold the clock for a walk or a clear: an armed clock goes to ARMED-HELD before
+\ the timer stops, so the handler counts nothing from here on. Clobbers x0-x2,
+\ x7 and x9.
 : C-PROF-CLOCK-HOLD ( -- )
    LBL {: off :}
    7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,  9 off CBZ,
@@ -1179,7 +1147,7 @@ private
    off LBL, ;
 
 \ Retirement is reached from engine helpers whose scratch registers still
-\ belong to their caller. Profiling disabled takes no allocation or syscall.
+\ belong to their caller.
 : C-PROF-RETIRE-OPEN ( label -- )
    {: absent:label :}
    SP SP 160 SUBI,
@@ -1192,8 +1160,8 @@ private
    18 0 ?do i SP i cells LDR, loop
    30 SP 144 LDR,  SP SP 160 ADDI,  RET, ;
 
-\ After a sync every inclusive count is durable. Compact the sorted index in
-\ place, dropping IDs whose span was released without changing their history.
+\ Compact the sorted index in place, dropping IDs whose span was released. After
+\ a sync every inclusive count is durable, so their history stays.
 : C-PROF-INDEX-PRUNE ( -- )
    LBL LBL LBL {: turn next done :}
    8 0 0 ADDI,
@@ -1283,12 +1251,7 @@ private
    absent LBL,  C-PROF-RETIRE-CLOSE ;
 
 \ A REPORT NEVER SAMPLES ITSELF. It reads PROF-TOT once and then walks every
-\ counter; a tick in between would leave the header's own identity - words +
-\ other + new + foreign == samples - false by one. The report also owns x20, so
-\ its own ticks read as a foreign context and land in a different bucket than
-\ the total they were counted in. So the clock is held for the walk and starts
-\ again only when prof-off has not already stopped it; the phase loses at most
-\ one interval.
+\ counter; a tick in between would leave the header's own identity false by one.
 : C-PROF-REPORT-CALL ( label -- ) {: rep:label :}
    SP SP 16 SUBI,  30 SP 0 STR,
    C-PROF-CLOCK-HOLD
@@ -1297,20 +1260,17 @@ private
    C-PROF-CLOCK-RESUME
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
-\ prof-off stops the clock and nothing else: the handler stays installed, the
-\ index and every counter stay exactly as the last sample left them, so the phase
-\ that was profiled can be reported afterwards. PROF-ARMED goes to 0 before the
-\ timer stops, so a tick that arrives after the stop counts nothing.
+\ prof-off stops the clock and nothing else: the handler, the index and every
+\ counter stay, so the phase can be reported afterwards. PROF-ARMED goes to 0
+\ before the timer stops, so a tick that arrives after the stop counts nothing.
 : BPROF-OFF ( -- )
    7 PROF-BAND-VA LIT64,  9 0 MOVZ,  9 7 PROF-ARMED STR,
    C-PROF-TIMER-STOP ;
 
-\ prof-reset clears the counts and keeps the index, so a second phase can be
-\ measured without paying for the sort again. The clock is held for the clears,
-\ as it is for a report: PROF-TOT is cleared first and each bucket after it, so
-\ a tick counted in between would survive in PROF-TOT and not in its bucket, and
-\ the identity would be off by one. It starts again only when prof-off has not
-\ stopped it.
+\ prof-reset clears the counts and keeps the index, so a second phase skips the
+\ sort. The clock is held for the clears: PROF-TOT is cleared first and each
+\ bucket after it, so a tick counted in between would survive in PROF-TOT and
+\ not in its bucket, and the identity would be off by one.
 : BPROF-RESET ( -- )
    LBL LBL LBL {: zl zd noarena :}
    C-PROF-CLOCK-HOLD
@@ -1329,8 +1289,7 @@ private
 
 : BPROF-JSON ( -- )  LPROFJSON LABEL@ C-PROF-REPORT-CALL ;
 
-\ prof-row ( n -- ): the row for dictionary record n, whatever its rank. The
-\ name lookup stays in the caller, where XREF already answers it.
+\ prof-row ( n -- ): the row for dictionary record n, whatever its rank.
 : BPROF-ROW ( -- )
    LBL LBL {: bad ready :}
    SP SP 16 SUBI,  30 SP 0 STR,
@@ -1352,11 +1311,8 @@ private
 
 \ prof-rate sets the interval the NEXT prof-on arms, rather than re-arming here:
 \ a rate written while no handler is installed would hand the process a SIGALRM
-\ it has no handler for. Any interval above 0 arms and 0 asks for the default.
-\ One below 0 is the caller's error: it throws PROF-ABI:E-PROF-RATE before the
-\ arena is mapped or the rate stored, so a caller that catches it keeps the
-\ rate it had. x10 holds n across C-PROF-ARENA-MAP, which writes only x0-x5,
-\ x7-x9 and x16.
+\ it has no handler for. x10 holds n across C-PROF-ARENA-MAP, which writes only
+\ x0-x5, x7-x9 and x16.
 : BPROF-RATE ( -- )
    LBL {: ok :}
    10 G-POP
@@ -1368,8 +1324,6 @@ private
    10 0 ARN-USEC STR, ;
 
 \ prof-pc>rec ( pc -- n ): the record index the armed index gives that pc, or -1.
-\ It runs the handler's own search, so a test that compares it with an exhaustive
-\ scan of the live dictionary is testing the attribution the handler performs.
 : BPROF-PCREC ( -- )
    LBL LBL {: miss out :}
    SP SP 16 SUBI,  30 SP 0 STR,
