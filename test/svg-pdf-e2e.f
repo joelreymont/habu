@@ -120,9 +120,20 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    [: WRITE-VALID ;] [: LIMIT-OFF ;] finally ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+\ The length of name's path in EXE. A missing reader fails the test by name, never skips it.
+: TOOL ( ptr u8 n -- len ) {: name:ptr size:n :}
+   name size >LEN EXE FIND-EXECUTABLE MATCH option
+      none OF
+         s" svg-pdf-e2e: required executable missing on PATH: " type
+         name size type cr
+         s" " E-PROC-PATH die
+      ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
 : COMMAND ( ptr u8 n -- ptr u8 n )
    {: name:ptr size:n :}
-   name size >LEN EXE RESOLVE-EXECUTABLE {: exeu:len :}
+   name size TOOL {: exeu:len :}
    EXE exeu s" " >LEN OUTPUT CAP >LEN ERRORS CAP >LEN 30000 >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>DEADLINE-RC RC>N
    {: outu:len erru:len code:n :}

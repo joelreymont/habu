@@ -47,7 +47,10 @@ A trusted hb too old to build the tree needs a [staged host](#staged-hosts).
 The full native suite has additional host requirements. On Linux its PTY
 tests need working /dev/ptmx and /dev/pts. The database test needs initdb
 and postgres on PATH and libpq 17 or newer for native query cancellation,
-run as an ordinary user because initdb refuses root.
+run as an ordinary user because initdb refuses root. With libpq 16 the test
+dies `E-FFI-DLSYM: PQcancelCreate in libpq.so.5`. Debian and Ubuntu keep
+initdb and postgres in `/usr/lib/postgresql/<version>/bin`, which must be put
+on PATH.
 On macOS the library tests use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
 The FFI test compiles its struct-by-value fixture library with /usr/bin/cc.
