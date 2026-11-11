@@ -1221,8 +1221,6 @@ public
 
 \ Command-line entries are relative to the invocation directory only;
 \ dependencies beneath them inherit the entry directory as their primary root.
-\ Like an absolute path, an entry is the engine's own file only as the physical
-\ copy at the engine root.
 : ENTRY-RESOLVE ( ptr u8 n -- ptr u8 n bool )
    REQUEST!
    CWD$ REQUIRE-BASE @ CANDIDATE
@@ -1237,12 +1235,9 @@ public
    then
    path pathu CONFINE known ;
 
-\ Every boot row is portable: each prefix that records one opens the registry
-\ first, with REQUIRE-BOOT-OPEN written literally (tools/hb-build-core.f
-\ END-WRITE), so BOOT-CANDIDATE answers for every engine kind. A canonical scan beside it
-\ would answer for no engine and hide a prefix that does not open the registry. The selection counts every frozen row whatever
-\ REQUIRE-BASE is, so a frozen row is the engine's even where its file is
-\ missing. RESOLVED-ROOT$ stays as the caller's own RESOLVE left it.
+\ The selection counts every frozen row whatever REQUIRE-BASE is, so a frozen
+\ row is the engine's even where its file is missing. RESOLVED-ROOT$ stays as
+\ the caller's own RESOLVE left it.
 : ENGINE-KNOWN? ( ptr u8 n -- bool )
    OWNER-BUF OWNER-SAVE OWNER-U @ BYTE-COPY
    OWNER-U @ {: owner:n :}
@@ -1254,10 +1249,10 @@ public
 \ The row a boot file is recorded as: the spelling BOOT-CANDIDATE asks for. That
 \ is its path below the engine root, or, for a file a directory symlink inside
 \ the root carries from outside it, the request spelled under the root when that
-\ resolves to this very file. Any other file is refused by name: its row could
-\ only be its canonical path, and an engine carrying one takes that file for a
-\ stranger under every other root. Below the row, the file again from
-\ CANDIDATE-BUF, which the check leaves intact for the caller's load.
+\ resolves to this very file.
+\ Any other file is refused by name: its row could only be its canonical path,
+\ and an engine carrying one takes that file for a stranger under every other
+\ root.
 : BOOT-ROW ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
    u CANDIDATE-U ! a CANDIDATE-BUF u BYTE-COPY
    ENGINE$ {: root:ptr rootu:n :}
@@ -1273,22 +1268,21 @@ public
 ;package
 
 \ A boot row is recorded portably, in the one spelling BOOT-KNOWN? asks for,
-\ relative to the engine root (SOURCE-ROOT:BOOT-ROW); a build's fresh registry
-\ makes that root the working directory. Against the load's own owner root a
-\ require issued by a boot file would shorten to a bare basename no query spells,
-\ naming a different file in every directory. A canonical absolute spelling
-\ would bake the build directory into the engine, so two builds of one revision
-\ from two directories would differ. An application row keeps its canonical
-\ identity; the two cannot collide, as a canonical name begins with `/` and a
-\ portable one never does. The path comes back in storage the store did not
-\ reuse, for the caller's load.
+\ relative to the engine root; a build's fresh registry makes that root the
+\ working directory. Against the load's own owner root a require issued by a
+\ boot file would shorten to a bare basename no query spells, naming a
+\ different file in every directory. A canonical absolute spelling would bake
+\ the build directory into the engine, so two builds of one revision from two
+\ directories would differ. An application row keeps its canonical identity;
+\ the two cannot collide, as a canonical name begins with `/` and a portable
+\ one never does. The path comes back in storage the store did not reuse, for
+\ the caller's load.
 : REQUIRE-STORE ( ptr u8 n -- ptr u8 n )
    REQUIRE-BOOT-OPEN? if BOOT-ROW else 2dup then
    REQUIRE-REG:APPEND ;
 
-\ One scratch line for diagnostics that have to name a path. Sized so the
-\ longest accepted path plus the longest prefix below always fits, and the
-\ append refuses rather than truncates, so a message is whole or absent.
+\ Sized so the longest accepted path plus the longest prefix below always fits,
+\ and the append refuses rather than truncates, so a message is whole or absent.
 $20 constant INCLUDE-DIAG-PREFIX-CAP
 INCLUDE-PATH-CAP INCLUDE-DIAG-PREFIX-CAP + constant INCLUDE-DIAG-CAP
 create INCLUDE-DIAG INCLUDE-DIAG-CAP allot
@@ -1316,16 +1310,12 @@ variable INCLUDE-DIAG-U
    u INCLUDE-PATH-U !
    INCLUDE-PATH ;
 
-\ Each active load owns its source bytes until evaluation returns. A linked
-\ mapping keeps parent buffers stable without imposing a nesting limit.
 variable SCRIPT-NAMED-PEND
 
 : SCRIPT-NAMED-PEND! ( bool -- )
    SCRIPT-NAMED-PEND ! ;
 
 
-\ A failed open names the resolved path INCLUDE-PATH holds: it is the diagnostic
-\ a mistyped `require` or `bin/hb --load` argument gets.
 : INCLUDE-OPEN-DIE ( -- )
    INCLUDE-DIAG-RESET
    s" include: cannot open " INCLUDE-DIAG+
@@ -1339,8 +1329,8 @@ variable SCRIPT-NAMED-PEND
 : INCLUDE-EVALERR? ( -- bool )
    data-base EVALERR-CELL + @ 0 = 0= ;
 
-\ Generated source (TYPE-DECL:TDECL-EVAL-XT) runs as a closed program, refused
-\ E-EVAL-RESIDUE for what it leaves; files run in LOAD-UNIT (RESIDUE-CHECK).
+\ Generated source runs as a closed program, refused E-EVAL-RESIDUE for what it
+\ leaves.
 : INCLUDE-EVALUATE ( ptr u8 n -- )
    REQUIRE-REG:MARK {: mark:n epoch:n :}
    [: 2dup evaluate-closed ;] catch {: rc:n :}
@@ -1350,7 +1340,7 @@ variable SCRIPT-NAMED-PEND
 \ Once REQUIRE-REG is ready, generated declarations also roll back its rows
 \ on failure. Stage builders without include.f leave the evaluator unarmed.
 \ The `is` target is qualified because parsing words do not resolve through
-\ using-imports (bare `is TDECL-EVAL-XT` was measured to fail with rc 70).
+\ using-imports.
 using TYPE-DECL
 
 package INCLUDE-EVAL-BIND
@@ -1390,13 +1380,13 @@ SOURCE-UNIT:RESET
 \ Source-composition event log: one event per loader act, the request as spelled
 \ and the path it resolved to, so a restricted discovery pass can rebuild include
 \ multiplicity and require/provided registry state in order, and a build's
-\ linker can carry the acts in a file's object. Recorded only while EVENT-ON?.
+\ linker can carry the acts in a file's object.
 \ During discovery the walker runs DISCOVERY-ON and passes the loader-token span
-\ to DISC-TOK!; a real load reads TKA-CELL and TKL-CELL. A build's linker reads
-\ the depth to tell a request made with cells on the stack.
+\ to DISC-TOK!. A build's linker reads the depth to tell a request made with
+\ cells on the stack.
 
 13 constant EVENT-FIELDS
-EVENT-FIELDS cells constant EVENT-BYTES          \ one record
+EVENT-FIELDS cells constant EVENT-BYTES
 $1000 constant EVENT-ROOM-MIN                    \ a first mapping's bytes
 $4D constant INCLUDE-EVENT-RC
 
@@ -1429,8 +1419,6 @@ variable DISC-TOK-U
 : EVENT-RECS@ ( -- ptr u8 ) EVENT-RECS @ ;
 : EVENT-POOL@ ( -- ptr u8 ) EVENT-POOL @ ;
 
-\ Only memory refuses, by name, as in the include frames: a failed mapping or
-\ release ends the process with INCLUDE-IO-RC.
 : EVENT-UNMAP ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if exit then
    a u munmap 0 < if s" events: cannot release an event table" INCLUDE-DIE then ;
@@ -1447,9 +1435,7 @@ variable DISC-TOK-U
    fresh ;
 
 \ Reset releases both mappings, so snapshot preparation leaves a captured image
-\ no path of the machine that recorded them and no address of a mapping. Each
-\ descriptor is cleared once its own mapping is released, the records' with the
-\ count of events they held.
+\ no path of the machine that recorded them and no address of a mapping.
 : EVENTS-RESET ( -- )
    EVENT-RECS@ EVENT-RECS-CAP @ EVENT-UNMAP
    NULL-PTR EVENT-RECS !  0 EVENT-RECS-CAP !  0 EVENT-N !
@@ -1509,14 +1495,12 @@ public
 : ROOT@ ( n -- ptr u8 n ) {: ix:n :}
    ix 6 EVENT-FIELD@ EVENT-POOL-AT ix 7 EVENT-FIELD@ ;
 
-\ The current root (SOURCE-ROOT:CURRENT$) when the event was recorded.
+\ The current root when the event was recorded.
 : CURRENT@ ( n -- ptr u8 n ) {: ix:n :}
    ix 11 EVENT-FIELD@ EVENT-POOL-AT ix 12 EVENT-FIELD@ ;
 
 private
 
-\ The pool offset and length of an earlier event's root or current root equal
-\ to the bytes, else of a new copy.
 : COPY-SHARED ( ptr u8 n -- n n ) {: a:ptr u:n :}
    0 begin dup EVENT-N @ < while
       dup ROOT@ a u CORE-STR= if
@@ -1531,7 +1515,6 @@ private
 
 public
 
-\ The event's resolved root and current root.
 : STORE-ROOT ( n -- ) {: ix:n :}
    RESOLVED-ROOT$ COPY-SHARED {: off:n len:n :}
    off ix 6 EVENT-FIELD!
@@ -1584,7 +1567,7 @@ private
 \ A frame carries its own resolved path: a nested include overwrites
 \ INCLUDE-PATH before the inner file is read, so only the frame names the outer
 \ file to an inner refusal or a POP. The file's bytes follow the header in the
-\ same mapping, sized to the file (GROW): FR-ROOM counts the source bytes it can
+\ same mapping, sized to the file: FR-ROOM counts the source bytes it can
 \ hold, FR-SIZE the file's.
 0 constant FR-PREV
 CELL constant FR-NAMED
@@ -1599,9 +1582,9 @@ CELL constant FR-NAMED
 10 cells constant FR-EVAL-SIZE
 11 cells constant FR-EVAL-FIRST
 12 cells constant FR-EVAL-END
-\ How many root programs (RUN-ROOT) are being read while this frame is the top.
+\ How many root programs are being read while this frame is the top.
 13 cells constant FR-ROOT-RUNS
-\ The file's stamp (ACTIVE-STAMP): change time seconds, nanoseconds and size.
+\ The file's stamp: change time seconds, nanoseconds and size.
 14 cells constant FR-CTIME-SEC
 15 cells constant FR-CTIME-NS
 16 cells constant FR-STAMP-SIZE
@@ -1702,13 +1685,11 @@ variable LAST-LOAD-EVAL-OK
 
 : SOURCE ( -- ptr u8 ) CHECK-ACTIVE TOP@ HEADER-BYTES + ;
 
-\ The open frame learns its file's size by filling, so it grows as src/lib/pg.f's
-\ call arena does: it doubles its room, or takes WANT bytes if that is more. The
-\ header and the first KEEP source bytes move to a fresh mapping; once the old
-\ one is released, the fresh one becomes TOP and the published location, the
-\ only two that point into a frame while it fills. Only memory refuses, by
-\ name, as in PUSH and POP: a refusal ends the process while the old frame is
-\ still the one published.
+\ The header and the first KEEP source bytes move to a fresh mapping; once the
+\ old one is released, the fresh one becomes TOP and the published location,
+\ the only two that point into a frame while it fills. Only memory refuses, by
+\ name: a refusal ends the process while the old frame is still the one
+\ published.
 : GROW ( n n -- )
    {: want:n keep:n :}
    TOP@ {: frame:ptr :}
@@ -1792,8 +1773,7 @@ public
 
 \ A source whose first two bytes are `#!` names its interpreter on that line,
 \ and the engine reads the line as a comment: the two bytes become `\ `, so
-\ every line and column stays the file's own. The program stream an engine
-\ runs gets the same rewrite (src/habu/main.f SHEBANG).
+\ every line and column stays the file's own.
 : SHEBANG-COMMENT ( ptr u8 n -- ) {: a:ptr u:n :}
    u 2 < if exit then
    a c@ $23 <> if exit then
@@ -1814,10 +1794,9 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 : POLICY-SEALED? ( -- bool )
    data-base POLICY-NDICT-CELL + @ 0 <> ;
 
-\ Holds a load's U source bytes at A in its frame and records their length
-\ there. The OS reader (READ-OS) has filled the frame already, learning the size
-\ as it read; another reader's bytes come with their length, and the frame grows
-\ to fit them before they are copied in.
+\ The OS reader has filled the frame already, learning the size as it read;
+\ another reader's bytes come with their length, and the frame grows to fit
+\ them before they are copied in.
 : HOLD ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    a SOURCE <> if
@@ -1839,7 +1818,6 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 \ A loaded program starts on an empty data stack. RUN-RANGE keeps the range in
 \ its source frame across catch; copied arguments beneath evaluate-range would
 \ let an underflow consume loader cells and turn it into E-EVAL-RESIDUE instead.
-\ The sealed design reads every file through the engine's loop.
 : INTERPRET-SAVED-RANGE ( -- )
    TOP@ {: frame:ptr :}
    frame FRAME-EVAL-PTR @
@@ -1858,14 +1836,11 @@ public
 
 : USE-INTERPRETER ( [ ptr u8 n n n -- ] -- ) is INCLUDE-INTERPRET ;
 
-\ The process's root stream (stdin, or the `--load` or `--build` stream
-\ src/habu/main.f builds) runs open, as the engine's own loop runs it: it may
-\ leave cells on the stack and the process still exits 0. The files it loads
-\ keep their own closed units (LOAD-UNIT); the program file of `hb prog.f` runs
-\ in a frame of its own (RUN-PROGRAM). The stream's text is no file's, so a refusal in it
-\ names none: run while a file is open (a harness calling src/habu/main.f), it
-\ counts itself on that file's frame, which then publishes no location until
-\ the stream returns or throws.
+\ The process's root stream (stdin, or the `--load` or `--build` stream) runs
+\ open, as the engine's own loop runs it: it may leave cells on the stack and
+\ the process still exits 0. The stream's text is no file's, so a refusal in it
+\ names none: run while a file is open, it counts itself on that file's frame,
+\ which then publishes no location until the stream returns or throws.
 : ROOT-RUNS+ ( n -- ) {: k:n :}
    TOP@ 0= if exit then
    TOP@ {: frame:ptr :}
@@ -1891,9 +1866,8 @@ private
       then
    then ;
 
-\ Evaluates one fragment of the current file through the bound loop. A failed
-\ fragment rolls back the require rows it added whichever loop read it; the
-\ residue check (CALL-UNIT) stays outside, on the unit's stack.
+\ A failed fragment rolls back the require rows it added whichever loop read
+\ it; the residue check stays outside, on the unit's stack.
 : RUN-RANGE ( n n -- ) {: first:n end:n :}
    RANGE-OWNER @ 0= if INCLUDE-RANGE-RC throw then
    CHECK-ACTIVE
@@ -1927,8 +1901,7 @@ create RESIDUE-DIGIT 1 allot
    2 POLICY-LF 1 write drop
    STACK-ABI:E-EVAL-RESIDUE throw ;
 
-\ Run at the end of the unit, where depth is what the file left
-\ (SOURCE-UNIT:USE).
+\ Run at the end of the unit, where depth is what the file left.
 : RESIDUE-CHECK ( -- )
    depth {: n:n :}
    n 0 > if n RESIDUE-REFUSE then ;
@@ -1936,7 +1909,7 @@ create RESIDUE-DIGIT 1 allot
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 
 \ The active checker owner closes the created body pending at a load boundary,
-\ so the body's `,` grid stops there (src/core/checker.f CHECKER-BODY-CLOSE).
+\ so the body's `,` grid stops there.
 \ After a native build's handover that owner is the target's checker, which
 \ holds the pending record. No owner, or one that predates the slot, has no
 \ pending body.
@@ -1960,10 +1933,9 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 
 \ A loaded file's DATA starts and ends on a cell, so its bytes are a function
 \ of its own source and a stored object installs whatever earlier files
-\ allotted. The start align precedes the cache's SEGMENT-OPEN for the file,
-\ the end align the parent's SEGMENT-OPEN after the load. A throw skips the
-\ end align, which does not matter: a load that threw refuses the parent's
-\ object, so no stored segment continues the parent's data from there.
+\ allotted. A throw skips the end align, which does not matter: a load that
+\ threw refuses the parent's object, so no stored segment continues the
+\ parent's data from there.
 \ A created body the loader's file left pending closes before the loaded file
 \ runs, so its `,` grid belongs to the loader's file.
 : LOAD-UNIT ( -- )
@@ -1986,7 +1958,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 \ A verifier can traverse the loader's resolved file frames without invoking
 \ the interpreter. The callback receives bytes owned by the frame and its
 \ canonical path; both remain valid throughout the callback, including nested
-\ loads. This keeps the ordinary loader's root and cleanup rules.
+\ loads.
 : READ-FOR ( [ ptr u8 n ptr u8 n -- ] -- [ ptr u8 n ptr u8 n -- ] )
    {: q :}
    READ-SOURCE TOP@ {: frame:ptr :}
@@ -2019,8 +1991,6 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    rc 0= 0= if rc throw then
    a u q ;
 
-\ The row decision belongs to the whole load, including path resolution and
-\ reader callbacks before PUSH. Its result is consumed before returning.
 : LOAD-RAW ( ptr u8 n -- )
    CONFINE
    INCLUDE-PATH0 drop
@@ -2030,14 +2000,12 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 
 public
 
-\ The program file `hb prog.f` runs (src/habu/main.f RUN), as argv names it, is
-\ a loaded file without a registry row (PROGRAM? counts it as loaded): a frame
-\ holds its canonical path, root and bytes, `#!` made a comment, so
-\ ACTIVE-SOURCE reads it and a refusal names it. It runs open, as RUN-ROOT runs
-\ its stream: the stack it leaves is kept, with no unit and no residue check.
-\ No WITH scope opens, so CD stays legal in its text (TOP-ONLY) and the frame's
-\ root is CURRENT$, at the top level the program's directory (PROGRAM-INIT).
-\ A path that does not resolve is refused by name before the frame opens.
+\ The program file `hb prog.f` runs, as argv names it, is a loaded file without
+\ a registry row: a frame holds its canonical path, root and bytes, `#!` made a
+\ comment, so ACTIVE-SOURCE reads it and a refusal names it. It runs open: the
+\ stack it leaves is kept, with no unit and no residue check. No WITH scope
+\ opens, so CD stays legal in its text and the frame's root is CURRENT$, at the
+\ top level the program's directory.
 : RUN-PROGRAM ( ptr u8 n -- )
    2dup BUILD-REFUSE
    CANONICAL {: path:ptr pathu:n exists:bool :}
@@ -2069,8 +2037,8 @@ public
    LOAD-RESULT {: committed:bool rc:n :}
    rc 0 <> if rc throw then ;
 
-\ PATH has already been resolved by the loader's resolver. Like LOAD, this
-\ opens a source frame and makes its root current until the callback returns.
+\ PATH has already been resolved by the loader's resolver. This opens a source
+\ frame and makes its root current until the callback returns.
 : WITH-BYTES ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
    {: path:ptr pathu:n q :}
    path pathu BUILD-REFUSE
@@ -2081,7 +2049,7 @@ public
    old oldu rc ROOT-LEAVE ;
 
 \ A caller that owns PATH's source bytes can open the same loader frame without
-\ reading a different disk copy. This is used for an included buffer subject.
+\ reading a different disk copy.
 : WITH-SUPPLIED ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
    {: path:ptr pathu:n src:ptr srcu:n q :}
    path pathu BUILD-REFUSE
@@ -2115,9 +2083,8 @@ public
 create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
 ' included SOURCE-ORIGINAL-INCLUDED-ENTRY xt!
 
-\ One body for both spellings, given the path as spelled and as resolved. A path
-\ the registry already holds is skipped, so the pending flag has to be cleared on
-\ every exit or it would leak into the next unrelated load.
+\ A path the registry already holds is skipped, so the pending flag has to be
+\ cleared on every exit or it would leak into the next unrelated load.
 : REQUIRE-BODY ( ptr u8 n ptr u8 n bool -- )
    {: a:ptr u:n path:ptr pathu:n known:bool :}
    a u path pathu EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
@@ -2139,8 +2106,7 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
 create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 ' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!
 
-\ The `--load` argv row. Same load, and it records that the command line is
-\ what asked for it.
+\ The `--load` argv row.
 : script-required ( ptr u8 n -- )
    {: a:ptr u:n :}
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
@@ -2248,10 +2214,7 @@ public
 ;package
 
 \ A restricted discovery pass sees a fresh require/provided registry, so a tool's
-\ preloaded paths cannot dedup-hide a later user require. Raising REQUIRE-BASE to
-\ the current count makes REQUIRE-KNOWN? ignore the tool's entries; RESTORE drops
-\ the discovery entries and reinstates the tool's registry unchanged, keeping
-\ warm-snapshot serialization intact.
+\ preloaded paths cannot dedup-hide a later user require.
 
 : REQUIRE-SNAPSHOT ( -- )
    REQUIRE-N @ REQUIRE-SAVE-N !
@@ -2262,7 +2225,6 @@ public
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
    REQUIRE-SAVE-N @ REQUIRE-REG:REWIND ;
 
-\ COUNT remains the stable public registry cursor after the load path above.
 package REQUIRE-REG
 
 public
@@ -2275,8 +2237,7 @@ public
 \ What the ENGINE provides, as opposed to what this process loaded: the boot
 \ prefix marks its own files `provided` before any user token runs, and freezing
 \ the count at its end separates the two, which REQUIRE-KNOWN? cannot once a
-\ tool's own dependencies are in the registry. tools/bundle-lib-core.f relies on
-\ it: it bundles no file the engine loaded and skips none the engine lacks.
+\ tool's own dependencies are in the registry.
 : REQUIRE-BOOT-FREEZE ( -- )
    REQUIRE-N @ REQUIRE-BOOT-N !
    INCLUDE-FALSE REQUIRE-BOOT-V ! ;
@@ -2284,7 +2245,7 @@ public
 : ENGINE-PROVIDES? ( ptr u8 n -- bool )
    ENGINE-KNOWN? ;
 
-\ A bundle (tools/bundle-lib.f) carries the modules this engine does NOT have
+\ A bundle carries the modules this engine does NOT have
 \ and states the ones it assumes. Stating the assumption is the bundle's half;
 \ checking it is the engine's, so a bundle built against a richer engine and run
 \ on a barer one refuses here, by name, instead of dying later on a missing word
