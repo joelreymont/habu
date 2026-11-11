@@ -4,6 +4,17 @@
 \ A primitive use carries its PRIM-SPEC row as a negative visit, a source-backed engine use visit
 \ -1 and its image origin; both answer for workspace files, not engine source outside them.
 \ STORAGE CLASS. PROCESS-GLOBAL: the request belongs to the server's one task; SELECT starts each afresh.
+\
+\ Pass 2 runs once the subjects before it are gathered: it gives the subjects
+\ whose loads reach the files the locations placed since it last ran are in.
+\ A composition that does not reach P, a fragment or a file that depends on
+\ its loader's definitions, may read such a file and bind the same token to
+\ another word.
+\
+\ Subjects are gathered in waves of lanes. A wave is prepared before any child
+\ runs. Unreadable files and subjects made redundant by an earlier lane are
+\ resolved when results are applied, preserving the serial gather's warning
+\ and eligibility order.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -796,9 +807,6 @@ private
    loop
    false ;
 
-\ The first decl of the check of the subject in this slot, of group G, whose
-\ token starts and ends at these bytes and declares another word than the
-\ selected declaration, if one does.
 : OTHER-DECL ( n n n n -- option<n> )
    {: slot:n g:n from:n to:n :}
    slot DEFS-DECL-RANGE ?do
@@ -810,10 +818,8 @@ private
    loop
    OPTION:NONE ;
 
-\ The location just placed, from use U of the probe, in the file of its
-\ group IN, whose token also declares decl D, said in POOL: that file, the
-\ line and text of the token, and the word it declares, whose uses a rename
-\ would not edit.
+\ The location just placed, from use U of the probe, whose token also
+\ declares decl D, said in POOL.
 : RE-EXPORT! ( n n n -- )
    {: in:n u:n d:n :}
    0 MSG-U !
@@ -831,9 +837,6 @@ private
    MSG-U @ RX-U !
    0 MSG-U ! ;
 
-\ Use U of the probe, just placed, kept for RE-EXPORT$ when its token also
-\ declares another word in the probe's group IN, the file the use is in,
-\ unless a location is kept already.
 : RE-EXPORTS ( n n -- )
    {: in:n u:n :}
    RX-U @ 0<> if exit then
@@ -842,9 +845,7 @@ private
       none OF ENDOF
    ;MATCH ;
 
-\ Positions count in the text of the file of the probe's group IN, and
-\ TEXT-OK holds whether that text has the revision the check read of the file;
-\ the file is named, once, when it does not.
+\ Positions count in the text of the file of the probe's group IN.
 : TEXT-IN! ( n -- )
    {: in:n :}
    in TEXT-IN !
@@ -854,10 +855,6 @@ private
    in GROUP-PATH$ NAMED? if exit then
    in GROUP-PATH$ s" changed since it was checked" MISS+ ;
 
-\ Use U of the probe, bound to the declaration, placed in the file it is in,
-\ unless a location is there already or that file's text no longer has the
-\ revision the check read; kept for RE-EXPORT$ when its token also declares
-\ another word in that file.
 : PLACE-USE ( n -- )
    {: u:n :}
    u USE-IN {: in:n :}
@@ -869,9 +866,6 @@ private
    f from to LOC+
    in u RE-EXPORTS ;
 
-\ Use U of the probe, when it is of the tail, as Habu compares names, kept
-\ with the subject being gathered: it is bound to another word than the
-\ declaration.
 : OTHER+ ( n -- )
    {: u:n :}
    u USE-NAME$ NAME$ STR=CI 0= if exit then
@@ -885,14 +879,10 @@ private
    CUR @ o O-SUB OTHER!
    o 1+ OTHER-N ! ;
 
-\ Whether use U of the probe, whose group for P is G, is bound to the
-\ declaration.
 : BOUND? ( n n -- bool )
    {: u:n g:n :}
    u g USE-AT? if u USE-KEY? else false then ;
 
-\ The uses of the declaration the probe, whose group for P is G, states,
-\ each placed in the file it is in, and its other uses of the tail kept.
 : PLACED ( n -- )
    {: g:n :}
    -1 TEXT-IN !
@@ -900,15 +890,10 @@ private
       i g BOUND? if i PLACE-USE else i OTHER+ then
    loop ;
 
-\ The subject named, unless its file is: its check declares another word at
-\ the declaration's token, which a rename of the token would change too.
 : DECL-CONFLICT ( -- )
    CUR$ NAMED? if exit then
    CUR @ s" declares another word at the declaration's token" SUBJECT-MISS+ ;
 
-\ The uses the probe, whose group for P is G, binds to the declaration
-\ placed, its other uses of the tail kept, and the subject named when it
-\ conflicts. Only a verified probe marks files covered by its check.
 : CONTRIBUTED ( n -- )
    {: g:n :}
    PROBE g WHY {: w:ptr wu:n :}
@@ -917,8 +902,6 @@ private
    g PLACED
    PROBE g OTHER-VISIT? if DECL-CONFLICT then ;
 
-\ The uses of the tail from a probe that read no P, and its files marked
-\ covered only when its check was verified.
 : WITHOUT-P ( -- )
    BY-VERIFIED PROBE-READS
    PROBE DEFS-USE-RANGE ?do i OTHER+ loop ;
@@ -935,9 +918,8 @@ private
    wu k X-WHY-U PENDING!
    k 1+ PENDING-N ! ;
 
-\ The subject's known uses from a completed probe; when its check was not
-\ verified, also hold the subject for SETTLE with its verdict. A check that
-\ read no P has no matching bindings, but may report uses of the tail.
+\ A check that read no P has no matching bindings, but may report uses of
+\ the tail.
 : CONTRIBUTE ( -- )
    PROBE DEFS-VERIFIED? 0= if LSP-CHECK:OUTCOME$ PENDING+ then
    IMPLICIT? if
@@ -978,7 +960,6 @@ private
    CUR$ LSP-CHECK:USES-BATCH-ADD
    1 BATCH-N +! ;
 
-\ The subject's uses from a check of this text of its file.
 : FROM-TEXT ( ptr u8 n n -- )
    {: a:ptr u:n owner:n :}
    a u CUR$ NAME$ owner [: CONTRIBUTE ;] LSP-CHECK:USES ;
@@ -1010,8 +991,7 @@ private
 \ The first location of a use: the declaration, when placed, is first.
 : FIRST-USE ( -- n )  DECLARED @ if 1 else 0 then ;
 
-\ The location of a use from byte FROM to byte TO of known file K, if one
-\ is. The declaration's token is no use: a use there is an EXPORT's operand.
+\ The declaration's token is no use: a use there is an EXPORT's operand.
 : LOCATION-AT ( n n n -- option<n> )
    {: k:n from:n to:n :}
    LOC-N @ FIRST-USE ?do
@@ -1021,8 +1001,6 @@ private
    loop
    OPTION:NONE ;
 
-\ The file of location L named, unless it is, since its token, at kept use
-\ O's bytes, is bound to another word by the check of O's subject.
 : CONFLICT! ( n n -- )
    {: o:n l:n :}
    l L-FILE LOC@ {: f:n :}
@@ -1036,7 +1014,6 @@ private
    f F-PATH FILE@ f F-PATH-U FILE@ why MSG-U @ NAMED!
    0 MSG-U ! ;
 
-\ The file of the use placed at kept use O's bytes, if one is, named.
 : CONFLICT ( n -- )
    {: o:n :}
    o O-FILE OTHER@ o O-FROM OTHER@ o O-TO OTHER@ LOCATION-AT MATCH option
@@ -1044,8 +1021,6 @@ private
       none OF ENDOF
    ;MATCH ;
 
-\ The subjects whose loads reach the file of location L, which is not P,
-\ given unless they are subjects already, once pass 2 first takes that file.
 : FOLLOW ( n -- )
    L-FILE LOC@ {: f:n :}
    f F-AGAIN FILE@ 0<> if exit then
@@ -1054,9 +1029,6 @@ private
    f FILE$ LSP-WORKSPACE:REACHING-AGAIN
    LSP-WORKSPACE:SUBJECTS 0 ?do i LSP-WORKSPACE:SUBJECT$ SUBJECT+ loop ;
 
-\ Whether location A comes before location B in the answer: by file, P's
-\ first and the others in the byte order of their paths, then by the bytes
-\ they start and end at.
 : LOC< ( n n -- bool )
    {: a:n b:n :}
    a L-FILE LOC@ {: fa:n :}
@@ -1069,16 +1041,13 @@ private
    a L-FROM LOC@ b L-FROM LOC@ <> if a L-FROM LOC@ b L-FROM LOC@ < exit then
    a L-TO LOC@ b L-TO LOC@ < ;
 
-\ The declaration at this byte of the text of D, in this slot, selected, and
-\ placed when TOO holds.
 : LOCATED ( n n bool -- )
    {: slot:n at:n too:bool :}
    FRESH
    slot at LOCATE
    FOUND @ too and if DECLARATION then ;
 
-\ The declaration once placed, the first location, said in MSG: its file, the
-\ line and text of its token, and its tail.
+\ The declaration once placed, the first location, said in MSG.
 : DECLARED-AT ( -- )
    0 MSG-U !
    P$ SHOWN$ MSG+
@@ -1091,7 +1060,6 @@ private
 
 public
 
-\ Rename still requires the selected document's whole check to be verified.
 : RENAME-VERIFIED? ( n -- bool )
    {: slot:n :}
    slot DEFS-VERIFIED? if true exit then
@@ -1127,16 +1095,12 @@ public
 \ spell its tail.
 : SPELT? ( -- bool )  SPELT @ ;
 
-\ Why a token does not spell the tail, said of the declaration once placed,
-\ the first location: its file, the line and text of its token, and its tail.
 \ A DEFTYPE declares its two converters at its name's token, which spells neither.
 : UNSPELT$ ( -- ptr u8 n )
    DECLARED-AT
    s" , but a token naming it does not spell it" MSG+
    MSG$ ;
 
-\ Whether D's check records the declaration as an EXPORT of another word,
-\ and that said of it as UNSPELT$ says why.
 : EXPORT? ( -- bool )
    G @ TS @ TE @ GROUP-REC-AT MATCH option
       some OF REC-CLASS CLASS-EXPORT = ENDOF
@@ -1149,7 +1113,6 @@ public
 
 \ SUMTYPE constructor calls bind to the generated word, while MATCH arm names
 \ are parsed as variants and do not occur in the checker's use inventory.
-\ The verifier gives those generated words their own declaration class.
 : CONSTRUCTOR? ( -- bool )
    G @ TS @ TE @ GROUP-REC-AT MATCH option
       some OF REC-CLASS CLASS-CONSTRUCTOR = ENDOF
@@ -1159,9 +1122,8 @@ public
    s" Constructor rename cannot update MATCH arms" ;
 
 \ Whether a location placed is a token that also declares another word in its
-\ subject's file, as an EXPORT's operand does, and the first such one said: its
-\ file, the line and text of the token, and the word. A rename that edited the
-\ token would leave that word's uses naming the old one.
+\ subject's file, as an EXPORT's operand does, and the first such one said. A
+\ rename that edited the token would leave that word's uses naming the old one.
 : RE-EXPORTED? ( -- bool )  RX-U @ 0<> ;
 : RE-EXPORT$ ( -- ptr u8 n )  RX-AT @ RX-U @ POOL$ ;
 
@@ -1183,11 +1145,6 @@ public
 : WAVE-SIZE ( -- n ) REF-LANES REF-CHUNK * ;
 : WAVE-COUNT ( n -- n ) WAVE-SIZE min REF-CHUNK 1- + REF-CHUNK / ;
 
-\ Pass 2, once the subjects before it are gathered: the subjects it gives
-\ from the files the locations placed since it last ran are in, and whether
-\ it gave any. A composition that does not reach P, a fragment or a file that
-\ depends on its loader's definitions, may read such a file and bind the same
-\ token to another word.
 : MORE? ( -- bool )
    PRIMITIVE? if false exit then
    SUB-N @ {: was:n :}
@@ -1195,9 +1152,6 @@ public
    LOC-N @ FOLLOWED !
    SUB-N @ was > ;
 
-\ Subject K's uses of the declaration, from a check of the text of the open
-\ document that holds its file, else of the file on disk; or the subject
-\ named.
 : GATHER ( n -- )
    CUR !
    CUR$ NAMED? if exit then
@@ -1206,10 +1160,6 @@ public
       none OF FROM-DISK ENDOF
    ;MATCH ;
 
-\ The primitive has no source dependency reachability pass. A wave is
-\ prepared before any child runs. Unreadable files and subjects
-\ made redundant by an earlier lane are resolved when results are applied,
-\ preserving the serial gather's warning and eligibility order.
 : WAVE-ENTRY ( n -- )
    {: result:n :}
    WAVE-LANE @ {: lane:n :}
@@ -1323,8 +1273,6 @@ public
 
 : UNCOVERED? ( -- bool )  MISS-N @ 0 > ;
 
-\ This phrase, then how many files are named and, a line each, every one's
-\ path relative to the working directory and why.
 : UNCOVERED$ ( ptr u8 n -- ptr u8 n )
    0 MSG-U !
    MSG+
@@ -1339,7 +1287,6 @@ public
    loop
    MSG$ ;
 
-\ The window/showMessage warning naming the files, to the writer.
 : WARNING ( ptr JSON:writer -- ptr JSON:writer )
    s" References may be incomplete" UNCOVERED$ {: m:ptr mu:n :}
    s" window/showMessage" JSON-RPC:NOTIFY
@@ -1374,7 +1321,6 @@ private
 
 public
 
-\ The result of textDocument/references, the Location list, to the writer.
 : ANSWER ( ptr JSON:writer -- ptr JSON:writer )
    WRITE-ARRAY-START
    LOC-N @ 0 ?do
