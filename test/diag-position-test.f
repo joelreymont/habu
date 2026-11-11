@@ -761,6 +761,9 @@ variable RC
    s" DEFTYPE N" s" deftype-reserved.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" fix_family_declaration" s" N" 1 9 8 9 PREPASS-REFUSED
    0 s" family" s" n" FIELD=
+   s" a DEFTYPE name with parameters under --verify-only, and no converters after it" T-LABEL
+   s" DEFTYPE PTR<a>" s" deftype-ptr-params.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" PTR" 1 9 8 11 PREPASS-REFUSED
    s" an upper-case NEWTYPE name with parameters, at its bare name" T-LABEL
    s" NEWTYPE Foo<a>" s" newtype-case-params.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" Foo" 1 9 8 11 REFUSED-MODES

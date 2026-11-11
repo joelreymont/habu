@@ -2495,7 +2495,9 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
+   MULTI-ERR-N @ {: refused:n :}
    tail tailu name nameu CHECKER-DEFFAMILY
+   MULTI-ERR-N @ refused <> IF EXIT THEN   \ a refused family declares no converters
    name nameu tail tailu DTC-BUILD-IN
    DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
    CAST-TRUST
