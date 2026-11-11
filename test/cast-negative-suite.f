@@ -80,6 +80,13 @@ s" cast: CNWD5 ( [ width<n> -- n ] -- [ n -- n ] )" CN-RUN:DECL E-CAST-CLASS T=
 s" cast: CNWD6 ( [ xt -- ] -- [ n -- ] )"           CN-RUN:DECL E-CAST-CLASS T=
 s" cast: CNWD7 ( [ extent-a -- ] -- [ n -- ] )"     CN-RUN:DECL E-CAST-CLASS T=
 s" cast: CNWD8 ( [ n -- width<n> ] -- [ n -- n ] )" CN-RUN:DECL 0 T=
+\ A pointee is written as well as read: every position in it is checked.
+s" cast: CNWD9 ( ptr [ -- width<n> ] -- ptr [ -- n ] )"   CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD10 ( ptr [ n -- ] -- ptr [ width<n> -- ] )"  CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD11 ( n -- ptr [ width<n> -- ] )"             CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD12 ( ptr [ n -- ] -- ptr [ xt -- ] )"        CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD13 ( ptr [ -- xt ] -- ptr [ -- n ] )"        CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD14 ( ptr [ n -- ] -- ptr [ u8 -- ] )"        CN-RUN:DECL 0 T=
 ;package
 \ undeclared family in the signature.
 s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL E-CAST-FAM T=

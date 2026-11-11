@@ -721,17 +721,19 @@ multi-cell type rationale is `docs/design.md` "Types".
     is declared only in a package's private section (`E-CAST-MINT`).
 
   The introduction positions are where the destination hands out a value: the
-  term itself, a pointer's pointee (a read), a layout family's arguments and
-  its members (every field and variant payload, instantiated over those
-  arguments: a field projection or a `MATCH` arm) and a quotation's produced
-  rows (a call), recursively. A layout's fields carry its rules down: after
+  term itself, a pointer's pointee, every position in it (a read yields it
+  and a write feeds it), a layout family's arguments and its members (every
+  field and variant payload, instantiated over those arguments: a field
+  projection or a `MATCH` arm) and a quotation's produced rows (a call),
+  recursively. A layout's fields carry its rules down: after
   `STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
   is `E-CAST-MINT` outside a private section. A layout that points at its own
   family is read once per instance. A quotation's consumed rows flip the
   direction, so `( n -- [ extent-a -- ] )` introduces no atom and
   `( n -- [ [ extent-a -- ] -- ] )` introduces one (`E-CAST-CLASS`). The
-  source's consumed rows are introduction positions too, since the result's
-  caller feeds them: `( [ xt -- ] -- [ n -- ] )` and `( [ xt -- ] -- n )` are
+  source's consumed rows and pointees are introduction positions too, since
+  the result's caller feeds them or writes through it:
+  `( [ xt -- ] -- [ n -- ] )` and `( [ xt -- ] -- n )` are
   `E-CAST-CLASS`, as is a width there, while
   `( [ n -- width<n> ] -- [ n -- n ] )` reads the width the source produces.
   A cell family's arguments are phantom and introduce nothing. Projections out
@@ -2170,9 +2172,9 @@ documentation-only edits need no rebuild.
 - **`ARENA NAME Type` for records in an arena**: the stored types of
   `DYNAMIC-BUFFER` that hold no linear value or type variable and hand out no
   atom (an `xt` or a phantom index such as `extent-a`) in an introduction
-  position, as `CAST:` defines them: `[ -- xt ]` and `[ -- extent-a ]` hand one
-  out, `[ xt -- ]` does not. Inside a package it defines `NAME-NEW ( ptr
-  ARENA:arena -- ptr Type )`, a fresh zeroed record, and `NAME-NEW-DISPOSE ( ptr ARENA:arena
+  position, as `CAST:` defines them: the stored type is a pointee, so
+  `[ -- xt ]`, `[ xt -- ]` and `[ -- extent-a ]` all hand one out. Inside a
+  package it defines `NAME-NEW ( ptr ARENA:arena -- ptr Type )`, a fresh zeroed record, and `NAME-NEW-DISPOSE ( ptr ARENA:arena
   [ ptr Type -- ] -- ptr Type )`, whose action runs once when the arena is reset
   or released and must accept a zeroed record. The width is the declared
   type's, so a record's size always comes from the declaration. The definer

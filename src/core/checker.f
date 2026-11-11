@@ -24790,54 +24790,59 @@ variable CAST-PATH-N
       a over PARAM>ARG  over b swap PARAM>ARG  <> IF drop RES-FALSE EXIT THEN
       1 +
    REPEAT drop RES-TRUE ;
-: CAST-DIR ( bool -- n ) IF 1 ELSE 0 THEN ;
-: CAST-ON-PATH? ( n bool -- bool ) {: t:n pos:bool :}
-   pos CAST-DIR {: dir:n :}
+0 constant CAST-NEG
+1 constant CAST-POS
+2 constant CAST-BOTH
+: CAST-FLIP ( n -- n )
+   dup CAST-NEG = IF drop CAST-POS EXIT THEN
+   dup CAST-POS = IF drop CAST-NEG THEN ;
+: CAST-ON-PATH? ( n n -- bool ) {: t:n sign:n :}
    0 BEGIN dup CAST-PATH-N @ < WHILE
-      dup cells CAST-PATH-POS + @ dir = IF
+      dup cells CAST-PATH-POS + @ sign = IF
          dup cells CAST-PATH-TERM + @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
       THEN
       1 +
    REPEAT drop RES-FALSE ;
-: CAST-PATH-PUSH ( n bool -- ) {: t:n pos:bool :}
+: CAST-PATH-PUSH ( n n -- ) {: t:n sign:n :}
    CAST-PATH-N @ CAST-PATH-CAP >= IF
       s" checker: cast walk nests layouts too deep" 76 die THEN
    t CAST-PATH-N @ cells CAST-PATH-TERM + !
-   pos CAST-DIR CAST-PATH-N @ cells CAST-PATH-POS + !
+   sign CAST-PATH-N @ cells CAST-PATH-POS + !
    CAST-PATH-N @ 1 + CAST-PATH-N ! ;
 : CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
 \ Introduction positions of the destination are the positive ones. A
 \ quotation's consumed rows flip the sign, so a consumer handed to a minted
-\ quotation is fed by it. A cell family's arguments are phantom, and each row
-\ ends in the quotation's own base: neither yields a value.
-: CAST-INTRO? ( n bool n -- bool ) {: t0:n pos:bool q:n :}
+\ quotation is fed by it. A pointer's pointee is read and written: every
+\ position in it introduces, on either side. A cell family's arguments are
+\ phantom, and each row ends in the quotation's own base: neither yields a value.
+: CAST-INTRO? ( n n n -- bool ) {: t0:n sign:n q:n :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         dup P>TYPE sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          P>REST R-RES
       REPEAT
    THEN
    ISROW IF RES-FALSE EXIT THEN
    t0 T-RES {: t:n :}
-   pos IF t q CAST-INTRO-HIT? IF RES-TRUE EXIT THEN THEN
-   t TAG T-PTR = IF t PTR>INNER pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   sign CAST-NEG <> IF t q CAST-INTRO-HIT? IF RES-TRUE EXIT THEN THEN
+   t TAG T-PTR = IF t PTR>INNER CAST-BOTH q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-QUOT = IF
-      t Q>DIN pos 0= q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>RIN pos 0= q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>DOUT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>ROUT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+      t Q>DIN sign CAST-FLIP q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN sign CAST-FLIP q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
    0 BEGIN dup t PARAM>ARGC < WHILE               \ data-stack index (RECURSE-safe)
-      t over PARAM>ARG pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+      t over PARAM>ARG sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop
-   t pos CAST-ON-PATH? IF RES-FALSE EXIT THEN
-   t pos CAST-PATH-PUSH
-   t TFAM-MEMBERS-XT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   t sign CAST-ON-PATH? IF RES-FALSE EXIT THEN
+   t sign CAST-PATH-PUSH
+   t TFAM-MEMBERS-XT sign q TWALK-DEEPER RECURSE TWALK-SHALLOWER
    CAST-PATH-POP ;
 : CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
-   CAST-WALK-RESET t RES-TRUE q CAST-INTRO? ;
+   CAST-WALK-RESET t CAST-POS q CAST-INTRO? ;
 \ Fail closed over the complete signature term: CAST is an authority boundary.
 \ A direct unresolved var may later bind linear. Cell-family parameters are
 \ phantom and own no payload. Pointers and quotations own nothing themselves,
@@ -24872,20 +24877,22 @@ variable CAST-PATH-N
          t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
-      t RES-TRUE CAST-ON-PATH? IF RES-FALSE EXIT THEN
-      t RES-TRUE CAST-PATH-PUSH
+      t CAST-POS CAST-ON-PATH? IF RES-FALSE EXIT THEN
+      t CAST-POS CAST-PATH-PUSH
       t TFAM-MEMBERS-XT TWALK-DEEPER RECURSE TWALK-SHALLOWER
       CAST-PATH-POP EXIT
    THEN
    RES-FALSE ;
 
 \ CHECKER-DYNAMIC-INFO's answer, false for a type that may hold a linear value,
-\ an open type variable or an atom it hands out.
+\ an open type variable or an atom it hands out as a pointee.
 : CHECKER-ARENA-INFO ( ptr u8 n -- n bool )
    CHECKER-DYNAMIC-INFO 0= IF RES-FALSE EXIT THEN
    CAST-WALK-RESET
    LBI-T @ CAST-MAY-LINEAR? IF drop 0 RES-FALSE EXIT THEN
-   LBI-T @ INTRO-ATOM CAST-INTRODUCES? IF drop 0 RES-FALSE EXIT THEN
+   CAST-WALK-RESET LBI-T @ CAST-BOTH INTRO-ATOM CAST-INTRO? IF
+      drop 0 RES-FALSE EXIT
+   THEN
    RES-TRUE ;
 
 \ The cast gate: true when the output mints a pointer or quotation, else a
@@ -24903,14 +24910,15 @@ variable CAST-PATH-N
    SGOUT @ CAST-ROW-TERM INTRO-WIDTH CAST-INTRODUCES? IF
       s" the output is a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
-   \ The source's consumed rows introduce values too: what the result is fed
-   \ reaches the source's code as the source's type.
+   \ The source's consumed rows and pointees introduce values too: what the
+   \ result is fed or has written through it reaches the source's code as the
+   \ source's type.
    CAST-WALK-RESET
-   SGIN @ CAST-ROW-TERM RES-FALSE INTRO-ATOM CAST-INTRO? IF
+   SGIN @ CAST-ROW-TERM CAST-NEG INTRO-ATOM CAST-INTRO? IF
       s" the input is handed an atom, a phantom index" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    CAST-WALK-RESET
-   SGIN @ CAST-ROW-TERM RES-FALSE INTRO-WIDTH CAST-INTRO? IF
+   SGIN @ CAST-ROW-TERM CAST-NEG INTRO-WIDTH CAST-INTRO? IF
       s" the input is handed a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    CAST-WALK-RESET
