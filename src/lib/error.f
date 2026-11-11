@@ -25,12 +25,10 @@ require src/lib/prelude.f
 -2101 constant E-FS-STAT
 -2102 constant E-FS-OPEN
 -2103 constant E-FS-DIR
-\ -2104 unassigned.
 -2105 constant E-FS-IO
 -2106 constant E-FS-CAPACITY
 -2107 constant E-FS-PATH-UNSAFE
 -2108 constant E-FS-BAND        \ layout FS-ABI band widths disagree with the caps here
-\ -2109 unassigned.
 -2110 constant E-FS-TIMEOUT     \ a descriptor transfer reached its deadline
 
 \ Strings: -2200..-2299
@@ -104,7 +102,7 @@ require src/lib/prelude.f
 -3199 constant E-JSON-WRITE-LAST
 -3100 constant E-JSON-WRITE-CAPACITY   \ the value does not fit the caller's output buffer
 -3101 constant E-JSON-WRITE-BYTE       \ a byte outside 0-255, a negative U or indent, or string, key or part text that is not UTF-8
--3102 constant E-JSON-WRITE-STATE      \ writer not open, or a call its layout refuses (src/lib/json.f)
+-3102 constant E-JSON-WRITE-STATE      \ writer not open, or a call its layout refuses
 -3103 constant E-JSON-WRITE-OUTPUT     \ output buffer is null, or its capacity is negative
 -3104 constant E-JSON-WRITE-SOURCE     \ appended span is negative, null with a positive length, or inside a growable output past its written bytes
 
@@ -140,7 +138,6 @@ require src/lib/prelude.f
 -3411 constant E-PTX-AD-CONTROL
 -3412 constant E-PTX-EMIT      \ spawned kernel-emit child exited nonzero (its stderr surfaced)
 -3413 constant E-PTX-CAP       \ in-process PTX capture buffer overflowed
-\ -3414 and -3415 unassigned.
 -3416 constant E-KABI-CAP          \ kernel-ABI record capacity (params/fields/name pool) exceeded
 -3417 constant E-KABI-FIELD        \ kernel-ABI field: unknown name/index, or no .param offset
 -3418 constant E-KABI-DUP          \ kernel-ABI duplicate field name / conflicting extent-token source
@@ -166,7 +163,6 @@ require src/lib/prelude.f
 -3503 constant E-FFI-LIBRARY
 -3504 constant E-FFI-NUL           \ a string with a 0 byte handed to C, which would end it early
 -3505 constant E-FFI-DLOPEN        \ a library a FUNCTION: names could not be opened
-\ -3506 unassigned.
 \ src/lib/ffi-callback.f: a callback frame accessor used outside a live callback,
 \ a descriptor no declaration made, or a dispatch whose body was never stored.
 -3507 constant E-FFI-CALLBACK-STATE
@@ -175,7 +171,6 @@ require src/lib/prelude.f
 -3600 constant E-TASK-FIRST
 -3699 constant E-TASK-LAST
 -3600 constant E-TASK-SIZE
-\ -3601 and -3602 unassigned: package FFI names a missing symbol E-FFI-DLSYM.
 -3603 constant E-TASK-THREAD
 -3604 constant E-TASK-STATE
 -3605 constant E-TASK-USER
@@ -193,9 +188,9 @@ require src/lib/prelude.f
 -3899 constant E-ENGINE-LAST
 -3800 constant E-ENGINE-PATH    \ own executable path cannot be resolved
 -3801 constant E-ENGINE-KEY     \ own binary cannot be content-hashed
--3802 constant E-STACK-UNGUARDED \ run-in-stack was handed an extent that is not a guarded stack mapping (thrown by src/habu/habu1.f BRUNSTACK through the same (code, name) re-registered in src/habu/stack-abi.f)
--3803 constant E-PROF-RATE       \ prof-rate was handed an interval below 0 (thrown by src/habu/prof.f BPROF-RATE and src/habu/kernel-x64.f's prof-rate row through the same (code, name) re-registered in src/habu/prof-abi.f)
--3804 constant E-EVAL-RESIDUE    \ an evaluate-closed text left cells above its floor (thrown by src/habu/habu1.f B-EVAL-CLOSED through the same (code, name) re-registered in src/habu/stack-abi.f)
+-3802 constant E-STACK-UNGUARDED \ run-in-stack was handed an extent that is not a guarded stack mapping (re-registered as the same (code, name) in src/habu/stack-abi.f)
+-3803 constant E-PROF-RATE       \ prof-rate was handed an interval below 0 (re-registered as the same (code, name) in src/habu/prof-abi.f)
+-3804 constant E-EVAL-RESIDUE    \ an evaluate-closed text left cells above its floor (re-registered as the same (code, name) in src/habu/stack-abi.f)
 
 \ JSON reader: -3900..-3999, minted by src/lib/json/read.f, a file of package JSON (src/lib/json.f).
 
@@ -208,10 +203,9 @@ require src/lib/prelude.f
 -4003 constant E-ZED-TOOLCHAIN   \ required remote tool missing (ptxas/nvcc/...)
 -4004 constant E-ZED-ARG         \ bad harness argument or buffer capacity
 -4005 constant E-ZED-DISABLED    \ device required but HABU_ZED unset/0
-\ -4006 unassigned: a ZED run's expired deadline throws E-PROC-TIMEOUT from
-\ CMD:RUN-RC.
+\ -4006 unassigned: a ZED run's expired deadline throws E-PROC-TIMEOUT.
 \ E-ZED-EMIT is thrown downstream: Loom's tools/ptx/zed-gradcheck-suite.f
-\ raises it when its bin/hb spawn that emits a PTX kernel exits nonzero.
+\ raises it.
 -4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
 
 \ Floating mathematics: -9020..-9029, minted by src/lib/fmath.f, which owns package
@@ -286,7 +280,7 @@ require src/lib/prelude.f
 -6400 constant E-ARITH-FIRST
 -6499 constant E-ARITH-LAST
 -6400 constant E-DIV-ZERO       \ `/`, `mod` or `/mod` given a zero divisor (thrown by the
-                                \ engine's own primitive bodies in src/habu/habu1.f through
+                                \ engine's own primitive bodies through
                                 \ the same (code, name) re-registered in src/habu/arith-abi.f)
 
 \ Native test runner (package TEST): -6500..-6599
@@ -295,7 +289,7 @@ require src/lib/prelude.f
 -6500 constant E-TR-PATH-LEN    \ a persistent-root path longer than the runner's buffer
 
 \ Shared compiler IR representation: -6600..-6699. The block is FULL: later
-\ compiler stages mint from -8000..-8999 at the end of this file.
+\ compiler stages mint from -8000..-8999.
 -6600 constant E-IR-FIRST
 -6699 constant E-IR-LAST
 -6600 constant E-IR-MODULE-ZERO
@@ -338,10 +332,8 @@ require src/lib/prelude.f
 -6651 constant E-IR-ARENA-OWNER   \ an index or context was presented to an arena that did not mint it
 -6652 constant E-IR-ARENA-FULL    \ an append reached the arena's committed cell ceiling
 -6653 constant E-IR-ARENA-FROZEN  \ a mutation word ran against a frozen arena
-\ -6654 unassigned.
 -6655 constant E-IR-ARENA-BOUND   \ an arena index at or past the readable cell count
 -6656 constant E-IR-ARENA-CEIL    \ an arena cell count outside the accepted range: a creation ceiling, or a reservation
-\ -6657 and -6658 unassigned.
 -6659 constant E-IR-ARENA-STATE   \ persisted arena state failed its consistency recheck
 
 \ Compiler source registry (package IR-SOURCE): -6660..-6669
@@ -376,8 +368,7 @@ require src/lib/prelude.f
 -6689 constant E-IR-TYPE-KIND     \ a field reader applied to a type of a different kind
 -6690 constant E-IR-TYPE-RANGE    \ a render span smaller than the rendered type text
 
-\ Compiler attribute table (package IR-ATTR): -6691..-6699, completing the
-\ -6600..-6699 shared compiler IR block.
+\ Compiler attribute table (package IR-ATTR): -6691..-6699
 -6691 constant E-IR-ATTR-STATE    \ an attribute store failed its header, row shape, or stored symbol check
 -6692 constant E-IR-ATTR-OWNER    \ a module key, attr-id, or symbol id this attribute table does not own
 -6693 constant E-IR-ATTR-BOUND    \ an attribute id at or past the constructed count
@@ -420,10 +411,9 @@ require src/lib/prelude.f
 -6882 constant E-CRL-DECODE   \ the shipped relocation pass carries an instruction, operand, symbol, or label the machine that runs it was never taught
 -6883 constant E-CRL-FAULT    \ the shipped relocation pass, run over a synthetic image, touched an address outside every declared segment or ran past its step budget
 
-\ Compiler growth region: -8000..-8999, the compiler's second block: -6600..-6699
-\ is full and -6700..-6799 is the frozen identity schema below it. Sub-blocks are
-\ 20 codes wide, each headed below by its range; a stage that outgrows its own
-\ takes the next one no `-8NNN constant` under src, tools or test claims.
+\ Compiler growth region: -8000..-8999, the compiler's second block. Sub-blocks
+\ are 20 codes wide, each headed below by its range; a stage that outgrows its
+\ own takes the next one no `-8NNN constant` under src, tools or test claims.
 -8000 constant E-COMP-FIRST
 -8999 constant E-COMP-LAST
 
@@ -548,8 +538,7 @@ require src/lib/prelude.f
 \ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299; NELAB
 \ and T0 both throw -8294.
 \
-\ The straight-line subset: the closed opcode set the dialect registers and the
-\ source-word model. Schema records are IR-SCHEMA's and reject with its codes.
+\ Schema records are IR-SCHEMA's and reject with its codes.
 -8280 constant E-HIR-STATE      \ a word-model arena failed its header, row-shape, window, or stored-code recheck
 -8281 constant E-HIR-OWNER      \ a module key or symbol presented to a word model that does not own it
 -8282 constant E-HIR-BOUND      \ a row index or a pick index at or past the count the table records
@@ -570,8 +559,7 @@ require src/lib/prelude.f
 \
 \ What the elaborator asks another authority stays that authority's refusal: a
 \ word the dialect cannot compile is E-HIR-UNMODELED, a token kind the subset
-\ does not model is E-HIR-KIND, a malformed operation is IR-OP's. -8302 is
-\ unassigned.
+\ does not model is E-HIR-KIND, a malformed operation is IR-OP's.
 -8300 constant E-NELAB-SHAPE     \ a tape that is not one colon definition: no tokens at all, or a first token that is not the defined name
 -8301 constant E-NELAB-MODE      \ a definition token consumed in the wrong parser mode for its place: the name outside interpreting, or a body word outside compiling
 -8303 constant E-NELAB-ARITY     \ a declared input or output count outside the accepted range, or a body that does not leave exactly the declared outputs
@@ -586,17 +574,14 @@ require src/lib/prelude.f
 -8321 constant E-A64RA-MODULE    \ a frozen module that is not the bound one
 -8322 constant E-A64RA-STATE     \ an allocation reader used before the walk sealed one, or after a later walk replaced it
 -8323 constant E-A64RA-SHAPE     \ a module this leaf cannot allocate: no function at all, no block control leaves through or more than one, a successor ordinal outside the function, or a value of the module that no function defines
--8324 constant E-A64RA-FRAME     \ a function after the first needs spill slots, and a module holds one frame. A module's first function is the definition's own routine and the rest are its quotation bodies; the frame, its base and its slot count are one per module (N-SLOTS, BASE-N, and the reserve sized from A64RA:FRAME), so a body that will not fit its values in registers has nowhere to put them. Every quotation body in the tree is one word call and spills nothing, which is why this is a refusal and not a second frame.
+-8324 constant E-A64RA-FRAME     \ a function after the first needs spill slots, and a module holds one frame. A module's first function is the definition's own routine and the rest are its quotation bodies; the frame, its base and its slot count are one per module, so a body that will not fit its values in registers has nowhere to put them. Every quotation body in the tree is one word call and spills nothing, which is why this is a refusal and not a second frame.
 -8325 constant E-A64RA-CLASS     \ a value whose type is not the dialect's general-register type, so no general register can hold it
 -8326 constant E-A64RA-TARGET    \ a context bound to a target these registers do not belong to
 -8327 constant E-A64RA-CAP       \ a value, block or plan ordinal outside the allocator's tables: more of them in one routine than the tables hold, or a read past the count the sealed walk recorded
 -8328 constant E-A64RA-TIE       \ a schema-declared tie that cannot be honoured: the kept value is still needed afterwards, or its register is not free
--8329 constant E-A64RA-PRESSURE  \ more values have to be spilled at once than ANY frame of this chain holds slots for: the demand passed the tighter of what the architecture can describe and what a pass can name a slot of. The allocator derives the frame from what the walk needs (A64RA:FRAME). Register pressure itself is a spill, not a refusal; the one operation that no spill can serve is E-A64RA-POOL
+-8329 constant E-A64RA-PRESSURE  \ more values have to be spilled at once than ANY frame of this chain holds slots for: the demand passed the tighter of what the architecture can describe and what a pass can name a slot of. Register pressure itself is a spill, not a refusal; the one operation that no spill can serve is E-A64RA-POOL
 
 \ Native ARM64 allocation validator (package A64RAV): -8330..-8339
-\
-\ It re-derives every live interval from the frozen module rather than reading
-\ the allocator's belief.
 -8330 constant E-A64RAV-STATE     \ acceptance asked for with no sealed allocation, or an accepted answer read after a later walk replaced it
 -8331 constant E-A64RAV-MODULE    \ a module that is not the one the allocation was made from
 -8332 constant E-A64RAV-CONTRACT  \ a routine contract that is not the one the allocation was made under
@@ -656,9 +641,8 @@ require src/lib/prelude.f
 
 \ Native stage N0 source-tape producer (package NFEED): -8400..-8409
 \
-\ Fills a source tape from the checker's reader. Refusals another authority owns
-\ keep its name: a full tape is E-NTAPE-CAP, a span outside its source
-\ IR-SOURCE's.
+\ Refusals another authority owns keep its name: a full tape is E-NTAPE-CAP, a
+\ span outside its source IR-SOURCE's.
 -8400 constant E-NFEED-STATE    \ a producer word reached in a state that has no meaning for it: no unit open, a unit still scanning, or a second unit over a live one
 -8401 constant E-NFEED-SCAN     \ a foreign scan or an unexpected defining-word segment reached the open unit
 -8402 constant E-NFEED-SPAN     \ a token whose bytes are not the bytes at the offset it claims, or that leaves the scanned text
@@ -725,6 +709,7 @@ require src/lib/prelude.f
 -8507 constant E-A64RA-EDGE     \ a block argument and the values handed to it across an edge cannot share one register: two of them are live at the same time, or the edge hands over a different number of values than the destination takes
 -8508 constant E-A64RA-SPILL    \ a routine needs a value put in a frame slot and has none this pass may take: every class holding a register there is one an edge or a schema tie made of more than one value, holds a block argument, is read by a data-stack operation, or reaches the frame from a block that is neither the one the caller enters nor the one control leaves through
 -8509 constant E-A64RAV-EDGE    \ the same edge rule, re-derived: an assignment in which the register holding a terminator's operand is not the register holding the successor's block argument at that position
+-8519 constant E-NELAB-BUNDLE   \ a multi-cell value the elaborator would have to take apart or would have to guess the shape of: one cell of such a value parked on the return stack, where the cells would be separated with every count still agreeing; or a declared row whose values the chain cannot place exactly, which is a segmentation it may not guess at; or a `!` through a pointer to a multi-cell family whose value on that vector does not begin, hold together and end where the certified width says, which is the same segmentation met from the writing side. It is also what a WIDTH on an operation that is not a memory access raises, which would mean the chain and the checker had read one token as two different words. A CAST:'s regrouping raises it for a window of cells that starts inside a value, which checked source cannot reach; and a scan certificate that says its width facts are incomplete (a token the scan could not apply while a multi-cell value was live) raises it before anything lowers, since the chain would have to guess where that value's cells lie
 
 \ Native ARM64 memory access: -8520..-8539
 \
@@ -733,7 +718,6 @@ require src/lib/prelude.f
 \ name: a source word the dialect cannot compile is E-HIR-UNMODELED, a row read
 \ as a meaning it does not carry E-HIR-CLASS, an address operand outside its
 \ field the assembler's.
--8519 constant E-NELAB-BUNDLE   \ a multi-cell value the elaborator would have to take apart or would have to guess the shape of: one cell of such a value parked on the return stack, where the cells would be separated with every count still agreeing; or a declared row whose values the chain cannot place exactly (NDICT:GLUE-UNKNOWN), which is a segmentation it may not guess at; or a `!` through a pointer to a multi-cell family whose value on that vector does not begin, hold together and end where the certified width says, which is the same segmentation met from the writing side. It is also what a WIDTH on an operation that is not a memory access raises, which would mean the chain and the checker had read one token as two different words. A CAST:'s regrouping raises it for a window of cells that starts inside a value, which checked source cannot reach; and a scan certificate that says its width facts are incomplete (checker.f SCAN-INCOMPLETE: a token the scan could not apply while a multi-cell value was live) raises it before anything lowers, since the chain would have to guess where that value's cells lie
 -8520 constant E-NELAB-TOKEN    \ the definition's one memory order is wrong for the operation being staged: either the operation's schema declares more than one token among its operands or among its results, which the elaborator has no rule for, or it takes an order in a definition the pre-scan found no memory word in
 -8521 constant E-A64SEL-MEM     \ a memory operation in a routine whose convention names no data-stack place at all: the generic memory order of this dialect begins where the routine takes the caller's operands, and a routine that takes and publishes nothing has no beginning for it
 -8522 constant E-A64RAV-ORDER   \ a memory order the module mints and does not pass on exactly once: a token nothing reads leaves the order after it unstated, and a token two operations read is two orders claiming to be one
@@ -750,15 +734,7 @@ require src/lib/prelude.f
 
 \ Native calls: -8550..-8559
 \
-\ `RECURSE`'s callee contract destroys exactly the registers the allocator hands
-\ out, so the caller's live values cross the call on its data stack and its
-\ return address in the routine's frame. A word this dialect's table never
-\ declared is E-HIR-UNMODELED.
-\
-\ A CALL TO ANOTHER WORD ADDS THREE FACTS: the callee's arity (the word model's
-\ row), its entry address (the machine dialect's field), and the address the
-\ CALLING routine will be written at, the publication seam's answer, measured
-\ against the seam's own claim before a byte is written.
+\ A word this dialect's table never declared is E-HIR-UNMODELED.
 -8550 constant E-NELAB-CALL     \ a call the elaborator has no rule for: fewer values on the compile-time vector than the callee declares it takes, more values live across the call than the vector can hold afterwards, or a call reached with no memory order live
 -8551 constant E-A64SEL-CALL    \ a call the selector has no lowering for. The one cause a production contract can reach: a routine declared under the register convention, which never took the data-stack pointer a call site hands its arguments over through. The other four hold two derivations of one fact against each other and no contract src/compiler/native/abi.f builds can reach them, so a run that reports one is a defect in the chain rather than a program it cannot compile: a frame too small to hold the saved link register, a contract declaring a call in a module that contains none, a module containing a call under a contract that declares none, or a call whose operand and result lists disagree about how many values are live across it
 -8552 constant E-A64RAV-CALL    \ a call site that is not the sequence the dialect lowers a call to: a store run that does not name slots zero upwards in order, a byte count that is not the run it stands for, or a saved link register the module does not restore from the slot it saved it into
@@ -770,8 +746,6 @@ require src/lib/prelude.f
 -8558 constant E-A64EMIT-CLOBBER \ an emission that writes a general or floating register the accepted allocation claimed for no value
 
 \ Native publication: -8560..-8579
-\
-\ An accepted emission becomes one pending colon definition's routine.
 -8561 constant E-NPUB-ROOM    \ the emission does not fit in what is left of the code arena under the engine's own end reserve
 -8562 constant E-NPUB-SIZE    \ an emission that cannot be a word body: no instructions at all, or a byte size that is not a whole number of instructions
 -8563 constant E-NPUB-OFFSET  \ an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned
@@ -779,7 +753,7 @@ require src/lib/prelude.f
 -8565 constant E-NEMIT-ROW    \ a row index at or past the count the sealed emission holds, a row offset outside the emission, an empty emission, a trailing return longer than it, or a call site of neither kind
 -8566 constant E-NPUB-PLACE   \ an emission whose branches were measured from an address that is not the code slot this seam is claiming for it
 
--8570 constant E-COMP-STATE   \ a compiler entry reached while another one is open, or a checker scan or store write from a callback while a definition compiles (src/core/checker.f WRITE-WINDOW)
+-8570 constant E-COMP-STATE   \ a compiler entry reached while another one is open, or a checker scan or store write from a callback while a definition compiles
 -8572 constant E-COMP-VERDICT \ the engine's own check did not certify the pending definition
 -8573 constant E-COMP-NAME    \ the pending record and the checker's tape name different definitions
 -8574 constant E-COMP-OWNER   \ the checker that owns the source carries no operation for a front-end step this compiler needs: a replacement checker published a declaration-owner record without it, so the scan, the source tape, the does> split or a call fact has nowhere to come from
