@@ -810,19 +810,12 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 ;package
 
 
-\ Below BODY-TEXT:BASE-CELL: $600..$690 is GENIO-ABI, AOT-SPAN and SIGNAL-ABI,
-\ $690 NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 free, $6A8..$6C0 the `,` run,
-\ $6C0 NCOMP-DISPATCH:FIXED-COMP-CELL, $6C8 BOOT:IMAGE-BASE-CELL, $6D0..$7D0
-\ free, $7D0..$7E0 FRAME-CELL and QFRAME-CELL,
-\ $7E0..$7F0 BOOT:DP-FLOOR-CELL and DP-CEILING-CELL and $7F0..$800
-\ BOOT:GLOBAL-WL-CELL and NAMESPACE-WL-CELL.
-\ The open definition's body text lives in one mapped block the engine grows
-\ (habu1.f BCAP-GROW): text at [base, base+cap), then the BODY-SOURCE
-\ rows from base+cap, at most cap of them, since every run appends at least its
-\ separator and rows at or past BODYLEN drop first. The four cells are one
-\ DATA-BANDS row, so only the engine stores into them; the bytes from $820 to
-\ $800 + 8002 stay unclaimed so no other band moves. A linked image holds 0 in
-\ them, as the engine stores them only in the running hb's header.
+\ The open definition's body text lives in one mapped block the engine grows:
+\ text at [base, base+cap), then the BODY-SOURCE rows from base+cap, at most cap
+\ of them, since every run appends at least its separator and rows at or past
+\ BODYLEN drop first. The four cells are one DATA-BANDS row, so only the engine
+\ stores into them. A linked image holds 0 in them, as the engine stores them
+\ only in the running hb's header.
 package BODY-TEXT
 public
 $800 constant BASE-CELL     \ the block's address, 0 before the first capture
@@ -831,8 +824,7 @@ $810 constant SIZE-CELL     \ the block's length in bytes, 17 * cap, 0 before; g
 $818 constant ROWS-CELL     \ the BODY-SOURCE row count
 8192 constant FIRST-CAP     \ the capacity mapped at the first capture, doubled as it grows
 ;package
-\ The latest `,` run of a created body, defined in src/habu/created-body-abi.f,
-\ which the checker reads too.
+\ The latest `,` run of a created body.
 CREATED-BODY-ABI:COMMA-RUN-CELL constant COMMA-RUN-CELL
 CREATED-BODY-ABI:COMMA-END-CELL constant COMMA-END-CELL
 CREATED-BODY-ABI:COMMA-BASE-CELL constant COMMA-BASE-CELL
@@ -843,19 +835,15 @@ $560 constant LASTC-CELL
 $230 constant CREATEP-CELL
 $238 constant QPATCH-CELL
 \ FRAME-CELL: the open body's entry slot, where `:` emitted the link-register
-\ save; EM-COMPILE-RET rewrites it to a nop at `;`.
-\ Zero means no frame. QFRAME-CELL scopes it across a quotation.
-\ Definition-scoped, cleared by EM-RESET-COMPILE-STATE.
+\ save. Zero means no frame. QFRAME-CELL scopes it across a quotation.
 $7D0 constant FRAME-CELL
 $7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
-\ CMM-CELL: compile-loop ADT-lowering mode (docs/forth.md "Structures And
-\ Enums"), mirroring the checker's match-mode token machine: 0 = off; a
-\ `construct`/`MATCH` keyword arms it so the operand tokens are captured before
-\ the local/keyword/literal/call/undefined dispatch and never reach lookup.
-\ Cleared at colon/TRUSTED: entry and by EM-RESET-COMPILE-STATE. The low $260
-\ hole is not usable: VVAL-OFF ($250) + VSMAX cells spans $250..$350, and
+\ CMM-CELL: compile-loop ADT-lowering mode: 0 = off; a `construct`/`MATCH`
+\ keyword arms it so the operand tokens are captured before the
+\ local/keyword/literal/call/undefined dispatch and never reach lookup. The low
+\ $260 hole is not usable: VVAL-OFF ($250) + VSMAX cells spans $250..$350, and
 \ DEF-TKA/DEF-TKL live inside it only while the definition NAME token runs, when
 \ the virtual stack is empty.
 $27A8 constant CMM-CELL
@@ -865,71 +853,54 @@ $27A8 constant CMM-CELL
 \ state. It persists through snapshots like HOOK-CELL; `0 set-check` parks it in
 \ the SUSP-HOOK band below.
 $27E8 constant COMPILE-PREFLIGHT-CELL
-\ TOP-HOOK-CELL: top-row token hook xt (src/core/top-row.f); 0 = no hook.
-\ Installed only through the fail-closed `set-top-check` prim (habu1.f
-\ BSETTOPCHECK), which mirrors BSETCHECK's install window; the cell is its own
-\ PROT-GUARD band (habu1.f GUARD-SPAN), so a post-seal raw store traps
-\ ENGINE-ERROR:SEAL-VIOLATION like HOOK-CELL. Snapshot-persistent like HOOK-CELL.
+\ TOP-HOOK-CELL: top-row token hook xt; 0 = no hook. Installed only through the
+\ fail-closed `set-top-check` prim. Snapshot-persistent like HOOK-CELL.
 \ The hook's effect is ( ptr u8 n n n -- ): token addr, token len, class
 \ (TOP-EV-*), LFIND flags.
 $27F0 constant TOP-HOOK-CELL
-\ The ENGINE-HOOK band is the two hook cells above.
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
 \ SUSP-HOOK-CELL, SUSP-PREFLIGHT-CELL: the (hook, preflight) pair `0 set-check`
-\ suspends until `set-check` of the same hook resumes it (the rule is
-\ docs/forth.md's "`0 set-check` suspends the armed hook"). Both start zero;
+\ suspends until `set-check` of the same hook resumes it. Both start zero;
 \ after the seal the set-check and discard-check prims are their only
-\ writers. The pair is a PROT-GUARD band of its
-\ own: a resume copies SUSP-PREFLIGHT-CELL
-\ into COMPILE-PREFLIGHT-CELL without set-preflight's window check, so a raw
-\ post-seal store here would be a second, unchecked preflight installer. Both
-\ cells hold xts, so each has a tools/native-layout.f row. $2D80 and
-\ $2D88 sit in the $2800..$3000 free header band, below $7FF8 for the
-\ `DATA <off> LDR/STR` form and below DATA-START.
+\ writers. The pair is a PROT-GUARD band of its own: a resume copies
+\ SUSP-PREFLIGHT-CELL into COMPILE-PREFLIGHT-CELL without set-preflight's window
+\ check, so a raw post-seal store here would be a second, unchecked preflight
+\ installer.
 $2D80 constant SUSP-HOOK-CELL
 $2D88 constant SUSP-PREFLIGHT-CELL
 SUSP-HOOK-CELL constant SUSP-HOOK-OFF
 2 cells constant SUSP-HOOK-LEN
-\ REFUSAL-ABI:CODE-CELL: the code of the last refusal whose diagnostic the checker
-\ rendered before throwing it (src/core/checker.f CHECKER-REFUSE), 0 until
-\ one is. The uncaught
-\ top-level throw reporter (habu2.f LUNCAUGHT) exits RC-REJECT for a code equal
-\ to it, as every refusal exits, and UNCAUGHT-RC for any other. A catch that
-\ takes the throw leaves it set: src/core/include.f LOAD-CURRENT catches every
-\ throw of a loaded file and rethrows the same code, so a refusal reaches the
-\ reporter as that rethrow. A bare throw of the same code after a refusal of it
-\ was caught therefore exits RC-REJECT too. Not sealed, because the checker
-\ writes it after the seal.
-\ $27F8 follows the ENGINE-HOOK band.
+\ REFUSAL-ABI:CODE-CELL: the code of the last refusal whose diagnostic the
+\ checker rendered before throwing it, 0 until one is. The uncaught top-level
+\ throw reporter exits RC-REJECT for a code equal to it, as every refusal exits,
+\ and UNCAUGHT-RC for any other. A catch that takes the throw leaves it set. A
+\ bare throw of the same code after a refusal of it was caught therefore exits
+\ RC-REJECT too. Not sealed, because the checker writes it after the seal.
 package REFUSAL-ABI
 public
 $27F8 constant CODE-CELL
 ;package
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
-\ before the exit_group of a DELIBERATE program exit: `die` (habu1.f BDIE), the
-\ uncaught top-level throw (habu2.f LUNCAUGHT) and the exit(0) after the entry returns
-\ (src/arch/arm64/boot.f CALL-EXIT,, src/habu/boot-x64.f ENTRY,). The
+\ before the exit_group of a DELIBERATE program exit: `die`, the uncaught
+\ top-level throw and the exit(0) after the entry returns. The
 \ engine's fail-closed exits - every ENGINE-ERROR:* rc and the 70/74/75/76
 \ band - do NOT call it: a broken engine must not run program code. Clearing
 \ before the call is what stops a hook that dies or throws from re-entering
-\ itself; the exit path it lands in finds the vector empty. The catch handler chain (HND-CELL) is emptied with it, so a
-\ throw from the hook is uncaught and ends the process with the hook's code:
-\ `die` runs inside the program's catches, and a hook's throw caught there would
-\ return from `die`. A stripped image's
-\ exit follows its root's return, when the chain is already empty. The hook's
-\ effect is ( -- ) and it runs on the data stack as it stands, because `die`
-\ may be running on a task thread whose stack is its own.
-\ It holds a code pointer, so the x86-64 link declares it a code cell and it
-\ has a tools/native-layout.f row. A new process has no hook, and the library
-\ that wants one arms it at runtime.
-\ It is not in the ENGINE-HOOK-OFF band: those two are the checker's crown
-\ jewels, sealed against a post-seal raw store, and this vector is armed by
-\ ordinary library code (src/lib/at-exit.f) after the seal. $2818 follows
-\ SRCLOC's three cells in the $2800..$3000 header band, below $7FF8 so the
-\ engine names it with a `DATA <off> LDR/STR` 12-bit scaled immediate, and below
-\ DATA-START so no compiled source reaches it by allot.
+\ itself; the exit path it lands in finds the vector empty. The catch handler
+\ chain (HND-CELL) is emptied with it, so a throw from the hook is uncaught and
+\ ends the process with the hook's code: `die` runs inside the program's
+\ catches, and a hook's throw caught there would return from `die`. A stripped
+\ image's exit follows its root's return, when the chain is already empty. The
+\ hook's effect is ( -- ) and it runs on the data stack as it stands, because
+\ `die` may be running on a task thread whose stack is its own. A new process
+\ has no hook, and the library that wants one arms it at runtime.
+\ It is not in the ENGINE-HOOK-OFF band: those two are sealed against a
+\ post-seal raw store, and this vector is armed by ordinary library code after
+\ the seal. $2818 follows SRCLOC's three cells in the $2800..$3000 header band,
+\ below $7FF8 so the engine names it with a `DATA <off> LDR/STR` 12-bit scaled
+\ immediate, and below DATA-START so no compiled source reaches it by allot.
 $2818 constant EXIT-HOOK-CELL
 \ TOKBODY-CELL .. TOKVSP-CELL and TOKDEPTH-CELL: the token-start mark, five
 \ cells. Before every token the interpret loop stores BODYLEN-CELL, LOCN-CELL
@@ -939,9 +910,9 @@ $2818 constant EXIT-HOOK-CELL
 \ Two other writers: arm64
 \ C-CLEAR-LOCALS zeroes TOKLOCN-CELL and TOKDEPTH-CELL with the locals at a
 \ definition's end or abort, and a refused `is` target lowers TOKBODY-CELL to
-\ its opener (src/habu/interpreter.f DEF-PREFIX-BIND).
+\ its opener.
 \ A throw that unwinds an evaluate frame begun inside an open definition leaves
-\ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all five
+\ that definition compiling and puts all five
 \ back: the text the checker certifies holds no token whose compile the throw
 \ abandoned, a `{:` group refused part way declares none of its names, and the
 \ code and the spill a refused token emitted before its check are gone. A spill
@@ -952,17 +923,16 @@ $2818 constant EXIT-HOOK-CELL
 \ buffer's current token, or at that buffer's end once it exits cleanly, a
 \ point after a complete token, so each frame a throw pops keeps its buffer's
 \ completed tokens, as the control-flow stack, locals and quotation state do.
-\ $2820..$2838 follow EXIT-HOOK-CELL in the $2800..$3000 header band.
 $2820 constant TOKBODY-CELL
 $2828 constant TOKLOCN-CELL
 $2830 constant TOKCP-CELL
 $2838 constant TOKVSP-CELL
-\ TKA-CELL as an opener stores PEND-CELL: the name token (`:`, kernel:,
-\ TRUSTED:) or the word that ran def-open; a source that ends inside the
-\ definition is located there. CAST: and defer set PEND-CELL only
-\ within their keyword, so no source can end inside them. A transient address
-\ like TKA-CELL, zeroed at snapshot: no native-layout row, no stripped-image
-\ claim.
+\ PENDTKA-CELL: TKA-CELL as it stood when an opener stored PEND-CELL, the name
+\ token (`:`, kernel:, TRUSTED:) or the word that ran def-open; a source that
+\ ends inside the definition is located there. CAST: and defer set PEND-CELL
+\ only within their keyword, so no source can end inside them. A transient
+\ address like TKA-CELL, zeroed at snapshot: no native-layout row, no
+\ stripped-image claim.
 $2850 constant PENDTKA-CELL
 \ JIT-QUOT: both kernels' compile reset zeroes SP-CELL; nothing else reads
 \ the band.
@@ -971,54 +941,39 @@ public
 32 constant LEVELS                                  \ quotations open at once
 32 constant FRAME-BYTES
 $2858 constant SP-CELL                              \ frames parked
-$2860 constant STK-OFF                              \ base of the frame area
+$2860 constant STK-OFF
 STK-OFF LEVELS 1- FRAME-BYTES * + constant END
 ;package
-\ FLOORREC-CELL: runtime address of the underdepth throw entry (LFLOORREC,
-\ habu2.f), stored at startup like EVALREC-CELL because the crash handler that
-\ jumps there (crash.f C-CRASH-DATA-RECOVER) cannot name an emit-time label: a
-\ stripped image bakes the same handler. The handler resumes a data access below
-\ the base at that address, from the image's text [RBASE-CELL, RBASE-CELL +
-\ TEXT-SIZE-CELL) or the JIT region. Zero means no entry, and the fault keeps
-\ the named bounds exit: a stripped image leaves the cell at its mapping's zero,
-\ and a task region reads zero because src/lib/task.f copies only the cells it
-\ names. It and CODE-END-CELL hold this process's addresses, so boot stores
-\ them. They sit in the free
-\ header band for the reasons EXIT-HOOK-CELL gives: $2CD0..$2CE8, past the
-\ quotation frames (JIT-QUOT:END, $2C40); data-claims.f proves each cell
-\ disjoint at native build time.
+\ FLOORREC-CELL: runtime address of the underdepth throw entry, stored at
+\ startup because the crash handler that jumps there cannot name an emit-time
+\ label: a stripped image bakes the same handler. The handler resumes a data
+\ access below the base at that address, from the image's text [RBASE-CELL,
+\ RBASE-CELL + TEXT-SIZE-CELL) or the JIT region. Zero means no entry, and the
+\ fault keeps the named bounds exit: a stripped image leaves the cell at its
+\ mapping's zero, and a task region reads zero because src/lib/task.f copies
+\ only the cells it names. It and CODE-END-CELL hold this process's addresses,
+\ so boot stores them.
 $2CD0 constant FLOORREC-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
-\ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
-\ the list is empty) and gives it back as it returns or throws on
-\ (CLOSED-LEAVE). The stacks are this process's mappings, so a process starts
-\ with the cell zero. It sits beside FLOORREC-CELL in the free header band.
+\ first cell linking the next. The stacks are this process's mappings, so a
+\ process starts with the cell zero.
 $2CD8 constant CLOSED-FREE-CELL
 \ CODE-END-CELL: the end of the kernel's code, [RBASE-CELL, CODE-END-CELL); a
 \ linked program's words follow it. The linker maps the running hb's kernel
-\ primitives by it (src/arch/arm64/link-kernel.f HOST-KERNEL?).
+\ primitives by it.
 $2CE0 constant CODE-END-CELL
 \ DATA-FLOOR-CELL: the lowest DATA offset a rewind of DATA may return DP to, 0
-\ for none. The literal store (src/habu/intern.f PUBLISH) opens a
-\ segment at `here` inside whatever is running and raises the floor to the
-\ segment's end, so the segment and every address it answered outlive a failed
-\ evaluation (habu2.f EM-EVAL-THROW-RECOVER) and a rolled-back generated declaration
-\ (src/core/generated-declaration-dictionary.f DICTIONARY-DP!): each puts DP at
-\ the higher of its saved value and the floor. An offset rather than an
-\ address, so nothing relocates it: a snapshot carries it with the rest of
-\ DATA, and a native or stripped image starts at 0, which no rewind reaches,
-\ because every DP it saves is above the `here` it boots with. It sits past
-\ CODE-END-CELL in the $2800..$3000 free header band, below $7FF8 for the
-\ 12-bit scaled `DATA <off> LDR` form, and below DATA-START.
+\ for none. The literal store opens a segment at `here` inside whatever is
+\ running and raises the floor to the segment's end, so the segment and every
+\ address it answered outlive a failed evaluation and a rolled-back generated
+\ declaration: each puts DP at the higher of its saved value and the floor. An
+\ offset rather than an address, so nothing relocates it: a snapshot carries it
+\ with the rest of DATA, and a native or stripped image starts at 0, which no
+\ rewind reaches, because every DP it saves is above the `here` it boots with.
 $2CE8 constant DATA-FLOOR-CELL
-\ PRIM-TABLE-CELL: the kernel's primitive table (habu1.f EMIT-DICT), count in the cell
-\ before, as an offset from RBASE-CELL's address; 0 in a stripped program.
+\ PRIM-TABLE-CELL: the kernel's primitive table, count in the cell before, as
+\ an offset from RBASE-CELL's address; 0 in a stripped program.
 $2CF0 constant PRIM-TABLE-CELL
-\ The callback CODE cells at $2CF8, $2D00 and $2D10 are declared in
-\ native-observer-cells.f, which also loads on an older baked host during a build;
-\ the host owner claims $2D10 separately from the publication and code
-\ invalidation callbacks. Host dispatch and the current producer fact query
-\ occupy $2D20..$2D30.
 \ DEF-OCC:PTR-CELL holds this process's dictionary occurrence allocation, not an
 \ image address: last-issued, then DICT-CAP u64 slots. A snapshot DATA copy
 \ clears it and the receiving process restores its own.
@@ -1027,40 +982,24 @@ public
 $2D08 constant PTR-CELL
 DICT-CAP 1+ cells constant STATE-BYTES
 ;package
-\ The x86-64 port's three header cells take $2D98..$2DA8, past
-\ SUSP-PREFLIGHT-CELL ($2D88). DPHW-CELL takes
-\ $2D58, NDICT-HW-CELL $2D60 and BOOT:TYPES-WL-CELL $2D78.
-\ The two shadow cells hold the native compiler's fixed and does> shadow
-\ callbacks; TASK-CHAIN-CELL heads the x86-64 task chain. No captured image
-\ keeps a live stack address.
 \ TEXT-SIZE-CELL: the running image's text content size in bytes from the base
 \ RBASE-CELL holds - the header's text-size field less IMAGE-TEXT-CONTENT-ADJ.
-\ The words that bound the engine's text (src/core/source-producer.f
-\ ENGINE-TEXT?, src/habu/terminal-call.f ENGINE-TEXT, src/habu/snapshot-format.f
-\ TEXT-SIZE) read it rather than the layout
+\ The words that bound the engine's text read it rather than the layout
 \ constants they were loaded with: a build window for another OS loads that OS's
 \ header offsets. A size, not an address, so snapshots carry it unzeroed. Every
-\ boot stores it before a word runs: arm64 habu2.f EM-TEXT-SIZE at cold boot,
-\ after snapshot restore and in a linked program's start-up (src/arch/arm64/boot.f
-\ DATA,), x86-64 boot-x64.f DATA-INIT on every entry.
+\ boot stores it before a word runs.
 $2D50 constant TEXT-SIZE-CELL
 \ DPHW-CELL: the release high-water, the highest DP (a DATA offset) that any
-\ path lowering DP has lowered it from. Every such path updates it: habu1.f
-\ DP-LOWER and BALLOT, habu2.f EM-EVAL-THROW-RECOVER,
-\ interpreter.f FRAME-ROLLBACK-CODE, src/core/generated-declaration-dictionary.f
-\ DICTIONARY-DP!, kernel-x64.f ALLOT-BODY. Space above both HERE and it is still
-\ the zero of a fresh page, so `allot` zeroes only the part of its request below
-\ it and never touches the pages a large allot reserves. 0 reads as nothing
-\ released.
+\ path lowering DP has lowered it from. Every such path updates it. Space above
+\ both HERE and it is still the zero of a fresh page, so `allot` zeroes only the
+\ part of its request below it and never touches the pages a large allot
+\ reserves. 0 reads as nothing released.
 $2D58 constant DPHW-CELL
 \ NDICT-HW-CELL: the largest record count NDICT was ever lowered from; the
 \ dictionary high-water is the larger of NDICT and this cell. Records are written
 \ only at the head, so only a lowering of NDICT leaves published records above
-\ the count. Every lowering (ndict!, evaluate's and the REPL's
-\ recovery) passes through habu1.f EM-DEF-OCC:LCOUNT or kernel-x64.f OCC-COUNT,
-\ which raise this cell. A raising ndict! re-exposes the retired records below
-\ it, so the does> patch clears alias kinds up to the high-water, not to NDICT
-\ (habu2.f DOESPATCH CLEAR-KIND, kernel-x64.f DOES-KIND-CLEAR). 0 reads as
+\ the count. A raising ndict! re-exposes the retired records below it, so the
+\ does> patch clears alias kinds up to the high-water, not to NDICT. 0 reads as
 \ nothing retired.
 $2D60 constant NDICT-HW-CELL
 
@@ -1070,27 +1009,23 @@ $2D98 constant FIXED-SHADOW-CELL
 $2DA0 constant DOES-SHADOW-CELL
 ;package
 $2DA8 constant TASK-CHAIN-CELL
-\ The design seal (src/lib/vocabulary.f) confines a sealed source to the
-\ vocabulary its harness admitted. POLICY-NDICT-CELL is 0 while nothing is
-\ sealed, else the NDICT the seal stored; a record at or above that index is the
-\ design's own. POLICY-BITS-OFF is a WID-indexed bitmap shaped like
-\ PROT-BITS-OFF's: bit w admits wordlist w, and every reader tests w against
-\ PROT-WID-MAX before it addresses the band. habu1.f BPOLICYADMIT and
-\ BPOLICYSEAL write the vocabulary; SOURCE-ROOT:POLICY-ROOT writes the ordinary
-\ require xt before the seal. All three refuse mutation once sealed.
-\ Only the engine's token reader tests the vocabulary; the native compiler
-\ never reads it.
-\ Below $7FF8 for `DATA <off> LDR` and below DATA-START; data-claims.f proves
-\ neither field overlaps a neighbour. The snapshot writer zeros its DATA copy
-\ and the warm loader zeros the restored fields, so a fresh process is unsealed.
+\ The design seal confines a sealed source to the vocabulary its harness
+\ admitted. POLICY-NDICT-CELL is 0 while nothing is sealed, else the NDICT the
+\ seal stored; a record at or above that index is the design's own.
+\ POLICY-BITS-OFF is a WID-indexed bitmap shaped like PROT-BITS-OFF's: bit w
+\ admits wordlist w, and every reader tests w against PROT-WID-MAX before it
+\ addresses the band. Every writer of the vocabulary and of the require xt
+\ refuses once the seal is set. Only the engine's token reader tests the
+\ vocabulary; the native compiler never reads it. The snapshot writer zeros its DATA copy and
+\ the warm loader zeros the restored fields, so a fresh process is unsealed.
 $4898 constant POLICY-NDICT-CELL
 $48A0 constant POLICY-BITS-OFF
 $4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
 \ CLAUSE-CELL: nonzero once the pending definition has a `;does` clause - set by
 \ the `does>` keyword and by does-record, which an imported definer reaches with
-\ no keyword - and cleared wherever the engine clears DOESB-CELL. habu1.f
-\ BNDAPPEND and its x86-64 twin read it to append the clause record; DOESB-CELL
-\ stays the clause's offset into the body text, which an imported definer never fills.
+\ no keyword - and cleared wherever the engine clears DOESB-CELL. DOESB-CELL
+\ stays the clause's offset into the body text, which an imported definer never
+\ fills.
 $4CA8 constant CLAUSE-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
@@ -1102,15 +1037,10 @@ $4CA8 constant CLAUSE-CELL
 5 constant TOP-EV-TICK      \ ' pushed a found word's xt
 6 constant TOP-EV-WORD      \ found word about to execute (pre-BLR)
 
-\ The catch/throw handler frame (habu1.f BCATCH/BTHROW, habu2.f
-\ EM-EVAL-THROW-RECOVER).
+\ The catch/throw handler frame.
 \ A STACK-ABI:CATCH-BYTES machine-stack frame chained through HND-CELL
-\ ([DATA+8]). It saves RSP-CELL, LOOPSP-CELL and the active data-stack
-\ allocation, so a caught throw restores the complete caller frame. Every delivery site (BTHROW, LEVLD)
-\ validates the sentinel, saved depths and allocation before any restore
-\ store. The native catch family (habu1.f BCATCH-FORWARD, BFINALLY, BC2-INVOKE;
-\ kernel-x64.f twins) reads HALT-UNWIND-CELL to keep a halt unwinding; the frame
-\ carries nothing for it.
+\ ([DATA+8]). Every delivery site validates the sentinel, saved depths and
+\ allocation before any restore store.
 \ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
 \               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel
 \               64 saved-base | 72 saved-capacity
@@ -1118,10 +1048,7 @@ $4CA8 constant CLAUSE-CELL
 \ Compiler lowering transaction: all mutable pass-2 authority lives in one engine
 \ band.
 $5000 constant TXN-STATE-OFF
-\ The declared extent ends at $5300. DATA-BANDS guards this length, so
-\ PROT-GUARD refuses a store anywhere in it, and data-claims.f refuses a
-\ transaction cell past it: growing the transaction is a layout edit the build
-\ checks.
+\ DATA-BANDS guards this length, so PROT-GUARD refuses a store anywhere in it.
 $300 constant TXN-STATE-LEN
 STACK-ABI:PAGE-BYTES constant PROT-PAGE-MAX   \ the mapping alignment
 
@@ -1129,22 +1056,16 @@ TXN-STATE-OFF       constant TXN-ACTIVE-CELL
 TXN-STATE-OFF $30 + constant P2-CELL
 
 \ The run the transaction reserved and never used, handed to the libraries that
-\ need storage a task owns. Every other candidate below TASK-REGION-BYTES ($10000,
-\ the whole a task has) is unavailable to task libraries: USE-BAND and
-\ SNAP-RELOC's XTCELL table extend past 2.6 MB and would alias in the main
-\ thread's region. Pending-defer scratch lives after the engine's private bands,
-\ outside the task arena. USER-REGION-END is the fixed library arena boundary.
+\ need storage a task owns.
 $8000 constant USER-REGION-END
 
 \ STRING-ABI is src/lib/string.f's SB builder, declared here because string.f is
-\ baked into the engine below src/lib/ffi-abi.f, which requires it back:
-\ `require src/lib/task.f` from string.f fails the engine build with an undefined
-\ STR= inside ffi-abi's TOK-IS?, so SB cannot take a TASK:+USER row.
+\ baked into the engine below src/lib/ffi-abi.f, which requires it back.
 \ Carved from the top of the run so USER-BAND keeps the growable end.
 package STRING-ABI
 public
-$400 constant SB-BUF-BYTES                  \ src/lib/string.f SB-CAP
-8 constant SB-LEN-BYTES                     \ src/lib/string.f SB-LEN
+$400 constant SB-BUF-BYTES
+8 constant SB-LEN-BYTES
 SB-BUF-BYTES SB-LEN-BYTES + constant BYTES
 USER-REGION-END BYTES - constant START
 START constant SB-BUF-OFF
@@ -1159,18 +1080,16 @@ USER-REGION-END constant END
 \ staging tables) into the base image. The rule: a module the engine bakes takes
 \ a declared band.
 \
-\ Carved directly below STRING-ABI. Every member is its measured width. The four
-\ cells sit at the band base, a cell boundary, so they are cell-aligned whatever
-\ the render buffer's width. The greatest exact coefficient is (2^53-1)*5^1074,
-\ 767 decimal digits, so 86 nine-digit limbs suffice. BYTES is the member sum
-\ rounded up to the cell the base needs.
+\ The four cells sit at the band base, a cell boundary, so they are cell-aligned
+\ whatever the render buffer's width. The greatest exact coefficient is
+\ (2^53-1)*5^1074, 767 decimal digits, so 86 nine-digit limbs suffice.
 package FMT-ABI
 public
-4 constant SCRATCH-CELLS               \ FMT-NUM-U, FMT-IX, FMT-FR, FMT-DV
-86 constant SCI-LIMBS                   \ ceil(767/9), base 10^9
-20 constant NUM-BUF-BYTES              \ src/lib/fmt.f FMT-NUM-CAP = STR-I64-DIGITS + 1
+4 constant SCRATCH-CELLS
+86 constant SCI-LIMBS
+20 constant NUM-BUF-BYTES
 SCRATCH-CELLS SCI-LIMBS + cells NUM-BUF-BYTES + constant MEMBER-BYTES
-MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
+MEMBER-BYTES 7 + 8 / 8 * constant BYTES
 STRING-ABI:START constant END
 END BYTES - constant START
 START constant NUM-U-OFF
