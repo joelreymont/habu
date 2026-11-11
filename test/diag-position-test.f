@@ -1,8 +1,7 @@
 \ diag-position-test.f - a checker packet locates its token in the checked file,
-\ by tools/diag-code.f's contract, with LF ending a line; a packet in a required
-\ file names and locates there. Semantic checks call LSP-CHECK's public words in
-\ process; the verifier and run stages use HABU_UNDER_TEST when set, else this
-\ engine.
+\ with LF ending a line; a packet in a required file names and locates there.
+\ Semantic checks call LSP-CHECK's public words in process; the verifier and run
+\ stages use HABU_UNDER_TEST when set, else this engine.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -24,9 +23,9 @@ package DIAG-POSITION-TEST
 $1000 constant CAP
 120000 constant TIMEOUT-MS
 70 constant REJECT-RC
-67 constant THROW-RC                  \ a load's uncaught throw
+67 constant THROW-RC
 78 constant DUP-RC                    \ a duplicate definition's code, $4E, outside --verify-only
-7194 constant BAD-ESCAPE-THROW        \ VERIFY:E-BAD-ESCAPE, a refused escape
+7194 constant BAD-ESCAPE-THROW
 
 create OUT CAP allot
 create ERR CAP allot
@@ -106,8 +105,6 @@ variable RC
    a DEP-P u BYTE-COPY
    u DEP-PU ! ;
 
-\ The outcome of a child that ran src: its exit code, or -1 for a signal; a
-\ deadline prints src and the capture and throws E-PROC-TIMEOUT (T-TIMED-OUT).
 : STORE! ( ptr u8 n len len PROCESS:ending -- )
    {: src:ptr srcu:n outu:len erru:len oc :}
    outu LEN>N OUT-U !
@@ -123,8 +120,6 @@ variable RC
 : CHECK-RUN ( -- )
    LSP-CHECK:RUN dup 0 <> IF throw THEN drop ;
 
-\ Run the checker on the fixture with FLAG (when not empty) and JSON errors,
-\ splitting its stderr packets into lines; the command-line exit status is WANT.
 : CHECK-EXIT ( ptr u8 n n -- )
    {: flag:ptr flagu:n want:n :}
    LSP-CHECK:RESET
@@ -141,14 +136,12 @@ variable RC
 : CHECK ( ptr u8 n -- )
    REJECT-RC CHECK-EXIT ;
 
-\ One failed assertion naming KEY, a field the packet lacks; the run goes on.
 : FIELD-MISSING ( ptr u8 n -- )
    {: key:ptr keyu:n :}
    T-NEXT
    T-FAIL
    s" assert: missing JSON field " type key keyu type cr ;
 
-\ One failed assertion naming KEY, a field that is not KIND; the run goes on.
 : FIELD-NOT ( ptr u8 n ptr u8 n -- )
    {: key:ptr keyu:n kind:ptr kindu:n :}
    T-NEXT
@@ -156,7 +149,6 @@ variable RC
    s" assert: JSON field " type key keyu type s"  is not " type kind kindu type cr ;
 
 
-\ The packet ROOT has the string WANT for KEY.
 : STR-FIELD= ( SPAN:span<u8> ptr u8 n ptr u8 n -- )
    {: root:SPAN:span<u8> key:ptr keyu:n want:ptr wantu:n :}
    root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
@@ -165,7 +157,6 @@ variable RC
    v GJA-STRING$ want wantu T$= ;
 
 
-\ The packet ROOT has the integer WANT for KEY, of either sign.
 : INT-FIELD= ( SPAN:span<u8> ptr u8 n n -- )
    {: root:SPAN:span<u8> key:ptr keyu:n want:n :}
    root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
@@ -175,7 +166,6 @@ variable RC
    got want T= ;
 
 
-\ The packet ROOT has no field KEY.
 : FIELD-ABSENT ( SPAN:span<u8> ptr u8 n -- )
    {: root:SPAN:span<u8> key:ptr keyu:n :}
    root key keyu GJA-FIELD? 0= IF drop T-NEXT EXIT THEN
@@ -185,14 +175,11 @@ variable RC
    s" assert: unexpected JSON field " type key keyu type cr ;
 
 
-\ Packet k of the last run has the string WANT for KEY.
 : FIELD= ( n ptr u8 n ptr u8 n -- )
    {: k:n key:ptr keyu:n want:ptr wantu:n :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ GJA-PARSE key keyu want wantu STR-FIELD= ;
 
-\ Packet k of the last run names file PATH, whose bytes are TEXT, at LINE, COL
-\ and bytes [BS, BE), and those bytes of TEXT are SPELL.
 : PLACED-IN ( n ptr u8 n n n n n ptr u8 n ptr u8 n -- )
    {: k:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n text:ptr textu:n :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
@@ -209,7 +196,6 @@ variable RC
       T-NEXT s" expected span lies outside the fixture" T-ASSERT-DETAIL
    THEN ;
 
-\ PLACED-IN, and the packet's token is the bytes it locates.
 : AT-IN ( n ptr u8 n n n n n ptr u8 n ptr u8 n -- )
    {: k:n tok:ptr toku:n line:n col:n bs:n be:n path:ptr pathu:n text:ptr textu:n :}
    k tok toku line col bs be path pathu text textu PLACED-IN
@@ -277,7 +263,6 @@ variable RC
    s" " CHECK
    0 s" NOPE-Q1" 2 4 39 46 AT ;
 
-\ The string opener is followed by one space and a four-byte character.
 : TEST-EMOJI-STRING ( -- )
    s" a multibyte character inside a string" T-LABEL
    SB-RESET
@@ -336,7 +321,6 @@ variable RC
    s" " CHECK
    0 s" NOPE-LATE" 7 4 84 93 AT ;
 
-\ The packet ROOT has null for KEY.
 : NULL-FIELD ( SPAN:span<u8> ptr u8 n -- )
    {: root:SPAN:span<u8> key:ptr keyu:n :}
    root key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
@@ -344,11 +328,10 @@ variable RC
    v GJA-KIND JSON:T-NULL <> IF key keyu s" null" FIELD-NOT EXIT THEN
    T-NEXT ;
 
-\ Packet 0 of the last run is the run stage's refusal CODE of the top-level
-\ token TOK in file PATH: a null word and null definition fields, the file and
-\ LINE alone, for the run file keeps each subject line on its own line but its
-\ markers shift bytes and columns, and a top step sits in no definition an
-\ origin maps.
+\ Packet 0 of the last run is the run stage's refusal CODE: a null word and
+\ null definition fields, the file and LINE alone, for the run file keeps each
+\ subject line on its own line but its markers shift bytes and columns, and a
+\ top step sits in no definition an origin maps.
 : TOP-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: c:ptr cu:n tok:ptr toku:n path:ptr pathu:n line:n :}
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
@@ -378,9 +361,9 @@ variable RC
    s" " CHECK
    s" E-RAW-CELL-PTR" s" !" FX-PATH$ 5 TOP-AT ;
 
-\ The run stage labels the subject (checker.f DIAG-FILE!), and the label names
-\ that file alone: a top-level refusal in a file the subject requires names the
-\ required file and its own line.
+\ The run stage labels the subject, and the label names that file alone: a
+\ top-level refusal in a file the subject requires names the required file and
+\ its own line.
 : TEST-TOP-DEP ( -- )
    s" a top-level refusal in a required file names that file" T-LABEL
    SB-RESET
@@ -404,8 +387,6 @@ variable RC
    s" " CHECK
    s" E-MISMATCH" s" +" FX-PATH$ 1 TOP-AT ;
 
-\ SHADE, which package P publishes and the global wordlist defines too, each
-\ by the line DECL, and on line 8 the body BODY of a definition under `using P`.
 : SHADOW-FIXTURE ( ptr u8 n ptr u8 n -- )
    {: decl:ptr declu:n body:ptr bodyu:n :}
    SB-RESET
@@ -461,7 +442,6 @@ variable RC
    s" ;package" SB-APPEND LF+
    s" shadowed.f" FIXTURE! ;
 
-\ Packet 0 is the refusal of the public F.
 : SHADOWED-AT ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 s" code" s" E-SHADOWED-ARITY" FIELD=
@@ -487,8 +467,6 @@ variable RC
    s" :   WIDE" SB-APPEND LF+
    s"    V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 ;" SB-APPEND LF+ ;
 
-\ The last check's first line is the warning about WIDE, in the file at PATH
-\ and placed at its name, and no other line warns.
 : NOT-RECORDED ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 s" code" s" W-EFFECT-NOT-RECORDED" FIELD=
@@ -519,10 +497,7 @@ variable RC
    s" --all-errors" THROW-RC CHECK-EXIT
    FX-PATH$ NOT-RECORDED ;
 
-\ A refused `generates:` row is the verifier's own packet, at the row's name
-\ past a comment line and a run of spaces: the check fails as for any refusal,
-\ that packet alone on standard error and no statement-throw record, and
-\ --all-errors and --verify-only count the refusal and go on.
+\ A refused `generates:` row is the verifier's own packet.
 : TEST-GENERATES ( -- )
    s" a generates: row naming no word" T-LABEL
    SB-RESET
@@ -541,10 +516,9 @@ variable RC
    s" --verify-only" CHECK
    0 s" NOWHERE" 4 13 73 80 FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ A row on a word that reads no name after it is refused at the row's name in
-\ every mode: kept, it makes the pre-pass take `s"` after the call of GEN as
-\ the made word, and the trust row on MADE then throws E-STATEMENT-THROW while
-\ the load accepts the file.
+\ A row on a word that reads no name after it is refused: kept, it makes the
+\ pre-pass take `s"` after the call of GEN as the made word, and the trust row
+\ on MADE then throws E-STATEMENT-THROW while the load accepts the file.
 : TEST-GENERATES-READS-NONE ( -- )
    s" a generates: row on a word that reads no name" T-LABEL
    SB-RESET
@@ -595,8 +569,6 @@ variable RC
    s"    1 + ;" SB-APPEND LF+
    s" compose-base.f" FIXTURE! ;
 
-\ compose-dep.f requires compose-base.f, then refuses `drop` on line 4; the
-\ subject compose.f requires compose-dep.f, then refuses `drop` on line 3.
 : COMPOSE-FIXTURE ( -- )
    BASE-FIXTURE
    SB-RESET
@@ -626,8 +598,6 @@ variable RC
    0 s" drop" 4 4 48 52 DEP-AT
    1 s" drop" 3 4 49 53 AT ;
 
-\ The check a language server makes goes on past a refusal, as --all-errors
-\ does.
 : TEST-COMPOSE-VERIFY ( -- )
    s" --verify-only, the check a language server makes" T-LABEL
    COMPOSE-FIXTURE
@@ -693,25 +663,21 @@ variable RC
    text textu SB-APPEND LF+
    name nameu FIXTURE! ;
 
-\ The check gave one packet, a rejection named CODE.
 : REJECTED-AS ( ptr u8 n -- )
    {: c:ptr cu:n :}
    GJA-LINE# @ 1 T=
    0 s" code" c cu FIELD=
    0 s" verdict" s" rejected" FIELD= ;
 
-\ The composition check gives one packet, a rejection: CODE at TOK, on LINE at
-\ COL, in bytes [BS, BE). Plain preverification uses this same composition
-\ verifier; REFUSED-MODES keeps representative checks across the mode boundary.
+\ The composition check gives one packet, a rejection. Plain preverification
+\ uses this same composition verifier; REFUSED-MODES keeps representative
+\ checks across the mode boundary.
 : REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
    {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" --all-errors" CHECK
    c cu REJECTED-AS
    0 tok toku line col bs be AT ;
 
-\ Body binding, signature, local and control parsing, lexical priority and
-\ declarations also give that rejection in plain and quiet verification. The quiet packet names
-\ the fixture by its resolved path.
 : REFUSED-MODES ( ptr u8 n ptr u8 n n n n n -- )
    {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" " CHECK
@@ -723,8 +689,7 @@ variable RC
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ A word ARENA derives that is taken in the other section is the duplicate,
-\ refused at the declared name; the check exits DUP-RC for it outside
-\ --verify-only, as for any duplicate.
+\ refused at the declared name.
 : TEST-ARENA ( -- )
    s" an ARENA outside any package" T-LABEL
    s" ARENA X n" s" arena-top.f" LINE-FIXTURE
@@ -768,14 +733,11 @@ variable RC
    s" arena-atom.f" FIXTURE!
    s" E-BAD-STORAGE" s" [ -- xt ]" 2 9 18 27 REFUSED-MODES ;
 
-\ Packet 0 of the last check is the record of a statement that threw CODE.
 : THREW ( n -- )
    {: code:n :}
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
    0 GJA-LINE$ GJA-PARSE s" throw_code" code INT-FIELD= ;
 
-\ REFUSED-AT for a statement that throws CODE at TOK: each check's one packet is
-\ the record of that throw.
 : THROWN-AT ( n ptr u8 n n n n n -- )
    {: code:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" " CHECK
@@ -791,8 +753,7 @@ variable RC
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN
    code THREW ;
 
-\ Under --verify-only the declaration pre-pass alone refuses the fixture: its
-\ one packet is CODE with repair class CLS and reason WHY at TOK.
+\ Under --verify-only the declaration pre-pass alone refuses the fixture.
 : PREPASS-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n n n n -- )
    {: c:ptr cu:n cls:ptr clsu:n why:ptr whyu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" --verify-only" CHECK
@@ -830,7 +791,6 @@ variable RC
    s" E-BAD-RECORD-FIELD" REJECTED-AS
    0 s" reason" s" checker: duplicate value-record field" FIELD= ;
 
-\ A family declaration its file never closes is refused at the family's name.
 : TEST-PREPASS-OPEN ( -- )
    s" an unclosed VALUE-RECORD under --verify-only" T-LABEL
    s" VALUE-RECORD vr x n" s" vrec-open.f" LINE-FIXTURE
@@ -862,7 +822,7 @@ variable RC
    name nameu FIXTURE! ;
 
 \ A definer reads its body with `parse-name`, so a `\` or `(` there, even one
-\ hiding the terminator, is the token it refuses: one packet in every mode.
+\ hiding the terminator, is the token it refuses.
 : TEST-PREPASS-COMMENT ( -- )
    s" a comment in a closed SUMTYPE" T-LABEL
    s" SUMTYPE shape VARIANT dot ;VARIANT \ note" s" ;SUMTYPE" s" sum-comment.f"
@@ -890,7 +850,6 @@ variable RC
       TWO-LINE-FIXTURE
    s" E-BAD-RECORD-FIELD" s" (" 1 21 20 21 REFUSED-MODES ;
 
-\ The same holds for a `\` right after the family's name.
 : TEST-PREPASS-NAME-COMMENT ( -- )
    s" a comment after a SUMTYPE's name" T-LABEL
    s" SUMTYPE shape \ note" s\" VARIANT dot ;VARIANT\n;SUMTYPE" s" sum-name-comment.f"
@@ -950,9 +909,6 @@ variable RC
    s" : X ( n n -- n ) {: a | :} | ;" s" local-bar-ref.f" LINE-FIXTURE
    s" E-BAD-LOCAL-SHAPE" s" |" 1 23 22 23 REFUSED-MODES ;
 
-\ Packet K of the last check is the record CODE refuses for TOK, the name the
-\ row is stored for, placed at SPELL, the declaring name as written, on LINE at
-\ COL in bytes [BS, BE) of the file at PATH.
 : RECORD-PLACED ( n ptr u8 n ptr u8 n ptr u8 n n n n n ptr u8 n -- )
    {: k:n code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n :}
    k s" code" code codeu FIELD=
@@ -965,7 +921,7 @@ variable RC
 
 \ STORED-PLACED for each check of the fixture, plain, --all-errors and
 \ --verify-only: each gives the refusal alone, never followed by its statement's
-\ throw (checker.f REPORTED-ERROR?).
+\ throw.
 : STORED-AT ( ptr u8 n ptr u8 n n n n n -- )
    {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n :}
    s" " CHECK
@@ -979,9 +935,7 @@ variable RC
    tok toku sp spu line col bs be FX-PATH$ CANON$ STORED-PLACED ;
 
 \ A stored signature that does not parse is refused at the name its declaration
-\ reads, though the row is stored under that name's fold: a `FUNCTION:` whose
-\ group is empty, a `TRUSTED:` definition, a `defer`, a `trust` row and a
-\ cast.
+\ reads, though the row is stored under that name's fold.
 : TEST-STORED-SIGNATURE ( -- )
    s" a FUNCTION: whose group is empty" T-LABEL
    SB-RESET
@@ -1005,9 +959,6 @@ variable RC
    s" cast: >X ( ptr -- n )" s" stored-cast.f" LINE-FIXTURE
    s" >X" s" >X" 1 7 6 8 STORED-AT ;
 
-\ The same refusal for a declaration named as the colon definition checked
-\ before it: a `TRUSTED:` definition and a `defer` after `undefine` removed that
-\ word, and a `TRUSTED:` definition in a package, under a global's tail.
 : TEST-REPLACED-SIGNATURE ( -- )
    s" a TRUSTED: definition replacing an undefined word" T-LABEL
    SB-RESET
@@ -1032,10 +983,6 @@ variable RC
    s" replaced-same-tail.f" FIXTURE!
    s" x" s" X" 3 10 39 40 STORED-AT ;
 
-\ RECORD-PLACED for the record CODE refuses in each check of the fixture: plain,
-\ --all-errors and --verify-only each give COUNT packets, that refusal first,
-\ but --verify-only gives LEAD more before it, each a reached renderer's
-\ deferral.
 : RECORD-AT ( ptr u8 n ptr u8 n ptr u8 n n n n n n n -- )
    {: code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n count:n lead:n :}
    s" " CHECK
@@ -1054,10 +1001,9 @@ variable RC
    {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n :}
    s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be 2 0 RECORD-AT ;
 
-\ A colon definition CHECK rejects, here for the undefined NOPE: the plain check
-\ stops at that refusal, and --all-errors and --verify-only follow it with the
-\ record the refused definition asks for its malformed name, then its
-\ statement's throw.
+\ A colon definition CHECK rejects: the plain check stops at that refusal, and
+\ --all-errors and --verify-only follow it with the record the refused
+\ definition asks for its malformed name, then its statement's throw.
 : REJECTED-MALFORMED ( -- )
    s" : P:Q:R ( -- ) NOPE ;" s" malformed-rejected.f" LINE-FIXTURE
    s" " CHECK
@@ -1074,8 +1020,8 @@ variable RC
 \ a `variable`), by the name as read (`undefine`) or by the name CHECK copied (a
 \ colon definition, certified, rejected or deferred to the run). A `trust` row
 \ asks the engine for its word before any record, as the load does, and a
-\ malformed name names none: each check refuses the row as stale at that name,
-\ its packet alone. --verify-only defers the `evaluate` that renders MADE.
+\ malformed name names none: each check refuses the row as stale at that name.
+\ --verify-only defers the `evaluate` that renders MADE.
 : TEST-MALFORMED-RECORD ( -- )
    s" a malformed defer" T-LABEL
    s" defer DIAG:MAL:NAME ( -- )" s" malformed-defer.f" LINE-FIXTURE
@@ -1136,15 +1082,13 @@ variable RC
    s" : X ( n -- zz ) 1 c2-invoke ;" s" badsig-cap.f" LINE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
 
-\ The last check's packet repairs its refusal as CLASS with the suggestion SUG.
 : REPAIRED-AS ( ptr u8 n ptr u8 n -- )
    {: cls:ptr clsu:n sug:ptr sugu:n :}
    0 s" repair_class" cls clsu FIELD=
    0 s" suggestion" sug sugu FIELD= ;
 
 \ A read below the return-stack cells pushed here is the return row's to repair,
-\ and its packet carries the sentence the load prints; QUOTED, inside a
-\ quotation literal, which names the cells the literal pushed.
+\ and its packet carries the sentence the load prints.
 : READS-BELOW ( bool -- ) {: quoted:bool :}
    quoted IF
       s" fix_return_stack" s" Read or pop only return-row cells this quotation pushed with >r; below them lies the caller's frame." REPAIRED-AS
@@ -1154,9 +1098,6 @@ variable RC
       0 s" reason" s" return stack: this reads below the return-stack cells pushed here" FIELD=
    THEN ;
 
-\ The repair class and the suggestion name the refusal the code names: a
-\ mismatch before an unbalanced return row is the mismatch's to repair, and a
-\ >r or 2>r whose cells do not fit names the mismatch a data stack word names.
 \ A read below the return-stack cells pushed here is refused at the read, not
 \ at the last token walked: the measure is taken before the read's unify binds
 \ the open return base.
@@ -1226,7 +1167,6 @@ variable RC
    s" rwide.f" FIXTURE!
    s" E-REJECTED" s" 2r>" 2 19 59 62 REFUSED-AT  false READS-BELOW ;
 
-\ The repair of a read of a cell `catch` left stale.
 : STALE-REPAIRED ( -- )
    s" keep_value_before_catch"
    s" `catch` puts the stacks back to the DEPTH it was entered at and never to their contents, so a cell the caught body may have written on a throw path holds an unknown machine word afterwards. Bind the value to a local BEFORE the catch and use the local, or drop the cell. A stale cell may still be moved, dropped, or bound to an untyped local."
@@ -1234,9 +1174,7 @@ variable RC
 
 \ A stack word over an open layout is refused by the step path's mismatch,
 \ whatever else is among its operands: a proof or an expanded layout beside it
-\ does not send it to the transport path, which has no reason to give. An open
-\ layout `catch` left stale is refused as a stale read, by a stack word and by
-\ a locals capture, whatever family the signature names first.
+\ does not send it to the transport path, which has no reason to give.
 : TEST-OPEN-LAYOUT-XPORT ( -- )
    s" an open layout under swap" T-LABEL
    s" PRODUCT rvbox<a> FIELD v a ;PRODUCT : X ( rvbox<a> n -- n rvbox<a> ) swap ;"
@@ -1265,8 +1203,6 @@ variable RC
    STALE-REPAIRED ;
 
 
-\ Fixture literal.f: words taking one cell of each width, EQ2 taking two cells of
-\ one type, K running a callable on two cells, then the line TEXT.
 : LIT-FIXTURE ( ptr u8 n -- )
    {: text:ptr textu:n :}
    SB-RESET
@@ -1281,7 +1217,6 @@ variable RC
    s" literal.f" FIXTURE! ;
 
 
-\ TEXT is refused: a number literal does not fit, as REASON says.
 : LIT-REFUSED ( ptr u8 n ptr u8 n -- )
    {: text:ptr textu:n why:ptr whyu:n :}
    text textu T-LABEL
