@@ -7712,6 +7712,13 @@ create ROWMAP 26 cells allot
 : ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 : RVAR-OF {: c :}  c 65 - cells ROWMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-ROW ;
 
+\ SQUOT holds each quotation a signature text gives, numbered from 1 as its `[`
+\ is read, for the facts tags that name it; a text with more keeps the first.
+64 constant SQUOT-CAP
+create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
+: SQUOT! ( n n -- ) {: t:n q:n :}  q SQUOT-CAP > IF EXIT THEN  t q 1 - cells SQUOT + ! ;
+: SQUOT@ ( n -- n ) 1 - cells SQUOT + @ ;
+
 : SG-ROWS-RESET ( -- )
    SG-ROWS 0 26 ARENA-CELLS-ZERO
    SG-ROWS-LET 0 26 ARENA-CELLS-ZERO
@@ -7810,6 +7817,7 @@ create ROWMAP 26 cells allot
 \ rows are a level below it and their entries one more, as TERM-DEPTH counts
 \ them, so SIG-TYPE bounds a quotation's nesting by that depth.
 : SIG-PARSE-QUOT ( -- n )
+   SQUOT-N @ 1 + dup SQUOT-N ! {: num:n :}
    SIG-LEVEL @ 1 + SIG-LEVEL !
    FRESH MK-QROW {: qdbase:n :}
    FRESH MK-QROW {: qrbase:n :}
@@ -7828,6 +7836,7 @@ create ROWMAP 26 cells allot
       2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
       qin qout qrbase qrbase MK-QUOT         \ no return clause: rin = rout = base
    THEN
+   dup num SQUOT!
    SIG-LEVEL @ 1 - SIG-LEVEL ! ;
 : SIG-QUOT-INSTALL ( -- ) [: SIG-PARSE-QUOT ;] is SIG-QUOT-XT ;
 SIG-QUOT-INSTALL
@@ -7968,7 +7977,7 @@ CHECKER-REG:}SCRATCH
    ELSE PK! RR-SHARED @ THEN ;                    \ no | here -> shared tail (untouched)
 
 : PSIG ( -- n n n n )
-   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 BIND-DEPTH !  0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SQUOT-N !  0 BIND-DEPTH !  0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
    ATOMN @ PD-ATOM0 !
    dr PSIDE  PR-IN ! PD-IN !
@@ -8096,9 +8105,40 @@ CHECKER-REG:}SCRATCH
    RES-FALSE ;
 
 
+\ The quotation number after tag ta tu, from 1 to the effect's count; 0, the
+\ tag refused, for none.
+: SIG-QUOT-NUM ( ptr u8 n -- n )
+   {: ta:ptr tu:n :}
+   NEXT-SIG-TOK {: ca:ptr cu:n :}
+   cu 0 = IF ta tu SGBAD-SYNTAX! 0 EXIT THEN
+   ca cu num-parse {: v:n flt:bool ok:bool :}
+   ok 0=  flt or  v 1 < or  v SQUOT-N @ SQUOT-CAP min > or IF ca cu SGBAD-SYNTAX! 0 EXIT THEN
+   v ;
+
+
+\ `block N M`: quotation M's block part is quotation N's, N before M.
+: SIG-BLOCK-TAG ( ptr u8 n -- )
+   {: ta:ptr tu:n :}
+   ta tu SIG-QUOT-NUM {: lo:n :}  lo 0 = IF EXIT THEN
+   ta tu SIG-QUOT-NUM {: hi:n :}  hi 0 = IF EXIT THEN
+   lo hi < 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
+   lo SQUOT@ hi SQUOT@ BLOCK-PAIR ;
+
+
+\ `noblock N`: quotation N's block part, a variable, must read no local.
+: SIG-NOBLOCK-TAG ( ptr u8 n -- )
+   {: ta:ptr tu:n :}
+   ta tu SIG-QUOT-NUM {: q:n :}  q 0 = IF EXIT THEN
+   q SQUOT@ Q>BLOCK T-RES {: b:n :}
+   b ISVAR 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
+   b PAY NSCOPE! ;
+
+
 : SIG-TAG ( ptr u8 n -- )
    {: ta:ptr tu:n :}
    ta tu SIG-PE-TAG IF EXIT THEN
+   ta tu s" block" CORE-STR= IF ta tu SIG-BLOCK-TAG EXIT THEN
+   ta tu s" noblock" CORE-STR= IF ta tu SIG-NOBLOCK-TAG EXIT THEN
    ta tu TAG>KIND {: kind:n :}
    ta tu s" noscope" CORE-STR= {: ns:bool :}
    kind RVK-QUOT =  kind RVK-INFERRED =  or {: rk:bool :}
@@ -8149,7 +8189,7 @@ CHECKER-REG:}SCRATCH
 \ (check-hook.f TAGS-TEXT?), answers no rows.
 : PARSE-TAGS ( -- n n n n )
    RES-TRUE SIG-TAGS-ONLY !
-   NMAP-RESET  ROWMAP-RESET  0 SGHASR !
+   NMAP-RESET  ROWMAP-RESET  0 SQUOT-N !  0 SGHASR !
    0 SI !  PKRESET
    SIG-TAGS
    0 0 0 0 ;

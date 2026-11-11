@@ -448,6 +448,17 @@ variable RPOS-N   variable RVISIT
    RPOS-N @ 1 + RPOS-N ! ;
 
 
+\ RQUOT-BLOCK holds, per quotation RVISIT numbered (from 1, as its `[` is
+\ written), its resolved block part, for REND-FACTS's block and noblock tags.
+create RQUOT-BLOCK SQUOT-CAP cells allot
+
+: RQUOT+ ( n -- ) {: q:n :}
+   RVISIT @ SQUOT-CAP > IF 1 RQM ! EXIT THEN
+   q Q>BLOCK T-RES  RVISIT @ 1 - cells RQUOT-BLOCK + ! ;
+
+: RQUOT@ ( n -- n ) 1 - cells RQUOT-BLOCK + @ ;
+
+
 \ A row is named when its tail has no scope, its kind is not its unnamed form's
 \ (RVK-QUOT in a quotation, else 0), or the tail is not its owner's two rows' alone.
 : RPOS-NAMED? ( n n -- bool )
@@ -519,7 +530,7 @@ variable RPOS-N   variable RVISIT
       T-QUOT of
         d QDEPTH-CAP < IF
            RTAILS @ 0 <> {: named:bool :}
-           RNAMES @ 0 <> IF RVISIT @ 1 + RVISIT ! THEN  RVISIT @ 2 * {: owner:n :}
+           RNAMES @ 0 <> IF RVISIT @ 1 + RVISIT !  r RQUOT+ THEN  RVISIT @ 2 * {: owner:n :}
            91 EMIT1 32 EMIT1  named IF r Q>DIN QTAIL THEN
            r Q>DIN owner RROW-NAME  r Q>DIN d 1+ 1 RECURSE
            45 EMIT1 45 EMIT1 32 EMIT1  named IF r Q>DOUT QTAIL THEN
@@ -675,8 +686,29 @@ LOCSHOW-INSTALL
    u 0 = IF 1 RQM ! EXIT THEN
    a u idx 65 + FACT-TAG ;
 
-\ Facts text for checker.f SIG-TAGS, `( E ) offset a noscope A `, written from the
-\ RSN it is called with: a caller that wants a fresh text sets `0 RSN !` first.
+\ The first quotation whose block part is quotation q's, q when none before it is.
+: RQUOT-FIRST ( n -- n ) {: q:n :}
+   1 BEGIN dup q < WHILE
+      dup RQUOT@ q RQUOT@ = IF EXIT THEN
+      1 +
+   REPEAT ;
+
+\ `block N q` when quotation q's block part is a variable an earlier N's is.
+: QUOT-BLOCK-TAG ( n -- ) {: q:n :}
+   q RQUOT@ ISVAR 0= IF EXIT THEN
+   q RQUOT-FIRST {: first:n :}
+   first q = IF EXIT THEN
+   s" block " DTXT  first RNUM  32 EMIT1  q RNUM  32 EMIT1 ;
+
+\ `noblock q` when quotation q's block part is a flagged variable no earlier one's is.
+: QUOT-NOBLOCK-TAG ( n -- ) {: q:n :}
+   q RQUOT@ ISVAR 0= IF EXIT THEN
+   q RQUOT-FIRST q <> IF EXIT THEN
+   q RQUOT@ PAY NSCOPE@ 0= IF EXIT THEN
+   s" noblock " DTXT  q RNUM  32 EMIT1 ;
+
+\ Facts text for checker.f SIG-TAGS, `( E ) offset a noscope A block 1 2 noblock 1 `,
+\ written from the RSN it is called with: a caller that wants a fresh text sets `0 RSN !` first.
 : REND-FACTS ( n n n n bool -- ptr u8 n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
    1 RDST !  s" ( " DTXT
@@ -686,6 +718,9 @@ LOCSHOW-INSTALL
    0 BEGIN dup NLET @ < WHILE dup VAR-SCOPE-TAG 1 + REPEAT drop
    0 BEGIN dup RROW-N @ < WHILE dup ROW-KIND-TAG 1 + REPEAT drop
    0 BEGIN dup RROW-N @ < WHILE dup ROW-SCOPE-TAG 1 + REPEAT drop
+   RVISIT @ SQUOT-CAP min 1 + {: nq:n :}
+   2 BEGIN dup nq < WHILE dup QUOT-BLOCK-TAG 1 + REPEAT drop
+   1 BEGIN dup nq < WHILE dup QUOT-NOBLOCK-TAG 1 + REPEAT drop
    0 RDST !  RSBUF RSN @ ;
 
 
