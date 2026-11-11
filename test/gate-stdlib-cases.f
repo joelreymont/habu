@@ -9,8 +9,8 @@ using TEST
 
 \ Measure with `/usr/bin/time bin/hb --load <file>`.
 
-\ Each `false [if]` block holds tests that are off. DECISIONS.md "Wasm and
-\ x86-64 after arm64" brings back Wasm, then x86-64, once arm-to-arm works with pg.
+\ Each `false [if]` block holds tests that are off until their target's step:
+\ Wasm, then x86-64.
 
 \ Off: definition-engine-open and five other cases fail, as a linked hb has no
 \ source location for its own words.

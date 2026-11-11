@@ -1191,6 +1191,10 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 
 ### Rows, variables, and lexing
 
+- A **type name** is looked up only where a type is expected (an effect, a
+  local, a type argument), by the word rules: the open package, the globals
+  and `using` imports. A word lookup never finds a type, so a type and a word
+  may share a name.
 - A **row var** (`R`, `S`, …) at the front of a stack stands for the rest of
   the stack below. It is recognised only in leading position; an upper-case
   token anywhere else is looked up as a type name and rejects with `unknown

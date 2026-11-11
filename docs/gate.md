@@ -206,6 +206,10 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
   graph); such a test corrupts the file on disk rather than steering the
   producer through a test-only switch. Platform rows are switched by
   platform, never trimmed.
+- No test creates a tree or path Finder cannot delete, and each proves its
+  behaviour with a small fixture.
+- A before-and-after timing runs on an idle host (spark, Linux arm64), both
+  sides on the same machine and engine, never on the shared Mac.
 
 ## Verification claims
 

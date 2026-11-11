@@ -6,7 +6,7 @@
 \ a 32-byte header. The 9-byte name E-SHIFTED puts the address at row offset
 \ 41, an undeclared window that is not cell-aligned; the 8-byte name E-ALIGN8
 \ puts it at row offset 40, an aligned undeclared window. Bytes are not an
-\ address by type (DECISIONS.md "typed data"), so the build succeeds and the
+\ address by type, so the build succeeds and the
 \ application runs and exits 0. MAIN does not read the rows; the build keeps
 \ them all the same.
 \ The second subject stores a dictionary-record address in a declared DATA

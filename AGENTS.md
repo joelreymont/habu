@@ -24,7 +24,8 @@ differs where a cold build would not.
 - Build and test candidates in a workspace or a temporary directory. Keep one
   installed Habu tree at a stable path, with matching executable, map and
   library sources, updated in place: no per-revision release directories.
-  Ordinary development needs no installation or publication.
+  Ordinary development needs no installation or publication. An install never
+  waits for a client: a client that needs an older Habu keeps its own copy.
 - `spec/` holds TLA+ specs of Habu's state machines;
   [spec/README.md](spec/README.md) says how to check them.
 
@@ -38,9 +39,11 @@ differs where a cold build would not.
   that stand in for a foreign machine (serial, XMODEM, UDP, the embedded
   assembler hosts, and `test/wasm/run.mjs` and `test/wasm/data-peer.mjs`, which
   run a Wasm module under bun). Any other non-Habu file under `tools/` or
-  `test/` is a defect to convert.
+  `test/` is a defect to convert. Tools that tests and builds run are built
+  into `hb`, so running one rebuilds no image.
 - Every module has a real package; public effects keep meaningful types, not
   `n` for everything.
+- A library takes its limits from the protocol it speaks, not from a preset.
 - Use an unchecked or foreign boundary only after checking that the language
   cannot express the operation normally, and keep it explicit, small and tested.
 - When checked code misbehaves, reduce the failure, find which layer is wrong
@@ -53,6 +56,8 @@ differs where a cold build would not.
 
 - Use plain English. Keep changes focused, and remove obsolete machinery when
   the language or library already expresses the requirement.
+- When a decision lacks evidence because a capability does not exist yet,
+  build it in a branch and measure.
 - Never compress code or data without the user's explicit approval.
   Compression shrinks code or data through a codec; dropping zero-filled,
   unused or unreachable storage, packing allocations tightly and choosing a
@@ -60,28 +65,26 @@ differs where a cold build would not.
 
 ## Machinery being replaced
 
-Decisions in DECISIONS.md replace the machinery below. Never extend or patch
-it: a defect it shows becomes an acceptance case of the replacing dot, and a
-change that needs it joins the replacing design. Something one machine, tier
-or build path needs and another does not is a split to remove, not a row to
-add.
+The machinery below is being replaced, each item by what follows its colon.
+Never extend or patch it: a defect it shows becomes an acceptance case of the
+replacing dot, and a change that needs it joins the replacing design.
+Something one machine, tier or build path needs and another does not is a split
+to remove, not a row to add.
 
 - arm64's machine-code interpreter, definers and startup in `habu1.f` and
-  `habu2.f`: one typed interpreter on every machine ("one compiler").
+  `habu2.f`: one typed interpreter on every machine.
 - Building a target by loading it into the running hb and capturing, cutting
-  or rewinding its memory: a cross-build that writes the target as data ("how
-  Habu builds Habu").
-- The per-definition build cache and its source observers: the file linker
-  ("incremental builds", "file objects").
-- A linker per target: one linker for every target ("one compiler").
-- Tier 1 and the JIT as compilers: T0 on every target; tier 1 changes only to
-  fix a defect on a path it still owns ("editing tier 1", "the T0 release").
+  or rewinding its memory: a cross-build that writes the target as data.
+- The per-definition build cache and its source observers: the file linker.
+- A linker per target: one linker for every target.
+- Tier 1 and the JIT as compilers: T0 on every target, reusing what they
+  already implement; tier 1 changes only to fix a defect on a path it still
+  owns.
 - `TRUSTED:`, engine-only marks and owner rows: checked forms and private
-  sections ("TRUSTED:", "privacy").
-- Compatibility with older hosts, formats or schemas: hard cutover ("formats").
-- A hook where the owner could record data or make a plain call ("the
-  checker's switch", "the source loader's hooks").
-- fork without exec: fork only to exec ("fork").
+  sections.
+- Compatibility with older hosts, formats or schemas: hard cutover.
+- A hook: the owner records data or makes a plain call.
+- fork without exec: fork only to exec.
 
 ## Testing
 
@@ -90,6 +93,14 @@ add.
 - Keep an isolated test only when it catches a concrete failure the end-to-end
   tests miss, and list the ways the system can fail before writing it. Delete
   redundant assertions, implementation mirrors and change detectors.
+- The suite keeps the self-build fixpoint, one rejected program per type rule,
+  programs at boundaries hb's own build never reaches and other targets'
+  tests. It drops tests of what the self-build proves, of machinery being
+  replaced, of one tool agreeing with another and of the harness (except one
+  catching a failure a running suite cannot show), and lints. It runs in two to
+  three minutes, five at most.
+- A red test of a target whose turn has not come is switched off with `[if]`;
+  a test is deleted only when it is not load-bearing.
 - Test changed behavior through the real load path: rejected programs for type
   rules, meaningful edge cases for runtime changes.
 - Run compatible cases through one loaded tool or built application. Start a
@@ -124,4 +135,6 @@ for a language rule; [docs/bootstrap.md](docs/bootstrap.md),
 [docs/gate.md](docs/gate.md) or [docs/debugging.md](docs/debugging.md) for a
 build, test or diagnosis rule. Other reference material belongs in `docs/`.
 State the rule and the fact that proves it, without dates or narrative, and
-search and merge before adding.
+search and merge before adding. A doc passage that must track code is deleted;
+the fact goes into the code's comment. This file holds only rules: a procedure
+is a step that names its doc.

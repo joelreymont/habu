@@ -226,8 +226,8 @@ store into one corrupts a registry past its public API.
 
 **Privacy closes direct routes.** A registry cell belongs in its package's
 private section, where nothing outside the package names it: a bare use or `'`
-is E-UNDEFINED at top level and in a checked body alike (DECISIONS.md
-"privacy"). Reads and writes go through the package's certified words.
+is E-UNDEFINED at top level and in a checked body alike. Reads and writes go
+through the package's certified words.
 
 **The checker closes the laundered route.** `variable V  ' W V !  : F V @
 execute ;` would certify as a pure `( -- )` while the real xt ran, letting

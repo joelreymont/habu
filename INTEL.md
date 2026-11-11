@@ -72,9 +72,9 @@ does not establish those outcomes.
 
 ## Gate commands
 
-x86-64 builds are off until x86-64 moves onto the linker (DECISIONS.md "the
-old builders"): `tools/native-build.f` and `tools/two-generation-build.f`,
-which the commands below name, are gone.
+x86-64 builds are off until x86-64 moves onto the linker:
+`tools/native-build.f` and `tools/two-generation-build.f`, which the commands
+below name, are gone.
 
 On spark, from a tree whose `bin/hb` is the candidate
 ([docs/gate.md](docs/gate.md)):

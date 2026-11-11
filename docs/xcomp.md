@@ -154,9 +154,8 @@ is not covered: ARM64 answers the signalling one quieted, SSE the left one.
 
 The x86-64 backend shares the target-free compiler with ARM64 and forks
 nothing else by accident. Linux x86-64 is the target; the ARM64 engine
-cross-builds it. x86-64 builds are off until x86-64 moves onto the linker
-(DECISIONS.md "the old builders"): the builder this section names,
-`tools/native-build.f`, is gone.
+cross-builds it. x86-64 builds are off until x86-64 moves onto the linker: the
+builder this section names, `tools/native-build.f`, is gone.
 
 A second architecture touches five layers: the assembler
 (`src/arch/x86-64/`), the engine primitive bodies (`src/habu/kernel-x64.f`,

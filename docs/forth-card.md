@@ -15,6 +15,10 @@ it is commonly called or by a short form of its words (`NUMFMT`, OOXML's
 `numFmt`), never by initials coined for the package or an operation on it:
 `JSON:READ-NEXT`, not `JR:NEXT`; `JSON:WRITE-OBJECT-START`, not
 `JSON-WRITE:OBJECT-START`. A subject's reading and writing words share it.
+Names use standard programming terms (error, not refusal), and helpers with
+one meaning are one word. A library for a protocol names things in that
+protocol's words (MCP's tool result and content blocks, not answers), stored
+records included.
 
 ```forth
 package HB

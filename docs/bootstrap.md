@@ -8,10 +8,10 @@ How `hb` builds `hb`, and how a missing or broken `bin/hb` is recovered.
 the running hb and writes it, with its `.map`, to `<out>`
 (tools/hb-build-core.f). The build is a cross-build whose target is the
 running machine: the product is data the build writes, never a slice of the
-running hb's memory (DECISIONS.md "how Habu builds Habu"). Its start-up,
+running hb's memory. Its start-up,
 kernel and layout come from the tree too: a kernel build first compiles the
 tree's src/arch/arm64/kernel-object.f and writes a kernel object under the out
-root, which the build then links (DECISIONS.md "the kernel a build writes").
+root, which the build then links.
 
 Build from the tree's root: a build opens its boot files under the working
 directory and refuses one outside the engine root. Builds write their objects
@@ -19,14 +19,13 @@ under the out root ([gate.md](gate.md#scratch-and-cache)), in a directory
 named by the building hb's change time and size, so two hb never share an
 object.
 
-No route builds hb without an hb. x86-64 and Wasm builds are off until each
-moves onto the linker (DECISIONS.md "the old builders").
+No route builds hb without an hb. x86-64 builds are off until x86-64 moves onto
+the linker.
 
 ## Recovery
 
 A trusted native hb of the same OS and machine (a previous release asset, or
-a copy from a trusted checkout) rebuilds `bin/hb` from the checkout
-(DECISIONS.md "recovery"):
+a copy from a trusted checkout) rebuilds `bin/hb` from the checkout:
 
 ```sh
 HABU_SEED_SHA256=<hex> /path/to/trusted-hb --load tools/seed-main.f \

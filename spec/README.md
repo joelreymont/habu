@@ -3,8 +3,7 @@
 This directory holds TLA+ specs of Habu's state machines. Each spec is kept
 with its `.cfg`, and is checked before a change to the code it models lands.
 They are plain TLA+ with standard modules only, checked by TLC from TLA+
-tools 1.7.4 on spark, never on the Mac (DECISIONS.md "where TLA+ checks
-run"): `~/.local/bin/tlc` copies the spec's `.tla` and `.cfg` files there and
+tools 1.7.4 on spark, never on the Mac: `~/.local/bin/tlc` copies the spec's `.tla` and `.cfg` files there and
 runs TLC with the arguments given.
 
 ## ModelCall
