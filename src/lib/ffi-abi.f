@@ -196,7 +196,7 @@ CAST: CELL>PTR ( n -- ptr u8 )
 \ caches the address. Library 0 is the process (RTLD_DEFAULT, no reference);
 \ any other index is a path dlopened once, at the first call; one that does not
 \ open passes the call to the next library its row names. Rows may move when a
-\ bank grows; indices stay stable. The two banks reuse descriptors independently.
+\ table grows; indices stay stable.
 
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
 PATH-CAP 1 + constant LIB-PATH-CAP      \ a library path of PATH-CAP bytes and its NUL
@@ -222,35 +222,6 @@ variable FN-CAP
 variable LIB-CAP
 variable FN-N
 variable LIB-N
-\ The builder's declarations are a second bank: their call sites carry MAKER-TAG
-\ in the index, so a callback into the application selects its own rows while
-\ the builder's foreign call is still on the stack.
-PERSISTED-PTR-VARIABLE MAKER-FN-TABLE
-PERSISTED-PTR-VARIABLE MAKER-LIB-TABLE
-variable MAKER-FN-CAP
-variable MAKER-LIB-CAP
-variable MAKER-FN-N
-variable MAKER-LIB-N
-variable MAKER-DEPTH
-$4000000000000000 constant MAKER-TAG
-
-: MAKER-TOKEN? ( n -- bool ) MAKER-TAG and 0<> ;
-: ROW-INDEX ( n -- n ) MAKER-TAG invert and ;
-: DECL-TAG ( -- n ) MAKER-DEPTH @ 0<> if MAKER-TAG else 0 then ;
-: FN-TABLE-CELL ( n -- ptr ptr u8 ) MAKER-TOKEN? if MAKER-FN-TABLE else FN-TABLE then ;
-: LIB-TABLE-CELL ( n -- ptr ptr u8 ) MAKER-TOKEN? if MAKER-LIB-TABLE else LIB-TABLE then ;
-: FN-CAP-CELL ( n -- ptr n ) MAKER-TOKEN? if MAKER-FN-CAP else FN-CAP then ;
-: LIB-CAP-CELL ( n -- ptr n ) MAKER-TOKEN? if MAKER-LIB-CAP else LIB-CAP then ;
-: FN-N-CELL ( n -- ptr n ) MAKER-TOKEN? if MAKER-FN-N else FN-N then ;
-: LIB-N-CELL ( n -- ptr n ) MAKER-TOKEN? if MAKER-LIB-N else LIB-N then ;
-
-\ Only declarations use the ambient scope. Every call and every lookup instead
-\ chooses the bank from its own token; callbacks can therefore reenter FFI.
-public
-: WITH-MAKER-DECLARATIONS ( [ -- ] -- ) {: load :}
-   1 MAKER-DEPTH +!
-   load [: -1 MAKER-DEPTH +! ;] finally ;
-private
 
 : ALIGNED-ROWS ( n -- ptr u8 )
    {: size:n :}
@@ -262,22 +233,20 @@ private
 \ An old block stays allotted: a callback the loader runs may grow the table
 \ while the loader still reads a row's name or path there.
 : FN-GROW ( -- )
-   DECL-TAG {: token:n :}
-   token FN-CAP-CELL @ {: oldcap:n :}
+   FN-CAP @ {: oldcap:n :}
    oldcap 0= if 1 else oldcap 2 * then {: next:n :}
    next FN-ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
    next 0 ?do rows i FN-ROW-BYTES * + FN-ADDR-OFF + scratch-cell-mark loop
    oldcap 0 > if
-      token FN-TABLE-CELL @ {: old:ptr :}
-      old rows token FN-N-CELL @ FN-ROW-BYTES * BYTE-COPY
-      token FN-N-CELL @ 0 ?do 0 old i FN-ROW-BYTES * + FN-ADDR-OFF + CELL-VIEW ! loop
+      FN-TABLE @ {: old:ptr :}
+      old rows FN-N @ FN-ROW-BYTES * BYTE-COPY
+      FN-N @ 0 ?do 0 old i FN-ROW-BYTES * + FN-ADDR-OFF + CELL-VIEW ! loop
    then
-   rows token FN-TABLE-CELL !
-   next token FN-CAP-CELL ! ;
+   rows FN-TABLE !
+   next FN-CAP ! ;
 
 : LIB-GROW ( -- )
-   DECL-TAG {: token:n :}
-   token LIB-CAP-CELL @ {: oldcap:n :}
+   LIB-CAP @ {: oldcap:n :}
    oldcap 0= if 1 else oldcap 2 * then {: next:n :}
    next LIB-ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
    next 0 ?do
@@ -285,30 +254,30 @@ private
       rows i LIB-ROW-BYTES * + LIB-FAILED-OFF + scratch-cell-mark
    loop
    oldcap 0 > if
-      token LIB-TABLE-CELL @ {: old:ptr :}
-      old rows token LIB-N-CELL @ LIB-ROW-BYTES * BYTE-COPY
-      token LIB-N-CELL @ 0 ?do
+      LIB-TABLE @ {: old:ptr :}
+      old rows LIB-N @ LIB-ROW-BYTES * BYTE-COPY
+      LIB-N @ 0 ?do
          old i LIB-ROW-BYTES * + {: row:ptr :}
          0 row LIB-HANDLE-OFF + CELL-VIEW !
          0 row LIB-FAILED-OFF + CELL-VIEW !
       loop
    then
-   rows token LIB-TABLE-CELL !
-   next token LIB-CAP-CELL ! ;
+   rows LIB-TABLE !
+   next LIB-CAP ! ;
 
 : FN-NEW ( -- )
-   DECL-TAG dup FN-N-CELL @ swap FN-CAP-CELL @ >= if FN-GROW then ;
+   FN-N @ FN-CAP @ >= if FN-GROW then ;
 
 : LIB-NEW ( -- )
-   DECL-TAG dup LIB-N-CELL @ swap LIB-CAP-CELL @ >= if LIB-GROW then ;
+   LIB-N @ LIB-CAP @ >= if LIB-GROW then ;
 
 : FN-ROW ( n -- ptr u8 )
    {: idx:n :}
-   idx FN-TABLE-CELL @ idx ROW-INDEX FN-ROW-BYTES * + ;
+   FN-TABLE @ idx FN-ROW-BYTES * + ;
 
 : LIB-ROW ( n -- ptr u8 )
    {: idx:n :}
-   idx LIB-TABLE-CELL @ idx ROW-INDEX LIB-ROW-BYTES * + ;
+   LIB-TABLE @ idx LIB-ROW-BYTES * + ;
 
 : FN-FIELD ( n n -- ptr n )
    {: idx:n off:n :}
@@ -328,7 +297,7 @@ private
 
 : FN-CHECK ( n -- )
    {: idx:n :}
-   idx ROW-INDEX idx FN-N-CELL @ FFI-CHECK-INDEX ;
+   idx FN-N @ FFI-CHECK-INDEX ;
 
 : FN-NAME ( n -- ptr u8 )
    {: idx:n :}
@@ -373,7 +342,7 @@ private
 
 : LIB-CHECK ( n -- )
    {: idx:n :}
-   idx ROW-INDEX idx LIB-N-CELL @ FFI-CHECK-INDEX ;
+   idx LIB-N @ FFI-CHECK-INDEX ;
 
 : LIB-PATH ( n -- ptr u8 )
    {: idx:n :}
@@ -692,13 +661,12 @@ public
 
 
 \ A row is the same row when its whole path, length included, and its next
-\ agree. The selected bank's library index of that row, or 0 when none holds it.
+\ agree. The library index of that row, or 0 when none holds it.
 : LIB-INDEX ( ptr u8 n n -- n )
    {: path:ptr u:n next:n :}
-   DECL-TAG {: tag:n :}
-   tag LIB-N-CELL @ 0 ?do
-      i tag or LIB-LEN@ u = i tag or LIB-NEXT@ next = and if
-         path u i tag or LIB-PATH u STR= if i 1+ tag or unloop exit then
+   LIB-N @ 0 ?do
+      i LIB-LEN@ u = i LIB-NEXT@ next = and if
+         path u i LIB-PATH u STR= if i 1+ unloop exit then
       then
    loop
    0 ;
@@ -710,17 +678,16 @@ private
 : LIBRARY-PATH-OR ( ptr u8 n n -- n )
    {: path:ptr u:n next:n :}
    u PATH-ROOM
-   DECL-TAG {: tag:n :}
    path u next LIB-INDEX dup 0<> if exit then drop
    LIB-NEW
-   path u tag LIB-N-CELL @ tag or PATH-FIELD CSTR drop
-   tag LIB-N-CELL @ 1+ tag LIB-N-CELL !
-   tag LIB-N-CELL @ {: row:n :}
-   u row 1- tag or LIB-LEN!
-   0 row 1- tag or LIB-HANDLE!
-   0 row 1- tag or LIB-FAILED!
-   next row 1- tag or LIB-NEXT!
-   row tag or ;
+   path u LIB-N @ PATH-FIELD CSTR drop
+   LIB-N @ 1+ LIB-N !
+   LIB-N @ {: row:n :}
+   u row 1- LIB-LEN!
+   0 row 1- LIB-HANDLE!
+   0 row 1- LIB-FAILED!
+   next row 1- LIB-NEXT!
+   row ;
 
 public
 
@@ -858,40 +825,29 @@ private
 
 public
 
-\ The selected bank's index of the first row matching the descriptor, or -1
-\ when none does.
+\ The index of the first row matching the descriptor, or -1 when none does.
 : FN-INDEX ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
    u NAME-ROOM
-   DECL-TAG {: tag:n :}
-   tag FN-N-CELL @ 0 ?do
-      name u lib argc spills reloc i tag or SAME-FN? if i tag or unloop exit then
+   FN-N @ 0 ?do
+      name u lib argc spills reloc i SAME-FN? if i unloop exit then
    loop
    -1 ;
 
 \ Validation precedes reading a row's name. A match keeps its cached address;
-\ only a new descriptor appends to the selected bank.
+\ only a new descriptor appends a row.
 : DECLARE-ROW ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
-   DECL-TAG {: tag:n :}
    lib 0 < if E-FFI-LIBRARY throw then
-   lib 0<> if
-      lib MAKER-TOKEN? if
-         tag 0= if E-FFI-LIBRARY throw then
-      else
-         tag 0<> if E-FFI-LIBRARY throw then
-      then
-      lib ROW-INDEX dup 0= if E-FFI-LIBRARY throw then
-      tag LIB-N-CELL @ > if E-FFI-LIBRARY throw then
-   then
+   lib LIB-N @ > if E-FFI-LIBRARY throw then
    argc FFI-MAX-ARGS FFI-CHECK-COUNT
    spills FFI-MAX-ARGS FFI-CHECK-COUNT
    reloc argc spills RELOC-OWNED? 0= if E-FFI-ARITY throw then
    name u lib argc spills reloc FN-INDEX dup 0 >= if exit then drop
    FN-NEW
-   tag FN-N-CELL @ tag or {: idx:n :}
+   FN-N @ {: idx:n :}
    name u idx NAME-FIELD CSTR drop
-   tag FN-N-CELL @ 1+ tag FN-N-CELL !
+   FN-N @ 1+ FN-N !
    spills idx FN-SPILL-OFF FN-FIELD !
    reloc idx FN-RELOC-OFF FN-FIELD !
    lib idx FN-LIB-OFF FN-FIELD !
@@ -901,23 +857,12 @@ public
 
 : DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
 
-\ The rows every bank has room for; a declaration that grows a bank's table
-\ moves it.
-: MARK ( -- n )
-   FN-CAP @ LIB-CAP @ + MAKER-FN-CAP @ + MAKER-LIB-CAP @ + ;
-
-\ The index the selected bank's next new function or library row gets.
-: NEXT-FN ( -- n ) DECL-TAG dup FN-N-CELL @ or ;
-: NEXT-LIB ( -- n ) DECL-TAG dup LIB-N-CELL @ 1+ or ;
-
 \ Row idx's descriptor: symbol, library index, argument and spill counts and
 \ relocation mask, in DECLARE-ROW's order.
 : FN-ROW@ ( n -- ptr u8 n n n n n )
    {: idx:n :}
    idx FN-NAME idx NAME-LEN idx FN-LIB@ idx FN-ARGC@ idx FN-SPILL@ idx FN-RELOC@ ;
 : MAX-ARGS ( -- n ) FFI-MAX-ARGS ;
-\ The bit a builder-support row's index carries.
-: MAKER-BANK ( -- n ) MAKER-TAG ;
 : SYMBOL-CAP ( -- n ) FN-NAME-CAP 1- ;
 
 \ errno is this package's own binding, written by hand because the declarer is

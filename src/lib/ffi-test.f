@@ -237,7 +237,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-FILL-SRC+ ( -- )
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-BASE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
-   s\" : ZZ-FN-N ( -- n ) FFI:NEXT-FN ;\n" FFI-T-SRC+
+   s\" : ZZ-PROBE ( ptr u8 n -- n ) FFI:PROCESS 0 FFI:DECLARE ;\n" FFI-T-SRC+
    s\" 128 CODEGEN:BUFFER ZZ-DECL\n: ZZ-FILL ( -- ) 270 0 ?do\n" FFI-T-SRC+
    s\"    ZZ-DECL CODEGEN:RESET\n" FFI-T-SRC+
    s\"    s\" FUNCTION: ZZ-OVER habu-ffi-fill-\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
@@ -245,7 +245,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\"    s\"  ( -- n ) ;FUNCTION\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    ZZ-DECL CODEGEN:CONTENTS INCLUDE-EVALUATE\n" FFI-T-SRC+
    s\"    s\" undefine ZZ-OVER\" INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\" loop ;\nZZ-FILL\nZZ-FN-N constant ZZ-BEFORE\n" FFI-T-SRC+ ;
+   s\" loop ;\nZZ-FILL\ns\" habu-ffi-probe-before\" ZZ-PROBE constant ZZ-BEFORE\n" FFI-T-SRC+ ;
 
 : FFI-T-LIBS-SRC+ ( -- )
    s\" 128 CODEGEN:BUFFER ZZ-PATH\nvariable ZZ-FIRST-LIB\nvariable ZZ-LAST-LIB\n" FFI-T-SRC+
@@ -266,9 +266,9 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-SRC CODEGEN:RESET
    FFI-T-FILL-SRC+
    s\" FUNCTION: ZZ-ALIAS getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
-   s\" ZZ-FN-N constant ZZ-AFTER\n" FFI-T-SRC+
+   s\" s\" habu-ffi-probe-after\" ZZ-PROBE constant ZZ-AFTER\n" FFI-T-SRC+
    FFI-T-LIBS-SRC+
-   s\" : ZZ-CHECK ( -- ) ZZ-BEFORE ZZ-AFTER <> if s\" alias took row\" 1 die then\n" FFI-T-SRC+
+   s\" : ZZ-CHECK ( -- ) ZZ-BEFORE 1+ ZZ-AFTER <> if s\" alias took row\" 1 die then\n" FFI-T-SRC+
    s\"    ZZ-BASE 0 <= ZZ-ALIAS 0 <= or if s\" getpid refused\" 1 die then\n" FFI-T-SRC+
    s\"    ZZ-LIB-CHECK\n" FFI-T-SRC+
    s\"    s\" growth-alias:ok\" type cr ;\nZZ-CHECK\n" FFI-T-SRC+
@@ -804,15 +804,15 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    0 FFI-T-CSTR-DST SPAN:FILL
    [: s\" a\zb" FFI-T-CSTR-DST FFI:CSTR drop ;] E-FFI-NUL TTHROWSQ
    FFI-T-CSTR-DST SPAN:$ drop c@ 0 T=                  \ a refused copy wrote nothing
-   \ A refused path or name leaves its bank without a row; a declared symbol
-   \ followed by a 0 byte is a different name, not that symbol's row.
-   FFI:NEXT-LIB {: next-lib:n :}
+   \ A refused path or name adds no row; a declared symbol followed by a 0 byte
+   \ is a different name, not that symbol's row.
+   s" /tmp/habu-ffi-nul-before" FFI:LIBRARY-PATH {: lib-before:n :}
    [: s\" libz\z.so" FFI:LIBRARY-PATH drop ;] E-FFI-NUL TTHROWSQ
-   FFI:NEXT-LIB next-lib T=
+   s" /tmp/habu-ffi-nul-after" FFI:LIBRARY-PATH lib-before 1+ T=
    s" getpid" FFI:PROCESS 0 FFI:DECLARE drop
-   FFI:NEXT-FN {: next-fn:n :}
+   s" habu-ffi-nul-before" FFI:PROCESS 0 FFI:DECLARE {: fn-before:n :}
    [: s\" getpid\z" FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-NUL TTHROWSQ
-   FFI:NEXT-FN next-fn T=
+   s" habu-ffi-nul-after" FFI:PROCESS 0 FFI:DECLARE fn-before 1+ T=
    s" a version list opens the first version present, in the order written" T-LABEL
    FFI-T-LISTED-CALL
    s" a declaration through the versioned form resolves its symbol" T-LABEL
