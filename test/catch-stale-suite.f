@@ -25,31 +25,31 @@ package CATCH-STALE-TEST
 public
 
 variable CS-TICK
-: WBOOM ( ptr u8 -- ) drop E-CS-BOOM throw ;                     \ overwrites its input, then throws
-: WMAYBE ( ptr u8 -- ptr u8 ) dup c@ 0= IF E-CS-BOOM throw THEN ; \ reads the cell, never writes it
-: WKEEP ( ptr u8 -- ptr u8 ) dup c@ drop ;                       \ no throw edge at all
-: CLEANMAYBE ( -- ) CS-TICK @ 0= IF E-CS-BOOM throw THEN ;       \ a cleanup that may throw
+: WBOOM ( ptr u8 -- ) drop E-CS-BOOM throw ;
+: WMAYBE ( ptr u8 -- ptr u8 ) dup c@ 0= IF E-CS-BOOM throw THEN ;
+: WKEEP ( ptr u8 -- ptr u8 ) dup c@ drop ;
+: CLEANMAYBE ( -- ) CS-TICK @ 0= IF E-CS-BOOM throw THEN ;
 : FINBODY ( ptr u8 -- ptr u8 ) dup c@ drop ;
 : FINW ( ptr u8 -- ptr u8 ) [: FINBODY ;] [: CLEANMAYBE ;] finally ;
 
-: WMAYBE2 ( ptr u8 -- ptr u8 )            \ two throw paths, both leave the cell
+: WMAYBE2 ( ptr u8 -- ptr u8 )
    dup c@ 0= IF E-CS-BOOM throw THEN
    dup c@ 65 = IF E-CS-BOOM throw THEN ;
-: WPARTLY ( ptr u8 -- ptr u8 )            \ two throw paths, one of them overwrote it first
+: WPARTLY ( ptr u8 -- ptr u8 )
    dup c@ 0= IF E-CS-BOOM throw THEN
    dup c@ 65 = IF drop 5 E-CS-BOOM throw THEN ;
-: WSWAPT ( n ptr u8 -- n ptr u8 ) swap E-CS-BOOM throw ;   \ R1's body as a callee
-: WBIND ( ptr u8 -- ptr u8 ) {: p :} p drop E-CS-BOOM throw ; \ the input went into the frame
-: WKEEPTOP ( ptr u8 n -- ptr u8 n )       \ keeps the top cell, replaces the one below it
+: WSWAPT ( n ptr u8 -- n ptr u8 ) swap E-CS-BOOM throw ;
+: WBIND ( ptr u8 -- ptr u8 ) {: p :} p drop E-CS-BOOM throw ;
+: WKEEPTOP ( ptr u8 n -- ptr u8 n )
    swap drop 5 swap E-CS-BOOM throw ;
 : WNUMBER-NEW ( -- n )
    CS-TICK @ 0= if E-CS-BOOM throw then
    31 ;
 : WNUMBER ( n -- n )
    drop WNUMBER-NEW ;
-: KEEPN ( n -- n ) ;                     \ no throw edge; its output has no proof
+: KEEPN ( n -- n ) ;                     \ its output has no proof
 : KEEPO ( option<n> -- option<n> ) ;
-: SETO ( option<n> -- option<n> )        \ overwrites the option, then may throw
+: SETO ( option<n> -- option<n> )
    drop 4 OPTION:SOME CS-TICK @ 0= IF E-CS-BOOM throw THEN ;
 : READO ( option<n> -- n ) MATCH option none OF 0 ENDOF some OF ENDOF ;MATCH ;
 
@@ -73,24 +73,21 @@ variable CS-TICK
 : ANY-ZERO? ( n -- bool ) drop true ;
 
 create CS-DBUF 8192 allot
-: CS-CODE< ( ptr u8 n -- )   \ check a candidate with JSON diags captured; assert reject
+: CS-CODE< ( ptr u8 n -- )
    CS-DBUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
    CHECK-CANDIDATE! 0 T= ;
-: CS-CODE? ( ptr u8 n -- )   \ assert the captured diagnostic names this text
+: CS-CODE? ( ptr u8 n -- )
    DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
 : CS-CODE-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
-\ A body's stale read is the catch's, never the interpret row's unknown cell
-\ (checker.f STALE-WHY), so its repair keeps the value before the catch.
+\ A body's stale read is the catch's, never the interpret row's unknown cell,
+\ so its repair keeps the value before the catch.
 : CS-STALE? ( -- )
    s\" \"code\":\"E-STALE-READ\"" CS-CODE?
    s\" \"repair_class\":\"keep_value_before_catch\"" CS-CODE? ;
-\ A loop edge's carried-cell refusal (checker.f MD-LOOP-CARRIED).
 : CS-CARRIED? ( -- )
    s\" \"reason\":\"the loop body leaves a carried cell different from the one it entered with\"" CS-CODE? ;
 
-\ R1 is the regression: its body returned (address, 17, code) where its
-\ signature said (n, ptr u8, n): the throw path swapped the two cells and
-\ `catch` put back only the depth.
+\ R1: the throw path swapped the two cells and `catch` put back only the depth.
 : CS-SECTION-REPRODUCERS ( -- )
    s" R1 ( n ptr u8 -- n ptr u8 n ) [: swap -99 throw ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END ;
@@ -143,7 +140,7 @@ create CS-DBUF 8192 allot
    s" P12 ( n -- ) [: WNUMBER ;] catch swap {: v :} 2 0 do dup 0= if v 1+ drop then drop 0 loop drop" CS-CODE<
    s\" \"code\":\"E-REJECTED\"" CS-CODE? CS-CODE-END
    \ A loop entered under the status guard may carry the caught cell through a
-   \ word that drops its normal proof (checker.f CP-CARRIES?), read in the body or not.
+   \ word that drops its normal proof, read in the body or not.
    s" A4 ( option<n> -- n ) [: SETO ;] catch {: code:n :} code 0= IF 3 BEGIN dup 0 > WHILE 1- swap KEEPO swap REPEAT drop READO ELSE drop 0 THEN"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" N4 ( n -- n ) [: WNUMBER ;] catch {: code:n :} code 0= IF 3 BEGIN dup 0 > WHILE 1- swap KEEPN swap REPEAT drop 1+ ELSE drop 0 THEN"
@@ -197,7 +194,6 @@ create CS-DBUF 8192 allot
    s" PP2 ( ptr u8 n -- n ) ['] OUTER-PARTIAL-QUOTE catch {: code:n :} drop c@"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
-\ The children below run bin/hb and the hb it builds, each a fresh process.
 4096 constant CS-CHILD-CAP
 create CS-CHILD-OUT CS-CHILD-CAP allot
 create CS-CHILD-ERR CS-CHILD-CAP allot
@@ -214,9 +210,9 @@ create CS-PRODUCT-PATH PATH-CAP allot
    s" HABU_UNDER_TEST" >LEN CS-PRODUCT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
-\ Definition control summaries survive a --repl build (tools/hb-build.f). The
-\ built hb runs the guarded source as its MAIN, then loads fresh unsafe source,
-\ so stale and zero-test semantics must still be enforced.
+\ Definition control summaries survive a --repl build. The built hb runs the
+\ guarded source as its MAIN, then loads fresh unsafe source, so stale and
+\ zero-test semantics must still be enforced.
 create CS-IMAGE-ROOT-BUF PATH-CAP allot
 create CS-IMAGE-PATH-BUF PATH-CAP allot
 variable CS-IMAGE-ROOT-U
@@ -308,8 +304,8 @@ variable CS-CHILD-ERR-U
    \ same type is not evidence that the cell survived: only identity of the term
    \ is, and identity neither binds the quotation (which would make it
    \ monomorphic where it is merely executed) nor keeps a transient row id.
-   \ Migration: bind the cell to a local before the catch, or push the literal
-   \ after it.
+   \ The repair binds the cell to a local before the catch, or pushes the
+   \ literal after it.
    s" R9 ( n -- n n ) [: drop 5 -99 throw ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END ;
 
@@ -357,8 +353,7 @@ variable CS-CHILD-ERR-U
 \ W hidden cells, and every question that finds the group sees through the
 \ wrapper, so an `option<cspt>` window comes back as one `stale<option<cspt>>`
 \ that one `drop` removes and one `nip` moves; every typed use (word input,
-\ typed local, MATCH) is E-STALE-READ. Read as three lone cells, two `drop`s
-\ left one behind and the third was E-NELAB-UNDER in the native elaborator.
+\ typed local, MATCH) is E-STALE-READ.
 PRODUCT cspt
    FIELD x n
    FIELD y n
@@ -366,7 +361,7 @@ PRODUCT cspt
 
 : CS-PT ( -- cspt ) 17 25 CATCH--STALE--TEST-CSPT:MAKE ;
 : CS-SOME ( -- option<cspt> ) CS-PT OPTION:SOME ;
-: CS-BUNDLE-THROW ( option<cspt> -- option<cspt> )   \ overwrites the bundle, then throws
+: CS-BUNDLE-THROW ( option<cspt> -- option<cspt> )
    drop CS-SOME E-CS-BOOM throw ;
 : CS-BUNDLE-MAYBE ( option<cspt> -- option<cspt> )
    drop CS-SOME CS-TICK @ 0= IF E-CS-BOOM throw THEN ;
@@ -375,13 +370,12 @@ PRODUCT cspt
       none OF 0 ENDOF
       some OF CATCH--STALE--TEST-CSPT:UNMAKE + ENDOF
    ;MATCH ;
-: CS-BUNDLE-RT ( cspt option<cspt> -- n )            \ one drop for the stale bundle, one for the cspt
+: CS-BUNDLE-RT ( cspt option<cspt> -- n )
    [: CS-BUNDLE-THROW ;] catch {: rc:n :}
    drop drop rc ;
 : CS-BUNDLE-GUARD ( option<cspt> -- n )
    [: CS-BUNDLE-MAYBE ;] catch {: o code:n :}
    code 0= IF o CS-READ-BUNDLE ELSE 0 THEN ;
-\ Overwrites the option, then throws.
 : CS-NUM-THROW ( option<n> -- option<n> )
    drop 4 OPTION:SOME E-CS-BOOM throw ;
 \ An option a generic constructor built inline: the call learns the width
@@ -426,14 +420,13 @@ PRODUCT cspt
       CS-CODE<  CS-STALE?  CS-CODE-END
    CS-INLINE-RT 0 T= ;
 
-\ Kept inputs map onto the caller by value (checker.f CALL-EDGE-MASK): an option
-\ is one term at open width, two as option<n>; CS-OPEN-KEEP keeps its deepest.
+\ Kept inputs map onto the caller by value: an option is one term at open
+\ width, two as option<n>; CS-OPEN-KEEP keeps its deepest.
 : CS-OPEN-KEEP ( n n option<b> [ n option<b> -- option<b> ] -- n n option<b> [ n option<b> -- option<b> ] )
    execute E-CS-BOOM throw ;
 : CS-WIDE-KEEP ( n n option<n> [ n option<n> -- option<n> ] -- n n option<n> [ n option<n> -- option<n> ] )
    CS-OPEN-KEEP ;
 : CS-REPL-OPT ( n option<n> -- option<n> ) drop drop 77 OPTION:SOME ;
-\ Declared over the two-term option; replaces the bool, keeps the rest.
 : CS-EXP-KEEP ( n bool option<n> -- n bool option<n> ) swap drop 55 swap E-CS-BOOM throw ;
 : CS-OPT-ID ( option<a> -- option<a> ) ;     \ leaves the option's width open
 
@@ -456,7 +449,7 @@ PRODUCT cspt
 16 BUFFER: CS-BUF
 : CS-RT ( ptr u8 -- ptr u8 n ) [: dup c@ drop E-CS-BOOM throw ;] catch ;
 
-: CS-CRT ( ptr u8 -- ptr u8 n ) [: WMAYBE ;] catch ;   \ the same, through a CALLEE
+: CS-CRT ( ptr u8 -- ptr u8 n ) [: WMAYBE ;] catch ;
 
 : CS-SECTION-RUNTIME ( -- )
    CS-BUF CS-RT {: p code:n :}
@@ -477,10 +470,10 @@ PRODUCT cspt
 \ quotation type, so a route whose term is a fresh instance of a declared type
 \ keeps the window typed even when the target throws: the typed `xt<effect>`
 \ cell (T9), the quotation parameter (T10) and a `defer`, whose symbol records
-\ no body's evidence (test/xt-cell-test.f GC4); the direct tick of that callee
-\ (T3) is refused beside them. A tick bound to a local in the same body is the
-\ term the tick pushed and keeps its edge (T7, T8).
-: WREPL ( ptr u8 -- ptr u8 ) drop CS-BUF E-CS-BOOM throw ;  \ same type, another cell
+\ no body's evidence; the direct tick of that callee (T3) is refused beside
+\ them. A tick bound to a local in the same body is the term the tick pushed
+\ and keeps its edge (T7, T8).
+: WREPL ( ptr u8 -- ptr u8 ) drop CS-BUF E-CS-BOOM throw ;
 TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
 : CS-CATCHP ( ptr u8 [ ptr u8 -- ptr u8 ] -- ptr u8 n ) catch ;
 : CS-TRT ( ptr u8 -- ptr u8 n ) ['] WMAYBE catch ;
@@ -516,7 +509,6 @@ TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
    \ a callee that never returns is fit-checked against its declared output row:
    \ WBOOM leaves nothing where its window was, and that is the refusal, not the
    \ stale rule, which would need the dead flag the tick does not take
-   \ (src/core/checker.f BTICK-EDGE)
    s" T11 ( ptr u8 -- n ) ['] WBOOM catch {: v code:n :} code" CS-CODE<
    s\" \"code\":\"E-STALE-READ\"" DIAG-BUFFER$ 2swap CONTAINS? TFALSE
    CS-CODE-END
