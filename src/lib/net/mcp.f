@@ -1414,7 +1414,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ Starts the transfer and receives the whole reply into the reply buffer,
 \ which grows with it: NEXT writes each chunk into the room past the bytes
 \ received, and appending the chunk from where it lies keeps it. NEXT follows
-\ STREAM-START with no PAUSE between, so a halt is read in NEXT's wait, which
+\ STREAM-START with no PAUSE between, so a pending halt is read in NEXT's wait, which
 \ gives the transfer up. A CANCEL that found no transfer to mark is read here:
 \ once STREAM-START answers, the transfer's record lives until NEXT takes its
 \ end, so CURL:CANCEL finds it.

@@ -1832,7 +1832,8 @@ public
    request REQUEST-WAITING <> ;
 
 
-\ Takes the armed read's answer, waiting for it if it has none yet.
+\ Takes the armed read's answer, waiting for it if it has none yet; its wait
+\ answers a halt as AWAIT's does.
 : NEXT-TAKE ( handle -- chunk-result )
    {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
@@ -1841,7 +1842,7 @@ public
    request REQUEST-WAITING <> if idx STREAM-RESULT-TAKE exit then
    begin
       TASK:WAIT
-      TASK:HALTED? if
+      TASK:HALT-PENDING? if
          idx ABANDON
          TASK:PAUSE
          \ PAUSE returns when termination is deferred. The record is already
@@ -1864,15 +1865,15 @@ public
 \ would have. It gives the record back, so every started transfer is awaited
 \ once, cancelled ones included, unless its owner's CLEANUP gives it up. A
 \ handle with no transfer in flight, and one another task started, are E-STATE.
-\ The wait is a TASK:WAIT loop. A halt gives the record up, then ends the task
-\ at the PAUSE below, or answers failed CURLE-ABORTED where PAUSE cannot end it.
+\ While TASK:HALT-PENDING? the TASK:WAIT loop gives the record up and ends the
+\ task at the PAUSE below, or answers failed CURLE-ABORTED where PAUSE cannot.
 : AWAIT ( handle -- fetch-result ) {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-WHOLE <> if E-STATE throw then
    begin
       idx REC-STATE@ STATE-DONE = if idx RESULT-TAKE exit then
       TASK:WAIT
-      TASK:HALTED? if
+      TASK:HALT-PENDING? if
          idx ABANDON
          TASK:PAUSE
          CURLE-ABORTED FETCH-FAILED exit

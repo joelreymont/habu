@@ -3962,8 +3962,8 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    c receive catch {: code:n :} drop code c LAND-FAULT ;
 
 
-\ The receive runs deferred: a halt while AWAIT waits settles the call, one in
-\ SERVE leaves it started; ACCOUNT follows outside it, where a halt is served.
+\ The receive runs deferred: a halt pending while AWAIT waits settles the call,
+\ one in SERVE leaves it started; ACCOUNT follows outside it, where it is served.
 : RECEIVE-STARTED ( [ ptr call -- ptr call ] ptr call -- )
    {: receive c :}
    c REQUIRE-STARTER

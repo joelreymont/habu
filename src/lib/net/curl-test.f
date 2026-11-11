@@ -2006,6 +2006,8 @@ TEST-ALIGN8
 variable DURING-THREADS
 variable HALT-PARKED
 variable HALT-RC
+variable HALT-GO
+variable HALT-PASSED
 variable EARLY-MODE
 variable DONE-PARKED
 variable DONE-COLLECTED
@@ -2020,6 +2022,7 @@ MANY-N TYPED-BUFFER MANY-HANDLES CURL:handle
 TYPED-VARIABLE COLD-HANDLE CURL:handle
 TYPED-VARIABLE OWNER-HANDLE CURL:handle
 TYPED-VARIABLE HALT-HANDLE CURL:handle
+TYPED-VARIABLE EXIT-HANDLE CURL:handle
 TYPED-VARIABLE DONE-HANDLE CURL:handle
 
 TASK:MIN-STACK TASK:TASK OWNER-TASK
@@ -2726,6 +2729,76 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
+: EXIT-FETCH ( -- )
+   EXIT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   EXIT-HANDLE @ AWAIT-ONE ;
+
+: EXIT-WORK ( -- )
+   [: HALT-WORK ;] [: EXIT-FETCH ;] finally ;
+
+
+\ A halt gives up only the transfer its task is parked on: a fetch the task's
+\ own finally starts afterwards is carried to its answer.
+: CASE-HALTED-FETCH ( -- )
+   0 HALT-PARKED !
+   0 HALT-RC !
+   PATH-STALL$ GET-READY HALT-HANDLE !
+   PATH-HELLO$ GET-READY EXIT-HANDLE !
+   RESULT-RESET
+   SERVER-HITS atomic@ {: before:n :}
+   ['] EXIT-WORK HALT-TASK TASK:ACTIVATE
+   HALT-PARKED 1 REACH
+   before WAIT-HIT
+   HALT-TASK TASK:HALT
+   HALT-TASK AWAIT-END
+   HALT-TASK TASK:KILL
+   s" a halted waiter's cleanup fetch answers and its parked transfer is given back" T-LABEL
+   HALT-RC @ 0 T=
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ HELLO$ T$=
+   STOP-LOOP
+   EXIT-HANDLE @ CURL:CLEANUP
+   HALT-HANDLE @ CURL:CLEANUP ;
+
+
+\ Spins: a PAUSE here would serve the halt before AWAIT, and a TASK:WAIT would
+\ take the hint AWAIT's wait needs.
+: LATE-WORK ( -- )
+   HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
+   MATCH CURL:status
+      ok OF ENDOF
+      failed OF CURL:CODE>N HALT-RC ! ENDOF
+   ;MATCH
+   1 HALT-PARKED atomic!
+   begin HALT-GO atomic@ 0<> until
+   HALT-HANDLE @ CURL:AWAIT DROP-FETCH
+   1 HALT-PASSED atomic! ;
+
+
+\ A halt still pending when AWAIT begins gives the transfer up there and ends
+\ the task at AWAIT's PAUSE, long before REQUEST-MS could answer the transfer.
+: CASE-HALTED-LATE ( -- )
+   0 HALT-PARKED !
+   0 HALT-RC !
+   0 HALT-GO !
+   0 HALT-PASSED !
+   PATH-STALL$ GET-READY HALT-HANDLE !
+   SERVER-HITS atomic@ {: before:n :}
+   ['] LATE-WORK HALT-TASK TASK:ACTIVATE
+   HALT-PARKED 1 REACH
+   before WAIT-HIT
+   HALT-TASK TASK:HALT
+   1 HALT-GO atomic!
+   HALT-TASK AWAIT-END
+   HALT-TASK TASK:KILL
+   s" a task halted before its AWAIT gives the transfer up and ends there" T-LABEL
+   HALT-RC @ 0 T=
+   HALT-PASSED @ 0 T=
+   STOP-LOOP
+   HALT-HANDLE @ CURL:CLEANUP ;
+
+
 : LEAVE-WAIT ( -- )
    HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
    MATCH CURL:status
@@ -3064,6 +3137,10 @@ variable DEFER-RETURNED
    CURL:LOOP-START EXPECT-OK
    CASE-HALTED
    CURL:LOOP-START EXPECT-OK
+   CASE-HALTED-FETCH
+   CURL:LOOP-START EXPECT-OK
+   CASE-HALTED-LATE
+   CURL:LOOP-START EXPECT-OK
    0 CASE-EARLY-EXIT
    CURL:LOOP-START EXPECT-OK
    1 CASE-EARLY-EXIT
@@ -3083,7 +3160,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   91 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   94 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle

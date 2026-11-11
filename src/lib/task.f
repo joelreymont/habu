@@ -1051,11 +1051,8 @@ variable ROW-N
 : ROWS-END ( n -- ) {: reg:n :}
    ROW-N @ 0 ?do i reg ROW-END loop ;
 
-\ Every ending passes here from TASK-RUNNER: a return, a throw, and a halt
-\ unwound from TASK:PAUSE. The stop mark goes first, so a cleanup that pauses
-\ yields rather than starting a halt unwind (HALT-PENDING?). The signal is last,
-\ after the rows, so a joiner that wakes finds the cleanup finished, the outcome
-\ final and no slot naming the region it is about to release.
+\ Stop mark first, so a cleanup's PAUSE only yields (TCB-HALT-PENDING?); signal
+\ last, so a woken joiner finds cleanups run, outcome final, no row on its region.
 : TASK-END ( -- )
    1 TASK-SELF TCB.STOP !
    TASK-RUN-EXIT
@@ -1285,9 +1282,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    TASK-REGION-BYTES 8 / >COUNT MEM-ALLOC-CELLS
    TASK-REGION-BYTES tcb TCB.REGION-U !
    tcb TCB.REGION !
-   \ This clear and ACTIVATE's are plain stores: both run in the owner's thread
-   \ before pthread_create, which orders them into the new thread, and only that
-   \ thread writes the cell afterwards (HALT-PENDING?).
+   \ A plain store, as ACTIVATE's: pthread_create orders it into the new thread,
+   \ the cell's only writer afterwards (TCB-HALT-PENDING?).
    0 tcb TCB.STOP !
    tcb TASK-REGION-INIT
    tcb MBOX-INIT
@@ -1395,7 +1391,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ instead of starting a second unwind, and PREPARE and ACTIVATE clear it before the
 \ thread exists. No other thread writes it, so it is a plain cell, and a second
 \ HALT racing the exit cannot re-arm it.
-: HALT-PENDING? ( ptr n -- bool ) {: tcb:ptr :}
+: TCB-HALT-PENDING? ( ptr n -- bool ) {: tcb:ptr :}
    tcb TASK-STATE@ TASK-HALT-REQ = tcb TCB.STOP @ 0= and ;
 
 \ A halted task starts its unwind here, ONCE, from PAUSE or from a scope's end
@@ -1422,7 +1418,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 : HALT-UNWIND ( n -- ) {: rc:n :}
    TASK-SELF-N dup 0= if drop exit then
    TASK-N>PTR {: self:ptr :}
-   self HALT-PENDING? IN-CALLBACK? 0= and TASK-DEFER-DEPTH @ 0= and if
+   self TCB-HALT-PENDING? IN-CALLBACK? 0= and TASK-DEFER-DEPTH @ 0= and if
       1 self TCB.STOP !
       1 data-base HALT-UNWIND-CELL + !
       rc throw
@@ -1436,11 +1432,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ TASK:WAIT itself: the task re-checks its state as the hint protocol requires
 \ and ends at its next PAUSE.
 \
-\ RUNNING -> HALT-REQ is one atomic-cas, as TASK-JOIN-CHECK claims the joiner,
-\ and its answer is read once. THE CAS IS THE WHOLE REQUEST (HALT-PENDING?), so
-\ a HALT reaches exactly the run its CAS saw. No request carries into another
-\ run: only this CAS writes HALT-REQ, and the run's end (DONE, or CONSTRUCTED
-\ after a failed create) replaces it before ACTIVATE writes RUNNING.
+\ THE CAS RUNNING -> HALT-REQ IS THE WHOLE REQUEST (TCB-HALT-PENDING?): only it
+\ writes HALT-REQ, and the run's end replaces it before ACTIVATE writes RUNNING.
 \
 \ Any other answer means nothing to halt (never activated, only prepared, or
 \ ended) and the state is left alone: an ended task has no PAUSE to reach, and
@@ -2088,6 +2081,12 @@ TASK-MIN-STACK constant MIN-STACK
 : HALTED? ( -- bool )
    TASK-SELF-N dup 0= if drop false exit then
    TASK-N>PTR TASK-STATE@ TASK-HALT-REQ = ;
+
+\ True from a halt's request until its unwind starts or the body has ended, in
+\ a callback or a DEFER-ENTER section too. False on main, with no TCB.
+: HALT-PENDING? ( -- bool )
+   TASK-SELF-N dup 0= if drop false exit then
+   TASK-N>PTR TCB-HALT-PENDING? ;
 
 \ Parks the calling task in the kernel for at least ms milliseconds, holding
 \ nothing. It observes no TASK:HALT until it wakes, so TASK:KILL on one waits

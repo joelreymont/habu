@@ -182,7 +182,7 @@ Back ==
     IF unwound THEN Unwind ELSE IF deferred THEN <<"halting">> ELSE <<"free">>
 
 (* HALT-UNWIND's test (task.f): a halt whose unwind has not begun          *)
-(* (HALT-PENDING? reads TCB.STOP), outside every DEFER-ENTER.              *)
+(* (TCB-HALT-PENDING? reads TCB.STOP), outside every DEFER-ENTER.          *)
 Pending == halted /\ ~unwound /\ ~deferred
 
 (* The end of SERVE's RECEIVE-STARTED (model.f) after DEFER-LEAVE and *)
@@ -302,11 +302,12 @@ Await(c) ==
                    wroteFreed, wokeEnded, rule>>
 
 (* AWAIT's started arm, deferred: take what is answered, else NEXT-TAKE's  *)
-(* TASK:WAIT and its HALTED? check, which starts ABANDON (curl.f). After   *)
-(* TASK:WAIT, NEXT-TAKE checks HALTED? before an answered read, so a       *)
-(* halted owner gives the record up even when its read was answered. Once  *)
-(* the call lands, DEFER-LEAVE, then its recorder and journal put         *)
-(* (ACCOUNT).                                                              *)
+(* TASK:WAIT and its TASK:HALT-PENDING? check, which starts ABANDON        *)
+(* (curl.f) on a halt whose unwind has not begun; in the unwind it waits   *)
+(* as an unhalted owner does. After TASK:WAIT, NEXT-TAKE checks the halt   *)
+(* before an answered read, so an owner with a halt pending gives the      *)
+(* record up even when its read was answered. Once the call lands,         *)
+(* DEFER-LEAVE, then its recorder and journal put (ACCOUNT).               *)
 AwaitStep(c) ==
     /\ opc = <<"await", c>>
     /\ \/ /\ lc[c] = "landed"
@@ -319,10 +320,10 @@ AwaitStep(c) ==
           /\ opc' = IF rec'[c] = "leaving" THEN <<"cleanup", c, "await">> ELSE opc
           /\ UNCHANGED <<hints, unwound>>
        \/ /\ lc[c] = "started"
-          /\ req[c] = "waiting" \/ (halted /\ req[c] \in Answered)
+          /\ req[c] = "waiting" \/ (halted /\ ~unwound /\ req[c] \in Answered)
           /\ hints > 0
           /\ hints' = hints - 1
-          /\ IF ~halted
+          /\ IF ~(halted /\ ~unwound)
              THEN UNCHANGED <<lc, rest, transport, opc, unwound, rec, req, held>>
              ELSE IF rec[c] = "done"
                   \* ABANDON: a DONE record is out of the multi handle; freed here.
