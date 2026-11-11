@@ -12292,12 +12292,12 @@ variable PE-I
 
 \ The row the last PRIM-ADD wrote, or -1 when the last row recorded nothing.
 variable PE-LAST   -1 PE-LAST !
-\ The symbols of a build's prefix end here, set after the host loop's rows below;
-\ 0 until then.
+\ A build's prefix symbols end here: the grammar's end at each CHECK:OPEN, raised
+\ past the kernel rows the build states (CHECK:PRIMS-END); 0 until set below.
 variable BUILD-SYM-END   0 BUILD-SYM-END !
 
-\ Whether sym's rows are hb's prefix's: a build's stores start from that prefix
-\ (CHECK:OPEN), which holds the row of every symbol below BUILD-SYM-END.
+\ Whether sym's rows are the open build's prefix's: the grammar's (CHECK:OPEN) and
+\ the kernel rows the build stated (CHECK:PRIMS-END).
 : PREFIX-SYM? ( n -- bool ) {: sym:n :}
    data-base BOOT:IMAGE-BASE-CELL + @ 0 <>  sym BUILD-SYM-END @ <  and ;
 
@@ -12790,10 +12790,8 @@ data-base BOOT:IMAGE-BASE-CELL + @ 0= 0= [if] PE-SPEC-NEW [then]
 
 KEYWORD-ROWS
 
-\ A build starts with the kernel's rows and the host loop's words only: the
-\ rows below name hb's own words, which a product defines for itself. Below
-\ BUILD-SYM-END is the prim region during a build. The prim rows are cut with
-\ the symbols, since a build's new symbols take the ids hb's later rows name.
+\ A build's stores start with the rows above (CHECK:OPEN); the rows below name
+\ hb's own words, and a build's new symbols take the ids those rows name.
 SYM-N @ BUILD-SYM-END !
 package CHECK
 SYMS-P SYM-CAP-V SYM-REC SYM-N STORE+
@@ -12801,6 +12799,7 @@ SYM-STR-P SYM-STR-CAP-V 1 SYM-STR-U STORE+
 USIGS-P USIGS-CAP-U 1 UEND STORE+
 PES-P PE-CAP-V PE-REC #PE STORE+
 USIGS-USER-OFF UEND @ CELL-ROW+
+BUILD-SYM-END BUILD-SYM-END @ CELL-ROW+
 ;package
 
 \ hb's rows for the words loaded before the checker; a copy inside a build
@@ -33367,10 +33366,14 @@ CHECKER-REG:}SCRATCH
 : READ-IX ( n -- ) {: ix:n :}
    ix FACTS@ ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;
 
-\ Reads record rec's facts text when it has one and no link.
+\ Reads record rec's facts text when it has one and no link, except hb's own
+\ record of a prefix symbol in a build: the prefix holds its rows (PREFIX-SYM?).
 : READ-BOUND ( ptr n -- ) {: rec:ptr :}
    rec CK-REC-FACTS-SLOT cells + @ 0= IF EXIT THEN
    rec NULL-PTR - dbase@ - CK-DREC / {: ix:n :}
+   BUILDING? ix BUILD-FIRST @ < and IF
+      rec REC-SYM PREFIX-SYM? IF EXIT THEN
+   THEN
    ix LINKED? IF EXIT THEN
    ix READ-IX ;
 
@@ -33421,4 +33424,32 @@ public
    {: a:ptr u:n ix:n :}
    u 0= IF EXIT THEN
    a u ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;
+
+\ The kernel object's rows, stated before a build's first file (link-kernel.f
+\ STATE-PRIMS) as READ-ROW states one: never a user record, which answers alone.
+
+\ A row with no effect: its symbol alone.
+: PRIM-NAME ( ptr u8 n -- ) PE-SYM-OF drop ;
+
+\ Opens a row with an effect; PRIM-ATOM runs each of its atoms.
+: PRIM-OPEN ( ptr u8 n -- ) PE-OPEN  0 PE-SPEC-TOS ! ;
+
+: PRIM-ATOM ( n -- ) PE-SPEC-ATOM ;
+
+\ Closes the open row with its trusted-only and fixed-ABI flags and its stow
+\ kind. A symbol the prefix holds, a grammar word's, states nothing.
+: PRIM-CLOSE ( bool bool n -- ) {: trusted:bool fixed:bool stow:n :}
+   PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" 76 die THEN
+   PE-NA@ PE-NU @ PE-SYM-OF {: sym:n :}
+   sym BUILD-SYM-END @ < IF  -1 PE-LAST !  EXIT  THEN
+   PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @ sym 0 READ-ROW
+   trusted IF PRIM-TRUSTED-ONLY! THEN
+   fixed IF PRIM-FIXED-ABI! THEN
+   stow 0= 0= IF stow PRIM-C2-STOW! THEN ;
+
+\ The stated symbols join the prefix; the primitives' axioms follow
+\ (NORET-AXIOM names prefix symbols only).
+: PRIMS-END ( -- )
+   SYM-N @ BUILD-SYM-END !
+   NORET-AXIOMS ;
 ;package

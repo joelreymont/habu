@@ -4989,11 +4989,19 @@ variable DUE-MADE
    here NULL-PTR - dup FILE-DP !  FILE-END !
    0 EXTS-N !  0 BUILT+ ;
 
+\ A build that links the object ARM64:READ read types the kernel's primitives by
+\ its rows; a kernel build and a Wasm target's link no arm64 object.
+: PRIMS-IN ( -- )
+   KERNEL? @ if exit then
+   ARM64:READ? 0= if exit then
+   WASM? if exit then
+   ARM64:STATE-PRIMS ;
+
 : OPEN ( -- )
    0 COMPILED-N !  0 LINKED-N !
    INSTALL-LOOP
    OWNED-TEXTS
-   MAP SHADOW MOVE-IN CHECK-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN
+   MAP SHADOW MOVE-IN CHECK-IN PRIMS-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN
    OWNED-RECORDS
    here NULL-PTR - OPEN-DP !
    TASKS-LIVE-CELL HOST@ OPEN-TASKS ! ;

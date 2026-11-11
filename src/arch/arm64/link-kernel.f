@@ -58,7 +58,7 @@ variable SYMS-AT
 variable SYMS-N
 variable PRESETS-AT
 variable PRESETS-N
-variable CHECK-ROWS-AT               \ the checker rows' bytes in KOBJ, 0 and 0 when absent
+variable CHECK-ROWS-AT               \ the checker rows' bytes in KOBJ
 variable CHECK-ROWS-U
 SHA256-CTX-BYTES BUFFER: SHA-CTX
 32 BUFFER: SUM
@@ -129,12 +129,13 @@ variable PATH-U
    1 TABLE SCOPES-N ! SCOPES-AT !
    SYMBOLS
    2 TABLE PRESETS-N ! PRESETS-AT !
-   \ The last section, the primitives' checker rows, when the object has it.
-   0 CHECK-ROWS-AT !  0 CHECK-ROWS-U !
-   AT @ KOBJ-U @ < if
-      NEXT {: rowsu:n :}
-      AT @ CHECK-ROWS-AT !  rowsu CHECK-ROWS-U !  rowsu SKIP
+   AT @ KOBJ-U @ = if
+      SAY-OBJECT
+      s" link: the kernel object has no checker rows: its tree is older than this hb" 74 die
    then
+   \ The last section, the primitives' checker rows.
+   NEXT {: rowsu:n :}
+   AT @ CHECK-ROWS-AT !  rowsu CHECK-ROWS-U !  rowsu SKIP
    AT @ KOBJ-U @ <> if BAD then ;
 
 : CHECK ( -- )
@@ -147,6 +148,32 @@ variable PATH-U
    then ;
 
 : LABEL-AT ( n -- n ) 8 * LABELS-AT @ + KOBJ@ ;
+
+\ The name at AT: its length, then its bytes padded to 8.
+: NAME-NEXT ( -- ptr u8 n )
+   NEXT {: u:n :}
+   AT @ {: at:n :}
+   u SKIP
+   0 KOBJ at +  u ;
+
+\ One row as kernel-object.f CHECK-ROW+ lays it, stated by kind (PRIM-SPEC:K-*);
+\ a package's private row is its owner's record's (linker.f OWNED-TEXTS).
+: STATE-ROW ( -- )
+   NEXT NEXT NEXT NEXT {: kind:n trusted:n fixed:n stow:n :}
+   NAME-NEXT {: name:ptr nameu:n :}
+   NAME-NEXT 2drop
+   NEXT {: atoms:n :}
+   atoms 0<  atoms KOBJ-U @ > or if BAD then
+   kind PRIM-SPEC:K-PRIM = if
+      name nameu CHECK:PRIM-OPEN
+      atoms 0 ?do NEXT CHECK:PRIM-ATOM loop
+      trusted 0<>  fixed 0<>  stow CHECK:PRIM-CLOSE
+      exit
+   then
+   atoms 8 * SKIP
+   kind PRIM-SPEC:K-ELAB = if name nameu CHECK:PRIM-NAME exit then
+   kind PRIM-SPEC:K-UNROWED =  kind PRIM-SPEC:K-PKG-PRIVATE = or if exit then
+   BAD ;
 
 
 public
@@ -219,6 +246,17 @@ public
    size KOBJ-U !
    CHECK SECTIONS
    DATA-START  s" DATA-START" SYM  s" DATA-START" SAME ;
+
+\ States READ's object's primitive rows to the open build's checker in table
+\ order, which overloads keep; the section ends the object, which NEXT bounds.
+: STATE-PRIMS ( -- )
+   CHECK-ROWS-AT @ AT !
+   CHECK-ROWS-AT @ CHECK-ROWS-U @ + {: end:n :}
+   NEXT {: count:n :}
+   count 0<  count KOBJ-U @ > or if BAD then
+   count 0 ?do STATE-ROW loop
+   AT @ end <> if BAD then
+   CHECK:PRIMS-END ;
 
 \ The running hb's kernel is [rbase, CODE-END-CELL).
 : HOST-KERNEL? ( n -- bool )
