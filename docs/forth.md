@@ -927,9 +927,13 @@ DEFINE GETAFIX ( ptr line ) entry key
 
 ## Words & factoring
 
-A word is usually about five lines and takes at most five or six inputs, a
-pointer and its length counting as two. A straight-line wrapper may fit on one
-line; `if`, loops, `case` and locals go on lines of their own.
+Code is well-factored, because people read it: a word does one thing, its
+name says what, and its body reads without tracking a deep stack. A word is
+usually about five lines and takes at most five or six inputs, a pointer and
+its length counting as two. A straight-line wrapper may fit on one line; `if`,
+loops, `case` and locals go on lines of their own. A repeated sequence, a
+dense call's `if/else` or comparison, and each pass of multi-pass work become
+named words, with one word that runs them in order.
 
 - `and`/`or` take values already computed and do not short-circuit: guard a
   dependent read, index or bounds operation with `if` before it.
@@ -991,6 +995,7 @@ line; `if`, loops, `case` and locals go on lines of their own.
   so that copy refuses it, naming the path: `include: a word loaded or
   provided a file during a build; do it at the file's top level: <path>`
   ("Packages" lists the words refused).
+- **Keep lines short**, 80 columns at most: people read this code.
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
   standard input, in every file `--load`, `include` and `require` load, and in
   the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.

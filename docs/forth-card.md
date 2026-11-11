@@ -126,6 +126,9 @@ cannot execute: `E-EXEC-OPAQUE-XT`.
   definition, block-scoped, bindable after a closed early-exit guard. A local
   hides the word of its spelling, the loop index included:
   `{: i:n :} 3 0 ?do i . loop` prints the local three times.
+- Code is well-factored and its lines are short, 80 columns at most, because
+  people read it: a word does one thing in about five lines, and a repeat or
+  a dense expression becomes a named word.
 - A `{: … :}` group that binds at entry goes on its own line after the name
   and stack effect, indented three spaces as the body.
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
