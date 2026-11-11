@@ -1027,7 +1027,11 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 : BLANK? ( n -- bool ) {: c:n :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
 : CUT? ( n -- bool ) {: c:n :}  c BLANK?  c 58 = or  c 34 = or ;
 
+\ A byte that ends a type argument in a span: '<', '>' and ','.
+: ARG-CUT? ( n -- bool ) {: c:n :}  c 60 =  c 62 = or  c 44 = or ;
+
 variable PART-AT                     \ SPELLED's running part's first byte
+variable ARG-FROM                    \ its running argument's
 variable WORD-AT                     \ its running word's
 TYPED-VARIABLE JOINED bool           \ the running word holds a ':' or '"'
 TYPED-VARIABLE FIRST-WORD bool       \ no word has ended on the running line
@@ -1057,24 +1061,36 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    {: src:ptr i:n c:n :}
    src WORD-AT @ i COMMENT?  c 10 <>  and if true SKIP ! exit then
    src PART-AT @ i HIT-SPAN
+   ARG-FROM @ PART-AT @ > if src ARG-FROM @ i HIT-SPAN then
    JOINED @ if src WORD-AT @ i HIT-SPAN then
    i WORD-AT @ > if src WORD-AT @ i OPENS  false FIRST-WORD ! then
    c 10 = if true FIRST-WORD ! then
-   i 1 + PART-AT !  i 1 + WORD-AT !  false JOINED ! ;
+   i 1 + PART-AT !  i 1 + ARG-FROM !  i 1 + WORD-AT !  false JOINED ! ;
 
-\ SPELL-HIT for each name the source spells outside its comment lines: each span between CUT? bytes,
-\ and each between white space that holds a ':' or '"', so `P:W` names P, W and P:W.
+\ SPELL-HIT for each name outside comment lines: a span between CUT? bytes, a
+\ run of it between ARG-CUT? bytes (`box<turn>`: box<turn>, box, turn) and a
+\ joined word (`P:W`: P, W, P:W).
 : SPELLED ( ptr u8 n -- )
    {: src:ptr u:n :}
-   0 PART-AT !  0 WORD-AT !  false JOINED !  true FIRST-WORD !  false SKIP !
+   0 PART-AT !  0 ARG-FROM !  0 WORD-AT !  false JOINED !
+   true FIRST-WORD !  false SKIP !
    false AFTER-PACKAGE !  0 OPENED-N !  SPELLS BUF:CLEAR  RUN!
    u 0 ?do
       src i + c@ {: c:n :}
       SKIP @ if
-         c 10 = if false SKIP !  true FIRST-WORD !  i 1 + PART-AT !  i 1 + WORD-AT ! then
+         c 10 = if
+            false SKIP !  true FIRST-WORD !
+            i 1 + PART-AT !  i 1 + ARG-FROM !  i 1 + WORD-AT !
+         then
       else
          c BLANK? if src i c WORD-END else
-            c CUT? if src PART-AT @ i HIT-SPAN  i 1 + PART-AT !  true JOINED ! then
+            c CUT? if
+               src PART-AT @ i HIT-SPAN
+               ARG-FROM @ PART-AT @ > if src ARG-FROM @ i HIT-SPAN then
+               i 1 + PART-AT !  i 1 + ARG-FROM !  true JOINED !
+            else
+               c ARG-CUT? if src ARG-FROM @ i HIT-SPAN  i 1 + ARG-FROM ! then
+            then
          then
       then
    loop
