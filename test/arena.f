@@ -204,6 +204,10 @@ private
    s" XQ" NO-WORDS
    s" ARENA XC [ xt -- ]" EVAL CHECKER-REJECT-RC T=
    s" XC" NO-WORDS
+   s" ARENA XW [ width<n> -- ]" EVAL CHECKER-REJECT-RC T=
+   s" XW" NO-WORDS
+   s" ARENA XV [ -- width<n> ]" EVAL CHECKER-REJECT-RC T=
+   s" XV" NO-WORDS
    s" ARENA OPENQ [ a -- a ]" EVAL CHECKER-REJECT-RC T=
    s" OPENQ" NO-WORDS
    s" a name whose derived word is taken defines none of the others" T-LABEL

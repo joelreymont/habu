@@ -8561,13 +8561,16 @@ variable CAST-PATH-N
    RES-FALSE ;
 
 \ CHECKER-DYNAMIC-INFO's answer, false for a type that may hold a linear value,
-\ an open type variable or an atom it hands out as a pointee.
+\ an open type variable, or an atom or a width it hands out as a pointee.
 : ARENA-TERM-INFO ( -- n bool )
    STORAGE-TERM-OK? 0= IF 0 RES-FALSE EXIT THEN
    DYNAMIC-BYTES 0= IF RES-FALSE EXIT THEN
    CAST-WALK-RESET
    LBI-T @ CAST-MAY-LINEAR? IF drop 0 RES-FALSE EXIT THEN
    CAST-WALK-RESET LBI-T @ CAST-BOTH INTRO-ATOM CAST-INTRO? IF
+      drop 0 RES-FALSE EXIT
+   THEN
+   CAST-WALK-RESET LBI-T @ CAST-BOTH INTRO-WIDTH CAST-INTRO? IF
       drop 0 RES-FALSE EXIT
    THEN
    RES-TRUE ;
