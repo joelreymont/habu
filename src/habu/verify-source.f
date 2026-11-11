@@ -1381,8 +1381,8 @@ CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
 \ Only a reached call whose outputs this reader does not model can introduce
 \ nominal types absent from the source. A modeled declaration checks its own
 \ complete type before it publishes anything.
-: QUIET-NOMINAL ( ptr u8 n -- ) {: a:ptr u:n :}
-   QUIET @ 0= IF EXIT THEN
+: NOMINAL-MARK ( ptr u8 n -- )
+   {: a:ptr u:n :}
    a u num-parse nip nip IF EXIT THEN
    a u STRING-OPENER? IF EXIT THEN
    a u MARK-NOMINAL RENDERS-MARK? drop ;
@@ -3977,7 +3977,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    \ declares. A `;FUNCTION` closing a group the scan read is taken here; any
    \ other undeclared renderer is deferred at its token (RENDER-GAP), by
    \ BOUND-CALL when a definer arm below takes it, else by TOP-TOKEN.
-   a u QUIET-NOMINAL
+   a u NOMINAL-MARK
    a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
    renders a u FFI-CLOSER? and IF
       FFI-STAGING  false FFI-CLAUSES !  false FFI-GROUP !  0 0= EXIT
@@ -4133,7 +4133,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    a u num-parse nip nip IF EXIT THEN
    a u s" [package]" STR=CI IF EXIT THEN   \ pushes a name, calls nothing
    a u STRING-OPENER? 0= IF TICK-CONTEXT-UNKNOWN THEN
-   a u QUIET-NOMINAL
+   a u NOMINAL-MARK
    a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
    renders 0= IF a u MARK-UNSEEN RENDERS-MARK? drop THEN
    \ Index safety still needs every call after a refused declaration: an open
@@ -4519,11 +4519,11 @@ public
 : SOURCE-RESET-ISOLATED-VISITS ( -- )
    0 VISIT-NEXT ! ;
 
-\ The verifier's child asks for deferred packets (tools/check-verify-child.f).
+\ The caller says whether this run's deferrals are reported as packets.
 \ DEFERRED? reports coverage for the last run whether or not packets were asked
 \ for; RUN-IN-SCOPE clears that fact before each run.
-: REPORT-DEFERRALS ( -- )
-   -1 DEFER-REPORT !  0 DEFER-SEEN ! ;
+: REPORT-DEFERRALS ( bool -- )
+   bool>n DEFER-REPORT !  0 DEFER-SEEN ! ;
 
 : DEFERRED? ( -- bool )
    DEFER-SEEN @ 0<> ;

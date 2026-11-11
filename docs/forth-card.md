@@ -300,12 +300,13 @@ reads none of the tokens after it, so they are checked. A reached renderer no
 row or group declares is `W-CHECK-DEFERRED` at its own token, so a `deferred`
 verdict always locates its gap.
 
-After a reached call that may render or register nominal types, quiet
-verification defers a later use of a missing type with `W-CHECK-DEFERRED` at
-that type. It consumes the declaration without publishing a type, layout,
-signature or generated words. Known syntax, visibility, arity and count errors
-still refuse. Defining a provider, taking its tick or reading an uncalled body
-does not create this uncertainty; ordinary loading keeps its existing rules.
+After a reached call that may render or register nominal types, verification
+defers a later use of a missing type to the run; a check no run follows reports
+it as `W-CHECK-DEFERRED` at that type. It consumes the declaration without
+publishing a type, layout, signature or generated words. Known syntax,
+visibility, arity and count errors still refuse. Defining a provider, taking its
+tick or reading an uncalled body does not create this uncertainty; ordinary
+loading keeps its existing rules.
 
 After a resident immediate in a body or a top-level loader, later ordering is
 uncertain: `--verify-only` reports a trusted-only tick as `W-CHECK-DEFERRED`

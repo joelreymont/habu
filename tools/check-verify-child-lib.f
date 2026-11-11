@@ -573,7 +573,7 @@ variable OF-U                           \ 0 for the other forms
 : VERIFY-CLOSURE ( -- )
    0 FAILED !
    0 STOP !
-   VERIFY:REPORT-DEFERRALS
+   true VERIFY:REPORT-DEFERRALS
    [: VERIFY-ALL ;] SCOPED {: rc:n :}
    rc 0<> if
       ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE

@@ -529,17 +529,14 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    s" a clause that never returns owes no output" T-LABEL
    s" : CDD-NORET ( n -- ) create , does> ( n -- ptr u8 ) drop 5 throw ;" TEST-EVAL:RC 0 T= ;
 
-\ Section 14: a clause whose signature names a type a rendering statement may
-\ still declare is deferred unwalked and reported at that type, as its colon twin
-\ is, so the definer counts as deferred. Only a quiet composition lets a reached
-\ renderer's call stand for the types it may declare
-\ (src/habu/verify-source.f QUIET-NOMINAL).
+\ Section 14: a clause naming a type a reached renderer may declare is deferred
+\ unwalked at that type, as its colon twin is (verify-source.f NOMINAL-MARK).
 : CDD-QUIET$ ( -- ptr u8 n )
    s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" INCLUDE-EVALUATE ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
 
 : CDD-SECTION-QUIET-CLAUSE ( -- )
    s" a clause naming a type a renderer may declare is deferred at that type" T-LABEL
-   VERIFY:REPORT-DEFERRALS
+   true VERIFY:REPORT-DEFERRALS
    CDD-DIAG 4096 DIAG-BUFFER!
    CHECKER-SCOPE-START-NEUTRAL
    [: CDD-QUIET$ s" cdd-quiet.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch

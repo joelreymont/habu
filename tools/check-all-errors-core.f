@@ -594,13 +594,16 @@ private
    labelu CA-FILE-U !
    labela CA-FILE-A! ;
 
+\ Only a source run reports deferrals: no run follows it, as one follows a compose.
 : CA-RUN-SOURCE ( -- )
+   true VERIFY:REPORT-DEFERRALS
    CA-LEX
    CA-RUN-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
    CA-FAILED @ 0 <> IF CA-REFUSED throw THEN ;
 
 : CA-RUN-COMPOSE ( -- )
+   false VERIFY:REPORT-DEFERRALS
    CA-LEX
    CA-RUN-COMPOSE-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
