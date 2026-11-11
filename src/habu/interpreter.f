@@ -3,7 +3,31 @@
 \ body capture, then the loop, which reads a buffer token by token.
 \ INTERPRETER:EVAL-FRAMED and EVAL-FRAMED-RANGE run the loop under the engine's
 \ evaluate frame, and INTERPRETER:INSTALL-EVALUATE stores them in the engine's
-\ evaluate cells (src/habu/layout.f PROVIDED-XT).
+\ evaluate cells.
+\
+\ NUMBER reads a token: an optional `-`, an optional `$` for radix 16 with
+\ digits a-f and A-F, then digits. A radix-10 token may end in one `.` and one
+\ or more digits, which makes it a float; its value is then the double's bits.
+\ A token of that shape can still be out of range, and the interpreter then
+\ reports it undefined without looking it up as a name. Its digits may not
+\ carry past 2^64 - 1. A decimal integer's magnitude is at most MAX-N, or 2^63
+\ when negative; a hex integer keeps all 64 bits and negates modulo 2^64. A
+\ float's integer part is at most MAX-N and its fraction at most 18 digits.
+\
+\ A backslash or `(` opens a comment only as a whole one-byte token. The comment
+\ runs past the next newline or `)`. A backslash comment may also run to the end
+\ of the input; a `(` comment the input ends inside is refused at the `(`.
+\
+\ The source observer arms on the range it owns. Before an action the loop
+\ stores the depths and the cursor's offset and runs the before callback, then
+\ the action is pending until the top of the next pass, which stores them again
+\ and runs the after callback under catch. The token and input cells are put
+\ back after each callback, and a callback's throw goes on to the loop's catch:
+\ an owned loop always runs under EVAL-FRAMED-RANGE's frame. A word that
+\ evaluates the owned buffer hands the observer to that evaluate's frame, with
+\ the word's ticket and its source start, and the buffer's tokens are observed
+\ with offsets relative to its start; the frame gives all three back as it
+\ ends, with the word's run pending again.
 
 require src/lib/prelude.f
 require src/core/bytes.f
@@ -14,17 +38,6 @@ require src/habu/xref.f
 require src/compiler/native/dict.f
 require src/habu/escape.f
 require src/core/top-row.f
-
-\ NUMBER reads a token as the engine's reader does (LNUM, EMIT-NUM in
-\ habu1.f): an optional `-`, an optional `$` for radix 16 with digits a-f and
-\ A-F, then digits. A radix-10 token may end in one `.` and one or more
-\ digits, which makes it a float; its value is then the double's bits.
-\
-\ A token of that shape can still be out of range, and the interpreter then
-\ reports it undefined without looking it up as a name. Its digits may not
-\ carry past 2^64 - 1. A decimal integer's magnitude is at most MAX-N, or 2^63
-\ when negative; a hex integer keeps all 64 bits and negates modulo 2^64. A
-\ float's integer part is at most MAX-N and its fraction at most 18 digits.
 
 package INTERPRETER
 private
@@ -97,8 +110,6 @@ $8000000000000000 constant MIN-N
    hi lo ?do a i + c@ 10 DIGIT drop FRAC-STEP loop ;
 
 
-\ Whether the token from dot on is a float's fraction: a radix-10 `.` and one
-\ or more digits that run to the end.
 : FRACTION? ( ptr u8 n n n -- bool ) {: a:ptr u:n dot:n radix:n :}
    radix 10 <> if false exit then
    a u dot [char] . AT? 0= if false exit then
@@ -113,7 +124,6 @@ $8000000000000000 constant MIN-N
    0 false false true ;
 
 
-\ A carry, or a decimal magnitude past MAX-N (2^63 when negative).
 : INT-OUT? ( n bool bool n -- bool ) {: int:n wrapped:bool neg:bool radix:n :}
    wrapped if true exit then
    radix 16 = if false exit then
@@ -194,30 +204,16 @@ public
 
 ;package
 
-\ INTERPRETER:FIND answers the record the engine's own lookup binds one token
-\ to, or XREF-NULL: NDICT:SCOPE-REC, which is the `scope-find` primitive
-\ (habu2.f LSCOPEREC) - LFIND and then the used publics, the leaves the JIT's
-\ call site runs. The row comes back whatever its flags, and the caller reads
-\ the immediate, wide, internal and min-in facts from its XREF-FLAGS, as LFIND's
-\ flag output folds them: the interpreter must see an internal row in order to
-\ refuse it. Two used publics that both export the tail are E-USING-AMBIGUOUS.
-\ FIND-SCOPE answers LFIND's record alone, which a body's immediate and the
-\ operand of `export` are looked up with.
+\ FIND answers the row the engine's lookup binds a token to whatever its flags:
+\ the interpreter must see an internal row in order to refuse it.
 
 package INTERPRETER
 
 private
 
-\ Not the lookup: the row one wordlist holds under a name, whatever its flags -
-\ the namespace row `package`, `using` and a qualified definition name ask,
-\ `checker-export`, and the tail a definition or `export` would add, which must
-\ not be there yet.
-\ xref-search-wl walks the dictionary's hash index under the key the engine's
-\ own probe uses; its row is INTERPRETER's own (src/habu/prims.f).
+\ Not the lookup: the row one wordlist holds under a name, whatever its flags.
 : WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
-\ The index of the first colon at or after `from`, or -1: the shape the
-\ qualifier readers refuse a token by.
 : COLON-AT ( ptr u8 n n -- n )
    {: a:ptr u:n from:n :}
    u from ?do
@@ -225,12 +221,9 @@ private
    loop
    -1 ;
 
-\ LFIND's answer: the open package, the package enclosing it, then the
-\ global wordlist, or NAME:tail, never a used public. It is the lookup's
-\ answer unless a used public bound it, and the lookup asks the used publics
-\ only when LFIND missed: a bound record that is also theirs is LFIND's miss,
-\ except in the open or the enclosing package's public wordlist, where a
-\ package that uses either met it in LFIND first.
+\ The scope's answer (open package, enclosing package, global, NAME:tail), never
+\ a used public's: a row the used publics bound is a miss, except in the open
+\ or the enclosing package's public wordlist, which the scope searched first.
 : FIND-SCOPE ( ptr u8 n -- ptr n )
    scope-find drop drop {: rec:ptr used:ptr :}
    rec used <> if rec exit then
@@ -247,21 +240,22 @@ public
 
 ;package
 
-\ The loop (EVAL-FRAMED-RANGE) reads the engine's input cells, so a parsing word reads its buffer;
-\ it keeps its state off the return stack, whose depth the source observer compares with SX-RFLOOR.
+\ The loop reads the engine's input cells, so a parsing word reads its buffer;
+\ it keeps its state off the return stack, whose depth the source observer
+\ checks.
 
 package INTERPRETER
 
 private
 
-70 constant RC-REJECT            \ habu2.f RC-REJECT: a refused token, catchable
-74 constant RC-BAD-LITERAL       \ habu2.f C-QUOTE-EOF: no closing quote, or a bad escape
-74 constant RC-NO-NAME           \ habu2.f C-DIE-KEYWORD-NAME: a keyword's operand is missing
+70 constant RC-REJECT            \ a refused token, catchable
+74 constant RC-BAD-LITERAL       \ no closing quote, or a bad escape
+74 constant RC-NO-NAME           \ a keyword's operand is missing
 74 constant RC-UNCLOSED          \ the input ends inside a definition or a ( comment, or closes one it did not open
-76 constant RC-TOO-LONG          \ habu2.f LCSTR: a counted string past CSTR-MAX bytes
-79 constant RC-TASK-THREAD       \ habu2.f C-TASK-GUARD's $4F: a keyword run on a task's thread
-52 constant MIN-IN-SHIFT         \ layout.f DNAME-MIN-IN-MASK: record flag bits 52-59
-32 constant BLANK                \ LTOK: every byte at or below it separates tokens
+76 constant RC-TOO-LONG          \ a counted string past CSTR-MAX bytes
+79 constant RC-TASK-THREAD       \ a keyword run on a task's thread
+52 constant MIN-IN-SHIFT         \ record flag bits 52-59
+32 constant BLANK                \ every byte at or below it separates tokens
 $0A constant NEWLINE
 $5C constant LINE-COMMENT        \ a backslash
 $28 constant OPEN-COMMENT        \ (
@@ -278,13 +272,12 @@ create NL NEWLINE c,
 : CELL! ( n n -- )
    data-base + ! ;
 
-\ The input cells hold byte addresses (EVAL-FRAMED-RANGE, habu1.f LTOK). These two are
-\ interpreter.f's one crossing between such a cell and a byte pointer, through
-\ `ptr-field`, the declared door to a DATA cell that holds an address.
+\ The input cells hold byte addresses. These two are the file's one crossing
+\ between such a cell and a byte pointer.
 : ADDR@ ( n -- ptr u8 ) data-base + 0 ptr-field @ ;
 : ADDR! ( ptr u8 n -- ) data-base + 0 ptr-field ! ;
 
-\ A cell of a frame the engine holds (FRAME-OPEN, the source observer).
+\ A cell of a frame the engine holds.
 : FR! ( n ptr u8 n -- )
    + CELL-VIEW ! ;
 
@@ -298,8 +291,8 @@ create NL NEWLINE c,
    c [char] A [char] Z BETWEEN? if c CASE-BIT or exit then
    c ;
 
-\ Whether the span a u spells kw, which is lowercase. As the engine's LKWCMP
-\ does, only the span's A-Z are folded.
+\ Whether the span a u spells kw, which is lowercase. Only the span's A-Z are
+\ folded.
 : FOLDED= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n kw:ptr v:n :}
    u v <> if false exit then
    u 0 ?do
@@ -310,15 +303,13 @@ create NL NEWLINE c,
 : TOKEN-IS? ( ptr u8 n -- bool )
    TOKEN$ 2swap FOLDED= ;
 
-\ The engine's twin: habu1.f LTOK.
 : BLANKS-END ( ptr u8 ptr u8 -- ptr u8 ) {: p:ptr e:ptr :}
    p begin dup e < if dup c@ BLANK <= else false then while 1 + repeat ;
 
 : WORD-END ( ptr u8 ptr u8 -- ptr u8 ) {: p:ptr e:ptr :}
    p begin dup e < if dup c@ BLANK > else false then while 1 + repeat ;
 
-\ The next token lands in TKA and TKL, and INP stops on the byte after it. With
-\ none left INP is the end and the token cells keep the last token.
+\ With no token left INP is the end and the token cells keep the last token.
 : TOKEN ( -- bool )
    INP-CELL ADDR@ INE-CELL ADDR@ {: p:ptr e:ptr :}
    p e BLANKS-END {: s:ptr :}
@@ -329,7 +320,6 @@ create NL NEWLINE c,
    t s - TKL-CELL CELL!
    true ;
 
-\ The engine's twin: habu2.f EM-COMPILE-UNDEF.
 : REFUSE ( ptr u8 n -- )
    ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE NL 1 ERROR-TEXT:TYPE
    RC-REJECT throw ;
@@ -338,8 +328,6 @@ create NL NEWLINE c,
 : LINE ( -- n )
    SRCLOC:OWNED-CELL ADDR@ INP-CELL ADDR@ ERROR-TEXT:LINE ;
 
-\ The place, as the engine's twin habu2.f LSRCAT prints it: ` at <path>` while
-\ a source file is open, and `:<line>` after it under SRCLOC:FILE-BUFFER?.
 : AT-SOURCE ( -- )
    SRCLOC:PATHLEN-CELL CELL@ {: u:n :}
    u 0= if exit then
@@ -349,9 +337,6 @@ create NL NEWLINE c,
    s" :" ERROR-TEXT:TYPE
    LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 
-\ The engine's compile-die tail (habu2.f LCOMPILEDIE) after a site's message:
-\ the location, a newline, then the site's code, thrown as the engine throws
-\ it inside evaluate.
 : THROW-AT ( n -- )
    AT-SOURCE NL 1 ERROR-TEXT:TYPE throw ;
 
@@ -366,41 +351,31 @@ create NL NEWLINE c,
    s" hb: bare word a global and a used package both export: " ERROR-TEXT:TYPE
    TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:USING-SHADOW-GLOBAL THROW-AT ;
 
-\ Where the engine ends the process instead of throwing (NR-EXIT-GROUP), the
-\ text and a newline go to descriptor 2 and no program code runs: the exit
-\ hook (src/habu/layout.f EXIT-HOOK-CELL) is cleared before `die`, which would
-\ otherwise call it.
+\ No program code runs after the text: the exit hook is cleared before `die`,
+\ which would otherwise call it.
 : FAIL-CLOSED ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    0 EXIT-HOOK-CELL CELL!
    s" " rc die ;
 
-\ A sealed package's refusal ends the process with its code, the token and
-\ where it stands (habu2.f C-SEAL-PACKAGE-FAIL).
 : SEALED-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-SEALED-PACKAGE: " ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  AT-SOURCE
    s" " ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
-\ A keyword that changes the dictionary or its scope, run on a task's thread
-\ (TASK-TCB-CELL nonzero), ends the process, the keyword its whole diagnostic
-\ line (habu2.f C-TASK-GUARD).
+\ A keyword that changes the dictionary or its scope, run on a task's thread,
+\ ends the process, the keyword its whole diagnostic line.
 : TASK-GUARD ( -- )
    TASK-TCB-CELL CELL@ 0= if exit then
    TOKEN$ RC-TASK-THREAD FAIL-CLOSED ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
-\ wrote (habu1.f OVERLAY-EMIT:GUARD, reads the same latch at the same sites).
-\ An `undefine` refuses at its own entry, which both loops run (xref.f
-\ XREF-UNDEFINE-GUARD).
+\ wrote.
 : OVERLAY-GUARD ( -- )
    REPLAY-SCOPE:LATCH CELL@ 0= if exit then
    s" hb: definition while a checker replay is open: " ERROR-TEXT:TYPE
    TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:OVERLAY-OPEN THROW-AT ;
 
-\ A backslash or `(` opens a comment only as a whole one-byte token. The comment
-\ runs past the next newline or `)`. A backslash comment may also run to the end
-\ of the input; a `(` comment the input ends inside is refused at the `(`.
 \ Whether c was found: INP stops past it, else at the end of the input.
 : SKIP-PAST ( n -- bool )
    {: c:n :}
@@ -424,19 +399,14 @@ create NL NEWLINE c,
    false ;
 
 \ A word or the hook runs through execute-floor, which answers whether it left
-\ the stack below its base and then resets the stack to the base: the floor the
-\ engine checks after every token. The prim's row states no effect for the xt,
-\ so it is INTERPRETER's alone (src/habu/prims.f).
+\ the stack below its base and then resets the stack to the base.
 : FLOORED ( bool -- )
    if s" E-UNDERFLOW: " REFUSE then ;
 
 \ CHECK:TOP-LEVEL gets ( token class flags ) for each number after the push
 \ and for each word, past its gates, before it runs, and consumes those four
-\ cells, as the event protocol states. A check that leaves the stack below its
-\ base on a word event is refused here, before the word runs; the engine runs
-\ the word and stops it only where it touches the guard page (the underdepth
-\ throw, crash.f ONE FAULT IS NOT AN EXIT), so this loop names the underflow
-\ before any of the word has run.
+\ cells. A check that leaves the stack below its base on a word event is
+\ refused here, before the word runs.
 CAST: HOOK-CALL ( [ -- ] -- n )
 
 \ The call runs under the floor, so it pushes the event itself: a quotation
@@ -451,16 +421,15 @@ variable EVENT-FLAGS
 
 variable VALUE
 
-\ A number's value waits in VALUE. One out of range is undefined, and no word
-\ of its spelling is asked for.
 : NUMERAL? ( -- bool )
    TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
    range if UNDEFINED then
    v VALUE !
    num ;
 
-\ The record of the word the step looked up; EVAL-FRAMED-RANGE restores it as the buffer ends, since
-\ a stripped image would hold a record that outlived its buffer as an undeclared dictionary pointer.
+\ EVAL-FRAMED-RANGE restores it as the buffer ends, since a stripped image
+\ would hold a record that outlived its buffer as an undeclared dictionary
+\ pointer.
 TYPED-VARIABLE REC ptr n
 
 \ A sealed source may name a record it defined after the seal or a callable
@@ -483,9 +452,8 @@ TYPED-VARIABLE REC ptr n
    rec XREF-WORDLIST OWNER-API-PRI-WID = if POLICY-REFUSE then
    rec XREF-START 0= if POLICY-REFUSE then ;
 
-\ At top level, once SOURCE-ROOT! has stored the
-\ ordinary `require` (POLICY-REQUIRE-CELL), its global record, spelled so, is in
-\ the vocabulary as well. A body never admits it.
+\ At top level the ordinary `require`'s global record, spelled so, is in the
+\ vocabulary as well. A body never admits it.
 : POLICY-REQUIRE? ( ptr n -- bool ) {: rec:ptr :}
    POLICY-REQUIRE-CELL CELL@ {: req:n :}
    req 0= if false exit then
@@ -498,9 +466,8 @@ TYPED-VARIABLE REC ptr n
    rec POLICY-REQUIRE? if exit then
    rec POLICY-CHECK-REC ;
 
-\ A global hit is asked of the used publics as well: one that also exports the token refuses
-\ it, and two are the lookup's ambiguity. The lookup names the used publics'
-\ record whether or not LFIND bound the token.
+\ A global hit is asked of the used publics as well: one that also exports the
+\ token refuses it, and two are the lookup's ambiguity.
 : LOOKUP-GO ( -- )
    TOKEN$ FIND REC !
    REC @ POLICY-CHECK-TOP
@@ -510,15 +477,12 @@ TYPED-VARIABLE REC ptr n
    flags SCOPE-FIND-AMBIGUOUS and 0<> if E-USING-AMBIGUOUS throw then
    used XREF-FOUND? if SHADOWED then ;
 
-\ The token's record lands in REC, XREF-NULL on a miss. FIND's ambiguity is
-\ the engine's refusal.
 : SEARCH ( -- )
    XREF-NULL REC !
    [: LOOKUP-GO ;] catch {: code:n :}
    code E-USING-AMBIGUOUS = if AMBIGUOUS then
    code 0<> if code throw then ;
 
-\ A word to run: a miss is undefined.
 : LOOKUP ( -- )
    SEARCH
    REC @ XREF-FOUND? 0= if UNDEFINED then ;
@@ -541,27 +505,25 @@ TYPED-VARIABLE REC ptr n
       s" hb: internal engine word: " REFUSE
    then ;
 
-\ A word to run passes them, then has its certified inputs on the stack.
 : GATE ( -- )
    XT-GATE
    SCOPE-ENTRY-GUARD
    depth REC @ XREF-FLAGS MIN-IN < if s" hb: interpret stack underdepth: " REFUSE then ;
 
-\ LFIND's flag word as the hook reads it (layout.f TOP-EV-*): bit 0 found,
-\ bit 1 immediate, bits 8-15 the certified inputs.
+\ The flag word as the hook reads it: bit 0 found, bit 1 immediate, bits 8-15
+\ the certified inputs.
 : WORD-FLAGS ( -- n )
    REC @ XREF-FLAGS {: f:n :}
    1 f DNAME-IMM and 0<> if 2 or then
    f MIN-IN 8 lshift or ;
 
-\ This loop stores the frame fields source-exec-boundary?, -loader-cut? and -position read.
 4 constant OBSERVE-TICK          \ the before callback's op for a tick's target
 public
-5 constant OBSERVE-WORD          \ the before callback's op for a word about to run; the linker's RESUME passes it too
+5 constant OBSERVE-WORD          \ the before callback's op for a word to run
 private
 
 \ The frame of the innermost loop written in Habu, as EVAL-TOP-CELL holds it, 0
-\ outside one; a native evaluate inside it moves only EVAL-TOP-CELL (OBSERVE-ADOPT).
+\ outside one; a native evaluate inside it moves only EVAL-TOP-CELL.
 variable LOOP-EVAL
 
 \ The frame's callback cells hold raw execution tokens.
@@ -575,12 +537,6 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    ctx SX-ARMED FR@ 0= if false exit then
    ctx SX-EVAL FR@ LOOP-EVAL @ = ;
 
-\ Adopt the armed observer when the word this loop runs evaluates the buffer
-\ frame f bounds: the loop reading is the observed one and the frame f links
-\ in (EVAL-TOP-CELL until FRAME-LINK makes it f's EVAL-PREV), the word's run
-\ is pending, no callback and no definition is open. f keeps the observer, the
-\ word's ticket and its source start; the buffer's tokens are observed with
-\ offsets relative to src.
 : OBSERVE-ADOPT ( ptr u8 ptr u8 ptr u8 -- ) {: ctx:ptr src:ptr f:ptr :}
    ctx SX-EVAL FR@ LOOP-EVAL @ <> if exit then
    ctx SX-EVAL FR@ EVAL-TOP-CELL CELL@ <> if exit then
@@ -594,8 +550,6 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    src NULL-PTR - ctx SX-SRC FR!
    0 ctx SX-PENDING FR! ;
 
-\ Arm the frame when the range this evaluate opens is the owned one: the
-\ frame, the depth floor and the return-stack floor.
 : OBSERVE-ARM ( ptr u8 n ptr u8 -- ) {: src:ptr len:n f:ptr :}
    OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
    ctx SX-ARMED FR@ 0<> if ctx src f OBSERVE-ADOPT exit then
@@ -606,10 +560,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    RSP-CELL CELL@ ctx SX-RFLOOR FR!
    1 ctx SX-ARMED FR! ;
 
-\ Give the observer frame f adopted back its frame (f's EVAL-PREV, which
-\ adoption required), the evaluating word's ticket and its source start, with
-\ that word's run pending again and no callback open (habu1.f
-\ ENGINE-EMIT:SX-RESTORE,).
+\ The observer's frame is f's EVAL-PREV, which adoption required.
 : OBSERVE-RESTORE ( ptr u8 -- ) {: f:ptr :}
    f EVAL-FRAME:SX-CTX + 0 ptr-field @ {: ctx:ptr :}
    ctx NULL-PTR = if exit then
@@ -619,10 +570,6 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    1 ctx SX-PENDING FR!
    0 ctx SX-SUSPEND FR! ;
 
-\ Before an action (habu2.f C-SOURCE-EXEC-BEFORE): the depths, the before
-\ callback with the token and input cells put back after it, then the action
-\ is pending until the next pass. A callback that throws unwinds through the
-\ loop's catch, as the engine's does.
 : OBSERVE-BEFORE ( n n n -- ) {: op:n rec:n entry:n :}
    OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
    ctx OWNED? 0= if exit then
@@ -646,11 +593,6 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    OBSERVER {: ctx:ptr :}
    ctx SX-UNIT FR@ ctx SX-TICKET FR@ 0 ctx SX-AFTER FR@ AFTER-CALL execute ;
 
-\ At the top of a pass (habu2.f EMIT-SOURCE-EXEC-FINISH from LMAIN): the
-\ pending action is done, so the depths and the cursor's offset go to the
-\ frame and the after callback runs under catch, the input cells put back
-\ after it. Its throw goes on to the loop's catch (the engine's BR EVALREC):
-\ an owned loop always runs under EVAL-FRAMED-RANGE's frame.
 : OBSERVE-FINISH ( -- )
    OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
    ctx SX-PENDING FR@ 0= if exit then
@@ -668,8 +610,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    0 ctx SX-SUSPEND FR!
    code 0<> if code throw then ;
 
-\ The dictionary record index of each word run since RECORD-RUNS, in order:
-\ the linker reads which files' words a file ran while it compiled.
+\ The dictionary record index of each word run since RECORD-RUNS, in order.
 DYNAMIC-BUFFER RUNS n
 variable RUNS-N
 variable RUNS-CAP
@@ -698,28 +639,23 @@ TYPED-VARIABLE RUNS-ON bool
 : RUN-WORD ( -- )
    LOOKUP RUN-FOUND ;
 
-\ The engine's twin: habu2.f CF-ENTRY.
 \ A keyword is matched before the token is read as a number or a word, and it
 \ reads the input after it itself. Each keyword table is a word that runs the
 \ token when it is one of its rows and answers whether it was.
 
-\ The token after a reader keyword kw. With the input at its end the refusal
-\ names kw as the engine bakes it, lowercase whatever the token's case, at the
-\ end's line (habu2.f C-DIE-KEYWORD-NAME).
+\ With the input at its end the refusal names kw lowercase whatever the token's
+\ case, at the end's line.
 : OPERAND ( ptr u8 n -- ) {: kw:ptr u:n :}
    TOKEN if exit then
    s" hb: reader keyword needs a name: " ERROR-TEXT:TYPE
    kw u ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
 
-\ The engine's twins: habu2.f C-ISDQ to C-EIDOTQ.
 \ A literal's text starts one byte past the keyword, past the blank that ended
 \ it, and runs to a closing quote that INP then passes. A literal with no
 \ closing quote refuses with INP still after the keyword, so the refusal names
 \ the keyword's line. A literal a program keeps is copied into data space it
-\ allots first, after its own refusals. allot's task guard then exits $4F
-\ with no output on a task's thread, and its DP-CHECK (habu1.f) refuses a literal
-\ that does not fit, both before any of it is written, as the engine's copies
-\ do.
+\ allots first, after its own refusals, so allot's refusals come before any of
+\ it is written.
 
 : BAD-LITERAL ( -- )
    s" hb: bad string literal" ERROR-TEXT:TYPE RC-BAD-LITERAL THROW-AT ;
@@ -727,7 +663,6 @@ TYPED-VARIABLE RUNS-ON bool
 : TOO-LONG ( -- )
    s" hb: counted string too long (max 255)" ERROR-TEXT:TYPE RC-TOO-LONG THROW-AT ;
 
-\ INP passes the closing quote at q.
 : PAST ( ptr u8 -- )
    1 + INP-CELL ADDR! ;
 
@@ -751,7 +686,7 @@ TYPED-VARIABLE RUNS-ON bool
    TEXT COPY-HERE ;
 
 \ c": a count byte, then the text. INP has passed the quote when the length
-\ is checked (habu2.f C-ICQ), so the refusal names the quote's line.
+\ is checked, so the refusal names the quote's line.
 : COUNTED ( -- ptr u8 )
    TEXT {: a:ptr u:n :}
    u CSTR-MAX > if TOO-LONG then
@@ -761,8 +696,7 @@ TYPED-VARIABLE RUNS-ON bool
    d ;
 
 \ An escaped literal's start, its closing quote and the count of bytes it
-\ decodes to (src/habu/escape.f). A bad escape refuses as a missing quote
-\ does, INP unmoved.
+\ decodes to. A bad escape refuses as a missing quote does, INP unmoved.
 : ESC-SCAN ( -- ptr u8 ptr u8 n )
    INP-CELL ADDR@ 1 + {: s:ptr :}
    s INE-CELL ADDR@ ESCAPE:SPAN {: q:ptr u:n ok:bool :}
@@ -776,8 +710,8 @@ TYPED-VARIABLE RUNS-ON bool
    s q d ESCAPE:COPY
    d u ;
 
-\ c\" checks the decoded length before INP moves (habu2.f C-EICQ), so its
-\ refusal names the keyword's line.
+\ c\" checks the decoded length before INP moves, so its refusal names the
+\ keyword's line.
 : ESC-COUNTED ( -- ptr u8 )
    ESC-SCAN {: s:ptr q:ptr u:n :}
    u CSTR-MAX > if TOO-LONG then
@@ -787,21 +721,21 @@ TYPED-VARIABLE RUNS-ON bool
    s q d 1 + ESCAPE:COPY
    d ;
 
-\ A literal a program keeps is program code: a quotation pushes it, then the
-\ hook sees it with the keyword as its token, and the quotation runs under the
-\ floor as a word does. The cells it leaves are the program's, so these views
-\ state its effect only to project it to the number execute-floor takes.
+\ A literal a program keeps is program code: the quotation that pushes it runs
+\ under the floor as a word does. The cells it leaves are the program's, so
+\ these views state its effect only to project it to the number execute-floor
+\ takes.
 CAST: STR-LITERAL ( [ -- ptr u8 n ] -- n )
 CAST: CSTR-LITERAL ( [ -- ptr u8 ] -- n )
 CAST: CELL-LITERAL ( [ -- n ] -- n )
-\ A cell a definer takes from the program (DEF-CONSTANT).
+\ A cell a definer takes from the program.
 CAST: CELL-TAKE ( [ n -- ] -- n )
 
 : RUN-LITERAL ( n -- )
    execute-floor FLOORED ;
 
 \ `."` types its text straight from the input and allots nothing; `.\"` keeps
-\ its decoded bytes, as the engine's C-EIDOTQ does.
+\ its decoded bytes.
 : PUSH-STR ( -- )
    [: KEEP TOP-EV-STR 0 HOOK ;] STR-LITERAL RUN-LITERAL ;
 
@@ -820,7 +754,6 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : TYPE-ESC-STR ( -- )
    ESC-KEEP type ;
 
-\ The engine's twin: habu2.f C-IBPACKAGE.
 : OPEN-PKG-NAME ( -- ptr u8 n )
    PKG-REC-CELL CELL@ {: rec:n :}
    rec 0= if 0 ROOM 0 exit then
@@ -832,9 +765,7 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : PUSH-PKG ( -- )
    [: OPEN-PKG-NAME TOP-EV-STR 0 HOOK ;] STR-LITERAL RUN-LITERAL ;
 
-\ The engine's twin: habu2.f C-CHAR.
-\ The operand's first byte. No definition is open at top level, so no body
-\ text captures the operand.
+\ No definition is open at top level, so no body text captures the operand.
 : FIRST-BYTE ( -- n )
    s" char" OPERAND
    TOKEN$ drop c@ ;
@@ -844,7 +775,6 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
    [: FIRST-BYTE TOP-EV-CHAR 0 HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
 \ The active checker owner supplies the trusted-only query, not a source name.
-\ Mirror C-TRUSTED-TICK?'s cold-prefix and replacement-checker windows.
 : TICK-QUERY-READY? ( -- bool )
    SEAL-NDICT@ 0= if false exit then
    NCOMP-DISPATCH:BUILD-DEPTH-CELL CELL@ 0<> if false exit then
@@ -863,8 +793,7 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    TICK-QUERY dup 0= if drop false exit then
    TICK-ACTION TOKEN$ rot execute ;
 
-\ The word ' names lands in REC past the xt gates. A tick runs nothing, so it
-\ has no depth gate; a name no word has is undefined, as a word to run is.
+\ A tick runs nothing, so it has no depth gate.
 : TICKED ( -- )
    s" '" OPERAND
    LOOKUP
@@ -873,7 +802,7 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
 
 \ The host selection, the run log and then the source observer see the tick's
-\ target before the xt is pushed (habu2.f C-TICK): the file may execute it.
+\ target before the xt is pushed: the file may execute it.
 : TICK-OBSERVE ( -- n )
    REC @ NHOST:RUN-REC {: xt:n :}
    REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
@@ -885,8 +814,6 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
 : PUSH-XT ( -- )
    [: TICKED TICK-OBSERVE TOP-EV-TICK WORD-FLAGS HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
-\ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its
-\ EM-INTERPRET-DEFINE-KEYWORDS.
 : LITERAL? ( -- bool )
    S\" s\q" TOKEN-IS? if PUSH-STR true exit then
    S\" c\q" TOKEN-IS? if PUSH-CSTR true exit then
@@ -901,8 +828,8 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
 
 public
 
-\ RECORD-RUNS … ;RECORD-RUNS logs the words run between them (RUN+); a
-\ build's linker reads the log before ;RECORD-RUNS releases it.
+\ RECORD-RUNS … ;RECORD-RUNS logs the words run between them; the log is read
+\ before ;RECORD-RUNS releases it.
 : RECORD-RUNS ( -- )
    0 RUNS-N !  true RUNS-ON ! ;
 
@@ -918,47 +845,38 @@ public
 
 ;package
 
-\ The package keywords of the Habu interpret loop, the twins of
-\ habu2.f C-PACKAGE to C-EXPORT; STEP asks PACKAGE? after the
-\ literal keywords. After the seal a store into the friend arena (CUR, WIDN,
-\ DEF-WL, PKG-*) exits 83: rows, scope and aliases go through the prims.f
-\ writers and CUR through set-current; the using band, DEF-TKA, DEF-TKL and
-\ layout.f PKG-OUTSIDE-CELL are not sealed and are written here. A writer
-\ refuses silently, so the words here refuse first where they can. It also
-\ exports INTERPRETER:WITHOUT-PACKAGE, which runs a quotation as at top level.
+\ After the seal a store into the friend arena exits 83: rows, scope and
+\ aliases go through their primitive writers and CUR through set-current. A
+\ writer refuses silently, so the words here refuse first where they can.
 
 package INTERPRETER
 
 private
 
-\ The engine's codes for these refusals (habu2.f): $4B a keyword out of its
-\ context or a colon in a package name (C-PACKAGE-FAIL), $4C a long name past
-\ the code ceiling (C-DIE-CODE-FULL), $4D no record slot left (C-QUALIFY-CAP)
-\ and $4E a tail the current wordlist already holds (C-DUP-DEF-FAIL).
+\ The codes for these refusals: $4B a keyword out of its context or a colon in
+\ a package name, $4C a long name past the code ceiling, $4D no record slot
+\ left and $4E a tail the current wordlist already holds.
 75 constant PKG-RC-CONTEXT
 76 constant PKG-RC-CODE-FULL
 77 constant PKG-RC-DICT-FULL
 78 constant PKG-RC-DUPLICATE
 
-\ The code ceiling's distance below the end of the region (habu2.f
-\ DEFWRITE:NAME-ROOM).
+\ The code ceiling's distance below the end of the region.
 $4000 constant PKG-CODE-RESERVE
 
 : PKG-INDEX ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
-\ The token, then the engine's compile-die tail (habu2.f C-PACKAGE-FAIL).
 : PKG-FAIL ( n -- )
    TOKEN$ ERROR-TEXT:TYPE THROW-AT ;
 
-\ The keyword's operand. With the input at its end the token cells still hold
-\ the keyword, which the refusal names.
+\ With the input at its end the token cells still hold the keyword, which the
+\ refusal names.
 : PKG-NAME ( -- )
    TOKEN if exit then
    RC-NO-NAME PKG-FAIL ;
 
-\ No record slot left (habu2.f C-QUALIFY-CAP). The refusal names what DEF-TKA
-\ and DEF-TKL hold, which `package` never writes: for it, what the last
-\ definition or `export` left there.
+\ The refusal names what DEF-TKA and DEF-TKL hold, which `package` never
+\ writes: for it, what the last definition or `export` left there.
 : PKG-DICT-FULL ( -- )
    s" hb: dictionary full at: " ERROR-TEXT:TYPE
    DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ ERROR-TEXT:TYPE
@@ -994,10 +912,8 @@ $4000 constant PKG-CODE-RESERVE
 
 : PKG-CODE-ROOM ( ptr u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
 
-\ The checker's declaration operations (habu2.f DECL-OWNER).
 \ The operation at off in the owner record a dispatch cell names, 0 when there
-\ is no record or the field is empty: the engine then skips the call, where
-\ src/compiler/native/checker-owner.f FIELD would refuse.
+\ is no record or the field is empty: the call is then skipped, not refused.
 : PKG-OPERATION ( ptr ptr u8 n -- n )
    {: cell:ptr off:n :}
    cell @ {: rec:ptr :}
@@ -1011,7 +927,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
 CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 
 \ `package`, `public`, `private` and `;package` notify the target checker
-\ alone (habu2.f C-CALL-CHECKER-PACKAGE and its siblings).
+\ alone.
 : PKG-TARGET ( n -- n )
    NCOMP-DISPATCH:TARGET-DECL-A swap PKG-OPERATION ;
 
@@ -1026,8 +942,8 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
 
 \ `using` notifies the active checker, then the target checker unless its
-\ operation is the same one (habu2.f C-CALL-CHECKER-USING). Each records the
-\ name at the using depth before it grows.
+\ operation is the same one. Each records the name at the using depth before it
+\ grows.
 : PKG-NOTIFY-USING ( -- )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-USING-OFF PKG-OPERATION
    {: own:n :}
@@ -1038,7 +954,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    TOKEN$ target PKG-AS-NAME-ACTION execute ;
 
 \ An actual export names the source checker's declaration callback. A direct
-\ CHECKER-EXPORT call only adds a checker row and has no engine alias to bind.
+\ call only adds a checker row and has no engine alias to bind.
 : PKG-CHECK-EXPORT ( -- )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-EXPORT-OFF PKG-OPERATION
       {: xt:n :}
@@ -1054,12 +970,11 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    xt 0= if exit then
    operand operand-u ord xt PKG-AS-EXPORT-ACTION execute ;
 
-\ The engine's twins: habu2.f C-PACKAGE to C-END-PACKAGE.
 : PKG-ROW ( -- ptr n )
    TOKEN$ BOOT:NAMESPACE-WL WL-PROBE ;
 
-\ A package whose record carries DNAME-SEALED ends the process when named
-\ again (SEALED-FAIL); a package is sealed only by the last file that opens it.
+\ A sealed package ends the process when named again; a package is sealed only
+\ by the last file that opens it.
 : PKG-SEALED? ( -- bool )
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? 0= if false exit then
@@ -1069,8 +984,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    PKG-SEALED? 0= if exit then
    TOKEN$ SEALED-FAIL ;
 
-\ Under the design seal a package whose row predates the seal is refused: the
-\ located line and ENGINE-ERROR:POLICY (habu2.f C-PACKAGE-POLICY-GUARD).
+\ Under the design seal a package whose row predates the seal is refused.
 : PKG-POLICY-GUARD ( -- )
    POLICY-NDICT-CELL CELL@ {: seal:n :}
    seal 0= if exit then
@@ -1080,15 +994,14 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    s" hb: policy: package " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
    s"  predates the seal" ERROR-TEXT:TYPE ENGINE-ERROR:POLICY THROW-AT ;
 
-\ An existing row keeps its wids and gains a private one only when it has none.
 : PKG-REOPEN ( ptr n -- n ) {: row:ptr :}
    row PKG-INDEX {: ix:n :}
    row XREF-PKG-PRIVATE 0= if ix namespace-private then
    ix ;
 
 public
-\ A file object's link gives package record n the private wordlist its file made;
-\ n outside the dictionary, a non-package or one holding one is E-COMP-STATE.
+\ A file object's link gives package record n the private wordlist its file
+\ made.
 : PACKAGE-PRIVATE ( n -- )
    {: ix:n :}
    ix 0 <  ix ndict@ >=  or if E-COMP-STATE throw then
@@ -1097,8 +1010,8 @@ public
    ix namespace-private ;
 private
 
-\ The index of the row `package` opens (habu2.f C-PACKAGE-ENSURE); a new row
-\ takes a public and a private wid.
+\ The index of the row `package` opens; a new row takes a public and a private
+\ wid.
 : PKG-ENSURE ( -- n )
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? if row PKG-REOPEN exit then
@@ -1107,8 +1020,8 @@ private
    TOKEN$ PKG-CODE-ROOM
    TOKEN$ true namespace-record ;
 
-\ namespace-record's name refusals, as E-COMP-STATE: a colon at either edge and a
-\ second colon.
+\ namespace-record's name refusals, as E-COMP-STATE: a colon at either edge
+\ and a second colon.
 : PKG-PATH-CK ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u 0 COLON-AT {: q:n :}
@@ -1117,8 +1030,9 @@ private
    a u q 1+ COLON-AT 0 < 0= if E-COMP-STATE throw then ;
 
 public
-\ A file object's link records package a u, which must lie in the caller's buffer, with
-\ its private wordlist right after the public one when the flag is set, as PKG-ENSURE does.
+\ A file object's link records package a u, which must lie in the caller's
+\ buffer, with its private wordlist right after the public one when the flag is
+\ set.
 : PACKAGE-RECORD ( ptr u8 n bool -- n )
    {: a:ptr u:n own:bool :}
    u 1 < if E-COMP-STATE throw then
@@ -1132,19 +1046,17 @@ public
    a u own namespace-record ;
 private
 
-\ CHECKER-RESOLVE:PART-GUARD and PART-PATH's E-PKG-CONTEXT is the engine's
-\ `package` refusal; any other code goes on.
 : PKG-CONTEXT ( n -- ) {: rc:n :}
    rc 0= if exit then
    rc E-PKG-CONTEXT = if PKG-RC-CONTEXT PKG-FAIL then
    rc throw ;
 
-\ Inside package A the token cells name `A:<token>` (habu2.f C-PACKAGE-PATH).
+\ Inside package A the token cells name `A:<token>`.
 : PKG-PATH ( -- )
    TOKEN$ CHECKER-RESOLVE:PART-PATH TKL-CELL CELL! TKA-CELL ADDR! ;
 
-\ The engine's twin: habu2.f C-PACKAGE. The using depth it opens at is the one
-\ `;package` restores, a part's its package's.
+\ The using depth it opens at is the one `;package` restores, a part's its
+\ package's.
 : PKG-PACKAGE ( -- )
    TASK-GUARD
    [: CHECKER-RESOLVE:PART-GUARD ;] catch PKG-CONTEXT
@@ -1193,19 +1105,14 @@ private
    then
    wid XREF:WID-SEALED? ;
 
-\ A throw puts the package scope back (FRAME-OPEN, habu2.f LEVALREC).
-\ The enclosing package's row and parent wordlist, the open package's row and
-\ parent wordlist, the current wordlist and the open package's using floor:
-\ what the engine's evaluate frame keeps of the package scope beside the using
-\ depth (PKGSNAP, EVAL-FRAME:ENCLOSING).
+\ What the engine's evaluate frame keeps of the package scope beside the using
+\ depth, which a throw puts back.
 : PKG-STATE ( -- n n n n n n )
    ENCLOSING:REC CELL@  ENCLOSING:PARENT CELL@
    PKG-REC-CELL CELL@  PKG-PARENT-CELL CELL@  get-current  USE-PKG-SAVE-CELL CELL@ ;
 
-\ Put back the state PKG-STATE read, as the engine's recovery does after a
-\ throw, and have the checker re-read the restored scope. The sealed writers
-\ run only when the failed input changed the scope. A part opens only inside
-\ its enclosing package, so that package opens first.
+\ The sealed writers run only when the failed input changed the scope. A part
+\ opens only inside its enclosing package, so that package opens first.
 : PKG-RECOVER ( n n n n n n -- )
    {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
    floor USE-PKG-SAVE-CELL CELL!
@@ -1218,7 +1125,6 @@ private
    then
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
 
-\ The engine's twins: habu2.f C-USING and C-END-USING.
 : PKG-USING-FAIL ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
    a u ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE rc THROW-AT ;
 
@@ -1237,12 +1143,10 @@ private
    then
    row XREF-PKG-PUBLIC ;
 
-\ The using depth the buffer may close down to (layout.f EVAL-FRAME:USE-FLOOR): its entry depth,
-\ lowered to the first using it opens after a `;package` closes a package opened before it.
+\ The using depth the buffer may close down to: its entry depth, lowered to the
+\ first using it opens after a `;package` closes a package opened before it.
 variable USE-FLOOR
 
-\ The wid joins the used publics at the current depth; the checkers record the
-\ name at that depth before it grows.
 : PKG-USING ( -- )
    TASK-GUARD
    PKG-USED-WID {: wid:n :}
@@ -1278,20 +1182,18 @@ variable USE-FLOOR
    then
    d 1- USE-DEPTH-CELL CELL! ;
 
-\ The engine's twin: habu2.f C-EXPORT.
 \ The name the alias takes: the operand's tail after its first colon, or the
-\ whole operand when it has none or one at either edge (habu2.f C-EXPORT-TAIL!).
+\ whole operand when it has none or one at either edge.
 : PKG-TAIL ( -- ptr u8 n )
    TOKEN$ {: a:ptr u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u exit then
    a q 1+ ZPTR+  u q - 1- ;
 
-\ The source is the record the operand names as the engine's LFIND resolves it
-\ (FIND-SCOPE), never a used public's. It must not be internal: an alias would
-\ carry its body past the interpret gate without the DNAME-INT mark, so the
-\ gate's refusal is made here (alias-record refuses the source too). DEF-TKA
-\ and DEF-TKL take the operand, which the refusals after them name.
+\ The source must not be internal: an alias would carry its body past the
+\ interpret gate without the DNAME-INT mark, so the gate's refusal is made
+\ here. DEF-TKA and DEF-TKL take the operand, which the refusals after them
+\ name.
 : PKG-EXPORT-SOURCE ( -- ptr n )
    TOKEN$ FIND-SCOPE {: src:ptr :}
    src XREF-FOUND? 0= if RC-REJECT PKG-FAIL then
@@ -1302,24 +1204,23 @@ variable USE-FLOOR
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    src ;
 
-\ The record index of the source's does> clause, which its export carries
-\ (habu2.f DOES-REC "the clause an export carries"), or -1 for a source that
-\ is not a definer.
+\ The record index of the source's does> clause, which its export carries, or
+\ -1 for a source that is not a definer.
 : PKG-CLAUSE ( ptr n -- n ) {: src:ptr :}
    src PKG-INDEX {: k:n :}
    k XREF-DOES-COMPANION? if k 1+ exit then
    -1 ;
 
 \ The export and its clause each take an occurrence, so two must remain before
-\ the checker hears of the export (habu2.f C-EXPORT-CLAUSE-ROOM): the
-\ allocation's first cell is the last number issued, and -1 the last one that
-\ can be, so fewer than two remain after -2 or -1 (habu1.f EM-DEF-OCC:LROOM).
+\ the checker hears of the export: the allocation's first cell is the last
+\ number issued, and -1 the last one that can be, so fewer than two remain
+\ after -2 or -1.
 : PKG-OCC-ROOM ( -- )
    data-base DEF-OCC:PTR-CELL + 0 ptr-field @ CELL-VIEW @ {: last:n :}
    last -2 =  last -1 =  or if DEF-OCC:E-EXHAUSTED throw then ;
 
 \ The clause takes the slot above the export's own, and its name must not be
-\ live in the current wordlist (habu2.f C-EXPORT-CLAUSE-ROOM).
+\ live in the current wordlist.
 : PKG-CLAUSE-ROOM ( n -- ) {: k:n :}
    PKG-OCC-ROOM
    ndict@ 1+ DICT-CAP < 0= if PKG-DICT-FULL then
@@ -1329,14 +1230,13 @@ variable USE-FLOOR
       a u ERROR-TEXT:TYPE PKG-RC-DUPLICATE THROW-AT
    then ;
 
-\ Twin of habu2.f C-EXPORT-CLAUSE-RECORD.
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
    a u k get-current alias-record ;
 
 public
-\ A file object's link publishes name a u, which must lie in the caller's buffer, for record
-\ src in wordlist wid. Its own refusals are E-COMP-STATE; room and duplicate ones are PKG-EXPORT's.
+\ A file object's link publishes name a u, which must lie in the caller's
+\ buffer, for record src in wordlist wid.
 : ALIAS-RECORD ( ptr u8 n n n -- )
    {: a:ptr u:n src:n wid:n :}
    u 1 <  wid 0 <  or if E-COMP-STATE throw then
@@ -1358,7 +1258,7 @@ private
 \ In a package, publish an existing word under its tail into the current
 \ wordlist: its code, its immediate, wide and certified-input bits, and a
 \ does> definer's clause in the slot above. At top level the name is consumed
-\ and nothing else happens: there `export` is hb-build's directive.
+\ and nothing else happens: there `export` is a build directive.
 : PKG-EXPORT ( -- )
    TASK-GUARD
    PKG-PUB-CELL CELL@ 0= if PKG-NAME exit then
@@ -1384,8 +1284,6 @@ private
    clause 0 >= if clause PKG-CLAUSE-ALIAS then
    operand operand-u ord PKG-NOTIFY-EXPORT ;
 
-\ The engine's EM-INTERPRET-DEFINE-KEYWORDS rows for packages, matched as
-\ LITERAL? matches its own.
 : PACKAGE? ( -- bool )
    s" package" TOKEN-IS? if PKG-PACKAGE true exit then
    s" public" TOKEN-IS? if
@@ -1401,7 +1299,6 @@ private
    s" export" TOKEN-IS? if PKG-EXPORT true exit then
    false ;
 
-\ No package open, and the checker told so.
 : PKG-CLEAR ( -- )
    -1 0 package-scope!
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
@@ -1409,7 +1306,7 @@ private
 public
 
 \ Q runs as at top level: no package open, current where the outer package
-\ opened. The scope comes back on either exit, Q's throw rethrown (LINKER:WITH).
+\ opened. The scope comes back on either exit, Q's throw rethrown.
 : WITHOUT-PACKAGE ( [ -- ] -- )
    {: q :}
    PKG-STATE {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
@@ -1425,12 +1322,8 @@ public
 
 ;package
 
-\ The interpret loop's definition heads in Habu: `:`, `kernel:`,
-\ `trusted:`, `create`, `variable`, `cast:`, `linear:`, `immediate`, `constant`
-\ and `defer`, twins of habu2.f C-TRUSTED, C-CREATE and kin.
-\ STEP asks COMPILING? after a comment and DEFINE? after
-\ the package keywords. The head refuses in the engine's order and with its text:
-\ a definition writer's own refusal (src/habu/prims.f) exits without a word.
+\ A definition head refuses in the engine's order and with its text: a
+\ definition writer's own refusal exits without a word.
 
 require src/lib/string.f
 require src/lib/source-syntax.f
@@ -1456,20 +1349,16 @@ variable TOK-BODY-RAW
    0 BODY-DEPTH !  0 BODY-RAW-NEXT ! ;
 
 76 constant DEF-RC-TIER-0        \ the code of the engine head's first refusal, a pass-2 nesting
-76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
-72 constant DEF-RC-PD-FULL       \ habu2.f C-PD-DIE-FULL: no pending slot holds the defer
+76 constant DEF-RC-BAD-SIG       \ `trusted:` or `does>` with no signature
+72 constant DEF-RC-PD-FULL       \ no pending slot holds the defer
 
-\ def-open, body-append, created-sig!, def-close, def-abort, imm-mark and
-\ min-in-mark are INTERPRETER's own rows (src/habu/prims.f), called
-\ below by name. trust-sig! has none: it is the `trusted:`, `cast:`,
-\ `linear:` and `defer` heads' alone.
+\ trust-sig! has no INTERPRETER row: it is the `trusted:`, `cast:`, `linear:`
+\ and `defer` heads' alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
 public
 \ Ending or abandoning a definition also ends the capture's lexical state.
-\ No local outlives its definition, as habu2.f C-CLEAR-LOCALS ends them on
-\ arm64: x86-64's def-close (kernel-x64.f DEF-CLOSE-BODY) leaves the locals
-\ count, so `;` clears it here. def-abort clears it on both.
+\ x86-64's def-close leaves the locals count, so `;` clears it here.
 : DEF-CLOSE ( -- ) def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET ;
 : DEF-ABORT ( -- ) def-abort BODY-LEX-RESET ;
 private
@@ -1488,8 +1377,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    s" hb: tier 0 is not in the Habu loop: " ERROR-TEXT:TYPE
    DEF-RC-TIER-0 PKG-FAIL ;
 
-\ The capture's first token, the definition's name, which a head seeds: the
-\ bytes up to a space, a zero byte or BODYLEN.
+\ The capture's first token, the definition's name, which a head seeds.
 : DEF-CAPTURED-NAME ( -- ptr u8 n )
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ {: b:ptr len:n :}
    0 begin
@@ -1504,22 +1392,17 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    {: sig:ptr len:n xt:n :}
    DEF-CAPTURED-NAME sig len xt AS-DECLARE execute ;
 
-\ The source ended inside the pending definition: refused, named and located
-\ at its name token (layout.f PENDTKA-CELL).
 : DEF-ENDED ( -- )
    PENDTKA-CELL CELL@ INP-CELL CELL!
    s" hb: source ended inside definition: " ERROR-TEXT:TYPE
    DEF-CAPTURED-NAME ERROR-TEXT:TYPE
    RC-UNCLOSED THROW-AT ;
 
-\ The engine's twin: habu1.f EMIT-BCAP. body-append grows the block when the
-\ text would pass its capacity, so an address into the text is formed after
-\ the capture, never kept across it.
+\ body-append grows the block when the text would pass its capacity, so an
+\ address into the text is formed after the capture, never kept across it.
 : DEF-CAPTURE ( ptr u8 n -- ) body-append ;
 
-\ The engine's twin: habu2.f C-TRUSTED.
-\ CP at the code ceiling and no record slot left each refuse, naming the
-\ keyword. Both comparisons are signed, as the engine's head makes them.
+\ Both comparisons are signed, as the engine's head makes them.
 : DEF-CODE-ROOM ( -- )
    cp@ dbase@ REGION + PKG-CODE-RESERVE - >= if
       s" hb: code space full at: " ERROR-TEXT:TYPE PKG-RC-CODE-FULL PKG-FAIL
@@ -1531,9 +1414,8 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
       s" hb: dictionary full at: " ERROR-TEXT:TYPE PKG-RC-DICT-FULL PKG-FAIL
    then ;
 
-\ The name. With the input at its end `:` and `kernel:` refuse with the
-\ engine's colon text, `trusted:` as the reader keyword it is (habu2.f
-\ C-DIE-KEYWORD-NAME).
+\ With the input at its end `:` and `kernel:` refuse with the engine's colon
+\ text, `trusted:` as the reader keyword it is.
 : DEF-NAME ( bool -- ) {: trusted:bool :}
    trusted if s" trusted:" OPERAND exit then
    TOKEN if exit then
@@ -1555,12 +1437,9 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    wid ;
 
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
-\ DEF-TKL take the name token, which the refusals after them name, as TKA and
-\ TKL still do: the engine moves those to the tail and back, and this head
-\ names the tail where the engine names it. A bare name goes into the current
-\ wordlist; the qualifier is the first colon at neither edge (one at either
-\ edge leaves the whole token a bare name: `:a:b` is bare), and a second colon
-\ after it refuses.
+\ DEF-TKL take the name token, which the refusals after them name. A bare name
+\ goes into the current wordlist; the qualifier is the first colon at neither
+\ edge (`:a:b` is bare), and a second colon after it refuses.
 : DEF-QUALIFY ( -- ptr u8 n n )
    OVERLAY-GUARD
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
@@ -1571,9 +1450,8 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    a u q 1+ COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u SEALED-FAIL then ;
 
-\ The engine's twin: habu2.f EMIT-DEF-KW-GUARD.
-\ The keywords a body's compiler reads before it looks a word up
-\ (EM-COMPILE-KEYWORDS): a word named by one could never be called from a body.
+\ The keywords a body's compiler reads before it looks a word up: a word named
+\ by one could never be called from a body.
 : DEF-KEYWORDS ( -- ptr u8 n )
    S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {:" ;
 
@@ -1663,14 +1541,12 @@ private
    s" hb: number cannot be a definition name: " ERROR-TEXT:TYPE
    a u ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
 
-\ Generated bodies bind
-\ STRUCTURE-MAKE:PROJECT-NAME$ by name, so once sealed no definition takes it.
+\ Generated bodies bind STRUCTURE-MAKE:PROJECT-NAME$ by name, so once sealed
+\ no definition takes it.
 : DEF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    SEAL-NDICT@ 0= if false exit then
    a u STRUCTURE-MAKE:PROJECT-NAME$ FOLDED= ;
 
-\ Matched as the engine matches its keywords, only the tail's A-Z folded. A tail
-\ NUMBER reads or refuses for range is refused.
 : DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
    POLICY-NDICT-CELL CELL@ 0<> if
       a u DEF-DESIGN-KEYWORD? if a u DEF-KEYWORD-REFUSE then
@@ -1682,7 +1558,6 @@ private
    num range or if a u DEF-NUMBER-REFUSE then
    a u DEF-RESERVED? if a u DEF-RESERVED-REFUSE then ;
 
-\ The engine's twins: habu2.f C-SIG-START, C-SIG-END and C-SIG-CAPTURE-TSIG.
 \ A signature starts at the first byte past the blanks when that byte is `(`,
 \ whole token or not: where it starts, and whether one does.
 : DEF-SIG-START ( -- ptr u8 bool )
@@ -1691,8 +1566,6 @@ private
    s e < if s c@ OPEN-COMMENT = else false then {: open:bool :}
    s open ;
 
-\ The byte past the `)` that closes the signature at s, and whether one does;
-\ with none, the input's end.
 : DEF-SIG-END ( ptr u8 -- ptr u8 bool ) {: s:ptr :}
    INE-CELL ADDR@ {: e:ptr :}
    s begin dup e < if dup c@ CLOSE-COMMENT <> else false then while 1 + repeat
@@ -1721,14 +1594,11 @@ private
    s DEF-SIG-END drop {: end:ptr :}
    s end DEF-SIG-TAKE ;
 
-\ A definer's signature missing or never closed (habu2.f C-SIG-BAD).
 : DEF-SIG-BAD ( -- )
    s" E-MISSING-SIGNATURE: " ERROR-TEXT:TYPE DEF-RC-BAD-SIG PKG-FAIL ;
 
-\ A signature that must be there, opened and closed, or the refusal names the
-\ token: where it starts and the byte past it. A head's signature that the
-\ input ends before or inside is the source ending inside the definition
-\ (habu2.f C-PARSE-TRUST-SIG).
+\ A head's signature that the input ends before or inside is the source ending
+\ inside the definition.
 : DEF-SIG-SPAN ( bool -- ptr u8 ptr u8 ) {: head:bool :}
    DEF-SIG-START {: s:ptr open:bool :}
    head s INE-CELL ADDR@ = and if DEF-ENDED then
@@ -1740,25 +1610,23 @@ private
 : DEF-REQUIRED-SIG ( -- )
    true DEF-SIG-SPAN DEF-SIG-TAKE ;
 
-\ The compiler the latch names, as habu2.f NCOMP-EMIT:LOAD reads it: COMP-CELL
-\ at DEF-TIER-CELL 2, else XT-CELL.
 : DEF-COMPILER ( -- n )
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 2 = if
       NCOMP-DISPATCH:COMP-CELL CELL@ exit
    then
    NCOMP-DISPATCH:XT-CELL CELL@ ;
 
-\ With no compiler in the latched cell the boot is broken, and the process ends
-\ (habu2.f NCOMP-EMIT:LOAD).
+\ With no compiler in the latched cell the boot is broken, and the process
+\ ends.
 : DEF-DISPATCH ( -- )
    DEF-COMPILER 0<> if exit then
    s" hb: native compiler dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
 
 public
-\ The tail passes the wall, room, duplicate, code room and protected-wordlist tests before def-open
-\ writes; the wall, code room and protected-wordlist test name the tail, the rest the token. kind: 0
-\ (compiled), DKIND:ADDR, VAL or CAST. def-open refuses a protected wordlist too, but without a word
-\ (habu2.f DEFWRITE:DEF-OPEN).
+\ The tail passes the wall, room, duplicate, code room and protected-wordlist
+\ tests before def-open writes; the wall, code room and protected-wordlist
+\ test name the tail, the rest the token. kind: 0 (compiled), DKIND:ADDR, VAL
+\ or CAST. def-open refuses a protected wordlist too, but without a word.
 : DEF-RECORD ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
    a u DEF-WALL
    PKG-DICT-ROOM
@@ -1780,8 +1648,8 @@ private
    DEF-SEED
    DEF-QUALIFY kind DEF-RECORD ;
 
-\ The body hook, run as habu2.f C-BODY-HOOK runs it: on true it has installed
-\ the definition, the source resumes past its `;` and the record closes.
+\ On true the body hook has installed the definition, the source resumes past
+\ its `;` and the record closes.
 : DEF-BODY-HOOK? ( -- bool )
    NCOMP-DISPATCH:BODY-HOOK-CELL CELL@ {: xt:n :}
    xt 0= if false exit then
@@ -1810,7 +1678,6 @@ private
    DEF-BODY-HOOK? if exit then
    DEF-DISPATCH ;
 
-\ The engine's twin: habu2.f NCOMP-EMIT:CAPTURE-STRING.
 \ After a string keyword the body takes the literal's text as written, from one
 \ byte past the keyword through its closing quote, in one capture. The scan
 \ comes first, so a literal with no closing quote or with a bad escape refuses
@@ -1825,7 +1692,6 @@ private
    q PAST
    s q s - 1+ DEF-CAPTURE ;
 
-\ The engine's six string keywords, matched as LITERAL? matches them.
 : DEF-STRING-TEXT ( -- )
    S\" s\q" TOKEN-IS? if DEF-TEXT exit then
    S\" c\q" TOKEN-IS? if DEF-TEXT exit then
@@ -1895,8 +1761,7 @@ private
    then ;
 
 \ The JIT's sealed row and the tier-1 capture admit the same body vocabulary.
-\ `;` is handled before the capture. A miss reaches the seven design body
-\ keywords only after local, dictionary and numeric lookup.
+\ `;` is handled before the capture.
 : BODY-POLICY ( -- )
    BODY-LOCAL? if exit then
    TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
@@ -1920,8 +1785,8 @@ private
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
    CHECK:IMMEDIATE ;
 
-\ PARSE-IMM? asks the live checker:
-\ the retained one lacks a build window's `parse-imm` rows.
+\ PARSE-IMM? asks the live checker: the retained one lacks a build window's
+\ `parse-imm` rows.
 : DEF-IMMEDIATE ( -- ptr n bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then
@@ -1950,8 +1815,7 @@ private
 \ which must be there, opened and closed, is the effect of each word the
 \ definer creates. Its copy, `( `, the inside and ` )`, opens the clause in the
 \ capture, where created-sig! takes the inside and a clause's scan reads a
-\ comment (checker.f CHECK-SCAN-WALK). A second `does>` refuses naming `does>`, and a missing or
-\ open signature names the token as spelled (C-SIG-BAD).
+\ comment.
 : DEF-CREATED ( -- )
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    end INP-CELL ADDR!
@@ -1993,12 +1857,12 @@ private
    DEF-CREATED
    at DOESB-CELL CELL!
    1 CLAUSE-CELL CELL!
-   \ The head's locals end here, as habu2.f J-DOES ends them: the clause
-   \ cannot name one, and a local it declares is captured from an empty scope.
+   \ The head's locals end here: the clause cannot name one, and a local it
+   \ declares is captured from an empty scope.
    0 LOCN-CELL CELL!  0 BODY-DEPTH ! ;
 
 \ The engine reads `does>` as its keyword, with the token's A-Z folded, unless
-\ LFIND finds a word of that spelling that is not immediate, which the body
+\ the scope holds a word of that spelling that is not immediate, which the body
 \ calls instead.
 : DEF-CALL? ( -- bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
@@ -2010,8 +1874,9 @@ private
    DEF-CALL? if false exit then
    DEF-DOES true ;
 
-\ The record pending as EVAL-FRAMED-RANGE's buffer began (layout.f EVAL-FRAME:PEND): another pending
-\ record is the buffer's own, and a throw out of the buffer puts this one back in PEND-CELL.
+\ The record pending as EVAL-FRAMED-RANGE's buffer began: another pending
+\ record is the buffer's own, and a throw out of the buffer puts this one back
+\ in PEND-CELL.
 variable ENTRY-PEND
 
 \ A `;` that would close the record pending as the buffer began, one an outer
@@ -2042,15 +1907,11 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
       rollback TOKBODY-CELL CELL! UNDEFINED
    then ;
 
-\ `;`, the one byte, ends the definition and joins no capture. The body goes
-\ to the compiler the latch names, as the engine's `;` hands it
-\ (NCOMP-EMIT:LOAD), checked again here since a body immediate can have
-\ cleared it. The compiler checks, compiles and publishes the record, or
-\ throws with the definition still pending, as the engine's does. On its
-\ return def-close clears what def-open set. This `;` recovers: it declares
-\ so in RECOVER-CELL for the compile, and abandons the definition the compiler
-\ refused with E-COMP-RECOVERY, which only a multi-error run throws, and
-\ reads on.
+\ `;`, the one byte, ends the definition and joins no capture. The latch is
+\ checked again here since a body immediate can have cleared it. This `;`
+\ recovers: it declares so in RECOVER-CELL for the compile, and abandons the
+\ definition the compiler refused with E-COMP-RECOVERY, which only a
+\ multi-error run throws, and reads on.
 : DEF-COMPILE ( ptr u8 n -- )
    DEF-DISPATCH DEF-COMPILER AS-COMPILE execute ;
 
@@ -2067,9 +1928,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-CLOSE
    true ;
 
-\ While a definition is pending every token is its body's:
-\ tier 1 ends it at `;`, or captures the token, runs it if it is a neutral
-\ immediate, splits the body at `does>`, or takes a string keyword's text.
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
@@ -2092,18 +1950,14 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-PREFIX-BIND
    true ;
 
-\ The engine's twins: habu2.f C-CREATE and C-VARIABLE.
-\ A created word is published whole where its keyword is read: DEF-FIXED
-\ compiles and publishes the body that pushes its data address, as it does a
-\ constant's and a defer's, and def-close ends the definition. The checker then
-\ reads it as the engine hands it over. `variable` is `create` and one cell
-\ more, and the engine names `create` for both: in the missing name's refusal
-\ and in the def hook's text.
+\ A created word is published whole where its keyword is read. `variable` is
+\ `create` and one cell more, and the engine names `create` for both: in the
+\ missing name's refusal and in the def hook's text.
 
 \ The keyword joins the capture, and the checker reads it, `NAME create` for a
-\ created word, its verdict dropped: a definer's word always publishes
-\ (habu2.f C-DEFHOOK). The check runs on the program's stack, so neither this
-\ word nor its callers keep locals.
+\ created word, its verdict dropped: a definer's word always publishes. The
+\ check runs on the program's stack, so neither this word nor its callers keep
+\ locals.
 : DEF-HOOK ( ptr u8 n -- )
    DEF-CAPTURE
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@
@@ -2112,8 +1966,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 : DEF-ADDR-HOOK ( -- )
    s" create" DEF-HOOK ;
 
-\ The active owner's trust-raw, else the target owner's; with neither the
-\ process ends naming it (LASTC-TRUST:FIND-ACTIVE, FIND-RAW).
 : DEF-RAW-ACTIVE ( -- n )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
    own 0<> if own exit then
@@ -2121,10 +1973,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    target 0= if s" trust-raw" RC-REJECT FAIL-CLOSED then
    target ;
 
-\ A definer's effect, raw dictionary storage stated by sig, goes to the active
-\ owner's trust-raw, then to the target owner's while an active owner record
-\ exists, unless the two are the same (LASTC-TRUST:FIND-TARGET); the checker
-\ seals it through trust-raw.
+\ A definer's effect, raw dictionary storage stated by sig; the checker seals
+\ it through trust-raw.
 : DEF-RAW-PUBLISH ( ptr u8 n -- ) {: sig:ptr su:n :}
    DEF-RAW-ACTIVE {: own:n :}
    sig su own DEF-DECLARE
@@ -2134,7 +1984,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION target = if exit then
    sig su target DEF-DECLARE ;
 
-\ A created word's effect is a cell of raw dictionary storage.
 : DEF-ADDR-PUBLISH ( -- )
    s" -- ptr a" DEF-RAW-PUBLISH ;
 
@@ -2150,20 +1999,16 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    then
    NCOMP:COMPILE-FIXED ;
 
-\ The fixed body pushes the cell-aligned here, recorded in COMMA-BASE-CELL as
-\ habu2.f ADDR-TAIL records it, and ends in the slot a `does>` patches.
+\ The fixed body pushes the cell-aligned here, recorded in COMMA-BASE-CELL, and
+\ ends in the slot a `does>` patches.
 : DEF-ADDR-TAIL ( -- )
    align
    DEF-HERE COMMA-BASE-CELL CELL!
    DEF-HERE COMP-BODY:address DEF-FIXED
    DEF-CLOSE ;
 
-\ The head refuses as `:`'s does, at any tier, the tail publishes the word,
-\ DP rounded up to a cell. No record slot left is refused after the name,
-\ naming it, as the engine's `create` refuses it (C-QUALIFY-CAP, here
-\ DEF-RECORD). The engine's `create` writes at CP at the code ceiling, which
-\ def-open refuses, so the code room refuses first, naming the keyword, as
-\ `:`'s does.
+\ No record slot left is refused after the name, naming it. CP at the code
+\ ceiling is refused first, naming the keyword, as `:`'s does.
 : DEF-ADDR-ROW ( bool -- ) {: cell?:bool :}
    TASK-GUARD
    DEF-CODE-ROOM
@@ -2172,10 +2017,9 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-ADDR-TAIL ;
 
 \ A compiled defining word reaches `create` through the engine primitive,
-\ which calls the row through CREATEP-CELL (INSTALL-CREATE below). The
-\ keyword's hook belongs to the interpreting `create` only; `-- ptr a` is
-\ published at both, or the word made is
-\ E-UNDEFINED where it is next read.
+\ which calls the row through CREATEP-CELL. The keyword's hook belongs to the
+\ interpreting `create` only; `-- ptr a` is published at both, or the word
+\ made is E-UNDEFINED where it is next read.
 : DEF-CREATE-ROW ( -- )
    false DEF-ADDR-ROW
    DEF-ADDR-PUBLISH ;
@@ -2185,13 +2029,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-ADDR-HOOK
    DEF-ADDR-PUBLISH ;
 
-\ The engine's twin: habu2.f C-CONSTANT.
-\ A constant's record opens as DKIND:VAL, the stamp a mention of it folds to,
-\ and DEF-FIXED compiles the body that pushes the value, at either tier, as the
-\ engine's definers are native at both. It takes the program's top cell after
-\ its record opens, where the engine's pops it. With none the engine reads
-\ below its stack and faults (rc 102); this loop names the underflow, as
-\ after a word. Its effect is registered as raw storage, `-- a`.
+\ A constant's record opens as DKIND:VAL, the stamp a mention of it folds to.
+\ It takes the program's top cell after its record opens.
 variable DEF-VALUE
 
 : DEF-CONSTANT ( -- )
@@ -2205,21 +2044,20 @@ variable DEF-VALUE
    s" constant" DEF-HOOK
    s" -- a" DEF-RAW-PUBLISH ;
 
-\ The engine's twins: habu2.f C-CAST and C-IDENTITY. `cast:` and `linear:` have
-\ no body or `;`: each completes where its keyword is read, at either tier with
-\ a compiler latched (DEF-FIXED refuses latch 0), and calls no def hook.
+\ `cast:` and `linear:` have no body or `;`: each completes where its keyword
+\ is read, at either tier with a compiler latched, and calls no def hook.
 
 \ With the input at its end the refusal names the keyword as spelled, at the
-\ end's line (habu2.f C-CAST-DIE-NO-NAME).
+\ end's line.
 : DEF-CAST-NAME ( -- )
    TOKEN if exit then
    s" hb: cast: missing name after " ERROR-TEXT:TYPE
    TOKEN$ ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
 
 \ The signature must be there, opened and closed, before the qualifier's
-\ refusals, and INP passes it first, so those name the line it ends on
-\ (C-PARSE-REQUIRED-SIG precedes C-QUALIFY-DEF). def-open clears TSIG, so
-\ trust-sig! takes the signature once the record is open.
+\ refusals, and INP passes it first, so those name the line it ends on.
+\ def-open clears TSIG, so trust-sig! takes the signature once the record is
+\ open.
 : DEF-CAST-HEAD ( -- )
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
@@ -2227,11 +2065,8 @@ variable DEF-VALUE
    DEF-QUALIFY DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER ;
 
-\ A signature's inside goes to the active owner's registrar at off, then to
-\ the target owner's unless the active owner holds the same one; a missing
-\ owner or registrar is skipped
-\ (habu2.f DEF-TRUST:REGISTER-IDENTITY). A row the checker refuses throws
-\ before DEF-FIXED counts the record, so no callable name is left.
+\ A row the checker refuses throws before DEF-FIXED counts the record, so no
+\ callable name is left.
 : DEF-REGISTER-IDENTITY ( ptr u8 n n -- ) {: sig:ptr su:n off:n :}
    NCOMP-DISPATCH:DECL-A off PKG-OPERATION {: own:n :}
    own 0<> if sig su own DEF-DECLARE then
@@ -2245,19 +2080,15 @@ variable DEF-VALUE
    DEF-REGISTER-IDENTITY ;
 
 \ The published record takes the facts the registrar latched, through the
-\ owner the registrar asked, as the native publisher drains them
-\ (src/compiler/native/publish.f PENDING-FACTS): the wide mark, then the
-\ minimum input arity, which the interpret dispatch refuses an underdepth call
-\ on.
+\ owner the registrar asked: the wide mark, then the minimum input arity, which
+\ the interpret dispatch refuses an underdepth call on.
 : DEF-CAST-FACTS ( -- )
    CHECKER-OWNER:WIDE-PUBLISH
    CHECKER-OWNER:MIN-IN {: mi:n :}
    mi 0<> if ndict@ 1- mi min-in-mark then ;
 
-\ The keyword refuses a task's thread, then a full code space or dictionary,
-\ naming itself, then a missing name, as the engine's does. Its name folds
-\ apart from the def-cast row: a word spelled DEF-CAST here would shadow the
-\ row for every later body.
+\ Its name folds apart from the def-cast row: a word spelled DEF-CAST here
+\ would shadow the row for every later body.
 : DEF-CAST-ROW ( -- )
    TASK-GUARD
    DEF-ROOM
@@ -2293,33 +2124,25 @@ variable DEF-VALUE
    0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
    DEF-CAST-FACTS ;
 
-\ The engine's twin: habu2.f C-DEFER.
 \ `defer NAME ( in -- out )` declares a word that calls the execution token in
 \ its dispatch cell, an aligned DATA cell that starts with `defer-unset`'s and
-\ that `is` in a body re-points. It refuses in the engine's order and with its
-\ text: a task's thread, the room, the name, then the signature, which must be
-\ there, opened and closed, then `defer-unset`, whose cell is allotted before
-\ the qualifier, as the engine's is. The checker gets the effect before NCOMP
-\ compiles the body, which asks it whether the defer returns; NPUB lays the
-\ trailer after the routine and def-close ends the definition. The engine
-\ registers after it publishes, which nothing observes: trust-decl never
-\ consults the dictionary (habu2.f DEF-TRUST).
+\ that `is` in a body re-points. The cell is allotted before the qualifier,
+\ and the checker gets the effect before the body compiles, which asks it
+\ whether the defer returns.
 
 \ With the input at its end the token cells still hold the keyword, which the
-\ refusal names (DEFER-DIAG:DIE-NO-NAME, rc $4A).
+\ refusal names.
 : DEFER-NAME ( -- )
    TOKEN if exit then
    s" hb: defer: missing name after " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
 
-\ `defer-unset`'s execution token, found as LFIND finds it; with none the
-\ refusal is the bare name token (C-DEFER-FIND-UNSET, rc $46).
 : DEFER-UNSET-XT ( -- n )
    s" defer-unset" FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT then
    rec XREF-START ;
 
-\ The cell holds an execution token, so xt! declares it one, as the engine's
-\ C-DEFER-CELL marks it: a snapshot moves it with the code region.
+\ The cell holds an execution token, so xt! declares it one: a snapshot moves
+\ it with the code region.
 TRUSTED: DEF-XT! ( n n -- ) xt! ;
 
 : DEFER-CELL ( -- n )
@@ -2330,16 +2153,9 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    xt cell DEF-XT!
    cell ;
 
-\ The engine's twins: habu2.f C-PRETRUST-READY? and C-PD-CAPTURE.
-\ A target owner without both trust-decl and checker-defer cannot register a
-\ defer yet: a build's src/core/checker.f declares defers before `: TRUST`, and
-\ the build reads it through this loop. The defer's name and signature wait in
-\ the next pending slot (src/habu/layout.f PD-*) until checker.f's
-\ DRAIN-PRETRUST replays both registrations to the target owner.
-\ With both owner cells zero the engine's loop still holds the defer, while
-\ NCOMP below refuses it ("ncomp: cannot compile"): no checker knows its
-\ effect. No build reaches that state: NCOMP:INSTALL sets both cells as the
-\ engine completes.
+\ The checker's own source declares defers before it defines its trust-decl,
+\ so a defer's name and signature wait in the next pending slot until the
+\ checker replays both registrations to the target owner.
 : DEFER-READY? ( -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-OFF PKG-TARGET 0<>
    NCOMP-DISPATCH:DECL-DEFER-OFF PKG-TARGET 0<> and ;
@@ -2350,8 +2166,6 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    s" hb: pre-trust defer table full: " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
    NL 1 DEF-RC-PD-FULL FAIL-CLOSED ;
 
-\ The u bytes at a into the slot field at DATA offset off, their count into
-\ the cell at lenoff.
 : PD-PUT ( ptr u8 n n n n -- ) {: a:ptr u:n cap:n lenoff:n off:n :}
    u cap > if PD-FULL then
    u lenoff CELL!
@@ -2366,17 +2180,14 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    count 1 + PD-TABLE-OFF CELL! ;
 
 \ The active owner's operation at off, then the target owner's, 0 when the
-\ active owner's field holds the same one (DECL-OWNER:FIND, SKIP-SAME).
+\ active owner's field holds the same one.
 : DEF-OWNERS ( n -- n n ) {: off:n :}
    NCOMP-DISPATCH:DECL-A off PKG-OPERATION {: own:n :}
    off PKG-TARGET {: target:n :}
    own  target own = if 0 else target then ;
 
-\ The name the capture holds and signature sig to each trust-decl
-\ (DEF-TRUST:REGISTER), then the name to each checker-defer
-\ (C-CALL-CHECKER-DEFER). Before the target owner is ready only the active
-\ owner's two are called, and the pending slot holds the defer for the
-\ target's.
+\ Before the target owner is ready only the active owner's two are called, and
+\ the pending slot holds the defer for the target's.
 : DEFER-REGISTER ( ptr u8 n -- ) {: sig:ptr su:n :}
    DEFER-READY? {: ready:bool :}
    NCOMP-DISPATCH:DECL-EFFECT-OFF DEF-OWNERS {: own:n target:n :}
@@ -2401,11 +2212,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    cell COMP-BODY:defer DEF-FIXED
    DEF-CLOSE ;
 
-\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`,
-\ `create`, `variable`, `constant`, `defer`, `cast:`, `linear:` and
-\ `immediate` are matched as LITERAL? matches its keywords. `variable` then
-\ allots one cell more and stores nothing. `immediate` marks the newest
-\ record, whatever it is, and checks nothing (habu2.f C-IMMEDIATE).
+\ `immediate` marks the newest record, whatever it is, and checks nothing.
 : DEFINE? ( -- bool )
    s" :" TOKEN-IS? if false DEF-HEAD true exit then
    s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
@@ -2477,15 +2284,9 @@ private
    SEARCH
    true ;
 
-\ Inside a build the product's checker files are product text, so a
-\ declaration word found there is the product's copy, which records into a
-\ checker that checks nothing. A declaration runs the building hb's word of
-\ that spelling instead, as `:` and `create` run hb's definers, so the checker
-\ that checks the build records it. A declaration that keeps state of its own
-\ leaves it to its generated text, which runs the product's words
-\ (src/compiler/workspace.f CWORK:PLACE). A PRIM: or PPRIM: row reads its own
-\ tokens (src/core/checker.f PE-READ). hb's global wordlist is 0, as every
-\ linked program's is (src/habu/linker.f writes a build's as 0).
+\ Inside a build a declaration word found in product text is the product's
+\ copy, which records into a checker that checks nothing, so hb's word of that
+\ spelling runs instead. hb's global wordlist is 0, as every linked program's.
 : DECLARATION? ( -- bool )
    s" trust" TOKEN-IS? if true exit then
    s" prim:" TOKEN-IS? if true exit then
@@ -2517,10 +2318,8 @@ private
    s" arena" TOKEN-IS? if true exit then
    s" heap" TOKEN-IS? ;
 
-\ A file loader found in product text is the product's include.f, which would
-\ record the file in the product's own registry, at addresses outside the
-\ build. hb's loader of that spelling runs the file through the build instead
-\ (src/habu/linker.f RUN-FILE).
+\ A file loader found in product text is the product's, which would record the
+\ file in its own registry, outside the build; hb's runs it through the build.
 : LOADER? ( -- bool )
    s" include" TOKEN-IS? if true exit then
    s" require" TOKEN-IS? if true exit then
@@ -2528,9 +2327,8 @@ private
    s" required" TOKEN-IS? if true exit then
    s" provided" TOKEN-IS? ;
 
-\ The product's `undefine` (src/habu/xref.f) would retire the name from the
-\ product's checker, which checks nothing; hb's retires it from the checker
-\ that checks the build.
+\ The product's `undefine` would retire the name from the product's checker,
+\ which checks nothing; hb's retires it from the checker that checks the build.
 : HOST-WORD? ( -- bool )
    data-base BOOT:IMAGE-BASE-CELL + @ 0= if false exit then
    DECLARATION? LOADER? or  s" undefine" TOKEN-IS? or  0= if false exit then
@@ -2576,7 +2374,7 @@ private
    {: record:ptr :}
    0 record NATIVE-BODY-ABI:PENDING-TAKE cells + CELL-VIEW ! ;
 
-\ An evaluate the buffer caught left its code; include.f would fail the load.
+\ An evaluate the buffer caught left its code, which would fail the load.
 \ A `package` in it leaves PKG-OUTSIDE-CELL 0, which matters only in a package.
 : CLEAN-END ( n -- ) {: outside:n :}
    0 EVALERR-CELL CELL!
@@ -2585,42 +2383,39 @@ private
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then
    PKG-OUTSIDE-CELL CELL@ 0<> if outside PKG-OUTSIDE-CELL CELL! then ;
 
-\ `evaluate` keeps its frame in a mapping of its own, linked through
-\ EVAL-TOP-CELL and counted in EVALD-CELL, so a throw out of its buffer reaches
-\ habu2.f LEVALREC, which pops the frame and restores it. Fields layout.f does
-\ not name sit where LEVALREC reads them. The clean-exit continuation at $10
-\ stays zero: nothing reads it for a buffer this frame bounds.
-0 constant FR-INP                  \ the includer's input cursor
-8 constant FR-INE                  \ and the end of its input
-$18 constant FR-BOUND              \ the evaluate's own catch handler
-$20 constant FR-XDS                \ the data-stack cursor the buffer starts on
-$28 constant FR-CP                 \ the dictionary top a throw rolls back to
+\ A throw out of an evaluated buffer reaches the kernel's throw recovery, which
+\ pops the frame and reads these fields where they sit. The clean-exit
+\ continuation at $10 stays zero: nothing reads it for a buffer this frame
+\ bounds.
+0 constant FR-INP
+8 constant FR-INE
+$18 constant FR-BOUND
+$20 constant FR-XDS
+$28 constant FR-CP
 $30 constant FR-NDICT
 $38 constant FR-DP
 
 \ The frame on its way into the catch that links it; empty at rest.
 TYPED-VARIABLE FRAME-ARG ptr u8
 
-\ `evaluate` on a task's thread ends the process with no output, as the
-\ engine's does (habu1.f B-TASK-GUARD).
 : EVAL-TASK-GUARD ( -- )
    TASK-TCB-CELL CELL@ 0= if exit then
    s" " RC-TASK-THREAD FAIL-CLOSED ;
 
 \ The source owner's record end and its cut, raw execution tokens in the owner
-\ record (layout.f EVAL-FRAME:ROWS).
+\ record.
 CAST: AS-ROWS-END ( n -- [ -- n ] )
 CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
 \ The checker's record end as a buffer begins, plus one, or 0 when no owner
-\ records rows (habu1.f DECL-OWNER:MARK-END).
+\ records rows.
 : ROWS-MARK ( -- n )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-ROWS-END-OFF PKG-OPERATION {: xt:n :}
    xt 0= if 0 exit then
    xt AS-ROWS-END execute 1+ ;
 
 \ Cut the checker's records back to the frame's mark, so no definition the
-\ rollback drops keeps a record (habu1.f DECL-OWNER:RETRACT-TO).
+\ rollback drops keeps a record.
 : ROWS-CUT ( ptr u8 -- ) {: f:ptr :}
    f EVAL-FRAME:ROWS FR@ {: mark:n :}
    mark 0= if exit then
@@ -2662,10 +2457,9 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    ROWS-MARK f EVAL-FRAME:ROWS FR!
    f ;
 
-\ Link the frame as the innermost evaluate's. It runs first in the evaluate's
-\ catch, so the nearest handler is that catch's: LEVALREC pops a frame whose
-\ boundary lies at or below the nearest handler, and leaves it for a handler
-\ the buffer installs, which lies below.
+\ It runs first in the evaluate's catch, so the nearest handler is that
+\ catch's: throw recovery pops a frame whose boundary lies at or below the
+\ nearest handler, and leaves it for a handler the buffer installs, below.
 : FRAME-LINK ( ptr u8 -- ) {: f:ptr :}
    NULL-PTR FRAME-ARG !
    HND-CELL CELL@ f FR-BOUND FR!
@@ -2685,9 +2479,9 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f EVAL-FRAME:PKG-OUTSIDE FR@ CLEAN-END ;
 
 
-\ x86 THROW restores its catch stack but returns with the Habu evaluation
-\ frame still linked. ARM LEVALREC has already popped it before catch returns.
-\ The top link is the ownership test: exactly one path performs the rollback.
+\ x86 THROW returns with the evaluation frame still linked; arm64's throw
+\ recovery has already popped it before catch returns. The top link is the
+\ ownership test: exactly one path performs the rollback.
 : FRAME-ROLLBACK-CODE ( ptr u8 -- )
    {: f:ptr :}
    DEF-ABORT
@@ -2701,8 +2495,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    cut base - ADDRESS-CELLS:KEEP-BELOW
    cut INTERN:KEEP-BELOW
    \ Raise the release high-water to the DP this lowers from, so `allot`
-   \ zeroes the reused space it hands out again (layout.f DPHW-CELL), and end
-   \ the `,` run (layout.f COMMA-RUN-CELL).
+   \ zeroes the reused space it hands out again.
    DP-CELL CELL@ base - DPHW-CELL CELL@ max DPHW-CELL CELL!
    0 COMMA-RUN-CELL CELL!
    cut DP-CELL CELL! ;
@@ -2749,7 +2542,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 create REPL-QNL 63 c, 10 c,
 variable REPL-OK
 
-\ stack-clear is INTERPRETER's own row (src/habu/prims.f).
 : REPL-STACK-CLEAR ( -- )
    stack-clear ;
 
@@ -2798,8 +2590,8 @@ variable REPL-OK
 
 public
 
-\ Each line calls the REPL-READ defer (src/habu/repl.f) anew: genio may replace
-\ its reader. A definition may span lines; EOF refuses one still open.
+\ Each line calls REPL-READ anew: genio may replace its reader. A definition
+\ may span lines; EOF refuses one still open.
 : REPL ( -- )
    0 ENTRY-PEND !
    true REPL-OK !
@@ -2810,15 +2602,8 @@ public
       a u REPL-LINE REPL-OK !
    again ;
 
-\ The engine's `evaluate-range` (habu1.f B-EVAL-RANGE): interpret the range
-\ [first, end) under the evaluate frame: a throw out of it is rolled back in
-\ LEVALREC, which pops the frame before the catch here sees the code. Either
-\ way the frame's mapping goes back, and so do the buffer's using floor and the
-\ record the step that ran the word looked up (REC). The input base
-\ stays the buffer's first byte, so a refusal's line counts from the start of
-\ the whole source. An owned source range arms the observer here, and a buffer
-\ an observed word evaluates adopts it until the catch (OBSERVE-ADOPT);
-\ LOOP-EVAL names this frame while its loop reads.
+\ The input base stays the buffer's first byte, so a refusal's line counts
+\ from the start of the whole source.
 : EVAL-FRAMED-RANGE ( ptr u8 n n n -- ) {: a:ptr u:n first:n end:n :}
    EVAL-TASK-GUARD
    depth FRAME-OPEN {: f:ptr :}
@@ -2841,8 +2626,8 @@ public
       f FRAME-LEAVE
    else
       f NULL-PTR - EVAL-TOP-CELL CELL@ = if f code FRAME-RECOVER then
-      \ ARM LEVALREC can unlink the frame before this catch returns. Its
-      \ engine-cell rollback cannot restore the Habu lexical capture cells.
+      \ The kernel's engine-cell rollback cannot restore the Habu lexical
+      \ capture cells.
       entry 0= if BODY-LEX-RESET else
          TOK-BODY-DEPTH @ BODY-DEPTH !
          TOK-BODY-RAW @ BODY-RAW-NEXT !
@@ -2858,13 +2643,9 @@ public
    f FRAME-FREE
    code 0<> if code throw then ;
 
-\ The engine's `evaluate` (habu1.f B-EVAL): the whole buffer.
 : EVAL-FRAMED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u 0 u EVAL-FRAMED-RANGE ;
 
-\ Make EVAL-FRAMED and EVAL-FRAMED-RANGE the engine's `evaluate` and
-\ `evaluate-range` where its prims read the cells; layout.f PROVIDED-XT says
-\ which do.
 : INSTALL-EVALUATE ( -- )
    ['] EVAL-FRAMED data-base PROVIDED-XT:EVALUATE-CELL + xt!
    ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt! ;
