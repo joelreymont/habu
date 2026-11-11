@@ -1100,23 +1100,15 @@ DV-OFF 8 + constant SCI-LIMBS-OFF
 SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 ;package
 
-\ FS-ABI is src/lib/fs.f's per-call slots: one cause cell and the five cells one
-\ transfer threads, the stat buffer, the one-byte read probe, the NUL-padded
-\ path copy and FS:ERRNO$'s text. 64 text bytes hold every errno's text on
-\ macOS (the longest is 47 bytes) and glibc (49). hb bakes fs.f:
-\ src/habu/link-data.f requires src/lib/fs-mutate.f, which requires it.
-\
-\ The walk state is not here: fs.f maps a context per FS:WALK-FILES,
-\ FS:WALK-FILES-IF or FS:REMOVE-TREE call, so two tasks walk at once.
-\
-\ Sized as FMT-ABI: IO-CELLS cells at the band base, then the buffers.
+\ FS-ABI is src/lib/fs.f's per-call slots. 64 text bytes hold every errno's
+\ text on macOS (the longest is 47 bytes) and glibc (49).
 package FS-ABI
 public
-6 constant IO-CELLS                    \ ERRNO, IO-FD, IO-LEN, IO-RD, IO-OFF, IO-WR
-256 constant STAT-BYTES                \ src/lib/fs.f STAT-CAP
-1 constant PROBE-BYTES                 \ src/lib/fs.f READ-PROBE-CAP
-PATH-CAP 1 + constant PATHZ-BYTES       \ src/lib/fs.f FS:PATHZ-CAP
-64 constant TEXT-BYTES                 \ src/lib/fs.f TEXT-CAP
+6 constant IO-CELLS
+256 constant STAT-BYTES
+1 constant PROBE-BYTES
+PATH-CAP 1 + constant PATHZ-BYTES
+64 constant TEXT-BYTES
 IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + TEXT-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 FMT-ABI:START constant END
@@ -1143,22 +1135,10 @@ $F000 constant S-IFMT
 $8000 constant S-IFREG
 ;package
 
-\ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch: the second
-\ NUL-padded path every two-path syscall stages (rename, symlink, the stream
-\ copy's destination), the temporary name FS:MKTEMP-DIR-IN builds and returns a
-\ span into, and FS:ATOMIC-WRITE-FILE's `.tmp` sibling. The build tool loads
-\ fs-mutate.f from source, so an engine that predates this band dies
-\ `E-UNDEFINED: FS-MUT-ABI:PATHZ2-BYTES`, rc 70, as FS-ABI's does.
-\
-\ Two things stay process-wide on purpose: the 8 KiB copy buffer (3072 + 8192
-\ does not fit the 7408 bytes USER-BAND had free; COPY-FILE and
-\ FS:COPY-FILE-STREAM are the module's one single-task pair) and the 64-path
-\ cleanup registry, a process exit registry every task registers into.
-\
-\ Sized as FS-ABI; no cell lives in this band, so the rounding is its only slack.
+\ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch.
 package FS-MUT-ABI
 public
-PATH-CAP 1 + constant PATHZ2-BYTES      \ src/lib/fs.f FS:PATHZ-CAP
+PATH-CAP 1 + constant PATHZ2-BYTES
 PATH-CAP constant ATOMIC-BYTES
 PATH-CAP constant TMP-BYTES
 PATHZ2-BYTES ATOMIC-BYTES + TMP-BYTES + constant MEMBER-BYTES
@@ -1170,13 +1150,10 @@ PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF
 ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
 ;package
 
-\ MEM-ABI is src/lib/memory.f's WITH-BYTES scope head: one cell naming the
+\ MEM-ABI is src/lib/memory.f's scope head: one cell naming the
 \ running task's first scope chunk, 0 until its first scope; that chunk's header
-\ names the innermost scope. memory.f is baked, so it takes a declared band, at
-\ FS-MUT-ABI's bootstrap cost: the build host compiles src/habu/data-claims.f,
-\ which names MEM-ABI:START. A region is a fresh zeroed mapping, so every task
-\ and every stripped image starts with no scope open. Carved directly below
-\ FS-MUT-ABI, whose start is a cell boundary.
+\ names the innermost scope. A region is a fresh zeroed mapping, so every task
+\ and every stripped image starts with no scope open.
 package MEM-ABI
 public
 1 cells constant BYTES
@@ -1194,7 +1171,7 @@ MEM-ABI:START constant END
 
 \ A `defer NAME ( E )` in src/core/checker.f before `: TRUST` cannot register
 \ itself: the lookup of `trust` and `checker-defer` fails. The Habu loop's
-\ `defer` (src/habu/interpreter.f PD-HOLD) then copies the qualified name
+\ `defer` then copies the qualified name
 \ and effect signature into a slot here;
 \ DRAIN-PRETRUST, right after `: TRUST`, replays both registrations per slot, so
 \ the table is empty by snapshot time. Overflow or an over-long name or sig dies
@@ -1205,11 +1182,10 @@ MEM-ABI:START constant END
 \ [PD-NAME-OFF..)=name bytes [PD-SIG-OFF..)=sig bytes.
 \ Unguarded engine scratch (no DATA-BANDS row): a raw store
 \ grants nothing beyond the public `trust`/`checker-defer` words, and the table
-\ is empty whenever user source runs. test/protection-span.f pins this class at
-\ the DATA-START edge.
+\ is empty whenever user source runs.
 128 constant PD-CAP                         \ pending slots with room beyond the checker prefix
-48 constant PD-NAME-CAP                      \ max qualified defer-name bytes per slot
-64 constant PD-SIG-CAP                       \ max effect-signature bytes per slot
+48 constant PD-NAME-CAP
+64 constant PD-SIG-CAP
 0  constant PD-NLEN-OFF                       \ in-slot: name length (u64)
 8  constant PD-SLEN-OFF                       \ in-slot: sig length (u64)
 16 constant PD-NAME-OFF                       \ in-slot: name bytes
@@ -1219,7 +1195,7 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 
 \ Fields of each evaluate frame. Clean exit restores the using depth to the
 \ buffer's floor; throw recovery restores the entry depth
-\ (PKGSNAP-USE), the used-public wids (EVAL-FRAME:USE-WIDS) and the package scope.
+\ (PKGSNAP-USE), the used-public wids and the package scope.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
 16 constant PKGSNAP-PRI
@@ -1235,13 +1211,12 @@ public
 ;package
 
 
-\ `using NAME` makes package NAME's public wordlist visible to bare lookup until
-\ `;using`, `;package`, or the end of the load file. A fixed stack of public
-\ wordlist IDs plus a depth cell, the one count of live usings: engine code owns
+\ A fixed stack of public wordlist IDs plus a depth cell, the one count of live
+\ usings: engine code owns
 \ it (`using` pushes, `;using` pops, `package`/`;package` and the eval-frame
 \ and REPL boundaries save and restore it), and the checker reads the same cell
-\ through `data-base USE-DEPTH-CELL +`, so its package-name mirror (checker.f
-\ CK-USE-NAMES) has no counter of its own to drift. The depth is 0 at rest:
+\ through `data-base USE-DEPTH-CELL +`, so its package-name mirror
+\ has no counter of its own to drift. The depth is 0 at rest:
 \ usings are file-local and closed before seal or snapshot.
 16 constant USE-MAX                       \ concurrent `using` capacity (E-code on overflow)
 \ A published engine ABI, not derived from the pending table's capacity.
@@ -1254,7 +1229,7 @@ USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 \ Two tables that let a snapshot image be restored at a region address the
 \ writing run never saw. Both live below DATA-START, so the snapshot DATA copy
 \ carries them with no new image section, and both are keyed by offset, so their
-\ contents are the same in every run. src/habu/habu2.f's restore reads them.
+\ contents are the same in every run.
 package SNAP-RELOC
 public
 
@@ -1286,36 +1261,26 @@ public
 \ whose callee is in the engine's loaded __text. Those are the only instructions
 \ whose displacement differs between the writing and the restoring run: the
 \ kernel picks the region base and the loader the image base independently. A
-\ site is recorded when the call is published (callmap-set, habu1.f
-\ BCALLMAPSET, which src/compiler/native/publish.f RELOC-EXTERNAL calls),
-\ because region bytes cannot be decoded soundly: a compiled word may carry
-\ inline non-instruction data. The writer
-\ rewrites each site as if the region sat REGION-OFF above __text; the loader
-\ rewrites it for this run's distance. Sized from REGION, so it cannot overflow.
-REGION 32 / constant CALLMAP-BYTES        \ one bit per region word (REGION / 4 / 8)
+\ site is recorded when the call is published, because region bytes cannot be
+\ decoded soundly: a compiled word may carry inline non-instruction data. The
+\ writer rewrites each site as if the region sat REGION-OFF above __text; the
+\ loader rewrites it for this run's distance.
+REGION 32 / constant CALLMAP-BYTES
 USE-BAND-END constant CALLMAP-OFF
 CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 
 \ Address-literal map: the call map's shape, marking the first word of every
 \ address carrier. A CODE carrier has four move-wide halves, shared DATA normally
 \ three; CODE includes the entry a `[: ... ;]` pushes and the target a `[']`
-\ pushes. A separate map, not a second call-map bit: the shapes, addresses and
-\ rewritten fields differ, and each pass keeps the same bit-scan loop.
-\ Recorded where the compiler decides a literal is an address: habu2.f
-\ C-DATA-ADDR, C-DATA-ADDR-RAW and the native chain's publication seam.
+\ pushes. Recorded where the compiler decides a literal is an address.
 \ DATA sites are recorded for the AOT capture: the captured blob lands at a
 \ different DP in the seeded engine, so a DATA chain needs rebasing there, while
-\ fixed-VA DATA needs nothing on snapshot restore. habu2.f EMIT-ADDRS runs once
-\ per band (the JIT region, __text) and rewrites a chain only when its address
-\ falls in that band; DATA at the fixed DATA-VA lies above both at both ends of a
-\ snapshot (the writer folds the region to the RBASE-VA sentinel), so a DATA site
-\ is rewritten by neither.
+\ fixed-VA DATA needs nothing on snapshot restore.
 \ The map stores no kind: a consumer classifies a recorded value by its window's
-\ DATA and code spans, which cannot overlap, and refuses a value in neither
-\ (src/habu/aot-capture.f). Nothing recognises a chain from region bytes or from
-\ its value: a word may hold inline data and an integer any value.
-\ Sized from REGION like the call map.
-REGION 32 / constant ADDRMAP-BYTES        \ one bit per region word (REGION / 4 / 8)
+\ DATA and code spans, which cannot overlap, and refuses a value in neither.
+\ Nothing recognises a chain from region bytes or from its value: a word may
+\ hold inline data and an integer any value.
+REGION 32 / constant ADDRMAP-BYTES
 CALLMAP-END constant ADDRMAP-OFF
 ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 
@@ -1328,17 +1293,15 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \ instruction byte as a little-endian u32, then its kind as a u8 at
 \ SITE-KIND-OFF. The row names the instruction, as a bit names the BL word or a
 \ chain's first MOVZ; the patched field is at +1 of a call and at
-\ +MOVABS-IMM-OFF of a literal (src/habu/address-carrier.f).
+\ +MOVABS-IMM-OFF of a literal.
 \
-\ Both views are declared on every target: src/habu/sites.f EACH-IN-SPAN reads
-\ both and picks one at run time by HB-TARGET-LINUX-X86-64?.
+\ Both views are declared on every target.
 \
 \ The rows are strictly ascending by offset, one per offset, so the reader yields
 \ a span's sites in bitmap order without sorting a live band. On x86-64
-\ `callmap-set` and `addrmap-set` insert a row at its offset's place (an append
-\ for code published at the code pointer, else a move of the rows above), so a
+\ `callmap-set` and `addrmap-set` insert a row at its offset's place, so a
 \ caller records sites in any order. `code-publish` and `reloc-maps-clear` remove
-\ the rows of a span (src/habu/prims.f). Kinds start at 1, so a zeroed row is no
+\ the rows of a span. Kinds start at 1, so a zeroed row is no
 \ kind.
 \
 \ Unlike a bitmap, the band can fill. SITE-CAP rows fit; a writer refuses one
@@ -1350,8 +1313,8 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \ at fixed addresses there. The rows serve publication and the AOT capture.
 CALLMAP-OFF constant SITE-N-CELL                \ live row count (u64)
 SITE-N-CELL 8 + constant SITE-ROWS-OFF
-4 constant SITE-KIND-OFF                        \ the kind follows the u32 offset
-SITE-KIND-OFF 1 + constant SITE-ROW-BYTES       \ offset u32 LE + kind u8
+4 constant SITE-KIND-OFF
+SITE-KIND-OFF 1 + constant SITE-ROW-BYTES
 ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 1 constant SITE-CALL
 2 constant SITE-ADDR
@@ -1364,12 +1327,10 @@ ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 \ declaration for AOT capture, where the captured DATA window moves and a raw
 \ pointer into it would escape in sparse bytes. Membership is recorded where the
 \ cell's kind is decided, never inferred from its contents (an integer can hold
-\ any value): PERSISTED-PTR-VARIABLE registers its DATA-pointer cell, the
-\ `defer`/`is` handlers register dispatch cells, and habu2.f registers the
-\ engine hook cells by name at cold boot.
-\ A scratch pointer cell (pointer-storage.f PTR-VARIABLE) is a DATA-pointer row
-\ that also carries bit 62: every save writes it as null and never reads it, so
-\ a reader that knows only bit 63 treats it as a DATA pointer, never as an xt.
+\ any value).
+\ A scratch pointer cell is a DATA-pointer row that also carries bit 62: every
+\ save writes it as null and never reads it, so a reader that knows only bit 63
+\ treats it as a DATA pointer, never as an xt.
 \ Legacy layout: a count, then XTCELL-CAP tagged offset cells; bit 63 is the
 \ DATA-pointer kind and the low 62 bits the DATA offset. The engine appends an
 \ identical declaration only once and refuses one cell declared with two kinds.
@@ -1384,14 +1345,14 @@ ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows
 XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 
-\ The largest offset a declared cell may carry. The declaration (habu2.f
-\ EMIT-MARK) and the loader's relocate each access the eight
-\ bytes at the DATA base plus the offset, so the whole cell must lie inside the
+\ The largest offset a declared cell may carry. The declaration and the
+\ loader's relocate each access the eight bytes at the DATA base plus the
+\ offset, so the whole cell must lie inside the
 \ region; the unsigned compare also rejects negative offsets.
 \ The cell need not be cell-aligned: `create` rounds its field,
 \ but a cell reached through `allot` after byte-sized data, or inside a copied
-\ DATA window, keeps its residue (two adjacent `create X 4 cells allot` tables
-\ measured 7 mod 8), and unaligned cell loads and stores are defined here.
+\ DATA window, keeps its residue, and unaligned cell loads and stores are
+\ defined here.
 DATA-SIZE 8 - constant XTCELL-OFF-MAX
 
 ;package
@@ -1402,7 +1363,6 @@ package APP-ENTRY
 public
 $43A0 constant XT-CELL
 
-\ The entry's effect is ( -- ): `' MAIN XT!` refuses another at XT!.
 : XT! ( [ -- ] -- )
    data-base XT-CELL + xt! ;
 ;package
@@ -1430,20 +1390,13 @@ $43B8 constant B0-CELL           \ first address of the open window's code span
 package JIT-SNAP
 public
 \ One frame per open IF, BEGIN, WHILE or DO entry (`else` pops one and pushes
-\ one), as many as the control-flow stack holds.
+\ one).
 CFSTK-DEPTH-MAX constant FRAMES
 24 constant FRAME-BYTES                             \ one frame is (k, p0, p1)
 $378 constant SP-CELL                               \ depth; low, beside TIER-CELL
 SNAP-RELOC:XTCELL-END constant STK-OFF              \ base of the frame area
 STK-OFF FRAMES FRAME-BYTES * + constant END
 ;package
-
-\ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
-\ engine-reserved state (snapshot stores selected fixed sections); DP-CHECK bounds the heap
-\ >= DATA-START; task-user cells stop at EVAL-TOP-CELL. Its reserved band
-\ ends at $47C0, with PROT:RHI/PROT:CF taking the two cells directly
-\ above them. The lowering state ends at $8000; the immutable lowering blob
-\ lives outside DATA. Pending-defer scratch follows the private engine bands.
 
 \ The active source observer is one native stack frame per owned file.
 $2CA8 constant SOURCE-EXEC-CTX-CELL
@@ -1467,8 +1420,8 @@ $2CA8 constant SOURCE-EXEC-CTX-CELL
 160 constant SX-SUSPEND
 192 constant SX-POS
 
-\ The checker overlay's replay scope (habu2.f DEFWRITE:REPLAY-OPEN /
-\ REPLAY-CLOSE). replay-open saves the dictionary and scope cells here and sets
+\ The checker overlay's replay scope.
+\ replay-open saves the dictionary and scope cells here and sets
 \ LATCH; replay-record raises HW, the highest NDICT a replay record reached;
 \ replay-close checks the live state against these cells, restores them and
 \ zeroes the whole band, LATCH included; replay-widn! lowers WIDN no further
@@ -1476,8 +1429,7 @@ $2CA8 constant SOURCE-EXEC-CTX-CELL
 \ guarded band (DATA-BANDS below), not scratch: a raw store that forged the
 \ saved NDICT, HW or WIDN would turn replay-close into a record eraser and
 \ either into a WIDN setter.
-\ A fixed offset, because source reads LATCH: xref.f XREF-UNDEFINE-GUARD and
-\ interpreter.f OVERLAY-GUARD read it as a DATA offset. The band
+\ A fixed offset, because source reads LATCH. The band
 \ takes the start of the unclaimed run $4208..$4398 below DECLARED-LOG:ADDR-CELL;
 \ DATA-CLAIMS refuses a USE-MAX that would outgrow the run.
 package REPLAY-SCOPE
@@ -1494,7 +1446,7 @@ PKG-PRI CELL + constant PKG-PARENT
 PKG-PARENT CELL + constant PKG-REC
 PKG-REC CELL + constant USE-DEPTH
 USE-DEPTH CELL + constant USE-PKG-SAVE
-USE-PKG-SAVE CELL + constant USE-WIDS               \ USE-MAX cells
+USE-PKG-SAVE CELL + constant USE-WIDS
 USE-WIDS USE-MAX cells + constant END
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its
 \ order, saved and restored with the scope. It takes the cells after
@@ -1526,16 +1478,14 @@ $100 constant CAP
 ;package
 
 \ Nonzero while the open package was opened outside the buffer being read, so no
-\ part opens; buffers, `package` and CHECKER-OVERLAY write it (PART-GUARD reads).
+\ part opens; buffers, `package` and CHECKER-OVERLAY write it.
 $4DD0 constant PKG-OUTSIDE-CELL
 
 \ The protected DATA bands, as one table.
-\ Every engine's span guard walks this table: arm64 GUARD-SPAN (src/habu/habu1.f)
-\ and x86-64 PROT-SPAN (src/habu/kernel-x64.f). Each builder reads it twice, for
+\ Every engine's span guard walks this table. Each builder reads it twice, for
 \ the hull [LO, HI) of its bounding test and for the per-band interval tests, so
 \ one added row widens both. The zero-length row ends every walk, so no count
-\ can fall out of step with the rows. src/habu/data-claims.f BANDS-ASSERT checks
-\ every row against its DATA-CLAIMS claim when an engine is built.
+\ can fall out of step with the rows.
 package DATA-BANDS
 
 create TAB
@@ -1575,18 +1525,14 @@ public
 
 ;package
 
-\ Pending storage is private to the pre-trust capture
-\ (interpreter.f PD-HOLD) and DRAIN-PRETRUST. Its capacity may grow without
-\ moving any published engine slot or live map.
 JIT-SNAP:END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
-\ A definition compiled with the hook cell empty has its declaration as its row
-\ (src/core/checker.f CHECKER-DECLARED-ROW!), recorded by the source owner. No
-\ engine code appends to this log. The claim at the end of checker.f
-\ (CLAIM-COLD-SOURCE) records every logged declaration's row (checker.f
-\ CK-DECLARED-LOG-DRAIN), then zeroes the slots and ADDR-CELL. The log is empty
-\ whenever user source runs and at every capture.
+\ A definition compiled with the hook cell empty has its declaration as its row,
+\ recorded by the source owner. No engine code appends to this log. The claim at
+\ the end of checker.f records every logged declaration's row, then zeroes the
+\ slots and ADDR-CELL. The log is empty whenever user source runs and at every
+\ capture.
 \ A slot is four cells: the pending record (PEND-CELL), the open package's
 \ namespace record (PKG-REC-CELL, 0 outside a package), the signature's address
 \ and its length. The checker keys each row by the record's wordlist and that
@@ -1595,7 +1541,7 @@ PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \ without authority from it.
 \
 \ ADDR-CELL holds the log's address while it holds entries, else 0. The seed
-\ lays its bands out at other offsets (forth.fs SNAPSTK-END), so the checker
+\ lays its bands out at other offsets, so the checker
 \ finds the log through this one fixed cell;
 \ an engine without the log reads 0, an empty log. Below $7FF8 for
 \ `DATA <off> LDR` and below DATA-START, it is the last cell of the run
@@ -1604,17 +1550,17 @@ package DECLARED-LOG
 public
 $4398 constant ADDR-CELL
 4096 constant CAP
-0  constant REC-OFF                                \ in-slot: the pending record
-8  constant PKG-OFF                                \ in-slot: the namespace record or 0
-16 constant SIG-A-OFF                              \ in-slot: the signature's address
-24 constant SIG-U-OFF                              \ in-slot: the signature's length
+0  constant REC-OFF
+8  constant PKG-OFF
+16 constant SIG-A-OFF
+24 constant SIG-U-OFF
 32 constant SLOT                                   \ per-slot stride
 8  constant SLOTS-REL                              \ slots begin after the u64 count cell
 PD-TABLE-END constant OFF
 OFF SLOTS-REL + CAP SLOT * + constant END
 ;package
 
-\ Rows (text offset, input-buffer offset or NONE) for the runs habu1.f
+\ Rows (text offset, input-buffer offset or NONE) for the runs
 \ EMIT-BCAP appends, ascending: a run first drops the rows at or past BODYLEN.
 \ The rows live in the body text block after its text: row i at
 \ BODY-TEXT:BASE-CELL's base + cap + i * ROW, the count at BODY-TEXT:ROWS-CELL.
@@ -1623,7 +1569,9 @@ public
 16 constant ROW                     \ bytes per row
 -1 constant NONE
 ;package
+\ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
+\ engine-reserved state; DP-CHECK bounds the heap >= DATA-START.
 DECLARED-LOG:END constant DATA-START
-\ The bytes below a build's image where a routed header store marks its cell (habu2.f
-\ ROUTE-HEADER): DATA-START and the cell every such store sets, rounded up to a multiple of $10000.
+\ The bytes below a build's image where a routed header store marks its cell:
+\ DATA-START and the cell every such store sets.
 DATA-START 8 + $FFFF + $10000 / $10000 * constant ROUTED-BYTES
