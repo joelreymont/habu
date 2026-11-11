@@ -275,6 +275,35 @@ s" STRUCTURE-DECL:SD-RUN sdsvspan FIELD s SPAN:span<sdsvspan> ;STRUCTURE" TEST-E
 s" habu: bad structure declaration 'sdsvspan': field type cannot recursively name its owner at 'SPAN:span<sdsvspan>'"
 DECL-DIAG:HAS? TTRUE
 
+\ A family argument may be a pointer to the declared family; a span of pointers stored in
+\ the field comes back.
+STRUCTURE sdpnode DERIVE addr
+   FIELD kind n
+   FIELD kept SPAN:span<ptr sdpnode>
+;STRUCTURE
+2 TYPED-BUFFER SDP-NODES sdpnode
+2 TYPED-BUFFER SDP-REFS ptr sdpnode
+: SDP-KEPT ( -- n n )
+   7 1 SDP-NODES SDPNODE:KIND !
+   1 SDP-NODES 1 SDP-REFS !
+   0 SDP-REFS 2 cells SPAN:MAKE 0 SDP-NODES SDPNODE:KEPT !
+   0 SDP-NODES SDPNODE:KEPT @ SPAN-SPAN:UNMAKE {: b:ptr l:n :}
+   b 1 cells + @ SDPNODE:KIND @ l ;
+SDP-KEPT 2 cells T= 7 T=
+
+\ A type left open at `;STRUCTURE` is unclosed and `ptr` with no pointee malformed; a type's
+\ tokens may stand on two lines and hold blanks, as a declaration's do.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdpopen FIELD kept SPAN:span<ptr ;STRUCTURE" TEST-EVAL:RC 7109 T=
+s" habu: bad structure declaration 'sdpopen': unclosed field type application at 'SPAN:span<ptr'"
+DECL-DIAG:HAS? TTRUE
+s\" STRUCTURE-DECL:SD-RUN sdpline FIELD kept SPAN:span<ptr\n   sdpline> ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE-DECL:SD-RUN sdpspaced FIELD kept SPAN:span< ptr sdpspaced > ;STRUCTURE" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdpbare FIELD kept SPAN:span<ptr> ;STRUCTURE" TEST-EVAL:RC 7109 T=
+s" habu: bad structure declaration 'sdpbare': malformed field type application at 'SPAN:span<ptr>'"
+DECL-DIAG:HAS? TTRUE
+
 \ A pointer to its own family is a pointer to a linear value when the family
 \ holds one, in either field order: judged once the fields are committed.
 package SDSELF

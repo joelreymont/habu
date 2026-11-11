@@ -59,8 +59,8 @@ PTR-VARIABLE GATE-A   variable GATE-U
 \ field naming a DEFLINEAR con already relies on.
 \ The kind test falls through to "unknown field type" because the one kind it
 \ excludes, TK-EVIDENCE, has no declarer source can write.
-\ The declared family may be named only inside a `ptr` pointee (`FIELD next ptr
-\ node`); by value or as another family's argument (`option<node>`) it is 7109.
+\ The declared family may be named only beneath a `ptr` (`ptr node`, `SPAN:span<ptr node>`);
+\ by value, as in `option<node>`, it is 7109.
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
@@ -90,11 +90,12 @@ PTR-VARIABLE GATE-A   variable GATE-U
    SD-ARG-N @ cells SD-ARGS + !
    SD-ARG-N @ 1 + SD-ARG-N ! ;
 
+: SD-BLANK? ( n -- bool ) 33 < ;
 : SD-DELIM? ( n -- bool )
-   dup 60 = over 44 = or swap 62 = or ;
+   dup 60 = over 44 = or over 62 = or swap SD-BLANK? or ;
 
-\ The field type parser threads its byte cursor: each word takes the index it
-\ starts at and answers the index after what it consumed.
+\ Each parser word takes the index it starts at and answers the index after what it
+\ consumed; a type spelled over tokens (SD-SPAN) holds blanks.
 : SD-ATOM ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n start:n :}
    start
    BEGIN
@@ -106,13 +107,34 @@ PTR-VARIABLE GATE-A   variable GATE-U
       s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    a start + j start - j ;
 
+\ The blanks an argument may start with, and the blanks after its `ptr`.
+: SD-SKIP ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+   i BEGIN
+      dup u < IF a over + c@ SD-BLANK? ELSE NO THEN
+   WHILE
+      1 +
+   REPEAT ;
+
+\ An atom `ptr` not followed by `<` opens a pointer argument (SD-PTR-START).
+: SD-PTR-ATOM? ( ptr u8 n ptr u8 n n -- bool ) {: na:ptr nu:n a:ptr u:n j:n :}
+   na nu s" ptr" CORE-STR=CI 0= IF NO EXIT THEN
+   j u < IF a j + c@ 60 <> ELSE YES THEN ;
+
+\ Where the pointee of an argument's `ptr` is read from: a blank must follow
+\ `ptr`, so `span<ptr>` and `span<ptr,n>` are refused.
+: SD-PTR-START ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
+   j u < IF a j + c@ SD-BLANK? ELSE NO THEN 0= IF
+      s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   j 1 + ;
+
 defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
 
 : SD-APP-ARGS ( ptr u8 n n n n -- n n ) {: a:ptr u:n fam:n k:n i:n :}
    k fam TFAM-ARITY@ >= IF
       s" field type has too many arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   a u i  fam k TFAM-PK@  SD-PARSE-NODE {: node:n j:n :}
+   a u i  fam k TFAM-PK@  SD-PARSE-NODE {: node:n e:n :}
    node SD-ARG+
+   a u e SD-SKIP {: j:n :}
    j u >= IF
       s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    a j + c@ {: c:n :}
@@ -136,7 +158,7 @@ defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
 defer SD-LOOSE-NODE ( ptr u8 n n -- n )
 
 : SD-LOOSE-ARGS ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
-   a u i SD-LOOSE-NODE {: j:n :}
+   a u  a u i SD-LOOSE-NODE  SD-SKIP {: j:n :}
    j u >= IF
       s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    a j + c@ {: c:n :}
@@ -170,8 +192,19 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
    a u TYPE-MAY-ARRIVE-XT IF SD-MISSING! EXIT THEN
    s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
+\ The pointee of an argument's `ptr`, with POINTEE set as RESOLVE-TYPE sets it.
+: SD-LOOSE-PTR ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
+   a u j SD-PTR-START {: k:n :}
+   POINTEE @ {: outer:n :}
+   -1 POINTEE !
+   a u k SD-LOOSE-NODE
+   outer POINTEE ! ;
+
+\ SD-PARSE-NODE-IMPL's grammar over the arguments of a family that may still arrive
+\ (SD-LOOSE-APP), building no application; an empty `<>` passes here and SD-APP refuses it.
 : SD-LOOSE-NODE-IMPL ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
-   a u i SD-ATOM {: na:ptr nu:n j:n :}
+   a u  a u i SD-SKIP  SD-ATOM {: na:ptr nu:n j:n :}
+   na nu a u j SD-PTR-ATOM? IF a u j SD-LOOSE-PTR EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? IF
          {: fam:n :}
@@ -186,8 +219,23 @@ defer SD-LOOSE-NODE ( ptr u8 n n -- n )
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
+\ An argument `ptr T` is a pointer to T, built as RESOLVE-TYPE's `ptr` arm
+\ builds one; while T is read the declared family may be named (FIELD-FAM?).
+: SD-PTR-NODE ( ptr u8 n n -- n n ) {: a:ptr u:n j:n :}
+   a u j SD-PTR-START {: k:n :}
+   POINTEE @ {: outer:n :}
+   -1 POINTEE !
+   a u k PK-CELL SD-PARSE-NODE {: node:n e:n :}
+   outer POINTEE !
+   FIELD-MISS @ IF 0 e EXIT THEN
+   node s" field type is a pointer to a linear value and cannot own it"
+   DECL-EVENT:REQUIRE-POINTEE SCHEMA-PTR e ;
+
+\ The node at i of a field type's text: a type parameter, a con, a family
+\ application or a pointer argument, with the index after it.
 : SD-PARSE-NODE-IMPL ( ptr u8 n n n -- n n ) {: a:ptr u:n i:n want:n :}
-   a u i SD-ATOM {: na:ptr nu:n j:n :}
+   a u  a u i SD-SKIP  SD-ATOM {: na:ptr nu:n j:n :}
+   na nu a u j SD-PTR-ATOM? IF a u j SD-PTR-NODE EXIT THEN
    j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? 0= IF
          drop
@@ -212,11 +260,41 @@ SD-LOOSE-INSTALL
 : SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;
 SD-PARSER-INSTALL
 
+: SD-NEST ( n n -- n ) {: depth:n c:n :}   \ `<` depth after one byte
+   c 60 = IF depth 1 + EXIT THEN
+   c 62 = IF depth 1 - EXIT THEN
+   depth ;
+: SD-DEPTH ( n ptr u8 n -- n ) {: depth:n a:ptr u:n :}
+   depth u 0 ?do a i + c@ SD-NEST loop ;
+
+\ One declaration's tokens stand in order in one buffer (parse-name never refills, a replay
+\ reads one body); its end or `;STRUCTURE` goes back and the type is unclosed.
+: SD-SPAN-REST ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n depth:n :}
+   u depth
+   BEGIN dup 0 > WHILE
+      NEXT dup 0= IF YES ELSE 2dup s" ;structure" CORE-STR=CI THEN IF
+         UNGET  drop a swap DECL-REJECT:TOKEN!
+         s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      2swap nip  >r 2dup r> -rot SD-DEPTH  -rot
+      swap NULL-PTR - a NULL-PTR - - +  swap
+   REPEAT
+   drop a swap ;
+
+\ A type whose first token leaves a `<` open runs to the token closing it, as one span of the
+\ source or replay body, which outlives the TYPE@ span SD-MISSING! keeps.
+: SD-SPAN ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 a u SD-DEPTH {: depth:n :}
+   depth 1 < IF a u EXIT THEN
+   a u depth SD-SPAN-REST 2dup DECL-REJECT:TOKEN! ;
+
 defer SD-QUOT-ELEM ( ptr u8 n -- n )
 : SD-QUOT-FAIL ( ptr u8 n n -- ) DECL-REJECT:REJECT throw ;
 
+\ A field type's text, from its first token (SD-SPAN); a leading `ptr` and a
+\ quotation `[` read the tokens after them.
 : RESOLVE-TYPE ( ptr u8 n -- n )
    dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   SD-SPAN
    2dup TYPE!
    2dup s" [" CORE-STR= IF
       2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
