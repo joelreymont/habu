@@ -1,8 +1,7 @@
 \ fs-mutate.f - checked filesystem mutation: directories, links, copies, atomic
 \ and staged replacement, temp paths, and the process exit cleanup registry.
 \ Public names avoid the primitives' (the dictionary is case-insensitive):
-\ MAKE-DIR and REMOVE-DIR, not mkdir or rmdir. Path checks and the PATH-CAP gate
-\ are src/lib/fs.f's; the FS-MUT-ABI band is declared in src/habu/layout.f.
+\ MAKE-DIR and REMOVE-DIR, not mkdir or rmdir.
 \ STORAGE CLASS. TASK-LOCAL staged paths; PROCESS-WIDE COPY-BUF and registry.
 
 require src/lib/error.f
@@ -66,8 +65,7 @@ variable CLEANUP-LOCK
 \ The staged paths are task-local, in the FS-MUT-ABI band of the per-task DATA
 \ region (`data-base` is the running task's): the path FS:MKTEMP-DIR-IN or
 \ FS:MKTEMP answers stays this task's until it calls either again, and a new
-\ task's paths start empty. The band is declared in src/habu/layout.f, not as
-\ TASK:+USER rows.
+\ task's paths start empty.
 \
 \ layout.f is loaded before this file and cannot see PATHZ-CAP or
 \ PATH-CAP, so the band states those widths and this executes the agreement
@@ -128,8 +126,6 @@ private
       old cap CLEANUP-STRIDE * MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS
    then ;
 
-\ `atomic-cas` and `atomic!` are engine primitives (src/habu/prims.f), so the
-\ lock needs no src/lib/task.f.
 : CLEANUP-SELF ( -- n ) data-base BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
 : CLEANUP-ACQUIRE ( -- )
@@ -183,9 +179,8 @@ public
    target targetu >PATHZ link linku >PATHZ2 LINK-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
 
 private
-\ mkdir(2) is bound through libc, the way LINK-CALL binds link(2), so a
-\ failure leaves its errno in FFI:ERRNO for ERRNO-FAIL: the engine primitive
-\ collapses every failure to a bare -1 (src/habu/habu1.f's errno rule).
+\ mkdir(2) is bound through libc, so a failure leaves its errno in FFI:ERRNO
+\ for ERRNO-FAIL: the engine primitive collapses every failure to a bare -1.
 PROCESS-SYMBOLS
 FUNCTION: MKDIR-CALL mkdir ( ptr u8 n -- i32 ) ;FUNCTION
 : MADE? ( ptr u8 n -- bool )
@@ -244,9 +239,6 @@ private
    ctx WALK-DEPTH@ 0 < if name u exit then
    ctx CUR-ENTRY DIRENT-NAME ;
 
-\ Only a directory is traversed; every other inode, a link to a directory
-\ among them, belongs to unlink. A child's name stays in its parent's dirent
-\ block, one depth up from the blocks the child's own traversal reads.
 : REMOVE-AT ( ptr n n ptr u8 n -- ) {: ctx:ptr parent:n name:ptr u:n :}
    parent name u LSTAT-AT? 0= if exit then
    STAT-BUF LIBC-MODE@ S-IFMT and S-IFDIR <> if
@@ -281,16 +273,14 @@ private
    s u < if a s SYMLINK? if s exit then then
    u ;
 
-\ Caught as a whole, the way src/lib/fs.f catches WALK-RUN, so one site closes
-\ the descriptors and releases the frames for every way out, a root refused by
-\ ROOT-LEN's stat included.
+\ Caught as a whole, so one site closes the descriptors and releases the frames
+\ for every way out, a root refused by ROOT-LEN's stat included.
 : REMOVE-RUN ( ptr n ptr u8 n -- ptr n ptr u8 n ) {: ctx:ptr a:ptr u :}
    ctx AT-CWD a a u ROOT-LEN REMOVE-AT
    ctx a u ;
 
-\ The WITH-BYTES body, built as src/lib/fs.f's WALK-SCOPE. No flag guards
-\ the context: it is this call's alone, so the process exit hook removes trees
-\ through CLEANUP-RUN whatever a task was doing.
+\ No flag guards the context: it is this call's alone, so the process exit hook
+\ removes trees through CLEANUP-RUN whatever a task was doing.
 : REMOVE-SCOPE ( ptr u8 n ptr u8 NUM:alloc-byte-len -- )
    drop CELL-VIEW {: a:ptr u ctx:ptr :}
    ctx WALK-MAP
@@ -342,9 +332,8 @@ private
    source dest SAME-OPEN-FILE? if E-FS-OPEN throw then
    dest 0 FD:RESIZE ;
 
-\ The stream copy's descriptors, counts and write cursor are locals and stack
-\ values of the call. A descriptor a helper must close on its error path is a
-\ parameter: -1 stands for "not open yet", which CLOSE-COPY-FD skips.
+\ A descriptor a helper must close on its error path is a parameter: -1 stands
+\ for "not open yet", which CLOSE-COPY-FD skips.
 : CLOSE-COPY-FD ( n -- ) {: fd :}
    fd 0 >= if fd close then ;
 
