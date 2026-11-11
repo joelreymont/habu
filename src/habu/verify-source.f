@@ -44,6 +44,11 @@ public
 \ scan with this at the definer, or at `does>` for a clause's (SIGNATURE-AT).
 7157 constant E-MISSING-SIGNATURE
 
+\ A DEFLINEAR or VALUE-RECORD the checker refuses stops the scan with one of
+\ these where the refusal stands; a load's registration dies with it instead.
+7200 constant E-BAD-NOMINAL-TYPE   \ a DEFLINEAR or VALUE-RECORD name no type may take
+7198 constant E-BAD-RECORD-FIELD   \ a VALUE-RECORD field, or a record with none
+
 \ Captured by the verifier child's body as it starts loading
 \ (tools/check-verify-child-lib.f). A direct caller that does not supply an entry
 \ observation retains checking order.
@@ -62,13 +67,6 @@ private
 7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
 7158 constant E-VS-BARE-TRUST              \ TRUST with no name and signature
 7199 constant E-VS-EFFECT-SIZE             \ a generates: effect past GENR-SIG-CAP
-
-\ A declaration the checker refuses stops the scan with one of these where the
-\ refusal stands, in the order tools/check.f's nominal pass asks
-\ (CHK-VREC-DEFRECORD); the checker's registration, which a load reaches, dies
-\ with the refusal instead.
-7200 constant E-VS-TYPE-NAME               \ a DEFLINEAR or VALUE-RECORD name no type may take
-7198 constant E-VS-RECORD-FIELD            \ a VALUE-RECORD field, or a record with none
 TYPE-DECL:E-TDECL-SYNTAX constant E-VS-DECL-SYNTAX \ a declaration never ends
 
 PTR-VARIABLE SOURCE-A
@@ -2512,7 +2510,7 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu TYPE-RESERVED? IF E-VS-TYPE-NAME throw THEN
+   name nameu TYPE-RESERVED? IF E-BAD-NOMINAL-TYPE throw THEN
    name nameu CHECKER-DEFLINEAR ;
 
 : VALUE-RECORD-END? ( ptr u8 n -- bool )
@@ -2910,12 +2908,12 @@ variable STG-TYPE-U
 \ record with no field, at END-VALUE-RECORD, the token read last.
 : VALUE-RECORD-ADD ( ptr u8 n n -- )
    {: name:ptr nameu:n byte:n :}
-   name nameu TYPE-RESERVED? IF byte TOKEN-BYTE !  E-VS-TYPE-NAME throw THEN
+   name nameu TYPE-RESERVED? IF byte TOKEN-BYTE !  E-BAD-NOMINAL-TYPE throw THEN
    name nameu BODY$ CHECKER-TRY-RECORD
    {: at:n msg:ptr msgu:n :}
    msgu 0= IF EXIT THEN
    at BODY-U @ < IF at BODY>BYTE TOKEN-BYTE ! THEN
-   E-VS-RECORD-FIELD throw ;
+   E-BAD-RECORD-FIELD throw ;
 
 : RECORD-VALUE-RECORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}

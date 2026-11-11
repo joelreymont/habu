@@ -744,6 +744,23 @@ variable RC
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN
    code THREW ;
 
+\ Under --verify-only the declaration pre-pass alone refuses the fixture: its
+\ one packet is CODE with repair class CLS at TOK.
+: PREPASS-REFUSED ( ptr u8 n ptr u8 n ptr u8 n n n n n -- )
+   {: c:ptr cu:n cls:ptr clsu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+   s" --verify-only" CHECK
+   c cu REJECTED-AS
+   0 s" repair_class" cls clsu FIELD=
+   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
+: TEST-PREPASS-NOMINAL ( -- )
+   s" a reserved DEFLINEAR name under --verify-only" T-LABEL
+   s" DEFLINEAR n" s" deflinear-reserved.f" LINE-FIXTURE
+   s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type" s" n" 1 11 10 11 PREPASS-REFUSED
+   s" a duplicate VALUE-RECORD field under --verify-only" T-LABEL
+   s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
+   s" E-BAD-RECORD-FIELD" s" fix_record_field" s" x" 1 21 20 21 PREPASS-REFUSED ;
+
 \ The load compiles a body before it checks the definition at `;`, so a body
 \ word it cannot compile, undefined or a local it cannot bind, refuses a
 \ definition whose signature does not parse, at that word; any other error in
@@ -2255,6 +2272,7 @@ variable RC
    TEST-ENUM
    TEST-ENUM-CLOSE
    TEST-STRUCTURE
+   TEST-PREPASS-NOMINAL
    TEST-BAD-SIGNATURE
    TEST-LOCAL-GROUP
    TEST-STORED-SIGNATURE

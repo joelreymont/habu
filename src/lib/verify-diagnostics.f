@@ -69,6 +69,16 @@ public
       s" Write the definer's stack effect as ( inputs -- outputs ) right after the name, or right after does> for its clause."
       s" missing signature" exit
    then
+   rc VERIFY:E-BAD-NOMINAL-TYPE = if
+      s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type"
+      s" Choose a unique non-reserved nominal type name."
+      s" bad nominal type" exit
+   then
+   rc VERIFY:E-BAD-RECORD-FIELD = if
+      s" E-BAD-RECORD-FIELD" s" fix_record_field"
+      s" Declare at least one field, each with a unique name and a known type."
+      s" bad record field" exit
+   then
    rc ENGINE-ERROR:SEAL-PACKAGE = if
       s" E-SEALED-PACKAGE" s" use_own_package"
       s" The package is sealed: define the word in a package of your own."
