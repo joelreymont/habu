@@ -56,7 +56,6 @@ package HTTP
 \ deadline until a read finds it passed, then the bytes the request may still read.
 : HTTP-TEST:LATE-UNTAKEN? ( -- bool ) 0 LATE-LEFT@ UNTAKEN = ;
 : HTTP-TEST:READING-LATE? ( -- bool ) 0 LATE-LEFT@ 0 > ;
-\ The body bytes the first worker has taken into its slot.
 : HTTP-TEST:BODY-TAKEN ( -- n ) 0 BODY-U@ ;
 ;package
 
@@ -73,27 +72,27 @@ package HTTP-TEST
 private
 
 $7F000001 constant LOOPBACK
-1 constant ONE-WORKER             \ the transcript's server: one request order
+1 constant ONE-WORKER
 2 constant TWO-WORKERS
 $1F4 constant IDLE-MS             \ short, so a keep-alive case ends the test
 $4000 constant RES-CAP
 $3000 constant REQ-CAP
-$2800 constant BIG-HEADER-BYTES   \ past HTTP:HEAD-CAP
+$2800 constant BIG-HEADER-BYTES
 $41 constant FILL-BYTE
-$80 constant ETAG-CAP             \ the longest ETag a case keeps
+$80 constant ETAG-CAP
 $200001 constant LARGE-CAP        \ odd, and past 1 MiB
 $100000 constant LARGE-CHUNK
 $1388 constant LARGE-IDLE-MS
-$2000 constant SCRIPT-CAP         \ the whole transcript
+$2000 constant SCRIPT-CAP
 13 constant CR
 10 constant LF
 $2F constant SLASH
 $2E constant DOT-BYTE
 -9990 constant E-BOOM             \ this file's own fixture refusals, outside every lib block
--9991 constant E-HOOK             \ one controlled start hook failure
--9992 constant E-RENDER           \ the error hook that is meant to fail its answer
+-9991 constant E-HOOK
+-9992 constant E-RENDER
 -9993 constant E-HOOK-OTHER
--9994 constant E-EXIT-HOOK        \ the exit hook that is meant to fail
+-9994 constant E-EXIT-HOOK
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -128,7 +127,7 @@ variable FAILED-PORT
 TASK:SEMAPHORE HOOK-READY
 TASK:SEMAPHORE HOOK-GATE
 TASK:MIN-STACK TASK:TASK HOOK-RELEASER
-variable PARKED                   \ set by the handler that never answers
+variable PARKED
 1 TYPED-BUFFER LARGE-SPAN SPAN:span<u8>
 1 TYPED-BUFFER OLD-REQUEST HTTP:request
 1 TYPED-BUFFER OWN-REQUEST HTTP:request
@@ -204,7 +203,6 @@ variable ITEM-HOST-N
    answer [: ITEM-BODY ;] HTTP:JSON! ;
 
 
-\ The version travels to its body the same way.
 PTR-VARIABLE VERSION-A
 variable VERSION-N
 
@@ -244,8 +242,6 @@ variable ECHO-HITS
    answer [: ECHO-BODY ;] HTTP:JSON! ;
 
 
-\ Keep a borrowed body and the handle through the answer, then ask from the
-\ client after SEND whether that handle was retired.
 : LARGE-ECHO ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    asked 0 OLD-REQUEST !
@@ -275,7 +271,6 @@ variable ECHO-HITS
    JSON:WRITE-OBJECT-END ;
 
 
-\ Keeps its handle past its answer, for SERVING-CASE to ask about.
 : SERVING-KEEP ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    asked 0 OLD-REQUEST !
@@ -291,8 +286,7 @@ variable ECHO-HITS
    answer [: CHECK-BODY ;] HTTP:JSON! ;
 
 
-\ A body that is not JSON throws out of src/lib/json/read.f's reader, and the
-\ worker's catch boundary answers 500.
+\ A body that is not JSON throws, and the worker's catch boundary answers 500.
 : TEXT-BODY ( ptr JSON:writer -- ptr JSON:writer )
    JSON:WRITE-OBJECT-START
    s" text" TEXT-BUF TEXT-N @ JSON:WRITE-FIELD-S
@@ -337,15 +331,12 @@ variable ECHO-HITS
    answer [: BOOM-BODY ;] HTTP:JSON! ;
 
 
-\ Refuses from a header alone, never asking for the body: the guard
-\ BEARER:ADMIT? puts in front of a handler that reads one.
+\ Refuses from a header alone, never asking for the body.
 : ADMIT ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    asked s" authorization" HTTP:HEADER-COUNT-OF 0 > if asked answer ECHO exit then
    answer 401 HTTP:STATUS! ;
 
 
-\ The body read's throw, caught: the request travels to the quotation through
-\ SWALLOW-REQUEST because a quotation cannot read a local.
 1 TYPED-BUFFER SWALLOW-REQUEST HTTP:request
 variable SWALLOWED
 
@@ -353,7 +344,6 @@ variable SWALLOWED
    0 SWALLOW-REQUEST @ HTTP:BODY$ 2drop ;
 
 
-\ Swallows a failed body read and answers 200 anyway.
 : SWALLOW ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    asked 0 SWALLOW-REQUEST !
    [: SWALLOW-READ ;] catch SWALLOWED !
@@ -361,9 +351,6 @@ variable SWALLOWED
    answer [: PING-BODY ;] HTTP:JSON! ;
 
 
-\ BODY$ asked by a task the handler spawns and joins while the request is live,
-\ then by the handler after its own TAKE-OVER; the request travels to both
-\ through PROBE-REQUEST. The handler answers 204 on the connection it took.
 variable FOREIGN-CODE             \ what BODY$ threw on the spawned task
 variable TAKEN-CODE               \ what BODY$ threw after TAKE-OVER
 1 TYPED-BUFFER PROBE-REQUEST HTTP:request
@@ -390,7 +377,7 @@ TASK:MIN-STACK TASK:TASK PROBE-TASK
 
 
 \ Waits longer than the body timeout BODY-TIMEOUT-CASES sets before asking for
-\ its body, raising LATE-ENTERED as it starts.
+\ its body.
 $514 constant LATE-READ-MS        \ that timeout, 1000 ms, and a margin of 300
 variable LATE-ENTERED
 
@@ -456,8 +443,7 @@ $4000 constant RSS-SLACK-KIB      \ 16 MiB
 
 
 \ A caller's ON-ERROR hook: a JSON body of the code, the message and the request
-\ id, carried to the body quotation in rows of the running worker's own slot
-\ because a quotation cannot read a local.
+\ id, carried to the body quotation in rows of the running worker's own slot.
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-ANSWER HTTP:response
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-CODE-A ptr u8
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-CODE-N n
@@ -520,8 +506,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 
 \ An error hook that starts its answer and throws before finishing it. The
 \ worker catches the throw itself: the client is answered in plain text with
-\ the status it was owed and nothing of the header this hook added. RENDERS
-\ counts its runs.
+\ the status it was owed and nothing of the header this hook added.
 variable RENDERS
 
 : RENDER-THROWS ( HTTP:response n ptr u8 n ptr u8 n -- )
@@ -599,7 +584,6 @@ variable EXIT-HANDLE-CODE
    E-EXIT-HOOK throw ;
 
 
-\ Marks the worker's trace and answers how many entries came before this one.
 : ENTER-HOOK ( -- n )
    MARK-THROWER MARK
    1 THROWN atomic-add ;
@@ -628,8 +612,7 @@ $2710 constant PARK-MS            \ far past every stop bound
 
 \ Never answers: the worker that takes this request is still inside the handler
 \ when the stop comes, parked in an AIO wait as a worker serving a slow peer
-\ is, which is the one thing a cooperative stop cannot wait out. Its kill ends
-\ it at the TASK:PAUSE inside AIO:AWAIT.
+\ is, which is the one thing a cooperative stop cannot wait out.
 : PARK ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    asked 0 OLD-REQUEST !
    1 PARKED !
@@ -648,7 +631,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    JSON:WRITE-OBJECT-END ;
 
 
-\ Answers the marks its own worker has left, this request's included.
 : TRACE ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    MARK-REQUEST MARK
    answer 200 HTTP:STATUS!
@@ -755,12 +737,10 @@ $2710 constant PARK-MS            \ far past every stop bound
 28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
 
 
-\ Every failed transfer names its libcurl code on stderr. libcurl answers 28
-\ only when a wall-clock limit expired; these handles set none, so it is the
-\ default 300 s connect timeout, met by a starved or stopped process. A deadline
-\ is no assertion result (docs/gate.md "How a suite runs, and what that demands
-\ of its files"): the wait names itself on stdout and throws E-PROC-TIMEOUT.
-\ Every other failure answers -2, a fault.
+\ libcurl answers 28 only when a wall-clock limit expired; these handles set
+\ none, so it is the default 300 s connect timeout, met by a starved or stopped
+\ process. A deadline is no assertion result: the wait names itself on stdout
+\ and throws E-PROC-TIMEOUT.
 : TAKE-INTO ( CURL:handle ptr u8 n -- n n ) {: subject:CURL:handle into:ptr cap:n :}
    subject into cap >LEN CURL:PERFORM
    MATCH CURL:fetch-result
@@ -780,7 +760,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    ;MATCH ;
 
 
-\ The status, with the answer's bytes in the suite's response buffer.
 : TAKE-RESPONSE ( CURL:handle -- n )
    RES-BUF RES-CAP TAKE-INTO RES-U ! ;
 
@@ -807,7 +786,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    status ;
 
 
-\ A JSON body posted with the header a browser sends.
 : POST-JSON ( ptr u8 n ptr u8 n -- n ) {: body:ptr bodylen:n path:ptr pathlen:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathlen URL-FOR CURL:URL! DROP-CURL-STATUS
@@ -871,8 +849,7 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
 
 
 \ Past COLLECT-MS the wait names itself and throws E-PROC-TIMEOUT rather than
-\ hang the suite (docs/gate.md "How a suite runs, and what that demands of its
-\ files").
+\ hang the suite.
 : RAW-AWAIT ( TCP4:connection -- )
    [: dup TCP4:READABLE?
       MATCH TCP4:ready-result
@@ -884,8 +861,6 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
    drop ;
 
 
-\ A worker that never answers throws E-PROC-TIMEOUT past COLLECT-MS instead of
-\ hanging the case.
 : RAW-COLLECT ( TCP4:connection ptr u8 n -- bool )
    {: conn:TCP4:connection want:ptr len:n :}
    0 RES-U !
@@ -897,8 +872,6 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
    again ;
 
 
-\ A server whose worker died fails the case, or throws E-PROC-TIMEOUT past
-\ COLLECT-MS, instead of hanging it.
 : RAW-ASK ( ptr u8 n ptr u8 n -- bool ) {: bytes:ptr len:n want:ptr wantlen:n :}
    RAW-OPEN {: conn:TCP4:connection :}
    conn bytes len RAW-SEND
@@ -985,7 +958,6 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    SCRIPT-U @ 1+ SCRIPT-U ! ;
 
 
-\ The bytes of one head, each line ended by LF alone.
 : HEAD+ ( n n -- ) {: from:n to:n :}
    to from ?do
       RES-BUF i + c@ {: byte:n :}
@@ -1257,8 +1229,6 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" not-allowed" TRANSCRIBE ;
 
 
-\ A registered code's status line names its reason; an unregistered code's
-\ reason is empty.
 : REASON-CASES ( -- )
    s\" GET /api/unauthorized HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s\" HTTP/1.1 401 Unauthorized\r\n" BEGINS? TTRUE
@@ -1319,7 +1289,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
 \ A 64 MiB answer leaves the resident set where it was once its request has
-\ ended (GIVE-BACK); the one worker serves the ping after that request.
+\ ended; the one worker serves the ping after that request.
 : HUGE-JSON-CASE ( -- )
    HUGE-VALUE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 HUGE-VALUE !
    0 HUGE-VALUE @ SPAN:$ drop {: value:ptr :}
@@ -1348,8 +1318,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    S\" {\qservice\q:\qhttp-test\q}" HAS? TTRUE ;
 
 
-\ A decoded path segment past 256 bytes reaches the handler whole: exactly
-\ LONG-SEGMENT-BYTES of the fill come back as the id.
+\ A decoded path segment past 256 bytes reaches the handler whole.
 : LONG-SEGMENT-CASE ( -- )
    REQ-RESET
    s" GET /api/items/" REQ+
@@ -1508,9 +1477,9 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 \ An odd configured limit catches exact and one-past comparisons for both
 \ framings. The body is read through a real TCP connection and returned through
 \ a borrowed BODY$ byte, so its mapping must live through SEND. The worker
-\ retires that request (SLOT-FINISH) only after SEND returns, so the old handle
-\ is probed once the next exchange has closed: this server's one worker answers
-\ that only after it has finished with the first request.
+\ retires that request only after SEND returns, so the old handle is probed
+\ once the next exchange has closed: this server's one worker answers that only
+\ after it has finished with the first request.
 : LARGE-CONTENT-CASE ( -- )
    0 LARGE-SPAN @ SPAN:$ s" /api/large-echo" POST-JSON 200 T=
    RES$ s"  " T$=
@@ -1627,11 +1596,9 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 : ECONNRESET ( -- n ) HB-TARGET-MACOS? if 54 else $68 then ;
 
 
-\ True when the server ends the stream: the read answers the end of the stream
-\ or a reset, not data and not another failure. A server that closes with
-\ request bytes still unread, a timed-out or stopped body, is reset by the
-\ kernel. It promises no answer there (src/lib/net/http.f), so the reset is its close
-\ too. Past COLLECT-MS with nothing to read it throws E-PROC-TIMEOUT.
+\ A server that closes with request bytes still unread, a timed-out or stopped
+\ body, is reset by the kernel. It promises no answer there, so the reset is its
+\ close too.
 : CLOSED-WITHIN? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
    conn RAW-AWAIT
    conn RES-BUF RES-CAP TCP4:TRANSFER-BYTES TCP4:READ
@@ -1690,8 +1657,6 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    TAKEN-CODE @ HTTP:E-STATE T= ;
 
 
-\ Waits until the worker is inside the parked handler before stopping it; past
-\ COLLECT-MS the wait names itself and throws E-PROC-TIMEOUT.
 : PARK-AWAIT ( -- )
    [: PARKED @ 0 <> ;]
    mono-ns COLLECT-MS NS-PER-MS * + s" http-test PARK-AWAIT" TEST-WAIT:POLL ;
@@ -1725,7 +1690,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    0 HTTP:BODY-TIMEOUT! ;
 
 
-\ A killed handler never reaches SERVE-ONE's normal retirement. The exit hook
+\ A killed handler never reaches normal retirement. The exit hook
 \ must see its saved handle retired before the body mapping is released.
 : LARGE-EXIT-HANDLE-CASE ( -- )
    TRACE-RESET
