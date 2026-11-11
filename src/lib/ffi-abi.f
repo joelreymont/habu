@@ -12,6 +12,18 @@
 \ any other index is a path dlopened once, at the first call; one that does not
 \ open passes the call to the next library its row names. Rows may move when a
 \ table grows; indices stay stable.
+\
+\ A declaration with a C struct is planned by AAPCS64 over its C arguments in
+\ order; the STRUCT-RESULT destination, the last input, is not one. Floats take
+\ v0-v7. An integer argument takes the next of x0-x7, else the next stack
+\ cell. A record of up to 16 bytes takes its registers whole, the last one's
+\ unused high bytes zero, or when too few remain its stack cells whole, and the
+\ next register becomes x8. A larger record is passed as a pointer, an integer
+\ argument, to a private copy in the native call frame that lives exactly as
+\ long as the call; the copy follows every stack argument from an even cell,
+\ 16-byte aligned on the 16-byte aligned native stack. A planned register is
+\ kept as its number and a stack cell as -1-cell; a record of 16 bytes or fewer
+\ has no copy, kept as 0.
 
 s" src/lib/error.f" required
 s" src/lib/span.f" required
@@ -864,27 +876,24 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \     ;FUNCTION
 \
 \ The Habu word name and the C symbol are separate tokens. A symbol is often not
-\ a legal Habu name (__errno_location), and a package's own verb is usually not
-\ the C one: UDP4:BIND is the module's API, bind is libc's.
+\ a legal Habu name (__errno_location).
 \
 \ The declared effect becomes the generated word's effect, with `f32` mapped
-\ to Habu `r` on either side and an `i32` result mapped to `n`. It decides
-\ every argument's staging: `n` (and any token that widens to it) is a VALUE!,
-\ `r` is a C double FLOAT!, `f32` is a C float FLOAT32!, and `ptr u8` is a
-\ READABLE! - read-only, extent 0 - unless a clause names it written:
-\ `idx len WRITES-BYTES` for a fixed width, or `idx arg WRITES-ARG` when another
-\ argument carries the length. A written pointer must state its extent because
-\ the bounded call guards exactly the span it is given. The clauses are ordinary
-\ words the interpreter runs between the two keywords, so their numbers are
-\ literals and comments sit among them.
+\ to Habu `r` on either side and an `i32` result mapped to `n`. A `ptr u8` is
+\ read-only, extent 0, unless a clause names it written: `idx len WRITES-BYTES`
+\ for a fixed width, or `idx arg WRITES-ARG` when another argument carries the
+\ length. A written pointer must state its extent because the bounded call
+\ guards exactly the span it is given. The clauses are ordinary words the
+\ interpreter runs between the two keywords, so their numbers are literals and
+\ comments sit among them.
 \ Convert a nominal at the call site: a declaration speaks the C function's own
 \ types.
 \
 \ VERSIONED-LIBRARY, LIBRARY or PROCESS-SYMBOLS selects the library for the
 \ declarations that follow. VERSIONED-LIBRARY takes a base name and a
 \ comma-separated list of soname versions, renders the spelling this target
-\ loads for each (FFI:LIBRARY-NAME$), and the first call opens them in the
-\ order written until one opens.
+\ loads for each, and the first call opens them in the order written until one
+\ opens.
 \ LIBRARY takes one literal, an absolute path or an unversioned name, and
 \ refuses one spelled in the other target's convention. THE SELECTION BELONGS TO
 \ THE SCOPE THAT STATES IT: the package section or global scope the declarations
@@ -914,54 +923,42 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ storage is eight-byte aligned, 16-byte aligned for a record over 16 bytes; a
 \ record type aligned beyond 16 bytes is excluded. The whole extent is guarded.
 \ The destination is one of the sixteen inputs, so at most fifteen C arguments
-\ remain, placed as STRUCT-ARG's are. No VARIADIC, no write clause on the
-\ storage, no x86-64. A null or misaligned destination is E-FFI-SYNTAX at the
-\ call.
+\ remain, placed as STRUCT-ARG's are. A null or misaligned destination is
+\ E-FFI-SYNTAX at the call.
 \
 \ `idx bytes STRUCT-ARG` declares input idx, a `ptr u8`, the address of a C
 \ struct of `bytes`, any positive count, passed by value: one C argument,
 \ read at exactly `bytes` when the call is staged, so the callee never sees
 \ the source. The record is neither an HFA nor an HVA, as for STRUCT-RESULT;
-\ either travels in v registers and must not be declared. One of up to 16
-\ bytes goes whole in the next integer registers, the last one's unused high
-\ bytes zero; when too few of x0-x7 remain it goes whole on the stack and the
-\ later integer arguments follow it there (AAPCS64 sets the next register to
-\ x8). A larger record is passed as a pointer to a private, 16-byte aligned
-\ copy in the native call frame, which lives exactly as long as the call. A
-\ declaration may have up to eight float arguments beside its records; its
-\ integer and pointer inputs must be cell-wide C types, since Apple arm64
-\ packs two spilled C ints into one stack cell. The stack cells, the copies
-\ and the padding that aligns each copy share sixteen cells, refused past
-\ that at ;FUNCTION (E-FFI-ARITY). Excluded, because a byte count cannot
+\ either travels in v registers and must not be declared. A declaration may
+\ have up to eight float arguments beside its records; its integer and pointer
+\ inputs must be cell-wide C types, since Apple arm64 packs two spilled C ints
+\ into one stack cell. The stack cells, the copies and the padding that aligns
+\ each copy share sixteen cells, refused past that at ;FUNCTION
+\ (E-FFI-ARITY). Excluded, because a byte count cannot
 \ reveal them, are records aligned beyond 16 bytes and 16-byte aligned ones
 \ of 16 bytes or fewer: Apple arm64 may start such a record in an odd
 \ register like any other, but on the stack it starts at a 16-byte aligned
 \ slot, so after nine longs an ordinary 16-byte record is at SP+8 and a
-\ 16-byte aligned one at SP+16. The clause refuses, E-FFI-SYNTAX, outside a
-\ declaration, twice on one input, on any input that is not a `ptr u8`, the
-\ STRUCT-RESULT destination or the target of a write clause, beside VARIADIC
-\ or an `r` or `f32` result, and on x86-64. It combines with STRUCT-RESULT:
+\ 16-byte aligned one at SP+16. It combines with STRUCT-RESULT:
 \     FUNCTION: DEPARSE pg_query_deparse_protobuf ( ptr u8 ptr u8 -- )
 \        0 16 STRUCT-ARG  16 STRUCT-RESULT
 \     ;FUNCTION
 \
-\ Arguments take integer and float registers in declaration order.
 \ A float result reads only the low 32 bits of its FP slot and widens to Habu
 \ `r`. Variadic positions use C default promotions, so declare a promoted float
 \ as `r`, never `f32`.
-\ AAPCS64 takes integers in x0..x7 and floats in d0..d7. A declaration carrying
-\ a float rides the ABI call, which packs no spill there, so it is refused past
-\ eight of either kind (E-FFI-ARITY); an integer-only declaration rides
-\ ffi-call-bounded, which spills past x7 itself. SysV takes six integer and
-\ eight float registers, then prepacked stack slots in argument order. Every
-\ SysV overflow call rides the ABI trampoline so mixed kinds and bounded
+\ A declaration carrying a float rides the ABI call, which packs no spill
+\ there, so it is refused past eight of either kind (E-FFI-ARITY); an
+\ integer-only declaration rides ffi-call-bounded, which spills past x7 itself.
+\ Every SysV overflow call rides the ABI trampoline so mixed kinds and bounded
 \ pointer extents keep their own stack positions; a C float past the eighth
 \ float register has no stack staging and is refused (E-FFI-ARITY).
 \
 \ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK: it runs
 \ through the loader's evaluate-closed INCLUDE-EVALUATE, where residue is
 \ E-EVAL-RESIDUE, so each declaration is one complete colon definition with no
-\ interpreted residue (src/lib/ffi-test.f asserts DEPTH across one).
+\ interpreted residue.
 
 private
 
@@ -993,9 +990,9 @@ private
 1 constant R-VALUE
 2 constant R-FLOAT
 3 constant R-POINTER
-4 constant R-I32                          \ a C int: sign-extend the low half
-5 constant R-U32                          \ a C unsigned int: mask the low half
-6 constant R-FLOAT32                      \ a C float: widen the low half
+4 constant R-I32
+5 constant R-U32
+6 constant R-FLOAT32
 
 0 constant C-BOUNDED
 1 constant C-POINTER
@@ -1037,16 +1034,14 @@ variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 whe
 variable CUR-LIB
 variable OPEN                              \ 0 closed, else 1 + the open declaration's clauses
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
-variable SCOPE-SET                         \ ... and whether one was stated at all
-SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark   \ RECORD-SCOPE says why
+variable SCOPE-SET
+SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
 
 \ The token cells a library selection shares with a declaration, at rest.
 : REST-TOKENS ( -- )
    TOK-CAP 0 ?do 0 TOK-BUF i + c! 0 BASE-BUF i + c! loop
    0 TOK-U ! 0 BASE-U ! ;
 
-\ The declaration's working state at rest: every cell from NAME-BUF through
-\ STRUCT-BYTES at zero.
 : REST ( -- )
    TOK-CAP 0 ?do 0 NAME-BUF i + c! 0 SYM-BUF i + c! loop
    0 NAME-U ! 0 SYM-U !
@@ -1090,8 +1085,8 @@ SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark   \ RECORD-SCOPE says w
    a SYM-BUF u BYTE-COPY
    u SYM-U ! ;
 
-\ VERSIONED-LIBRARY's two tokens. The base name is copied out of the token
-\ buffer because reading the version token overwrites it.
+\ The base name is copied out of the token buffer because reading the version
+\ token overwrites it.
 : BASE! ( -- )
    TOK$ {: a:ptr u:n :}
    a BASE-BUF u BYTE-COPY
@@ -1207,8 +1202,7 @@ SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark   \ RECORD-SCOPE says w
    i FLOAT-ARG? if flt ARG-REG i cells + ! int flt 1+ exit then
    int ARG-REG i cells + ! int 1+ flt ;
 
-\ The first n arguments take registers in order, floats and integers numbered
-\ apart. Answers the integer and float registers taken.
+\ Answers the integer and float registers taken.
 : PLAN-REGS ( n -- n n )
    {: argc:n :}
    0 0 argc 0 ?do i PLACE-REG loop ;
@@ -1240,15 +1234,6 @@ SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark   \ RECORD-SCOPE says w
    2dup REG-ROOM
    ARG-N @ VAR-START @ - ;
 
-\ A struct-bearing declaration is planned by AAPCS64 over its C arguments in
-\ order; the STRUCT-RESULT destination, the last input, is none. Floats take
-\ v0-v7. An integer argument takes the next of x0-x7, else the next stack
-\ cell. A record of up to 16 bytes takes its registers whole, or when too few
-\ remain its stack cells whole, and the next register becomes x8. A larger
-\ record's pointer is an integer argument, and its copy follows every stack
-\ argument from an even cell, 16-byte aligned on the 16-byte aligned native
-\ stack. A register is kept as its number and a stack cell as -1-cell, as on
-\ x86-64; a record of 16 bytes or fewer has no copy, kept as 0.
 : C-ARGS ( -- n )
    ARG-N @ STRUCT-BYTES @ 0 > if 1- then ;
 
@@ -1294,7 +1279,7 @@ public
 \ Whether n C arguments, kinds and record widths as PLAN-RECORDS reads them,
 \ fit the struct call; past it the declaration is refused (E-FFI-ARITY).
 \ regs and pays take the plan, n cells each. The source checker holds a
-\ declaration's clauses to the rule this way (src/habu/verify-source.f).
+\ declaration's clauses to the rule this way.
 : STRUCT-FITS? ( ptr n ptr n n ptr n ptr n -- bool )
    PLAN-RECORDS {: flt:n stk:n :}
    drop flt stk PLAN-FITS? ;
@@ -1372,8 +1357,6 @@ private
    i ARG-EXT-ARG@ NO-EXT <> if i STAGE-WRITABLE exit then
    i STAGE-READABLE ;
 
-\ A planned stack cell is -1-cell in ARG-REG; a macOS variadic argument's
-\ cell is its position past the fixed ones.
 : STACK-POS ( n -- ) {: i:n :}
    i ARG-REG@ 0 < if i ARG-REG@ negate 1- GEN-N exit then
    i VAR-START @ - GEN-N ;
@@ -1424,9 +1407,8 @@ private
    DIAG CODEGEN:APPEND-STRING ;
 
 \ A library name spelled in the other target's convention is refused where it
-\ is stated, not at the first call in whatever module declared it; the line
-\ names the path and the target this build loads for. A rendered name passes by
-\ construction.
+\ is stated, not at the first call in whatever module declared it. A rendered
+\ name passes by construction.
 : TARGET$ ( -- ptr u8 n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if s" linux" exit then
    HB-TARGET-MACOS? if s" macos" exit then
@@ -1535,12 +1517,12 @@ private
    s"  ;" GEN+ ;
 
 \ The selection scope is the current wordlist, not the loading file:
-\ INCLUDE-PATH names the last file opened (src/lib/codegen.f after `require
-\ src/lib/ffi-abi.f`), so every consumer would share one identity. A wordlist is
-\ saved and restored with the package scope and separates two consumers whose
-\ requires end at one file. A selection belongs to the source load that made it,
-\ and a wordlist id holds only in the process that made it, so both cells are
-\ scratch: every saved program, a cross-built one included, starts with none.
+\ INCLUDE-PATH names the last file opened, so every consumer would share one
+\ identity. A wordlist is saved and restored with the package scope and
+\ separates two consumers whose requires end at one file. A selection belongs
+\ to the source load that made it, and a wordlist id holds only in the process
+\ that made it, so both cells are scratch: every saved program, a cross-built
+\ one included, starts with none.
 : RECORD-SCOPE ( -- )
    get-current SCOPE-WID !
    1 SCOPE-SET ! ;
@@ -1551,8 +1533,6 @@ private
 
 public
 
-\ The declaration between FUNCTION: and ;FUNCTION: 0 when none is open, else
-\ one more than the clauses it holds.
 : PENDING ( -- n ) OPEN @ ;
 
 \ Nothing is published before ;FUNCTION, and the row is registered as the text
@@ -1622,8 +1602,6 @@ private
    src idx ARG-EXT-ARG!
    1 OPEN +! ;
 
-\ The last input, a `ptr u8` no write clause names, receives a C struct of
-\ bytes returned by value; the declaration has no output. AAPCS64 only.
 : STRUCT-RESULT-CLAUSE ( n -- ) {: bytes:n :}
    OPEN @ 0= if REFUSE then
    HB-TARGET-LINUX-X86-64? if REFUSE then
@@ -1636,9 +1614,7 @@ private
    bytes STRUCT-BYTES !
    1 OPEN +! ;
 
-\ Input idx, a `ptr u8` no other clause names, is the address of a C struct of
-\ bytes passed by value. The struct call returns x0 and x1 only, so a float
-\ result has no shape here. AAPCS64 only.
+\ The struct call returns x0 and x1 only, so a float result has no shape here.
 : STRUCT-ARG-CLAUSE ( n n -- ) {: idx:n bytes:n :}
    OPEN @ 0= if REFUSE then
    HB-TARGET-LINUX-X86-64? if REFUSE then
@@ -1681,8 +1657,8 @@ seal-package
 
 \ The declaration keywords are global: a package word ending in a colon cannot
 \ be reached through a qualifier, and a declarer reads bare from any package
-\ anyway, like DEFTYPE and CAST:. All three parse the live input stream, which
-\ their ( -- ) rows do not model, so they are top-level-interpret-only.
+\ anyway. All three parse the live input stream, which their ( -- ) rows do
+\ not model, so they are top-level-interpret-only.
 : LIBRARY ( -- )
    parse-name FFI:SELECT-LIBRARY ;
 parses: LIBRARY 1
