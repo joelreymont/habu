@@ -477,22 +477,96 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    a TASK-CODE-BUF u BYTE-COPY
    TASK-CODE-BUF u ;
 
-\ The user arena is USER-BAND, declared in src/habu/layout.f. A row filling it
-\ to USER-BAND:END is a definition; one byte more is E-TASK-USER at that
-\ definition. Both cases run in a child engine: a definer's throw aborts the
-\ load that carries it, and the accepting case claims the whole band, which no
-\ later require in this image would survive.
-: TASK-USER-EDGE$ ( -- ptr u8 n )
-   SB-RESET
+\ The +USER cases run in a child engine: a definer's throw aborts the load that
+\ carries it, and a claim made in this image would outlive the case.
+: TASK-USER-HEAD ( -- )
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" : TUE-CEILING ( n -- ) USER-BAND:END <> if E-TASK-USER throw then ;" SB-APPEND TASK-LF
-   s" TASK:#USER USER-BAND:END over - TASK:+USER TUE-ARENA TUE-CEILING" SB-APPEND TASK-LF
+   s" require src/habu/task-abi.f" SB-APPEND TASK-LF
+   s" package TUS" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
+   s" variable GOT  variable CTX  variable DIST  variable REGU" SB-APPEND TASK-LF
+   s" : REGION-U ( ptr n -- n ) BYTE-VIEW TASK-ABI:REGION-U-OFF + CELL-VIEW @ ;" SB-APPEND TASK-LF ;
+
+\ FITS: BIG lies past the region's $10000-byte header, inside its REGU bytes.
+: TASK-USER-SLOT ( n -- ) {: size:n :}
+   s" TASK:#USER 7 + -8 and " SB-APPEND size FMT:SB-INT
+   s"  TASK:+USER BIG drop" SB-APPEND TASK-LF
+   s" : LAST ( -- ptr n ) BIG " SB-APPEND size FMT:SB-INT s"  + CELL - ;" SB-APPEND TASK-LF
+   s" : WORK ( -- ) 77 LAST ! LAST @ GOT ! TASK:SELF-CONTEXT CTX ! BIG FFI:>CELL CTX @ - DIST ! ;" SB-APPEND TASK-LF
+   s" : FITS ( -- n ) DIST @ $10000 >= DIST @ " SB-APPEND size FMT:SB-INT
+   s"  + REGU @ <= and bool>n ;" SB-APPEND TASK-LF ;
+
+\ REGU is main's write at ACTIVATE, read before the join releases the region.
+: TASK-USER-RUN ( -- )
+   s" : JOINED ( result<n,n> -- ) MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;" SB-APPEND TASK-LF
+   s" : RUN ( -- ) ['] WORK W TASK:ACTIVATE W REGION-U REGU ! W TASK:JOIN JOINED ;" SB-APPEND TASK-LF
+   s" RUN GOT @ . LAST @ ." SB-APPEND TASK-LF ;
+
+\ 8192 bytes: more than the band in a region's header holds.
+: TASK-USER-BIG$ ( -- ptr u8 n )
+   SB-RESET
+   TASK-USER-HEAD
+   8192 TASK-USER-SLOT
+   TASK-USER-RUN
+   s" ;package" SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-USER-OVER$ ( -- ptr u8 n )
+\ W's region is made before the 64 KiB claim outgrows its area: ACTIVATE must
+\ give W a new region, else BIG lies past the old one.
+: TASK-USER-LATE$ ( -- ptr u8 n )
+   SB-RESET
+   TASK-USER-HEAD
+   s" variable OLD  W TASK:EXPOSE W TASK:CONTEXT OLD ! W TASK:UNEXPOSE" SB-APPEND TASK-LF
+   65536 TASK-USER-SLOT
+   TASK-USER-RUN
+   s" CTX @ OLD @ <> bool>n . FITS ." SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   SB$ ;
+
+\ As TASK-USER-LATE$, but EXPOSE must give W its new region and a foreign
+\ thread stores through BIG; it prints pthread's two answers, GOT and FITS.
+: TASK-USER-EXPOSE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/ffi-callback.f" SB-APPEND TASK-LF
+   TASK-USER-HEAD
+   s" using FFI-CB" SB-APPEND TASK-LF
+   s" PROCESS-SYMBOLS" SB-APPEND TASK-LF
+   s" FUNCTION: PTHREAD-CREATE pthread_create ( ptr u8 n n n -- i32 ) 0 8 WRITES-BYTES ;FUNCTION" SB-APPEND TASK-LF
+   s" FUNCTION: PTHREAD-JOIN pthread_join ( n n -- i32 ) ;FUNCTION" SB-APPEND TASK-LF
+   s" variable TID" SB-APPEND TASK-LF
+   s" CALLBACK: PUT ( n -- n ) 0 FALLBACK ;CALLBACK" SB-APPEND TASK-LF
+   s" W TASK:EXPOSE W TASK:UNEXPOSE" SB-APPEND TASK-LF
+   65536 TASK-USER-SLOT
+   s" : PUT-IMPL ( n -- n ) WORK ;" SB-APPEND TASK-LF
+   s" ' PUT-IMPL PUT-BODY !" SB-APPEND TASK-LF
+   s" W TASK:EXPOSE TID BYTE-VIEW 0 PUT W TASK:CONTEXT ENTRY 0 PTHREAD-CREATE ." SB-APPEND TASK-LF
+   s" TID @ 0 PTHREAD-JOIN . GOT @ . W REGION-U REGU ! FITS . W TASK:UNEXPOSE" SB-APPEND TASK-LF
+   s" ;using" SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   SB$ ;
+
+\ A claim whose end passes MEM-MAX-N would wrap.
+: TASK-USER-WRAP$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" TASK:#USER USER-BAND:END over - 1+ TASK:+USER TUE-OVER drop" SB-APPEND TASK-LF
+   s" TASK:#USER $7FFFFFFFFFFFFFF0 TASK:+USER PW drop" SB-APPEND TASK-LF
+   SB$ ;
+
+\ One byte below TASK:#USER would overlap the newest slot.
+: TASK-USER-BELOW$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" TASK:#USER 1 - CELL TASK:+USER BELOW drop" SB-APPEND TASK-LF
+   SB$ ;
+
+\ A live task's area cannot grow, so a claim while one runs is refused.
+: TASK-USER-LIVE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK SPINNER" SB-APPEND TASK-LF
+   s" : SPIN ( -- ) begin TASK:PAUSE false until ;" SB-APPEND TASK-LF
+   s" ' SPIN SPINNER TASK:ACTIVATE" SB-APPEND TASK-LF
+   s" TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER LIVE drop" SB-APPEND TASK-LF
    SB$ ;
 
 \ Runs the source on a fresh engine's stdin and asserts its exit code, leaving
@@ -598,14 +672,21 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    outu LEN>N 0 T=
    erru LEN>N 0 T= ;
 
-\ The accepted row fills the band and answers USER-BAND:END from inside the
-\ child, so exit zero means accepted AND landed on the band's end.
-\ The refused row is one byte past it, which is the exact bound: the accepted
-\ case pins it from below and this pins it from above.
-: TASK-TEST-USER-ARENA ( -- )
-   TASK-USER-EDGE$ TASK-EXPECT-SILENT-OK
+\ A claim's case ends in the child's output, a refusal's in its code on stderr.
+: TASK-TEST-USER-SLOTS ( -- )
+   TASK-USER-BIG$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N S\" 77\n0\n" T$=
+   erru LEN>N 0 T=
+   TASK-USER-LATE$ 0 TASK-RUN-EXITS {: lateu:len laterr:len :}
+   TASK-OUT lateu LEN>N S\" 77\n0\n-1\n-1\n" T$=
+   laterr LEN>N 0 T=
+   TASK-USER-EXPOSE$ 0 TASK-RUN-EXITS {: expu:len experr:len :}
+   TASK-OUT expu LEN>N S\" 0\n0\n77\n-1\n" T$=
+   experr LEN>N 0 T=
    E-TASK-USER TASK-CODE$ {: needle:ptr needleu:n :}
-   TASK-USER-OVER$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL ;
+   TASK-USER-BELOW$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
+   TASK-USER-LIVE$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
+   TASK-USER-WRAP$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL ;
 
 \ One worker throws while the other completes: the throw ends that task alone
 \ and its code outlives the join.
@@ -2748,6 +2829,9 @@ variable NEW-STRAY
    TASK-USER-CELL @ 99 T=
    WORKER-A TASK-USER-CELL TASK:HIS @ 11 T=
    WORKER-B TASK-USER-CELL TASK:HIS @ 22 T=
+   s" HIS of an address in no slot" T-LABEL
+   [: WORKER-A TASK-USER-CELL CELL + TASK:HIS drop ;] E-TASK-USER TTHROWSQ
+   T-LABEL-CLEAR
    TASK-SELF-A @ WORKER-A FFI:>CELL T=
    TASK-SELF-B @ WORKER-B FFI:>CELL T=
    WORKER-A TASK:KILL
@@ -2763,7 +2847,7 @@ variable NEW-STRAY
    TASK-TEST-TASK-CREATES
    TASK-TEST-ROLLBACK-LIVE
    TASK-TEST-APP-SOAK
-   TASK-TEST-USER-ARENA
+   TASK-TEST-USER-SLOTS
    TASK-TEST-BUILDERS
    TASK-TEST-WORKER-DIE
    TASK-TEST-WORKER-THROW

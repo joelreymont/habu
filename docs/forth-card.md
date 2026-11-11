@@ -293,7 +293,7 @@ row with no target, naming no word or naming a word whose input row does not
 end in the string `( ptr u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
 
 A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
-`TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
+anything reaching `INCLUDE-EVALUATE`) makes names
 `tools/check.f` leaves to its run, which type-checks their uses there, unless
 the source declares them: uses of a `FUNCTION:` word and of a `generates:`
 row's word (§ 4) are checked before the run, `--verify-only` included. A
@@ -374,7 +374,7 @@ Lay a created body's data right after its `create`, before the next definition
 or row: a definition's `;` may lay its facts text at `here`, so data laid after
 it no longer follows the body.
 
-A definer that writes its word as text (`+USER`) states what it makes with
+A definer that writes its word as text (`ERROR:CODE`) states what it makes with
 `generates: D ( effect )` after D's definition, so `tools/check.f` checks that
 word's uses before the run; what no row states is left to the run (§ 3). A
 deferred D, or one no `parse-name` reaches through the words it calls (not

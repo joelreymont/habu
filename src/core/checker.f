@@ -27238,8 +27238,8 @@ variable TOP-ASK-ANSWER
    RBF-FINALIZE ;
 
 \ ---- generates: rows ----------------------------------------------------------
-\ A definer that writes its word as text (src/lib/task.f +USER evaluates a
-\ colon definition) has no clause, and the source pre-verifier never runs that
+\ A definer that writes its word as text (src/lib/error.f ERROR:CODE evaluates
+\ a `constant` line) has no clause, and the source pre-verifier never runs that
 \ text. `generates: D ( effect )` states it: the row's record lands on D's
 \ CREATES cell as a certified clause's does, so every clause reader (the
 \ wrapper walk, the pre-pass's resident lookup) reads it unchanged. The row is

@@ -3981,7 +3981,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" immediate" STR=CI IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
    a u PARSE-IMM-XT @ s" parse-imm" LIBRARY-DEFINER? IF PARSE-IMM-ROW IF 0 0= EXIT THEN THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
-   \ A word that renders source when it runs (`;FUNCTION`, TASK:+USER) defines
+   \ A word that renders source when it runs (`;FUNCTION`) defines
    \ text this scan never reads: the checker marks the statement's wordlist and
    \ leaves a later name nothing resolves to the run (src/core/checker.f
    \ CTL-RENDERS, UNSEEN-MARK$). It marks even when an arm below records what a
@@ -4134,7 +4134,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    o ou false false TOP-RESOLVE ;
 
 \ A word that may define words this scan never reads (it renders source, as
-\ `;FUNCTION`, TASK:+USER and `evaluate` do, calls `create`, or is deferred)
+\ `;FUNCTION` and `evaluate` do, calls `create`, or is deferred)
 \ has the checker mark the statement's wordlist, with or without composition
 \ (src/core/checker.f CTL-RENDERS, CTL-CREATES, UNSEEN-MARK$). Only here does a
 \ word that calls `create` mark: a definer arm that takes the statement records

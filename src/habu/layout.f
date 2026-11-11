@@ -1560,7 +1560,7 @@ END BYTES - constant START
 START constant HEAD-OFF
 ;package
 
-\ USER-BAND is what src/lib/task.f `TASK:+USER` hands out, base and bound both.
+\ USER-BAND is the run of the per-task header src/lib/task.f keeps its own cells in.
 package USER-BAND
 public
 TXN-STATE-OFF TXN-STATE-LEN + constant START

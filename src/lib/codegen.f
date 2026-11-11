@@ -1,6 +1,6 @@
 \ codegen.f - a shared bounded byte buffer for building generated Forth source.
 \ A definer that builds source for an audited `evaluate` (DEFTYPE in
-\ src/lib/type/deftype.f, task.f's SLOT-GEN, generator tools) builds the text
+\ src/lib/type/deftype.f, generator tools) builds the text
 \ here and keeps only its own `evaluate` wrapper: the trust boundary stays per
 \ package. STORAGE CLASS. CALLER-OWNED: each buffer's header is its definer's
 \ dictionary storage and its text a dynamic mapping; the module keeps no state.

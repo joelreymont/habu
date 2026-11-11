@@ -78,17 +78,14 @@ create ERR CAP allot
    s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-STACK ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:STACK-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 1 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-STACK drop" REJECTS
    s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-VALUE ( n -- n ) {: v:n :} FFI:RESET v 0 FFI:VALUE! FFI:ARGS FFI:REG-LENS 1 PST-RET ffi-call-bounded ; -1 PST-VALUE drop" ACCEPTS ;
 
-\ The task-user arena is USER-BAND, one declared run of the per-task header. The
-\ transaction band below it rejects a store ($5000 its first cell, $52F8 its
-\ last) and USER-BAND:START, the byte after, accepts one: the guard proved from
-\ both sides. The refused rows are the band's own ends.
+\ USER-BAND is one declared run of the per-task header. The transaction band
+\ below it rejects a store ($5000 its first cell, $52F8 its last) and
+\ USER-BAND:START, the byte after, accepts one: the guard proved from both sides.
 : TEST-TASK-USER ( -- )
    s" 0 data-base TXN-STATE-OFF + !" REJECTS
    s" 0 data-base TXN-STATE-OFF TXN-STATE-LEN + 1 cells - + !" REJECTS
    s" 0 data-base USER-BAND:START + !" ACCEPTS
    s" 0 data-base USER-BAND:END 1 cells - + !" ACCEPTS
-   s" require src/lib/task.f : PST-EXACT ( n -- ) USER-BAND:END <> if 1 throw then ; TASK:#USER USER-BAND:END over - TASK:+USER PST-EDGE PST-EXACT" ACCEPTS
-   s" require src/lib/task.f TASK:#USER USER-BAND:END over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
    s" require src/lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
 \ Each band's first or last cell, or a store straddling its edge, rejects; a

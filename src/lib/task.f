@@ -36,7 +36,6 @@ s" src/lib/error.f" required
 s" src/lib/memory.f" required
 s" src/lib/ffi-abi.f" required
 require src/lib/le.f
-s" src/lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 s" src/lib/adt/result.f" required     \ TASK:JOIN answers result<n,n>
 \ The AT-EXIT registry is a checked quotation store, which the optimizing tier
 \ lowers through QUOTATION-STORAGE:STORE.
@@ -163,19 +162,14 @@ TASK-TCB-LAYOUT-CHECK
 
 variable TASK-USER-NEXT
 
-\ USER-BAND (src/habu/layout.f) is one declared run of the per-task header with
-\ no engine cell inside it, asserted at build time; a refused row means the band
-\ is full. A module the engine bakes or the engine build loads (string, fmt, fs,
-\ fs-mutate) takes its own band there instead: requiring this file would cycle or
-\ pull pthread into the base image or the build tool. A new band reaches only an
-\ engine built after it: an older engine dies E-UNDEFINED on its constants.
+\ The band is this file's run of each region's header, with no engine cell.
 USER-BAND:START constant TASK-USER-BASE
-\ PAUSE precedes +USER's definer, so its one depth cell is reserved by hand at
-\ the band's front.
+\ PAUSE precedes +USER's definer, so its one depth cell is the band's first
+\ cell, not a slot.
 TASK-USER-BASE constant TASK-DEFER-OFF
-TASK-USER-BASE CELL + TASK-USER-NEXT !
 
 USER-BAND:END constant TASK-USER-END
+TASK-USER-END CELL - constant TASK-AREA-OFF
 
 : TASK-DEFER-DEPTH ( -- ptr n )
    data-base TASK-DEFER-OFF + ;
@@ -1273,6 +1267,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 
 : TASK-REGION-INIT ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.REGION @ {: reg:ptr :}
+   \ Set even when the area is 0 bytes: a 0 here would select main's copies.
+   reg TASK-REGION-BYTES + FFI:>CELL reg TASK-AREA-OFF + !
    \ DP-CHECK's bounds: zeroed cells would admit a task's `0 allot`.
    data-base reg BOOT:DP-FLOOR-CELL TASK-COPY-CELL
    data-base reg BOOT:DP-CEILING-CELL TASK-COPY-CELL
@@ -1325,12 +1321,21 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 : TASK-STACK-BYTES ( n -- n ) {: want:n :}
    want STACK-ABI:PAGE-BYTES 1 - + STACK-ABI:PAGE-BYTES negate and ;
 
+\ A region's bytes: the header, then the slot area every claim so far fits in.
+: TASK-REGION-TOTAL ( -- n )
+   TASK-USER-NEXT @ STACK-ABI:PAGE-BYTES 1 - + STACK-ABI:PAGE-BYTES negate and
+   TASK-REGION-BYTES + ;
+
+: TASK-REGION-MAP ( n -- ptr a )
+   8 / >COUNT MEM-ALLOC-CELLS ;
+
 : TASK-PREPARE-RESOURCES ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.SIZE @ TASK-STACK-BYTES MEM:ALLOC-GUARDED tcb TCB.STACK-U ! tcb TCB.STACK !
    STACK-ABI:RETURN-BYTES MEM:ALLOC-GUARDED tcb TCB.RSTACK-U ! tcb TCB.RSTACK !
    STACK-ABI:LOOP-BYTES MEM:ALLOC-GUARDED tcb TCB.LSTACK-U ! tcb TCB.LSTACK !
-   TASK-REGION-BYTES 8 / >COUNT MEM-ALLOC-CELLS
-   TASK-REGION-BYTES tcb TCB.REGION-U !
+   TASK-REGION-TOTAL {: total:n :}
+   total TASK-REGION-MAP
+   total tcb TCB.REGION-U !
    tcb TCB.REGION !
    \ A plain store, as ACTIVATE's: pthread_create orders it into the new thread,
    \ the cell's only writer afterwards (TCB-HALT-PENDING?).
@@ -1353,6 +1358,19 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
       tcb TASK-RELEASE-MEM
       rc throw
    then ;
+
+\ No thread is inside a CONSTRUCTED TCB's region and no row names it; what an
+\ exposure left there (UNEXPOSE) is released as at task end, after the TCB moves.
+: TASK-REGION-FIT ( ptr n -- ) {: tcb:ptr :}
+   tcb TCB.REGION-U @ TASK-REGION-BYTES - TASK-USER-NEXT @ >= if exit then
+   tcb TCB.REGION @ {: old:ptr :}
+   tcb TCB.REGION-U @ {: oldu:n :}
+   TASK-REGION-TOTAL {: total:n :}
+   total TASK-REGION-MAP tcb TCB.REGION !
+   total tcb TCB.REGION-U !
+   tcb TASK-REGION-INIT
+   old BYTE-VIEW MEM:RELEASE-SCOPES
+   old BYTE-VIEW oldu TASK-MUNMAP-SPAN ;
 
 : TASK-PTHREAD-CREATE-RC ( ptr n -- n ) {: tcb:ptr :}
    tcb TCB.THREAD BYTE-VIEW 0 PTHREAD-ENTRY tcb BYTE-VIEW PTHREAD-CREATE-CALL ;
@@ -1404,6 +1422,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    tcb TASK-STATE@ TASK-EXPOSED = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-DONE = if tcb TASK-JOIN-RELEASE then
    tcb PREPARE
+   tcb TASK-REGION-FIT
    \ A task may bind a slot this thread is called back through.
    KEY-ENSURE CALLER-REGISTER
    \ The dictionary the task runs on is taken here, as it goes live, not at
@@ -1517,6 +1536,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 : EXPOSE ( ptr n -- ) {: tcb:ptr :}
    tcb PREPARE
    tcb TASK-STATE@ TASK-CONSTRUCTED <> if E-TASK-STATE throw then
+   tcb TASK-REGION-FIT
    tcb PARK-DRAIN
    dbase@ tcb TCB.DBASE !
    ndict@ tcb TCB.NDICT !
@@ -1823,14 +1843,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    CLAIM-FREE tcb TCB-CLAIM atomic! ;
 
 \ ---- the three storage definers -----------------------------------------------
-\ TWO ADDRESS KINDS LIVE HERE. A `create ... does> ( -- ptr n ) ;` word pushes
-\ the ABSOLUTE address of its storage, the same in every thread. A generated
-\ `data-base <off> +` word resolves against the CALLING thread's region (register
-\ 20, which the thread entry points at TCB.REGION), so inside a task it names a
-\ different object.
-\
-\ TASK and FACILITY keep `create ... does>`: no checked expression gives a thread-invariant
-\ address (`dbase@` is typed `-- n`). +USER's slot lies in every task's region, so it generates its accessor.
+\ A `create ... does> ( -- ptr n ) ;` word, as TASK and FACILITY make, answers
+\ the absolute address of its storage, the same in every thread.
 
 \ The body is TASK-TCB-BYTES; the cell after it is this TCB's chain link, taking
 \ the head the definition found and leaving its own address there. Every body
@@ -1850,67 +1864,84 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    does> ( -- ptr n ) ;
 
 : #USER ( -- n )
-   TASK-USER-NEXT @ dup 0= if drop TASK-USER-BASE then ;
+   TASK-USER-NEXT @ ;
 
+\ The largest claim end whose TASK-REGION-TOTAL cannot wrap.
+MEM-MAX-N TASK-REGION-BYTES - STACK-ABI:PAGE-BYTES - constant USER-END-MAX
+
+\ Only main claims, and only while no task is live: a live task's area cannot
+\ grow (TASK-REGION-FIT replaces only a CONSTRUCTED task's region).
 : USER-NEXT ( n n -- n ) {: off:n size:n :}
-   off TASK-USER-BASE < if E-TASK-USER throw then
-   off TASK-USER-END > if E-TASK-USER throw then
+   off TASK-USER-NEXT @ < if E-TASK-USER throw then
    size 0 < if E-TASK-USER throw then
-   size TASK-USER-END off - > if E-TASK-USER throw then
+   size USER-END-MAX off - > if E-TASK-USER throw then
+   MAIN-BASE TASKS-LIVE-CELL + atomic@ 0<> if E-TASK-USER throw then
    off size + ;
 
-\ The slot's offset is baked into the generated body and `data-base` is read at
-\ call time, so the word answers the running task's own region.
-\
-\ The calls into package CODEGEN are qualified rather than imported: a bare
-\ RESET under `using CODEGEN` collides with the global RESET
-\ (E-USING-SHADOW-GLOBAL), the case docs/forth.md names for qualifying.
-\
-\ The text is the only statement of the slot word's effect, and the source
-\ pre-verifier never runs it, so the `generates:` row after +USER states it for
-\ checkers: a source that declares a slot and uses it checks before it runs.
-$60 constant SLOT-GEN-CAP
-SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
+\ A slot body: area offset, size, previous body (null ends), main's copy.
+\ Only main's region holds 0 at TASK-AREA-OFF; a task's holds its area.
+0 constant SLOT-OFF
+CELL constant SLOT-SIZE
+2 cells constant SLOT-PREV
+3 cells constant SLOT-DATA
 
-: SLOT-NAME ( -- ptr u8 n )
-   parse-name dup 0= if E-TASK-USER throw then ;
+\ The newest slot body, null before the first.
+PERSISTED-PTR-VARIABLE SLOT-LAST
 
-\ 0, or the quotation OBSERVE-SLOTS stored: +USER hands it each slot word it
-\ generates with the word's offset and size.
-variable SLOT-OBSERVER
-CAST: SLOT-OBSERVER-FN ( n -- [ [ -- ptr n ] n n -- ] )
-CAST: SLOT-OBSERVER-N ( [ [ -- ptr n ] n n -- ] -- n )
-CAST: SLOT>XT ( n -- [ -- ptr n ] )
+: SLOT-LAST@ ( -- ptr n )
+   SLOT-LAST @ ;
 
-\ The word +USER just generated is the newest of its name in the current
-\ wordlist; a missing one is a broken definer, not a slot to skip.
-: SLOT-MADE ( ptr u8 n n n -- )
-   {: name:ptr nameu:n off:n size:n :}
-   SLOT-OBSERVER @ dup 0= if drop exit then {: observer:n :}
-   name nameu get-current search-wl dup 0= if drop E-TASK-STATE throw then
-   SLOT>XT off size observer SLOT-OBSERVER-FN execute ;
+: SLOT-LAST! ( ptr n -- )
+   SLOT-LAST ! ;
+
+: SLOT-LAY ( n n -- ) {: off:n size:n :}
+   here CELL-VIEW {: body:ptr :}
+   off , size ,
+   here ptr-cell-mark 0 ,
+   SLOT-LAST@ body SLOT-PREV + 0 ptr-field !
+   body SLOT-LAST!
+   size SCRATCH-ALLOT ;
 
 public
 
 : +USER ( n n -- n ) {: off:n size:n :}
    off size USER-NEXT {: next:n :}
    next TASK-USER-NEXT !
-   SLOT-NAME {: name:ptr nameu:n :}
-   SLOT-GEN CODEGEN:RESET
-   s" : " SLOT-GEN CODEGEN:APPEND-STRING
-   name nameu SLOT-GEN CODEGEN:APPEND-STRING
-   s"  ( -- ptr n ) data-base " SLOT-GEN CODEGEN:APPEND-STRING
-   off SLOT-GEN CODEGEN:APPEND-DECIMAL
-   s"  + ;" SLOT-GEN CODEGEN:APPEND-STRING
-   SLOT-GEN CODEGEN:CONTENTS INCLUDE-EVALUATE
-   name nameu off size SLOT-MADE
-   next ;
-generates: +USER ( -- ptr n )
+   TASK-ALIGN8
+   create off size SLOT-LAY
+   next
+   does> ( -- ptr n ) {: body:ptr :}
+   data-base TASK-AREA-OFF + @ dup 0= if
+      drop body SLOT-DATA +
+   else
+      body SLOT-OFF + @ + TASK-N>PTR
+   then ;
 
 private
 
+\ Whether address at lies in main's copy of the slot whose body is b.
+: SLOT-HOLDS? ( ptr n ptr n -- bool ) {: at:ptr b:ptr :}
+   at b SLOT-DATA + - {: d:n :}
+   d 0 >= d b SLOT-SIZE + @ < and ;
+
+\ The area offset of address at, which lies in main's copy of a slot.
+: MAIN-SLOT-OFF ( ptr n -- n ) {: at:ptr :}
+   SLOT-LAST@
+   begin
+      dup FFI:>CELL 0= if E-TASK-USER throw then
+      at over SLOT-HOLDS? 0=
+   while
+      SLOT-PREV + 0 ptr-field @
+   repeat
+   {: b:ptr :}
+   b SLOT-OFF + @ at b SLOT-DATA + - + ;
+
+\ cur lies in a slot of the calling thread's copy; the answer is the same place
+\ in that task's copy.
 : HIS ( ptr n ptr n -- ptr n ) {: tcb:ptr cur:ptr :}
-   cur data-base - tcb TCB.REGION @ + ;
+   data-base TASK-AREA-OFF + @ {: area:n :}
+   area 0= if cur MAIN-SLOT-OFF else cur FFI:>CELL area - then
+   tcb TCB.REGION @ TASK-REGION-BYTES + + ;
 
 \ The record is this process's lock and its holder, so every cell is a scratch
 \ cell, which a link writes zero.
@@ -1969,9 +2000,7 @@ private
    does> ( -- TASK:sem ) FFI:>CELL >SEM ;
 
 \ ---- sleeping ----------------------------------------------------------------
-\ SLEEP replaces a TASK:PAUSE loop against mono-ns, which burns a core for the
-\ whole wait. The request and the remainder are one TASK-SLEEP-BYTES row of the
-\ user band, so every task may sleep at once over its own pair of timespecs.
+\ The request and remainder timespecs are one slot: each task sleeps on its own.
 #USER 7 + TASK-CELL-MASK and TASK-SLEEP-BYTES +USER SLEEP-SPECS drop
 
 : SLEEP-REQ ( -- ptr n )
@@ -2391,12 +2420,6 @@ TASK-MIN-STACK constant MIN-STACK
 \ TASK-EXIT-N, the first AT-EXIT row never handed out: src/lib/task-test.f reads it
 \ to see the rows grow past the table and freed rows serve again.
 : OWNED-EXIT-N ( -- n ) TASK-EXIT-N @ ;
-
-\ Hand every slot word +USER generates, as its execution token with the slot's
-\ offset and size, to a quotation.
-: OBSERVE-SLOTS ( [ [ -- ptr n ] n n -- ] -- ) SLOT-OBSERVER-N SLOT-OBSERVER ! ;
-: UNOBSERVE-SLOTS ( -- ) 0 SLOT-OBSERVER ! ;
-: SLOT-OBSERVER-CELL ( -- ptr n ) SLOT-OBSERVER ;
 
 seal-package
 
