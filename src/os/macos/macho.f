@@ -1,6 +1,6 @@
 \ macho.f - the Mach-O writer for macOS ARM64: the canonical unsigned image of
-\ the program in icode's CODE (BUILD-IMAGE) or of a snapshot (BUILD-SNAP-HDR),
-\ which src/os/macos/sign2.f then signs ad hoc.
+\ the program in icode's CODE (BUILD-IMAGE), which src/os/macos/sign2.f then
+\ signs ad hoc.
 \
 \ DYNAMIC, WITH NO C. AMFI kills a static arm64 executable, so the image is
 \ dyld-loaded and links libSystem, yet its code is all emitted machine code.
@@ -18,9 +18,7 @@
 \ DETERMINISTIC. The self-rebuild gate compares successive images, so none
 \ carries LC_UUID, a timestamp or another optional command a clang link adds
 \ (exports trie, symbol tables, build and source version, function starts,
-\ data in code). A snapshot stages its __DATA_CONST and fixups tail in MBUF at
-\ CODE-OFF, but the fixups name the final segment offset, so dyld binds the
-\ mapped page.
+\ data in code).
 \ Mach-O constants
 require src/arch/arm64/icode.f
 require src/os/image-bytes.f
@@ -41,9 +39,8 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $8000001C constant LC-RPATH
 $80000034 constant LC-DYLD-CHAINED-FIXUPS
-public
-$100000000 constant VMBASE
-private
+\ Where the file's first byte maps; BUILD-IMAGE stores it.
+variable VMBASE
 \ The maximum generated executable window: everything the assembler can emit,
 \ behind the header page it sits at. It is DERIVED from the assembler's own
 \ buffer rather than written out again, because the two are one fact and a
@@ -140,7 +137,7 @@ variable NCMDS
    DATA-CONST-BYTES + ;
 
 : VA+ ( n -- n )
-   VMBASE + ;
+   VMBASE @ + ;
 
 : SEGX, ( ptr u8 n n n n n n n n n -- ) {: a:ptr u:n vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
    LC-SEG64 IMG-M32   72 extra + IMG-M32
@@ -235,9 +232,9 @@ variable NCMDS
    MACHO-FIXUPS-BYTES LE-BASE-SIZE ! ;
 
 : MACHO-CMDS, ( n n -- ) {: textsz:n textlen:n :}
-   s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
-   s" __TEXT" VMBASE textsz 0 textsz 5 1 80 SEG,  LC+
-      s" __text" s" __TEXT" VMBASE CODE-OFF + textlen CODE-OFF 2 $80000400 SECT,
+   s" __PAGEZERO" 0 VMBASE @ 0 0 0 0 0 SEG,  LC+
+   s" __TEXT" VMBASE @ textsz 0 textsz 5 1 80 SEG,  LC+
+      s" __text" s" __TEXT" VMBASE @ CODE-OFF + textlen CODE-OFF 2 $80000400 SECT,
    textsz DATA-CONST-SEG,  LC+
    textsz LINKEDIT-SEG,  LC+
    textsz LINKOFF CHAINED-FIXUPS,  LC+
@@ -271,31 +268,13 @@ variable NCMDS
    IMG-PAYLOAD-CLEAR ;
 
 public
-\ the target-neutral driver entry: another OS swaps in an ELF builder here
-: BUILD-IMAGE ( asm -- img )
+\ The program in icode's CODE as a Mach-O file whose code maps at the address.
+: BUILD-IMAGE ( asm n -- img )
+   CODE-OFF - VMBASE !
    ASM-DROP
    BUILD-MACHO
    IMG-PHASE ;
 
-: BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
-   IMG-PAYLOAD-CLEAR
-   CODE-OFF snl + $3FFF + $3FFF invert and {: sfts :}
-   M-RESET  0 NCMDS !
-   MH-HDR,
-   sfts snl MACHO-CMDS,
-   PATCH-HDR
-   CODE-OFF M-OFF M-PAD-OFF
-   CODE-OFF sfts MACHO-EXTRA,
-   DATA-CONST-BYTES MACHO-DATA-WROTE !
-   MACHO-FIXUPS-BYTES MACHO-FIXUPS-WROTE !
-   SNAP-PHASE sfts ;
-
-: SNAP-EXTRA-PTR ( -- ptr u8 )
-   MBUF CODE-OFF + ;
-s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
-
-DATA-CONST-SIZE MACHO-FIXUPS-SIZE + constant SNAP-EXTRA-SIZE
-s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 ;package
 ;using
 ;using

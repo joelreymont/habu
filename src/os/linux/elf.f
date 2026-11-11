@@ -1,9 +1,7 @@
-\ elf.f -- dynamic Linux/aarch64 ELF executable writer.
-\ Provides the same image-builder surface as the Mach-O writer: MBUF, MLEN@/!,
-\ CODE-OFF, MPAGE, ASM-CODE, BUILD-IMAGE.
+\ elf.f - the ELF writer for Linux arm64: a dynamic executable of the program
+\ in icode's CODE (BUILD-IMAGE), under the Mach-O writer's public names.
 \ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
 \ tail never share a kernel page on any supported page size.
-\ Snapshot extras name the staged dynamic/GOT tail and its fixed byte size.
 \ Retirement: habu-campaign-c2-mem-c3d7662b.
 
 require src/arch/arm64/icode.f
@@ -31,9 +29,8 @@ $B7 constant EM-AARCH64
 64 constant ELF-HDR-SZ
 56 constant ELF-PHDR-SZ
 4 constant ELF-PHDR-N
-public
-$400000 constant VMBASE
-private
+\ Where the file's first byte maps; BUILD-IMAGE stores it.
+variable VMBASE
 $C0 constant ELF-RW-SZ
 $B0 constant ELF-DYNAMIC-SZ
 $B0 constant ELF-DLOPEN-SLOT-OFF
@@ -90,10 +87,10 @@ public
 
 private
 : ELF-VA ( n -- n )
-   VMBASE + ;
+   VMBASE @ + ;
 
 : ELF-RW-VA ( -- n )
-   VMBASE ELF-TEXT-SIZE @ + ;
+   VMBASE @ ELF-TEXT-SIZE @ + ;
 
 : ELF-DLOPEN-SLOT-VA ( -- n )
    ELF-RW-VA ELF-DLOPEN-SLOT-OFF + ;
@@ -109,7 +106,7 @@ private
 : ELF-HDR, ( -- )
    ELF-IDENT
    ET-EXEC IMG-M16  EM-AARCH64 IMG-M16  EV-CURRENT IMG-M32
-   VMBASE CODE-OFF + IMG-M64
+   VMBASE @ CODE-OFF + IMG-M64
    ELF-HDR-SZ IMG-M64
    0 IMG-M64
    0 IMG-M32
@@ -127,7 +124,7 @@ private
    align IMG-M64 ;
 
 : ELF-RX-PHDR, ( -- )
-   PT-LOAD PF-RX 0 VMBASE ELF-TEXT-SIZE @ PROT-PAGE-MAX ELF-PHDR, ;
+   PT-LOAD PF-RX 0 VMBASE @ ELF-TEXT-SIZE @ PROT-PAGE-MAX ELF-PHDR, ;
 
 : ELF-RW-PHDR, ( -- )
    PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ PROT-PAGE-MAX ELF-PHDR, ;
@@ -215,13 +212,6 @@ private
    ELF-GOT, ;
 
 public
-: SNAP-EXTRA-PTR ( -- ptr u8 )
-   MBUF CODE-OFF + ;
-s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
-
-$C0 constant SNAP-EXTRA-SIZE
-s" SNAP-EXTRA-SIZE" s" -- n" TRUST
-
 : BUILD-ELF ( -- )
    ASM-CODELEN!  M-RESET
    CODELEN @  MPAGE CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
@@ -234,20 +224,12 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
    ELF-TEXT-SIZE @ ELF-RW-AT,
    M-HERE MLEN! ;
 
-: BUILD-IMAGE ( asm -- img )
+\ The program in icode's CODE as an ELF file whose code maps at the address.
+: BUILD-IMAGE ( asm n -- img )
+   CODE-OFF - VMBASE !
    ASM-DROP
    BUILD-ELF
    IMG-PHASE ;
-
-: BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
-   CODE-OFF snl + ELF-PAGE-UP {: sfts:n :}
-   sfts ELF-TEXT-SIZE !
-   M-RESET
-   ELF-HDR,
-   ELF-PHDRS,
-   ELF-RX-META,
-   CODE-OFF ELF-RW-AT,
-   SNAP-PHASE sfts ;
 
 private
 \ ---------------------------------------------------------------------------

@@ -487,6 +487,16 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       s" link: the kernel object is another kind of build's" 74 die
    then ;
 
+
+\ Build the open space's program as the target's file, sign it with the id and
+\ write it to the path.
+: EMIT-IMAGE ( ptr u8 n ptr u8 n -- )
+   {: sig:ptr sigu:n path:ptr pathu:n :}
+   EXECUTABLE:ASM-CODE ARM64:TEXT-VA EXECUTABLE:BUILD-IMAGE
+   sig sigu EXECUTABLE:SET-SIGID EXECUTABLE:CODESIG2
+   path pathu DRV-WRITE-IMAGE ;
+
+
 \ Link the open space's program and write it, signed, to the path; the caller
 \ first stores its entry, a stripped program's with APP-ENTRY:XT!,
 \ an engine's in ENGINE-MAIN:XT-CELL, and writes its names beside it as
@@ -502,7 +512,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       s" link: the build stored no entry for the program" 74 die
    then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
-   path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap DRV-EMIT-IMAGE
+   path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap EMIT-IMAGE
       FS:CHMOD-X ;] FS:REPLACE-STAGED
    path pathu DATA-IMAGE-AT WRITE-MAP ;
 

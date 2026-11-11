@@ -1,10 +1,9 @@
 \ driver-io.f - shared fail-closed I/O for internal build drivers. It reaches
-\ MBUF, BUILD-IMAGE and the target's signer, so a booted engine cannot load it;
-\ what a booted engine needs lives in src/habu/fdio.f (FDIO:WALL, loaded just
-\ before this file) and src/habu/sign-id.f.
+\ MBUF, so a booted engine cannot load it; what a booted engine needs lives in
+\ src/habu/fdio.f (FDIO:WALL, loaded just before this file) and
+\ src/habu/sign-id.f.
 
 require src/habu/sign-id.f
-using EXECUTABLE
 using IMAGE-BYTES
 
 package DRIVER
@@ -28,14 +27,6 @@ public
 : DRV-WRITE-IMAGE ( img ptr u8 n -- ) {: phase path:ptr pathu :}
    phase IMG-DROP
    path pathu DRV-WRITE-IMAGE-PATH ;
-
-\ The one BUILD-IMAGE, sign and write path; its caller names the signing id
-\ (src/habu/link-data.f WRITE).
-\ Loads after the target image writer (macho/elf + sign).
-: DRV-EMIT-IMAGE ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n path:ptr pathu:n :}
-   ASM-CODE BUILD-IMAGE
-   sig sigu SET-SIGID CODESIG2
-   path pathu DRV-WRITE-IMAGE ;
 
 : DRV-EXIT-OK ( -- )
    s" " 0 die ;
@@ -80,5 +71,4 @@ public
    10 DRV-B2
    s" " rc die ;
 ;package
-;using
 ;using

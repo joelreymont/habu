@@ -14,10 +14,6 @@ require src/arch/arm64/mnem.f
 require src/habu/layout.f
 require src/habu/xref.f
 
-HB-TARGET-LINUX? HB-TARGET-MACOS? or 0= [if] s" link-kernel: unknown target" 76 die [then]
-HB-TARGET-LINUX? [if] require src/os/linux/elf.f [then]
-HB-TARGET-MACOS? [if] require src/os/macos/macho.f [then]
-
 package LINKER
 private
 

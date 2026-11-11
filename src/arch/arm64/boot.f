@@ -21,14 +21,10 @@ require src/habu/rt.f
 require src/habu/crash.f
 
 HB-TARGET-LINUX? [if]
-   require src/os/linux/elf.f
-   require src/os/linux/sign.f
    require src/os/linux/proc-watch.f
    require src/os/linux/proc-control.f
 [then]
 HB-TARGET-MACOS? [if]
-   require src/os/macos/macho.f
-   require src/os/macos/sign2.f
    require src/os/macos/proc-watch.f
    require src/os/macos/proc-control.f
 [then]

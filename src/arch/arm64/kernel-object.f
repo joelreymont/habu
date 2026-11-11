@@ -67,7 +67,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 : TAIL@ ( n -- label ) TAIL A64ICODE:LABEL@ ;
 
-: TEXT-VA ( -- n ) EXECUTABLE:VMBASE CODE-OFF + ;
+: TEXT-VA ( -- n ) IMAGE-VA CODE-OFF + ;
 
 
 \ The start-up at code offset 0, then the kernel. The tail's labels stay unbound
