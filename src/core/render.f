@@ -1078,8 +1078,8 @@ variable MDV-I   variable MDV-F
    s" Change the body so produced types match the signature." ;
 
 
-: MDIAG-CODE$ ( -- ptr u8 n )
-   MDIAG @ case
+: MD-CODE$ ( n -- ptr u8 n )
+   case
       MD-FAM-UNKNOWN  of s" E-MATCH-UNKNOWN-FAMILY" endof
       MD-FAM-KIND     of s" E-MATCH-FAMILY-KIND" endof
       MD-SCRUT        of s" E-MATCH-SCRUTINEE" endof
@@ -1139,8 +1139,8 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 
-: MDIAG-CLASS$ ( -- ptr u8 n )
-   MDIAG @ case
+: MD-CLASS$ ( n -- ptr u8 n )
+   case
       MD-NONEXH       of s" add_missing_branches" endof
       MD-VAR-DUP      of s" remove_duplicate_branch" endof
       MD-VAR-UNKNOWN  of s" fix_variant_reference" endof
@@ -1211,7 +1211,7 @@ variable MDV-I   variable MDV-F
 : DEPTH-REASON$ ( -- ptr u8 n )
    s" effect too deep to record" ;
 
-\ Shared by a definition's depth refusal (MDIAG-SUGGEST$) and a signature's
+\ Shared by a definition's depth refusal (MD-SUGGEST$) and a signature's
 \ (SGBAD-SUGGEST$): a row is deep by its cells or by the types it nests.
 : DEPTH-SUGGEST$ ( -- ptr u8 n )
    s" Keep bulk values in a buffer, not on the stack, and name an inner callback's effect in a word of its own." ;
@@ -1247,8 +1247,8 @@ variable MDV-I   variable MDV-F
    s" The callee declares this callable with an implicit input row, [ -- S ], so it may run the callable on any stack and expects S back; a callable that keeps or reads the stack it runs on cannot promise that. Declare the callable [ R -- S ] from the word's input row, as in ( R [ R -- S ] -- S ), or pass a callable whose output does not depend on the stack beneath it." ;
 
 
-: MDIAG-SUGGEST$ ( -- ptr u8 n )
-   MDIAG @ case
+: MD-SUGGEST$ ( n -- ptr u8 n )
+   case
       MD-NONEXH       of s" Add an OF branch for every listed variant; v1 has no default branch." endof
       MD-VAR-DUP      of s" Remove the repeated variant branch; each variant may appear once." endof
       MD-VAR-UNKNOWN  of s" Use a variant declared by this family, lowercase as declared." endof
@@ -1316,8 +1316,8 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 
-: MDIAG-REASON$ ( -- ptr u8 n )
-   MDIAG @ case
+: MD-REASON$ ( n -- ptr u8 n )
+   case
       MD-FAM-UNKNOWN  of s" bad match: unknown type family" endof
       MD-FAM-KIND     of s" bad match: family is not a sum or enum" endof
       MD-SCRUT        of s" bad match: expected sum or enum value on stack" endof
@@ -1557,7 +1557,7 @@ variable MDV-I   variable MDV-F
    k RF-CAP = IF s" E-CAP-TRUSTED" EXIT THEN
    k RF-UNSAFE = IF s" E-UNSAFE" EXIT THEN
    k RF-LINLOCAL = IF s" E-LINEAR-LOCAL" EXIT THEN
-   k RF-REASON = IF MDIAG-CODE$ EXIT THEN
+   k RF-REASON = IF MDIAG @ MD-CODE$ EXIT THEN
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    s" E-REJECTED" ;
@@ -1583,7 +1583,7 @@ variable MDV-I   variable MDV-F
    k RF-CAP = IF s" trusted_boundary_required" EXIT THEN
    k RF-UNSAFE = IF s" remove_unsafe_word" EXIT THEN
    k RF-LINLOCAL = IF s" factor_linear_local" EXIT THEN
-   k RF-REASON = IF MDIAG-CLASS$ EXIT THEN
+   k RF-REASON = IF MDIAG @ MD-CLASS$ EXIT THEN
    k RF-UNCHECKABLE = IF s" rewrite_uncheckable" EXIT THEN
    k RF-RETURN = IF s" fix_return_stack" EXIT THEN
    k RF-MISMATCH <> IF s" unknown_rejection" EXIT THEN
@@ -1634,7 +1634,7 @@ variable MDV-I   variable MDV-F
    k RF-CAP = IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    k RF-UNSAFE = IF s" Remove it from the checked body; to evaluate text there, use evaluate-closed." EXIT THEN
    k RF-LINLOCAL = IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
-   k RF-REASON = IF MDIAG-SUGGEST$ EXIT THEN
+   k RF-REASON = IF MDIAG @ MD-SUGGEST$ EXIT THEN
    k RF-UNCHECKABLE = IF UNCK-SUGGEST$ EXIT THEN
    k RF-RETURN = IF
       RSBAD @ 2 = IF s" Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame." EXIT THEN
@@ -1790,7 +1790,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DSITE  s" at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
    k RF-REASON = IF
-     s"  " DTXT  MDIAG-REASON$ DTXT
+     s"  " DTXT  MDIAG @ MD-REASON$ DTXT
      MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
      MDIAG-COUNTS
    THEN
@@ -1889,7 +1889,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    k RF-REASON = IF
      s" reason" JKEY
      \ A reason's counts go inside its string, after its text.
-     JOPEN  MDIAG-REASON$ DTXT  MDIAG-COUNTS  JCLOSE
+     JOPEN  MDIAG @ MD-REASON$ DTXT  MDIAG-COUNTS  JCLOSE
      44 EMIT1
      MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
    THEN
@@ -2222,6 +2222,14 @@ REC-SIG-INSTALL
    ELSE s" E-BAD-QUALIFIED-TOP-LEVEL" s" malformed qualified name" TOP-SPAN-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
+: TOP-ARENA-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF
+      MD-ARENA-CALL MD-CODE$  MD-ARENA-CALL MD-CLASS$  s" rejected"
+      MD-ARENA-CALL MD-SUGGEST$ TOP-SPAN-JSON
+   ELSE MD-ARENA-CALL MD-CODE$  MD-ARENA-CALL MD-REASON$ TOP-SPAN-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
 \ Only the verifier's child reports a deferral, and it writes packets. Its
 \ cause is cleared once written, so a report that records none prints none.
 : TOP-DEFERRED-DIAG ( -- )
@@ -2233,7 +2241,8 @@ REC-SIG-INSTALL
    0 DEFER-WHY ! ;
 \ checker.f SHADOW-DIAG-XT selects: 0 the using-shadow reference site, 1 the
 \ arity-shadow definition site, 2 a using ambiguity, 3 and 4 a top-level token
-\ undefined or malformed, 5 a deferred top-level stretch or definition. One hook
+\ undefined or malformed, 5 a deferred top-level stretch or definition, 6 a
+\ top-level token naming the storage runtime. One hook
 \ because every defer before `: TRUST` takes a slot of the engine's pre-trust
 \ pending table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
@@ -2243,6 +2252,7 @@ REC-SIG-INSTALL
    sel 3 = IF TOP-UNDEF-DIAG EXIT THEN
    sel 4 = IF TOP-BADQUAL-DIAG EXIT THEN
    sel 5 = IF TOP-DEFERRED-DIAG EXIT THEN
+   sel 6 = IF TOP-ARENA-DIAG EXIT THEN
    USHADOW-DIAG ;
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL

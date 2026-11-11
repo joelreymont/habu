@@ -13163,8 +13163,9 @@ CHECKER-REG:}SCRATCH
 \ (CHECKER-RESOLVE:RAISE, the packages CK-USED-MASK marks), 3 a top-level token
 \ no scope defines and 4 one with a malformed qualifier (CHECKER-VERIFY-TOP), 5
 \ a top-level stretch or a definition deferred to the run
-\ (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
-\ and not six because every `defer` written here, before `: TRUST`, takes a slot
+\ (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY), 6 a top-level token
+\ naming the storage runtime (TOP-ANSWER). One defer
+\ and not seven because every `defer` written here, before `: TRUST`, takes a slot
 \ of the engine's pre-trust pending table (src/habu/layout.f PD-CAP).
 defer SHADOW-DIAG-XT ( n -- )               \ render.f installs the diagnostics behind one selector
 : SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
@@ -23753,12 +23754,16 @@ variable IS-PEND-U                   \ and its length
 
 \ ARENA's and HEAP's runtime words trust the head or width passed in: a call or tick
 \ of one, through any export, is admitted only while LBUF-EVAL checks a generated word.
-: ARENA-CALL-REFUSE? ( n -- bool )   \ true only when it REJECTED
+: ARENA-CALL-DENIED? ( n -- bool )
    {: sym:n :}
    sym SYM-INTRINSIC {: id:n :}
    id INTRINSIC-ARENA-NEW <>  id INTRINSIC-ARENA-RELEASE <>  and
    id INTRINSIC-RECORD-NEW <>  and  id INTRINSIC-RECORD-RELEASE <>  and IF RES-FALSE EXIT THEN
-   LBUF-PEND-MATCH? IF RES-FALSE EXIT THEN
+   LBUF-PEND-MATCH? 0= ;
+
+\ ARENA-CALL-DENIED?, recording the reason for a body's walk.
+: ARENA-CALL-REFUSE? ( n -- bool )   \ true only when it REJECTED
+   ARENA-CALL-DENIED? 0= IF RES-FALSE EXIT THEN
    MD-ARENA-CALL MDIAG!
    0 OK !
    RES-TRUE ;
@@ -28162,6 +28167,14 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
    a u RES-TRUE CK-AOT-SERVE ;
 
+\ TOP-ANSWER's refusal of the token by SHADOW-DIAG-XT's selector: rendered at the
+\ token, then counted under --all-errors (answer 0), else thrown.
+: TOP-REFUSE ( ptr u8 n n -- n )
+   {: a:ptr u:n sel:n :}
+   a USH-TOK-A !  u USH-TOK-U !
+   sel SHADOW-DIAG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! 0 EXIT THEN
+   CHECKER-REJECT-RC throw ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
 \ false (CHECKER-VERIFY-TOP below). The token takes the walk a body token takes
@@ -28172,9 +28185,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ resolves nowhere but a rendering statement in scope may define it
 \ (UNSEEN-COVERS?), the run's to judge; and 0 when the load refuses it:
 \ undefined, a word it runs that has no row (TOP-ROW?), as the load's step
-\ refuses one, or a malformed qualified name, rendered as a span record at the
-\ token (E-UNDEFINED-TOP-LEVEL, E-BAD-QUALIFIED-TOP-LEVEL) and counted under
-\ --all-errors, else thrown as a definition's refusal is. A refusal the walk
+\ refuses one, a malformed qualified name, or a token naming the storage runtime
+\ outside a generated word, as the load refuses it (ARENA-CALL-DENIED?),
+\ rendered as a span record at the token (E-UNDEFINED-TOP-LEVEL,
+\ E-BAD-QUALIFIED-TOP-LEVEL, E-ARENA-CALL) and counted under --all-errors, else
+\ thrown as a definition's refusal is. A refusal the walk
 \ answers, a using shadow or ambiguity among them, is raised as a body's is:
 \ rendered at the token and thrown (CHECKER-RESOLVE:RAISE). A token the walk
 \ does not bind is the word the engine's top-level find selects
@@ -28189,6 +28204,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
       a u sym TOP-BOUND-SYM IF
+         dup ARENA-CALL-DENIED? IF drop a u 6 TOP-REFUSE EXIT THEN
          dup TOP-CONTROL {: flags:n deferred:bool :}
          dup SYM-EFFECT-UNRESOLVED? IF
             drop flags deferred runs TOP-RUNS
@@ -28202,10 +28218,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       THEN drop
       a u UNSEEN-COVERS? IF 3 EXIT THEN
    THEN
-   a USH-TOK-A !  u USH-TOK-U !
-   CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN SHADOW-DIAG-XT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! 0 EXIT THEN
-   CHECKER-REJECT-RC throw ;
+   a u  CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN  TOP-REFUSE ;
 
 \ The pre-pass's question about a top-level token (src/habu/verify-source.f
 \ TOP-TOKEN): TOP-ANSWER's answer. A using refusal leaves the token's walk by

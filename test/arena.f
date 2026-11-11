@@ -220,13 +220,15 @@ variable OVF-U
 
 
 \ tools/check.f --verify-only checks a file without running it, so it gets its
-\ own child over a scratch tree's copy of the calls, the workspace variable and
-\ a head cast, each refusal reported as its own record.
+\ own child over a scratch tree's copy of the calls in bodies and a tick at top
+\ level, the workspace variable and a head cast, each refusal reported as its
+\ own record. The pre-pass judges no top-level token after one it refuses, so
+\ the source holds one.
 : VERIFY-SRC$ ( -- ptr u8 n )
-   S\" : NM ( -- ptr u8 n ) s\" x\" ;\nTYPED-VARIABLE HH DYNAMIC-STORAGE:arena-head\n: Z2 ( -- ptr u8 ) HH 8 NM DYNAMIC-STORAGE:ARENA-NEW ;\n: Z3 ( -- ) HH DYNAMIC-STORAGE:ARENA-RELEASE ;\n: Y1 ( -- ptr u8 ) NULL-PTR 8 NM DYNAMIC-STORAGE:ARENA-NEW ;\n: Y2 ( -- ) NULL-PTR DYNAMIC-STORAGE:ARENA-RELEASE ;\npackage ARENA-CAST\n0 CWORK-VARIABLE CW DYNAMIC-STORAGE:arena-head\nCAST: >HEAD-BYTES ( ptr DYNAMIC-STORAGE:arena-head -- ptr u8 )\n;package\n" ;
+   S\" : NM ( -- ptr u8 n ) s\" x\" ;\nTYPED-VARIABLE HH DYNAMIC-STORAGE:arena-head\n: Z2 ( -- ptr u8 ) HH 8 NM DYNAMIC-STORAGE:ARENA-NEW ;\n: Z3 ( -- ) HH DYNAMIC-STORAGE:ARENA-RELEASE ;\n: Y1 ( -- ptr u8 ) NULL-PTR 8 NM DYNAMIC-STORAGE:ARENA-NEW ;\n: Y2 ( -- ) NULL-PTR DYNAMIC-STORAGE:ARENA-RELEASE ;\npackage ARENA-CAST\n0 CWORK-VARIABLE CW DYNAMIC-STORAGE:arena-head\nCAST: >HEAD-BYTES ( ptr DYNAMIC-STORAGE:arena-head -- ptr u8 )\n;package\n' DYNAMIC-STORAGE:RECORD-RELEASE drop\n" ;
 
 : VERIFY-CALLS ( -- )
-   s" tools/check.f --verify-only refuses the same calls, the workspace variable and a head cast" T-LABEL
+   s" tools/check.f --verify-only refuses the same calls, at top level too, the workspace variable and a head cast" T-LABEL
    s" arena-verify" E2E-TREE:TREE
    E2E-TREE:ROOT$ FS:CLEANUP-TREE+
    s" test/arena-calls.f" E2E-TREE:AT-A VERIFY-SRC$ FS:WRITE-ALL
@@ -235,7 +237,8 @@ variable OVF-U
    s" --verify-only" >LEN PROC-ARGV+
    s" test/arena-calls.f" >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
-   E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL\"" COUNT-SUB 4 T=
+   E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL\"" COUNT-SUB 5 T=
+   E2E-TREE:ERR$ S\" \"token\":\"DYNAMIC-STORAGE:RECORD-RELEASE\"" COUNT-SUB 1 T=
    E2E-TREE:ERR$ S\" \"code\":\"E-CAST-OWNER\"" COUNT-SUB 1 T=
    E2E-TREE:ERR$ S\" \"code\":\"E-BAD-STORAGE\"" COUNT-SUB 1 T=
    E2E-TREE:RC@ 0 <> TTRUE ;
