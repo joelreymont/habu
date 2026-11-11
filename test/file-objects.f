@@ -41,7 +41,7 @@ package FILE-OBJECTS-TEST
 192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
 32 constant FILES-ROW                    \ a FILES row's bytes (linker.f FILES-ROW-BYTES)
-24 constant INPUT-BYTES                  \ an object's INPUT: its file's stamp
+24 constant STAMP-BYTES                  \ the stamp an object's INPUT starts with
 16384 constant CAP                       \ an object's bytes
 16384 constant STATE-CAP                 \ a build's output before its last line
 262144 constant PROG-CAP                 \ a program's bytes, L's included
@@ -63,7 +63,7 @@ PATH-CAP BUFFER: FOUND   variable FOUND-U    \ the walk's last path that ends wi
 CAP BUFFER: BYTES-A
 CAP BUFFER: BYTES-B
 DYNAMIC-BUFFER FIXTURE-BYTES u8
-INPUT-BYTES BUFFER: EXPECT
+STAMP-BYTES BUFFER: EXPECT
 STATE-CAP BUFFER: STATE-A  variable STATE-A-U
 STATE-CAP BUFFER: STATE-B  variable STATE-B-U
 STATE-CAP BUFFER: STATE-W  variable STATE-W-U  \ a warm build's, C's or D's
@@ -262,7 +262,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    b bu bn bnu IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
    PROG-1 u1 PROG-2 u2 STR= ;
 
-\ EXPECT: the file's INPUT, its change time seconds, nanoseconds and size, each low byte first.
+\ EXPECT: the file's stamp, its change time seconds, nanoseconds and size, each low byte first.
 : EXPECT! ( ptr u8 n -- )
    FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    cs EXPECT LE:U64!  cns EXPECT 8 + LE:U64!  size EXPECT 16 + LE:U64! ;
@@ -276,9 +276,9 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
    s" test/fixtures/file-objects/count.f" EXPECT!
-   u HEADER-BYTES - 0 max INPUT-BYTES min {: v:n :}
+   u HEADER-BYTES - 0 max STAMP-BYTES min {: v:n :}
    s" count.f's object holds its stamp" LABEL
-   BYTES-B HEADER-BYTES + v EXPECT INPUT-BYTES T$= ;
+   BYTES-B HEADER-BYTES + v EXPECT STAMP-BYTES T$= ;
 
 \ A file compiles when it is edited, when what its object names in another file changes, when an
 \ earlier file that defines a public name it spells, or a private name of a package it opens, is

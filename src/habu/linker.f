@@ -20,6 +20,7 @@ require src/habu/address-cells.f
 require src/habu/interpreter.f
 require src/habu/intern.f
 require src/core/include.f
+require src/core/compile-reads.f
 require src/compiler/target/model.f
 require src/compiler/target/native-binding.f
 require src/compiler/native/abi.f
@@ -181,6 +182,9 @@ create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling part ran, 8 byt
 create REACHED BUF:HDR-BYTES allot   \ the object's REACHED: the FILES rows of the pieces whose data RAN-FILES+ reached, 8 bytes each
 create PENDING-PATHS BUF:HDR-BYTES allot \ the paths the checked part's earlier acts provided, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
+create ENTRY-ROOT BUF:HDR-BYTES allot \ the root current as the part started (MARKS)
+create EXIT-ROOT BUF:HDR-BYTES allot \ the root current as the part ended
+create PART-READS BUF:HDR-BYTES allot \ the reads the part's compile made (READS-KEEP)
 create OBJECT BUF:HDR-BYTES allot    \ the object WRITE-OBJECT lays or READ-OBJECT reads
 create PRIOR BUF:HDR-BYTES allot     \ the compiling file's object as the last build left it
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
@@ -191,8 +195,10 @@ create OBJ-PATHS BUF:HDR-BYTES allot  \ the object's PATHS as WRITE-OBJECT lays 
 create OBJ-NAME BUF:HDR-BYTES allot   \ an object's name below BUILD-OUT:OBJ$'s directory
 DYNAMIC-BUFFER BUILT-PATHS n         \ BUILT row r's path: its FIELD+'s offset in LOAD-PATHS
 KEY-BYTES BUFFER: FILE-KEY
-3 8 * constant INPUT-BYTES
-INPUT-BYTES BUFFER: INPUT-STAMP      \ the source's stamp (INPUT!), the object's INPUT
+\ An object's INPUT: the source's stamp (STAMP-BYTES), then the part's entry root, its exit root and its compile's
+\ reads (COMPILE-READS), each a FIELD+. An UNLINKABLE part's stamp is 0 0 -1 and its three fields are empty.
+3 8 * constant STAMP-BYTES
+STAMP-BYTES BUFFER: INPUT-STAMP      \ the source's stamp (INPUT!)
 
 \ clock_gettime writes a struct timespec: seconds, then nanoseconds, eight bytes each.
 $10 constant TIMESPEC-BYTES
@@ -442,6 +448,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT BUF:DISPOSE  REQ-PATH BUF:DISPOSE
+   ENTRY-ROOT BUF:DISPOSE  EXIT-ROOT BUF:DISPOSE  PART-READS BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-RECS BUF:DISPOSE
    SPELLS BUF:DISPOSE  NAMED-RECS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  USED-EXTS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HIT-STAMPS-RELEASE  HITS-RELEASE  OPENED-RELEASE
@@ -465,6 +472,9 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    REACHED 256 BUF:N>BLEN BUF:INIT
    PENDING-PATHS 256 BUF:N>BLEN BUF:INIT
    REQ-PATH 256 BUF:N>BLEN BUF:INIT
+   ENTRY-ROOT 256 BUF:N>BLEN BUF:INIT
+   EXIT-ROOT 256 BUF:N>BLEN BUF:INIT
+   PART-READS 256 BUF:N>BLEN BUF:INIT
    OBJECT 256 BUF:N>BLEN BUF:INIT
    PRIOR 256 BUF:N>BLEN BUF:INIT
    CODE-COPY 256 BUF:N>BLEN BUF:INIT
@@ -2348,7 +2358,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ev EVENT-KIND@ EV-PROVIDED =
    ev EVENT-KIND@ EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-KNOWN =  and  or ;
 
-\ ACTS from the loader's log (include.f EVENT-RECORD); req >= 0 leaves out the newest event, the ending request's own.
+\ ACTS from the loader's log (include.f EVENT-RECORD), each row a kind, the spelled path and the root current as it
+\ was spelled (SOURCE-EVENT:CURRENT@); req >= 0 leaves out the newest event, the ending request's own.
 \ Any other event is a load the source caught before the build's runner ran it, which a link cannot repeat: UNLINKABLE.
 : ACTS+ ( n -- )
    {: req:n :}
@@ -2357,7 +2368,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    0  end FILE-EVENT @ ?do i ACT? if 1 + then loop  PIECES U64+
    end FILE-EVENT @ ?do
       i ACT? if
-         i EVENT-KIND@ PIECES U64+  i EVENT-SPELLED@ PIECES FIELD+
+         i EVENT-KIND@ PIECES U64+  i EVENT-SPELLED@ PIECES FIELD+  i SOURCE-EVENT:CURRENT@ PIECES FIELD+
       else
          true UNLINKABLE !
       then
@@ -2409,7 +2420,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    loop ;
 
 \ Part FILE-PART's object with time t, built for PIECE-PLACE's facts and written only with a stamp and for hb's target;
-\ an UNLINKABLE part's INPUT is 0 0 -1, so it never links and keeps its times.
+\ INPUT laid out as STAMP-BYTES says; an UNLINKABLE part's stamp is 0 0 -1, so it never links and keeps its times.
 : WRITE-OBJECT ( n -- )
    {: t:n :}
    \ FILES ends with the pieces the part's source names (NAMED+), then those a run word reaches
@@ -2425,7 +2436,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    USED-EXTS BYTES$ {: exts:ptr extsu:n :}
    TIMES BYTES$ {: tms:ptr tmsu:n :}
    PIECES BYTES$ {: pieces:ptr piecesu:n :}
-   HEADER-BYTES INPUT-BYTES + {: files-at:n :}
+   UNLINKABLE @ if 0 else ENTRY-ROOT BYTES$ nip  EXIT-ROOT BYTES$ nip +  PART-READS BYTES$ nip + then
+   STAMP-BYTES + 24 + {: inputu:n :}
+   HEADER-BYTES inputu + {: files-at:n :}
    files-at refsu + {: reqs-at:n :}
    reqs-at requ + {: names-at:n :}
    names-at nmu + {: reached-at:n :}
@@ -2438,7 +2451,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    s" HABUFOBJ" OBJECT SPAN+
    0 OBJECT U64+  FILE-KEY 8 + LE:U64@ OBJECT U64+
    FILE-PART @ OBJECT U64+  t OBJECT U64+  FILE-OFF @ OBJECT U64+
-   HEADER-BYTES OBJECT U64+  INPUT-BYTES OBJECT U64+
+   HEADER-BYTES OBJECT U64+  inputu OBJECT U64+
    refsu 0<> if files-at else 0 then OBJECT U64+  refsu OBJECT U64+
    requ 0<> if reqs-at else 0 then OBJECT U64+  requ OBJECT U64+
    nmu 0<> if names-at else 0 then OBJECT U64+  nmu OBJECT U64+
@@ -2450,8 +2463,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    pieces-at OBJECT U64+  piecesu OBJECT U64+
    UNLINKABLE @ if
       0 OBJECT U64+  0 OBJECT U64+  -1 OBJECT U64+
+      0 OBJECT U64+  0 OBJECT U64+  0 OBJECT U64+
    else
-      INPUT-STAMP INPUT-BYTES OBJECT SPAN+
+      INPUT-STAMP STAMP-BYTES OBJECT SPAN+
+      ENTRY-ROOT BYTES$ OBJECT FIELD+  EXIT-ROOT BYTES$ OBJECT FIELD+  PART-READS BYTES$ OBJECT FIELD+
    then
    refs refsu OBJECT SPAN+
    reqs requ OBJECT SPAN+
@@ -2654,7 +2669,7 @@ variable RD-END
 \ FILES row k, from 1, in OBJECT.
 : FILES-ROW ( n -- ptr u8 )
    {: k:n :}
-   OBJECT BYTES$ drop  HEADER-BYTES INPUT-BYTES +  k 1 - FILES-ROW-BYTES * +  + ;
+   OBJECT BYTES$ drop  PAIRS-AT 16 + OBJ@  k 1 - FILES-ROW-BYTES * +  + ;
 
 \ A FILES row a reference may name: one a BUILT row holds.
 : FILE-IN? ( n -- bool )
@@ -3050,19 +3065,20 @@ variable RD-END
    loop ;
 
 
-\ The header (FILE-PART, FILE-OFF, INPUT-STAMP) and each section before PIECES as WRITE-OBJECT lays it, by its -CK word;
-\ PATHS is skipped as KEYS-IN read it. Leaves PIECE-AT at PIECES' offset.
+\ The header (FILE-PART, FILE-OFF), INPUT (INPUT-STAMP, two roots, the reads skipped) and each section before PIECES as
+\ WRITE-OBJECT lays it, by its -CK word; PATHS is skipped as KEYS-IN read it. Leaves PIECE-AT at PIECES' offset.
 : HEADER-CK ( -- )
    0 FILES-N !  0 REQS-N !
    OBJECT BYTES$ nip {: len:n :}
    0 len RD-OPEN
-   HEADER-BYTES INPUT-BYTES + {: files-at:n :}
-   len files-at < if BAD exit then
+   len HEADER-BYTES < if BAD exit then
    s" HABUFOBJ" RD-SAME
    FILE-KEY KEY-BYTES RD-SAME
    GOOD? 0= if exit then
    FILE-PART @ RD-EQ  8 RD-SKIP  FILE-OFF @ RD-EQ
-   HEADER-BYTES RD-EQ  INPUT-BYTES RD-EQ
+   HEADER-BYTES RD-EQ  RD-U64 {: inputu:n :}
+   inputu STAMP-BYTES 24 + <  inputu len HEADER-BYTES - >  or if BAD exit then
+   HEADER-BYTES inputu + {: files-at:n :}
    RD-U64 RD-U64 {: off:n refsu:n :}
    refsu 0<  refsu FILES-ROW-BYTES mod 0<>  or  refsu len files-at - >  or if BAD exit then
    off  refsu 0<> if files-at else 0 then  <> if BAD then
@@ -3096,7 +3112,12 @@ variable RD-END
    toff times-at <> if BAD then
    times-at timesu + {: pieces-at:n :}
    pieces-at RD-EQ  len pieces-at - RD-EQ
-   INPUT-STAMP INPUT-BYTES RD-SAME
+   INPUT-STAMP STAMP-BYTES RD-SAME
+   NAME-CK NAME-CK                     \ the entry and exit roots, never empty in a stamped part
+   RD-U64 {: readsu:n :}
+   readsu 0<  readsu 8 mod 0<>  or if BAD exit then
+   readsu RD-SKIP
+   RD-AT @ files-at <> if BAD exit then
    refsu FILES-CK
    reqs-at REQS-AT !  requ REQUESTS-CK
    nmu NAMES-CK  NAMED-CK
@@ -3480,13 +3501,13 @@ variable RD-END
    loop drop ;
 
 
-\ ACTS (ACTS+): each row a kind, EV-REQUIRED or EV-PROVIDED, and a path.
+\ ACTS (ACTS+): each row a kind, EV-REQUIRED or EV-PROVIDED, a path and the root current as it was spelled.
 : ACTS-CK ( -- )
    RD-AT @ ACTS-AT !
-   16 RD-COUNT 0 ?do
+   24 RD-COUNT 0 ?do
       RD-U64 {: kind:n :}
       kind EV-REQUIRED <>  kind EV-PROVIDED <>  and if BAD then
-      NAME-CK
+      NAME-CK NAME-CK
    loop ;
 
 
@@ -3881,6 +3902,7 @@ variable PRIOR-EXT-NEXT
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
       RD-NAME SOURCE-ROOT:RESOLVE {: canon:ptr canonu:n known:bool :}
+      NAME-CK                          \ the root it was spelled in
       kind EV-PROVIDED = if
          canon canonu PENDING-PATHS FIELD+
       else
@@ -4562,14 +4584,16 @@ variable DUE-MADE
    ALIASES-N @ 0 ?do  i ALIASES @  i 1 + ALIASES @  CHECK:READ-ALIAS  2 +loop ;
 
 
-\ As a file's load or its piece after a request starts.
+\ As a file's load or its piece after a request starts. After an unclean cut (NEST) ENTRY-ROOT is the requested
+\ file's root, but that part is UNLINKABLE, so its INPUT never holds it.
 : MARKS ( -- )
    ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !  0 RETIRED-N !  false HOLDS-HEADER !
    TFAM:TFAM-N@ FILE-TFAM !  CHECK:TYPE-END FILE-TYPES !
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
-   EVENT-COUNT FILE-EVENT !  SOURCE-ROOT:CHANGE-COUNT FILE-ROOTS !  INTERPRETER:RUN-COUNT FILE-RUN ! ;
+   EVENT-COUNT FILE-EVENT !  SOURCE-ROOT:CHANGE-COUNT FILE-ROOTS !  INTERPRETER:RUN-COUNT FILE-RUN !
+   SOURCE-ROOT:CURRENT$ BUF:N>BLEN ENTRY-ROOT BUF:REPLACE ;
 
 
 \ The scope a build's top-level file starts in: no package or part open, the build's global
@@ -4594,6 +4618,7 @@ variable DUE-MADE
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
       RD-NAME {: a:ptr u:n :}
+      NAME-CK                          \ the root it was spelled in
       GOOD? 0= if E-COMP-STATE throw then
       kind EV-PROVIDED = if
          a u provided
@@ -4723,6 +4748,9 @@ variable DUE-MADE
    resume ;
 
 
+\ The running recording's reads (COMPILE-READS:READS$) into PART-READS; none when no recording is active.
+: READS-KEEP ( -- ) COMPILE-READS:READS$ BUF:N>BLEN PART-READS BUF:REPLACE ;
+
 \ The file's parts in turn (TURN): one links (LINK-PART) and replays its request, or compiles to its request's clean cut
 \ (NEST) or the end. A cross build writes no object: it makes two emissions per definition, an object holds one.
 : LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
@@ -4758,7 +4786,7 @@ variable DUE-MADE
             OBJECT-OPEN  COPY-BELOW
             CROSS? UNLINKABLE !  STAMPED? 0= if true UNLINKABLE ! then  SCOPE-CK
             false PUSH-KEY
-            FILE-OFF @ sourceu q ['] RUN-UNIT ['] POP-KEY finally
+            [: FILE-OFF @ sourceu q ['] RUN-UNIT ['] POP-KEY finally  READS-KEEP ;] COMPILE-READS:RECORD
             true GOING                    \ E-FAILED: a request failed and the source caught it
             TURN @ MATCH turn
                link OF E-COMP-STATE throw ENDOF
@@ -4766,6 +4794,7 @@ variable DUE-MADE
                   SCOPE-CK  ROOT-CK
                   sourceu PART-NAMES
                   -1 PIECE-END
+                  SOURCE-ROOT:CURRENT$ BUF:N>BLEN EXIT-ROOT BUF:REPLACE   \ the file's load scope is still open
                   0 COMPILED-TIME dup WRITE-OBJECT
                   PIECE-PLACE
                   true true
@@ -4812,8 +4841,8 @@ variable DUE-MADE
    a u + src - ;
 
 
-\ The newest request (REQUEST?) ends the part (names, REQUESTS row, object, BUILT row), then loads its file. At a
-\ clean cut (RESUME) the next part is LOAD's turn; else it compiles on in this reader, both parts UNLINKABLE.
+\ The newest request (REQUEST?) ends the part (names, REQUESTS row, object, BUILT row), then loads its file unrecorded.
+\ At a clean cut (RESUME) the next part is LOAD's turn; else it compiles on in this reader, both parts UNLINKABLE.
 : NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    EVENT-COUNT 1 - {: ev:n :}
@@ -4827,6 +4856,8 @@ variable DUE-MADE
    ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+
    0 PIECE-END
    0 COMPILED-TIME {: t:n :}
+   READS-KEEP                     \ NEST runs inside the requesting part's RUN-UNIT, so the recording is its
+   ev SOURCE-EVENT:CURRENT@ BUF:N>BLEN EXIT-ROOT BUF:REPLACE   \ CURRENT$ is already the requested file's root
    t WRITE-OBJECT
    t PIECE-PLACE
    align   \ the next part starts at a cell boundary, as include.f LOAD-UNIT leaves here
@@ -4834,7 +4865,7 @@ variable DUE-MADE
    FILE-PART @  FILE-OFF @  FILE-SRC @  FILE-SRC-U @ {: part:n off:n src:n srcu:n :}
    UNLINKABLE @ {: unlinkable:bool :}
    TURN @ {: was:turn :}
-   path pathu root rootu source sourceu q LOAD
+   [: path pathu root rootu source sourceu q LOAD ;] COMPILE-READS:UNRECORDED
    s ns size STAMP!
    part 1 + FILE-PART !  off FILE-OFF !  src FILE-SRC !  srcu FILE-SRC-U !
    resume 0< if unlinkable UNLINKABLE ! then
