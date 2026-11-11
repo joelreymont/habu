@@ -25,8 +25,7 @@ package NDEFINITION
 
 public
 
-\ Everything the run needs, parked: a quotation cannot read the enclosing word's
-\ locals and the whole run is one quotation.
+\ Everything the run needs, parked in cells: the whole run is one quotation under catch (compiler.f RUN).
 0 CWORK-VARIABLE M-IN n
 0 CWORK-VARIABLE M-OUT n
 0 CWORK-VARIABLE M-VERDICT n                   \ the verdict the recorded scan reached

@@ -3757,10 +3757,13 @@ CAST: XT>N ( xt -- n )
    from w + LBN !
    LGB @ 1+ LGB ! ;
 
+\ A local read inside a quotation body is refused, as a locals group there is
+\ (QLOCALS-CK).
 : LOCAL-READ? ( n -- bool )
    {: ix:n :}
    ix LOCAL-OF {: k:n :}
    k 0 < if false exit then
+   ix QINSIDE? if ix QUOT-REFUSE then
    k cells LBASE + @ {: s:n :}
    k cells LWIDTH + @ {: w:n :}
    s 0 <  s w + LBN @ >  or if E-NELAB-LOCAL throw then

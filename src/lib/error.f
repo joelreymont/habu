@@ -898,7 +898,7 @@ require src/lib/prelude.f
 \ A quotation body is a second FUNCTION of the module. Every quotation shape the
 \ elaborator cannot take apart is one refusal, distinct from E-HIR-UNMODELED so
 \ a census tells a declined quotation from an unknown word.
--8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes (a cast whose input is a quotation does), or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; or a body holding a locals group
+-8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes (a cast whose input is a quotation does), or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; or a body holding a locals group or reading an enclosing local
 
 \ `is NAME` stores into the defer's dispatch cell, whose address is read from the
 \ record's meta trailer. The trailer's magic is checked: a record that is not a

@@ -387,6 +387,13 @@ variable CANDIDATE-VERDICT
    s" 7" GE-OUT-LINE
    SB$ s" hb quotation reads a local output" GE-EXPECT-OUT ;
 
+: LOCAL-QUOT-TIER1 ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 1 set-tier" GE-SRC-LINE
+   s" : QLOCAL1 ( n -- ) {: x:n :} [: x . ;] execute ;" GE-SRC-LINE
+   67 s" ncomp: cannot compile QLOCAL1 at x" s" tier 1 refuses a local read in a quotation" GE-EVAL-FORK-BAD ;
+
 : LOCAL-FIRST ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -1453,6 +1460,7 @@ public
    COMBINATOR-CHECKS
    LOCAL-QUOT-CHECKS
    LOCAL-QUOT-RUN
+   LOCAL-QUOT-TIER1
    LOCAL-FIRST
    LITERAL-FLOAT-FIRST
    LITERAL-FLOAT-EVAL
