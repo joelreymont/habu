@@ -21844,6 +21844,7 @@ variable RECEFF   variable RECEFF-ON
 CHECKER-REG:SCRATCH{
 variable RECEFF-UEND   variable RECEFF-SYM
 variable CLAUSE-WALK   \ -1 while CHECK-DOES-RUN walks a does> clause; CHECK-CLEAR zeroes it
+PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, OWN-BLOCKS
 CHECKER-REG:}SCRATCH
 
 : RECEFF-ON? ( -- bool )
@@ -21888,6 +21889,67 @@ CHECKER-REG:}SCRATCH
    REFUSAL@ {: k:n :}
    k RF-UNCHECKABLE =  k RF-REASON = MDIAG @ UNCK-REASON? and  or ;
 
+\ Records term, a signature block variable, under the id its cached effect gives
+\ it.
+: OWNB+ ( n n -- ) {: id:n term:n :}
+   OWNB-N @ 1+ OWNB-CAP @ > IF
+      OWNB-CAP @ 2 * 8 max {: nc:n :}
+      OWNB-P @ OWNB-CAP @ 2 * cells nc 2 * cells SR-GROW OWNB-P !
+      nc OWNB-CAP !
+   THEN
+   OWNB-N @ 2 * cells OWNB-P @ + {: rec:ptr :}
+   id rec !  term rec CELL + !
+   OWNB-N @ 1+ OWNB-N ! ;
+
+\ Records the block part of every quotation in type or row t, at any depth, as
+\ KEEP-QUOTS* walks one. Run while E-BUILD-EFFECT's variable map holds.
+: OWN-BLOCKS* ( n -- ) {: t:n :}
+   t 0= IF EXIT THEN
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>BLOCK E-RES dup ISVAR IF dup PAY E-TV-ID swap OWNB+ ELSE drop THEN
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop
+   THEN ;
+
+\ The block variables of the declared rows' quotations, which the body's walk
+\ constrains and a RECURSE instance shares (OWNB-SHARE).
+: OWN-BLOCKS ( -- )
+   TWALK-RESET SGIN @ OWN-BLOCKS*  SGOUT @ OWN-BLOCKS*
+   SGHASR @ IF SGRIN @ OWN-BLOCKS*  SGROUT @ OWN-BLOCKS* THEN ;
+
+\ The instance E-INST-RESET opened takes the signature's own block variables in
+\ place of fresh ones (E-I-TV answers a filled slot).
+: OWNB-SHARE ( -- )
+   0 BEGIN dup OWNB-N @ < WHILE
+      dup 2 * cells OWNB-P @ + dup CELL + @ swap @ cells EI-TV + !
+      1 +
+   REPEAT drop ;
+
+\ Whether a signature block variable is bound to a local's block, by this call's
+\ argument or by the body before it.
+: OWNB-LOCAL? ( -- bool )
+   0 BEGIN dup OWNB-N @ < WHILE
+      dup 2 * 1+ cells OWNB-P @ + @ T-RES TAG T-SCOPE = IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
 \ Cache the parsed declared sig as an arena effect record so recurse sites
 \ instantiate it via E-INST, and a diagnostic renders the declared effect from
 \ it (render.f DECL-EFFECT). The record carries sym 0 so signature lookup never
@@ -21895,12 +21957,14 @@ CHECKER-REG:}SCRATCH
 \ tails: a sig too deep or too wide to record has no cache, and its definition
 \ is unfit (CHECK-DEPTH-FITS).
 : SIG-EFF-CACHE!
+   0 OWNB-N !
    SGBAD @ IF EXIT THEN
    SGIN @ SGOUT @ SGRIN @ SGROUT @ ROWS-FIT? 0= IF EXIT THEN
    UEND @ RECEFF-UEND !
    CHECKER-REC-SYM @ RECEFF-SYM !
    0 CHECKER-REC-SYM !
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ E-BUILD-EFFECT RECEFF !
+   OWN-BLOCKS
    RECEFF-SYM @ CHECKER-REC-SYM !
    -1 RECEFF-ON ! ;
 
@@ -21914,7 +21978,7 @@ CHECKER-REG:}SCRATCH
 : CF-RECURSE-EFF ( ptr u8 -- )
    {: h:ptr :}
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
-   h E-INST-RESET
+   h E-INST-RESET  OWNB-SHARE
    ATOMN @ {: mark:n :}
    h E-HASR@ {: hasr:n :}
    h E-DIN@ E-AK-BIND
@@ -21923,7 +21987,9 @@ CHECKER-REG:}SCRATCH
    hasr 0 <> IF h E-RIN@ E-INST h E-ROUT@ E-INST ELSE 0 0 THEN
    {: rin:n rout:n :}
    mark din dout rin rout E-AK-LIST
-   din SUNI-IN  dout DCUR !
+   din SUNI-IN
+   OK @ IF OWNB-LOCAL? IF MD-LOCAL-ESCAPE CF-FAIL THEN THEN
+   dout DCUR !
    hasr 0 <> IF rin RSUNI-IN  rout RCUR ! THEN
    E-AK-CLAIM
    pd pr DCUR @ RCUR @ TWO-ROW-LOSS {: od:n orow:n :}

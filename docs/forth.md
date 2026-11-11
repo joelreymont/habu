@@ -1703,9 +1703,10 @@ defined again binds its earlier text against every later record too.
   record in its own stack frame; the quotation stays one cell, which
   `execute`, `catch`, `finally` and `c2-invoke` follow. It must outlive
   neither those locals nor that body: storing it, installing it with `is`,
-  passing it to a word that keeps its argument or to `RECURSE`, handing it to
-  a task, returning it, or holding it past the local's block or its own
-  enclosing quotation is `E-LOCAL-ESCAPE`. A quotation that reads no
+  passing it to a word that keeps its argument, or to `RECURSE` where the
+  signature declares a quotation, handing it to a task, returning it, or
+  holding it past the local's block or its own enclosing quotation is
+  `E-LOCAL-ESCAPE`. A quotation that reads no
   local is a plain xt: storable, and saved in images. Declaring a local inside
   a quotation is `E-BAD-LOCAL-SHAPE`: a body that needs locals of its own
   becomes a named private word. T0 compiles the read for arm64; a Wasm or
@@ -1755,8 +1756,15 @@ defined again binds its earlier text against every later record too.
   equal bounds run once with a negative step and a whole cycle with a positive
   one, unlike `loop`. The checker models frames, not trip counts, so the entry
   rule changes no effect.
-- **`RECURSE` uses the declared effect**, a fresh copy per call; keep the raw
-  declared signature stable after `CHECK!`.
+- **`RECURSE` uses the declared effect**, with fresh type and row variables
+  per call; keep the raw declared signature stable after `CHECK!`. What a word
+  does with a quotation it takes is inferred from its body, not declared, so a
+  `RECURSE` call shares that one answer with the word itself: a quotation that
+  reads a local is never passed to `RECURSE` where the signature declares a
+  quotation (`E-LOCAL-ESCAPE`), whether or not the word keeps it; a generic
+  parameter takes one. A word may pass its own quotation parameter down, and such a word still
+  takes a reading quotation from outside:
+  `: W ( n [ -- ] -- ) {: a:n q :} q execute a 0 > if a 1- q RECURSE then ;`.
 - **Checked `catch` is quotation catch**: `[: WORD drop ;] catch`, consuming
   success outputs inside and keeping the exact code as data at an explicit
   recovery boundary; no arbitrary-xt catch. The quotation is stack-preserving,

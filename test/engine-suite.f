@@ -889,6 +889,27 @@ STRUCTURE qlbox2<a,b> FIELD q a FIELD w b ;STRUCTURE
 STRUCTURE qlbox3<a,b> FIELD k a FIELD w b ;STRUCTURE
 s" a seed argument's quotation stays joinable" T-LABEL
 s" COK-QL-SEED-JOIN ( n -- ) {: a:n :} [: 7 . ;] {: q :} q 1 2 QLPAIR:MAKE QLBOX2:MAKE 5 swap QLBOX3:MAKE QLBOX3:UNMAKE QLBOX2:UNMAKE QLPAIR:UNMAKE + nip + . q a 1 > IF drop [: a . ;] THEN execute" CHECK-CANDIDATE! 0 T<>
+\ A RECURSE call shares the signature's block variables (OWNB-SHARE), so it
+\ takes no reading quotation.
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation recursed into and kept at the base rejects" T-LABEL
+s" CBAD-QL-RECURSE-LATE ( n [ -- ] -- ) {: a:n q :} a 0 > if a 1- [: a . ;] RECURSE then a 0= if q QL-KEPT ! then" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation recursed into and run rejects" T-LABEL
+s" CBAD-QL-RECURSE-RUN ( n [ -- ] -- ) {: a:n q :} q execute a 0 > if a 1- [: a . ;] RECURSE then" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to RECURSE in a quotation rejects" T-LABEL
+s" CBAD-QL-RECURSE-QUOT ( n [ -- ] -- ) {: a:n q :} a 0 > if a 1- [: a . ;] [: RECURSE ;] execute then" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation RECURSE returns rejects" T-LABEL
+s" CBAD-QL-RECURSE-OUT ( n [ -- ] [ -- ] -- [ -- ] ) {: a:n p q :} a 0= if p exit then a 1- [: a . ;] q [: RECURSE ;] execute" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a word passing its own quotation parameter to RECURSE certifies" T-LABEL
+s" COK-QL-RECURSE-OWN ( n [ -- ] -- ) {: a:n q :} q execute a 0 > if a 1- q RECURSE then" CHECK-CANDIDATE! 0 T<>
 \ A locals group names only locals: `--` and `|` are refused at the token with the reason.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" -- in a locals group rejects" T-LABEL

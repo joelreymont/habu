@@ -156,7 +156,7 @@ before any `require`.
 | `variable V  : F ( -- ) V @ execute ;` | `E-EXEC-OPAQUE-XT` |
 | an `if` arm or loop body that changes depth | `E-MISMATCH` at `then`/`loop`/`repeat` |
 | a local declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE` |
-| a quotation that reads a local and is stored, installed with `is`, passed to a word that keeps it or to `RECURSE`, handed to a task, returned, or held past the local's block | `E-LOCAL-ESCAPE`, `a quotation that reads a local would outlive it` |
+| a quotation that reads a local and is stored, installed with `is`, passed to a word that keeps it or to `RECURSE` where the signature declares a quotation, handed to a task, returned, or held past the local's block | `E-LOCAL-ESCAPE`, `a quotation that reads a local would outlive it` |
 | `--` or `\|` in a locals group: `{: a -- b :}`, `{: a \| :}` | `E-BAD-LOCAL-SHAPE` at the token, `a locals group names only locals; …` — the signature declares the outputs, and Habu has no uninitialised locals |
 | a `[:` past the quotation nesting ceiling | `E-UNCHECKABLE`; `--load` exits, `hb: quotation nesting full at <cap> levels` |
 | a definition whose effect, a returned quotation's row included, is deeper than the ceiling | `E-UNCHECKABLE`, `effect too deep to record (depth <depth>, at most <cap>)` |
