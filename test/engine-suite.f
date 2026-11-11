@@ -1,18 +1,15 @@
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb). A
 \ failure prints F<index>, assertion detail, and exits 1 via T-REPORT.
 
-require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
-require src/lib/fs-mutate.f            \ FS:MKTEMP-DIR - the filesystem block's private root
-require src/lib/string.f               \ CONTAINS? - substring test for diagnostic text
+require src/lib/type/deftype.f
+require src/lib/fs-mutate.f
+require src/lib/string.f
 require src/lib/test.f
 
 T-RESET
 
-\ A registered engine helper is sealed system-private: search-wl must never
-\ surface (PROT-SPAN) or (NUM) in any wordlist, so no checked program can name
-\ or call it. (NUM) is the engine's number reader, which `num-parse` reaches by
-\ a direct branch; the record exists so an ahead-of-time image can carry the
-\ reader, not so source can name it.
+\ A registered engine helper is sealed system-private so no checked program can
+\ name or call it.
 using TFAM
 
 package ENGINE-SUITE
@@ -38,7 +35,6 @@ public
 
 ;package
 
-\ arithmetic, stack, comparisons
 s" legacy engine error globals absent" T-LABEL
 s" E-SEAL-VIOLATION" 0 search-wl 0 T=
 s" E-SEAL-PACKAGE" 0 search-wl 0 T=
@@ -103,7 +99,6 @@ $FF00 SH-RI $1FE T=
 10 20 3 5 SH-LLIVE 126 T=
 10 20 256 4 SH-RLIVE 46 T=
 
-\ A comparison's true is the full cell -1.
 CAST: FLAG-CELL ( bool -- n )
 5 3 > FLAG-CELL -1 T=
 
@@ -115,8 +110,8 @@ CAST: FLAG-CELL ( bool -- n )
 3 7 max 7 T=
 1 2 3 4 2swap 2 T= 1 T= 4 T= 3 T=
 1 2 3 4 2over 2 T= 1 T= 4 T= 3 T= 2 T= 1 T=
-\ ?dup is refused E-UNDEFINED in checked code (src/core/checker.f QDUP-STEP),
-\ so only a TRUSTED: body reaches the engine's ?dup.
+\ ?dup is refused E-UNDEFINED in checked code, so only a TRUSTED: body reaches
+\ the engine's ?dup.
 TRUSTED: ES-QDUP ( -- n n ) 0 ?dup 5 ?dup + ;
 ES-QDUP 10 T= 0 T=
 depth 0 T=
@@ -129,7 +124,6 @@ depth 0 T=
 depth 0 T=
 1 2 3 depth nip nip nip 3 T=
 
-\ control flow
 : TIF ( n -- n ) dup 5 > if drop 99 else 1 + then ;
 3 TIF 4 T=
 9 TIF 99 T=
@@ -178,7 +172,6 @@ KERNEL: TKERNEL-INC ( n -- n ) 1+ ;
 TTARGET-KNOWN 1 T=
 TTARGET-COUNT 1 T=
 
-\ return stack, exit, recurse
 : TRS ( -- n ) 1 2 >r 10 + r> + ;
 TRS 13 T=
 : TRS2 ( -- n ) 1 2 2>r 10 2r> + + ;
@@ -191,7 +184,6 @@ TRS2@ 6 T=
 : FIB ( i64 -- i64 ) dup 2 < if drop 1 exit then dup 1- recurse swap 2 - recurse + ;
 10 FIB 89 T=
 
-\ locals (typed)
 : TLOC ( n n -- n ) {: a:n b:n :} a b + ;
 3 4 TLOC 7 T=
 : TLOC-LIVE-SHADOW ( n -- n )
@@ -245,7 +237,6 @@ TLOC-DO 6 T=
 7 0 0= TLOC-SHADOW 7 T=
 7 0 0= 0= TLOC-SHADOW 0 T=
 
-\ create/does>
 : CONST ( n -- ) create , does> ( -- n ) @ ;
 5 CONST FIVE
 FIVE 5 T=
@@ -256,7 +247,6 @@ FIVE 5 T=
 here 3 over c! 65 over 1 + c! 66 over 2 + c! count 3 T= drop
 here 10 over ! 5 over +! @ 15 T=
 
-\ SwiftForth-style escaped string words
 create TESC-S-WANT
    $41 c, $5C c, $42 c, $22 c, $0A c, $09 c, $0D c, $00 c, $41 c,
 : TESC-S-WANT$ ( -- ptr u8 n )
@@ -287,7 +277,6 @@ create TESC-C-WANT
 C\" A\q\n\x42" count TESC-C-WANT$ T$=
 TESC-C-COMPILED$ TESC-C-WANT$ T$=
 
-\ quotations + combinators
 : TQ1 ( -- n ) 5 [: 1 + ;] execute ;
 TQ1 6 T=
 : TDIP ( -- n ) 10 3 [: 2 * ;] DIP + ;
@@ -321,7 +310,6 @@ variable TC-UEND
 variable TC-NEND
 variable TC-SYMN
 variable TC-SYMU
-\ Checker-internal state probes: UEND, NORET-END and the symbol table's ends.
 : TC-SNAP ( -- )
    UEND @ TC-UEND !
    NORET-END @ TC-NEND !
@@ -354,20 +342,12 @@ TC-UEND=? TTRUE
 TC-NEND=? TTRUE
 TC-SYMN=? TTRUE
 TC-SYMU=? TTRUE
-\ The T-* boundary words below are global definitions. A trust row claims the
-\ word exists and is refused otherwise (src/core/checker.f TRUST-RESOLVES?), so
-\ each is a real word with its effect: a checked stub where checked code can
-\ produce that effect, else a `defer` (a fresh rigid identity, a type variable
-\ or a family value made from nothing). No body runs and no defer is set: every
-\ case hands the checker a candidate that names them.
-\ They are global because the suite tests genuine global top level: which scope
-\ claims a bare tail, what a package private shadows, what a checker scope
-\ retires. T-PRESO pins it: a package-owned outer word does not come back after
-\ `;package` (packaged, the candidate answers 1; the case requires -1).
-\ later-wins redefinition through the audited TRUST override path: the second
-\ row replaces the first for all later callers (in-place index update). T-RDF
-\ is defined once and overridden by the two rows below: a row must name a word
-\ the engine resolves, and a second definition would be a duplicate.
+\ The T-* boundary words below are global definitions. Each is a real word with
+\ its effect, a checked stub or a `defer`: no body runs and no defer is set,
+\ since every case hands the checker a candidate that names them. They are
+\ global because the suite tests genuine global top level.
+\ T-RDF is defined once and overridden by the two rows below: a row must name a
+\ word the engine resolves, and a second definition would be a duplicate.
 : T-RDF ( n -- n ) ;
 s" T-RDF" s" n -- n" TRUST
 s" caller of first TRUST effect certifies" T-LABEL
@@ -377,8 +357,6 @@ s" caller of overriding TRUST effect certifies" T-LABEL
 s" COK-RDF-V2 ( -- n ) T-RDF" CHECK-QUIET-CANDIDATE! -1 T=
 s" caller of stale first effect rejects" T-LABEL
 s" CBAD-RDF-V1 ( n -- n ) T-RDF" CHECK-QUIET-CANDIDATE! 0 T=
-\ candidate rollback restores the pre-candidate effect: a candidate may shadow
-\ T-RDF, but after its scope ends the shadow must be gone for later checks.
 : T-SCV ( n -- n ) drop 0 ;
 s" candidate shadow of TRUSTed word certifies" T-LABEL
 s" T-SCV ( -- n ) 5" CHECK-QUIET-CANDIDATE! -1 T=
@@ -386,16 +364,11 @@ s" pre-candidate effect restored after scope" T-LABEL
 s" COK-SCV-BACK ( n -- n ) T-SCV" CHECK-QUIET-CANDIDATE! -1 T=
 s" candidate shadow effect does not leak" T-LABEL
 s" CBAD-SCV-LEAK ( -- n ) T-SCV" CHECK-QUIET-CANDIDATE! 0 T=
-\ control-flag rollback: a candidate that turns T-CTV into a no-return thrower
-\ records CTL flags inside its scope only; after the scope the caller's code
-\ after T-CTV is live again.
 : T-CTV ( -- ) ;
 s" candidate no-return redefinition certifies" T-LABEL
 s" T-CTV ( -- ) 1 throw" CHECK-QUIET-CANDIDATE! -1 T=
 s" ctl flags rolled back with the scope" T-LABEL
 s" COK-CTV-LIVE ( -- n ) T-CTV 5" CHECK-QUIET-CANDIDATE! -1 T=
-\ checker scope: a name interned inside the scope stops resolving after it, and a
-\ call to it there is refused as an undefined word (0).
 CHECKER-SCOPE-START
 : T-SCOPED-W ( -- n ) 0 ;
 s" scoped TRUST resolves inside the scope" T-LABEL
@@ -403,8 +376,6 @@ s" COK-SCOPED-IN ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! -1 T=
 CHECKER-SCOPE-DONE
 s" scoped TRUST retired with the scope" T-LABEL
 s" CUNK-SCOPED-OUT ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! 0 T=
-\ package resolution order: private wins over public and global inside the
-\ open package; the private row never leaks as qualified or global outside.
 : T-PRESO ( -- n ) 0 ;
 package ES-PRES
 : T-PRESO ( -- n n ) 1 2 ;
@@ -428,14 +399,7 @@ s" public does not resolve bare outside the package" T-LABEL
 s" CUNK-PRES-BARE ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- what the ENGINE's name lookup resolves ---------------------------------
-\ Which body a token binds to when LFIND resolves it, pinned by execution: every
-\ case calls the word the engine resolved and reads back its number.
-\ The shared tail is T-LABEL-CAP, the global constant src/lib/test/assert.f
-\ declares and T-LABEL reads. The fixture shadows it from inside a package, in
-\ the private and public wordlists at once, and proves the shadow does not
-\ reach the word already compiled against the global. References differ from
-\ definitions only in case, which the dictionary folds. Each refusal is a
-\ source the engine's own load path must refuse, with the engine's own code.
+\ References differ from definitions only in case, which the dictionary folds.
 package ES-RESO
 
 2 constant T-LABEL-CAP
@@ -456,9 +420,6 @@ T-LABEL-CAP 2 T=
 s" engine resolution: public tail resolves bare in the package" T-LABEL
 ES-RES-PUB 4 T=
 
-\ A retired row must give way to its replacement rather than to nothing: the
-\ name is published twice with different bodies and the second one is what the
-\ engine has to resolve.
 : ES-RES-U ( -- n ) 1 ;
 undefine ES-RES-U
 : ES-RES-U ( -- n ) 2 ;
@@ -493,9 +454,8 @@ public
 70 constant UNDEFINED
 78 constant DUPLICATE
 
-\ Whitebox: the engine's load path, so a case measures the engine refusing a
-\ source. The source travels through the quotation and back out, because a
-\ quotation cannot read the enclosing word's locals.
+\ The source travels through the quotation and back out, because a quotation
+\ cannot read the enclosing word's locals.
 : OUTCOME ( ptr u8 n -- n )
    [: 2dup evaluate-closed ;] catch {: rc:n :}
    2drop rc ;
@@ -521,15 +481,14 @@ s" engine resolution: the global row survived the refusals" T-LABEL
 T-LABEL-CAP 256 T=
 -1 DIAG-QUIET +!
 
-\ mid-body ( ... ) comments are comments, never a second
-\ signature: they must not clobber declared-sig state or flip the verdict.
+\ mid-body ( ... ) comments are comments, never a second signature.
 s" CBAD-SIG-TRAIL ( n -- n ) dup dup ( n -- n )" T-CHECK-REJECTS
 s" CBAD-SIG-MID ( n -- n ) dup ( n -- n ) dup" T-CHECK-REJECTS
 s" COK-SIG-MID-COMMENT ( n -- n ) dup ( scratch note ) drop" T-CHECK-PASSES
 s" sigless-mid-comment certifies" T-LABEL
 s" COK-SIGLESS-MID-COMMENT dup ( n -- n ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 \ escaped-string payloads: the checker accepts exactly the engine's escape set
-\ (src/habu/escape.f LETTER) and rejects what the load path rejects.
+\ and rejects what the load path rejects.
 s\" COK-ESC-GOOD ( -- ptr u8 n ) s\\\" a\\n b\\\\ c\\\" d\\x41 e\\XaF f\\q g\\z\" " T-CHECK-PASSES
 s\" CBAD-ESC-LETTER ( -- ptr u8 n ) s\\\" bad\\g\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX ( -- ptr u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
@@ -547,12 +506,8 @@ s" a body char calls the word of that spelling" T-LABEL
 s" a body tick calls the word of that spelling" T-LABEL
 5 ES-TICK-CALL 6 T=
 ;package
-\ pointer arithmetic + byte view: pointee-polymorphic ptr+n arithmetic, ptr-ptr
-\ difference, and an explicit ( ptr a -- ptr u8 ) byte view all certify. A
-\ pointer's pointee element type is invariant: the u8->cell/u32 integer widening
-\ that applies to top-level scalar cells must NOT apply inside a ptr, so a
-\ concrete ptr u8 never satisfies ptr cell/ptr u32 and cross-pointee unification
-\ is rejected. ptr+ptr and cell @/! on a byte span stay rejected.
+\ A pointer's pointee element type is invariant: the u8->cell/u32 integer
+\ widening that applies to top-level scalar cells must NOT apply inside a ptr.
 s" COK-PTR-ADD ( ptr a n -- ptr a ) +" T-CHECK-PASSES
 s" COK-PTR-ADD-REV ( n ptr a -- ptr a ) +" T-CHECK-PASSES
 s" COK-PTR-SUB ( ptr a n -- ptr a ) -" T-CHECK-PASSES
@@ -570,9 +525,8 @@ s" CBAD-PTR-WIDEN-NEST ( ptr ptr u8 -- ptr ptr cell )" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ ( ptr u8 ptr cell -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ-REV ( ptr cell ptr u8 -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-CELL-ON-BYTE ( ptr u8 -- n ) @" T-CHECK-REJECTS
-\ Cell store `!` on a byte span is rejected exactly like cell load `@`: a head
-\ accessor declared ( -- ptr u8 ) whose caller stores a cell with `0 WORD !`
-\ must reject, because `!` requires a ptr a target.
+\ A head accessor declared ( -- ptr u8 ) whose caller stores a cell with
+\ `0 WORD !` must reject, because `!` requires a ptr a target.
 s" CBAD-PTR-CELL-STORE-ON-BYTE ( ptr u8 -- ) 0 swap !" T-CHECK-REJECTS
 s" COK-PTR-CELL-STORE ( ptr n -- ) 0 swap !" T-CHECK-PASSES
 TYPED-VARIABLE ESB-BYTE-P ptr u8
@@ -581,7 +535,6 @@ s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 \ REC-SIG refusal is certified-but-unrecorded and must say which word and why.
 512 constant RSD-CAP
 create RSD-BUF RSD-CAP allot
-\ T-CHECK-SAYS: the candidate is refused with a message containing `text`.
 : T-CHECK-SAYS ( ptr u8 n ptr u8 n -- )
    {: ta:ptr tu:n :}
    RSD-BUF RSD-CAP DIAG-BUFFER!
@@ -590,7 +543,7 @@ create RSD-BUF RSD-CAP allot
    DIAG-BUFFER$ ta tu CONTAINS? TTRUE
    DIAG-BUFFER-OFF ;
 \ An effect's text renders quotation effects to EFFECT-DEPTH-MAX levels, so a
-\ quot nested past a diagnostic's QDEPTH-MAX budget still records.
+\ quot nested past a diagnostic's budget still records.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" quot nested past the diagnostic budget certifies" T-LABEL
 s" RSQ7 [: [: [: [: [: [: [: ;] ;] ;] ;] ;] ;] ;]" CHECK-QUIET-CANDIDATE! -1 T=
@@ -629,7 +582,6 @@ DIAG-BUFFER$ s" more than 32 nested binders" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 s" a source signature cannot name a type variable by its ordinal" T-LABEL
 s" RSO23 ( 23 -- 23 )" CHECK-QUIET-CANDIDATE! -1 = TFALSE
-\ recurse checks against the cached declared sig (fresh instance per site)
 s" recurse against declared sig certifies" T-LABEL
 s" CREC-OK ( n -- n ) dup 2 < if drop 1 exit then 1 - recurse 1 +" CHECK-QUIET-CANDIDATE! -1 T=
 s" wrong-effect recursion rejects" T-LABEL
@@ -647,11 +599,6 @@ defer T-R17 ( [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] 
 : RSR17 T-R17 ;
 s" a caller of RSR17 calls the recorded word" T-LABEL
 s" RSR17C RSR17" CHECK-QUIET-CANDIDATE! -1 T=
-\ engine FIND parity for colon tokens: a non-edge first colon plus a second
-\ colon never resolves (FIND-QBAD); edge colons stay ordinary names. No row can
-\ name such a token: `trust` refuses it (test/name-length-test.f). A qualified
-\ name resolves in a package that defines its tail: `trust` refuses a row for
-\ one that does not (test/trust-row-test.f).
 : x: ( -- n ) 0 ;
 : ::x ( -- n ) 0 ;
 \ The qualified case names a real public word: a candidate binds the record the
@@ -668,7 +615,7 @@ s" edge-colon names stay ordinary" T-LABEL
 s" COK-QUAL-EDGE ( -- n n ) x: ::x" CHECK-QUIET-CANDIDATE! -1 T=
 s" single-colon qualified resolves" T-LABEL
 s" COK-QUAL-ONE ( -- n ) TQ:TAIL" CHECK-QUIET-CANDIDATE! -1 T=
-: ES-JSON-DIAGS! ( bool -- ) JSON-DIAGS ! ;   \ diag-mode boundary
+: ES-JSON-DIAGS! ( bool -- ) JSON-DIAGS ! ;
 RSD-BUF RSD-CAP DIAG-BUFFER!
 0 0= ES-JSON-DIAGS!
 s" qualified diag verdict" T-LABEL
@@ -701,23 +648,16 @@ defer T-PTX-MLOAD ( span<space-global,f32,e> gridctx<block-256,e,m> -- tile<f32,
 defer T-PTX-MADD ( tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block-256,m> )
 defer T-MK-SPAN ( n -- span<space-global,f32,fresh-extent-n> )
 defer T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n> )
-\ --- unification trail: prim-overload trials (TRY-EFF) undo speculative binds by
-\ popping the trail, not by copying the whole TVT/RVT pool. Crossing the trail
-\ init cap mid-check grows it without corrupting undo; a backtracking body still
-\ certifies. Lower TRAIL-CAP to force a grow.
 2 TRAIL-CAP !                            \ shrink so a few binds force a trail grow
 s" COK-TRAIL ( n n n n -- n ) + + + " T-CHECK-PASSES
 s" trail-arena-grow" T-LABEL
 TRAIL-CAP @ 2 > TTRUE
 s" COK-POSTDEC ( a -- a ) dup drop" T-CHECK-PASSES
-\ --- locals over the compiler-matched cap fail CLOSED, not silently uncheckable
 s" COK-LOC16 ( n -- n ) {: xxxxxxxxxxxxxxxx :} xxxxxxxxxxxxxxxx" T-CHECK-PASSES
 s" CBAD-LOC17 ( n -- n ) {: xxxxxxxxxxxxxxxxx :} xxxxxxxxxxxxxxxxx" T-CHECK-REJECTS
-\ Each over-cap reject names the limit it exceeded. The declaration token is
-\ pinned by the first failure, so the body's later reference to the rejected
-\ name must not relabel the reject as an undefined word, and the group's shape
-\ reject keeps its own code. LOCG-BUILD writes "<name> ( n ... n -- ) {: t00
-\ t01 ... :}" binding n locals.
+\ The declaration token is pinned by the first failure, so the body's later
+\ reference to the rejected name must not relabel the reject as an undefined
+\ word.
 512 constant LOCG-CAP
 create LOCG-BUF LOCG-CAP allot
 variable LOCG-U
@@ -758,8 +698,6 @@ s" CBAD-LOC-QUOTE ( -- n ) [: 1 {: x:n :} x ;] execute" CHECK-CANDIDATE! 0 T=
 s" quotation locals keep E-BAD-LOCAL-SHAPE" T-LABEL
 DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE
 DIAG-BUFFER$ s" a local cannot be bound inside a quotation, or bound on a dead path" CONTAINS? TTRUE
-\ A quotation may read its definition's locals; one that would outlive them is
-\ refused, E-LOCAL-ESCAPE. QL-KEEP keeps its argument, QL-RUN only runs it.
 defer QL-ACT ( -- )
 TYPED-VARIABLE QL-KEPT [ -- ]
 : QL-KEEP ( [ -- ] -- ) is QL-ACT ;
@@ -815,7 +753,7 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a reading quotation copied and bound to a local certifies" T-LABEL
 s" COK-QL-COPIED ( n -- ) {: a:n :} [: a . ;] dup {: q :} execute q execute" CHECK-CANDIDATE! 0 T<>
 \ A keeper reached through a copied effect record refuses as QL-KEEP does: an EXPORT and a created
-\ word, whose every quotation input counts as kept (CREATED-RECORD-BUILD), so it has no runner twin.
+\ word, whose every quotation input counts as kept, so it has no runner twin.
 package ES-QL
 public
 EXPORT QL-KEEP
@@ -845,7 +783,7 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a reading quotation held past its loop body's local rejects" T-LABEL
 s" CBAD-QL-PAST-LOOP ( n -- ) [: ;] swap 0 ?do drop i {: a:n :} [: a . ;] loop execute" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
-\ A primitive row read from facts text keeps its quotation inputs (READ-ROW).
+\ A primitive row read from facts text keeps its quotation inputs.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a reading quotation handed to run-in-stack rejects" T-LABEL
 s" CBAD-QL-IN-STACK ( n ptr u8 n -- ) {: a:n s:ptr n:n :} [: a . ;] s n run-in-stack" CHECK-CANDIDATE! 0 T=
@@ -882,8 +820,8 @@ STRUCTURE qlbox2<a,b> FIELD q a FIELD w b ;STRUCTURE
 STRUCTURE qlbox3<a,b> FIELD k a FIELD w b ;STRUCTURE
 s" a seed argument's quotation stays joinable" T-LABEL
 s" COK-QL-SEED-JOIN ( n -- ) {: a:n :} [: 7 . ;] {: q :} q 1 2 QLPAIR:MAKE QLBOX2:MAKE 5 swap QLBOX3:MAKE QLBOX3:UNMAKE QLBOX2:UNMAKE QLPAIR:UNMAKE + nip + . q a 1 > IF drop [: a . ;] THEN execute" CHECK-CANDIDATE! 0 T<>
-\ A RECURSE call shares the signature's block variables (OWNB-SHARE), so it
-\ takes no reading quotation.
+\ A RECURSE call shares the signature's block variables, so it takes no reading
+\ quotation.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a reading quotation recursed into and kept at the base rejects" T-LABEL
 s" CBAD-QL-RECURSE-LATE ( n [ -- ] -- ) {: a:n q :} a 0 > if a 1- [: a . ;] RECURSE then a 0= if q QL-KEPT ! then" CHECK-CANDIDATE! 0 T=
@@ -903,7 +841,6 @@ DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a word passing its own quotation parameter to RECURSE certifies" T-LABEL
 s" COK-QL-RECURSE-OWN ( n [ -- ] -- ) {: a:n q :} q execute a 0 > if a 1- q RECURSE then" CHECK-CANDIDATE! 0 T<>
-\ A locals group names only locals: `--` and `|` are refused at the token with the reason.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" -- in a locals group rejects" T-LABEL
 s" CBAD-LOC-DASH ( n -- n ) {: a -- b :} a" CHECK-CANDIDATE! 0 T=
@@ -916,8 +853,6 @@ s" | in a locals group names E-BAD-LOCAL-SHAPE and the reason" T-LABEL
 DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE habu: in cbad-loc-bar: at '|': a locals group names only locals; Habu has no uninitialised locals" CONTAINS? TTRUE
 \ A local the load cannot bind refuses the definition at its token, as the
 \ load does while it compiles the body, ahead of any check failure before it.
-\ Only the FIRST local fault's kind is recorded: a later local fault of another
-\ kind must not relabel the pinned token.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" quotation local before a wide local rejects" T-LABEL
 s" CBAD-LOC-SHAPE-THEN-WIDE ( n -- n ) [: {: y:n :} ;] drop {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
@@ -934,7 +869,6 @@ s" CBAD-LOC-AFTER-MISMATCH ( n -- n ) dup c@ {: abcdefghijklmnopq:n :} 1" CHECK-
 s" type fault before a wide local names the local, as the load does" T-LABEL
 DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-after-mismatch: local 'abcdefghijklmnopq:n' has a 17-byte name" CONTAINS? TTRUE
 DIAG-BUFFER$ s" at 'c@'" CONTAINS? TFALSE
-\ The JSON packet carries the same distinction: code, repair class and suggestion.
 8192 constant LOCJ-CAP
 create LOCJ-BUF LOCJ-CAP allot
 LOCJ-BUF LOCJ-CAP DIAG-BUFFER!  true DIAG-JSON!
@@ -959,10 +893,9 @@ s" -- in a locals group JSON code and reason" T-LABEL
 DIAG-BUFFER$ s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE
 DIAG-BUFFER$ s\" \"reason\":\"a locals group names only locals; the signature declares the outputs\"" CONTAINS? TTRUE
 DIAG-BUFFER-OFF  false DIAG-JSON!
-\ --- multi-error load mode: rejects do not abort the load; the declared sig is
-\ retained so later definitions keep checking, and the count drives a fail-closed
-\ exit. MEA3 uses MEA1's recovery n->n row without gaining source authority.
-: TR-ME-BEGIN ( -- ) MULTI-ERR-BEGIN ;   \ multi-error boundary
+\ multi-error load mode: rejects do not abort the load; the declared sig is
+\ retained so later definitions keep checking.
+: TR-ME-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TR-ME-END ( -- n ) MULTI-ERR-END ;
 TR-ME-BEGIN
 s" : MEA1 ( n -- n ) drop ; : MEA2 ( n -- n ) drop drop ; : MEA3 ( n -- n ) MEA1 ;" evaluate
@@ -970,11 +903,6 @@ s" multi-err collects both rejects" T-LABEL
 TR-ME-END 2 T=
 s" multi-err mode cleared after end" T-LABEL
 MULTI-ERR? 0= TTRUE
-\ --- user-declarable nominal integer types.
-\ `DEFTYPE NAME` registers a fresh nominal AND auto-derives its explicit no-op
-\ converter pair >NAME ( n -- NAME ) / NAME>N ( NAME -- n ). The nominal is
-\ distinct from n and from every other nominal (no widening); the only way across
-\ the boundary is the generated cast.
 DEFTYPE frame-idx
 DEFTYPE exposure-us
 s" DNI-MK ( n -- frame-idx ) >frame-idx" T-CHECK-PASSES
@@ -985,11 +913,9 @@ s" DNI-NOWIDEN ( frame-idx -- n )" T-CHECK-REJECTS
 s" DNI-NOCAST ( n -- frame-idx )" T-CHECK-REJECTS
 s" DNI-DISTINCT ( frame-idx -- exposure-us )" T-CHECK-REJECTS
 s" DNI-XCAST ( n -- exposure-us ) >frame-idx" T-CHECK-REJECTS
-\ user nominal types render by NAME in diagnostics, not as '?', and bare, as the
-\ source spells them: a family with no arguments has no '<>'. The needles are
-\ the whole rendered fields: the packet also echoes the source text in
-\ definition_source and declared_effect_source, so a bare 'frame-idx' would be
-\ found there even if the type renderer printed '?'.
+\ The needles are the whole rendered fields: the packet also echoes the source
+\ text, so a bare 'frame-idx' would be found there even if the type renderer
+\ printed '?'.
 LOCJ-BUF LOCJ-CAP DIAG-BUFFER!  true DIAG-JSON!
 s" DNI-RENDER ( frame-idx -- n )" CHECK! drop
 s" nominal type renders by name in diagnostic" T-LABEL
@@ -997,7 +923,6 @@ DIAG-BUFFER$ s\" \"actual\":\"frame-idx \"" CONTAINS? TTRUE
 s" nominal declared effect renders bare" T-LABEL
 DIAG-BUFFER$ s\" \"declared_effect\":\"frame-idx -- n \"" CONTAINS? TTRUE
 DIAG-BUFFER-OFF  false DIAG-JSON!
-\ A sig-less nominal certifies.
 : T-SIGLESS-CERTIFIES ( -- )
    s" sigless nominal certifies" T-LABEL
    s" DNI-SIGLESS >frame-idx" CHECK-QUIET-CANDIDATE! -1 T=
@@ -1017,9 +942,6 @@ s" COK-PTX-RET-SHARED-CALL ( n -- ) COK-PTX-RET-SHARED T-PTX-SAME-EXTENT" T-CHEC
 s" CBAD-PTX-RET-LONE-CALL ( n n -- ) COK-PTX-RET-LONE T-PTX-SAME-EXTENT" T-CHECK-REJECTS
 s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" T-CHECK-PASSES
 s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s g1 T-PTX-MLOAD s g2 T-PTX-MLOAD T-PTX-MADD" T-CHECK-REJECTS
-\ --- parametric type-family (TFAM) signature parsing -------------------------
-\ Registry-driven `family<...>` parsing: correct arity, reentrant nested
-\ parse, dual `ptr`, and family-id identity.
 s" COK-TFAM-SPAN ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
 s" COK-TFAM-PTRPLAIN ( ptr u8 -- ) drop" T-CHECK-PASSES
 s" COK-TFAM-PTRP ( ptr<space-global,f32> u32 -- ) drop drop" T-CHECK-PASSES
@@ -1029,31 +951,23 @@ s" CBAD-TFAM-ARITY ( span<a,b> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-ARITY4 ( tile<a,b,c,d> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-UNKNOWN ( nope<n> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-PTRARITY ( ptr<a> -- ) drop" T-CHECK-REJECTS
-\ A stored nested-param sig must not overflow the native stack: LIN-TYPE-COUNT
-\ resolves a bound VAR before descending through FIELD-INNER
-\ (src/core/checker.f), else it reads an unrelated param-arena slot that points
-\ back at the var. The callees above are compiled words, so the stored sig is
-\ the one a real caller binds.
+\ A stored nested-param sig must not overflow the native stack. The callees
+\ above are compiled words, so the stored sig is the one a real caller binds.
 s" COK-TFAM-NEST-CALL ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> ) COK-TFAM-NEST" T-CHECK-PASSES
 s" COK-TFAM-NEST4-CALL ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> ) COK-TFAM-NEST4" T-CHECK-PASSES
 \ A row CHECK! alone recorded is the checker's, not the engine's: compiled code
-\ cannot call COK-TFAM-SPAN, so a candidate naming it binds nowhere (0), as
-\ `: C ... COK-TFAM-SPAN ;` is E-UNDEFINED.
+\ cannot call COK-TFAM-SPAN, so a candidate naming it binds nowhere (0).
 s" a checked-only row binds nowhere in compiled code" T-LABEL
 s" CBAD-TFAM-SPAN-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-TFAM-SPAN" CHECK-QUIET-CANDIDATE! 0 T=
 \ The row CHECK! recorded last binds nowhere either: a check run by hand holds
-\ no unpublished definition, so it opens no pending window for the next check
-\ (src/core/checker.f CK-CLOSE!), live candidate or CHECK! alike.
+\ no unpublished definition, so it opens no pending window for the next check.
 s" COK-LAST-ROW ( -- n ) 1" CHECK! -1 T=
 s" the row CHECK! recorded last binds nowhere in compiled code" T-LABEL
 s" CBAD-LAST-ROW-CALL ( -- n ) COK-LAST-ROW" CHECK-QUIET-CANDIDATE! 0 T=
 s" nor for the next CHECK!" T-LABEL
 s" CBAD-LAST-ROW-CHAIN ( -- n ) COK-LAST-ROW" CHECK! 0 T=
-\ A row checked inside a candidate scope is pending for the later rows of that
-\ scope until it closes (src/core/checker.f CK-PENDING-SYM): a generated plan
-\ checks every row before its one evaluate publishes them, and a derived HASH
-\ calls its UNMAKE. The call is qualified and follows a second row, so neither
-\ the live window (the row recorded last) nor a keyword axiom can bind it.
+\ The call is qualified and follows a second row, so neither the live window
+\ (the row recorded last) nor a keyword axiom can bind it.
 CHECKER-CANDIDATE-SCOPE-START
 s" CSPQ:ROW-A ( -- n ) 1" CHECK! -1 T=
 s" CSPQ:ROW-B ( -- n ) 2" CHECK! -1 T=
@@ -1062,36 +976,18 @@ s" CSP-CALL ( -- n n ) CSPQ:ROW-A CSPQ:ROW-B" CHECK! -1 T=
 CHECKER-CANDIDATE-SCOPE-DONE
 s" and nowhere once the scope has closed" T-LABEL
 s" CSP-AFTER ( -- n ) CSPQ:ROW-A" CHECK-QUIET-CANDIDATE! 0 T=
-\ Family-specific arity diagnostics assert the message, not merely rejection,
-\ so a regression swapping the arity reason for a syntax error is caught.
 s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" s" wrong arity for type family 'span'" T-CHECK-SAYS
 s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" s" wrong arity for type family 'tile'" T-CHECK-SAYS
-\ `ptr` duality: proper `ptr<space,elem>` resolves as a family (incl. nested in
-\ another family's args); over-arity rejects via the arity diagnostic; a bare
-\ `ptr` with no element rejects via the bare-ptr diagnostic; a bare `ptr` inside
-\ another family's args also rejects.
 s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop" T-CHECK-PASSES
 s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" s" wrong arity for type family 'ptr'" T-CHECK-SAYS
 s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" s" 'ptr' needs an element type" T-CHECK-SAYS
 s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJECTS
-\ Uncapped per-param arity: a family with arity > 4 parses, checks, persists,
-\ instantiates through the flat PARGP/VNARG/EN arg pools, and renders. A
-\ test-only arity-6 family proves: bare parse; a STORED-sig reference (E-COPY +
-\ E-INST round trip); a nested arity-6 arg; a value-record field of the arity-6
-\ family (VNARG pool); and wrong-arity rejection (5 and 7 args) with the arity
-\ diagnostic.
 NEWTYPE tfam6r-big<a,b,c,d,e,g>
 : COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6" T-CHECK-PASSES
 s" COK-BIG6-NEST ( tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> -- tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> )" T-CHECK-PASSES
 s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" s" wrong arity for type family 'tfam6r-big'" T-CHECK-SAYS
 s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" s" wrong arity for type family 'tfam6r-big'" T-CHECK-SAYS
-\ SC-QUOT: a quotation as a family argument. SIG-TYPE
-\ parses [ in -- out | rin -- rout ] as one param arg (a T-QUOT term), threaded
-\ through parse, persist (E-COPY/VREC-COPY), instantiate (E-INST), and render.
-\ Prove: bare parse; a STORED-sig reference (E-COPY + REND-SIG record + E-INST);
-\ an explicit neutral return-stack clause; a quotation nested inside the quot arg's stack;
-\ and malformed effect rows (missing '--' or ']') reject.
 NEWTYPE scq-fam<a,b>
 : COK-SCQ ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) ;
 s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
