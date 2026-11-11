@@ -116,6 +116,24 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    loop
    ;SECTION ;
 
+\ Refuses a pending chain on a label no emitter placed, which links as a branch
+\ or address to its own site; only the tail's labels wait for the link to bind.
+: ?PLACED ( bool -- )
+   if 8 else 4 then {: tails:n :}
+   A64ICODE:NLBL @ 0 ?do
+      i A64ICODE:FXH @ 0 >= if
+         false  tails 0 ?do  j i TAIL@ LABEL>N = or  loop
+         0= if
+            SB-RESET
+            s" kernel-object: a reference to a label nothing places label=" SB-APPEND
+            i A64ICODE:IDEC$ SB-APPEND
+            s"  site=" SB-APPEND
+            i A64ICODE:FXH @ cells A64ICODE:FXS + @ A64ICODE:IDEC$ SB-APPEND
+            SB$ A64ICODE:ICODE-EXIT-RC die
+         then
+      then
+   loop ;
+
 : PRIMS+ ( -- )
    ENGINE-PRIMS:COUNT dup U64+
    0 ?do
@@ -249,7 +267,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 : WRITE-OUT ( bool [ ptr u8 n -- ] -- )
    {: engine:bool sink :}
-   engine EMIT
+   engine EMIT  engine ?PLACED
    0 OUT-U !
    s" HBKERNEL" SPAN+  4 0 ?do 0 U64+ loop
    CODE+ LABELS+ REFS+ FIXUPS+ PRIMS+
