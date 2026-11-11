@@ -1,9 +1,22 @@
 \ lsp-core.f - the Habu language server: the Language Server Protocol on stdin
-\ and stdout, for any client. MAIN reads framed messages
-\ (src/lib/content-length.f), holds each until its turn, sorts it
-\ (src/lib/json-rpc.f) and acts on it, until the client's exit or the end of
-\ input. Full sync, positions in UTF-16 units. PROCESS-GLOBAL: the reader, the
+\ and stdout, for any client. MAIN reads framed messages, holds each until its
+\ turn, sorts it and acts on it, until the client's exit or the end of input.
+\ Full sync, positions in UTF-16 units. PROCESS-GLOBAL: the reader, the
 \ buffers and the documents belong to the server's one task.
+\
+\ Messages are served in the order they came, and the first one held is served
+\ only once no more input waits, so the messages behind a request are read
+\ before its work starts. A running server answers a request -32800, doing none
+\ of its work, when a $/cancelRequest naming its id was read behind it (a string
+\ id by its decoded text, a number by its JSON text), and a request about a
+\ document's text -32801 when a didChange of that document was. References and
+\ rename read the waiting input again before each file check and before the
+\ answer, serving none: -32800 for a cancel of them, else -32801 for a change of
+\ any open document, since each check reads them all. The check under way
+\ finishes and a message begun is read whole, so how soon such a request stops
+\ has no bound. A cancel is otherwise an unknown notification and stops no
+\ running check. The end of input and a framing fault come after the messages
+\ held, even when a request read them: it is answered and those served first.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -65,13 +78,13 @@ private
 ENUM state starting running shut-down ;ENUM
 1 LAYOUT-BUFFER STATE-BUF state
 
-TYPED-VARIABLE JSON-ST JSON:cursor        \ JSON reader storage for every read of a body
+TYPED-VARIABLE JSON-ST JSON:cursor
 LINE-CAP 2 + SPAN-BUFFER: HEAD-BUF        \ the reader's buffer: a header line and its CR LF
 create REPLY-BUF BUF:HDR-BYTES allot      \ a reply's bytes, grown as it is written
 TYPED-VARIABLE INPUT CONTENT-LENGTH:reader
-TYPED-VARIABLE BODY-SPAN SPAN:span<u8>    \ the message body
+TYPED-VARIABLE BODY-SPAN SPAN:span<u8>
 TYPED-VARIABLE URI-SPAN SPAN:span<u8>     \ textDocument.uri, decoded
-TYPED-VARIABLE PATH-SPAN SPAN:span<u8>    \ the file path it names
+TYPED-VARIABLE PATH-SPAN SPAN:span<u8>
 TYPED-VARIABLE TEXT-SPAN SPAN:span<u8>    \ a document's text, decoded
 TYPED-VARIABLE QUERY-SPAN SPAN:span<u8>   \ workspace/symbol's query, decoded,
 variable QUERY-U                          \ and its length
@@ -196,16 +209,13 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    k ku READ-FIND-KEY 0= if E-LSP-PARAMS throw then
    READ-TOKEN ;
 
-\ The current string decoded into the span in V, and its length. A string's
-\ JSON text is never shorter than what it decodes to.
+\ A string's JSON text is never shorter than what it decodes to.
 : DECODE ( JSON:reader ptr SPAN:span<u8> -- JSON:reader n )
    {: v :}
    READ-SPAN$ nip {: raw:n :}
    v raw ROOM
    v @ SPAN:$ READ-STR ;
 
-\ The value the reader is on, of this kind, a string decoded into the span in
-\ V.
 : STRING-AT ( JSON:reader n ptr SPAN:span<u8> -- ptr u8 n )
    {: v :}
    T-STR <> if E-LSP-PARAMS throw then
@@ -213,7 +223,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    READ-CLOSE
    v @ SPAN:$ drop n ;
 
-\ A string member of params.textDocument, decoded into the span in V.
 : DOC-STRING ( ptr u8 n ptr u8 n ptr SPAN:span<u8> -- ptr u8 n )
    {: p:ptr pu:n k:ptr ku:n v :}
    p pu k ku DOC-PARAM v STRING-AT ;
@@ -234,8 +243,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    u uu PATH-SPAN @ URI:FILE>PATH {: n:n :}
    PATH-SPAN @ SPAN:$ drop n ;
 
-\ One member of a content change, on its key: the text decoded into TEXT-SPAN,
-\ any other member passed over. A range is incremental sync, not offered.
+\ A range is incremental sync, not offered.
 : CHANGE-MEMBER ( JSON:reader -- JSON:reader )
    s" range" READ-STR-EQ? if E-LSP-PARAMS throw then
    s" text" READ-STR-EQ? if
@@ -245,15 +253,12 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       READ-NEXT drop READ-SKIP-VALUE
    then ;
 
-\ One element of contentChanges, an object with a text.
 : CHANGE ( JSON:reader -- JSON:reader )
    READ-TOKEN T-OBJ <> if E-LSP-PARAMS throw then
    -1 TEXT-LEN !
    begin READ-NEXT T-KEY = while CHANGE-MEMBER repeat
    TEXT-LEN @ 0 < if E-LSP-PARAMS throw then ;
 
-\ contentChanges, at least one: the last one's text, decoded into TEXT-SPAN,
-\ and its length.
 : CHANGES ( ptr u8 n -- n )
    s" contentChanges" PARAM T-ARR <> if E-LSP-PARAMS throw then
    -1 TEXT-LEN !
@@ -268,8 +273,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       some OF ENDOF
    ;MATCH ;
 
-\ Whether the member KEY of the object the reader is at is an object, the
-\ reader then at it.
 : INTO? ( JSON:reader ptr u8 n -- JSON:reader bool )
    READ-FIND-KEY 0= if false exit then
    READ-TOKEN T-OBJ = ;
@@ -327,8 +330,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    slot DOC-CLOSE
    p pu ;
 
-\ A watched disk path affects open checks that read it or failed to read it.
-\ An editor buffer at that path remains the check's source while it stays open.
 : WATCH-CHANGE ( JSON:reader -- JSON:reader )
    READ-TOKEN T-OBJ <> if E-LSP-PARAMS throw then
    begin READ-NEXT T-KEY = while
@@ -386,19 +387,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 \ ---- held messages -----------------------------------------------------------
 
-\ Messages are served in the order they came, and the first one held is served
-\ only once no more input waits, so the messages behind a request are read
-\ before its work starts. A running server answers a request -32800, doing none
-\ of its work, when a $/cancelRequest naming its id was read behind it (a string
-\ id by its decoded text, a number by its JSON text), and a request about a
-\ document's text -32801 when a didChange of that document was. References and
-\ rename read the waiting input again before each file check and before the
-\ answer, serving none: -32800 for a cancel of them, else -32801 for a change of
-\ any open document, since each check reads them all. The check under way
-\ finishes and a message begun is read whole, so how soon such a request stops
-\ has no bound. A cancel is otherwise an unknown notification and stops no
-\ running check. The end of input and a framing fault come after the messages
-\ held, even when a request read them: it is answered and those served first.
 : HELD? ( -- bool )  HELD-NEXT @ HELD-COUNT @ < ;
 
 : HELD$ ( n -- ptr u8 n )
@@ -406,14 +394,12 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    k 0= if 0 else k 1- HELD-ENDS @ then {: at:n :}
    HELD-B BUF:SPAN$ drop at +  k HELD-ENDS @ at - ;
 
-\ Holds a message's body, its turn after every message held before it.
 : HOLD ( ptr u8 n -- )
    BUF:N>BLEN HELD-B BUF:APPEND-SPAN
    HELD-COUNT @ 1+ HELD-ENDS-RESERVE
    HELD-B BUF:LEN@ BUF:BLEN>N HELD-COUNT @ HELD-ENDS !
    1 HELD-COUNT +! ;
 
-\ Held message K's params, and whether it is a notification of this method.
 : NOTICE? ( n ptr u8 n -- ptr u8 n bool )
    {: k:n name:ptr nu:n :}
    JSON-ST k HELD$ >MESSAGE MATCH JSON-RPC:message
@@ -452,8 +438,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    READ-CLOSE
    same ;
 
-\ Whether a cancel of the request with this id was read behind the message
-\ being served.
 : CANCELLED? ( JSON-RPC:id -- bool )
    ID-KEY {: k:ptr ku:n str:bool :}
    HELD-COUNT @ HELD-NEXT @ ?do
@@ -463,8 +447,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    loop
    false ;
 
-\ The slot of the open document params.textDocument.uri names, -1 when the
-\ params name none.
 : URI-SLOT ( ptr u8 n -- n )
    {: p:ptr pu:n :}
    pu 0= if -1 exit then
@@ -482,8 +464,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       some OF ENDOF
    ;MATCH ;
 
-\ Whether a change to the open document in this slot was read behind the
-\ message being served.
 : CHANGED? ( n -- bool )
    {: slot:n :}
    HELD-COUNT @ HELD-NEXT @ ?do
@@ -525,7 +505,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : SETTLED? ( -- bool )  FAULT @ 0<> AT-END @ or ;
 
-\ The body of the message the reader is at, read and held.
 : RECEIVE ( n -- )
    {: len:n :}
    BODY-SPAN len ROOM
@@ -545,30 +524,22 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    INPUT PENDING? if true exit then
    POLLED? ;
 
-\ The next message read and held, or AT-END set at the end of input.
 : READ-MESSAGE ( -- )
    INPUT NEXT-LENGTH MATCH option
       none OF true AT-END ! ENDOF
       some OF RECEIVE ENDOF
    ;MATCH ;
 
-\ The next message read and held, unless reading is over. A throw the read
-\ takes, a fault in the framing among them, is kept in FAULT, and reading is
-\ then over.
 : READ-ON ( -- )
    SETTLED? if exit then
    [: READ-MESSAGE ;] catch FAULT ! ;
 
-\ Every message that waits read and held, none of them served, until none
-\ waits or reading is over. A message begun is read whole, which waits for
-\ the rest of it.
+\ A message begun is read whole, which waits for the rest of it.
 : READ-WAITING ( -- )
    begin INPUT? SETTLED? 0= and while READ-ON repeat ;
 
 \ ---- requests ----------------------------------------------------------------
 
-\ The request's params read by Q. A throw IGNORABLE? names answers the request
-\ -32602, and false.
 : READ? ( JSON-RPC:id ptr u8 n [ ptr u8 n -- ptr u8 n ] -- bool )
    {: i p:ptr pu:n q :}
    p pu q catch {: code:n :} 2drop
@@ -577,7 +548,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    i INVALID-PARAMS s" invalid params" REPLY-ERROR
    false ;
 
-\ params.query decoded into QUERY-SPAN, its length in QUERY-U.
 : QUERY! ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
    p pu s" query" PARAM QUERY-SPAN STRING-AT QUERY-U ! drop
@@ -585,14 +555,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : QUERY$ ( -- ptr u8 n )  QUERY-SPAN @ SPAN:$ drop QUERY-U @ ;
 
-\ The definitions of the open documents' last completed checks that
-\ params.query lists, as tools/lsp-symbols.f states.
 : SYMBOLS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu [: QUERY! ;] READ? 0= if exit then
    WRITER i RESULT QUERY$ LSP-SYMBOLS:ANSWER END SENT ;
 
-\ A member of params.position, a nonnegative integer.
 : POSITION-INT ( ptr u8 n ptr u8 n -- n )
    {: p:ptr pu:n k:ptr ku:n :}
    p pu s" position" PARAM T-OBJ <> if E-LSP-PARAMS throw then
@@ -603,14 +570,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    v 0 < if E-LSP-PARAMS throw then
    v ;
 
-\ The slot of the open document params.textDocument names in AT-SLOT.
 : SLOT! ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
    p pu DOC-URI OPEN-SLOT AT-SLOT !
    p pu ;
 
-\ The slot of the open document params.textDocument names in AT-SLOT, and
-\ params.position in AT-LINE and AT-CHAR.
 : POSITION! ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
    p pu SLOT! s" line" POSITION-INT AT-LINE !
@@ -629,8 +593,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    dup LSP-DEFS:DEFS-INPUTS-FRESH? 0= if CHECK-NOW exit then
    dup LSP-DEFS:DEFS-UNREAD-RETRY? if CHECK-NOW else drop then ;
 
-\ The byte of the text of the document in AT-SLOT that AT-LINE and AT-CHAR
-\ name, in AT-BYTE, positions counting in that text.
 : AT-BYTE! ( -- )
    AT-SLOT @ DOC-TEXT$ LSP-TEXT:TEXT!
    AT-LINE @ AT-CHAR @ LSP-TEXT:OFFSET-AT AT-BYTE ! ;
