@@ -1,6 +1,6 @@
 ---
 title: "Re-enable hb's name stripping"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-07T07:59:56.932704+02:00"
@@ -10,4 +10,4 @@ Problem: Joel 2026-11-07: 'disable name stripping if it's slowing you down and m
 Acceptance: the hb that hb-build --engine writes answers E-UNDEFINED for a private name and keeps every public name, so the linker and other source-loaded tools still run on it; every test the disabling turned off runs again.
 Files: src/habu/link-data.f, src/habu/link-map.f, the disabled tests.
 Verify: first name the tests the disabling turned off (rg test/ for a skip or unsealed-build note); then hb-build --engine, a private and a public name looked up on the result, those tests, and the full suite.
-Depends: none (the privacy decision is settled; habu-move-engine-internal-fc2ba551 relies on this strip). Ownership: unassigned. Claim: unassigned.
+Depends: none (the privacy decision is settled; habu-move-engine-internal-fc2ba551 relies on this strip). Ownership: jerry (told carl 2026-11-11). Claim: agent=jerry; no workspace yet. The census is carl's running read-only trace (brief .jj-ws.noindex/carl-layout/.out/briefs/trace-private-names.md, report to ~/.cache/tmp/carl-priv/report.md): what refuses a private name today, what LINK-ENGINE writes per record, who looks a private word up by name on the built hb, the tests the disabling turned off. The change is briefed from that report, and Joel's words of 2026-11-11 go into DECISIONS.md "privacy" with it.
