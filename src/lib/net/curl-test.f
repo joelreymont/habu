@@ -1688,9 +1688,10 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    mono-ns WAIT-MS NS-PER-MS * + ;
 
 
-\ Returns once the task has ended.
-: AWAIT-END ( ptr n -- )
-   [: dup TASK:DONE? ;] DEADLINE s" curl-test AWAIT-END" TEST-WAIT:POLL
+\ Returns once the task has ended; a timeout names the waiting case.
+: AWAIT-END ( ptr n ptr u8 n -- )
+   {: name:ptr len:n :}
+   [: dup TASK:DONE? ;] DEADLINE name len TEST-WAIT:POLL
    drop ;
 
 
@@ -1737,7 +1738,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
-   PLAIN-TASK AWAIT-END PLAIN-TASK TASK:KILL
+   PLAIN-TASK s" TEST-TLS-PLAIN" AWAIT-END PLAIN-TASK TASK:KILL
    s" a plain HTTP answer to a TLS handshake fails as CURLE_SSL_CONNECT_ERROR, neither lost nor local" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 35 T=
@@ -2256,7 +2257,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    [: AWAIT-STREAM-REFUSED ;] CURL:E-STATE TTHROWSQ
    [: NEXT-ZERO-REFUSED ;] CURL:E-OPERAND TTHROWSQ
    ['] OWNER-NEXT-WORK OWNER-TASK TASK:ACTIVATE
-   OWNER-TASK AWAIT-END
+   OWNER-TASK s" CASE-STREAM-MODES" AWAIT-END
    OWNER-TASK TASK:KILL
    OWNER-RC @ CURL:E-STATE T=
    subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
@@ -2684,7 +2685,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    s" the loop refuses to stop while a transfer is in flight" T-LABEL
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
-   OWNER-TASK AWAIT-END
+   OWNER-TASK s" CASE-OWNER" AWAIT-END
    OWNER-TASK TASK:KILL
    s" a transfer is awaited by the task that started it, and once" T-LABEL
    OWNER-RC @ CURL:E-STATE T=
@@ -2720,7 +2721,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK AWAIT-END
+   HALT-TASK s" CASE-HALTED" AWAIT-END
    HALT-TASK TASK:KILL
    s" a submitter halted in AWAIT ends and the loop stops after it" T-LABEL
    HALT-RC @ 0 T=
@@ -2750,7 +2751,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK AWAIT-END
+   HALT-TASK s" CASE-HALTED-FETCH" AWAIT-END
    HALT-TASK TASK:KILL
    s" a halted waiter's cleanup fetch answers and its parked transfer is given back" T-LABEL
    HALT-RC @ 0 T=
@@ -2790,7 +2791,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    before WAIT-HIT
    HALT-TASK TASK:HALT
    1 HALT-GO atomic!
-   HALT-TASK AWAIT-END
+   HALT-TASK s" CASE-HALTED-LATE" AWAIT-END
    HALT-TASK TASK:KILL
    s" a task halted before its AWAIT gives the transfer up and ends there" T-LABEL
    HALT-RC @ 0 T=
@@ -2829,7 +2830,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK AWAIT-END
+   HALT-TASK s" CASE-HALTED-SPAN" AWAIT-END
    HALT-TASK TASK:KILL
    DRIBBLE-ENDS ends 1+ REACH
    HALT-RC @ 0 T=
@@ -2885,7 +2886,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-HANDLE @ CURL:CANCEL
-   HALT-TASK AWAIT-END
+   HALT-TASK s" CASE-CANCEL-STREAM-OTHER-TASK" AWAIT-END
    HALT-TASK TASK:KILL
    s" another task cancels the owner parked in NEXT" T-LABEL
    HALT-RC @ NOT-TIMEOUT 42 T=
@@ -2900,7 +2901,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK AWAIT-END
+   HALT-TASK s" CASE-HALTED-STREAM" AWAIT-END
    HALT-TASK TASK:KILL
    s" a task halted in NEXT abandons its stream and lets the loop stop" T-LABEL
    HALT-RC @ 0 T=
@@ -2931,7 +2932,7 @@ variable DEFER-RETURNED
    HALT-PARKED 1 REACH
    before WAIT-HIT
    HALT-TASK TASK:HALT
-   HALT-TASK AWAIT-END
+   HALT-TASK s" CASE-DEFERRED-STREAM-HALT" AWAIT-END
    HALT-TASK TASK:KILL
    s" deferred halt returns cancellation before abandoning NEXT" T-LABEL
    DEFER-RETURNED atomic@ 1 T=
@@ -3045,7 +3046,7 @@ variable DEFER-RETURNED
    DONE-PARKED 1 REACH
    state WAIT-PUBLISHED
    DONE-TASK TASK:HALT
-   DONE-TASK AWAIT-END
+   DONE-TASK s" CASE-HALTED-DONE-ONE" AWAIT-END
    DONE-TASK TASK:KILL
    DONE-RC @ 0 T=
    STOP-LOOP
