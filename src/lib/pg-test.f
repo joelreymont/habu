@@ -1851,6 +1851,17 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    halted ELAPSED-MS PROMPT-MS < TTRUE
    0 NOTE-CONN @ PG:LIVE? TFALSE ;
 
+create PATH-BUF PATH-CAP allot          \ the stderr capture file's path
+variable PATH-U
+
+: PATH$ ( -- ptr u8 n )  PATH-BUF PATH-U @ ;
+
+: PATH-MAKE ( -- )
+   s" pg-test" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
+   dir dirlen FS:CLEANUP-TREE+
+   dir dirlen s" stderr.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
+
+
 
 \ A listening session receives its own NOTIFY before the statement's
 \ ReadyForQuery, so libpq holds it when the statement returns. Both of b's
@@ -1893,8 +1904,10 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    a PG:LIVE? TTRUE
    s" a wait on a lost connection closes it and is refused at once" T-LABEL
    b a BACKEND TERMINATE
+   \ The wait logs the backend's FATAL: captured here, counted in NOTICE-CASES.
+   PATH-MAKE  PATH$ STDERR:CAPTURE
    mono-ns {: cut:n :}
-   a [: NOTIFY-LONG ;] E-EXEC REFUSES
+   [: a [: NOTIFY-LONG ;] E-EXEC REFUSES ;] [: STDERR:;CAPTURE ;] finally
    cut ELAPSED-MS PROMPT-MS < TTRUE
    a PG:LIVE? TFALSE
    s" a wait on a closed connection is refused" T-LABEL
@@ -1944,21 +1957,11 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    b PG:CLOSE ;
 
 
-create PATH-BUF PATH-CAP allot          \ the stderr capture file's path
-variable PATH-U
 create FILE-B BUF:HDR-BYTES allot       \ the capture file's bytes, read back
 variable ALL-LINES
 variable BARE-LINES
 variable PG-LINES
 variable WARN-LINES
-
-: PATH$ ( -- ptr u8 n )  PATH-BUF PATH-U @ ;
-
-
-: PATH-MAKE ( -- )
-   s" pg-test" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
-   dir dirlen FS:CLEANUP-TREE+
-   dir dirlen s" stderr.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
 
 \ The whole file, valid until the next read.
