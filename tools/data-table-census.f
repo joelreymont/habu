@@ -39,9 +39,9 @@ $FFFFFFFF constant IDX-MASK
 : ROW-OFF ( n -- n ) OFF-SHIFT rshift ;
 : ROW-IDX ( n -- n ) IDX-MASK and ;
 
-\ No record slot holds the address: it is decoded from EMIT-CREATE's MOVZ/MOVK
-\ carrier (src/habu/habu2.f) with ADDRESS-CARRIER:CHAIN-VALUE. The DKIND:ADDR
-\ stamp says the body is still the definer's own; `does>` clears it.
+\ No record slot holds the address: it is decoded from the MOVZ/MOVK carrier a
+\ created body pushes (interpreter.f DEF-ADDR-TAIL) with
+\ ADDRESS-CARRIER:CHAIN-VALUE. The DKIND:ADDR stamp says the body is still the definer's own; `does>` clears it.
 : REC-OFF ( ptr n -- n ) {: rec:ptr :}
    rec XREF-START-SLOT XREF-PTR@ {: p:ptr :}
    p p rec XREF-CODE-BYTES + ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}

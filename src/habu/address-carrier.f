@@ -29,8 +29,8 @@ $F2800000 constant DATA-MOVK0
 \ src/habu/habu2.f is emitted machine code and reads the constants directly.
 private
 
-\ The chain's own instruction word. Owner-prefixed like every other reader of
-\ this shape in the tree (AOT-W32@, ACAP-W32@; see tools/jitdump-core.f).
+\ The chain's own instruction word, a private copy as every reader of this
+\ shape keeps one (aot-decl.f W32@, aot-capture.f ACAP-W32@).
 : W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 

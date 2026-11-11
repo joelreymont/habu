@@ -4274,8 +4274,8 @@ private
 0 CWORK-VARIABLE DOES-SIG-U n
 \ True when the clause between `does>` and `;` is empty: `does-patch` gets a zero
 \ entry and publishes the declared effect without patching the body or clearing
-\ its DKIND:ADDR stamp. The engine's rule (src/habu/habu2.f
-\ DOES-REC:ELIDE-EMPTY), stated on the tape because this compiler never reaches it.
+\ its DKIND:ADDR stamp. The engine's rule (src/habu/t0.f EMPTY-CLAUSE), stated
+\ on the tape because this compiler never reaches it.
 0 CWORK-VARIABLE DOES-EMPTY n
 0 CWORK-VARIABLE FIXED-VAL n                   \ a fixed body's cell, or a defer's dispatch cell
 0 CWORK-VARIABLE FIXED-KIND COMP:body          \ and how the fixed cell is a literal

@@ -126,8 +126,7 @@ $200 constant AT-REMOVEDIR
 \
 \ A STENCIL IS A BYTE STRING because an x86_64 instruction is one to fifteen
 \ bytes: `mov eax, imm32` is five and `syscall` is two, where every ARM64 stencil
-\ is a single four-byte word. C-EMIT-STENCIL (src/habu/jit.f) compiles the
-\ runtime emission from the span. The bytes are written out here, as the aarch64
+\ is a single four-byte word. The bytes are written out here, as the aarch64
 \ seam writes its instruction words out, and test/x86-64-emit.f pins each one
 \ against both X64ASM's encoders and llvm-mc.
 5 constant SYS-NR-STENCIL-BYTES          \ mov eax, imm32

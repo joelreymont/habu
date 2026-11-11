@@ -88,7 +88,7 @@ $48425350414E5321 constant SNAP-MAGIC
 \ text-size field + IMAGE-TEXT-TRAILER-ADJ) - SNAP-TRL-BYTES; the codesign blob
 \ and page padding follow outside the extent. Every trailer reader and writer
 \ derives size and offsets from here (src/habu/snap-x64.f WRITE-X64,
-\ src/habu/habu2.f EM-SNAPSHOT-RESTORE, tools/imgdump.f).
+\ tools/imgdump.f).
 \ src/habu/snapshot-format.f names the cell at offset 8
 \ (SNAPSHOT-FORMAT:HEAP-FIELD).
 48 constant SNAP-TRL-BYTES        \ magic, heap form, ndict, region len, data len, version
@@ -169,8 +169,8 @@ $0000200000000000 constant DNAME-SEALED
 19 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
-\ certification (checker RECMI latch -> publish tails). LFIND folds the byte into x13 bits 8-15; EM-INTERPRET-FIND fails closed
-\ before the BLR when the interpret stack holds fewer cells. 0 = unmarked
+\ certification (checker RECMI latch -> publish tails). LFIND folds the byte into x13 bits 8-15; src/habu/interpreter.f fails closed
+\ before the call when the interpret stack holds fewer cells. 0 = unmarked
 \ (unchecked words, words without signatures and the source prefix's words,
 \ whose top-level calls the checker's row judges: src/core/top-row.f). Compiled calls inside checked
 \ words are checker-proven and carry no guard. Flags cell [16]: IMM/EXT/WIDE/INT
@@ -182,13 +182,13 @@ $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): the word's recorded effect carries a wider-than-cell
 \ value in some row, so running it at interpret level would leave a multi-cell
 \ bundle on the untyped interpret stack. LFIND folds the bit into x13 bit 3;
-\ EM-INTERPRET-FIND and interpret ' fail closed on it. Set by the `wide-mark`
+\ src/habu/interpreter.f fails closed on it. Set by the `wide-mark`
 \ prim (habu1.f BWIDEMARK). Compiled calls inside checked definitions are
 \ unaffected.
 $4000000000000000 constant DNAME-WIDE
 \ DNAME-INT (bit 63): a kernel primitive or engine helper no source may run,
 \ stamped as the primitive registry emits its record (ENGINE-PRIMS:DNAME). LFIND folds the bit into x13
-\ bit 4; EM-INTERPRET-FIND and interpret ' fail closed with `hb: internal engine
+\ bit 4; src/habu/interpreter.f fails closed with `hb: internal engine
 \ word: <token>` rc 70. Compile-mode references (unchecked code, TRUSTED:
 \ bodies) are declared trusted boundaries and unaffected.
 $8000000000000000 constant DNAME-INT
@@ -196,8 +196,7 @@ $8000000000000000 constant DNAME-INT
 \ row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states its effect, so
 \ ENGINE-PRIMS:DNAME stamps the bit beside DNAME-INT. It opens nothing
 \ DNAME-INT closes: the prompt, `'`, search-wl and `[']` still refuse the
-\ record. Only the compile guards read it (habu2.f C-COMPILE-CALL-GUARD at tier
-\ 0; at tier 1 src/compiler/native/dict.f NDICT:INT-CALL?, which CALL-BINDING
+\ record. Only the compile guards read it (src/habu/t0.f at tier 0; at tier 1 src/compiler/native/dict.f NDICT:INT-CALL?, which CALL-BINDING
 \ and src/compiler/native/hir-word.f RESOLVE-SITE ask), and with it a compiled
 \ call is the checker's decision through the rows: the owner's checked callers
 \ compile, and the global trusted-only row refuses a checked caller elsewhere.
@@ -267,7 +266,7 @@ $3000 constant LOCNAMES
 LOC-REC 8 - constant LOC-NAME-CAP
 64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes); checker.f LOC-CAP states the same 64
 \ Tier 1's arm64 body capture scopes the locals it records by block, as
-\ src/habu/interpreter.f BODY-BLOCK-STEP does on x86-64 (habu2.f CAPTURE-BLOCK):
+\ src/habu/interpreter.f BODY-BLOCK-STEP does on x86-64:
 \ CAPDEPTH-CELL is the block depth, LOCDEPTHS the depth each LOCNAMES record
 \ was declared at (one cell per LOC-REC), and TOKDEPTH-CELL the depth as the
 \ current token began, restored with TOKLOCN-CELL's mark. A definition opener
@@ -298,8 +297,8 @@ $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + se
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark; 0 until SEAL-CAPTURE
 
-67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW
-                                        \ THROW-NOREC): the kernel masks a raw code to 8 bits, so a multiple
+67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW):
+                                        \ the kernel masks a raw code to 8 bits, so a multiple
                                         \ of 256 would exit 0.
 $28 constant CUR-CELL
 $30 constant WIDN-CELL
@@ -331,8 +330,7 @@ $4842444546455201 constant DEFER-MAGIC
 $1B0 constant CMFAM-CELL
 \ MATCH-lowering compile state, DATA-relative in the $B0..$1B0 band above the
 \ friend arena; the fam stack tops out at $D0+CMFR-MAX*8 = $1A0. CMBK-CELL is a
-\ 64-bit branch-kind bitstack (J-OF pushes 0, EM-ADT-MATCH-OF pushes 1, J-ENDOF
-\ pops and checks), so ENDOF re-arms the match token machine (CMM=4) only for a
+\ 64-bit branch-kind bitstack (J-OF pushes 0, J-ENDOF pops and checks), so ENDOF re-arms the match token machine (CMM=4) only for a
 \ MATCH variant branch: the compiler analogue of the checker's
 \ CF-ENDOF-DISPATCH. CMTAG/CMPADS hold the pending variant (tag, M-p) between a
 \ variant token and its OF. CMFR is the fam stack indexed by CMFRD (match
@@ -354,16 +352,13 @@ $3650 constant RSAVND-CELL
 $3658 constant RSAVDP-CELL
 $3660 constant RSAVSP-CELL
 $3668 constant RRECP-CELL
-\ RSAVROWS-CELL: the checker's record end as the REPL line began, plus one,
-\ read through the source owner (habu2.f EM-REPL-READ); 0 when no owner
-\ records. It sits in the $2800..$3000 free header band, below $7FF8
-\ for the `DATA <off> LDR` form.
+\ RSAVROWS-CELL: claimed in the $2800..$3000 free header band; no code reads or
+\ writes it.
 $2D38 constant RSAVROWS-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
-\ PROGRAM-FILE-CELL: argv[1]'s string once the launcher (habu2.f SRC-FPLAIN,
-\ main.f RUN) runs it as the program file, else 0; src/core/include.f reads it.
+\ PROGRAM-FILE-CELL: argv[1]'s string once the launcher (main.f RUN) runs it as the program file, else 0; src/core/include.f reads it.
 \ It takes $2DB0, the first cell after TASK-CHAIN-CELL.
 $2DB0 constant PROGRAM-FILE-CELL
 $3688 constant PEND-CELL         \ mirrored: src/core/checker.f CK-DEF-PEND-OFF
@@ -377,9 +372,9 @@ $3698 constant TKL-CELL          \ mirrored: src/core/checker.f CK-TKL-OFF
 $36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL, src/core/checker.f CK-INP-OFF
 $36A8 constant INE-CELL          \ mirrored: src/core/checker.f CK-INE-OFF, src/core/check-hook.f INPUT-END
 \ FWDTGT-CELL: where the last forward branch tier 0 patched lands, as an
-\ offset from DBASE (habu2.f LPAT). jit.f LVFUSE refuses to rewind code a
-\ branch lands in. Definition-scoped like JIT-SNAP:SP-CELL: the colon entries,
-\ EM-P2-START and EM-ABORT-COMPILE-STATE zero it.
+\ offset from DBASE (habu2.f LPAT); nothing reads it. Definition-scoped like
+\ JIT-SNAP:SP-CELL: the colon entries,
+\ and EM-ABORT-COMPILE-STATE zero it.
 $36B8 constant FWDTGT-CELL
 \ LIDX-CELL: 1 while the code tier 0 emits next may read the innermost open
 \ loop's index from x29 (regalloc.f LIDX), 0 when the index must be reloaded
@@ -428,7 +423,7 @@ $98 constant USE-FLOOR
 \ the restored wid (checker.f CHECKER-RESYNC).
 $A0 constant USE-WIDS
 \ PEND: PEND-CELL as the buffer began. A definition the buffer opened must
-\ close in it, so its end refuses one still open (habu2.f C-DEF-SOURCE-END); one
+\ close in it, so its end refuses one still open (interpreter.f RC-UNCLOSED); one
 \ already open here belongs to an outer buffer, whose immediate word's evaluate
 \ compiles into it, and a throw that unwinds this buffer leaves it compiling
 \ (habu2.f EM-EVAL-THROW-RECOVER).
@@ -499,11 +494,9 @@ $2C48 constant SOURCE-CELL
 $2C50 constant READS-CELL
 ;package
 
-\ RPKG-* / PKGRESYNC-CELL: the REPL line's package snapshot. EM-REPL-READ
-\ (LREAD) saves the five live package-scope cells at line start, and the
-\ enclosing package's in RPKG:ENCLOSING. LEVALREC arms PKGRESYNC-CELL and
-\ EM-PKG-RESYNC drains it before the throw is delivered, making the checker
-\ re-read the restored scope (habu2.f). The six cells take $2780..$27C0.
+\ RPKG-*: claimed, and no code reads or writes them. PKGRESYNC-CELL: LEVALREC
+\ arms it and EM-PKG-RESYNC drains it before the throw is delivered, making the
+\ checker re-read the restored scope (habu2.f). The six cells take $2780..$27C0.
 $2780 constant RPKG-CUR
 $2788 constant RPKG-PUB
 $2790 constant RPKG-PRI
@@ -567,8 +560,8 @@ $47C8 constant CF
 \ REGION-ALIAS:DELTA-CELL: the region's RW alias minus its RX base (DBASE). The
 \ region is mapped twice (habu2.f EM-MMAP-CODE-REGION): code runs from DBASE and
 \ every store into the region goes to its address plus this delta. Each run maps
-\ its own alias, so the cell is live state: EM-DATA-INIT publishes it, the boot
-\ republishes it after a snapshot restore and every task region copies it. A
+\ its own alias, so the cell is live state: the boot (src/arch/arm64/boot.f)
+\ publishes it and every task region copies it. A
 \ forked child maps its own alias at the parent's alias address, so the delta it
 \ inherits stays true (habu1.f LIBC-OS:FORK). Below $7FF8 so `DATA <off> LDR`
 \ names it directly.
@@ -582,9 +575,8 @@ $43B0 constant DELTA-CELL
 ;package
 
 \ AOT-CELLS:SIG-POOL-CELL / SIG-LEN-CELL: the baked signature pool's address and
-\ length, published by the seed (habu2.f EM-SEED-AOT) as it registers the
-\ captured records and read by the checker's lazy intake for a seeded word it
-\ has no effect for. Zero until a seed runs: no pool, and the intake is a no-op.
+\ length, read by the checker's lazy intake for a word it has no effect for.
+\ Nothing publishes a pool, so both stay zero and the intake is a no-op.
 \ The pool is __text, the same at every boot, so it is never copied. They take
 \ $47D0/$47D8; src/core/checker.f mirrors the two offsets (CK-AOT-SIG-*-OFF)
 \ because it loads before this file, as with CK-PKG-REC-OFF.
@@ -599,8 +591,8 @@ $47D8 constant SIG-LEN-CELL
 ;package
 
 \ AOT-CELLS:SPAN-TABLE-CELL / SPAN-N-CELL / SPAN-BASE-CELL: the baked CODE-SPAN
-\ table, its row count and the address the blob was copied to, published by the
-\ seed (habu2.f EM-SEED-AOT) when the blob lands. A word with no dictionary
+\ table, its row count and the address the blob was copied to; only the x86-64
+\ linker writes them (link-x64.f SPAN-TABLE). A word with no dictionary
 \ record is accounted for only by its row. A row is a blob offset; the base
 \ makes it an address. Zero in all three means no stripped spans.
 \ They sit in the $600..$800 header hole below BODY-TEXT:BASE-CELL, above
@@ -618,9 +610,8 @@ $670 constant SPAN-BASE-CELL
 \ stub's address, a program's sa_handler; FD-PTR-CELL is the address of the fd
 \ word, through which a program stores its self-pipe's write end; FD-CELL is the
 \ word's offset, claimed so nothing else takes it. Every boot writes the two
-\ published cells (habu2.f EM-STARTUP-RUNTIME-STATE, link-data.f HEADER-CELLS,
-\ boot-x64.f), and the engine's boot clears the fd word because a restored
-\ snapshot carries DATA from offset zero.
+\ published cells and none writes the fd word: DATA is mapped fresh, so it
+\ starts zero.
 \ The stub reads the fd word at the absolute address DATA-VA + FD-CELL, never
 \ through x20: a handler runs on whichever thread receives the signal, and that
 \ thread's x20 is its own task region (src/lib/task.f PREPARE maps it zeroed).
@@ -676,10 +667,7 @@ WRITE-OFF DEVICES 8 * + constant END
 \ the FFI buffer block ($3A00..$3C88, src/lib/ffi-abi.f), the task TCB cells
 \ ($3C88..$3CA0) and the protected-WID registry ($3CB8..$40C0).
 $3CA0 constant EVALREC-CELL
-\ AOT-SEED-DONE-CELL: one-shot flag set the first time the post-cold-prefix AOT
-\ seed runs (EM-COMPILE-EXIT, at the end of the engine prefix stream), so neither
-\ the user stream's own exhaustion nor REPL re-entry can seed a second time. It
-\ is the seed's only guard; the seed runs on every boot.
+\ AOT-SEED-DONE-CELL: claimed, and no code reads or writes it.
 $3CA8 constant AOT-SEED-DONE-CELL
 \ The protected-WID registry records the WIDs of sealed system / generated
 \ constructor packages created in the friend window; habu1.f LPROTWIDQ
@@ -704,11 +692,8 @@ PROT-WID-MAX 8 / constant PROT-BITS-BYTES
 PROT-BITS-OFF PROT-BITS-BYTES + constant PROT-BITS-END
 PROT-REG-TAG-CELL constant PROT-REG-OFF \ second PROT-GUARD band base (= tag cell)
 PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: tag + bitmap + UNCGH-CELL = $3CB8..$40C8
-\ UNCGH-CELL: runtime address of the uncaught-top-level-throw reporter (habu2.f
-\ LUNCAUGHT), stored at boot (EM-STARTUP-RUNTIME-STATE) so the leaf BTHROW
-\ primitive can branch to it when a throw reaches THROW-NOREC with no handler
-\ and no REPL. A fixed engine cell no compiled source writes; DATA is zero until
-\ boot.
+\ UNCGH-CELL: runtime address of the uncaught-throw reporter (habu2.f LUNCAUGHT),
+\ written by the link (link-data.f HEADER-CELLS): BTHROW, a leaf, branches through it.
 $40C0 constant UNCGH-CELL
 \ The callback band: C calling back into checked code (src/lib/ffi-callback.f).
 \ Eight cells every region carries at the same offset, in the run between the
@@ -858,9 +843,9 @@ $6C0 constant FIXED-COMP-CELL
 
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \
-\   0 = tier 0: the compiler in COMP-CELL; when COMP-CELL is zero, the JIT
-\       (LCOMPILE and its closure) on arm64 and no compiler on x86-64. Every
-\       `--load` and the REPL; every process starts at 0.
+\   0 = tier 0: the compiler in COMP-CELL; with COMP-CELL zero, the Habu loop
+\       refuses a definition (interpreter.f DEF-TIER-0). Every `--load` and
+\       the REPL; every process starts at 0.
 \   1 = tier 1, the IR pipeline reached through XT-CELL (NCOMP:COMPILE).
 \       Selected deliberately with `1 set-tier`. An executable build compiles
 \       at its caller's tier; the engine build selects tier 1 for its target,
@@ -1099,7 +1084,7 @@ $248 constant QXH-CELL
 \ puts a call in the body counts it in the low two bits (bit 0 one call, bit 1 a
 \ second; habu2.f FRAME-CALL,), free because code addresses are four-byte
 \ aligned. At `;` EM-COMPILE-RET reads where the slot is and whether x30 can be
-\ destroyed, and EM-COMPILE-TAIL whether a tail branch removes the only call.
+\ destroyed.
 \ Zero means no frame. QFRAME-CELL scopes it across a quotation as QXH-CELL
 \ scopes the EXIT chain. Definition-scoped, cleared by EM-RESET-COMPILE-STATE.
 $7D0 constant FRAME-CELL
@@ -1109,8 +1094,7 @@ $258 constant DEF-TKL-CELL
 \ CMM-CELL: compile-loop ADT-lowering mode (docs/forth.md "Structures And
 \ Enums"), mirroring the checker's match-mode token machine: 0 = off; a
 \ `construct`/`MATCH` keyword arms it so the operand tokens are captured before
-\ the local/keyword/literal/call/undefined dispatch and never reach lookup. The
-\ LCOMPILE head (EM-COMPILE-ADT-MODE) dies when it is armed with no handler.
+\ the local/keyword/literal/call/undefined dispatch and never reach lookup.
 \ Cleared at colon/TRUSTED: entry and by EM-RESET-COMPILE-STATE. The low $260
 \ hole is not usable: VVAL-OFF ($250) + VSMAX cells spans $250..$350, and
 \ DEF-TKA/DEF-TKL live inside it only while the definition NAME token runs, when
@@ -1127,28 +1111,23 @@ $27E8 constant COMPILE-PREFLIGHT-CELL
 \ BSETTOPCHECK), which mirrors BSETCHECK's install window; the cell is its own
 \ PROT-GUARD band (habu1.f GUARD-SPAN), so a post-seal raw store traps
 \ ENGINE-ERROR:SEAL-VIOLATION like HOOK-CELL. Snapshot-persistent like HOOK-CELL.
-\ When installed, the interpret dispatch points (habu2.f EM-INTERPRET-FIND /
-\ EM-INTERPRET-NUMBER / the pushing string keywords / C-TICK / C-CHAR) emit one
-\ event per token through LTOPHOOK; the hook's effect is ( ptr u8 n n n -- ):
-\ token addr, token len, class (TOP-EV-*), LFIND flags.
+\ The hook's effect is ( ptr u8 n n n -- ): token addr, token len, class
+\ (TOP-EV-*), LFIND flags.
 $27F0 constant TOP-HOOK-CELL
 \ The ENGINE-HOOK band is the two hook cells above.
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
 \ SUSP-HOOK-CELL, SUSP-PREFLIGHT-CELL: the (hook, preflight) pair `0 set-check`
 \ suspends until `set-check` of the same hook resumes it (the rule is
-\ docs/forth.md's "`0 set-check` suspends the armed hook"). Boot zeroes both;
-\ after the seal the set-check and discard-check prims (habu1.f BSETCHECK and
-\ BDISCARDCHECK, kernel-x64.f SET-CHECK-BODY and DISCARD-CHECK-BODY) are their
-\ only writers. The pair is a PROT-GUARD band of its
+\ docs/forth.md's "`0 set-check` suspends the armed hook"). Both start zero;
+\ after the seal the set-check and discard-check prims are their only
+\ writers. The pair is a PROT-GUARD band of its
 \ own: a resume copies SUSP-PREFLIGHT-CELL
 \ into COMPILE-PREFLIGHT-CELL without set-preflight's window check, so a raw
 \ post-seal store here would be a second, unchecked preflight installer. Both
-\ cells hold xts and persist through snapshots like HOOK-CELL, so they are
-\ declared address cells (habu2.f RELOC-EMIT:MARK-CELL) with a
-\ tools/native-layout.f row each. $2D80 and $2D88 sit in the $2800..$3000 free
-\ header band, below $7FF8 for the `DATA <off> LDR/STR` form and below
-\ DATA-START.
+\ cells hold xts, so each has a tools/native-layout.f row. $2D80 and
+\ $2D88 sit in the $2800..$3000 free header band, below $7FF8 for the
+\ `DATA <off> LDR/STR` form and below DATA-START.
 $2D80 constant SUSP-HOOK-CELL
 $2D88 constant SUSP-PREFLIGHT-CELL
 SUSP-HOOK-CELL constant SUSP-HOOK-OFF
@@ -1170,9 +1149,8 @@ $27F8 constant CODE-CELL
 ;package
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
-\ before the exit_group of a DELIBERATE program exit: the normal top-level exit
-\ (habu2.f EM-COMPILE-EXIT, LRBYE), `die` (habu1.f BDIE), the uncaught top-level
-\ throw (habu2.f LUNCAUGHT) and the exit(0) after a program's entry returns
+\ before the exit_group of a DELIBERATE program exit: `die` (habu1.f BDIE), the
+\ uncaught top-level throw (habu2.f LUNCAUGHT) and the exit(0) after the entry returns
 \ (src/arch/arm64/boot.f CALL-EXIT,, src/habu/boot-x64.f ENTRY,). The
 \ engine's fail-closed exits - every ENGINE-ERROR:* rc and the 70/74/75/76
 \ band - do NOT call it: a broken engine must not run program code. Clearing
@@ -1180,16 +1158,13 @@ $27F8 constant CODE-CELL
 \ itself; the exit path it lands in finds the vector empty. The catch handler chain (HND-CELL) is emptied with it, so a
 \ throw from the hook is uncaught and ends the process with the hook's code:
 \ `die` runs inside the program's catches, and a hook's throw caught there would
-\ return from `die`. The REPL route (REPLH-CELL) is disarmed too, since a tty
-\ REPL takes an otherwise uncaught throw back to its prompt. A stripped image's
+\ return from `die`. A stripped image's
 \ exit follows its root's return, when the chain is already empty. The hook's
 \ effect is ( -- ) and it runs on the data stack as it stands, because `die`
 \ may be running on a task thread whose stack is its own.
-\ It holds a code pointer, so it is declared for snapshot relocation beside the
-\ other hook cells (habu2.f EM-DATA-INIT RELOC-EMIT:MARK-CELL) and carries the
-\ tools/native-layout.f row every declared engine cell below the heap floor
-\ needs. A new process has no hook, and the library that wants one arms it at
-\ runtime.
+\ It holds a code pointer, so the x86-64 link declares it a code cell and it
+\ has a tools/native-layout.f row. A new process has no hook, and the library
+\ that wants one arms it at runtime.
 \ It is not in the ENGINE-HOOK-OFF band: those two are the checker's crown
 \ jewels, sealed against a post-seal raw store, and this vector is armed by
 \ ordinary library code (src/lib/at-exit.f) after the seal. $2818 follows
@@ -1202,10 +1177,10 @@ $2818 constant EXIT-HOOK-CELL
 \ and its block depth CAPDEPTH-CELL, CP (as an offset
 \ from the region base, like every code position a DATA cell keeps, so no
 \ image carries a live address) and the virtual stack's VSP-CELL, VRFREE-CELL
-\ and FRFREE-CELL here (habu2.f EM-COMMENT). Two other writers: arm64
+\ and FRFREE-CELL here. Two other writers: arm64
 \ C-CLEAR-LOCALS zeroes TOKLOCN-CELL and TOKDEPTH-CELL with the locals at a
 \ definition's end or abort, and a refused `is` target lowers TOKBODY-CELL to
-\ its opener (habu2.f EM-CAPTURE-BIND, src/habu/interpreter.f DEF-PREFIX-BIND).
+\ its opener (src/habu/interpreter.f DEF-PREFIX-BIND).
 \ A throw that unwinds an evaluate frame begun inside an open definition leaves
 \ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all seven
 \ back: the text the checker certifies holds no token whose compile the throw
@@ -1227,8 +1202,8 @@ $2838 constant TOKVSP-CELL
 $2840 constant TOKVRF-CELL
 $2848 constant TOKFRF-CELL
 \ TKA-CELL as an opener stores PEND-CELL: the name token (`:`, kernel:,
-\ TRUSTED:) or the word that ran def-open; C-DEF-SOURCE-END locates a source
-\ that ends inside the definition there. CAST: and defer set PEND-CELL only
+\ TRUSTED:) or the word that ran def-open; a source that ends inside the
+\ definition is located there. CAST: and defer set PEND-CELL only
 \ within their keyword, so no source can end inside them. A transient address
 \ like TKA-CELL, zeroed at snapshot: no native-layout row, no stripped-image
 \ claim.
@@ -1242,8 +1217,7 @@ $2850 constant PENDTKA-CELL      \ mirrored: src/core/checker.f SRC-NAME
 \ (src/compiler/native/elaborate.f QOPEN-ROW and QCLOSE-ROW). LEVELS is the most
 \ quotations open at once, the checker's control-frame capacity (src/core/checker.f
 \ CF-PUSH holds 32 frames and each `[:` takes one), so the loader refuses no
-\ nesting the checker certifies; one more is refused by name (habu2.f
-\ EM-QUOT-NEST-DIE). SP-CELL counts the parked frames. It is definition-scoped
+\ nesting the checker certifies; one more is refused by name. SP-CELL counts the parked frames. It is definition-scoped
 \ like QPATCH-CELL and is zeroed beside it in every reset run, so a definition
 \ that fails with quotations open leaves nothing parked. The innermost
 \ quotation never needs a frame, so there are LEVELS-1. Both sit after
@@ -1274,9 +1248,8 @@ $2CD0 constant FLOORREC-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
 \ the list is empty) and gives it back as it returns or throws on
-\ (CLOSED-LEAVE). The stacks are this process's mappings, so boot (habu2.f
-\ EM-STARTUP-RUNTIME-STATE) zeroes the cell. It sits beside FLOORREC-CELL in
-\ the free header band.
+\ (CLOSED-LEAVE). The stacks are this process's mappings, so a process starts
+\ with the cell zero. It sits beside FLOORREC-CELL in the free header band.
 $2CD8 constant CLOSED-FREE-CELL
 \ CODE-END-CELL: the end of the kernel's code, [RBASE-CELL, CODE-END-CELL); a
 \ linked program's words follow it. The linker maps the running hb's kernel
@@ -1370,9 +1343,8 @@ $2DA8 constant TASK-CHAIN-CELL
 \ PROT-WID-MAX before it addresses the band. habu1.f BPOLICYADMIT and
 \ BPOLICYSEAL write the vocabulary; SOURCE-ROOT:POLICY-ROOT writes the ordinary
 \ require xt before the seal. All three refuse mutation once sealed.
-\ The readers are the places a source token is read: habu2.f LPOLICYREC for a
-\ found record, LKWCMP for a matched keyword and LUNDEF for a miss. The native
-\ compiler never reads them. The loader reads the watermark through its own copy
+\ The readers are the places a source token is read: src/habu/interpreter.f
+\ and habu2.f LKWCMP and LUNDEF. The native compiler never reads them. The loader reads the watermark through its own copy
 \ of the offset, src/core/include.f INCLUDE-POLICY-NDICT-CELL.
 \ Below $7FF8 for `DATA <off> LDR` and below DATA-START; data-claims.f proves
 \ neither field overlaps a neighbour. The snapshot writer zeros its DATA copy
@@ -1653,7 +1625,7 @@ public
 $9C08 constant USE-BAND-OFF
 USE-BAND-OFF          constant USE-DEPTH-CELL      \ live using depth (u64)
 USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` open (`;package` restores)
-USE-BAND-OFF 16 +     constant USE-RPKG-SAVE-CELL  \ depth saved at REPL line start (recover restores)
+USE-BAND-OFF 16 +     constant USE-RPKG-SAVE-CELL  \ claimed; no code reads or writes it
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
@@ -1692,9 +1664,10 @@ public
 \ whose callee is in the engine's loaded __text. Those are the only instructions
 \ whose displacement differs between the writing and the restoring run: the
 \ kernel picks the region base and the loader the image base independently. A
-\ site is recorded when the call is created (habu2.f EMIT-CEMITBL, the call-emit
-\ chokepoint, and EM-AOT-PATCH-SITES), because region bytes cannot be decoded
-\ soundly: a compiled word may carry inline non-instruction data. The writer
+\ site is recorded when the call is published (callmap-set, habu1.f
+\ BCALLMAPSET, which src/compiler/native/publish.f RELOC-EXTERNAL calls),
+\ because region bytes cannot be decoded soundly: a compiled word may carry
+\ inline non-instruction data. The writer
 \ rewrites each site as if the region sat REGION-OFF above __text; the loader
 \ rewrites it for this run's distance. Sized from REGION, so it cannot overflow.
 REGION 32 / constant CALLMAP-BYTES        \ one bit per region word (REGION / 4 / 8)
@@ -1707,8 +1680,8 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ pushes. A separate map, not a second call-map bit: the shapes, addresses and
 \ rewritten fields differ, and each pass keeps the same bit-scan loop.
 \ Recorded where the compiler decides a literal is an address: habu2.f
-\ C-CODE-ADDR, C-DATA-ADDR and C-DATA-ADDR-RAW, the native chain's publication
-\ seam, and the AOT seed's code-literal rebase (EM-AOT-RELOC-CODE).
+\ C-CODE-ADDR, C-DATA-ADDR, C-DATA-ADDR-RAW and the native chain's publication
+\ seam.
 \ DATA sites are recorded for the AOT capture: the captured blob lands at a
 \ different DP in the seeded engine, so a DATA chain needs rebasing there, while
 \ fixed-VA DATA needs nothing on snapshot restore. habu2.f EMIT-ADDRS runs once
@@ -1791,7 +1764,7 @@ XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 
 \ The largest offset a declared cell may carry. The declaration (habu2.f
-\ EMIT-MARK) and the loader's relocate (habu2.f EMIT-XT) each access the eight
+\ EMIT-MARK) and the loader's relocate each access the eight
 \ bytes at the DATA base plus the offset, so the whole cell must lie inside the
 \ region; the unsigned compare also rejects negative offsets.
 \ The cell need not be cell-aligned: `create` rounds its field (habu2.f LCREATE),
@@ -1814,8 +1787,7 @@ $43A0 constant XT-CELL
 ;package
 
 \ AOT-ARM:OPEN writes B0-CELL, and WINDOW-CLOSE clears it. Tier 0 reads it to
-\ keep a mention of a created word made before the window opened a call
-\ (habu2.f EM-COMPILE-CALL).
+\ keep a mention of a created word made before the window opened a call.
 \ T0 is latched when the seed allocates its wordlists: later boot-run entries
 \ can allocate more, so the sealed-wordlist gate cannot derive it from WIDN.
 package AOT-CELLS
@@ -1892,8 +1864,7 @@ $2CA8 constant SOURCE-EXEC-CTX-CELL
 \ than the saved one. The band is zero whenever no overlay is open. It is a
 \ guarded band (DATA-BANDS below), not scratch: a raw store that forged the
 \ saved NDICT, HW or WIDN would turn replay-close into a record eraser and
-\ either into a WIDN setter. USE-RPKG-SAVE is REPL-line state, not scope, and
-\ is not saved.
+\ either into a WIDN setter. USE-RPKG-SAVE-CELL is not saved.
 \ A fixed offset, because source reads LATCH: xref.f XREF-UNDEFINE-GUARD and
 \ interpreter.f OVERLAY-GUARD read it as a DATA offset. The band
 \ takes the start of the unclaimed run $4208..$4398 below DECLARED-LOG:ADDR-CELL;
@@ -2001,22 +1972,17 @@ JIT-SNAP:END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
 \ A definition compiled with the hook cell empty has its declaration as its row
-\ (src/core/checker.f CHECKER-DECLARED-ROW!), recorded by the source owner. A
-\ cold boot has no owner until checker.f claims the source at its end
-\ (CLAIM-COLD-SOURCE), so the empty-hook publish arm (habu2.f
-\ EM-COMPILE-PUBLISH-HOOKED) appends
-\ each signed `:` definition it publishes before then to this log; the claim
-\ records every logged declaration's row (checker.f CK-DECLARED-LOG-DRAIN), then
-\ zeroes the slots and ADDR-CELL. The log is empty whenever user source runs and
-\ at every capture.
+\ (src/core/checker.f CHECKER-DECLARED-ROW!), recorded by the source owner. No
+\ engine code appends to this log. The claim at the end of checker.f
+\ (CLAIM-COLD-SOURCE) records every logged declaration's row (checker.f
+\ CK-DECLARED-LOG-DRAIN), then zeroes the slots and ADDR-CELL. The log is empty
+\ whenever user source runs and at every capture.
 \ A slot is four cells: the pending record (PEND-CELL), the open package's
 \ namespace record (PKG-REC-CELL, 0 outside a package), the signature's address
 \ and its length. The checker keys each row by the record's wordlist and that
 \ namespace record, read through `ptr-field`, so no record number crosses.
-\ CAP: the prefix through checker.f publishes about 2330 signed `:` definitions;
-\ a full log dies at the definition, exit 72 (the pre-trust table's
-\ boot-integrity class), rather than lose a row. Unguarded engine scratch, as the
-\ pre-trust table: the claim records rows without authority from it.
+\ Unguarded engine scratch, as the pre-trust table: the claim records rows
+\ without authority from it.
 \
 \ ADDR-CELL holds the log's address while it holds entries, else 0. The seed
 \ lays its bands out at other offsets (forth.fs SNAPSTK-END), so the checker

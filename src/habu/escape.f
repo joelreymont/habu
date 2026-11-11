@@ -1,7 +1,7 @@
 \ escape.f - decoding an escaped string literal's span, package ESCAPE.
 \
-\ A literal (`s\"`, `c\"`, `.\"`) runs to a closing double quote; escape
-\ letters follow habu2.f C-ESC-DECODE-BASIC, and `\x` and `\X` take two hex
+\ A literal (`s\"`, `c\"`, `.\"`) runs to a closing double quote; LETTER
+\ decodes an escape letter, and `\x` and `\X` take two hex
 \ digits. src/habu/interpreter.f ESC-SCAN reads literals through SPAN and COPY.
 \ Neither allocates, refuses or bounds a length: the caller decides what a
 \ failed or long span means.

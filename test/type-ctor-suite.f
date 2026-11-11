@@ -357,8 +357,7 @@ s" PRODUCT-PROTECTED" type cr
 
 \ width-aware construct/MATCH lowering. The checker records a per-call-site
 \ extra-pad fact (instantiated_pads - declared_pads, WF-XPAD-FLAG) so pass 2
-\ (native EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF) emits the
-\ arg-aware pad count. The adversarials' compile-hook stderr is expected.
+\ emits the arg-aware pad count. The adversarials' compile-hook stderr is expected.
 PRODUCT clw2 FIELD x n FIELD y n ;PRODUCT
 SUMTYPE clopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" : CLFC1 ( -- clopt<clw2> ) CLOPT:NONE ;" TCE-CATCH 0 T=

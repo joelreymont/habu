@@ -523,7 +523,8 @@ private
    COUNT NAMED-AT? ;
 
 \ Before any keyword but `;`, a body token spelling a live local byte for byte
-\ is that local (habu2.f EM-COMPILE-LOCAL); a rescan reads locals from tokens.
+\ is that local (src/habu/interpreter.f BODY-LOCAL?); a rescan reads locals
+\ from tokens.
 
 : LOCAL$ ( n -- ptr u8 n ) {: k:n :}
    k TOKEN {: a:ptr u:n :}

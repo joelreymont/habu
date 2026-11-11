@@ -1,10 +1,9 @@
 \ top-row.f - the typed top level: the checker's row over the interpret stream.
 \ The interpreter calls CHECK:TOP-LEVEL with ( token-a token-u class flags ) per
-\ interpreted token (src/habu/interpreter.f HOOK; habu2.f LTOPHOOK through the
-\ installed hook; a WORD event fires before the word runs), per token because a
-\ line may define a word a later token calls. The checker keeps one row per
-\ evaluator stack base and evaluate level (src/core/checker.f "the interpret
-\ row"); a refused word or tick throws rc 70.
+\ interpreted token (src/habu/interpreter.f HOOK; a WORD event fires before the
+\ word runs), per token because a line may define a word a later token calls.
+\ The checker keeps one row per evaluator stack base and evaluate level
+\ (src/core/checker.f "the interpret row"); a refused word or tick throws rc 70.
 
 package CHECK
 

@@ -302,8 +302,7 @@ private
    k 1 + N-HOSTS ! ;
 
 
-\ The object's row of the primitive with the name in wordlist w, or -1, matched
-\ as habu2.f AOT-PRIM-INDEX matches a seeded one.
+\ The object's row of the primitive with the name in wordlist w, or -1.
 : ROW-OF ( ptr u8 n n -- n )
    {: a:ptr u:n w:n :}
    ROW-N 0 ?do
@@ -327,7 +326,7 @@ private
 
 
 \ A table row enters at rbase plus [0] and keeps an out-of-line name at rbase
-\ plus [24] (habu2.f EM-SEED-DICT); a package row, wordlist -1, holds its wid
+\ plus [24]; a package row, wordlist -1, holds its wid
 \ in [0], never code.
 : KEEP ( ptr u8 -- )
    {: rec:ptr :}

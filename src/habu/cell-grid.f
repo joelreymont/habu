@@ -1,7 +1,6 @@
 \ cell-grid.f - a span of DATA cells in image form; the only Forth that writes or
 \ reads it. Writer: AOT capture (aot-decl.f AOT-WINDOW:BM-COMPACT). Emitted
-\ readers: habu2.f AOT-WINDOW:APPLY-CELLS and EM-SNAPSHOT-DECODE-HEAP, which
-\ refuses any non-canonical byte: another engine built its image.
+\ reader: snap-decode-x64.f DECODE,, which refuses a malformed grid.
 
 package CELL-GRID
 \ Callers size and own every buffer.

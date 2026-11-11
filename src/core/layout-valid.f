@@ -222,9 +222,9 @@ variable CHECKS
 \ payload slot in the registry and occupies two once `pt` is substituted).
 \
 \ T-WIDTH is the width the access moves: checker.f WF-MEM-RECORD files it as the
-\ row's width and src/habu/habu2.f EMIT-P2-FETCH moves that many cells, so the
-\ certificate and the bundle share one width by construction. It is read before
-\ this walk mints any term (SCHEMA-TERM allocates), so it answers against the
+\ row's width, so the certificate and the bundle share one width by
+\ construction. It is read before this walk mints any term (SCHEMA-TERM
+\ allocates), so it answers against the
 \ argument terms the row was certified with.
 : QUEUE-SUM ( n n -- ) {: term:n off:n :}
    term ENV-TERM!

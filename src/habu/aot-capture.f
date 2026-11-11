@@ -1,9 +1,9 @@
 \ aot-capture.f - host build-time AOT capture: the window's code, records, name
-\ pool and call-site rows into the AOT buffers (src/habu/aot-decl.f) that habu2.f
-\ EMIT-AOT-SEED bakes into the seed. EM-SEED-AOT re-links each call site by name
-\ at boot (LFIND), so captured code holds no host address and each site's imm26
-\ is zeroed for determinism. ARM code reach comes from BL scans; CAPTURE-NATIVE
-\ takes x86 reach from the native compiler's routine graph. Never baked in.
+\ pool and call-site rows into the AOT buffers (src/habu/aot-decl.f). The seed
+\ re-links each call site by name at boot (LFIND), so captured code holds no
+\ host address and each site's imm26 is zeroed for determinism. ARM code reach
+\ comes from BL scans; CAPTURE-NATIVE takes x86 reach from the native
+\ compiler's routine graph. Never baked in.
 
 require src/habu/address-cells.f
 require src/habu/aot-arm.f
@@ -57,8 +57,8 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 : AOT-RRETIRED? ( ptr n -- bool )                               \ retired row, word or package
    AOT-RWID {: w:n :}  w 0 <  w WL:NAMESPACE <>  and ;
 
-\ Direct calls: every statically known native call is one BL (habu2.f
-\ LCEMITBL). A site's original address is AOT-CODE-B0 plus its blob offset.
+\ Direct calls: every statically known native call is one BL. A site's
+\ original address is AOT-CODE-B0 plus its blob offset.
 \ ACAP-TGT decodes imm26, which B and BL share.
 : ACAP-W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
@@ -293,7 +293,7 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 \ code-len-or-package-private u32 + name-off u32 + (flags u8 | min-in u8<<8 |
 \ dkind u8<<16) u32 + wid u32; the dkind byte holds the DKIND pair in bits 0-1,
 \ DNAME-CELL in bit 2, DNAME-ALLOC in bit 3 and DNAME-REP in bit 4. Names go to
-\ the deduped pool. EM-AOT-REGISTER-RECS expands each back to a 48-byte record
+\ the deduped pool. The seed expands each back to a 48-byte record
 \ at boot, rebuilding the derivable fields (flags nibble, min-in byte, DKIND
 \ pair, wid, name length, the [24..40) name padding). The wid is a full u32 so
 \ wordlist IDs above 255 round-trip; the min-in byte (record [16] bits 52-59)
@@ -320,8 +320,7 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 
 \ The payload carries only the window's own wid numbering: a record ships `wid -
 \ W0 + WID-REL-BASE`, wid 0 ships as 0, and the seed adds the booting engine's
-\ WIDN back (habu2.f AOT-WINDOW:REBASE-WID,, base cell LWIDW0 baked as
-\ WID-REL-BASE). The host's W0 belongs to the building process: one extra host
+\ WIDN back. The host's W0 belongs to the building process: one extra host
 \ package moved every wid field, 3305 bytes of one image. The fields are an
 \ ordinary record's [40] and a package row's [0] and [8]. The protected-wordlist
 \ rows (ACAP-PWIN-CAPTURE) are relative and zero-based: that table has no marker
@@ -366,7 +365,7 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
    len 0 ?do bstart AOT-N>U8 i + c@  AOT-BLOB-BUF@ i + c!  loop
    len AOT-BLOB-LEN ! ;
 
-\ A captured call site travels as a name that EM-SEED-AOT LFINDs in the booting
+\ A captured call site travels as a name that the seed LFINDs in the booting
 \ engine, so a callee must be a capturing-process word the target's prefix also
 \ defines, or a window word (registered before patching). A capture in a booted
 \ bin/hb has a third kind, the capture tool's own files, which exist in no
@@ -602,10 +601,9 @@ variable ACAP-PKG-MEMO-PUB
 
 \ A package's private word is unreachable by name in the image, and so is a
 \ part's public word: no source can qualify into a private wordlist, nor into a
-\ part from outside its package, and call sites carry a record index (habu2.f
-\ EMIT-AOT-SITES), so its record (20 bytes here, 48 booted, plus its name) buys
-\ nothing. Its code stays only when the reach graph finds a caller or a
-\ declared code address.
+\ part from outside its package, and call sites carry a record index, so its
+\ record (20 bytes here, 48 booted, plus its name) buys nothing. Its code
+\ stays only when the reach graph finds a caller or a declared code address.
 \ A record ships when the payload names it: the boot-run entry list and the
 \ named code sites (resolved by name at boot), and the address cells holding a
 \ word's entry. Package rows always ship: they carry the wordlist roles the seed
@@ -921,7 +919,7 @@ $14000000 constant ACAP-GBR-TERM
    w $9F00001F and delta 3 and 29 lshift or
    delta 2 rshift $7FFFF and 5 lshift or ;
 
-\ C-DIE-BAD-TAG skips padded message bytes, then writes them with MOVZ x0,2;
+\ A die site skips padded message bytes, then writes them with MOVZ x0,2;
 \ ADR x1,first-byte; MOVZ x2,length. The byte length must account for the
 \ entire skipped interval before those bytes are classified as data.
 : ACAP-GRAPH-DIAG? ( n n -- bool ) {: at:n end:n :}
@@ -1316,7 +1314,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    ACAP-SIG-REGISTRY ;
 
 \ Audit (d): the row resolves the way the seed will ask.
-\ EM-AOT-PATCH-SITES's boot question, asked here of the row just written
+\ The seed's boot question, asked here of the row just written
 \ (pooled name, stored scope, the engine's own find), so a wrong scope (dot
 \ 9d7d8e72), a wrong pool offset or a shadowed name fails at the build, not at
 \ a boot that says only that a name was not found. `search-wl` refuses
@@ -1325,8 +1323,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-XREF-XT ( ptr n -- n )
    dup XREF-FOUND? if XREF-START exit then drop 0 ;
 
-\ The engine's one-wordlist hash search (habu1.f WLFIND), as
-\ EM-AOT-PATCH-NAMED-SITES calls for a scoped site. xref.f XREF-FIND-WL walks
+\ The engine's one-wordlist hash search (habu1.f WLFIND), as the seed calls it
+\ for a scoped site. xref.f XREF-FIND-WL walks
 \ every record and, once per site, was 99% of CAPTURE's samples on a
 \ 1024-filler window and 92% on the compiler chain.
 : ACAP-WL-XT ( ptr u8 n n -- n ) AOT-WL-RECORD ACAP-XREF-XT ;
@@ -1990,10 +1988,10 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
    loop
    ACAP-RQ @ len < if d0 ACAP-RQ @ len ACAP-SCAN-SEG then ;
 
-\ The boot-run list: a 0-terminated [len][name] list EM-AOT-BOOTRUN walks (LFIND
-\ + blr) after the seed installs the REPL; the live trailing 0 is uncounted, so
+\ The boot-run list: a 0-terminated [len][name] list the seed walks (LFIND +
+\ blr) after it installs the REPL; the live trailing 0 is uncounted, so
 \ the bake needs no pad. It runs at the end of the engine prefix on every boot
-\ (src/habu/habu2.f, AOT-BOOTRUN-CAP), before the first user token of a piped
+\ (src/habu/aot-decl.f, AOT-BOOTRUN-CAP), before the first user token of a piped
 \ program, a `--load` run and a tty REPL alike, so a capture-window fixture can
 \ be a batch fixture; a pty is needed only for an interactive claim (the entry
 \ words ask TTY?).

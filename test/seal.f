@@ -428,7 +428,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    PWG-OOR-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PWID-OOR ;
 
 \ Publishing into a protected WID dies 84 with `E-SEALED-PACKAGE: <word>` from
-\ C-STORE-DEF-NAME; EM-AOTWIDGATE's same line needs a crafted image, untested.
+\ C-STORE-DEF-NAME.
 : SLV-ASSERT-PROT-PUBLISH ( ptr u8 n -- ) {: line:ptr lineu:n :}   \ child died ENGINE-ERROR:SEAL-PACKAGE with LINE
    SLV-EXITED @ TTRUE
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=

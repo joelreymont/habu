@@ -160,7 +160,7 @@ private
    s" an inner text's reach throws 70 through the outer text" T-LABEL
    XT-NESTED 5 T=  SEEN @ 0 T= ;
 
-74 constant UNCLOSED                    \ habu2.f EM-SOURCE-END-DIE's code: a source ended inside a definition it opened
+74 constant UNCLOSED                    \ interpreter.f RC-UNCLOSED: a source ended inside a definition it opened
 
 \ A text that ends inside a definition it opened is refused as every buffer
 \ is, and the open definition goes with it: the code it emitted is taken back

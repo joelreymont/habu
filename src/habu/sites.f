@@ -30,7 +30,7 @@ SNAP-RELOC:SITE-ROWS-OFF SNAP-RELOC:SITE-N-CELL - constant ROWS-AT
    len REGION off - > if REFUSE then ;
 
 \ ARM64 keeps two bitmaps, one bit per region word. The call map holds
-\ region-to-text calls only (habu2.f EMIT-CEMITBL, src/compiler/native/publish.f);
+\ region-to-text calls only (src/compiler/native/publish.f);
 \ nothing records a region-to-region call. The address map holds the first MOVZ
 \ of every address carrier.
 \ The bit of the region word at `off`: map byte off >> 5, bit (off >> 2) & 7, the

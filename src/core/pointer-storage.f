@@ -7,7 +7,7 @@
 
 \ The clauses are empty on purpose: an empty clause declares the effect only, and
 \ the engine leaves the word the body and DKIND:ADDR stamp `create` gave it
-\ (habu2.f DOES-REC:ELIDE-EMPTY), so a read costs one load (`0 ptr-field` cost a
+\ (src/habu/t0.f EMPTY-CLAUSE), so a read costs one load (`0 ptr-field` cost a
 \ call, a branch and a frame).
 : SCRATCH-VARIABLE ( -- )
    create 1 cells SCRATCH-ALLOT does> ( -- ptr a ) ;

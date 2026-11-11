@@ -12,8 +12,8 @@ using A64ASM
 public
 
 \ ---- the window this assembler emits into ------------------------------------
-\ An image is the engine code, then the kernel digest's four cells, then the
-\ label LIMGEND at the content's end (src/habu/habu2.f ENGINE-EMIT:KERNEL).
+\ An image is the engine code, then the kernel digest's four cells
+\ (src/habu/habu2.f ENGINE-EMIT:KERNEL).
 \ ADR, reaches ADR-HI (1 MiB) from its site; past it FX-REACH dies `icode: adr out of reach`.
 \ This file loads before layout.f and habu2.f, so the terms are spelled out here.
 \ CODE is a demand-paged anonymous mapping taken on first use and returned by

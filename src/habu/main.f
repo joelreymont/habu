@@ -1,6 +1,4 @@
-\ main.f - the engine's command line in Habu, mirroring the assembly's reading
-\ (src/habu/habu2.f FLAGTAB-DATA, LFLAGMATCH, LSRCBADFLAG, C-SOURCE-FILE-PREFIX,
-\ C-SOURCE-FIND-SEP, C-SOURCE-FILE-LOOP, C-SOURCE-APPEND-ARG, LSRCRD, LSHBANG).
+\ main.f - the engine's command line in Habu.
 \ `--load`, `--build` and stdin build one source stream, interpreted once, open,
 \ through SOURCE-ROOT:RUN-ROOT; the program file of `hb prog.f` is a loaded file
 \ the loader reads and runs open (SOURCE-ROOT:RUN-PROGRAM). MAIN reads the
@@ -19,8 +17,8 @@ package COMMAND-LINE
 
 private
 
-64 constant RC-USAGE             \ habu2.f LSRCBADFLAG
-74 constant RC-SOURCE            \ habu2.f LSRCRD, SRC-SFAIL: the source cannot be had
+64 constant RC-USAGE             \ an unknown flag (USAGE)
+74 constant RC-SOURCE            \ the source cannot be had
 $2D constant DASH
 $23 constant HASH
 $21 constant BANG
@@ -39,7 +37,7 @@ ENUM route load build plain ;ENUM
 : ARG ( ptr ptr u8 n -- ptr u8 n )
    ptr-field @ dup ZLEN ;
 
-\ habu2.f LSRCBADFLAG: the argument, then the usage line, which lists the
+\ The unknown argument, then the usage line, which lists the
 \ flags the route test below knows.
 : USAGE ( ptr u8 n -- )
    s" hb: unknown flag: " ERROR-TEXT:TYPE  ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
@@ -49,8 +47,7 @@ ENUM route load build plain ;ENUM
    s"  [file.f]  (source on stdin)" RC-USAGE die ;
 
 \ No file to load: `--load` or `--build` with nothing before the end or a
-\ `--`. The assembly reaches its arena-overflow exit here (SRC-SFAIL) and says
-\ the buffer is full; this keeps the status and names the cause.
+\ `--`.
 : NO-FILES ( -- )
    s" hb: no source files" RC-SOURCE die ;
 
@@ -98,8 +95,8 @@ ENUM route load build plain ;ENUM
 \ file of `--build` is read raw after a `s" <path>" provided` row, `#!` made a
 \ comment; later `--build` files get `script-required` rows (`--build a.f
 \ missing.f` prints a.f's output, then include's "cannot open").
-\ habu2.f C-SOURCE-FILE-LOOP and C-SOURCE-APPEND-ARG: one row per file, a newline
-\ between files, all in one arena before any runs. The bytes stay mapped for the
+\ One row per file, a newline between files, all in one arena before any runs.
+\ The bytes stay mapped for the
 \ process's life; the arena pointer is src/habu/layout.f ARENA-CELL, which the
 \ snapshot writer zeroes.
 : SOURCE-ARENA ( -- ptr ptr u8 )
@@ -118,12 +115,12 @@ variable USED
    a CURSOR u BYTE-COPY
    USED @ u + USED ! ;
 
-\ habu2.f LAPPPROV and LAPPREQ: `s" <path>" <word>`.
+\ One row: `s" <path>" <word>`.
 : ROW ( ptr u8 n ptr u8 n -- ) {: path:ptr u:n word:ptr w:n :}
    S\" s\" " APPEND  path u APPEND  S\" \" " APPEND  word w APPEND  NL 1 APPEND ;
 
 \ One read at the cursor; whether the file has ended. A full arena refuses
-\ before the read that would have found the end, as LSRCRD does.
+\ before the read that would have found the end.
 : STEP ( n -- bool ) {: fd:n :}
    ROOM 0 = if FULL then
    fd CURSOR ROOM read {: got:n :}
@@ -131,7 +128,7 @@ variable USED
    USED @ got + USED !
    got 0 = ;
 
-\ habu2.f LSHBANG: a file that starts `#!` starts a line comment instead.
+\ A file that starts `#!` starts a line comment instead.
 : SHEBANG ( ptr u8 n -- ) {: a:ptr u:n :}
    u 2 < if exit then
    a c@ HASH <> if exit then
@@ -139,7 +136,7 @@ variable USED
    BACKSLASH a c!
    BLANK a 1 + c! ;
 
-\ habu2.f LSRCRD: the whole file at the cursor. The path is NUL-terminated, as
+\ The whole file at the cursor. The path is NUL-terminated, as
 \ every argv string is.
 : FILE ( ptr u8 n -- ) {: path:ptr u:n :}
    path open-rd {: fd:n :}

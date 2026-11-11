@@ -1276,10 +1276,6 @@ SUITE code-window
    test/code-window.f
 ;SUITE
 
-SUITE lower-txn-large
-   test/lower-txn-large.f
-;SUITE
-
 SUITE enum-decl
    test/enum-decl-suite.f
 ;SUITE

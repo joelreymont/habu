@@ -40,7 +40,7 @@ public
    CHECKER-OWNER:VARIANT-TAG ;
 
 \ The pads sit between the payload and the tag, so dropping the top 1 + pads cells
-\ of a matched bundle leaves exactly the payload (habu2.f EM-ADT-MATCH-OF).
+\ of a matched bundle leaves exactly the payload.
 : PADS ( n n -- n )
    CHECKER-OWNER:VARIANT-PADS ;
 

@@ -72,8 +72,7 @@ public
 \ no word: two used publics export the tail and nothing earlier binds it, or a
 \ used public also exports the tail a global binds (E-USING-SHADOW-GLOBAL, or
 \ E-USING-AMBIGUOUS when a second used public exports it too). The engine's
-\ interpreters (habu2.f INTERP-EMIT:FIND-SHADOW, interpreter.f LOOKUP-GO) and
-\ the checker's binder (checker.f LIVE-BIND) refuse the same two shapes.
+\ interpreter (interpreter.f LOOKUP-GO) and the checker's binder (checker.f LIVE-BIND) refuse the same two shapes.
 : USING-REFUSED? ( ptr u8 n -- bool )
    scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
    rec XREF-FOUND? 0= if flags SCOPE-FIND-AMBIGUOUS and 0<> exit then
@@ -323,9 +322,8 @@ private
 public
 
 \ Whether a compiled call may bind an internal record (DNAME-INT) with flag cell
-\ f: an owned one (DNAME-OWNED) always, since the checker decides that call as
-\ tier 0's C-COMPILE-CALL-GUARD does (src/habu/habu2.f); any other only while
-\ the TRUSTED: compilation cell is armed. Asked by REC-CALL and by
+\ f: an owned one (DNAME-OWNED) always, since the checker decides that call;
+\ any other only while the TRUSTED: compilation cell is armed. Asked by REC-CALL and by
 \ src/compiler/native/hir-word.f RESOLVE-SITE.
 : INT-CALL? ( n -- bool )
    DNAME-OWNED and 0<> if true exit then

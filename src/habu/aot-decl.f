@@ -1,13 +1,13 @@
 \ aot-decl.f - the AOT capture format's storage: every buffer the capture fills,
 \ every cap that bounds it, and the code-window budget derived from those caps.
-\ Two processes fill these buffers: the metabuild host (src/habu/aot-capture.f,
-\ baked by habu2.f EMIT-AOT-SEED) and a capture inside bin/hb from the booting
-\ engine's dictionary, since a host-captured name does not exist in bin/hb. One
-\ declaration file keeps both on one format.
+\ Two processes fill these buffers: the metabuild host (src/habu/aot-capture.f)
+\ and a capture inside bin/hb from the booting engine's dictionary, since a
+\ host-captured name does not exist in bin/hb. One declaration file keeps both
+\ on one format.
 
 \ In a booted bin/hb the icode.f require loads the section budget AOT-SECTION-CAP,
 \ which the engine does not keep. AOT-SECTION checks actual encoded lengths
-\ against it before the engine emitter publishes any of this section.
+\ against it.
 require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/address-carrier.f
@@ -43,7 +43,7 @@ DYNAMIC-BUFFER REC-STORAGE n
    0 REC-STORAGE BYTE-VIEW ;
 variable AOT-REC-N
 \ A compact row's wid word on a package row, whose first two words are then its
-\ public and private wids (AOT-PACK:REC+, the linkers' PKG?).
+\ public and private wids (the linkers' PKG?).
 $FFFFFFFF constant PKG-MARK
 \ The packed little-endian u32 every row field of this format is.
 : W32@ ( ptr u8 -- n )
@@ -55,19 +55,11 @@ $FFFFFFFF constant PKG-MARK
 \ record's, and WID-QUAL says the pooled name is qualified and carries its own
 \ scope (a pre-window package's word, whose id is that engine's own number).
 12 constant SITE-ROW
-\ Only the baked image may bind primitive BLs to a canonical text distance.
-\ Bit 32 selects bound sites; bit 33 independently selects packed boot rows.
-\ Reusable artifacts always retain SITE-ROW named rows and untagged counts.
-$100000000 constant SITE-BOUND-TAG
-$200000000 constant SEED-PACK-TAG
-$FFFFFFFF constant SITE-COUNT-MASK
-4 constant BOUND-SITE-ROW
 \ The IMAGE's row is the same three words, but its middle word is a TARGET
 \ rather than a name: the build resolves the callee against the two tables the
 \ image carries - the seeded primitives and the payload's own records - and
 \ stores its index in the dictionary the boot builds, so the seed relocates the
-\ site with a load instead of a lookup (habu2.f EMIT-AOT-SITES binds,
-\ EM-AOT-PATCH-SITES relocates).
+\ site with a load instead of a lookup.
 \ A CALLEE THE IMAGE DOES NOT CARRY KEEPS ITS NAME, and that is not an edge
 \ case: a partial capture - a stripped application, a chain capture, any window
 \ smaller than the whole tree - calls words the ENGINE it boots into has from
@@ -83,7 +75,7 @@ $FFFFFFFF constant SITE-COUNT-MASK
 \ a partial image: a stripped application or a chain capture compiles its own
 \ cold prefix into the dictionary before the payload registers. So the row says
 \ which kind it carries and the seed derives the payload base from the table it
-\ just wrote (NDICT - LAOTNREC), never from a build-time count.
+\ just wrote, never from a build-time count.
 $80000000 constant SITE-NAME-TAG
 $40000000 constant SITE-REC-TAG
 $C0000000 constant SITE-SHADOW-TAG
@@ -96,8 +88,7 @@ $28000 constant AOT-SITE-MAX
 create AOT-SITE-BUF AOT-SITE-MAX SITE-ROW * allot    variable AOT-SITE-N   \ packed rows: blob-off u32 + name-off u32 + callee scope u32
 \ THE ONE DYNAMIC BUFFER THE CAPTURE'S WALK NEVER SEES, exempt by structure and
 \ not by a list. Its cap is DICT-CAP * 256 (16 MiB) against a measured ~51 KiB
-\ need, so it cannot be static. habu2.f EMIT-AOT-SEED reads AOT-NAMES-BUF@ during
-\ the image emit and aot-file.f MERGE reads and writes it, both after
+\ need, so it cannot be static. aot-file.f MERGE reads and writes it after
 \ AOT-CAPTURE:CAPTURE returns: releasing it inside the capture would emit an
 \ empty name pool. A capture tool loads this file before AOT-ARM:WINDOW-OPEN,
 \ so its control record sits BELOW the captured DATA window and registers in
@@ -140,9 +131,9 @@ variable AOT-DATA-D0    variable AOT-DATA-SIZE
 \ engine's history: measured, an engine built from a tree with one package more
 \ than its host wrote 3305 different wid bytes for the same tree. A row therefore
 \ holds `wid - W0 + WID-REL-BASE`, wid 0 holds 0, and the payload's own base cell
-\ (habu2.f AOT-WINDOW:LWIDW0) is that constant. One-based, because the window's
-\ FIRST wordlist is one records name and a zero-based offset would spell it the
-\ way the global wordlist is spelled. The protected-wordlist rows are offsets
+\ is that constant. One-based, because the window's FIRST wordlist is one
+\ records name and a zero-based offset would spell it the way the global
+\ wordlist is spelled. The protected-wordlist rows are offsets
 \ too, and zero-based: that table lists ids and has no marker to collide with.
 1 constant WID-REL-BASE
 variable AOT-WID-W0    variable AOT-WID-SPAN
@@ -211,9 +202,9 @@ variable CONTENT-END                 \ one past the last present cell: where a m
 \ THE GROUPING IS AN IMAGE ENCODING, NOT THE CAPTURE FORMAT. The capture, the
 \ artifact sections and a merge keep the flat bitmap, where appending a window is
 \ a concatenation (src/habu/aot-file.f PLACE-WDATA) and a cell's bit is at a
-\ fixed place; BM-COMPACT groups that bitmap once for a writer, and the emitted
-\ reader (src/habu/habu2.f AOT-WINDOW:APPLY-CELLS) decodes it with one outer
-\ loop over the presence bits around the flat per-byte walk.
+\ fixed place; BM-COMPACT groups that bitmap once for a writer, and the image's
+\ reader decodes it with one outer loop over the presence bits around the flat
+\ per-byte walk.
 \ Image form: [groups G][stored bytes S] and then the src/habu/cell-grid.f
 \ form: presence map, present groups, values.
 BM-CAP GROUP-BYTES / constant GROUP-CAP
@@ -300,7 +291,7 @@ public
 \ anonymous quotation-body entry addresses (J-SEMIQUOT `C-CODE-ADDR QENT`). Rebased by
 \ the code delta (seedCP - captureB0); no name (quotations are anonymous). Stored in
 \ the DATA-site buffer right after the AOT-DSITE-N DATA offsets (one fewer scratch
-\ view), and baked as its own contiguous LAOTCSITES section.
+\ view), and baked as its own contiguous section.
 variable AOT-CSITE-N
 variable AOT-CODE-B0
 \ NAMED code sites (fifth relocation class): blob offsets of movz/movk literals
@@ -483,13 +474,12 @@ public
 
 \ boot-run name list: 0-terminated [len][name-bytes] records of the top-level entry
 \ words (the REPL's INSTALL) the metabuild ran at the tail of the REPL
-\ source. With the source dropped, EM-SEED-AOT LFINDs + calls each after RX/flush so
-\ the seeded engine installs the REPL with no embedded source.
+\ source. With the source dropped, the seed LFINDs and calls each after
+\ RX/flush so the seeded engine installs the REPL with no embedded source.
 \ THIS LIST RUNS ON EVERY BOOT. The seed fires at the end of the engine prefix
-\ stream (EM-COMPILE-EXIT, LEX0) whatever the mode, so a piped program, a
-\ `--load` tool run and a tty REPL all reach their first user token with this
-\ list walked. The entry words self-guard: INSTALL asks TTY? before installing a
-\ REPL.
+\ stream whatever the mode, so a piped program, a `--load` tool run and a tty
+\ REPL all reach their first user token with this list walked. The entry words
+\ self-guard: INSTALL asks TTY? before installing a REPL.
 $400 constant AOT-BOOTRUN-CAP
 create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
@@ -604,94 +594,6 @@ public
 
 ;package
 
-
-\ The shared physical budget is charged for actual encoded lengths; individual
-\ tables retain their own format limits.
-\ Final-image streams are transient build products. Fixed capture rows remain
-\ the reusable authority; sizing and emission consume these same built bytes.
-package AOT-PACK
-using AOT-BUF
-
-DYNAMIC-BUFFER RECS n
-DYNAMIC-BUFFER CALLS n
-DYNAMIC-BUFFER DATA-SITES n
-PTR-VARIABLE DST
-variable CUR variable LIMIT variable PREV
-
-: REFUSE ( -- ) s" aot: invalid packed seed metadata" 74 die ;
-: U32? ( n -- ) dup 0< swap $FFFFFFFF > or if REFUSE then ;
-: BEGIN-STREAM ( ptr u8 n -- ) LIMIT ! DST ! 0 CUR ! ;
-: V+ ( n -- ) {: v:n :}
-   v U32?
-   v AOT-WINDOW:CELL-VLEN LIMIT @ CUR @ - > if REFUSE then
-   v DST @ CUR @ + AOT-WINDOW:CELL-V! CUR +! ;
-: OFF>Q ( n -- n )
-   dup U32? dup 3 and 0<> if REFUSE then 4 / ;
-\ The seed packs a span in four-byte units. An exact span may end on any byte,
-\ so one that is not whole units is refused here rather than truncated.
-: SPAN>Q ( n -- n ) {: raw:n :}
-   raw CODE-SPAN:VALID? 0= if REFUSE then
-   raw CODE-SPAN:BODY 3 and 0<> if REFUSE then
-   raw CODE-SPAN:BODY 4 / 2 * raw CODE-SPAN:FULL? if 1+ then ;
-: META>Q ( n -- n ) {: m:n :}
-   m $FFE000F0 and 0<> if REFUSE then
-   m 15 and m 8 rshift $FF and 4 lshift or
-   m 16 rshift 31 and 12 lshift or ;
-: ZIG ( n -- n ) dup 0< if negate 2 * 1- else 2 * then ;
-: COUNT-CHECK ( n n -- n ) {: count:n max:n :}
-   count 0< count max > or if REFUSE then count ;
-
-: REC+ ( ptr u8 -- ) {: rec:ptr :}
-   rec 16 + W32@ {: wid:n :}
-   wid PKG-MARK = if
-      0 V+ rec W32@ V+ rec 4 + W32@ V+
-   else
-      wid 1+ V+ rec W32@ OFF>Q V+ rec 4 + W32@ SPAN>Q V+
-   then
-   rec 8 + W32@ V+ rec 12 + W32@ META>Q V+ ;
-
-public
-variable REC-LEN variable CALL-LEN variable DATA-LEN
-: REC-BUF ( -- ptr u8 ) 0 RECS BYTE-VIEW ;
-: CALL-BUF ( -- ptr u8 ) 0 CALLS BYTE-VIEW ;
-: DATA-BUF ( -- ptr u8 ) 0 DATA-SITES BYTE-VIEW ;
-
-: BUILD ( bool -- ) {: bound:bool :}
-   AOT-REC-N @ AOT-REC-MAX COUNT-CHECK {: recn:n :}
-   AOT-SITE-N @ AOT-SITE-MAX COUNT-CHECK {: calln:n :}
-   AOT-DSITE-N @ AOT-DSITE-MAX COUNT-CHECK {: datan:n :}
-   0 REC-LEN ! 0 CALL-LEN ! 0 DATA-LEN !
-   recn 0 > if
-      recn 25 * {: recbytes:n :}
-      recbytes CELL 1- + CELL / RECS-RESERVE
-      REC-BUF recbytes BEGIN-STREAM
-      recn 0 ?do
-         AOT-REC-BUF@ AOT-REC-MAX 48 * + i AOT-CREC-ROW * + REC+
-      loop CUR @ REC-LEN !
-   then
-   bound calln 0 > and if
-      calln 5 * {: callbytes:n :}
-      callbytes CELL 1- + CELL / CALLS-RESERVE
-      CALL-BUF callbytes BEGIN-STREAM 0 PREV !
-      calln 0 ?do
-         AOT-SITE-BUF@ i SITE-ROW * + W32@ OFF>Q {: off:n :}
-         off PREV @ - ZIG V+ off PREV !
-      loop CUR @ CALL-LEN !
-   then
-   datan 0 > if
-      datan 5 * {: databytes:n :}
-      databytes CELL 1- + CELL / DATA-SITES-RESERVE
-      DATA-BUF databytes BEGIN-STREAM 0 PREV !
-      datan 0 ?do
-         AOT-DSITE-BUF@ i 4 * + W32@ {: row:n :}
-         row AOT-DSITE-OFF-MASK and OFF>Q {: off:n :}
-         off PREV @ - ZIG 2 * row AOT-DSITE-CELL and 0<> if 1+ then V+
-         off PREV !
-      loop CUR @ DATA-LEN !
-   then ;
-
-;package
-
 package AOT-SIG
 public
 : INSTALL-NAME$ ( -- ptr u8 n ) s" CK-AOT-REG-INSTALL" ;
@@ -726,8 +628,7 @@ public
 \ each byte run to four bytes; packed rows already have that alignment.
 \ THE BITMAP IS CHARGED IN ITS IMAGE FORM, which is the grouped one, so this
 \ rebuilds it from the flat capture first: a merge can still have extended that
-\ bitmap after the capture, and src/habu/habu2.f EMIT-AOT-SEED takes this count
-\ immediately before it emits those same bytes.
+\ bitmap after the capture.
 : BODY-SIZED ( n n n n -- n ) {: recbytes:n sitebytes:n databytes:n frames:n :}
    AOT-WINDOW:BM-BUF@ AOT-WINDOW:BM-LEN @ AOT-WINDOW:BM-COMPACT
    frames cells
@@ -749,11 +650,6 @@ public
    AOT-REC-N @ AOT-CREC-ROW ROW-BYTES AOT-SITE-N @ sitewidth ROW-BYTES
    AOT-DSITE-N @ 4 ROW-BYTES 17 BODY-SIZED ;
 
-: SEED-BODY ( bool -- n ) {: bound:bool :}
-   AOT-PACK:REC-LEN @
-   bound if AOT-PACK:CALL-LEN @ else AOT-SITE-N @ SITE-ROW ROW-BYTES then
-   AOT-PACK:DATA-LEN @ bound if 20 else 19 then BODY-SIZED ;
-
 \ The sidecar is emitted as one byte run: its sections have no internal pad.
 : PAYLOAD-BYTES ( -- n )
    AOT-SIG-N @ AOT-SIG-STR-LEN @ or AOT-REG-LEN @ or 0= if 0 exit then
@@ -762,13 +658,6 @@ public
 
 : BYTES ( bool n -- n ) {: sidecar:bool sitewidth:n :}
    sitewidth BODY-BYTES
-   sidecar if
-      8 +BYTES PAYLOAD-BYTES +BYTES
-      AOT-SIG:INSTALL-NAME$ nip +BYTES
-   then ;
-
-: SEED-BYTES ( bool bool -- n ) {: sidecar:bool bound:bool :}
-   bound SEED-BODY
    sidecar if
       8 +BYTES PAYLOAD-BYTES +BYTES
       AOT-SIG:INSTALL-NAME$ nip +BYTES

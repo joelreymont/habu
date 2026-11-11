@@ -32,10 +32,6 @@ private
 $D503201F constant W-NOP
 public
 $D2800009 constant W-MOVZ0
-\ `;` writes W-DOESDECL over a does>-clause opener's `adr x10, D` when the clause
-\ compiled nothing (habu2.f DOES-REC:ELIDE-EMPTY): a zero clause entry makes
-\ LDOESPATCH publish the declared effect and patch nothing.
-$D280000A constant W-DOESDECL              \ movz x10,#0
 $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
@@ -45,11 +41,7 @@ private
 \ pre-indexed load. Encoded through asm.f so an out-of-field offset fails at
 \ build time.
  9 XDS   8 ENC-STRPOST constant W-PUSH9    \ str x9,[x19],#8
-11 XDS   8 ENC-STRPOST constant W-PUSH11   \ str x11,[x19],#8
-13 XDS   8 ENC-STRPOST constant W-PUSH13   \ str x13,[x19],#8
-16 XDS   8 ENC-STRPOST constant W-PUSH16   \ str x16,[x19],#8
  9 XDS  -8 ENC-LDRPRE  constant W-POP9     \ ldr x9,[x19,#-8]!
-10 XDS  -8 ENC-LDRPRE  constant W-POP10    \ ldr x10,[x19,#-8]!
 16 XDS  -8 ENC-LDRPRE  constant W-POP16    \ ldr x16,[x19,#-8]!
 17 XDS  -8 ENC-LDRPRE  constant W-POP17    \ ldr x17,[x19,#-8]!
 
@@ -124,8 +116,8 @@ variable FP-WID
 
 public
 \ label ids (forward refs)
-variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LHOSTROW  variable LHOSTDIVROW  variable LSRC  variable SRCN
-variable LCEMIT   variable LCEMITBL  variable LCEMITB  variable LCINLINE  variable LTOK   variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
+variable LFIND  variable LNUM  variable LDICT
+variable LCEMIT   variable LCEMITBL      variable LTOK   variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 private
 \ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder (habu2.f)
@@ -133,7 +125,6 @@ private
 \ seeded count plus its position, and the registry can grow after EMIT-DICT.
 variable SEEDED-PRIM-N
 public
-variable LREPLROUTE
 \ The process-exit trampoline (habu2.f EMIT-EXITHOOK, layout.f EXIT-HOOK-CELL),
 \ declared here because BDIE below calls it.
 variable LEXITHOOK
@@ -143,47 +134,6 @@ private
 variable LCALLBACKTHUNK
 variable LCALLBACKADDR
 public
-variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
-variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
-variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
-;package
-\ Label ids of the DATA window's content bake: its non-zero extents as a count,
-\ (offset u32, length u32) rows and their bytes in row order, then the
-\ window-relative offsets of declared address cells, which the seed re-traps
-\ rather than copies. The rest of the package is in habu2.f.
-package AOT-WINDOW
-public
-\ LBMGROUPS and LBMBYTES frame the grouped bitmap LBM carries: the groups the
-\ presence map covers and the bytes the present ones take (src/habu/aot-decl.f
-\ AOT-WINDOW:BM-COMPACT).
-variable LBMGROUPS  variable LBMBYTES  variable LBM  variable LVALS
-variable LNXTOFF  variable LXTOFFS
-\ The window's wordlist base and span, and the window-relative ids it sealed. The
-\ seed rebases every captured wid through the first pair and applies the third
-\ after that rebase, which is the only moment the target's own base is known.
-variable LWIDW0  variable LWIDSPAN  variable LNPWIN  variable LPWIN
-;package
-package ENGINE-EMIT
-public
-variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
-;package
-\ Named code sites: a code-address literal holding a WORD's entry, which the
-\ seed resolves by name instead of rebasing. Count + 8-byte rows. Label ids
-\ only; the rest of the package is in habu2.f.
-package AOT-XTSITE
-public
-variable LCOUNT  variable LROWS
-;package
-package ENGINE-EMIT
-public
-variable LAOTBOOTRUN
-;package
-\ The checker payload the seed publishes into layout.f AOT-CELLS:SIG-POOL-CELL
-\ and SIG-LEN-CELL: its byte length, then the span (signature rows, their
-\ strings, the type registry delta, behind their own table).
-package AOT-SIG
-public
-variable LLEN  variable LSPAN  variable LNAME
 ;package
 package ENGINE-EMIT
 public
@@ -246,7 +196,7 @@ variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOT
 variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
 variable LKWTYPE
-variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
+variable LKWLBRACE variable LKWENDLOC  variable LKWCONST
 variable LKWDO variable LKWLOOP variable LKWI
 variable LKWTOR variable LKWRFROM variable LKWRFET
 variable LKWEXIT variable LKWREC
@@ -254,12 +204,11 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR variable LKWBPACKAGE
 variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
-variable LKWTRUSTED variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWSEALPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
+variable LKWTRUSTED variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWSEALPACKAGE variable LKWDUPDEF
 variable LKWEXPORT variable LCHKEXPORT
-variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED variable LFINDUSED-CORE variable LSCOPEREC
+variable LKWUSING variable LKWSEMIUSING  variable LFINDUSED variable LFINDUSED-CORE variable LSCOPEREC
 ;package
-\ The interpreter's shadow leaf (habu2.f INTERP-EMIT:FIND-SHADOW), which the
-\ outer loop and `'` call on LFIND's hit path.
+\ The interpreter's shadow leaf, which habu2.f C-TICK calls on LFIND's hit path.
 package INTERP-EMIT
 public
 variable LFINDSHADOW
@@ -497,7 +446,6 @@ variable FINALLY-DONE
 variable C2-INVOKE-DONE
 variable C2-INVOKE-CLEAN
 variable THROW-NOH
-variable THROW-NOREC
 variable THROW-NOREC-FB
 variable THROW-NOREC-FB2
 variable THROW-EVAL
@@ -1799,8 +1747,8 @@ public
 \ Give the observer the evaluate frame in x<f> adopted (src/habu/interpreter.f
 \ OBSERVE-ADOPT) back its frame (the one x<f> nests in, which adoption
 \ required), the evaluating word's ticket and its source start, with that
-\ word's run pending again and no callback open (habu2.f EM-EVAL-CLEAN-EXIT,
-\ LEVALREC). Nothing when the frame adopted none. ctx and tmp are scratch.
+\ word's run pending again and no callback open (habu2.f LEVALREC). Nothing
+\ when the frame adopted none. ctx and tmp are scratch.
 : SX-RESTORE, ( n n n -- ) {: f:n ctx:n tmp:n :}
    LBL {: kept:label :}
    ctx f EVAL-FRAME:SX-CTX LDR,  ctx kept CBZ,
@@ -3365,8 +3313,7 @@ public
 \ map over the span, advance CP, flush. A publication is an append: dst must
 \ equal CP or it fails closed, and CP advances in the same primitive, so a throw
 \ never sees CP disagree with the arena. Rewriting a published instruction is
-\ `patch32`. LFLUSH walks [x9, CP) once CP has advanced, the order EM-SEED-AOT
-\ uses.
+\ `patch32`. LFLUSH walks [x9, CP) once CP has advanced.
 : BCODEPUBLISH ( -- )
    A G-POP  B G-POP  C G-POP     \ x9 = len, x10 = dst, x11 = src
    LBL LBL LBL {: loop:label done:label atcp:label :}
@@ -3462,9 +3409,8 @@ public
 \ callmap-set ( addr -- ): record the instruction at addr as a call into the
 \ engine's loaded __text, the only call a snapshot must rewrite (a region-to-
 \ region call keeps its distance). Only the builder knows a branch's kind:
-\ region bytes may hold data that decodes as a branch. habu2.f EMIT-CEMITBL
-\ writes the same map for the other emitter; code-publish starts every span
-\ cleared.
+\ region bytes may hold data that decodes as a branch. Code-publish starts
+\ every span cleared.
 : BCALLMAPSET ( -- )
    LBL LBL {: inreg:label bad:label :}
    A G-POP                                       \ x9 = call-site address
@@ -3518,10 +3464,9 @@ public
    LBL LBL LBL LBL {: checked:label pending:label done:label bad:label :}
    A G-POP  B G-POP  C G-POP     \ x9 = record index, x10 = len, x11 = start
    \ The index names a live row or the one pending row, record[NDICT]; one
-   \ unsigned compare also rejects a negative index. The engine's own definition
-   \ path writes the pending row before publishing its count (habu2.f
-   \ EM-INTERPRET-COLON), and src/compiler/native/publish.f COMMIT-HELD prepares
-   \ a withheld record's two cells this way. NDICT+1 and beyond trap.
+   \ unsigned compare also rejects a negative index.
+   \ src/compiler/native/publish.f COMMIT-HELD prepares a withheld record's two
+   \ cells this way. NDICT+1 and beyond trap.
    9 NDICT CMP,  C-HI bad BCOND,                 \ negative, or past the pending record
    14 CODE-SPAN:RAW-MAX LIT64,  10 14 CMP,  C-HI bad BCOND,
    14 10 3 ANDI,  14 bad CBNZ,                  \ encoded lengths remain instruction aligned
@@ -3678,8 +3623,7 @@ public
    THROW-EVAL LABEL@ LBL,
    10 DATA EVALREC-CELL LDR,  10 BR,                   \ x15 = code → LEVALREC (habu2.f)
    THROW-NOH LABEL@ LBL,
-   LBL THROW-NOREC !  LBL THROW-NOREC-FB !  LBL THROW-NOREC-FB2 !
-   THROW-NOREC LABEL@ LBL,
+     LBL THROW-NOREC-FB !  LBL THROW-NOREC-FB2 !
    10 DATA UNCGH-CELL LDR,  10 THROW-NOREC-FB LABEL@ CBZ, \ reporter installed? branch with x9 = code
    10 BR,                                                 \ LUNCAUGHT (habu2.f): rc-map + report out-of-range codes
    THROW-NOREC-FB LABEL@ LBL,                             \ pre-install boot fallback: silent but never masked
@@ -4042,7 +3986,6 @@ private
    30 SP SX-LR LDR,  SP SP SOURCE-EXEC-FRAME-BYTES ADDI,
    9 G-PUSH
    done LBL, ;
-
 
 : BSOURCEEXECLIVE ( -- )
    LBL LBL {: absent:label done:label :}
@@ -4468,7 +4411,7 @@ package ENGINE-EMIT
 
 \ Capture the seal-time dictionary-truncation watermark. SEAL-CAPTURE tokens
 \ call it (the xref.f baseline and the cold prefix's token at the engine-prefix
-\ end, habu2.f EMIT-SEAL-CAPTURE-TOKEN), after engine definitions and before
+\ end), after engine definitions and before
 \ any user token. The friend latch is already sealed, so a raw ! would trap;
 \ this direct STR from NDICT (x27) is the sanctioned bypass, as in
 \ BSETCUR/BSETCHECK. NDICT only grows once the engine is loaded, so a rerun
@@ -4619,8 +4562,9 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
 \ min-in-mark ( rec-idx min -- ): OR the certified minimum input arity into
 \ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The publisher
 \ (src/compiler/native/publish.f MIN-IN-REC) and the Habu loop's definers set it
-\ on a certified word, and EM-INTERPRET-FIND refuses a bare call with fewer
-\ interpret-stack cells. Stored through the alias as in BINTMARK; monotonic.
+\ on a certified word, and interpreter.f INTERPRETER:GATE refuses a call with
+\ fewer interpret-stack cells. Stored through the alias as in BINTMARK;
+\ monotonic.
 \ The registry stamps this prim's own record DNAME-INT, so user source cannot
 \ re-drive it.
 : BMININMARK ( -- )
@@ -4977,12 +4921,10 @@ package ENGINE-EMIT
 ;package
 
 \ num-parse ( ptr u8 n -- n bool bool ): the engine's own number reader, the
-\ LNUM routine EM-INTERPRET-NUMBER and EM-COMPILE-LITERAL call, entered with the
-\ same registers, so its answer is the cell they push or compile. x11 is the
-\ value (a double's bits for a float), x2 whether it read a float, x12 whether
-\ it read a number. A refused spelling answers zero (the two ANDs): a syntax
-\ miss stops at the first unreadable byte (`12a` leaves 12) and an over-bound
-\ literal ends with x12 false.
+\ LNUM routine. x11 is the value (a double's bits for a float), x2 whether it
+\ read a float, x12 whether it read a number. A refused spelling answers zero
+\ (the two ANDs): a syntax miss stops at the first unreadable byte (`12a`
+\ leaves 12) and an over-bound literal ends with x12 false.
 package ENGINE-EMIT
 public
 
@@ -5169,7 +5111,6 @@ package ENGINE-EMIT
 ;package
 
 package ENGINE-EMIT
-
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
@@ -6057,8 +5998,6 @@ private
 \ (the sealed-WID gate reads [40]): an xt does not name a record, because
 \ `EXPORT` publishes one body under several records and wids. The linear scan
 \ takes the LAST match, so it parks it in x17 and FIND-FOUND moves it to x5.
-\ tools/lint/clobber-lint-core.f lists Laotwidgate's preserved set as x11,
-\ without x5: a false red, never a false green.
 : EMIT-FIND ( -- )
    LBL LBL LBL LBL LBL
    {: open-pub:label enclosing-pri:label enclosing-pub:label global:label primitives:label :}
@@ -6378,8 +6317,6 @@ create NAME-PADDING 0 , 0 ,
          -1 >LABEL over NAME-LABEL!
       THEN
       1 + REPEAT drop
-   LHOSTROW LABEL@ LBL,  ENGINE-PRIMS:SCALAR-ROW@ DCQ,
-   LHOSTDIVROW LABEL@ LBL,  ENGINE-PRIMS:DIVISION-ROW@ DCQ,
    LNCOUNT LABEL@ LBL,  ENGINE-PRIMS:COUNT dup SEEDED-PRIM-N !  DCQ,
    LDICT LABEL@ LBL,
    0 BEGIN dup ENGINE-PRIMS:COUNT < WHILE

@@ -117,7 +117,7 @@ variable TREE-U
 : OUT-HAS? ( n ptr u8 n -- bool ) {: outu:n want:ptr wantu :}
    OUT outu want wantu CONTAINS? ;
 
-\ A normal top-level exit (the engine's LRBYE) reaches the vector.
+\ A normal top-level exit reaches the vector.
 : CASE-NORMAL ( -- )
    s" normal.f" s" normal-tree" CASE-PATHS
    S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+ ;\n" TEXT+

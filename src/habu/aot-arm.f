@@ -12,8 +12,8 @@ package AOT-ARM
 public
 
 \ Write the engine's window code base. Tier 0 folds a created word's address
-\ into its user only when the word's entry is at or above B0 (habu2.f
-\ EM-COMPILE-CALL), so a window word calls a pre-window created word, as the
+\ into its user only when the word's entry is at or above B0 (t0.f
+\ WORD-CALL), so a window word calls a pre-window created word, as the
 \ capture requires. `0` folds every one; WINDOW-CLOSE writes it, so no
 \ window's base outlives the window.
 : OPEN ( n -- ) {: b0:n :}

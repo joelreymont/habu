@@ -124,7 +124,7 @@ using SYSCALL
    EM-MMAP-DATA-REGION  DATA 0 0 ADDI,      \ habu2.f
    text0 image image-end COPY-DATA,
    linked text0 list list-end SLIDE,
-   RUNTIME-CELLS,                           \ as habu2.f EM-DATA-INIT writes them
+   RUNTIME-CELLS,
    EM-TEXT-SIZE ;                           \ habu2.f
 
 \ The return and loop stacks, then the crash handler.
@@ -133,9 +133,8 @@ using SYSCALL
    EM-FRAME-STACKS                          \ habu2.f
    text0 TEXT-BASE,  11 LCRASHH LABEL@ TEXT-AT,  G-INSTALL-CRASH-X11 ;   \ crash.f
 
-\ SIGTRAP repointed from the crash handler at the breakpoint handler, as
-\ habu2.f G-INSTALL-TRAP does; an engine's only (a stripped program has no
-\ breakpoints).
+\ SIGTRAP repointed from the crash handler at the breakpoint handler; an
+\ engine's only (a stripped program has no breakpoints).
 : TRAP, ( label -- )
    {: text0:label :}
    text0 TEXT-BASE,  11 LTRAPH LABEL@ TEXT-AT,

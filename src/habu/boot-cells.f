@@ -21,7 +21,6 @@ $2D78 constant TYPES-WL-CELL
 \ 0, as every arm64 boot writes it, unless a build is writing an image; then the
 \ host address of the image's DATA, whose header holds its address-cell table.
 $6C8 constant IMAGE-BASE-CELL
-\ The user program's end while the engine prefix runs, 0 once EM-COMPILE-EXIT
-\ installs it: two streams give the AOT seed a point before any user token.
+\ A claimed cell nothing reads or writes (data-claims.f BOOT-USER-END).
 $3CB0 constant USER-END
 ;package

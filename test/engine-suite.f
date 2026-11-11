@@ -521,7 +521,7 @@ s" engine resolution: the global row survived the refusals" T-LABEL
 T-LABEL-CAP 256 T=
 -1 DIAG-QUIET +!
 
-\ mid-body ( ... ) comments are comments (EM-COMMENT parity), never a second
+\ mid-body ( ... ) comments are comments, never a second
 \ signature: they must not clobber declared-sig state or flip the verdict.
 s" CBAD-SIG-TRAIL ( n -- n ) dup dup ( n -- n )" T-CHECK-REJECTS
 s" CBAD-SIG-MID ( n -- n ) dup ( n -- n ) dup" T-CHECK-REJECTS
@@ -529,7 +529,7 @@ s" COK-SIG-MID-COMMENT ( n -- n ) dup ( scratch note ) drop" T-CHECK-PASSES
 s" sigless-mid-comment certifies" T-LABEL
 s" COK-SIGLESS-MID-COMMENT dup ( n -- n ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 \ escaped-string payloads: the checker accepts exactly the engine's escape set
-\ (C-ESC-DECODE-BASIC) and rejects what the load path rejects.
+\ (src/habu/escape.f LETTER) and rejects what the load path rejects.
 s\" COK-ESC-GOOD ( -- ptr u8 n ) s\\\" a\\n b\\\\ c\\\" d\\x41 e\\XaF f\\q g\\z\" " T-CHECK-PASSES
 s\" CBAD-ESC-LETTER ( -- ptr u8 n ) s\\\" bad\\g\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX ( -- ptr u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
@@ -1576,12 +1576,8 @@ TRP 105 T=
    + + + + + + + + + + + ;
 TLR 78 T=
 
-\ JIT constant-push / binary-prep sharing: the
-\ shared LVPUSHT body (LVPUSHC falls in, LVPUSHF branches in) and the LVBINIPREP
-\ probe that tail-branches into the single LVBINPREP base must reproduce every
-\ mode. Fold path (both operands constant), imm12 mode 3 (live deep + small const
-\ top), the imm12 in-range boundary, and out-of-range / negative tops where the
-\ probe delegates to the shared base:
+\ Binary operators on constants: both operands constant, a live operand under a
+\ constant inside, at and past the imm12 range, and a negative constant top.
 : TJF ( -- n ) 2 3 +  10 4 -  +  6 7 *  + ;   \ fold: 5 + 6 + 42
 TJF 53 T=
 : TJB ( -- n ) 12 10 and  12 10 or  12 10 xor  +  + ;   \ fold: 8 + 14 + 6

@@ -333,7 +333,7 @@ public
 : INTERN-SOURCE ( ptr u8 n -- n n )
    STRING -1 ;
 
-\ Tier 0 interns through this cell (src/habu/habu2.f LNSTRINTERN); xt! declares it.
+\ habu2.f's string-literal emitters read this cell; xt! declares it.
 : INSTALL ( -- )
    ['] STRING data-base NSTR-ABI:INTERN-CELL + xt! ;
 

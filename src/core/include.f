@@ -59,7 +59,7 @@ variable REQUIRE-SAVE-BASE
 
 \ Rows recorded while the boot registry is open describe what the ENGINE
 \ carries; every other row, what a process loaded. Only the boot prefix opens
-\ it, with a token of its own (habu2.f EMIT-REQUIRE-BOOT-OPEN-TOKEN) between the
+\ it, with a token of its own (tools/hb-build-core.f END-WRITE) between the
 \ loader's text and the first row. Loading this file is not the signal: a build
 \ re-loads it into a booted engine, which would then record every later require
 \ portably and stop recognising its own canonical rows.
@@ -264,8 +264,8 @@ private
 
 
 \ The program file `hb prog.f` runs: argv[1], which the launcher leaves in
-\ PROGRAM-FILE-CELL only on that route (src/habu/habu2.f SRC-FPLAIN,
-\ src/habu/main.f RUN). Its canonical path, against the working directory no
+\ PROGRAM-FILE-CELL only on that route
+\ (src/habu/main.f RUN). Its canonical path, against the working directory no
 \ Habu word changes, is derived on first need, as ENGINE$ is. Its directory is
 \ the top-level root (CURRENT$) and PROGRAM? counts it as loaded: RUN-PROGRAM
 \ gives it a frame but no registry row names it, since a row appended on first
@@ -1288,9 +1288,8 @@ public
    path pathu CONFINE known ;
 
 \ Every boot row is portable: each prefix that records one opens the registry
-\ first, with REQUIRE-BOOT-OPEN as a source token (src/habu/habu2.f
-\ EMIT-REQUIRE-BOOT-OPEN-TOKEN) or literally (tools/hb-build-core.f END-WRITE),
-\ so BOOT-CANDIDATE answers for every engine kind. A canonical scan beside it
+\ first, with REQUIRE-BOOT-OPEN written literally (tools/hb-build-core.f
+\ END-WRITE), so BOOT-CANDIDATE answers for every engine kind. A canonical scan beside it
 \ would answer for no engine and hide a prefix that does not open the registry. The selection counts every frozen row whatever
 \ REQUIRE-BASE is, so a frozen row is the engine's even where its file is
 \ missing. RESOLVED-ROOT$ stays as the caller's own RESOLVE left it.
@@ -1844,7 +1843,7 @@ public
 \ A source whose first two bytes are `#!` names its interpreter on that line,
 \ and the engine reads the line as a comment: the two bytes become `\ `, so
 \ every line and column stays the file's own. The program stream an engine
-\ runs gets the same rewrite (src/habu/habu2.f EMIT-SHEBANG-COMMENT).
+\ runs gets the same rewrite (src/habu/main.f SHEBANG).
 : SHEBANG-COMMENT ( ptr u8 n -- ) {: a:ptr u:n :}
    u 2 < if exit then
    a c@ $23 <> if exit then

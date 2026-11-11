@@ -1,7 +1,7 @@
 \ rt.f - X64RT, x86-64 runtime emitters appending to X64CODE's ASM-SINK: twins
 \ of src/habu/rt.f G-PUSH, G-POP, G-OUT, G-PRINT9, G-PRINTU9, G-EMITC and
-\ STACK-GUARD's CHECK-CURSOR and EXIT-BOUNDS, habu1.f SYS-PUSH and jit.f
-\ C-EMIT-STENCIL. Moves take x86-64 register numbers, as the seam files
+\ STACK-GUARD's CHECK-CURSOR and EXIT-BOUNDS, and habu1.f SYS-PUSH. Moves
+\ take x86-64 register numbers, as the seam files
 \ proc-watch.f and proc-control.f name them. The seam loads globally here, so a
 \ file loading it into a private wordlist (test/x86-64-peer-harness.f) follows.
 

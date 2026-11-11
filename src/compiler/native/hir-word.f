@@ -605,7 +605,7 @@ private
 
 \ A row stands for the seeded primitive of its spelling, so it claims a token
 \ only when the engine's lookup binds that primitive's own record (NDICT
-\ SPELL-PRIM?, habu2.f C-OP-ROW-GATE). A package word of that spelling, or a
+\ SPELL-PRIM?). A package word of that spelling, or a
 \ global one defined after `undefine`, is another record with its own checked
 \ effect: after `undefine dup : dup ( n -- n ) 100 + ;` scope and the global
 \ wordlist agree on the new `dup`, so asking the global wordlist is wrong.

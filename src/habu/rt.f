@@ -163,8 +163,8 @@ public
 \ The engine's one output funnel (src/lib/genio-core.f).
 \ Every byte of ORDINARY program text the engine writes leaves through G-OUT:
 \ `.` `u.` `f.` (G-PRINT9/G-PRINTU9, habu1.f BFDOT), `emit` `cr` `space`
-\ (G-EMITC), `type` (habu1.f BTYPE), interpreted `."` and `.\"` (habu2.f
-\ C-IDOTQ/C-EIDOTQ) and the REPL's ok prompt (habu2.f EM-COMPILE-EXIT).
+\ (G-EMITC), `type` (habu1.f BTYPE), interpreted `."` and `.\"` and the
+\ REPL's ok prompt.
 \ DIAGNOSTICS DO NOT: crash.f, `die`, the E-* reports and the REPL's error line
 \ write to fd 2 directly, so a failing engine reports on the descriptor it
 \ started with however a program routed its output.

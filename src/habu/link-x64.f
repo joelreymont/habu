@@ -1,8 +1,7 @@
 \ link-x64.f - the captured dictionary laid out for an x86-64 image, package
-\ X64LINK: the write-time twin of the ARM64 seed's boot passes (habu2.f
-\ EM-SEED-DICT, EM-AOT-REGISTER-RECS, EMIT-AOT-PROT-RESTORE). An x86-64 image
-\ maps code and DATA at fixed addresses (docs/xcomp.md "Fixed segments"), so
-\ what the seed computes at boot is computed here once. Every refusal is by
+\ X64LINK. An x86-64 image maps code and DATA at fixed addresses
+\ (docs/xcomp.md "Fixed segments"), so the layout is computed here once, at
+\ write time. Every refusal is by
 \ name and dies before a byte leaves: LAYOUT writes only this file's buffers.
 require src/lib/le.f
 require src/arch/x86-64/icode.f
@@ -205,9 +204,8 @@ public
    r PLACE-STORAGE @  n r SH-AT -  + ;
 
 \ Where the window's DATA lands, as a DATA offset: the heap floor moved up to the
-\ capture base's own 8-residue, as habu2.f EM-AOT-RELOC-DATA moves the seed's DP,
-\ so every captured cell keeps its alignment. The window spans AOT-DATA-SIZE
-\ bytes from it.
+\ capture base's own 8-residue, so every captured cell keeps its alignment.
+\ The window spans AOT-DATA-SIZE bytes from it.
 : CELL-BASE ( -- n )
    CELL-CAP @ ADDRESS-CELLS:BOOT-CAP > if INDEX-END
       else ADDRESS-CELLS:BOOT-OFF then ;

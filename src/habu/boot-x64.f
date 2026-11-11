@@ -1,7 +1,8 @@
-\ boot-x64.f - the x86-64 process entry, package X64BOOT. START, emits `_start`, the twin of
-\ src/habu/habu2.f EM-STARTUP up to its first run-time state, and falls through into whatever the
-\ stream emits next. It is straight-line code that never calls or pushes: rsp stays at argc until
-\ the DATA cells take the argument vector, and each install gives back the rsp it used.
+\ boot-x64.f - the x86-64 process entry, package X64BOOT. START, emits
+\ `_start` up to its first run-time state, and falls through into whatever the
+\ stream emits next. It is straight-line code that never calls or pushes: rsp
+\ stays at argc until the DATA cells take the argument vector, and each install
+\ gives back the rsp it used.
 \ The signal and crash words are the x86-64 side of src/habu/crash.f. A file that loads the x86-64
 \ seam into a private wordlist first (test/x86-64-peer-harness.f) must load after this one.
 require src/lib/byte-buffer.f
@@ -96,15 +97,14 @@ variable SNAP-END
    dst RDI ASM-SINK ENC-MOV-RR ;
 
 \ r = the runtime address of the stream's byte 0, the text content base: rip
-\ after the lea is that base plus the lea's end offset. habu2.f EM-STARTUP takes
-\ the same base into XREG-RBASE with an ADR.
+\ after the lea is that base plus the lea's end offset.
 : TEXT-BASE, ( r64 -- ) {: r:r64 :}
    r 0 MEM-RIP ASM-SINK ENC-LEA
    r X64CODE:ASM-LEN >IMM32 ASM-SINK ENC-SUB-RI32 ;
 
 \ r13 = the code region, REGION bytes at the image base plus REGION-OFF, where
 \ the writer's PT_LOAD places it; r15 = its code area past the records;
-\ r14 = no records; rbx = 0. The twin of EM-MMAP-CODE-REGION and EM-SEED-DICT.
+\ r14 = no records; rbx = 0. The twin of EM-MMAP-CODE-REGION.
 : CODE-REGION, ( -- )
    RDI RBASE-REG REGION-OFF X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
    REGION MAP-ANON-PRIVATE-FIXED REGION-BAD @ >LABEL MAP-FIXED,
@@ -120,7 +120,7 @@ variable SNAP-END
    X64LAYOUT:DATA-SIZE MAP-DATA-RESERVE DATA-BAD @ >LABEL MAP-FIXED, ;
 
 \ Copy the carrier's bytes, as many as program header 5's filesz, to the start
-\ of the DATA rdi holds; rax stays DATA. The twin of EM-SNAPSHOT-COPY.
+\ of the DATA rdi holds; rax stays DATA.
 : CARRIER-COPY, ( -- )
    RCX RBASE-REG CARRIER-FILESZ-AT X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
    RSI RBASE-REG CARRIER-FROM-TEXT MEM-OFF ASM-SINK ENC-LEA
@@ -265,8 +265,8 @@ variable SNAP-END
    RAX SCALAR-ROW-LABEL @ >LABEL MOVABS,
    RAX RAX MEM-AT ASM-SINK ENC-MOV-RM
    RAX NATIVE-HOST-CELLS:SCALAR-PRIM CELL!
-   \ Every process starts at tier 0 with no definition or build scope open, as
-   \ habu2.f EM-STARTUP-RUNTIME-STATE starts arm64's, whatever DATA carried.
+   \ Every process starts at tier 0 with no definition or build scope open,
+   \ whatever DATA carried.
    RAX ZERO-REG,
    RAX NCOMP-DISPATCH:TIER-CELL CELL!
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!
@@ -348,10 +348,9 @@ variable SNAP-END
    ASM-SINK ENC-RET ;
 
 \ Publish the stub bound at the label and the address of the word it reads,
-\ as habu2.f EM-STARTUP-RUNTIME-STATE does, so a program installs and arms the
-\ stub without spelling either (layout.f package SIGNAL-ABI). The word itself
-\ needs no clear: DATA is a fresh mapping here, where the ARM64 boot clears it
-\ after a restore that carried DATA bytes.
+\ so a program installs and arms the stub without spelling either (layout.f
+\ package SIGNAL-ABI). The word itself needs no clear: DATA is a fresh mapping
+\ here.
 : PUBLISH-STUB, ( label -- ) {: stub:label :}
    RAX stub MOVABS,  RAX SIGNAL-ABI:STUB-CELL CELL!
    RAX FD-WORD-VA IMM,  RAX SIGNAL-ABI:FD-PTR-CELL CELL! ;

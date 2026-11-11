@@ -11170,7 +11170,7 @@ CUR-DEFAULT
 \ of the four rows and inside quotation sub-effects (a quotation value can be
 \ `execute`d at top level, scope and region binders included), must never run
 \ at the untyped interpret level: its dict record is marked DNAME-WIDE so
-\ EM-INTERPRET-FIND and interpret `'` fail closed before a bundle can land on or
+\ interpreter.f XT-GATE refuses it, run or ticked, before a bundle can land on or
 \ be expected from the interpret stack. A `ptr` to a layout is one cell and
 \ stays unmarked; pointers are followed only to reach nested quotations.
 : ROW-WIDE? ( n -- bool ) {: s:n :}
@@ -11197,10 +11197,9 @@ CUR-DEFAULT
 \ the clause signature, certified against the clause body by CHECK-DOES!, as an
 \ anonymous effect record's offset+1. A latch, because CHECK-DOES! sees the
 \ clause but not the definer's name, and the definer's body check sees the name
-\ but not the clause. The retained engine checks the clause first, then the
-\ definer's body (habu2.f EM-COMPILE-PUBLISH-TRUSTED); the native compiler checks
-\ the parent first, for source-order tape, and takes state 1 at publication
-\ through CHECKER-NATIVE-DOES-FINISH.
+\ but not the clause. The native compiler checks the parent first, for
+\ source-order tape, and takes state 1 at publication through
+\ CHECKER-NATIVE-DOES-FINISH.
 \ DOESPEND fails closed, because verify-source VERIFY-DOES runs the two in the
 \ other order, and a latch left armed there would teach the next record that an
 \ ordinary word creates something:
@@ -11263,9 +11262,10 @@ CHECKER-REG:}SCRATCH
 \ RECW: the wide? verdict of the last effect record, stored by value at the one
 \ record choke point (E-ADD-EFFECT), so a candidate's or rolled-back check's
 \ value is overwritten before any publish tail reads it; CHECK-RESET zeroes it
-\ for hook paths that certify without recording. The engine publish tails call
-\ REC-WIDE-PUBLISH after ndict++ (habu2.f EM-COMPILE-PUBLISH-TRUSTED/-HOOKED,
-\ C-DEFER), where `wide-mark`'s newest target (ndict-1) is the record just made.
+\ for hook paths that certify without recording. The publish tails call
+\ REC-WIDE-PUBLISH after ndict++ (habu2.f EM-REC-WIDE-PUBLISH, which C-DEFER
+\ calls; src/compiler/native/checker-owner.f WIDE-PUBLISH), where
+\ `wide-mark`'s newest target (ndict-1) is the record just made.
 CHECKER-REG:SCRATCH{
 variable RECW   0 RECW !
 CHECKER-REG:}SCRATCH
@@ -11278,7 +11278,7 @@ CHECKER-REG:}SCRATCH
 \ input arity, with RECW's discipline: stored by value in E-ADD-EFFECT, zeroed
 \ on deleted or bad rows and by CHECK-RESET, read after ndict++ by habu2.f
 \ EM-REC-WIDE-PUBLISH through REC-MIN-IN@ into DNAME-MIN-IN bits 52-59, so
-\ EM-INTERPRET-FIND fails closed on an underdepth bare call before the body runs.
+\ interpreter.f GATE refuses an underdepth bare call before the body runs.
 CHECKER-REG:SCRATCH{
 variable RECMI   0 RECMI !
 CHECKER-REG:}SCRATCH
@@ -14412,8 +14412,7 @@ variable BIND-SEEDED
 \ (WRITE-WINDOW) the compiler asks only about the definition and the words its
 \ body names; a body name binds what the walk bound, so its use already
 \ withheld the definition. The definition's own name binds its own recovery
-\ row, which opens no pending window (CK-CLOSE!): the row a hookless compile
-\ publishes a refused body under (habu2.f EM-COMPILE-PUBLISH-HOOKED).
+\ row, which opens no pending window (CK-CLOSE!).
 \ A top-level step runs what it binds, and EXPORT publishes it, at once. So
 \ only under MULTI-ERR? inside a body's walk (BODY-WALK) or the compile window
 \ does a recovery row in a scope the engine searches ahead of the lookup's
@@ -15571,10 +15570,7 @@ CALL-FREEZE-INSTALL
 \ declared pads (TFL-VPADS, the expression TFC-CON-XPAD-RECORD subtracts); the
 \ engine's pass 2 and the chain both add the difference at the same site.
 \
-\ These are not lowering-certificate rows: pass 2 walks width facts with one
-\ in-order cursor (src/habu/habu2.f LOWER-TXN-LOOKUP:EMIT-WIDTH-LOOKUP), and a
-\ row at the family token would sit unconsumed before the arms' extra-pad rows
-\ and make the next arm query drift, which ends the build.
+\ These are width facts, not lowering-certificate rows.
 \
 \ Layout facts share the growing CWIN owner with call facts under their own
 \ kind, so the definition reset, retry cursor and capture cleanup cover both. A
@@ -18291,7 +18287,7 @@ variable CURSYM
 \ word it is, the source's own word when the source is an export too, so one
 \ hop from any export reaches the word (CHECKER-SYM-SOURCE). The export is
 \ another record, which both compilers call instead of lowering it as the
-\ engine word (habu2.f C-OP-ROW-GATE and NDICT SPELL-PRIM? claim only the
+\ engine word (src/compiler/native/dict.f SPELL-PRIM? claims only the
 \ seeded record), so a rule that types the engine word must not judge it.
 : EXPORT-META-COPY ( ptr u8 n n -- ) {: a:ptr u:n src:n :}
    src DFER-FIND-SYM IF a u EXPORT-TAIL$ DFER-ADD THEN
@@ -19454,7 +19450,7 @@ defer NAMED-OPERAND-XT ( -- )
 \ checked text. TOK-REC retains the bound record for the compiler owner;
 \ TOK-LIVE-REC retains the live lookup result for refusal selection.
 \ A literal is claimed before any scope is asked, as the engine claims it
-\ (LITERAL-TOK? below, habu2.f EM-COMPILE-LITERAL), so its shape is never
+\ (LITERAL-TOK? below), so its shape is never
 \ resolved as a name. A refusal the lookup raises names the token as DO-TOK1
 \ read it, which locates in the file; `a u` may be the fold the body walk keeps
 \ in scratch.
@@ -19798,9 +19794,7 @@ variable CHECKER-PREFIX-ROLLBACK
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
    a u WF-XPORT-K  WF-ROW-SCAN ;
 
-\ --- emitter-facing width-fact queries. The engine's pass-2
-\ recompiler (habu2.f EM-COMPILE-P2WIDE) calls these through the dictionary
-\ right after the check hook certifies a definition; the facts are that
+\ --- emitter-facing width-fact queries. The facts are the last checked
 \ definition's per-CHECK scratch, still live until the next CHECK.
 : WF-WIDE? ( -- bool )
    0 BEGIN dup WF-N @ < WHILE
@@ -20240,8 +20234,8 @@ create LOCSEQIX LOC-CAP cells allot
    s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
    s cells LOC-HW + @ ;
 : LOCW-HW-N@ ( -- n ) LOCSEQ @ ;
-\ Pass-2 live-width table: the width-aware recompiler (habu2.f EM-P2-CARVE /
-\ EM-P2-LOCREF) replays the certified body's {: groups in bind order — each
+\ Pass-2 live-width table: the width-aware recompiler (habu2.f EM-P2-CARVE-W /
+\ EM-P2-LIVE-W) replays the certified body's {: groups in bind order — each
 \ carve consumes the next bind seq (P2-CARVE-W) and records that local's width
 \ under its ENGINE live frame index, so a frame slot reused by a sibling branch
 \ reads its own width; checker #LOC joins never skew the frame math.
@@ -20250,7 +20244,7 @@ variable P2SEQ
 : P2LW-IX-GUARD ( n -- )           \ die 76 outside the engine locals frame
    dup 0 <  over LOC-CAP >=  or IF s" checker: bad pass-2 local index" 76 die THEN
    drop ;
-: P2-LOCSEQ-RESET ( -- )           \ engine EM-P2-TRIGGER: the pass-2 re-run starts at bind seq 0
+: P2-LOCSEQ-RESET ( -- )           \ restart the pass-2 bind sequence at 0; nothing calls it
    0 P2SEQ ! ;
 : P2-CARVE-W ( n -- n ) {: i:n :}  \ next bind's width, recorded as live local i's width
    i P2LW-IX-GUARD
@@ -20850,7 +20844,7 @@ SCOPE-INTRO-FENCE-INSTALL
 : QRD-MARK ( n -- ) {: owner:n :}
    #CFC @ owner 1 + ?do owner 2 + i QRD-RAISE loop ;
 
-\ A token binds a local by raw spelling, byte for byte, as habu2.f EMIT-LOC-FIND. A read marks the
+\ A token binds a local by raw spelling, byte for byte. A read marks the
 \ quotations open above its owner (CF.QRD); an unjudged scan files none (TEST-UNCERTIFIED-MALFORMED).
 : LOC-REF?
    {: a u :}
@@ -22138,8 +22132,8 @@ variable PPAY-ON      \ did the token just judged compile PKG-LIT-NAME?
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! 0 PARSE-COMPLETE ! THEN ;
 
-\ escape validation mirrors the engine decoder (C-ESC-DECODE-BASIC/C-ESC-HEX-X9,
-\ habu2.f): \" \q \\ \a \b \e \l \f \n \r \t \v \z and \xHH / \XHH only.
+\ escape validation mirrors the engine decoder (src/habu/escape.f
+\ ESCAPE:LETTER/HEX-STEP): \" \q \\ \a \b \e \l \f \n \r \t \v \z and \xHH / \XHH only.
 : ESC-HEX-DIGIT? ( n -- bool ) {: c:n :}
    c $30 >= c $39 <= and IF RES-TRUE EXIT THEN
    c $61 >= c $66 <= and IF RES-TRUE EXIT THEN
@@ -22147,7 +22141,7 @@ variable PPAY-ON      \ did the token just judged compile PKG-LIT-NAME?
 
 \ The one escape table: the validator and the decoder both read it, so a
 \ spelling the checker accepts and a byte it produces cannot disagree. The
-\ bytes are C-ESC-DECODE-BASIC's (habu2.f), value for value; \l and \n are both
+\ bytes are src/habu/escape.f ESCAPE:LETTER's, value for value; \l and \n are both
 \ line feed there.
 : ESC-BYTE? ( n -- n bool ) {: c:n :}
    c $22 = IF $22 RES-TRUE EXIT THEN
@@ -22558,8 +22552,7 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
    SGBAD-A @ SGBAD-U @ + a u + > IF RES-FALSE EXIT THEN
    RES-TRUE ;
 
-\ Whether that token lies in the checked text, as tier 1's clause copy does
-\ (habu2.f C-CAPTURE-CREATED-SIG), or in a signature text SGA SGU the source
+\ Whether that token lies in the checked text or in a signature text SGA SGU the source
 \ map places; not J-DOES's interned copy (C-PLACE-CREATED-SIG).
 : SGBAD-IN-SOURCE? ( -- bool )
    TBASE @ TBLEN @ SGBAD-IN? IF RES-TRUE EXIT THEN
@@ -22632,9 +22625,8 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
 \ `search-wl` at its own tail, present one statement later), so a definer-facing
 \ registration must never consult the dictionary.
 \ A trusted definer's clause is taken here by stepping the latch the clause
-\ armed: `TRUSTED: D ( … ) create … does> ( … ) ;` runs CHECK-DOES! at its `;`
-\ (habu2.f EM-COMPILE-PUBLISH-TRUSTED calls it ahead of the trusted branch), but
-\ a trusted definition has no body check to step the latch past state 1. This
+\ armed: `TRUSTED: D ( … ) create … does> ( … ) ;` runs CHECK-DOES! at its `;`,
+\ but a trusted definition has no body check to step the latch past state 1. This
 \ step lets the registration reach CHECKER-EFFECT-AUTHORITY STORE in state 2, so
 \ the clause lands on the trusted symbol's CREATES cell through its one writer.
 \ The native compiler registers a trusted parent after checking its clause
@@ -22676,9 +22668,8 @@ package CHECKER-REG
 \ empty is its declaration, active and WITHOUT authority: an unsealed checker
 \ binds the row and checks callers against it, a sealed one refuses it by
 \ authority (CALL-AUTHORITY), and EFFECT-QUERY and the native compiler's arity
-\ read it. A TRUSTED: declaration goes through TRUST-DECL instead. Callers: the
-\ JIT's empty-hook publish arm (habu2.f EM-COMPILE-PUBLISH-HOOKED), through
-\ DECLARED-ROW-OFF.
+\ read it. A TRUSTED: declaration goes through TRUST-DECL instead. No engine
+\ code calls it through DECLARED-ROW-OFF.
 \ A live row wins: at tier 1 the scan's own row (certified, deferred, or a
 \ multi-error recovery fact) keeps the symbol; after `undefine` the tombstone is
 \ not live and the redefinition records. A declaration that does not parse, one
@@ -23959,7 +23950,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    FAILB @ FAILTU @ + FAILE ! ;
 
 \ Refuses a structure open at closer CA CU, or at the mapped closer, as the load's
-\ compiler does (habu2.f EM-COMPILE-SEMI), unless a compile refusal or CF-OVER holds the pin.
+\ compiler does, unless a compile refusal or CF-OVER holds the pin.
 : CLOSER-REFUSE ( ptr u8 n -- )
    {: ca:ptr cu:n :}
    CF-OPEN? 0=  RCOMPILE @ 0 <>  or  CF-OVER @ 0 <>  or IF EXIT THEN
@@ -25400,11 +25391,8 @@ ASIG-GRAPH-CHECK-INSTALL
 
 \ Validation may reserve scratch but publishes no symbol, effect or registry;
 \ the catch boundary releases that scratch on a thrown refusal.
-\ AN EMPTY POOL IS NOT LATCHED: a partial capture's cold boot compiles the
-\ engine prefix with this checker live and publishes the pool only at the end of
-\ that prefix (habu2.f AOT-SIG PUBLISH,), so a prefix TRUSTED: body whose
-\ unjudged scan misses a name asks here before the cells are written. A latched
-\ answer would leave every later reference E-UNDEFINED against a published pool.
+\ AN EMPTY POOL IS NOT LATCHED: each call reads the length cell again, so a
+\ pool written after an earlier miss is still taken.
 : CK-AOT-READY? ( -- bool )
    CK-AOT-STATE @ 0 <> IF RES-TRUE EXIT THEN
    CK-AOT-SIG-LEN 0 <= IF RES-FALSE EXIT THEN
@@ -25452,9 +25440,9 @@ CK-AOT-REC-CONTROL-INSTALL
 
 \ The registry the signatures resolve against; without it a signature naming a
 \ window-declared family is refused as a bad stored signature.
-\ Only the seed calls this, at the seed point: src/habu/habu2.f AOT-SIG:INSTALL
-\ at the end of the engine prefix, after AOT-SIG:PUBLISH, has filled the two
-\ cells and before the first user token. The carried rows name families by
+\ Nothing calls this: no build publishes a pool (src/habu/layout.f AOT-CELLS).
+\ A caller runs it once the two cells are filled and before the first user
+\ token, the seed point. The carried rows name families by
 \ absolute id, so they mean those families only while the live registry ends
 \ where the capture's did; source may declare a type (`NEWTYPE zz1`) before it
 \ first names a chain word, so a lazy intake would refuse an ordinary program.
@@ -26129,8 +26117,8 @@ variable CUR-OPEN   variable CUR-PSIG
          BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
          TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
          \ only the '( ... )' right after the name is the sig; once it is seen
-         \ (or body tokens ran) every later '( ... )' is a comment (EM-COMMENT
-         \ parity) and must not touch any signature state.
+         \ (or body tokens ran) every later '( ... )' is a comment and must
+         \ not touch any signature state.
          VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
            TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
            TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
@@ -27611,11 +27599,9 @@ variable DEF-STOPPED
 \ product-hosted build would print a rejection for every trusted body.
 \ A SCAN THAT RETURNS LEAVES THE CLAUSE LATCH AS IT FOUND IT: its record grants
 \ no authority, and the definition's own publication steps the latch
-\ (TRUST-DECL). Tier 0 certifies a trusted definer's clause before this scan
-\ (habu2.f EM-COMPILE-PUBLISH-TRUSTED), and the scan's CHECK-RESET step and
-\ record would otherwise consume that effect; tier 1 scans before the clause,
-\ with the latch clear. A scan that throws abandons the definition at either
-\ tier, so it clears the latch: a restored arm would be stepped by the next body
+\ (TRUST-DECL). The native compiler scans a trusted definer's body before its
+\ clause, with the latch clear. A scan that throws abandons the definition, so
+\ it clears the latch: a restored arm would be stepped by the next body
 \ check into the record of whatever is defined next.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE UNJ-A   variable UNJ-U
@@ -27974,8 +27960,8 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    v ;
 
 \ Both compilers report a clause their check refused the same way
-\ (src/compiler/native/compiler.f CHECK-DOES-SPLIT, src/habu/habu2.f
-\ C-CALL-CHECK-DOES), but they name the definer only after the scan, so the
+\ (src/compiler/native/compiler.f CHECK-DOES-SPLIT, src/habu/t0.f
+\ CHECK-UNIT), but they name the definer only after the scan, so the
 \ token buffers are sized for the clause name here.
 \ A grown buffer starts empty and the old one stays mapped, so the refused token
 \ is carried over from it.
@@ -31999,12 +31985,10 @@ package CHECKER-REG
 ' CHECKER-TAPE:EVENT DECLARATIONS CHECKER-OWNER-EXT:TAPE-EVENT-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
-\ Before the claim below a cold boot has no source owner, so the engine's
-\ empty-hook publish arm logs each signed `:` definition it publishes
-\ (src/habu/layout.f DECLARED-LOG, src/habu/habu2.f C-DECLARED-LOG-APPEND)
-\ where it would call CHECKER-DECLARED-ROW!. The claim records their rows by
-\ that word's rule - active, without authority, only where no live row states
-\ the symbol - so a cold boot's checker holds the rows the build host records
+\ The claim below drains the declared-row log (src/habu/layout.f DECLARED-LOG),
+\ which no engine code appends to. It records each logged row by
+\ CHECKER-DECLARED-ROW!'s rule - active, without authority, only where no live
+\ row states the symbol - so a cold boot's checker holds the rows the build host records
 \ for the definitions of this file and the files before it. A TRUSTED:
 \ declaration before the claim is not logged: the claim grants no authority.
 $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL

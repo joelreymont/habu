@@ -264,8 +264,8 @@ variable FREE                       \ bit k set: no entry holds vreg k
    0 VS-N !
    ALL-FREE FREE ! ;
 
-\ The vreg layout s names for entry j, counted from the bottom as the JIT's
-\ snapshot frame counts its slots, or -1 for none or an entry above it.
+\ The vreg layout s names for entry j, counted from the bottom, or -1 for none
+\ or an entry above it.
 : AIM ( n n -- n ) {: s:n j:n :}
    s 0< if -1 exit then
    j s CS-LAY-N @ >= if -1 exit then
@@ -275,10 +275,10 @@ variable FREE                       \ bit k set: no entry holds vreg k
 : HELD-BACK ( n n -- n ) {: s:n j:n :}
    0 j 0 ?do s i AIM dup 0< if drop else 1 swap lshift or then loop ;
 
-\ Steers a fill as the arm64 JIT's NEED-ALLOC, (src/habu/jit.f) steers a pull:
-\ a value filled after a call inside a loop or an `if` lands in the vreg the
-\ back edge or `then` needs. ENSURE asks for at most EMIT-VREGS entries, so
-\ with the held-back vregs aside one is free for LOWEST and nothing is evicted.
+\ Steers a fill: a value filled after a call inside a loop or an `if` lands in
+\ the vreg the back edge or `then` needs. ENSURE asks for at most EMIT-VREGS
+\ entries, so with the held-back vregs aside one is free for LOWEST and nothing
+\ is evicted.
 : STEER ( n n -- vreg ) {: s:n j:n :}
    s j AIM {: g:n :}
    g 0< if false else 1 g lshift FREE @ and 0<> then if g CLAIM exit then
@@ -1677,8 +1677,8 @@ variable OP-REC                      \ the last of them
 \ the operation (THE INLINED OPERATIONS); a package's own word named like a
 \ primitive is a call. A word whose definer fixed a value pushes it
 \ (WORD-CALL). Anything else is E-T0-UNSUPPORTED (UNSUPPORTED$). A name compiled
-\ code cannot reach (MISSING) is refused as undefined, as the JIT's lookup
-\ refuses it, even in an unchecked body whose scan did not refuse it.
+\ code cannot reach (MISSING) is refused as undefined, even in an unchecked
+\ body whose scan did not refuse it.
 \ A token no path reaches (K-UNREACHED) is E-T0-CONTROL, as tier 1's
 \ E-NELAB-CTRL.
 \
@@ -1691,8 +1691,8 @@ variable OP-REC                      \ the last of them
 \ A fixed word is its stamped value, as tier 1's RESOLVE-SITE folds it; r files a
 \ DATA address so publication relocates it. A created word made before the AOT
 \ window opened stays a call: the capture refuses its address. User-space code
-\ addresses and 0 lie below 2^63, so the signed >= agrees with the JIT's unsigned
-\ compare (habu2.f EM-COMPILE-CALL).
+\ addresses and 0 lie below 2^63, so the signed >= orders them as an unsigned
+\ compare would.
 : WORD-CALL ( n n n n -- )
    {: to:n kind:n r:n loc:n :}
    kind DKIND:VAL = if to COMP-BODY:value NDICT:BOUND-VALUE PUSH-CONST exit then
@@ -1840,7 +1840,7 @@ variable FIXED-VAL                   \ the fixed body's value or dispatch cell
 
 \ ---- the runtime compiler ----------------------------------------------------
 \ INSTALL stores COMPILE in the cell the tier 0 `:` dispatches through
-\ (DISPATCH!), with no fallback to the JIT, and stores NDEFINITION's
+\ (DISPATCH!) and stores NDEFINITION's
 \ CALLBACK-STUB! and CALLBACK-STUB@ in the cells CALLBACK:
 \ (src/lib/ffi-callback.f) arms and reads its C entry through. The definition
 \ after a CALLBACK-STUB! seals with NCBSTUB armed (src/habu/t0-emit.f THE

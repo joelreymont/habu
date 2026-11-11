@@ -135,9 +135,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    v off COPY-AT LE:U64! ;
 
 
-\ Header cells valued as the product's boot leaves them (habu2.f EM-DATA-INIT,
-\ EM-STARTUP-RUNTIME-STATE), at the kernel object's offsets, and the cells it
-\ presets; CODE-END-CELL ends the kernel, before the product's words.
+\ Header cells valued as the product's boot leaves them, at the kernel object's
+\ offsets, and the cells it presets; CODE-END-CELL ends the kernel, before the product's words.
 : HEADER-CELLS ( -- )
    ARM64:DATA-VA {: va:n :}
    s" DATA-START" ARM64:SYM {: start:n :}
@@ -156,10 +155,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
 
 
-\ An engine's throw recoveries, as hb's boot stores them (habu2.f
-\ EM-STARTUP-RUNTIME-STATE): its kernel's throw branches through these cells
-\ inside an evaluate and after a data-stack underdepth. A stripped program's
-\ cut keeps neither.
+\ An engine's throw recoveries: its kernel branches through these cells inside an
+\ evaluate and after a data-stack underdepth. A stripped program's cut keeps neither.
 : RECOVERY-CELLS ( -- )
    ARM64:TEXT-VA LEVALREC LABEL-OFFSET +  s" EVALREC-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA LFLOORREC LABEL-OFFSET +  s" FLOORREC-CELL" ARM64:SYM HEADER! ;
@@ -233,7 +230,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ Primitive k's body length, as PRIM-REC, writes it.
 : PRIM-LEN ( n -- n ) dup 1 PRIM@ swap 0 PRIM@ - 4 - ;
 
-\ As habu2.f EM-SEED-DICT seeds it: [8] the body's length, a package row's
+\ A primitive's record: [8] the body's length, a package row's
 \ [0] and [8] its wordlist ids; [32] the facts text PRIM-TEXTS laid.
 : PRIM-REC, ( n -- )
    {: k:n :}

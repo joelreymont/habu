@@ -194,7 +194,7 @@ defer REPL-READ ( -- ptr u8 n )
    while LINE-FULL repeat
    DONE @ 2 = IF NULL$ ELSE HSAVE  LBUF LLEN @ THEN ;
 
-\ REPLH-CELL is an image-ABI offset (layout.f names it, habu2.f reads it), so it
+\ REPLH-CELL is an image-ABI offset (layout.f names it), so it
 \ cannot become a TYPED-VARIABLE; `xt!` declares what it holds (docs/forth.md
 \ "An undeclared cell holds no execution token"). Nothing reads it back as code,
 \ so no accessor hands its address out.

@@ -29,7 +29,7 @@ package CRASH
 CRH-INIT
 \ The sa_flags bits the installs set. SA_ONSTACK runs the crash handler on the
 \ thread's alternate signal stack (C-SIGNAL-STACK below); the trap handler
-\ (habu2.f G-INSTALL-TRAP) keeps the interrupted stack.
+\ (src/arch/arm64/boot.f TRAP,) keeps the interrupted stack.
 $40 constant MACOS-SA-SIGINFO
 $1 constant MACOS-SA-ONSTACK
 $4 constant LINUX-SA-SIGINFO
@@ -405,11 +405,8 @@ public
       C-CRASH-RERAISE
    LHDR LABEL@ LBL,  CRH CRHL @ BYTES, ;
 
-\ THE CALLER LOADS x11 WITH THE HANDLER'S ADDRESS, because the two callers cannot
-\ load it the same way. The engine bakes LCRASHH within ADR's ±1 MiB of its own
-\ startup (habu2.f EM-STARTUP-RUNTIME-STATE, measured at every engine build),
-\ while a linked product's start-up reaches it from the text base
-\ (src/arch/arm64/boot.f STACKS, through TEXT-AT,).
+\ The caller loads x11 with the handler's address: src/arch/arm64/boot.f
+\ STACKS, reaches it from the text base through TEXT-AT,.
 : G-INSTALL-CRASH-X11 ( -- )                     \ x11 = the crash handler's address
    11 SIGACT-SIGINFO SIGACT-ONSTACK or C-SIGACTION-FRAME
    HB-TARGET-LINUX? IF
@@ -425,8 +422,8 @@ private
 \ kills the process unnamed. So the handler is installed SA_ONSTACK, and every
 \ thread that runs Habu code registers its own alternate stack before it can
 \ overflow, carved off its machine stack (stack-abi.f SIGNAL-BYTES): the
-\ engine's and a linked product's start-up (habu2.f EM-STARTUP,
-\ src/arch/arm64/boot.f ENTRY,), a task's thread (habu1.f BTASK-ENTRY) and a
+\ engine's and a linked product's start-up (src/arch/arm64/boot.f
+\ ENTRY,), a task's thread (habu1.f BTASK-ENTRY) and a
 \ thread C started, at the callback that brings it into Habu code (habu1.f
 \ BCALLBACK-THUNK). The profiler's SA_ONSTACK handler runs on the same one.
 \

@@ -3,7 +3,7 @@
 \ (LINKER:WITH) and writes it with its map beside it. A native build first
 \ compiles the tree's arm64 kernel writer and writes the kernel object the
 \ build then links (KERNEL-BUILD); a Wasm program builds none. Each loads hb's
-\ startup files in hb's own order (src/habu/habu2.f EMIT-HOST-LOAD-PREFIX); hb then loads
+\ startup files in hb's own order (STARTUP); hb then loads
 \ the runtime's files, --repl the program's source, and both their registry and
 \ installs; a stripped program loads its source and its entry.
 \ The build loads src/core/source-reset.f and src/habu/app-end.f from the tree;
@@ -91,7 +91,7 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 
 64 constant USAGE-RC                    \ sysexits EX_USAGE
 
-\ A row loads when its kind is common or the build's target (habu2.f PFX-LOAD?).
+\ A row loads when its kind is common or the build's target.
 : LOAD? ( n -- bool )
    case
       BOOT-FILES:COMMON of true endof
@@ -125,7 +125,7 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    a u required ;
 
 
-\ hb's startup files: habu2.f EMIT-HOST-LOAD-PREFIX's loads and provide rows.
+\ hb's startup files: src/habu/boot-files.f's rows, provided and loaded.
 \ The provide rows go to the build's registry, which `provided` writes inside a build.
 \ They come before the loads, so the first boot file is the registry's first row, by
 \ which hb finds its tree (include.f ENGINE-FIND-FOR), not a file a startup file requires.

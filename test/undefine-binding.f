@@ -57,7 +57,7 @@ s" UB-REC ( ptr ubrec -- n ) 0 record-at" CHECK-QUIET-CANDIDATE! -1 T=
 s" UB-REC-STEP ( ptr ubrec -- ptr ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ An operator row claims a token only when the lookup binds its own seeded
-\ primitive (src/habu/habu2.f C-OP-ROW-GATE); the checker's intrinsic rules
+\ primitive (src/compiler/native/hir-word.f INTRINSIC-BOUND?); the checker's intrinsic rules
 \ follow the identity registered on the symbol (src/core/checker.f
 \ CTL-INTRINSIC), never the spelling.
 \ A constant operand, a caller's operand and a local each reach the new word:

@@ -903,8 +903,8 @@ EPPRIM: INTERPRETER def-abort ECLOSE-PRIVATE
 EPRIM: stack-clear EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER stack-clear ECLOSE-PRIVATE
-\ def-create ( -- ): end the pending DKIND:ADDR definition as the engine's
-\ `create` ends its record (habu2.f EMIT-CREATE): DP rounds up to a cell, the
+\ def-create ( -- ): end the pending DKIND:ADDR definition: DP rounds up to a
+\ cell, the
 \ code at CP pushes that address, an address-map site, and returns, [8] takes
 \ the code's length, LASTC the record, the record is counted and indexed and
 \ the state def-open set clears, PEND-CELL with

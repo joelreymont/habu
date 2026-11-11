@@ -61,7 +61,7 @@ $598 constant LOCAL-COUNT-OFF
 \ CHECKER-BODY-CLOSE).
 $5A0 constant BODY-CLOSE-OFF
 \ ( ptr u8 n n -- n bool ) whether a captured body still binds from a cut on
-\ (checker.f CHECKER-PREFIX:BIND?), asked by habu2.f EM-CAPTURE-BIND.
+\ (checker.f CHECKER-PREFIX:BIND?); no engine code asks it.
 $5A8 constant PREFIX-BIND-OFF
 \ ( -- n ) each: an unrecorded certified effect's cells (W-EFFECT-NOT-RECORDED),
 \ else CELLS-NONE (checker.f CHECK-UNRECORDED!).

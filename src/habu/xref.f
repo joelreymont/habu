@@ -1,7 +1,7 @@
 \ xref.f - live dictionary inspection words for the REPL and debug path, read
 \ through dbase@/ndict@; load after boot-cells.f, wl.f and layout.f. It requires
-\ none: the arm64 cold prefix loads it before it records the files it loaded
-\ (habu2.f EMIT-HOST-LOAD-PREFIX), so a require would load one twice. A
+\ none: the arm64 cold prefix loads it before it records the files it loaded,
+\ so a require would load one twice. A
 \ cold-prefix row (boot-files.f BOOT-FILES) loaded after check-hook.f with no
 \ `0 set-check` span, so the engine build checks it. tools/check.f refuses it
 \ alone: it defines `undefine` (E-RESERVED-DEFINITION) and every engine already

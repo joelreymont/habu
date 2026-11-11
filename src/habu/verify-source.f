@@ -438,7 +438,7 @@ variable STR-DEC-TURN
 \ The bytes the engine's `s\"` makes of an escaped literal's payload, and
 \ whether every escape in it is one the engine reads: the payload decoded by
 \ the checker's escape table (src/core/checker.f ESC-DECODE), the engine
-\ decoder's table (src/habu/habu2.f C-ESC-DECODE-BASIC). An escape is spelt
+\ decoder's table (src/habu/escape.f LETTER). An escape is spelt
 \ with more bytes than it decodes to, so a decode as long as its payload met no
 \ escape: the answer is the source span, and a diagnostic at the literal keeps
 \ its position.
@@ -2334,8 +2334,8 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    a u na nu TRUSTED-REACH ;
 
 \ A trusted body is ASSERTED, never verified, but its `does>` clause is a
-\ DECLARATION: habu2.f EM-COMPILE-PUBLISH-TRUSTED runs CHECK-DOES! at the `;` of
-\ a trusted definition, ahead of the trusted branch, and the clause lands on the
+\ DECLARATION: T0 checks a trusted definition's clause (src/core/checker.f
+\ CHECK-DOES-UNJUDGED!), and the clause lands on the
 \ definer's CREATES cell (src/core/checker.f TRUST-DECL). So this scan learns the
 \ definer from the clause signature, as VERIFY-DOES learns a checked one, and
 \ checks no token of the body. A `does>` inside a string is no clause: the

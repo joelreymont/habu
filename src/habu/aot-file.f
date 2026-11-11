@@ -32,11 +32,8 @@ using AOT-WINDOW
 \ MAGIC, VERSION, TARGET and SECTION-COUNT are hard equality. The payload, with
 \ offsets relative to its own start, is a table of SEC-N rows (offset u64, length
 \ u64) in the S- order below, then the sections, contiguous, in that order.
-\ THE SECTION ORDER IS habu2.f EMIT-AOT-SEED'S ORDER, the word that consumes
-\ every one of them. VERSION changes whenever a section is added, dropped or
-\ reinterpreted (version 12 made wid fields window offsets with no section
-\ moved): the table is positional, and an older artifact is refused by name on
-\ its version.
+\ VERSION changes whenever a section is added, dropped or reinterpreted: the
+\ table is positional, and an older artifact is refused by name on its version.
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
 15 constant VERSION  \ anonymous shadow routines have tagged references
 1 constant TARGET-MACOS
@@ -931,8 +928,8 @@ private
 
 \
 \ WHY MERGE IS NOT READ WITH DIFFERENT NUMBERS. The metabuild host captures its
-\ own window first and then takes the chain's from an artifact, and habu2.f
-\ EMIT-AOT-SEED bakes ONE blob, ONE name pool, ONE (DATA base, size) pair and ONE
+\ own window first and then takes the chain's from an artifact, and the merged
+\ capture holds ONE blob, ONE name pool, ONE (DATA base, size) pair and ONE
 \ wordlist window. So the second capture has to be expressed in the first's
 \ coordinates: every offset it carries moves by what the host already holds, and
 \ every VALUE it carries - a DATA address in its own window, a code address in

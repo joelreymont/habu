@@ -217,8 +217,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 \ A bound label's byte offset in the code; labels hold word positions.
 : CODE-OFFSET ( label -- n ) LABEL>N A64ICODE:LBLP @ 4 * ;
 
-\ Header cells the link writes: as the boot leaves them (habu2.f EM-DATA-INIT,
-\ EM-STARTUP-RUNTIME-STATE, EM-ABORT-COMPILE-STATE), and an engine's PRIM-TABLE-CELL.
+\ Header cells' start values the link writes: every program's wordlists and
+\ image base, and an engine's compile state and PRIM-TABLE-CELL.
 : PRESETS+ ( bool -- )
    {: engine:bool :}
    SECTION

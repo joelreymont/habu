@@ -115,7 +115,6 @@ private
    ARGV COMMON s" src/os/script-argv.f" ROW
    INTERNAL COMMON s" src/core/internal-mark.f" ROW
    TOPROW COMMON s" src/core/top-row.f" ROW
-   \ The stdlib rows' order: src/habu/habu2.f, above PFX-LOAD-STDLIB-FILES.
    BASELIB COMMON s" src/lib/prelude.f" ROW
    BASELIB COMMON s" src/lib/error.f" ROW
    BASELIB COMMON s" src/habu/address-cells.f" ROW

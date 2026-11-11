@@ -338,8 +338,8 @@ public
 
 EXPORT NAME-CELL
 
-\ The region at rest, as habu2.f EM-SNAPSHOT-RX-FLUSH leaves it: read-execute
-\ with every band closed. The boot maps it read-write and opens no band.
+\ The region at rest: read-execute with every band closed. The boot maps it
+\ read-write and opens no band.
 : REST, ( -- )
    RDI DBASE-REG ASM-SINK ENC-MOV-RR
    RSI REGION >IMM32 ASM-SINK ENC-MOV-RI32

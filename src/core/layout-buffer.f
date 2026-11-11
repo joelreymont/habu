@@ -93,8 +93,8 @@ variable LBUF-BYTES
 \ ---- how a generated accessor reaches its storage ----------------------------
 \ Every generated accessor addresses its storage through a `create`d word: habu2.f
 \ C-DATA-ADDR emits a recorded DATA carrier (RELOC-EMIT:MARK-SITE), and every pass
-\ that moves persisted DATA (snapshot restore, EM-AOT-RELOC-DATA, aot-file.f
-\ MERGE) rewrites those and nothing else; a scalar literal never reads as an
+\ that moves persisted DATA (snapshot restore, aot-file.f MERGE)
+\ rewrites those and nothing else; a scalar literal never reads as an
 \ address. `data-base <baked offset> +` is invisible to them: it survives a
 \ snapshot but not a capture, where a merged window lands at another offset
 \ (measured: 152 bytes low, so BKEY's accessor wrote BMID's cells).
