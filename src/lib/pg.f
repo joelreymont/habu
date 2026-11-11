@@ -55,8 +55,8 @@ SUMTYPE connect-result
    VARIANT refused ptr u8 n ;VARIANT
 ;SUMTYPE
 
-\ The failure spans are the SQLSTATE and libpq's whole report, read in place
-\ from the result's own bytes: they live exactly as long as TEXT$.
+\ The failure spans are the SQLSTATE and libpq's whole report in the result's
+\ own bytes, or FAILED-SPANS' static text: each lives at least as long as TEXT$.
 SUMTYPE outcome
    VARIANT ok ;VARIANT
    VARIANT rows ;VARIANT
@@ -92,6 +92,10 @@ LINEAR: RESULT>N ( PG:result -- n )
 3 constant TRANS-INERROR
 1 constant PGRES-COMMAND-OK               \ ExecStatusType
 2 constant PGRES-TUPLES-OK
+3 constant PGRES-COPY-OUT
+4 constant PGRES-COPY-IN
+7 constant PGRES-FATAL-ERROR
+8 constant PGRES-COPY-BOTH
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
 0 constant TEXT-RESULT                    \ PQexecParams resultFormat
 
@@ -135,6 +139,7 @@ DYNAMIC-BUFFER CONN-PARAM-LENS ptr n
 DYNAMIC-BUFFER CONN-PARAM-OFFS-CAP n
 DYNAMIC-BUFFER CONN-VERB n
 DYNAMIC-BUFFER CONN-BOUND n
+DYNAMIC-BUFFER CONN-COPY-ROW ptr u8
 
 DYNAMIC-BUFFER RES-PG ptr u8
 DYNAMIC-BUFFER RES-GEN n
@@ -171,9 +176,8 @@ TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-HOLD drop
 : RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
 
 
-\ Every pointer is `ptr u8`: a PGconn, a PGresult and a C string are all
-\ foreign-owned addresses this side only passes back or reads with the width
-\ libpq states. None is written by the callee, so none carries an extent.
+\ Every pointer is `ptr u8`, passed back or read at the width libpq states; the
+\ one libpq writes, PQgetCopyData's char** (CONN-COPY-ROW), states its extent.
 VERSIONED-LIBRARY pq 5
 
 FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
@@ -218,6 +222,10 @@ FUNCTION: LIB-CLEAR PQclear ( ptr u8 -- ) ;FUNCTION
 FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-NOTIFIES PQnotifies ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
+FUNCTION: LIB-PUT-COPY-END PQputCopyEnd ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 )
+   1 $08 WRITES-BYTES                     \ one char*
+;FUNCTION
 
 
 : NULL-ARG ( -- ptr u8 )
@@ -266,6 +274,11 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 
 : DRAIN-LAST@ ( n -- ptr u8 )   DRAIN-LAST-CELL @ ;
 : DRAIN-LAST! ( ptr u8 n -- ) {: p slot:n :}   p slot DRAIN-LAST-CELL ! ;
+
+\ PQgetCopyData's char** out-parameter: the row libpq allocated.
+: COPY-ROW-CELL ( n -- ptr ptr u8 ) {: slot:n :}
+   slot CONN-CHECK
+   slot CONN-COPY-ROW ;
 
 : PENDING@ ( n -- n ) CONN-PENDING @ ;
 : PENDING! ( n n -- ) CONN-PENDING ! ;
@@ -690,6 +703,7 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    CONN-PARAM-OFFS-CAP-RELEASE
    CONN-VERB-RELEASE
    CONN-BOUND-RELEASE
+   CONN-COPY-ROW-RELEASE
    RES-PG-RELEASE
    RES-GEN-RELEASE
    RES-LIVE-RELEASE
@@ -720,6 +734,7 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    CONN-CAP CONN-PARAM-OFFS-CAP-RESERVE
    CONN-CAP VERB-CAP * CELL / CONN-VERB-RESERVE
    CONN-CAP CONN-BOUND-RESERVE
+   CONN-CAP CONN-COPY-ROW-RESERVE
    RESULT-CAP RES-PG-RESERVE
    RESULT-CAP RES-GEN-RESERVE
    RESULT-CAP RES-LIVE-RESERVE
@@ -885,7 +900,15 @@ REGISTER-CHILD-RESET
    LIB-RESULT-ERROR-MESSAGE FIELD$ -TRAILING-LF ;
 
 
+\ PQputCopyEnd's message, NUL-terminated, and the span of its text.
+: COPY-REFUSAL-Z ( -- ptr u8 n )   S\" COPY is not supported\z" ;
+: COPY-REFUSAL$ ( -- ptr u8 n )   COPY-REFUSAL-Z 1- ;
+
+
+\ A COPY_OUT result, kept for a COPY TO STDOUT (KEEP-RESULT), has no server
+\ report: its spans are feature_not_supported's SQLSTATE and COPY-REFUSAL$.
 : FAILED-SPANS ( ptr u8 -- ptr u8 n ptr u8 n ) {: res :}
+   res LIB-RESULT-STATUS PGRES-COPY-OUT = if s" 0A000" COPY-REFUSAL$ exit then
    res PG-DIAG-SQLSTATE LIB-RESULT-ERROR-FIELD FIELD$
    res REPORT$ ;
 
@@ -1002,9 +1025,64 @@ REGISTER-CHILD-RESET
    pg slot res FILL-RES-SLOT N>RESULT PG-PROGRESS:completed ;
 
 
-\ Consume whatever is available, flush without waiting, and drain only while
-\ PQisBusy promises PQgetResult cannot block. The last result survives across
-\ progress calls; all preceding results are released as a script advances.
+\ A COPY_OUT result stays the query's last unless an error result follows it,
+\ so FAILED-SPANS' 0A000 and COPY-REFUSAL$ mean the server ran the whole query.
+: KEEP-RESULT ( ptr u8 n -- ) {: pg slot:n :}
+   slot DRAIN-LAST@ {: previous :}
+   previous NULL-ADDR? 0= if
+      previous LIB-RESULT-STATUS PGRES-COPY-OUT =
+      pg LIB-RESULT-STATUS PGRES-FATAL-ERROR <> and if pg LIB-CLEAR exit then
+      previous LIB-CLEAR
+   then
+   pg slot DRAIN-LAST! ;
+
+
+\ PQputCopyEnd answers 1 sent or queued, -1 a hard error, 0 a full buffer that
+\ leaves libpq in COPY_IN to be ended again; the next poll flushes either way.
+: END-COPY-IN ( ptr u8 n -- n ) {: pg slot:n :}
+   pg LIB-CLEAR
+   slot CONN-PG@ COPY-REFUSAL-Z drop LIB-PUT-COPY-END 0 < if slot CONN-LOST then
+   AIO:READABLE AIO:WRITABLE or ;
+
+
+\ PQgetCopyData without blocking: a row's length, 0 when no whole row has
+\ arrived, -1 at the copy's end, -2 on a failure.
+: NEXT-COPY-ROW ( n -- n ) {: slot:n :}
+   slot CONN-PG@ slot COPY-ROW-CELL BYTE-VIEW 1 LIB-GET-COPY-DATA ;
+
+: FREE-COPY-ROW ( n -- ) COPY-ROW-CELL @ LIB-FREEMEM ;
+
+
+\ Reads and frees the copy's rows: true at its end, false when the next row
+\ has not arrived.
+: SKIP-COPY-ROWS ( n -- bool ) {: slot:n :}
+   begin slot NEXT-COPY-ROW dup 0 > while
+      drop slot FREE-COPY-ROW
+   repeat
+   {: got:n :}
+   got 0= if false exit then
+   got -1 <> if slot CONN-LOST then
+   true ;
+
+
+: SKIP-COPY-OUT ( ptr u8 n -- n ) {: pg slot:n :}
+   pg slot KEEP-RESULT
+   slot SKIP-COPY-ROWS if 0 exit then
+   AIO:READABLE ;
+
+
+\ Events to wait for, or 0 to drain on. PQgetResult answers a new COPY result
+\ per call and never NULL until the copy ends, so a COPY status ends the copy.
+: DRAIN-STEP ( ptr u8 n -- n ) {: pg slot:n :}
+   pg LIB-RESULT-STATUS {: status:n :}
+   status PGRES-COPY-IN = status PGRES-COPY-BOTH = or if pg slot END-COPY-IN exit then
+   status PGRES-COPY-OUT = if pg slot SKIP-COPY-OUT exit then
+   pg slot KEEP-RESULT
+   0 ;
+
+
+\ Drains only while PQisBusy promises PQgetResult cannot block; the result
+\ DRAIN-STEP keeps survives across progress calls until QUERY-DONE takes it.
 : POLL-QUERY ( n -- progress ) {: slot:n :}
    slot CONN-PG@ LIB-CONSUME-INPUT 0= if
       slot CONN-LOST
@@ -1018,9 +1096,8 @@ REGISTER-CHILD-RESET
       then
       slot CONN-PG@ LIB-GET-RESULT {: pg :}
       pg NULL-ADDR? if slot QUERY-DONE exit then
-      slot DRAIN-LAST@ {: previous :}
-      previous NULL-ADDR? 0= if previous LIB-CLEAR then
-      pg slot DRAIN-LAST!
+      pg slot DRAIN-STEP {: events:n :}
+      events 0<> if slot events WAITING exit then
    again ;
 
 
@@ -1595,9 +1672,13 @@ public
 
 
 \ Each WITH- word runs one operation and the body over its result, then clears
-\ the result whether the body returns or throws, so no result outlives its
-\ scope. The body hands the token back. WITH-RESULT runs exactly one statement
-\ on the extended protocol and consumes the parameter list.
+\ it whether the body returns or throws; the body hands the token back.
+
+\ A COPY fails: FROM STDIN with the server's 57014; TO STDOUT with 0A000 and the
+\ report "COPY is not supported" though its whole script ran and stands.
+
+\ WITH-RESULT runs exactly one statement on the extended protocol and consumes
+\ the parameter list.
 : WITH-RESULT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
@@ -1606,13 +1687,11 @@ public
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
-\ WITH-SCRIPT runs a whole script - a migration file, several statements in
-\ one text - through the simple-query protocol, which is the only protocol that
-\ takes more than one statement: the extended protocol WITH-RESULT rides
-\ answers a second command with 42601. The script runs as one implicit
-\ transaction: a failing statement rolls back the earlier ones and abandons the
-\ rest, and libpq returns the LAST statement's result, so the outcome ADT
-\ covers it unchanged. A pending parameter list is E-STATEMENT.
+\ WITH-SCRIPT runs several statements on the simple-query protocol, the only one
+\ that takes them (MULTI-VIA-EXEC-CASES); pending parameters are E-STATEMENT.
+
+\ The script is one implicit transaction: a failure rolls it back, stops it and
+\ is the outcome, else the last result is, or a COPY TO STDOUT's (WITH-RESULT).
 : WITH-SCRIPT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
@@ -1788,11 +1867,11 @@ public
    PEEK c COLUMN-AT LIB-FTABLECOL ;
 
 
-\ The span is libpq's own bytes inside the result, as are OUTCOME's `failed`
-\ spans and NAME$: valid until the scope ends (CLEAR for a progress token) or
-\ the connection closes, so a body copies what it keeps. A close under the body
-\ leaves the token answering E-CLEARED. A halted task unwinds its open result
-\ scopes through their `finally` at TASK:PAUSE, as a throw does.
+\ The span, like NAME$, is libpq's bytes in the result, valid until the scope
+\ ends (CLEAR for a progress token) or the connection closes; a body copies it.
+
+\ A close under the body leaves the token E-CLEARED; a halted task unwinds its
+\ open result scopes through their `finally` at TASK:PAUSE, as a throw does.
 : TEXT$ ( PG:result row col -- PG:result ptr u8 n ) {: r:row c:col :}
    PEEK r c CELL-AT VALUE$ ;
 

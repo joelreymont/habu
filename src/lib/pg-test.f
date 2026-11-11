@@ -1305,6 +1305,52 @@ variable STMT-U
    c ;
 
 
+: SELECT-ONE ( PG:connection -- )
+   s" select 1" [: 0 >ROW 0 >COL INT 1 T= ;] WITH-RESULT ;
+
+
+\ COPY TO STDOUT fails with PG's own spans although the server completed it.
+: COPY-OUT-FAILS ( PG:connection ptr u8 n -- )
+   {: c a:ptr u:n :}
+   c a u
+   [: OUTCOME-TAG TAG-FAILED T=
+      FAILED-SQLSTATE$ s" 0A000" T$=
+      FAILED-MESSAGE$ s" COPY is not supported" T$= ;] WITH-RESULT
+   c SELECT-ONE ;
+
+
+\ PG transfers no COPY data: each COPY fails and the connection answers the
+\ next statement. 200000 rows take more than one read of the socket.
+: COPY-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" COPY TO STDOUT of one row fails" T-LABEL
+   c s" copy (select 1) to stdout" COPY-OUT-FAILS
+   s" COPY TO STDOUT of 200000 rows fails" T-LABEL
+   c s" copy (select generate_series(1,200000)) to stdout" COPY-OUT-FAILS
+   s" COPY FROM STDIN fails with the server's report of PG's refusal" T-LABEL
+   c s" create temp table pqtcopy (id int)" EXEC-OK
+   c s" copy pqtcopy from stdin"
+   [: OUTCOME-TAG TAG-FAILED T=
+      FAILED-SQLSTATE$ s" 57014" T$=
+      FAILED-MESSAGE$ s" COPY from stdin failed: COPY is not supported" CONTAINS? TTRUE ;]
+   WITH-RESULT
+   c SELECT-ONE
+   s" A COPY TO STDOUT the server fails midway is the server's failure" T-LABEL
+   c s" copy (select 1/(x-1) from generate_series(0,2) x) to stdout"
+   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 22012" T$= ;] WITH-RESULT
+   c SELECT-ONE
+   s" A script's error after its COPY TO STDOUT is the outcome" T-LABEL
+   c s" copy (select 1) to stdout; select 1/0"
+   [: OUTCOME-TAG TAG-FAILED T= FAILED-SQLSTATE$ s" 22012" T$= ;] WITH-SCRIPT
+   c SELECT-ONE
+   s" A script's statements after its COPY TO STDOUT run and stand" T-LABEL
+   c s" copy (select 1) to stdout; insert into pqtcopy values (1); select 1"
+   [: OUTCOME-TAG TAG-FAILED T=
+      FAILED-SQLSTATE$ s" 0A000" T$=
+      FAILED-MESSAGE$ s" COPY is not supported" T$= ;] WITH-SCRIPT
+   c s" select count(*) from pqtcopy" [: 0 >ROW 0 >COL INT 1 T= ;] WITH-RESULT
+   c ;
+
+
 \ More statements than the registry has result slots: every scope must hand its
 \ slot back or the run ends in PG:E-CAPACITY rather than an assertion.
 : RECYCLE-CASES ( PG:connection -- PG:connection ) {: c :}
@@ -1947,6 +1993,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    SCRIPT-FAIL-CASES
    SCRIPT-TX-CASES
    SCRIPT-REFUSAL-CASES
+   COPY-CASES
    SCOPE-CASES
    OWNER-CASES
    EXIT-CASES
