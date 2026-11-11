@@ -709,6 +709,16 @@ multi-cell type rationale is `docs/design.md` "Types".
     pointer, in any quotation row or in a layout's members, is
     `E-CAST-LINEAR`: a `PRODUCT` field `ptr lease` or a `STRUCTURE`
     field `[ -- lease ]` carries the lease through the cast on either side.
+    A variable that occurs only where a type is stored, behind a pointer or
+    in a family slot the family's width does not read, is admitted:
+    `CAST: >ELEM ( ptr u8 -- ptr t )` in a private section loads. Every type
+    later bound to `t`, at a call or through a word that passes `t` on, is
+    checked as a closed cast's pointee: one that may hold a linear value is
+    `E-CAST-LINEAR`, an atom or a width `E-CAST-CLASS`. The restriction is
+    saved with each effect that carries `t`, and a word's recursive calls
+    meet the restrictions its whole body gives `t`. `is` refuses a callable
+    whose variable takes only a cast's stored types into a cell whose
+    variable takes any type (`E-CAST-LINEAR`).
     A view cast's element follows the same rule, so `( read-view<p,q,t> --
     ptr u8 n )` is refused; a scope or region variable binds a scope or a
     region, never a value, so one inside the element, such as the `i` of
@@ -718,7 +728,9 @@ multi-cell type rationale is `docs/design.md` "Types".
     slot )` outside `package DOC` is admitted, as is a private `( ptr u8 --
     ptr OP:box )` outside `package OP`.
   - A pointer or a quotation in an introduction position is a class mint and
-    is declared only in a package's private section (`E-CAST-MINT`).
+    is declared only in a package's private section (`E-CAST-MINT`), under a
+    bare name: a qualified `CAST: Q:FORGE ( n -- ptr u8 )` there publishes
+    `Q:FORGE` past the section and is `E-CAST-MINT` too.
 
   The introduction positions are where the destination hands out a value: the
   term itself, a pointer's pointee, every position in it (a read yields it
@@ -2509,9 +2521,12 @@ sections above.
   **Packages**).
 - **A cast that introduces a pointer or xt requires a private package row.**
   `CAST: >BYTES ( n -- ptr u8 )` and `CAST: >OP ( n -- [ n -- n ] )` are
-  `E-CAST-MINT` at top level or under `public`. A type-variable pointee is
-  `E-CAST-LINEAR`, and a layout's fields carry the mint rule recursively: a
-  `pfbox` whose field is `ptr u8` exposes that pointer through
+  `E-CAST-MINT` at top level or under `public`. In a private section a
+  type-variable pointee is admitted and refuses each type later bound to it
+  that may hold a linear value, an atom or a width, at a recursive call too;
+  `is` refuses a callable over such a variable into a cell over any type
+  (`E-CAST-LINEAR`). A layout's fields carry
+  the mint rule recursively: a `pfbox` whose field is `ptr u8` exposes that pointer through
   `PFBOX:UNMAKE` (see **Structures And Enums**). A `LINEAR:` token conversion
   similarly requires the declaring package's private section; bad payload,
   owner or scope is respectively `E-LINEAR-PAYLOAD`, `E-LINEAR-OWNER` or

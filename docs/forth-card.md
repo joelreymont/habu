@@ -450,6 +450,10 @@ package that declared the type: `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR:
 in any other package or for a top-level `DEFLINEAR`
 `E-LINEAR-OWNER`, and a row that is not one token and one non-linear con (or
 pointer to one) `E-LINEAR-PAYLOAD`. `CAST:` refuses a linear side
+(`E-CAST-LINEAR`). A type variable only where a type is stored is admitted
+in a private section (`CAST: >ELEM ( ptr u8 -- ptr t )`); a type bound to it
+later that may hold a linear value is `E-CAST-LINEAR`, an atom or a width
+`E-CAST-CLASS`, and `is` refuses a callable over it into a cell over any type
 (`E-CAST-LINEAR`). Both identity declarers preserve the stack below their
 operand: `LINEAR: MINT ( R n -- R PKG:tok )` is valid, but different tails
 are `E-CAST-ARITY`.
