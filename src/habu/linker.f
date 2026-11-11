@@ -182,6 +182,7 @@ create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling part ran, 8 byt
 create REACHED BUF:HDR-BYTES allot   \ the object's REACHED: the FILES rows of the pieces whose data RAN-FILES+ reached, 8 bytes each
 create PENDING-PATHS BUF:HDR-BYTES allot \ the paths the checked part's earlier acts provided, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
+create UNDER-PATH BUF:HDR-BYTES allot \ RESOLVE-UNDER's answer under another root
 create ENTRY-ROOT BUF:HDR-BYTES allot \ the root current as the part started (MARKS)
 create EXIT-ROOT BUF:HDR-BYTES allot \ the root current as the part ended
 create PART-READS BUF:HDR-BYTES allot \ the reads the part's compile made (READS-KEEP)
@@ -360,6 +361,7 @@ variable FILE-END                    \ here's distance as the piece ends
 \ The running piece holds a header-data address outside its STORES rows' cells: a tag-4
 \ reference written (DATA-REF+) or resolved (RESOLVE).
 TYPED-VARIABLE HOLDS-HEADER bool
+TYPED-VARIABLE UNDER-KNOWN bool     \ whether RESOLVE-UNDER's path under another root is known
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
 variable FILE-PATH-N
@@ -447,7 +449,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    FILE-ROWS-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
-   LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT BUF:DISPOSE  REQ-PATH BUF:DISPOSE
+   LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT BUF:DISPOSE  REQ-PATH BUF:DISPOSE  UNDER-PATH BUF:DISPOSE
    ENTRY-ROOT BUF:DISPOSE  EXIT-ROOT BUF:DISPOSE  PART-READS BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-RECS BUF:DISPOSE
    SPELLS BUF:DISPOSE  NAMED-RECS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  USED-EXTS BUF:DISPOSE  REFS BUF:DISPOSE
@@ -472,6 +474,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    REACHED 256 BUF:N>BLEN BUF:INIT
    PENDING-PATHS 256 BUF:N>BLEN BUF:INIT
    REQ-PATH 256 BUF:N>BLEN BUF:INIT
+   UNDER-PATH 256 BUF:N>BLEN BUF:INIT
    ENTRY-ROOT 256 BUF:N>BLEN BUF:INIT
    EXIT-ROOT 256 BUF:N>BLEN BUF:INIT
    PART-READS 256 BUF:N>BLEN BUF:INIT
@@ -3128,6 +3131,61 @@ variable RD-END
    RD-AT @ PIECE-AT ! ;
 
 
+\ The offset in OBJECT of INPUT's field i after the stamp (0 the entry root, 1 the exit root, 2 the reads), once
+\ HEADER-CK passed.
+: INPUT-AT ( n -- n )
+   {: i:n :}
+   HEADER-BYTES STAMP-BYTES +
+   i 0 ?do dup OBJ@ 8 + + loop ;
+
+\ Whether the spelling resolves to the canonical directory it resolved to; ROOT? resolves `.` against the working
+\ directory.
+: ROOT-HOLDS? ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n b:ptr v:n :}
+   a u SOURCE-ROOT:ROOT? {: c:ptr cu:n ok:bool :}
+   ok 0= if false exit then
+   c cu b v STR= ;
+
+\ Whether the environment variable holds the value it held, or is absent when value is NULL-PTR.
+: ENV-HOLDS? ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n b:ptr v:n :}
+   a u ENV-INPUT:CURRENT$ {: e:ptr eu:n :}
+   b NULL-PTR - 0= if e NULL-PTR - 0= exit then
+   e NULL-PTR - 0= if false exit then
+   e eu b v STR= ;
+
+\ Whether the read of the kind (COMPILE-READS) reads the same now.
+: READ-HOLDS? ( n ptr u8 n ptr u8 n -- bool )
+   {: kind:n a:ptr u:n b:ptr v:n :}
+   kind COMPILE-READS:ROOT-READ = if a u b v ROOT-HOLDS? exit then
+   kind COMPILE-READS:ENV-READ = if a u b v ENV-HOLDS? exit then
+   kind COMPILE-READS:ENV-ABSENT = if a u NULL-PTR 0 ENV-HOLDS? exit then
+   false ;
+
+\ Whether every read in INPUT's reads (field 2) reads the same now, in COMPILE-READS' layout: false when a read's
+\ lengths run past the field. A link check runs outside any recording, so these lookups record nothing.
+: READS-HOLD? ( -- bool )
+   2 INPUT-AT FIELD$ {: p:ptr pu:n :}
+   0 begin dup pu < while
+      {: at:n :}
+      at 24 + pu > if false exit then
+      p at + LE:U64@  p at + 8 + LE:U64@  p at + 16 + LE:U64@ {: kind:n u:n v:n :}
+      u 0<  v 0<  or  u pu >  or  v pu >  or if false exit then
+      at 24 + u + v + {: end:n :}
+      end pu > if false exit then
+      kind  p at + 24 + u  p at + 24 + u + v  READ-HOLDS? 0= if false exit then
+      end 7 + 8 / 8 *
+   repeat drop
+   true ;
+
+\ The path resolved as SOURCE-ROOT:RESOLVE resolves it with root current; the answer lasts until the next resolve.
+: RESOLVE-UNDER ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+   {: a:ptr u:n root:ptr rootu:n :}
+   root rootu SOURCE-ROOT:CURRENT$ STR= if a u SOURCE-ROOT:RESOLVE exit then
+   root rootu [: a u SOURCE-ROOT:RESOLVE UNDER-KNOWN ! BUF:N>BLEN UNDER-PATH BUF:REPLACE ;] SOURCE-ROOT:WITH
+   UNDER-PATH BYTES$ UNDER-KNOWN @ ;
+
+
 \ A record reference (file, sum, count) naming a package: an earlier entry of KIND-PACKAGE, or an
 \ earlier file's package record. It answers the file and the record ID-REF-CK found, -1 for none.
 : PKG-REF-CK ( -- n n )
@@ -3895,14 +3953,13 @@ variable PRIOR-EXT-NEXT
    a u PENDING-PATH? ;
 
 
-\ The piece's ACTS rows (ACTS-CK), each path resolved as a load from the checked file resolves
-\ it: a require's must be REGISTERED?, as its compile found it; a provide's is registered.
+\ The piece's ACTS rows (ACTS-CK), each path resolved under the root it was spelled in: a
+\ require's must be REGISTERED?, as its compile found it; a provide's is registered.
 : ACTS-WALK ( -- )
    ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
-      RD-NAME SOURCE-ROOT:RESOLVE {: canon:ptr canonu:n known:bool :}
-      NAME-CK                          \ the root it was spelled in
+      RD-NAME RD-NAME RESOLVE-UNDER {: canon:ptr canonu:n known:bool :}
       kind EV-PROVIDED = if
          canon canonu PENDING-PATHS FIELD+
       else
@@ -3912,7 +3969,8 @@ variable PRIOR-EXT-NEXT
 
 
 \ After INPUT!: true when part FILE-PART's object reads whole and checks with the source stamped (unstamped, INPUT-STAMP
-\ is 0 0 -1, an UNLINKABLE part's INPUT); a request resolves to the existing file it loaded, a require's not REGISTERED?
+\ is 0 0 -1, an UNLINKABLE part's INPUT), starts in the root current and its compile's reads hold; a request resolves
+\ under the exit root to the existing file it loaded, a require's not REGISTERED?
 : PART-FRESH? ( -- bool )
    STAMPED? 0= if false exit then
    HITS-CLEAR                          \ the check replays NAMES into HITS
@@ -3920,11 +3978,14 @@ variable PRIOR-EXT-NEXT
    READ-OBJECT 0= if false exit then
    HEADER-CK
    REQS-N @ 0<> if 0 else -1 then PIECE-CK
-   GOOD? if ACTS-WALK then
+   GOOD? 0= if false exit then
+   0 INPUT-AT FIELD$  SOURCE-ROOT:CURRENT$  STR= 0= if false exit then
+   READS-HOLD? 0= if false exit then
+   ACTS-WALK
    GOOD? 0= if false exit then
    REQS-N @ 0= if true exit then
    REQ-FIELDS {: kind:n spelled:n loaded:n :}
-   spelled FIELD$ SOURCE-ROOT:RESOLVE {: canon:ptr canonu:n known:bool :}
+   spelled FIELD$  1 INPUT-AT FIELD$  RESOLVE-UNDER {: canon:ptr canonu:n known:bool :}
    canon canonu  loaded FIELD$  STR= 0= if false exit then
    canon canonu FS:FILE? 0= if false exit then
    kind SOURCE-UNIT:LOAD-REQUIRE <> if true exit then
@@ -4611,19 +4672,23 @@ variable DUE-MADE
 : ROOT-CK ( -- ) SOURCE-ROOT:CHANGE-COUNT FILE-ROOTS @ <> if true UNLINKABLE ! then ;
 
 
-\ The piece's ACTS rows (ACTS-CK) applied as its compile made them: a provide through
-\ `provided`; a require the registry must hold, as PART-FRESH? found it, else E-COMP-STATE.
+\ The piece's ACTS rows (ACTS-CK) applied as its compile made them, under the root each was
+\ spelled in: a provide through `provided`; a require the registry must hold, as PART-FRESH?
+\ found it, else E-COMP-STATE.
 : LINK-ACTS ( -- )
    ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
-      RD-NAME {: a:ptr u:n :}
-      NAME-CK                          \ the root it was spelled in
+      RD-NAME RD-NAME {: a:ptr u:n root:ptr rootu:n :}
       GOOD? 0= if E-COMP-STATE throw then
       kind EV-PROVIDED = if
-         a u provided
+         root rootu SOURCE-ROOT:CURRENT$ STR= if
+            a u provided
+         else
+            root rootu [: a u provided ;] SOURCE-ROOT:WITH
+         then
       else
-         a u SOURCE-ROOT:RESOLVE nip nip 0= if E-COMP-STATE throw then
+         a u root rootu RESOLVE-UNDER nip nip 0= if E-COMP-STATE throw then
       then
    loop ;
 

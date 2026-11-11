@@ -24,6 +24,8 @@
 \ file whose word only resolves its own path, as Maki's
 \ src/vocabulary.f does, loads nothing: its build prints the directory
 \ `hb --load` prints.
+\ The fourth subject's top level reads an environment variable: a build reuses
+\ its object only while the variable reads as its compile read it.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 
@@ -45,6 +47,9 @@ create PROBE-IMAGE PATH-CAP allot
 create RESOLVES PATH-CAP allot
 create RESOLVES-OUT PATH-CAP allot
 create RESOLVES-IMAGE PATH-CAP allot
+create ENVTOP PATH-CAP allot
+create ENVTOP-OUT PATH-CAP allot
+create ENVTOP-IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 variable RECORD-U
@@ -57,6 +62,9 @@ variable PROBE-IMAGE-U
 variable RESOLVES-U
 variable RESOLVES-OUT-U
 variable RESOLVES-IMAGE-U
+variable ENVTOP-U
+variable ENVTOP-OUT-U
+variable ENVTOP-IMAGE-U
 \ what `hb --load` printed, which the build must print too
 4096 constant LOADED-CAP
 create LOADED LOADED-CAP allot
@@ -75,6 +83,9 @@ variable LOADED-U
 : RESOLVES-OUT$ ( -- ptr u8 n ) RESOLVES-OUT RESOLVES-OUT-U @ ;
 : RESOLVES-IMAGE$ ( -- ptr u8 n ) RESOLVES-IMAGE RESOLVES-IMAGE-U @ ;
 : LOADED$ ( -- ptr u8 n ) LOADED LOADED-U @ ;
+: ENVTOP$ ( -- ptr u8 n ) ENVTOP ENVTOP-U @ ;
+: ENVTOP-OUT$ ( -- ptr u8 n ) ENVTOP-OUT ENVTOP-OUT-U @ ;
+: ENVTOP-IMAGE$ ( -- ptr u8 n ) ENVTOP-IMAGE ENVTOP-IMAGE-U @ ;
 \ a line the probe's --load output must hold, naming its canonical directory
 create WANT PATH-CAP 2 * allot
 variable WANT-U
@@ -102,6 +113,11 @@ variable WANT-U
 \ the file's top level: Maki's src/vocabulary.f shape.
 : RESOLVES-SOURCE$ ( -- ptr u8 n )
    S\" : RESOLVES-DIR ( -- ) s\q resolves.f\q SOURCE-ROOT:RESOLVE drop SOURCE-ROOT:DIRNAME s\q resolves dir \q type type cr ;\nRESOLVES-DIR\n: MAIN ( -- ) ;\n" ;
+
+\ A top level that prints a line and keeps the length of HABU_TEST_SIDE, which
+\ MAIN prints.
+: ENVTOP-SOURCE$ ( -- ptr u8 n )
+   S\" s\q envtop top level\q type cr\ns\q HABU_TEST_SIDE\q GETENV nip constant SIDE\n: MAIN ( -- ) SIDE . ;\n" ;
 
 \ Each subject is its own hb-build: a refusal ends the build.
 : BUILD-ARGV ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n out:ptr outu:n :}
@@ -198,6 +214,32 @@ variable WANT-U
    s" stripped build of a file whose word resolves its own path" GE-EXPECT-OK
    WANT$ s" the directory the word resolves in the build, as under hb --load" GE-EXPECT-OUT-HAS ;
 
+\ A build into ENVTOP-OUT with HABU_TEST_SIDE the value, unset for NULL-PTR,
+\ that compiles the top level when fresh is true, then a run printing want.
+: ENVTOP-BUILD ( ptr u8 n bool ptr u8 n -- )
+   {: val:ptr valu:n fresh:bool want:ptr wantu:n :}
+   GE-HB-RESET
+   s" HABU_OUT" >LEN ENVTOP-OUT$ >LEN PROC-ENV-SET
+   val NULL-PTR - 0<> if s" HABU_TEST_SIDE" >LEN val valu >LEN PROC-ENV-SET then
+   ENVTOP$ ENVTOP-IMAGE$ BUILD-ARGV BUILD-RUN
+   s" build of a file whose top level reads HABU_TEST_SIDE" GE-EXPECT-OK
+   GT-OUT$ s" envtop top level" CONTAINS? {: seen:bool :}
+   fresh if seen 0= else seen then if
+      s" the build compiles the top level exactly when HABU_TEST_SIDE changed" GE-FAIL
+   then
+   GE-HB-RESET
+   ENVTOP-IMAGE$ GE-ARGV+
+   ENVTOP-IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" the program built from envtop.f" GE-EXPECT-OK
+   want wantu s" the length of HABU_TEST_SIDE the program's compile read" GE-EXPECT-OUT ;
+
+: ENVTOP-BUILDS ( -- )
+   ENVTOP$ ENVTOP-SOURCE$ FS:WRITE-ALL
+   s" ab" true S\" 2\n" ENVTOP-BUILD
+   s" abcd" true S\" 4\n" ENVTOP-BUILD
+   s" abcd" false S\" 4\n" ENVTOP-BUILD
+   NULL-PTR 0 true S\" 0\n" ENVTOP-BUILD ;
+
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -212,10 +254,14 @@ variable WANT-U
    s" resolves.f" RESOLVES GT-PATH RESOLVES-U !
    s" resolves-out" RESOLVES-OUT GT-PATH RESOLVES-OUT-U !
    s" resolves" RESOLVES-IMAGE GT-PATH RESOLVES-IMAGE-U !
+   s" envtop.f" ENVTOP GT-PATH ENVTOP-U !
+   s" envtop-out" ENVTOP-OUT GT-PATH ENVTOP-OUT-U !
+   s" envtop" ENVTOP-IMAGE GT-PATH ENVTOP-IMAGE-U !
    BUILD RUN-IMAGE BUILD-RECORD
    PROBE-WRITE PROBE-LOAD PROBE-PLAIN PROBE-BUILD
    RESOLVES-LOAD RESOLVES-BUILD
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, and a build whose word resolves its own path as hb --load does" type cr ;
+   ENVTOP-BUILDS
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, and builds that reuse a part only while the environment variable its top level read holds" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;
