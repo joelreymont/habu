@@ -28,6 +28,14 @@
 \ stopped. Only an orphaned process group is resumed: POSIX has the kernel send
 \ each member SIGHUP and then SIGCONT when a death orphans a group with a
 \ stopped member, which ends a member that does not ignore SIGHUP.
+\
+\ A ROW'S SOCKET DIRECTORY IS SHORT: a Unix-domain socket's path has to fit
+\ sun_path - 104 bytes on macOS, 108 on Linux - and a gate test's TMPDIR is
+\ about 100 bytes long already. It is `<seq>`, the row's capture sequence
+\ number, in the socket root, and goes with the row's scratch. Each is made
+\ fresh, never shared: a `<seq>` already there - a sibling pool given the same
+\ HB_SOCK_TMP counts from 1 too, and a root killed before its cleanup leaves
+\ its own - moves on to `<seq>-1`, `<seq>-2`, up to GT-POOL-SOCK-TRIES.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -653,8 +661,7 @@ false GT-POOL-CATCHING !
 : GT-POOL-DEATH-RD@ ( -- fd )
    GT-POOL-DEATH-RD @ >FD ;
 
-\ Create the pool-parent death pipe once per pool. The parent keeps WR; every
-\ slot's reaper keeps RD.
+\ The parent keeps WR; every slot's reaper keeps RD.
 : GT-POOL-DEATH-MAKE ( -- )
    GT-POOL-DEATH-MADE @ 0 <> if exit then
    PROC-FORK:DEATH-PIPE {: rd:fd wr:fd :}
@@ -685,7 +692,6 @@ false GT-POOL-CATCHING !
 
 \ A retired slot is reused by the next start, so the capture sequence number,
 \ unique per start, is the one handle a caller can keep on a row it started.
-\ The live slot whose capture seq is n, or -1.
 : GT-POOL-SEQ-SLOT ( n -- n ) {: seq:n :}
    0 begin dup GT-POOL-LIMIT @ < while
       dup >IDX GT-POOL-DONE@ 0=
@@ -714,8 +720,8 @@ false GT-POOL-CATCHING !
 : GT-POOL-WAIT-DUE? ( idx -- bool ) {: idx :}
    mono-ns idx GT-POOL-LAST-PTR @ - PROCESS:NS-PER-MS / GT-HEARTBEAT-MS >= ;
 
-\ A reading that throws ends the run, as a refused reaper fork does.
-variable GT-POOL-CPU-NS                  \ the reading, out of its catch
+\ A reading that throws ends the run.
+variable GT-POOL-CPU-NS
 
 : GT-POOL-CPU-READ ( idx -- ) {: idx:idx :}
    idx GT-POOL-PID@ [: dup PROC-TREE:CPU-NS GT-POOL-CPU-NS ! ;] catch {: code:n :}
@@ -725,10 +731,9 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    s"  not read, throw " type code FMT:.INT cr
    code GT-POOL-THROW ;
 
-\ A live row's wall time, its tree's CPU time, user and system with what its
-\ members reaped, and its change since the last reading: a delta that stays at
-\ zero is a blocked row, one that never stops growing a spinning row, and a
-\ negative one a process that left the tree.
+\ A live row's wall time, its tree's CPU time, and its change since the last
+\ reading: a delta that stays at zero is a blocked row, one that never stops
+\ growing a spinning row, and a negative one a process that left the tree.
 : GT-POOL-WAIT. ( idx -- ) {: idx:idx :}
    idx GT-POOL-CPU-USED-PTR @ {: was:n :}
    idx GT-POOL-CPU-READ
@@ -772,40 +777,26 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    s" stdout-fd" idx GT-POOL-OUT-W-PTR @ GT-POOL-LINE-FD
    s" stderr-fd" idx GT-POOL-ERR-W-PTR @ GT-POOL-LINE-FD ;
 
-\ Arm a co-located reaper for the just-spawned child. The spawn primitive makes
-\ every child its own process-group leader before exec, so a kill and
-\ parent-death cleanup can signal the whole subtree without a parent-side
-\ setpgid race.
-\
-\ Fork a reaper that joins the child's group and watches the pool-death read end,
-\ then track its pid so GT-POOL-REAP/KILL-SLOT reap it. Stack-preserving under
-\ catch: the slot index is the quotation's window.
 : GT-POOL-SPAWN-REAPER! ( idx -- idx ) {: idx:idx :}
    GT-POOL-DEATH-RD@ idx GT-POOL-PID@ PROC-FORK:SPAWN-REAPER
    idx GT-POOL-REAPER-PID-PTR !
    idx ;
 
-\ Reaper fork failure (PROC-FORK:SPAWN-REAPER throws) is also fail-closed: the
-\ pool kills every slot, this child included; otherwise a spawned subtree could
-\ survive a killed pool.
+\ Reaper fork failure is fail-closed: the pool kills every slot, this child
+\ included; otherwise a spawned subtree could survive a killed pool.
 : GT-POOL-ARM-SPAWN-REAPER ( idx -- ) {: idx:idx :}
    idx [: GT-POOL-SPAWN-REAPER! ;] catch {: code:n :}
    drop
    code 0<> if code GT-POOL-THROW then ;
 
-\ The row's exit watch, opened as soon as its pid is known. macOS refuses a
-\ watch on a process that has already exited (ESRCH): that row has ended.
+\ macOS refuses a watch on a process that has already exited (ESRCH): that row
+\ has ended.
 : GT-POOL-WATCH-OPEN ( idx -- ) {: idx:idx :}
    idx GT-POOL-PID@ PID>N proc-watch-open {: w:n :}
    w 0 >= if w >FD idx GT-POOL-WATCH-PTR ! exit then
    w PROCESS:ESRCH# negate = if true idx GT-POOL-ENDED-PTR ! exit then
    E-PROC-OUTPUT GT-POOL-THROW ;
 
-\ Spawns path with the staged argv and only the staged env, which its caller
-\ has already inherited into, as slot idx's child, its stdin on
-\ stdin (a negative one inherits this process's) and its stdout and stderr on
-\ the slot's pipes, and records its pid. Stack-preserving under catch, so a
-\ refusal is reported with the staging it refused.
 : GT-POOL-LAUNCH ( idx ptr u8 n fd -- idx ptr u8 n fd ) {: idx:idx path:ptr pathu:n stdin:fd :}
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
@@ -859,9 +850,9 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    stream 0= if idx GT-POOL-OUT-PATH-U-PTR exit then
    idx GT-POOL-ERR-PATH-U-PTR ;
 
-\ Suite-less pool users get one FS:MKTEMP-DIR capture directory so parallel
-\ runs sharing TMPDIR cannot clobber each other's capture files. Its path is
-\ copied out because the task's next temp reuses the span FS:MKTEMP-DIR answers.
+\ Suite-less pool users get one capture directory so parallel runs sharing
+\ TMPDIR cannot clobber each other's capture files. Its path is copied out
+\ because the task's next temp reuses the span.
 : GT-POOL-FALLBACK-ROOT$ ( -- ptr u8 n )
    GT-POOL-FALLBACK-U @ 0 > if
       GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ exit
@@ -874,15 +865,12 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    GT-ROOT-U @ 0 > if GT-ROOT exit then
    GT-POOL-FALLBACK-ROOT$ ;
 
-\ The fallback root belongs to the process, not to one pool: the memo above
-\ builds it once and GT-POOL-RESET keeps it, so every pool a suite-less user
-\ runs captures into the same directory until a drain removes it.
-\ A suite's root is the runner's (GT-START registers it with FS:CLEANUP-TREE+),
-\ so this exits when there is one. Absence is tolerated the way
-\ GT-POOL-CHILD-TMP-REMOVE tolerates it. Clearing the memo is what lets a
-\ later pool in the same process capture again: it makes a fresh root with
-\ FS:MKTEMP-DIR, where a stale memo would open the captures under a removed
-\ directory (E-FS-OPEN).
+\ The fallback root belongs to the process, not to one pool: every pool a
+\ suite-less user runs captures into the same directory until a drain removes
+\ it. A suite's root is the runner's, so this exits when there is one. Clearing
+\ the memo is what lets a later pool in the same process capture again: it
+\ makes a fresh root, where a stale memo would open the captures under a
+\ removed directory (E-FS-OPEN).
 : GT-POOL-FALLBACK-REMOVE ( -- )
    GT-ROOT-U @ 0 > if exit then
    GT-POOL-FALLBACK-U @ 0 <= if exit then
@@ -915,22 +903,16 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    idx 0 GT-POOL-CAPTURE-FD!
    idx 1 GT-POOL-CAPTURE-FD! ;
 
-\ THE POOL OWNS ITS SPAWNED CHILDREN'S SCRATCH. Each gets a directory of its
-\ own beside its capture files, named TMPDIR in its environment, and the
-\ PARENT removes it when the slot retires. A child the pool killed - a tree kill,
-\ a group kill - never reaches its own FS:CLEANUP-RUN, so its temp trees survived
-\ it and nothing ever removed them; under TMPDIR they now go with the
-\ directory, and so does anything its own children or the tools it ran left.
 \ PROC-ENV-SET, not PROC-ENV+, because the caller has already inherited its
 \ environment into the table and an inherited TMPDIR has to be replaced rather
 \ than shadowed.
 \
 \ A TMPDIR row already in the caller's table is one of two things: the copy
-\ PROC-ENV-INHERIT-MISSING took from this process's own environment, which is
-\ the pool's to replace, or a value the caller chose for its child - a scratch
-\ root the caller owns and reaps - which stays, and then the slot gets no
-\ directory at all. A set TMPDIR is no private root by itself: macOS hands every
-\ process the same per-user one, which this process's own copy names.
+\ from this process's own environment, which is the pool's to replace, or a
+\ value the caller chose for its child - a scratch root the caller owns and
+\ reaps - which stays, and then the slot gets no directory at all. A set
+\ TMPDIR is no private root by itself: macOS hands every process the same
+\ per-user one, which this process's own copy names.
 : GT-POOL-ENV-TMPDIR-OWN? ( -- bool )
    s" TMPDIR=" {: k:ptr ku:n :}
    s" TMPDIR" >LEN PROC-ENV-NAME-IDX {: i:n :}
@@ -945,7 +927,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    idx GT-POOL-SOCK$ [: 2dup FS:MAKE-DIR ;] catch {: code:n :}
    2drop code ;
 
-\ A try that threw found the name taken when the path is there afterwards.
 : GT-POOL-SOCK-TAKEN? ( idx n -- bool )
    {: idx:idx code:n :}
    code 0= if false exit then
@@ -976,18 +957,9 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
       idx GT-POOL-SOCK-MAKE
    loop ;
 
-\ EACH SPAWNED CHILD ALSO GETS A SHORT DIRECTORY FOR ITS SOCKETS. A
-\ Unix-domain socket's path has to fit sun_path - 104 bytes on macOS, 108 on
-\ Linux - and a gate test's TMPDIR is about 100 bytes long already. So the pool
-\ makes each spawned child `<root>/<seq>`, its capture sequence number in the
-\ socket root (GT-POOL-SOCK-ROOT-MAKE), names it HB_SOCK_TMP in the child's
-\ environment (test/db/pg-cluster.f puts its server's socket there), and
-\ removes it with the scratch. Each is made fresh, never shared: a `<seq>`
-\ already there - a sibling pool given the same HB_SOCK_TMP counts from 1 too,
-\ and a root killed before its cleanup leaves its own - moves on to `<seq>-1`,
-\ `<seq>-2`, up to GT-POOL-SOCK-TRIES. Every spawned slot gets one, whoever
-\ owns its TMPDIR: the value inherited in its place would name this process's
-\ own, which a sibling may be using.
+\ EACH SPAWNED CHILD ALSO GETS A SHORT DIRECTORY FOR ITS SOCKETS. Every spawned
+\ slot gets one, whoever owns its TMPDIR: the value inherited in its place
+\ would name this process's own, which a sibling may be using.
 : GT-POOL-CHILD-SOCK! ( idx -- )
    {: idx:idx :}
    GT-POOL-SOCK-ROOT-MAKE idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$
@@ -1010,9 +982,8 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    idx GT-POOL-TMP$ FS:MAKE-DIRS
    s" TMPDIR" >LEN idx GT-POOL-TMP$ >LEN PROC-ENV-SET ;
 
-\ The one place a slot leaves the live set, at its reap, whether it exited or
-\ was signaled. The child's scratch goes here, after the kill, so nothing is
-\ still writing into it.
+\ The one place a slot leaves the live set. The child's scratch goes here,
+\ after the kill, so nothing is still writing into it.
 : GT-POOL-RETIRE-SLOT ( idx -- ) {: idx:idx :}
    idx GT-POOL-CHILD-TMP-REMOVE
    1 idx GT-POOL-DONE-PTR !
@@ -1046,8 +1017,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 
 \ A red row keeps its capture sequence number; the report rebuilds the two
 \ capture paths from it the way GT-POOL-CAPTURE-PATH! built them, which holds
-\ while the capture root (GT-START) stays the same between the capture and the
-\ report, as it does for every pool session in the tree.
+\ while the capture root stays the same between the capture and the report.
 : GT-POOL-RED-STREAM$ ( n n -- ptr u8 n ) {: i:n stream:n :}
    GT-POOL-CAPTURE-ROOT$
    i GT-POOL-RED-SEQ-PTR @ stream GT-POOL-STREAM-SUFFIX$ GT-POOL-CAPTURE-NAME
@@ -1084,8 +1054,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 : GT-POOL-RED-DETAILED ( -- n )
    GT-POOL-RED# dup GT-POOL-RED-MAX > if drop GT-POOL-RED-MAX then ;
 
-\ The red record of the row whose capture seq is n, or -1 when that row is not
-\ among the detailed reds (see GT-POOL-SEQ-LIVE? for why the seq is the handle).
 : GT-POOL-RED-FIND-SEQ ( n -- n ) {: seq:n :}
    0 begin dup GT-POOL-RED-DETAILED < while
       dup GT-POOL-RED-SEQ-PTR @ seq = if exit then
@@ -1120,8 +1088,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    repeat drop
    GT-POOL-RED-OVERFLOW-LINE ;
 
-\ The slot bookkeeping every start shares: pipes, capture files, label and
-\ start time. The caller then spawns into the slot and counts it live.
 : GT-POOL-OPEN-SLOT ( ptr u8 n idx -- ) {: label:ptr labelu idx :}
    idx GT-POOL-DONE@ 0= if
       s" test pool: fixed slot already active" type cr
@@ -1141,12 +1107,10 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    idx path pathu GT-POOL-SPAWN
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
-\ A stdin-fed slot: the child reads its source from a pipe. The bytes go down
-\ in one write before the pool polls, bounded by PIPE_BUF so the write is
-\ atomic and cannot block on an empty pipe; the write end closes at once so
-\ the child sees end of input. A child that exited before reading makes the
-\ write fail with EPIPE (SIGPIPE is disarmed on the descriptor first); its
-\ exit code, reaped like any slot's, makes the row red.
+\ The bytes go down in one write before the pool polls, bounded by PIPE_BUF so
+\ the write is atomic and cannot block on an empty pipe. A child that exited
+\ before reading makes the write fail with EPIPE; its exit code, reaped like
+\ any slot's, makes the row red.
 4096 constant GT-POOL-STDIN-CAP
 
 : GT-POOL-FEED-STDIN ( fd ptr u8 n -- ) {: w:fd bytes:ptr byten:n :}
@@ -1208,8 +1172,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    repeat drop ;
 
 \ poll(2) is the one wait SA_RESTART never restarts, so a caught signal ends
-\ it with -EINTR: nothing failed and no descriptor is ready. The build above
-\ rewrote every slot, so no stale readiness is read either.
+\ it with -EINTR: nothing failed and no descriptor is ready.
 : GT-POOL-POLL ( -- n )
    GT-POOL-POLL-BUILD
    GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-POOL-POLL-MS poll {: rc :}
@@ -1275,7 +1238,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    idx GT-POOL-ERR-SLOT GT-POOL-PFD-REVENTS 0 <> if idx 1 GT-POOL-READ-STREAM then
    idx GT-POOL-WATCH-SLOT GT-POOL-PFD-REVENTS 0 <> if true idx GT-POOL-ENDED-PTR ! then ;
 
-\ A zero-wait poll of one stream's read end: TRUE when a read will not block.
 : GT-POOL-READY-NOW? ( idx n -- bool ) {: idx:idx stream:n :}
    idx stream GT-POOL-STREAM-FD-PTR @ {: fd:fd :}
    fd FD>N 0 < if false exit then
@@ -1289,7 +1251,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 : GT-POOL-READ-NOW ( idx n -- ) {: idx:idx stream:n :}
    idx stream GT-POOL-READY-NOW? if idx stream GT-POOL-READ-STREAM then ;
 
-\ Read one stream until nothing is ready or it reaches EOF.
 : GT-POOL-DRAIN-NOW ( idx n -- ) {: idx:idx stream:n :}
    begin idx stream GT-POOL-READY-NOW? while
       idx stream GT-POOL-READ-STREAM
@@ -1344,8 +1305,8 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 
 \ The row has exited, so the wait returns at once. A pipe not at EOF after one
 \ read may be held by something the row left behind, and a drain then could
-\ read a live writer forever: the tree is killed first, a zombie leader's group
-\ included, and only then is each pipe drained.
+\ read a live writer forever: the tree is killed first, and only then is each
+\ pipe drained.
 : GT-POOL-FINISH ( idx -- ) {: idx:idx :}
    idx 0 GT-POOL-READ-NOW
    idx 1 GT-POOL-READ-NOW
@@ -1373,11 +1334,6 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
       1+
    repeat drop ;
 
-\ THE ANSWER TO A CAUGHT SIGNAL (see GT-POOL-CATCH-SIGNALS). Every live slot
-\ is killed with its whole tree, the cleanup registry removes what this
-\ process registered - the runner's root, and with it every slot's scratch -
-\ and the process then dies OF THE SIGNAL (src/lib/signal.f DIE-OF). A removal
-\ that throws is named and the process still ends as signalled.
 : GT-POOL-SIGNAL@ ( -- n )
    GT-POOL-CATCHING @ 0= if 0 exit then
    SIGNAL:TAKE MATCH SIGNAL:signal-result
@@ -1385,11 +1341,9 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
       timeout OF 0 ENDOF
    ;MATCH ;
 
-\ The end of a run removes the runner's root and the fallback root. A removal
-\ that throws, as one does on a tree with a locked directory that a slot left
-\ under the root, is named here, and the run still ends the way it was ending.
-\ The registry goes with the report: the exit hook's retry would throw at the
-\ same entry and name it a second time.
+\ A removal that throws is named here, and the run still ends the way it was
+\ ending. The registry goes with the report: the exit hook's retry would throw
+\ at the same entry and name it a second time.
 : GT-POOL-CLEANUP ( -- )
    [: GT-CLEANUP GT-POOL-FALLBACK-REMOVE ;] catch {: code:n :}
    code 0= if exit then
@@ -1416,8 +1370,8 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    GT-POOL-CLEANUP
    s" test pool: signal" sig SIGNAL:DIE-OF ;
 
-\ A step asks after every poll. A program that caught signals asks once more
-\ when its own cleanup is done, for the one that arrived after its last step.
+\ A program that caught signals asks once more when its own cleanup is done,
+\ for the one that arrived after its last step.
 : GT-POOL-SIGNAL-CHECK ( -- )
    GT-POOL-SIGNAL@ dup 0= if drop exit then
    GT-POOL-SIGNAL-DIE ;
@@ -1451,9 +1405,8 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 
 \ The report is on stdout before the tree goes; the die ends the process, so
 \ the cleanup has to run in front of it or the pool root outlives every red
-\ run (that is where the leaked gate-pool-test-battery trees came from). The
-\ fallback root goes last for the same reason the report goes first: the red
-\ lines rebuild their capture paths under it (GT-POOL-RED-STREAM$).
+\ run. The fallback root goes last for the same reason the report goes first:
+\ the red lines rebuild their capture paths under it.
 : GT-POOL-RED-DIE ( -- )
    GT-POOL-RED-REPORT
    GT-POOL-CLEANUP
