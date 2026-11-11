@@ -5,6 +5,34 @@
 \ this file holds only arm64 encodings and register choices. FILL-SLOT stores
 \ its words into the EMIT- and src/habu/t0-label.f (LABEL) cells for
 \ CTARGET-ARCH:AARCH64.
+\
+\ CLOSE copies a unit's body from RAW to OUT, prologue first, an epilogue
+\ before each `ret`. Frame, lowest first: env cell, record cells, slots
+\ (REC-OFF); LINKED adds x30.
+\
+\ A control branch is a placeholder word in RAW and an entry in the open
+\ unit's branch list. CLOSE writes each, since the epilogues it inserts move
+\ code; a branch to a `ret` or tail `b` lands on the epilogue in front of it.
+\ A branch never leaves its unit, so placement leaves it alone; one its field
+\ cannot reach throws E-A64EMIT-REACH.
+\
+\ Address sites wait in PEND-AT and call and tail sites in PCALL-AT until
+\ CLOSE files them into the seam at their final offsets. A data address
+\ inside the fixed DATA mapping is three words, `movz lsl32`, `movk lsl16`,
+\ `movk`; any other address is all four lanes. Every lane is emitted so the
+\ publisher can rewrite it in place. A data address's row carries the origin
+\ ADDR-DATA takes, a code address's -1. A quotation's address is an `adr`
+\ relative to its own site and `recurse` a `bl` to byte 0: neither files a
+\ row.
+\
+\ The frame cell stays the index's home (`j` and the runtime read it); x29 is
+\ a copy written beside every store of it. HELD says whether the code emitted
+\ next may read x29: a loop head sets it, and so do `i` and a step once they
+\ load it. Every call clears it, since the callee may run a loop, and so does
+\ every label a branch lands on (MARK and RESOLVE), since a branch may come
+\ from code that wrote x29; LOOP-POP and a unit's start clear it too. While it
+\ is clear, `i`, `loop` and `+loop` load x29 from the frame first. A refused
+\ token discards the whole emission, and OPEN begins the next one clear.
 
 require src/lib/error.f
 require src/lib/byte-buffer.f
@@ -24,24 +52,21 @@ package ARM64
 using A64ASM
 
 15 constant NVREG
-16 constant TMP                       \ x16, a literal
-17 constant ADR                       \ x17, an address
+16 constant TMP
+17 constant ADR
 30 constant LR
-29 constant IDX                       \ x29, the innermost index's cache
+29 constant IDX
 9 constant CB-ID                      \ x9, the stub's slot for its thunk
 4 constant INSN                       \ the bytes of one instruction word
 31 constant SP                        \ as a base or an add/sub operand
 4 constant REC-ARG                    \ x4, a reading quotation's record on entry
-                                      \ (src/habu/habu1.f BRECORD)
 
-\ Registers. x19 is the data stack and grows up.
-\ x19, x20 (DATA), x26, x27 and x28 are the engine's
-\ (src/habu/layout.f ENGINE-GPR:A64-MASK); compiled code writes none of them
-\ except x19 as the stack. x18 is Darwin's (src/arch/arm64/asm.f XREG? refuses
-\ it). x29 caches the innermost loop index, and any callee may write it. x16
-\ and x17 are this file's temporaries, a literal and an address, and hold no
-\ value between two of its words. A body is entered by `bl` or
-\ `blr` and leaves by `ret` through x30.
+\ Registers. x19 is the data stack and grows up. x19, x20 (DATA), x26, x27
+\ and x28 are the engine's; compiled code writes none of them except x19 as
+\ the stack. x18 is Darwin's. x29 caches the innermost loop index, and any
+\ callee may write it. x16 and x17 are this file's temporaries, a literal and
+\ an address, and hold no value between two of its words. A body is entered
+\ by `bl` or `blr` and leaves by `ret` through x30.
 \
 \ The machine register of each vreg; an index past it throws E-LAYOUT-BOUNDS.
 NVREG TYPED-BUFFER REGS n
@@ -73,7 +98,6 @@ C-GT CC-GT CC>N CONDS !
 ' ENC-ORRI 1 ALU-LOGI !
 ' ENC-EORI 2 ALU-LOGI !
 
-\ Each shifter by a register and by a count.
 2 TYPED-BUFFER SH-RR [ n n n -- n ]
 ' ENC-LSLV SH-LEFT SHIFTER>N SH-RR !
 ' ENC-LSRV SH-RIGHT SHIFTER>N SH-RR !
@@ -124,7 +148,6 @@ DYNAMIC-BUFFER BR-ARG n
 : HERE-OFF ( -- n ) RAW BUF:LEN@ BUF:BLEN>N ;
 : OUT-OFF ( -- n ) OUT BUF:LEN@ BUF:BLEN>N ;
 
-\ Append one instruction word to buf, little-endian: one growth for its bytes.
 : W32+ ( n ptr a -- ) {: w:n buf:ptr :}
    w  buf INSN BUF:N>BLEN BUF:GROW SPAN:$ drop  LE:U32! ;
 
@@ -138,16 +161,12 @@ DYNAMIC-BUFFER BR-ARG n
 : HALVES ( n n -- n ) {: v:n h:n :}
    0 4 0 ?do v i HALF h = if 1 + then loop ;
 
-\ One move-wide lane: the chain's first is MOVZ, or MOVN of the inverted half
-\ in the inverted form, and the rest are MOVK.
 : LANE ( bool n n n bool -- bool ) {: first:bool h:n hw:n r:n inv:bool :}
    first 0= if r h hw MOVKHW W false exit then
    inv if r h $FFFF xor hw MOVNHW W false exit then
    r h hw MOVZHW W false ;
 
-\ Load the constant v into r with the shortest move-wide chain: the
-\ inverted form when more halves are $FFFF than are zero, and
-\ every half equal to the form's fill skipped.
+\ Load the constant v into r with the shortest move-wide chain.
 : LIT-R ( n n -- ) {: v:n r:n :}
    v $FFFF HALVES v 0 HALVES > {: inv:bool :}
    inv if $FFFF else 0 then {: fill:n :}
@@ -156,7 +175,6 @@ DYNAMIC-BUFFER BR-ARG n
    inv if r 0 0 MOVNHW W exit then
    r 0 0 MOVZHW W ;
 
-\ Whether v is a nonzero count of 4 KiB pages an add/sub immediate holds.
 : PAGES? ( n -- bool ) {: v:n :}
    v 0 > v $FFF and 0= and v 12 rshift IMM12-LIM < and ;
 
@@ -310,27 +328,6 @@ DYNAMIC-BUFFER BR-ARG n
 
 
 \ ---- the body ----------------------------------------------------------------
-\ CLOSE copies a unit's body from RAW to OUT, prologue first, an epilogue before
-\ each `ret`. Frame, lowest first: env cell, record cells, slots (REC-OFF); LINKED adds x30.
-\
-\ A control branch is a placeholder word in RAW and an entry in the open
-\ unit's branch list. CLOSE writes each, since the epilogues it inserts move
-\ code; a branch to a `ret` or tail `b` lands on the epilogue in front of it.
-\ A branch never leaves its unit, so placement leaves it alone; one its field
-\ cannot reach throws E-A64EMIT-REACH.
-\
-\ Address sites wait in PEND-AT and call and tail sites in PCALL-AT until CLOSE
-\ files them into the seam (t0-emit.f THE ROWS) at their final offsets. A data
-\ address inside the fixed DATA mapping is three words, `movz lsl32`,
-\ `movk lsl16`, `movk` (habu2.f C-DATA-RAW; src/habu/address-carrier.f
-\ CHAIN-SIZE reads the shape back); any other address is all four lanes
-\ (habu2.f C-ADDR-RAW). Every lane is emitted so the publisher can rewrite it
-\ in place. A data address's row carries the origin ADDR-DATA takes, a code
-\ address's -1. A quotation's address is an `adr` relative to its own site and
-\ `recurse` a `bl` to byte 0: neither files a row.
-\
-\ SLOT-CLOSE ends the unit with RETURN and CLOSE, so the `ret` is the unit's
-\ last word: the patch slot.
 : OPEN ( -- )
    LIVE @ 0= if
       RAW SINK-START-BYTES BUF:N>BLEN BUF:INIT
@@ -358,7 +355,6 @@ DYNAMIC-BUFFER BR-ARG n
 
 : RETURN ( -- ) HERE-OFF EPI+  ENC-RET W ;
 
-\ A quotation's site is kept for QUOT-OPEN; every other address is a row.
 : FILE-ADDR ( n n n n -- ) {: at:n kind:n to:n origin:n :}
    kind ADDR-QUOT-KIND = if
       to 1 + QUOT-SITE-RESERVE  at to QUOT-SITE ! exit
@@ -404,9 +400,8 @@ DYNAMIC-BUFFER BR-ARG n
    RETURN CLOSE
    OUT-OFF INSN - EMIT-PATCH-SLOT! ;
 
-\ The callback stub is tier 1's (src/compiler/native/emit.f WRITE-STUB),
-\ appended after the last unit so each unit's code is the same armed or not.
-\ Answers where it starts.
+\ The callback stub is tier 1's, appended after the last unit so each unit's
+\ code is the same armed or not. Answers where it starts.
 : CB-STUB ( -- n )
    OUT-OFF {: at:n :}
    NCBSTUB:SLOT@ CB-ID OUT CHAIN4-IN
@@ -447,9 +442,8 @@ DYNAMIC-BUFFER BR-ARG n
 
 : DSP+ ( n -- ) {: k:n :}  DSP DSP k CELL * ADD-IMM ;
 
-\ Register r stored at the stack pointer, which then moves up k cells: one
-\ post-index `str`. A push moves at most the virtual stack's 15 cells, within
-\ the offset's reach.
+\ A push moves at most the virtual stack's 15 cells, within the offset's
+\ reach.
 : PUSH-R ( n n -- ) {: r:n k:n :}  r DSP k CELL * ENC-STRPOST W ;
 
 : PUSH ( vreg n -- ) {: s:vreg k:n :}  s REG k PUSH-R ;
@@ -520,7 +514,6 @@ DYNAMIC-BUFFER BR-ARG n
    {: s:vreg n:n :}
    s REG SP n REC-OFF true XFER ;
 
-\ The record's address with bit 63 set, one `orr` bitmask immediate.
 : REC-QUOT ( n vreg -- )
    {: n:n d:vreg :}
    d REG {: r:n :}
@@ -539,8 +532,6 @@ DYNAMIC-BUFFER BR-ARG n
    {: d:vreg s:vreg o:alu :}
    d REG d REG s REG o ALU>N ALU-RR @ execute W ;
 
-\ ADD and SUB take any v through ADD-IMM; a logical operation takes v as a
-\ bitmask immediate when it is one, else from x16.
 : OP-LIT ( vreg n alu -- )
    {: d:vreg v:n o:alu :}
    d REG {: r:n :}  o ALU>N {: k:n :}
@@ -571,16 +562,13 @@ DYNAMIC-BUFFER BR-ARG n
    v TMP LIT-R
    d REG d REG TMP ENC-MUL W ;
 
-\ x16 = n ; sdiv xd,xd,x16. `sdiv` appears only here and
-\ in MOD-LIT, whose divisor is never 0 or -1 (t0-emit.f DIVISION): the hardware
-\ answers 0 for a zero divisor.
+\ `sdiv` appears only here and in MOD-LIT, whose divisor is never 0 or -1:
+\ the hardware answers 0 for a zero divisor.
 : DIV-LIT ( vreg n -- )
    {: d:vreg v:n :}
    v TMP LIT-R
    d REG d REG TMP ENC-SDIV W ;
 
-\ x16 = n ; sdiv x17,xd,x16 ; msub xd,x17,x16,xd: the dividend less the
-\ truncated quotient times n.
 : MOD-LIT ( vreg n -- )
    {: d:vreg v:n :}
    d REG {: r:n :}
@@ -600,7 +588,6 @@ DYNAMIC-BUFFER BR-ARG n
    {: a:vreg b:vreg :}
    a REG b REG ENC-CMP W ;
 
-\ Compare a with v: cmp for an imm12, cmn for a negated one, else against x16.
 : CMP-LIT ( vreg n -- )
    {: a:vreg v:n :}
    a REG v negate {: r:n nv:n :}
@@ -725,16 +712,6 @@ DYNAMIC-BUFFER BR-ARG n
    c CC>N CONDS @ m BACK-BCOND ;
 
 \ ---- loops -------------------------------------------------------------------
-\ The frame cell stays the index's home (`j` and the runtime read it); x29 is a
-\ copy written beside every store of it. HELD says
-\ whether the code emitted next may read x29: a loop head sets it, and so do
-\ `i` and a step once they load it. Every call clears it, since the callee may
-\ run a loop, and so does every label a branch lands on (MARK and RESOLVE),
-\ since a branch may come from code that wrote x29; LOOP-POP and a unit's start
-\ clear it too. While it is clear, `i`, `loop` and `+loop` load x29 from the
-\ frame first. A refused token discards the whole emission, and OPEN begins the
-\ next one clear.
-\
 \ x16 holds the loop stack's depth and x17 the address one frame past the
 \ innermost, base + 16 * depth.
 : LDEPTH ( -- ) TMP XREG-RBASE LOOPSP-CELL ENC-LDR W ;
@@ -748,7 +725,6 @@ DYNAMIC-BUFFER BR-ARG n
 -16 constant LIDX-OFF
 -8 constant LLIM-OFF
 
-\ The index of the frame outside the innermost into d, from memory.
 : LOOP-J ( vreg -- )
    {: d:vreg :}
    LDEPTH LTOP
@@ -814,8 +790,6 @@ DYNAMIC-BUFFER BR-ARG n
    C-GE m BACK-BCOND ;
 
 \ ---- the seam ----------------------------------------------------------------
-\ Make this file's words, and LABEL's over its branch primitives, the ones the
-\ EMIT- operations run at slot k.
 : FILL-SLOT ( n -- )
    {: k:n :}
    NVREG k EMIT-VREGS-N !
