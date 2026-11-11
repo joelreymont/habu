@@ -21254,8 +21254,10 @@ CHECKER-REG:}SCRATCH
    t T-RES HIDDEN-PARAM? IF row PRE-GROUP ELSE 1 THEN {: w:n :}
    w 0= IF row EXIT THEN
    row w ROW-DROP-N {: below:n :}
+   t #LOC @ 1 - gi - LOC-AS-BUNDLE? {: whole:bool :}   \ before the walk below: it can fix a sibling's width
    below gi 1 + RECURSE {: rest:n :}
-   t #LOC @ 1 - gi - LOC-AS-BUNDLE? IF t rest LAYOUT-PUSH-FIELDS  node over rest FIELDS-LINEAGE! EXIT THEN
+   whole IF t rest LAYOUT-PUSH-FIELDS  node over rest FIELDS-LINEAGE! EXIT THEN
+   t LOGICAL-KNOWN? IF node rest CELL-FIELDS EXIT THEN   \ a deeper local's annotation fixed its width
    rest below = IF row EXIT THEN
    rest row w PRE-PUSH ;
 

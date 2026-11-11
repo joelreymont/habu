@@ -184,6 +184,11 @@ variable WL-RT
 \ Both options share `a`: eating the top one resolves the one below for `c`.
 : WL-TWO-NONE ( -- option<a> option<a> ) OPTION:NONE OPTION:NONE ;
 : WL-SHARED-BIND ( -- n ) depth {: d:n :} WL-TWO-NONE WL-EAT {: c :} depth d - ;
+\ `c`'s annotation resolves `a` for the untyped sibling, above or below it.
+: WL-SIBLING-BELOW ( -- n n )
+   depth {: d:n :} WL-TWO-NONE {: x c:option<n> :} depth d - c WL-SHOW ;
+: WL-SIBLING-ABOVE ( -- n n )
+   depth {: d:n :} WL-TWO-NONE {: c:option<n> x :} depth d - c WL-SHOW ;
 \ A resolved option beside a built one: `swap` moves each whole.
 : WL-LOOP-SWAP ( n -- n n )
    WL-RT !  OPTION:NONE BEGIN WL-RT? WHILE WL-EAT 5 OPTION:SOME REPEAT
@@ -302,6 +307,7 @@ public
    0 WL-LOOP-BIND 0 T=  2 WL-LOOP-BIND 0 T=
    true WL-ELSE-BIND 0 T=  false WL-ELSE-BIND 0 T=
    WL-SHARED-BIND 0 T=  WL-SHARED-SWAP 9 T= -1 T=
+   WL-SIBLING-BELOW -1 T= 0 T=  WL-SIBLING-ABOVE -1 T= 0 T=
    0 WL-LOOP-SWAP 9 T= -1 T=  2 WL-LOOP-SWAP 9 T= 5 T=
    WL-SHUFFLES
    WL-REALS ;
