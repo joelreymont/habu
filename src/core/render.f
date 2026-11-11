@@ -1133,6 +1133,7 @@ variable MDV-I   variable MDV-F
       MD-LOOP-DEPTH   of s" E-MISMATCH" endof
       MD-IF-DEPTH     of s" E-MISMATCH" endof
       MD-ARMS-DEPTH   of s" E-MISMATCH" endof
+      MD-LOCAL-ESCAPE of s" E-LOCAL-ESCAPE" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -1188,6 +1189,7 @@ variable MDV-I   variable MDV-F
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
+      MD-LOCAL-ESCAPE of s" run_quotation_while_locals_live" endof
       MD-LOOP-RDEPTH  of s" fix_return_stack" endof
       MD-LOOP-CARRIED of s" fix_control_flow" endof
       MD-NO-LOOP      of s" fix_control_flow" endof
@@ -1294,6 +1296,7 @@ variable MDV-I   variable MDV-F
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
+      MD-LOCAL-ESCAPE of s" Run the quotation inside the block of the locals it reads; a quotation that is stored, kept or returned takes its values from the stack." endof
       MD-LOOP-RDEPTH  of s" Take back with r> in the loop body every cell it pushes with >r, so each pass leaves the return stack as it found it." endof
       MD-LOOP-CARRIED of s" Make each pass leave the cells it carries as it found them, of the same types and with the same facts known of them; keep a value that changes per pass in a variable." endof
       MD-NO-LOOP      of s" Use i, leave, unloop, loop and +loop only inside a do or ?do this definition opened and has not closed." endof
@@ -1363,6 +1366,7 @@ variable MDV-I   variable MDV-F
       MD-LOOP-DEPTH   of s" the loop body changes the stack's depth" endof
       MD-IF-DEPTH     of s" the if arm changes the stack's depth" endof
       MD-ARMS-DEPTH   of s" the if and else arms leave different stack depths" endof
+      MD-LOCAL-ESCAPE of s" a quotation that reads a local would outlive it: stored, kept, returned or held past the local's block" endof
       MD-LOOP-RDEPTH  of s" the loop body changes the return stack's depth" endof
       MD-LOOP-CARRIED of s" the loop body leaves a carried cell different from the one it entered with" endof
       MD-NO-LOOP      of s" no loop is open here" endof

@@ -2801,6 +2801,7 @@ variable TWALK-D
       v x F>SECOND any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       v x F>BODY any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
+      \ A block part is no type argument: an unbound one leaves the type closed.
       v x Q>DIN any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       v x Q>DOUT any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       v x Q>RIN any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
@@ -2838,7 +2839,7 @@ variable TWALK-D
    PARAM>FAM C2-RECORDS-FAM @ = ;
 
 \ Dependencies travel with the complete type, including phantom wrappers and
-\ every quotation row. Scope identity and linear ownership are separate facts:
+\ every quotation row and block part. Scope identity and linear ownership are separate facts:
 \ a copied shared view retains its scopes without copying an owned resource.
 : SCOPED-TYPE?* ( n -- bool ) {: t:n :}
    t R-RES dup TAG S-PUSH = IF
@@ -2858,6 +2859,7 @@ variable TWALK-D
       ELSE drop THEN
       x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
+      x Q>BLOCK T-RES TAG T-SCOPE = IF RES-TRUE EXIT THEN
       x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
@@ -2900,7 +2902,8 @@ variable TWALK-D
 : SCHEME-TYPE? ( n -- bool ) TWALK-RESET SCHEME-TYPE?* ;
 
 CHECKER-REG:SCRATCH{
-variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
+variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type, 3 = a quotation's block part
+variable QUOT-HIT        \ true when the last NO-SCOPE? walk failed at a quotation's block part
 CHECKER-REG:}SCRATCH
 
 \ Storage constrains the complete pointee, including unresolved quotation rows.
@@ -2927,7 +2930,7 @@ CHECKER-REG:}SCRATCH
    x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
-      x Q>BLOCK T-RES dup ISVAR IF PAY NSCOPE-RAISE ELSE drop RES-FALSE EXIT THEN
+      x Q>BLOCK T-RES dup ISVAR IF PAY NSCOPE-RAISE ELSE drop -1 QUOT-HIT ! RES-FALSE EXIT THEN
       x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
       x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
       x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
@@ -2940,7 +2943,8 @@ CHECKER-REG:}SCRATCH
       REPEAT drop
    THEN
    RES-TRUE ;
-: NO-SCOPE? ( n -- bool ) TWALK-RESET NO-SCOPE?* ;
+: NO-SCOPE? ( n -- bool ) TWALK-RESET 0 QUOT-HIT ! NO-SCOPE?* ;
+: STORE-HIT ( -- n ) QUOT-HIT @ IF 3 ELSE 1 THEN ;
 : NO-SCOPE-PTR? ( n -- bool )
    T-RES dup TAG T-PTR <> IF drop RES-TRUE EXIT THEN
    PTR>INNER NO-SCOPE? ;
@@ -3282,7 +3286,7 @@ public
 : TV! ( n n -- )
    {: term:n id:n :}
    id NSCOPE@ IF term NO-SCOPE? 0= IF
-      1 SCOPE-HIT ! term id MK-VAR U-FAIL EXIT
+      STORE-HIT SCOPE-HIT ! term id MK-VAR U-FAIL EXIT
    THEN THEN
    term CHECKER-QUOT-FRESH:HELD {: held:n :}
    held 0 <> IF id FB-VAR? 0= IF held  held FB-MINT  U-FAIL EXIT THEN THEN
@@ -3291,7 +3295,7 @@ public
 
 : RV! ( n n -- ) {: row:n id:n :}
    id NSCOPE@ IF row NO-SCOPE? 0= IF
-      1 SCOPE-HIT ! row id MK-ROW U-FAIL EXIT
+      STORE-HIT SCOPE-HIT ! row id MK-ROW U-FAIL EXIT
    THEN THEN
    row CHECKER-QUOT-FRESH:HELD {: held:n :}
    held 0 <> IF held  held FB-MINT  U-FAIL EXIT THEN
@@ -4390,15 +4394,22 @@ defer U-DRAIN-XT ( n -- )
 : ROLE-FLIP ( n -- n ) dup 1 and 2 * swap 1 rshift 1 and or 3 xor ;
 
 
-\ Two quotations that unify share one block part.
+\ Two quotations that unify share one block part. A block part that must read
+\ no local refuses a block's scope as a local's escape (SCOPE-HIT 3).
 : BLOCK-PAIR ( n n -- ) {: got:n want:n :}
    got Q>BLOCK T-RES {: a:n :}   want Q>BLOCK T-RES {: b:n :}
    a ISVAR b ISVAR and IF
       a PAY b PAY <> IF a b PAY TV! THEN EXIT
    THEN
-   a ISVAR IF b a PAY TV! EXIT THEN
-   b ISVAR IF a b PAY TV! EXIT THEN
-   a b <> IF a b U-FAIL THEN ;
+   a ISVAR IF
+      a PAY NSCOPE@ IF 3 SCOPE-HIT ! a b U-FAIL EXIT THEN
+      b a PAY TV! EXIT
+   THEN
+   b ISVAR IF
+      b PAY NSCOPE@ IF 3 SCOPE-HIT ! a b U-FAIL EXIT THEN
+      a b PAY TV! EXIT
+   THEN
+   a b <> IF 3 SCOPE-HIT ! a b U-FAIL THEN ;
 
 
 : QUOT-PAIR ( n n -- )
@@ -4426,12 +4437,21 @@ defer U-DRAIN-XT ( n -- )
    a b ;
 
 
+\ Both sides are walked, as each walk raises NSCOPE on its variables; QUOT-HIT
+\ then answers for the side that failed.
+: NO-SCOPE-PAIR? ( n n -- bool ) {: a:n b:n :}
+   a NO-SCOPE-PTR? QUOT-HIT @ {: oka:bool qa:n :}
+   b NO-SCOPE-PTR? {: okb:bool :}
+   okb IF qa QUOT-HIT ! THEN
+   oka okb and ;
+
+
 \ A wanted side that is a variable whose chain is provided (T-PROV?) demands
 \ nothing of a literal: the pair then reads no literal fact (CUR-LIT, LIT-FITS?).
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    ROLE-ALIAS  dup T-BOUND-VAR? IF dup T-PROV? IF 0 CUR-LIT ! THEN THEN
    T-RES swap T-RES swap
-   over NO-SCOPE-PTR? over NO-SCOPE-PTR? and 0= IF 1 SCOPE-HIT ! U-FAIL EXIT THEN
+   2dup NO-SCOPE-PAIR? 0= IF STORE-HIT SCOPE-HIT ! U-FAIL EXIT THEN
    2dup = IF 2drop EXIT THEN
    2dup SCOPE-INTRO-READY? IF SCOPE-INTRO-PAIR-XT EXIT THEN
    2dup FORALL-OPEN-READY? IF FORALL-OPEN-XT EXIT THEN
@@ -4698,6 +4718,7 @@ CHECKER-REG:}SCRATCH
 variable XROW  variable XRROW
 CHECKER-REG:SCRATCH{
 variable XSET  variable DEADP
+variable DEF-LSC         \ the scope of the definition's own locals block, 0 for none (LSC-CK)
 variable DEADERR
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
@@ -4977,6 +4998,7 @@ CHECKER-REG:}SCRATCH
 
 62 constant MD-IF-DEPTH      \ an if's arm leaves another data depth than the if started with (CF-THEN)
 63 constant MD-ARMS-DEPTH    \ an if's two arms leave different data depths (CF-THEN-ELSE-MERGE)
+64 constant MD-LOCAL-ESCAPE  \ a quotation that reads a local would outlive it (LSC-CK, STORE-HIT)
 
 \ Why the check left a stretch or definition to the run (DEFER-WHY), each with
 \ its own suggestion (render.f DEFER-SUGGEST$); 0 is no cause recorded.
@@ -5058,6 +5080,7 @@ TAIL-CAPTURE-DEFAULT
 : CELL-DIAG! ( -- )
    SCOPE-HIT @ 1 = IF MD-SCOPE-STORE MDIAG! THEN
    SCOPE-HIT @ 2 = IF MD-SCOPE-KIND MDIAG! THEN
+   SCOPE-HIT @ 3 = IF MD-LOCAL-ESCAPE MDIAG! THEN
    STALE-HIT @ 0 <> IF STALE-HIT @ STALE-WHY MDIAG! THEN    \ a cell with no type left to read answers before any rule about which type it is
    RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN   \ the executable value first: it is the one rule that names a base and a raw cell alike
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
@@ -21475,7 +21498,8 @@ $88 constant CF.FA-OFF
 $90 constant CF.FB-OFF
 $98 constant CF.FT-OFF
 $A0 constant CF.XFA-OFF
-$A8 constant CFS-REC
+$A8 constant CF.LSC-OFF
+$B0 constant CFS-REC
 : CF.KND ( ptr a -- ptr a ) CF.KND-OFF + ;
 : CF.SA ( ptr a -- ptr a ) CF.SA-OFF + ;
 : CF.SB ( ptr a -- ptr a ) CF.SB-OFF + ;
@@ -21500,6 +21524,8 @@ $A8 constant CFS-REC
 : CF.FB ( ptr a -- ptr a ) CF.FB-OFF + ;
 : CF.FT ( ptr a -- ptr a ) CF.FT-OFF + ;
 : CF.XFA ( ptr a -- ptr a ) CF.XFA-OFF + ;
+\ CF.LSC: the scope of the locals block the frame opens, 0 for none (LSC-CK).
+: CF.LSC ( ptr a -- ptr a ) CF.LSC-OFF + ;
 
 
 32 constant CF-FRAMES-MAX   \ control frames one body may nest
@@ -21630,7 +21656,7 @@ SCOPE-INTRO-FENCE-INSTALL
      #CFC @ CF-ROW {: rec:ptr :}
      k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
      r0 rec CF.RA !  r1 rec CF.RB !
-     #LOC @ rec CF.LN !
+     #LOC @ rec CF.LN !  0 rec CF.LSC !
      CF-LOOPS @ rec CF.LA !  0 rec CF.LB !
      FACTS @ rec CF.FA !  0 rec CF.FB !  0 rec CF.FT !
      0 rec CF.UNI !                        \ default non-uniform; CF-IF marks a uniform<bool> branch
@@ -21651,9 +21677,6 @@ SCOPE-INTRO-FENCE-INSTALL
 : CF@LA ( -- n ) CF-TOP CF.LA @ ;
 : CF@LB ( -- n ) CF-TOP CF.LB @ ;
 
-: CF-LOC-REST ( -- )
-   CF@LN #LOC ! ;
-
 : CF-DROP #CFC @ 1 - #CFC ! ;
 
 : CF-MT? #CFC @ 0 > 0= ;
@@ -21672,6 +21695,24 @@ SCOPE-INTRO-FENCE-INSTALL
    MDIAG!
    0 OK !
    -1 FAILSET ! ;
+
+\ A locals block's scope still reachable when the block ends belongs to a
+\ quotation that reads its locals and outlives them; 0 is a block with none.
+: LSC-CK ( n -- ) {: scope:n :}
+   scope 0= IF EXIT THEN
+   scope SCOPE-EXTERIOR? IF MD-LOCAL-ESCAPE CF-FAIL THEN ;
+
+\ The frame's locals end here; an if-frame's else arm starts with no block scope.
+: CF-LOC-REST ( -- )
+   CF@LN #LOC !
+   CF-TOP CF.LSC @ LSC-CK
+   0 CF-TOP CF.LSC ! ;
+
+\ The definition's own locals are not outside their block, so the test reads
+\ none of them.
+: DEF-LSC-CK ( -- )
+   #LOC @ {: live:n :}
+   0 #LOC !  DEF-LSC @ LSC-CK  live #LOC ! ;
 
 \ A control-flow word the load's compiler refuses while compiling it: the token
 \ is refused for the reason why. The frames are the compiler's only while every
@@ -24230,7 +24271,9 @@ variable IS-PEND-U                   \ and its length
 
 : IS-APPLY ( n -- )
    {: q:n :}
-   q NO-SCOPE? 0= IF MD-SCOPE-STORE MDIAG! IS-FAIL EXIT THEN
+   q NO-SCOPE? 0= IF
+      QUOT-HIT @ IF MD-LOCAL-ESCAPE ELSE MD-SCOPE-STORE THEN MDIAG! IS-FAIL EXIT
+   THEN
    q QCON-BEGIN
    FRESH MK-ROW {: rest :}   q rest MK-PUSH {: want:n :}
    want SUNI-IN   \ the callable meets the defer's effect as a call's argument does
@@ -26401,7 +26444,7 @@ CHECKER-REG:}SCRATCH
    RBROW @ SGRBASE !   \ a definition with no signature reads only what it pushed too
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
-   0 FAILB !  0 FAILE !  0 XSET !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
+   0 FAILB !  0 FAILE !  0 XSET !  0 DEF-LSC !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
@@ -27584,6 +27627,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    CHECK-SIG? CHECK-RETURNS? 0= and IF FRESH-CLAIM THEN   \ a body that never returns resolves its fresh names too
    CHECK-SIG? 0= IF INFER-FRESH-CLAIM THEN
+   DEF-LSC-CK
    CF-OPEN? IF MD-CF-OPEN CF-FAIL THEN
    CHECK-RBALANCE
    CHECK-RET-SIG? IF
@@ -28608,6 +28652,7 @@ package CHECKER-REG
       CHECK-FRESH-OUTPUT
       OK @ IF SGOUT @ DCUR ! THEN
    ELSE FRESH-CLAIM THEN
+   DEF-LSC-CK
    CF-OPEN? IF MD-CF-OPEN CF-FAIL THEN
    CHECK-RBALANCE
    SGHASR? CHECK-RETURNS? and IF SGROUT @ RSUNI-COERCE THEN
