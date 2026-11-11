@@ -2233,9 +2233,9 @@ documentation-only edits need no rebuild.
   element other than `u8` and an unknown type, defining nothing. Checked code
   calls or ticks `DYNAMIC-STORAGE:RECORD-NEW` and
   `DYNAMIC-STORAGE:RECORD-RELEASE` only inside the generated words, at top
-  level too (`E-ARENA-CALL`, there `E-ARENA-CALL-TOP-LEVEL`), so a record's
-  size always comes from the declared type; a record of a STRUCTURE type enters
-  no other generic-pointer word.
+  level too (**Only HEAP's generated words reach the storage runtime**), so a
+  record's size always comes from the declared type; a record of a STRUCTURE
+  type enters no other generic-pointer word.
 - **Runtime-sized buffers use OS mappings.** `create … allot` consumes
   dictionary DATA; `src/lib/memory.f` allocates contiguous or separate 64K
   buffers and spans, bounded by cell-size overflow and OS allocation failure.
@@ -2541,11 +2541,12 @@ sections above.
   `11\n22\n\n`; use digit emitters for inline numbers.
 - **Only HEAP's generated words reach the storage runtime.** A call or tick of
   `DYNAMIC-STORAGE:RECORD-NEW` or `RECORD-RELEASE`, directly or through a
-  re-export, outside a `HEAP`'s NAME-NEW and NAME-RELEASE, in a body, a
-  quotation or at top level, is `E-ARENA-CALL`, `E-ARENA-CALL-TOP-LEVEL` at top
-  level (`arena call: only HEAP's generated NAME-NEW and NAME-RELEASE call the
-  storage runtime`). Exporting the two words is admitted; only the call or tick
-  is refused.
+  re-export, outside a `HEAP`'s NAME-NEW and NAME-RELEASE is refused (`arena
+  call: only HEAP's generated NAME-NEW and NAME-RELEASE call the storage
+  runtime`): `E-ARENA-CALL-TOP-LEVEL` for a top-level token in the source, else
+  `E-ARENA-CALL`, in a body, a quotation or text `evaluate` runs at top level
+  (there with `word` null). Exporting the two words is admitted; only the call
+  or tick is refused.
 - **`field-project` is not a definition name once the engine is sealed.**
   Every `STRUCTURE` accessor spells it unqualified, so it binds through the
   declaring scope's search order; a qualified spelling would carry no checker
