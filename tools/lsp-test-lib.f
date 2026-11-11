@@ -3670,9 +3670,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" include hl-common.f\n: HL-U1 ( -- n ) HL-K ;\nundefine HL-K\ninclude hl-common.f\n: HL-U2 ( -- n ) HL-K ;\n" ;
 
 \ HLP:HL-K and HLQ:HL-K, the private HL-K and the public HLV:HL-K, then the
-\ first global HL-K and the second, each answered null: the token their uses
-\ target declares two words, and no use is known to be of the one it names
-\ rather than of the other.
+\ first global HL-K and the second, each answered null.
 : HIGHLIGHT-INCLUDED-TURNS ( -- )
    HL-COMMON-PATH TEXT-HL-COMMON FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -3701,20 +3699,13 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR s" 8" NULL-RESULT ;
 
 \ hl-case.f, on disk, as the second of one check's two readings of it read it:
-\ hl-reread.f includes it into P's public section, then into Q's, and uses
-\ P:K and Q:k, and between the readings the file changed from
-\ `: K ( -- n ) 1 ;` to this text. The lines are the ones
-\ tools/check-verify-child.f stated for a verified check of that race: the two
-\ files, K of p and k of q both at hl-case.f's bytes 2 to 3, and the two uses,
-\ here at hl-reread.f's bytes 107 to 110 and 111 to 114.
+\ between the readings the file changed from `: K ( -- n ) 1 ;` to this text.
 : HL-CASE-PATH ( -- ptr u8 n )  s" hl-case.f" FIXTURE ;
 : HL-REREAD-PATH ( -- ptr u8 n )  s" hl-reread.f" FIXTURE ;
 : TEXT-HL-CASE ( -- ptr u8 n )  s\" : k ( -- n ) 2 ;\n" ;
 : TEXT-HL-REREAD ( -- ptr u8 n )
    s\" package P\npublic\ninclude hl-case.f\n;package\npackage Q\npublic\ninclude hl-case.f\n;package\n: HL-BOTH ( -- n ) P:K Q:k + ;\n" ;
 
-\ The definition of word W of package P at hl-case.f's bytes 2 to 3, a line
-\ in PAR.
 : HL-CASE-DEF+ ( ptr u8 n ptr u8 n -- )
    {: w:ptr wu:n p:ptr pu:n :}
    s\" {\"kind\":\":\",\"class\":\"word\",\"word\":\"" PAR+ w wu PAR+
@@ -3722,8 +3713,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" \",\"visibility\":\"public\",\"effect\":\"-- n\",\"file\":" PAR+
    HL-CASE-PATH TEXT+ s\" ,\"byte_start\":2,\"byte_end\":3}\n" PAR+ ;
 
-\ A use from byte FROM to byte TO of hl-reread.f of the token at hl-case.f's
-\ bytes 2 to 3, a line in PAR.
 : HL-CASE-USE+ ( n n -- )
    {: from:n to:n :}
    s\" {\"byte_start\":" PAR+ from INT$ PAR+
@@ -3732,9 +3721,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" ,\"file\":" PAR+ HL-CASE-PATH TEXT+
    s\" ,\"target_start\":2,\"target_end\":3}\n" PAR+ ;
 
-\ The highlight at this line and character of the document in this slot, its
-\ byte found as the server finds a request's, must be null; it fails under
-\ this label.
 : HL-NULL-AT ( n n n ptr u8 n -- )
    {: slot:n line:n ch:n l:ptr lu:n :}
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
@@ -3744,8 +3730,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    JSON:WRITTEN$ s" null" T$=
    HL-W JSON:WRITE-CLOSE ;
 
-\ The check's lines kept for hl-reread.f, open in this slot, as the server
-\ keeps a completed check's, then the highlight asked at P:K and at Q:k.
 : HL-REREAD-ASK ( n -- )
    {: slot:n :}
    PAR-B CLEAR
@@ -3781,8 +3765,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    p pu URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
-\ The answer to the request with this id's JSON text, begun in MSG, up to its
-\ data's bracket.
 : TOKENS-START ( ptr u8 n -- )
    {: i:ptr iu:n :}
    MSG-B CLEAR
@@ -3809,11 +3791,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR
    MSG$ HEARD ;
 
-\ tok.f, in the artifact directory, never on disk: ROOK, LOOK, whose string
-\ operand `names:` states is a name, the constant K7, the variable V7, PRIV
-\ and PUB in package TP, which re-exports ROOK, and SEEK, whose line holds,
-\ after a character of one UTF-16 unit and two bytes, the literal ROOK before
-\ a call of LOOK, TP:PUB, `dup` and a use of the re-export.
 : TOK-PATH ( -- ptr u8 n )  s" tok.f" FIXTURE ;
 : TEXT-TOK ( -- ptr u8 n )
    TXT-B CLEAR
@@ -3823,11 +3800,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" : SEEK ( -- n ) s\" é\" 2drop s\" ROOK\" LOOK TP:PUB dup + TP:ROOK + ;\n" HV+
    TXT$ ;
 
-\ Each token declaring a word of tok.f and each use the check bound, by where
-\ it starts: LOOK's operand of `names:`, K7's readonly, and ROOK's literal,
-\ which the check publishes after the call of LOOK that follows it, placed
-\ before it. EXPORT's operand is a use of ROOK; the export's declaration and
-\ TP:ROOK, bound to it, get none, nor does `dup`, an engine word.
 : TOKENS-TURNS ( -- )
    SESSION-INITIALIZE
    TOK-PATH TEXT-TOK 1 OPENS
@@ -3845,8 +3817,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    2 2 4 FUNCTION+  0 29 4 FUNCTION+  0 6 4 FUNCTION+  0 5 6 FUNCTION+
    TOKENS-END ;
 
-\ CVT-T's token, at which the check declares both converters, gets none; each
-\ use of either, in either case and qualified, is a function.
 : TOKENS-DEFTYPE-TURNS ( -- )
    SESSION-INITIALIZE
    HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
@@ -3861,8 +3831,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    2 2 4 FUNCTION+  0 16 11 FUNCTION+  0 12 12 FUNCTION+
    TOKENS-END ;
 
-\ The uses of def-dep.f's global and, qualified, of its public word, typed by
-\ their declarations in the file on disk.
 : TOKENS-DEP-TURNS ( -- )
    DEF-DEP-PATH TEXT-DEF-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -3876,9 +3844,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    1 2 7 FUNCTION+  0 17 7 FUNCTION+  0 8 10 FUNCTION+
    TOKENS-END ;
 
-\ The refused hu.f and hd.f, deferred at the top-level PN: each answered with
-\ the words its check bound, as hover answers from that check, PN's top-level
-\ use among them.
 : TOKENS-UNPROVED-TURNS ( -- )
    SESSION-INITIALIZE
    HU-PATH TEXT-HU 1 OPENS
@@ -3904,8 +3869,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    TOKENS-END ;
 
 \ Tokens asked in the turn of a change whose check did not complete: no check
-\ is of the document's text, so none is answered, not those of the text
-\ before it.
+\ is of the document's text, so none is answered.
 : TOKENS-INCOMPLETE-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
@@ -3922,22 +3886,14 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ ---- declaration identities --------------------------------------------------
 
-\ No reply states a declaration identity, so these cases run the store in the
-\ test's own process, on the lines the test's own check of each text states,
-\ as the server's check of it would.
-
-create SNAP-B HDR-BYTES allot            \ the store's decls and uses, as SNAP-SLOT states them,
-create WAS-B HDR-BYTES allot             \ and as they were before the store changed
+create SNAP-B HDR-BYTES allot
+create WAS-B HDR-BYTES allot
 
 : SNAP$ ( -- ptr u8 n )  SNAP-B SPAN$ BLEN>N ;
 : WAS$ ( -- ptr u8 n )  WAS-B SPAN$ BLEN>N ;
 : SNAP+ ( ptr u8 n -- )  N>BLEN SNAP-B APPEND-SPAN ;
 : SNAP-INT+ ( n -- )  s"  " SNAP+ INT$ SNAP+ ;
 
-\ id-inc.f, on disk: the global K. id-twice.f includes it into P's public
-\ section, then into Q's, and uses P:K and Q:K. id-dt.f declares DEFTYPE
-\ ID-CVT public in ID-DT and uses both its converters. id-probe.f, on disk
-\ and never open, includes id-inc.f into R's public section and uses R:K.
 : ID-INC-PATH ( -- ptr u8 n )  s" id-inc.f" FIXTURE ;
 : ID-TWICE-PATH ( -- ptr u8 n )  s" id-twice.f" FIXTURE ;
 : ID-DT-PATH ( -- ptr u8 n )  s" id-dt.f" FIXTURE ;
@@ -3950,8 +3906,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 : TEXT-ID-PROBE ( -- ptr u8 n )
    s\" package R\npublic\ninclude id-inc.f\n;package\n: ID-R ( -- n ) R:K ;\n" ;
 
-\ The test's own check of this text as the file at PATH: whether it was
-\ verified.
 : ID-CHECK ( ptr u8 n ptr u8 n -- bool )
    [: drop ;] CHECKED-MS >MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF true ENDOF
@@ -3962,7 +3916,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
       deferred OF false ENDOF
    ;MATCH ;
 
-\ The document at PATH opened with this text: its slot.
 : ID-OPEN ( ptr u8 n ptr u8 n -- n )
    {: p:ptr pu:n t:ptr tu:n :}
    p pu URI-OF 1 p pu t tu LSP-DOCS:DOC-OPEN
@@ -3971,9 +3924,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
       none OF s" identities: open" T-LABEL false TTRUE -1 ENDOF
    ;MATCH ;
 
-\ The test's own check of the document in this slot, its lines kept as the
-\ server keeps a completed check's; it fails under this label unless the
-\ check was verified.
 : ID-KEEP ( n ptr u8 n -- )
    {: slot:n l:ptr lu:n :}
    slot LSP-DOCS:DOC-TEXT$ slot LSP-DOCS:DOC-PATH$ ID-CHECK {: ok:bool :}
@@ -3982,8 +3932,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    LSP-CHECK:VERIFY-UNREAD$ slot ok
    LSP-DEFS:DEFS-KEEP ;
 
-\ Group G as SNAP-SLOT states it: its path, its URI, whether it
-\ answers for its file and whether its file is its check's own.
 : SNAP-GROUP ( n -- )
    {: g:n :}
    s"  " SNAP+ g LSP-DEFS:GROUP-PATH$ SNAP+
@@ -3991,8 +3939,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    g LSP-DEFS:GROUP-OVER? if s"  over" else s"  answers" then SNAP+
    g LSP-DEFS:GROUP-OWN? if s"  own" else s"  dependency" then SNAP+ ;
 
-\ The decls and uses the store keeps for the last check of the document in
-\ this slot, a line each, appended to SNAP.
 : SNAP-SLOT ( n -- )
    {: slot:n :}
    slot LSP-DEFS:DEFS-DECL-RANGE ?do
@@ -4013,8 +3959,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
       i LSP-DEFS:USE-VIS SNAP-INT+ s\" \n" SNAP+
    loop ;
 
-\ SNAP holds what the store keeps for the last checks of the documents in
-\ these slots.
 : SNAP ( n n -- )
    {: a:n b:n :}
    SNAP-B CLEAR
@@ -4022,8 +3966,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 
 : WAS! ( -- )  SNAP$ N>BLEN WAS-B REPLACE ;
 
-\ How many decls of the last check of the document in this slot group G
-\ holds at bytes S to E.
 : DECLS-AT ( n n n n -- n )
    {: slot:n g:n s:n e:n :}
    0 slot LSP-DEFS:DEFS-DECL-RANGE ?do
@@ -4031,8 +3973,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
       i LSP-DEFS:DECL-BYTES e = swap s = and and if 1+ then
    loop ;
 
-\ The declaration visit of the decl of that check that group G holds at bytes
-\ S to E under this name and package and with visibility V, 0 if none is.
 : VISIT-OF ( n n n n ptr u8 n ptr u8 n n -- n )
    {: slot:n g:n s:n e:n nm:ptr nu:n p:ptr pu:n v:n :}
    slot LSP-DEFS:DEFS-DECL-RANGE ?do
@@ -4045,10 +3985,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    loop
    0 ;
 
-\ Use U of the last check of the document in this slot names the declaration
-\ of this name in this package: its visit, one the check gave, is the visit
-\ of that decl at the use's declaring token; each assertion fails under this
-\ label.
 : USE-NAMES ( n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: slot:n u:n nm:ptr nu:n p:ptr pu:n l:ptr lu:n :}
    l lu T-LABEL u LSP-DEFS:USE-NAME$ nm nu T$=
@@ -4058,9 +3994,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    slot u LSP-DEFS:USE-GROUP s e nm nu p pu u LSP-DEFS:USE-VIS VISIT-OF
    l lu T-LABEL u LSP-DEFS:USE-VISIT T= ;
 
-\ id-twice.f's check, kept: its two readings of id-inc.f give two decls at
-\ K's token, one per package, each with its own visit, which each use of P:K
-\ and Q:K names with the package it selects.
 : ID-INCLUDED ( n -- )
    {: slot:n :}
    slot LSP-DEFS:DEFS-USE-RANGE {: lim:n first:n :}
@@ -4076,8 +4009,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    s" identities-included: two visits" T-LABEL
    use LSP-DEFS:USE-VISIT use 1+ LSP-DEFS:USE-VISIT <> TTRUE ;
 
-\ id-dt.f's check, kept: DEFTYPE's two converters give two decls at its
-\ name's token under one visit, and each use names its own converter.
 : ID-DEFTYPE ( n -- )
    {: slot:n :}
    slot LSP-DEFS:DEFS-USE-RANGE {: lim:n first:n :}
@@ -4104,10 +4035,6 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    dt s" identities-remove: verified" ID-KEEP
    twice ID-INCLUDED ;
 
-\ id-probe.f, on disk, checked by the test's own check, its lines kept as a
-\ probe: the open documents' decls, uses and groups stay as they were while
-\ it is kept and once it is removed, and it keeps R:K's use with the
-\ declaration it names.
 : ID-PROBE ( n n -- )
    {: dt:n twice:n :}
    dt twice SNAP WAS!
@@ -4146,14 +4073,8 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 : CMP-A-PATH ( -- ptr u8 n )  s" cmpl-a.f" FIXTURE ;
 : CMP-DEP-PATH ( -- ptr u8 n )  s" cmpl-dep.f" FIXTURE ;
 
-\ cmpl-dep.f, on disk only: the global CMPL-DEP.
 : TEXT-CMP-DEP ( -- ptr u8 n )  s\" : CMPL-DEP ( n -- n ) 4 + ;\n" ;
 
-\ In package CMPA, CMPL-ONE, then a body using it, cmpl-dep.f's global CMPL-DEP
-\ and the engine's swap; then, global, DEFTYPE CMPL-T, whose converters
-\ >CMPL-T and CMPL-T>N the check states at CMPL-T's token, and a use of each;
-\ then DEFTYPE CMPQ-T, public in package CMPQ, and a qualified use of each of
-\ its converters outside CMPQ.
 : TEXT-CMP-A ( -- ptr u8 n )
    s\" require cmpl-dep.f\npackage CMPA\n: CMPL-ONE ( -- n ) 1 ;\n: CMPL-TWO ( -- n ) CMPL-ONE CMPL-DEP 1 2 swap 2drop ;\n;package\nrequire src/lib/type/deftype.f\nDEFTYPE CMPL-T\n: CMPL-CVT ( -- n ) 5 >CMPL-T CMPL-T>N ;\npackage CMPQ\npublic\nDEFTYPE CMPQ-T\n;package\n: CMPQ-USE ( -- n ) 5 CMPQ:>CMPQ-T CMPQ:CMPQ-T>N ;\n" ;
 
@@ -4165,16 +4086,12 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    {: i:ptr iu:n p:ptr pu:n l:n c:n :}
    s" textDocument/completion" i iu p pu l c AT-ASK ;
 
-\ The answer to the request with this id's JSON text, begun in MSG, up to its
-\ items' bracket.
 : ITEMS-START ( ptr u8 n -- )
    {: i:ptr iu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":{\"isIncomplete\":false,\"items\":[" MSG+ ;
 
-\ The item the answer lists next: its label, then its detail, none when empty,
-\ each as JSON text.
 : ITEM+ ( ptr u8 n ptr u8 n -- )
    {: w:ptr wu:n d:ptr du:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
@@ -4187,14 +4104,8 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    HEAR
    MSG$ HEARD ;
 
-\ At CMPL in CMPL-TWO's body, the document's CMPL-ONE and the dependency's
-\ CMPL-DEP, each with its declared effect and CMPL-ONE with its package; at
-\ swa the engine's swap, without either; at >CMPL and at CMPL-T>, each
-\ converter with its own effect, which the token they share does not tell;
-\ and at CMPQ:>CMPQ and at CMPQ:CMPQ-T>, each of CMPQ's converters, its
-\ spelling qualified, with its own effect and package. Each request checks the
-\ document with its cursor, as its turn, so the document's list comes before
-\ each answer.
+\ Each request checks the document with its cursor, as its turn, so the
+\ document's list comes before each answer.
 : CMP-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
    CMP-A-PATH TEXT-CMP-A 1 OPENS
@@ -4241,15 +4152,13 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    CMP-A-PATH CLOSES SAY
    CMP-A-PATH -1 EXPECT PUBLISHES ;
 
-\ A position in a document the client never opened: -32602.
 : CMP-NOT-OPEN-TURNS ( -- )
    s" 3" CMP-A-PATH 2 24 COMPLETION-ASK
    SAY
    HEAR s" 3" -32602 REFUSED ;
 
 \ CMPL asked about in the turn of the change that renamed CMPL-ONE: the
-\ request checks the changed text, so its list comes before the answer,
-\ which offers CMPL-NEW and no CMPL-ONE.
+\ request checks the changed text, so its list comes before the answer.
 : CMP-AFTER-CHANGE-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
    CMP-A-PATH TEXT-CMP-A 1 OPENS
