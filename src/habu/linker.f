@@ -271,6 +271,7 @@ DYNAMIC-BUFFER LAST-HELD n           \ a file's record r's last held facts entry
 2 constant NAMED-LATE                \ a late private wordlist (LATE+)
 DYNAMIC-BUFFER WORD-SPANS n
 DYNAMIC-BUFFER EM-SPANS n
+DYNAMIC-BUFFER EM-WORDS n            \ the piece's emission e's word, counted from FILE-EM, -1 for none
 variable WORDS-N                     \ the piece's words
 variable TOP-ROW                     \ the highest FILES row REF-FILE answered since it was zeroed
 DYNAMIC-BUFFER WORD-TIMES n          \ the build's word times by record index, 0 for none (REC-TIME)
@@ -363,6 +364,9 @@ variable FILE-END                    \ here's distance as the piece ends
 \ reference written (DATA-REF+) or resolved (RESOLVE).
 TYPED-VARIABLE HOLDS-HEADER bool
 TYPED-VARIABLE UNDER-KNOWN bool     \ whether RESOLVE-UNDER's path under another root is known
+\ The running piece changes a record below FILE-REC (CHANGER+, FACT+): exactly the records PIECE-PLACE's
+\ `false LINK-FACTS` hands CHANGER+ (LINK-RETIRED, LINK-TEXT), which runs after COMPILED-TIME reads this.
+TYPED-VARIABLE CHANGED-EARLIER bool
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
 variable FILE-PATH-N
@@ -444,7 +448,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    cap RUN-CAP !  0 RUN-N ! ;
 
 : DISPOSE-OBJECTS ( -- )
-   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  USED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
+   WORD-SPANS-RELEASE  EM-SPANS-RELEASE  EM-WORDS-RELEASE  WORD-TIMES-RELEASE  LISTED-BY-RELEASE  USED-BY-RELEASE  REC-IDS-RELEASE  PLACES-RELEASE  OLD-PLACES-RELEASE  REF-OF-RELEASE  REC-ROW-RELEASE  TIMES BUF:DISPOSE
    RAN-BY-RELEASE  WALKED-RELEASE  REACH-RELEASE  REC-SEEN-RELEASE  EM-SEEN-RELEASE  EXT-SEEN-RELEASE  HSTORE-AT-RELEASE  HSTORE-ROW-RELEASE  STORERS-RELEASE
    EDGES-RELEASE  REC-EDGES-RELEASE  EM-EDGES-RELEASE  ROW-EDGES-RELEASE  EXT-EDGES-RELEASE  LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STORED-RELEASE
    ANCHORS-RELEASE  ORDER-RELEASE  EXTS-RELEASE  PICKED-RELEASE  EXT-ROWS-RELEASE  BUILT-EXTS-RELEASE  ROW-EXTS-RELEASE
@@ -1158,27 +1162,34 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    k ;
 
 
+\ Whether the running walk reaches the record, emission or extent cell for the first time; it stamps the cell's
+\ REC-SEEN, EM-SEEN or EXT-SEEN with REACH-STAMP.
+: FIRST-SEEN? ( n -- bool )
+   CELL-ID {: id:n kind:n :}
+   kind 0 = if
+      id 1 + REC-SEEN-RESERVE
+      id REC-SEEN @ REACH-STAMP @ = if false exit then
+      REACH-STAMP @ id REC-SEEN !  true exit
+   then
+   kind 1 = if
+      id 1 + EM-SEEN-RESERVE
+      id EM-SEEN @ REACH-STAMP @ = if false exit then
+      REACH-STAMP @ id EM-SEEN !  true exit
+   then
+   id 1 + EXT-SEEN-RESERVE
+   id EXT-SEEN @ REACH-STAMP @ = if false exit then
+   REACH-STAMP @ id EXT-SEEN !  true ;
+
+
 \ A reached cell onto REACH once; an earlier piece's record or extent gets its rows, the extent marking its row WALKED.
 \ The running piece's extents, from BUILT-EXTS-N on, have no build-table row yet: they are followed and list nothing.
 : SEE ( n -- )
    {: cell:n :}
    cell CELL-ID {: id:n kind:n :}
    kind 3 = if true HEADER-SEEN ! exit then
-   kind 0 = if
-      id FIRST-REC @ < if exit then
-      id 1 + REC-SEEN-RESERVE
-      id REC-SEEN @ REACH-STAMP @ = if exit then
-      REACH-STAMP @ id REC-SEEN !
-   then
-   kind 1 = if
-      id 1 + EM-SEEN-RESERVE
-      id EM-SEEN @ REACH-STAMP @ = if exit then
-      REACH-STAMP @ id EM-SEEN !
-   then
+   kind 0 =  id FIRST-REC @ <  and if exit then
+   cell FIRST-SEEN? 0= if exit then
    kind 2 = if
-      id 1 + EXT-SEEN-RESERVE
-      id EXT-SEEN @ REACH-STAMP @ = if exit then
-      REACH-STAMP @ id EXT-SEEN !
       id BUILT-EXTS-N @ < if
          id 0 BUILT-EXT @ {: row:n :}
          row WALKED @ 1 or  row WALKED !
@@ -1198,20 +1209,22 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    first count +  first ?do i EDGES @ SEE loop ;
 
 
-\ A reached cell's references: a record's REC-EDGES span, an emission's EM-EDGES span, an
-\ extent's EXT-EDGES span.
-: FOLLOW ( n -- )
+\ A reached cell's references, their first EDGES cell and count: a record's REC-EDGES span, an emission's EM-EDGES
+\ span, an extent's EXT-EDGES span.
+: CELL-EDGES ( n -- n n )
    CELL-ID {: id:n kind:n :}
    kind 0 = if
       id 1 + 2 * REC-EDGES-RESERVE
-      id 2 * REC-EDGES @  id 2 * 1 + REC-EDGES @  SEE-SPAN exit
+      id 2 * REC-EDGES @  id 2 * 1 + REC-EDGES @  exit
    then
    kind 1 = if
       id 1 + 2 * EM-EDGES-RESERVE
-      id 2 * EM-EDGES @  id 2 * 1 + EM-EDGES @  SEE-SPAN exit
+      id 2 * EM-EDGES @  id 2 * 1 + EM-EDGES @  exit
    then
    id 1 + 2 * EXT-EDGES-RESERVE
-   id 2 * EXT-EDGES @  id 2 * 1 + EXT-EDGES @  SEE-SPAN ;
+   id 2 * EXT-EDGES @  id 2 * 1 + EXT-EDGES @ ;
+
+: FOLLOW ( n -- ) CELL-EDGES SEE-SPAN ;
 
 
 \ REACH's cells from k on, each followed; REACH-N once every cell is followed.
@@ -1599,7 +1612,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    at @ bit or  at ! ;
 
 \ RECORD+, then the entry's span, emission (none in a cross build, as CODE+), highest FILES row
-\ and bound record into WORD-SPANS; PIECE+ zeroed cell 6. E-COMP-STATE for an emission the piece did not file.
+\ and bound record into WORD-SPANS; PIECE+ zeroed cell 6. The word into EM-WORDS when it is the first with its
+\ emission. E-COMP-STATE for an emission the piece did not file.
 : WORD-RECORD+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ - {: w:n :}
@@ -1618,6 +1632,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    at  w 0 WORD-SPAN !
    PIECES BYTES$ nip at -  w 1 WORD-SPAN !
    em  w 2 WORD-SPAN !
+   coded if  em EM-WORDS @ 0< if  w em EM-WORDS !  then  then
    0 w 3 WORD-SPAN !  0 w 4 WORD-SPAN !
    TOP-ROW @  w 5 WORD-SPAN !
    bound  w 7 WORD-SPAN ! ;
@@ -2192,6 +2207,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 : CHANGER+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ >= if exit then
+   true CHANGED-EARLIER !
    idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
    u 0<> if  a u NAME-SUM  -2 BUILT-N -  idx NAME-PKG  NAME+  then
    idx BUILT-ROW PAIR+ ;
@@ -2320,9 +2336,11 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
    ix CHECK:HELD-RETIRED = if
       k CHECK:HELD-RETIRED@ nip {: r:n made:n :}
+      r FILE-REC @ < if true CHANGED-EARLIER ! then
       ix PIECES U64+  r ID-REF+  made FILE-REC @ - PIECES U64+  r NAMED-RETIRED NAMED-BY!  exit
    then
    ix 0 >= if
+      ix FILE-REC @ < if true CHANGED-EARLIER ! then
       CHECK:HELD-AMENDED PIECES U64+  ix ID-REF+  a u PIECES FIELD+  exit
    then
    ix PIECES U64+  a u PIECES FIELD+ ;
@@ -2384,6 +2402,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ sealed packages last, so a link seals once the definitions are in. req: 0 a request ends the part, -1 the file ends.
 : PIECE+ ( n -- )
    {: req:n :}
+   false CHANGED-EARLIER !
    IDENTIFY  EXTENTS!
    LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
@@ -2392,6 +2411,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ndict@ FILE-REC @ - WORDS-N !
    WORDS-N @ SPAN-CELLS * WORD-SPANS-RESERVE
    WORDS-N @ 0 ?do  0 i 6 WORD-SPAN !  loop
+   NSHADOW:EMISSIONS FILE-EM @ - EM-WORDS-RESERVE
+   NSHADOW:EMISSIONS FILE-EM @ - 0 ?do  -1 i EM-WORDS !  loop
    0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i WORD-RECORD+  loop
    LATE-REST
    LATE-N 0 ?do i LATE-P CHANGER+ loop
@@ -3753,9 +3774,18 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    found 0= if 0 0 exit then
    at 8 +  x ;
 
+\ PRIOR's stores entry, after its x extents at the offset (PRIOR-EXTS): the stores time, STORES' offset in the old
+\ piece and its length; 0 0 0 for no extents' offset or an entry past TIMES.
+: PRIOR-STORES ( n n -- n n n )
+   {: exts:n x:n :}
+   exts  x EXT-BYTES * + {: at:n :}
+   exts 0=  at 24 +  PRIOR-TIMES-END >  or if 0 0 0 exit then
+   at PRIOR@  at 8 + PRIOR@  at 16 + PRIOR@ ;
+
 
 \ The old piece (PRIOR-PIECE!): offset in PRIOR, length, TIMES offset of its first word, word count (0 for none),
-\ OLD-WORD's next try, KEPT-ROWS, then the same three for extents (OLD-EXT).
+\ OLD-WORD's next try, KEPT-ROWS, the same three for extents (OLD-EXT), then the stores entry's time, STORES' offset
+\ in the old piece and length (PRIOR-STORES), time 0 for none.
 variable PRIOR-AT
 variable PRIOR-SIZE
 variable PRIOR-FIRST-WORD
@@ -3765,19 +3795,25 @@ variable KEPT-ROWS-N
 variable PRIOR-FIRST-EXT
 variable PRIOR-EXTS-N
 variable PRIOR-EXT-NEXT
+variable PRIOR-STORES-TIME
+variable PRIOR-STORES-AT
+variable PRIOR-STORES-SIZE
 
-\ PRIOR's piece and its TIMES block as the old piece (PRIOR-PIECE, PRIOR-WORDS, PRIOR-EXTS); none
+\ PRIOR's piece and its TIMES block as the old piece (PRIOR-PIECE, PRIOR-WORDS, PRIOR-EXTS, PRIOR-STORES); none
 \ when old is false or either fails.
 : PRIOR-PIECE! ( bool -- )
    {: old:bool :}
    0 PRIOR-WORDS-N !  0 PRIOR-NEXT !  0 PRIOR-EXTS-N !  0 PRIOR-EXT-NEXT !
+   0 PRIOR-STORES-TIME !  0 PRIOR-STORES-AT !  0 PRIOR-STORES-SIZE !
    old 0= if exit then
    PRIOR-PIECE {: at:n u:n t:n ok:bool :}
    ok 0= if exit then
    PRIOR-WORDS {: words:n n:n found:bool :}
    found 0= if exit then
    at PRIOR-AT !  u PRIOR-SIZE !  words PRIOR-FIRST-WORD !  n PRIOR-WORDS-N !  KEPT-ROWS KEPT-ROWS-N !
-   words n PRIOR-EXTS  PRIOR-EXTS-N !  PRIOR-FIRST-EXT ! ;
+   words n PRIOR-EXTS {: exts:n x:n :}
+   x PRIOR-EXTS-N !  exts PRIOR-FIRST-EXT !
+   exts x PRIOR-STORES  PRIOR-STORES-SIZE !  PRIOR-STORES-AT !  PRIOR-STORES-TIME ! ;
 
 
 \ Word w's text range in the running piece, which starts at the offset in PIECES: its offset from
@@ -3945,13 +3981,77 @@ variable PRIOR-EXT-NEXT
    t ;
 
 
-\ The TIMES block's stores entry for the piece at the offset in PIECES: stores time t, then its STORES section's offset
-\ from the piece's first byte and its length; STORES-AT and FACTS-AT are PIECES offsets until WRITE-OBJECT.
-: STORES-TIMES+ ( n n -- )
-   {: start:n t:n :}
-   t TIMES U64+
-   STORES-AT @ start - TIMES U64+
-   FACTS-AT @ STORES-AT @ - TIMES U64+ ;
+\ The running piece's own record, emission or extent cell: not header data or an earlier piece's.
+: OWN-CELL? ( n -- bool )
+   CELL-ID {: id:n kind:n :}
+   kind 0 = if id FILE-REC @ >= exit then
+   kind 1 = if id FILE-EM @ >= exit then
+   kind 2 = if id BUILT-EXTS-N @ >= exit then
+   false ;
+
+\ Whether the own cell kept its old time, TIMES+ giving the changed ones now: its word's (WORD-TIMES; an emission's
+\ word, EM-WORDS, none not kept) or its extent's (EXTS).
+: KEPT-CELL? ( n n -- bool )
+   {: cell:n now:n :}
+   cell CELL-ID {: id:n kind:n :}
+   kind 0 = if id REC-TIME now <> exit then
+   kind 1 = if
+      id FILE-EM @ - EM-WORDS @ {: w:n :}
+      w 0< if false exit then
+      FILE-REC @ w + REC-TIME now <> exit
+   then
+   id BUILT-EXTS-N @ - 10 EXT @ now <> ;
+
+
+\ The cell onto REACH once (FIRST-SEEN?) when it is the running piece's own.
+: OWN-SEE ( n -- )
+   {: cell:n :}
+   cell OWN-CELL? 0= if exit then
+   cell FIRST-SEEN? 0= if exit then
+   REACH-N @ 1 + REACH-RESERVE
+   cell REACH-N @ REACH !  1 REACH-N +! ;
+
+\ The EDGES span from first, count cells, each given to OWN-SEE.
+: OWN-SEE-SPAN ( n n -- )
+   {: first:n count:n :}
+   first count +  first ?do i EDGES @ OWN-SEE loop ;
+
+
+\ Whether every own cell the running piece's stores reach, following own cells' edges only (OWN-SEE), kept its old
+\ time (KEPT-CELL?). REACH is the walk's queue; RAN-FILES+ takes the next stamp after it.
+: STORES-KEPT? ( n -- bool )
+   {: now:n :}
+   1 REACH-STAMP +!  0 REACH-N !
+   BUILT-N 2 * ROW-EDGES @  BUILT-N 2 * 1 + ROW-EDGES @  OWN-SEE-SPAN
+   0 begin dup REACH-N @ < while
+      dup REACH @ now KEPT-CELL? 0= if drop false exit then
+      dup REACH @ CELL-EDGES OWN-SEE-SPAN
+      1 +
+   repeat
+   drop true ;
+
+
+\ The stores time of the piece at the offset in PIECES, of time t: t when CHANGED-EARLIER; else the old entry's when
+\ it has one, REFS-KEPT?, STORES holds the old STORES' bytes (SPAN=) and STORES-KEPT?; else now.
+: STORES-TIME ( n n n n n -- n )
+   {: start:n off:n u:n t:n now:n :}
+   CHANGED-EARLIER @ if t exit then
+   PRIOR-STORES-TIME @ {: old:n :}
+   old 0= if now exit then
+   REFS-KEPT? 0= if now exit then
+   start off u  PRIOR-STORES-AT @ PRIOR-STORES-SIZE @  SPAN= 0= if now exit then
+   now STORES-KEPT? 0= if now exit then
+   old ;
+
+
+\ The TIMES block's stores entry for the piece at the offset in PIECES, of time t: its stores time (STORES-TIME), then
+\ its STORES section's offset from the piece's first byte and its length; STORES-AT and FACTS-AT are PIECES offsets
+\ until WRITE-OBJECT.
+: STORES-TIMES+ ( n n n -- )
+   {: start:n t:n now:n :}
+   STORES-AT @ start -  FACTS-AT @ STORES-AT @ - {: off:n u:n :}
+   start off u t now STORES-TIME TIMES U64+
+   off TIMES U64+  u TIMES U64+ ;
 
 
 \ The part's time, its piece starting at the offset in PIECES (KEPT-TIME); its TIMES block (TIMES+, STORES-TIMES+).
@@ -3962,7 +4062,7 @@ variable PRIOR-EXT-NEXT
    old PRIOR-PIECE!
    start now TIMES+
    start now old KEPT-TIME {: t:n :}
-   start t STORES-TIMES+
+   start t now STORES-TIMES+
    t ;
 
 
