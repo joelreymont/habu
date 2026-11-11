@@ -2,7 +2,8 @@
 \ name on one line: every root it resolves against fits PATH-CAP. The same entry
 \ run from the long directory's parent loads. PATH-CAP bounds FS:MAKE-DIRS and a
 \ child's cwd, so /bin/mkdir makes the tail and /usr/bin/env -C starts the
-\ engine in it, both relative to the parent. The children's logs are kept.
+\ engine in it, both relative to the parent. The children's logs are kept in the
+\ tree, which the process removes at exit.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -71,6 +72,7 @@ create TAIL TAIL-BYTES allot
 
 : SETUP ( -- )
    s" habu-deep-cwd" FS:MKTEMP-DIR {: a:ptr u:n :}
+   a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U !
    u ROOT-MAX > if
       SB-RESET s" deep-cwd: root " SB-APPEND ROOT$ SB-APPEND
@@ -194,7 +196,6 @@ public
 : RUN ( -- )
    T-RESET SETUP
    [: [: MAKE-TAIL ;] CMD:WITH-COMMAND FITS DEEP REMOVE-TAIL ;] [: CLEAR-TAIL ;] finally
-   s" deep cwd tree: " type ROOT$ type cr
    T-REPORT ;
 
 ;package

@@ -1,10 +1,11 @@
 \ End-to-end OPAQUE structure clause on the engine under test: tools/check.f
 \ replays the fixture and certifies OP's own calls, and refuses a consumer that
-\ reaches the pair through OP's public wordlist. The printed tree keeps every
-\ source the children ran and every child log for replay.
+\ reaches the pair through OP's public wordlist. A temporary tree holds every
+\ source the children ran and every child log until the process exits.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require test/e2e-tree.f
@@ -19,6 +20,7 @@ private
 
 : SETUP ( -- )
    s" structure-opaque-e2e" TREE
+   ROOT$ FS:CLEANUP-TREE+
    s" test/structure-opaque-fixture.f" COPY-TEST
    s" test/structure-opaque-forge.f" AT-A FORGE$ FS:WRITE-ALL ;
 
@@ -54,7 +56,6 @@ public
 : RUN ( -- )
    T-RESET
    SETUP VERIFY FORGE
-   s" structure-opaque-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 ;package
 ;using

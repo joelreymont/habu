@@ -1,7 +1,7 @@
 \ ZLIB cases. Refusals are made before C is called; each failure after libz has
 \ a live stream is followed by a successful operation. The 10 MiB original.bin,
-\ compressed.bin (raw DEFLATE) and decoded.bin stay in the printed temporary
-\ directory.
+\ compressed.bin (raw DEFLATE) and decoded.bin go in a temporary directory
+\ the process removes at exit.
 require src/lib/zlib.f
 require src/lib/test.f
 require src/lib/string.f
@@ -302,11 +302,11 @@ public
 : MAIN ( -- )
    T-RESET
    s" zlib" FS:MKTEMP-DIR {: root:ptr size:n :}
+   root size FS:CLEANUP-TREE+
    root ROOT size BYTE-COPY size ROOT-U !
    CRC-CASES LITERAL-CASES STREAM-FAILURES SPAN-REFUSALS
    SMALL-DEFLATE FRAMED-CASES LARGE
    T-REPORT
-   s" zlib artifact: " type ROOT ROOT-U @ type cr
    s" zlib-source: ok" type cr ;
 ;package
 

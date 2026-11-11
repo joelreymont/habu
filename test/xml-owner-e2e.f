@@ -1,5 +1,5 @@
 \ Run one public XML owner consumer from source; its deterministic edited XML
-\ artifacts remain in the printed temporary tree.
+\ artifacts go in a temporary tree the process removes at exit.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -116,10 +116,10 @@ public
 : RUN ( -- )
    T-RESET
    s" xml-owner-e2e" FS:MKTEMP-DIR {: root:ptr size:n :}
+   root size FS:CLEANUP-TREE+
    root ROOT size BYTE-COPY size ROOT-U !
    SOURCE-RUN REFUSALS
    UTF8-ARTIFACT true UTF16-ARTIFACT false UTF16-ARTIFACT
-   s" xml-owner-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 ;package
 

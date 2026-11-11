@@ -58,6 +58,7 @@ variable RC
 
 : SETUP ( -- )
    s" habu-boot-relocation" FS:MKTEMP-DIR {: a:ptr u:n :}
+   a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" tree" TREE FS:JOIN-PATH TREE-U !
    s" bin" PATH! PATH PATH-U @ FS:MAKE-DIRS
@@ -129,7 +130,6 @@ public
 : RUN ( -- )
    T-RESET SETUP PLAIN
    HB-TARGET-MACOS? if REFUSED then
-   s" boot relocation tree: " type ROOT$ type cr
    T-REPORT ;
 
 ;package

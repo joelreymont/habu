@@ -3,7 +3,7 @@
 \ snapshot cannot be created and OPEN throws FS:MKTEMP's E-FS-DIR with no memory
 \ fallback.
 \ The child reads its archive path from argv, so it runs spawned and stays
-\ unregistered. The temporary tree is retained as evidence.
+\ unregistered. The process removes the temporary tree at exit.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -31,6 +31,7 @@ variable RC
 \ and OPEN passes that code on.
 : SETUP ( -- )
    s" zip-temp" FS:MKTEMP-DIR {: a:ptr u:n :}
+   a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" not-a-dir" BAD FS:JOIN-PATH BAD-U !
    ROOT$ s" temp.zip" ARCHIVE FS:JOIN-PATH ARCHIVE-U !
@@ -58,8 +59,7 @@ public
    T-RESET
    SETUP
    RUN-CHILD
-   T-REPORT
-   s" zip-temp artifact: " type ROOT$ type cr ;
+   T-REPORT ;
 
 ;package
 

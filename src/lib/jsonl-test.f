@@ -45,6 +45,7 @@ variable PATH-B-U
 \ it by path. Its path is copied out because the next FS:MKTEMP reuses the span.
 : FIXTURE-MAKE ( ptr u8 -- n ) {: buf:ptr :}
    s" habu-jsonl-e2e" FS:MKTEMP {: path:ptr pathu:n fd:fd :}
+   path pathu FS:CLEANUP+
    fd FD>N close-rc 0 T=
    path buf pathu BYTE-COPY pathu ;
 
@@ -301,7 +302,6 @@ private
    CAP-ERR erru LEN>N s\" jsonl: close failed\n" T$= ;
 
 public
-: ARTIFACT$ ( -- ptr u8 n ) PATH$ ;
 : RUN ( -- )
    FIXTURES-MAKE
    SPLIT
@@ -317,5 +317,4 @@ public
 T-RESET
 JSONL-TEST:RUN
 T-REPORT
-s" jsonl-test: ok; fixture: " type
-JSONL-TEST:ARTIFACT$ type cr
+s" jsonl-test: ok" type cr

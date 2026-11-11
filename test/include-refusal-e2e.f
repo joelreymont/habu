@@ -3,7 +3,8 @@
 \ case pins exit 74 (INCLUDE-IO-RC), an empty stdout and a one-line stderr
 \ naming the refusal. Children run the engine under test
 \ (src/lib/engine-candidate.f) from this working directory; each case's program
-\ and streams stay in the printed cases/ tree, which no missing path lies below.
+\ and streams go in a temporary cases/ tree, which no missing path lies below
+\ and the process removes at exit.
 require src/lib/test.f
 require src/lib/error.f
 require src/lib/string.f
@@ -41,6 +42,7 @@ variable RC
 
 : SETUP ( -- )
    s" habu-include-refusal" FS:MKTEMP-DIR CANONICAL TTRUE {: a:ptr u:n :}
+   a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U !
    s" cases" AT FS:MAKE-DIR
    s" plain.f" AT s" \ a file, not a directory" FS:WRITE-ALL ;
@@ -177,7 +179,6 @@ public
 : RUN ( -- )
    T-RESET SETUP
    WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD BUNDLE-ABSENT
-   s" include refusal tree: " type ROOT$ type cr
    T-REPORT ;
 
 ;package
