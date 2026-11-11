@@ -2,6 +2,96 @@
 \ checks each colon definition with CHECK! and records the top-level defining
 \ words the checker needs before the native compiler compiles them. Loads after
 \ the checker, render and hook support.
+\
+\ A completion names a byte of the subject. The subject's scan finds the token
+\ the byte is in, or the blanks before it, as the scanner reads tokens, and the
+\ reader that takes that token answers: a top-level statement, or a top-level
+\ tick's operand, has the checker offer the spellings that bind there before
+\ the token is consumed; a run a definition's body appends places the cursor in
+\ the body's text, where that body's check offers them. A token any other
+\ reader takes - a definer's name, a loader's or `using`'s operand, a TRUSTED:
+\ body, type syntax - offers nothing, nor does a byte the scan passed inside a
+\ comment, a string or a signature, nor one it never reaches. Blanks before a
+\ comment or string the scan skips belong to the token after it. One answer at
+\ most.
+\
+\ Skipped top-level string literals feed a two-slot ring so the strings the
+\ scanner would otherwise discard reach the rows that replay them: a bare
+\ top-level `s" NAME" s" SIG" TRUST`, a string loader's path, a name before a
+\ call of a word a names: row marks, and the name of a top-level
+\ `s" X" n parse-imm`, kept past the count's statement. A slot holds the bytes
+\ the engine's literal makes: a plain literal's source span, an escaped one's
+\ decoded payload. The ring resets per NEXT-SCAN call, so at a TRUST token it
+\ holds exactly the two preceding literals from the same statement. The last
+\ literal's kind is kept too, 0 when there is none: a quiet composition refuses
+\ a string loader by it. So is where its text between the quotes starts and
+\ ends in the file, as written, escapes and all, the end 0 when there is none:
+\ the span a string loader's load reports, and the text a names: call compares.
+\
+\ An escaped literal's decoded bytes are not in the source, so they live in one
+\ of two buffers. STR-DEC-TURN names the one the next decode writes, and a
+\ decode that answers its buffer flips it, so the last answer is never in the
+\ buffer the next decode writes, or that a reserve for it moves. No reader
+\ reads an older answer after the next decode. A top-level literal's answer
+\ goes to the ring, which the handler of the token NEXT-SCAN answers reads
+\ before the next NEXT-SCAN resets it: only STR-PREV and TOP-PREV-STR may hold
+\ an older answer. The push after the next decode drops STR-PREV's, and the
+\ parse-imm row reads TOP-PREV-STR's only when no literal came before its
+\ token, so no decode came between. Only `trust`, the string loaders, a call of
+\ a word a names: row marks, a top-level `parse-imm` and a quiet composition's
+\ `UNDEFINE-IF-DEFINED` read the ring, and none of them reads a body. A body
+\ literal's answer is BODY-LIT, which the body's next token clears or consumes,
+\ and a body token is read with SKIP-STRINGS off, so no decode comes between.
+\
+\ A quiet composition refuses the top-level loader forms discovery refuses,
+\ where it meets them, so that walk need not run first: a path that is no
+\ literal, a literal no loader takes, or a path the loader refuses - an
+\ `include` or `require` operand past PATH-CAP, or one the resolver refuses. A
+\ declaration, `undefine` or `UNDEFINE-IF-DEFINED` of a loader word's name
+\ refuses nothing, as the walk refuses nothing for it, but a later loader form
+\ with that word the walk reads - `include` or `require`, or a word right after
+\ a path literal - at top level or in a body, on a straight line or not, is
+\ refused at the word as the walk refuses it.
+\
+\ `s" PATH" required` or `s" PATH" included` in a definition loads PATH when
+\ the word runs, after the definition at the earliest. An `included` of a
+\ source already provided by the engine waits for execution: a build may rewind
+\ the dictionary before replaying that source, and replaying it here would
+\ define the engine's prefix twice. A loader the body reaches on a straight
+\ line, with no control word or bracket before it, loads whenever the word
+\ runs, so the composition loads its file at the first top-level statement
+\ boundary after the definition where the file being read has closed every
+\ package and file-level `using` it opened, in the order of the loaders, and at
+\ the end of that file at the latest. A quotation `[: ... ;]` is a straight
+\ line of its own, nested in the line that holds it: a loader on it is the
+\ composition's to load exactly as one on a definition's straight line is,
+\ whether or not the quotation is ever run, since the composition already
+\ loads for a definition that is never called. The quotation's line starts
+\ bent when the enclosing line is bent at its `[:`; a control word or bracket
+\ inside the quotation bends only the quotation's line, and `;]` ends every
+\ bend made inside it. A `;]` with no quotation open is a bracket like any
+\ other. A loader under a condition may not run, so its file is the run's to
+\ load. A target predicate right before an `if` is no such condition: the
+\ engine answers each predicate one way, so the arm its answer runs stays on
+\ the straight line, the other arm is read only for its end and never runs,
+\ and an `else` or `then` no target `if` opened ends the line. A top-level
+\ `[if]` whose flag those answers settle reads only the text that flag
+\ chooses. The path is the literal right before the loader word, the bytes the
+\ engine's literal makes of it. Only a path literal makes a waiting load, as in
+\ the walk: a `c"` or `."` one gives the loader no path, so the walk records no
+\ file and the composition reads none. The path waits however long it is: the
+\ resolver alone refuses one, when its turn comes, and the composition loads
+\ nothing for it. An entry keeps a copy of its path: a decoded one lives only
+\ until the next decode, and the release comes after later bodies, top-level
+\ statements and nested files have decoded theirs. A file's entries sit above
+\ its loader's, and their paths go with them.
+\
+\ A quiet composition loads none of these: a word's run is no part of the
+\ check, so the ordinary effect checker judges its runtime loader calls. What
+\ it loads from a body is the file an `include` or `require` names there. The
+\ engine refuses either in a body and loads nothing, but the file each names
+\ waits as a string loader's does in an ordinary composition, a superset of
+\ what the engine loads, and a fault loading it stands at that loader word.
 
 require src/lib/error.f
 require src/lib/source-syntax.f
@@ -14,7 +104,7 @@ require src/habu/xref.f
 require src/compiler/workspace.f
 require src/habu/primitive-source.f
 require src/habu/engine-origin.f
-require src/lib/ffi-abi.f                 \ FFI:STRUCT-FITS?, the declarer's plan rule
+require src/lib/ffi-abi.f
 
 package VERIFY
 
@@ -24,20 +114,15 @@ public
 \ the word that cannot finish: a reader (a definer, a parsing word) with no
 \ token after it, a string opener with no closing quote, a PRIM:, PPRIM:,
 \ EPRIM: or EPPRIM: row with no closer, a top-level escaped literal holding an
-\ escape the engine refuses. tools/check.f reports the first three where they
-\ stand, by the record it writes when it finds the same defect itself. Its lexer
-\ reads no escape, so it reports a bad escape by the record of a statement that
-\ throws, at the literal's opener, under a code of its own that names the
-\ defect; as before any error, a defect its lexer reads anywhere in the file is
-\ reported instead, in its place (CHECK-ALL-ERRORS:LEX-FIRST?).
+\ escape the engine refuses.
 7187 constant E-MISSING-NAME
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
 7194 constant E-BAD-ESCAPE
 
-\ A file a quiet composition (SOURCE-COMPOSE-QUIET-IN-SCOPE) loads that the
-\ system does not open or read stops it with this, TOKEN-BYTE@ at the loader
-\ that loads the file and FAULT-TARGET$ naming the file as it was resolved.
+\ A file a quiet composition loads that the system does not open or read stops
+\ it with this, TOKEN-BYTE@ at the loader that loads the file and FAULT-TARGET$
+\ naming the file as it was resolved.
 7201 constant E-SOURCE-READ
 
 \ A definer with no signature after its name, or one never closed, stops the
@@ -49,9 +134,8 @@ public
 7200 constant E-BAD-NOMINAL-TYPE   \ a DEFLINEAR or VALUE-RECORD name no type may take
 7198 constant E-BAD-RECORD-FIELD   \ a VALUE-RECORD field, or a record with none
 
-\ Captured by the verifier child's body as it starts loading
-\ (tools/check-verify-child-lib.f). A direct caller that does not supply an entry
-\ observation retains checking order.
+\ Captured by the verifier child's body as it starts loading. A direct caller
+\ that does not supply an entry observation retains checking order.
 variable ENTRY-TICK-ORDER
 PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 
@@ -61,9 +145,7 @@ PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 private
 
 \ A statement the source ends inside, one that lacks a part it must have, or one
-\ past a bound the engine sets stops the scan with one of these at its opener
-\ (STATEMENT-STOP). tools/check.f reports each by the record of a statement
-\ that throws.
+\ past a bound the engine sets stops the scan with one of these at its opener.
 7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
 7158 constant E-VS-BARE-TRUST              \ TRUST with no name and signature
 7199 constant E-VS-EFFECT-SIZE             \ a generates: effect past GENR-SIG-CAP
@@ -101,21 +183,19 @@ variable TOP-PREV-U
 PTR-VARIABLE TOP-PREV-STR-A               \ the ring's last literal as TOP-PREV's
 variable TOP-PREV-STR-U                  \ statement ended, its kind 0 for none
 variable TOP-PREV-STR-KIND               \ (PARSE-IMM-ROW)
-PTR-VARIABLE TOP-REFUSED                 \ the top-level token refused last (TOP-RESOLVE)
+PTR-VARIABLE TOP-REFUSED
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
 DYNAMIC-BUFFER BODY-BUF u8
 \ Each run BODY-APPEND copies into BODY-BUF is a row of two cells: the body
 \ offset it starts at and the source offset it was read from. BODY$ hands the
-\ rows to the checker (DIAG-MAP!), so a packet locates its token at the file
-\ bytes the scanner read. Both buffers are reserved to what they hold before
-\ every write, and every reader reserves at least one element before it indexes.
+\ rows to the checker, so a packet locates its token at the file bytes the
+\ scanner read.
 DYNAMIC-BUFFER BODY-ROW n
 variable BODY-ROWS
 
-\ Composition is a fixed scanner operation. The subject stays pinned across
-\ nested loads so a require back to it observes these bytes, and an include of
-\ it scans these bytes again.
+\ The subject stays pinned across nested loads so a require back to it observes
+\ these bytes, and an include of it scans these bytes again.
 variable COMPOSE-ON
 \ A standalone index judges top-level calls but follows no loader dependencies.
 variable INDEX-ON
@@ -138,25 +218,14 @@ variable COMPOSE-STOP-SUBJ               \ the stop was in the supplied bytes
 DYNAMIC-BUFFER COMPOSE-STOP-BYTES u8        \ the stopped frame is released on throw
 variable COMPOSE-STOP-SRC-U
 
-\ A quiet composition (SOURCE-COMPOSE-QUIET-IN-SCOPE) and the load fault it
-\ stopped at: the loader token's length, 0 when no loader stopped it, and the
-\ file it could not read, empty for none.
+\ A quiet composition and the load fault it stopped at: the loader token's
+\ length, 0 when no loader stopped it, and the file it could not read, empty
+\ for none.
 TYPED-VARIABLE QUIET bool
 variable FAULT-LEN
 create FAULT-TARGET PATH-CAP allot
 variable FAULT-U
 
-\ A completion names a byte of the subject (CURSOR!). The subject's scan finds
-\ the token the byte is in, or the blanks before it, as the scanner reads
-\ tokens (CSR-HIT), and the reader that takes that token answers: a top-level
-\ statement, or a top-level tick's operand, has the checker offer the spellings
-\ that bind there before the token is consumed (CSR-TOP); a run a definition's
-\ body appends places the cursor in the body's text, where that body's check
-\ offers them (CSR-PLACE, CSR-ARM). A token any other reader takes - a
-\ definer's name, a loader's or `using`'s operand, a TRUSTED: body, type
-\ syntax - offers nothing, nor does a byte the scan passed inside a comment, a
-\ string or a signature, nor one it never reaches. Blanks before a comment or
-\ string the scan skips belong to the token after it. One answer at most.
 0 constant CSR-WAIT                      \ not reached yet
 1 constant CSR-SPACE                     \ in the blanks before the token at CSR-TOK
 2 constant CSR-PART                      \ inside the token at CSR-TOK, past its first byte
@@ -177,9 +246,7 @@ CSR-RESET
    CSR-STATE @ CSR-SPACE =  CSR-STATE @ CSR-PART =  or ;
 
 \ NEXT-RAW read from PREV past blanks to the token from START to END, START =
-\ END at the source's end. A waiting cursor is in those blanks or that token,
-\ or was passed; one the token before waited on, which no reader took, offers
-\ nothing.
+\ END at the source's end.
 : CSR-HIT ( n n n -- )
    {: prev:n start:n end:n :}
    CSR-SUBJ @ 0= IF EXIT THEN
@@ -192,10 +259,9 @@ CSR-RESET
    b start + CSR-TOK !
    CSR-AT @ CSR-TOK @ > IF CSR-PART ELSE CSR-SPACE THEN CSR-STATE ! ;
 
-\ The scan skipped a comment or a string. Blanks before its opener belong to
-\ the token after it; a cursor in the opener offers nothing, nor does one
-\ still waiting, past the opener, when the skip ran out of source (FOUND = 0):
-\ it is inside the comment or string the file ends in.
+\ A cursor in the opener offers nothing, nor does one still waiting, past the
+\ opener, when the skip ran out of source (FOUND = 0): it is inside the comment
+\ or string the file ends in.
 : CSR-SKIPPED ( -- )
    CSR-SUBJ @ 0= IF EXIT THEN
    CSR-STATE @ CSR-SPACE = IF -1 CSR-TOK ! EXIT THEN
@@ -299,7 +365,6 @@ variable FLAG-N
    prev TOKEN-START @ SCAN-I @ CSR-HIT
    SOURCE@ TOKEN-START @ +  SCAN-I @ TOKEN-START @ - ;
 
-\ The scan stops at the token at the address.
 : STOP-AT ( ptr u8 n -- )
    {: at:ptr code:n :}
    at SOURCE@ - BASE-BYTE @ + TOKEN-BYTE !
@@ -346,21 +411,6 @@ variable FLAG-N
       then
    repeat ;
 
-\ Skipped top-level string literals feed a two-slot ring so the strings the
-\ scanner would otherwise discard reach the rows that replay them: a bare
-\ top-level `s" NAME" s" SIG" TRUST` (RECORD-TRUST), a string loader's path,
-\ `s" FILE" included` (COMPOSE-STRING-PATH), a name before a call of a word
-\ a names: row marks (TOP-NAMED), and the name of a top-level
-\ `s" X" n parse-imm`, kept past the count's statement (TOP-PREV-STR,
-\ PARSE-IMM-ROW). A slot holds the bytes the engine's
-\ literal makes: a plain literal's source span, an escaped one's decoded payload
-\ (RECORD-ESCAPED-STRING). The ring resets per NEXT-SCAN call, so at a TRUST
-\ token it holds exactly the two preceding literals from the same statement.
-\ The last literal's kind is kept too, 0 when there is none: a quiet
-\ composition refuses a string loader by it (QUIET-STRING-LOAD). So is where
-\ its text between the quotes starts and ends in the file, as written, escapes
-\ and all, the end 0 when there is none: the span a string loader's load
-\ reports (ARM-LOAD), and the text TOP-NAMED compares with the bytes.
 : STR-RING-RESET ( -- )
    NULL-PTR STR-PREV-A !  0 STR-PREV-U !
    NULL-PTR STR-LAST-A !  0 STR-LAST-U !  0 STR-LAST-KIND !
@@ -391,7 +441,7 @@ variable FLAG-N
    LIT-OTHER ;
 
 \ A literal the source ends inside stops a quiet composition or index at its
-\ opener, as discovery's lexer stops there (E-DISC-UNTERM).
+\ opener, as discovery's lexer stops there.
 : QUIET-UNTERM ( -- )
    FOUND @ 0= QUIET @ INDEX-ON @ or and IF E-DISC-UNTERM throw THEN ;
 
@@ -411,21 +461,6 @@ variable FLAG-N
    {: raw:ptr rawu:n :}
    raw rawu kind raw rawu STR-RING-PUSH ;
 
-\ An escaped literal's decoded bytes are not in the source, so they live in one
-\ of two buffers. STR-DEC-TURN names the one the next decode writes, and a
-\ decode that answers its buffer flips it, so the last answer is never in the
-\ buffer the next decode writes, or that a reserve for it moves. No reader
-\ reads an older answer after the next decode. A top-level literal's answer
-\ goes to the ring, which the handler of the token NEXT-SCAN answers reads
-\ before the next NEXT-SCAN resets it: only STR-PREV and TOP-PREV-STR may hold
-\ an older answer. The push after the next decode drops STR-PREV's, and
-\ PARSE-IMM-ROW reads TOP-PREV-STR's only when no literal came before its
-\ token, so no decode came between. Only `trust`, the string loaders, a call of
-\ a word a names: row marks, a top-level `parse-imm` and a quiet composition's
-\ `UNDEFINE-IF-DEFINED` read the ring, and none of them reads a body. A body
-\ literal's answer is BODY-LIT, which the body's next token clears or consumes
-\ (PEND-PUSH keeps a copy), and a body token is read with SKIP-STRINGS off, so
-\ no decode comes between.
 DYNAMIC-BUFFER STR-DEC0 u8
 DYNAMIC-BUFFER STR-DEC1 u8
 variable STR-DEC-TURN
@@ -436,12 +471,10 @@ variable STR-DEC-TURN
    u 1 + STR-DEC1-RESERVE  0 STR-DEC1 ;
 
 \ The bytes the engine's `s\"` makes of an escaped literal's payload, and
-\ whether every escape in it is one the engine reads: the payload decoded by
-\ the checker's escape table (src/core/checker.f ESC-DECODE), the engine
-\ decoder's table (src/habu/escape.f LETTER). An escape is spelt
+\ whether every escape in it is one the engine reads. An escape is spelt
 \ with more bytes than it decodes to, so a decode as long as its payload met no
-\ escape: the answer is the source span, and a diagnostic at the literal keeps
-\ its position.
+\ escape: the answer is the source span, and a diagnostic at
+\ the literal keeps its position.
 : ESC-BYTES ( ptr u8 n -- ptr u8 n bool ) {: src:ptr u:n :}
    u STR-DEC-ROOM {: dst:ptr :}
    src u dst ESC-DECODE {: k:n ok:bool :}
@@ -449,12 +482,9 @@ variable STR-DEC-TURN
    1 STR-DEC-TURN @ - STR-DEC-TURN !
    dst k ok ;
 
-\ A top-level escaped literal's slot holds its ESC-BYTES. A bad escape is
-\ refused at the opener (E-BAD-ESCAPE), where the engine refuses it as a bad
-\ string literal; tools/check.f reports it as the throw of the statement
-\ there, unless its lexer finds a defect in the file. An unterminated literal
-\ is left to the lexer, as a plain one is, except in a quiet composition
-\ (QUIET-UNTERM).
+\ A bad escape is refused at the opener, where the engine refuses it as a bad
+\ string literal. An unterminated literal is left to the lexer, as a plain one
+\ is, except in a quiet composition.
 : RECORD-ESCAPED-STRING ( n -- )
    {: kind:n :}
    QUIET-UNTERM
@@ -463,10 +493,11 @@ variable STR-DEC-TURN
    raw rawu ESC-BYTES 0= IF E-BAD-ESCAPE throw THEN
    kind raw rawu STR-RING-PUSH ;
 
-\ A body token is looked up among the live locals, byte for byte, after comments and before every
-\ keyword but `;` (checker.f LOC-REF?). Each body reader resets the table; a block's end retires its locals.
-LOC-RECS TYPED-BUFFER LOCAL-A ptr u8          \ a live local's name
-LOC-RECS TYPED-BUFFER LOCAL-U n               \ and its length
+\ A body token is looked up among the live locals, byte for byte, after
+\ comments and before every keyword but `;`. Each body reader resets the table;
+\ a block's end retires its locals.
+LOC-RECS TYPED-BUFFER LOCAL-A ptr u8
+LOC-RECS TYPED-BUFFER LOCAL-U n
 LOC-RECS TYPED-BUFFER LOCAL-D n               \ the block depth that declared it
 variable LOCAL-N
 variable LOCAL-DEPTH                          \ blocks open, counted while a local lives
@@ -481,8 +512,8 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    0 0= 0= ;
 
 \ A file whose first two bytes are `#!` names its interpreter on that line, and
-\ the loader reads the line as a comment (src/core/include.f SHEBANG-COMMENT):
-\ a token at the first byte of scanned bytes that start their file.
+\ the loader reads the line as a comment: a token at the first byte of scanned
+\ bytes that start their file.
 : SHEBANG? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    BASE-BYTE @ 0<>  a SOURCE@ <>  or  u 2 <  or IF 0 0= 0= EXIT THEN
@@ -541,10 +572,9 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    src  at 1 + BODY-ROW !
    BODY-ROWS @ 1 + BODY-ROWS ! ;
 
-\ The buffers grow to hold every run, so a body is never truncated: the
-\ registration-only replay entries have no length gate, and a dropped token
-\ would make a well-formed, wrong declaration. Both are reserved before the
-\ run changes any state, so a refused reservation leaves the body as it was.
+\ The buffers grow to hold every run, so a body is never truncated: a dropped
+\ token would make a well-formed, wrong declaration. Both are reserved before
+\ the run changes any state, so a refused reservation leaves the body as it was.
 : BODY-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
    a SOURCE@ - {: src:n :}
@@ -558,7 +588,6 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    32  BODY-U @ u + BODY-BUF c!
    end BODY-U ! ;
 
-\ The body for the checker, with its rows armed for the packets it writes.
 \ The armed addresses hold until the next BODY-APPEND, which may move both
 \ buffers; every check calls BODY$ again before it reads them.
 : BODY$ ( -- ptr u8 n )
@@ -567,16 +596,14 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    0 BODY-BUF BODY-U @ 0 BODY-ROW BODY-ROWS @ DIAG-MAP!
    0 BODY-BUF BODY-U @ ;
 
-\ The body of the definition the current token closes, its `;` or the `does>`
-\ ending a definer's body. The body holds no closer, so the checker is told
-\ where it stands (DIAG-CLOSER!) and refuses a structure still open there.
+\ The body holds no closer, so the checker is told where it stands and refuses
+\ a structure still open there.
 : DEF-BODY$ ( -- ptr u8 n )
    BODY$  TOKEN-A @ TOKEN-U @ DIAG-CLOSER! ;
 
-\ The signature ahead of the scan, read as the engine reads a definition head's
-\ (checker.f CHECKER-SIG-SPAN): from its `(` through its `)`, and whether one
-\ opens there. The scan passes it. One that never closes stops the scan at the
-\ given opener with the given code.
+\ The signature ahead of the scan, read as the engine reads a definition head's:
+\ from its `(` through its `)`, and whether one opens there. The scan passes it.
+\ One that never closes stops the scan at the given opener with the given code.
 : SCAN-SIG ( ptr u8 n -- ptr u8 n bool )
    {: opener:ptr unclosed:n :}
    SOURCE@ SCAN-I @ +  SOURCE-U @ SCAN-I @ -
@@ -588,16 +615,12 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    SCAN-I @ close + SCAN-I !
    at open +  close open -  0 0= ;
 
-\ A signature that opens here is appended to the body; what it declares,
-\ inside the parentheses, is answered, empty for none.
 : MAYBE-SIGNATURE ( -- ptr u8 n )
    TOP-CUR-A @ E-VS-UNTERMINATED-DEFINITION SCAN-SIG 0= IF EXIT THEN
    2dup BODY-APPEND
    {: sig:ptr sigu:n :}
    sig 1 +  sigu 2 - ;
 
-\ The signature the scan reads next; one missing or never closed stops the scan
-\ at the token at the address.
 : SIGNATURE-AT ( ptr u8 -- ptr u8 n )
    {: opener:ptr :}
    opener E-MISSING-SIGNATURE SCAN-SIG 0= IF opener E-MISSING-SIGNATURE STOP-AT THEN
@@ -631,15 +654,13 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
       1+
    REPEAT drop 0 0= ;
 
-\ The tokens a straight line has none of. The checker's own classifier
-\ (src/core/checker.f CF-TOK?) cannot be reused for the question: it is the
-\ control-flow DISPATCHER and pushes a frame for every token it recognises, so
-\ asking it would move the checker's state. These are its token list, plus the
-\ compile-time brackets a definer call (WRAP-TOKEN) or a loader (BODY-TOKEN-SEEN)
-\ must not hide behind; the loader reads `[:` and `;]` as a nested line
-\ (QUOT-TOKEN?) before the bracket list applies. Each matches case-folded, as
-\ the checker reads a token after TOKFOLD and the engine's keywords ignore
-\ case, so `EXIT` ends the line as `exit` does.
+\ The tokens a straight line has none of. The checker's own classifier cannot
+\ be reused for the question: it pushes a frame for every token it recognises,
+\ so asking it would move the checker's state. These are its token list, plus
+\ the compile-time brackets a definer call or a loader must not hide behind;
+\ the loader reads `[:` and `;]` as a nested line before the bracket list
+\ applies. Each matches case-folded, as the engine's keywords ignore case, so
+\ `EXIT` ends the line as `exit` does.
 : WRAP-COND-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" STR=CI
    a u s" else" STR=CI or
@@ -675,24 +696,13 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    a u WRAP-LOOP-TOK? or
    a u WRAP-BRACKET-TOK? or ;
 
-\ A quiet composition (SOURCE-COMPOSE-QUIET-IN-SCOPE) refuses top-level
-\ loader forms discovery refuses (tools/source-discovery.f), where it meets
-\ them, so that walk need not run first: a path that is no literal
-\ (E-DISC-DYNAMIC), a literal no loader takes (E-DISC-OPENER), or a path the
-\ loader refuses (E-DISC-CAPACITY): an `include` or `require` operand past
-\ PATH-CAP (LOADER-OPERAND), or one the resolver refuses (CLAIMED-LOAD). A
-\ declaration, `undefine` or `UNDEFINE-IF-DEFINED` of a loader word's name
-\ refuses nothing, as the walk refuses nothing for it, but a later loader form
-\ with that word the walk reads, at top level or in a body, is refused at the
-\ word as the walk refuses it (QUIET-USE). A refusal stands at TOKEN-BYTE@,
-\ FAULT-LEN bytes long.
+\ A refusal stands at TOKEN-BYTE@, FAULT-LEN bytes long.
 : QUIET-REJECT ( n n -- ) {: code:n len:n :}
    len FAULT-LEN !
    code throw ;
 
 \ A loader word's bit in SHADOWED and RETIRED, 0 for any other name: the words
-\ discovery reads as loaders (tools/source-discovery.f SD-NAME-BIT),
-\ `script-required` not one.
+\ discovery reads as loaders, `script-required` not one.
 : LOADER-BIT ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" include" STR=CI IF $01 EXIT THEN
    a u s" included" STR=CI IF $02 EXIT THEN
@@ -701,7 +711,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    a u s" provided" STR=CI IF $10 EXIT THEN
    0 ;
 
-$1F constant LOADER-BITS                      \ every loader word's bit
+$1F constant LOADER-BITS
 
 \ The loader words the file being read has declared a word of, and those it has
 \ retired: past either, the walk, which holds no wordlists, cannot tell which
@@ -715,85 +725,37 @@ variable RETIRED
 : NAME-RETIRED ( ptr u8 n -- )
    LOADER-BIT RETIRED @ or RETIRED ! ;
 
-\ `UNDEFINE-IF-DEFINED` (src/habu/xref.f) at top level retires the word the
-\ literal before it names, a literal of the given kind: a path literal's, and
-\ with none, a word the walk cannot read, any loader word among them; one
-\ holding a bad escape is the checker's. In a body it retires nothing until
-\ the word runs, which no check does.
+\ `UNDEFINE-IF-DEFINED` at top level retires the word the literal before it
+\ names, a literal of the given kind: a path literal's, and with none, a word
+\ the walk cannot read, any loader word among them; one holding a bad escape is
+\ the checker's. In a body it retires nothing until the word runs, which no
+\ check does.
 : TOP-RETIRED ( ptr u8 n n ptr u8 n -- ) {: a:ptr u:n kind:n lit:ptr litu:n :}
    a u s" UNDEFINE-IF-DEFINED" STR=CI 0= IF EXIT THEN
    kind LIT-BAD = IF EXIT THEN
    kind LIT-PATH = IF lit litu NAME-RETIRED EXIT THEN
    RETIRED @ LOADER-BITS or RETIRED ! ;
 
-\ A loader form the walk reads, its word u bytes long at TOKEN-BYTE: refused
-\ when the file has declared the word's name (E-DISC-SHADOW), and else when it
-\ has retired it (E-DISC-RETIRE).
+\ A loader form the walk reads, its word u bytes long at TOKEN-BYTE.
 : QUIET-USE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u LOADER-BIT {: bit:n :}
    bit SHADOWED @ and 0<> IF E-DISC-SHADOW u QUIET-REJECT THEN
    bit RETIRED @ and 0<> IF E-DISC-RETIRE u QUIET-REJECT THEN ;
 
-\ A string loader u bytes long, after a literal of the given kind: refused
-\ after none and after one no loader takes. True when it may load the
-\ literal's path, which the resolver alone may still refuse (CLAIMED-LOAD),
-\ false after a literal holding a bad escape, which is the checker's.
+\ A string loader u bytes long, after a literal of the given kind. True when it
+\ may load the literal's path, which the resolver alone may still refuse, false
+\ after a literal holding a bad escape, which is the checker's.
 : LITERAL-LOAD? ( n n -- bool ) {: kind:n u:n :}
    kind 0= IF E-DISC-DYNAMIC u QUIET-REJECT THEN
    kind LIT-OTHER = IF E-DISC-OPENER u QUIET-REJECT THEN
    kind LIT-PATH = ;
 
-\ `s" PATH" required` or `s" PATH" included` in a definition loads PATH when the
-\ word runs, after the definition at the earliest. An `included` of a source
-\ already provided by the engine waits for execution: a build may rewind the
-\ dictionary before replaying that source, and replaying it here would define
-\ the engine's prefix twice. A loader the body reaches on a straight line,
-\ with no control word or bracket before it (WRAP-CTL-TOK?), loads whenever
-\ the word runs, so the composition loads its file at the first top-level
-\ statement boundary after the definition where the file being read has closed
-\ every package and file-level `using` it opened, in the order of the loaders,
-\ and at the end of that file at the latest (VERIFY-SOURCE, PEND-RELEASE). A
-\ quotation `[: ... ;]` is a straight line of its own, nested in the line that
-\ holds it: a loader on the quotation's straight line is the composition's to
-\ load exactly as one on a definition's straight line is, whether or not the
-\ quotation is ever run, since the composition already loads for a definition
-\ that is never called. The quotation's line starts bent when the enclosing
-\ line is bent at its `[:`; a control word or bracket inside the quotation
-\ bends only the quotation's line, and `;]` ends every bend made inside it, so
-\ the enclosing line goes on straight after it (QUOT-TOKEN?). A loader under a
-\ condition, outside a quotation or inside one, may not run - a target's
-\ layout loads only when the image lacks one (tools/imgdump.f) - so its file
-\ is the run's to load. A target predicate right before an `if` is no
-\ such condition: the engine answers each predicate TARGET-GUARD names one way,
-\ so the arm its answer runs stays on the straight line and the other arm never
-\ runs (ARM-TOKEN?, DEAD-TOKEN). A top-level `[if]` whose flag those answers
-\ settle reads only the text that flag chooses (KNOWN-IF?); the engine's `0=`
-\ (CORE-OP?) may negate a predicate's answer, and `[if]` is a reserved control
-\ word (tools/reserved-name-lint-core.f). The path is the literal right before
-\ the loader word, the bytes the engine's literal makes of it (BODY-LIT!);
-\ discovery records a body loader after a path literal the engine's resolver
-\ takes, wherever it stands, and reads past one taking anything else. So the
-\ composition loads nothing for a path the resolver refuses (BODY-LOAD?). An
-\ entry keeps a copy of its path: a decoded one lives only until the next
-\ decode, and the release comes after later bodies, top-level statements and
-\ nested files have decoded theirs. A file's entries sit above its loader's,
-\ and their paths go with them. The entries grow with the loads waiting at
-\ once.
-\
-\ A quiet composition loads none of these: a word's run is no part of the
-\ check, so the ordinary effect checker judges its runtime loader calls.
-\ What it loads from a body is the file an `include` or `require` names there.
-\ Both are immediate (src/core/include.f), and the engine refuses either in a
-\ body (E-UNMODELED-IMMEDIATE) and loads nothing, but the file each names
-\ waits here as a string loader's does in an ordinary composition, a superset
-\ of what the engine loads, and a fault loading it stands at that loader word
-\ (IMM-OPERAND, CLAIMED-LOAD).
 DYNAMIC-BUFFER PEND-PATH u8                   \ the waiting loads' paths, end to end
 DYNAMIC-BUFFER PEND-AT n                      \ a waiting load's path's offset
-DYNAMIC-BUFFER PEND-U n                       \ and its length
+DYNAMIC-BUFFER PEND-U n
 DYNAMIC-BUFFER PEND-INC n                     \ 1 to include its file, 0 to require it
 DYNAMIC-BUFFER PEND-WORD-AT n                 \ where its loader word starts
-DYNAMIC-BUFFER PEND-WORD-U n                  \ and that word's length
+DYNAMIC-BUFFER PEND-WORD-U n
 variable PEND-N
 variable PEND-BASE                            \ the first entry of the file being read
 PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
@@ -803,11 +765,10 @@ variable BODY-QUOT                            \ the `[:`s open at the body token
 0 constant GUARD-NONE                         \ the body token before is no target predicate
 1 constant GUARD-LIVE                         \ it is one the engine answers true
 2 constant GUARD-DEAD                         \ it is one the engine answers false
-variable BODY-GUARD                           \ which of the three
+variable BODY-GUARD
 variable BODY-ARMS                            \ the target `if`s whose running arm the line is in
 variable BODY-DEAD                            \ in an arm that never runs: 1 + the `if`s open in it
 
-\ Neither a literal nor a target predicate is right before the next body token.
 : BODY-PREV-CLEAR ( -- )
    0 BODY-LIT-U !  0 BODY-LIT-KIND !  GUARD-NONE BODY-GUARD ! ;
 
@@ -819,9 +780,6 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 : BODY-BEND ( -- )
    BODY-BENT @ 0= IF BODY-QUOT @ 1 + BODY-BENT ! THEN ;
 
-\ `[:` and `;]`, true when the token is one. `[:` opens the quotation's line,
-\ bent when the line holding it is, and its `;]` ends a bend made inside it.
-\ A `;]` with no quotation open is a bracket like any other and bends the line.
 : QUOT-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" [:" STR=CI IF BODY-QUOT @ 1 + BODY-QUOT ! 0 0= EXIT THEN
    a u s" ;]" STR=CI 0= IF 0 0= 0= EXIT THEN
@@ -848,11 +806,10 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    w at PEND-WORD-AT !  wu at PEND-WORD-U !
    at 1 + PEND-N ! ;
 
-\ The packages this scan's source sealed, cleared by RUN-IN-SCOPE. A reopening stops as interpreter.f PKG-SEAL-GUARD
-\ does; a definition or export into one as interpreter.f DEF-SEAL-GUARD and interpreter.f PKG-EXPORT do.
+\ The packages this scan's source sealed, cleared by RUN-IN-SCOPE.
 DYNAMIC-BUFFER SEALS u8                       \ the sealed packages' names
 DYNAMIC-BUFFER SEALS-AT n                     \ a name's offset
-DYNAMIC-BUFFER SEALS-U n                      \ and its length
+DYNAMIC-BUFFER SEALS-U n
 variable SEALS-N
 
 : SEAL-LISTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -878,13 +835,11 @@ variable SEALS-N
 : SEAL-STOP ( n -- )
    TOKEN-BYTE !  ENGINE-ERROR:SEAL-PACKAGE throw ;
 
-\ Stop at byte AT when the open package is one the source sealed.
 : SEALED-OPEN ( n -- ) {: at:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    CHECKER-AUTH-PACKAGE$ SEAL-LISTED? IF at SEAL-STOP THEN ;
 
-\ Stop at NAME, read from byte AT, when it lands in a sealed package. A head
-\ resolves as the definition's does (HEAD-ROW): a part is asked by its path.
+\ A head resolves as the definition's does: a part is asked by its path.
 : SEALED-NAME ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF at SEALED-OPEN EXIT THEN
@@ -928,11 +883,8 @@ variable SEALS-N
    a u s" HB-TARGET-KNOWN?" STR=CI IF HB-TARGET-KNOWN? >GUARD EXIT THEN
    GUARD-NONE ;
 
-\ `if`, `else` and `then` on the straight line, true when the token is one. A
-\ target predicate right before an `if` opens a target `if`, whose running arm
-\ stays on the line and whose other arm is read only for its end (DEAD-TOKEN).
-\ Any other `if`, and an `else` or `then` no target `if` opened, ends the line.
-\ The three match case-folded, as the engine's keywords do.
+\ `if`, `else` and `then` on the straight line, true when the token is one. The
+\ three match case-folded, as the engine's keywords do.
 : ARM-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" STR=CI IF
       BODY-GUARD @ GUARD-NONE = IF BODY-BEND 0 0= EXIT THEN
@@ -955,16 +907,6 @@ variable SEALS-N
    BODY-DEAD @ 1 - BODY-DEAD !
    BODY-DEAD @ 0= IF BODY-ARMS @ 1 - BODY-ARMS ! THEN ;
 
-\ A body token that is no string literal: a loader word right after a path
-\ literal (`s"`, `s\"`), on a straight line, waits while an ordinary composition
-\ reads the source. Only a path literal makes a waiting load, as in the walk
-\ (tools/source-discovery.f SD-PEND-PATH): a `c"` or `."` one gives the loader
-\ no path, so the walk records no file and the composition reads none. The
-\ path waits however long it is: the resolver alone refuses one, when its
-\ turn comes (BODY-LOAD?). A loader form the walk reads in a body, `include` or
-\ `require` or a word right after a path literal, is refused first in a quiet
-\ composition when the file has replaced its loader word (QUIET-USE), on a
-\ straight line or not, as the walk refuses it.
 : BODY-USE ( ptr u8 n -- ) {: a:ptr u:n :}
    QUIET @ 0= IF EXIT THEN
    a u s" include" STR=CI  a u s" require" STR=CI or
@@ -983,11 +925,10 @@ variable SEALS-N
    BODY-PREV-CLEAR
    a u TARGET-GUARD BODY-GUARD ! ;
 
-\ A string literal joins the body as the engine reads it. The rest starts with
-\ the opener's one delimiter, which the blank BODY-APPEND writes after the
-\ opener stands for, so it joins past that delimiter: the checker reads the
-\ literal's bytes as the engine makes them (checker.f SPAY-RECORD), and a
-\ names: row binds the word they name (NAMED-OPERAND-USE).
+\ The rest starts with the opener's one delimiter, which the blank BODY-APPEND
+\ writes after the opener stands for, so it joins past that delimiter: the
+\ checker reads the literal's bytes as the engine makes them, and a names: row
+\ binds the word they name.
 : APPEND-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BODY-APPEND
    a u STRING-REST {: s:ptr su:n :}
@@ -998,7 +939,7 @@ variable SEALS-N
    a u a u STRING-REST BODY-LIT! ;
 
 \ A parsing keyword's operand is its next token, data whatever it spells; a body
-\ local is looked up first (docs/forth.md "Parsing operands are data").
+\ local is looked up first.
 : CHAR-KEYWORD? ( ptr u8 n -- bool )
    s" char" STR=CI ;
 
@@ -1013,12 +954,10 @@ variable SEALS-N
 : OPERAND ( -- ptr u8 n )
    NEXT-RAW dup 0= IF E-MISSING-NAME throw THEN ;
 
-\ A definer takes its name by the same rule: the engine reads it with LTOK or
-\ parse-name, so `: \`, `DEFLINEAR (` and `create s"` name a word `\`, a type
-\ `(` (which the registration then refuses) and a word `s"`. A comment or string
+\ A definer takes its name by the same rule, so `: \`, `DEFLINEAR (` and
+\ `create s"` name a word `\`, a type `(` and a word `s"`. A comment or string
 \ rule there would hand the definer a later token instead. With no token left
-\ TOKEN-BYTE stays at the definer, and a caller throws E-MISSING-NAME there;
-\ NEWTYPE and SUMTYPE leave the refusal to their declaration packet.
+\ TOKEN-BYTE stays at the definer.
 : NAME-TOKEN ( -- ptr u8 n )
    NEXT-RAW ;
 
