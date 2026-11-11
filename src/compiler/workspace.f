@@ -15,11 +15,6 @@ create DEFAULT-VALUE DEFAULT-CAP cells allot
 variable DEFAULT-N
 
 public
-: DECLARED-BYTES ( -- n ) USED @ ;
-
-\ Both parts only increase, and their sum is bounded by LIMIT + DEFAULT-CAP.
-: LAYOUT-MARK ( -- n ) USED @ DEFAULT-N @ + ;
-
 : TAKE ( n -- n ) {: bytes:n :}
    bytes 0 <= if E-LAYOUT-BUFFER throw then
    USED @ CELL 1- + CELL / CELL * {: off:n :}
