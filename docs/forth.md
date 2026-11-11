@@ -699,8 +699,7 @@ multi-cell type rationale is `docs/design.md` "Types".
     Any package may declare the read-view unpack `( read-view<p,q,T> -- ptr
     u8 n )` in its private section: the projection erases the type and can
     neither widen bounds nor forge a scope. The element T is a cast term: a
-    type variable or a linear type in it is `E-CAST-LINEAR`, and one that
-    reaches an arena head is `E-CAST-OWNER`. A pack's scope and region
+    type variable or a linear type in it is `E-CAST-LINEAR`. A pack's scope and region
     variables are free in its input and, like any callee's, instantiate
     fresh at each call; a callback pack's bind to the callback it is given.
     The cast takes an unqualified name: a qualified name selects that
@@ -709,7 +708,7 @@ multi-cell type rationale is `docs/design.md` "Types".
     `E-CAST-SCOPE`, except that a view representation cast in a private
     section meets the element rules first: a qualified unpack, or a pack,
     callback pack or mut-view unpack outside C2-MEM, whose element breaks one is
-    `E-CAST-LINEAR` or `E-CAST-OWNER`.
+    `E-CAST-LINEAR`.
   - Each side is one term over the same stack tail (`E-CAST-ARITY`);
     a layout value wider than a cell is one term per cell. The emitted identity
     preserves the tail, so `( R n -- R u8 )` is valid and `( R n -- S u8 )`
@@ -730,11 +729,6 @@ multi-cell type rationale is `docs/design.md` "Types".
     writer's claim, which the checker does not prove: `CAST: >SLOT ( n --
     slot )` outside `package DOC` is admitted, as is a private `( ptr u8 --
     ptr OP:box )` outside `package OP`.
-    An arena head that either term reaches, through pointers, quotation rows
-    or a layout's members, belongs to `DYNAMIC-STORAGE`: after
-    `ARENA FOOS rec`, `CAST: >OWN-BYTES ( ptr foos -- ptr u8 )` would copy
-    the head and `( ptr u8 -- ptr foos )` forge one, so both are
-    `E-CAST-OWNER` elsewhere, a private section included.
   - A pointer or a quotation in an introduction position is a class mint and
     is declared only in a package's private section (`E-CAST-MINT`).
 
@@ -2194,57 +2188,47 @@ documentation-only edits need no rebuild.
   dictionary storage. With `u8`, `index NAME` is `( n -- ptr u8 )` at byte
   `index`, read and written with `c@`/`c!`, never cell `@`; `count NAME-RESERVE`
   counts bytes, and the capacity is the request rounded up to a cell.
-- **`ARENA NAME Type` for records that share one lifetime**: the stored types
-  of `DYNAMIC-BUFFER`. It declares the family `name`, NAME folded to lower case
-  as `DEFTYPE` folds it, whose record is the arena: an owner holds one in a
-  `FIELD` or a `TYPED-VARIABLE`. The declaration passes three gates in order:
-  the storage definers' own name gate (one ':' at most, unused NAME-NEW and
-  NAME-RELEASE), the element type, then STRUCTURE's: NAME must fold to a family
-  tail (letters, digits and single inner hyphens, with at least one letter) and
-  is refused exactly as `STRUCTURE name` refuses it. NAME longer than 255 bytes
-  is refused with `TYPE-DECL:E-TDECL-CAP` (7118); at top level, a name whose
-  constructor package name (hyphens doubled) exceeds 255 bytes with
-  `E-PACKAGE-NAME-CAP` (7154). In every case nothing is defined, under
+- **An arena is a `ptr ARENA:arena` for records that share one lifetime**
+  (`src/lib/arena.f`). `ARENA:NEW ( -- ptr ARENA:arena )` makes one;
+  `ARENA:NEW-IN ( ptr ARENA:arena -- ptr ARENA:arena )` makes a child, released
+  with its parent or by itself first. `ARENA:ALLOC ( ptr ARENA:arena n -- ptr u8
+  n )` answers zeroed, cell-aligned bytes that never move. `ARENA:RESET ( ptr
+  ARENA:arena -- )` releases the children, runs the release actions newest
+  first and empties the arena, whose handle stays valid; `ARENA:RELEASE` does
+  the same and frees it, and a null handle is a no-op. An action that throws
+  does not stop the others: the first code is rethrown after all have run.
+  `ARENA:WITH ( R [ R ptr ARENA:arena -- S ] -- S )` runs the body over a new
+  arena and releases it under `finally`. The handle is an ordinary pointer: a
+  record field, a variable or a stack cell holds it, and copies share the arena.
+  Bytes come from mapped chunks, the first of 16 KiB and each next the larger of
+  the request and twice its predecessor. Not checked: a record or handle used
+  after its arena is reset or released (a fresh chunk may be mapped at the
+  released one's address), and an arena shared between tasks, which take no
+  lock and must serialise every call.
+- **`ARENA NAME Type` for records in an arena**: the stored types of
+  `DYNAMIC-BUFFER`. Inside a package it defines `NAME-NEW ( ptr ARENA:arena --
+  ptr Type )`, a fresh zeroed record, and `NAME-NEW-DISPOSE ( ptr ARENA:arena
+  [ ptr Type -- ] -- ptr Type )`, whose action runs once when the arena is reset
+  or released and must accept a zeroed record. The width is the declared
+  type's, so a record's size always comes from the declaration. The definer
+  makes the casts both words use in the declaring package's private section, so
+  a declaration outside a package or by a qualified NAME is refused with
+  `E-BAD-STORAGE`, as an unknown type is; NAME-NEW, NAME-NEW-DISPOSE,
+  NAME-NEW-PTR and NAME-NEW-ACT must be free in both sections
+  (`E-DUP-DEFINITION`). Nothing is defined when any check refuses, under
   `--all-errors` too.
-  `NAME-NEW ( ptr name -- ptr Type )` answers a fresh zeroed element that never
-  moves; `NAME-RELEASE ( ptr name -- )` frees every element at once and is safe
-  to repeat. It runs nothing for the elements, so free what they own first. A
-  pointer kept across NAME-RELEASE is stale and can alias the next NAME-NEW's
-  record, whose fresh chunk may be mapped at the released one's address.
-  Elements come from mapped chunks, the first of 32 elements and each next
-  twice its predecessor; a refused mapping throws `DYNAMIC-STORAGE:E-MAP`. The
-  family derives no accessor, and the owner lives in place: `@` or `!` on an
-  owner, or on a record holding one, is refused with `E-IN-PLACE`, since a
-  copy would share the owner's chunks, and a `CAST:` that reaches a head
-  outside `DYNAMIC-STORAGE` is `E-CAST-OWNER`. So no typed access and no such
-  cast copies or forges a head; address arithmetic (`+`, `record-at` and other
-  raw offsets) still reaches one (**Raw storage never holds an address**).
-  Nor is either the element type of a `DYNAMIC-BUFFER`, an `ARENA`, a
-  `CWORK-VARIABLE`, a `CWORK-BUFFER` or a `CWORK-SPAN`, whose storage moves or
-  unmaps: the declaration is refused
-  with `E-BAD-STORAGE`. `TYPED-VARIABLE`, `TYPED-BUFFER` and `LAYOUT-BUFFER` hold
-  one. Checked code calls or ticks `DYNAMIC-STORAGE:ARENA-NEW` and
-  `DYNAMIC-STORAGE:ARENA-RELEASE` only inside the generated NAME-NEW and
-  NAME-RELEASE; a call or tick anywhere else, directly or through a
-  re-export, is refused with `E-ARENA-CALL`. Those two words reach their
-  owner's head through the engine's `field-project`, which no sealed-engine
-  definition can take, so an element's size always comes from the declared
-  type.
-  NAME-NEW and NAME-RELEASE take no lock: tasks sharing one arena serialise
-  them.
 - **`HEAP NAME Type` for a record with its own lifetime**: `NAME-NEW ( -- ptr
   Type )` answers a fresh zero-filled record on its own OS mapping, rounded up
   to a page, and `NAME-RELEASE ( ptr Type -- )` unmaps it. A pointer kept
   across NAME-RELEASE is stale, and releasing the same record twice can unmap
-  whatever was mapped there since: unlike an arena's, a release is not safe to
-  repeat. Nothing registers a record, so capture has no live-record check:
-  release it before saving an image (a stripped image refuses a typed cell
-  holding one). The declaration passes the storage definers' name gate and
-  refuses a sub-cell element other than `u8`, an unknown type and an element
-  holding an arena owner, defining nothing. Checked code calls or ticks
-  `DYNAMIC-STORAGE:RECORD-NEW` and `DYNAMIC-STORAGE:RECORD-RELEASE` only
-  inside the generated words, as for
-  `ARENA` (`E-ARENA-CALL`), so a record's size always comes from the declared
+  whatever was mapped there since: a release is not safe to repeat. Nothing
+  registers a record, so capture has no live-record check: release it before
+  saving an image (a stripped image refuses a typed cell holding one). The
+  declaration passes the storage definers' name gate and refuses a sub-cell
+  element other than `u8` and an unknown type, defining nothing. Checked code
+  calls or ticks `DYNAMIC-STORAGE:RECORD-NEW` and
+  `DYNAMIC-STORAGE:RECORD-RELEASE` only inside the generated words, at top
+  level too (`E-ARENA-CALL`), so a record's size always comes from the declared
   type; a record of a STRUCTURE type enters no other generic-pointer word.
 - **Runtime-sized buffers use OS mappings.** `create … allot` consumes
   dictionary DATA; `src/lib/memory.f` allocates contiguous or separate 64K
@@ -2549,24 +2533,20 @@ sections above.
   `S\"` does and needs its delimiter space (see **Habu Native Tooling
   Gotchas**). Native `.` prints a newline: `11 . 22 . cr` emits
   `11\n22\n\n`; use digit emitters for inline numbers.
-- **Only ARENA's and HEAP's generated words reach the storage runtime.** A
-  call or tick of `DYNAMIC-STORAGE:ARENA-NEW`, `ARENA-RELEASE`, `RECORD-NEW` or
-  `RECORD-RELEASE`, directly or through a re-export, outside an `ARENA`'s or
-  `HEAP`'s NAME-NEW and NAME-RELEASE, in a body, a quotation or at top level,
-  on a declared `DYNAMIC-STORAGE:arena-head` or on `NULL-PTR`, is
-  `E-ARENA-CALL` (`arena call: only ARENA's or HEAP's generated NAME-NEW and
-  NAME-RELEASE call the storage runtime`); naming the head type is admitted. Exporting the four words is admitted; only the call or tick
-  is refused.
+- **Only HEAP's generated words reach the storage runtime.** A call or tick of
+  `DYNAMIC-STORAGE:RECORD-NEW` or `RECORD-RELEASE`, directly or through a
+  re-export, outside a `HEAP`'s NAME-NEW and NAME-RELEASE, in a body, a
+  quotation or at top level, is `E-ARENA-CALL` (`arena call: only HEAP's
+  generated NAME-NEW and NAME-RELEASE call the storage runtime`). Exporting the
+  two words is admitted; only the call or tick is refused.
 - **`field-project` is not a definition name once the engine is sealed.**
-  Every `STRUCTURE` accessor and an `ARENA`'s NAME-NEW and NAME-RELEASE spell
-  it unqualified, so it binds through the declaring scope's search order; a
-  qualified spelling would carry no checker identity. A word of that name, by
-  any definer, in any package and in any letter case, is refused at its
-  definition with `hb: reserved word cannot be a definition name:` and the
-  name as spelled, such as `Field-Project`, rc 70. Admitted, a package's own `field-project` would hand
-  two arenas one head, so records of different types share bytes, or send an
-  accessor's store to another variable. The engine's own definition loads
-  before the seal.
+  Every `STRUCTURE` accessor spells it unqualified, so it binds through the
+  declaring scope's search order; a qualified spelling would carry no checker
+  identity. A word of that name, by any definer, in any package and in any
+  letter case, is refused at its definition with `hb: reserved word cannot be a
+  definition name:` and the name as spelled, such as `Field-Project`, rc 70.
+  Admitted, a package's own `field-project` would send an accessor's store to
+  another variable. The engine's own definition loads before the seal.
 - **Package `private` is visibility, not sealing.** Another file may reopen
   the package and call its private words until its `seal-package`; a sealed
   reopen is refused. Multi-file owners seal only after their last file (see
@@ -2576,11 +2556,7 @@ sections above.
   `E-CAST-MINT` at top level or under `public`. A type-variable pointee is
   `E-CAST-LINEAR`, and a layout's fields carry the mint rule recursively: a
   `pfbox` whose field is `ptr u8` exposes that pointer through
-  `PFBOX:UNMAKE` (see **Structures And Enums**). A private row admits no cast
-  that reaches an arena head on either side:
-  `CAST: >OWN-BYTES ( ptr foos -- ptr u8 )` copies a head and its reverse
-  forges one, so both are `E-CAST-OWNER` outside
-  `DYNAMIC-STORAGE`. A `LINEAR:` token conversion
+  `PFBOX:UNMAKE` (see **Structures And Enums**). A `LINEAR:` token conversion
   similarly requires the declaring package's private section; bad payload,
   owner or scope is respectively `E-LINEAR-PAYLOAD`, `E-LINEAR-OWNER` or
   `E-LINEAR-SCOPE`. A checked body cannot declare one; outside callers use the

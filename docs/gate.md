@@ -71,10 +71,10 @@ whole tree for every old name it reports. Before landing one that renames words
 or changes what the checker admits, run every row that loads a file master
 added or changed since the lane's base. The FS package lane rebased over three
 renamed names, in src/lib/test/fifo.f, src/lib/net/ws-test.f and
-src/lib/zip.f, none of which its own rows loaded. The cast-owner lane, gated
-before src/lib/net/model.f existed, refused that file's cast of arena bytes
-into a record holding another package's OPAQUE cursor, and row model-test went
-red on master.
+src/lib/zip.f, none of which its own rows loaded. A lane adding a cast rule,
+gated before src/lib/net/model.f existed, refused that file's cast of arena
+bytes into a record holding another package's OPAQUE cursor, and row
+model-test went red on master.
 
 ## Running the registry
 
