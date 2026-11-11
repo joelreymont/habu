@@ -191,8 +191,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    {: v:n off:n :}
    off U64+  v U64+  ENTRY ;
 
-\ Header cells as the product's boot leaves them (habu2.f EM-DATA-INIT,
-\ EM-STARTUP-RUNTIME-STATE, and for an engine EM-ABORT-COMPILE-STATE).
+\ A bound label's byte offset in the code; labels hold word positions.
+: CODE-OFFSET ( label -- n ) LABEL>N A64ICODE:LBLP @ 4 * ;
+
+\ Header cells the link writes: as the boot leaves them (habu2.f EM-DATA-INIT,
+\ EM-STARTUP-RUNTIME-STATE, EM-ABORT-COMPILE-STATE), and an engine's PRIM-TABLE-CELL.
 : PRESETS+ ( bool -- )
    {: engine:bool :}
    SECTION
@@ -209,6 +212,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
       0 POLICY-NDICT-CELL PRESET+
       VRALL REGALLOC-ABI:VRFREE-CELL PRESET+
       FRALL REGALLOC-ABI:FRFREE-CELL PRESET+
+      LDICT A64ICODE:LABEL@ CODE-OFFSET PRIM-TABLE-CELL PRESET+
    then
    ;SECTION ;
 

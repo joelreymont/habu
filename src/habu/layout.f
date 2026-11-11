@@ -1298,6 +1298,9 @@ $2CE0 constant CODE-END-CELL
 \ CODE-END-CELL in the $2800..$3000 free header band, below $7FF8 for the
 \ 12-bit scaled `DATA <off> LDR` form, and below DATA-START.
 $2CE8 constant DATA-FLOOR-CELL
+\ PRIM-TABLE-CELL: the kernel's primitive table (habu1.f EMIT-DICT), count in the cell
+\ before, as an offset from RBASE-CELL's address; 0 in a stripped program.
+$2CF0 constant PRIM-TABLE-CELL
 \ The callback CODE cells at $2CF8, $2D00 and $2D10 are declared in
 \ native-observer-cells.f, which also loads on an older baked host during a build;
 \ the host owner claims $2D10 separately from the publication and code

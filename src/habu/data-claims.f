@@ -165,6 +165,7 @@ create TAB
    FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL
    CLOSED-FREE-CELL                   1 cells                 CLAIM CLOSED-FREE-CELL
    CODE-END-CELL                      1 cells                 CLAIM CODE-END-CELL
+   PRIM-TABLE-CELL                    1 cells                 CLAIM PRIM-TABLE-CELL
    TEXT-SIZE-CELL                     1 cells                 CLAIM TEXT-SIZE-CELL
    DPHW-CELL                          1 cells                 CLAIM DPHW-CELL
    NDICT-HW-CELL                      1 cells                 CLAIM NDICT-HW-CELL

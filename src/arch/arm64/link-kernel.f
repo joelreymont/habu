@@ -58,6 +58,8 @@ variable SYMS-AT
 variable SYMS-N
 variable PRESETS-AT
 variable PRESETS-N
+variable CHECK-ROWS-AT               \ the checker rows' bytes in KOBJ, 0 and 0 when absent
+variable CHECK-ROWS-U
 SHA256-CTX-BYTES BUFFER: SHA-CTX
 32 BUFFER: SUM
 PATH-CAP BUFFER: PATH                \ READ's path, for its error lines
@@ -127,6 +129,12 @@ variable PATH-U
    1 TABLE SCOPES-N ! SCOPES-AT !
    SYMBOLS
    2 TABLE PRESETS-N ! PRESETS-AT !
+   \ An optional last section, the primitives' checker rows; the writer lays none.
+   0 CHECK-ROWS-AT !  0 CHECK-ROWS-U !
+   AT @ KOBJ-U @ < if
+      NEXT {: rowsu:n :}
+      AT @ CHECK-ROWS-AT !  rowsu CHECK-ROWS-U !  rowsu SKIP
+   then
    AT @ KOBJ-U @ <> if BAD then ;
 
 : CHECK ( -- )
