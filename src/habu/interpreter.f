@@ -451,38 +451,6 @@ variable EVENT-FLAGS
    [: TOKEN$ EVENT-CLASS @ EVENT-FLAGS @ CHECK:TOP-LEVEL ;]
    HOOK-CALL execute-floor FLOORED ;
 
-\ The engine's twin: habu2.f C-UNIT-HOOK.
-\ unit-compile-run arms UNIT-COMPILE-CELL with a guard for the one source it
-\ runs (its caller is src/core/include.f SOURCE-UNIT:GUARDED). The guard gets the token, a class
-\ and one of these events, and only a package name's answer is read: a
-\ nonzero one skips the rest of the input. A token outside a body is classed
-\ 0 for a word, 1 for an integer and 2 for a float; a word about to run is
-\ classed by its xt; the other events are classed 0.
-0 constant UNIT-EV-TOKEN         \ a token outside a body, past a comment
-2 constant UNIT-EV-PACKAGE       \ the name `package` has read
-3 constant UNIT-EV-IMMEDIATE     \ a body immediate about to run
-4 constant UNIT-EV-WORD          \ a word about to run, past its gates
-5 constant UNIT-EV-END           \ the end of the source
-
-: UNIT? ( -- bool )
-   UNIT-COMPILE-CELL CELL@ 0<> ;
-
-\ The cell holds the guard's xt raw; this view states the guard's effect.
-CAST: UNIT-GUARD ( n -- [ ptr u8 n n n -- n ] )
-
-\ The guard's answer, 0 with none armed. The token cells are put back after
-\ the guard returns, whatever it parsed.
-: UNIT-EVENT ( n n -- n ) {: class:n event:n :}
-   UNIT? 0= if 0 exit then
-   TKA-CELL CELL@ TKL-CELL CELL@ {: a:n u:n :}
-   TOKEN$ class event UNIT-COMPILE-CELL CELL@ UNIT-GUARD execute
-   a TKA-CELL CELL!  u TKL-CELL CELL! ;
-
-\ A unit's misuse names the token, then the engine's compile-die tail
-\ (habu2.f C-DIE-TOKEN with 70).
-: UNIT-REFUSE ( -- )
-   TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
-
 variable VALUE
 
 \ A number's value waits in VALUE. One out of range is undefined, and no word
@@ -720,13 +688,11 @@ TYPED-VARIABLE RUNS-ON bool
    RUNS-N @ 1 + RUNS-N ! ;
 
 
-\ The unit hook, then the top-row hook, then the run log and the source
-\ observer, before the word runs (habu2.f EM-INTERPRET-FIND). The flags and
-\ the xt are read before any of them runs.
+\ The engine's twin: habu2.f EM-INTERPRET-FIND. The flags and xt are read
+\ before the hooks run.
 : RUN-FOUND ( -- )
    GATE
    WORD-FLAGS REC @ NHOST:RUN-REC {: flags:n xt:n :}
-   xt UNIT-EV-WORD UNIT-EVENT drop
    TOP-EV-WORD flags HOOK
    REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
    idx RUN+
@@ -1182,15 +1148,12 @@ private
 : PKG-PATH ( -- )
    TOKEN$ CHECKER-RESOLVE:PART-PATH TKL-CELL CELL! TKA-CELL ADDR! ;
 
-\ The package opens on its private wordlist, in this buffer. The using depth
-\ it opens at is the one `;package` restores, a part's its package's. The name
-\ goes to the unit hook first, whose nonzero answer skips the rest of the input
-\ instead (habu2.f C-PACKAGE).
+\ The engine's twin: habu2.f C-PACKAGE. The using depth it opens at is the one
+\ `;package` restores, a part's its package's.
 : PKG-PACKAGE ( -- )
    TASK-GUARD
    [: CHECKER-RESOLVE:PART-GUARD ;] catch PKG-CONTEXT
    PKG-NAME
-   0 UNIT-EV-PACKAGE UNIT-EVENT 0<> if INE-CELL CELL@ INP-CELL CELL! exit then
    TOKEN$ 0 COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
    ['] PKG-PATH catch PKG-CONTEXT
    PKG-POLICY-GUARD
@@ -1591,13 +1554,6 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    a q PKG-CODE-ROOM
    a q false namespace-record XREF-REC XREF-PKG-PUBLIC false ;
 
-\ A selected unit owns its definitions: a name with a colon anywhere in it,
-\ at an edge too, refuses before the qualifier could send it to another
-\ package (habu2.f C-UNIT-DEF-NAME-GUARD).
-: DEF-UNIT-GUARD ( -- )
-   UNIT? 0= if exit then
-   TOKEN$ 0 COLON-AT 0 >= if UNIT-REFUSE then ;
-
 \ A wordlist of a sealed package refuses the name token. Checked as source names
 \ a definition, not in DEF-RECORD, which a file object's link replays.
 : DEF-SEAL-GUARD ( n ptr u8 n -- n ) {: wid:n a:ptr u:n :}
@@ -1613,7 +1569,6 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ after it refuses.
 : DEF-QUALIFY ( -- ptr u8 n n )
    OVERLAY-GUARD
-   DEF-UNIT-GUARD
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    TOKEN$ {: a:ptr u:n :}
@@ -1983,13 +1938,10 @@ private
    rec TOKEN$ CHECKER-OWNER:PARSE-IMM?
    dup 0= s" does>" TOKEN-IS? 0= and if DEF-PREFLIGHT then ;
 
-\ Keep the original occurrence across the unit hook and the preflight, then
-\ select its host body. A preflight that retires it cannot substitute a
-\ reused dictionary slot. The stack's floor holds after the word, as after a
-\ word the loop runs. The run log (RUN+) holds the immediate the body ran.
+\ The occurrence is selected before the preflight, so a preflight that retires
+\ it cannot substitute a reused dictionary slot.
 : DEF-RUN ( ptr n -- )
    DEF-OCC:SELECT {: slot:n occurrence:n :}
-   0 UNIT-EV-IMMEDIATE UNIT-EVENT drop
    DEF-PREFLIGHT
    slot occurrence DEF-OCC:RESOLVE {: rec:ptr :}
    rec XREF-NULL - XREF-ADDR>INDEX RUN+
@@ -2537,31 +2489,6 @@ private
    SEARCH
    true ;
 
-\ The engine's twins: habu2.f C-UNIT-DISPATCH and C-UNIT-SOURCE-END.
-\ With a unit hook armed, each token past a comment outside a body goes to it,
-\ classed as LNUM reads it. In a body none does, and `does>` refuses there:
-\ a selected unit may not split a body, at either tier.
-: UNIT-CLASS ( -- n )
-   TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
-   num 0= if 0 exit then
-   flt if 2 exit then
-   1 ;
-
-: UNIT-TOKEN ( -- )
-   UNIT? 0= if exit then
-   PEND-CELL CELL@ 0<> if
-      s" does>" TOKEN-IS? if UNIT-REFUSE then
-      exit
-   then
-   UNIT-CLASS UNIT-EV-TOKEN UNIT-EVENT drop ;
-
-\ The end of the source, past the refusal of a definition left unfinished. It
-\ runs inside the buffer's catch, so a refusal takes the buffer's recovery.
-: UNIT-END ( -- )
-   UNIT? 0= if exit then
-   PEND-CELL CELL@ 0<> if UNIT-REFUSE then
-   0 UNIT-EV-END UNIT-EVENT drop ;
-
 \ Inside a build the product's checker files are product text, so a
 \ declaration word found there is the product's copy, which records into a
 \ checker that checks nothing. A declaration runs the building hb's word of
@@ -2628,7 +2555,6 @@ private
    BODY-RAW-NEXT @ if COMPILING? drop exit then
    COMMENT? if exit then
    POLICY-PRE {: found:bool :}
-   UNIT-TOKEN
    COMPILING? if exit then
    LITERAL? if exit then
    PACKAGE? if exit then
@@ -2657,7 +2583,7 @@ private
 
 : RUN ( -- )
    RUN-TOKENS
-   DEF-SOURCE-END UNIT-END ;
+   DEF-SOURCE-END ;
 
 : CLEAR-BODY-TAKE ( -- )
    NATIVE-BODY:BODY-CAPABILITY dup NULL-PTR = if drop exit then
@@ -2881,15 +2807,14 @@ variable REPL-OK
    true ;
 
 : REPL-END ( -- )
-   [: DEF-SOURCE-END UNIT-END ;] catch {: code:n :}
+   ['] DEF-SOURCE-END catch {: code:n :}
    code 0<> if NULL$ code die then ;
 
 
 public
 
 \ Each line calls the REPL-READ defer (src/habu/repl.f) anew: genio may replace
-\ its reader during a session. Only EOF closes a pending definition or selected
-\ source unit.
+\ its reader. A definition may span lines; EOF refuses one still open.
 : REPL ( -- )
    0 ENTRY-PEND !
    true REPL-OK !

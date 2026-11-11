@@ -1930,9 +1930,7 @@ $4310 constant ENCLOSING
 ;package
 
 \ The scoped package evaluator owns one transient dispatch xt. A source load
-\ disarms it on return or throw. A fixed offset for REPLAY-SCOPE's reason:
-\ interpreter.f UNIT? and UNIT-EVENT read the cell as a DATA offset and execute
-\ a nonzero one as an xt. It takes the cell after REPLAY-SCOPE;
+\ disarms it on return or throw. It takes the cell after REPLAY-SCOPE;
 \ DATA-CLAIMS refuses a replay scope that grows into it.
 $42E8 constant UNIT-COMPILE-CELL
 

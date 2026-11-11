@@ -4936,23 +4936,8 @@ private
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ Selected units own their definitions. A qualified operand would redirect
-\ publication to another package before the ordinary qualifier resolves it.
-: C-UNIT-DEF-NAME-GUARD ( -- )
-   LBL LBL LBL {: done:label scan:label bad:label :}
-   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  10 10 0 LDR,
-   10 done CBZ,
-   14 DATA TKL-CELL LDR,  15 0 MOVZ,
-   scan LBL,
-      15 14 CMP,  C-GE done BCOND,
-      9 DATA TKA-CELL LDR,  9 9 15 ADD,  9 9 0 LDRB,
-      9 58 CMPI,  C-EQ bad BCOND,
-      15 15 1 ADDI,  scan B,
-   bad LBL,  70 C-DIE-TOKEN
-   done LBL, ;
-
 public
-: C-QUALIFY-DEF ( -- )  C-UNIT-DEF-NAME-GUARD  LQUALIFYDEF LABEL@ BL, ;
+: C-QUALIFY-DEF ( -- )  LQUALIFYDEF LABEL@ BL, ;
 
 private
 \ At LSTOREDEFNAME, once sealed, publishing into a protected DEF-WL-CELL wid
@@ -9271,29 +9256,6 @@ private
    nosync LBL, ;
 
 public
-\ A unit hook is reached by the real interpret, package and immediate paths.
-\ It returns a skip flag only for the parsed package-name event.
-: C-UNIT-HOOK ( -- )
-   LBL {: absent:label :}
-   9 0 MOVZ,
-   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,  9 absent CBZ,
-   SP SP 48 SUBI,  30 SP 0 STR,
-   10 DATA TKA-CELL LDR,  10 SP 8 STR,
-   10 DATA TKL-CELL LDR,  10 SP 16 STR,
-   11 SP 24 STR,
-   13 SP 32 STR,
-   9 DATA TKA-CELL LDR,  9 G-PUSH
-   9 DATA TKL-CELL LDR,  9 G-PUSH
-   15 G-PUSH  16 G-PUSH
-   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,  9 BLR,
-   9 G-POP
-   10 SP 8 LDR,  10 DATA TKA-CELL STR,
-   10 SP 16 LDR,  10 DATA TKL-CELL STR,
-   11 SP 24 LDR,
-   13 SP 32 LDR,
-   30 SP 0 LDR,  SP SP 48 ADDI,
-   absent LBL, ;
-
 \ The preflight is Habu code: a caller keeps across it only what it saved.
 \ src/habu/interpreter.f DEF-PREFLIGHT is its twin.
 : C-PREFLIGHT ( -- )
@@ -9312,7 +9274,6 @@ public
    SP SP 48 SUBI,  30 SP 0 STR,  11 SP 8 STR,
    5 G-PUSH  BDEFSELECT
    9 G-POP  9 SP 32 STR,  9 G-POP  9 SP 24 STR,
-   15 0 MOVZ,  16 3 MOVZ,  C-UNIT-HOOK
    C-PREFLIGHT
    9 SP 24 LDR,  9 G-PUSH
    9 SP 32 LDR,  9 G-PUSH  BDEFRESOLVE  5 G-POP
@@ -9652,26 +9613,6 @@ public
 ;package
 
 package ENGINE-EMIT
-: C-UNIT-DISPATCH ( -- )
-   LBL LBL LBL LBL {: absent:label compile:label number:label classified:label :}
-   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,  9 absent CBZ,
-   9 DATA PEND-CELL LDR,  9 compile CBNZ,
-   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM LABEL@ BL,
-   15 0 MOVZ,
-   12 number CBZ,
-      15 1 MOVZ,
-      2 classified CBZ,
-      15 2 MOVZ,
-   classified LBL,
-   number LBL,
-   16 0 MOVZ,  C-UNIT-HOOK
-   absent B,
-   compile LBL,
-   0 LKWDOES LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,
-   0 absent CBZ,
-   70 C-DIE-TOKEN
-   absent LBL, ;
-
 public
 : C-SOURCE-EXEC-BEFORE ( -- )
    LBL {: absent:label :}
@@ -9735,9 +9676,8 @@ public
    C-TRUSTED-TICK?
    17 LTRUSTTICK LABEL@ CBNZ,
    \ A source range observes the tick's actual target before the xt is pushed.
-   \ Preserve LFIND's record and entry across the unit and source callbacks.
+   \ Preserve LFIND's record and entry across the source callback.
    SP SP 32 SUBI,  11 SP 0 STR,  5 SP 8 STR,  13 SP 16 STR,
-   15 11 0 ADDI,  16 4 MOVZ,  C-UNIT-HOOK
    16 SP 8 LDR,  16 16 DBASE SUB,
    17 DREC MOVZ,  16 16 17 UDIV,
    15 4 MOVZ,  17 SP 0 LDR,
@@ -9835,7 +9775,6 @@ private
       skln LBL,   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN LABEL@ BCOND,
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN LABEL@ B,
       notcom LBL,
-      C-UNIT-DISPATCH
       9 DATA PEND-CELL LDR,  9 notcompile CBZ,
       9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 LCOMPILE LABEL@ CBZ,
       NCOMP-EMIT:LOAD
@@ -10179,18 +10118,13 @@ private
 public
 : C-PACKAGE ( -- )
    C-TASK-GUARD
-   LBL LBL LBL LBL {: top:label hastok:label cold:label stored:label :}
+   LBL LBL LBL {: top:label hastok:label stored:label :}
    14 DATA PKG-PUB-CELL LDR,  14 top CBZ,
       C-PACKAGE-PART-GUARD
    top LBL,
    LTOK LABEL@ BL,  0 hastok CBNZ,
       $4A C-PACKAGE-FAIL
    hastok LBL,
-   15 0 MOVZ,  16 2 MOVZ,  C-UNIT-HOOK
-   9 cold CBZ,
-      9 DATA INE-CELL LDR,  9 DATA INP-CELL STR,
-      LMAIN LABEL@ B,
-   cold LBL,
    C-PACKAGE-NAME-GUARD
    C-PACKAGE-PATH
    C-PACKAGE-POLICY-GUARD                               \ before the checker hears of the package
@@ -10815,7 +10749,6 @@ private
    SP SP 16 ADDI,
    \ Save the original dictionary record before either hook can clobber x5.
    SP SP 32 SUBI,  11 SP 0 STR,  5 SP 8 STR,
-   15 11 0 ADDI,  16 4 MOVZ,  C-UNIT-HOOK
    C-TOPHOOK-CALL             \ every native gate passed: emit the pre-BLR word event (x13 = LFIND flags)
    16 SP 8 LDR,  16 16 DBASE SUB,
    17 DREC MOVZ,  16 16 17 UDIV,
@@ -13102,28 +13035,8 @@ private
    10 LRBYE LABEL@ CBZ,
    11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  LMAIN LABEL@ B, ;
 
-\ Top-level source exhausted. A boot arrives here twice: at the end of the
-\ engine prefix stream, then at the end of the user stream (a piped program, the
-\ `required` rows `--load` wrote, or the baked LSRC); boot-cells.f BOOT:USER-END
-\ says why they are separate streams in one buffer. A partial capture installs
-\ at the first arrival, after its cold-prefix dependencies and before any user
-\ token; a full runtime installs at startup. Every boot mode crosses this
-\ boundary before its program, and consuming USER-END makes the seed one-shot.
-\ Installing the user stream is EM-REPL-READ's move: it starts at the old end
-\ (INE) and re-entering LMAIN is a branch.
-\ Refuse an unfinished selected unit before the evaluate frame is popped, so
-\ its ordinary throw path restores package scope and dictionary together.
-: C-UNIT-SOURCE-END ( -- )
-   LBL {: absent:label :}
-   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,
-   9 absent CBZ,
-   15 0 MOVZ,  16 5 MOVZ,  C-UNIT-HOOK
-   absent LBL, ;
-
-\ Refuse a definition this buffer opened and did not close, before the frame
-\ is popped (one open as the buffer began, EVAL-FRAME:PEND, is an outer
-\ buffer's). Located at its name token, or for def-open at the word that ran it
-\ (layout.f PENDTKA-CELL), an address in this buffer; its last line can be blank.
+\ Refuse, before the frame pops, a definition opened in this buffer and left
+\ open (EVAL-FRAME:PEND is an outer buffer's), at layout.f PENDTKA-CELL.
 : C-DEF-SOURCE-END ( -- )
    LBL {: closed:label :}
    9 DATA PEND-CELL LDR,  9 closed CBZ,
@@ -13133,12 +13046,20 @@ private
       LSRCEND LABEL@ B,
    closed LBL, ;
 
+\ Top-level source exhausted. A boot arrives here twice: at the end of the
+\ engine prefix stream, then at the end of the user stream (a piped program, the
+\ `required` rows `--load` wrote, or the baked LSRC); boot-cells.f BOOT:USER-END
+\ says why they are separate streams in one buffer. A partial capture installs
+\ at the first arrival, after its cold-prefix dependencies and before any user
+\ token; a full runtime installs at startup. Every boot mode crosses this
+\ boundary before its program, and consuming USER-END makes the seed one-shot.
+\ Installing the user stream is EM-REPL-READ's move: it starts at the old end
+\ (INE) and re-entering LMAIN is a branch.
 : EM-COMPILE-EXIT ( -- )
    LBL LBL {: nousrc:label closed:label :}
    LEXIT LABEL@ LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 LABEL@ CBZ,
-      C-DEF-SOURCE-END                                        \ the named refusal first, a unit's too
-      C-UNIT-SOURCE-END
+      C-DEF-SOURCE-END
       EM-EVAL-CLEAN-EXIT
    LEX0 LABEL@ LBL,                                          \ top-level source exhausted (EVALD==0), cp@ clean here
    9 DATA BOOT:USER-END LDR,  9 nousrc CBZ,                  \ no second stream -> repl or exit
