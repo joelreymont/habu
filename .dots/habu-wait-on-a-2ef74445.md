@@ -16,3 +16,5 @@ Ruling (Joel, 2026-11-11), replacing the Design above. Asked the name of the two
 
 Worker report 2026-11-11 (workspace carl-poll, change uyyoxokl): names fold case, so inside PROCESS the new POLL hides the engine primitive `poll`, and POLL-IN's bare call was refused; the lead made POLL-IN call the private POLL-ONCE. The card's section 1 rule (a public sharing a global's bare tail: rename the public) is met by Joel's name; the cause is the raw primitive owning a global name, dotted separately. check rc 0; process-test, fd-test, process-task-test ok. process.f is not engine-provided: it reaches consumers with the installed library sources.
 
+
+Landed 2026-11-11 with the field-pointer fix (suite 273 of 273, chain fixpoint, Maki, Zen and Tender cold and warm equal: ~/.cache/tmp/carl-land/r29). Open for the follow-up: the six hand-composed PROCESS:POLL-RESTART sites switch to POLL.

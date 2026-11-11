@@ -283,7 +283,11 @@ public
    -1 >FD -1 >FD -1 >FD RUN-IO-RC ;
 
 private
+\ An idx outside 0..PFD-SLOTS-1 is E-A-BOUNDS: PFD-AT! and PFD-REVENTS are
+\ public, and slot PFD-SLOTS would reach the cells after the table (PROBE-OFF).
 : PFD-SLOT ( idx -- ptr n ) {: idx :}
+   idx IDX>N 0 < if E-A-BOUNDS throw then
+   idx IDX>N PFD-SLOTS >= if E-A-BOUNDS throw then
    idx IDX>N PFD-SLOT-BYTES * PFD + CELL-VIEW ;
 
 public
@@ -316,6 +320,7 @@ public
    timeout MS>N NS-PER-MS * now + ;
 
 private
+\ The one call of the primitive poll: from POLL on, a bare poll here is POLL.
 : POLL-ONCE ( n n -- n ) {: nfds ms :}
    PFD nfds ms poll ;
 
@@ -336,18 +341,24 @@ public
       restarted FD:EINTR# negate <> if restarted exit then
    again ;
 
-\ A signal is reported as -EINTR: this word owns no deadline to restart against.
-: POLL-IN ( fd ms -- count ) {: fd ms :}
-   fd FD:POLLIN PFD!
-   PFD 1 ms MS>N poll >COUNT ;
-
-: POLL-IN-OR-TIMEOUT ( fd ms -- count ) {: fd ms :}
+\ Polls slots 0..n-1 as they stand, armed or not (NO-FD leaves one out), for an event
+\ PFD-REVENTS reads. E-A-BOUNDS: n not 1..PFD-SLOTS; E-PROC-OUTPUT; E-PROC-TIMEOUT.
+: POLL ( n ms -- count ) {: nfds ms :}
+   nfds 1 < if E-A-BOUNDS throw then
+   nfds PFD-SLOTS > if E-A-BOUNDS throw then
    ms DEADLINE-AT {: deadline :}
-   fd FD:POLLIN PFD!
-   1 ms MS>N deadline POLL-RESTART {: rc :}
+   nfds ms MS>N deadline POLL-RESTART {: rc :}
    rc 0 < if E-PROC-OUTPUT throw then
    rc 0= if E-PROC-TIMEOUT throw then
    rc >COUNT ;
+
+\ A signal is reported as -EINTR: this word owns no deadline to restart against.
+: POLL-IN ( fd ms -- count ) {: fd ms :}
+   fd FD:POLLIN PFD!
+   1 ms MS>N POLL-ONCE >COUNT ;
+
+: POLL-IN-OR-TIMEOUT ( fd ms -- count ) {: fd ms :}
+   fd FD:POLLIN PFD!  1 ms POLL ;
 
 private
 \ waitpid's flag and pid_t bound, the same on Linux and macOS.
