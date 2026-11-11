@@ -32,6 +32,7 @@ require src/lib/json.f
 require src/lib/json-rpc.f
 require src/lib/log.f
 require src/lib/memory.f
+require src/lib/arena.f
 require src/lib/utf8-scalar.f
 require src/lib/byte-buffer.f
 require src/lib/task.f
@@ -1027,7 +1028,9 @@ STRUCTURE peer DERIVE addr
 ;STRUCTURE
 
 ARENA PEERS peer
-TYPED-VARIABLE RECORDS peers
+\ The rows' arena, made by the first GROW so a saved image maps none; null until
+\ then, and never released: the rows live as long as the process.
+TYPED-VARIABLE RECORDS ptr ARENA:arena
 
 $1000 constant FIRST-CAP
 0 constant URL-OFF
@@ -1105,7 +1108,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    count 1+ ROW-HANDLE-RESERVE
    count 1+ ROW-STOP-RESERVE
    count 1+ ROW-GEN-RESERVE
-   RECORDS PEERS-NEW {: rec:ptr :}
+   RECORDS @ NULL-PTR = if ARENA:NEW RECORDS ! then
+   RECORDS @ PEERS-NEW {: rec:ptr :}
    s" " SPAN:MAKE rec PEER-REGION !
    rec count ROW-PEER !
    0 count ROW-GEN !

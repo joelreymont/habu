@@ -1,8 +1,8 @@
 \ HEAP records come from the real definer and runtime: each is zero-filled,
 \ typed through its STRUCTURE's accessors, distinct from the next, and keeps
 \ its contents across another record's NEW and RELEASE; a record holding a
-\ JSON:cursor runs a reader with no cast; a refused declaration (a sub-cell
-\ element, an unknown type, an element holding an arena owner) defines
+\ JSON:cursor runs a reader with no cast; a record holds an arena by pointer;
+\ a refused declaration (a sub-cell element, an unknown type) defines
 \ nothing; checked code can neither call nor tick RECORD-NEW or
 \ RECORD-RELEASE outside HEAP's generated words; a record pointer still enters
 \ no other generic-pointer word; and tools/check.f --verify-only certifies a
@@ -10,6 +10,7 @@
 \ run.
 require src/lib/test.f
 require src/lib/json.f
+require src/lib/arena.f
 require src/lib/string.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
@@ -24,9 +25,8 @@ HEAP NOTES note
 STRUCTURE part DERIVE addr FIELD reader JSON:cursor FIELD total n ;STRUCTURE
 HEAP PARTS part
 
-\ An arena owner lives in place, so no HEAP may hold one.
-STRUCTURE rec DERIVE addr FIELD x n ;STRUCTURE
-ARENA RECS rec
+STRUCTURE holder DERIVE addr FIELD arena ptr ARENA:arena ;STRUCTURE
+HEAP HOLDERS holder
 
 
 \ An ordinary word with RECORD-RELEASE's generic pointee.
@@ -81,15 +81,23 @@ variable EVAL-U
    p PARTS-RELEASE ;
 
 
+: HOLDER ( -- )
+   s" a record holds an arena by pointer" T-LABEL
+   HOLDERS-NEW {: h:ptr :}
+   h HOLDER-ARENA @ NULL-PTR = TTRUE
+   ARENA:NEW {: a:ptr :}
+   a h HOLDER-ARENA !
+   h HOLDER-ARENA @ NULL-PTR - a NULL-PTR - T=
+   h HOLDER-ARENA @ ARENA:RELEASE
+   h HOLDERS-RELEASE ;
+
+
 : REFUSALS ( -- )
    s" a refused declaration defines nothing" T-LABEL
    s" HEAP BAD u16" EVAL CHECKER-REJECT-RC T=
    s" BAD-NEW" UNDEFINED? TTRUE
    s" HEAP WORSE no-such-type" EVAL CHECKER-REJECT-RC T=
-   s" WORSE-NEW" UNDEFINED? TTRUE
-   s" an element holding an arena owner is refused" T-LABEL
-   s" HEAP OWNERS recs" EVAL CHECKER-REJECT-RC T=
-   s" OWNERS-NEW" UNDEFINED? TTRUE ;
+   s" WORSE-NEW" UNDEFINED? TTRUE ;
 
 
 \ Were Z1 admitted, a 1-byte record would stand for a cell. The pointee is a
@@ -131,7 +139,7 @@ variable EVAL-U
 
 : RUN ( -- )
    T-RESET
-   RECORDS READER REFUSALS CALLS VERIFY
+   RECORDS READER HOLDER REFUSALS CALLS VERIFY
    T-REPORT ;
 
 RUN
