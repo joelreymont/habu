@@ -1,8 +1,7 @@
-\ ws.f - RFC 6455 WebSocket connections on the HTTP/1.1 server (src/lib/net/http.f).
+\ ws.f - RFC 6455 WebSocket connections on the HTTP/1.1 server.
 \ ACCEPT takes a route handler's connection (HTTP:TAKE-OVER) for WS's one task,
 \ the only reader and writer of every socket, which waits on one AIO group: a
-\ readiness poll per socket and one on a wake pipe. Frames are coded by
-\ src/lib/net/ws-frame.f.
+\ readiness poll per socket and one on a wake pipe.
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by socket slot.
 
 require src/lib/error.f
@@ -51,7 +50,7 @@ ENUM accepted
    VARIANT refused FIELD status n ;VARIANT
 ;ENUM
 
-$100000 constant MESSAGE-MAX      \ the longest message the task reassembles
+$100000 constant MESSAGE-MAX
 
 \ How long a peer may take no byte of a waiting queue, or leave this end's
 \ close unanswered, before its socket closes under 1006.
@@ -68,7 +67,7 @@ variable CAP                                \ START's limit: the slots the table
 \ The number the wake's wait carries in WAITERS; a slot's wait carries its index.
 -1 constant WAKE-WAIT
 
-\ A socket's life. Every change of phase is made under LOCK.
+\ Every change of phase is made under LOCK.
 0 constant PHASE-NONE             \ a free slot
 1 constant PHASE-OPEN             \ frames go both ways
 2 constant PHASE-CLOSING          \ this end has sent its close frame and awaits the peer's
@@ -271,7 +270,6 @@ RUN-IDLE
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
 
 
-\ The mapping is given back, and a span with no reach is left in its place.
 : DROP-SPAN ( SPAN:span<u8> -- SPAN:span<u8> ) {: s :}
    s SPAN:LEN 0= if s exit then
    s MEM:FREE-SPAN
@@ -327,9 +325,6 @@ RUN-IDLE
    idx OUT-U @ idx OUT-AT @ - ;
 
 
-\ Room for that many more bytes behind the queue. A full mapping is replaced
-\ by one that holds the bytes still queued and the new ones, at least twice its
-\ size, with the queued bytes moved to its start.
 : ROOM ( n n -- ) {: idx:n more:n :}
    idx OUT-U @ more + idx OUT @ SPAN:LEN <= if exit then
    idx QUEUED {: live:n :}
@@ -341,7 +336,6 @@ RUN-IDLE
    live idx OUT-U ! ;
 
 
-\ A queue that was empty starts its stall clock.
 : QUEUE ( n ptr u8 n -- ) {: idx:n a u:n :}
    idx QUEUED 0= if mono-ns idx SINCE ! then
    idx u ROOM
@@ -349,8 +343,6 @@ RUN-IDLE
    u idx OUT-U +! ;
 
 
-\ An unfragmented frame's header as a server sends it, with room behind it for
-\ its payload.
 : HEADER-OUT ( n opcode n -- ) {: idx:n op u:n :}
    idx QUEUED 0= if mono-ns idx SINCE ! then
    idx HEAD-CAP u + ROOM
@@ -363,8 +355,6 @@ RUN-IDLE
    idx a u QUEUE ;
 
 
-\ A close frame carrying the status; an empty one for the status that stands
-\ for none, and no frame for the status that stands for a lost connection.
 : CLOSE-OUT ( n n -- ) {: idx:n code:n :}
    code STATUS-LOST = if exit then
    code STATUS-NONE = if 0 else CODE-BYTES then {: u:n :}
@@ -401,8 +391,6 @@ RUN-IDLE
    phase PHASE-CLOSING = op CONTROL? and ;
 
 
-\ A frame through a handle; 1 when it was queued, 0 when the socket does not
-\ take it.
 : SHIP ( n n ptr u8 n -- n ) {: h:n wire:n a u:n :}
    h CURRENT? 0= if 0 exit then
    h >SLOT {: idx:n :}
@@ -446,9 +434,6 @@ RUN-IDLE
    idx code after [: SHUT ;] [: UNLOCK ;] finally drop ;
 
 
-\ One TCP4:TRY-SEND of the queue, made once the poll found room; one that moves
-\ nothing (`empty`) leaves the socket to the next poll. False once the
-\ connection failed.
 : FLUSH ( n -- bool ) {: idx:n :}
    idx QUEUED 0= if true exit then
    idx LINK @ idx OUT @ idx OUT-AT @ idx QUEUED SPAN:SUB SPAN:$ TCP4:TRANSFER-BYTES TCP4:TRY-SEND
@@ -467,9 +452,7 @@ RUN-IDLE
    idx [: FLUSH ;] [: UNLOCK ;] finally ;
 
 
-\ The one rule a socket gives up by: its peer has taken no byte of a waiting
-\ queue for STALL-MS, has left this end's close unanswered past CLOSE-BY, or
-\ WS has been stopping for GOODBYE-MS (STOP-AT). Under LOCK.
+\ Under LOCK.
 : GIVE-UP? ( n -- bool ) {: idx:n :}
    idx QUEUED 0 > mono-ns idx SINCE @ - STALL-MS NS-PER-MS * >= and if true exit then
    idx PHASE @ PHASE-CLOSING = mono-ns idx CLOSE-BY @ >= and if true exit then
@@ -550,8 +533,6 @@ RUN-IDLE
    idx idx STATUS @ WS-MESSAGE:closed [: HANDED? drop ;] [: DUE-IDX @ RETIRE ;] finally ;
 
 
-\ The connection failed, its peer stalled, or the socket gave up: it ends
-\ under 1006 with its queue dropped.
 : LOSE ( n -- ) {: idx:n :}
    LOCK TASK:GET
    idx LOST
@@ -559,8 +540,6 @@ RUN-IDLE
    idx FINISH ;
 
 
-\ Bytes into the span from those read and not yet parsed: their count, 0 when
-\ there are none.
 : PULL ( n SPAN:span<u8> -- n ) {: idx:n dst :}
    dst SPAN:LEN idx IN-U @ min {: take:n :}
    idx IN @ idx IN-AT @ take SPAN:SUB SPAN:$ dst SPAN:COPY
@@ -593,7 +572,6 @@ RUN-IDLE
    1 idx HEAD-DONE ! ;
 
 
-\ What the bytes held say: the count the header needs, or the header itself.
 \ The codec throws what breaks the protocol, so this runs under a catch.
 : DECODE-HELD ( n -- n ) {: idx:n :}
    idx HEAD-BUF SPAN:$ drop idx HEAD-U @ WS-SENDER:client MESSAGE-MAX DECODE-HEADER
@@ -649,8 +627,6 @@ RUN-IDLE
    again ;
 
 
-\ Where the frame in hand keeps its payload: a control frame's in the control
-\ buffer, a data frame's behind what its message already holds.
 : PAYLOAD ( n -- SPAN:span<u8> ) {: idx:n :}
    idx CONTROL-FRAME? if idx CONTROL-BUF idx F-LEN @ SPAN:TAKE exit then
    idx MSG-BUF idx MSG-U @ idx F-LEN @ SPAN:SUB ;
@@ -664,8 +640,7 @@ RUN-IDLE
    construct progress late ;
 
 
-\ One whole frame, its payload unmasked where it lies. The payload is unmasked
-\ in one piece, so the key starts at its first byte.
+\ The payload is unmasked in one piece, so the key starts at its first byte.
 : FRAME-IN ( n -- progress ) {: idx:n :}
    idx READ-HEADER {: head:progress :}
    head THROUGH? 0= if head exit then
@@ -683,7 +658,6 @@ RUN-IDLE
    WS-OPCODE:text OPCODE>WIRE = ;
 
 
-\ The message's bytes are reused once the handler returns.
 : DELIVER ( n -- ) {: idx:n :}
    idx MESSAGE$ {: a u:n :}
    idx MSG-WIRE @ TEXT? if a u WS-MESSAGE:text else a u WS-MESSAGE:binary then {: msg :}
@@ -692,8 +666,7 @@ RUN-IDLE
    idx msg HANDED? if idx STATUS-INTERNAL PHASE-CLOSED LOCKED-SHUT then ;
 
 
-\ A data frame joins its message and the last one completes it. Text is checked
-\ whole, because a scalar may straddle two fragments.
+\ Text is checked whole, because a scalar may straddle two fragments.
 : DATA-IN ( n -- ) {: idx:n :}
    idx F-LEN @ idx MSG-U +!
    idx F-WIRE @ 0 <> if idx F-WIRE @ idx MSG-WIRE ! then
@@ -704,7 +677,6 @@ RUN-IDLE
    idx DELIVER ;
 
 
-\ The pong carries the ping's payload.
 : PING-IN ( n -- ) {: idx:n :}
    idx HANDLE WS-OPCODE:pong OPCODE>WIRE idx CONTROL-BUF idx F-LEN @ SPAN:TAKE SPAN:$
    LOCK TASK:GET
@@ -752,8 +724,6 @@ RUN-IDLE
    phase PHASE-OPEN = phase PHASE-CLOSING = or ;
 
 
-\ Every frame the bytes read hold, while the socket still reads. A closed
-\ socket's input is dropped.
 : PARSE ( n -- ) {: idx:n :}
    begin
       idx LIVE? 0= if 0 idx IN-U ! exit then
