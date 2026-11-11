@@ -4,16 +4,16 @@
 \ which this suite starts before its first case and stops after its last.
 \ Run: bin/hb --load src/lib/net/tcp4-test.f
 require src/lib/test.f
-require src/lib/test/wait.f            \ a wait's expired deadline, by name
+require src/lib/test/wait.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/error.f
 require src/lib/ffi-abi.f
-require src/lib/memory.f               \ the write cases' 16 MiB source
-require src/lib/fmt.f                  \ the sipped slices' durations, on one line
+require src/lib/memory.f
+require src/lib/fmt.f
 require src/lib/task.f
 require test/host-threads.f
-require src/lib/aio.f                  \ the loop every readiness wait runs on
+require src/lib/aio.f
 require src/lib/net/tcp4.f
 
 package TCP4-TEST
@@ -22,8 +22,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 $7F000001 constant LOOPBACK
 4 constant BACKLOG
-$09 constant EBADF                 \ a transfer through a closed descriptor
-$20 constant EPIPE                 \ a send after the peer's reset, on both
+$09 constant EBADF
+$20 constant EPIPE
 : ECONNRESET ( -- n ) HB-TARGET-MACOS? if 54 else $68 then ;
 : ECONNREFUSED ( -- n ) HB-TARGET-MACOS? if 61 else $6F then ;
 : EADDRINUSE ( -- n ) HB-TARGET-MACOS? if 48 else 98 then ;
@@ -31,8 +31,8 @@ $20 constant BUF-CAP
 $40 constant POLL-TRIES
 
 1000000 constant NS-PER-MS
-\ The deadlines the timed waits are measured against. The lower bounds allow a
-\ scheduler's slack while still failing a wait that did not happen at all.
+\ The lower bounds allow a scheduler's slack while still failing a wait that
+\ did not happen at all.
 500 constant WAIT-MS               \ far beyond the peer's delay: ready, not idle
 100 constant IDLE-MS               \ what a silent peer and a quiet listener reach
 50 constant PEER-MS                \ the peer's delay before it writes
@@ -40,9 +40,9 @@ $40 constant POLL-TRIES
 90 constant LEAST-IDLE-MS          \ an idle answer waited out its deadline
 20 constant SETTLE-MS              \ the armed task reaches its submission within this
 
-\ The write cases. The flood outgrows what loopback's send and receive buffers
+\ The flood outgrows what loopback's send and receive buffers
 \ hold together, so a peer that never reads must leave part of it unsent.
-$1000000 constant FLOOD-BYTES      \ 16 MiB
+$1000000 constant FLOOD-BYTES
 5000 constant DRAIN-MS             \ slack for the reading task, never reached when green
 300 constant FILL-MS               \ the writer fills both buffers and blocks within this
 1000 constant HALT-SLACK-MS        \ a halted writer or any slice ends within one slice and this
@@ -51,7 +51,7 @@ $1000000 constant FLOOD-BYTES      \ 16 MiB
 $4000 constant DRAIN-CAP
 10 constant SIP-MS                 \ the sipping reader takes DRAIN-CAP bytes this often
 8 constant SIP-SLICES              \ the slices timed against the sipping reader
-$100000 constant LEAST-SPAN        \ 1 MiB: the shortest span a timed slice is handed
+$100000 constant LEAST-SPAN        \ the shortest span a timed slice is handed
 
 create CLIENT-BUF BUF-CAP allot
 create SERVER-BUF BUF-CAP allot
@@ -104,8 +104,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
 : CHAT$ ( -- ptr u8 n )
    s" hey" ;
 
-\ Spans are measured from the messages themselves, so a reworded request cannot
-\ leave a stale length behind for READ-EXACT to wait on.
 : PING-BYTES ( -- n )
    PING$ swap drop ;
 
@@ -267,10 +265,8 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    begin ECHO-DONE atomic@ 0 > if exit then TASK:PAUSE again ;
 
 
-\ Nothing reaches the reader before PEER-MS, so a ready answer sooner than that
-\ never waited in poll(2). The peer sleeps out its delay rather than yielding
-\ against a deadline: a spinning peer would take a core away from the reader it
-\ is timing.
+\ The peer sleeps out its delay rather than yielding against a deadline: a
+\ spinning peer would take a core away from the reader it is timing.
 : PEER-WORK ( -- )
    PEER-MS >MS TASK:SLEEP
    PEER-FD @ TCP4:>CONNECTION CHAT$ TCP4:TRANSFER-BYTES TCP4:WRITE ECHO-STATUS
@@ -325,7 +321,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    1 PARK-DONE atomic-add drop ;
 
 
-\ Counts each byte that is not the flood's byte at its place in the stream.
 : DRAIN-CHECK ( n -- ) {: got:n :}
    got 0 ?do
       DRAIN-BUF i + c@ DRAIN-GOT @ i + PATTERN-MOD mod <> if 1 DRAIN-WRONG +! then
@@ -761,8 +756,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    CLOSE-PAIR ;
 
 
-\ The peer's close is readable at once; the READ that follows says which
-\ readiness it was.
 : T-WAIT-CLOSED ( -- )
    s" a closed peer is ready, and reads as the end of stream" T-LABEL
    OPEN-PAIR
@@ -881,8 +874,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    WRITER-TASK TASK:KILL ;
 
 
-\ A slice of the flood to a peer that reads it as it comes moves part of the
-\ span or all of it, and exactly that many bytes arrive, in order.
 : T-SLICE-MOVED ( -- )
    s" a send slice to a reading peer moves at least one byte and at most the span" T-LABEL
    OPEN-PAIR
@@ -906,7 +897,7 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
 \ within POLL-TRIES sends.
 : EMPTY-SEND-MS ( [ TCP4:connection ptr u8 NUM:byte-len -- TCP4:slice-result ] -- n n )
    {: send :}
-   0 0                                   \ the bytes sent, and the sends tried
+   0 0
    begin {: sent:n tries:n :}
       tries POLL-TRIES >= if sent -1 exit then
       mono-ns {: start:n :}
@@ -923,8 +914,7 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
 
 \ The first slices fill both loopback buffers; then a slice waits SEND-SLICE-MS
 \ for room, finds none and answers empty, rather than blocking for as long as
-\ the peer stays silent. The full pipe holds every byte the slices moved,
-\ part still the writer's to send.
+\ the peer stays silent.
 : T-SLICE-EMPTY ( -- )
    s" a send slice to a full peer that never reads answers empty" T-LABEL
    OPEN-PAIR
@@ -952,7 +942,7 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
 \ that runs on for as long as the reader makes room is timed once.
 : SIPPED-SLICE-MS ( n -- n )
    s" sipped slices, ms:" type
-   0 0                                   \ after bytes sent: slices timed, longest
+   0 0
    begin {: sent:n tries:n longest:n :}
       tries SIP-SLICES >= longest SLICE-BOUND-MS >= or
       FLOOD-BYTES sent - LEAST-SPAN < or if cr longest exit then
@@ -972,8 +962,7 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
 
 \ A reader that keeps taking bytes keeps making room, so no wait for room runs
 \ out and only the slice's own deadline can end a slice handed a long span: each
-\ returns within the bound, where a send left to wait in the kernel, its every
-\ wait for room under a timeout of its own, ran on until the flood was in.
+\ returns within the bound.
 : T-SLICE-SIPPED ( -- )
    s" the pipe is full with at least 1 MiB left before the sipping reader starts" T-LABEL
    OPEN-PAIR
@@ -1082,9 +1071,6 @@ TASK:MIN-STACK TASK:TASK TRY-TASK
    PROBE-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
 
 
-\ The peer's UNREAD is the bytes waiting for it, and a read takes its own off;
-\ the writer's UNSENT empties once the peer acknowledges them, which can lag
-\ their arrival. A closed connection is counted by neither.
 : T-QUEUES ( -- )
    s" UNREAD counts the bytes a connection holds unread" T-LABEL
    OPEN-PAIR
