@@ -31197,9 +31197,38 @@ public
    t b - {: at:n :}
    at 0 <  at data-base SRC-OWNEDLEN-OFF + @ >= or IF 0 RES-FALSE EXIT THEN
    b t 1 1 0 DIAG-POS drop drop RES-TRUE ;
-\ A step has a line and no column: no DIAG-ORIGIN maps a top step, and
-\ tools/check.f's run file keeps each subject line but shifts its columns.
+\ A top step is placed by its line alone: the source map (check-hook.f
+\ ROWS-ARM) places only a definition's tokens.
 : TOP-SITE ( -- n bool ) TOK-SPELL-A @ LINE-AT ;
+
+private
+\ FILE-POS's last answer: a byte offset into the owned bytes, its line, its column.
+variable FPOS-OFF  variable FPOS-LN  variable FPOS-CL
+public
+
+\ Forgets FILE-POS's last answer; include.f PUBLISH-LOCATION calls it each
+\ time it publishes the owned bytes.
+: FILE-POS-CLEAR ( -- )
+   0 FPOS-OFF !  1 FPOS-LN !  1 FPOS-CL ! ;
+FILE-POS-CLEAR
+
+\ The file line, column and byte of t, which lies in the bytes the loader owns,
+\ counted as DIAG-POS counts from their first byte. It counts on from its last
+\ answer when t is at or past it, so a file costs one pass.
+: FILE-POS ( ptr u8 -- n n n )
+   {: t:ptr :}
+   SRC-OWNED @ {: b:ptr :}
+   t b - {: at:n :}
+   at FPOS-OFF @ < IF FILE-POS-CLEAR THEN
+   BEGIN FPOS-OFF @ at < WHILE
+      b FPOS-OFF @ + c@ 10 = IF
+         FPOS-LN @ 1 + FPOS-LN !  1 FPOS-CL !
+      ELSE
+         FPOS-CL @ 1 + FPOS-CL !
+      THEN
+      FPOS-OFF @ 1 + FPOS-OFF !
+   REPEAT
+   FPOS-LN @ FPOS-CL @ at ;
 ;package
 
 \ The wall's line and code (habu2.f C-DUP-DEF-FAIL) for a duplicate refused off

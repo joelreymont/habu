@@ -664,9 +664,9 @@ private
 \ `--load PATH` into `s" PATH" script-required`, which resolves PATH as an
 \ entry, so the file's own relative requires resolve against its directory. The
 \ path is the canonical one the file's closure entry holds, so the child's
-\ working directory does not matter. DIAG-ORIGIN! markers exist only in inlined
-\ text: the child's own JSON diagnostics for a file it loads by path carry the
-\ engine's coordinates, which count from each definition's name.
+\ working directory does not matter. The child's own JSON diagnostics for a file
+\ it loads by path carry that file's line and column, which the engine counts
+\ itself (src/core/checker.f CHECK:FILE-POS).
 : CHK-APPEND-ENTRY ( ptr u8 n -- )
    CHK-EXP-QPATH
    CHK-SP CHK-EXP-C
@@ -1448,15 +1448,14 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 
 \ A named file runs as the command line runs it, loaded by its canonical path
 \ (CHK-APPEND-ENTRY): its own relative requires resolve against its directory,
-\ and a file that requires it back finds it loaded. The engine still reads the
-\ copy the origin pass marked: the marked copy lies at CHK-MARK-PATH, and the
-\ run's loader answers the subject's path with it (src/core/include.f
+\ and a file that requires it back finds it loaded. The engine reads the
+\ subject's own bytes, its shebang commented, from CHK-MARK-PATH, which the
+\ run's loader answers the subject's path with (src/core/include.f
 \ SOURCE-INPUT:USE), so a refusal in the subject names its own line and column.
 : CHK-WRITE-MARKED ( -- )
-   CHK-RUN-RESET
-   CHK-SUBJ$ CHK-RUN-ORIGIN+
-   CHK-MARK-PATH CHK-RUN-BUF CHK-RUN-U @ FS:WRITE-ALL
-   CHK-RUN-RESET ;
+   CHK-SUBJ$ CHK-SRC-READ {: len:n :}
+   CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
+   CHK-MARK-PATH CHK-SRC-BUF len FS:WRITE-ALL ;
 
 : CHK-BUILD-READER ( -- )
    CHK-LF CHK-RUN-C

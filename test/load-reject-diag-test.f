@@ -759,8 +759,9 @@ variable RC
    s" lrd-imm-s" s" RAW-IMM" ASSERT-IMM-DIAG
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" token_index" 1 GJA-ASSERT-INT-FIELD
-   root s" byte_start" 31 GJA-ASSERT-INT-FIELD
-   root s" byte_end" 38 GJA-ASSERT-INT-FIELD ;
+   \ Bytes count from the file's start, not the definition's: RAW-IMM is on line 3.
+   root s" byte_start" 85 GJA-ASSERT-INT-FIELD
+   root s" byte_end" 92 GJA-ASSERT-INT-FIELD ;
 
 : TEST-IMM-TRUSTED ( -- )
    s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL

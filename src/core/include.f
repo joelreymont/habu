@@ -1699,6 +1699,7 @@ variable LAST-LOAD-EVAL-OK
    0 data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + ! ;
 
 : PUBLISH-LOCATION ( -- )
+   CHECK:FILE-POS-CLEAR
    TOP@ 0= if PUBLISH-NONE exit then
    TOP@ {: frame:ptr :}
    frame FR-ROOT-RUNS + CELL-VIEW @ 0 > if PUBLISH-NONE exit then

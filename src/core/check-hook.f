@@ -33,8 +33,7 @@ CK-TKA-OFF RESERVED-PTR-U8-CELL LAST-TOKEN
 \ BODY-SOURCE), and answers whether it did. It arms only for the pending
 \ definition's text from the body text's base, its name in the buffer being
 \ read, that buffer a file's (SRCLOC:FILE-BUFFER?), with no source armed. The
-\ source starts at the name, whose place the check tool's marker sets as the
-\ origin (DIAG-ORIGIN!), so bytes before the name never count.
+\ source starts at the name, placed in the file by checker.f FILE-POS.
 : ROWS-ARM ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    DSRC-U @ 0 <> if RES-FALSE exit then
@@ -47,7 +46,7 @@ CK-TKA-OFF RESERVED-PTR-U8-CELL LAST-TOKEN
    rows 0 <= if RES-FALSE exit then
    SRC-NAME @ INPUT-START @ INPUT-END @ {: nm:ptr b:ptr e:ptr :}
    nm b - 0 <  e nm - 0 <= or if RES-FALSE exit then
-   nm  e nm -  DIAGL0 @ DIAGC0 @ DIAGB0 @  DIAG-SOURCE!
+   nm  e nm -  nm FILE-POS  DIAG-SOURCE!
    a u  base data-base BODY-CAP-OFF + @ + CELL-VIEW  rows  DIAG-MAP!
    nm b - DIAG-MAP-BIAS!
    RES-TRUE ;
