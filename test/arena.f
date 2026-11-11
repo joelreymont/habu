@@ -37,6 +37,7 @@ DYNAMIC-BUFFER HOLDBUF holder
 
 100 constant TAKEN-N
 TAKEN-N TYPED-BUFFER SEEN ptr ARENA-FIX:rec
+TAKEN-N BUFFER: SPAN-BUF
 
 \ What each disposal action saw: the record's id and address, in run order.
 4 TYPED-BUFFER LOG-ID n
@@ -84,8 +85,8 @@ variable OVF-U
    s" n" OVF,  OVF-SRC OVF-U @ ;
 
 
-\ TAKEN-N records span three chunks of one arena; a record that moved or
-\ overlapped another would have lost its id.
+\ TAKEN-N records span three chunks of one arena; a record that moved, or one
+\ narrower than `rec`, loses its id or the span of that length in its last field.
 : RECORDS ( -- )
    s" NAME-NEW answers zeroed, cell-aligned, distinct records that keep their fields" T-LABEL
    ARENA:NEW {: a:ptr :}
@@ -97,8 +98,12 @@ variable OVF-U
       dup NULL-PTR - 1 cells mod 0 T=
       i over ARENA--FIX-REC:ID !
       i SEEN !
+      SPAN-BUF i SPAN:MAKE  i SEEN @ ARENA--FIX-REC:SPAN !
    loop
-   TAKEN-N 0 do i SEEN @ ARENA--FIX-REC:ID @ i T= loop
+   TAKEN-N 0 do
+      i SEEN @ ARENA--FIX-REC:ID @ i T=
+      i SEEN @ ARENA--FIX-REC:SPAN @ SPAN:LEN i T=
+   loop
    s" a record made in a private section works inside its package" T-LABEL
    a ARENA-FIX:PRIV-NEW ARENA--FIX-REC:ID @ 0 T=
    a ARENA:RELEASE ;
@@ -281,10 +286,46 @@ private
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:NEED-OK ;
 
+
+\ The pre-pass registers each declaration's words with their effects and
+\ sections: calls as declared are admitted, calls with the wrong effect refused.
+: VERIFY-USES-SRC$ ( -- ptr u8 n )
+   S\" require src/lib/arena.f\npackage Q public\nSTRUCTURE rec DERIVE addr FIELD id n ;STRUCTURE\nARENA X rec\n: INSIDE ( ptr ARENA:arena -- ptr rec ) [: drop ;] X-NEW-DISPOSE ;\nprivate\n: OWNCAST ( ptr u8 -- ptr rec ) X-NEW-PTR ;\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr Q:rec ) dup Q:X-NEW drop [: drop ;] Q:X-NEW-DISPOSE ;\n;package\npackage P\nprivate\nARENA X n\n: OWNCAST ( ptr u8 -- ptr n ) X-NEW-PTR ;\npublic\n: MK ( ptr ARENA:arena -- ptr n ) X-NEW ;\n;package\n" ;
+
+: VERIFY-WRONG-SRC$ ( -- ptr u8 n )
+   S\" require src/lib/arena.f\npackage Q public\nARENA X n\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr u8 ) Q:X-NEW ;\n: V ( ptr ARENA:arena -- ptr n ) [: c@ drop ;] Q:X-NEW-DISPOSE ;\n;package\n" ;
+
+: VERIFY-FILE ( ptr u8 n -- )
+   {: rel:ptr relu:n :}
+   s" tools/check.f" E2E-TREE:ARGS
+   s" --" >LEN PROC-ARGV+
+   s" --verify-only" >LEN PROC-ARGV+
+   rel relu >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
+
+
+: VERIFY-USES ( -- )
+   s" tools/check.f --verify-only admits an ARENA's words called as declared" T-LABEL
+   s" arena-uses" E2E-TREE:TREE
+   E2E-TREE:ROOT$ FS:CLEANUP-TREE+
+   s" test/arena-uses.f" E2E-TREE:AT-A VERIFY-USES-SRC$ FS:WRITE-ALL
+   s" test/arena-wrong.f" E2E-TREE:AT-A VERIFY-WRONG-SRC$ FS:WRITE-ALL
+   s" test/arena-uses.f" VERIFY-FILE
+   E2E-TREE:OUT$ s" deferred to the run" CONTAINS? 0= TTRUE
+   E2E-TREE:ERR$ nip 0 T=
+   E2E-TREE:RC@ 0 T=
+   s" and refuses each called with the wrong effect" T-LABEL
+   s" test/arena-wrong.f" VERIFY-FILE
+   E2E-TREE:ERR$ S\" \"code\":\"" COUNT-SUB 2 T=
+   E2E-TREE:ERR$ S\" \"code\":\"E-MISMATCH\"" COUNT-SUB 2 T=
+   E2E-TREE:ERR$ S\" \"token\":\"Q:X-NEW\"," COUNT-SUB 1 T=
+   E2E-TREE:ERR$ S\" \"token\":\"Q:X-NEW-DISPOSE\"," COUNT-SUB 1 T=
+   E2E-TREE:RC@ 0 <> TTRUE ;
+
 : RUN ( -- )
    T-RESET
    CHILD RECORDS DISPOSALS VISIBILITY HANDLES REFUSALS CAPTURE-CHILD
-   VERIFY-CALLS ;
+   VERIFY-CALLS VERIFY-USES ;
 
 RUN
 

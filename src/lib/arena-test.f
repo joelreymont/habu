@@ -115,6 +115,8 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 
 \ 5. Children: released by a parent's RELEASE and RESET before its own
 \ actions run, never twice, and a middle child released first unlinks itself.
+\ A child RESET stays linked and runs no action twice; the oldest child
+\ released first unlinks itself too.
 : CHILDREN ( -- )
    s" children" T-LABEL
    0 ORDER !
@@ -138,7 +140,28 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    ORDER @ 547 T=
    r 8 ARENA:ALLOC ZEROED? TTRUE
    r ARENA:RELEASE
-   ORDER @ 547 T= ;
+   ORDER @ 547 T=
+   0 ORDER !
+   ARENA:NEW {: q:ptr :}
+   q ARENA:NEW-IN {: son:ptr :}
+   son 4 TAGGED
+   son ARENA:RESET
+   ORDER @ 4 T=
+   son 5 TAGGED
+   q 6 TAGGED
+   q ARENA:RELEASE
+   ORDER @ 456 T=
+   0 ORDER !
+   ARENA:NEW {: s:ptr :}
+   s 9 TAGGED
+   s ARENA:NEW-IN {: oldest:ptr :}
+   oldest 1 TAGGED
+   s ARENA:NEW-IN 2 TAGGED
+   s ARENA:NEW-IN 3 TAGGED
+   oldest ARENA:RELEASE
+   ORDER @ 1 T=
+   s ARENA:RELEASE
+   ORDER @ 1329 T= ;
 
 
 \ 6. WITH releases on return and when the body throws.
