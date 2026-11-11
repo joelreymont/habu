@@ -34,6 +34,12 @@ private
 
 package PROCESS
 public
+\ status - how an ended child ended: what a wait with no deadline answers.
+ENUM status
+  VARIANT exited FIELD code n ;VARIANT
+  VARIANT signaled FIELD signal n ;VARIANT
+;ENUM
+
 \ ending - how the child's run ended, or that it had not by the deadline. After
 \ a timeout a capture has ended its child's tree and reaped the child.
 ENUM ending
@@ -119,9 +125,7 @@ public
 private
 : DEADLINE ( -- ptr n ) ROW DEADLINE-OFF + CELL-VIEW ;
 : RD ( -- ptr n ) ROW RD-OFF + CELL-VIEW ;
-public
 : STATUS ( -- ptr n ) ROW STATUS-OFF + CELL-VIEW ;
-private
 : TIMED-OUT ( -- ptr n ) ROW TIMED-OUT-OFF + CELL-VIEW ;
 public
 : REAP-PID ( -- ptr n ) ROW REAP-PID-OFF + CELL-VIEW ;
@@ -181,10 +185,6 @@ public
 
 package PROCESS
 
-public
-: WAIT-STATUS-RAW ( pid -- n ) {: pid :}
-   pid PID>N wait-status ;
-
 private
 PROCESS-SYMBOLS
 FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
@@ -213,18 +213,27 @@ public
 : PATHZ ( ptr u8 len -- ptr u8 )
    PATHZ-BUF PATHZ-CAP >LEN ZCOPY ;
 
-: WAIT-STATUS ( pid -- n )
-   WAIT-STATUS-RAW {: status :}
-   status 0 < if E-PROC-WAIT throw then
-   status ;
+private
+\ The kernel's wait status.
+: WAIT-RAW ( pid -- n )
+   PID>N wait-status {: raw:n :}
+   raw 0 < if E-PROC-WAIT throw then
+   raw ;
 
-: STATUS>ENDING ( n -- ending ) {: status:n :}
-   status WAIT-TERM-MASK and {: term:n :}
+: >STATUS ( n -- status ) {: raw:n :}
+   raw WAIT-TERM-MASK and {: term:n :}
    term 0= if
-      status 8 rshift WAIT-EXIT-MASK and PROCESS-ENDING:exited
+      raw 8 rshift WAIT-EXIT-MASK and PROCESS-STATUS:exited
       exit
    then
-   term PROCESS-ENDING:signaled ;
+   term PROCESS-STATUS:signaled ;
+
+public
+: STATUS>ENDING ( status -- ending )
+   MATCH status
+     exited OF PROCESS-ENDING:exited ENDOF
+     signaled OF PROCESS-ENDING:signaled ENDOF
+   ;MATCH ;
 
 \ A timeout throws E-PROC-TIMEOUT rather than reading as an rc, so an assertion
 \ on it fails as a deadline.
@@ -235,7 +244,7 @@ public
      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
-: STATUS>RC ( n -- rc )
+: STATUS>RC ( status -- rc )
    STATUS>ENDING ENDING>RC ;
 
 \ A throw code does not cross a process boundary: `die` and the uncaught-throw
@@ -262,13 +271,13 @@ public
      timeout OF TIMEOUT-RC >RC ENDOF
    ;MATCH ;
 
-: WAIT-ENDING ( pid -- ending )
-   WAIT-STATUS STATUS>ENDING ;
+\ Waits for the child to end, with no deadline; a failed wait throws
+\ E-PROC-WAIT.
+: WAIT ( pid -- status ) WAIT-RAW >STATUS ;
 
-\ err is the nonzero completion rc (an exit code, or 128+signal); a wait failure
-\ throws E-PROC-WAIT inside WAIT-STATUS.
-: WAIT-RC ( pid -- result<n,n> )
-   WAIT-STATUS STATUS>RC RC>N {: rc:n :}
+\ ok is a clean exit, err the nonzero rc (an exit code, or 128 + signal).
+: RC>RESULT ( rc -- result<n,n> )
+   RC>N {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
 : SPAWN-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
@@ -277,7 +286,7 @@ public
    pid ;
 
 : RUN-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )
-   SPAWN-IO WAIT-RC ;
+   SPAWN-IO WAIT STATUS>RC RC>RESULT ;
 
 : RUN-RC ( ptr u8 len -- result<n,n> )
    -1 >FD -1 >FD -1 >FD RUN-IO-RC ;
@@ -395,7 +404,7 @@ public
       deadline LEFT-MS MS>N 0= if PROCESS-ENDING:timeout exit then
       1 >MS TASK:SLEEP
    repeat
-   BOUNDED-STATUS @ STATUS>ENDING ;
+   BOUNDED-STATUS @ >STATUS STATUS>ENDING ;
 
 \ A context that owns a death-watch fd (a pool worker's worker-alive read end;
 \ src/lib/process-fork.f installs the live vector) arms a reaper for the
@@ -418,7 +427,7 @@ private
 : REAP-DISARM ( -- )
    REAP-PID @ dup 0 > if
       >PID dup SIGKILL KILL-RAW drop
-      WAIT-STATUS drop
+      WAIT drop
       NO-PID REAP-PID !
    else
       drop
@@ -466,8 +475,8 @@ public
 
 : REAP-CAPTURE ( -- )
    PID @ dup 0 > if
-      >PID WAIT-STATUS dup STATUS !
-      STATUS>RC RC>N RC !
+      >PID WAIT-RAW dup STATUS !
+      >STATUS STATUS>RC RC>N RC !
       NO-PID PID !
    else
       drop
@@ -900,7 +909,7 @@ private
       0 STATUS !
       PID @ STATUS BYTE-VIEW 1 WAITPID-CALL {: got:n :}
       got PID @ = if
-         STATUS @ STATUS>RC RC>N RC !
+         STATUS @ >STATUS STATUS>RC RC>N RC !
          NO-PID PID !
       else
          got 0<> if
@@ -1047,7 +1056,7 @@ public
 \ drift from them.
 : CAPTURE-ENDING ( -- ending )
    TIMED-OUT @ 0 <> if PROCESS-ENDING:timeout exit then
-   STATUS @ STATUS>ENDING ;
+   STATUS @ >STATUS STATUS>ENDING ;
 
 : CAPTURE-ENDING@ ( -- len len ending )
    OUT-LEN @ >LEN ERR-LEN @ >LEN

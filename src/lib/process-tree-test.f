@@ -32,14 +32,10 @@ create SANDBOX PATH-CAP allot
 variable VICTIM
 variable TARGET
 
-\ PROCESS:WAIT-ENDING never makes `timeout`: its wait blocks until the child ends.
-\ The arm throws, as PROCESS:ENDING>RC's does, so a deadline wait fed here later
-\ cannot read as no kill.
-: KILLED-BY? ( PROCESS:ending n -- bool ) {: sig:n :}
-   MATCH PROCESS:ending
+: KILLED-BY? ( PROCESS:status n -- bool ) {: sig:n :}
+   MATCH PROCESS:status
       exited OF drop false ENDOF
       signaled OF sig = ENDOF
-      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ The walker is this file again with `walker` as its one argument, run under
@@ -70,7 +66,7 @@ variable TARGET
    VICTIM @ >PID SIGTERM PROCESS:KILL-RAW drop
    VICTIM @ >PID SIGCONT-MACOS PROCESS:KILL-RAW drop
    s" refused: the named process died of SIGKILL" T-LABEL
-   VICTIM @ >PID PROCESS:WAIT-ENDING PROCESS:SIGKILL KILLED-BY? TTRUE
+   VICTIM @ >PID PROCESS:WAIT PROCESS:SIGKILL KILLED-BY? TTRUE
    T-REPORT ;
 
 \ The capture walker runs, under the listing denial, two captures of a sleeper
@@ -106,7 +102,7 @@ variable TARGET
    {: label:ptr labelu:n :}
    label labelu T-LABEL
    PROCESS:PID @ PROCESS:NO-PID T=
-   PROCESS:STATUS @ PROCESS:STATUS>RC RC>N 128 PROCESS:SIGKILL + T= ;
+   PROCESS:RC @ 128 PROCESS:SIGKILL + T= ;
 
 : CAPTURE-WALK ( -- )
    T-RESET
@@ -239,7 +235,7 @@ PROCESS:NO-FD CROWD-WR !
    CROWD-RD PROCESS:CLOSE-CELL
    ROOT @ PROCESS:NO-PID <> if
       ROOT @ negate PROCESS:SIGKILL kill drop
-      ROOT @ >PID PROCESS:WAIT-STATUS drop
+      ROOT @ >PID PROCESS:WAIT drop
       PROCESS:NO-PID ROOT !
    then
    LISTING-RELEASE ;

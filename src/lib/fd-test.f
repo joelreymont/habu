@@ -108,9 +108,9 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
 \ reader before it acts on its write, so a write into the pipe a starved reader
 \ left fails rather than ending the row before the 124 is read back.
 : REAP-READER ( pid -- PROCESS:ending )
-   PROCESS:WAIT-ENDING {: oc :}
-   oc PROCESS:ENDING>DEADLINE-RC RC>N PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
-   oc ;
+   PROCESS:WAIT {: oc :}
+   oc PROCESS:STATUS>RC RC>N PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   oc PROCESS:STATUS>ENDING ;
 
 : FD-FLAGS ( fd -- n )
    FD>N 3 0 fcntl dup 0 < if E-FS-IO throw then ;
@@ -194,7 +194,8 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    [: UNTIL-WRITE ;] E-FS-TIMEOUT TTHROWSQ
    w FD-FLAGS FD:O-NONBLOCK and flags FD:O-NONBLOCK and T=
    w FD>N close
-   s" nonreading child" s" " s" " pid PROCESS:WAIT-ENDING 0 T-ENDING-EXITED= ;
+   s" nonreading child" s" " s" "
+   pid PROCESS:WAIT PROCESS:STATUS>ENDING 0 T-ENDING-EXITED= ;
 
 : BOUNDED-BROKEN ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
@@ -247,7 +248,8 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    DST @ PATTERN? TTRUE
    r SMALL READ-EXACT OUTCOME 0 T=
    r FD>N close
-   s" forked writer" s" " s" " pid PROCESS:WAIT-ENDING 0 T-ENDING-EXITED= ;
+   s" forked writer" s" " s" "
+   pid PROCESS:WAIT PROCESS:STATUS>ENDING 0 T-ENDING-EXITED= ;
 
 \ The premise of WRITE-FULL's case: with the storm landing on a write blocked by
 \ a full pipe, one raw write of PAYLOAD comes back short.
@@ -352,7 +354,8 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    ready 1 = if r SMALL READ-EXACT OUTCOME 0 T= then
    r FD>N close
    pid PROCESS:SIGKILL PROCESS:KILL-RAW RC>N 0 T=
-   s" exec'd sleeper" s" " s" " pid PROCESS:WAIT-ENDING PROCESS:SIGKILL T-ENDING-SIGNALED= ;
+   s" exec'd sleeper" s" " s" "
+   pid PROCESS:WAIT PROCESS:STATUS>ENDING PROCESS:SIGKILL T-ENDING-SIGNALED= ;
 
 \ A closed descriptor, a pipe with no reader (SIGPIPE held off, as a server's
 \ must be), a resized pipe and a negative length are each refused by name.

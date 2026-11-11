@@ -149,7 +149,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
    else
       wfd 0 < TTRUE                                \ macOS kqueue cannot register on the exited process
    then
-   cpid PROCESS:WAIT-STATUS drop ;                    \ reap the zombie
+   cpid PROCESS:WAIT drop ;                           \ reap the zombie
 
 \ A gated target stays alive beyond the 100 ms deadline. A 1 kHz profiler storms
 \ the process while its watch wait is on the AIO loop; no signal reaches a

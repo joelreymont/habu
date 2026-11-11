@@ -366,18 +366,14 @@ variable STAT-PATH-U
       s" gate-signal-test ROOT-ENDED" TEST-WAIT:EXPIRED
    then ;
 
-: ROOT-REAP ( -- PROCESS:ending )
-   ROOT-PID @ >PID PROCESS:WAIT-ENDING
+: ROOT-REAP ( -- PROCESS:status )
+   ROOT-PID @ >PID PROCESS:WAIT
    false ROOT-LIVE ! ;
 
-\ PROCESS:WAIT-ENDING never makes `timeout`: its wait blocks until the child ends.
-\ The arm throws, as PROCESS:ENDING>RC's does, so a deadline wait fed here later
-\ cannot read as no kill.
-: KILLED-BY? ( PROCESS:ending n -- bool ) {: sig:n :}
-   MATCH PROCESS:ending
+: KILLED-BY? ( PROCESS:status n -- bool ) {: sig:n :}
+   MATCH PROCESS:status
       exited OF drop false ENDOF
       signaled OF sig = ENDOF
-      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ A root still running is ended here, and its rows with it: the pool's reapers
@@ -386,7 +382,7 @@ variable STAT-PATH-U
 : ROOT-END ( -- )
    ROOT-LIVE @ 0= if exit then
    ROOT-PID @ >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop
-   ROOT-REAP PROCESS:ENDING>RC drop
+   ROOT-REAP drop
    s" the late root's output:" type cr
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL type cr ;
 

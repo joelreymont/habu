@@ -49,7 +49,7 @@ public
    CLOSED? if 1 close 2 close else LINE$ type then
    w SLEEPER {: sleeper:pid :}
    w REPORT-PID
-   sleeper PROCESS:WAIT-STATUS drop ;
+   sleeper PROCESS:WAIT drop ;
 
 ;package
 

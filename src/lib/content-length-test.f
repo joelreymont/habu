@@ -234,7 +234,8 @@ TYPED-VARIABLE PAD-LEN len
    NEXT-LEN 2 T=  2 BODY$ s" {}" T$=
    NEXT-LEN -1 T=
    DONE
-   s" big writer" s" " s" " pid PROCESS:WAIT-ENDING 0 T-ENDING-EXITED= ;
+   s" big writer" s" " s" "
+   pid PROCESS:WAIT PROCESS:STATUS>ENDING 0 T-ENDING-EXITED= ;
 
 
 : PIECE ( ptr u8 n -- )
@@ -256,7 +257,8 @@ TYPED-VARIABLE PAD-LEN len
    3 BODY$ s" abc" T$=
    NEXT-LEN -1 T=
    DONE
-   s" piece writer" s" " s" " pid PROCESS:WAIT-ENDING 0 T-ENDING-EXITED= ;
+   s" piece writer" s" " s" "
+   pid PROCESS:WAIT PROCESS:STATUS>ENDING 0 T-ENDING-EXITED= ;
 
 
 : FRESH-NEXT ( -- )

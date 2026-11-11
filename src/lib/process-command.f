@@ -510,9 +510,6 @@ private
    code h RUN-DONE
    PROCESS:CAPTURE-FINISH-ENDING h STORE-OUTCOME 2drop ;
 
-: RC>RESULT ( n -- result<n,n> ) {: rc:n :}
-   rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
-
 public
 
 : OUTCOME@ ( CMD:command -- CMD:command PROCESS:ending )
@@ -535,7 +532,7 @@ public
 \ it (PROCESS:ENDING>RC), and only a caller that acts on the deadline reads it as
 \ data through OUTCOME@ or RUN-OUTCOME.
 : RC@ ( CMD:command -- CMD:command result<n,n> )
-   OUTCOME@ PROCESS:ENDING>RC RC>N RC>RESULT ;
+   OUTCOME@ PROCESS:ENDING>RC PROCESS:RC>RESULT ;
 
 : RUN-RC ( CMD:command ptr u8 n ms -- CMD:command result<n,n> )
    RUN-OUTCOME drop RC@ ;

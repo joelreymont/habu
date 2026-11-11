@@ -104,8 +104,8 @@ public
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: PROC-RUN-ARGV-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )   \ ok = clean exit (0), err = nonzero completion rc
-   PROC-SPAWN-ARGV-IO PROCESS:WAIT-RC ;
+: PROC-RUN-ARGV-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )
+   PROC-SPAWN-ARGV-IO PROCESS:WAIT PROCESS:STATUS>RC PROCESS:RC>RESULT ;
 
 : PROC-ARGV-CHECK-PATH ( ptr u8 len -- ) {: path:ptr pathu :}
    pathu LEN>N 0 <= if E-PROC-OUTPUT throw then

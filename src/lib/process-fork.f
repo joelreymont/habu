@@ -1,5 +1,12 @@
 \ process-fork.f - checked fork wrappers (package PROC-FORK) and the reapers
 \ that kill a worker's process group when its pool parent dies.
+\
+\ FORK-REAPER arms through a double fork: an intermediate forks the reaper and
+\ exits, so the reaper reparents to init and a worker's wait(-1) with no child
+\ of its own fails at once instead of blocking on the reaper. The reaper keeps
+\ the worker's process group, so a group kill ends it and the pool parent's
+\ death lets it kill the group. The intermediate answers through its exit
+\ status: a throw would unwind its copy of the worker's stack.
 \ CHECKED and SET-PGID are not named FORK and SETPGID: those tails would
 \ case-insensitively shadow the core `fork` / `setpgid` their bodies call.
 \ STORAGE CLASS. PROCESS-WIDE: the reaper's pollfd pair and REAP-WATCH-FD
@@ -182,22 +189,8 @@ private
 
 public
 
-\ Arm a parent-death reaper that is INVISIBLE to the worker's own wait(-1):
-\ a throwaway intermediate forks the real reaper (a grandchild) and exits, so
-\ the reaper reparents to init rather than staying the worker's child. A worker
-\ body may itself call wait(-1) expecting no children (e.g. a PROCESS:WAIT-STATUS
-\ error test), and a reaper child would make that wait block forever. The reaper
-\ still inherits the worker's process group, so a timeout group-kill reaps it
-\ and a parent death lets it kill the group. It also watches the worker-alive
-\ pipe (wa) so it exits on its own when the worker finishes, leaving no orphan
-\ - the worker never has to track or kill it. The worker must already be its
-\ own group leader; it keeps the wa write end open (dropped only at its exit).
-\ A failed fork of either kind throws E-PROC-SPAWN in the worker. The first
-\ fork's pid, -1 from macOS's libc fork, must not reach the wait, where
-\ wait4(-1) reaps any child of the worker. The intermediate must not throw,
-\ which would unwind its copy of the worker's stack, so it answers through its
-\ exit status: REAPER-REFUSED-RC when the reaper's fork fails, 0 once the
-\ reaper runs, and only 0 arms.
+\ The worker is its own group leader and holds wa's write end until it exits.
+\ CHECKED, so a refused fork's -1 never reaches the wait as wait4(-1).
 : FORK-REAPER ( fd fd -- ) {: pd:fd wa:fd :}
    CHECKED {: ipid:pid :}
    ipid PID>N 0= if
@@ -209,7 +202,7 @@ public
       r2 PID>N 0 < if s" " REAPER-REFUSED-RC die then
       s" " 0 die
    then
-   ipid PROCESS:WAIT-STATUS 0<> if E-PROC-SPAWN throw then ;
+   ipid PROCESS:WAIT PROCESS:STATUS>RC RC>N 0<> if E-PROC-SPAWN throw then ;
 
 \ Reaper body for a spawned (exec'd) child: block until the single parent-death
 \ read end (pd) EOFs, then reap the reaper's own process group. The reaper has

@@ -90,7 +90,7 @@ variable SCRIPT-LEN
 
 : OUT$ ( -- ptr u8 n ) 0 OUT OUT-LEN @ ;
 
-: WAIT ( pid -- n ) PROCESS:WAIT-STATUS PROCESS:STATUS>RC RC>N ;
+: WAIT ( pid -- n ) PROCESS:WAIT PROCESS:STATUS>RC RC>N ;
 
 
 : NAME-LEN ( ptr u8 n -- n )

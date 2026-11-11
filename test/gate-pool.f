@@ -241,14 +241,11 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-CODE-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-CODES + ;
 
-\ Decompose a worker's ending into the slot's exited/code cells (lossless: exit
-\ codes >= 128 stay distinct from signal deaths). A wait for the pid never
-\ answers a timeout.
-: GT-POOL-OUTCOME! ( PROCESS:ending idx -- ) {: idx:idx :}
-   MATCH PROCESS:ending
+\ Two cells, not an rc: exit codes >= 128 stay distinct from signal deaths.
+: GT-POOL-OUTCOME! ( PROCESS:status idx -- ) {: idx:idx :}
+   MATCH PROCESS:status
      exited OF idx GT-POOL-CODE-PTR ! true idx GT-POOL-EXITED-PTR ! ENDOF
      signaled OF idx GT-POOL-CODE-PTR ! false idx GT-POOL-EXITED-PTR ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 : GT-POOL-KIND-NAME. ( bool -- ) {: exited:bool :}
@@ -400,7 +397,7 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-KILL-REAPER ( idx -- ) {: idx:idx :}
    idx GT-POOL-REAPER-PID@ PID>N 0 >= if
       idx GT-POOL-REAPER-PID@ PROCESS:SIGKILL PROCESS:KILL-RAW drop
-      idx GT-POOL-REAPER-PID@ PROCESS:WAIT-STATUS drop
+      idx GT-POOL-REAPER-PID@ PROCESS:WAIT drop
       -1 >PID idx GT-POOL-REAPER-PID-PTR !
    then ;
 
@@ -423,7 +420,7 @@ GT-POOL-ABORT-BARE!
       idx GT-POOL-KILL-TREE
       idx GT-POOL-PID@ PROCESS:SIGKILL PROC-FORK:KILL-GROUP drop
       idx GT-POOL-PID@ PROCESS:SIGKILL PROCESS:KILL-RAW drop
-      idx GT-POOL-PID@ PROCESS:WAIT-STATUS drop
+      idx GT-POOL-PID@ PROCESS:WAIT drop
       -1 >PID idx GT-POOL-PID-PTR !
    then
    idx GT-POOL-KILL-REAPER
@@ -1357,7 +1354,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    idx GT-POOL-RED+ ;
 
 : GT-POOL-REAP ( idx -- ) {: idx :}
-   idx GT-POOL-PID@ PROCESS:WAIT-ENDING idx GT-POOL-OUTCOME!
+   idx GT-POOL-PID@ PROCESS:WAIT idx GT-POOL-OUTCOME!
    -1 >PID idx GT-POOL-PID-PTR !
    idx GT-POOL-KILL-REAPER
    idx GT-POOL-CLOSE-CAPTURE

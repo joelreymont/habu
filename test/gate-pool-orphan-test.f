@@ -47,17 +47,13 @@ create GPO-SLEEP-PFD 8 allot
    s" gate-pool-orphan-test: a child ended on throw " type code .
    GPO-REFUSED-RC GPO-EXIT ;
 
-\ True when the wait status is a kill; a child that exited is reported.
-\ PROCESS:STATUS>ENDING never makes `timeout` from a wait status; the arm throws,
-\ as PROCESS:ENDING>RC's does, so it cannot read as no kill.
-: GPO-KILLED? ( n -- bool )
-   PROCESS:STATUS>ENDING MATCH PROCESS:ending
+: GPO-KILLED? ( PROCESS:status -- bool )
+   MATCH PROCESS:status
      exited OF
         s" gate-pool-orphan-test: a child exited before it was killed, code " type .
         false
      ENDOF
      signaled OF drop true ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ ---- test topology ----------------------------------------------------------
@@ -114,10 +110,10 @@ create GPO-SLEEP-PFD 8 allot
    aw FD>N close
    GPO-SETTLE-MS GPO-SLEEP
    ppid PROCESS:SIGKILL PROCESS:KILL-RAW drop
-   ppid PROCESS:WAIT-STATUS drop
+   ppid PROCESS:WAIT drop
    ar GPO-OBSERVE-DEAD?
    wpid PROCESS:SIGKILL PROC-FORK:KILL-GROUP drop
-   wpid PROCESS:WAIT-STATUS GPO-KILLED? and
+   wpid PROCESS:WAIT GPO-KILLED? and
    ar FD>N close ;
 
 \ ---- spawned-child co-located reaper (PROC-FORK:SPAWN-REAPER) ----------------
@@ -142,7 +138,7 @@ create GPO-SLEEP-PFD 8 allot
 \ No reaper watches C once P's arm is refused, so P ends C before it exits.
 : GSR-REFUSED ( n pid -- ) {: code:n cpid:pid :}
    cpid PROCESS:SIGKILL PROCESS:KILL-RAW drop
-   cpid PROCESS:WAIT-STATUS-RAW drop
+   cpid PID>N wait-status drop
    code GPO-REFUSED ;
 
 \ P makes C its own group leader before arming, so the reaper's setpgid join
@@ -172,7 +168,7 @@ create GPO-SLEEP-PFD 8 allot
    aw FD>N close
    GPO-SETTLE-MS GPO-SLEEP
    ppid PROCESS:SIGKILL PROCESS:KILL-RAW drop
-   ppid PROCESS:WAIT-STATUS GPO-KILLED?
+   ppid PROCESS:WAIT GPO-KILLED?
    ar GPO-OBSERVE-DEAD? and
    ar FD>N close ;
 
@@ -259,7 +255,7 @@ variable GCR-LPID   variable GCR-RPID
    pp-rd FD>N close
    GPO-SETTLE-MS GPO-SLEEP
    wpid PROCESS:SIGKILL PROC-FORK:KILL-GROUP drop
-   wpid PROCESS:WAIT-STATUS GPO-KILLED? and ;
+   wpid PROCESS:WAIT GPO-KILLED? and ;
 
 : GCR-ARMED? ( -- bool bool )   \ ( -- reaper-armed leaf-reaped )
    1 GCR-LAUNCH 0= if false false exit then

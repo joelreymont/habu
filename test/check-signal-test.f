@@ -266,18 +266,14 @@ PROCESS:NO-FD FEED-WR !
 : CHECK-ENDED ( -- )
    EXIT-MS CHECK-ENDED-WITHIN ;
 
-: CHECK-REAP ( -- PROCESS:ending )
-   CHECK-PID @ >PID PROCESS:WAIT-ENDING
+: CHECK-REAP ( -- PROCESS:status )
+   CHECK-PID @ >PID PROCESS:WAIT
    false CHECK-LIVE ! ;
 
-\ PROCESS:WAIT-ENDING never makes `timeout`: its wait blocks until the child ends.
-\ The arm throws, as PROCESS:ENDING>RC's does, so a deadline wait fed here later
-\ cannot read as no kill.
-: KILLED-BY? ( PROCESS:ending n -- bool ) {: sig:n :}
-   MATCH PROCESS:ending
+: KILLED-BY? ( PROCESS:status n -- bool ) {: sig:n :}
+   MATCH PROCESS:status
       exited OF drop false ENDOF
       signaled OF sig = ENDOF
-      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ A check.f still running is ended here. What it printed says why it was late;
@@ -285,7 +281,7 @@ PROCESS:NO-FD FEED-WR !
 : CHECK-END ( -- )
    CHECK-LIVE @ 0= if exit then
    CHECK-PID @ >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop
-   CHECK-REAP PROCESS:ENDING>RC drop
+   CHECK-REAP drop
    s" the late check.f's output:" type cr
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL type cr ;
 
@@ -374,7 +370,7 @@ PROCESS:NO-FD FEED-WR !
    REPORT-READ? TTRUE
    DEADLINE-MS EXIT-MS + CHECK-ENDED-WITHIN
    s" deadline: check.f exits its refusal status" T-LABEL
-   CHECK-REAP PROCESS:ENDING>RC RC>N 70 T=
+   CHECK-REAP PROCESS:STATUS>RC RC>N 70 T=
    s" deadline: one line names the subject and the deadline" T-LABEL
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL json LATE-LINE$ T$=
    s" deadline: the scratch is gone when check.f has ended" T-LABEL

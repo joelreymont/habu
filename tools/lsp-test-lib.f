@@ -1148,15 +1148,15 @@ variable OPEN-N
       dup dst SPAN:LEN < if dup f dst deadline BYTE else false then
    while 1+ repeat drop ;
 
-: KILLED ( pid -- n )
+: KILLED ( pid -- PROCESS:status )
    dup PROCESS:SIGKILL PROCESS:KILL-RAW drop
-   PROCESS:WAIT-STATUS ;
+   PROCESS:WAIT ;
 
 \ The server's outcome once its output is read. A wait that ran out kills it,
 \ and the outcome is a timeout, as a capture's is; any other throw goes on.
 : SETTLED ( n pid -- PROCESS:ending )
    {: code:n pid :}
-   code 0= if pid PROCESS:WAIT-ENDING exit then
+   code 0= if pid PROCESS:WAIT PROCESS:STATUS>ENDING exit then
    pid KILLED drop
    code E-PROC-TIMEOUT <> if code throw then
    PROCESS-ENDING:timeout ;

@@ -279,19 +279,19 @@ create RBT-ERR RBT-CAP allot
 : MEMT-EXIT0 ( -- )
    s" " 0 die ;
 
-: MEMT-FORK ( [ -- ] -- PROCESS:ending )
+: MEMT-FORK ( [ -- ] -- PROCESS:status )
    {: body :}
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if
       body execute
       MEMT-EXIT0
    then
-   pid PROCESS:WAIT-ENDING ;
+   pid PROCESS:WAIT ;
 
 \ The child ran to a clean exit. A blocking wait has no deadline, so there is no
 \ capture to report and the outcome reads as the child's rc.
 : MEMT-FORK-CLEAN ( [ -- ] -- )
-   MEMT-FORK PROCESS:ENDING>RC RC>N 0 T= ;
+   MEMT-FORK PROCESS:STATUS>RC RC>N 0 T= ;
 
 : RBT-RELEASED-BASE ( -- ptr u8 )
    MEM-64K 2 * BYTES-ALLOC-LEN ALLOC-BYTES
@@ -504,10 +504,9 @@ variable WBT-PEER-IN
 
 : WBT-RELEASED ( -- )
    [: WBT-PROBE-RELEASED ;] MEMT-FORK
-   MATCH PROCESS:ending
+   MATCH PROCESS:status
       exited OF drop E-PRIMARY throw ENDOF
       signaled OF MEMT-FAULT-SIG <> if E-PRIMARY throw then ENDOF
-      timeout OF E-PRIMARY throw ENDOF
    ;MATCH ;
 
 : WBT-RESULT-BODY ( ptr u8 NUM:alloc-byte-len -- n )

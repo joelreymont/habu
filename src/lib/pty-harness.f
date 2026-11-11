@@ -263,7 +263,7 @@ private
 \ is gone; src/lib/process.f PROCESS:KILL-TREE reports a walk that throws.
 : KILL-REAP ( pid -- ) {: p:pid :}
    p PROCESS:KILL-TREE
-   p PROCESS:WAIT-STATUS drop ;
+   p PROCESS:WAIT drop ;
 
 
 \ True once the watch reports the exit within ms. A signal that lands mid-wait
@@ -299,16 +299,12 @@ private
 
 public
 
-\ Reap a child that is no longer writing to us, bounded by ms: the exit if it
-\ comes, the killed outcome if the budget runs out first. Never an unbounded
-\ wait - that is PROCESS:WAIT-RC's contract, not this one's. A pid at or below 0
-\ names no child: macOS watches pid 0 and never reports its exit, so the expiry
-\ would kill(0), the caller's own process group, and a negative pid reads as
-\ exited and its waitpid reaps some other child.
+\ A pid at or below 0 names no child: the expiry of pid 0 would kill(0), the
+\ caller's own group, and a negative pid's wait reaps some other child.
 : WAIT-EXIT ( pid n -- PROCESS:ending ) {: p:pid ms:n :}
    p PID>N 0 <= if E-PTY-IO throw then
    p ms EXIT-READY? 0= if p ms KILL-EXPIRED exit then
-   p PROCESS:WAIT-ENDING ;
+   p PROCESS:WAIT PROCESS:STATUS>ENDING ;
 
 private
 

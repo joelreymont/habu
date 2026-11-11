@@ -93,9 +93,9 @@ variable HOLD                        \ the FIFO's write end
       BURST-GAP-MS PAUSE
    loop
    BURST-N 0 ?do
-      i cells WRITERS + @ >PID PROCESS:WAIT-STATUS drop
+      i cells WRITERS + @ >PID PROCESS:WAIT drop
    loop
-   HELPER @ >PID PROCESS:WAIT-STATUS drop ;
+   HELPER @ >PID PROCESS:WAIT drop ;
 
 : ROW ( -- )
    OPEN-HOLD

@@ -264,7 +264,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    STOP-W CLOSE-END
    STOP-PID @ 0= if exit then
    PROCESS:SIGKILL SEND
-   STOP-PID @ >PID PROCESS:WAIT-STATUS drop
+   STOP-PID @ >PID PROCESS:WAIT drop
    0 STOP-PID ! ;
 
 \ One waitpid with WUNTRACED: a stop report leaves the child unreaped for a

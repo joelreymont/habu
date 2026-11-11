@@ -38,10 +38,7 @@ variable HELD-FD
 : CHILD-EXIT ( n -- ) s" " rot die ;
 
 : EXPECT-CLEAN ( pid -- )
-   PROCESS:WAIT-RC MATCH result
-      ok OF 0 T= ENDOF
-      err OF drop 1 0 T= ENDOF
-   ;MATCH ;
+   PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T= ;
 
 : CHILD-BUSY ( -- )
    HELD-FD @ close

@@ -159,7 +159,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    HB-TARGET-MACOS? if code PT-ENOENT negate T= then ;
 
 : TEST-WAIT-BAD ( -- )
-   -1 >PID PROCESS:WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
+   -1 >PID PROCESS:WAIT drop ;
 
 : TEST-POLL-WAIT ( -- )
    PT-R @ 1 >MS PROCESS:POLL-IN-OR-TIMEOUT drop ;
@@ -178,13 +178,13 @@ create PT-DRAIN-BUF PT-CHUNK allot
 
 : TEST-SPAWN-WAIT ( -- )
    TEST-SPAWN-RAW-MISSING
-   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT-RC
-   MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO
+   PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T=
    [: TEST-SPAWN-FAIL ;] E-PROC-SPAWN TTHROWSQ ;
 
-: TEST-PROC-WAIT-STATUS ( -- )
-   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT-STATUS 0 T=
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT-STATUS 256 T= ;
+: TEST-PROC-WAIT-RC ( -- )
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO
+   PROCESS:WAIT PROCESS:STATUS>RC RC>N 1 T= ;
 
 : PT-FORK-EXIT ( n -- )
    s" " rot die ;
@@ -203,7 +203,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    dup 0= if s" process-test TEST-PROC-FORK-WAIT" TEST-WAIT:EXPIRED then 1 T=
    PT-R @ PT-READ 1 T=
    PT-BUF c@ 102 T=
-   pid >PID PROCESS:WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   pid >PID PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T=
    PT-R @ close ;
 
 : TEST-PROC-FORK-COW ( -- )
@@ -213,26 +213,24 @@ create PT-DRAIN-BUF PT-CHUNK allot
       9 PT-FORK-CELL !
       0 PT-FORK-EXIT
    then
-   pid >PID PROCESS:WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   pid >PID PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T=
    PT-FORK-CELL @ 7 T= ;
 
 : TEST-PROC-WAIT-OUTCOME-EXIT ( -- )
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT-ENDING
-   MATCH PROCESS:ending
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT
+   MATCH PROCESS:status
      exited OF 1 T= ENDOF                           \ /usr/bin/false -> exited 1
      signaled OF drop 1 0 T= ENDOF
-     timeout OF 1 0 T= ENDOF
    ;MATCH ;
 
 : TEST-PROC-WAIT-OUTCOME-SIGNAL ( -- )
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
    s" kill -TERM $$"  >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROCESS:WAIT-ENDING
-   MATCH PROCESS:ending
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROCESS:WAIT
+   MATCH PROCESS:status
      exited OF drop 1 0 T= ENDOF
      signaled OF 15 T= ENDOF                        \ SIGTERM death -> signaled 15
-     timeout OF 1 0 T= ENDOF
    ;MATCH ;
 
 : TEST-PROC-OUTCOME>RC ( -- )
@@ -240,25 +238,25 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PROCESS:SIGKILL PROCESS-ENDING:signaled PROCESS:ENDING>RC RC>N 137 T=      \ a deliberate kill
    [: PROCESS-ENDING:timeout PROCESS:ENDING>RC drop ;] E-PROC-TIMEOUT TTHROWSQ ;   \ a deadline
 
-\ Negative checked regressions: the outcome is not a loose (kind code) pair,
-\ does not compare with `=`, and a raw pair cannot pose as one.
+\ Negative checked regressions: a status or ending is not a loose (kind code)
+\ pair, an ending does not compare with `=`, and no raw n or pair poses as one.
 : TEST-PROC-OUTCOME-TYPES ( -- )
-   s" PTP1 ( n -- PROCESS:ending ) PROCESS:STATUS>ENDING" CHECK-QUIET-CANDIDATE! -1 T=
-   s" PTN1 ( n -- n n ) PROCESS:STATUS>ENDING" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTP1 ( PROCESS:status -- PROCESS:ending ) PROCESS:STATUS>ENDING" CHECK-QUIET-CANDIDATE! -1 T=
+   s" PTN1 ( PROCESS:status -- n n ) PROCESS:STATUS>ENDING" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTN6 ( n -- PROCESS:ending ) PROCESS:STATUS>ENDING" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN2 ( n n -- rc ) PROCESS:ENDING>RC" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN3 ( PROCESS:ending PROCESS:ending -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTN4 ( pid -- n n ) PROCESS:WAIT-ENDING" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTN4 ( pid -- n n ) PROCESS:WAIT" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN5 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTP2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len PROCESS:ending ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! -1 T= ;
 
-\ A signal-killed child reports 128+sig through PROCESS:WAIT-RC, never a masked
-\ rc 0.
-: TEST-PROC-WAIT-RC-SIGNAL ( -- )
+\ A signal-killed child's rc is 128+sig, never a masked rc 0.
+: TEST-PROC-WAIT-SIGNAL-RC ( -- )
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
    s" kill -KILL $$"  >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROCESS:WAIT-RC
-   MATCH result ok OF drop 1 0 T= ENDOF err OF 137 T= ENDOF ;MATCH ;   \ SIGKILL -> err(128+9)
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
+   PROCESS:WAIT PROCESS:STATUS>RC RC>N 137 T= ;   \ SIGKILL -> 128+9
 
 : TEST-WAIT-FAIL ( -- )
    [: TEST-WAIT-BAD ;] E-PROC-WAIT TTHROWSQ ;
@@ -828,14 +826,14 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    PT-PREPARE
    TEST-PATHZ
    TEST-SPAWN-WAIT
-   TEST-PROC-WAIT-STATUS
+   TEST-PROC-WAIT-RC
    TEST-PROC-FORK-WAIT
    TEST-PROC-FORK-COW
    TEST-PROC-WAIT-OUTCOME-EXIT
    TEST-PROC-WAIT-OUTCOME-SIGNAL
    TEST-PROC-OUTCOME>RC
    TEST-PROC-OUTCOME-TYPES
-   TEST-PROC-WAIT-RC-SIGNAL
+   TEST-PROC-WAIT-SIGNAL-RC
    TEST-WAIT-FAIL
    TEST-WAIT-BOUNDED-STATUS
    TEST-WAIT-BOUNDED-EOF

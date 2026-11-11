@@ -176,7 +176,7 @@ PROCESS:NO-FD FIFO-RD !
    REPORTED @ TTRUE
    s" the capture reaped the subject after a SIGKILL" T-LABEL
    PROCESS:PID @ PROCESS:NO-PID T=
-   PROCESS:STATUS @ PROCESS:STATUS>RC RC>N 128 PROCESS:SIGKILL + T=
+   PROCESS:RC @ 128 PROCESS:SIGKILL + T=
    s" nothing the subject started is left" T-LABEL
    GONE-MS GONE-WITHIN? TTRUE ;
 

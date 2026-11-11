@@ -960,7 +960,7 @@ variable WRITER
       signaled OF drop false FS-TEST-TRUE ENDOF
       timeout OF
          child PROCESS:SIGKILL PROCESS:KILL-RAW drop
-         child PROCESS:WAIT-STATUS drop
+         child PROCESS:WAIT drop
          false FS-TEST-TRUE
       ENDOF
    ;MATCH ;
