@@ -120,6 +120,25 @@
 \ effect, so only the definer rows know what it makes. Only a certified body is
 \ learned: one deferred to the run names a word only the run can see, which may
 \ itself be a definer.
+\
+\ A storage definer's declaration is read as its definer reads it, on one line:
+\ the name on the definer's line and the type's first token on the name's, raw
+\ as parse-name reads them, so a `(` or `\` there is a name or type the definer
+\ refuses, not a comment, and a token on a later line starts the next
+\ statement. The type is a span of tokens (`ptr* base`, a family application,
+\ a spaced quotation or scheme) that ends where the checker ends one or with
+\ its line. With no name the definer is refused at its own token; with no first
+\ token the span is empty and the checker refuses it by name.
+\
+\ `parses: W n` bounds W to n raw tokens; `parses-through: W n ( E1 E2 )` to n
+\ and then every token through the first one equal byte for byte to a listed
+\ terminator, inclusive. A row is trusted and never compared with W's body: the
+\ call stays the run's, but the scan goes on after it. Only this scan keeps
+\ rows; the load checks them and keeps nothing. A row is keyed by the checker
+\ owner whose scope selected it and by the binding the top-level find selects
+\ for W, its symbol and visible record's offset + 1, never by spelling or
+\ symbol alone: a redefinition, an `undefine` or another owner selects a
+\ binding no row names. A later row for a binding wins.
 
 require src/lib/error.f
 require src/lib/source-syntax.f
@@ -1838,12 +1857,12 @@ defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 \ borrowed: a word installed here consumes them before it returns.
 defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
 
-\ A use the checker bound (src/core/checker.f
-\ CHECKER-ON-USE), in the subject and in every file a load reads, each time it
-\ is read: where the use starts and ends in the file FILE$ names, SUBJECT?
-\ telling the subject's own; the path the declaration's file was resolved to
-\ when the composition visited it; and where the token that declared it starts
-\ and ends there, all at the base TOKEN-BYTE@ counts from; the selected symbol
+\ A use the checker bound, in the subject and in every file a load reads, each
+\ time it is read: where the use starts and ends in the file FILE$ names,
+\ SUBJECT? telling the subject's own; the path the declaration's file was
+\ resolved to when the composition visited it; and where the token that
+\ declared it starts and ends there, all at the base TOKEN-BYTE@ counts from;
+\ the selected symbol
 \ and declaration visit. The path is borrowed: a word installed here consumes
 \ it before it returns. A use bound to a word with no declaration location has
 \ an empty path, zero target bytes and visit -1.
@@ -1999,8 +2018,6 @@ ENGINE-TARGET-INIT
    s BASE-BYTE @ + DEF-NAME-BYTE @ = and
    e BASE-BYTE @ + DEF-NAME-BYTE @ DEF-NAME-U @ + = and ;
 
-\ A use the checker published, at the base of the file being read: always a
-\ binding, with a declaration location only when this composition visited it.
 : USE-SEEN ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
    s e COLON-NAME-USE? IF EXIT THEN
@@ -2035,7 +2052,6 @@ ENGINE-TARGET-INIT
 
 DUPLICATE-INIT
 
-\ Refuse the definition whose name, n bytes long, starts at TOKEN-BYTE.
 : DUPLICATE! ( n -- )
    {: u:n :}
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
@@ -2043,9 +2059,7 @@ DUPLICATE-INIT
    TOKEN-BYTE @ u path pathu COMPOSE-DIAG$ path pathu COMPOSE-SUBJ? ON-DUPLICATE
    1 MULTI-ERR-N +! ;
 
-\ Whether the scan refused the definition the name names, and goes on past it.
-\ A name that lands in a sealed package stops first, as the load's DEF-QUALIFY
-\ and PKG-EXPORT ask the seal before the duplicate.
+\ A name that lands in a sealed package stops first.
 : REFUSE-DUPLICATE ( ptr u8 n n -- bool )
    {: a:ptr u:n at:n :}
    a u at SEALED-NAME
@@ -2056,9 +2070,8 @@ DUPLICATE-INIT
 \ definition at the `;` or `does>` that ends its body, before the body is
 \ checked, and a TRUSTED: one once its body is read, before its clause is
 \ published. A record of the name from before the replay that has the other
-\ shape is no loaded twin of it (src/core/checker.f CHECKER-CERT-SHAPE-DUP?),
-\ and the live engine refuses the definition there. The refusal names the
-\ definition's name, as REFUSE-DUPLICATE does.
+\ shape is no loaded twin of it, and the live engine refuses the definition
+\ there.
 : REFUSE-SHAPE ( ptr u8 n n bool -- bool )
    {: a:ptr u:n at:n clause:bool :}
    a u clause CHECKER-CERT-SHAPE-DUP? 0= IF false EXIT THEN
@@ -2066,43 +2079,31 @@ DUPLICATE-INIT
    u DUPLICATE!
    true ;
 
-\ A definer asks the seal before the duplicate, as DEF-QUALIFY and PKG-EXPORT
-\ do at load: REFUSE-DUPLICATE asks SEALED-NAME first, and ARM asks it again,
-\ which is the only ask where no duplicate test comes first.
-
-\ The public wordlist of the package NAME names, -1 when it has no row.
 : PUBLIC-WID ( ptr u8 n -- n )
    BOOT:NAMESPACE-WL XREF-FIND-WL {: row:ptr :}
    row XREF-FOUND? 0= IF -1 EXIT THEN
    row XREF-PKG-PUBLIC ;
 
-\ Whether the package NAME names has a namespace record carrying DNAME-SEALED.
 : ROW-SEALED? ( ptr u8 n -- bool )
    BOOT:NAMESPACE-WL XREF-FIND-WL {: row:ptr :}
    row XREF-FOUND? 0= IF false EXIT THEN
    row XREF:SEALED? ;
 
-\ Stop at `package`'s name, read from byte AT, when the source sealed it, its record
-\ carries DNAME-SEALED, or, in a sealed engine's load, its public wordlist is protected.
 : SEALED-PACKAGE ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
    a u SEAL-LISTED? IF at SEAL-STOP THEN
    a u ROW-SEALED? IF at SEAL-STOP THEN
    SEALED-LOAD? 0= IF EXIT THEN
    a u PUBLIC-WID XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
 
-\ The symbol the name's recording scope holds a live record under, 0 for none.
 \ Where a guard refused a live record before the registrar ran, one there now
-\ is the record that registrar retained: certified, deferred or kept with a
-\ refused body (src/core/checker.f CHECK). A declaration DECL-SIGNATURE
-\ registers has no guard: the record found for its name is that declaration's
-\ only when DECL-SIGNATURE answered true, so its callers ask only then.
+\ is the record that registrar retained. A declaration DECL-SIGNATURE registers
+\ has no guard: the record found for its name is that declaration's only when
+\ DECL-SIGNATURE answered true, so its callers ask only then.
 : RETAINED-SYM ( ptr u8 n -- n )
    {: name:ptr nameu:n :}
    name nameu CHECKER-CERT-DUP? 0= IF 0 EXIT THEN
    name nameu RECORD-SYM? ;
 
-\ Report the definition the name names, of the class given, declared by the
-\ token from byte at to byte end, when its registrar retained a record.
 : DEFINED ( ptr u8 n ptr u8 n ptr u8 n n n n -- )
    {: kind:ptr kindu:n name:ptr nameu:n eff:ptr effu:n at:n end:n class:n :}
    name nameu RETAINED-SYM
@@ -2110,15 +2111,14 @@ DUPLICATE-INIT
    sym 0= IF EXIT THEN
    kind kindu name nameu sym eff effu TRIM at end class VISIT-CUR @ ON-DEFINITION ;
 
-\ The same, for the name the statement token declares, written from byte at.
 : DEFINED-HERE ( ptr u8 n ptr u8 n n n -- )
    {: name:ptr nameu:n eff:ptr effu:n at:n class:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu eff effu at at nameu + class DEFINED ;
 
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
-\ RAW-TRUST-NEXT: registers the effect for the word the next token names with
-\ TVK-RAW type vars, so its cell cannot launder into a nominal atom or family.
+\ Registers the effect for the word the next token names with TVK-RAW type
+\ vars, so its cell cannot launder into a nominal atom or family.
 : RAW-TRUST-NEXT ( ptr u8 n n -- )
    {: sig:ptr sigu:n class:n :}
    NAME-TOKEN
@@ -2132,14 +2132,9 @@ DUPLICATE-INIT
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
    IF name nameu sig sigu at class DEFINED-HERE THEN ;
 
-\ CREATED-TRUST-NEXT?: RAW-TRUST-NEXT's twin for a definer the checker knows and
-\ this pre-pass never read. The row is the checker's own certified one, so there
-\ is no signature text to re-parse and no raw seal to re-apply here; what is
-\ left is the same shape - the created word is the NEXT token - and the same
-\ answer.
-\ DSYM is the definer's symbol, which its caller tested (CREATES-SYM?) before
-\ the name is taken: NAME-TOKEN consumes a token, and a token that is not a
-\ definer must leave the scan exactly where it was.
+\ DSYM is the definer's symbol, which its caller tested before the name is
+\ taken: NAME-TOKEN consumes a token, and a token that is not a definer must
+\ leave the scan exactly where it was.
 : CREATED-TRUST-NEXT? ( n -- bool )
    {: dsym:n :}
    NAME-TOKEN {: name:ptr nameu:n :}
@@ -2172,13 +2167,10 @@ DUPLICATE-INIT
    name nameu NAME-DECLARED
    name nameu TOKEN-BYTE @ TRUST-DEFER-SIGNATURE ;
 
-variable TRUSTED-DOES                         \ the trusted body's `does>` was read
+variable TRUSTED-DOES
 
 \ A token of the trusted body NAME before its `does>`, asked of the checker
-\ (TRUSTED-REACH) when it may call a word. A local, a group, a parsing keyword
-\ with its operand and a string call none, and SKIP-DEF-TOKEN takes them; nor
-\ do a number, a control word, a loop index, `is` with the deferred word it
-\ sets, or `[package]`.
+\ when it may call a word.
 : TRUSTED-CALL ( ptr u8 n -- ) {: na:ptr nu:n :}
    TRUSTED-DOES @ LOCAL-TOKEN? or IF EXIT THEN
    TOKEN-A @ TOKEN-U @ {: a:ptr u:n :}
@@ -2191,15 +2183,10 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    a u na nu TRUSTED-REACH ;
 
 \ A trusted body is ASSERTED, never verified, but its `does>` clause is a
-\ DECLARATION: T0 checks a trusted definition's clause (src/core/checker.f
-\ CHECK-DOES-UNJUDGED!), and the clause lands on the
-\ definer's CREATES cell (src/core/checker.f TRUST-DECL). So this scan learns the
-\ definer from the clause signature, as VERIFY-DOES learns a checked one, and
-\ checks no token of the body. A `does>` inside a string is no clause: the
-\ string opener leaves through SKIP-BODY-TOKEN, which consumes its rest (the
-\ trusted DOES-* bodies in src/compiler/native/checker-owner.f name fields as
-\ `s" does> …"`). What running the word may do is still what its calls may do,
-\ and the tokens before its `does>` run when it does (TRUSTED-CALL).
+\ DECLARATION. So this scan learns the definer from the clause signature, and
+\ checks no token of the body. A `does>` inside a string is no clause. What
+\ running the word may do is still what its calls may do, and the tokens before
+\ its `does>` run when it does.
 : SCAN-TRUSTED-BODY ( ptr u8 n bool -- ) {: na:ptr nu:n kept:bool :}
    BODY-LOAD-RESET
    LOCALS-RESET
@@ -2225,10 +2212,8 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 
 \ The engine's `does>` makes the clause record `<definer>;does` for a TRUSTED:
 \ definer as for a checked one, so a definer whose `does>` the scan read gets it
-\ at its `;` (TRUSTED-CLAUSE), as a checked definer gets it from the check of
-\ its clause (CHECK-DOES-BODY): a later definition of that name is refused and a
-\ `trust` of it binds, as in the live load. A loaded twin of the other shape
-\ refuses the definition first (REFUSE-SHAPE).
+\ at its `;`: a later definition of that name is refused and a `trust` of it
+\ binds, as in the live load.
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -2249,10 +2234,8 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    TRUSTED-DOES @ kept and IF name nameu TRUSTED-CLAUSE THEN
    kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
 
-\ A cast has no body and no `;`, so unlike TRUSTED-DEFINITION above there is
-\ nothing to skip: the declaration ends at its closing paren. Registration goes
-\ through the certifying registrar, not DECL-SIGNATURE, so an illegal retype is
-\ refused here too and not merely recorded.
+\ Registration goes through the certifying registrar, not DECL-SIGNATURE, so
+\ an illegal retype is refused here too and not merely recorded.
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -2265,8 +2248,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
 
-\ A `linear:` row has the same shape and is certified by the engine's own
-\ registrar, which package VERIFY calls through its private row, so a mint or
+\ A `linear:` row is certified by the engine's own registrar, so a mint or
 \ erase this pre-pass accepts is exactly one the engine accepts.
 : LINEAR-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
@@ -2293,15 +2275,12 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? DEFINER-RETIRE ;
 
-\ `seal-package` lists the open package in SEALS, the scan's twin of the
-\ DNAME-SEALED bit interpreter.f PKG-SEAL sets on its record; outside a package
-\ it refuses.
 : SEAL-ROW ( -- )
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-PKG-CONTEXT throw THEN
    CHECKER-AUTH-PACKAGE$ SEAL-ADD ;
 
-\ The engine's order (src/habu/interpreter.f PKG-PACKAGE): the part guard at
-\ `package`, then the name and its path, the checker, the seal on the path.
+\ The engine's order: the part guard at `package`, then the name and its path,
+\ the checker, the seal on the path.
 : RECORD-PACKAGE ( -- )
    CHECKER-RESOLVE:PART-GUARD
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
@@ -2332,16 +2311,12 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : RECORD-END-USING ( -- )
    CHECKER-USING-POP ;
 
-\ DEFTYPE NAME declares a value nominal (src/lib/type/deftype.f): a
-\ package-scoped arity-0 type family whose lowercase tail is the surface name
-\ folded (SERIAL -> serial) and whose converter pair >NAME ( n -- tail ) /
-\ NAME>N ( tail -- n ) keeps a plain n from standing in for the nominal. The
-\ static recorder mirrors the runtime mint: register the family, then trust the
-\ two derived converter signatures so later definitions that use the tail and
-\ the converters verify without loading deftype.f.
-DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the name
+\ DEFTYPE NAME declares a value nominal: a package-scoped arity-0 type family
+\ whose lowercase tail is the surface name folded (SERIAL -> serial) and whose
+\ converter pair >NAME ( n -- tail ) / NAME>N ( tail -- n ) keeps a plain n from
+\ standing in for the nominal.
+DYNAMIC-BUFFER NOM-TAIL u8
 
-\ Matches deftype.f's ASCII-LOWER fold.
 : MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u NOM-TAIL-RESERVE
    0 BEGIN dup u < WHILE
@@ -2350,7 +2325,6 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
    REPEAT drop
    0 NOM-TAIL u ;
 
-\ The cast CAST-TRUST just declared, by the DEFTYPE name from byte at, u long.
 : CAST-DEFINED ( bool n n -- )
    {: kept:bool at:n u:n :}
    kept 0= IF EXIT THEN
@@ -2393,8 +2367,8 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
    NAME-TOKEN 2dup CHECKER-DEFFAMILY ;
 
 \ A SUMTYPE defines its constructors when it loads, so after the registration
-\ the scan replays their checked effects: a later definition that calls one, as
-\ src/lib/aio.f's OUTCOME-OF calls AIO-OUTCOME:ready, resolves here as in the load.
+\ the scan replays their checked effects: a later definition that calls one
+\ resolves here as in the load.
 DYNAMIC-BUFFER SUM-VAR-AT n
 variable SUM-VAR-N
 variable SUM-VAR-NEXT
@@ -2435,7 +2409,7 @@ variable SUM-VAR-NEXT
    BODY-RESET
    BEGIN
       DECL-TOKEN
-      dup 0= IF                        \ EOF before ;SUMTYPE -> declaration packet
+      dup 0= IF
          2drop
          name nameu BODY$ CHECKER-DEFSUM-NOEND
          EXIT
@@ -2493,11 +2467,7 @@ variable SUM-VAR-NEXT
 : PRODUCT-END? ( ptr u8 n -- bool )
    s" ;PRODUCT" STR=CI ;
 
-\ Registration-only replay of `PRODUCT name[<params>] FIELD f t .. ;PRODUCT` (mirrors
-\ RECORD-SUMTYPE): buffer the `FIELD ..` body through ;PRODUCT, register
-\ the TK-PRODUCT family + its generated-word metadata rows so later signatures
-\ in this source resolve the family, and replay the MAKE/UNMAKE effects. No
-\ dictionary words are generated on this path (engine-definer-only, sum parity).
+\ No dictionary words are generated on this path.
 : RECORD-PRODUCT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -2505,7 +2475,7 @@ variable SUM-VAR-NEXT
    BODY-RESET
    BEGIN
       DECL-TOKEN
-      dup 0= IF                        \ EOF before ;PRODUCT -> declaration packet
+      dup 0= IF
          2drop
          name nameu BODY$ CHECKER-DEFPRODUCT-NOEND
          EXIT
@@ -2524,34 +2494,18 @@ variable SUM-VAR-NEXT
    rc TYPE-DECL:E-TDECL-UNRESOLVED <> IF rc throw THEN
    QUIET-TYPE-REPORT ;
 
-\ Every storage definer's gate registration reads its declaration here, as its
-\ definer does (src/core/layout-buffer.f STORAGE-PARSE-TYPE). A stored type may
-\ be `ptr* base`, a family application or a spaced quotation or scheme, so the
-\ type is a contiguous multi-token span from the scanner buffer, ended where the
-\ checker ends one (CHECKER-TYPE-SPAN-STEP) or with its line. The declaration
-\ ends with its line: the name is read on the definer's own line and the type's
-\ first token on the name's, raw, as parse-name reads them, so a `(` or `\`
-\ there is the name or type the definer refuses, not a comment. With no name
-\ there the definer is refused at its own token; with no first token the span
-\ is empty, and the checker refuses that by name.
 PTR-VARIABLE STG-A
 variable STG-U
 PTR-VARIABLE STG-START
 PTR-VARIABLE STG-TYPE-A
 variable STG-TYPE-U
 
-\ The next token, as the definer's parse-name reads it, when it stands on the
-\ scanner's line: the bytes before it hold no line feed
-\ (CHECKER-TYPE-SPAN-BREAK?). A token on a later line starts the next
-\ statement, and none is read.
 : SCAN-LINE-TOKEN ( -- ptr u8 n )
    SCAN-I @ {: end:n :}
    SKIP-WS
    SOURCE@ end +  SCAN-I @ end -  CHECKER-TYPE-SPAN-BREAK? IF SOURCE@ 0 EXIT THEN
    NEXT-RAW ;
 
-\ Whether the spelling goes on past its last token: not when that token ended
-\ it, and not past its line.
 : SCAN-STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
    ended IF 0 0= 0= EXIT THEN
    SCAN-LINE-TOKEN {: a:ptr u:n :}
@@ -2566,8 +2520,6 @@ variable STG-TYPE-U
    STG-START @  STG-A @ STG-U @ + STG-START @ -
    2dup STG-TYPE-U ! STG-TYPE-A ! ;
 
-\ The declared name. With none on the definer's line it is empty, and the
-\ definer's token is refused as its run refuses it.
 \ A refused name, malformed or a duplicate, is empty and still owns its type
 \ span; consume it before resuming the statement scan so a type token cannot
 \ be interpreted as a new statement.
@@ -2581,8 +2533,8 @@ variable STG-TYPE-U
    2drop SCAN-STORAGE-TYPE 2drop SOURCE@ 0 ;
 
 \ The load stops at a count token it refuses to resolve, refused there as a
-\ top-level token (TOP-RESOLVE), so the declaration after it is read but not
-\ judged: its count is refused once.
+\ top-level token, so the declaration after it is read but not judged: its
+\ count is refused once.
 : COUNT-REFUSED? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    u 0<>  a TOP-REFUSED @ =  and ;
@@ -2663,11 +2615,11 @@ variable STG-TYPE-U
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
-\ DYNAMIC-BUFFER (src/core/layout-buffer.f) publishes THREE words from one line -
-\ the accessor, NAME-RESERVE and NAME-RELEASE - so the whole triple is registered
-\ here. Certification never runs the definer, and without this row a later
-\ definition in the same source calling one of the three is E-UNDEFINED. No
-\ count token: a dynamic buffer's extent is set at run time.
+\ DYNAMIC-BUFFER publishes THREE words from one line - the accessor,
+\ NAME-RESERVE and NAME-RELEASE. Certification never runs the definer, and
+\ without this row a later definition in the same source calling one of the
+\ three is E-UNDEFINED. No count token: a dynamic buffer's extent is set at run
+\ time.
 : RECORD-DYNAMIC-BUFFER ( -- )
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
@@ -2677,9 +2629,8 @@ variable STG-TYPE-U
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
-\ Whether ARENA or HEAP may publish NAME's derived word NAME+SFX: a name the
-\ definer admits that no record holds. NAME, read from byte AT, names no word
-\ itself, so a taken derived word is the duplicate, refused at NAME.
+\ NAME, read from byte AT, names no word itself, so a taken derived word is the
+\ duplicate, refused at NAME.
 : ARENA-WORD-FREE? ( ptr u8 n ptr u8 n n -- bool )
    {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
    SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
@@ -2697,9 +2648,8 @@ variable STG-TYPE-U
    name nameu s" -NEW-PTR" at ARENA-WORD-FREE? 0= IF false EXIT THEN
    name nameu s" -NEW-ACT" at ARENA-WORD-FREE? ;
 
-
-\ ARENA's row asks src/core/arena.f RUN's questions in its order and registers
-\ the four words (CHECKER-DEFARENA); without it the rest defers to the run.
+\ ARENA's row asks the definer's questions in the order its run asks them and
+\ registers the four words; without it the rest of the source defers to the run.
 : RECORD-ARENA ( -- )
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
@@ -2727,8 +2677,8 @@ variable STG-TYPE-U
    type typeu name nameu CHECKER-DEFARENA
    DISARM ;
 
-\ HEAP's row asks src/core/heap.f RUN's questions in its order and registers both words
-\ by their effects (CHECKER-DEFHEAP); without it the rest of the source defers to the run.
+\ HEAP's row asks the definer's questions in the order its run asks them and
+\ registers both words; without it the rest of the source defers to the run.
 : RECORD-HEAP ( -- )
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
@@ -2807,11 +2757,11 @@ variable STG-TYPE-U
    rc E-CHECKER-RECORD-UNRESOLVED <> IF rc throw THEN
    QUIET-TYPE-REPORT ;
 
-\ A row the checker leaves to the run (src/core/checker.f CHECKER-VERIFY-TRUST):
-\ no word exists where its record lands and a rendering statement before it
-\ marked that wordlist, so only the load can tell whether the run defines the
-\ word or the name is misspelt. It is deferred at its name and records nothing,
-\ so each use of the name stays the run's too.
+\ A row the checker leaves to the run: no word exists where its record lands
+\ and a rendering statement before it marked that wordlist, so only the load
+\ can tell whether the run defines the word or the name is misspelt. It is
+\ deferred at its name and records nothing, so each use of the name stays the
+\ run's too.
 CAST: TRUST-ACTION ( n -- [ ptr u8 n -- bool ] )
 : TRUST-UNSEEN? ( ptr u8 n -- bool )
    CHECKER-OWNER-ABI:VERIFY-TRUST-OFF OWNER-XT TRUST-ACTION execute ;
@@ -2829,21 +2779,10 @@ CAST: TRUST-ACTION ( n -- [ ptr u8 n -- bool ] )
    TRUST-SIGNATURE
    QUIET-TYPE-REPORT ;
 
-\ `parses: W n` bounds W to n raw tokens; `parses-through: W n ( E1 E2 )` to n
-\ and then every token through the first one equal byte for byte to a listed
-\ terminator, inclusive. A row is trusted and never compared with W's body: the
-\ call stays the run's (W-CHECK-DEFERRED), but the scan goes on after it. Only
-\ this scan keeps rows; the load checks them and keeps nothing
-\ (src/core/cell-effects.f parses:).
-\ A row is keyed by the checker owner whose scope selected it and by the
-\ binding the top-level find selects for W, its symbol and visible record's
-\ offset + 1 (CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF), never by spelling or
-\ symbol alone: a redefinition, an `undefine` or another owner selects a
-\ binding no row names. A later row for a binding wins. The row count is a
-\ checker cell the rollback frame rewinds (src/core/checker.f VERIFY-PARSES-N),
-\ so a rewound scope releases its rows. PRS-TERMS holds each row's terminators,
-\ each followed by a blank, copied as the row is read, before its source can be
-\ released; bytes past the last live row's are free. Growth may move PRS-TERMS.
+\ The row count is a checker cell the rollback frame rewinds, so a rewound
+\ scope releases its rows. PRS-TERMS holds each row's terminators, each followed
+\ by a blank, copied as the row is read, before its source can be released;
+\ bytes past the last live row's are free. Growth may move PRS-TERMS.
 DYNAMIC-BUFFER PRS-OWNER n                 \ the checker owner whose scope keyed it
 DYNAMIC-BUFFER PRS-SYM n                   \ the binding's symbol
 DYNAMIC-BUFFER PRS-EFF n                   \ and its visible record's offset + 1
@@ -2874,16 +2813,14 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    found IF at BASE-BYTE @ - dup u + sym 0 0 0 USE-SEEN THEN ;
 
 \ A definer's own `generates:` row declares the text its calls render: the row
-\ this scan read (RECORD-GENERATES) or, for a definer it never read, the
-\ engine's (CHECKER-OWNER-ABI:BINDING-GENERATES). A wrapper has none: it states
-\ nothing about the rest of its body.
+\ this scan read or, for a definer it never read, the engine's. A wrapper has
+\ none: it states nothing about the rest of its body.
 : DECLARED-RENDER? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u DEFINER-OF dup 0<> IF 1 - DEFINER-GEN @ EXIT THEN drop
    a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-GENERATES and 0<> ;
 
 \ Rendered text no row declares is source this scan never reads.
-\ A deferred word's cause is its `defer`, read as TOP-PARSER reads it.
 : RENDER-GAP ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u DECLARED-RENDER? IF EXIT THEN
@@ -2892,9 +2829,8 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    a u DW-RENDERER DEFER-AT ;
 
 \ A call of a `names:` word right after an `s"` literal is a use of the word
-\ the literal names, at the bytes between its quotes (checker.f
-\ CHECKER-NAMED-USE). A literal written with an escape binds nothing: its
-\ slot's bytes are shorter than its text (ESC-BYTES).
+\ the literal names, at the bytes between its quotes. A literal written with an
+\ escape binds nothing: its slot's bytes are shorter than its text.
 : TOP-NAMED ( ptr u8 n -- )
    TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-NAMES and 0= IF EXIT THEN
    STR-LAST-KIND @ LIT-PATH <> IF EXIT THEN
@@ -2902,7 +2838,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    STR-LAST-A @ STR-LAST-U @ NAMED-USE ;
 
 \ An unmodelled call makes the rest of the source uncertain, declarations the
-\ source index has already seen included. WHY is its cause, as DEFER-AT's.
+\ source index has already seen included.
 : TOP-OPAQUE ( ptr u8 n n -- )
    {: a:ptr u:n why:n :}
    a u why DEFER-AT
@@ -2953,19 +2889,18 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    a u s" )" CORE-STR= IF len 1 EXIT THEN
    a u len PRS-TERM-ADD 0 ;
 
-\ As the engine word reads it (checker.f PARSES-LIST-LOAD): `(`, then tokens
-\ through a standalone `)`, at least one before it. The bytes kept, and true
-\ when malformed.
+\ As the engine word reads it: `(`, then tokens through a standalone `)`, at
+\ least one before it. The bytes kept, and true when malformed.
 : PRS-LIST-READ ( -- n bool )
    NEXT-RAW s" (" CORE-STR= 0= IF 0 0 0= EXIT THEN
    0 BEGIN PRS-LIST-TOKEN dup 0= WHILE drop REPEAT
    {: len:n end:n :}
    len  end 2 =  len 0=  or ;
 
-\ Known by the identity of the word the token selects (BINDING-ID), never by
-\ its spelling. The row is read as the engine word reads it (cell-effects.f
-\ parses:) and checked by the engine's own checks. The scan knows every token
-\ the declarer reads, so none of it is the run's.
+\ Known by the identity of the word the token selects, never by its spelling.
+\ The row is read as the engine word reads it and checked by the engine's own
+\ checks. The scan knows every token the declarer reads, so none of it is the
+\ run's.
 : PARSES-ROW ( ptr u8 n bool -- )
    {: ka:ptr ku:n through:bool :}
    NEXT-RAW {: ta:ptr tu:n :}
@@ -2981,7 +2916,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    count row PRS-COUNT !  len row PRS-LEN !
    row 1 + VERIFY-PARSES-N ! ;
 
-\ Read and checked as the engine word does (cell-effects.f names:).
+\ Read and checked as the engine word does.
 : NAMES-ROW ( ptr u8 n -- )
    NEXT-RAW NAMES-CHECK ;
 
@@ -3036,8 +2971,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    a u ;
 
 \ An export is the same word under another tail, so it takes the row of the
-\ word it re-exports, FROM (its row + 1, 0 for none), as the checker copies the
-\ word's other facts (checker.f EXPORT-META-COPY), under the binding the
+\ word it re-exports, FROM (its row + 1, 0 for none), under the binding the
 \ top-level find selects by package and tail. The bare tail is no such
 \ selection: in the package it can name the package's own private word. A word
 \ that only calls a bounded word takes no row.
@@ -3067,12 +3001,8 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    TOP-CUR-A @ TOP-CUR-U @ name nameu sym s" " at at nameu + DEF-EXPORT
    VISIT-CUR @ ON-DEFINITION ;
 
-\ Inside an open package EXPORT re-exports (CHECKER-EXPORT aliases the
-\ source's checked effect under its tail); at top level it is a no-op the scan
-\ consumes.
-\ The checker refuses a duplicate tail only
-\ once the name resolves (src/core/checker.f EXPORT-RECORD), as --load does, so
-\ the refusal is caught here and kept at the name as written.
+\ The checker refuses a duplicate tail only once the name resolves, as --load
+\ does, so the refusal is caught here and kept at the name as written.
 : RECORD-EXPORT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
