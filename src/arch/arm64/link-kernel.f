@@ -12,7 +12,7 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 require src/habu/layout.f
-require src/habu/xref.f
+require src/habu/code-bytes.f
 
 package LINKER
 private
@@ -258,20 +258,42 @@ private
    -1 ;
 
 
-\ A seeded kernel record enters at its text base plus its kernel offset
-\ (habu2.f EM-SEED-DICT); a package row's start holds its wid, never code.
-: KEEP ( ptr n -- )
+\ The running hb's primitive table (habu1.f EMIT-DICT), which PRIM-TABLE-CELL
+\ places as an offset from rbase; its row count is the cell before it.
+: HOST-TABLE ( -- n )
+   data-base PRIM-TABLE-CELL + @ {: off:n :}
+   off 0= if s" link: this hb has no primitive table" 74 die then
+   rbase off + ;
+
+: HOST-ROW ( n n -- ptr u8 )
+   {: table:n k:n :}
+   table k DREC * +  DREC CODE-BYTES:AT drop ;
+
+
+\ A table row enters at rbase plus [0] and keeps an out-of-line name at rbase
+\ plus [24] (habu2.f EM-SEED-DICT); a package row, wordlist -1, holds its wid
+\ in [0], never code.
+: KEEP ( ptr u8 -- )
    {: rec:ptr :}
-   rec XREF-START {: start:n :}
-   start HOST-KERNEL? 0= if exit then
-   rec XREF-NAME$ rec XREF-WORDLIST ROW-OF {: row:n :}
+   rec 40 + LE:U64@ {: wid:n :}
+   wid -1 = if exit then
+   rec 16 + LE:U64@ {: flags:n :}
+   flags DNAME-LEN-MASK and {: len:n :}
+   flags DNAME-EXT and 0<> if
+      rbase rec 24 + LE:U64@ +  len CODE-BYTES:AT
+   else
+      rec 24 +  len
+   then
+   wid ROW-OF {: row:n :}
    row 0 < if exit then
-   start row INSERT ;
+   rbase rec LE:U64@ +  row INSERT ;
 
 
 : HOST-ENTRIES ( -- )
    0 N-HOSTS !
-   ndict@ 0 ?do i XREF-REC KEEP loop ;
+   HOST-TABLE {: table:n :}
+   table 8 - 8 CODE-BYTES:AT drop LE:U64@
+   0 ?do table i HOST-ROW KEEP loop ;
 
 
 \ The table index whose host entry is a, or -1.
