@@ -5,7 +5,7 @@
 \ its uncaught throw code; LR-XT stores a quotation with xt! at run time and
 \ prints `Hi` only if the product's MARK accepts its address-cell header and
 \ index; LR-DEEP overflows the machine stack and exits 102 through the crash
-\ path the start-up installs. Each file is under 64 KiB, which the whole kernel
+\ path the start-up installs. Each file is under 128 KiB, which the whole kernel
 \ alone exceeds: only the kernel code the program reaches is written. WRITE
 \ outside a build is E-COMP-STATE. Each program runs in its own process: the
 \ boundary under test is the written file and its start-up.
@@ -90,15 +90,16 @@ create PROG-BUF PATH-CAP allot
    s" deep" T-LABEL  CMD:ERR$ s\" hb: stack bounds exceeded (machine)\n" T$= ;
 
 
+\ An ELF file is at least one PROT-PAGE-MAX text page (src/os/linux/elf.f TEXTSZ).
 : SMALLER ( ptr u8 n -- )
    {: file:ptr file-n:n :}
    file file-n PROG$ FS:FILE-SIZE {: size:n :}
-   size $10000 < 0= if
+   size $20000 < 0= if
       s" arm64-link-run: " type file file-n type s"  has bytes: " type size .
    then
-   s" each file is under 64 KiB: only the kernel code the program reaches is written"
+   s" each file is under 128 KiB: only the kernel code the program reaches is written"
       T-LABEL
-   size $10000 < TTRUE ;
+   size $20000 < TTRUE ;
 
 
 public
