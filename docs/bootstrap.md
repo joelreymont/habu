@@ -110,6 +110,14 @@ drops one needs a stage that drops the axiom first, or the build stops with
 `checker: the kernel object has no row for <name>, which a no-return axiom
 names`.
 
+A change in one commit that no revision can stage leaves a host whose hb
+predates it unable to build the tree: a package renamed together with the owner
+rows that name it makes an hb built before the rename refuse
+src/habu/interpreter.f with `E-CAP-TRUSTED`. Seed that host with an engine a
+current host cross-builds for it, such as `hb --load tools/hb-build.f --
+--engine --target linux-aarch64 -o "$OUT"` for Linux arm64, copied there with
+its `.map`; it then builds the tree as any trusted hb does.
+
 ## What the engine carries
 
 tools/hb-build-core.f (STARTUP and RUNTIME-FILES) lists the source baked into
@@ -138,7 +146,10 @@ change:
 After `bin/hb` exists, use it as the host for normal native builds. Build a
 private hb with `tools/hb-build.f -- --engine -o <out>` and qualify it against
 its matching source tree as described in [gate.md](gate.md). Promote the
-verified product to `bin/hb` only after the gate passes.
+verified product to `bin/hb` only after the gate passes, by copying it beside
+`bin/hb` and renaming it into place: a copy over `bin/hb` keeps the inode whose
+code signature the kernel cached, and a later launch can die by SIGKILL, rc 137
+(the kernel logs `load code signature error 2 for file "hb"`).
 
 If the checkout's `bin/hb` is missing or too old to load current source, use a
 trusted installed native engine as `HOST` and build from the checkout root
