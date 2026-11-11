@@ -574,6 +574,16 @@
 \ stdout and stderr is not bounded. Past its bound, any kind kills the server
 \ and fails by name. The suite's CPU and wall budgets bound a sequence of stuck
 \ conversations.
+\
+\ The refs-halt cases test the input that comes while a request checks the
+\ files it gathers from. The documents are opened and the request asked in one
+\ turn, so each waits for a check when the request is served: d.f's check is
+\ the request's turn, and the request then checks each text itself. Those
+\ checks publish nothing: a document's list comes only from its own check, a
+\ turn after the answer. So each conversation writes its next turn once it
+\ hears d.f's list, which the request's own turn publishes; the request has
+\ then begun and reads what is written next by the time its first check is
+\ over.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -6174,12 +6184,7 @@ variable PROBE-DECLS
    s" 3" s" rn-unv/w/s.f" CANON FAILED
    s" 4" s" rn-unv/w/s.f" CANON FAILED ;
 
-\ rn-out/f.f, above the folder rn-out/w, declares ROOK and uses it; d.f in
-\ the folder requires it and uses ROOK. The rename asked in d.f edits f.f's
-\ declaration and use, then d.f's. rn-out/h.f loads lib/g.f from e.f's root,
-\ the folder, and uses GROOK, which g.f declares; e.f in the folder requires
-\ h.f and uses GROOK. The rename asked in e.f edits g.f's declaration, then
-\ h.f's use, which e.f's check reads, then e.f's.
+\ rn-out/h.f loads lib/g.f from e.f's root, the folder.
 : TEXT-RVF ( -- ptr u8 n )  s\" : ROOK ( -- n ) 1 ;\n: FU ( -- n ) ROOK ;\n" ;
 : TEXT-RVD ( -- ptr u8 n )  s\" require ../f.f\n: DU ( -- n ) ROOK ;\n" ;
 
@@ -6211,10 +6216,6 @@ variable PROBE-DECLS
    s" rn-out/w/e.f" OPEN-URI EDITS-IN 1 14 19 EDIT+
    EDITS-END ;
 
-\ The tree of references-reaching in rn-rch: ROOK's use in b.f is answered
-\ with the edits of its declaration, b.f's use and x.f's; GROOK's in e.f
-\ with those of its declaration, h.f's use under the URI the client opened
-\ h.f by, and e.f's.
 : RENAME-RCH-TURNS ( -- )
    s" rn-rch" REFS-DIR s" rn-rch/w" REFS-DIR s" rn-rch/w/q" REFS-DIR
    s" rn-rch/w/s" REFS-DIR s" rn-rch/w/lib" REFS-DIR
@@ -6251,9 +6252,6 @@ variable PROBE-DECLS
    s" rn-rch/w/e.f" OPEN-URI EDITS-IN 1 14 19 EDIT+
    EDITS-END ;
 
-\ The tree of references-fragment in rn-frg: ROOK's declaring token in d.f
-\ is answered with the edits of the declaration and d.f's use, then y.f's
-\ and z.f's.
 : RENAME-FRG-TURNS ( -- )
    s" rn-frg" REFS-DIR s" rn-frg/w" REFS-DIR
    s" rn-frg/w/d.f" TEXT-RFD REFS-FILE
@@ -6272,10 +6270,6 @@ variable PROBE-DECLS
    s" rn-frg/z.f" DISK-URI EDITS-IN 0 14 18 EDIT+
    EDITS-END ;
 
-\ The tree of references-conflict in rn-cnf: ROOK's declaring token in d.f
-\ is refused -32803 naming z.f. Once e.f on disk is refused after binding
-\ z.f's token to its own ROOK, the refusal names both that conflict and e.f's
-\ incomplete check, and applies no edits.
 : RENAME-CNF-TURNS ( -- )
    s" rn-cnf" REFS-DIR s" rn-cnf/w" REFS-DIR
    s" rn-cnf/w/d.f" TEXT-RCD REFS-FILE
@@ -6326,10 +6320,6 @@ variable PROBE-DECLS
    s" 3" 1 NOT-APPLIED s" rn-img/w/z.f" 2 s" rn-img/w/z.f" ELSEWHERE+
    CONFLICT-FIRST? s" image rename refuses edits" HOLDS ;
 
-\ The tree of references-package in rn-pkg: ROOK's declaring token in f.f,
-\ which q.f's check declares as RQ's word, is refused -32803 naming q.f,
-\ with q.f on disk and again once it is open, the answer before q.f's own
-\ list.
 : RENAME-PKG-TURNS ( -- )
    s" rn-pkg" REFS-DIR s" rn-pkg/w" REFS-DIR
    s" rn-pkg/w/f.f" TEXT-RF REFS-FILE
@@ -6350,9 +6340,6 @@ variable PROBE-DECLS
    s" declares another word at the declaration's token" NAMED+ NAMED-END
    s" rn-pkg/w/q.f" FIXTURE 1 CLEAN ;
 
-\ The tree of references-visits in rn-vis: ROOK's declaring token in f.f,
-\ which q2.f's check declares as the global word in one visit and as RQ's
-\ in the other, is refused -32803 naming q2.f.
 : RENAME-VIS-TURNS ( -- )
    s" rn-vis" REFS-DIR s" rn-vis/w" REFS-DIR
    s" rn-vis/w/f.f" TEXT-RF REFS-FILE
@@ -6367,14 +6354,12 @@ variable PROBE-DECLS
    s" 3" 1 NOT-APPLIED s" rn-vis/w/q2.f" CANON
    s" declares another word at the declaration's token" NAMED+ NAMED-END ;
 
-\ rn-exp/w: f.f declares ROOK, x.f exports it from RX, and u.f uses RX:ROOK.
 : TEXT-RX ( -- ptr u8 n )  s\" require f.f\npackage RX\npublic\nEXPORT ROOK\n;package\n" ;
 : TEXT-RU ( -- ptr u8 n )  s\" require x.f\n: UU ( -- n ) RX:ROOK ;\n" ;
 
-\ ROOK asked in f.f while x.f on disk exports it, and RX:ROOK asked in u.f by
-\ rename and by prepareRename: each -32803 naming x.f. Once x.f is opened
-\ and checked, the EXPORT's operand asked there: -32803 naming x.f, then
-\ u.f's list, from its check over the open x.f, a turn after the answer.
+\ Once x.f is opened and checked, the EXPORT's operand asked there: -32803
+\ naming x.f, then u.f's list, from its check over the open x.f, a turn after
+\ the answer.
 : RENAME-EXP-TURNS ( -- )
    s" rn-exp" REFS-DIR s" rn-exp/w" REFS-DIR
    s" rn-exp/w/f.f" TEXT-RF REFS-FILE
@@ -6402,9 +6387,6 @@ variable PROBE-DECLS
    s" 6" s" rn-exp/w/x.f" CANON FAILED
    s" rn-exp/w/u.f" FIXTURE 1 CLEAN ;
 
-\ rn-named.f: ROOK named by literals before LOOK, whose names: row the text
-\ declares, one in a body and one at top level, beside a body use; RNN's
-\ public ROOK named qualified the same two ways.
 : RNN-PATH ( -- ptr u8 n )  s" rn-named.f" FIXTURE ;
 : TEXT-RNN ( -- ptr u8 n )
    TXT-B CLEAR
@@ -6423,11 +6405,6 @@ variable PROBE-DECLS
    0 2 6 t tu EDIT-AS+  3 17 21 t tu EDIT-AS+  4 15 19 t tu EDIT-AS+  5 3 7 t tu EDIT-AS+
    EDITS-END ;
 
-\ ROOK's declaring token and its name in the body literal, each answered with
-\ the edits of the declaration, the body use and each literal; RNN's ROOK
-\ with those of its declaration and each qualified literal's tail. CROW: and
-\ :CROW, a colon last and first, each written over every global ROOK, none
-\ qualified; CROW: over RNN's ROOK, whose literals qualify it, -32803.
 : RENAME-NAMED-TURNS ( -- )
    SESSION-INITIALIZE
    RNN-PATH TEXT-RNN 1 OPENS
@@ -6450,9 +6427,6 @@ variable PROBE-DECLS
    s" 7" s" :CROW" RNN-EDITS
    HEAR s" 8" -32803 REFUSED ;
 
-\ f.f opened two lines down, unsaved, and s.f opened: s.f's check reads the
-\ open text, so ROOK's use in s.f is answered with the edit of the
-\ declaration where that text holds it.
 : TEXT-RF-DOWN ( -- ptr u8 n )  s\" \\ one\n\\ two\n: ROOK ( -- n ) 1 ;\n" ;
 : RENAME-OPEN-TURNS ( -- )
    s" rn-uns" REFS-DIR s" rn-uns/w" REFS-DIR
@@ -6489,9 +6463,6 @@ variable PROBE-DECLS
    s\" {\"id\":" PAR+ i iu PAR+ s" }" PAR+
    s" $/cancelRequest" PAR$ TELL ;
 
-\ Two completions and a cancel of the first, written together: the first is
-\ answered -32800 and runs no check, so the document's list is published once,
-\ by the second's check, before its answer.
 : CANCEL-CMP-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -6510,8 +6481,6 @@ variable PROBE-DECLS
    s" swap" s" " ITEM+
    ITEMS-END ;
 
-\ A hover whose id is a string and a cancel naming that string spelt another
-\ way, written together: -32800, the id echoed as it came.
 : CANCEL-HOVER-TURNS ( -- )
    MARKDOWN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
@@ -6523,10 +6492,6 @@ variable PROBE-DECLS
    SAY
    HEAR s\" \"h\\/3\"" -32800 REFUSED ;
 
-\ A completion and then a change of its document, written together: the
-\ completion asked about the text the change replaces, so it is answered
-\ -32801 and runs no check; the change is applied after it and its text is
-\ checked.
 : MODIFIED-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -6540,11 +6505,6 @@ variable PROBE-DECLS
    HEAR s" 3" -32801 REFUSED
    TEXT-CMP-A-NEW CMP-A-PATH 2 s" verified" LISTED ;
 
-\ Cancels read behind request 4 that name no request held: request 3's id,
-\ answered the turn before, an id never sent, the string "4", and the id of an
-\ invalid message, which is no request. None is answered, request 4 and the
-\ invalid message are answered as they would be, and a cancel of request 5
-\ behind it still counts: the server goes on.
 : STRAY-TURNS ( -- )
    SESSION-INITIALIZE
    s" 3" s" habu/unknown" ASK
@@ -6585,10 +6545,8 @@ variable PROBE-DECLS
    s" 4" -32600 REFUSED
    ENDS ;
 
-\ refs-halt: d.f declares ROOK, and e.f, g.f and h.f require it and use it,
-\ on disk and opened with the same text. No folder is given, so a request
-\ about ROOK gathers from the open documents, d.f first, then the rest in
-\ the order of their paths.
+\ No folder is given, so a request about ROOK gathers from the open documents,
+\ d.f first, then the rest in the order of their paths.
 : TEXT-HE ( -- ptr u8 n )  s\" require d.f\n: EU ( -- n ) ROOK ;\n" ;
 : TEXT-HG ( -- ptr u8 n )  s\" require d.f\n: GU ( -- n ) ROOK ;\n" ;
 : TEXT-HH ( -- ptr u8 n )  s\" require d.f\n: HU ( -- n ) ROOK ;\n" ;
@@ -6602,10 +6560,7 @@ variable PROBE-DECLS
    s" refs-halt/h.f" TEXT-HH REFS-FILE ;
 
 \ The four opened and ROOK's declaration asked about by the request ASK
-\ writes, id 3, in one turn, so each waits for a check when the request is
-\ served: d.f's is its turn, and the request then checks each text itself.
-\ Once d.f's list is heard, the request reads what is written next by the
-\ time its first check is over.
+\ writes, id 3, in one turn.
 : HALT-START ( [ -- ] -- )
    {: ask :}
    HALT-TREE
@@ -6623,10 +6578,7 @@ variable PROBE-DECLS
 : HALT-RENAME ( -- )  s" 3" s" refs-halt/d.f" FIXTURE 0 2 CROW RENAME-ASK ;
 
 \ d.f and e.f alone opened and ROOK's declaration asked about, by this id's
-\ JSON text, in one turn: d.f's check is the request's, as its turn, and the
-\ request then checks both texts itself. Once d.f's list is heard the request
-\ has begun, and what is written next it reads by the time its first check is
-\ over.
+\ JSON text, in one turn.
 : PAIR-START ( ptr u8 n -- )
    {: i:ptr iu:n :}
    HALT-TREE
@@ -6647,9 +6599,6 @@ variable PROBE-DECLS
    s" refs-halt/e.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ A cancel of the request written once d.f's list is heard: the request is
-\ answered -32800, and e.f's, g.f's and h.f's lists come after, from the
-\ checks of documents waiting for one.
 : REFS-CANCEL-TURNS ( -- )
    [: HALT-REFS ;] HALT-START
    s" 3" CANCELS
@@ -6659,9 +6608,6 @@ variable PROBE-DECLS
    s" refs-halt/g.f" FIXTURE 1 CLEAN
    s" refs-halt/h.f" FIXTURE 1 CLEAN ;
 
-\ A change of h.f written so: the request ASK writes is answered -32801,
-\ since it would gather from the text the change replaces, and the change is
-\ applied after it, h.f's new text the one checked.
 : HALT-MODIFIED ( [ -- ] -- )
    HALT-START
    s" refs-halt/h.f" FIXTURE TEXT-HH-NEW 2 CHANGES
@@ -6692,17 +6638,12 @@ variable PROBE-DECLS
    s" refs-halt/h.f" FIXTURE 1 CLEAN
    s" refs-halt/u.f" FIXTURE 1 CLEAN ;
 
-\ Another request and the end of the input written once d.f's list is heard:
-\ the request goes on and is answered, then the other one, and only then does
-\ the end of the input end the server, before e.f's own check.
 : REFS-EOF-TURNS ( -- )
    s" 3" PAIR-START
    s" 4" s" habu/unknown" ASK
    SAY
    CUT-SHORT ;
 
-\ The same with a framing fault after the other request: the fault stops
-\ the server only once both are answered.
 : REFS-FAULT-TURNS ( -- )
    s" 3" PAIR-START
    s" 4" s" habu/unknown" ASK
@@ -6719,12 +6660,8 @@ variable PROBE-DECLS
    TXT-B CLEAR
    BIG-LINES 0 ?do s\" ( twenty-byte line )\n" N>BLEN TXT-B APPEND-SPAN loop ;
 
-\ A 700 KB didOpen written in many pieces once d.f's list is heard, which
-\ the request, asked by a string id, reads before its answer: the room of the
-\ messages held grows past the request's own bytes, and the answer still
-\ carries its id; e.f's list and then the new document's follow it. The
-\ document is src/lib/string.f, which the engine provides, so nothing checks its
-\ text.
+\ The document is src/lib/string.f, which the engine provides, so nothing
+\ checks its text.
 : REFS-GROWTH-TURNS ( -- )
    s\" \"refs-grow\"" PAIR-START
    BIG-QUIET
@@ -6734,9 +6671,6 @@ variable PROBE-DECLS
    s" refs-halt/e.f" FIXTURE 1 CLEAN
    s" src/lib/string.f" IN-TREE 1 CLEAN ;
 
-\ The first check for a definition request publishes its list before reading
-\ a queued large didOpen. The reply must keep the string id after that input
-\ grows the held-message buffer.
 : DEF-GROWTH-TURNS ( -- )
    HALT-TREE
    SESSION-INITIALIZE
@@ -6751,10 +6685,6 @@ variable PROBE-DECLS
    s\" \"def-grow\"" s" refs-halt/d.f" DISK-URI 0 2 6 LOCATED
    s" src/lib/string.f" IN-TREE 1 CLEAN ;
 
-\ The input that comes while a request checks the files it gathers from. Those
-\ checks publish nothing: a document's list comes only from its own check, a
-\ turn after the answer. So each conversation writes its next turn once it
-\ hears d.f's list, which the request's own turn publishes.
 : REFS-HALTS ( -- )
    s" references-cancel" [: REFS-CANCEL-TURNS ;] TALK
    s" references-modified" [: REFS-MODIFIED-TURNS ;] TALK
@@ -6769,8 +6699,6 @@ variable PROBE-DECLS
    s" cancel-stray" [: STRAY-TURNS ;] TALK
    REFS-HALTS ;
 
-\ An incomplete check after a change can still answer an empty completion;
-\ its earlier source stamps cannot reject the current request.
 : COMPLETION-INCOMPLETE-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
