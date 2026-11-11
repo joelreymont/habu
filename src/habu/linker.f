@@ -217,6 +217,8 @@ variable PRIVS-N
 DYNAMIC-BUFFER GRANTS n              \ the built packages a checked piece gives a private wordlist, by record
 variable GRANTS-N
 DYNAMIC-BUFFER EM-OFFS n             \ its emissions' offsets in OBJECT, each at its S
+variable LAST-CALL                   \ the checked emission's last call row's site, -1 before its first (EMISSION-CK)
+variable LAST-ADDR                   \ and its last address row's site, -1 before its first
 DYNAMIC-BUFFER FILE-ROWS n           \ its FILES row k, from 1, as that file's BUILT row index
 DYNAMIC-BUFFER DOES-AT n             \ its KIND-DOES entries: the offset field's place in OBJECT, the emission
 DYNAMIC-BUFFER HOST-CALLS n          \ the host copy's call sites out of hb's region
@@ -1796,10 +1798,11 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \     S raw bytes          unpadded; each call site's 4 bytes, the does> slot's 4 bytes
 \                          and every 16-bit immediate of each address chain written as 0
 \     F, then F offsets    function starts
-\     C, then C call rows  site, kind (0 call, 1 tail), reference; no does> slot row
-\     A, then A addr rows  site, kind (0 code, 1 data), reference
-\     P                    the does> slot's site, -1 for none; when P >= 0 its target's
-\                          reference
+\     C, then C call rows  site, kind (0 call, 1 tail), reference; sites strictly ascending, and
+\                          no does> slot row
+\     A, then A addr rows  site, kind (0 code, 1 data), reference; sites strictly ascending
+\     P                    the does> slot's site, -1 for none, past the last call row's site; when
+\                          P >= 0 its target's reference
 \ A reference is a tag, then its fields: 0 a dictionary record (file, its name sum, its count
 \ among that part's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation
 \ (file, its owning definition's name sum and count as tag 0's, function); 3 a word's data and 6 a
@@ -3264,8 +3267,8 @@ variable RD-END
    n 0 ?do i ENTRY-CK loop ;
 
 
-\ A call row of emission top, s bytes; its site in the object's copy holds the zeroed call EMISSION-CODE+
-\ writes. A record target precedes top's own: a body naming its word is E-UNDEFINED, RECURSE files no row.
+\ A call row of emission top, s bytes; its site, above the row before it, holds in the object's copy the zeroed
+\ call EMISSION-CODE+ writes. A record target precedes top's own: a body naming its word is E-UNDEFINED, RECURSE files no row.
 : CALL-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: site:n :}
@@ -3273,6 +3276,8 @@ variable RD-END
    GOOD? if
       OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  site +  LE:U32@ 0<> if BAD then
    then
+   site LAST-CALL @ <= if BAD then
+   site LAST-CALL !
    RD-U64 {: kind:n :}
    kind 0<>  kind 1 <>  and if BAD then
    RD-REF top  top EM-RECS @  CODE-REF-CK ;
@@ -3286,12 +3291,14 @@ variable RD-END
    src site +  src s +  ADDRESS-CARRIER:CHAIN-SIZE ;
 
 
-\ An address row of an emission of s bytes, numbered top: a code chain is ADDR-CHAIN-BYTES long,
-\ as the link requires, and a data chain is whole. A record target precedes top's own, as a call's.
+\ An address row of an emission of s bytes, numbered top, its site above the row before it: a code chain is
+\ ADDR-CHAIN-BYTES long, as the link requires, and a data chain is whole. A record target precedes top's own, as a call's.
 : ADDR-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: site:n :}
    site 0<  site 3 and 0<>  or  site s >=  or if BAD then
+   site LAST-ADDR @ <= if BAD then
+   site LAST-ADDR !
    RD-U64 {: kind:n :}
    GOOD? if
       site s top OWN-CHAIN {: size:n :}
@@ -3303,13 +3310,14 @@ variable RD-END
    BAD ;
 
 
-\ The does> slot: -1, or its site, holding the zeroed slot EMISSION-CODE+ writes, and its target:
-\ none while no clause patched it, else the record of a does> clause, checked as a call's.
+\ The does> slot: -1, or its site, past the last call row and holding the zeroed slot EMISSION-CODE+ writes, and
+\ its target: none while no clause patched it, else the record of a does> clause, checked as a call's.
 : SLOT-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: p:n :}
    p -1 = if exit then
    p 0<  p 3 and 0<>  or  p s 4 - >  or if BAD exit then
+   p LAST-CALL @ <= if BAD then
    GOOD? if
       OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  p +  LE:U32@ 0<> if BAD then
    then
@@ -3341,6 +3349,7 @@ variable RD-END
       dup off >=  off s >=  or if BAD then
       drop off
    loop drop
+   -1 LAST-CALL !  -1 LAST-ADDR !
    32 RD-COUNT 0 ?do s e CALL-CK loop
    32 RD-COUNT 0 ?do s e ADDR-CK loop
    s e SLOT-CK ;

@@ -512,11 +512,18 @@ variable HIGH-REC
 variable BYTES-AT                        \ MID's emission's bytes' offset
 variable SITE-AT                         \ MID's call row of LOW: its site's offset
 variable INDEX-AT                        \ and its reference's sum's offset
+variable ROW-U                           \ and its length in bytes
+variable MID-CALLS-AT                    \ MID's emission's call count's offset
 variable LATE-FLAG-AT                    \ the late package entry's own-private flag's offset
 variable LATE-AT                         \ the late package's KIND-PRIVATE entry's offset
 variable SLOT-AT                         \ the first does> slot's P: its offset
 variable SLOT-BYTES-AT                   \ its emission's bytes' offset
 variable SLOT-S                          \ and their count
+variable SLOT-CALLS-AT                   \ its emission's call count's offset
+variable SLOT-ROWS-AT                    \ and the offset just past its call rows
+variable ADDR-ROW-AT                     \ the object's first address row's offset
+variable ADDR-ROW-U                      \ and its length in bytes
+variable ADDR-COUNT-AT                   \ its emission's address count's offset
 
 : CRAFT-E$ ( -- ptr u8 n ) s" crafted" s" e.f" CRAFT-BUF FILE-IN ;
 
@@ -587,8 +594,17 @@ variable SLOT-S                          \ and their count
    e MID-EM @ <> if exit then
    LOW-REC @ CRAFT-ID {: sum:n count:n :}
    ref OBJ@ 0=  ref 8 + OBJ@ 0=  and  ref 16 + OBJ@ sum =  and  ref 24 + OBJ@ count =  and if
-      site SITE-AT !  ref 16 + INDEX-AT !
+      site SITE-AT !  ref 16 + INDEX-AT !  AT @ site - ROW-U !
    then ;
+
+
+\ An address row of the emission whose address count is at count-at: site, kind, reference; the
+\ object's first is kept.
+: ADDR-ROW ( n -- )
+   {: count-at:n :}
+   AT @ {: at:n :}
+   2 OBJ-SKIP  REF-SKIP
+   ADDR-ROW-AT @ 0< if  at ADDR-ROW-AT !  AT @ at - ADDR-ROW-U !  count-at ADDR-COUNT-AT !  then ;
 
 
 \ Emission e (linker.f CODE+): S, R, the bytes, F offsets, call rows, address rows, P.
@@ -600,11 +616,17 @@ variable SLOT-S                          \ and their count
    e MID-EM @ = if bytes BYTES-AT ! then
    s AT +!
    OBJ-U64 OBJ-SKIP
+   AT @ {: calls-at:n :}
+   e MID-EM @ = if calls-at MID-CALLS-AT ! then
    OBJ-U64 0 ?do e CALL-ROW loop
-   OBJ-U64 0 ?do 2 OBJ-SKIP REF-SKIP loop
+   AT @ {: rows-at:n :}
+   OBJ-U64 0 ?do rows-at ADDR-ROW loop
    AT @ {: p-at:n :}
    OBJ-U64 0< if exit then
-   SLOT-AT @ 0< if p-at SLOT-AT !  bytes SLOT-BYTES-AT !  s SLOT-S ! then
+   SLOT-AT @ 0< if
+      p-at SLOT-AT !  bytes SLOT-BYTES-AT !  s SLOT-S !
+      calls-at SLOT-CALLS-AT !  rows-at SLOT-ROWS-AT !
+   then
    REF-SKIP ;
 
 
@@ -613,12 +635,13 @@ variable SLOT-S                          \ and their count
    CRAFT-FIRST CRAFT-OBJ CRAFT-U @ BYTE-COPY
    PIECES-FIELD OBJ@ AT !
    0 RECS !  0 DEFS !  -1 FLAG-AT !  -1 MID-EM !  -1 PKG-REC !  -1 LOW-REC !  -1 HIGH-REC !
-   -1 BYTES-AT !  -1 SITE-AT !  -1 INDEX-AT !
+   -1 BYTES-AT !  -1 SITE-AT !  -1 INDEX-AT !  -1 ROW-U !  -1 MID-CALLS-AT !
    -1 LATE-FLAG-AT !  -1 LATE-AT !  -1 SLOT-AT !  -1 SLOT-BYTES-AT !  -1 SLOT-S !
+   -1 SLOT-CALLS-AT !  -1 SLOT-ROWS-AT !  -1 ADDR-ROW-AT !  -1 ADDR-ROW-U !  -1 ADDR-COUNT-AT !
    OBJ-U64 0 ?do ENTRY-WALK loop
    OBJ-U64 0 ?do i EMISSION-WALK loop
-   FLAG-AT @ 0<  PKG-REC @ 0<  or  HIGH-REC @ 0<  or  SITE-AT @ 0<  or
-   LATE-FLAG-AT @ 0<  or  LATE-AT @ 0<  or  SLOT-AT @ 0<  or if
+   FLAG-AT @ 0<  PKG-REC @ 0<  or  HIGH-REC @ 0<  or  SITE-AT @ 0<  or  MID-CALLS-AT @ 0<  or
+   LATE-FLAG-AT @ 0<  or  LATE-AT @ 0<  or  SLOT-AT @ 0<  or  ADDR-ROW-AT @ 0<  or if
       s" build: CRAFTS: e.f's object lacks a field the edits need" 1 die
    then ;
 
@@ -708,7 +731,71 @@ variable SLOT-S                          \ and their count
    count-at OBJ@ 1 +  count-at OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
 
-\ e.f's first build, eight builds each over one crafted object, then a plain build. CRAFT's
+\ The TIMES span at offset at moved past u bytes inserted at r in the piece, or grown by them when it
+\ holds r.
+: SPAN-GROW ( n n n -- )
+   {: at:n r:n u:n :}
+   at OBJ@ {: off:n :}
+   off r >= if off u + at OBJ! exit then
+   off at 8 + OBJ@ +  r > if  at 8 + OBJ@ u +  at 8 + OBJ!  then ;
+
+
+\ CRAFT-FIRST grown into CRAFT-OBJ by u bytes at k, in the last section, so before any edit past k; each TIMES span
+\ past k moves and one holding k grows (SPAN-GROW): EXTENT-CK finds each extent at its span. Past CRAFT-CAP, rc 1.
+: CRAFT-GROW ( n n -- )
+   {: k:n u:n :}
+   CRAFT-U @ u + CRAFT-CAP > if s" build: CRAFTS: the grown object exceeds CRAFT-CAP" 1 die then
+   CRAFT-FIRST k +  CRAFT-OBJ k u + +  CRAFT-U @ k -  BYTE-COPY
+   PIECES-FIELD 8 + {: len-at:n :}
+   len-at OBJ@ u + len-at OBJ!
+   k PIECES-FIELD OBJ@ - {: r:n :}
+   PIECES-FIELD 16 - OBJ@ {: times:n :}
+   times OBJ@ {: w:n :}
+   w 0 ?do
+      times 8 +  i 88 * + {: row:n :}
+      row 8 + r u SPAN-GROW  row 24 + r u SPAN-GROW  row 40 + r u SPAN-GROW
+   loop
+   times 8 +  w 88 * + {: exts:n :}
+   exts OBJ@ 0 ?do  exts 8 +  i 48 * +  8 + r u SPAN-GROW  loop ;
+
+
+\ MID's call row of LOW written twice: a copy of the row after it.
+: TWIN-CALL ( -- n )
+   CRAFT-WALK
+   ROW-U @ {: row:n :}
+   SITE-AT @ row + {: end:n :}
+   end row CRAFT-GROW
+   CRAFT-FIRST SITE-AT @ +  CRAFT-OBJ end +  row BYTE-COPY
+   MID-CALLS-AT @ OBJ@ 1 +  MID-CALLS-AT @ OBJ!
+   CRAFT-U @ row + CRAFTED-BUILD ;
+
+
+\ The object's first address row written twice: a copy of the row after it.
+: TWIN-ADDR ( -- n )
+   CRAFT-WALK
+   ADDR-ROW-U @ {: row:n :}
+   ADDR-ROW-AT @ row + {: end:n :}
+   end row CRAFT-GROW
+   CRAFT-FIRST ADDR-ROW-AT @ +  CRAFT-OBJ end +  row BYTE-COPY
+   ADDR-COUNT-AT @ OBJ@ 1 +  ADDR-COUNT-AT @ OBJ!
+   CRAFT-U @ row + CRAFTED-BUILD ;
+
+
+\ A call row on V's slot after its emission's call rows, of which it has none: kind 0, naming LOW
+\ (tag 0, file 0, LOW's sum and count) as SLOT-TARGET's reference does; 48 bytes more.
+: SLOT-CALL ( -- n )
+   CRAFT-WALK
+   SLOT-CALLS-AT @ OBJ@ 0<> if s" build: CRAFTS: V's emission has a call row" 1 die then
+   SLOT-AT @ OBJ@ {: p:n :}
+   SLOT-ROWS-AT @ {: k:n :}
+   k 48 CRAFT-GROW
+   LOW-REC @ CRAFT-ID {: sum:n count:n :}
+   p k OBJ!  0 k 8 + OBJ!  0 k 16 + OBJ!  0 k 24 + OBJ!  sum k 32 + OBJ!  count k 40 + OBJ!
+   1 SLOT-CALLS-AT @ OBJ!
+   CRAFT-U @ 48 + CRAFTED-BUILD ;
+
+
+\ e.f's first build, eleven builds each over one crafted object, then a plain build. CRAFT's
 \ wordlists come between LATE's two, so LATE gains its private one by a KIND-PRIVATE entry.
 : CRAFTS ( -- )
    s" crafted" DIR$ FS:MAKE-DIR
@@ -726,10 +813,14 @@ variable SLOT-S                          \ and their count
    SLOT-TARGET {: seven:n :}
    LATE-OWN {: eight:n :}
    TIMES-COUNT {: nine:n :}
-   CRAFT-BUILD {: ten:n :}
+   TWIN-CALL {: ten:n :}
+   SLOT-CALL {: eleven:n :}
+   TWIN-ADDR {: twelve:n :}
+   CRAFT-BUILD {: thirteen:n :}
    s" crafted: compiled " one two three RESULTS.
    space four FMT:.INT  space five FMT:.INT  space six FMT:.INT
-   space seven FMT:.INT  space eight FMT:.INT  space nine FMT:.INT  space ten FMT:.INT cr ;
+   space seven FMT:.INT  space eight FMT:.INT  space nine FMT:.INT  space ten FMT:.INT
+   space eleven FMT:.INT  space twelve FMT:.INT  space thirteen FMT:.INT cr ;
 
 \ ---- words a source spells ----
 144 constant WORDS-FIELD                \ the header's WORDS offset, then length (linker.f WRITE-OBJECT)
