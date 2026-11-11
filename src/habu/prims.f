@@ -748,22 +748,18 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ and `defer` change is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL,
 \ TSIG, TCSIG, PKG-*), the body text, DEF-TIER-CELL and the records behind the
 \ PROT window.
-\ These fifteen rows are how an interpreter written in Habu writes it. Each is
-\ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so a checked
-\ body reaches one only through an owner-private row below: package
-\ INTERPRETER's, the interpret loop written in Habu (src/habu/interpreter.f),
-\ and CHECKER-OVERLAY's. A refusal exits and never throws: 79 on a task's
+\ These fifteen rows are how an interpreter written in Habu writes it. A
+\ refusal exits and never throws: 79 on a task's
 \ thread (the five dictionary rows), 84 for a protected wid after
 \ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
 \ caller checks first and prints the engine's own text. Two refusals are
 \ compile dies instead, which `evaluate` delivers as throws: while a checker
-\ overlay is open (layout.f REPLAY-SCOPE) `namespace-private`, `alias-record`
+\ overlay is open `namespace-private`, `alias-record`
 \ and `def-open`, like `native-unit-publish` above, name the token and die
-\ ENGINE-ERROR:OVERLAY-OPEN (habu1.f OVERLAY-EMIT:GUARD,), and `def-create`
+\ ENGINE-ERROR:OVERLAY-OPEN, and `def-create`
 \ dies 76 as `allot` does when DP would pass the data region. x86-64 refuses
-\ `def-create` and `def-defer` (src/habu/kernel-x64.f): its Habu loop has NCOMP
-\ compile a created or deferred word's body instead (interpreter.f
-\ DEF-ADDR-TAIL, DEF-DEFER).
+\ `def-create` and `def-defer`: its Habu loop has NCOMP
+\ compile a created or deferred word's body instead.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -779,10 +775,8 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 EPRIM: namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 \ The owner-private rows of these writers: inside package CHECKER-OVERLAY or
-\ INTERPRETER (the interpret loop written in Habu) a row wins, so that owner's
-\ checked code calls the writer, and each record carries DNAME-INT|DNAME-OWNED
-\ (src/habu/layout.f). The global trusted-only rows stay beside them; a checked
-\ caller elsewhere is refused by them.
+\ INTERPRETER a row wins, so that owner's
+\ checked code calls the writer, and each record carries DNAME-INT|DNAME-OWNED.
 EPPRIM: CHECKER-OVERLAY namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: INTERPRETER namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 \ namespace-private ( n -- ): give namespace row n, whose [8] is 0, a fresh
@@ -805,12 +799,12 @@ EPPRIM: INTERPRETER alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-I
 \ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
 \ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
 \ wid. A row whose name holds a colon is a part, which first moves the four
-\ open cells into layout.f ENCLOSING; any other row clears ENCLOSING, and
+\ open cells into ENCLOSING; any other row clears ENCLOSING, and
 \ `-1 0` clears all eight. It refuses any other index at or above NDICT,
 \ unsigned, a row that is not a namespace row, one without a private wid, and
 \ a part when no package or a part is open.
 \ It has no task guard of its own: the package keywords refuse one, and a throw
-\ puts the scope back through this row (src/habu/interpreter.f PKG-RECOVER).
+\ puts the scope back through this row.
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
@@ -819,7 +813,7 @@ EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR with
 \ DNAME-ALLOC, and DNAME-CELL as well for a variable, or DKIND:CAST) in [16] and
 \ the wid in [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and
-\ TRUSTED clear; DEF-TIER-CELL takes the tier latch (TIER-LATCH); LASTC-CELL
+\ TRUSTED clear; DEF-TIER-CELL takes the tier latch; LASTC-CELL
 \ waits for the body (def-close, def-create). It refuses a kind with a bit
 \ outside DKIND:MASK, DNAME-CELL and DNAME-ALLOC, a negative wid, and CP at or
 \ past the code ceiling. Latched to the JIT it opens the record only: the JIT's
@@ -840,7 +834,7 @@ EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 \ created-sig! ( ptr u8 n -- ): the inside of the pending definition's `does>`
 \ signature, the effect of the words it creates, into TCSIG-A and TCSIG-U: its
-\ copy in the body text (interpreter.f DEF-CREATED). It refuses when no definition is
+\ copy in the body text. It refuses when no definition is
 \ pending.
 EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
@@ -871,15 +865,14 @@ EPPRIM: INTERPRETER stack-clear ECLOSE-PRIVATE
 \ cell, the
 \ code at CP pushes that address, an address-map site, and returns, [8] takes
 \ the code's length, LASTC the record, the record is counted and indexed and
-\ the state def-open set clears, PEND-CELL with
-\ it. DP past the data region refuses as `allot` does, 76 (habu1.f DP-CHECK).
+\ the state def-open set clears, PEND-CELL with it.
 \ It refuses no pending definition, a pending one of another kind and CP at
 \ or past the code ceiling.
 EPRIM: def-create EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-create ECLOSE-PRIVATE
 \ imm-mark ( -- ): set DNAME-IMM on the newest record, as the engine's
-\ `immediate` (habu2.f C-IMMEDIATE) sets it. Like that keyword it checks
+\ `immediate` sets it. Like that keyword it checks
 \ nothing and refuses nothing.
 EPRIM: imm-mark EPRIM;
 ETRUSTED-ONLY!
@@ -897,7 +890,7 @@ ETRUSTED-ONLY!
 \ and a TRUSTED: one binds at tier 0 only. Refusals exit 79 on a task, else 83.
 \
 \ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells
-\ and the using band in the engine's REPLAY-SCOPE band (src/habu/layout.f). It
+\ and the using band in the engine's REPLAY-SCOPE band. It
 \ refuses an open overlay and a pending definition.
 \ replay-record ( ptr u8 n n -- ) name, wid: publish a codeless record whose
 \ entry traps, exit 76. It refuses no overlay, a negative wid and what the
@@ -928,7 +921,7 @@ EPPRIM: CHECKER-OVERLAY replay-private PE-N PE-IN PE-F PE-IN ECLOSE-PRIVATE
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
 EPRIM: SEAL-FRIEND    EPRIM;
-EPRIM: DRAIN-PRETRUST EPRIM;   \ drains the pending pre-trust defer table
+EPRIM: DRAIN-PRETRUST EPRIM;
 \ data-base is a BASE ADDRESS: the start of the running task's DATA region, not
 \ the address of any declared element. Its pointee is TVK-DBASE, so `data-base
 \ OFF + @` still answers a number, an xt or a role - what those cells hold - and
@@ -944,12 +937,9 @@ EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ comparing one, subtracting one, testing it with 0= - each binds the pointee
 \ INSIDE a `ptr`, where the kind is permissive, and each means this one literal
 \ address. What it refuses is a value read THROUGH it: `NULL-PTR + @` taken as
-\ a nominal identity or as an address certified and forged one. That pointee arm
-\ is the whole difference from `data-base`, whose TVK-DBASE reaches an arbitrary
-\ DATA word and is fenced at every depth.
+\ a nominal identity or as an address certified and forged one.
 EPRIM: NULL-PTR       PE-PTR-A-NULL PE-OUT EPRIM; REACH stack
-\ Resolve the capture observer slot from the running kernel. Older retained
-\ engines lack this name and explicit export declines before arming a capture.
+\ Resolve the capture observer slot from the running kernel.
 EPRIM: native-unit-cut-cell PE-PTR-A PE-OUT EPRIM;
 ETRUSTED-ONLY!
 \ A null result means the running kernel has no origin record. Source reaches
@@ -959,7 +949,7 @@ EPRIM: native-origin-cell PE-PTR-U8 PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM; REACH dict
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
-\ The design seal's two writers (src/lib/vocabulary.f): admit a
+\ The design seal's two writers: admit a
 \ package's public wordlist by name, then seal the dictionary as it stands. Both
 \ refuse once sealed, so a sealed design cannot widen its own vocabulary.
 EPRIM: policy-admit   PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
@@ -969,12 +959,8 @@ EPRIM: get-current    PE-N PE-OUT EPRIM; REACH dict
 EPRIM: set-current    PE-N PE-IN EPRIM; REACH dict
 EPRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
-ETRUSTED-ONLY!                       \ NDICT's private indexed-record boundary
-\ Its owners' readers: CHECKER-RESOLVE's scope probe (src/core/checker.f CHECKER-RESOLVE:WL-PROBE), NDICT's
-\ record lookup (src/compiler/native/dict.f WL-RECORD), CHECKER-SURFACE's record index
-\ (src/core/checker-surface.f RECORD-INDEX), INTERPRETER's dictionary probe (src/habu/interpreter.f WL-PROBE), the
-\ generated-name preflight (src/habu/xref.f WL-RECORD) and the capture's record lookup
-\ (src/habu/aot-capture.f AOT-WL-RECORD). Six rows, not one: each owner is a separate package, and NDICT
+ETRUSTED-ONLY!
+\ Six rows, not one: each owner is a separate package, and NDICT
 \ keeps the raw record private.
 EPPRIM: CHECKER-RESOLVE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: NDICT xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
@@ -983,25 +969,25 @@ EPPRIM: INTERPRETER xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR
 EPPRIM: GENERATED-DECL-NAME-PREFLIGHT xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: AOT-CAPTURE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPRIM: xref-wl-newest PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
-ETRUSTED-ONLY!                       \ XREF's newest-row indexed-record boundary
+ETRUSTED-ONLY!
 EPPRIM: XREF xref-wl-newest PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
                       PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
 EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM; REACH source
 \ num-parse ( ptr u8 n -- n bool bool ) : the engine's own number reader, over
 \ bytes the caller already holds - the routine the interpret and compile
-\ dispatches call for every literal token (habu1.f BNUMPARSE, at LNUM). It
+\ dispatches call for every literal token. It
 \ answers the value, whether that value is a double's bits, and whether the
 \ bytes were a number at all. A checked stage that has to know what cell a
 \ literal spelling stands for asks this rather than reading the spelling back
-\ with a second decoder (src/compiler/native/feed.f).
+\ with a second decoder.
 EPRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT EPRIM; REACH memory
 EPRIM: wide-mark EPRIM;
 \ record-facts! ( n n -- ) offset, index: stores where a record's facts text
-\ lies (habu1.f BRECFACTS); the row lets every checked program call it.
+\ lies.
 EPRIM: record-facts! PE-N PE-IN PE-N PE-IN EPRIM;
 \ sha256-blocks ( ptr n ptr u8 n -- n ) state cells, bytes, block count: how
-\ many blocks the CPU's SHA-256 instructions compressed (habu1.f BSHA256BLOCKS).
+\ many blocks the CPU's SHA-256 instructions compressed.
 EPRIM: sha256-blocks PE-PTR-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM; REACH memory
 EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
@@ -1011,12 +997,12 @@ EPRIM: ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-
 ETRUSTED-ONLY!
 EPRIM: task-entry PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
-EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE    \ src/lib/task.f PTHREAD-ENTRY
+EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE
 \ callback-entry -1 answers the shared raw C thunk for a compiler-owned stub.
-\ Nonnegative IDs still answer the boot stubs for old seed compatibility.
+\ Nonnegative IDs answer the boot stubs.
 EPRIM: callback-entry PE-N PE-IN PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
-EPPRIM: FFI callback-entry PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE    \ src/lib/ffi-abi.f FFI:CALLBACK-ENTRY
+EPPRIM: FFI callback-entry PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                            PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
                            PE-N PE-OUT EPRIM;
@@ -1036,12 +1022,11 @@ EPRIM: ffi-call-abi-r PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE
                      PE-N PE-IN PE-N PE-IN  PE-R PE-OUT EPRIM;
 ETRUSTED-ONLY!
 
-\ Package FFI's owner-private capability rows.
 \ Each primitive here keeps the global ETRUSTED-ONLY! row above — the outside
 \ boundary (E-CAP-TRUSTED), and the call window the optimizing compiler reads for
-\ the TRUSTED: bodies outside FFI that still call it (src/lib/fs-identity.f,
-\ src/lib/f64-text.f) — and gains an owner-private row, so a CHECKED body compiled
-\ inside package FFI resolves it. FFI's own words are ordinary checked Habu, and
+\ the TRUSTED: bodies outside FFI that still call it — and gains an
+\ owner-private row, so a CHECKED body compiled inside package FFI resolves it.
+\ FFI's own words are ordinary checked Habu, and
 \ no consumer can reach a raw foreign call.
 EPPRIM: FFI ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
@@ -1075,11 +1060,11 @@ EPRIM: space  EPRIM;
 EPRIM: u.     PE-N PE-IN EPRIM;
 
 EPRIM: create   EPRIM; REACH dict
-EPRIM: getpid   PE-N PE-OUT EPRIM;   \ ( -- pid ) process-identity syscall
+EPRIM: getpid   PE-N PE-OUT EPRIM;
 EPRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT EPRIM;   \ ( pid -- fd|-errno ) process-lifetime watch
 EPRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
 EPRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure
-EPRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
+EPRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( addr len -- 0|-1 ) release a mapping
 
 \ execute-floor ( xt -- flag ): execute the xt, then answer whether it left the
 \ data stack below its base. When it did, the stack is reset to the base before
@@ -1087,16 +1072,14 @@ EPRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( addr len -- 
 \ `depth` and `catch` both push, so this is the one word an interpreter loop
 \ written in Habu can use to observe a token that underflowed. The row states
 \ no effect for the xt, so the xt travels as a number: outside package
-\ INTERPRETER, that loop (src/habu/interpreter.f), a checked caller is refused.
+\ INTERPRETER, that loop, a checked caller is refused.
 EPRIM: execute-floor PE-N PE-IN  PE-F PE-OUT EPRIM;
-ETRUSTED-ONLY!                       \ executes an xt whose effect nothing states
+ETRUSTED-ONLY!
 EPPRIM: INTERPRETER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
 
 \ Primitives whose effect the checker elaborates.
 \ These have engine bodies and deliberately no row: their effect depends on the
-\ call site, so src/core/checker.f computes it in the elaborator instead of
-\ reading one from the table (RSEXEC, RSCATCH, RS2->R, RS2R>, RS2R@ in RS-TOK?,
-\ `evaluate`'s dynamic rule, and `?dup`'s branch-shaped result). A row here
+\ call site. A row here
 \ states that, so the completeness gate accepts the body without an effect.
 ELAB: execute REACH run
 1 EMIN-IN!
@@ -1104,7 +1087,7 @@ ELAB: catch REACH run
 1 EMIN-IN!
 ELAB: evaluate
 2 EMIN-IN!
-EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpreter.f INTERPRETER:EVAL-FRAMED, through PROVIDED-XT:EVALUATE-CELL
+EPREFIX-PROVIDED!
 ELAB: ?dup REACH stack
 1 EMIN-IN!
 ELAB: 2>r REACH stack
@@ -1112,11 +1095,9 @@ ELAB: 2>r REACH stack
 ELAB: 2r> REACH stack
 ELAB: 2r@ REACH stack
 
-\ Primitives with no checker row at all.
 \ Bodies with no declaration anywhere, so no checked program can name one: a
-\ checked caller of `run-rc` is E-UNDEFINED, measured. Only unchecked source
-\ or the kernel harness reaches them (test/engine-suite.f spawns through
-\ `run-rc`; test/x86-64-kernel-engine.f calls the `top-check@` row). They are
+\ checked caller of `run-rc` is E-UNDEFINED. Only unchecked source
+\ or the kernel harness reaches them. They are
 \ rows so the gap is stated instead of silent.
 UNROWED: run-rc
 UNROWED: top-check@
