@@ -1898,17 +1898,17 @@ PERSISTED-PTR-VARIABLE SLOT-LAST
    here CELL-VIEW {: body:ptr :}
    off , size ,
    here ptr-cell-mark 0 ,
+   size SCRATCH-ALLOT
    SLOT-LAST@ body SLOT-PREV + 0 ptr-field !
-   body SLOT-LAST!
-   size SCRATCH-ALLOT ;
+   body SLOT-LAST! ;
 
 public
 
 : +USER ( n n -- n ) {: off:n size:n :}
    off size USER-NEXT {: next:n :}
-   next TASK-USER-NEXT !
    TASK-ALIGN8
    create off size SLOT-LAY
+   next TASK-USER-NEXT !
    next
    does> ( -- ptr n ) {: body:ptr :}
    data-base TASK-AREA-OFF + @ dup 0= if

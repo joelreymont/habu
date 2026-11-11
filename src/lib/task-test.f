@@ -552,6 +552,21 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s" TASK:#USER $7FFFFFFFFFFFFFF0 TASK:+USER PW drop" SB-APPEND TASK-LF
    SB$ ;
 
+\ A claim under the ceiling that the data space cannot hold, then SCRATCH-ALLOT's own huge and
+\ negative sizes: each prints the engine's refusal code, the claim leaves TASK:#USER where it
+\ was, and the next claim's slot holds a value.
+: TASK-USER-HUGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" require src/lib/test.f" SB-APPEND TASK-LF
+   s" TASK:#USER" SB-APPEND TASK-LF
+   s\" s\" TASK:#USER $7FFFFFFFFFFD0000 TASK:+USER PH drop\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s" TASK:#USER - ." SB-APPEND TASK-LF
+   s\" s\" create PX $7FFFFFFFFFFD0000 SCRATCH-ALLOT\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s\" s\" create PN -16 SCRATCH-ALLOT\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s" TASK:#USER 7 + -8 and CELL TASK:+USER AFTER drop  5 AFTER !  AFTER @ ." SB-APPEND TASK-LF
+   SB$ ;
+
 \ One byte below TASK:#USER would overlap the newest slot.
 : TASK-USER-BELOW$ ( -- ptr u8 n )
    SB-RESET
@@ -686,7 +701,10 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    E-TASK-USER TASK-CODE$ {: needle:ptr needleu:n :}
    TASK-USER-BELOW$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
    TASK-USER-LIVE$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
-   TASK-USER-WRAP$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL ;
+   TASK-USER-WRAP$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
+   TASK-USER-HUGE$ 0 TASK-RUN-EXITS {: hugeu:len hugerr:len :}
+   TASK-OUT hugeu LEN>N S\" 76\n0\n76\n76\n5\n" T$=
+   TASK-ERR hugerr LEN>N s" data space out of range" CONTAINS? TTRUE ;
 
 \ One worker throws while the other completes: the throw ends that task alone
 \ and its code outlives the join.
