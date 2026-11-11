@@ -19,6 +19,7 @@ variable FLDBASE    \ committed field high-water at open (field range start)
 variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
+variable POINTEE    \ resolving the pointee of `ptr`: the declared family may be named
 
 $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
@@ -58,11 +59,13 @@ PTR-VARIABLE GATE-A   variable GATE-U
 \ field naming a DEFLINEAR con already relies on.
 \ The kind test falls through to "unknown field type" because the one kind it
 \ excludes, TK-EVIDENCE, has no declarer source can write.
+\ The declared family may be named only inside a `ptr` pointee (`FIELD next ptr
+\ node`); by value or as another family's argument (`option<node>`) it is 7109.
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
-   id FAM @ = IF
+   id FAM @ = POINTEE @ 0= and IF
       s" field type cannot recursively name its owner"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
@@ -83,11 +86,29 @@ PTR-VARIABLE GATE-A   variable GATE-U
 
 \ A pointer is a non-owning boundary (TFCL-NODE? stops at it), so `ptr <linear>`
 \ would let the containing family copy and drop a linear resource: refused here,
-\ for the family and the con spelling alike.
+\ for the family and the con spelling alike. SD-CLOSE judges every pointee again
+\ once the declared family's fields are committed.
 : REQUIRE-POINTEE ( n -- n )
    dup TFCL-NODE? IF
       s" field type is a pointer to a linear value and cannot own it"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
+
+\ REQUIRE-POINTEE on every pointer's pointee in a field type, as SCH-STORE-MASK walks it.
+: REQUIRE-POINTEES ( n -- )
+   {: node:n :}
+   node SCHEMA-PTR? IF node SCHEMA-A@ REQUIRE-POINTEE RECURSE EXIT THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-B@ {: start:n :}
+      node SCHEMA-C@ 0 ?do start i + SCHEMA-ROOT@ RECURSE loop EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      SCH-QUOT-ROWS 0 ?do
+         node i SCHEMA-QUOT-ROW@ {: row:n :}
+         row SCHEMA-ROW-OK? IF
+            row SCHEMA-ROW-COUNT@ 0 ?do row i SCHEMA-ROW-ELEM@ RECURSE loop
+         THEN
+      loop
+   THEN ;
 
 : SD-ARG+ ( n -- )
    SD-ARG-N @ SD-ARG-CAP >= IF
@@ -226,7 +247,10 @@ defer SD-QUOT-ELEM ( ptr u8 n -- n )
    2dup s" [" CORE-STR= IF
       2drop [: NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] TYPE-DECL:PARSE-QUOT EXIT THEN
    2dup s" ptr" CORE-STR=CI IF
-      2drop NEXT RECURSE
+      2drop POINTEE @ {: outer:n :}
+      -1 POINTEE !
+      NEXT RECURSE
+      outer POINTEE !
       FIELD-MISS @ IF drop 0 EXIT THEN
       REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    0 SD-ARG-N !
@@ -319,7 +343,7 @@ SD-QUOT-INSTALL
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
       na nu s" structure field names exceed declaration window" NAME-CHECK THEN
-   0 FIELD-MISS !
+   0 FIELD-MISS !  0 POINTEE !
    NEXT RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN
    -1 SEEN-FIELD ! ;
@@ -358,6 +382,9 @@ SD-QUOT-INSTALL
    loop
    MISSING? IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
+   NFLD @ 0 ?do
+      TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@ REQUIRE-POINTEES
+   loop
    FAM @ SD-CELLS @ TFAM-SLOTS!
    FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF
       s" opaque requires a family with fields" E-SYNTAX DECL-REJECT:REJECT throw THEN
@@ -402,7 +429,8 @@ public
 : SNAPSHOT-RESET ( -- )
    SD-RESET
    0 FAM !  0 FLDBASE !  0 NFLD !  0 SD-CELLS !
-   SD-ARG-CAP 0 ?do 0 i cells SD-ARGS + ! loop  0 SD-ARG-N ! ;
+   SD-ARG-CAP 0 ?do 0 i cells SD-ARGS + ! loop  0 SD-ARG-N !
+   0 POINTEE ! ;
 
 : SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
 

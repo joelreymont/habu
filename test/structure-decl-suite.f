@@ -239,6 +239,57 @@ s" STRUCTURE-DECL:SD-RUN" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration '': missing name" DECL-DIAG:HAS? TTRUE
 s" sdgself" DECL-DIAG:HAS? TFALSE
 
+\ A field may point at its own family: three linked records walk round, MAKE and
+\ UNMAKE certify, and a pointer to a pointer or to a span of itself declares.
+STRUCTURE sdsnode DERIVE addr FIELD id n FIELD next ptr sdsnode ;STRUCTURE
+3 TYPED-BUFFER SDS-NODES sdsnode
+: SDS-LINK ( -- )
+   11 0 SDS-NODES SDSNODE:ID !  22 1 SDS-NODES SDSNODE:ID !  33 2 SDS-NODES SDSNODE:ID !
+   1 SDS-NODES 0 SDS-NODES SDSNODE:NEXT !
+   2 SDS-NODES 1 SDS-NODES SDSNODE:NEXT !
+   0 SDS-NODES 2 SDS-NODES SDSNODE:NEXT ! ;
+: SDS-AT ( n -- n )                     \ the id k links on from the first record
+   {: k:n :}
+   0 SDS-NODES k 0 ?do SDSNODE:NEXT @ loop SDSNODE:ID @ ;
+SDS-LINK
+0 SDS-AT 11 T=  1 SDS-AT 22 T=  2 SDS-AT 33 T=  3 SDS-AT 11 T=
+s" SDSMK ( n ptr sdsnode -- sdsnode ) SDSNODE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDSUN ( sdsnode -- n ptr sdsnode ) SDSNODE:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" STRUCTURE sdsback FIELD id n FIELD back ptr ptr sdsback ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdspspan FIELD id n FIELD s ptr SPAN:span<sdspspan> ;STRUCTURE" TEST-EVAL:RC 0 T=
+
+\ A parametric family pointing at itself: pairing two of its applications ends,
+\ a generic and a concrete accessor certify, and a mismatched one is refused.
+STRUCTURE sdsplist<a> DERIVE addr FIELD v a FIELD next ptr sdsplist<a> ;STRUCTURE
+s" SDSPG ( ptr sdsplist<a> -- ptr sdsplist<a> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDSPC ( ptr sdsplist<n> -- ptr sdsplist<n> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDSPX ( ptr sdsplist<n> -- ptr sdsplist<f> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! 0 T=
+STRUCTURE sdsplistn<a> DERIVE addr FIELD v a FIELD next ptr sdsplistn<n> ;STRUCTURE
+s" SDSNG ( ptr sdsplistn<a> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDSNC ( ptr sdsplistn<n> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ Its own family as another family's argument is refused, a span's too, though a
+\ span's base only points at its element.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdsvspan FIELD s SPAN:span<sdsvspan> ;STRUCTURE" TEST-EVAL:RC 7109 T=
+s" habu: bad structure declaration 'sdsvspan': field type cannot recursively name its owner at 'SPAN:span<sdsvspan>'"
+DECL-DIAG:HAS? TTRUE
+
+\ A pointer to its own family is a pointer to a linear value when the family
+\ holds one, in either field order: judged once the fields are committed.
+package SDSELF
+public
+DEFLINEAR SDSELF:tok
+;package
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdslnode FIELD next ptr sdslnode FIELD t SDSELF:tok ;STRUCTURE" TEST-EVAL:RC 7109 T=
+s" habu: bad structure declaration 'sdslnode': field type is a pointer to a linear value and cannot own it at 'sdslnode'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdslnode2 FIELD t SDSELF:tok FIELD next ptr sdslnode2 ;STRUCTURE" TEST-EVAL:RC 7109 T=
+s" habu: bad structure declaration 'sdslnode2': field type is a pointer to a linear value and cannot own it at 'sdslnode2'"
+DECL-DIAG:HAS? TTRUE
+
 \ hostile declarations: a field spelled like a fragment of the message is
 \ reported as the token it is, and exactly one line is emitted.
 DECL-DIAG:PROSE
@@ -489,6 +540,12 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdlptrlate FIELD a n FIELD p ptr sdlbox FIELD c n ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlptrlate': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
 DECL-DIAG:HAS? TTRUE
+
+\ `ptr` lets a field name its own family only inside the pointee: by value after
+\ it, or in the declaration after a refused pointee, the name is refused 7109.
+s" STRUCTURE sdlpquot FIELD q [ ptr sdlpquot sdlpquot -- ] ;STRUCTURE" TEST-EVAL:RC 7109 T=
+s" STRUCTURE sdlpleak FIELD next ptr Q ;STRUCTURE" TEST-EVAL:RC 7109 T=
+s" STRUCTURE sdlpafter FIELD me sdlpafter ;STRUCTURE" TEST-EVAL:RC 7109 T=
 
 \ the controls. A pointer to a family that owns nothing declares, so the rejects
 \ above answer the POINTEE's linearity and not the word `ptr`.

@@ -1952,30 +1952,20 @@ defer TFAM-WIDTH-SLOT-FWD ( n n -- bool )   \ ( fam slot -- reads? ) forward ref
 : TFAM-WIDTH-SLOT-INSTALL ( -- ) [: TFAM-WIDTH-SLOT? ;] is TFAM-WIDTH-SLOT-FWD ;
 TFAM-WIDTH-SLOT-INSTALL
 
-\ --- which argument slots reach storage (checker.f PARAM-PAIR-SLOT). A slot
-\ reaches storage when its parameter occurs beneath a pointer, or in an
-\ argument a nested application's own storage slot takes (a `FIELD
-\ data ptr a`); a field, a variant payload or a quotation's row elsewhere
-\ holds it by value (`FIELD fn a`). An element-type slot (PK-TYPE: a C2
-\ view's, init's, records' or loan-field's, or a user family's parameter that
-\ feeds one) names the type of the storage the family addresses, so it
-\ reaches storage whatever its fields. Only a visible product or an unboxed
-\ sum holds a slot by value: an OPAQUE or boxed family, or one with no layout,
-\ reaches storage in every slot. One mask per family, memoized under
-\ TFM-EPOCH; the parameter kinds and OPAQUE it reads are set before the field
-\ commit that moves the epoch. Only a boxed sum names its own family
-\ (sumtype.f E-TDECL-RECURSIVE), and it answers before any walk, so the walk
-\ ends.
+\ --- which argument slots reach storage (checker.f PARAM-PAIR-SLOT), memoized under
+\ TFM-EPOCH: the kinds and OPAQUE read here are set before the field commit moves it.
 -1 constant STORE-ALL
 defer TFAM-STORE-MASK-FWD ( n -- n )   \ ( fam -- mask ) forward ref for a nested application
 
 
+\ The walk ends: a family names itself only beneath a pointer, where held is true and
+\ no nested mask is asked, or as a boxed sum, which TFAM-STORE-WALK answers first.
 : SCH-STORE-MASK ( n bool -- n )   \ slots whose parameter node holds beneath storage
    {: node:n held:bool :}
    node SCHEMA-PARAM? IF held IF 1 node SCHEMA-A@ lshift ELSE 0 THEN EXIT THEN
    node SCHEMA-PTR? IF node SCHEMA-A@ RES-TRUE RECURSE EXIT THEN
    node SCHEMA-APP? IF
-      node SCHEMA-A@ TFAM-STORE-MASK-FWD {: g:n :}
+      held IF 0 ELSE node SCHEMA-A@ TFAM-STORE-MASK-FWD THEN {: g:n :}
       node SCHEMA-B@ {: start:n :}
       0  node SCHEMA-C@ 0 ?do
          start i + SCHEMA-ROOT@  held g 1 i lshift and 0 <> or  RECURSE or
@@ -2013,7 +2003,7 @@ defer TFAM-STORE-MASK-FWD ( n -- n )   \ ( fam -- mask ) forward ref for a neste
    0  fam TFAM-VAR-COUNT@ 0 ?do fam TFAM-VAR-START@ i + SUMV-STORE-MASK or loop ;
 
 
-: TYPE-SLOT-MASK ( n -- n )   \ the element-type (PK-TYPE) slots
+: TYPE-SLOT-MASK ( n -- n )   \ PK-TYPE slots: each names the type of the storage its family addresses
    {: fam:n :}
    0  fam TFAM-ARITY@ 0 ?do fam i TFAM-PK@ PK-TYPE = IF 1 i lshift or THEN loop ;
 
