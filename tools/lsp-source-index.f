@@ -1,9 +1,8 @@
 \ lsp-source-index.f - locate an image word in current engine source. The verifier
 \ child scans the supplied bytes (LSP-CHECK:INDEX-BYTES) and returns surviving
-\ declaration identities; this file matches them to the image's compiled origins.
-\ An origin row is a binding locator (symbol, code entry, root-relative path, name
-\ span) with no file bytes, so lookups read the file's current text, an open
-\ document's first (tools/lsp-definition.f). Primitives come from PRIM-SOURCE.
+\ declaration identities; this file matches them to the path and name span
+\ ENGINE-ORIGIN:TARGET gives an engine word, and reads the file's current text, an
+\ open document's first (tools/lsp-definition.f). Primitives come from PRIM-SOURCE.
 
 require src/lib/string.f
 require src/lib/json.f

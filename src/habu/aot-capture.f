@@ -694,32 +694,12 @@ variable ACAP-ENTRY-N
 \ `defer SETUP ( -- )` fails.
 \ CHECKER-STORAGE-CELLS: FILE and stripped AOT load aot-data-cell.f after
 \ capture, and its scan resolves this checker export by name.
-: ACAP-KEEP-PKG? ( n ptr u8 n -- bool ) {: k:n pa:ptr pu:n :}
-   k ACAP-REC-DST 40 + ACAP-W32@ ACAP-REC-PKG {: na:ptr nu:n pub:bool found:bool :}
-   found 0= if false exit then
-   na nu pa pu CORE-STR=CI ;
-
 : ACAP-KEEP? ( n -- bool ) {: k:n :}
    k ACAP-REC-NAME$ {: a:ptr u:n :}
    a u s" DEFER-UNSET" CORE-STR=CI  k ACAP-REC-DST 40 + ACAP-W32@ 0= and
    if true exit then
    a u s" CHECKER-STORAGE-CELLS" CORE-STR=CI
-   k ACAP-REC-DST 40 + ACAP-W32@ 0= and if true exit then
-   a u s" FILE-MARK" CORE-STR=CI
-   a u s" FILE-ROWS" CORE-STR=CI or
-   a u s" FILE-IMPORT" CORE-STR=CI or
-   a u s" FILE-RESTORE" CORE-STR=CI or
-   a u s" FILE-HOOK?" CORE-STR=CI or
-   a u s" FILE-PENDING?" CORE-STR=CI or
-   a u s" INSTALL" CORE-STR=CI or
-   k s" ENGINE-ORIGIN-EARLY" ACAP-KEEP-PKG? and if true exit then
-   a u s" FILE-ROWS" CORE-STR=CI
-   a u s" FILE-IMPORT" CORE-STR=CI or
-   a u s" FILE-STATE" CORE-STR=CI or
-   a u s" FILE-BOUNDARY" CORE-STR=CI or
-   a u s" FILE-RESTORE" CORE-STR=CI or
-   a u s" INSTALL" CORE-STR=CI or
-   k s" ENGINE-ORIGIN" ACAP-KEEP-PKG? and ;
+   k ACAP-REC-DST 40 + ACAP-W32@ 0= and ;
 
 variable ACAP-ALL-NAMES
 

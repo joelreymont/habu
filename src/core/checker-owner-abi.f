@@ -260,9 +260,6 @@ $3E8 constant UNIT-PREPARE-BEGIN-OFF  \ ( -- )
 $3F0 constant UNIT-PREPARE-OFF        \ ( section size data-floor data-end -- row )
 $3F8 constant UNIT-INSTALL-OFF        \ ( row -- )
 $400 constant UNIT-PREPARE-END-OFF    \ ( -- )
-\ The live dictionary record for a checker symbol, resolved in that symbol's
-\ wordlist after AOT has rebased package ids (src/core/checker.f VIS-SYM-REC).
-$408 constant ORIGIN-REC-OFF
 \ Portable FILE checker sections use reference indices supplied by the FILE
 \ owner. Older records end before these fields.
 CHECKER-OWNER-EXT:UNIT-EXPORT-REFS-OFF constant UNIT-EXPORT-REFS-OFF     \ ( [ ptr u8 n -- n ] -- ptr u8 n )

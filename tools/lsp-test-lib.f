@@ -3213,11 +3213,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" NOWHERE
    s" 4" NOWHERE ;
 
-\ NEWTYPE is compiled in the checked prefix, before the normal engine-origin
-\ hook is installed. Its origin remains known, but top-level dictionary calls
-\ in sumtype.f defer its source index, even for unchanged bytes. The same
-\ limitation applies to util.f and structures.f below; target.f is declarations
-\ only and remains locatable.
+\ No engine word has a source location, so these prefix paths are not locatable.
 : PREFIX-SOURCE-PATH ( -- ptr u8 n )  s" src/core/sumtype.f" IN-TREE ;
 : PREFIX-TARGET-PATH ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" src/os/macos/target.f" IN-TREE exit then

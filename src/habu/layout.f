@@ -165,7 +165,7 @@ $0000400000000000 constant DNAME-REP
 \ for `package` and the check tool's scan of it. Capture refuses a record carrying it (aot-capture.f ACAP-COMPACT-ONE).
 $0000200000000000 constant DNAME-SEALED
 \ [16] bits 45-63: flags above the name length, which every length read clears by this count. Copies that load before
-\ or apart from this file: checker.f CK-REC-LEN-MASK, engine-origin-early.f RECORD-LEN-MASK.
+\ or apart from this file: checker.f CK-REC-LEN-MASK.
 19 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
@@ -368,7 +368,7 @@ $3680 constant ENVP-CELL
 \ main.f RUN) runs it as the program file, else 0; src/core/include.f reads it.
 \ It takes $2DB0, the first cell after TASK-CHAIN-CELL.
 $2DB0 constant PROGRAM-FILE-CELL
-$3688 constant PEND-CELL         \ mirrored: src/core/check-hook.f PEND-OFF, src/core/checker.f CK-DEF-PEND-OFF, src/habu/engine-origin-early.f PEND-OFF
+$3688 constant PEND-CELL         \ mirrored: src/core/check-hook.f PEND-OFF, src/core/checker.f CK-DEF-PEND-OFF
 \ A definition whose capture ran a parsing immediate has construction inputs
 \ outside the body text. The native cache reads this only through the running engine's
 \ native-pending-opaque? primitive. The cell is transient and clears with
@@ -1233,7 +1233,7 @@ $2848 constant TOKFRF-CELL
 \ within their keyword, so no source can end inside them. A transient address
 \ like TKA-CELL, zeroed at snapshot: no native-layout row, no stripped-image
 \ claim.
-$2850 constant PENDTKA-CELL      \ mirrored: src/core/check-hook.f SRC-NAME, src/habu/engine-origin-early.f PENDNAME-OFF
+$2850 constant PENDTKA-CELL      \ mirrored: src/core/check-hook.f SRC-NAME
 \ JIT-QUOT: quotations open inside quotations on tier 0. QPATCH-CELL, QENT-CELL,
 \ QXH-CELL and QFRAME-CELL describe the INNERMOST open quotation, which is all
 \ that J-EXIT, the locals guards and `;]` read. A `[:` opened while one is open
