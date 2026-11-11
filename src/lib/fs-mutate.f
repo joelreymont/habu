@@ -538,8 +538,6 @@ private
 : ATOMIC-SEED ( -- n )
    mono-ns getpid xor ;
 
-\ openat, fchmod, renameat, fsync and fcntl for the atomic write; each answers
-\ -1 with the cause in FFI:ERRNO.
 PROCESS-SYMBOLS
 FUNCTION: OPENAT-CALL openat ( n ptr u8 n n -- i32 ) 3 VARIADIC ;FUNCTION
 FUNCTION: FCHMOD-CALL fchmod ( n n -- i32 ) ;FUNCTION
@@ -599,8 +597,6 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    repeat drop
    E-FS-IO ERRNO-FAIL ;
 
-\ Write fd's data to the drive; on macOS a filesystem without F_FULLFSYNC gets
-\ fsync.
 : ATOMIC-SYNC ( n -- n ) {: fd :}
    HB-TARGET-MACOS? if
       fd F-FULLFSYNC 0 FCNTL-CALL 0= if fd exit then
@@ -610,8 +606,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    fd FSYNC-CALL 0<> if E-FS-IO ERRNO-FAIL then
    fd ;
 
-\ Stack-preserving under `catch`. The write records its own cause, a refused
-\ mode copy fchmod's and a refused sync its own.
+\ Stack-preserving under `catch`.
 : ATOMIC-FILL ( n ptr u8 n n -- n ptr u8 n n ) {: fd src:ptr srcu mode :}
    fd src srcu ATOMIC-WRITE-FD
    mode 0 >= if
@@ -620,8 +615,8 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    fd ATOMIC-SYNC drop
    fd src srcu mode ;
 
-\ Sync dir's entries. Linux refuses fsync on a search-only descriptor (EBADF),
-\ so dir is reopened to read; one the caller may not list stays unsynced.
+\ Linux refuses fsync on a search-only descriptor (EBADF), so dir is reopened
+\ to read; one the caller may not list stays unsynced.
 : ATOMIC-SYNC-DIR ( n -- n ) {: dir :}
    dir [: ATOMIC-SYNC ;] catch {: first:n :}
    drop
@@ -652,9 +647,6 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    dir SIBLING-Z 0 UNLINK-AT-CALL 0<> if E-FS-IO ERRNO-FAIL then
    dir ;
 
-\ After a first failure the sibling goes; one that cannot go is named on fd 2,
-\ as REPLACE-STAGED names its own. The first failure's code and cause are
-\ thrown again whatever the removal or the report met.
 : ATOMIC-ABANDON ( n ptr u8 n n n -- ) {: dir dst:ptr off nameu code :}
    ERRNO {: cause :}
    dir [: ATOMIC-UNLINK ;] catch {: clean-code:n :}
@@ -786,8 +778,6 @@ private
    repeat drop
    E-FS-IO throw ;
 
-\ The file twin of MKTEMP-DIR-SEED: each candidate is created and opened
-\ read-write, mode 0600, refused when the name exists.
 : MKTEMP-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n n )
    {: base:ptr baseu prefix:ptr prefixu seed :}
    0 begin dup TMP-RETRIES < while
@@ -820,8 +810,7 @@ private
 \ refuses (a canonical spelling past PATH-CAP) E-FS-IO. Without the check each
 \ dies later on an error that does not name TMPDIR. The answer is the canonical
 \ spelling, borrowed from this task's PATHZ2 buffer. The line is three writes,
-\ as src/core/include.f names a refused source path, not one SB$ write: a root
-\ of PATH-CAP bytes with the reason overflows SB-CAP.
+\ not one SB$ write: a root of PATH-CAP bytes with the reason overflows SB-CAP.
 : TMPDIR-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u why:ptr whyu :}
    2 why whyu write drop
    2 a u write drop
@@ -845,13 +834,11 @@ private
    real prefixu TEMP-DIR-BASE-MAX > if a u TMPDIR-LONG then
    PATHZ2-BUF SPAN:$ drop real ;
 
-\ The one temp root a process reads from its environment: TMPDIR, or /tmp when
-\ TMPDIR is unset or empty, checked for a prefix of n bytes and answered in its
-\ canonical spelling. Every temp FS:MKTEMP-DIR or FS:MKTEMP makes thus has a
-\ canonical path: a root reached through a symlink (macOS's /tmp is
-\ /private/tmp) would otherwise give paths that differ from the canonical ones
-\ the engine records for the same files. A caller that hands its child a TMPDIR
-\ of its own (test/gate-pool.f) owns and removes it, so a temp made there goes
+\ The root is answered in its canonical spelling, so every temp FS:MKTEMP-DIR
+\ or FS:MKTEMP makes has a canonical path: a root reached through a symlink
+\ (macOS's /tmp is /private/tmp) would otherwise give paths that differ from
+\ the canonical ones the engine records for the same files. A caller that hands
+\ its child a TMPDIR of its own owns and removes it, so a temp made there goes
 \ away with it even when the child is killed before its own CLEANUP-RUN;
 \ anywhere else nobody reaps the root, and a maker that leaks there leaks for
 \ good.
@@ -877,8 +864,7 @@ public
 \ Its callers are a just-forked child (src/lib/process-fork.f registers it with
 \ FORK-CHILD) and single-task fixtures, where no other task can be inside the
 \ registry: a registration another task was in when the process forked is part
-\ of what the fork copied, so the lock opens with the count, as FORK-CHILD:RESET
-\ opens its own.
+\ of what the fork copied, so the lock opens with the count.
 : CLEANUP-RESET ( -- )
    0 CLEANUP-N !
    CLEANUP-RELEASE ;
@@ -911,12 +897,12 @@ public
 \ in place, and REMOVE-TREE reads its root's name again once the tree below is
 \ gone, so a registration that grew the row (releasing the old one) or a
 \ forget that shifted the slots while the run stood would hand it freed or
-\ moved bytes. A task that registers or forgets meanwhile waits for the run.
-\ The exit hook runs this on whichever task exits, and that task may already
-\ hold the lock: a `die` inside a registration, a forget or a run of its own.
-\ It then runs under the hold it has, which no other task can move: every
-\ counted slot is whole, since a registration counts its slot only once it is
-\ written and a growth publishes the new row before releasing the old.
+\ moved bytes. The exit hook runs this on whichever task exits, and that task
+\ may already hold the lock: a `die` inside a registration, a forget or a run
+\ of its own. It then runs under the hold it has, which no other task can
+\ move: every counted slot is whole, since a registration counts its slot only
+\ once it is written and a growth publishes the new row before releasing the
+\ old.
 : CLEANUP-RUN ( -- )
    CLEANUP-LOCK atomic@ CLEANUP-SELF = if
       CLEANUP-REMOVE-ALL exit
@@ -926,7 +912,7 @@ public
 
 
 private
-\ CLEANUP-AT-EXIT is the registry's process exit action (src/lib/at-exit.f).
+\ CLEANUP-AT-EXIT is the registry's process exit action.
 \ Registering adds it, not loading this file: a stripped application restores
 \ no engine cell, so its exit vector is zero until its own CLEANUP+ arms it.
 \
@@ -934,9 +920,8 @@ private
 \ one line and the exit code the process carries is kept (the engine preserves
 \ it across the call). The string builder and fmt live in engine bands below a
 \ stripped image's DATA window, which a stripped image maps fresh and zeroed.
-\ Measured: a stripped MAIN that requires src/lib/fmt.f prints -2105 through
-\ both FMT:.INT and SB-RESET FMT:SB-INT SB$. Nothing that ran before this line
-\ reads the builder again, so resetting it is safe.
+\ Nothing that ran before this line reads the builder again, so resetting it
+\ is safe.
 : EXIT-REPORT ( n -- ) {: code :}
    SB-RESET
    s" hb: cleanup at exit threw " SB-APPEND
@@ -1036,8 +1021,6 @@ public
 : REPLACE-STAGED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
    {: path:ptr pathu fill :}
    path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}
-   \ Closed once, before fill opens the sibling by path; ATOMIC-CLOSE says why a
-   \ failed close is not retried.
    fd CLOSE-FD 0<> if
       FFI:ERRNO {: close-cause:n :}
       tmp tmpu [: STAGED-CLEAN ;] catch {: clean-code:n :}
