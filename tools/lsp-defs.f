@@ -865,7 +865,6 @@ public
    ESC-B 1 BUF:N>BLEN BUF:INIT
    false PROBE-DISK-VALID ! ;
 
-\ Removes what the last check of the document in this slot kept.
 : DEFS-DROP ( n -- )
    {: slot:n :}
    BLOCK-N @ 0 ?do
@@ -882,7 +881,7 @@ public
 
 \ Keeps these file, definition and use lines of the completed check of the
 \ document in this slot, its failed loader target if any, and whether its
-\ verdict was verified, in place of what its last check kept.
+\ verdict was verified.
 : DEFS-KEEP ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n bool -- )
    {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n unread:ptr unreadu:n slot:n verified:bool :}
    slot DEFS-DROP
@@ -905,9 +904,7 @@ public
 \ Keeps these file, definition and use lines of a completed check of a file,
 \ of an open document's text or of the file on disk, whether its verdict
 \ was verified and which slot supplied the subject (-1 for disk), as the
-\ probe, in place of the one the store keeps: the newest
-\ block, under the slot PROBE, with no record, whose groups answer in no
-\ other's place.
+\ probe.
 : DEFS-PROBE ( ptr u8 n ptr u8 n ptr u8 n bool n -- )
    {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n verified:bool source:n :}
    DEFS-UNPROBE
@@ -919,8 +916,7 @@ public
    false PROBE-DISK-VALID ! ;
 
 \ The metadata captured with a disk subject's bytes before a references
-\ probe. The next probe consumes it; other sources use their document version
-\ or the verifier's own disk read stamp.
+\ probe. The next probe consumes it.
 : PROBE-DISK-STAMP! ( ptr u8 n n n n n n -- )
    {: path:ptr pathu:n size:n msec:n mns:n csec:n cns:n :}
    pathu PATH-CAP > if E-PATH-RANGE throw then
@@ -971,7 +967,6 @@ public
 \ and declared its word at its token again, letters compared without case.
 : REC-SEVERAL? ( n -- bool )  R-SEVERAL REC@ 0<> ;
 
-\ Whether the checker recorded the record's word public in its package.
 : REC-PUBLIC? ( n -- bool )  R-PUBLIC REC@ 0<> ;
 
 \ The line and character the record's token starts at, then ends at: a missing
@@ -1025,8 +1020,6 @@ public
    {: u:n :}
    u U-START USE@ u U-END USE@ ;
 
-\ The word as use U of the text T writes it: the bytes the use spans, held to
-\ the text.
 : USE-WORD$ ( ptr u8 n n -- ptr u8 n )
    {: t:ptr tu:n u:n :}
    u USE-BYTES {: from:n to:n :}
@@ -1069,7 +1062,6 @@ public
 \ A file line was read for this group, even if its visits conflicted.
 : GROUP-CONSUMED? ( n -- bool )  G-STAMP GROUP@ ST-UNSEEN <> ;
 
-\ Whether two checks read the same revision of the same file.
 : GROUP-SAME? ( n n -- bool )
    {: a:n b:n :}
    a GROUP-STAMPED? b GROUP-STAMPED? and 0= if false exit then
@@ -1086,8 +1078,8 @@ public
    a G-CSEC GROUP@ b G-CSEC GROUP@ = and
    a G-CNS GROUP@ b G-CNS GROUP@ = and ;
 
-\ Whether the file still has the revision the group read. An unavailable
-\ disk path is stale, so the owner rechecks and reports its actual load error.
+\ An unavailable disk path is stale, so the owner rechecks and reports its
+\ actual load error.
 : GROUP-FRESH? ( n -- bool )
    {: g:n :}
    g G-STAMP GROUP@ ST-DOCUMENT = if
@@ -1150,8 +1142,7 @@ public
       none OF 0 0 ENDOF
    ;MATCH ;
 
-\ Every file the check consumed still matches its recorded revision. Groups
-\ created only by an origin/use line were not a consumed input.
+\ Groups created only by an origin/use line were not a consumed input.
 : DEFS-INPUTS-FRESH? ( n -- bool )
    {: slot:n :}
    slot DEFS-GROUP-RANGE ?do
@@ -1197,8 +1188,6 @@ public
 : USE-PACKAGE$ ( n -- ptr u8 n )  dup U-PKG USE@ swap U-PKG-U USE@ AT$ ;
 : USE-VIS ( n -- n )  U-VIS USE@ ;
 
-\ The first record of group G whose token starts and ends at these bytes, if
-\ one does.
 : GROUP-REC-AT ( n n n -- option<n> )
    {: g:n ts:n te:n :}
    g G-FIRST GROUP@
@@ -1208,8 +1197,6 @@ public
    repeat
    drop OPTION:NONE ;
 
-\ The record of group G whose token starts and ends at these bytes, if exactly
-\ one does.
 : GROUP-REC-SOLE ( n n n -- option<n> )
    {: g:n ts:n te:n :}
    0 -1 g G-FIRST GROUP@
@@ -1219,10 +1206,10 @@ public
    repeat
    drop swap 1 = if OPTION:SOME else drop OPTION:NONE then ;
 
-\ Where name W's tail starts when W is qualified as CHECKER-QUALIFIED? reads
-\ a name, by one colon neither its first byte nor its last: the byte after
-\ that colon; else -1. SPLIT-NEXT's flag says only that its start was valid:
-\ the position it returns lies past W's end when no colon follows that start.
+\ Where name W's tail starts when W is qualified by one colon neither its
+\ first byte nor its last: the byte after that colon; else -1. SPLIT-NEXT's
+\ flag says only that its start was valid: the position it returns lies past
+\ W's end when no colon follows that start.
 : QUALIFIER-AT ( ptr u8 n -- n )
    {: w:ptr wu:n :}
    w wu [char] : 0 SPLIT-NEXT drop nip nip
@@ -1233,9 +1220,6 @@ public
 
 private
 
-\ The first record of group G whose token starts and ends at these bytes and
-\ whose word is W, letters compared without case as Habu compares names, if
-\ one is.
 : GROUP-REC-WORD ( n n n ptr u8 n -- option<n> )
    {: g:n ts:n te:n w:ptr wu:n :}
    g G-FIRST GROUP@
@@ -1247,9 +1231,6 @@ private
    repeat
    drop OPTION:NONE ;
 
-\ When no record of group G at these bytes is of word W: the one of W's tail
-\ when W is qualified (QUALIFIER-AT); else the one record there, if exactly
-\ one is.
 : GROUP-REC-TAIL ( n n n ptr u8 n -- option<n> )
    {: g:n ts:n te:n w:ptr wu:n :}
    w wu QUALIFIER-AT {: at:n :}
@@ -1274,8 +1255,6 @@ public
       none OF g ts te w wu GROUP-REC-TAIL ENDOF
    ;MATCH ;
 
-\ The first record of group G whose token's bytes, from its start to before
-\ its end, hold this byte, if one does.
 : GROUP-REC-HOLDING ( n n -- option<n> )
    {: g:n at:n :}
    g G-FIRST GROUP@
@@ -1287,8 +1266,6 @@ public
 
 private
 
-\ The group for the document's own file among block K's, while K's positions
-\ are of the document's current text, if K has one.
 : OWN-IN ( n -- option<n> )
    {: k:n :}
    k B-CURRENT BLOCK@ 0= if OPTION:NONE exit then
@@ -1297,7 +1274,6 @@ private
    loop
    OPTION:NONE ;
 
-\ The group for the file at this path among block K's, if K has one.
 : GROUP-IN ( n ptr u8 n -- option<n> )
    {: k:n p:ptr pu:n :}
    k B-GROUP GROUP-N @ BLOCK-END k B-GROUP BLOCK@ ?do
@@ -1305,7 +1281,6 @@ private
    loop
    OPTION:NONE ;
 
-\ GROUP-IN, while K's positions are of the document's current text.
 : PATH-IN ( n ptr u8 n -- option<n> )
    {: k:n p:ptr pu:n :}
    k B-CURRENT BLOCK@ 0= if OPTION:NONE exit then
