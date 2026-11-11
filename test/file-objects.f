@@ -623,11 +623,11 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
 : MARK-WALK ( -- ) ROOT ROOT-U @ ['] MARK-SEEN FS:WALK-FILES ;
 : NEWER-WALK ( -- ) ROOT ROOT-U @ ['] NEWER-SEEN FS:WALK-FILES ;
 
-\ MARK holds the newest change time among the fixture builds' objects.
-: MARK ( -- ) F$ ROOT!  0 MARK-S !  0 MARK-NS !  ['] MARK-WALK WALKED ;
+\ MARK holds the newest change time among the out root's objects.
+: MARK ( ptr u8 n -- ) ROOT!  0 MARK-S !  0 MARK-NS !  ['] MARK-WALK WALKED ;
 
-\ The fixture builds' objects changed after MARK's time; FOUND$ is the last of them.
-: REWRITTEN ( -- n ) F$ ROOT!  0 NEWER-N !  0 FOUND-U !  ['] NEWER-WALK WALKED  NEWER-N @ ;
+\ The out root's objects changed after MARK's time; FOUND$ is the last of them.
+: REWRITTEN ( ptr u8 n -- n ) ROOT!  0 NEWER-N !  0 FOUND-U !  ['] NEWER-WALK WALKED  NEWER-N @ ;
 
 \ The label holds when the build's object of tail i is the one KEEP held.
 : LINKED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
@@ -703,10 +703,10 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP
    s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
-   BARE-RUN  MARK
+   BARE-RUN  F$ MARK
    s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    s" the build links log-first.f" LOG-FIRST LINKED
-   REWRITTEN {: n:n :}
+   F$ REWRITTEN {: n:n :}
    s" the build rewrites only app-end.f's object" LABEL  n 1 T=
    s" the object it rewrites is app-end.f's" LABEL  FOUND$ s" /app-end.f.hfo" ENDS-WITH? TTRUE
    LOG-RUN ;
@@ -1013,15 +1013,17 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    s\" : MAIN ( -- ) FILE-OBJECTS-RETIRE-K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ Guards a piece that stops changing an earlier record and has no stores: Z2 must compile r.f, whose K
-\ read W's record while s.f retired it, and print a cold build's 1.
+\ read W's record while s.f retired it, and print a cold build's 1; Z3, with nothing changed, links every file.
 : RETIRE-CASE ( CMD:command -- CMD:command )
    WRITE-RETIRE
    s" Z" WHICH!  s" main.f" s" prog-r" NEST-BUILD 0= if exit then
    s" prog-r" s\" 0\n" s" the program prints K" NEST-RUN
    false WRITE-RETIRE-S
    s" Z2" WHICH!  s" main.f" s" prog-r" NEST-BUILD 0= if exit then
-   s" prog-r" s\" 1\n" s" the program prints K" NEST-RUN
+   s" prog-r" s\" 1\n" s" the program prints K" NEST-RUN  L$ MARK
    s" Z3" WHICH!  s" main.f" s" prog-r" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build three rewrites no object" LABEL  n 0 T=
    s" prog-r" s\" 1\n" s" the program prints K" NEST-RUN ;
 
 \ Guards a cross build, whose words have no emission (linker.f WORD-RECORD+): bare-main.f for Wasm in a
