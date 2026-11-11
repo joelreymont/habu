@@ -33186,14 +33186,12 @@ CHECKER-REG:}SCRATCH
    0 CHECKER-REC-SYM !
    din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + RES-TRUE ;
 
-\ A primitive row of sym, the effect din dout rin rout with PE tags, stated as
-\ the table states one (PE-CLOSE-SYM) but with its record built under symbol 0,
-\ as a table row lies below the user store (PTABLE-END): no lookup of sym finds
-\ it, so a call tries every row (TRY-PRIMS) under any authority, as for hb's
-\ own primitives. Sym's cached first row goes.
+\ A primitive row of sym as the table states one (PE-CLOSE-SYM), its quotation inputs kept
+\ (KEEP-QUOTS), its record under symbol 0, so a call tries every row (TRY-PRIMS). Sym's cached row goes.
 : READ-ROW ( n n n n bool n n -- )
    {: din:n dout:n rin:n rout:n hasr:bool sym:n pe:n :}
    0 CHECKER-REC-SYM !
+   din KEEP-QUOTS
    sym  din dout rin rout hasr E-BUILD-EFFECT  pe PE-ACTIVE or  PRIM-ADD
    HIDX-VALID @ IF  HIDX-EPOCH @ 1- sym HT-PRM-E HIDX-CELL !  THEN ;
 
