@@ -18,7 +18,9 @@ package COMP
 -9590 constant E-FIRST
 -9599 constant E-LAST
 -9590 constant E-T0-TARGET   \ EMIT-SELECT of an architecture with no emitter
--9591 constant E-T0-UNIT     \ EMIT-QUOT-OPEN of a unit other than the next one
+\ E-T0-UNIT: EMIT-QUOT-OPEN of a unit other than the next, EMIT-REC-CELLS or EMIT-ENV-OPEN
+\ after the unit's first instruction, EMIT-ENV-LOAD in a unit EMIT-ENV-OPEN did not open.
+-9591 constant E-T0-UNIT
 -9592 constant E-T0-UNFILLED \ an operation the selected emitter does not provide
 -9593 constant E-T0-SLOT     \ code after the does> patch slot
 -9594 constant E-T0-OPERAND  \ a vreg, operation, shift or condition outside its type
@@ -282,6 +284,31 @@ ARCHES TYPED-BUFFER EMIT-SLOT-LOAD-XT [ vreg n -- ]
 : EMIT-SLOT-STORE ( vreg n -- ) CUR @ EMIT-SLOT-STORE-XT @ execute ;
 : EMIT-SLOT-LOAD ( vreg n -- ) CUR @ EMIT-SLOT-LOAD-XT @ execute ;
 
+\ A reading quotation's record lies in the frame of the unit it is written in: cell 0 its
+\ unit's code, then the locals. Its value is the address with bit 63 set (habu1.f BRECORD).
+ARCHES TYPED-BUFFER EMIT-REC-CELLS-XT [ n -- ]
+ARCHES TYPED-BUFFER EMIT-ENV-OPEN-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-REC-STORE-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-REC-QUOT-XT [ n vreg -- ]
+ARCHES TYPED-BUFFER EMIT-ENV-LOAD-XT [ vreg n -- ]
+
+\ The open unit's frame holds n record cells; before its first instruction.
+: EMIT-REC-CELLS ( n -- ) CUR @ EMIT-REC-CELLS-XT @ FILLED execute ;
+
+\ The open unit is a reading quotation and keeps the record's address it was
+\ called with; its first instruction, after EMIT-REC-CELLS when both are called.
+: EMIT-ENV-OPEN ( -- ) CUR @ EMIT-ENV-OPEN-XT @ FILLED execute ;
+
+\ Store the vreg into record cell n of the open unit.
+: EMIT-REC-STORE ( vreg n -- ) CUR @ EMIT-REC-STORE-XT @ FILLED execute ;
+
+\ The vreg becomes the quotation value of the record starting at record cell n.
+: EMIT-REC-QUOT ( n vreg -- ) CUR @ EMIT-REC-QUOT-XT @ FILLED execute ;
+
+\ The vreg becomes cell n of the record the open unit was called with; cell 0
+\ is its code address.
+: EMIT-ENV-LOAD ( vreg n -- ) CUR @ EMIT-ENV-LOAD-XT @ FILLED execute ;
+
 \ ---- arithmetic --------------------------------------------------------------
 ARCHES TYPED-BUFFER EMIT-OP-XT [ vreg vreg alu -- ]
 ARCHES TYPED-BUFFER EMIT-OP-LIT-XT [ vreg n alu -- ]
@@ -506,8 +533,9 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 \ picks the slot the operations run, per definition if need be, and throws
 \ E-T0-TARGET for an architecture no emitter provided. An unset cell stays unset
 \ in its slot, so an operation never runs another target's code: EMIT-UNIT-OPEN,
-\ EMIT-SLOT-CLOSE and the callback stub throw E-T0-UNFILLED, and any other unset
-\ cell ends the process with `hb: unset quotation` (exit 86,
+\ EMIT-SLOT-CLOSE, the callback stub, EMIT-REC-CELLS, EMIT-ENV-OPEN,
+\ EMIT-REC-STORE, EMIT-REC-QUOT and EMIT-ENV-LOAD throw E-T0-UNFILLED, and any
+\ other unset cell ends the process with `hb: unset quotation` (exit 86,
 \ ENGINE-ERROR:CALLABLE-ABI). An operation before any EMIT-SELECT throws
 \ E-LAYOUT-BOUNDS (7122). EMIT-PROVIDED? answers whether EMIT-SELECT would
 \ admit an architecture, so a caller compiles for a machine only when it can.

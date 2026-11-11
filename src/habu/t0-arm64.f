@@ -31,6 +31,8 @@ using A64ASM
 9 constant CB-ID                      \ x9, the stub's slot for its thunk
 4 constant INSN                       \ the bytes of one instruction word
 31 constant SP                        \ as a base or an add/sub operand
+4 constant REC-ARG                    \ x4, a reading quotation's record on entry
+                                      \ (src/habu/habu1.f BRECORD)
 
 \ Registers. x19 is the data stack and grows up (src/habu/jit.f W-PUSHR,
 \ W-POPR). x19, x20 (DATA), x26, x27 and x28 are the engine's
@@ -87,6 +89,8 @@ create OUT BUF:HDR-BYTES SCRATCH-ALLOT \ the closed units, BYTES
 create EPI BUF:HDR-BYTES SCRATCH-ALLOT \ the open unit's epilogue, built at CLOSE
 SCRATCH-VARIABLE LIVE                 \ nonzero once the buffers hold storage
 variable FRAME-CELLS                  \ machine-stack cells this unit uses
+variable REC-CELLS                    \ this unit's record cells
+variable ENV                          \ 1 when this unit keeps a record's address
 variable LINKED                       \ nonzero once this unit calls
 variable HELD                         \ nonzero while x29 holds the index
 variable NEPI
@@ -273,8 +277,8 @@ DYNAMIC-BUFFER BR-ARG n
    RAW BUF:CLEAR
    OUT-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !  0 LINKED !  0 HELD !  0 NEPI !  0 NPEND !  0 NPCALL !
-   0 NSELF !  0 NBR ! ;
+   0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !  0 LINKED !  0 HELD !  0 NEPI !
+   0 NPEND !  0 NPCALL !  0 NSELF !  0 NBR ! ;
 
 \ How many epilogues CLOSE inserts at or before raw offset x.
 : SITES<= ( n -- n ) {: x:n :}
@@ -311,10 +315,13 @@ DYNAMIC-BUFFER BR-ARG n
 \ A unit's body is emitted into RAW at unit-relative offsets; CLOSE copies it
 \ into OUT with the prologue in front and the epilogue before every `ret`.
 \
-\ The frame is fixed at CLOSE, so the body holds no frame size to patch. Its
-\ slots are FRAME-CELLS cells rounded to 16 bytes, slot k at sp + 8k, reserved
-\ and given back in 4095-page chunks then the remainder: a frame has no cap. A
-\ unit with no slots and no call is a leaf and has neither. A LINKED unit also
+\ The frame is fixed at CLOSE, so the body holds no frame size to patch. It
+\ holds, lowest first, the env cell when ENV is 1 (the record's address the
+\ unit was called with), REC-CELLS record cells, then FRAME-CELLS slots: record
+\ cell n at sp + 8 * (ENV + n), slot k at sp + 8 * (ENV + REC-CELLS + k). Its
+\ cells are rounded to 16 bytes, reserved and given back in 4095-page chunks
+\ then the remainder: a frame has no cap. A unit with no cells and no call is a
+\ leaf and has neither. A LINKED unit also
 \ saves x30 above its slots, keeping sp 16-byte aligned at every call; a TAIL
 \ leaves with x30 as the unit found it. CLOSE inserts the epilogue at each
 \ EPI-AT offset and moves every row of the unit by the prologue and by the
@@ -374,7 +381,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 
 : CLOSE ( -- )
-   FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
+   ENV @ REC-CELLS @ + FRAME-CELLS @ + CELL * 15 + 15 invert and {: bytes:n :}
    OUT-OFF {: base:n :}
    LINKED @ if LR SP -16 ENC-STRPRE OUT W32+ then
    bytes false OUT SP-ADJ
@@ -500,13 +507,46 @@ DYNAMIC-BUFFER BR-ARG n
 : SLOTS ( n -- ) {: k:n :}
    k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
 
+\ The offset from sp of record cell n, and of slot k, in the frame CLOSE sizes.
+: REC-OFF ( n -- n ) ENV @ + CELL * ;
+: SLOT-OFF ( n -- n ) REC-CELLS @ + REC-OFF ;
+
 : SLOT-STORE ( vreg n -- )
    {: s:vreg k:n :}
-   s REG SP k CELL * true XFER ;
+   s REG SP k SLOT-OFF true XFER ;
 
 : SLOT-LOAD ( vreg n -- )
    {: d:vreg k:n :}
-   d REG SP k CELL * false XFER ;
+   d REG SP k SLOT-OFF false XFER ;
+
+\ A record or env cell placed after the body began would move the offsets
+\ already emitted.
+: BODY-EMPTY ( -- ) HERE-OFF 0 <> if E-T0-UNIT throw then ;
+
+: REC-CELLS! ( n -- ) BODY-EMPTY  REC-CELLS ! ;
+
+: ENV-OPEN ( -- )
+   BODY-EMPTY
+   1 ENV !
+   REC-ARG SP 0 ENC-STR W ;
+
+: REC-STORE ( vreg n -- )
+   {: s:vreg n:n :}
+   s REG SP n REC-OFF true XFER ;
+
+\ The record's address with bit 63 set, one `orr` bitmask immediate.
+: REC-QUOT ( n vreg -- )
+   {: n:n d:vreg :}
+   d REG {: r:n :}
+   r SP n REC-OFF ADD-IMM
+   r r $8000000000000000 >LIMM ENC-ORRI W ;
+
+: ENV-LOAD ( vreg n -- )
+   {: d:vreg n:n :}
+   ENV @ 0= if E-T0-UNIT throw then
+   d REG {: r:n :}
+   r SP 0 false ACCESS
+   r r n CELL * false XFER ;
 
 \ ---- arithmetic --------------------------------------------------------------
 : OP ( vreg vreg alu -- )
@@ -819,6 +859,11 @@ DYNAMIC-BUFFER BR-ARG n
    ['] SLOTS k EMIT-SLOTS-XT !
    ['] SLOT-STORE k EMIT-SLOT-STORE-XT !
    ['] SLOT-LOAD k EMIT-SLOT-LOAD-XT !
+   ['] REC-CELLS! k EMIT-REC-CELLS-XT !
+   ['] ENV-OPEN k EMIT-ENV-OPEN-XT !
+   ['] REC-STORE k EMIT-REC-STORE-XT !
+   ['] REC-QUOT k EMIT-REC-QUOT-XT !
+   ['] ENV-LOAD k EMIT-ENV-LOAD-XT !
    ['] OP k EMIT-OP-XT !
    ['] OP-LIT k EMIT-OP-LIT-XT !
    ['] SHIFT k EMIT-SHIFT-XT !
