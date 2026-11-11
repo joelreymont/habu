@@ -180,12 +180,6 @@ create TAB
    TOKDEPTH-CELL                      1 cells                 CLAIM TOKDEPTH-CELL
    LOCDEPTHS                          LOC-RECS cells          CLAIM LOCDEPTHS
    REPLH-CELL                         1 cells                 CLAIM REPLH-CELL
-   RSAVCP-CELL                        1 cells                 CLAIM RSAVCP-CELL
-   RSAVND-CELL                        1 cells                 CLAIM RSAVND-CELL
-   RSAVDP-CELL                        1 cells                 CLAIM RSAVDP-CELL
-   RSAVSP-CELL                        1 cells                 CLAIM RSAVSP-CELL
-   RRECP-CELL                         1 cells                 CLAIM RRECP-CELL
-   RSAVROWS-CELL                      1 cells                 CLAIM RSAVROWS-CELL
    ARGC-CELL                          1 cells                 CLAIM ARGC-CELL
    ARGV-CELL                          1 cells                 CLAIM ARGV-CELL
    ENVP-CELL                          1 cells                 CLAIM ENVP-CELL

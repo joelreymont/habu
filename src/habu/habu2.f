@@ -517,14 +517,6 @@ private
 ;package
 
 package ENGINE-EMIT
-
-public
-variable LRREC
-\ DEFER-MAGIC is src/habu/layout.f's: this file writes and checks the trailer,
-\ and src/compiler/native/dict.f checks it too.
-;package
-
-package ENGINE-EMIT
 private
 : RECWPUB$ ( -- ptr u8 n )      s" rec-wide-publish" ;
 : RECMIQ$ ( -- ptr u8 n )       s" rec-min-in@" ;
@@ -3144,10 +3136,8 @@ private
    LEVCORRUPTMSG LABEL@ LBL,  ma mu BYTES,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
-\ LRREC exits 70; LFLOORREC is the underdepth throw.
+\ LFLOORREC is the underdepth throw.
 : EM-RECOVER-EXITS ( -- )
-   LRREC LABEL@ LBL,                                        \ nothing branches here: kernel-object.f ENGINE-SYMBOLS names it
-   0 70 MOVZ,  NR-EXIT-GROUP SYS,
    \ LFLOORREC: crash.f C-CRASH-DATA-RECOVER resumes a thread here, every other
    \ register as it faulted, after an access to the data stack's low guard page:
    \ a word took more cells than the stack held, and no cell under the base was
@@ -3328,7 +3318,6 @@ package LABELS
 
 : RUNTIME ( -- )
    LBL LDOESPATCH !  LBL LGENIOOUT !
-   LBL LRREC !
    LBL LEVALREC !  LBL LEXITHOOK !
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !
    LBL LOPENNL !

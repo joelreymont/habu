@@ -332,14 +332,6 @@ $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
 STACK-ABI:BASE-CELL constant S0-CELL
 $3640 constant REPLH-CELL               \ claimed; no code reads or writes it
-$3648 constant RSAVCP-CELL
-$3650 constant RSAVND-CELL
-$3658 constant RSAVDP-CELL
-$3660 constant RSAVSP-CELL
-$3668 constant RRECP-CELL
-\ RSAVROWS-CELL: claimed in the $2800..$3000 free header band; no code reads or
-\ writes it.
-$2D38 constant RSAVROWS-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
