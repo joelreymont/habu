@@ -34,8 +34,8 @@ require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 require tools/check-verify-core.f
 
 \ Checker axioms.
-\ CHECKER-SCOPE-START/DONE isolate, then roll back, generated dependency effects.
-s" CHECKER-SCOPE-START" s" --" TRUST
+\ CHECKER-SCOPE-START-NEUTRAL/DONE isolate, then roll back, generated dependency
+\ effects.
 s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
 

@@ -596,9 +596,8 @@ variable OF-U                           \ 0 for the other forms
 
 70 constant REFUSED-RC                  \ a refused definition's stop (verify-source.f BODY-VERDICT)
 
-\ A definition or top-level token refused by the throw that rendered its packet
-\ (checker.f CHECKER-DEF-STOPPED?) stops the pre-pass as a definition its verdict refuses
-\ does; any other stop keeps its code.
+\ A refusal that rendered its packet (CHECKER-DEF-STOPPED?) stops as a refused
+\ verdict does, REFUSED-RC; any other stop keeps its code.
 : STOP-CODE ( n -- n )
    dup CHECKER-DEF-STOPPED? if drop REFUSED-RC then ;
 

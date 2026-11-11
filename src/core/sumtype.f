@@ -180,18 +180,14 @@ private
    TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  TDW-A @ TDW-U @
    TDECL-DIAG ;
 
-\ TDECL-RUN ( [ -- ] -- ) : run one declaration body quotation transactionally. On
-\ any throw the registries roll back and the failure is reported; a multi-error
-\ load counts the reject and continues, otherwise the named code propagates as
-\ the refusal the report rendered (checker.f CHECKER-REFUSE). TDECL-OVERSIZE
-\ belongs to this declaration: a body that refuses before TDECL-REQUIRE-FIT
-\ reads it would otherwise leave it set for the next replay entry.
+\ A throw rolls the registries back; E-TDECL-UNRESOLVED propagates unreported, any
+\ other renders, then counts in a multi-error load or refuses (DEF-STOPPED).
 : TDECL-RUN ( [ -- ] -- )
    READ-PENDING                     \ no type entry is read inside the declaration
    TDECL-MARK
    -1 TDECL-FAM-REG !               \ set by a successful sum registration only
    catch {: rc:n :}
-   0 TDECL-OVERSIZE !
+   0 TDECL-OVERSIZE !   \ a body refused before TDECL-REQUIRE-FIT left it set
    TDECL-SEEN-CLEAR
    rc 0= IF EXIT THEN
    TDECL-RESTORE
@@ -199,6 +195,7 @@ private
    SIG-UNRES-CLEAR
    TDECL-REPORT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   rc DEF-STOPPED !
    rc CHECKER-REFUSE ;
 
 \ The declared name is read first by the body's name gate and by the report. A

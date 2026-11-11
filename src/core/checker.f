@@ -27652,11 +27652,8 @@ PTR-VARIABLE CK-DEF-A   variable CK-DEF-U   variable CK-DEF-VERDICT
 : CHECK-DEF-BODY ( -- )      \ ( -- ) closure: check the stashed definition, stash the verdict
    CK-DEF-A @ CK-DEF-U @ CHECK-RETRY CK-DEF-VERDICT ! ;
 
-\ The code of the refusal of a definition, or of a top-level token, that stopped
-\ a load by its throw (DEF-REFUSED), 0 before one does. It tells such a stop
-\ from a stop no such refusal raised - a refused generates: or trust row - for
-\ tools/check-verify-child.f, whose pre-pass then stops as at any refused
-\ definition.
+\ The code of the last refusal that rendered its packet and stopped a load by its
+\ throw (DEF-REFUSED, TDECL-RUN, GUARD-CODE), 0 before one; STOP-CODE reads it.
 variable DEF-STOPPED
 
 : CHECKER-DEF-STOPPED? ( n -- bool ) DEF-STOPPED @ = ;

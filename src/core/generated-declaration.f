@@ -156,19 +156,17 @@ public
    wa wu code EXPECT
    code ;
 
-\ GUARD-CODE ( code -- ): end one declaration DECL-FRONT ran. 0 forgets the
-\ borrowed spans; a reject renders after the runner rolled back, then rethrows
-\ its exact code (CHECKER-REFUSE). Under `--all-errors` (MULTI-ERR?) the reject
-\ is counted and the load continues, as sumtype.f TDECL-RUN does; DRIVE has
-\ already skipped the stream to the terminator, which only the front end knows.
-\ The spans are forgotten on both exits: one left behind would be read stale or
-\ baked into an image with its build-time address, so engine generations differ.
+\ End one declaration: 0 forgets the borrowed spans; a reject renders, then counts in
+\ a multi-error load (DRIVE skipped to its terminator) or refuses (DEF-STOPPED).
 : GUARD-CODE ( n -- )
    {: rc:n :}
+   \ Both exits forget the spans: one left behind is read stale or baked into an
+   \ image with its build-time address, so engine generations differ.
    rc 0= IF FORGET-SRC EXIT THEN
    rc RENDER
    FORGET-SRC
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   rc DEF-STOPPED !
    rc CHECKER-REFUSE ;
 
 \ Reflection for the suites: what the packet would report right now.
