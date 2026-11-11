@@ -28,6 +28,7 @@ require src/habu/aot-decl.f
 require src/compiler/target.f
 
 package X64-SEAM-TEST
+using IMAGE-BYTES
 using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 \ ---- reading the written image ----------------------------------------------

@@ -19,6 +19,7 @@ require src/os/linux-x86-64/elf.f
 package X64HARNESS
 using X64ASM
 using X64CODE
+using IMAGE-BYTES
 public
 
 $8000000000000000 constant MIN-CELL
@@ -53,6 +54,7 @@ variable WRONG-AT                    \ the check a negative image fails, or 0
 \ a file required inside a package cannot open one.
 s" src/os/linux-x86-64/sign.f" required
 s" src/habu/driver-io.f" required
+using DRIVER
 s" src/os/linux-x86-64/sys.f" required
 using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 

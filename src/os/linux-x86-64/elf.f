@@ -15,8 +15,6 @@
 \ aarch64 writer's $120.
 \ Everything else here is ELF64 format, and reads the same under both machines.
 \ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f).
-\ src/os/image-bytes.f sizes MSIZE from a bare CODE-CAP-BYTES at load, so this
-\ file requires it under `using X64CODE`, which supplies the x86-64 capacity.
 \ CODE-OFF is the target's, read qualified from
 \ package X64LAYOUT (src/os/linux-x86-64/target-layout.f), whose `using` below
 \ is the guard that refuses a bare one and closes before this file ends. The
@@ -24,9 +22,10 @@
 \ opens a part of it, so this file loads at top level.
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/target-layout.f
+require src/os/image-bytes.f
 
 using X64CODE
-require src/os/image-bytes.f
+using IMAGE-BYTES
 using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 $7F constant ELF-MAG0
@@ -96,11 +95,8 @@ X64LAYOUT:DATA-VA ELF-CARRIER-VA - constant ELF-CARRIER-CAP
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
 
-\ The image buffer includes the maximum-page-rounded text and its RW tail.
-: ELF-MSIZE-CHECK ( -- )
-   MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE >
-   IF s" elf: MSIZE below max image" 73 die THEN ;
-ELF-MSIZE-CHECK
+\ The image buffer holds the maximum-page-rounded text and its RW tail.
+MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE!
 
 \ The region starts past the largest text and its RW tail, and the carrier at
 \ the region's end on a PROT-PAGE-MAX boundary, so the loadable segments ascend
@@ -350,4 +346,5 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
    s" elf: size tail index out of range" ELF-TAIL-RC die ;
 
 ;using   \ X64LAYOUT
+;using
 ;using
