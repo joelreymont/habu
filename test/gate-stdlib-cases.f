@@ -293,6 +293,10 @@ SUITE finally
    test/finally.f
 ;SUITE
 
+SUITE quotation-locals
+   test/quotation-locals.f
+;SUITE
+
 SUITE empty-quotation
    test/empty-quotation.f
 ;SUITE
