@@ -13,6 +13,13 @@ require src/lib/task.f
 require src/lib/aio.f
 require src/lib/net/tcp4.f
 require src/lib/be.f
+require src/lib/string.f
+require src/lib/span.f
+require src/lib/date.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/byte-buffer.f
+require src/lib/test/stderr.f
 require src/lib/pg.f
 
 package PG-TEST
@@ -1937,6 +1944,98 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    b PG:CLOSE ;
 
 
+create PATH-BUF PATH-CAP allot          \ the stderr capture file's path
+variable PATH-U
+create FILE-B BUF:HDR-BYTES allot       \ the capture file's bytes, read back
+variable ALL-LINES
+variable BARE-LINES
+variable PG-LINES
+variable WARN-LINES
+
+: PATH$ ( -- ptr u8 n )  PATH-BUF PATH-U @ ;
+
+
+: PATH-MAKE ( -- )
+   s" pg-test" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
+   dir dirlen FS:CLEANUP-TREE+
+   dir dirlen s" stderr.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
+
+
+\ The whole file, valid until the next read.
+: FILE$ ( -- ptr u8 n )
+   PATH$ FS:FILE-SIZE {: size:n :}
+   FILE-B BUF:CLEAR
+   PATH$ FILE-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
+   FILE-B BUF:SPAN$ BUF:BLEN>N ;
+
+
+\ libpq's default notice processor writes the message as is.
+: BARE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" FATAL:" STARTS-WITH?
+   a u s" NOTICE:" STARTS-WITH? or
+   a u s" WARNING:" STARTS-WITH? or ;
+
+
+: PG-ERROR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u DATE:TIME-LEN < if false exit then
+   a DATE:TIME-LEN + u DATE:TIME-LEN - {: r:ptr ru:n :}
+   r ru s"  error pg: " STARTS-WITH?
+   r ru s" terminating connection due to administrator command" CONTAINS?
+   and ;
+
+
+: PG-WARN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u DATE:TIME-LEN < if false exit then
+   a DATE:TIME-LEN + u DATE:TIME-LEN - s"  warn pg: WARNING:  w" STR= ;
+
+
+: LINE-COUNT ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if exit then
+   1 ALL-LINES +!
+   a u BARE? if 1 BARE-LINES +! then
+   a u PG-ERROR? if 1 PG-LINES +! then
+   a u PG-WARN? if 1 WARN-LINES +! then ;
+
+
+: LINES-COUNT ( ptr u8 n -- ) {: at:ptr u:n :}
+   0 ALL-LINES !  0 BARE-LINES !  0 PG-LINES !  0 WARN-LINES !
+   0 begin
+      at u rot STR-LF swap SPLIT-NEXT
+   while
+      >r LINE-COUNT r>
+   repeat
+   drop 2drop ;
+
+
+\ Each a notice at its own level, sent before the statement completes.
+: RAISES ( PG:connection -- )
+   s" DO $$ BEGIN RAISE NOTICE 'n'; RAISE INFO 'i'; RAISE WARNING 'w'; END $$"
+   EXEC-OK ;
+
+
+\ The terminated backend's FATAL reaches a while it is idle, so the wait's
+\ PQnotifies hands it to libpq's notice processor. PG logs nothing on the
+\ loss: the one line is the processor's.
+: NOTICE-CASES ( -- )
+   OPEN {: a :}
+   OPEN {: b :}
+   s" a FATAL read while idle is one LOG line, not bare libpq text" T-LABEL
+   b a BACKEND TERMINATE
+   PATH-MAKE
+   PATH$ STDERR:CAPTURE
+   [: a [: NOTIFY-LONG ;] E-EXEC REFUSES  b RAISES ;]
+   [: STDERR:;CAPTURE ;] finally
+   a PG:LIVE? TFALSE
+   FILE-B 1 BUF:N>BLEN BUF:INIT
+   [: FILE$ LINES-COUNT ;] [: FILE-B BUF:DISPOSE ;] finally
+   BARE-LINES @ 0 T=
+   PG-LINES @ 1 T=
+   s" a WARNING is one warn line; NOTICE and INFO add none" T-LABEL
+   WARN-LINES @ 1 T=
+   ALL-LINES @ 2 T=
+   b PG:CLOSE ;
+
+
 : ABANDON-KEEP ( PG:connection -- PG:connection )
    dup PG:ABANDON ;
 
@@ -2002,6 +2101,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    DEADLINE-CASES
    NOTIFY-CASES
    ENDED-CASES
+   HB-TARGET-LINUX-X86-64? 0= if NOTICE-CASES then
    ABANDON-CASES
    RECYCLE-CASES
    PG:CLOSE

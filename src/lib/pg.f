@@ -6,6 +6,9 @@
 \ "Models taken from other Forths"). A task that needs two databases opens two.
 \ A transport failure that throws E-EXEC closes the connection and keeps libpq's
 \ text for PG:REFUSED$ (src/lib/pg-rows.f); CONN-LOST says when it keeps none.
+\ A libpq notice is one LOG line tagged pg, its level read from the message's
+\ leading word: ERROR, FATAL, PANIC and a severity PG does not know at error
+\ level, WARNING at warn level. NOTICE, INFO, DEBUG and LOG notices are dropped.
 
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -18,6 +21,8 @@ require src/lib/task.f
 require src/lib/aio.f
 require src/lib/byte-buffer.f
 require src/lib/fork-child.f
+require src/lib/ffi-callback.f
+require src/lib/log.f
 
 \ PostgreSQL over libpq: -9250..-9259, the decade after libcurl. Minted here,
 \ beside the package its codes belong to (docs/forth-card.md § 6).
@@ -190,6 +195,8 @@ FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-SOCKET PQsocket ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-FINISH PQfinish ( ptr u8 -- ) ;FUNCTION
+FUNCTION: LIB-SET-NOTICE-PROCESSOR PQsetNoticeProcessor
+   ( ptr u8 n ptr u8 -- n ) ;FUNCTION
 FUNCTION: LIB-CANCEL-CREATE PQcancelCreate ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-CANCEL-BLOCKING PQcancelBlocking ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-CANCEL-FINISH PQcancelFinish ( ptr u8 -- ) ;FUNCTION
@@ -894,6 +901,38 @@ REGISTER-CHILD-RESET
    a u ;
 
 
+\ libpq builds a notice in a PQExpBuffer, which never grows past INT_MAX bytes
+\ (pqexpbuffer.c enlargePQExpBuffer), so its NUL lies below this.
+$7FFFFFFF constant NOTICE-MAX
+
+
+: NOTICE-LEN ( ptr u8 -- n ) {: p :}
+   0 begin
+      dup NOTICE-MAX < if p over + c@ 0<> else false then
+   while 1 + repeat ;
+
+
+: NOTICE-DROPPED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" NOTICE:" STARTS-WITH?
+   a u s" INFO:" STARTS-WITH? or
+   a u s" DEBUG:" STARTS-WITH? or
+   a u s" LOG:" STARTS-WITH? or ;
+
+
+\ libpq's PQnoticeProcessor ( void *arg, const char *message ): the message is
+\ libpq's for the call, and libpq calls this only inside a call a task makes.
+: NOTICE-LOG ( ptr u8 ptr u8 -- )
+   nip {: msg :}
+   msg NULL-ADDR? if exit then
+   msg dup NOTICE-LEN -TRAILING-LF {: a:ptr u:n :}
+   a u NOTICE-DROPPED? if exit then
+   a u s" WARNING:" STARTS-WITH? if LOG:WARN else LOG:ERROR then
+   s" pg" LOG:LINE  a u LOG:TEXT+  LOG:;LINE ;
+
+CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
+' NOTICE-LOG NOTICE-BODY !
+
+
 \ PQresultErrorMessage ends with a newline, is empty for an empty query, and
 \ holds the connection's message for a result libpq made without the server.
 : REPORT$ ( ptr u8 -- ptr u8 n )
@@ -1493,6 +1532,7 @@ public
 : CONNECT-START ( ptr u8 n -- connection )
    {: a u:n :}
    OP-START
+   NOTICE TASK:CALLER-CONTEXT FFI-CB:ENTRY {: proc:n :}
    CLAIM-CONN-SLOT {: slot:n :}
    slot OPEN-CONN-SLOT
    a u slot ['] STAGE-CONNINFO catch {: code:n :}
@@ -1504,6 +1544,8 @@ public
    slot ARENA-BASE LIB-CONNECT-START {: pg :}
    slot ARENA-RELEASE
    pg NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
+   \ PQconnectStart only connects and sends; POLL's PQconnectPoll first reads.
+   pg proc NULL-ARG LIB-SET-NOTICE-PROCESSOR drop
    pg slot CONN-PG!
    pg LIB-STATUS CONNECTION-BAD <> if
       pg 1 LIB-SET-NONBLOCKING 0<> if
