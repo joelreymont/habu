@@ -70,6 +70,11 @@ variable TEXT-U
    1 EVENT@ 2 EVENT@ {: at:n u:n :}
    MAKE
    at u s" trap" IS? if -1 >BYTES c@ drop exit then
+   at u s" throw" IS? if $20000000000001 REQUEST 94 throw then
+   at u s" fetch throw" IS? if
+      s" /state" {: path:ptr len:n :}
+      1 path BYTES>N len 0 RECORD 94 throw
+   then
    at u s" short header" IS? if 7 REQ BYTES>N 15 $20000000000001 RECORD exit then
    at u s" outside" IS? if 7 -1 REQ-U @ $20000000000001 RECORD exit then
    at u s" huge length" IS? if

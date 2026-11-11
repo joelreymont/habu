@@ -65,9 +65,9 @@
 //   12 read: a a file number a file event delivered, b an offset, c a length of
 //     at least 1, with b + c at most the file's size; each gets its own chunk
 // A post or request is answered for every HTTP status. Request, rpc and read
-// records are tagged. A host that takes tagged records provides error(error):
-// the first reply failure of a turn reaches it at once, each further one as an
-// AggregateError of all of them.
+// records are tagged. A host that takes tagged records, or fetches and posts
+// from a run that throws, provides error(error): the first reply failure of a
+// turn reaches it at once, each further one as an AggregateError of all of them.
 // The module maps clip space to pixels as x = (ndc.x + 1) * width / 2 and
 // y = (1 - ndc.y) * height / 2, origin top-left.
 //
@@ -266,21 +266,31 @@ export class Module {
 
   // The event's run, then its requests. All tagged requests start independently;
   // legacy requests keep their order and wait for their own recursive replies.
+  // A run's throw is passed on at once: its requests go on, and a legacy
+  // request that fails later reports to host.error.
   async turn(event) {
-    const requests = this.run(event);
+    const [requests, thrown] = this.run(event);
     if (requests.some((request) => TAGGED.has(request.kind)) && typeof this.host.error !== "function")
       throw new TypeError("host.error(error) is required for tagged replies");
     const errors = [];
+    const report = (error) => {
+      errors.push(error);
+      this.host.error(errors.length === 1 ? error :
+        new AggregateError([...errors], errors.map(String).join("; ")));
+    };
     const tagged = requests.filter((request) => TAGGED.has(request.kind))
-      .map((request) => this.answer(request).catch((error) => {
-        errors.push(error);
-        this.host.error(errors.length === 1 ? error :
-          new AggregateError([...errors], errors.map(String).join("; ")));
-      }));
+      .map((request) => this.answer(request).catch(report));
     const legacy = (async () => {
       for (const request of requests)
         if (!TAGGED.has(request.kind)) await this.answer(request);
     })();
+    if (thrown) {
+      legacy.catch((error) => {
+        if (typeof this.host.error !== "function") throw error;
+        report(error);
+      });
+      throw thrown;
+    }
     await Promise.all([...tagged, legacy]);
   }
 
@@ -334,7 +344,8 @@ export class Module {
   }
 
   // Writes the event and runs the module; handles the records but the
-  // requests, which it answers.
+  // requests, and answers [requests, the run's throw or null]. A run that throws
+  // has still made its records: the module waits on every request it wrote.
   run(event) {
     this.live();
     if (event) this.write(event);
@@ -345,7 +356,7 @@ export class Module {
       this.ended = `the module trapped and has ended: ${e}`;
       throw e;
     }
-    if (status !== 0) throw new Error(`throw ${this.x["throw-code"]()}`);
+    const thrown = status !== 0 ? new Error(`throw ${this.x["throw-code"]()}`) : null;
     const requests = [];
     for (const [kind, a, b, c] of this.records()) {
       if (kind === FETCH) requests.push({ kind, path: utf8.decode(this.span(a, b)) });
@@ -355,7 +366,7 @@ export class Module {
       else if (kind === READ) requests.push(this.read(a, b, c));
       else this.record(kind, a, b, c);
     }
-    return requests;
+    return [requests, thrown];
   }
 
   // Memory's bytes [a, a + n), refused unless they lie inside it.

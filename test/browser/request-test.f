@@ -240,6 +240,32 @@ PATH-CAP BUFFER: FILE
    s" trapped: the waiting request's reply is refused" T-LABEL
    ERR$ s" trapped.err" SAME ;
 
+\ A turn that throws after its request still has the request made and answered:
+\ the module stays live, and the throw is the run's only failure.
+: THROWN-CASE ( -- )
+   HOST-OPEN  s" throw" TYPED+  200 s" one.bin" ANSWER+
+   s" thrown: the run fails" T-LABEL
+   HOST 1 T=
+   HELLO  ID1$ STATE-LINE  ID1$ s" 200 640,480" ONE$ REPLY-LINE
+   s" thrown: the throwing turn's request is made and its reply runs" T-LABEL
+   OUT$ s" thrown.out" SAME
+   SB-RESET  s" throw 94" LINE
+   s" thrown: the throw is the only failure" T-LABEL
+   ERR$ s" thrown.err" SAME ;
+
+\ A turn that throws after a fetch still makes the fetch, and its failed reply
+\ reaches host.error once, after the throw.
+: THROWN-FETCH-CASE ( -- )
+   HOST-OPEN  s" fetch throw" TYPED+  FAIL+
+   s" thrown fetch: the run fails" T-LABEL
+   HOST 1 T=
+   HELLO  s" fetch /state" LINE
+   s" thrown fetch: the throwing turn's fetch is made" T-LABEL
+   OUT$ s" thrown-fetch.out" SAME
+   SB-RESET  s" throw 94" LINE  s" /state: failed" LINE
+   s" thrown fetch: the throw, then the failed reply once" T-LABEL
+   ERR$ s" thrown-fetch.err" SAME ;
+
 : EARLY-TRAP-CASE ( -- )
    HOST-OPEN  s" parallel" TYPED+
    ID2$ 471 s" empty.bin" ANSWER-ID+  ID1$ 200 s" one.bin" ANSWER-ID+
@@ -375,6 +401,8 @@ public
    TAGGED-CASE
    PARALLEL-CASE
    TRAPPED-CASE
+   THROWN-CASE
+   THROWN-FETCH-CASE
    EARLY-TRAP-CASE
    REPLY-FAILURE-CASE
    INTERLEAVED-CASE
