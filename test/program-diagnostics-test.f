@@ -12,7 +12,7 @@ package PROGRAM-DIAGNOSTICS
    path pathu GE-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
 
-\ The Habu loop reads the file (src/habu/definers.f DEF-SEMI?). On arm64 the
+\ The Habu loop reads the file (src/habu/interpreter.f DEF-SEMI?). On arm64 the
 \ kernel loop RUN-LOAD uses recovers alike at `;` (src/habu/habu2.f EM-COMPILE).
 : RUN-LOAD-HABU ( ptr u8 n -- ) {: path:ptr pathu:n :}
    GE-HB-RESET

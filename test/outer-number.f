@@ -4,7 +4,7 @@ require src/lib/test.f
 require src/lib/fmt.f
 require src/lib/f64-text.f
 require test/gate-common.f
-require src/habu/outer.f
+require src/habu/interpreter.f
 
 package OUTER-NUMBER-TEST
 

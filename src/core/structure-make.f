@@ -132,7 +132,7 @@ public
 \ The name of the projection word below, which every generated accessor and
 \ ARENA's NAME-NEW and NAME-RELEASE spell unqualified, so it binds through the
 \ declaring scope's search order. A sealed engine refuses it as a definition
-\ name (src/habu/habu2.f C-RESERVED-DEF-GUARD, src/habu/definers.f DEF-WALL),
+\ name (src/habu/habu2.f C-RESERVED-DEF-GUARD, src/habu/interpreter.f DEF-WALL),
 \ so no user word stands in for it; the engine's own definition loads before
 \ the seal.
 : PROJECT-NAME$ ( -- ptr u8 n ) s" field-project" ;

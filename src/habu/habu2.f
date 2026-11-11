@@ -4409,7 +4409,7 @@ variable LREPLAYTRAP
 
 \ replay-private ( n bool -- ) namespace index, flag: true gives the row a
 \ fresh private wid, as `package` gives one to a row a qualified definition
-\ made (src/habu/packages.f PKG-REOPEN); false takes back the one it gave.
+\ made (src/habu/interpreter.f PKG-REOPEN); false takes back the one it gave.
 \ replay-close puts WIDN back but nothing of a row below the saved NDICT, so
 \ the owner logs each grant and takes it back before the close.
 : REPLAY-PRIVATE ( -- )
@@ -4821,8 +4821,8 @@ public
 
 private
 \ The sealed engine's reserved definition name, STRUCTURE-MAKE:PROJECT-NAME$
-\ (src/habu/definers.f DEF-RESERVED? is the twin): generated bodies bind it by
-\ name, so after the seal a definition with that tail, A-Z folded, writes the
+\ (src/habu/interpreter.f DEF-RESERVED? is the twin): generated bodies bind it
+\ by name, so after the seal a definition with that tail, A-Z folded, writes the
 \ refusal and the token and dies 70 as LDEFKWFAIL does. The open namespace
 \ admits it, so the engine's own definition loads. Clobbers x3, x9-x15.
 : C-RESERVED-DEF-GUARD ( -- )
@@ -4844,7 +4844,8 @@ private
    ok LBL, ;
 
 \ A name the number reader claims, a number refused for range included, dies 70
-\ with the token written, as definers.f DEF-WALL does. Clobbers x2-x17 and x30.
+\ with the token written, as interpreter.f DEF-WALL does. Clobbers x2-x17 and
+\ x30.
 : C-NUMBER-DEF-GUARD ( -- )
    LBL {: ok:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM LABEL@ BL,
@@ -5039,7 +5040,7 @@ package INTERP-EMIT
    10 DATA 0 LDR,  7 10 8 ADDI,  7 DP-CHECK  31 10 0 STR,  7 DATA 0 STR, ;
 
 \ `constant` pops one cell and records the trust `-- a`: the interpret stack is
-\ untyped, and the DNAME-WIDE dispatch keeps wider values off it. definers.f
+\ untyped, and the DNAME-WIDE dispatch keeps wider values off it. interpreter.f
 \ DEF-CONSTANT, verify-source.f and public-signatures-core.f record the same.
 : C-CONSTANT ( -- )
    C-TASK-GUARD
@@ -9294,7 +9295,7 @@ public
    absent LBL, ;
 
 \ The preflight is Habu code: a caller keeps across it only what it saved.
-\ src/habu/definers.f DEF-PREFLIGHT is its twin.
+\ src/habu/interpreter.f DEF-PREFLIGHT is its twin.
 : C-PREFLIGHT ( -- )
    LBL {: unarmed:label :}
    9 DATA HOOK-CELL LDR,  9 unarmed CBZ,
@@ -9428,7 +9429,7 @@ public
 
 private
 
-\ A block keyword scopes the captured locals as src/habu/definers.f
+\ A block keyword scopes the captured locals as src/habu/interpreter.f
 \ BODY-BLOCK-STEP does for x86-64, over src/lib/source-syntax.f BLOCK-OPENER?
 \ and BLOCK-CLOSER?: an opener raises CAPDEPTH-CELL, `else` drops the locals of
 \ the current depth, a closer drops them and lowers it. Runs after the local
@@ -9486,10 +9487,10 @@ private
       6 6 1 ADDI,  walk B,
    stored LBL, ;
 
-\ src/habu/definers.f DEF-PREFIX-BIND's twin states the rule. It runs after each
-\ capture, never after an immediate that ran or `does>`. A refusal whose rollback
-\ lies below TOKBODY-CELL (`is`'s operand) lowers only that mark: a plain capture
-\ moves no local, block depth, CP or virtual stack.
+\ src/habu/interpreter.f DEF-PREFIX-BIND's twin states the rule. It runs after
+\ each capture, never after an immediate that ran or `does>`. A refusal whose
+\ rollback lies below TOKBODY-CELL (`is`'s operand) lowers only that mark: a
+\ plain capture moves no local, block depth, CP or virtual stack.
 : EM-CAPTURE-BIND ( -- )
    LBL {: bound:label :}
    LCAPBIND LABEL@ LBL,
@@ -9529,8 +9530,8 @@ public
 \      `does>` and the other string forms among them, is refused before
 \      CAPTURE-DOES or CAPTURE-STRING.
 \ Anything else is refused at LPOLICY. Unsealed, locals are matched, scoped and
-\ recorded the same way (as src/habu/definers.f COMPILING? does for x86-64) and
-\ every other test falls through to the plain capture.
+\ recorded the same way (as src/habu/interpreter.f COMPILING? does for x86-64)
+\ and every other test falls through to the plain capture.
 : CAPTURE-IMMEDIATE ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: done:label execute-now:label parse-does:label probe:label gated:label unsealed:label missed:label locals:label passive:label unbound:label :}
@@ -9618,7 +9619,7 @@ public
    LBL LBL LBL {: notsemi:label compiled:label rethrow:label :}
    LENTRY LABEL@ LBL,
    \ Entered only from EM-COMMENT, which routes by tier. Its `;` is
-   \ src/habu/definers.f DEF-SEMI?'s twin (layout.f NCOMP-DISPATCH:RECOVER-CELL).
+   \ src/habu/interpreter.f DEF-SEMI?'s twin (layout.f NCOMP-DISPATCH:RECOVER-CELL).
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
       C-DEF-SOURCE-CLOSE
@@ -12697,13 +12698,13 @@ private
 
 \ Interpret-level reject diagnostics. LUNDEF: undefined token; its message and
 \ the token end through the LCOMPILEDIE tail, which names the file and line and
-\ throws RC-REJECT (70); outer.f UNDEFINED writes the same bytes. LWIDE: a word
-\ with DNAME-WIDE executed or ticked at interpret level would land a multi-cell
-\ bundle on the untyped interpret stack, where scalar dup/drop/swap corrupt it;
-\ checked definitions own bundle work. LWIDE and the rejects after it print
-\ their diagnostic, the token and a newline, then share the LDIAGRET tail: a
-\ catchable RC-REJECT throw inside evaluate (via LEVALREC), else tty REPL
-\ recovery, else exit 70.
+\ throws RC-REJECT (70); interpreter.f UNDEFINED writes the same bytes. LWIDE: a
+\ word with DNAME-WIDE executed or ticked at interpret level would land a
+\ multi-cell bundle on the untyped interpret stack, where scalar dup/drop/swap
+\ corrupt it; checked definitions own bundle work. LWIDE and the rejects after
+\ it print their diagnostic, the token and a newline, then share the LDIAGRET
+\ tail: a catchable RC-REJECT throw inside evaluate (via LEVALREC), else tty
+\ REPL recovery, else exit 70.
 : EM-COMPILE-UNDEF ( -- )
    LUNDEF LABEL@ LBL,
    9 DATA POLICY-NDICT-CELL LDR,  9 LPOLICY LABEL@ CBNZ,    \ under the design seal a token nothing resolves is outside the vocabulary like any other: the same located line and code

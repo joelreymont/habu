@@ -56,9 +56,9 @@ $FFFFFFFF constant IDX-MASK
    rec XREF-START 0= if false exit then
    rec XREF-FLAGS DKIND:MASK and DKIND:ADDR = ;
 
-\ Records stamped DKIND:ADDR (src/habu/definers.f) are the only owners of DATA.
-\ Sorted by address they partition it: each base runs to the next, the last to
-\ DP0.
+\ Records stamped DKIND:ADDR (src/habu/interpreter.f) are the only owners of
+\ DATA. Sorted by address they partition it: each base runs to the next, the
+\ last to DP0.
 : COLLECT ( -- )
    0 T-N !
    ndict@ T-ROW-RESERVE

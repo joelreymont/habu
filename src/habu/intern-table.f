@@ -218,7 +218,7 @@ public
    TABLE a u LAY ;
 
 
-\ Forgets every text that ends above n (DP-CELL's units). interpret.f
+\ Forgets every text that ends above n (DP-CELL's units). interpreter.f
 \ FRAME-ROLLBACK-CODE, DICTIONARY-DP! and, on arm64, checker.f DP-CUT call it.
 : KEEP-BELOW ( n -- )
    {: limit:n :}

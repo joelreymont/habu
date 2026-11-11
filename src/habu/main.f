@@ -11,7 +11,7 @@ require src/core/bytes.f
 require src/habu/layout.f
 require src/core/include.f
 require src/os/env-base.f
-require src/habu/interpret.f
+require src/habu/interpreter.f
 require src/habu/repl.f
 require src/lib/fmt.f
 

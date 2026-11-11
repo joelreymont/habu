@@ -1020,7 +1020,7 @@ Factor raw compiler and emitter code to the same standard.
   `[if]` only right after a target predicate, or a predicate and `0=`, and
   `[if]` and `[then]` are reserved names. A word a build runs never loads or
   provides a file: hb's loader runs a top-level `require` or `provided`
-  (src/habu/interpret.f LOADER?), but a word's load or provide calls the
+  (src/habu/interpreter.f LOADER?), but a word's load or provide calls the
   build's own copy of the loader, whose loads and rows the linker never sees,
   so that copy refuses it, naming the path: `include: a word loaded or
   provided a file during a build; do it at the file's top level: <path>`

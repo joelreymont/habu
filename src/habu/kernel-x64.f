@@ -2655,7 +2655,7 @@ public
 
 \ Habu supplies the interpreter-bound rows on x86-64. The provided evaluate
 \ and evaluate-range entries are installed by that evaluator
-\ (src/habu/interpret.f OUTER:INSTALL-EVALUATE); evaluate-closed gives the
+\ (src/habu/interpreter.f OUTER:INSTALL-EVALUATE); evaluate-closed gives the
 \ first a guarded stack. Rows still tied to ARM's interpreter refuse until
 \ supplied in Habu: the source-exec observer attaches to that interpreter's
 \ evaluator and token dispatch.
@@ -5594,7 +5594,7 @@ variable GROW-CELL
 \ other than DKIND:CAST. Nothing pending, and DEF-TIER-CELL 0 (no compiler),
 \ are refused. Unlike arm64's (habu2.f NATIVE-CLOSE, through C-CLEAR-LOCALS) it
 \ clears no locals cell: the Habu loop's `;` clears LOCN-CELL after it
-\ (src/habu/definers.f DEF-CLOSE).
+\ (src/habu/interpreter.f DEF-CLOSE).
 : DEF-CLOSE-BODY ( -- )
    X64CODE:LBL {: nolast:label :}
    RDX PEND-CELL CELL@,

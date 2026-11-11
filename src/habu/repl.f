@@ -1,4 +1,4 @@
-\ repl.f - the terminal line reader for OUTER:REPL (src/habu/interpret.f).
+\ repl.f - the terminal line reader for OUTER:REPL (src/habu/interpreter.f).
 \ INSTALL makes RD-LINE the default REPL-READ defer and puts its xt in REPLH-CELL;
 \ genio may replace the defer, so OUTER:REPL calls it again before each line. The
 \ session owns prompts, pending definitions and recovery; this file owns editing,

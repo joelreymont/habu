@@ -5,7 +5,7 @@ require src/lib/test.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
 require src/lib/test/ending.f
-require src/habu/interpret.f
+require src/habu/interpreter.f
 
 package DICTIONARY-ZERO-TEST
 using PTY-HARNESS
@@ -20,7 +20,7 @@ using PTY-HARNESS
 
 
 \ The Habu interpret loop's framed evaluate, the entry a sealed x86-64 engine
-\ reads every buffer through. On x86-64 its rollback is src/habu/interpret.f
+\ reads every buffer through. On x86-64 its rollback is src/habu/interpreter.f
 \ FRAME-ROLLBACK-CODE; on ARM64 the engine's LEVALREC unlinks the frame and
 \ rolls it back first (habu2.f EM-EVAL-THROW-RECOVER), measured by a build
 \ without that recovery's high-water raise failing this case.

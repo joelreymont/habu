@@ -490,7 +490,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    CMD:RESET  s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+ ;
 
 \ After TOOL-ARGS and its options, builds the fixture to L's prog in the shared fixture out root.
-\ Its TMPDIR is L's directory: a build SEALED-FAIL refuses runs no exit hook (outer.f
+\ Its TMPDIR is L's directory: a build SEALED-FAIL refuses runs no exit hook (interpreter.f
 \ FAIL-CLOSED), so its scratch goes with L.
 : TOOL-RUN ( CMD:command ptr u8 n -- CMD:command n )
    CMD:ARG+

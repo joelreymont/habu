@@ -1,7 +1,7 @@
 \ t0.f - the tier 0 compiler's front end, package COMP.
 \
 \ Compiles one definition's body text (layout.f BODY-TEXT's block at `;`,
-\ src/habu/definers.f DEF-COMPILE) from the tape the checker's scan reports,
+\ src/habu/interpreter.f DEF-COMPILE) from the tape the checker's scan reports,
 \ through the step every native compiler shares
 \ (src/compiler/native/definition.f), and emits through
 \ src/habu/t0-emit.f's EMIT- words to the selected emitter. A name, a tick's
@@ -1241,7 +1241,7 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 : TOO-LONG ( n -- )
    COUNTED-MAX <= if exit then
    2 S\" hb: counted string too long (max 255)\n" write drop
-   76 throw ;                       \ the exit code src/habu/outer.f RC-TOO-LONG defines
+   76 throw ;                       \ the exit code src/habu/interpreter.f RC-TOO-LONG defines
 
 \ String row k's interned address, its source origin and its length.
 : INTERN-BODY ( n bool -- n n n ) {: k:n counted:bool :}

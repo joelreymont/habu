@@ -17,8 +17,7 @@ require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/habu/prims.f                \ PRIM-SPEC: the owned primitives' rows
 require src/habu/address-cells.f
-require src/habu/interpret.f
-require src/habu/definers.f
+require src/habu/interpreter.f
 require src/habu/intern.f
 require src/core/include.f
 require src/compiler/target/model.f
@@ -4906,7 +4905,7 @@ variable DUE-MADE
 \ A primitive a prims.f package row types (EPPRIM:) is its package's to call: the open lays a
 \ record of it in that package's private wordlist, whose code is the kernel's and which carries
 \ the primitive's facts text as every word's record does. The package's first file reopens the
-\ package the open made (packages.f PKG-ENSURE).
+\ package the open made (interpreter.f PKG-ENSURE).
 
 \ hb's own record of owned primitive row k in its package's private wordlist, which an hb a build
 \ wrote holds; else NULL-PTR.

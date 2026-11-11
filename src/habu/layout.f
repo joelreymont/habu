@@ -161,7 +161,7 @@ $0001000000000000 constant DNAME-CELL
 \ LINEAR: records never carry it. Capture carries it in the compact record's
 \ kind byte (src/habu/aot-capture.f) and a native unit object row in its flags.
 $0000400000000000 constant DNAME-REP
-\ DNAME-SEALED (bit 45): packages.f PKG-SEAL sets it on a package's namespace record; XREF:SEALED? reads it
+\ DNAME-SEALED (bit 45): interpreter.f PKG-SEAL sets it on a package's namespace record; XREF:SEALED? reads it
 \ for `package` and the check tool's scan of it. Capture refuses a record carrying it (aot-capture.f ACAP-COMPACT-ONE).
 $0000200000000000 constant DNAME-SEALED
 \ [16] bits 45-63: flags above the name length, which every length read clears by this count. Copies that load before
@@ -267,7 +267,7 @@ $3000 constant LOCNAMES
 LOC-REC 8 - constant LOC-NAME-CAP
 64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes); checker.f LOC-CAP states the same 64
 \ Tier 1's arm64 body capture scopes the locals it records by block, as
-\ src/habu/definers.f BODY-BLOCK-STEP does on x86-64 (habu2.f CAPTURE-BLOCK):
+\ src/habu/interpreter.f BODY-BLOCK-STEP does on x86-64 (habu2.f CAPTURE-BLOCK):
 \ CAPDEPTH-CELL is the block depth, LOCDEPTHS the depth each LOCNAMES record
 \ was declared at (one cell per LOC-REC), and TOKDEPTH-CELL the depth as the
 \ current token began, restored with TOKLOCN-CELL's mark. A definition opener
@@ -402,7 +402,7 @@ $37F0 constant BPWN-CELL
 \ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest. habu1.f
 \ EMIT-EVAL-BODY (`evaluate-closed`, and ARM64's `evaluate`) pushes its frame on
 \ the native stack; x86-64's Habu `evaluate`
-\ (src/habu/interpret.f OUTER:EVAL-FRAMED) writes the same fields into a
+\ (src/habu/interpreter.f OUTER:EVAL-FRAMED) writes the same fields into a
 \ mapping of its own. EVAL-PREV links each to the frame it nests in.
 $43C0 constant EVAL-TOP-CELL
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
@@ -449,11 +449,12 @@ $120 constant PEND
 $138 constant ROWS
 \ SX-CTX: the source observer this buffer adopted, 0 when it adopted none. An
 \ observed word that evaluates a buffer hands the observer to that buffer
-\ (habu1.f EMIT-EVAL-BODY, outer.f OBSERVE-ARM): SX-TICKET and SX-SRC keep the
-\ word's ticket and its source start, which the clean exit and the throw
+\ (habu1.f EMIT-EVAL-BODY, interpreter.f OBSERVE-ARM): SX-TICKET and SX-SRC keep
+\ the word's ticket and its source start, which the clean exit and the throw
 \ recovery put back with the word's run pending again (habu1.f
-\ ENGINE-EMIT:SX-RESTORE,, outer.f OBSERVE-RESTORE). The observer's frame needs
-\ no cell: adoption requires it to be the frame this buffer nests in, EVAL-PREV.
+\ ENGINE-EMIT:SX-RESTORE,, interpreter.f OBSERVE-RESTORE). The observer's frame
+\ needs no cell: adoption requires it to be the frame this buffer nests in,
+\ EVAL-PREV.
 $140 constant SX-CTX
 $148 constant SX-TICKET
 $150 constant SX-SRC
@@ -798,18 +799,19 @@ $3868 constant ARENA-CELL
 ;package
 
 \ PROVIDED-XT: the dispatch cell of each src/habu/prims.f row a captured
-\ runtime provides (EPREFIX-PROVIDED!), stored with `xt!` (src/habu/interpret.f
-\ OUTER:INSTALL-EVALUATE) and restored on every x86-64 boot as a fixed address
-\ row (src/habu/link-x64.f FIXED-CELLS). A seeded x86-64 row is a stub that
-\ jumps through it (src/habu/kernel-x64.f X64KERNEL:PROVIDED-ROW), and x86-64's
-\ `evaluate-closed` calls EVALUATE-CELL's word; arm64's evaluate words use the
-\ cells once set (habu1.f B-EVAL, B-EVAL-RANGE, B-EVAL-CLOSED). EVALUATE-CELL
-\ follows the NCOMP-DISPATCH cells, which end at $3847.
+\ runtime provides (EPREFIX-PROVIDED!), stored with `xt!`
+\ (src/habu/interpreter.f OUTER:INSTALL-EVALUATE) and restored on every x86-64
+\ boot as a fixed address row (src/habu/link-x64.f FIXED-CELLS). A seeded x86-64
+\ row is a stub that jumps through it (src/habu/kernel-x64.f
+\ X64KERNEL:PROVIDED-ROW), and x86-64's `evaluate-closed` calls EVALUATE-CELL's
+\ word; arm64's evaluate words use the cells once set (habu1.f B-EVAL,
+\ B-EVAL-RANGE, B-EVAL-CLOSED). EVALUATE-CELL follows the NCOMP-DISPATCH cells,
+\ which end at $3847.
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
 \ A seeded x86-64 `evaluate-range` jumps through its own cell the same way
-\ (src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE). It follows
+\ (src/habu/interpreter.f OUTER:EVAL-FRAMED-RANGE). It follows
 \ ENGINE-MAIN:REPORT-CELL ($3858) below $3A00.
 $3860 constant EVALUATE-RANGE-CELL
 ;package
@@ -883,7 +885,7 @@ $388 constant DEF-TIER-CELL
 $390 constant BUILD-DEPTH-CELL
 $398 constant BUILD-TIER-CELL
 \ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler
-\ recovers from a refused definition: src/habu/definers.f DEF-SEMI? sets it
+\ recovers from a refused definition: src/habu/interpreter.f DEF-SEMI? sets it
 \ around its compile, catches E-COMP-RECOVERY and reads on. In a multi-error
 \ run the compiler then abandons a refused definition unpublished without a
 \ second report; under any other reader it refuses with E-COMP-VERDICT
@@ -1206,8 +1208,8 @@ $2818 constant EXIT-HOOK-CELL
 \ and FRFREE-CELL here (habu2.f EM-COMMENT). Two other writers: arm64
 \ C-CLEAR-LOCALS zeroes TOKLOCN-CELL and TOKDEPTH-CELL with the locals at a
 \ definition's end or abort, and a refused `is` target lowers TOKBODY-CELL to
-\ its opener (habu2.f EM-CAPTURE-BIND, src/habu/definers.f DEF-PREFIX-BIND). A
-\ throw that unwinds an evaluate frame begun inside an open definition leaves
+\ its opener (habu2.f EM-CAPTURE-BIND, src/habu/interpreter.f DEF-PREFIX-BIND).
+\ A throw that unwinds an evaluate frame begun inside an open definition leaves
 \ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all seven
 \ back: the text the checker certifies holds no token whose compile the throw
 \ abandoned, a `{:` group refused part way declares none of its names, and the
@@ -1334,7 +1336,7 @@ $2D50 constant TEXT-SIZE-CELL
 \ DPHW-CELL: the release high-water, the highest DP (a DATA offset) that any
 \ path lowering DP has lowered it from. Every such path updates it: habu1.f
 \ DP-LOWER and BALLOT, habu2.f EM-EVAL-THROW-RECOVER and EM-REPL-RECOVER,
-\ interpret.f FRAME-ROLLBACK-CODE, src/core/generated-declaration-dictionary.f
+\ interpreter.f FRAME-ROLLBACK-CODE, src/core/generated-declaration-dictionary.f
 \ DICTIONARY-DP!, kernel-x64.f ALLOT-BODY. Space above both HERE and it is still
 \ the zero of a fresh page, so `allot` zeroes only the part of its request below
 \ it and never touches the pages a large allot reserves. 0 reads as nothing
@@ -1604,7 +1606,7 @@ MEM-ABI:START constant END
 
 \ A `defer NAME ( E )` in src/core/checker.f before `: TRUST` cannot call
 \ C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER: their LFIND of `trust` and
-\ `checker-defer` fails. C-DEFER and the Habu loop's `defer` (src/habu/definers.f
+\ `checker-defer` fails. C-DEFER and the Habu loop's `defer` (src/habu/interpreter.f
 \ PD-HOLD) then copy the qualified name and effect signature into a slot here;
 \ DRAIN-PRETRUST, right after `: TRUST`, replays both registrations per slot, so
 \ the table is empty by snapshot time. Overflow or an over-long name or sig dies
@@ -1901,7 +1903,7 @@ $2CA8 constant SOURCE-EXEC-CTX-CELL
 \ either into a WIDN setter. USE-RPKG-SAVE is REPL-line state, not scope, and
 \ is not saved.
 \ A fixed offset, because source reads LATCH: xref.f XREF-UNDEFINE-GUARD and
-\ outer.f OVERLAY-GUARD read it as a DATA offset. The band
+\ interpreter.f OVERLAY-GUARD read it as a DATA offset. The band
 \ takes the start of the unclaimed run $4208..$4398 below DECLARED-LOG:ADDR-CELL;
 \ DATA-CLAIMS refuses a USE-MAX that would outgrow the run.
 package REPLAY-SCOPE
@@ -1928,8 +1930,8 @@ $4310 constant ENCLOSING
 
 \ The scoped package evaluator owns one transient dispatch xt. A source load
 \ disarms it on return or throw. A fixed offset for REPLAY-SCOPE's reason:
-\ outer.f UNIT? and UNIT-EVENT read the cell as a DATA offset and execute a
-\ nonzero one as an xt. It takes the cell after REPLAY-SCOPE;
+\ interpreter.f UNIT? and UNIT-EVENT read the cell as a DATA offset and execute
+\ a nonzero one as an xt. It takes the cell after REPLAY-SCOPE;
 \ DATA-CLAIMS refuses a replay scope that grows into it.
 $42E8 constant UNIT-COMPILE-CELL
 
@@ -2009,8 +2011,8 @@ public
 ;package
 
 \ Pending storage is private to the pre-trust capture (habu2.f C-PD-CAPTURE,
-\ definers.f PD-HOLD) and DRAIN-PRETRUST. Its capacity may grow without moving
-\ any published engine slot or live map.
+\ interpreter.f PD-HOLD) and DRAIN-PRETRUST. Its capacity may grow without
+\ moving any published engine slot or live map.
 JIT-SNAP:END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 

@@ -12,7 +12,7 @@ require src/habu/xref.f
 require src/compiler/native/abi.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
-require src/habu/interpret.f
+require src/habu/interpreter.f
 require src/arch/arm64/asm.f
 require src/habu/address-carrier.f
 require src/arch/arm64/link.f

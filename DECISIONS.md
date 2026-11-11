@@ -294,7 +294,7 @@ learned live in the docs for their subject.
   Go's build tags choose files the same way.
 - 2026-11-06, where a word's facts text is laid: shown that a text laid at
   `here` while `create`, `variable` or a definer's run-time `create` has its
-  body open becomes that body's first bytes (src/habu/definers.f DEF-ADDR
+  body open becomes that body's first bytes (src/habu/interpreter.f DEF-ADDR
   fixes the body before the checker's TRUST-RAW runs, and the engine's
   EMIT-CREATE likewise), and that a table forgetting a text only when its
   body lies at or above `here` misreads once DP grows past it again. Joel had

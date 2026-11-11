@@ -2,7 +2,7 @@
 \
 \ A literal (`s\"`, `c\"`, `.\"`) runs to a closing double quote; escape
 \ letters follow habu2.f C-ESC-DECODE-BASIC, and `\x` and `\X` take two hex
-\ digits. src/habu/outer.f ESC-SCAN reads literals through SPAN and COPY.
+\ digits. src/habu/interpreter.f ESC-SCAN reads literals through SPAN and COPY.
 \ Neither allocates, refuses or bounds a length: the caller decides what a
 \ failed or long span means.
 

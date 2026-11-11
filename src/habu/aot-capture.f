@@ -30,7 +30,7 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 : AOT-DBASE-N ( -- n ) dbase@ ;
 : AOT-DATA-N ( -- n ) data-base BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 \ habu1.f WLFIND's hash index. xref-search-wl's row is this package's own
-\ (src/habu/prims.f), as OUTER's is for outer.f WL-PROBE.
+\ (src/habu/prims.f), as OUTER's is for interpreter.f WL-PROBE.
 : AOT-WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 : AOT-LIVE-DATA ( -- ptr n ) data-base ;
 : AOT-CELL@ ( ptr n -- n ) @ ;

@@ -1662,8 +1662,8 @@ private
 \ replay-close restores none of them. The refusal names the token and throws
 \ ENGINE-ERROR:OVERLAY-OPEN (habu2.f EM-COMPILE-DIE); a live `undefine` throws
 \ it before retiring anything (xref.f XREF-UNDEFINE-GUARD): replay-close gives
-\ back only the retirements the overlay logged. outer.f OVERLAY-GUARD reads the
-\ same latch. Clobbers x9.
+\ back only the retirements the overlay logged. interpreter.f OVERLAY-GUARD
+\ reads the same latch. Clobbers x9.
 package OVERLAY-EMIT
 public
 variable LDIE

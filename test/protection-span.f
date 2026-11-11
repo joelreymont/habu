@@ -47,7 +47,7 @@ create ERR CAP allot
    s" 1 set-tier TRUSTED: PST-P ( -- ptr n ) -4 ; : PST-S ( -- n ) 0 PST-P ! 1 ; PST-S drop" REJECTS
    s" 1 set-tier variable PST-C : PST-S ( -- n ) 19 PST-C ! PST-C @ ; : PST-CHECK ( -- ) PST-S 19 <> if 1 throw then ; PST-CHECK" ACCEPTS ;
 
-\ At the code ceiling `create` and `:` refuse before they write (src/habu/definers.f
+\ At the code ceiling `create` and `:` refuse before they write (src/habu/interpreter.f
 \ DEF-CODE-ROOM); a constant's body write reaches the guard.
 : TEST-CODE ( -- )
    s" TRUSTED: PST-RAW ( -- ) data-base TXN-STATE-OFF 1- + cp! ; PST-RAW" REJECTS

@@ -841,8 +841,8 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    w at PEND-WORD-AT !  wu at PEND-WORD-U !
    at 1 + PEND-N ! ;
 
-\ The packages this scan's source sealed, cleared by RUN-IN-SCOPE. A reopening stops as packages.f PKG-SEAL-GUARD
-\ does; a definition or export into one as definers.f DEF-SEAL-GUARD and packages.f PKG-EXPORT do.
+\ The packages this scan's source sealed, cleared by RUN-IN-SCOPE. A reopening stops as interpreter.f PKG-SEAL-GUARD
+\ does; a definition or export into one as interpreter.f DEF-SEAL-GUARD and interpreter.f PKG-EXPORT do.
 DYNAMIC-BUFFER SEALS u8                       \ the sealed packages' names
 DYNAMIC-BUFFER SEALS-AT n                     \ a name's offset
 DYNAMIC-BUFFER SEALS-U n                      \ and its length
@@ -2430,13 +2430,13 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu RECORD-SYM? DEFINER-RETIRE ;
 
 \ `seal-package` lists the open package in SEALS, the scan's twin of the
-\ DNAME-SEALED bit packages.f PKG-SEAL sets on its record; outside a package it
-\ refuses.
+\ DNAME-SEALED bit interpreter.f PKG-SEAL sets on its record; outside a package
+\ it refuses.
 : SEAL-ROW ( -- )
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-PKG-CONTEXT throw THEN
    CHECKER-AUTH-PACKAGE$ SEAL-ADD ;
 
-\ The engine's order (src/habu/packages.f PKG-PACKAGE): the part guard at
+\ The engine's order (src/habu/interpreter.f PKG-PACKAGE): the part guard at
 \ `package`, then the name and its path, the checker, the seal on the path.
 : RECORD-PACKAGE ( -- )
    CHECKER-RESOLVE:PART-GUARD
@@ -4162,7 +4162,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    MULTI-ERR-N @ before <> IF -1 TOP-DEFER ! THEN
    0 0= ;
 
-\ `kernel:` is the engine's synonym for `:` (src/habu/definers.f DEFINE?).
+\ `kernel:` is the engine's synonym for `:` (src/habu/interpreter.f DEFINE?).
 : COLON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" :" CORE-STR=  a u s" kernel:" STR=CI or ;
 

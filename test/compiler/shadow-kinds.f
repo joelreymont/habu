@@ -10,7 +10,7 @@ require src/habu/xref.f
 require src/compiler/native/abi.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
-require src/habu/interpret.f
+require src/habu/interpreter.f
 require src/lib/ffi-callback.f
 
 package SHADOW-KINDS

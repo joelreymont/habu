@@ -406,7 +406,7 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
 
 \ One wordlist's record for a name, from the dictionary's hash index (habu1.f
 \ WLFIND), the index the definer's own duplicate wall asks. xref-search-wl's
-\ row is this package's own (src/habu/prims.f), as OUTER's is for outer.f
+\ row is this package's own (src/habu/prims.f), as OUTER's is for interpreter.f
 \ WL-PROBE.
 : WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
@@ -522,7 +522,7 @@ public
 \ is SEALED?. namespace-record and namespace-private mint a package's wids from
 \ WIDN-CELL, which counts up from FIRST-DYNAMIC-WID, so a lower wid is no
 \ package's and answers without walking the dictionary. A build's global and
-\ types wordlists are dynamic too (linker.f MOVE-IN), and packages.f
+\ types wordlists are dynamic too (linker.f MOVE-IN), and interpreter.f
 \ PKG-WID-SEALED? answers those before it asks here.
 : WID-SEALED? ( n -- bool ) {: wid:n :}
    wid FIRST-DYNAMIC-WID < if XREF-FALSE exit then

@@ -6,7 +6,7 @@
   dictionary, then the tier-0 JIT, the machine-code outer interpreter and the
   `--load` prefix; `jit.f`, `rt.f`, `regalloc.f` are its parts.
 - `layout.f` — image, dictionary and snapshot layout and the DATA bands.
-- `interpret.f` (`outer.f`, `packages.f`, `definers.f`, `repl.f`) and `main.f` —
+- `interpreter.f` (with `repl.f`) and `main.f` —
   the interpret loop and command line in Habu (`docs/architecture.md`
   "Interpreter").
 - `*-x64.f` — the x86-64 engine (`kernel-x64.f` bodies, `boot-x64.f` entry).

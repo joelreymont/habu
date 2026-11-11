@@ -17,15 +17,15 @@ $0000800000000000 constant DNAME-ALLOC
 \ (habu1.f BCOMMA).
 \ COMMA-RUN-CELL: written by habu1.f BCOMMA; zeroed by SND-ZERO-LIVE and by
 \ every path that lowers DP, beside the DPHW-CELL raise: habu1.f DP-LOWER, (and
-\ so BALLOT, habu2.f EM-EVAL-THROW-RECOVER and EM-REPL-RECOVER), interpret.f
+\ so BALLOT, habu2.f EM-EVAL-THROW-RECOVER and EM-REPL-RECOVER), interpreter.f
 \ FRAME-ROLLBACK-CODE and src/core/generated-declaration-dictionary.f
 \ DICTIONARY-DP!. A zero RUN never equals a body start.
 $6A8 constant COMMA-RUN-CELL
 \ COMMA-END-CELL: written by habu1.f BCOMMA, zeroed by SND-ZERO-LIVE.
 $6B0 constant COMMA-END-CELL
 \ COMMA-BASE-CELL: the start of the latest created body, the address its word
-\ pushes, written by habu2.f ADDR-TAIL and definers.f DEF-ADDR-TAIL, zeroed by
-\ SND-ZERO-LIVE.
+\ pushes, written by habu2.f ADDR-TAIL and interpreter.f DEF-ADDR-TAIL, zeroed
+\ by SND-ZERO-LIVE.
 $6B8 constant COMMA-BASE-CELL
 
 ;package

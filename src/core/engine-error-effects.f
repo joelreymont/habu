@@ -17,10 +17,10 @@ PPRIM: ENGINE-ERROR OVERLAY-OPEN PE-N PE-OUT PPRIM;
 PPRIM: ENGINE-ERROR THROW-ZERO PE-N PE-OUT PPRIM;
 PPRIM: DEF-OCC E-STALE PE-N PE-OUT PPRIM;
 \ The Habu loop's export throws it before the checker hears of an export whose
-\ clause would find no occurrence left (src/habu/packages.f PKG-OCC-ROOM).
+\ clause would find no occurrence left (src/habu/interpreter.f PKG-OCC-ROOM).
 PPRIM: DEF-OCC E-EXHAUSTED PE-N PE-OUT PPRIM;
-\ The `using` failure codes the Habu loop throws (packages.f, outer.f): without
-\ these rows interpret.f is E-UNDEFINED on a from-source prefix boot.
+\ The `using` failure codes the Habu loop throws (interpreter.f): without
+\ these rows a from-source prefix boot refuses interpreter.f, E-UNDEFINED.
 PPRIM: ENGINE-ERROR USING-NO-NAME PE-N PE-OUT PPRIM;
 PPRIM: ENGINE-ERROR USING-BAD-NAME PE-N PE-OUT PPRIM;
 PPRIM: ENGINE-ERROR USING-UNKNOWN PE-N PE-OUT PPRIM;

@@ -51,7 +51,8 @@ private
 public
 
 \ A tick refuses an internal record outside a TRUSTED: body, and in every body a
-\ scope entry, as outer.f SCOPE-ENTRY-GUARD and habu2.f C-SCOPE-ENTRY-GUARD do.
+\ scope entry, as interpreter.f SCOPE-ENTRY-GUARD and habu2.f
+\ C-SCOPE-ENTRY-GUARD do.
 : TICK-REFUSED? ( ptr n -- bool )
    {: rec:ptr :}
    rec XREF-FLAGS DNAME-INT and 0<>  rec VISIBLE-RECORD? 0= and if
@@ -71,8 +72,8 @@ public
 \ no word: two used publics export the tail and nothing earlier binds it, or a
 \ used public also exports the tail a global binds (E-USING-SHADOW-GLOBAL, or
 \ E-USING-AMBIGUOUS when a second used public exports it too). The engine's
-\ interpreters (habu2.f INTERP-EMIT:FIND-SHADOW, outer.f LOOKUP-GO) and the
-\ checker's binder (checker.f LIVE-BIND) refuse the same two shapes.
+\ interpreters (habu2.f INTERP-EMIT:FIND-SHADOW, interpreter.f LOOKUP-GO) and
+\ the checker's binder (checker.f LIVE-BIND) refuse the same two shapes.
 : USING-REFUSED? ( ptr u8 n -- bool )
    scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
    rec XREF-FOUND? 0= if flags SCOPE-FIND-AMBIGUOUS and 0<> exit then

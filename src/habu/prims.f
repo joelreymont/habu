@@ -573,7 +573,7 @@ EPRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM; REACH run
 EPRIM: evaluate-range PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE, through PROVIDED-XT:EVALUATE-RANGE-CELL
+EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpreter.f OUTER:EVAL-FRAMED-RANGE, through PROVIDED-XT:EVALUATE-RANGE-CELL
 EPPRIM: SOURCE-ROOT evaluate-range
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM; REACH memory
@@ -712,7 +712,7 @@ ETRUSTED-ONLY!                       \ sets DNAME-REP on one live CAST: record
 EPRIM: min-in-mark   PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ records a certified minimum input arity on one
 \ The publisher's reader (src/compiler/native/publish.f MIN-IN-REC) calls it inside NPUB,
-\ and the interpret loop written in Habu after a cast (src/habu/definers.f) inside OUTER.
+\ and the interpret loop written in Habu after a cast (src/habu/interpreter.f) inside OUTER.
 EPPRIM: NPUB min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: OUTER min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB wide-mark ECLOSE-PRIVATE
@@ -802,8 +802,8 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ These fifteen rows are how an interpreter written in Habu writes it. Each is
 \ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so a checked
 \ body reaches one only through an owner-private row below: package OUTER's,
-\ the interpret loop written in Habu (src/habu/packages.f and
-\ src/habu/definers.f), and CHECKER-OVERLAY's. A refusal exits and never throws: 79 on a task's
+\ the interpret loop written in Habu (src/habu/interpreter.f), and
+\ CHECKER-OVERLAY's. A refusal exits and never throws: 79 on a task's
 \ thread (the five dictionary rows), 84 for a protected wid after
 \ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
 \ caller checks first and prints the engine's own text. Two refusals are
@@ -813,8 +813,8 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ ENGINE-ERROR:OVERLAY-OPEN (habu1.f OVERLAY-EMIT:GUARD,), and `def-create`
 \ dies 76 as `allot` does when DP would pass the data region. x86-64 refuses
 \ `def-create` and `def-defer` (src/habu/kernel-x64.f): its Habu loop has NCOMP
-\ compile a created or deferred word's body instead (definers.f DEF-ADDR-TAIL,
-\ DEF-DEFER).
+\ compile a created or deferred word's body instead (interpreter.f
+\ DEF-ADDR-TAIL, DEF-DEFER).
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -861,7 +861,7 @@ EPPRIM: OUTER alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLO
 \ unsigned, a row that is not a namespace row, one without a private wid, and
 \ a part when no package or a part is open.
 \ It has no task guard of its own: the package keywords refuse one, and a throw
-\ puts the scope back through this row (src/habu/packages.f PKG-RECOVER).
+\ puts the scope back through this row (src/habu/interpreter.f PKG-RECOVER).
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
@@ -891,7 +891,7 @@ EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 \ created-sig! ( ptr u8 n -- ): the inside of the pending definition's `does>`
 \ signature, the effect of the words it creates, into TCSIG-A and TCSIG-U: its
-\ copy in the body text (definers.f DEF-CREATED). It refuses when no definition is
+\ copy in the body text (interpreter.f DEF-CREATED). It refuses when no definition is
 \ pending.
 EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
@@ -1034,7 +1034,7 @@ EPRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPR
 ETRUSTED-ONLY!                       \ NDICT's private indexed-record boundary
 \ Its owners' readers: CHECKER-RESOLVE's scope probe (src/core/checker.f CHECKER-RESOLVE:WL-PROBE), NDICT's
 \ record lookup (src/compiler/native/dict.f WL-RECORD), CHECKER-SURFACE's record index
-\ (src/core/checker-surface.f RECORD-INDEX), OUTER's dictionary probe (src/habu/outer.f WL-PROBE), the
+\ (src/core/checker-surface.f RECORD-INDEX), OUTER's dictionary probe (src/habu/interpreter.f WL-PROBE), the
 \ generated-name preflight (src/habu/xref.f WL-RECORD) and the capture's record lookup
 \ (src/habu/aot-capture.f AOT-WL-RECORD). Six rows, not one: each owner is a separate package, and NDICT
 \ keeps the raw record private.
@@ -1149,7 +1149,7 @@ EPRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( addr len -- 
 \ `depth` and `catch` both push, so this is the one word an interpreter loop
 \ written in Habu can use to observe a token that underflowed. The row states
 \ no effect for the xt, so the xt travels as a number: outside package OUTER,
-\ that loop (src/habu/outer.f), a checked caller is refused.
+\ that loop (src/habu/interpreter.f), a checked caller is refused.
 EPRIM: execute-floor PE-N PE-IN  PE-F PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ executes an xt whose effect nothing states
 EPPRIM: OUTER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
@@ -1166,7 +1166,7 @@ ELAB: catch REACH run
 1 EMIN-IN!
 ELAB: evaluate
 2 EMIN-IN!
-EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpret.f OUTER:EVAL-FRAMED, through PROVIDED-XT:EVALUATE-CELL
+EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpreter.f OUTER:EVAL-FRAMED, through PROVIDED-XT:EVALUATE-CELL
 ELAB: ?dup REACH stack
 1 EMIN-IN!
 ELAB: 2>r REACH stack

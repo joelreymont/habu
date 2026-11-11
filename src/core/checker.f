@@ -13206,7 +13206,7 @@ PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 \ Snapshot support loads after capture; this prefix definition has no check
 \ hook to grant its declared public effect to later checked callers.
 PPRIM: CHECKER-REG RECORD-SNAPSHOT-COPY PE-PTR-U8 PE-IN PE-N PE-IN PPRIM;
-\ The x86-64 Habu loop's definers (src/habu/definers.f DEF-PREFIX-BIND, a
+\ The x86-64 Habu loop's definers (src/habu/interpreter.f DEF-PREFIX-BIND, a
 \ TRUSTED: body) load after capture too; without a row the sealed checker
 \ refuses this public.
 PPRIM: CHECKER-PREFIX BIND? PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
@@ -13720,7 +13720,7 @@ package CHECKER-REG
 
 
 \ --- the replay's `;using` refusals -------------------------------------------
-\ A replayed `;using` is refused where the engine's is (src/habu/packages.f
+\ A replayed `;using` is refused where the engine's is (src/habu/interpreter.f
 \ PKG-END-USING), by these codes (CHECKER-OVERLAY:CLOSE-USING).
 7142 constant E-USING-UNBALANCED           \ `;using` with no `using` open in a replay
 \ Inside a package a `;using` closes only an import the package opened: one
@@ -13857,10 +13857,11 @@ USE-SLOT-BOOT
 package CHECKER-RESYNC
 
 \ The engine's wids are the slots' authority. A throw's recovery restores the
-\ includer's wids (habu2.f LEVALREC and EM-REPL-RECOVER, interpret.f RUN-CAUGHT)
-\ while the name an overwritten `using` recorded stays here, so each live slot's
-\ name is read back from its wid. A wid no live row publishes, or a name the
-\ slot cannot hold, names nothing: a bare tail through that slot is refused.
+\ includer's wids (habu2.f LEVALREC and EM-REPL-RECOVER, interpreter.f
+\ RUN-CAUGHT) while the name an overwritten `using` recorded stays here, so each
+\ live slot's name is read back from its wid. A wid no live row publishes, or a
+\ name the slot cannot hold, names nothing: a bare tail through that slot is
+\ refused.
 : SLOT ( n -- ) {: d:n :}
    d USE-SLOT-XT {: a:ptr u:n ok:bool :}
    ok u CHECKER-PACKAGE-CAP < and IF a u d CHECKER-USE:NAME! EXIT THEN
@@ -13870,13 +13871,13 @@ package CHECKER-RESYNC
    CK-USE-SCAN-N 0 ?DO i SLOT LOOP ;
 
 \ A throw's recovery restores the engine's package scope (habu2.f LEVALREC and
-\ EM-REPL-RECOVER, interpret.f INTERPRET), but the mirror holds what the failed
-\ input did; left alone, every inherited replay after it refused E-PKG-CONTEXT.
-\ The mirror is set from the restored scope the live provider names; a scope it
-\ cannot authenticate names nothing to copy. With a package open but current
-\ elsewhere the mirror keeps what the notifications set; with none open it is
-\ top level. Inside a replay CHECKER-OVERLAY sets the mirror each time it moves
-\ the engine's scope.
+\ EM-REPL-RECOVER, interpreter.f INTERPRET), but the mirror holds what the
+\ failed input did; left alone, every inherited replay after it refused
+\ E-PKG-CONTEXT. The mirror is set from the restored scope the live provider
+\ names; a scope it cannot authenticate names nothing to copy. With a package
+\ open but current elsewhere the mirror keeps what the notifications set; with
+\ none open it is top level. Inside a replay CHECKER-OVERLAY sets the mirror
+\ each time it moves the engine's scope.
 public
 : MIRROR ( -- )
    SLOTS
@@ -14241,7 +14242,7 @@ variable SNAP-N
 
 \ Give namespace row REC, which has no private wordlist, one until the log is
 \ undone, as `package` gives one to a row a qualified definition made
-\ (src/habu/packages.f PKG-REOPEN).
+\ (src/habu/interpreter.f PKG-REOPEN).
 : GRANT ( ptr n -- ) {: rec:ptr :}
    rec REC>IX {: ix:n :}
    ix BOOT:NAMESPACE-WL LOG!
@@ -14349,7 +14350,7 @@ public
    REPEAT ;
 
 \ A composed file's scope (CHECKER-VERIFY-FILE) starts as an engine buffer does,
-\ and FILE-DONE ends a clean return as interpret.f CLEAN-END ends one.
+\ and FILE-DONE ends a clean return as interpreter.f CLEAN-END ends one.
 ROW-CELLS cells constant SCOPE-BYTES
 : SAVE-SCOPE ( ptr u8 -- ) SNAP-SAVE  1 CK-PKG-OUTSIDE-OFF DATA! ;
 : RESTORE-SCOPE ( ptr u8 -- ) SNAP-RESTORE CHECKER-RESYNC:MIRROR ;
@@ -14448,8 +14449,9 @@ ROW-CELLS cells constant SCOPE-BYTES
    a u get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
    ca cu get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN ;
 
-\ `package NAME` as packages.f PKG-PACKAGE opens it. Inside an open package NAME
-\ is a part's path (CHECKER-RESOLVE:PART-PATH), refused elsewhere or in a part.
+\ `package NAME` as interpreter.f PKG-PACKAGE opens it. Inside an open package
+\ NAME is a part's path (CHECKER-RESOLVE:PART-PATH), refused elsewhere or in a
+\ part.
 : OPEN-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-COLON-SCAN drop 0 <> {: part:bool :}
    part  CK-PKG-PUB-OFF DATA@ 0 <>  xor  CK-ENCLOSING-REC-OFF DATA@ 0 <>  or IF
@@ -26869,8 +26871,8 @@ package CHECKER-REG
 : TBREAK? ( n -- bool ) {: i:n :}
    i TBLEN @ >= IF RES-TRUE EXIT THEN
    i TBYTE@ 32 = ;
-\ The byte after the head's `(` is the source's (definers.f DEF-SIG-PASS), and
-\ the engine ends a token at any byte at or below 32 (habu1.f EMIT-TOK).
+\ The byte after the head's `(` is the source's (interpreter.f DEF-SIG-PASS),
+\ and the engine ends a token at any byte at or below 32 (habu1.f EMIT-TOK).
 : TBLANK? ( n -- bool ) {: i:n :}
    i TBLEN @ >= IF RES-TRUE EXIT THEN
    i TBYTE@ 32 <= ;
@@ -32061,7 +32063,7 @@ public
    o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-OFF + @ + e - 0 >= and ;
 ;package
 
-\ Its row, so the checked writers (src/habu/outer.f AT-SOURCE,
+\ Its row, so the checked writers (src/habu/interpreter.f AT-SOURCE,
 \ src/compiler/native/definition.f SAY-WHERE) may call it outside a build.
 data-base BOOT:IMAGE-BASE-CELL + @ 0= [if]
 PPRIM: SRCLOC FILE-BUFFER? PE-F PE-OUT PPRIM;
