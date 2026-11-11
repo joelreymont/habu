@@ -66,12 +66,15 @@
 \    check-verify: candidate {"word":W,"file":F,"target_start":TS,
 \       "target_end":TN}
 \    check-verify: loader LEN TARGET
+\    check-verify: reason TEXT
 \
 \ A loader line comes right before the stopped line of a stop at a loader's
 \ fault (VERIFY:LOADER-FAULT?): LEN is the length of the loader token at the
 \ stopped line's BYTE, 0 for a string or locals group a file never closes, and
 \ TARGET, the rest of the line and absent when empty, the file the loader could
-\ not read, as it was resolved.
+\ not read, as it was resolved. A reason line comes right before the stopped
+\ line of a stop at a declaration the scan refused with a reason
+\ (VERIFY:REASON$): TEXT, the rest of the line, is that reason.
 \
 \ A file line names each file visit reported by ON-FILE. Subject and open
 \ document bytes have an editor source; disk bytes carry the metadata captured

@@ -480,6 +480,7 @@ DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
 DYNAMIC-BUFFER VFY-LOG u8               \ VERIFY-LOG$
 DYNAMIC-BUFFER VFY-REC u8               \ VFY-OUT, each duplicate line its record
 DYNAMIC-BUFFER VFY-STOP-PATH u8         \ preserve the final stop across duplicate records
+DYNAMIC-BUFFER VFY-STOP-REASON u8       \ the stop's reason line's text, kept out of VFY-OUT
 DYNAMIC-BUFFER VFY-DEFS u8              \ VERIFY-DEFS$
 DYNAMIC-BUFFER VFY-FILES u8             \ VERIFY-FILES$
 DYNAMIC-BUFFER VFY-USES u8              \ VERIFY-USES$
@@ -493,6 +494,7 @@ variable VFY-OPEN-N
 variable VFY-OPEN-START
 variable VFY-OPEN-END
 variable VFY-REC-U
+variable VFY-STOP-REASON-U
 variable VFY-DEFS-U
 variable VFY-FILES-U
 variable VFY-USES-U
@@ -552,6 +554,7 @@ variable VFY-TARGET-U
    0 VFY-OF-U !
    VFY-NONE VFY-ANSWER !
    0 VFY-STOP-RC !
+   0 VFY-STOP-REASON-U !
    0 VFY-FAULT-LEN !
    0 VFY-TARGET-U !
    false VFY-PREPASS !
@@ -669,9 +672,14 @@ variable VFY-TARGET-U
    s\" \n" VFY-OUT+ ;
 
 
+: VFY-STOP-REASON$ ( -- ptr u8 n )
+   VFY-STOP-REASON-U @ 0= if NULL$ exit then
+   0 VFY-STOP-REASON VFY-STOP-REASON-U @ ;
+
+
 : VFY-STOP-RECORD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: label:ptr labelu:n src:ptr srcu:n :}
-   VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu s" " true STOP-RECORD$ drop ;
+   VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu VFY-STOP-REASON$ true STOP-RECORD$ drop ;
 
 
 TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the check
@@ -763,6 +771,9 @@ variable VFY-EXE-U
 : VFY-LOADER$ ( -- ptr u8 n )
    s" check-verify: loader " ;
 
+: VFY-REASON$ ( -- ptr u8 n )
+   s" check-verify: reason " ;
+
 
 : VFY-FIELD-END ( n n -- n ) {: at:n end:n :}
    at begin
@@ -847,9 +858,23 @@ variable VFY-EXE-U
    repeat ;
 
 
-\ Keep the complete lines of the child's OUTU bytes of stdout: the packets, and
-\ the answer of a result line that ends them. The rest of a line the deadline or
-\ the capture cut is dropped.
+\ The line that ends at the stopped answer starting at AT, when it is a reason
+\ line: its text kept in VFY-STOP-REASON. Where the packets end.
+: VFY-REASON-TAKE ( n -- n ) {: at:n :}
+   at 0= if at exit then
+   at 1- VFY-LINE-START {: from:n :}
+   from VFY-OUT at 1- from - VFY-REASON$ STARTS-WITH? 0= if at exit then
+   from VFY-REASON$ nip + {: t:n :}
+   at 1- t - {: tu:n :}
+   tu 0= if from exit then
+   tu VFY-STOP-REASON-RESERVE
+   t VFY-OUT 0 VFY-STOP-REASON tu BYTE-COPY
+   tu VFY-STOP-REASON-U !
+   from ;
+
+
+\ Keep the packets in the child's OUTU bytes and the answer and stop reason that
+\ end them; a cut line, or a reason line no answer follows, is dropped.
 : VFY-TAKE ( n -- )
    {: outu:n :}
    outu VFY-LINE-START {: end:n :}
@@ -857,8 +882,11 @@ variable VFY-EXE-U
    end 0= if exit then
    end 1- VFY-LINE-START {: at:n :}
    at end 1- VFY-ANSWER-AT VFY-ANSWER !
-   VFY-ANSWER @ VFY-NONE = if exit then
-   at VFY-OUT-U ! ;
+   VFY-ANSWER @ VFY-NONE = if
+      at VFY-OUT end 1- at - VFY-REASON$ STARTS-WITH? if at VFY-OUT-U ! then
+      exit
+   then
+   VFY-ANSWER @ VFY-STOPPED = if at VFY-REASON-TAKE else at then VFY-OUT-U ! ;
 
 
 : VFY-STOP-FILE$ ( -- ptr u8 n )
@@ -1328,7 +1356,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
    0 VFY-OUT-U ! 0 VFY-DEFS-U ! 0 VFY-FILES-U !
    0 VFY-USES-U ! 0 VFY-LOADS-U ! 0 VFY-CANDS-U !
    VFY-NONE VFY-ANSWER !
-   0 VFY-STOP-RC ! 0 VFY-FAULT-LEN ! 0 VFY-TARGET-U ! ;
+   0 VFY-STOP-RC ! 0 VFY-STOP-REASON-U ! 0 VFY-FAULT-LEN ! 0 VFY-TARGET-U ! ;
 
 : VFY-BATCH-SUBJECT ( n -- )
    {: k:n :}
@@ -1696,16 +1724,8 @@ public
    VFY-BATCH-OUTCOME @ VFY-CLEAN-EXIT? ;
 : VERIFY-BATCH-COMPLETE? ( -- bool )  VFY-BATCH-COMPLETE @ ;
 
-\ check.f's pre-pass of the bytes as the file at PATH, the subject named LABEL
-\ in its packets, the child given DEADLINE. The child is the one
-\ VERIFY-BYTES verifies on, so the pre-pass resolves the engine's words and the
-\ subject's loads, as the run does, never a word only this process loaded. It
-\ stops at the first definition the checker refuses, as the load does: ok 0 when
-\ nothing stopped it, else ok the code it stopped with, and VERIFY-STOP-AT,
-\ PREVERIFY-DUPLICATE, VERIFY-STOP-SUBJECT? and VERIFY-STOPPED$ say where.
-\ err is how a child ended that gave no answer. An empty PATH is E-FS-PATH; a
-\ failed spawn throws, and more child stderr than the capture holds is
-\ E-PROC-TRUNCATED, as for VERIFY-BYTES.
+\ check.f's pre-pass in the verifier child, which resolves words as the run does:
+\ ok 0, ok the code it stopped with, or err how a child with no answer ended.
 : PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms -- result<n,PROCESS:ending> )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline :}
    VFY-RESET
@@ -1747,6 +1767,11 @@ public
 
 : VERIFY-STOPPED$ ( -- ptr u8 n )
    VFY-STOP-FILE$ ;
+
+\ Why the scan refused the declaration it stopped at (VERIFY:REASON$), empty
+\ when the child gave no reason.
+: VERIFY-STOP-REASON$ ( -- ptr u8 n )
+   VFY-STOP-REASON$ ;
 
 ;using
 ;package

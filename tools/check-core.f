@@ -1086,7 +1086,7 @@ private
 \ refusal when the record is one; any other stop returns.
 : CHK-STOP-RECORD ( n -- ) {: rc:n :}
    rc CHECK-ALL-ERRORS:THREW? 0= if exit then
-   rc VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE s" " CHK-STOP-WRITE ;
+   rc VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE VERIFY-STOP-REASON$ CHK-STOP-WRITE ;
 
 \ The checker reports nothing for a duplicate definition, so it is reported by
 \ the record --all-errors writes in the run's mode, naming the file that defined

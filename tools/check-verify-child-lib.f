@@ -202,6 +202,16 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD NEWLINE ;
 
 
+\ Why the scan refused the declaration it stopped at, when it kept a reason
+\ (VERIFY:REASON$), for the parent to put in the stop's packet.
+: REASON-LINE ( -- )
+   VERIFY:REASON$ {: r:ptr ru:n :}
+   ru 0= if exit then
+   OUT-FD s" check-verify: reason " WRITE
+   OUT-FD r ru WRITE
+   OUT-FD NEWLINE ;
+
+
 : VERIFY-CUR-ACT ( -- )
    SUBJECT$ SUBJECT-PATH$ VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
@@ -226,6 +236,7 @@ variable OF-U                           \ 0 for the other forms
 
 : STOP-RESULT ( n -- )
    {: rc:n :}
+   REASON-LINE
    OUT-FD s" check-verify: stopped " WRITE
    VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED$
    VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? rc STOP-FIELDS ;

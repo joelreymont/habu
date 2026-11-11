@@ -745,25 +745,29 @@ variable RC
    code THREW ;
 
 \ Under --verify-only the declaration pre-pass alone refuses the fixture: its
-\ one packet is CODE with repair class CLS at TOK.
-: PREPASS-REFUSED ( ptr u8 n ptr u8 n ptr u8 n n n n n -- )
-   {: c:ptr cu:n cls:ptr clsu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+\ one packet is CODE with repair class CLS and reason WHY at TOK.
+: PREPASS-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n n n n -- )
+   {: c:ptr cu:n cls:ptr clsu:n why:ptr whyu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    s" --verify-only" CHECK
    c cu REJECTED-AS
    0 s" repair_class" cls clsu FIELD=
+   0 s" reason" why whyu FIELD=
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 : TEST-PREPASS-NOMINAL ( -- )
    s" a reserved DEFLINEAR name under --verify-only" T-LABEL
    s" DEFLINEAR n" s" deflinear-reserved.f" LINE-FIXTURE
-   s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type" s" n" 1 11 10 11 PREPASS-REFUSED
+   s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type" s" reserved name"
+   s" n" 1 11 10 11 PREPASS-REFUSED
    s" a reserved DEFTYPE name under --verify-only, at the name it folds" T-LABEL
    s" DEFTYPE N" s" deftype-reserved.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" fix_family_declaration" s" N" 1 9 8 9 PREPASS-REFUSED
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" reserved name"
+   s" N" 1 9 8 9 PREPASS-REFUSED
    0 s" family" s" n" FIELD=
    s" a DEFTYPE name with parameters under --verify-only, and no converters after it" T-LABEL
    s" DEFTYPE PTR<a>" s" deftype-ptr-params.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" fix_family_declaration" s" PTR" 1 9 8 11 PREPASS-REFUSED
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" reserved name"
+   s" PTR" 1 9 8 11 PREPASS-REFUSED
    s" an upper-case NEWTYPE name with parameters, at its bare name" T-LABEL
    s" NEWTYPE Foo<a>" s" newtype-case-params.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" Foo" 1 9 8 11 REFUSED-MODES
@@ -772,7 +776,8 @@ variable RC
    s" E-BAD-DECLARATION" s" <a>" 1 9 8 11 REFUSED-MODES
    s" a duplicate VALUE-RECORD field under --verify-only" T-LABEL
    s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
-   s" E-BAD-RECORD-FIELD" s" fix_record_field" s" x" 1 21 20 21 PREPASS-REFUSED
+   s" E-BAD-RECORD-FIELD" s" fix_record_field"
+   s" checker: duplicate value-record field" s" x" 1 21 20 21 PREPASS-REFUSED
    s" a duplicate VALUE-RECORD field's reason under --all-errors" T-LABEL
    s" --all-errors" CHECK
    s" E-BAD-RECORD-FIELD" REJECTED-AS
@@ -782,20 +787,20 @@ variable RC
 : TEST-PREPASS-OPEN ( -- )
    s" an unclosed VALUE-RECORD under --verify-only" T-LABEL
    s" VALUE-RECORD vr x n" s" vrec-open.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" fix_family_declaration" s" vr" 1 14 13 15 PREPASS-REFUSED
-   0 s" reason" s" missing END-VALUE-RECORD" FIELD=
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" missing END-VALUE-RECORD"
+   s" vr" 1 14 13 15 PREPASS-REFUSED
    s" an unclosed SUMTYPE under --verify-only" T-LABEL
    s" SUMTYPE shape" s" sum-open.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" fix_family_declaration" s" shape" 1 9 8 13 PREPASS-REFUSED
-   0 s" reason" s" missing ;SUMTYPE" FIELD=
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" missing ;SUMTYPE"
+   s" shape" 1 9 8 13 PREPASS-REFUSED
    s" an unclosed ENUM under --verify-only" T-LABEL
    s" ENUM color red green" s" enum-open.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" fix_family_declaration" s" color" 1 6 5 10 PREPASS-REFUSED
-   0 s" reason" s" missing ;ENUM" FIELD=
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" missing ;ENUM"
+   s" color" 1 6 5 10 PREPASS-REFUSED
    s" an unclosed STRUCTURE under --verify-only" T-LABEL
    s" STRUCTURE rec FIELD id n" s" struct-open.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" fix_family_declaration" s" rec" 1 11 10 13 PREPASS-REFUSED
-   0 s" reason" s" missing ;STRUCTURE" FIELD=
+   s" E-BAD-DECLARATION" s" fix_family_declaration" s" missing ;STRUCTURE"
+   s" rec" 1 11 10 13 PREPASS-REFUSED
    s" an unclosed PRODUCT" T-LABEL
    s" PRODUCT pt FIELD x n" s" prod-open.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" pt" 1 9 8 10 REFUSED-MODES
