@@ -1115,7 +1115,6 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" E-C2-COPY" endof
       MD-C2-DROP      of s" E-C2-DROP" endof
       MD-C2-ESCAPE    of s" E-C2-SCOPE-ESCAPE" endof
-      MD-IN-PLACE     of s" E-IN-PLACE" endof
       MD-ARENA-CALL   of s" E-ARENA-CALL" endof
       MD-UNDERFLOW    of s" E-INPUT-UNDERFLOW" endof
       MD-RIGID-REGION of s" E-RIGID-REGION-MISMATCH" endof
@@ -1172,7 +1171,6 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" move_exclusive_value" endof
       MD-C2-DROP      of s" consume_exclusive_value" endof
       MD-C2-ESCAPE    of s" keep_borrow_within_scope" endof
-      MD-IN-PLACE     of s" use_owner_in_place" endof
       MD-ARENA-CALL   of s" use_arena_words" endof
       MD-UNDERFLOW    of s" supply_missing_input" endof
       MD-RIGID-REGION of s" fix_host_region" endof
@@ -1286,7 +1284,6 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" Move the exclusive value once instead of copying it." endof
       MD-C2-DROP      of s" Return or consume the exclusive value instead of discarding it." endof
       MD-C2-ESCAPE    of s" Return only values independent of the owner or loan opened by this operation." endof
-      MD-IN-PLACE     of s" Pass the owner's pointer instead: NAME-NEW and NAME-RELEASE take a ptr to the arena owner, and a record holding one is reached through its field accessor. A copy of an owner would share its chunks, and growing or releasing both would unmap them twice." endof
       MD-ARENA-CALL   of s" Declare the storage with HEAP NAME TYPE and call its generated NAME-NEW and NAME-RELEASE: only those words call RECORD-NEW and RECORD-RELEASE, because only they tie the record size to the declared type." endof
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
@@ -1353,7 +1350,6 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" exclusive value copied" endof
       MD-C2-DROP      of s" exclusive value discarded" endof
       MD-C2-ESCAPE    of s" scoped value escapes its owner or loan" endof
-      MD-IN-PLACE     of s" in place: an arena owner is never fetched or stored whole" endof
       MD-ARENA-CALL   of s" arena call: only HEAP's generated NAME-NEW and NAME-RELEASE call the storage runtime" endof
       MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
@@ -2487,7 +2483,6 @@ package CAST-ERROR
    CODE @ E-CAST-ARITY = IF s" E-CAST-ARITY" EXIT THEN
    CODE @ E-CAST-CLASS = IF s" E-CAST-CLASS" EXIT THEN
    CODE @ E-CAST-FAM = IF s" E-CAST-FAM" EXIT THEN
-   CODE @ E-CAST-OWNER = IF s" E-CAST-OWNER" EXIT THEN
    CODE @ E-CAST-LINEAR = IF s" E-CAST-LINEAR" EXIT THEN
    CODE @ E-CAST-MINT = IF s" E-CAST-MINT" EXIT THEN
    CODE @ E-CAST-SCOPE = IF s" E-CAST-SCOPE" EXIT THEN
@@ -2499,7 +2494,6 @@ package CAST-ERROR
    CODE @ E-CAST-ARITY = IF s" Declare one term on each side over the same stack below, with no return-stack effect." EXIT THEN
    CODE @ E-CAST-CLASS = IF s" Retype one machine cell: a con, a width-1 family, a pointer chain ending at storage or a quotation, and hand out no atom." EXIT THEN
    CODE @ E-CAST-FAM = IF s" Declare the type before the cast and give each family its declared number of arguments." EXIT THEN
-   CODE @ E-CAST-OWNER = IF s" Declare the cast in the package that owns the type, or call a word that package exports." EXIT THEN
    CODE @ E-CAST-LINEAR = IF s" Remove the linear type or type variable from the cast; a linear value changes hands only through its owner's words." EXIT THEN
    CODE @ E-CAST-MINT = IF s" Declare a cast that mints a pointer or a quotation in its package's private section." EXIT THEN
    CODE @ E-CAST-SCOPE = IF s" Write a scoped cast only as a view pack or unpack, unqualified, in a private section." EXIT THEN
@@ -2508,16 +2502,9 @@ package CAST-ERROR
    CODE @ E-LINEAR-SCOPE = IF s" Declare the linear: row unqualified, in its owner's private section." EXIT THEN
    CODE @ throw ;
 : WORD$ ( -- ptr u8 n ) WORD-A @ WORD-U @ ;
-: FAMILY ( -- )
-   FAM @ 0 < IF EXIT THEN
-   s"  family '" DTXT  FAM @ TFAM-NAME$ DTXT  s" '" DTXT
-   FAM @ TFAM-PKG$* {: pa:ptr pu:n :}
-   pu 0= IF s" , declared at top level" DTXT EXIT THEN
-   s"  of package " DTXT  pa pu DTXT ;
 : REASON ( -- )
    WHY-A @ WHY-U @ DTXT
-   TOK-U @ 0 > IF s"  '" DTXT  TOK-A @ TOK-U @ DTXT  s" '" DTXT THEN
-   FAMILY ;
+   TOK-U @ 0 > IF s"  '" DTXT  TOK-A @ TOK-U @ DTXT  s" '" DTXT THEN ;
 \ Mapped: the word lies in the text the pre-pass checks, its place in JLOC-*;
 \ else the place is the signature's line in the file the load reads, as DSITE's.
 : SITE ( -- ptr u8 n n bool bool )

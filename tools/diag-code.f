@@ -108,8 +108,6 @@ private
       construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
    c u s" E-CAST-FAM" STR= IF
       construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
-   c u s" E-CAST-OWNER" STR= IF
-      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
    c u s" E-CAST-LINEAR" STR= IF
       construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
    c u s" E-CAST-MINT" STR= IF

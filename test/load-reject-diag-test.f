@@ -671,15 +671,8 @@ variable RC
    EXITED @ TTRUE
    RC @ DUP-RC T= ;
 
-\ A refused `cast:` names its code, place, word and reason and, for an arena
-\ head, the head's family and owner.
+\ A refused `cast:` names its code, place, word and reason.
 : TEST-CAST ( -- )
-   s" a cast reaching another package's arena head names the head" T-LABEL
-   BODY$ s" package LRD-OH public CAST: LRD-HEAD ( ptr DYNAMIC-STORAGE:arena-head -- ptr u8 ) ;package" FS:WRITE-ALL
-   BODY$ RUN
-   s" E-CAST-OWNER habu: " ASSERT-NAMED
-   ERR$ BODY$ CONTAINS? TTRUE
-   ERR$ s" :1: cast: 'LRD-HEAD': the cast reaches an arena head declared outside this package: family 'arena-head' of package DYNAMIC-STORAGE" CONTAINS? TTRUE
    s" a cast of one cell into three names its arity" T-LABEL
    BODY$ s" cast: LRD-WIDE ( n -- ptr u8 n )" FS:WRITE-ALL
    BODY$ RUN

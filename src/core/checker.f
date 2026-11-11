@@ -1220,7 +1220,6 @@ variable C2-MUT-FAM    -1 C2-MUT-FAM ! \ reserved bounded exclusive-view family
 variable C2-INIT-FAM   -1 C2-INIT-FAM ! \ reserved initialized-storage element family
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
 variable C2-STOW-FAM -1 C2-STOW-FAM ! \ private C2 descriptor product
-variable ARENA-HEAD-FAM -1 ARENA-HEAD-FAM ! \ DYNAMIC-STORAGE:arena-head, lives in place
 
 \ The `tile` and `uniform` family ids, captured by type-family.f at
 \ registration. A word whose declared effect consumes a `tile` and produces a
@@ -3555,30 +3554,6 @@ variable NMOFF                           \ its token's offset in the checked tex
    0 ;
 
 
-\ A layout lives in place when it is an arena head (ARENA-HEAD-FAM) or one of
-\ its members (TFAM-MEMBERS-XT: every field and variant payload, instantiated
-\ over its arguments) lives in place. A copy of an arena owner would share its
-\ chunks, and growing or releasing both would unmap them twice, so typed memory
-\ never fetches or stores such a layout whole (LAYOUT-FETCH-STEP). A pointer or
-\ quotation member holds no head. A term whose argument count is not its
-\ family's arity has no members to instantiate; it answers false, and the
-\ signature's arity refusal reports it.
-: IN-PLACE? ( n -- bool )
-   {: t0:n :}
-   t0 R-RES dup TAG S-PUSH = IF
-      BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE RECURSE IF drop RES-TRUE EXIT THEN
-         P>REST R-RES
-      REPEAT
-   THEN
-   ISROW IF RES-FALSE EXIT THEN
-   t0 LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
-   t0 T-UNSTALE {: t:n :}
-   t PARAM>FAM ARENA-HEAD-FAM @ = IF RES-TRUE EXIT THEN
-   t PARAM>ARGC  t PARAM>FAM TFAM-ARITY* <> IF RES-FALSE EXIT THEN
-   t TFAM-MEMBERS-XT RECURSE ;
-
-
 : LAYOUT-MAYBE-LINEAR? ( n -- bool ) TFAM-MAY-LIN-XT ;
 : LAYOUT-LINEAR-COUNT ( n -- n ) TFAM-LIN-N-XT ;
 : LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
@@ -4982,7 +4957,6 @@ CHECKER-REG:}SCRATCH
 40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN); same E-STALE-READ code, its own prose and repair class
 41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
 42 constant MD-LIT-FIT       \ a literal reached a fixed-width type it does not fit (LIT-FITS? LIT-HIT); same E-MISMATCH code, its own prose and suggestion
-43 constant MD-IN-PLACE      \ `@`/`!` would move a layout holding an arena head whole (IN-PLACE?)
 44 constant MD-ARENA-CALL    \ the storage runtime named outside HEAP's generated words (ARENA-CALL-REFUSE?)
 45 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
 46 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
@@ -8476,17 +8450,13 @@ variable LBI-XT       \ the refused stored type parsed and names `xt`
 \ bytes, because its accessor scales the index by the element width: the
 \ CHECKER-STORAGE-INFO surface plus `u8`, the one sub-cell con with an accessor
 \ pair (c@ `( ptr u8 -- n )`, c! `( n ptr u8 -- )`). `u16`, `u32` and `char`
-\ have none and stay refused, as for TYPED-BUFFER. These definers move or unmap
-\ their storage, so an element that lives in place (IN-PLACE?) is refused: an
-\ arena owner moved with it would be copied, and one unmapped with it would
-\ leave its chunks linked and live.
+\ have none and stay refused, as for TYPED-BUFFER.
 : STORAGE-BYTE-CON? ( n -- bool ) {: t:n :}   \ resolved term is the byte con u8
    t TAG T-CON <> IF RES-FALSE EXIT THEN
    t PAY CC-U8 = ;
 
 : CHECKER-DYNAMIC-INFO ( ptr u8 n -- n bool )
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
-   LBI-T @ IN-PLACE? IF 0 RES-FALSE EXIT THEN
    LBI-T @ STORAGE-BYTE-CON? IF 1 RES-TRUE EXIT THEN
    STORAGE-CELL-W 0= IF drop 0 RES-FALSE EXIT THEN
    CELL * RES-TRUE ;
@@ -18295,9 +18265,6 @@ variable CURSYM
 7129 constant E-CAST-ARITY    \ identity sig is not one term per side over the same row
 7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
-\ E-CAST-OWNER: a term reaches an arena head outside its owning package
-\ (CAST-REACHES-HEAD?).
-7135 constant E-CAST-OWNER
 7137 constant E-CAST-LINEAR   \ a linear type or type variable in in/out
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
 \ E-CAST-SCOPE: a cast would erase or introduce a scope dependency (a scoped
@@ -18729,19 +18696,9 @@ CHECKER-REG:}SCRATCH
    t LAYOUT-PARAM? t NOM-SCALAR? or 0= IF 0 RES-FALSE EXIT THEN
    t RES-TRUE ;
 
-\ An in-place layout refuses the token outright, so it names itself, as
-\ RAW-FIELD-TOK? does.
-: IN-PLACE-REFUSE? ( n -- bool )   \ true only when it REJECTED
-   {: t:n :}
-   t IN-PLACE? 0= IF RES-FALSE EXIT THEN
-   MD-IN-PLACE MDIAG!
-   0 OK !
-   RES-TRUE ;
-
 
 : LAYOUT-FETCH-STEP ( n -- )   \ ( ptr fam -- fam ) from the pointee term
    {: t:n :}
-   t IN-PLACE-REFUSE? IF EXIT THEN
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    t LAYOUT-PARAM? IF t WF-FETCH-FLAG WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
@@ -18751,7 +18708,6 @@ CHECKER-REG:}SCRATCH
 
 : LAYOUT-STORE-STEP ( n -- )   \ ( fam ptr fam -- ) from the pointee term
    {: t:n :}
-   t IN-PLACE-REFUSE? IF EXIT THEN
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    t LAYOUT-PARAM? IF t WF-STORE-FLAG WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
@@ -26449,34 +26405,32 @@ variable CTOR-PEND-POS
    rc E-SHADOWED-ARITY = or  rc E-GENERATES-ROW = or  rc E-PARSES-ROW = or
    rc E-NAMES-ROW = or  rc E-BAD-STORED-SIGNATURE = or
    rc E-CAST-ARITY = or  rc E-CAST-CLASS = or  rc E-CAST-FAM = or
-   rc E-CAST-OWNER = or  rc E-CAST-LINEAR = or  rc E-CAST-MINT = or
+   rc E-CAST-LINEAR = or  rc E-CAST-MINT = or
    rc E-CAST-SCOPE = or  rc E-LINEAR-PAYLOAD = or  rc E-LINEAR-OWNER = or
    rc E-LINEAR-SCOPE = or ;
 \ The `cast:` or `linear:` declaration being certified, which RAISE renders
-\ (render.f); FAM, the arena head, is -1 while it names none.
+\ (render.f).
 package CAST-ERROR
 PTR-VARIABLE WORD-A   variable WORD-U
 PTR-VARIABLE KEY-A    variable KEY-U
 PTR-VARIABLE SIG-A
 PTR-VARIABLE WHY-A    variable WHY-U
 PTR-VARIABLE TOK-A    variable TOK-U
-variable FAM
 variable CODE
 defer DIAG-XT ( -- )
 \ Zeros outside a declaration, so a saved image holds none of the build
 \ process's addresses (docs/debugging.md "the ASLR intersect").
 : CLEAR ( -- )
    NULL-PTR WORD-A !  0 WORD-U !  NULL-PTR KEY-A !  0 KEY-U !  NULL-PTR SIG-A !
-   NULL-PTR WHY-A !  0 WHY-U !  NULL-PTR TOK-A !  0 TOK-U !  0 FAM !  0 CODE ! ;
+   NULL-PTR WHY-A !  0 WHY-U !  NULL-PTR TOK-A !  0 TOK-U !  0 CODE ! ;
 public
 \ Runs xt on the declaration of name na nu with signature sa su under keyword
 \ ka ku, the record live until xt returns or throws.
 : DECLARE ( ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
    >r {: na:ptr nu:n sa:ptr su:n ka:ptr ku:n :}
-   na WORD-A !  nu WORD-U !  ka KEY-A !  ku KEY-U !  sa SIG-A !  -1 FAM !
+   na WORD-A !  nu WORD-U !  ka KEY-A !  ku KEY-U !  sa SIG-A !
    na nu sa su r> [: CLEAR ;] finally ;
 : TOKEN! ( ptr u8 n -- ) TOK-U !  TOK-A ! ;
-: FAMILY! ( n -- ) FAM ! ;
 : RAISE ( ptr u8 n n -- ) {: wa:ptr wu:n code:n :}
    wa WHY-A !  wu WHY-U !  code CODE !
    DIAG-XT
@@ -26636,56 +26590,6 @@ variable CAST-PATH-N
    RES-FALSE ;
 
 
-\ A cast term reaches a head when the term, a pointer's pointee, a quotation
-\ row or a layout's argument or member lives in place (IN-PLACE?), recursively:
-\ `( ptr foos -- ptr u8 )` would hand out an arena owner's head as bytes to copy,
-\ and `( ptr u8 -- ptr foos )` would forge one from them. Either direction is
-\ refused outside the package that declares arena-head, whose own cast is the
-\ one that writes a head (src/core/dynamic-storage.f >HEAD-CELL).
-: CAST-REACHES-HEAD? ( n -- bool )
-   {: t0:n :}
-   t0 R-RES dup TAG S-PUSH = IF
-      BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
-         P>REST R-RES
-      REPEAT
-   THEN
-   ISROW IF RES-FALSE EXIT THEN
-   t0 IN-PLACE? IF RES-TRUE EXIT THEN
-   t0 T-RES {: t:n :}
-   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   t TAG T-QUOT = IF
-      t Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
-   THEN
-   t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
-   0 BEGIN dup t PARAM>ARGC < WHILE
-      t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop
-   t RES-TRUE CAST-ON-PATH? IF RES-FALSE EXIT THEN
-   t RES-TRUE CAST-PATH-PUSH
-   t TFAM-MEMBERS-XT TWALK-DEEPER RECURSE TWALK-SHALLOWER
-   CAST-PATH-POP ;
-
-
-: CAST-HEAD-OWNER? ( -- bool )
-   ARENA-HEAD-FAM @ TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
-
-
-: CAST-HEAD-REFUSE ( -- )
-   CAST-WALK-RESET
-   SGIN @ CAST-ROW-TERM CAST-REACHES-HEAD? {: hit:bool :}
-   CAST-WALK-RESET
-   SGOUT @ CAST-ROW-TERM CAST-REACHES-HEAD? hit or 0= IF EXIT THEN
-   CAST-HEAD-OWNER? IF EXIT THEN
-   ARENA-HEAD-FAM @ CAST-ERROR:FAMILY!
-   s" the cast reaches an arena head declared outside this package:"
-   E-CAST-OWNER CAST-ERROR:RAISE ;
-
-
 \ The cast gate, in refusal order, over ROWS' one term a side (SGIN/SGOUT): true
 \ when the output mints a pointer or quotation, else a representation cast.
 : CAST-CERTIFY ( -- bool )
@@ -26698,9 +26602,6 @@ variable CAST-PATH-N
    SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF
       s" the output hands out an atom, a phantom index" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
-   \ Linearity is checked before the arena head on purpose: a linear type that
-   \ reaches a foreign head violates both rules, and carrying an owned value
-   \ through a retype is the stronger unsoundness, so it names the reject.
    CAST-WALK-RESET
    SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF
       s" the input may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
@@ -26709,9 +26610,8 @@ variable CAST-PATH-N
    SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF
       s" the output may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
-   CAST-HEAD-REFUSE
-   \ The mint rule comes last for the same reason: a mint that also carries
-   \ ownership or reaches a foreign head is named by that stronger reject.
+   \ The mint rule comes last: a mint that also carries ownership is named by
+   \ that stronger reject.
    SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? {: mint:bool :}
    mint IF
       CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF
@@ -26790,7 +26690,6 @@ variable CAST-PATH-N
    view view PARAM>ARGC 1 - PARAM>ARG CAST-MAY-LINEAR? IF
       s" the view's element may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
-   CAST-HEAD-REFUSE
    unpack IF view READ-VIEW? IF EXIT THEN THEN
    \ CHECKER-AUTH-PACKAGE$ is the engine's live namespace record, the identity
    \ LINEAR-CERTIFY asks. The literal is only the owner's name, which no registry

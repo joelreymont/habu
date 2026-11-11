@@ -1,5 +1,5 @@
-\ Child of test/arena.f: a signature may name the arena head type, and a
-\ package's own `field-project` is refused at its definition.
+\ Child of test/arena.f: a package's own `field-project` is refused at its
+\ definition.
 require src/lib/string.f
 
 1024 constant CAP-ROOM
@@ -14,13 +14,6 @@ TYPED-VARIABLE ROW-A ptr u8
 variable ROW-U
 : ROW-RUN ( -- ) ROW-A @ ROW-U @ INCLUDE-EVALUATE ;
 : OWNER-ROW ( ptr u8 n ptr u8 n -- ) ROW-U ! ROW-A ! type [: ROW-RUN ;] catch . ;
-
-\ A head the user declares is inert: a signature may name its type, and SIG
-\ prints 0.
-TYPED-VARIABLE HH DYNAMIC-STORAGE:arena-head
-: CALL-ROWS ( -- )
-   s" arena-sig: " s" : Y3 ( ptr DYNAMIC-STORAGE:arena-head -- ) drop ;" OWNER-ROW ;
-CALL-ROWS
 
 \ STRUCTURE's accessors spell `field-project` unqualified, so a sealed engine
 \ refuses it as a definition name. Were STRUCT-CAPTURE's admitted, S2-Y's store

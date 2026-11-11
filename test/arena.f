@@ -242,22 +242,16 @@ private
    E2E-TREE:OUT$ S\" struct-capture: 70\n" CONTAINS? TTRUE ;
 
 
-\ Naming the arena head type in a signature stays inert.
-: CALL-CHILD ( -- )
-   s" a signature may name the arena head type" T-LABEL
-   E2E-TREE:OUT$ S\" arena-sig: 0\n" CONTAINS? TTRUE ;
-
-
 \ tools/check.f --verify-only checks a file without running it, so it gets its
 \ own child over a scratch tree's copy of HEAP's runtime words called in a body,
-\ a quotation and ticked at top level, the workspace variable and a head cast,
-\ each refusal reported as its own record. The pre-pass judges no top-level
-\ token after one it refuses, so the tick comes last.
+\ a quotation and ticked at top level, each refusal reported as its own record.
+\ The pre-pass judges no top-level token after one it refuses, so the tick
+\ comes last.
 : VERIFY-SRC$ ( -- ptr u8 n )
-   S\" TYPED-VARIABLE HH DYNAMIC-STORAGE:arena-head\n: R1 ( -- ptr n ) 16 DYNAMIC-STORAGE:RECORD-NEW ;\n: R2 ( ptr n -- ) 16 DYNAMIC-STORAGE:RECORD-RELEASE ;\n: R3 ( -- ptr n ) 16 [: DYNAMIC-STORAGE:RECORD-NEW ;] execute ;\npackage ARENA-CAST\n0 CWORK-VARIABLE CW DYNAMIC-STORAGE:arena-head\nCAST: >HEAD-BYTES ( ptr DYNAMIC-STORAGE:arena-head -- ptr u8 )\n;package\n' DYNAMIC-STORAGE:RECORD-RELEASE drop\n" ;
+   S\" : R1 ( -- ptr n ) 16 DYNAMIC-STORAGE:RECORD-NEW ;\n: R2 ( ptr n -- ) 16 DYNAMIC-STORAGE:RECORD-RELEASE ;\n: R3 ( -- ptr n ) 16 [: DYNAMIC-STORAGE:RECORD-NEW ;] execute ;\n' DYNAMIC-STORAGE:RECORD-RELEASE drop\n" ;
 
 : VERIFY-CALLS ( -- )
-   s" tools/check.f --verify-only refuses the record runtime calls, at top level too, the workspace variable and a head cast" T-LABEL
+   s" tools/check.f --verify-only refuses the record runtime calls, at top level too" T-LABEL
    s" arena-verify" E2E-TREE:TREE
    E2E-TREE:ROOT$ FS:CLEANUP-TREE+
    s" test/arena-calls.f" E2E-TREE:AT-A VERIFY-SRC$ FS:WRITE-ALL
@@ -267,15 +261,13 @@ private
    s" test/arena-calls.f" >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL\"" COUNT-SUB 4 T=
-   \ The top-level tick's token is at line 9, column 3.
-   E2E-TREE:ERR$ S\" \"line\":9,\"column\":3,\"" COUNT-SUB 1 T=
-   E2E-TREE:ERR$ S\" \"code\":\"E-CAST-OWNER\"" COUNT-SUB 1 T=
-   E2E-TREE:ERR$ S\" \"code\":\"E-BAD-STORAGE\"" COUNT-SUB 1 T=
+   \ The top-level tick's token is at line 4, column 3.
+   E2E-TREE:ERR$ S\" \"line\":4,\"column\":3,\"" COUNT-SUB 1 T=
    E2E-TREE:RC@ 0 <> TTRUE ;
 
 : RUN ( -- )
    T-RESET
-   CHILD RECORDS DISPOSALS VISIBILITY HANDLES REFUSALS CALL-CHILD CAPTURE-CHILD
+   CHILD RECORDS DISPOSALS VISIBILITY HANDLES REFUSALS CAPTURE-CHILD
    VERIFY-CALLS ;
 
 RUN
