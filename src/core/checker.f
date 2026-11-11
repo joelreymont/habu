@@ -4529,22 +4529,32 @@ defer U-DRAIN-XT ( n -- )
    rl P>TYPE T-RES T-WIDTH  rh P>TYPE T-RES T-WIDTH = ;
 
 
-\ The row below the group at grp, true when each field has node's proof (as
-\ CELL-FIELDS gives a field) and lost lineage; a literal fact is none (PF-NO-LIT).
-: GROUP-META= ( n n -- n bool )
-   {: node:n grp:n :}
+\ Loop edge proof b carries entry proof a on a cell of type t: equal, or none where a is normal
+\ and t is not stale, so the edge cell holds t itself (catch-stale-suite.f P22 refuses a stale t).
+: CP-CARRIES? ( n n n -- bool ) {: a:n b:n t:n :}
+   a b CP-SAME? IF RES-TRUE EXIT THEN
+   a 0= b 0= 0= or IF RES-FALSE EXIT THEN
+   a CP-KIND CP-NORMAL <> IF RES-FALSE EXIT THEN
+   t T-RES TAG T-STALE <> ;
+
+
+\ The row below the group at grp, true when each field and node's proof as CELL-FIELDS gives it
+\ pass CP-CARRIES?, the entry side first (node when `entry`), and match node's lineage.
+: GROUP-META= ( n n bool -- n bool )
+   {: node:n grp:n entry:bool :}
    grp  grp P>TYPE T-RES T-WIDTH 0 ?do
       R-RES dup TAG S-PUSH <> IF RES-FALSE unloop EXIT THEN
+      entry IF node ELSE dup THEN P>TYPE >r
       dup P>TYPE T-UNSTALE node P>PROOF PF-NO-LIT swap FIELD-PROOF
-      over P>PROOF PF-NO-LIT CP-SAME?
+      over P>PROOF PF-NO-LIT  entry 0= IF swap THEN  r> CP-CARRIES?
       0= IF RES-FALSE unloop EXIT THEN
       dup P>LOST node P>LOST <> IF RES-FALSE unloop EXIT THEN
       P>REST
    loop RES-TRUE ;
 
 
-\ Two edges carry the same proofs and lost lineage; a logical cell compares
-\ with each field of its group (LOGHID-JOIN?), and a literal fact is none.
+\ Loop edge b carries entry row a's proofs (CP-CARRIES?) and lost lineage; a logical cell
+\ compares with each field of its group (LOGHID-JOIN?), and a literal fact is none.
 : ROW-META= ( n n -- bool )
    {: a:n b:n :}
    a R-RES {: an:n :}  b R-RES {: bn:n :}
@@ -4552,12 +4562,12 @@ defer U-DRAIN-XT ( n -- )
    ap bp or 0= IF RES-TRUE EXIT THEN
    ap bp and 0= IF RES-FALSE EXIT THEN
    bn an LOGHID-JOIN? IF
-      an bn GROUP-META= IF an P>REST swap RECURSE ELSE drop RES-FALSE THEN EXIT
+      an bn RES-TRUE GROUP-META= IF an P>REST swap RECURSE ELSE drop RES-FALSE THEN EXIT
    THEN
    an bn LOGHID-JOIN? IF
-      bn an GROUP-META= IF bn P>REST RECURSE ELSE drop RES-FALSE THEN EXIT
+      bn an RES-FALSE GROUP-META= IF bn P>REST RECURSE ELSE drop RES-FALSE THEN EXIT
    THEN
-   an P>PROOF PF-NO-LIT bn P>PROOF PF-NO-LIT CP-SAME? 0= IF RES-FALSE EXIT THEN
+   an P>PROOF PF-NO-LIT bn P>PROOF PF-NO-LIT an P>TYPE CP-CARRIES? 0= IF RES-FALSE EXIT THEN
    an P>LOST bn P>LOST <> IF RES-FALSE EXIT THEN
    an P>REST bn P>REST RECURSE ;
 
@@ -4982,7 +4992,7 @@ CHECKER-REG:}SCRATCH
 \ are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
 49 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
-50 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose proof or lineage differs, at the same depths (CF-CARRIED=)
+50 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose lineage differs or whose proof does not carry the entry's (CP-CARRIES?), at the same depths (CF-CARRIED=)
 51 constant MD-NO-LOOP       \ i, leave, unloop, loop or +loop with no loop open
 52 constant MD-NO-OUTER-LOOP \ j with fewer than two loops open
 53 constant MD-CLOSES-NOTHING \ a closer over no frame or another kind's (CF-AT?); a loop or +loop only where a DO is open in its body (CF-LOOP-WHY)

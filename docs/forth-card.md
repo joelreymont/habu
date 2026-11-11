@@ -222,7 +222,10 @@ A caught result becomes readable on the success arm of core `code 0=` (or the
 false arm of core `code 0<>`) only when `code` is that catch's own status.
 Another zero or a shadowed predicate proves nothing. The value remains marked
 as replaced for a later outer catch; quotations retain that mark on their
-explicit outputs, and loops reject a changed carried proof or mark.
+explicit outputs. A loop's back edge or `leave` carries each cell's mark and
+proof as the loop entered with them; entered on the success arm, a caught value
+may also come back through a word, which drops its proof (catch-stale-suite.f
+A4).
 
 These classic words are absent — naming one is `E-UNDEFINED`.
 

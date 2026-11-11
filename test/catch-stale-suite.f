@@ -47,6 +47,11 @@ variable CS-TICK
    31 ;
 : WNUMBER ( n -- n )
    drop WNUMBER-NEW ;
+: KEEPN ( n -- n ) ;                     \ no throw edge; its output has no proof
+: KEEPO ( option<n> -- option<n> ) ;
+: SETO ( option<n> -- option<n> )        \ overwrites the option, then may throw
+   drop 4 OPTION:SOME CS-TICK @ 0= IF E-CS-BOOM throw THEN ;
+: READO ( option<n> -- n ) MATCH option none OF 0 ENDOF some OF ENDOF ;MATCH ;
 
 : OUTER-ZERO-QUOTE ( n -- n )
    drop
@@ -79,6 +84,9 @@ create CS-DBUF 8192 allot
 : CS-STALE? ( -- )
    s\" \"code\":\"E-STALE-READ\"" CS-CODE?
    s\" \"repair_class\":\"keep_value_before_catch\"" CS-CODE? ;
+\ A loop edge's carried-cell refusal (checker.f MD-LOOP-CARRIED).
+: CS-CARRIED? ( -- )
+   s\" \"reason\":\"the loop body leaves a carried cell different from the one it entered with\"" CS-CODE? ;
 
 \ R1 is the regression: its body returned (address, 17, code) where its
 \ signature said (n, ptr u8, n): the throw path swapped the two cells and
@@ -134,6 +142,23 @@ create CS-DBUF 8192 allot
    \ checked on the first pass. The changed back-edge proof is E-REJECTED.
    s" P12 ( n -- ) [: WNUMBER ;] catch swap {: v :} 2 0 do dup 0= if v 1+ drop then drop 0 loop drop" CS-CODE<
    s\" \"code\":\"E-REJECTED\"" CS-CODE? CS-CODE-END
+   \ A loop entered under the status guard may carry the caught cell through a
+   \ word that drops its normal proof (checker.f CP-CARRIES?), read in the body or not.
+   s" A4 ( option<n> -- n ) [: SETO ;] catch {: code:n :} code 0= IF 3 BEGIN dup 0 > WHILE 1- swap KEEPO swap REPEAT drop READO ELSE drop 0 THEN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" N4 ( n -- n ) [: WNUMBER ;] catch {: code:n :} code 0= IF 3 BEGIN dup 0 > WHILE 1- swap KEEPN swap REPEAT drop 1+ ELSE drop 0 THEN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" N4D ( n -- n ) [: WNUMBER ;] catch {: code:n :} code 0= IF 3 0 DO KEEPN LOOP 1+ ELSE drop 0 THEN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" U1 ( option<n> -- n ) [: SETO ;] catch {: code:n :} code 0= IF 3 BEGIN dup 0 > WHILE 1- swap {: o :} o READO drop o KEEPO swap REPEAT drop READO ELSE drop 0 THEN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ A loop entered without the guard may not drop the proof: the join hands the
+   \ entry's slot another catch's stale cell, which c1's guard would read as typed.
+   s" P22 ( option<n> -- n ) [: SETO ;] catch {: c1:n :} 3 BEGIN dup 0 > WHILE 1- swap OPTION:NONE [: SETO ;] catch drop CS-TICK @ 0= IF swap THEN nip swap REPEAT drop c1 0= IF READO ELSE drop 0 THEN" CS-CODE<
+   s\" \"token\":\"REPEAT\"" CS-CODE?  CS-CARRIED?  CS-CODE-END
+   \ The same at a LEAVE edge: the swap's join leaves c1's slot c2's stale cell.
+   s" P23 ( option<n> option<n> -- n ) swap [: SETO ;] catch {: c1:n :} swap [: SETO ;] catch {: c2:n :} 3 0 DO CS-TICK @ 0<> IF swap THEN LEAVE LOOP drop c1 0= IF READO ELSE drop 0 THEN" CS-CODE<
+   s\" \"token\":\"LEAVE\"" CS-CODE?  CS-CARRIED?  CS-CODE-END
    \ Success of the inner catch does not retroactively preserve the original
    \ input on a later throw through the enclosing catch.
    s" P13 ( n n -- n ) [: INNER-LATER ;] catch {: outer:n :} drop 1+" CS-CODE<

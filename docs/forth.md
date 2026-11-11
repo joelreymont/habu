@@ -2653,8 +2653,10 @@ sections above.
   catch code proves normal output in the success arm of core `0=` (or false
   arm of core `0<>`); an unrelated zero, shadowed predicate or another
   catch's code proves nothing. A later catch still treats physically replaced
-  values as replaced. Live loop back edges agree on proof and replacement
-  status. Quotation output carries replacement marks, but private success
+  values as replaced. Live loop back edges and `leave` keep each carried
+  cell's proof and replacement status, except that a loop entered on the
+  success arm may carry the cell through a word that drops its proof
+  (catch-stale-suite.f A4). Quotation output carries replacement marks, but private success
   proofs do not escape its boundary; polymorphic effects transport types,
   not a particular catch's status.
 - **Callee throw evidence follows the callable term.** A callee records which
