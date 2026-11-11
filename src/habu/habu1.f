@@ -3668,8 +3668,16 @@ package ENGINE-EMIT
    live LBL,  A CP CMP,  C-CC old BCOND,  ISB,
    old LBL, ;
 
+\ A reading quotation is its record's address with bit 63 set: x4 := the record, x9 := its code
+\ (cell 0); a plain one passes untouched. No code from these pops to their BLR writes x4 (t0-arm64.f REGS).
+: BRECORD ( -- )
+   LBL {: plain:label :}
+   A 0 CMPI,  C-PL plain BCOND,
+   4 A $7FFFFFFFFFFFFFFF ANDI,  A 4 0 LDR,
+   plain LBL, ;
+
 : BEXEC ( -- )
-   A G-POP  BCALLABLE
+   A G-POP  BRECORD  BCALLABLE
    SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ execute-floor ( xt -- flag ): run the xt, then flag whether it left XDS below
@@ -3698,7 +3706,7 @@ package ENGINE-EMIT
 : BCATCH-RUN ( -- )
    LBL CATCH-RES !
    LBL CATCH-PUSH !
-   A G-POP  BCALLABLE
+   A G-POP  BRECORD  BCALLABLE
    SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
@@ -4255,6 +4263,8 @@ private
 \ begins inside the cleanup abandons it and lands in the frame as a halt the
 \ body carried, keeping [8], so the body's error survives it. A halt taken here
 \ is set again and [8] thrown on, even 0; a cleanup's nonzero code supersedes.
+\ The cleanup is refused here if unset and kept as popped: BCATCH-RUN follows
+\ its record when it runs.
 : BFINALLY ( -- )
    LBL LBL LBL {: keep:label calm:label throw:label :}
    LBL FINALLY-DONE !
@@ -4303,7 +4313,7 @@ private
    10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
    calm LBL,
    9 SP 16 LDR,  9 G-PUSH
-   9 SP 8 LDR,  9 BLR,
+   9 SP 8 LDR,  BRECORD  BCALLABLE  9 BLR,
    9 SP 16 LDR,  10 SP 24 LDR,  SP SP 32 ADDI,
    10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
    10 throw CBNZ,
