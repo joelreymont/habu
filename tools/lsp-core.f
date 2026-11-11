@@ -17,6 +17,18 @@
 \ has no bound. A cancel is otherwise an unknown notification and stops no
 \ running check. The end of input and a framing fault come after the messages
 \ held, even when a request read them: it is answered and those served first.
+\
+\ A running server checks the documents and publishes their diagnostics; each
+\ check reads every other open document's text in place of its file. Opening
+\ or changing a document leaves it waiting, with every open document whose
+\ last completed check read its file. A save leaves every open document
+\ waiting: the loader finds files on disk, and a saved file may be one a check
+\ could not find or one that now precedes the file it found. Closing one
+\ publishes an empty list, drops its definitions and leaves waiting each
+\ document whose last check read its file. The document to check now is the
+\ next one waiting after the last checked, while the server runs, no message
+\ waits or is held and reading is not over. A check then takes a document's
+\ newest text, and the versions published only rise.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -612,7 +624,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    LSP-DEFS:DEFS-INPUTS-FRESH? ;
 
 \ A request rechecks a stale root once. A completed check's positions require
-\ fresh inputs; an unfinished check kept no current positions to claim.
+\ fresh inputs.
 : CHECK-CURRENT? ( JSON-RPC:id -- bool )
    {: i :}
    AT-SLOT @ CHECK-WAITING
@@ -622,23 +634,16 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    i CONTENT-MODIFIED s" content modified" REPLY-ERROR
    false ;
 
-\ The open document params.textDocument names in AT-SLOT; false when the
-\ request is answered instead: -32602 when its params cannot be read, -32801
-\ when a change to that document was read behind it.
 : DOCUMENT? ( JSON-RPC:id ptr u8 n -- bool )
    {: i p:ptr pu:n :}
    i p pu [: SLOT! ;] READ? 0= if false exit then
    i UNCHANGED? ;
 
-\ As DOCUMENT?, with params.position in AT-LINE and AT-CHAR.
 : POSITION? ( JSON-RPC:id ptr u8 n -- bool )
    {: i p:ptr pu:n :}
    i p pu [: POSITION! ;] READ? 0= if false exit then
    i UNCHANGED? ;
 
-\ The open document params.textDocument names in AT-SLOT, checked first if it
-\ waits for a check, and the byte of its text params.position names in
-\ AT-BYTE; false when the request is answered instead.
 : AT-READ? ( JSON-RPC:id ptr u8 n -- bool )
    {: i p:ptr pu:n :}
    i p pu POSITION? 0= if false exit then
@@ -646,50 +651,33 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    AT-BYTE!
    true ;
 
-\ The declaration of the use at params.position in the open document
-\ params.textDocument names, as its last completed check bound it.
 : DEFINITION ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu AT-READ? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-DEFINITION:ANSWER END SENT ;
 
-\ The symbols of the open document params.textDocument names, a flat
-\ SymbolInformation list named by word alone (tools/lsp-outline.f): the
-\ definitions its last completed check retained, the document checked first if
-\ it waits for a check.
 : DOCUMENT-SYMBOLS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu DOCUMENT? 0= if exit then
    i CHECK-CURRENT? 0= if exit then
    WRITER i RESULT AT-SLOT @ LSP-OUTLINE:ANSWER END SENT ;
 
-\ What the token at params.position in the open document params.textDocument
-\ names declares or binds to, as its last completed check stated it: Markdown
-\ when initialize listed it in textDocument.hover.contentFormat, else plain
-\ text.
 : HOVER ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu AT-READ? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ HOVER-MD @ LSP-HOVER:ANSWER END SENT ;
 
-\ The token that declares the word at params.position in the open document
-\ params.textDocument names and that word's uses in it, as its last completed
-\ check stated them once that check was verified.
 : HIGHLIGHT ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu AT-READ? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-HIGHLIGHT:ANSWER END SENT ;
 
-\ The tokens of the words the last completed check of the open document
-\ params.textDocument names bound in it, the document checked first if it
-\ waits for a check.
 : SEMANTIC-TOKENS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu DOCUMENT? 0= if exit then
    i CHECK-CURRENT? 0= if exit then
    WRITER i RESULT AT-SLOT @ LSP-TOKENS:ANSWER END SENT ;
 
-\ params.context.includeDeclaration, true or false, in WITH-DECL.
 : WITH-DECL! ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
    p pu s" context" PARAM T-OBJ <> if E-LSP-PARAMS throw then
@@ -702,7 +690,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : REFS! ( ptr u8 n -- ptr u8 n )  POSITION! WITH-DECL! ;
 
-\ params.newName decoded into NAME-SPAN, its length in NAME-U.
 : NEW-NAME! ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
    p pu s" newName" PARAM NAME-SPAN STRING-AT NAME-U ! drop
@@ -720,13 +707,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    a u KEPT-ID @ SPAN:COPY
    KEPT-ID @ SPAN:$ drop u JSON--RPC-ID:MAKE ;
 
-\ Whether a queued edit affects a subject or file a gathered check read.
 : GATHER-CHANGED? ( -- bool )
    [: LSP-REFERENCES:TOUCHES? ;] HELD-EDITED? ;
 
-\ Whether the request with this id is answered once the input that waits is
-\ read: -32800 when a cancel of it was read behind it, else -32801 when a
-\ change GATHER-CHANGED? names was.
 : HALTED? ( JSON-RPC:id -- bool )
    {: id :}
    READ-WAITING
@@ -740,9 +723,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    then
    false ;
 
-\ The uses of each subject from the K-th on gathered for the request with
-\ this id; before each, the request is answered instead when HALTED? says,
-\ and false.
 : GATHERED-FROM? ( n JSON-RPC:id -- bool )
    {: k:n id :}
    LSP-REFERENCES:PRIMITIVE? if
@@ -762,9 +742,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    loop
    true ;
 
-\ Each subject's uses gathered, again while pass 2 (LSP-REFERENCES:MORE?)
-\ gives subjects, then settled (LSP-REFERENCES:SETTLE); before each and once
-\ all are, the request is answered instead when HALTED? says, and false.
 : GATHERED? ( JSON-RPC:id -- bool )
    {: id :}
    0 begin
@@ -776,11 +753,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    LSP-REFERENCES:SETTLE
    true ;
 
-\ Every use of the declaration at params.position in the open document
-\ params.textDocument names, and the declaration first when
-\ params.context.includeDeclaration is true, as tools/lsp-references.f states:
-\ -32803 when the request is refused, and a warning before the answer when a
-\ file is not covered.
 : REFERENCES ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu [: REFS! ;] READ? 0= if exit then
@@ -796,10 +768,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    LSP-REFERENCES:UNCOVERED? if WRITER LSP-REFERENCES:WARNING END SENT then
    WRITER i RESULT LSP-REFERENCES:ANSWER END SENT ;
 
-\ Whether a rename of the declaration LSP-REFERENCES selected may go on; else
-\ the request is answered, and false: null when it selects none, -32803 when
-\ the selection is refused, a token selecting the declaration does not spell
-\ its tail, or the declaration is an EXPORT of another word.
 : RENAMEABLE? ( JSON-RPC:id -- bool )
    {: i :}
    AT-SLOT @ LSP-REFERENCES:RENAME-VERIFIED? 0= if
@@ -830,10 +798,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    true ;
 
 \ Whether every location gathered may be edited; else the request is answered
-\ -32803, and false, since a rename applies every edit or none: a token
-\ naming the declaration does not spell its tail, a location's token also
-\ declares another word, a file is not covered, or the new name's colon
-\ would follow a location's qualifier.
+\ -32803, and false, since a rename applies every edit or none.
 : APPLIES? ( JSON-RPC:id -- bool )
    {: i :}
    LSP-REFERENCES:SPELT? 0= if
@@ -852,11 +817,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    wu 0<> if i REQUEST-FAILED w wu REPLY-ERROR false exit then
    true ;
 
-\ The range a rename of the declaration at params.position in the open
-\ document params.textDocument names would edit there, as
-\ tools/lsp-rename.f states: null when the position selects none, and
-\ -32803 when the selection is refused, a token selecting the declaration
-\ does not spell its tail, or the declaration is an EXPORT of another word.
 : PREPARE-RENAME ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu AT-READ? 0= if exit then
@@ -864,12 +824,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    i RENAMEABLE? 0= if exit then
    WRITER i RESULT AT-SLOT @ AT-BYTE @ LSP-RENAME:PREPARED END SENT ;
 
-\ The changes that write params.newName over the tail of the declaration at
-\ params.position in the open document params.textDocument names and of
-\ every use of it, as tools/lsp-rename.f states: -32803 before any check
-\ when newName is empty or holds a byte that ends a token, a colon, a quote or a
-\ backslash, null when the position selects none, and else -32803, applying no
-\ edit, when prepareRename would refuse or APPLIES? does.
 : RENAME ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu [: RENAME! ;] READ? 0= if exit then
@@ -884,9 +838,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    i APPLIES? 0= if exit then
    WRITER i RESULT NEW-NAME$ LSP-RENAME:ANSWER END SENT ;
 
-\ The spellings that would bind at params.position in the open document
-\ params.textDocument names: the document checked now, as its turn, with its
-\ cursor at that byte of its text, and answered from that check.
 : COMPLETION ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu POSITION? 0= if exit then
@@ -900,16 +851,12 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    then
    WRITER i RESULT AT-SLOT @ LSP-COMPLETION:ANSWER END SENT ;
 
-\ The links of the open document params.textDocument names, over the operands
-\ of the top-level loaders its last completed check reported, the document
-\ checked first if it waits for a check.
 : DOCUMENT-LINKS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu DOCUMENT? 0= if exit then
    i CHECK-CURRENT? 0= if exit then
    WRITER i RESULT AT-SLOT @ LSP-LINKS:ANSWER END SENT ;
 
-\ Whether the array the reader is at lists the string markdown.
 : LISTS-MARKDOWN? ( JSON:reader -- JSON:reader bool )
    begin READ-NEXT dup T-ARR-END <> while
       T-STR = if
@@ -920,8 +867,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    repeat
    drop false ;
 
-\ Whether initialize's params.capabilities.textDocument.hover.contentFormat
-\ lists markdown.
 : MARKDOWN? ( ptr u8 n -- bool )
    {: p:ptr pu:n :}
    pu 0= if false exit then
@@ -947,7 +892,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    code E-PATH-RANGE =  code E-PATH-NUL = or
    code E-URI-LAST >= code E-URI-FIRST <= and  or 0= if code throw then ;
 
-\ One member of a workspace folder: its uri a root.
 : FOLDER-MEMBER ( JSON:reader -- JSON:reader )
    s" uri" READ-STR-EQ? if
       READ-NEXT T-STR = if ROOT-AT else READ-SKIP-VALUE then
@@ -962,9 +906,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       READ-SKIP-VALUE
    then ;
 
-\ The roots references walks (tools/lsp-workspace.f): initialize's
-\ params.workspaceFolders, each folder's uri, an empty array naming none; else
-\ params.rootUri.
 : WORKSPACE! ( ptr u8 n -- )
    {: p:ptr pu:n :}
    pu 0= if exit then
@@ -983,10 +924,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    if ROOT-AT then
    READ-CLOSE ;
 
-\ Starting, the server answers initialize with its capabilities and any other
-\ request -32002. Running, it answers shutdown with null, initialize -32600, a
-\ request whose params it cannot read or that names a document not open -32602,
-\ and an unknown one -32601. Shut down, it answers every request -32600.
 : STARTING-REQUEST ( JSON-RPC:id ptr u8 n ptr u8 n -- )
    {: i m:ptr mu:n p:ptr pu:n :}
    m mu s" initialize" NAMED? if
@@ -1061,26 +998,12 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : TURNS ( -- )  begin HELD? while TURN repeat ;
 
-\ The input ended on a message boundary: the messages held are served, and
-\ then the server ends.
 : ENDED ( -- )
    TURNS
    EXIT-CODE {: rc:n :}
    rc 0= if s" " 0 die then
    s" lsp: input ended before exit" rc die ;
 
-\ A running server checks the documents and publishes their diagnostics
-\ (tools/lsp-check.f, tools/lsp-diag.f); each check reads every other open
-\ document's text in place of its file. Opening or changing a document leaves it
-\ waiting, with every open document whose last completed check read its file
-\ (LSP-DEFS:DEFS-READ?). A save leaves every open document waiting: the loader
-\ finds files on disk (tools/check-verify-child.f), and a saved file may be one
-\ a check could not find or one that now precedes the file it found. Closing
-\ one publishes an empty list, drops its definitions and leaves waiting each
-\ document whose last check read its file.
-\ The document to check now: the next one waiting after the last checked, while
-\ the server runs, no message waits or is held and reading is not over. A check
-\ then takes a document's newest text, and the versions published only rise.
 : DUE ( -- option<n> )
    RUNNING? 0= if OPTION:NONE exit then
    LAST-CHECKED @ DOC-NEXT-DIRTY MATCH option
@@ -1088,24 +1011,21 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       some OF INPUT? if drop OPTION:NONE else OPTION:SOME then ENDOF
    ;MATCH ;
 
-\ When reading is over: the messages held are served, and then a fault stops
-\ the server with its throw, or the end of input ends it.
 : SETTLE ( -- )
    FAULT @ {: code:n :}
    code 0<> if TURNS code throw then
    AT-END @ if ENDED then ;
 
-\ The next message, held, or the end of input, which ends the server. A fault
-\ in the framing stops the server, but only once the messages held before it
-\ are served, as they are before the end. Either, read by a request between
-\ its checks, is acted on here, once that request is answered.
+\ A fault in the framing stops the server, but only once the messages held
+\ before it are served, as they are before the end. Either, read by a request
+\ between its checks, is acted on here, once that request is answered.
 : TAKE-INPUT ( -- )  READ-ON SETTLE ;
 
 : SERVE ( -- )
    FD:STDOUT FD:FD-NOSIGPIPE!
    FD:STDERR FD:FD-NOSIGPIPE!
-   REPLY-BUF 1 BUF:N>BLEN BUF:INIT       \ the smallest buffers: replies grow one,
-   HELD-B 1 BUF:N>BLEN BUF:INIT          \ held bodies the other
+   REPLY-BUF 1 BUF:N>BLEN BUF:INIT
+   HELD-B 1 BUF:N>BLEN BUF:INIT
    0 HELD-COUNT !
    0 HELD-NEXT !
    false AT-END !
