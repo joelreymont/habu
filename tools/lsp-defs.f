@@ -1146,7 +1146,7 @@ public
 : DEFS-INPUTS-FRESH? ( n -- bool )
    {: slot:n :}
    slot DEFS-GROUP-RANGE ?do
-      i G-STAMP GROUP@ ST-UNSEEN <> if
+      i GROUP-CONSUMED? if
          i GROUP-FRESH? 0= if false unloop exit then
       then
    loop
