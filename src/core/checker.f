@@ -902,11 +902,15 @@ variable TCMP                            \ path-compression walk cursor
 CHECKER-REG:SCRATCH{
 variable QEN
 PTR-VARIABLE QEA-P   PTR-VARIABLE QXDA-P   PTR-VARIABLE QXRA-P   PTR-VARIABLE QXHA-P   PTR-VARIABLE QXNA-P
+PTR-VARIABLE QXBA-P
 variable QE-CAP
 CHECKER-REG:}SCRATCH
 : QEA ( -- ptr n ) QEA-P @ ;
 : QXDA ( -- ptr n ) QXDA-P @ ;   : QXRA ( -- ptr n ) QXRA-P @ ;
 : QXHA ( -- ptr n ) QXHA-P @ ;   : QXNA ( -- ptr n ) QXNA-P @ ;
+\ QXBA: each quotation's block part, a type variable: unbound, it may read locals or not;
+\ NSCOPE@, it reads none; bound to a T-SCOPE term, it reads that block's locals.
+: QXBA ( -- ptr n ) QXBA-P @ ;
 
 : QE-ENSURE ( n -- ) {: need:n :}
    need QE-CAP @ <= IF exit THEN
@@ -916,8 +920,18 @@ CHECKER-REG:}SCRATCH
    QXRA-P @ QE-CAP @ cells nc cells SR-GROW QXRA-P !
    QXHA-P @ QE-CAP @ cells nc cells SR-GROW QXHA-P !
    QXNA-P @ QE-CAP @ cells nc cells SR-GROW QXNA-P !
+   QXBA-P @ QE-CAP @ cells nc cells SR-GROW QXBA-P !
    nc QE-CAP ! ;
 
+variable FV   0 FV !   \ the next var id FRESH hands out
+
+
+: FRESH ( -- n )
+   FV @ 1 + TV-ENSURE            \ grow the pool so FV is a valid index
+   FV @ dup 1 + FV ! ;
+
+\ A term and its block variable are made together: a trial's rollback restores
+\ FV and QEN together (TRIAL-REST).
 : MK-QUOT {: din dout rin rout :}   \ ( -- t ) allocate a quot<effect> term
    QEN @ 1 + QE-ENSURE
    QEN @ 32 * QEA + {: a :}
@@ -926,6 +940,7 @@ CHECKER-REG:}SCRATCH
    0 QEN @ cells QXNA + !
    0 QEN @ cells QXDA + !
    0 QEN @ cells QXRA + !
+   FRESH MK-VAR QEN @ cells QXBA + !
    QEN @ TAG-SHIFT lshift T-QUOT or  QEN @ 1 + QEN ! ;
 \ A scheme owns one quotation term. Bound scope variables use lexical depth,
 \ so two independently parsed schemes have the same shape under alpha-renaming.
@@ -956,6 +971,8 @@ $10000 constant BVAR-REGION-BIT
 : Q>DOUT PAY 32 * QEA + 8 + @ ;
 : Q>RIN  PAY 32 * QEA + 16 + @ ;
 : Q>ROUT PAY 32 * QEA + 24 + @ ;
+: Q>BLOCK ( n -- n ) PAY cells QXBA + @ ;
+: Q-BLOCK! ( n n -- ) PAY cells QXBA + ! ;
 : Q>XHAS ( n -- bool ) PAY cells QXHA + @ 0 <> ;
 : Q>XDEAD ( n -- bool ) PAY cells QXNA + @ 0 <> ;
 
@@ -2910,6 +2927,7 @@ CHECKER-REG:}SCRATCH
    x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
+      x Q>BLOCK T-RES dup ISVAR IF PAY NSCOPE-RAISE ELSE drop RES-FALSE EXIT THEN
       x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
       x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
       x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
@@ -3144,6 +3162,7 @@ CHECKER-REG:}SCRATCH
 : REQUOT ( n n n n n n -- n ) {: t:n x:n din:n dout:n rin:n rout:n :}
    din x Q>DIN =  dout x Q>DOUT = and  rin x Q>RIN = and  rout x Q>ROUT = and IF t EXIT THEN
    din dout rin rout MK-QUOT {: copy:n :}
+   x Q>BLOCK copy Q-BLOCK!
    copy x Q>XHAS x Q>XDEAD x Q>XDFIELD x Q>XRFIELD QX!
    copy ;
 
@@ -4109,14 +4128,6 @@ CHECKER-REG:}SCRATCH
 \ src/lib/memory.f) stays the literal's to instantiate.
 \ Return rows are exempt: a quotation literal's return rows are its enclosing
 \ definition's by construction, and the return-row rules check their balance.
-variable FV   0 FV !   \ the next var id FRESH hands out
-
-
-: FRESH ( -- n )
-   FV @ 1 + TV-ENSURE            \ grow the pool so FV is a valid index
-   FV @ dup 1 + FV ! ;
-
-
 8 constant HOLD-FRAME   \ cells: mark, floor, K count, 4 K ids, I start
 2 constant HF-NK   7 constant HF-IS
 8 HOLD-FRAME * constant HOLD-INIT
@@ -4240,6 +4251,7 @@ variable QAPP-N
    0 QAPP-N !  pair? 0= IF q CHECKER-QUOT-FRESH:START THEN
    q Q>DIN pair? QAPP-ROW  q Q>DOUT pair? QAPP-ROW
    q Q>RIN pair? QAPP-ROW  q Q>ROUT pair? QAPP-ROW  MK-QUOT {: fresh:n :}
+   q Q>BLOCK fresh Q-BLOCK!
    fresh q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
    fresh ;
 
@@ -4351,6 +4363,17 @@ defer U-DRAIN-XT ( n -- )
 : ROLE-FLIP ( n -- n ) dup 1 and 2 * swap 1 rshift 1 and or 3 xor ;
 
 
+\ Two quotations that unify share one block part.
+: BLOCK-PAIR ( n n -- ) {: got:n want:n :}
+   got Q>BLOCK T-RES {: a:n :}   want Q>BLOCK T-RES {: b:n :}
+   a ISVAR b ISVAR and IF
+      a PAY b PAY <> IF a b PAY TV! THEN EXIT
+   THEN
+   a ISVAR IF b a PAY TV! EXIT THEN
+   b ISVAR IF a b PAY TV! EXIT THEN
+   a b <> IF a b U-FAIL THEN ;
+
+
 : QUOT-PAIR ( n n -- )
    {: got:n want:n :}
    CUR-ROLE @ {: role:n :}   role ROLE-FLIP {: flip:n :}
@@ -4360,6 +4383,7 @@ defer U-DRAIN-XT ( n -- )
    g Q>DOUT w Q>DOUT role PAIR-QUOT
    w Q>RIN g Q>RIN flip PAIR-QUOT
    g Q>ROUT w Q>ROUT role PAIR-QUOT
+   g w BLOCK-PAIR
    base U-DRAIN-XT
    UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
    TAIL-HIT @ IF mark TRAIL-UNWIND THEN
@@ -16047,6 +16071,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    t T-RES dup TAG T-QUOT <> IF drop t EXIT THEN {: q:n :}
    q Q>DIN CALL-SPINE-COPY q Q>DOUT CALL-SPINE-COPY
    q Q>RIN q Q>ROUT MK-QUOT {: copy:n :}
+   q Q>BLOCK copy Q-BLOCK!
    copy q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
    copy ;
 
@@ -19509,7 +19534,9 @@ CHECKER-REG:}SCRATCH
       x Q>DOUT depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
       x Q>RIN depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
       x Q>ROUT depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      MK-QUOT EXIT
+      MK-QUOT {: copy:n :}
+      x Q>BLOCK copy Q-BLOCK!
+      copy EXIT
    THEN
    x TAG T-PARAM = IF
       PARAM-SCR-N @ {: base:n :}
@@ -19599,6 +19626,7 @@ SCOPE-INTRO-PAIR-INSTALL
       scope x F>SECOND TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       scope x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
+      scope x Q>BLOCK TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       scope x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       scope x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
       scope x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
