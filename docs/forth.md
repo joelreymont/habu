@@ -1217,7 +1217,8 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 - `xt` is the token `'` pushes for an engine primitive or a word with no stack
   effect: no effect rides it, and no storage holds one (`xt in a stored type`).
 - `width<τ>` is one cell holding the bytes `τ` takes in storage, a record's
-  included; `width>n` reads them. `width<n>` is not `width<point>`, and a width
+  included; `width>n` reads them. `width<u8>` is not `width<u32>` nor
+  `width<n>`: a width's argument pairs exactly, as a pointee does, and a width
   is not an `n`. Storage starts as zero bytes, so no storage, field or variant
   payload holds one (`a width is not stored`), and no cast yields one.
 

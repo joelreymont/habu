@@ -39,6 +39,8 @@ public
    s" a fetched cell shared with a view element rejects a wide type" T-LABEL
    s" : C2V-FETCH ( ptr t read-view<p,q,t> -- t read-view<p,q,t> ) swap @ swap ; : C2V-BAD ( ptr c2vpair read-view<p,q,c2vpair> -- c2vpair read-view<p,q,c2vpair> ) C2V-FETCH ;" 70 SUBJECT:EXITED? TTRUE
    s" a discarded fetched cell still rejects a wide element type" T-LABEL
-   s" : C2V-FETCH-DROP ( ptr t read-view<p,q,t> -- read-view<p,q,t> ) swap @ drop ; : C2V-BAD ( ptr c2vpair read-view<p,q,c2vpair> -- read-view<p,q,c2vpair> ) C2V-FETCH-DROP ;" 70 SUBJECT:EXITED? TTRUE ;
+   s" : C2V-FETCH-DROP ( ptr t read-view<p,q,t> -- read-view<p,q,t> ) swap @ drop ; : C2V-BAD ( ptr c2vpair read-view<p,q,c2vpair> -- read-view<p,q,c2vpair> ) C2V-FETCH-DROP ;" 70 SUBJECT:EXITED? TTRUE
+   s" a record's phantom element type does not widen" T-LABEL
+   s" : C2V-WIDEN ( c2vtypedinner<p,q,u8> -- c2vtypedinner<p,q,n> ) ;" 70 SUBJECT:EXITED? TTRUE ;
 
 ;package

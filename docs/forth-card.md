@@ -97,7 +97,8 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
 `xt` is a ticked engine primitive's token (`['] type`), which checked code
 cannot execute: `E-EXEC-OPAQUE-XT`.
 `width<t>` is one cell holding the bytes `t` takes in storage; `width>n` reads
-them, and no storage, field or cast holds or yields one.
+them, `width<u8>` is not `width<u32>` or `width<n>`, and no storage, field or
+cast holds or yields one.
 
 - A string is `ptr u8 n`, a cell address `ptr a`, `n` only a genuine scalar.
   `ptr a` needs a body that keeps the pointee parametric — a `ptr` local admits

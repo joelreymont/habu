@@ -45,6 +45,26 @@ create DIAG-BUF 8192 allot
    ARM
    [: s" : W5 ( width<n> -- n ) W3 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    S\" \"expected\":\"width<turn> \",\"actual\":\"width<n> \"" HAS?
+   DISARM
+   ARM
+   [: s" : W8 ( width<u8> -- width<u32> ) ;" evaluate-closed ;]
+   CHECK-RC TTHROWSQ
+   S\" \"expected\":\"width<u32> \",\"actual\":\"width<u8> \"" HAS?
+   DISARM
+   ARM
+   [: s" : W9 ( width<n> -- width<u8> ) ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   S\" \"expected\":\"width<u8> \",\"actual\":\"width<n> \"" HAS?
+   DISARM
+   [: s" : W10 ( width<u32> -- n ) width>n ;" evaluate-closed ;] 0 TTHROWSQ
+   ARM
+   [: s" : W11 ( width<u8> -- n ) W10 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   S\" \"expected\":\"width<u32> \",\"actual\":\"width<u8> \"" HAS?
+   DISARM
+   ARM
+   [: s" : W12 ( [ -- width<u8> ] -- [ -- width<u32> ] ) ;" evaluate-closed ;]
+   CHECK-RC TTHROWSQ
+   S\" \"expected\":\"[ -- width<u32> ] \",\"actual\":\"[ -- width<u8> ] \""
+   HAS?
    DISARM ;
 
 : CASE-NOT-N ( -- )

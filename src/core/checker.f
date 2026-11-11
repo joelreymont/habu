@@ -3283,8 +3283,9 @@ public
    v LIT-V !  want LIT-T !  -1 LIT-HIT !
    RES-FALSE ;
 
-\ A pointee (CUR-STRICT) admits neither relaxation: an element type is part of
-\ the pointer's identity, and `n` is the generic stack cell, not a wildcard.
+\ A pointee or a phantom argument (CUR-STRICT) admits neither relaxation: its
+\ type is part of the identity of the pointer or family that names it, and `n`
+\ is the generic stack cell, not a wildcard.
 : CON-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 PAY t2 PAY = IF RES-TRUE EXIT THEN
    CUR-STRICT @ 0 <> IF RES-FALSE EXIT THEN
@@ -4354,18 +4355,21 @@ CHECKER-REG:}SCRATCH
 
 \ A family argument's variance: one that reaches storage is read and written,
 \ so both sides are demanded; one held only by value takes the pair's roles.
+\ One that names a scope, a region or a phantom element type pairs exactly.
 : PARAM-PAIR-SLOT ( n n n -- )
    {: t1:n t2:n slot:n :}
    t1 slot PARAM>ARG T-RES {: a:n :}
    t2 slot PARAM>ARG T-RES {: b:n :}
-   a b t1 PARAM>FAM slot PARAM-BIND-OK? IF
+   t1 PARAM>FAM {: fam:n :}
+   a b fam slot PARAM-BIND-OK? IF
       b a PAY TV!
-   ELSE b a t1 PARAM>FAM slot PARAM-BIND-OK? IF
+   ELSE b a fam slot PARAM-BIND-OK? IF
       a b PAY TV!
    ELSE
       CUR-ARG @ >r 0 CUR-ARG !   CUR-ROLE @ >r
-      t1 PARAM>FAM slot TFAM-STORE-SLOT-XT IF ROLE-D1 ROLE-D2 or CUR-ROLE ! THEN
-      t1 READ-VIEW? t1 MUT-VIEW? or t1 RECORDS? or IF a b PAIR-STRICT ELSE a b PAIR THEN
+      fam slot TFAM-STORE-SLOT-XT IF ROLE-D1 ROLE-D2 or CUR-ROLE ! THEN
+      fam slot TFAM-SCOPE-SLOT-XT  fam slot TFAM-REGION-SLOT-XT or
+      fam slot TFAM-TYPE-SLOT-XT or IF a b PAIR-STRICT ELSE a b PAIR THEN
       r> CUR-ROLE !  r> CUR-ARG !
    THEN THEN ;
 
