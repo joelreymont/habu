@@ -4,6 +4,12 @@
 \ socket and logs each `closed` with its socket; every handler is defined before
 \ the server starts.
 \ Run: bin/hb --load src/lib/net/ws-test.f
+\
+\ Each frame the client sends or reads one at a time is one transcript line:
+\ direction, opcode (`+` when more fragments follow), length, and the payload in
+\ hex or, past HEX-MAX bytes, as the sum of its bytes. Pushes log no frame. The
+\ transcript is written to build/ws-transcript.txt, read back and compared whole
+\ with WANT$.
 
 require src/lib/test.f
 require src/lib/test/wait.f
@@ -22,10 +28,8 @@ require src/lib/net/ws.f
 require src/lib/test/stderr.f
 require src/lib/date.f
 
-\ White-box: reopens WS. ACCEPT-STALLED is ACCEPT with a stall run once the
-\ handshake holds its slot, as a worker the OS keeps off the processor would;
-\ LAST-GEN gives a free slot the last generation a handle carries. The
-\ definitions land in WS-TEST.
+\ ACCEPT-STALLED is ACCEPT with a stall run once the handshake holds its slot,
+\ as a worker the OS keeps off the processor would.
 package WS
 : WS-TEST:ACCEPT-STALLED ( HTTP:request HTTP:response [ socket message -- ] [ -- ] -- accepted )
    {: asked:HTTP:request answer:HTTP:response q stall :}
@@ -43,9 +47,8 @@ package WS
    LOCK TASK:RELEASE ;
 ;package
 
-\ White-box: reopens HTTP for its listener's descriptor, which the fault case
-\ polls so the listener's own re-polls never free a descriptor under Darwin's
-\ poll bound. It lands in WS-TEST.
+\ Reopens HTTP for its listener's descriptor, which the fault case polls so the
+\ listener's own re-polls never free a descriptor under Darwin's poll bound.
 package HTTP
 : WS-TEST:LISTEN-FD ( -- fd ) LISTENER@ TCP4:LISTENER-FD ;
 ;package
@@ -55,14 +58,14 @@ package WS-TEST
 $7F000001 constant LOOPBACK
 2 constant WORKERS                \ fewer than the sockets a case holds open at once
 $1F4 constant IDLE-MS
-10 constant POLL-MS               \ how often a wait looks again
+10 constant POLL-MS
 $7D0 constant ANSWER-MS           \ a loopback answer that slow is a hang
 $3E8 constant GRACE-MS            \ what a bounded wait may run past its bound on a loaded box
-$190 constant STOP-BOUND-MS       \ WS's GOODBYE-MS and STOP-MARGIN-MS: how long WS:STOP may take
+$190 constant STOP-BOUND-MS       \ how long WS:STOP may take
 STOP-BOUND-MS 2 / constant IDLE-STOP-MS \ an idle socket's stop: far over its few ms, under a stop that waits out its bound
 STOP-BOUND-MS GRACE-MS + constant HOLD-MS \ how long a stalled handshake holds its slot: past any stop's bound
-$400000 constant QUEUE-MAX        \ WS's: the unwritten bytes behind which a frame loses its socket
-$10000 constant PUSH-BYTES        \ one pushed frame's payload
+$400000 constant QUEUE-MAX        \ the unwritten bytes behind which a frame loses its socket
+$10000 constant PUSH-BYTES
 $200000 constant STALL-PUSH       \ what a stalled peer's socket queues: half of QUEUE-MAX, far past its peer's buffers
 $1000 constant PEER-RCVBUF       \ the stalled peer's receive buffer, fixed before it connects; macOS lo0 rounds it up
 $10 constant SOCKADDR-N          \ sockaddr_in
@@ -110,9 +113,8 @@ CAST: SOCK>N ( WS:socket -- n )
    HB-TARGET-MACOS? if $1002 exit then
    E-PLATFORM throw ;
 
-\ The one socket control this fixture needs: Linux and macOS grow a loopback
-\ socket's buffers as traffic goes, and grown ones take a whole push into the
-\ kernel, where no byte waits in WS's queue.
+\ Linux and macOS grow a loopback socket's buffers as traffic goes, and grown
+\ ones take a whole push into the kernel, where no byte waits in WS's queue.
 PROCESS-SYMBOLS
 FUNCTION: SET-OPT-CALL setsockopt ( n n n ptr u8 n -- i32 ) ;FUNCTION
 
@@ -121,7 +123,7 @@ BUF-CAP SPAN-BUFFER: CLIENT-TX
 BUF-CAP SPAN-BUFFER: CLIENT-RX
 BLAST-BYTES SPAN-BUFFER: PUSH-BUF
 BLAST-BYTES SPAN-BUFFER: HANDLER-BUF
-VOLLEY-CAP SPAN-BUFFER: VOLLEY-BUF  \ the pings the client sends in one write
+VOLLEY-CAP SPAN-BUFFER: VOLLEY-BUF
 2 SPAN-BUFFER: NOT-UTF8
 WS:HEADER-MAX SPAN-BUFFER: RX-HEAD
 HEAD-CAP SPAN-BUFFER: HEAD-BUF
@@ -186,16 +188,13 @@ TASK:SEMAPHORE FILLED             \ AIO is full: the held handshake goes on
 FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket  \ polls that never fire, holding AIO at its ceiling
 FILL-CAP TYPED-BUFFER FILL-R n    \ each on its own pipe: Darwin bounds descriptors, and polls on
 FILL-CAP TYPED-BUFFER FILL-W n    \ duplicates of one pipe made each AIO turn take 2-3 s
-1 TYPED-BUFFER PIN-TICKET AIO:ticket \ a poll on HTTP's listener, whose timeouts then free no descriptor
+1 TYPED-BUFFER PIN-TICKET AIO:ticket \ a poll on HTTP's listener
 variable PINNED                   \ whether PIN-TICKET holds a poll in flight
 variable FILL-N                   \ the polls in flight
 variable FILL-CODE                \ what AIO refused the poll past them with
 TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a close
 
 
-\ Returns once the probe answers other than 0, looking every POLL-MS. A probe
-\ still 0 once that many ms have passed is a deadline: the wait names itself
-\ and throws E-PROC-TIMEOUT.
 : AWAITED ( [ -- n ] n -- n )
    {: probe limit:n :}
    mono-ns limit NS-PER-MS * + {: deadline:n :}
@@ -205,12 +204,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       mono-ns deadline > if s" ws-test AWAITED" TEST-WAIT:EXPIRED then
       POLL-MS >MS TASK:SLEEP
    again ;
-
-\ Each frame the client sends or reads one at a time is one transcript line:
-\ direction, opcode (`+` when more fragments follow), length, and the payload in
-\ hex or, past HEX-MAX bytes, as the sum of its bytes. Pushes log no frame. The
-\ transcript is written to build/ws-transcript.txt, read back and compared whole
-\ with WANT$.
 
 : SCRIPT$ ( -- ptr u8 n )
    SCRIPT-BUF SCRIPT-U @ SPAN:TAKE SPAN:$ ;
@@ -310,8 +303,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : SEND-RAW ( TCP4:connection ptr u8 n -- ) {: conn:TCP4:connection a u:n :}
    conn a u TCP4:TRANSFER-BYTES TCP4:WRITE DROP-STATUS ;
 
-\ A server that says nothing for ANSWER-MS is a deadline that names itself,
-\ instead of a hung suite.
 : AWAIT ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn ANSWER-MS >MS TCP4:READABLE-WITHIN?
    MATCH TCP4:ready-result
@@ -320,7 +311,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       failed OF drop ENDOF
    ;MATCH ;
 
-\ One read of whatever the server has sent; nothing at the end of its stream.
 : REFILL ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn AWAIT
    conn STREAM-BUF SPAN:$ TCP4:TRANSFER-BYTES TCP4:READ
@@ -332,8 +322,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    STREAM-U !
    0 STREAM-AT ! ;
 
-\ Bytes into the span from what the client holds, read afresh when it holds
-\ none: their count, 0 at the end of the stream.
 : READ-SOME ( TCP4:connection SPAN:span<u8> -- n ) {: conn:TCP4:connection dst :}
    STREAM-AT @ STREAM-U @ >= if conn REFILL then
    STREAM-U @ STREAM-AT @ - dst SPAN:LEN min {: take:n :}
@@ -341,7 +329,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    take STREAM-AT +!
    take ;
 
-\ The whole span, or false when the stream ended first.
 : READ-N ( TCP4:connection SPAN:span<u8> -- bool ) {: conn:TCP4:connection dst :}
    dst SPAN:LEN 0= if true exit then
    conn dst READ-SOME {: got:n :}
@@ -370,7 +357,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : LINE+ ( ptr u8 n ptr u8 n -- ) {: name nu:n value vu:n :}
    name nu REQ+ s" : " REQ+ value vu REQ+ S\" \r\n" REQ+ ;
 
-\ A request line naming that version, with no header behind it.
 : REQ-BARE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: method mu:n path pu:n version vu:n :}
    0 REQ-U !
    method mu REQ+ s"  " REQ+ path pu REQ+ s"  " REQ+ version vu REQ+ S\" \r\n" REQ+ ;
@@ -378,7 +364,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : HOST+ ( -- )
    s" Host" s" ws-test" LINE+ ;
 
-\ An HTTP/1.1 request line and its Host.
 : REQ-START ( ptr u8 n ptr u8 n -- ) {: method mu:n path pu:n :}
    method mu path pu s" HTTP/1.1" REQ-BARE
    HOST+ ;
@@ -386,15 +371,12 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : KEY$ ( -- ptr u8 n )
    s" dGhlIHNhbXBsZSBub25jZQ==" ;
 
-\ The four lines of a handshake with nothing wrong with it.
 : GOOD-LINES ( -- )
    s" Upgrade" s" websocket" LINE+
    s" Connection" s" Upgrade" LINE+
    s" Sec-WebSocket-Key" KEY$ LINE+
    s" Sec-WebSocket-Version" s" 13" LINE+ ;
 
-\ The request as built goes out with whatever a case put behind its head, and
-\ the answer's head is read.
 : REQ-OVER ( TCP4:connection -- TCP4:connection ) {: conn:TCP4:connection :}
    conn REQ$ SEND-RAW
    conn READ-HEAD
@@ -411,7 +393,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : UPGRADE ( ptr u8 n -- TCP4:connection )
    DIAL -rot UPGRADE-OVER ;
 
-\ One masked frame as a client sends it, in the client's own buffer.
 : FRAME$ ( bool WS:opcode ptr u8 n -- ptr u8 n ) {: fin:bool op a u:n :}
    fin op u MASK-KEY WS-HEADER:MAKE WS-SENDER:client CLIENT-TX WS:ENCODE-HEADER {: size:n :}
    a u CLIENT-TX size SPAN:SKIP SPAN:COPY
@@ -436,7 +417,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    loop
    RAW-BUF k SPAN:TAKE SPAN:$ ;
 
-\ Bytes no well-behaved client frames, as they are written.
 : SAY-RAW ( TCP4:connection ptr u8 n -- ) {: conn:TCP4:connection a u:n :}
    s" > raw " LOG a u LOG-LINE
    conn a u BYTES SEND-RAW ;
@@ -467,7 +447,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn RX-HEAD 2 size 2 - SPAN:SUB READ-N 0= if false exit then
    size HEADER? nip ;
 
-\ The next frame the server sent, or the end of its stream.
 : NEXT-FRAME ( TCP4:connection -- ) {: conn:TCP4:connection :}
    0 RX-EOF ! 0 RX-LEN !
    conn READ-HEADER 0= if 1 RX-EOF ! exit then
@@ -481,7 +460,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    RX-EOF @ 0 <> if s" < end of stream" LOG-LINE exit then
    s" < " RX-FIN @ 0 <> RX-OP @ RX$ LOG-FRAME ;
 
-\ The frame in hand is final, of this opcode, with this payload.
 : GOT ( WS:opcode ptr u8 n -- ) {: op want wu:n :}
    RX-EOF @ 0 T=
    RX-FIN @ 1 T=
@@ -503,7 +481,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn true op a u SAY
    conn HEAR op a u GOT ;
 
-\ The close handshake a client starts, then the end of the stream.
 : FAREWELL ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn true WS-OPCODE:close 1000 STATUS$ SAY
    conn HEAR 1000 GOT-CLOSE
@@ -516,7 +493,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : PATTERN$ ( n -- ptr u8 n )
    PATTERN swap SPAN:TAKE SPAN:$ ;
 
-\ The head as it arrived, a line to a line.
 : LOG-HEAD ( -- )
    HEAD$ {: a u:n :}
    u 0 ?do a i + c@ dup CR = if drop else LOG-C then loop ;
@@ -526,7 +502,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    a u ;
 
 
-\ The status the socket closed under, as NOTE logged it; 0 while it has not.
 : CLOSED-OF ( WS:socket -- n ) {: sock:WS:socket :}
    CLOSED-N atomic@ 0 ?do
       i CLOSED-SOCK @ SOCK>N sock SOCK>N = if i CLOSED-CODE @ unloop exit then
@@ -564,10 +539,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : BLAST ( WS:socket -- ) {: sock:WS:socket :}
    BLAST-N 0 ?do sock HANDLER-BUF SPAN:$ WS:SEND-BINARY loop ;
 
-\ Text comes back as it came, but for the cues: `throw` makes the handler
-\ throw, `badtext` sends text that is not UTF-8 and nothing else, `go` closes
-\ first, `bye` closes under 4000, `blast` sends BLAST-N frames, and `stop`
-\ calls WS:STOP.
 : TEXT-IN ( ptr u8 n WS:socket -- ) {: a u:n sock:WS:socket :}
    sock 0 NOTED !
    a u s" throw" STR= if E-HANDLER throw then
@@ -602,7 +573,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       mono-ns deadline >
    until ;
 
-\ Once THROW-CASE arms it, the next `closed` handler throws.
 : THROW-IN-CLOSED ( -- )
    THROW-ARMED @ 0= if exit then
    0 THROW-ARMED !
@@ -629,7 +599,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    catch nip nip ROUTE-CODE !
    ACCEPTED TASK:SIGNAL-SEM ;
 
-\ The route keeps what ACCEPT answered.
 : OPEN ( HTTP:request HTTP:response -- )
    [: 2dup [: NOTE ;] WS:ACCEPT KEEP ;] ROUTED ;
 
@@ -648,7 +617,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : TWICE ( HTTP:request HTTP:response -- )
    [: 2dup ACCEPT-TWICE ;] ROUTED ;
 
-\ The handshake stalls HOLD-MS once it holds its slot.
 : STALL ( -- )
    1 STALLING !
    HOLD-MS >MS TASK:SLEEP ;
@@ -656,7 +624,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : STALLED ( HTTP:request HTTP:response -- )
    [: 2dup [: NOTE ;] [: STALL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
 
-\ The handshake waits, once it holds its slot, until AIO is full.
 : AWAIT-FILL ( -- )
    1 STALLING !
    FILLED TASK:WAIT-SEM ;
@@ -678,30 +645,24 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" GET" s" /plain" [: PLAIN ;] HTTP:ROUTE ;
 
 
-\ The socket's handler is told `closed` with this status within that many ms.
 : CLOSES-WITHIN ( WS:socket n n -- ) {: sock:WS:socket code:n limit:n :}
    sock 0 WATCH !
    [: WATCHED ;] limit AWAITED code T= ;
 
-\ The server fails the connection with this status and ends the stream, and
-\ the socket's handler is told so.
 : FAILED ( TCP4:connection WS:socket n -- ) {: conn:TCP4:connection sock:WS:socket code:n :}
    conn HEAR code GOT-CLOSE
    conn ENDS
    sock code ANSWER-MS CLOSES-WITHIN ;
 
-\ The route has posted ACCEPTED; what it threw fails the case.
 : AWAIT-ROUTE ( -- )
    ACCEPTED TASK:WAIT-SEM
    ROUTE-CODE @ {: code:n :}
    code 0<> if code throw then ;
 
-\ The socket of the handshake the route has just accepted.
 : OPENED ( TCP4:connection -- TCP4:connection WS:socket )
    AWAIT-ROUTE
    0 HELD @ ;
 
-\ A handshake on /ws that passed: the client's connection and its socket.
 : OPENS-OVER ( TCP4:connection -- TCP4:connection WS:socket )
    s" /ws" UPGRADE-OVER OPENED ;
 
@@ -718,8 +679,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U ! ;
 
-\ RFC 6455 section 1.3's key and the accept value it names. A client that ends
-\ its stream with no close frame is reported as status 1006.
+\ RFC 6455 section 1.3's key and the accept value it names.
 : HANDSHAKE-CASE ( -- )
    s" handshake" SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
@@ -750,8 +710,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" HTTP/1.1 400 Bad Request" ;
 
 \ Section 4.2.1's first two items: the handshake is an HTTP/1.1 GET carrying
-\ one valid Host. The server refuses a request without one before any route
-\ runs.
+\ one valid Host.
 : REQUEST-REFUSALS ( -- )
    s" POST" s" /ws" REQ-START GOOD-LINES
    s" POST" BAD$ 400 REFUSED
@@ -842,8 +801,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn WS-OPCODE:text s" ok" EXCHANGE
    conn FAREWELL ;
 
-\ Text, empty or not, and binary reach the handler as the messages they are,
-\ and its replies come back as such.
 : ECHO-CASE ( -- )
    s" text and binary reach the handler" SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
@@ -917,8 +874,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 \ A client that does not wait for the 101: the first AT bytes of its frame ride
 \ behind the request, where the HTTP server has already read them, and it
-\ writes the rest once the 101 is in. The frame arrives whole wherever the
-\ cut falls.
+\ writes the rest once the 101 is in.
 : EARLY ( ptr u8 n n -- ) {: a u:n at:n :}
    s" GET" s" /ws" REQ-START GOOD-LINES S\" \r\n" REQ+
    s" > " true WS-OPCODE:text a u LOG-FRAME
@@ -940,7 +896,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a frame whose header the handshake cut" T-LABEL
    s" early header" 1 EARLY ;
 
-\ Raw bytes on a fresh socket, and the status the server fails it with.
 : BREAKS ( ptr u8 n ptr u8 n n -- ) {: label lu:n a u:n code:n :}
    label lu SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
