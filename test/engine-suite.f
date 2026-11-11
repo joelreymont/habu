@@ -863,6 +863,32 @@ s" COK-QL-EXPORTED ( n -- ) {: a:n :} [: a . ;] ES-QL:QL-RUN" CHECK-CANDIDATE! 0
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a reading quotation handed to a package's runner certifies" T-LABEL
 s" COK-QL-PACKAGE ( n -- ) {: a:n :} [: a . ;] ES-QL:RUN" CHECK-CANDIDATE! 0 T<>
+\ A field or payload is storage: a constructor keeps its quotation.
+STRUCTURE qlbox FIELD act [ -- ] ;STRUCTURE
+SUMTYPE qljob VARIANT none ;VARIANT VARIANT some [ -- ] ;VARIANT ;SUMTYPE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to a structure's MAKE rejects" T-LABEL
+s" CBAD-QL-MAKE ( n -- qlbox ) {: a:n :} [: a . ;] QLBOX:MAKE" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to a variant constructor rejects" T-LABEL
+s" CBAD-QL-VARIANT ( n -- qljob ) {: a:n :} [: a . ;] QLJOB:SOME" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to construct rejects" T-LABEL
+s" CBAD-QL-CONSTRUCT ( n -- qljob ) {: a:n :} [: a . ;] construct qljob some" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a plain quotation handed to a structure's MAKE certifies" T-LABEL
+s" COK-QL-MAKE ( -- qlbox ) [: 7 . ;] QLBOX:MAKE" CHECK-CANDIDATE! 0 T<>
+s" a match arm's payload joins a reading quotation" T-LABEL
+s" COK-QL-MATCH-JOIN ( n qljob -- ) {: a:n j :} j MATCH qljob none OF [: a . ;] ENDOF some OF ENDOF ;MATCH execute" CHECK-CANDIDATE! 0 T<>
+\ A seed argument rides in the output type and is not stored, so its quotation stays joinable.
+STRUCTURE qlpair FIELD x n FIELD y n ;STRUCTURE
+STRUCTURE qlbox2<a,b> FIELD q a FIELD w b ;STRUCTURE
+STRUCTURE qlbox3<a,b> FIELD k a FIELD w b ;STRUCTURE
+s" a seed argument's quotation stays joinable" T-LABEL
+s" COK-QL-SEED-JOIN ( n -- ) {: a:n :} [: 7 . ;] {: q :} q 1 2 QLPAIR:MAKE QLBOX2:MAKE 5 swap QLBOX3:MAKE QLBOX3:UNMAKE QLBOX2:UNMAKE QLPAIR:UNMAKE + nip + . q a 1 > IF drop [: a . ;] THEN execute" CHECK-CANDIDATE! 0 T<>
 \ A locals group names only locals: `--` and `|` are refused at the token with the reason.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" -- in a locals group rejects" T-LABEL

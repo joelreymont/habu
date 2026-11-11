@@ -27654,10 +27654,10 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    CHECK-NO-BORROW
    CHECK-SIG? CHECK-RETURNS? and IF
       CTOR-PEND-MATCH? IF
-         \ Matching consumes exactly one row from the sealed constructor plan.
-         \ TDECL-GEN-EVAL's catch boundary clears it on every exit. The
-         \ product bundle is its field cells, so the body leaves SGIN.
+         \ One row of the sealed constructor plan (TDECL-GEN-EVAL's catch clears it): the
+         \ body leaves SGIN, the field cells, whose quotations are stored (KEEP-QUOTS).
          SGIN @ SUNI-COERCE
+         SGIN @ KEEP-QUOTS
       ELSE
          LBUF-PEND-MATCH? IF
             -1 LAYOUT-INTRO !
