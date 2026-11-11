@@ -15,6 +15,23 @@
 \ row width (SEC-ROW), and a length that is not a whole number of rows is
 \ refused by name. VERSION changes whenever a section is added, dropped or
 \ reinterpreted, because the table is positional.
+\
+\ MERGE writes a second capture in the first's coordinates, since the merged
+\ capture holds one blob, one name pool, one DATA base and size and one wordlist
+\ window. Blob offsets (records' [0], call and named code sites' [0], both site
+\ tables' own rows) move by the host's blob. Name pool offsets (records' [8],
+\ call and named code sites' [4]) move by the host's pool, and a signature row's
+\ name, signature and package offsets by the host's signature strings; both are
+\ appended to, never deduplicated. Declared address cells move by where the
+\ artifact's window begins inside the merged one (PLACE-WDATA), and its bitmap
+\ and values append as bytes. A DATA value moves to the same place in the merged
+\ window, a CODE value by the host's blob, and a wordlist id by the host's span,
+\ so the merged span is the two added; nothing else moves, and each capture's
+\ seals are its own window's ids. On native x86-64 the shadow moves too:
+\ emission starts and sites by the host's shadow-code length, named record
+\ targets by its shipped-record count, anonymous row targets by its
+\ shadow-record count, and CODE-cell rows by its address-cell count; anonymous
+\ source keys and function entries keep their meanings.
 
 require src/habu/layout.f
 require src/habu/fdio.f
@@ -863,60 +880,18 @@ public
 
 private
 
-\
-\ WHY MERGE IS NOT READ WITH DIFFERENT NUMBERS. The metabuild host captures its
-\ own window first and then takes the chain's from an artifact, and the merged
-\ capture holds ONE blob, ONE name pool, ONE (DATA base, size) pair and ONE
-\ wordlist window. So the second capture has to be expressed in the first's
-\ coordinates: every offset it carries moves by what the host already holds, and
-\ every VALUE it carries - a DATA address in its own window, a code address in
-\ its own blob, a wordlist id in its own window - has to be recomputed for the
-\ merged one. Loading into zeroed buffers is not a degenerate case of this: a
-\ host DATA base of 0 would bake a DATA base of 0.
-\
-\ WHAT MOVES, and nothing else does:
-\   blob offsets    ordinary records' [0], call sites' [0], named code sites'
-\                   [0], and both site tables' own u32 rows: + the host's blob.
-\   pool offsets    records' [8], call sites' [4], named code sites' [4]: + the
-\                   host's pool, which is appended to and never deduplicated
-\                   against (the remap would buy under a kilobyte).
-\   window offsets  the declared address cells: + where the artifact's window
-\                   begins inside the merged one (PLACE-WDATA); its bitmap and
-\                   values append as bytes.
-\   DATA values     each recorded chain holds an address in the ARTIFACT's DATA
-\                   window; the merged window continues the host's, so it moves
-\                   to the same place inside that.
-\   CODE values     each holds an offset into the artifact's own blob, which is
-\                   now that far into the merged blob.
-\   wordlist ids    records' wids and the window's own protected ids are window
-\                   coordinates, so they continue the host's window rather than
-\                   restarting it, and the merged span is the two added.
-\   pool offsets    a signature row's name, signature and package are offsets
-\                   into the signature strings, which are appended the same way
-\                   the name pool is - and for the same reason, without a
-\                   deduplication pass.
-\ NO SECTION IS READ PAST: each capture's contribution to the merged engine's
-\ seals is its own window's ids, the wordlist coordinates above.
-\ On native x86-64 the recorded shadow adds four more coordinates: emission
-\ starts and sites move by the host shadow-code length, named record targets by
-\ its shipped-record count, anonymous row targets by its shadow-record count,
-\ and CODE-cell rows by its address-cell count. Anonymous source keys and
-\ function entries retain their own meanings. A partial prefix name resolves
-\ only through the imported host's public compact records or the kernel linker.
-
 variable H-BLOB   variable H-REC     variable H-SITE   variable H-NAMES
 variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
 variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
-variable H-CSPAN                     \ the host's code-span rows
+variable H-CSPAN
 variable H-SIG    variable H-SIGSTR  variable H-REG
 variable H-CELLS  variable H-BMLEN   variable H-CEND    variable H-VALS
 variable H-SHREC  variable H-SHCODE  variable H-SHSITE  variable H-SHXT
 variable A-D0     variable A-B0      variable A-SPAN
-variable A-DSPAN                     \ the artifact's own window DATA span
+variable A-DSPAN
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
 
-\ Preserve the closed host payload while the incoming sections are read. The
-\ registry owner compares their format and identity; no live serialization.
+\ Preserve the closed host payload while the incoming sections are read.
 DYNAMIC-BUFFER HOST-REG n
 
 : SAVE-REG ( -- )
@@ -950,9 +925,8 @@ DYNAMIC-BUFFER HOST-REG n
    AOT-SHADOW:SITE-N @ H-SHSITE !    AOT-SHADOW:XT-N @ H-SHXT !
    AOT-REG-LEN @ H-REG ! ;
 
-\ A merge appends, so there has to be something to append to. A host that has not
-\ captured yet would take every shift below as zero and bake the artifact alone -
-\ an engine with the chain and without the REPL, which boots and is wrong.
+\ A host that has not captured yet would take every shift below as zero and
+\ bake the artifact alone - an engine with the chain and without the REPL.
 : ?HOST-CAPTURED ( -- )
    AOT-REC-N @ 0 > if exit then
    s" aot-file: nothing has been captured for this artifact to be merged into" DIE ;
@@ -967,10 +941,9 @@ DYNAMIC-BUFFER HOST-REG n
    FD @ close
    s" aot-file: a merge carries no shadow target's routines" DIE ;
 
-\ Each section behind what the host already holds. The CODE sites are the one
-\ base that is not the host's own count: they sit behind the host's DATA rows,
-\ the artifact's DATA rows AND the host's CODE rows, because the two tables share
-\ one buffer with every DATA row ahead of every CODE row.
+\ The CODE sites sit behind the host's DATA rows, the artifact's DATA rows AND
+\ the host's CODE rows, because the two tables share one buffer with every DATA
+\ row ahead of every CODE row.
 : BASES-AFTER-HOST ( -- )
    SEC-N 0 ?do 0 i BASE! loop
    H-BLOB @                    S-BLOB BASE!
@@ -1028,30 +1001,20 @@ DYNAMIC-BUFFER HOST-REG n
       AOT-DSITE-BUF@ H-DSITE @ 4 * + d + k 4 * +  U32!
    loop ;
 
-\ The scalar at 16 is the artifact window's own first wid, which READ restores
-\ into the live capture's base. A MERGE has no use for it: the rows it moves
-\ carry offsets, and the offsets move by the host's span alone (REWID).
+\ The scalar at 16 is the artifact window's own first wid. A MERGE has no use
+\ for it: the rows it moves carry offsets.
 : SCALARS@ ( -- )
    SCAL U64@ A-D0 !
    SCAL 8 + U64@ A-B0 !
    SCAL 24 + U64@ A-SPAN !
    SCAL 32 + U64@ dup ?SPAN A-DSPAN ! ;
 
-\ WHERE THE ARTIFACT'S WINDOW BEGINS, and it is not simply the host's length. A
-\ captured address must keep its 8-residue: the atomics fault on a misaligned
-\ cell. Both writers capture against a
-\ CELL-ALIGNED base and round their span up to a whole cell, so every window's
-\ cells sit on the one DATA cell grid; a base that is not is refused here.
-\ THE BASE IS ROUNDED TO A WHOLE BITMAP BYTE, eight cells of window, because
-\ that is what lets the artifact's bitmap and values be appended to the host's
-\ as bytes instead of decoded and re-encoded.
-\ THE PAD IS ZERO BY CONSTRUCTION: it is an extent no cell covers, the bitmap
-\ bytes that reach over it are written zero here - a buffer another producer
-\ reached first is not evidence - and the seed zeroes the whole span before it
-\ lays any cell down.
-\
-\ Placement uses only the host's span and bitmap. The artifact's DATA base is
-\ checked after its complete payload has passed the digest and EOF checks.
+\ A captured address must keep its 8-residue: the atomics fault on a misaligned
+\ cell. THE BASE IS ROUNDED TO A WHOLE BITMAP BYTE, eight cells of window,
+\ because that is what lets the artifact's bitmap and values be appended to the
+\ host's as bytes. The pad is an extent no cell covers: its bitmap bytes are
+\ written zero here, and the seed zeroes the whole span before it lays any cell
+\ down.
 : PLACE-WDATA ( -- )
    H-DATA @ BM-BYTE-SPAN 1- + BM-BYTE-SPAN / BM-BYTE-SPAN * H-DATA-R !
    H-CEND @ H-DATA-R @ > if
@@ -1064,9 +1027,10 @@ DYNAMIC-BUFFER HOST-REG n
    repeat
    bmbase S-WDATA BASE! ;
 
-\ Both DATA bases must keep the cell grid. Both captures also canonicalize their
-\ code literals against base 0 (aot-capture.f ACAP-SCAN-CSITES), which lets a
-\ merge move one into the other's blob by shifting an offset.
+\ Both DATA bases must keep the cell grid; the artifact's is checked once its
+\ complete payload has passed the digest and EOF checks. Both captures also
+\ canonicalize their code literals against base 0, which lets a merge move one
+\ into the other's blob by shifting an offset.
 : ?BASES ( -- )
    A-D0 @ CELL-BYTES mod  AOT-DATA-D0 @ CELL-BYTES mod or 0<> if
       s" aot-file: a captured DATA window base is not cell-aligned" DIE then
@@ -1082,14 +1046,11 @@ DYNAMIC-BUFFER HOST-REG n
 : NAME. ( n -- ) {: noff:n :}
    AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@  type ;
 
-\ A captured wid is a window offset (src/habu/aot-decl.f WID-REL-BASE): 0 is the
-\ global wordlist and means the same thing in every process, and every other one
-\ counts from its own window's first wordlist. The merge appends the artifact's
-\ wordlists after the host's, so its offsets move up by the host's span and by
-\ nothing else - neither window's base is in the arithmetic, because neither
-\ window put one in its rows. An offset the artifact's own span does not hold has
-\ no counterpart here, so it is refused by name rather than rebased into whatever
-\ this host keeps at that number.
+\ A captured wid is a window offset: 0 is the global wordlist and means the same
+\ thing in every process, and every other one counts from its own window's first
+\ wordlist. An offset the artifact's own span does not hold has no counterpart
+\ here, so it is refused by name rather than rebased into whatever this host
+\ keeps at that number.
 : REWID ( n n -- n ) {: noff:n w:n :}
    w 0= if 0 exit then
    w WID-REL-BASE >= w A-SPAN @ WID-REL-BASE + < and 0= if
@@ -1323,9 +1284,9 @@ DYNAMIC-BUFFER HOST-REG n
 variable MERGE-XT-SRC
 variable MERGE-XT-DST
 
-\ Walk the incoming address rows backwards. Each original XT row already
-\ names one CODE cell; a NAME cell resolved against host code adds a row at its
-\ own index. Writing from the end retains sorted order without a second table.
+\ Each original XT row already names one CODE cell; a NAME cell resolved against
+\ host code adds a row at its own index. Writing from the end retains sorted
+\ order without a second table.
 : MERGE-SH-XTS ( -- )
    S-SHXTS SEC-ROWS MERGE-XT-SRC !
    H-SHXT @ S-SHXTS SEC-ROWS + MERGE-SHXT-EXTRA @ + MERGE-XT-DST !
@@ -1362,10 +1323,9 @@ variable MERGE-XT-DST
 \ moves: a layout constant and the QUALIFIED marker are the same number in every
 \ engine and in every merge. The kind that would move - a wordlist the capture's
 \ own window created - has no form in this format, because the layout constants
-\ occupy the small numbers a window offset would spell; the capture refuses to
-\ write one (src/habu/aot-capture.f ACAP-SITE-SCOPE) and a file that carries one
-\ anyway is refused here rather than rebased as though it were a record's offset.
-: SCOPE-FIXED? ( n -- bool ) {: w:n :}      \ the same number in every engine, so no merge moves it
+\ occupy the small numbers a window offset would spell, and a file that carries
+\ one is refused rather than rebased as though it were a record's offset.
+: SCOPE-FIXED? ( n -- bool ) {: w:n :}
    w WID-QUAL = if 0 0= exit then
    w FIRST-DYNAMIC-WID < ;
 
@@ -1383,7 +1343,6 @@ variable MERGE-XT-DST
    loop ;
 
 
-\ Preserve the tag and reject an offset that would carry into it.
 : XTOFF+ ( n n n -- n )
    {: field:n delta:n mask:n :}
    field mask and {: value:n :}
@@ -1495,8 +1454,7 @@ variable MERGE-XT-DST
 
 
 \ A site holds either a raw metadata address or an instruction-chain address in
-\ the artifact's DATA window. Its tag selects the reader/writer; its masked blob
-\ offset and the value move into the merged window's coordinates.
+\ the artifact's DATA window.
 : MERGE-DSITES ( -- )
    S-DSITES SEC-AT {: p:ptr :}
    A-DSPAN @ {: dlen:n :}
@@ -1519,8 +1477,6 @@ variable MERGE-XT-DST
    s"  which its own blob does not contain" type cr
    s" aot-file: a merged CODE literal is outside the artifact's blob" DIE ;
 
-\ Each holds an offset into the artifact's own blob, canonicalized against code
-\ base 0, and that blob now starts that far into the merged one.
 : MERGE-CSITES ( -- )
    S-CSITES SEC-AT {: p:ptr :}
    S-BLOB ROW-LEN@ {: blen:n :}
@@ -1534,10 +1490,8 @@ variable MERGE-XT-DST
       boff H-BLOB @ +  q U32!
    loop ;
 
-\ Every count is the host's plus the length the table gave, divided by the row
-\ the format fixes - the same one authority per number the plain read uses. The
-\ two bases and the window's own base do not move: they are the host's, and the
-\ artifact was just expressed in them.
+\ The two bases and the window's own base do not move: they are the host's, and
+\ the artifact was just expressed in them.
 : MERGE-COUNTS ( -- )
    H-BLOB @ S-BLOB ROW-LEN@ + AOT-BLOB-LEN !
    H-REC @ S-RECS SEC-ROWS + AOT-REC-N !
