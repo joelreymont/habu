@@ -2,6 +2,8 @@
 \ behind a pointer or in a family slot the family's width does not read, stands
 \ for any stored type, a two-cell record included, while the word's body needs
 \ no one-cell value of it. The refusals land at the call, never at the word.
+\ A cast's stored variable takes any such type but one that may hold a linear
+\ value, an atom or a width, at every binding, through a generic caller too.
 require src/lib/test.f
 require src/lib/string.f
 
@@ -43,12 +45,15 @@ CAST: N>EV-N ( n -- ev<n> )
 CAST: EV-N>N ( ev<n> -- n )
 CAST: N>EV-NODE ( n -- ev<ptr node> )
 CAST: EV-NODE>N ( ev<ptr node> -- n )
+CAST: >ELEM ( ptr u8 -- ptr t )
+CAST: ELEM> ( ptr t -- ptr u8 )
 
 TYPED-VARIABLE TV turn
 TYPED-VARIABLE PV ptr turn
 TYPED-VARIABLE RT run<turn>
 TYPED-VARIABLE RN run<n>
 2 TYPED-BUFFER NB n
+32 BUFFER: ELEMS
 
 : PASS ( ev<t> -- ev<t> ) ;
 : COUNT ( ptr run<t> -- n ) STORED-RUN:COUNT @ ;
@@ -78,6 +83,22 @@ TYPED-VARIABLE RN run<n>
 : NULL-TURN ( -- bool ) TV NULL? ;
 : OLD-STEP-N ( -- bool ) 0 NB OLD-STEP  1 NB = ;
 : LOCAL-TURN ( -- bool ) TV LOCAL-DROP  TV LOCAL-KEEP TV? ;
+
+\ Each stores through >ELEM and reads back through ELEM> >ELEM.
+: ELEM-N ( -- bool ) 7 ELEMS >ELEM !  ELEMS >ELEM ELEM> >ELEM @ 7 = ;
+: ELEM-R ( -- bool )
+   0.5 ELEMS >ELEM !  ELEMS >ELEM ELEM> >ELEM @ 0.5 f= ;
+: ELEM-U8 ( -- bool )
+   200 ELEMS >ELEM c!  ELEMS >ELEM ELEM> >ELEM c@ 200 = ;
+: ELEM-PTR ( -- bool )
+   ELEMS 16 + ELEMS >ELEM !  ELEMS >ELEM ELEM> >ELEM @  ELEMS 16 + = ;
+: TURN? ( ptr turn -- bool )
+   {: p:ptr :}
+   p STORED-TURN:ALIVE @  p STORED-TURN:ANGLE @ 0.25 f=  and ;
+: ELEM-TURN ( -- bool )
+   true ELEMS >ELEM STORED-TURN:ALIVE !
+   0.25 ELEMS >ELEM STORED-TURN:ANGLE !
+   ELEMS >ELEM ELEM> >ELEM TURN? ;
 
 70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
 
@@ -200,7 +221,45 @@ create DIAG-BUF DIAG-CAP allot
    S\" \"token\":\"STORED:SAME\"" MISMATCH-AT
    DISARM ;
 
+: CASE-ELEM ( -- )
+   s" a cast's stored variable takes n, r, u8, ptr u8 and a record" T-LABEL
+   ELEM-N TTRUE  ELEM-R TTRUE  ELEM-U8 TTRUE  ELEM-PTR TTRUE  ELEM-TURN TTRUE ;
+
+\ The refusal is the code the string names, at the call of STORED:AT.
+: CAST-AT ( ptr u8 n -- )
+   HAS?  S\" \"token\":\"STORED:AT\"" HAS? ;
+
+: CASE-ELEM-LINEAR ( -- )
+   s" nor a type that may hold a linear value, through a generic word" T-LABEL
+   ARM
+   [: s" : STORED-R12 ( ptr u8 -- ptr stored-type-lin ) STORED:AT ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-CAST-LINEAR\"" CAST-AT
+   DISARM
+   \ The stored kind refuses lrec before the cast does, as it does in CASE-LINEAR.
+   ARM
+   [: s" : STORED-R13 ( ptr u8 -- ptr STORED:lrec ) STORED:AT ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:AT\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-ELEM-CLASS ( -- )
+   s" nor an atom or a width" T-LABEL
+   ARM
+   [: s" : STORED-R14 ( ptr u8 -- ptr xt ) STORED:AT ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-CAST-CLASS\"" CAST-AT
+   DISARM
+   ARM
+   [: s" : STORED-R15 ( ptr u8 -- ptr width<n> ) STORED:AT ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-CAST-CLASS\"" CAST-AT
+   DISARM ;
+
 public
+
+\ A generic word that passes the cast's stored variable on to its caller.
+: AT ( ptr u8 -- ptr a ) >ELEM ;
 
 : RUN ( -- )
    T-RESET
@@ -218,6 +277,9 @@ public
    CASE-WIDTH-SLOT
    CASE-LINEAR
    CASE-OPEN
+   CASE-ELEM
+   CASE-ELEM-LINEAR
+   CASE-ELEM-CLASS
    T-REPORT ;
 
 ;package

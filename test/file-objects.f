@@ -36,7 +36,8 @@ package FILE-OBJECTS-TEST
 25 constant SPELLED-EFFECT               \ and effect.f's
 26 constant PACKAGED-BARE                \ the packaged sequence's bare.f's
 27 constant PACKAGED-BOXED               \ and boxed.f's
-28 constant TAILS                        \ TAIL$'s tails
+28 constant CAST-A                       \ the cast sequence's a.f's
+29 constant TAILS                        \ TAIL$'s tails
 65 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -203,6 +204,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    i SPELLED-EFFECT = if s" /spelled/effect.f.hfo" exit then
    i PACKAGED-BARE = if s" /packaged/bare.f.hfo" exit then
    i PACKAGED-BOXED = if s" /packaged/boxed.f.hfo" exit then
+   i CAST-A = if s" /cast/a.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -1124,6 +1126,55 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    s\" 24\n32\n7\n11\n8\n12\n"
    s" the program prints a cold build's numbers" PRINTS-RUN ;
 
+\ A directory of L's of that name, holding the cast sequence's a.f: package
+\ FILE-OBJECTS-CAST's private generic cast >ELEM and its public generic AT.
+: WRITE-CAST ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   L$ a u NEST-DIR FS:JOIN-PATH NEST-DIR-U !
+   NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" package FILE-OBJECTS-CAST\nCAST: >ELEM ( ptr u8 -- ptr t )\n" SRC+
+   s\" public\n: AT ( ptr u8 -- ptr a ) >ELEM ;\n;package\n" SRC+
+   s" a.f" NEST-WRITE ;
+
+\ b.f calls AT at elem: a record, or a linear type when the flag is true.
+: WRITE-CAST-B ( bool -- )
+   {: lin:bool :}
+   s" a.f" REQUIRE+
+   lin if s\" DEFLINEAR elem\n" SRC+ else
+      s\" STRUCTURE elem DERIVE addr FIELD x n FIELD y n ;STRUCTURE\n" SRC+
+   then
+   s\" 32 BUFFER: CAST-BUF\n" SRC+
+   s\" : SLOT ( -- ptr elem ) CAST-BUF FILE-OBJECTS-CAST:AT ;\n" SRC+
+   lin if s\" : MAIN ( -- ) ;\n" SRC+ else
+      s\" : MAIN ( -- ) 5 SLOT ELEM:Y !  SLOT ELEM:Y @ . ;\n" SRC+
+   then
+   s" b.f" NEST-WRITE ;
+
+\ A build of b.f the cast's restriction refuses; answers its exit code. The
+\ build prints E-CAST-LINEAR's reason at the call, not the code.
+: CAST-REFUSED ( CMD:command -- CMD:command n )
+   s" b.f" NEST-PATH$ FAILING-BUILD {: rc:n :}
+   CMD:ERR$ s" at 'FILE-OBJECTS-CAST:AT' a cast's stored type would hold a linear value"
+   CONTAINS? {: said:bool :}
+   rc 0 =  said 0=  or if rc SHOW then
+   s" the build exits nonzero" LABEL  rc 0<> TTRUE
+   s" the build refuses AT at a linear type" LABEL  said TTRUE
+   rc ;
+
+\ Guards the restriction a linked object's AT carries: CA2 links a.f and
+\ refuses b.f's SLOT as CA3, a cold build of the same files, does.
+: CAST-CASE ( CMD:command -- CMD:command )
+   s" cast" WRITE-CAST  false WRITE-CAST-B
+   s" CA" WHICH!  s" b.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s\" 5\n" s" the program prints the field it stored" PRINTS-RUN
+   CAST-A KEEP
+   true WRITE-CAST-B
+   s" CA2" WHICH!  CAST-REFUSED {: warm:n :}
+   s" the build links a.f" CAST-A LINKED
+   s" cast-cold" WRITE-CAST  true WRITE-CAST-B
+   s" CA3" WHICH!  CAST-REFUSED {: cold:n :}
+   s" CA2 exits as the build does" LABEL  warm cold T= ;
+
 \ Guards a cross build, whose words have no emission (linker.f WORD-RECORD+): bare-main.f for Wasm in a
 \ fresh hb, since the process fixes the build's target. The module never runs.
 : CROSS-CASE ( CMD:command -- CMD:command )
@@ -1138,7 +1189,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE
-      NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE CROSS-CASE ;]
+      NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE CAST-CASE CROSS-CASE ;]
    CMD:WITH-COMMAND ;
 
 
