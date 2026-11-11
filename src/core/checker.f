@@ -358,6 +358,37 @@
 \ has no record, but its binding still reports its symbol. A tombstone reports
 \ nothing. The use is the spelling's byte range in its source (NAV-SRC-XT); a
 \ spelling the source map does not hold reports nothing.
+\
+\ The completion cursor: the verifier arms a cursor's offset in the next text
+\ it checks, with the visitor its candidates go to (CHECKER-CURSOR!). The check
+\ that takes the arm (CUR-TAKE) owns it for its whole run, retries included: an
+\ attempt that reaches the cursor keeps the spellings that bind there in the
+\ pending table, a retry drops its attempt's rows, and at its exit the owner
+\ publishes the final attempt's with its uses and disarms (PUBLISH-EXIT). A
+\ visitor gets a spelling, borrowed for the call, and the file visit and
+\ half-open byte range of the declaration row that gave it, or 0 0 0 when no
+\ row locates it. One arm at a time: arming over an arm, and arming, disarming
+\ or enumerating while a check owns one or a visitor runs, throws
+\ E-CURSOR-NESTED before it touches either.
+\
+\ Created effects: DOESEFF carries the effect a `create … does>` definer gives
+\ its created words from the clause check, which sees the clause but not the
+\ definer's name, to the definer's body check, which sees the name but not the
+\ clause. The native compiler checks the definer first and sets the latch at
+\ its publication. The latch (DOESPEND) fails closed, since the two checks also
+\ run in the other order and a latch left armed would teach the next record
+\ that an ordinary word creates something. Every body check steps it: a
+\ certified clause becomes a body check under way, and any other state clears.
+\ Only that body check's record takes it (DOES-EFF-TAKE); a refused clause
+\ clears instead of arming, and a publication clears what it left. The
+\ unjudged scan is no body check: on return it restores the latch, a TRUSTED:
+\ definer's publication steps it, and on a throw it clears. A wrapper of a
+\ definer inherits the same effect when its body makes exactly one definer call
+\ on a straight line, with no control frame, quotation, `exit`, `leave` or
+\ `recurse`: the walk of every certified body counts the calls (WRAPN, WRAPC)
+\ and notes any bend (WRAPBENT), since a wrapper compiled in this process has
+\ no text. Every walk that is not a definition's own body clears these, and a
+\ candidate never inherits: its record is truncated when the scope ends.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -10152,14 +10183,14 @@ ON-USE-DEFAULT
    {: s:n e:n rec1:n sym:n v:n ds:n de:n :}
    s e sym v ds de CHECKER-ON-USE ;
 
-: PU-SEND ( n -- )                      \ publish pending use i
+: PU-SEND ( n -- )
    {: i:n :}
    PU-P i PU-ROW NAV-CELL {: p:ptr :}
    p @  p CELL + @  p 3 cells + @
    p 4 cells + @  p 5 cells + @  p 6 cells + @  CHECKER-ON-USE ;
 
-\ Publish the pending uses from FROM and drop them. The rows stay counted while
-\ the handler runs, so a check it starts appends above them.
+\ The rows stay counted while the handler runs, so a check it starts appends
+\ above them.
 : NAV-PUBLISH ( n -- )
    {: from:n :}
    PU-N @ from ?do i PU-SEND loop
@@ -10186,8 +10217,7 @@ ON-USE-DEFAULT
    noff nu DLB-AGAIN {: off2:n :}
    rec1 1 - v s e off2 nu DL-ROW+ ;
 
-\ The owner slot: run Q with H receiving the uses its checks publish. Either
-\ exit puts NO-USE back and drops what Q left pending.
+\ The owner slot: run Q with H receiving the uses its checks publish.
 : CHECKER-WITH-USES ( [ n n n n n n -- ] [ -- ] -- ) {: h q :}
    PU-N @ {: pu0 :}
    h USES-INSTALL
@@ -10197,18 +10227,6 @@ ON-USE-DEFAULT
    rc 0= 0= IF rc throw THEN ;
 
 \ ---- completion: the cursor a body check fires at ------------------------------
-\ The verifier arms the offset of a cursor in the next text it has checked and
-\ the visitor its candidates go to (CHECKER-CURSOR!). The check that takes the
-\ arm (CUR-TAKE, in CHECK! and CHECKER-SOURCE-DOES!) owns it for its whole run,
-\ ordinary retries included: an attempt that reaches the cursor keeps the
-\ spellings that bind there in the pending table, a retry drops its attempt's
-\ rows (CHECK-RETRY), and the owner publishes the final attempt's at its exit,
-\ where it publishes its uses, then disarms on every exit (PUBLISH-EXIT). A
-\ visitor gets a spelling, borrowed for the call, and where the declaration it
-\ binds was written: the file visit and half-open byte range of the DECL-LOCS
-\ row that gave the spelling, or exactly 0 0 0 when no row locates it. One arm
-\ at a time: arming over an arm, and arming, disarming or enumerating while a
-\ check owns one or a visitor runs, is refused before it touches either.
 7185 constant E-CURSOR-NESTED   \ a cursor or an enumeration inside a running one
 \ A candidate: its spelling, then its declaration's visit, start and end.
 defer CHECKER-ON-CAND ( ptr u8 n n n n -- )
@@ -10306,10 +10324,8 @@ CUR-DEFAULT
    sym SYM-VISIBLE 0= ;
 
 \ E-REC-START runs the effect-cache sync first: it is the single choke point
-\ for USIGS appends, so a rewind (scope/candidate rollback, forget, reset)
-\ flushes the cache BEFORE new records can reuse the truncated offsets — a
-\ read-time-only check could be masked by rewind-then-regrow. The window is
-\ asked before anything moves.
+\ for USIGS appends, so a rewind flushes the cache BEFORE new records can reuse
+\ the truncated offsets.
 : E-REC-INIT ( ptr u8 -- ) {: p :}
    0 p ER.NEXT !  0 p ER.ACTIVE !
    0 p ER.CONTENT !
@@ -10325,10 +10341,6 @@ CUR-DEFAULT
    UIX-EXACT                             \ same discipline: UEND is the store's true top
                                          \ HERE, so an entry at or above it is dead and a
                                          \ regrow cannot mask the rewind that killed it.
-                                         \ It is also the seam where a snapshot-booted
-                                         \ engine builds its index from the baked store,
-                                         \ which is before any intern can run: E-COPY*
-                                         \ is reached only through E-BUILD-EFFECT below
    USX-ENSURE                            \ USX-LINK writes into the mapping: it has to
                                          \ exist, and be current, before the append
    UEND @ EFF-REC + CELL + USIGS-ENSURE
@@ -10345,12 +10357,8 @@ CUR-DEFAULT
    UTERM! ;
 
 \ THE WIDEST INPUT ROW AN EFFECT RECORDS: 255 cells, the minimum a call must
-\ provide, which the publish tail keeps in the eight bits of DNAME-MIN-IN (RECMI
-\ below). A definition or `does>` clause taking more is uncheckable, by name
-\ (UNFIT-UNCHECKABLE), a stored signature or a created word's effect taking
-\ more is refused, and a hookless definition's declared row taking more records
-\ nothing (SGBAD-UNFIT!). Only a primitive-axiom row (PE-CLOSE-SYM), which the
-\ engine's maker writes, still reaches the die below.
+\ provide, which the publish tail keeps in eight bits. Only a primitive-axiom
+\ row, which the engine's maker writes, reaches the die below.
 255 constant EFFECT-MIN-IN-MAX
 
 : EFFECT-MIN-IN ( n -- n )
@@ -10369,12 +10377,8 @@ CUR-DEFAULT
    rec E-PTR E-REC-FINISH
    rec ;
 
-\ A word whose recorded effect mentions any wider-than-cell layout value, on any
-\ of the four rows and inside quotation sub-effects (a quotation value can be
-\ `execute`d at top level, scope and region binders included), must never run
-\ at the untyped interpret level: its dict record is marked DNAME-WIDE so
-\ interpreter.f XT-GATE refuses it, run or ticked, before a bundle can land on or
-\ be expected from the interpret stack. A `ptr` to a layout is one cell and
+\ A word whose recorded effect mentions any wider-than-cell layout value must
+\ never run at the untyped interpret level. A `ptr` to a layout is one cell and
 \ stays unmarked; pointers are followed only to reach nested quotations.
 : ROW-WIDE? ( n -- bool ) {: s:n :}
    RES-FALSE s                           \ ( acc cur )
@@ -10398,23 +10402,10 @@ CUR-DEFAULT
 
 \ DOESEFF holds the effect a `create … does>` definer gives its created words:
 \ the clause signature, certified against the clause body by CHECK-DOES!, as an
-\ anonymous effect record's offset+1. A latch, because CHECK-DOES! sees the
-\ clause but not the definer's name, and the definer's body check sees the name
-\ but not the clause. The native compiler checks the parent first, for
-\ source-order tape, and takes state 1 at publication through
-\ CHECKER-NATIVE-DOES-FINISH.
-\ DOESPEND fails closed, because verify-source VERIFY-DOES runs the two in the
-\ other order, and a latch left armed there would teach the next record that an
-\ ordinary word creates something:
+\ anonymous effect record's offset+1.
 \   0  nothing latched
 \   1  a clause certified: the next body check is the definer's own
 \   2  that body check is under way; only its record takes it
-\ Every body check steps it (DOES-EFF-STEP, CHECK-RESET): 1 becomes 2 and any
-\ other state clears. The record step takes state 2 and clears (DOES-EFF-TAKE in
-\ the E-ADD-EFFECT publish tail), a refused clause clears instead of arming, and
-\ REC-WIDE-PUBLISH clears what a publication left. The unjudged scan
-\ (CHECK-UNJUDGED!) is no body check: on return it restores the machine, and a
-\ TRUSTED: definer's publication steps it (TRUST-DECL); on a throw it clears.
 variable DOESEFF   0 DOESEFF !
 variable DOESPEND  0 DOESPEND !
 \ 1 from CHECKER-NATIVE-DOES-BEGIN to CHECKER-NATIVE-DOES-FINISH: CHECK-FACTS
@@ -10435,20 +10426,6 @@ variable DOES-SPLIT   0 DOES-SPLIT !
    DOESPEND @ 2 = IF DOESEFF @ ELSE 0 THEN
    DOES-EFF-CLEAR ;
 
-\ WRAPN/WRAPC/WRAPBENT: the same fact for a wrapper of a definer, learned where
-\ every certified body is walked. `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE
-\ BUFFER-E ;` (src/lib/codegen.f) creates what BUFFER-E creates: the walk counts
-\ definer calls (WRAPN, WRAPC the last one's created effect) and notes any bend
-\ from a straight line (WRAPBENT: a control frame, quotation, `exit`, `leave` or
-\ `recurse`; `[` and `]` are UNSAFE-TOK? and refuse the body). Exactly one call
-\ and no bend inherits. The rule lives in the walk because a wrapper compiled in
-\ this process has no text; verify-source WRAP-TOKEN learns wrappers of definers
-\ it read, which carry no CREATES cell, so the rules never overlap.
-\ DOESEFF's latch discipline: WRAP-TAKE always clears, and every walk that is not
-\ a definition's own body clears (CHECK-RESET at every body start, CHECK-DOES-RUN
-\ at a clause's end, CHECK-CANDIDATE-DONE at a candidate's). The take refuses a
-\ candidate too: its record is truncated when the scope ends, and the next real
-\ record is not its heir.
 CHECKER-REG:SCRATCH{
 variable WRAPN     0 WRAPN !
 variable WRAPC     0 WRAPC !
@@ -10462,12 +10439,9 @@ CHECKER-REG:}SCRATCH
    WRAPN @ 1 =  WRAPBENT @ 0=  and  CHK-CAND @ 0=  and IF WRAPC @ ELSE 0 THEN
    WRAP-CLEAR ;
 
-\ RECW: the wide? verdict of the last effect record, stored by value at the one
-\ record choke point (E-ADD-EFFECT), so a candidate's or rolled-back check's
-\ value is overwritten before any publish tail reads it; CHECK-RESET zeroes it
-\ for hook paths that certify without recording. The publish tails call
-\ REC-WIDE-PUBLISH after ndict++ (habu2.f EM-REC-WIDE-PUBLISH, which C-DEFER
-\ calls; src/compiler/native/checker-owner.f WIDE-PUBLISH), where
+\ RECW: the wide? verdict of the last effect record, stored by value, so a
+\ candidate's or rolled-back check's value is overwritten before any publish
+\ tail reads it. The publish tails call REC-WIDE-PUBLISH after ndict++, where
 \ `wide-mark`'s newest target (ndict-1) is the record just made.
 CHECKER-REG:SCRATCH{
 variable RECW   0 RECW !
@@ -10478,20 +10452,17 @@ CHECKER-REG:}SCRATCH
    DOES-EFF-CLEAR ;                   \ no definition's clause outlives its own publication
 
 \ RECMI: the din cell count of the last effect record, the certified minimum
-\ input arity, with RECW's discipline: stored by value in E-ADD-EFFECT, zeroed
-\ on deleted or bad rows and by CHECK-RESET, read after ndict++ by habu2.f
-\ EM-REC-WIDE-PUBLISH through REC-MIN-IN@ into DNAME-MIN-IN bits 52-59, so
-\ interpreter.f GATE refuses an underdepth bare call before the body runs.
+\ input arity, with RECW's discipline, read after ndict++ into DNAME-MIN-IN
+\ bits 52-59.
 CHECKER-REG:SCRATCH{
 variable RECMI   0 RECMI !
 CHECKER-REG:}SCRATCH
 : REC-MIN-IN@ ( -- n )
    RECMI @  0 RECMI ! ;
 
-\ E-ADD-EFFECT/E-ADD-DELETED are the only creators of USER records (prims go
-\ through PE-CLOSE/E-BUILD-EFFECT directly), so they own the in-place cache
-\ update: the record just built IS the current effect for its symbol. The
-\ cache stores offset+1 because offset 0 is a record's.
+\ E-ADD-EFFECT/E-ADD-DELETED are the only creators of USER records, so they own
+\ the in-place cache update. The cache stores offset+1 because offset 0 is a
+\ record's.
 : LBUF-EFFECT-RESULT ( n ptr u8 n -- )
    {: handle:n name:ptr nameu:n :}
    LBUF-PEND-U @ 0 > nameu 0 > and IF
@@ -10536,8 +10507,8 @@ CHECKER-REG:}SCRATCH
    THEN ;
 
 \ Quiet TRUST cannot retain the former effect when its new nominal type may
-\ be made by earlier rendered source. Append only binding status: no guessed
-\ signature. UEND rollback and a later resolved assertion supersede it.
+\ be made by earlier rendered source. UEND rollback and a later resolved
+\ assertion supersede it.
 : E-ADD-UNRESOLVED ( -- )
    WRITE-WINDOW-CK
    0 DL-NEW !  0 RECW !  0 RECMI !
@@ -10549,24 +10520,22 @@ CHECKER-REG:}SCRATCH
       UEND @ HIDX-EFF-DEP+
    THEN ;
 
-\ --- stored-signature intake (USIG-ADD-AS). A signature that does not parse
-\ stores no row; outside a MULTI-ERROR load it throws E-BAD-STORED-SIGNATURE.
+\ --- stored-signature intake (USIG-ADD-AS).
 
-\ A MULTI-ERROR load counts each refused definition and goes on (MULTI-REFUSED).
-variable MULTI-ERR      \ multi-error load mode active?
+\ A MULTI-ERROR load counts each refused definition and goes on.
+variable MULTI-ERR
 variable MULTI-ERR-N    \ refused definitions counted this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
-\ Set where a multi-error load reports and counts a refused declared row
-\ (USIG-ADD-BAD, TRUST-STALE); CHECK-RESET clears it at each scan.
+\ Set where a multi-error load reports and counts a refused declared row;
+\ CHECK-RESET clears it at each scan.
 variable SIG-COUNTED
 0 SIG-COUNTED !
 : SIG-COUNTED? ( -- bool ) SIG-COUNTED @ 0 <> ;
 : SIG-COUNT ( -- ) -1 SIG-COUNTED !  1 MULTI-ERR-N +! ;
-7156 constant E-BAD-STORED-SIGNATURE   \ a stored signature does not parse
-\ Bad stored-signature diagnostic hook (render.f installs BADSIG-DIAG), given the
-\ signature, stored name and declaring name. Until render.f loads, BADSIG-PLAIN
-\ writes `name: sig: bad stored signature` on fd 2 so a row the boot refuses
-\ names itself; its write results are dropped, since the refusal follows at once.
+7156 constant E-BAD-STORED-SIGNATURE
+\ Bad stored-signature diagnostic hook, given the signature, stored name and
+\ declaring name. BADSIG-PLAIN writes on fd 2 so a row the boot refuses names
+\ itself; its write results are dropped, since the refusal follows at once.
 defer BADSIG-XT ( ptr u8 n ptr u8 n ptr u8 n -- )
 : BADSIG-PLAIN ( ptr u8 n ptr u8 n ptr u8 n -- )
    2drop
@@ -10580,9 +10549,6 @@ BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
 
-\ Enter a fresh collection; END returns its reject count and clears the mode
-\ and the count.
-\ The recovery floor is this checker's effect arena end.
 : MULTI-ERR-BEGIN ( -- )
    UEND @ CHECKER-EFFECT-AUTHORITY:RECOVERY-START
    -1 MULTI-ERR !  0 MULTI-ERR-N ! ;
@@ -10590,9 +10556,8 @@ BADSIG-DEFAULT
 : MULTI-ERR-END ( -- n )
    MULTI-ERR-N @  0 MULTI-ERR !  0 MULTI-ERR-N ! ;
 
-\ Recovery is bound to this exact effect record, not merely its symbol or the
-\ presence of an ABI row. A new declaration writes EFF-ACTIVE; the ordinary
-\ store/index rollback restores the old record and retires any replaced tag.
+\ A new declaration writes EFF-ACTIVE; the ordinary store/index rollback
+\ restores the old record and retires any replaced tag.
 : RECOVERY-ROW? ( ptr u8 -- bool ) {: row:ptr :}
    MULTI-ERR? 0= IF RES-FALSE EXIT THEN
    row ER.ACTIVE @ EFF-RECOVERY =
@@ -10603,7 +10568,7 @@ BADSIG-DEFAULT
 
 \ ---- the AOT signature pool: the capture side --------------------------------
 \ Armed while a capture window is open; the freeze writes a row per marked
-\ symbol with a stored effect. ACAP-?SIG refuses a checked word with no row.
+\ symbol with a stored effect.
 
 $10000 constant ASIG-ROW-INIT           \ bytes; grows geometrically
 $40000 constant ASIG-STR-INIT           \ bytes
@@ -10641,7 +10606,7 @@ PTR-VARIABLE ASIG-LAST-P
    4 0 ?do  v i 8 * rshift $FF and  ASIG-ROW-P @ at i + + c!  loop ;
 
 \ Per symbol: 1 marks a word the window captured, then the freeze stores its row
-\ offset + 1; CHECKER-ASIG-EXPORT and the audit read it in constant time.
+\ offset + 1.
 : ASIG-LAST-ROOM ( n -- ) {: sym:n :}
    sym ASIG-LAST-CAP-V @ < IF exit THEN
    ASIG-LAST-CAP-V @ BEGIN dup sym <= WHILE 2 * REPEAT {: nc:n :}
@@ -10664,7 +10629,7 @@ PTR-VARIABLE ASIG-LAST-P
    0 sym ASIG-LAST! ;
 
 \ Clears the entries of symbols [n, SYM-N) before a scope restores SYM-N, whose
-\ ids a rollback hands back. SYM-REWIND calls it and its twin HIDX-SYMS-RETIRE.
+\ ids a rollback hands back.
 : ASIG-SYMS-RETIRE ( n -- ) {: keep:n :}
    ASIG-MAPPED @ 0= IF EXIT THEN
    SYM-N @ 1 -
@@ -10733,8 +10698,7 @@ PTR-VARIABLE ASIG-LAST-P
    REPEAT
    RES-TRUE ;
 
-\ Interned append: scan the distinct list, and join it on a miss. Package names
-\ repeat; ASIG-EMIT appends a word name, nearly unique, unscanned.
+\ Package names repeat; ASIG-EMIT appends a word name, nearly unique, unscanned.
 : ASIG-STR-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 ASIG-I !
    BEGIN ASIG-I @ ASIG-DIST-N @ < WHILE
@@ -10765,10 +10729,9 @@ PTR-VARIABLE ASIG-LAST-P
    noff soff poff  sym SYM-ROW SYM.VIS @  ASIG-ROW+
    at 1 + sym ASIG-LAST! ;
 
-\ Record membership while the definition is being published. The final verified
-\ graph and control flags are copied at freeze, after publication is complete.
-\ Text is deliberately not replayed: a declared row may have acquired fixed
-\ input requirements during certification.
+\ The final verified graph and control flags are copied at freeze, after
+\ publication is complete. Text is deliberately not replayed: a declared row
+\ may have acquired fixed input requirements during certification.
 : CHECKER-ASIG-CAPTURE ( ptr u8 n -- )
    2drop
    CHECKER-ASIG-ARMED? 0= IF EXIT THEN
@@ -10805,11 +10768,9 @@ PTR-VARIABLE ASIG-LAST-P
 : CHECKER-ASIG-STR-BYTES ( -- n ) ASIG-STR-U @ ;
 
 \ ---- the names one check pass could not resolve ------------------------------
-\ Collected, not read off FAILTK: DO-TOK1 pins every token until a failure sets
-\ FAILSET, so `: T ( -- ) SEEDED dup ;` pins `dup` (measured), and the lazy
-\ intake needs every missed name, not one per pass. A bounded queue: a pass that
-\ fills it drops the rest, which costs a retry pass, not an answer. Cleared at
-\ CHECK-RESET, so it describes the pass just run.
+\ A bounded queue: a pass that fills it drops the rest, which costs a retry
+\ pass, not an answer. Cleared at CHECK-RESET, so it describes the pass
+\ just run.
 $800 constant ASIG-MISS-CAP
 CHECKER-REG:SCRATCH{
 create ASIG-MISS ASIG-MISS-CAP allot
@@ -10867,8 +10828,8 @@ CHECKER-REG:}SCRATCH
 
 \ An effect with these rows deeper than a record holds is a stored signature
 \ no record can hold, whatever path records it: refused as a bad one by the
-\ bound it passes, as a definition's is. The result is false after that refusal
-\ returns (USIG-ADD-BAD), true when the rows fit.
+\ bound it passes. The result is false after that refusal returns, true when
+\ the rows fit.
 : USIG-DEPTH-FITS? ( ptr u8 n ptr u8 n ptr u8 n n n n n -- bool )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n din:n dout:n rin:n rout:n :}
    din dout rin rout ROWS-DEPTH {: depth:n :}
@@ -10876,9 +10837,6 @@ CHECKER-REG:}SCRATCH
    sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE!
    sa su na nu at atu USIG-ADD-BAD RES-FALSE ;
 
-\ An effect deeper than a record holds, or with an input row too wide for its
-\ min-in field, latches SGBAD with the bound it passes, the depth first as a
-\ definition's is.
 : SGBAD-UNFIT! ( ptr u8 n n n n n -- )
    {: sa:ptr su:n din:n dout:n rin:n rout:n :}
    din dout rin rout ROWS-DEPTH {: depth:n :}
@@ -10887,8 +10845,8 @@ CHECKER-REG:}SCRATCH
    width EFFECT-MIN-IN-MAX > IF sa su SGBAD-WIDTH-KIND width SGBAD-SIZE! THEN ;
 
 \ AT is the declaring name as read, beside the name NA stored for. The result
-\ is false after a refusal that returns (USIG-ADD-BAD), true once the effect
-\ and its text are stored.
+\ is false after a refusal that returns, true once the effect and its text are
+\ stored.
 : USIG-ADD-AS ( ptr u8 n ptr u8 n ptr u8 n bool -- bool )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n external:bool :}
    NEW
@@ -10896,11 +10854,11 @@ CHECKER-REG:}SCRATCH
    sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
    SGBAD @ if sa su na nu at atu USIG-ADD-BAD RES-FALSE exit then
    SIG-UNRES @ IF RES-FALSE EXIT THEN
-   sa su din dout rin rout SGBAD-UNFIT!       \ no record can hold it: a bad one
+   sa su din dout rin rout SGBAD-UNFIT!
    SGBAD @ if sa su na nu at atu USIG-ADD-BAD RES-FALSE exit then
    \ This path records an asserted signature. Checked definitions publish their
-   \ already verified rows through CHECKER-PUBLISH-PARSED, so no assertion may
-   \ introduce a lexical callback binder.
+   \ already verified rows, so no assertion may introduce a lexical callback
+   \ binder.
    din SCHEME-TYPE? dout SCHEME-TYPE? or
    rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF
       s" checker: asserted signature cannot publish a scope scheme" 76 die THEN
@@ -10913,11 +10871,9 @@ CHECKER-REG:}SCRATCH
    ER.SYM @ ;
 
 \ Where retracting sym's definition starts, offset+1, 0 when sym has no live
-\ row: the oldest record of its live generation, found by walking back from the
-\ newest record to the first tombstone. A name `undefine` retired and defined
-\ again keeps its retired records, and the rows other words recorded after them
-\ are not this definition's; the dictionary forgets from the name's newest
-\ definition too (xref.f XREF-FIND-WL-INDEX).
+\ row: the oldest record of its live generation. A name `undefine` retired and
+\ defined again keeps its retired records, and the rows other words recorded
+\ after them are not this definition's.
 : USIG-LIVE-START ( n -- n ) {: sym:n :}
    sym 0= IF 0 EXIT THEN
    sym USIG-NEWEST
@@ -10931,11 +10887,9 @@ CHECKER-REG:}SCRATCH
    REPEAT
    drop ;
 
-\ SCAN-USIGS-SYM ( n -- n ) : FEP = the NEWEST record for sym when that record is
-\ active, cleared when it is deleted or there is none; the returned record end
-\ is the cache dependency, since a rewind below it can change the answer.
-\ Older records for the same symbol are shadowed and cannot change either value,
-\ which is exactly why the per-symbol head answers this in one load.
+\ FEP = the NEWEST record for sym when that record is active, cleared when it
+\ is deleted or there is none; the returned record end is the cache dependency,
+\ since a rewind below it can change the answer.
 : SCAN-USIGS-SYM ( n -- n )
    {: sym:n :}
    FEP-CLEAR
@@ -10975,7 +10929,7 @@ CHECKER-REG:}SCRATCH
 : E-I-AK-IDX ( n -- n )
    negate 1 - ;
 
-: E-I-AK ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n k:n :}   \ name kept for domain routing
+: E-I-AK ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n k:n :}
    k 0 >= if a u k exit then
    k E-I-AK-IDX dup EI-AK-CAP >= if s" checker: fresh atom inst table full" 76 die then
    dup 1+ EI-AK-HW @ max EI-AK-HW !
@@ -11006,8 +10960,6 @@ CHECKER-REG:}SCRATCH
    a u 0 MK-ATOM-K idx cells EI-AK-NAME + !
    idx 1+ EI-AK-HW @ max EI-AK-HW ! ;
 
-\ Walks a record's input row as E-INST-FROM does, through pointers and family
-\ arguments but not into a quotation or a quantified type.
 : E-AK-BIND ( n -- ) {: off:n :}
    off 0= IF EXIT THEN
    off E-PTR {: node:ptr :}
@@ -11029,7 +10981,6 @@ defer E-I-FOREIGN-CON ( n -- n )
 variable UNIT-INST-ON   0 UNIT-INST-ON !
 defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
 
-\ Whether the node at off in pool is a stack row entry; 0 is none.
 : E-INST-PUSH? ( n ptr u8 -- bool ) {: off:n pool:ptr :}
    off 0= IF RES-FALSE EXIT THEN
    pool off + EN.TAG @ EN-PUSH = ;
@@ -11044,7 +10995,7 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
          ELSE r@ EN.A @ THEN MK-CON r> drop
       endof
       EN-VAR of
-         r@ EN.A @ E-I-TV                                  \ fresh var term
+         r@ EN.A @ E-I-TV
          r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
          r@ EN.B @ TVK-NULL  = IF dup PAY TVK-NULL!  THEN   \ and the base-address kinds: `NULL-PTR`
          r@ EN.B @ TVK-DBASE = IF dup PAY TVK-DBASE! THEN   \ and `data-base`
@@ -11065,9 +11016,7 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
       endof
       EN-PTR of r@ EN.A @ pool RECURSE MK-PTR r> drop endof
       EN-PUSH of
-         \ A row's spine is a loop, so its length costs no depth: each entry is
-         \ made with no rest, its type instantiated first as nested calls would,
-         \ and the entry above it is linked to it.
+         \ A row's spine is a loop, so its length costs no depth.
          r@ EN.A @ pool RECURSE 0 MK-PUSH                  \ ( head )
          pool TOP-READ-P @ BYTE-VIEW = IF r@ EN.D @ over P-LOST! THEN
          dup r> EN.B @                                     \ ( head last next )
@@ -11114,7 +11063,7 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
       EN-PARAM of
          pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and UNIT-INST-ON @ 0= and
          if s" checker: unsupported transferred family" 76 die then
-         r@ {: np:ptr :}                           \ node ptr (parked value)
+         r@ {: np:ptr :}
          np EN.C @ {: argc:n :}
          np EN.D @ {: run:n :}                      \ arg-run offset in USIGS
          PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
@@ -11123,7 +11072,7 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
             1 +
          REPEAT drop
          np pool E-I-STR np EN.H @ MK-PARAM              \ ( base a u fam -- t )
-         dup np EN.E @ swap PAY cells PARAMHID + !  \ restore hidden slot+1
+         dup np EN.E @ swap PAY cells PARAMHID + !
          r> drop
       endof
       r> drop 0 swap
@@ -11217,15 +11166,15 @@ CHECKER-GRID-CELLS-INSTALL
          r> drop
       endof
       EN-QUOT of
-         v r@ EN.A @ pol 0= RECURSE        \ Din: flipped polarity
-         v r@ EN.B @ pol RECURSE           \ Dout: kept
-         v r@ EN.C @ pol 0= RECURSE        \ Rin: flipped
-         v r@ EN.D @ pol RECURSE           \ Rout: kept
+         v r@ EN.A @ pol 0= RECURSE
+         v r@ EN.B @ pol RECURSE
+         v r@ EN.C @ pol 0= RECURSE
+         v r@ EN.D @ pol RECURSE
          r> drop
       endof
       EN-FORALL of v r@ EN.A @ pol RECURSE r> drop endof
       EN-PARAM of
-         r@ {: np:ptr :}                   \ node ptr (parked value)
+         r@ {: np:ptr :}
          0 BEGIN dup np EN.C @ < WHILE
             >r v r@ cells np EN.D @ + E-PTR CELL-VIEW @ pol RECURSE r>
             1 +
@@ -11240,17 +11189,6 @@ CHECKER-GRID-CELLS-INSTALL
    0 0 v h E-DIN@ RES-FALSE EN-MULT
    v h E-DOUT@ RES-TRUE EN-MULT ;
 
-\ After an effect is applied and its input vars are bound, examine each canonical
-\ effect var: if it resolved to a linear con with unequal input/output
-\ multiplicity, the linear was copied/dropped/laundered by this effect -> reject
-\ (a). If it is still an unbound var but this effect used it non-linearly (copy
-\ or drop), taint it for the deferred scan (b).
-\ The occurrence count is a stored effect's bound on the values it moves. A
-\ generated constructor row moves exactly its variant's payload, and a family
-\ argument its variant does not carry holds no value (`LQ2:ERR ( b --
-\ lq2<a,b> )` makes no `a`), so its call takes the inline `construct` step's
-\ accounting: CHECKER-STEP conservation alone. Any other word with that effect
-\ keeps the count, because its body may have forged the `a`.
 : LIN-EFF-PASS ( ptr u8 -- )
    {: h:ptr :}
    LIN-ANY? 0= IF exit THEN
@@ -11272,7 +11210,7 @@ CHECKER-GRID-CELLS-INSTALL
       1 +
    REPEAT drop ;
 
-: RIGID-DOMAIN-REASON ( n n -- n )   \ expected and actual domains -> MD-RIGID-*
+: RIGID-DOMAIN-REASON ( n n -- n )
    {: de:n da:n :}
    de da <> IF MD-RIGID-XDOM EXIT THEN
    de 1 = IF MD-RIGID-REGION EXIT THEN
@@ -11280,7 +11218,7 @@ CHECKER-GRID-CELLS-INSTALL
    MD-RIGID-GEN ;
 
 \ A refused identity is captured as a one-cell mismatch: a new identity of the
-\ name's domain against the one held, which RIGID-DIAG-CLASSIFY names.
+\ name's domain against the one held.
 : RIGID-HELD-REFUSE ( n n -- ) {: held:n want:n :}
    FAILSET @ 0= IF
       0 UF-SET !  -1 CUR-UPOS !
@@ -11315,7 +11253,6 @@ create NP-ORIG NP-CAP cells allot   variable NP-ORIG-N   \ distinct declared qua
 : E-AK-NAME-DOMAIN ( n -- n )
    cells EI-AK-NAME + @ dup ATOM>A swap ATOM>U RIGID-NAME-DOMAIN ;
 
-\ Whether bound slot j, if of domain de, clashes with identity held.
 : E-AK-CLASH? ( n n n -- bool ) {: j:n held:n de:n :}
    j cells EI-AK-VAR + @ {: v:n :}
    v 0= IF RES-FALSE EXIT THEN
@@ -11361,13 +11298,13 @@ CHECKER-REG:}SCRATCH
    id ;
 
 \ Run before the callee's rows meet the caller's stack, so a binding meets a
-\ listed identity as at a tick (rigid-region-suite.f (32)).
+\ listed identity as at a tick.
 : E-AK-LIST ( n n n n n -- ) {: mark:n din:n dout:n rin:n rout:n :}
    EI-AK-HW @ 0= OK @ 0= or IF EXIT THEN
    mark din dout rin rout CHECKER-QUOT-FRESH:CALLED ;
 
-\ A bound name holds an identity of its own domain that no other holds (C-CALL2,
-\ C-CALLSAME, C-CALLXDOM); a quantifier outside it is a domain confusion (C-CALLANY).
+\ A bound name holds an identity of its own domain that no other holds; a
+\ quantifier outside it is a domain confusion.
 : E-AK-CLAIM-SLOT ( n -- ) {: idx:n :}
    idx cells EI-AK-VAR + @ {: v:n :}
    v 0= IF EXIT THEN
@@ -11408,7 +11345,7 @@ CHECKER-REG:}SCRATCH
    outer-r STEP-R !
    0 SCOPE-INTRO-ON !
    h E-HASR@ 0 <> if
-      rin RSUNI-IN          \ the called word's declared return inputs
+      rin RSUNI-IN
       rout RCUR !
    then
    E-AK-CLAIM
@@ -11431,10 +11368,8 @@ CHECKER-REG:}SCRATCH
    then
    MK-QUOT ;
 
-\ `['] W` types as the literal `[: W ;]`: its terminal tails generalize as a
-\ literal's do (CF-SEMIQ), so a comparison instantiates them alike, and its
-\ rigid identities are minted per execution as a literal's are. A defer's
-\ declared type (IS-TOK) is a declaration and keeps EFF-QUOT's kinds.
+\ `['] W` types as the literal `[: W ;]`. A defer's declared type (IS-TOK) is a
+\ declaration and keeps EFF-QUOT's kinds.
 : TICK-QUOT ( ptr u8 -- n ) EFF-QUOT dup QUOT-ROWS-GENERALIZE dup CHECKER-QUOT-FRESH:MARK ;
 
 $200 constant PE-CAP-INIT
@@ -11483,8 +11418,6 @@ variable PE-LAST   -1 PE-LAST !
 \ past the kernel rows the build states (CHECK:PRIMS-END); 0 until set below.
 variable BUILD-SYM-END   0 BUILD-SYM-END !
 
-\ Whether sym's rows are the open build's prefix's: the grammar's (CHECK:OPEN) and
-\ the kernel rows the build stated (CHECK:PRIMS-END).
 : PREFIX-SYM? ( n -- bool ) {: sym:n :}
    data-base BOOT:IMAGE-BASE-CELL + @ 0 <>  sym BUILD-SYM-END @ <  and ;
 
@@ -11502,8 +11435,6 @@ variable BUILD-SYM-END   0 BUILD-SYM-END !
    #PE @ PE-LAST !
    #PE @ 1 + #PE ! ;
 
-\ Ors a flag into the row just stated; a row that recorded nothing
-\ (PE-CLOSE-SYM) takes none.
 : PE-LAST-FLAG! ( n -- ) {: flag:n :}
    PE-LAST @ 0 < IF EXIT THEN
    PE-LAST @ PE-ROW PE.FLAGS dup @ flag or swap ! ;
@@ -11524,11 +11455,11 @@ variable BUILD-SYM-END   0 BUILD-SYM-END !
 : USIGS-RESTORE-END ( n -- )
    dup RECORD-EFFECT-REWIND-XT
    dup CHX-TRUNCATE                      \ content and nodes share the rollback watermark
-   dup UIX-TRUNCATE                      \ drop interned nodes the rewind discards
+   dup UIX-TRUNCATE
    dup USX-TRUNCATE
-   dup PE-TRUNCATE                       \ primitive rows over rewound effects
+   dup PE-TRUNCATE
    dup CHECKER-EFFECT-AUTHORITY:RECOVERY-REWIND
-   dup DL-TRUNCATE                       \ locations and pending uses of rewound records
+   dup DL-TRUNCATE
    dup PU-TRUNCATE
    UEND !
    UTERM! ;
@@ -11588,7 +11519,7 @@ variable PRM-FIRST
 
 \ A user effect may refine a primitive's call shape, but cannot grant its
 \ trusted-only capability. Query the resolved symbol, so a package shadow
-\ keeps its own policy. Only user-effect hits need this additional walk.
+\ keeps its own policy.
 : PRIM-TRUSTED-SYM? ( n -- bool ) {: sym:n :}
    sym PRIM-FIRST-IDX dup 0= IF drop RES-FALSE EXIT THEN
    1 -
@@ -11601,12 +11532,10 @@ variable PRM-FIRST
       1 +
    REPEAT drop RES-FALSE ;
 
-\ Whether the step may take row n: a body never takes a top-only row.
 : PE-TAKES? ( n -- bool ) {: row:n :}
    row PE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    row PE-TOP-ONLY? 0=  TOP-STEP @ 0 <>  or ;
 
-\ Whether sym has a primitive row the step may take.
 : PRIM-ROWS-SYM? ( n -- bool ) {: sym:n :}
    sym PRIM-FIRST-IDX dup 0= IF drop RES-FALSE EXIT THEN
    1 -
@@ -11615,9 +11544,8 @@ variable PRM-FIRST
       1 +
    REPEAT drop RES-FALSE ;
 
-\ Whether the effect record at off is the one a primitive row of sym stated. A
-\ row stated after the table records its effect as a user record of its symbol,
-\ but defines no word.
+\ A row stated after the table records its effect as a user record of its
+\ symbol, but defines no word.
 : PE-ROW-EFF? ( n n -- bool ) {: sym:n off:n :}
    0 BEGIN dup #PE @ < WHILE
       dup PE-SYM@ sym =  over PE-EFF@ off =  and IF drop RES-TRUE EXIT THEN
@@ -11674,20 +11602,15 @@ variable PE-EFF-ID
 : PE-CLOSE ( -- )
    PE-NA@ PE-NU @ PE-SYM-OF PE-CLOSE-SYM ;
 
-\ A package row's public closer: interns the axiom into the package's public
-\ wordlist.
 : CLOSE-PUBLIC ( -- )
    PE-PKG-A @ PE-PKG-U @ SYM-PUBLIC PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;
 
-\ The package row's other closer: interns the axiom into the owner's private
-\ wordlist, so the row resolves only while that package is open
-\ (CHECKER-FIND-ACTIVE-SYM's private leg); every other scope misses the symbol.
-\ PPRIM: reads its token, `CLOSE-PRIVATE`, by spelling; the token is also the
-\ toolchain's (verify-source.f scans it, source-lex.f classifies it,
-\ check-all-errors-core.f names it in the unterminated-row hint).
-\ A primitive may have its private row alone: its global record has no top-level
-\ row.
+\ The package row's closer: interns the axiom into the owner's private
+\ wordlist, so the row resolves only while that package is open; every other
+\ scope misses the symbol. PPRIM: reads its token, `CLOSE-PRIVATE`, by
+\ spelling; the token is also the toolchain's. A primitive may have its private
+\ row alone: its global record has no top-level row.
 : CLOSE-PRIVATE ( -- )
    PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;
@@ -11713,35 +11636,26 @@ variable PE-EFF-ID
 : PE-PTR-U8 ( -- n ) PE-U8 PE-PTR ;
 \ RAW-kinds a prototype var, for the raw storage-definer prims (here/data-base):
 \ the minted pointee is TVK-RAW, so a fetch through it yields a RAW value that
-\ cannot launder into a nominal atom/family. E-COPY reads the kind at PE-CLOSE
-\ and bakes it onto the stored effect (EN.B), and E-INST re-freshens it per
-\ application.
+\ cannot launder into a nominal atom/family.
 : PE-RAW! ( n -- n ) dup PAY TVK-RAW! ;
 
 \ Base-kinds a prototype var for the two base-address rows, `NULL-PTR` and
-\ `data-base` (src/habu/prims.f), the only pointers that are not the address of
-\ a declared element. The null keeps its pointee arm so a stored, compared or
-\ subtracted null still certifies; the DATA base is fenced at every depth. Baked
-\ and re-freshened as for PE-RAW!.
+\ `data-base`.
 : PE-NULL!  ( n -- n ) dup PAY TVK-NULL! ;
 : PE-DBASE! ( n -- n ) dup PAY TVK-DBASE! ;
 : PE-PTR-A-NULL ( -- n ) PE-A PE-NULL! PE-PTR ;
 
 \ Marks the pointee var of a row that steps a pointer by an INTEGER offset, so a
-\ null riding that row comes out TVK-DBASE (TVK-MEET). The rows that use it are
-\ in src/habu/prims.f; the mark is transparent to every other pointee, which is
-\ why `( ptr a -- ptr a ) 8 +` still preserves its quantifier.
+\ null riding that row comes out TVK-DBASE; the mark is transparent to every
+\ other pointee.
 : PE-OFF! ( n -- n ) dup PAY TVK-OFF! ;
 
 \ Marks the base operand's pointee of a pointer-distance row (TVK-BASE-ONLY).
 : PE-BASE-ONLY! ( n -- n ) dup PAY TVK-BASE-ONLY! ;
 
-\ A quotation operand for a prim row: `PE-Q` opens one, PE-QIN / PE-QOUT
-\ accumulate its data rows as PE-IN / PE-OUT do the prim's, and `;PE-Q` closes
-\ them into one `[ in -- out ]` term PE-IN takes. Data in and out share one
-\ fresh base row and the return effect is neutral, exactly what SIG-PARSE-QUOT
-\ builds from the same text, so a prim row and a written signature describe the
-\ same term.
+\ Data in and out share one fresh base row and the return effect is neutral,
+\ exactly what SIG-PARSE-QUOT builds from the same text, so a prim row and a
+\ written signature describe the same term.
 variable PE-QDIN
 variable PE-QDOUT
 
