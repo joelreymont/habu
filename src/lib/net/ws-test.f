@@ -999,8 +999,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    garbled garbled-sock 1007 FAILED ;
 
 \ The handler closes first: a ping the client sends before it answers the close
-\ is still answered (section 5.5.2), then the client answers the close and the
-\ stream ends.
+\ is still answered (section 5.5.2).
 : SERVER-CLOSE-CASE ( -- )
    s" the server closes first" SECTION
    0 BAD-CODE atomic! 0 LATE-SEND atomic!
@@ -1021,11 +1020,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : ALL-CLOSED ( -- n )
    CLOSED-N atomic@ CLOSE-GOAL @ >= if 1 else 0 then ;
 
-\ A socket in every slot START's limit allows, their connections in CONNS.
 : OPEN-ALL ( -- )
    CROWD 0 ?do OPENS drop i CONNS ! loop ;
 
-\ Every connection OPEN-ALL made closed, and each socket's close awaited.
 : CLOSE-ALL ( -- )
    CLOSED-N @ CROWD + CLOSE-GOAL !
    CROWD 0 ?do i CONNS @ TCP4:CLOSE DROP-STATUS loop
@@ -1043,8 +1040,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    OPEN-ALL CLOSE-ALL ;
 
 \ WS reports each handler fault on fd 2. For THROW-CASE fd 2 is a file, read
-\ back after it; the process's own stderr waits on a saved descriptor and
-\ comes back however the case ends.
+\ back after it.
 : ERR-PATH$ ( -- ptr u8 n )
    s" build/ws-stderr.txt" ;
 
@@ -1058,8 +1054,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    a u ERR-WANT ERR-WANT-U @ SPAN:SKIP SPAN:COPY
    u ERR-WANT-U +! ;
 
-\ Ends the expected line in the builder with the throw code and adds it to the
-\ stderr WS must write.
 : ERR-THROW ( n -- )
    FMT:SB-INT
    LF SB-APPEND-C
@@ -1133,7 +1127,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    n 0 ?do i CONNS @ WS-OPCODE:text s" each" EXCHANGE loop
    n 0 ?do i CONNS @ FAREWELL loop ;
 
-\ A task that is no HTTP worker sends through a socket it was handed.
 : PUSH-CASE ( -- )
    s" a push from another task" SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
@@ -1159,7 +1152,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    u 0 ?do a i + c@ a c@ <> if false unloop exit then loop
    true ;
 
-\ The frame in hand is one this task pushed or one the handler sent, whole.
 : TALLY ( -- )
    RX$ {: a u:n :}
    RX-EOF @ 0 <> u BLAST-BYTES <> or if 1 TORN +! exit then
@@ -1168,7 +1160,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    a c@ HANDLER-BYTE = if 1 HANDLER-N +! exit then
    1 TORN +! ;
 
-\ This task pushes through a socket while its handler sends frames of its own.
 \ Each send queues its frame whole, so every frame the client reads is one of
 \ the two tasks', whole, however their sends interleave.
 : BOTH-CASE ( -- )
@@ -1186,7 +1177,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s"  of the handler's, " LOG TORN @ LOG-N s"  torn" LOG-LINE
    conn FAREWELL ;
 
-\ BURST-PINGS empty pings, as the client sends them.
 : VOLLEY-FILL ( -- )
    true WS-OPCODE:ping PATTERN SPAN:$ drop 0 FRAME$ {: fa fu:n :}
    BURST-PINGS 0 ?do fa fu VOLLEY-BUF i fu * SPAN:SKIP SPAN:COPY loop ;
@@ -1226,7 +1216,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn WS-OPCODE:text s" only mine" EXCHANGE
    conn FAREWELL ;
 
-\ What the peer's end holds and its reader has not taken.
 : UNREAD-N ( TCP4:connection -- n )
    TCP4:UNREAD
    MATCH TCP4:queue-result
@@ -1253,8 +1242,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       POLL-MS >MS TASK:SLEEP
    again ;
 
-\ A peer that reads nothing of a queue for WS:STALL-MS is closed under 1006,
-\ and another socket's messages go back and forth meanwhile.
 : STALL-CASE ( -- )
    s" a stalled peer" SECTION
    DIAL-SMALL OPENS-OVER {: still:TCP4:connection stuck:WS:socket :}
@@ -1268,9 +1255,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn FAREWELL
    still TCP4:CLOSE DROP-STATUS ;
 
-\ A peer that reads nothing while a task pushes past QUEUE-MAX loses its socket
-\ under 1006 at once, the push is E-WS-CLOSED, and another socket's messages
-\ are not held up.
 : OVERFLOW-CASE ( -- )
    s" a queue past its bound" SECTION
    OPENS {: still:TCP4:connection stuck:WS:socket :}
@@ -1283,8 +1267,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 \ The socket past START's limit is refused 503, and no socket exists for it;
 \ the body read behind its head is dropped with its connection.
-\ The last socket within it, slot $100, past a one-byte slot field, echoes on
-\ its own connection.
 : CAPACITY-CASE ( -- )
    s" the socket past capacity" SECTION
    OPEN-ALL
@@ -1462,14 +1444,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    first TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U ! ;
 
-\ STOP-TASK's START, once this task lets it through the gate.
 : GATED-START ( -- )
    1 GATE-READY atomic!
    begin GATE-OPEN atomic@ 0 <> until
    [: 2 WS:START ;] catch TASK:RETURN ;
 
-\ Two STARTs let go together: one returns 0 and the other is E-WS-STATE, and
-\ the run the first began stops.
 : START-RACE-CASE ( -- )
    s" two starts at once" T-LABEL
    0 GATE-READY atomic!
@@ -1622,7 +1601,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    LF WANT-BUF WANT-U @ SPAN:U8!
    1 WANT-U +! ;
 
-\ A close frame and the close that answers it, then the end of the stream.
 : W-FAREWELL ( -- )
    s" > close 2 03e8" W
    s" < close 2 03e8" W
@@ -1892,14 +1870,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    BACK-BUF got SPAN:TAKE SPAN:$ WANT$ T$= ;
 
 
-$3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
+$3E8 constant DRAIN-MS
 10 constant RETRY-MS
 
 \ AIO:STOP is E-AIO-BUSY until the loop has drained every record, so the stop
-\ is retried to a bound (src/lib/net/http-test.f AIO-STOP). Only E-AIO-BUSY is
-\ retried: any other code from AIO:STOP is a fault and is rethrown at once. A
-\ ring still busy past DRAIN-MS is a deadline: the wait names itself and throws
-\ E-PROC-TIMEOUT.
+\ is retried to a bound.
 : AIO-STOP ( -- )
    mono-ns DRAIN-MS NS-PER-MS * + {: deadline:n :}
    begin
