@@ -692,6 +692,17 @@
 \ public symbol and public-wordlist record behind its package. The whole
 \ spelling is compared with the whole prefix, so L, LSP and LSP: each reach
 \ LSP:MAIN. The selection decides, not the source.
+\
+\ Captured effect graphs: a graph a seed carries is checked in three passes
+\ before it is imported. The structural pass proves a finite acyclic graph of
+\ well-formed nodes. The relevance pass records, per node, a mask of the binders
+\ outside it that its descendants can name; a forall body consumes bit zero and
+\ shifts its other references toward the new caller. The lexical pass checks how
+\ each reference is reached: input position, scheme placement, a family's scope
+\ slot, and whether storage has cut off scope access. A child shared at two
+\ depths is revisited at the shallower depth, where a free bound variable is
+\ visible. A memo hit needs matching domains for the outer binders the node can
+\ name, so paths differing only in unused domains share one result.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -22492,13 +22503,11 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
 \ boundary. Raw declared identity (PAY, no T-RES): a body's speculative bind
 \ does not hide a var whose declared occurrences are all outputs.
 CHECKER-REG:SCRATCH{
-variable NP-CELL-TERM   \ output cell-family term currently scanned (for the diagnostic)
+variable NP-CELL-TERM
 CHECKER-REG:}SCRATCH
-variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recursive)
+variable NP-OUT-I
 
 
-\ Descends through ptr pointees, quotation effect rows and family arguments. No
-\ T-RES: a bound declared var keeps its raw PAY identity.
 : NP-INVARS-WALK ( n -- ) {: t:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -22522,23 +22531,20 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
       REPEAT drop EXIT
    THEN ;
 
-: NP-CELLFAM? ( n -- bool )   \ raw T-PARAM of a register-phantom cell family
+: NP-CELLFAM? ( n -- bool )
    {: t:n :}   \ NOT a layout product/sum and NOT a checker-owned hidden physical field:
    t TAG T-PARAM = 0= IF RES-FALSE EXIT THEN            \ those carry their own construct/field discipline
    t PARAM>HID 0 > IF RES-FALSE EXIT THEN               \ hidden physical field (expanded layout bundle)
    t PARAM>FAM dup 0 < IF drop RES-FALSE EXIT THEN
-   dup TFAM-LAYOUT?* IF drop RES-FALSE EXIT THEN         \ product/sum layout family
+   dup TFAM-LAYOUT?* IF drop RES-FALSE EXIT THEN
    TFAM-CELL?* ;
 
-: NP-FAIL-FREEMINT ( n n -- )   \ ( varid cellterm ) output cell var unbound in inputs (first-wins)
+: NP-FAIL-FREEMINT ( n n -- )
    {: vid:n ct:n :}
    NPBAD @ IF EXIT THEN
    -1 NPBAD !  2 NPBAD-KIND !
    vid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  ct NPBAD-TERM ! ;
 
-\ Flags an input-unbound var nested under the output cell family in
-\ NP-CELL-TERM. Raw (no T-RES): a body bind cannot launder the declared var's
-\ absence from the inputs.
 : NP-FREE-SCAN ( n -- ) {: t:n :}
    t ISVAR IF
       \ only a USER-DECLARED quantifier (a..z, NP-LETTER != '?') can forge a mint;
@@ -22555,7 +22561,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
       REPEAT drop EXIT
    THEN ;                                         \ T-CON/T-ATOM/T-QUOT: no minted var
 
-: NP-OUT-TERM ( n -- )   \ one output term: if a cell param, seal its var arguments
+: NP-OUT-TERM ( n -- )
    {: t:n :}
    t NP-CELLFAM? 0= IF EXIT THEN
    t NP-CELL-TERM !
@@ -22573,20 +22579,17 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
       P>REST R-RES
    REPEAT drop ;
 
-\ A VALUE-RECORD input (a reserved `field<rec,name,inner>` term, FIELD-PARAM?)
-\ can existentially hold a polymorphic cell field, so a checker-native field
-\ accessor (`( rec -- fam<a,..> )`, empty body = width coercion) surfaces cell
-\ vars unbound at the sig surface: a checker-governed introduction, not a
-\ register mint. The register-phantom families (span, gridctx, tile) are plain
-\ cells and never accessor inputs. A wrapper mixing a record input with a
-\ register mint is not sealed.
+\ A VALUE-RECORD input can existentially hold a polymorphic cell field, so a
+\ checker-native field accessor surfaces cell vars unbound at the sig surface:
+\ a checker-governed introduction, not a register mint. A wrapper mixing a
+\ record input with a register mint is not sealed.
 : NP-ROW-HAS-FIELD? ( n -- bool )
    R-RES BEGIN dup TAG S-PUSH = WHILE
       dup P>TYPE FIELD-PARAM? IF drop RES-TRUE EXIT THEN
       P>REST R-RES
    REPEAT drop RES-FALSE ;
 
-: NP-MINT-CHECK ( -- )   \ output cell params may not introduce input-unbound vars
+: NP-MINT-CHECK ( -- )
    NPBAD @ IF EXIT THEN
    SGIN @ NP-ROW-HAS-FIELD? IF EXIT THEN
    SGHASR @ IF SGRIN @ NP-ROW-HAS-FIELD? IF EXIT THEN THEN
@@ -22598,12 +22601,8 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    NPBAD @ 0=  SGHASR @  and IF SGROUT @ NP-OUT-ROW THEN ;
 
 \ The declared rows are quantifiers too: each named row and the implicit base
-\ row stays a distinct unbound row after the body. A body that leaves R where
-\ S was declared, as `( R [ R -- S ] -- S ) drop` does, unifies the two, and
-\ its callers would get any S they chose without the quotation running; one
-\ that pushes onto R where S was declared, as `( R -- S ) 1` does, binds S
-\ to fixed cells, as `( R -- ) 1` binds the implicit base row. A zero letter
-\ names that base row.
+\ row stays a distinct unbound row after the body. A zero letter names that
+\ base row.
 : NP-FAIL-ROW ( n n n -- ) {: kind:n q1:n q2:n :}
    NPBAD @ IF EXIT THEN
    -1 NPBAD !  kind NPBAD-KIND !
@@ -22633,7 +22632,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
 
 : NP-CHECK ( -- )   \ check the quantifiers captured before the body ran
    0 NP-SEEN-N !
-   0 NP-INVARS-N !  0 NP-OUTVARS-N !                \ the two declared quantifier sets, for NP-KIND-EXCUSED?
+   0 NP-INVARS-N !  0 NP-OUTVARS-N !
    0 NP-VARSET !  TWALK-RESET
    SGIN @ NP-INVARS-WALK
    SGHASR @ IF SGRIN @ NP-INVARS-WALK THEN
@@ -22652,28 +22651,19 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
 
 \ ---- the source-tape observer ---------------------------------------------------
 \ CHECK-SCAN is the reader that turns a checked definition into tokens, so it
-\ fills the compiler's source tape (src/compiler/native/tape.f): any other
-\ producer would be a second lexer, and the certificate would bind a token
-\ stream the checker never read. Three events on the one reader (the text a
-\ scan is about to consume, each token, the verdict) plus the token class
-\ (ALLDIG?/FLODIG?) and what the checker judged each token (EVENT, read by
-\ ordinal while the verdict is told). Arming an armed observer, arming one never
-\ installed, and asking for an event outside the verdict or for an unreported
-\ token die by name. The observer is called after the token is judged and its
-\ answer is never read: it can abort a compilation but never accept one. Off,
-\ it costs one variable fetch and a branch per token.
+\ fills the compiler's source tape: any other producer would be a second lexer,
+\ and the certificate would bind a token stream the checker never read. The
+\ observer is called after the token is judged and its answer is never read:
+\ it can abort a compilation but never accept one.
 package CHECKER-TAPE
 private
 
-\ The events go through declared dispatch cells for the reason
-\ CHECKER-CERT:PRODUCER-XT does: the cell holds an xt a snapshot persists, and
-\ `defer`/`is` are the two points that tell the snapshot writer so.
-\ INSTALL is last-writer-wins, unlike the certificate producer's one-shot grant:
-\ two compilers legitimately reach one live checker (the engine's baked front
-\ end, and one a window loads from source while that engine hosts the build),
-\ each arming the tape with its own quotations, and a seeded engine, whose
-\ captured cells arrive trapped, needs the first ARM to refill them
-\ (src/compiler/native/feed.f OBSERVE).
+\ The events go through declared dispatch cells: the cell holds an xt a
+\ snapshot persists, and `defer`/`is` are the two points that tell the snapshot
+\ writer so. INSTALL is last-writer-wins: two compilers legitimately reach one
+\ live checker, each arming the tape with its own quotations, and a seeded
+\ engine, whose captured cells arrive trapped, needs the first ARM to refill
+\ them.
 defer SCAN-XT ( ptr u8 n -- )
 defer TOKEN-XT ( ptr u8 n n n n n -- )
 defer DONE-XT ( ptr u8 n n -- )
@@ -22682,7 +22672,7 @@ defer DONE-XT ( ptr u8 n n -- )
 variable SET   0 SET !
 
 \ The installer's unit id, so a takeover is a stated fact; nothing here
-\ interprets it (INSTALLED-BY reads it back).
+\ interprets it.
 variable BY   0 BY !
 
 \ Whether the observer is being told a verdict (DONE): the one time the table of
@@ -22691,8 +22681,7 @@ variable TELLING   0 TELLING !
 
 public
 
-\ Armed by the compilation unit that wants a tape, disarmed after it. The call
-\ sites read this cell directly, so an unarmed checker pays a load and a branch.
+\ Armed by the compilation unit that wants a tape, disarmed after it.
 variable ARMED   0 ARMED !
 
 : INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
@@ -22722,8 +22711,6 @@ public
 
 \ Final capture owns no compilation unit. Drop its installer identity and all
 \ callbacks, which may belong to a retained compiler outside the target window.
-\ Per-unit DISARM deliberately keeps them for reuse; the next INSTALL replaces
-\ these checker-owned defaults before ARM can succeed again.
 : DETACH ( -- )
    DISARM
    ['] NO-SCAN is SCAN-XT
@@ -22736,9 +22723,8 @@ public
 : ADVANCE ( -- )
    REC-STEP ;
 
-\ Which of the reader's three token classes this token is. It asks the two
-\ predicates DO-TOK's own literal step asks, so the tape cannot disagree with
-\ the checker about what a literal is.
+\ It asks the two predicates DO-TOK's own literal step asks, so the tape cannot
+\ disagree with the checker about what a literal is.
 : KIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u ALLDIG? IF K-INT EXIT THEN
    a u FLODIG? IF K-REAL EXIT THEN
@@ -22761,7 +22747,6 @@ public
 \ is the keyword and its body the open package's name. It is never a name
 \ token: the name is reported before any payload is consumed.
 
-\ The reader already recognized the opener; preserve its behavior with its body.
 : STRING-KIND ( -- n )
    TKF c@ $63 = if K-COUNTED-STRING exit then
    TKF c@ $2E = if K-PRINTED-STRING exit then
@@ -22776,9 +22761,7 @@ public
    REC-STEP ;
 
 \ What the checker judged the token at ordinal ORD to be, in the vocabulary
-\ K-NAME opens: its event's kind, a0 and a1. The observer asks while it is told
-\ the verdict, when the table holds the scan that verdict is of, under the
-\ ordinals the tape numbers its tokens by.
+\ K-NAME opens: its event's kind, a0 and a1.
 : EVENT ( n -- n n n )
    {: ord:n :}
    TELLING @ 0= IF
@@ -22790,8 +22773,6 @@ public
    EV-P ord EV-LO @ - EV-ROW NAV-CELL {: p:ptr :}
    p @  p CELL + @  p 2 cells + @ ;
 
-\ The verdict that scan reached, with the text it reached it over. The scan's
-\ events can be read while the observer is told it, and on no other exit.
 : DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
    -1 TELLING !
    a u verdict [: DONE-XT ;] [: 0 TELLING ! ;] finally ;
@@ -22802,12 +22783,10 @@ public
 \ An AOT seed puts a word in the runtime dictionary but not the checker's record
 \ of its effect, so a `:` definition naming a seeded word would die E-UNDEFINED.
 \ The capture carries the window's signatures beside its records, the seed
-\ publishes them here, and the checker takes one row when it needs it: replaying
-\ the whole pool costs 85 ms per boot of a seeded engine (measured over the
-\ compiler chain's 6798 words); one row costs 12.5 us.
+\ publishes them here, and the checker takes one row when it needs it.
 
 \ The pool base is a pointer into __text the seed stored, so its cell is a
-\ reserved pointer cell and the role survives the read. The length is a count.
+\ reserved pointer cell and the role survives the read.
 AOT-CELLS:SIG-POOL-CELL RESERVED-PTR-U8-CELL CK-AOT-SIG-POOL-FIELD
 : CK-AOT-SIG-POOL ( -- ptr u8 ) CK-AOT-SIG-POOL-FIELD @ ;
 : CK-AOT-SIG-LEN ( -- n ) data-base AOT-CELLS:SIG-LEN-CELL + @ ;
@@ -22815,9 +22794,9 @@ AOT-CELLS:SIG-POOL-CELL RESERVED-PTR-U8-CELL CK-AOT-SIG-POOL-FIELD
 \ ---- what the two cells point at ---------------------------------------------
 \ One payload, three sections (rows, the strings they name, the type registry
 \ they resolve against), because the seed has two cells to publish with. The
-\ payload carries its own table in the shape src/habu/aot-file.f uses (a count,
-\ an (offset, length) row per section, the sections contiguous behind it), and
-\ every malformation is refused by name before a byte of it is believed.
+\ payload carries its own table (a count, an (offset, length) row per section,
+\ the sections contiguous behind it), and every malformation is refused by name
+\ before a byte of it is believed.
 \ A row has four u32 fields (name, graph, package, visibility). Name/package
 \ offsets point at `[len u16][bytes]`; the graph offset points at the aligned
 \ self-contained verified graph below. The artifact and seed copy this pool
@@ -22829,8 +22808,7 @@ AOT-CELLS:SIG-POOL-CELL RESERVED-PTR-U8-CELL CK-AOT-SIG-POOL-FIELD
 $4842470000000003 constant ASIG-GRAPH-MAGIC
 $10000 constant ASIG-GRAPH-DEFER
 \ The node map is owned and reused across copies and files; its slots carry
-\ generation stamps, so a generation that restarts at 0 clears them first
-\ (ASIG-GRAPH-COPY-RECORD).
+\ generation stamps, so a generation that restarts at 0 clears them first.
 PTR-VARIABLE ASIG-GRAPH-MAP
 variable ASIG-GRAPH-MAP-CAP
 CHECKER-REG:SCRATCH{
@@ -22890,7 +22868,6 @@ CHECKER-REG:}SCRATCH
    src E-PTR EN.A @ E-PTR src E-PTR EN.B @ ASIG-GRAPH-BYTES
    dst ASIG-GRAPH-PTR EN.A ! ;
 
-\ Bound below to the same semantic validator used before graph import.
 defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
 variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
 : ASIG-GRAPH-SCRATCH-RELEASE ( -- )
@@ -22930,7 +22907,7 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
       src E-PTR EN.I @ RECURSE dst ASIG-GRAPH-PTR EN.I !
       \ Effect records hold transient exception-row IDs in G/H, whose
       \ type/last-write contract does not travel: a graph carrying them is
-      \ refused rather than silently dropping those exceptional rows.
+      \ refused.
       src E-PTR EN.E @ 0 <> IF ASIG-GRAPH-EXCEPTION-DIE THEN
       0 dst ASIG-GRAPH-PTR EN.G !
       0 dst ASIG-GRAPH-PTR EN.H !
@@ -22958,7 +22935,6 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
    dst 1+ src ASIG-GRAPH-SLOT CELL + !
    dst ;
 
-\ Project a local binding into the stable owner/payload wire representation.
 : E-WIRE-COPY ( ptr u8 ptr u8 -- ) {: rec:ptr dst:ptr :}
    rec E-NEXT@ dst EW.NEXT !
    rec ER.ACTIVE @ dst EW.ACTIVE !
@@ -23043,7 +23019,7 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
 CK-AOT-SEC-N 16 * 8 + constant CK-AOT-TBL-END
 
 variable CK-AOT-STATE                   \ 0 not validated, 1 usable
-\ A build has no signature pool: LINKER:WITH zeroes its two cells.
+\ A build has no signature pool, so the state holds 0 while it runs.
 package CHECK
 CK-AOT-STATE 0 CELL-ROW+
 ;package
@@ -23069,10 +23045,7 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
 : CK-AOT-OFF ( n -- n ) {: k:n :} k 16 * 8 + CK-AOT-U64@ ;
 : CK-AOT-LEN ( n -- n ) {: k:n :} k 16 * 16 + CK-AOT-U64@ ;
 
-\ Every clause a malformed payload can fail has its own refusal: the table fills
-\ the span exactly, the sections follow one another without a gap, and the row
-\ section is a whole number of rows. A failure is a build defect, not a runtime
-\ condition.
+\ A failure is a build defect, not a runtime condition.
 : CK-AOT-VALIDATE ( -- )
    CK-AOT-SIG-LEN CK-AOT-TBL-END < IF
       s" checker: the seeded signature payload is shorter than its own table" CK-AOT-DIE THEN
@@ -23236,10 +23209,9 @@ CK-UNIT-FAMILY-INSTALL
 : CK-GRAPH-KIND? ( n bool -- ) {: tag:n row:bool :}
    tag EN-ROW = tag EN-PUSH = or row IF 0= THEN IF ASIG-GRAPH-DIE THEN ;
 
-\ A width is certified metadata consumed by native call lowering. Recompute it
-\ from the admitted type before comparing the stored width+1. T-WIDTH charges
-\ every non-layout term one cell; ROW-TERM-CELLS also charges a hidden physical
-\ field one cell, even when its logical family spans several cells.
+\ A width is certified metadata consumed by native call lowering. T-WIDTH
+\ charges every non-layout term one cell; ROW-TERM-CELLS also charges a hidden
+\ physical field one cell, even when its logical family spans several cells.
 : CK-GRAPH-ROW-WIDTH ( n -- n ) {: off:n :}
    off CK-GRAPH-PTR {: node:ptr :}
    node EN.TAG @ EN-PARAM = IF node EN.E @ 0 > IF 1 EXIT THEN THEN
@@ -23388,9 +23360,6 @@ create CK-LEX-DOMAINS 64 cells allot
 : CK-LEX-ARG ( n n -- n ) {: off:n idx:n :}
    off CK-GRAPH-PTR EN.D @ idx cells + CK-GRAPH-PTR CELL-VIEW @ ;
 
-\ The structural pass has already proved an acyclic graph. This mask records
-\ which binders outside each node can be named by its descendants. A forall
-\ body consumes bit zero; its other references shift toward the new caller.
 : CK-GRAPH-RELEVANCE ( n -- n ) {: off:n :}
    off 0= IF 0 EXIT THEN
    off CK-GRAPH-RELEVANCE-SLOT {: slot:ptr :}
@@ -23432,12 +23401,6 @@ create CK-LEX-DOMAINS 64 cells allot
       ctx CK-LEX-REGION and CK-LEX-SLOT or EXIT THEN
    ctx CK-LEX-TYPES and ;
 
-\ The structural pass above proves a finite DAG. This pass checks how each
-\ reference is reached: input position, scheme placement, a family's scope
-\ slot, and whether storage has cut off scope access. A child shared at two
-\ depths is revisited at the shallower depth, where a free bound variable is
-\ visible. A memo hit needs matching domains for outer binders this node can
-\ name; paths differing only in unused domains share one result.
 : CK-GRAPH-LEX? ( n n n -- ) {: off:n ctx:n depth:n :}
    off 0= IF EXIT THEN
    depth TWALK-MAX-DEPTH > depth 64 >= or IF ASIG-GRAPH-DIE THEN
@@ -23590,8 +23553,7 @@ ASIG-GRAPH-CHECK-INSTALL
       i 4 CK-AOT-FIELD CK-GRAPH-VALIDATE
    loop ;
 
-\ Validation may reserve scratch but publishes no symbol, effect or registry;
-\ the catch boundary releases that scratch on a thrown refusal.
+\ Validation may reserve scratch but publishes no symbol, effect or registry.
 \ AN EMPTY POOL IS NOT LATCHED: each call reads the length cell again, so a
 \ pool written after an earlier miss is still taken.
 : CK-AOT-READY? ( -- bool )
@@ -23603,8 +23565,6 @@ ASIG-GRAPH-CHECK-INSTALL
    CK-GRAPH-THROW
    1 CK-AOT-STATE ! RES-TRUE ;
 
-\ A validated capture row's wordlist in the live dictionary: its namespace's
-\ public or private one, or the global one. Publishes no symbol or effect.
 : CK-AOT-ROW-WID ( n -- n ) {: r:n :}
    r 12 CK-AOT-FIELD {: vis:n :}
    vis SYM-GLOBAL = IF BOOT:GLOBAL-WL EXIT THEN
@@ -23618,9 +23578,8 @@ ASIG-GRAPH-CHECK-INSTALL
    wid 0 < IF NULL-PTR EXIT THEN
    r 0 CK-AOT-FIELD CK-AOT-STR$ wid CHECKER-RESOLVE:WL-PROBE ;
 
-\ A zero-symbol top-level walk already selected REC. Give it only the controls
-\ of a captured row whose full key still resolves to that exact record. Source
-\ replacements have their own checker symbol and never ask this cold query.
+\ A zero-symbol top-level walk already selected REC. Source replacements have
+\ their own checker symbol and never ask this cold query.
 : CK-AOT-REC-CONTROL-READ ( ptr n -- n bool ) {: selected:ptr :}
    selected NULL-PTR = IF 0 RES-FALSE EXIT THEN
    CK-AOT-READY? 0= IF 0 RES-FALSE EXIT THEN
@@ -23641,15 +23600,10 @@ CK-AOT-REC-CONTROL-INSTALL
 
 \ The registry the signatures resolve against; without it a signature naming a
 \ window-declared family is refused as a bad stored signature.
-\ Nothing calls this: no build publishes a pool (src/habu/layout.f AOT-CELLS).
-\ A caller runs it once the two cells are filled and before the first user
-\ token, the seed point. The carried rows name families by
-\ absolute id, so they mean those families only while the live registry ends
-\ where the capture's did; source may declare a type (`NEWTYPE zz1`) before it
-\ first names a chain word, so a lazy intake would refuse an ordinary program.
-\ At the seed point the base equality holds by construction and no checker
-\ rollback frame is open to undo the latch. The refusal answers a foreign
-\ payload, an artifact captured against a different engine prefix.
+\ Nothing calls this: no build publishes a pool. A caller runs it once the two
+\ cells are filled and before the first user token, the seed point. The carried
+\ rows name families by absolute id, so they mean those families only while the
+\ live registry ends where the capture's did.
 : CK-AOT-REG-INSTALL ( -- )
    CK-AOT-READY? 0= IF EXIT THEN
    CK-AOT-REG$ REG-EXT-AOT-LOAD-XT ;
@@ -23658,13 +23612,11 @@ CK-AOT-REC-CONTROL-INSTALL
 \ The key is the row's own scope, not the scope the failing reference resolved
 \ in: a row carries (package, visibility, name), SYM-FIND's key, so the intake
 \ re-interns the word where it lives and the retry does the scope walk as for a
-\ word compiled from source. A scope derived from the failing token would be a
-\ second resolver, wrong the first time a bare tail resolved through a used
-\ package.
+\ word compiled from source.
 : CK-AOT-ROW-SYM ( n -- n ) {: r:n :}
-   r 8 CK-AOT-FIELD CK-AOT-STR$        \ package
-   r 12 CK-AOT-FIELD                   \ visibility, this file's own encoding
-   r 0 CK-AOT-FIELD CK-AOT-STR$        \ name
+   r 8 CK-AOT-FIELD CK-AOT-STR$
+   r 12 CK-AOT-FIELD
+   r 0 CK-AOT-FIELD CK-AOT-STR$
    SYM-INTERN ;
 
 : CK-AOT-ROW-PRESENT? ( n -- bool ) {: r:n :}
@@ -23772,10 +23724,9 @@ CK-AOT-REC-CONTROL-INSTALL
 \ ---- taking every row one pass could have used -------------------------------
 \ Every row whose name the pass could not resolve, not the newest: the same
 \ tail lives in many packages of a captured chain, and the retry's own scope
-\ walk picks the one the reference meant. Nothing is invented: each row is a
-\ word the seeded engine has, in the scope it has it. Rows hold the folded name
-\ the symbol store keeps (SYM-COPY-FOLD); a probe may arrive as written, so both
-\ comparisons fold the probe byte as the store does (SYM-FOLD-C).
+\ walk picks the one the reference meant. Rows hold the folded name the symbol
+\ store keeps; a probe may arrive as written, so both comparisons fold the probe
+\ byte as the store does.
 : CK-AOT-NAME= ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
    r 0 CK-AOT-FIELD {: at:n :}
    at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
@@ -23786,8 +23737,6 @@ CK-AOT-REC-CONTROL-INSTALL
    REPEAT
    RES-TRUE ;
 
-\ A qualified token names its own package, so only that package's row answers;
-\ the split is CHECKER-QUALIFIED?'s.
 : CK-AOT-PKG= ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
    r 8 CK-AOT-FIELD {: at:n :}
    at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
@@ -23807,9 +23756,9 @@ CK-AOT-REC-CONTROL-INSTALL
 
 \ With `take` false the retry decision asks whether a row would be taken and the
 \ tables stay untouched; the intake takes them. One walk answers both, so they
-\ cannot disagree. A name a rendering statement's mark covers (UNSEEN-COVERS?)
-\ takes no row: the load may bind a product of that name ahead of the seeded
-\ word, so the definition stays deferred to the run.
+\ cannot disagree. A name a rendering statement's mark covers takes no row: the
+\ load may bind a product of that name ahead of the seeded word, so the
+\ definition stays deferred to the run.
 : CK-AOT-SERVE ( ptr u8 n bool -- bool ) {: a:ptr u:n take:bool :}
    a u UNSEEN-COVERS? IF RES-FALSE EXIT THEN
    0 CK-AOT-GOT !
@@ -23836,22 +23785,18 @@ CK-AOT-REC-CONTROL-INSTALL
    REPEAT
    CK-AOT-ANY @ 0 <> ;
 
-\ The miss queue is walked without taking, so the tables are left alone.
 : CK-AOT-MISS-SERVED? ( -- bool )
    ASIG-MISS-U @ 0= IF RES-FALSE EXIT THEN
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
    RES-FALSE CK-AOT-MISSES ;
 
-\ A definition's or step's verdict, as CHECK-VERDICT answers it.
 -1 constant VERDICT-CHECKED
 0 constant VERDICT-REFUSED
 1 constant VERDICT-UNCHECKABLE
 2 constant VERDICT-DEFERRED
 
-\ Would another pass see something this one could not? Asked inside CHECK when
-\ the verdict is reached: the pass latched E-UNDEFINED and the queue holds the
-\ names it could not resolve. It takes nothing: CHECK must not publish an
-\ effect while its own diagnostic is pending.
+\ It takes nothing: CHECK must not publish an effect while its own diagnostic is
+\ pending.
 : CK-AOT-RETRY-DUE? ( n -- bool )
    {: verdict:n :}
    verdict VERDICT-CHECKED = IF RES-FALSE EXIT THEN
@@ -23867,20 +23812,18 @@ CK-AOT-REC-CONTROL-INSTALL
    verdict ;
 
 \ The intake runs between passes, never at the token that missed: the pass has
-\ already judged the name unbound, so it runs again once the row is in. Its
-\ callers are CHECK-RETRY at a definition's boundary, CHECKER-PREFIX's SCAN
-\ between re-reads and TOP-STEP-RETRY between passes of one step. Between passes
-\ is safe: the intake appends effect records and table entries and moves no pool
-\ counter. The registry is installed by the seed (CK-AOT-REG-INSTALL), not here.
+\ already judged the name unbound, so it runs again once the row is in. Between
+\ passes is safe: the intake appends effect records and table entries and moves
+\ no pool counter. The registry is installed by the seed, not here.
 : CK-AOT-INTAKE ( -- bool )
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
    RES-TRUE CK-AOT-MISSES ;
 
-\ The intake a caller asked for because a row was there to take
-\ (CK-AOT-MISS-SERVED?). If taking it now finds nothing, the two walks disagree,
-\ so that is a death, not a fallthrough: a body's pass held its verdict and
-\ would be refused with no diagnostic at all, and the interpret row's take
-\ would answer true and run the same miss again forever.
+\ The intake a caller asked for because a row was there to take. If taking it
+\ now finds nothing, the two walks disagree, so that is a death, not a
+\ fallthrough: a body's pass held its verdict and would be refused with no
+\ diagnostic at all, and the interpret row's take would answer true and run the
+\ same miss again forever.
 : CK-AOT-INTAKE! ( -- )
    CK-AOT-INTAKE IF EXIT THEN
    s" checker: a seeded signature the miss queue answered was not there to take" 76 die ;
@@ -23915,7 +23858,7 @@ CHECKER-REG:}SCRATCH
 \ before the reset clears the latches the pending definition's publication
 \ reads (WRITE-WINDOW-CK). A length that describes no memory (BYTE-SPAN?) is
 \ refused before any state is reset.
-: CHECK-CLEAR ( -- )                  \ the per-check diagnostic and walk state
+: CHECK-CLEAR ( -- )
    WRAP-CLEAR
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 CF-OVER !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
    0 CF-LOOPS !
@@ -23960,29 +23903,23 @@ CHECKER-REG:}SCRATCH
 \ The report follows the judgement: a string literal's body is known only after
 \ DO-TOK1 spends its payload, and the spelling cannot tell (a name token, a
 \ token in a locals group, a match arm and a construct arm reach the judgement
-\ without the payload skip). The authority is whether a payload was spent. The
-\ observer's answer is not read, so an abort lands after the judgement, which
-\ makes no record an abort would have to undo.
+\ without the payload skip). The authority is whether a payload was spent.
 \ Two facts are taken before the judgement because it moves them: TI walks past
 \ a spent payload (the token's own length), and the name branch clears TOK0.
-variable SCAN-U       \ the token's own byte length, taken before the judgement
-variable SCAN-TOK0    \ was it the definition's name token?
+variable SCAN-U
+variable SCAN-TOK0
 
 \ THE OBSERVER SEES ONE SCAN PER CHECKED BODY, though a lazy signature intake
-\ scans some bodies twice: src/compiler/native/feed.f ON-SCAN refuses a retry
-\ of a body it is recording (duplicate tape rows). The token stream is a
-\ function of the text alone (an intake changes which words resolve, not which
-\ tokens exist), so the first pass gives the observer the stream, later passes
-\ are silent, and CHECK! hands over the one verdict at the end. CHECK-RETRY
-\ asserts the streams matched. A defining word has two checked bodies; feed
-\ joins them around its one verified `does>` row.
-variable RESCAN       \ this pass is a retry; the observer already has the stream
+\ scans some bodies twice. The token stream is a function of the text alone (an
+\ intake changes which words resolve, not which tokens exist), so the first
+\ pass gives the observer the stream, later passes are silent, and CHECK! hands
+\ over the one verdict at the end. CHECK-RETRY asserts the streams matched.
+variable RESCAN
 variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 
 \ The token this turn's judgement swallowed, reported after the judgement's own
 \ row (consumption order). It is never the name token: neither keyword can stand
-\ there. The row is cleared as it is written, so a keyword that swallowed
-\ nothing this turn reports nothing.
+\ there.
 : SCAN-PEND-REPORT ( -- )
    IS-PEND @ 0= IF EXIT THEN
    0 IS-PEND !
@@ -23997,10 +23934,9 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    CHECKER-TAPE:K-NAME -1 0 ;
 
 \ This turn's events, filed under the ordinals the reports take, on every pass:
-\ the token's (what its judging step latched, else EV-UNJUDGED), and a swallowed
-\ token's as an operand, since its keyword's event names what it resolved to. A
-\ string or character token reports its class though its opener bound a call
-\ (BIND-SOURCE-CALL): a literal's payload is what it compiles.
+\ the token's, and a swallowed token's as an operand, since its keyword's event
+\ names what it resolved to. A string or character token reports its class
+\ though its opener bound a call: a literal's payload is what it compiles.
 : EV-COMMIT ( -- )
    EV-HIT @  CPAY-ON @ SPAY-ON @ or PPAY-ON @ or 0=  and IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
    REC-IX @ EV-FILE
@@ -24146,9 +24082,8 @@ RWIN-DEFAULT
    THEN {: record:n :}
    ord role record shape spell su pkg pu RWIN-ADD ;
 
-\ A bare name's legs follow docs/forth.md "Packages". Used publics are
-\ eligible even when an earlier leg binds: their presence can make a global
-\ shadow fail.
+\ Used publics are eligible even when an earlier leg binds: their presence can
+\ make a global shadow fail.
 : RWIN-NAME ( ptr u8 n ptr u8 n n -- )
    {: folded:ptr fu:n spell:ptr su:n ord:n :}
    folded fu CHECKER-QUALIFIED? IF
@@ -24209,8 +24144,6 @@ package CHECKER-RESOLUTION
 public
 : COUNT ( -- n ) RWIN-N @ ;
 : ROW ( n -- ptr u8 n ) RWIN-ROW ;
-\ Pass visit each row a top-level token of this spelling adds, one per leg
-\ RWIN-NAME enumerates, then drop them: a scan's pending rows stay as they were.
 \ The legs probe the token folded as the body walk's TOKFOLD folds it, in a
 \ buffer of its own because a run can fire while that walk holds TKF; a
 \ qualifier's namespace row then matches a compiled reference's.
@@ -24250,23 +24183,21 @@ package CHECKER-REG
 : TBYTE=? ( n n -- bool ) {: i:n c:n :}
    i TBLEN @ >= IF RES-FALSE EXIT THEN
    i TBYTE@ c = ;
-\ A captured token ends at a space: prims.f body-append joins tokens with one.
+\ A captured token ends at a space.
 : TBREAK? ( n -- bool ) {: i:n :}
    i TBLEN @ >= IF RES-TRUE EXIT THEN
    i TBYTE@ 32 = ;
-\ The byte after the head's `(` is the source's (interpreter.f DEF-SIG-PASS),
-\ and the engine ends a token at any byte at or below 32 (habu1.f EMIT-TOK).
+\ The byte after the head's `(` is the source's, and the engine ends a token at
+\ any byte at or below 32.
 : TBLANK? ( n -- bool ) {: i:n :}
    i TBLEN @ >= IF RES-TRUE EXIT THEN
    i TBYTE@ 32 <= ;
 
 \ ---- completion: the cursor in the body walk ------------------------------------
-\ The walk places the cursor where it delimits a token (CUR-TOKEN), a signature
-\ or comment (CUR-PAREN), and the text's end (CUR-END). Each gap starts where
-\ the last token, or a payload it read, ended (CUR-GAP): a cursor before it lay
-\ in bytes a token consumed and offers nothing. The definition's name, a locals
-\ group and the operands the field, construct and match forms read are not a
-\ word's place: a cursor there offers nothing either.
+\ Each gap starts where the last token, or a payload it read, ended: a cursor
+\ before it lay in bytes a token consumed and offers nothing. The definition's
+\ name, a locals group and the operands the field, construct and match forms
+\ read are not a word's place: a cursor there offers nothing either.
 : CUR-TOKEN ( -- )
    CUR-LIVE? 0= IF EXIT THEN
    CUR-AT @ CUR-GAP @ < IF -1 CUR-DONE ! EXIT THEN
@@ -24290,8 +24221,8 @@ variable CUR-OPEN   variable CUR-PSIG
    TI @ CUR-OPEN !
    VSIG @ 0 <>  SGSEEN @ 0 = and  TOKIX @ 2 < and IF -1 ELSE 0 THEN CUR-PSIG ! ;
 
-\ That group, now ending at TI. A cursor inside the signature or a comment
-\ offers nothing; one in the gap before a comment is a token's place.
+\ A cursor inside the signature or a comment offers nothing; one in the gap
+\ before a comment is a token's place.
 : CUR-PAREN ( -- )
    CUR-LIVE? 0= IF EXIT THEN
    CUR-AT @ CUR-GAP @ < IF -1 CUR-DONE ! EXIT THEN
@@ -24314,7 +24245,7 @@ variable CUR-OPEN   variable CUR-PSIG
      TI @ TBLEN @ < IF
        TI @ TBYTE@ 40 =  TI @ 1 + TBLANK?  and IF   \ '(' then a blank (not '(CMP)') -> sig or comment
          CUR-PAREN-AT
-         TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
+         TI @ 1 + TI !  TI @ TSTART !
          BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
          TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
          \ only the '( ... )' right after the name is the sig; once it is seen
@@ -24338,10 +24269,7 @@ variable CUR-OPEN   variable CUR-PSIG
              2drop  SGOUT !  dup SGIN !  DCUR !
            THEN  -1 SGSEEN !
            \ The return tail a body may not bind: the row the `|` clause carries
-           \ (SGRIN), or without a return clause the implicit base RBROW. RS-BORROWS?
-           \ measures every read, step or transport, against it at its own token, and
-           \ CHECK-NO-BORROW refuses it bound at `;`, so a body cannot read the caller's
-           \ frame and still balance.
+           \ (SGRIN), or without a return clause the implicit base RBROW.
            SGHASR @ IF SGRIN @ ELSE RBROW @ THEN SGRBASE !
            SG-ROWS-COLLECT
            NP-COLLECT
@@ -24349,7 +24277,7 @@ variable CUR-OPEN   variable CUR-PSIG
            SIG-BODY-FRESH
            SGBAD @ UNFIT @ or SGDECL-BAD !
          THEN
-         TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
+         TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
          CUR-PAREN
        ELSE
          TI @ TSTART !
@@ -24371,8 +24299,8 @@ variable CUR-OPEN   variable CUR-PSIG
    REPEAT
    CUR-END ;
 
-\ Walks a body, holding its using refusals (USING-HOLD) for the end, where a
-\ structure open at closer CA CU is refused first (CLOSER-REFUSE); a prefix passes none.
+\ Walks a body, holding its using refusals for the end, where a structure open
+\ at closer CA CU is refused first; a prefix passes none.
 : CHECK-SCAN ( ptr u8 n -- )
    {: ca:ptr cu:n :}
    BODY-WALK @ {: walk0:n :}
@@ -24385,7 +24313,7 @@ variable CUR-OPEN   variable CUR-PSIG
    USING-RAISE ;
 
 : CHECK-FOLD-EXITS ( -- )
-   XSET @ IF                                         \ fold early-return states into the output
+   XSET @ IF
      DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
      ELSE XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE THEN
    THEN ;
@@ -24408,8 +24336,8 @@ variable CUR-OPEN   variable CUR-PSIG
    FAILSET @ 0=  OK @ and IF 1 RSBAD !  -1 FAILSET ! THEN
    0 OK ! ;
 
-\ An effect too deep or wide to record (ROWS-FIT?) is uncheckable for it; a
-\ deferral would record it, so a covered name yields; a pinned refusal stands.
+\ An effect too deep or wide to record is uncheckable for it; a deferral would
+\ record it, so a covered name yields; a pinned refusal stands.
 : UNFIT-UNCHECKABLE ( -- )
    UNFIT @ 0= IF EXIT THEN
    UNSEEN @ 0 <> IF
@@ -24431,15 +24359,13 @@ variable CUR-OPEN   variable CUR-PSIG
    UNFIT-UNCHECKABLE ;
 
 \ VERDICT-DEFERRED defers the body to the run: it names a word only a rendering
-\ statement in scope can have defined (UNSEEN-COVERS?). A malformed declaration
-\ is still refused, since the declaration is what gets recorded, and one nested
-\ too deep to record is uncheckable (SGBAD-FAIL!); past a token of unknown
-\ effect nothing downstream is a judgment, so the rest is the run's.
-\ A call to a malformed qualified name (QUALBAD) is no such token: no word can
-\ ever answer it, so its body is refused like any other, not left uncheckable.
-\ A recorded compile-time refusal (RCOMPILE), or an undefined word the check
-\ finds itself (REFUSAL@ RF-UNDEF), is a refusal whatever follows it.
-\ The packet's verdict is this answer (render.f DVERDICT reads DVERD).
+\ statement in scope can have defined. A malformed declaration is still refused,
+\ since the declaration is what gets recorded, and one nested too deep to record
+\ is uncheckable; past a token of unknown effect nothing downstream is a
+\ judgment, so the rest is the run's. A call to a malformed qualified name is no
+\ such token: no word can ever answer it, so its body is refused like any other,
+\ not left uncheckable. A recorded compile-time refusal, or an undefined word
+\ the check finds itself, is a refusal whatever follows it.
 : CHECK-VERDICT ( -- n )
    SGBAD @ 0 <> IF REFUSAL-UNCHECKABLE? IF VERDICT-UNCHECKABLE ELSE VERDICT-REFUSED THEN EXIT THEN
    UNSEEN @ 0 <> IF VERDICT-DEFERRED EXIT THEN
