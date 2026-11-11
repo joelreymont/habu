@@ -35,7 +35,7 @@ TYPED-VARIABLE POLL-FD n
 
 using PG
 
--77 constant BOOM                         \ the throw the rolled-back body raises
+-77 constant BOOM
 20 constant CONNECTIONS
 64 constant RESULTS
 
@@ -205,8 +205,6 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
    E-CONNECT TTHROWSQ ;
 
 
-\ The application can hold all twenty connections at once, and reaching its
-\ declared limit leaves the existing connections usable and a closed slot reusable.
 : CAPACITY-CASES ( -- )
    s" application-declared connections remain usable at capacity" T-LABEL
    CONNECTIONS 0 ?do OPEN i HELD-CONNS ! loop
@@ -251,8 +249,7 @@ TYPED-VARIABLE HELD-ID n
    fresh PG:CLOSE ;
 
 
-\ A wait past its PROGRESS-NS deadline is no assertion result (docs/gate.md "How
-\ a suite runs, and what that demands of its files").
+\ A wait past its PROGRESS-NS deadline is no assertion result.
 : CHECK-PROGRESS ( n -- )
    {: deadline:n :}
    mono-ns deadline > if s" pg-test CHECK-PROGRESS" TEST-WAIT:EXPIRED then
@@ -328,8 +325,6 @@ TYPED-VARIABLE HELD-ID n
    code E-CAPACITY T=
    c ;
 
-\ Holds k `completed` tokens; with every slot held a send is refused, and each
-\ CLEAR on the way back hands its slot back.
 : HOLD-RESULTS ( PG:connection n -- PG:connection ) {: c k:n :}
    k 0= if c SEND-REFUSED exit then
    c s" select 7" POLL-EXEC c k 1- RECURSE swap CLEAR ;
@@ -586,8 +581,6 @@ TYPED-VARIABLE HELD-ID n
    r> ;
 
 
-\ A raise with DETAIL and HINT, and a statement with no command, whose report
-\ is empty.
 : REPORT-CASES ( PG:connection -- PG:connection ) {: c :}
    s" a failed span is the server's whole report" T-LABEL
    c s" create function report_f() returns int language plpgsql as $$ begin raise exception 'm' using detail = 'd', hint = 'h'; end $$" EXEC-OK
@@ -894,8 +887,6 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ A body that closes its connection and opens another, which takes the freed
-\ slot, in a transaction of its own.
 1 TYPED-BUFFER REOPENED PG:connection
 
 : REOPEN-BODY ( PG:connection -- PG:connection )
@@ -908,7 +899,6 @@ TYPED-VARIABLE HELD-ID n
    dup [: REOPEN-BODY ;] WITH-TRANSACTION ;
 
 
-\ The same body throwing: its connection's own transaction gets no ROLLBACK.
 : REOPEN-THROW-BODY ( PG:connection -- PG:connection ) REOPEN-BODY BOOM throw ;
 
 
@@ -916,7 +906,6 @@ TYPED-VARIABLE HELD-ID n
    dup [: REOPEN-THROW-BODY ;] WITH-TRANSACTION ;
 
 
-\ A body that throws with a statement in flight, which the ROLLBACK refuses.
 : PENDING-BODY ( PG:connection -- PG:connection )
    dup s" select pg_sleep(5)" SEND
    BOOM throw ;
@@ -1016,7 +1005,7 @@ TYPED-VARIABLE HELD-ID n
 
 
 \ An empty statement would reach the server as PGRES_EMPTY_QUERY, whose result
-\ carries no SQLSTATE and no message at all - measured - so the module refuses
+\ carries no SQLSTATE and no message at all - so the module refuses
 \ it by name instead.
 : EMPTY-STATEMENT-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: EXEC-EMPTY ;] catch {: stale-exec code:n :}
@@ -1044,7 +1033,6 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ The outer token still reads after one inner scope returned and another threw.
 : NESTED-BODY ( PG:connection PG:result -- PG:connection PG:result )
    swap
    dup s" select 2" [: 0 >ROW 0 >COL INT 2 T= ;] WITH-RESULT
@@ -1057,7 +1045,6 @@ TYPED-VARIABLE HELD-ID n
    dup s" select 1" [: NESTED-BODY ;] WITH-RESULT ;
 
 
-\ The inner body hands back the outer scope's token, which the inner scope refuses.
 : HAND-OUTER ( PG:connection PG:result -- PG:connection PG:result )
    swap dup s" select 2" [: rot ;] WITH-RESULT ;
 
@@ -1246,9 +1233,6 @@ variable STMT-U
 
 \ WITH-SCRIPT is the only path that takes more than one statement; WITH-RESULT
 \ and WITH-PREPARED ride the extended protocol, where a second command is 42601.
-\ MEASURED: PostgreSQL runs a multi-statement simple query as ONE implicit
-\ transaction, so a failing statement rolls the earlier ones back with it - the
-\ script is atomic even outside WITH-TRANSACTION.
 : MULTI-VIA-EXEC-CASES ( PG:connection -- PG:connection ) {: c :}
    c PARAMS
    c s" select 1; select 2"
@@ -1326,8 +1310,7 @@ variable STMT-U
    c SELECT-ONE ;
 
 
-\ PG transfers no COPY data: each COPY fails and the connection answers the
-\ next statement. 200000 rows take more than one read of the socket.
+\ 200000 rows take more than one read of the socket.
 : COPY-CASES ( PG:connection -- PG:connection ) {: c :}
    s" COPY TO STDOUT of one row fails" T-LABEL
    c s" copy (select 1) to stdout" COPY-OUT-FAILS
@@ -1499,8 +1482,9 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
       err OF throw ENDOF
    ;MATCH ;
 
-\ Returns once EXIT-HALT has sent its query, or has ended without sending it:
-\ a worker that threw is no deadline, and its code reaches EXIT-CASES's join.
+\ Returns once the exit worker has sent its query, or has ended without sending
+\ it: a worker that threw is no deadline, and its code reaches CANCEL-CASES's
+\ join.
 : AWAIT-STARTED ( -- )
    mono-ns PROGRESS-NS + {: deadline:n :}
    begin
@@ -1512,10 +1496,10 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
 \ may be waiting in PG:AWAIT with an AIO record in flight, and MAIN's AIO:STOP
 \ would meet that record and throw E-AIO-BUSY. So the worker is halted and
 \ joined before the deadline leaves, as the normal path halts it: its scrub
-\ cancels the record (src/lib/aio.f SCRUB) and EXIT-CLEAN closes the
-\ connection. The halt's own answer, E-TASK-NO-RESULT, is no assertion, since
-\ the deadline came first. Any other code the join carries, from the body or
-\ EXIT-CLEAN, is named on one line, and the deadline goes on.
+\ cancels the record and EXIT-CLEAN closes the connection. The halt's own
+\ answer, E-TASK-NO-RESULT, is no assertion, since the deadline came first. Any
+\ other code the join carries, from the body or EXIT-CLEAN, is named on one
+\ line, and the deadline goes on.
 : STARTED-OR-HALT ( -- )
    [: AWAIT-STARTED ;] catch {: code:n :}
    code 0= if exit then
@@ -1541,8 +1525,6 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    EXIT-LIVE @ TFALSE
    0 EXIT-CONN @ PG:LIVE? TFALSE ;
 
-\ The count a pg_stat_activity query answers for one server backend, whose pid
-\ binds $1.
 : BACKEND-COUNT ( PG:connection n ptr u8 n -- n )
    {: c pid:n sql:ptr size:n :}
    c PARAMS c pid INT+
@@ -1904,7 +1886,7 @@ variable PATH-U
    a PG:LIVE? TTRUE
    s" a wait on a lost connection closes it and is refused at once" T-LABEL
    b a BACKEND TERMINATE
-   \ The wait logs the backend's FATAL: captured here, counted in NOTICE-CASES.
+   \ The wait logs the backend's FATAL: captured here, off the run's stderr.
    PATH-MAKE  PATH$ STDERR:CAPTURE
    mono-ns {: cut:n :}
    [: a [: NOTIFY-LONG ;] E-EXEC REFUSES ;] [: STDERR:;CAPTURE ;] finally
@@ -2010,7 +1992,6 @@ variable WARN-LINES
    drop 2drop ;
 
 
-\ Each a notice at its own level, sent before the statement completes.
 : RAISES ( PG:connection -- )
    s" DO $$ BEGIN RAISE NOTICE 'n'; RAISE INFO 'i'; RAISE WARNING 'w'; END $$"
    EXEC-OK ;
@@ -2112,13 +2093,12 @@ variable WARN-LINES
    REUSE-CASES ;
 
 
-\ The loop's stop with a deadline pending. The exit worker EXIT-CASES halted
-\ has had its records cancelled, but on Linux a cancel completes through the
-\ loop (src/lib/aio.f CANCEL-STAGE), so the stop retries E-AIO-BUSY, its "not
-\ yet". A stop still busy after PROGRESS-NS is this wait's own deadline, named
-\ and thrown as a timeout. Any other code is named on one line and LATE-STOP
-\ returns: the pending deadline stays the case's result, where under finally
-\ the stop's code would replace it.
+\ The loop's stop with a deadline pending. The exit worker has been halted and
+\ its records cancelled, but on Linux a cancel completes through the loop, so
+\ the stop retries E-AIO-BUSY, its "not yet". A stop still busy after
+\ PROGRESS-NS is this wait's own deadline, named and thrown as a timeout. Any
+\ other code is named on one line and LATE-STOP returns: the pending deadline
+\ stays the case's result, where under finally the stop's code would replace it.
 : LATE-STOP ( -- )
    mono-ns PROGRESS-NS + {: deadline:n :}
    begin
@@ -2136,10 +2116,9 @@ variable WARN-LINES
    CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
    HALT-CONNECT-CASES REFUSED-SEND-CASES AIO-FAIL-CASES SERVER-CASES ;
 
-\ The AIO loop stops however LOOP-CASES ends. As under finally, a code from
-\ AIO:STOP replaces the cases' code, except a deadline's: with a deadline
-\ pending, LATE-STOP stops the loop or names why it could not, and the deadline
-\ goes on.
+\ As under finally, a code from AIO:STOP replaces the cases' code, except a
+\ deadline's: with a deadline pending, LATE-STOP stops the loop or names why it
+\ could not, and the deadline goes on.
 : MAIN ( -- )
    SCRIPT-ARGC 1 <> if
       s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" 2 die
@@ -2156,8 +2135,8 @@ variable WARN-LINES
 \ The case engine's entry. A throw code does not cross the process boundary:
 \ an uncaught one exits UNCAUGHT-RC (67), as a failure does. So a progress wait
 \ past its deadline, which CHECK-PROGRESS has named on stdout, ends the engine
-\ with PROCESS:TIMEOUT-RC (124), the case engine's timeout outcome, which
-\ test/db/pg-cluster.f reads as a late step. Every other code is rethrown.
+\ with PROCESS:TIMEOUT-RC (124), the case engine's timeout outcome. Every
+\ other code is rethrown.
 : RUN ( -- )
    ['] MAIN catch {: code:n :}
    code E-PROC-TIMEOUT = if s" " PROCESS:TIMEOUT-RC die then
