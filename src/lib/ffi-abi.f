@@ -3,25 +3,32 @@
 \ only checked call surface: its word names a row, never an address.
 \ STORAGE CLASS. TASK-LOCAL: marshalling buffers, extent tables, kernel params
 \ and the DLSYM loader block; calls nest only through a C callback, which shares
-\ them (src/lib/ffi-callback.f). PROCESS-WIDE: rows, whose addresses, handles
-\ and failures are scratch.
+\ them. PROCESS-WIDE: rows, whose addresses, handles and failures are scratch.
+\
+\ FUNCTION: names a row here and its generated word carries the row's index, so
+\ a checked caller reaches only a symbol some declaration published. Exact
+\ declarations share one row. A row resolves its symbol on the first call and
+\ caches the address. Library 0 is the process (RTLD_DEFAULT, no reference);
+\ any other index is a path dlopened once, at the first call; one that does not
+\ open passes the call to the next library its row names. Rows may move when a
+\ table grows; indices stay stable.
 
 s" src/lib/error.f" required
-s" src/lib/span.f" required                   \ CSTR's destination carries its reach
+s" src/lib/span.f" required
 s" src/lib/string.f" required
-s" src/lib/le.f" required                     \ the four-byte C int this package reads back
-s" src/lib/float32.f" required                \ binary32 conversion at the C ABI boundary
-s" src/lib/adt/option.f" required             \ option<n> - the version token VERSIONED-LIBRARY parses
-s" src/lib/codegen.f" required                \ the rendered library name and the declarer's buffers
-s" src/lib/memory.f" required                 \ an error line's buffer, sized to the line
+s" src/lib/le.f" required
+s" src/lib/float32.f" required
+s" src/lib/adt/option.f" required
+s" src/lib/codegen.f" required
+s" src/lib/memory.f" required
 
 package FFI
 
 8 constant FFI-REG-ARGS
 16 constant FFI-MAX-ARGS
 16 constant FFI-MAX-KPARAMS
-2 constant FFI-RTLD-NOW                   \ dlopen RTLD_NOW: bind every symbol at load
-$0A constant LF-C                         \ an error line's terminator
+2 constant FFI-RTLD-NOW
+$0A constant LF-C
 
 $3A00 constant FFI-BUF-OFF
 $3A80 constant FFI-FBUF-OFF
@@ -71,9 +78,8 @@ $41C8 constant FFI-SCRATCH-END
 : FFI-STACK-LEN-BUF ( -- ptr n )
    data-base FFI-STACK-LEN-BUF-OFF + ;
 
-\ A foreign call takes and returns raw machine cells. CELL>PTR stays private: a
-\ foreign address carries no length, so only a word that knows the callee's
-\ width may publish one.
+\ CELL>PTR stays private: a foreign address carries no length, so only a word
+\ that knows the callee's width may publish one.
 : PTR>CELL ( ptr a -- n ) NULL-PTR - ;
 CAST: CELL>PTR ( n -- ptr u8 )
 
@@ -173,8 +179,6 @@ CAST: CELL>PTR ( n -- ptr u8 )
    len 0 <= if E-FFI-ARITY throw then
    len ;
 
-\ Checked bodies over the owner-private ffi-call-bounded row; the loader's own
-\ two GOT slots, DLOPEN-SLOT and DLSYM-SLOT, hold the addresses.
 : DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
    path PTR>CELL FFI-DLBUF !
    flags FFI-DLBUF CELL + !
@@ -190,18 +194,11 @@ CAST: CELL>PTR ( n -- ptr u8 )
    FFI-DLBUF FFI-DLBUF 2 cells + 2 DLSYM-SLOT @ ffi-call-bounded ;
 
 \ ---- declared foreign functions -------------------------------------------
-\ FUNCTION: names a row here and its generated word carries the row's index, so
-\ a checked caller reaches only a symbol some declaration published. Exact
-\ declarations share one row. A row resolves its symbol on the first call and
-\ caches the address. Library 0 is the process (RTLD_DEFAULT, no reference);
-\ any other index is a path dlopened once, at the first call; one that does not
-\ open passes the call to the next library its row names. Rows may move when a
-\ table grows; indices stay stable.
 
-$30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
-PATH-CAP 1 + constant LIB-PATH-CAP      \ a library path of PATH-CAP bytes and its NUL
-$20 constant LIB-BASE-CAP                 \ the base name LIBRARY-NAME$ renders around
-9999 constant LIB-VERSION-MAX             \ ... and its soname version
+$30 constant FN-NAME-CAP
+PATH-CAP 1 + constant LIB-PATH-CAP
+$20 constant LIB-BASE-CAP
+9999 constant LIB-VERSION-MAX
 
 0 cells constant FN-ADDR-OFF
 1 cells constant FN-LIB-OFF
@@ -212,7 +209,7 @@ $20 constant LIB-BASE-CAP                 \ the base name LIBRARY-NAME$ renders 
 FN-NAME-OFF FN-NAME-CAP + constant FN-ROW-BYTES
 0 cells constant LIB-LEN-OFF
 1 cells constant LIB-HANDLE-OFF
-2 cells constant LIB-FAILED-OFF           \ 1 once the path failed to open; cleared with the handle
+2 cells constant LIB-FAILED-OFF
 3 cells constant LIB-NEXT-OFF             \ the library index tried when this path does not open, or 0
 4 cells constant LIB-PATH-OFF
 LIB-PATH-OFF LIB-PATH-CAP + 7 + 8 / 8 * constant LIB-ROW-BYTES
@@ -304,7 +301,6 @@ variable LIB-N
    idx FN-CHECK
    idx FN-ROW FN-NAME-OFF + ;
 
-\ Row idx's symbol length: the bytes before its terminator.
 : NAME-LEN ( n -- n )
    {: idx:n :}
    idx FN-NAME {: name:ptr :}
@@ -417,8 +413,8 @@ private
    p pu a au s su b bu
    pu au + su + bu + 1+ MEM:BYTES-ALLOC-LEN [: LINE-BODY ;] MEM:WITH-BYTES ;
 
-\ One line per library from lib along next, in the order written. why, the
-\ loader's reason, goes on tried's line only: a later loader call replaces it.
+\ why, the loader's reason, goes on tried's line only: a later loader call
+\ replaces it.
 : REPORT-NAMES ( n n n -- )
    {: why:n tried:n lib:n :}
    lib 0= if exit then
@@ -473,10 +469,8 @@ variable DLERROR-FN-CELL
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
 : DLERROR-FN ( -- n ) DLERROR-FN-CELL @ ;
 
-\ Resolution is lazy: a declaration never calls the loader, and a missing symbol
-\ is E-FFI-DLSYM at the first call. The errno accessor resolves first because
-\ the loader may change errno even when it succeeds, and nothing may run it
-\ between a call and its errno read. This lookup registers nothing.
+\ The errno accessor resolves first because the loader may change errno even
+\ when it succeeds, and nothing may run it between a call and its errno read.
 : FN-LOOKUP ( n -- n ) {: idx:n :}
    idx FN-ADDR@ dup 0 <> if exit then
    drop
@@ -577,8 +571,7 @@ public
 : KPARAMS ( -- ptr n n ) FFI-KPARAMS ;
 : KPARAMS>CELL ( -- n ) FFI-KPARAMS>N ;
 
-\ A string holding a 0 byte cannot cross to C and is E-FFI-NUL; FFI is the only
-\ library code that writes a terminator.
+\ FFI is the only library code that writes a terminator.
 private
 \ A 0 byte among the u bytes at b would end the C string early.
 : NUL-CHECK ( ptr u8 n -- )
@@ -586,7 +579,7 @@ private
    u 0 ?do b i + c@ 0= if E-FFI-NUL throw then loop ;
 
 \ The span's base once u bytes and their 0 fit in it: u < reach, which cannot
-\ overflow as u+1 can. Refused before any byte is read or written.
+\ overflow as u+1 can.
 : CSTR-FIT ( n SPAN:span<u8> -- ptr u8 )
    {: u s :}
    u 0 < if E-SPAN-LENGTH throw then
@@ -595,11 +588,8 @@ private
    b ;
 
 public
-\ The bytes a C copy of an n-byte string occupies: the string and its 0.
 : CSTR-ROOM ( n -- n ) 1+ ;
 
-\ Terminate the n bytes already at the front of the span and answer its base
-\ as the C string.
 : CSTR! ( n SPAN:span<u8> -- ptr u8 )
    {: u s :}
    u s CSTR-FIT {: b :}
@@ -607,8 +597,8 @@ public
    0 b u + c!
    b ;
 
-\ Copy a Habu string into the span as a C string. Every refusal comes before
-\ a byte is written, so a refused destination keeps what it held.
+\ Every refusal comes before a byte is written, so a refused destination keeps
+\ what it held.
 : CSTR ( ptr u8 n SPAN:span<u8> -- ptr u8 )
    {: src u s :}
    u s CSTR-FIT {: b :}
@@ -630,12 +620,11 @@ public
 : DLSYM ( n ptr u8 -- n ) DLSYM-RAW ;
 
 \ The C entry of engine callback stub n: an immutable code address, never a
-\ Habu xt. src/lib/ffi-callback.f answers it to C once the slot is bound.
+\ Habu xt.
 : CALLBACK-ENTRY ( n -- n ) callback-entry ;
 
 \ ---- the declared-function surface ----------------------------------------
-\ The declarer below is DECLARE-ROW's only intended caller; DECLARE is the row of
-\ a call with no spilled arguments and nothing to relocate.
+\ The declarer below is DECLARE-ROW's only intended caller.
 : PROCESS ( -- n ) 0 ;
 
 : LIBRARY-PATH-CAP ( -- n ) LIB-PATH-CAP ;
@@ -661,8 +650,6 @@ public
    buf CODEGEN:CONTENTS ;
 
 
-\ A row is the same row when its whole path, length included, and its next
-\ agree. The library index of that row, or 0 when none holds it.
 : LIB-INDEX ( ptr u8 n n -- n )
    {: path:ptr u:n next:n :}
    LIB-N @ 0 ?do
@@ -674,8 +661,6 @@ public
 
 private
 
-\ Reusing an occupied row leaves its resolved handle in place; only a new path
-\ and next pair consumes a row.
 : LIBRARY-PATH-OR ( ptr u8 n n -- n )
    {: path:ptr u:n next:n :}
    u PATH-ROOM
@@ -696,8 +681,6 @@ public
 
 private
 
-\ A function address is scratch, so a program's first call through a row
-\ resolves it here.
 : FN-RESOLVE ( n -- n ) {: idx:n :}
    idx FN-ADDR@ dup 0 <> if exit then
    drop
@@ -731,10 +714,10 @@ public
 : RESOLVE-ROW ( n -- ) FN-RESOLVE drop ;
 
 \ The caller's result storage rides x8, AAPCS64's indirect-result register,
-\ with its whole extent guarded. A record returned in x0/x1 ignores x8, and
-\ the guard still covers the stores made from them. Storage C writes through
-\ x8 is 16-byte aligned, the strictest a supported record can need; a
-\ register record stores into eight-byte-aligned storage.
+\ with its whole extent guarded. A record returned in x0/x1 ignores x8, and the
+\ guard still covers the stores made from them. Storage C writes through x8 is
+\ 16-byte aligned, the strictest a supported record can need; a register record
+\ stores into eight-byte-aligned storage.
 : RESULT-DEST! ( ptr u8 n -- ) {: dst:ptr len:n :}
    dst PTR>CELL {: addr:n :}
    len 16 > if 15 else 7 then {: mask:n :}
@@ -768,8 +751,6 @@ private
    src PTR>CELL 0= len 0 <= or if E-FFI-SYNTAX throw then
    len 1- 8 / 1+ ;
 
-\ A record over 16 bytes is copied into stack cells from payload on, and its
-\ address there is what the call relocates.
 : RECORD-COPY ( ptr u8 n n -- n ) {: src:ptr len:n pay:n :}
    src len RECORD-CELLS 0 ?do src len i RECORD-CELL pay i + STACK-VALUE! loop
    pay FFI-STACK-SLOT PTR>CELL ;
@@ -802,10 +783,8 @@ public
 
 : I32-RESULT ( n -- n )
    $FFFFFFFF and $80000000 xor $80000000 - ;
-\ An exact descriptor includes the library index, complete C symbol, integer
-\ argument count, spill count and relocation mask. The stored symbol's length
-\ decides along with its bytes, so neither a prefix nor a name holding a 0 byte
-\ matches a row.
+\ The stored symbol's length decides along with its bytes, so neither a prefix
+\ nor a name holding a 0 byte matches a row.
 private
 
 : SAME-FN? ( ptr u8 n n n n n n -- bool )
@@ -826,7 +805,6 @@ private
 
 public
 
-\ The index of the first row matching the descriptor, or -1 when none does.
 : FN-INDEX ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
    u NAME-ROOM
@@ -835,8 +813,7 @@ public
    loop
    -1 ;
 
-\ Validation precedes reading a row's name. A match keeps its cached address;
-\ only a new descriptor appends a row.
+\ Validation precedes reading a row's name.
 : DECLARE-ROW ( ptr u8 n n n n n -- n )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
    lib 0 < if E-FFI-LIBRARY throw then
@@ -858,8 +835,6 @@ public
 
 : DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
 
-\ Row idx's descriptor: symbol, library index, argument and spill counts and
-\ relocation mask, in DECLARE-ROW's order.
 : FN-ROW@ ( n -- ptr u8 n n n n n )
    {: idx:n :}
    idx FN-NAME idx NAME-LEN idx FN-LIB@ idx FN-ARGC@ idx FN-SPILL@ idx FN-RELOC@ ;
@@ -874,7 +849,6 @@ public
 
 ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
 
-\ OPEN-REPORT reads a failed dlopen's reason through this row.
 s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 
 
