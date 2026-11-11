@@ -39,7 +39,7 @@ variable W0  variable W1      \ its wordlist span
 
 \ A payload belongs to one concrete checker instance for the whole window.
 PTR-VARIABLE PAYLOAD-OWNER
-variable PAYLOAD-MODE                       \ 0 pending, 1 partial, 2 complete runtime
+variable PAYLOAD-MODE                       \ 0 pending, 1 partial; no word stores 2
 variable PAYLOAD-FROZEN
 variable PAYLOAD-EXPORTED
 
@@ -81,10 +81,6 @@ public
    CANCEL OWNER!
    1 PAYLOAD-MODE !
    CHECKER-OWNER-ABI:PAYLOAD-ARM-OFF RUN-ACTION ;
-
-: PAYLOAD-PERSISTENT ( ptr u8 -- )
-   CANCEL OWNER!
-   2 PAYLOAD-MODE ! ;
 
 : SIG-CLOSE ( -- )
    PAYLOAD-FROZEN @ 0= 0= if exit then

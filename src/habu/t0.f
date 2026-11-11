@@ -1873,8 +1873,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ selected emitter's sink and LABEL state; the tape, the measures and the NFETCH
 \ facts are only read.
 \ INTERN:STRING finds before it adds, so a string gets one address in both
-\ routines, but each walk interns it: a source-row recording
-\ (INTERN:SOURCE-BEGIN) would list it twice.
+\ routines, though each walk interns it.
 
 \ The machine this engine runs on, the one src/compiler/native/publish.f
 \ TARGET-CK requires of every emission.

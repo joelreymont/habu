@@ -108,13 +108,6 @@ BOOT-OWNER FIRST-P !  BOOT-OWNER ACTIVE-P !  BOOT-OWNER WRITE-P !
 create SLOT SLOTS cells allot       \ the last segment's hash slots: row index plus one
 variable PROBE
 
-\ Definition capture records each successful call, including pool hits and
-\ results the emitter later discards. The pool owns the immutable body bytes.
-DYNAMIC-BUFFER SOURCE-ADDR n
-DYNAMIC-BUFFER SOURCE-LEN n
-variable SOURCE-N
-variable SOURCE-ON
-
 : BASE ( -- n )
    STRING-ARENA PTR>N ;
 
@@ -294,35 +287,9 @@ private
       MORE@  dup 0= if E-NSTR-BODY throw then
    loop ;
 
-: SOURCE-RECORD ( n n -- n ) {: address:n size:n :}
-   SOURCE-ON @ if
-      SOURCE-N @ 1+ SOURCE-ADDR-RESERVE
-      SOURCE-N @ 1+ SOURCE-LEN-RESERVE
-      address SOURCE-N @ SOURCE-ADDR !
-      size SOURCE-N @ SOURCE-LEN !
-      1 SOURCE-N +!
-   then
-   address ;
-
 public
 
 : ACTIVE ( -- ptr u8 ) ACTIVE-P @ ;
-
-: SOURCE-BEGIN ( -- )
-   0 SOURCE-N ! -1 SOURCE-ON ! ;
-
-: SOURCE-END ( -- )
-   0 SOURCE-ON ! 0 SOURCE-N ! ;
-
-: SOURCE-COUNT ( -- n ) SOURCE-N @ ;
-
-: SOURCE@ ( n -- ptr u8 n ) {: row:n :}
-   row 0 < row SOURCE-N @ >= or if E-NSTR-BODY throw then
-   row SOURCE-ADDR @ NULL-PTR BYTE-VIEW + row SOURCE-LEN @ ;
-
-: SOURCE-CLOSE ( -- )
-   SOURCE-END
-   SOURCE-ADDR-RELEASE SOURCE-LEN-RELEASE ;
 
 : SWITCH ( ptr u8 -- ) {: owner:ptr :}
    owner OWNER? 0= if E-NSTR-BODY throw then
@@ -356,90 +323,19 @@ public
 : STRING ( ptr u8 n -- n )
    {: a:ptr u:n :}
    u 0 < if E-NSTR-BODY throw then
-   SPACE? if a u SPACE-STRING u SOURCE-RECORD exit then
+   SPACE? if a u SPACE-STRING exit then
    a u ROW-FIND {: k:n :}
-   k 0 >= if BASE k ROW-OFF + u SOURCE-RECORD exit then
+   k 0 >= if BASE k ROW-OFF + exit then
    a u ADD {: row:n :}
-   BASE row ROW-OFF + u SOURCE-RECORD ;
+   BASE row ROW-OFF + ;
 
+\ The second result is the origin its callers file beside the address: -1, none.
 : INTERN-SOURCE ( ptr u8 n -- n n )
-   STRING
-   SOURCE-ON @ if SOURCE-N @ negate 1- else -1 then ;
+   STRING -1 ;
 
 \ Tier 0 interns through this cell (src/habu/habu2.f LNSTRINTERN); xt! declares it.
 : INSTALL ( -- )
    ['] STRING data-base NSTR-ABI:INTERN-CELL + xt! ;
-
-private
-
-\ FILE selection predicts literal placements across its entire chosen tree.
-\ The planned rows borrow bodies from owned prepared ranges; no pool or DATA
-\ byte changes until the corresponding range is installed.
-DYNAMIC-BUFFER PLAN-P ptr u8
-DYNAMIC-BUFFER PLAN-U n
-DYNAMIC-BUFFER PLAN-ADDR n
-variable PLAN-N
-variable PLAN-FIRST
-variable PLAN-ROWS
-variable PLAN-USED
-variable PLAN-BASE
-variable PLAN-DATA-END
-variable PLAN-LIVE
-variable PLAN-ON
-
-: PLAN-SEARCH ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   PLAN-N @ PLAN-FIRST @ ?do
-      i PLAN-P @ i PLAN-U @ a u STR= if
-         i PLAN-ADDR @ true unloop exit
-      then
-   loop
-   PLAN-LIVE @ if
-      a u ROW-FIND {: row:n :}
-      row 0 >= if PLAN-BASE @ row ROW-OFF + true exit then
-   then
-   0 false ;
-
-: PLAN-GROW ( -- )
-   ACTIVE-P @ ROLE-FIELD @ ROLE-CLOSED = if E-NSTR-CAP throw then
-   PLAN-DATA-END @ CELL 1- + CELL negate and {: aligned:n :}
-   aligned ROWS-MAX OWNER-SIZE + PLAN-BASE !
-   aligned ROWS-MAX OWNER-SIZE + ARENA-CAP CELL + + PLAN-DATA-END !
-   0 PLAN-ROWS ! 0 PLAN-USED ! 0 PLAN-LIVE !
-   PLAN-N @ PLAN-FIRST ! ;
-
-public
-
-: PREPARE-BEGIN ( n -- ) {: data-end:n :}
-   data-end PLAN-DATA-END !
-   STRING-ARENA PTR>N PLAN-BASE !
-   ROWS @ PLAN-ROWS ! USED @ PLAN-USED !
-   -1 PLAN-LIVE !
-   0 PLAN-N ! 0 PLAN-FIRST ! -1 PLAN-ON ! ;
-
-: PREPARE-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   PLAN-ON @ 0= if E-NSTR-BODY throw then
-   u 0 < if E-NSTR-BODY throw then
-   a u PLAN-SEARCH if exit then drop
-   u ARENA-CAP > if E-NSTR-CAP throw then
-   PLAN-ROWS @ ROWS-MAX >=
-   u ARENA-CAP PLAN-USED @ - > or if PLAN-GROW then
-   u 0= if ARENA-CAP else PLAN-USED @ then {: off:n :}
-   PLAN-BASE @ off + {: address:n :}
-   PLAN-N @ 1+ PLAN-P-RESERVE
-   PLAN-N @ 1+ PLAN-U-RESERVE
-   PLAN-N @ 1+ PLAN-ADDR-RESERVE
-   a PLAN-N @ PLAN-P ! u PLAN-N @ PLAN-U !
-   address PLAN-N @ PLAN-ADDR !
-   1 PLAN-N +! 1 PLAN-ROWS +! u PLAN-USED +!
-   address ;
-
-: PREPARE-DATA-END ( -- n ) PLAN-DATA-END @ ;
-: PREPARE-CLOSE ( -- )
-   PLAN-P-RELEASE PLAN-U-RELEASE PLAN-ADDR-RELEASE
-   0 PLAN-N ! 0 PLAN-FIRST ! 0 PLAN-ROWS ! 0 PLAN-USED !
-   0 PLAN-BASE ! 0 PLAN-DATA-END ! 0 PLAN-LIVE ! 0 PLAN-ON ! ;
-
-public
 
 : SEGMENTS ( -- n )
    0 ACTIVE-P @
