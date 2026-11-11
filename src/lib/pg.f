@@ -9,6 +9,13 @@
 \ A libpq notice is one LOG line tagged pg, its level read from the message's
 \ leading word: ERROR, FATAL, PANIC and a severity PG does not know at error
 \ level, WARNING at warn level. NOTICE, INFO, DEBUG and LOG notices are dropped.
+\
+\ Each connection stages a call in one OS mapping, its arena, sized to the call
+\ being built: the statement bytes, every parameter with its NUL and the
+\ paramValues array, with no fixed ceiling. The arena is released the moment
+\ libpq returns, and by the next PARAMS and CLOSE. Parameters are recorded as
+\ offsets, never pointers, so growing the arena may move it without
+\ invalidating anything staged.
 
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -24,12 +31,10 @@ require src/lib/fork-child.f
 require src/lib/ffi-callback.f
 require src/lib/log.f
 
-\ PostgreSQL over libpq: -9250..-9259, the decade after libcurl. Minted here,
-\ beside the package its codes belong to (docs/forth-card.md § 6).
 -9250 constant E-PG-FIRST
 -9259 constant E-PG-LAST
 \ That block is full, so PG's later codes take a second, separately named
-\ region, -9560..-9569, the decade after OS-CPU (src/lib/error.f).
+\ region.
 -9560 constant E-PG-GROWTH-FIRST
 -9569 constant E-PG-GROWTH-LAST
 
@@ -104,8 +109,6 @@ LINEAR: RESULT>N ( PG:result -- n )
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
 0 constant TEXT-RESULT                    \ PQexecParams resultFormat
 
-\ CONFIGURE allocates exactly the registries the caller declares; a live
-\ registry cannot be resized.
 $10 constant VERB-CAP                     \ BEGIN / COMMIT / ROLLBACK, this module's own
 $1000 constant ARENA-MIN                  \ smallest call arena worth mapping
 $100000000 constant HANDLE-STRIDE         \ low 32 bits name the registry slot
@@ -157,7 +160,7 @@ DYNAMIC-BUFFER RES-SCOPED n
 here data-base - negate 7 and allot
 variable GENERATION
 SCRATCH-VARIABLE CONFIG-MUTEX
-\ The packed handle of the running task's innermost result scope ("result scopes").
+\ The packed handle of the running task's innermost result scope.
 TASK:#USER 7 + CELL-MASK and CELL TASK:+USER SCOPE-HEAD drop
 \ The packed handle of the attempt CONNECT waits on, 0 when none. Its cleanup
 \ is a quotation, which cannot read CONNECT's locals.
@@ -171,7 +174,7 @@ TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-LIVE drop
 1 constant KIND-REFUSAL
 2 constant KIND-LOSS
 \ The text PG:REFUSED$ answers: none (zero, as a task starts), a refusal (the
-\ reader row's, pg-rows.f) or a loss (REFUSED-TEXT's). The words below set it.
+\ reader row's) or a loss (REFUSED-TEXT's).
 TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-KIND drop
 \ Nonzero while ABORT-TX's ROLLBACK runs: an operation's start and CONN-LOST
 \ then leave REFUSED-KIND as the body's failure left it.
@@ -384,11 +387,6 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 )
 : RES-SCOPED! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-SCOPED ! ;
 
 
-\ One OS mapping per connection, sized to the call being built: the statement
-\ bytes, every parameter with its NUL and the paramValues array, with no fixed
-\ ceiling. It is released the moment libpq returns, and by the next PARAMS and
-\ CLOSE. Parameters are recorded as OFFSETS, never pointers,
-\ so growing the arena may move it without invalidating anything staged.
 : ALLOC-ARENA ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
@@ -403,7 +401,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 )
 
 \ Doubling, floored at ARENA-MIN and raised to whatever this call needs, so a
 \ statement built byte by byte costs a bounded number of mappings. An
-\ overflowing double falls through to `want`, which MEM:BYTES-ALLOC-LEN checks.
+\ overflowing double falls through to `want`, which the allocation checks.
 : ARENA-FIT ( n n -- n ) {: have:n want:n :}
    have 2 * ARENA-MIN LARGER want LARGER ;
 
@@ -443,8 +441,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 )
    slot ARENA-U@ 1 + slot ARENA-U! ;
 
 
-\ Copy text as a C string into the arena and answer its offset. Reserve
-\ first: an impossible length must fail without reading source bytes.
+\ Reserve first: an impossible length must fail without reading source bytes.
 : ARENA-CSTR ( ptr u8 n n -- n )
    {: a u:n slot:n :}
    u 0 < if E-CAPACITY throw then
@@ -456,8 +453,6 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 )
    off ;
 
 
-\ Copy bytes into the arena, with no terminator, and answer their offset.
-\ Reserve first, as ARENA-CSTR does.
 : ARENA-BYTES ( ptr u8 n n -- n )
    {: a u:n slot:n :}
    slot u ARENA-ENSURE
@@ -689,8 +684,8 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 )
    CONN-CAP 0 ?do i PARAM-OFFS-RELEASE loop ;
 
 
-\ Reserve once before publishing the registry. DYNAMIC-BUFFER owns allocation,
-\ bounds and release, including cleanup after a partially completed reserve.
+\ DYNAMIC-BUFFER owns allocation, bounds and release, including cleanup after a
+\ partially completed reserve.
 : RELEASE-REGISTRY ( -- )
    RELEASE-CONN-MAPPINGS
    CONN-PG-RELEASE
@@ -788,8 +783,8 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 )
 : CONFIG-LOCK ( -- ) begin 0 1 CONFIG-MUTEX atomic-cas 0= until ;
 : CONFIG-UNLOCK ( -- ) 0 CONFIG-MUTEX atomic! ;
 
-\ A just-forked child frees the lock first (src/lib/fork-child.f): it inherits a
-\ CONFIGURE another task was in, so its own CONFIGURE would wait for ever.
+\ A just-forked child frees the lock first: it inherits a CONFIGURE another
+\ task was in, so its own CONFIGURE would wait for ever.
 : REGISTER-CHILD-RESET ( -- )
    [: CONFIG-UNLOCK ;] FORK-CHILD:REGISTER ;
 REGISTER-CHILD-RESET
@@ -853,9 +848,8 @@ REGISTER-CHILD-RESET
    NO-CONN slot RES-CONN! ;
 
 
-\ Clears the connection's results and finishes it. A pending statement gets no
-\ cancel here: CLOSE-SLOT sends one first; ABANDON never does, nor does
-\ ABANDON-SLOT on a bounded connection.
+\ A pending statement gets no cancel here: CLOSE-SLOT sends one first; ABANDON
+\ never does, nor does ABANDON-SLOT on a bounded connection.
 : FINISH-SLOT ( n -- )
    {: slot:n :}
    RESULT-CAP 0 ?do
@@ -889,7 +883,6 @@ REGISTER-CHILD-RESET
    slot CLOSE-SLOT drop ;
 
 
-\ A NULL field is an empty span.
 : FIELD$ ( ptr u8 -- ptr u8 n ) {: p :}
    p NULL-ADDR? if NULL-ARG 0 exit then
    p CSTR$ ;
@@ -901,8 +894,8 @@ REGISTER-CHILD-RESET
    a u ;
 
 
-\ libpq builds a notice in a PQExpBuffer, which never grows past INT_MAX bytes
-\ (pqexpbuffer.c enlargePQExpBuffer), so its NUL lies below this.
+\ libpq builds a notice in a PQExpBuffer, which never grows past INT_MAX bytes,
+\ so its NUL lies below this.
 $7FFFFFFF constant NOTICE-MAX
 
 
@@ -939,7 +932,6 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    LIB-RESULT-ERROR-MESSAGE FIELD$ -TRAILING-LF ;
 
 
-\ PQputCopyEnd's message, NUL-terminated, and the span of its text.
 : COPY-REFUSAL-Z ( -- ptr u8 n )   S\" COPY is not supported\z" ;
 : COPY-REFUSAL$ ( -- ptr u8 n )   COPY-REFUSAL-Z 1- ;
 
@@ -1015,7 +1007,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 
 \ A transport failure libpq reported: its text, unless empty, is the task's
-\ loss, then the slot closes. Under REFUSED-HOLD it copies nothing.
+\ loss, then the slot closes.
 : CONN-LOST ( n -- )
    {: slot:n :}
    slot ['] KEEP-LOSS catch nip {: code:n :}
@@ -1164,7 +1156,6 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    left NS-PER-MS 1- + NS-PER-MS / ;
 
 
-\ The poll timeout left. A deadline already passed is E-DEADLINE.
 : REMAINING ( n -- ms )
    {: deadline:n :}
    deadline NO-DEADLINE = if -1 >MS exit then
@@ -1174,7 +1165,6 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 
 \ Only the convenience words wait. A dispatcher consumes progress directly.
-\ Habu's AWAIT parks the calling pthread, so this is not a coroutine suspension.
 : WAIT-EVENT ( fd n n -- fd n n )
    {: socket:fd events:n deadline:n :}
    socket events deadline REMAINING AIO:POLL AIO:AWAIT
@@ -1221,14 +1211,12 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    drop ;
 
 
-\ A failed read is a transport failure, which closes the connection.
 : TAKE-NOTIFIES ( n -- bool ) {: slot:n :}
    slot CONN-PG@ LIB-CONSUME-INPUT 0= if slot CONN-LOST then
    slot DRAIN-NOTIFIES ;
 
 
-\ One readiness wait of at most ms, true when the socket became readable. No
-\ protocol state is in flight, so a failed wait leaves the connection open.
+\ No protocol state is in flight, so a failed wait leaves the connection open.
 : READABLE-WITHIN ( n n -- bool ) {: slot:n limit:n :}
    slot CONN-PG@ LIB-SOCKET {: socket:n :}
    socket 0 < if slot CONN-LOST then
