@@ -147,17 +147,19 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ key is that offset and the count of the build's earlier loads of the path. BUILT holds a row per
 \ piece compiled or linked: its file's key, its number in the file, its time
 \ (COMPILED-TIME as it compiled), its first and end record index, its first and end
-\ emission, the data pointer as the piece starts and ends, and 1 when the piece holds a
-\ header-data address (HOLDS-HEADER), else 0. A FILES row is a BUILT row's first
-\ FILES-ROW-BYTES bytes, its time 0 while no use names the piece whole (REF-FILE).
+\ emission, the data pointer as the piece starts and ends, 1 when the piece holds a
+\ header-data address (HOLDS-HEADER), else 0, then the piece's stores time (STORES-TIMES+).
+\ A FILES row is a BUILT row's first FILES-ROW-BYTES bytes, its time 0 while no use names
+\ the piece whole (REF-FILE).
 16 constant KEY-BYTES
-KEY-BYTES 72 + constant BUILT-BYTES
+KEY-BYTES 80 + constant BUILT-BYTES
 KEY-BYTES constant BUILT-PIECE
 BUILT-PIECE 8 + constant BUILT-TIME
 BUILT-TIME 8 + constant BUILT-FIRST
 BUILT-FIRST 16 + constant BUILT-EM
 BUILT-EM 16 + constant BUILT-DP
 BUILT-DP 16 + constant BUILT-HEADER
+BUILT-HEADER 8 + constant BUILT-STORES
 KEY-BYTES 16 + constant FILES-ROW-BYTES
 KEY-BYTES 8 + constant LOADER-BYTES
 create LOADERS BUF:HDR-BYTES allot
@@ -364,6 +366,7 @@ TYPED-VARIABLE UNDER-KNOWN bool     \ whether RESOLVE-UNDER's path under another
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
 variable FILE-PATH-N
+variable STORES-AT                   \ the offset in OBJECT of STORES' count, of the piece placed or object read
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
 variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
 \ The compiling part never links (WRITE-OBJECT): a cross build, no stamp, a start or end off TOP-SCOPE?, an unclean cut
@@ -383,7 +386,8 @@ PAIRS-AT 10 2 * 8 * + constant HEADER-BYTES
 HEADER-BYTES 32 - constant TIMES-FIELD      \ the header's TIMES pair
 HEADER-BYTES 16 - constant PIECES-FIELD     \ the header's last pair: PIECES' offset, then its length
 \ TIMES: word count, per word WORD-CELLS cells (time, entry, emission and text spans, its bound record's time or 0, the
-\ outside rows' bits, sum, count); extent count, per extent EXT-BYTES (time, span offset and length, kind, sum, count).
+\ outside rows' bits, sum, count); extent count, per extent EXT-BYTES (time, span offset and length, kind, sum, count);
+\ then the stores entry: stores time, STORES span offset and length.
 11 constant WORD-CELLS
 WORD-CELLS 8 * constant WORD-BYTES
 48 constant EXT-BYTES
@@ -2392,7 +2396,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    LATE-REST
    LATE-N 0 ?do i LATE-P CHANGER+ loop
    OLD-RECS-N 0 ?do i OLD-REC SEAL+ loop
-   CODE+  DATA+  EDGES-N @ {: start:n :}  STORES+  BUILT-N start ROW-EDGES!
+   CODE+  DATA+  EDGES-N @ {: start:n :}
+   PIECES BYTES$ nip STORES-AT !  STORES+  BUILT-N start ROW-EDGES!
    PIECES BYTES$ nip FACTS-AT !  FACTS+
    req ACTS+
    req PIECES U64+ ;
@@ -2479,7 +2484,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    tms tmsu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
    files-at KEYS-OUT
-   pieces-at FACTS-AT +!
+   pieces-at STORES-AT +!  pieces-at FACTS-AT +!
    STAMPED? 0=  CROSS? or if exit then
    \ Unsynced: an object a crash cut short fails HEADER-CK's or PIECE-CK's bounds checks and compiles.
    OBJECT$ {: obj:ptr obju:n :}
@@ -2554,10 +2559,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    loop
    row 2 * 1 + ROW-EXTS @  stop first - +  row 2 * 1 + ROW-EXTS ! ;
 
-\ Part FILE-PART's BUILT row with time t, its extents and laid texts in the build table (BUILT-EXTS+, TEXT-EXTS+);
-\ NAMES takes its records and REC-ROW gives each its row, rows rising.
-: BUILT+ ( n -- )
-   {: t:n :}
+\ Part FILE-PART's BUILT row with time t and stores time st, its extents and laid texts in the build table
+\ (BUILT-EXTS+, TEXT-EXTS+); NAMES takes its records and REC-ROW gives each its row, rows rising.
+: BUILT+ ( n n -- )
+   {: t:n st:n :}
    BUILT-EXTS+  TEXT-EXTS+
    ndict@ REC-ROW-RESERVE
    FILE-REC @ REC-ROW-N @ ?do  0 i REC-ROW !  loop
@@ -2571,7 +2576,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
    FILE-EM @ BUILT U64+  NSHADOW:EMISSIONS BUILT U64+
    FILE-DP @ BUILT U64+  FILE-END @ BUILT U64+
-   HOLDS-HEADER @ if 1 else 0 then BUILT U64+ ;
+   HOLDS-HEADER @ if 1 else 0 then BUILT U64+  st BUILT U64+ ;
 
 \ ---- reading an object ---------------------------------------------------------
 \ PART-FRESH? checks the part's object in OBJECT; these, ENTRY-OFFS, EM-OFFS and FILE-ROWS hold once it answers true.
@@ -2580,7 +2585,6 @@ variable RECS-N                       \ its records: entries neither KIND-PRIVAT
 variable EMS-N                        \ its emissions, E
 variable DATA-AT                      \ the offset in OBJECT of DATA's D
 variable EXTS-AT                      \ of its X
-variable STORES-AT                    \ of STORES' S
 variable REQS-AT                      \ the offset in OBJECT of its REQUESTS
 variable REQS-N                       \ its REQUESTS rows: 1 when a request ends the part, else 0 (REQUESTS-CK)
 variable PIECE-AT                     \ the offset in OBJECT of the part's piece (HEADER-CK)
@@ -2977,6 +2981,15 @@ variable RD-END
    at 8 +  at OBJ@ WORD-BYTES * +  8 +  e EXT-BYTES * + ;
 
 
+\ The offset in OBJECT of TIMES' stores entry (STORES-TIMES+), after the extent rows.
+: TIMES-STORES ( -- n )
+   TIMES-AT {: at:n :}
+   at 8 +  at OBJ@ WORD-BYTES * +  OBJ@ TIMES-EXT ;
+
+\ The part's stores time in OBJECT: its TIMES stores entry's.
+: PIECE-STORES-TIME ( -- n ) TIMES-STORES OBJ@ ;
+
+
 \ Places the part's records (TIMES order, key -2, a new OWN-SERIAL) and extents (EXTS, laid from FILE-DP); bad on a
 \ repeated identity or a span too short for its length cell. EXTENT-CK checks the rest against DATA.
 : OWN-IDS! ( -- )
@@ -3014,8 +3027,8 @@ variable RD-END
    off 0<  u 0<  or  off plen >  or  u plen off - >  or if BAD then ;
 
 
-\ TIMES (TIMES+) from RD-AT to PIECES at pieces-at: each word's and extent's spans lie in the piece, which runs to the
-\ object's end at len; the other fields are skipped.
+\ TIMES (TIMES+, STORES-TIMES+) from RD-AT to PIECES at pieces-at: each word's and extent's spans and the stores
+\ entry's lie in the piece, which runs to the object's end at len; the other fields are skipped.
 : TIMES-CK ( n n -- )
    {: pieces-at:n len:n :}
    GOOD? 0= if exit then
@@ -3024,6 +3037,7 @@ variable RD-END
       8 RD-SKIP  plen SPAN-CK  plen SPAN-CK  plen SPAN-CK  32 RD-SKIP
    loop
    EXT-BYTES RD-COUNT 0 ?do  8 RD-SKIP  plen SPAN-CK  24 RD-SKIP  loop
+   8 RD-SKIP  plen SPAN-CK
    RD-AT @ pieces-at <> if BAD then ;
 
 
@@ -3892,8 +3906,9 @@ variable PRIOR-EXT-NEXT
    t ;
 
 
-\ The TIMES block of the piece at start in PIECES: word count, per word time (WORD-TIME, also WORD-TIMES), spans,
-\ bound time, outside bits, sum, count; extent count, per extent time (EXT-TIME, also EXTS), span, kind, sum, count.
+\ The TIMES block of the piece at start in PIECES up to its stores entry (STORES-TIMES+): word count, per word time
+\ (WORD-TIME, also WORD-TIMES), spans, bound time, outside bits, sum, count; extent count, per extent time (EXT-TIME,
+\ also EXTS), span, kind, sum, count.
 : TIMES+ ( n n -- )
    {: start:n now:n :}
    WORDS-N @ TIMES U64+
@@ -3916,14 +3931,10 @@ variable PRIOR-EXT-NEXT
    loop ;
 
 
-\ The part's time, its piece starting at the offset in PIECES: its old piece's when that has a time,
-\ the same bytes and REFS-KEPT?, else now, the time TIMES+ gives each word that changed.
-: COMPILED-TIME ( n -- n )
-   {: start:n :}
-   NOW {: now:n :}
-   PRIOR-READ {: old:bool :}
-   old PRIOR-PIECE!
-   start now TIMES+
+\ The time of the piece at the offset in PIECES, old when PRIOR-READ found its object: its old piece's when that has
+\ a time, the same bytes and REFS-KEPT?, else now, the time TIMES+ gives each word that changed.
+: KEPT-TIME ( n n bool -- n )
+   {: start:n now:n old:bool :}
    old 0= if now exit then
    PRIOR-PIECE {: at:n u:n t:n ok:bool :}
    ok 0=  t 0=  or if now exit then
@@ -3931,6 +3942,27 @@ variable PRIOR-EXT-NEXT
    len start - u <> if now exit then
    a start + u  PRIOR BYTES$ drop at + u  STR= 0= if now exit then
    REFS-KEPT? 0= if now exit then
+   t ;
+
+
+\ The TIMES block's stores entry for the piece at the offset in PIECES: stores time t, then its STORES section's offset
+\ from the piece's first byte and its length; STORES-AT and FACTS-AT are PIECES offsets until WRITE-OBJECT.
+: STORES-TIMES+ ( n n -- )
+   {: start:n t:n :}
+   t TIMES U64+
+   STORES-AT @ start - TIMES U64+
+   FACTS-AT @ STORES-AT @ - TIMES U64+ ;
+
+
+\ The part's time, its piece starting at the offset in PIECES (KEPT-TIME); its TIMES block (TIMES+, STORES-TIMES+).
+: COMPILED-TIME ( n -- n )
+   {: start:n :}
+   NOW {: now:n :}
+   PRIOR-READ {: old:bool :}
+   old PRIOR-PIECE!
+   start now TIMES+
+   start now old KEPT-TIME {: t:n :}
+   start t STORES-TIMES+
    t ;
 
 
@@ -4713,7 +4745,7 @@ variable DUE-MADE
       drop PART-FRESH? dup if
          LINK-OBJECT  LINKED-TIMES  true LINK-FACTS  READ-ALIASES  LINK-ACTS
          here NULL-PTR - FILE-END !
-         PIECE-TIME BUILT+
+         PIECE-TIME PIECE-STORES-TIME BUILT+
       then
    ;] catch {: linked rc:n :}
    rc 0<> if DROP-OBJECT rc throw then
@@ -4791,7 +4823,7 @@ variable DUE-MADE
    {: t:n :}
    FILE-HELD @ CHECK:DROP-FACTS  false LINK-FACTS
    here NULL-PTR - FILE-END !          \ the piece's span ends after its texts
-   t BUILT+ ;
+   t PIECE-STORES-TIME BUILT+ ;
 
 
 \ The compiling part's NAMES (NAMED!) from FILE-OFF to end in its source, before PIECE-END. Scanned as the part ends, so
@@ -5119,7 +5151,7 @@ variable DUE-MADE
    s" " KEY-PATHS PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!  0 FILE-PART !
    FILE-KEY KEY-BYTES LOAD-PATHS SPAN+  s" " LOAD-PATHS FIELD+
    here NULL-PTR - dup FILE-DP !  FILE-END !
-   0 EXTS-N !  0 BUILT+ ;
+   0 EXTS-N !  0 0 BUILT+ ;
 
 \ The object's rows, then its owned primitives' texts, which those rows render.
 : PRIMS-IN ( -- )

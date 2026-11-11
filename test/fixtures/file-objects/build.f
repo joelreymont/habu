@@ -741,7 +741,8 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
       row 8 + r u SPAN-GROW  row 24 + r u SPAN-GROW  row 40 + r u SPAN-GROW
    loop
    times 8 +  w 88 * + {: exts:n :}
-   exts OBJ@ 0 ?do  exts 8 +  i 48 * +  8 + r u SPAN-GROW  loop ;
+   exts OBJ@ 0 ?do  exts 8 +  i 48 * +  8 + r u SPAN-GROW  loop
+   exts 8 +  exts OBJ@ 48 * +  8 + r u SPAN-GROW ;
 
 
 \ MID's call row of LOW written twice: a copy of the row after it.
