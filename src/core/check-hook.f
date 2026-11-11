@@ -390,13 +390,11 @@ public
    sym 0= if NULL-PTR 0 exit then
    sym ROWS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then ;
 
-\ The facts text this checker gives the primitive named na nu, for a linked
-\ engine's record of it (OWN-OR-ROWS). Empty when no primitive has the name.
+\ A linked engine's facts text for primitive na nu: what the open build's rows
+\ say of its global symbol (ROWS-TEXT?), empty when no text can.
 : PRIMITIVE-FACTS ( ptr u8 n -- ptr u8 n )
    {: na:ptr nu:n :}
-   na nu WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
-   rec NULL-PTR = if NULL-PTR 0 exit then
-   rec  na nu CHECKER-GLOBAL-SYM?  OWN-OR-ROWS ;
+   NULL-PTR  na nu CHECKER-GLOBAL-SYM?  OWN-OR-ROWS ;
 
 \ The facts text this checker gives the primitive named na nu that package pa pu
 \ owns (src/habu/prims.f EPPRIM:), for the record a build lays for it in that
