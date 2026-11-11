@@ -547,6 +547,33 @@
 \ file by the canonical absolute path the closure gave it - so no conversation
 \ can make one. Nor can one make a check outlast LSP-CHECK's deadline or
 \ overflow the verifier's capture.
+\
+\ An isolated conversation is written to the server's stdin whole, and the
+\ input then ends; its stdout, stderr and exit code are read after. The replies
+\ come in the order of the messages they answer. The rest run over pipes the
+\ test holds: answers-at-once keeps the input open, stdout-closed closes the
+\ output first, and the checked cases are held turn by turn, the messages of a
+\ turn written together once the server has answered the last and every publish
+\ read as it comes, since the server checks a document only when no input
+\ waits; references-eof and references-fault end their input before exit, and
+\ what the server writes after is read once it ends. The directory the test
+\ prints after `artifact:` keeps each case's input, output and stderr byte for
+\ byte, plus the fixtures. `exits` records each process exit. A shared session
+\ also has SESSION.trace.in, .trace.out and .trace.err for the full exchange;
+\ rerun the driver for the same timed turns with fresh fixtures. A conversation
+\ whose wait ran out keeps what was read before it.
+\
+\ What a conversation proves is what the server writes and how it exits, and
+\ none of that changes when the host is busy, so the time one run of the server
+\ may take is a deadlock guard and nothing else: a server that is merely slow
+\ must never reach it. The capture bounds a conversation run through it whole.
+\ A conversation over pipes the test holds bounds each wait for output against
+\ one deadline after its reads start: CONVERSATION-MS, or CHECKED-MS for a
+\ diagnostics conversation, whose server checks documents and whose test checks
+\ them too inside that bound. The wait for the server's exit once it has ended
+\ stdout and stderr is not bounded. Past its bound, any kind kills the server
+\ and fails by name. The suite's CPU and wall budgets bound a sequence of stuck
+\ conversations.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -582,27 +609,11 @@ using BUF
 
 \ ---- storage ------------------------------------------------------------------
 
-\ What a conversation proves is what the server writes and how it exits, and
-\ none of that changes when the host is busy, so the time one run of the server
-\ may take is a deadlock guard and nothing else: a server that is merely slow
-\ must never reach it. The capture bounds a conversation run through it whole.
-\ A conversation over pipes the test holds bounds each wait for output against
-\ one deadline after its reads start: CONVERSATION-MS, or CHECKED-MS for a
-\ diagnostics conversation, whose server checks documents and whose test checks
-\ them too inside that bound. The wait for the server's exit once it has ended
-\ stdout and stderr is not bounded. Past its bound, any kind kills the server
-\ and fails by name.
-\
-\ Measured: the lightweight conversations take at most 793 ms with six copies
-\ of this test at a load average of 87 to 91; a checked dependency-sharing
-\ conversation took 9032 ms during the full native gate, so CHECKED-MS leaves
-\ room for concurrent native builds. The suite's CPU and wall budgets bound a
-\ sequence of stuck conversations.
 8000 constant CONVERSATION-MS
 60000 constant CHECKED-MS
 
-$10000 constant OUT-CAP                  \ the most a conversation writes to stdout
-$1000 constant ERR-CAP                   \ and to stderr
+$10000 constant OUT-CAP
+$1000 constant ERR-CAP
 32000 constant BIG-LINES                 \ big-frame's document, 22 bytes a line escaped
 512 constant PIPE-ATOM                   \ PIPE_BUF: the room POLLOUT promises a writer
 
@@ -633,7 +644,7 @@ variable DEADLINE                        \ the mono-ns time its waits run out,
 variable SENT                            \ and the bytes of its input written
 
 PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file URI: file:// and each byte escaped
-TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for reading a packet
+TYPED-VARIABLE JSON-ST JSON:cursor
 TYPED-VARIABLE HL-W JSON:writer    \ a highlight written in this process
 TYPED-VARIABLE SHARED? bool                \ a case uses the initialized session
 TYPED-VARIABLE WORKSPACE? bool             \ shared cases use one fixed root
@@ -697,7 +708,6 @@ variable OPEN-N
 
 : ASK ( ptr u8 n ptr u8 n -- )  ASK$ FRAMED ;
 
-\ Empty params text sends no params.
 : TELL$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: m:ptr mu:n p:ptr pu:n :}
    MSG-B CLEAR
@@ -903,22 +913,6 @@ variable OPEN-N
    LSP-CHECK:VERIFY-LOG$ nip 0= if 2drop 2drop exit then
    SAID ;
 
-\ An isolated conversation is written to the server's stdin whole, and the
-\ input then ends; its stdout, stderr and exit code are read after. Every frame
-\ the server writes must be `Content-Length: N`, CR LF twice and N bytes, and
-\ the replies come in the order of the messages they answer. The rest run over
-\ pipes the test holds: answers-at-once keeps the input open, stdout-closed
-\ closes the output first, and the checked cases are held turn by turn, the
-\ messages of a turn written together once the server has answered the last and
-\ every publish read as it comes, since the server checks a document only when
-\ no input waits; references-eof and references-fault end their input before
-\ exit, and what the server writes after is read once it ends. The directory
-\ the test prints after `artifact:` keeps each case's input, output and stderr
-\ byte for byte, plus the fixtures. `exits` records each process exit. A shared
-\ session also has SESSION.trace.in, .trace.out and .trace.err for the full
-\ exchange; rerun the driver for the same timed turns with fresh fixtures. A
-\ conversation whose wait ran out keeps what was read before it.
-
 \ ---- running the server -------------------------------------------------------
 
 : CONVERSATION ( ptr u8 n -- )
@@ -1012,11 +1006,10 @@ variable OPEN-N
    SB-RESET LABEL$ SB-APPEND s" : " SB-APPEND r ru SB-APPEND
    SB$ T-LABEL ok TTRUE ;
 
-\ Runs the server on the conversation's input and reads all it writes. It must
-\ exit with RC. The capture writes the input in pieces of PROCESS:STDIN-CHUNK-CAP,
-\ and one piece lands in the empty pipe whole, so the server reads every
-\ message of a conversation no larger before it would look for a document to
-\ check: none of these conversations expects a check.
+\ The capture writes the input in pieces, and one piece lands in the empty
+\ pipe whole, so the server reads every message of a conversation no larger
+\ before it would look for a document to check: none of these conversations
+\ expects a check.
 : CONVERSE ( n -- )
    {: rc:n :}
    IN$ nip PROCESS:STDIN-CHUNK-CAP <= s" input past one write" HOLDS
@@ -1034,8 +1027,6 @@ variable OPEN-N
 
 : ALIKE ( ptr u8 n ptr u8 n -- )  LABEL$ T-LABEL T$= ;
 
-\ The length a frame's header names, from the output at the frame: the number
-\ between the name and CR LF twice, or -1.
 : FRAME-LEN ( ptr u8 n -- n )
    {: a:ptr u:n :}
    s" Content-Length: " nip {: name:n :}
@@ -1049,14 +1040,13 @@ variable OPEN-N
       some OF ENDOF
    ;MATCH ;
 
-\ Output not framed as LSP frames it fails the conversation and is passed over.
 : MISFRAMED ( -- ptr u8 n )
    false s" output not framed as LSP frames it" HOLDS
    OUT-LEN @ OUT-AT !
    OUT-SPAN SPAN:$ drop 0 ;
 
-\ The next frame's body. The server frames a message as `Content-Length: N`, CR
-\ LF twice and N bytes, the length without sign or leading zeros.
+\ The server frames a message as `Content-Length: N`, CR LF twice and N bytes,
+\ the length without sign or leading zeros.
 : NEXT-BODY ( -- ptr u8 n )
    UNREAD {: a:ptr u:n :}
    a u FRAME-LEN {: len:n :}
@@ -1127,9 +1117,8 @@ variable OPEN-N
 : AWAIT ( fd n -- )
    PROCESS:LEFT-MS PROCESS:POLL-IN-OR-TIMEOUT drop ;
 
-\ Reads the byte past the span's first N once the descriptor holds it: whether
-\ one came before the end. A wait promises one byte, and READ-EXACT reads until
-\ its span is full, so each read asks for one.
+\ A wait promises one byte, and READ-EXACT reads until its span is full, so each
+\ read asks for one.
 : BYTE ( n fd SPAN:span<u8> n -- bool )
    {: got:n f:fd dst deadline:n :}
    f deadline AWAIT
@@ -1138,9 +1127,6 @@ variable OPEN-N
       eof OF drop false ENDOF
    ;MATCH ;
 
-\ Reads a descriptor into the span, past the bytes the cell counts, until its
-\ end or the span is full, keeping the count in the cell. Each wait ends at the
-\ deadline.
 : DRAIN ( fd SPAN:span<u8> ptr n n -- )
    {: f:fd dst len:ptr deadline:n :}
    len @ begin
@@ -1161,8 +1147,6 @@ variable OPEN-N
    code E-PROC-TIMEOUT <> if code throw then
    PROCESS-ENDING:timeout ;
 
-\ The reply's first byte while the input stays open; the input then ends,
-\ whether the byte came or the wait ran out.
 : FIRST-BYTE ( fd fd n -- )
    {: in-w:fd out-r:fd deadline:n :}
    out-r deadline [: 2dup AWAIT ;] catch {: code:n :}
@@ -1170,8 +1154,6 @@ variable OPEN-N
    in-w FD>N close
    code 0<> if code throw then ;
 
-\ answers-at-once's reads, against one deadline: the reply's first byte, then
-\ stdout and stderr to their ends.
 : HEAR-AT-ONCE ( fd fd fd -- fd fd fd )
    {: in-w:fd out-r:fd err-r:fd :}
    CONVERSATION-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
@@ -1246,7 +1228,6 @@ variable OPEN-N
    s" 2" NULL-RESULT
    ENDS ;
 
-\ exit-first: the initialize after exit is never read.
 : TEST-EXIT-WITHOUT-SHUTDOWN ( -- )
    s" exit-without-shutdown" CONVERSATION
    INITIALIZE
@@ -1277,7 +1258,6 @@ variable OPEN-N
    s" 2" NULL-RESULT
    ENDS ;
 
-\ The document opened before initialize is not open after it.
 : TEST-BEFORE-INITIALIZE ( -- )
    s" before-initialize" CONVERSATION
    s" 7" s" shutdown" ASK
@@ -1304,7 +1284,6 @@ variable OPEN-N
    s" 2" NULL-RESULT
    ENDS ;
 
-\ The close of a document open before shutdown publishes nothing after it.
 : TEST-AFTER-SHUTDOWN ( -- )
    s" after-shutdown" CONVERSATION
    INITIALIZE
@@ -1321,8 +1300,6 @@ variable OPEN-N
    s" 4" JSON-RPC:INVALID-REQUEST REFUSED
    ENDS ;
 
-\ A lower-case name; Content-Type before, blanks and tabs around the value;
-\ leading zeros, Content-Type after.
 : TEST-FRAME-FORMS ( -- )
    s" frame-forms" CONVERSATION
    INITIALIZE$ s" content-length: " s\" \r\n\r\n" FORM
@@ -1335,7 +1312,6 @@ variable OPEN-N
    s" 2" NULL-RESULT
    ENDS ;
 
-\ The server stops on the fault's code, and nothing after the fault is read.
 : FAULTED ( n -- )
    STOPPED
    1 CONVERSE
@@ -1375,8 +1351,6 @@ variable OPEN-N
    rc 0 < if E-PROC-OUTPUT throw then
    rc 0= if E-PROC-TIMEOUT throw then ;
 
-\ Writes the next piece of the input, PIPE-ATOM bytes at most, once the pipe
-\ has room for it.
 : PIECE ( -- )
    IN$ {: a:ptr u:n :}
    u SENT @ - PIPE-ATOM min {: k:n :}
@@ -1389,8 +1363,8 @@ variable OPEN-N
 : STREAM ( -- )
    begin SENT @ IN$ nip < while PIECE repeat ;
 
-\ Short turns fit in one write. A long turn, including one with long document
-\ paths, is streamed under the same deadline rather than refused by the test.
+\ A long turn, including one with long document paths, is streamed under the
+\ same deadline rather than refused by the test.
 : SAY ( -- )
    IN$ {: a:ptr u:n :}
    u SENT @ - {: left:n :}
@@ -1431,21 +1405,15 @@ variable OPEN-N
    OUT-R @ OUT-SPAN OUT-LEN DEADLINE @ DRAIN
    ERR-R @ ERR-SPAN ERR-LEN DEADLINE @ DRAIN ;
 
-\ The conversation's turns, then shutdown and exit.
 : FINISHED ( [ -- ] -- [ -- ] )
    dup execute
    SIGN-OFF
    SAY ;
 
-\ The conversation's turns alone: its input ends before exit.
 : UNFINISHED ( [ -- ] -- [ -- ] )  dup execute ;
 
 \ Holds the conversation RUN writes from these turns, every wait against one
-\ deadline CHECKED-MS from its start. Its input then ends, stdout and stderr
-\ are read to their ends, and the server must exit RC. A deadline kills the
-\ server, and EXITED prints the conversation and both streams and throws
-\ E-PROC-TIMEOUT. Any other throw kills the server and fails the conversation
-\ by name, and its real outcome is still asserted. True when nothing threw.
+\ deadline CHECKED-MS from its start.
 : HELD-BY ( [ -- ] [ [ -- ] -- [ -- ] ] n -- bool )
    {: turns run rc:n :}
    FD:PIPE-PAIR {: in-r:fd in-w:fd :}
@@ -1486,8 +1454,6 @@ variable OPEN-N
    r rc EXITED
    why 0= ;
 
-\ Holds the conversation of these turns, which shutdown and exit end: the
-\ server must exit 0 with the null result to shutdown its last frame.
 : HELD ( [ -- ] -- )
    [: FINISHED ;] 0 HELD-BY 0= if exit then
    s" 2" NULL-RESULT
@@ -1499,8 +1465,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 \ The test's own check of the text as the file at PATH, with the documents open
 \ that OPEN gives, whose packets and prose the server's check of them must
-\ publish and write, given what is left of the conversation's time. The words
-\ below read it.
+\ publish and write, given what is left of the conversation's time.
 : CHECKS-WITH ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
    0 PACKET-NEXT !
    DEADLINE @ PROCESS:LEFT-MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
@@ -1526,8 +1491,6 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 : CHECKS-BESIDE ( ptr u8 n ptr u8 n -- )  [: BESIDE ;] CHECKS-WITH ;
 
-\ The check's packet AT bytes into its output: the line from there, empty
-\ past the last.
 : PACKET-FROM$ ( n -- ptr u8 n )
    LSP-CHECK:VERIFY-OUT$ {: at:n a:ptr u:n :}
    at u min {: from:n :}
