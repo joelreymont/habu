@@ -736,8 +736,6 @@ RUN-IDLE
    again ;
 
 
-\ One read that never waits. A stream that ends or fails ends the socket: under
-\ the status it already closed with, or lost.
 : INPUT ( n -- ) {: idx:n :}
    idx LINK @ idx IN @ RX-CAP SPAN:TAKE SPAN:$ TCP4:TRANSFER-BYTES TCP4:TRY-READ
    MATCH TCP4:try-read-result
@@ -752,7 +750,6 @@ RUN-IDLE
    STOPPING @ 0 <> ;
 
 
-\ Whether START has activated the task and no STOP has ended since.
 : RUNNING? ( -- bool )
    RUN @
    MATCH run
@@ -767,7 +764,6 @@ RUN-IDLE
    phase PHASE-NONE <> phase PHASE-RESERVED <> and ;
 
 
-\ The mask the socket's poll wants: input always, room while bytes wait.
 : WANTED ( n -- n ) {: idx:n :}
    idx QUEUED 0 > if AIO:READABLE AIO:WRITABLE or exit then
    AIO:READABLE ;
@@ -828,8 +824,6 @@ ENUM course
    idx mask due ARM ;
 
 
-\ The socket after anything that may have changed it: one that gives up or
-\ is spent ends, and the rest poll for what they now want.
 : SYNC ( n -- ) {: idx:n :}
    begin
       idx LOCKED-COURSE
@@ -869,9 +863,8 @@ ENUM course
    idx SYNC ;
 
 
-\ The wake: the pipe is drained, the stop is noticed once, and every slot is
-\ looked at again. The wake stays armed until SERVE leaves, so an ACCEPT that
-\ ends while WS is stopping is still heard.
+\ The wake stays armed until SERVE leaves, so an ACCEPT that ends while WS
+\ is stopping is still heard.
 : WOKEN ( -- )
    WAKE-DRAIN
    STOP-FLAG? STOP-AT @ 0= and if mono-ns GOODBYE-MS NS-PER-MS * + STOP-AT ! then
@@ -891,10 +884,8 @@ ENUM course
    LOCK TASK:RELEASE ;
 
 
-\ Everything the task holds is given back however it ends - its body done, or
-\ killed past STOP-BOUND-MS: every connection closed and every socket
-\ retired. LEFT is set first, so an ACCEPT has either published its socket for
-\ this scan to close or finds LEFT and takes nothing. The stopper is told last.
+\ LEFT is set first, so an ACCEPT has either published its socket for this
+\ scan to close or finds LEFT and takes nothing.
 \ SERVE registers this before the task's first AIO submission registers AIO's
 \ own cleanup, which therefore runs first: it has given back every record the
 \ task submitted and emptied WAITERS, so no ticket is left to take out of it.
@@ -920,7 +911,6 @@ ENUM course
    again ;
 
 
-\ The task's throw reaches the operator as a handler's does.
 : REPORT-END ( n -- )
    {: code:n :}
    LOG:ERROR s" ws" LOG:LINE
@@ -931,7 +921,7 @@ ENUM course
 \ WS's task. A throw from its loop - a poll AIO refuses at its ceiling, a
 \ mapping the task cannot get - is reported and rethrown, so TASK:THROW@ keeps
 \ it and CLEANUP closes every socket: each handshake is then 503 until STOP
-\ and START. A halt passes the catch unreported (src/lib/task.f).
+\ and START. A halt passes the catch unreported.
 : SERVE ( -- )
    [: CLEANUP ;] TASK:SELF TASK:AT-EXIT
    [: SERVING ;] catch {: code:n :}
@@ -940,7 +930,6 @@ ENUM course
    code throw ;
 
 
-\ The value of a header the request carries exactly once.
 : SOLE ( HTTP:request ptr u8 n -- ptr u8 n bool ) {: asked:HTTP:request name nu:n :}
    asked name nu HTTP:HEADER-COUNT-OF 1 <> if name 0 false exit then
    asked name nu HTTP:HEADER-OF$ ;
@@ -975,7 +964,7 @@ ENUM course
 
 
 \ An HTTP/1.1 GET (section 4.2.1, item 1). Item 2, exactly one valid Host, the
-\ server checks before any handler runs (src/lib/net/http-request.f HOST-OK?).
+\ server checks before any handler runs.
 : GET-OK? ( HTTP:request -- bool )
    {: asked:HTTP:request :}
    asked HTTP:METHOD$ s" GET" STR= 0= if false exit then
@@ -996,7 +985,6 @@ ENUM course
    0 ;
 
 
-\ The refusal, answered through the response once the route handler returns.
 : REFUSE ( HTTP:response n -- accepted ) {: answer:HTTP:response status:n :}
    status 503 = if
       answer 503 s" websocket_unavailable" s" this server has no room for another WebSocket" HTTP:ERROR!
@@ -1016,8 +1004,7 @@ ENUM course
    s" 258EAFA5-E914-47DA-95CA-C5AB0DC85B11" ;
 
 
-\ The accept value (section 4.2.2), the base64 of the SHA-1 of the key as it
-\ was sent and the protocol's GUID, behind the queue.
+\ The accept value (section 4.2.2), behind the queue.
 : ACCEPT-VALUE ( n n -- ) {: idx:n w:n :}
    idx CTX-BUF SHA1:START
    idx CTX-BUF w KEY-AT @ w KEY-U @ SHA1:FEED
@@ -1036,8 +1023,6 @@ ENUM course
    idx S\" \r\n\r\n" QUEUE ;
 
 
-\ A free slot, now ACCEPT's, or -1 when there is none or WS is not running or
-\ is stopping.
 : RESERVE ( -- n )
    LOCK TASK:GET
    -1
@@ -1059,8 +1044,8 @@ ENUM course
    ;MATCH ;
 
 
-\ The slot's mappings and state, all but its input. A mapping that fails
-\ throws with the ones before it in the slot, for RETIRE to give back.
+\ A mapping that fails throws with the ones before it in the slot, for
+\ RETIRE to give back.
 : FILL ( n -- ) {: idx:n :}
    REGION-BYTES NEW-SPAN idx REGION !
    TX-CAP NEW-SPAN idx OUT !
@@ -1071,7 +1056,6 @@ ENUM course
    0 idx MSG-WIRE ! ;
 
 
-\ The slot's input, the bytes the peer sent behind its handshake first.
 : FILL-INPUT ( n ptr u8 n -- n ptr u8 n ) {: idx:n early eu:n :}
    RX-CAP eu max NEW-SPAN idx IN !
    early eu idx IN @ SPAN:COPY
@@ -1102,7 +1086,6 @@ ENUM course
    code false ;
 
 
-\ The slot filled and the 101 queued, the connection not taken yet.
 : PREPARE ( n n -- n n ) {: idx:n w:n :}
    idx FILL
    idx w SWITCHING
@@ -1155,7 +1138,6 @@ ENUM course
    WAKE-W @ close-rc drop ;
 
 
-\ How long STOP waits for the task to end its own body.
 : STOP-BOUND-MS ( -- n )
    GOODBYE-MS STOP-MARGIN-MS + ;
 
@@ -1228,8 +1210,6 @@ ENUM course
    [: SERVE ;] WS-TASK TASK:ACTIVATE ;
 
 
-\ START's part past its claim. The wake pipe is closed again when the task
-\ cannot be activated.
 : LAUNCH ( n -- n ) {: n:n :}
    AIO:RUNNING? 0= if E-AIO-STATE throw then
    n 1 < n SLOT-MASK > or if E-WS-LIMIT throw then
@@ -1263,10 +1243,10 @@ public
 \ task. A socket already closing gets no 1001: it stays closing, and its
 \ handler is told its peer's answer, or 1006 once it gives up. A task still in
 \ its body past STOP-BOUND-MS is killed. The kill lands at the task's next
-\ TASK:PAUSE, which AIO:AWAIT-ANY reaches only once nothing is ready
-\ (src/lib/task.f): a handler parked in a blocking call (TCP4:READ, a database
-\ call) runs to its end once the call returns, the task may go on serving until
-\ then, and STOP waits that long. Each socket left is then closed at once: its
+\ TASK:PAUSE, which AIO:AWAIT-ANY reaches only once nothing is ready: a
+\ handler parked in a blocking call (TCP4:READ, a database call) runs to its
+\ end once the call returns, the task may go on serving until then, and STOP
+\ waits that long. Each socket left is then closed at once: its
 \ peer may get no 1001 and its handler may not be told. A handshake inside
 \ ACCEPT is answered 503 and STOP waits for it, however long its worker takes
 \ to get there. Outside a run or while START still starts it, while another
