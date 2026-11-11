@@ -809,7 +809,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   included, so a `does>` before any `create` is refused the same way.
 - **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` or `( … )`
   comment inside the body is refused, rc 70 (`habu: bad enum declaration 'kind':
-  unexpected token in enum declaration at '('`); `tools/check.f` reports a `\`
+  unexpected token in enum declaration at '('`); `tools/check.f` reports either
   as `E-BAD-DECLARATION`. Put comments above the opener, including comments
   explaining the header or fields.
 - **A `FIELD` holds a value, not a body.** A payload is a type expression
