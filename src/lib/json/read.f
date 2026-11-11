@@ -5,14 +5,12 @@ require src/lib/error.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/string.f
-require src/lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/string-roles.f
 require src/lib/float.f
-require src/lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-OF
+require src/lib/adt/option.f
 require src/lib/byte-buffer.f
 
-\ JSON reader: -3900..-3999, minted here beside the package its last code
-\ (JSON:E-READ-SOURCE) belongs to (docs/forth-card.md § 6). The E-JSON-READ-* codes stay
-\ global names, as callers spell them.
+\ The E-JSON-READ-* codes stay global names, as callers spell them.
 -3900 constant E-JSON-READ-FIRST
 -3999 constant E-JSON-READ-LAST
 -3900 constant E-JSON-READ-MALFORMED   \ value expected but got a bare word / bad char / trailing comma
@@ -34,13 +32,11 @@ public
 
 DEFLINEAR JSON:reader
 
-\ The reader's whole state. src..fail are the cursor and decode registers;
 \ kinds is the container stack's first 64 levels, bit i set when level i is an
 \ object, so a document nested at most 64 deep parses with no allocation; more
 \ is the mapping holding the rest, more-cells cells of it, grown by doubling,
 \ and more-cells 0 means the record owns no mapping. No valid document is
-\ refused for its depth; a failed growth is MEM's E-MEM-MAP or E-MEM-SIZE,
-\ recorded as the reader's failure.
+\ refused for its depth; a failed growth is recorded as the reader's failure.
 STRUCTURE cursor OPAQUE DERIVE addr
    FIELD src ptr u8
    FIELD src-len n
@@ -128,7 +124,6 @@ public
 10 constant T-NULL
 11 constant T-END
 
-\ A token kind's name for a diagnostic.
 : KIND$ ( n -- ptr u8 n )
    case
       T-OBJ of s" an object" endof
@@ -211,8 +206,6 @@ LINEAR: ERASE-READER ( JSON:reader -- ptr n )
 : ADVANCE ( ptr cursor -- ) {: state:ptr :}
    state CURSOR-POS dup @ 1+ swap ! ;
 
-\ The mapping as the span it is: more-cells is the ownership token, nonzero
-\ exactly while the record owns a mapping of that many cells at more.
 : MORE-SPAN ( ptr cursor -- SPAN:span<u8> ) {: state:ptr :}
    state CURSOR-MORE @ state CURSOR-MORE-CELLS @ cells SPAN:MAKE ;
 
@@ -224,8 +217,7 @@ LINEAR: ERASE-READER ( JSON:reader -- ptr n )
    old MEM:FREE-SPAN ;
 
 \ Make stack word w (w >= 1 lives in cell w-1 of the mapping) exist. Levels
-\ are pushed one at a time, so one doubling always covers w. The old words are
-\ copied before the new mapping is installed, and the old one is released last.
+\ are pushed one at a time, so one doubling always covers w.
 : MORE-ENSURE ( ptr cursor n -- ) {: state:ptr w:n :}
    w state CURSOR-MORE-CELLS @ <= if exit then
    state CURSOR-MORE-CELLS @ {: have:n :}
@@ -237,8 +229,7 @@ LINEAR: ERASE-READER ( JSON:reader -- ptr n )
    want state CURSOR-MORE-CELLS !
    have 0<> if old MEM:FREE-SPAN then ;
 
-\ The cell holding container level's stack word. The level's word exists: it
-\ is below the depth, or PUSH ensured it.
+\ The level's word exists: it is below the depth, or PUSH ensured it.
 : KIND-WORD ( ptr cursor n -- ptr n ) {: state:ptr level:n :}
    level WORD-BITS / {: w:n :}
    w 0= if state CURSOR-KINDS exit then
@@ -262,7 +253,6 @@ public
    state source len INIT-STATE
    state >CELLS MINT-READER ;
 
-\ READ-CLOSE consumes the token and releases the record's mapping.
 : READ-CLOSE ( JSON:reader -- )
    ERASE-READER >CURSOR MORE-RELEASE ;
 
@@ -299,7 +289,6 @@ private
       state CURSOR-POS dup @ 1+ swap !
    repeat ;
 
-\ One bit per level: set for an object, clear for an array.
 : LEVEL-MASK ( n -- n )
    WORD-BITS mod 1 swap lshift ;
 
@@ -322,7 +311,6 @@ private
    state CURSOR-DEPTH @ 0= if ST-DONE else ST-SEP then
    state CURSOR-STATE ! ;
 
-\ The value of this hex digit byte; any other byte is a malformed escape.
 : HEX-DIGIT ( n -- n )
    dup STR-HEX-DIGIT? 0= if E-JSON-READ-ESCAPE throw then
    STR-HEX-DIGIT-VALUE ;
@@ -477,7 +465,6 @@ create UNESC-MAP
    EXP-UPPER = ;
 
 
-\ The position after the digit run at i.
 : DIGITS-END ( ptr u8 n n -- n )
    {: src:ptr len:n i:n :}
    i begin
@@ -531,9 +518,9 @@ create UNESC-MAP
       1+
    repeat drop true ;
 
-\ PUBLISH sets the token. A string, key, number or opened container becomes the
-\ token only once its whole advance has passed, so a failed advance leaves the
-\ previous token readable.
+\ A string, key, number or opened container becomes the token only once its
+\ whole advance has passed, so a failed advance leaves the previous token
+\ readable.
 : PUBLISH ( ptr cursor n n n -- ) {: state:ptr at:n len:n kind:n :}
    at state CURSOR-TOK-AT !
    len state CURSOR-TOK-LEN !
@@ -675,8 +662,7 @@ create UNESC-MAP
 \ Every advance comes through here. A failed STEP may leave the cursor past the
 \ text it rejected while STATE still describes the text before it, so the code
 \ is stored and every later advance throws it again: a reader never parses on
-\ from a failure as if the rejected text had been valid. The failure also
-\ releases the stack mapping, which REQUIRE-SOUND keeps anything from reading.
+\ from a failure as if the rejected text had been valid.
 \ Accessor refusals (READ-INT, READ-FLOAT, READ-STR, READ-STR-EQ?) and wrong-phase E-JSON-READ-STATE
 \ refusals leave the reader usable.
 : NEXT-INNER ( ptr cursor -- n ) {: state:ptr :}
@@ -1079,12 +1065,11 @@ private
 public
 
 \ Whether text, one JSON object, has two top-level keys that decode to the same
-\ bytes; nested objects' keys do not count. RFC 8259 §4: "When the names within
-\ an object are not unique, the behavior of software that receives such an
-\ object is unpredictable." READ-FIND-KEY takes the first copy where JSON.parse
-\ keeps the last, so a caller checks this before it trusts a member READ-FIND-KEY
-\ reads. A first value other than an object throws E-JSON-READ-STATE before the rest
-\ is read; other malformed text throws the reader's code.
+\ bytes; nested objects' keys do not count. READ-FIND-KEY takes the first copy
+\ where JSON.parse keeps the last, so a caller checks this before it trusts a
+\ member READ-FIND-KEY reads. A first value other than an object throws
+\ E-JSON-READ-STATE before the rest is read; other malformed text throws the
+\ reader's code.
 : READ-REPEATS? ( ptr u8 n -- bool )
    {: text:ptr u:n :}
    text u REQUIRE-SOURCE
