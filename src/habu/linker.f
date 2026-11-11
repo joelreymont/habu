@@ -930,6 +930,12 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    u 0 ?do a i + c@ 58 = if a i unloop exit then loop
    a u ;
 
+\ A name's bytes after its last ':', length 0 when it has none or ends in one.
+: TAIL-NAME ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   u 0 ?do a u + i - 1 - c@ 58 = if a u + i - i unloop exit then loop
+   a 0 ;
+
 \ The key of the package whose private wordlist holds the record, its top-level name's
 \ NAME-SUM; 0 for a record any file may name.
 : NAME-PKG ( n -- n )
@@ -940,14 +946,26 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    p XREF-REC XREF-PKG-PRIVATE wid <> if 0 exit then
    p XREF-REC XREF-NAME$ TOP-NAME NAME-SUM ;
 
+\ The record's name into NAMES with the value. A packaged type's entry is named
+\ `A:turn`, but `using A`, `package A` and `A:box<A:turn>` spell only `turn`:
+\ its tail is filed too.
+: REC-NAME+ ( n n -- )
+   {: idx:n v:n :}
+   idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   u 0= if exit then
+   idx NAME-PKG {: pkg:n :}
+   a u NAME-SUM v pkg NAME+
+   idx XREF-REC XREF-WORDLIST BOOT:TYPES-WL <> if exit then
+   a u TAIL-NAME {: t:ptr tu:n :}
+   tu 0<> if t tu NAME-SUM v pkg NAME+ then ;
+
 \ The records [INDEXED, end) of the row into NAMES, each as -1 when the row is negative, the
 \ build's body; -2 - row, its piece named whole, when it has no time (REC-TIME); else its index.
 : INDEX-RECS ( n n -- )
    {: end:n row:n :}
    end INDEXED @ ?do
-      i XREF-REC XREF-NAME$ {: a:ptr u:n :}
       row 0< if -1 else i REC-TIME 0= if -2 row - else i then then {: v:n :}
-      u 0<> if a u NAME-SUM v i NAME-PKG NAME+ then
+      i v REC-NAME+
    loop
    end INDEXED ! ;
 
@@ -2234,8 +2252,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    {: idx:n :}
    idx FILE-REC @ >= if exit then
    true CHANGED-EARLIER !
-   idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
-   u 0<> if  a u NAME-SUM  -2 BUILT-N -  idx NAME-PKG  NAME+  then
+   idx  -2 BUILT-N -  REC-NAME+
    idx BUILT-ROW PAIR+ ;
 
 

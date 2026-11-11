@@ -34,7 +34,9 @@ package FILE-OBJECTS-TEST
 23 constant ROOT-SET-LAST                \ root-set.f's last part's, after its request from the root its first part sets
 24 constant SPELLED-STRIDE               \ the spelled sequence's stride.f's
 25 constant SPELLED-EFFECT               \ and effect.f's
-26 constant TAILS                        \ TAIL$'s tails
+26 constant PACKAGED-BARE                \ the packaged sequence's bare.f's
+27 constant PACKAGED-BOXED               \ and boxed.f's
+28 constant TAILS                        \ TAIL$'s tails
 65 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -199,6 +201,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    i ROOT-SET-LAST = if s" /test/fixtures/file-objects/root-set.f+2.hfo" exit then
    i SPELLED-STRIDE = if s" /spelled/stride.f.hfo" exit then
    i SPELLED-EFFECT = if s" /spelled/effect.f.hfo" exit then
+   i PACKAGED-BARE = if s" /packaged/bare.f.hfo" exit then
+   i PACKAGED-BOXED = if s" /packaged/boxed.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -1073,6 +1077,53 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    s" the build compiles effect.f" SPELLED-EFFECT COMPILED
    s\" 32\n7\n11\n" s" the program prints a cold build's numbers" PRINTS-RUN ;
 
+\ The packaged sequence's t.f: package TURNS's record turn, with a third field
+\ when the flag is true, and box<a>.
+: WRITE-TURNS ( bool -- )
+   {: wide:bool :}
+   s\" package TURNS public\n" SRC+
+   s\" STRUCTURE turn DERIVE addr\n   FIELD x n\n   FIELD y n\n" SRC+
+   wide if s\"    FIELD z n\n" SRC+ then
+   s\" ;STRUCTURE\nSTRUCTURE box<a> DERIVE addr\n" SRC+
+   s\"    FIELD item a\n   FIELD rest n\n;STRUCTURE\n" SRC+
+   s" : MAKE-TURN ( -- turn ) 1 2 " SRC+  wide if s" 9 " SRC+ then
+   s\" TURNS-TURN:MAKE ;\n" SRC+
+   s" : MAKE-BOX ( -- box<turn> ) 1 2 " SRC+  wide if s" 9 " SRC+ then
+   s\" TURNS-TURN:MAKE 3 TURNS-BOX:MAKE ;\n;package\n" SRC+
+   s" t.f" NEST-WRITE ;
+
+\ bare.f spells turn bare under `using TURNS`, boxed.f only inside
+\ TURNS:box<TURNS:turn>: each a typed buffer's stride and an effect.
+: WRITE-PACKAGED ( -- )
+   L$ s" packaged" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
+   NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   false WRITE-TURNS
+   s\" using TURNS\n4 TYPED-BUFFER BT turn\n" SRC+
+   s\" : B-STEP ( -- n ) 1 BT NULL-PTR -  0 BT NULL-PTR -  - ;\n" SRC+
+   s\" : W ( turn -- n ) drop 7 ;\n;using\n" SRC+  s" bare.f" NEST-WRITE
+   s\" 4 TYPED-BUFFER UT TURNS:box<TURNS:turn>\n" SRC+
+   s\" : U-STEP ( -- n ) 1 UT NULL-PTR -  0 UT NULL-PTR -  - ;\n" SRC+
+   s\" : V ( TURNS:box<TURNS:turn> -- n ) drop 8 ;\n" SRC+
+   s" boxed.f" NEST-WRITE
+   s" t.f" REQUIRE+  s" bare.f" REQUIRE+  s" boxed.f" REQUIRE+
+   s" : MAIN ( -- ) B-STEP . U-STEP . 11 TURNS:MAKE-TURN W . . " SRC+
+   s\" 12 TURNS:MAKE-BOX V . . ;\n" SRC+
+   s" main.f" NEST-WRITE ;
+
+\ Guards a packaged type its user names by its tail: after turn gains a field,
+\ PK2 compiles bare.f and boxed.f, and its program prints a cold build's
+\ strides, W's 7, V's 8 and the numbers under them.
+: PACKAGED-CASE ( CMD:command -- CMD:command )
+   WRITE-PACKAGED
+   s" PK" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   PACKAGED-BARE KEEP  PACKAGED-BOXED KEEP
+   true WRITE-TURNS
+   s" PK2" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s" the build compiles bare.f" PACKAGED-BARE COMPILED
+   s" the build compiles boxed.f" PACKAGED-BOXED COMPILED
+   s\" 24\n32\n7\n11\n8\n12\n"
+   s" the program prints a cold build's numbers" PRINTS-RUN ;
+
 \ Guards a cross build, whose words have no emission (linker.f WORD-RECORD+): bare-main.f for Wasm in a
 \ fresh hb, since the process fixes the build's target. The module never runs.
 : CROSS-CASE ( CMD:command -- CMD:command )
@@ -1087,7 +1138,7 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE
-      NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE CROSS-CASE ;]
+      NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE CROSS-CASE ;]
    CMD:WITH-COMMAND ;
 
 
