@@ -9,10 +9,13 @@ package INT-CONVERT-TEST
 
 create DIAG 8192 allot
 
-\ Captures the refusal diagnostic of one evaluated definition; answers its
-\ throw code, 0 when the definition loaded.
+\ Captures the refusal diagnostic of one evaluated definition, in prose, which
+\ SAYS reads; answers its throw code, 0 when the definition loaded.
 : DEF-RC ( ptr u8 n -- n )
-   DIAG 8192 DIAG-BUFFER!  TEST-EVAL:RC ;
+   DIAG 8192 DIAG-BUFFER!
+   JSON-DIAGS @ {: was:n :}
+   false DIAG-JSON!  TEST-EVAL:RC
+   was JSON-DIAGS ! ;
 
 : SAYS ( ptr u8 n -- )
    DIAG-BUFFER$ 2swap CONTAINS? TTRUE  DIAG-BUFFER-OFF ;

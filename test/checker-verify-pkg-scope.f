@@ -41,11 +41,14 @@ public
    u SRC-U !
    CHECKER-SCOPE-START-NEUTRAL [: ACT ;] catch CHECKER-SCOPE-DONE ;
 
-\ Diagnostics are collected, not printed, so the rejecting case reports its own
-\ text instead of leaving a rejection on the gate's stderr.
+\ Diagnostics are collected in prose, not printed, so the rejecting case reports
+\ its own text instead of leaving a rejection on the gate's stderr.
 : REPLAY-QUIET ( ptr u8 n -- n ) {: a:ptr u:n :}
    DIAG-BUF $1000 DIAG-BUFFER!
+   JSON-DIAGS @ {: was:n :}
+   false DIAG-JSON!
    a u REPLAY {: rc:n :}
+   was JSON-DIAGS !
    DIAG-BUFFER$ nip DIAG-U !
    DIAG-BUFFER-OFF
    rc ;

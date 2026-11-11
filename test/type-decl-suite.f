@@ -55,6 +55,9 @@ variable EVD    variable PFD
 \ silence expected declaration diagnostics (asserted explicitly further down).
 create TDIAG-BUF 8192 allot
 TDIAG-BUF 8192 DIAG-BUFFER!
+\ The probes read prose, and a run under `tools/check.f --json-errors` starts in
+\ JSON; each JSON probe sets prose back, and the format found returns before T-REPORT.
+variable TD-JSON-WAS   JSON-DIAGS @ TD-JSON-WAS !   false DIAG-JSON!
 
 \ NEWTYPE: registers a TK-CELL family in the global scope, usable in sigs.
 NEWTYPE tdfoo<a,b>
@@ -1741,6 +1744,8 @@ s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 \ These load only when their facts text reads back: rows past RBUF-CAP values.
 : TFR-W65 ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) ;
 : TFR-Q300 ( [ n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- ] -- ) drop ;
+
+TD-JSON-WAS @ JSON-DIAGS !
 
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 T-REPORT

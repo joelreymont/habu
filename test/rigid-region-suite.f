@@ -116,6 +116,9 @@ T-RESET
 \ Non-quiet candidate check that captures the rendered diagnostic into a buffer
 \ (kept off stderr) so a reject's NAMED reason can be asserted.
 create RR-DIAG 16384 allot
+\ The cases read prose, and a run under `tools/check.f --json-errors` starts in
+\ JSON.
+variable RR-JSON-WAS   JSON-DIAGS @ RR-JSON-WAS !   false DIAG-JSON!
 : RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 DIAG-BUFFER! CHECK-CANDIDATE! ;
 : RR-DIAG? ( ptr u8 n -- bool ) DIAG-BUFFER$ 2swap CONTAINS? ;
 
@@ -323,7 +326,7 @@ s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QFRESHOUT ( -- [ -- matrix<space-global,fresh-region-b,f32,f32> ] ) [: RR-OWN ;]"  RR-CHECK -1 T=
 
 T-REPORT
-\ Diagnostics leave RR-DIAG, so a file loaded after this one in the same process
-\ reports as usual.
-DIAG-BUFFER-OFF
+\ Diagnostics leave RR-DIAG in the format found, so a file loaded after this one
+\ in the same process reports as usual.
+DIAG-BUFFER-OFF  RR-JSON-WAS @ JSON-DIAGS !
 ;package

@@ -168,6 +168,10 @@ TYPED-VARIABLE SRC-U len
 create PKT-BUF 8192 allot
 : PACKET-OPEN ( -- )   PKT-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON! ;
 
+\ REFUSES reads prose from a fork that inherits the format, and a run under
+\ `tools/check.f --json-errors` starts in JSON; a packet sets prose back.
+variable JSON-WAS   JSON-DIAGS @ JSON-WAS !   false DIAG-JSON!
+
 
 \ The packet the text in SRC-BUF writes, checked in this process with JSON
 \ diagnostics captured; it stays in PKT-BUF until the next capture.
@@ -409,6 +413,7 @@ public
    S\" \"token\":\"SN-NO-SUCH-WORD\"" VERDICT-REFUSED PACKET-HAS ;
 
 : REPORT ( -- )
+   JSON-WAS @ JSON-DIAGS !
    T-REPORT
    s" signature-nesting: ok" type cr ;
 ;package
