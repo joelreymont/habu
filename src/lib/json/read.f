@@ -8,6 +8,7 @@ require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/float.f
 require src/lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-OF
+require src/lib/byte-buffer.f
 
 \ JSON reader: -3900..-3999, minted here beside the package its last code
 \ (JSON:E-READ-SOURCE) belongs to (docs/forth-card.md § 6). The E-JSON-READ-* codes stay
@@ -861,6 +862,18 @@ public
 : READ-STR ( JSON:reader ptr u8 n -- JSON:reader n )
    {: dst:ptr cap:n :}
    READER>STATE dst cap STR-INNER ;
+
+\ Appends the current string or key, decoded, to a byte buffer, whose earlier
+\ bytes stay. Another token is E-JSON-READ-STATE and a disposed buffer
+\ E-BUF-STATE, each before the buffer changes.
+: READ-STR-APPEND ( JSON:reader ptr a -- JSON:reader ) {: buf:ptr :}
+   READER>STATE {: state:ptr :}
+   state CURSOR-KIND @ dup T-STR = swap T-KEY = or 0= if E-JSON-READ-STATE throw then
+   buf BUF:LEN@ BUF:BLEN>N {: at:n :}
+   state CURSOR-TOK-LEN @ {: raw:n :}
+   raw 0= if exit then
+   state  buf raw BUF:N>BLEN BUF:GROW SPAN:$  STR-INNER {: u:n :}
+   at u + BUF:N>BLEN buf BUF:LEN! ;
 
 private
 
