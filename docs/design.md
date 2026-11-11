@@ -16,6 +16,9 @@ rule is named where the reason depends on it.
   into `hb`, so running one rebuilds no image.
 - Every module has a real package; public effects keep meaningful types, not
   `n` for everything.
+- A container states the type it holds and the language supplies that type's
+  width: a program never writes a width or a byte count for a typed element,
+  since a type's width can change. Make typed containers only.
 - A library takes its limits from the protocol it speaks, not from a preset.
 - Use an unchecked or foreign boundary only after checking that the language
   cannot express the operation normally, and keep it explicit, small and tested.

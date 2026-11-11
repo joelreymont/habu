@@ -336,6 +336,9 @@ forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
 Every form loaded and its accessor effect certified.
 
+Storage for typed elements states the type (`n TYPED-BUFFER TB t`), never a
+width, cell count or byte count worked out by hand: a type's width can change.
+
 | form | for | accessor |
 |---|---|---|
 | `variable V` | a raw scalar, role or atom cell | `V @` / `V !` |
