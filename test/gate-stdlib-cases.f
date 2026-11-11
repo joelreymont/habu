@@ -659,6 +659,7 @@ SUITE date-helpers
 
 SUITE memory
    src/lib/memory-test.f
+   src/lib/arena-test.f
 ;SUITE
 
 SUITE tail-pure-fixtures
