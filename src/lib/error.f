@@ -113,6 +113,7 @@ require src/lib/prelude.f
 -3201 constant E-MEM-MAP
 -3202 constant E-MEM-TOTALITY
 -3203 constant E-MEM-UNMAP
+-3204 constant E-ALLOC-STATE           \ an allocator filled twice
 
 \ Vectors: -3300..-3399
 -3300 constant E-VEC-FIRST

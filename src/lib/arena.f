@@ -3,11 +3,12 @@
 \ header sits at the start of its first chunk; each later chunk is the larger
 \ of a request with its chunk header and twice the chunk before it. No lock:
 \ one task uses an arena at a time. A handle used after RELEASE is undefined,
-\ as a HEAP record's is.
+\ as a HEAP record's is. An arena provides an allocator whose free does nothing.
 \ STORAGE CLASS. CALLER-OWNED: the caller releases each arena NEW makes.
 
 require src/lib/memory.f
 require src/lib/span.f
+require src/lib/allocator.f
 
 package ARENA
 private
@@ -33,6 +34,7 @@ STRUCTURE arena OPAQUE DERIVE addr
    FIELD kids ptr arena
    FIELD older ptr arena
    FIELD newer ptr arena
+   FIELD allocator ALLOC:allocator
 ;STRUCTURE
 
 private
@@ -164,6 +166,12 @@ CAST: >ACTION ( ptr u8 -- ptr action )
 
 : WITH-BODY ( R ptr arena [ R ptr arena -- S ] -- S ) execute ;
 
+
+\ The arena's allocator: its state is the arena's own first-chunk bytes.
+: SELF-ALLOC ( ptr u8 n -- ptr u8 ) swap >ARENA swap EXTENT BUMP ;
+\ An arena frees its bytes together, at RESET or RELEASE.
+: SELF-FREE ( ptr u8 ptr u8 -- ) drop drop ;
+
 public
 
 : NEW ( -- ptr arena )
@@ -171,6 +179,7 @@ public
    self >ARENA {: a:ptr :}
    self a ARENA-SELF !
    ARENA-BYTES a ARENA-TOP !
+   self [: SELF-ALLOC ;] [: SELF-FREE ;] a ARENA-ALLOCATOR ALLOC:INIT
    a ;
 
 
@@ -183,6 +192,9 @@ public
    older NULL-PTR <> if a older ARENA-NEWER ! then
    a parent ARENA-KIDS !
    a ;
+
+
+: ALLOCATOR ( ptr arena -- ptr ALLOC:allocator ) ARENA-ALLOCATOR ;
 
 
 \ Answers `len` as asked; the bytes are rounded up to a cell.

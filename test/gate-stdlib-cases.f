@@ -1260,6 +1260,10 @@ SUITE arena
    test/arena.f
 ;SUITE
 
+SUITE allocator
+   src/lib/allocator-test.f
+;SUITE
+
 SUITE heap
    test/heap.f
 ;SUITE
