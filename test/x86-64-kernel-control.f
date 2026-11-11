@@ -134,7 +134,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    ROUTINE  cb PUSH-INSIDE-EXTENT,  s" run-in-stack" ROW,  ;ROUTINE ;
 
 : CLOSED-OF ( label -- label ) {: cb:label :}
-   ROUTINE  cb PUSH-XT,  s" source-unit-run" ROW,  ;ROUTINE ;
+   ROUTINE  cb PUSH-XT,  s" source-file-run" ROW,  ;ROUTINE ;
 
 : EVAL-CLEAN ( n -- label ) {: off:n :}
    ROUTINE
@@ -166,7 +166,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    ROUTINE  99 PUSH,  X64KERNEL:FLOORREC-LBL JMP,  ;ROUTINE ;
 
 \ Set the cursor to the physical top and write its final slot before return.
-\ The enclosing source-unit-run must detect this without attempting a push.
+\ The enclosing source-file-run must detect this without attempting a push.
 : FILLS-EXTENT ( -- label )
    ROUTINE
    RCX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM

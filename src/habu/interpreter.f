@@ -1,9 +1,9 @@
 \ interpreter.f - the interpreter written in Habu: numbers, the dictionary
 \ search and the token readers, the package keywords, the definition heads and
-\ body capture, then the loop, INTERPRETER:INTERPRET, which reads a buffer token
-\ by token. INTERPRETER:EVAL-FRAMED runs the loop under the engine's evaluate
-\ frame, and INTERPRETER:INSTALL-EVALUATE stores it in the engine's evaluate
-\ cells (src/habu/layout.f PROVIDED-XT).
+\ body capture, then the loop, which reads a buffer token by token.
+\ INTERPRETER:EVAL-FRAMED and EVAL-FRAMED-RANGE run the loop under the engine's
+\ evaluate frame, and INTERPRETER:INSTALL-EVALUATE stores them in the engine's
+\ evaluate cells (src/habu/layout.f PROVIDED-XT).
 
 require src/lib/prelude.f
 require src/core/bytes.f
@@ -247,28 +247,8 @@ public
 
 ;package
 
-\ INTERPRETER:INTERPRET reads a buffer token by token with the
-\ words below, as the engine's interpret loop does (habu2.f EM-COMMENT's LMAIN,
-\ EM-INTERPRET-WORDS) for comments, the literal keywords (`s"`, `c"`, `."`,
-\ their escaped forms, `char` and `'`), numbers and dictionary words, and with
-\ the package keywords below (`package`, `public`, `private`,
-\ `;package`, `using`, `;using` and `export`), and with the definition heads
-\ below (`:`, `kernel:` and `trusted:`) and the body one opens,
-\ with the immediates the body runs, its `does>` and the `;` that ends it, and
-\ for `create`, `variable`, `cast:` and `immediate`. The engine's other
-\ keywords (`constant`, `defer` and `linear:`) are not read yet: a body
-\ captures them as it captures any token, and elsewhere they are not
-\ dictionary words, so they refuse as undefined.
-\
-\ The input is the engine's own. The cursor, its end and the buffer start sit
-\ in INP-CELL, INE-CELL and SRCLOC:INB-CELL, and the token in TKA-CELL and
-\ TKL-CELL, so a parsing word a token runs reads this buffer, a nested load
-\ nests, and a refusal names the token the engine would.
-\
-\ The data stack and the return stack are the program's while a word runs:
-\ the source observer compares the return-stack depth with the floor it
-\ recorded at evaluate entry (SX-RFLOOR), so the loop keeps its own state in
-\ locals and cells, never on the return stack.
+\ The loop (EVAL-FRAMED-RANGE) reads the engine's input cells, so a parsing word reads its buffer;
+\ it keeps its state off the return stack, whose depth the source observer compares with SX-RFLOOR.
 
 package INTERPRETER
 
@@ -513,10 +493,8 @@ variable VALUE
    v VALUE !
    num ;
 
-\ The record of the word the step looked up. INTERPRET puts back
-\ what it held when the buffer began, so no record outlives the buffer that
-\ looked it up: a stripped image would hold it as an undeclared dictionary
-\ pointer.
+\ The record of the word the step looked up; EVAL-FRAMED-RANGE restores it as the buffer ends, since
+\ a stripped image would hold a record that outlived its buffer as an undeclared dictionary pointer.
 TYPED-VARIABLE REC ptr n
 
 \ A sealed source may name a record it defined after the seal or a callable
@@ -617,10 +595,8 @@ public
 5 constant OBSERVE-WORD          \ the before callback's op for a word about to run; the linker's RESUME passes it too
 private
 
-\ The frame of the loop now reading tokens, as EVAL-TOP-CELL holds it, 0 for
-\ the frameless INTERPRET-OPEN. The engine tests SX-EVAL = EVAL-TOP-CELL; a
-\ frameless loop nested in an action leaves EVAL-TOP-CELL the owner's, so
-\ this loop compares its own frame.
+\ The frame of the innermost loop written in Habu, as EVAL-TOP-CELL holds it, 0
+\ outside one; a native evaluate inside it moves only EVAL-TOP-CELL (OBSERVE-ADOPT).
 variable LOOP-EVAL
 
 \ The frame's callback cells hold raw execution tokens.
@@ -1303,11 +1279,8 @@ private
    then
    row XREF-PKG-PUBLIC ;
 
-\ The using depth the buffer the Habu loop reads may close down to, as the
-\ engine's evaluate frame keeps it (layout.f EVAL-FRAME:USE-FLOOR): INTERPRET starts
-\ it at the depth the buffer enters at, and a buffer below it, because a
-\ `;package` closed a package opened before the buffer, lowers it to meet the
-\ first using it opens there.
+\ The using depth the buffer may close down to (layout.f EVAL-FRAME:USE-FLOOR): its entry depth,
+\ lowered to the first using it opens after a `;package` closes a package opened before it.
 variable USE-FLOOR
 
 \ The wid joins the used publics at the current depth; the checkers record the
@@ -2095,15 +2068,8 @@ private
    DEF-CALL? if false exit then
    DEF-DOES true ;
 
-\ The engine's twins: habu2.f C-DEF-SOURCE-CLOSE and C-DEF-SOURCE-END.
-\ A definition closes in the buffer that opened it. ENTRY-PEND is the record
-\ pending as the buffer INTERPRETER:INTERPRET reads began (habu1.f
-\ EMIT-EVAL-BODY, layout.f EVAL-FRAME:PEND); a pending record other than it is
-\ the buffer's own. A throw out of the buffer, these refusals included, puts the
-\ entry record back in PEND-CELL (INTERPRETER:INTERPRET): the buffer's own
-\ definition is abandoned, so no later `;` publishes it, and an outer one stays
-\ pending, as habu2.f EM-EVAL-THROW-RECOVER leaves them. Unlike the engine's,
-\ this loop puts no CP, NDICT or DP back.
+\ The record pending as EVAL-FRAMED-RANGE's buffer began (layout.f EVAL-FRAME:PEND): another pending
+\ record is the buffer's own, and a throw out of the buffer puts this one back in PEND-CELL.
 variable ENTRY-PEND
 
 \ A `;` that would close the record pending as the buffer began, one an outer
@@ -2693,19 +2659,6 @@ private
    RUN-TOKENS
    DEF-SOURCE-END UNIT-END ;
 
-\ Run the buffer under catch, refusing at its end a definition it opened, and
-\ give its code. A throw also puts back the d used publics below depth d, the
-\ includer's: a buffer that closes the includer's package and opens a using
-\ writes into one of them (habu1.f B-EVAL keeps the engine's in its frame).
-\ Each call keeps one slot.
-: RUN-CAUGHT ( n -- n )
-   {: d:n :}
-   d 0= if [: RUN ;] catch exit then
-   d 1- cells USE-WIDS-OFF + CELL@ {: wid:n :}
-   d 1- RECURSE {: code:n :}
-   code 0<> if wid d 1- cells USE-WIDS-OFF + CELL! then
-   code ;
-
 : CLEAR-BODY-TAKE ( -- )
    NATIVE-BODY:BODY-CAPABILITY dup NULL-PTR = if drop exit then
    {: record:ptr :}
@@ -3007,76 +2960,5 @@ public
 : INSTALL-EVALUATE ( -- )
    ['] EVAL-FRAMED data-base PROVIDED-XT:EVALUATE-CELL + xt!
    ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt! ;
-
-private
-
-
-\ Interpret the buffer as the engine's evaluate does, and put the input cells,
-\ the looked-up record (REC) and the using depth back after, whether
-\ the buffer ends or a token throws: usings are file-local (habu1.f B-EVAL), and
-\ a buffer a word evaluates leaves the record of the step that ran the word. A
-\ throw also puts back the package scope the buffer entered with, its using
-\ floor included (habu2.f LEVALREC), so a package a throwing file opened is
-\ closed and one it closed is open again, and the used publics RUN-CAUGHT kept.
-\ A definition the buffer left open is refused at its end, while the input
-\ cells still name the buffer; a throw gives up a definition the buffer opened:
-\ the record pending as it began is pending again (ENTRY-PEND).
-: INTERPRET-OPEN ( ptr u8 n n n -- )
-   {: a:ptr u:n first:n end:n :}
-   INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@ USE-DEPTH-CELL CELL@
-   ENTRY-PEND @
-   {: p:n e:n b:n d:n o:n :}
-   PKG-STATE {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
-   USE-FLOOR @ {: outer:n :}
-   PKG-OUTSIDE-CELL CELL@ {: outside:n :}
-   REC @ {: found:ptr :}
-   LOOP-EVAL @ {: reading:n :}
-   d USE-FLOOR !
-   1 PKG-OUTSIDE-CELL CELL!
-   PEND-CELL CELL@ {: entry:n :}
-   entry ENTRY-PEND !
-   a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
-   0 LOOP-EVAL !
-   d RUN-CAUGHT {: code:n :}
-   reading LOOP-EVAL !
-   code 0= if outside CLEAN-END then
-   outer USE-FLOOR !
-   p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!  found REC !
-   o ENTRY-PEND !
-   code 0<> if
-      entry 0= if 0 PEND-OPAQUE-CELL CELL! then
-      entry PEND-CELL CELL@ <> if CLEAR-BODY-TAKE then
-      entry 0= if BODY-LEX-RESET else
-         TOK-BODY-DEPTH @ BODY-DEPTH !
-         TOK-BODY-RAW @ BODY-RAW-NEXT !
-      then
-      entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!  outside PKG-OUTSIDE-CELL CELL!
-      outer-rec outer-parent rec parent cur floor PKG-RECOVER  code throw
-   then ;
-
-PTR-VARIABLE RANGE-A
-variable RANGE-U
-variable RANGE-FIRST
-variable RANGE-END
-
-: INTERPRET-STAGED ( -- )
-   RANGE-A @ RANGE-U @ RANGE-FIRST @ RANGE-END @ INTERPRET-OPEN ;
-: INTERPRET-CLOSED ( -- ) [: INTERPRET-STAGED ;] SOURCE-ROOT:RUN-CLOSED ;
-
-public
-
-: INTERPRET-RANGE ( ptr u8 n n n -- )
-   {: a:ptr u:n first:n end:n :}
-   first 0 < first end > or end u > or if INCLUDE-RANGE-RC throw then
-   RANGE-A @ RANGE-U @ RANGE-FIRST @ RANGE-END @
-      {: old:ptr oldu:n oldfirst:n oldend:n :}
-   a RANGE-A ! u RANGE-U ! first RANGE-FIRST ! end RANGE-END !
-   REQUIRE-REG:MARK {: mark:n epoch:n :}
-   [: INTERPRET-CLOSED ;] catch {: rc:n :}
-   old RANGE-A ! oldu RANGE-U ! oldfirst RANGE-FIRST ! oldend RANGE-END !
-   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
-
-: INTERPRET ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u 0 u INTERPRET-RANGE ;
 
 ;package

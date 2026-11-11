@@ -12719,8 +12719,7 @@ PTABLE-START
    s" included" PE-SYM-OF drop
    s" required" PE-SYM-OF drop
    s" script-required" PE-SYM-OF drop
-   s" INCLUDE-EVALUATE" PE-SYM-OF drop
-   s" INCLUDE-EVALUATE-RANGE" PE-SYM-OF drop ;
+   s" INCLUDE-EVALUATE" PE-SYM-OF drop ;
 
 KEYWORD-ROWS
 
@@ -13200,12 +13199,8 @@ USE-SLOT-BOOT
 \ src/habu/xref.f retires the name.
 package CHECKER-RESYNC
 
-\ The engine's wids are the slots' authority. A throw's recovery restores the
-\ includer's wids (habu2.f LEVALREC and EM-REPL-RECOVER, interpreter.f
-\ RUN-CAUGHT) while the name an overwritten `using` recorded stays here, so each
-\ live slot's name is read back from its wid. A wid no live row publishes, or a
-\ name the slot cannot hold, names nothing: a bare tail through that slot is
-\ refused.
+\ A throw's recovery (habu2.f LEVALREC, EM-REPL-RECOVER; interpreter.f FRAME-RESTORE-SCOPE) restores the engine's wids, not
+\ the names here, so each slot's name is read back from its wid; a wid no live row publishes names nothing.
 : SLOT ( n -- ) {: d:n :}
    d USE-SLOT-XT {: a:ptr u:n ok:bool :}
    ok u CHECKER-PACKAGE-CAP < and IF a u d CHECKER-USE:NAME! EXIT THEN
@@ -13214,14 +13209,8 @@ package CHECKER-RESYNC
 : SLOTS ( -- )
    CK-USE-SCAN-N 0 ?DO i SLOT LOOP ;
 
-\ A throw's recovery restores the engine's package scope (habu2.f LEVALREC and
-\ EM-REPL-RECOVER, interpreter.f INTERPRET), but the mirror holds what the
-\ failed input did; left alone, every inherited replay after it refused
-\ E-PKG-CONTEXT. The mirror is set from the restored scope the live provider
-\ names; a scope it cannot authenticate names nothing to copy. With a package
-\ open but current elsewhere the mirror keeps what the notifications set; with
-\ none open it is top level. Inside a replay CHECKER-OVERLAY sets the mirror
-\ each time it moves the engine's scope.
+\ After that recovery the mirror is set from the restored scope, else every later replay refuses E-PKG-CONTEXT. A scope
+\ AUTHORITY cannot authenticate keeps the notifications' mirror while a package is open, else sets top level.
 public
 : MIRROR ( -- )
    SLOTS
@@ -17593,24 +17582,6 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    THEN
    sym flag 0 0 NORET-ADD-SYM ;
 
-\ The two path-ending words the engine owns: `throw` leaves through the catch
-\ edge and carries both flags; `die` ends the process and is dead only. They are
-\ recorded in the control-flag store, not recognised by spelling: a package that
-\ defines its own `throw` binds that word for every bare mention inside it, and
-\ a spelling test would treat its caller's path as dead.
-\ The loader's evaluate boundary and its file-loading words are recorded the
-\ same way: src/core/include.f INCLUDE-EVALUATE and INCLUDE-EVALUATE-RANGE, and
-\ included, required and script-required when they read a file; `evaluate`,
-\ `evaluate-closed` and `evaluate-range` for a top-level statement. So are the
-\ words that read the source after a call: parse-name, and `create`, which also
-\ defines the name it reads (CTL-CREATES). A body takes `create` by its identity
-\ (DEFINER-TOK) and inherits its facts (DO-TOK-BODY); the word `create` makes
-\ takes none (TRUST-RAW). No other word a body takes by identity reads the
-\ source or defines a word: `variable` and `constant` are refused there, and
-\ the word `execute`, `catch` or `finally` runs is an execution token no walk
-\ binds. The later rows name by identity the primitives the walk types by what
-\ they do (CTL-CORE-OP, CTL-INTRINSIC); `create`'s one row carries its identity
-\ and its facts, since a symbol's newest row wins.
 \ The axioms of the grammar KEYWORD-ROWS interns, a product's whole prefix.
 : KEYWORD-AXIOMS ( -- )
    s" >r" CTL-CORE-OP NORET-AXIOM
@@ -17619,11 +17590,11 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    s" variable" INTRINSIC-VARIABLE INTRINSIC>CTL NORET-AXIOM
    s" constant" INTRINSIC-CONSTANT INTRINSIC>CTL NORET-AXIOM
    s" INCLUDE-EVALUATE" CTL-RENDERS NORET-AXIOM
-   s" INCLUDE-EVALUATE-RANGE" CTL-RENDERS NORET-AXIOM
    s" included" CTL-RENDERS NORET-AXIOM
    s" required" CTL-RENDERS NORET-AXIOM
    s" script-required" CTL-RENDERS NORET-AXIOM ;
 
+\ The primitives' axioms (PRIMS-END), by identity (CTL-CORE-OP); a symbol's newest row wins, so create's one row carries all its facts.
 : NORET-AXIOMS ( -- )
    s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
    s" die" CTL-DEAD NORET-AXIOM

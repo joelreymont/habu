@@ -210,16 +210,9 @@ private
 \
 \ A case is skipped rather than trusted when its descriptor is not a plausible
 \ one -- a zero base, a base off a cell boundary, or a top (base + capacity) off
-\ a PAGE-BYTES boundary. Every extent the engine installs ends where its high
-\ guard page begins, and starts on a page boundary except under
-\ source-unit-run, which raises the data base to the caller's cursor and keeps
-\ the top (src/habu/habu1.f B-SOURCE-UNIT-RUN). Under that floor the page at
-\ the top is still the high guard, and the low window is the page under the
-\ page-rounded floor: the mapping's low guard while the caller holds less than
-\ a page of cells. Between the mapping's base and the floor lie caller cells,
-\ mapped read/write, where only an instruction fetch faults, and that is no
-\ bounds fault; while the caller holds a page or more of cells, such a fetch
-\ in the page under the rounded floor is still named (data). The DATA base
+\ a PAGE-BYTES boundary. Every extent the engine installs starts on a page
+\ boundary and ends where its high guard page begins (rt.f
+\ STACK-GUARD:EMIT-MAP, habu1.f GUARDED-EXTENT?). The DATA base
 \ comes out of the signal mcontext, so a fault in foreign code that had already
 \ overwritten x20 reads cells that are not descriptors at all; an implausible
 \ one falls through to the ordinary register dump instead of naming a stack

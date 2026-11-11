@@ -430,10 +430,6 @@ EPRIM: source-exec-handler PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: SOURCE-EXEC source-exec-handler PE-N PE-OUT ECLOSE-PRIVATE
 
-EPRIM: source-unit-run PE-Q ;PE-Q PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ closes one whole source unit without an evaluator frame
-\ Checked caller: src/core/include.f RUN-CLOSED.
-EPPRIM: SOURCE-ROOT source-unit-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
 EPRIM: source-file-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ runs a file the loader opened as its own source unit
 \ Checked caller: src/core/include.f SOURCE-ROOT LOAD-UNIT.

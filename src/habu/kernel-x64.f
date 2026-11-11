@@ -2061,12 +2061,9 @@ private
    EXIT-BOUNDS
    done X64CODE:LBL, ;
 
-\ source-unit-run ( xt -- ): the callback's whole execution uses the caller's
-\ cursor as its floor. No evaluator frame or SOURCE state changes. The saved
-\ cursor is compared before any data-stack push, including when the callback
-\ returns with the guarded extent exactly full. It also runs source-file-run:
-\ this kernel refuses source-exec-run, so it has no observer to suspend.
-: SOURCE-UNIT-RUN, ( -- )
+\ source-file-run ( xt -- ): the unit runs on the caller's extent with the cursor as its floor, compared before any push so
+\ a full extent reports residue. This kernel refuses source-exec-run, so it suspends no observer.
+: SOURCE-FILE-RUN, ( -- )
    X64CODE:LBL X64CODE:LBL {: restore:label done:label :}
    TASK-LIVE-GUARD,
    RAX POP,  CALLABLE,
@@ -2718,8 +2715,7 @@ public
    s" run-in-stack" [: RUN-IN-STACK, ;] PRIM
    s" die" [: DIE, ;] PRIM
    s" unit-compile-run" [: UNIT-COMPILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" source-unit-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" source-file-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" source-file-run" [: SOURCE-FILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" source-exec-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" source-exec-live?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" source-exec-boundary?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID

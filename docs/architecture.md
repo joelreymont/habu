@@ -104,14 +104,14 @@ at all.
 **One interpreter.** The interpret loop, definers, packages and source loading
 are written once in typed Habu.
 
-**The loop is Forth's.** `INTERPRET` reads a token and looks it up. Outside a
+**The loop is Forth's.** The loop reads a token and looks it up. Outside a
 definition the word runs; inside one, an immediate word runs and any other word
 goes to the checker as a call. A token that names no word is a number, which
 is pushed or goes to the checker as a literal, or else an error. The state is
 the pending definition, none while interpreting. Every construct (`if`, `{:`,
 `s"`, `;` and the rest) is an immediate word that calls the checker's step for
 it ([one reader](compilation.md#defining-a-word)). `evaluate`,
-`evaluate-closed`, `include` and `require` are `INTERPRET` over another source.
+`evaluate-closed`, `include` and `require` run the loop over another source.
 
 **The kernel holds what the typed interpreter needs to load.** That is:
 - lookup over the hashed chains;
@@ -129,7 +129,7 @@ one cell wide, and the definer writes a null type.
 **A failed definition leaves the dictionary as it was.** A throw before `;` or
 a refusal at `;` rewinds `HERE` to the pending definition's type, drops its
 events and clears the pending state. Its emission was never placed, so code
-space is untouched. `INTERPRET` restores the source, package scope and used
+space is untouched. The loop restores the source, package scope and used
 packages it saved on entry, then rethrows.
 
 **At top level, a word's type guards the stack.** The interpreter supplies the
@@ -138,7 +138,7 @@ input and output effects and refuses a mismatch before the call, including a
 pointer or execution token stored in a numeric cell. See
 [design.md](design.md#typed-top-level).
 
-**The REPL is `INTERPRET` per line.** When standard input is a terminal, it
+**The REPL runs the loop per line.** When standard input is a terminal, it
 reads a line, interprets it under `catch` and answers `ok` or the error. A
 definition still open at the end of a line continues on the next.
 

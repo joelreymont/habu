@@ -1858,11 +1858,8 @@ public
    $5c a c!
    $20 a 1 + c! ;
 
-\ The loop a loaded file's bytes go through, inside LOAD-UNIT's source-unit-run:
-\ the owner binds its native evaluator, and test/interpreter-loop-on.f binds the
-\ loop written in Habu through its framed entry, src/habu/interpreter.f
-\ INTERPRETER:EVAL-FRAMED-RANGE, for the files loaded after it. A file loaded
-\ under the design seal does not go through it (INTERPRET-SAVED-RANGE).
+\ The loop a loaded file's bytes go through inside LOAD-UNIT's source-file-run: evaluate-range, or the loop
+\ test/interpreter-loop-on.f binds (USE-INTERPRETER); a file under the design seal skips it (INTERPRET-SAVED-RANGE).
 private
 
 defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
@@ -1911,41 +1908,12 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 : CHECK-RANGE ( n n n -- ) {: size:n first:n end:n :}
    first 0 < first end > or end size > or if INCLUDE-RANGE-RC throw then ;
 
-PTR-VARIABLE EVAL-A
-variable EVAL-U
-variable EVAL-FIRST
-variable EVAL-END
-
-: EVAL-STAGED ( -- )
-   EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @ evaluate-range ;
 : INTERPRET-INSTALL ( -- ) [: evaluate-range ;] is INCLUDE-INTERPRET ;
 INTERPRET-INSTALL
 
 public
 
 : USE-INTERPRETER ( [ ptr u8 n n n -- ] -- ) is INCLUDE-INTERPRET ;
-: RUN-CLOSED ( [ -- ] -- ) source-unit-run ;
-
-private
-
-: KEEP-CLOSED ( [ -- ] -- [ -- ] ) {: q :} q RUN-CLOSED q ;
-
-: CLOSE-RANGE ( ptr u8 n n n [ -- ] -- )
-   {: source:ptr size:n first:n end:n q :}
-   size first end CHECK-RANGE
-   EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @
-      {: old:ptr oldu:n oldfirst:n oldend:n :}
-   source EVAL-A ! size EVAL-U ! first EVAL-FIRST ! end EVAL-END !
-   REQUIRE-REG:MARK {: mark:n epoch:n :}
-   q [: KEEP-CLOSED ;] catch {: rc:n :} drop
-   old EVAL-A ! oldu EVAL-U ! oldfirst EVAL-FIRST ! oldend EVAL-END !
-   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
-
-public
-
-\ Direct renderers own a closed program. Loader fragments run open (RUN-RANGE)
-\ inside LOAD-UNIT's whole-program boundary, so values can cross fragments.
-: RUN-EVAL-RANGE ( ptr u8 n n n -- ) [: EVAL-STAGED ;] CLOSE-RANGE ;
 
 \ The process's root stream (stdin, or the `--load` or `--build` stream
 \ src/habu/main.f builds) runs open, as the engine's own loop runs it: it may
@@ -2181,9 +2149,6 @@ public
    old oldu rc ROOT-LEAVE ;
 
 ;package
-
-: INCLUDE-EVALUATE-RANGE ( ptr u8 n n n -- )
-   SOURCE-ROOT:RUN-EVAL-RANGE ;
 
 package SOURCE-INPUT
 public

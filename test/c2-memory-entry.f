@@ -27,7 +27,7 @@ public
    S\" package C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\ns\q abc\q ' C2-ENTRY-TEST:LEAKER C2-MEM:WITH-MUT-LOAN\n"
    70 s" hb: internal engine word: C2-MEM:WITH-MUT-LOAN" SUBJECT:REFUSED? TTRUE
    s" the interpreter written in Habu rejects a mutable entry" T-LABEL
-   S\" require src/habu/interpreter.f\ns\q 8 MEM:BYTES-ALLOC-LEN 0 C2-MEM:WITH-MUT\q INTERPRETER:INTERPRET\n"
+   S\" require test/interpreter-loop-on.f\nrequire test/fixtures/c2-mut-entry.f\n"
    70 s" hb: internal engine word: C2-MEM:WITH-MUT" SUBJECT:REFUSED? TTRUE
    s" a layout wrapper rejects a raw prompt callback" T-LABEL
    S\" require test/c2-memory-wrapper.f\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-MEMORY-WRAPPER:TWICE .\n"
