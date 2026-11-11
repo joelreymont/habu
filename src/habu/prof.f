@@ -1,9 +1,27 @@
 \ prof.f - the in-binary sampling profiler for the native engine (prof-on,
 \ prof-off, prof-reset, prof-report, prof-json, prof-row, prof-rate, prof-pc>rec).
-\ Load after habu1.f (uses DBASE/NDICT/DREC/A/FPRIM-L), before habu2.f. Handler
-\ and report state live in the PROF-ABI band (src/habu/prof-abi.f) at the top of DATA.
-\ Measured: a tick costs about 1 us of user CPU (20 prof-rate, about a million
-\ samples, 19.7 s baseline), a tenth of a percent at the default 1 ms rate.
+\ Load after habu1.f, before habu2.f. Handler and report state live in the
+\ PROF-ABI band at the top of DATA.
+\
+\ Caller attribution is a conservative walk of the machine stack. Emitted words
+\ carry no frame pointer: the prologue is `sub sp,sp,#16` + `str x30,[sp]`, so
+\ there is no chain to follow and return addresses are recognised by their
+\ value: a cell that lands inside the index's code range is taken for a return
+\ address. That is a superset of the true chain: an uninitialised spill slot
+\ still holding a code address from a returned call adds a frame. The immediate
+\ caller is usually in x30, not on the stack: a leaf primitive entered by BL
+\ never stores it, and a word that has not called anything yet still holds its
+\ own caller there. When x30 points into the sampled word itself - the word
+\ called something that has already returned - the stack scan answers instead,
+\ because the word's own prologue saved the real return address. The scan never
+\ leaves SP's 4 KiB block: SP is mapped, so every byte of its block is; one cell
+\ further could be the unmapped page above a thread stack, and a SIGSEGV inside
+\ a SIGALRM handler is not a diagnosis anybody can use.
+\
+\ Report rows and a row's callers are selected by repeated maximum, not sorted:
+\ each pass takes the largest count below the one before it. No second array is
+\ needed, and the counters are left exactly as they were, so a later prof-report
+\ says the same thing.
 require src/habu/prof-abi.f
 
 require src/arch/arm64/icode.f
@@ -23,20 +41,16 @@ variable LPROFJSON   variable LPROFNUM   variable LPROFPCT   variable LPROFNAME
 variable LPROFSYNC   variable LPROFROW
 private
 
-\ The signal-frame offsets and loads below are AArch64 Darwin/Linux facts
-\ (docs/xcomp.md "Syscalls And Signals"); a target whose frame this file does not
-\ model is refused at load. The refusal is a die and not src/lib/error.f's
-\ E-PLATFORM because this file loads inside the engine-build window, which has no
-\ src/lib/ in it.
+\ The refusal is a die because this file loads inside the engine-build window,
+\ which has no src/lib/ in it.
 : PROF-TARGET-OK ( -- )
    HB-TARGET-LINUX? if exit then
    HB-TARGET-MACOS? if exit then
    s" hb: this target's signal frame is not modelled" 76 die ;
 PROF-TARGET-OK
 
-\ The band's cells and the arena layout are PROF-ABI's (src/habu/prof-abi.f).
 DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is fixed at DATA-VA
-PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA        \ the counters
+PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA
 $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
 
 : C-PROF-MCTX>R21 ( -- )
@@ -52,28 +66,26 @@ $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
    HB-TARGET-LINUX? IF rd 21 LINUX-MCTX-X0-OFF x 8 * + LDR, exit THEN
    rd 21 SS-OFF x 8 * + LDR, ;
 
-\ x13 = the record's code bytes from its raw length cell (src/habu/code-span.f):
+\ x13 = the record's code bytes from its raw length cell:
 \ bit 31 marks an exact span, otherwise the body precedes one final slot.
 : C-PROF-SPAN-BYTES ( -- )
-   14 13 31 LSRI,                         \ x14 = the exact-span bit
-   13 13 CODE-SPAN:MASK ANDI,             \ x13 = body
-   13 13 CODE-SPAN:INSN-BYTES ADDI,       \ a legacy body ends before its final slot
-   14 14 2 LSLI,  13 13 14 SUB, ;         \ an exact span does not
+   14 13 31 LSRI,
+   13 13 CODE-SPAN:MASK ANDI,
+   13 13 CODE-SPAN:INSN-BYTES ADDI,
+   14 14 2 LSLI,  13 13 14 SUB, ;
 
 public
 
 \ LPROFFIND ( x9 = pc, x8 = arena -- x6 = index entry or 0 ): the whole of pc
-\ attribution, shared by the signal handler and by `prof-pc>rec`, so the property
-\ test exercises the code the handler runs and not a copy of it. Bounded: one
-\ range test plus at most log2(DICT-CAP) = 16 compares. Clobbers x10-x13 and
-\ obeys the primitive ABI (x19-x28 untouched), because prof-pc>rec calls it from
-\ compiled Habu code.
+\ attribution, shared by the signal handler and by `prof-pc>rec`. Clobbers
+\ x10-x13 and obeys the primitive ABI (x19-x28 untouched), because prof-pc>rec
+\ calls it from compiled Habu code.
 : EMIT-PROFFIND ( -- )
    LPROFFIND LABEL@ LBL,
    LBL LBL LBL LBL LBL {: bl bhi bdone miss out :}
    10 8 ARN-COUNT LDR,  10 miss CBZ,
-   11 8 ARN-LO LDR,  9 11 CMP,  C-CC miss BCOND,      \ below every span
-   11 8 ARN-HI LDR,  9 11 CMP,  C-CS miss BCOND,      \ at or above every span
+   11 8 ARN-LO LDR,  9 11 CMP,  C-CC miss BCOND,
+   11 8 ARN-HI LDR,  9 11 CMP,  C-CS miss BCOND,
    11 0 MOVZ,                                         \ lo
    bl LBL,                                            \ rightmost entry with start <= pc
       11 10 CMP,  C-CS bdone BCOND,
@@ -119,8 +131,7 @@ public
 \ it. The conservative walk can see one word twice - a recursive call, or a
 \ stale spill slot still holding a return address into it - and an inclusive
 \ count that ran past the sample total would say a word took longer than the
-\ program did. The stamp is the sample serial, so the test is one load and one
-\ compare and needs no per-sample set. Clobbers x11-x13.
+\ program did. The stamp is the sample serial. Clobbers x11-x13.
 : C-PROF-INCL-ONCE ( -- )
    LBL {: seen :}
    11 ARN-STAMP LIT64,  11 8 11 ADD,  12 10 3 LSLI,  11 11 12 ADD,
@@ -134,8 +145,7 @@ public
 \ x8 = arena, x9 = the interrupted pc, x21 = mcontext: keep one sample whose code
 \ the index cannot name yet. Only the pc and the interrupted x30 are kept, at a
 \ fixed stride, so the handler still walks nothing here and allocates nothing; the
-\ next report rebuilds the index and replays them. A full buffer counts a spill
-\ rather than overwriting a sample already taken. Clobbers x10-x14.
+\ next report rebuilds the index and replays them. Clobbers x10-x14.
 : C-PROF-DEFER ( -- )
    LBL LBL {: full done :}
    10 8 ARN-DEFER LDR,
@@ -149,26 +159,6 @@ public
    full LBL,  10 8 ARN-SPILL LDR,  10 10 1 ADDI,  10 8 ARN-SPILL STR,
    done LBL, ;
 
-\ The conservative machine-stack walk, the whole of caller attribution.
-\
-\ EMITTED WORDS CARRY NO FRAME POINTER: the prologue is `sub sp,sp,#16` +
-\ `str x30,[sp]`, so there is no chain to follow and the return addresses have to
-\ be recognised by their VALUE - a cell that lands inside the index's code range
-\ is taken for a return address, which is the standard frame-pointer-less
-\ technique and is a superset of the true chain: an uninitialised spill slot
-\ still holding a code address from a returned call adds a frame. An x29 chain
-\ would cost every emitted word in the default build two more instructions and a
-\ register; this walk measured 230 instructions a tick.
-\
-\ THE IMMEDIATE CALLER IS USUALLY IN x30, not on the stack: a leaf primitive
-\ entered by BL never stores it, and a word that has not called anything yet
-\ still holds its own caller there. When x30 points into the sampled word itself
-\ - the word called something that has already returned - the scan below answers
-\ instead, because the word's own prologue saved the real return address.
-\
-\ THE SCAN NEVER LEAVES SP's 4 KiB BLOCK. SP is mapped, so every byte of its
-\ block is; one cell further could be the unmapped page above a thread stack, and
-\ a SIGSEGV inside a SIGALRM handler is not a diagnosis anybody can use.
 : C-PROF-WALK ( -- )
    LBL LBL LBL LBL {: wl wlr wdone wret :}
    25 22 0 ADDI,                                     \ dedup seed: the sampled word
@@ -210,9 +200,6 @@ public
    10 PROF-CALLER-NONE LIT64,  LPROFEDGE LABEL@ BL,
    wret LBL, ;
 
-\ Everything the report prints goes through these four, so a row, a caller line
-\ and a JSON field all agree about widths and about where a name comes from.
-
 : C-PROF-SAY ( ptr u8 n -- ) {: a:ptr u:n :}
    LBL LBL {: skip txt :}
    skip B,
@@ -233,9 +220,7 @@ public
    9 reg 0 ADDI,  10 1 MOVZ,  LPROFNUM LABEL@ BL, ;
 
 \ LPROFNUM ( x9 = value, x10 = width ): unsigned decimal, right-aligned in x10
-\ columns and never truncated, no newline. The padding is prepended into the
-\ same buffer the digits land in, so one write puts out the whole column.
-\ Clobbers x0-x2, x9-x15.
+\ columns and never truncated, no newline. Clobbers x0-x2, x9-x15.
 : EMIT-PROFNUM ( -- )
    LPROFNUM LABEL@ LBL,
    LBL LBL LBL {: dl pl pd :}
@@ -282,8 +267,6 @@ public
    RET, ;
 
 \ LPROFDUMP / LPROFJSON ( -- ): the same walk, printed two ways.
-\ The Forth-level flag picks the punctuation at build time, so the text report
-\ and the JSON report can never disagree about what they counted.
 \
 \ REGISTERS. LPROFNUM and LPROFPCT clobber x9-x15, so every value that has to
 \ live across a printed column sits in x3-x7, x17 or x19-x25: x19 arena, x20
@@ -445,9 +428,6 @@ public
    C-PROF-CALLER-NAME
    C-PROF-NL ;
 
-\ The row's top callers: at most PROF-CALLERS passes over the edge table, each
-\ taking the largest count below the one before it. The text report shows the
-\ top few; prof-json carries every edge there is.
 : C-PROF-REP-CALLERS ( -- )
    LBL LBL LBL LBL LBL LBL {: cr cl cnext cdone ctake crd :}
    3 0 MOVZ,
@@ -475,13 +455,6 @@ public
       3 3 1 ADDI,  cr B,
    crd LBL, ;
 
-\ One text section: at most PROF-ROWS rows ranked on one of the two counts, each
-\ with its callers.
-\
-\ ROWS ARE SELECTED BY REPEATED MAXIMUM, not sorted: one pass over the IDs per
-\ row costs less than sorting every entry, no second array is needed, and - the
-\ reason that matters - the counters are left exactly as they were, so a later
-\ prof-report says the same thing.
 : C-PROF-REP-SECTION ( bool -- ) {: incl:bool :}
    LBL LBL LBL LBL LBL LBL LBL {: rowl sell selcmp selnx seld seltake rowsd :}
    23 0 MOVN,  24 0 MOVN,  25 0 MOVZ,
@@ -520,9 +493,8 @@ public
 \ one object per profile ID that took a sample, and the caller edges as a flat
 \ array rather than nested under each row. Nesting them would mean one pass over
 \ the edge table per row - quadratic, and this walk runs over every row - while
-\ one pass emits every edge there is. Both are bounded by the arena: at most
-\ ARN-IDS rows and PROF-CALL-SLOTS edges, so the report cannot outgrow it and
-\ nothing is truncated.
+\ one pass emits every edge there is. Both are bounded by the arena, at most
+\ ARN-IDS rows and PROF-CALL-SLOTS edges, so nothing is truncated.
 : C-PROF-JSON-ROWS ( -- )
    LBL LBL LBL LBL {: jl jdone jnext jcomma :}
    s\" ,\"rows\":[" C-PROF-SAY
@@ -604,9 +576,7 @@ public
    C-PROF-REP-CLOSE ;
 
 \ LPROFROW ( -- ): the text row for one dictionary record whatever its rank,
-\ with its callers. `prof-row` is how a phase word that no exclusive ranking
-\ would ever show gets read; the record index comes from the caller, which is
-\ where a name lookup belongs.
+\ with its callers.
 : EMIT-PROFROW ( -- )
    LPROFROW LABEL@ LBL,
    LBL {: rnone :}
