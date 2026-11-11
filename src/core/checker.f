@@ -3490,13 +3490,13 @@ public
 \ whole-bundle transports move the group by row surgery (XPORT-STEP?). A layout
 \ whose width reads an open argument (LAYOUT-WIDTH-OPEN?) stays one logical
 \ T-PARAM cell. A whole-bundle transport op (dup drop swap over nip rot -rot
-\ tuck 2dup 2drop 2swap 2over, >r r> r@ and kin, locals capture) would bind it
-\ to its fresh transport var: DO-TOK1/LOC-BIND set LAYOUT-XPORT only while
-\ checking such an op, and LAYOUT-XPORT-ALLOW? refuses the bind when the layout
-\ may be linear, which an open one always may (its width reads a payload var,
-\ OWN-TYPE-N), so no such op accepts it. Every other touch (value-inspecting
-\ prims, ?dup, control predicates, higher-order apply, con/ptr/atom pairings)
-\ fails closed.
+\ tuck 2dup 2drop 2swap 2over, >r r> r@ and kin) would bind it to its fresh
+\ transport var: DO-TOK1/LOC-BIND set LAYOUT-XPORT only while checking such an
+\ op, and LAYOUT-XPORT-ALLOW? refuses the bind when the layout may be linear,
+\ which an open one always may (its width reads a payload var, OWN-TYPE-N), so
+\ no such op accepts it, and LOC-BIND refuses a locals capture of one before any
+\ pairing. Every other touch (value-inspecting prims, ?dup, control predicates,
+\ higher-order apply, con/ptr/atom pairings) fails closed.
 CHECKER-REG:SCRATCH{
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
@@ -19972,10 +19972,9 @@ variable XG-N   variable XG-TN   variable XG-ROW
                                          \ copy raises it and a drop lowers it (reject). Locals capture
                                          \ (LOC-BIND-GROUPS) removes the bundle from the counted rows at
                                          \ bind, so the same LIN-CHECK still rejects a linear layout local.
-   \ An open layout: XPORT-STEP? sends an op over one to the step path, so only
-   \ locals capture reaches here (LOC-BIND-GROUPS, when an expanded layout is
-   \ among the captured operands), and it refuses with no reason.
-   t LAYOUT-PARAM? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN
+   \ Every caller expands a known layout and stops at an open one before reading
+   \ (XPORT-STEP?, LOC-BUNDLE-ROW, LOC-BIND, LOC-DECL-ROW): one here is a checker bug.
+   t LAYOUT-PARAM? IF s" checker: logical layout cell in a transport group" 76 die THEN
    node P>TYPE node XG-T+
    node P>REST XG-ROW !
    RES-TRUE ;
@@ -20182,22 +20181,23 @@ variable XG-N   variable XG-TN   variable XG-ROW
       1 +
    REPEAT 2drop RES-FALSE ;
 
-\ Is one of the top k logical operands an open layout (LOGICAL-KNOWN? false)?
-\ It walks groups, not cells: a hidden group spans its W cells, so a scan of k
-\ cells stops inside a group above the layout and never reaches it.
-: XP-OPEN-IN-K? ( n n -- bool ) {: row0:n k:n :}
+\ The index of the first open layout (LOGICAL-KNOWN? false) among the top k
+\ logical operands, or -1; a hidden group is one operand, skipped whole.
+: XP-OPEN-GROUP ( n n -- n ) {: row0:n k:n :}
    row0
    0 BEGIN dup k < WHILE
-      over R-RES TAG S-PUSH <> IF 2drop RES-FALSE EXIT THEN
+      over R-RES TAG S-PUSH <> IF 2drop -1 EXIT THEN
       over R-RES P>TYPE T-RES
       dup HIDDEN-PARAM? IF
          T-WIDTH rot swap ROW-DROP-N swap        \ skip the whole hidden group
       ELSE
-         dup LAYOUT-PARAM? swap LOGICAL-KNOWN? 0= and IF 2drop RES-TRUE EXIT THEN
+         dup LAYOUT-PARAM? swap LOGICAL-KNOWN? 0= and IF nip EXIT THEN
          swap R-RES P>REST swap
       THEN
       1 +
-   REPEAT 2drop RES-FALSE ;
+   REPEAT 2drop -1 ;
+
+: XP-OPEN-IN-K? ( n n -- bool ) XP-OPEN-GROUP 0 >= ;
 
 \ An open layout among the operands goes to the one-cell path whatever else is
 \ among them, which refuses it as it refuses that layout alone
@@ -20660,7 +20660,19 @@ CHECKER-REG:}SCRATCH
    unj IF pre LOC-DECL-ROW ELSE 0 THEN {: decl:n :}
    pre 0 LOC-BUNDLE-ROW {: cap:n :}  cap DCUR !
    cap  #LOC @ LGRP @ -  WF-ROW-SCAN   \ width facts at the :} token
-   cap  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
+   \ A captured cell LOC-BUNDLE-ROW leaves open-width binds as one cell of a wider
+   \ value: the bind refuses it, typed or not (checker-soundness-suite OPEN-WIDTH-LOCALS).
+   cap  #LOC @ LGRP @ -  XP-OPEN-GROUP {: open:n :}
+   open 0 >= IF
+      drop
+      FAILSET @ 0=  OK @ and  cap open XG-READ and IF   \ XG-ROW starts at the open cell
+         #LOC @ 1 - open - cells LOCTV + @ {: ann:n :}
+         XG-ROW @ R-RES P>TYPE {: cell:n :}
+         0 UF-SET !  -1 CUR-UPOS !  cell T-RES ann T-RES STALE-NOTE U-FAIL
+         ann FRESH MK-ROW MK-PUSH  cell FRESH MK-ROW MK-PUSH  UF-CAPTURE
+      THEN
+      0 OK !
+   ELSE cap  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
       drop
       LOC-BIND-GROUPS                  \ a captured operand is a hidden-field bundle
    ELSE
@@ -20668,7 +20680,7 @@ CHECKER-REG:}SCRATCH
       tail MK-ROW RES-FALSE CHECKER-STEP-UNJ   \ a failure settles below, by declared widths
       0 LAYOUT-XPORT !
       OK @ IF LOC-CAPTURE-SCALARS THEN
-   THEN
+   THEN THEN
    unj IF   \ a bind that held leaves whole rows: a later refusal of this token splices nothing
       OK @ IF -1 UNJ-SPLICED ! ELSE decl pre rpre wf0 LOC-UNJ-BIND THEN
    THEN

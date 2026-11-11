@@ -1553,7 +1553,9 @@ s" TDLB6C ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB6D ( tdres<n,n> -- n ) {: x:tdres<n,n,n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
 \ the definition's own type variables are in scope in an annotation, and the
 \ declared quantifier survives the local (the parametricity seal, NP-CHECK).
-s" TDLB6E ( tdres<a,b> -- tdres<a,b> ) {: x:tdres<a,b> :} x" CHECK-QUIET-CANDIDATE! -1 T=
+\ tdfoo is one cell; a local over tdres<a,b>, whose width is open, is refused
+\ (test/checker-soundness-suite.f OPEN-WIDTH-LOCALS).
+s" TDLB6E ( tdfoo<a,b> -- tdfoo<a,b> ) {: x:tdfoo<a,b> :} x" CHECK-QUIET-CANDIDATE! -1 T=
 \ a nested family argument parses exactly as it does in a signature.
 s" TDLB6F ( tdres<tdfoo<n,n>,n> -- tdres<tdfoo<n,n>,n> ) {: x:tdres<tdfoo<n,n>,n> :} x" CHECK-QUIET-CANDIDATE! -1 T=
 \ and a wrong argument is still a wrong type: tdres<n,n> is not tdres<tdfoo<n,n>,n>.

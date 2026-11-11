@@ -3,11 +3,12 @@
 \ a quotation argument consuming a narrower input than the parameter supplies,
 \ a quotation whose output keeps the input stack a declared callable leaves open,
 \ a return-row read or pop below the frame this definition may see, a
-\ declared row unified with another or given fixed cells, and a signature with
-\ tokens after its output side.
+\ declared row unified with another or given fixed cells, a local over a
+\ cell whose width is open, and a signature with tokens after its output side.
 
 require src/lib/test.f
 require src/lib/test/subject.f
+require src/lib/adt/option.f
 
 package CHECKER-SOUNDNESS
 public
@@ -352,6 +353,23 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
       CHECK-QUIET-CANDIDATE! -1 T=
    s" CS-W9 ( R [ R -- S ] [ S -- R ] -- R ) drop drop" CHECK-QUIET-CANDIDATE! -1 T= ;
 
+\ A local, typed or not, never captures a cell whose width is open where it binds,
+\ the word's own declared variable included: it would store one cell of a wider value.
+: OPEN-WIDTH-LOCALS ( -- )
+   s" a local over an open-width cell is refused at its bind" T-LABEL
+   s" : CS-L1 ( -- ) OPTION:NONE {: x:option<t> :} ;" 70
+   s" at ':}' expected: option<a> actual: option<b>" SUBJECT:REFUSED? TTRUE
+   s" : CS-L2 ( a -- n option<a> ) OPTION:SOME {: x:option<a> :} 7 x ;" 70
+   s" at ':}' expected: option<a> actual: option<a>" SUBJECT:REFUSED? TTRUE
+   s" : CS-L3 ( option<a> -- n option<a> ) {: o:option<a> :} 7 o ;" 70
+   s" at ':}' expected: option<a> actual: option<a>" SUBJECT:REFUSED? TTRUE
+   s" : CS-L4 ( -- ) OPTION:NONE 5 {: x:option<t> y:t :} ;" 70
+   s" at ':}' expected: option<a> actual: option<b>" SUBJECT:REFUSED? TTRUE
+   s" : CS-L6 ( -- ) OPTION:NONE 5 OPTION:SOME {: x y :} ;" 70
+   s" at ':}' expected: a actual: option<b>" SUBJECT:REFUSED? TTRUE
+   s" CS-L5 ( ptr<s,option<a>> -- ptr<s,option<a>> ) {: p:ptr<s,option<a>> :} p"
+      CHECK-QUIET-CANDIDATE! -1 T= ;
+
 : SIGNATURE-END ( -- )
    s" tokens after the output side are a syntax error" T-LABEL
    s" CS-S1 ( n -- n -- n n ) dup" CHECK-QUIET-CANDIDATE! 0 T=
@@ -368,6 +386,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    CALLABLE-SOUND
    RETURN-ROW
    ROW-QUANTIFIERS
+   OPEN-WIDTH-LOCALS
    SIGNATURE-END
    T-REPORT ;
 

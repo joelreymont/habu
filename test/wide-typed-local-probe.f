@@ -327,12 +327,11 @@ s" WLC-WRONG-W2 ( pair -- n ) {: p:res :} 0 " NO   \ same width, other family
 s" WLC-NOMINAL ( pair2 -- pair ) {: p:pair :} p " NO
 s" WLC-NOMINAL-OK ( pair2 -- pair2 ) {: p:pair2 :} p " YES
 s" WLC-SCALAR-ANN ( pair -- n ) {: p:n :} 0 " NO
-\ the annotation grammar IS the signature grammar: a parameter list, a nested
-\ family and the definition's own type variables all read here.
+\ the annotation grammar IS the signature grammar: a parameter list and
+\ a nested family read here.
 s" WLC-PARAM-ANN ( opt<n> -- n ) {: o:opt<n> :} 0 " YES
 s" WLC-PARAM-ID ( opt<n> -- opt<n> ) {: o:opt<n> :} o " YES
 s" WLC-NESTED-ANN ( opt<opt<n>> -- opt<opt<n>> ) {: o:opt<opt<n>> :} o " YES
-s" WLC-VAR-ANN ( opt<a> -- opt<a> ) {: o:opt<a> :} o " YES
 \ ...and so are its refusals: a bare arity>0 tail, a wrong argument count and a
 \ wrong argument all reject with the signature diagnostics.
 s" WLC-ARITY-ANN ( opt<n> -- n ) {: o:opt :} 0 " NO
