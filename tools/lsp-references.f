@@ -1,6 +1,6 @@
 \ lsp-references.f - textDocument/references for source declarations and built-in words: SELECT
 \ takes the declaration a position of open document D selects and gathers every use that
-\ completed checks of the files whose loads reach its file bound (tools/lsp-workspace.f).
+\ completed checks of the files whose loads reach its file bound.
 \ A primitive use carries its PRIM-SPEC row as a negative visit, a source-backed engine use visit
 \ -1 and its image origin; both answer for workspace files, not engine source outside them.
 \ STORAGE CLASS. PROCESS-GLOBAL: the request belongs to the server's one task; SELECT starts each afresh.
@@ -218,7 +218,6 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 
 : MSG$ ( -- ptr u8 n )  0 MSG MSG-U @ ;
 
-\ A path as a message names it: relative to the working directory.
 : SHOWN$ ( ptr u8 n -- ptr u8 n )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE ;
 
 : FRESH ( -- )
@@ -244,7 +243,6 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    0 BUILTIN-SYM !
    true SPELT ! ;
 
-\ The request refused for this fact about the file at this path.
 : REFUSE ( ptr u8 n ptr u8 n -- )
    {: p:ptr pu:n w:ptr wu:n :}
    0 MSG-U !
@@ -266,7 +264,7 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    wu k M-WHY-U MISS!
    k 1+ MISS-N ! ;
 
-\ The file at this path named, for this reason. Neither string lies in POOL.
+\ Neither string lies in POOL.
 : MISS+ ( ptr u8 n ptr u8 n -- )
    {: p:ptr u:n w:ptr wu:n :}
    p u POOL+ {: at:n :}
@@ -287,8 +285,6 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    loop
    false ;
 
-\ The bytes from byte FROM to byte TO of the text positions count in, held to
-\ it as LSP-TEXT:LINE-CHARACTER holds an offset, and the byte they start at.
 : SPAN-IN ( n n -- ptr u8 n n )
    {: from:n to:n :}
    LSP-TEXT:TEXT$ {: t:ptr tu:n :}
@@ -301,7 +297,7 @@ public
 \ Where the selected declaration's tail starts in the token from byte FROM to
 \ byte TO of the text positions count in: at the token's start when it spells
 \ the tail, letters compared without case as Habu compares names; else,
-\ when the token is qualified (QUALIFIER-AT), after its qualifier when the
+\ when the token is qualified, after its qualifier when the
 \ bytes after it spell the tail; else -1.
 : TAIL-FROM ( n n -- n )
    SPAN-IN {: w:ptr wu:n a:n :}
@@ -350,7 +346,6 @@ private
    to from max LSP-TEXT:LINE-CHARACTER k L-END-CHAR LOC! k L-END-LINE LOC!
    k 1+ LOC-N ! ;
 
-\ Whether a location in file F starts and ends at these bytes.
 : LOCATED? ( n n n -- bool )
    {: f:n from:n to:n :}
    LOC-N @ 0 ?do
@@ -398,7 +393,6 @@ private
    then
    a u at KNOWN+ ;
 
-\ The known file read so: BY-VERIFIED or BY-PLACING, whichever says more.
 : READ! ( n n -- )
    {: k:n by:n :}
    k K-READ KNOWN@ by max k K-READ KNOWN! ;
@@ -432,7 +426,6 @@ private
 
 \ ---- the declaration -----------------------------------------------------------
 
-\ Whether this tail, package and visibility are the selected declaration's.
 : KEY? ( ptr u8 n ptr u8 n n -- bool )
    {: w:ptr wu:n k:ptr ku:n v:n :}
    w wu NAME$ STR=  k ku PKG$ STR= and  v KEY-VIS @ = and ;
@@ -449,12 +442,10 @@ private
    {: from:n to:n :}
    from TS @ = to TE @ = and ;
 
-\ Whether decl D is of group G, at the selected declaration's token.
 : DECL-AT? ( n n -- bool )
    {: d:n g:n :}
    d DECL-GROUP g = if d DECL-BYTES TOKEN? else false then ;
 
-\ Whether use U is bound to the token of group G at the selected declaration's.
 : USE-AT? ( n n -- bool )
    {: u:n g:n :}
    u USE-GROUP g = if u USE-TARGET TOKEN? else false then ;
@@ -465,7 +456,6 @@ private
    a 0 P-B u BYTE-COPY
    u P-U ! ;
 
-\ The declaration's file, by D's check's group G for it.
 : P! ( n -- )
    {: g:n :}
    g G !
@@ -478,8 +468,6 @@ private
    k ku POOL+ PKG-AT !
    ku PKG-U ! ;
 
-\ Positions count in the text of the file at this path: its open document's
-\ text when there is one, else its disk text.
 : TEXT-OF! ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u DOC-HOLDING MATCH option
@@ -573,9 +561,6 @@ private
    d DECL-VISIT VISIT !
    true FOUND ! ;
 
-\ The declaration use U of D's check, in this slot, is bound to; refused
-\ when the use's line states no whole identity. A use that does not spell
-\ the declaration's tail in D's text clears SPELT.
 : AT-USE ( n n -- )
    {: slot:n u:n :}
    u USE-PRIMITIVE-ROW {: row:n :}
@@ -598,8 +583,6 @@ private
    {: from:n to:n at:n :}
    from at <= at to < and ;
 
-\ The first decl of the check of the document in this slot, of group G, whose
-\ token holds this byte; otherwise the first whose token ends exactly here.
 : DECL-HOLDING ( n n n -- option<n> )
    {: slot:n g:n at:n :}
    slot DEFS-DECL-RANGE ?do
@@ -614,8 +597,6 @@ private
    loop
    OPTION:NONE ;
 
-\ Why the decls of D's check, in this slot, at the selected token in group G
-\ select no one declaration, else empty.
 : TOKEN-WHY ( n n -- ptr u8 n )
    {: slot:n g:n :}
    slot DEFS-DECL-RANGE ?do
@@ -629,16 +610,12 @@ private
    loop
    s" " ;
 
-\ The declaration decl D of D's check, in this slot, states at its token,
-\ when the token declares no other.
 : AT-DECL ( n n -- )
    {: slot:n d:n :}
    d FROM-DECL
    slot G @ TOKEN-WHY {: w:ptr wu:n :}
    wu 0<> if P$ w wu REFUSE then ;
 
-\ The declaration the definition token of D's own file, in group G, that
-\ holds this byte states, if one does.
 : AT-TOKEN-IN ( n n n -- )
    {: slot:n g:n at:n :}
    slot g at DECL-HOLDING MATCH option
@@ -653,7 +630,7 @@ private
       none OF ENDOF
    ;MATCH ;
 
-\ A prims.f name token selects the same canonical row as a use of that word.
+\ A name token selects the same canonical row as a use of that word.
 : AT-PRIMITIVE-TOKEN ( n n -- )
    {: slot:n at:n :}
    PRIM-SOURCE:ENGINE-PATH$ {: path:ptr pathu:n ready:bool :}
@@ -674,8 +651,6 @@ private
    {: sym:n found:bool :}
    found if sym FROM-BUILTIN then ;
 
-\ How many decls of the check of the document in this slot are the selected
-\ declaration: of its group, at its token, with its identity and visit.
 : HELD ( n -- n )
    {: slot:n :}
    0
@@ -685,14 +660,11 @@ private
       then
    loop ;
 
-\ D's check, in this slot, holding the selected declaration once in a file
-\ whose visits agreed on one source revision.
 : ANCHORED ( n -- )
    {: slot:n :}
    slot HELD 1 <> if P$ s" the check does not hold the declaration once" REFUSE exit then
    G @ GROUP-STAMPED? 0= if P$ s" the check states no consistent source revision" REFUSE then ;
 
-\ The declaration this byte of the text of D, in this slot, selects.
 : LOCATE ( n n -- )
    {: slot:n at:n :}
    slot at DEFS-USE-AT MATCH option
@@ -743,9 +715,8 @@ private
    p pu P$ STR= p pu D$ STR= or if exit then
    p pu w wu MISS+ ;
 
-\ The subjects of D, in this slot, and the files the walk could not read. P
-\ is the first subject, as REACHING orders them, so that its own uses are
-\ read even when the walk gives none at its path; pass 2 gives none of them.
+\ P is the first subject, so that its own uses are read even when the walk
+\ gives none at its path; pass 2 gives none of them.
 \ A built-in word's subjects are every workspace file and open document, since
 \ an implicit word needs no load.
 : SUBJECTS! ( n -- )
@@ -773,12 +744,9 @@ private
 
 \ ---- a subject's uses -----------------------------------------------------------
 
-\ Why the check of the subject in this slot, whose group for P is G, cannot
-\ place its uses of the declaration by their declaration, else empty, the
-\ visit it declares the word in, in SUB-VISIT: -1 when none. A check numbers
-\ only its own visits, so it must state the revision of P that D's check read,
-\ declare the word at P's token in one visit at most, and bind its uses there
-\ in that visit.
+\ A check numbers only its own visits, so it must state the revision of P that
+\ D's check read, declare the word at P's token in one visit at most, and bind
+\ its uses there in that visit.
 : DECL-WHY ( n n -- ptr u8 n )
    {: slot:n g:n :}
    -1 SUB-VISIT !
@@ -793,8 +761,6 @@ private
    loop
    s" " ;
 
-\ Why a use of that check bound to the declaration's token cannot be placed,
-\ else empty.
 : USE-WHY ( n n -- ptr u8 n )
    {: slot:n g:n :}
    slot DEFS-USE-RANGE ?do
@@ -808,8 +774,6 @@ private
    loop
    s" " ;
 
-\ Why the check of the subject in this slot, whose group for P is G, cannot
-\ contribute, else empty.
 : WHY ( n n -- ptr u8 n )
    {: slot:n g:n :}
    g GROUP-STAMPED? 0= if s" no consistent source revision" exit then
