@@ -1,4 +1,5 @@
-\ calls.f - WCALLS: execute, catch and finally through xts, quotations and rows.
+\ calls.f - WCALLS: execute, catch and finally through xts, quotations and rows,
+\ and quotations that read their word's locals.
 \ CHECKS throws the number of the first entry whose code is not the one it throws
 \ natively; test/wasm/calls-test.f runs CHECKS natively and as a module's MAIN, and
 \ each trapping word as a module of its own.
@@ -77,6 +78,9 @@ CAST: >GROW ( [ R n [ R n -- S ] -- S ] -- [ n [ n -- n n ] -- n n ] )
 PERSISTED-PTR-VARIABLE DATA-CELL
 s" data cell text" drop DATA-CELL !
 : TEXT ( -- ) DATA-CELL @ c@ 100 *  DATA-CELL @ 13 + c@ + throw ;
+: READ-EXECUTE ( -- ) 40 {: a:n :} 2 [: a + ;] execute throw ;
+: READ-CATCH ( -- ) 50 {: a:n :} [: a 1 + throw ;] catch throw ;
+: READ-NESTED ( -- ) 3 4 {: a:n b:n :} [: [: a 10 * b + ;] execute ;] execute throw ;
 package OWN
 : execute ( n -- n ) 1 + ;
 : catch ( n -- n ) 1 + ;
@@ -104,7 +108,8 @@ public
    [: ROWS-N-SHRINK ;] 106 19 WANT  [: ROWS-N-GROW ;] 158 20 WANT
    [: FIN-N-SHRINK ;] 106 21 WANT
    [: OWN:EXECUTED ;] 5 22 WANT  [: OWN:CAUGHT ;] 5 23 WANT
-   [: TEXT ;] 10116 24 WANT ;
+   [: TEXT ;] 10116 24 WANT  [: READ-EXECUTE ;] 42 25 WANT
+   [: READ-CATCH ;] 51 26 WANT  [: READ-NESTED ;] 34 27 WANT ;
 
 : TRAPPED ( -- ) [: 0 >CELL @ drop ;] catch throw ;
 : ZERO ( -- ) 0 >VOID execute ;

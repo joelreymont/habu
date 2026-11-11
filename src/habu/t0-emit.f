@@ -284,8 +284,9 @@ ARCHES TYPED-BUFFER EMIT-SLOT-LOAD-XT [ vreg n -- ]
 : EMIT-SLOT-STORE ( vreg n -- ) CUR @ EMIT-SLOT-STORE-XT @ execute ;
 : EMIT-SLOT-LOAD ( vreg n -- ) CUR @ EMIT-SLOT-LOAD-XT @ execute ;
 
-\ A reading quotation's record lies in the frame of the unit it is written in: cell 0 its
-\ unit's code, then the locals. Its value is the address with bit 63 set (habu1.f BRECORD).
+\ A reading quotation's record lies in the frame of the unit it is written in, on Wasm in
+\ return-stack cells that unit takes: cell 0 its unit's code, then the locals. Its value
+\ is the address with bit 63 set (habu1.f BRECORD, link-routines.f DISPATCH,).
 ARCHES TYPED-BUFFER EMIT-REC-CELLS-XT [ n -- ]
 ARCHES TYPED-BUFFER EMIT-ENV-OPEN-XT [ -- ]
 ARCHES TYPED-BUFFER EMIT-REC-STORE-XT [ vreg n -- ]

@@ -24,6 +24,10 @@
 \ its LOOP a LOOP-DONE, whose `end` CLOSE-DONE writes once it is innermost.
 \ A DO level is a `block` around a `loop`: `leave` and the `?do` entry branch to
 \ the block, and LOOP-CLOSE pops the frame after both ends.
+\
+\ RECORDS. A unit's frame slots are Wasm locals with no address, so its reading
+\ quotations' records take cells on the return stack at the unit's entry, and
+\ each return gives them back; a throw does not, and catch restores the depth.
 
 require src/lib/error.f
 require src/lib/byte-buffer.f
@@ -48,14 +52,17 @@ using WCODE
 8 constant CELL-BYTES
 
 \ Locals: ctx (the unit's parameter), SP (the data stack pointer), AT (a return
-\ or loop word's address), the vregs, CA and CB (the last compare), frame slot k.
+\ or loop word's address), ENV (the record a reading quotation was called with),
+\ REC (this unit's records), the vregs, CA and CB (the last compare), frame slot k.
 0 constant L-CTX
 1 constant L-SP
 2 constant L-AT
-3 constant L-VREG
-18 constant L-CA
-19 constant L-CB
-20 constant L-SLOT
+3 constant L-ENV
+4 constant L-REC
+5 constant L-VREG
+20 constant L-CA
+21 constant L-CB
+22 constant L-SLOT
 17 constant FIXED-I64                \ the i64 locals before the frame
 
 \ ---- the sink ------------------------------------------------------------------
@@ -63,6 +70,9 @@ create SINK BUF:HDR-BYTES SCRATCH-ALLOT
 SCRATCH-VARIABLE SINK-LIVE            \ nonzero once SINK holds storage
 variable FRAME-CELLS                  \ frame slots this unit uses
 variable COUNT-AT                     \ the unit's padded i64 count field
+variable REC-CELLS                    \ this unit's record cells
+variable ENV                          \ nonzero once ENV-OPEN ran
+variable BODY-AT                      \ HERE-OFF where the unit's body begins
 DYNAMIC-BUFFER CF-KIND n              \ the open blocks' kinds, innermost last
 DYNAMIC-BUFFER CF-ENTRY n             \ at a DO-HEAD: its `?do` compare's offset, or -1
 variable CF-N
@@ -126,6 +136,13 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : LD64, ( -- ) OP-I64-LOAD ALIGN-64 0 MEM, ;
 : ST64, ( -- ) OP-I64-STORE ALIGN-64 0 MEM, ;
 
+\ A stack's depth is an i64 in the DATA cell c native code keeps it in, the
+\ return stack's in cells, the loop's in frames.
+: DEPTH, ( n -- ) I32,  LD64, ;
+
+: DEPTH+ ( n n -- ) {: c:n k:n :}
+   c I32,  c DEPTH,  k I64,  OP-I64-ADD B,  ST64, ;
+
 \ A fault is fatal, never a status (src/arch/wasm/select.f THE TRAP): the
 \ caller writes the i64 address between FAULT-KIND, and FAULT-END,.
 : FAULT-KIND, ( n -- ) {: kind:n :}
@@ -150,15 +167,16 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    OP-I32-OR B,  OP-IF OPENER,
    WPROF:CRASH-RC FAULT-KIND,  a GET-REG  FAULT-END,  END, ;
 
-\ A unit is a function (i32 ctx) -> (i32 status): two i32 locals, SP and AT,
-\ then FIXED-I64 + FRAME-CELLS i64 locals, a padded count CLOSE writes.
+\ A unit is a function (i32 ctx) -> (i32 status): four i32 locals, SP, AT, ENV
+\ and REC, then FIXED-I64 + FRAME-CELLS i64 locals, a padded count CLOSE writes.
 : UNIT-BEGIN ( -- )
    HERE-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
-   0 FRAME-CELLS !
-   2 B,  2 B,  I32 B,
+   0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !
+   2 B,  4 B,  I32 B,
    HERE-OFF COUNT-AT !  FIXED-I64 PAD32,  I64 B,
-   SP@, ;
+   SP@,
+   HERE-OFF BODY-AT ! ;
 
 
 \ ---- the body ----------------------------------------------------------------
@@ -181,9 +199,14 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 : UNIT-OPEN ( -- ) UNIT-BEGIN ;
 
+\ The unit's records given back, before a return.
+: REC-RELEASE ( -- )
+   REC-CELLS @ 0= if exit then
+   RDEPTH-AT REC-CELLS @ negate DEPTH+ ;
+
 \ Status 0 is a return (src/arch/wasm/select.f THE STATUS).
 : RETURN ( -- )
-   SYNC  0 I32,  OP-RETURN B, ;
+   REC-RELEASE  SYNC  0 I32,  OP-RETURN B, ;
 
 \ Every path of a unit leaves by RETURN or TAIL, so the closing `unreachable`
 \ makes the fall-through valid whatever precedes it.
@@ -195,7 +218,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ The return is the does> patch slot over the context: a clause patched in
 \ runs with it, and its status is the unit's.
 : SLOT-CLOSE ( -- )
-   SYNC  L-CTX GET,
+   REC-RELEASE  SYNC  L-CTX GET,
    HERE-OFF EMIT-PATCH-SLOT!
    OP-DROP B,  0 I32,  OP-NOP B,  OP-NOP B,  OP-NOP B,
    OP-RETURN B,
@@ -428,13 +451,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : ENDCASE, ( -- ) END,  CF-POP  CLOSE-DONE ;
 
 \ ---- the return stack ----------------------------------------------------------
-\ One task: the stacks are WPROF's fixed regions, each depth an i64 in the DATA
-\ cell native code keeps it in, the return stack's in cells, the loop's in frames.
-
-: DEPTH, ( n -- ) I32,  LD64, ;
-
-: DEPTH+ ( n n -- ) {: c:n k:n :}
-   c I32,  c DEPTH,  k I64,  OP-I64-ADD B,  ST64, ;
+\ One task: the stacks are WPROF's fixed regions.
 
 \ AT becomes base plus the depth at c, the depth shifted left by sh.
 : TOP, ( n n n -- ) {: c:n base:n sh:n :}
@@ -474,6 +491,40 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : RFETCH ( ptr vreg n n -- ) {: p:ptr n:n k:n :}
    RTOP  n k + CELL-BYTES * AT-,
    n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-LOAD  loop ;
+
+\ ---- records -------------------------------------------------------------------
+: BODY-EMPTY ( -- ) HERE-OFF BODY-AT @ <> if E-T0-UNIT throw then ;
+
+\ TOR's entry without its stores: REC is the first of n cells taken.
+: REC-CELLS! ( n -- ) {: n:n :}
+   BODY-EMPTY
+   n REC-CELLS !
+   n 0<> if
+      RTOP
+      WPROF:RETURN-BASE STACK-ABI:RETURN-BYTES +  n CELL-BYTES * -  BOUND
+      L-AT GET,  L-REC SET,
+      RDEPTH-AT n DEPTH+
+   then
+   HERE-OFF BODY-AT ! ;
+
+\ ctx's env holds the record only until the unit's first call.
+: ENV-OPEN ( -- )
+   BODY-EMPTY
+   L-CTX GET,  OP-I32-LOAD ALIGN-32 WPROF:CTX-ENV MEM,  L-ENV SET,
+   1 ENV !
+   HERE-OFF BODY-AT ! ;
+
+: REC-STORE ( vreg n -- ) {: s:vreg n:n :}
+   L-REC GET,  s GET-REG  OP-I64-STORE ALIGN-64 n CELL-BYTES * MEM, ;
+
+\ The record's address in the lower half, $80000000 in the upper (DISPATCH,).
+: REC-QUOT ( n vreg -- ) {: n:n d:vreg :}
+   L-REC GET,  OP-I64-EXTEND-I32-U B,
+   $8000000000000000 n CELL-BYTES * + I64,  OP-I64-ADD B,  d SET-REG ;
+
+: ENV-LOAD ( vreg n -- ) {: d:vreg n:n :}
+   ENV @ 0= if E-T0-UNIT throw then
+   L-ENV GET,  OP-I64-LOAD ALIGN-64 n CELL-BYTES * MEM,  d SET-REG ;
 
 \ ---- loops ---------------------------------------------------------------------
 0 constant INDEX-OFF
@@ -566,6 +617,11 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    ['] SLOTS k EMIT-SLOTS-XT !
    ['] SLOT-STORE k EMIT-SLOT-STORE-XT !
    ['] SLOT-LOAD k EMIT-SLOT-LOAD-XT !
+   ['] REC-CELLS! k EMIT-REC-CELLS-XT !
+   ['] ENV-OPEN k EMIT-ENV-OPEN-XT !
+   ['] REC-STORE k EMIT-REC-STORE-XT !
+   ['] REC-QUOT k EMIT-REC-QUOT-XT !
+   ['] ENV-LOAD k EMIT-ENV-LOAD-XT !
    ['] OP k EMIT-OP-XT !
    ['] OP-LIT k EMIT-OP-LIT-XT !
    ['] SHIFT k EMIT-SHIFT-XT !
