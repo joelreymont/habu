@@ -4,6 +4,14 @@
 \ document's text for a file it holds, else the file on disk. The stamps and strings are the
 \ store's own: a caller copies what it needs before the store keeps or drops another check.
 \ STORAGE CLASS. PROCESS-GLOBAL: the store belongs to the server's one task.
+\
+\ A file the check reads again names each of its definitions again: each
+\ reading adds a decl, but a record is added once, and a repeated line's
+\ strings are dropped but those of its declaration's identity. A line that
+\ declares a record's word again at its token, letters compared without case
+\ as Habu compares names, is of another reading of the file, which declared
+\ another word there: that record, and the line's own when it is new, stands
+\ for several words from then on.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -22,9 +30,9 @@ using LSP-TEXT
 
 public
 
-0 constant CLASS-WORD                    \ a definition's class, which the
-1 constant CLASS-CONSTANT                \ verifier states for the path that
-2 constant CLASS-STORAGE                 \ declared it
+0 constant CLASS-WORD
+1 constant CLASS-CONSTANT
+2 constant CLASS-STORAGE
 3 constant CLASS-EXPORT
 4 constant CLASS-CONSTRUCTOR
 
@@ -34,8 +42,8 @@ private
 
 10 constant LF
 
-0 constant VIS-GLOBAL                    \ a declaration's visibility, which
-1 constant VIS-PRIVATE                   \ the verifier states for it
+0 constant VIS-GLOBAL
+1 constant VIS-PRIVATE
 2 constant VIS-PUBLIC
 
 0 constant ST-UNSEEN                    \ no file visit for this group
@@ -137,8 +145,7 @@ private
 
 \ A decl: its check's group for its declaration's file, the bytes its token
 \ starts and ends at, its visit, -1 for none, its name's and package's
-\ offsets and lengths in BYTES, and its visibility. A file read twice gives a
-\ decl per reading where it gives one record.
+\ offsets and lengths in BYTES, and its visibility.
 0 constant D-GROUP
 1 constant D-START
 2 constant D-END
@@ -162,12 +169,12 @@ DYNAMIC-BUFFER DECLS n                   \ their decls,
 variable DECL-N
 DYNAMIC-BUFFER BYTES u8                  \ and the bytes these name
 variable BYTES-U
-\ BYTES holds a byte past those it names, which each append (BYTES+,
-\ STRING>BYTES) reserves with its own: its accessor refuses an index at its
-\ capacity, and a string at the end of what it names, as an empty one is,
-\ still needs the address of that index.
+\ BYTES holds a byte past those it names, which each append reserves with
+\ its own: its accessor refuses an index at its capacity, and a string at the
+\ end of what it names, as an empty one is, still needs the address of that
+\ index.
 
-TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for decoding a line
+TYPED-VARIABLE JSON-ST JSON:cursor
 DYNAMIC-BUFFER FILE-B u8                 \ the line's file, decoded,
 variable FILE-U
 DYNAMIC-BUFFER IN-B u8                   \ the file a use line's use is in,
@@ -211,7 +218,7 @@ variable TARGET-END-V
 variable LINE-AT                         \ and where its strings start in BYTES
 variable CUR-G                           \ the group positions count for, -1 for none
 PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
-create ESC-B BUF:HDR-BYTES allot         \ a URI's JSON string
+create ESC-B BUF:HDR-BYTES allot
 TYPED-VARIABLE ESC-W JSON:writer
 
 : BLOCK@ ( n n -- n )  swap BLOCK-CELLS * + BLOCKS @ ;
@@ -233,7 +240,6 @@ TYPED-VARIABLE ESC-W JSON:writer
 : FILE$ ( -- ptr u8 n )  0 FILE-B FILE-U @ ;
 : IN$ ( -- ptr u8 n )  0 IN-B IN-U @ ;
 
-\ The bytes appended to BYTES: their offset there.
 : BYTES+ ( ptr u8 n -- n )
    {: a:ptr u:n :}
    BYTES-U @ {: at:n :}
@@ -262,8 +268,6 @@ TYPED-VARIABLE ESC-W JSON:writer
    raw 1 max IN-B-RESERVE
    0 IN-B raw JSON:READ-STR IN-U ! ;
 
-\ The class the string the reader is at names; a word for any class the
-\ verifier names but this store does not tell apart.
 : CLASS-OF ( JSON:reader -- JSON:reader n )
    s" constant" JSON:READ-STR-EQ? if CLASS-CONSTANT exit then
    s" storage" JSON:READ-STR-EQ? if CLASS-STORAGE exit then
@@ -271,7 +275,6 @@ TYPED-VARIABLE ESC-W JSON:writer
    s" constructor" JSON:READ-STR-EQ? if CLASS-CONSTRUCTOR exit then
    CLASS-WORD ;
 
-\ The visibility the string the reader is at names, -1 for any other.
 : VIS-OF ( JSON:reader -- JSON:reader n )
    s" global" JSON:READ-STR-EQ? if VIS-GLOBAL exit then
    s" private" JSON:READ-STR-EQ? if VIS-PRIVATE exit then
@@ -333,8 +336,6 @@ TYPED-VARIABLE ESC-W JSON:writer
    s" target_end" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT TARGET-END-V ! exit then
    JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
 
-\ The line's members decoded, each once; a string it lacks is empty, at the
-\ end of BYTES as the check's own strings are.
 : DECODE ( ptr u8 n -- )
    {: a:ptr u:n :}
    BYTES-U @ LINE-AT !
@@ -368,8 +369,6 @@ TYPED-VARIABLE ESC-W JSON:writer
    begin JSON:READ-NEXT JSON:T-KEY = while MEMBER repeat
    JSON:READ-CLOSE ;
 
-\ The group of the file at this path among this check's, if it has one: the
-\ group positions count for first, then the others.
 : FOUND ( ptr u8 n -- option<n> )
    {: p:ptr pu:n :}
    CUR-G @ {: cur:n :}
@@ -388,8 +387,7 @@ TYPED-VARIABLE ESC-W JSON:writer
 public
 
 \ The URI positions count at in the file at this path, another than the
-\ checked document's own: the open document's that holds it, else the path's
-\ file URI.
+\ checked document's own.
 : DEP-URI$ ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
    p pu DOC-HOLDING MATCH option
@@ -404,14 +402,10 @@ private
    ESC-W ESC-B JSON:WRITE-OPEN-BUF
    u uu JSON:WRITE-STRING JSON:WRITTEN$ ;
 
-\ The slot of the document whose check the store is keeping: the newest
-\ block's.
 : KEPT-SLOT ( -- n )  BLOCK-N @ 1- B-SLOT BLOCK@ ;
 
 \ A new group of this check's, for the file at this path, which does not lie
-\ in BYTES, with no file visit yet: its index. The group of the document's own
-\ file is at the URI of that document, whose text its positions count in
-\ (COUNT-IN); the probe's check is of no document's.
+\ in BYTES, with no file visit yet: its index.
 : GROUP+ ( ptr u8 n -- n )
    {: p:ptr pu:n :}
    GROUP-N @ {: g:n :}
@@ -431,10 +425,6 @@ private
    1 GROUP-N +!
    g ;
 
-\ Positions count in the bytes the check read of the group's file from now
-\ on: the text of the document the check is of; for any other file, the text
-\ of the open document holding it, which the check read in its place, else
-\ the file on disk.
 : COUNT-IN ( n -- )
    {: g:n :}
    g G-OWN GROUP@ 0<> if KEPT-SLOT DOC-TEXT$ TEXT! g CUR-G ! exit then
@@ -455,7 +445,6 @@ private
 
 : FILE-GROUP ( -- n )  FILE$ GROUP-AT ;
 
-\ The group of the line's file, positions counting in its text.
 : GROUP ( -- n )
    FILE-GROUP dup CUR-G @ <> if dup COUNT-IN then ;
 
@@ -468,8 +457,6 @@ private
    u BYTES-U +!
    to ;
 
-\ The line's strings dropped from BYTES but its declaration's name and
-\ package, which move down to where they started, the earlier one first.
 : IDS-DOWN ( -- )
    LINE-AT @ BYTES-U !
    NAME-AT @ PKG-AT @ < if
@@ -506,14 +493,11 @@ private
    VIS-V @ d D-VIS DECL!
    1 DECL-N +! ;
 
-\ Whether record R is of the line's word, declared at the line's byte.
 : SAME? ( n -- bool )
    {: r:n :}
    r R-START REC@ START-V @ <> if false exit then
    r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR= ;
 
-\ The record of group G that holds the line's record already, if one does: a
-\ file the check reads again names each of its definitions again.
 : HOLDER ( n -- option<n> )
    G-FIRST GROUP@
    begin dup 0 >= while
@@ -522,16 +506,11 @@ private
    repeat
    drop OPTION:NONE ;
 
-\ Whether record R is of the line's word, letters compared without case as
-\ Habu compares names, declared at the line's byte.
 : ALIKE? ( n -- bool )
    {: r:n :}
    r R-START REC@ START-V @ <> if false exit then
    r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR=CI ;
 
-\ Marks each record of group G whose word is the line's, letters compared
-\ without case, declared at the line's byte, as standing for several words;
-\ true when one is.
 : SEVERAL! ( n -- bool )
    false swap G-FIRST GROUP@
    begin dup 0 >= while
@@ -540,8 +519,6 @@ private
    repeat
    drop ;
 
-\ The line's record, new, last of group G's, standing for several words when
-\ SEVERAL is true.
 : REC+ ( n bool -- )
    {: g:n several:bool :}
    REC-N @ {: r:n :}
@@ -568,13 +545,6 @@ private
    r g G-LAST GROUP!
    1 REC-N +! ;
 
-\ The line's record, last of its group's, unless the group holds it already,
-\ when the strings the line decoded are dropped instead, but those of its
-\ declaration's identity; its decl, either way. A line that declares a
-\ record's word again at its token, letters compared without case as Habu
-\ compares names, is of another reading of the file, which declared another
-\ word there: that record, and the line's own when it is new, stands for
-\ several from then on.
 : RECORD ( -- )
    GROUP {: g:n :}
    g SEVERAL! {: several:bool :}
@@ -656,7 +626,6 @@ private
    CSEC-V @ g G-CSEC GROUP!
    CNS-V @ g G-CNS GROUP! ;
 
-\ Each visit's stamp must agree with earlier visits of the same path.
 : FILE-LINE ( -- )
    LINE-SOURCE
    LINE-AT @ BYTES-U !
@@ -686,7 +655,6 @@ private
    in u U-IN USE!
    1 USE-N +! ;
 
-\ The line at offset O of the lines, decoded, given to XT; the offset after it.
 : STEP ( ptr u8 n n [ -- ] -- n )
    {: a:ptr u:n o:n xt :}
    a o + u o - LF INDEX-OF MATCH option
@@ -711,7 +679,6 @@ private
    ho go <> if ho go > exit then
    h g > ;
 
-\ Whether another group for group G's file answers in its place.
 : SUPERSEDED? ( n -- bool )
    {: g:n :}
    GROUP-N @ 0 ?do
@@ -726,7 +693,6 @@ private
       i SUPERSEDED? if 1 else 0 then i G-OVER GROUP!
    loop ;
 
-\ Where block K's FIELD ends: the next block's start, else TOTAL.
 : BLOCK-END ( n n n -- n )
    {: k:n f:n total:n :}
    k 1+ BLOCK-N @ < if k 1+ f BLOCK@ else total then ;
@@ -766,8 +732,6 @@ private
    u U-NAME USE@ dt - u U-NAME USE!
    u U-PKG USE@ dt - u U-PKG USE! ;
 
-\ Block K's uses removed; the later blocks' uses moved down, and their first
-\ uses with them.
 : CUT-USES ( n -- )
    {: k:n :}
    k B-USE BLOCK@ {: u0:n :}
@@ -820,8 +784,6 @@ private
       then
    loop ;
 
-\ The block of the last completed check of the document in this slot, if the
-\ store keeps one.
 : BLOCK-OF ( n -- option<n> )
    {: slot:n :}
    BLOCK-N @ 0 ?do
@@ -829,8 +791,6 @@ private
    loop
    OPTION:NONE ;
 
-\ The first use of block K whose bytes end at this byte, after they start,
-\ if one does.
 : USE-ENDING ( n n -- option<n> )
    {: k:n at:n :}
    k B-USE USE-N @ BLOCK-END k B-USE BLOCK@ ?do
@@ -840,8 +800,6 @@ private
    loop
    OPTION:NONE ;
 
-\ The first use of block K whose bytes hold this byte, or whose token ends
-\ exactly here when none holds it.
 : USE-HOLDING ( n n -- option<n> )
    {: k:n at:n :}
    k B-USE USE-N @ BLOCK-END k B-USE BLOCK@ ?do
@@ -851,8 +809,6 @@ private
    loop
    k at USE-ENDING ;
 
-\ A new block, the newest, for the completed check of the document in this
-\ slot, whose verdict was verified or not.
 : BLOCK+ ( n bool -- )
    {: slot:n verified:bool :}
    BLOCK-N @ {: k:n :}
