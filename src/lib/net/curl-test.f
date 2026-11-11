@@ -1392,7 +1392,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-STATUS @ 501 T= ;
 
 
-\ Whether the echoed request holds `needle` anywhere.
 : ECHO-HAS? ( ptr u8 n -- bool ) {: needle:ptr needleu:n :}
    LAST-LEN @ 0 ?do BODY$ needle needleu i TEXT-AT? if true unloop exit then loop
    false ;
@@ -1464,7 +1463,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    BODY$ NO-COOKIE$ T$= ;
 
 
-\ Second request: the jar is read back and the server sees the cookie return.
 : COOKIE-SECOND ( -- )
    PATH-COOKIE$ GET-READY {: subject:CURL:handle :}
    subject JAR$ CURL:COOKIE-FILE! EXPECT-OK
@@ -1502,8 +1500,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    HUGE-U 0 do i HUGE-PERIOD mod p i + c! loop ;
 
 
-\ The caller's span is the one bound on a reply: a body past 64 MiB arrives
-\ whole, byte for byte.
 : HUGE-CASE ( -- )
    HUGE-ALLOC HUGE-SENT !
    HUGE-ALLOC HUGE-GOT !
@@ -1616,8 +1612,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-CODE @ CURL:>CODE CURL:ERROR$ s" Timeout was reached" T$= ;
 
 
-\ A loopback port whose listener was closed: nothing listens there, so the
-\ connection is refused and the server is never reached.
 : TEST-REFUSED ( -- )
    s" a free loopback port is found and closed again" T-LABEL
    CLOSED-LISTENER CLOSED-PORT LISTEN-LOOPBACK TTRUE
@@ -1634,7 +1628,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-CODE @ CURL:>CODE CURL:LOCAL? TFALSE ;
 
 
-\ libcurl refuses a URL it cannot parse before it tries any server.
 : TEST-MALFORMED ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject s" http://[" CURL:URL! EXPECT-OK
@@ -1651,17 +1644,12 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    0 CURL:>CODE CURL:LOCAL? TFALSE ;
 
 
-\ A wait polled to DEADLINE that passes it names itself on stdout and throws
-\ E-PROC-TIMEOUT (src/lib/test/wait.f), so the suite ends as a timeout, not a hang.
+2000 constant WAIT-MS
 
-2000 constant WAIT-MS                   \ the bound on every wait polled to DEADLINE
-
-\ The end of a wait's WAIT-MS window, an absolute mono-ns.
 : DEADLINE ( -- n )
    mono-ns WAIT-MS NS-PER-MS * + ;
 
 
-\ Returns once the task has ended; a timeout names the waiting case.
 : AWAIT-END ( ptr n ptr u8 n -- )
    {: name:ptr len:n :}
    [: dup TASK:DONE? ;] DEADLINE name len TEST-WAIT:POLL
@@ -1689,7 +1677,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    conn PLAIN-SERVE ;
 
 
-\ Serves one connection, then closes its listener.
 : PLAIN-WORK ( -- )
    PLAIN-LISTENER @ TCP4:>LISTENER {: listener:TCP4:listener :}
    listener TCP4:ACCEPT
@@ -1721,9 +1708,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 \ A client its ceiling ended can return while the serial server still drains
 \ and closes that connection, so the next timed case waits for this answer: the
-\ server takes connections one at a time in the order they were made, and it
-\ answers a request made now only once it is done with every earlier one -
-\ whether that one carried a request or its ceiling ended it before one left.
+\ server answers a request made now only once it is done with every earlier one.
 : SERVER-BARRIER ( -- )
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
@@ -1733,11 +1718,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-STATUS @ 200 T= ;
 
 
-\ The ceiling TIMEOUT! sets ends a transfer that is slow but perfectly alive:
-\ exactly the loss a low-speed limit exists to avoid. That ceiling can also fire
-\ before the request is sent, when the scheduler holds the client that long, so
-\ whether the request arrived is found out after the barrier, not assumed; a run
-\ whose request never arrived shows no more than TEST-TIMEOUT does.
+\ The ceiling TIMEOUT! sets can also fire before the request is sent, when the
+\ scheduler holds the client that long, so whether the request arrived is found
+\ out after the barrier, not assumed.
 : DRIBBLE-CEILING ( -- )
    SERVER-HITS atomic@ {: before:n :}
    PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
@@ -1754,8 +1737,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    arrived CEILING-HITS ! ;
 
 
-\ The same dribble under a low-speed limit far below its rate finishes whole:
-\ the stall test tolerates slow, and only slow.
 : DRIBBLE-LOW-SPEED ( -- )
    PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
    subject LOW-RATE LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
@@ -1826,8 +1807,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-CODE @ 0 T<> ;
 
 
-\ INIT restricts the schemes, so a readable local file is refused by libcurl
-\ before anything is opened and none of its bytes reach the caller's span.
 : TEST-FILE-SCHEME ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject FILE-URL$ CURL:URL! EXPECT-OK
@@ -1908,10 +1887,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LOW-SPEED-PAIRS ;
 
 
-\ A string option or header line is the caller's own storage, as long as the
-\ caller made it. libcurl keeps its own input limit on string options, and one
-\ past it answers `failed` with libcurl's code rather than a throw.
-
 $10001 constant PAST-TEXT                 \ a byte past 64 KiB: CURL sets no text limit of its own
 8000001 constant PAST-CURL-INPUT          \ a byte past libcurl's CURL_MAX_INPUT_LENGTH
 43 constant CURLE-BAD-ARGUMENT            \ CURLE_BAD_FUNCTION_ARGUMENT
@@ -1951,7 +1926,6 @@ variable LONG-ANSWER
       failed OF CURL:CODE>N ENDOF
    ;MATCH LONG-ANSWER ! ;
 
-\ Each row releases its handle and text before asserting, a throw included.
 : TEST-LONG-TEXT ( -- )
    s" text options and a header line past 64 KiB are taken whole" T-LABEL
    PAST-TEXT LONG-OPEN
@@ -2004,7 +1978,6 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 TASK:MIN-STACK TASK:TASK DONE-TASK
 
 
-\ Returns once the count in the cell reaches want.
 : REACH ( ptr n n -- )
    [: 2dup swap atomic@ <= ;] DEADLINE s" curl-test REACH" TEST-WAIT:POLL
    2drop ;
@@ -2013,9 +1986,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 \ An abandoned record is given back by the loop and not by the task that left
 \ it, so the stop is retried to a bound rather than asserted on the first try.
 \ CURL:E-STATE answers both a busy record and a loop that is not live; every
-\ STOP-LOOP caller started the loop, so here it means a record not yet free and
-\ is the one code retried. Any other code from CURL:LOOP-STOP is a fault and is
-\ rethrown at once.
+\ STOP-LOOP caller started the loop, so here it means a record not yet free.
 : STOPPED? ( -- bool )
    [: CURL:LOOP-STOP ;] catch {: code:n :}
    code 0= if true exit then
@@ -2027,13 +1998,12 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    [: STOPPED? ;] DEADLINE s" curl-test STOP-LOOP" TEST-WAIT:POLL ;
 
 
-\ Returns once the server has counted one more request than before.
 : WAIT-HIT ( n -- )
    SERVER-HITS swap 1+ REACH ;
 
 
-\ The loop's answer for one handle, recorded exactly as FETCH records PERFORM's,
-\ so the two paths are compared field by field and not by their spelling.
+\ Recorded as FETCH records PERFORM's, so the two paths are compared field by
+\ field and not by their spelling.
 : AWAIT-ONE ( CURL:handle -- )
    CURL:AWAIT false RECORD-RESULT ;
 
@@ -2067,10 +2037,6 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    path pathu GET-READY capacity multi SPAN-RUN ;
 
 
-\ A body meets spans longer than, equal to and shorter than itself, through
-\ PERFORM or through the loop. libcurl writes into the span and never past it,
-\ so the byte after what the span holds keeps FILL-BYTE, and a truncated length
-\ is the bytes the span holds.
 : SPAN-CASES ( bool -- ) {: multi:bool :}
    PATH-HELLO$ 7 multi SPAN-FETCH
    s" a body shorter than its span arrives whole" T-LABEL
@@ -2182,7 +2148,6 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 
 \ The peer holds the connection after writing a NUL and two bytes of a UTF-8
 \ scalar. NEXT must return those bytes before ACK allows the rest to be sent.
-\ The rest grows the memstream and is collected through short caller spans.
 : CASE-STREAM-HELD ( -- )
    s" the first stream chunk arrives while the HTTP response is held" T-LABEL
    0 STREAM-ACK atomic! 0 STREAM-DONE atomic! 0 STREAM-READ !
@@ -2327,9 +2292,9 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject CURL:CLEANUP ;
 
 
-$10000 constant BOUNDED-CAP              \ 64 KiB, the span each NEXT fills
+$10000 constant BOUNDED-CAP
 create BOUNDED-BUF BOUNDED-CAP allot
-variable BOUNDED-READ                    \ body bytes NEXT has delivered
+variable BOUNDED-READ
 variable BOUNDED-BAD                     \ chunks that are not the body at their offset
 variable BOUNDED-MOST                    \ the largest memstream length after a NEXT
 
@@ -2375,7 +2340,6 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    [: BOUNDED-RUN ;] [: HUGE-RELEASE ;] finally ;
 
 
-\ Stream i's span, its body, and that body's room in bytes.
 : TWO-CHUNK ( n -- ptr u8 ) 0= if STREAM-CHUNK else STREAM-CHUNK-TWO then ;
 : TWO-BODY ( n -- ptr u8 ) 0= if STREAM-GOT else BODY-BUF then ;
 : TWO-ROOM ( n -- n ) 0= if STREAM-U else STREAM-CAP then ;
@@ -2389,8 +2353,6 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    i TWO-READ @ count + i TWO-READ ! ;
 
 
-\ Takes stream i's answer: a chunk joins its body and the read is armed again;
-\ answers true at the end.
 : TWO-TAKE ( CURL:handle n -- bool )
    {: subject:CURL:handle i:n :}
    subject CURL:NEXT-TAKE JOIN-SERVER
@@ -2468,8 +2430,6 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    three CURL:CLEANUP ;
 
 
-\ One request through PERFORM and the same one through the loop: the answers
-\ must agree, status, length and bytes.
 : PARITY-WHOLE ( -- )
    PATH-HELLO$ GET-READY {: one:CURL:handle :}
    one BODY-CAP >LEN FETCH
@@ -2491,7 +2451,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 
 \ A consumed POST with no response on a reused keepalive connection can be
 \ retried by libcurl. This control establishes the behavior the fresh option
-\ needs to avoid on the host's libcurl, through the same multi loop clients use.
+\ needs to avoid on the host's libcurl.
 : CASE-RETRY-DEFAULT ( -- )
    PATH-RETRY$ GET-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN MULTI-FETCH
@@ -2524,7 +2484,6 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    RETRY-POST-HITS atomic@ 3 T= ;
 
 
-\ The loop's whole receive answers every span case as PERFORM does.
 : PARITY-SPANS ( -- )
    true SPAN-CASES ;
 
@@ -2583,17 +2542,12 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    idx MANY-SPAN LAST-LEN @ HELLO$ T$= ;
 
 
-\ Every transfer of the round is in flight at once, and they are awaited in
-\ order. The new OS thread identities are counted while all are in flight.
 : MANY-ROUND ( -- )
    MANY-N 0 ?do i MANY-START loop
    TEST-HOST:NEW-THREADS DURING-THREADS !
    MANY-N 0 ?do i MANY-CHECK loop ;
 
 
-\ A hundred transfers in flight at once cost the CURL loop and the AIO loop
-\ alone, the two new OS thread identities. A second round of as many lands on
-\ the records the first one grew and grows none.
 : CASE-MANY ( -- )
    MANY-ROUND
    s" a hundred transfers cost the CURL loop and the AIO loop alone" T-LABEL
@@ -2605,8 +2559,6 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    DURING-THREADS @ 2 T= ;
 
 
-\ One transfer nothing ever answers, ended by its own ceiling, while the
-\ others on the same loop answer 200: a transfer's failure is its own.
 : CASE-STALLED ( -- )
    STALL-READY {: bad:CURL:handle :}
    RESULT-RESET
@@ -2648,8 +2600,6 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    [: OWNER-HANDLE @ CURL:AWAIT DROP-FETCH ;] catch OWNER-RC ! ;
 
 
-\ A transfer belongs to the task that started it, the loop will not stop while
-\ one is in flight, and the record is gone once its answer has been taken.
 : CASE-OWNER ( -- )
    0 OWNER-RC !
    PATH-HELLO$ GET-READY OWNER-HANDLE !
@@ -2711,8 +2661,6 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    [: HALT-WORK ;] [: EXIT-FETCH ;] finally ;
 
 
-\ A halt gives up only the transfer its task is parked on: a fetch the task's
-\ own finally starts afterwards is carried to its answer.
 : CASE-HALTED-FETCH ( -- )
    0 HALT-PARKED !
    0 HALT-RC !
@@ -2786,13 +2734,12 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    [: LEAVE-WAIT ;] [: BODY-FILL ;] finally ;
 
 
-\ A halted waiter's cleanups run once AWAIT has unwound, and the span is theirs
-\ by then: the finally refills it, and nothing the loop receives afterwards may
-\ land there. The wait for the server to see the client go outlasts every read
-\ the loop could still make, and a dribble cut short says the transfer was in
-\ flight at the halt. A loop that let go late writes after the refill only when
-\ it reads before the turn that answers the wake, so a regression fails this
-\ case on some runs and not on every one.
+\ The wait for the server to see the client go outlasts every read the loop
+\ could still make, and a dribble cut short says the transfer was in flight at
+\ the halt.
+\ A loop that let go late writes after the refill only when it reads before the
+\ turn that answers the wake, so a regression fails this case on some runs and
+\ not on every one.
 : CASE-HALTED-SPAN ( -- )
    0 HALT-PARKED !
    0 HALT-RC !
@@ -2944,8 +2891,6 @@ variable DEFER-RETURNED
 : CLEANUP-WORK ( -- ) HALT-HANDLE @ CURL:CLEANUP ;
 
 
-\ Starts a stalled transfer from the main thread, which never collects it, and
-\ returns once the server has its request.
 : START-STALL ( -- )
    PATH-STALL$ GET-READY HALT-HANDLE !
    SERVER-HITS atomic@ {: before:n :}
@@ -2953,7 +2898,6 @@ variable DEFER-RETURNED
    before WAIT-HIT ;
 
 
-\ The owner's CLEANUP leaves the loop no record, so it stops on the first try.
 : CLEANUP-STOPS ( -- )
    s" CLEANUP gives up the caller's uncollected transfer" T-LABEL
    [: HALT-HANDLE @ CURL:CLEANUP ;] catch 0 T=
@@ -3009,8 +2953,6 @@ variable DEFER-RETURNED
    1 DONE-COLLECTED atomic! ;
 
 
-\ The response cell witnesses FINISH publishing the completed peer response.
-\ HALT may follow collection or cause abandonment after that publication.
 : CASE-HALTED-DONE-ONE ( -- bool )
    0 DONE-PARKED ! 0 DONE-COLLECTED ! 0 DONE-RC !
    PATH-HEADERS$ GET-READY DONE-HANDLE !
@@ -3057,7 +2999,6 @@ variable DEFER-RETURNED
    DONE-ABANDONED @ 1 T= ;
 
 
-\ The loop opens again on an empty table and carries a transfer as before.
 : CASE-RESTART ( -- )
    CURL:LOOP-START EXPECT-OK
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
@@ -3137,8 +3078,6 @@ variable DEFER-RETURNED
    94 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
-\ Opt-in: the one case that leaves the machine. It proves the system CA bundle
-\ and TLS work through the same package, which loopback HTTP cannot show.
 : NET-TESTS? ( -- bool )
    s" HABU_NET_TESTS" GETENV s" 1" STR= ;
 
