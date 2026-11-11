@@ -966,6 +966,106 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
    s" stores: compiled " one two three RESULTS.
    space four FMT:.INT  space five FMT:.INT  space six FMT:.INT  space seven FMT:.INT cr ;
 
+\ ---- a stored quotation whose code is edited ----
+variable SEEN-Q   \ the linked Q of the last own or through build, -1 when it threw
+PATH-CAP BUFFER: SEQ-DIR  variable SEQ-DIR-U   \ the directory the build loads from: LINKER:WITH keeps its quotation
+
+: SEQ-DIR! ( ptr u8 n -- ) {: d:ptr du:n :}  d SEQ-DIR du BYTE-COPY  du SEQ-DIR-U ! ;
+: SEQ-DIR$ ( -- ptr u8 n ) SEQ-DIR SEQ-DIR-U @ ;
+
+CAST: >ANSWER ( n -- [ -- n ] )
+
+: Q! ( ptr u8 n -- ) ENTRY >ANSWER execute SEEN-Q ! ;
+
+\ The line's text, then four builds' compiled counts and Qs, then a cold build's
+\ of the last sources.
+: COLD-WARM. ( ptr u8 n n n n n n n n n n n -- )
+   {: a:ptr u:n one:n two:n three:n four:n q1:n q2:n q3:n q4:n cold:n qc:n :}
+   a u one two three RESULTS.  space four FMT:.INT
+   s"  q " type  q1 FMT:.INT space  q2 FMT:.INT space  q3 FMT:.INT space  q4 FMT:.INT
+   s"  cold " type  cold FMT:.INT  s"  q " type  qc FMT:.INT cr ;
+
+: OWN-P$ ( ptr u8 n -- ptr u8 n ) s" p.f" FIRST-BUF FILE-IN ;
+: OWN-R$ ( ptr u8 n -- ptr u8 n ) s" r.f" SECOND-BUF FILE-IN ;
+
+\ The directory's p.f, whose INSTALL stores in p.f's own HOOK a quotation answering the literal. A rewrite of a file
+\ compiles it whatever its bytes, so an edit writes p.f alone.
+: OWN-P! ( ptr u8 n ptr u8 n -- )
+   {: d:ptr du:n lit:ptr litu:n :}
+   d du OWN-P$ s\" package FILE-OBJECTS-OWN public variable HOOK\n: INSTALL ( -- ) [: " FS:WRITE-ALL
+   d du OWN-P$ lit litu FS:APPEND-FILE
+   d du OWN-P$ s\"  ;] HOOK xt! ;\nINSTALL\n;package\n" FS:APPEND-FILE ;
+
+\ The directory's r.f, which runs HOOK's quotation.
+: OWN-R! ( ptr u8 n -- )
+   {: d:ptr du:n :}
+   d du OWN-R$ s\" package FILE-OBJECTS-OWN-R\nCAST: XT ( n -- [ -- n ] )\npublic\nFILE-OBJECTS-OWN:HOOK @ XT execute constant Q\n;package\n"
+   FS:WRITE-ALL ;
+
+: OWN-BUILD ( ptr u8 n -- n )
+   SEQ-DIR!  -1 SEEN-Q !
+   [: s" app" RTARGET:HOST-TARGET
+      [: SEQ-DIR$ OWN-P$ included  SEQ-DIR$ OWN-R$ included  s" FILE-OBJECTS-OWN-R:Q" Q! ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ p.f stores into its own HOOK the quotation r.f runs: editing the quotation's literal must compile r.f, whose Q then
+\ equals a cold build's. own-cold holds the edited sources, so its build is cold.
+: BY-OWN ( -- )
+   s" own" DIR$ FS:MAKE-DIR  s" own-cold" DIR$ FS:MAKE-DIR
+   s" own" s" 42" OWN-P!  s" own" OWN-R!
+   s" own" OWN-BUILD {: one:n :}  SEEN-Q @ {: q1:n :}
+   s" own" OWN-BUILD {: two:n :}  SEEN-Q @ {: q2:n :}
+   s" own" s" 43" OWN-P!
+   s" own" OWN-BUILD {: three:n :}  SEEN-Q @ {: q3:n :}
+   s" own" OWN-BUILD {: four:n :}  SEEN-Q @ {: q4:n :}
+   s" own-cold" s" 43" OWN-P!  s" own-cold" OWN-R!
+   s" own-cold" OWN-BUILD {: cold:n :}  SEEN-Q @ {: qc:n :}
+   s" own: compiled " one two three four q1 q2 q3 q4 cold qc COLD-WARM. ;
+
+: THROUGH-H$ ( ptr u8 n -- ptr u8 n ) s" h.f" FIRST-BUF FILE-IN ;
+: THROUGH-P$ ( ptr u8 n -- ptr u8 n ) s" p.f" SECOND-BUF FILE-IN ;
+: THROUGH-M$ ( ptr u8 n -- ptr u8 n ) s" m.f" THIRD-BUF FILE-IN ;
+: THROUGH-R$ ( ptr u8 n -- ptr u8 n ) s" r.f" FOURTH-BUF FILE-IN ;
+
+\ The directory's p.f, whose MAKE answers a quotation answering the literal.
+: THROUGH-P! ( ptr u8 n ptr u8 n -- )
+   {: d:ptr du:n lit:ptr litu:n :}
+   d du THROUGH-P$ s\" package FILE-OBJECTS-THROUGH-P public\n: MAKE ( -- [ -- n ] ) [: " FS:WRITE-ALL
+   d du THROUGH-P$ lit litu FS:APPEND-FILE
+   d du THROUGH-P$ s\"  ;] ;\n;package\n" FS:APPEND-FILE ;
+
+\ The directory's h.f holding HOOK, m.f storing MAKE's answer into HOOK, and r.f running HOOK.
+: THROUGH-REST! ( ptr u8 n -- )
+   {: d:ptr du:n :}
+   d du THROUGH-H$ s\" package FILE-OBJECTS-THROUGH public variable HOOK ;package\n" FS:WRITE-ALL
+   d du THROUGH-M$ s\" package FILE-OBJECTS-THROUGH-M public\n: STORE ( -- ) FILE-OBJECTS-THROUGH-P:MAKE FILE-OBJECTS-THROUGH:HOOK xt! ;\nSTORE\n;package\n"
+   FS:WRITE-ALL
+   d du THROUGH-R$ s\" package FILE-OBJECTS-THROUGH-R\nCAST: XT ( n -- [ -- n ] )\npublic\nFILE-OBJECTS-THROUGH:HOOK @ XT execute constant Q\n;package\n"
+   FS:WRITE-ALL ;
+
+: THROUGH-BUILD ( ptr u8 n -- n )
+   SEQ-DIR!  -1 SEEN-Q !
+   [: s" app" RTARGET:HOST-TARGET
+      [: SEQ-DIR$ THROUGH-H$ included  SEQ-DIR$ THROUGH-P$ included  SEQ-DIR$ THROUGH-M$ included
+         SEQ-DIR$ THROUGH-R$ included  s" FILE-OBJECTS-THROUGH-R:Q" Q! ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ m.f stores into h.f's HOOK the quotation p.f's MAKE answers, which r.f runs: editing the quotation's literal in p.f
+\ must compile r.f, whose Q then equals a cold build's. through-cold holds the edited sources, so its build is cold.
+: BY-THROUGH ( -- )
+   s" through" DIR$ FS:MAKE-DIR  s" through-cold" DIR$ FS:MAKE-DIR
+   s" through" s" 42" THROUGH-P!  s" through" THROUGH-REST!
+   s" through" THROUGH-BUILD {: one:n :}  SEEN-Q @ {: q1:n :}
+   s" through" THROUGH-BUILD {: two:n :}  SEEN-Q @ {: q2:n :}
+   s" through" s" 43" THROUGH-P!
+   s" through" THROUGH-BUILD {: three:n :}  SEEN-Q @ {: q3:n :}
+   s" through" THROUGH-BUILD {: four:n :}  SEEN-Q @ {: q4:n :}
+   s" through-cold" s" 43" THROUGH-P!  s" through-cold" THROUGH-REST!
+   s" through-cold" THROUGH-BUILD {: cold:n :}  SEEN-Q @ {: qc:n :}
+   s" through: compiled " one two three four q1 q2 q3 q4 cold qc COLD-WARM. ;
+
 \ ---- a piece that gains a store into reached data ----
 : GAIN-H$ ( -- ptr u8 n ) s" gain" s" h.f" FIRST-BUF FILE-IN ;
 : GAIN-S$ ( -- ptr u8 n ) s" gain" s" s.f" SECOND-BUF FILE-IN ;
@@ -1003,7 +1103,7 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
    MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD BY-RUN
-   BY-STORES BY-GAIN
+   BY-STORES BY-GAIN BY-OWN BY-THROUGH
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----
