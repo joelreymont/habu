@@ -24,7 +24,7 @@ create IMDT-RET PATH-CAP allot
 create IMDT-LDRB PATH-CAP allot
 create IMDT-FORMS PATH-CAP allot
 create IMDT-BYTES 4 allot
-12 constant IMDT-FORM-N
+16 constant IMDT-FORM-N
 create IMDT-FORM-BYTES IMDT-FORM-N 4 * allot
 
 variable IMDT-ROOT-U
@@ -70,7 +70,7 @@ variable IMDT-FORMS-U
    {: w idx :}
    4 0 ?do w i 8 * rshift 255 and IMDT-FORM-BYTES idx 4 * + i + c! loop ;
 
-\ One word of each form IMDT-TEST-FORMS expects, in its order; the last two
+\ One word of each form IMDT-TEST-FORMS expects, in its order; words 10 and 11
 \ print ?: a reserved bitmask and an encoding no row decodes.
 : IMDT-WRITE-FORMS ( -- )
    $F8008665 0 IMDT-FORM!
@@ -85,6 +85,10 @@ variable IMDT-FORMS-U
    $17FFFFFF 9 IMDT-FORM!
    $9240FC20 10 IMDT-FORM!
    $0E201C00 11 IMDT-FORM!
+   $D2A00020 12 IMDT-FORM!
+   $F2E00041 13 IMDT-FORM!
+   $91400420 14 IMDT-FORM!
+   $F1400D3F 15 IMDT-FORM!
    IMDT-FORMS$ IMDT-FORM-BYTES IMDT-FORM-N 4 * FS:WRITE-ALL ;
 
 : IMDT-PREPARE ( -- )
@@ -138,9 +142,9 @@ variable IMDT-FORMS-U
    IMDT-OUT outu s" ldrb" CONTAINS? TTRUE ;
 
 : IMDT-TEST-FORMS ( -- )
-   IMDT-FORMS$ s" 0" s" 12" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
+   IMDT-FORMS$ s" 0" s" 16" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
-   outu 143 T=
+   outu 192 T=
    IMDT-OUT outu s\" str-post 5 19 8\n" CONTAINS? TTRUE
    IMDT-OUT outu s\" ldr-pre 11 19 -8\n" CONTAINS? TTRUE
    IMDT-OUT outu s\" blr 9\n" CONTAINS? TTRUE
@@ -152,7 +156,11 @@ variable IMDT-FORMS-U
    IMDT-OUT outu s\" cbz 2 24\n" CONTAINS? TTRUE
    IMDT-OUT outu s\" b -4\n" CONTAINS? TTRUE
    IMDT-OUT outu s\" ? 9240FC20\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" ? 0E201C00\n" CONTAINS? TTRUE ;
+   IMDT-OUT outu s\" ? 0E201C00\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" movz 0 1 16\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" movk 1 2 48\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" add 0 1 4096\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" cmp 9 12288\n" CONTAINS? TTRUE ;
 
 : IMDT-TEST-RANGE ( -- )
    IMDT-RET$ s" 4" s" 1" IMDT-RUN 74 IMDT-EXPECT-EXIT {: outu erru :}

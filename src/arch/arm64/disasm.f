@@ -71,6 +71,12 @@ create DTB DTB-ROWS
 
 : FI16 ( n -- n ) {: w :} w 5 rshift 65535 and ;
 
+\ Move-wide's shift in bits: hw, bits 22-21, times 16.
+: FHW ( n -- n ) {: w :} w 21 rshift 3 and 16 * ;
+
+\ Add and sub immediate's imm12, shifted left 12 when sh, bit 22, is set.
+: FI12SH ( n -- n ) {: w :} w FI12 w 22 rshift 1 and 12 * lshift ;
+
 
 \ v, below 2^bits, read as a bits-wide two's-complement number.
 : SEXT ( n n -- n )
@@ -176,12 +182,12 @@ create CHB 4 allot
 : DROW-EMIT ( n n -- )
    {: w kind :}
    kind 0 = IF w FRD DOUT w FRN DOUT w FRM DOUT THEN
-   kind 1 = IF w FRD DOUT w FRN DOUT w FI12 DOUT THEN
-   kind 2 = IF w FRD DOUT w FI16 DOUT THEN
+   kind 1 = IF w FRD DOUT w FRN DOUT w FI12SH DOUT THEN
+   kind 2 = IF w FRD DOUT w FI16 DOUT w FHW DOUT THEN
    kind 3 = IF w FRD DOUT w FRN DOUT w FI12 8 * DOUT THEN
    kind 6 = IF w FRN DOUT w FRM DOUT THEN
    kind 7 = IF w FI26 DOUT THEN
-   kind 8 = IF w FRN DOUT w FI12 DOUT THEN
+   kind 8 = IF w FRN DOUT w FI12SH DOUT THEN
    kind 9 = IF w FRD DOUT w FRN DOUT w FI9 DOUT THEN
    kind 10 = IF w DCOND w FI19 DOUT THEN
    kind 11 = IF w FRD DOUT w FRN DOUT w BITMASK drop DOUT THEN
@@ -201,31 +207,21 @@ create CHB 4 allot
    63 EMITC SPC  SB-RESET w 8 FMT:SB-HEX-WIDTH SB$ type ;
 
 
-\ No locals inside the loop (they corrupt the frame): row fields go through variables.
-variable DDONE  variable DRI  variable DMSK  variable DVAL  variable DKIND  variable DNL
-PTR-VARIABLE DRP
-
-: DRP@ ( -- ptr u8 )
-   DRP @ ;
-
-
 : DIS1 ( n -- )
    {: w :}
    w DLS-SPECIAL IF EXIT THEN
-   DTB DRP !
-   0 DDONE !
-   0 DRI !
-   BEGIN DRI @ DTB-N @ < WHILE
-     DRP@ U64@ DMSK !  DRP@ 8 + U64@ DVAL !
-     DRP@ 16 + c@ DKIND !  DRP@ 17 + c@ DNL !
-     DDONE @ 0= w DMSK @ and DVAL @ = and IF
-       w DKIND @ DVALID? IF
-         DRP@ 18 + DNL @ type  w DKIND @ DROW-EMIT
-       ELSE w DUNKNOWN THEN
-       1 DDONE !  THEN
-     DRP@ 18 + DNL @ + DRP !  DRI @ 1 + DRI !
+   DTB 0
+   BEGIN dup DTB-N @ < WHILE
+      {: row i :}
+      row 16 + c@ {: kind :}
+      row 17 + c@ {: nlen :}
+      w row U64@ and row 8 + U64@ = IF
+         w kind DVALID? IF row 18 + nlen type  w kind DROW-EMIT ELSE w DUNKNOWN THEN
+         EXIT
+      THEN
+      row 18 + nlen +  i 1 +
    REPEAT
-   DDONE @ 0= IF w DUNKNOWN THEN ;
+   2drop w DUNKNOWN ;
 
 
 : DISASM ( ptr u8 n -- )
