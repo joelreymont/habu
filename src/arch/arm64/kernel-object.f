@@ -78,8 +78,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 \ for the link to bind; an engine's scope-kind? reads the chains the link writes.
 : EMIT ( bool -- )
    {: engine:bool :}
-   0 0= STDIN? !
-   NULL$ ENGINE-EMIT:OPEN
+   ENGINE-EMIT:OPEN
    engine if ENGINE-EMIT:LINK-SCOPE-ENTRIES then
    engine if 8 else 4 then 0 ?do A64ICODE:LBL i TAIL A64ICODE:LABEL! loop
    engine if

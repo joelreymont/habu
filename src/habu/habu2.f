@@ -98,10 +98,6 @@ using ENGINE-EMIT
 \ The three relocation-kind words and the CALL-or-INLINE emitter sit after the
 \ snapshot-relocation labels; all four record a site through RELOC-EMIT:MARK-SITE.
 \ Addressing a baked label the ADR field cannot reach.
-\ ADR, reaches ADR-HI (1 MiB) from its site: the whole ENGINE code part. The
-\ startup's ADR, to LSRC measures that allowance, so those two sites keep ADR,.
-\ Past LSRC the AOT payload section runs to megabytes: no ADR, into it, however
-\ close a label lands (src/arch/arm64/icode.f derives the window).
 \
 \ EM-STARTUP takes the text base into XREG-RBASE with an ADR, at the image's
 \ first instruction; EM-DATA-INIT stores it into RBASE-CELL and reuses the
@@ -13373,15 +13369,7 @@ package ENGINE-EMIT
 
 package ENGINE-EMIT
 public
-\ The source-buffer cursor holds an address, so its cell is declared storage.
-PTR-VARIABLE SRCA
-private
-: SRCA@ ( -- ptr u8 )
-   SRCA @ ;
-
-public
-: EMIT-RESET-BUILDER ( ptr u8 n -- )
-   SRCN !  SRCA !
+: EMIT-RESET-BUILDER ( -- )
    ASM-INIT  ENGINE-PRIMS:RESET
    0 DIVISION-PRIM-ROW !  0 CF-DEF-GUARD ! ;
 ;package
@@ -13939,8 +13927,8 @@ variable KERNEL-CODE-END
    HB-TARGET-LINUX-X86-64? if s" linux-x86-64" exit then
    s" engine: unknown kernel target" 76 die ;
 
-\ LIMGEND binds the last startup fixups before this runs. The digest slot,
-\ baked source and AOT payload follow the recorded code extent.
+\ Runs after EMIT-DIGEST-SLOT binds LKERNELDIGEST, so the ADR, in
+\ BKERNELPRODUCER is patched in the bytes it hashes.
 : FILL-KERNEL-DIGEST ( -- )
    KERNEL-CONTEXT SHA256-BEGIN
    KERNEL-CONTEXT s" native-kernel-bytes-v1" SHA256-FEED
@@ -14045,16 +14033,14 @@ variable KERNEL-CODE-END
    EMIT-RUNTIME-SECTIONS
    EMIT-DICT ;
 
-: EMIT-SOURCE-BYTES ( -- )
+: EMIT-DIGEST-SLOT ( -- )
    LKERNELDIGEST LABEL@ LBL,
-   0 DCQ,  0 DCQ,  0 DCQ,  0 DCQ,
-   LSRC LABEL@ LBL,  SRCA@ SRCN @ BYTES, ;
+   0 DCQ,  0 DCQ,  0 DCQ,  0 DCQ, ;
 
 public
 
 \ Open a kernel emission at code offset 0 with the labels LABELS:INIT allocates.
-\ Code emitted before KERNEL precedes the start-up, in icode.f's first part.
-: OPEN ( ptr u8 n -- )
+: OPEN ( -- )
    \ An emission chooses no scoped entry; a link binds entries through
    \ LINK-SCOPE-ENTRIES.
    0 LINKED-SCOPES !
@@ -14068,12 +14054,11 @@ public
    EMIT-RESET-BUILDER
    LABELS:INIT ;
 
-\ Emit the image's three parts in the order src/arch/arm64/icode.f's window
-\ header gives.
+\ Emit the image in the order src/arch/arm64/icode.f's window header gives.
 : KERNEL ( -- )
    EMIT-CODE-SECTIONS
    ASM-LEN KERNEL-CODE-END !
-   EMIT-SOURCE-BYTES
+   EMIT-DIGEST-SLOT
    LIMGEND LABEL@ LBL,                    \ nothing follows: this label IS the content length
    FILL-KERNEL-DIGEST ;
 

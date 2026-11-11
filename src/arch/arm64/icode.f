@@ -12,19 +12,9 @@ using A64ASM
 public
 
 \ ---- the window this assembler emits into ------------------------------------
-\ An image is three parts emitted in this order (src/habu/habu2.f
-\ ENGINE-EMIT:KERNEL); the order keeps the first bound true.
-\ 1. Engine code. The baked-source label LSRC follows it (habu2.f
-\    EMIT-SOURCE-BYTES) and the startup region reaches LSRC by ADR
-\    (C-SOURCE-BAKED, C-SOURCE-APPEND-LSRC under EM-STARTUP), so engine code is
-\    bounded by the 21-bit ADR byte field, ADR-HI; past it FX-REACH dies
-\    `icode: adr out of reach`.
-\ 2. Baked source, the span habu2.f ENGINE-EMIT:OPEN receives: refused at
-\    emission by CODE-CAP-WORDS. The boot arena maps IBUFSZ plus the source's
-\    length.
-\ 3. AOT payload (EMIT-AOT-SEED). No PC-relative field addresses it (habu2.f
-\    TADR, adds the text base to a LOFF, offset), so it has one aggregate budget,
-\    AOT-SECTION-CAP, which src/habu/aot-decl.f AOT-SECTION enforces.
+\ An image is the engine code, then the kernel digest's four cells, then the
+\ label LIMGEND at the content's end (src/habu/habu2.f ENGINE-EMIT:KERNEL).
+\ ADR, reaches ADR-HI (1 MiB) from its site; past it FX-REACH dies `icode: adr out of reach`.
 \ This file loads before layout.f and habu2.f, so the terms are spelled out here.
 \ CODE is a demand-paged anonymous mapping taken on first use and returned by
 \ ASM-RELEASE; nothing walks the span, so the window costs reserved address
