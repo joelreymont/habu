@@ -2,6 +2,24 @@
 \ load runs them, in one checker scope and one multi-error session, and reports
 \ every refused definition, statement throw and lexer defect as prose or JSON.
 \ The report buffers are the caller's and never grow (BUFFERS!, STREAM!).
+\
+\ A definition of a name its scope already held: the scan refuses it at its
+\ name and keeps where the name starts and its length, not the name: a required
+\ file's bytes are unmapped before the report. Its record reads the name out of
+\ the reporter's own read of the file the composition stopped in, as a statement
+\ throw's record reads its token, and names it and its place as --load does.
+\ The record is the placeholder `duplicate-definition` at line 1 for a name the
+\ definer generates instead of writing, which the checker's own guard refuses
+\ with nothing kept, and for a kept name that ends past that read, as when the
+\ file shrank after the scan.
+\
+\ The checker reports a definition it refuses and returns, but a statement can
+\ also throw out of it with nothing reported: a `;using` with no `using` open
+\ throws E-USING-UNBALANCED. That throw is reported under the code and message,
+\ its throw number standing in for an empty message, at the token the checker
+\ read last, after whatever it reported before it, and fails the source like a
+\ refusal, so the run ends with the checker's status. The rest of the source is
+\ not checked. Both renderings are built in the JSON writer's buffer.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -36,10 +54,9 @@ public
 $4E constant DUP-RC
 
 \ The scratch a caller gives BUFFERS! or STREAM!. The checker renders a whole
-\ pass's diagnostics into it and src/core/render.f cannot grow a caller's
-\ buffer, so a pass whose diagnostics outgrow it reports those that fit, each
-\ whole, then E-DIAG-CAPACITY. A JSON record is a few hundred bytes: this holds
-\ thousands.
+\ pass's diagnostics into it and cannot grow a caller's buffer, so a pass
+\ whose diagnostics outgrow it reports those that fit, each whole, then
+\ E-DIAG-CAPACITY.
 $100000 constant SCRATCH-CAP
 
 private
@@ -205,18 +222,7 @@ variable CA-COMPOSE-LABEL-U
 
 
 \ ---- a definition of a name its scope already held ---------------------------
-\ The scan refuses it at its name and keeps where the name starts and its length
-\ (src/habu/verify-source.f VERIFY:DUPLICATE), not the name: a required file's
-\ bytes are unmapped before the report. Its record reads the name out of the
-\ reporter's own read of the file the composition stopped in, as a statement
-\ throw's record reads its token, and names it and its place as --load does.
-\ The record is the placeholder `duplicate-definition` at line 1 for a name the
-\ definer generates instead of writing (a DYNAMIC-BUFFER's NAME-RESERVE or
-\ NAME-RELEASE, a DEFER-LAYOUT-BUFFER's NAME-BIND or NAME-GROW), which the
-\ checker's own guard refuses with nothing kept, and for a kept name that ends
-\ past that read, as when the file shrank after the scan.
 
-\ The word, its token index, and the line, column and byte where it starts.
 : CA-JSON-DUP ( ptr u8 n n n n n -- )
    {: wa:ptr wu:n ti:n line:n col:n byte:n :}
    CA-JSON-WRITER JSON:WRITE-OBJECT-START
@@ -265,7 +271,7 @@ variable CA-COMPOSE-LABEL-U
    CA-JSON? IF na u 0 line col at CA-JSON-DUP ELSE na u line CA-PROSE-DUP-AT THEN ;
 
 \ The record of the name the scan refused, which starts at the given byte and
-\ has the given length, 0 for no name kept (VERIFY:DUPLICATE). Both renderings
+\ has the given length, 0 for no name kept. Both renderings
 \ are built in the JSON writer's buffer.
 : CA-DUP-RECORD$ ( n n -- ptr u8 n ) {: at:n u:n :}
    u 0 > at u + CA-SRC-U @ <= and IF
@@ -296,8 +302,7 @@ variable CA-COMPOSE-LABEL-U
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ An incomplete primitive-axiom row stops the scan like an open string but gets
 \ its own code and repair text: a caller told to close a string literal would
-\ look for a quote that is not there. The prose names the code, the opener's
-\ file, line and column, what it opens, and the opener as written.
+\ look for a quote that is not there.
 : CA-PROSE-LEX ( ptr u8 n ptr u8 n -- )
    {: code:ptr codeu:n what:ptr whatu:n :}
    CA-JSON-WRITER
@@ -320,8 +325,7 @@ variable CA-COMPOSE-LABEL-U
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
 
 \ The record of the defect the lexer hit, in the selected mode, built in the
-\ JSON writer's buffer. The lexer reports more than one defect, so the record
-\ names the one it hit.
+\ JSON writer's buffer.
 : CA-LEX-RECORD$ ( -- ptr u8 n )
    CA-JSON? IF
       CA-FILE-A@ CA-FILE-U @ CA-SRC-A@ CA-SRC-U @
@@ -383,9 +387,6 @@ variable CA-COMPOSE-LABEL-U
    [: CA-CHECK-FULL-ACT ;] catch
    CA-DIAG-FINISH ;
 
-\ A source checked as the loader runs it: each top-level loader statement
-\ verifies the file it loads where it stands (VERIFY:SOURCE-COMPOSE-LABELED-IN-
-\ SCOPE), in the session's one checker scope.
 : CA-CHECK-COMPOSE-VERIFY ( -- )
    CA-SRC-A@ CA-SRC-U @ CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @
    CA-COMPOSE-LABEL-A @ CA-COMPOSE-LABEL-U @
@@ -427,14 +428,6 @@ variable CA-COMPOSE-LABEL-U
    rc 0 <> IF rc CA-RAW-FAILURE ! THEN ;
 
 \ ---- a statement that throws while it is checked ----------------------------
-\ The checker reports a definition it refuses and returns, but a statement can
-\ also throw out of it with nothing reported: a `;using` with no `using` open
-\ throws E-USING-UNBALANCED. That throw is reported under the code and message
-\ VERIFY-DIAGNOSTICS:THROW-CODE$ gives it, its throw number standing in for an
-\ empty message, at the token the checker read last, after whatever it
-\ reported before it, and fails the source like a refusal, so the run ends
-\ with the checker's status. The rest of the source is not checked.
-\ Both renderings are built in the JSON writer's buffer.
 : CA-THROW-END ( -- n )
    CA-THROW-AT @ CA-WORD-END ;
 
@@ -471,14 +464,14 @@ variable CA-COMPOSE-LABEL-U
    CA-PROSE-THROW
    CA-JSON-W JSON:WRITTEN$ ;
 
-: CA-THROW! ( n -- )                     \ what threw, at the token read last
+: CA-THROW! ( n -- )
    CA-THROW-RC !
    VERIFY:TOKEN-BYTE@ CA-THROW-AT ! ;
 
 public
 
 \ True for the status of a check a statement threw out of unreported. A refusal
-\ the checker reported (REPORTED-ERROR?) keeps its packet and no throw record.
+\ the checker reported keeps its packet and no throw record.
 : THREW? ( n -- bool ) {: rc:n :}
    rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and
    rc REPORTED-ERROR? 0= and ;
@@ -535,13 +528,8 @@ private
    u CA-SRC-U !
    a CA-SRC-A! ;
 
-\ One verify pass in MULTI-ERR mode reports every refused definition, rejected
-\ or uncheckable, counts it in MULTI-ERR-N, records its declared signature so
-\ later callers check against it (no E-UNDEFINED cascade), and continues at the
-\ next definition: the machinery the native load path uses. A duplicate
-\ definition throws DUP-RC. The session is the caller's (SESSION), so a source's
-\ rejects are those counted while it was checked; a source with none still gets
-\ its warnings.
+\ The session is the caller's (SESSION), so a source's rejects are those
+\ counted while it was checked; a source with none still gets its warnings.
 : CA-RUN-DEFS ( -- )
    CA-RESET-RESULTS
    MULTI-ERR-N @ {: before:n :}
@@ -553,9 +541,8 @@ private
    CA-WRITE-CAPTURED ;
 
 \ A duplicate or a statement's throw stops the composition in one of its files,
-\ the one VERIFY:SOURCE-COMPOSE-STOPPED$ names, and its record names that file
-\ and reads the token out of its bytes. Every diagnostic the checker made before
-\ it is reported first.
+\ and its record names that file and reads the token out of its bytes. Every
+\ diagnostic the checker made before it is reported first.
 : CA-COMPOSE-STOPPED ( -- )
    VERIFY:SOURCE-COMPOSE-STOPPED$ {: a:ptr u:n :}
    VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? 0= IF a u CA-READ-SOURCE THEN
@@ -576,9 +563,6 @@ private
    rc LEX-FIRST? IF CA-LEX THEN
    CA-THROW-RECORD$ CA-ERR-LN ;
 
-\ A reader with no token after it is the refusal tools/check-core.f
-\ CHK-ALL-NONAME writes, so its code goes up to COMPOSE-BUF's caller after what
-\ the checker reported before it.
 : CA-RUN-COMPOSE-DEFS ( -- )
    CA-RESET-RESULTS
    MULTI-ERR-N @ {: before:n :}
