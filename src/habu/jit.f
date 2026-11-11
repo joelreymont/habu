@@ -30,9 +30,9 @@ private
 
 public
 \ Row-comparison mode. A routine that asks whether a name spells a dispatch row
-\ (habu2.f EMIT-DEF-KW-GUARD, EMIT-ROW-WALK) replays the row registrars with
-\ CF-DEF-GUARD set: each then emits only its spelling test, a branch to the
-\ label CF-DEF-HIT holds when LKWCMP matches, in place of its handler. The mode
+\ replays the row registrars with CF-DEF-GUARD set: each then emits only its
+\ spelling test, a branch to the label CF-DEF-HIT holds when LKWCMP matches, in
+\ place of its handler. The mode
 \ exists only in this image generator; a generated engine holds the tests.
 variable CF-DEF-GUARD
 variable CF-DEF-HIT

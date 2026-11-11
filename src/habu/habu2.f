@@ -169,11 +169,9 @@ private
 : CSTRMSG$ ( -- ptr u8 n )   s" hb: counted string too long (max 255)" ;
 : CSTRMSG-LEN ( -- n )   CSTRMSG$ nip ;
 public
-variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-name wall generated from the compile-keyword dispatch rows
+variable LDEFKWMSG
 private
 : DEFKWMSG$ ( -- ptr u8 n )   s" hb: compile keyword cannot be a definition name: " ;
-public
-: DEFKWMSG-LEN ( -- n )   DEFKWMSG$ nip ;
 public
 \ Capacity refusals that state a count: one line naming what filled up, the
 \ ceiling and the count. LDIAGU writes a number on fd 2.
@@ -6599,7 +6597,6 @@ package INTERP-EMIT
 
 public
 
-\ The interpret keyword rows: COMPILE-EMIT:EMIT-ROW-WALK replays them.
 : EM-INTERPRET-KEYWORDS ( -- )
    EM-INTERPRET-DEFINE-KEYWORDS
    EM-INTERPRET-STRING-KEYWORDS ;
@@ -6734,7 +6731,6 @@ variable P2SK
 
 public
 
-\ The pass-2 width rows: COMPILE-EMIT:EMIT-ROW-WALK replays them.
 : EM-P2WIDE-ROWS ( -- )
    LMAIN LABEL@ LKWDUP2    3 1 ['] EM-P2X-DUP     P2W-ENTRY
    LMAIN LABEL@ LKWDROP2   4 1 ['] EM-P2X-DROP    P2W-ENTRY
@@ -6846,26 +6842,6 @@ package COMPILE-EMIT
    EM-COMPILE-STRING-KEYWORDS
    EM-COMPILE-META-KEYWORDS
    LOOP-EMIT:EM-COMPILE-LOOP-KEYWORDS ;
-
-\ Emit the spelling tests of every row `rows` registers, each branching to `hit`
-\ on a match (jit.f row-comparison mode).
-: ROW-TESTS ( label [ -- ] -- ) {: hit:label rows :}
-   hit CF-DEF-HIT !  -1 CF-DEF-GUARD !
-   rows catch {: rc:n :}                              \ reset mode even if row emission throws
-   0 CF-DEF-GUARD !
-   rc 0 <> IF rc throw THEN ;
-
-public
-
-: EMIT-DEF-KW-GUARD ( -- )
-   LDEFKWGUARD LABEL@ LBL,
-   SP SP 16 SUBI,  30 SP 0 STR,                       \ LKWCMP is BL-called by every row
-   LDEFKWFAIL LABEL@ [: EM-COMPILE-KEYWORDS ;] ROW-TESTS
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET,
-   LDEFKWFAIL LABEL@ LBL,
-      0 2 MOVZ,  1 LDEFKWMSG LABEL@ ADR,  2 DEFKWMSG-LEN MOVZ,  NR-WRITE SYS,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 70 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 ;package
 
@@ -7375,40 +7351,6 @@ private
 
 public
 ;package
-package COMPILE-EMIT
-public
-
-\ LROWWALK ( x0 = a name, x1 = its length -> x0 = 1 when a dispatch row
-\ matches the name, else 0 ). Walks the union of the dispatched keyword rows
-\ (interpret, compile and string, pass-2 width, jit.f's op rows, tier 1's
-\ capture string rows) replayed from their registrars, so a new row is walked
-\ by construction. Each test is LKWCMP, as at dispatch: under the design seal a
-\ row outside the design span refuses the name (LPOLICY). LKWCMP reads the
-\ token cells, so the name stands in them and the token is put back.
-\ Three spellings no registrar holds are walked too: `:}` (C-LBRACE-PARSE-NAMES),
-\ `kernel:` and `;match`, since such a
-\ word would be the keyword in one place and the word in another (a body's `:}`
-\ is a call at tier 0 and the closer at tier 1); so is any spelling a new bare
-\ LKWCMP compares. Writes x0-x5 only. Caller: habu1.f BPOLICYADMIT.
-: EMIT-ROW-WALK ( -- )
-   LBL LBL {: hit:label back:label :}
-   LROWWALK LABEL@ LBL,
-   SP SP 32 SUBI,  30 SP 0 STR,
-   2 DATA TKA-CELL LDR,  2 SP 8 STR,
-   2 DATA TKL-CELL LDR,  2 SP 16 STR,
-   0 DATA TKA-CELL STR,  1 DATA TKL-CELL STR,
-   hit [: INTERP-EMIT:EM-INTERPRET-KEYWORDS  EM-COMPILE-KEYWORDS  EM-P2WIDE-ROWS
-          ENGINE-EMIT:EM-COMPILE-OPS  NCOMP-EMIT:CAPTURE-STRING
-          LKWENDLOC 2 CF-DEF-GUARD-ROW  LKWKERNEL 7 CF-DEF-GUARD-ROW
-          LKWSEMIMATCH 6 CF-DEF-GUARD-ROW ;] ROW-TESTS
-   0 0 MOVZ,  back B,
-   hit LBL,  0 1 MOVZ,
-   back LBL,
-   2 SP 8 LDR,  2 DATA TKA-CELL STR,
-   2 SP 16 LDR,  2 DATA TKL-CELL STR,
-   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
-
-;package
 
 \ EMIT-CODE-SECTIONS resolves EMIT-ROUTINES bare in the reopened emitter
 \ package habu1.f opens for the primitive sections.
@@ -7457,7 +7399,7 @@ package LABELS
    LBL RELOC-EMIT:LCALLS !  LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !  LBL RELOC-EMIT:LSCRATCHMARK !
    LBL RELOC-EMIT:LROLLBACK !
    LBL RELOC-EMIT:LADDRS !  LBL RELOC-EMIT:LADDRSITE !
-   LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !  LBL LDEFKWGUARD !  LBL LDEFKWFAIL !  LBL LROWWALK !
+   LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
 
 : CONTROL ( -- )
@@ -7751,7 +7693,7 @@ variable KERNEL-CODE-END
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    DOESPATCH:EMIT
-   EMIT-CF-HELPERS  COMPILE-EMIT:EMIT-DEF-KW-GUARD  COMPILE-EMIT:EMIT-ROW-WALK
+   EMIT-CF-HELPERS
    EM-SNAPSHOT-REBASE-DICT
    RELOC-EMIT:EMIT-CALLS  RELOC-EMIT:EMIT-MARK
    RELOC-EMIT:EMIT-ROLLBACK

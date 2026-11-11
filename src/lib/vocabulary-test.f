@@ -216,7 +216,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ is the reserved name, the same refusal unsealed. The pass-2 rows count too:
 \ tier 0 lowers a body holding a wide value again, and they answer its tokens
 \ first. So do `:}` (in the span), `kernel:` and `;match`, compared only inside
-\ their construct (habu2.f EMIT-ROW-WALK).
+\ their construct.
 : NAMES ( -- )
    s" kwname" s" hb: not in vocabulary: begin at test/policy/kwname.f:2" TIER0-REFUSES
    s" own-keyword" s" hb: not in vocabulary: dup at test/policy/own-keyword.f:4" TIER0-REFUSES
@@ -243,6 +243,10 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" ordinary-keyword" 0 s" " S\" 42\n" RUNS
    s" allow-p2-package" HARNESS!
    s" " ENGINE-ERROR:POLICY s" hb: policy: package PTUCK publishes keyword TUCK" s" " RUNS
+   s" allow-seal-keyword-package" HARNESS!
+   s" " ENGINE-ERROR:POLICY s" hb: policy: package PSEAL publishes keyword seal-package" s" " RUNS
+   s" allow-task-package" HARNESS!
+   s" " ENGINE-ERROR:POLICY s" hb: policy: package PTKW publishes keyword DUP" S\" admitted\n0\n" RUNS
    s" allow-catch" HARNESS!
    s" evaluate" 0 s" hb: not in vocabulary: evaluate at test/policy/evaluate.f:2" S\" 107\n" RUNS ;
 

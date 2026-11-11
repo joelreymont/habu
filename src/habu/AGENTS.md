@@ -3,7 +3,7 @@
 - `prims.f` — the one primitive table: name, effect and reference (`prim-ref.f`)
   per row; `primitive-registry.f` refuses a body without a row and the reverse.
 - `habu1.f`, `habu2.f` — the ARM64 kernel builder: primitive bodies, then the
-  kernel's routines (throw recovery, the exit hook, the policy row walk);
+  kernel's routines (throw recovery, the exit hook);
   `jit.f`, `rt.f`, `regalloc.f` are its parts.
 - `layout.f` — image, dictionary and snapshot layout and the DATA bands.
 - `interpreter.f` (with `repl.f`) and `main.f` —

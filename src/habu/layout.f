@@ -797,10 +797,9 @@ $3848 constant EVALUATE-CELL
 $3860 constant EVALUATE-RANGE-CELL
 ;package
 
-\ The x86-64 policy writer calls the checked interpreter's dispatch-keyword
-\ predicate before admitting a package. CHECKER-REG:SEAL installs that callback;
-\ its fixed code cell is captured and restored with the other engine callbacks.
-\ No ARM64 code reads the cell.
+\ The checked interpreter's keyword test ( wid -- name len hit ), which every
+\ engine's policy writer calls before admitting a package; RUNTIME:INSTALL
+\ stores it.
 package POLICY-ABI
 public
 $3850 constant KEYWORD-CELL

@@ -1287,6 +1287,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    \ (src/os/script-argv.f SCRIPT-ARG-START); a task left at the region's zero
    \ reads the engine's and loses argument 0.
    data-base reg APP-ENTRY:XT-CELL TASK-COPY-CELL
+   \ policy-admit calls the interpreter's keyword test through this cell.
+   data-base reg POLICY-ABI:KEYWORD-CELL TASK-COPY-CELL
    \ A task starts on its creator's I/O devices (src/lib/genio-core.f). The cells
    \ hold a device INDEX, so copying them into a fresh region needs no
    \ relocation. The funnel's re-entrancy guard and the active-device cell start

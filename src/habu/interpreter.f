@@ -1461,12 +1461,11 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-DESIGN-KEYWORDS ( -- ptr u8 n )
    S\" if else then {: :} s\q [package] package public private ;package using ;using" ;
 
-\ The interpret dispatch rows, plus kernel: and ;match, which the ARM row walk
-\ compares inside their constructs. Ordinary words such as require and include
-\ may be published by a package even though a definition cannot take their
-\ names at this checked head boundary.
+\ The interpret dispatch rows, plus kernel: and ;match. Ordinary words such as
+\ require and include may be published by a package even though a definition
+\ cannot take their names at this checked head boundary.
 : DEF-INTERPRET-KEYWORDS ( -- ptr u8 n )
-   S\" kernel: trusted: cast: linear: immediate create variable constant defer export char ' ;match" ;
+   S\" kernel: trusted: cast: linear: immediate create variable constant defer export seal-package char ' ;match" ;
 
 : DEF-NAME-ONLY-KEYWORDS ( -- ptr u8 n )
    s" : 2constant to require include sumtype variant ;variant ;sumtype" ;
@@ -1505,7 +1504,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    a u DEF-ROW-KEYWORD? if true exit then
    a u DEF-NAME-ONLY-KEYWORDS DEF-IN-TABLE? ;
 
-\ The x86-64 policy writer asks this captured interpreter once per package,
+\ Every engine's policy writer asks this captured interpreter once per package,
 \ before setting its admission bit. Use the same dispatch-row table that guards
 \ names in a sealed definition, including pass-2 rows.
 public

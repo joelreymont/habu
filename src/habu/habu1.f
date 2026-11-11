@@ -187,7 +187,6 @@ variable LNEWEST
 package ENGINE-EMIT
 public
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
-variable LROWWALK   \ every dispatch row's spelling test over x0/x1 (habu2.f COMPILE-EMIT:EMIT-ROW-WALK); BPOLICYADMIT calls it
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
@@ -4629,14 +4628,14 @@ private
 \ policy-admit ( ptr u8 n -- ): admit the public wordlist of the package the
 \ span names, found as a top-level `using` finds it.
 : BPOLICYADMIT ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: found:label bounded:label nopkg:label nl:label bound:label walk:label inline:label next:label spelled:label pkgmsg:label kwmsg:label walked:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: found:label bounded:label nopkg:label nl:label bound:label spelled:label pkgmsg:label kwmsg:label walked:label :}
    POLICY-OPEN,
    1 G-POP  0 G-POP                                  \ x1 = name length, x0 = name
    13 0 0 ADDI,                                      \ the name, for the refusals: the lookup leaves x13 and x1 alone
    2 DATA BOOT:NAMESPACE-WL-CELL LDR,
    WLFIND:LENTRY LABEL@ BL,                          \ x11 = public wid, x12 = the row or 0
-   14 1 0 ADDI,                                      \ the walk and the kernel's writes keep x13/x14
+   14 1 0 ADDI,                                      \ the kernel's writes keep x13/x14
    12 found CBNZ,
       0 2 MOVZ,  1 nopkg ADR,  2 POLICY-NOPKG$ nip MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 13 0 ADDI,  2 14 0 ADDI,  NR-WRITE SYS,
@@ -4650,23 +4649,13 @@ private
    nl LBL,  POLICY-NL$ BYTES,
    bound LBL,  POLICY-BOUND$ BYTES,
    bounded LBL,
-   \ A public word spelled like a dispatch row (habu2.f LROWWALK) is refused:
-   \ under the seal tier 0 would read the row and tier 1 the admitted word.
-   \ Every record of the wordlist: [40] its wid, [16] its name length (below the
-   \ DNAME-FLAG-BITS) and DNAME-EXT, [24] the name inline or, with DNAME-EXT, its
-   \ address.
-   6 DBASE 0 ADDI,  7 NDICT 0 ADDI,
-   walk LBL,
-      7 walked CBZ,
-      8 6 40 LDR,  8 11 CMP,  C-NE next BCOND,
-      8 6 16 LDR,  10 8 DNAME-FLAG-BITS LSLI,  10 10 DNAME-FLAG-BITS LSRI,      \ x10 = the name's length
-      9 6 24 ADDI,
-      8 8 DNAME-EXT ANDI,  8 inline CBZ,  9 6 24 LDR,
-      inline LBL,                                    \ x9 = the name
-      0 9 0 ADDI,  1 10 0 ADDI,  LROWWALK LABEL@ BL, \ writes x0-x5 only
-      0 spelled CBNZ,
-   next LBL,
-      6 6 DREC ADDI,  7 7 1 SUBI,  walk B,
+   \ A public word spelled like a keyword would mean the keyword in one place and
+   \ the word in another.
+   SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  14 SP 16 STR,
+   11 G-PUSH  12 DATA POLICY-ABI:KEYWORD-CELL LDR,  12 BLR,
+   15 G-POP  10 G-POP  9 G-POP
+   11 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  SP SP 32 ADDI,
+   15 walked CBZ,
    spelled LBL,
       SP SP 16 SUBI,  9 SP 0 STR,  10 SP 8 STR,
       0 2 MOVZ,  1 pkgmsg ADR,  2 POLICY-PKG$ nip MOVZ,  NR-WRITE SYS,

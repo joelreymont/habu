@@ -132,7 +132,6 @@ variable RX  variable RACC
    a u s" Lsourceexecfinish" LINT-STR=CI if 0 15 CL-ADD exit then
    a u s" Lcfpop" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lkwcmp" LINT-STR=CI if 0 0 CL-ADD exit then
-   a u s" Lrowwalk" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lloc-find" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lsrcrd" LINT-STR=CI if 0 9 CL-ADD exit then
