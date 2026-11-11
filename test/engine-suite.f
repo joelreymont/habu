@@ -815,6 +815,43 @@ s" COK-QL-INNER-BLOCK ( n -- ) 0<> if 7 {: a:n :} [: a . ;] execute then" CHECK-
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a reading quotation copied and bound to a local certifies" T-LABEL
 s" COK-QL-COPIED ( n -- ) {: a:n :} [: a . ;] dup {: q :} execute q execute" CHECK-CANDIDATE! 0 T<>
+\ A keeper reached through a copied effect record refuses as QL-KEEP does: an EXPORT and a created
+\ word, whose every quotation input counts as kept (CREATED-RECORD-BUILD), so it has no runner twin.
+package ES-QL
+public
+EXPORT QL-KEEP
+EXPORT QL-RUN
+: KEEP ( [ -- ] -- ) is QL-ACT ;
+: RUN ( [ -- ] -- ) execute ;
+;package
+: QL-KEEPER ( -- ) create does> ( [ -- ] -- ) drop is QL-ACT ;
+QL-KEEPER QL-MADE-KEEP
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to an exported keeper rejects" T-LABEL
+s" CBAD-QL-EXPORTED ( n -- ) {: a:n :} [: a . ;] ES-QL:QL-KEEP" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to a created keeper rejects" T-LABEL
+s" CBAD-QL-CREATED ( n -- ) {: a:n :} [: a . ;] QL-MADE-KEEP" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to a package's keeper rejects" T-LABEL
+s" CBAD-QL-PACKAGE ( n -- ) {: a:n :} [: a . ;] ES-QL:KEEP" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation returned through exit rejects" T-LABEL
+s" CBAD-QL-EXIT ( n -- [ -- ] ) {: a:n :} [: a . ;] exit" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation held past its loop body's local rejects" T-LABEL
+s" CBAD-QL-PAST-LOOP ( n -- ) [: ;] swap 0 ?do drop i {: a:n :} [: a . ;] loop execute" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to an exported runner certifies" T-LABEL
+s" COK-QL-EXPORTED ( n -- ) {: a:n :} [: a . ;] ES-QL:QL-RUN" CHECK-CANDIDATE! 0 T<>
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" a reading quotation handed to a package's runner certifies" T-LABEL
+s" COK-QL-PACKAGE ( n -- ) {: a:n :} [: a . ;] ES-QL:RUN" CHECK-CANDIDATE! 0 T<>
 \ A locals group names only locals: `--` and `|` are refused at the token with the reason.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" -- in a locals group rejects" T-LABEL
