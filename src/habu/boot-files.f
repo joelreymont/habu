@@ -59,6 +59,20 @@ private
    CHECKER COMMON s" src/habu/created-body-abi.f" ROW
    CHECKER COMMON s" src/habu/prims.f" ROW
    CHECKER COMMON s" src/core/does-clause.f" ROW
+   CHECKER LINUX s" src/os/linux/target.f" ROW
+   CHECKER MACOS s" src/os/macos/target.f" ROW
+   CHECKER X64 s" src/os/linux-x86-64/target.f" ROW
+   CHECKER WASM s" src/os/wasm/target.f" ROW
+   CHECKER LINUX s" src/os/linux/layout-constants.f" ROW
+   CHECKER LINUX s" src/os/linux/layout.f" ROW
+   CHECKER MACOS s" src/os/macos/layout.f" ROW
+   CHECKER X64 s" src/os/linux/layout-constants.f" ROW
+   CHECKER X64 s" src/os/linux/layout.f" ROW
+   CHECKER COMMON s" src/habu/stack-abi.f" ROW
+   \ WPROF reads STACK-ABI, and layout.f reads the target's DATA-SIZE.
+   CHECKER WASM s" src/arch/wasm/profile.f" ROW
+   CHECKER WASM s" src/os/wasm/layout.f" ROW
+   CHECKER COMMON s" src/habu/layout.f" ROW
    CHECKER COMMON s" src/core/checker.f" ROW
    CHECKER COMMON s" src/core/engine-error-effects.f" ROW
    CHECKER COMMON s" src/core/lower-cert-base.f" ROW
@@ -82,20 +96,6 @@ private
    CORE COMMON s" src/core/roles.f" ROW
    CORE COMMON s" src/core/bytes.f" ROW
    DYNAMIC COMMON s" src/core/dynamic-storage.f" ROW
-   CORE LINUX s" src/os/linux/target.f" ROW
-   CORE MACOS s" src/os/macos/target.f" ROW
-   CORE X64 s" src/os/linux-x86-64/target.f" ROW
-   CORE WASM s" src/os/wasm/target.f" ROW
-   CORE LINUX s" src/os/linux/layout-constants.f" ROW
-   CORE LINUX s" src/os/linux/layout.f" ROW
-   CORE MACOS s" src/os/macos/layout.f" ROW
-   CORE X64 s" src/os/linux/layout-constants.f" ROW
-   CORE X64 s" src/os/linux/layout.f" ROW
-   CORE COMMON s" src/habu/stack-abi.f" ROW
-   \ WPROF reads STACK-ABI, and layout.f reads the target's DATA-SIZE.
-   CORE WASM s" src/arch/wasm/profile.f" ROW
-   CORE WASM s" src/os/wasm/layout.f" ROW
-   CORE COMMON s" src/habu/layout.f" ROW
    CORE COMMON s" src/core/compile-reads.f" ROW
    CORE COMMON s" src/os/env-base.f" ROW
    CORE COMMON s" src/core/quotation-storage.f" ROW

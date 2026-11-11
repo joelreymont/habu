@@ -469,7 +469,7 @@ create DIAG-BUF 8192 allot
    s" BPA-DIST ( ptr n -- n ) data-base -" CERTIFIES ;
 
 \ A DATA cell that holds an address is reached with `ptr-field`, as the
-\ checker's SOURCE-CELL and TARGET-CELL and the AOT span table do.
+\ checker's store into NCOMP-DISPATCH:TARGET-DECL-CELL and the AOT span table do.
 : CASE-DATA-FIELD ( -- )
    s" a DATA cell that holds an address is still reached through ptr-field" T-LABEL
    s" BPA-FLD ( -- ptr ptr u8 ) data-base 8 + 0 ptr-field @" CERTIFIES ;

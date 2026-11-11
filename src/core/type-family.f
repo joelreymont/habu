@@ -1150,7 +1150,7 @@ public
 \ segments stay even-length and interior and each single '-' decodes uniquely.
 \ Package `a-b` family `c` derives `A--B-C`; `a`+`b-c` derives `A-B--C`;
 \ top-level `a-b-c` derives `A--B--C`; top level derives the bare escaped tail
-\ (`result` -> `RESULT`). A derived package past 255 bytes (CHECKER-PACKAGE-CAP
+\ (`result` -> `RESULT`). A derived package past 255 bytes (PACKAGE-PATH:CAP
 \ - 1) is refused like an explicit package name.
 
 private
@@ -1164,13 +1164,13 @@ public
 : TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;   \ a-z -> A-Z
 
 \ The longest family, variant or field name is the longest package name
-\ (CHECKER-PACKAGE-CAP - 1), so every derived spelling fits TF-CTOR-BUF: at most
+\ (PACKAGE-PATH:CAP - 1), so every derived spelling fits TF-CTOR-BUF: at most
 \ 2*255 + 1 + 2*255 = 1021 bytes escaped, 255 + 1 + 255 + 12 for a private
 \ member. sumtype.f, structure-decl.f and enum-decl.f refuse a longer name with
 \ E-TDECL-CAP and TF-NAME-LONG$'s reason, and ARENA (arena.f) runs STRUCTURE's
 \ gate on its name first; the dies in `TF-CTOR-C,` and TFAM-INIT-MEMBER$ guard
 \ only that arithmetic.
-CHECKER-PACKAGE-CAP 1 - constant TF-NAME-MAX
+PACKAGE-PATH:CAP 1 - constant TF-NAME-MAX
 
 \ The reason refusing a name longer than TF-NAME-MAX. It is static text: no
 \ number formatter loads before this file, and the refusal carries the name.
@@ -1209,7 +1209,7 @@ public
 : TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: pa:ptr pu:n ta:ptr tu:n :}
    pa pu ta tu TF-CTOR-BUILD-ESCAPED
-   TF-CTOR-U @ CHECKER-PACKAGE-CAP >= IF E-PACKAGE-NAME-CAP throw THEN
+   TF-CTOR-U @ PACKAGE-PATH:CAP >= IF E-PACKAGE-NAME-CAP throw THEN
    TF-CTOR-BUF TF-CTOR-U @ ;
 
 \ Two spellings, on purpose:
@@ -5169,7 +5169,7 @@ public
 
 public
 
-$100 constant TFQ-CAP            \ folded qualifier bytes (CHECKER-PACKAGE-CAP)
+$100 constant TFQ-CAP            \ folded qualifier bytes (PACKAGE-PATH:CAP)
 create TFQ-BUF TFQ-CAP allot
 variable TFQ-U
 PTR-VARIABLE TFQ-TA   variable TFQ-TU  \ qualified tail token

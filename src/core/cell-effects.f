@@ -61,17 +61,17 @@ s" SIG-RAW-MODE" s" -- ptr n" TRUST
 \ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
 \ definition, read as src/habu/verify-source.f PARSES-ROW reads them and checked
 \ by src/core/checker.f CHECKER-PARSES-ROW; nothing is kept. The keyword is the
-\ last token the engine read when the word starts (CK-TKA-OFF). UNSAFE-TOK? bars
+\ last token the engine read when the word starts (TKA-CELL). UNSAFE-TOK? bars
 \ both from checked bodies. They load after the hook so this checker records them
 \ and INTRINSIC tags each (CTL-PARSES, INTRINSIC-CTL): a word checker.f defines is
 \ recorded by the build's checker, which may know no such word.
 TRUSTED: parses: ( -- )
-   data-base CK-TKA-OFF + @  data-base CK-TKL-OFF + @
+   data-base TKA-CELL + @  data-base TKL-CELL + @
    parse-name parse-name RES-FALSE CHECKER-PARSES-ROW drop drop drop ;
 INTRINSIC-PARSES INTRINSIC
 
 TRUSTED: parses-through: ( -- )
-   data-base CK-TKA-OFF + @  data-base CK-TKL-OFF + @
+   data-base TKA-CELL + @  data-base TKL-CELL + @
    parse-name parse-name PARSES-LIST-LOAD CHECKER-PARSES-ROW drop drop drop ;
 INTRINSIC-PARSES-THROUGH INTRINSIC
 
@@ -82,7 +82,7 @@ INTRINSIC-PARSES-THROUGH INTRINSIC
 \ (src/core/checker.f CHECKER-NAMES-ROW), barred from checked bodies and
 \ tagged as the two above are.
 TRUSTED: names: ( -- )
-   data-base CK-TKA-OFF + @  data-base CK-TKL-OFF + @
+   data-base TKA-CELL + @  data-base TKL-CELL + @
    parse-name CHECKER-NAMES-ROW ;
 INTRINSIC-NAMES INTRINSIC
 

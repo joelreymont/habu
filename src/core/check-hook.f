@@ -16,8 +16,8 @@ private
 \ CHECKER-CERT-DUP? (which interns nothing) first and refuses it as the
 \ wall does (REFUSE-DUPLICATE).
 
-\ The body text block and the buffer being read, as data-base offsets (this
-\ file loads before layout.f): the block's base, its text capacity and its row
+\ The body text block and the buffer being read, as data-base offsets: the
+\ block's base, its text capacity and its row
 \ count are layout.f BODY-TEXT:BASE-CELL, CAP-CELL and ROWS-CELL; the buffer is
 \ SRCLOC:INB-CELL up to INE-CELL.
 $800 RESERVED-PTR-U8-CELL BODY-BASE
@@ -25,8 +25,8 @@ $808 constant BODY-CAP-OFF
 $818 constant BODY-ROWS-OFF
 $2810 RESERVED-PTR-U8-CELL INPUT-START
 $36A8 RESERVED-PTR-U8-CELL INPUT-END
-\ The token the engine read last (checker.f CK-TKA-OFF, CK-TKL-OFF).
-CK-TKA-OFF RESERVED-PTR-U8-CELL LAST-TOKEN
+\ The token the engine read last (TKA-CELL, TKL-CELL).
+TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
 
 \ Arms the checker's source map (checker.f DIAG-SOURCE!, DIAG-MAP!) for the
 \ check of text a u, from the rows the engine's capture records (layout.f
@@ -38,7 +38,7 @@ CK-TKA-OFF RESERVED-PTR-U8-CELL LAST-TOKEN
    {: a:ptr u:n :}
    DSRC-U @ 0 <> if RES-FALSE exit then
    SRCLOC:FILE-BUFFER? 0= if RES-FALSE exit then
-   data-base CK-DEF-PEND-OFF + @ 0= if RES-FALSE exit then
+   data-base PEND-CELL + @ 0= if RES-FALSE exit then
    BODY-BASE @ {: base:ptr :}
    base NULL-PTR = if RES-FALSE exit then
    a base - 0 <> if RES-FALSE exit then
@@ -63,7 +63,7 @@ CK-TKA-OFF RESERVED-PTR-U8-CELL LAST-TOKEN
       a u + DIAG>SRC 0= if drop exit then
       DSRC-A @ + 5                                  \ `does>`
    else
-      LAST-TOKEN @  data-base CK-TKL-OFF + @
+      LAST-TOKEN @  data-base TKL-CELL + @
    then {: c:ptr cu:n :}
    c DSRC-A @ - {: off:n :}
    off 0 <  off cu + DSRC-U @ > or if exit then
@@ -188,7 +188,7 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su RAW-REG @ REG-XT execute
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or if exit then
-   data-base CHECKER-REG:CK-LASTC-CELL + 0 ptr-field @ {: rec:ptr :}
+   data-base LASTC-CELL + 0 ptr-field @ {: rec:ptr :}
    rec NULL-PTR = if exit then
    rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    ix 0 < if exit then

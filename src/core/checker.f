@@ -1,7 +1,5 @@
 \ The stack-effect checker: the declaration owner and its arenas, the scan of
 \ each definition, and the effect store and records the compiler reads.
-\ Loaded by the boot prefix ahead of src/habu/layout.f, so the fixed engine
-\ cells it uses are mirrored here as private aliases.
 \
 \ Arenas: owners decide the lifetime. Persistent registries copy external
 \ storage into image DATA; scratch resets to its boot buffer, releases its
@@ -286,15 +284,10 @@
 \ epoch, invalidating the whole cache at once. Snapshot prepare drops the
 \ mapping; a restored image rebuilds lazily.
 package CHECKER-REG
-\ SOURCE-CELL (layout.f DECL-CELL) is the record the engine certifies through;
-\ TARGET-CELL is the one a replacement checker publishes itself into.
-$360 constant SOURCE-CELL
-$368 constant TARGET-CELL
-SOURCE-CELL RESERVED-PTR-U8-CELL SOURCE-OWNER-A
-TARGET-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
-public
-$560 constant CK-LASTC-CELL             \ layout.f LASTC-CELL: last created record
-private
+\ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
+\ the one a replacement checker publishes itself into.
+NCOMP-DISPATCH:DECL-CELL RESERVED-PTR-U8-CELL SOURCE-OWNER-A
+NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
 CHECKER-OWNER-ABI:RAW-OFF constant RAW-OFF
 CHECKER-OWNER-ABI:EFFECT-OFF constant EFFECT-OFF
 CHECKER-OWNER-ABI:DEFER-OFF constant DEFER-OFF
@@ -464,7 +457,7 @@ OWNER-SIZE-AGREE
    CHECKER-OWNER-EXT:PIN-TOKEN-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
-DECLARATIONS data-base TARGET-CELL + 0 ptr-field ptr-cell!
+DECLARATIONS data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field ptr-cell!
 ;package
 
 0 constant T-CON   1 constant T-VAR   2 constant T-PTR
@@ -1488,9 +1481,8 @@ public
 0 constant CHECKER-PACKAGE-NONE
 1 constant CHECKER-PACKAGE-PRIVATE
 2 constant CHECKER-PACKAGE-PUBLIC
-$100 constant CHECKER-PACKAGE-CAP              \ = layout.f PACKAGE-PATH:CAP
 \ Bytes at and past CHECKER-PACKAGE-U stay zero (CHECKER-PACKAGE-U!): a package may be open at a file capture.
-create CHECKER-PACKAGE-NAME CHECKER-PACKAGE-CAP allot
+create CHECKER-PACKAGE-NAME PACKAGE-PATH:CAP allot
 variable CHECKER-PACKAGE-U
 variable CHECKER-PACKAGE-MODE
 
@@ -1524,48 +1516,20 @@ variable SOURCE-FLOOR
 
 \ Import row storage is shared by the live compiler and the verifier window.
 \ A savepoint keeps the names and lengths with their count (CK-USE-SAVE).
-16 constant CK-USE-MAX                     \ = layout.f USE-MAX (concurrent usings)
-create CK-USE-NAMES CK-USE-MAX CHECKER-PACKAGE-CAP * allot
-create CK-USE-LENS  CK-USE-MAX cells allot
-CHECKER-PACKAGE-CAP CELL + constant CK-USE-SNAP-ROW
+create CK-USE-NAMES USE-MAX PACKAGE-PATH:CAP * allot
+create CK-USE-LENS  USE-MAX cells allot
+PACKAGE-PATH:CAP CELL + constant CK-USE-SNAP-ROW
 CELL constant CK-USE-SNAP-HEADER
-CK-USE-SNAP-HEADER CK-USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
+CK-USE-SNAP-HEADER USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
 
 \ The mirror above records parser state and is rollback-aware. Every check, the
 \ verifier window's included, reads the engine's protected package record and
 \ WIDs through PKG-LIVE-XT, which names the open package, and the current target
 \ through CHECKER-RESOLVE:AUTHORITY; inside the window the checker overlay
-\ drives the engine's scope (CHECKER-OVERLAY). The boot provider mirrors
+\ drives the engine's scope (CHECKER-OVERLAY). The boot provider reads
 \ layout.f's fixed DATA offsets; xref.f replaces it with full record validation
 \ before user source.
-$78 constant CK-PKG-PUB-OFF
-$80 constant CK-PKG-PRI-OFF
-$88 constant CK-PKG-PARENT-OFF
-$90 constant CK-PKG-REC-OFF
-$42F0 constant CK-ENCLOSING-PUB-OFF         \ = layout.f ENCLOSING:PUB
-$42F8 constant CK-ENCLOSING-PRI-OFF         \ = layout.f ENCLOSING:PRI
-$4300 constant CK-ENCLOSING-PARENT-OFF      \ = layout.f ENCLOSING:PARENT
-$4308 constant CK-ENCLOSING-REC-OFF         \ = layout.f ENCLOSING:REC
-$4DD0 constant CK-PKG-OUTSIDE-OFF           \ = layout.f PKG-OUTSIDE-CELL
-48 constant CK-DREC                        \ = layout.f DREC (dictionary record bytes)
-131072 constant CK-DICT-CAP                \ = layout.f DICT-CAP (dictionary records)
-\ The engine's live `using` depth, read raw like the package cells above.
-$9C08 constant CK-USE-DEPTH-OFF            \ = layout.f USE-DEPTH-CELL (DATA-relative); engine owns it
-: CK-USE-ENGINE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;
-\ The depth the engine's open package opened at: its using floor, which
-\ `;package` restores and `;using` may not pop below, and which the engine
-\ lowers when an included buffer ends. The checker overlay moves it with the
-\ rest of the scope.
-$9C10 constant CK-USE-FLOOR-OFF            \ = layout.f USE-PKG-SAVE-CELL (DATA-relative); engine owns it
-\ The used publics' wordlists, in `using` order: the one name lookup's used
-\ record is mapped back to its mirror slot through them (CK-USED-INDEX).
-$9C20 constant CK-USE-WIDS-OFF             \ = layout.f USE-WIDS-OFF (DATA-relative); engine owns it
-\ The record of the definition the engine holds open and not yet published, 0
-\ when none: only a check run while it is set opens the pending window (CK-CLOSE!).
-$3688 constant CK-DEF-PEND-OFF             \ = layout.f PEND-CELL (DATA-relative); engine owns it
-\ The next wordlist id the engine hands out: a rollback inside the checker
-\ overlay puts it back to its frame's mark (CHECKER-OVERLAY ROLLBACK).
-$30 constant CK-WIDN-OFF                   \ = layout.f WIDN-CELL (DATA-relative); engine owns it
+: CK-USE-ENGINE-DEPTH ( -- n )  data-base USE-DEPTH-CELL + @ ;
 7136 constant E-PKG-CONTEXT
 \ The checker overlay is full: the records one lookup hides or the engine
 \ dictionary it publishes into (CHECKER-OVERLAY).
@@ -1579,7 +1543,7 @@ variable CHECKER-VERIFY-PKG-DEPTH
    mode CHECKER-PACKAGE-PUBLIC <> and IF
       s" " 0 0= 0= EXIT
    THEN
-   CHECKER-PACKAGE-U @ dup 0= swap CHECKER-PACKAGE-CAP >= or IF
+   CHECKER-PACKAGE-U @ dup 0= swap PACKAGE-PATH:CAP >= or IF
       s" " 0 0= 0= EXIT
    THEN
    CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ 0 0= ;
@@ -1587,9 +1551,9 @@ variable CHECKER-VERIFY-PKG-DEPTH
 \ The boot provider names the open package from the mirror: the engine's
 \ package cells only say whether one is open.
 : CHECKER-PKG-BOOT-LIVE ( -- ptr u8 n bool )
-   data-base CK-PKG-REC-OFF + @ {: rec:n :}
-   data-base CK-PKG-PUB-OFF + @ {: pub:n :}
-   data-base CK-PKG-PRI-OFF + @ {: pri:n :}
+   data-base PKG-REC-CELL + @ {: rec:n :}
+   data-base PKG-PUB-CELL + @ {: pub:n :}
+   data-base PKG-PRI-CELL + @ {: pri:n :}
    rec 0= pub 0= and pri 0= and IF
       s" " 0 0= EXIT
    THEN
@@ -1612,10 +1576,8 @@ CHECKER-PKG-LIVE-DEFAULT
 
 \ Uncaught, a code outside 1..255 exits UNCAUGHT-RC (67); the code published
 \ here makes it exit CHECKER-REJECT-RC instead.
-$27F8 constant CHECKER-REFUSAL-CELL
-
 : CHECKER-REFUSE ( n -- ) {: code:n :}
-   code data-base CHECKER-REFUSAL-CELL + !
+   code data-base REFUSAL-ABI:CODE-CELL + !
    code throw ;
 
 \ AUTHORITY's bool says whether the engine's package record names a package
@@ -1627,8 +1589,8 @@ public
    ok 0= IF s" " CHECKER-PACKAGE-NONE 0 0= 0= EXIT THEN
    get-current {: cur:n :}
    u 0= IF s" " CHECKER-PACKAGE-NONE cur BOOT:GLOBAL-WL = EXIT THEN
-   cur data-base CK-PKG-PUB-OFF + @ = IF a u CHECKER-PACKAGE-PUBLIC 0 0= EXIT THEN
-   cur data-base CK-PKG-PRI-OFF + @ = IF a u CHECKER-PACKAGE-PRIVATE 0 0= EXIT THEN
+   cur data-base PKG-PUB-CELL + @ = IF a u CHECKER-PACKAGE-PUBLIC 0 0= EXIT THEN
+   cur data-base PKG-PRI-CELL + @ = IF a u CHECKER-PACKAGE-PRIVATE 0 0= EXIT THEN
    s" " CHECKER-PACKAGE-NONE 0 0= 0= ;
 ;package
 
@@ -2621,8 +2583,6 @@ public
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
 4 constant CK-REC-FACTS-SLOT                \ the facts text's offset from its DATA, 0 for none
-$00001FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
-$2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 
 \ The dictionary record at index IX; a record spans DICT-WORDLIST-SLOT and the
 \ slots before it.
@@ -2640,8 +2600,8 @@ public
 : CK-REC-NAME$ ( ptr n -- ptr u8 n )
    {: rec:ptr :}
    rec CK-REC-FLAGS-SLOT DICT-CELL@ {: flags:n :}
-   flags CK-REC-LEN-MASK and {: u:n :}
-   flags CK-REC-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
+   flags DNAME-LEN-MASK and {: u:n :}
+   flags DNAME-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
    rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
 ;package
 
@@ -6426,7 +6386,7 @@ CHECKER-REG:SCRATCH{
 variable UNSAFE
 variable RETIRED             \ a permanently retired token was named in a checked body
 variable LOCALBAD
-variable LOCALBAD-KIND       \ 0 = locals opened inside a quotation or on a dead path; 1 = more than LOC-CAP locals; 2 = a name over LOC-NAME-W; 3 = `--` in a locals group; 4 = `|` in one
+variable LOCALBAD-KIND       \ 0 = locals opened inside a quotation or on a dead path; 1 = more than LOC-RECS locals; 2 = a name over LOC-NAME-CAP; 3 = `--` in a locals group; 4 = `|` in one
 variable LOCALBAD-LEN        \ kind 2: the rejected local's bare-name width in bytes
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
@@ -6986,7 +6946,7 @@ variable PKHAVE
 \ A linear type's type entry text, the form CHECK:HEAD$ states.
 package CHECK
 private
-CHECKER-PACKAGE-CAP 2 * 8 + constant LINEAR-TEXT-CAP   \ a part's `a:b` and the head
+PACKAGE-PATH:CAP 2 * 8 + constant LINEAR-TEXT-CAP   \ a part's `a:b` and the head
 create LINEAR-TEXT LINEAR-TEXT-CAP allot
 : TEXT+ ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
    u 0 ?do a i + c@ LINEAR-TEXT at + i + c! loop ;
@@ -12112,7 +12072,7 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
 : CHECKER-PACKAGE-COPY-C ( ptr u8 n -- ) {: a:ptr i:n :}
    a i + c@ CHECKER-FOLD-C CHECKER-PACKAGE-NAME i + c! ;
 
-\ A package name has a row of CHECKER-PACKAGE-CAP bytes here and in every
+\ A package name has a row of PACKAGE-PATH:CAP bytes here and in every
 \ `using` slot, so it is at most 255 bytes. Source that names a longer one —
 \ `package`, or `using` of the namespace a qualified definition made — is
 \ refused by name: E-PACKAGE-NAME-CAP, a throw out of its statement, which
@@ -12122,12 +12082,12 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
 
 : CHECKER-PACKAGE-LONG? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u BYTE-SPAN? u CHECKER-PACKAGE-CAP >= and ;
+   a u BYTE-SPAN? u PACKAGE-PATH:CAP >= and ;
 
 \ A package name must have a length that describes memory (BYTE-SPAN?) and
 \ fits the mirror's row: a -1 length would copy nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u BYTE-SPAN? 0= u CHECKER-PACKAGE-CAP >= or IF
+   a u BYTE-SPAN? 0= u PACKAGE-PATH:CAP >= or IF
       s" checker: package name too long" 76 die
    THEN
    0 BEGIN dup u < WHILE
@@ -12150,22 +12110,18 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
 \ preserve the row bytes and lengths alongside the depth.
 : CK-USE-DEPTH ( -- n )
    CK-USE-ENGINE-DEPTH ;
-: CK-USE-SLOT ( n -- ptr u8 )  CHECKER-PACKAGE-CAP * CK-USE-NAMES + ;
+: CK-USE-SLOT ( n -- ptr u8 )  PACKAGE-PATH:CAP * CK-USE-NAMES + ;
 : CK-USE-LEN@ ( n -- n )  cells CK-USE-LENS + @ ;
 
-\ The scan is capped at CK-USE-MAX because checker.f is cold-prefix source
-\ re-read at every boot: a bootstrap engine older than the using band has no
-\ USE-DEPTH-CELL, so CK-USE-DEPTH-OFF reads unrelated heap data. The cap keeps
-\ the loop inside the mirror whatever that read returns; correctness rests on
-\ the mirror's contents. Its writers are CHECKER-USING (driven by C-USING or a
-\ replay's `using` row), CHECKER-RESYNC and CK-USE-RESTORE; an engine without
-\ the band runs none of them, so every slot keeps its zero length and SYM-FIND
-\ matches nothing. On a using-capable engine C-USING and the owned push both
-\ bound the depth by CK-USE-MAX, so the cap never binds.
+\ The scan is capped at USE-MAX so the loop stays inside the mirror whatever
+\ the engine's depth cell holds; correctness rests on the mirror's contents.
+\ Its writers are CHECKER-USING (driven by C-USING or a replay's `using` row),
+\ CHECKER-RESYNC and CK-USE-RESTORE. C-USING and the owned push both bound the
+\ depth by USE-MAX, so the cap never binds.
 : CK-USE-SCAN-N ( -- n )
    CK-USE-DEPTH
    dup 0 < IF drop 0 EXIT THEN
-   dup CK-USE-MAX > IF drop CK-USE-MAX THEN ;
+   dup USE-MAX > IF drop USE-MAX THEN ;
 
 : CHECKER-USING-N ( -- n ) CK-USE-SCAN-N ;
 : CHECKER-USING$ ( n -- ptr u8 n ) {: ix:n :}
@@ -12344,15 +12300,15 @@ package CHECKER-RESOLVE
 \ The name of the package open at top level: the one enclosing the open part,
 \ else the open package; 0 bytes when none is open.
 : TOP-NAME$ ( -- ptr u8 n )
-   data-base CK-ENCLOSING-REC-OFF + @ {: outer:n :}
-   outer 0 <> IF outer ELSE data-base CK-PKG-REC-OFF + @ THEN {: top:n :}
+   data-base ENCLOSING:REC + @ {: outer:n :}
+   outer 0 <> IF outer ELSE data-base PKG-REC-CELL + @ THEN {: top:n :}
    top 0= IF NULL-PTR 0 EXIT THEN
-   top dbase@ - CK-DREC / REC-AT CK-REC-NAME$ ;
+   top dbase@ - DREC / REC-AT CK-REC-NAME$ ;
 
-\ The key `A:<head>`. `package` refuses a part's path of CHECKER-PACKAGE-CAP
+\ The key `A:<head>`. `package` refuses a part's path of PACKAGE-PATH:CAP
 \ bytes or more (habu2.f C-PACKAGE-PATH), so a longer key names no part.
 CHECKER-REG:SCRATCH{
-create HEAD-KEY CHECKER-PACKAGE-CAP allot
+create HEAD-KEY PACKAGE-PATH:CAP allot
 CHECKER-REG:}SCRATCH
 
 public
@@ -12362,7 +12318,7 @@ public
    a u BYTE-SPAN? 0= IF NULL-PTR EXIT THEN
    TOP-NAME$ {: ta:ptr tu:n :}
    tu 1 + u + {: ku:n :}
-   tu 0 <>  ku CHECKER-PACKAGE-CAP <  and IF
+   tu 0 <>  ku PACKAGE-PATH:CAP <  and IF
       ta HEAD-KEY tu ARENA-COPY
       $3A HEAD-KEY tu + c!
       a HEAD-KEY tu 1 + + u ARENA-COPY
@@ -12389,7 +12345,7 @@ RESOLUTION-SOURCE-DEFAULT
    a u CHECKER-PACKAGE-LONG? IF E-PACKAGE-NAME-CAP throw THEN
    a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" 76 die THEN
    CK-USE-DEPTH {: d:n :}
-   d CK-USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
+   d USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
    a u CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row NULL-PTR = IF a u ELSE row CHECKER-RESOLVE:CK-REC-NAME$ THEN {: ra:ptr ru:n :}
    ra ru 9 RESOLUTION-NAMESPACE-XT
@@ -12480,7 +12436,7 @@ SHADOW-DIAG-DEFAULT
 \ USING-RAISE) or a shadowed arity (SHADOW-ARITY-CK); a top-level token's using
 \ refusal leaves the same way (CHECKER-VERIFY-TOP). The code is kept as raised,
 \ so DEF-REFUSED tells the definition's refusal from a throw nothing judged (an
-\ arena or capacity failure, a bug), which propagates. CHECKER-REFUSAL-CELL
+\ arena or capacity failure, a bug), which propagates. REFUSAL-ABI:CODE-CELL
 \ cannot: it outlives the walk and holds refusals that are not the definition's.
 variable DEF-REFUSAL
 : REFUSE-DEF ( n -- n ) dup DEF-REFUSAL ! ;
@@ -12541,7 +12497,7 @@ package CHECKER-RESYNC
 \ the names here, so each slot's name is read back from its wid; a wid no live row publishes names nothing.
 : SLOT ( n -- ) {: d:n :}
    d USE-SLOT-XT {: a:ptr u:n ok:bool :}
-   ok u CHECKER-PACKAGE-CAP < and IF a u d CHECKER-USE:NAME! EXIT THEN
+   ok u PACKAGE-PATH:CAP < and IF a u d CHECKER-USE:NAME! EXIT THEN
    0 d cells CK-USE-LENS + ! ;
 
 : SLOTS ( -- )
@@ -12553,7 +12509,7 @@ public
 : MIRROR ( -- )
    SLOTS
    CHECKER-RESOLVE:AUTHORITY {: a:ptr u:n mode:n ok:bool :}
-   ok 0=  data-base CK-PKG-PUB-OFF + @ 0 <>  and IF EXIT THEN
+   ok 0=  data-base PKG-PUB-CELL + @ 0 <>  and IF EXIT THEN
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF
       CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
       0 CHECKER-PACKAGE-U!
@@ -12709,7 +12665,7 @@ variable PAIRS-N
 \ replayed `undefine` retired. A lookup hides at most one record of its name in
 \ each wordlist it searches: the open package's two, the enclosing package's
 \ two, the used publics and the global one.
-CK-USE-MAX 5 + constant HIDE-MAX
+USE-MAX 5 + constant HIDE-MAX
 create HIDDEN HIDE-MAX 2 * cells allot
 variable HIDDEN-N
 
@@ -12725,8 +12681,8 @@ variable HIDDEN-N
 7 constant S-ENCLOSING                     \ the enclosing package's row index, -1 for none
 8 constant S-ENCLOSING-PARENT
 9 constant S-OUTSIDE
-10 constant S-WIDS                         \ the used publics, CK-USE-MAX cells
-S-WIDS CK-USE-MAX + constant ROW-CELLS
+10 constant S-WIDS                         \ the used publics, USE-MAX cells
+S-WIDS USE-MAX + constant ROW-CELLS
 \ The snapshot rows, newest last (SNAP-PUSH). Scopes nest as deep as memory
 \ holds (RBF-GROW), so the rows are a growing mapping, given back by CLOSE.
 PTR-VARIABLE SNAPS-P
@@ -12753,15 +12709,15 @@ variable SNAP-N
    x y pv @ BYTE-VIEW nv @ PAIR!
    nv @ 1 + nv ! ;
 
-: REC>IX ( ptr n -- n ) {: rec:ptr :} rec NULL-PTR - dbase@ - CK-DREC / ;
+: REC>IX ( ptr n -- n ) {: rec:ptr :} rec NULL-PTR - dbase@ - DREC / ;
 \ The row index of the package the cell at off names, -1 when it names none.
 : SCOPE-IX ( n -- n )
    DATA@ {: r:n :}
    r 0= IF -1 EXIT THEN
-   r dbase@ - CK-DREC / ;
+   r dbase@ - DREC / ;
 : NS-ROW ( ptr u8 n -- ptr n ) BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE ;
 : ROOM ( -- )
-   ndict@ CK-DICT-CAP < IF EXIT THEN
+   ndict@ DICT-CAP < IF EXIT THEN
    E-OVERLAY-CAP throw ;
 
 \ The namespace row `package` opens, as the engine's PKG-ENSURE finds or makes
@@ -12779,16 +12735,16 @@ variable SNAP-N
    a u NS-ROW ;
 
 : SNAP-SAVE ( ptr u8 -- ) {: p:ptr :}
-   CK-PKG-REC-OFF SCOPE-IX p S-REC ROW!
-   CK-PKG-PARENT-OFF DATA@ p S-PARENT ROW!
-   CK-ENCLOSING-REC-OFF SCOPE-IX p S-ENCLOSING ROW!
-   CK-ENCLOSING-PARENT-OFF DATA@ p S-ENCLOSING-PARENT ROW!
+   PKG-REC-CELL SCOPE-IX p S-REC ROW!
+   PKG-PARENT-CELL DATA@ p S-PARENT ROW!
+   ENCLOSING:REC SCOPE-IX p S-ENCLOSING ROW!
+   ENCLOSING:PARENT DATA@ p S-ENCLOSING-PARENT ROW!
    get-current p S-CURRENT ROW!
-   CK-USE-DEPTH-OFF DATA@ p S-DEPTH ROW!
-   CK-USE-FLOOR-OFF DATA@ p S-FLOOR ROW!
+   USE-DEPTH-CELL DATA@ p S-DEPTH ROW!
+   USE-PKG-SAVE-CELL DATA@ p S-FLOOR ROW!
    CHECKER-USE:SOURCE-FLOOR @ p S-SOURCE ROW!
-   CK-PKG-OUTSIDE-OFF DATA@ p S-OUTSIDE ROW!
-   CK-USE-MAX 0 ?DO i cells CK-USE-WIDS-OFF + DATA@ p S-WIDS i + ROW! LOOP ;
+   PKG-OUTSIDE-CELL DATA@ p S-OUTSIDE ROW!
+   USE-MAX 0 ?DO i cells USE-WIDS-OFF + DATA@ p S-WIDS i + ROW! LOOP ;
 
 \ A part opens only inside its enclosing package, so that package opens first.
 : SNAP-RESTORE ( ptr u8 -- ) {: p:ptr :}
@@ -12797,11 +12753,11 @@ variable SNAP-N
    p S-REC ROW@ {: ix:n :}
    ix 0 < IF -1 0 ELSE ix p S-PARENT ROW@ THEN package-scope!
    p S-CURRENT ROW@ set-current
-   p S-DEPTH ROW@ CK-USE-DEPTH-OFF DATA!
-   p S-FLOOR ROW@ CK-USE-FLOOR-OFF DATA!
+   p S-DEPTH ROW@ USE-DEPTH-CELL DATA!
+   p S-FLOOR ROW@ USE-PKG-SAVE-CELL DATA!
    p S-SOURCE ROW@ CHECKER-USE:SOURCE-FLOOR !
-   p S-OUTSIDE ROW@ CK-PKG-OUTSIDE-OFF DATA!
-   CK-USE-MAX 0 ?DO p S-WIDS i + ROW@ i cells CK-USE-WIDS-OFF + DATA! LOOP ;
+   p S-OUTSIDE ROW@ PKG-OUTSIDE-CELL DATA!
+   USE-MAX 0 ?DO p S-WIDS i + ROW@ i cells USE-WIDS-OFF + DATA! LOOP ;
 
 : SNAP-PUSH ( n -- ) {: tag:n :}
    SNAPS-P SNAPS-CAP SNAP-N @ 1 + ROW-CELLS ARENA-ROWS-ENSURE
@@ -12818,8 +12774,8 @@ variable SNAP-N
 : CLEAR ( -- )
    -1 0 package-scope!
    BOOT:GLOBAL-WL set-current
-   0 CK-USE-DEPTH-OFF DATA!
-   0 CK-USE-FLOOR-OFF DATA! ;
+   0 USE-DEPTH-CELL DATA!
+   0 USE-PKG-SAVE-CELL DATA! ;
 
 : LOG! ( n n -- ) LOG-P LOG-CAP LOG-N PAIR+ ;
 
@@ -12836,14 +12792,14 @@ variable SNAP-N
 
 \ replay-open refuses a pending definition by exit: refuse it here first.
 : OPEN ( n -- ) {: tag:n :}
-   CK-DEF-PEND-OFF DATA@ 0 <> IF E-PKG-CONTEXT throw THEN
+   PEND-CELL DATA@ 0 <> IF E-PKG-CONTEXT throw THEN
    replay-open
    ndict@ MARK !
    FIRST-RECORD-XT PREFIX !
    tag OPENER !
    0 LOG-N !
    CHECKER-USE:SOURCE-FLOOR @ FLOOR0 !
-   CK-PKG-OUTSIDE-OFF DATA@ OUTSIDE0 !
+   PKG-OUTSIDE-CELL DATA@ OUTSIDE0 !
    -1 ON ! ;
 
 \ Drop the clause pairs whose definer is at or above ND, newest first: the
@@ -12867,7 +12823,7 @@ variable SNAP-N
    PAIRS-P PAIRS-CAP 2 ARENA-ROWS-RELEASE
    SNAPS-P SNAPS-CAP ROW-CELLS ARENA-ROWS-RELEASE
    FLOOR0 @ CHECKER-USE:SOURCE-FLOOR !
-   OUTSIDE0 @ CK-PKG-OUTSIDE-OFF DATA!
+   OUTSIDE0 @ PKG-OUTSIDE-CELL DATA!
    0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !  0 SNAP-N !  0 OUTSIDE0 ! ;
 
 \ The wordlist a checker symbol's definition lands in, as a compile of it puts
@@ -12968,7 +12924,7 @@ public
 \ outside it (PKG-OUTSIDE-CELL).
 : OPEN-SCOPE ( bool n -- ) {: neutral:bool tag:n :}
    ON @ 0= IF tag OPEN ELSE tag SNAP-PUSH THEN
-   1 CK-PKG-OUTSIDE-OFF DATA!
+   1 PKG-OUTSIDE-CELL DATA!
    neutral IF CLEAR CHECKER-RESYNC:MIRROR THEN ;
 
 \ The scope tagged TAG closes: the overlay when it opened it, its snapshot row
@@ -12985,7 +12941,7 @@ public
 \ the overlay opened rolls none of it back; the overlay's own close does.
 : MARKS ( -- n n n n )
    ON @ 0= IF 0 0 0 0 EXIT THEN
-   ndict@ LOG-N @ cp@ CK-WIDN-OFF DATA@ ;
+   ndict@ LOG-N @ cp@ WIDN-CELL DATA@ ;
 
 \ A scope opened inside the overlay closes here, not through replay-close, so
 \ ROLLBACK restores the three counters replay-close restores: records above ND,
@@ -13023,14 +12979,14 @@ public
 \ A composed file's scope (CHECKER-VERIFY-FILE) starts as an engine buffer does,
 \ and FILE-DONE ends a clean return as interpreter.f CLEAN-END ends one.
 ROW-CELLS cells constant SCOPE-BYTES
-: SAVE-SCOPE ( ptr u8 -- ) SNAP-SAVE  1 CK-PKG-OUTSIDE-OFF DATA! ;
+: SAVE-SCOPE ( ptr u8 -- ) SNAP-SAVE  1 PKG-OUTSIDE-CELL DATA! ;
 : RESTORE-SCOPE ( ptr u8 -- ) SNAP-RESTORE CHECKER-RESYNC:MIRROR ;
 : FILE-DONE ( ptr u8 -- ) {: p:ptr :}
-   CK-USE-DEPTH-OFF DATA@ CHECKER-USE:SOURCE-FLOOR @ min {: d:n :}
-   d CK-USE-DEPTH-OFF DATA!
-   CK-USE-FLOOR-OFF DATA@ d min CK-USE-FLOOR-OFF DATA!
+   USE-DEPTH-CELL DATA@ CHECKER-USE:SOURCE-FLOOR @ min {: d:n :}
+   d USE-DEPTH-CELL DATA!
+   USE-PKG-SAVE-CELL DATA@ d min USE-PKG-SAVE-CELL DATA!
    p S-SOURCE ROW@ CHECKER-USE:SOURCE-FLOOR !
-   CK-PKG-OUTSIDE-OFF DATA@ 0 <> IF p S-OUTSIDE ROW@ CK-PKG-OUTSIDE-OFF DATA! THEN ;
+   PKG-OUTSIDE-CELL DATA@ 0 <> IF p S-OUTSIDE ROW@ PKG-OUTSIDE-CELL DATA! THEN ;
 
 \ Publish the definition the checker just recorded as a codeless record, so the
 \ replay's later bodies bind it where the compiler would; the publication hook
@@ -13041,7 +12997,7 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ clause is no twin (DUPLICATE?), and a twin has its definition's does> shape
 \ (OTHER-SHAPE?).
 : PUBLISH ( n -- ) {: sym:n :}
-   sym 0=  ON @ 0=  or  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
+   sym 0=  ON @ 0=  or  PEND-CELL DATA@ 0 <>  or IF EXIT THEN
    sym SYM-WID {: wid:n :}
    sym SYM-NAME$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
    ROOM
@@ -13089,7 +13045,7 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ with none was refused (OTHER-SHAPE?). One the replay did not publish gets no
 \ clause.
 : CLAUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
-   ON @ 0=  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
+   ON @ 0=  PEND-CELL DATA@ 0 <>  or IF EXIT THEN
    a u TARGET 0= IF 2drop drop EXIT THEN
    {: ta:ptr tu:n wid:n :}
    ta tu wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
@@ -13125,31 +13081,31 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ part.
 : OPEN-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-COLON-SCAN drop 0 <> {: part:bool :}
-   part  CK-PKG-PUB-OFF DATA@ 0 <>  xor  CK-ENCLOSING-REC-OFF DATA@ 0 <>  or IF
+   part  PKG-PUB-CELL DATA@ 0 <>  xor  ENCLOSING:REC DATA@ 0 <>  or IF
       E-PKG-CONTEXT throw
    THEN
    a u NS-ENSURE {: rec:ptr :}
    rec CELL + @ 0= IF rec GRANT THEN
-   CK-USE-DEPTH-OFF DATA@ CK-USE-FLOOR-OFF DATA!
+   USE-DEPTH-CELL DATA@ USE-PKG-SAVE-CELL DATA!
    rec REC>IX get-current package-scope!
    rec CELL + @ set-current
-   0 CK-PKG-OUTSIDE-OFF DATA! ;
+   0 PKG-OUTSIDE-CELL DATA! ;
 
 \ `public` or `private`: OFF is the open package's cell for that wordlist. With
 \ no package open it changes nothing, as the checker's record of the scope.
 : SECTION ( n -- ) {: off:n :}
-   CK-PKG-PUB-OFF DATA@ 0= IF EXIT THEN
+   PKG-PUB-CELL DATA@ 0= IF EXIT THEN
    off DATA@ set-current ;
 
 \ `;package` (PKG-END-PACKAGE): the parent wordlist current, the enclosing
 \ package open again after a part and none after any other, and the using
 \ depth the package opened at.
 : CLOSE-PACKAGE ( -- )
-   CK-PKG-PUB-OFF DATA@ 0= IF EXIT THEN
-   CK-PKG-PARENT-OFF DATA@ set-current
-   CK-ENCLOSING-REC-OFF SCOPE-IX {: outer:n :}
-   outer 0 < IF -1 0 ELSE outer CK-ENCLOSING-PARENT-OFF DATA@ THEN package-scope!
-   CK-USE-FLOOR-OFF DATA@ CK-USE-DEPTH-OFF DATA! ;
+   PKG-PUB-CELL DATA@ 0= IF EXIT THEN
+   PKG-PARENT-CELL DATA@ set-current
+   ENCLOSING:REC SCOPE-IX {: outer:n :}
+   outer 0 < IF -1 0 ELSE outer ENCLOSING:PARENT DATA@ THEN package-scope!
+   USE-PKG-SAVE-CELL DATA@ USE-DEPTH-CELL DATA! ;
 
 \ A name with no row gets NS-ENSURE's placeholder; the run refuses USING-UNKNOWN.
 \ NAME, not the slot CHECKER-USE:NAME! folds to lower case, spells a new row.
@@ -13158,19 +13114,19 @@ ROW-CELLS cells constant SCOPE-BYTES
    a u CHECKER-COLON-SCAN drop 0 <> IF ENGINE-ERROR:USING-BAD-NAME throw THEN
    a u CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row NULL-PTR = IF a u NS-ENSURE ELSE row THEN {: rec:ptr :}
-   CK-USE-DEPTH-OFF DATA@ {: d:n :}
+   USE-DEPTH-CELL DATA@ {: d:n :}
    d CHECKER-USE:SOURCE-FLOOR @ < IF d CHECKER-USE:SOURCE-FLOOR ! THEN
-   rec @ d cells CK-USE-WIDS-OFF + DATA!
-   d 1 + CK-USE-DEPTH-OFF DATA! ;
+   rec @ d cells USE-WIDS-OFF + DATA!
+   d 1 + USE-DEPTH-CELL DATA! ;
 
 \ `;using` (PKG-END-USING) closes only an import the open package or the
 \ replayed source opened.
 : CLOSE-USING ( -- )
-   CK-USE-DEPTH-OFF DATA@ {: d:n :}
+   USE-DEPTH-CELL DATA@ {: d:n :}
    d 0 <= IF E-USING-UNBALANCED throw THEN
-   CK-PKG-PUB-OFF DATA@ 0 <>  d CK-USE-FLOOR-OFF DATA@ <=  and IF E-USING-OUTER throw THEN
+   PKG-PUB-CELL DATA@ 0 <>  d USE-PKG-SAVE-CELL DATA@ <=  and IF E-USING-OUTER throw THEN
    d CHECKER-USE:SOURCE-FLOOR @ <= IF E-USING-OUTER throw THEN
-   d 1 - CK-USE-DEPTH-OFF DATA! ;
+   d 1 - USE-DEPTH-CELL DATA! ;
 
 \ `undefine NAME` (src/habu/xref.f UNDEFINE-NAME): every live record of the
 \ name in the wordlist it acts in is retired and logged, a seeded primitive's
@@ -13185,23 +13141,23 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ What `package` opens: PART-GUARD at `package`, PART-PATH at the name.
 package CHECKER-RESOLVE
 CHECKER-REG:SCRATCH{
-create PATH-KEY CHECKER-PACKAGE-CAP allot
+create PATH-KEY PACKAGE-PATH:CAP allot
 CHECKER-REG:}SCRATCH
 public
 \ A part opens in its package's private section, in its buffer, under no using
 \ it opened, inside no part (habu2.f C-PACKAGE-PART-GUARD); else E-PKG-CONTEXT.
 : PART-GUARD ( -- )
-   data-base CK-PKG-PUB-OFF + @ 0= IF EXIT THEN
-   data-base CK-PKG-OUTSIDE-OFF + @ 0 <>  data-base CK-ENCLOSING-PUB-OFF + @ 0 <>  or
-   get-current data-base CK-PKG-PRI-OFF + @ <>  or
-   CK-USE-ENGINE-DEPTH data-base CK-USE-FLOOR-OFF + @ <>  or
+   data-base PKG-PUB-CELL + @ 0= IF EXIT THEN
+   data-base PKG-OUTSIDE-CELL + @ 0 <>  data-base ENCLOSING:PUB + @ 0 <>  or
+   get-current data-base PKG-PRI-CELL + @ <>  or
+   CK-USE-ENGINE-DEPTH data-base USE-PKG-SAVE-CELL + @ <>  or
    IF E-PKG-CONTEXT throw THEN ;
 
 \ NAME, or `A:NAME` in package A, refused as habu2.f C-PACKAGE refuses it, a
 \ path too long for a row by its length alone.
 : PART-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    TOP-NAME$ {: pa:ptr pu:n :}
-   pu 0 <>  u CHECKER-PACKAGE-CAP pu 1 + - < 0=  and IF E-PKG-CONTEXT throw THEN
+   pu 0 <>  u PACKAGE-PATH:CAP pu 1 + - < 0=  and IF E-PKG-CONTEXT throw THEN
    \ A length that describes no memory is refused; the engine names the colon
    \ first.
    a u BYTE-SPAN? 0= IF E-PACKAGE-NAME-CAP throw THEN
@@ -13242,14 +13198,14 @@ package CHECKER-REG
 ;package
 
 : CHECKER-PUBLIC ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF CK-PKG-PUB-OFF CHECKER-OVERLAY:SECTION THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF PKG-PUB-CELL CHECKER-OVERLAY:SECTION THEN
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PUBLIC CHECKER-PACKAGE-MODE ! THEN ;
 package CHECKER-REG
 ' CHECKER-PUBLIC DECLARATIONS PUBLIC-OFF + xt!
 ;package
 
 : CHECKER-PRIVATE ( -- )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF CK-PKG-PRI-OFF CHECKER-OVERLAY:SECTION THEN
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF PKG-PRI-CELL CHECKER-OVERLAY:SECTION THEN
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! THEN ;
 package CHECKER-REG
 ' CHECKER-PRIVATE DECLARATIONS PRIVATE-OFF + xt!
@@ -13543,10 +13499,10 @@ CHECKER-REG:}SCRATCH
 : CK-LIVE-PEND? ( -- bool )
    CHECKER-VERIFY-PKG-DEPTH @ 0 =
    CHK-CAND @ 0 = and
-   data-base CK-DEF-PEND-OFF + @ 0 <> and ;
+   data-base PEND-CELL + @ 0 <> and ;
 
 \ Only the compile hook's check and TRUST-DECL's run while a definition is
-\ pending (CK-DEF-PEND-OFF). A check run by hand (`s" W ( -- n ) 1" CHECK!`)
+\ pending (PEND-CELL). A check run by hand (`s" W ( -- n ) 1" CHECK!`)
 \ or a replay publishes nothing, so a row recorded there would bind its symbol
 \ in compiled code; a candidate scope's rows pend through its floor instead.
 : CK-CLOSE! ( n -- ) {: sym:n :}
@@ -13599,7 +13555,7 @@ CHECKER-REG:}SCRATCH
 \ the depth the engine's C-USING is about to push).
 : CK-USED-INDEX ( n -- n ) {: wid:n :}
    CK-USE-SCAN-N 0 ?DO
-      data-base CK-USE-WIDS-OFF + i cells + @ wid = IF i UNLOOP EXIT THEN
+      data-base USE-WIDS-OFF + i cells + @ wid = IF i UNLOOP EXIT THEN
    LOOP
    -1 ;
 
@@ -13615,7 +13571,7 @@ CHECKER-REG:}SCRATCH
 : CK-USED-MARK ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CK-USED-MASK !
    CK-USE-SCAN-N 0 ?DO
-      a u data-base CK-USE-WIDS-OFF + i cells + @ CHECKER-RESOLVE:WL-PROBE NULL-PTR <>
+      a u data-base USE-WIDS-OFF + i cells + @ CHECKER-RESOLVE:WL-PROBE NULL-PTR <>
       a u i CK-USED-SYM@ SYM-BEYOND? 0=  and IF
          1 i lshift CK-USED-MASK @ or CK-USED-MASK !
       THEN
@@ -13651,17 +13607,17 @@ public
       pkgu 0 <> IF
          pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? {: own:n :}
          own PRIM-FIRST-IDX 0 <> IF own EXIT THEN
-         data-base CK-ENCLOSING-PUB-OFF + @ 0 <> IF
+         data-base ENCLOSING:PUB + @ 0 <> IF
             pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? {: top:n :}
             top PRIM-FIRST-IDX 0 <> IF top EXIT THEN
          THEN
       THEN
       a u CHECKER-GLOBAL-SYM? EXIT
    THEN
-   wid data-base CK-PKG-PRI-OFF + @ = IF pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN
-   wid data-base CK-PKG-PUB-OFF + @ = IF pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? EXIT THEN
-   wid data-base CK-ENCLOSING-PRI-OFF + @ = IF pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN
-   wid data-base CK-ENCLOSING-PUB-OFF + @ = IF pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PUBLIC a u CHECKER-PKG-SYM? EXIT THEN
+   wid data-base PKG-PRI-CELL + @ = IF pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN
+   wid data-base PKG-PUB-CELL + @ = IF pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? EXIT THEN
+   wid data-base ENCLOSING:PRI + @ = IF pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN
+   wid data-base ENCLOSING:PUB + @ = IF pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PUBLIC a u CHECKER-PKG-SYM? EXIT THEN
    a u wid CK-USED-INDEX CK-USED-SYM@ ;
 
 \ A keyword's axiom: the global symbol of a bare name the engine holds no record
@@ -13776,10 +13732,10 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
    rec 0= IF RB-NONE EXIT THEN
    rec CK-REC-WID {: wid:n :}
    wid WL:GLOBAL? IF RB-GLOBAL EXIT THEN
-   wid data-base CK-PKG-PRI-OFF + @ = IF RB-PRIVATE EXIT THEN
-   wid data-base CK-PKG-PUB-OFF + @ = IF RB-PUBLIC EXIT THEN
-   wid data-base CK-ENCLOSING-PRI-OFF + @ = IF RB-ENCLOSING-PRIVATE EXIT THEN
-   wid data-base CK-ENCLOSING-PUB-OFF + @ = IF RB-ENCLOSING-PUBLIC EXIT THEN
+   wid data-base PKG-PRI-CELL + @ = IF RB-PRIVATE EXIT THEN
+   wid data-base PKG-PUB-CELL + @ = IF RB-PUBLIC EXIT THEN
+   wid data-base ENCLOSING:PRI + @ = IF RB-ENCLOSING-PRIVATE EXIT THEN
+   wid data-base ENCLOSING:PUB + @ = IF RB-ENCLOSING-PUBLIC EXIT THEN
    RB-USED ;
 
 : RECOVERY-QUALIFIED ( ptr n -- n ) {: rec:ptr :}
@@ -13804,7 +13760,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
          pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? RECOVERY-LIVE
          dup 0 <> IF EXIT THEN drop
       THEN
-      data-base CK-ENCLOSING-PUB-OFF + @ 0 <> IF
+      data-base ENCLOSING:PUB + @ 0 <> IF
          rank RB-ENCLOSING-PRIVATE > IF
             pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? RECOVERY-LIVE
             dup 0 <> IF EXIT THEN drop
@@ -14081,7 +14037,7 @@ package CHECKER-REG
    mode CHECKER-PACKAGE-NONE <> IF
       pkg pkgu SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
       pkg pkgu SYM-PUBLIC UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
-      data-base CK-ENCLOSING-PUB-OFF + @ 0 <> IF
+      data-base ENCLOSING:PUB + @ 0 <> IF
          pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
          pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PUBLIC UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
       THEN
@@ -16203,11 +16159,11 @@ RECORD-PEND-EFF 0 CELL-ROW+
    RECORD-LINK-ROW * RECORD-LINK-P @ + CELL-VIEW ;
 
 : RECORD-LINK-ROOM ( n -- ) {: ord:n :}
-   ord CK-DICT-CAP >= IF s" checker: record link outside dictionary" 76 die THEN
+   ord DICT-CAP >= IF s" checker: record link outside dictionary" 76 die THEN
    ord RECORD-LINK-CAP @ < IF EXIT THEN
    RECORD-LINK-CAP @ 0= IF 64 ELSE RECORD-LINK-CAP @ THEN
    BEGIN dup ord <= WHILE 2 * REPEAT
-   CK-DICT-CAP min {: cap:n :}
+   DICT-CAP min {: cap:n :}
    RECORD-LINK-P RECORD-LINK-CAP @ RECORD-LINK-ROW * cap RECORD-LINK-ROW * CHECKER-REG:GROW
    cap RECORD-LINK-CAP ! ;
 
@@ -17008,7 +16964,7 @@ package CHECK
 
 \ HELD-UNDEFINE's text: the visibility and the package's length, a byte each,
 \ then the package and the tail (CHECKER-SYM-IDENTITY); a package name is
-\ shorter than CHECKER-PACKAGE-CAP.
+\ shorter than PACKAGE-PATH:CAP.
 : HOLD-UNDEFINE ( n -- )
    CHECKER-SYM-IDENTITY {: pkg:ptr pkgu:n name:ptr nameu:n vis:n :}
    2 pkgu + nameu +  HELD-UNDEFINE HOLD {: at:ptr :}
@@ -19189,7 +19145,7 @@ variable CHECKER-PREFIX-ROLLBACK
 \ the one-cell path whatever else is among the operands (XPORT-STEP?), which
 \ refuses it as it refuses that layout alone: LAYOUT-XPORT-ALLOW? never binds an
 \ open width, which reads a payload var that may bind linear (OWN-TYPE-N).
-64 constant XG-GCAP            \ max logical groups per op (= LOC-CAP for locals capture)
+64 constant XG-GCAP            \ max logical groups per op (= LOC-RECS for locals capture)
 256 constant XG-TCAP           \ max total cells across one op's groups
 create XG-TERMS XG-TCAP cells allot
 create XG-NODES XG-TCAP cells allot
@@ -19530,10 +19486,8 @@ variable XG-N   variable XG-TN   variable XG-ROW
 \ words the RAW token beside the folded one the dictionary gets; the fold
 \ changes no byte count and moves no ':', so one colon position serves both
 \ spans.
-64 constant LOC-CAP            \ max locals per definition (matches compiler frame)
-16 constant LOC-NAME-W         \ max local-name bytes (the name field of a compiler LOC-REC, src/habu/layout.f LOC-NAME-CAP)
-create LOCNB LOC-CAP LOC-NAME-W * allot   create LOCLN LOC-CAP cells allot   create LOCTV LOC-CAP cells allot
-create LOCSHOW LOC-CAP cells allot
+create LOCNB LOC-RECS LOC-NAME-CAP * allot   create LOCLN LOC-RECS cells allot   create LOCTV LOC-RECS cells allot
+create LOCSHOW LOC-RECS cells allot
 \ LOCW: logical width of each local's binding. 1 = one cell: LOCTV holds a
 \ scalar's type var or a one-cell bundle's tag term (an enum). >1 = a whole
 \ hidden-field bundle:
@@ -19541,8 +19495,8 @@ create LOCSHOW LOC-CAP cells allot
 \ via MK-HIDDEN (LOC-PUSH-REF). A linear bundle captured into a local leaves the
 \ counted rows, so LOC-BIND-GROUPS's LIN-CHECK rejects the bind
 \ (test/type-linear-suite.f R5).
-create LOCW LOC-CAP cells allot
-create LOCVAL LOC-CAP cells allot   \ per-local chain of captured physical cells
+create LOCW LOC-RECS cells allot
+create LOCVAL LOC-RECS cells allot  \ per-local chain of captured physical cells
 variable LOC-CAP-HEAD
 variable #LOC  variable LMODE  variable LGRP  variable LI  variable LRF
 \ Emitter-facing width queries: LOCW is
@@ -19552,12 +19506,12 @@ variable #LOC  variable LMODE  variable LGRP  variable LI  variable LRF
 \ occurrence's FINAL width keyed by a monotone bind sequence that is never
 \ popped; LOCSEQIX maps a live index to its bind seq while the local is live
 \ (written at LOC-ADD, read at the group's :} bind).
-LOC-CAP 4 * constant LOC-HW-INIT
+LOC-RECS 4 * constant LOC-HW-INIT
 $0FFFFFFFFFFFFFFF constant LOC-HW-MAX-CELLS
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
 CHECKER-REG:}SCRATCH
-create LOCSEQIX LOC-CAP cells allot
+create LOCSEQIX LOC-RECS cells allot
 : LOC-HW ( -- ptr n ) LOC-HW-P @ ;
 : LOC-HW-GROW-CAP ( n -- n ) {: need:n :}
    need 0 <= need LOC-HW-MAX-CELLS > or IF s" checker: local bind capacity overflow" 76 die THEN
@@ -19577,10 +19531,10 @@ create LOCSEQIX LOC-CAP cells allot
 \ carve consumes the next bind seq (P2-CARVE-W) and records that local's width
 \ under its ENGINE live frame index, so a frame slot reused by a sibling branch
 \ reads its own width; checker #LOC joins never skew the frame math.
-create P2LW LOC-CAP cells allot
+create P2LW LOC-RECS cells allot
 variable P2SEQ
 : P2LW-IX-GUARD ( n -- )           \ die 76 outside the engine locals frame
-   dup 0 <  over LOC-CAP >=  or IF s" checker: bad pass-2 local index" 76 die THEN
+   dup 0 <  over LOC-RECS >=  or IF s" checker: bad pass-2 local index" 76 die THEN
    drop ;
 : P2-LOCSEQ-RESET ( -- )           \ restart the pass-2 bind sequence at 0; nothing calls it
    0 P2SEQ ! ;
@@ -19604,14 +19558,14 @@ variable P2SEQ
 \ check starts with #LOC at zero; no local binding survives this seam.
 \ Retire the fixed columns; the width arena and LOCSEQ rest through SR-RETIRE.
 : LOC-SNAP-RESET ( -- )
-   LOCNB BYTE-VIEW CELL-VIEW 0 LOC-CAP LOC-NAME-W * CELL / ARENA-CELLS-ZERO
-   LOCLN 0 LOC-CAP ARENA-CELLS-ZERO
-   LOCTV 0 LOC-CAP ARENA-CELLS-ZERO
-   LOCSHOW 0 LOC-CAP ARENA-CELLS-ZERO
-   LOCW 0 LOC-CAP ARENA-CELLS-ZERO
-   LOCVAL 0 LOC-CAP ARENA-CELLS-ZERO
-   LOCSEQIX 0 LOC-CAP ARENA-CELLS-ZERO
-   P2LW 0 LOC-CAP ARENA-CELLS-ZERO
+   LOCNB BYTE-VIEW CELL-VIEW 0 LOC-RECS LOC-NAME-CAP * CELL / ARENA-CELLS-ZERO
+   LOCLN 0 LOC-RECS ARENA-CELLS-ZERO
+   LOCTV 0 LOC-RECS ARENA-CELLS-ZERO
+   LOCSHOW 0 LOC-RECS ARENA-CELLS-ZERO
+   LOCW 0 LOC-RECS ARENA-CELLS-ZERO
+   LOCVAL 0 LOC-RECS ARENA-CELLS-ZERO
+   LOCSEQIX 0 LOC-RECS ARENA-CELLS-ZERO
+   P2LW 0 LOC-RECS ARENA-CELLS-ZERO
    0 LOC-CAP-HEAD !
    0 #LOC !  0 LMODE !  0 LGRP !  0 LI !  0 LRF !
    0 P2SEQ ! ;
@@ -19666,7 +19620,7 @@ CHECKER-REG:}SCRATCH
 : LOC-SHOW-ONE ( n -- ) {: idx:n :}
    idx cells LOCSHOW + @ 0= if exit then
    idx cells LOCTV + @ {: t:n :}
-   LOCNB idx LOC-NAME-W * +  idx cells LOCLN + @
+   LOCNB idx LOC-NAME-CAP * +  idx cells LOCLN + @
    t LOC-DECL-TERM
    LOCSHOWXT ;
 
@@ -19703,11 +19657,11 @@ CHECKER-REG:}SCRATCH
 : LOC-ADD ( ptr u8 ptr u8 n -- )   \ raw declaration, folded declaration, their shared length
    {: ra:ptr a:ptr u:n :}
    a u LCOLON {: col:n :}
-   #LOC @ LOC-CAP 1 - > IF 0 1 LOC-REJECT ELSE
-   col LOC-NAME-W > IF col 2 LOC-REJECT ELSE
+   #LOC @ LOC-RECS 1 - > IF 0 1 LOC-REJECT ELSE
+   col LOC-NAME-CAP > IF col 2 LOC-REJECT ELSE
      LOCSEQ @ 1 + LOC-HW-ENSURE
      #LOC @ LOC-SHOW-OFF!
-     ra  LOCNB #LOC @ LOC-NAME-W * +  col CCOPY   \ the spelling a reference must match
+     ra  LOCNB #LOC @ LOC-NAME-CAP * +  col CCOPY   \ the spelling a reference must match
      col #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
      0 #LOC @ cells LOCVAL + !
@@ -19985,7 +19939,7 @@ CHECKER-REG:}SCRATCH
    LIN-LOCAL-BIND-CHECK ;
 
 \ `--` and `|` bind as in the load, so a body reference finds them and they
-\ count toward LOC-CAP. In a checked body the token has failed, so LOC-BIND
+\ count toward LOC-RECS. In a checked body the token has failed, so LOC-BIND
 \ exits on OK 0 and binds no cell to them; an unjudged scan sets OK afresh for
 \ each token (DO-TOK1), so its LOC-BIND binds them as the runtime does.
 : LOC-TOK
@@ -20189,7 +20143,7 @@ SCOPE-INTRO-FENCE-INSTALL
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
      LI @ 1 - LI !
-     a u  LOCNB LI @ LOC-NAME-W * +  LI @ cells LOCLN + @  CORE-STR= IF
+     a u  LOCNB LI @ LOC-NAME-CAP * +  LI @ cells LOCLN + @  CORE-STR= IF
        QDEPTH @ 0 >  BWIN-UNJUDGED @ 0 <>  and IF
           0 0 LOC-REJECT
        ELSE
@@ -21458,7 +21412,7 @@ CHECKER-REG:}SCRATCH
 
 \ A `[package]` literal's body: the open package's record name, folded.
 CHECKER-REG:SCRATCH{
-create PKG-LIT-NAME CHECKER-PACKAGE-CAP allot
+create PKG-LIT-NAME PACKAGE-PATH:CAP allot
 variable PKG-LIT-U
 CHECKER-REG:}SCRATCH
 variable PPAY-ON      \ did the token just judged compile PKG-LIT-NAME?
@@ -21702,20 +21656,17 @@ variable CPAY-ON
 \ Where a top step's token sits: the active file's path and the execution bytes
 \ the loader owns for it, which an inner `evaluate` never changes (src/habu/layout.f
 \ SRCLOC:PATH-CELL, SRCLOC:PATHLEN-CELL, SRCLOC:OWNED-CELL, SRCLOC:OWNEDLEN-CELL).
-\ layout.f loads after this file, so the cells are spelled here as data-base
-\ offsets, private to package CHECK so no program writes them;
+\ SRC-PATH and SRC-OWNED are private to package CHECK so no program writes them;
 \ src/core/check-hook.f, which reopens the package, reads the path and the bytes
 \ through them.
 package CHECK
-$2800 RESERVED-PTR-U8-CELL SRC-PATH
-$2808 constant SRC-PATHLEN-OFF
-$2D68 RESERVED-PTR-U8-CELL SRC-OWNED
-$2D70 constant SRC-OWNEDLEN-OFF
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL SRC-PATH
+SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 public
 
 \ The active file's path; empty when no file is being read.
 : TOP-SITE-PATH$ ( -- ptr u8 n )
-   SRC-PATH @ data-base SRC-PATHLEN-OFF + @ ;
+   SRC-PATH @ data-base SRCLOC:PATHLEN-CELL + @ ;
 ;package
 
 \ What a refusal with no file names in its packet.
@@ -21795,10 +21746,6 @@ PTR-VARIABLE DROW-A  variable DROW-N
 \ The rows' source offset of the armed source's first byte, subtracted from
 \ each row's: the engine's rows count from the input buffer's start.
 variable DROW-BIAS
-\ A row's source offset for a run read outside the buffer that holds the
-\ definition's name (src/habu/layout.f BODY-SOURCE, which loads after this
-\ file).
--1 constant DROW-NONE                      \ = layout.f BODY-SOURCE:NONE
 PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
 : DIAG-CLOSER-OFF ( -- )
    NULL-PTR DCLOSE-A !  0 DCLOSE-U ! ;
@@ -21835,7 +21782,7 @@ PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
    2 * ;
 \ Whether text offset x lies in a run with no source.
 : DMAP-NONE? ( n -- bool )
-   DMAP-ROW 1 + DROW@ DROW-NONE = ;
+   DMAP-ROW 1 + DROW@ BODY-SOURCE:NONE = ;
 \ The separator after a run maps to the byte after the run, where its last
 \ token ends.
 : DMAP>SRC ( n -- n )
@@ -22053,8 +22000,8 @@ package CHECKER-REG
 \ one outside a package.
 : TRUST-RECORD-WL ( -- n )
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
-   mode CHECKER-PACKAGE-PRIVATE = IF data-base CK-PKG-PRI-OFF + @ EXIT THEN
-   mode CHECKER-PACKAGE-PUBLIC = IF data-base CK-PKG-PUB-OFF + @ EXIT THEN
+   mode CHECKER-PACKAGE-PRIVATE = IF data-base PKG-PRI-CELL + @ EXIT THEN
+   mode CHECKER-PACKAGE-PUBLIC = IF data-base PKG-PUB-CELL + @ EXIT THEN
    BOOT:GLOBAL-WL ;
 
 \ PKG:TAIL is asked in PKG's public wordlist, as the engine's FIND asks it
@@ -22129,7 +22076,7 @@ package CHECKER-REG
 \ A created record starts unlinked: RECORD-PUBLISHED-LOCAL clears its ordinal.
 : LASTC-LINK-SYM ( -- n )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF 0 EXIT THEN
-   data-base CHECKER-REG:CK-LASTC-CELL + 0 ptr-field @ {: rec:ptr :}
+   data-base LASTC-CELL + 0 ptr-field @ {: rec:ptr :}
    rec NULL-PTR = IF 0 EXIT THEN
    rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
    ord 0 < ord RECORD-LINK-CAP @ >= or IF 0 EXIT THEN
@@ -22157,7 +22104,7 @@ package CHECKER-REG
    flags CTL-INHERITED and 0 <> IF
       sym flags CTL-INHERITED invert and sym CTL-MASKS-SYM NORET-ADD-SYM
    THEN
-   effect sym NORET-NEWEST data-base CHECKER-REG:CK-LASTC-CELL +
+   effect sym NORET-NEWEST data-base LASTC-CELL +
       0 ptr-field @ RECORD-CREATED-XT ;
 package CHECKER-REG
 ' TRUST-RAW DECLARATIONS RAW-OFF + xt!
@@ -22186,7 +22133,7 @@ variable RTL-I                        \ retired-token local scan index
 : LOC-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 RTL-I !
    BEGIN RTL-I @ #LOC @ < WHILE
-      a u  LOCNB RTL-I @ LOC-NAME-W * +  RTL-I @ cells LOCLN + @  CORE-STR=
+      a u  LOCNB RTL-I @ LOC-NAME-CAP * +  RTL-I @ cells LOCLN + @  CORE-STR=
          IF RES-TRUE EXIT THEN
       RTL-I @ 1 + RTL-I !
    REPEAT RES-FALSE ;
@@ -22594,7 +22541,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 
 : VIS-LOCAL= ( ptr u8 n n -- bool )
    {: a:ptr u:n ix:n :}
-   a u  LOCNB ix LOC-NAME-W * +  ix cells LOCLN + @  CORE-STR= ;
+   a u  LOCNB ix LOC-NAME-CAP * +  ix cells LOCLN + @  CORE-STR= ;
 
 \ A live local below IX is spelled A U exactly: that spelling is the local's.
 : VIS-HELD? ( ptr u8 n n -- bool )
@@ -22725,7 +22672,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 \ Local IX as itself, unlocated, unless an earlier local gave its spelling.
 : VIS-LOCAL ( n -- )
    {: ix:n :}
-   LOCNB ix LOC-NAME-W * +  ix cells LOCLN + @ {: a:ptr u:n :}
+   LOCNB ix LOC-NAME-CAP * +  ix cells LOCLN + @ {: a:ptr u:n :}
    a u VIS-PREFIX? 0= IF EXIT THEN
    a u ix VIS-HELD? IF EXIT THEN
    a u 0 0 0 VIS-VISIT ;
@@ -23333,7 +23280,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 : PKG-LIT-TOK ( ptr u8 n -- )
    PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
    PKG-LIVE-XT 0= IF CHECKER-PKG-CONTEXT-REJECT THEN {: a:ptr u:n :}
-   u CHECKER-PACKAGE-CAP >= IF s" checker: package name too long" 76 die THEN
+   u PACKAGE-PATH:CAP >= IF s" checker: package name too long" 76 die THEN
    0 BEGIN dup u < WHILE
       a over PKG-LIT-COPY-C
       1 +
@@ -23939,15 +23886,12 @@ public
 \ publishes them here, and the checker takes one row when it needs it: replaying
 \ the whole pool costs 85 ms per boot of a seeded engine (measured over the
 \ compiler chain's 6798 words); one row costs 12.5 us.
-\ The signature sidecar mirrors these two fixed cells.
-$47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-CELLS:SIG-POOL-CELL
-$47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-CELLS:SIG-LEN-CELL
 
 \ The pool base is a pointer into __text the seed stored, so its cell is a
 \ reserved pointer cell and the role survives the read. The length is a count.
-CK-AOT-SIG-POOL-OFF RESERVED-PTR-U8-CELL CK-AOT-SIG-POOL-FIELD
+AOT-CELLS:SIG-POOL-CELL RESERVED-PTR-U8-CELL CK-AOT-SIG-POOL-FIELD
 : CK-AOT-SIG-POOL ( -- ptr u8 ) CK-AOT-SIG-POOL-FIELD @ ;
-: CK-AOT-SIG-LEN ( -- n ) data-base CK-AOT-SIG-LEN-OFF + @ ;
+: CK-AOT-SIG-LEN ( -- n ) data-base AOT-CELLS:SIG-LEN-CELL + @ ;
 
 \ ---- what the two cells point at ---------------------------------------------
 \ One payload, three sections (rows, the strings they name, the type registry
@@ -25308,7 +25252,7 @@ RWIN-DEFAULT
          {: pub:n pri:n shape:n :}
       spell su pkg pu folded fu CHECKER-RESOLUTION:OPEN-PRIVATE pri shape ord RWIN-CAND
       spell su pkg pu folded fu CHECKER-RESOLUTION:OPEN-PUBLIC pub shape ord RWIN-CAND
-      data-base CK-ENCLOSING-PUB-OFF + @ 0 <> IF
+      data-base ENCLOSING:PUB + @ 0 <> IF
          pkg pu CHECKER-RESOLVE:TOP$ {: top:ptr tu:n :}
          spell su top tu CHECKER-RESOLUTION:OPEN-NAMESPACE ord RWIN-NS
             {: tpub:n tpri:n tshape:n :}
@@ -26393,7 +26337,7 @@ variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
 create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
 PERSISTED-PTR-VARIABLE RBF-A-P       RBF-A-BOOT RBF-A-P !
 : RBF-BASE ( -- ptr n ) RBF-A-P @ ;
-CHECKER-PACKAGE-CAP CK-USE-SNAP-BYTES + constant RBF-NAME-REC
+PACKAGE-PATH:CAP CK-USE-SNAP-BYTES + constant RBF-NAME-REC
 create RBF-NAME-BOOT   RBF-CAP-INIT RBF-NAME-REC * allot
 PERSISTED-PTR-VARIABLE RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
 : RBF-NAME-BASE ( -- ptr u8 ) RBF-NAME-P @ ;
@@ -26417,7 +26361,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
       dst CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
       CK-USE-LENS i cells + @ {: len:n :}
       len row cell-view !
-      CK-USE-NAMES i CHECKER-PACKAGE-CAP * + row CELL + len ARENA-COPY
+      CK-USE-NAMES i PACKAGE-PATH:CAP * + row CELL + len ARENA-COPY
    LOOP ;
 
 : CK-USE-RESTORE ( ptr u8 -- ) {: src:ptr :}
@@ -26425,18 +26369,18 @@ variable RBF-DEPTH   0 RBF-DEPTH !
       src CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
       row cell-view @ {: len:n :}
       len CK-USE-LENS i cells + !
-      row CELL + CK-USE-NAMES i CHECKER-PACKAGE-CAP * + len ARENA-COPY
+      row CELL + CK-USE-NAMES i PACKAGE-PATH:CAP * + len ARENA-COPY
    LOOP ;
 
 \ The byte half of each scope owns the package name and reachable import rows.
 \ Nested neutral scopes may overwrite any prefix, not just append imports.
 : RBF-NAME-SAVE ( ptr u8 -- ) {: dst:ptr :}
    CHECKER-PACKAGE-NAME dst CHECKER-PACKAGE-U @ ARENA-COPY
-   dst CHECKER-PACKAGE-CAP + CK-USE-SCAN-N CK-USE-SAVE ;
+   dst PACKAGE-PATH:CAP + CK-USE-SCAN-N CK-USE-SAVE ;
 
 : RBF-NAME-RESTORE ( ptr u8 n -- ) {: src:ptr u:n :}
    src CHECKER-PACKAGE-NAME u ARENA-COPY
-   src CHECKER-PACKAGE-CAP + CK-USE-RESTORE ;
+   src PACKAGE-PATH:CAP + CK-USE-RESTORE ;
 
 \ Frames are transient (depth 0 at snapshot), so snapshot prepare drops a grown
 \ arena buffer back to the baked boot store; the next scope re-grows lazily.
@@ -27548,14 +27492,6 @@ GENERATES-DIAG-DEFAULT
    close u = IF open 0 EXIT THEN
    open close 1 + ;
 
-\ The engine's input cursor and the input's end, and the token it read last,
-\ which is a word's own name as the word starts to run (src/habu/layout.f
-\ INP-CELL, INE-CELL, TKA-CELL and TKL-CELL, which loads after this file).
-$36A0 constant CK-INP-OFF                  \ = layout.f INP-CELL
-$36A8 constant CK-INE-OFF                  \ = layout.f INE-CELL
-$3690 constant CK-TKA-OFF                  \ = layout.f TKA-CELL
-$3698 constant CK-TKL-OFF                  \ = layout.f TKL-CELL
-
 \ The longest effect a row states. The source pre-verifier refuses a longer one
 \ at the same bound (verify-source.f RECORD-GENERATES).
 $100 constant GENR-SIG-CAP
@@ -27565,7 +27501,7 @@ $100 constant GENR-SIG-CAP
 \ parentheses, in the input itself.
 : GENR-SIG-READ ( ptr u8 -- ptr u8 n )
    {: at:ptr :}
-   data-base CK-INE-OFF + @  at NULL-PTR - -
+   data-base INE-CELL + @  at NULL-PTR - -
    {: left:n :}
    at left CHECKER-SIG-SPAN
    {: open:n close:n :}
@@ -27574,7 +27510,7 @@ $100 constant GENR-SIG-CAP
    close open - 2 -
    {: su:n :}
    su GENR-SIG-CAP > IF s" checker: generates: effect too long" 76 die THEN
-   at close + NULL-PTR - data-base CK-INP-OFF + !
+   at close + NULL-PTR - data-base INP-CELL + !
    at open + 1 +  su ;
 
 \ generates: D ( effect ) at top level, after D's definition: a declared
@@ -28193,7 +28129,7 @@ CAST: AS-PENDING-DISCARD ( n -- [ -- ] )
    \ The retained checker needed its REPL seed while source rows transferred.
    \ Its type IDs no longer belong to this checker after that transfer.
    NULL-PTR CK-AOT-SIG-POOL-FIELD !
-   0 data-base CK-AOT-SIG-LEN-OFF + !
+   0 data-base AOT-CELLS:SIG-LEN-CELL + !
    0 CK-AOT-STATE !
    CLAIM-SOURCE-OWNER ;
 
@@ -28449,7 +28385,7 @@ private
       UNIT-PENDING @ IF
          handle field PENDING-OWNER-OF
             0= IF drop UNIT-BAD THEN
-         CHECKER-RESOLVE:REC-AT BYTE-VIEW CK-DREC UNIT-REF-CB
+         CHECKER-RESOLVE:REC-AT BYTE-VIEW DREC UNIT-REF-CB
          3 swap EXIT
       THEN
       0 UNIT-CREATED-CUR ! 1 UNIT-CREATED-ORD !
@@ -28746,7 +28682,7 @@ private
       UNIT-PENDING @ IF
          ctl PENDING-CONTROL PENDING-OWNER-OF
             0= IF drop UNIT-BAD THEN
-         CHECKER-RESOLVE:REC-AT BYTE-VIEW CK-DREC UNIT-REF-CB
+         CHECKER-RESOLVE:REC-AT BYTE-VIEW DREC UNIT-REF-CB
          3 swap EXIT
       THEN
       1 off NORET-ENTRY / 1+ EXIT
@@ -28755,7 +28691,7 @@ private
 
 : UNIT-EXPORT-LINK ( n -- ) {: ord:n :}
    UNIT-PORTABLE @ IF
-      ord CHECKER-RESOLVE:REC-AT BYTE-VIEW CK-DREC UNIT-REF-CB
+      ord CHECKER-RESOLVE:REC-AT BYTE-VIEW DREC UNIT-REF-CB
    ELSE ord 1+ THEN UNIT-CELL+
    ord RECORD-LINK-CELL {: row:ptr :}
    row RLINK.EFFECT cells + @ PENDING-EFFECT UNIT-GRAPH-REF
@@ -29524,7 +29460,7 @@ UNIT-CON-PROJECT-INSTALL
 \ source owner and its dictionary occurrence are still current.
 : PENDING-PREFIX-HANDLE ( n n -- n ) {: ref:n field:n :}
    ref 0 <= IF UNIT-FORMAT-BAD THEN
-   ref CK-DREC UNIT-RESOLVE-CB CELL-VIEW {: rec:ptr :}
+   ref DREC UNIT-RESOLVE-CB CELL-VIEW {: rec:ptr :}
    rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
    ord 0 < ord ndict@ >= or IF UNIT-FORMAT-BAD THEN
    ord CHECKER-RESOLVE:REC-AT rec <> IF UNIT-FORMAT-BAD THEN
@@ -29687,9 +29623,9 @@ UNIT-CON-PROJECT-INSTALL
       UNIT-READ-CELL {: ref:n :}
       ref 0 <= IF UNIT-FORMAT-BAD THEN
       UNIT-PREP-PORTABLE @ IF
-         ref CK-DREC UNIT-RESOLVE-CB CELL-VIEW CHECKER-RESOLVE:REC>INDEX
+         ref DREC UNIT-RESOLVE-CB CELL-VIEW CHECKER-RESOLVE:REC>INDEX
       ELSE ref 1- THEN {: ord:n :}
-      ord 0 < ord CK-DICT-CAP >= or IF UNIT-FORMAT-BAD THEN
+      ord 0 < ord DICT-CAP >= or IF UNIT-FORMAT-BAD THEN
       i 0 ?do
          plan i UP-LINK UPL.ORD UP@ ord = IF UNIT-FORMAT-BAD THEN
       loop
@@ -30240,7 +30176,6 @@ variable RECORD-CTL-MAP-N
 \ released (TOP-SEG-PRUNE). A fresh segment enters at the event's level, which
 \ no surviving segment exceeds, so the parked rows and the live one are ordered
 \ by ENTRY and the dead ones are always on top.
-$37D0 constant CK-EVALD-OFF        \ = layout.f EVALD-CELL (DATA-relative); engine owns it
 0 constant TS.BASE   1 constant TS.RP    2 constant TS.RC   3 constant TS.WP
 4 constant TS.WC     5 constant TS.OFF   6 constant TS.TV   7 constant TS.RV
 8 constant TS.ENTRY  9 constant TS.LEVEL  10 constant TS.END  11 constant TS.CELLS
@@ -30314,10 +30249,6 @@ public
    base  row cnt 1 - ROW-DROP-N R-RES  P-REST!
    row ;
 
-\ The literal classes CHECKER-TOP-PUSH reads (src/habu/layout.f TOP-EV-*, loaded
-\ after this file).
-1 constant TE-NUM   2 constant TE-STR   3 constant TE-CSTR
-
 : TOP-PUSH ( n -- ) DCUR @ MK-PUSH DCUR ! ;
 
 \ A top step reads its token as the whole scanned text: a refusal pins it at
@@ -30379,13 +30310,7 @@ public
    FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE TKF TKFU @ ASIG-MISS+ OPAQUE-XT THEN
    TOP-PUSH ;
 
-\ The file's owned bytes and the start of the buffer the scanner reads, spelled
-\ as data-base offsets: src/habu/layout.f, which loads after this file, reopens
-\ SRCLOC and names them OWNED-CELL, OWNEDLEN-CELL and INB-CELL.
 package SRCLOC
-$2D68 constant OWNED-OFF
-$2D70 constant OWNEDLEN-OFF
-$2810 constant INB-OFF
 public
 
 \ True while the buffer read, [INB, INE), lies inside the bytes the loader owns
@@ -30395,10 +30320,10 @@ public
 \ TEST-EVALUATED-PLACE, TEST-EVALUATED-SLICE); habu2.f LSRCAT tests the same in
 \ machine code.
 : FILE-BUFFER? ( -- bool )
-   data-base OWNED-OFF + @ {: o:n :}
-   data-base INB-OFF + @ {: b:n :}
-   data-base CK-INE-OFF + @ {: e:n :}
-   o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-OFF + @ + e - 0 >= and ;
+   data-base OWNED-CELL + @ {: o:n :}
+   data-base INB-CELL + @ {: b:n :}
+   data-base INE-CELL + @ {: e:n :}
+   o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-CELL + @ + e - 0 >= and ;
 ;package
 
 package CHECK
@@ -30410,7 +30335,7 @@ public
    SRCLOC:FILE-BUFFER? 0= IF 0 RES-FALSE EXIT THEN
    SRC-OWNED @ {: b:ptr :}
    t b - {: at:n :}
-   at 0 <  at data-base SRC-OWNEDLEN-OFF + @ >= or IF 0 RES-FALSE EXIT THEN
+   at 0 <  at data-base SRCLOC:OWNEDLEN-CELL + @ >= or IF 0 RES-FALSE EXIT THEN
    b t 1 1 0 DIAG-POS drop drop RES-TRUE ;
 \ A top step is placed by its line alone: the source map (check-hook.f
 \ ROWS-ARM) places only a definition's tokens.
@@ -30452,9 +30377,8 @@ package CHECK
 private
 \ The source tools classify $4E themselves (check-all-errors-core.f DUP-RC).
 $4E constant DUP-RC
-CK-INP-OFF RESERVED-PTR-U8-CELL SRC-CURSOR
-\ layout.f, which loads after this file, names this cell PENDTKA-CELL.
-$2850 RESERVED-PTR-U8-CELL SRC-NAME
+INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
+PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 
 \ The line of a byte of the open file, counted from its first owned byte.
 : BYTE-LINE ( ptr u8 -- n )
@@ -30469,13 +30393,13 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
 \ to, since the count would read outside the file: it is placed at the cursor.
 : NAME-LINE ( -- n )
    SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:ptr nm:ptr p:ptr :}
-   data-base CK-DEF-PEND-OFF + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
+   data-base PEND-CELL + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
    if nm BYTE-LINE else p BYTE-LINE then ;
 
 \ ` at <path>` while a source file is open, then `:<line>` under
 \ SRCLOC:FILE-BUFFER?, as the tail writes it; nothing on stdin or at the REPL.
 : AT-SOURCE ( -- )
-   data-base SRC-PATHLEN-OFF + @ {: u:n :}
+   data-base SRCLOC:PATHLEN-CELL + @ {: u:n :}
    u 0= if exit then
    s"  at " ERROR-TEXT:TYPE
    SRC-PATH @ u ERROR-TEXT:TYPE
@@ -30557,7 +30481,7 @@ CHECKER-REG:}SCRATCH
 \ above it), or a fresh empty one parked over the live one. The selected
 \ segment ends at that level.
 : CHECKER-TOP-SEGMENT ( n -- ) {: base:n :}
-   data-base CK-EVALD-OFF + @ {: lvl:n :}
+   data-base EVALD-CELL + @ {: lvl:n :}
    lvl TOP-SEG-PRUNE
    TOP-LIVE @ 0= IF base TOP-BASE !  lvl TOP-ENTRY !  lvl TOP-LEVEL !  -1 TOP-LIVE !  EXIT THEN
    TOP-BASE @ base =  TOP-ENTRY @ lvl <= and  lvl TOP-LEVEL @ <= and IF lvl TOP-LEVEL !  EXIT THEN
@@ -30709,18 +30633,18 @@ CHECKER-REG:}SCRATCH
 \ CHAR n. TOP-READ-LIT writes them over the saved row; TOP-LIT-STEP pushes them
 \ onto the loaded row.
 : TOP-READ-LIT ( ptr u8 n n -- ) {: a:ptr u:n cls:n :}
-   cls TE-NUM = IF
+   cls TOP-EV-NUM = IF
       a u FLOAT-LITERAL-ADMITTED? nip IF CC-R ELSE CC-N THEN TOP-READ-CON TOP-READ-PUSH EXIT
    THEN
-   cls TE-STR = cls TE-CSTR = or IF TOP-READ-PTR-U8 TOP-READ-PUSH THEN
-   cls TE-CSTR <> IF CC-N TOP-READ-CON TOP-READ-PUSH THEN ;
+   cls TOP-EV-STR = cls TOP-EV-CSTR = or IF TOP-READ-PTR-U8 TOP-READ-PUSH THEN
+   cls TOP-EV-CSTR <> IF CC-N TOP-READ-CON TOP-READ-PUSH THEN ;
 
 : TOP-LIT-STEP ( ptr u8 n n -- ) {: a:ptr u:n cls:n :}
-   cls TE-NUM = IF
+   cls TOP-EV-NUM = IF
       a u FLOAT-LITERAL-ADMITTED? nip IF PE-R ELSE PE-N THEN TOP-PUSH EXIT
    THEN
-   cls TE-STR = cls TE-CSTR = or IF PE-PTR-U8 TOP-PUSH THEN
-   cls TE-CSTR <> IF PE-N TOP-PUSH THEN ;
+   cls TOP-EV-STR = cls TOP-EV-CSTR = or IF PE-PTR-U8 TOP-PUSH THEN
+   cls TOP-EV-CSTR <> IF PE-N TOP-PUSH THEN ;
 
 \ A literal over a live stack of n cells. Only a saved row whose fit holds
 \ exactly the live cells takes the literal in place: with no saved row, or one
@@ -31329,22 +31253,15 @@ package CHECKER-REG
 \ row states the symbol - so a cold boot's checker holds the rows the build host records
 \ for the definitions of this file and the files before it. A TRUSTED:
 \ declaration before the claim is not logged: the claim grants no authority.
-$4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
-32 constant CK-DLOG-SLOT                \ = layout.f DECLARED-LOG:SLOT
-8 constant CK-DLOG-SLOTS-REL            \ = layout.f DECLARED-LOG:SLOTS-REL
-0 constant CK-DLOG-REC-OFF              \ = layout.f DECLARED-LOG:REC-OFF
-8 constant CK-DLOG-PKG-OFF              \ = layout.f DECLARED-LOG:PKG-OFF
-16 constant CK-DLOG-SIG-A-OFF           \ = layout.f DECLARED-LOG:SIG-A-OFF
-24 constant CK-DLOG-SIG-U-OFF           \ = layout.f DECLARED-LOG:SIG-U-OFF
 0 constant CK-NS-PUBLIC-SLOT            \ = xref.f XREF-START-SLOT
 1 constant CK-NS-PRIVATE-SLOT           \ = xref.f XREF-LEN-SLOT
 
 \ The cell holding the log's address while the log holds entries, 0 otherwise.
-CK-DECLARED-LOG-CELL RESERVED-PTR-U8-CELL CK-DLOG-FIELD
+DECLARED-LOG:ADDR-CELL RESERVED-PTR-U8-CELL CK-DLOG-FIELD
 
 : CK-DLOG-AT ( ptr n n n -- ptr n )
    {: log:ptr i:n off:n :}
-   log CK-DLOG-SLOTS-REL + i CK-DLOG-SLOT * + off + ;
+   log DECLARED-LOG:SLOTS-REL + i DECLARED-LOG:SLOT * + off + ;
 
 \ A slot's REC, PKG and SIG-A fields hold addresses (layout.f DECLARED-LOG).
 CAST: DLOG-CELL ( ptr n -- ptr ptr n )
@@ -31375,13 +31292,13 @@ CAST: DLOG-CELL ( ptr n -- ptr ptr n )
 \ question CHECKER-CERT-DUP? asks; no candidate is open here.
 : CK-DLOG-ROW ( ptr n n -- )
    {: log:ptr i:n :}
-   log i CK-DLOG-REC-OFF CK-DLOG-AT DLOG-CELL @ {: rec:ptr :}
+   log i DECLARED-LOG:REC-OFF CK-DLOG-AT DLOG-CELL @ {: rec:ptr :}
    rec CK-REC-WID WL:RETIRED = IF EXIT THEN
-   rec log i CK-DLOG-PKG-OFF CK-DLOG-AT DLOG-CELL @ CK-DLOG-SYM {: sym:n :}
+   rec log i DECLARED-LOG:PKG-OFF CK-DLOG-AT DLOG-CELL @ CK-DLOG-SYM {: sym:n :}
    sym CHECKER-FIND-USIG-SYM IF EXIT THEN
    sym
-   log i CK-DLOG-SIG-A-OFF CK-DLOG-AT DLOG-CELL 0 ptr-field @
-   log i CK-DLOG-SIG-U-OFF CK-DLOG-AT @
+   log i DECLARED-LOG:SIG-A-OFF CK-DLOG-AT DLOG-CELL 0 ptr-field @
+   log i DECLARED-LOG:SIG-U-OFF CK-DLOG-AT @
    CK-DECLARED-SYM! ;
 
 \ The log is emptied - slots, count and address cell - so no process-local
@@ -31393,7 +31310,7 @@ CAST: DLOG-CELL ( ptr n -- ptr ptr n )
    log NULL-PTR = IF EXIT THEN
    log @ {: n:n :}
    n 0 ?DO log i CK-DLOG-ROW LOOP
-   log 0 n CK-DLOG-SLOT * CK-DLOG-SLOTS-REL + CELL / ARENA-CELLS-ZERO
+   log 0 n DECLARED-LOG:SLOT * DECLARED-LOG:SLOTS-REL + CELL / ARENA-CELLS-ZERO
    NULL-PTR CK-DLOG-FIELD !
    0 RECW !  0 RECMI ! ;
 
@@ -31761,7 +31678,7 @@ CHECKER-REG:}SCRATCH
 \ record of a prefix symbol in a build: the prefix holds its rows (PREFIX-SYM?).
 : READ-BOUND ( ptr n -- ) {: rec:ptr :}
    rec CK-REC-FACTS-SLOT cells + @ 0= IF EXIT THEN
-   rec NULL-PTR - dbase@ - CK-DREC / {: ix:n :}
+   rec NULL-PTR - dbase@ - DREC / {: ix:n :}
    BUILDING? ix BUILD-FIRST @ < and IF
       rec REC-SYM PREFIX-SYM? IF EXIT THEN
    THEN

@@ -164,8 +164,7 @@ $0000400000000000 constant DNAME-REP
 \ DNAME-SEALED (bit 45): interpreter.f PKG-SEAL sets it on a package's namespace record; XREF:SEALED? reads it
 \ for `package` and the check tool's scan of it. Capture refuses a record carrying it (aot-capture.f ACAP-COMPACT-ONE).
 $0000200000000000 constant DNAME-SEALED
-\ [16] bits 45-63: flags above the name length, which every length read clears by this count. Copies that load before
-\ or apart from this file: checker.f CK-REC-LEN-MASK.
+\ [16] bits 45-63: flags above the name length, which every length read clears by this count.
 19 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
@@ -262,9 +261,9 @@ $3000 constant LOCNAMES
 24 constant LOC-REC
 \ A LOC-REC is an 8-byte bare-name length followed by the name bytes; a bare
 \ name wider than the field is refused by C-LBRACE-STORE-ONE (habu2.f) before
-\ it is stored. checker.f LOC-NAME-W and the LLOCWIDEMSG text state the same 16.
+\ it is stored.
 LOC-REC 8 - constant LOC-NAME-CAP
-64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes); checker.f LOC-CAP states the same 64
+64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes)
 \ Tier 1's arm64 body capture scopes the locals it records by block, as
 \ src/habu/interpreter.f BODY-BLOCK-STEP does on x86-64:
 \ CAPDEPTH-CELL is the block depth, LOCDEPTHS the depth each LOCNAMES record
@@ -301,7 +300,7 @@ $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark; 0 until SEA
                                         \ the kernel masks a raw code to 8 bits, so a multiple
                                         \ of 256 would exit 0.
 $28 constant CUR-CELL
-$30 constant WIDN-CELL
+$30 constant WIDN-CELL             \ the next wordlist id the engine hands out
 $38 constant HOOK-CELL
 $40 constant DEF-WL-CELL
 $48 constant TSIG-A-CELL
@@ -361,16 +360,18 @@ $3680 constant ENVP-CELL
 \ PROGRAM-FILE-CELL: argv[1]'s string once the launcher (main.f RUN) runs it as the program file, else 0; src/core/include.f reads it.
 \ It takes $2DB0, the first cell after TASK-CHAIN-CELL.
 $2DB0 constant PROGRAM-FILE-CELL
-$3688 constant PEND-CELL         \ mirrored: src/core/checker.f CK-DEF-PEND-OFF
+\ PEND-CELL: the record of the definition the engine holds open and not yet
+\ published, 0 when none.
+$3688 constant PEND-CELL
 \ A definition whose capture ran a parsing immediate has construction inputs
 \ outside the body text. The native cache reads this only through the running engine's
 \ native-pending-opaque? primitive. The cell is transient and clears with
 \ PEND-CELL on close or abandonment. $2D48 follows NATIVE-HOST-CELLS:DIVISION-PRIM.
 $2D48 constant PEND-OPAQUE-CELL
-$3690 constant TKA-CELL          \ mirrored: src/core/checker.f CK-TKA-OFF
-$3698 constant TKL-CELL          \ mirrored: src/core/checker.f CK-TKL-OFF
-$36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL, src/core/checker.f CK-INP-OFF
-$36A8 constant INE-CELL          \ mirrored: src/core/checker.f CK-INE-OFF, src/core/check-hook.f INPUT-END
+$3690 constant TKA-CELL
+$3698 constant TKL-CELL
+$36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL
+$36A8 constant INE-CELL          \ mirrored: src/core/check-hook.f INPUT-END
 \ FWDTGT-CELL: where the last forward branch tier 0 patched lands, as an
 \ offset from DBASE (habu2.f LPAT); nothing reads it. Definition-scoped like
 \ JIT-SNAP:SP-CELL: the colon entries,
@@ -469,16 +470,15 @@ $178 constant PKG-OUTSIDE
 \ FRFREE-CELL and $36C8 is address-cells.f INDEX-CELL.
 \ All three sit in the $2800..$3000 free header band, below $7FF8 for a
 \ `DATA <off> LDR` and below DATA-START.
-\ src/core/checker.f opens SRCLOC first, for FILE-BUFFER?.
 package SRCLOC
 public
 $2800 constant PATH-CELL
 $2808 constant PATHLEN-CELL
-$2810 constant INB-CELL          \ mirrored: src/core/checker.f SRCLOC INB-OFF, src/core/check-hook.f INPUT-START
+$2810 constant INB-CELL          \ mirrored: src/core/check-hook.f INPUT-START
 \ The loader alone publishes the execution bytes owned by the active file.
 \ An inner evaluate changes INB, but never changes this file span.
-$2D68 constant OWNED-CELL        \ mirrored: src/core/checker.f SRCLOC OWNED-OFF
-$2D70 constant OWNEDLEN-CELL     \ mirrored: src/core/checker.f SRCLOC OWNEDLEN-OFF
+$2D68 constant OWNED-CELL
+$2D70 constant OWNEDLEN-CELL
 \ CURSOR: INP-CELL as a declared cell, the byte address the scanner reads next.
 \ The native FILE cache reads it at a loader cut.
 INP-CELL RESERVED-PTR-U8-CELL CURSOR
@@ -521,7 +521,7 @@ $4CB0 constant ENCLOSING
 ;package
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
-$37D0 constant EVALD-CELL        \ mirrored: src/core/checker.f CK-EVALD-OFF
+$37D0 constant EVALD-CELL
 $37D8 constant EVALERR-CELL
 $37E0 constant LMAINP-CELL
 $3C88 constant TASK-TCB-CELL
@@ -578,8 +578,7 @@ $43B0 constant DELTA-CELL
 \ length, read by the checker's lazy intake for a word it has no effect for.
 \ Nothing publishes a pool, so both stay zero and the intake is a no-op.
 \ The pool is __text, the same at every boot, so it is never copied. They take
-\ $47D0/$47D8; src/core/checker.f mirrors the two offsets (CK-AOT-SIG-*-OFF)
-\ because it loads before this file, as with CK-PKG-REC-OFF.
+\ $47D0/$47D8.
 \ AOT-CELLS holds every AOT cell this file declares: the engine bakes this file,
 \ so a cell declared in AOT-SIG, AOT-SPAN or AOT-WINDOW would make aot-decl.f,
 \ habu1.f and habu2.f reopen a baked package in a native build
@@ -1133,8 +1132,8 @@ $2D88 constant SUSP-PREFLIGHT-CELL
 SUSP-HOOK-CELL constant SUSP-HOOK-OFF
 2 cells constant SUSP-HOOK-LEN
 \ REFUSAL-ABI:CODE-CELL: the code of the last refusal whose diagnostic the checker
-\ rendered before throwing it (src/core/checker.f CHECKER-REFUSE, which spells
-\ this offset because this file loads after it), 0 until one is. The uncaught
+\ rendered before throwing it (src/core/checker.f CHECKER-REFUSE), 0 until
+\ one is. The uncaught
 \ top-level throw reporter (habu2.f LUNCAUGHT) exits RC-REJECT for a code equal
 \ to it, as every refusal exits, and UNCAUGHT-RC for any other. A catch that
 \ takes the throw leaves it set: src/core/include.f LOAD-CURRENT catches every
@@ -1207,7 +1206,7 @@ $2848 constant TOKFRF-CELL
 \ within their keyword, so no source can end inside them. A transient address
 \ like TKA-CELL, zeroed at snapshot: no native-layout row, no stripped-image
 \ claim.
-$2850 constant PENDTKA-CELL      \ mirrored: src/core/checker.f SRC-NAME
+$2850 constant PENDTKA-CELL
 \ JIT-QUOT: quotations open inside quotations on tier 0. QPATCH-CELL, QENT-CELL,
 \ QXH-CELL and QFRAME-CELL describe the INNERMOST open quotation, which is all
 \ that J-EXIT, the locals guards and `;]` read. A `[:` opened while one is open
@@ -1620,8 +1619,7 @@ public
 \ CK-USE-NAMES) has no counter of its own to drift. The depth is 0 at rest:
 \ usings are file-local and closed before seal or snapshot.
 16 constant USE-MAX                       \ concurrent `using` capacity (E-code on overflow)
-\ A published engine ABI, not derived from the pending table's capacity:
-\ checker.f loads before layout.f and reads this offset in the running compiler.
+\ A published engine ABI, not derived from the pending table's capacity.
 $9C08 constant USE-BAND-OFF
 USE-BAND-OFF          constant USE-DEPTH-CELL      \ live using depth (u64)
 USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` open (`;package` restores)
@@ -1896,8 +1894,7 @@ $4310 constant ENCLOSING
 \ them before the part opened; all four are 0 when no part is open. They are
 \ a guarded band (DATA-BANDS): only the engine's own code and package-scope!
 \ write them, so the Habu loop moves them through package-scope!. $42E8, the
-\ cell before them, is free; src/core/checker.f mirrors all four
-\ (CK-ENCLOSING-*-OFF).
+\ cell before them, is free.
 package ENCLOSING
 public
 $42F0 constant PUB
@@ -1908,7 +1905,7 @@ REC CELL + constant END
 ;package
 
 \ The path `A:B` habu2.f C-PACKAGE-PATH builds for `package B` inside package A;
-\ a path of CAP bytes or more (checker.f CHECKER-PACKAGE-CAP) is refused.
+\ a path of CAP bytes or more is refused.
 package PACKAGE-PATH
 public
 $4CD0 constant OFF
@@ -1986,7 +1983,7 @@ PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \
 \ ADDR-CELL holds the log's address while it holds entries, else 0. The seed
 \ lays its bands out at other offsets (forth.fs SNAPSTK-END), so the checker
-\ finds the log through this one fixed cell (checker.f CK-DECLARED-LOG-CELL);
+\ finds the log through this one fixed cell;
 \ an engine without the log reads 0, an empty log. Below $7FF8 for
 \ `DATA <off> LDR` and below DATA-START, it is the last cell of the run
 \ $4208..$43A0 below APP-ENTRY:XT-CELL, which the seed leaves free.
@@ -2011,7 +2008,7 @@ OFF SLOTS-REL + CAP SLOT * + constant END
 package BODY-SOURCE
 public
 16 constant ROW                     \ bytes per row
--1 constant NONE                    \ mirrored: src/core/checker.f DROW-NONE
+-1 constant NONE
 ;package
 DECLARED-LOG:END constant DATA-START
 \ The bytes below a build's image where a routed header store marks its cell (habu2.f

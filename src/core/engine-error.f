@@ -34,8 +34,7 @@ public
 109 constant THROW-ZERO         \ `0 throw`: a zero code would unwind its body and read as success at the catch
 ;package
 
-\ Dictionary occurrence failures belong to DEF-OCC. The checker needs the
-\ selection refusal before layout.f loads; both prefixes load this ABI first.
+\ Dictionary occurrence failures belong to DEF-OCC.
 package DEF-OCC
 public
 -7231 constant E-STALE

@@ -41,7 +41,7 @@ PAGE-BYTES constant LOOP-BYTES
 LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 
 \ run-in-stack's refusal code. src/lib/error.f owns it as E-STACK-UNGUARDED;
-\ this boot file loads before error.f (src/habu/boot-files.f FILL, CORE before
+\ this boot file loads before error.f (src/habu/boot-files.f FILL, CHECKER before
 \ BASELIB), so the same (code, name) pair is re-registered here -- the one
 \ form tools/error-code-lint.f admits -- and test/stack-guard.f keeps the two
 \ spellings equal.

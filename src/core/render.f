@@ -1494,10 +1494,10 @@ variable MDV-I   variable MDV-F
    THEN
    LOCALBAD-KIND @ 2 = IF
      s" local '" DTXT  FAILTK FAILTU @ DTXT  s" ' has a " DTXT  LOCALBAD-LEN @ JNUM
-     s" -byte name; the limit is " DTXT  LOC-NAME-W JNUM  s"  bytes" DTXT EXIT
+     s" -byte name; the limit is " DTXT  LOC-NAME-CAP JNUM  s"  bytes" DTXT EXIT
    THEN
    LOCALBAD-KIND @ 1 = IF
-     s" local '" DTXT  FAILTK FAILTU @ DTXT  s" ' is one over the " DTXT  LOC-CAP JNUM
+     s" local '" DTXT  FAILTK FAILTU @ DTXT  s" ' is one over the " DTXT  LOC-RECS JNUM
      s"  locals a definition may bind" DTXT EXIT
    THEN
    s" at '" DTXT  FAILTK FAILTU @ DTXT
@@ -2109,7 +2109,7 @@ REC-SIG-INSTALL
 : UPKG-EACH ( [ n bool -- ] -- )          \ XT on each package's slot, true the first time
    {: xt :}
    RES-TRUE
-   CK-USE-MAX 0 ?DO
+   USE-MAX 0 ?DO
       i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
    LOOP drop ;
 \ `used_packages` lists each used package the token resolves in, between the

@@ -253,9 +253,8 @@ STORAGE-CAPTURE-INSTALL
 \ name is refused at the definer (CHECKER-STORAGE-NAME-REFUSE), an empty type by
 \ the checker (CHECKER-STORAGE-TYPE-REFUSE).
 
-\ The engine's input cursor, src/habu/layout.f INP-CELL, spelled here because
-\ that file loads after this one. Pointing it back at a token parse-name read
-\ leaves that token to the next statement.
+\ The engine's input cursor, src/habu/layout.f INP-CELL. Pointing it back at a
+\ token parse-name read leaves that token to the next statement.
 $36A0 constant STGT-INP-CELL
 : STORAGE-UNREAD ( ptr u8 -- )
    NULL-PTR - data-base STGT-INP-CELL + ! ;

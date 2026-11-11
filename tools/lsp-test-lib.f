@@ -2247,10 +2247,10 @@ variable PUB-COUNT
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-MISSING-NAME" DIAG+ PUBLISHES ;
 
-\ One `using` more than the checker holds open at once (CK-USE-MAX): the
+\ One `using` more than the checker holds open at once (USE-MAX): the
 \ verifier dies in CHECKER-USING (`76 die`) and exits without a verdict, where
 \ `--load` refuses that using as ENGINE-ERROR:USING-OVERFLOW.
-CK-USE-MAX 1 + constant OVER-USINGS
+USE-MAX 1 + constant OVER-USINGS
 
 : OVER-USINGS+ ( -- )
    OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" N>BLEN TXT-B APPEND-SPAN loop ;
