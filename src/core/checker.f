@@ -1222,7 +1222,7 @@ CHECKER-REG:}SCRATCH
 \ A saved program starts with none: the planes and TV-CAP are scratch, so
 \ TV-ENSURE maps the arena on first use.
 1280 constant MAXTV-INIT
-16 constant TV-PLANES
+17 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
 variable TV-CAP   TV-CAP scratch-cell-mark   0 TV-CAP !
 : MAXTV ( -- n ) TV-CAP @ ;
@@ -1237,6 +1237,7 @@ PTR-VARIABLE VRC-TV-P  PTR-VARIABLE VRC-RV-P   PTR-VARIABLE VRI-TV-P  PTR-VARIAB
 PTR-VARIABLE EC-TV-P   PTR-VARIABLE EC-RV-P    PTR-VARIABLE EI-TV-P   PTR-VARIABLE EI-RV-P
 PTR-VARIABLE TVK-P
 PTR-VARIABLE NSCOPE-P   \ orthogonal storage restriction for type and row vars
+PTR-VARIABLE NLINEAR-P  \ a type var binds only a type a cast's stored position may name
 PTR-VARIABLE TVP-P      \ a bound type var was bound from a provided side (TV-BIND)
 PTR-VARIABLE QCON-IDS-P   PTR-VARIABLE QCON-KINDS-P
 PTR-VARIABLE QCON-RIDS-P
@@ -1273,6 +1274,7 @@ PTR-VARIABLE QCON-RIDS-P
    base cap 13 TV-PLANE QCON-KINDS-P !
    base cap 14 TV-PLANE QCON-RIDS-P !
    base cap 15 TV-PLANE TVP-P !
+   base cap 16 TV-PLANE NLINEAR-P !
    cap TV-CAP ! ;
 
 
@@ -1285,6 +1287,7 @@ PTR-VARIABLE QCON-RIDS-P
    NULL-PTR TVK-P !      NULL-PTR NSCOPE-P !
    NULL-PTR QCON-IDS-P !   NULL-PTR QCON-KINDS-P !
    NULL-PTR QCON-RIDS-P !   NULL-PTR TVP-P !
+   NULL-PTR NLINEAR-P !
    0 TV-CAP ! ;
 TV-CLEAR
 
@@ -1330,6 +1333,9 @@ TV-CLEAR
 : QCON-RIDS ( -- ptr n ) TV-READY QCON-RIDS-P @ ;
 : NSCOPE@ ( n -- bool ) cells NSCOPE + @ 0 <> ;
 : NSCOPE! ( n -- ) -1 swap cells NSCOPE + ! ;
+: NLINEAR ( -- ptr n ) TV-READY NLINEAR-P @ ;
+: NLINEAR@ ( n -- bool ) cells NLINEAR + @ 0 <> ;
+: NLINEAR! ( n -- ) -1 swap cells NLINEAR + ! ;
 : TV-PROV? ( n -- bool ) cells TVP + @ 0 <> ;
 : TV-PROV! ( n bool -- ) IF -1 ELSE 0 THEN swap cells TVP + ! ;
 : VRC-TV ( -- ptr n ) TV-READY VRC-TV-P @ ; : VRC-RV ( -- ptr n ) TV-READY VRC-RV-P @ ;
@@ -1529,7 +1535,7 @@ CHECKER-REG:}SCRATCH
 \ The tag says what to put back, so a kind raise restores the kind it displaced:
 \ resetting a fenced var to TVK-ANY on rollback would drop the base-address
 \ fence on every row an abandoned prim-overload trial touched.
-: TRAIL-PUSH ( n n -- )   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY, 12=TVT link, 13=RVT link, 14=TVP provenance, 15=TVK-STORED
+: TRAIL-PUSH ( n n -- )   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=NLINEAR, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY, 12=TVT link, 13=RVT link, 14=TVP provenance, 15=TVK-STORED
    {: id:n tag:n :}
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 16 * tag +  TRAIL-N @ cells TRAIL + !
@@ -1559,6 +1565,7 @@ CHECKER-REG:}SCRATCH
    tag 0=  tag 12 = or IF TVT off + EXIT THEN
    tag 1 =  tag 13 = or IF RVT off + EXIT THEN
    tag 8 = IF NSCOPE off + EXIT THEN
+   tag 3 = IF NLINEAR off + EXIT THEN
    tag 14 = IF TVP off + EXIT THEN
    TVK off + ;
 
@@ -1568,7 +1575,7 @@ CHECKER-REG:}SCRATCH
    i cells TRAIL + @ {: e:n :}
    e 15 and {: tag:n :}
    tag 12 =  tag 13 = or  tag 14 = or IF i cells TRAIL-OLD + @  e TRAIL-SLOT !  EXIT THEN
-   tag 0=  tag 1 = or  tag 8 = or IF 0 ELSE tag TRAIL-KIND-OF THEN
+   tag 0=  tag 1 = or  tag 3 = or  tag 8 = or IF 0 ELSE tag TRAIL-KIND-OF THEN
    e TRAIL-SLOT ! ;
 
 
@@ -1631,6 +1638,10 @@ CHECKER-REG:}SCRATCH
 : NSCOPE-RAISE ( n -- )
    dup NSCOPE@ IF drop EXIT THEN
    dup 8 TRAIL-PUSH NSCOPE! ;
+
+: NLINEAR-RAISE ( n -- )
+   dup NLINEAR@ IF drop EXIT THEN
+   dup 3 TRAIL-PUSH NLINEAR! ;
 
 \ --- linear/affine kind discipline ---------------------------------------------
 variable LIN-NDECL   0 LIN-NDECL !     \ count of declared DEFLINEAR types (in scope)
@@ -5125,6 +5136,7 @@ U-DRAIN-INSTALL
      dup cells RVT + 0 swap !
      dup cells TVK + 0 swap !
      dup cells NSCOPE + 0 swap !
+     dup cells NLINEAR + 0 swap !
      dup cells TVP + 0 swap !
      1 +
    REPEAT drop ;
