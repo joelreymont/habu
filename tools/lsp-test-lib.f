@@ -73,6 +73,9 @@
 \   checked again .................................... diagnostics-require
 \ - a change that came while another waited checked on its own, or a version
 \   other than the newest published ................. diagnostics-supersede
+\ - a definition whose effect names an unknown type and whose body an
+\   undefined word given a packet at the type, or no E-UNDEFINED at the word
+\   .................................................... diagnostics-one-refusal
 \ - a close publishing anything but an empty list without a version, or a
 \   document opened and closed in one turn checked ...................... close
 \ - a file the engine provides checked, or its list kept from the client
@@ -114,9 +117,28 @@
 \   ......................................................... shadowed-arity
 \ - a warning, which carries no verdict, published with a severity or not at
 \   the name of the definition whose effect it did not record .. not-recorded
+\ - a bare use that names words of two used packages, or a global and a used
+\   package's public word, in a body or a does> clause, not published at its
+\   token as E-USING-AMBIGUOUS or E-USING-SHADOW-GLOBAL, or refusing more
+\   than its definition, so a later definition's packet goes unpublished
+\   ................................ using-ambiguous, using-shadow, using-clause
 \ - a duplicate definition, of the document's own word or of one a file it
 \   requires defines, not published at the name defined again
 \   ......................................... duplicate, duplicate-of-required
+\ - a top-level word no scope defines not published at it as
+\   E-UNDEFINED-TOP-LEVEL; the line after a word that parses its own input
+\   refused, or not deferred to the run at that word ................. top-level
+\ - a stored signature that does not parse, of a FUNCTION: whose group is
+\   empty or of a TRUSTED: that replaces a colon definition `undefine`
+\   removed, not published as E-BAD-STORED-SIGNATURE at its name
+\   ....................................... stored-signature, replaced-signature
+\ - a name with two qualifiers, in a defer or in a definition refused for an
+\   undefined word, given no E-BAD-QUALIFIED-RECORD at it after the body's
+\   packet, or the statement's stop not published
+\   ....................................... malformed-record, malformed-rejected
+\ - `evaluate` of a text, and a body naming a word only that text may define,
+\   not each deferred to the run at its token, or that body refused
+\   ........................................................ deferred-definition
 \ - a definition deferred to the run, then one never ended: the deferral or
 \   the stop's record not published, or the document not said refused
 \   ....................................................... deferred-unended
@@ -155,6 +177,8 @@
 \   server: its global words, two bytes each, put the empty package each of
 \   their definition lines names at every even offset of the bytes the server
 \   keeps them in, one of them where those bytes fill their room .. path-length-N
+\ - a query after params nested past the 64 levels a cursor keeps inline not
+\   read, so the request is refused or stops the server ............ deep-params
 \
 \ Document symbols
 \ - a definition the document's last completed check retained in it missing,
@@ -186,9 +210,10 @@
 \   by; the character after a use, or a declaring token, answered with a
 \   Location; a negative character answered other than -32602 .... definition
 \ - a use of a dependency on disk only, its global or, qualified, its public
-\   word, or the source-backed `require` that loads it, not answered with the
-\   declaring token's range in its text on disk
-\   at its canonical file URI ............................ definition-dependency
+\   word, not answered with the declaring token's range in its text on disk
+\   at its canonical file URI; the source-backed `require` that loads it,
+\   whose file's index defers, answered with a Location
+\   ...................................................... definition-dependency
 \ - a use of a dependency open with lines inserted and swapped, unsaved, not
 \   answered with its declaring token's range in the open text, which the
 \   check read, at the URI the client opened it by .. definition-dependency-open
@@ -210,6 +235,32 @@
 \ - a use asked about after a change whose check did not complete answered
 \   from the uses of the text before it, or the definitions of the last check
 \   that completed not listed .......................... definition-incomplete
+\ - a use of a primitive, in a body, at top level or ticked, not answered, by
+\   definition and declaration, with its `EPRIM:` row in its source; a use of
+\   an engine word declared in source not answered with its declaration
+\   there; either, after `undefine` and a definition of its spelling, not
+\   answered with that definition ......................... definition-primitive
+\ - a use of a primitive answered while the primitives' source is open with
+\   other text, unsaved, whose rows no longer match the engine's, or not
+\   answered from disk once it closes ................ definition-primitive-open
+\ - with an engine file open, one of its declarations turned into a call that
+\   keeps its spelling at the bytes the engine saved, a use of that word or of
+\   another the file declares answered with a Location: the call defers the
+\   file's whole index .................................. definition-engine-open
+\ - a use of a SUMTYPE's generated constructor, qualified, not answered with
+\   its VARIANT's name; a use of `create`, or of a word from an engine file
+\   whose index a top-level dictionary call defers, answered with a Location;
+\   a word from one with no such call not answered with its declaration
+\   there, or answered with one once that file is open with other text
+\   ......................................................... definition-sumtype
+\ - a use of a word from an engine prefix file answered with a Location when
+\   that file makes a top-level dictionary call, or once it is open with
+\   other text, or not with its declaration there when it makes none; in a
+\   structure, a constant used or ticked, before or after a line deferred at
+\   a word that parses, not answered with its declaration, or a token `char`
+\   or that word parses answered ...................... definition-prefix-origin
+\ - a definer's call whose operand declares a word of the same spelling
+\   answered with that new word's declaration ......... definition-prefix-shadow
 \
 \ Hover
 \ - a use, at its first character or its last, not answered with its
@@ -255,7 +306,8 @@
 \ - a use asked about in the turn of a change that moved it and its
 \   declaration answered before the check of the changed text published, or
 \   from the uses of the text before it; a request with a change of its
-\   document read behind it answered other than -32801 . highlight-after-change
+\   document read behind it answered other than -32801
+\   ..................................................... highlight-after-change
 \ - a use in a document whose last check was refused, or deferred at a
 \   top-level word that parses, answered other than null: neither verdict
 \   says the check reported every use; go to definition at that byte not
@@ -373,8 +425,8 @@
 \ - a use, at its first character or its last, or the token declaring its
 \   word, in an open document whose check was verified, not answered with
 \   every use of the word there, the declaration first when the request
-\   includes it and only then; an engine word's use answered with any
-\   location .................................................... references
+\   includes it and only then; a primitive's use not answered with its `EPRIM:`
+\   row in its source and the use ................................... references
 \ - a document not open answered other than -32602 ...... references-not-open
 \ - params without context.includeDeclaration true or false, or with a
 \   negative character, answered other than -32602 ......... references-params
@@ -431,7 +483,8 @@
 \   declaration, binds to another word, not listed, or its file not named
 \   ....................................................... references-conflict
 \ - a shared use that another check binds to an engine word or primitive
-\   not listed for the declaration, or its file not named .... references-engine
+\   not listed for the declaration, or its file not named
+\   ................................. references-engine, references-engine-image
 \ - a file whose check read the declaring file but declares the word there
 \   only into another package, binding its uses to that, not named, or its
 \   use listed ............................................. references-package
@@ -444,6 +497,62 @@
 \ - a check of a file on disk for its uses leaving its lines in the store
 \   once its gather returns or throws, in the test's own process, since no
 \   conversation can make a gather throw .................. references-probe
+\ - a primitive's use, in files of the folder open, unsaved or on disk, not
+\   answered with every use that binds the primitive, its row in its source
+\   first when the request includes the declaration; a use of a later
+\   definition of its spelling listed; an elaborated primitive's use not
+\   answered with its `ELAB:` row; prepareRename or rename of a primitive
+\   answered other than -32803 ............................ references-primitive
+\ - a primitive whose row spells its name in capitals not matched to the
+\   checker's lower-case binding, so a use another file's check gathers is
+\   left out .................................... references-primitive-uppercase
+\ - past the first wave of checks, a file that redefines the primitive, a
+\   refused one with no use of it or one loading an unsaved open dependency
+\   answered otherwise than in one wave: a location lost, added or out of
+\   order, or the refused file not the one the warning names
+\   .................................................. references-primitive-wave
+\ - a file whose check overflows losing the uses of the other files in its
+\   batch, or of a later file, or putting them out of order; it not named
+\   incomplete .............................. references-primitive-batch-failure
+\ - with the primitives' source open with other text, unsaved, a primitive's
+\   uses left out, or the declaration, asked for, given, or no warning naming
+\   that source as unable to place it; asked without the declaration, the
+\   source not named engine-provided ....... references-primitive-source-changed
+\ - in the primitives' source, open, a row's name, at its first character or
+\   just after its last, not answered as a use of the primitive is, with the
+\   source named engine-provided, or the byte before it answered with any
+\   location; a later row of an overloaded primitive not answered as its
+\   first row is .............................. references-primitive-declaration
+\ - a refused file's known use of a primitive left out, the file not named
+\   refused, or the primitive's row left out because a file is not covered
+\   .............................................. references-primitive-coverage
+\ - a primitive's use in a file that another file's check, including it
+\   into a package, binds to that package's word, left out, or the file not
+\   named for that other binding ................. references-primitive-conflict
+\ - an engine word declared in source, used in files of the folder open or
+\   on disk, not answered with every use, its declaration there first when
+\   the request includes it; that declaration, asked at in its source open,
+\   as is or moved a line down, not answered so, with the source named
+\   engine-provided, or go to definition not answered from the open text; a
+\   same-spelled package word's use listed; prepareRename or rename answered
+\   other than -32803 ......................... references-source-backed-builtin
+\ - with that source open: its spelling at the declaration's saved byte as a
+\   use, the declaration given, or no warning naming the source as unable to
+\   place it, or that use, asked at, answered with any location; go to
+\   definition answered with a Location once the word is retired or replaced,
+\   its declaration refused or parsed by another word, or the file deferred
+\   or holding an opaque call, a replaced definer, an unended definition or
+\   string, an unbalanced `;using` or more usings than the checker holds, or
+\   a replaced declaration asked at answered with any location; a declaration
+\   before a refused cast or TRUSTED:, after a refused one, or by TRUSTED:,
+\   not answered by go to definition .......... references-source-backed-builtin
+\ - an image word from an engine file whose index a top-level require
+\   defers: its known uses left out, its declaration given, or the file not
+\   named as unable to place it; one from a file of declarations only, closed
+\   or open and moved, not answered with its declaration there and its uses;
+\   a use of WORDS given a Location; a declaration with a trusted does>, whose
+\   clause the scan skips, answered with the image's word, or a checked one
+\   not answered with itself .................... references-source-backed-other
 \
 \ Rename
 \ - a use at its first character or its last, a qualified use asked on its
@@ -456,6 +565,14 @@
 \   not the converter, or a use in a document whose check was refused,
 \   answered other than -32803 naming the file; a document not open answered
 \   other than -32602 .......................................... rename-prepare
+\ - a SUMTYPE variant's name, or a use of its generated constructor,
+\   answered by prepareRename or rename other than -32803 ....... rename-sumtype
+\ - a word an ordinary definer spelled VARIANT creates, asked at its
+\   declaring operand, refused, or not renamed there and at its use
+\   ..................................................... rename-variant-definer
+\ - a use in a document whose check was deferred, which did not cover the
+\   whole file, answered by prepareRename or rename other than -32803 naming
+\   the file ................................................. rename-unverified
 \ - a use at its first character or its last, a qualified use asked on its
 \   qualifier, or the token declaring a word qualified into another wordlist
 \   (Q:Y), in an open document whose check was verified, not answered with
@@ -484,7 +601,7 @@
 \   with its verdict in a -32803, or a file that loads nothing and that a
 \   verified check read named for its own refused check ...... rename-conflict
 \ - a shared use bound to an engine word or primitive in another check
-\   edited, or no -32803 naming its file ....................... rename-engine
+\   edited, or no -32803 naming its file .... rename-engine, rename-engine-image
 \ - a declaring token that a check of a file including it into a package
 \   declares as that package's word edited, or no -32803 naming that file,
 \   on disk or open ............................................ rename-package
@@ -1824,8 +1941,6 @@ variable PUB-COUNT
    A-PATH s" refused" COMPLETED
    A-PATH 4 EXPECT 1 15 1 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-\ X has an unknown signature type and an undefined word: the load refuses the
-\ word, so the diagnostic is E-UNDEFINED at NOPE, not at zz.
 : TEXT-X ( -- ptr u8 n )  s" : X ( n -- zz ) NOPE ;" ;
 
 : ONE-REFUSAL-TURNS ( -- )
@@ -2257,9 +2372,6 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" verified" COMPLETED
    A-PATH 1 EXPECT 1 2 1 11 s" W-EFFECT-NOT-RECORDED" UNRATED+ PUBLISHES ;
 
-\ U's bare LSPT-W resolves in both used packages: E-USING-AMBIGUOUS, at the
-\ token on line 10. The refusal refuses U alone: the check goes on, and M's
-\ extra cell on line 11 is published beside it.
 : TWO-USED ( -- ptr u8 n )
    s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
 
@@ -2273,8 +2385,6 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+
    11 16 11 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-\ U's bare LSPT-SW names the global and the used public both:
-\ E-USING-SHADOW-GLOBAL at the token on line 6, and M's extra cell on line 7.
 : GLOBAL-USED ( -- ptr u8 n )
    s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-SP\npublic\n: LSPT-SW ( n -- ) drop ;\n;package\nusing LSPT-SP\n: LSPT-SU ( -- ) 1 LSPT-SW ;\n: LSPT-M ( -- ) 1 ;\n;using\n" ;
 
@@ -2288,9 +2398,6 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH 1 EXPECT 6 19 6 26 1 s" E-USING-SHADOW-GLOBAL" DIAG+
    7 16 7 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-\ The same refusals in does> clauses each refuse their definer alone:
-\ E-USING-SHADOW-GLOBAL at DS's bare LSPT-SW on line 12, E-USING-AMBIGUOUS at
-\ DM's bare LSPT-DV on line 13, and M's extra cell on line 14.
 : CLAUSE-USED ( -- ptr u8 n )
    s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-DA\npublic\n: LSPT-SW ( n -- ) drop ;\n: LSPT-DV ( n -- ) drop ;\n;package\npackage LSPT-DB\npublic\n: LSPT-DV ( n -- ) drop ;\n;package\nusing LSPT-DA\nusing LSPT-DB\n: LSPT-DS ( n -- ) create , does> ( -- ) @ LSPT-SW ;\n: LSPT-DM ( n -- ) create , does> ( -- ) @ LSPT-DV ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
 
@@ -2330,8 +2437,6 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 1 2 1 9 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
 
-\ A top-level word no scope defines, at bytes 2-12; then the line after a word
-\ that parses its own input, deferred to the run where the word stands.
 : UNDEFINED-AT-TOP ( -- ptr u8 n )  s\" 1 NOSUCHWORD drop\n" ;
 : DEFERRED-AT-TOP ( -- ptr u8 n )  s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" ;
 
@@ -2349,8 +2454,6 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" deferred" COMPLETED
    A-PATH 2 EXPECT 1 0 1 4 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
-\ A body naming a word only the text `evaluate` renders may define, deferred to
-\ the run at that name, after `evaluate` itself, deferred at its token.
 : DEFERRED-IN-BODY ( -- ptr u8 n )  s\" s\" : G ( -- n ) 2 ;\" evaluate\n: F ( -- n ) NOSUCH ;\n" ;
 
 : DEFINITION-TURNS ( -- )
@@ -2435,8 +2538,7 @@ USE-MAX 1 + constant OVER-USINGS
    s\" ,\"query\":\"habu-deep\"}" PAR+
    PAR$ ;
 
-\ The server reads past the nest to the query and answers: no document is open,
-\ so the list is empty. A query it could not reach is refused instead.
+\ No document is open, so the list is empty.
 : DEEP-PARAMS-TURNS ( -- )
    s" 3" DEEP-PARAMS SYMBOLS-ASK
    SAY
@@ -2915,11 +3017,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 5" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
    s" 6" NOWHERE ;
 
-\ Generated constructors in aio.f's scanned declarations remain locatable.
-\ Its engine calls retain their bindings, but roles.f's NOMINAL-PROVIDER and
-\ cell.f's CELL-WIDTH-CHECK are dictionary calls, so their whole source indexes
-\ defer without claiming a Location. pointer-storage.f calls nothing through the
-\ dictionary, so PTR-VARIABLE locates there until an open edit removes it.
+\ roles.f's NOMINAL-PROVIDER and cell.f's CELL-WIDTH-CHECK are dictionary calls;
+\ pointer-storage.f calls nothing through the dictionary.
 : AIO-PATH ( -- ptr u8 n )  s" src/lib/aio.f" IN-TREE ;
 : AIO-PTR-PATH ( -- ptr u8 n )  s" src/core/pointer-storage.f" IN-TREE ;
 
@@ -3023,7 +3122,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 12" PRIM-PATH URI-OF 9 2 13 LOCATED
    s" 13" PRIM-PATH URI-OF 9 2 13 LOCATED ;
 
-\ An open unsaved prims.f with a mismatched row sequence has no trusted target.
 : PRIM-OPEN-TURNS ( -- )
    SESSION-INITIALIZE
    PRIM-PATH TEXT-PRIM-NAV 1 OPENS
@@ -3045,10 +3143,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    s" 4" PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 LOCATED ;
 
-\ An edited engine file can preserve the same spelling at the baked byte
-\ range while changing it from a declaration to a call. That opaque call
-\ defers the entire index, including SCRIPT-ARG-START's otherwise unchanged
-\ declaration.
 : ENGINE-OPEN-SOURCE ( -- ptr u8 n )
    SCRIPT-ARGV-PATH TREE-READ {: size:n :}
    32 size s" : SCRIPT-ARGC " LINE-START TREE-TEXT c!
@@ -3135,8 +3229,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 15" PREFIX-STRUCT-PATH URI-OF 6 2 13 LOCATED
    s" 16" PREFIX-STRUCT-PATH URI-OF 0 11 27 LOCATED ;
 
-\ A definer still binds at its call when its operand declares a word with the
-\ same spelling. The newly declared private word must not replace that use.
 : PREFIX-SHADOW-PATH ( -- ptr u8 n )  s" prefix-shadow.f" FIXTURE ;
 : PREFIX-SHADOW ( -- ptr u8 n )
    s\" package REVIEW\nTYPED-VARIABLE a n\nTYPED-VARIABLE TYPED-VARIABLE n\n;package\n" ;
@@ -5282,8 +5374,6 @@ variable WS-ROOT-U
    s" 4" SYMBOLS-START 0 2 6 RN-REF+ RN-USES+ SYMBOLS-END
    s" 5" SYMBOLS-START RN-USES+ SYMBOLS-END ;
 
-\ Independent files and an open unsaved document each bind the same engine
-\ primitive. A later source definition of * is a different binding.
 : TEXT-PR-A ( -- ptr u8 n )  s\" : A ( -- n ) 2 3 * ;\n" ;
 : TEXT-PR-B ( -- ptr u8 n )  s\" : B ( -- n ) 4 5 * ;\n" ;
 : TEXT-PR-C ( -- ptr u8 n )  s\" : C ( -- n ) 6 7 * ;\n" ;
@@ -5343,8 +5433,6 @@ variable WS-ROOT-U
    s" refs-prim/w/e.f" OPEN-URI 0 26 33 REF+
    SYMBOLS-END ;
 
-\ A primitive whose specification spells its name in capitals is still
-\ matched to the checker's canonical lower-case binding in each batch child.
 : TEXT-PR-UPPER ( -- ptr u8 n )
    s\" : A ( -- ) SEAL-CAPTURE ;\n" ;
 
@@ -5364,9 +5452,7 @@ variable WS-ROOT-U
    s" refs-prim-upper/w/b.f" DISK-URI 0 11 23 REF+
    SYMBOLS-END ;
 
-\ The second wave starts after four captures have run together. A shadowed
-\ primitive, a refused subject with no matching token, and an unsaved loaded
-\ dependency must leave the same ordered locations and coverage warning.
+\ The second wave starts after four captures have run together.
 : PRIM-WAVE-PATH ( n -- ptr u8 n )
    {: k:n :}
    SB-RESET s" refs-prim-wave/w/" SB-APPEND
@@ -5414,7 +5500,7 @@ variable WS-ROOT-U
    SYMBOLS-END ;
 
 \ An overflowing subject in the second lane makes that lane retry individually,
-\ including a later subject. The first lane's captured answer stays in order.
+\ including a later subject.
 : PRIM-FAIL-PATH ( n -- ptr u8 n )
    {: k:n :}
    SB-RESET s" refs-prim-fail/w/" SB-APPEND
@@ -5445,8 +5531,7 @@ variable WS-ROOT-U
    loop
    SYMBOLS-END ;
 
-\ A changed open specification can no longer place the declaration, while
-\ the checker still gives uses their canonical row marker.
+\ The checker still gives uses their canonical row marker.
 : PRIM-MISSING-TURNS ( -- )
    s" refs-prim-missing" REFS-DIR s" refs-prim-missing/w" REFS-DIR
    s" refs-prim-missing/w/a.f" TEXT-PR-A REFS-FILE
@@ -5474,8 +5559,6 @@ variable WS-ROOT-U
    s" refs-prim-missing/w/b.f" DISK-URI 0 17 18 REF+
    SYMBOLS-END ;
 
-\ Asking from the declaration's name or its exact end selects its canonical
-\ row. The second + overload maps to the first + row, as uses do.
 : PRIM-DECL-TURNS ( -- )
    PRIM-DECL-TREE
    s" refs-prim-decl/w" ROOT-URI+ PAR$ INITIALIZE-WITH
@@ -5518,8 +5601,6 @@ variable WS-ROOT-U
    s" refs-prim-decl/w/b.f" DISK-URI 0 17 18 REF+
    SYMBOLS-END ;
 
-\ A partial check contributes its known primitive use and names the file it
-\ could not verify. The source declaration remains separate from coverage.
 : TEXT-PR-BAD ( -- ptr u8 n )  s\" : BAD ( -- n ) 2 3 * NOPE ;\n" ;
 : PRIM-COVER-TURNS ( -- )
    s" refs-prim-cover" REFS-DIR s" refs-prim-cover/w" REFS-DIR
@@ -5539,8 +5620,6 @@ variable WS-ROOT-U
    s" refs-prim-cover/w/bad.f" DISK-URI 0 19 20 REF+
    SYMBOLS-END ;
 
-\ An included token can bind to a package word under one subject and to the
-\ engine primitive when its own file is checked independently.
 : PRIM-CONFLICT-TURNS ( -- )
    s" refs-prim-conflict" REFS-DIR s" refs-prim-conflict/w" REFS-DIR
    s" refs-prim-conflict/w/d.f" TEXT-ENG-D REFS-FILE
@@ -5578,8 +5657,6 @@ variable PROBE-DECLS
    s" references-probe: removed after the throw" T-LABEL
    LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE ;
 
-\ Independent workspace files bind the image's source-backed SCRIPT-ARGC.
-\ A same-spelling source word in a package is a separate binding.
 : TEXT-BI-A ( -- ptr u8 n )
    s\" : A ( -- n ) SCRIPT-ARGC ;\n: C ( -- n ) SCRIPT-ARG-START ;\n" ;
 : TEXT-BI-B ( -- ptr u8 n )  s\" : B ( -- n ) SCRIPT-ARGC ;\n" ;
@@ -5856,9 +5933,8 @@ variable PROBE-DECLS
    SAY
    s" 36" SCRIPT-ARGV-PATH URI-OF 0 9 20 LOCATED ;
 
-\ Both image words retain their source identities. xref.f's top-level require
-\ defers its index, so its known references survive without source locations.
-\ code-bytes.f is declarations only, including after an open-document move.
+\ xref.f's top-level require defers its index; code-bytes.f holds only
+\ declarations.
 : TEXT-BI-OTHER ( -- ptr u8 n )
    s\" : X ( ptr n -- n ) XREF-START ;\n: Y ( n n -- bool ) CODE-BYTES:IN-CODE? ;\n: Z ( -- ) WORDS ;\n" ;
 : BI-OTHER-PATH ( -- ptr u8 n )  s" refs-builtin-other/w/a.f" FIXTURE ;
@@ -6065,8 +6141,6 @@ variable PROBE-DECLS
    HEAR
    MSG$ HEARD ;
 
-\ An ordinary definer may also be spelled VARIANT. Its created word remains
-\ renameable, including the declaration at that definer's operand.
 : VARIANT-DEFINER-RENAME-TURNS ( -- )
    SESSION-INITIALIZE
    VARIANT-DEF-PATH VARIANT-DEF-TEXT 1 OPENS
@@ -6165,8 +6239,6 @@ variable PROBE-DECLS
    SAY
    s" 3" 1 NOT-APPLIED s" rn-ld/w/ld.f" CANON s" E-DISC-DYNAMIC" NAMED+ NAMED-END ;
 
-\ The same deferred source used by references-unverified still refuses both
-\ rename operations, since its check did not cover the whole file.
 : RENAME-UNV-TURNS ( -- )
    s" rn-unv" REFS-DIR s" rn-unv/w" REFS-DIR
    s" rn-unv/w/f.f" TEXT-RF REFS-FILE
@@ -6818,8 +6890,6 @@ variable PROBE-DECLS
    s" document-symbol" [: OUTLINE-TURNS ;] TALK
    s" document-symbol-incomplete" [: OUTLINE-INCOMPLETE-TURNS ;] TALK ;
 
-\ A FUNCTION: whose group is empty stores a signature that does not parse: the
-\ packet is at its name F, line 1, characters 10-11.
 : EMPTY-FFI ( -- ptr u8 n )  s\" require src/lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
 
 : STORED-SIGNATURE-TURNS ( -- )
@@ -6831,9 +6901,6 @@ variable PROBE-DECLS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 1 10 1 11 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
 
-\ A TRUSTED: definition named as the colon definition `undefine` removed before
-\ it stores a signature that does not parse: the packet is at its name X, line
-\ 2, characters 9-10.
 : REPLACED-TRUSTED ( -- ptr u8 n )  s\" : X ( -- ) ;\nundefine X\nTRUSTED: X ( -- zz ) ;\n" ;
 
 : REPLACED-SIGNATURE-TURNS ( -- )
@@ -6845,8 +6912,6 @@ variable PROBE-DECLS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 2 9 2 10 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
 
-\ A defer whose name has two qualifiers asks a record for a malformed name: the
-\ packet is at its name DIAG:MAL:NAME, line 0, characters 6-19.
 : MALFORMED-DEFER ( -- ptr u8 n )  s\" defer DIAG:MAL:NAME ( -- )\n" ;
 
 : MALFORMED-RECORD-TURNS ( -- )
@@ -6860,8 +6925,6 @@ variable PROBE-DECLS
    0 6 0 19 1 s" E-BAD-QUALIFIED-RECORD" DIAG+
    0 6 0 19 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
-\ A definition refused for its undefined NOPE still gets a record for its
-\ malformed name P:Q:R, after the body's packet, at line 0, characters 2-7.
 : MALFORMED-REJECTED ( -- ptr u8 n )  s\" : P:Q:R ( -- ) NOPE ;\n" ;
 
 : MALFORMED-REJECTED-TURNS ( -- )
