@@ -1338,7 +1338,7 @@ package INTERPRETER
 private
 
 \ Tier 1's capture reads locals before syntax. These cells describe lexical
-\ lifetime only; LOCF is the JIT's physical frame and CF its patch stack.
+\ lifetime only; CF is the JIT's patch stack.
 LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
 variable BODY-DEPTH
 variable BODY-RAW-NEXT
@@ -1666,7 +1666,7 @@ private
    DEF-ROOM
    trusted DEF-NAME
    0 DEF-START
-   0 LOCN-CELL CELL!  0 LOCF-CELL CELL!
+   0 LOCN-CELL CELL!
    BODY-LEX-RESET
    trusted if
       1 TRUSTED-CELL CELL!

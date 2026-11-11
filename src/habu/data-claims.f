@@ -81,7 +81,6 @@ create TAB
    DP-CELL                            1 cells                 CLAIM DP-CELL
    HND-CELL                           1 cells                 CLAIM HND-CELL
    LOCN-CELL                          1 cells                 CLAIM LOCN-CELL
-   LOCF-CELL                          1 cells                 CLAIM LOCF-CELL
    FRIEND-ARENA                       FRIEND-ARENA-LEN        CLAIM FRIEND-ARENA
    CMBK-CELL                          1 cells                 CLAIM CMBK-CELL
    CMTAG-CELL                         1 cells                 CLAIM CMTAG-CELL
@@ -89,7 +88,6 @@ create TAB
    CMFRD-CELL                         1 cells                 CLAIM CMFRD-CELL
    CMFR-OFF                           CMFR-MAX cells          CLAIM CMFR-STACK
    ADDRESS-CELLS:LOCK-CELL            1 cells                 CLAIM ADDRESS-CELLS-LOCK
-   CMFAM-CELL                         1 cells                 CLAIM CMFAM-CELL
    BODYLEN-CELL                       1 cells                 CLAIM BODYLEN-CELL
    RBASE-CELL                         1 cells                 CLAIM RBASE-CELL
    LOOPSP-CELL                        1 cells                 CLAIM LOOPSP-CELL
@@ -186,8 +184,6 @@ create TAB
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL
    TOKDEPTH-CELL                      1 cells                 CLAIM TOKDEPTH-CELL
    LOCDEPTHS                          LOC-RECS cells          CLAIM LOCDEPTHS
-   REGALLOC-ABI:VRTAB-OFF             REGALLOC-ABI:VRTAB-BYTES  CLAIM VRTAB
-   REGALLOC-ABI:VRITAB-OFF            REGALLOC-ABI:VRTAB-BYTES  CLAIM VRITAB
    REPLH-CELL                         1 cells                 CLAIM REPLH-CELL
    RSAVCP-CELL                        1 cells                 CLAIM RSAVCP-CELL
    RSAVND-CELL                        1 cells                 CLAIM RSAVND-CELL
@@ -205,8 +201,6 @@ create TAB
    INP-CELL                           1 cells                 CLAIM INP-CELL
    INE-CELL                           1 cells                 CLAIM INE-CELL
    REGALLOC-ABI:FRFREE-CELL           1 cells                 CLAIM FRFREE-CELL
-   FWDTGT-CELL                        1 cells                 CLAIM FWDTGT-CELL
-   LIDX-CELL                          1 cells                 CLAIM LIDX-CELL
    BPTRAMP-CELL                       1 cells                 CLAIM BPTRAMP-CELL
    ADDRESS-CELLS:INDEX-CELL           1 cells                 CLAIM ADDRESS-CELLS-INDEX
    BPTAB-OFF                          EVALD-CELL BPTAB-OFF -  CLAIM BPTAB

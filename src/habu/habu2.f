@@ -1126,7 +1126,7 @@ public
 \ so the next definition starts with none and no image holds them.
 : C-CLEAR-LOCALS ( -- )
    9 0 MOVZ,
-   9 DATA LOCN-CELL STR,  9 DATA LOCF-CELL STR,  9 DATA CAPDEPTH-CELL STR,
+   9 DATA LOCN-CELL STR,  9 DATA CAPDEPTH-CELL STR,
    9 DATA TOKLOCN-CELL STR,  9 DATA TOKDEPTH-CELL STR, ;
 
 private
@@ -2703,8 +2703,6 @@ public
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
    9 DATA JIT-SNAP:SP-CELL STR,   \ the JIT's BEGIN depth dies with the definition
-   9 DATA FWDTGT-CELL STR,        \ ...and so does its last forward target
-   9 DATA LIDX-CELL STR,          \ ...and its cached loop index
    9 DATA JIT-QUOT:SP-CELL STR,   \ ...and so do its parked quotations
    9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
@@ -3048,7 +3046,6 @@ private
          12 DATA TOKVSP-CELL LDR,  12 DATA VSP-CELL STR,
          12 DATA TOKVRF-CELL LDR,  12 DATA VRFREE-CELL STR,
          12 DATA TOKFRF-CELL LDR,  12 DATA FRFREE-CELL STR,
-         12 0 MOVZ,  12 DATA LIDX-CELL STR,              \ the refused token's reload is gone
          scope B,
       owned LBL,
       SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,

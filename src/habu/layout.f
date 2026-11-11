@@ -206,8 +206,6 @@ $0002000000000000 constant DNAME-OWNED
 131072 constant DICT-CAP
 $600000 constant CFSTK-OFF
 32 constant CF-REC
-8 constant CF-LOCN
-16 constant CF-LOCF
 24 constant CF-KIND
 \ CF-KIND names the structure that pushed the entry: `begin`
 \ and `if` both record a CP. One kind serves every opener the same closers
@@ -251,7 +249,6 @@ SOURCE-ARENA-CAP constant IBUFSZ
 0 constant DP-CELL
 8 constant HND-CELL
 16 constant LOCN-CELL
-24 constant LOCF-CELL
 $3000 constant LOCNAMES
 24 constant LOC-REC
 \ A LOC-REC is an 8-byte bare-name length followed by the name bytes; a bare
@@ -315,11 +312,7 @@ $A0 constant DEFER-XT-CELL
 \ holding a record recognises a defer's trailer by this word, never by the
 \ shape of what follows the code (an ordinary integer can hold any value).
 $4842444546455201 constant DEFER-MAGIC
-\ CMFAM-CELL: resolved construct family id, live only between the family and
-\ variant operand tokens of one `construct` form (CMM-CELL state 1 -> 2). Eager
-\ resolution means no operand string is stashed across a REPL line refill.
 \ $1A0 is the seal suite's deliberate poke hole.
-$1B0 constant CMFAM-CELL
 \ MATCH-lowering compile state, DATA-relative in the $B0..$1B0 band above the
 \ friend arena; the fam stack tops out at $D0+CMFR-MAX*8 = $1A0. CMBK-CELL is a
 \ 64-bit branch-kind bitstack (J-OF pushes 0, J-ENDOF pops and checks), so ENDOF re-arms the match token machine (CMM=4) only for a
@@ -365,18 +358,6 @@ $3690 constant TKA-CELL
 $3698 constant TKL-CELL
 $36A0 constant INP-CELL
 $36A8 constant INE-CELL
-\ FWDTGT-CELL: where the last forward branch tier 0 patched lands, as an
-\ offset from DBASE; nothing reads it. Definition-scoped like
-\ JIT-SNAP:SP-CELL: the colon entries,
-\ and EM-ABORT-COMPILE-STATE zero it.
-$36B8 constant FWDTGT-CELL
-\ LIDX-CELL: 1 while the code tier 0 emits next may read the innermost open
-\ loop's index from x29, 0 when the index must be reloaded
-\ from its memory frame. Definition-scoped like FWDTGT-CELL and
-\ zeroed beside it; every call and every control-flow push and pop zeroes it
-\ too. It sits at JIT-QUOT:END, the first cell after the quotation frames;
-\ data-claims.f proves it disjoint.
-$2C40 constant LIDX-CELL
 \ BPTRAMP-CELL: the code address of the persistent-breakpoint trampolines,
 \ BPTRAMP-BYTES of BRK words, debug.f's MAXBP two-word slots, reserved in the
 \ code band: by debug.f at load in an engine the old builder makes, by the
@@ -477,7 +458,7 @@ INP-CELL RESERVED-PTR-U8-CELL CURSOR
 \ current root and scope count (src/core/include.f LOADER). include.f stores
 \ it with `ptr-cell!` as it loads, so a cross-build's copy of include.f routes
 \ the store to the image it writes while its code reads the running hb's
-\ record. It sits at JIT-QUOT:END + 8, after LIDX-CELL, in the $2800..$3000
+\ record. It sits at JIT-QUOT:END + 8, in the $2800..$3000
 \ free header band.
 $2C48 constant SOURCE-CELL
 \ READS-CELL: the process's compile-reads record (src/core/compile-reads.f), as
@@ -1371,13 +1352,9 @@ STACK-ABI:CATCH-BYTES constant HNDF-SIZE
 \ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
 \               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel
 \               64 saved-base | 72 saved-capacity
-STACK-ABI:LOOP-FRAMES constant LOOP-STK-FRAMES
-STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 
 \ Compiler lowering transaction: all mutable pass-2 authority lives in one engine
-\ band. The frozen source+certificate lives in a separate mmap'd allocation,
-\ rounded to the largest target page, whose base and capacity are held in the
-\ protected state; read-only during replay, unmapped at commit.
+\ band.
 $5000 constant TXN-STATE-OFF
 \ The declared extent: the cells end at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells =
 \ $5300. DATA-BANDS guards this length, so PROT-GUARD refuses a store anywhere in
@@ -1394,17 +1371,7 @@ TXN-STATE-OFF $20 + constant TXN-CERT-U-CELL
 TXN-STATE-OFF $28 + constant TXN-BIND-I-CELL
 TXN-STATE-OFF $30 + constant P2-CELL
 TXN-STATE-OFF $38 + constant TXN-WF-I-CELL
-TXN-STATE-OFF $40 + constant P2BODY0-CELL
-TXN-STATE-OFF $48 + constant P2INP-CELL
-TXN-STATE-OFF $50 + constant P2INE-CELL
-TXN-STATE-OFF $60 + constant P2W0-CELL
-TXN-STATE-OFF $68 + constant P2W1-CELL
-TXN-STATE-OFF $70 + constant P2W2-CELL
-TXN-STATE-OFF $78 + constant P2W3-CELL
-TXN-STATE-OFF $80 + constant P2LOC0-CELL
 TXN-STATE-OFF $88 + constant TXN-FETCH-I-CELL
-TXN-STATE-OFF $90 + constant TXN-BLOB-A-CELL
-TXN-STATE-OFF $98 + constant TXN-BLOB-CAP-CELL
 TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
 64 constant TXN-LIVE-W-CAP
 

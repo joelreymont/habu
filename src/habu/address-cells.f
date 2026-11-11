@@ -9,8 +9,7 @@ public
 
 1 constant ABI-VERSION
 \ Process mutex in fixed image DATA, outside the header and row backing. The
-\ MATCH stack ends before $1A0, $1A0 is the seal fixture's poke cell and CMFAM
-\ starts at $1B0.
+\ MATCH stack ends before $1A0, $1A0 is the seal fixture's poke cell.
 $1A8 constant LOCK-CELL
 \ Derived process storage, never an address declaration or part of the row
 \ schema: the one unused cell between BPTRAMP ($36C0) and the breakpoint records

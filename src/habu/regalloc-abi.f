@@ -9,8 +9,5 @@ public
 
 $208  constant VRFREE-CELL      \ free-register bitmask, bit = pool index
 $36B0 constant FRFREE-CELL      \ FLOAT pool free bits: bit i = d(8+i) free
-32    constant VRTAB-BYTES      \ each table's bytes: VRITAB holds one per register x0..x31
-$3600 constant VRTAB-OFF        \ idx -> register number   (after LOCNAMES)
-VRTAB-OFF VRTAB-BYTES + constant VRITAB-OFF   \ register number -> idx ($FF = not pooled)
 
 ;package
