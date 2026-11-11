@@ -8,7 +8,7 @@ require src/arch/arm64/icode.f
 require src/os/image-bytes.f
 using A64ICODE
 using IMAGE-BYTES
-package EXECUTABLE
+package ELF
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
 76 constant ELF-MAG2

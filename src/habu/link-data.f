@@ -20,14 +20,10 @@ require src/arch/arm64/icode.f
 require src/arch/arm64/link-kernel.f
 require src/habu/fdio.f
 require src/habu/sign-id.f
-HB-TARGET-LINUX? [if]
-   require src/os/linux/elf.f
-   require src/os/linux/sign.f
-[then]
-HB-TARGET-MACOS? [if]
-   require src/os/macos/macho.f
-   require src/os/macos/sign2.f
-[then]
+require src/os/macos/macho.f
+require src/os/macos/sign2.f
+require src/os/linux/elf.f
+require src/os/linux/sign.f
 require src/habu/driver-io.f
 require src/habu/linker.f
 require src/habu/link-band.f
@@ -488,12 +484,22 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    then ;
 
 
-\ Build the open space's program as the target's file, sign it with the id and
-\ write it to the path.
+\ Build the open space's program as a file in the target's format, sign it with
+\ the id and write it to the path.
 : EMIT-IMAGE ( ptr u8 n ptr u8 n -- )
    {: sig:ptr sigu:n path:ptr pathu:n :}
-   EXECUTABLE:ASM-CODE ARM64:TEXT-VA EXECUTABLE:BUILD-IMAGE
-   sig sigu EXECUTABLE:SET-SIGID EXECUTABLE:CODESIG2
+   TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
+      macho OF
+         MACHO:ASM-CODE ARM64:TEXT-VA MACHO:BUILD-IMAGE
+         sig sigu MACHO:SET-SIGID MACHO:CODESIG2
+      ENDOF
+      elf OF
+         ELF:ASM-CODE ARM64:TEXT-VA ELF:BUILD-IMAGE
+         sig sigu ELF:SET-SIGID ELF:CODESIG2
+      ENDOF
+      pe OF s" link: no file writer for a PE target" 74 die ENDOF
+      wasm OF s" link: a Wasm target's module is written by WASM:WRITE-MODULE" 74 die ENDOF
+   ;MATCH
    path pathu DRV-WRITE-IMAGE ;
 
 

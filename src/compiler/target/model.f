@@ -260,6 +260,10 @@ public
 : ARCH@ ( resolved-target -- CTARGET:arch )
    PROFILE@ PROFILE-ARCH ;
 
+\ The file format the target's programs are written in.
+: IMAGE@ ( resolved-target -- image )
+   PROFILE@ PROFILE-IMAGE ;
+
 : PROFILE$ ( resolved-target -- ptr u8 n )
    PROFILE@ LABEL ;
 

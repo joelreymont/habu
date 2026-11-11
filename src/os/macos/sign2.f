@@ -6,7 +6,7 @@
 \ SHA256 (src/core/sha256.f, in the engine) and macho.f are loaded. Signature
 \ integers are big-endian; the header patches little-endian.
 using IMAGE-BYTES
-package EXECUTABLE
+package MACHO
 PTR-VARIABLE SIGA  variable SIGU
 : SIGA@ ( -- ptr u8 )
    SIGA @ ;

@@ -24,7 +24,7 @@ require src/arch/arm64/icode.f
 require src/os/image-bytes.f
 using A64ICODE
 using IMAGE-BYTES
-package EXECUTABLE
+package MACHO
 $FEEDFACF constant MH-MAGIC64
 $0100000C constant CPU-ARM64
 2         constant MH-EXECUTE
