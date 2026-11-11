@@ -797,6 +797,33 @@ variable RC
    s" E-BAD-DECLARATION" s" fix_family_declaration" s" pt" 1 9 8 10 PREPASS-REFUSED
    0 s" reason" s" missing ;PRODUCT" FIELD= ;
 
+: TWO-LINE-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: one:ptr oneu:n two:ptr twou:n name:ptr nameu:n :}
+   SB-RESET
+   one oneu SB-APPEND LF+
+   two twou SB-APPEND LF+
+   name nameu FIXTURE! ;
+
+\ The definer reads a body with `parse-name`, so a `\` in a closed body is a token
+\ it refuses: plain, `--all-errors` and `--verify-only` check each give that one packet.
+: TEST-PREPASS-COMMENT ( -- )
+   s" a comment in a closed SUMTYPE" T-LABEL
+   s" SUMTYPE shape VARIANT dot ;VARIANT \ note" s" ;SUMTYPE" s" sum-comment.f"
+      TWO-LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" \" 1 36 35 36 REFUSED-MODES
+   0 s" repair_class" s" fix_family_declaration" FIELD=
+   0 s" reason" s" unexpected token in sum declaration" FIELD=
+   s" a comment in a closed PRODUCT" T-LABEL
+   s" PRODUCT pt FIELD x n \ note" s" ;PRODUCT" s" prod-comment.f" TWO-LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" \" 1 22 21 22 REFUSED-MODES
+   0 s" repair_class" s" fix_family_declaration" FIELD=
+   0 s" reason" s" unexpected token in product declaration" FIELD=
+   s" a comment in a closed VALUE-RECORD" T-LABEL
+   s" VALUE-RECORD vr x n \ note" s" END-VALUE-RECORD" s" vrec-comment.f"
+      TWO-LINE-FIXTURE
+   s" E-BAD-RECORD-FIELD" s" \" 1 21 20 21 REFUSED-MODES
+   0 s" repair_class" s" fix_record_field" FIELD= ;
+
 \ The load compiles a body before it checks the definition at `;`, so a body
 \ word it cannot compile, undefined or a local it cannot bind, refuses a
 \ definition whose signature does not parse, at that word; any other error in
@@ -2310,6 +2337,7 @@ variable RC
    TEST-STRUCTURE
    TEST-PREPASS-NOMINAL
    TEST-PREPASS-OPEN
+   TEST-PREPASS-COMMENT
    TEST-BAD-SIGNATURE
    TEST-LOCAL-GROUP
    TEST-STORED-SIGNATURE

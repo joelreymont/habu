@@ -2562,12 +2562,16 @@ variable SUM-VAR-NEXT
       THEN
    LOOP ;
 
+\ A declaration name or body token, as its definer's parse-name reads one: `\` and `(`
+\ are tokens there, not comments (`ENUM colr red \ note` refuses 7101 at `\`).
+: DECL-TOKEN ( -- ptr u8 n ) NEXT-RAW ;
+
 : RECORD-SUMTYPE-BODY ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    0 SUM-VAR-N !  0 SUM-VAR-NEXT !
    BODY-RESET
    BEGIN
-      NEXT-SCAN
+      DECL-TOKEN
       dup 0= IF                        \ EOF before ;SUMTYPE -> declaration packet
          2drop
          name nameu BODY$ CHECKER-DEFSUM-NOEND
@@ -2592,15 +2596,6 @@ variable SUM-VAR-NEXT
 
 : ENUM-END? ( ptr u8 n -- bool )
    s" ;ENUM" STR=CI ;
-
-\ The token reader for a REPLAYED declaration window. NEXT-SCAN skips `\` and
-\ `(` comments; the engine reads a declaration body with `parse-name`, which
-\ has no comment rule, so `\` and `(` arrive as ordinary tokens and hit the name
-\ gate (`ENUM c red \ note` is refused 7101 "name must be a lowercase tail at
-\ '\'"). Stripping them would let a replay accept source the engine refuses.
-\ NEXT-RAW is `parse-name`'s rule. It serves the two replay windows below and
-\ the definer names NAME-TOKEN reads; every other scan keeps NEXT-SCAN.
-: DECL-TOKEN ( -- ptr u8 n ) NEXT-RAW ;
 
 \ The body keeps its ;ENUM, which the front end parses itself; one the input
 \ ends inside replays without it, and the front end refuses "missing ;ENUM".
@@ -2646,7 +2641,7 @@ variable SUM-VAR-NEXT
    name nameu at SEALED-NAME
    BODY-RESET
    BEGIN
-      NEXT-SCAN
+      DECL-TOKEN
       dup 0= IF                        \ EOF before ;PRODUCT -> declaration packet
          2drop
          name nameu BODY$ CHECKER-DEFPRODUCT-NOEND
@@ -2917,7 +2912,7 @@ variable STG-TYPE-U
    TOKEN-BYTE @ {: byte:n :}
    BODY-RESET
    BEGIN
-      NEXT-SCAN
+      DECL-TOKEN
       dup 0= IF
          2drop
          s" value-record" DECL-REJECT:OPEN

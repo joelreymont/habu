@@ -1162,6 +1162,23 @@ variable CHK-EXP-ROWS
       1+
    repeat drop k LINT-FALSE ;
 
+\ A closed SUMTYPE, PRODUCT, ENUM or STRUCTURE body is rebuilt from the raw source bytes,
+\ never from the token list: the engine reads a body with `parse-name`, which has no comment
+\ rule (`ENUM c red \ note` refuses 7101 at '\'), while the lexer drops a `\` comment, so a
+\ token-joined body would register a family the engine refuses. CHECKER-DEFSUM and
+\ CHECKER-DEFPRODUCT take the body without its terminator.
+: CHK-RAW-BODY ( n n -- )
+   {: k:n nxt:n :}
+   CHK-VREC-RESET
+   k 2 + {: b:n :}                     \ first body token
+   nxt 1 - {: t:n :}                   \ the terminator the collector matched
+   b t < IF
+      b LINT-LEX:BYTE@ {: s:n :}
+      t LINT-LEX:BYTE@ {: e:n :}
+      s CHK-VREC-ROW!
+      CHK-SRC-BUF s +  e s -  CHK-VREC-APP
+   THEN ;
+
 \ CHECKER-DEFSUM-NOEND reports an unterminated SUMTYPE through the declaration packet, as
 \ src/habu/verify-source.f does, never as a raw pre-check throw.
 : CHK-SUM-REGISTER ( n -- n ) {: k:n :}    \ k at 'sumtype'; next scan index
@@ -1173,6 +1190,7 @@ variable CHK-EXP-ROWS
       CHK-DECL-FAIL
       LINT-LEX:COUNT exit
    then {: nxt:n :}
+   k nxt CHK-RAW-BODY
    CHK-DECL-CAPTURE
    [: CHK-SUM-DO-DEF ;] catch
    CHK-DECL-FLUSH
@@ -1184,21 +1202,10 @@ variable CHK-EXP-ROWS
 \ ends (ENUM-DECL:ED-REPLAY, STRUCTURE-DECL:SD-REPLAY), which run the declaration grammar over
 \ the body and define no word; PRODUCT stays on its definer. CHK-BLOCK-COLLECT stops on the
 \ terminator without buffering it, so each replayed body re-appends it.
-\ These two arms rebuild the body from the raw source bytes, first body token to terminator,
-\ never from the token list: the engine reads a body with `parse-name`, which has no comment
-\ rule (`ENUM c red \ note` refuses 7101 at '\'), while the lexer drops a `\` comment, so a
-\ token-joined body would register a family the engine refuses.
-: CHK-DECL-RAW-BODY ( n n ptr u8 n -- ) {: k:n nxt:n ea:ptr eu:n :}
-   CHK-VREC-RESET
-   k 2 + {: b:n :}                     \ first body token
-   nxt 1 - {: t:n :}                   \ the terminator the collector matched
-   b t < IF
-      b LINT-LEX:BYTE@ {: s:n :}
-      t LINT-LEX:BYTE@ {: e:n :}
-      s CHK-VREC-ROW!
-      CHK-SRC-BUF s +  e s -  CHK-VREC-APP
-   THEN
-   ea eu  t LINT-LEX:BYTE@  CHK-VREC-TOKEN+ ;
+: CHK-DECL-RAW-BODY ( n n ptr u8 n -- )
+   {: k:n nxt:n ea:ptr eu:n :}
+   k nxt CHK-RAW-BODY
+   ea eu  nxt 1 - LINT-LEX:BYTE@  CHK-VREC-TOKEN+ ;
 : CHK-ENUM-DO-DEF ( -- )
    CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
    CHK-EXP$
@@ -1250,6 +1257,7 @@ variable CHK-EXP-ROWS
    k s" ;PRODUCT" CHK-BLOCK-COLLECT 0= if
       drop s" check.f: missing ;PRODUCT" CHK-E-CHECK CHK-FAIL
    then {: nxt:n :}
+   k nxt CHK-RAW-BODY
    CHK-DECL-CAPTURE
    [: CHK-PROD-DO-DEF ;] catch
    CHK-DECL-FLUSH
