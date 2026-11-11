@@ -1,6 +1,6 @@
 ---
 title: Delete the JIT
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-29T20:55:09.916986+02:00"
@@ -19,3 +19,5 @@ From L4's census: drop the definers.f tier rules (DEF-TIER-0 86-88, checks 379/6
 Acceptance from the arm64 assembler (DECISIONS 2026-11-05): the Gforth seed's own encoders and reach bounds (bootstrap/cg/asm.fs ?REL26, ?REL19, ADR-BUDGET) go with the seed; no second arm64 assembler remains.
 
 Joel, 2026-11-11, on the answer that the JIT meets the speed bar on zz with the Tender measure and the census of the 38 `0 set-tier` tests still to do: "do it! make sure you retire it to the jit branch before removing it". So: run the Tender measure and the census now, not after the other consumer work; before the deleting commit lands, a bookmark `jit` is pushed at the last commit that still holds the JIT (check `jj bookmark list` for an existing one first), then the deletion. Claim: agent=jerry, no workspace yet.
+
+State 2026-11-11 (jerry, fifth pickup): the 2026-10-29 census above is stale: src/lib/tier.f, test/tier.f, bootstrap/ and tools/bootstrap.sh are already gone; 10 files say `0 set-tier` and 42 name set-tier or tier@. Tier 0 is now the compiler in COMP-CELL (T0, installed by src/habu/t0.f :2064-2071) and the JIT is what tier 0 means only while COMP-CELL is 0 (src/habu/layout.f :860-876). Measured on the installed engine: a program that stores 0 into COMP-CELL and FIXED-COMP-CELL and then defines a word ends rc 76, "hb: tier 0 is not in the Habu loop" (src/habu/definers.f DEF-HEAD :383; ~/.cache/tmp/jerry-jit/twin.f). So no program's definitions can be compiled by the JIT on today's engine, and the Tender measure of T0 against the JIT cannot be run: the zz measure on dot habu-carry-the-jit-581b4474 is the last one there is. Two census lanes, no commit: jit-reach (does any engine start or built target still execute the JIT; a probe engine whose JIT entry exits 99; brief .jj-ws.noindex/jerry-wasm/.out/briefs/jit-reach.md, workspace .jj-ws.noindex/jit-reach) and jit-list (what exists only for the JIT, by line range, with what each cut needs; briefs/jit-list.md, workspace .jj-ws.noindex/jit-list). Then: push bookmark `jit` at the last commit holding the JIT (none exists yet: `jj bookmark list` shows only master), then the deleting lanes cut from jit-list. Claim: agent=jerry workspace=.jj-ws.noindex/jit-reach, .jj-ws.noindex/jit-list.
