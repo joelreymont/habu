@@ -2192,7 +2192,11 @@ documentation-only edits need no rebuild.
   (`src/lib/arena.f`). `ARENA:NEW ( -- ptr ARENA:arena )` makes one;
   `ARENA:NEW-IN ( ptr ARENA:arena -- ptr ARENA:arena )` makes a child, released
   with its parent or by itself first. `ARENA:ALLOC ( ptr ARENA:arena n -- ptr u8
-  n )` answers zeroed, cell-aligned bytes that never move. `ARENA:RESET ( ptr
+  n )` answers zeroed, cell-aligned bytes that never move. A size of zero or
+  less, or past memory, throws `E-MEM-SIZE`; a refused mapping throws
+  `E-MEM-MAP` and leaves the arena unchanged. `ARENA:ALLOC-DISPOSE ( ptr
+  ARENA:arena n [ ptr u8 -- ] -- ptr u8 n )` answers such bytes and keeps an
+  action the arena runs on them once, at its reset or release. `ARENA:RESET ( ptr
   ARENA:arena -- )` releases the children, runs the release actions newest
   first and empties the arena, whose handle stays valid; `ARENA:RELEASE` does
   the same and frees it, and a null handle is a no-op. An action that throws

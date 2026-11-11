@@ -3,9 +3,9 @@
 \ newest first, at the arena's reset or release, a public declaration publishes
 \ NAME-NEW and keeps its casts private, a HEAP or DYNAMIC-BUFFER element holds
 \ an arena handle, and a refused declaration defines none of its four words.
-\ Checked code can neither call nor tick the arena runtime words outside the
-\ generated words, live and under tools/check.f --verify-only, and no package
-\ defines its own `field-project`.
+\ tools/check.f --verify-only refuses a call or tick of HEAP's record runtime
+\ words outside the generated words, and no package defines its own
+\ `field-project`.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/arena.f

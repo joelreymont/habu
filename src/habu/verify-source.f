@@ -2841,9 +2841,8 @@ variable STG-TYPE-U
    name nameu s" -NEW-ACT" at ARENA-WORD-FREE? ;
 
 
-\ ARENA's row asks src/core/arena.f RUN's questions in its order, the four words
-\ in both sections, and registers them by their effects (CHECKER-DEFARENA);
-\ without it the rest of the source defers to the run.
+\ ARENA's row asks src/core/arena.f RUN's questions in its order and registers
+\ the four words (CHECKER-DEFARENA); without it the rest defers to the run.
 : RECORD-ARENA ( -- )
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN

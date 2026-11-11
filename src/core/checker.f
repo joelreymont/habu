@@ -16277,10 +16277,8 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    name nameu s" -RESERVE" s" n --" CHECKER-DEFSUFFIX-NAME
    name nameu s" -RELEASE" s" --" CHECKER-DEFSUFFIX-NAME ;
 
-\ ARENA's four words by their effects, for verify-source RECORD-ARENA
-\ (src/core/arena.f): the casts NAME-NEW-PTR and NAME-NEW-ACT in the private
-\ section, where the definer makes them, then NAME-NEW and NAME-NEW-DISPOSE in
-\ the declaration's own section.
+\ ARENA's four words by their effects, for verify-source RECORD-ARENA: the casts
+\ in the private section, NAME-NEW and NAME-NEW-DISPOSE in the declaration's.
 : CHECKER-DEFARENA ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PUBLIC = {: pub:bool :}

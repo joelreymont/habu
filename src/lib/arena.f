@@ -149,8 +149,7 @@ CAST: >ACTION ( ptr u8 -- ptr action )
 
 
 \ Children end before this arena's actions run, so a child's action may use
-\ what a parent's action frees. Answers the first code an action or a refused
-\ unmap raised, 0 when none.
+\ what a parent's action frees. Answers the first action or unmap code, else 0.
 : SETTLE ( ptr arena bool -- n )
    {: a:ptr keep:bool :}
    0 begin a ARENA-KIDS @ dup NULL-PTR <> while

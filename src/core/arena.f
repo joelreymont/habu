@@ -5,12 +5,13 @@
 \ ( ptr ARENA:arena -- ptr t ) and NAME-NEW-DISPOSE
 \ ( ptr ARENA:arena [ ptr t -- ] -- ptr t ), whose action runs once when the
 \ arena is reset or released. The width is the declared type's, fixed per
-\ declaration. Both words turn ARENA:ALLOC's bytes into a `ptr t` through the
-\ casts NAME-NEW-PTR and NAME-NEW-ACT, which a cast may mint only in a private
-\ section (E-CAST-MINT), so the definer makes them in the declaring package's
-\ private section and refuses a declaration outside any package (STG-NO-PACKAGE)
-\ or by a qualified name, whose casts would land in another package's public
-\ wordlist (STG-QUALIFIED-NAME).
+\ declaration. NAME-NEW types ARENA:ALLOC's bytes through the cast NAME-NEW-PTR;
+\ NAME-NEW-DISPOSE also hands its action to ARENA:ALLOC-DISPOSE through the cast
+\ NAME-NEW-ACT. Both casts mint, which only a private section admits
+\ (E-CAST-MINT), so the definer makes them in the declaring package's private
+\ section and refuses a declaration outside any package (STG-NO-PACKAGE) or by a
+\ qualified name, whose casts would land in another package's public wordlist
+\ (STG-QUALIFIED-NAME).
 
 package ARENA-DECL
 
@@ -84,8 +85,7 @@ private
 public
 
 \ The four words must be free in both sections: the casts land in the private
-\ one, and the package's bare calls resolve private-first. A multi-error load
-\ counts a cast's refusal and goes on, so ARENA then defines neither word.
+\ one, and the package's bare calls resolve private-first.
 : RUN ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" ARENA" CHECKER-STORAGE-NAME-REFUSE exit then
@@ -105,9 +105,7 @@ public
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
    then {: width:n :}
    name nameu type typeu width SOURCE {: casts:ptr castsu:n words:ptr wordsu:n :}
-   MULTI-ERR-N @ {: refused:n :}
    casts castsu mode CASTS-EVAL
-   MULTI-ERR-N @ refused <> if exit then
    words wordsu EVAL ;
 
 ;package
