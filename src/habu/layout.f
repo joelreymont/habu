@@ -7,20 +7,15 @@
 28 constant CP
 
 \ The general registers the running engine occupies.
-\ The authority: a compiled routine that writes one of these destroys the engine.
-\ src/compiler/native-effect.f derives its GPR set by removing this mask, so a
-\ register claimed here is refused by every GPR allocation path.
+\ A compiled routine that writes one of these destroys the engine.
+\ A register claimed here is refused by every GPR allocation path.
 \ ENGINE-GPR:A64-DSTACK is stated here, not read from src/arch/arm64/mnem.f XDS:
 \ mnem.f is not in every engine's prefix, so a derivation compiles in the build
-\ and dies E-UNDEFINED at run time. src/habu/rt.f RT:DSTACK-AGREE dies when the
-\ two differ. ENGINE-GPR:X64-DSTACK is read here by src/arch/x86-64/machine.f
-\ X64M:DSTACK-GPR and src/arch/x86-64/rt.f.
+\ and dies E-UNDEFINED at run time.
 \ Both targets' registers are declared on every target: this file cannot branch
-\ at top level and an ARM64 engine emits x86-64 code. DSTACK selects the running
-\ target's register at run time and refuses a target that has neither.
+\ at top level and an ARM64 engine emits x86-64 code.
 package ENGINE-GPR
 
-\ src/core/cell.f's CORE-LAYOUT-RC.
 $4C constant UNKNOWN-TARGET-RC
 
 public
@@ -34,12 +29,8 @@ public
 1 CP lshift or
 constant A64-MASK
 
-\ docs/xcomp.md "Machine model" fixes these six, and this is their one statement:
-\ src/compiler/native/x64ir.f RESERVED-MASK reads X64-MASK and adds rsp, which
-\ the machine holds and the engine does not. X64-DSTACK is A64-DSTACK's twin;
-\ each of the four after rbx is the twin of the ARM64 constant at the head of
-\ this file named beside it; rbx has none. The x86-64 boot
-\ (src/habu/boot-x64.f) sets each register by its name here.
+\ X64-DSTACK is A64-DSTACK's twin; each of the four after rbx is the twin of
+\ the ARM64 constant at the head of this file named beside it; rbx has none.
 12 constant X64-DSTACK
 3 constant X64-INTERP          \ rbx, the interpreter register
 5 constant X64-RBASE           \ rbp, the user area: XREG-RBASE, x20
@@ -63,14 +54,11 @@ constant X64-MASK
 ;package
 
 \ Fixed budget for dictionary and code, including the retained build host and
-\ its replacement core. The larger record band leaves the code band at its
-\ measured 30,404,608 bytes.
+\ its replacement core.
 $2300000 constant REGION
 \ RBASE-VA: the snapshot's canonical region base, a fixed sentinel, not the map
-\ address. The live region maps at __text base + REGION-OFF (habu2.f
-\ EM-MMAP-CODE-REGION) to keep calls inside BL's +/-128 MiB; snap-rebase
-\ canonicalizes region pointers to this sentinel and the loader rebases them, so
-\ images are byte-identical across runs.
+\ address. snap-rebase canonicalizes region pointers to this sentinel and the
+\ loader rebases them, so images are byte-identical across runs.
 $300000000 constant RBASE-VA
 \ Canonical code-region hint past __text. The engine clamps it after the loaded
 \ image and checks the resulting mapping against BL-REACH at boot.
@@ -80,21 +68,15 @@ $1000000 constant REGION-OFF
 $8000000 constant BL-REACH
 81 constant BL-RANGE-RC
 $48425350414E5321 constant SNAP-MAGIC
-\ The outer format version belongs to src/habu/snapshot-format.f, loaded
-\ independently of this potentially cached layout by every writer and reader.
 
-\ Snapshot trailer geometry; this is its single owner.
 \ The trailer ends the authenticated text extent: its base is (the header's
 \ text-size field + IMAGE-TEXT-TRAILER-ADJ) - SNAP-TRL-BYTES; the codesign blob
 \ and page padding follow outside the extent. Every trailer reader and writer
-\ derives size and offsets from here (src/habu/snap-x64.f WRITE-X64,
-\ tools/imgdump.f).
-\ src/habu/snapshot-format.f names the cell at offset 8
-\ (SNAPSHOT-FORMAT:HEAP-FIELD).
+\ derives size and offsets from here.
 48 constant SNAP-TRL-BYTES        \ magic, heap form, ndict, region len, data len, version
-16 constant SNAP-TRL-NDICT        \ dictionary record count
-24 constant SNAP-TRL-REGLEN       \ region payload length
-32 constant SNAP-TRL-DATALEN      \ data payload length
+16 constant SNAP-TRL-NDICT
+24 constant SNAP-TRL-REGLEN
+32 constant SNAP-TRL-DATALEN
 40 constant SNAP-TRL-VERSION      \ SNAPSHOT-FORMAT:VERSION of the writing engine
 \ The pre-version trailer. Only the loader may name it, and only to recognise a
 \ legacy image and fail it closed rc 80 instead of misreading its fields.
@@ -102,16 +84,11 @@ $48425350414E5321 constant SNAP-MAGIC
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
-\ Keep DICT-CAP/CFSTK-OFF/DICT-SIZE/HIDX-SLOTS/HIDX-BYTES in step; dictionary
-\ growth spends code-band bytes (CODE-BAND:BYTES). Maki's STEP import needs over
-\ 65,536 checked records.
+\ Keep DICT-CAP/CFSTK-OFF/DICT-SIZE/HIDX-SLOTS/HIDX-BYTES in step. Maki's STEP
+\ import needs over 65,536 checked records.
 $601000 constant DICT-SIZE
 \ CODE-BAND:BYTES: what REGION leaves for emitted code, [DBASE+DICT-SIZE,
-\ DBASE+REGION). The two bands share one budget: lifting DICT-CAP alone once
-\ left 36 KB of code band. A core rebuild retains its running compiler while
-\ compiling the replacement; the 35 MiB region gives the two generations
-\ 30,404,608 code bytes. The budget is fixed at run time; anonymous pages
-\ populate on demand and snapshots write only [SDB, CP).
+\ DBASE+REGION). The two bands share one budget.
 package CODE-BAND
 public
 REGION DICT-SIZE - constant BYTES
@@ -132,14 +109,8 @@ REGION DICT-SIZE - constant BYTES
 \ as the first bakes an address a restore cannot move. CAST: uses the remaining
 \ kind for a declared identity retype: its body stays callable, but a compiled
 \ mention only renames the checked value.
-\ `does>` (habu2.f DOESPATCH:EMIT) clears the bits in the window it patches the
-\ RET, on the record and every newer record with the same code pointer (an
-\ `EXPORT` alias copies DKIND:VAL), retired ones up to NDICT-HW-CELL included,
-\ since a raising `ndict!` can re-expose them. A stamped record's body is the
-\ definer's own.
+\ A stamped record's body is the definer's own.
 \ Band: bits 50-51 of the record flags cell [16] (map at DNAME-MIN-IN-MASK).
-\ The AOT seed carries the pair in a byte of its compact record
-\ (src/habu/aot-capture.f).
 package DKIND
 public
 $0004000000000000 constant VAL       \ kind 1: the body pushes a decided number
@@ -147,30 +118,26 @@ $0008000000000000 constant ADDR      \ kind 2: the body pushes its DATA address
 VAL ADDR or constant CAST           \ kind 3: a declared identity retype
 VAL ADDR or constant MASK
 ;package
-\ DNAME-ALLOC: the aligned DATA allocation start of a created word, defined in
-\ src/habu/created-body-abi.f, which the checker reads too.
+\ DNAME-ALLOC: the aligned DATA allocation start of a created word.
 CREATED-BODY-ABI:DNAME-ALLOC constant DNAME-ALLOC
 \ DNAME-CELL names the exact one-cell DATA extent made by variable. CREATE
 \ leaves it clear: a created body may allot bytewide storage.
 $0001000000000000 constant DNAME-CELL
 \ DNAME-REP (bit 46) marks a CAST: record (kind 3 above) whose certified
 \ output mints no pointer and no quotation: a representation cast, a scalar
-\ retype the native compiler lowers as the identity it is. The checker sets it
-\ through rep-mark when CAST-CERTIFY finds no mint; scoped view casts and
-\ LINEAR: records never carry it. Capture carries it in the compact record's
-\ kind byte (src/habu/aot-capture.f) and a native unit object row in its flags.
+\ retype the native compiler lowers as the identity it is. Scoped view casts and
+\ LINEAR: records never carry it.
 $0000400000000000 constant DNAME-REP
-\ DNAME-SEALED (bit 45): interpreter.f PKG-SEAL sets it on a package's namespace record; XREF:SEALED? reads it
-\ for `package` and the check tool's scan of it. Capture refuses a record carrying it (aot-capture.f ACAP-COMPACT-ONE).
+\ DNAME-SEALED (bit 45): interpreter.f PKG-SEAL sets it on a package's
+\ namespace record. Capture refuses a record carrying it.
 $0000200000000000 constant DNAME-SEALED
 \ [16] bits 45-63: flags above the name length, which every length read clears by this count.
 19 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
-\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
-\ certification (checker RECMI latch -> publish tails). LFIND folds the byte into x13 bits 8-15; src/habu/interpreter.f fails closed
-\ before the call when the interpret stack holds fewer cells. 0 = unmarked
-\ (unchecked words, words without signatures and the source prefix's words,
-\ whose top-level calls the checker's row judges: src/core/top-row.f). Compiled calls inside checked
+\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells.
+\ src/habu/interpreter.f fails closed before the call when the interpret stack
+\ holds fewer cells. 0 = unmarked (unchecked words, words without signatures
+\ and the source prefix's words). Compiled calls inside checked
 \ words are checker-proven and carry no guard. Flags cell [16]: IMM/EXT/WIDE/INT
 \ 60-63, min-in 52-59, definer kind 50-51, DNAME-OWNED 49, DNAME-CELL 48,
 \ DNAME-ALLOC 47, DNAME-REP 46, DNAME-SEALED 45, name length 0-44.
@@ -179,51 +146,36 @@ $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): the word's recorded effect carries a wider-than-cell
 \ value in some row, so running it at interpret level would leave a multi-cell
-\ bundle on the untyped interpret stack. LFIND folds the bit into x13 bit 3;
-\ src/habu/interpreter.f fails closed on it. Set by the `wide-mark`
-\ prim (habu1.f BWIDEMARK). Compiled calls inside checked definitions are
-\ unaffected.
+\ bundle on the untyped interpret stack. Compiled calls inside checked
+\ definitions are unaffected.
 $4000000000000000 constant DNAME-WIDE
-\ DNAME-INT (bit 63): a kernel primitive or engine helper no source may run,
-\ stamped as the primitive registry emits its record (ENGINE-PRIMS:DNAME). LFIND folds the bit into x13
-\ bit 4; src/habu/interpreter.f fails closed with `hb: internal engine
-\ word: <token>` rc 70. Compile-mode references (unchecked code, TRUSTED:
+\ DNAME-INT (bit 63): a kernel primitive or engine helper no source may run.
+\ Compile-mode references (unchecked code, TRUSTED:
 \ bodies) are declared trusted boundaries and unaffected.
 $8000000000000000 constant DNAME-INT
-\ DNAME-OWNED (bit 49): an internal primitive its owner's rows type. A package
-\ row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states its effect, so
-\ ENGINE-PRIMS:DNAME stamps the bit beside DNAME-INT. It opens nothing
-\ DNAME-INT closes: the prompt, `'`, search-wl and `[']` still refuse the
-\ record. Only the compile guards read it (src/habu/t0.f at tier 0; at tier 1 src/compiler/native/dict.f NDICT:INT-CALL?, which CALL-BINDING
-\ and src/compiler/native/hir-word.f RESOLVE-SITE ask), and with it a compiled
-\ call is the checker's decision through the rows: the owner's checked callers
-\ compile, and the global trusted-only row refuses a checked caller elsewhere.
+\ DNAME-OWNED (bit 49): an internal primitive its owner's rows type. It opens
+\ nothing DNAME-INT closes: the prompt, `'`, search-wl and `[']` still refuse
+\ the record. With it a compiled call is the checker's decision through the
+\ rows: the owner's checked callers compile, and the global trusted-only row
+\ refuses a checked caller elsewhere.
 \ DNAME-INT without it keeps the compile refusal outside a TRUSTED: body.
 $0002000000000000 constant DNAME-OWNED
-\ DICT-CAP: dictionary record slots. 131072 exceeds the imm16 field, so the
-\ DICT-CAP comparison sites in habu2.f load it with LIT64,
-\ one instruction for a single-chunk value; asm.f ?IMM16 dies on a missed site.
+\ DICT-CAP: dictionary record slots.
 131072 constant DICT-CAP
 $600000 constant CFSTK-OFF
 32 constant CF-REC
 \ Control-flow stack region [CFSTK-OFF, DICT-SIZE): cell 0 is the depth counter,
-\ then CF-REC-byte records. CFSTK-REGION-CAP is how many records fit above the
-\ counter without spilling into the JIT code area at DBASE+DICT-SIZE.
-\ CFSTK-DEPTH-MAX is min(region capacity, a sane ceiling) and
-\ always exceeds the checker's CFS cap 31 (CF-PUSH marks UNCK past 31).
-DICT-SIZE CFSTK-OFF - 1 cells - CF-REC / constant CFSTK-REGION-CAP   \ 127 records fit
-256 constant CFSTK-SANE-MAX                                          \ forward sanity ceiling
-CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 127 = min(region, sane)
+\ then CF-REC-byte records. CFSTK-DEPTH-MAX always exceeds the checker's CFS
+\ cap 31.
+DICT-SIZE CFSTK-OFF - 1 cells - CF-REC / constant CFSTK-REGION-CAP
+256 constant CFSTK-SANE-MAX
+CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX
 
 \ Profiler counter band: one 64-bit sample counter per dictionary slot, reserved
 \ at the very top of the DATA region [DATA-SIZE - PROF-CNT-BYTES, DATA-SIZE).
-\ Sized from DICT-CAP so it always covers every slot BPROF-ON zeroes and EMIT-PROF
-\ indexes (NDICT never exceeds DICT-CAP); src/habu/prof-abi.f PROF-BAND-AT
-\ derives the band base offset as DATA-SIZE - PROF-CNT-BYTES. The band opens
-\ with PROF-STATE-BYTES of the profiler's own cells (sample total and limit, the
-\ two buckets, the dictionary base recorded by prof-on, the arena, the clock)
-\ and the counters follow. Grows in step with DICT-CAP with no magic byte
-\ count, so the band can never fall short of the slots it serves.
+\ The band opens with PROF-STATE-BYTES of the profiler's own cells (sample
+\ total and limit, the two buckets, the dictionary base recorded by prof-on, the
+\ arena, the clock) and the counters follow.
 56 constant PROF-STATE-BYTES
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
@@ -238,16 +190,12 @@ $400000 constant SOURCE-ARENA-CAP
 $3000 constant LOCNAMES
 24 constant LOC-REC
 \ A LOC-REC is an 8-byte bare-name length followed by the name bytes; a bare
-\ name wider than the field is refused by C-LBRACE-STORE-ONE (habu2.f) before
-\ it is stored.
+\ name wider than the field is refused before it is stored.
 LOC-REC 8 - constant LOC-NAME-CAP
 64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes)
-\ Tier 1's arm64 body capture scopes the locals it records by block, as
-\ src/habu/interpreter.f BODY-BLOCK-STEP does on x86-64:
+\ Tier 1's arm64 body capture scopes the locals it records by block:
 \ CAPDEPTH-CELL is the block depth and TOKDEPTH-CELL the depth as the current
-\ token began, restored with TOKLOCN-CELL's mark. A definition opener zeroes
-\ the depth with LOCN-CELL. They sit in the $2800..$3000 free header band past
-\ PROGRAM-FILE-CELL ($2DB0).
+\ token began, restored with TOKLOCN-CELL's mark.
 $2DB8 constant CAPDEPTH-CELL
 $2DC0 constant TOKDEPTH-CELL
 \ The friend arena: one write-protected band [FRIEND-ARENA,
@@ -257,20 +205,15 @@ $2DC0 constant TOKDEPTH-CELL
 \ arena base: 0 while the engine loads its own source (guard inert),
 \ FRIEND-ARENA-LEN once SEAL-FRIEND runs at the end of the cold prefix. Post-seal
 \ any raw write into the band, the latch included, traps, so the seal is one-way.
-\ The band sits below DATA-START, out of reach of the DP heap (DP-CHECK); only
-\ sinks storing to a computed address (! c! +! atomic* patch32 snap-rebase,
-\ syscall write buffers) carry the range check. PROT-GUARD also checks the
-\ protected-WID registry below.
-\ SEAL-NDICT-CELL ($A8) holds the seal-time ndict watermark. The latch seals
-\ early (habu1.f BSEALFRIEND), so SEAL-CAPTURE tokens (habu1.f BSEALCAP) capture
-\ the watermark later: a baseline at the end of xref.f and the cold-prefix
-\ assembler's token at the engine-prefix end (after script-argv.f).
-\ HIDE-DEFS-FROM/FORGET-DEFS-FROM (xref.f) refuse a post-seal FORGET below it;
+\ The band sits below DATA-START, out of reach of the DP heap; only sinks
+\ storing to a computed address carry the range check.
+\ SEAL-NDICT-CELL ($A8) holds the seal-time ndict watermark.
+\ HIDE-DEFS-FROM/FORGET-DEFS-FROM refuse a post-seal FORGET below it;
 \ it is in the sealed band so user source cannot lower it.
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
-FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
-$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark; 0 until SEAL-CAPTURE
+FRIEND-ARENA constant FRIEND-LATCH-CELL
+$A8 constant SEAL-NDICT-CELL
 
 67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW):
                                         \ the kernel masks a raw code to 8 bits, so a multiple
@@ -297,8 +240,8 @@ $4842444546455201 constant DEFER-MAGIC
 \ $1A0 is the seal suite's deliberate poke hole.
 \ CMBK-CELL and CMFRD-CELL: zeroed by both kernels' compile reset; nothing
 \ reads them.
-$B0 constant CMBK-CELL                  \ ENDOF branch-kind bitstack (0=case arm, 1=match branch)
-$C8 constant CMFRD-CELL                 \ MATCH nesting depth (0 = not in a match)
+$B0 constant CMBK-CELL
+$C8 constant CMFRD-CELL
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
@@ -307,8 +250,8 @@ $3640 constant REPLH-CELL               \ claimed; no code reads or writes it
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
-\ PROGRAM-FILE-CELL: argv[1]'s string once the launcher (main.f RUN) runs it as the program file, else 0; src/core/include.f reads it.
-\ It takes $2DB0, the first cell after TASK-CHAIN-CELL.
+\ PROGRAM-FILE-CELL: argv[1]'s string once the launcher runs it as the program
+\ file, else 0.
 $2DB0 constant PROGRAM-FILE-CELL
 \ PEND-CELL: the record of the definition the engine holds open and not yet
 \ published, 0 when none.
@@ -316,24 +259,21 @@ $3688 constant PEND-CELL
 \ A definition whose capture ran a parsing immediate has construction inputs
 \ outside the body text. The native cache reads this only through the running engine's
 \ native-pending-opaque? primitive. The cell is transient and clears with
-\ PEND-CELL on close or abandonment. $2D48 follows NATIVE-HOST-CELLS:DIVISION-PRIM.
+\ PEND-CELL on close or abandonment.
 $2D48 constant PEND-OPAQUE-CELL
 $3690 constant TKA-CELL
 $3698 constant TKL-CELL
 $36A0 constant INP-CELL
 $36A8 constant INE-CELL
 \ BPTRAMP-CELL: the code address of the persistent-breakpoint trampolines,
-\ BPTRAMP-BYTES of BRK words, debug.f's MAXBP two-word slots, reserved in the
-\ code band: by debug.f at load in an engine the old builder makes, by the
-\ arm64 start-up (src/arch/arm64/boot.f) at the live code's start in a linked one.
+\ BPTRAMP-BYTES of BRK words, reserved in the code band.
 $36C0 constant BPTRAMP-CELL
 64 constant BPTRAMP-BYTES
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
-\ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest, each a mapping
-\ src/habu/interpreter.f INTERPRETER:FRAME-OPEN fills. EVAL-PREV links each to
-\ the frame it nests in.
+\ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest. EVAL-PREV links
+\ each to the frame it nests in.
 $43C0 constant EVAL-TOP-CELL
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
@@ -351,32 +291,26 @@ $48 constant EVAL-PKG
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
-\ USE-WIDS: the includer's USE-MAX used-public wids (USE-WIDS-OFF), which a
-\ throw puts back with the depth and the floor (habu2.f LEVALREC). A buffer
-\ that closes its includer's package and then opens a using writes that using
-\ into a slot the includer keeps; the checker reads each slot's name back from
-\ the restored wid (checker.f CHECKER-RESYNC).
+\ USE-WIDS: the includer's USE-MAX used-public wids, which a throw puts back
+\ with the depth and the floor. A buffer that closes its includer's package and
+\ then opens a using writes that using into a slot the includer keeps.
 $A0 constant USE-WIDS
 \ PEND: PEND-CELL as the buffer began. A definition the buffer opened must
-\ close in it, so its end refuses one still open (interpreter.f RC-UNCLOSED); one
-\ already open here belongs to an outer buffer, whose immediate word's evaluate
-\ compiles into it, and a throw that unwinds this buffer leaves it compiling
-\ (habu2.f EM-EVAL-THROW-RECOVER).
+\ close in it, so its end refuses one still open; one already open here belongs
+\ to an outer buffer, whose immediate word's evaluate compiles into it, and a
+\ throw that unwinds this buffer leaves it compiling.
 $120 constant PEND
 \ ROWS: the checker's record end as the buffer began, plus one, read through
-\ the source owner (interpreter.f ROWS-MARK); 0 when no owner records. A throw that
-\ unwinds a buffer owning the compile cuts the records back to it as it rolls
-\ the dictionary back (habu2.f EM-EVAL-THROW-RECOVER), so no definition the
-\ rollback drops keeps a record or a pending window.
+\ the source owner; 0 when no owner records. A throw that unwinds a buffer
+\ owning the compile cuts the records back to it as it rolls the dictionary
+\ back, so no definition the rollback drops keeps a record or a pending window.
 $138 constant ROWS
 \ SX-CTX: the source observer this buffer adopted, 0 when it adopted none. An
-\ observed word that evaluates a buffer hands the observer to that buffer
-\ (interpreter.f OBSERVE-ADOPT): SX-TICKET and SX-SRC keep
-\ the word's ticket and its source start, which the clean exit and the throw
-\ recovery put back with the word's run pending again (habu1.f
-\ ENGINE-EMIT:SX-RESTORE,, interpreter.f OBSERVE-RESTORE). The observer's frame
-\ needs no cell: adoption requires it to be the frame this buffer nests in,
-\ EVAL-PREV.
+\ observed word that evaluates a buffer hands the observer to that buffer:
+\ SX-TICKET and SX-SRC keep the word's ticket and its source start, which the
+\ clean exit and the throw recovery put back with the word's run pending again.
+\ The observer's frame needs no cell: adoption requires it to be the frame this
+\ buffer nests in, EVAL-PREV.
 $140 constant SX-CTX
 $148 constant SX-TICKET
 $150 constant SX-SRC
@@ -388,19 +322,14 @@ $158 constant ENCLOSING
 $178 constant PKG-OUTSIDE
 ;package
 
-\ Every engine load refusal reaching the LCOMPILEDIE tail names its source as
-\ `<message> at <path>`, then `:<line>` under SRCLOC:FILE-BUFFER?.
 \ PATH-CELL / PATHLEN-CELL: the innermost open include frame's path, 0/0 with
-\ no include frame open: the root source stream's own text (src/habu/main.f:
-\ stdin, tty or piped, or the `--load` and `--build` streams) and the boot
-\ prefix. The program file of a plain `hb <file>` has a frame of its own.
-\ src/core/include.f SOURCE-ROOT:PUSH copies the resolved path into its frame and publishes it; POP
-\ republishes the parent's. The address is the frame's, not INCLUDE-PATH's,
-\ because a nested include overwrites that buffer.
-\ INB-CELL: the start of the buffer INP walks, which SRCLOC:FILE-BUFFER? tests
-\ against the file's owned bytes. interpreter.f EVAL-FRAMED-RANGE sets it, its
-\ frame keeping the outer value in EVAL-INB. It is not beside INP/INE: $36C8 is
-\ address-cells.f INDEX-CELL.
+\ no include frame open: the root source stream's own text (stdin, tty or
+\ piped, or the `--load` and `--build` streams) and the boot prefix. The
+\ program file of a plain `hb <file>` has a frame of its own. The address is
+\ the frame's, not INCLUDE-PATH's, because a nested include overwrites that
+\ buffer.
+\ INB-CELL: the start of the buffer INP walks. It is not beside INP/INE: $36C8
+\ is INDEX-CELL.
 \ All three sit in the $2800..$3000 free header band, below $7FF8 for a
 \ `DATA <off> LDR` and below DATA-START.
 package SRCLOC
@@ -412,15 +341,12 @@ $2810 constant INB-CELL
 \ An inner evaluate changes INB, but never changes this file span.
 $2D68 constant OWNED-CELL
 $2D70 constant OWNEDLEN-CELL
-\ CURSOR: INP-CELL as a declared cell, the byte address the scanner reads next.
-\ The native FILE cache reads it at a loader cut.
+\ CURSOR: the byte address the scanner reads next.
 INP-CELL RESERVED-PTR-U8-CELL CURSOR
 \ SOURCE-CELL: the address of the process's loader record, its top frame,
-\ current root and scope count (src/core/include.f LOADER). include.f stores
-\ it with `ptr-cell!` as it loads, so a cross-build's copy of include.f routes
-\ the store to the image it writes while its code reads the running hb's
-\ record. It sits at JIT-QUOT:END + 8, in the $2800..$3000
-\ free header band.
+\ current root and scope count. include.f stores it with `ptr-cell!` as it
+\ loads, so a cross-build's copy of include.f routes the store to the image it
+\ writes while its code reads the running hb's record.
 $2C48 constant SOURCE-CELL
 \ READS-CELL: the process's compile-reads record (src/core/compile-reads.f), as
 \ SOURCE-CELL holds its own: a cross-build's copy of that file uses hb's record.
