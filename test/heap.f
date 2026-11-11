@@ -4,11 +4,11 @@
 \ JSON:cursor runs a reader with no cast; a record holds an arena by pointer;
 \ a refused declaration (a sub-cell element, an unknown type) defines
 \ nothing; checked code can neither call nor tick RECORD-NEW or
-\ RECORD-RELEASE outside HEAP's generated words; a record pointer still enters
-\ no other generic-pointer word; and tools/check.f --verify-only certifies a
-\ word using a HEAP's words instead of deferring the rest of the source to the
-\ run, and refuses a call or tick of the record runtime words, at top level
-\ under its own code.
+\ RECORD-RELEASE outside HEAP's generated words; a record pointer enters no
+\ generic-pointer word that reads a cell; and tools/check.f --verify-only
+\ certifies a word using a HEAP's words instead of deferring the rest of the
+\ source to the run, and refuses a call or tick of the record runtime words, at
+\ top level under its own code.
 require src/lib/test.f
 require src/lib/json.f
 require src/lib/arena.f
@@ -36,7 +36,7 @@ EXPORT DYNAMIC-STORAGE:RECORD-RELEASE
 ;package
 
 \ An ordinary word with RECORD-RELEASE's generic pointee.
-: TAKE ( ptr a n -- ) 2drop ;
+: TAKE ( ptr a n -- ) drop @ drop ;
 
 TYPED-VARIABLE EVAL-A ptr u8
 variable EVAL-U
@@ -123,7 +123,7 @@ variable EVAL-U
    s" NULL-PTR 16 DYNAMIC-STORAGE:RECORD-RELEASE" EVAL CHECKER-REJECT-RC T=
    s" : Z6 ( -- ) NULL-PTR 16 RECORD-PX:RECORD-RELEASE ;" EVAL CHECKER-REJECT-RC T=
    s" Z6" UNDEFINED? TTRUE
-   s" a record pointer enters no other generic-pointer word" T-LABEL
+   s" a record pointer enters no generic-pointer word that reads a cell" T-LABEL
    s" : Z4 ( ptr note -- ) 16 TAKE ;" EVAL CHECKER-REJECT-RC T=
    s" Z4" UNDEFINED? TTRUE ;
 

@@ -1,0 +1,225 @@
+\ stored-type-param.f - a type variable that occurs only where a type is stored,
+\ behind a pointer or in a family slot the family's width does not read, stands
+\ for any stored type, a two-cell record included, while the word's body needs
+\ no one-cell value of it. The refusals land at the call, never at the word.
+require src/lib/test.f
+require src/lib/string.f
+
+DEFLINEAR stored-type-lin
+
+\ Public: the refused callers compile at run time, outside the package.
+package STORED
+
+public
+
+STRUCTURE turn DERIVE addr FIELD alive bool FIELD angle r ;STRUCTURE
+STRUCTURE node DERIVE addr FIELD kind n ;STRUCTURE
+NEWTYPE ev<a>
+\ A phantom argument: no field holds `a`.
+STRUCTURE run<a> DERIVE addr FIELD count n FIELD step n ;STRUCTURE
+\ A width argument: `item` holds an `a` by value.
+STRUCTURE box<a> DERIVE addr FIELD item a FIELD rest n ;STRUCTURE
+STRUCTURE lrec DERIVE addr FIELD hold stored-type-lin ;STRUCTURE
+
+: SAME ( ptr t -- ptr t ) ;
+: READ ( ptr t -- t ) @ ;
+: POKE ( t ptr t -- ) ! ;
+: STEP ( ptr t -- ptr t ) 8 + ;
+defer P ( ptr a -- ptr a )
+: VIA ( ptr t -- ptr t ) P ;
+\ The callee's one-cell `a` reaches `t` through SAME's stored one.
+: VIA2 ( ptr t -- ptr t ) P SAME ;
+: IN-BOX ( box<t> -- box<t> ) ;
+: LOCAL-READ ( ptr t -- ptr t )
+   {: p:ptr :}
+   p @ drop p ;
+TYPED-VARIABLE TA turn
+
+private
+
+CAST: N>EV-TURN ( n -- ev<turn> )
+CAST: EV-TURN>N ( ev<turn> -- n )
+CAST: N>EV-N ( n -- ev<n> )
+CAST: EV-N>N ( ev<n> -- n )
+CAST: N>EV-NODE ( n -- ev<ptr node> )
+CAST: EV-NODE>N ( ev<ptr node> -- n )
+
+TYPED-VARIABLE TV turn
+TYPED-VARIABLE PV ptr turn
+TYPED-VARIABLE RT run<turn>
+TYPED-VARIABLE RN run<n>
+2 TYPED-BUFFER NB n
+
+: PASS ( ev<t> -- ev<t> ) ;
+: COUNT ( ptr run<t> -- n ) STORED-RUN:COUNT @ ;
+: KEEP ( ptr t ptr ptr t -- ) ! ;
+: OUTER ( ptr t -- ptr t ) SAME ;
+: NULL? ( ptr t -- bool ) NULL-PTR = ;
+: OLD-STEP ( ptr a -- ptr a ) 8 + ;
+: LOCAL-DROP ( ptr t -- )
+   {: p:ptr :} ;
+: LOCAL-KEEP ( ptr t -- ptr t )
+   {: p:ptr :}
+   p ;
+
+\ A `=` over two `ptr turn` is refused: the pointer row of `=` takes one cell.
+: ADDR ( ptr turn -- n ) NULL-PTR - ;
+: TV? ( ptr turn -- bool ) ADDR  TV ADDR = ;
+
+\ The admitted callers: each loads only if its record type is taken.
+: PASS-TURN ( -- n ) 16 N>EV-TURN PASS EV-TURN>N ;
+: PASS-N ( -- n ) 8 N>EV-N PASS EV-N>N ;
+: PASS-NODE ( -- n ) 24 N>EV-NODE PASS EV-NODE>N ;
+: SAME-TURN ( -- bool ) TV SAME TV? ;
+: COUNT-TURN ( -- n ) 5 RT STORED-RUN:COUNT !  RT COUNT ;
+: COUNT-N ( -- n ) 6 RN STORED-RUN:COUNT !  RN COUNT ;
+: KEEP-TURN ( -- bool ) TV PV KEEP  PV @ TV? ;
+: OUTER-TURN ( -- bool ) TV OUTER TV? ;
+: NULL-TURN ( -- bool ) TV NULL? ;
+: OLD-STEP-N ( -- bool ) 0 NB OLD-STEP  1 NB = ;
+: LOCAL-TURN ( -- bool ) TV LOCAL-DROP  TV LOCAL-KEEP TV? ;
+
+70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
+
+8192 constant DIAG-CAP
+create DIAG-BUF DIAG-CAP allot
+
+: ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
+   DIAG-BUF DIAG-CAP DIAG-BUFFER!  true DIAG-JSON! ;
+
+: DISARM ( -- )
+   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+
+: HAS? ( ptr u8 n -- )
+   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+
+\ The refusal is a mismatch at the call token the string names.
+: MISMATCH-AT ( ptr u8 n -- )
+   HAS?  S\" \"code\":\"E-MISMATCH\"" HAS? ;
+
+: CASE-PASS ( -- )
+   s" a record, a number and a pointer pass through ev<t>" T-LABEL
+   PASS-TURN 16 T=  PASS-N 8 T=  PASS-NODE 24 T= ;
+
+: CASE-POINTER ( -- )
+   s" ptr t, ptr run<t> and ptr ptr t take a two-cell record" T-LABEL
+   SAME-TURN TTRUE  COUNT-TURN 5 T=  COUNT-N 6 T=  KEEP-TURN TTRUE
+   OUTER-TURN TTRUE ;
+
+: CASE-NULL ( -- )
+   s" a ptr t compared with the null takes a record pointer" T-LABEL
+   NULL-TURN TFALSE ;
+
+: CASE-LOCAL ( -- )
+   s" a ptr local takes a record pointer until a fetch through it" T-LABEL
+   LOCAL-TURN TTRUE
+   ARM
+   [: s" : STORED-R11 ( ptr STORED:turn -- ptr STORED:turn ) STORED:LOCAL-READ ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:LOCAL-READ\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-OLD-STEP ( -- )
+   s" a pointer step over ptr n is unchanged" T-LABEL
+   OLD-STEP-N TTRUE ;
+
+: CASE-READ ( -- )
+   s" a body that fetches a t takes no record" T-LABEL
+   ARM
+   [: s" : STORED-R1 ( ptr STORED:turn -- STORED:turn ) STORED:READ ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:READ\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-POKE ( -- )
+   s" nor one that stores a t" T-LABEL
+   ARM
+   [: s" : STORED-R2 ( STORED:turn ptr STORED:turn -- ) STORED:POKE ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:POKE\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-STEP ( -- )
+   s" nor one that steps the pointer" T-LABEL
+   ARM
+   [: s" : STORED-R3 ( ptr STORED:turn -- ptr STORED:turn ) STORED:STEP ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:STEP\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-VIA ( -- )
+   s" nor one that hands it to a one-cell variable" T-LABEL
+   ARM
+   [: s" : STORED-R4 ( ptr STORED:turn -- ptr STORED:turn ) STORED:VIA ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:VIA\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-VIA2 ( -- )
+   s" nor one that does so before a stored-type call" T-LABEL
+   ARM
+   [: s" : STORED-R5 ( ptr STORED:turn -- ptr STORED:turn ) STORED:VIA2 ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:VIA2\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-RECURSE ( -- )
+   s" a recursive call takes an ordinary variable" T-LABEL
+   ARM
+   [: s" : STORED-R9 ( ptr t ptr t n -- ) dup 0 > IF drop 2drop STORED:TA STORED:TA 0 RECURSE EXIT THEN drop swap @ swap ! ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"RECURSE\"" MISMATCH-AT
+   DISARM
+   ARM
+   [: s" : STORED-R10 ( ptr t ptr t n -- ) dup 0 = IF drop swap @ swap ! EXIT THEN drop 2drop STORED:TA STORED:TA 0 RECURSE ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"RECURSE\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-WIDTH-SLOT ( -- )
+   s" a slot the family's width reads takes no record" T-LABEL
+   ARM
+   [: s" : STORED-R6 ( STORED:box<STORED:turn> -- STORED:box<STORED:turn> ) STORED:IN-BOX ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:IN-BOX\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-LINEAR ( -- )
+   s" a record with a linear member is not a stored type" T-LABEL
+   ARM
+   [: s" : STORED-R7 ( ptr STORED:lrec -- ptr STORED:lrec ) STORED:SAME ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:SAME\"" MISMATCH-AT
+   DISARM ;
+
+: CASE-OPEN ( -- )
+   s" nor is a record open in the caller's own variable" T-LABEL
+   ARM
+   [: s" : STORED-R8 ( ptr STORED:box<a> -- ptr STORED:box<a> ) STORED:SAME ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"token\":\"STORED:SAME\"" MISMATCH-AT
+   DISARM ;
+
+public
+
+: RUN ( -- )
+   T-RESET
+   CASE-PASS
+   CASE-POINTER
+   CASE-NULL
+   CASE-LOCAL
+   CASE-OLD-STEP
+   CASE-READ
+   CASE-POKE
+   CASE-STEP
+   CASE-VIA
+   CASE-VIA2
+   CASE-RECURSE
+   CASE-WIDTH-SLOT
+   CASE-LINEAR
+   CASE-OPEN
+   T-REPORT ;
+
+;package
+
+STORED:RUN

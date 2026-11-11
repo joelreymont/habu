@@ -752,18 +752,20 @@ s" RFB-L1 ( rfbtag rfbpair<rfbtag,rfberr> -- rfbtag ) RFB-LATER"
 s" RFB-L2 ( rfberr rfbpair<rfbtag,rfberr> -- rfberr ) RFB-LATER"
    CHECK-QUIET-CANDIDATE! 0 T=
 
-\ Wide or open family terms, one-cell families containing a linear resource,
-\ and pointer-strict generic pointees cannot ground the alias variable. Nominal
-\ family and payload roles stay exact, including after logical values lower to
-\ hidden physical fields.
+\ The alias variable occurs only in stored positions, so it takes a two-cell
+\ term and a term behind a pointer.
 : RFB-PTR-ID ( ptr rfbpair<a,a> -- ptr rfbpair<a,a> ) ;
 s" RFB-WIDE ( rfbpair<clw2,clw2> -- rfbpair<clw2,clw2> ) RFB-ALIAS"
-   CHECK-QUIET-CANDIDATE! 0 T=
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" RFB-PTR ( ptr rfbpair<rfbtag,rfbtag> -- ptr rfbpair<rfbtag,rfbtag> ) RFB-PTR-ID"
+   CHECK-QUIET-CANDIDATE! -1 T=
+
+\ Open family terms and one-cell families containing a linear resource cannot
+\ ground the alias variable. Nominal family and payload roles stay exact,
+\ including after logical values lower to hidden physical fields.
 s" RFB-OPEN ( rfbpair<clopt<a>,clopt<a>> -- rfbpair<clopt<a>,clopt<a>> ) RFB-ALIAS"
    CHECK-QUIET-CANDIDATE! 0 T=
 s" RFB-LIN ( rfbpair<rfbcell<own>,rfbcell<own>> -- rfbpair<rfbcell<own>,rfbcell<own>> ) RFB-ALIAS"
-   CHECK-QUIET-CANDIDATE! 0 T=
-s" RFB-PTR ( ptr rfbpair<rfbtag,rfbtag> -- ptr rfbpair<rfbtag,rfbtag> ) RFB-PTR-ID"
    CHECK-QUIET-CANDIDATE! 0 T=
 s" RFB-XFAM ( rfbtag -- clopt<rfbtag> ) RESULT:OK"
    CHECK-QUIET-CANDIDATE! 0 T=

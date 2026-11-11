@@ -1172,6 +1172,15 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   (`[: >r ;] execute r>`).
 - A **type var** (`a`, `b`, …) is a fresh polymorphic type; one letter in one
   signature is one type. `n`, `f` and `r` are concrete types, not type vars.
+- A type var stands for a one-cell type, except where a checked `:`
+  definition's effect names it only in stored positions: behind a `ptr`, or as
+  an argument of a family whose width does not read it (a `NEWTYPE`'s, a
+  `STRUCTURE`'s phantom argument), at any depth through such positions. There
+  it stands for any stored type, a two-cell record included: `: SAME ( ptr t --
+  ptr t ) ;` takes `ptr turn`. A body that fetches, stores or steps through the
+  pointer, or hands the var to a word whose var stands for one cell (a
+  primitive such as `=`, a `defer`, the word's own `RECURSE`), makes it one
+  cell again, and a record is refused at the call (`E-MISMATCH`).
 - Type, role and family names are lower case and case-sensitive: `I64` and
   `IDX` reject as bad signatures.
 - Blanks separate tokens, and a line break or a tab is one, so a long effect
@@ -1460,10 +1469,10 @@ A quantifier in a declared effect promises the word works for every type
 there. After the body checks, the checker rejects three
 shapes with `E-NONPARAMETRIC-EFFECT` (`fix_parametric_effect`):
 
-1. **Specialization to a sealed family.** A body that forces a quantifier to an
-   arity-0 nominal or a layout family is refused, naming it: `: F ( a -- a )
-   EFF-ID ;` with `EFF-ID ( region -- region )`. Scalar widening (`a := n`) stays
-   legal, so `( ptr a -- n ) @` is untouched.
+1. **Specialization to a concrete type.** A body that forces a quantifier to a
+   concrete type is refused, naming it: `: F ( a -- a ) EFF-ID ;` with
+   `EFF-ID ( region -- region )`, and `( ptr a -- n ) @`, which reads the cell
+   as `n`: declare `( ptr n -- n )`.
 2. **Quantifier aliasing.** A body that unifies two declared quantifiers is
    refused, naming both: `: F ( a b -- a ) MERGE ;` with `MERGE ( g g -- g )`.
 3. **Row aliasing or fixing.** Every named row and the unnamed row stay

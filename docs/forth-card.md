@@ -112,6 +112,11 @@ cannot execute: `E-EXEC-OPAQUE-XT`.
      {: p:ptr :}
      p @ ;
   ```
+- A type var named only behind `ptr`, or in a family argument the family's
+  width does not read, takes any stored type: `: SAME ( ptr t -- ptr t ) ;`
+  takes `ptr turn`. Fetching, storing or stepping through it, or passing it to
+  a primitive, a `defer` or `RECURSE`, makes it one cell: a record is
+  `E-MISMATCH` at the call.
 - Concrete integers widen when lossless (`u8 → u16 → u32 → cell/i64`). Generic
   `n` accepts structural integer stack cells in either direction: `n` can pass
   to `u32`, while `i64` needs an explicit conversion. In a definition's body a
