@@ -739,15 +739,9 @@ public
    9 DATA CRSIG-U-CELL STR, ;
 
 private
-\ The word frame is decided at `;`, not at the colon: the JIT is single pass, so
-\ the opener emits the link-register save and leaves the slot's address in
-\ FRAME-CELL, and every emitter that puts a call in the body counts it in the
-\ cell's low two bits. A tail branch that
-\ removed the only call has already rewritten the slot and zeroed the cell. A body that called gets the restore; one that did not has
-\ its slot rewritten to a nop in place, so every address recorded during the
-\ compile (branch placeholders, the record start, quotation entries,
-\ breakpoints) still names its instruction. The nop is written through the
-\ alias and flushed at `;`.
+\ EMPTY-BODY, emits the link-register save and leaves the slot's address in
+\ FRAME-CELL; the body calls nothing, so `;` rewrites the slot to a nop in
+\ place, through the alias, and flushes it.
 \ SLOT-NOP, rewrites the entry slot at x9 to a nop; clobbers x1, x11.
 : SLOT-NOP, ( -- )
    1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 9 1 ADD,     \ through the alias
@@ -755,15 +749,7 @@ private
 
 public
 : EM-COMPILE-RET ( -- )
-   LBL LBL {: leaf:label done:label :}
-   11 DATA FRAME-CELL LDR,
-   11 done CBZ,                                        \ no frame was opened for this body
-   10 11 1 ANDI,  10 leaf CBZ,
-      9 W-LINKREST LIT64,  LCEMIT LABEL@ BL,           \ ldr x30,[sp],#16
-      done B,
-   leaf LBL,                                           \ no call, so x11 IS the slot
-      9 11 0 ADDI,  SLOT-NOP,
-   done LBL,
+   9 DATA FRAME-CELL LDR,  SLOT-NOP,                   \ the slot becomes a nop
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 0 MOVZ,  9 DATA FRAME-CELL STR, ;
 

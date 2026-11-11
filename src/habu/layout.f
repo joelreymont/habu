@@ -986,9 +986,6 @@ CHECKER-OWNER-ABI:RECOVERY-USED-OFF constant DECL-RECOVERY-USED-OFF
 CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF constant DECL-DOES-UNJUDGED-OFF
 CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF constant DECL-NATIVE-DOES-FINISH-OFF
 CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF constant DECL-NATIVE-DOES-REPORT-OFF
-CHECKER-OWNER-ABI:CERT-BYTES-OFF constant DECL-CERT-BYTES-OFF
-CHECKER-OWNER-ABI:CERT-KEEP-OFF constant DECL-CERT-KEEP-OFF
-CHECKER-OWNER-ABI:CERT-KEPT-OFF constant DECL-CERT-KEPT-OFF
 \ Completion: the names a top-level cursor sees.
 CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF constant DECL-VERIFY-EACH-VISIBLE-OFF
 CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF constant DECL-WITH-TICK-ORDER-OFF
@@ -1045,12 +1042,8 @@ $230 constant CREATEP-CELL
 $238 constant QPATCH-CELL
 $240 constant QENT-CELL
 $248 constant QXH-CELL
-\ FRAME-CELL: the open body's link-register frame. The JIT is single pass, so
-\ `:` emits the save at entry and records the slot here, and every emitter that
-\ puts a call in the body counts it in the low two bits (bit 0 one call, bit 1 a
-\ second), free because code addresses are four-byte
-\ aligned. At `;` EM-COMPILE-RET reads where the slot is and whether x30 can be
-\ destroyed.
+\ FRAME-CELL: the open body's entry slot, where `:` emitted the link-register
+\ save; EM-COMPILE-RET rewrites it to a nop at `;`.
 \ Zero means no frame. QFRAME-CELL scopes it across a quotation as QXH-CELL
 \ scopes the EXIT chain. Definition-scoped, cleared by EM-RESET-COMPILE-STATE.
 $7D0 constant FRAME-CELL

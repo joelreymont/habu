@@ -40,11 +40,6 @@ $550 constant DOES-UNJUDGED-OFF
 \ The report of a does> clause either compiler's check refused, named for the
 \ definer it belongs to.
 $558 constant NATIVE-DOES-REPORT-OFF
-\ The lowering certificate the owner's last scan produced, the keep of a does>
-\ clause's certificate while its definer's head is scanned, and the kept one.
-$560 constant CERT-BYTES-OFF
-$568 constant CERT-KEEP-OFF
-$570 constant CERT-KEPT-OFF
 \ ( -- n ) the unit-export fact count (checker.f CHECKER-UNIT-FACTS).
 $578 constant UNIT-FACTS-OFF
 \ ( n -- n n n ) the checker tape's event at an ordinal (checker.f CHECKER-TAPE:EVENT).

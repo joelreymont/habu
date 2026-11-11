@@ -48,13 +48,6 @@ create BUF-BOOT BUF-INIT cells allot
 PERSISTED-PTR-VARIABLE BUF-P   BUF-BOOT BUF-P !
 variable BUF-CAP BUF-INIT BUF-CAP !
 variable BUF-N
-\ The kept buffer holds a does> clause's certificate while its definer's own
-\ body is checked into BUF (KEEP): the lowering transaction freezes both.
-\ PERSISTED for BUF-P's reason, and reset with it by BUF-SNAP-RESET.
-create KEPT-BOOT BUF-INIT cells allot
-PERSISTED-PTR-VARIABLE KEPT-P   KEPT-BOOT KEPT-P !
-variable KEPT-CAP BUF-INIT KEPT-CAP !
-variable KEPT-N
 variable BODY-LEN
 variable BODY-HASH
 
@@ -94,9 +87,7 @@ variable FULL-SET   0 FULL-SET !
 : BUF-SNAP-RESET ( -- )
    BUF-BOOT BUF-P !   BUF-INIT BUF-CAP !
    BUF-BOOT 0 BUF-INIT ARENA-CELLS-ZERO
-   KEPT-BOOT KEPT-P !   BUF-INIT KEPT-CAP !
-   KEPT-BOOT 0 BUF-INIT ARENA-CELLS-ZERO
-   0 BUF-N ! 0 KEPT-N ! 0 BODY-LEN ! 0 BODY-HASH ! ;
+   0 BUF-N ! 0 BODY-LEN ! 0 BODY-HASH ! ;
 
 : BUF, ( n -- )
    BUF-N @ 1 + BUF-ENSURE
@@ -167,17 +158,6 @@ public
 : FNV-PRIME ( -- n ) FNV-PRIME-V ;
 : CELL-COUNT ( -- n ) BUF-N @ ;
 : CELL@ ( n -- n ) CERT-CELL@ ;
-: BYTES ( -- ptr u8 n ) CERT-BYTES ;
-
-\ Keep the certificate just produced and give the producer the other buffer.
-\ BUF-N goes to 0, so BYTES read before the next production is an empty,
-\ invalid certificate rather than the kept one.
-: KEEP ( -- )
-   BUF-P @ KEPT-P @ BUF-P ! KEPT-P !
-   BUF-CAP @ KEPT-CAP @ BUF-CAP ! KEPT-CAP !
-   BUF-N @ KEPT-N !  0 BUF-N ! ;
-
-: KEPT ( -- ptr u8 n ) KEPT-P @ BYTE-VIEW KEPT-N @ cells ;
 
 \ Resolve only the certificate the caller's source produced. Its returned header
 \ also carries the byte length, checked by consumers before copying any facts.
@@ -191,7 +171,4 @@ DISPATCH-INSTALL
 
 package CHECKER-REG
 ' LOWER-CERT:FOR-HASH DECLARATIONS CHECKER-FETCH-ABI:CERTIFICATE-OFF + xt!
-' LOWER-CERT:BYTES DECLARATIONS CHECKER-OWNER-ABI:CERT-BYTES-OFF + xt!
-' LOWER-CERT:KEEP DECLARATIONS CHECKER-OWNER-ABI:CERT-KEEP-OFF + xt!
-' LOWER-CERT:KEPT DECLARATIONS CHECKER-OWNER-ABI:CERT-KEPT-OFF + xt!
 ;package
