@@ -260,20 +260,14 @@ $3E8 constant UNIT-PREPARE-BEGIN-OFF  \ ( -- )
 $3F0 constant UNIT-PREPARE-OFF        \ ( section size data-floor data-end -- row )
 $3F8 constant UNIT-INSTALL-OFF        \ ( row -- )
 $400 constant UNIT-PREPARE-END-OFF    \ ( -- )
-\ Portable FILE checker sections use reference indices supplied by the FILE
-\ owner. Older records end before these fields.
-CHECKER-OWNER-EXT:UNIT-EXPORT-REFS-OFF constant UNIT-EXPORT-REFS-OFF     \ ( [ ptr u8 n -- n ] -- ptr u8 n )
-CHECKER-OWNER-EXT:UNIT-PREPARE-REFS-OFF constant UNIT-PREPARE-REFS-OFF    \ ( ptr u8 n [ n n -- ptr u8 ] -- n )
-CHECKER-OWNER-EXT:UNIT-PERSIST-STORES-OFF constant UNIT-PERSIST-STORES-OFF  \ ( -- )
+\ Older records end before these fields.
 CHECKER-OWNER-EXT:RECORD-CONTRACT-OFF constant RECORD-CONTRACT-OFF      \ ( n -- ptr u8 n bool )
-CHECKER-OWNER-EXT:UNIT-STORAGE-CELLS-OFF constant UNIT-STORAGE-CELLS-OFF    \ ( [ ptr u8 n -- ] -- )
 CHECKER-OWNER-EXT:RECORD-PUBLISHED-OFF constant RECORD-PUBLISHED-OFF      \ ( n -- )
 CHECKER-OWNER-EXT:GRID-BEFORE-OFF constant GRID-BEFORE-OFF               \ ( ptr n -- n )
 CHECKER-OWNER-EXT:GRID-AFTER-OFF constant GRID-AFTER-OFF                 \ ( ptr n n -- )
 CHECKER-OWNER-EXT:GRID-REVOKE-OFF constant GRID-REVOKE-OFF               \ ( n -- )
 CHECKER-OWNER-EXT:GRID-RETIRE-OFF constant GRID-RETIRE-OFF               \ ( ptr n -- )
 CHECKER-OWNER-EXT:RECORD-RESTORE-OFF constant RECORD-RESTORE-OFF         \ ( -- )
-CHECKER-OWNER-EXT:UNIT-SCRATCH-RELEASE-OFF constant UNIT-SCRATCH-RELEASE-OFF \ ( -- )
 \ Borrowed FILE name-resolution rows. The source owner copies the spelling and
 \ namespace into each six-cell row before exposing it to the native feed.
 $480 constant RESOLUTION-COUNT-OFF       \ ( -- n )
@@ -281,18 +275,10 @@ $488 constant RESOLUTION-ROW-OFF         \ ( n -- ptr u8 n )
 $490 constant RESOLUTION-TOP-OFF         \ ( ptr u8 n [ ptr u8 n -- ] -- )
 $498 constant RESOLUTION-NS-INSTALL-OFF  \ ( [ ptr u8 n -- ] -- )
 $4A0 constant RESOLUTION-NS-DEFAULT-OFF  \ ( -- )
-CHECKER-OWNER-EXT:UNIT-SYM-OFF constant UNIT-SYM-OFF \ ( plan pkg$ vis tail$ -- bool )
-CHECKER-OWNER-EXT:PRIMITIVE-STATE-OFF constant PRIMITIVE-STATE-OFF \ ( sym -- packed-control bool )
-CHECKER-OWNER-EXT:RECORD-FIXED-READ-OFF constant RECORD-FIXED-READ-OFF \ ( rec -- kind value ready? )
 CHECKER-OWNER-EXT:SOURCE-HANDLES-OFF constant SOURCE-HANDLES-OFF \ ( sym -- effect control control-refs? )
 CHECKER-OWNER-EXT:SOURCE-LINK-OFF constant SOURCE-LINK-OFF \ ( ord -- borrowed-link-or-null )
-CHECKER-OWNER-EXT:PENDING-MARK-OFF constant PENDING-MARK-OFF \ ( -- )
-CHECKER-OWNER-EXT:PENDING-EXPORT-REFS-OFF constant PENDING-EXPORT-REFS-OFF \ ( [ ptr u8 n -- n ] -- ptr u8 n )
-CHECKER-OWNER-EXT:PENDING-PREPARE-OFF constant PENDING-PREPARE-OFF \ ( ptr u8 n [ n n -- ptr u8 ] -- n )
-CHECKER-OWNER-EXT:PENDING-INSTALL-OFF constant PENDING-INSTALL-OFF \ ( n -- )
 CHECKER-OWNER-EXT:PENDING-DISCARD-OFF constant PENDING-DISCARD-OFF \ ( -- )
 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF constant PUBLICATION-USE-OFF \ ( [ n -- ] -- )
-CHECKER-OWNER-EXT:PENDING-IDLE-OFF constant PENDING-IDLE-OFF \ ( -- bool )
 CHECKER-OWNER-EXT:RECORD-CAPTURE-OFF constant RECORD-CAPTURE-OFF \ ( [ n -- n ] [ -- ] -- )
 CHECKER-OWNER-EXT:RECORD-SEED-OFF constant RECORD-SEED-OFF \ ( -- )
 CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
@@ -338,8 +324,6 @@ CHECKER-OWNER-EXT:PIN-TOKEN-OFF constant PIN-TOKEN-OFF \ ( -- ptr u8 n )
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 CHECKER-OWNER-EXT:CONTRACT-MAGIC constant RECORD-CONTRACT-MAGIC
-CHECKER-OWNER-EXT:FIXED-KIND-OFF constant RECORD-FIXED-KIND-OFF
-CHECKER-OWNER-EXT:FIXED-VALUE-OFF constant RECORD-FIXED-VALUE-OFF
 CHECKER-OWNER-EXT:MIN-BYTES constant RECORD-CONTRACT-MIN-BYTES
 CHECKER-OWNER-EXT:FIXED-NONE constant RECORD-FIXED-NONE
 CHECKER-OWNER-EXT:FIXED-VAL constant RECORD-FIXED-VAL

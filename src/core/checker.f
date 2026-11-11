@@ -11964,12 +11964,9 @@ CHECKER-STORAGE-WALK-INSTALL
 variable CHECKER-STORAGE-CUR
 -1 constant STORAGE-DEFERRED
 3 constant LDEFER-CTRL-CELLS
-defer CHECKER-GRID-CELLS-XT ( [ ptr u8 n -- ] -- )
 defer CHECKER-GRID-UNBIND-XT ( -- )
-: CHECKER-GRID-CELLS-DEFAULT ( [ ptr u8 n -- ] -- ) drop ;
 : CHECKER-GRID-UNBIND-DEFAULT ( -- ) ;
 : CHECKER-GRID-CELLS-INSTALL ( -- )
-   [: CHECKER-GRID-CELLS-DEFAULT ;] is CHECKER-GRID-CELLS-XT
    [: CHECKER-GRID-UNBIND-DEFAULT ;] is CHECKER-GRID-UNBIND-XT ;
 CHECKER-GRID-CELLS-INSTALL
 : CHECKER-STORAGE-PREPARE ( -- )
@@ -16861,7 +16858,6 @@ private
 : RECORD-FIXED-DEFAULT-INSTALL ( -- )
    [: RECORD-FIXED-UNAVAILABLE ;] is RECORD-FIXED-READ-XT ;
 RECORD-FIXED-DEFAULT-INSTALL
-' RECORD-FIXED-READ-XT DECLARATIONS CHECKER-OWNER-ABI:RECORD-FIXED-READ-OFF + xt!
 ;package
 PERSISTED-PTR-VARIABLE RECORD-LINK-P
 NULL-PTR RECORD-LINK-P !
@@ -16958,10 +16954,8 @@ TRUSTED: RECORD-LINK-OCC ( n -- n n ) {: ord:n :}
    THEN
    RES-TRUE ;
 
-\ A prefix checker handle is portable only through a current record that
-\ authoritatively links it. Seed once for the resident checker owner; later
-\ link writes maintain the index. The key includes the link field so an effect
-\ and a grid sharing a handle cannot be mistaken for one another.
+\ A prefix handle is portable only through the current record that links it. The
+\ key includes the link field, so an effect and a grid sharing a handle stay apart.
 PERSISTED-PTR-VARIABLE PENDING-OWNER-P   NULL-PTR PENDING-OWNER-P !
 variable PENDING-OWNER-CAP   0 PENDING-OWNER-CAP !
 variable PENDING-OWNER-N     0 PENDING-OWNER-N !
@@ -16970,7 +16964,7 @@ variable PENDING-OWNER-READY 0 PENDING-OWNER-READY !
 2 constant PENDING-CONTROL
 3 constant PENDING-GRID
 4 constant PENDING-CREATED
-\ Keys are handles in the build's stores; READY 0 seeds from its RECORD-LINK.
+\ Keys are handles in the build's stores.
 package CHECK
 PENDING-OWNER-P PENDING-OWNER-CAP 2 cells TABLE+
 PENDING-OWNER-N 0 CELL-ROW+
@@ -17043,12 +17037,6 @@ PENDING-OWNER-READY 0 CELL-ROW+
    row RLINK.GRID cells + @ PENDING-GRID ord PENDING-OWNER-PUT
    row PENDING-CREATED PENDING-OWNER-FIELD@
       PENDING-CREATED ord PENDING-OWNER-PUT ;
-: PENDING-OWNER-SEED ( -- )
-   PENDING-OWNER-READY @ IF EXIT THEN
-   -1 PENDING-OWNER-READY !
-   RECORD-LINK-CAP @ ndict@ min 0 ?do
-      i RECORD-LINK-CURRENT? IF i PENDING-OWNER-RECORD THEN
-   loop ;
 : PENDING-OWNER-RELEASE ( -- )
    PENDING-OWNER-P @ PENDING-OWNER-CAP @ 2 cells * ASIG-RELEASE
    NULL-PTR PENDING-OWNER-P ! 0 PENDING-OWNER-CAP !
@@ -17323,50 +17311,9 @@ BODY-PEND-BASE 0 CELL-ROW+
    [: RECORD-LINK-CREATED ;] is RECORD-CREATED-XT ;
 RECORD-LINK-HOOKS
 
-\ Each owned fixed accessor names its exact DATA cell extent, including types
-\ with no quotation fields. Deferred accessors also own their control cells.
-\ The pending created body closes first, so its `,` grid is among them.
-: CHECKER-STORAGE-CELLS ( [ ptr u8 n -- ] -- )
-   {: cells :}
-   CHECKER-BODY-CLOSE
-   0 CHECKER-STORAGE-CUR !
-   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
-      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
-      rec ER.STORAGE-N @ {: count:n :}
-      rec ER.STORAGE-KIND @ STORAGE-ACCESSOR = IF
-         rec CHECKER-STORAGE-POINTEE T-WIDTH {: width:n :}
-         data-base rec ER.STORAGE-OFF @ + BYTE-VIEW
-            count width * CELL * cells execute
-      ELSE rec ER.STORAGE-KIND @ STORAGE-DEFER = IF
-         data-base rec ER.STORAGE-OFF @ + CELL-VIEW {: cb:ptr :}
-         cb BYTE-VIEW LDEFER-CTRL-CELLS CELL * cells execute
-         cb CELL + @ {: cap:n :}
-         cap 0 > IF
-            rec CHECKER-STORAGE-POINTEE T-WIDTH {: width:n :}
-            cb cb @ + BYTE-VIEW cap width * CELL * cells execute
-         THEN
-      THEN THEN
-      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
-   repeat
-   cells CHECKER-GRID-CELLS-XT ;
-
 package CHECKER-REG
-' CHECKER-STORAGE-CELLS DECLARATIONS
-   CHECKER-OWNER-ABI:UNIT-STORAGE-CELLS-OFF + xt!
 ' CHECKER-BODY-CLOSE DECLARATIONS CHECKER-OWNER-ABI:BODY-CLOSE-OFF + xt!
 ;package
-
-: RECORD-GRID-CELLS ( [ ptr u8 n -- ] -- ) {: visit :}
-   RECORD-LINK-CAP @ ndict@ min 0 ?do
-      i RECORD-LINK-CURRENT? IF
-         i RECORD-LINK-CELL RLINK.GRID cells + @ {: grid:n :}
-         grid 0 <> IF
-            grid RECORD-GRID-REC {: rec:ptr :}
-            data-base rec ER.STORAGE-OFF @ + BYTE-VIEW
-               rec ER.STORAGE-N @ cells visit execute
-         THEN
-      THEN
-   loop ;
 
 : RECORD-GRID-REVOKE ( n -- ) {: cut:n :}
    RECORD-LINK-CAP @ 0 ?do
@@ -17558,7 +17505,6 @@ CAST: RECORD-CAPTURE-PTR ( n -- ptr u8 )
    loop ;
 
 : RECORD-GRID-HOOKS ( -- )
-   [: RECORD-GRID-CELLS ;] is CHECKER-GRID-CELLS-XT
    [: RECORD-GRID-UNBIND ;] is CHECKER-GRID-UNBIND-XT ;
 RECORD-GRID-HOOKS
 
@@ -23013,59 +22959,6 @@ PIMM-NS-P PIMM-CAP-V CELL CHECK:TABLE+
    PIMM-NS n PIMM-N @ ARENA-CELLS-ZERO
    n PIMM-N ! ;
 
-\ A frozen primitive schema is supplied by CHECKER-ROLE. A primitive call must
-\ name the live global record it bound, through its original global symbol or a
-\ private primitive row that reaches that record. The mutable facts attached to
-\ that symbol form one control cell. Initial overloads belong to the frozen
-\ schema; a later same-tail row in any package can change which schema a source
-\ call selects.
-: PRIMITIVE-STATE ( n n -- n bool )
-   {: ord:n sym:n :}
-   sym 0= ord 0 < or ord ndict@ >= or IF 0 RES-FALSE EXIT THEN
-   ord CHECKER-RESOLVE:REC-AT {: rec:ptr :}
-   rec CK-REC-WID WL:GLOBAL? 0= IF 0 RES-FALSE EXIT THEN
-   sym SYM-NAME$ {: tail:ptr tailu:n :}
-   rec CHECKER-RESOLVE:CK-REC-NAME$ tail tailu SYM-STR=CI 0= IF 0 RES-FALSE EXIT THEN
-   tail tailu BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE rec <> IF 0 RES-FALSE EXIT THEN
-   \ An ELAB primitive has a specification row but no PE effect row. Its
-   \ actual seeded binding must still be the one this source scope selects.
-   sym PRIM-FIRST-IDX dup 0= IF
-      drop
-      sym SYM-ROW SYM.VIS @ SYM-GLOBAL <> IF 0 RES-FALSE EXIT THEN
-      sym NAV-PRIM-ROW dup 0< IF drop 0 RES-FALSE EXIT THEN
-      PRIM-SPEC:KIND@ PRIM-SPEC:K-ELAB <> IF 0 RES-FALSE EXIT THEN
-      tail tailu HORIZON-FIND
-         {: bound:ptr used:ptr used2:ptr flags:n :}
-      used drop used2 drop
-      bound rec <> flags BIND-SCOPE-SEEDED and 0= or IF
-         0 RES-FALSE EXIT
-      THEN
-      -1
-   ELSE
-      1-
-      dup PE-ACTIVE? 0= IF drop 0 RES-FALSE EXIT THEN
-      dup PE-EFF@ USIGS-USER-OFF @ >= IF drop 0 RES-FALSE EXIT THEN
-   THEN {: first:n :}
-   sym SYM-ROW SYM.VIS @ SYM-GLOBAL <> IF
-      tail tailu first PE-OWNS-GLOBAL? 0= IF 0 RES-FALSE EXIT THEN
-   THEN
-   sym USIG-NEWEST-VISIBLE dup 0= 0= IF
-      1- USIGS-USER-OFF @ >= IF 0 RES-FALSE EXIT THEN
-   ELSE drop THEN
-   #PE @ first 1+ ?do
-      i PE-EFF@ USIGS-USER-OFF @ >= IF
-         i PE-SYM@ SYM-NAME$ tail tailu SYM-STR=CI IF
-            0 RES-FALSE unloop EXIT
-         THEN
-      THEN
-   loop
-   sym NORET-CREATES@ 0= 0= sym NORET-SOURCE@ 0= 0= or IF
-      0 RES-FALSE EXIT
-   THEN
-   sym DFER-FIND-SYM IF 0 RES-FALSE EXIT THEN
-   sym PIMM-IX 0< 0= IF 0 RES-FALSE EXIT THEN
-   sym CTL-WORD-SYM RES-TRUE ;
-
 : NEUTRAL-PARSE-IMM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u tok-imm? 0= IF RES-FALSE EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM PIMM-IX 0 < IF RES-FALSE EXIT THEN
@@ -26381,13 +26274,8 @@ variable CUR-OPEN   variable CUR-PSIG
    UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;
 
 \ --- generated-product certification.
-\ A product bundle is exactly its field cells in slot order, so generated MAKE
-\ and UNMAKE have empty bodies. Their sealed plan queues the two symbols;
-\ boundary unification then records the declared product effect
-\ without letting user source forge a layout bundle. A word installed from the
-\ cache takes its row at install (PENDING-CTOR-RESULT). SUM/ENUM constructors do
-\ not use this authority: their generated checked bodies spell the canonical
-\ `construct family variant` form, which owns both certification and lowering.
+\ A product bundle is its field cells in slot order, so generated MAKE and UNMAKE
+\ have empty bodies; their sealed plan, never user source, earns the product effect.
 4 constant CTOR-PEND-CAP-INIT
 1 cells constant CTOR-PEND-REC
 $7FFFFFFFFFFFFFFF constant CTOR-PEND-BYTE-MAX
@@ -29110,7 +28998,6 @@ defer UNIT-TFAM-TAKE ( ptr u8 -- )
 defer UNIT-TFAM-CTORS ( ptr u8 ptr u8 [ ptr u8 n -- n ] -- )
 defer UNIT-TFAM-END ( -- )
 defer UNIT-TFAM-VIEW ( ptr u8 -- ptr u8 n )
-defer UNIT-TFAM-EXPORT-RESET ( -- )
 defer UNIT-CON-KEY$ ( n -- ptr u8 n bool )
 defer UNIT-CON-BIND ( n ptr u8 n -- )
 defer UNIT-CON-PROJECT-XT ( ptr u8 n -- n bool )
@@ -29161,30 +29048,6 @@ FILE-CON-RESET
       0 <> IF UNIT-BAD THEN
    UNIT-RBF? UNIT-CAND? UNIT-VERIFY?
    UNIT-MARK-BASE ;
-
-\ A declaration frame is not busy. A word the declaration generates is captured
-\ inside the frame: the family it references enters the unit as a contract over
-\ live rows (type-family.f REG-LIVE-COUNT), so its export has no provisional
-\ rows of its own; a rollback truncates the compiled or installed word with the
-\ rest of the declaration, and the stored entry stays valid because it is keyed
-\ by the word's inputs, which the next run of the same declaration reproduces.
-: CHECKER-PENDING-FILLABLE? ( -- bool )
-   UNIT-PREP-PENDING @ UNIT-PLAN-OPEN @ or CHK-CAND @ or
-   CHECKER-VERIFY-PKG-DEPTH @ or 0=
-   MULTI-ERR? 0= and ;
-
-: CHECKER-PENDING-IDLE? ( -- bool )
-   UNIT-PENDING @ UNIT-MARKED @ or 0= CHECKER-PENDING-FILLABLE? and ;
-
-\ A pending unit is marked, then filled by compiling one definition or by
-\ preparing and installing its slice under the mark, then exported; the
-\ prepare and install end only their own state, the export or discard the unit.
-: CHECKER-PENDING-MARK ( -- )
-   CHECKER-PENDING-IDLE? 0= IF UNIT-BAD THEN
-   PENDING-OWNER-SEED
-   0 PENDING-DIRTY-N !
-   UNIT-MARK-BASE
-   -1 UNIT-PENDING ! -1 PENDING-MARKED ! ;
 
 : UNIT-BASE? ( -- )
    UNIT-MARKED @ 0= IF UNIT-BAD THEN
@@ -29794,15 +29657,6 @@ private
    rc 0 <> IF rc throw THEN
    UNIT-BUF-P @ UNIT-BUF-U @ ;
 
-: CHECKER-UNIT-EXPORT-REFS ( [ ptr u8 n -- n ] -- ptr u8 n )
-   is UNIT-REF-CB
-   -1 UNIT-PORTABLE !
-   [: CHECKER-UNIT-EXPORT 2drop ;] catch {: rc:n :}
-   UNIT-REF-RESET
-   0 UNIT-PORTABLE !
-   rc 0 <> IF rc throw THEN
-   UNIT-BUF-P @ UNIT-BUF-U @ ;
-
 \ The checker facts a unit export carries, summed: a tool compares the sum
 \ around a top-level run to learn whether the run declared anything. Each term
 \ only grows inside a unit (UNIT-BASE? refuses one that shrank). Effects come
@@ -29814,14 +29668,6 @@ private
 : CHECKER-UNIT-FACTS ( -- n )
    UEND @ CTN @ + DFER-END @ + PIMM-N @ + UNIT-TFAM-N@ + LIN-NDECL @ +
    NORET-END @ + ;
-
-\ The definition's record is the one at the mark; a does> definer's clause
-\ record follows it. Whoever compiled or installed the definition owns how
-\ many records it made.
-: CHECKER-PENDING-EXPORT-REFS ( [ ptr u8 n -- n ] -- ptr u8 n )
-   UNIT-PENDING @ 0= IF UNIT-BAD THEN
-   UNIT-NDICT @ RECORD-LINK-CURRENT? 0= IF UNIT-BAD THEN
-   CHECKER-UNIT-EXPORT-REFS ;
 
 PTR-VARIABLE UNIT-IN-P
 variable UNIT-IN-U   variable UNIT-IN-I
@@ -29892,7 +29738,6 @@ defer UNIT-RESOLVE-CB ( n n -- ptr u8 )
 : UNIT-RESOLVE-RESET ( -- )
    [: UNIT-RESOLVE-UNAVAILABLE ;] is UNIT-RESOLVE-CB ;
 UNIT-RESOLVE-RESET
-variable UNIT-PREP-REF-RESULT
 PTR-VARIABLE UNIT-PREP-REG
 variable UNIT-PREP-REG-U
 
@@ -30723,54 +30568,14 @@ UNIT-CON-PROJECT-INSTALL
    endpoint UNIT-PROJ-SERIAL ! endpoint plan UP.SERIAL UP!
    UNIT-PLAN-N @ 1 UNIT-PLAN-N +! ;
 
-: CHECKER-UNIT-PREPARE-REFS ( ptr u8 n [ n n -- ptr u8 ] -- n )
-   {: src:ptr size:n resolve :}
-   resolve is UNIT-RESOLVE-CB
-   -1 UNIT-PREP-PORTABLE !
-   src size [: 2dup 0 0 CHECKER-UNIT-PREPARE UNIT-PREP-REF-RESULT ! ;]
-      catch {: rc:n :}
-   2drop
-   UNIT-RESOLVE-RESET
-   0 UNIT-PREP-PORTABLE !
-   rc 0 <> IF rc throw THEN
-   UNIT-PREP-REF-RESULT @ ;
-
 \ End the pending prepare and its plan; an open mark stays.
 : PENDING-PREPARE-END ( -- )
    UNIT-PLAN-OPEN @ IF CHECKER-UNIT-PREPARE-END THEN
    0 UNIT-PREP-PENDING ! 0 UNIT-PREP-PORTABLE ! ;
 
-: CHECKER-PENDING-PREPARE ( ptr u8 n [ n n -- ptr u8 ] -- n )
-   {: src:ptr size:n resolve :}
-   CHECKER-PENDING-FILLABLE? 0= IF UNIT-BAD THEN
-   resolve is UNIT-RESOLVE-CB
-   -1 UNIT-PREP-PORTABLE ! -1 UNIT-PREP-PENDING !
-   src size
-   [: UNIT-PREPARE-BASE
-      2dup 0 0 CHECKER-UNIT-PREPARE UNIT-PREP-REF-RESULT ! ;]
-      catch {: rc:n :}
-   2drop
-   UNIT-RESOLVE-RESET
-   0 UNIT-PREP-PORTABLE !
-   rc 0 <> IF PENDING-PREPARE-END rc throw THEN
-   UNIT-PREP-REF-RESULT @ ;
-
 : UP-PLAN ( n -- ptr u8 ) {: idx:n :}
    idx 0 < idx UNIT-PLAN-N @ >= or IF UNIT-BAD THEN
    UNIT-PLAN-FIRST @ idx 0 ?do UP.NEXT UP-PTR@ loop ;
-
-: CHECKER-UNIT-SYM? ( n ptr u8 n n ptr u8 n -- bool )
-   {: id:n pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
-   id UP-PLAN drop
-   pkg pkgu vis name nameu SYM-FIND nip IF RES-TRUE EXIT THEN
-   UNIT-PLAN-FIRST @
-   id 1+ 0 ?do
-      dup UP.NSYMS UP@ 0 ?do
-         dup i UP-SYM pkg pkgu vis name nameu UP-SYM-MATCH? IF
-            drop RES-TRUE unloop unloop EXIT THEN
-      loop
-      UP.NEXT UP-PTR@
-   loop drop RES-FALSE ;
 
 : UP-ACTUAL-SYM ( n -- n ) {: projected:n :}
    projected 0= IF 0 EXIT THEN
@@ -30941,49 +30746,6 @@ UNIT-CON-PROJECT-INSTALL
    0 UNIT-MARKED ! 0 PENDING-MARKED ! 0 PENDING-DIRTY-N !
    0 UNIT-PREFIX-N ! 0 UNIT-SYMS-FROZEN ! ;
 
-: PENDING-ACCESSOR-RESULT ( -- )
-   LBUF-PEND-U @ 0= IF EXIT THEN
-   ndict@ 1- {: ord:n :}
-   ord RECORD-LINK-CURRENT? 0= IF UNIT-BAD THEN
-   \ The allocator still runs after a body hit. Give its armed eval the
-   \ installed accessor's handle so it can bind the new allocation normally.
-   ord RECORD-LINK-CELL RLINK.EFFECT cells + @
-   ord CHECKER-RESOLVE:REC-AT CHECKER-RESOLVE:CK-REC-NAME$ LBUF-EFFECT-RESULT ;
-
-\ A hit inside a generated constructor set stands for the body check that
-\ would have taken the installed word's plan row (CHECK, CTOR-PEND-MATCH?),
-\ and TDECL-GEN-EVAL-BODY requires the whole plan taken. The stored effect is
-\ the one the cold check certified over that row: same source, same context.
-: PENDING-CTOR-RESULT ( -- )
-   CTOR-PEND-POS @ CTOR-PEND-COUNT @ < 0= IF EXIT THEN
-   ndict@ 1- {: ord:n :}
-   ord RECORD-LINK-CURRENT? 0= IF UNIT-BAD THEN
-   ord RECORD-LINK-CELL RLINK.EFFECT cells + @ {: effect:n :}
-   effect 0= IF EXIT THEN
-   effect 1- E-PTR ER.SYM @ CTOR-PEND-TAKE? drop ;
-
-: PENDING-CLOSED-RESULT ( n -- )
-   0 CK-CLOSED-SYM !  0 CK-CLOSED-OPEN !
-   UP-PLAN UP.CLOSED UP@ 0= IF EXIT THEN
-   UNIT-PENDING @ 0= IF UNIT-BAD THEN
-   UNIT-NDICT @ {: ord:n :}
-   ord RECORD-LINK-CURRENT? 0= IF UNIT-BAD THEN
-   ord RECORD-LINK-CELL RLINK.EFFECT cells + @ {: effect:n :}
-   effect 0= IF UNIT-BAD THEN
-   \ Following source actions, including INTRINSIC, observe this declaration
-   \ exactly as after a cold compile. The wire carries the actual close result.
-   effect 1- E-PTR ER.SYM @ CK-CLOSED-SYM !
-   ord CK-CLOSED-IX ! effect CK-CLOSED-OFF ! ;
-
-: CHECKER-PENDING-INSTALL ( n -- ) {: idx:n :}
-   UNIT-PREP-PENDING @ 0= IF UNIT-BAD THEN
-   idx [: dup CHECKER-UNIT-INSTALL
-          dup PENDING-CLOSED-RESULT PENDING-ACCESSOR-RESULT
-          PENDING-CTOR-RESULT ;] catch {: rc:n :}
-   drop
-   PENDING-PREPARE-END
-   rc 0 <> IF rc throw THEN ;
-
 : UNIT-IMPORT-PLAN ( ptr u8 n -- ) {: src:ptr size:n :}
    UNIT-BASE?
    SYM-N @ UNIT-SYMN @ <> UEND @ UNIT-UEND @ <> or
@@ -31043,27 +30805,16 @@ public
    0 UNIT-INST-ON !
    NULL-PTR UNIT-ASIG-P ! 0 UNIT-ASIG-U ! 0 UNIT-ASIG-CAP !
    0 UNIT-MARKED ! ;
-: UNIT-SCRATCH-RELEASE ( -- )
-   UNIT-SCRATCH-RELEASE-CHECKER
-   UNIT-TFAM-EXPORT-RESET ;
 private
 
 ' CHECKER-UNIT-MARK DECLARATIONS CHECKER-OWNER-ABI:UNIT-MARK-OFF + xt!
 ' CHECKER-UNIT-EXPORT DECLARATIONS CHECKER-OWNER-ABI:UNIT-EXPORT-OFF + xt!
-' UNIT-SCRATCH-RELEASE DECLARATIONS CHECKER-OWNER-ABI:UNIT-SCRATCH-RELEASE-OFF + xt!
-' CHECKER-UNIT-EXPORT-REFS DECLARATIONS CHECKER-OWNER-ABI:UNIT-EXPORT-REFS-OFF + xt!
 ' CHECKER-UNIT-IMPORT DECLARATIONS CHECKER-OWNER-ABI:UNIT-IMPORT-OFF + xt!
 ' CHECKER-UNIT-PREPARE-BEGIN DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-BEGIN-OFF + xt!
 ' CHECKER-UNIT-PREPARE DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-OFF + xt!
-' CHECKER-UNIT-PREPARE-REFS DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-REFS-OFF + xt!
 ' CHECKER-UNIT-INSTALL DECLARATIONS CHECKER-OWNER-ABI:UNIT-INSTALL-OFF + xt!
 ' CHECKER-UNIT-PREPARE-END DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF + xt!
-' CHECKER-PENDING-MARK DECLARATIONS CHECKER-OWNER-ABI:PENDING-MARK-OFF + xt!
-' CHECKER-PENDING-EXPORT-REFS DECLARATIONS CHECKER-OWNER-ABI:PENDING-EXPORT-REFS-OFF + xt!
-' CHECKER-PENDING-PREPARE DECLARATIONS CHECKER-OWNER-ABI:PENDING-PREPARE-OFF + xt!
-' CHECKER-PENDING-INSTALL DECLARATIONS CHECKER-OWNER-ABI:PENDING-INSTALL-OFF + xt!
 ' CHECKER-PENDING-DISCARD DECLARATIONS CHECKER-OWNER-ABI:PENDING-DISCARD-OFF + xt!
-' CHECKER-PENDING-IDLE? DECLARATIONS CHECKER-OWNER-ABI:PENDING-IDLE-OFF + xt!
 ;package
 
 
@@ -32121,11 +31872,6 @@ public
    \ A pending record outlives a file boundary, so it lives outside the spans.
    -1 RECORD-PEND-IX ! 0 RECORD-PEND-SYM ! 0 RECORD-PEND-EFF ! ;
 
-: CHECKER-UNIT-PERSIST-STORES ( -- )
-   CHECKER-QUIESCE-BEGIN
-   CHECKER-QUIESCE-CORE
-   CHECKER-QUIESCE-END ;
-
 \ One capture seam owns the order: scrub transient stores before persistence
 \ copies any grown registry, persist the live rows (all three name stores use
 \ offsets and need no pointer marking), then clear the later checker scopes.
@@ -32160,7 +31906,6 @@ public
 
 package CHECKER-REG
 ' CHECKER-CAPTURE-PREPARE DECLARATIONS CAPTURE-OFF + xt!
-' CHECKER-UNIT-PERSIST-STORES DECLARATIONS CHECKER-OWNER-ABI:UNIT-PERSIST-STORES-OFF + xt!
 ' RECORD-CONTRACT DECLARATIONS CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF + xt!
 ' RECORD-GRID-BEFORE DECLARATIONS CHECKER-OWNER-ABI:GRID-BEFORE-OFF + xt!
 ' RECORD-GRID-AFTER DECLARATIONS CHECKER-OWNER-ABI:GRID-AFTER-OFF + xt!
@@ -32259,8 +32004,6 @@ package CHECKER-REG
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
 ' CHECKER-SYM-IDENTITY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-IDENTITY-OFF + xt!
-' CHECKER-UNIT-SYM? DECLARATIONS CHECKER-OWNER-ABI:UNIT-SYM-OFF + xt!
-' PRIMITIVE-STATE DECLARATIONS CHECKER-OWNER-ABI:PRIMITIVE-STATE-OFF + xt!
 ' CHECKER-SYM-SOURCE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-SOURCE-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED-BODY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF + xt!
 ' CHECKER-DECL-AT! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF + xt!
