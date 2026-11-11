@@ -14,7 +14,6 @@ require src/habu/native-observer-cells.f
 require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
-require src/habu/boot-files.f
 require src/core/sha256.f
 require src/compiler/fixed-body.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).

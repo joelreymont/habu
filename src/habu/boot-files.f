@@ -1,7 +1,6 @@
 \ boot-files.f - the files every engine loads at startup below the checker, in
-\ load order. The engine generator (src/habu/habu2.f) walks this one list to
-\ emit the startup loads, the provide rows and the path strings, each phase
-\ projecting the rows of its parts.
+\ load order. A build walks this one list for the provide rows and the loads,
+\ each phase projecting the rows of its parts.
 \
 \ A row is its part (the boot phase that loads it), its target kind and its
 \ path. A target row loads only on its target, but its path is still part of

@@ -14,9 +14,7 @@ checker is part of it, and from the end of the kernel every definition is
 checked. A build checks the engine's prefix (`src/habu/boot-files.f`) from
 its first file: the builder's own checker checks every row, so a definition
 with a wrong effect in a prefix file is refused (`src/core/check-hook.f`
-INSTALL). Only the cold prefix of an engine that was not seeded
-(`src/habu/habu2.f` EMIT-HOST-LOAD-PREFIX) loads the files before
-`src/core/check-hook.f` unchecked, until that file switches the checker on.
+INSTALL).
 
 ## Defining a word
 
@@ -33,13 +31,13 @@ events. At `;` the current platform's codegen compiles the definition from
 those events into an emission for the [code space](architecture.md#code-space).
 Nothing else knows what a keyword means: there are no keyword lists, no second
 reading and no pass that rebuilds the definition's structure.
-**Now:** each definition is read three times. The engine's reader compiles it
-through the tier-0 JIT as it reads. At `;` a hook runs the checker over the
-source text again (`src/core/check-hook.f:109`), filling a token tape
-(`src/compiler/native/tape.f`). Tier 1 rebuilds the structure from that tape in
-an elaborator of its own (`src/compiler/native/elaborate.f`). What the control
-words mean is written down about eight times, among them
-`src/compiler/native/hir-word.f:1418-1643` and `src/core/type-family.f:2598`.
+**Now:** each definition is read twice. The interpreter keeps its text, and at
+`;` the checker reads that text again (`src/core/check-hook.f` DEFINITION),
+filling a token tape (`src/compiler/native/tape.f`) from which the compiler
+rebuilds the structure: tier 0 in `src/habu/t0.f`, tier 1 in an elaborator of
+its own (`src/compiler/native/elaborate.f`). What the control words mean is
+written down in several places, among them `src/compiler/native/hir-word.f`
+and `src/core/type-family.f`.
 
 **The checker records what the codegen reads, and nothing more.** Each
 construct is one event:
