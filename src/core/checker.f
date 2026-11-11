@@ -1,7 +1,49 @@
 \ The stack-effect checker: the declaration owner and its arenas, the scan of
 \ each definition, and the effect store and records the compiler reads.
-\ Loaded by the boot prefix (src/habu/boot-files.f) ahead of src/habu/layout.f,
-\ so the fixed engine cells it uses are mirrored here as private aliases.
+\ Loaded by the boot prefix ahead of src/habu/layout.f, so the fixed engine
+\ cells it uses are mirrored here as private aliases.
+\
+\ Arenas: owners decide the lifetime. Persistent registries copy external
+\ storage into image DATA; scratch resets to its boot buffer, releases its
+\ owned mapping at capture, or takes from the scratch region. No
+\ process-local mmap address may enter an image. Growth is geometric, so a
+\ store is copied O(log n) times per load.
+\
+\ The scratch region: per-definition scratch stores take storage from one
+\ region and keep their counter, pointer and capacity cells in DATA spans that
+\ CHECKER-REG:SCRATCH{ and CHECKER-REG:}SCRATCH bracket. At each file boundary
+\ and at capture SR-RETIRE gives the region back and zeroes every span, so
+\ stores rest at none, NULL and 0.
+\
+\ The trail pin: ROWS-PIN marks the trail height at a refusal. Between AT-PIN
+\ and ;AT-PIN every store made since the pin is undone, so the tables read as
+\ they stood at the pin; ;AT-PIN takes back the view's own compression stores
+\ before it restores. An unwind below the pin takes back bindings the pin saw,
+\ so the pin falls with it, and AT-PIN still takes back every binding made
+\ after the refusal.
+\
+\ The linear discipline: counting concrete linear types on the stack misses a
+\ value copied or dropped while its type is still a var that later unifies
+\ with a linear type (KEEP's `over`, a quotation's `dup FREE`). Two rules close
+\ that gap. LIN-EFF-PASS: a var in an applied effect that binds to a linear
+\ type must occur equally on the input and output sides of the whole effect,
+\ quotation sub-effects included (KEEP, one in and two out, is refused; DIP
+\ and swap pass). A generated constructor, MAKE or UNMAKE row moves exactly
+\ its payload, so `LQ2:ERR ( b -- lq2<a,b> )` mints an err without an `a`; an
+\ ordinary word with the same effect is still counted. LIN-TAINT and
+\ LIN-TAINT-SCAN: a var copied or dropped while polymorphic is tainted, and
+\ refused if it later resolves to a linear type (`[: dup FREE ;]`). The
+\ discipline runs once a DEFLINEAR type is declared, and also while a type
+\ entry may be unread, since a body checked before the read would escape it.
+\
+\ Rigid identities: a host allocation is stamped by fresh, rigid, never-reused
+\ identities that ptr T and type vars cannot express: its REGION (which
+\ allocation), EXTENT (bounds) and GENERATION (mutation epoch). Each domain
+\ owns a private per-check counter (RGN-N, EXT-N, GEN-N); the atom's domain
+\ qualifies the id in ATOM-OK?, so equal ids from different domains never
+\ unify. RIGID-MAX bounds every domain below the sign wrap, so a counter
+\ throws E-RIGID-EXHAUST before it could wrap and re-grant a live id. Counters
+\ reset per check (RIGID-RESET); the bound is settable.
 package CHECKER-REG
 \ SOURCE-CELL (layout.f DECL-CELL) is the record the engine certifies through;
 \ TARGET-CELL is the one a replacement checker publishes itself into.
@@ -27,10 +69,9 @@ CHECKER-OWNER-ABI:SOURCE-CON-OFF constant SOURCE-CON-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
 CHECKER-OWNER-ABI:WIDE-OFF constant WIDE-OFF
 CHECKER-OWNER-ABI:CAPTURE-OFF constant CAPTURE-OFF
-\ The optimizing front end's half of the owner record; offsets come from
-\ checker-owner-abi.f. A new field goes on the end, whatever its group: the
-\ compiler that reads this record is a baked routine of the previous
-\ generation, so a moved offset is read at its old number.
+\ A new field goes on the end, whatever its group: the compiler that reads this
+\ record is a baked routine of the previous generation, so a moved offset is
+\ read at its old number.
 CHECKER-OWNER-ABI:CHECK-OFF constant CHECK-OFF
 CHECKER-OWNER-ABI:TAPE-INSTALL-OFF constant TAPE-INSTALL-OFF
 CHECKER-OWNER-ABI:TAPE-ARM-OFF constant TAPE-ARM-OFF
@@ -96,8 +137,7 @@ create OWNER-STORAGE
    CHECKER-OWNER-ABI:MAGIC , OWNER-BYTES ,
 public
 \ The captured declaration owner is validated by address and descriptor, not by
-\ its dictionary name. A `create` body, so a checked file registers a word with
-\ `' W DECLARATIONS <off> + xt!`.
+\ its dictionary name.
 create DECLARATIONS
 private
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
@@ -170,7 +210,7 @@ private
    0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here DECLARATIONS - constant OWNER-COMMITTED
-OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record is
+OWNER-BYTES constant OWNER-CELLS-BYTES
 : OWNER-SIZE-AGREE ( -- )
    DECLARATIONS OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES <> if
       s" checker: declaration-owner header and fields are not adjacent" 76 die then
@@ -178,8 +218,7 @@ OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record i
       s" checker: declaration-owner field list and record size disagree" 76 die then ;
 OWNER-SIZE-AGREE
 \ The size is the end of the last appended field: a field appended without
-\ growing it is read past the record's extent by every guard that trusts it
-\ (checker-owner-guard.f VALIDATE). This makes that a load failure.
+\ growing it is read past the record's extent by every guard that trusts it.
 : OWNER-LAST-FIELD-AGREE ( -- )
    CHECKER-OWNER-EXT:PIN-TOKEN-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
@@ -199,19 +238,13 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field ptr-cell!
 4 constant TAG-SHIFT   $F constant TAG-MASK
 -1 constant UNBOUND
 \ Trusted checker internals below are confined to typed views and nulls over
-\ checker arenas and one raw effect query. Engine primitive effects, including
-\ tok-imm?, live in the primitive table.
+\ checker arenas and one raw effect query.
 \ --- growable checker arenas --------------------------------------------
-\ Owners decide the lifetime: persistent registries copy external storage into
-\ image DATA; scratch resets to its boot buffer, releases its owned mapping at
-\ capture, or takes from the scratch region, which SR-RETIRE gives back at each
-\ file boundary and at capture. No process-local mmap address may enter an
-\ image. Growth is geometric, so a store is copied O(log n) times per load.
 \ `map-anon` answers a pointer whose element type the caller picks.
 : ARENA-ALLOC ( n -- ptr a )
    map-anon 0 <> IF drop s" checker: arena mmap failed" 76 die THEN ;
 
-: ARENA-ALLOC-BYTES ( n -- ptr u8 ) ARENA-ALLOC ;   \ the allocation as bytes
+: ARENA-ALLOC-BYTES ( n -- ptr u8 ) ARENA-ALLOC ;
 
 \ An address's DATA offset, measured from the null so neither pointer is viewed.
 : DATA-OFF ( ptr a -- n ) NULL-PTR - data-base NULL-PTR - - ;
@@ -248,13 +281,13 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field ptr-cell!
 : ARENA-CELLS-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}
    n 0 ?do src i cells + @ dst i cells + ! loop ;
 
-: ARENA-CELLS-UNBOUND ( ptr n n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) UNBOUND
+: ARENA-CELLS-UNBOUND ( ptr n n n -- ) {: base:ptr from:n to:n :}
    from begin dup to < while {: i:n :}
       UNBOUND i cells base + !
       i 1 +
    repeat drop ;
 
-: ARENA-CELLS-ZERO ( ptr n n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) to 0
+: ARENA-CELLS-ZERO ( ptr n n n -- ) {: base:ptr from:n to:n :}
    from begin dup to < while {: i:n :}
       0 i cells base + !
       i 1 +
@@ -266,23 +299,19 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field ptr-cell!
    cap 0 < 0=  base data-base < 0= and  base here <= and
    dup IF drop cap here base - <= THEN ;
 
-\ 0 bytes is no mapping.
 : ARENA-UNMAP ( ptr a n -- )
    {: base:ptr bytes:n :}
    bytes 0= IF EXIT THEN
    base bytes munmap 0 <> IF s" checker: arena munmap failed" 76 die THEN ;
 
-\ Retires the store a grow copied away from. A store in image DATA is zeroed:
-\ it is still baked, so its bytes do not depend on how writes and the grow
-\ interleave (a cold load writes rows before the move, a file hit makes room
-\ first), and a stale pointer into it reads zeros. Any other store is unmapped.
+\ A store in image DATA is zeroed: it is still baked, so its bytes do not
+\ depend on how writes and the grow interleave, and a stale pointer into it
+\ reads zeros.
 : ARENA-ABANDON ( ptr a n -- ) {: base:ptr bytes:n :}
    base BYTE-VIEW bytes REG-DATA-SPAN? IF base BYTE-VIEW bytes ARENA-ZERO EXIT THEN
    base bytes ARENA-UNMAP ;
 
-\ Copies OLDBYTES, the old store's whole capacity, rounded up to cells, then
-\ abandons the old store. Callers reset their counters per definition, so no
-\ tail init is needed.
+\ Callers reset their counters per definition, so no tail init is needed.
 : ARENA-BYTES-GROW ( ptr a n n -- ptr a ) {: base:ptr oldbytes:n newbytes:n :}
    newbytes ARENA-ALLOC {: nb:ptr :}
    base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
@@ -314,7 +343,6 @@ public
    pv @ boot <> IF pv @ bytes ARENA-UNMAP THEN
    boot pv ! ;
 
-\ A table that holds none starts at 64 rows.
 : ARENA-ROWS-ENSURE ( ptr ptr n ptr n n n -- )
    {: pv:ptr capv:ptr need:n row:n :}
    need capv @ <= IF EXIT THEN
@@ -328,11 +356,7 @@ public
    NULL-PTR pv !  0 capv ! ;
 
 \ --- the scratch region ------------------------------------------------------
-\ Per-definition scratch stores take storage from one region and keep their
-\ counter, pointer and capacity cells in DATA spans that CHECKER-REG:SCRATCH{
-\ and CHECKER-REG:}SCRATCH bracket. SR-RETIRE gives the region back and zeroes
-\ every span, so stores rest at none, NULL and 0 in a captured image and at each
-\ file boundary. A span record is two cells at the span's start: the link to
+\ A span record is two cells at the span's start: the link to
 \ the previous record and the span's end, both distances from the record (as is
 \ SCRATCH-SPANS's link from that cell), so they hold wherever DATA is loaded;
 \ 0 is none, and an end of 0 an open span.
@@ -370,8 +394,7 @@ public
 \ The region's chunks come from ARENA-ALLOC and are never reused before
 \ SR-RETIRE unmaps them, so a take answers zero bytes as map-anon does. A chunk
 \ header is two cells: the previous chunk's self-relative link, then the chunk's
-\ bytes. SR-GRAIN is the least chunk size, not a limit: a larger take maps a
-\ chunk of its own size.
+\ bytes.
 1024 1024 * constant SR-GRAIN
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE SR-CHUNK   variable SR-USED   variable SR-SIZE
@@ -387,7 +410,6 @@ CHECKER-REG:}SCRATCH
    h SR-CHUNK !  bytes SR-SIZE !  2 cells need + SR-USED !
    c 2 cells + ;
 
-\ SR-TAKE ( bytes -- addr ) : BYTES of the region, cell-aligned.
 : SR-TAKE ( n -- ptr n ) {: need:n :}
    SR-USED @ 7 + -8 and {: at:n :}
    SR-CHUNK @ NULL-PTR <>  at need + SR-SIZE @ <=  and IF
@@ -415,24 +437,20 @@ CHECKER-REG:}SCRATCH
    SR-CHUNK @ begin dup NULL-PTR <> while SR-CHUNK-FREE repeat drop
    SCRATCH-SPANS SR-LINK@ begin dup NULL-PTR <> while SR-SPAN-ZERO repeat drop ;
 
-\ TV arena: sixteen var-id planes share one owned mapping and one capacity.
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
-\ Measured high-water over a self-build: 1112 vars in one definition (the pool
-\ resets per definition); 1280 leaves 15% headroom. A larger workload grows the
-\ arena. A saved program starts with none: the planes and TV-CAP are scratch,
-\ so TV-ENSURE maps the arena on first use.
-1280 constant MAXTV-INIT       \ initial typevar pool (grows on demand)
+\ A saved program starts with none: the planes and TV-CAP are scratch, so
+\ TV-ENSURE maps the arena on first use.
+1280 constant MAXTV-INIT
 16 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
 variable TV-CAP   TV-CAP scratch-cell-mark   0 TV-CAP !
-: MAXTV ( -- n ) TV-CAP @ ;    \ live cap; every var-id array is TV-CAP cells
+: MAXTV ( -- n ) TV-CAP @ ;
 
-\ TVK: per-type-var kind. TVK-RAW marks a var minted by a raw storage definer
+\ TVK-RAW marks a var minted by a raw storage definer
 \ (here , create variable constant): its cell admits only a plain scalar and
 \ never absorbs a nominal atom, arity-0 family, layout or nominal-bearing
-\ pointer. TVK rides the TV arena so a fresh var id indexes it too, is zeroed
-\ (TVK-ANY) on grow, reset and trial rollback, and persists on stored effect
-\ records (EN.B on var nodes) across snapshot and AOT.
+\ pointer. TVK is zeroed (TVK-ANY) on grow, reset and trial rollback, and
+\ persists on stored effect records (EN.B on var nodes) across snapshot and AOT.
 PTR-VARIABLE TVT-P     PTR-VARIABLE RVT-P
 PTR-VARIABLE VRC-TV-P  PTR-VARIABLE VRC-RV-P   PTR-VARIABLE VRI-TV-P  PTR-VARIABLE VRI-RV-P
 PTR-VARIABLE EC-TV-P   PTR-VARIABLE EC-RV-P    PTR-VARIABLE EI-TV-P   PTR-VARIABLE EI-RV-P
@@ -538,41 +556,36 @@ TV-CLEAR
 : EC-TV ( -- ptr n ) TV-READY EC-TV-P @ ;   : EC-RV ( -- ptr n ) TV-READY EC-RV-P @ ;
 : EI-TV ( -- ptr n ) TV-READY EI-TV-P @ ;   : EI-RV ( -- ptr n ) TV-READY EI-RV-P @ ;
 
-0 constant TVK-ANY   \ ordinary polymorphic type var
-1 constant TVK-RAW   \ minted by a raw storage definer; admits only plain scalars
+0 constant TVK-ANY
+1 constant TVK-RAW
 2 constant RVK-QUOT  \ implicit callback tail: fixed window when compared as a value
 3 constant RVK-INFERRED  \ literal tail: fresh per call, extensible to a declared window
 \ The two BASE-ADDRESS pointees: a pointer that is not the address of anything.
-\ They are separate kinds because their honest uses differ.
 \
 \ TVK-NULL is `NULL-PTR`. Fenced in value position, permissive inside a pointee:
 \ `ptr thing NULL-PTR =`, `NULL-PTR X !` and `NULL-PTR 0=` each bind the pointee
 \ inside a `ptr`, and the null is the one address all of them mean literally.
-\ Nothing read through it is a nominal identity or an address. A distance
-\ `X NULL-PTR -` binds no pointee at all (TVK-BASE-ONLY below).
+\ Nothing read through it is a nominal identity or an address.
 \
 \ TVK-DBASE is `data-base`, the start of the running task's DATA region, fenced
 \ at every pointee depth: a cell reached from DATA holds a plain value at any
-\ depth. Fencing only the first pointee let `( -- ptr ptr n ) data-base 8 +`
-\ forge an address with `F @ @` (`1 W  F @ @ @` certified and SIGSEGVed).
+\ depth.
 4 constant TVK-NULL
 5 constant TVK-DBASE
 \ TVK-OFF is not a fence but provenance, carried by the pointee variable of
 \ every row that steps a pointer by an integer offset (`+`, `-` with an n, `1+`,
-\ `1-`, `cell+`, `char+`: src/habu/prims.f PE-PTR-A-OFF). It changes one meet:
-\ a null that rides such a row comes out TVK-DBASE, since an offset null is an
-\ arbitrary computed address, not the literal null, and is fenced at every
-\ depth (`: F ( -- ptr ptr n ) NULL-PTR OFF + ; F @ @` certified and read an
-\ attacker-chosen `variable`, printing 777). Against every other kind TVK-OFF is
-\ transparent, so an ordinary pointer keeps stepping and the literal null keeps
-\ its arm.
+\ `1-`, `cell+`, `char+`). It changes one meet: a null that rides such a row
+\ comes out TVK-DBASE, since an offset null is an arbitrary computed address,
+\ not the literal null, and is fenced at every depth. Against every other kind
+\ TVK-OFF is transparent, so an ordinary pointer keeps stepping and the literal
+\ null keeps its arm.
 6 constant TVK-OFF
 7 constant TVK-SCOPE   \ a non-value scope parameter, never an allocation identity
 8 constant TVK-REGION  \ a rigid allocation domain, never a value or scope
 9 constant TVK-CELL    \ a declared or fetched physical cell; cannot later become wide
 \ TVK-BASE-ONLY is a pattern, not a fence: the base operand of a pointer-distance
-\ row (src/habu/prims.f PE-PTR-B-BASE). It binds only the pointee of a base
-\ address (BASE-KIND?) and refuses every other term, so that row matches
+\ row. It binds only the pointee of a base address (BASE-KIND?) and refuses
+\ every other term, so that row matches
 \ `X NULL-PTR -` without equating X's pointee with the null's: a distance reads
 \ no storage. It never outlives its row: RAW-BLOCK? either binds it into the
 \ base address's class or raises it to that class's kind, and TRY-EFF fails the
@@ -581,7 +594,7 @@ TV-CLEAR
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK! ( n n -- ) cells TVK + ! ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
-: BASE-KIND? ( n -- bool )   \ is this KIND one of the two base addresses?
+: BASE-KIND? ( n -- bool )
    dup TVK-NULL = swap TVK-DBASE = or ;
 \ Permanent (untrailed) marks for build-time contexts (prim and signature build,
 \ freshening); unification uses the trailed TVK-RAISE.
@@ -595,9 +608,7 @@ TV-CLEAR
 : TVK-BASE-ONLY! ( n -- ) TVK-BASE-ONLY swap cells TVK + ! ;
 
 \ The fence lattice: ANY < CELL < NULL < DBASE < RAW. A meet keeps the stricter
-\ kind, so a null meeting a DATA-derived pointee comes out DBASE and a
-\ base-derived value stored into a raw cell meets at RAW; no discipline is
-\ lowered. Row kinds are not on this lattice and rank 0 (a row var never meets a
+\ kind. Row kinds are not on this lattice and rank 0 (a row var never meets a
 \ type var).
 : TVK-RANK ( n -- n )
    dup TVK-RAW = IF drop 4 EXIT THEN
@@ -605,8 +616,6 @@ TV-CLEAR
    dup TVK-NULL = IF drop 2 EXIT THEN
    TVK-CELL = IF 1 EXIT THEN
    0 ;
-\ TVK-OFF sits beside the lattice: meeting the null yields DBASE, and meeting
-\ anything else answers the other kind unchanged.
 : TVK-MEET ( n n -- n ) {: k1:n k2:n :}
    k1 TVK-SCOPE = k2 TVK-SCOPE = or IF TVK-SCOPE EXIT THEN
    k1 TVK-REGION = k2 TVK-REGION = or IF TVK-REGION EXIT THEN
@@ -637,8 +646,8 @@ TV-CLEAR
 
 : MK-QROW ( n -- n ) dup RVK-QUOT! MK-ROW ;
 
-\ The facts tag of a kind (render.f REND-FACTS, SIG-TAG), empty for one the type
-\ syntax decides: TVK-ANY, TVK-SCOPE, TVK-REGION.
+\ The facts tag of a kind, empty for one the type syntax decides: TVK-ANY,
+\ TVK-SCOPE, TVK-REGION.
 : KIND>TAG$ ( n -- ptr u8 n ) {: kind:n :}
    kind TVK-RAW = IF s" raw" EXIT THEN
    kind RVK-QUOT = IF s" quot" EXIT THEN
@@ -650,7 +659,6 @@ TV-CLEAR
    kind TVK-BASE-ONLY = IF s" base-only" EXIT THEN
    s" " ;
 
-\ The kind a facts tag names, TVK-ANY for any other token.
 : TAG>KIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0 = IF TVK-ANY EXIT THEN
    TVK-BASE-ONLY 1 + 1 ?do
@@ -658,7 +666,7 @@ TV-CLEAR
    loop
    TVK-ANY ;
 
-1024 constant MAXPTR-INIT       \ ptr terms (grows on demand)
+1024 constant MAXPTR-INIT
 CHECKER-REG:SCRATCH{
 variable PTRN   PTR-VARIABLE PTRA-P   variable PTR-CAP
 CHECKER-REG:}SCRATCH
@@ -684,8 +692,8 @@ CHECKER-REG:}SCRATCH
 \ never contents. It wraps its old type as T-PTR wraps a pointee, so a
 \ diagnostic can name the lost type. Its arena is per-definition scratch like
 \ PTRA: counter reset in NEW, height saved and restored by a prim-overload
-\ trial. The three words that read it need T-RES and sit below it.
-1024 constant MAXSTALE-INIT     \ stale terms (grows on demand)
+\ trial.
+1024 constant MAXSTALE-INIT
 CHECKER-REG:SCRATCH{
 variable STLN   PTR-VARIABLE STLA-P   variable STL-CAP
 CHECKER-REG:}SCRATCH
@@ -706,9 +714,8 @@ CHECKER-REG:}SCRATCH
 variable TOP-UNKNOWN
 
 \ Unification trail: one entry (var-id << 4 | tag) per binding, compression
-\ link or provenance, kind raise or scope raise; TRAIL-UNWIND and AT-PIN
-\ restore any height.
-4096 constant TRAIL-INIT        \ trail entries (grows on demand)
+\ link or provenance, kind raise or scope raise.
+4096 constant TRAIL-INIT
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
 PTR-VARIABLE TRAIL-OLD-P   \ by trail index: the stored link or provenance a compression entry replaced
@@ -735,15 +742,13 @@ CHECKER-REG:}SCRATCH
    TRAIL-N @ 1 + TRAIL-N ! ;
 
 
-\ A compression entry (tag 12, 13 or 14) keeps the stored link or provenance it
-\ replaces.
 : TRAIL-LINK ( n n n -- )
    {: old:n id:n tag:n :}
    id tag TRAIL-PUSH
    old  TRAIL-N @ 1 - cells TRAIL-OLD + ! ;
 
 
-: TRAIL-KIND-OF ( n -- n )   \ the kind a kind-tag puts back
+: TRAIL-KIND-OF ( n -- n )
    dup 4 = IF drop TVK-NULL EXIT THEN
    dup 5 = IF drop TVK-DBASE EXIT THEN
    dup 6 = IF drop TVK-OFF EXIT THEN
@@ -753,7 +758,7 @@ CHECKER-REG:}SCRATCH
    10 = IF TVK-CELL ELSE TVK-ANY THEN ;
 
 
-: TRAIL-SLOT ( n -- ptr n )   \ the cell a trail entry changed
+: TRAIL-SLOT ( n -- ptr n )
    {: e:n :}
    e 15 and {: tag:n :}   e 4 rshift cells {: off:n :}
    tag 0=  tag 12 = or IF TVT off + EXIT THEN
@@ -763,7 +768,7 @@ CHECKER-REG:}SCRATCH
    TVK off + ;
 
 
-: TRAIL-UNDO ( n -- )   \ put back what trail entry i changed
+: TRAIL-UNDO ( n -- )
    {: i:n :}
    i cells TRAIL + @ {: e:n :}
    e 15 and {: tag:n :}
@@ -772,9 +777,7 @@ CHECKER-REG:}SCRATCH
    e TRAIL-SLOT ! ;
 
 
-\ An unwind below the pin takes back bindings the pin saw, so the pin falls with
-\ it: AT-PIN then still takes back every binding made after the refusal.
-: TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+undo every mutation above `mark`
+: TRAIL-UNWIND ( n -- ) {: mark:n :}
    TRAIL-PIN @ mark 1 + > IF mark 1 + TRAIL-PIN ! THEN
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
@@ -782,9 +785,6 @@ CHECKER-REG:}SCRATCH
    REPEAT ;
 
 
-\ Between AT-PIN and ;AT-PIN every store made since ROWS-PIN is undone, so the
-\ tables read as they stood at the pin; ;AT-PIN takes back the view's own
-\ compression stores before it restores.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE PIN-SAVE-P   variable PIN-SAVE-CAP   variable PIN-TOP
 CHECKER-REG:}SCRATCH
@@ -817,9 +817,6 @@ CHECKER-REG:}SCRATCH
       dup mark - cells PIN-SAVE + @  over cells TRAIL + @ TRAIL-SLOT !
       1 +
    REPEAT drop ;
-\ TVK-RAISE-TO is trailed, so a failed prim-overload trial (TRIAL-REST) or a
-\ definition reject puts the displaced kind back; a meet that changes nothing
-\ records nothing.
 : TVK-KIND-TAG ( n -- n )
    dup TVK-SCOPE = IF drop 7 EXIT THEN
    dup TVK-REGION = IF drop 9 EXIT THEN
@@ -840,33 +837,17 @@ CHECKER-REG:}SCRATCH
    dup 8 TRAIL-PUSH NSCOPE! ;
 
 \ --- linear/affine kind discipline ---------------------------------------------
-\ Concrete-count conservation only sees linear cons on the stack; a value
-\ copied or dropped while its type is still a var that later unifies with a
-\ linear con (KEEP's `over`, an intra-quot `dup FREE`) escapes it. So:
-\   (a) LIN-EFF-PASS: a var in an applied effect that binds to a linear con must
-\       occur equally on the input and output sides across the whole effect,
-\       quotation sub-effects included (KEEP: 1-in / 2-out rejects; DIP/swap
-\       pass). A generated constructor, MAKE or UNMAKE row moves exactly its
-\       payload, so `LQ2:ERR ( b -- lq2<a,b> )` mints an err without an `a`; an
-\       ordinary word with the same effect is still counted;
-\   (b) LIN-TAINT / LIN-TAINT-SCAN: a var copied or dropped while polymorphic is
-\       tainted, and rejected if it later resolves to a linear con
-\       (`[: dup FREE ;]`).
-\ The discipline runs once a DEFLINEAR type is declared, and also while a type
-\ entry may be unread, since a body checked before the read would escape it.
 variable LIN-NDECL   0 LIN-NDECL !     \ count of declared DEFLINEAR types (in scope)
 
 \ Set while the program's types wordlist may hold an entry the family registry or
-\ the type table lacks: a program starts with its entries unread (TFAM-FIND,
-\ CT-FIND, READ-PENDING).
+\ the type table lacks: a program starts with its entries unread.
 variable ENTRIES-PENDING   -1 ENTRIES-PENDING !
 
 : LIN-ANY? ( -- bool ) LIN-NDECL @ 0 <> ENTRIES-PENDING @ 0 <> or ;
 
 \ Taint list: canonical var ids duplicated/dropped while still polymorphic. Only
 \ appended on a COMMITTED step (LIN-EFF-PASS runs at OK true), so no failed prim
-\ trial ever taints a rolled-back id — trial rollback can never reuse a tainted
-\ id. Reset per definition (NEW). Scanned after each token (LIN-TAINT-SCAN).
+\ trial ever taints a rolled-back id. Reset per definition (NEW).
 4096 constant LTNT-INIT
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE LTNT-P   variable LTNT-CAP   variable LTNT-N
@@ -898,7 +879,7 @@ variable TCMP                            \ path-compression walk cursor
 : TV@ cells TVT + @ 1- ;
 
 : RV@ cells RVT + @ 1- ;
-256 constant MAXQE-INIT        \ quotation effects (din dout rin rout per record); grows on demand
+256 constant MAXQE-INIT
 CHECKER-REG:SCRATCH{
 variable QEN
 PTR-VARIABLE QEA-P   PTR-VARIABLE QXDA-P   PTR-VARIABLE QXRA-P   PTR-VARIABLE QXHA-P   PTR-VARIABLE QXNA-P
@@ -927,12 +908,12 @@ variable FV   0 FV !   \ the next var id FRESH hands out
 
 
 : FRESH ( -- n )
-   FV @ 1 + TV-ENSURE            \ grow the pool so FV is a valid index
+   FV @ 1 + TV-ENSURE
    FV @ dup 1 + FV ! ;
 
 \ A term and its block variable are made together: a trial's rollback restores
 \ FV and QEN together (TRIAL-REST).
-: MK-QUOT {: din dout rin rout :}   \ ( -- t ) allocate a quot<effect> term
+: MK-QUOT {: din dout rin rout :}
    QEN @ 1 + QE-ENSURE
    QEN @ 32 * QEA + {: a :}
    din a !  dout a 8 + !  rin a 16 + !  rout a 24 + !
@@ -979,7 +960,7 @@ $10000 constant BVAR-REGION-BIT
 \ A slot holds the window's intact mask (THROW-EDGE) tagged XMASK-MARK, a zero
 \ mask as 0; no row term carries T-QUOT's tag, so any other field reads as 0.
 T-QUOT constant XMASK-MARK
-: XMASK ( n -- n ) TAG-SHIFT lshift XMASK-MARK or ;      \ mask -> stored field
+: XMASK ( n -- n ) TAG-SHIFT lshift XMASK-MARK or ;
 : XMASK> ( n -- n ) dup TAG XMASK-MARK = IF PAY ELSE drop 0 THEN ;
 
 : Q>XDFIELD ( n -- n ) PAY cells QXDA + @ ;   \ the slots verbatim, for the copies
@@ -993,7 +974,7 @@ T-QUOT constant XMASK-MARK
    xd XMASK> 0 = IF 0 ELSE xd THEN q PAY cells QXDA + !
    xr XMASK> 0 = IF 0 ELSE xr THEN q PAY cells QXRA + ! ;
 
-512 constant MAXATOM-INIT       \ atom terms (grows on demand)
+512 constant MAXATOM-INIT
 \ An atom or param term owns its name: MK-ATOM-K and MK-PARAM copy the bytes
 \ into the TERM-NAMES pool, and the name columns hold their offset there, so
 \ the store a term was named from (USIGS, TOP-READ, VREC, source text) may grow
@@ -1008,15 +989,7 @@ variable ATOMN
 PTR-VARIABLE TERM-NAME-P   variable TERM-NAME-N   variable TERM-NAME-CAP
 CHECKER-REG:}SCRATCH
 variable RIGID-N
-\ Rigid host-allocation identity domains: a host allocation is stamped by fresh,
-\ rigid, never-reused identities that ptr T and type vars cannot express: its
-\ REGION (which allocation), EXTENT (bounds) and GENERATION (mutation epoch).
-\ Each domain owns a private per-check counter (RGN-N/EXT-N/GEN-N); the atom's
-\ domain qualifies the id in ATOM-OK?, so equal ids from different domains never
-\ unify. RIGID-MAX bounds every domain below the sign wrap, so a counter throws
-\ E-RIGID-EXHAUST before it could wrap and re-grant a live id. Counters reset
-\ per check (RIGID-RESET); the bound is settable.
-7140 constant E-RIGID-EXHAUST   \ a rigid identity domain exhausted before wrap
+7140 constant E-RIGID-EXHAUST
 variable RGN-N   variable EXT-N   variable GEN-N
 variable RGN-MARK   \ the first region id a definition body mints (SIG-INPUT-FRESH)
 variable FB-N       \ fresh-name keys below FB-N may be body-supplied (SIG-BODY-FRESH)
@@ -1059,9 +1032,8 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOMA-FIELD ( n -- ptr n )
    cells ATOMA + ;
 : TERM-NAMES ( -- ptr u8 ) TERM-NAME-P @ ;
-\ Copy a name into the pool and answer its offset. A source inside the pool
-\ stays readable across the grow: the scratch region keeps the old bytes until
-\ SR-RETIRE.
+\ A source inside the pool stays readable across the grow: the scratch region
+\ keeps the old bytes until SR-RETIRE.
 : TERM-NAME+ ( ptr u8 n -- n ) {: a:ptr u:n :}
    TERM-NAME-N @ u + TERM-NAME-CAP @ > IF
       TERM-NAME-N @ u + TERM-NAME-CAP @ 2 * max TERM-NAME-INIT max {: nc:n :}
@@ -1123,7 +1095,7 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOM>U ( n -- n ) PAY cells ATOMU + @ ;
 : ATOM>K ( n -- n ) PAY cells ATOMK + @ ;
 
-512 constant MAXPARAM-INIT      \ param terms (grows on demand)
+512 constant MAXPARAM-INIT
 \ PARGP is the flat per-param arg pool: each param term stores its args as the
 \ run [PARAMOFF[p], PARAMOFF[p]+argc), so any arity fits. Cells hold term codes
 \ (pointer-free), so a grow is a byte copy; it resets in NEW with PARAMN.
@@ -1150,13 +1122,13 @@ CHECKER-REG:}SCRATCH
 : PARAMOFF ( -- ptr n ) PARAMOFF-P @ ;
 : PARAMHID ( -- ptr n ) PARAMHID-P @ ;
 : PARGP ( -- ptr n ) PARGP-P @ ;
-: PARG-ENSURE ( n -- ) {: need:n :}    \ room for `need` more arg cells past PARG-N
+: PARG-ENSURE ( n -- ) {: need:n :}
    PARG-N @ need + PARG-CAP-V @ <= IF exit THEN
    PARG-N @ need + PARG-CAP-V @ 2 * max PARG-INIT max {: nc:n :}
    PARGP-P @ PARG-CAP-V @ cells nc cells SR-GROW PARGP-P !
    nc PARG-CAP-V ! ;
 : PARAM-SCR ( -- ptr n ) PARAM-SCR-P @ ;
-: PARAM-SCR-ENSURE ( -- )         \ room for one more scratch arg (grows the nesting-peak buffer)
+: PARAM-SCR-ENSURE ( -- )
    PARAM-SCR-N @ PARAM-SCR-CAP-V @ < IF exit THEN
    PARAM-SCR-N @ 1 + PARAM-SCR-CAP-V @ 2 * max PARAM-SCR-INIT max {: nc:n :}
    PARAM-SCR-P @ PARAM-SCR-CAP-V @ cells nc cells SR-GROW PARAM-SCR-P !
@@ -1174,10 +1146,8 @@ CHECKER-REG:}SCRATCH
 
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The registry
 \ lives in src/core/type-family.f, loaded after checker.f, so its queries are
-\ friend hooks: each is a `defer` with a declared effect, so a hook call is
-\ statically effect-known rather than an opaque executed xt. Each gets a
-\ registry-not-loaded default here (below RES-FALSE, which several need) and is
-\ rebound by type-family.f at prefix load. The CONSTRUCT-STEP, MATCH-*,
+\ friend hooks. Each gets a registry-not-loaded default here and is rebound by
+\ type-family.f at prefix load. The CONSTRUCT-STEP, MATCH-*,
 \ TFAM-CON-LIN and TFAM-MEMBERS hooks have no default: their call sites never
 \ run before type-family.f installs them, and an unset one fails closed
 \ (DEFER-UNSET).
@@ -1189,8 +1159,8 @@ defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar 
 defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
 defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )      \ canonical persisted family spelling
 defer PKG-LIVE-XT ( -- ptr u8 n bool )                  \ authenticated engine open package name
-defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (type-family.f TFAM-WIDTH@)
-defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (type-family.f TFAM-WIDTH@)
+defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells
+defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware
 defer TFAM-WIDTH-SLOT-XT ( n n -- bool )                \ family id + arg slot -> the instantiated width READS that slot
 defer TFAM-SCOPE-SLOT-XT ( n n -- bool )                \ family id + arg slot -> a scope parameter
 defer TFAM-REGION-SLOT-XT ( n n -- bool )               \ family id + arg slot -> a region identity
@@ -1204,7 +1174,7 @@ defer TFAM-INIT-RECORD-XT ( n -- n n n bool )          \ committed fixed-cell pr
 defer TFAM-INIT-FIELD-XT ( n ptr u8 n -- n n n bool ) \ committed field descriptor, offset, bytes
 defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ construct family resolve, active package only
 defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ construct variant resolve + step effect
-defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL seeded by a direct closed layout arg (type-family.f TFC-SEED; a product UNMAKE's live input) takes the construct step; scalar/pointer/open/linear args fall through
+defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL seeded by a direct closed layout arg (a product UNMAKE's live input) takes the construct step; scalar/pointer/open/linear args fall through
 defer CTOR-ROW?-XT ( n -- bool )                       \ symbol is a generated constructor row (sum variant, product make/unmake)
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ MATCH family resolve, signature scope
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
@@ -1235,15 +1205,14 @@ variable PTX-UNIFORM-FAM   0 PTX-UNIFORM-FAM !
 \ (PTX-BARRIER-ROWS?/BARRIER-CUR?). 0 means no detection.
 variable PTX-CPCOMMITTED-FAM   0 PTX-CPCOMMITTED-FAM !
 variable PTX-CPREADY-FAM       0 PTX-CPREADY-FAM !
-\ ( n -- ): OR CTL-BARRIER into a symbol's control flags. A `defer` so
+\ OR CTL-BARRIER into a symbol's control flags. A `defer` so
 \ E-ADD-EFFECT calls it with a known effect; the default drops the sym until
-\ PTX-BARRIER-SET installs. Both the checked `:` and the TRUSTED: publish paths
-\ reach it through E-ADD-EFFECT.
+\ PTX-BARRIER-SET installs.
 defer PTX-BARRIER-SET-XT ( n -- )
 
 \ A successful scan used only for native call shapes grants no source authority.
 \ Its recovery use stands, as every check's does: the native compiler withholds
-\ the definition the scan checked for it (src/compiler/native/compiler.f RECORD).
+\ the definition the scan checked for it.
 \ The scope and the late publication hook belong to this checker instance. The
 \ private hook is armed after NORETS is available; declaration dispatch still
 \ belongs to the retained source owner before that point.
@@ -1274,8 +1243,7 @@ public
 ;package
 
 \ --- checker package scope state, declared here so signature parsing (SIG-FAM?)
-\ resolves family tokens through the active package scope. The mutators stay in
-\ the package block.
+\ resolves family tokens through the active package scope.
 0 constant CHECKER-PACKAGE-NONE
 1 constant CHECKER-PACKAGE-PRIVATE
 2 constant CHECKER-PACKAGE-PUBLIC
@@ -1303,7 +1271,7 @@ variable CHECKER-PACKAGE-MODE
 : CHECKER-VIS-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
 
 \ The using depth the replayed source may close down to, as the engine's
-\ evaluate frame keeps it for a buffer (src/habu/layout.f EVAL-FRAME:USE-FLOOR):
+\ evaluate frame keeps it for a buffer:
 \ the verifier window seeds it with the depth the source starts at, and the
 \ source's first `using` below it, after a `;package` closed the inherited
 \ package, lowers it to meet that using (CHECKER-OVERLAY:OPEN-USING).
@@ -1393,15 +1361,9 @@ variable CHECKER-VERIFY-PKG-DEPTH
    [: CHECKER-PKG-BOOT-LIVE ;] is PKG-LIVE-XT ;
 CHECKER-PKG-LIVE-DEFAULT
 
-\ The refusal for "this definition has no package context". Every checked
-\ definition and declaration front end asks CHECKER-PKG-CONTEXT; when neither
-\ authority names one the definition is refused, fail closed (an engine whose
-\ package bridge to the checker is missing depends on it). It names the state
-\ on fd 2 and throws CHECKER-REJECT-RC: a bare E-PKG-CONTEXT (7136) is outside
-\ [1,255] and exits UNCAUGHT-RC (67) instead of 70 (test/engine-error-package.f),
-\ while an enclosing catch still receives a catchable reject. A bare word list
-\ is not a definition context: `wordlist set-current` then a checked definition
-\ is refused (test/gate-dictionary-lib.f WORDLIST-BARE). The `write` result is
+\ Throws CHECKER-REJECT-RC: a bare E-PKG-CONTEXT (7136) is outside [1,255] and
+\ exits UNCAUGHT-RC (67) instead of 70 (test/engine-error-package.f), while an
+\ enclosing catch still receives a catchable reject. The `write` result is
 \ dropped because the next step raises; the refusal itself is never dropped.
 70 constant CHECKER-REJECT-RC   \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
 
