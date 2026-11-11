@@ -1,6 +1,6 @@
 ---
 title: checker.f repeats layout.f constants with nothing checking they agree
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-11T19:09:01.250464+02:00"
@@ -19,4 +19,15 @@ Left for twins-2 (one brief, by exact line on the new master; first check in src
 - top-row.f :10 and layout.f :2 claim a load order that boot-files.f does not have.
 - src/habu/intern-table.f loads before layout.f, so its DPHW-OFF copy cannot simply read layout.f's name.
 - check-hook.f BODY-BASE, BODY-CAP-OFF, BODY-ROWS-OFF, INPUT-START, INPUT-END ($800, $808, $818, $2810, $36A8); layout-buffer.f STGT-INP-CELL; top-row.f TR-EV-*; include.f INCLUDE-SRCLOC-*, INCLUDE-POLICY-* and INCLUDE-EVALERR-CELL; type-family.f TFQ-CAP.
-Claim: agent=jerry, no workspace.
+twins-2 runs: workspace .jj-ws.noindex/twins-2 on master 96917d9d, brief twins-2.md; it also moves intern-table.f's row after layout.f's so DPHW-OFF can go.
+Claim: agent=jerry workspace=.jj-ws.noindex/twins-2.
+
+twins-2 is written (change lkxsltss): every brief row applied, intern-table.f's boot row moved after layout.f's; lane gate rc 0 (hb1 = hb2, hello, top-row-storage-test, include-refusal-e2e, linker, vocabulary-test). Review (brief twins-2.md, prompt in handoff notes): REVISE, comments only; claims 1-3 accept (the row move is safe for every loader, each deleted constant equalled its layout.f word, nothing else used TFQ-CAP). Its five comment corrections are folded by the lead: layout.f line 2 says the file is a start-up row that requires nothing, check-hook.f :19 and layout.f's EVALERR clause deleted, layout-buffer.f STORAGE-UNREAD's comment and layout.f's vocabulary-readers sentence replaced.
+Hand copies of layout.f values the review still found (next brief; none is checked unless noted):
+- src/habu/native-body.f :13 `data-base $1C0 + @` is RBASE-CELL, :14 `data-base $2CE0 + @` is CODE-END-CELL; layout.f is loaded before it.
+- src/habu/habu1.f :171-175 (package EM-DEF-OCC) `$2D08 constant PTR-CELL` and `DICT-CAP 1+ cells constant STATE-BYTES` copy DEF-OCC:PTR-CELL and STATE-BYTES; its comment's reason (the predecessor builder has no DEF-OCC) no longer holds: both bin/hb.map and the installed map have the DEF-OCC namespace.
+- src/habu/layout.f :1399 `$10000 constant PROT-PAGE-MAX` copies STACK-ABI:PAGE-BYTES (rt.f :29-30 checks it); stack-abi.f loads first.
+- src/habu/layout.f :386-391 `64 constant BPTRAMP-BYTES` is debug.f MAXBP times TRAMP-BYTES.
+- checked at run time, in src/lib: FS-ABI STAT-BYTES, PROBE-BYTES, TEXT-BYTES against fs.f :23, :41, :24 (fs.f :139-142); NUM-BUF-BYTES against fmt.f :37 (fmt.f :44).
+Claim: agent=jerry workspace=.jj-ws.noindex/twins-2 (lands with the row-walk stack).
+Landed: lkxsltss "Read layout.f's cells where files copied them" with the row-walk batch (gate and census in dot habu-delete-the-jit-d9fdaf67). Workspace twins-2 retired. Left: the hand copies listed above (native-body.f, habu1.f EM-DEF-OCC, layout.f PROT-PAGE-MAX and BPTRAMP-BYTES); the src/lib copies are checked at run time and stay. Claim: agent=jerry, no workspace.
