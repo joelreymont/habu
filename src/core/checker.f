@@ -259,8 +259,9 @@
 \ Callable contracts: a stored callable must implement every instantiation its
 \ declared quotation admits. QCON-BEGIN saves the contract's type and row
 \ variables before ordinary unification; QCON-OK? then checks that fitting the
-\ implementation did not specialize, narrow, or merge them. Both `is` and a
-\ typed quotation cell use this same contract rule.
+\ implementation did not specialize, narrow, or merge them, nor restrict a type
+\ variable to a cast's stored types (NLINEAR). Both `is` and a typed quotation
+\ cell use this same contract rule.
 \
 \ Declaration locations: the armed location (CHECKER-DECL-AT!) is the declaring
 \ token of the statement being registered: its name, borrowed from the arming
@@ -1222,7 +1223,7 @@ CHECKER-REG:}SCRATCH
 \ A saved program starts with none: the planes and TV-CAP are scratch, so
 \ TV-ENSURE maps the arena on first use.
 1280 constant MAXTV-INIT
-17 constant TV-PLANES
+18 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
 variable TV-CAP   TV-CAP scratch-cell-mark   0 TV-CAP !
 : MAXTV ( -- n ) TV-CAP @ ;
@@ -1240,7 +1241,7 @@ PTR-VARIABLE NSCOPE-P   \ orthogonal storage restriction for type and row vars
 PTR-VARIABLE NLINEAR-P  \ a type var binds only a type a cast's stored position may name
 PTR-VARIABLE TVP-P      \ a bound type var was bound from a provided side (TV-BIND)
 PTR-VARIABLE QCON-IDS-P   PTR-VARIABLE QCON-KINDS-P
-PTR-VARIABLE QCON-RIDS-P
+PTR-VARIABLE QCON-RIDS-P  PTR-VARIABLE QCON-NLIN-P
 
 : TV-BYTES ( n -- n ) TV-PLANES * cells ;
 : TV-PLANE ( ptr a n n -- ptr a ) {: base:ptr cap:n plane:n :}
@@ -1275,6 +1276,7 @@ PTR-VARIABLE QCON-RIDS-P
    base cap 14 TV-PLANE QCON-RIDS-P !
    base cap 15 TV-PLANE TVP-P !
    base cap 16 TV-PLANE NLINEAR-P !
+   base cap 17 TV-PLANE QCON-NLIN-P !
    cap TV-CAP ! ;
 
 
@@ -1287,7 +1289,7 @@ PTR-VARIABLE QCON-RIDS-P
    NULL-PTR TVK-P !      NULL-PTR NSCOPE-P !
    NULL-PTR QCON-IDS-P !   NULL-PTR QCON-KINDS-P !
    NULL-PTR QCON-RIDS-P !   NULL-PTR TVP-P !
-   NULL-PTR NLINEAR-P !
+   NULL-PTR NLINEAR-P !   NULL-PTR QCON-NLIN-P !
    0 TV-CAP ! ;
 TV-CLEAR
 
@@ -1331,6 +1333,7 @@ TV-CLEAR
 : QCON-IDS ( -- ptr n ) TV-READY QCON-IDS-P @ ;
 : QCON-KINDS ( -- ptr n ) TV-READY QCON-KINDS-P @ ;
 : QCON-RIDS ( -- ptr n ) TV-READY QCON-RIDS-P @ ;
+: QCON-NLIN ( -- ptr n ) TV-READY QCON-NLIN-P @ ;
 : NSCOPE@ ( n -- bool ) cells NSCOPE + @ 0 <> ;
 : NSCOPE! ( n -- ) -1 swap cells NSCOPE + ! ;
 : NLINEAR ( -- ptr n ) TV-READY NLINEAR-P @ ;
@@ -5437,6 +5440,7 @@ CHECKER-REG:}SCRATCH
 67 constant MD-TYPE-FORM     \ a body's `[type]` names no closed type storage holds (TYPE-LIT-TOK); E-BAD-STORAGE
 68 constant MD-STORED-LINEAR \ a type bound to a cast's stored type variable may hold a linear value (TV! STORED-TERM-HIT); E-CAST-LINEAR
 69 constant MD-STORED-CLASS  \ it hands out an atom or a width (TV! STORED-TERM-HIT); E-CAST-CLASS
+70 constant MD-IS-STORED     \ a callable's cast-stored type variable meets a cell's unrestricted one (QCON-OK?); E-CAST-LINEAR
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -8803,6 +8807,7 @@ CHECKER-REG:}SCRATCH
    QCON-N @ 1 + TV-ENSURE
    id QCON-N @ cells QCON-IDS + !
    id TVK@ QCON-N @ cells QCON-KINDS + !
+   id NLINEAR@ Q-FLAG>N QCON-N @ cells QCON-NLIN + !
    QCON-N @ 1 + QCON-N ! ;
 
 : QCON-RADD ( n -- ) {: id:n :}
@@ -8863,6 +8868,9 @@ CHECKER-REG:}SCRATCH
       root ISVAR 0= IF drop RES-FALSE EXIT THEN
       dup cells QCON-KINDS + @ root PAY TVK@ TVK-MEET
       over cells QCON-KINDS + @ <> IF drop RES-FALSE EXIT THEN
+      root PAY NLINEAR@  over cells QCON-NLIN + @ 0=  and IF
+         drop MD-IS-STORED MDIAG! RES-FALSE EXIT
+      THEN
       0 BEGIN 2dup swap < WHILE
          dup cells QCON-IDS + @ MK-VAR T-RES root = IF 2drop RES-FALSE EXIT THEN
          1 +

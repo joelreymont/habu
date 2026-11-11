@@ -1134,6 +1134,7 @@ variable MDV-I   variable MDV-F
       MD-TYPE-FORM    of s" E-BAD-STORAGE" endof
       MD-STORED-LINEAR of s" E-CAST-LINEAR" endof
       MD-STORED-CLASS of s" E-CAST-CLASS" endof
+      MD-IS-STORED    of s" E-CAST-LINEAR" endof
       MD-LOOP-DEPTH   of s" E-MISMATCH" endof
       MD-IF-DEPTH     of s" E-MISMATCH" endof
       MD-ARMS-DEPTH   of s" E-MISMATCH" endof
@@ -1193,6 +1194,7 @@ variable MDV-I   variable MDV-F
       MD-TYPE-FORM    of s" fix_type_form" endof
       MD-STORED-LINEAR of s" fix_type_form" endof
       MD-STORED-CLASS of s" fix_type_form" endof
+      MD-IS-STORED    of s" fix_type_form" endof
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
@@ -1304,6 +1306,7 @@ variable MDV-I   variable MDV-F
       MD-TYPE-FORM    of s" Name a closed type ARENA stores: one cell or more, or u8, with no type variable, quotation, linear value, atom, xt or width<t> in it, and no cell family with arguments as the type or a pointer's pointee." endof
       MD-STORED-LINEAR of s" Pass a type with no linear value in it: a cast's stored type is copied as plain cells." endof
       MD-STORED-CLASS of s" Pass a type a cast may name as a pointee: no atom and no width<t> in it." endof
+      MD-IS-STORED    of s" Declare the cell over the concrete type the callable stores, or install a callable whose type variable takes any type: a cast's stored type holds no linear value, atom or width." endof
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
@@ -1378,6 +1381,7 @@ variable MDV-I   variable MDV-F
       MD-TYPE-FORM    of s" [type] names no type storage holds" endof
       MD-STORED-LINEAR of s" a cast's stored type would hold a linear value" endof
       MD-STORED-CLASS of s" a cast's stored type would hand out an atom or a width" endof
+      MD-IS-STORED    of s" the callable takes only a cast's stored types where the cell takes any type" endof
       MD-LOOP-DEPTH   of s" the loop body changes the stack's depth" endof
       MD-IF-DEPTH     of s" the if arm changes the stack's depth" endof
       MD-ARMS-DEPTH   of s" the if and else arms leave different stack depths" endof

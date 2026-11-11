@@ -71,6 +71,14 @@ TYPED-VARIABLE RN run<n>
 : ADDR ( ptr turn -- n ) NULL-PTR - ;
 : TV? ( ptr turn -- bool ) ADDR  TV ADDR = ;
 
+CAST: QC->ELEM ( ptr u8 -- ptr t )
+public
+\ QC-AT's `a` takes only a cast's stored types; QC-ANY's takes any.
+: QC-AT ( ptr u8 -- ptr a ) QC->ELEM ;
+defer QC-ANY ( ptr u8 -- ptr a )
+defer QC-D ( ptr u8 -- ptr a )
+private
+
 \ The admitted callers: each loads only if its record type is taken.
 : PASS-TURN ( -- n ) 16 N>EV-TURN PASS EV-TURN>N ;
 : PASS-N ( -- n ) 8 N>EV-N PASS EV-N>N ;
@@ -256,6 +264,16 @@ create DIAG-BUF DIAG-CAP allot
    S\" \"code\":\"E-CAST-CLASS\"" CAST-AT
    DISARM ;
 
+: CASE-IS-STORED ( -- )
+   s" is keeps a cast's stored-type restriction" T-LABEL
+   ARM
+   [: s" : STORED-QC1 ( -- ) [: STORED:QC-AT ;] is STORED:QC-D ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-CAST-LINEAR\"" HAS?
+   DISARM
+   [: s" : STORED-QC2 ( -- ) [: STORED:QC-ANY ;] is STORED:QC-D ;" evaluate-closed ;]
+      0 TTHROWSQ ;
+
 public
 
 \ A generic word that passes the cast's stored variable on to its caller.
@@ -280,6 +298,7 @@ public
    CASE-ELEM
    CASE-ELEM-LINEAR
    CASE-ELEM-CLASS
+   CASE-IS-STORED
    T-REPORT ;
 
 ;package
