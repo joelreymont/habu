@@ -198,9 +198,16 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
       data node INPUT-OFF @ + dst got BYTE-COPY got
    then ;
 
-: READ-INNER ( ptr n SPAN:span<u8> -- n ) {: node:ptr dst :}
+
+\ The most one read takes: macOS read and pread answer -1 (EINVAL) to a count
+\ above INT_MAX, so a larger span is filled over several calls.
+$7FFFFFFF constant PIECE-MAX
+
+
+: READ-INNER ( ptr n SPAN:span<u8> -- n )
+   {: node:ptr dst :}
    node INPUT-DONE @ 0<> if 0 exit then
-   dst SPAN:$ {: data:ptr cap:n :}
+   dst SPAN:$ PIECE-MAX min {: data:ptr cap:n :}
    cap 0= if 0 exit then
    node data cap INPUT-BYTES {: got:n :}
    \ A negative count from read or C-PREAD (kinds 1 and 2) is the host's; from
@@ -213,6 +220,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    node INPUT-KIND @ 1 <> if
       node INPUT-CRC @ data got CRC-FEED node INPUT-CRC !
    then got ;
+
 
 : DISCARD-INPUT ( ptr n -- n ) {: node:ptr :}
    node UNREGISTER-INPUT
