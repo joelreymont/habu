@@ -705,21 +705,6 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
    then
    s" build: CRAFTS: no instruction beside V's slot" 1 die ;
 
-\ V's slot naming LOW (tag 0, file 0, LOW's sum and count) in place of none: 24 bytes more, in the
-\ last section.
-: SLOT-TARGET ( -- n )
-   CRAFT-WALK
-   SLOT-AT @ 8 + {: tag-at:n :}
-   tag-at OBJ@ 5 <> if s" build: CRAFTS: V's slot names a target" 1 die then
-   CRAFT-U @ 24 + {: u:n :}
-   u CRAFT-CAP > if s" build: CRAFTS: the grown object exceeds CRAFT-CAP" 1 die then
-   LOW-REC @ CRAFT-ID {: sum:n count:n :}
-   CRAFT-FIRST tag-at 8 + +  CRAFT-OBJ tag-at 32 + +  CRAFT-U @ tag-at 8 + -  BYTE-COPY
-   0 tag-at OBJ!  0 tag-at 8 + OBJ!  sum tag-at 16 + OBJ!  count tag-at 24 + OBJ!
-   PIECES-FIELD 8 + {: len-at:n :}
-   len-at OBJ@ 24 + len-at OBJ!
-   u CRAFTED-BUILD ;
-
 \ The late package's own-private flag 1: its KIND-PRIVATE entry names a package holding one.
 : LATE-OWN ( -- n ) CRAFT-WALK  1 LATE-FLAG-AT @ OBJ!  CRAFT-U @ CRAFTED-BUILD ;
 
@@ -779,6 +764,18 @@ variable ADDR-COUNT-AT                   \ its emission's address count's offset
    CRAFT-FIRST ADDR-ROW-AT @ +  CRAFT-OBJ end +  row BYTE-COPY
    ADDR-COUNT-AT @ OBJ@ 1 +  ADDR-COUNT-AT @ OBJ!
    CRAFT-U @ row + CRAFTED-BUILD ;
+
+
+\ V's slot naming LOW (tag 0, file 0, LOW's sum and count) in place of none: 24 bytes more, in the
+\ last section.
+: SLOT-TARGET ( -- n )
+   CRAFT-WALK
+   SLOT-AT @ 8 + {: tag-at:n :}
+   tag-at OBJ@ 5 <> if s" build: CRAFTS: V's slot names a target" 1 die then
+   tag-at 8 + 24 CRAFT-GROW
+   LOW-REC @ CRAFT-ID {: sum:n count:n :}
+   0 tag-at OBJ!  0 tag-at 8 + OBJ!  sum tag-at 16 + OBJ!  count tag-at 24 + OBJ!
+   CRAFT-U @ 24 + CRAFTED-BUILD ;
 
 
 \ A call row on V's slot after its emission's call rows, of which it has none: kind 0, naming LOW
