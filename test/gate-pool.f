@@ -16,9 +16,9 @@
 \ A ROW ENDS WHEN ITS PROCESS EXITS, and its kind is exit or signal. The pool
 \ keeps no clock on it: every GT-HEARTBEAT-MS a live row prints a WAIT line
 \ with its wall time and its tree's CPU time. Output still open after the exit
-\ is held by something the row left behind, and the pool kills the row's tree
-\ (src/lib/process-tree.f). When the run ends early every row ends with its
-\ tree; a row that catches SIGTERM is sent it first and given GT-POOL-GRACE-MS.
+\ is held by something the row left behind, and the pool kills the row's tree.
+\ When the run ends early every row ends with its tree; a row that catches
+\ SIGTERM is sent it first and given GT-POOL-GRACE-MS.
 \
 \ A program that calls GT-POOL-CATCH-SIGNALS answers SIGTERM, SIGINT and SIGHUP
 \ at its next GT-POOL-STEP: it prints each live row's WAIT line and output tail,
@@ -28,17 +28,16 @@
 \ stopped. Only an orphaned process group is resumed: POSIX has the kernel send
 \ each member SIGHUP and then SIGCONT when a death orphans a group with a
 \ stopped member, which ends a member that does not ignore SIGHUP.
-\ test/gate-signal-test.f checks these.
 
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs-mutate.f
 require src/lib/process-fork.f
 require src/lib/process-env.f
-require src/lib/process-tree.f               \ a slot ends with everything descended from its child
-require src/lib/signal.f                     \ a signalled run is answered at a pool step
+require src/lib/process-tree.f
+require src/lib/signal.f
 require src/lib/test/runner.f
-require src/lib/test/suite.f                 \ TEST:ITEM-MAX sizes the red table
+require src/lib/test/suite.f
 
 16 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
@@ -51,9 +50,8 @@ $1000 constant GT-POOL-CHUNK-CAP
 32 constant GT-POOL-NUM-CAP
 10000 constant GT-POOL-GRACE-MS         \ a root that catches SIGTERM ends itself inside this (GT-POOL-ASK-END)
 16 constant GT-POOL-SOCK-TRIES          \ suffixes a taken socket directory moves through (GT-POOL-CHILD-SOCK!)
-\ Red rows: one per registered suite (src/lib/test/suite.f ITEM-MAX), so a
-\ complete run reports every red with its exit code and capture paths, and a row
-\ the table has no record of passed.
+\ Red rows: one per registered suite, so a complete run reports every red with
+\ its exit code and capture paths, and a row the table has no record of passed.
 TEST:ITEM-MAX constant GT-POOL-RED-MAX
 GT-POOL-MAX GT-OUT-CAP * constant GT-POOL-OUT-BYTES
 GT-POOL-MAX GT-ERR-CAP * constant GT-POOL-ERR-BYTES
@@ -389,11 +387,11 @@ GT-POOL-ABORT-BARE!
    idx GT-POOL-OUT-FD-PTR GT-POOL-CLOSE-FD
    idx GT-POOL-ERR-FD-PTR GT-POOL-CLOSE-FD ;
 
-\ Kill+wait the co-located reaper armed for a spawned slot. A spawned child leads
-\ its own group and the reaper joined it, so a slot group-kill already SIGKILLed
-\ the reaper - this still reaps its zombie, and in the normal-completion path
-\ (child exited on its own, reaper still blocking) it SIGKILLs the reaper first.
-\ A slot whose reaper fork failed keeps pid -1, which the guard skips.
+\ A spawned child leads its own group and the reaper joined it, so a slot
+\ group-kill already SIGKILLed the reaper - this still reaps its zombie, and in
+\ the normal-completion path (child exited on its own, reaper still blocking) it
+\ SIGKILLs the reaper first. A slot whose reaper fork failed keeps pid -1, which
+\ the guard skips.
 : GT-POOL-KILL-REAPER ( idx -- ) {: idx:idx :}
    idx GT-POOL-REAPER-PID@ PID>N 0 >= if
       idx GT-POOL-REAPER-PID@ PROCESS:SIGKILL PROCESS:KILL-RAW drop
@@ -401,13 +399,9 @@ GT-POOL-ABORT-BARE!
       -1 >PID idx GT-POOL-REAPER-PID-PTR !
    then ;
 
-\ A SLOT ENDS WITH EVERYTHING DESCENDED FROM ITS CHILD. The group kill below
-\ reaches the child and what it forked. What it spawned leads groups of its own
-\ - for a gate row, the engines it builds and runs - and
-\ used to outlive the row, reparented to init. src/lib/process-tree.f stops and
-\ lists those first, so they end here with it. A walk that throws is named and
-\ the slot is ended the old way all the same: the kill has to go on to the
-\ wait and the descriptor closes whatever the process table answered.
+\ The group kill below reaches the child and what it forked. What it spawned
+\ leads groups of its own. A walk that throws is named and the slot is ended
+\ all the same: the kill has to go on whatever the process table answered.
 : GT-POOL-KILL-TREE ( idx -- ) {: idx:idx :}
    idx GT-POOL-PID@ [: dup PROC-TREE:KILL-TREE ;] catch {: code:n :}
    drop
@@ -436,10 +430,9 @@ GT-POOL-ABORT-BARE!
    a u FS:EXISTS? 0= if exit then
    a u FS:REMOVE-TREE ;
 
-\ One of a slot's directories. A removal that throws - a tree its child left
-\ with a directory it locked, which FS:REMOVE-TREE refuses with E-FS-IO - is
-\ named with the row, the path and the code, and the code is the slot's
-\ (GT-POOL-OK?): the row fails and the pool goes on.
+\ A removal that throws - a tree its child left with a directory it locked - is
+\ named, and the code is the slot's (GT-POOL-OK?): the row fails and the pool
+\ goes on.
 : GT-POOL-SCRATCH-REMOVE ( ptr u8 n idx -- ) {: a:ptr u:n idx:idx :}
    a u [: 2dup GT-POOL-TREE-REMOVE ;] catch {: code:n :}
    2drop
@@ -458,20 +451,18 @@ GT-POOL-ABORT-BARE!
 \ THE SOCKET ROOT holds every spawned child's socket directory
 \ (GT-POOL-CHILD-SOCK!). A pool given HB_SOCK_TMP uses that directory itself:
 \ the pool that made it removes it with this process's test, and this process's
-\ own sockets live there too (test/db/pg-cluster.f MAKE-DIRS), so this pool
-\ never registers or removes it. A root of its own there, hb-sock-<seed>-<n>,
-\ would add about 27 bytes per level; postgres refuses a socket path past 103
-\ bytes on macOS.
+\ own sockets live there too, so this pool never registers or removes it. A
+\ root of its own there would add about 27 bytes per level; postgres refuses a
+\ socket path past 103 bytes on macOS.
 \
 \ A pool without HB_SOCK_TMP makes its root under /tmp, not TMPDIR: TMPDIR's
 \ length is the caller's, and sun_path holds 103 bytes on macOS. It spells /tmp
 \ canonically, since a row compares the paths it builds there with the
-\ canonical ones the engine answers. It makes the root at its first spawn, and
-\ again if a GT-CLEANUP removed it, and registers it once
-\ (FS:CLEANUP-TREE+): one entry per test would keep hundreds in the registry
-\ until a FS:CLEANUP-RUN. So an uncaught throw or a die still removes every
-\ slot's directory with the root. GT-POOL-RESET removes the one before: no live
-\ slot's directory is in it by then. A SIGKILL of this process leaves it.
+\ canonical ones the engine answers. It registers it once: one entry per test
+\ would keep hundreds in the registry until a FS:CLEANUP-RUN. So an uncaught
+\ throw or a die still removes every slot's directory with the root.
+\ GT-POOL-RESET removes the one before: no live slot's directory is in it by
+\ then.
 variable GT-POOL-SOCK-ROOT-U
 0 GT-POOL-SOCK-ROOT-U !
 
@@ -486,7 +477,6 @@ variable GT-POOL-SOCK-ROOT-U
 : GT-POOL-SOCK-ROOT-NEW ( -- ptr u8 n )
    s" /tmp" SOURCE-ROOT:CANONICAL drop s" hb-sock" FS:MKTEMP-DIR-IN ;
 
-\ The directory the children's socket directories go in.
 : GT-POOL-SOCK-ROOT-MAKE ( -- ptr u8 n )
    s" HB_SOCK_TMP" GETENV dup 0 > if exit then 2drop
    GT-POOL-SOCK-ROOT-U @ 0 > if
@@ -498,23 +488,19 @@ variable GT-POOL-SOCK-ROOT-U
    GT-POOL-SOCK-ROOT$ FS:CLEANUP-TREE+
    GT-POOL-SOCK-ROOT$ ;
 
-\ A ROW'S ROOT THAT CATCHES SIGTERM IS ASKED TO END ITSELF FIRST. The kill below
-\ freezes a tree and SIGKILLs every member, and a process SIGKILLed runs none of
-\ its own exit path: a server it was running loses what only that path
-\ releases. PostgreSQL removes its SysV shared-memory segment there, and
-\ nothing else ever does: the key is the data directory's inode, which APFS
-\ does not hand out again, and kern.sysv.shmmni caps the segments host-wide
-\ (32 here), so every killed pg row took one for good. So a root that catches
-\ SIGTERM (PROC-TREE:CATCHES?) is sent it, and the kill waits until that root
-\ has exited or GT-POOL-GRACE-MS has passed. In that time the root owes the
-\ pool its whole tree: a process it spawned leads a group of its own and goes
-\ to init when the root exits, out of the walk's reach. test/db/pg-cluster.f
-\ has initdb end its step, or stops its server and ends its case engine's
-\ tree, then dies of the signal.
+\ The kill below freezes a tree and SIGKILLs every member, and a process
+\ SIGKILLed runs none of its own exit path: a server it was running loses what
+\ only that path releases. PostgreSQL removes its SysV shared-memory segment
+\ there, and nothing else ever does: the key is the data directory's inode,
+\ which APFS does not hand out again, and kern.sysv.shmmni caps the segments
+\ host-wide. So a root that catches SIGTERM is sent it, and the kill waits until
+\ that root has exited or GT-POOL-GRACE-MS has passed. In that time the root
+\ owes the pool its whole tree: a process it spawned leads a group of its own
+\ and goes to init when the root exits, out of the walk's reach.
 \
 \ A root that does not catch SIGTERM is not sent it: the default action would
 \ end it at once and leave what it spawned to init before the walk could list
-\ it. Those rows are killed as before, and not held for the others' grace.
+\ it.
 
 \ A read of the process table that throws is named, and the root is not asked:
 \ the kill has to go on whatever the table answered.
@@ -538,8 +524,7 @@ false GT-POOL-CAUGHT !
    idx GT-POOL-PID@ SIGNAL:SIGTERM PROCESS:KILL-RAW drop
    true idx GT-POOL-ASKED-PTR ! ;
 
-\ Until the asked root has exited or the deadline passes. macOS cannot watch a
-\ process that has already exited: proc-watch-open
+\ macOS cannot watch a process that has already exited: proc-watch-open
 \ answers -1 for one, and there is nothing left to wait for.
 : GT-POOL-AWAIT-END ( idx n -- ) {: idx:idx deadline:n :}
    idx GT-POOL-ASKED-PTR @ 0= if exit then
@@ -577,32 +562,27 @@ false GT-POOL-CAUGHT !
    GT-POOL-KILL-ALL
    code throw ;
 
-\ Upgrade the name-builder abort: once GT-POOL-THROW exists, a build-name
-\ overflow with live children kills the pool instead of leaking orphans.
 : GT-POOL-ABORT-KILL! ( -- ) [: GT-POOL-THROW ;] is GT-POOL-ABORT ;
 GT-POOL-ABORT-KILL!
 
 \ ---- a signal that stops the run ---------------------------------------------
 \
-\ A RUN THAT IS SIGNALLED ENDS ITS OWN CHILDREN AND REMOVES ITS OWN TREE. Under
-\ the default action SIGTERM, SIGINT and SIGHUP end the pool where it stands.
-\ Its reapers then kill each row's group, the rows' own children live on
-\ (src/lib/process-tree.f), and nothing removes the root: the engine calls the exit
-\ hook only on its own way out (src/habu/layout.f EXIT-HOOK-CELL).
+\ Under the default action SIGTERM, SIGINT and SIGHUP end the pool where it
+\ stands. Its reapers then kill each row's group, the rows' own children live
+\ on, and nothing removes the root: the engine calls the exit hook only on its
+\ own way out.
 \
 \ A program that is a pool from its first row to its exit - the gate - calls
 \ GT-POOL-CATCH-SIGNALS before it makes its root. No Forth word runs in a
-\ handler (src/lib/signal.f), so a signal is answered at the next GT-POOL-STEP,
-\ which is never far: the signal itself interrupts a step's poll, and between
-\ two steps the pool only starts a row. The answer is GT-POOL-SIGNAL-DIE,
-\ below GT-POOL-FALLBACK-REMOVE.
+\ handler, so a signal is answered at the next GT-POOL-STEP, which is never
+\ far: the signal itself interrupts a step's poll, and between two steps the
+\ pool only starts a row.
 \
 \ IT IS ASKED FOR, NOT INSTALLED BY GT-POOL-RESET. The catch lasts as long as
 \ the process and only a step answers it, so a program that ran a pool and
 \ went on to other work would never answer SIGTERM again.
 \
-\ The catch is src/lib/signal.f CATCH-STOPS, which leaves a signal the process was
-\ started with ignored as it was.
+\ The catch leaves a signal the process was started with ignored as it was.
 TYPED-VARIABLE GT-POOL-CATCHING bool
 false GT-POOL-CATCHING !
 
