@@ -507,6 +507,54 @@
 \ then public one, the globals, then the used publics in import order. A
 \ qualified name asks its package's public row, and the global row when that
 \ package is open. A hookless compile finds a refused definition by this bind.
+\
+\ Rendering marks: a top-level statement that calls a CTL-RENDERS word defines
+\ words, and may register nominal types, from text the source pre-pass never
+\ reads. The pre-pass marks the wordlist current then with a symbol whose name
+\ holds a space, which no token can spell; the mark carries no effect and
+\ retires with its scope's symbols. A body token that resolves nowhere defers
+\ its definition to the run only when its lookup walks a marked wordlist, and
+\ an unresolved nominal type defers when its resolution reaches a type mark.
+\ A direct type registrar marks its own declaration section; rendered source
+\ can open any package, so its type mark is global. The limit: a word the
+\ checker already holds resolves first, so a definition shadowing it is judged
+\ against it; deferring every name behind a mark would defer every global a
+\ marked section calls.
+\
+\ Instantiated layout widths: a parametric family instantiated with a
+\ multi-cell argument occupies more cells than its declaration reserves
+\ (`option<obj:line>` needs two payload cells), and the instantiated width is a
+\ function of a resolved type term. So the checker records it per token in the
+\ call-fact table under its own kind, which the definition reset, the retry
+\ cursor and capture cleanup cover. A MATCH family token records its
+\ instantiated bundle width, an arm's `of` token its instantiated pad count, and
+\ a construction's token the cells its instantiation adds beyond the declared
+\ width: a difference, since the construction's lowering already pushes the
+\ declared pads. These are width facts, not lowering-certificate rows. Dispatch
+\ requires a fact; a construction needs none unless its instantiation adds
+\ cells.
+\
+\ Shadowed arity: while a package is open, the engine and the checker resolve
+\ a bare tail private-first, so a public definition whose bare tail a private
+\ word of the same package claims does not bind its own name, and the native
+\ compiler would elaborate the public word against the private word's arity.
+\ The pair stays legal; E-SHADOWED-ARITY refuses only two declared effects that
+\ move different numbers of cells, at the second definition, and only for a
+\ colon definition with a declared signature. A pair whose widths cannot be
+\ judged is left to the native compiler's own arity refusal.
+\
+\ Buffer counts: a buffer definer's count is the token before the definer,
+\ read and never run, since no static pass models the interpret stack. An
+\ integer token is the count, held to the definer's extent bound; no token is
+\ no count. A count named by a word certifies by that word's effect, and a
+\ refused or undefined name refuses. A word that takes input ends an
+\ expression the line computes, which the definer bounds at load. A word that
+\ takes none must hand a `( n -- )` consumer its value: return stack untouched
+\ and an output row that unifies with its input row plus one `n`. So a
+\ `constant`, an engine-held constant and a colon `( -- n )` qualify, and a
+\ `variable` and a `bool` do not. The definer bounds the value at load, so a
+\ constant of 0 certifies here and fails there. The unification binds only in
+\ per-definition scratch that NEW clears.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -13462,9 +13510,8 @@ public
    WALK nip 0 <> ;
 ;package
 
-\ The using refusal the selector took (REFUSAL-TAKE): its token and what the
-\ walk captured for it, kept from the later lookups and refusals that move
-\ them, so the scan's end raises it as the walk found it.
+\ The using refusal the selector took: its token and what the walk captured for
+\ it, kept from the later lookups and refusals that move them.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE UHELD-TOK-A   variable UHELD-TOK-U
 variable UHELD-GSYM   variable UHELD-USYM
@@ -13478,9 +13525,6 @@ CHECKER-REG:}SCRATCH
    USH-PKG-A @ UHELD-PKG-A !  USH-PKG-U @ UHELD-PKG-U !
    CK-USED-MASK @ UHELD-MASK ! ;
 
-\ A definition refused for a using refusal leaves its check as one raised
-\ outside a body token's walk does: RAISE renders the packet and throws, and
-\ DEF-REFUSED counts it.
 : USING-RAISE ( -- )
    REFUSAL @ USING-KIND? 0= IF EXIT THEN
    UHELD-GSYM @ USH-GSYM !  UHELD-USYM @ USH-USYM !
@@ -13512,23 +13556,13 @@ package CHECKER-REG
 ' CHECKER-TRUSTED-TICK? DECLARATIONS CHECKER-OWNER-ABI:TRUSTED-TICK-OFF + xt!
 ;package
 
-\ CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n ): the same resolution for a caller
-\ that only asks (the source pre-verifier, of every token: "does this name a
-\ definer?"). The two used-scope refusals (a used public shadowing a global, a
-\ bare tail two used packages export) belong to the definition being checked.
-\ Such a name is not a definer here; the body check names the refusal. A
-\ deferred refusal is not rendered.
-\
-\ Exactly those two are deferred: the package-context refusal is raised as
-\ CHECKER-FIND-ACTIVE-SYM raises it, and anything else the walk throws (an
-\ arena or capacity failure, a bug) propagates, so the pre-pass reports it
-\ instead of classifying the token as not a definer.
+\ The two used-scope refusals belong to the definition being checked. Anything
+\ else the walk throws propagates, so the pre-pass reports it.
 : FQSYM-DEFERRED? ( n -- bool ) {: code:n :}
    code E-USING-SHADOW-GLOBAL =  code E-USING-AMBIGUOUS =  or ;
 
-\ The quiet resolution with its deferred refusal kept: the symbol the walk
-\ binds, 0 when it binds nothing, and true when it deferred one of those two
-\ refusals (the symbol is 0 then): a name the load refuses, not one it lacks.
+\ The symbol the walk binds, 0 when it binds nothing, and true when it deferred
+\ one of those two refusals: a name the load refuses, not one it lacks.
 : CHECKER-QUIET-WALK ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
@@ -13540,21 +13574,6 @@ package CHECKER-REG
    CHECKER-QUIET-WALK drop ;
 
 \ ---- words a rendering statement may have defined ----------------------------
-\ A top-level statement that calls a CTL-RENDERS word defines words from text
-\ the source pre-pass never reads, compiled into the wordlist current then
-\ (src/lib/ffi-abi.f CHECK-SCOPE asserts it for FUNCTION:). The pre-pass marks
-\ that wordlist (CHECKER-VERIFY-RENDERS); a body token that resolves nowhere
-\ defers its definition to the run (verdict 2) only when a bare token's lookup
-\ walks a marked wordlist (the statement's own section of its own package,
-\ read after the statement). A qualified token is covered as a bare one is,
-\ and by a mark in its package's public wordlist. The mark is a symbol whose
-\ name holds a space, which no token can spell; it carries no effect and
-\ retires with its scope's symbols.
-\ The limit: a word the checker already holds resolves first, so a product
-\ shadowing it is judged against it, a refusal the load does not make (every
-\ engine word on an unseeded engine such as bin/hb, every row a seeded engine
-\ took). Deferring every name behind a mark would defer every global a marked
-\ section calls.
 : UNSEEN-MARK$ ( -- ptr u8 n ) s" unseen products" ;
 : TYPE-MARK$ ( -- ptr u8 n ) s" unresolved nominal types" ;
 : RENDER-TYPE-MARK$ ( -- ptr u8 n ) s" rendered nominal types" ;
@@ -13580,17 +13599,11 @@ package CHECKER-REG
    THEN
    CHECKER-STORAGE-REFUSE ;
 
-\ Direct registrars write in their authenticated declaration section. Rendered
-\ source can open any package, so its mark covers all nominal namespaces. Both
-\ are ordinary scoped symbols and retire with a candidate or enclosing scope.
 : CHECKER-TYPE-MARK ( bool -- )
    IF RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM drop
    ELSE TYPE-MARK$ CHECKER-RECORD-SYM drop THEN ;
 
-\ Asked only after the nominal resolver found no family. A bare tail reaches the
-\ marks of its own package, the enclosing package of a part, the globals and the
-\ `using` imports' public sections, as TFAM-RESOLVE reaches families; a
-\ qualified tail reaches its named package's public mark, or its own private one.
+\ Asked only after the nominal resolver found no family.
 : CHECKER-TYPE-MARK-COVERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
    a u CHECKER-QUALIFIED? IF
@@ -13616,8 +13629,7 @@ package CHECKER-REG
    LOOP
    RES-FALSE ;
 
-\ Every wordlist CHECKER-FIND-ACTIVE-SYM walks for a token; the bare order is
-\ docs/forth.md "Packages".
+\ Every wordlist CHECKER-FIND-ACTIVE-SYM walks for a token.
 : UNSEEN-COVERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF
       CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> IF RES-TRUE EXIT THEN
@@ -13638,12 +13650,11 @@ package CHECKER-REG
    LOOP
    RES-FALSE ;
 
-\ Cache value: record offset+1, 0 for none or deleted; a miss re-derives from
-\ the arena scan and memoizes the answer and its watermark dependency.
+\ Cache value: record offset+1, 0 for none or deleted.
 : CHECKER-FIND-USIG-SYM ( n -- bool ) {: sym:n :}
    sym 0= IF RES-FALSE EXIT THEN
    BIND-HORIZON @ 0 <> IF
-      sym SCAN-USIGS-SYM drop FEP-HIT? EXIT   \ bounded answers never touch the memo
+      sym SCAN-USIGS-SYM drop FEP-HIT? EXIT
    THEN
    HIDX-ENSURE
    HIDX-EFF-SYNC
@@ -13658,13 +13669,8 @@ package CHECKER-REG
    FEP-HIT? ;
 
 \ ---- the capture audit's two questions ---------------------------------------
-\ src/habu/aot-capture.f asks these once per window dictionary record, with the
-\ record's package and name taken from its WORDLIST, which SYM-FIND is keyed on.
-\ They read the effect store and the signature pool; answering them outside the
-\ checker would put SYM-FIND and CHECKER-FIND-USIG-SYM in the axiom list.
 \ The scope arrives as a package name and a public flag, never a visibility
 \ number: SYM-GLOBAL/SYM-PRIVATE/SYM-PUBLIC are not reachable from checked code.
-\ An empty package name is the global scope, the key CHECKER-GLOBAL-SYM uses.
 : ASIG-AUDIT-VIS ( n bool -- n ) {: pkgu:n pub:bool :}
    pkgu 0= IF SYM-GLOBAL EXIT THEN
    pub IF SYM-PUBLIC EXIT THEN
@@ -13681,8 +13687,7 @@ package CHECKER-REG
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM ;
 
-\ True when the checker knows an effect for the name and the pool has no
-\ signature: the word is callable here and would not be in the seeded engine.
+\ True when the word is callable here and would not be in the seeded engine.
 : CHECKER-ASIG-MISSING? ( ptr u8 n bool ptr u8 n -- bool )
    ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF RES-FALSE EXIT THEN
@@ -13706,8 +13711,7 @@ package CHECKER-REG
    off1 1 - USIGS-RESTORE-END ;
 
 \ A direct post-seal user call would forget an engine word's signature so it
-\ could be redefined (spoof): refused fail-closed. The open engine namespace
-\ (watermark 0) and the guarded FORGET/HIDE wrappers reach -RAW unchanged.
+\ could be redefined: refused fail-closed.
 
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
    seal-captured? IF
@@ -13715,18 +13719,9 @@ package CHECKER-REG
    THEN
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
-\ The native compiler's rollback of a refused definition
-\ (src/compiler/native/definition.f RETRACT) through the owner's ROWS-END-OFF
-\ and RETRACT-ROWS-OFF fields: the compiler reads the store's end when the
-\ definition begins and cuts back to it on refusal. WRITE-WINDOW admits only the
-\ compiler's writes above the mark, so the cut takes exactly the definition's
-\ rows (certified, TRUSTED:, declared or a multi-error recovery fact, with their
-\ nodes) and never an earlier row: a twin's, or one CHECK! recorded with no
-\ definition. An end at or below the mark leaves the store as it is. A cut that
-\ takes the record the live window names (CK-CLOSED-OFF, offset+1) ends the
-\ window, since a hand CHECK! at the same offset would otherwise reopen it.
-\ Sealed as CHECKER-DECLARED-ROW! is: from top level the cut would drop any
-\ name's rows.
+\ A cut that takes the record the live window names (CK-CLOSED-OFF, offset+1)
+\ ends the window, since a hand CHECK! at the same offset would otherwise
+\ reopen it.
 : CHECKER-ROWS-END ( -- n ) UEND @ ;
 
 : CHECKER-RETRACT-ROWS ( n -- )
@@ -13752,46 +13747,33 @@ package CHECKER-REG
    CHECKER-FIND-ACTIVE-SYM FIND-SIG-SYM ;
 
 \ ABI query: din cell count for the active effect, including an unjudged scan.
-\ Source authority is a separate question (CALL-AUTHORITY).
 : SIG-MIN-IN ( ptr u8 n -- n )
    FIND-SIG 0= IF -1 EXIT THEN
    FEP @ E-MINI@ ;
 
 \ ---- effect-read export API -------------------------------------------------
-\ The one query surface on the effect store outside this file (the native
-\ compiler reads it through the owner record, checker-owner-abi.f
-\ EFFECT-QUERY-OFF onward): FIND-SIG, E-DIN@/E-DOUT@, E-PTR and the EN-*
-\ accessors are sig-less, so the sealed checker refuses them. Each PUBLIC word
-\ has a PRIM: row, so top level may call it. Read-only.
-\ Three answers: a row's term count and per-term family; its width in stack
-\ cells (EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS: what a call site moves and what
-\ src/compiler/native/dict.f asks for); and which cell of a multi-cell value
-\ each term is (EFFECT-DIN-SLOT / EFFECT-DOUT-SLOT: cells a stack reordering may
-\ not separate). Term and cell counts agree only while every term is one cell.
-\ EFFECT-QUERY resolves a name's active effect (user row or prim axiom); the
-\ EFFECT-* readers report on the last successful query.
+\ FIND-SIG, E-DIN@/E-DOUT@, E-PTR and the EN-* accessors are sig-less, so the
+\ sealed checker refuses them.
 \
 \ Family enum (stable ABI):
-0 constant EFAM-GRAY        \ EN-VAR / EN-ROW / EN-ATOM / EN-PARAM: no coarse family
-1 constant EFAM-SCALAR      \ EN-CON: a value cell
-2 constant EFAM-POINTER     \ EN-PTR: a byte / region pointer
-3 constant EFAM-XT          \ EN-QUOT: a quotation / xt
+0 constant EFAM-GRAY
+1 constant EFAM-SCALAR
+2 constant EFAM-POINTER
+3 constant EFAM-XT
 
 variable EFFQ-OK            \ bool: last EFFECT-QUERY resolved an active effect
 variable EFFQ-DIN           \ din row offset (E-OFF) of the queried effect, 0 = none
 variable EFFQ-DOUT          \ dout row offset
 
 \ ---- reading inside a quotation term -----------------------------------------
-\ A quotation term carries its own effect: din and dout rows, return rows, and
-\ whether it can throw or never returns. The two row cells are one latch: a
-\ descent saves the displaced row pair and EFFECT-QUOT-UP restores it. A second
-\ descent while one is open is refused: the save is one deep.
+\ The two row cells are one latch: a descent saves the displaced row pair. A
+\ second descent while one is open is refused: the save is one deep.
 variable EFFQ-QUOT          \ the EN-QUOT node the latch is currently inside, 0 = none
-variable EFFQ-SAVE-DIN      \ the row pair the open descent displaced
+variable EFFQ-SAVE-DIN
 variable EFFQ-SAVE-DOUT
 
 \ EN nodes live in the byte-addressed USIGS arena; E-PTR addresses one node.
-: EFF-TAG@ ( n -- n )   E-PTR EN.TAG @ ;    \ node tag at offset n
+: EFF-TAG@ ( n -- n )   E-PTR EN.TAG @ ;
 : EFF-A@   ( n -- n )   E-PTR EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   E-PTR EN.B @ ;      \ EN.B field (rest-of-row offset)
 : EFF-C@   ( n -- n )   E-PTR EN.C @ ;      \ EN.C field (on a row cell: width+1; on a quot: rin)
@@ -13799,7 +13781,7 @@ variable EFFQ-SAVE-DOUT
 : EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: has a throw edge)
 : EFF-F@   ( n -- n )   E-PTR EN.F @ ;      \ EN.F field (on a quot: the fall-through path is dead)
 
-: EFF-TERM-FAM ( n -- n )       \ n = term-node offset (E-OFF); 0 -> gray
+: EFF-TERM-FAM ( n -- n )       \ n = term-node offset (E-OFF)
    dup 0= if drop EFAM-GRAY exit then
    EFF-TAG@
    dup EN-PTR  = if drop EFAM-POINTER exit then
@@ -13807,21 +13789,18 @@ variable EFFQ-SAVE-DOUT
    EN-CON = if EFAM-SCALAR exit then
    EFAM-GRAY ;
 
-\ A layout-family value takes W stack cells, recorded as W terms, each with its
-\ position in PARAMHID, which E-COPY* stores on the term's EN-PARAM node as EN.E
-\ (slot+1, 0 = an ordinary term). Without it `( option<n> n -- )` and
-\ `( a b n -- )` agree on term count, cell count and every family. A term that
-\ is not a param answers 0.
-: EFF-TERM-SLOT ( n -- n )      \ n = term-node offset (E-OFF); 0 -> not a bundle cell
+\ Without it `( option<n> n -- )` and `( a b n -- )` agree on term count, cell
+\ count and every family.
+: EFF-TERM-SLOT ( n -- n )      \ n = term-node offset (E-OFF)
    dup 0= if drop 0 exit then
    dup EFF-TAG@ EN-PARAM = 0= if drop 0 exit then
    EFF-E@ ;
 
-: EFF-IS-PUSH? ( n -- bool )    \ n = row-node offset; a live fixed EN-PUSH term?
+: EFF-IS-PUSH? ( n -- bool )    \ n = row-node offset
    dup 0= if drop 0 0= 0= exit then
    EFF-TAG@ EN-PUSH = ;
 
-: EFF-ROW-N ( n -- n )          \ count fixed EN-PUSH terms in a stored row (head = top)
+: EFF-ROW-N ( n -- n )          \ head = top
    0 swap
    begin dup EFF-IS-PUSH? while
       EFF-B@ swap 1 + swap
@@ -13829,39 +13808,34 @@ variable EFFQ-SAVE-DOUT
 
 : EFF-ROW-TERM ( n n -- n ) {: i:n off:n :}   \ the i-th term from the top (0-based), 0 = none
    off i
-   begin dup 0 > while                        \ ( cur i ) advance i EN-PUSH terms
+   begin dup 0 > while                        \ ( cur i )
       over EFF-IS-PUSH? 0= if 2drop 0 exit then
       swap EFF-B@ swap 1 -
    repeat drop                                \ ( cur )
    dup EFF-IS-PUSH? if EFF-A@ else drop 0 then ;
 
 \ Two rows with the same fixed terms describe different stacks when their tail
-\ row variables differ: the tail is half of row identity, the term count the
-\ other half.
-: EFF-ROW-TAIL ( n -- n )                     \ the non-push node a row ends in
+\ row variables differ.
+: EFF-ROW-TAIL ( n -- n )
    begin dup EFF-IS-PUSH? while EFF-B@ repeat ;
 
-: EFF-ROW-FAM ( n n -- n )                    \ family of the i-th term from the top (0-based)
+: EFF-ROW-FAM ( n n -- n )                    \ i-th term from the top (0-based)
    EFF-ROW-TERM EFF-TERM-FAM ;
 
 : EFF-ROW-SLOT ( n n -- n )                   \ bundle slot+1 of the i-th term from the top (0-based)
    EFF-ROW-TERM EFF-TERM-SLOT ;
 
-\ Internal-mark strips these readers' names past the seal; the query boundary
-\ and prefix consumers reach them as compiled calls. A fresh query closes any
-\ open quotation descent, or EFFECT-QUOT-SIMPLE? and EFFECT-QUOT-UP would
-\ answer about the previous name.
-: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect into query state
+\ A fresh query closes any open quotation descent, or EFFECT-QUOT-SIMPLE? and
+\ EFFECT-QUOT-UP would answer about the previous name.
+: EFFECT-QUERY ( ptr u8 n -- bool )
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    FIND-SIG dup EFFQ-OK !
    if FEP @ E-DIN@ EFFQ-DIN !  FEP @ E-DOUT@ EFFQ-DOUT !
    else 0 EFFQ-DIN !  0 EFFQ-DOUT ! then
    EFFQ-OK @ ;
 
-\ A row's width in stack cells: the sum of the widths ROW-TERM-CELLS gave each
-\ row cell when the effect was recorded (E-COPY*, S-PUSH arm); a three-cell term
-\ counts three here and one term above. CELLS-NONE when any fixed cell has no
-\ recorded width.
+\ A row's width in stack cells: a three-cell term counts three here and one
+\ term above.
 : EFF-ROW-CELLS ( n -- n ) {: off:n :}
    0 off                                     \ ( acc cur )
    begin dup EFF-IS-PUSH? while
@@ -13870,8 +13844,8 @@ variable EFFQ-SAVE-DOUT
       EFF-B@
    repeat drop ;
 
-: EFFECT-DIN-N ( -- n )        EFFQ-DIN @ EFF-ROW-N ;      \ fixed din term count
-: EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;     \ fixed dout term count
+: EFFECT-DIN-N ( -- n )        EFFQ-DIN @ EFF-ROW-N ;
+: EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;
 : EFFECT-DIN-FAM ( n -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
 : EFFECT-DIN-CELLS ( -- n )    EFFQ-DIN @ EFF-ROW-CELLS ;  \ fixed din width in cells, or CELLS-NONE
 : EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
@@ -13886,11 +13860,9 @@ variable EFFQ-SAVE-DOUT
 : EFFECT-DOUT-CON ( n -- n ) EFFQ-DOUT @ EFF-ROW-CON ;
 
 \ ---- the quotation descent ----------------------------------------------------
-\ The term must be a quotation (EFAM-XT, checked here): a wrong index answers
-\ false rather than walking a node of another shape.
-: EFF-DESCEND ( n -- bool )     \ n = term-node offset; latch its quot rows
+: EFF-DESCEND ( n -- bool )     \ n = term-node offset
    {: t:n :}
-   EFFQ-QUOT @ 0= 0= if 0 0= 0= exit then     \ one descent at a time, fail closed
+   EFFQ-QUOT @ 0= 0= if 0 0= 0= exit then
    t 0= if 0 0= 0= exit then
    t EFF-TAG@ EN-QUOT = 0= if 0 0= 0= exit then
    EFFQ-DIN @ EFFQ-SAVE-DIN !
@@ -13910,10 +13882,7 @@ variable EFFQ-SAVE-DOUT
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    0 0= ;
 
-\ Every word leaves its caller's return stack alone: no signature declares a
-\ return-stack cell (RCLAUSE-CHECK) and every body reads only the return cells
-\ it pushed (RS-BORROWS?, CHECK-NO-BORROW, CHECK-RBALANCE, QUOT-RSEAL). False when no name
-\ was resolved.
+\ Every word leaves its caller's return stack alone.
 : EFFECT-RET-NEUTRAL? ( -- bool )
    EFFQ-OK @ 0 <> ;
 
@@ -13925,11 +13894,8 @@ variable EFFQ-SAVE-DOUT
    a EFF-TAG@ EN-ROW = b EFF-TAG@ EN-ROW = and 0= if 0 0= 0= exit then
    a EFF-A@ b EFF-A@ = ;
 
-\ A quotation a caller may compile as an ordinary routine: no throw edge
-\ (EN.E = 0), since a throwing body leaves by a path the caller lacks; and a
-\ live fall-through (EN.F = 0), since a body that never returns has an ordinary
-\ din and dout but delivers nothing after the call. Shared by a queried effect
-\ and an exact selected effect from an unjudged source scan; zero admits neither.
+\ A quotation a caller may compile as an ordinary routine: no throw edge and a
+\ live fall-through.
 : EFF-QUOT-SIMPLE? ( n -- bool )
    {: q:n :}
    q 0= if 0 0= 0= exit then
@@ -13941,8 +13907,7 @@ variable EFFQ-SAVE-DOUT
 
 \ Quotation call metadata is recorded at the token the checker consumed.
 \ Its input width is measured before unification binds the quotation's open
-\ row to the caller's stack. The table grows with the recorded definition;
-\ missing sites remain absent, and a no-return output is CELLS-NONE.
+\ row to the caller's stack.
 variable REC-IX                      \ the ordinal the next reported token takes
 variable FIELD-LOAN-ORD
 variable FIELD-LOAN-OFF
@@ -14113,12 +14078,12 @@ variable BWIN-EPOCH
    REC-BINDING-ROW ;
 
 \ Whether REC-UNJUDGED-BINDING answers: the last unjudged scan closed every
-\ construct it opened (CHECK-UNJUDGED!).
+\ construct it opened.
 : UNJUDGED-CLOSED? ( -- bool ) UWIN-VALID @ 0 <> ;
 
 : REC-BINDING-WINDOW ( -- n ) BWIN-EPOCH @ ;
 
-: REC-STEP ( -- )                    \ one token reported, so the next takes the next ordinal
+: REC-STEP ( -- )
    REC-ON @ 0= IF EXIT THEN
    REC-IX @ 1 + REC-IX ! ;
 
@@ -14141,13 +14106,11 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 5 constant CW-QUOT-IN                \ + twice the input cell index from the top
 6 constant CW-QUOT-OUT               \ + twice the output cell index from the top
 
-\ cell-effects.f owns the checked storage after the bootstrap checker starts.
-\ CWIN-STATE answers the arena pointer, the live row count and the capacity.
 : CWIN-P ( -- ptr ptr n ) CWIN-STATE drop drop ;
 : CWIN-N ( -- ptr n ) CWIN-STATE drop nip ;
 : CWIN-CAP ( -- ptr n ) CWIN-STATE nip nip ;
 
-: CWIN-AT ( n n -- ptr n )           \ field f of row i
+: CWIN-AT ( n n -- ptr n )
    {: i:n f:n :}
    CWIN-P @ i CW-ROW * f + cells + ;
 
@@ -14191,10 +14154,8 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    i 1 + CWIN-N ! ;
 
 \ ---- the finalized call facts, read back by name-independent dispatch --------
-\ These read the rows CWIN-ADD wrote through the same CWIN-STATE the writer used:
-\ a second checker may own the source while the compiler reads the first one's
-\ rows. The engine reaches them through the declaration-owner record (layout.f
-\ DECL-CALL-*-OFF), never by name. -1 -1: the scan recorded no such site.
+\ These read the rows through the same CWIN-STATE the writer used: a second
+\ checker may own the source while the compiler reads the first one's rows.
 : CWIN-FIND? ( n n -- n n bool ) {: ord:n kind:n :}
    CWIN-N @ 0 ?do
       i CW-ORD CWIN-AT @ ord =  i CW-KIND CWIN-AT @ kind =  and if
@@ -14223,9 +14184,8 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
       EFF-B@
    REPEAT drop RES-TRUE ;
 
-\ Only an original primitive marked with a fixed physical ABI can supply its
-\ declared widths without instantiation. Match its selected effect as well as
-\ the seeded record so a user refinement cannot inherit that machine fact.
+\ Match its selected effect as well as the seeded record so a user refinement
+\ cannot inherit that machine fact.
 : SELECTED-PRIM-ABI? ( ptr u8 n -- bool )
    {: row:ptr eff:n :}
    row CHECKER-OWNER-ABI:BOUND-CTL cells + CELL-VIEW @
@@ -14235,9 +14195,8 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    1 - dup PE-FLAGS@ PE-FIXED-ABI and 0= IF drop RES-FALSE EXIT THEN
    PE-EFF@ eff 1 - = ;
 
-\ An unjudged scan uses the exact selected declaration's physical ABI. Generic
-\ pointees and quotation effects do not change a cell's representation; naked
-\ variables and unexpanded layouts still need a judged call's width facts.
+\ Generic pointees and quotation effects do not change a cell's representation;
+\ naked variables and unexpanded layouts still need a judged call's width facts.
 : SELECTED-CALL-ABI ( n -- n n n n )
    {: ord:n :}
    ord REC-UNJUDGED-BINDING {: row:ptr size:n :}
@@ -14294,9 +14253,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    ord CW-C2-STOW CWIN-FIND {: width:n kind:n :}
    kind 0< IF 0 -1 ELSE kind width THEN ;
 \ A trusted scan can finish without CWIN quotation rows. Its selected effect
-\ still names the declaration the source used; read that graph directly, not a
-\ later resolution of the spelling. Only a simple, one-cell-per-term callback
-\ supplies an ordinary native calling convention.
+\ still names the declaration the source used.
 : SELECTED-QUOT-IN ( n n -- n n )
    {: ord:n idx:n :}
    idx 0< if -1 -1 exit then
@@ -14396,8 +14353,7 @@ CALL-FREEZE-INSTALL
    REPEAT drop drop ;
 
 \ The payload occupies the top of the arm's row; its prefix belongs to the
-\ enclosing control frame. Publish the same instantiated value boundaries used
-\ for calls, shifted past that prefix, while the arm's types are still live.
+\ enclosing control frame.
 : MATCH-PAYLOAD-RECORD ( n n -- ) {: row:n base:n :}
    REC-ON @ 0= IF EXIT THEN
    base ROW-CELLS {: prefix:n :}
@@ -14439,27 +14395,6 @@ CALL-FREEZE-INSTALL
    loop ;
 
 \ ---- the cells a recorded definition's layout forms really occupy -------------
-\ A parametric family instantiated with a multi-cell argument occupies more
-\ cells than its declaration reserves (`option<obj:line>` needs two payload
-\ cells). The registry answers only the declared number; the instantiated one is
-\ a function of a resolved type term, so a consumer modelling the stack cell by
-\ cell reads it here (src/compiler/native/family.f WIDTH).
-\
-\ Three tokens carry a number: a MATCH family token its instantiated bundle width
-\ (what MATCH-SCRUT? walked off the row); an arm's `of` token its instantiated
-\ pad count (TFAM-MATCH-XPAD-RECORD); a construction's token (the variant of
-\ `construct family variant`, or a generated-constructor call) the cells its
-\ instantiation adds beyond the declared width (TFC-CON-XPAD-RECORD). The
-\ construction's number is a difference because its lowering already pushes the
-\ declared pads (TFL-VPADS, the expression TFC-CON-XPAD-RECORD subtracts); the
-\ engine's pass 2 and the chain both add the difference at the same site.
-\
-\ These are width facts, not lowering-certificate rows.
-\
-\ Layout facts share the growing CWIN owner with call facts under their own
-\ kind, so the definition reset, retry cursor and capture cleanup cover both. A
-\ missing query means no fact was recorded for that token. Dispatch requires a
-\ fact; a construction needs none unless its instantiation adds cells.
 variable MWIN-HIT                    \ the token now being reported published a number
 variable MWIN-VAL                    \ and this is it
 
@@ -14471,27 +14406,19 @@ variable MWIN-VAL                    \ and this is it
    0 MWIN-HIT !
    REC-IX @ MWIN-VAL @ CELLS-NONE CW-MATCH-CELLS CWIN-ADD ;
 
-\ Outside a recording unit (every certification the engine does for itself) this
-\ writes nothing. The report that follows files the row under the token's
-\ ordinal.
+\ The report that follows files the row under the token's ordinal.
 : MWIN-CELLS! ( n -- ) {: w:n :}
    REC-ON @ 0= IF EXIT THEN
    w MWIN-VAL !  -1 MWIN-HIT ! ;
 
 \ ---- what the source tape says each token was ---------------------------------
-\ The tape's events name what a codegen reads (docs/compilation.md "Defining a
-\ word"): the checker records each fact where it judges the token, and no codegen
-\ reads a checker internal. The observer reads them through CHECKER-TAPE:EVENT.
+\ The checker records each fact where it judges the token, and no codegen
+\ reads a checker internal.
 package CHECKER-TAPE
 public
 
-\ The reader's token classes as storable codes. `name` is every token resolved
-\ later. String classes keep the opener's counted, printed or address/length
-\ behavior and report the literal's body, not its opener. The classes are
-\ closed: an observer meeting another has met a construct this reader lacks, a
-\ class to add here. An event (CHECKER-TAPE:EVENT) is a kind and two arguments,
-\ a0 and a1, zero where none is named; a token no step judged further is an
-\ event of its class.
+\ String classes report the literal's body, not its opener. An event is a
+\ kind and two arguments, a0 and a1, zero where none is named.
 0 constant K-NAME               \ a0: a call's record index from 0, -1 for none
 1 constant K-INT                \ a0: the value
 2 constant K-REAL               \ a0: the value's bits
@@ -14513,13 +14440,12 @@ public
 16 constant K-TICK              \ a0: the target's record index from 0, -1 for none
 17 constant K-IS                \ a0: the target's record index from 0, -1 for none
 18 constant K-OPERAND           \ consumed by its keyword, compiling nothing itself
-19 constant K-UNREACHED         \ a token no path reaches; T0 refuses it
+19 constant K-UNREACHED         \ a token no path reaches
 
 ;package
 
 \ The event the token now being judged publishes, latched by the step that
-\ judged it and filed by the report that follows (SCAN-REPORT), as MWIN-HIT is.
-\ The walk clears it each turn; outside a recording unit nothing is latched.
+\ judged it and filed by the report that follows.
 CHECKER-REG:SCRATCH{
 variable EV-HIT   variable EV-KIND   variable EV-A0   variable EV-A1
 CHECKER-REG:}SCRATCH
@@ -14532,17 +14458,12 @@ CHECKER-REG:}SCRATCH
 : EV-OPERAND ( -- )
    CHECKER-TAPE:K-OPERAND 0 0 EVENT! ;
 
-\ A construction's or a match arm's variant: its declaration-order tag and the
-\ pads its family declares for it.
 : EV-VARIANT ( n n n -- )
    {: kind:n fam:n vid:n :}
    kind  vid MATCH-VTAG-XT  fam vid VARIANT-PADS-XT  EVENT! ;
 
 \ One row (kind, a0, a1) per reported token; row i is the token at ordinal
-\ EV-LO + i. A scan starts the table at its first token's ordinal (0 for a body,
-\ and for every pass, since CHECK-RETRY rewinds REC-IX), so after the last pass
-\ it holds the scan that publishes. A process-local mapping REC-RELEASE gives
-\ back: no image carries one.
+\ EV-LO + i.
 PTR-VARIABLE EV-P   variable EV-CAP
 variable EV-LO   variable EV-N
 3 constant EV-ROW
@@ -14563,7 +14484,7 @@ defer RESOLUTION-RELEASE-XT ( -- )
 RESOLUTION-LIFETIME-DEFAULT
 
 \ Every report files one row as it takes its ordinal, so ORD is always the next
-\ row; one that is not would misfile every later row, and dies instead.
+\ row.
 : EV-FILE ( n n n n -- )
    {: kind:n a0:n a1:n ord:n :}
    ord EV-LO @ EV-N @ + <> IF
@@ -14575,8 +14496,7 @@ RESOLUTION-LIFETIME-DEFAULT
    EV-N @ 1 + EV-N ! ;
 
 \ ---- the recording unit's lifecycle ------------------------------------------
-\ The observer that wants the tape opens the unit, so all facts describe that
-\ definition. The rows outlive the unit: the consumer reads them after it closes.
+\ The rows outlive the unit: the consumer reads them after it closes.
 : REC-RESET ( -- )
    0 REC-IX !  -1 REC-ON !
    CWIN-RESET  MWIN-RESET  BWIN-RESET  RESOLUTION-RESET-XT ;
@@ -14593,8 +14513,7 @@ RESOLUTION-LIFETIME-DEFAULT
    REC-ON @ 0= IF EXIT THEN
    CWIN-COMMIT  MWIN-COMMIT  BWIN-COMMIT ;
 
-\ CELLS-NONE twice when no catch was recorded on token ix; a catch whose body
-\ never returns answers its input width and CELLS-NONE.
+\ A catch whose body never returns answers its input width and CELLS-NONE.
 : EFFECT-QUOT-CALL-CELLS ( n n -- n n )
    {: ix:n kind:n :}
    0 BEGIN dup CWIN-N @ < WHILE
@@ -14616,8 +14535,7 @@ RESOLUTION-LIFETIME-DEFAULT
    ix -2 EFFECT-QUOT-CALL-CELLS nip ;
 
 \ CELLS-NONE for a token that published no number, or a definition nobody
-\ recorded. A dispatch reader refuses a missing fact; a construction with no
-\ added cells needs no correction.
+\ recorded.
 : EFFECT-MATCH-CELLS ( n -- n )
    CW-MATCH-CELLS CWIN-FIND drop ;
 
@@ -14638,9 +14556,8 @@ RESOLUTION-LIFETIME-DEFAULT
 : DFER-TERM ( -- )
    0 DFERS DFER-END @ + ! ;
 
-\ The only way DFER-END is lowered (checker frame restore, source reset). The
-\ table is baked, so the retired rows [n, DFER-END) are zeroed before the
-\ terminator is written.
+\ The only way DFER-END is lowered. The table is baked, so the retired rows
+\ [n, DFER-END) are zeroed before the terminator is written.
 : DFER-REWIND ( n -- ) {: n:n :}
    n 0 < n DFER-END @ > or IF
       s" checker: defer table rewind outside the registry" 76 die
@@ -14659,8 +14576,7 @@ RESOLUTION-LIFETIME-DEFAULT
    DFER.SYM @ ;
 
 \ Answers every symbol the table holds for this epoch in one pass, newest row
-\ last, so a lookup that then finds no answer has no row. A scan per missing
-\ answer read the whole table once for each new symbol.
+\ last, so a lookup that then finds no answer has no row.
 : DFER-FILL ( -- )
    DFER-END @ DFER-REC / 0 ?do
       DFERS i DFER-REC * + {: rec:ptr :}
@@ -14681,8 +14597,6 @@ RESOLUTION-LIFETIME-DEFAULT
 
 \ Only a change of defer state needs rollback history. Ordinary undefine and
 \ owner transfer also publish false for symbols that have never been deferred.
-\ DFER-FIND-SYM synchronizes its cache after a rewind before this comparison;
-\ every real transition still appends, preserving saved offsets and old flags.
 : DFER-ADD-SYM ( n bool -- ) {: sym:n flag:bool :}
    WRITE-WINDOW-CK
    sym DFER-FIND-SYM flag xor 0= IF EXIT THEN
@@ -14702,12 +14616,8 @@ RESOLUTION-LIFETIME-DEFAULT
 : CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
 
-\ CHECKER-RECORD-SYM answers 0 for a malformed qualified name, and no row may
-\ carry 0: a defer row keyed 0 is DFERS' terminator and hides every later row,
-\ and an effect row keyed 0 is anonymous. The name is refused before the caller
-\ writes anything; AT places the refusal when its bytes lie in the checked text.
-\ The refusal throws: source reaches it through the pre-pass
-\ (src/habu/verify-source.f), whose drivers report a throw at its statement.
+\ No row may carry 0: a defer row keyed 0 is DFERS' terminator and hides every
+\ later row, and an effect row keyed 0 is anonymous.
 : CHECKER-RECORD-NAME-AT ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: a:ptr u:n at:ptr atu:n :}
    a u CHECKER-RECORD-SYM {: sym:n :}
@@ -14740,17 +14650,7 @@ package CHECKER-REG
    CHECKER-REC-U @ ;
 
 \ The duplicate guard of a certifying record, asked without interning: a refused
-\ name leaves no symbol and a candidate probe records nothing. A replayed
-\ definition is a duplicate when the engine holds a record of the name where it
-\ lands that is no definition's loaded twin (CHECKER-OVERLAY:DUPLICATE?), as the
-\ engine refuses that compile: a definition the replay published, a does> clause
-\ made by the replay or before it (no checker record holds one), or a word the
-\ engine's builder made, such as a primitive. A candidate's scanned definition
-\ is one too when the verifier pass already declared the name there: its
-\ OWN-RECORD is at or above PASS-FLOOR. A record from before the pass (in a warm
-\ engine, the loaded twin), a deletion, a seeded record or a primitive row's
-\ effect declares nothing. The check hook and the source scan ask this before a
-\ body is checked, so they refuse exactly what the guard would.
+\ name leaves no symbol and a candidate probe records nothing.
 : CHECKER-CERT-DUP? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    CHK-CAND @ 0 <>  CHK-PROBE @ 0 <>  and IF RES-FALSE EXIT THEN
@@ -14764,20 +14664,12 @@ package CHECKER-REG
    sym FEP-OFF@ 1 - PE-ROW-EFF? 0= ;
 
 \ The guard's shape question, for a replayed definition that makes a does>
-\ clause when CLAUSE is true (a definer, or an export of one); CHECKER-CERT-DUP?
-\ cannot ask it because a colon definition's name does not say yet. A duplicate
-\ when the name lands on a record from before the overlay of the other shape
-\ (CHECKER-OVERLAY:OTHER-SHAPE?). Asked where the shape is first known: by
-\ src/habu/verify-source.f REFUSE-SHAPE at the `;` or `does>` ending a colon
-\ body, before the body is checked, and once a TRUSTED: body is read; by an
-\ export before it is recorded (EXPORT-RECORD).
+\ clause when CLAUSE is true (a definer, or an export of one).
 : CHECKER-CERT-SHAPE-DUP? ( ptr u8 n bool -- bool )
    CHECKER-OVERLAY:OTHER-SHAPE? ;
 
-\ The defining-scope question: CHECKER-FIND-USIG resolves through
-\ CHECKER-RECORD-SYM, the wordlist a new definition would be recorded into. A
-\ duplicate guard asks exactly this: a package-local tail may shadow an
-\ unrelated global (docs/forth.md § Packages).
+\ The defining-scope question: a package-local tail may shadow an unrelated
+\ global.
 : CHECKER-DEFINED-HERE? ( ptr u8 n -- bool )
    CHECKER-FIND-USIG ;
 
@@ -14785,18 +14677,6 @@ package CHECKER-REG
    $4E throw ;
 
 \ --- a package public whose own bare tail a private word of the package claims --
-\ The engine (habu1.f EMIT-FIND) and the checker (CHECKER-FIND-ACTIVE-SYM)
-\ resolve a bare tail private-first while a package is open, so such a public
-\ definition does not bind its own name. definition.f KEEP-ARITY asks
-\ NDICT:SPELL-ARITY with the bare name, so ncomp would elaborate the public word
-\ against the private word's arity (E-NELAB-ARITY on a public `F ( n -- n )`
-\ beside a private `F ( n n -- n )`). The pair stays legal (src/lib/task.f's
-\ `: PREPARE ( ptr n -- ) PREPARE ;` forwarders); the rule refuses only two
-\ effects moving different numbers of cells, at the second definition.
-\ E-NELAB-ARITY stays ncomp's backstop for every shape this cannot see.
-\
-\ Asked only from PUBLISH-REFUSALS, for a colon definition with a declared
-\ signature; definer-made words and USIG-ADD-AS rows are left to that backstop.
 7145 constant E-SHADOWED-ARITY
 CHECKER-REG:SCRATCH{
 variable SBA-TWIN                          \ the private twin's sym: the refused public's package and tail
@@ -14804,9 +14684,7 @@ variable SBA-NIN   variable SBA-NOUT       \ the refused declaration's width in 
 variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
 CHECKER-REG:}SCRATCH
 
-\ A sym's active declared width in cells. CELLS-NONE on either side means the
-\ binding cannot be judged — no record, a tombstone, or a row carrying no
-\ recorded width — and an unjudgeable pair is left to ncomp rather than guessed.
+\ A sym's active declared width in cells.
 : SBA-CELLS ( n -- n n ) {: sym:n :}
    sym USIG-NEWEST-VISIBLE dup 0= IF drop CELLS-NONE CELLS-NONE EXIT THEN
    1 - {: off:n :}
@@ -14814,10 +14692,8 @@ CHECKER-REG:}SCRATCH
    IF CELLS-NONE CELLS-NONE EXIT THEN
    off E-PTR E-DIN@ EFF-ROW-CELLS  off E-PTR E-DOUT@ EFF-ROW-CELLS ;
 
-\ The private sym owning the tail of a name recorded as a package public, 0 when
-\ it is not recorded as one or nothing private owns its tail. Asked in the
-\ record's scope (CHECKER-RECORD-SYM?'s arms): the bare-name resolver answers
-\ about the token's scope. Nothing is interned: nothing is written yet.
+\ Asked in the record's scope: the bare-name resolver answers about the token's
+\ scope. Nothing is interned: nothing is written yet.
 : SBA-PRIVATE-TWIN ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF
@@ -14828,8 +14704,7 @@ CHECKER-REG:}SCRATCH
    vis CHECKER-PACKAGE-PUBLIC <> IF 0 EXIT THEN
    pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE ;
 
-\ ( din dout a u -- ): the DECLARED rows and the name of the colon definition
-\ about to be published.
+\ The DECLARED rows and the name of the colon definition about to be published.
 : SHADOW-ARITY-CK ( n n ptr u8 n -- )
    {: din:n dout:n a:ptr u:n :}
    a u SBA-PRIVATE-TWIN {: priv:n :}
@@ -14844,10 +14719,8 @@ CHECKER-REG:}SCRATCH
    NMOFF @ TADDR NMU @ RF-REJECTED PIN-REFUSED!   \ the definition's name, not the walk's token
    E-SHADOWED-ARITY REFUSE-DEF CHECKER-REFUSE ;
 
-\ CHECKER-DEFCAST hands this a name source gave it, so a length that describes
-\ no memory is refused with the symbol pool's refusal before the constructor
-\ scan reads it.
-\ CHECK passes AT at NMOFF, where the checked text holds the name it folded.
+\ A length that describes no memory is refused with the symbol pool's refusal
+\ before the constructor scan reads it.
 : USIG-CERT-ADMIT ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n at:ptr atu:n :}
    na nu BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
@@ -14886,8 +14759,8 @@ CHECKER-REG:}SCRATCH
    ELSE CHECKER-PUBLISH-PARSED THEN
    sa su CHECKER-ASIG-CAPTURE ;
 
-\ Publishes VIEW-CAST-CERTIFY's rows asserted, as CHECK's are: a pack's output
-\ binds variables no input supplies; of USIG-ADD-AS's bounds only depth can trip.
+\ Publishes VIEW-CAST-CERTIFY's rows asserted: a pack's output binds variables
+\ no input supplies; of USIG-ADD-AS's bounds only depth can trip.
 : CHECKER-USIG-CERT-ROWS ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
    na nu na nu USIG-CERT-ADMIT
@@ -14919,20 +14792,6 @@ variable LBUF-INFO-W
    count LBUF-COUNT-MAX width / > IF RES-FALSE EXIT THEN
    count width * LBUF-COUNT-MAX CELL / <= ;
 
-\ A buffer count is the token before the definer, read and never run: no static
-\ pass models the interpret stack (src/habu/verify-source.f RECORD-DEFINER?, at
-\ `constant`). An integer token is the count, held to the definer's extent
-\ bound. No token is no count.
-\ A count named by a word certifies by that word's effect: a refused or
-\ undefined name refuses. A word that takes input ends an expression the line
-\ computes (`Q-MAX Q-SEM-N *`, src/lib/queue.f), so the definer bounds it at
-\ load. A word that takes none must hand a `( n -- )` consumer its value: return
-\ stack untouched and an output row that unifies with its input row plus one
-\ `n`. A `constant`, an engine-held constant and a colon `( -- n )` qualify; a
-\ `variable` and a `bool` do not. The definer bounds the value at load
-\ (src/core/layout-buffer.f LBUF-EXTENT?, E-LAYOUT-BUFFER), so a constant of 0
-\ certifies here and fails there. The unification binds only in per-definition
-\ scratch that NEW clears.
 package CHECKER-LBUF
 : BY-EFFECT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-RESOLVE:REFUSES? IF RES-FALSE EXIT THEN
