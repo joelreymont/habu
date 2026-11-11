@@ -555,6 +555,13 @@
 \ `variable` and a `bool` do not. The definer bounds the value at load, so a
 \ constant of 0 certifies here and fails there. The unification binds only in
 \ per-definition scratch that NEW clears.
+\
+\ Registry persistence: the append-only registries (CT, VREC, SYMS) survive
+\ into a built image, since later checked loads reference persisted
+\ signatures. At capture a store whose whole extent lies in image DATA stays
+\ where it is; a store that grew into process-local mmap is copied into fresh
+\ image DATA. Records name their string pools by offset, so each pool is
+\ persisted last and nothing needs fixing up.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -14802,9 +14809,6 @@ package CHECKER-LBUF
    EFFQ-DOUT @ E-INST  CC-N MK-CON din MK-PUSH  UNIFY-IN ;
 
 public
-\ The count path of both definers that take one. A refused count is reported at
-\ its token, or at the name when no token precedes the definer
-\ (CHECKER-STORAGE-REFUSE), and answers false.
 : COUNT-OK? ( ptr u8 n ptr u8 n n -- bool )
    {: na:ptr nu:n a:ptr u:n width:n :}
    u 0= IF na nu na nu STG-NO-COUNT CHECKER-STORAGE-REFUSE RES-FALSE EXIT THEN
@@ -14838,10 +14842,6 @@ public
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
-\ Registration for the TYPED-BUFFER / TYPED-VARIABLE gate path (verify-source
-\ RECORD-TYPED-*): gates on CHECKER-STORAGE-INFO (typed pointers included) and
-\ publishes the accessor's usig: `( n -- ptr <type> )` for TYPED-BUFFER,
-\ `( -- ptr <type> )` for TYPED-VARIABLE.
 : CHECKER-STORAGE-VAR-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
    0 LBUF-SIG-U !
    s" -- ptr " LBUF-SIG-APP
@@ -14950,13 +14950,10 @@ public
    count rec ER.STORAGE-N !
    STORAGE-GRID rec ER.STORAGE-KIND ! ;
 
-\ Registration for the DYNAMIC-BUFFER gate path (verify-source
-\ RECORD-DYNAMIC-BUFFER). The definer publishes three checked words from one
-\ line (src/core/layout-buffer.f DBUF-SOURCE): `NAME ( n -- ptr <type> )`,
-\ `NAME-RESERVE ( n -- )` and `NAME-RELEASE ( -- )`. Certification never runs
-\ the definer, so all three are registered here, or a later call in the same
-\ source is E-UNDEFINED. Publishing a generated word holds its name and its
-\ signature at once, so the name has its own scratch beside LBUF-SIG-BUF.
+\ The definer publishes three checked words from one line. Certification never
+\ runs the definer, so all three are registered here, or a later call in the
+\ same source is E-UNDEFINED. Publishing a generated word holds its name and
+\ its signature at once, so the name has its own scratch beside LBUF-SIG-BUF.
 $100 constant LBUF-NM-CAP
 create LBUF-NM-BUF LBUF-NM-CAP allot
 variable LBUF-NM-U
@@ -14978,8 +14975,8 @@ variable LBUF-NM-I
    sfx sfxu LBUF-NM-APP
    LBUF-NM-BUF LBUF-NM-U @ ;
 
-\ A suffix row is generated: its registration runs paused (NAV-PAUSE), its
-\ signature and name passed through cells to the quotation.
+\ A suffix row is generated: its registration runs paused, its signature and
+\ name passed through cells to the quotation.
 PTR-VARIABLE SFX-SIG-A   variable SFX-SIG-U
 PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 : CHECKER-DEFSUFFIX-NAME ( ptr u8 n ptr u8 n ptr u8 n -- )
@@ -15005,8 +15002,6 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    name nameu s" -RESERVE" s" n --" CHECKER-DEFSUFFIX-NAME
    name nameu s" -RELEASE" s" --" CHECKER-DEFSUFFIX-NAME ;
 
-\ ARENA's four words by their effects, for verify-source RECORD-ARENA: the casts
-\ in the private section, NAME-NEW and NAME-NEW-DISPOSE in the declaration's.
 : CHECKER-DEFARENA ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
@@ -15026,7 +15021,6 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    s"  -- ] -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
    name nameu s" -NEW-DISPOSE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
 
-\ HEAP's two words by their effects, for verify-source RECORD-HEAP (src/core/heap.f).
 : CHECKER-DEFHEAP ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
    0 LBUF-SIG-U !
@@ -15036,12 +15030,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    s" ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP  s"  --" LBUF-SIG-APP
    name nameu s" -RELEASE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
 
-\ Checker-side registration for the DEFER-LAYOUT-BUFFER gate path (verify-source
-\ RECORD-DEFER-LAYOUT-BUFFER). That definer publishes its accessor
-\ `NAME ( n -- ptr <type> )` and the binders `NAME-BIND ( n -- )` and
-\ `NAME-GROW ( n -- )` from one line (src/core/layout-buffer.f LDEFER-SOURCE),
-\ behind LAYOUT-BUFFER's own CHECKER-LAYOUT-INFO gate. Its count arrives at the
-\ bind, so the line carries none.
+\ Its count arrives at the bind, so the line carries none.
 : CHECKER-DEFDEFER-LAYOUT-BUFFER
    ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
@@ -15054,8 +15043,8 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    name nameu s" -BIND" s" n --" CHECKER-DEFSUFFIX-NAME
    name nameu s" -GROW" s" n --" CHECKER-DEFSUFFIX-NAME ;
 
-\ CHECK's publication of an inferred effect, through render.f REC-SIG. Its
-\ duplicate question was asked by PUBLISH-REFUSALS before the first write.
+\ CHECK's publication of an inferred effect. Its duplicate question was asked
+\ by PUBLISH-REFUSALS before the first write.
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- )
    {: na:ptr nu:n :}
    na nu  NMOFF @ TADDR nu  CHECKER-REC-NAME-AT!
@@ -15067,7 +15056,6 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 \ (KEYWORD-AXIOMS); a load grows it on demand.
 $A00 constant NORET-INIT-CAP
 
-\ THE ENTRY IS FIVE CELLS, and this is where they are stated.
 \   SYM      the symbol the facts are about; 0 terminates the store.
 \   FLAG     the symbol's whole CONTROL WORD in the XFER-PACK format: the flags
 \            below and, above them, which of the word's DECLARED inputs every
@@ -15075,8 +15063,7 @@ $A00 constant NORET-INIT-CAP
 \            the TOP of the declared input row, the same order XMASK-OF builds.
 \            The masks mean something only when the flags carry CTL-THROW; a
 \            word with no throw edge records 0 0, which is what a caller's edge
-\            already assumes. One cell, so a snapshot keeps its size and the
-\            facts travel to the owner ABI without re-encoding.
+\            already assumes.
 \   SYMPREV  the per-symbol back-link that makes NORET-SCAN-SYM sublinear.
 \   CREATES  the effect a `create … does>` definer gives every word it creates,
 \            as an effect-record offset+1, 0 when the symbol is not a definer.
@@ -15117,8 +15104,7 @@ CHECKER-REG:}SCRATCH
 \ --- per-symbol control-flag index (NRX) ---------------------------------------
 \ NORET entries are append-only and later-wins: a symbol's flags are its newest
 \ entry's, kept exact by the effect store's three seams (append, truncation,
-\ rebuild); a truncation walks NORET.SYMPREV instead of the whole store. An
-\ entry keyed 0 would terminate the store early; NORET-ADD-SYM refuses one.
+\ rebuild); a truncation walks NORET.SYMPREV instead of the whole store.
 
 : NRX-BASE-FIELD ( -- ptr ptr u8 )
    NRX-BASE 0 ptr-field ;
@@ -15175,8 +15161,8 @@ CHECKER-REG:}SCRATCH
    NRX-SYNC
    NRX-GEN @ HIDX-GEN @ <> IF NRX-BUILD THEN ;
 
-\ As USX-TRUNCATE: walking the discarded entries oldest-first, each symbol's
-\ first discarded entry back-links to a survivor, so each symbol is written once.
+\ Walking the discarded entries oldest-first, each symbol's first discarded
+\ entry back-links to a survivor, so each symbol is written once.
 : NRX-TRUNCATE ( n -- ) {: newend:n :}
    NRX-GEN @ HIDX-GEN @ <> IF EXIT THEN
    newend NRX-POS !
@@ -15206,8 +15192,7 @@ CHECKER-REG:}SCRATCH
    sym NRX@ ;
 
 \ The table can outgrow its initial buffer. Persist the complete live prefix
-\ in image DATA at the grain with a grain of room, just like stored signatures
-\ (USIGS-PERSIST-CAP says why); NORET-GROW doubles.
+\ in image DATA.
 : NORET-SNAPSHOT-PERSIST ( -- )
    NORETS NORET-CAP-U @ REG-DATA-SPAN? 0= IF
       NORET-END @ CELL + {: n:n :}
@@ -15240,7 +15225,6 @@ CHECKER-REG:}SCRATCH
    E-I-AK-RESET
    RIGID-RESET ;
 
-\ Restore a scratch arena to its boot buffer and empty that buffer in one step.
 \ Capture copies these DATA buffers into the image; the last definition's
 \ scratch is dead by the quiescent-capture contract.
 : ARENA-SNAP-BOOT ( ptr ptr n ptr n n -- ) {: pv:ptr boot:ptr cells:n :}
@@ -15254,26 +15238,18 @@ CHECKER-REG:}SCRATCH
 \ At capture, repoint the scope, atom and inst-key arenas at their emptied boot
 \ buffers and init caps, so no grown mmap address is persisted. The scope arena
 \ cannot rest at each file boundary: SCOPE-N never rewinds (SCOPE-FRESH).
-\ Scratch-region stores rest through SR-RETIRE.
 : DECOUPLED-ARENA-SNAP-RESET ( -- )
    SCOPE-PARENT-P SCOPE-PARENT-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
    SCOPE-SECOND-P SCOPE-SECOND-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
    SCOPE-PARENT-INIT SCOPE-PARENT-CAP !
    ATOMA-P ATOMA-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       ATOMU-P ATOMU-BOOT MAXATOM-INIT ARENA-SNAP-BOOT
    ATOMK-P ATOMK-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       MAXATOM-INIT ATOM-CAP !
-   VRI-AK-P VRI-AK-BOOT VRI-AK-INIT ARENA-SNAP-BOOT      VRI-AK-INIT VRI-AK-CAP-V ! ;   \ transient inst scratch
+   VRI-AK-P VRI-AK-BOOT VRI-AK-INIT ARENA-SNAP-BOOT      VRI-AK-INIT VRI-AK-CAP-V ! ;
 
-\ --- registry snapshot persist. The append-only registries (CT/VREC/SYMS)
-\ survive into a built image: later checked loads reference persisted
-\ signatures. A complete store in image DATA survives the copy; a grown store in
-\ process-local mmap is baked into fresh image DATA. CT, VREC and SYM records
-\ name their string pools by offset, so each pool may be persisted last with
-\ nothing to fix up.
 \ The delta travels on the stack, never in a DATA cell: one term is the grown
 \ store's mmap address, which differs between builds, and the AOT capture would
 \ bake that cell into the image.
 
-\ Registry persistence copies bytes through the byte-pool view of each slot.
 : REG-PERSIST-REFUSE ( -- )
    s" checker: invalid registry storage span" 76 die ;
 
@@ -15354,21 +15330,19 @@ CHECKER-REG:}SCRATCH
    SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
    SYM-STR-P SYM-STR-HOME SYM-STR-HOME-CAP SYM-STR-U SYM-STR-CAP-V REG-POOL-PERSIST ;
 
-\ Friend-only hook: the TFAM/SCHEMA registries load after checker.f
-\ (src/core/type-schema.f, src/core/type-family.f) and install their persist
-\ word here; a 0 cell keeps the call a no-op before they load.
+\ The TFAM/SCHEMA registries load after checker.f and install their persist
+\ word here.
 defer REG-EXT-PERSIST-XT ( -- )
-\ Scratch hooks, one per owning file (render.f, sumtype.f, type-family.f). Each
-\ runs at every file boundary (FILE-SCRATCH-RETIRE) and once at image capture
-\ (CHECKER-QUIESCE-END), so it resets only state no later read depends on.
+\ Scratch hooks, one per owning file. Each runs at every file boundary
+\ (FILE-SCRATCH-RETIRE) and once at image capture (CHECKER-QUIESCE-END), so it
+\ resets only state no later read depends on.
 defer REG-SCRATCH-SNAP-XT ( -- )
 defer REG-LATE-SCRATCH-SNAP-XT ( -- )
 defer REG-EXT-SCRATCH-XT ( -- )
 \ A cell of its own: a second `is` on a cell above would silently retire the
-\ earlier owner's reset. The lowering-certificate producer
-\ (src/core/lower-cert-base.f, src/core/layout-valid.f) owns it: per-definition
-\ arena bases that must be back on their baked boot buffers before capture,
-\ since a grown base lives in process-local mmap.
+\ earlier owner's reset. The lowering-certificate producer owns it:
+\ per-definition arena bases that must be back on their baked boot buffers
+\ before capture, since a grown base lives in process-local mmap.
 defer REG-CERT-SNAP-XT ( -- )
 : REG-EXT-DEFAULTS ( -- )
    [: ;] is REG-EXT-PERSIST-XT
@@ -15383,10 +15357,10 @@ REG-EXT-DEFAULTS
 \ resolves family `view` through the type-family registry, so a window that
 \ declared families carries them, or every signature naming one is refused.
 \ The base is asserted, never remapped: family ids, schema node ids and interned
-\ type-name offsets are identities (type-family.f). The seeding and capturing
+\ type-name offsets are identities. The seeding and capturing
 \ engines reach the window with the same registry, built only by the cold
 \ prefix, so the delta appends at an agreed base; a disagreement is refused by
-\ name, as src/habu/aot-file.f ?BASES refuses a non-canonical code base.
+\ name.
 \ The TFAM and SCHEMA registries load after this file and install these: MARK
 \ latches the high-waters a capture window opens at, SAVE writes those marks and
 \ the delta into the caller's buffer, LOAD asserts the marks and appends.
@@ -15438,17 +15412,13 @@ defer REG-EXT-AOT-WIDTH-XT ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
    [: REG-EXT-AOT-NO-WIDTH ;] is REG-EXT-AOT-WIDTH-XT ;
 REG-EXT-AOT-DEFAULTS
 
-\ What src/habu/aot-arm.f and src/habu/aot-capture.f call. They are checked code
-\ and the registry is not theirs, so the two sides meet at these two names and
-\ the axioms below them.
 : CHECKER-REG-AOT-MARK ( -- ) REG-EXT-AOT-MARK-XT ;
 : CHECKER-REG-AOT-CLOSE ( -- ) REG-EXT-AOT-CLOSE-XT ;
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
 
-\ The AOT signature pool is live across file loads: AOT-ARM:WINDOW-OPEN arms
-\ it, files loaded inside the window record into it, and WINDOW-CLOSE freezes
-\ it for CHECKER-PAYLOAD-LOOKUP until capture. So only image capture
-\ (CHECKER-QUIESCE-CORE) releases it, never a file boundary.
+\ The AOT signature pool is live across file loads: files loaded inside the
+\ window record into it. So only image capture (CHECKER-QUIESCE-CORE) releases
+\ it, never a file boundary.
 : ASIG-POOL-RELEASE ( -- )
    CHECKER-ASIG-DISARM
    0 ASIG-FROZEN !
@@ -15487,25 +15457,20 @@ REG-EXT-AOT-DEFAULTS
    sym NORET-NEWEST dup 0= IF drop 0 EXIT THEN
    1 - off + NORET-CELL @ ;
 
-\ The effect sym's definer gives its created words, as an effect-record
-\ offset+1, 0 for a non-definer. Read from the newest entry, so a redefinition
-\ publishing no created effect retires the old one. Not cached in HIDX (the
-\ packed control word): the per-symbol head answers in one load.
+\ Read from the newest entry, so a redefinition publishing no created effect
+\ retires the old one. Not cached in HIDX (the packed control word): the
+\ per-symbol head answers in one load.
 : NORET-CREATES@ ( n -- n ) NORET-CREATES-OFF NORET-NEWEST@ ;
 
-\ For an export, the symbol of the word it is (EXPORT-META-COPY), else 0. Read
-\ from the newest entry, so the entry an `undefine` appends retires it.
+\ Read from the newest entry, so the entry an `undefine` appends retires it.
 : NORET-SOURCE@ ( n -- n ) NORET-SOURCE-OFF NORET-NEWEST@ ;
 
-\ The word a symbol is: for an export, the symbol of the word it exports,
-\ through any re-exports; otherwise the symbol itself. A source the capture
-\ swept (a private word of a sealed package, src/core/checker-surface.f) keeps
-\ its id and answers no identity.
+\ A source the capture swept (a private word of a sealed package) keeps its id
+\ and answers no identity.
 : CHECKER-SYM-SOURCE ( n -- n ) {: sym:n :}
    sym NORET-SOURCE@ dup 0= IF drop sym THEN ;
 
-\ Flush the cache when NORETS rewound below a cached dependency. The store swap
-\ paths (persist/reset) keep values or rewind END.
+\ The store swap paths (persist/reset) keep values or rewind END.
 : HIDX-CTL-SYNC
    NORET-END @ HIDX-CTL-HI @ < IF HIDX-EPOCH+ THEN ;
 
@@ -15515,8 +15480,7 @@ REG-EXT-AOT-DEFAULTS
 \ store, and its SYM cell would terminate the store.
 \ Every appender carries forward the facts it has nothing to say about: the
 \ newest entry wins, so an appender writing only its own part would retire the
-\ rest (a definition records flags and masks, and the effect authority appends
-\ its provenance flag and the created-word effect on the same record).
+\ rest.
 : NORET-APPEND {: sym:n flag:n dmask:n rmask:n creates:n source:n :}
    WRITE-WINDOW-CK
    sym 0= IF EXIT THEN
@@ -15534,28 +15498,19 @@ REG-EXT-AOT-DEFAULTS
    NORET-TERM
    NRX-STAMP                     \ NORET-ENSURE may have moved the store
    HIDX-VALID @ IF
-      ctl sym HIDX-CTL!         \ the cache holds the same packed word the store does
+      ctl sym HIDX-CTL!
       NORET-END @ HIDX-CTL-DEP+
    THEN ;
 
-\ The flags, masks and created-effect appender: what the effect authority
-\ (STORE), a definer's native clause and a `generates:` row have to say, and
-\ NORET-ADD-SYM below. None of them says which word the symbol exports, so that
-\ fact is carried forward from its newest entry: only an export, an `undefine`
-\ and a unit's import name one, through NORET-APPEND (EXPORT-META-COPY,
-\ CHECKER-UNDEFINE, UP-INSTALL-CONTROLS).
 : NORET-ADD-CREATES ( n n n n n -- )
    {: sym:n flag:n dmask:n rmask:n creates:n :}
    sym flag dmask rmask creates sym NORET-SOURCE@ NORET-APPEND ;
 
-\ The flags-and-masks appender: what a definition, a transfer or a barrier has
-\ to say. None of them says anything about what the symbol creates, so that
-\ fact is carried forward from the symbol's newest entry.
 : NORET-ADD-SYM {: sym:n flag:n dmask:n rmask:n :}
    sym flag dmask rmask sym NORET-CREATES@ NORET-ADD-CREATES ;
 
 \ One row per actual dictionary occurrence. Effect and control are existing
-\ store offsets plus one, not copies of their graphs and not symbol lookups.
+\ store offsets plus one.
 \ The occurrence cell makes a reused dictionary ordinal a different word.
 \ A facts read that links no effect (CHECK READ-LINK) keeps where its rows
 \ start, plus one, in READ: a rewind below it takes the read's rows, so it
@@ -15922,17 +15877,15 @@ PENDING-MARKED 0 CELL-ROW+
    ord PENDING-OWNER-RECORD
    ord PENDING-DIRTY+ ;
 
-\ The record a created word carries, built from the effect its definer states:
-\ a certified `does>` clause's (DOES-EFF-LATCH!) or a `generates:` row's
-\ (CHECKER-GENERATES). 0 when the effect does not parse or no record can hold
-\ it (SGBAD-UNFIT!), with SGBAD saying why.
+\ The record a created word carries, built from the effect its definer states.
+\ 0 when the effect does not parse or no record can hold it, with SGBAD saying
+\ why.
 \ It parses the signature itself: after a clause check SGIN/SGOUT have been
 \ unified with the body, so a declared variable would be latched at what the
 \ body produced; and this parse runs under the raw-definer seal `trust-raw`
 \ puts on every created word at run time, so the record holds the same TVK-RAW
 \ variables the engine's own registration would.
-\ The record is anonymous (CHECKER-REC-SYM 0, no cache update, as SIG-EFF-CACHE!
-\ builds the recurse cache): it is not the definer's effect, and sym 0 keeps it
+\ The record is anonymous: it is not the definer's effect, and sym 0 keeps it
 \ out of every per-symbol lookup.
 : CREATED-RECORD-BUILD ( ptr u8 n -- n )
    {: sa:ptr su:n :}
@@ -15946,7 +15899,7 @@ PENDING-MARKED 0 CELL-ROW+
    sa su PARSE-SIG-RAW
    RES-FALSE SIG-RAW-DEFINER!
    SGBAD @ 0 <> SIG-UNRES @ 0 <> or IF
-      2drop 2drop  was CHECKER-REC-SYM !  0 EXIT     \ unresolvable family: no record
+      2drop 2drop  was CHECKER-REC-SYM !  0 EXIT
    THEN
    {: din:n dout:n rin:n rout:n :}
    sa su din dout rin rout SGBAD-UNFIT!
@@ -16009,8 +15962,6 @@ BODY-PEND-BASE 0 CELL-ROW+
    end here BYTE-VIEW data-base BYTE-VIEW - > IF EXIT THEN
    ord data-base base + CELL-VIEW end base - CELL / CHECKER-GRID-ATTACH ;
 
-\ Each created word closes the previous pending body; a DNAME-ALLOC record
-\ then pends its own, from the start COMMA-BASE-CELL holds.
 : RECORD-LINK-CREATED ( n n ptr n -- )
    {: effect:n control:n rec:ptr :}
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN
@@ -16055,15 +16006,13 @@ package CHECKER-REG
       THEN
    loop ;
 
-\ habu2.f EMIT-ROLLBACK and habu1.f BALLOT call it through GRID-REVOKE-OFF with
-\ the DP they lower to, a data-base offset; record grids and texts above it go.
+\ A data-base offset; record grids and texts above it go.
 : DP-CUT ( n -- )
    {: cut:n :}
    cut RECORD-GRID-REVOKE
    cut data-base NULL-PTR - + INTERN:KEEP-BELOW ;
 
-\ XREF calls this on the selected record after its other retirement hook
-\ succeeds and before it stamps the retired wordlist.
+\ Called on a record being retired, before its wordlist is stamped retired.
 : RECORD-GRID-RETIRE ( ptr n -- ) {: owner:ptr :}
    owner CHECKER-RESOLVE:REC>INDEX {: ord:n :}
    ord 0 < ord ndict@ >= or IF EXIT THEN
@@ -16091,7 +16040,7 @@ public
 
 \ Occurrences belong to this process. A snapshot keeps only their presence:
 \ restore issues fresh identities before reading the exact-record facts. Write
-\ the copied table alone, as AOT capture does, so live comparisons still work.
+\ the copied table alone, so live comparisons still work.
 : RECORD-SNAPSHOT-COPY ( ptr u8 n -- )
    {: copy:ptr size:n :}
    RECORD-LINK-CAP @ 0= IF EXIT THEN
@@ -16305,9 +16254,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    ord sym CHECK:HOLD-AMENDED ;
 
 \ The name-keyed appender records NO intact evidence: every caller of it has
-\ none to give (the axioms below, a body that failed to check, a test pinning a
-\ flag). A definition that proved some of its inputs intact appends through
-\ NORET-ADD-SYM with the masks it measured.
+\ none to give.
 : NORET-ADD {: a:ptr u:n flag:n :}
    a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
@@ -16333,7 +16280,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    s" required" CTL-RENDERS NORET-AXIOM
    s" script-required" CTL-RENDERS NORET-AXIOM ;
 
-\ The primitives' axioms (PRIMS-END), by identity (CTL-CORE-OP); a symbol's newest row wins, so create's one row carries all its facts.
+\ A symbol's newest row wins, so create's one row carries all its facts.
 : NORET-AXIOMS ( -- )
    s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
@@ -16383,8 +16330,6 @@ package CHECK
 NORET-P NORET-CAP-U 1 NORET-END STORE+
 ;package
 
-\ The entry at OFF appended again with no source, when it is its symbol's
-\ newest and names SRC as the word it is: that symbol is then its own word.
 : NORET-SOURCE-RETIRE ( n n -- )
    {: off:n src:n :}
    off NORET-CELL NORET.SOURCE @ src <> IF EXIT THEN
@@ -16398,10 +16343,9 @@ package CHECK
 \ Undefining retires every fact the name carried, through NORET-APPEND: the
 \ carry-forward of NORET-ADD-SYM would keep a definer's created effect or an
 \ export's link alive under a retired name. It also retires every link naming
-\ the word (NORET-SOURCE-RETIRE): the name defined afresh takes the symbol,
-\ while an export of the old word still runs that word. The walk reads the
-\ entries present before it and appends past them; a rollback rewinds them and
-\ a capture compacts them.
+\ the word: the name defined afresh takes the symbol, while an export of the
+\ old word still runs that word. The walk reads the entries present before it
+\ and appends past them; a rollback rewinds them and a capture compacts them.
 : UNDEFINE-SYM ( n -- )
    {: sym:n :}
    sym CHECKER-REC-SYM !
@@ -16427,8 +16371,7 @@ public
    {: sym:n :}
    BUILDING? IF sym HOLD-UNDEFINE THEN
    sym UNDEFINE-SYM ;
-\ The `undefine` held as text a u (HOLD-UNDEFINE) replayed. A malformed text is
-\ a linker defect, never a program's, so it dies.
+\ A malformed text is a linker defect, never a program's, so it dies.
 : READ-UNDEFINE ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 3 < IF s" checker: bad held undefine" 76 die THEN
@@ -16441,8 +16384,6 @@ public
    was CHECKER-REC-SYM ! ;
 ;package
 
-\ Inside the verifier window the replayed `undefine` also retires the engine
-\ records of the name (CHECKER-OVERLAY:RETIRE).
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-UNDEFINE-GUARD
    a u CHECKER-RECORD-NAME 2drop
@@ -16476,8 +16417,6 @@ CHECKER-REG:}SCRATCH
    off NORET-CELL NORET-CTL@ NORET-CTL !
    off NORET-ENTRY + NORET-FMEND ! ;
 
-\ The symbol's whole control word: the flags and the intact masks in the one
-\ cell the store keeps them in, so the cached word serves both readers below.
 : CTL-WORD-SYM {: sym:n :}
    sym 0= IF 0 EXIT THEN
    HIDX-ENSURE
@@ -16497,11 +16436,10 @@ CHECKER-REG:}SCRATCH
 : CTL-FLAGS {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
 
-\ The return-stack transfers and the control words the walk types by spelling.
 \ `>r` `r>` `r@` are compile keywords the engine matches before any lookup, so
-\ their spelling is the word. Every other row is
-\ an engine word a package or a redefinition can shadow, asked only when `core`
-\ says the token binds the engine's own word (CTL-CORE-OP, TOK-CORE-OP?).
+\ their spelling is the word. Every other row is an engine word a package or a
+\ redefinition can shadow, asked only when `core` says the token binds the
+\ engine's own word (CTL-CORE-OP, TOK-CORE-OP?).
 : RS-TOK? {: a u core :}
    -1 RSH !
    a u s" >r" CORE-STR= IF RS->R ELSE
@@ -16525,27 +16463,20 @@ CHECKER-REG:}SCRATCH
    THEN THEN THEN
    RSH @ ;
 
-\ The intact masks of the same word: which of the callee's declared inputs every
-\ throw path of its body left where they were. Asked only by a token that takes
-\ a throw edge.
 : CTL-MASKS-SYM ( n -- n n ) CTL-WORD-SYM dup XFER-DMASK swap XFER-RMASK ;
 
 : CTL-MASKS ( ptr u8 n -- n n ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CTL-MASKS-SYM ;
 
 \ `id INTRINSIC`, at top level right after the source definition of an engine
-\ word the walk types by what it does, tags it as that engine word
-\ (CTL-INTRINSIC above), as `immediate` marks the latest word. The symbol is
-\ CK-CLOSED-SYM (the definition recorded last, cleared by a live check that
-\ certified nothing), and the entry carries its other facts forward. A replay
-\ never runs this line; the definition's end keeps the identity its symbol
-\ carries. It has no PRIM row on purpose: the seal's internal-word pass leaves
-\ it callable by the engine's own source alone, so no program can claim its word
-\ is an engine word. An id the field cannot hold, or no recorded definition to
-\ tag, is a broken registration.
-\ The row declarers' ids also publish CTL-PARSES (INTRINSIC-CTL): each reads its
-\ row, but its trusted body calls the registrar the scan refuses, so no checked
-\ body records the flag its parse-name calls give.
+\ word the walk types by what it does, tags it as that engine word, as
+\ `immediate` marks the latest word. A replay never runs this line; the
+\ definition's end keeps the identity its symbol carries. It has no PRIM row
+\ on purpose: the seal's internal-word pass leaves it callable by the engine's
+\ own source alone, so no program can claim its word is an engine word.
+\ The row declarers' ids also publish CTL-PARSES: each reads its row, but its
+\ trusted body calls the registrar the scan refuses, so no checked body records
+\ the flag its parse-name calls give.
 : INTRINSIC-CTL ( n -- n ) {: id:n :}
    id INTRINSIC>CTL
    id INTRINSIC-PARSES =  id INTRINSIC-PARSES-THROUGH =  or  id INTRINSIC-NAMES =  or IF
