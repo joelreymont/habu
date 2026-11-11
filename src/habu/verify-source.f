@@ -92,6 +92,34 @@
 \ engine refuses either in a body and loads nothing, but the file each names
 \ waits as a string loader's does in an ordinary composition, a superset of
 \ what the engine loads, and a fault loading it stands at that loader word.
+\
+\ Definer rows: a `create … does>` definition is a definer, and every word it
+\ creates takes the clause's declared effect, a `TRUSTED:` definer's included,
+\ whose body is asserted but whose clause is still a declaration. The rows are
+\ learned from the source, not listed, so library definers put no names in the
+\ engine; a definer whose product text is rendered and evaluated at load marks
+\ the statement's wordlist instead, leaving what that text defines to the run,
+\ while a `generates:` row and FUNCTION:'s declaration group are still read. A
+\ row is keyed by the checker's symbol id for the definer's name, so every
+\ spelling resolves through the checker's scope chain. A rewound scope
+\ truncates those ids, so the row count is one of the marks the checker's
+\ rollback frame rewinds: every scope releases the rows recorded inside it, and
+\ no row outlives the ids it names. `undefine` appends a row with no effect,
+\ DEFINER-FIND reads the newest row for a name, and a rewound scope releases a
+\ retirement with the rest of its rows. Each row's effect lies in DEFINER-SIG,
+\ a byte row: a newer effect is appended, so the bytes past the last effect a
+\ live row holds are free. Growth may move DEFINER-SIG, so an effect is read
+\ where it lies only until the next one is recorded.
+\
+\ Straight-line wrappers: a body whose tokens hold exactly one definer call and
+\ no control flow, quotation or bracket creates whatever that definer creates.
+\ Two definer calls, a conditional definer or a definer inside a quotation
+\ record nothing, and the created word then stays unknown. Only a definer this
+\ pre-pass read is counted: the checker's body walk learns a wrapper of a
+\ resident definer, while a definer read here leaves the checker no created
+\ effect, so only the definer rows know what it makes. Only a certified body is
+\ learned: one deferred to the run names a word only the run can see, which may
+\ itself be a definer.
 
 require src/lib/error.f
 require src/lib/source-syntax.f
@@ -966,11 +994,7 @@ variable SEALS-N
 
 \ The engine refuses a live local past its LOC-RECS records, and the checker
 \ names that local (E-TOO-MANY-LOCALS) when this body registers, so the table
-\ only stops recording. A dropped name spelled as a parsing keyword or string
-\ opener and then used still hides the `;`: with nothing after it to close the
-\ scan the scan stops at the string or the definition the source ends inside,
-\ else the merged body registers and the checker names the local; the loader
-\ refuses that body at the name.
+\ only stops recording.
 : LOCAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
    LOCAL-N @ LOC-RECS >= IF EXIT THEN
    0 BEGIN dup u < IF a over + c@ $3A <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT
@@ -998,13 +1022,11 @@ variable SEALS-N
    a u s" else" STR=CI IF BLOCK-DROP EXIT THEN
    a u BLOCK-CLOSER? IF BLOCK-DROP LOCAL-DEPTH @ 1 - LOCAL-DEPTH ! THEN ;
 
-\ One token of a group: its closer ends it, and any other token is a name.
 : GROUP-TOKEN ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" :}" CORE-STR= IF 0 0= EXIT THEN
    a u LOCAL-ADD
    0 0= 0= ;
 
-\ The byte where the group being read opens, at its `{:`.
 variable GROUP-AT
 
 \ The next token of a group. The source ending inside one stops the statement
@@ -1022,10 +1044,9 @@ variable GROUP-AT
 : SKIP-GROUP ( -- )
    BEGIN GROUP-NEXT GROUP-TOKEN UNTIL ;
 
-\ The path `include` or `require` takes, the next token as the engine reads it
-\ (parse-name), the word wu bytes long and standing at TOKEN-BYTE: none is
-\ refused at the word, and one past PATH-CAP at itself, as the word refuses it
-\ before the resolver sees it (src/core/include.f INCLUDE-CHECK-PATH).
+\ The path `include` or `require` takes, the word wu bytes long and standing at
+\ TOKEN-BYTE: none is refused at the word, and one past PATH-CAP at itself, as
+\ the word refuses it before the resolver sees it.
 : LOADER-OPERAND ( n -- ptr u8 n ) {: wu:n :}
    NEXT-RAW {: p:ptr pu:n :}
    pu 0= IF E-DISC-DYNAMIC wu QUIET-REJECT THEN
@@ -1034,8 +1055,7 @@ variable GROUP-AT
 
 \ `include` or `require` in a body, an immediate word the engine refuses there
 \ (E-UNMODELED-IMMEDIATE), loading nothing: a quiet composition still loads
-\ its file (PEND-PUSH), as discovery records it, a superset of what the engine
-\ loads.
+\ its file, as discovery records it, a superset of what the engine loads.
 : BODY-LOADER-IMM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    QUIET @ 0= IF false EXIT THEN
    a u s" include" STR=CI  a u s" require" STR=CI or ;
@@ -1048,11 +1068,10 @@ variable GROUP-AT
    p pu  w wu s" include" STR=CI IF 1 ELSE 0 THEN  at wu PEND-PUSH
    p pu ;
 
-\ A local, a group and a block word in a body, ahead of the parsing keywords and
-\ string openers the body token readers below take. A local or a group skips
-\ BODY-TOKEN-SEEN, so it clears what the token before it told an `if`: a local,
-\ even one spelled as a target predicate, opens no target `if`. An immediate
-\ loader's path joins the body as its token, which the engine's loader takes.
+\ A local or a group skips BODY-TOKEN-SEEN, so it clears what the token before
+\ it told an `if`: a local, even one spelled as a target predicate, opens no
+\ target `if`. An immediate loader's path joins the body as its token, which
+\ the engine's loader takes.
 : APPEND-BODY-TOKEN ( -- )
    LOCAL-TOKEN? IF
       BODY-PREV-CLEAR
@@ -1104,13 +1123,6 @@ variable GROUP-AT
    TOKEN-A @ TOKEN-U @ BLOCK-STEP
    SKIP-BODY-TOKEN ;
 
-\ The scope's two questions about a name, asked of the checker that owns the
-\ scope: RECORD-SYM? names the symbol a definition in THIS source is recorded
-\ under (0 when it never was) and FIND-SYM resolves a USE through the open
-\ package's private and public wordlists, the global wordlist and the used
-\ publics - the same chain a body token resolves through, so a qualified
-\ `CODEGEN:BUFFER-E` and a bare `BUFFER-E` under `using CODEGEN` answer one
-\ symbol.
 \ Replay-only checker queries use the live declaration owner. The verifier is
 \ source loaded, so the sealed image need not publish these checker names.
 : OWNER-XT ( n -- n ) {: off:n :}
@@ -1151,8 +1163,8 @@ CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- ] -- ] )
 \ copies go when the composition ends.
 variable VISIT-NEXT                     \ the last visit number given
 variable VISIT-CUR                      \ the file being scanned, 0 outside a visit
-variable VISIT-FIRST                    \ this composition's first visit
-variable VISIT-N                        \ the visits this composition made
+variable VISIT-FIRST
+variable VISIT-N
 DYNAMIC-BUFFER VISIT-PATHS u8           \ their paths, end to end
 variable VISIT-PATHS-U
 DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and length
@@ -1186,17 +1198,14 @@ DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and lengt
 
 \ Arm the checker with NAME, declared by the token from byte AT, U long, in the
 \ file being scanned: the record the next named registrar retains takes that
-\ spelling and location
-\ (src/core/checker.f CHECKER-DECL-AT!), until DISARM. Outside a visit there
-\ is no file to name, and the checker's armed state stays its caller's.
+\ spelling and location, until DISARM. Outside a visit there is no file to
+\ name, and the checker's armed state stays its caller's.
 : ARM-UNSEALED ( ptr u8 n n n -- )
    {: name:ptr nameu:n at:n u:n :}
    VISIT-CUR @ 0= IF EXIT THEN
    name nameu VISIT-CUR @ at at u +
    NCOMP-DISPATCH:DECL-VERIFY-DECL-ARM-OFF OWNER-XT ARM-ACTION execute ;
 
-\ ARM-UNSEALED for a name its registrar defines, which stops first when the
-\ name lands in a sealed package (SEALED-NAME).
 : ARM ( ptr u8 n n n -- )
    {: name:ptr nameu:n at:n u:n :}
    name nameu at SEALED-NAME
@@ -1229,17 +1238,14 @@ CANDIDATE-INIT
 CAST: CURSOR-ACTION ( n -- [ n [ ptr u8 n n n n -- ] -- ] )
 CAST: VISIBLE-ACTION ( n -- [ ptr u8 n n [ ptr u8 n n n n -- ] -- ] )
 
-\ The checker's candidate (src/core/checker.f CHECKER-CURSOR!, EACH-VISIBLE):
-\ its spelling and the declaration's visit and span, 0 0 0 for none.
+\ The checker's candidate: its spelling and the declaration's visit and span,
+\ 0 0 0 for none.
 : CSR-VISIT ( ptr u8 n n n n -- )
    {: a:ptr u:n v:n s:n e:n :}
    v VISIT-IN? IF a u v VISIT-PATH s e ON-CANDIDATE EXIT THEN
    a u NULL$ 0 0 ON-CANDIDATE ;
 
-\ The definition body of U bytes about to be checked holds the cursor: arm the
-\ check at it, its place or the body's end when it waits before the closer,
-\ and answer whether it was armed. One arm per composition, so a does>
-\ parent checked twice offers once.
+\ One arm per composition, so a does> parent checked twice offers once.
 : CSR-ARM ( n -- bool )
    {: u:n :}
    CSR-SUBJ @ 0= IF false EXIT THEN
@@ -1264,14 +1270,16 @@ CAST: VISIBLE-ACTION ( n -- [ ptr u8 n n [ ptr u8 n n n n -- ] -- ] )
    CSR-DISARM
    rc 0<> IF rc throw THEN ;
 
-\ Run Q with H receiving each use Q's checks bind (src/core/checker.f
-\ CHECKER-WITH-USES): one scope at a time, closed on either exit.
+\ Run Q with H receiving each use Q's checks bind: one scope at a time, closed
+\ on either exit.
 : WITH-USES ( [ n n n n n n -- ] [ -- ] -- )
    NCOMP-DISPATCH:DECL-VERIFY-USES-OFF OWNER-XT USES-ACTION execute ;
 
-\ The checked dispatchers name their offsets through layout.f's
-\ NCOMP-DISPATCH:DECL-VERIFY-* mirrors. CHECKER-OWNER-ABI loads before the
-\ checker, so a source boot has no checked row for its constants.
+\ The scope's two questions about a name, asked of the checker that owns the
+\ scope: RECORD-SYM? names the symbol a definition in THIS source is recorded
+\ under (0 when it never was) and FIND-SYM resolves a USE through the open
+\ package's private and public wordlists, the global wordlist and the used
+\ publics - the same chain a body token resolves through.
 : RECORD-SYM? ( ptr u8 n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
 \ FIND-SYM is the QUIET resolver: this scan asks it of tokens it is only
@@ -1299,28 +1307,24 @@ private
 
 \ The same two questions about a definer this pre-pass never read - one compiled
 \ in THIS process, whose clause the checker certified at its `;` and whose
-\ created-word effect it kept (src/core/checker.f DOES-EFF-LATCH! and the NORETS
-\ entry's CREATES cell), or a straight-line wrapper of such a definer, which the
-\ checker's own body walk records against the wrapper's symbol the same way. The
-\ effect stays where the checker built it: it is handed over as a record, not as
-\ text, so the type variables the clause declared keep the raw-definer seal the
-\ engine's own `trust-raw` gives them.
+\ created-word effect it kept, or a straight-line wrapper of such a definer,
+\ which the checker's own body walk records against the wrapper's symbol the
+\ same way. The effect stays where the checker built it: it is handed over as
+\ a record, not as text, so the type variables the clause declared keep the
+\ raw-definer seal the engine's own `trust-raw` gives them.
 : CREATES-SYM? ( n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-CREATES-SYM-OFF OWNER-XT CREATES-ACTION execute ;
 : RECORD-CREATED ( ptr u8 n n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-RECORD-CREATED-OFF OWNER-XT CREATED-ACTION execute ;
 
 \ Does the token run a word that may define words no source text spells, by one
-\ of the facts MASK names (src/core/checker.f CTL-RENDERS, CTL-CREATES,
-\ CHECKER-VERIFY-RENDERS)? When it does, the checker marks the wordlist the
+\ of the facts MASK names? When it does, the checker marks the wordlist the
 \ statement runs in, and a definition or a top-level token read after it that
 \ names a word nothing in scope defines is left to the run (CHECK's verdict 2,
 \ or a stretch deferred at the token) instead of refused E-UNDEFINED.
 : RENDERS-MARK? ( ptr u8 n n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-RENDERS-OFF OWNER-XT RENDERS-ACTION execute ;
 
-\ Masks for a text renderer (RECORD-DEFINER?), one or a `create` caller
-\ (TOP-TOKEN), and one or a nominal-type registrar; rows in core/cell-effects.f.
 CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
 CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
 
@@ -1334,63 +1338,18 @@ CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
    a u MARK-NOMINAL RENDERS-MARK? drop ;
 
 \ A call in the body of the TRUSTED: word NAME: the checker adds what the word
-\ the token names may do when it runs to what NAME may do
-\ (src/core/checker.f CHECKER-VERIFY-REACH).
+\ the token names may do when it runs to what NAME may do.
 : TRUSTED-REACH ( ptr u8 n ptr u8 n -- )
    NCOMP-DISPATCH:DECL-VERIFY-REACH-OFF OWNER-XT REACH-ACTION execute ;
 
 \ The does> clause record of the TRUSTED: definer NAME, published as the
-\ engine's `does>` makes it (src/core/checker.f CHECKER-SOURCE-CLAUSE).
+\ engine's `does>` makes it.
 : TRUSTED-CLAUSE ( ptr u8 n -- )
    NCOMP-DISPATCH:DECL-VERIFY-SOURCE-CLAUSE-OFF OWNER-XT CLAUSE-ACTION execute ;
 
-\ A `create … does>` definition IS a definer, and the effect of every word it
-\ creates is the clause's declared one - a `TRUSTED:` definer included, whose
-\ body is asserted but whose clause is still a declaration (SCAN-TRUSTED-BODY).
-\ That is the row the ENGINE publishes for such a word at run time:
-\ src/habu/habu2.f DOESPATCH:EMIT hands the parsed
-\ clause signature (CRSIG) to LASTC-TRUST:PUBLISH, which registers it through
-\ the checker's `trust-raw` (src/core/checker.f TRUST-RAW) - the raw-variable
-\ seal RAW-TRUST-NEXT below brackets its own registration with. So a row learned
-\ here is the row the load path records, not a permissive default.
-\
-\ WHY LEARNED AND NOT LISTED. RECORD-DEFINER?'s table names the CORE definers.
-\ lib owns `does>` definers of its own (src/lib/codegen.f BUFFER-E,
-\ src/lib/queue.f, src/lib/span.f, src/lib/aio.f, src/lib/string.f,
-\ src/lib/task.f); rows for them would put library names in the engine and miss
-\ the next one. A third class is a definer whose product text the scan never
-\ reads because it is rendered and evaluated at load (FUNCTION:, +USER). The
-\ checker learns that it renders from its body (CTL-RENDERS), and
-\ RECORD-DEFINER?, or TOP-TOKEN for a statement no arm takes, marks the
-\ statement's wordlist, leaving what the text defines to the run. What the
-\ source states is still read: a `generates:` row declares the word its definer
-\ makes from the next token (RECORD-GENERATES), and FUNCTION:'s declaration
-\ group is its word's effect (RECORD-FFI-FUNCTION), so those names are checked
-\ here and only the rest is left to the run.
-\
-\ A ROW IS KEYED BY THE CHECKER'S SYMBOL ID for the definer's name, so every
-\ spelling that names the definer resolves through the scope chain the checker
-\ already owns (FIND-SYM above) instead of through a second name table here.
-\ Those ids are the checker's, and a rewound scope truncates them, so the row
-\ count is one of the marks the checker's rollback frame rewinds
-\ (src/core/checker.f VERIFY-DEFINER-N): every scope releases the rows recorded
-\ inside it, SOURCE-BUF's own candidate scope and the scope a caller opens
-\ around SOURCE-COMPOSE-LABELED-IN-SCOPE or another IN-SCOPE word alike, and no
-\ row outlives the ids it names. A frame that finalizes keeps its ids and the
-\ rows that name them.
-\ `undefine` retires a definer's row as the checker retires its created-word
-\ effect (CHECKER-UNDEFINE): it appends a row with no effect, DEFINER-FIND reads
-\ the newest row for a name, and a rewound scope releases a retirement with the
-\ rest of its rows.
-\ The rows grow with the scope's definers, and their effects with what they
-\ create: a preverified require closure holds several sources in one checker
-\ scope. Each row's effect lies in DEFINER-SIG, a byte row: a newer effect is
-\ appended, so the bytes past the last effect a live row holds are free, and a
-\ rewound scope's are written again. Growth may move DEFINER-SIG, so an effect
-\ is read where it lies only until the next one is recorded.
 DYNAMIC-BUFFER DEFINER-SYM n
 DYNAMIC-BUFFER DEFINER-LEN n               \ its effect's length, 0 for a retired row
-DYNAMIC-BUFFER DEFINER-AT n                \ where its effect starts in DEFINER-SIG
+DYNAMIC-BUFFER DEFINER-AT n
 DYNAMIC-BUFFER DEFINER-GEN bool            \ its own `generates:` row states it
 DYNAMIC-BUFFER DEFINER-SIG u8
 
@@ -1404,9 +1363,6 @@ DYNAMIC-BUFFER DEFINER-SIG u8
       dup DEFINER-AT @ over DEFINER-LEN @ +  rot max swap
    REPEAT drop ;
 
-\ The checker's own "offset+1, 0 = none" answer shape, for the same reason: a
-\ row index of 0 is a real row. The newest row for sym answers, a retired one
-\ as none.
 : DEFINER-FIND ( n -- n ) {: sym:n :}         \ sym's row + 1, 0 = no such definer
    sym 0= IF 0 EXIT THEN
    VERIFY-DEFINER-N @ BEGIN dup 0 > WHILE
@@ -1417,7 +1373,7 @@ DYNAMIC-BUFFER DEFINER-SIG u8
       THEN
    REPEAT ;
 
-: DEFINER-APPEND ( n -- n )                   \ a new row for sym, with no effect
+: DEFINER-APPEND ( n -- n )
    {: sym:n :}
    VERIFY-DEFINER-N @
    {: row:n :}
@@ -1427,11 +1383,10 @@ DYNAMIC-BUFFER DEFINER-SIG u8
    row 1 + VERIFY-DEFINER-N !
    row ;
 
-: DEFINER-ROW ( n -- n ) {: sym:n :}          \ sym's row, appended when it is new
+: DEFINER-ROW ( n -- n ) {: sym:n :}
    sym DEFINER-FIND dup 0<> IF 1 - EXIT THEN drop
    sym DEFINER-APPEND ;
 
-\ Room for U more effect bytes, and where they go.
 : DEFINER-ROOM ( n -- n )
    {: u:n :}
    DEFINER-SIG-END
@@ -1439,12 +1394,11 @@ DYNAMIC-BUFFER DEFINER-SIG u8
    at u + DEFINER-SIG-RESERVE
    at ;
 
-\ Record `sig` as the effect the definer named by `sym` creates, and `gen`,
-\ whether a `generates:` row states it. A name with a live row keeps that row
-\ and takes the newer effect, which is what the run time does: a replacement
-\ clause replaces the old created-word effect. An empty effect holds no byte:
-\ its row's length is 0, which DEFINER-FIND reads as retired, and no place in
-\ DEFINER-SIG, which may hold no byte yet, is formed for it.
+\ A name with a live row keeps that row and takes the newer effect, which is
+\ what the run time does: a replacement clause replaces the old created-word
+\ effect. An empty effect holds no byte: its row's length is 0, which
+\ DEFINER-FIND reads as retired, and no place in DEFINER-SIG, which may hold no
+\ byte yet, is formed for it.
 : DEFINER-ADD ( ptr u8 n bool n -- ) {: sig:ptr sigu:n gen:bool sym:n :}
    sym 0= IF EXIT THEN                        \ never recorded: nothing to hang it on
    sym DEFINER-ROW
@@ -1473,16 +1427,13 @@ DYNAMIC-BUFFER DEFINER-SIG u8
    sym DEFINER-FIND 0= IF EXIT THEN
    sym DEFINER-APPEND drop ;
 
-\ The row of a token's definer + 1, 0 when it is no learned definer. The empty
-\ table answers before asking the scope anything, so a source that uses no such
-\ definer pays one cell read per token.
+\ The row of a token's definer + 1, 0 when it is no learned definer.
 : DEFINER-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
    VERIFY-DEFINER-N @ 0= IF 0 EXIT THEN
    a u FIND-SYM DEFINER-FIND ;
 
 \ The effect a token's definer gives the word it creates, answered as a string
-\ whose ZERO LENGTH means "not a learned definer" - the same shape NEXT-RAW ends
-\ a source with.
+\ whose ZERO LENGTH means "not a learned definer".
 : DEFINER-EFFECT ( ptr u8 n -- ptr u8 n )
    DEFINER-OF dup 0= IF drop SOURCE@ 0 EXIT THEN
    1 - DEFINER-SIG@ ;
@@ -1492,8 +1443,8 @@ variable DEFER-REPORT                            \ the child reports deferrals
 \ it, and each writes the packet that locates it when the child asks for one.
 variable DEFER-SEEN
 
-\ WHY is the deferral's cause (checker.f DW-PARSER ..), which picks its packet's
-\ suggestion; 0 when the site cannot tell.
+\ WHY is the deferral's cause, which picks its packet's suggestion; 0 when the
+\ site cannot tell.
 CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
 : REPORT-STRETCH ( ptr u8 n n -- )
    CHECKER-DEFER-WHY!
@@ -1511,8 +1462,8 @@ CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
    found IF a u DW-TYPE DEFER-AT THEN ;
 
 \ A body the checker deferred to the run (verdict 2) is reported where the
-\ checker's judgment of it stopped (CHECKER-VERIFY-DEFERRED-BODY), when the
-\ child reports deferrals, as a deferred stretch is at the token that opened it.
+\ checker's judgment of it stopped, when the child reports deferrals, as a
+\ deferred stretch is at the token that opened it.
 CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
 : DEFERRED-BODY$ ( -- ptr u8 n )
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-BODY-OFF OWNER-XT DEFERRED-BODY-ACTION execute ;
@@ -1521,12 +1472,11 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
    -1 DEFER-SEEN !
    DEFER-REPORT @ IF DEFERRED-BODY$ 0 REPORT-STRETCH THEN ;
 
-\ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run
-\ (see RENDERS-MARK?), 0 refused. In MULTI-ERR mode a refusal, rejected (0) or
-\ uncheckable (1), RETURNS 0 instead of throwing: the checker has rendered it,
-\ counted it in MULTI-ERR-N, which keeps the run failing, and recorded the
-\ declared signature (no-cascade), so the scan continues at the next
-\ definition. Outside MULTI-ERR mode every refusal throws.
+\ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run,
+\ 0 refused. In MULTI-ERR mode a refusal, rejected (0) or uncheckable (1),
+\ RETURNS 0 instead of throwing: the checker has rendered it, counted it in
+\ MULTI-ERR-N, which keeps the run failing, and recorded the declared signature
+\ (no-cascade), so the scan continues at the next definition.
 \ The verdict is answered rather than swallowed because a created effect is a
 \ fact about a definition the checker did not refuse: a refused body records
 \ nothing.
@@ -1544,7 +1494,6 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
 variable CERTIFIED-N
 variable DEFERRED-N
 
-\ Count one definition by its verdict, as BODY-VERDICT answers one.
 : TALLY ( n -- )
    dup -1 = IF drop 1 CERTIFIED-N +! EXIT THEN
    2 = IF 1 DEFERRED-N +! THEN ;
@@ -1569,9 +1518,8 @@ variable TICK-BODY-VERDICT
 \ CHECK-DOES!: this scan reaches a clause AFTER the definer's own body has been
 \ checked and recorded, so the checker must not latch the created effect here -
 \ the next record belongs to the next definition. What this scan learns about a
-\ definer it READ goes into the table above instead (src/core/checker.f
-\ CHECKER-SOURCE-DOES! carries the reason). It takes the definer's name, which
-\ names the clause in the diagnostic of a refused one.
+\ definer it READ goes into the table above instead. It takes the definer's
+\ name, which names the clause in the diagnostic of a refused one.
 : CHECK-DOES-BODY ( ptr u8 n ptr u8 n ptr u8 n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
@@ -1596,8 +1544,7 @@ TYPED-VARIABLE DOES-PARENT-REFUSED bool
 PTR-VARIABLE DOES-CLAUSE-A
 variable DOES-CLAUSE-U
 
-\ Each copy reserves both sides to what it moves, at least one element, before
-\ it indexes either; the rows move cell by cell as the cells they are.
+\ The rows move cell by cell as the cells they are.
 : DOES-PARENT-ROOM ( n n -- ) {: u:n c:n :}
    u 1 max BODY-BUF-RESERVE  u 1 max DOES-PARENT-BUF-RESERVE
    c 2 * 1 max BODY-ROW-RESERVE  c 2 * 1 max DOES-PARENT-ROW-RESERVE ;
@@ -1640,7 +1587,7 @@ variable DOES-CLAUSE-U
 \ RECORD-EXPORT pins the name it re-exports here for the quotation it catches.
 PTR-VARIABLE DEF-NAME-A
 variable DEF-NAME-U
-variable DEF-NAME-BYTE                        \ where the name starts
+variable DEF-NAME-BYTE
 PTR-VARIABLE DEF-SIG-A                        \ its signature, inside the parens
 variable DEF-SIG-U
 variable WRAP-DEFINERS                        \ definer calls in this body …
@@ -1669,22 +1616,6 @@ variable WRAP-ROW                             \ the definer row the last call na
 : DEFINER-RECORD ( ptr u8 n -- )
    DEF-NAME-A @ DEF-NAME-U @ DEFINER-RECORD-AS ;
 
-\ Observe one body token for the straight-line-wrapper rule. A body whose tokens
-\ hold EXACTLY ONE definer call and no control flow, quotation or bracket creates
-\ whatever that definer creates - `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE
-\ BUFFER-E ;` (src/lib/codegen.f) is the shape. Two definer calls, a conditional
-\ definer or a definer inside a quotation record nothing, and the created word
-\ then stays unknown.
-\
-\ ONLY A DEFINER THIS PRE-PASS READ is counted here, and that is the whole split
-\ between this rule and the checker's. A wrapper of a RESIDENT definer is learned
-\ by the body walk instead (src/core/checker.f WRAPN/WRAPC/WRAPBENT), which sees
-\ this very body - VERIFY-BODY checks it under the wrapper's own symbol - and
-\ every other certified body besides, read or not. A definer this pre-pass read
-\ has nothing for that walk to find: its clause goes through
-\ CHECKER-SOURCE-DOES!, which latches no created effect, so its symbol carries no
-\ CREATES cell and only the table below knows what it makes. The two rules meet
-\ at neither end: the walk answers for resident definers, the text for read ones.
 : WRAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    WRAP-CTL @ IF EXIT THEN
    a u WRAP-CTL-TOK? IF -1 WRAP-CTL ! EXIT THEN
@@ -1694,9 +1625,6 @@ variable WRAP-ROW                             \ the definer row the last call na
    THEN
    drop ;
 
-\ Only a certified body is learned. One deferred to the run names a word only the
-\ run can see, which may itself be a definer, so its definer calls are not
-\ counted.
 : VERIFY-WRAPPER ( -- )
    WRAP-CTL @ IF EXIT THEN
    WRAP-DEFINERS @ 1 <> IF EXIT THEN
@@ -1727,11 +1655,6 @@ DYNAMIC-BUFFER TICK-QUAL u8
    pkgu 0= IF false EXIT THEN
    pkg pkgu tail tailu QUAL-SPELLING tok-imm? 0<> ;
 
-\ The created effect is the clause's declaration, recorded unless the definer's
-\ body or its clause was refused. One deferred to the run keeps it, as a
-\ deferred colon definition keeps its declared signature (src/core/checker.f
-\ CHECK, verdict 2), and the run judges the deferred text. The definition reports
-\ one deferral: its clause's only when the definer's body was not deferred.
 \ A compile-time action inside the current definition can change the tier or
 \ replace a checker before its later trusted tick. The source scan does not run
 \ that action, so this definition and the following source lose the answer.
@@ -1746,6 +1669,11 @@ DYNAMIC-BUFFER TICK-QUAL u8
       TICK-CONTEXT-UNKNOWN
    THEN ;
 
+\ The created effect is the clause's declaration, recorded unless the definer's
+\ body or its clause was refused. One deferred to the run keeps it, as a
+\ deferred colon definition keeps its declared signature, and the run judges
+\ the deferred text. The definition reports one deferral: its clause's only
+\ when the definer's body was not deferred.
 : VERIFY-DOES ( -- bool )
    TOKEN-A @ {: opener:ptr :}
    false DOES-ACCEPTED !
@@ -1808,49 +1736,42 @@ DYNAMIC-BUFFER TICK-QUAL u8
       APPEND-BODY-TOKEN
    AGAIN ;
 
-\ The two registrars, kept apart here for the same reason the engine keeps them
-\ apart (src/core/checker.f TRUST-DECL).
 \ This scanner is a PRE-PASS: it reads a whole source buffer before any of it is
 \ compiled, so a definer it replays names a word that does not exist in this
 \ process and cannot be asked to prove otherwise. A bare `s" NAME" s" SIG" trust`
 \ row is the opposite - it asserts an effect for a word it CLAIMS already exists,
 \ which is a claim the dictionary answers.
-\ DECL-SIGNATURE asks the declaration owner's registrar (src/core/checker.f
-\ TRUST-DECL?), which registers the row as TRUST-DECL does and answers whether
-\ it retained it. A name its scope already holds keeps that record either way,
-\ so only this answer tells a redeclaration the registrar retained from one it
-\ refused.
+\ DECL-SIGNATURE asks the declaration owner's registrar, which registers the row
+\ and answers whether it retained it. A name its scope already holds keeps that
+\ record either way, so only this answer tells a redeclaration the registrar
+\ retained from one it refused.
 : DECL-SIGNATURE ( ptr u8 n ptr u8 n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute ;
 
 TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    TRUST ;
 
-\ The cast declarer's registrar, on the same boundary and for the same reason as
-\ TRUST-SIGNATURE above: UNSAFE-TOK? rejects `checker-defcast` inside a checked
-\ body, so the one place allowed to name it is a declared boundary word. The
-\ refusals it runs are the engine's own (checker.f CAST-CERTIFY), so a cast this
-\ pre-pass accepts is exactly a cast the engine accepts.
+\ The cast declarer's registrar: UNSAFE-TOK? rejects `checker-defcast` inside a
+\ checked body, so the one place allowed to name it is a declared boundary word.
+\ The refusals it runs are the engine's own, so a cast this pre-pass accepts is
+\ exactly a cast the engine accepts.
 TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    CHECKER-DEFCAST ;
 
-\ The `generates:` row's checks, on the same boundary for the same reason:
-\ UNSAFE-TOK? rejects `checker-generates` inside a checked body. The refusals
-\ are the engine's own (checker.f CHECKER-GENERATES), so a row this pre-pass
+\ The `generates:` row's checks: UNSAFE-TOK? rejects `checker-generates` inside
+\ a checked body. The refusals are the engine's own, so a row this pre-pass
 \ accepts is a row the engine accepts.
 TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
    CHECKER-GENERATES ;
 
-\ A `parses:` row's checks, on the same boundary for the same reason:
-\ UNSAFE-TOK? rejects `checker-parses-row` inside a checked body. The refusals
-\ are the engine's own (checker.f CHECKER-PARSES-ROW), so a row this pre-pass
-\ keeps is a row the load accepts.
+\ A `parses:` row's checks: UNSAFE-TOK? rejects `checker-parses-row` inside a
+\ checked body. The refusals are the engine's own, so a row this pre-pass keeps
+\ is a row the load accepts.
 TRUSTED: PARSES-CHECK ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
    CHECKER-PARSES-ROW ;
 
-\ A `names:` row's check, on the same boundary for the same reason:
-\ UNSAFE-TOK? rejects `checker-names-row` inside a checked body. The checker
-\ marks the word the row names (checker.f CHECKER-NAMES-ROW), so this pre-pass
+\ A `names:` row's check: UNSAFE-TOK? rejects `checker-names-row` inside a
+\ checked body. The checker marks the word the row names, so this pre-pass
 \ keeps nothing of the row.
 TRUSTED: NAMES-CHECK ( ptr u8 n ptr u8 n -- )
    CHECKER-NAMES-ROW ;
@@ -1863,15 +1784,13 @@ TRUSTED: NAMED-USE ( ptr u8 n -- )
 : CAST-TRUST ( -- bool )
    DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
 
-\ The checker's own guard (src/core/checker.f CHECKER-CERT-DUP?) refuses a colon
-\ definition, a cast, a typed storage definition and a re-export whose name its
-\ scope already holds, but a colon definition only once its body is checked, a
-\ storage definition once its type is read, and it keeps no place. Those rows
-\ ask the guard's question as soon as they have scanned the name, as the
-\ engine's wall and the check hook (src/core/check-hook.f) refuse it under
-\ --load, a name only the checker holds included, such as a constructor the
-\ PRODUCT replay publishes. The refusal keeps where the name starts and its
-\ length, not the name (tools/check-all-errors-core.f CA-DUP-RECORD$ says why).
+\ The checker's own guard refuses a colon definition, a cast, a typed storage
+\ definition and a re-export whose name its scope already holds, but a colon
+\ definition only once its body is checked, a storage definition once its type
+\ is read, and it keeps no place. Those rows ask the guard's question as soon as
+\ they have scanned the name, as the engine's wall and the check hook refuse it
+\ under --load, a name only the checker holds included, such as a constructor
+\ the PRODUCT replay publishes.
 \ A definer the checker only trusts (variable, defer, TRUSTED:, ...) is left to
 \ the run, which names its duplicate as --load does, or first refuses an
 \ earlier definition whose text the engine cannot hold.
@@ -1882,7 +1801,6 @@ variable DUPLICATE-U
 : COMPOSE-SUBJ? ( ptr u8 n -- bool )
    COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= ;
 
-\ A file's name as its packets give it: the label, for the subject.
 : COMPOSE-DIAG$ ( ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n :}
    path pathu COMPOSE-SUBJ? IF COMPOSE-SUBJ-LABEL COMPOSE-SUBJ-LABEL-U @ EXIT THEN
