@@ -13,9 +13,9 @@
 \ channel that orders (a queue, a mailbox, an atomic cell, `is` on a defer):
 \ main flushes the code before the xt exists, and each indirect entry
 \ (`execute`, the catch family, a defer, a task's or a callback's start) runs
-\ an ISB first, the first three only for an xt at or above its CP (habu1.f
-\ BCALLABLE). Records and defer cells change only by single aligned stores
-\ (`is`, a record's flags or wordlist), so a task reads one old or new. A
+\ an ISB first, the first three only for an xt at or above its CP. Records
+\ and defer cells change only by single aligned stores (`is`, a record's flags
+\ or wordlist), so a task reads one old or new. A
 \ `does>` given to a created word or a patch32 rewrites an instruction in
 \ place: one a task is executing is outside the architecture's guarantee and
 \ is not fenced.
@@ -25,20 +25,46 @@
 \ never meets a task's probe; every probe on main bounds each slot's index by
 \ NDICT. A word published after a task started is not found by name in it. A
 \ rollback while tasks are live retires each row, a package row included, by one
-\ store of its wordlist cell (habu1.f EM-DEF-OCC:LRETIRE), so a lookup that
-\ began before the store finds only words whose code is kept.
+\ store of its wordlist cell, so a lookup that began before the store finds
+\ only words whose code is kept.
 \ TASK:NEW defines nothing. Task-local storage: a band in src/habu/layout.f for
 \ a module the engine bakes, else TASK:+USER rows.
 \ STORAGE CLASS. TASK-LOCAL: SLEEP's timespecs (a TASK:+USER row). PROCESS-WIDE:
 \ semaphore pool, AT-EXIT rows, TCB chain and pool, callback rows; a CAS per move.
+\
+\ CLEANUPS. A task's cleanups are a chain of rows. Each quotation is stored AS a
+\ quotation into storage declared to hold one: the checker's proven-quotation
+\ store, never a cell cast back to code. A row's link holds the next row of the
+\ chain plus one, and TCB.EXIT-SLOT the head row plus one; zero ends the chain
+\ or means no cleanup. A row belongs to one (task, quotation) pair until
+\ TASK:FREE gives the task back: a registration serves later activations and a
+\ quotation never gets a second row, so a defined task's rows cannot leak.
+\ TASK:FREE moves a NEW task's rows onto TASK-EXIT-FREE, which a registration
+\ takes from first. A row's owed mark, 1 or 0, says its cleanup is owed a run
+\ in this task's ending; every change to a row or its mark is made under
+\ TASK-EXIT-LOCK. AT-EXIT of a quotation marks its row owed, taking a free row
+\ when it has none. The cleanups run in the task's own thread, after the body
+\ has returned or its throw has been recorded. The ending marks every row of
+\ the chain owed, then clears the mark of the newest owed row and runs it,
+\ until none is owed: a cleanup registered while they run runs in this ending,
+\ one registered again after it ran runs again, and a registration runs once.
+\ Every one of them runs, whatever the ones before it did. TASK:FREE leaves
+\ each row it frees not owed.
+\
+\ CALLBACK ROWS. The engine's thunk claims a row before it reads the region,
+\ so a region stays mapped while a row names it: UNEXPOSE and TASK-END, the
+\ only words that release a named region, drop its rows first. A call that
+\ meets BUSY waits in the thunk, so a mover holds BUSY only for steps that
+\ call, wait on and throw nothing: every row word hands its rows back before
+\ it throws. A declaration grows the row table before a task can run. No C
+\ entry embeds a row address: the main region's CB-ROWS publishes the current
+\ base for the thunk on every call.
 
 s" src/lib/error.f" required
 s" src/lib/memory.f" required
 s" src/lib/ffi-abi.f" required
 require src/lib/le.f
-s" src/lib/adt/result.f" required     \ TASK:JOIN answers result<n,n>
-\ The AT-EXIT registry is a checked quotation store, which the optimizing tier
-\ lowers through QUOTATION-STORAGE:STORE.
+s" src/lib/adt/result.f" required
 require src/core/quotation-storage.f
 require src/habu/task-abi.f
 require src/habu/stack-abi.f
@@ -204,10 +230,8 @@ CAST: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] )
    8 swap - allot ;
 
 \ ---- host semaphore bindings ----------------------------------------
-\ Every semaphore call's one pointer is a sem_t a record below owns, so each
-\ declaration fixes its extent at TASK-SEM-BYTES. sem_wait blocks inside the
-\ call; that is safe because the generated body stages its argument tables in
-\ the calling task's own DATA region.
+\ sem_wait blocks inside the call; that is safe because the generated body
+\ stages its argument tables in the calling task's own DATA region.
 PROCESS-SYMBOLS
 
 FUNCTION: SEM-INIT-CALL sem_init ( ptr u8 n n -- i32 )
@@ -226,8 +250,6 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
 
-\ EAGAIN means "would have blocked", not a failure; the queue's TRY-PUSH and
-\ TRY-POP refuse on it.
 FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
@@ -250,7 +272,7 @@ FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
 14 constant MACH-ABORTED
 49 constant MACH-TIMED-OUT
 0 constant MACH-FIFO
-$FFFFFFFF constant MACH-SEC-MAX          \ the largest tv_sec
+$FFFFFFFF constant MACH-SEC-MAX
 FUNCTION: MACH-TASK task_self_trap ( -- u32 ) ;FUNCTION
 FUNCTION: MACH-SEM-CREATE semaphore_create ( n ptr u8 n n -- i32 )
    1 4 WRITES-BYTES
@@ -266,7 +288,6 @@ FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- i32 )
    1 TASK-TIMESPEC-BYTES WRITES-BYTES
 ;FUNCTION
 
-\ PAUSE's yield.
 FUNCTION: SCHED-YIELD-CALL sched_yield ( -- i32 ) ;FUNCTION
 
 \ munmap only reads the address it is given.
@@ -312,8 +333,8 @@ FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
    drop ;
 
 \ Owners read the status cell while the worker moves it, so this is an acquire
-\ load. The entry's STLR (src/habu/habu1.f BTASK-ENTRY) release-stores DONE, so
-\ an owner that polls DONE? sees every write the body made before it ended.
+\ load. The entry's STLR release-stores DONE, so an owner that polls DONE?
+\ sees every write the body made before it ended.
 : TASK-STATE@ ( ptr n -- n )
    TCB.STATUS atomic@ ;
 
@@ -353,7 +374,7 @@ FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
 : SEM-OBJ ( sem -- ptr u8 )
    SEM-REC BYTE-VIEW TASK-SEM-OBJ-OFF + ;
 
-\ Defence in depth under the type: the guard cell holds the record's OWN
+\ The guard cell holds the record's OWN
 \ address exactly while the POSIX object behind it is live, so an uninitialized
 \ record and a destroyed one fail closed instead of entering sem_wait.
 : SEM-LIVE? ( sem -- bool ) {: s:sem :}
@@ -376,7 +397,7 @@ FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
    s SEM>N s SEM-GUARD atomic! ;
 
 \ POSIX leaves destroying a semaphore that still has blocked waiters undefined,
-\ so the caller drains its waiters first. Destroying an inactive one is a no-op.
+\ so the caller drains its waiters first.
 : SEM-DESTROY ( sem -- ) {: s:sem :}
    s SEM-LIVE? 0= if exit then
    0 s SEM-GUARD atomic!
@@ -386,7 +407,7 @@ FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
    else s SEM-OBJ SEM-DESTROY-CALL TASK-RC0 then ;
 
 \ Observes no TASK:HALT until signalled. A signal interrupts the wait without
-\ consuming a count, so EINTR retries.
+\ consuming a count, so an aborted wait retries.
 : MACH-WAIT ( sem -- ) {: s:sem :}
    begin
       s SEM-CHECK
@@ -408,8 +429,8 @@ FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
    HB-TARGET-MACOS? if s SEM-OBJ LE:U32@ MACH-SEM-SIGNAL
    else s SEM-OBJ SEM-POST-CALL then TASK-RC0 ;
 
-\ True when it took a count. EAGAIN means the count was zero; EINTR retries as
-\ SEM-WAIT does.
+\ True when it took a count. A timeout means the count was zero; an aborted
+\ wait retries as MACH-WAIT does.
 : MACH-TRY-WAIT ( sem -- bool ) {: s:sem :}
    begin
       s SEM-CHECK
@@ -601,10 +622,8 @@ SCRATCH-VARIABLE MAIN-PARK-READY
    tcb TASK-PARK-SEM SEM-SIGNAL ;
 
 \ ---- the per-task mailbox ----------------------------------------------------
-\ VFX's one-cell mailbox (docs/design.md "Models taken from other Forths") with
-\ semaphores in place of its PAUSE loop: slot-free holds the single unread slot,
-\ message-present the deposited message, and the pending cell is the status bit
-\ MSG? reads without blocking.
+\ Slot-free holds the single unread slot, message-present the deposited
+\ message, and the pending cell is the status bit MSG? reads without blocking.
 : MBOX-FREE ( ptr n -- sem )
    TCB.MSG-FREE SEM-AT ;
 
@@ -657,39 +676,20 @@ SCRATCH-VARIABLE MAIN-PARK-READY
    TCB.MSG-PENDING atomic@ 0 <> ;
 
 \ ---- the task's outcome ------------------------------------------------------
-\ VFX's task exit code and AtTaskExit cleanup (docs/design.md "Models taken from
-\ other Forths"), answered as a src/lib/adt/result.f result<ok,err>. The rows
-\ live in the TCB, which outlives the thread and its memory, so the answer
-\ survives the join's release, as TASK:THROW@ does after TASK:KILL.
+\ The outcome lives in the TCB, which outlives the thread and its memory, so
+\ the answer survives the join's release, as TASK:THROW@ does after TASK:KILL.
 
-\ A task's cleanups are a chain of rows. Each quotation is stored AS a quotation
-\ into storage declared to hold one: the checker's proven-quotation store, never
-\ a cell cast back to code. A row's link holds the next row of the chain plus
-\ one, and TCB.EXIT-SLOT the head row plus one; zero ends the chain or means no
-\ cleanup. A row belongs to one (task, quotation) pair until TASK:FREE gives the
-\ task back: a registration serves later activations and a quotation never gets
-\ a second row, so a defined task's rows cannot leak. TASK:FREE moves a NEW
-\ task's rows onto TASK-EXIT-FREE, which a registration takes from first.
-\ A row's owed mark, 1 or 0, says its cleanup is owed a run in this task's
-\ ending. Each input in each state; every change is made under TASK-EXIT-LOCK:
-\ | row            | AT-EXIT of its q  | ending starts | ending takes it     | TASK:FREE      |
-\ | free           | takes a row: owed | -             | -                   | -              |
-\ | held, not owed | owed              | owed          | -                   | free, not owed |
-\ | held, owed     | owed              | owed          | not owed, then runs | free, not owed |
-\
 \ THE ROWS GROW WITH THE TASKS THAT USE THEM. The first TASK-EXIT-TABLE-N rows
 \ are this package's storage: TASK-EXIT-QT and TASK-EXIT-LINK, which a program
 \ carries, and TASK-EXIT-OWED, scratch. Past them a registration maps a chunk of
 \ EXIT-CHUNK-ROWS more, the growth unit and not a cap: the next chunk's address,
 \ the index of its first row, then rows of a quotation cell, a link cell and an
 \ owed cell. Rows never move while the process runs, so an index a chain holds
-\ stays valid under a reader. A program carries the table's rows and no chunk:
-\ a file whose top level leaves a chunk mapped is refused (EXIT-CHUNKS).
+\ stays valid under a reader.
 $80 constant TASK-EXIT-TABLE-N
 TASK-EXIT-TABLE-N TYPED-BUFFER TASK-EXIT-QT [ -- ]
 TASK-ALIGN8
 create TASK-EXIT-LINK TASK-EXIT-TABLE-N TASK-ZERO-CELLS,
-\ Scratch: an ending marks every row of its chain owed before it runs one (EXIT-OWE-ALL).
 TASK-ALIGN8
 create TASK-EXIT-OWED TASK-EXIT-TABLE-N cells SCRATCH-ALLOT
 \ The first row never handed out: every row below it has been used, freed
@@ -831,9 +831,9 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 \ Gives every row of the task's chain back to TASK-EXIT-FREE, for TASK:FREE. The
 \ task has ended and been released, so no thread runs the chain; the lock
 \ orders this against a registration on any task. A freed row is not owed and
-\ holds the empty quotation: the link reads every address cell of a reached file
-\ (src/habu/link-copy.f ROW-LIVE?), so a cleanup left in a free row below
-\ TASK-EXIT-N would stay in the program.
+\ holds the empty quotation: the link reads every address cell of a reached
+\ file, so a cleanup left in a free row below TASK-EXIT-N would stay in the
+\ program.
 : EXIT-ROWS-FREE ( ptr n -- ) {: tcb:ptr :}
    TASK-EXIT-LOCK-GET
    tcb TASK-EXIT-SLOT@
@@ -881,11 +881,6 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    repeat
    TASK-EXIT-UNLOCK false ;
 
-\ The cleanups run in the task's own thread, after the body has returned or its
-\ throw has been recorded. The ending marks every row owed, then runs the newest
-\ owed row until none is owed: a cleanup registered while they run runs in this
-\ ending, one registered again after it ran runs again, and a registration runs
-\ once. Every one of them runs, whatever the ones before it did.
 : TASK-RUN-EXIT ( -- )
    TASK-SELF {: self:ptr :}
    self EXIT-OWE-ALL
@@ -933,14 +928,7 @@ SCRATCH-VARIABLE CALLER-KEY
 \ unbound or bound to the caller's context), who is inside through it
 \ (CB-ROW-OWNER), the count of region stores, and the region of a pending
 \ all-row claim. A caller row's region is 0, so ROWS-CLAIM, ROWS-DROP and
-\ ROW-END never match it. The engine's thunk claims the row
-\ before it reads the region, so a region stays mapped while a row names it:
-\ UNEXPOSE and TASK-END, the only words that release a named region, drop its
-\ rows first. A call that meets BUSY waits in
-\ the thunk, so a mover holds BUSY only for steps that call, wait on and throw
-\ nothing: every word below hands its rows back before it throws. A declaration
-\ grows this table before a task can run. No C entry embeds a row address: the
-\ main region's CB-ROWS publishes the current base for the thunk on every call.
+\ ROW-END never match it.
 \ The rows are scratch, so a program starts with every row unbound and idle.
 4 cells constant ROW-BYTES
 2 cells constant ROW-MOVES-OFF
