@@ -1,6 +1,6 @@
 ---
 title: Move engine-internal primitives into the system package
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-08T10:58:28.751596+02:00"
@@ -28,3 +28,5 @@ Census 2026-11-04: an acceptance case of its parent; fix it in the code that sta
 Acceptance case 2026-11-10 (bob; merged from habu-protect-the-compiler-80c02cbc "Protect the compiler dispatch owner cells", one cause with this dot): Problem: checked code can write the dispatch owner pointer and its record: ': P10 ( ptr u8 -- ) NCOMP-DISPATCH:DECL-A ! ;' and ': P13 ( -- ) 0 NCOMP-DISPATCH:DECL-A @ c! ;' are accepted on master (layout.f DECL-A, TARGET-DECL-A are public RESERVED-PTR-U8-CELL), so any program can redirect the compiler's declaration owner. Registry-protection class (docs/design.md Registry protection). Acceptance: both programs refused with a code; owner writes still compile. Files: src/habu/layout.f and the DECL-A writers. Verify: rejected programs through check.f; engine build. Depends: none. Ownership: TBD by the lane.
 
 Census 2026-11-04: an acceptance case of its parent; fix it in the code that stays (named above), never in the machinery the parent replaces.
+
+Acceptance case 2026-11-11 (jerry; from habu-re-enable-hb-a2404c26): a build copies an owned primitive's facts text from the host hb's own record, found by name in the package's private wordlist (src/habu/linker.f HB-OWNED :4904, OWNED+ :4915; src/core/check-hook.f OWNED-FACTS :405 gives no text without that record: measured on the installed hb, probe ~/.cache/tmp/jerry-strip/of1.f prints 0). So the text is inherited from host to target and never made from prims.f, no host builds a new row (the 2026-11-10 case above), and an hb whose private names are stripped cannot build an engine. Accepted when an engine with its private names stripped builds an engine, byte-equal to the one its unstripped twin builds, and the strip (a2404c26) lands with it. Claim: agent=jerry, design first (a Plan agent, read-only; no workspace yet).
