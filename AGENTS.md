@@ -8,24 +8,23 @@ Habu directly.
 Zen, Tender and Maki build, test and run on Habu without issues. A dot that
 removes an issue one of them meets goes before any other work.
 
-Until the three are released, a Habu change is measured by what they do on it:
-Maki's image and viewer, Zen's server and Tender's server built from their
-masters, cold then warm, and Tender's `tender.f` loaded, on the candidate
-engine before it lands and on the installed one after. A fix one of them waits
-for lands and is installed alone, ahead of any stack it sits in. Work that does
-not move that measure waits. Suites, the chain check and a feature's review run
-once, before the install, not per change.
+Until the three are released, dot `habu-until-zen-tender-31e8d2a1` says how a
+Habu change is measured and lands.
 
 Incremental builds ship in the release, rock-solid: a warm build never fails or
 differs where a cold build would not.
 
+## Read first
+
+- Before writing or changing Habu's tools, modules or boundaries: [docs/design.md](docs/design.md#writing-and-changing-habu) "Writing and changing Habu".
+- Before extending any existing machinery: [docs/design.md](docs/design.md#machinery-being-replaced) "Machinery being replaced".
+- Before choosing or running a check: [docs/gate.md](docs/gate.md#native-test-suite) "Native test suite".
+- Before writing a test: [docs/gate.md](docs/gate.md#writing-tests) "Writing tests".
+- Before building a candidate or installing: [docs/bootstrap.md](docs/bootstrap.md#stable-local-command) "Stable local command".
+- Before diagnosing checked code that misbehaves: [docs/debugging.md](docs/debugging.md#debugging-the-self-hosted-standalone) "Debugging the self-hosted standalone".
+
 ## Repository
 
-- Build and test candidates in a workspace or a temporary directory. Keep one
-  installed Habu tree at a stable path, with matching executable, map and
-  library sources, updated in place: no per-revision release directories.
-  Ordinary development needs no installation or publication. An install never
-  waits for a client: a client that needs an older Habu keeps its own copy.
 - `spec/` holds TLA+ specs of Habu's state machines;
   [spec/README.md](spec/README.md) says how to check them.
 
@@ -33,99 +32,16 @@ differs where a cold build would not.
 
 - Read [docs/forth-card.md](docs/forth-card.md) before writing Habu, and look
   things up in [docs/forth.md](docs/forth.md) at the heading the card names.
-- Tools, test harnesses and build drivers are checked Habu programs run by
-  `bin/hb`. A shell or Python file may only invoke `bin/hb`, with no logic,
-  parsing or policy. The one exception is the device-peer scripts under `test/`
-  that stand in for a foreign machine (serial, XMODEM, UDP, the embedded
-  assembler hosts, and `test/wasm/run.mjs` and `test/wasm/data-peer.mjs`, which
-  run a Wasm module under bun). Any other non-Habu file under `tools/` or
-  `test/` is a defect to convert. Tools that tests and builds run are built
-  into `hb`, so running one rebuilds no image.
-- Every module has a real package; public effects keep meaningful types, not
-  `n` for everything.
-- A library takes its limits from the protocol it speaks, not from a preset.
-- Use an unchecked or foreign boundary only after checking that the language
-  cannot express the operation normally, and keep it explicit, small and tested.
-- When checked code misbehaves, reduce the failure, find which layer is wrong
-  (declaration, checker, compiler or runtime) and fix that layer.
 - Diagnose a native failure by [docs/debugging.md](docs/debugging.md); recover
   a missing or stale `bin/hb` by [docs/bootstrap.md](docs/bootstrap.md)
   "Recovery".
 
 ## Changes
 
-- Use plain English. Keep changes focused, and remove obsolete machinery when
-  the language or library already expresses the requirement.
-- When a decision lacks evidence because a capability does not exist yet,
-  build it in a branch and measure.
 - Never compress code or data without the user's explicit approval.
   Compression shrinks code or data through a codec; dropping zero-filled,
   unused or unreachable storage, packing allocations tightly and choosing a
   compact table encoding are not compression.
-
-## Machinery being replaced
-
-The machinery below is being replaced, each item by what follows its colon.
-Never extend or patch it: a defect it shows becomes an acceptance case of the
-replacing dot, and a change that needs it joins the replacing design.
-Something one machine, tier or build path needs and another does not is a split
-to remove, not a row to add.
-
-- arm64's machine-code interpreter, definers and startup in `habu1.f` and
-  `habu2.f`: one typed interpreter on every machine.
-- Building a target by loading it into the running hb and capturing, cutting
-  or rewinding its memory: a cross-build that writes the target as data.
-- The per-definition build cache and its source observers: the file linker.
-- A linker per target: one linker for every target.
-- Tier 1 and the JIT as compilers: T0 on every target, reusing what they
-  already implement; tier 1 changes only to fix a defect on a path it still
-  owns.
-- `TRUSTED:`, engine-only marks and owner rows: checked forms and private
-  sections.
-- Compatibility with older hosts, formats or schemas: hard cutover.
-- A hook: the owner records data or makes a plain call.
-- fork without exec: fork only to exec.
-
-## Testing
-
-- Prefer end-to-end tests as the only mechanism, each ending in a verifiable,
-  repeatable artifact. Never write unit tests after the code.
-- Keep an isolated test only when it catches a concrete failure the end-to-end
-  tests miss, and list the ways the system can fail before writing it. Delete
-  redundant assertions, implementation mirrors and change detectors.
-- The suite keeps the self-build fixpoint, one rejected program per type rule,
-  programs at boundaries hb's own build never reaches and other targets'
-  tests. It drops tests of what the self-build proves, of machinery being
-  replaced, of one tool agreeing with another and of the harness (except one
-  catching a failure a running suite cannot show), and lints. It runs in two to
-  three minutes, five at most.
-- A red test of a target whose turn has not come is switched off with `[if]`;
-  a test is deleted only when it is not load-bearing.
-- Test changed behavior through the real load path: rejected programs for type
-  rules, meaningful edge cases for runtime changes.
-- Run compatible cases through one loaded tool or built application. Start a
-  fresh process or build only when that boundary is under test, and state why
-  beside it. Measure the affected test's wall and CPU time before and after
-  adding expensive setup. Never split a slow test just to meet a per-test
-  limit: remove repeated work first, counting duplicated setup in the suite
-  total.
-- While developing, a lane runs only its focused tests, and rebuilds `bin/hb`
-  when the changed behavior is baked into it. Run the full suite
-  (`bin/hb --load test/run.f`) for shared checker or compiler behavior, runtime
-  ABI, capture format, effects across libraries, or an impact focused tests
-  cannot bound; a file's location alone does not require it. Run the chain
-  check (`tools/chain-run-build.f`, multi-generation convergence) when codegen,
-  self-hosting or capture changes can alter successive engine output.
-  Documentation and mechanical changes need proportionate checks.
-  [Etch](../etch) owns its downstream checks.
-- Stacks that are ready together land together: one engine built at the
-  combined tip, with the full suite and the chain check run once there. A
-  rebase over commits that change only `.dots/` reruns nothing. Batch fixes
-  before a suite run: a fix waits for the others in work and for its review's
-  fold-ins, and the batch takes one run.
-- Report actual results and untested boundaries; never weaken a claim to make a
-  check pass. Keep each verification claim within the limits
-  [docs/gate.md](docs/gate.md) "Verification claims" states.
 
 ## Where findings go
 

@@ -6,6 +6,11 @@ capture format or several libraries, or when focused tests cannot bound its
 effects. Where the change lives does not decide this: an engine change whose
 effects focused tests bound needs only those tests.
 
+While developing, a lane runs only its focused tests, and rebuilds `bin/hb`
+when the changed behavior is baked into it. Documentation and mechanical
+changes need proportionate checks. [Etch](../../etch) owns its downstream
+checks.
+
 ## Focused tests
 
 Run a test file directly with `bin/hb --load`, naming on one command line the
@@ -60,6 +65,12 @@ was given; after a recovery, gate the converged hb, not the trusted one.
 Multi-generation convergence is a separate check for codegen, self-hosting or
 capture changes that can alter successive engine output; see
 [bootstrap.md](bootstrap.md#convergence-check).
+
+Stacks that are ready together land together: one engine built at the
+combined tip, with the full suite and the chain check run once there. A
+rebase over commits that change only `.dots/` reruns nothing. Batch fixes
+before a suite run: a fix waits for the others in work and for its review's
+fold-ins, and the batch takes one run.
 
 ### A lane rebased over code its change reaches
 
@@ -161,6 +172,31 @@ A pool kill reaches every process descended from the row's child, but not a
 daemon. So a row starts a server as its own child, never through a launcher
 that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
 
+## Writing tests
+
+- Prefer end-to-end tests as the only mechanism, each ending in a verifiable,
+  repeatable artifact. Never write unit tests after the code.
+- Keep an isolated test only when it catches a concrete failure the end-to-end
+  tests miss, and list the ways the system can fail before writing it. Delete
+  redundant assertions, implementation mirrors and change detectors.
+- The suite keeps the self-build fixpoint, one rejected program per type rule,
+  programs at boundaries hb's own build never reaches and other targets'
+  tests. It drops tests of what the self-build proves, of machinery being
+  replaced, of one tool agreeing with another and of the harness (except one
+  catching a failure a running suite cannot show), and lints. It runs in two to
+  three minutes, five at most.
+- A red test of a target whose turn has not come is switched off with `[if]`;
+  a test is deleted only when it is not load-bearing.
+- Test changed behavior through the real load path: rejected programs for type
+  rules, meaningful edge cases for runtime changes.
+- Run compatible cases through one loaded tool or built application. Start a
+  fresh process or build only when that boundary is under test, and state why
+  beside it. Measure the affected test's wall and CPU time before and after
+  adding expensive setup, outside the gate: CPU is user plus system from
+  `/usr/bin/time bin/hb --load <file>`. Never split a slow test just to meet a
+  per-test limit: remove repeated work and share setup first, counting
+  duplicated setup in the suite total.
+
 ## How a suite runs, and what that demands of its files
 
 - A `SUITE` block is **one** `bin/hb --load` spawn: its files load into one
@@ -175,9 +211,6 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
   entry and any import or launch of one (`test/gate-entry-guard.f`, over
   `test/load-graph.f`); `bin/hb --load test/gate-entry-guard-test.f` checks
   this without starting the full suite.
-- Measure a row's CPU outside the gate, user plus system from
-  `/usr/bin/time bin/hb --load <file>`. Reduce repeated work and share setup
-  before splitting a slow row.
 - A suite whose assertions depend on the compiler tier selects it itself, with
   `1 set-tier` after the harness and tool requires and before the code under
   test, so the harness is not compiled at tier 1.
@@ -222,6 +255,8 @@ exercised, not a formal soundness or refinement theorem.
 - A result that restates a model's own definition establishes no implementation
   behavior. Test the production path instead.
 - State assumptions, unsupported cases and known counterexamples.
+- Report actual results and untested boundaries; never weaken a claim to make a
+  check pass.
 - An unproved claim remains unproved. Record the limitation where the claim is
   documented; never weaken it silently until it passes.
 - A performance claim compares instructions retired from baseline and

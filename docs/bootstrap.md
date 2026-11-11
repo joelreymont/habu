@@ -169,6 +169,9 @@ the tree that passed its checks; the tool's header says what it writes. Do not
 create per-revision release directories; ordinary development does not require
 installation or publication.
 
+Build and test candidates in a workspace or a temporary directory. An install
+never waits for a client: a client that needs an older Habu keeps its own copy.
+
 Libraries loaded from source must match the installed engine. Relative paths
 resolve by the source-root rule in [forth.md](forth.md#packages), so an
 installed engine runs source-based tools from any directory:

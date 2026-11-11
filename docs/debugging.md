@@ -3,6 +3,9 @@
 Tools and procedures for diagnosing native engine failures, from a load
 refusal to a profile.
 
+When checked code misbehaves, reduce the failure, find which layer is wrong
+(declaration, checker, compiler or runtime) and fix that layer.
+
 ## Where a load refusal happened — read the message
 
 A refusal the engine raises while reading source names the file and the line:

@@ -4,6 +4,49 @@ Each section states a decision and the fact that forced it. The language rules
 themselves are in [forth.md](forth.md) and the card; the code that enforces a
 rule is named where the reason depends on it.
 
+## Writing and changing Habu
+
+- Tools, test harnesses and build drivers are checked Habu programs run by
+  `bin/hb`. A shell or Python file may only invoke `bin/hb`, with no logic,
+  parsing or policy. The one exception is the device-peer scripts under `test/`
+  that stand in for a foreign machine (serial, XMODEM, UDP, the embedded
+  assembler hosts, and `test/wasm/run.mjs` and `test/wasm/data-peer.mjs`, which
+  run a Wasm module under bun). Any other non-Habu file under `tools/` or
+  `test/` is a defect to convert. Tools that tests and builds run are built
+  into `hb`, so running one rebuilds no image.
+- Every module has a real package; public effects keep meaningful types, not
+  `n` for everything.
+- A library takes its limits from the protocol it speaks, not from a preset.
+- Use an unchecked or foreign boundary only after checking that the language
+  cannot express the operation normally, and keep it explicit, small and tested.
+- Keep changes focused, and remove obsolete machinery when the language or
+  library already expresses the requirement.
+- When a decision lacks evidence because a capability does not exist yet,
+  build it in a branch and measure.
+
+## Machinery being replaced
+
+The machinery below is being replaced, each item by what follows its colon.
+Never extend or patch it: a defect it shows becomes an acceptance case of the
+replacing dot, and a change that needs it joins the replacing design.
+Something one machine, tier or build path needs and another does not is a split
+to remove, not a row to add.
+
+- arm64's machine-code interpreter, definers and startup in `habu1.f` and
+  `habu2.f`: one typed interpreter on every machine.
+- Building a target by loading it into the running hb and capturing, cutting
+  or rewinding its memory: a cross-build that writes the target as data.
+- The per-definition build cache and its source observers: the file linker.
+- A linker per target: one linker for every target.
+- Tier 1 and the JIT as compilers: T0 on every target, reusing what they
+  already implement; tier 1 changes only to fix a defect on a path it still
+  owns.
+- `TRUSTED:`, engine-only marks and owner rows: checked forms and private
+  sections.
+- Compatibility with older hosts, formats or schemas: hard cutover.
+- A hook: the owner records data or makes a plain call.
+- fork without exec: fork only to exec.
+
 ## Types
 
 **The stack comment is the signature.** Every Forth word already states its
