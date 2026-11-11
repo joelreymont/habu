@@ -28,6 +28,9 @@ public
 
 package ARENA-TEST
 
+\ A linear type, which no ARENA element may hold (REFUSALS).
+DEFLINEAR lin
+
 STRUCTURE holder DERIVE addr FIELD arena ptr ARENA:arena FIELD id n ;STRUCTURE
 HEAP HOLDERS holder
 DYNAMIC-BUFFER HOLDBUF holder
@@ -197,6 +200,11 @@ private
    s" BAD" NO-WORDS
    s" ARENA WORSE no-such-type" EVAL CHECKER-REJECT-RC T=
    s" WORSE" NO-WORDS
+   s" an element type ARENA's casts would refuse defines none of the four words" T-LABEL
+   s" ARENA LINQ [ lin -- ]" EVAL CHECKER-REJECT-RC T=
+   s" LINQ" NO-WORDS
+   s" ARENA OPENQ [ a -- a ]" EVAL CHECKER-REJECT-RC T=
+   s" OPENQ" NO-WORDS
    s" a name whose derived word is taken defines none of the others" T-LABEL
    s" ARENA TAKEN n" EVAL E-DUP-DEFINITION T=
    s" TAKEN" s" -NEW" ABSENT  s" TAKEN" s" -NEW-PTR" ABSENT  s" TAKEN" s" -NEW-ACT" ABSENT

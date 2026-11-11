@@ -26587,6 +26587,13 @@ variable CAST-PATH-N
    THEN
    RES-FALSE ;
 
+\ CHECKER-DYNAMIC-INFO's answer, false for a type that may hold a linear value
+\ or an open type variable: the casts ARENA evaluates would refuse it.
+: CHECKER-ARENA-INFO ( ptr u8 n -- n bool )
+   CHECKER-DYNAMIC-INFO 0= IF RES-FALSE EXIT THEN
+   CAST-WALK-RESET
+   LBI-T @ CAST-MAY-LINEAR? IF drop 0 RES-FALSE EXIT THEN
+   RES-TRUE ;
 
 \ The cast gate, in refusal order, over ROWS' one term a side (SGIN/SGOUT): true
 \ when the output mints a pointer or quotation, else a representation cast.

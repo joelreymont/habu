@@ -2863,7 +2863,7 @@ variable STG-TYPE-U
    pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
    rc 0 <> IF rc throw THEN
    0= IF EXIT THEN
-   type typeu CHECKER-DYNAMIC-INFO 0= IF
+   type typeu CHECKER-ARENA-INFO 0= IF
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
    THEN drop
    name nameu at nameu ARM

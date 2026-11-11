@@ -751,7 +751,15 @@ variable RC
    s" ARENA P:X n" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" arena-qualified.f" FIXTURE!
-   s" E-BAD-STORAGE" s" P:X" 2 7 16 19 REFUSED-MODES ;
+   s" E-BAD-STORAGE" s" P:X" 2 7 16 19 REFUSED-MODES
+   s" an ARENA whose element type its casts would refuse" T-LABEL
+   SB-RESET
+   s" package P" SB-APPEND LF+
+   s" DEFLINEAR lin" SB-APPEND LF+
+   s" ARENA X [ lin -- ]" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" arena-linear.f" FIXTURE!
+   s" E-BAD-STORAGE" s" [ lin -- ]" 3 9 32 42 REFUSED-MODES ;
 
 \ Packet 0 of the last check is the record of a statement that threw CODE.
 : THREW ( n -- )

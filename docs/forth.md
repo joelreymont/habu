@@ -2210,7 +2210,8 @@ documentation-only edits need no rebuild.
   released one's address), and an arena shared between tasks, which take no
   lock and must serialise every call.
 - **`ARENA NAME Type` for records in an arena**: the stored types of
-  `DYNAMIC-BUFFER`. Inside a package it defines `NAME-NEW ( ptr ARENA:arena --
+  `DYNAMIC-BUFFER` that hold no linear value or type variable, a quotation over
+  one included. Inside a package it defines `NAME-NEW ( ptr ARENA:arena --
   ptr Type )`, a fresh zeroed record, and `NAME-NEW-DISPOSE ( ptr ARENA:arena
   [ ptr Type -- ] -- ptr Type )`, whose action runs once when the arena is reset
   or released and must accept a zeroed record. The width is the declared

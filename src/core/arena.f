@@ -101,7 +101,7 @@ public
    name nameu FREE? {: own:bool :}
    own 0= if exit then
    own [: drop name nameu FREE? ;] mode IN-OTHER 0= if exit then
-   type typeu CHECKER-DYNAMIC-INFO 0= if
+   type typeu CHECKER-ARENA-INFO 0= if
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
    then {: width:n :}
    name nameu type typeu width SOURCE {: casts:ptr castsu:n words:ptr wordsu:n :}
