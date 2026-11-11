@@ -21,7 +21,6 @@ require src/habu/native-observer-extension.f
 require src/habu/address-cells.f
 require src/habu/stack-abi.f
 require src/habu/arith-abi.f
-require src/habu/regalloc-abi.f
 require src/habu/primitive-registry.f
 require src/habu/boot-x64.f
 require src/habu/data-claims.f          \ each band (PROT-SPAN) tests is a claim
@@ -5579,9 +5578,7 @@ variable GROW-CELL
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX CRSIG-A-CELL CELL!,  RAX CRSIG-U-CELL CELL!,
-   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
-   RAX 8191 >IMM32 ASM-SINK ENC-MOV-RI32
-   RAX REGALLOC-ABI:VRFREE-CELL CELL!, ;
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!, ;
 
 \ Trusted recovery drops a rejected REPL line's stack without looping through
 \ dynamic depth, which the native compiler cannot certify as a fixed effect.

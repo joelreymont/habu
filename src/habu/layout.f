@@ -438,8 +438,8 @@ $178 constant PKG-OUTSIDE
 \ because a nested include overwrites that buffer.
 \ INB-CELL: the start of the buffer INP walks, which SRCLOC:FILE-BUFFER? tests
 \ against the file's owned bytes. interpreter.f EVAL-FRAMED-RANGE sets it, its
-\ frame keeping the outer value in EVAL-INB. It is not beside INP/INE: $36B0 is regalloc.f
-\ FRFREE-CELL and $36C8 is address-cells.f INDEX-CELL.
+\ frame keeping the outer value in EVAL-INB. It is not beside INP/INE: $36C8 is
+\ address-cells.f INDEX-CELL.
 \ All three sit in the $2800..$3000 free header band, below $7FF8 for a
 \ `DATA <off> LDR` and below DATA-START.
 package SRCLOC
@@ -1141,35 +1141,32 @@ $27F8 constant CODE-CELL
 \ engine names it with a `DATA <off> LDR/STR` 12-bit scaled immediate, and below
 \ DATA-START so no compiled source reaches it by allot.
 $2818 constant EXIT-HOOK-CELL
-\ TOKBODY-CELL .. TOKFRF-CELL and TOKDEPTH-CELL: the token-start mark, seven
+\ TOKBODY-CELL .. TOKVSP-CELL and TOKDEPTH-CELL: the token-start mark, five
 \ cells. Before every token the interpret loop stores BODYLEN-CELL, LOCN-CELL
 \ and its block depth CAPDEPTH-CELL, CP (as an offset
 \ from the region base, like every code position a DATA cell keeps, so no
-\ image carries a live address) and the virtual stack's VSP-CELL, VRFREE-CELL
-\ and FRFREE-CELL here. Two other writers: arm64
+\ image carries a live address) and the virtual stack's VSP-CELL here.
+\ Two other writers: arm64
 \ C-CLEAR-LOCALS zeroes TOKLOCN-CELL and TOKDEPTH-CELL with the locals at a
 \ definition's end or abort, and a refused `is` target lowers TOKBODY-CELL to
 \ its opener (src/habu/interpreter.f DEF-PREFIX-BIND).
 \ A throw that unwinds an evaluate frame begun inside an open definition leaves
-\ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all seven
+\ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all five
 \ back: the text the checker certifies holds no token whose compile the throw
 \ abandoned, a `{:` group refused part way declares none of its names, and the
 \ code and the spill a refused token emitted before its check are gone. A spill
 \ only moves virtual stack entries to the data stack and leaves the entries
-\ themselves in place, so the depth and the two register masks restore the
-\ virtual stack. Every other compile cell is the refusing word's to leave
-\ alone: it checks first.
+\ themselves in place, so the depth restores the virtual stack. Every other
+\ compile cell is the refusing word's to leave alone: it checks first.
 \ One mark serves every frame. Popping a frame leaves it at the innermost
 \ buffer's current token, or at that buffer's end once it exits cleanly, a
 \ point after a complete token, so each frame a throw pops keeps its buffer's
 \ completed tokens, as the control-flow stack, locals and quotation state do.
-\ $2820..$2848 follow EXIT-HOOK-CELL in the $2800..$3000 header band.
+\ $2820..$2838 follow EXIT-HOOK-CELL in the $2800..$3000 header band.
 $2820 constant TOKBODY-CELL
 $2828 constant TOKLOCN-CELL
 $2830 constant TOKCP-CELL
 $2838 constant TOKVSP-CELL
-$2840 constant TOKVRF-CELL
-$2848 constant TOKFRF-CELL
 \ TKA-CELL as an opener stores PEND-CELL: the name token (`:`, kernel:,
 \ TRUSTED:) or the word that ran def-open; a source that ends inside the
 \ definition is located there. CAST: and defer set PEND-CELL only

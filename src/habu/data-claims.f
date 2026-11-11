@@ -1,7 +1,6 @@
 \ Build-only DATA extent checks; runtime images need only layout.f.
 require src/habu/boot-cells.f
 require src/habu/layout.f
-require src/habu/regalloc-abi.f
 require src/habu/address-cells.f
 require src/habu/prof-abi.f
 require src/habu/native-observer-cells.f
@@ -16,12 +15,12 @@ require src/habu/native-host-cells.f
 \ map a TASK:+USER row overran the AOT window: one $40 row crashed at teardown.
 \
 \ The map holds every claim with a declared extent: everything from $3A00 up,
-\ all DATA-BANDS rows, src/habu/regalloc-abi.f's cells and tables,
-\ src/habu/address-cells.f LOCK-CELL and INDEX-CELL, and the profiler band, the
-\ top PROF-CNT-BYTES of DATA as src/habu/prof-abi.f PROF-BAND-AT places it for
-\ the global DATA-SIZE. An x86-64 build's X64LAYOUT:DATA-SIZE differs on a macOS
-\ host, so kernel-x64.f places the band again through BAND-ASSERT. One claim is
-\ out: the $1A0 seal fixture poke cell, which no constant names.
+\ all DATA-BANDS rows, src/habu/address-cells.f LOCK-CELL and INDEX-CELL, and
+\ the profiler band, the top PROF-CNT-BYTES of DATA as src/habu/prof-abi.f
+\ PROF-BAND-AT places it for the global DATA-SIZE. An x86-64 build's
+\ X64LAYOUT:DATA-SIZE differs on a macOS host, so kernel-x64.f places the band
+\ again through BAND-ASSERT. One claim is out: the $1A0 seal fixture poke cell,
+\ which no constant names.
 \
 \ Deliberate aliases are one row: the friend arena, not its eighteen cells;
 \ VVAL-STACK of VSMAX cells, inside which DEF-TKA-CELL and DEF-TKL-CELL live at
@@ -96,7 +95,6 @@ create TAB
    GTOD-SCRATCH                       2 cells                 CLAIM GTOD-SCRATCH
    DOESP-CELL                         1 cells                 CLAIM DOESP-CELL
    VSP-CELL                           1 cells                 CLAIM VSP-CELL
-   REGALLOC-ABI:VRFREE-CELL           1 cells                 CLAIM VRFREE-CELL
    VTAG-OFF                           VSMAX                   CLAIM VTAG-STACK
    CREATEP-CELL                       1 cells                 CLAIM CREATEP-CELL
    QPATCH-CELL                        1 cells                 CLAIM QPATCH-CELL
@@ -144,8 +142,6 @@ create TAB
    TOKLOCN-CELL                       1 cells                 CLAIM TOKLOCN-CELL
    TOKCP-CELL                         1 cells                 CLAIM TOKCP-CELL
    TOKVSP-CELL                        1 cells                 CLAIM TOKVSP-CELL
-   TOKVRF-CELL                        1 cells                 CLAIM TOKVRF-CELL
-   TOKFRF-CELL                        1 cells                 CLAIM TOKFRF-CELL
    PENDTKA-CELL                       1 cells                 CLAIM PENDTKA-CELL
    NCOMP-DISPATCH:FIXED-SHADOW-CELL   1 cells                 CLAIM NCOMP-FIXED-SHADOW-CELL
    NCOMP-DISPATCH:DOES-SHADOW-CELL    1 cells                 CLAIM NCOMP-DOES-SHADOW-CELL
@@ -200,7 +196,6 @@ create TAB
    TKL-CELL                           1 cells                 CLAIM TKL-CELL
    INP-CELL                           1 cells                 CLAIM INP-CELL
    INE-CELL                           1 cells                 CLAIM INE-CELL
-   REGALLOC-ABI:FRFREE-CELL           1 cells                 CLAIM FRFREE-CELL
    BPTRAMP-CELL                       1 cells                 CLAIM BPTRAMP-CELL
    ADDRESS-CELLS:INDEX-CELL           1 cells                 CLAIM ADDRESS-CELLS-INDEX
    BPTAB-OFF                          EVALD-CELL BPTAB-OFF -  CLAIM BPTAB

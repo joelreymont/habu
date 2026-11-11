@@ -38,10 +38,9 @@ using A64ASM
 \ x19, x20 (DATA), x26, x27 and x28 are the engine's
 \ (src/habu/layout.f ENGINE-GPR:A64-MASK); compiled code writes none of them
 \ except x19 as the stack. x18 is Darwin's (src/arch/arm64/asm.f XREG? refuses
-\ it). x29 caches the innermost loop index, and any callee may write it. The
-\ vregs are the register pool in its order (src/habu/regalloc.f VRPACK,
-\ VRPACK2). x16 and x17 are this file's temporaries, a literal and an address,
-\ and hold no value between two of its words. A body is entered by `bl` or
+\ it). x29 caches the innermost loop index, and any callee may write it. x16
+\ and x17 are this file's temporaries, a literal and an address, and hold no
+\ value between two of its words. A body is entered by `bl` or
 \ `blr` and leaves by `ret` through x30.
 \
 \ The machine register of each vreg; an index past it throws E-LAYOUT-BOUNDS.

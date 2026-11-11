@@ -29,7 +29,6 @@ HB-TARGET-MACOS? [if]
    require src/os/macos/proc-control.f
 [then]
 
-require src/habu/regalloc.f
 require src/habu/habu1.f
 require src/habu/prof.f
 require src/habu/fdio.f

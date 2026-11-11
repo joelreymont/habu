@@ -25,9 +25,7 @@ using A64ICODE
 \ loaded before this file so bin/hb's capture and this emitter share one
 \ declaration of the format.
 using AOT-BUF
-using REGALLOC-ABI
 using CRASH
-using REGALLOC
 using RT
 using SYSCALL
 
@@ -2714,8 +2712,7 @@ public
    9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
    9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
    9 DATA TRUSTED-CELL STR,
-   C-CLEAR-LOCALS
-   9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
+   C-CLEAR-LOCALS ;
 ;package
 
 \ The def-abort and stack-clear bodies (src/habu/prims.f); FPRIM-WID frames
@@ -3044,8 +3041,6 @@ private
          12 DATA TOKDEPTH-CELL LDR,  12 DATA CAPDEPTH-CELL STR,
          12 DATA TOKCP-CELL LDR,  CP DBASE 12 ADD,
          12 DATA TOKVSP-CELL LDR,  12 DATA VSP-CELL STR,
-         12 DATA TOKVRF-CELL LDR,  12 DATA VRFREE-CELL STR,
-         12 DATA TOKFRF-CELL LDR,  12 DATA FRFREE-CELL STR,
          scope B,
       owned LBL,
       SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,
@@ -3615,8 +3610,6 @@ public
 
 ;package
 
-;using
-;using
 ;using
 ;using
 ;using

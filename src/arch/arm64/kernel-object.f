@@ -25,14 +25,12 @@ require src/core/sha256.f
 require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/wl.f
-require src/habu/regalloc-abi.f
 require src/habu/prims.f
 require src/habu/primitive-registry.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/boot.f
 using CRASH
 using ENGINE-EMIT
-using REGALLOC
 
 package KERNEL-OBJECT
 private
@@ -233,8 +231,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
       0 PKG-REC-CELL PRESET+
       0 ENCLOSING:REC PRESET+
       0 POLICY-NDICT-CELL PRESET+
-      VRALL REGALLOC-ABI:VRFREE-CELL PRESET+
-      FRALL REGALLOC-ABI:FRFREE-CELL PRESET+
       LDICT A64ICODE:LABEL@ CODE-OFFSET PRIM-TABLE-CELL PRESET+
    then
    ;SECTION ;
@@ -284,6 +280,5 @@ public
 : WRITE ( bool [ ptr u8 n -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
 
 ;package
-;using
 ;using
 ;using

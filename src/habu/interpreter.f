@@ -2233,7 +2233,6 @@ public
 ;package
 
 require src/lib/memory.f
-require src/habu/regalloc-abi.f
 require src/habu/address-cells.f
 require src/habu/native-body-abi.f
 require src/habu/native-body.f
@@ -2356,9 +2355,7 @@ private
    BODY-DEPTH @ TOK-BODY-DEPTH !
    BODY-RAW-NEXT @ TOK-BODY-RAW !
    cp@ dbase@ - TOKCP-CELL CELL!
-   VSP-CELL CELL@ TOKVSP-CELL CELL!
-   REGALLOC-ABI:VRFREE-CELL CELL@ TOKVRF-CELL CELL!
-   REGALLOC-ABI:FRFREE-CELL CELL@ TOKFRF-CELL CELL! ;
+   VSP-CELL CELL@ TOKVSP-CELL CELL! ;
 
 \ The pending action finishes before the mark and the read.
 : RUN-TOKENS ( -- )
@@ -2506,9 +2503,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    TOK-BODY-DEPTH @ BODY-DEPTH !
    TOK-BODY-RAW @ BODY-RAW-NEXT !
    dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
-   TOKVSP-CELL CELL@ VSP-CELL CELL!
-   TOKVRF-CELL CELL@ REGALLOC-ABI:VRFREE-CELL CELL!
-   TOKFRF-CELL CELL@ REGALLOC-ABI:FRFREE-CELL CELL! ;
+   TOKVSP-CELL CELL@ VSP-CELL CELL! ;
 
 : FRAME-RESTORE-SCOPE ( ptr u8 -- ) {: f:ptr :}
    f EVAL-PKG + {: snap:ptr :}

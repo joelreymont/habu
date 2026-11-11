@@ -1440,7 +1440,7 @@ variable LBL#  variable LX  variable GROWN
 \ every host row precedes its callers.
 : EACH-FILE ( [ ptr u8 n -- ] -- ) {: visit :}
    s" src/habu/rt.f" visit execute  s" src/habu/crash.f" visit execute
-   s" src/habu/regalloc.f" visit execute  s" src/habu/habu1.f" visit execute
+   s" src/habu/habu1.f" visit execute
    s" src/habu/prof.f" visit execute
    s" src/habu/habu2.f" visit execute ;
 

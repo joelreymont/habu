@@ -209,7 +209,6 @@ variable IN-DEFINITION
    s" src/os/linux-x86-64/proc-watch.f" LINT-FILE
    s" src/os/linux-x86-64/proc-control.f" LINT-FILE
    s" src/habu/habu1.f"     LINT-FILE   s" src/habu/prof.f"      LINT-FILE
-   s" src/habu/regalloc.f"  LINT-FILE
    s" src/habu/sign-id.f"   LINT-FILE
    s" src/habu/habu2.f"     LINT-FILE
    BAD @ 0 > IF  s" shadow-lint: " type BAD @ FMT:.INT s"  collision(s)" type cr
