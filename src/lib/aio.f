@@ -1,7 +1,7 @@
 \ aio.f - asynchronous I/O, package AIO: a task submits one operation, gets a
 \ ticket and AWAITs it; one loop task drains the ring and TASK:WAKEs each owner.
-\ START the loop before the first wait; main keeps compiling while it runs
-\ (src/lib/task.f). A submission with no loop is E-AIO-STATE. Linux uses
+\ START the loop before the first wait; main keeps compiling while it runs.
+\ A submission with no loop is E-AIO-STATE. Linux uses
 \ io_uring from 5.10, the first long-term kernel with every opcode used and
 \ IORING_FEAT_NODROP; Darwin uses src/lib/aio-macos.f.
 \ STORAGE CLASS. PROCESS-WIDE: ring, records and loop, under one TASK:FACILITY.
@@ -9,13 +9,13 @@
 
 require src/lib/error.f
 require src/lib/memory.f
-require src/lib/string.f               \ SCRATCH-BUFFER:, the record and group tables
-require src/lib/le.f                   \ the ring and SQE fields are little-endian
+require src/lib/string.f
+require src/lib/le.f
 require src/lib/ffi-abi.f
-require src/lib/codegen.f             \ the one stderr line a refused syscall prints
-require src/lib/num-types.f           \ the ms role the timeouts carry
+require src/lib/codegen.f
+require src/lib/num-types.f
 require src/lib/task.f
-require src/lib/adt/result.f          \ the loop task's join answers result<n,n>
+require src/lib/adt/result.f
 
 package AIO
 public
@@ -56,13 +56,8 @@ CAST: GROUP>N ( group -- n )
 CAST: >XFER ( n -- xfer )
 CAST: XFER>N ( xfer -- n )
 
-\ The extent MEM:ALLOC-BYTES answered, as the number the bounds check, the SQE
-\ and a record need. The same erasure src/lib/memory.f makes for mmap and
-\ munmap; the record's number goes back through MEM:BYTES-ALLOC-LEN.
 CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
 
-\ A record's two pointer cells, as the slots they are: the owner's TCB, as
-\ TASK:WAKE takes it, and a transfer's allocation.
 CAST: OWNER-SLOT ( ptr n -- ptr ptr n )
 CAST: BUF-SLOT ( ptr n -- ptr ptr u8 )
 
@@ -71,25 +66,24 @@ CAST: AIO-N>PTR ( n -- ptr n )
 
 \ ---- the kernel ABI ----------------------------------------------------------
 \ Every number below is read from /usr/include/linux/io_uring.h,
-\ /usr/include/asm-generic/unistd.h and /usr/include/asm-generic/errno.h. The
-\ headers are never included: a checked module states the contract it uses.
+\ /usr/include/asm-generic/unistd.h and /usr/include/asm-generic/errno.h.
 425 constant NR-SETUP
 426 constant NR-ENTER
 
 \ The ring's sizes. A record in flight owes at most two completion entries: its
 \ own and one cancel's (a linked poll's second is its link record's own).
 \ A submission entry is held only from a stage's publish to its enter.
-$100 constant AIO-ENTRIES           \ 256 submission entries
-$200 constant AIO-RECS-MAX          \ 512 records in flight
+$100 constant AIO-ENTRIES
+$200 constant AIO-RECS-MAX
 AIO-RECS-MAX 2 * constant AIO-CQ-ENTRIES
 
-8 constant SETUP-CQSIZE             \ IORING_SETUP_CQSIZE
-1 constant ENTER-GETEVENTS          \ IORING_ENTER_GETEVENTS
-4 constant SQE-IO-LINK              \ IOSQE_IO_LINK
+8 constant SETUP-CQSIZE
+1 constant ENTER-GETEVENTS
+4 constant SQE-IO-LINK
 
-0 constant OFF-SQ-RING              \ IORING_OFF_SQ_RING
-$8000000 constant OFF-CQ-RING       \ IORING_OFF_CQ_RING
-$10000000 constant OFF-SQES         \ IORING_OFF_SQES
+0 constant OFF-SQ-RING
+$8000000 constant OFF-CQ-RING
+$10000000 constant OFF-SQES
 
 0 constant OP-NOP
 6 constant OP-POLL-ADD
@@ -101,11 +95,11 @@ $10000000 constant OFF-SQES         \ IORING_OFF_SQES
 22 constant OP-READ
 23 constant OP-WRITE
 
-$80000 constant ACCEPT-FLAGS        \ SOCK_CLOEXEC, exactly what TCP4's accept4 asks for
+$80000 constant ACCEPT-FLAGS        \ SOCK_CLOEXEC
 -1 constant OFF-CURRENT             \ the file's own position, used and advanced
 
 \ struct io_uring_params: seven __u32, three reserved, then the two offset
-\ blocks. 120 bytes, which is the extent the declaration below names written.
+\ blocks.
 $78 constant PARAMS-BYTES
 0 constant P-SQ-ENTRIES
 4 constant P-CQ-ENTRIES
@@ -138,15 +132,15 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 1 constant EV-READABLE              \ POLLIN
 4 constant EV-WRITABLE              \ POLLOUT
 
-4 constant ERR-INTR                 \ EINTR
+4 constant ERR-INTR
 : ERR-TIME ( -- n )
    HB-TARGET-LINUX-KERNEL? if $3E exit then
    HB-TARGET-MACOS? if 101 exit then
-   E-PROC-HOST throw ;                   \ ETIME 62 on Linux.
+   E-PROC-HOST throw ;
 : ERR-CANCELED ( -- n )
    HB-TARGET-LINUX-KERNEL? if $7D exit then
    HB-TARGET-MACOS? if 89 exit then
-   E-PROC-HOST throw ;                   \ ECANCELED 125 on Linux.
+   E-PROC-HOST throw ;
 
 1000 constant MS-PER-S
 1000000 constant NS-PER-MS
@@ -194,8 +188,8 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.PEER             \ the link's record, or -1
    CELL +FIELD REC.TIMED-OUT        \ the link fired, so -ECANCELED means timed out
    CELL +FIELD REC.CANCELING        \ a cancel was submitted; a record gets one
-   CELL +FIELD REC.HOLD             \ REC.BUF and REC.BUF-LEN are this record's
-   CELL +FIELD REC.GEN              \ the handle's other half, set by REC-RESET and REC-GROW
+   CELL +FIELD REC.HOLD
+   CELL +FIELD REC.GEN              \ the handle's other half
    CELL +FIELD REC.OWNER            \ the submitting task, as TASK:WAKE takes it
    \ The allocation a transfer holds: the pointer MEM:ALLOC-BYTES answered and
    \ its extent. REC.HOLD says the pair is this record's to give back. It is
@@ -206,7 +200,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.BUF
    CELL +FIELD REC.BUF-LEN
    SPEC-BYTES +FIELD REC.SPEC       \ the timespec a TIMEOUT or a link submits
-   HOST-BYTES +FIELD REC.HOST       \ the backend's own fields (src/lib/aio-macos.f)
+   HOST-BYTES +FIELD REC.HOST       \ the backend's own fields
 END-STRUCTURE
 
 \ The records live in a chain of chunks: a link cell, then the records. The
@@ -261,7 +255,7 @@ variable RING-FD
 \ holds. Read with atomic@, written with atomic! under AIO-LOCK.
 variable GEN-SERIAL
 variable RING-LIVE                  \ the loop is running
-variable RING-STOP                  \ the loop's stop flag
+variable RING-STOP
 variable RING-READY                 \ the facility has been initialized once
 variable SQ-LEN
 variable CQ-LEN
@@ -309,12 +303,12 @@ $40 constant DIAG-CAP
 DIAG-CAP CODEGEN:BUFFER DIAG
 
 \ ---- the two system calls ----------------------------------------------------
-\ Both go through libc's `syscall`. Linux passes these integer arguments in
-\ ordinary registers, and the x86-64 FFI sets al for every foreign call.
+\ Linux passes these integer arguments in ordinary registers, and the x86-64
+\ FFI sets al for every foreign call.
 PROCESS-SYMBOLS
 
 FUNCTION: URING-SETUP-CALL syscall ( n n ptr u8 -- n )
-   2 PARAMS-BYTES WRITES-BYTES      \ struct io_uring_params, filled by the kernel
+   2 PARAMS-BYTES WRITES-BYTES
 ;FUNCTION
 
 FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
@@ -330,19 +324,16 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
    2 NL-BYTE 1 write drop ;
 
 \ ---- little-endian field access ----------------------------------------------
-\ Ring and SQE fields are fixed-width little-endian integers at byte offsets,
-\ read through src/lib/le.f rather than cell stores tied to the host's width and
-\ alignment. A CQE's res is signed (LE:S32@): a negative res is the negated errno.
+\ A CQE's res is signed: a negative res is the negated errno.
 
 \ ---- the module's one address crossing ---------------------------------------
-\ The crossing src/lib/memory.f makes with MEM's private MAPPED>PTR: three
-\ calls, one right after each mmap, and every later access passes MAP-AT's bound,
-\ the length io_uring_params reported.
+\ It is three calls, one right after each mmap, and every later access passes
+\ MAP-AT's bound, the length io_uring_params reported.
 CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 
-\ An offset and a width inside one mapping. Out of bounds is this module's own
-\ defect, not a condition a caller can provoke or recover from, so it ends the
-\ process with a name rather than throwing into somebody's catch.
+\ Out of bounds is this module's own defect, not a condition a caller can
+\ provoke or recover from, so it ends the process with a name rather than
+\ throwing into somebody's catch.
 : MAP-AT ( ptr u8 n n n -- ptr u8 ) {: base len:n off:n width:n :}
    off 0 < width 0 <= or if s" aio: mapping operand" E-AIO-STATE die then
    off len width - > if s" aio: mapping bounds" E-AIO-STATE die then
@@ -372,8 +363,8 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : CQ-HEAD! ( n -- )
    CQ-HEAD-OFF @ 4 CQ-AT LE:U32! ;
 
-\ The tail the kernel published. The fence after the read is what makes the
-\ entries below it visible to this thread.
+\ The fence after the read is what makes the entries below it visible to this
+\ thread.
 : CQ-TAIL-ACQUIRE ( -- n )
    CQ-TAIL-OFF @ 4 CQ-AT LE:U32@ fence ;
 
@@ -680,9 +671,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : SQE-LINK! ( n -- ) {: slot:n :}
    SQE-IO-LINK slot SQE-AT SQE-FLAGS + c! ;
 
-\ IORING_OP_READ and IORING_OP_WRITE: addr is the buffer, len the byte count and
-\ off the file offset. An offset of -1 goes out as the all-ones 64-bit value,
-\ which is io_uring's "use and advance this file's own position".
 : SQE-RW ( n n n n n n -- ) {: slot:n id:n op:n f:n count:n off:n :}
    slot op id SQE-COMMON
    f slot SQE-AT SQE-FD + LE:U32!
