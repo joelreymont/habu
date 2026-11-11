@@ -64,6 +64,17 @@ variable THREAD-RET                   \ the start routine's result, from pthread
 variable THREAD-OWNER                 \ CB-OWNER of the region the routine ran on
 variable THREAD-SELF                  \ pthread_self as the routine read it
 variable WHO-OWNER                    \ CB-OWNER of the region WHO last ran on
+variable CMP-CALLER-FN
+variable CALLER-WANT                  \ sorters a first comparison waits for
+variable CALLER-INSIDE                \ sorters that reached CMP-CALLER
+variable CALLER-MET                   \ sorters that saw CALLER-WANT inside
+variable CALLER-MISSES                \ comparisons on another sorter's region
+variable CALLER-UNBIND-ON             \ non-zero: a comparison tries UNBIND
+variable CALLER-UNBIND-CODE
+create CALLER-REGIONS 3 cells allot   \ each sorter's region, by hundreds
+create CALLER-ENTERED 3 cells allot   \ 1 once that sorter reached CMP-CALLER
+create ROW-A ROW-N cells allot
+create ROW-B ROW-N cells allot
 
 TASK:MIN-STACK TASK:TASK CTX-TASK     \ the region a foreign thread enters
 TASK:MIN-STACK TASK:TASK WORKER-A
@@ -106,6 +117,8 @@ DECLARE-MARSHAL
 CALLBACK: UNSET ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 CALLBACK: UNSET-ONE ( ptr u8 ptr u8 -- i32 ) 1 FALLBACK ;CALLBACK
 CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+10000 constant CALLER-WAIT-MS
 
 : NEST ( n -- ) {: fn:n :}
    INNER 100 ROW-FILL
@@ -175,6 +188,36 @@ CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
    data-base CB-OWNER + atomic@ WHO-OWNER !
    a b ROW-ORDER ;
 
+
+: CALLER-ENTER ( n -- ) {: band:n :}
+   CALLER-ENTERED band cells + @ 0<> if exit then
+   1 CALLER-ENTERED band cells + !
+   1 CALLER-INSIDE atomic-add drop
+   0
+   begin
+      dup CALLER-WAIT-MS <
+      CALLER-INSIDE atomic@ CALLER-WANT @ < and
+   while
+      1 >MS TASK:SLEEP 1 +
+   repeat
+   drop
+   CALLER-INSIDE atomic@ CALLER-WANT @ >= if 1 CALLER-MET atomic-add drop then ;
+
+
+\ For a slot on TASK:CALLER-CONTEXT: a value's hundreds name the sorter whose
+\ row it is, and the call must run on that sorter's region.
+: CMP-CALLER-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+   a CELL-VIEW @ 100 / {: band:n :}
+   CALLER-REGIONS band cells + @ data-base FFI:>CELL <> if
+      1 CALLER-MISSES atomic-add drop
+   then
+   band CALLER-ENTER
+   CALLER-UNBIND-ON @ 0<> if
+      0 CALLER-UNBIND-ON !
+      [: CMP-CALLER UNBIND ;] catch CALLER-UNBIND-CODE !
+   then
+   a b ROW-ORDER ;
+
 ' ROW-ORDER CMP-BODY !
 ' CMP-SELF-IMPL CMP-SELF-BODY !
 ' CMP-VIA-IMPL CMP-VIA-BODY !
@@ -183,6 +226,7 @@ CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 ' START-IMPL START-BODY !
 ' START-B-IMPL START-B-BODY !
 ' WHO-IMPL WHO-BODY !
+' CMP-CALLER-IMPL CMP-CALLER-BODY !
 \ UNSET-BODY and UNSET-ONE-BODY are left unset: each dispatch has to refuse, not
 \ execute the zero.
 
@@ -301,6 +345,15 @@ CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 : WORK-EXPOSES ( -- )
    THREAD-BIND
    START-FN @ 7 THREAD-START TASK:RETURN ;
+
+: CALLER-SORT ( ptr n n -- bool ) {: row:ptr band:n :}
+   data-base FFI:>CELL CALLER-REGIONS band cells + !
+   row band 100 * ROW-FILL
+   row BYTE-VIEW ROW-N CELL CMP-CALLER-FN @ QSORT
+   row band 100 * ROW-SORTED? ;
+
+: WORK-CALLER-A ( -- ) ROW-A 1 CALLER-SORT 1 MASK-BIT TASK:RETURN ;
+: WORK-CALLER-B ( -- ) ROW-B 2 CALLER-SORT 1 MASK-BIT TASK:RETURN ;
 
 ;using
 ;package

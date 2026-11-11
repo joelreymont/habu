@@ -735,8 +735,9 @@ $40C0 constant UNCGH-CELL
 \   CB-XTS/ROWS    growable descriptor and binding tables, read through the
 \                  main region at absolute address DATA-VA.
 \ A binding row holds region, owner, move count and claim region. The owner is
-\ 0 idle, a thread pointer inside the slot, or CB-ROW-BUSY while a mover holds
-\ it. A call that meets BUSY waits for the hand-back (habu1.f BCALLBACK-THUNK).
+\ 0 idle, a thread pointer inside the slot, CB-ROW-BUSY while a mover holds it,
+\ or 4*n + CB-ROW-CALLER for a row bound to the caller's context with n threads
+\ inside; such a row's region is 0.
 $41C8 constant CB-XDS
 $41D0 constant CB-DBASE
 $41D8 constant CB-NDICT
@@ -752,6 +753,10 @@ CB-END CB-XDS - constant CB-BAND-BYTES
 0 constant CB-ROW-REGION
 8 constant CB-ROW-OWNER
 1 constant CB-ROW-BUSY
+2 constant CB-ROW-CALLER
+\ pthread_getspecific's address and the key, in the main region only.
+$4330 constant CB-TLS-GET
+$4338 constant CB-TLS-KEY
 \ The marshal frame CB-FRAME names while a dispatch runs: x0..x7 as C passed
 \ them, then d0..d7 from CB-FRAME-FLOATS. The dispatch leaves its result in the
 \ x0 or the d0 slot, and the thunk returns both.
@@ -2042,8 +2047,7 @@ PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \ finds the log through this one fixed cell (checker.f CK-DECLARED-LOG-CELL);
 \ an engine without the log reads 0, an empty log. Below $7FF8 for
 \ `DATA <off> LDR` and below DATA-START, it is the last cell of the run
-\ $4208..$43A0 below APP-ENTRY:XT-CELL, which the seed leaves free; REPLAY-SCOPE,
-\ UNIT-COMPILE-CELL, ENCLOSING and REPLAY-SCOPE:ENCLOSING hold the start of that run.
+\ $4208..$43A0 below APP-ENTRY:XT-CELL, which the seed leaves free.
 package DECLARED-LOG
 public
 $4398 constant ADDR-CELL

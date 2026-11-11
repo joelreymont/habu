@@ -299,6 +299,16 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
    0 TASK-MUTEX-BYTES WRITES-BYTES
 ;FUNCTION
 
+\ pthread_key_create writes the key into the cell, 8 bytes on macOS and 4 on
+\ Linux; the second argument is the destructor, 0 for none.
+FUNCTION: KEY-CREATE-CALL pthread_key_create ( ptr u8 n -- i32 )
+   0 8 WRITES-BYTES
+;FUNCTION
+
+FUNCTION: KEY-DELETE-CALL pthread_key_delete ( n -- i32 ) ;FUNCTION
+FUNCTION: SETSPECIFIC-CALL pthread_setspecific ( n n -- i32 ) ;FUNCTION
+FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
+
 : TASK-RC0 ( n -- )
    dup 0 <> if E-TASK-THREAD throw then
    drop ;
@@ -888,13 +898,51 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    begin self EXIT-TAKE while TASK-RUN-EXIT-ONE repeat
    drop ;
 
+
+\ The pthread key whose value on a registered thread is that thread's region,
+\ plus one; 0 before this process made one.
+SCRATCH-VARIABLE CALLER-KEY
+
+: KEY-RC0 ( n -- )
+   0 <> if E-TASK-STATE throw then ;
+
+
+\ The cell is zeroed first, so its 8 bytes read the key at either width.
+: KEY-NEW ( ptr u8 NUM:alloc-byte-len -- n )
+   drop {: cell:ptr :}
+   0 cell CELL-VIEW !
+   cell 0 KEY-CREATE-CALL KEY-RC0
+   cell CELL-VIEW @ ;
+
+
+: KEY-ENSURE ( -- n )
+   CALLER-KEY atomic@ {: held:n :}
+   held 0<> if held 1 - exit then
+   1 cells MEM:BYTES-ALLOC-LEN [: KEY-NEW ;] MEM:WITH-BYTES {: key:n :}
+   0 key 1 + CALLER-KEY atomic-cas {: seen:n :}
+   seen 0= if key exit then
+   key KEY-DELETE-CALL KEY-RC0
+   seen 1 - ;
+
+
+\ Once: a task's thread and the main thread keep one region for life. A thread
+\ inside an exposed task's region has none of its own and stays unregistered.
+: CALLER-REGISTER ( n -- ) {: key:n :}
+   TASK-SELF-N 0<> if
+      TASK-SELF TASK-STATE@ TASK-EXPOSED = if exit then
+   then
+   key GETSPECIFIC-CALL 0<> if exit then
+   key data-base FFI:>CELL SETSPECIFIC-CALL KEY-RC0 ;
+
+
 \ A row names the region a C call through its slot enters (CB-ROW-REGION, 0
-\ unbound), the thread inside through it (CB-ROW-OWNER: 0 idle, a thread
-\ pointer, or CB-ROW-BUSY while a bind, unbind, claim or drop moves the row),
-\ the count of region stores, and the region of a pending all-row claim. The
-\ engine's thunk claims the row before it reads the region, so a region stays
-\ mapped while a row names it: UNEXPOSE and TASK-END, the only words that
-\ release a named region, drop its rows first. A call that meets BUSY waits in
+\ unbound or bound to the caller's context), who is inside through it
+\ (CB-ROW-OWNER), the count of region stores, and the region of a pending
+\ all-row claim. A caller row's region is 0, so ROWS-CLAIM, ROWS-DROP and
+\ ROW-END never match it. The engine's thunk claims the row
+\ before it reads the region, so a region stays mapped while a row names it:
+\ UNEXPOSE and TASK-END, the only words that release a named region, drop its
+\ rows first. A call that meets BUSY waits in
 \ the thunk, so a mover holds BUSY only for steps that call, wait on and throw
 \ nothing: every word below hands its rows back before it throws. A declaration
 \ grows this table before a task can run. No C entry embeds a row address: the
@@ -1321,8 +1369,9 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    tcb TASK-RELEASE-MEM
    TASK-EMPTY tcb TCB.STATUS atomic! ;
 
+\ A failed registration is the run's throw, as the body's is.
 : TASK-RUN-USER ( -- n )
-   TASK-SELF TCB.USER-XT @ catch ;
+   [: KEY-ENSURE CALLER-REGISTER TASK-SELF TCB.USER-XT @ execute ;] catch ;
 
 \ An uncaught worker throw ends this task only: the code is recorded, the entry
 \ marks the task DONE and the other tasks keep running. A worker `die` is not
@@ -1355,6 +1404,8 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    tcb TASK-STATE@ TASK-EXPOSED = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-DONE = if tcb TASK-JOIN-RELEASE then
    tcb PREPARE
+   \ A task may bind a slot this thread is called back through.
+   KEY-ENSURE CALLER-REGISTER
    \ The dictionary the task runs on is taken here, as it goes live, not at
    \ PREPARE: main may still compile between a public PREPARE and this ACTIVATE,
    \ or after a failed create, and the task's NDICT and CP registers, loaded
@@ -1526,6 +1577,9 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 : SELF-CONTEXT ( -- n )
    data-base FFI:>CELL ;
 
+\ The caller's context: no region is at 2.
+2 constant CALLER
+
 \ The state first, by acquire load, then the region PREPARE wrote before the
 \ release store that published EXPOSED.
 : TCB-EXPOSES? ( n ptr n -- bool ) {: ctx:n tcb:ptr :}
@@ -1556,7 +1610,35 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 : SLOT-CHECK ( n -- ) {: k:n :}
    k 0 < k ROW-N @ >= or if E-TASK-STATE throw then ;
 
-\ Binding publishes the row table first. The row
+\ The key and getter are stored before the owner, each a release store, so a
+\ thunk that acquires a caller owner finds both.
+: CALLER-BIND ( n -- ) {: k:n :}
+   k SLOT-CHECK
+   KEY-ENSURE {: key:n :}
+   key CALLER-REGISTER
+   k ROW ROW-OWNER atomic@ 3 and CB-ROW-CALLER = if exit then
+   ROW-TABLE @ FFI:>CELL MAIN-BASE CB-ROWS + atomic!
+   key MAIN-BASE CB-TLS-KEY + atomic!
+   FFI:PROCESS-HANDLE s\" pthread_getspecific\z" drop FFI:DLSYM {: get:n :}
+   get 0= if E-TASK-STATE throw then
+   get MAIN-BASE CB-TLS-GET + atomic!
+   begin
+      k ROW ROW-OWNER atomic@
+      dup 0= if drop 0 CB-ROW-BUSY k ROW ROW-OWNER atomic-cas then
+      dup 3 and CB-ROW-CALLER = if drop exit then
+      dup 0<>
+   while
+      CB-ROW-BUSY <> if E-TASK-STATE throw then
+      SCHED-YIELD-CALL TASK-RC0
+   repeat
+   drop
+   k ROW ROW-REGION atomic@ 0 <> if
+      0 k ROW ROW-OWNER atomic!
+      E-TASK-STATE throw
+   then
+   CB-ROW-CALLER k ROW ROW-OWNER atomic! ;
+
+\ Binding a named context publishes the row table first. The row
 \ moves 0 -> BUSY before it is read, and the bind decides on what it reads
 \ under BUSY, where nothing else moves the row. A row that is not idle - a
 \ thread inside, or another bind, unbind, claim or drop moving it - refuses
@@ -1576,6 +1658,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ unexposed, and a thread binding its own region holds a row naming it, which
 \ refuses UNEXPOSE.
 : CONTEXT-BIND ( n n -- ) {: ctx:n k:n :}
+   ctx CALLER = if k CALLER-BIND exit then
    ctx CONTEXT-CHECK {: host:n :}
    k SLOT-CHECK
    ROW-TABLE @ FFI:>CELL MAIN-BASE CB-ROWS + atomic!
@@ -1598,7 +1681,13 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 
 : CONTEXT-UNBIND ( n -- ) {: k:n :}
    k SLOT-CHECK
-   0 CB-ROW-BUSY k ROW ROW-OWNER atomic-cas 0 <> if E-TASK-STATE throw then
+   0 CB-ROW-BUSY k ROW ROW-OWNER atomic-cas {: seen:n :}
+   seen CB-ROW-CALLER = if
+      CB-ROW-CALLER CB-ROW-BUSY k ROW ROW-OWNER atomic-cas
+      CB-ROW-CALLER <> if E-TASK-STATE throw then
+   else
+      seen 0 <> if E-TASK-STATE throw then
+   then
    0 k ROW-NAME!
    0 k ROW ROW-OWNER atomic! ;
 
@@ -2036,8 +2125,12 @@ TASK-MIN-STACK constant MIN-STACK
 : SELF-CONTEXT ( -- n )
    SELF-CONTEXT ;
 
-\ Binds slot n to a context, which must be the main region, the caller's own
-\ or an exposed task's. Binding an idle slot to the context it names is a
+\ A slot bound to it runs each call in the calling thread's own region, from
+\ inside a foreign call that thread made; any number of threads may be inside.
+: CALLER-CONTEXT ( -- n ) CALLER ;
+
+\ Binds slot n to a context: the main region, the caller's own, an exposed
+\ task's or CALLER-CONTEXT. Binding an idle slot to the context it names is a
 \ no-op; a slot naming another context, with a thread inside, or that another
 \ bind, unbind, UNEXPOSE or task end is moving, is refused, and so is a bind
 \ to an exposed task that an UNEXPOSE on another thread ends meanwhile.

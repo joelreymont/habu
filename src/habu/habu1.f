@@ -2706,7 +2706,7 @@ $A0 constant CBT-MARSHAL
 CBT-MARSHAL CB-FRAME-FLOATS + constant CBT-FLOATS
 $120 constant CBT-ROW                   \ the slot row's address
 $128 constant CBT-REGION                \ the region the row named
-$130 constant CBT-ROW-CLAIM             \ 1 when this entry claimed the row
+$130 constant CBT-ROW-CLAIM             \ 0 none, 1 the row, 2 a caller count
 $138 constant CBT-OWNER-CLAIM           \ 1 when this entry claimed CB-OWNER
 $140 constant CBT-OUTER                 \ the CB-FRAME this entry replaced
 $148 constant CBT-SLOT
@@ -2718,7 +2718,9 @@ $150 constant CBT-BYTES
 \ (read, or answered by a lost CAS) is a src/lib/task.f mover holding the row
 \ for a few steps that call and wait on nothing, so the thunk spins on LDAR
 \ with YIELD until the row is handed back and claims it as left; a row dropped
-\ meanwhile reads unbound and dies unless a bind took it. A region stays mapped
+\ meanwhile reads unbound and dies unless a bind took it. A caller row names
+\ no region: the region is this thread's own, mapped while the thread runs.
+\ A region stays mapped
 \ while a row names it (task.f UNEXPOSE and TASK-END drop rows first), so the
 \ region is read only then: its CB-OWNER claimed as BCB-ENTER claims it, a live
 \ frame (CB-XDS <> 0) and the slot's xt, a ( -- ) dispatch that reads its
@@ -2734,10 +2736,12 @@ $150 constant CBT-BYTES
 \ records that, so the way out gives the band back before reading the frame.
 : BCALLBACK-THUNK ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL
    {: row-read:label row-wait:label row-held:label owner-held:label
       owner-kept:label row-kept:label no-table:label row-busy:label
       unbound:label owner-busy:label no-frame:label no-xt:label
-      defined:label signal-had:label signal-kept:label :}
+      defined:label signal-had:label signal-kept:label caller-row:label
+      region-found:label caller-leave:label no-region:label :}
    SP SP CBT-BYTES SUBI,
    \ C's callee-saved set is saved and restored in this body, as BTASK-ENTRY
    \ does: tools/lint/clobber-lint.f proves x30 from the routine's own text.
@@ -2758,10 +2762,12 @@ $150 constant CBT-BYTES
    15 0 MOVZ,
    row-read LBL,
    14 13 LDAR,
+   16 14 3 ANDI,  16 CB-ROW-CALLER CMPI,  C-EQ caller-row BCOND,
    14 12 CMP,  C-EQ row-held BCOND,
    14 CB-ROW-BUSY CMPI,  C-EQ row-wait BCOND,
    14 row-busy CBNZ,
    14 12 13 CASAL,
+   16 14 3 ANDI,  16 CB-ROW-CALLER CMPI,  C-EQ row-read BCOND,
    14 CB-ROW-BUSY CMPI,  C-EQ row-wait BCOND,
    14 row-busy CBNZ,
    15 1 MOVZ,
@@ -2769,6 +2775,7 @@ $150 constant CBT-BYTES
    15 SP CBT-ROW-CLAIM STR,
    14 11 LDAR,                                         \ x14 = CB-ROW-REGION, offset 0
    14 unbound CBZ,
+   region-found LBL,
    14 SP CBT-REGION STR,
    13 CB-OWNER MOVZ,  13 14 13 ADD,
    15 13 LDAR,
@@ -2817,7 +2824,9 @@ $150 constant CBT-BYTES
       13 CB-OWNER MOVZ,  13 14 13 ADD,  10 13 STLR,
    owner-kept LBL,
    12 SP CBT-ROW-CLAIM LDR,  12 row-kept CBZ,
-      13 SP CBT-ROW LDR,  13 13 CB-ROW-OWNER ADDI,  10 13 STLR,
+      13 SP CBT-ROW LDR,  13 13 CB-ROW-OWNER ADDI,
+      12 1 CMPI,  C-NE caller-leave BCOND,
+      10 13 STLR,
    row-kept LBL,
    0 SP CBT-MARSHAL LDR,
    0 SP CBT-FLOATS ENC-LDRD EMITW
@@ -2826,10 +2835,31 @@ $150 constant CBT-BYTES
    29 SP $50 LDR, 30 SP $58 LDR,
    SP SP CBT-BYTES ADDI,
    RET,
+   \ x14 is the owner read, x13 its cell.
+   caller-row LBL,
+      16 14 4 ADDI,  17 14 0 ADDI,  17 16 13 CASAL,
+      17 14 CMP,  C-NE row-read BCOND,
+      16 2 MOVZ,  16 SP CBT-ROW-CLAIM STR,
+      11 CB-TLS-GET MOVZ,  11 10 11 ADD,  11 11 LDAR,
+      11 unbound CBZ,
+      0 10 CB-TLS-KEY LDR,
+      11 BLR,                                          \ C: x0..x18 are lost
+      9 SP CBT-SLOT LDR,
+      10 DATA-VA VA>N LIT64,
+      12 CB-SELF,
+      0 no-region CBZ,
+      14 0 0 ADDI,
+      region-found B,
+   caller-leave LBL,
+      14 13 LDAR,
+      15 14 4 SUBI,  16 14 0 ADDI,  16 15 13 CASAL,
+      16 14 CMP,  C-NE caller-leave BCOND,
+      row-kept B,
    row-wait LBL,  YIELD,  row-read B,
    S\" hb: callback: no slot has been bound\n" no-table CB-DIE,
    S\" hb: callback: slot held by another thread\n" row-busy CB-DIE,
    S\" hb: callback: slot is not bound\n" unbound CB-DIE,
+   S\" hb: callback: thread has no region of its own\n" no-region CB-DIE,
    S\" hb: callback: context busy on another thread\n" owner-busy CB-DIE,
    S\" hb: callback: context is not inside a foreign call\n" no-frame CB-DIE,
    S\" hb: callback: slot has no dispatch\n" no-xt CB-DIE,

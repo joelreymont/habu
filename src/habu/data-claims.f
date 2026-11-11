@@ -239,6 +239,7 @@ create TAB
    PROT-REG-OFF                       PROT-REG-LEN            CLAIM PROT-REG
    $40C8                              $100                    CLAIM FFI-LEN-BUFFERS
    CB-XDS                             CB-BAND-BYTES           CLAIM CALLBACK-BAND
+   CB-TLS-GET                         2 cells                 CLAIM CALLBACK-TLS
    DECLARED-LOG:ADDR-CELL             1 cells                 CLAIM DECLARED-LOG-ADDR
    APP-ENTRY:XT-CELL                  1 cells                 CLAIM APP-ENTRY-XT-CELL
    AOT-CELLS:T0-CELL                  1 cells                 CLAIM AOT-WINDOW-T0

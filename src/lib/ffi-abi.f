@@ -389,12 +389,13 @@ variable LIB-N
    idx LIB-CHECK
    value idx LIB-NEXT-OFF LIB-FIELD ! ;
 
+public
+\ The handle FFI:DLSYM takes for the process's own symbols.
 : PROCESS-HANDLE ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 0 exit then
    HB-TARGET-MACOS? if -2 exit then
    E-FFI-LIBRARY throw ;
 
-public
 \ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
 : LIB-ROW@ ( n -- ptr u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
 private

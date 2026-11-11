@@ -233,6 +233,15 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its WAIT
    STOPS-FRESH? if s" fresh: nor does a hint to an earlier exposure" type cr then
    CTX-TASK TASK:KILL ;
 
+\ A thread C started is no task's, so a slot on the caller's context finds no
+\ region for it.
+: CALLER-THREAD ( -- )
+   START TASK:CALLER-CONTEXT ENTRY {: fn:n :}
+   s" caller-thread: the slot is bound to the caller's context" type cr
+   fn 1 THREAD-START STARTED
+   10000 >MS TASK:SLEEP
+   s" ffi-callback-child: caller-thread was not refused" SURVIVED-RC die ;
+
 : CASE? ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
 
@@ -246,6 +255,7 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its WAIT
    s" unexposed" CASE? if UNEXPOSED then
    s" defines" CASE? if DEFINES then
    s" body-defines" CASE? if BODY-DEFINES then
+   s" caller-thread" CASE? if CALLER-THREAD then
    s" released" CASE? if HALTED KILLED WOKEN FRESH exit then
    s" ffi-callback-child: unknown case" SURVIVED-RC die ;
 

@@ -47,13 +47,12 @@ variable MAIN-SELF                    \ its pthread_self
 variable OLD-CONTEXT                  \ CTX-TASK's context, kept past its UNEXPOSE
 variable HAMMERS
 
-\ With the fixture's eleven callbacks these five make sixteen entries, a
+\ With the fixture's twelve callbacks these four make sixteen entries, a
 \ table-size edge.
 CALLBACK: PAD-A ( -- ) ;CALLBACK
 CALLBACK: PAD-B ( -- ) ;CALLBACK
 CALLBACK: PAD-C ( -- ) ;CALLBACK
 CALLBACK: PAD-D ( -- ) ;CALLBACK
-CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : SCRIPT$ ( -- ptr u8 n )
    SCRIPT-BUF SCRIPT-U @ ;
@@ -149,6 +148,33 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    [: BIND-SELF ;] catch 0= s" its rows went with it: the same slots bind to the main context" FACT
    UNBIND-SELF ;
 
+: CALLER-RESET ( n -- ) {: want:n :}
+   want CALLER-WANT !
+   0 CALLER-INSIDE !  0 CALLER-MET !  0 CALLER-MISSES !
+   3 0 ?do 0 CALLER-ENTERED i cells + ! loop ;
+
+\ The x86-64 thunk has no caller row.
+: CASE-CALLER ( -- )
+   s" == one slot on the caller's context, two tasks inside at once" SAY
+   CMP-CALLER TASK:CALLER-CONTEXT ENTRY CMP-CALLER-FN !
+   2 CALLER-RESET
+   ['] WORK-CALLER-A WORKER-A TASK:ACTIVATE
+   ['] WORK-CALLER-B WORKER-B TASK:ACTIVATE
+   WORKER-A TASK:JOIN JOINED 1 = WORKER-B TASK:JOIN JOINED 1 = and
+      s" both tasks' rows came back sorted through the one pointer" FACT
+   CALLER-MET @ 2 = s" both tasks were inside its comparator at once" FACT
+   CALLER-MISSES @ 0=
+      s" each comparison ran on the region of the task whose row it sorted" FACT
+   1 CALLER-RESET
+   0 CALLER-UNBIND-CODE !  1 CALLER-UNBIND-ON !
+   OUTER 0 CALLER-SORT
+   CALLER-UNBIND-CODE @ E-TASK-STATE = and CALLER-MISSES @ 0= and
+      s" UNBIND inside its comparator is E-TASK-STATE and qsort completes" FACT
+   CMP-CALLER UNBIND
+   [: CMP-CALLER TASK:SELF-CONTEXT ENTRY drop ;] catch 0=
+      s" UNBIND with no thread inside frees it: the slot binds to the main context" FACT
+   CMP-CALLER UNBIND ;
+
 \ A foreign thread on an exposed task.
 : IDLE-BODY ( -- ) ;
 
@@ -222,6 +248,38 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    CB-POOL 0 ?do
       mask 1 i lshift and 0 <> if 0 i CB-ROW-OWNER SLOT-CELL atomic! then
    loop ;
+
+\ CMP-CALLER's slot: the one idle caller row while it is bound; -1 if none is.
+: CALLER-SLOT ( -- n )
+   CMP-CALLER TASK:CALLER-CONTEXT ENTRY drop
+   -1 CB-POOL 0 ?do
+      i CB-ROW-OWNER SLOT-CELL atomic@ CB-ROW-CALLER = if drop i then
+   loop
+   CMP-CALLER UNBIND ;
+
+: WORK-CALLER-BIND ( -- )
+   CMP-CALLER TASK:CALLER-CONTEXT ENTRY drop 1 TASK:RETURN ;
+
+\ A task binding a slot to the caller's context waits while a mover holds the
+\ row BUSY, and binds once it is handed back.
+: CASE-CALLER-HELD ( -- )
+   s" == a caller bind that meets a row a mover holds" SAY
+   CALLER-SLOT {: k:n :}
+   k 0 >= if
+      0 CB-ROW-BUSY k CB-ROW-OWNER SLOT-CELL atomic-cas 0=
+   else false then
+   s" CMP-CALLER's idle row is held BUSY" FACT
+   k 0 < if exit then
+   ['] WORK-CALLER-BIND WORKER-A TASK:ACTIVATE
+   HELD-MS >MS TASK:SLEEP
+   WORKER-A TASK:DONE? 0= s" the binding task waits there" FACT
+   0 k CB-ROW-OWNER SLOT-CELL atomic!
+   WORKER-A TASK:JOIN JOINED 1 =
+      s" handed back, the row binds and the task does not throw" FACT
+   k CB-ROW-OWNER SLOT-CELL atomic@ CB-ROW-CALLER =
+      s" and the row is a caller row" FACT
+   CMP-CALLER UNBIND ;
+
 
 \ A call that meets a row held BUSY waits in the thunk until the row is handed
 \ back: the start routine's own entry, then, with the thread parked inside
@@ -367,6 +425,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" unexposed" CHILD-CASE
    s" defines" CHILD-CASE
    s" body-defines" CHILD-CASE
+   HB-TARGET-LINUX-X86-64? 0= if s" caller-thread" CHILD-CASE then
    s" released" CHILD-CASE ;
 
 \ Every comparison answers the declared fallback, so bsearch matches its first
@@ -458,7 +517,20 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    WANT-SORTS
    s" == a worker on its own context, ending bound" W
    WANT-SORTS
-   s" ok   its rows went with it: the same slots bind to the main context" W ;
+   s" ok   its rows went with it: the same slots bind to the main context" W
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" == one slot on the caller's context, two tasks inside at once" W
+      s" ok   both tasks' rows came back sorted through the one pointer" W
+      s" ok   both tasks were inside its comparator at once" W
+      s" ok   each comparison ran on the region of the task whose row it sorted" W
+      s" ok   UNBIND inside its comparator is E-TASK-STATE and qsort completes" W
+      s" ok   UNBIND with no thread inside frees it: the slot binds to the main context" W
+      s" == a caller bind that meets a row a mover holds" W
+      s" ok   CMP-CALLER's idle row is held BUSY" W
+      s" ok   the binding task waits there" W
+      s" ok   handed back, the row binds and the task does not throw" W
+      s" ok   and the row is a caller row" W
+   then ;
 
 : WANT-THREADS ( -- )
    s" == a foreign thread on an exposed task" W
@@ -545,6 +617,12 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" == child body-defines: exit 106" W
    s" --" W
    s" hb: callback: the body defined" W
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" == child caller-thread: exit 106" W
+      s" caller-thread: the slot is bound to the caller's context" W
+      s" --" W
+      s" hb: callback: thread has no region of its own" W
+   then
    s" == child released: exit 0" W
    s" halted: the worker is parked inside its comparator" W
    s" halted: the comparator returned, qsort completed and KILL joined the worker" W
@@ -590,6 +668,7 @@ public
    CASE-UNSET
    CASE-OWNER
    CASE-WORKERS
+   HB-TARGET-LINUX-X86-64? 0= if CASE-CALLER CASE-CALLER-HELD then
    CASE-THREAD
    CASE-HELD
    CASE-HANDOFF
