@@ -443,32 +443,21 @@ DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ 23. ED-REPLAY - registering an ENUM from tokens a tool already lexed.
-\     src/habu/verify-source.f scans a file token by token and must register
-\     every family it meets, without `parse-name` and without defining a word.
-\     ED-REPLAY runs ED-RUN's grammar loop, validation, registry writes and
-\     reject packet over the caller's buffer; it checks the generated
-\     constructor bodies and records their effects, with no runtime code or
-\     dictionary entries.
 package enum-replay-test
 public
 
-\ The replay entry under `catch`, so a reject answers its code the way
-\ TEST-EVAL:RC does for the live entry: it runs on copies of both strings, both
-\ dropped after.
 : RP-EV ( ptr u8 n ptr u8 n -- ) ENUM-DECL:ED-REPLAY ;
 : RP-TRY ( ptr u8 n ptr u8 n -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 
 \ Force the replay stream open so the re-entry guard can be reached at all; the
-\ production callers never nest, which is exactly why the guard needs a test.
+\ production callers never nest.
 : RP-FORCE-OPEN ( -- ) s" x" s" y" DECL-REPLAY:RP-CLAIM ;
 : RP-FORCE-CLOSE ( -- ) DECL-REPLAY:RP-RELEASE ;
 
 private
 ;package
 
-\ 23a. A compact ENUM replays without moving the native dictionary; its checked
-\      constructor calls resolve while the neutral pair is open.
 enum-ctor-test:DICT-MARK
 CHECKER-SCOPE-START-NEUTRAL
 s" rpcompact" s" red green blue ;ENUM" enum-replay-test:RP-TRY 0 T=
@@ -477,20 +466,16 @@ s" R1BAD ( -- n ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 CHECKER-SCOPE-FINALIZE
 enum-ctor-test:DICT-SAME
 
-\ 23b. Full mode replays too: a parameterized header and VARIANT blocks
-\      register.
 s" rpfull" s" VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 
 \ 23c. POLICY and DERIVE replay; derived EQ calls rows only the replay recorded, so
-\      it runs in the check tool's replay scope (test/replay-scope.f).
+\      it runs in the check tool's replay scope.
 TOOL-REPLAY:OPEN
 s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 TOOL-REPLAY:CLOSE
 
-\ 23d. A malformed replayed declaration reports through the same renderer as a
-\      live one.
 DECL-DIAG:PROSE
 s" rpbadv" s" VARIANT vv stray ;VARIANT ;ENUM" enum-replay-test:RP-TRY 7107 T=
 s" habu: bad enum declaration 'rpbadv': unexpected token in variant block at 'stray'"
@@ -515,8 +500,7 @@ s" habu: bad enum declaration '': missing name" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ 23g. A REJECTED replay leaves the stream closed, so the next LIVE declaration
-\      reads the input source again rather than a spent buffer. This is the
-\      failure the two-exit close in ED-REPLAY exists to prevent.
+\      reads the input source again rather than a spent buffer.
 DECL-DIAG:PROSE
 s" rpdangle" s" VARIANT" enum-replay-test:RP-TRY 7107 T=
 DECL-DIAG:OFF
@@ -529,7 +513,6 @@ s" rpbusy" s" red ;ENUM" enum-replay-test:RP-TRY 7177 T=
 enum-replay-test:RP-FORCE-CLOSE
 s" ENUM-DECL:ED-RUN rpafterbusy VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
-\ 23i. A packed-tag replay with a payload variant, inside a package, answers 0.
 package rp-copy-test
 public
 s" shape" s" POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM"
@@ -538,9 +521,7 @@ enum-replay-test:RP-TRY 0 T=
 
 \ 24. Control words are reserved in every declaration name position: a family,
 \     variant or field named `if` would compile as the control word wherever
-\     generated code names it. The list lives once, in TYPE-NAME:CONTROL?
-\     (src/core/type-family.f); every family definer reads it through
-\     TYPE-NAME:FAMILY-RESERVED?, field rows through PF-RESERVED?.
+\     generated code names it.
 package enum-control-test
 public
 
@@ -548,7 +529,7 @@ public
 \      (`?do`, `+loop`, `;match`) never reach the reserved-name gate: their
 \      leading byte is not a lowercase letter, so the canonical-tail gate refuses
 \      them first with 7101.
-DECL-DIAG:PROSE                          \ these 23 rejects are expected; keep stderr clean
+DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN if red ;ENUM"        7110 enum-name-test:REJECT-CODE
 s" ENUM-DECL:ED-RUN then red ;ENUM"      7110 enum-name-test:REJECT-CODE
 s" ENUM-DECL:ED-RUN else red ;ENUM"      7110 enum-name-test:REJECT-CODE
@@ -574,7 +555,6 @@ s" ENUM-DECL:ED-RUN +loop red ;ENUM"     7101 enum-name-test:REJECT-CODE
 s" ENUM-DECL:ED-RUN ;match red ;ENUM"    7101 enum-name-test:REJECT-CODE
 DECL-DIAG:OFF
 
-\ 24b. `ENUM` and ED-RUN agree to the byte: same code, same rendered line.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN if red green ;ENUM" TEST-EVAL:RC 7110 T=
 s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? TTRUE
@@ -585,8 +565,6 @@ s" ENUM if red green ;ENUM" TEST-EVAL:RC 7110 T=
 s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ 24c. Variant-name position, both modes: the variant gate
-\      TYPE-NAME:VARIANT-REQUIRE reads the same owner.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN cwvc do loop ;ENUM" TEST-EVAL:RC 7110 T=
 s" habu: bad enum declaration 'cwvc': name is reserved or already taken at 'do'"
@@ -599,24 +577,20 @@ s" habu: bad enum declaration 'cwvf': name is reserved or already taken at 'loop
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ 24d. Field-name position: the field row's gate PF-RESERVED? answers 7125, the
-\      code and wording a reserved generated-operation name such as `make` gets;
-\      test/type-decl-suite.f pins the PRODUCT definer's half.
+\ 24d. Field-name position: the field row's gate answers 7125, the
+\      code and wording a reserved generated-operation name such as `make` gets.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN cwfld VARIANT vv FIELD then n ;VARIANT ;ENUM" TEST-EVAL:RC 7125 T=
 s" habu: bad enum declaration 'cwfld': reserved field name at 'then'"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ 24e. The match is on the WHOLE token. A name that starts with, ends with, or
-\      contains a control word is an ordinary name and still declares — in every
-\      one of the three positions.
 s" ENUM-DECL:ED-RUN iffy dolly matcher constructor elsewhere ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN doing VARIANT looping FIELD ifs n FIELD thence n ;VARIANT ;ENUM" evaluate-closed
 
 ;package
 
-\ 25. A 700-variant declaration (~4.2KB of body) is accepted: the front end buffers
+\ 25. A 700-variant declaration is accepted: the front end buffers
 \     no body. The private package keeps constructor generation out of it.
 package enum-long-test
 
@@ -635,13 +609,13 @@ variable LI
    0 LI !
    BEGIN LI @ u < WHILE  a LI @ + c@ PUT-C  LI @ 1 + LI !  REPEAT ;
 : PUT-DIGIT ( n -- ) 48 + PUT-C ;
-: PUT-VARIANT ( n -- ) {: i:n :}       \ one `vNNN ` name, 5 bytes, tag = i
+: PUT-VARIANT ( n -- ) {: i:n :}
    118 PUT-C
    i 100 / 10 mod PUT-DIGIT
    i 10 / 10 mod PUT-DIGIT
    i 10 mod PUT-DIGIT
    32 PUT-C ;
-: BUILD ( -- )                         \ the whole declaration, as one line of source
+: BUILD ( -- )
    0 SRC-U !
    s" ENUM-DECL:ED-RUN longenum " PUT$
    0 LI !
@@ -654,41 +628,31 @@ SRC$ TEST-EVAL:RC 0 T=
 ;package
 
 \ A variant payload may name a linear family at any depth, and the enum then owns
-\ it (TFAM-CONCRETE-LINEAR?); test/type-linear-suite.f checks how such values are used.
+\ it.
 package EDLIN
 public
-DEFLINEAR EDLIN:tok                                   \ the linear owner these fixtures nest
+DEFLINEAR EDLIN:tok
 ;package
 
-\ depth 1: a payload naming the linear con itself.
 s" ENUM edlone VARIANT hold FIELD t EDLIN:tok ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
-\ depth 2: a payload naming a linear family, the frozen load-result shape with a
-\ stand-in for gpt2-model.
 s" STRUCTURE edlmodel FIELD res EDLIN:tok FIELD nl n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" ENUM edl-load-result VARIANT loaded FIELD model edlmodel ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
-\ depth 3: a linear value two families down.
 s" STRUCTURE edl-via-load FIELD result edl-load-result ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" ENUM edlnest VARIANT loaded FIELD result edl-via-load ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
-\ a nested chain with no linear value anywhere declares too.
 s" STRUCTURE edlplain FIELD v n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" ENUM edlctl VARIANT hold FIELD m edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
-\ wrong role: the same word in the FIELD NAME position is a name, never a type.
 s" ENUM edlrole VARIANT hold FIELD edlmodel n ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
-\ reordering: naming a family before it is declared is still an unknown type,
-\ so acceptance comes from resolution and not from the spelling alone.
 DECL-DIAG:PROSE
 s" ENUM edlfwd VARIANT hold FIELD m edllater ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlfwd': unknown payload type at 'edllater'"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ A name that resolves says why it cannot be a payload type: a parametric family
-\ named bare. A name that resolves to nothing reports unknown.
 s" ENUM edlgen<a> VARIANT hold FIELD m a ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" ENUM edlgenuse VARIANT hold FIELD m edlgen ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
@@ -699,13 +663,8 @@ DECL-DIAG:OFF
 \ A variant payload may not name a pointer to a linear value: a pointer is a
 \ non-owning boundary, so the linearity walk stops at the pointer node and the
 \ enum would read non-linear, copying and dropping freely with a linear
-\ resource behind the address. structure-decl.f applies the same rule to a
-\ field through the same node walk, TFCL-NODE?: the con and family spellings
-\ are refused alike at every depth, and `ptr ptr edlmodel` rejects on the inner
-\ recursion, anchoring the diagnostic on the family that owns the resource. A
-\ pointer to something that owns nothing stays legal.
+\ resource behind the address.
 
-\ the two spellings side by side. Naming the value owns it; pointing at it cannot.
 s" ENUM edlowns VARIANT hold FIELD m edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
 DECL-DIAG:PROSE
@@ -713,56 +672,48 @@ s" ENUM edlptr VARIANT hold FIELD p ptr edlmodel ;VARIANT VARIANT none FIELD c n
 s" habu: bad enum declaration 'edlptr': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? TTRUE
 
-\ the con spelling launders the same way, so the same rule refuses it, and the
-\ diagnostic names the con it found rather than some enclosing family.
 DECL-DIAG:PROSE
 s" ENUM edlptrcon VARIANT hold FIELD p ptr EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrcon': payload type is a pointer to a linear value and cannot own it at 'EDLIN:tok'"
 DECL-DIAG:HAS? TTRUE
 
-\ depth: a second pointer does not launder past the rule. The inner recursion
+\ The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
 s" ENUM edlptr2 VARIANT hold FIELD p ptr ptr edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptr2': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? TTRUE
 
-\ reaching the resource through a nested family or through a sum is still reaching
-\ it, so a pointer to either is refused for the same reason.
 DECL-DIAG:PROSE
 s" ENUM edlptrsum VARIANT hold FIELD p ptr edl-load-result ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrsum': payload type is a pointer to a linear value and cannot own it at 'edl-load-result'"
 DECL-DIAG:HAS? TTRUE
 
-\ every variant is checked, not just the first, and the token names the offending
-\ payload rather than the declaration's first payload.
 DECL-DIAG:PROSE
 s" ENUM edlptrlate VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ptr edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrlate': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? TTRUE
 
-\ the controls. A pointer to a family that owns nothing declares, so the
+\ A pointer to a family that owns nothing declares, so the
 \ rejects above answer the POINTEE's linearity and not the word `ptr`.
 s" ENUM edlptrok VARIANT hold FIELD p ptr edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM edlptrok2 VARIANT hold FIELD p ptr ptr edlplain ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM edlptrn VARIANT hold FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
-\ wrong role: the same words in the FIELD NAME position are names, never types.
-\ Neither resolves and neither is refused.
 s" ENUM edlptrrole VARIANT hold FIELD ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM edlptrrole2 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
-\ hostile comments. A variant block has no comment syntax: `(` and `\` are
+\ A variant block has no comment syntax: `(` and `\` are
 \ ordinary tokens, so the declaration is malformed and rejects 7107, not this
 \ rule's 7109.
 DECL-DIAG:PROSE
 s" ENUM edlptrpar VARIANT hold FIELD v n ( FIELD p ptr edlmodel ) ;VARIANT ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'edlptrpar': unexpected token in variant block at '('"
-DECL-DIAG:HAS? TTRUE                                  \ the paren itself was the token
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM edlptrbsl VARIANT hold FIELD v n \ FIELD p ptr edlmodel" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'edlptrbsl': unexpected token in variant block at '\'"
-DECL-DIAG:HAS? TTRUE                                  \ and so was the backslash
+DECL-DIAG:HAS? TTRUE
 \ and trailing text after the offending payload cannot suppress the reject,
 \ because the payload is resolved before anything following it is read.
 DECL-DIAG:PROSE
@@ -783,6 +734,5 @@ s" habu: bad enum declaration 'edslin': payload type is a pointer to a linear va
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
-\ A failure prints F<index>; T-REPORT exits 1.
 T-REPORT
 
