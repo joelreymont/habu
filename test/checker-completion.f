@@ -1,5 +1,5 @@
 \ checker-completion.f - the spellings that bind at a cursor, as the checker
-\ selects them (src/core/checker.f CHECKER-CURSOR!, CHECKER-RESOLVE:EACH-VISIBLE).
+\ selects them.
 \   bin/hb --load test/checker-completion.f
 
 require src/lib/test.f
@@ -32,10 +32,8 @@ package NAVL
 
 private
 
-\ The visitor counts every spelling it is given and keeps the ones that start
-\ with the case's filter, with their location. A filter names a handful of
-\ fixture words, so the table is the fixture's size; a spelling past it is
-\ counted in KEPT-OVER, which every case asserts is 0.
+\ A filter names a handful of fixture words, so the table is the fixture's
+\ size; a spelling past it is counted in KEPT-OVER.
 32 constant KEPT-CAP
 48 constant KEPT-W
 create KEPT-NAMES KEPT-CAP KEPT-W * allot
@@ -52,7 +50,6 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    FILTER-U !  FILTER-A !
    0 KEPT-N !  0 KEPT-OVER !  0 CALLS ! ;
 
-\ A U starts with the filter, folded.
 : FILTERED? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    u FILTER-U @ < IF false EXIT THEN
@@ -74,7 +71,6 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    {: i:n :}
    KEPT-NAMES i KEPT-W * +  KEPT-LENS i cells + @ ;
 
-\ The first kept spelling equal to A U, byte for byte, or -1.
 : KEPT-AT ( ptr u8 n -- n )
    {: a:ptr u:n :}
    KEPT-N @ 0 ?DO
@@ -82,15 +78,13 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    LOOP
    -1 ;
 
-\ How many kept spellings equal A U folded.
 : KEPT-CI ( ptr u8 n -- n )
    {: a:ptr u:n :}
    0  KEPT-N @ 0 ?DO
       a u i KEPT$ CORE-STR=CI IF 1 + THEN
    LOOP ;
 
-\ The first kept spelling equal to A U folded, or -1: for a word whose case
-\ the store does not keep, so no case pins one.
+\ For a word whose case the store does not keep, so no case pins one.
 : KEPT-CI-AT ( ptr u8 n -- n )
    {: a:ptr u:n :}
    KEPT-N @ 0 ?DO
@@ -98,24 +92,20 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    LOOP
    -1 ;
 
-\ A U was kept once in any case, and spelled exactly so.
 : ONCE ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u KEPT-CI 1 =  a u KEPT-AT 0 >=  and ;
 
-\ Every case kept what its filter named.
 : KEPT-ALL ( -- )
    s" the filter's spellings fit the table" T-LABEL
    KEPT-OVER @ 0 T= ;
 
-\ Kept spelling I carries the location V S E.
 : KEPT-LOC ( n n n n -- )
    {: i:n v:n s:n e:n :}
    KEPT-VISITS i cells + @ v T=
    KEPT-STARTS i cells + @ s T=
    KEPT-ENDS i cells + @ e T= ;
 
-\ NAME was offered once in any case, spelled exactly so, at V S E.
 : PLACED ( ptr u8 n n n n -- )
    {: a:ptr u:n v:n s:n e:n :}
    a u T-LABEL
@@ -141,13 +131,11 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    i 0 < IF EXIT THEN
    i 0 0 0 KEPT-LOC ;
 
-\ NAME was not offered, in any case.
 : ABSENT ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u T-LABEL
    a u KEPT-CI 0 T= ;
 
-\ The local NAME was offered, exactly so spelled, with no location.
 : LOCAL ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u T-LABEL
@@ -156,26 +144,22 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    i 0 < IF EXIT THEN
    i 0 0 0 KEPT-LOC ;
 
-\ The verifier arms a cursor in the next body it checks (VERIFY-CURSOR-OFF) and
-\ asks which spellings bind at a top-level one (VERIFY-EACH-VISIBLE-OFF). The
-\ declarations replay as the verifier reads them (VERIFY:SOURCE-BUF-IN-SCOPE),
-\ so each body is checked on the verifier's own path.
+\ The declarations replay as the verifier reads them, so each body is checked
+\ on the verifier's own path.
 PTR-VARIABLE TEXT-A   variable TEXT-U
 : REPLAY ( -- ) TEXT-A @ TEXT-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
-\ Replay TEXT unarmed; the replay's throw code, 0 when it ran through.
 : PLAIN ( ptr u8 n -- n )
    TEXT-U !  TEXT-A !
    [: REPLAY ;] catch ;
 
-\ Replay TEXT with the cursor armed at checked-text byte AT and VISIT the
-\ visitor; the replay's throw code. Nothing disarms here: an arm the check
-\ failed to release makes the next case's arm throw.
+\ Nothing disarms here: an arm the check failed to release makes the next
+\ case's arm throw.
 : ARMED ( ptr u8 n n [ ptr u8 n n n n -- ] -- n )
    CURSOR!  PLAIN ;
 
 \ Replay TEXT with NAME's declaration armed at visit V, bytes S to E, as the
-\ verifier arms a registrar call in a file it visits; the replay's throw code.
+\ verifier arms a registrar call in a file it visits.
 : NAMED-AT ( ptr u8 n ptr u8 n n n n -- n )
    {: na:ptr nu:n a:ptr u:n v:n s:n e:n :}
    na nu v s e ARM
@@ -190,7 +174,6 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 : DECLARED ( ptr u8 n ptr u8 n n [ ptr u8 n n n n -- ] -- n )
    CURSOR!  NAMED ;
 
-\ The offset of the first NEEDLE in TEXT, or -1.
 : FIND$ ( ptr u8 n ptr u8 n -- n )
    {: a:ptr u:n b:ptr v:n :}
    u v - 1 + 0 ?DO
@@ -200,9 +183,8 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 
 \ The checked-text byte K bytes into the first NEEDLE of the one-line source
 \ TEXT. The checker reads the definition's tokens from its name on, each
-\ followed by one space (src/habu/verify-source.f BODY-APPEND), so in a
-\ single-spaced source a cursor sits at its source byte less the end of the
-\ `: ` before the name.
+\ followed by one space, so in a single-spaced source a cursor sits at its
+\ source byte less the end of the `: ` before the name.
 : AT ( ptr u8 n ptr u8 n n -- n )
    {: a:ptr u:n b:ptr v:n k:n :}
    a u b v FIND$ k +  a u s" : " FIND$ 2 + - ;
@@ -238,7 +220,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 \   a visitor's throw or a use handler's throw, so the next body fires at a
 \   stale cursor or the next arm is refused;
 \ - a nested arm or a nested enumeration changes the outer one;
-\ - a local is offered inside a quotation, or for a tick or `is` target;
+\ - a local is missed inside a quotation, or offered for a tick or `is` target;
 \ - two locals that differ only in case merge, or a spelling a local holds is
 \   offered as the word that local hides;
 \ - a refused spelling (one two used publics export) or a tombstone is offered;
@@ -306,7 +288,6 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    s" CMPB" VISIT AT-START AT-END PLACED
    s" CMPC1" VISIT AT-START AT-END PLACED ;
 
-\ The name and the signature are not body tokens.
 : CASE-NOT-BODY ( -- )
    s" cmp" KEPT-RESET
    s" : CMPC3 ( -- n ) CMPA ;" 2dup s" CMPC3" 2 AT  [: KEEP ;] ARMED
@@ -469,7 +450,6 @@ variable USE-N   variable USE-SUM
    s" the armed body offered its candidates" T-LABEL
    s" CMPA" ONCE TTRUE ;
 
-\ The same for a refused body: the same refusal, uses and growth.
 : CASE-OBSERVER-REFUSED ( -- )
    s" cmp" KEPT-RESET
    s" : CMPE2 ( -- n ) CMPA CMPB ;" OBSERVED {: rc0:n n0:n sum0:n grew0:n :}
@@ -506,7 +486,6 @@ variable NEST-ARM   variable NEST-ENUM
 : NEST-ARM-TRY ( -- ) 5 [: KEEP ;] CURSOR! ;
 : NEST-ENUM-TRY ( -- ) s" CM" CHECKER-OWNER-ABI:VISIBLE-TOP [: KEEP ;] EACH-VISIBLE ;
 
-\ A visitor that tries to arm and to enumerate before it keeps its spelling.
 : NESTING ( ptr u8 n n n n -- )
    [: NEST-ARM-TRY ;] catch NEST-ARM !
    [: NEST-ENUM-TRY ;] catch NEST-ENUM !
@@ -524,7 +503,6 @@ variable NEST-ARM   variable NEST-ENUM
    KEPT-ALL
    s" CMPA" VISIT AT-START AT-END PLACED ;
 
-\ A visitor that keeps its spelling and then throws.
 : THROWING ( ptr u8 n n n n -- )
    KEEP  1 0 / drop ;
 
@@ -557,9 +535,6 @@ variable NEST-ARM   variable NEST-ENUM
 
 : USES-THROW ( -- ) [: USE-THROWS ;] [: REPLAY ;] WITH-USES ;
 
-\ The use handler's throw leaves the check after the arm is released: its
-\ candidates are published, and the next arm, disarm and body check find no
-\ arm left owned.
 : CASE-USE-THROW ( -- )
    s" cmp" KEPT-RESET
    s" : CMPH ( -- n ) CMPA ;" 2dup s" CMPA" 2 AT  [: KEEP ;] CURSOR!
@@ -579,10 +554,10 @@ variable NEST-ARM   variable NEST-ENUM
    CALLS @ 0 T= ;
 
 \ The same throw from a does> clause, which the verifier checks after the
-\ definer's body (CHECKER-SOURCE-DOES!). The body's CMPA use, at byte 17 of
-\ the replayed text, arms the cursor, so the clause takes the arm; its CMPB use,
-\ at byte 50, throws. The other bound uses do not control this test. The
-\ clause's checked text is `@ CMPB + `, so its byte 4 is in CMPB after `CM`.
+\ definer's body. The body's CMPA use, at byte 17 of the replayed text, arms
+\ the cursor, so the clause takes the arm; its CMPB use, at byte 50, throws.
+\ The other bound uses do not control this test. The clause's checked text is
+\ `@ CMPB + `, so its byte 4 is in CMPB after `CM`.
 variable DOES-USES
 : DOES-USE ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
@@ -697,7 +672,7 @@ variable DOES-USES
 
 \ A required file's declaration keeps the spelling it was armed with after the
 \ loader unmaps that file's bytes, when its scan ends: the cursor sits in the
-\ body of the subject that required it (test/checker-completion-dep.f).
+\ body of the subject that required it.
 : DEP-SUBJECT$ ( -- ptr u8 n )
    s\" require test/checker-completion-dep.f\n: CMPDU ( -- n ) CmpDep ;\n" ;
 
@@ -915,7 +890,7 @@ public
 
 \ 14. Inside the part, which the engine holds open where this runs, its words
 \ are the open package's: bare, and its public behind its own name, which
-\ qualifies a global too, as the engine's find binds it (habu1.f FIND-DONE).
+\ qualifies a global too, as the engine's find binds it.
 : CASE-PART-OPEN ( -- )
    s" qp" KEPT-RESET
    s" : CMQS1 ( -- n ) QPV QPW + ;" 2dup s" QPW +" 2 AT  [: KEEP ;] ARMED
