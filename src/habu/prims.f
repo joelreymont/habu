@@ -393,14 +393,6 @@ EPRIM: c2-records-stow
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EC2-RECORDS!
-EPRIM: unit-compile-run
-   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
-   PE-Q ;PE-Q PE-IN PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!                       \ owns the protected unit hook for one source invocation
-\ The unit loader (src/core/include.f SOURCE-UNIT:GUARDED) runs one source under a token guard.
-EPPRIM: SOURCE-UNIT unit-compile-run
-   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
-   PE-Q ;PE-Q PE-IN PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: source-exec-run
    PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN
    PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QOUT PE-F PE-QOUT ;PE-Q PE-IN

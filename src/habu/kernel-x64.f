@@ -2656,29 +2656,6 @@ public
 \ the first a guarded stack. Rows still tied to ARM's interpreter refuse until
 \ supplied in Habu: the source-exec observer attaches to that interpreter's
 \ evaluator and token dispatch.
-\ The source runs under the kernel catch frame while its guard owns the unit
-\ hook. A throw resumes here, so both return paths clear the hook before the
-\ caller sees the status. An occupied hook or a guard outside live code
-\ refuses with 70 before running the source.
-: UNIT-COMPILE-RUN, ( -- )
-   X64CODE:LBL X64CODE:LBL {: bad:label done:label :}
-   RAX POP,  RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
-   RAX RSP 0 MOV-STORE,
-   RAX POP,
-   RCX DATA-REG UNIT-COMPILE-CELL MOV-LOAD,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-NE bad JCC,
-   RAX DBASE-REG ASM-SINK ENC-CMP-RR  C-B bad JCC,
-   RAX ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-CMP-RR  C-AE bad JCC,
-   RAX DATA-REG UNIT-COMPILE-CELL MOV-STORE,
-   RAX RSP 0 MOV-LOAD,  RAX PUSH,  CAUGHT,
-   RCX ZERO-REG,  RCX DATA-REG UNIT-COMPILE-CELL MOV-STORE,
-   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
-   RAX PUSH,  done JMP,
-   bad X64CODE:LBL,
-   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
-   RAX 70 IMM32,  RAX PUSH,
-   done X64CODE:LBL, ;
-
 : CONTROL, ( -- )
    FLOORREC-PENDING @ if
       false FLOORREC-PENDING !
@@ -2714,7 +2691,6 @@ public
    s" c2-records-stow" [: C2-RECORDS-STOW, ;] PRIM
    s" run-in-stack" [: RUN-IN-STACK, ;] PRIM
    s" die" [: DIE, ;] PRIM
-   s" unit-compile-run" [: UNIT-COMPILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" source-file-run" [: SOURCE-FILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" source-exec-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" source-exec-live?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID

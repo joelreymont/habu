@@ -23,14 +23,14 @@ DATA-START $10000 + constant HEAP-OFF
 \ The guard images seal the friend latch and guard a heap span that meets no
 \ band, which must pass: hb-x64-kernel-syscalls opens the latch first and exits
 \ 0, -negative expects the wrong balance and exits 21, -armed keeps the latch
-\ sealed and exits 83 (ENGINE-ERROR:SEAL-VIOLATION) on UNIT-COMPILE-CELL's span,
-\ as a raw store to that cell does on ARM64 (test/protection-span.f).
+\ sealed and exits 83 (ENGINE-ERROR:SEAL-VIOLATION) on SOURCE-EXEC-CTX-CELL's
+\ span, as a raw store to that cell does on ARM64 (test/protection-span.f).
 : BUILD ( bool bool ptr u8 n -- ) {: negative:bool armed:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    SEAL,
    HEAP-OFF GUARD-CELL,
    armed 0= if 0 FRIEND-LATCH-CELL X64HARNESS:CELL!, then
-   UNIT-COMPILE-CELL GUARD-CELL,
+   SOURCE-EXEC-CTX-CELL GUARD-CELL,
    X64HARNESS:EXPECT-BALANCED,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
@@ -226,7 +226,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    PAGE-BYTES N, s" map-anon" ROW  0 WANT  KEPT KEEP,
    KEPT RECALL, PAGE-BYTES N, s" munmap" ROW  0 WANT
    0 N, s" map-anon" ROW  -1 WANT  0 WANT
-   UNIT-COMPILE-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH N, -1 N, 0 N,
+   SOURCE-EXEC-CTX-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH N, -1 N, 0 N,
    s" mmap" ROW  KEPT KEEP,
    KEPT RECALL, PAGE-BYTES N, s" munmap" ROW  0 WANT
    KEPT RECALL, PAGE-BYTES N, PROT-RW N, MAP-FRESH MAP-FIXED or N, -1 N, 0 N,
@@ -244,12 +244,12 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 
 : MMAP-ARMED-CASE ( -- )
    SEAL,
-   UNIT-COMPILE-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH MAP-FIXED or N, -1 N,
+   SOURCE-EXEC-CTX-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH MAP-FIXED or N, -1 N,
    0 N, s" mmap" ROW ;
 
 : IOCTL-ARMED-CASE ( -- )
    SEAL,
-   0 N, IOR-X1-8 N, UNIT-COMPILE-CELL DATA-AT, s" ioctl" ROW ;
+   0 N, IOR-X1-8 N, SOURCE-EXEC-CTX-CELL DATA-AT, s" ioctl" ROW ;
 
 : IOCTL-CLOSED-CASE ( -- )
    0 N, FIOCLEX N, BUF AT, s" ioctl" ROW ;

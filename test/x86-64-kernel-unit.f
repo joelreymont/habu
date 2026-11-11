@@ -1,7 +1,6 @@
-\ x86-64-kernel-unit.f - the unit hook and prepared-code publication boundaries
+\ x86-64-kernel-unit.f - prepared-code publication boundaries
 \ in bootable x86-64 ELF images. Run with an ARM host engine; the printed
 \ paths are repeatable peer artifacts, whose expected exit statuses are:
-\ hb-x64-unit-compile 0, hb-x64-unit-compile-refuse 0,
 \ hb-x64-unit-publish 0,
 \ hb-x64-unit-publish-count 83, hb-x64-unit-publish-wid 83.
 
@@ -13,8 +12,6 @@ using X64CODE
 using X64RT
 
 DATA-START $20000 + constant RECORD-BUF
-DATA-START $20100 + constant SEEN-HOOK
-DATA-START $20108 + constant SOURCE-RAN
 $54494E55 constant UNIT-NAME          \ "UNIT", little endian
 42 constant ANSWER
 6 constant CODE-LEN                  \ mov eax, imm32; ret
@@ -23,64 +20,9 @@ $54494E55 constant UNIT-NAME          \ "UNIT", little endian
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
-: NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
 : ROW, ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
 : PUSH, ( n -- ) X64HARNESS:PUSH, ;
 : EXPECT, ( n -- ) X64HARNESS:EXPECT-POP, ;
-
-: EMPTY ( -- label ) [: ;] X64HARNESS:ROUTINE, ;
-
-\ The source sees the armed guard and leaves one observable side effect.
-: SOURCE ( -- label )
-   [: RAX DATA-REG UNIT-COMPILE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-      RAX DATA-REG SEEN-HOOK MEM-OFF ASM-SINK ENC-MOV-MR
-      RAX 1 >IMM32 ASM-SINK ENC-MOV-RI32
-      RAX DATA-REG SOURCE-RAN MEM-OFF ASM-SINK ENC-MOV-MR ;]
-   X64HARNESS:ROUTINE, ;
-
-: THROW-SOURCE ( -- label )
-   [: 29 PUSH,  s" throw" ROW, ;] X64HARNESS:ROUTINE, ;
-
-: PUBLISH-GUARD, ( label -- ) {: guard:label :}
-   X64HARNESS:REST,
-   guard 0 X64HARNESS:PUSH-LABEL,
-   DICT-SIZE X64HARNESS:PUSH-REGION,
-   1 PUSH,  s" code-publish" ROW, ;
-
-: PAIR, ( label -- ) {: source:label :}
-   DICT-SIZE X64HARNESS:PUSH-REGION,
-   source 0 X64HARNESS:PUSH-LABEL,
-   s" unit-compile-run" ROW, ;
-
-: COMPILE-CASE, ( -- )
-   EMPTY PUBLISH-GUARD,
-   SOURCE {: source:label :}
-   THROW-SOURCE {: throwing:label :}
-   source PAIR,  0 EXPECT,
-   0 UNIT-COMPILE-CELL X64HARNESS:EXPECT-CELL,
-   1 SOURCE-RAN X64HARNESS:EXPECT-CELL,
-   RAX DATA-REG SEEN-HOOK MEM-OFF ASM-SINK ENC-MOV-RM
-   RCX DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
-   RAX RCX ASM-SINK ENC-SUB-RR
-   0 G-PUSH  0 EXPECT,
-   throwing PAIR,  29 EXPECT,
-   0 UNIT-COMPILE-CELL X64HARNESS:EXPECT-CELL,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED, ;
-
-: COMPILE-REFUSE, ( -- )
-   EMPTY PUBLISH-GUARD,
-   SOURCE {: source:label :}
-   DICT-SIZE UNIT-COMPILE-CELL X64HARNESS:REGION-ADDR!,
-   source PAIR,  70 EXPECT,
-   0 SOURCE-RAN X64HARNESS:EXPECT-CELL,
-   0 UNIT-COMPILE-CELL X64HARNESS:CELL!,
-   0 PUSH,  source 0 X64HARNESS:PUSH-LABEL,
-   s" unit-compile-run" ROW,  70 EXPECT,
-   0 UNIT-COMPILE-CELL X64HARNESS:EXPECT-CELL,
-   0 SOURCE-RAN X64HARNESS:EXPECT-CELL,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED, ;
 
 \ A prepared record points at the free code slot. The producer has relocated
 \ the code cell and inline name before handing it to the primitive.
@@ -139,8 +81,6 @@ public
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT
-   [: COMPILE-CASE, ;] s" hb-x64-unit-compile" TMP-PATH IMAGE
-   [: COMPILE-REFUSE, ;] s" hb-x64-unit-compile-refuse" TMP-PATH IMAGE
    [: PUBLISH-CASE, ;] s" hb-x64-unit-publish" TMP-PATH IMAGE
    [: COUNT-CASE, ;] s" hb-x64-unit-publish-count" TMP-PATH IMAGE
    [: WID-CASE, ;] s" hb-x64-unit-publish-wid" TMP-PATH IMAGE

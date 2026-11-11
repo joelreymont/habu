@@ -55,7 +55,7 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 
 : BAND!, ( n -- ) {: off:n :}
    off AT,  1 G-POP
-   RAX DATA-REG UNIT-COMPILE-CELL MEM-OFF ASM-SINK ENC-LEA
+   RAX DATA-REG SOURCE-EXEC-CTX-CELL MEM-OFF ASM-SINK ENC-LEA
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 \ Argument cell i holds i + 1, and every extent is a cell.

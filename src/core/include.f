@@ -1434,12 +1434,6 @@ variable GEN
 : CURRENT ( -- [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] ) LOAD-XT @ ;
 : RESET ( -- ) [: ORDINARY ;] LOAD-XT ! ;
 
-\ Run one source quotation with the engine's unit hook armed: the guard sees
-\ every token the interpreter dispatches and may refuse it or, at the parsed
-\ package name, skip the body. The engine refuses a busy hook or a quotation
-\ outside live code with 70 before the source runs.
-: GUARDED ( [ ptr u8 n n n -- n ] [ -- ] -- n ) unit-compile-run ;
-
 ;package
 
 SOURCE-UNIT:RESET

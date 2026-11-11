@@ -91,8 +91,8 @@ create ERR CAP allot
    s" require src/lib/task.f TASK:#USER USER-BAND:END over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
    s" require src/lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
-\ The replay scope, unit dispatch and both enclosing package bands sit back to
-\ back: a band's last cell and a straddle reject; the cells either side accept.
+\ Each band's first or last cell, or a store straddling its edge, rejects; a
+\ cell outside every band accepts.
 : TEST-BOUNDARY ( -- )
    s" 0 data-base $800 + c!" REJECTS
    s" 0 data-base $7FF + !" REJECTS
@@ -108,8 +108,8 @@ create ERR CAP allot
    s" 0 data-base REPLAY-SCOPE:LATCH + c!" REJECTS
    s" 0 data-base REPLAY-SCOPE:END 1 cells - + !" REJECTS
    s" 0 data-base REPLAY-SCOPE:END 1- + !" REJECTS
-   s" 0 data-base UNIT-COMPILE-CELL + !" REJECTS
-   s" 0 data-base UNIT-COMPILE-CELL 1 cells + 1- + !" REJECTS
+   s" 0 data-base SOURCE-EXEC-CTX-CELL + !" REJECTS
+   s" 0 data-base SOURCE-EXEC-CTX-CELL 1 cells + 1- + !" REJECTS
    s" 0 data-base ENCLOSING:END 1 cells - + !" REJECTS
    s" 0 data-base ENCLOSING:END 1- + !" REJECTS
    s" 0 data-base REPLAY-SCOPE:ENCLOSING ENCLOSING:END ENCLOSING:PUB - + 1 cells - + !" REJECTS

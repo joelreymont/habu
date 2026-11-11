@@ -1929,17 +1929,12 @@ USE-WIDS USE-MAX cells + constant END
 $4310 constant ENCLOSING
 ;package
 
-\ The scoped package evaluator owns one transient dispatch xt. A source load
-\ disarms it on return or throw. It takes the cell after REPLAY-SCOPE;
-\ DATA-CLAIMS refuses a replay scope that grows into it.
-$42E8 constant UNIT-COMPILE-CELL
-
 \ While a part is open, the package it is a part of: that package's public
 \ wid, private wid, parent wid and row, as PKG-PUB-CELL..PKG-REC-CELL held
 \ them before the part opened; all four are 0 when no part is open. They are
 \ a guarded band (DATA-BANDS): only the engine's own code and package-scope!
-\ write them, so the Habu loop moves them through package-scope!. It takes
-\ the cells after UNIT-COMPILE-CELL; src/core/checker.f mirrors all four
+\ write them, so the Habu loop moves them through package-scope!. $42E8, the
+\ cell before them, is free; src/core/checker.f mirrors all four
 \ (CK-ENCLOSING-*-OFF).
 package ENCLOSING
 public
@@ -1978,7 +1973,6 @@ create TAB
    SUSP-HOOK-OFF ,                SUSP-HOOK-LEN ,
    NCOMP-DISPATCH:TIER-CELL ,     1 cells ,
    NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
-   UNIT-COMPILE-CELL ,            1 cells ,
    SOURCE-EXEC-CTX-CELL ,         1 cells ,
    REPLAY-SCOPE:LATCH ,           REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,
    ENCLOSING:PUB ,                ENCLOSING:END ENCLOSING:PUB - ,

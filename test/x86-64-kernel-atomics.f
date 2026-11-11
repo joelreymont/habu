@@ -59,13 +59,13 @@ using X64RT
    SEAL,  ROWS,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ Each armed row aims at the band cell UNIT-COMPILE-CELL, so its guard exits 83,
-\ ENGINE-ERROR:SEAL-VIOLATION.
+\ Each armed row aims at the band cell SOURCE-EXEC-CTX-CELL, so its guard exits
+\ 83, ENGINE-ERROR:SEAL-VIOLATION.
 : BUILD-ARMED ( ptr u8 n n ptr u8 n -- ) {: row:ptr rowu:n args:n path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    SEAL,
    args 0 ?do 0 X64HARNESS:PUSH, loop
-   UNIT-COMPILE-CELL PUSH-CELL,
+   SOURCE-EXEC-CTX-CELL PUSH-CELL,
    row rowu X64HARNESS:CALL-ROW,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
