@@ -1231,10 +1231,6 @@ SUITE native-gate-dictionary
    test/gate-dictionary.f
 ;SUITE
 
-SUITE proc-maps
-   test/proc-maps.f
-;SUITE
-
 SUITE type-layout-lower-pending
    test/type-layout-lower-pending.f
 ;SUITE
