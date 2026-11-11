@@ -28090,8 +28090,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ refuses one, a malformed qualified name, or a token naming the storage runtime
 \ outside a generated word, as the load refuses it (ARENA-CALL-DENIED?),
 \ rendered as a span record at the token (E-UNDEFINED-TOP-LEVEL,
-\ E-BAD-QUALIFIED-TOP-LEVEL, E-ARENA-CALL) and counted under --all-errors, else
-\ thrown as a definition's refusal is. A refusal the walk
+\ E-BAD-QUALIFIED-TOP-LEVEL, E-ARENA-CALL-TOP-LEVEL) and counted under
+\ --all-errors, else thrown as a definition's refusal is. A refusal the walk
 \ answers, a using shadow or ambiguity among them, is raised as a body's is:
 \ rendered at the token and thrown (CHECKER-RESOLVE:RAISE). A token the walk
 \ does not bind is the word the engine's top-level find selects

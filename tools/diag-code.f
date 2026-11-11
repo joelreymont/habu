@@ -72,6 +72,8 @@ private
       construct shape source-span s" close_primitive_row" s" " EXIT THEN
    c u s" E-UNDEFINED-TOP-LEVEL" STR= IF
       construct shape source-span s" unknown_rejection" s" " EXIT THEN
+   c u s" E-ARENA-CALL-TOP-LEVEL" STR= IF
+      construct shape source-span s" use_arena_words" s" " EXIT THEN
    c u s" E-BAD-QUALIFIED-TOP-LEVEL" STR= IF
       construct shape source-span s" fix_qualified_name" s" " EXIT THEN
    c u s" W-CHECK-DEFERRED" STR= IF

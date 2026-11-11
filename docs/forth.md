@@ -2232,8 +2232,9 @@ documentation-only edits need no rebuild.
   element other than `u8` and an unknown type, defining nothing. Checked code
   calls or ticks `DYNAMIC-STORAGE:RECORD-NEW` and
   `DYNAMIC-STORAGE:RECORD-RELEASE` only inside the generated words, at top
-  level too (`E-ARENA-CALL`), so a record's size always comes from the declared
-  type; a record of a STRUCTURE type enters no other generic-pointer word.
+  level too (`E-ARENA-CALL`, there `E-ARENA-CALL-TOP-LEVEL`), so a record's
+  size always comes from the declared type; a record of a STRUCTURE type enters
+  no other generic-pointer word.
 - **Runtime-sized buffers use OS mappings.** `create … allot` consumes
   dictionary DATA; `src/lib/memory.f` allocates contiguous or separate 64K
   buffers and spans, bounded by cell-size overflow and OS allocation failure.
@@ -2540,9 +2541,10 @@ sections above.
 - **Only HEAP's generated words reach the storage runtime.** A call or tick of
   `DYNAMIC-STORAGE:RECORD-NEW` or `RECORD-RELEASE`, directly or through a
   re-export, outside a `HEAP`'s NAME-NEW and NAME-RELEASE, in a body, a
-  quotation or at top level, is `E-ARENA-CALL` (`arena call: only HEAP's
-  generated NAME-NEW and NAME-RELEASE call the storage runtime`). Exporting the
-  two words is admitted; only the call or tick is refused.
+  quotation or at top level, is `E-ARENA-CALL`, `E-ARENA-CALL-TOP-LEVEL` at top
+  level (`arena call: only HEAP's generated NAME-NEW and NAME-RELEASE call the
+  storage runtime`). Exporting the two words is admitted; only the call or tick
+  is refused.
 - **`field-project` is not a definition name once the engine is sealed.**
   Every `STRUCTURE` accessor spells it unqualified, so it binds through the
   declaring scope's search order; a qualified spelling would carry no checker

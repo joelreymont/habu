@@ -251,7 +251,7 @@ private
    S\" : R1 ( -- ptr n ) 16 DYNAMIC-STORAGE:RECORD-NEW ;\n: R2 ( ptr n -- ) 16 DYNAMIC-STORAGE:RECORD-RELEASE ;\n: R3 ( -- ptr n ) 16 [: DYNAMIC-STORAGE:RECORD-NEW ;] execute ;\n' DYNAMIC-STORAGE:RECORD-RELEASE drop\n" ;
 
 : VERIFY-CALLS ( -- )
-   s" tools/check.f --verify-only refuses the record runtime calls, at top level too" T-LABEL
+   s" tools/check.f --verify-only refuses the record runtime calls, at top level under its own code, in the diagnostic contract" T-LABEL
    s" arena-verify" E2E-TREE:TREE
    E2E-TREE:ROOT$ FS:CLEANUP-TREE+
    s" test/arena-calls.f" E2E-TREE:AT-A VERIFY-SRC$ FS:WRITE-ALL
@@ -260,10 +260,18 @@ private
    s" --verify-only" >LEN PROC-ARGV+
    s" test/arena-calls.f" >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
-   E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL\"" COUNT-SUB 4 T=
+   E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL\"" COUNT-SUB 3 T=
+   E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL-TOP-LEVEL\"" COUNT-SUB 1 T=
    \ The top-level tick's token is at line 4, column 3.
    E2E-TREE:ERR$ S\" \"line\":4,\"column\":3,\"" COUNT-SUB 1 T=
-   E2E-TREE:RC@ 0 <> TTRUE ;
+   E2E-TREE:RC@ 0 <> TTRUE
+   s" test/arena-calls.jsonl" E2E-TREE:AT-A E2E-TREE:ERR$ FS:WRITE-ALL
+   s" tools/gate-json-assert.f" E2E-TREE:ARGS
+   s" --" >LEN PROC-ARGV+
+   s" diag-contract" >LEN PROC-ARGV+
+   s" test/arena-calls.jsonl" >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
+   E2E-TREE:NEED-OK ;
 
 : RUN ( -- )
    T-RESET
