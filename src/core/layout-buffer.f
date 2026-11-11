@@ -281,6 +281,9 @@ STORAGE-CAPTURE-INSTALL
    0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
    STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
 
+\ The bytes a stored type takes, for a container's own arithmetic.
+CAST: width>n ( width<t> -- n )
+
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" LAYOUT-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then

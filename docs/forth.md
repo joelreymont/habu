@@ -703,7 +703,7 @@ multi-cell type rationale is `docs/design.md` "Types".
     is refused.
   - A cast term is one machine cell: a con, a width-1 family, a pointer, or a
     quotation. An atom, or a pointer to one, on either side, and an atom in an
-    introduction position of the destination, are `E-CAST-CLASS`, except a bare
+    introduction position of either side, are `E-CAST-CLASS`, except a bare
     `xt` input: a cast may take a primitive's token but never yields one.
   - A type variable or a linear type anywhere in either term, behind a
     pointer, in any quotation row or in a layout's members, is
@@ -729,8 +729,12 @@ multi-cell type rationale is `docs/design.md` "Types".
   is `E-CAST-MINT` outside a private section. A layout that points at its own
   family is read once per instance. A quotation's consumed rows flip the
   direction, so `( n -- [ extent-a -- ] )` introduces no atom and
-  `( n -- [ [ extent-a -- ] -- ] )` introduces one (`E-CAST-CLASS`). A cell
-  family's arguments are phantom and introduce nothing. Projections out
+  `( n -- [ [ extent-a -- ] -- ] )` introduces one (`E-CAST-CLASS`). The
+  source's consumed rows are introduction positions too, since the result's
+  caller feeds them: `( [ xt -- ] -- [ n -- ] )` and `( [ xt -- ] -- n )` are
+  `E-CAST-CLASS`, as is a width there, while
+  `( [ n -- width<n> ] -- [ n -- n ] )` reads the width the source produces.
+  A cell family's arguments are phantom and introduce nothing. Projections out
   (`fam -- n`, `ptr t -- n`, `[ … ] -- n`, `box<ptr u8> -- n`, `pfbox -- n`)
   need no private section.
 - `LINEAR: NAME ( payload -- PKG:tok )` mints a `DEFLINEAR` token and
@@ -1210,6 +1214,10 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   linear cell type.
 - `xt` is the token `'` pushes for an engine primitive or a word with no stack
   effect: no effect rides it, and no storage holds one (`xt in a stored type`).
+- `width<τ>` is one cell holding the bytes `τ` takes in storage, a record's
+  included; `width>n` reads them. `width<n>` is not `width<point>`, and a width
+  is not an `n`. Storage starts as zero bytes, so no storage, field or variant
+  payload holds one (`a width is not stored`), and no cast yields one.
 
 An unknown type token is never interned: it rejects with `unknown type 'tok' in
 signature` (`E-UNKNOWN-SIGNATURE-TYPE`). The other signature codes are

@@ -361,6 +361,10 @@ SUITE stored-type-param
    test/compiler/stored-type-param.f
 ;SUITE
 
+SUITE width-type
+   test/compiler/width-type.f
+;SUITE
+
 SUITE input-underflow-refusals
    test/compiler/input-underflow-refusals.f
 ;SUITE
