@@ -2307,8 +2307,6 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 1 2 1 4 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
 
-\ The document defines again the word the file it requires defines: the packet
-\ is the document's, at its LSPT-DD, line 1, characters 2-9.
 : DD-DEP ( -- ptr u8 n )  s" dd-dep.f" FIXTURE ;
 : TEXT-DD ( -- ptr u8 n )  s\" require dd-dep.f\n: LSPT-DD ( -- n ) 2 ;\n" ;
 
@@ -2356,9 +2354,6 @@ USE-MAX 1 + constant OVER-USINGS
    0 21 0 29 3 s" W-CHECK-DEFERRED" DIAG+
    1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
-\ Those deferrals, then a definition never ended: the verifier stops at its
-\ opener and refuses the document, and the deferrals and the stop's record are
-\ all published.
 : DEFERRED-UNENDED-TEXT ( -- )
    TXT-B CLEAR
    DEFERRED-IN-BODY N>BLEN TXT-B APPEND-SPAN
@@ -2396,15 +2391,11 @@ USE-MAX 1 + constant OVER-USINGS
    s\" ,\"method\":\"workspace/symbol\",\"params\":" MSG+ p pu MSG+ s" }" MSG+
    MSG$ FRAMED ;
 
-\ The answer to the request with this id's JSON text, begun in MSG, up to its
-\ list's bracket.
 : SYMBOLS-START ( ptr u8 n -- )
    {: i:ptr iu:n :}
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
 
-\ The symbol the answer lists next: its name, kind and URI, the range from
-\ character C1 to C2 of line L, and its package, none when empty.
 : SYMBOL+ ( ptr u8 n n ptr u8 n n n n ptr u8 n -- )
    {: w:ptr wu:n k:n u:ptr uu:n l:n c1:n c2:n p:ptr pu:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
@@ -2423,11 +2414,9 @@ USE-MAX 1 + constant OVER-USINGS
    HEAR
    MSG$ HEARD ;
 
-\ Params nested past the 64 levels a JSON:cursor keeps inline.
+\ Params nested past the 64 levels a cursor keeps inline.
 100 constant DEEP-NEST
 
-\ workspace/symbol params whose query follows a member nested DEEP-NEST deep,
-\ in PAR.
 : DEEP-PARAMS ( -- ptr u8 n )
    PAR-B CLEAR
    s\" {\"deep\":" PAR+
@@ -2451,9 +2440,6 @@ USE-MAX 1 + constant OVER-USINGS
    p pu URI-OF MSG+ s\" \"}}}" MSG+
    MSG$ FRAMED ;
 
-\ A request by this method and id's JSON text at character C of line L of
-\ the document opened from this path, with these params members after the
-\ position.
 : AT-ASK-WITH ( ptr u8 n ptr u8 n ptr u8 n n n ptr u8 n -- )
    {: m:ptr mu:n i:ptr iu:n p:ptr pu:n l:n c:n x:ptr xu:n :}
    MSG-B CLEAR
@@ -2476,8 +2462,6 @@ USE-MAX 1 + constant OVER-USINGS
    {: i:ptr iu:n p:ptr pu:n l:n c:n :}
    s" textDocument/declaration" i iu p pu l c AT-ASK ;
 
-\ The next frame answers the request with this id's JSON text with one
-\ Location: this URI, from character C1 to C2 of line L.
 : LOCATED ( ptr u8 n ptr u8 n n n n -- )
    {: i:ptr iu:n u:ptr uu:n l:n c1:n c2:n :}
    MSG-B CLEAR
@@ -2502,7 +2486,6 @@ USE-MAX 1 + constant OVER-USINGS
    s" qd:QUX-Q" 12 SYM-DEP-CANON URI-OF 5 7 15 s" qd" SYMBOL+
    s" QUX-V" 13 SYM-DEP-CANON URI-OF 7 9 14 s" " SYMBOL+ ;
 
-\ The dependency changed on disk: QUX-NEW where QUX-DEP was.
 : TEXT-SYM-DEP2 ( -- ptr u8 n )
    s\" package QD\npublic\n: QUX-NEW ( -- n ) 3 ;\n;package\nvariable QUX-V\n" ;
 
@@ -2510,20 +2493,11 @@ USE-MAX 1 + constant OVER-USINGS
    s" qd:QUX-NEW" 12 SYM-DEP-CANON URI-OF 2 2 9 s" qd" SYMBOL+
    s" QUX-V" 13 SYM-DEP-CANON URI-OF 4 9 14 s" " SYMBOL+ ;
 
-\ Two open documents require sym-dep.f, on disk only. A query in another case
-\ lists each definition whose word holds it once, the dependency's at its
-\ canonical file URI and positions in its text on disk, the documents' at the
-\ URIs the client opened them by, check after check, oldest first; the word
-\ ZED is not one. A word public in a package is named qualified by it, any
-\ other bare. A changed document's check replaces its definitions. A query
-\ holding a colon lists as well each word a caller spells qualified whose
-\ package is the text before the colon, whole, and whose tail holds the text
-\ after it, in another case: QUX-DEP and the re-exported QUX-Q, not QD's
-\ private QUX-P nor QE's QUX-Q; QD:QE fits no name, so lists none.
-\ A query that is no string, or none, is -32602. A file both documents'
-\ checks reached is listed once, from the later check: sym-dep.f changed on
-\ disk and B checked again, B's QUX-NEW and not A's QUX-DEP; B closed, A's
-\ QUX-DEP again, and A, whose check did not read B's file, not checked again.
+\ A query lists each definition whose word holds it, check after check, oldest
+\ first. A query holding a colon lists as well each word a caller spells
+\ qualified whose package is the text before the colon, whole, and whose tail
+\ holds the text after it, in another case: QUX-DEP and the re-exported QUX-Q,
+\ not QD's private QUX-P nor QE's QUX-Q; QD:QE fits no name, so lists none.
 : SYMBOL-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -2588,13 +2562,8 @@ USE-MAX 1 + constant OVER-USINGS
    s" QUX-AA" 12 SYM-A-PATH URI-OF 1 2 8 s" " SYMBOL+
    SYMBOLS-END ;
 
-\ The dependency emptied on disk.
 : TEXT-SYM-DEP3 ( -- ptr u8 n )  s\" \\ no definition remains\n" ;
 
-\ Two open documents require sym-dep.f, on disk only, which then loses every
-\ definition, and B is checked again: B's check read it, so none of its
-\ definitions is listed, not even A's older ones; B closed, A's again, and A,
-\ whose check did not read B's file, not checked again.
 : EMPTY-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -2645,9 +2614,7 @@ USE-MAX 1 + constant OVER-USINGS
 : REDECLARED-PATH ( -- ptr u8 n )  s" redeclared.f" FIXTURE ;
 
 \ The load refuses the redeclaration at its name as a duplicate, before its
-\ effect (exit 78), and so does the check; the refused redeclaration keeps no
-\ record, so a query lists NAV-RETAIN once, where the first declaration names
-\ it.
+\ effect (exit 78), and so does the check.
 : RETAINED-TURNS ( -- )
    SESSION-INITIALIZE
    RETAINED-PATH TEXT-RETAINED 1 OPENS
@@ -2663,9 +2630,7 @@ USE-MAX 1 + constant OVER-USINGS
    SYMBOLS-END ;
 
 \ Each refusal is published, each redeclaration as a duplicate at its name, as
-\ the load refuses it before its effect; a query lists NAV-WIDE and NAV-SAME
-\ where their first declarations name them, NAV-KEPT and NAV-LATER, and not
-\ NAV-ODD.
+\ the load refuses it before its effect.
 : REDECLARED-TURNS ( -- )
    REDECLARED-TEXT
    SESSION-INITIALIZE
@@ -2689,8 +2654,6 @@ USE-MAX 1 + constant OVER-USINGS
    s" NAV-LATER" 12 REDECLARED-PATH URI-OF 6 2 11 s" " SYMBOL+
    SYMBOLS-END ;
 
-\ rep.f includes rep-dep.f, on disk only, undefines its word and includes it
-\ again.
 : REP-DEP-PATH ( -- ptr u8 n )  s" rep-dep.f" FIXTURE ;
 : REP-DEP-CANON ( -- ptr u8 n )  REP-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 : REP-PATH ( -- ptr u8 n )  s" rep.f" FIXTURE ;
@@ -2698,7 +2661,6 @@ USE-MAX 1 + constant OVER-USINGS
 : TEXT-REP ( -- ptr u8 n )
    s\" include rep-dep.f\nundefine REV-SHARED\ninclude rep-dep.f\n" ;
 
-\ The check reads rep-dep.f twice, and a query lists REV-SHARED once.
 : REINCLUDE-TURNS ( -- )
    REP-DEP-PATH TEXT-REP-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -2727,16 +2689,6 @@ USE-MAX 1 + constant OVER-USINGS
 : TEXT-OD-TWIN ( -- ptr u8 n )
    s\" \\ twin\n\n: REV-TWIN ( -- n ) 9 ;\n: REV-USE ( -- n ) REV-TWIN ;\n" ;
 
-\ od-dep.f open with text its disk file lacks, then od.f, which requires the
-\ file, open: a query lists REV-EDIT where the document places it, from its
-\ own check, and REV-A; od-dep.f's outline, after od.f's check, is REV-EDIT
-\ alone. The file open again through od-twin.f with its own text: od.f, whose
-\ check read the file, is checked again, each document's outline is its own
-\ definitions, at the URI the client opened it by, and a use in od-twin.f is
-\ at its declaration there.
-\ od-twin.f closed, and od.f checked again; then od-dep.f closed: answered
-\ before od.f's next check, REV-EDIT where that check read it, and once od.f
-\ is checked again, REV-DISK where the file on disk places it.
 : OPEN-DEP-TURNS ( -- )
    OD-DEP-PATH TEXT-OD-DISK FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -2794,8 +2746,6 @@ USE-MAX 1 + constant OVER-USINGS
    s" REV-A" 12 OD-PATH URI-OF 1 2 7 s" " SYMBOL+
    SYMBOLS-END ;
 
-\ path-length's document: the global word Q, then a global word of two bytes on
-\ each line after it, QA to Q9, XA to X9 and ZA to Z9.
 : LENGTH-TEXT ( -- )
    TXT-B CLEAR
    s\" : Q ( -- ) ;\n" N>BLEN TXT-B APPEND-SPAN
@@ -2808,7 +2758,7 @@ USE-MAX 1 + constant OVER-USINGS
       loop
    loop ;
 
-variable LENGTH-N                        \ the length of its directory's name
+variable LENGTH-N
 
 : LENGTH-DIR ( -- ptr u8 n )  s" dddd" drop LENGTH-N @ FIXTURE ;
 
@@ -2817,7 +2767,6 @@ variable LENGTH-N                        \ the length of its directory's name
    s" /g.f" N>BLEN PATH-B APPEND-SPAN
    PATH-B SPAN$ BLEN>N ;
 
-\ The document is checked and published, and Z9, its last word, answered.
 : LENGTH-TURNS ( -- )
    LENGTH-DIR FS:MAKE-DIR
    SESSION-INITIALIZE
@@ -2838,17 +2787,12 @@ variable LENGTH-N                        \ the length of its directory's name
 : DEF-DEP-PATH ( -- ptr u8 n )  s" def-dep.f" FIXTURE ;
 : DEF-DEP-CANON ( -- ptr u8 n )  DEF-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 
-\ DEF-ONE, its use in DEF-TWO, and its use in DEF-THREE after a character of
-\ one UTF-16 unit and two bytes.
 : TEXT-DEF-A ( -- ptr u8 n )
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE  1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
 
-\ def-dep.f, on disk only: DEF-PUB, public in package DD, and the global
-\ DEF-DEP.
 : TEXT-DEF-DEP ( -- ptr u8 n )
    s\" package DD\npublic\n: DEF-PUB ( -- n ) 3 ;\n;package\n: DEF-DEP ( -- n ) 4 ;\n" ;
 
-\ Uses of def-dep.f's global and, qualified, of its public word.
 : TEXT-DEF-B ( -- ptr u8 n )
    s\" require def-dep.f\n: DEF-USE ( -- n ) DEF-DEP DD:DEF-PUB + ;\n" ;
 
@@ -2859,8 +2803,6 @@ variable LENGTH-N                        \ the length of its directory's name
    HEAR
    MSG$ HEARD ;
 
-\ A request notices a previously missing loader target on disk, even without
-\ a watched-file notification. It rechecks before answering from the root.
 : MISSING-REQUEST-TURNS ( -- )
    SESSION-INITIALIZE
    SR-PATH TEXT-SR 1 OPENS
@@ -2875,8 +2817,6 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-SR SR-PATH 1 s" verified" LISTED
    s" 3" NOWHERE ;
 
-\ A source that exists but cannot be read becomes readable. The request sees
-\ the failed target's changed file state and rechecks before it answers.
 : UNREAD-REQUEST-TURNS ( -- )
    UR-DEP-PATH TEXT-SV-NEW FS:WRITE-ALL
    UR-DEP-PATH 0 FS:CHMOD-MODE
@@ -2893,11 +2833,6 @@ variable LENGTH-N                        \ the length of its directory's name
    TEXT-UR UR-PATH 1 s" verified" LISTED
    s" 3" NOWHERE ;
 
-\ DEF-ONE's uses, at the first and last character of the one in DEF-TWO and
-\ the first of the one in DEF-THREE, its byte one past its character, each
-\ answered with DEF-ONE's declaring token at the URI the document was opened
-\ by; the caret at the use's exact end still selects it, while the next space
-\ and DEF-TWO's declaring token select none; a negative character -32602.
 : DEF-TURNS ( -- )
    SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
@@ -2920,9 +2855,8 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 8" NOWHERE
    HEAR s" 9" -32602 REFUSED ;
 
-\ An in-tree file, read whole. A case that navigates into the tree finds its
-\ target's line or byte in the file as it stands, not by a number every edit
-\ above the target moves; a case that opens one sends this text.
+\ A case that navigates into the tree finds its target's line or byte in the
+\ file as it stands, not by a number every edit above the target moves.
 DYNAMIC-BUFFER TREE-TEXT u8
 : TREE-ROOM ( n -- ptr u8 )
    1+ TREE-TEXT-RESERVE 0 TREE-TEXT ;
@@ -2932,8 +2866,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : TREE$ ( ptr u8 n -- ptr u8 n )
    TREE-READ 0 TREE-TEXT swap ;
 
-\ The offset of the first line among TREE-TEXT's first SIZE bytes that starts
-\ with TEXT. A file with no such line cannot hold the case's target.
+\ A file with no such line cannot hold the case's target.
 : LINE-START ( n ptr u8 n -- n )
    {: size:n t:ptr tu:n :}
    size 0 ?do
@@ -2953,10 +2886,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : URI-LINE ( ptr u8 n ptr u8 n -- ptr u8 n n )
    PATH-LINE {: at:n :} URI-OF at ;
 
-\ Definition and declaration of words in a dependency answer with the
-\ declaring token in its text on disk at the canonical URI. The engine's
-\ require binding is known, but include.f's top-level dictionary calls defer
-\ its whole source index.
+\ The engine's require binding is known, but include.f's top-level dictionary
+\ calls defer its whole source index.
 : DEF-DEP-TURNS ( -- )
    DEF-DEP-PATH TEXT-DEF-DEP FS:WRITE-ALL
    SESSION-INITIALIZE
@@ -3046,8 +2977,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : VARIANT-DEF-TEXT ( -- ptr u8 n )
    s\" : VARIANT ( n -- ) create , does> ( -- n ) @ ;\n7 VARIANT SEVEN\n: READ-SEVEN ( -- n ) SEVEN ;\n" ;
 
-\ The built-in multiplication word binds at a body call, an interpreted call,
-\ and a tick. A later user definition of the same spelling takes its own use.
 : PRIM-PATH ( -- ptr u8 n )  s" prim-nav.f" FIXTURE ;
 : PRIM-SOURCE-PATH ( -- ptr u8 n )  s" src/habu/prims.f" IN-TREE ;
 : SCRIPT-ARGV-PATH ( -- ptr u8 n )  s" src/os/script-argv.f" IN-TREE ;
@@ -3085,7 +3014,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 13" PRIM-PATH URI-OF 9 2 13 LOCATED ;
 
 \ An open unsaved prims.f with a mismatched row sequence has no trusted target.
-\ Closing it restores navigation from the engine's matching file on disk.
 : PRIM-OPEN-TURNS ( -- )
    SESSION-INITIALIZE
    PRIM-PATH TEXT-PRIM-NAV 1 OPENS
@@ -3108,9 +3036,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 4" PRIM-SOURCE-PATH s" EPRIM: * " URI-LINE 7 8 LOCATED ;
 
 \ An edited engine file can preserve the same spelling at the baked byte
-\ range while changing it from a declaration to a call: the colon of
-\ `: SCRIPT-ARGC` becomes a space. That opaque call defers the entire index,
-\ including SCRIPT-ARG-START's otherwise unchanged declaration.
+\ range while changing it from a declaration to a call. That opaque call
+\ defers the entire index, including SCRIPT-ARG-START's otherwise unchanged
+\ declaration.
 : ENGINE-OPEN-SOURCE ( -- ptr u8 n )
    SCRIPT-ARGV-PATH TREE-READ {: size:n :}
    32 size s" : SCRIPT-ARGC " LINE-START TREE-TEXT c!
