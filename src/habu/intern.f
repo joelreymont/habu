@@ -1,10 +1,8 @@
 \ intern.f - the permanent address of a string literal's bytes; equal bodies
 \ within a segment share one. Bodies live in DATA, since a DATA address means the
-\ same after a snapshot restore and an mmap one does not. Tier 1 interns through
-\ src/compiler/native/elaborate.f EMIT-STRING, tier 0 through
-\ NSTR-ABI:INTERN-CELL (set when this file loads); fetch descriptors
-\ (src/compiler/native/fetch.f KEEP) are bodies under the same rule. A build's
-\ data space keeps its strings at `here` (src/habu/intern-table.f).
+\ same after a snapshot restore and an mmap one does not. Both tiers intern
+\ through INTERN-SOURCE, and fetch descriptors are bodies under the same rule. A
+\ build's data space keeps its strings at `here` (src/habu/intern-table.f).
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -333,10 +331,6 @@ public
 : INTERN-SOURCE ( ptr u8 n -- n n )
    STRING -1 ;
 
-\ habu2.f's string-literal emitters read this cell; xt! declares it.
-: INSTALL ( -- )
-   ['] STRING data-base NSTR-ABI:INTERN-CELL + xt! ;
-
 : SEGMENTS ( -- n )
    0 ACTIVE-P @
    begin dup 0= 0= while
@@ -392,7 +386,5 @@ public
    0  SEGMENTS 0 ?do  i SEGMENT USED-FIELD @ +  loop ;
 
 seal-package
-
-INSTALL
 
 ;package

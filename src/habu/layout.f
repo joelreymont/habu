@@ -377,7 +377,7 @@ $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
 \ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
 \ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
-\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
+\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, $98 is free,
 \ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; $128 is held for the
 \ frame's saved next wordlist id (WIDN), $130 is free,
 \ EVAL-FRAME:ROWS $138, EVAL-FRAME:SX-CTX..SX-SRC $140..$158 and
@@ -387,9 +387,6 @@ $48 constant EVAL-PKG
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
-\ USE-FLOOR: the buffer's entry using depth (interpreter.f FRAME-OPEN);
-\ interpreter.f USE-FLOOR is the Habu loop's floor.
-$98 constant USE-FLOOR
 \ USE-WIDS: the includer's USE-MAX used-public wids (USE-WIDS-OFF), which a
 \ throw puts back with the depth and the floor (habu2.f LEVALREC). A buffer
 \ that closes its includer's package and then opens a using writes that using
@@ -1251,7 +1248,7 @@ $2D08 constant PTR-CELL
 DICT-CAP 1+ cells constant STATE-BYTES
 ;package
 \ The x86-64 port's three header cells take $2D98..$2DA8, past
-\ SUSP-PREFLIGHT-CELL ($2D88) and NSTR-ABI:INTERN-CELL ($2D90). DPHW-CELL takes
+\ SUSP-PREFLIGHT-CELL ($2D88). DPHW-CELL takes
 \ $2D58, NDICT-HW-CELL $2D60 and BOOT:TYPES-WL-CELL $2D78.
 \ The two shadow cells hold the native compiler's fixed and does> shadow
 \ callbacks; TASK-CHAIN-CELL heads the x86-64 task chain. No captured image
@@ -1287,12 +1284,6 @@ $2D58 constant DPHW-CELL
 \ nothing retired.
 $2D60 constant NDICT-HW-CELL
 
-\ INTERN-CELL holds the xt of the literal interner (src/habu/intern.f
-\ INTERN:STRING), 0 until that file installs it with xt!.
-package NSTR-ABI
-public
-$2D90 constant INTERN-CELL
-;package
 package NCOMP-DISPATCH
 public
 $2D98 constant FIXED-SHADOW-CELL
@@ -1543,7 +1534,7 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 8 constant PD-SLOTS-REL                       \ slots begin after the u64 band count cell
 
 \ Fields of each evaluate frame. Clean exit restores the using depth to the
-\ buffer's floor (EVAL-FRAME:USE-FLOOR); throw recovery restores the entry depth
+\ buffer's floor; throw recovery restores the entry depth
 \ (PKGSNAP-USE), the used-public wids (EVAL-FRAME:USE-WIDS) and the package scope.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
