@@ -337,10 +337,11 @@ add is not a substitute where one rounding is required.
 
 An xt is its function's table slot, fixed for the module's life. Slots number
 from 1: slot 0 is a null funcref, so `0 execute` traps as native execute of 0
-fails, and an xt with an upper bit set traps before dispatch. Every function
-shares one Wasm type, so Wasm's signature check cannot see Habu effects or
-types. Quotations capture nothing, as natively; code inspection and patching
-have no Wasm form.
+fails. A quotation that reads its definition's locals is a record's address
+with the top bit set: dispatch stores the address in ctx's env field and calls
+the slot in the record's first cell. Any other nonzero upper half traps before
+dispatch. Every function shares one Wasm type, so Wasm's signature check cannot
+see Habu effects or types. Code inspection and patching have no Wasm form.
 
 ### Linking
 

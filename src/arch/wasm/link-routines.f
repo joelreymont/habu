@@ -500,17 +500,25 @@ variable SITES-N
    OP-UNREACHABLE B,  OP-END B, ;
 
 
-\ Pops an xt, the callee's table slot, and calls through it for its status; an
-\ xt with a nonzero upper half traps first.
+\ Pops a cell and calls a table slot for its status: a zero upper half leaves the slot below
+\ it; exactly $80000000 a record's address, stored in ctx.env, slot in cell 0; any other traps.
 : DISPATCH, ( -- )
    L-CTX GET,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,
    OP-LOCAL-TEE B,  L-SP U32,
    OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM,
-   L-SP GET,  OP-I32-LOAD ALIGN-32 HIGH-HALF MEM,
-   IF,  OP-UNREACHABLE B,  OP-END B,
    L-CTX GET,
-   L-SP GET,  OP-I32-LOAD ALIGN-32 0 MEM,
+   L-SP GET,  OP-I32-LOAD ALIGN-32 HIGH-HALF MEM,
+   OP-IF B,  I32 B,
+      L-SP GET,  OP-I32-LOAD ALIGN-32 HIGH-HALF MEM,
+      -2147483648 I32,  OP-I32-NE B,          \ $80000000 as i32.const's signed operand
+      IF,  OP-UNREACHABLE B,  OP-END B,
+      L-CTX GET,  L-SP GET,  OP-I32-LOAD ALIGN-32 0 MEM,
+      OP-I32-STORE ALIGN-32 WPROF:CTX-ENV MEM,
+      L-SP GET,  OP-I32-LOAD ALIGN-32 0 MEM,  OP-I32-LOAD ALIGN-32 0 MEM,
+   OP-ELSE B,
+      L-SP GET,  OP-I32-LOAD ALIGN-32 0 MEM,
+   OP-END B,
    OP-CALL-INDIRECT B,  TYPE-PAD,  TABLE0 B, ;
 
 

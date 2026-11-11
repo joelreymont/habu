@@ -111,5 +111,6 @@ public
 : ZERO-CAUGHT ( -- ) 0 >VOID catch throw ;
 : ZERO-CLEANUP ( -- ) [: 1 . ;] 0 >VOID finally ;
 : HIGH ( -- ) ['] MARK >BITS $100000000 or >VOID execute ;
+: HIGH-TAGGED ( -- ) ['] MARK >BITS $8000000100000000 or >VOID execute ;
 
 ;package

@@ -50,6 +50,7 @@ PAGES-MAX PAGE-BYTES * DATA-BASE - constant DATA-MAX
 32 constant CTX-FAULT-KIND
 40 constant CTX-FAULT-ADDR
 48 constant CTX-FREE-HEAD                 \ the first free page run, 0 for none; runs keep it
+56 constant CTX-ENV                       \ the record DISPATCH, leaves for a reading quotation's entry
 
 \ The kind a checked-address fault records in ctx's CTX-FAULT-KIND field.
 134 constant CRASH-RC

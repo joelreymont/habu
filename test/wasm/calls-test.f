@@ -66,6 +66,8 @@ public
    WASM-HARNESS:OUT$ s" " T$=
    s" execute of an xt whose upper 32 bits are set traps, though its low half is MARK's slot" T-LABEL
    s" HIGH" s" high" TRAPS
+   s" execute of a cell whose upper half is not exactly a record's traps" T-LABEL
+   s" HIGH-TAGGED" s" high-tagged" TRAPS
    T-REPORT ;
 
 ;package
