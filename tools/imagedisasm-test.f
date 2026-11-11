@@ -22,11 +22,15 @@ create IMDT-ERR IMDT-CAP allot
 create IMDT-ROOT PATH-CAP allot
 create IMDT-RET PATH-CAP allot
 create IMDT-LDRB PATH-CAP allot
+create IMDT-FORMS PATH-CAP allot
 create IMDT-BYTES 4 allot
+12 constant IMDT-FORM-N
+create IMDT-FORM-BYTES IMDT-FORM-N 4 * allot
 
 variable IMDT-ROOT-U
 variable IMDT-RET-U
 variable IMDT-LDRB-U
+variable IMDT-FORMS-U
 
 : IMDT-COPY! ( ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u dst:ptr lenp:ptr :}
@@ -41,6 +45,9 @@ variable IMDT-LDRB-U
 
 : IMDT-LDRB$ ( -- ptr u8 n )
    IMDT-LDRB IMDT-LDRB-U @ ;
+
+: IMDT-FORMS$ ( -- ptr u8 n )
+   IMDT-FORMS IMDT-FORMS-U @ ;
 
 : IMDT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -59,14 +66,37 @@ variable IMDT-LDRB-U
    $39 IMDT-BYTES 3 + c!
    IMDT-LDRB$ IMDT-BYTES 4 FS:WRITE-ALL ;
 
+: IMDT-FORM! ( n n -- )
+   {: w idx :}
+   4 0 ?do w i 8 * rshift 255 and IMDT-FORM-BYTES idx 4 * + i + c! loop ;
+
+\ One word of each form IMDT-TEST-FORMS expects, in its order; the last two
+\ print ?: a reserved bitmask and an encoding no row decodes.
+: IMDT-WRITE-FORMS ( -- )
+   $F8008665 0 IMDT-FORM!
+   $F85F8E6B 1 IMDT-FORM!
+   $D63F0120 2 IMDT-FORM!
+   $92401C20 3 IMDT-FORM!
+   $92041C20 4 IMDT-FORM!
+   $F100413F 5 IMDT-FORM!
+   $54FFFF81 6 IMDT-FORM!
+   $30FFFFE3 7 IMDT-FORM!
+   $B40000C2 8 IMDT-FORM!
+   $17FFFFFF 9 IMDT-FORM!
+   $9240FC20 10 IMDT-FORM!
+   $0E201C00 11 IMDT-FORM!
+   IMDT-FORMS$ IMDT-FORM-BYTES IMDT-FORM-N 4 * FS:WRITE-ALL ;
+
 : IMDT-PREPARE ( -- )
    FS:CLEANUP-RESET
    s" habu-imagedisasm-test" FS:MKTEMP-DIR IMDT-ROOT IMDT-ROOT-U IMDT-COPY!
    IMDT-ROOT$ FS:CLEANUP-TREE+
    IMDT-ROOT$ s" ret.bin" IMDT-RET FS:JOIN-PATH IMDT-RET-U !
    IMDT-ROOT$ s" ldrb.bin" IMDT-LDRB FS:JOIN-PATH IMDT-LDRB-U !
+   IMDT-ROOT$ s" forms.bin" IMDT-FORMS FS:JOIN-PATH IMDT-FORMS-U !
    IMDT-WRITE-RET
-   IMDT-WRITE-LDRB ;
+   IMDT-WRITE-LDRB
+   IMDT-WRITE-FORMS ;
 
 : IMDT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
@@ -107,6 +137,23 @@ variable IMDT-LDRB-U
    erru 0 T=
    IMDT-OUT outu s" ldrb" CONTAINS? TTRUE ;
 
+: IMDT-TEST-FORMS ( -- )
+   IMDT-FORMS$ s" 0" s" 12" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
+   erru 0 T=
+   outu 143 T=
+   IMDT-OUT outu s\" str-post 5 19 8\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" ldr-pre 11 19 -8\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" blr 9\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" and 0 1 255\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" and 0 1 -1152921436155805681\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" cmp 9 16\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" b.ne -16\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" adr 3 -3\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" cbz 2 24\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" b -4\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" ? 9240FC20\n" CONTAINS? TTRUE
+   IMDT-OUT outu s\" ? 0E201C00\n" CONTAINS? TTRUE ;
+
 : IMDT-TEST-RANGE ( -- )
    IMDT-RET$ s" 4" s" 1" IMDT-RUN 74 IMDT-EXPECT-EXIT {: outu erru :}
    outu 0 T=
@@ -130,6 +177,7 @@ variable IMDT-LDRB-U
    IMDT-TEST-RET
    IMDT-TEST-HEX-OFFSET
    IMDT-TEST-LDRB
+   IMDT-TEST-FORMS
    IMDT-TEST-RANGE
    FS:CLEANUP-RUN
    T-REPORT
