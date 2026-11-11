@@ -13,6 +13,7 @@ require src/lib/json.f
 require src/lib/string.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
+require src/lib/fs-mutate.f
 require test/e2e-tree.f
 
 package HEAP-TEST
