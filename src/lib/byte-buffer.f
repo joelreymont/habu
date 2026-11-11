@@ -217,6 +217,11 @@ public
    buf CHECK-LIVE  buf LEN-RAW@ N>BLEN ;
 : CAP@ ( ptr a -- NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf CAP-RAW@ N>BLEN ;
+\ Any length from zero through the capacity; above it throws E-BUF-BOUNDS. The
+\ capacity stays, and bytes a longer length takes in are unspecified until
+\ written.
+: LEN! ( NUM:byte-len ptr a -- ) {: n:NUM:byte-len buf:ptr :}
+   buf CHECK-LIVE  n BLEN>N buf SET-LEN ;
 \ The one accessor safe on a fresh or disposed header.
 : LIVE? ( ptr a -- bool )  CAP-RAW@ 0<> ;
 \ SPAN and SPAN$ borrow exactly the active prefix until the next mutation or
