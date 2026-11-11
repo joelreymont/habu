@@ -25,6 +25,7 @@ $1000 constant CAP
 120000 constant TIMEOUT-MS
 70 constant REJECT-RC
 67 constant THROW-RC                  \ a load's uncaught throw
+78 constant DUP-RC                    \ a duplicate definition's code, $4E, outside --verify-only
 7194 constant BAD-ESCAPE-THROW        \ VERIFY:E-BAD-ESCAPE, a refused escape
 
 create OUT CAP allot
@@ -720,6 +721,37 @@ variable RC
    s" --verify-only" CHECK
    c cu REJECTED-AS
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ A word ARENA derives that is taken in the other section is the duplicate,
+\ refused at the declared name; the check exits DUP-RC for it outside
+\ --verify-only, as for any duplicate.
+: TEST-ARENA ( -- )
+   s" an ARENA outside any package" T-LABEL
+   s" ARENA X n" s" arena-top.f" LINE-FIXTURE
+   s" E-BAD-STORAGE" s" X" 1 7 6 7 REFUSED-MODES
+   0 s" reason" s" declared outside any package" FIELD=
+   s" an ARENA whose cast is taken in the private section" T-LABEL
+   SB-RESET
+   s" package P" SB-APPEND LF+
+   s" : X-NEW-PTR ( -- ) ;" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" ARENA X n" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" arena-taken.f" FIXTURE!
+   s" " DUP-RC CHECK-EXIT
+   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 44 45 AT
+   s" --all-errors" DUP-RC CHECK-EXIT
+   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 44 45 AT
+   s" --verify-only" CHECK
+   s" E-DUPLICATE-DEFINITION" REJECTED-AS
+   0 s" X" 4 7 44 45 FX-PATH$ CANON$ FX$ AT-IN
+   s" an ARENA with a qualified name" T-LABEL
+   SB-RESET
+   s" package P" SB-APPEND LF+
+   s" ARENA P:X n" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" arena-qualified.f" FIXTURE!
+   s" E-BAD-STORAGE" s" P:X" 2 7 16 19 REFUSED-MODES ;
 
 \ Packet 0 of the last check is the record of a statement that threw CODE.
 : THREW ( n -- )
@@ -2376,6 +2408,7 @@ variable RC
    TEST-PREPASS-OPEN
    TEST-PREPASS-COMMENT
    TEST-PREPASS-NAME-COMMENT
+   TEST-ARENA
    TEST-BAD-SIGNATURE
    TEST-LOCAL-GROUP
    TEST-STORED-SIGNATURE

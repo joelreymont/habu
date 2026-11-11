@@ -2343,7 +2343,8 @@ RECORD-DIAG-INSTALL
 \ has no name; no definition fields. A run-time refusal carries no place.
 : STGR-NAME-WHY? ( n -- f ) {: why:n :}
    why STG-MALFORMED-NAME =
-   why STG-NO-NAME = or ;
+   why STG-NO-NAME = or
+   why STG-QUALIFIED-NAME = or ;
 : STGR-COUNT-WHY? ( n -- f ) {: why:n :}
    why STG-BAD-COUNT =  why STG-NO-COUNT = or
    why STG-COUNT-WORD = or ;
@@ -2358,14 +2359,19 @@ RECORD-DIAG-INSTALL
    why STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
    why STG-NO-TYPE = IF s" no type for" EXIT THEN
    why STG-NO-NAME = IF s" no name for" EXIT THEN
+   why STG-NO-PACKAGE = IF s" declared outside any package" EXIT THEN
+   why STG-QUALIFIED-NAME = IF s" qualified name" EXIT THEN
    s" no count for" ;
 : STGR-CLASS$ ( n -- ptr u8 n ) {: why:n :}
    why STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN
    why STGR-COUNT-WHY? IF s" fix_storage_count" EXIT THEN
+   why STG-NO-PACKAGE = IF s" fix_storage_package" EXIT THEN
    s" fix_storage_type" ;
 : STGR-SUGGEST$ ( n -- ptr u8 n ) {: why:n :}
+   why STG-QUALIFIED-NAME = IF s" Name the storage without a package prefix." EXIT THEN
    why STGR-NAME-WHY? IF s" Name the storage with at most one inner ':'." EXIT THEN
    why STGR-COUNT-WHY? IF s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression." EXIT THEN
+   why STG-NO-PACKAGE = IF s" Declare the storage inside a package." EXIT THEN
    s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
 : STGR-LOCATE ( ptr u8 -- )   \ the token's place, counted from the start of the verifier's buffer
    {: ta:ptr :}

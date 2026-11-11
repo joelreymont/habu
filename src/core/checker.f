@@ -14045,6 +14045,8 @@ package CHECKER-REG
 10 constant STG-NO-TYPE         \ no token follows the name on its line to be its type
 11 constant STG-NO-NAME         \ no token follows the definer on its line to be its name
 12 constant STG-XT-TYPE         \ the type parses and names `xt`, which no storage holds
+13 constant STG-NO-PACKAGE      \ the definer mints its records in the declaring package's private section
+14 constant STG-QUALIFIED-NAME  \ the definer declares its words in its own package, by a bare name
 PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
 variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where it starts in its file
 \ The renderer is its own hook because none of the four installed before it can
@@ -16309,20 +16311,28 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    name nameu s" -RESERVE" s" n --" CHECKER-DEFSUFFIX-NAME
    name nameu s" -RELEASE" s" --" CHECKER-DEFSUFFIX-NAME ;
 
-\ Checker-side registration for the ARENA gate path (verify-source
-\ RECORD-ARENA), once that has asked the live definer's questions and declared
-\ the family FAM, NAME folded (src/core/arena.f ARENA-DECL:SOURCE): the two words
-\ `NAME-NEW ( ptr FAM -- ptr <type> )` and `NAME-RELEASE ( ptr FAM -- )`.
-: CHECKER-DEFARENA
-   ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: type:ptr typeu:n fam:ptr famu:n name:ptr nameu:n :}
+\ ARENA's four words by their effects, for verify-source RECORD-ARENA
+\ (src/core/arena.f): the casts NAME-NEW-PTR and NAME-NEW-ACT in the private
+\ section, where the definer makes them, then NAME-NEW and NAME-NEW-DISPOSE in
+\ the declaration's own section.
+: CHECKER-DEFARENA ( ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n name:ptr nameu:n :}
+   CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
+   pub IF CHECKER-PRIVATE THEN
    0 LBUF-SIG-U !
-   s" ptr " LBUF-SIG-APP  fam famu LBUF-SIG-APP
-   s"  -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   s" ptr u8 -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   name nameu s" -NEW-PTR" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
+   0 LBUF-SIG-U !
+   s" [ ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP  s"  -- ] -- [ ptr u8 -- ]" LBUF-SIG-APP
+   name nameu s" -NEW-ACT" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
+   pub IF CHECKER-PUBLIC THEN
+   0 LBUF-SIG-U !
+   s" ptr ARENA:arena -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
    name nameu s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
    0 LBUF-SIG-U !
-   s" ptr " LBUF-SIG-APP  fam famu LBUF-SIG-APP  s"  --" LBUF-SIG-APP
-   name nameu s" -RELEASE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
+   s" ptr ARENA:arena [ ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   s"  -- ] -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   name nameu s" -NEW-DISPOSE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
 
 \ HEAP's two words by their effects, for verify-source RECORD-HEAP (src/core/heap.f).
 : CHECKER-DEFHEAP ( ptr u8 n ptr u8 n -- )

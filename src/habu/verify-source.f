@@ -2831,37 +2831,44 @@ variable STG-TYPE-U
    gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
    at TOKEN-BYTE !  nameu DUPLICATE!  false ;
 
-\ ARENA (src/core/arena.f) declares a family and two words over it from one
-\ line. The scan asks the definer's questions in its order, so a refused
-\ declaration declares no family and a refused family no word: a multi-error
-\ load counts the family's refusal and goes on, as in the definer. It registers
-\ the family from the STRUCTURE text the definer evaluates (ARENA-DECL:SOURCE)
-\ and the two words (CHECKER-DEFARENA) by their effects, so it evaluates
-\ neither body and arms no field-projection window. Without this row the line
-\ deferred the rest of the source to the run.
+\ Whether none of ARENA's four words NAME derives is taken in the checker's
+\ current section.
+: ARENA-WORDS-FREE? ( ptr u8 n n -- bool )
+   {: name:ptr nameu:n at:n :}
+   name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF false EXIT THEN
+   name nameu s" -NEW-DISPOSE" at ARENA-WORD-FREE? 0= IF false EXIT THEN
+   name nameu s" -NEW-PTR" at ARENA-WORD-FREE? 0= IF false EXIT THEN
+   name nameu s" -NEW-ACT" at ARENA-WORD-FREE? ;
+
+
+\ ARENA's row asks src/core/arena.f RUN's questions in its order, the four words
+\ in both sections, and registers them by their effects (CHECKER-DEFARENA);
+\ without it the rest of the source defers to the run.
 : RECORD-ARENA ( -- )
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    name nameu NAME-DECLARED
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF EXIT THEN
-   name nameu s" -RELEASE" at ARENA-WORD-FREE? 0= IF EXIT THEN
+   name nameu CHECKER-QUALIFIED? IF
+      name nameu name nameu STG-QUALIFIED-NAME CHECKER-STORAGE-REFUSE EXIT
+   THEN
+   CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
+   mode CHECKER-PACKAGE-NONE = IF
+      name nameu name nameu STG-NO-PACKAGE CHECKER-STORAGE-REFUSE EXIT
+   THEN
+   name nameu at ARENA-WORDS-FREE? 0= IF EXIT THEN
+   mode CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
+   pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN
+   true [: drop name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
+   pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
+   rc 0 <> IF rc throw THEN
+   0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
-   THEN {: width:n :}
-   name nameu ARENA-DECL:TAIL {: tail:ptr tailu:n :}
-   tail tailu STRUCTURE-DECL:NAME-OK? 0= IF EXIT THEN
-   name nameu tail tailu type typeu width ARENA-DECL:SOURCE
-   2drop 2drop 2drop 2drop
-   {: fam:ptr famu:n :}
-   tail tailu + {: body:ptr :}
-   MULTI-ERR-N @ {: refused:n :}
-   tail tailu  body  fam famu + body -  STRUCTURE-DECL:SD-REPLAY-OUTCOME
-   drop 2drop
-   MULTI-ERR-N @ refused <> IF EXIT THEN
+   THEN drop
    name nameu at nameu ARM
-   type typeu tail tailu name nameu CHECKER-DEFARENA
+   type typeu name nameu CHECKER-DEFARENA
    DISARM ;
 
 \ HEAP's row asks src/core/heap.f RUN's questions in its order and registers both words

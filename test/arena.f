@@ -1,51 +1,70 @@
-\ ARENA records come from the real definer and runtime: each is zeroed, another
-\ package's family member included, distinct and keeps its place while the
-\ arena grows, each owner's arena is its own, a released arena is reusable, a
-\ refused declaration defines nothing, its family included, a DYNAMIC-BUFFER,
-\ ARENA or CWORK-VARIABLE whose element holds an owner is refused, a family
-\ refusal a multi-error load counts defines no arena words, a top-level name too
-\ long for its family is STRUCTURE's refusal, no typed access and no cast copies
-\ or forges an owner's head, checked code can neither call nor tick the arena
-\ runtime words outside ARENA's generated words, the cast, CWORK-VARIABLE and
-\ call refusals live and under tools/check.f --verify-only,
-\ a fetch through a family missing its argument is refused for its arity, and
-\ no package defines its own `field-project`.
+\ ARENA records come from the real definer and runtime: NAME-NEW's records are
+\ zeroed, cell-aligned and distinct, NAME-NEW-DISPOSE's actions run once,
+\ newest first, at the arena's reset or release, a public declaration publishes
+\ NAME-NEW and keeps its casts private, a HEAP or DYNAMIC-BUFFER element holds
+\ an arena handle, and a refused declaration defines none of its four words.
+\ Checked code can neither call nor tick the arena runtime words outside the
+\ generated words, live and under tools/check.f --verify-only, and no package
+\ defines its own `field-project`.
 require src/lib/test.f
 require src/lib/string.f
+require src/lib/arena.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require src/lib/fs-mutate.f
 require test/e2e-tree.f
 
-package ARENA-TEST
-
+\ The fixture package whose words ARENA-TEST calls from outside it.
+package ARENA-FIX
+public
 STRUCTURE rec DERIVE addr FIELD id n FIELD note ptr u8 FIELD span SPAN:span<u8> ;STRUCTURE
 ARENA RECS rec
-STRUCTURE pool DERIVE addr FIELD items recs ;STRUCTURE
-2 TYPED-BUFFER POOLS pool
-TYPED-VARIABLE OWN-A recs
-TYPED-VARIABLE OWN-B recs
+: AFTER ( -- bool ) true ;
+private
+ARENA PRECS rec
+public
+: PRIV-NEW ( ptr ARENA:arena -- ptr rec ) PRECS-NEW ;
+;package
 
-\ Each owner takes 100 records, three chunks of 32, 64 and 128; owner o's
-\ records are remembered at o*100 on.
-100 constant PER-OWNER
-200 TYPED-BUFFER SEEN ptr rec
+package ARENA-TEST
+
+STRUCTURE holder DERIVE addr FIELD arena ptr ARENA:arena FIELD id n ;STRUCTURE
+HEAP HOLDERS holder
+DYNAMIC-BUFFER HOLDBUF holder
+
+100 constant TAKEN-N
+TAKEN-N TYPED-BUFFER SEEN ptr ARENA-FIX:rec
+
+\ What each disposal action saw: the record's id and address, in run order.
+4 TYPED-BUFFER LOG-ID n
+4 TYPED-BUFFER LOG-AT n
+variable LOG-N
 
 TYPED-VARIABLE EVAL-A ptr u8
 variable EVAL-U
 : EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ INCLUDE-EVALUATE ;
 : EVAL ( ptr u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
 
-\ Families an ARENA of the same name duplicates: HELD has the head field the
-\ arena's words would reach, TAKEN does not.
-STRUCTURE held DERIVE addr FIELD head ptr u8 ;STRUCTURE
-STRUCTURE taken DERIVE addr FIELD x n ;STRUCTURE
-
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
 : MULTI ( ptr u8 n -- n n ) MULTI-ERR-BEGIN EVAL MULTI-ERR-END ;
 
-\ `ARENA ovf ptr<spaces>rec`: an element type padded until the declaration's
+\ Whether NAME+SFX is absent from the current wordlist.
+: ABSENT ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n sfx:ptr sfxu:n :}
+   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
+   SB$ get-current search-wl 0= TTRUE ;
+
+
+: NO-WORDS ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   name nameu s" -NEW" ABSENT
+   name nameu s" -NEW-DISPOSE" ABSENT
+   name nameu s" -NEW-PTR" ABSENT
+   name nameu s" -NEW-ACT" ABSENT ;
+
+
+\ `ARENA ovf ptr<spaces>n`: an element type padded until the declaration's
 \ text passes the generator's buffer, refused with 7121 while that text is
 \ built.
 4000 constant OVF-PAD
@@ -59,126 +78,155 @@ variable OVF-U
 : OVF-TEXT ( -- ptr u8 n )
    0 OVF-U !  s" ARENA ovf ptr" OVF,
    OVF-PAD 0 ?do s"  " OVF, loop
-   s" rec" OVF,  OVF-SRC OVF-U @ ;
+   s" n" OVF,  OVF-SRC OVF-U @ ;
 
 
-: TAKE ( n -- )
-   {: owner:n :}
-   PER-OWNER 0 do
-      owner POOLS POOL-ITEMS RECS-NEW
-      dup REC-ID @ 0 T=
-      dup REC-NOTE @ NULL-PTR = TTRUE
-      dup REC-SPAN @ SPAN:LEN 0 T=
-      owner PER-OWNER * i + over REC-ID !
-      owner PER-OWNER * i + SEEN !
-   loop ;
+\ TAKEN-N records span three chunks of one arena; a record that moved or
+\ overlapped another would have lost its id.
+: RECORDS ( -- )
+   s" NAME-NEW answers zeroed, cell-aligned, distinct records that keep their fields" T-LABEL
+   ARENA:NEW {: a:ptr :}
+   TAKEN-N 0 do
+      a ARENA-FIX:RECS-NEW
+      dup ARENA--FIX-REC:ID @ 0 T=
+      dup ARENA--FIX-REC:NOTE @ NULL-PTR = TTRUE
+      dup ARENA--FIX-REC:SPAN @ SPAN:LEN 0 T=
+      dup NULL-PTR - 1 cells mod 0 T=
+      i over ARENA--FIX-REC:ID !
+      i SEEN !
+   loop
+   TAKEN-N 0 do i SEEN @ ARENA--FIX-REC:ID @ i T= loop
+   s" a record made in a private section works inside its package" T-LABEL
+   a ARENA-FIX:PRIV-NEW ARENA--FIX-REC:ID @ 0 T=
+   a ARENA:RELEASE ;
 
 
-\ A record that moved or overlapped another would have lost its id.
-: KEPT ( n -- )
-   {: owner:n :}
-   PER-OWNER 0 do
-      owner PER-OWNER * i + dup SEEN @ REC-ID @ swap T=
-   loop ;
+: NOTE ( ptr ARENA-FIX:rec -- )
+   {: r:ptr :}
+   LOG-N @ {: k:n :}
+   r ARENA--FIX-REC:ID @ k LOG-ID !
+   r NULL-PTR - k LOG-AT !
+   k 1 + LOG-N ! ;
 
 
-: GROWTH ( -- )
-   s" records are zeroed, distinct and kept as the arena grows" T-LABEL
-   0 TAKE 0 KEPT
-   s" a second owner's arena is its own" T-LABEL
-   1 TAKE 0 KEPT 1 KEPT
-   0 POOLS POOL-ITEMS RECS-RELEASE
-   1 KEPT
-   0 POOLS POOL-ITEMS RECS-RELEASE
-   s" a released arena hands out zeroed records again" T-LABEL
-   0 POOLS POOL-ITEMS RECS-NEW REC-ID @ 0 T=
-   0 POOLS POOL-ITEMS RECS-RELEASE
-   1 POOLS POOL-ITEMS RECS-RELEASE ;
+\ The first record is never written, so its action sees it zeroed.
+: DISPOSALS ( -- )
+   s" NAME-NEW-DISPOSE's actions run once at reset, newest first" T-LABEL
+   0 LOG-N !
+   ARENA:NEW {: a:ptr :}
+   a [: NOTE ;] ARENA-FIX:RECS-NEW-DISPOSE NULL-PTR - {: at1:n :}
+   a [: NOTE ;] ARENA-FIX:RECS-NEW-DISPOSE {: r2:ptr :}
+   2 r2 ARENA--FIX-REC:ID !
+   r2 NULL-PTR - {: at2:n :}
+   LOG-N @ 0 T=
+   a ARENA:RESET
+   LOG-N @ 2 T=
+   0 LOG-ID @ 2 T=  0 LOG-AT @ at2 T=
+   1 LOG-ID @ 0 T=  1 LOG-AT @ at1 T=
+   s" and not again at the next reset or at release" T-LABEL
+   a ARENA:RESET
+   LOG-N @ 2 T=
+   s" an action registered after the reset runs at release" T-LABEL
+   a [: NOTE ;] ARENA-FIX:RECS-NEW-DISPOSE {: r3:ptr :}
+   3 r3 ARENA--FIX-REC:ID !
+   r3 NULL-PTR - {: at3:n :}
+   a ARENA:RELEASE
+   LOG-N @ 3 T=
+   2 LOG-ID @ 3 T=  2 LOG-AT @ at3 T= ;
 
 
-\ The offsets where the line holding offset `at` starts and ends.
-: LINE-START ( ptr u8 n -- n )
-   {: a:ptr at:n :}
-   at begin dup 0 > while
-      a over 1 - + c@ 10 = if exit then 1 -
-   repeat ;
+\ RECORDS and DISPOSALS call ARENA-FIX's public RECS-NEW and RECS-NEW-DISPOSE.
+: VISIBILITY ( -- )
+   s" a public declaration leaves its package's section public" T-LABEL
+   ARENA-FIX:AFTER TTRUE
+   s" a private declaration's words are not found from another package" T-LABEL
+   s" : P1 ( ptr ARENA:arena -- ptr ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW ;" EVAL CHECKER-REJECT-RC T=
+   s" : P2 ( ptr ARENA:arena [ ptr ARENA-FIX:rec -- ] -- ptr ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW-DISPOSE ;" EVAL CHECKER-REJECT-RC T=
+   s" nor are either declaration's casts" T-LABEL
+   s" : P3 ( ptr u8 -- ptr ARENA-FIX:rec ) ARENA-FIX:RECS-NEW-PTR ;" EVAL CHECKER-REJECT-RC T=
+   s" : P4 ( [ ptr ARENA-FIX:rec -- ] -- [ ptr u8 -- ] ) ARENA-FIX:RECS-NEW-ACT ;" EVAL CHECKER-REJECT-RC T=
+   s" : P5 ( ptr u8 -- ptr ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW-PTR ;" EVAL CHECKER-REJECT-RC T=
+   s" : P6 ( [ ptr ARENA-FIX:rec -- ] -- [ ptr u8 -- ] ) ARENA-FIX:PRECS-NEW-ACT ;" EVAL CHECKER-REJECT-RC T=
+   s" P1" get-current search-wl 0= TTRUE ;
 
 
-: LINE-END ( ptr u8 n n -- n )
-   {: a:ptr u:n at:n :}
-   at begin dup u < while
-      a over + c@ 10 = if exit then 1 +
-   repeat ;
+\ The handle fetched back is the one stored, and still makes records.
+: HANDLES ( -- )
+   s" a HEAP element holds an arena handle" T-LABEL
+   ARENA:NEW {: a:ptr :}
+   HOLDERS-NEW {: h:ptr :}
+   a h HOLDER-ARENA !
+   h HOLDER-ARENA @ {: b:ptr :}
+   b NULL-PTR - a NULL-PTR - T=
+   b ARENA-FIX:RECS-NEW ARENA--FIX-REC:ID @ 0 T=
+   h HOLDERS-RELEASE
+   s" and so does a DYNAMIC-BUFFER element" T-LABEL
+   2 HOLDBUF-RESERVE
+   a 1 HOLDBUF HOLDER-ARENA !
+   1 HOLDBUF HOLDER-ARENA @ {: c:ptr :}
+   c NULL-PTR - a NULL-PTR - T=
+   c ARENA-FIX:RECS-NEW ARENA--FIX-REC:ID @ 0 T=
+   HOLDBUF-RELEASE
+   a ARENA:RELEASE ;
 
 
-\ The child's stderr line giving the reason a name past the family-name cap
-\ gets, empty when there is none.
-: CAP-LINE$ ( -- ptr u8 n )
-   E2E-TREE:ERR$ {: a:ptr u:n :}
-   a u s" : name longer than 255 bytes at '" FIND-SUB MATCH option
-     none OF NULL-PTR 0 exit ENDOF
-     some OF IDX>N ENDOF
-   ;MATCH {: at:n :}
-   a at LINE-START {: st:n :}
-   a u at LINE-END {: en:n :}
-   a st +  en st - ;
+\ Whether NAME+SFX (PUB-ABSENT) or each of NAME's four words (PUB-NO-WORDS) is
+\ absent from ARENA-TEST's public section; the caller is in its private one.
+: PUB-ABSENT ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n sfx:ptr sfxu:n :}
+   s" public" EVAL 0 T=  name nameu sfx sfxu ABSENT  s" private" EVAL 0 T= ;
+: PUB-NO-WORDS ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   s" public" EVAL 0 T=  name nameu NO-WORDS  s" private" EVAL 0 T= ;
+
+
+: TAKEN-NEW-DISPOSE ( -- ) ;
+: TAKEN2-NEW-PTR ( -- ) ;
+\ Each taken in the section other than its ARENA's.
+: PUBPTR-NEW-PTR ( -- ) ;
+: PUBACT-NEW-ACT ( -- ) ;
+: PUBDIS-NEW-DISPOSE ( -- ) ;
+public
+: PRIVNEW-NEW ( -- ) ;
+private
 
 
 : REFUSALS ( -- )
-   s" a refused element type defines nothing" T-LABEL
+   s" a refused element type defines none of the four words" T-LABEL
    s" ARENA BAD u16" EVAL CHECKER-REJECT-RC T=
-   s" BAD-NEW" get-current search-wl 0= TTRUE
+   s" BAD" NO-WORDS
    s" ARENA WORSE no-such-type" EVAL CHECKER-REJECT-RC T=
-   s" WORSE-NEW" get-current search-wl 0= TTRUE
-   s" an element that lives in place is refused where storage moves or unmaps" T-LABEL
-   s" DYNAMIC-BUFFER HOLDS pool" EVAL CHECKER-REJECT-RC T=
-   s" HOLDS-RESERVE" get-current search-wl 0= TTRUE
-   s" ARENA OUTER recs" EVAL CHECKER-REJECT-RC T=
-   s" OUTER-NEW" get-current search-wl 0= TTRUE
-   s" 0 CWORK-VARIABLE HELD-CW recs" EVAL CHECKER-REJECT-RC T=
-   s" HELD-CW" get-current search-wl 0= TTRUE
-   s" a declaration refused while it is built defines no family" T-LABEL
+   s" WORSE" NO-WORDS
+   s" a name whose derived word is taken defines none of the others" T-LABEL
+   s" ARENA TAKEN n" EVAL E-DUP-DEFINITION T=
+   s" TAKEN" s" -NEW" ABSENT  s" TAKEN" s" -NEW-PTR" ABSENT  s" TAKEN" s" -NEW-ACT" ABSENT
+   s" ARENA TAKEN2 n" EVAL E-DUP-DEFINITION T=
+   s" TAKEN2" s" -NEW" ABSENT  s" TAKEN2" s" -NEW-DISPOSE" ABSENT  s" TAKEN2" s" -NEW-ACT" ABSENT
+   s" a declaration refused while it is built defines nothing" T-LABEL
    OVF-TEXT EVAL 7121 T=
-   s" OVF-NEW" get-current search-wl 0= TTRUE
-   s" ARENA OVF rec" EVAL 0 T=
-   s" TYPED-VARIABLE OVF-POOL ovf" EVAL 0 T=
-   s" OVF-POOL OVF-NEW drop OVF-POOL OVF-RELEASE" EVAL 0 T=
-   s" a family refusal counted by a multi-error load defines no arena words" T-LABEL
-   s" ARENA HELD rec" MULTI 1 T= 0 T=
-   s" HELD-NEW" get-current search-wl 0= TTRUE
-   s" HELD-RELEASE" get-current search-wl 0= TTRUE
-   s" ARENA TAKEN rec" MULTI 1 T= 0 T=
-   s" TAKEN-NEW" get-current search-wl 0= TTRUE
-   s" TAKEN-RELEASE" get-current search-wl 0= TTRUE
-   s" a top-level name too long for its family is STRUCTURE's refusal" T-LABEL
-   E2E-TREE:ERR$ s" habu: bad structure declaration 'a-a-" CONTAINS? TTRUE
-   E2E-TREE:ERR$ s" : constructor package name exceeds 255 bytes" CONTAINS? TTRUE
-   E2E-TREE:OUT$ S\" arena-long: 7154\nundefined\n" CONTAINS? TTRUE
-   s" a multi-error load counts that refusal and defines nothing" T-LABEL
-   E2E-TREE:OUT$ S\" arena-long-multi: 1\n0\nundefined\n" CONTAINS? TTRUE
-   s" a top-level name past the family-name cap is refused as a bare STRUCTURE refuses it" T-LABEL
-   CAP-LINE$ s" habu: bad structure declaration 'a-a-" STARTS-WITH? TTRUE
-   E2E-TREE:ERR$ CAP-LINE$ COUNT-SUB 2 T=
-   E2E-TREE:OUT$ S\" arena-cap: 7118\n7118\nundefined\n" CONTAINS? TTRUE ;
-
-
-\ An owner, and a record holding one, lives in place: a copy would share its
-\ chunks, and growing or releasing both would unmap them twice.
-: COPIES ( -- )
-   s" checked code copies no arena owner through @ or !" T-LABEL
-   s" : CP ( -- ) OWN-A @ OWN-B ! ;" EVAL CHECKER-REJECT-RC T=
-   s" nor a record that holds one" T-LABEL
-   s" : HC ( -- ) 0 POOLS @ 1 POOLS ! ;" EVAL CHECKER-REJECT-RC T=
-   s" nor store an owner value it was given" T-LABEL
-   s" : ST ( recs -- ) OWN-A ! ;" EVAL CHECKER-REJECT-RC T=
-   s" no cast hands out an owner's head as bytes or forges one from them" T-LABEL
-   s" CAST: >OWN-BYTES ( ptr recs -- ptr u8 )" EVAL E-CAST-OWNER T=
-   s" >OWN-BYTES" get-current search-wl 0= TTRUE
-   s" CAST: >OWN-FORGE ( ptr u8 -- ptr recs )" EVAL E-CAST-OWNER T=
-   s" >OWN-FORGE" get-current search-wl 0= TTRUE
-   s" nor unpacks a view of owners into bytes" T-LABEL
-   s" CAST: >VIEW-BYTES ( read-view<p,q,recs> -- ptr u8 n )" EVAL E-CAST-OWNER T=
-   s" >VIEW-BYTES" get-current search-wl 0= TTRUE ;
+   s" OVF" NO-WORDS
+   s" ARENA OVF n" EVAL 0 T=
+   s" ARENA:NEW dup OVF-NEW drop ARENA:RELEASE" EVAL 0 T=
+   s" a refusal counted by a multi-error load defines nothing" T-LABEL
+   s" ARENA MBAD u16" MULTI 1 T= 0 T=
+   s" MBAD" NO-WORDS
+   s" a name whose word is taken in the other section defines none of the others" T-LABEL
+   s" public ARENA PUBPTR n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
+   s" PUBPTR" PUB-NO-WORDS
+   s" PUBPTR" s" -NEW" ABSENT  s" PUBPTR" s" -NEW-DISPOSE" ABSENT  s" PUBPTR" s" -NEW-ACT" ABSENT
+   s" public ARENA PUBACT n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
+   s" PUBACT" PUB-NO-WORDS
+   s" PUBACT" s" -NEW" ABSENT  s" PUBACT" s" -NEW-DISPOSE" ABSENT  s" PUBACT" s" -NEW-PTR" ABSENT
+   s" public ARENA PUBDIS n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
+   s" PUBDIS" PUB-NO-WORDS
+   s" PUBDIS" s" -NEW" ABSENT  s" PUBDIS" s" -NEW-PTR" ABSENT  s" PUBDIS" s" -NEW-ACT" ABSENT
+   s" ARENA PRIVNEW n" EVAL E-DUP-DEFINITION T=
+   s" PRIVNEW" NO-WORDS
+   s" PRIVNEW" s" -NEW-DISPOSE" PUB-ABSENT  s" PRIVNEW" s" -NEW-PTR" PUB-ABSENT
+   s" PRIVNEW" s" -NEW-ACT" PUB-ABSENT
+   s" a qualified name defines none of the four words" T-LABEL
+   s" ARENA ARENA-TEST:QUAL n" EVAL CHECKER-REJECT-RC T=
+   s" QUAL" NO-WORDS  s" QUAL" PUB-NO-WORDS ;
 
 
 \ The refusals' stderr lines are the boundary under test, and a top-level
@@ -186,27 +234,12 @@ variable OVF-U
 : CHILD ( -- )
    s" test/arena-live.f" E2E-TREE:ARGS
    ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ E2E-TREE:RUN-ON ;
-
-
-\ At top level no head accessor exists to plant bytes as a chunk or to copy a
-\ head, and an owner is refused whole at the fetch that would copy it.
-: OWNER-CHILD ( -- )
-   s" no head accessor reaches an owner's head" T-LABEL
-   E2E-TREE:ERR$ s" E-UNDEFINED: FOOS:HEAD at " COUNT-SUB 2 T=
-   s" an owner is never fetched or stored whole" T-LABEL
-   E2E-TREE:ERR$ s" in place: an arena owner is never fetched or stored whole" COUNT-SUB 2 T=
-   E2E-TREE:OUT$ S\" arena-forge: 70\narena-head-copy: 70\narena-owner-copy: 70\narena-owner-copy-run: 70\n" CONTAINS? TTRUE
-   s" a fetch through a family missing its argument is refused for its arity" T-LABEL
-   E2E-TREE:ERR$ s" in g1: wrong arity for type family 'box'" CONTAINS? TTRUE
-   E2E-TREE:OUT$ S\" arena-arity: 70\n" CONTAINS? TTRUE ;
-
-
-\ ARENA's NAME-NEW and NAME-RELEASE and STRUCTURE's accessors bind the engine's
-\ projection: a package's own `field-project` is refused at its definition.
+\ STRUCTURE's accessors bind the engine's projection: a package's own
+\ `field-project` is refused at its definition.
 : CAPTURE-CHILD ( -- )
    s" no package defines its own field-project" T-LABEL
-   E2E-TREE:ERR$ s" reserved word cannot be a definition name: field-project" COUNT-SUB 2 T=
-   E2E-TREE:OUT$ S\" arena-capture: 70\nstruct-capture: 70\n" CONTAINS? TTRUE ;
+   E2E-TREE:ERR$ s" reserved word cannot be a definition name: field-project" COUNT-SUB 1 T=
+   E2E-TREE:OUT$ S\" struct-capture: 70\n" CONTAINS? TTRUE ;
 
 
 \ Every call or tick of ARENA-NEW or ARENA-RELEASE outside ARENA's generated
@@ -243,12 +276,22 @@ variable OVF-U
    E2E-TREE:ERR$ S\" \"code\":\"E-BAD-STORAGE\"" COUNT-SUB 1 T=
    E2E-TREE:RC@ 0 <> TTRUE ;
 
-
 : RUN ( -- )
    T-RESET
-   CHILD GROWTH REFUSALS COPIES OWNER-CHILD CALL-CHILD CAPTURE-CHILD
-   VERIFY-CALLS
-   T-REPORT ;
+   CHILD RECORDS DISPOSALS VISIBILITY HANDLES REFUSALS CALL-CHILD CAPTURE-CHILD
+   VERIFY-CALLS ;
 
 RUN
+
+public
+
+\ Run at top level, where no package is open.
+: TOP-LEVEL ( -- )
+   s" a declaration outside any package defines none of the four words" T-LABEL
+   s" ARENA TOP n" EVAL CHECKER-REJECT-RC T=
+   s" TOP" NO-WORDS ;
+
 ;package
+
+ARENA-TEST:TOP-LEVEL
+T-REPORT
