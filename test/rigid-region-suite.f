@@ -326,7 +326,7 @@ s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QFRESHOUT ( -- [ -- matrix<space-global,fresh-region-b,f32,f32> ] ) [: RR-OWN ;]"  RR-CHECK -1 T=
 
 T-REPORT
-\ Diagnostics leave RR-DIAG in the format found, so a file loaded after this one
-\ in the same process reports as usual.
+\ Diagnostics leave RR-DIAG and take back the format found, so a file loaded
+\ after this one in the same process reports as usual.
 DIAG-BUFFER-OFF  RR-JSON-WAS @ JSON-DIAGS !
 ;package

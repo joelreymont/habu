@@ -56,7 +56,7 @@ variable EVD    variable PFD
 create TDIAG-BUF 8192 allot
 TDIAG-BUF 8192 DIAG-BUFFER!
 \ The probes read prose, and a run under `tools/check.f --json-errors` starts in
-\ JSON; each JSON probe sets prose back, and the format found returns before T-REPORT.
+\ JSON; each JSON stretch ends in prose, and the format found returns before T-REPORT.
 variable TD-JSON-WAS   JSON-DIAGS @ TD-JSON-WAS !   false DIAG-JSON!
 
 \ NEWTYPE: registers a TK-CELL family in the global scope, usable in sigs.
