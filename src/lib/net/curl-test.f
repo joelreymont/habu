@@ -6,6 +6,12 @@
 \ never accepted on: the peer that never answers. HABU_NET_TESTS=1 adds one real
 \ HTTPS request.
 \ Run: bin/hb --load src/lib/net/curl-test.f
+\
+\ Failure hypotheses for incremental receive: a memstream may hide bytes until
+\ close, move its buffer while growing, or expose binary/UTF-8 fragments; a
+\ short NEXT span may duplicate, skip or overwrite bytes; completion may race
+\ a reader; a second mode or foreign owner may collect the wrong record; cancel
+\ and HALT may strand a parked reader or wake a dead TCB.
 
 require src/lib/error.f
 require src/lib/prelude.f
@@ -89,7 +95,7 @@ $300 constant DRIBBLE-U                 \ the dribble body, served whole but slo
 $3003 constant STREAM-U                \ forces several memstream growths and short reads
 $7F constant STREAM-CAP                 \ much shorter than the response
 $40 constant DRIBBLE-STEP               \ bytes per timed write
-100 constant DRIBBLE-GAP-MS             \ 12 steps: 1.3 s at about 640 bytes a second
+100 constant DRIBBLE-GAP-MS
 \ The dribble must outlast LOW-SECONDS: a shorter one finishes before any stall
 \ test or one-second ceiling could end it, so DRIBBLE-LOW-SPEED would pass
 \ whatever LOW-SPEED! set.
@@ -139,7 +145,7 @@ variable RES-U
 variable NUM-N
 variable SEND-COOKIE
 variable SERVER-LISTENER
-variable SERVER-PORT                    \ the task's mailbox for the bound port
+variable SERVER-PORT
 variable SERVER-READY
 variable SERVER-STOP
 variable SERVER-DONE
@@ -169,7 +175,7 @@ variable TWO-TOOK                       \ CASE-STREAM-TWO's pass took an answer
 variable LAST-STATUS
 variable LAST-LEN
 variable LAST-CODE
-variable LAST-KIND                      \ 0 response, 1 truncated, 2 failed
+variable LAST-KIND
 variable HEADER-LEN
 variable HEADER-KIND
 variable TRANSCRIPT-U
@@ -233,12 +239,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    DRIBBLE-U 0 do DRIBBLE-BYTE DRIBBLE-BUF i + c! loop ;
 
 
-\ Failure hypotheses for incremental receive: a memstream may hide bytes until
-\ close, move its buffer while growing, or expose binary/UTF-8 fragments; a
-\ short NEXT span may duplicate, skip or overwrite bytes; completion may race
-\ a reader; a second mode or foreign owner may collect the wrong record; cancel
-\ and HALT may strand a parked reader or wake a dead TCB. The held peer below
-\ refuses to finish until the first NEXT result has been inspected.
 : STREAM-FILL ( -- )
    0 STREAM-BUF c!
    $E2 STREAM-BUF 1+ c!
@@ -419,8 +419,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    again ;
 
 
-\ Reads on until `want` body bytes follow the head in REQ-BUF; false when the
-\ peer ends first or the body would not fit.
 : BODY-READ ( TCP4:connection n -- bool ) {: conn:TCP4:connection want:n :}
    HEAD-U @ want + REQ-CAP > if false exit then
    REQ-U @ HEAD-U @ want + < if
@@ -579,7 +577,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    conn TCP4:CLOSE PEER-STATUS ;
 
 
-\ HELLO$ as one chunk, with no Content-Length.
 : SERVE-CHUNKED ( TCP4:connection -- ) {: conn:TCP4:connection :}
    RES-RESET
    s" HTTP/1.1 200 OK" RES+ CRLF+
@@ -590,8 +587,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    conn SEND-RESPONSE ;
 
 
-\ Reads on until REQ-BUF holds `want` bytes; false when the peer ends first or
-\ they would not fit.
 : REQ-HOLDS? ( TCP4:connection n -- bool ) {: conn:TCP4:connection want:n :}
    want REQ-CAP > if false exit then
    begin REQ-U @ want < while
@@ -599,7 +594,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    repeat true ;
 
 
-\ The `u`-byte big-endian field at `at` in REQ-BUF.
 : REQ-BE@ ( n n -- n ) {: at:n u:n :}
    0 u 0 ?do 8 lshift REQ-BUF at + i + c@ or loop ;
 
@@ -630,7 +624,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    again ;
 
 
-\ `u` bytes of `value`, most significant first.
 : RES-BE+ ( n n -- ) {: value:n u:n :}
    u 0 ?do value u 1- i - 8 * rshift $FF and RES-C+ loop ;
 
@@ -640,7 +633,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 \ HELLO$ over cleartext HTTP/2 to a client with prior knowledge, for the HTTP/2
-\ span cases (BODY-RC in curl.f says why they differ from HTTP/1.1).
+\ span cases.
 : SERVE-H2 ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn H2-STREAM 0= if drop conn TCP4:CLOSE PEER-STATUS exit then
    {: stream:n :}
@@ -729,8 +722,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    conn SEND-RESPONSE ;
 
 
-\ The answer's body is the request exactly as read: its head, then the form
-\ body when the head declares one. The answer also sets the probe cookie.
 : SERVE-ECHO ( TCP4:connection -- ) {: conn:TCP4:connection :}
    s" Content-Length: 3" REQ-HAS-CI? if
       conn FORM$ nip BODY-READ 0= if 1 SERVER-BAD +! then
@@ -741,8 +732,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    conn SEND-RESPONSE ;
 
 
-\ Content-Length's value in the head; a value that does not parse is a fixture
-\ fault.
 : LENGTH-AT ( n -- n ) {: at:n :}
    REQ-BUF at + at TOKEN-END at - STR>NUMBER?
    MATCH option
@@ -751,7 +740,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    ;MATCH ;
 
 
-\ A head without Content-Length is a fixture fault.
 : DECLARED-LENGTH ( -- n )
    s" Content-Length: " {: name:ptr nameu:n :}
    HEAD-U @ 0 ?do
@@ -760,8 +748,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    1 SERVER-BAD +! 0 ;
 
 
-\ One read of at most `most` body bytes over the routed head; zero when the
-\ peer ends first or the read fails, which SERVER-FAILED records.
 : SINK-CHUNK ( TCP4:connection n -- n ) {: conn:TCP4:connection most:n :}
    conn REQ-BUF most REQ-CAP min TCP4:TRANSFER-BYTES TCP4:READ
    MATCH TCP4:read-result
@@ -771,7 +757,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    ;MATCH ;
 
 
-\ The body bytes that arrived, up to `want`, read off and discarded.
 : BODY-COUNT ( TCP4:connection n -- n ) {: conn:TCP4:connection want:n :}
    REQ-U @ HEAD-U @ - want min
    begin dup want < while
@@ -781,8 +766,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    repeat ;
 
 
-\ The answer's body is the decimal count of body bytes that arrived, up to the
-\ declared length. Nothing is kept, so a body of any size fits.
+\ Nothing is kept, so a body of any size fits.
 : SERVE-COUNT ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn DECLARED-LENGTH BODY-COUNT {: got:n :}
    SB-RESET got FMT:SB-U
@@ -941,8 +925,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    ;MATCH ;
 
 
-\ A listener on a free loopback port, its handle and then its port stored in the
-\ two cells; a refusal is recorded as the server side's fault.
 : LISTEN-LOOPBACK ( ptr n ptr n -- bool ) {: lcell:ptr pcell:ptr :}
    lcell BIND-LOOPBACK 0= if false exit then
    lcell @ TCP4:>LISTENER BACKLOG TCP4:LISTEN SERVER-STATUS
@@ -993,7 +975,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    WAIT-READY ;
 
 
-\ Ends the server task and closes its listener.
 : END-SERVER ( -- )
    1 SERVER-STOP atomic-add drop
    WAKE-SERVER
@@ -1002,16 +983,13 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LISTENER@ TCP4:CLOSE-LISTENER SERVER-STATUS ;
 
 
-\ The server wait a recorded deadline names.
 : EXPIRED-NAME ( n -- ptr u8 n )
    EXPIRED-ACK = if s" curl-test STREAM-WAIT-ACK" exit then
    s" curl-test RETRY-NEXT" ;
 
 
-\ Main's report of the deadline the server task recorded, once the task has
-\ ended. A server fault beside the deadline is a genuine failure and wins: it is
+\ A server fault beside the deadline is a genuine failure and wins: it is
 \ asserted, and the run ends there, reading nothing more the server left.
-\ Otherwise the wait is named and its deadline thrown.
 : REPORT-EXPIRED ( n -- )
    {: reason:n :}
    SERVER-BAD @ 0<> SERVER-ERRNO @ 0<> or if
@@ -1042,11 +1020,10 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    reason REPORT-EXPIRED ;
 
 
-\ Nobody accepts on this listener: the kernel completes a client's connection
-\ and queues whatever it sends, and nothing ever answers. A transfer that only
-\ its own ceiling can end is sent here, because that ceiling can fire before
-\ the request is even sent - the scheduler may hold the client that long - and
-\ the counting server must see only requests whose arrival the test guarantees.
+\ A transfer that only its own ceiling can end is sent here, because that
+\ ceiling can fire before the request is even sent - the scheduler may hold the
+\ client that long - and the counting server must see only requests whose
+\ arrival the test guarantees.
 : OPEN-SILENT ( -- )
    s" a listener that never answers opens on loopback" T-LABEL
    SILENT-LISTENER SILENT-PORT LISTEN-LOOPBACK TTRUE ;
@@ -1132,8 +1109,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
 
 \ A code-28 result is a transfer bound this file set expiring, which is no
-\ assertion result: TEST-WAIT:EXPIRED names it on stdout and throws
-\ E-PROC-TIMEOUT. A case that expects its bound to end a transfer records
+\ assertion result. A case that expects its bound to end a transfer records
 \ it through FETCH-LIMIT or AWAIT-LIMIT, or matches it inline unguarded, and
 \ asserts 28 itself.
 : NOT-TIMEOUT ( n -- n )
@@ -1142,8 +1118,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    code ;
 
 
-\ The one MATCH both recorders share. Unless limit says the case expects its
-\ own limit to end the transfer, NOT-TIMEOUT throws a 28 before a case reads it.
 : RECORD-RESULT ( CURL:fetch-result bool -- )
    {: limit:bool :}
    MATCH CURL:fetch-result
@@ -1271,7 +1245,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject ;
 
 
-\ A transfer to the peer that never answers, which only its ceiling ends.
 : STALL-READY ( -- CURL:handle )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject SILENT-PORT @ PATH-STALL$ URL-AT CURL:URL! EXPECT-OK
