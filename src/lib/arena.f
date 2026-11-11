@@ -10,20 +10,29 @@ require src/lib/memory.f
 require src/lib/span.f
 
 package ARENA
+private
+
+\ A release action and the allocation it receives, newest first.
+STRUCTURE action DERIVE addr
+   FIELD next ptr action
+   FIELD alloc ptr u8
+   FIELD run [ ptr u8 -- ]
+;STRUCTURE
+
 public
 
-\ `self` is this chunk's bytes for munmap, whose `ptr a` refuses `ptr arena`;
-\ links are `ptr u8`: a field typed `ptr arena` here is E-TDECL-PAYLOAD.
+\ `self`, `chunks` and `prev` are a chunk's bytes: munmap and NEWEST take bytes,
+\ and munmap's `ptr a` refuses a record pointer.
 STRUCTURE arena OPAQUE DERIVE addr
    FIELD self ptr u8
    FIELD top n
    FIELD first-top n
    FIELD chunks ptr u8
-   FIELD actions ptr u8
-   FIELD parent ptr u8
-   FIELD kids ptr u8
-   FIELD older ptr u8
-   FIELD newer ptr u8
+   FIELD actions ptr action
+   FIELD parent ptr arena
+   FIELD kids ptr arena
+   FIELD older ptr arena
+   FIELD newer ptr arena
 ;STRUCTURE
 
 private
@@ -35,14 +44,7 @@ MEM-MAX-N FIRST-BYTES - constant MAX-REQUEST
 \ A chunk after the first: the chunk before it, newest first, and its bytes.
 STRUCTURE chunk DERIVE addr FIELD prev ptr u8 FIELD size n ;STRUCTURE
 
-\ A release action and the allocation it receives, newest first.
-STRUCTURE action DERIVE addr
-   FIELD next ptr u8
-   FIELD alloc ptr u8
-   FIELD run [ ptr u8 -- ]
-;STRUCTURE
-
-\ The records laid in chunk bytes, and the arenas the `ptr u8` links name.
+\ The records laid in chunk bytes, and the chunk a `ptr u8` link names.
 CAST: >ARENA ( ptr u8 -- ptr arena )
 CAST: >CHUNK ( ptr u8 -- ptr chunk )
 CAST: >ACTION ( ptr u8 -- ptr action )
@@ -100,7 +102,7 @@ CAST: >ACTION ( ptr u8 -- ptr action )
 : RUN-ACTIONS ( ptr arena -- n )
    {: a:ptr :}
    0 begin a ARENA-ACTIONS @ dup NULL-PTR <> while
-      >ACTION dup ACTION-NEXT @ a ARENA-ACTIONS !
+      dup ACTION-NEXT @ a ARENA-ACTIONS !
       RUN-ACTION FIRST-ERROR
    repeat drop ;
 
@@ -112,11 +114,11 @@ CAST: >ACTION ( ptr u8 -- ptr action )
    a ARENA-NEWER @ {: newer:ptr :}
    parent NULL-PTR = if exit then
    newer NULL-PTR = if
-      older parent >ARENA ARENA-KIDS !
+      older parent ARENA-KIDS !
    else
-      older newer >ARENA ARENA-OLDER !
+      older newer ARENA-OLDER !
    then
-   older NULL-PTR <> if newer older >ARENA ARENA-NEWER ! then
+   older NULL-PTR <> if newer older ARENA-NEWER ! then
    NULL-PTR a ARENA-PARENT ! ;
 
 
@@ -152,7 +154,7 @@ CAST: >ACTION ( ptr u8 -- ptr action )
 : SETTLE ( ptr arena bool -- n )
    {: a:ptr keep:bool :}
    0 begin a ARENA-KIDS @ dup NULL-PTR <> while
-      >ARENA false RECURSE FIRST-ERROR
+      false RECURSE FIRST-ERROR
    repeat drop
    a RUN-ACTIONS FIRST-ERROR
    a DROP-CHUNKS FIRST-ERROR
@@ -177,10 +179,10 @@ public
    {: parent:ptr :}
    NEW {: a:ptr :}
    parent ARENA-KIDS @ {: older:ptr :}
-   parent ARENA-SELF @ a ARENA-PARENT !
+   parent a ARENA-PARENT !
    older a ARENA-OLDER !
-   older NULL-PTR <> if a ARENA-SELF @ older >ARENA ARENA-NEWER ! then
-   a ARENA-SELF @ parent ARENA-KIDS !
+   older NULL-PTR <> if a older ARENA-NEWER ! then
+   a parent ARENA-KIDS !
    a ;
 
 
@@ -200,7 +202,7 @@ public
    p act ACTION-ALLOC !
    run act ACTION-RUN !
    a ARENA-ACTIONS @ act ACTION-NEXT !
-   p bytes + a ARENA-ACTIONS !
+   act a ARENA-ACTIONS !
    p len ;
 
 
