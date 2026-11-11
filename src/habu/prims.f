@@ -14,16 +14,14 @@ public
 \ K-ELAB and K-UNROWED carry no effect: they are the two ways a primitive can
 \ have a body and no table row, named here so the completeness gate passes by an
 \ explicit row rather than by silence.
-0 constant K-PRIM            \ a global row, closed by EPRIM;
+0 constant K-PRIM            \ a global row
 1 constant K-PKG-PRIVATE     \ a package row closed by ECLOSE-PRIVATE: only the
                              \ owning package's checked bodies resolve it
 2 constant K-ELAB            \ the checker elaborates this primitive's effect
 3 constant K-UNROWED         \ no checker row anywhere; no checked caller exists
 
 \ What a primitive touches besides the data and return stacks, stated by a
-\ row's REACH clause. A tool that judges a top-level run reads the running
-\ host's own class through FIND and REACH@; a row with no clause is R-NONE and
-\ its run is accountable to nothing the tool observes.
+\ row's REACH clause.
 0 constant R-NONE            \ unclassed: output, files, execution, engine state
 1 constant R-STACK           \ the stacks and arithmetic over its operands only;
                              \ a throw unwinds them to its catch
@@ -37,8 +35,7 @@ public
                              \ and the nested runs it makes
 8 constant R-EXIT            \ ends the process; no result follows its run
 
-\ One code per checker row constructor. A composite atom is a short sequence:
-\ PE-PTR-A is A-VAR-A A-PTR, PE-PTR-A-RAW is A-VAR-A A-RAW A-PTR.
+\ One code per checker row constructor.
  1 constant A-IN
  2 constant A-OUT
  3 constant A-VAR-A
@@ -67,10 +64,9 @@ private
 
 $4C constant SPEC-RC
 
-\ Rows are fixed-width records; names, package names and reference names are
-\ byte spans in NAMES; atoms are bytes in CODES. Offsets, not addresses, so the
-\ table can be walked by index from any consumer.
-$180 constant ROW-CAP        \ 384 rows
+\ Rows hold offsets into NAMES and CODES, not addresses, so the table can be
+\ walked by index from any consumer.
+$180 constant ROW-CAP
 12 constant ROW-CELLS
 $2000 constant NAME-CAP
 $1000 constant CODE-CAP
@@ -104,17 +100,14 @@ variable BI
 variable IN-N
 variable IN-DEPTH
 
-\ The row under construction, between an opener and its closer.
 variable CUR-KIND
 variable CUR-NAME-OFF   variable CUR-NAME-LEN
 variable CUR-PKG-OFF    variable CUR-PKG-LEN
 variable CUR-CODE-OFF
 variable CUR-REF-OFF    variable CUR-REF-LEN
 
-\ SLOT addresses a row the caller has already bounded; ROW-FIELD is what everything
-\ else uses and refuses an index the table does not hold, so a reader cannot walk
-\ off the end of ROWS. Only ROW-WRITE needs SLOT: it fills the row at ROW-N
-\ before ROW-N counts it.
+\ SLOT addresses a row the caller has already bounded. Only ROW-WRITE needs
+\ SLOT: it fills the row at ROW-N before ROW-N counts it.
 : SLOT ( n n -- ptr n ) {: row:n field:n :}
    row ROW-CELLS * field + cells ROWS + ;
 
@@ -137,9 +130,9 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    code CODES CODE-U @ + c!
    CODE-U @ 1 + CODE-U ! ;
 
-\ Spelled like src/core/checker.f's row constructors, and private to this
-\ package so both spellings can exist: the checker's build terms, these append
-\ the code that names one.
+\ Spelled like the checker's row constructors, and private to this package so
+\ both spellings can exist: the checker's build terms, these append the code
+\ that names one.
 : PE-IN          A-IN CODE, ;
 : PE-OUT         A-OUT CODE, ;
 : PE-A           A-VAR-A CODE, ;
@@ -180,10 +173,8 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    NAME-U @ CUR-NAME-OFF !
    parse-name dup CUR-NAME-LEN ! NAME-SPAN, ;
 
-\ THE ROW'S MINIMUM INPUT DEPTH is the number of inputs its atoms state, counted
-\ once as the row closes. An input between A-QUOT and A-QUOT-END belongs to the
-\ quotation's own effect, not to the row's. A row whose atoms state no input
-\ carries 0 until EMIN-IN! states its depth.
+\ An input between A-QUOT and A-QUOT-END belongs to the quotation's own
+\ effect, not to the row's.
 : IN-ATOM ( n -- ) {: code:n :}
    code A-QUOT = IF IN-DEPTH @ 1 + IN-DEPTH ! EXIT THEN
    code A-QUOT-END = IF IN-DEPTH @ 1 - IN-DEPTH ! EXIT THEN
@@ -229,9 +220,8 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : ECLOSE-PRIVATE ( -- )
    ROW-WRITE ;
 
-\ REF names the reference implementation in checked Habu (src/habu/prim-ref.f,
-\ package PRIM-REF) that test/prim-parity.f runs beside each backend's body over
-\ the same cases; it is read back with REF$. A reference never shadows a
+\ REF names the reference implementation in checked Habu that runs beside each
+\ backend's body over the same cases. A reference never shadows a
 \ primitive spelling, so the clause spells `PRIM-REF:ADD`, not `PRIM-REF:+`. A
 \ row carries one only where the semantics can be written WITHOUT the primitive
 \ it answers for and where the gate exercises it; the overloads of a name state
@@ -241,7 +231,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    parse-name dup CUR-REF-LEN ! NAME-SPAN, ;
 
 \ The just-written row's checker row is a trust boundary: a CHECKED caller is
-\ refused, while a TRUSTED: body may use it (checker.f PRIM-TRUSTED-ONLY!).
+\ refused, while a TRUSTED: body may use it.
 : ETRUSTED-ONLY! ( -- )
    ROW-N @ 0 <= IF s" prims: trusted-only before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
@@ -259,13 +249,12 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 
 \ The just-written row is one an x86-64 captured runtime provides. Its record
 \ stays in every build; in a seeded x86-64 build its body jumps through the
-\ row's dispatch cell (src/habu/layout.f PROVIDED-XT), which the captured
-\ runtime fills, and a build with no captured runtime keeps the backend body.
-\ The x86-64 backend registers the cell with the body
-\ (src/habu/primitive-registry.f DISPATCH!), and COMPLETE-PROVIDED refuses a
-\ marked row registered without one, or a seeded build whose captured runtime
-\ leaves the cell empty. An ARM64 record is the assembly body and registers no
-\ cell; the body itself jumps through a filled cell (layout.f PROVIDED-XT).
+\ row's dispatch cell, which the captured runtime fills, and a build with no
+\ captured runtime keeps the backend body. The x86-64 backend registers the
+\ cell with the body, and COMPLETE-PROVIDED refuses a marked row registered
+\ without one, or a seeded build whose captured runtime leaves the cell empty.
+\ An ARM64 record is the assembly body and registers no cell; the body itself
+\ jumps through a filled cell.
 : EPREFIX-PROVIDED! ( -- )
    ROW-N @ 0 <= IF s" prims: prefix-provided before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-PREFIX-PROVIDED or swap ! ;
@@ -283,9 +272,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
       IF s" prims: min-in on a row whose atoms state its inputs" SPEC-RC die THEN
    depth ROW-N @ 1 - F-MIN-IN ROW-FIELD ! ;
 
-\ The just-written row's reach class, one token among the spellings below. A
-\ row states it once: a second clause on the row dies, as does a spelling no
-\ class has.
 : REACH-CODE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" stack" CORE-STR= IF R-STACK EXIT THEN
    a u s" memory" CORE-STR= IF R-MEMORY EXIT THEN
@@ -339,11 +325,9 @@ public
 : PREFIX-PROVIDED? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-PREFIX-PROVIDED and 0 <> ;
 
-\ The inputs a row's atoms state, or the depth its EMIN-IN! marker states.
 : MIN-IN ( n -- n )
    F-MIN-IN ROW-FIELD @ ;
 
-\ The row's reach class (R-NONE .. R-EXIT), R-NONE for a row with no clause.
 : REACH@ ( n -- n )
    F-REACH ROW-FIELD @ ;
 
@@ -355,9 +339,9 @@ public
       IF s" prims: atom index out of range" SPEC-RC die THEN
    CODES row F-CODE-OFF ROW-FIELD @ + idx + c@ ;
 
-\ The row index for a name, -1 when the table has none. Exact spelling: a body
-\ registered under a different case is a different row and must say so. The
-\ index lives on the stack: a lookup leaves no state in the image.
+\ Exact spelling: a body registered under a different case is a different row
+\ and must say so. The index lives on the stack: a lookup leaves no state in
+\ the image.
 : FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    0
    BEGIN dup ROW-N @ < WHILE
@@ -369,11 +353,10 @@ public
 private
 
 \ THE ROWS ARE THE CHECKER'S AXIOMS: a primitive has no Habu body to infer an
-\ effect from. An overloaded name has one row per pointer, integer or bool
-\ variant. A row with a REF is held to its reference by test/prim-parity.f; a
-\ row with none (every syscall, control, defining-word, image, FFI and atomic
-\ row) is held only by the engine rebuilding itself through these rows and by
-\ the programs the gate runs on it.
+\ effect from. A row with a REF is held to its reference; a row with none
+\ (every syscall, control, defining-word, image, FFI and atomic row) is held
+\ only by the engine rebuilding itself through these rows and by the programs
+\ the gate runs on it.
 EPRIM: finally PE-FINALLY EPRIM; REACH run
 2 EMIN-IN!                           \ the body xt and the cleanup xt
 EPRIM: c2-invoke PE-C2-INVOKE EPRIM;
@@ -424,7 +407,6 @@ EPPRIM: SOURCE-EXEC source-exec-handler PE-N PE-OUT ECLOSE-PRIVATE
 
 EPRIM: source-file-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ runs a file the loader opened as its own source unit
-\ Checked caller: src/core/include.f SOURCE-ROOT LOAD-UNIT.
 EPPRIM: SOURCE-ROOT source-file-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
 
 EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT REF PRIM-REF:S-DUP EPRIM; REACH stack
@@ -449,12 +431,11 @@ EPRIM: 2over PE-A PE-IN PE-B PE-IN PE-C PE-IN PE-D PE-IN
             REF PRIM-REF:S-2OVER EPRIM; REACH stack
 
 EPRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ADD EPRIM; REACH stack
-\ THE INTEGER-OFFSET ROWS carry PE-PTR-A-OFF on the pointee they step (the same
-\ `a` the result keeps, so the pointee is still preserved). The mark is inert for
-\ every pointee but the null: a null that rides one of these rows comes out a
-\ DATA-base pointer, because the address it answers is the caller's arithmetic
-\ and no longer the one literal address the null's permissive pointee arm is for.
-\ The pointer-MINUS-pointer rows below are a
+\ THE INTEGER-OFFSET ROWS carry PE-PTR-A-OFF on the pointee they step. The mark
+\ is inert for every pointee but the null: a null that rides one of these rows
+\ comes out a DATA-base pointer, because the address it answers is the caller's
+\ arithmetic and no longer the one literal address the null's permissive
+\ pointee arm is for. The pointer-MINUS-pointer rows below are a
 \ distance, not a step, and read no storage, so neither operand's pointee may
 \ take a kind from the other. Two pointers to elements still name one element
 \ type (`ptr a ptr a`), but a base address -- `NULL-PTR`, `data-base`, or one
@@ -496,9 +477,8 @@ EPRIM: <=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
 EPRIM: >=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:GE EPRIM; REACH stack
 EPRIM: >=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
 \ The three dividing rows. Their effects say nothing about the zero divisor
-\ because a throw is not an output: each body refuses it with ARITH-ABI:E-DIV-ZERO
-\ and MIN-N -1 wraps, the two contracts docs/forth.md states and
-\ test/prim-parity.f pins on both the body and the reference.
+\ because a throw is not an output: each body refuses it with
+\ ARITH-ABI:E-DIV-ZERO and MIN-N -1 wraps.
 EPRIM: /      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:DIV EPRIM; REACH stack
 EPRIM: mod    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:REM EPRIM; REACH stack
 EPRIM: /mod   PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT REF PRIM-REF:DIVREM EPRIM; REACH stack
@@ -519,16 +499,11 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory
 \ `xt!` is `!` plus the declaration that the cell it writes holds a JIT-region
 \ address, for a persisted cell whose address the caller works out at run time
 \ from a table base and a row index.
-\ Its row is `!`'s row, so the value and the pointee are the same type and a
-\ quotation-typed cell is written with a quotation of exactly its own effect.
 \ What the row still cannot say is that the pointee MUST be an execution token:
 \ there is no quotation-kinded type variable (no TVK kind admits only
 \ quotations), so `xt!` into a plain integer cell type-checks today and would
 \ have the loader shift an ordinary integer.
-\ A plain `!` of a quotation into such a cell is already refused
-\ (E-RAW-CELL-PTR, the raw rule's FENCE-EXEC arm in src/core/checker.f RAW-OK?;
-\ test/compiler/base-pointer-arith-refusals.f pins its reason over base-derived
-\ cells).
+\ A plain `!` of a quotation into such a cell is already refused.
 EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory EFIXED-ABI!
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM; REACH dict
 EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;
@@ -558,7 +533,7 @@ EPRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM; REACH run
 EPRIM: evaluate-range PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpreter.f INTERPRETER:EVAL-FRAMED-RANGE, through PROVIDED-XT:EVALUATE-RANGE-CELL
+EPREFIX-PROVIDED!
 EPPRIM: SOURCE-ROOT evaluate-range
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM; REACH memory
@@ -612,21 +587,20 @@ EPRIM: spawn-argv-env-io
 EPRIM: spawn-argv-env-cwd-io
    PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN PE-PTR-U8 PE-IN
    PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-EPRIM: spawn-fds  PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;   \ ( request -- pid|-errno ) src/habu/spawn-abi.f
+EPRIM: spawn-fds  PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;   \ ( request -- pid|-errno )
 EPRIM: fork          PE-N PE-OUT EPRIM;
 EPRIM: wait-status   PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: patch32       PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary may emit machine code (F3)
-\ Rewriting a write-protected dictionary record cell (xref.f RETIRE and SEAL) is package XREF's to do.
+ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary may emit machine code
+\ Rewriting a write-protected dictionary record cell is package XREF's to do.
 EPPRIM: XREF patch32 PE-N PE-IN PE-PTR-N PE-IN ECLOSE-PRIVATE
-\ Planting and clearing a breakpoint instruction is package DEBUG's (src/habu/debug.f BP-PATCH32).
+\ Planting and clearing a breakpoint instruction is package DEBUG's.
 EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ The four relocation-record primitives below, per target.
 \ `code-publish ( src dst len -- )` copies an emission into the code arena,
 \ `callmap-set ( addr -- )` and `addrmap-set ( addr -- )` record a call or an
 \ address literal at a region address, and `reloc-maps-clear ( start len -- )`
-\ forgets the sites of a reclaimed span. The record is SNAP-RELOC's band
-\ (src/habu/layout.f), and src/habu/sites.f reads it on either target.
+\ forgets the sites of a reclaimed span. The record is SNAP-RELOC's band.
 \ - ARM64, two bitmaps of one bit per four-byte region word: `callmap-set` sets
 \   the call map's bit of the BL at `addr` and `addrmap-set` the address map's
 \   bit of a carrier's first MOVZ, and a set bit stays set; `code-publish`
@@ -647,8 +621,8 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \   `code-publish`, so an x86-64 publication drops the stale rows in the bytes
 \   it writes where ARM64 keeps the address bits.
 \ CP is always a code slot, the only address the native driver places code at:
-\ a four-byte instruction word on ARM64 and a 16-byte slot on x86-64
-\ (X64KERNEL:CODE-SLOT, X64IR:SP-ALIGN). Every CP writer keeps it one:
+\ a four-byte instruction word on ARM64 and a 16-byte slot on x86-64. Every CP
+\ writer keeps it one:
 \ `cp!` refuses any other address with ENGINE-ERROR:SEAL-VIOLATION, the boot
 \ starts it at the page-aligned DBASE+DICT-SIZE, `code-publish` moves it to
 \ the first slot at or past dst+len, x86-64 filling the gap with int3,
@@ -661,21 +635,19 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ ENGINE-ERROR:SEAL-VIOLATION.
 \
 \ THE PUBLISHER OWNS ITS PRIMITIVES. The rows closed ECLOSE-PRIVATE for NPUB
-\ resolve only inside that package, so the publisher's own words
-\ (src/compiler/native/publish.f) are checked code, and a checked caller
-\ anywhere else is refused by name. code-publish, xref-retarget and does-record
-\ (below) are that row alone: outside NPUB the name is undefined to a checked
-\ caller. callmap-set and addrmap-set keep a global trusted-only row beside it
-\ for their TRUSTED: callers outside NPUB (the relocation-map tests): the
-\ optimizing compiler builds such a caller's call window from a global row, and
-\ a seed primitive with none is E-HIR-UNMODELED there. The same reason keeps
-\ the global rows of reloc-maps-clear and set-top-check beside their owners'
-\ rows below.
+\ resolve only inside that package, so the publisher's own words are checked
+\ code, and a checked caller anywhere else is refused by name. code-publish,
+\ xref-retarget and does-record (below) are that row alone: outside NPUB the
+\ name is undefined to a checked caller. callmap-set and addrmap-set keep a
+\ global trusted-only row beside it for their TRUSTED: callers outside NPUB
+\ (the relocation-map tests): the optimizing compiler builds such a caller's
+\ call window from a global row, and a seed primitive with none is
+\ E-HIR-UNMODELED there. The same reason keeps the global rows of
+\ reloc-maps-clear and set-top-check beside their owners' rows below.
 EPPRIM: NPUB code-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: native-unit-publish
    PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ installs relocated package code and dictionary rows
-\ The publisher imports a prepared package unit (IMPORT-UNIT) under this row.
 EPPRIM: NPUB native-unit-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
@@ -685,25 +657,22 @@ ETRUSTED-ONLY!                       \ the same, for an address chain the publis
 EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ Record writers. A row here is what lets the OPTIMIZING compiler build a
-\ TRUSTED: caller's call window (src/core/checker.f MARK-REP): that compiler
-\ reads a callee's cell widths out of this table for every name a body writes,
-\ and a primitive is the one kind of name no scan can ever supply. The rows are
-\ TRUSTED-only: a CHECKED caller is refused here, and the emitted records carry
-\ DNAME-INT (ENGINE-PRIMS:GLOBAL-INT-WID), so no name is executable or tickable.
+\ TRUSTED: caller's call window: that compiler reads a callee's cell widths out
+\ of this table for every name a body writes, and a primitive is the one kind
+\ of name no scan can ever supply. The rows are TRUSTED-only: a CHECKED caller
+\ is refused here, and the emitted records carry DNAME-INT, so no name is
+\ executable or tickable.
 EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
 EPRIM: rep-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-REP on one live CAST: record
 EPRIM: min-in-mark   PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ records a certified minimum input arity on one
-\ The publisher's reader (src/compiler/native/publish.f MIN-IN-REC) calls it inside NPUB,
-\ and the interpret loop written in Habu after a cast (src/habu/interpreter.f) inside INTERPRETER.
+ETRUSTED-ONLY!                       \ records a certified minimum input arity on one live record
 EPPRIM: NPUB min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: INTERPRETER min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB wide-mark ECLOSE-PRIVATE
 EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
-\ FORGET's code reclamation (src/habu/xref.f) is the engine's one caller.
 EPPRIM: CODE-RECLAIM reloc-maps-clear PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM; REACH dict
 ETRUSTED-ONLY!                       \ native defining-word runtime patch
@@ -736,14 +705,12 @@ EPRIM: tier@          PE-N PE-OUT EPRIM; REACH build
 \ The compiler's prospective trusted-tick order and the owner whose installed
 \ query established it. Order 0 is checking first; 1 is trusted gate first.
 EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
-\ Choosing the build scope belongs to package EXECUTABLE-BUILD
-\ (src/lib/executable-build.f), and these rows are that owner's alone: its WITH is
-\ the checked caller every other scope calls, and a checked body outside
-\ EXECUTABLE-BUILD does not find the names. No TRUSTED: body outside it calls
-\ either, so no global row is kept for one.
+\ Choosing the build scope belongs to package EXECUTABLE-BUILD, and these rows
+\ are that owner's alone: its WITH is the checked caller every other scope
+\ calls, and a checked body outside EXECUTABLE-BUILD does not find the names.
+\ No TRUSTED: body outside it calls either, so no global row is kept for one.
 EPPRIM: EXECUTABLE-BUILD executable-build-enter ECLOSE-PRIVATE REACH build
 EPPRIM: EXECUTABLE-BUILD executable-build-leave ECLOSE-PRIVATE REACH build
-\ Compiler hook installation is an explicit engine boundary.
 EPRIM: set-check     PE-A PE-IN EPRIM;
 ETRUSTED-ONLY!
 EFIXED-ABI!
@@ -755,9 +722,9 @@ EFIXED-ABI!
 EPRIM: set-top-check PE-A PE-IN EPRIM;
 ETRUSTED-ONLY!
 EFIXED-ABI!
-\ The top-level tracker's own install (src/core/top-row.f TR-INSTALL): its row
-\ takes a hook of the shape the tracker is called with, where the global row
-\ above takes any one cell, as set-check and set-preflight do.
+\ The top-level tracker's own install: its row takes a hook of the shape the
+\ tracker is called with, where the global row above takes any one cell, as
+\ set-check and set-preflight do.
 EPPRIM: CHECK set-top-check
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
 \ Choosing the compiler is a top-level step every program may take on its first
@@ -765,21 +732,18 @@ EPPRIM: CHECK set-top-check
 \ body anywhere may call set-tier.
 EPRIM: set-tier       PE-N PE-IN EPRIM; REACH build
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
-\ The running engine owns capture-time construction state. A cache driver
-\ queries this word only while a definition is pending; absence means an old
-\ host whose construction state the driver cannot inspect.
 EPRIM: native-pending-opaque? PE-F PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
-EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE    \ src/compiler/native/publish.f APPEND-PENDING
+EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ exact resolved dictionary record
-EPPRIM: DEF-OCC def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:SELECT
-EPPRIM: CHECKER-REG def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE   \ src/core/checker.f RECORD-LINK-OCC
+EPPRIM: DEF-OCC def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: CHECKER-REG def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
-EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:RESOLVE
+EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE
 \ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate`, `cast:`
 \ and `defer` change is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL,
 \ TSIG, TCSIG, PKG-*), the body text, DEF-TIER-CELL and the records behind the
