@@ -13,10 +13,11 @@ require src/habu/stepper.f
 package DEBUG
 
 $D4200000 constant BRK0
+8 constant TRAMP-BYTES
 
 public
 
-8 constant MAXBP
+BPTRAMP-BYTES TRAMP-BYTES / constant MAXBP
 
 \ Debugger-owned refusal range, outside the library and build-tool ranges.
 -9300 constant E-BP-FIRST
@@ -73,8 +74,6 @@ CAST: N>XT ( n -- [ -- ] )
 \ An engine the old builder makes reserves the block here, at load. Inside a
 \ build the code band is the building hb's, so the load reserves nothing and
 \ the written program's start-up reserves the block (layout.f BPTRAMP-CELL).
-8 constant TRAMP-BYTES
-
 : TRAMP@ ( -- n ) data-base BPTRAMP-CELL + @ ;
 
 : TRAMP-INSTALL ( -- )

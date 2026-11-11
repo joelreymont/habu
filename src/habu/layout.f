@@ -1384,7 +1384,7 @@ $5000 constant TXN-STATE-OFF
 \ it, and data-claims.f refuses a transaction cell past it: growing the
 \ transaction is a layout edit the build checks.
 $300 constant TXN-STATE-LEN
-$10000 constant PROT-PAGE-MAX          \ the mapping alignment (= STACK-ABI:PAGE-BYTES; rt.f executes the agreement)
+STACK-ABI:PAGE-BYTES constant PROT-PAGE-MAX   \ the mapping alignment
 
 TXN-STATE-OFF       constant TXN-ACTIVE-CELL
 TXN-STATE-OFF $8  + constant TXN-SRC-A-CELL

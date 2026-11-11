@@ -164,14 +164,6 @@ variable LAFTER
 variable LMATCH
 variable LRECLAIM
 variable LRETIRE
-\ Builder-side mirrors of layout.f's process-local cell and engine-error.f's
-\ refusal ABI: the qualified predecessor that emits the first product bakes a
-\ layout without DEF-OCC. They add no captured DATA band.
-$2D08 constant PTR-CELL
-DICT-CAP 1+ cells constant STATE-BYTES
--7231 constant E-STALE
--7232 constant E-SELECT
--7234 constant E-EXHAUSTED
 ;package
 \ The one-wordlist search shared by the `search-wl` primitive and the AOT
 \ seed's call-site pass.
@@ -3413,7 +3405,7 @@ public
    9 NDICT CMP,  C-EQ pending BCOND,
    9 1 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
    9 SP 8 LDR,
-   14 DATA EM-DEF-OCC:PTR-CELL LDR,
+   14 DATA DEF-OCC:PTR-CELL LDR,
    15 9 3 LSLI,  14 14 15 ADD,
    15 0 MOVZ,  15 14 8 STR,
    pending LBL,
@@ -3651,12 +3643,12 @@ private
    12 10 11 UDIV,  13 12 11 MUL,
    10 13 CMP,  C-NE bad BCOND,
    12 NDICT CMP,  C-CS bad BCOND,
-   14 DATA EM-DEF-OCC:PTR-CELL LDR,
+   14 DATA DEF-OCC:PTR-CELL LDR,
    13 12 3 LSLI,  13 14 13 ADD,  13 13 8 LDR,
    13 bad CBZ,
    12 G-PUSH  13 G-PUSH  done B,
    bad LBL,
-   9 EM-DEF-OCC:E-SELECT LIT64,  9 G-PUSH  BTHROW
+   9 DEF-OCC:E-SELECT LIT64,  9 G-PUSH  BTHROW
    done LBL, ;
 
 \ A slot is a locator only. Equality with a nonzero issued occurrence is
@@ -3666,13 +3658,13 @@ private
    10 G-POP  9 G-POP
    10 stale CBZ,
    9 NDICT CMP,  C-CS stale BCOND,
-   11 DATA EM-DEF-OCC:PTR-CELL LDR,
+   11 DATA DEF-OCC:PTR-CELL LDR,
    12 9 3 LSLI,  12 11 12 ADD,  12 12 8 LDR,
    12 10 CMP,  C-NE stale BCOND,
    11 DREC MOVZ,  9 9 11 MUL,  9 DBASE 9 ADD,
    9 G-PUSH  done B,
    stale LBL,
-   9 EM-DEF-OCC:E-STALE LIT64,  9 G-PUSH  BTHROW
+   9 DEF-OCC:E-STALE LIT64,  9 G-PUSH  BTHROW
    done LBL, ;
 
 \ A permitted CP rewind can release the tail of a still published code span.
@@ -3701,7 +3693,7 @@ private
       full LBL,
       15 13 15 ADD,
       15 9 CMP,  C-LS next BCOND,
-      12 DATA EM-DEF-OCC:PTR-CELL LDR,
+      12 DATA DEF-OCC:PTR-CELL LDR,
       14 10 3 LSLI,  12 12 14 ADD,
       14 0 MOVZ,  14 12 8 STR,
    next LBL,
@@ -5584,7 +5576,7 @@ private
 \ cell is the last issued number; the remaining DICT-CAP cells are indexed by
 \ slot. None of these cells are in the rewindable DATA heap or captured image.
 : DEF-OCC-EXHAUSTED, ( -- )
-   9 EM-DEF-OCC:E-EXHAUSTED LIT64,  9 G-PUSH  BTHROW ;
+   9 DEF-OCC:E-EXHAUSTED LIT64,  9 G-PUSH  BTHROW ;
 
 \ x9 = number about to be issued. Preserve every touched caller register.
 : EMIT-DEF-OCC ( -- )
@@ -5596,7 +5588,7 @@ private
    S\" hb: definition occurrence alloc failed\n" {: ma:ptr mu:n :}
    EM-DEF-OCC:LROOM LABEL@ LBL,
       SP SP 32 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
-      10 DATA EM-DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
+      10 DATA DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
       12 0 MOVN,  12 12 11 SUB,
       9 12 CMP,  C-LS room-ok BCOND,
       SP SP 32 ADDI,  DEF-OCC-EXHAUSTED,
@@ -5607,7 +5599,7 @@ private
       SP SP 48 SUBI,
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,  12 SP 32 STR,
       9 1 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
-      9 SP 8 LDR,  10 DATA EM-DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
+      9 SP 8 LDR,  10 DATA DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
       11 11 1 ADDI,  11 10 0 STR,
       12 9 3 LSLI,  12 10 12 ADD,  11 12 8 STR,
       30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,  12 SP 32 LDR,
@@ -5623,7 +5615,7 @@ private
           12 9 10 SUB,
           9 12 0 ADDI,  EM-DEF-OCC:LROOM LABEL@ BL,
          9 SP 8 LDR,  10 NDICT 0 ADDI,
-         11 DATA EM-DEF-OCC:PTR-CELL LDR,  13 11 0 LDR,
+         11 DATA DEF-OCC:PTR-CELL LDR,  13 11 0 LDR,
       loop LBL,
          10 9 CMP,  C-CS raised BCOND,
          13 13 1 ADDI,
@@ -5637,7 +5629,7 @@ private
          CAPTURE-CUT,
          12 DATA NDICT-HW-CELL LDR,  12 NDICT CMP,  12 12 NDICT C-HI CSEL,   \ raise the high-water to the count this lowers from
          12 DATA NDICT-HW-CELL STR,                       \ (layout.f NDICT-HW-CELL)
-         11 DATA EM-DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
+         11 DATA DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
       clear-loop LBL,
          10 NDICT CMP,  C-CS done BCOND,
          12 10 3 LSLI,  12 11 12 ADD,
@@ -5673,7 +5665,7 @@ private
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
       12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,
       EM-DEF-OCC:LROOM LABEL@ BL,                         \ refuse exhaustion before clearing a live reference
-      10 DATA EM-DEF-OCC:PTR-CELL LDR,  11 0 MOVZ,
+      10 DATA DEF-OCC:PTR-CELL LDR,  11 0 MOVZ,
       reset-loop LBL,
          12 DICT-CAP LIT64,  11 12 CMP,  C-CS reset BCOND,
          12 11 3 LSLI,  12 10 12 ADD,
@@ -5688,10 +5680,10 @@ private
    \ Fresh process installation. Seed records already occupy [0,NDICT).
    EM-DEF-OCC:LINIT LABEL@ LBL,
       SP SP 32 SUBI,  30 SP 0 STR,  13 SP 8 STR,  14 SP 16 STR,  15 SP 24 STR,
-      0 0 MOVZ,  1 EM-DEF-OCC:STATE-BYTES LIT64,  2 3 MOVZ,
+      0 0 MOVZ,  1 DEF-OCC:STATE-BYTES LIT64,  2 3 MOVZ,
       3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,  C-CS init-bad BCOND,
-      0 DATA EM-DEF-OCC:PTR-CELL STR,
+      0 DATA DEF-OCC:PTR-CELL STR,
       9 NDICT 0 ADDI,  EM-DEF-OCC:LRESET LABEL@ BL,
       30 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  15 SP 24 LDR,
       SP SP 32 ADDI,  RET,
@@ -5783,7 +5775,7 @@ private
       11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,
       EM-DEF-OCC:LMATCH LABEL@ BL,
       12 clear-next CBZ,
-      15 DATA EM-DEF-OCC:PTR-CELL LDR,
+      15 DATA DEF-OCC:PTR-CELL LDR,
       16 13 3 LSLI,  15 15 16 ADD,
       16 0 MOVZ,  16 15 8 STR,
    clear-next LBL,

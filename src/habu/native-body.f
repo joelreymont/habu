@@ -10,8 +10,8 @@ public
    s" native-origin-cell" WL:PRIMITIVES search-wl
    dup 0= if drop NULL-PTR exit then
    {: entry:n :}
-   data-base $1C0 + @ {: base:n :}
-   data-base $2CE0 + @ {: end:n :}
+   data-base RBASE-CELL + @ {: base:n :}
+   data-base CODE-END-CELL + @ {: end:n :}
    end base <= if NULL-PTR exit then
    entry base >= entry end < and 0= if NULL-PTR exit then
    entry BODY-CELLS-XT execute ;
