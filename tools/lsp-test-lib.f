@@ -2234,8 +2234,8 @@ variable PUB-COUNT
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
 \ A definer with nothing after it: the verifier stops at it and refuses the
-\ document, and the stop's record, the nominal pass's packet that
-\ `check.f --verify-only` writes, is published there.
+\ document, and the stop's record, the packet `check.f --verify-only` writes,
+\ is published there.
 : MISSING-NAME ( -- ptr u8 n )  s" :" ;
 
 : MISSING-NAME-TURNS ( -- )

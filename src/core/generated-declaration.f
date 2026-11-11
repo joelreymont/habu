@@ -5,8 +5,7 @@
 \ DECLARATION-TRANSACTION:RUN, is in generated-declaration-protection.f.
 
 \ DECL-REJECT is the one reject packet both front ends raise through. RENDER
-\ forwards to render.f TDECL-DIAG, which also feeds the capture buffer
-\ (RDIAG-APPEND) tools/check-core.f's CHK-DECL-CAPTURE / CHK-DECL-FLUSH read.
+\ forwards to render.f TDECL-DIAG.
 \ A front end arms its own reason (REJECT, EXPECT); a code raised deeper arrives
 \ bare and PICK-REASON reads the table each code's owner fills with EXPLAIN. An
 \ armed reason counts only for the code it was armed for. Declarations never
@@ -237,8 +236,8 @@ s" declaration checker frame mismatch" DECLARATION-TRANSACTION:E-FRAME EXPLAIN
 ;package
 
 \ DECL-REPLAY: one installed token stream plus one mode flag.
-\ tools/check-core.f's nominal pass and src/habu/verify-source.f register
-\ declarations they already lexed: a front end reads the next token here instead
+\ src/habu/verify-source.f's declaration pre-pass registers declarations it
+\ already lexed: a front end reads the next token here instead
 \ of `parse-name`, and the constructor generators read RP-ACTIVE? to define no
 \ word. One state carries both facts, so no caller can ask for a replay that
 \ generates or a live declaration that does not. The front ends' grammar,
@@ -304,8 +303,7 @@ public
 \ RP-CLAIM ( name body -- ): install one declaration's lexed token stream. It
 \ never copies and cannot see a token already dropped, so a caller's buffer
 \ builder must hold the whole declaration or raise, never truncate
-\ (verify-source.f BODY-APPEND grows its buffers to every run, check-core.f
-\ CHK-VREC-ROOM raises E-FS-CAPACITY). Comments pass through raw: the live
+\ (verify-source.f BODY-APPEND grows its buffers to every run). Comments pass through raw: the live
 \ keyword reads `\` or `(` as an ordinary token and refuses it, so replay must
 \ too.
 : RP-CLAIM ( ptr u8 n ptr u8 n -- )

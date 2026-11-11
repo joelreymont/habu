@@ -58,8 +58,7 @@ public
 \ A public family gets FAMILY:MAKE / FAMILY:UNMAKE in its constructor namespace;
 \ a private or OPAQUE one gets FAMILY-MAKE / FAMILY-UNMAKE in the declaring
 \ package's private wordlist (type-family.f TF-CTOR-PRIV$, TFAM-GEN-PUBLIC?).
-\ Every reject comes before any registry write. A replayed declaration
-\ (tools/check-core.f, verify-source) registers the checked effects only: no code
+\ Every reject comes before any registry write. A replayed declaration (verify-source.f) registers the checked effects only: no code
 \ and no dictionary entries.
 : GENERATE ( n n -- ) {: tok:n fam:n :}
    fam SM-REQUIRE-FAMILY

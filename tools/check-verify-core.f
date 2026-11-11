@@ -447,9 +447,9 @@ variable CHK-NOM-JSON-READY
 \ The record of what stopped a check with the given code, at the given byte of
 \ the given bytes of the file the label names, a packet when json, else a prose
 \ line, with no line feed, and whether it refuses the source by itself. A reader
-\ with no name after it is the record the nominal pass writes where it stands,
-\ a refusal. Any other throw out of a statement is the lexer's record of the
-\ file, when the lexer finds a defect there, for a code that record goes before
+\ with no name after it is the missing-name record where it stands, a refusal.
+\ Any other throw out of a statement is the lexer's record of the file, when
+\ the lexer finds a defect there, for a code that record goes before
 \ (CHECK-ALL-ERRORS:LEX-FIRST?: an open string, row or locals group, a bad
 \ escape) and for a reader whose token the lexer reads into another one, a
 \ refusal; else the record --all-errors writes for a statement that throws, at

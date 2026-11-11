@@ -238,7 +238,7 @@ s" ENUM-DECL:ED-RUN lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr
 
 \ 22. Reject diagnostics render through render.f's TDECL-DIAG; the assertions
 \     read the bytes captured through DIAG-BUFFER! / DIAG-BUFFER$, the pair
-\     tools/check-core.f CHK-DECL-CAPTURE and CHK-DECL-FLUSH use. This proves
+\     tools/check-all-errors-core.f CA-DIAG-FULL-START and CA-DIAG-FINISH use. This proves
 \     the channel, not a check-tool run. Each case asserts the whole rendered
 \     line, so text the declaration supplies cannot satisfy it by appearing
 \     elsewhere in the buffer.
@@ -493,12 +493,12 @@ DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ 23. ED-REPLAY - registering an ENUM from tokens a tool already lexed.
-\     tools/check-core.f's nominal pass and src/habu/verify-source.f scan a file
-\     token by token and must register every family they meet, without
-\     `parse-name` and without defining a word. ED-REPLAY runs ED-RUN's grammar
-\     loop, validation, registry writes and reject packet over the caller's
-\     buffer; it checks the generated constructor bodies and records their
-\     effects, with no runtime code or dictionary entries.
+\     src/habu/verify-source.f scans a file token by token and must register
+\     every family it meets, without `parse-name` and without defining a word.
+\     ED-REPLAY runs ED-RUN's grammar loop, validation, registry writes and
+\     reject packet over the caller's buffer; it checks the generated
+\     constructor bodies and records their effects, with no runtime code or
+\     dictionary entries.
 package enum-replay-test
 public
 

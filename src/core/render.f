@@ -1566,7 +1566,7 @@ variable MDV-I   variable MDV-F
 : DVERDICT ( -- ptr u8 n )
    DVERD @ VERDICT-UNCHECKABLE = IF s" uncheckable" EXIT THEN s" rejected" ;
 \ repair_class is the stable machine name a consumer keys its repair on. This
-\ word picks it for checker refusals; tools/check-core.f and tools/diag-code.f
+\ word picks it for checker refusals; tools/check-verify-core.f and tools/diag-code.f
 \ pick it for the refusals the check tool finds itself. A class means what its
 \ suggestion says (SUGGEST-TEXT, the *-SUGGEST$ words): short prose for choosing
 \ the action; the raw evidence stays in the expected, actual and return_stack

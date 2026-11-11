@@ -576,9 +576,9 @@ private
    rc LEX-FIRST? IF CA-LEX THEN
    CA-THROW-RECORD$ CA-ERR-LN ;
 
-\ A reader with no token after it is the refusal tools/check-core.f writes for
-\ the nominal pass (CHK-NONAME-FAIL), so its code goes up to COMPOSE-BUF's
-\ caller after what the checker reported before it.
+\ A reader with no token after it is the refusal tools/check-core.f
+\ CHK-ALL-NONAME writes, so its code goes up to COMPOSE-BUF's caller after what
+\ the checker reported before it.
 : CA-RUN-COMPOSE-DEFS ( -- )
    CA-RESET-RESULTS
    MULTI-ERR-N @ {: before:n :}

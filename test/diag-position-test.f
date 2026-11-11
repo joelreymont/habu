@@ -721,6 +721,19 @@ variable RC
    c cu REJECTED-AS
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
+\ REFUSED-MODES for a fixture plain check answers with more than one packet:
+\ there packet 0 alone is asserted.
+: REFUSED-FIRST ( ptr u8 n ptr u8 n n n n n -- )
+   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+   s" " CHECK
+   0 s" code" c cu FIELD=
+   0 s" verdict" s" rejected" FIELD=
+   0 tok toku line col bs be AT
+   c cu tok toku line col bs be REFUSED-AT
+   s" --verify-only" CHECK
+   c cu REJECTED-AS
+   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
 \ Packet 0 of the last check is the record of a statement that threw CODE.
 : THREW ( n -- )
    {: code:n :}
@@ -792,9 +805,10 @@ variable RC
    s" STRUCTURE rec FIELD id n" s" struct-open.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" fix_family_declaration" s" rec" 1 11 10 13 PREPASS-REFUSED
    0 s" reason" s" missing ;STRUCTURE" FIELD=
-   s" an unclosed PRODUCT under --verify-only" T-LABEL
+   s" an unclosed PRODUCT" T-LABEL
    s" PRODUCT pt FIELD x n" s" prod-open.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" fix_family_declaration" s" pt" 1 9 8 10 PREPASS-REFUSED
+   s" E-BAD-DECLARATION" s" pt" 1 9 8 10 REFUSED-FIRST
+   0 s" repair_class" s" fix_family_declaration" FIELD=
    0 s" reason" s" missing ;PRODUCT" FIELD= ;
 
 : TWO-LINE-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
@@ -804,25 +818,56 @@ variable RC
    two twou SB-APPEND LF+
    name nameu FIXTURE! ;
 
-\ The definer reads a body with `parse-name`, so a `\` in a closed body is a token
-\ it refuses: plain, `--all-errors` and `--verify-only` check each give that one packet.
+\ The definer reads a body with `parse-name`, so a `\` or `(` in a body is a
+\ token it refuses, even where it hides the terminator: packet 0 of plain,
+\ `--all-errors` and `--verify-only` check is that refusal.
 : TEST-PREPASS-COMMENT ( -- )
    s" a comment in a closed SUMTYPE" T-LABEL
    s" SUMTYPE shape VARIANT dot ;VARIANT \ note" s" ;SUMTYPE" s" sum-comment.f"
       TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 36 35 36 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" \" 1 36 35 36 REFUSED-FIRST
    0 s" repair_class" s" fix_family_declaration" FIELD=
+   0 s" reason" s" unexpected token in sum declaration" FIELD=
+   s" a comment holding a SUMTYPE's terminator" T-LABEL
+   s" SUMTYPE shape VARIANT dot ;VARIANT \ ;SUMTYPE" s" sum-comment-end.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" \" 1 36 35 36 REFUSED-FIRST
    0 s" reason" s" unexpected token in sum declaration" FIELD=
    s" a comment in a closed PRODUCT" T-LABEL
    s" PRODUCT pt FIELD x n \ note" s" ;PRODUCT" s" prod-comment.f" TWO-LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" \" 1 22 21 22 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" \" 1 22 21 22 REFUSED-FIRST
    0 s" repair_class" s" fix_family_declaration" FIELD=
+   0 s" reason" s" unexpected token in product declaration" FIELD=
+   s" a comment holding a PRODUCT's terminator" T-LABEL
+   s" PRODUCT pt FIELD x n \ ;PRODUCT" s" FIELD y n" s" prod-comment-end.f" TWO-LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" \" 1 22 21 22 REFUSED-FIRST
    0 s" reason" s" unexpected token in product declaration" FIELD=
    s" a comment in a closed VALUE-RECORD" T-LABEL
    s" VALUE-RECORD vr x n \ note" s" END-VALUE-RECORD" s" vrec-comment.f"
       TWO-LINE-FIXTURE
    s" E-BAD-RECORD-FIELD" s" \" 1 21 20 21 REFUSED-MODES
-   0 s" repair_class" s" fix_record_field" FIELD= ;
+   0 s" repair_class" s" fix_record_field" FIELD=
+   s" a closed paren comment in a VALUE-RECORD" T-LABEL
+   s" VALUE-RECORD vr x n ( note )" s" END-VALUE-RECORD" s" vrec-paren.f"
+      TWO-LINE-FIXTURE
+   s" E-BAD-RECORD-FIELD" s" (" 1 21 20 21 REFUSED-MODES ;
+
+\ The same holds for a `\` right after the family's name.
+: TEST-PREPASS-NAME-COMMENT ( -- )
+   s" a comment after a SUMTYPE's name" T-LABEL
+   s" SUMTYPE shape \ note" s\" VARIANT dot ;VARIANT\n;SUMTYPE" s" sum-name-comment.f"
+      TWO-LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" \" 1 15 14 15 REFUSED-FIRST
+   s" a comment after a PRODUCT's name" T-LABEL
+   s" PRODUCT pt \ note" s\" FIELD x n\n;PRODUCT" s" prod-name-comment.f" TWO-LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" \" 1 12 11 12 REFUSED-FIRST
+   s" a comment after an ENUM's name" T-LABEL
+   s" ENUM colr \ note" s" red green ;ENUM" s" enum-name-comment.f" TWO-LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" \" 1 11 10 11 REFUSED-FIRST
+   0 s" reason" s" name must be a lowercase tail" FIELD=
+   s" a comment after a STRUCTURE's name" T-LABEL
+   s" STRUCTURE spt \ note" s" FIELD x n ;STRUCTURE" s" struct-name-comment.f"
+      TWO-LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" \" 1 15 14 15 REFUSED-FIRST ;
 
 \ The load compiles a body before it checks the definition at `;`, so a body
 \ word it cannot compile, undefined or a local it cannot bind, refuses a
@@ -2338,6 +2383,7 @@ variable RC
    TEST-PREPASS-NOMINAL
    TEST-PREPASS-OPEN
    TEST-PREPASS-COMMENT
+   TEST-PREPASS-NAME-COMMENT
    TEST-BAD-SIGNATURE
    TEST-LOCAL-GROUP
    TEST-STORED-SIGNATURE

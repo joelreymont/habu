@@ -1302,7 +1302,7 @@ family, the substrate of `NEWTYPE`:
   `bad newtype declaration '…': reserved name`. A family the
   scope already has is `duplicate family`; a package may shadow a global
   or another package's family. `tools/check.f` reports each refusal as
-  `E-BAD-NOMINAL-TYPE`.
+  `E-BAD-DECLARATION` (`decl` `newtype`).
 - Inside top-level package B or a part named B, no family definer takes a tail
   X while a `DEFLINEAR` or `VALUE-RECORD` name `B:X` exists: `NEWTYPE thing`
   after `DEFLINEAR B:thing` is `bad newtype declaration 'thing': reserved

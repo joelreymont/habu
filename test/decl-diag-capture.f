@@ -1,5 +1,5 @@
 \ Shared declaration-diagnostic capture for the declaration suites, through the
-\ words tools/check-core.f uses (CHK-DECL-CAPTURE, CHK-DECL-FLUSH): a suite
+\ channel tools/check-all-errors-core.f reads (CA-DIAG-FULL-START, CA-DIAG-FINISH): a suite
 \ reads the declaration packet from the production capture channel in the prose
 \ or JSON leg the check tool selects. It pins the channel, not a check-tool run.
 \ A capture buffer also silences the diagnostics a reject suite provokes, as

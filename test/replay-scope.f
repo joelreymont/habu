@@ -24,9 +24,8 @@ CAST: ACTION ( n -- [ -- ] )
 
 public
 
-\ OPEN does what tools/check-core.f CHK-RUN-NOMINAL-LINTS does: a
-\ package-neutral scope, then the window the declaration owner's start opens in
-\ it; CLOSE undoes both and every record the scope published.
+\ OPEN opens a package-neutral scope, then the window the declaration owner's
+\ start opens in it; CLOSE undoes both and every record the scope published.
 : OPEN ( -- )
    CHECKER-SCOPE-START-NEUTRAL
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT ACTION execute ;

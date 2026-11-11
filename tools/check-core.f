@@ -1,7 +1,6 @@
 \ check-core.f - the checked engine core behind tools/check.f: the closure walk and pre-pass
-\ (tools/check-verify-core.f), the nominal pass, the lints, and the run stage in a child on the
-\ engine src/lib/engine-candidate.f names, its output captured and replayed under the subject's
-\ name. --verify-only stops before the run stage.
+\ (tools/check-verify-core.f), the lints, and the run stage in a child on the engine
+\ src/lib/engine-candidate.f names, its output captured and replayed under the subject's name. --verify-only stops before the run stage.
 
 require src/lib/date.f
 require src/lib/error.f
@@ -33,16 +32,9 @@ require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 \ The require closure, and LSP-CHECK:VERIFY-BYTES: the check that stops before the
 \ run stage, which --verify-only makes.
 require tools/check-verify-core.f
-require src/core/checker-owner-guard.f
 
 \ Checker axioms.
-\ TYPE-RESERVED? is the DEFLINEAR and VALUE-RECORD name rule.
-\ CHECKER-DEFLINEAR publishes parsed linearity metadata in the child scope.
-\ CHECKER-TRY-RECORD publishes a parsed record, or answers the field it refuses.
 \ CHECKER-SCOPE-START/DONE isolate, then roll back, generated dependency effects.
-s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
-s" CHECKER-DEFLINEAR" s" ptr u8 n --" TRUST
-s" CHECKER-TRY-RECORD" s" ptr u8 n ptr u8 n -- n ptr u8 n" TRUST
 s" CHECKER-SCOPE-START" s" --" TRUST
 s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
@@ -68,7 +60,6 @@ $7FFFFFFF constant CHK-DEADLINE-MAX
 3 constant CHK-SEL-LIST
 
 10 constant CHK-LF
-13 constant CHK-CR
 32 constant CHK-SP
 45 constant CHK-DASH
 
@@ -98,7 +89,6 @@ TYPED-VARIABLE CHK-SCRATCH-BUF-A ptr u8
 \ prefix, with an origin mark on each definition.
 DYNAMIC-BUFFER CHK-SRC-MEM u8
 DYNAMIC-BUFFER CHK-RUN-MEM u8
-DYNAMIC-BUFFER CHK-EXP-MEM u8
 DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
 create CHK-JSON-BUF BUF:HDR-BYTES allot
 TYPED-VARIABLE CHK-JSON-W JSON:writer
@@ -136,14 +126,9 @@ variable CHK-RUN-PATH-U
 variable CHK-MARK-PATH-U
 variable CHK-SUBJ-U                      \ a named file's canonical path, 0 for any other input
 variable CHK-ROOT-U
-variable CHK-NOM-I
-variable CHK-NOM-U
-variable CHK-EXP-U
 variable CHK-EXP-OUT-U
 variable CHK-ALL-ID
 variable CHK-ALL-RC
-variable CHK-NOM-BAD                     \ the nominal pass reported a finding
-variable CHK-TFAM-NAME-I
 
 : CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -153,15 +138,6 @@ variable CHK-TFAM-NAME-I
 
 : CHK-PTR-U8! ( ptr u8 ptr a -- )
    CHK-PTR-U8-FIELD ! ;
-
-: CHK-PTR-U8-SLOT ( n ptr a -- ptr ptr u8 )
-   swap cells + CHK-PTR-U8-FIELD ;
-
-: CHK-PTR-U8-SLOT@ ( n ptr a -- ptr u8 )
-   CHK-PTR-U8-SLOT @ ;
-
-: CHK-PTR-U8-SLOT! ( ptr u8 n ptr a -- )
-   CHK-PTR-U8-SLOT ! ;
 
 : CHK-ALLOC-BUF ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
@@ -206,12 +182,6 @@ variable CHK-TFAM-NAME-I
 : CHK-MAP-BUF ( -- ptr u8 )
    CHK-MAP-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-MAP-BUF-A ! then
    CHK-MAP-BUF-A @ ;
-
-: CHK-EXP-ROOM ( n -- ptr u8 n )
-   1 max dup CHK-EXP-MEM-RESERVE 0 CHK-EXP-MEM swap ;
-
-: CHK-EXP-BUF ( -- ptr u8 )
-   1 CHK-EXP-ROOM drop ;
 
 : CHK-SEL-SRC-ROOM ( n -- ptr u8 n )
    1 max dup CHK-SEL-SRC-MEM-RESERVE 0 CHK-SEL-SRC-MEM swap ;
@@ -445,11 +415,6 @@ private
    0 CHK-LABEL-U !
    NULL$ drop CHK-LABEL-A CHK-PTR-U8!
    NULL$ drop CHK-SRC-A CHK-PTR-U8!
-   0 CHK-NOM-I !
-   0 CHK-NOM-U !
-   LINT-FALSE CHK-NOM-BAD !
-   0 CHK-TFAM-NAME-I !
-   0 CHK-EXP-U !
    0 CHK-EXP-OUT-U !
    0 CHK-SUBJ-U !
    0 CHK-DEP-N !
@@ -542,10 +507,6 @@ private
 
 : CHK-LABEL-STDIN ( -- )
    s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8! ;
-
-: CHK-LABEL-FILE ( -- )
-   CHK-SRC-A CHK-PTR-U8@ CHK-LABEL-A CHK-PTR-U8!
-   CHK-SRC-U @ CHK-LABEL-U ! ;
 
 : CHK-LABEL ( -- ptr u8 n )
    CHK-LABEL-A CHK-PTR-U8@ CHK-LABEL-U @ ;
@@ -848,41 +809,6 @@ private
    rc E-FS-PATH-UNSAFE = rc E-FFI-NUL = or if CHK-PATH-UNSAFE then
    rc throw ;
 
-: CHK-WORD-TOK? ( n -- bool ) {: k:n :}
-   k LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
-   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
-
-: CHK-TOK=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k CHK-WORD-TOK? 0= IF LINT-FALSE exit THEN
-   k LINT-LEX:TOKEN a u LINT-STR=CI ;
-
-\ A raw operand is data: `[char] ;` ends no definition.
-: CHK-TOK-SEMI? ( n -- bool ) {: k:n :}
-   k LINT-LEX:OPERAND? if LINT-FALSE exit then
-   k s" ;" CHK-TOK=CI ;
-
-\ A definer reads its name with parse-name, the next whitespace-delimited token
-\ whatever it spells: `DEFLINEAR (` names the type `(`, which TYPE-RESERVED?
-\ refuses, and `: \` defines the word `\`, as the loader reads them. On a match
-\ the lexer reads the token after the definer again by that rule, so no scan
-\ takes a comment, or the token after one, for the name.
-: CHK-DEFINER-TOK? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k a u CHK-TOK=CI 0= IF LINT-FALSE exit THEN
-   k LINT-LEX:OPERAND
-   LINT-TRUE ;
-
-\ The lexer marks a parsing keyword's operand, and leaves a local of the
-\ keyword's name unmarked with nothing taken, so the `;` that ends a definition
-\ is the first unmarked one.
-: CHK-WALK-DEF ( n -- n )                \ from past the opener to past its `;`
-   begin dup LINT-LEX:COUNT < while
-      dup CHK-TOK-SEMI? if 1+ exit then
-      1+
-   repeat ;
-
-: CHK-NOM-BAD-SUG$ ( -- ptr u8 n )
-   s" Choose a unique non-reserved nominal type name." ;
-
 : CHK-U$ ( n -- ptr u8 n ) {: u:n :}
    CHK-NUM-CAP CHK-NUM-I !
    u 0= if
@@ -899,505 +825,8 @@ private
    repeat drop
    CHK-NUM-BUF CHK-NUM-I @ + CHK-NUM-CAP CHK-NUM-I @ - ;
 
-: CHK-PACKET-END ( ptr u8 n -- )
-   CHK-PACKET$ CHK-ERR-LN ;
-
-: CHK-TYPE-JSON ( n n ptr u8 n -- ) {: def:n name:n word:ptr wordu:n :}
-   def name s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type" word wordu CHK-LABEL
-   CHK-PACKET-START
-   CHK-NOM-BAD-SUG$ CHK-PACKET-END ;
-
-: CHK-NOM-PROSE ( n -- ) {: name:n :}
-   s" check.f: bad nominal type '" CHK-ERR
-   name LINT-LEX:TOKEN CHK-ERR
-   39 CHK-ERR-C
-   CHK-LF CHK-ERR-C ;
-
-\ A nominal finding is reported and the scan goes on to the next declaration;
-\ CHK-RUN-NOMINAL fails the run once every file is read, so one run reports
-\ every finding the pass can make.
-: CHK-NOM-FOUND ( -- )
-   LINT-TRUE CHK-NOM-BAD ! ;
-
-: CHK-TYPE-FAIL ( n n ptr u8 n -- ) {: def:n name:n word:ptr wordu:n :}
-   CHK-JSON @ IF def name word wordu CHK-TYPE-JSON ELSE name CHK-NOM-PROSE THEN
-   CHK-NOM-FOUND ;
-
-: CHK-NOM-FAIL ( n n -- )
-   s" deftype" CHK-TYPE-FAIL ;
-
-: CHK-LIN-FAIL ( n n -- )
-   s" deflinear" CHK-TYPE-FAIL ;
-
-\ Prose located at token k: label, line and column.
-: CHK-AT-PROSE ( n -- ) {: k:n :}
-   s" check.f: " CHK-ERR
-   CHK-LABEL CHK-ERR
-   58 CHK-ERR-C
-   k LINT-LEX:LINE@ CHK-U$ CHK-ERR
-   58 CHK-ERR-C
-   k LINT-LEX:COL@ CHK-U$ CHK-ERR
-   s" : " CHK-ERR ;
-
-\ Definer k has nothing after it, so it has no name to read: the loader refuses
-\ it, and the check does at the definer (CHK-NONAME-RECORD$).
-: CHK-NONAME-FAIL ( n -- )
-   CHK-LABEL CHK-JSON @ CHK-NONAME-RECORD$ CHK-ERR-LN
-   CHK-NOM-FOUND ;
-
-\ The definer's name is read as CHK-DEFINER-TOK? reads it. A definer with no
-\ token after it is refused here and answers false, so a caller answered true
-\ finds the name at the next token.
-: CHK-DEFINER? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k a u CHK-DEFINER-TOK? 0= IF LINT-FALSE exit THEN
-   k 1+ LINT-LEX:COUNT < IF LINT-TRUE exit THEN
-   k CHK-NONAME-FAIL
-   LINT-FALSE ;
-
-\ DEFTYPE NAME folds the UPPER-CASE surface name to the lowercase family tail
-\ (SERIAL -> serial) and mints the tail with CHECKER-DEFFAMILY, as
-\ src/lib/type/deftype.f does. The bad-name diagnostic still reports the surface
-\ token the user wrote.
-128 constant CHK-NOM-TAIL-CAP
-create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
-
-: CHK-NOM-TAIL$ ( n -- ptr u8 n ) {: name:n :}
-   name LINT-LEX:TOKEN {: a:ptr u:n :}
-   u CHK-NOM-TAIL-CAP > IF E-FS-CAPACITY throw THEN
-   a u CHK-NOM-TAIL-BUF FOLD-TO
-   CHK-NOM-TAIL-BUF u ;
-
-\ A DEFLINEAR or VALUE-RECORD name is spelled in effects as written, unfolded,
-\ and its loader refuses it by TYPE-RESERVED? on those bytes; asking the same
-\ word first is what lets a refusal become a diagnostic instead of the
-\ registration's die.
-: CHK-NOM-NAME-BAD? ( n -- bool )
-   LINT-LEX:TOKEN TYPE-RESERVED? ;
-
-: CHK-LIN-REGISTER ( n n -- ) {: def:n name:n :}
-   name CHK-NOM-NAME-BAD? IF def name CHK-LIN-FAIL EXIT THEN
-   name LINT-LEX:TOKEN CHECKER-DEFLINEAR ;
-
-: CHK-VREC-FAIL ( n n -- )
-   s" value-record" CHK-TYPE-FAIL ;
-
-: CHK-FIELD-SUG$ ( -- ptr u8 n )
-   s" Declare at least one field, each with a unique name and a known type." ;
-
-\ A value-record field the registration refuses, at field token tok of the
-\ declaration from def: the packet carries the refusal as its reason, and the
-\ prose gives it with the field.
-: CHK-FIELD-FAIL ( n n ptr u8 n -- ) {: def:n tok:n msg:ptr msgu:n :}
-   CHK-JSON @ IF
-      def tok s" E-BAD-RECORD-FIELD" s" fix_record_field" s" value-record" CHK-LABEL
-      CHK-PACKET-START
-      CHK-NOM-JSON-W s" reason" msg msgu CHK-NOM-JSTR drop
-      CHK-FIELD-SUG$ CHK-PACKET-END
-   ELSE
-      tok CHK-AT-PROSE
-      msg msgu CHK-ERR
-      s"  '" CHK-ERR
-      tok LINT-LEX:TOKEN CHK-ERR
-      39 CHK-ERR-C
-      CHK-LF CHK-ERR-C
-   THEN
-   CHK-NOM-FOUND ;
-\ The rows of CHK-EXP-BUF, two cells each: the text offset a run starts at and
-\ the source offset the lexer read it from, which CHK-EXP$ hands to the checker
-\ (src/core/checker.f DIAG-MAP!) so a declaration packet locates its token in
-\ the file. The rows grow with the text, so their address is taken after the
-\ last row is stored.
-DYNAMIC-BUFFER CHK-EXP-ROW-MEM n
-variable CHK-EXP-ROWS
-
-: CHK-EXP-ROW ( -- ptr n )
-   1 CHK-EXP-ROW-MEM-RESERVE 0 CHK-EXP-ROW-MEM ;
-
-: CHK-VREC-RESET ( -- )
-   0 CHK-EXP-U !
-   0 CHK-EXP-ROWS ! ;
-
-: CHK-VREC-ROOM ( n -- )
-   CHK-EXP-U @ + CHK-EXP-ROOM 2drop ;
-
-: CHK-VREC-C ( n -- ) {: c:n :}
-   1 CHK-VREC-ROOM
-   c CHK-EXP-BUF CHK-EXP-U @ + c!
-   CHK-EXP-U @ 1+ CHK-EXP-U ! ;
-
-: CHK-VREC-APP ( ptr u8 n -- ) {: a:ptr u:n :}
-   u CHK-VREC-ROOM
-   a CHK-EXP-BUF CHK-EXP-U @ + u BYTE-COPY
-   CHK-EXP-U @ u + CHK-EXP-U ! ;
-
-: CHK-VREC-ROW! ( n -- )        \ the next run, read from source offset n
-   {: src:n :}
-   CHK-EXP-ROWS @ 2 * {: at:n :}
-   at 2 + CHK-EXP-ROW-MEM-RESERVE
-   CHK-EXP-U @  at CHK-EXP-ROW-MEM !
-   src  at 1 + CHK-EXP-ROW-MEM !
-   CHK-EXP-ROWS @ 1 + CHK-EXP-ROWS ! ;
-
-: CHK-VREC-TOKEN+ ( ptr u8 n n -- )   \ a token and its source offset
-   {: a:ptr u:n src:n :}
-   CHK-EXP-U @ 0 > IF CHK-SP CHK-VREC-C THEN
-   src CHK-VREC-ROW!
-   a u CHK-VREC-APP ;
-
-: CHK-VREC-LEX+ ( n -- )        \ lexer token k
-   {: k:n :}
-   k LINT-LEX:TOKEN  k LINT-LEX:BYTE@  CHK-VREC-TOKEN+ ;
-
-\ The rebuilt declaration body, with its rows armed for the packet it may write.
-: CHK-EXP$ ( -- ptr u8 n )
-   CHK-EXP-BUF CHK-EXP-U @ CHK-EXP-ROW CHK-EXP-ROWS @ DIAG-MAP!
-   CHK-EXP-BUF CHK-EXP-U @ ;
-
-: CHK-VREC-END? ( n -- bool )
-   s" END-VALUE-RECORD" CHK-TOK=CI ;
-
-\ The token holding byte at of the field text CHK-VREC-TOKEN+ joined, one space
-\ apart, from the tokens after the record name. The end of an empty text is the
-\ END-VALUE-RECORD token.
-: CHK-VREC-FIELD-TOKEN ( n n -- n ) {: name:n at:n :}
-   name 1+ 0
-   begin over LINT-LEX:TOKEN nip over + at < while
-      over LINT-LEX:TOKEN nip + 1+
-      swap 1+ swap
-   repeat drop ;
-
-\ The registration answers the field it refuses instead of dying, and leaves
-\ no part of the record behind, so the scan reports it and goes on.
-: CHK-VREC-DEFRECORD ( n n -- ) {: def:n name:n :}
-   name CHK-NOM-NAME-BAD? IF def name CHK-VREC-FAIL EXIT THEN
-   name LINT-LEX:TOKEN CHK-EXP-BUF CHK-EXP-U @ CHECKER-TRY-RECORD
-   {: at:n msg:ptr msgu:n :}
-   msgu 0= IF EXIT THEN
-   def name at CHK-VREC-FIELD-TOKEN msg msgu CHK-FIELD-FAIL ;
-
-: CHK-VREC-REGISTER ( n n -- n ) {: def:n name:n :}
-   CHK-VREC-RESET
-   name 1+
-   begin dup LINT-LEX:COUNT < while
-      dup CHK-VREC-END? if
-         def name CHK-VREC-DEFRECORD
-         1+ exit
-      then
-      dup CHK-VREC-LEX+
-      1+
-   repeat
-   s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-FAIL ;
-
-: CHK-TFAM-DO-DEF ( -- )         \ one family header
-   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN 2dup
-   CHECKER-DEFFAMILY ;
-
-: CHK-SUM-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP$
-   CHECKER-DEFSUM ;
-
-: CHK-SUM-DO-NOEND ( -- )        \ unterminated: declaration packet from name + partial body
-   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP$
-   CHECKER-DEFSUM-NOEND ;
-
-\ A failed NEWTYPE/SUMTYPE declaration already reported through the
-\ checker's declaration diagnostics (TDECL-DIAG, declaration-shaped packet);
-\ capture that packet into the check error stream (the preverify pattern) and
-\ map the registration throw to the check rc without a second packet. The
-\ packet names the file the nominal pass is reading, as every other report does.
-: CHK-DECL-CAPTURE ( -- )
-   CHK-LABEL DIAG-FILE!
-   CHK-JSON @ DIAG-JSON!
-   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER! ;
-
-: CHK-DECL-FLUSH ( -- )
-   DIAG-BUFFER$ CHK-ERR
-   DIAG-BUFFER-OFF ;
-
-: CHK-DECL-FAIL ( n -- )
-   dup 0= IF drop EXIT THEN
-   drop CHK-E-CHECK CHK-THROW ;
-
-\ CHECKER-DEFFAMILY reports a malformed header through the declaration packet, as
-\ src/habu/verify-source.f does, never as a raw pre-check throw.
-: CHK-TFAM-REGISTER ( n -- n ) {: k:n :}   \ k at 'newtype'; next scan index
-   k 1+ CHK-TFAM-NAME-I !
-   CHK-DECL-CAPTURE
-   [: CHK-TFAM-DO-DEF ;] catch
-   CHK-DECL-FLUSH
-   CHK-DECL-FAIL
-   k 2 + ;
-
-: CHK-NOM-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ CHK-NOM-TAIL$
-   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN CHECKER-DEFFAMILY ;
-
-\ A DEFTYPE name is refused exactly when CHECKER-DEFFAMILY refuses its tail,
-\ which is the loader's rule. TYPE-RESERVED? is not that rule: it refuses any
-\ tail a family in any package claims, including a global family's or another
-\ package's that a package family may share (TDECL-REQUIRE-FAMILY-NAME), and
-\ it passes control words and sum variants. With the arity fixed at 0 a refusal
-\ can only be about the name, so the bad-nominal diagnostic replaces the
-\ declaration packet.
-: CHK-NOM-REGISTER ( n n -- ) {: def:n name:n :}
-   name CHK-TFAM-NAME-I !
-   CHK-DECL-CAPTURE
-   [: CHK-NOM-DO-DEF ;] catch {: rc:n :}
-   DIAG-BUFFER-OFF
-   rc 0= IF EXIT THEN
-   def name CHK-NOM-FAIL ;
-
-\ shared block-declaration collector: name at k+1, body tokens buffered from
-\ k+2 to the end token. Returns the next scan index and true, or k and false
-\ when the input ends unterminated (caller reports its own terminator).
-: CHK-BLOCK-COLLECT ( n ptr u8 n -- n bool ) {: k:n ea:ptr eu:n :}
-   k 1+ CHK-TFAM-NAME-I !
-   CHK-VREC-RESET
-   k 2 +
-   begin dup LINT-LEX:COUNT < while
-      dup ea eu CHK-TOK=CI if 1+ LINT-TRUE exit then
-      dup CHK-VREC-LEX+
-      1+
-   repeat drop k LINT-FALSE ;
-
-\ A closed SUMTYPE, PRODUCT, ENUM or STRUCTURE body is rebuilt from the raw source bytes,
-\ never from the token list: the engine reads a body with `parse-name`, which has no comment
-\ rule (`ENUM c red \ note` refuses 7101 at '\'), while the lexer drops a `\` comment, so a
-\ token-joined body would register a family the engine refuses. CHECKER-DEFSUM and
-\ CHECKER-DEFPRODUCT take the body without its terminator.
-: CHK-RAW-BODY ( n n -- )
-   {: k:n nxt:n :}
-   CHK-VREC-RESET
-   k 2 + {: b:n :}                     \ first body token
-   nxt 1 - {: t:n :}                   \ the terminator the collector matched
-   b t < IF
-      b LINT-LEX:BYTE@ {: s:n :}
-      t LINT-LEX:BYTE@ {: e:n :}
-      s CHK-VREC-ROW!
-      CHK-SRC-BUF s +  e s -  CHK-VREC-APP
-   THEN ;
-
-\ CHECKER-DEFSUM-NOEND reports an unterminated SUMTYPE through the declaration packet, as
-\ src/habu/verify-source.f does, never as a raw pre-check throw.
-: CHK-SUM-REGISTER ( n -- n ) {: k:n :}    \ k at 'sumtype'; next scan index
-   k s" ;SUMTYPE" CHK-BLOCK-COLLECT 0= if
-      drop
-      CHK-DECL-CAPTURE
-      [: CHK-SUM-DO-NOEND ;] catch
-      CHK-DECL-FLUSH
-      CHK-DECL-FAIL
-      LINT-LEX:COUNT exit
-   then {: nxt:n :}
-   k nxt CHK-RAW-BODY
-   CHK-DECL-CAPTURE
-   [: CHK-SUM-DO-DEF ;] catch
-   CHK-DECL-FLUSH
-   CHK-DECL-FAIL
-   nxt ;
-
-\ ENUM, PRODUCT and STRUCTURE block declarations register through the shared collector so
-\ later signature uses of the family resolve. ENUM and STRUCTURE replay through their front
-\ ends (ENUM-DECL:ED-REPLAY, STRUCTURE-DECL:SD-REPLAY), which run the declaration grammar over
-\ the body and define no word; PRODUCT stays on its definer. CHK-BLOCK-COLLECT stops on the
-\ terminator without buffering it, so each replayed body re-appends it.
-: CHK-DECL-RAW-BODY ( n n ptr u8 n -- )
-   {: k:n nxt:n ea:ptr eu:n :}
-   k nxt CHK-RAW-BODY
-   ea eu  nxt 1 - LINT-LEX:BYTE@  CHK-VREC-TOKEN+ ;
-: CHK-ENUM-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP$
-   ENUM-DECL:ED-REPLAY ;
-
-: CHK-STRUCT-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP$
-   STRUCTURE-DECL:SD-REPLAY ;
-
-: CHK-PROD-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP$
-   CHECKER-DEFPRODUCT ;
-
-: CHK-ENUM-REGISTER ( n -- n ) {: k:n :}   \ k at 'enum'; next scan index
-   k s" ;ENUM" CHK-BLOCK-COLLECT 0= if
-      drop
-      CHK-DECL-CAPTURE
-      [: CHK-ENUM-DO-DEF ;] catch
-      CHK-DECL-FLUSH
-      CHK-DECL-FAIL
-      LINT-LEX:COUNT exit
-   then {: nxt:n :}
-   k nxt s" ;ENUM" CHK-DECL-RAW-BODY
-   CHK-DECL-CAPTURE
-   [: CHK-ENUM-DO-DEF ;] catch
-   CHK-DECL-FLUSH
-   CHK-DECL-FAIL
-   nxt ;
-
-: CHK-STRUCT-REGISTER ( n -- n ) {: k:n :}   \ k at 'structure'; next scan index
-   k s" ;STRUCTURE" CHK-BLOCK-COLLECT 0= if
-      drop
-      CHK-DECL-CAPTURE
-      [: CHK-STRUCT-DO-DEF ;] catch
-      CHK-DECL-FLUSH
-      CHK-DECL-FAIL
-      LINT-LEX:COUNT exit
-   then {: nxt:n :}
-   k nxt s" ;STRUCTURE" CHK-DECL-RAW-BODY
-   CHK-DECL-CAPTURE
-   [: CHK-STRUCT-DO-DEF ;] catch
-   CHK-DECL-FLUSH
-   CHK-DECL-FAIL
-   nxt ;
-
-: CHK-PROD-REGISTER ( n -- n ) {: k:n :}   \ k at 'product'; next scan index
-   k s" ;PRODUCT" CHK-BLOCK-COLLECT 0= if
-      drop s" check.f: missing ;PRODUCT" CHK-E-CHECK CHK-FAIL
-   then {: nxt:n :}
-   k nxt CHK-RAW-BODY
-   CHK-DECL-CAPTURE
-   [: CHK-PROD-DO-DEF ;] catch
-   CHK-DECL-FLUSH
-   CHK-DECL-FAIL
-   nxt ;
-
-\ Package and using words replay verify-source RECORD-PACKAGE, RECORD-USING and
-\ RECORD-END-USING in the checker, which hears a part's composed path
-\ (CHECKER-RESOLVE:PART-PATH); a refusal stops the scan where the preverify does.
-variable CHK-PKG-NAME-I
-
-\ The scan runs in the verifier window, whose overlay moves the engine's package
-\ scope and using depth, so PART-GUARD sees a using the package opened.
-: CHK-PKG-OPEN ( -- )
-   CHECKER-RESOLVE:PART-GUARD
-   CHK-PKG-NAME-I @ LINT-LEX:TOKEN CHECKER-RESOLVE:PART-PATH CHECKER-PACKAGE ;
-
-: CHK-USING-OPEN ( -- )
-   CHK-PKG-NAME-I @ LINT-LEX:TOKEN CHECKER-USING-PUSH ;
-
-\ The index after a package word, or past the last token when it was refused.
-: CHK-PKG-NEXT ( n n -- n ) {: rc:n next:n :}
-   rc 0 <> IF LINT-LEX:COUNT EXIT THEN
-   next ;
-
-: CHK-PKG-REGISTER ( n -- n ) {: k:n :}   \ k at 'package'; next scan index
-   k 1+ CHK-PKG-NAME-I !
-   [: CHK-PKG-OPEN ;] catch k 2 + CHK-PKG-NEXT ;
-
-: CHK-USING-REGISTER ( n -- n ) {: k:n :}   \ k at 'using'; next scan index
-   k 1+ CHK-PKG-NAME-I !
-   [: CHK-USING-OPEN ;] catch k 2 + CHK-PKG-NEXT ;
-
-: CHK-PKG-STEP ( n -- n bool ) {: k:n :}   \ package-word dispatch: next index, handled
-   k s" package" CHK-DEFINER? if k CHK-PKG-REGISTER LINT-TRUE exit then
-   k s" public" CHK-TOK=CI if CHECKER-PUBLIC k 1+ LINT-TRUE exit then
-   k s" private" CHK-TOK=CI if CHECKER-PRIVATE k 1+ LINT-TRUE exit then
-   k s" ;package" CHK-TOK=CI if CHECKER-END-PACKAGE k 1+ LINT-TRUE exit then
-   k s" seal-package" CHK-TOK=CI if k 1+ LINT-TRUE exit then
-   k s" using" CHK-DEFINER? if k CHK-USING-REGISTER LINT-TRUE exit then
-   k s" ;using" CHK-TOK=CI if
-      [: CHECKER-USING-POP ;] catch k 1+ CHK-PKG-NEXT LINT-TRUE exit
-   then
-   k LINT-FALSE ;
-
-: CHK-DEF-OPENER? ( n -- bool ) {: k:n :}
-   k s" :" CHK-DEFINER? IF LINT-TRUE exit THEN
-   k s" TRUSTED:" CHK-DEFINER? ;
-
-\ A raw operand is data, never a definer: `' :` starts no definition. A
-\ definition ends where the expansion walker ends it, so `[char] ;` in a body
-\ does not end it here either. `undefine` takes its name as a definer does: the
-\ name is skipped, so `undefine deftype` registers nothing, and a missing one is
-\ refused here, at `undefine`.
-: CHK-NOM-STEP ( n -- n ) {: k:n :}
-   k LINT-LEX:OPERAND? if k 1+ exit then
-   k CHK-DEF-OPENER? if k 1+ CHK-WALK-DEF exit then
-   k s" undefine" CHK-DEFINER? if k 2 + exit then
-   k CHK-PKG-STEP if exit then drop
-   k s" deftype" CHK-DEFINER? if
-      k k 1+ CHK-NOM-REGISTER
-      k 2 + exit
-   then
-   k s" deflinear" CHK-DEFINER? if
-      k k 1+ CHK-LIN-REGISTER
-      k 2 + exit
-   then
-   k s" VALUE-RECORD" CHK-DEFINER? if
-      k k 1+ CHK-VREC-REGISTER exit
-   then
-   k s" NEWTYPE" CHK-DEFINER? if
-      k CHK-TFAM-REGISTER exit
-   then
-   k s" SUMTYPE" CHK-DEFINER? if
-      k CHK-SUM-REGISTER exit
-   then
-   k s" ENUM" CHK-DEFINER? if
-      k CHK-ENUM-REGISTER exit
-   then
-   k s" STRUCTURE" CHK-DEFINER? if
-      k CHK-STRUCT-REGISTER exit
-   then
-   k s" PRODUCT" CHK-DEFINER? if
-      k CHK-PROD-REGISTER exit
-   then
-   k 1 + ;
-
-\ The file is lexed whole and every declaration in it registered, in its own
-\ name, so each report names the file it reads.
-: CHK-RUN-NOMINAL-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu CHK-SRC-READ CHK-NOM-U !
-   CHK-SRC-BUF CHK-NOM-U @ 1 1 0 DIAG-SOURCE!
-   CHK-SRC-BUF CHK-NOM-U @ LINT-LEX:SOURCE
-   0 CHK-NOM-I !
-   begin CHK-NOM-I @ LINT-LEX:COUNT < while
-      CHK-NOM-I @ CHK-NOM-STEP CHK-NOM-I !
-   repeat ;
-
-: CHK-RUN-NOMINAL-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
-   label labelu CHK-LABEL!
-   path pathu CHK-RUN-NOMINAL-FILE ;
-
 : CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
    id CHK-DEP$ RESOLVE nip nip 0= ;
-
-: CHK-RUN-NOMINAL-ID ( n -- )
-   {: id:n :}
-   id CHK-DEP-PRELOAD? 0= if exit then
-   id CHK-FILE-NAME$ id CHK-DEP$ CHK-RUN-NOMINAL-AS ;
-
-\ Every file of the closure, in the order the walk left, under the name its
-\ packets give it.
-: CHK-RUN-NOMINAL-FILES ( -- )
-   CHK-LABEL {: old:ptr oldu:n :}
-   0 begin dup CHK-DEP-ORDER-N @ < while
-      dup CHK-DEP-ORDER@ CHK-RUN-NOMINAL-ID
-      1+
-   repeat drop
-   old oldu CHK-LABEL! ;
-
-: CHK-RUN-NOMINAL ( -- )
-   LINT-FALSE CHK-NOM-BAD !
-   CHK-RUN-NOMINAL-FILES
-   CHK-NOM-BAD @ if CHK-E-CHECK CHK-THROW then ;
-
-: CHK-VERIFIER-XT ( n -- n ) {: off:n :}
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
-   off CELL + CHECKER-OWNER-GUARD:VALIDATE
-   off + CELL-VIEW @ dup 0= IF E-COMP-OWNER throw THEN ;
-
-\ The checker owner's record holds the verifier's entries as code address integers.
-CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
-
-: CHK-RUN-NOMINAL-AUTH ( -- )
-   CHECKER-OWNER-ABI:VERIFY-START-OFF CHK-VERIFIER-XT CHK-VERIFIER-ACTION execute
-   [: CHK-RUN-NOMINAL ;] catch
-   DIAG-SOURCE-OFF
-   CHECKER-OWNER-ABI:VERIFY-DONE-OFF CHK-VERIFIER-XT CHK-VERIFIER-ACTION execute
-   dup 0= if drop exit then
-   throw ;
 
 : CHK-RUN-RESET ( -- )
    0 CHK-RUN-U ! ;
@@ -1444,8 +873,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    s" 0 WARN-DIAGS !" CHK-RUN-SP ;
 
 \ The origin pass appends the marked copy of the source file at the given path
-\ to the run buffer, reading it whole through check.f's own buffer, as the
-\ nominal pass does. The engine comments a leading `#!` line only at the start
+\ to the run buffer, reading it whole through check.f's own buffer. The engine comments a leading `#!` line only at the start
 \ of a file it reads, so the pass comments the source's own first, with the
 \ engine's rewrite: the scan then reads that line as a comment, and the marked
 \ copy carries the rewrite the run needs.
@@ -1616,7 +1044,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 : CHK-RUN-ALL-COMPOSE ( -- )
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
-\ The composition hands up a reader with nothing after it: the nominal pass's
+\ The composition hands up a reader with nothing after it: the missing-name
 \ record at that token of the file's lex (CHK-NONAME-AT$), or with no token of
 \ the lex there the statement's throw record. The check fails as a refusal.
 : CHK-ALL-NONAME ( -- )
@@ -1788,22 +1216,13 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    CHK-RC @ {: rc:n :}
    rc 0<> if rc CHK-THROW then ;
 
-\ The nominal pass registers the declarations it finds in the subject source.
-\ Those declarations belong to the packages that source declares, so the scope
-\ starts at neutral top level instead of adopting the caller's package.
-: CHK-RUN-NOMINAL-LINTS ( -- )
-   CHECKER-SCOPE-START-NEUTRAL
-   [:
-      CHK-RUN-NOMINAL-AUTH
-      CHK-RUN-RESERVED-NAMES
-      CHK-RUN-BOUNDARY
-   ;] catch {: rc:n :}
-   CHECKER-SCOPE-DONE
-   rc 0 <> if rc throw then ;
+: CHK-RUN-LINTS ( -- )
+   CHK-RUN-RESERVED-NAMES
+   CHK-RUN-BOUNDARY ;
 
 : CHK-RUN-STATIC-LINTS ( -- )
    \ Zero-byte input traverses every phase; a bypass is publicly unobservable.
-   CHK-RUN-NOMINAL-LINTS
+   CHK-RUN-LINTS
    CHK-ALL @ if CHK-RUN-ALL then ;
 
 : CHK-RUN-CURRENT ( -- )

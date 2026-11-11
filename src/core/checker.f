@@ -27084,7 +27084,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 \ Transactional rollback-frame STACK: every checker scope (CHECKER-SCOPE-START)
 \ and candidate probe (CHECK-CANDIDATE-START) pushes a frame holding every
 \ mutable high-water mark, and DONE pops it, so nested candidates and scopes
-\ (all-errors replay, preverify, CHK-RUN-STATIC-LINTS inside CHK-RUN-SCOPED)
+\ (check.f's all-errors replay inside CHK-RUN-SCOPED)
 \ cannot overwrite a parent's marks. Core marks live in the RBF frame; the
 \ TFAM/SUMV/SCHEMA registries keep parallel marks through the REG-EXT-RB-* hooks
 \ type-schema.f and type-family.f install, in lockstep since every push pairs

@@ -1918,7 +1918,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 
 \ A live declaration's `private` / `public` switch reaches the checker through
 \ the engine (DECLARATIONS PRIVATE-OFF). A replay defines no word, and its
-\ pre-pass (verify-source.f, tools/check-core.f) opens the package in the
+\ pre-pass (verify-source.f) opens the package in the
 \ checker alone, so an engine `private` there dies `private at
 \ tools/check.f:1`. A replay switches the checker's mode only.
 : TDECL-GEN-PRIVATE ( bool -- ) {: replay:bool :}
@@ -2059,7 +2059,7 @@ public
    rc 0 <> IF rc throw THEN
    drop ;
 
-\ Replay (check-core.f's nominal pass, verify-source.f) registers the checked
+\ Replay (verify-source.f's declaration pre-pass) registers the checked
 \ effects of a generated set without emitting code; the address surface replays
 \ from the same plan the live path evaluates, so a file that uses its own record
 \ accessors resolves on the pre-scan.
@@ -2486,9 +2486,8 @@ using TYPE-DECL
 : SUMTYPE ( -- ) TDECL-SUMTYPE ;
 : PRODUCT ( -- ) TDECL-PRODUCT ;
 
-\ Reached by the preverify and all-errors replay paths (verify-source.f,
-\ tools/check-core.f) and by checked declarers built on them
-\ (src/lib/type/deftype.f DEFTYPE).
+\ Reached by the preverify and all-errors replay paths (verify-source.f) and by
+\ checked declarers built on them (src/lib/type/deftype.f DEFTYPE).
 : CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- ) TDECL-DEFFAMILY ;
 NOMINAL-PROVIDER
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;

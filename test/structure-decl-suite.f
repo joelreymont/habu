@@ -170,8 +170,8 @@ public
 
 \ Reject diagnostics. STRUCTURE renders through render.f's TDECL-DIAG, the
 \ legacy definers' producer; the assertions read the bytes captured through
-\ DIAG-BUFFER! / DIAG-BUFFER$, the pair tools/check-core.f CHK-DECL-CAPTURE and
-\ CHK-DECL-FLUSH use. This proves the channel, not a check-tool run. Each case
+\ DIAG-BUFFER! / DIAG-BUFFER$, the pair tools/check-all-errors-core.f
+\ CA-DIAG-FULL-START and CA-DIAG-FINISH use. This proves the channel, not a check-tool run. Each case
 \ asserts the whole rendered line.
 
 \ one case per reject code this suite pins, each rendering family + reason +
@@ -342,7 +342,7 @@ DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ SD-REPLAY - registering a STRUCTURE from tokens a tool already lexed
-\ (tools/check-core.f), so a later declaration can name the family as a payload
+\ (src/habu/verify-source.f), so a later declaration can name the family as a payload
 \ type. Registration includes the MAKE/UNMAKE variant rows, their constructor
 \ package and checked effects; replay emits no runtime code.
 package struct-replay-test
