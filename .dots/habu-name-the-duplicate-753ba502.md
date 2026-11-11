@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-11T11:31:36.463973+02:00"
-blocks:
-  - habu-a-build-s-87c9c7c2
 ---
 
 Problem: src/core/layout-buffer.f LBUF-NAME-OK? (:66-:70) throws E-DUP-DEFINITION (78) bare when the name, or a generated suffix name, is already defined, so TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER and the heap and arena definers exit 78 with no line at all. Reduced: a file holding only `TYPED-VARIABLE HV n` (HV is an engine global, src/habu/repl.f:20) exits 78 silently on the installed hb, while `variable HV` prints `duplicate definition: HV at file:line`.

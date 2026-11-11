@@ -523,14 +523,18 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-CLEANUP
    HBB-BUILD-RC HBB-EXIT ;
 
-\ hb-build's exit action: a source whose top level ends the process ends it
-\ inside the build, with no program written and -o as it was, so the build
-\ fails naming the file it was loading, except under --json-errors.
+\ hb-build's exit action: a process ended inside a build leaves no program and -o
+\ as it was; the line names the file it was loading, if any (not --json-errors).
 : HBB-EXITED ( -- )
    LINKER:OPEN? 0= if exit then
    HBB-JSON @ 0= if
-      s" hb-build: " HBB-WERR  HB-BUILD-CORE:ROW$ HBB-WERR
-      s"  ended the process during the build" HBB-WERR
+      HB-BUILD-CORE:ROW$ {: row:ptr rowu:n :}
+      rowu 0= if
+         s" hb-build: the build ended the process before its first file" HBB-WERR
+      else
+         s" hb-build: " HBB-WERR  row rowu HBB-WERR
+         s"  ended the process during the build" HBB-WERR
+      then
       HBB-WERR-LF
    then
    HBB-BUILD-RC HBB-EXIT ;

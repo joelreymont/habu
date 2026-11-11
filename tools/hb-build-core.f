@@ -314,6 +314,7 @@ public
    {: engine:bool target:RTARGET:resolved-target :}
    engine KERNEL-ENGINE? !  target TARGET !
    PATHS
+   NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" kernel" target ['] KERNEL-BODY LINKER:WITH
    KERNEL-PATH KERNEL-U @ LINKER:KERNEL ;
 
@@ -321,7 +322,8 @@ public
 \ LINKER:KERNEL.
 : KERNEL$ ( -- ptr u8 n ) KERNEL-PATH KERNEL-U @ ;
 
-\ The file the last build was loading, for the message of a build that threw.
+\ The file the build is loading, for the message of a build that failed; empty
+\ until the build opened last loads its first file.
 : ROW$ ( -- ptr u8 n ) ROW-PATH @ ROW-LEN @ ;
 
 \ Build this tree's hb for the target and write it to the path (REFUSE-WASM).
@@ -330,6 +332,7 @@ public
    target REFUSE-WASM
    out OUT-PATH !  outu OUT-LEN !
    true target KERNEL-BUILD  ENGINE-END!
+   NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" engine" target ['] ENGINE-BODY LINKER:WITH ;
 
 \ Build hb with the source's files, the source's MAIN its entry, for the target
@@ -339,6 +342,7 @@ public
    target REFUSE-WASM
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
    true target KERNEL-BUILD  REPL-END!
+   NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" engine" target ['] REPL-BODY LINKER:WITH ;
 
 \ Build the source as a stripped program for the target and write it to the
@@ -349,6 +353,7 @@ public
    target TARGET !
    WASM? if PATHS else false target KERNEL-BUILD then
    APP-END-WRITE
+   NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" app" target ['] APP-BODY LINKER:WITH ;
 
 ;package

@@ -98,6 +98,14 @@ refuses an object whose DATA-START is not hb's, staged or not: the hb building
 it sends a build's xt! and ptr-cell! stores into its header to the image only
 below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 
+A build types the primitives by the tree's kernel object, not by the running
+hb's rows (src/arch/arm64/link-kernel.f STATE-PRIMS), so an engine carries the
+facts of a primitive its tree adds after one build. The running hb's no-return
+axioms each name a primitive (src/core/checker.f NORET-AXIOMS): a tree that
+drops one needs a stage that drops the axiom first, or the build stops with
+`checker: the kernel object has no row for <name>, which a no-return axiom
+names`.
+
 ## What the engine carries
 
 tools/hb-build-core.f (STARTUP and RUNTIME-FILES) lists the source baked into

@@ -18317,7 +18317,10 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
 : NORET-AXIOM {: a:ptr u:n flag:n :}
    a u PE-SYM-OF {: sym:n :}
    sym BUILD-SYM-END @ < 0= IF
-      s" checker: an axiom names a symbol past the build prefix" 76 die
+      s" checker: the kernel object has no row for " ERROR-TEXT:TYPE
+      a u ERROR-TEXT:TYPE
+      S\" , which a no-return axiom names\n" ERROR-TEXT:TYPE
+      s" " 76 die
    THEN
    sym flag 0 0 NORET-ADD-SYM ;
 
