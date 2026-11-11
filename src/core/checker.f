@@ -631,6 +631,50 @@
 \ local declared wide, hidden or of open width, which binds more cells than
 \ the row shows. An undeclared local is one cell unless those rows hold a wide
 \ one.
+\
+\ MATCH: `MATCH family variant OF ... ENDOF ... ;MATCH` is a checker control
+\ form. The family and variant tokens are captured before locals, control and
+\ word dispatch. OF and ENDOF are shared with CASE and told apart by the
+\ control frame's kind: 9 is a match and 10 a match branch, where CASE is 7
+\ and 8. MATCH pops the scrutinee's hidden-field bundle, slot 0 through the
+\ tag, checking each cell against the resolved family, and recovers the
+\ family's type arguments from the tag term. Each branch checks from the base
+\ row plus that variant's instantiated payload. Branch outputs unify at ENDOF.
+\ ;MATCH checks that every variant has a branch, against a tag bitset in
+\ declaration order since there is no default branch, and installs the joined
+\ rows. Match frames live in a growable side arena with a growable pool of
+\ seen bitsets. Every structural failure latches MREJ, a hard reject ranked
+\ above uncheckable. Only a width-expanded bundle matches, linear included; a
+\ layout whose width reads an open argument is one logical cell with no
+\ payload cells, and is refused.
+\
+\ String payloads: the reader spends a string literal's payload without
+\ tokenising it and reports the bytes to the stage that compiles the literal.
+\ The span is raw, while an escaped body is what its escapes decode to and is
+\ shorter than its text, so span and bytes are recorded apart. A payload was
+\ spent exactly when SKF, the skip's close flag, is set: only the two loops
+\ that walk a payload to its closing quote set it, so neither the token's
+\ spelling nor the verdict decides (the reader may never reach the payload of
+\ a name token, a match arm or a token in a locals group). A recorded span was
+\ consumed and its escapes validated; an invalid escape spends the rest of the
+\ payload and leaves SKF clear.
+\
+\ Source map: a refusal packet names where its token lies in the checked file.
+\ A driver that checks text it copied out of a file arms DIAG-SOURCE! with the
+\ scanned bytes and the file line, column and byte of their first byte, and
+\ before each check hands DIAG-MAP! the text it built with a table of the runs
+\ it copied: one two-cell row per run (text offset, source offset), ascending
+\ from text offset 0. DIAG-LOCATE maps a pointer into that text, or into the
+\ source, to a file position. The engine arms the map for a definition it
+\ captured from a file buffer, from the rows the capture records, and gives a
+\ body its closer. Text with no map keeps the DIAG-ORIGIN! rule: `evaluate`
+\ text other than a slice of the file being loaded, stdin and a program file
+\ read without `--load`, a definition whose name lies outside the buffer being
+\ read, and the definitions the checker generates for a declaration.
+\ DIAG-CLOSER! takes the source token that closes the mapped definition (its
+\ `;` or a definer's `does>`), which the text does not hold: a control
+\ structure still open there is refused at that token, as the load's compiler
+\ refuses it.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -19548,12 +19592,8 @@ CHECKER-REG:}SCRATCH
       1 +
    REPEAT drop RES-FALSE ;
 
-\ Cache the parsed declared sig as an arena effect record so recurse sites
-\ instantiate it via E-INST, and a diagnostic renders the declared effect from
-\ it (render.f DECL-EFFECT). The record carries sym 0 so signature lookup never
-\ sees it. The declared rows are measured here, before the body binds their
-\ tails: a sig too deep or too wide to record has no cache, and its definition
-\ is unfit (CHECK-DEPTH-FITS).
+\ The record carries sym 0 so signature lookup never sees it. The declared rows
+\ are measured here, before the body binds their tails.
 : SIG-EFF-CACHE!
    0 OWNB-N !
    SGBAD @ IF EXIT THEN
@@ -19566,8 +19606,7 @@ CHECKER-REG:}SCRATCH
    RECEFF-SYM @ CHECKER-REC-SYM !
    -1 RECEFF-ON ! ;
 
-\ Back to the cache's start, or to the end of the last facts read since (CHECK
-\ READ-LEAVE).
+\ Back to the cache's start, or to the end of the last facts read since.
 : SIG-EFF-DROP
    RECEFF-ON? 0= IF EXIT THEN
    RECEFF-UEND @ USIGS-RESTORE-END
@@ -19594,8 +19633,6 @@ CHECKER-REG:}SCRATCH
    od DCUR !  orow RCUR !
    h LIN-EFF-PASS ;
 
-\ A RECURSE instantiates a colon body's cached declared effect. Anywhere else it
-\ is uncheckable: an effect too big to record, a does> clause, or none declared.
 : CF-RECURSE
    -1 WRAPBENT !
    RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF EXIT THEN
@@ -19604,13 +19641,9 @@ CHECKER-REG:}SCRATCH
    THEN MDIAG!
    UNCK-RAISE ;
 
-\ Uniform-branch acceptance. A GPU predicate provably identical across every
-\ lane of the block is the distinct family `uniform<bool>`. When the pending
-\ condition on top of DCUR is exactly `uniform<bool>`, the `if` is a
-\ block-uniform branch: consume it and mark the frame CF.UNI so a collective
-\ inside certifies. Any other flag (a bare `bool`, or a `uniform<f32>`, which
-\ is not a flag) keeps the plain STEP-BOOL-IN path.
-: COND-UNIFORM? ( -- bool )   \ top of DCUR resolves to uniform<bool>?
+\ A GPU predicate provably identical across every lane of the block is the
+\ distinct family `uniform<bool>`.
+: COND-UNIFORM? ( -- bool )
    PTX-UNIFORM-FAM @ 0= IF RES-FALSE EXIT THEN
    DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
    P>TYPE T-RES dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
@@ -19619,7 +19652,7 @@ CHECKER-REG:}SCRATCH
    0 PARAM>ARG T-RES dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
    PAY CC-BOOL = ;
 
-: STEP-UNIFORM-BOOL-IN ( -- )   \ consume a uniform<bool> block-uniform predicate
+: STEP-UNIFORM-BOOL-IN ( -- )
    PARAM-SCR-N @ {: base:n :}
    CC-BOOL MK-CON PARAM-SCR+
    base s" uniform" PTX-UNIFORM-FAM @ MK-PARAM
@@ -19667,8 +19700,8 @@ CHECKER-REG:}SCRATCH
    CF-TOP CF.FA @ FACTS !
    DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
 
-\ Paths that meet at different data depths: the refusal names both rows, as
-\ UF-CAPTURE does, while the pin is open.
+\ Paths that meet at different data depths: the refusal names both rows while
+\ the pin is open.
 : CF-DEPTH-FAIL ( n n n -- )
    {: exp:n act:n why:n :}
    MDIAG @ 0=  FAILSET @ 0=  and IF
@@ -19692,7 +19725,7 @@ CHECKER-REG:}SCRATCH
    CF-TOP CF.FA @ FACTS !
    DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
 
-: CF-IF   \ IF consumes a flag (bool or a block-uniform uniform<bool>)
+: CF-IF
    CF-TEST-ID {: test:n :}
    COND-UNIFORM? {: uni:bool :}
    uni IF STEP-UNIFORM-BOOL-IN ELSE STEP-BOOL-IN THEN
@@ -19734,7 +19767,7 @@ CHECKER-REG:}SCRATCH
    THEN ;
 
 
-: CF-ENDOF ( -- )                    \ an OF frame sits on its CASE (CF-OF)
+: CF-ENDOF ( -- )                    \ an OF frame sits on its CASE
    8 8 MD-CLOSES-NOTHING CF-AT? IF
       CF-CASE-IDX CF-CASE-ACCUM
       CF@A CF@RA {: data:n ret:n :}
@@ -19766,7 +19799,7 @@ CHECKER-REG:}SCRATCH
 \ check, which models one, fails there.
 : CF-ELSE
    1 2 MD-CLOSES-NOTHING CF-AT? IF CF@K 1 <> IF MD-ELSE-TWICE CF-FAIL ELSE
-     DEADP @ CF-TOP CF.DED !  0 DEADP !                  \ save if-branch deadness; else runs live
+     DEADP @ CF-TOP CF.DED !  0 DEADP !
      DCUR @ RCUR @ {: data:n ret:n :}
      CF@A DCUR !  CF@RA RCUR !
      CF-LOOPS @ CF-TOP CF.LB !  CF@LA CF-LOOPS !
@@ -19906,9 +19939,8 @@ CHECKER-REG:}SCRATCH
    -1 CF-TOP CF.DED ! ;
 
 
-\ The nearest enclosing DO frame, or -1. Stops at the first DO (kind 5) or
-\ quotation boundary (kind 6): a `leave` inside [: ;] does not escape to an
-\ outer loop.
+\ Stops at the first DO (kind 5) or quotation boundary (kind 6): a `leave`
+\ inside [: ;] does not escape to an outer loop.
 : CF-FINDDO ( -- n )
    #CFC @ 1 -
    BEGIN dup 0 >= WHILE
@@ -19918,9 +19950,6 @@ CHECKER-REG:}SCRATCH
       1 -
    REPEAT ;
 
-\ Why a loop or +loop is refused: with no DO open in its own body, a
-\ quotation's included (CF-FINDDO), no loop is open; with one, another frame is
-\ open over it and the word closes nothing.
 : CF-LOOP-WHY ( -- n )
    CF-FINDDO 0< IF MD-NO-LOOP ELSE MD-CLOSES-NOTHING THEN ;
 
@@ -19960,8 +19989,7 @@ CHECKER-REG:}SCRATCH
 
 
 \ The stack at `leave` must match the loop-exit row (the DO-point row CF.SA,
-\ since the body is stack-neutral), as must the return row. The path to `loop`
-\ is then dead (CF-LOOP revives the live loop exit).
+\ since the body is stack-neutral), as must the return row.
 : CF-LEAVE
    -1 WRAPBENT !
    CF-FINDDO {: doidx:n :}
@@ -19978,7 +20006,7 @@ CHECKER-REG:}SCRATCH
      -1 DEADP ! THEN ;
 
 
-: CF-QUOT   \ [: — pause the outer inference (incl. its exit state), open a nested one
+: CF-QUOT
    6  DCUR @  BROW @  RCUR @  RBROW @  CF-PUSH
    0 CF-LOOPS !
    XROW @ CF-TOP CF.XRO !  XRROW @ CF-TOP CF.XRR !
@@ -19995,7 +20023,6 @@ CHECKER-REG:SCRATCH{
 variable QTMP
 CHECKER-REG:}SCRATCH
 
-\ 2 + the nearest quotation frame below the top one, 0 for none.
 : QUOT-OUTER ( -- n )
    #CFC @ 2 - BEGIN dup 0 >= WHILE
       dup CF-ROW CF.KND @ 6 = IF 2 + EXIT THEN
@@ -20019,9 +20046,9 @@ CHECKER-REG:}SCRATCH
    qrd 0= IF EXIT THEN
    qrd QUOT-OUTER max DEP-SCOPE  QTMP @ Q>BLOCK T-RES PAY  TV! ;
 
-: CF-SEMIQ  \ ;] — quot<nested effect> pushed onto the restored outer row
+: CF-SEMIQ
    6 6 MD-CLOSES-NOTHING CF-AT? IF
-     XSET @ IF                                   \ fold the quote's OWN early returns into its effect
+     XSET @ IF
        DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
        ELSE
           XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
@@ -20037,7 +20064,7 @@ CHECKER-REG:}SCRATCH
      QTMP @ THSET @ DEADP @ XSET @ 0= and THDMASK @ XMASK THRMASK @ XMASK QX!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
      CF-TOP CF.XFA @ XFACT !
-     CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !  \ restore outer exit state
+     CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !
      CF-TOP CF.TXD @ THDMASK !  CF-TOP CF.TXR @ THRMASK !
      CF-TOP CF.TXS @ THSET !
      CF@LA CF-LOOPS !
@@ -20049,22 +20076,6 @@ CHECKER-REG:}SCRATCH
      CF-LOC-REST
      CF-DROP THEN ;
 
-\ --- MATCH eliminator (docs/forth.md "Structures And Enums"). `MATCH family
-\ variant OF ... ENDOF ... ;MATCH` is a checker control form: DO-TOK1 captures
-\ the family and variant tokens before locals/control/word dispatch; OF/ENDOF
-\ are shared with CASE and told apart by the CFS frame kind (9 = match, 10 =
-\ match branch; CASE is 7/8). MATCH pops the scrutinee's hidden-field bundle
-\ (slot0..tag, verified cell by cell against the resolved family), recovers the
-\ family's type args from the tag term, and each branch checks with DCUR = base
-\ + that variant's instantiated payload. Branch outputs unify at ENDOF; ;MATCH
-\ enforces exhaustiveness over the declaration-order tag bitset (there is no
-\ default branch) and installs the joined rows. Frames live in a growable side
-\ arena (MF) with a growable seen-bitset pool (MSEEN). Every structural failure
-\ latches MREJ, which CHECK-VERDICT ranks as a hard reject above UNCK, and the
-\ CFS headroom check (two frames per match) rejects instead of tripping
-\ CF-PUSH's UNCK overflow. Only a width-expanded bundle matches, linear
-\ included; a layout whose width reads an open argument (LAYOUT-WIDTH-OPEN?) is
-\ one logical cell with no payload cells and rejects (MD-OPEN-ARGS).
 $0 constant MF.FAM-OFF
 $8 constant MF.TERM-OFF
 $10 constant MF.BASE-OFF
@@ -20123,7 +20134,7 @@ variable MSEEN-N   0 MSEEN-N !
    MSEEN-N @ add + MSEEN-CAP-V @ <= IF exit THEN
    MSEEN-N @ add + MSEEN-GROW ;
 
-: MSEEN-ALLOC ( n -- n )   \ zeroed bitset cells for count variants -> offset
+: MSEEN-ALLOC ( n -- n )
    {: count:n :}
    count 63 + 64 / {: k:n :}
    k MSEEN-ENSURE
@@ -20162,11 +20173,6 @@ variable MREJ    \ match structural-reject latch: forces verdict 0, never unchec
 variable MSKIP   \ matches open in a refused match the walk reads unmodeled (CHECKER-MATCH-MODE 4)
 CHECKER-REG:}SCRATCH
 
-\ Rigid host-identity mismatch naming. RIGID-ATOM-DOMAIN classifies a resolved
-\ term as a rigid-identity atom of a domain (0 = none). RIGID-DIAG-CLASSIFY runs
-\ on the captured mismatch pair after a reject verdict: when the mismatch is the
-\ refusal and both sides are rigid-domain atoms it names the kind (stale index,
-\ wrong region, wrong extent), and that reason becomes the refusal.
 : RIGID-ATOM-DOMAIN ( n -- n )   \ 0 none / 1 region / 2 extent / 3 gen
    T-RES dup TAG T-ATOM <> IF drop 0 EXIT THEN
    dup ATOM>K 0 <= IF drop 0 EXIT THEN            \ only an instantiated fresh id carries a domain
@@ -20178,19 +20184,16 @@ CHECKER-REG:}SCRATCH
    DF-EXP @ RIGID-ATOM-DOMAIN {: de:n :}
    DF-ACT @ RIGID-ATOM-DOMAIN {: da:n :}
    de 0= IF EXIT THEN
-   da 0= IF EXIT THEN                             \ both sides must be rigid-domain atoms
+   da 0= IF EXIT THEN
    de da RIGID-DOMAIN-REASON MDIAG !
    RF-REASON REFUSAL ! ;
 
 : MATCH-REJECT ( -- )
    0 OK !  -1 FAILSET !  -1 MREJ !  0 CHECKER-MATCH-MODE ! ;
 
-\ A match whose family resolves nothing, which the load refuses there while
-\ compiling, or one nested past the frame depth leaves the walk without the
-\ roles of its tokens: which are variants the load reads as operands and which
-\ are branch words it compiles. The walk reads them unmodeled through the
-\ match's own `;MATCH`, as it reads dead code, rather than resolve a variant as
-\ a word.
+\ A match whose family resolves nothing, or one nested past the frame depth,
+\ leaves the walk without the roles of its tokens. The walk reads them
+\ unmodeled through the match's own `;MATCH`.
 : MATCH-ABANDON ( -- )
    MATCH-REJECT  1 MSKIP !  4 CHECKER-MATCH-MODE ! ;
 
@@ -20204,7 +20207,7 @@ CHECKER-REG:}SCRATCH
 
 : MATCH-BEGIN ( -- )
    EV-OPERAND
-   1 CHECKER-MATCH-MODE ! ;   \ enter match mode; an unarmed registry fails closed at the family resolve (MATCH-FAM-XT default rejects)
+   1 CHECKER-MATCH-MODE ! ;
 
 variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
 variable MTCH-W                      \ the bundle width the walk below really consumed
@@ -20220,21 +20223,21 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MTCH-ROW @ R-RES P>REST MTCH-ROW !
    RES-TRUE ;
 
-: MATCH-SCRUT? ( n -- bool ) {: fam:n :}   \ verify + walk off the W-cell bundle
+: MATCH-SCRUT? ( n -- bool ) {: fam:n :}
    DCUR @ R-RES {: node:n :}
    node TAG S-PUSH <> IF RES-FALSE EXIT THEN
-   node P>TYPE T-WIDTH {: w:n :}            \ arg-aware bundle width from the scrutinee tag
+   node P>TYPE T-WIDTH {: w:n :}
    DCUR @ MTCH-ROW !  0 MTCH-I !  0 MTCH-TAGT !  w MTCH-W !
    BEGIN MTCH-I @ w < WHILE
       fam w MTCH-I @ MATCH-SCRUT-CELL? 0= IF RES-FALSE EXIT THEN
       MTCH-I @ 1 + MTCH-I !
    REPEAT RES-TRUE ;
 
-: MATCH-SCRUT-DIAG ( n -- ) {: fam:n :}   \ classify a failed scrutinee for its diagnostic
+: MATCH-SCRUT-DIAG ( n -- ) {: fam:n :}
    QDEPTH @ 0 > IF MD-QUOT MDIAG! EXIT THEN
    DCUR @ R-RES TAG S-PUSH <> IF MD-SCRUT MDIAG! EXIT THEN
    DCUR @ R-RES P>TYPE T-RES {: t:n :}
-   t TAG T-STALE = IF t STALE-WHY MDIAG! EXIT THEN   \ the scrutinee is a stale or unknown cell
+   t TAG T-STALE = IF t STALE-WHY MDIAG! EXIT THEN
    t LAYOUT-PARAM? 0= IF MD-SCRUT MDIAG! EXIT THEN
    t CELL>FAM fam <> IF MD-FAM-MISMATCH MDIAG! EXIT THEN
    t HIDDEN-PARAM? 0= IF MD-OPEN-ARGS MDIAG! EXIT THEN
@@ -20242,7 +20245,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
 
 \ Open the frames of a match on family FAM: its branches start from MTCH-ROW,
 \ their payloads come from MTCH-TAGT (0: none), and LOST says whether a
-\ scrutinee cell was lost (ROW-TOP-LOST).
+\ scrutinee cell was lost.
 : MATCH-OPEN ( n n -- )
    {: fam:n lost:n :}
    MF-ENSURE
@@ -20288,7 +20291,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
 : MATCH-ACCUM ( -- )
    DEADP @ IF EXIT THEN
    MF-CUR MF.HAS @ 0 <> IF
-      FAILSET @ {: fs0:n :}                   \ SUNI-JOIN pins the token itself: latch the
+      FAILSET @ {: fs0:n :}                   \ SUNI-JOIN pins the token itself
       MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
       #CFC @ 2 - CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
       DCUR @ MF-CUR MF.OUT !
@@ -20316,11 +20319,11 @@ variable MTCH-W                      \ the bundle width the walk below really co
    CF-ENTRY-FACTS
    2 CHECKER-MATCH-MODE ! ;
 
-: MATCH-SEMI ( -- )    \ ;match at variant-list level: exhaustiveness + join
+: MATCH-SEMI ( -- )
    CF-MT? IF MD-STRAY MDIAG! MATCH-REJECT EXIT THEN
    CF@K 9 <> IF MD-STRAY MDIAG! MATCH-REJECT EXIT THEN
    MF-CUR MF.SEEN @ MF-CUR MF.VCNT @ MSEEN-FULL? 0= IF
-      MDIAG @ 0=  FAILSET @ 0=  and IF          \ latch the name-walk data with the reason
+      MDIAG @ 0=  FAILSET @ 0=  and IF
          MD-NONEXH MDIAG !
          MF-CUR MF.FAM @ MDIAG-FAM !
          MF-CUR MF.SEEN @ MDIAG-SEEN !
@@ -20355,7 +20358,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    {: vid:n :}
    CHECKER-TAPE:K-MATCH-ARM  MF-CUR MF.FAM @  vid EV-VARIANT
    vid MATCH-VTAG-XT {: tag:n :}
-   MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN   \ duplicate variant
+   MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN
    MF-CUR MF.SEEN @ tag MSEEN-SET
    vid MPEND !
    3 CHECKER-MATCH-MODE ! ;
@@ -20363,7 +20366,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
 : MATCH-OF-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u s" of" CORE-STR= IF CHECKER-TAPE:K-MATCH-OF 0 0 EVENT!
-   ELSE MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN   \ variant token without OF
+   ELSE MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN
    MF-CUR {: r:ptr :}
    r MF.BASE @ DCUR !
    r MF.RBASE @ RCUR !
@@ -20386,13 +20389,12 @@ variable MTCH-W                      \ the bundle width the walk below really co
    CHECKER-MATCH-MODE @ 4 = IF a u MATCH-SKIP-TOK EXIT THEN
    a u MATCH-OF-TOK ;
 
-: CF-ENDOF-DISPATCH ( -- )   \ ENDOF serves CASE (7/8) and MATCH (10) by frame kind
+: CF-ENDOF-DISPATCH ( -- )
    CF-MT? IF CF-ENDOF EXIT THEN
    CF@K 10 = IF MATCH-ENDOF EXIT THEN
    CF-ENDOF ;
 
-\ Whether the token is the control word B V, latching its marker event when it
-\ is: CODE is the word's place in CF-TOK?'s list, [: 0 through recurse 24.
+\ CODE is the word's place in CF-TOK?'s list, [: 0 through recurse 24.
 : CF-IS? ( ptr u8 n ptr u8 n n -- bool )
    {: a:ptr u:n b:ptr v:n code:n :}
    a u b v CORE-STR= 0= IF RES-FALSE EXIT THEN
@@ -20410,7 +20412,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    a u s" of" 6 CF-IS? IF CF-OF RES-TRUE EXIT THEN
    a u s" endof" 7 CF-IS? IF CF-ENDOF-DISPATCH RES-TRUE EXIT THEN
    a u s" endcase" 8 CF-IS? IF CF-ENDCASE RES-TRUE EXIT THEN
-   a u s" ;match" 9 CF-IS? IF MD-STRAY MDIAG-COMPILE! MD-STRAY CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
+   a u s" ;match" 9 CF-IS? IF MD-STRAY MDIAG-COMPILE! MD-STRAY CF-FAIL RES-TRUE EXIT THEN
    a u s" begin" 10 CF-IS? IF CF-BEGIN RES-TRUE EXIT THEN
    a u s" until" 11 CF-IS? IF CF-UNTIL RES-TRUE EXIT THEN
    a u s" again" 12 CF-IS? IF CF-AGAIN RES-TRUE EXIT THEN
@@ -20429,12 +20431,9 @@ variable MTCH-W                      \ the bundle width the walk below really co
    RES-FALSE ;
 \ The first token of the checked text is the word's name (skipped, kept for the
 \ recorder). RECXT records certified sigs by name and DIAGXT renders a
-\ reject/uncheckable diagnostic; render.f installs both over no-op defaults that
-\ keep the calls effect-known. DIAG-QUIET counts nested quiet-check scopes:
-\ CHECK-QUIET-CANDIDATE! and CHECK-UNJUDGED! bump it around a probe and the
-\ firer skips the render while it is non-zero. It is created before the check
-\ hook exists, so no effect is published for it and only this file names it;
-\ callers name the probe words above.
+\ reject/uncheckable diagnostic. DIAG-QUIET counts nested quiet-check scopes.
+\ It is created before the check hook exists, so no effect is published for it
+\ and only this file names it.
 CHECKER-REG:SCRATCH{
 variable TOK0
 CHECKER-REG:}SCRATCH
@@ -20500,17 +20499,13 @@ variable PPAY-ON      \ did the token just judged compile PKG-LIT-NAME?
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! 0 PARSE-COMPLETE ! THEN ;
 
-\ escape validation mirrors the engine decoder (src/habu/escape.f
-\ ESCAPE:LETTER/HEX-STEP): \" \q \\ \a \b \e \l \f \n \r \t \v \z and \xHH / \XHH only.
 : ESC-HEX-DIGIT? ( n -- bool ) {: c:n :}
    c $30 >= c $39 <= and IF RES-TRUE EXIT THEN
    c $61 >= c $66 <= and IF RES-TRUE EXIT THEN
    c $41 >= c $46 <= and ;
 
 \ The one escape table: the validator and the decoder both read it, so a
-\ spelling the checker accepts and a byte it produces cannot disagree. The
-\ bytes are src/habu/escape.f ESCAPE:LETTER's, value for value; \l and \n are both
-\ line feed there.
+\ spelling the checker accepts and a byte it produces cannot disagree.
 : ESC-BYTE? ( n -- n bool ) {: c:n :}
    c $22 = IF $22 RES-TRUE EXIT THEN
    c $71 = IF $22 RES-TRUE EXIT THEN
@@ -20541,7 +20536,7 @@ variable PPAY-ON      \ did the token just judged compile PKG-LIT-NAME?
 : SKIP-ESC-BAD
    TBLEN @ SKI ! ;
 
-: SKIP-ESC-HEX ( -- )   \ SKI at 'x'/'X': require two hex digits, then continue
+: SKIP-ESC-HEX ( -- )   \ SKI at 'x'/'X'
    SKI @ 2 + TBLEN @ >= IF SKIP-ESC-BAD EXIT THEN
    SKI @ 1 + TBYTE@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
    SKI @ 2 + TBYTE@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
@@ -20563,19 +20558,6 @@ variable PPAY-ON      \ did the token just judged compile PKG-LIT-NAME?
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! 0 PARSE-COMPLETE ! THEN ;
 
-\ ---- the payload a string literal carried --------------------------------------
-\ The reader spends a string literal's payload without tokenising it, and the
-\ stage that compiles the literal needs those bytes: the reader that spends them
-\ reports them, since a second lexer that merely agrees is not the same reader.
-\ The span is raw and the bytes may not be: an escaped body is what its escapes
-\ decode to, shorter than its text, so span and bytes are recorded apart, as a
-\ tape row separates span and spelling.
-\ The authority for "a payload was spent" is SKF, the skip's close flag, set by
-\ exactly the two loops that walked a payload to its closing quote: not the
-\ token's spelling (the reader may never reach the payload of a name token, a
-\ match arm or a token in a locals group), nor the verdict. A recorded span was
-\ consumed and its escapes validated; SKIP-ESC-BAD spends the rest and leaves
-\ SKF clear.
 variable SPAY-ON      \ did the token just judged spend a payload?
 variable SPAY-ESC     \ was it the escaped spelling?
 CHECKER-REG:SCRATCH{
@@ -20621,10 +20603,7 @@ variable SPAY-ARMED   \ was the token before this one? (CHECK-SCAN-WALK hands it
 \ The bytes the u bytes at src decode to, written at dst, which holds u bytes: a
 \ decoded body is never longer than its spelling. Answers the count written and
 \ whether every escape was whole; a bad one stops the decode with the bytes
-\ before it written. The decoder of the table for every reader of an escaped
-\ literal's bytes: the body scan below, the source pre-pass
-\ (src/habu/verify-source.f RECORD-ESCAPED-STRING) and the dependency walk
-\ (tools/source-discovery.f SD-DECODE-PATH).
+\ before it written.
 : ESC-DECODE ( ptr u8 n ptr u8 -- n bool ) {: src:ptr u:n dst:ptr :}
    0 0
    BEGIN {: at:n k:n :}
@@ -20639,18 +20618,14 @@ variable SPAY-ARMED   \ was the token before this one? (CHECK-SCAN-WALK hands it
       THEN
    AGAIN ;
 
-\ A plain literal's body is the recorded span itself; an escaped one is decoded
-\ into the buffer the token family grew for it. A bad escape cannot be reached
-\ from a recorded span (the validator walked the same table over the same bytes
-\ before SKF was set); it refuses so a table edit that reaches only one reader
-\ stops the definition instead of emitting a byte nobody chose.
+\ A bad escape cannot be reached from a recorded span; it refuses so a table
+\ edit that reaches only one reader stops the definition instead of emitting a
+\ byte nobody chose.
 : SPAY-BYTES ( -- ptr u8 n )
    SPAY-ESC @ 0= IF SPAY-B @ TADDR  SPAY-U @ EXIT THEN
    SPAY-B @ TADDR  SPAY-U @  SDEC  ESC-DECODE 0= IF 0 OK ! THEN
    SDEC swap ;
 
-\ The step the two skips are reached through, so that recording a span is part of
-\ spending one rather than a second decision somewhere else.
 : STRING-PAYLOAD-STEP ( -- )
    TI @ {: before:n :}
    TKF TKFU @ ESCAPED-STRING-OPENER? IF
@@ -20730,11 +20705,8 @@ variable CPAY-ON
 : CAP-FAIL ( ptr u8 n -- )
    FAILSET @ 0= IF FAIL-PIN! ELSE 2drop THEN ;
 \ Where a top step's token sits: the active file's path and the execution bytes
-\ the loader owns for it, which an inner `evaluate` never changes (src/habu/layout.f
-\ SRCLOC:PATH-CELL, SRCLOC:PATHLEN-CELL, SRCLOC:OWNED-CELL, SRCLOC:OWNEDLEN-CELL).
-\ SRC-PATH and SRC-OWNED are private to package CHECK so no program writes them;
-\ src/core/check-hook.f, which reopens the package, reads the path and the bytes
-\ through them.
+\ the loader owns for it, which an inner `evaluate` never changes.
+\ SRC-PATH and SRC-OWNED are private to package CHECK so no program writes them.
 package CHECK
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL SRC-PATH
 SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
@@ -20751,11 +20723,9 @@ public
 create DIAGFB PATH-CAP 1 + allot   variable DIAGFU
 variable DIAGL0  variable DIAGC0  variable DIAGB0
 \ A tool's label names one file, the one the load was reading when the tool set
-\ it; a label set with no file open names the steps that have no file. The
-\ pre-verifier puts the caller's label back after a scan (src/habu/verify-source.f
-\ COMPOSE-FILE-SCAN). DIAGLB holds that file's path, empty for none; a top-level
-\ step in it names the label, and one in any other file names its own path
-\ (render.f TOP-FILE$).
+\ it; a label set with no file open names the steps that have no file. DIAGLB
+\ holds that file's path, empty for none; a top-level step in it names the
+\ label, and one in any other file names its own path.
 \ The boot's DIAG-NO-FILE$ is no label.
 variable DIAG-LABELED
 create DIAGLB PATH-CAP allot   variable DIAGLU
@@ -20779,7 +20749,7 @@ create DIAGLB PATH-CAP allot   variable DIAGLU
 variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
 : DIAG-POS ( ptr u8 ptr u8 n n n -- n n n )
    {: base:ptr p:ptr bl:n bc:n bb:n :}
-   p base - DOS-OFF !                       \ p's byte offset in the buffer
+   p base - DOS-OFF !
    1 DOS-LN !  1 DOS-CL !  0 DOS-P !
    BEGIN DOS-P @ DOS-OFF @ < WHILE
       base DOS-P @ + c@ 10 = IF
@@ -20789,32 +20759,15 @@ variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
       THEN
       DOS-P @ 1 + DOS-P !
    REPEAT
-   bl DOS-LN @ + 1 -                        \ abs line
-   DOS-LN @ 1 = IF bc DOS-CL @ + 1 - ELSE DOS-CL @ THEN   \ abs column (col carries only on line 1)
-   bb DOS-OFF @ + ;                         \ abs byte
+   bl DOS-LN @ + 1 -
+   DOS-LN @ 1 = IF bc DOS-CL @ + 1 - ELSE DOS-CL @ THEN
+   bb DOS-OFF @ + ;
 \ Set DIAG-ORIGIN! to the FILE position of a definition's name token, given the
 \ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
 \ start's own file line/col/byte.
 : DIAG-ORIGIN-SPAN! ( ptr u8 ptr u8 n n n -- )
    DIAG-POS DIAG-ORIGIN! ;
 
-\ Where a packet's token lies in the checked file. A driver that checks text it
-\ copied out of a file arms DIAG-SOURCE! with the scanned bytes and the file
-\ line, column and byte of their first byte, and hands DIAG-MAP! the text it
-\ built before each check with a table of the runs it copied: one two-cell row
-\ per run (text offset, source offset), ascending from text offset 0.
-\ DIAG-LOCATE maps a pointer into that text, or into the source, to a file
-\ position. The engine's hook (check-hook.f ROWS-ARM) arms the map for a
-\ definition the engine captured from a file buffer, from the rows the capture
-\ records, and gives a body its closer (CLOSER-ARM). Text with no map keeps
-\ the DIAG-ORIGIN! rule: `evaluate` text other than a slice of the file being
-\ loaded, stdin and a program file read without `--load`, a definition whose
-\ name lies outside the buffer being read, and the definitions the checker
-\ generates for a declaration.
-\ DIAG-CLOSER! takes the source token that closes the mapped definition (its `;`
-\ or a definer's `does>`), which the text does not hold: a control structure
-\ still open there is refused at that token, as the load's compiler refuses it
-\ (CLOSER-REFUSE).
 PTR-VARIABLE DSRC-A  variable DSRC-U
 variable DSRC-L  variable DSRC-C  variable DSRC-B
 PTR-VARIABLE DMAP-A  variable DMAP-U
@@ -20882,13 +20835,11 @@ PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
       p DSRC-A @ - 0 0= EXIT
    THEN
    0 0 0= 0= ;
-\ Whether the text being checked is the one DIAG-MAP! armed, with rows.
 : DIAG-MAPPED? ( -- bool )  TBASE @ DMAP-A @ - 0=  DROW-N @ 0 > and ;
 
 \ The pre-verifier needs the pinned token in the source it read, not in its
 \ reused body buffer: it may check a does> parent after its clause, then report
-\ the clause only if the parent was not deferred. BODY$ arms the source map for
-\ every check, so both ends of the selected token must locate in it.
+\ the clause only if the parent was not deferred.
 : CHECKER-VERIFY-DEFERRED-BODY ( -- ptr u8 n )
    TBASE@ FAILB @ + DIAG>SRC 0= IF
       drop s" checker: deferred body pin outside source" 76 die
@@ -20936,8 +20887,8 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
       0 FAILB !  0 FAILE !
    THEN ;
 
-\ A definition's signature nested past EFFECT-DEPTH-MAX (SIG-TYPE) makes it
-\ uncheckable for the reason a parsed effect that deep has (CHECK-DEPTH-FITS).
+\ A definition's signature nested past EFFECT-DEPTH-MAX makes it uncheckable
+\ for the reason a parsed effect that deep has.
 : SGBAD-FAIL! ( -- )
    SGBAD @ 0= IF exit THEN
    FAILSET @ IF exit THEN
@@ -20949,7 +20900,7 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
    ELSE RF-SIG REFUSAL ! THEN
    -1 FAILSET ! ;
 
-\ A NAME whose length describes no memory (BYTE-SPAN?) spells no word, so TRUST,
+\ A NAME whose length describes no memory spells no word, so TRUST,
 \ TRUST-RAW and TRUST-DECL each refuse its row first as E-TRUST-UNRESOLVED with
 \ no spelling rendered: TRUST before its dictionary walk (whose colon scan never
 \ ends given the maximum cell), TRUST-RAW before it turns on raw-definer mode
@@ -20977,26 +20928,16 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
    0 TRUST-USIG-SYM! ;
 
 \ TRUST-DECL: record the effect a DEFINER declared for the word it is
-\ publishing. The engine calls it by name from its publish tail and the
-\ pre-trust defer drain, and from nowhere else.
-\ It is not `trust` because the two answer different questions: a definer knows
-\ the word exists and asks for the row to be stored; source `trust` claims a
-\ word exists, and only that claim is checked against the dictionary.
+\ publishing.
 \ The engine's publish tail runs before the record is findable (absent from
 \ `search-wl` at its own tail, present one statement later), so a definer-facing
 \ registration must never consult the dictionary.
 \ A trusted definer's clause is taken here by stepping the latch the clause
 \ armed: `TRUSTED: D ( … ) create … does> ( … ) ;` runs CHECK-DOES! at its `;`,
-\ but a trusted definition has no body check to step the latch past state 1. This
-\ step lets the registration reach CHECKER-EFFECT-AUTHORITY STORE in state 2, so
-\ the clause lands on the trusted symbol's CREATES cell through its one writer.
-\ The native compiler registers a trusted parent after checking its clause
-\ (DECLARE-ROW ends t0.f and compiler.f SCAN); its later publication associates
-\ the accepted pair instead.
+\ but a trusted definition has no body check to step the latch past state 1.
 \ The step is unconditional: a latch in any other state dies here.
 \ Source cannot call it: a row registered here asks nothing, so it would record
-\ any effect for a name in the open section's wordlist. The engine and stage0 call
-\ it without the interpret path.
+\ any effect for a name in the open section's wordlist.
 : TRUST-DECL? ( ptr u8 n ptr u8 n -- bool )
    {: na:ptr nu:n sa:ptr su:n :}
    WRITE-WINDOW-CK                       \ before the does> latch steps
@@ -21017,8 +20958,6 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
    CHECKER-REC-SYM @ CK-CLOSE!                  \ published after this, as a checked one is
    kept ;
 
-\ TRUST-DECL? answers whether the row was retained; only the source verifier
-\ asks, through VERIFY-DECL-OFF (src/habu/verify-source.f DECL-SIGNATURE).
 : TRUST-DECL ( ptr u8 n ptr u8 n -- )
    TRUST-DECL? drop ;
 package CHECKER-REG
@@ -21028,21 +20967,19 @@ package CHECKER-REG
 \ CHECKER-DECLARED-ROW!: the row of a definition compiled with the hook cell
 \ empty is its declaration, active and WITHOUT authority: an unsealed checker
 \ binds the row and checks callers against it, a sealed one refuses it by
-\ authority (CALL-AUTHORITY), and EFFECT-QUERY and the native compiler's arity
-\ read it. A TRUSTED: declaration goes through TRUST-DECL instead. No engine
-\ code calls it through DECLARED-ROW-OFF.
+\ authority. A TRUSTED: declaration goes through TRUST-DECL instead.
 \ A live row wins: at tier 1 the scan's own row (certified, deferred, or a
 \ multi-error recovery fact) keeps the symbol; after `undefine` the tombstone is
 \ not live and the redefinition records. A declaration that does not parse, one
-\ too deep or wide for a record (SGBAD-UNFIT!), or one with a scope scheme
-\ records nothing (an unverified declaration carries no lexical binder,
-\ USIG-ADD-AS) and its symbol stays interned without a row. No
-\ DOES-EFF-STEP: no clause check ran, and STORE keeps no created-word value for
-\ a row without authority. Sealed as TRUST-DECL is.
+\ too deep or wide for a record, or one with a scope scheme records nothing (an
+\ unverified declaration carries no lexical binder) and its symbol stays
+\ interned without a row. No DOES-EFF-STEP: no clause check ran, and STORE
+\ keeps no created-word value for a row without authority. Sealed as
+\ TRUST-DECL is.
 \ CK-DECLARED-SYM! records the row once the symbol is known and no live row
-\ states it. A cold boot's claim (CK-DECLARED-LOG-DRAIN) keys each definition
-\ logged before it by its dictionary record, not by a token in the open scope.
-\ It writes a row for any symbol it is handed, so it is sealed as well.
+\ states it. A cold boot's claim keys each definition logged before it by its
+\ dictionary record, not by a token in the open scope. It writes a row for any
+\ symbol it is handed, so it is sealed as well.
 : CK-DECLARED-SYM! ( n ptr u8 n -- )
    {: sym:n sa:ptr su:n :}
    sym CHECKER-REC-SYM !
@@ -21057,8 +20994,7 @@ package CHECKER-REG
    din KEEP-QUOTS
    din dout rin rout SGHASR @ RES-FALSE E-ADD-EFFECT
    sa su CHECKER-ASIG-CAPTURE
-   \ An unchecked body may throw after replacing a scoped input, as TRUST-DECL
-   \ states for its own.
+   \ An unchecked body may throw after replacing a scoped input.
    PD-IN @ SCOPED-TYPE? PR-IN @ SCOPED-TYPE? or IF
       sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM
    THEN
@@ -21072,16 +21008,14 @@ package CHECKER-REG
    CHECKER-REC-SYM @ sa su CK-DECLARED-SYM! ;
 
 
-\ The wordlist a bare row's record lands in: the open section's, or the global
-\ one outside a package.
 : TRUST-RECORD-WL ( -- n )
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    mode CHECKER-PACKAGE-PRIVATE = IF data-base PKG-PRI-CELL + @ EXIT THEN
    mode CHECKER-PACKAGE-PUBLIC = IF data-base PKG-PUB-CELL + @ EXIT THEN
    BOOT:GLOBAL-WL ;
 
-\ PKG:TAIL is asked in PKG's public wordlist, as the engine's FIND asks it
-\ (habu1.f FIND-QTAILOK); a missing package's 0 must not be asked as a wordlist.
+\ PKG:TAIL is asked in PKG's public wordlist, as the engine's FIND asks it; a
+\ missing package's 0 must not be asked as a wordlist.
 : TRUST-PUBLIC-CLAIMS? ( ptr u8 n ptr u8 n -- bool )
    {: pa:ptr pu:n ta:ptr tu:n :}
    pa pu BOOT:NAMESPACE-WL search-wl {: wid:n :}
@@ -21121,8 +21055,8 @@ package CHECKER-REG
    SIG-UNRES @ SGBAD @ 0= and IF E-ADD-UNRESOLVED
    ELSE SIG-UNRES-CLEAR THEN ;
 
-\ A blank, a byte at or below 32, ends a token (src/habu/habu1.f EMIT-TOK), so
-\ no token spells a name holding one and no definer gives it to a word.
+\ A blank, a byte at or below 32, ends a token, so no token spells a name
+\ holding one and no definer gives it to a word.
 : CK-HOLDS-BLANK? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    0 begin dup u < while
@@ -21130,15 +21064,14 @@ package CHECKER-REG
       1+
    repeat drop RES-FALSE ;
 
-\ The source pre-pass's question about a `trust` row (src/habu/verify-source.f
-\ RECORD-TRUST): is the row the run's to judge? It is when the row names no word
-\ in the wordlist its record lands in (TRUST-RESOLVES?) and a rendering statement
-\ read before it marked that same wordlist (CHECKER-VERIFY-RENDERS): there a
+\ The source pre-pass's question about a `trust` row: is the row the run's to
+\ judge? It is when the row names no word in the wordlist its record lands in
+\ and a rendering statement read before it marked that same wordlist: there a
 \ word the run defines and a misspelt name look alike, so the load's TRUST
-\ judges both. A mark only a use walks to (UNSEEN-COVERS?: the global one from
-\ inside a package, a used public's, the other section's) is no answer, nor is
-\ any mark for a name no word can have (a false length, one holding a blank, a
-\ malformed qualified one). Nothing is recorded.
+\ judges both. A mark only a use walks to (the global one from inside a
+\ package, a used public's, the other section's) is no answer, nor is any mark
+\ for a name no word can have (a false length, one holding a blank, a malformed
+\ qualified one). Nothing is recorded.
 : CHECKER-VERIFY-TRUST ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
@@ -21149,7 +21082,7 @@ package CHECKER-REG
    UNSEEN-MARK$ CHECKER-RECORD-SYM? 0 <> ;
 
 \ The symbol of the effect the last created record links, 0 when it links none.
-\ A created record starts unlinked: RECORD-PUBLISHED-LOCAL clears its ordinal.
+\ A created record starts unlinked.
 : LASTC-LINK-SYM ( -- n )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF 0 EXIT THEN
    data-base LASTC-CELL + 0 ptr-field @ {: rec:ptr :}
@@ -21190,21 +21123,18 @@ package CHECKER-REG
 \ Pre-trust defer drain: `trust-decl` and `checker-defer` are both defined here,
 \ the earliest point, so the pending table is replayed through `trust-decl` (a
 \ definer's registration, not `trust`). DRAIN-PRETRUST is a baked engine
-\ primitive (habu2.f and the stage0 mirror forth.fs). If the drain never ran,
-\ BSEALCAP (src/habu/habu1.f) dies at SEAL-CAPTURE (exit 73, naming each
-\ undrained defer). It is called by bare token, not looked up: this prefix
-\ declares pre-trust defers of its own (TFAM-RESOLVE-XT.. above), so an engine
-\ without it cannot load either way (E-UNDEFINED, exit 70), and a lookup would
-\ cost a trusted execute-of-plain-n boundary (RSEXEC).
+\ primitive. It is called by bare token, not looked up: this prefix declares
+\ pre-trust defers of its own, so an engine without it cannot load either way
+\ (E-UNDEFINED, exit 70), and a lookup would cost a trusted execute-of-plain-n
+\ boundary.
 DRAIN-PRETRUST
 
-\ UNSAFE-TOK? lives above the EXPORT block (it also gates alias minting there).
 : REJECT-UNSAFE ( -- )
    FAILSET @ 0= IF -1 UNSAFE ! THEN
    0 OK !  -1 FAILSET ! ;
 
-\ Whether the raw token is a live local's declared spelling, without LOC-REF?'s reference push
-\ and quotation marks; a differently-cased spelling is not this local.
+\ Whether the raw token is a live local's declared spelling; a differently-cased
+\ spelling is not this local.
 variable RTL-I                        \ retired-token local scan index
 : LOC-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 RTL-I !
