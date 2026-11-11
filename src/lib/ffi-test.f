@@ -138,6 +138,16 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
    s" FUNCTION: FFI-T-X6 getpid ( r r r r r r r r r -- r ) ;FUNCTION" INCLUDE-EVALUATE ;
 : FFI-T-BAD-F32-ARITY ( -- )
    s" FUNCTION: FFI-T-XF getpid ( f32 f32 f32 f32 f32 f32 f32 f32 f32 -- f32 ) ;FUNCTION" INCLUDE-EVALUATE ;
+
+\ A version list with an empty piece or a piece that is not a number.
+: FFI-T-LIST-END ( -- )
+   s" VERSIONED-LIBRARY z 1," INCLUDE-EVALUATE ;
+: FFI-T-LIST-START ( -- )
+   s" VERSIONED-LIBRARY z ,1" INCLUDE-EVALUATE ;
+: FFI-T-LIST-GAP ( -- )
+   s" VERSIONED-LIBRARY z 1,,2" INCLUDE-EVALUATE ;
+: FFI-T-LIST-WORD ( -- )
+   s" VERSIONED-LIBRARY z 1,x" INCLUDE-EVALUATE ;
 : FFI-T-BAD-F32-VARARG ( -- )
    s" FUNCTION: FFI-T-XP getpid ( n f32 -- f32 ) 1 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
 : FFI-T-BAD-VARARG ( -- )
@@ -510,6 +520,15 @@ PROCESS-SYMBOLS
 : FFI-T-VERSIONED-CALL ( -- )
    0 s" a" FFI-T-VERSIONED-CRC $E8B7BE43 T= ;
 
+\ A version list: no libz 9999 exists on either target, so the first call is
+\ served by the second version written.
+VERSIONED-LIBRARY z 9999,1
+FUNCTION: FFI-T-LISTED-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION
+PROCESS-SYMBOLS
+
+: FFI-T-LISTED-CALL ( -- )
+   0 s" a" FFI-T-LISTED-CRC $E8B7BE43 T= ;
+
 \ The rendered name itself, byte for byte on this target.
 FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-A
 FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
@@ -617,6 +636,44 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    S\" \n" SB-APPEND
    erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
 
+\ No version of the list exists, so the first call reports every name and a
+\ second call nothing; the final uncaught error ends the load, so it runs in a child.
+\ A symbol missing from a list whose second version opens names that version.
+: FFI-T-NO-VERSION-SRC$ ( -- ptr u8 n )
+   FFI-T-SRC CODEGEN:RESET
+   s\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 9999,1\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-LISTED-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION\n" FFI-T-SRC+
+   s\" VERSIONED-LIBRARY habu-no-such 2,1\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-NO-VERSION getpid ( -- n ) ;FUNCTION\n: ZZ-CALL ( -- )\n" FFI-T-SRC+
+   s\"    [: ZZ-LISTED-ABSENT drop ;] catch E-FFI-DLSYM <> if s\" listed absent\" 1 die then\n" FFI-T-SRC+
+   s\"    [: ZZ-NO-VERSION drop ;] catch E-FFI-DLOPEN <> if s\" no version\" 1 die then\n" FFI-T-SRC+
+   s\"    ZZ-NO-VERSION drop ;\nZZ-CALL\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-NO-VERSION ( -- )
+   s" a version list with none present names each version in order, once" T-LABEL
+   FFI-T-NO-VERSION-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-CODE$ CONTAINS? TTRUE
+   s" habu-no-such" 2 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: a:ptr au:n :}
+   s" habu-no-such" 1 FFI-T-NAME-B FFI:LIBRARY-NAME$ {: b:ptr bu:n :}
+   \ The first name carries no reason; the last one tried carries the loader's.
+   SB-RESET s" E-FFI-DLOPEN: " SB-APPEND a au SB-APPEND s\" \nE-FFI-DLOPEN: " SB-APPEND
+   b bu SB-APPEND s" : " SB-APPEND
+   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   SB-RESET s" E-FFI-DLOPEN: " SB-APPEND a au SB-APPEND
+   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   SB-RESET s" E-FFI-DLOPEN: " SB-APPEND b bu SB-APPEND
+   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   s" a missing symbol names the version that opened, never one that did not" T-LABEL
+   s" z" 1 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: z1:ptr z1u:n :}
+   s" z" 9999 FFI-T-NAME-B FFI:LIBRARY-NAME$ {: z9:ptr z9u:n :}
+   SB-RESET s" E-FFI-DLSYM: habu-no-such-symbol in " SB-APPEND z1 z1u SB-APPEND
+   S\" \n" SB-APPEND
+   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ z9 z9u CONTAINS? TFALSE ;
+
 : FFI-RUN ( -- )
    T-RESET
    FFI-T-OPEN dup FFI-T-LIB !
@@ -691,6 +748,10 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-PTR-VARARG ;] 0 TTHROWSQ
    [: FFI-T-BAD-VARARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-NO-FIXED ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-LIST-END ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-LIST-START ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-LIST-GAP ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-LIST-WORD ;] E-FFI-SYNTAX TTHROWSQ
    s" a library selection is scoped to the scope that states it" T-LABEL
    FFI-T-SCOPE-BEFORE FFI-T-DEPTH!
    [: FFI-T-NO-LIBRARY ;] E-FFI-LIBRARY TTHROWSQ
@@ -752,6 +813,8 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI:NEXT-FN {: next-fn:n :}
    [: s\" getpid\z" FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-NUL TTHROWSQ
    FFI:NEXT-FN next-fn T=
+   s" a version list opens the first version present, in the order written" T-LABEL
+   FFI-T-LISTED-CALL
    s" a declaration through the versioned form resolves its symbol" T-LABEL
    FFI-T-VERSIONED-CALL
    FFI-T-VARARGS
@@ -764,6 +827,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-FOREIGN-LIBRARY
    FFI-T-LONG-FOREIGN-LIBRARY
    FFI-T-NO-LIB
+   FFI-T-NO-VERSION
    FFI-T-GLOBAL ;
 
 FFI-RUN

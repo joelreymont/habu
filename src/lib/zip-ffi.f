@@ -7,7 +7,7 @@ package ZIP
 
 \ The only asserted effects are exact C entry points. Habu owns all policy,
 \ range checks and storage. Pointer results are libzip-owned opaque objects.
-VERSIONED-LIBRARY zip 5
+VERSIONED-LIBRARY zip 5,4                 \ Debian and Ubuntu ship libzip as libzip.so.4
 FUNCTION: OPEN-CALL zip_open ( ptr u8 n n -- ptr u8 ) ;FUNCTION
 FUNCTION: COUNT-CALL zip_get_num_entries ( ptr u8 n -- n ) ;FUNCTION
 FUNCTION: STAT-CALL zip_stat_index ( ptr u8 n n ptr u8 -- i32 )

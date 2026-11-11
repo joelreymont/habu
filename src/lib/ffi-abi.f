@@ -194,8 +194,9 @@ CAST: CELL>PTR ( n -- ptr u8 )
 \ a checked caller reaches only a symbol some declaration published. Exact
 \ declarations share one row. A row resolves its symbol on the first call and
 \ caches the address. Library 0 is the process (RTLD_DEFAULT, no reference);
-\ any other index is a path dlopened once. Rows may move when a bank grows;
-\ indices stay stable. The two banks reuse descriptors independently.
+\ any other index is a path dlopened once, at the first call; one that does not
+\ open passes the call to the next library its row names. Rows may move when a
+\ bank grows; indices stay stable. The two banks reuse descriptors independently.
 
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
 PATH-CAP 1 + constant LIB-PATH-CAP      \ a library path of PATH-CAP bytes and its NUL
@@ -212,7 +213,8 @@ FN-NAME-OFF FN-NAME-CAP + constant FN-ROW-BYTES
 0 cells constant LIB-LEN-OFF
 1 cells constant LIB-HANDLE-OFF
 2 cells constant LIB-FAILED-OFF           \ 1 once the path failed to open; cleared with the handle
-3 cells constant LIB-PATH-OFF
+3 cells constant LIB-NEXT-OFF             \ the library index tried when this path does not open, or 0
+4 cells constant LIB-PATH-OFF
 LIB-PATH-OFF LIB-PATH-CAP + 7 + 8 / 8 * constant LIB-ROW-BYTES
 PERSISTED-PTR-VARIABLE FN-TABLE
 PERSISTED-PTR-VARIABLE LIB-TABLE
@@ -441,6 +443,16 @@ private
    idx LIB-CHECK
    value idx LIB-FAILED-OFF LIB-FIELD ! ;
 
+: LIB-NEXT@ ( n -- n )
+   {: idx:n :}
+   idx LIB-CHECK
+   idx LIB-NEXT-OFF LIB-FIELD @ ;
+
+: LIB-NEXT! ( n n -- )
+   {: value:n idx:n :}
+   idx LIB-CHECK
+   value idx LIB-NEXT-OFF LIB-FIELD ! ;
+
 \ Clears a staged buffer (registers, spills, dlopen/dlsym, lengths); kernel
 \ params stay until FFI-KPARAM-RESET.
 : FORGET-STAGED ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -473,25 +485,50 @@ private
    p pu a au s su b bu
    pu au + su + bu + 1+ MEM:BYTES-ALLOC-LEN [: LINE-BODY ;] MEM:WITH-BYTES ;
 
-\ dlerror's NULL means the loader kept no reason.
-: OPEN-REPORT ( n n -- ) {: dlerr:n lib:n :}
-   FFI-BUF FFI-REG-LEN-BUF 0 dlerr ffi-call-bounded {: why:n :}
+\ One line per library from lib along next, in the order written. why, the
+\ loader's reason, goes on tried's line only: a later loader call replaces it.
+: REPORT-NAMES ( n n n -- )
+   {: why:n tried:n lib:n :}
+   lib 0= if exit then
    s" E-FFI-DLOPEN: " lib LIB-ROW@
-   why 0 <> if s" : " why CELL>PTR dup ZLEN else s" " s" " then
-   REPORT-LINE ;
+   why 0 <> lib tried = and if s" : " why CELL>PTR dup ZLEN else s" " s" " then
+   REPORT-LINE
+   why tried lib 1 - LIB-NEXT@ RECURSE ;
 
-\ dlerr is dlerror's address, resolved before the dlopen so that no loader call
-\ runs between the failure and OPEN-REPORT's read of its reason. A failed open
-\ is reported once; the slot's mark answers later calls without the loader.
-: LIB-RESOLVE ( n n -- n ) {: dlerr:n lib:n :}
-   lib 0= if PROCESS-HANDLE exit then
+\ dlerror's NULL means the loader kept no reason.
+: OPEN-REPORT ( n n n -- )
+   {: dlerr:n tried:n lib:n :}
+   FFI-BUF FFI-REG-LEN-BUF 0 dlerr ffi-call-bounded
+   tried lib REPORT-NAMES ;
+
+\ The first handle from lib along next and the library that holds it, or 0 and
+\ tried: the last library this walk failed to open, else tried as given. A
+\ failed row is skipped without the loader, and next always names an earlier
+\ row, so the walk ends.
+: OPEN-WALK ( n n -- n n )
+   {: tried:n lib:n :}
+   lib 0= if tried 0 exit then
    lib 1 - {: slot:n :}
-   slot LIB-HANDLE@ dup 0 <> if exit then
+   slot LIB-HANDLE@ dup 0 <> if lib swap exit then
    drop
-   slot LIB-FAILED? if E-FFI-DLOPEN throw then
+   slot LIB-FAILED? if tried slot LIB-NEXT@ RECURSE exit then
    slot LIB-PATH FFI-RTLD-NOW DLOPEN-RAW
-   dup 0= if 1 slot LIB-FAILED! dlerr lib OPEN-REPORT E-FFI-DLOPEN throw then
-   dup slot LIB-HANDLE! ;
+   dup 0 <> if dup slot LIB-HANDLE! lib swap exit then
+   drop
+   1 slot LIB-FAILED!
+   lib slot LIB-NEXT@ RECURSE ;
+
+\ The handle for lib and the library that holds it. dlerr is dlerror's address,
+\ resolved before the walk so that no loader call runs between the last failed
+\ open and OPEN-REPORT's read of its reason. A walk that opened nothing reports
+\ only when it failed an open of its own.
+: LIB-RESOLVE ( n n -- n n )
+   {: dlerr:n lib:n :}
+   lib 0= if PROCESS-HANDLE 0 exit then
+   0 lib OPEN-WALK {: tried:n handle:n :}
+   handle 0 <> if handle tried exit then
+   tried 0 <> if dlerr tried lib OPEN-REPORT then
+   E-FFI-DLOPEN throw ;
 
 : SYMBOL-REPORT ( n n -- ) {: idx:n lib:n :}
    s" E-FFI-DLSYM: " idx FN-NAME idx NAME-LEN
@@ -514,9 +551,9 @@ variable DLERROR-FN-CELL
    drop
    idx ERRNO-FN <> if ERRNO-FN RECURSE drop then
    idx FN-LIB@ {: lib:n :}
-   lib 0 <> if DLERROR-FN RECURSE else 0 then lib LIB-RESOLVE
-   idx FN-NAME DLSYM-RAW
-   dup 0= if idx lib SYMBOL-REPORT E-FFI-DLSYM throw then
+   lib 0 <> if DLERROR-FN RECURSE else 0 then lib LIB-RESOLVE {: handle:n held:n :}
+   handle idx FN-NAME DLSYM-RAW
+   dup 0= if idx held SYMBOL-REPORT E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
 : NAME-ROOM ( n -- )
@@ -693,24 +730,27 @@ public
    buf CODEGEN:CONTENTS ;
 
 
-\ Path identity is the complete byte span, including its length. The selected
-\ bank's library index of the path, or 0 when no row holds it.
-: LIB-INDEX ( ptr u8 n -- n ) {: path:ptr u:n :}
+\ A row is the same row when its whole path, length included, and its next
+\ agree. The selected bank's library index of that row, or 0 when none holds it.
+: LIB-INDEX ( ptr u8 n n -- n )
+   {: path:ptr u:n next:n :}
    DECL-TAG {: tag:n :}
    tag LIB-N-CELL @ 0 ?do
-      i tag or LIB-LEN@ u = if
+      i tag or LIB-LEN@ u = i tag or LIB-NEXT@ next = and if
          path u i tag or LIB-PATH u STR= if i 1+ tag or unloop exit then
       then
    loop
    0 ;
 
+private
+
 \ Reusing an occupied row leaves its resolved handle in place; only a new path
-\ consumes a row.
-: LIBRARY-PATH ( ptr u8 n -- n )
-   {: path:ptr u:n :}
+\ and next pair consumes a row.
+: LIBRARY-PATH-OR ( ptr u8 n n -- n )
+   {: path:ptr u:n next:n :}
    u PATH-ROOM
    DECL-TAG {: tag:n :}
-   path u LIB-INDEX dup 0<> if OBS-LIB over NOTIFY exit then drop
+   path u next LIB-INDEX dup 0<> if OBS-LIB over NOTIFY exit then drop
    LIB-NEW
    path u tag LIB-N-CELL @ tag or PATH-FIELD CSTR drop
    tag LIB-N-CELL @ 1+ tag LIB-N-CELL !
@@ -718,9 +758,14 @@ public
    u row 1- tag or LIB-LEN!
    0 row 1- tag or LIB-HANDLE!
    0 row 1- tag or LIB-FAILED!
+   next row 1- tag or LIB-NEXT!
    \ Keep the row: an observer that declares rows of its own moves the count.
    OBS-LIB row tag or NOTIFY
    row tag or ;
+
+public
+
+: LIBRARY-PATH ( ptr u8 n -- n ) 0 LIBRARY-PATH-OR ;
 
 private
 
@@ -1096,7 +1141,7 @@ public
 
 \ FUNCTION: - declare a foreign function, get a checked word.
 \
-\     VERSIONED-LIBRARY z 1                   \ libz.so.1 here, libz.1.dylib on macOS
+\     VERSIONED-LIBRARY z 1,2                 \ libz.so.1, else libz.so.2 (.1.dylib, else .2.dylib on macOS)
 \     FUNCTION: CRC-CALL crc32 ( n ptr u8 n -- n ) ;FUNCTION
 \     LIBRARY /usr/lib/libSystem.B.dylib      \ a literal, or PROCESS-SYMBOLS (RTLD_DEFAULT)
 \     FUNCTION: SQRT-CALL sqrt ( r -- r ) ;FUNCTION
@@ -1123,8 +1168,10 @@ public
 \ types.
 \
 \ VERSIONED-LIBRARY, LIBRARY or PROCESS-SYMBOLS selects the library for the
-\ declarations that follow. VERSIONED-LIBRARY takes a base name and a soname
-\ version and renders the spelling this target loads (FFI:LIBRARY-NAME$).
+\ declarations that follow. VERSIONED-LIBRARY takes a base name and a
+\ comma-separated list of soname versions, renders the spelling this target
+\ loads for each (FFI:LIBRARY-NAME$), and the first call opens them in the
+\ order written until one opens.
 \ LIBRARY takes one literal, an absolute path or an unversioned name, and
 \ refuses one spelled in the other target's convention. THE SELECTION BELONGS TO
 \ THE SCOPE THAT STATES IT: the package section or global scope the declarations
@@ -1337,11 +1384,24 @@ SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark   \ RECORD-SCOPE says w
    a BASE-BUF u BYTE-COPY
    u BASE-U ! ;
 
-: TOK>VERSION ( -- n )
-   TOK$ STR-PARSE-POS MATCH option
+: >VERSION ( ptr u8 n -- n )
+   STR-PARSE-POS MATCH option
       none OF E-FFI-SYNTAX throw ENDOF
-      some OF ENDOF
+      some OF dup VERSION-CHECK ENDOF
    ;MATCH ;
+
+\ A version list's rows, made from the last version to the first, each next
+\ naming the version written after it; the answer is the first version's row.
+\ Every piece is parsed on the way in, so a refused list adds no row.
+: VERSION-ROWS ( ptr u8 n -- n )
+   {: list:ptr u:n :}
+   list u [char] , INDEX-OF MATCH option
+      none OF u ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: cut:n :}
+   list cut >VERSION {: version:n :}
+   cut u = if 0 else list cut + 1+ u cut - 1- RECURSE then {: next:n :}
+   BASE-BUF BASE-U @ version LIB-NAME LIBRARY-NAME$ next LIBRARY-PATH-OR ;
 
 \ ---- the declared effect ---------------------------------------------------
 
@@ -1920,11 +1980,10 @@ public
    path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
 
-\ The two tokens are rendered for this target and take the literal form's path,
-\ so the scope recording and the table guard are shared.
 : SELECT-VERSIONED-LIBRARY ( -- )
    [: TOK@ BASE!
-      BASE-BUF BASE-U @ TOK@ TOK>VERSION LIB-NAME LIBRARY-NAME$ SELECT-LIBRARY ;]
+      TOK@ TOK$ VERSION-ROWS CUR-LIB !
+      RECORD-SCOPE ;]
    KEEP-REST ;
 
 : SELECT-PROCESS ( -- )
