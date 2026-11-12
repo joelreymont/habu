@@ -92,7 +92,6 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    s" " OUT-LINE
    s" private" OUT-LINE
    s" " OUT-LINE
-   s" \ R, stores one range at the fill cursor and answers the cursor past it." OUT-LINE
    s" : R, ( ptr n n n -- ptr n )" OUT-LINE
    s"    {: at:ptr lo:n hi:n :}" OUT-LINE
    s"    lo at ! hi at cell+ !" OUT-LINE

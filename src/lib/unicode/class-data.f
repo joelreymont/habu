@@ -8,7 +8,6 @@ package UNICODE-CLASS-DATA
 
 private
 
-\ R, stores one range at the fill cursor and answers the cursor past it.
 : R, ( ptr n n n -- ptr n )
    {: at:ptr lo:n hi:n :}
    lo at ! hi at cell+ !
