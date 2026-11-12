@@ -1,5 +1,5 @@
-\ link-map.f - the product's names for a build's records: each record's wordlist
-\ id as the product numbers it, and <program>.map, which LINKER:WRITE writes
+\ link-map.f - the target's names for a build's records: each record's wordlist
+\ id as the target numbers it, and <program>.map, which LINKER:WRITE writes
 \ beside the program in the format tools/image-names.f reads (habu-names 1). Its
 \ rows, rec counting them, first list the code the program holds in offset
 \ order: the start-up, each kept kernel primitive and placed build record, a row
@@ -40,9 +40,9 @@ private
    {: wid:n r:n :}
    s" link: record " SAY r XREF-REC XREF-NAME$ SAY s"  holds wordlist " SAY wid SAY-INT
    s" , which the build did not make" SAY SAY-CR
-   s" link: a record holds a wordlist the product cannot name" 74 die ;
+   s" link: a record holds a wordlist the target cannot name" 74 die ;
 
-\ Build record r's wordlist id wid as the product numbers it.
+\ Build record r's wordlist id wid as the target numbers it.
 : WID-MAP ( n n -- n )
    {: wid:n r:n :}
    wid BOOT:GLOBAL-WL = if 0 exit then

@@ -6,8 +6,8 @@ How `hb` builds `hb`, and how a missing or broken `bin/hb` is recovered.
 
 `hb --load tools/hb-build.f -- --engine -o <out>` builds this tree's hb inside
 the running hb and writes it, with its `.map`, to `<out>`
-(tools/hb-build-core.f). The build is a cross-build whose target is the
-running machine: the product is data the build writes, never a slice of the
+(tools/hb-build-core.f). The build is a cross-build for the running
+machine: the target is data the build writes, never a slice of the
 running hb's memory. Its start-up,
 kernel and layout come from the tree too: a kernel build first compiles the
 tree's src/arch/arm64/kernel-object.f and writes a kernel object under the out
@@ -36,7 +36,7 @@ HABU_SEED_SHA256=<hex> /path/to/trusted-hb --load tools/seed-main.f \
 `HABU_SEED_SHA256`, when set, pins the trusted hb's digest. `tools/seed.f`
 installs it as `bin/hb`, checks that it runs, and has it build `bin/hb` from
 current source with `tools/hb-build.f -- --engine -o bin/hb`. That result is a
-candidate, not a qualified product: run the
+candidate, not a qualified target: run the
 [convergence check](#convergence-check) from it, then
 [qualify](#refresh-binhb) the converged hb before installing it.
 
@@ -71,8 +71,8 @@ Every generation compiles the checkout's source, so
 leave the tree unchanged until the tool exits.
 
 A codegen change can first appear in generation two because generation one
-was compiled by the old host. Compare successive products, not an arbitrary
-seed and product.
+was compiled by the old host. Compare successive targets, not an arbitrary
+seed and target.
 
 ## Staged hosts
 
@@ -156,10 +156,10 @@ code signature the kernel cached, and a later launch can die by SIGKILL, rc 137
 
 If the checkout's `bin/hb` is missing or too old to load current source, use a
 trusted installed native engine as `HOST` and build from the checkout root
-with the command above. Build a second product with `$OUT` as `HOST`; if those
-bytes differ, build another generation until successive products match. Keep
+with the command above. Build a second target with `$OUT` as `HOST`; if those
+bytes differ, build another generation until successive targets match. Keep
 each output private, with its paired `.map` file, and qualify the converged
-product before promotion. A stale host can fail to compile an
+target before promotion. A stale host can fail to compile an
 application against newer source while still compiling the current engine.
 
 ## Stable local command
@@ -185,7 +185,7 @@ installed engine runs source-based tools from any directory:
 
 Restart long-running source-loading tools against the updated installation.
 
-On macOS every build signs its product with the team identity
+On macOS every build signs its target with the team identity
 (src/lib/codesign.f), and an install keeps that signature; a host without the
 identity fails the build with `CODESIGN:E-IDENTITY`. The login keychain
 partitions an item by its filer's team, so each build reads the items any other

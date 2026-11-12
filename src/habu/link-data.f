@@ -3,9 +3,9 @@
 \ after the routine band as its non-zero runs, then the DATA list, the offset
 \ from DATA-VA of every cell holding a code address, which start-up adds the
 \ load offset to. The link also writes the header cells HEADER-CELLS names and
-\ lists the code ones. An engine's link adds the records: the product kernel's
+\ lists the code ones. An engine's link adds the records: the target kernel's
 \ primitives, then the build's, each build record and wordlist id renumbered for
-\ the product (RECORD-IMAGE), and the record list. LINKER:WRITE writes the
+\ the target (RECORD-IMAGE), and the record list. LINKER:WRITE writes the
 \ linked program; the other words are LINKER's own.
 
 require src/lib/error.f
@@ -59,7 +59,7 @@ variable LNCOUNT
 variable LDICT
 variable LEVALREC
 variable LFLOORREC
-\ The kernel's code end, in bytes from the text's start: the product's words follow.
+\ The kernel's code end, in bytes from the text's start: the target's words follow.
 variable KERNEL-END
 
 \ The record list's offsets from the dictionary band, ascending as the records
@@ -97,7 +97,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    v LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
    s" link: the xt cell at offset " SAY off SAY-INT s"  holds " SAY v SAY-INT SAY-CR
-   s" link: an xt cell names a routine the product does not place" 74 die ;
+   s" link: an xt cell names a routine the target does not place" 74 die ;
 
 
 : COPY-ROW ( n -- )
@@ -137,7 +137,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    v off COPY-AT LE:U64! ;
 
 
-\ Header cells valued as the product's boot leaves them, at the kernel object's
+\ Header cells valued as the target's boot leaves them, at the kernel object's
 \ offsets, and the cells it presets.
 : HEADER-CELLS ( -- )
    ARM64:DATA-VA {: va:n :}
@@ -152,7 +152,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    ARM64:TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA LSIGH LABEL-OFFSET +  s" STUB-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA KERNEL-END @ +  s" CODE-END-CELL" ARM64:SYM HEADER!
-   \ The build's MARK left its own index mapping's address here; the product's
+   \ The build's MARK left its own index mapping's address here; the target's
    \ first MARK builds one from 0.
    0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
 
@@ -176,13 +176,13 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ ---- an engine's records ------------------------------------------------------------
-\ A record index holds only in the process that made it: the product numbers its
+\ A record index holds only in the process that made it: the target numbers its
 \ kernel's primitives [0, P) and each build record r at P + (r - FIRST-REC).
 
-: PRODUCT-WIDN ( -- n ) FIRST-DYNAMIC-WID  WIDN-CELL HOST@ +  FIRST-WID - ;
+: TARGET-WIDN ( -- n ) FIRST-DYNAMIC-WID  WIDN-CELL HOST@ +  FIRST-WID - ;
 
 
-\ The product kernel's primitive count and record k's cell: [0] and [8] the
+\ The target kernel's primitive count and record k's cell: [0] and [8] the
 \ entry's and the last word's code offsets, [24] an out-of-line name's.
 : PRIMS ( -- n ) A64ICODE:CODE LNCOUNT LABEL-OFFSET + LE:U64@ ;
 
@@ -251,7 +251,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    wid A64ICODE:DCQ, ;
 
 
-\ Build record rec's length: the product kernel's for a record entering a
+\ Build record rec's length: the target kernel's for a record entering a
 \ kernel primitive, else its own.
 : BUILD-LEN ( ptr n -- n )
    {: rec:ptr :}
@@ -260,7 +260,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    rec XREF-RAW-LEN ;
 
 
-\ Build record r's entry at the product's link address.
+\ Build record r's entry at the target's link address.
 : ENTRY-ADDRESS ( n -- n )
    {: r:n :}
    r XREF-REC XREF-START {: a:n :}
@@ -268,12 +268,12 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    a LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
    s" link: record " SAY r XREF-REC XREF-NAME$ SAY s"  enters at " SAY a SAY-INT
-   s" , which the product does not place" SAY SAY-CR
-   s" link: a record enters code the product does not place" 74 die ;
+   s" , which the target does not place" SAY SAY-CR
+   s" link: a record enters code the target does not place" 74 die ;
 
 
-\ Build record r at product index k: [32], the facts text's offset from the
-\ image's DATA, holds in the product's.
+\ Build record r at target index k: [32], the facts text's offset from the
+\ image's DATA, holds in the target's.
 : BUILD-REC, ( n n -- )
    {: r:n k:n :}
    r XREF-REC {: rec:ptr :}
@@ -308,7 +308,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    loop ;
 
 
-: PRODUCT-NDICT ( -- n ) PRIMS  ndict@ +  FIRST-REC @ - ;
+: TARGET-NDICT ( -- n ) PRIMS  ndict@ +  FIRST-REC @ - ;
 
 
 \ After DATA-IMAGE: the names, then at an 8-byte boundary the records, then
@@ -329,10 +329,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ An engine's header cells beside HEADER-CELLS': the record count the seal
-\ covers, the wordlist counter and the types wordlist, as the product numbers them.
+\ covers, the wordlist counter and the types wordlist, as the target numbers them.
 : ENGINE-CELLS ( -- )
-   PRODUCT-NDICT s" SEAL-NDICT-CELL" ARM64:SYM HEADER!
-   PRODUCT-WIDN s" WIDN-CELL" ARM64:SYM HEADER!
+   TARGET-NDICT s" SEAL-NDICT-CELL" ARM64:SYM HEADER!
+   TARGET-WIDN s" WIDN-CELL" ARM64:SYM HEADER!
    FIRST-DYNAMIC-WID BOOT:TYPES-WL FIRST-WID - +  s" TYPES-WL-CELL" ARM64:SYM HEADER! ;
 
 
@@ -451,12 +451,12 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       s" link: C2-MEM lacks a scope entry" 74 die
    then
    rec XREF-START LINK-ADDRESS {: to:n :}
-   to -1 = if s" link: a C2-MEM scope entry is code the product does not place" 74 die then
+   to -1 = if s" link: a C2-MEM scope entry is code the target does not place" 74 die then
    k ARM64:SCOPE-SITE ARM64:OFFSET {: at:n :}
    to  ARM64:TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
 
 
-\ After PLACE-ROUTINES, scope-kind?'s chains name C2-MEM's entries; a product
+\ After PLACE-ROUTINES, scope-kind?'s chains name C2-MEM's entries; a target
 \ without C2-MEM leaves them 0.
 : SCOPE-ENTRIES ( -- )
    s" C2-MEM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}

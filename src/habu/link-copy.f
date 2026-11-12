@@ -324,7 +324,7 @@ variable STR-N
    KEPT-N @ SNAP-RELOC:XTCELL-N-CELL COPY-AT LE:U64! ;
 
 
-\ The copy's rows in cell order, not the build's mark order: the product's first
+\ The copy's rows in cell order, not the build's mark order: the target's first
 \ MARK rebuilds the index HEADER-CELLS zeroes.
 : SORT-ROWS ( -- )
    LIST-AT {: at:n :}

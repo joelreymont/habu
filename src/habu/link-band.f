@@ -433,7 +433,7 @@ variable UNSAFE-COUNT
    BAND-END ! ;
 
 
-\ A host address's link address: a placed product routine's entry, a kernel
+\ A host address's link address: a placed target routine's entry, a kernel
 \ primitive's, a placed quotation's, or -1. ROUTINES builds the table and
 \ PLACE-ROUTINES the offsets.
 : LINK-ADDRESS ( n -- n )
@@ -459,8 +459,8 @@ variable UNSAFE-COUNT
    a LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
    s" link: " SAY PLACING @ ROUTINE. s"  names " SAY a TARGET.
-   s" , neither a product word nor a kernel primitive" SAY SAY-CR
-   s" link: a product routine names a word outside the product" 74 die ;
+   s" , neither a target word nor a kernel primitive" SAY SAY-CR
+   s" link: a target routine names a word outside the target" 74 die ;
 
 
 \ Emission e's code, then a defer's trailer: DEFER-MAGIC and its dispatch cell
