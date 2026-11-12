@@ -119,9 +119,9 @@ private
    HB-TARGET-LINUX? IF 25 23 LINUX-SI-ADDR-OFF LDR, exit THEN
    25 23 MACOS-SI-ADDR-OFF LDR, ;
 
-\ The interrupted engine's DATA base, read out of the signal mcontext the same
-\ way C-CRASH-PC-WORD reads its region base: the handler's own x20 is the signal
-\ number by now. Every stack descriptor is a cell in that region.
+\ The interrupted x20 from the mcontext: this thread's DATA wherever kernel code
+\ can fault, 0 from a task's or a callback's entry until DATA loads, the frame
+\ sp across an FFI call's BLR.
 : C-CRASH-DATA>R24 ( -- )
    HB-TARGET-LINUX? IF 24 21 LINUX-MCTX-X0-OFF DATA 8 * + LDR, exit THEN
    24 21 SS-OFF DATA 8 * + LDR, ;

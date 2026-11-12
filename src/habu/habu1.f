@@ -2289,6 +2289,8 @@ private
    9 SP j 8 * LDR,  9 9 13 ADD,  9 SP j 8 * STR,
    skip LBL, ;
 
+\ x20 holds DATA through every load that can fault; d0-d7 load first, so x17
+\ carries the frame sp to the BLR and x20 (callee-saved) only across the BLR.
 \ A relocating call enters with the mask in x2 and keeps the prepacked buffer's
 \ address in x3 until the copy is made.
 : BFFI-CALL-ABI-CORE ( bool -- ) {: reloc:bool :}
@@ -2304,7 +2306,8 @@ private
    reloc if 3 13 0 ADDI, then
    BCB-ENTER
    20 SP $8 STR,
-   20 SP 0 ADDI,
+   BFFI-LOAD-D0-D7
+   17 SP 0 ADDI,
    BFFI-COPY-ABI-STACK
    reloc if
       13 SP 0 ADDI,  13 13 3 SUB,
@@ -2313,8 +2316,8 @@ private
    then
    BFFI-LOAD-X0-X7
    8 15 $40 LDR,                                       \ x8 = indirect-result address
-   BFFI-LOAD-D0-D7
    reloc if 8 0 do i BFFI-RELOC-REG loop then
+   20 17 0 ADDI,
    16 BLR,
    SP 20 0 ADDI,
    20 SP $8 LDR,
@@ -2343,13 +2346,14 @@ private
       5 5 1 ADDI,  loop B,
    done LBL, ;
 
-\ Argbuf holds max(8,nargs) cells. x20 (callee-saved) carries the frame sp
-\ across the BLR. Shifted-register SUB reads r31 as XZR, not SP, so sp is
+\ Argbuf holds max(8,nargs) cells. x20 holds DATA through every load that can
+\ fault; x17 carries the frame sp to the BLR, and x20 (callee-saved) carries it
+\ only across the BLR. Shifted-register SUB reads r31 as XZR, not SP, so sp is
 \ lowered through a temp.
 : BFFI-CALL-N-CORE ( -- )
    BCB-ENTER
    20 SP $8 STR,
-   20 SP 0 ADDI,
+   17 SP 0 ADDI,
    LBL FFI-SKIP !
    LBL FFI-LOOP !
    LBL FFI-DONE !
@@ -2367,6 +2371,7 @@ private
       FFI-DONE LABEL@ LBL,
    FFI-SKIP LABEL@ LBL,
    BFFI-LOAD-X0-X7
+   20 17 0 ADDI,
    16 BLR,
    SP 20 0 ADDI,
    20 SP $8 LDR,
@@ -2400,6 +2405,7 @@ private
    entry LBL,
    SP SP $A0 SUBI,
    29 19 do i SP i 19 - cells STR, loop
+   DATA 0 MOVZ,
    29 SP $50 STR, 30 SP $58 STR,
    16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
    29 SP $50 ADDI,                         \ previous FP/LR form the C frame
@@ -2473,6 +2479,7 @@ $150 constant CBT-BYTES
    \ C's callee-saved set is saved and restored in this body:
    \ tools/lint/clobber-lint.f proves x30 from the routine's own text.
    29 19 do i SP i 19 - cells STR, loop
+   DATA 0 MOVZ,
    29 SP $50 STR, 30 SP $58 STR,
    16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
    29 SP $50 ADDI,                                     \ previous FP/LR form the C frame

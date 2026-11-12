@@ -276,18 +276,20 @@ public
 \ LPROFDUMP / LPROFJSON ( -- ): the same walk, printed two ways.
 \
 \ REGISTERS. LPROFNUM and LPROFPCT clobber x9-x15, so every value that has to
-\ live across a printed column sits in x3-x7, x17 or x19-x25: x19 arena, x20
-\ band, x21 the row's index entry, x22 samples, x23/x24 the (count, entry)
-\ threshold the next row must fall under, x25 the row rank, x7 the row's
-\ exclusive count, x17 its record index, x6/x3 the caller threshold and rank.
-\ x19-x25 are saved and restored because the compiled callers own them.
+\ live across a printed column sits in x3-x7, x17 or x19-x25: x19 arena, x7
+\ band until the header has printed, x21 the row's index entry, x22 samples,
+\ x23/x24 the (count, entry) threshold the next row must fall under, x25 the
+\ row rank, x7 the row's exclusive count, x17 its record index, x6/x3 the
+\ caller threshold and rank. x20 is never written: a fault here must find the
+\ caller's DATA in it. x17, x19 and x21-x25 are saved and restored because the
+\ compiled callers own them.
 : C-PROF-REP-OPEN ( -- )
    SP SP 96 SUBI,
-   30 SP 0 STR,  19 SP 8 STR,  20 SP 16 STR,  21 SP 24 STR,  22 SP 32 STR,
+   30 SP 0 STR,  19 SP 8 STR,  21 SP 24 STR,  22 SP 32 STR,
    23 SP 40 STR,  24 SP 48 STR,  25 SP 56 STR,  17 SP 64 STR, ;
 
 : C-PROF-REP-CLOSE ( -- )
-   30 SP 0 LDR,  19 SP 8 LDR,  20 SP 16 LDR,  21 SP 24 LDR,  22 SP 32 LDR,
+   30 SP 0 LDR,  19 SP 8 LDR,  21 SP 24 LDR,  22 SP 32 LDR,
    23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
    SP SP 96 ADDI,  RET, ;
 
@@ -355,7 +357,7 @@ public
 : C-PROF-REP-HEAD ( bool -- ) {: json:bool :}
    json IF s\" {\"samples\":" ELSE s" profiler samples " THEN 22 C-PROF-FIELD
    json IF s\" ,\"words\":" ELSE s"  words " THEN 4 C-PROF-FIELD
-   10 20 PROF-OTHER LDR,
+   10 7 PROF-OTHER LDR,
    json IF s\" ,\"other\":" ELSE s"  other " THEN 10 C-PROF-FIELD
    10 19 ARN-NEW LDR,
    json IF s\" ,\"new\":" ELSE s"  new " THEN 10 C-PROF-FIELD
@@ -363,7 +365,7 @@ public
    json IF s\" ,\"defer\":" ELSE s"  defer " THEN 10 C-PROF-FIELD
    10 19 ARN-SPILL LDR,
    json IF s\" ,\"spill\":" ELSE s"  spill " THEN 10 C-PROF-FIELD
-   10 20 PROF-FOREIGN LDR,
+   10 7 PROF-FOREIGN LDR,
    json IF s\" ,\"foreign\":" ELSE s"  foreign " THEN 10 C-PROF-FIELD
    10 19 ARN-FRAMES LDR,
    json IF s\" ,\"frames\":" ELSE s"  frames " THEN 10 C-PROF-FIELD
@@ -562,9 +564,9 @@ public
    json IF LPROFJSON LABEL@ ELSE LPROFDUMP LABEL@ THEN LBL,
    LBL {: armed :}
    C-PROF-REP-OPEN
-   20 PROF-BAND-VA LIT64,
-   22 20 PROF-TOT LDR,
-   19 20 PROF-ARENA LDR,
+   7 PROF-BAND-VA LIT64,
+   22 7 PROF-TOT LDR,
+   19 7 PROF-ARENA LDR,
    19 armed CBNZ,
       json IF s\" {\"samples\":0,\"armed\":false}\n" ELSE s\" profiler not armed\n" THEN C-PROF-SAY
       C-PROF-REP-CLOSE
@@ -588,9 +590,9 @@ public
    LPROFROW LABEL@ LBL,
    LBL {: rnone :}
    C-PROF-REP-OPEN                                 \ x6 = the profile ID requested
-   20 PROF-BAND-VA LIT64,
-   22 20 PROF-TOT LDR,
-   19 20 PROF-ARENA LDR,
+   7 PROF-BAND-VA LIT64,
+   22 7 PROF-TOT LDR,
+   19 7 PROF-ARENA LDR,
    19 rnone CBZ,
    6 0 CMPI,  C-LT rnone BCOND,
    23 19 ARN-IDS LDR,  6 23 CMP,  C-CS rnone BCOND,
@@ -1074,7 +1076,7 @@ private
    LPROFSYNC LABEL@ LBL,
    LBL {: nosync :}
    SP SP 96 SUBI,
-   30 SP 0 STR,  19 SP 8 STR,  20 SP 16 STR,  21 SP 24 STR,  22 SP 32 STR,
+   30 SP 0 STR,  19 SP 8 STR,  21 SP 24 STR,  22 SP 32 STR,
    23 SP 40 STR,  24 SP 48 STR,  25 SP 56 STR,  17 SP 64 STR,
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,  0 nosync CBZ,
    9 0 ARN-HI LDR,  9 0 ARN-OLDHI STR,
@@ -1084,7 +1086,7 @@ private
    C-PROF-SORT
    C-PROF-REPLAY
    nosync LBL,
-   30 SP 0 LDR,  19 SP 8 LDR,  20 SP 16 LDR,  21 SP 24 LDR,  22 SP 32 LDR,
+   30 SP 0 LDR,  19 SP 8 LDR,  21 SP 24 LDR,  22 SP 32 LDR,
    23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
    SP SP 96 ADDI,  RET, ;
 
