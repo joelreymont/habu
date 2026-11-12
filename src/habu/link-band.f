@@ -154,6 +154,8 @@ variable UNSAFE-COUNT
    drop ;
 
 
+\ The kernel words a stripped program cannot run: it has no dictionary to read
+\ or write, no writable code and no interpreter for the evaluate words.
 : UNSAFE-NAME? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u s" create" XREF-STR=CI
@@ -162,13 +164,27 @@ variable UNSAFE-COUNT
    a u s" callmap-set" XREF-STR=CI or
    a u s" addrmap-set" XREF-STR=CI or
    a u s" xref-retarget" XREF-STR=CI or
+   a u s" search-wl" XREF-STR=CI or
+   a u s" xref-search-wl" XREF-STR=CI or
+   a u s" xref-wl-newest" XREF-STR=CI or
+   a u s" scope-find" XREF-STR=CI or
+   a u s" tok-imm?" XREF-STR=CI or
+   a u s" policy-admit" XREF-STR=CI or
+   a u s" policy-seal" XREF-STR=CI or
+   a u s" def-occ-select" XREF-STR=CI or
+   a u s" def-occ-resolve" XREF-STR=CI or
+   a u s" prof-on" XREF-STR=CI or
+   a u s" ndict!" XREF-STR=CI or
+   a u s" int-mark" XREF-STR=CI or
+   a u s" rep-mark" XREF-STR=CI or
+   a u s" min-in-mark" XREF-STR=CI or
+   a u s" wide-mark" XREF-STR=CI or
+   a u s" record-facts!" XREF-STR=CI or
    a u s" evaluate" XREF-STR=CI or
    a u s" evaluate-range" XREF-STR=CI or
    a u s" evaluate-closed" XREF-STR=CI or ;
 
 
-\ The words UNSAFE-NAME? names: a stripped program has no dictionary and no
-\ writable code for the first six, and no interpreter for the evaluate words.
 : UNSAFE-TABLE ( -- )
    0 UNSAFE-COUNT !
    ndict@ 0 ?do

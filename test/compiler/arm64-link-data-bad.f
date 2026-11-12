@@ -3,9 +3,9 @@
 \ DATA pointer that holds an address outside the build's space, read by the
 \ entry, since a stripped link checks only the data its entry reaches;
 \ `header`, a build's xt! into a header cell the link writes; `eval`, an entry
-\ that calls `evaluate-closed`. The second argument is the kernel object the
-\ link adopts, the third the path it would write. test/compiler/arm64-link-data.f
-\ runs each and checks it.
+\ that calls `evaluate-closed`; `dict`, an entry that calls `search-wl`. The
+\ second argument is the kernel object the link adopts, the third the path it
+\ would write. test/compiler/arm64-link-data.f runs each and checks it.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -47,6 +47,12 @@ CAST: ENTRY-XT ( n -- [ -- ] )
    s" arm64-link-data-bad: the evaluate-closed call was not refused" 1 die ;
 
 
+: DICT-BODY ( -- )
+   s\" : LD-DW ( -- ) s\" LD-DW\" 0 search-wl drop ;" evaluate-closed
+   s" LD-DW" WORD-XT  data-base APP-ENTRY:XT-CELL + xt!  WRITE
+   s" arm64-link-data-bad: the wordlist lookup was not refused" 1 die ;
+
+
 public
 
 : RUN ( -- )
@@ -55,7 +61,8 @@ public
    at u s" data" STR= if s" app" RTARGET:HOST-TARGET [: DATA-BODY ;] LINKER:WITH exit then
    at u s" header" STR= if s" app" RTARGET:HOST-TARGET [: HEADER-BODY ;] LINKER:WITH exit then
    at u s" eval" STR= if s" app" RTARGET:HOST-TARGET [: EVAL-BODY ;] LINKER:WITH exit then
-   s" arm64-link-data-bad: the case is data, header or eval" 1 die ;
+   at u s" dict" STR= if s" app" RTARGET:HOST-TARGET [: DICT-BODY ;] LINKER:WITH exit then
+   s" arm64-link-data-bad: the case is data, header, eval or dict" 1 die ;
 
 ;package
 

@@ -175,6 +175,12 @@ DYNAMIC-BUFFER SECOND-LINK u8
    CMD:ERR$ s" link: LD-EV calls evaluate-closed, which a stripped program cannot run"
    CONTAINS? TTRUE ;
 
+: BAD-DICT ( CMD:command -- CMD:command )
+   s" dict"  s" link: a stripped program reaches a word it cannot run" BAD-CHILD
+   s" dict" NAMES-LABEL
+   CMD:ERR$ s" link: LD-DW calls search-wl, which a stripped program cannot run"
+   CONTAINS? TTRUE ;
+
 
 public
 
@@ -189,6 +195,7 @@ public
    [: BAD-DATA ;] CMD:WITH-COMMAND
    [: BAD-HEADER ;] CMD:WITH-COMMAND
    [: BAD-EVAL ;] CMD:WITH-COMMAND
+   [: BAD-DICT ;] CMD:WITH-COMMAND
    ROOT$ FS:REMOVE-TREE
    T-REPORT ;
 
