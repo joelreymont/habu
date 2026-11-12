@@ -19,7 +19,6 @@
 \ carries LC_UUID, a timestamp or another optional command a clang link adds
 \ (exports trie, symbol tables, build and source version, function starts,
 \ data in code).
-\ Mach-O constants
 require src/arch/arm64/icode.f
 require src/os/image-bytes.f
 using A64ICODE
@@ -80,10 +79,9 @@ private
 : MACHO-STARTS-BYTES ( -- n )
    24 DATA-CONST-PAGES 1- 2 * + 3 + -4 and ;
 
-\ The image buffer fits the largest emittable image (__text at MPAGE +
-\ __DATA_CONST + chained fixups + signature), so the loud MPAGE code-window
-\ guard stays the binding constraint, never a silent M-BOUNDS-RC throw from
-\ the byte cursor.
+\ The image buffer fits the largest emittable image, so the loud MPAGE
+\ code-window guard stays the binding constraint, never a silent M-BOUNDS-RC
+\ throw from the byte cursor.
 MACHO-IMAGE-MAX MACHO-FIXUPS-MAX + MACHO-SIG-MAX + MSIZE!
 
 : ASM-CODELEN! ( -- )
@@ -97,14 +95,11 @@ public
    ASM-CODELEN!
    ASM-PHASE ;
 
-\ __TEXT sized to CONTENT (16 KB pages), not a fixed page count: a 24 KB
-\ program is a 28 KB binary, not a fixed-cap binary. MPAGE is only the fail-closed
-\ maximum generated-code window for builder images.
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 private
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
 variable LE-BASE-SIZE
-32 constant MH-HDR-SZ                \ mach_header_64 size
+32 constant MH-HDR-SZ
 variable NCMDS
 
 : LC+ ( -- )

@@ -28,14 +28,10 @@ require src/habu/link-band.f
 package LINKER
 private
 
-\ ---- the product's wordlist ids -------------------------------------------------
-\ A wordlist id holds only in the process that made it. The build's global and
-\ namespace marker become the product's (0, WL:NAMESPACE), the ids the build
-\ minted follow FIRST-DYNAMIC-WID in mint order, and the engine's own ids below
-\ it and the retired markers stay. An object names none: the shift probe moves
-\ no object cell by a wordlist id.
+\ A wordlist id holds only in the process that made it. An object names none:
+\ the shift probe moves no object cell by a wordlist id.
 
-\ The first id the build minted after its global and namespace (MOVE-IN).
+\ The first id the build minted after its global and namespace.
 : FIRST-WID ( -- n ) BOOT:GLOBAL-WL  BOOT:NAMESPACE-WL negate  max 1 + ;
 
 : BAD-WID ( n n -- )
@@ -55,7 +51,6 @@ private
    wid r BAD-WID ;
 
 
-\ ---- the map ----------------------------------------------------------------------
 create MAP-TEXT BUF:HDR-BYTES allot
 create MAP-PATH BUF:HDR-BYTES allot
 DYNAMIC-BUFFER MAP-START n           \ row k's code offset in A64ICODE's code buffer, -1 for none
@@ -158,8 +153,7 @@ variable MAP-AT                      \ the first code byte no row written so far
    loop ;
 
 
-\ A row is an alias when a row before it spans exactly its code: rows of one
-\ start stand together in MAP-ORDER.
+\ Rows of one start stand together in MAP-ORDER.
 : MAP-ALIASES ( -- )
    MAP-N MAP-ALIAS-RESERVE
    MAP-N 0 ?do 0 i MAP-ALIAS ! loop
@@ -195,19 +189,16 @@ variable MAP-AT                      \ the first code byte no row written so far
    {: a:ptr u:n :}
    u 0= if s" -" MAP+ else a u MAP+ then ;
 
-\ The next row's rec.
 : REC+ ( -- n ) MAP-REC @  1 MAP-REC +! ;
 
-\ A row's first five columns: rec, named, start, len, wid.
 : MAP-HEAD ( n n n n n -- )
    {: rec:n named:n start:n len:n wid:n :}
    rec MAP-INT+ s"  " MAP+  named MAP-INT+ s"  " MAP+  start MAP-INT+ s"  " MAP+
    len MAP-INT+ s"  " MAP+  wid MAP-INT+ s"  " MAP+ ;
 
-\ Row k's len column: its exact span.
 : MAP-LEN ( n -- n ) MAP-BYTES @ CODE-SPAN:EXACT ;
 
-\ The map's one global wid is 0, as IMAGE-NAMES:PACKAGE$ reads it.
+\ The map's one global wid is 0.
 : MAP-WID ( n -- n )
    {: wid:n :}
    wid 0=  wid WL:PRIMITIVES = or if 0 else wid then ;
@@ -262,7 +253,6 @@ variable MAP-AT                      \ the first code byte no row written so far
       s" runtime runtime generated -" MAP+  MAP-NL
    then ;
 
-\ The code bytes [MAP-AT, end) as a row of their own, and MAP-AT at end.
 : GAP-ROW+ ( n -- )
    {: end:n :}
    MAP-AT @ {: at:n :}
@@ -276,7 +266,6 @@ variable MAP-AT                      \ the first code byte no row written so far
    MAP-AT @ BAND-AT @ <  end BAND-AT @ > and if BAND-AT @ GAP-ROW+ then
    end MAP-AT @ > if end GAP-ROW+ then ;
 
-\ The code rows in offset order, from the start-up to the code's end.
 : CODE-ROWS ( n -- )
    {: end:n :}
    0 ARM64:KERNEL-AT RUNTIME-ROW+
