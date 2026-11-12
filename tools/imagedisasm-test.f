@@ -1,6 +1,4 @@
 \ imagedisasm-test.f - fixture coverage for native raw image disassembly.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
-\ src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/imagedisasm-test.f
 
 require src/lib/error.f
 require src/lib/string.f

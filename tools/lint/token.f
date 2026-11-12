@@ -1,15 +1,14 @@
-\ token.f - legacy token table projected from the shared source lexer.
+\ token.f - token table projected from the shared source lexer.
 require tools/lint/text.f
 require src/lib/source.f
 require src/lib/source-lex.f
 
-$10000 constant TMAX            \ largest linted source (src/core/checker.f) + headroom
+$10000 constant TMAX            \ largest linted source + headroom
 77 constant E-LINT-TOKEN-CAP
 s" E-LINT-TOKEN-CAP" E-LINT-TOKEN-CAP LINT-CODE-NAME+
 -4821 constant E-LINT-TOKEN-SOURCE
 
-\ Each token's start is an address into the linted source, so the starts are
-\ declared pointer storage; the lengths stay plain cells.
+\ Each token's start is an address into the linted source.
 TMAX TYPED-BUFFER TOFF ptr u8
 create TLEN TMAX cells allot
 

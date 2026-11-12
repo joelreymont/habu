@@ -1,4 +1,3 @@
-\ Run: bin/hb --load tools/lsp-entry-test.f
 \ An absolute server entry must load its own implementation when the client
 \ starts it from a project directory containing older Habu tool sources.
 \ The printed artifact keeps both server conversations and their fixtures.
@@ -120,7 +119,7 @@ create BODY 4096 allot
    SB$ PROJECT-PATH ;
 
 \ A child has no deadline: its cold image build takes as long as the host's
-\ load makes it, and a hung row is named by its WAIT line (docs/gate.md).
+\ load makes it, and a hung row is named by its WAIT line.
 : SERVER-RUN ( ptr u8 n ptr u8 n CMD:command -- CMD:command )
    >r {: entry:ptr entryu:n name:ptr nameu:n :} r>
    entry entryu STAGE

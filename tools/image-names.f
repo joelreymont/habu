@@ -1,6 +1,6 @@
-\ Read an image's optional <image>.map (src/habu/link-map.f writes it) by
-\ column name; unknown versions and malformed rows supply no name. Signing
-\ rewrites the image, so rows match by span.
+\ Read an image's optional <image>.map by column name; unknown versions
+\ and malformed rows supply no name. Signing rewrites the image, so rows
+\ match by span.
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
@@ -300,8 +300,6 @@ public
       then
    loop false ;
 
-\ Donor lookup accepts the identical original span, actual record name and
-\ wordlist owner. An absent source remains absent.
 : DONOR-SOURCE$ ( n n ptr u8 n ptr u8 n n -- ptr u8 n bool )
    {: off:n bytes:n name:ptr nameu:n pkg:ptr pkgu:n role:n :}
    COL-SOURCE @ 0 < if s" " false exit then

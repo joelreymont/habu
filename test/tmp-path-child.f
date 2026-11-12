@@ -1,9 +1,9 @@
-\ tmp-path-child.f - one TMP-PATH call, for test/tmp-path-test.f.
+\ tmp-path-child.f - one TMP-PATH call.
 \
 \ Run: TMPDIR=<root> bin/hb --load test/tmp-path-child.f -- <case>
-\ Types the path TMP-PATH answers, or dies as TMP-PATH does. The case is the
-\ name's length: `exact` fills PATH-CAP with the root and its slash, `over` is
-\ one byte more, `negative` is -1 and `huge` is the maximum cell.
+\ The case is the name's length: `exact` fills PATH-CAP with the root
+\ and its slash, `over` is one byte more, `negative` is -1 and `huge` is
+\ the maximum cell.
 
 require src/lib/string.f
 require src/lib/memory.f
