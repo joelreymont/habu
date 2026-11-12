@@ -176,15 +176,17 @@ variable READ-ERRNO
    conn ;
 
 
-\ Linux's accept(2) takes a descriptor before it takes the connection off the
-\ queue, so EMFILE leaves the connection queued and the listener answers it
-\ later. macOS takes the connection first and resets it when no descriptor is
-\ left (xnu accept_nocancel).
+: ENDED? ( -- bool )
+   READ-ERRNO @ 0= READ-ERRNO @ ECONNRESET = or ;
+
+
+\ EMFILE leaves the connection queued on Linux. macOS dequeues and closes it:
+\ a read may see its end of stream before the reset the request draws.
 : STARVED-ANSWER ( TCP4:connection -- ) {: conn:TCP4:connection :}
    HB-TARGET-MACOS? if
-      s" macOS resets the starved connection" T-LABEL
+      s" macOS drops the starved connection" T-LABEL
       conn ANSWER$ nip 0 T=
-      READ-ERRNO @ ECONNRESET T=
+      ENDED? TTRUE
       exit
    then
    s" Linux answers the starved connection" T-LABEL

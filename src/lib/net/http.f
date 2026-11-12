@@ -536,7 +536,7 @@ variable EXIT-HOOK-N
 \ A failed accept stops the server only when the listener itself is broken. A
 \ pending connection that failed before accept took it (`aborted`) costs nothing:
 \ the listener polls again at once. Running out of descriptors or memory
-\ (`starved`) leaves the connection queued on Linux and resets it on macOS; the
+\ (`starved`) leaves the connection queued on Linux and drops it on macOS; the
 \ listener says so on stderr and parks ACCEPT-WAIT-MS, the same bound as its
 \ poll, so it neither spins nor delays a stop, and accepts again once something
 \ has been freed.
