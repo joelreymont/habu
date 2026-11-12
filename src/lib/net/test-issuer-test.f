@@ -148,8 +148,6 @@ PAST-CAP BUFFER: OVERSIZE
    a row u BYTE-COPY u ;
 
 
-\ JSON members.
-
 \ A string member of an object text as sent, empty when absent.
 : MEMBER$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: t:ptr tu:n k:ptr ku:n :}
@@ -173,8 +171,6 @@ PAST-CAP BUFFER: OVERSIZE
    s" keys" JSON:READ-FIND-KEY drop JSON:READ-NEXT drop
    k ku JSON:READ-FIND-KEY drop JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u ;
 
-
-\ The client.
 
 : OK ( CURL:status -- )
    MATCH CURL:status
@@ -255,8 +251,6 @@ PAST-CAP BUFFER: OVERSIZE
    status want T= ;
 
 
-\ Tokens.
-
 \ The index of the first dot at or after from, else the text's length.
 : DOT ( ptr u8 n n -- n )
    {: t:ptr u:n from:n :}
@@ -301,7 +295,7 @@ PAST-CAP BUFFER: OVERSIZE
    CLAIMS$ s" nbf" MEMBER-INT iat T=
    CLAIMS$ s" exp" MEMBER-INT iat ISSUED-S + T= ;
 
-\ An assertion for the client, minted by MINT into ASSERTION.
+\ An assertion for the client, minted into ASSERTION.
 : ASSERT ( ptr u8 n n -- )
    {: aud:ptr au:n exp:n :}
    SB-RESET S\" {\"aud\":\"" SB-APPEND aud au SB-APPEND S\" \",\"exp\":" SB-APPEND
@@ -315,8 +309,6 @@ PAST-CAP BUFFER: OVERSIZE
    ASSERTION ASSERTION-U @ + 10 - {: at:ptr :}
    at c@ [char] A = if [char] B else [char] A then at c! ;
 
-
-\ The cases.
 
 : DISCOVERY ( -- )
    s" discovery names the issuer, its key set and its token endpoint" T-LABEL
@@ -410,8 +402,6 @@ PAST-CAP BUFFER: OVERSIZE
    s" /mint" s" Content-Type: application/json" c cu POST 200 T=
    BODY$ c cu MINTED TEST-ISSUER:MINT T$= ;
 
-
-\ BEARER's client.
 
 : ISSUER$ ( -- ptr u8 n ) ISSUER-URL ISSUER-URL-U @ ;
 : KEYS-URL$ ( -- ptr u8 n ) KEYS-URL KEYS-URL-U @ ;
@@ -670,8 +660,6 @@ $A constant LF
    LINES 1 T=
    LINE$ s"  error bearer: token request failed: curl 43: " STARTS-WITH? TTRUE ;
 
-
-\ The tool's child process.
 
 \ The child's stdout read as far as it has written; true once a line ended or
 \ the pipe closed.
