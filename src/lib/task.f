@@ -1813,12 +1813,12 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 MEM-MAX-N TASK-REGION-BYTES - STACK-ABI:PAGE-BYTES - constant USER-END-MAX
 
 \ Only main claims, and only while no task is live: a live task's area cannot
-\ grow.
+\ grow. A task's own region holds 1 in TASKS-LIVE-CELL, so its claim throws.
 : USER-NEXT ( n n -- n ) {: off:n size:n :}
    off TASK-USER-NEXT @ < if E-TASK-USER throw then
    size 0 < if E-TASK-USER throw then
    size USER-END-MAX off - > if E-TASK-USER throw then
-   MAIN-BASE TASKS-LIVE-CELL + atomic@ 0<> if E-TASK-USER throw then
+   data-base TASKS-LIVE-CELL + atomic@ 0<> if E-TASK-USER throw then
    off size + ;
 
 \ A slot body: area offset, size, previous body (null ends), main's copy.
