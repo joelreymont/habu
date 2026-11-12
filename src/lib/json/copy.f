@@ -1,5 +1,4 @@
-\ copy.f - COPY-VALUE, one value from a reader into a writer. A file of package
-\ JSON (src/lib/json.f).
+\ copy.f - COPY-VALUE, one value from a reader into a writer.
 
 require src/lib/json/read.f
 require src/lib/json/write.f
