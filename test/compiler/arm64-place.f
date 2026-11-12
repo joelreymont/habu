@@ -61,7 +61,6 @@ OUT-CAP BUFFER: COPY                 \ a placed copy of the emission
 3 constant DATA-CHAIN
 
 $123450 constant MOVE-BY             \ the second base's distance from the host's
-\ What ELSEWHERE's resolvers and the band's data resolver add.
 $10000 constant LINK-BY
 
 variable IN-KERNEL
@@ -69,10 +68,10 @@ variable MAPPED
 variable COMPARED
 variable SAME
 variable PCREL
-variable KERNEL-END                  \ A64ICODE:ASM-LEN after ARM64:ADOPT
+variable KERNEL-END
 variable PRODUCT-CALLS
 variable KERNEL-CALLS
-DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
+DYNAMIC-BUFFER FIRST-BAND u8
 
 
 : T0? ( -- bool )
@@ -283,7 +282,6 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
    e COPY h [: 0 + ;] CHAINS-BAD -1 T= ;
 
 
-\ At at with every target and data address moved by LINK-BY.
 : ELSEWHERE ( n n -- )
    {: e:n at:n :}
    e at [: LINK-BY + ;] [: LINK-BY + ;] PLACE-AT
@@ -479,7 +477,7 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
 : PLACED? ( ptr u8 n -- bool ) HOST-NAMED LINK-ADDRESS -1 <> ;
 
 
-\ PL-FIVE's last call row is its does> slot (NSHADOW:PATCH-CALL?).
+\ PL-FIVE's last call row is its does> slot.
 : SLOT-CASE ( ptr u8 n -- )
    T-LABEL
    s" PL-FIVE" EMISSION-NAMED {: five:n :}
@@ -489,8 +487,6 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
    CALL-REACHES? TTRUE ;
 
 
-\ The band, cleared and placed again from the kernel's end, gives the bytes the
-\ first placement did.
 : SECOND-CASE ( -- )
    A64ICODE:ASM-LEN {: len:n :}
    len KERNEL-END @ - {: u:n :}
@@ -595,7 +591,7 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
 
 
 \ A link rooted at PL-MAKE, whose own body calls `create`, dies, so it runs in
-\ a child process: test/compiler/arm64-place-unsafe-bad.f.
+\ a child process.
 : REFUSAL-CASE ( -- ) [: UNSAFE-RUN ;] CMD:WITH-COMMAND ;
 
 
@@ -612,7 +608,7 @@ public
    THUNK-CASE
    INTERIOR-CASE
    \ PL-MAKE's `create` calls CREATEP-CELL's definer; the kernel's, there until
-   \ this line, throws E-COMP-STATE in SHADOW-FIXED under a native shadow.
+   \ this line, throws E-COMP-STATE under a native shadow.
    INTERPRETER:INSTALL-CREATE
    NABI:BINDING NSHADOW:OPEN-NATIVE
    NSHADOW:RECORDS RECS0 !
