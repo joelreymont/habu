@@ -25,6 +25,7 @@ $7B01 s" a font or image handle that is closed or was never made" ERROR:CODE E-H
 $7B02 s" text FONT does not shape: bad UTF-8, a control, mixed scripts, not left to right, or a bad size" ERROR:CODE E-TEXT
 $7B03 s" a glyph the font lacks or draws only from color data" ERROR:CODE E-GLYPH
 $7B04 s" a run HarfBuzz could not draw, or a box outside exact binary32 integers" ERROR:CODE E-RENDER
+$7B05 s" a run whose ink is larger than FONT's coordinates hold: shorten the text or lower the size" ERROR:CODE E-EXTENT
 
 private
 CAST: >FONT ( n -- font )
@@ -241,7 +242,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 7 cells TASK:+USER HULL-STATE drop
 \ HarfBuzz's ink extents can fall inside its decimal path, so the viewBox is the
 \ union of the first render's absolute M/L/Q/C points (under scale(1,-1),
 \ rounded outward to whole units) and the ink extents; an unexpected path syntax
-\ or a box outside exact binary32 integers throws E-RENDER.
+\ throws E-RENDER, a box outside exact binary32 integers E-EXTENT.
 : HULL-RESET ( -- ) 0 H-PAIR ! 0 H-SEEN ! ;
 : HULL-FIRST ( r r -- ) {: x:r y:r :}
    x IEEE754:F64>BITS dup H-MINX ! H-MAXX !
@@ -359,9 +360,9 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 7 cells TASK:+USER HULL-STATE drop
    {: left:n top:n right:n bottom:n :}
    left EXACT-EDGE? top EXACT-EDGE? and
    right EXACT-EDGE? and bottom EXACT-EDGE? and
-   right left - 0 > and bottom top - 0 > and
    right left - MAX-EXACT-F32 <= and
-   bottom top - MAX-EXACT-F32 <= and 0= if E-RENDER throw then
+   bottom top - MAX-EXACT-F32 <= and 0= if E-EXTENT throw then
+   right left - 0 > bottom top - 0 > and 0= if E-RENDER throw then
    left top right bottom ;
 : FINAL-BOX? ( ptr u8 n n n n -- bool )
    {: draw:ptr x0:n y0:n x1:n y1:n :}
@@ -477,8 +478,8 @@ public
 \ run is one left-to-right script with its common punctuation and combining
 \ marks: malformed UTF-8, controls, format characters and mixed or right-to-left
 \ scripts throw E-TEXT; a missing glyph or one drawn only from COLR, SVG or
-\ sbix/CBDT color data throws E-GLYPH. A whitespace-only run is a valid
-\ zero-size SVG.
+\ sbix/CBDT color data throws E-GLYPH; a run whose ink passes 2^24 units
+\ throws E-EXTENT. A whitespace-only run is a valid zero-size SVG.
 : RENDER ( font ptr u8 n n -- image )
    {: handle:font data:ptr size:n em:n :}
    data size TEXT-CHECK {: ink:n :}
