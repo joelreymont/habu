@@ -4,6 +4,7 @@
 \ and HarfBuzz version are inputs to the SVG bytes: pin both for byte-identical
 \ replay. Tests: test/font-native.f, test/font-image-subject.f. STORAGE CLASS.
 \ TASK-LOCAL scratch rows; PROCESS-WIDE registries, which a build leaves out.
+require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/utf8-scalar.f
 require src/lib/float32.f
@@ -19,11 +20,11 @@ public
 NEWTYPE font
 NEWTYPE image
 
-$7B00 constant E-OPEN
-$7B01 constant E-HANDLE
-$7B02 constant E-TEXT
-$7B03 constant E-GLYPH
-$7B04 constant E-RENDER
+$7B00 s" a font file HarfBuzz cannot open, or a size or face index out of range" ERROR:CODE E-OPEN
+$7B01 s" a font or image handle that is closed or was never made" ERROR:CODE E-HANDLE
+$7B02 s" text FONT does not shape: bad UTF-8, a control, mixed scripts, not left to right, or a bad size" ERROR:CODE E-TEXT
+$7B03 s" a glyph the font lacks or draws only from color data" ERROR:CODE E-GLYPH
+$7B04 s" a run HarfBuzz could not draw, or a box outside exact binary32 integers" ERROR:CODE E-RENDER
 
 private
 CAST: >FONT ( n -- font )
