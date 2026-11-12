@@ -915,7 +915,7 @@ $4000 constant PKG-CODE-RESERVE
    rec 0= if 0 exit then
    rec off + CELL-VIEW @ ;
 
-\ The owner record stores raw execution tokens; these views state the two
+\ The owner record stores raw execution tokens; these views state the
 \ signatures called here.
 CAST: PKG-AS-ACTION ( n -- [ -- ] )
 CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
@@ -979,7 +979,6 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    PKG-SEALED? 0= if exit then
    TOKEN$ SEALED-FAIL ;
 
-\ Under the design seal a package whose row predates the seal is refused.
 : PKG-POLICY-GUARD ( -- )
    POLICY-NDICT-CELL CELL@ {: seal:n :}
    seal 0= if exit then
@@ -1088,8 +1087,6 @@ private
    PKG-PUB-CELL CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
    PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEAL ;
 
-\ XREF:WID-SEALED?, with the open package's two wids read from its record and
-\ the global and types wordlists, no package's, answered without its walk.
 : PKG-WID-SEALED? ( n -- bool ) {: wid:n :}
    wid FIRST-DYNAMIC-WID < if false exit then
    wid BOOT:GLOBAL-WL =  wid BOOT:TYPES-WL =  or if false exit then
@@ -1177,8 +1174,6 @@ variable USE-FLOOR
    then
    d 1- USE-DEPTH-CELL CELL! ;
 
-\ The name the alias takes: the operand's tail after its first colon, or the
-\ whole operand when it has none or one at either edge.
 : PKG-TAIL ( -- ptr u8 n )
    TOKEN$ {: a:ptr u:n :}
    a u 0 COLON-AT {: q:n :}
@@ -1502,8 +1497,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    a u DEF-NAME-ONLY-KEYWORDS DEF-IN-TABLE? ;
 
 \ Every engine's policy writer asks this captured interpreter once per package,
-\ before setting its admission bit. Use the same dispatch-row table that guards
-\ names in a sealed definition, including pass-2 rows.
+\ before setting its admission bit.
 public
 : POLICY-KEYWORD ( n -- ptr u8 n bool ) {: wid:n :}
    ndict@ 0 ?do
