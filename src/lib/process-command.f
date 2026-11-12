@@ -9,6 +9,7 @@ require src/lib/memory.f
 require src/lib/task.f
 require src/lib/fs.f
 require src/lib/fd.f
+require src/lib/ffi-abi.f
 require src/lib/byte-buffer.f
 require src/lib/vector.f
 require src/lib/heap.f
@@ -221,38 +222,39 @@ public
 
 private
 
-\ Record where the next NUL-terminated entry starts; PREPARE resolves offsets to
-\ addresses once the bytes stop moving.
-: MARK ( ptr n ptr VEC:vector<n> -- ) {: buf:ptr offs:ptr :}
-   buf BUF-LEN offs VEC:PUSH ! ;
+: CSTR+ ( ptr u8 n ptr n -- )
+   {: a:ptr u:n buf:ptr :}
+   a u  buf u FFI:CSTR-ROOM BUF:N>BLEN BUF:GROW  FFI:CSTR drop ;
+
+\ Offsets, not addresses: the buffer moves as it grows until PREPARE. A
+\ refused entry leaves no bytes and no offset.
+: ENTRY ( ptr n ptr VEC:vector<n> [ -- ] -- )
+   {: buf:ptr offs:ptr w :}
+   buf BUF-LEN {: at:n :}
+   [: w execute  at offs VEC:PUSH ! ;] catch {: code:n :}
+   code 0= if exit then
+   at BUF:N>BLEN buf BUF:LEN!  code throw ;
 
 public
 
 : ARG+ ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
    CTX {: h:ptr :}
    u 0 < if E-PROC-OUTPUT throw then
-   h ARG-BUF h ARG-OFF @ MARK
-   a u BUF:N>BLEN h ARG-BUF BUF:APPEND-SPAN
-   0 h ARG-BUF BUF:APPEND-BYTE ;
+   h ARG-BUF h ARG-OFF @ [: a u h ARG-BUF CSTR+ ;] ENTRY ;
 
 : ENV-ENTRY+ ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
    CTX {: h:ptr :}
    u 0 < if E-PROC-ENV throw then
    a u >LEN PROC-ENV-CHECK-ENTRY
-   h ENV-BUF h ENV-OFF @ MARK
-   a u BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
-   0 h ENV-BUF BUF:APPEND-BYTE ;
+   h ENV-BUF h ENV-OFF @ [: a u h ENV-BUF CSTR+ ;] ENTRY ;
 
 : ENV+ ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
    {: name:ptr nameu:n val:ptr valu:n :}
    CTX {: h:ptr :}
-   nameu 0 < valu 0 < or if E-PROC-ENV throw then
-   name nameu >LEN PROC-ENV-CHECK-NAME
-   h ENV-BUF h ENV-OFF @ MARK
-   name nameu BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
-   PROC-ENV-EQUAL h ENV-BUF BUF:APPEND-BYTE
-   val valu BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
-   0 h ENV-BUF BUF:APPEND-BYTE ;
+   h ENV-BUF h ENV-OFF @
+   [: name nameu >LEN val valu >LEN
+      [: BUF:N>BLEN h ENV-BUF swap BUF:GROW SPAN:$ drop ;] PROC-ENV-ROW drop ;]
+   ENTRY ;
 
 \ A run inherits this process's environment and the PROC-ENV defaults unless
 \ ENV-HERMETIC turns that off.
@@ -269,9 +271,7 @@ public
    {: a:ptr u:n :}
    CTX {: h:ptr :}
    a u >LEN PROC-ENV-CHECK-NAME
-   h UNSET-BUF h UNSET-OFF @ MARK
-   a u BUF:N>BLEN h UNSET-BUF BUF:APPEND-SPAN
-   0 h UNSET-BUF BUF:APPEND-BYTE ;
+   h UNSET-BUF h UNSET-OFF @ [: a u h UNSET-BUF CSTR+ ;] ENTRY ;
 
 private
 

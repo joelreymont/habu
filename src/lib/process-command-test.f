@@ -273,6 +273,21 @@ create REL PATH-CAP allot   variable REL-U
    s" BAD=NAME" s" x" CMD:ENV+ ;
 
 
+\ A string holding a NUL is refused and leaves the command as it was.
+: NUL-REFUSED ( CMD:command -- CMD:command )
+   s" kept" CMD:ARG+
+   [: s\" a\zb" CMD:ARG+ ;] catch E-FFI-NUL T=
+   s" /bin/echo" CMD-TIMEOUT-MS RUN# 0 T=
+   CMD:OUT$ s\" kept\n" T$= ;
+
+: NUL-ENV-REFUSED ( CMD:command -- CMD:command )
+   CMD:ENV-HERMETIC
+   s" K" s" v" CMD:ENV+
+   [: s\" K=a\zb" CMD:ENV-ENTRY+ ;] catch E-FFI-NUL T=
+   [: s" K" s\" a\zb" CMD:ENV+ ;] catch E-FFI-NUL T=
+   s" /usr/bin/env" CMD-TIMEOUT-MS RUN# 0 T=
+   CMD:OUT$ s\" K=v\n" T$= ;
+
 : NUL-ENV-NAME ( CMD:command -- CMD:command )
    NUL-NAME NUL-NAME-U s" x" CMD:ENV+ ;
 
@@ -749,6 +764,8 @@ public
    [: [: BAD-UNSET-NAME ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
    [: [: NUL-UNSET-NAME ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
    [: [: NEGATIVE-UNSET ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
+   [: NUL-REFUSED ;] CMD:WITH-COMMAND
+   [: NUL-ENV-REFUSED ;] CMD:WITH-COMMAND
    [: BOTH-STREAMS ;] CMD:WITH-COMMAND
    IN-FILL
    [: BIG-STDIN ;] CMD:WITH-COMMAND
