@@ -216,8 +216,8 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \                                        return, loop and machine stacks
 \    hb-x64-kernel-finally            0  the cleanup runs after a body that
 \                                        returns and after one that throws,
-\                                        whose code is rethrown; a throwing
-\                                        cleanup's code wins
+\                                        whose code is rethrown even when
+\                                        the cleanup throws too
 \    hb-x64-kernel-run-in-stack       0  a callback on the loop stack's mapping
 \                                        returns, then throws; an extent inside
 \                                        DATA throws E-STACK-UNGUARDED; each is
@@ -372,7 +372,7 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    7 THROWS CLEANUP FINALLY-OF PUSH-XT,  s" catch" ROW,
    7 EXPECT-POP,  2 0 X64HARNESS:EXPECT-SCRATCH,
    7 THROWS 8 THROWS FINALLY-OF PUSH-XT,  s" catch" ROW,
-   8 EXPECT-POP,
+   7 EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    0 HND-CELL EXPECT-CELL,

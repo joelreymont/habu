@@ -3979,8 +3979,8 @@ private
 : BSOURCEEXECHANDLER ( -- )
    9 0 MOVZ,  9 G-PUSH ;
 
-\ finally ( body cleanup -- ). Frame: [0] cleanup | [8] the body's code | [16] the halt its throw carried,
-\ set again once the cleanup ends or halts. The cleanup's nonzero code supersedes [8]; unset, it is refused here.
+\ finally ( body cleanup -- ). Frame: [0] cleanup | [8] the body's code | [16] the halt its throw carried, set again
+\ once the cleanup ends or halts. A cleanup's nonzero code goes to [8] only when [8] is 0: a return or a PAUSE halt.
 : BFINALLY ( -- )
    LBL LBL LBL {: keep:label calm:label throw:label :}
    LBL FINALLY-DONE !
@@ -3991,7 +3991,8 @@ private
    10 DATA HALT-UNWIND-CELL LDR,  10 SP 16 STR,
    10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
    9 SP 0 LDR,  9 G-PUSH  BCATCH-HELD
-   9 keep CBZ,  9 SP 8 STR,
+   9 keep CBZ,  10 SP 8 LDR,  10 keep CBNZ,
+   9 SP 8 STR,
    keep LBL,
    10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
    10 SP 16 STR,

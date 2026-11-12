@@ -1808,12 +1808,13 @@ defined again binds its earlier text against every later record too.
   ```
 - **`finally`** is `( R [ R -- S ] [ -- ] -- S )`: body, then cleanup on return
   or catchable throw; cleanup takes and leaves nothing, and both may read the
-  calling word's locals; a body error rethrows
-  after cleanup, a cleanup error supersedes it; `die` skips cleanup. A
+  calling word's locals; a body error rethrows after cleanup even when the
+  cleanup throws, and a cleanup error rethrows only when the body returned or
+  a halt `TASK:PAUSE` began unwound it; `die` skips cleanup. A
   `TASK:HALT` observed at `TASK:PAUSE` unwinds through `finally` the same way; a
   `catch` between the `PAUSE` and the task's root never resumes. A halt observed
   inside a cleanup cuts that cleanup short and keeps the body's error. `JOIN`
-  then answers a cleanup's error, else the body's error in flight, else ok with
+  then answers the body's error in flight, else a cleanup's error, else ok with
   a result the body stored before the halt, else `E-TASK-NO-RESULT`.
   `TASK:HALT-UNWIND` ( n -- ) serves a pending halt where `PAUSE` would,
   carrying n as the task's error, so a scope that ends under a halt keeps its

@@ -2098,7 +2098,7 @@ variable WARN-LINES
 \ the stop retries E-AIO-BUSY, its "not yet". A stop still busy after
 \ PROGRESS-NS is this wait's own deadline, named and thrown as a timeout. Any
 \ other code is named on one line and LATE-STOP returns: the pending deadline
-\ stays the case's result, where under finally the stop's code would replace it.
+\ stays the case's result.
 : LATE-STOP ( -- )
    mono-ns PROGRESS-NS + {: deadline:n :}
    begin
@@ -2116,9 +2116,9 @@ variable WARN-LINES
    CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
    HALT-CONNECT-CASES REFUSED-SEND-CASES AIO-FAIL-CASES SERVER-CASES ;
 
-\ As under finally, a code from AIO:STOP replaces the cases' code, except a
-\ deadline's: with a deadline pending, LATE-STOP stops the loop or names why it
-\ could not, and the deadline goes on.
+\ A code from AIO:STOP replaces the cases' code, except a deadline's: with a
+\ deadline pending, LATE-STOP stops the loop or names why it could not, and the
+\ deadline goes on.
 : MAIN ( -- )
    SCRIPT-ARGC 1 <> if
       s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" 2 die

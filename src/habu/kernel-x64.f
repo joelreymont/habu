@@ -1835,13 +1835,12 @@ private
    done X64CODE:LBL, ;
 
 \ finally ( xt xt -- ): run the body under CAUGHT-HELD, and then the cleanup
-\ under another outside it, so the cleanup's throw supersedes the body's; then
-\ rethrow the code unless it is 0. Frame: [0] cleanup | [CELL] code |
-\ [2*CELL] halt, the HALT-UNWIND-CELL value the body's throw carried, as
-\ habu1.f BFINALLY: the frame takes the cell and clears it while the cleanup
-\ runs, a halt that begins inside the cleanup lands in the frame keeping the
-\ body's code, and a halt taken here is set again and the code thrown on, even
-\ 0; a cleanup's nonzero code supersedes.
+\ under another outside it; the cleanup's nonzero code replaces the body's only
+\ when that is 0; then rethrow the code unless it is 0. Frame: [0] cleanup |
+\ [CELL] code | [2*CELL] halt, the HALT-UNWIND-CELL value the body's throw
+\ carried: the frame takes the cell and clears it while the cleanup runs, a
+\ halt that begins inside the cleanup lands in the frame keeping the body's
+\ code, and a halt taken here is set again and the code thrown on, even 0.
 : FINALLY, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: keep:label calm:label throw:label done:label :}
    RAX POP,  CALLABLE,
@@ -1853,7 +1852,9 @@ private
    RCX ZERO-REG,  RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,
    RAX RSP 0 MOV-LOAD,  RAX PUSH,  CAUGHT-HELD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E keep JCC,
-   RAX RSP CELL MOV-STORE,                       \ a cleanup's code supersedes
+   RCX RSP CELL MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE keep JCC,
+   RAX RSP CELL MOV-STORE,                       \ the body's code was 0
    keep X64CODE:LBL,
    RCX DATA-REG HALT-UNWIND-CELL MOV-LOAD,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E calm JCC,

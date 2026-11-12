@@ -2113,8 +2113,8 @@ TASK-MIN-STACK constant MIN-STACK
 \ Serves this task's pending TASK:HALT here, carrying n, where PAUSE would: in a
 \ task whose run a TASK:HALT has reached and has not yet begun to unwind,
 \ outside a callback and outside DEFER-ENTER, it unwinds as PAUSE's halt does
-\ but delivers n to the task's root, so THROW@ and JOIN answer n unless a
-\ cleanup's throw supersedes it; 0 delivers what PAUSE does. Anywhere else it
+\ but delivers n to the task's root, so THROW@ and JOIN answer n even when a
+\ cleanup throws; 0 delivers what PAUSE does. Anywhere else it
 \ drops n and returns. A scope that ends while a halt is pending uses it to
 \ keep its own selected error as the task's.
 : HALT-UNWIND ( n -- )
@@ -2216,9 +2216,9 @@ TASK-MIN-STACK constant MIN-STACK
 \ Waits for the task to end, releases it as TASK:KILL would, and answers ok with
 \ the value the worker stored or err with the code that ended it - including
 \ E-TASK-NO-RESULT when the worker ended without an answer. A halted worker
-\ answers a code a cleanup threw during its unwind, else the body's error the
-\ halt overtook in a cleanup, else the n a TASK:HALT-UNWIND carried, else ok
-\ with a value it stored before the halt, else E-TASK-NO-RESULT. A task that was never
+\ answers the n a TASK:HALT-UNWIND carried or the body's error the halt overtook
+\ in a cleanup, else a code a cleanup threw during its unwind, else ok with a
+\ value it stored before the halt, else E-TASK-NO-RESULT. A task that was never
 \ activated, a task already joined, and a second joiner are E-TASK-JOIN.
 : JOIN ( ptr n -- result<n,n> )
    TASK-JOIN ;

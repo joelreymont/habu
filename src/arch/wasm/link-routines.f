@@ -567,8 +567,8 @@ variable SITES-N
    0 I32,  OP-END B, ;
 
 
-\ finally ( body cleanup -- ): a cleanup's throw supersedes the body's, else the
-\ body's code is stored again.
+\ finally ( body cleanup -- ): the body's throw code is stored again whether or
+\ not the cleanup throws; the cleanup's code stands only when the body returned.
 : FINALLY-BODY ( -- )
    2 U32,  2 U32,  I32 B,  4 U32,  I64 B,
    L-CTX GET,
@@ -586,11 +586,10 @@ variable SITES-N
    L-SP GET,  L-CLEANUP GET,  OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,
    DISPATCH,
-   IF,  1 I32,  OP-RETURN B,  OP-END B,
    L-STATUS GET,  IF,
       L-CTX GET,  L-BODY-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
    OP-END B,
-   L-STATUS GET,
+   L-STATUS GET,  OP-I32-OR B,
    OP-END B, ;
 
 

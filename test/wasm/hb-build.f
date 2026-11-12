@@ -450,7 +450,7 @@ variable TEXT-U
    S\" LEAK  LEAK-R  NEST 12 8 WANT  6 PARK 7 9 WANT\n" SB-APPEND
    S\" [: 42 ;] [: CLEAN ;] finally 42 10 WANT  DONE @ 1 11 WANT\n" SB-APPEND
    S\" 0 DONE !  [: [: 7 throw ;] [: CLEAN ;] finally ;] catch 7 12 WANT\n" SB-APPEND
-   S\" DONE @ 1 13 WANT  [: [: 7 throw ;] [: 8 throw ;] finally ;] catch 8 14 WANT\n" SB-APPEND
+   S\" DONE @ 1 13 WANT  [: [: 7 throw ;] [: 8 throw ;] finally ;] catch 7 14 WANT\n" SB-APPEND
    S\" [: [: 7 throw ;] [: [: 9 throw ;] catch drop ;] finally ;] catch 7 15 WANT ;\n" SB-APPEND
    S\" ;package\n" SB-APPEND
    SB$ s" catch.f" SOURCE! ;
