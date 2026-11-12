@@ -2,7 +2,14 @@
 \ within a segment share one. Bodies live in DATA, since a DATA address means the
 \ same after a snapshot restore and an mmap one does not. Both tiers intern
 \ through INTERN-SOURCE, and fetch descriptors are bodies under the same rule. A
-\ build's data space keeps its strings at `here` (src/habu/intern-table.f).
+\ build's data space keeps its strings at `here`.
+\
+\ A pool is a chain of segments, each an owner record, its row tables and an
+\ arena. A capture or a retained compiler opens a pool, and the store opens the
+\ next segment at `here` when the last cannot take a body. A body larger than an
+\ arena is refused by name, and so is one a closed window's pool has no room for
+\ (WINDOW-CLOSE). A body interned again after its segment filled is copied into
+\ the next one.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -14,15 +21,9 @@ package INTERN
 private
 
 \ ---- the store ---------------------------------------------------------------
-\ A pool is a chain of segments, each an owner record, its row tables and an
-\ arena. A capture or a retained compiler opens a pool, and the store opens the
-\ next segment at `here` when the last cannot take a body. A body larger than an
-\ arena is refused by name, and so is one a closed window's pool has no room for
-\ (WINDOW-CLOSE). A body interned again after its segment filled is copied into
-\ the next one.
 $80000 constant ARENA-CAP            \ 512 KB of bodies per segment
 8192 constant ROWS-MAX               \ distinct bodies per segment
-ROWS-MAX 2 * constant SLOTS          \ a power of two, twice ROWS-MAX
+ROWS-MAX 2 * constant SLOTS          \ a power of two
 
 \ An owner is a pool's first segment, which selects the pool, or a later segment
 \ of one. A first segment is closed once its window is latched: the pool opens no
@@ -39,11 +40,10 @@ $38 constant OWNER-BYTES
 
 \ Each owner owns its metadata as well as its bytes. Forward links leave a new
 \ capture free of references into the older owners excluded from that capture.
-\ The two complete row tables reserve 128 KiB per segment for that lasting
-\ authority. A link holds its target's distance from the link's own cell, 0 for
-\ none: a native build moves the captured window as one block and relocates no
-\ raw cell, so the distance holds wherever the block lands, and a rewind of DATA
-\ or a capture of the window has no pointer mark to drop.
+\ A link holds its target's distance from the link's own cell, 0 for none: a
+\ native build moves the captured window as one block and relocates no raw
+\ cell, so the distance holds wherever the block lands, and a rewind of DATA or
+\ a capture of the window has no pointer mark to drop.
 : NEXT-FIELD ( ptr u8 -- ptr n ) CELL-VIEW ;            \ the next owner of any pool
 : ARENA-FIELD ( ptr u8 -- ptr n ) 1 cells + CELL-VIEW ;
 : CAP-FIELD ( ptr u8 -- ptr n ) 2 cells + CELL-VIEW ;
@@ -152,8 +152,6 @@ variable PROBE
    size 0= if address start = exit then
    address start - size < ;
 
-\ Reverse order also handles the older seed's shared empty/next-row address:
-\ the later nonempty row owns its bytes, while a terminal empty row still fits.
 : FIND-OWNER-ROW ( n ptr u8 -- ptr u8 n bool ) {: address:n owner:ptr :}
    owner ROWS-FIELD @ {: rows:n :}
    rows 0 ?do
@@ -173,8 +171,6 @@ variable PROBE
 : SLOT@ ( -- n )
    PROBE @ cells SLOT + @ ;
 
-\ Ends at the body's row or at an empty slot, which always exists (FREE-SLOT
-\ says why).
 : ROW-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u HASH PROBE !
    begin SLOT@ 0<> while
@@ -195,8 +191,7 @@ variable PROBE
    SLOTS 0 ?do 0 i cells SLOT + ! loop ;
 
 public
-\ A file object's link puts a body the build's data holds, as EACH-STRING hands it,
-\ into the table; no build space open, or a body whose text it holds, is E-COMP-STATE.
+\ A file object's link puts a body the build's data holds into the table.
 : ADOPT ( n -- )
    {: body:n :}
    SPACE? 0= if E-COMP-STATE throw then
@@ -291,8 +286,7 @@ public
 
 : SWITCH ( ptr u8 -- ) {: owner:ptr :}
    owner OWNER? 0= if E-NSTR-BODY throw then
-   \ A pool is selected by its first segment: imported owners are compact,
-   \ already-full metadata, and a later segment belongs to its pool's first.
+   \ A pool is selected by its first segment; a later segment belongs to it.
    owner ROLE-FIELD @ {: role:n :}
    role ROLE-HEAD <> role ROLE-CLOSED <> and if E-NSTR-BODY throw then
    owner ACTIVE-P !
@@ -340,9 +334,7 @@ public
 
 \ The retained owner's literal rows, as the build driver reads them, one segment
 \ of the active pool at a time: the arena and its capacity for the span check,
-\ then the rows themselves. Published here, while the package is open, because
-\ the alternative is the driver finding STRING-ARENA, ARENA-CAP, R-OFF and R-LEN by name
-\ in this package's private wordlist after it closes.
+\ then the rows themselves.
 : SOURCE-SPAN ( n -- ptr u8 n )
    SEGMENT ARENA@ ARENA-CAP ;
 
