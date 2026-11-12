@@ -32,3 +32,5 @@ Acceptance cases:
 - one name-equal leaf and one probe leaf serve every lookup, the hash computed once per lookup and passed forward: the folded-name compare loop is emitted in many words (habu1.f EMIT-FIND, WLFIND; habu2.f EMIT-FIND-USED and others) and a token is hashed up to three times (LFIND, then LFINDUSED on a miss). Design with the Plan agent before dispatch; after the scan legs go.
 
 Claim: unassigned.
+
+Acceptance case 2026-11-12 (jerry; from habu-print-the-one-ea184772's census, master 045c8ff4): four exits of the arm64 interpreter and definers write nothing or a line off the shape `<class> habu: <text>[ <16 hex>] lr <16 hex>` (src/habu/crash.f LDIE-LINE): src/habu/habu2.f C-EXIT-LABEL :577 (rc 70, 'trust-decl'/'trust-raw'), C-OWNER-FIELD :699 (rc 70, 'rec-wide-publish'/'rec-min-in@', no newline), EMIT-ROLLBACK :2291 (rc 96, evaluate's rollback), EM-COMPILE-DIE LCOMPILEDIE :3129 (no lr). Accepted when the typed interpreter's equivalents print the one line.

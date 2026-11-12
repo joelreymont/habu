@@ -26,3 +26,5 @@ Consumers: Zen loads neither src/lib/process-fork.f nor process-pty-io.f, and it
 Waiting case (jerry, from the memory-fault throw): on macOS a child of fork without exec has no alternate signal stack (sigaltstack answers SS_DISABLE), so a machine-stack overflow in it cannot reach the crash handler and dies unnamed. It goes with fork without exec.
 
 Waiting case (the heap allocator, src/lib/heap.f): on Linux fork is the raw system call (src/habu/habu1.f, NR-FORK SYS,) where macOS calls libc's fork by name, so libc's allocator locks are not reset in a Linux child. A child that runs Habu code and allocates from HEAP:ALLOCATOR can hang when another task was inside malloc at the fork; a child that only execs is safe. It goes with fork without exec.
+
+Acceptance case 2026-11-12 (jerry; from habu-print-the-one-ea184772's census): the fork child's own-region remap exits 78 with a line off the shape `<class> habu: <text>[ <16 hex>] lr <16 hex>`: src/habu/habu1.f FORK :2987 (Linux, 'hb: fork: cannot map the child's own region') and :3019 (macOS, '...child's region alias'). Accepted when fork only to exec removes the step or its line takes the shape.
