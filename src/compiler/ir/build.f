@@ -41,7 +41,7 @@ $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 4 constant ST-RETIRED
 0 constant STG-FREE                  \ no builder holds this stage
 
-\ ---- the sixteen tables a module is made of ----------------------------------
+\ ---- the tables a module is made of ------------------------------------------
 0 constant T-SP                      \ symbol interner byte pool
 1 constant T-SR                      \ symbol interner rows
 2 constant T-TP                      \ type table pool
@@ -58,7 +58,7 @@ $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 13 constant T-BR                     \ block rows
 14 constant T-EP                     \ derived predecessor pool
 15 constant T-ER                     \ derived block-edge rows
-16 constant TABLES#
+T-ER 1+ constant TABLES#
 
 \ ---- the committed ceiling plan ----------------------------------------------
 \ Staged by name before NEW-BUILDER, which consumes it.

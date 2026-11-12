@@ -21,9 +21,8 @@ create SLOTS
    NCOMP-DISPATCH:XT-CELL ,              0 ,
    NCOMP-DISPATCH:CALLBACK-STUB-CELL ,  0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL , 0 ,
-   \ Literal: the capture host's baked layout may lack these two cells.
-   $3840 ,                             0 ,   \ NCOMP-DISPATCH:COMP-CELL
-   $6C0 ,                              0 ,   \ NCOMP-DISPATCH:FIXED-COMP-CELL
+   NCOMP-DISPATCH:COMP-CELL ,           0 ,
+   NCOMP-DISPATCH:FIXED-COMP-CELL ,     0 ,
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,
    APP-ENTRY:XT-CELL ,                  0 ,
@@ -37,23 +36,20 @@ create SLOTS
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + ,       0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL 2 cells + ,    0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL 3 cells + ,    0 ,
-   \ The capture host's baked layout has no names for the suspended hook pair.
-   $2D80 ,                             0 ,   \ SUSP-HOOK-CELL
-   $2D88 ,                             0 ,   \ SUSP-PREFLIGHT-CELL
-   \ The x86-64 port's fixed callback and chain cells. The capture host's baked
-   \ layout names the first three; the rest are spelled as offsets for a host
-   \ that predates them, and must equal src/habu/layout.f's.
+   SUSP-HOOK-CELL ,                     0 ,
+   SUSP-PREFLIGHT-CELL ,                0 ,
+   \ The x86-64 port's fixed callback and chain cells.
    UNCGH-CELL ,                         0 ,
    ENGINE-MAIN:XT-CELL ,                0 ,
    CREATEP-CELL ,                       0 ,
-   $2D98 ,                             0 ,   \ NCOMP-DISPATCH:FIXED-SHADOW-CELL
-   $2DA0 ,                             0 ,   \ NCOMP-DISPATCH:DOES-SHADOW-CELL
-   $2DA8 ,                             1 ,   \ TASK-CHAIN-CELL
-   $3848 ,                             0 ,   \ PROVIDED-XT:EVALUATE-CELL
-   $3850 ,                             0 ,   \ POLICY-ABI:KEYWORD-CELL
-   $3858 ,                             0 ,   \ ENGINE-MAIN:REPORT-CELL
-   $3860 ,                             0 ,   \ PROVIDED-XT:EVALUATE-RANGE-CELL
-   $36C0 ,                             0 ,   \ BPTRAMP-CELL
+   NCOMP-DISPATCH:FIXED-SHADOW-CELL ,   0 ,
+   NCOMP-DISPATCH:DOES-SHADOW-CELL ,    0 ,
+   TASK-CHAIN-CELL ,                    1 ,
+   PROVIDED-XT:EVALUATE-CELL ,          0 ,
+   POLICY-ABI:KEYWORD-CELL ,            0 ,
+   ENGINE-MAIN:REPORT-CELL ,            0 ,
+   PROVIDED-XT:EVALUATE-RANGE-CELL ,    0 ,
+   BPTRAMP-CELL ,                       0 ,
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;

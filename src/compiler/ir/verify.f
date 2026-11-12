@@ -50,7 +50,7 @@ $FFFFFFFF HDR-CELLS - constant EPOOL-CAP-MAX
 
 \ ---- the module under verification -------------------------------------------
 \ One open verification per process; the slot is given back before VERIFY
-\ returns. VERIFY records the fourteen tables in package storage for one call,
+\ returns. VERIFY records the module's tables in package storage for one call,
 \ overwriting them all first, so no open flag is needed; the context is never
 \ stored.
 0 constant T-OPP                     \ operation cell pool
@@ -67,7 +67,7 @@ $FFFFFFFF HDR-CELLS - constant EPOOL-CAP-MAX
 11 constant T-SRC                    \ source registry
 12 constant T-EDP                    \ derived predecessor pool
 13 constant T-EDR                    \ derived edge rows
-14 constant TAB#
+T-EDR 1+ constant TAB#
 
 align
 TAB# CWORK-BUFFER VT IR-ARENA:arena
