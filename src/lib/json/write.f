@@ -1,5 +1,10 @@
 \ write.f - the emit-only JSON writer, WRITE-OPEN through WRITE-FIELD-NULL.
 \ A file of package JSON (src/lib/json.f).
+\
+\ A source span may lie in a growable writer's own output, and any step that
+\ grows the output may relocate it. A word that takes a source records the
+\ span's offset with JW-ALIAS first and recomputes its address with JW-REBASE
+\ after each such step, before reading it.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -13,7 +18,6 @@ public
 \ fresh: nothing written since WRITE-OPEN, WRITE-OPEN-BUF or WRITE-RESET;
 \ valued: a value last; opened: a START last; separated: a comma last; keyed:
 \ a key last, its value due; quoting: inside WRITE-STRING-START's open string.
-\ A break is due before the next token only when opened or separated.
 ENUM writer-layout fresh valued opened separated keyed quoting ;ENUM
 
 \ Fixed output uses out/cap/len. Growable output uses the caller's BUF header
@@ -59,7 +63,7 @@ private
 create JW-KEY-SEP JW-COLON-C c, JW-SP c,   \ each separator is a prefix of it
 
 \ The escaped width of each byte value: 1 plain, 2 for \" \\ \b \t \n \f \r,
-\ 6 for the other control bytes (\u00XX). Scans index it inline.
+\ 6 for the other control bytes (\u00XX).
 create JW-ESC-W
    6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 2 c, 2 c, 2 c, 6 c, 2 c, 2 c, 6 c, 6 c,   \ $00
    6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c, 6 c,   \ $10
@@ -107,7 +111,6 @@ create JW-ESC-W
    w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
    vp cap used NULL-PTR indent depth layout JSON-WRITER:MAKE w ! ;
 
-\ A negative or null-with-bytes span is E-JSON-WRITE-SOURCE.
 : JW-SPAN ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-JSON-WRITE-SOURCE throw then
    u 0 > a 0= and if E-JSON-WRITE-SOURCE throw then ;
@@ -168,8 +171,6 @@ create JW-ESC-W
    then
    c buf BUF:APPEND-BYTE w ;
 
-\ Bytes of a break at depth: LF, then depth times indent spaces; none when
-\ compact.
 : JW-BREAK-N ( n n -- n ) {: indent:n depth:n :}
    indent 0= if 0 exit then
    depth MEM-MAX-N indent / > if E-JSON-WRITE-CAPACITY throw then
@@ -185,8 +186,7 @@ create JW-ESC-W
    JW-LF s 0 SPAN:U8!
    w ;
 
-\ Make room for a token of count bytes and any due break, write the break and
-\ leave valued. A refusal leaves the length, depth and layout unchanged.
+\ A refusal leaves the length, depth and layout unchanged.
 : JW-TOKEN ( ptr writer n -- ptr writer )
    {: w count:n :}
    w JW-LIVE 2drop drop
@@ -203,14 +203,12 @@ create JW-ESC-W
    depth construct writer-layout valued JW-LAYOUT!
    w ;
 
-\ Set the layout, keeping the depth.
 : JW-MARK ( ptr writer writer-layout -- ptr writer )
    {: w layout:writer-layout :}
    w JW-LAYOUT@ drop nip {: depth:n :}
    w depth layout JW-LAYOUT!
    w ;
 
-\ Refused unless a string WRITE-STRING-START opened is still open.
 : JW-QUOTING ( ptr writer -- ptr writer )
    {: w :}
    w JW-LIVE 2drop drop
@@ -225,7 +223,6 @@ create JW-ESC-W
    ;MATCH
    w ;
 
-\ A START opens a container: its bracket, one level deeper, a break due.
 : JW-START ( ptr writer n -- ptr writer )
    {: w c:n :}
    w 1 JW-TOKEN c JW-C drop
@@ -233,8 +230,6 @@ create JW-ESC-W
    w depth 1+ construct writer-layout opened JW-LAYOUT!
    w ;
 
-\ An END closes on its own line at the outer depth after a value, or right
-\ after its START; anywhere else it is refused.
 : JW-END ( ptr writer n -- ptr writer )
    {: w c:n :}
    w JW-LIVE 2drop drop
@@ -254,9 +249,9 @@ create JW-ESC-W
 
 public
 
-\ Fixed output refuses a value that will not fit with E-JSON-WRITE-CAPACITY: size it for
-\ the worst case, one byte escaping to six (\u00XX). A null or negative output is
-\ E-JSON-WRITE-OUTPUT. The caller keeps its buffer live and exclusive until WRITE-CLOSE.
+\ Fixed output refuses a value that will not fit with E-JSON-WRITE-CAPACITY:
+\ size it for the worst case, one byte escaping to six (\u00XX). The caller
+\ keeps its buffer live and exclusive until WRITE-CLOSE.
 : WRITE-OPEN ( ptr writer ptr u8 n -- ptr writer )
    {: w vp:ptr cap:n :}
    vp 0= if E-JSON-WRITE-OUTPUT throw then
@@ -295,8 +290,6 @@ public
    JW-LIVE {: vp:ptr cap:n used:n :}
    vp used ;
 
-\ The source may be this writer's own output: remember its offset, since
-\ JW-TOKEN's reservation may relocate the output at every width.
 : WRITE-RAW ( ptr writer ptr u8 n -- ptr writer ) {: w a:ptr u:n :}
    a u JW-SPAN
    w a u JW-ALIAS {: off:n :}
@@ -318,9 +311,9 @@ private
 : JW-HEX ( n -- n )
    dup 10 < if JW-ZERO + else 87 + then ;
 
-\ Bytes the escaped text takes, the sum of each byte's width. A width is at
-\ most six, so the sum fits a cell for any span in memory; the checked adds of
-\ the delimiters and separator refuse it exactly when a running checked sum would.
+\ A width is at most six, so the sum fits a cell for any span in memory; the
+\ checked adds of the delimiters and separator refuse it exactly when a running
+\ checked sum would.
 : JW-ESC-N ( ptr u8 n -- n ) {: a:ptr u:n :}
    JW-ESC-W BYTE-VIEW {: w:ptr :}
    0 u 0 ?do a i + c@ w + c@ + loop ;
@@ -375,12 +368,9 @@ private
    u JW-RADIX mod JW-ZERO + JW-C ;
 
 \ Each source byte needs at least one output byte, so refuse an overlong fixed
-\ span before reading it, then text that is not UTF-8. Both reservations may
-\ relocate caller-owned output; rebase the source after each before scanning or
-\ emitting it. A quoted string or key is a token, so its width reserves any
-\ due break with it; a string part never breaks. The escapes go straight
-\ into the span JW-TAKE answers over the whole width: the delimiters when
-\ quoted, then the first sep bytes of JW-KEY-SEP.
+\ span before reading it, then text that is not UTF-8. A quoted string or key is
+\ a token, so its width reserves any due break with it; a string part never
+\ breaks.
 : JW-QUOTED ( ptr writer ptr u8 n bool n -- ptr writer )
    {: w a:ptr u:n quoted:bool sep:n :}
    a u JW-SPAN
@@ -432,8 +422,6 @@ public
 : WRITE-ARRAY-END ( ptr writer -- ptr writer )
    JW-RBRACK JW-END ;
 
-\ The separator: a comma after a value, nothing right after a START, refused
-\ anywhere else.
 : WRITE-COMMA ( ptr writer -- ptr writer )
    {: w :}
    w JW-LIVE 2drop drop
