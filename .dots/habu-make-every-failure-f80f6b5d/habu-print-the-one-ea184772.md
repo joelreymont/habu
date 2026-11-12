@@ -1,0 +1,9 @@
+---
+title: "Print the one line at the census's other kernel exits"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-12T16:36:37.106969+02:00"
+---
+
+Problem: the arm64 kernel exits below still write nothing on fd 2 or a line off the shape `<class> habu: <text>[ <16 hex>] lr <16 hex>` (src/habu/crash.f LDIE-LINE); lines as of the commit 'Print the line at the remaining kernel exits'. Nothing: habu1.f:494 and :747 (spawn child 127, errno to a pipe), :2067/:2068 (BDIE exit code, UNCAUGHT-RC), :3538/:3539 (THROW-NOREC-FB), habu2.f:3033 (LUNCAUGHT, code 1-255). Off the shape: habu1.f:2987, :3019 (fork cannot map, 78), :3429 (unset quotation, 86), :3542 (BTHROW-UNWIND catch frame corrupt, 87, about 20 copies), :4154, :4202, :4285, :4304 (set-check/tier/preflight/top-check, 70), :4335 (undrained pre-trust defer, 73), :4536 and :4558 (E-POLICY lines with runtime parts the one-write emitter cannot print), :5627 (definition occurrence alloc, 78); habu2.f:577 (C-EXIT-LABEL 70), :699 (C-OWNER-FIELD 70), :1200 (replay record executed, 76), :1941, :1972, :1988, :2005 (cannot map, 78), :1951 (BL-RANGE-RC), :2081 (CALLMAP-RC), :2291, :2407, :2410 (XTCELL-RC), :2413 (XTBAND-RC), :2416 (XTKIND-RC), :2561 (ADDRMAP-RC), :3058 (uncaught throw code, superseded by habu-uncaught-throws-name-1a43b055's reporter), :3128 (LCOMPILEDIE, no lr); crash.f:631 (signal stack, 78). The silent 1..255 exits of an uncaught throw or die are the program's own status: settle each against design C (a code 1..255 is an exit status, so whoever raises one prints first). Acceptance: each site writes the one line through LDIE-LINE (a line with runtime parts through an emitter that writes the parts and the lr as one line) with its exit status unchanged, or is deleted with the code it guards. Depends: none. Claim: unassigned.
