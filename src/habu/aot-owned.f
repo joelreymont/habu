@@ -20,8 +20,6 @@ package AOT-FILE
 using AOT-BUF
 using AOT-WINDOW
 
-\ The file reader and this in-process transfer share the section shape, bounds,
-\ row widths, and count restoration. No second interpretation of a row lives here.
 : COPY-OWNED ( ptr u8 -- ) {: dst:ptr :}
    TBL dst SEC-N ROW-BYTES * BYTE-COPY
    SEC-N 0 ?do

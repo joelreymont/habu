@@ -1,6 +1,4 @@
-\ code.f - WCODE, the bytes and addresses Wasm code is written with, which tier 0's
-\ generator (src/habu/t0-wasm.f), the kernel routines (src/arch/wasm/link-routines.f)
-\ and the module writer (src/arch/wasm/link.f) share.
+\ code.f - WCODE, the bytes and addresses Wasm code is written with.
 
 require src/arch/wasm/profile.f
 require src/habu/layout.f

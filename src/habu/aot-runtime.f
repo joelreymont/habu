@@ -1,6 +1,5 @@
 \ aot-runtime.f - identify a complete captured runtime from its records.
-\ Both native writers use this query after importing a capture; a partial
-\ image may contain only a REPL or a fragment of the core prefix.
+\ A partial image may contain only a REPL or a fragment of the core prefix.
 require src/habu/aot-decl.f
 using AOT-BUF
 

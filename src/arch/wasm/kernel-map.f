@@ -1,6 +1,5 @@
-\ kernel-map.f - WKMAP, the map from an engine word's name to the word of
-\ src/arch/wasm/kernel-words.f that provides it in a Wasm module. The linker's
-\ reach (src/arch/wasm/link-kernel.f) reads it.
+\ kernel-map.f - WKMAP, the map from an engine word's name to the word that
+\ provides it in a Wasm module.
 
 require src/lib/string.f
 

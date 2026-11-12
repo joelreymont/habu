@@ -1,4 +1,3 @@
-\ Exact decimal conversion through its public API and the JSON reader.
 \ Run: bin/hb --load src/lib/decimal-test.f
 
 require src/lib/string.f

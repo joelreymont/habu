@@ -1,6 +1,5 @@
 \ declaration-transaction.f - the one declaration transaction's open state.
-\ Its runner is in generated-declaration-protection.f; declarations never nest
-\ (OPEN throws E-ACTIVE), so the state is one cell.
+\ Declarations never nest, so the state is one cell.
 
 package DECLARATION-TRANSACTION
 

@@ -1,5 +1,5 @@
 \ layout-buffer-seal.f — erase one-shot layout-buffer checker capabilities.
-\ Loaded after xref installs `undefine`; compiled calls retain their direct xts.
+\ Compiled calls retain their direct xts.
 
 undefine LBUF-PEND!
 undefine LBUF-PEND-CLEAR

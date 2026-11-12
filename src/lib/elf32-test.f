@@ -1,4 +1,3 @@
-\ Bounded ELF32 decoding through the native checked public interface.
 require src/lib/elf32.f
 require src/lib/test.f
 

@@ -1,4 +1,3 @@
-\ Native Habu binding for a resolved profile. NABI retains routine constructors.
 require src/compiler/target/model.f
 require src/compiler/numeric-policy.f
 require src/compiler/binding.f

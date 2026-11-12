@@ -63,7 +63,7 @@ public
 : LIVE? ( NLEASE:lease -- bool )
    SERIAL dup 0 <> swap CURRENT @ = and ;
 
-\ The last lease serial issued, which a compiler session records at its open.
+\ The last lease serial issued.
 : HISTORY ( -- n ) NEXT @ ;
 
 \ Admission precedes all compiler mutation. A refused child never installs

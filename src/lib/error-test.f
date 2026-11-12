@@ -1,5 +1,3 @@
-\ error-test.f - ERROR:CODE's rows, read back through ERROR:NAME$ and
-\ ERROR:TEXT$, and the refusals that end the process, each in a fresh hb.
 \ Run: bin/hb --load src/lib/error-test.f
 
 require src/lib/error.f
