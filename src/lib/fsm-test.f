@@ -98,7 +98,7 @@ DEFINE GETAFIX ( ptr line ) entry key
    s" " GETAFIX$ s" " T$=
    s" x" GETAFIX$ s" " T$= ;
 
-\ A NEXT word: TALLY-NEXT keeps counting until the cell reaches LIMIT.
+\ A NEXT word.
 using FSM
 ENUM tally counting counted ;ENUM
 ENUM pulse tick ;ENUM
@@ -124,8 +124,7 @@ DEFINE COUNT-UP ( ptr n ) tally pulse
    COUNT-CELL construct tally counting COUNT-UP
    COUNT-CELL @ LIMIT T= ;
 
-\ FINAL actions: each final adds its own mark to the cell, the row's action
-\ 1000; an odd cell pushes right.
+\ FINAL actions.
 using FSM
 ENUM door opening opened shut ;ENUM
 ENUM push left right ;ENUM
@@ -159,7 +158,7 @@ DEFINE SWING ( ptr n ) door push
    0 construct door shut SWUNG 100 T=
    0 construct door opened SWUNG 10 T= ;
 
-\ A throw: TURN-COUNT throws THIRD-CODE on its third call.
+\ A throw.
 using FSM
 ENUM spin turning stopped ;ENUM
 ENUM turn step ;ENUM
@@ -214,7 +213,7 @@ DEFINE JOB ( ptr n ) job work
    [: JOB-RUN ;] FAIL-CODE TTHROWSQ ;
 
 \ A total table: kick is refused by an ACTION that always throws, and every
-\ line of stuck by a NEXT that does; the cell picks the input.
+\ line of stuck by a NEXT that does.
 using FSM
 ENUM gate closed stuck opened ;ENUM
 ENUM knock tap kick wedge ;ENUM
@@ -252,8 +251,8 @@ DEFINE GATE ( ptr n ) gate knock
    [: 2 GATE-RUN ;] STUCK-CODE TTHROWSQ
    0 GATE-RUN GATE-CELL @ 10 T= ;
 
-\ A row's own inputs: arming senses the header's probe, armed only a latch,
-\ and both ENUMs carry ok; the cell counts 1 for arming and 10 for armed.
+\ A row's own inputs: arming senses the header's probe, armed only a latch, and
+\ both ENUMs carry ok.
 using FSM
 ENUM relay arming armed tripped ;ENUM
 ENUM probe ok fault ;ENUM
@@ -296,7 +295,7 @@ DEFINE LAMP ( ptr n ) lamp flick
 ;DEFINE
 ;using
 
-\ A throw from SENSE: BLIND throws SENSE-CODE on a zero cell.
+\ A throw from SENSE.
 using FSM
 TYPED-VARIABLE PEEK-CELL n
 48 constant SENSE-CODE
@@ -338,7 +337,6 @@ DEFINE PEEK ( ptr n ) tally pulse
    0 PEEK-CELL !
    [: PEEK-CELL construct tally counting PEEK-STEP 2drop ;] SENSE-CODE TTHROWSQ ;
 
-\ SRC builds texts for TEST-EVAL.
 DYNAMIC-BUFFER SRC u8
 variable SRC-LEN
 
@@ -352,8 +350,8 @@ variable SRC-LEN
 : SRC$ ( -- ptr u8 n ) 0 SRC SRC-LEN @ ;
 
 
-\ A machine that runs after a rejected table, in package FSM-OK-<n>: the
-\ next DEFINE starts from an empty buffer, so it answers 2.
+\ A machine that runs after a rejected table: the next DEFINE starts from an
+\ empty buffer, so it answers 2.
 : VALID ( n -- n )
    {: k:n :}
    0 SRC-LEN !
@@ -468,7 +466,6 @@ $100000 constant MIB
    s"  using FSM DEFINE BIG ( ptr n ) big-state big-input" SRC+ ;
 
 
-\ State k moves to state k+1 on every input; the last state is final.
 : BIG-ROW ( n -- )
    {: k:n :}
    s"  IN s" SRC+ k N+ s"  BIG-SENSE" SRC+

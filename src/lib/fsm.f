@@ -4,10 +4,18 @@
 \ unknown next state or a state with neither row fails the load in the checker.
 \ A row may name its own inputs ENUM, the one its SENSE answers, in place of
 \ the header's.
-\ The grammar and the generated words are in docs/forth.md "State machines".
 \ STORAGE CLASS. PROCESS-WIDE: the text buffers and token cells serve one
 \ DEFINE at a time, as only the main thread compiles; the buffers are released
 \ before DEFINE returns or throws, so it keeps no state after.
+\
+\ DEFINE writes a word <NAME>/<state>/<input> for each line's ACTION and
+\ <NAME>/<state> for each FINAL row's, `drop` for `-`; an ACTION of `-` on a
+\ line writes no word. Each IN row becomes a word <NAME>/<state> that runs
+\ SENSE and matches its answer: a `>state` NEXT constructs the state, then the
+\ line word runs on the context under it; any other NEXT is a word that picks
+\ one, after `dup` and the line word. <NAME>-STEP matches the state: an IN
+\ row's arm answers false, a FINAL row's arm runs its word and answers true.
+\ <NAME> calls <NAME>-STEP until it answers true.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -19,7 +27,7 @@ private
 -9660 constant E-FIRST
 -9669 constant E-LAST
 public
--9660 constant E-SYNTAX     \ a table that breaks DEFINE's grammar
+-9660 constant E-SYNTAX
 
 private
 
@@ -95,7 +103,6 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    a u ;
 
 
-\ `( <ctx> )`: CTX$ spans the tokens between the parentheses.
 : HEADER ( -- )
    TOKEN NAME-U ! NAME-A !
    TOKEN s" (" STR= 0= if E-SYNTAX throw then
@@ -109,24 +116,19 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    TOKEN STATES-U ! STATES-A !
    TOKEN INPUTS-U ! INPUTS-A ! ;
 
-\ `: <NAME>/<state> ( <ctx> -- <states> ) dup <SENSE> MATCH <inputs>`
 : ROW-HEAD ( ptr u8 n ptr u8 n ptr u8 n -- ) {: s:ptr su:n f:ptr fu:n i:ptr iu:n :}
    s" : " ROW+ NAME$ ROW+ s" /" ROW+ s su ROW+
    s"  ( " ROW+ CTX$ ROW+ s"  -- " ROW+ STATES$ ROW+
    s"  ) dup " ROW+ f fu ROW+ s"  MATCH " ROW+ i iu ROW+ s\" \n" ROW+ ;
 
-\ ` ( <ctx> -- ) <body> ;` after an action word's name: the declared effect
-\ holds every ACTION to the context alone.
+\ The declared effect holds every ACTION to the context alone.
 : ACT-BODY ( ptr u8 n -- ) {: a:ptr u:n :}
    s"  ( " ACT+ CTX$ ACT+ s"  -- ) " ACT+ a u ACT+ s\"  ;\n" ACT+ ;
 
-\ `<NAME>/<state>/<input>`, the open row's action word for one line.
 : LINE-WORD+ ( ptr u8 n -- ) {: i:ptr iu:n :}
    NAME$ ROW+ s" /" ROW+ OPEN$ ROW+ s" /" ROW+ i iu ROW+ ;
 
 
-\ `>state` constructs the state, then the line word runs on the context under
-\ it; any other NEXT is a word that picks one, after `dup` and the line word.
 : NEXT+ ( bool ptr u8 n ptr u8 n -- ) {: act:bool i:ptr iu:n x:ptr xu:n :}
    x c@ [char] > = 0= if
       act if s" dup " ROW+ i iu LINE-WORD+ s"  " ROW+ then
@@ -137,8 +139,6 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    act if s"  swap " ROW+ i iu LINE-WORD+ then ;
 
 
-\ `<input> <ACTION> <NEXT>`: the arm, after the line's action word
-\ `: <NAME>/<state>/<input> ( <ctx> -- ) <ACTION> ;` unless ACTION is `-`.
 : LINE ( ptr u8 n -- ) {: i:ptr iu:n :}
    OPERAND {: a:ptr au:n :}
    OPERAND {: x:ptr xu:n :}
@@ -153,7 +153,6 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
 : ROW-END ( -- ) s\"    ;MATCH ;\n" ROW+ ;
 
 
-\ `<inputs> )`, after a row's `(`: one name, then `)`.
 : ROW-INPUTS ( -- ptr u8 n )
    OPERAND {: i:ptr iu:n :}
    i iu s" )" STR= if E-SYNTAX throw then
@@ -161,8 +160,8 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    i iu ;
 
 
-\ Opens the state's row word and its arm in the step word; a row has at least
-\ one line, so the token after SENSE, or after `( <inputs> )`, is its first.
+\ A row has at least one line, so the token after SENSE, or after
+\ `( <inputs> )`, is its first.
 : IN-ROW ( -- )
    OPERAND {: s:ptr su:n :}
    s OPEN-A ! su OPEN-U !
@@ -179,8 +178,6 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    s\"  ENDOF\n" RUN+ ;
 
 
-\ `FINAL <state> <ACTION>`: `: <NAME>/<state> ( <ctx> -- ) <ACTION> ;`, `drop`
-\ for `-`, and the step word's arm that calls it and answers true.
 : FINAL-ROW ( -- )
    OPERAND {: s:ptr su:n :}
    OPERAND {: a:ptr au:n :}
@@ -207,8 +204,6 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
    E-SYNTAX throw ;
 
 
-\ `: <NAME>-STEP ( <ctx> <states> -- <states> bool ) MATCH <states> … ;MATCH swap ;`
-\ `: <NAME> ( <ctx> <states> -- ) begin over swap <NAME>-STEP until 2drop ;`
 : RUN-WORDS ( -- )
    s" : " ROW+ NAME$ ROW+ s" -STEP ( " ROW+ CTX$ ROW+ s"  " ROW+ STATES$ ROW+
    s"  -- " ROW+ STATES$ ROW+ s"  bool ) MATCH " ROW+ STATES$ ROW+ s\" \n" ROW+
@@ -230,7 +225,7 @@ PTR-VARIABLE OPEN-A   variable OPEN-U
 public
 
 \ DEFINE <NAME> ( <ctx> ) <states> <inputs> IN … FINAL … ;DEFINE, in the
-\ caller's open package and section; docs/forth.md "State machines".
+\ caller's open package and section.
 : DEFINE ( -- )
    [: GENERATE ;] [: RELEASE ;] finally ;
 
