@@ -14,11 +14,12 @@ package ERROR-TEST
 private
 
 -9670 s" the packaged test code" ERROR:CODE E-PACKAGED
-201 s" the first 201" ERROR:CODE E-STATUS-OLD
+201 s" the first 201" ERROR:FAULT E-STATUS-OLD
 201 s" the second 201" ERROR:CODE E-STATUS-NEW
 1 63 lshift s" the smallest test code" ERROR:CODE E-MIN
 -9681 s" the longest name" ERROR:CODE E-ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRS
 s" test/fixtures/error/again.f" included
+-9683 s" the fault test code" ERROR:FAULT E-FAULT
 -9679 constant UNDECLARED
 $4E constant DUPLICATE  \ E-DUPLICATE-DEFINITION, as constant throws it
 60000 constant TIMEOUT-MS
@@ -70,12 +71,27 @@ package PB
    [: s" test/fixtures/error/again.f" included ;] DUPLICATE TTHROWSQ ;
 
 
+: FAULT-CASE ( -- )
+   s" a code declared by FAULT is named as by CODE, and is a fault" T-LABEL
+   E-FAULT -9683 T=
+   -9683 ERROR:NAME$ s" ERROR-TEST:E-FAULT" T$=
+   -9683 ERROR:TEXT$ s" the fault test code" T$=
+   -9683 ERROR:FAULT? TTRUE ;
+
+
+: NOT-FAULT-CASE ( -- )
+   s" a code declared by CODE, or not declared, is no fault" T-LABEL
+   -9670 ERROR:FAULT? TFALSE
+   UNDECLARED ERROR:FAULT? TFALSE ;
+
+
 : STATUS-CASE ( -- )
-   s" a repeated code in 0..255 is named by its newest declaration" T-LABEL
+   s" a repeated code in 0..255 is named, and a fault or not, by its newest declaration" T-LABEL
    E-STATUS-OLD 201 T=
    E-STATUS-NEW 201 T=
    201 ERROR:NAME$ s" ERROR-TEST:E-STATUS-NEW" T$=
-   201 ERROR:TEXT$ s" the second 201" T$= ;
+   201 ERROR:TEXT$ s" the second 201" T$=
+   201 ERROR:FAULT? TFALSE ;
 
 
 \ A refusal ends the process, so each fixture runs in a fresh hb: that exit is
@@ -117,6 +133,17 @@ package PB
    [: EMPTY-RUN ;] CMD:WITH-COMMAND ;
 
 
+: FAULT-EMPTY-RUN ( CMD:command -- CMD:command )
+   s" test/fixtures/error/fault-empty.f" FIXTURE-RUN
+   CMD:ERR$ s" ERROR:FAULT: E-FAULT-EMPTY has an empty text"
+   CONTAINS? TTRUE ;
+
+
+: FAULT-EMPTY-CASE ( -- )
+   s" FAULT refuses an empty text as CODE does, naming ERROR:FAULT" T-LABEL
+   [: FAULT-EMPTY-RUN ;] CMD:WITH-COMMAND ;
+
+
 : NO-NAME-RUN ( CMD:command -- CMD:command )
    s" test/fixtures/error/no-name.f" FIXTURE-RUN
    CMD:ERR$ s" ERROR:CODE: no name after the code -9675" CONTAINS? TTRUE ;
@@ -146,9 +173,12 @@ package PB
    PART-CASE
    MAX-NAME-CASE
    AGAIN-CASE
+   FAULT-CASE
+   NOT-FAULT-CASE
    TAKEN-CASE
    TAIL-CASE
    EMPTY-CASE
+   FAULT-EMPTY-CASE
    NO-NAME-CASE
    LONG-NAME-CASE ;
 

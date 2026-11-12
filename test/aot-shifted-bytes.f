@@ -2,10 +2,10 @@
 \ cell whatever window it lies in.
 \ The first subject lays two ERROR:CODE rows whose text is the 8 address bytes
 \ of a block it allocates at load and keeps, so the builder has that address
-\ mapped wherever it lands. Each row starts aligned with a 32-byte header. The
-\ 9-byte name E-SHIFTED puts the address at row offset 41, an undeclared window
-\ that is not cell-aligned; the 8-byte name E-ALIGN8 puts it at row offset 40,
-\ an aligned undeclared window. Bytes are not an address by type, so the build
+\ mapped wherever it lands. Each row starts aligned and its header is whole
+\ cells, so the 9-byte name E-SHIFTED puts the address in an undeclared window
+\ that is not cell-aligned and the 8-byte name E-ALIGN8 puts it in an aligned
+\ undeclared window. Bytes are not an address by type, so the build
 \ succeeds and the application runs and exits 0. MAIN does not read the rows;
 \ the build keeps them all the same.
 \ The second subject stores a dictionary-record address in a declared DATA

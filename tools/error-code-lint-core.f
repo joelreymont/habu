@@ -285,14 +285,19 @@ variable JX
       1+
    repeat ;
 
-\ The name token after a claim's number: `<n> constant E-X` or
-\ `<n> s" text" ERROR:CODE E-X`; COUNT when the words after it are neither.
+: DECLARER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" ERROR:CODE" LINT-STR=CI
+   a u s" ERROR:FAULT" LINT-STR=CI or ;
+
+\ The name token after a claim's number: `<n> constant E-X`,
+\ `<n> s" text" ERROR:CODE E-X` or `<n> s" text" ERROR:FAULT E-X`; COUNT
+\ when the words after it are none of these.
 : NAME-TOKEN ( n -- n ) {: ki:n :}
    ki LINT-LEX:TOKEN s" constant" LINT-STR=CI if ki 1+ NEXT-WORD exit then
    ki LINT-LEX:LITERAL? 0= if LINT-LEX:COUNT exit then
    ki 1+ NEXT-WORD {: ci:n :}
    ci LINT-LEX:COUNT >= if LINT-LEX:COUNT exit then
-   ci LINT-LEX:TOKEN s" ERROR:CODE" LINT-STR=CI 0= if LINT-LEX:COUNT exit then
+   ci LINT-LEX:TOKEN DECLARER? 0= if LINT-LEX:COUNT exit then
    ci 1+ NEXT-WORD ;
 
 \ `E-OWNER constant E-LOCAL` is an alias, not a claim: only a numeric literal

@@ -1991,6 +1991,11 @@ backend answers alike.
   none; `LOG:CODE+` writes both after the number. `src/lib/error.f` states the
   refusals (CODE, CHECK). Codes minted in files that load before
   `src/lib/error.f` are plain constants and have no name or text.
+- **`ERROR:FAULT` declares a code as `ERROR:CODE` does and marks it a fault**,
+  a defect in the program or its environment rather than in what its caller
+  gave; `ERROR:FAULT?` answers whether the newest declaration of a code was
+  by `ERROR:FAULT`, so a program decides from the declaration, not a list,
+  which throws to report as its own failure.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
   assertions, stack-preserving outcome adapters returning the exact code. No `…
   catch drop`, no `catch 2drop`, no masking.

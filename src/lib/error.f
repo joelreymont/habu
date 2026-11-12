@@ -3,8 +3,9 @@
 \ whole block between its FIRST and LAST, minted or not (tools/error-code-lint.f);
 \ a subsystem that outgrows its block takes a second region, never renumbers.
 \ A package's block is minted in the package's file; a comment here says where.
-\ STORAGE CLASS. PROCESS-WIDE: the rows ERROR:CODE lays in data space and the
-\ persisted head cell that holds the newest one's address.
+\ STORAGE CLASS. PROCESS-WIDE: the rows ERROR:CODE and ERROR:FAULT lay in data
+\ space and the persisted head cell that holds the newest one's address. A row
+\ holds its own fault flag: only this package reads a row's layout.
 
 \ ERROR-TEXT is src/core/util.f's, which every prefix loads first.
 require src/habu/layout.f
@@ -1188,12 +1189,15 @@ create NL $0A c,
 : ROW-CODE ( ptr n -- n )  cell+ @ ;
 
 
+: ROW-FAULT? ( ptr n -- bool )  4 cells + @ 0<> ;
+
+
 : ROW-NAME$ ( ptr n -- ptr u8 n ) {: r:ptr :}
-   r 4 cells + BYTE-VIEW r 2 cells + @ ;
+   r 5 cells + BYTE-VIEW r 2 cells + @ ;
 
 
 : ROW-TEXT$ ( ptr n -- ptr u8 n ) {: r:ptr :}
-   r 4 cells + BYTE-VIEW r 2 cells + @ + r 3 cells + @ ;
+   r 5 cells + BYTE-VIEW r 2 cells + @ + r 3 cells + @ ;
 
 
 : FIND ( n -- ptr n ) {: code:n :}
@@ -1230,6 +1234,12 @@ create NL $0A c,
    s" " 70 die ;
 
 
+\ A refusal's first words: the declaring word, FAULT when the flag is set.
+: SAY-WORD ( bool -- )
+   if s" ERROR:FAULT: " SAY exit then
+   s" ERROR:CODE: " SAY ;
+
+
 : SAME-NAME? ( ptr n ptr u8 n -- bool )
    {: at:ptr name:ptr nameu:n :}
    at ROW-NAME$ {: r:ptr ru:n :}
@@ -1241,25 +1251,26 @@ create NL $0A c,
    false ;
 
 
-\ Ends the process, exit 70 and one line on fd 2, for a missing name, a name
-\ past 255 bytes, an empty text, or a code outside 0..255 another name holds.
-: CHECK ( n ptr u8 n n -- )
-   {: code:n name:ptr nameu:n textu:n :}
+\ Ends the process, exit 70 and one line on fd 2 that starts with the declaring
+\ word, for a missing name, a name past 255 bytes, an empty text, or a code
+\ outside 0..255 another name holds.
+: CHECK ( n ptr u8 n n bool -- )
+   {: code:n name:ptr nameu:n textu:n fault:bool :}
    nameu 0= if
-      s" ERROR:CODE: no name after the code " SAY code SAY-INT REFUSE
+      fault SAY-WORD s" no name after the code " SAY code SAY-INT REFUSE
    then
    nameu NAME-CAP > if
-      s" ERROR:CODE: the name " SAY name nameu SAY
+      fault SAY-WORD s" the name " SAY name nameu SAY
       s"  is longer than 255 bytes" SAY REFUSE
    then
    textu 0= if
-      s" ERROR:CODE: " SAY name nameu SAY-NAME s"  has an empty text" SAY REFUSE
+      fault SAY-WORD name nameu SAY-NAME s"  has an empty text" SAY REFUSE
    then
    code 0 < code 255 > or 0= if exit then
    code FIND {: at:ptr :}
    at NULL-PTR = if exit then
    at name nameu SAME-NAME? if exit then
-   s" ERROR:CODE: " SAY code SAY-INT s"  is " SAY at ROW-NAME$ SAY
+   fault SAY-WORD code SAY-INT s"  is " SAY at ROW-NAME$ SAY
    s" , declared again as " SAY name nameu SAY-NAME REFUSE ;
 
 
@@ -1289,8 +1300,10 @@ create NL $0A c,
    begin here NULL-PTR - 1 cells 1- and 0<> while 0 c, repeat ;
 
 
-: ROW, ( n ptr u8 n ptr u8 n -- )
-   {: code:n name:ptr nameu:n text:ptr textu:n :}
+\ A row is five cells, the previous row, the code, the qualified name's length,
+\ the text's length and the fault flag (-1 or 0), then the name and the text.
+: ROW, ( n ptr u8 n ptr u8 n bool -- )
+   {: code:n name:ptr nameu:n text:ptr textu:n fault:bool :}
    align
    PKG$ {: p:ptr pu:n :}
    here CELL-VIEW {: at:ptr :}
@@ -1299,6 +1312,7 @@ create NL $0A c,
    code ,
    pu nameu + pu 0<> if 1+ then ,
    textu ,
+   fault bool>n ,
    p pu BYTES,
    pu 0<> if s" :" BYTES, then
    name nameu BYTES,
@@ -1306,17 +1320,32 @@ create NL $0A c,
    PAD,
    at HEAD ! ;
 
+
+\ CODE's and FAULT's declaration of the name after them, the flag saying FAULT.
+: DECLARE ( n ptr u8 n bool -- )
+   {: code:n text:ptr textu:n fault:bool :}
+   parse-name {: name:ptr nameu:n :}
+   code name nameu textu fault CHECK
+   code name nameu DEFINE
+   code name nameu text textu fault ROW, ;
+
 public
 
 \ A name `constant` refuses is refused as `constant` refuses it,
 \ E-DUPLICATE-DEFINITION for one the wordlist holds.
-: CODE ( n ptr u8 n -- )
-   {: code:n text:ptr textu:n :}
-   parse-name {: name:ptr nameu:n :}
-   code name nameu textu CHECK
-   code name nameu DEFINE
-   code name nameu text textu ROW, ;
+: CODE ( n ptr u8 n -- )  false DECLARE ;
 generates: CODE ( -- n )
+
+\ Declares a code as CODE does, refusals included, and marks it a fault: a
+\ defect in the program or its environment rather than in what its caller gave.
+: FAULT ( n ptr u8 n -- )  true DECLARE ;
+generates: FAULT ( -- n )
+
+\ True when the newest declaration of a code was by FAULT; false when it was by
+\ CODE or when there is none.
+: FAULT? ( n -- bool )
+   FIND dup NULL-PTR = if drop false exit then
+   ROW-FAULT? ;
 
 \ The newest declaration's name or text for a code, empty when none.
 : NAME$ ( n -- ptr u8 n )
