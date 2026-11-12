@@ -99,6 +99,7 @@ create GT-POOL-SCRATCH-CODES GT-POOL-MAX cells allot
 create GT-POOL-REAPER-FAULTS GT-POOL-MAX cells allot
 create GT-POOL-REAPER-EXITEDS GT-POOL-MAX cells allot
 create GT-POOL-REAPER-CODES GT-POOL-MAX cells allot
+create GT-POOL-MOVEDS GT-POOL-MAX cells allot
 create GT-POOL-SOCK-ROOT-BUF PATH-CAP allot
 create GT-POOL-OUT-FDS GT-POOL-MAX cells allot
 create GT-POOL-ERR-FDS GT-POOL-MAX cells allot
@@ -112,10 +113,12 @@ create GT-POOL-RED-EXITEDS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-CODES GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SEQS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-PATH-BUF PATH-CAP allot
+create GT-POOL-RED-DIR-BUF PATH-CAP allot
 create GT-POOL-RED-SCRATCH-CODES GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-REAPER-FAULTS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-REAPER-EXITEDS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-REAPER-CODES GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-MOVEDS GT-POOL-RED-MAX cells allot
 
 TYPED-VARIABLE GT-POOL-OUT-BUFS-A ptr u8
 TYPED-VARIABLE GT-POOL-ERR-BUFS-A ptr u8
@@ -131,6 +134,7 @@ variable GT-POOL-WR-OFF
 variable GT-POOL-RED-N
 variable GT-POOL-RED-PATH-U
 variable GT-POOL-FALLBACK-U
+variable GT-POOL-RED-DIR-U
 variable GT-POOL-DEATH-RD
 variable GT-POOL-DEATH-WR
 variable GT-POOL-DEATH-MADE
@@ -343,6 +347,10 @@ GT-POOL-ABORT-BARE!
 
 : GT-POOL-REAPER-CODE-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-REAPER-CODES + ;
+
+\ How many of the slot's two captures GT-POOL-RED-KEEP moved to the red directory.
+: GT-POOL-MOVED-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-MOVEDS + ;
 
 \ The short directory this pool made for the slot's child's sockets
 \ (GT-POOL-CHILD-SOCK!).
@@ -683,6 +691,7 @@ false GT-POOL-CATCHING !
    false idx GT-POOL-REAPER-FAULT-PTR !
    false idx GT-POOL-REAPER-EXITED-PTR !
    0 idx GT-POOL-REAPER-CODE-PTR !
+   0 idx GT-POOL-MOVED-PTR !
    false idx GT-POOL-ASKED-PTR !
    0 idx GT-POOL-SEQ-PTR !
    0 idx GT-POOL-CPU-USED-PTR !
@@ -884,16 +893,19 @@ variable GT-POOL-CPU-NS
    stream 0= if idx GT-POOL-OUT-PATH-U-PTR exit then
    idx GT-POOL-ERR-PATH-U-PTR ;
 
+\ The path is copied out because the task's next temp reuses the span.
+: GT-POOL-TEMP-DIR$ ( ptr u8 n ptr u8 ptr n -- ptr u8 n )
+   {: pre:ptr preu:n buf:ptr up:ptr :}
+   up @ 0 > if buf up @ exit then
+   pre preu FS:MKTEMP-DIR {: a:ptr u:n :}
+   a buf u BYTE-COPY u up !
+   buf up @ ;
+
 \ Suite-less pool users get one capture directory so parallel runs sharing
-\ TMPDIR cannot clobber each other's capture files. Its path is copied out
-\ because the task's next temp reuses the span.
+\ TMPDIR cannot clobber each other's capture files.
 : GT-POOL-FALLBACK-ROOT$ ( -- ptr u8 n )
-   GT-POOL-FALLBACK-U @ 0 > if
-      GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ exit
-   then
-   s" hb-pool" FS:MKTEMP-DIR {: a:ptr u:n :}
-   a GT-POOL-FALLBACK-BUF u BYTE-COPY u GT-POOL-FALLBACK-U !
-   GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ ;
+   s" hb-pool" GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U
+   GT-POOL-TEMP-DIR$ ;
 
 : GT-POOL-CAPTURE-ROOT$ ( -- ptr u8 n )
    GT-ROOT-U @ 0 > if GT-ROOT exit then
@@ -1055,14 +1067,31 @@ variable GT-POOL-CPU-NS
 : GT-POOL-RED-REAPER-CODE-PTR ( n -- ptr n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-REAPER-CODES + ;
 
+: GT-POOL-RED-MOVED-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-MOVEDS + ;
+
 : GT-POOL-RED-LABEL$ ( n -- ptr u8 n ) {: i:n :}
    i GT-POOL-RED-LABEL-BUF i GT-POOL-RED-LABEL-U-PTR @ ;
 
-\ A red row keeps its capture sequence number; the report rebuilds the two
-\ capture paths from it the way GT-POOL-CAPTURE-PATH! built them, which holds
-\ while the capture root stays the same between the capture and the report.
+\ A red test's captures move here, out of the capture root the cleanup removes;
+\ nothing registers this directory for cleanup, so the logs outlive the process.
+: GT-POOL-RED-DIR$ ( -- ptr u8 n )
+   s" habu-red" GT-POOL-RED-DIR-BUF GT-POOL-RED-DIR-U
+   GT-POOL-TEMP-DIR$ ;
+
+: GT-POOL-RED-MOVE ( idx n -- ) {: idx:idx stream:n :}
+   GT-POOL-RED-DIR$
+   idx GT-POOL-SEQ-PTR @ stream GT-POOL-STREAM-SUFFIX$ GT-POOL-CAPTURE-NAME
+   GT-POOL-RED-PATH-BUF FS:JOIN-PATH {: u:n :}
+   idx stream GT-POOL-STREAM-FILE$ GT-POOL-RED-PATH-BUF u FS:RENAME-FILE
+   GT-POOL-RED-PATH-BUF idx stream GT-POOL-STREAM-PATH-BUF u BYTE-COPY
+   u idx stream GT-POOL-STREAM-PATH-U-PTR !
+   stream 1+ idx GT-POOL-MOVED-PTR ! ;
+
+\ A moved capture lies in the red directory, whose path its move memoised; an
+\ unmoved one lies in the capture root, which the cleanup removes after this.
 : GT-POOL-RED-STREAM$ ( n n -- ptr u8 n ) {: i:n stream:n :}
-   GT-POOL-CAPTURE-ROOT$
+   stream i GT-POOL-RED-MOVED-PTR @ < if GT-POOL-RED-DIR$ else GT-POOL-CAPTURE-ROOT$ then
    i GT-POOL-RED-SEQ-PTR @ stream GT-POOL-STREAM-SUFFIX$ GT-POOL-CAPTURE-NAME
    GT-POOL-RED-PATH-BUF FS:JOIN-PATH GT-POOL-RED-PATH-U !
    GT-POOL-RED-PATH-BUF GT-POOL-RED-PATH-U @ ;
@@ -1089,7 +1118,8 @@ variable GT-POOL-CPU-NS
    idx GT-POOL-REAPER-FAULT-PTR @ i GT-POOL-RED-REAPER-FAULT-PTR !
    idx GT-POOL-REAPER-EXITED-PTR @ i GT-POOL-RED-REAPER-EXITED-PTR !
    idx GT-POOL-REAPER-CODE-PTR @ i GT-POOL-RED-REAPER-CODE-PTR !
-   idx GT-POOL-SEQ-PTR @ i GT-POOL-RED-SEQ-PTR ! ;
+   idx GT-POOL-SEQ-PTR @ i GT-POOL-RED-SEQ-PTR !
+   idx GT-POOL-MOVED-PTR @ i GT-POOL-RED-MOVED-PTR ! ;
 
 : GT-POOL-RED+ ( idx -- ) {: idx:idx :}
    GT-POOL-RED-N @ GT-POOL-RED-MAX < if
@@ -1342,7 +1372,18 @@ variable GT-POOL-CPU-NS
    s" stdout-file" idx 0 GT-POOL-STREAM-FILE$ GT-POOL-LINE$
    s" stderr-file" idx 1 GT-POOL-STREAM-FILE$ GT-POOL-LINE$ ;
 
+\ A move that throws is named; the row and its RED line still name each capture
+\ where it lies. Move 0 runs first, so stream s moved iff s < the moved count.
+: GT-POOL-RED-KEEP ( idx -- ) {: idx:idx :}
+   idx [: dup 0 GT-POOL-RED-MOVE dup 1 GT-POOL-RED-MOVE ;]
+   catch {: code:n :}
+   drop
+   code 0= if exit then
+   s" test pool: captures of " type idx GT-POOL-LABEL$ type
+   s"  not kept, throw " type code FMT:.INT cr ;
+
 : GT-POOL-FAIL ( idx -- ) {: idx :}
+   idx GT-POOL-RED-KEEP
    idx GT-POOL-OUTPUT
    idx GT-POOL-OUTCOME-LINE
    idx GT-POOL-CAPTURE-LINES
@@ -1458,10 +1499,8 @@ variable GT-POOL-CPU-NS
       GT-POOL-STEP
    repeat ;
 
-\ The report is on stdout before the tree goes; the die ends the process, so
-\ the cleanup has to run in front of it or the pool root outlives every red
-\ run. The fallback root goes last for the same reason the report goes first:
-\ the red lines rebuild their capture paths under it.
+\ The die ends the process, so the cleanup runs in front of it or the pool root
+\ outlives every red run.
 : GT-POOL-RED-DIE ( -- )
    GT-POOL-RED-REPORT
    GT-POOL-CLEANUP
