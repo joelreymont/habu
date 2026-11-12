@@ -1,5 +1,15 @@
 \ equal.f - VALUE=, whether two JSON texts hold the same value. A file of
 \ package JSON (src/lib/json.f).
+\
+\ Two numbers are equal when their values are, decided on the lexemes the
+\ reader admitted, with no conversion to binary64: a nonzero value is the sign,
+\ the significant digits d1..dn (the integer and fraction digits from the first
+\ nonzero through the last nonzero) and the point exponent x of
+\ 0.d1..dn * 10^x. Every zero has no significant digits and equals every other.
+\
+\ VALUE= compares text a with text b in two passes: an index pass reads b once
+\ into rows; the walk then reads a once against them, and reads again only each
+\ string of b it compares.
 
 require src/lib/memory.f
 require src/lib/span.f
@@ -15,13 +25,8 @@ private
 
 
 \ ---- numbers by value -----------------------------------------------------
-\ Two numbers are equal when their values are, decided on the lexemes SCAN-NUMBER
-\ admitted, with no conversion to binary64: a nonzero value is the sign, the
-\ significant digits d1..dn (the integer and fraction digits from the first
-\ nonzero through the last nonzero) and the point exponent x of
-\ 0.d1..dn * 10^x. Every zero has no significant digits and equals every other.
 
-MEM-MAX-N negate 1- constant LEAST-N         \ the least signed cell
+MEM-MAX-N negate 1- constant LEAST-N
 MEM-MAX-N 10 / constant EXP-CUT              \ m * 10 stays a cell for m >= -EXP-CUT
 MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-CUT
 
@@ -86,7 +91,6 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    negate ;
 
 
-\ x + e, or E-JSON-READ-NUMBER when a signed cell cannot hold the sum.
 : EXP+ ( n n -- n )
    {: x:n e:n :}
    e 0 > if x MEM-MAX-N e - > if E-JSON-READ-NUMBER throw then then
@@ -135,8 +139,7 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    c@ MINUS = ;
 
 
-\ Whether two number lexemes have the same value; an exponent past a signed
-\ cell in either throws, as POINT-EXP does.
+\ An exponent past a signed cell in either throws, as POINT-EXP does.
 : NUMBER= ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
    a u POINT-EXP  b v POINT-EXP {: xa:n xb:n :}
@@ -149,8 +152,6 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
 
 
 \ ---- the walk --------------------------------------------------------------
-\ An index pass reads b once into rows; the walk then reads a once against
-\ them, and reads again only each string of b it compares.
 
 : SAME-KIND? ( n n -- bool )
    {: ka:n kb:n :}
@@ -280,7 +281,6 @@ CAST: >WALK ( ptr n -- ptr walk )
    w ;
 
 
-\ Releases every record's stack, then the scratch.
 : WALK-FREE ( SPAN:span<u8> -- )
    {: scratch :}
    scratch SPAN:$ drop CELL-VIEW >WALK {: w:ptr :}
@@ -305,7 +305,6 @@ CAST: >WALK ( ptr n -- ptr walk )
    w WALK-KEYS @ row ROW-KEY-AT @ +  row ROW-KEY-LEN @ ;
 
 
-\ Whether member row p sorts before member row q: a lower parent row first, then by key.
 : MEMBER< ( ptr walk n n -- bool )
    {: w:ptr p:n q:n :}
    w p ROW ROW-PARENT @  w q ROW ROW-PARENT @ {: pp:n qp:n :}
@@ -322,7 +321,6 @@ CAST: >WALK ( ptr n -- ptr walk )
    w  src j LIST-CELL @  src i LIST-CELL @  MEMBER< 0= ;
 
 
-\ Moves the next member of the runs i..mid and j..hi of src to place k of dst.
 : MERGE-STEP ( n n ptr walk ptr u8 ptr u8 n n n -- n n )
    {: i:n j:n w:ptr src:ptr dst:ptr mid:n hi:n k:n :}
    w src i j mid hi LEFT-NEXT? if
@@ -338,7 +336,6 @@ CAST: >WALK ( ptr n -- ptr walk )
    2drop ;
 
 
-\ Merges src's n members, in runs of width, into dst.
 : MERGE-PASS ( ptr walk ptr u8 ptr u8 n n -- )
    {: w:ptr src:ptr dst:ptr n:n width:n :}
    n 0 ?do
@@ -346,7 +343,6 @@ CAST: >WALK ( ptr n -- ptr walk )
    width 2 * +loop ;
 
 
-\ Merges the list's runs of width into spare, which becomes the list.
 : SORT-ROUND ( ptr walk n -- )
    {: w:ptr width:n :}
    w WALK-MEMBERS @  w WALK-SPARE @ {: src:ptr dst:ptr :}
@@ -364,7 +360,6 @@ CAST: >WALK ( ptr n -- ptr walk )
    obj ;
 
 
-\ Sorts the list by MEMBER<, then stores each object's first place in it.
 : SORT-MEMBERS ( ptr walk -- )
    {: w:ptr :}
    1 begin dup w WALK-MEMBER-N @ < while w over SORT-ROUND 2 * repeat drop
@@ -404,7 +399,6 @@ CAST: >WALK ( ptr n -- ptr walk )
    at len + w WALK-KEY-USED ! ;
 
 
-\ Appends member row r to the list; a repeat is entered like any member (see FIND-MEMBER).
 : ADD-MEMBER ( ptr walk n -- )
    {: w:ptr r:n :}
    w WALK-MEMBER-N @ {: at:n :}
@@ -509,8 +503,6 @@ CAST: >WALK ( ptr n -- ptr walk )
    w WALK-S w WALK-BUF @ n MATCH-INNER ;
 
 
-\ Compares a's value due with row due: a scalar whole, a container by opening
-\ its frame.
 : ENTER ( ptr walk -- n )
    {: w:ptr :}
    w WALK-DUE @ {: r:n :}
@@ -525,14 +517,12 @@ CAST: >WALK ( ptr n -- ptr walk )
    {: w:ptr f:ptr :}
    f FRAME-COUNT @  w  f FRAME-ROW @  ROW ROW-COUNT @  = ;
 
-\ At a's close, the frame closes equal only when every child of b's matched.
 : CLOSE-ON ( ptr walk ptr frame -- n )
    {: w:ptr f:ptr :}
    w f ALL-MATCHED? 0= if W-DIFFERENT exit then
    w CLOSE-FRAME W-ON ;
 
 
-\ a's next element compares with the row due, or both arrays close.
 : NEXT-ELEMENT ( ptr walk -- n )
    {: w:ptr :}
    w TOP {: f:ptr :}
@@ -545,8 +535,7 @@ CAST: >WALK ( ptr n -- ptr walk )
    W-VALUE ;
 
 
-\ a's next key, found among the members of b's object, makes its value due on
-\ both sides; a key whose member has matched already is a repeat in a.
+\ A key whose member has matched already is a repeat in a.
 : NEXT-MEMBER ( ptr walk -- n )
    {: w:ptr :}
    w TOP {: f:ptr :}
