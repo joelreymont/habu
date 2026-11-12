@@ -1869,9 +1869,10 @@ private
    done X64CODE:LBL, ;
 
 \ c2-invoke ( body cleanup finish -- ): habu1.f BC2-INVOKE's twin. Frame:
-\ [0] cleanup | [CELL] finisher | [2*CELL] code | [3*CELL] halt. A halt is
-\ taken and resumed as FINALLY, does, one begun inside the cleanup included,
-\ and the finisher runs with the cell clear.
+\ [0] cleanup | [CELL] finisher | [2*CELL] code | [3*CELL] halt. The cleanup's
+\ nonzero code replaces the body's only when that is 0. A halt is taken and
+\ resumed as FINALLY, does, one begun inside the cleanup included, and the
+\ finisher runs with the cell clear.
 : C2-INVOKE, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: clean:label calm:label throw:label done:label :}
    RAX POP,
@@ -1884,7 +1885,9 @@ private
    RCX ZERO-REG,  RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,
    RAX RSP 0 MOV-LOAD,  RAX PUSH,  CAUGHT-HELD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E clean JCC,
-   RAX RSP 2 CELL * MOV-STORE,
+   RCX RSP 2 CELL * MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE clean JCC,
+   RAX RSP 2 CELL * MOV-STORE,                   \ the body's code was 0
    clean X64CODE:LBL,
    RCX DATA-REG HALT-UNWIND-CELL MOV-LOAD,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E calm JCC,

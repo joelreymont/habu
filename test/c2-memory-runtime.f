@@ -19,8 +19,10 @@ TRUSTED: GROW-ROW ( n -- n n )
 TRUSTED: SHRINK-ROW ( n n -- n )
    [: + ;] [: ;] [: drop ;] c2-invoke ;
 
-TRUSTED: CLEANUP-WINS ( -- )
+TRUSTED: BODY-FIRST ( -- )
    [: -9365 throw ;] [: -9366 throw ;] [: drop ;] c2-invoke ;
+
+TRUSTED: CLEANUP-ONLY ( -- ) [: ;] [: -9366 throw ;] [: drop ;] c2-invoke ;
 
 public
 : RUN ( -- )
@@ -31,8 +33,10 @@ public
    777 91 GROW-ROW 92 T= 91 T= 777 T=
    s" scoped invocation preserves a shrinking result row" T-LABEL
    888 17 25 SHRINK-ROW 42 T= 888 T=
-   s" cleanup failure supersedes callback failure" T-LABEL
-   [: CLEANUP-WINS ;] catch -9366 T=
+   s" the body's failure passes before the cleanup's" T-LABEL
+   [: BODY-FIRST ;] catch -9365 T=
+   s" a cleanup's failure passes when the body returned" T-LABEL
+   [: CLEANUP-ONLY ;] catch -9366 T=
    T-REPORT
    s" c2-memory-runtime: ok" type cr ;
 ;package

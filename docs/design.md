@@ -372,8 +372,8 @@ lifetime. forth.md "Owners and views" has the rules for writing owner code.
 **Cleanup state lives outside the stack.** The owner scope keeps authoritative
 cleanup state outside cells `catch` may restore as stale. A callback that
 throws ends its loans and disposes its owner exactly once. `finally`
-precedence holds: successful cleanup keeps the body's failure, a cleanup
-failure supersedes it. A catch outside the scope cannot recover a view into
+precedence holds: the body's failure passes first, a cleanup's only when the
+body has none. A catch outside the scope cannot recover a view into
 the disposed owner from restored cells, and a caught failure inside the scope
 does not recreate consumed authority. Scope end discharges loans held in stale
 cells without reading them; those cells may only be discarded.

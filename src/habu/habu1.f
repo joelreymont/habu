@@ -4007,9 +4007,10 @@ private
 \ c2-invoke ( body cleanup finish -- ): both calls have independent handlers.
 \ The finisher sees the selected code while the body's result row is still live;
 \ a nonzero code is rethrown before compiled code reloads that row.
-\ Frame: [0] cleanup | [8] finisher | [16] code | [24] halt. A halt is taken and
-\ resumed as BFINALLY does, one begun inside the cleanup included, and the
-\ finisher runs with the cell clear.
+\ Frame: [0] cleanup | [8] finisher | [16] code | [24] halt. The cleanup's nonzero
+\ code goes to [16] only when [16] is 0. A halt is taken and resumed as BFINALLY
+\ does, one begun inside the cleanup included, and the finisher runs with the
+\ cell clear.
 : BC2-INVOKE ( -- )
    LBL LBL {: calm:label throw:label :}
    LBL C2-INVOKE-DONE !
@@ -4022,7 +4023,7 @@ private
    10 DATA HALT-UNWIND-CELL LDR,  10 SP 24 STR,
    10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
    9 SP 0 LDR,  9 G-PUSH  BCATCH-HELD
-   9 C2-INVOKE-CLEAN LABEL@ CBZ,
+   9 C2-INVOKE-CLEAN LABEL@ CBZ,  10 SP 16 LDR,  10 C2-INVOKE-CLEAN LABEL@ CBNZ,
    9 SP 16 STR,
    C2-INVOKE-CLEAN LABEL@ LBL,
    10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
