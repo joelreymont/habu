@@ -1,19 +1,19 @@
 \ arm64-link-data.f - LINKER's link of a stripped build's DATA. Inside one
-\ build, after the start-up and the kernel the tree's kernel object holds
-\ (HB-BUILD-CORE:KERNEL-BUILD), LINK-STRIPPED roots the closure at
-\ the entry and at each xt cell's value in the data the entry reaches, here all
-\ the build body's, and appends a copy of the space as its non-zero runs and
-\ the DATA list after the routine band: an xt cell's copy holds its routine's
-\ link address and is listed, a quotation's included; a scratch cell's copy is 0
-\ and a DATA pointer's DATA-VA plus its target's offset, neither listed; a plain
-\ cell's is its bytes; a placed data address site gives DATA-VA plus the
-\ variable's offset, and a variable reached only by data addresses is not
-\ placed. The header's DP and its bounds are the build's at DATA-VA; its heap
-\ start, namespace marker and signal fd pointer are hb's own; its code cells are
-\ listed once, and the entry a build stores with xt! into APP-ENTRY:XT-CELL
-\ holds its link address. Every listed cell holds an address in the product's
-\ code. A second link gives the same bytes. One process: the boundary under test
-\ is in-process; only the refusals run in children.
+\ build, after the start-up and the kernel the tree's kernel object holds,
+\ LINK-STRIPPED roots the closure at the entry and at each xt cell's value in
+\ the data the entry reaches, here all the build body's, and appends a copy of
+\ the space as its non-zero runs and the DATA list after the routine band: an xt
+\ cell's copy holds its routine's link address and is listed, a quotation's
+\ included; a scratch cell's copy is 0 and a DATA pointer's DATA-VA plus its
+\ target's offset, neither listed; a plain cell's is its bytes; a placed data
+\ address site gives DATA-VA plus the variable's offset, and a variable reached
+\ only by data addresses is not placed. The header's DP and its bounds are the
+\ build's at DATA-VA; its heap start, namespace marker and signal fd pointer are
+\ hb's own; its code cells are listed once, and the entry a build stores with
+\ xt! into APP-ENTRY:XT-CELL holds its link address. Every listed cell holds an
+\ address in the product's code. A second link gives the same bytes. One
+\ process: the boundary under test is in-process; only the refusals
+\ run in children.
 \ Fixture words are LD- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
@@ -66,7 +66,6 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 
 : HOST-NAMED ( ptr u8 n -- n ) XREF-FIND-INDEX XREF-REC XREF-START ;
 
-\ The shadow emission of the word named a u.
 : EMISSION-NAMED ( ptr u8 n -- n )
    HOST-NAMED REC-AT {: r:n :}
    r 0< if s" arm64-link-data: a fixture word has no shadow record" 1 die then
@@ -112,8 +111,6 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    s" LD-Q" LISTED-NAMED? TTRUE ;
 
 
-\ The entry store APP-ENTRY:XT! makes; ROUTE-HEADER sends it to the
-\ space's header.
 : STORE-ENTRY ( -- )
    s" LD-LEAF" HOST-NAMED ENTRY-XT  data-base APP-ENTRY:XT-CELL + xt! ;
 
@@ -130,8 +127,7 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    s" LD-P" LISTED-NAMED? TFALSE ;
 
 
-\ The value of emission e's first data address chain in its placed copy, read
-\ as test/compiler/arm64-place.f DATA-BAD reads it.
+\ The value of emission e's first data address chain in its placed copy.
 : DATA-CHAIN ( n -- n )
    {: e:n :}
    A64ICODE:CODE e OFFSET@ + {: band:ptr :}
@@ -217,21 +213,17 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    SECOND-CASE ;
 
 
-\ Labels what of case name's child.
 : CHILD-LABEL ( ptr u8 n ptr u8 n -- )
    {: name:ptr name-n:n what:ptr what-n:n :}
    SB-RESET  s" refusal, " SB-APPEND  name name-n SB-APPEND
    s" : " SB-APPEND  what what-n SB-APPEND  SB$ T-LABEL ;
 
-\ Runs case name's child and gives its exit code.
 : CHILD-RC ( CMD:command ptr u8 n -- CMD:command n )
    {: name:ptr name-n:n :}
    s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
    s" --" CMD:ARG+  name name-n CMD:ARG+  HB-BUILD-CORE:KERNEL$ CMD:ARG+
    ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
-\ Case name's child prints its arming line, then on stderr names pre and v
-\ and err, and exits 74.
 : BAD-RUN ( CMD:command ptr u8 n ptr u8 n n ptr u8 n -- CMD:command )
    {: name:ptr name-n:n pre:ptr pre-n:n v:n err:ptr err-n:n :}
    name name-n CHILD-RC {: rc:n :}
@@ -267,8 +259,7 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    CMD:ERR$ s" link: a stripped program reaches a word it cannot run" CONTAINS? TTRUE
    s" eval" s" the child exits 74" CHILD-LABEL  rc 74 T= ;
 
-\ Each refusal dies, so each runs in its own child process:
-\ test/compiler/arm64-link-data-bad.f.
+\ Each refusal dies, so each runs in its own child process.
 : REFUSAL-CASE ( -- )
    [: BAD-DATA ;] CMD:WITH-COMMAND
    [: BAD-HEADER ;] CMD:WITH-COMMAND
