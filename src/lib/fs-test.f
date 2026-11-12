@@ -1,5 +1,8 @@
 \ fs-test.f - focused tests for checked stdlib filesystem helpers.
-\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/fs-test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f
+\   src/lib/fs.f src/lib/fs-mutate.f src/lib/fs-test.f
+\ bin/hb is this tree's engine (docs/bootstrap.md): an engine carries fs.f and
+\ fs-mutate.f, so --load under another engine keeps that engine's FS.
 \ The FIFO rows require mkfifo and cat on PATH.
 
 require src/lib/error.f
@@ -71,6 +74,7 @@ variable FS-TEST-DEEP-CUR-U
 variable FS-TEST-IO-U
 variable FS-TEST-BIG-U
 variable FS-TEST-EMPTY-U
+variable FS-TEST-RANGE-U
 variable FS-TEST-CAP-U
 variable FS-TEST-CAP-ROOT-U
 variable FS-TEST-CAP-SEEN
@@ -98,6 +102,7 @@ create FS-TEST-DEEP-CUR-BUF PATH-CAP allot
 create FS-TEST-IO-BUF PATH-CAP allot
 create FS-TEST-BIG-BUF PATH-CAP allot
 create FS-TEST-EMPTY-BUF PATH-CAP allot
+create FS-TEST-RANGE-BUF PATH-CAP allot
 create FS-TEST-LONG PATH-CAP 1 + allot
 create FS-TEST-CAP-PATH PATH-CAP 1 + allot
 create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
@@ -193,6 +198,9 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 : FS-TEST-EMPTY-PATH ( -- ptr u8 n )
    FS-TEST-EMPTY-BUF FS-TEST-EMPTY-U @ ;
 
+: FS-TEST-RANGE-PATH ( -- ptr u8 n )
+   FS-TEST-RANGE-BUF FS-TEST-RANGE-U @ ;
+
 : FS-TEST-BASE! ( -- )
    s" habu-fs" FS:MKTEMP-DIR {: a:ptr u :}
    a u FS-TEST-BASE-BUF FS-TEST-BASE-U FS-TEST-COPY! ;
@@ -212,7 +220,8 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-BASE s" deep" FS-TEST-DEEP-BUF FS-TEST-DEEP-U FS-TEST-PATH!
    FS-TEST-BASE s" io.txt" FS-TEST-IO-BUF FS-TEST-IO-U FS-TEST-PATH!
    FS-TEST-BASE s" big.txt" FS-TEST-BIG-BUF FS-TEST-BIG-U FS-TEST-PATH!
-   FS-TEST-BASE s" empty.txt" FS-TEST-EMPTY-BUF FS-TEST-EMPTY-U FS-TEST-PATH! ;
+   FS-TEST-BASE s" empty.txt" FS-TEST-EMPTY-BUF FS-TEST-EMPTY-U FS-TEST-PATH!
+   FS-TEST-BASE s" range.txt" FS-TEST-RANGE-BUF FS-TEST-RANGE-U FS-TEST-PATH! ;
 
 : FS-TEST-MAKE-REGISTERED-DIR ( ptr u8 n -- )
    2dup FS:MAKE-DIR FS:CLEANUP-DIR+ ;
@@ -294,6 +303,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-EMPTY-PATH s" " FS:WRITE-ALL
    FS-TEST-EMPTY-PATH FS:CLEANUP+
    FS-TEST-IO-PATH FS:CLEANUP+
+   FS-TEST-RANGE-PATH FS:CLEANUP+
    FS-TEST-MAKE-DEEP ;
 
 : FS-TEST-PATH-TOO-LONG ( -- )
@@ -818,6 +828,30 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    [: FS-TEST-WALK-NEST-THROW ;] E-A-BOUNDS TTHROWSQ
    FS-TEST-FREE-FD inner FS-TEST= ;
 
+\ FS:READ-AT over a file of ten known bytes: a range inside it and a range
+\ ending at its last byte read those bytes; one byte past the end is E-FS-IO
+\ with no cause and gives its descriptor back; a negative length or offset is
+\ E-FS-CAPACITY, len 0 at the end succeeds, and a missing path is E-FS-OPEN.
+: FS-TEST-READ-AT ( -- )
+   T-RESET
+   FS-TEST-RANGE-PATH s" 0123456789" FS:WRITE-ALL
+   FS-TEST-RANGE-PATH 3 FS-TEST-READ-BUF 4 FS:READ-AT
+   FS-TEST-READ-BUF 4 s" 3456" FS-TEST$=
+   FS-TEST-RANGE-PATH 6 FS-TEST-READ-BUF 4 FS:READ-AT
+   FS-TEST-READ-BUF 4 s" 6789" FS-TEST$=
+   FS-TEST-FREE-FD {: before:n :}
+   [: FS-TEST-RANGE-PATH 7 FS-TEST-READ-BUF 4 FS:READ-AT ;] E-FS-IO TTHROWSQ
+   FS:ERRNO 0 FS-TEST=
+   FS-TEST-FREE-FD before FS-TEST=
+   [: FS-TEST-RANGE-PATH 0 FS-TEST-READ-BUF -1 FS:READ-AT ;]
+   E-FS-CAPACITY TTHROWSQ
+   [: FS-TEST-RANGE-PATH -1 FS-TEST-READ-BUF 1 FS:READ-AT ;]
+   E-FS-CAPACITY TTHROWSQ
+   FS-TEST-RANGE-PATH 10 FS-TEST-READ-BUF 0 FS:READ-AT
+   [: s" no-such-habu-fs-read-at-file" 0 FS-TEST-READ-BUF 1 FS:READ-AT ;]
+   E-FS-OPEN TTHROWSQ
+   T-FAILURES 0 FS-TEST= ;
+
 
 : FS-TEST-RACED-REFUSAL ( -- )
    FS-TEST-BASE s" race-link" FS-TEST-RACE-LIVE-BUF FS-TEST-RACE-LIVE-U FS-TEST-PATH!
@@ -1014,6 +1048,7 @@ public
    FS-TEST-WALK-PARALLEL
    FS-TEST-WALK-THROW-CLOSES
    FS-TEST-IO
+   FS-TEST-READ-AT
    FS-TEST-PARALLEL
    FS-TEST-RACED-REFUSAL
    FS-TEST-FIFO:RUN

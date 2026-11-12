@@ -1,9 +1,9 @@
 \ fs.f - checked filesystem helpers.
 \ STORAGE CLASS. TASK-LOCAL: the per-call slots, the FS cause, PATHZ-BUF,
 \ STAT-BUF, the read probe and ERRNO$'s text are the FS-ABI band of the
-\ per-task DATA region. The data buffers READ-ALL and WRITE-ALL take are
-\ CALLER-OWNED. Each walk maps a context of its own for one call and releases
-\ it on return or throw.
+\ per-task DATA region. Every data buffer an FS word takes is CALLER-OWNED.
+\ Each walk maps a context of its own for one call and releases it on return
+\ or throw.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -85,6 +85,16 @@ PROCESS-SYMBOLS
 FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 )
    1 STAT-CAP WRITES-BYTES
 ;FUNCTION
+
+\ pread(fd, buf, count, offset), answering ssize_t: bytes read, 0 at end of
+\ file, or -1 with errno set.
+FUNCTION: PREAD-CALL pread ( n ptr u8 n n -- n )
+   1 2 WRITES-ARG
+;FUNCTION
+
+\ The most one pread asks: macOS answers EINVAL to a count above INT_MAX, so a
+\ longer range is read over several calls.
+$7FFFFFFF constant PREAD-MAX
 
 \ XSI strerror_r is `strerror_r` on macOS and `__xpg_strerror_r` on glibc,
 \ whose `strerror_r` is the GNU form answering a pointer. Declaring the other
@@ -540,6 +550,46 @@ public
    got cap = if READ-MORE? if IO-FD @ close E-FS-CAPACITY throw then then
    IO-FD @ close
    got ;
+
+private
+\ Close file, then throw E-FS-IO with cause as this task's FS:ERRNO.
+: PREAD-FAIL ( n n -- )
+   {: file cause :}
+   file close
+   E-FS-IO cause CAUSE-FAIL ;
+
+\ One pread of at most PREAD-MAX bytes of the rest of dst[0,len) into dst+done,
+\ from off+done; answers done grown by the bytes it read. A failed pread is
+\ E-FS-IO with its errno; an end of file before len, or an answer past the
+\ count asked, is E-FS-IO with no cause. Each throw closes file first.
+: PREAD-STEP ( n n n ptr u8 n -- n )
+   {: done file off dst:ptr len :}
+   len done - PREAD-MAX min {: want :}
+   file dst done + want off done + PREAD-CALL {: got :}
+   got 0 < if file FFI:ERRNO PREAD-FAIL then
+   got 0= got want > or if file 0 PREAD-FAIL then
+   done got + ;
+
+: PREAD-FILL ( n n ptr u8 n -- )
+   {: file off dst:ptr len :}
+   0 begin dup len < while file off dst len PREAD-STEP repeat drop ;
+
+public
+\ Read exactly len bytes of the file at the path, from byte offset off, into
+\ dst, which holds at least len. The open is READ-ALL's: a failed one is
+\ E-FS-OPEN. pread reads on until len bytes are in dst; an end of file
+\ before then is E-FS-IO with no cause, a failed pread E-FS-IO with its
+\ errno. A negative off or len is E-FS-CAPACITY with no cause; a len of 0
+\ reads nothing once the open succeeds. The descriptor is closed on every
+\ path. Its state is locals and the task's path buffer, so tasks may call it
+\ at once.
+: READ-AT ( ptr u8 n n ptr u8 n -- )
+   {: pa:ptr pu off dst:ptr len :}
+   off 0 < len 0 < or if CAUSE-CLEAR E-FS-CAPACITY throw then
+   pa pu >PATHZ open-rd {: file :}
+   file 0 < if E-FS-OPEN throw then
+   file off dst len PREAD-FILL
+   file close ;
 
 private
 \ The size field of libc's struct stat.
