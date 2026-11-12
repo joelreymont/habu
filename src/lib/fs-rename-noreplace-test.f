@@ -1,6 +1,7 @@
 \ fs-rename-noreplace-test.f - FS:ATOMIC-CREATE-PRIVATE claims only a free name:
 \ a taken one, a live link's target or a directory answers false untouched, a
-\ dangling link is E-FS-STAT, and of two racing claims exactly one wins.
+\ dangling link is E-FS-STAT, of two racing claims exactly one wins, and a
+\ sibling left after the publish is E-FS-IO with the destination written.
 \ Run: hb --load src/lib/fs-rename-noreplace-test.f
 
 require src/lib/test.f
@@ -8,18 +9,20 @@ require src/lib/string.f
 require src/lib/fs-mutate.f
 require src/lib/fs-list.f
 require src/lib/task.f
+require src/lib/process-argv.f
 require src/lib/test/wait.f
 
 package FS-NOREPLACE-TEST
 
 create ROOT PATH-CAP allot
 variable ROOT-U
-create PATHS 4 PATH-CAP * allot
+create PATHS 5 PATH-CAP * allot
 create TEXT 64 allot
 variable RACE-DEST-U
 variable RACE-READY
 variable ENTRIES
 variable SIBLINGS
+TYPED-VARIABLE ACL-ON bool
 5000000000 constant RACE-WAIT-NS
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
@@ -31,6 +34,8 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 : TARGET ( -- ptr u8 n ) 0 s" target" PATH ;
 : DEST ( -- ptr u8 n ) 1 s" dest" PATH ;
 : RACE-DEST ( -- ptr u8 n ) PATHS 3 PATH-CAP * + RACE-DEST-U @ ;
+: DENIED ( -- ptr u8 n ) 2 s" denied" PATH ;
+: DENIED-DEST ( -- ptr u8 n ) 4 s" denied/dest" PATH ;
 
 : CONTENT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu expected:ptr expectedu :}
    path pathu TEXT 64 FS:READ-ALL {: got :}
@@ -123,14 +128,50 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    ENTRIES @ 1 T=
    RACE-DEST FS:REMOVE-FILE ;
 
+: CHMOD-RUN ( -- )
+   s" /bin/chmod" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
+   MATCH result
+      ok OF 0<> if E-FS-IO throw then ENDOF
+      err OF drop E-FS-IO throw ENDOF
+   ;MATCH ;
+
+: ACL-ADD ( -- )
+   PROC-ARGV-RESET
+   s" +a" >LEN PROC-ARGV+
+   s" everyone deny delete,file_inherit" >LEN PROC-ARGV+
+   DENIED >LEN PROC-ARGV+
+   CHMOD-RUN ;
+
+: ACL-CLEAR ( -- )
+   ACL-ON @ 0= if exit then
+   PROC-ARGV-RESET
+   s" -R" >LEN PROC-ARGV+
+   s" -N" >LEN PROC-ARGV+
+   DENIED >LEN PROC-ARGV+
+   CHMOD-RUN
+   false ACL-ON ! ;
+
+\ On macOS the sibling inherits DENIED's ACL, which permits its link to dest
+\ but denies its unlink.
+: UNLINK-ERROR ( -- )
+   HB-TARGET-MACOS? 0= if exit then
+   DENIED FS:MAKE-DIR
+   true ACL-ON !
+   ACL-ADD
+   [: DENIED-DEST CLAIM drop ;] E-FS-IO TTHROWSQ
+   FS:ERRNO FS:EACCES T=
+   DENIED-DEST FS:FILE? TTRUE
+   DENIED-DEST s" new bytes" CONTENT ;
+
 : CHECKS ( -- )
-   PUBLISH EXISTING-FILE LIVE-LINK DANGLING-LINK EXISTING-DIR RACE ;
+   PUBLISH EXISTING-FILE LIVE-LINK DANGLING-LINK EXISTING-DIR RACE UNLINK-ERROR ;
 
 : SETUP ( -- )
    s" habu-rename-noreplace" FS:MKTEMP-DIR {: path:ptr bytes :}
-   path ROOT bytes BYTE-COPY bytes ROOT-U ! ;
+   path ROOT bytes BYTE-COPY bytes ROOT-U !
+   false ACL-ON ! ;
 
-: CLEAN ( -- ) ROOT ROOT-U @ FS:REMOVE-TREE ;
+: CLEAN ( -- ) ACL-CLEAR ROOT ROOT-U @ FS:REMOVE-TREE ;
 : RUN ( -- ) T-RESET SETUP [: CHECKS ;] [: CLEAN ;] finally T-REPORT ;
 
 RUN

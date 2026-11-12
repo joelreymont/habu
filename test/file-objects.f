@@ -988,11 +988,10 @@ variable CLASS-N                        \ the class CLASS+ read
    s" F2" WHICH!  SEAL-REFUSED
    s" the build links seal-second.f" SEAL-SECOND LINKED ;
 
-\ Guards the engine's seal: squat-main.f's build, in a fresh hb as SEAL-REFUSED's, exits 84 with
-\ E-SEALED-PACKAGE naming CHECKER-RESOLVE and squat-main.f's line 4.
-: SQUAT-CASE ( CMD:command -- CMD:command )
-   s" SQ" WHICH!
-   s" test/fixtures/file-objects/squat-main.f" false BUILD-RC {: rc:n :}
+\ squat-main.f's build, in a fresh hb as SEAL-REFUSED's, as a --repl image when the flag is true:
+\ it exits 84 with E-SEALED-PACKAGE naming CHECKER-RESOLVE and squat-main.f's line 4.
+: SQUAT-REFUSED ( CMD:command bool -- CMD:command ) {: repl:bool :}
+   s" test/fixtures/file-objects/squat-main.f" repl BUILD-RC {: rc:n :}
    CMD:ERR$ s" E-SEALED-PACKAGE habu: " CONTAINS? {: classed:bool :}
    CMD:ERR$ s" 'CHECKER-RESOLVE' is sealed" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:4" CONTAINS? {: placed:bool :}
@@ -1000,6 +999,11 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build exits 84" LABEL  rc ENGINE-ERROR:SEAL-PACKAGE T=
    s" the build refuses CHECKER-RESOLVE" LABEL  named TTRUE
    s" the refusal names squat-main.f's line 4" LABEL  placed TTRUE ;
+
+\ Guards the engine's seal in a program build (SQ, stripped) and a --repl build (SQ2).
+: SQUAT-CASE ( CMD:command -- CMD:command )
+   s" SQ" WHICH!  false SQUAT-REFUSED
+   s" SQ2" WHICH!  true SQUAT-REFUSED ;
 
 
 \ The path of U's source of that name.
