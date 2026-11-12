@@ -5,7 +5,6 @@ package LAYOUT-VALID-W1-NEG
 ENUM lv-color red green ;ENUM
 1 LAYOUT-BUFFER BUF lv-color
 
-\ The forged tag needs a raw cell view of the checked buffer.
 CAST: RAW ( ptr lv-color -- ptr n )
 
 : GET ( -- lv-color )

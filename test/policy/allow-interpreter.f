@@ -1,6 +1,6 @@
 \ allow-interpreter.f - test/policy/allow.f with the loaded-bytes seam bound to
-\ the Habu interpret loop (test/interpreter-loop-on.f) before the harness
-\ seals: the sealed load is still read by the engine's loop.
+\ the Habu interpret loop before the harness seals: the sealed load is still
+\ read by the engine's loop.
 require src/lib/vocabulary.f
 require src/lib/ffi-abi.f
 require src/lib/adt/option.f

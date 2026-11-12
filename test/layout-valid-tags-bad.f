@@ -15,7 +15,6 @@ SUMTYPE lt-outer
 ;SUMTYPE
 2 LAYOUT-BUFFER BUF lt-outer
 
-\ The forged payload is a number stored through an untyped view of the buffer.
 CAST: RAW ( ptr lt-outer -- ptr n )
 
 : SET ( n n n -- )

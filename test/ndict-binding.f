@@ -43,8 +43,8 @@ s" NDB-IMMEDIATE:RETIRE-BINDING" 0 parse-imm
 package NDICT-BINDING-TEST
 using NDICT
 
-\ Test-only record identity and retired-wordlist inspection. No raw record is
-\ exported. Retirement: habu-trusted-dies-prim-4fd12d60.
+\ Test-only record identity and retired-wordlist inspection.
+\ No raw record is exported.
 TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 CAST: REF-WORD ( n -- [ -- n ] )
 : REF-VALUE ( n n -- n ) DEF-OCC:CALLABLE REF-WORD execute ;

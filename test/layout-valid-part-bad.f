@@ -11,7 +11,6 @@ public
 ENUM lv-color red green ;ENUM
 TYPED-VARIABLE SLOT lv-color
 
-\ The forged tag is a number cast to the enum.
 CAST: N>COLOR ( n -- lv-color )
 
 : GET ( ptr lv-color -- lv-color ) @ ;

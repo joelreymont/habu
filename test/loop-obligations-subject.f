@@ -18,7 +18,6 @@ ENUM choice
 PTR-VARIABLE SOURCE-A
 variable SOURCE-U
 
-\ The text loads as a closed program; a refused definition re-enters catch.
 : LOAD-SOURCE ( -- )
    SOURCE-A @ SOURCE-U @ evaluate-closed ;
 
