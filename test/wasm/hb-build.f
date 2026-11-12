@@ -4,6 +4,10 @@
 \ six that only run to status 0 share one. test/wasm/device.f runs it, as does
 \ `bin/hb --load test/wasm/hb-build.f` from the tree's root. The sources and
 \ modules stay in the printed directory.
+\
+\ A generated program fails check k by reading the byte at address k, below
+\ WPROF:CTX-BASE, which traps. In the module the six share, OUT's letters name
+\ the program a failed check ran in, and fault-addr is the check's number.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -50,7 +54,6 @@ variable MOD-U
    DIR DIR-U @ name nu SRC FS:JOIN-PATH SRC-U !
    SRC SRC-U @ text tu FS:WRITE-ALL ;
 
-\ MOD at the name in DIR, and the arguments that run hb-build.
 : START ( ptr u8 n -- )
    {: name:ptr nu:n :}
    DIR DIR-U @ name nu MOD FS:JOIN-PATH MOD-U !
@@ -88,7 +91,6 @@ variable TEXT-U
    TEXT-U @ u + CAP > if E-STR-CAPACITY throw then
    a TEXT TEXT-U @ + u BYTE-COPY  u TEXT-U +! ;
 
-\ A require of the name in DIR, at the end of TEXT.
 : REQUIRE+ ( ptr u8 n -- )
    {: name:ptr nu:n :}
    s" require " TEXT+  DIR DIR-U @ TEXT+  s" /" TEXT+  name nu TEXT+  S\" \n" TEXT+ ;
@@ -119,8 +121,7 @@ variable TEXT-U
    RAN 2 T= ;
 
 
-\ Package K at the name, its first test comparing 5 FACT with want; a failed
-\ test reads below WPROF:CTX-BASE, which traps.
+\ Package K at the name, its first test comparing 5 FACT with want.
 : K! ( n ptr u8 n -- )
    {: want:n name:ptr nu:n :}
    SB-RESET
@@ -155,8 +156,8 @@ variable TEXT-U
    WASM-HARNESS:FAULT-ADDR 8 T= ;
 
 
-\ Package D in d.f: division, max, atomics and views through words whose operands
-\ are not literals at the call; a failed test reads below WPROF:CTX-BASE.
+\ Package D in d.f: division, max, atomics and views through words whose
+\ operands are not literals at the call.
 : D! ( -- )
    SB-RESET
    S\" package D\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable CELL0\nvariable SPOT\n" SB-APPEND
@@ -264,8 +265,7 @@ variable TEXT-U
    WASM-HARNESS:OUT$ NAN-HOST$ T$= ;
 
 
-\ Package M in m.f: map-anon and munmap through words; a failed test reads below
-\ WPROF:CTX-BASE.
+\ Package M in m.f: map-anon and munmap through words.
 : M! ( -- )
    0 TEXT-U !
    S\" package M\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nCAST: >N ( ptr u8 -- n )\n" TEXT+
@@ -383,7 +383,7 @@ variable TEXT-U
 
 
 \ Package X in execute.f: execute of a named word's xt, of a quotation and of a
-\ quotation kept in a variable; a failed test reads below WPROF:CTX-BASE.
+\ quotation kept in a variable.
 : X! ( -- )
    SB-RESET
    S\" package X\nprivate\nCAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
@@ -416,8 +416,8 @@ variable TEXT-U
    WASM-HARNESS:OUT$ s" boom" T$= ;
 
 
-\ Package C in catch.f: catch, finally and the depths a caught throw restores, which
-\ LEAK and LEAK-R overflow without; a failed WANT reads below WPROF:CTX-BASE.
+\ Package C in catch.f: catch, finally and the depths a caught throw restores,
+\ which LEAK and LEAK-R overflow without.
 : CATCH! ( -- )
    SB-RESET
    S\" package C\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable DONE\n" SB-APPEND
@@ -428,7 +428,7 @@ variable TEXT-U
    S\" : LEAK ( -- ) 100000 0 do [: 10 0 do 1 throw loop ;] catch drop loop ;\n" SB-APPEND
    S\" : LEAK-R ( -- ) 100000 0 do [: 5 >r 1 throw ;] catch drop loop ;\n" SB-APPEND
    S\" : NEST ( -- n ) 0 3 0 do 4 0 do 1 + loop loop ;\n: PARK ( n -- n ) >r 1 r> + ;\n" SB-APPEND
-   \ MAIN's lines go unindented to keep the text within SB-CAP (src/lib/string.f).
+   \ MAIN's lines go unindented to keep the text within SB-CAP.
    S\" public\n: MAIN ( -- )\n" SB-APPEND
    S\" [: 7 throw ;] catch 7 1 WANT  FIVE  [: 0 throw ;] catch 109 4 WANT\n" SB-APPEND
    S\" 1 2 [: MID ;] catch 11 5 WANT  2 6 WANT  1 7 WANT\n" SB-APPEND
@@ -474,8 +474,7 @@ variable TEXT-U
    WASM-HARNESS:FAULT-ADDR WPROF:DATA-BASE T= ;
 
 
-\ Package G in grow.f: a cell row reserved, then reserved larger; a failed WANT
-\ reads below WPROF:CTX-BASE.
+\ Package G in grow.f: a cell row reserved, then reserved larger.
 : GROW! ( -- )
    SB-RESET
    S\" package G\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nDYNAMIC-BUFFER ROW n\n" SB-APPEND
@@ -490,8 +489,6 @@ variable TEXT-U
    SB$ s" grow.f" SOURCE! ;
 
 
-\ OUT's letters name the program a failed check ran in, and fault-addr is the
-\ check's number.
 : PASS-CASE ( -- )
    120 s" k.f" K!  D!  M!  X!  CATCH!  GROW!
    0 TEXT-U !
@@ -593,7 +590,6 @@ variable TEXT-U
    WASM-HARNESS:OUT$ S\" -37\n" T$= ;
 
 
-\ A fetch of an ENUM value through a pointer runs the tag check first.
 : FETCH! ( -- )
    SB-RESET
    S\" package PROBE\npublic\nENUM shade dark light grey ;ENUM\nTYPED-VARIABLE V shade\n" SB-APPEND
@@ -616,7 +612,6 @@ variable TEXT-U
 variable POS                         \ the byte offset in MODULE read next
 DYNAMIC-BUFFER MODULE u8
 
-\ The source at the name: MAIN reads a cell or a byte at the address.
 : ACCESS! ( n bool ptr u8 n -- )
    {: a:n cell:bool name:ptr nu:n :}
    SB-RESET
@@ -649,8 +644,8 @@ DYNAMIC-BUFFER MODULE u8
    1 POS +!  m u U32> drop  m u U32> drop  1 POS +!
    m u U32> PAGE-BYTES * ;
 
-\ Memory ends at the memory section's minimum pages (WLINK's PAGES), not the
-\ image; the four sources differ only in the access, so they share that end.
+\ Memory ends at the memory section's minimum pages, not the image; the four
+\ sources differ only in the access, so they share that end.
 : MEMORY-CASES ( -- )
    s" a cell at an upper-bit pointer, $100031000, fails its check and traps" T-LABEL
    $100031000 true s" upper.f" ACCESS!
