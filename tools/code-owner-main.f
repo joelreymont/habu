@@ -1,5 +1,4 @@
-\ code-owner-main.f - CLI entry for tools/code-owner.f.
-\ Run: <engine> --load tools/code-owner-main.f -- <region offset>
+\ code-owner-main.f - CLI entry.
 \ The argument is a REGION OFFSET, not an address: the region moves every boot, so
 \ an absolute address caught in one process is meaningless in this one.
 

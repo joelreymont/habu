@@ -1,5 +1,4 @@
 \ lsp.f - the Habu language server, speaking LSP on stdin and stdout.
-\ Run: bin/hb --load tools/lsp.f
 
 \ An absolute --load entry may run from a different Habu tree. For this
 \ load, the engine's baked files belong to the tree containing this entry.
