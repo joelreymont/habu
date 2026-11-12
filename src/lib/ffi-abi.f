@@ -188,8 +188,10 @@ CAST: CELL>PTR ( n -- ptr u8 )
    len 0 < if E-FFI-ARITY throw then
    len idx STACK-LEN-SLOT ! ;
 
+\ A writable span of 0 bytes is C's empty buffer: the bounded call guards
+\ nothing, as for a read-only pointer, and the callee is told it may write none.
 : WRITABLE-LEN ( n -- n ) {: len:n :}
-   len 0 <= if E-FFI-ARITY throw then
+   len 0 < if E-FFI-ARITY throw then
    len ;
 
 : DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
