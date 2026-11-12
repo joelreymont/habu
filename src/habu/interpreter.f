@@ -28,6 +28,10 @@
 \ the word's ticket and its source start, and the buffer's tokens are observed
 \ with offsets relative to its start; the frame gives all three back as it
 \ ends, with the word's run pending again.
+\
+\ A float's exact value, the integer plus the fraction's remainder, is
+\ normalized to 53 retained bits and rounded once to nearest, ties to even; the
+\ sign applies even to zero.
 
 require src/lib/prelude.f
 require src/core/bytes.f
@@ -84,8 +88,7 @@ $8000000000000000 constant MIN-N
    int limit U>  int limit = d top > and  or ;
 
 
-\ A digit takes int to int * radix + d modulo 2^64; wrapped latches the first
-\ carry out of the cell.
+\ Wrapped latches the first carry out of the cell.
 : INT-STEP ( n bool n n -- n bool ) {: int:n wrapped:bool d:n radix:n :}
    int radix * d +
    int d radix CARRIES? wrapped or ;
@@ -96,8 +99,7 @@ $8000000000000000 constant MIN-N
    hi lo ?do a i + c@ radix DIGIT drop radix INT-STEP loop ;
 
 
-\ A fraction digit takes frac to frac * 10 + d and scale to scale * 10. The
-\ fraction stays below the scale, so bounding the scale by MAX-N / 10 (18
+\ The fraction stays below the scale, so bounding the scale by MAX-N / 10 (18
 \ digits) keeps both in a signed cell; past it the latch refuses the token.
 : FRAC-STEP ( n n bool n -- n n bool ) {: frac:n scale:n wrapped:bool d:n :}
    frac 10 * d +
@@ -135,9 +137,8 @@ $8000000000000000 constant MIN-N
    int neg if negate then false true false ;
 
 
-\ Normalize the exact integer plus fractional remainder to 53 retained bits.
-\ frac < scale <= 10^18, so doubling the remainder always fits a cell.
-\ Every admitted nonzero value is at least 10^-18: none is subnormal.
+\ With frac < scale <= 10^18, doubling the remainder always fits a cell. Every
+\ admitted nonzero value is at least 10^-18: none is subnormal.
 : FLOAT-LEFT-STEP ( n n n n -- n n n n )
    {: sig:n rem:n scale:n exp:n :}
    rem 2 * {: twice:n :}
@@ -172,8 +173,6 @@ $8000000000000000 constant MIN-N
    twice denom >= if sig exp 1 twice denom <> else sig exp 0 twice 0<> then
    FLOAT-ROUND ;
 
-\ The admitted decimal magnitude is bounded before conversion. Round its
-\ exact value once to nearest, ties to even; apply the sign even to zero.
 : FLOAT-FINISH ( n n n bool bool -- n bool bool bool )
    {: int:n frac:n scale:n wrapped:bool neg:bool :}
    wrapped int MAX-N U> or if OUT-OF-RANGE exit then
@@ -466,8 +465,6 @@ TYPED-VARIABLE REC ptr n
    rec POLICY-REQUIRE? if exit then
    rec POLICY-CHECK-REC ;
 
-\ A global hit is asked of the used publics as well: one that also exports the
-\ token refuses it, and two are the lookup's ambiguity.
 : LOOKUP-GO ( -- )
    TOKEN$ FIND REC !
    REC @ POLICY-CHECK-TOP
@@ -588,7 +585,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    0 ctx SX-SUSPEND FR!
    1 ctx SX-PENDING FR! ;
 
-\ The after callback: ( unit ticket 0 ). A quotation reads no local.
+\ A quotation reads no local.
 : AFTER-RUN ( -- )
    OBSERVER {: ctx:ptr :}
    ctx SX-UNIT FR@ ctx SX-TICKET FR@ 0 ctx SX-AFTER FR@ AFTER-CALL execute ;
@@ -734,8 +731,6 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : RUN-LITERAL ( n -- )
    execute-floor FLOORED ;
 
-\ `."` types its text straight from the input and allots nothing; `.\"` keeps
-\ its decoded bytes.
 : PUSH-STR ( -- )
    [: KEEP TOP-EV-STR 0 HOOK ;] STR-LITERAL RUN-LITERAL ;
 
