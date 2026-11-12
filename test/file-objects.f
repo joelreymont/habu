@@ -37,7 +37,9 @@ package FILE-OBJECTS-TEST
 26 constant PACKAGED-BARE                \ the packaged sequence's bare.f's
 27 constant PACKAGED-BOXED               \ and boxed.f's
 28 constant CAST-A                       \ the cast sequence's a.f's
-29 constant TAILS                        \ TAIL$'s tails
+29 constant EVALUATED-LAST               \ the evaluated sequence's main.f's last part's
+30 constant OPENED-LAST                  \ and the opened sequence's
+31 constant TAILS                        \ TAIL$'s tails
 65 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -205,6 +207,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    i PACKAGED-BARE = if s" /packaged/bare.f.hfo" exit then
    i PACKAGED-BOXED = if s" /packaged/boxed.f.hfo" exit then
    i CAST-A = if s" /cast/a.f.hfo" exit then
+   i EVALUATED-LAST = if s" /evaluated/main.f+3.hfo" exit then
+   i OPENED-LAST = if s" /opened/main.f+3.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -1127,6 +1131,63 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    s\" 24\n32\n7\n11\n8\n12\n"
    s" the program prints a cold build's numbers" PRINTS-RUN ;
 
+\ The evaluated sequence's a.f: package P's private Z, and a private K when the
+\ flag is true.
+: WRITE-P ( bool -- )
+   {: own:bool :}
+   s\" package P\nprivate\n: Z ( -- n ) 0 ;\n" SRC+
+   own if s\" : K ( -- n ) 2 ;\n" SRC+ then
+   s\" ;package\n" SRC+  s" a.f" NEST-WRITE ;
+
+\ main.f spells K only inside the text DEF-G evaluates as G's body.
+: WRITE-EVALUATED ( -- )
+   L$ s" evaluated" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
+   NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" : K ( -- n ) 1 ;\n" SRC+  s" k.f" NEST-WRITE
+   s\" : DEF-G ( -- ) s\" : G ( -- n ) K ;\" evaluate-closed ;\n" SRC+
+   s" gen.f" NEST-WRITE
+   false WRITE-P
+   s" k.f" REQUIRE+  s" gen.f" REQUIRE+  s" a.f" REQUIRE+
+   s\" package P\npublic\nDEF-G\n;package\n" SRC+
+   s\" : MAIN ( -- ) P:G . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a name only an evaluated text spells: after a.f gains P's private K,
+\ EV2 compiles main.f's last part, whose G now binds it, and its program
+\ prints a cold build's 2.
+: EVALUATED-CASE ( CMD:command -- CMD:command )
+   WRITE-EVALUATED
+   s" EV" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   EVALUATED-LAST KEEP
+   true WRITE-P
+   s" EV2" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s" the build compiles main.f's last part" EVALUATED-LAST COMPILED
+   s\" 2\n" s" the program prints a cold build's number" PRINTS-RUN ;
+
+\ main.f's last part spells K in package P, which only the text OPEN-P
+\ evaluates opens.
+: WRITE-OPENED ( -- )
+   L$ s" opened" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
+   NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" : K ( -- n ) 1 ;\n" SRC+  s" k.f" NEST-WRITE
+   s\" : OPEN-P ( -- ) s\" package P\" evaluate-closed ;\n" SRC+
+   s" gen.f" NEST-WRITE
+   false WRITE-P
+   s" k.f" REQUIRE+  s" gen.f" REQUIRE+  s" a.f" REQUIRE+
+   s\" OPEN-P\npublic\n: G ( -- n ) K ;\n;package\n" SRC+
+   s\" : MAIN ( -- ) P:G . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a source name bound in a package only an evaluated text opens: after
+\ a.f gains P's private K, OP2 compiles main.f's last part, whose G now binds
+\ it, and its program prints a cold build's 2.
+: OPENED-CASE ( CMD:command -- CMD:command )
+   WRITE-OPENED
+   s" OP" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   OPENED-LAST KEEP
+   true WRITE-P
+   s" OP2" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s" the build compiles main.f's last part" OPENED-LAST COMPILED
+   s\" 2\n" s" the program prints a cold build's number" PRINTS-RUN ;
+
 \ A directory of L's of that name, holding the cast sequence's a.f: package
 \ FILE-OBJECTS-CAST's private generic cast >ELEM and its public generic AT.
 : WRITE-CAST ( ptr u8 n -- )
@@ -1190,7 +1251,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE
-      NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE CAST-CASE CROSS-CASE ;]
+      NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
+      CROSS-CASE ;]
    CMD:WITH-COMMAND ;
 
 
