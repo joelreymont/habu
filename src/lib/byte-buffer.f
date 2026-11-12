@@ -248,6 +248,12 @@ public
    at u + buf SET-LEN
    buf BUF-SPAN at u SPAN:SUB ;
 
+\ n zero on a dead header is E-BUF-CAPACITY, as INIT; a growth the OS refuses
+\ leaves a live one empty at its old capacity.
+: RESET ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
+   buf LIVE? 0= if buf n INIT exit then
+   buf CLEAR  buf n RESERVE ;
+
 \ Appends keep saved offsets valid; CLEAR and REPLACE do not. APPEND-SPAN
 \ accepts input borrowed from the buffer's own bytes: growth copies the input
 \ before releasing the old mapping.
