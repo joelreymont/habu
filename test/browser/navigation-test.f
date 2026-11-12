@@ -80,9 +80,9 @@ PATH-CAP BUFFER: FILE
    SB-RESET
    s" hello" LINE
    ROWS-WANT s\" ,\"more\":true}]" LINE
-   s" draw 2 0000" LINE
-   s" highlight 2 0100" LINE
-   s" draw 2 0100" LINE ;
+   s" mesh 7 6 2" LINE
+   s" highlight 1 01000000" LINE
+   s" draw 2 7/10/0/0 7/11/1/-" LINE ;
 
 : OUTPUT! ( ptr u8 n -- )
    {: a:ptr n:n :}
@@ -126,17 +126,28 @@ PATH-CAP BUFFER: FILE
    HOST-OPEN s" zero" TYPED+
    HOST 0 T=
    START-WANT
-   s" highlight 0" LINE
    s" draw 0" LINE
-   s" zero triangles clear safely" T-LABEL
+   s" highlight 0" LINE
+   s" zero instances clear safely" T-LABEL
+   OUT OUT-U @ SB$ T$= ;
+
+: REMESH-CASE ( -- )
+   HOST-OPEN s" remesh" TYPED+
+   HOST 0 T=
+   START-WANT
+   s" draw 0" LINE
+   s" unmesh 7" LINE
+   s" mesh 7 6 2" LINE
+   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" a mesh no row draws unmeshes and meshes again by its handle" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
 : REDRAW-CASE ( -- )
    HOST-OPEN s" redraw" TYPED+
    HOST 0 T=
    START-WANT
-   s" draw 2 0100" LINE
-   s" a camera redraw keeps the selected mask" T-LABEL
+   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" a redraw draws the held mesh with the held highlight" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
 : REJECT ( ptr u8 n ptr u8 n -- )
@@ -154,9 +165,20 @@ PATH-CAP BUFFER: FILE
    s" more" s" more must be a boolean" REJECT
    s" unsent" s" parent 1 has more" REJECT
    s" selected" s" selected tree key" REJECT
-   s" mask" s" highlight mask" REJECT
-   s" short" s" highlight count" REJECT
-   s" long" s" highlight count" REJECT ;
+   s" length" s" triangles is 68 bytes, not 67" REJECT
+   s" index" s" index 6 is not below its 6 vertices" REJECT
+   s" unheld" s" a draw of handle 9, which is not held" REJECT
+   s" unmesh" s" an unmesh of handle 9, which is not held" REJECT
+   s" offset" s" offset 0 needs 2 highlight words; the highlight has 1"
+      REJECT
+   s" handle" s" a mesh handle 4294967296 is not 1 to 4294967295" REJECT
+   s" held" s" a mesh of handle 7, which is already held" REJECT
+   s" shown" s" an unmesh of handle 7, which the last draw's rows name"
+      REJECT
+   s" short"
+      s" a highlight of 0 words, fewer than the 1 the last draw's rows need"
+      REJECT
+   s" flags" s" flags 2 set a bit other than bit 0" REJECT ;
 
 : FREED-CASES ( -- )
    s" four typed turns end with the memory one does"
@@ -175,7 +197,7 @@ public
    rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
    s" browser navigation module validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   INPUT-CASE ZERO-CASE REDRAW-CASE INVALID-CASES FREED-CASES
+   INPUT-CASE ZERO-CASE REDRAW-CASE REMESH-CASE INVALID-CASES FREED-CASES
    T-REPORT ;
 
 ;package

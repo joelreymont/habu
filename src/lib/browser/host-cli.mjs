@@ -49,9 +49,11 @@
 // line per record, a request's when the host makes it: hello, fetch <path>,
 // post <path> <length> <body in hex>, request <method> <path> <id> <length>
 // <hex>, rpc <method> <id> <params JSON>, after <ms> <token>, read <file>
-// <offset> <length>, tree <selected> <JSON>, highlight <count> <mask in hex>,
-// draw <count> <mask in hex>, svg <length> <bytes in hex>, input <0|1>, text
-// <string>. At the end, outstanding <fetch|post> <path>, outstanding request
+// <offset> <length>, tree <selected> <JSON>, mesh <handle> <V> <T>, unmesh
+// <handle>, highlight <words> <words in hex, little-endian>, draw <count>
+// then each row's <handle>/<id>/<flags>/<offset or ->, svg <length> <bytes in
+// hex>, input <0|1>, text <string>; a highlight or draw of none prints only its
+// count. At the end, outstanding <fetch|post> <path>, outstanding request
 // <method> <path> <id> or outstanding rpc <method> <id>. A --tick with no after
 // waiting, an --answer-rpc or --fail-rpc of an id no waiting rpc holds, or a
 // relay that fails or passes RELAY_MS, is a failure.
@@ -379,11 +381,26 @@ try {
       return Promise.resolve(files.get(Number(file)).subarray(Number(offset), Number(offset + length)));
     },
     error: report,
-    draw: (corners, count, matrix, mask) =>
-      print(`draw ${count}${count ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
+    mesh: (handle, vertexCount, triangleCount) =>
+      print(`mesh ${handle} ${vertexCount} ${triangleCount}`),
+    unmesh: (handle) => print(`unmesh ${handle}`),
+    draw: (rows, count) => {
+      const v = new DataView(rows.buffer, rows.byteOffset, rows.byteLength);
+      let line = `draw ${count}`;
+      for (let at = 0; at < rows.length; at += 64) {
+        const [handle, id, flags, offset] =
+          [48, 52, 56, 60].map((k) => v.getUint32(at + k, true));
+        const from = offset === 0xFFFFFFFF ? "-" : offset;
+        line += ` ${handle}/${id}/${flags}/${from}`;
+      }
+      print(line);
+    },
     tree: (rows, selected) => print(`tree ${selected} ${JSON.stringify(rows)}`),
-    highlight: (mask) =>
-      print(`highlight ${mask.length}${mask.length ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
+    highlight: (words) => {
+      const hex = Buffer.from(words.buffer, words.byteOffset,
+        words.byteLength).toString("hex");
+      print(`highlight ${words.length}${words.length ? ` ${hex}` : ""}`);
+    },
     svg: (bytes) => print(`svg ${bytes.length} ${Buffer.from(bytes).toString("hex")}`),
     input: (enabled) => print(`input ${enabled ? 1 : 0}`),
     text: (s) => print(`text ${s}`),

@@ -48,9 +48,17 @@
 // A record is 32 bytes, kind a b c:
 //   0 hello: a is the event's address
 //   1 fetch: a, b a path fetched relative to the page; outside 2xx it fails
-//   2 draw: a, b triangles of f32 x y z corners, c a column-major f32 4x4
-//     matrix to clip space (x, y in [-1, 1], z in [0, 1], 0 nearest); a draw
-//     removes a shown SVG
+//   2 draw: a, b instance rows, b rows of 64 bytes: twelve f32, a column-major
+//     3x4 transform from the mesh's u16 grid to world, then u32s: a held mesh
+//     handle, the instance's id, flags (bit 0 every face selected, the others
+//     0) and the highlight word where the instance's face bits start, or
+//     0xFFFFFFFF for none; a row's offset plus the words its mesh's faces need
+//     (record 13) is at most the highlight's word count, and that sum is the
+//     words the row needs. c a column-major f32 4x4 matrix to clip space (x, y
+//     in [-1, 1], z in [0, 1], 0 nearest). A draw of 0 rows clears, names no
+//     handle and needs no words; a draw removes a shown SVG. A host may draw
+//     the last draw's rows again on its own, so records 6 and 14 keep them
+//     valid until the next draw
 //   3 text: a, b UTF-8 text
 //   4 post: span a, b whose first c bytes are the path and the rest the body
 //   5 tree: a, b strict UTF-8 JSON rows {key, parent, label} with an optional
@@ -59,8 +67,11 @@
 //     positive safe integers, a parent is 0 or an earlier row's key whose more
 //     is not true; a row the module sends again keeps its key from one tree to
 //     the next
-//   6 highlight: a one u8 per triangle (1 selected), b the count; it holds for
-//     every later draw, which must have that count
+//   6 highlight: a the address of b u32 words of face bits, c 0: bit i of word
+//     w is face 32w + i from an instance's offset. It holds for every later
+//     draw; before the first there are 0 words. b is at least the most words
+//     a row of the last draw needs, so a module sends a longer highlight
+//     before the draw that needs it and a shorter one after
 //   7 request: span a, b of u64 method and path lengths, the method token, the
 //     UTF-8 path and the body (none for GET or HEAD); c a positive i64 id
 //   8 svg: a, b the image bytes, copied before host.svg runs
@@ -70,6 +81,16 @@
 //   11 after: a ms, at least 0, b a token; one tick after ms
 //   12 read: a a file number a file event delivered, b an offset, c a length of
 //     at least 1, with b + c at most the file's size; each gets its own chunk
+//   13 mesh: a, b a span of a u32 vertex count V, 1 to 65,536, a u32 triangle
+//     count T, V vertices of four u16 (x, y, z on the mesh's grid and the
+//     vertex's face) and T triangles of three u16 indices below V, so b is
+//     8 + 8V + 6T; c a handle not held, 1 to 0xFFFFFFFF, as a draw row's u32
+//     names it. Its faces need floor(F / 32) + 1 highlight words, F the
+//     highest face of its vertices. The host copies the mesh and holds it by
+//     c until an unmesh
+//   14 unmesh: a a held handle that no row of the last draw names, b and c 0,
+//     so a module draws without a mesh before it unmeshes it; the handle may
+//     be used again after
 // A post or request is answered for every HTTP status. Request, rpc and read
 // records are tagged. A host that takes tagged records, or fetches and posts
 // from a run that throws, provides error(error): the first reply failure of a
@@ -100,8 +121,11 @@
 
 const EVENT_BYTES = 56n;
 const RECORD_BYTES = 32;
-const CORNER_BYTES = 36n; // a triangle's three corners of f32 x y z
 const MATRIX_BYTES = 64n; // 16 f32, column-major
+const ROW_BYTES = 64; // an instance: twelve f32, u32 handle, id, flags, offset
+const NO_OFFSET = 0xFFFFFFFF; // an instance row that reads no highlight words
+const MAX_HANDLE = 0xFFFFFFFFn; // a draw row's u32 names a mesh handle
+const MAX_VERTICES = 65536; // a mesh's u16 indices name at most this many
 const MAX_KEY = BigInt(Number.MAX_SAFE_INTEGER);
 // A tree row's keys, sorted: more is optional.
 const TREE_KEYS = new Set(["key,label,parent", "key,label,more,parent"]);
@@ -140,6 +164,8 @@ const INPUT = 9n;
 const RPC = 10n;
 const AFTER = 11n;
 const READ = 12n;
+const MESH = 13n;
+const UNMESH = 14n;
 const TAGGED = new Set([REQUEST, RPC, READ]);
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -166,8 +192,10 @@ export class Module {
   // {"result":…} or {"error":…}; params is the record's JSON text.
   // after(ms, token) runs tick(token) once ms have passed. read(file, offset,
   // length) -> Promise<Uint8Array> of the numbered file's bytes. Also
-  // draw(corners, count, matrix, mask), text(string), tree(rows, selected),
-  // highlight(mask), svg(copiedBytes), input(enabled), and size() ->
+  // mesh(handle, vertexCount, triangleCount, vertices, triangles) with copied
+  // Uint16Arrays, unmesh(handle), draw(rows, count, matrix) with the rows'
+  // bytes copied, highlight(words) with a copied Uint32Array, text(string),
+  // tree(rows, selected), svg(copiedBytes), input(enabled), and size() ->
   // [width, height] of the drawing buffer.
   static async load(bytes, host) {
     const { instance } = await WebAssembly.instantiate(bytes);
@@ -179,7 +207,10 @@ export class Module {
     this.host = host;
     this.event = null; // the address hello named
     this.ended = null; // why the instance ended: a trap or end()
-    this.mask = null; // no highlight record yet: draw with an unselected mask
+    this.meshes = new Map(); // a held mesh handle -> the words its faces need
+    this.words = 0; // the last highlight's word count, 0 before the first
+    this.drawn = new Set(); // the handles the last draw's rows name
+    this.need = 0; // the most words a row of the last draw needs
     this.files = new Map(); // a delivered file number -> its size, for reads
   }
 
@@ -490,7 +521,13 @@ export class Module {
         this.tree(a, b, c);
         return;
       case HIGHLIGHT:
-        this.masked(a, b, c);
+        this.faces(a, b, c);
+        return;
+      case MESH:
+        this.mesh(a, b, c);
+        return;
+      case UNMESH:
+        this.unmesh(a, b, c);
         return;
       case SVG:
         if (c !== 0n) throw new Error("svg c must be zero");
@@ -550,22 +587,93 @@ export class Module {
     this.host.tree(rows, Number(c));
   }
 
-  masked(a, b, c) {
+  // A highlight's b u32 words, copied; b covers the last draw's rows, and
+  // later draws' rows must need at most b words.
+  faces(a, b, c) {
     if (c !== 0n) throw new Error("highlight c must be zero");
-    const mask = this.span(a, b);
-    if (mask.some((value) => value > 1)) throw new Error("highlight mask contains a value other than 0 or 1");
-    this.mask = mask.slice();
-    this.host.highlight(this.mask);
+    if (b < BigInt(this.need))
+      throw new RangeError(`a highlight of ${b} words, fewer than the ` +
+        `${this.need} the last draw's rows need`);
+    const words = new Uint32Array(this.span(a, b * 4n).slice().buffer);
+    this.host.highlight(words);
+    this.words = words.length;
   }
 
+  // A mesh, copied, that the host holds by handle c until an unmesh, with the
+  // words its faces need. Typed arrays read the platform's byte order,
+  // little-endian wherever this runs.
+  mesh(a, b, c) {
+    if (c <= 0n || c > MAX_HANDLE)
+      throw new RangeError(`a mesh handle ${c} is not 1 to ${MAX_HANDLE}`);
+    const handle = Number(c);
+    if (this.meshes.has(handle))
+      throw new Error(`a mesh of handle ${handle}, which is already held`);
+    if (b < 8n) throw new RangeError(`a mesh's counts need 8 bytes, got ${b}`);
+    const span = this.span(a, b);
+    const counts = new DataView(span.buffer, span.byteOffset, 8);
+    const vertexCount = counts.getUint32(0, true);
+    const triangleCount = counts.getUint32(4, true);
+    if (vertexCount === 0 || vertexCount > MAX_VERTICES)
+      throw new RangeError(`a mesh of ${vertexCount} vertices, ` +
+        `not 1 to ${MAX_VERTICES}`);
+    const size = 8n + 8n * BigInt(vertexCount) + 6n * BigInt(triangleCount);
+    if (b !== size)
+      throw new RangeError(`a mesh of ${vertexCount} vertices and ` +
+        `${triangleCount} triangles is ${size} bytes, not ${b}`);
+    const bytes = span.slice();
+    const vertices = new Uint16Array(bytes.buffer, 8, 4 * vertexCount);
+    const triangles = new Uint16Array(bytes.buffer, 8 + 8 * vertexCount,
+      3 * triangleCount);
+    for (const index of triangles)
+      if (index >= vertexCount)
+        throw new RangeError(`a mesh index ${index} is not below its ` +
+          `${vertexCount} vertices`);
+    let face = 0;
+    for (let k = 3; k < vertices.length; k += 4)
+      face = Math.max(face, vertices[k]);
+    this.host.mesh(handle, vertexCount, triangleCount, vertices, triangles);
+    this.meshes.set(handle, Math.floor(face / 32) + 1);
+  }
+
+  unmesh(a, b, c) {
+    if (b !== 0n || c !== 0n) throw new Error("unmesh b and c must be zero");
+    if (a <= 0n || a > MAX_KEY || !this.meshes.has(Number(a)))
+      throw new Error(`an unmesh of handle ${a}, which is not held`);
+    if (this.drawn.has(Number(a)))
+      throw new Error(`an unmesh of handle ${a}, which the last draw's ` +
+        "rows name");
+    this.host.unmesh(Number(a));
+    this.meshes.delete(Number(a));
+  }
+
+  // b instance rows of held meshes, copied, drawn through matrix c; keeps
+  // the handles the rows name and the most words a row needs.
   draw(a, b, c) {
-    const corners = this.span(a, b * CORNER_BYTES);
+    const rows = this.span(a, b * BigInt(ROW_BYTES)).slice();
     const matrix = this.span(c, MATRIX_BYTES);
-    const count = Number(b);
-    const mask = this.mask ?? new Uint8Array(count);
-    if (mask.length !== count)
-      throw new Error(`highlight count ${mask.length} does not match draw count ${count}`);
-    this.host.draw(corners, count, matrix, mask);
+    const v = new DataView(rows.buffer);
+    const drawn = new Set();
+    let need = 0;
+    for (let at = 0; at < rows.length; at += ROW_BYTES) {
+      const handle = v.getUint32(at + 48, true);
+      const flags = v.getUint32(at + 56, true);
+      const offset = v.getUint32(at + 60, true);
+      if (!this.meshes.has(handle))
+        throw new Error(`a draw of handle ${handle}, which is not held`);
+      if (flags > 1)
+        throw new Error(`a draw's flags ${flags} set a bit other than bit 0`);
+      if (offset !== NO_OFFSET) {
+        const end = offset + this.meshes.get(handle);
+        if (end > this.words)
+          throw new RangeError(`a draw row at offset ${offset} needs ${end} ` +
+            `highlight words; the highlight has ${this.words}`);
+        need = Math.max(need, end);
+      }
+      drawn.add(handle);
+    }
+    this.host.draw(rows, Number(b), matrix);
+    this.drawn = drawn;
+    this.need = need;
   }
 
   // Copies a delivery into pages the module reserves, which it then owns, and
