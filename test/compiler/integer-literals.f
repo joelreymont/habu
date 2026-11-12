@@ -88,7 +88,6 @@ package INTEGER-LITERALS-TEST
    s" $1FFFFFFFFFFFFFFFF" BAD-LITERAL
    s" -$1FFFFFFFFFFFFFFFF" BAD-LITERAL ;
 
-\ Checker-only admission must refuse the same spellings before compilation.
 : CHECKER-ADMISSION ( -- )
    s" IL-MAX ( -- n ) 9223372036854775807" CHECK-QUIET-CANDIDATE! -1 T=
    s" IL-MIN ( -- n ) -9223372036854775808" CHECK-QUIET-CANDIDATE! -1 T=

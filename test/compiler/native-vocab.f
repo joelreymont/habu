@@ -45,7 +45,7 @@ public
 package NVOCAB-TEST
 using NVOCAB-FIXTURE
 
-\ Preserve the full-cell flag representation asserted by the original cases.
+\ Preserve the full-cell flag representation.
 CAST: FLAG-CELL ( bool -- n )
 
 : COMPARES ( -- )
