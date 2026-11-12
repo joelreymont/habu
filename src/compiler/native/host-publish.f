@@ -77,27 +77,6 @@ private
 
 public
 
-\ The publisher's observer reads these while TAKE owns the emission. A negative
-\ constructor count means unknown; zero is a known empty contract.
-: TAKEN-FUNCTIONS ( -- n ) TAKEN-FUNS @ ;
-
-: TAKEN-FACTS ( n -- n n n n n n )
-   {: ordinal:n :}
-   ordinal 0 < ordinal TAKEN-FUNS @ >= or if E-STATE throw then
-   TAKEN-BASE @ ordinal + {: row:n :}
-   row IMPL-LEN @ row IMPL-IN @ row IMPL-OUT @
-   row IMPL-REASON @ row IMPL-LOC @
-   row IMPL-TYPE-FIRST @ 0< if -1 else
-      row IMPL-IN @ row IMPL-OUT @ + then ;
-
-: TAKEN-TYPE@ ( n n -- n )
-   {: ordinal:n idx:n :}
-   ordinal 0 < ordinal TAKEN-FUNS @ >= or if E-STATE throw then
-   TAKEN-BASE @ ordinal + {: row:n :}
-   row IMPL-TYPE-FIRST @ 0< if E-STATE throw then
-   idx 0 < idx row IMPL-IN @ row IMPL-OUT @ + >= or if E-STATE throw then
-   row IMPL-TYPE-FIRST @ idx + IMPL-TYPES @ ;
-
 : ABANDON-TAKEN ( -- )
    TAKEN-FUNS @ 0= if exit then
    TAKEN-BASE @ IMPL-N !

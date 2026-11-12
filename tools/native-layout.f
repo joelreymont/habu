@@ -33,7 +33,6 @@ create SLOTS
    NATIVE-OBS-CELLS:HOST-INVALIDATE ,   0 ,
    NATIVE-OBS-EXT:CAPTURE-INVALIDATE , 0 ,
    NATIVE-HOST-CELLS:SELECT ,           0 ,
-   NATIVE-HOST-CELLS:FACTS ,            0 ,
    \ The origin record's three cells, which no constant names.
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + ,       0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL 2 cells + ,    0 ,

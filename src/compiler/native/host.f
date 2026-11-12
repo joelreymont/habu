@@ -16,7 +16,6 @@ public
 
 -9440 constant E-FIRST
 -9449 constant E-LAST
--9440 constant E-UNSAFE
 -9441 constant E-STATE
 -9442 constant E-ROW
 
@@ -25,16 +24,14 @@ public
 \ MEMORY: memory operations and address-forming words, admitted by provenance.
 \ FIXED: a constant compiled as an immediate, or a data address the address
 \ sites carry. INDIRECT: a run of an xt or text operand, which a file's closure
-\ walk and source observer account for. CAST, UNCHECKED and FOREIGN: an effect
-\ the facts cannot name. UNKNOWN: an unmodeled op or literal, or no facts.
+\ walk and source observer account for. CAST and UNCHECKED: an effect the
+\ facts cannot name. UNKNOWN: an unmodeled op or literal, or no facts.
 \ REBIND: a compiled `is`.
-\ Objects publish these values in section 15: append, never renumber.
 0 constant SAFE
 1 constant CAST
 2 constant MEMORY
 3 constant INDIRECT
 4 constant UNCHECKED
-5 constant FOREIGN
 6 constant UNKNOWN
 7 constant FIXED
 8 constant REBIND
@@ -65,7 +62,6 @@ DYNAMIC-BUFFER EDGE-LOC n
 0 CWORK-VARIABLE ASSOC-N n
 DYNAMIC-BUFFER ASSOC-ENTRY n
 DYNAMIC-BUFFER ASSOC-LEN n
-DYNAMIC-BUFFER ASSOC-IMPL n
 DYNAMIC-BUFFER ASSOC-LIVE n
 
 UNKNOWN CWORK-VARIABLE SOURCE-REASON n
@@ -89,14 +85,13 @@ DYNAMIC-BUFFER FACT-TYPE-READY n
 DYNAMIC-BUFFER FACT-TYPES n
 
 \ One process's install state (INSTALL): a save or a file's object writes it
-\ zero, as CAPTURE-PREPARE leaves it. The engine cells INSTALL fills hold no
-\ other callback, so a program whose file object kept them installed installs
+\ zero, as CAPTURE-PREPARE leaves it. The engine cell INSTALL fills holds no
+\ other callback, so a program whose file object kept it installed installs
 \ again over its own entries.
 variable OWNER-INSTALLED    OWNER-INSTALLED scratch-cell-mark
 variable KERNEL-BEGIN       KERNEL-BEGIN scratch-cell-mark
 variable KERNEL-END         KERNEL-END scratch-cell-mark
 variable SEEDED-N           SEEDED-N scratch-cell-mark
-CAST: AS-FACTS ( n -- [ n ptr n n n -- n bool ] )
 1 constant NUMBER-CON      \ checker.f CC-N, encoded by PRIM-SPEC:A-NUM
 
 : ROW ( n -- n )
@@ -125,30 +120,6 @@ CAST: AS-FACTS ( n -- [ n ptr n n n -- n bool ] )
    count EDGE-KIND-RESERVE
    count EDGE-LOC-RESERVE ;
 
-: REASON$ ( n -- ptr u8 n )
-   {: reason:n :}
-   reason CAST = if s" source cast" exit then
-   reason MEMORY = if s" source address or memory operation" exit then
-   reason INDIRECT = if s" indirect invocation" exit then
-   reason UNCHECKED = if s" unchecked body" exit then
-   reason FOREIGN = if s" foreign call" exit then
-   reason FIXED = if s" fixed record mention" exit then
-   s" missing implementation facts" ;
-
-: REPORT-ENTRY ( n -- )
-   ROW IMPL-ENTRY @ s"  implementation " type . ;
-
-: REPORT-REASON ( n n -- )
-   {: reason:n loc:n :}
-   s" host construction: " type reason REASON$ type
-   s"  body offset " type loc . cr ;
-
-: REFUSE ( n n n -- )
-   {: id:n reason:n loc:n :}
-   reason loc REPORT-REASON
-   id 0<> if id REPORT-ENTRY cr then
-   E-UNSAFE throw ;
-
 public
 
 \ A zero id means no producer ever published facts for this exact entry.
@@ -164,29 +135,6 @@ public
       live row cells + @ 0<> entries row cells + @ entry = and if exit then
       1-
    repeat ;
-
-private
-
-: MATCH-ROW? ( n ptr n n n -- bool )
-   {: row:n types:ptr din:n dout:n :}
-   row IMPL-TYPE-FIRST @ 0< if false exit then
-   row IMPL-IN @ din <> row IMPL-OUT @ dout <> or if false exit then
-   din dout + 0 ?do
-      row IMPL-TYPE-FIRST @ i + IMPL-TYPES @
-      types i cells + @ <> if false unloop exit then
-   loop
-   true ;
-
-\ The current producer answers only for an implementation it still owns.
-: MATCH-FACTS ( n ptr n n n -- n bool )
-   {: entry:n types:ptr din:n dout:n :}
-   entry ID-OF {: id:n :}
-   id 0= if 0 false exit then
-   id ROW {: row:n :}
-   row types din dout MATCH-ROW? 0= if 0 false exit then
-   row IMPL-LEN @ true ;
-
-public
 
 \ A restored process has no retained implementation facts. Its callback cell
 \ is cleared with the other process-owned cells; the next source compilation
@@ -285,13 +233,11 @@ public
    SEED-DIVISION
    IMPL-N @ SEEDED-N !
    ['] INVALIDATE data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + xt!
-   ['] MATCH-FACTS data-base NATIVE-HOST-CELLS:FACTS + xt!
    1 OWNER-INSTALLED ! ;
 
 : CAPTURE-PREPARE ( -- )
    OWNER-INSTALLED @ 0<> if
       0 data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + !
-      0 data-base NATIVE-HOST-CELLS:FACTS + !
    then
    0 OWNER-INSTALLED !
    0 KERNEL-BEGIN !  0 KERNEL-END !  0 SEEDED-N ! ;
@@ -425,67 +371,6 @@ private
          IMPL-TYPE-N @ i + IMPL-TYPES !
    loop
    IMPL-TYPE-N @ count + IMPL-TYPE-N ! ;
-
-: SAME-TYPES? ( n n -- bool )
-   {: a:n b:n :}
-   a ROW {: x:n :}
-   b ROW {: y:n :}
-   x IMPL-TYPE-FIRST @ {: first:n :}
-   first 0< if false exit then
-   x IMPL-IN @ x IMPL-OUT @ + 0= if
-      y NULL-PTR 0 0 MATCH-ROW? exit
-   then
-   y first IMPL-TYPES x IMPL-IN @ x IMPL-OUT @ MATCH-ROW? ;
-
-\ A host owner compares its local producer row with the active target owner's
-\ live row. The current owner supplies the full emitted extent for retirement.
-: TARGET-LEN? ( n n -- n bool )
-   {: id:n entry:n :}
-   entry ID-OF {: target-id:n :}
-   target-id 0<> if
-      id target-id SAME-TYPES? 0= if 0 false exit then
-      target-id ROW IMPL-LEN @ true exit
-   then
-   data-base NATIVE-HOST-CELLS:FACTS + @ dup 0= if drop 0 false exit then
-   AS-FACTS {: query :}
-   id ROW {: row:n :}
-   row IMPL-TYPE-FIRST @ {: first:n :}
-   first 0< if 0 false exit then
-   row IMPL-IN @ row IMPL-OUT @ + 0= if
-      entry NULL-PTR 0 0 query execute exit
-   then
-   entry first IMPL-TYPES row IMPL-IN @ row IMPL-OUT @ query execute ;
-
-public
-
-\ The occurrence owner attaches a retained host implementation to a distinct
-\ target implementation. Aliases share the target entry; later definitions do
-\ not inherit the association by spelling.
-: ASSOCIATE ( n n n n -- )
-   {: target-slot:n target-occ:n host-slot:n host-occ:n :}
-   target-slot target-occ DEF-OCC:RESOLVE {: target:ptr :}
-   host-slot host-occ DEF-OCC:RESOLVE {: host:ptr :}
-   host XREF-START ID-OF {: id:n :}
-   id 0= if 0 UNKNOWN 0 REFUSE then
-   target XREF-START {: entry:n :}
-   id entry TARGET-LEN? {: len:n same:bool :}
-   same 0= if id UNKNOWN 0 REFUSE then
-   \ The dictionary omits a trailing return from its code length. The emitted
-   \ row owns the full extent, which must retire if that return is reused.
-   entry 0 <= len 0 <= or if E-STATE throw then
-   ASSOC-N @ 1+ {: count:n :}
-   count ASSOC-ENTRY-RESERVE
-   count ASSOC-LEN-RESERVE
-   count ASSOC-IMPL-RESERVE
-   count ASSOC-LIVE-RESERVE
-   count 1- {: row:n :}
-   entry row ASSOC-ENTRY !
-   len row ASSOC-LEN !
-   id row ASSOC-IMPL !
-   1 row ASSOC-LIVE !
-   count ASSOC-N ! ;
-
-private
 
 \ Prepare all storage while publication may still throw. The publisher only
 \ exposes the row after its bytes and dictionary record are committed.
