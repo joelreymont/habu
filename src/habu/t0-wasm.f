@@ -1,19 +1,18 @@
 \ t0-wasm.f - the Wasm generator of the tier 0 compiler, part WASM of package
 \ COMP.
 \
-\ Implements the straight-line, control, return-stack and loop EMIT- operations
-\ src/habu/t0-emit.f states for every target; this file holds only Wasm
-\ encodings and local choices. FILL-SLOT stores its words into the EMIT- cells
-\ for CTARGET-ARCH:WASM. The callback stub cell (EMIT-CB-STUB-XT) stays unset.
+\ Implements the straight-line, control, return-stack and loop EMIT- operations;
+\ this file holds only Wasm encodings and local choices. The callback stub cell
+\ stays unset.
 \
-\ THE ROWS (t0-emit.f "THE ROWS"). A call or tail site is `call` and a padded
-\ five-byte u32 function index, zero here; an address site is `i64.const` and a
-\ padded ten-byte s64 holding the host value; each field starts one byte past
-\ the row's offset. A Wasm body is never placed at a host address, so a site
-\ naming a function of its own emission, a quotation's address or a self call,
-\ holds that function's offset from byte 0; no host address is that small. The
-\ does> patch slot is six bytes: `drop; i32.const 0; nop; nop; nop` (no clause,
-\ status 0), or `call` and a padded five-byte function index.
+\ THE ROWS. A call or tail site is `call` and a padded five-byte u32 function
+\ index, zero here; an address site is `i64.const` and a padded ten-byte s64
+\ holding the host value; each field starts one byte past the row's offset. A
+\ Wasm body is never placed at a host address, so a site naming a function of
+\ its own emission, a quotation's address or a self call, holds that function's
+\ offset from byte 0; no host address is that small. The does> patch slot is six
+\ bytes: `drop; i32.const 0; nop; nop; nop` (no clause, status 0), or `call` and
+\ a padded five-byte function index.
 \
 \ CONTROL. A Wasm branch names an enclosing block by depth, so every open source
 \ structure is one open block of the empty type, an entry in CF-KIND; a
@@ -68,9 +67,9 @@ using WCODE
 \ ---- the sink ------------------------------------------------------------------
 create SINK BUF:HDR-BYTES SCRATCH-ALLOT
 SCRATCH-VARIABLE SINK-LIVE            \ nonzero once SINK holds storage
-variable FRAME-CELLS                  \ frame slots this unit uses
+variable FRAME-CELLS
 variable COUNT-AT                     \ the unit's padded i64 count field
-variable REC-CELLS                    \ this unit's record cells
+variable REC-CELLS
 variable ENV                          \ nonzero once ENV-OPEN ran
 variable BODY-AT                      \ HERE-OFF where the unit's body begins
 DYNAMIC-BUFFER CF-KIND n              \ the open blocks' kinds, innermost last
@@ -143,8 +142,8 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : DEPTH+ ( n n -- ) {: c:n k:n :}
    c I32,  c DEPTH,  k I64,  OP-I64-ADD B,  ST64, ;
 
-\ A fault is fatal, never a status (src/arch/wasm/select.f THE TRAP): the
-\ caller writes the i64 address between FAULT-KIND, and FAULT-END,.
+\ A fault is fatal, never a status: the caller writes the i64 address between
+\ FAULT-KIND, and FAULT-END,.
 : FAULT-KIND, ( n -- ) {: kind:n :}
    L-CTX GET,  kind I32,  OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
    L-CTX GET, ;
@@ -152,15 +151,13 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : FAULT-END, ( -- )
    OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,  OP-UNREACHABLE B, ;
 
-\ SP past the stack region records STACK-BOUNDS with SP. The check follows the
-\ move's stores, so a failed one has written at most that move's cells past it.
+\ The check follows the move's stores, so a failed one has written at most that
+\ move's cells past it.
 : ROOM ( -- )
    L-SP GET,  WPROF:STACK-END I32,  OP-I32-GT-U B,  OP-IF OPENER,
    ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-SP GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
 
-\ The checked pointer: its high 32 bits are zero and it is at or past
-\ WPROF:CTX-BASE, else the fault records WPROF:CRASH-RC with the pointer.
 : CHECKED ( vreg -- ) {: a:vreg :}
    a GET-REG  WPROF:CTX-BASE I64,  OP-I64-LT-U B,
    a GET-REG  $FFFFFFFF I64,  OP-I64-GT-U B,
@@ -180,7 +177,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 
 \ ---- the body ----------------------------------------------------------------
-\ The sites' encodings are the header's THE ROWS.
 : OPEN ( -- )
    SINK-LIVE @ 0= if
       SINK SINK-START-BYTES BUF:N>BLEN BUF:INIT
@@ -199,12 +195,11 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 : UNIT-OPEN ( -- ) UNIT-BEGIN ;
 
-\ The unit's records given back, before a return.
 : REC-RELEASE ( -- )
    REC-CELLS @ 0= if exit then
    RDEPTH-AT REC-CELLS @ negate DEPTH+ ;
 
-\ Status 0 is a return (src/arch/wasm/select.f THE STATUS).
+\ Status 0 is a return.
 : RETURN ( -- )
    REC-RELEASE  SYNC  0 I32,  OP-RETURN B, ;
 
@@ -305,7 +300,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    k 1 = if OP-I64-SHR-U exit then
    E-T0-OPERAND throw ;
 
-\ The opcode of each condition, which the branches reuse.
 : COND ( cc -- n )
    CC>N {: k:n :}
    k 0 = if OP-I64-EQ exit then
@@ -316,7 +310,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    k 5 = if OP-I64-GT-S exit then
    E-T0-OPERAND throw ;
 
-\ d becomes d o s, or d o v.
 : REG-OP ( vreg vreg n -- ) {: d:vreg s:vreg o:n :}
    d GET-REG  s GET-REG  o B,  d SET-REG ;
 
@@ -342,8 +335,8 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 : NOT ( vreg -- ) -1 OP-I64-XOR LIT-OP ;
 
-\ The compare copies its operands into CA and CB: the moves t0-emit.f allows
-\ before its reader may overwrite the vregs, and none of them writes CA or CB.
+\ The compare copies its operands into CA and CB: the moves before its reader
+\ may overwrite the vregs, and none of them writes CA or CB.
 : CMP ( vreg vreg -- ) {: a:vreg b:vreg :}
    a GET-REG  L-CA SET,  b GET-REG  L-CB SET, ;
 
@@ -376,7 +369,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    OP-IF OPENER,  1 I32,  OP-RETURN B,  END,
    SP@, ;
 
-\ `recurse` calls function offset 0, unit 0 (the rule above OPEN).
+\ `recurse` calls function offset 0, unit 0.
 : CALL-SELF ( -- ) 0 0 CALL ;
 
 \ The callee's status is this unit's.
@@ -385,7 +378,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    OP-RETURN B, ;
 
 \ ---- control -----------------------------------------------------------------
-\ The blocks each source structure opens are the header's CONTROL.
 0 constant CF-IF
 1 constant CF-LOOP
 2 constant CF-LOOP-DONE
@@ -470,8 +462,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : AT-LOAD ( vreg n -- ) {: d:vreg off:n :}
    L-AT GET,  OP-I64-LOAD ALIGN-64 off MEM,  d SET-REG ;
 
-\ AT above the address most records STACK-BOUNDS with AT, as ROOM does: Wasm
-\ memory has no guard page, so a push checks before its stores.
+\ Wasm memory has no guard page, so a push checks before its stores.
 : BOUND ( n -- ) {: most:n :}
    L-AT GET,  most I32,  OP-I32-GT-U B,  OP-IF OPENER,
    ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-AT GET,  OP-I64-EXTEND-I32-U B,
@@ -517,7 +508,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : REC-STORE ( vreg n -- ) {: s:vreg n:n :}
    L-REC GET,  s GET-REG  OP-I64-STORE ALIGN-64 n CELL-BYTES * MEM, ;
 
-\ The record's address in the lower half, $80000000 in the upper (DISPATCH,).
+\ The record's address in the lower half, $80000000 in the upper.
 : REC-QUOT ( n vreg -- ) {: n:n d:vreg :}
    L-REC GET,  OP-I64-EXTEND-I32-U B,
    $8000000000000000 n CELL-BYTES * + I64,  OP-I64-ADD B,  d SET-REG ;
@@ -547,7 +538,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : LOOP-I ( vreg -- ) 0 FRAME  INDEX-OFF AT-LOAD ;
 : LOOP-J ( vreg -- ) 1 FRAME  INDEX-OFF AT-LOAD ;
 
-\ The DO-HEAD entry keeps the offset of its `?do` compare in CF-ENTRY.
 : HEAD-PUSH ( n -- ) {: at:n :}
    CF-N @ {: k:n :}
    k 1 + CF-ENTRY-RESERVE
