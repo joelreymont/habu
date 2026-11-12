@@ -74,7 +74,6 @@ TYPED-VARIABLE PENDING CURL:handle  \ the request ASKER sends
 TASK:MIN-STACK TASK:TASK ASKER
 TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
-\ The end of a wait's WAIT-MS window, an absolute mono-ns.
 : DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
 
 \ The bytes copied into the span at off; answers the offset past them.
@@ -83,8 +82,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    a row off u SPAN:SUB SPAN:$ drop u BYTE-COPY
    off u + ;
 
-
-\ The key sets.
 
 : SET+ ( ptr u8 n n -- n ) SETS swap PUT ;
 
@@ -116,8 +113,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 : SET-ONE$ ( -- ptr u8 n ) SETS 0 ONE-U @ SPAN:SUB SPAN:$ ;
 : SET-TWO$ ( -- ptr u8 n ) SETS SET-CAP TWO-U @ SPAN:SUB SPAN:$ ;
 
-
-\ The routes.
 
 : CLAIM ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: name:ptr nu:n :}
@@ -154,7 +149,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
       err OF throw ENDOF
    ;MATCH ;
 
-\ Holds /keys until the test sets RELEASED or STALL-MS has passed.
 : STALL ( -- )
    mono-ns STALL-MS NS-PER-MS * +
    [: RELEASED atomic@ 0<> over mono-ns <= or ;] DEADLINE s" bearer-test STALL"
@@ -174,8 +168,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    {: asked:HTTP:request answer:HTTP:response code:n :}
    code EARLY-CODE atomic! ;
 
-
-\ The client.
 
 \ A setter's refusal throws: the case cannot make its request on that handle.
 : OK ( CURL:status -- )
@@ -202,7 +194,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    {: h:CURL:handle a:ptr u:n :}
    h a u CURL:HEADER+ OK h ;
 
-\ The Authorization carrying the minted token.
 : BEARING ( CURL:handle -- CURL:handle ) AUTH AUTH-U @ ADD ;
 
 : HEADS-LEN ( CURL:header-result -- n )
@@ -235,10 +226,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    {: h:CURL:handle :}
    h PERFORM h CURL:CLEANUP ;
 
-\ The guarded route asked with the minted token.
 : SEND ( -- n ) s" /claims" OPEN BEARING FINISH ;
 
-\ An empty 401 challenging with the value.
 : REFUSED ( n ptr u8 n -- )
    {: status:n want:ptr wu:n :}
    SB-RESET s" WWW-Authenticate: " SB-APPEND want wu SB-APPEND 13 SB-APPEND-C 10 SB-APPEND-C
@@ -270,8 +259,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    status 200 T= ;
 
 
-\ Tokens.
-
 : TOKEN+ ( ptr u8 n -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
 : DOT+ ( -- ) s" ." TOKEN+ ;
 : TOKEN$ ( -- ptr u8 n ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
@@ -287,7 +274,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    t AUTH pu + tu BYTE-COPY
    pu tu + AUTH-U ! ;
 
-\ The header's and claims' segments and the dot after them.
 : SIGNED ( ptr u8 n ptr u8 n -- )
    {: h:ptr hu:n c:ptr cu:n :}
    0 TOKEN-U !
@@ -299,7 +285,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    {: su:n :}
    DOT+ SIGNATURE su ENCODED+ AUTHORIZE ;
 
-\ Validly signed HS256, keyed with the issuer's public modulus.
 : HS-MINT ( ptr u8 n ptr u8 n -- )
    SIGNED
    JWS-FIXTURE:MODULUS$ TOKEN$ SIGNATURE HS256-BYTES CRYPTO:HMAC-SHA256
@@ -329,8 +314,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 : KID-B ( -- ptr u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"b\"}" ;
 : FETCHED ( -- ) mono-ns FETCHED-BY ! ;
 
-
-\ The cases.
 
 : WAIT-WINDOW ( -- )
    FETCHED-BY @ REFETCH-MS NS-PER-MS * + DUE !
@@ -468,8 +451,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 : ASK ( -- ) PENDING @ FINISH TASK:RETURN ;
 
-\ Past the window ASKER's kid b fetches and /keys stalls; meanwhile the cached
-\ kid a answers and kid b fails without a second fetch. Set two then admits b.
 : WINDOW ( -- )
    s" a fetch in flight does not delay a cached kid" T-LABEL
    WAIT-WINDOW
