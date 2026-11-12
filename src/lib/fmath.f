@@ -1,8 +1,10 @@
 \ fmath.f - integer roots and transcendental floats in checked Habu, without
 \ libm or a new engine primitive. SIN and COS carry fdlibm's kernels and its
-\ three-piece pi/2 reduction; FLN uses an atanh series and FPOW is
-\ exp(exponent * ln(base)): an approximation, not a correctly rounded libm.
-\ Errors: E-DOMAIN. Sampled accuracy: FLN-ACC. Error bounds: BOUND-INPUTS.
+\ three-piece pi/2 reduction, and ACOS is fdlibm's arc cosine; FLN uses an
+\ atanh series and FPOW is exp(exponent * ln(base)): an approximation, not a
+\ correctly rounded libm.
+\ Errors: E-DOMAIN, E-OUTPUT. Sampled accuracy: FLN-ACC. Error bounds:
+\ BOUND-INPUTS.
 \ STORAGE CLASS. CALLER-OWNED: pure functions over stack values; no module state.
 
 require src/lib/error.f
@@ -20,7 +22,9 @@ public
 
 \ E-DOMAIN: an invalid root or logarithm input, an FPOW base that is not
 \ positive and finite (zero to the zero is outside it) or an exponent that is
-\ not finite, and a nonfinite input to anything but FINITE? and the IEEE
+\ not finite, an ACOS input outside [-1, 1], a SIN or COS argument of magnitude
+\ 1647099 or more (TRIG-DOMAIN's MEDIUM-BITS), a negative absolute error given
+\ to a *-BOUND word, and a nonfinite input to anything but FINITE? and the IEEE
 \ wrappers ADD..FMIN. E-OUTPUT: an overflowing power, a nonfinite intermediate
 \ exponent product or an out-of-range FROUND. Underflow may return zero.
 -9020 constant E-DOMAIN
@@ -332,6 +336,78 @@ public
    q 1 = if y0 y1 KSIN fnegate exit then
    q 2 = if y0 y1 KCOS fnegate exit then
    y0 y1 KSIN ;
+
+private
+
+\ fdlibm's __ieee754_acos (e_acos.c). acos x = pi/2 - asin x, and
+\ asin y = y + y z R(z) for z = y^2, where z R(z) = p/q is the rational fit
+\ below. Past |x| = 0.5, with z = (1 - |x|)/2, acos x = 2 asin sqrt z for a
+\ positive x and pi - 2 asin sqrt z for a negative one; the positive side
+\ splits sqrt z so that its leading half squares exactly.
+: PIO2-HI ( -- r ) $3FF921FB54442D18 TRIG-BITS ;   \ pi/2 rounded
+: PIO2-LO ( -- r ) $3C91A62633145C07 TRIG-BITS ;   \ pi/2 - PIO2-HI
+: PS0 ( -- r ) $3FC5555555555555 TRIG-BITS ;
+: PS1 ( -- r ) $BFD4D61203EB6F7D TRIG-BITS ;
+: PS2 ( -- r ) $3FC9C1550E884455 TRIG-BITS ;
+: PS3 ( -- r ) $BFA48228B5688F3B TRIG-BITS ;
+: PS4 ( -- r ) $3F49EFE07501B288 TRIG-BITS ;
+: PS5 ( -- r ) $3F023DE10DFDF709 TRIG-BITS ;
+: QS1 ( -- r ) $C0033A271C8A2D4B TRIG-BITS ;
+: QS2 ( -- r ) $40002AE59C598AC8 TRIG-BITS ;
+: QS3 ( -- r ) $BFE6066C1B8D0159 TRIG-BITS ;
+: QS4 ( -- r ) $3FB3B8C5B12E9282 TRIG-BITS ;
+
+\ fdlibm's high-word classes of |x|, spelled on the whole word.
+$3FF0000000000000 constant ONE-BITS       \ above: |x| > 1, an infinity or a NaN
+$3FE0000000000000 constant HALF-BITS      \ below: |x| < 0.5, the direct form
+$3C60000100000000 constant ACOS-TINY-BITS \ below: (fdlibm 0x3c600000) pi/2
+
+\ z R(z) = p/q.
+: ASIN-R ( r -- r )
+   {: z:r :}
+   PS5 z f* PS4 f+ z f* PS3 f+ z f* PS2 f+ z f* PS1 f+ z f* PS0 f+ z f*
+   QS4 z f* QS3 f+ z f* QS2 f+ z f* QS1 f+ z f* 1.0 f+  f/ ;
+
+\ |x| < 0.5: pi/2 - (x + x z R(z)) for z = x^2, its tail PIO2-LO added first.
+: ACOS-SMALL ( r -- r )
+   {: x:r :}
+   x ABS-BITS ACOS-TINY-BITS < if PIO2-HI PIO2-LO f+ exit then
+   x x f* ASIN-R {: r:r :}
+   PIO2-HI  x  PIO2-LO x r f* f-  f-  f- ;
+
+\ -1 < x <= -0.5: pi - 2 (s + s z R(z)), with pi's tail 2 PIO2-LO in w.
+: ACOS-NEGATIVE ( r -- r )
+   {: x:r :}
+   1.0 x f+ 0.5 f* {: z:r :}
+   z fsqrt {: s:r :}
+   z ASIN-R s f* PIO2-LO f- {: w:r :}
+   PI  2.0 s w f+ f*  f- ;
+
+\ 0.5 <= x < 1: 2 (df + c + s z R(z)), where df is s with its low word cleared
+\ and c = sqrt z - df, computed from z - df^2, which is exact.
+: ACOS-POSITIVE ( r -- r )
+   {: x:r :}
+   1.0 x f- 0.5 f* {: z:r :}
+   z fsqrt {: s:r :}
+   s IEEE754:F64>BITS $FFFFFFFF00000000 and TRIG-BITS {: df:r :}
+   z df df f* f-  s df f+  f/ {: c:r :}
+   z ASIN-R s f* c f+ {: w:r :}
+   2.0 df w f+ f* ;
+
+public
+
+\ The arc cosine of x in radians, in [0, PI], bit for bit fdlibm's
+\ __ieee754_acos (e_acos.c).
+\ As fdlibm gives them, ACOS(1) = +0, ACOS(-1) = PI and ACOS(0) = pi/2
+\ rounded. A nonfinite x or |x| > 1 throws E-DOMAIN before any arithmetic.
+: ACOS ( r -- r )
+   {: x:r :}
+   x ABS-BITS ONE-BITS > if E-DOMAIN throw then
+   x 1.0 f= if 0.0 exit then
+   x -1.0 f= if PI 2.0 PIO2-LO f* f+ exit then
+   x ABS-BITS HALF-BITS < if x ACOS-SMALL exit then
+   x f0< if x ACOS-NEGATIVE exit then
+   x ACOS-POSITIVE ;
 
 \ x * 2^n, exact whenever the result is a normal number or an exact subnormal;
 \ a result in the subnormal range rounds once in the final step. Overflow throws
