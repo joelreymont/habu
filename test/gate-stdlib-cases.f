@@ -1270,6 +1270,7 @@ SUITE allocator
 
 SUITE heap
    test/heap.f
+   src/lib/heap-test.f
 ;SUITE
 
 SUITE dynamic-buffer-tasks
