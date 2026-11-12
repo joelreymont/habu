@@ -1,216 +1,138 @@
-\ arm64-link-data.f - LINKER's link of a stripped build's DATA. Inside one
-\ build, after the start-up and the kernel the tree's kernel object holds,
-\ LINK-STRIPPED roots the closure at the entry and at each xt cell's value in
-\ the data the entry reaches, here all the build body's, and appends a copy of
-\ the space as its non-zero runs and the DATA list after the routine band: an xt
-\ cell's copy holds its routine's link address and is listed, a quotation's
-\ included; a scratch cell's copy is 0 and a DATA pointer's DATA-VA plus its
-\ target's offset, neither listed; a plain cell's is its bytes; a placed data
-\ address site gives DATA-VA plus the variable's offset, and a variable reached
-\ only by data addresses is not placed. The header's DP and its bounds are the
-\ build's at DATA-VA; its heap start, namespace marker and signal fd pointer are
-\ hb's own; its code cells are listed once, and the entry a build stores with
-\ xt! into APP-ENTRY:XT-CELL holds its link address. Every listed cell holds an
-\ address in the product's code. A second link gives the same bytes. One
-\ process: the boundary under test is in-process; only the refusals
-\ run in children.
+\ arm64-link-data.f - a stripped program's DATA, written by LINKER:WRITE and
+\ run, its kernel the tree's kernel object. One build writes two programs. main
+\ prints `12 6 0 11 11 0`: the word an xt cell holds, which reads a variable
+\ through a data address; the quotation an xt cell holds, stored as the build
+\ ran; a scratch cell the build set to 7; a plain cell; a DATA pointer's
+\ target; its `here` less the build's as it linked. The program is PIE: these
+\ hold only if the start-up slides each code cell once and no DATA cell. over
+\ allots past its ceiling and exits 76 naming its DP and ceiling as the build's
+\ floor and ceiling place them. A second link of main writes the same bytes.
+\ Each refusal (arm64-link-data-bad.f) dies, so each runs in its own child.
 \ Fixture words are LD- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/le.f
 require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/xref.f
-require src/compiler/native/abi.f
-require src/compiler/native/emission.f
-require src/compiler/native/shadow.f
-require src/habu/address-carrier.f
-require src/arch/arm64/icode.f
-require src/arch/arm64/link-kernel.f
 require src/compiler/target/model.f
 require src/habu/linker.f
-require src/habu/link-band.f
 require src/habu/link-data.f
 require tools/hb-build-core.f
 
-package LINKER
-private
 package ARM64-LINK-DATA
 
-CAST: CELL-XT ( n -- [ -- ptr n ] )
-CAST: ENTRY-XT ( n -- [ n -- n ] )
+CAST: ENTRY-XT ( n -- [ -- ] )
 
-DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
+create ROOT-BUF PATH-CAP allot variable ROOT-U
+create PROG-BUF PATH-CAP allot
+
+: ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
+
+: PROG$ ( ptr u8 n -- ptr u8 n )
+   {: name:ptr name-n:n :}
+   ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
+   PROG-BUF u ;
 
 
-\ LD-LEAF reaches LD-ADDR by a call and LD-LEAF2 only from the quotation LD-MAKE
-\ stores; no code calls LD-LEAF or LD-MAKE.
+\ LD-LEAF2 is reached only from the quotation LD-MAKE stores. LD-HERE holds
+\ the build's LD-DIST as it links main.
 : FIXTURE ( -- )
    s" variable LD-V  11 LD-V !" evaluate-closed
-   s" variable LD-P  LD-V NULL-PTR - LD-P !  LD-P ptr-cell-mark" evaluate-closed
+   s" : LD-PTR ( -- ) create here ptr-cell-mark 0 , does> ( -- ptr ptr n ) ;" evaluate-closed
+   s" : LD-CODE ( -- ) create 0 , does> ( -- ptr [ n -- n ] ) ;" evaluate-closed
+   s" LD-PTR LD-P  LD-V LD-P !" evaluate-closed
    s" : LD-ADDR ( -- ptr n ) LD-V ;" evaluate-closed
    s" : LD-LEAF ( n -- n ) LD-ADDR @ + ;" evaluate-closed
    s" : LD-LEAF2 ( n -- n ) 5 + ;" evaluate-closed
-   s" variable LD-XT  ' LD-LEAF LD-XT xt!" evaluate-closed
+   s" LD-CODE LD-XT  ' LD-LEAF LD-XT xt!" evaluate-closed
    s" variable LD-SCR  7 LD-SCR !  LD-SCR scratch-cell-mark" evaluate-closed
-   s" variable LD-Q" evaluate-closed
+   s" LD-CODE LD-Q" evaluate-closed
    s" : LD-MAKE ( -- ) [: LD-LEAF2 ;] LD-Q xt! ;" evaluate-closed
-   s" LD-MAKE" evaluate-closed ;
+   s" LD-MAKE" evaluate-closed
+   s" : LD-PV ( -- n ) LD-P @ @ ;" evaluate-closed
+   s" : LD-DIST ( -- n ) here NULL-PTR - LD-V NULL-PTR - - ;" evaluate-closed
+   s" : LD-U ( n -- ) dup 9 > if dup 10 / recurse then 10 mod 48 + emit ;" evaluate-closed
+   s" : LD-U_ ( n -- ) LD-U 32 emit ;" evaluate-closed
+   s" variable LD-HERE" evaluate-closed
+   s" : LD-MAIN ( -- ) 1 LD-XT @ execute LD-U_  1 LD-Q @ execute LD-U_  LD-SCR @ LD-U_  LD-V @ LD-U_  LD-PV LD-U_  LD-DIST LD-HERE @ - LD-U cr ;" evaluate-closed
+   s" : LD-OVER ( -- ) 1 41 lshift allot ;" evaluate-closed ;
 
 
-: HOST-NAMED ( ptr u8 n -- n ) XREF-FIND-INDEX XREF-REC XREF-START ;
+\ What over's refusal names: its DP and ceiling less the floor's base, read
+\ from the build's cells as the kernel reads the program's.
+variable OVER-DP
+variable OVER-CEILING
 
-: EMISSION-NAMED ( ptr u8 n -- n )
-   HOST-NAMED REC-AT {: r:n :}
-   r 0< if s" arm64-link-data: a fixture word has no shadow record" 1 die then
-   r NSHADOW:EMISSION@ ;
-
-\ A fixture variable's offset in the space and the value it holds there.
-: CELL-OFF ( ptr u8 n -- n ) HOST-NAMED CELL-XT execute NULL-PTR - BASE @ - ;
-: SPACE-VALUE ( ptr u8 n -- n ) CELL-OFF SPACE-AT @ ;
-
-\ The image copy of a fixture variable's cell.
-: COPY-VALUE ( ptr u8 n -- n ) CELL-OFF COPY-AT LE:U64@ ;
-
-\ How many times the DATA list holds offset off.
-: LIST-COUNT ( n -- n )
-   {: off:n :}
-   0  DATA-LIST-N 0 ?do
-      A64ICODE:CODE DATA-LIST-AT + i 8 * + LE:U64@
-      off = if 1 + then
-   loop ;
-
-: LISTED? ( n -- bool ) LIST-COUNT 0<> ;
-
-: LISTED-NAMED? ( ptr u8 n -- bool ) CELL-OFF LISTED? ;
-
-: BAND-LINK ( n -- n ) OFFSET@ ARM64:TEXT-VA + ;
-: PLACED? ( ptr u8 n -- bool ) EMISSION-NAMED PLACED @ 0<> ;
+: OVER-EXPECT ( -- )
+   data-base BOOT:DP-FLOOR-CELL + @ DATA-START - {: base:n :}
+   here NULL-PTR - 1 41 lshift + base - OVER-DP !
+   data-base BOOT:DP-CEILING-CELL + @ base - OVER-CEILING ! ;
 
 
-: XT-CASE ( -- )
-   s" LD-LEAF" EMISSION-NAMED {: leaf:n :}
-   s" xt cell: its copy holds LD-LEAF's link address" T-LABEL
-   s" LD-XT" COPY-VALUE  leaf BAND-LINK T=
-   s" xt cell: it is in the DATA list" T-LABEL  s" LD-XT" LISTED-NAMED? TTRUE ;
+: STORE-ENTRY ( ptr u8 n -- )
+   XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
+   data-base APP-ENTRY:XT-CELL + xt! ;
 
 
-\ The quotation's code lies in LD-MAKE's emission, so LD-MAKE is placed whole.
-: QUOTE-CASE ( -- )
-   s" LD-MAKE" EMISSION-NAMED {: make:n :}
-   s" LD-Q" COPY-VALUE {: q:n :}
-   s" quotation cell: its copy holds the quotation's link address" T-LABEL
-   q make BAND-LINK >  q make BAND-LINK make NSHADOW:SIZE + <  and TTRUE
-   s" quotation cell: it is in the DATA list" T-LABEL
-   s" LD-Q" LISTED-NAMED? TTRUE ;
+DYNAMIC-BUFFER FIRST-LINK u8
 
+: FILE-BYTES ( ptr u8 n -- ptr u8 n )
+   {: path:ptr path-n:n :}
+   path path-n FS:FILE-SIZE {: size:n :}
+   size FIRST-LINK-RESERVE
+   path path-n 0  0 FIRST-LINK size FS:READ-AT
+   0 FIRST-LINK size ;
 
-: STORE-ENTRY ( -- )
-   s" LD-LEAF" HOST-NAMED ENTRY-XT  data-base APP-ENTRY:XT-CELL + xt! ;
+DYNAMIC-BUFFER SECOND-LINK u8
 
-
-: DATA-CASE ( -- )
-   s" scratch cell: its copy is 0" T-LABEL
-   s" LD-SCR" SPACE-VALUE 7 T=  s" LD-SCR" COPY-VALUE 0 T=
-   s" plain cell: its copy is its bytes" T-LABEL  s" LD-V" COPY-VALUE 11 T=
-   s" scratch cell: not in the DATA list" T-LABEL
-   s" LD-SCR" LISTED-NAMED? TFALSE
-   s" DATA pointer: its copy is DATA-VA plus LD-V's offset" T-LABEL
-   s" LD-P" COPY-VALUE  ARM64:DATA-VA s" LD-V" CELL-OFF + T=
-   s" DATA pointer: not in the DATA list" T-LABEL
-   s" LD-P" LISTED-NAMED? TFALSE ;
-
-
-\ The value of emission e's first data address chain in its placed copy.
-: DATA-CHAIN ( n -- n )
-   {: e:n :}
-   A64ICODE:CODE e OFFSET@ + {: band:ptr :}
-   e NSHADOW:ADDR-SITES 0 ?do
-      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
-         band e i NSHADOW:ADDR-SITE@ + {: at:ptr :}
-         at  band e NSHADOW:SIZE +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
-         at size ADDRESS-CARRIER:CHAIN-VALUE unloop exit
-      then
-   loop
-   -1 ;
-
-\ Header cell off's image copy holds v.
-: HEADER-IS ( ptr u8 n n n -- )
-   {: v:n off:n :}
-   T-LABEL  off COPY-AT LE:U64@ v T= ;
-
-: LISTED-ONCE ( ptr u8 n n -- )
-   {: off:n :}
-   T-LABEL  off LIST-COUNT 1 T= ;
-
-
-: HEADER-CASE ( -- )
-   s" header: DP is the space's"
-      DP-CELL HOST@ DATA-ADDRESS  DP-CELL HEADER-IS
-   s" header: the DP floor is the build's"
-      BOOT:DP-FLOOR-CELL HOST@ DATA-ADDRESS  BOOT:DP-FLOOR-CELL HEADER-IS
-   s" header: the DP ceiling is the build's"
-      BOOT:DP-CEILING-CELL HOST@ DATA-ADDRESS  BOOT:DP-CEILING-CELL HEADER-IS
-   s" header: the heap start is hb's"
-      BOOT:HEAP-START-CELL HOST@  BOOT:HEAP-START-CELL HEADER-IS
-   s" header: the namespace marker is hb's"
-      SAVED-NAMESPACE-WL @  BOOT:NAMESPACE-WL-CELL HEADER-IS
-   s" header: the signal fd pointer is hb's"
-      SIGNAL-ABI:FD-PTR-CELL HOST@  SIGNAL-ABI:FD-PTR-CELL HEADER-IS
-   s" header: the code base is listed once"  RBASE-CELL LISTED-ONCE
-   s" header: the uncaught reporter is listed once"  UNCGH-CELL LISTED-ONCE
-   s" header: the signal stub is listed once"  SIGNAL-ABI:STUB-CELL LISTED-ONCE
-   s" header: the code end is listed once"  CODE-END-CELL LISTED-ONCE
-   s" header: the entry is LD-LEAF's link address"
-      s" LD-LEAF" EMISSION-NAMED BAND-LINK  APP-ENTRY:XT-CELL HEADER-IS
-   s" header: the entry is listed once"  APP-ENTRY:XT-CELL LISTED-ONCE ;
-
-
-\ Whether listed cell off's copy lies in the product's code, its end included.
-: IN-CODE? ( n -- bool )
-   {: off:n :}
-   off COPY-AT LE:U64@ {: v:n :}
-   v ARM64:TEXT-VA >=  v ARM64:TEXT-VA DATA-IMAGE-AT + <=  and ;
-
-: LIST-CASE ( -- )
-   s" list: every listed cell holds an address in the product's code" T-LABEL
-   true  DATA-LIST-N 0 ?do
-      A64ICODE:CODE DATA-LIST-AT + i 8 * + LE:U64@ IN-CODE? and
-   loop
-   TTRUE ;
-
-
-: CHAIN-CASE ( -- )
-   s" data address: LD-ADDR's chain is DATA-VA plus LD-V's offset" T-LABEL
-   s" LD-ADDR" EMISSION-NAMED DATA-CHAIN  ARM64:DATA-VA s" LD-V" CELL-OFF + T=
-   s" data address: its variable LD-V is not placed" T-LABEL
-   s" LD-V" PLACED? TFALSE ;
-
-
-\ A link again from an empty code buffer.
+\ main linked again from the same build gives the same file.
 : SECOND-CASE ( -- )
-   A64ICODE:ASM-LEN {: len:n :}
-   len FIRST-LINK-RESERVE
-   A64ICODE:CODE  0 FIRST-LINK  len BYTE-COPY
-   LINK-STRIPPED
-   s" a second link gives the same code buffer bytes" T-LABEL
-   A64ICODE:ASM-LEN len T=
-   A64ICODE:CODE len  0 FIRST-LINK len  STR= TTRUE
-   FIRST-LINK-RELEASE ;
+   s" main" PROG$ FILE-BYTES {: a:ptr a-n:n :}
+   a-n SECOND-LINK-RESERVE
+   a 0 SECOND-LINK a-n BYTE-COPY
+   s" main" PROG$ LINKER:WRITE
+   s" main" PROG$ FILE-BYTES {: b:ptr b-n:n :}
+   s" a second link writes the same bytes" T-LABEL
+   b b-n  0 SECOND-LINK a-n  STR= TTRUE
+   FIRST-LINK-RELEASE SECOND-LINK-RELEASE ;
 
 
+\ The first link allots in the build's space, so main's expectations are taken
+\ after it.
 : BODY ( -- )
    FIXTURE
-   STORE-ENTRY
-   LINK-STRIPPED
-   XT-CASE QUOTE-CASE DATA-CASE HEADER-CASE LIST-CASE CHAIN-CASE
+   s" LD-OVER" STORE-ENTRY  s" over" PROG$ LINKER:WRITE
+   OVER-EXPECT
+   s" LD-DIST LD-HERE !" evaluate-closed
+   s" LD-MAIN" STORE-ENTRY  s" main" PROG$ LINKER:WRITE
    SECOND-CASE ;
+
+
+: RUN-PROG ( CMD:command ptr u8 n -- CMD:command n )
+   {: file:ptr file-n:n :}
+   file file-n PROG$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
+
+: RUN-MAIN ( CMD:command -- CMD:command )
+   s" main" RUN-PROG {: rc:n :}
+   s" main: xt cell, quotation, scratch, plain, DATA pointer, DP" T-LABEL
+   CMD:OUT$ s\" 12 6 0 11 11 0\n" T$=
+   s" main exits 0" T-LABEL  rc 0 T= ;
+
+: RUN-OVER ( CMD:command -- CMD:command )
+   s" over" RUN-PROG {: rc:n :}
+   s" over names its DP and ceiling as the build's floor and ceiling place them"
+      T-LABEL
+   SB-RESET  OVER-DP @ FMT:SB-INT  s"  of " SB-APPEND  OVER-CEILING @ FMT:SB-INT
+   CMD:ERR$ SB$ CONTAINS? TTRUE
+   s" over exits 76" T-LABEL  rc 76 T= ;
 
 
 : CHILD-LABEL ( ptr u8 n ptr u8 n -- )
@@ -222,61 +144,56 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    {: name:ptr name-n:n :}
    s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
    s" --" CMD:ARG+  name name-n CMD:ARG+  HB-BUILD-CORE:KERNEL$ CMD:ARG+
+   s" bad" PROG$ CMD:ARG+
    ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
-: BAD-RUN ( CMD:command ptr u8 n ptr u8 n n ptr u8 n -- CMD:command )
-   {: name:ptr name-n:n pre:ptr pre-n:n v:n err:ptr err-n:n :}
+\ name's child arms, its link is refused for the reason err, and it exits 74.
+: BAD-CHILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
+   {: name:ptr name-n:n err:ptr err-n:n :}
    name name-n CHILD-RC {: rc:n :}
    name name-n s" the child arms before the link" CHILD-LABEL
    CMD:OUT$ s\" ARM64-LINK-DATA-BAD-ARMED\n" T$=
-   name name-n s" the child names the value" CHILD-LABEL
-   SB-RESET  pre pre-n SB-APPEND  v FMT:SB-INT  10 SB-APPEND-C
-   CMD:ERR$ SB$ CONTAINS? TTRUE
-   name name-n s" the child's reason" CHILD-LABEL
+   name name-n s" the link's reason" CHILD-LABEL
    CMD:ERR$ err err-n CONTAINS? TTRUE
-   name name-n s" the child exits 74" CHILD-LABEL  rc 74 T= ;
+   name name-n s" the link exits 74" CHILD-LABEL  rc 74 T= ;
+
+: NAMES-LABEL ( ptr u8 n -- ) s" the link names what it refuses" CHILD-LABEL ;
 
 : BAD-DATA ( CMD:command -- CMD:command )
-   s" data"  s" link: a DATA pointer outside the build's space: " 1
-   s" link: a DATA pointer outside the build's space"
-   BAD-RUN ;
+   s" data"  s" link: a DATA pointer outside the build's space" BAD-CHILD
+   s" data" NAMES-LABEL
+   CMD:ERR$ s\" link: a DATA pointer outside the build's space: 1\n" CONTAINS? TTRUE ;
 
 : BAD-HEADER ( CMD:command -- CMD:command )
-   s" header"
-   s" link: the build stored into the header cell at offset " UNCGH-CELL
-   s" link: a build stored into a header cell the link writes"
-   BAD-RUN ;
+   s" header"  s" link: a build stored into a header cell the link writes" BAD-CHILD
+   s" header" NAMES-LABEL
+   SB-RESET  s" link: the build stored into the header cell at offset " SB-APPEND
+   UNCGH-CELL FMT:SB-INT  10 SB-APPEND-C
+   CMD:ERR$ SB$ CONTAINS? TTRUE ;
 
-\ The eval child names its caller and no number, so it is checked apart from
-\ BAD-RUN.
 : BAD-EVAL ( CMD:command -- CMD:command )
-   s" eval" CHILD-RC {: rc:n :}
-   s" eval" s" the child arms before the link" CHILD-LABEL
-   CMD:OUT$ s\" ARM64-LINK-DATA-BAD-ARMED\n" T$=
-   s" eval" s" the child names the caller and evaluate-closed" CHILD-LABEL
-   CMD:ERR$ s" link: LD-EV calls evaluate-closed, which a stripped program cannot run" CONTAINS? TTRUE
-   s" eval" s" the child's reason" CHILD-LABEL
-   CMD:ERR$ s" link: a stripped program reaches a word it cannot run" CONTAINS? TTRUE
-   s" eval" s" the child exits 74" CHILD-LABEL  rc 74 T= ;
-
-\ Each refusal dies, so each runs in its own child process.
-: REFUSAL-CASE ( -- )
-   [: BAD-DATA ;] CMD:WITH-COMMAND
-   [: BAD-HEADER ;] CMD:WITH-COMMAND
-   [: BAD-EVAL ;] CMD:WITH-COMMAND ;
+   s" eval"  s" link: a stripped program reaches a word it cannot run" BAD-CHILD
+   s" eval" NAMES-LABEL
+   CMD:ERR$ s" link: LD-EV calls evaluate-closed, which a stripped program cannot run"
+   CONTAINS? TTRUE ;
 
 
 public
 
 : RUN ( -- )
    T-RESET
+   s" habu-link-data" FS:MKTEMP-DIR {: a:ptr u:n :}
+   a ROOT-BUF u BYTE-COPY  u ROOT-U !
    false RTARGET:HOST-TARGET HB-BUILD-CORE:KERNEL-BUILD
    s" app" RTARGET:HOST-TARGET [: BODY ;] LINKER:WITH
-   REFUSAL-CASE
+   [: RUN-MAIN ;] CMD:WITH-COMMAND
+   [: RUN-OVER ;] CMD:WITH-COMMAND
+   [: BAD-DATA ;] CMD:WITH-COMMAND
+   [: BAD-HEADER ;] CMD:WITH-COMMAND
+   [: BAD-EVAL ;] CMD:WITH-COMMAND
+   ROOT$ FS:REMOVE-TREE
    T-REPORT ;
 
 ;package
 
 ARM64-LINK-DATA:RUN
-
-;package

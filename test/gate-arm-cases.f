@@ -12,8 +12,8 @@ SUITE arm64-place
    test/compiler/arm64-place.f
 ;SUITE
 
-\ arm64-link-data.f links a stripped build's closure, DATA image, header cells
-\ and DATA list, and the refusals its REFUSAL-CASE runs.
+\ arm64-link-data.f writes two stripped programs from one build and runs them,
+\ checking their DATA cells and DP ceiling, and runs the link's refusals.
 SUITE arm64-link-data
    test/compiler/arm64-link-data.f
 ;SUITE
