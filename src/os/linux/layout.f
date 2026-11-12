@@ -5,7 +5,6 @@
 
 package IMAGE-CELL
 private
-\ The running image's cells are addressed by byte offset from its base, an integer.
 CAST: N>CELL ( n -- ptr n )
 public
 \ The cell at byte offset n into the running image.

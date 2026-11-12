@@ -142,8 +142,6 @@ private
 CHECK-EXPORT
 public
 
-\ A refused cast throws its code out of the declaration in a multi-error load
-\ too, uncounted, and leaves no callable name.
 : CHECK-CAST ( -- )
    [: s" cast: CAST-WIDE ( n -- ptr u8 n )" evaluate-closed ;] catch
    E-CAST-ARITY <> if s" native cast refusal code" 1 die then
