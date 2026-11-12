@@ -2,10 +2,9 @@
 \ Loaded by src/lib/ffi-test.f on macOS arm64, inside package FFI-TEST, after
 \ test/ffi-struct-result.f, whose canaried destination it reuses.
 \
-\ The callee is test/ffi-struct-fixture.f's library, compiled here: AAPCS64
-\ passes a record of up to 16 bytes in consecutive integer registers, or
-\ wholly on the stack once they run short, and a larger one as the address of
-\ a copy the caller owns. Every checksum weighs each member by position, so a
+\ AAPCS64 passes a record of up to 16 bytes in consecutive integer registers, or
+\ wholly on the stack once they run short, and a larger one as the address of a
+\ copy the caller owns. Every checksum weighs each member by position, so a
 \ member read from the wrong offset, register or stack slot fails its case.
 
 : FFI-T-SA-LIBRARY ( -- )
@@ -42,7 +41,6 @@ FUNCTION: FFI-T-SWAP16 hb_swap16 ( ptr u8 ptr u8 -- )
 FUNCTION: FFI-T-ECHO32 hb_echo32 ( n ptr u8 ptr u8 -- )
    1 32 STRUCT-ARG 32 STRUCT-RESULT
 ;FUNCTION
-\ Nine C arguments put the ninth on the stack beside the x8 destination.
 FUNCTION: FFI-T-RET9 hb_ret9 ( n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION
 
 create FFI-T-S8 8 allot
@@ -56,7 +54,6 @@ create FFI-T-S128 128 allot
 : FFI-T-H2 ( n n -- n ) {: a:n b:n :} 1 a FFI-T-MIX b FFI-T-MIX ;
 : FFI-T-H4 ( n n n n -- n ) {: a:n b:n c:n d:n :}
    1 a FFI-T-MIX b FFI-T-MIX c FFI-T-MIX d FFI-T-MIX ;
-\ MIX folded over 1..count from a seed of 1, as the fixture folds its longs.
 : FFI-T-FOLD ( n -- n ) {: count:n :}
    1 count 0 ?do i 1+ FFI-T-MIX loop ;
 
@@ -180,7 +177,6 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    s"  15 $7FFFFFFFFFFFFF7F STRUCT-ARG ;FUNCTION" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
-\ Declarations the declarer must refuse, each through the loader's evaluate.
 : FFI-T-SA-REFUSALS ( -- )
    s" malformed struct-argument declarations are refused" T-LABEL
    [: s" 0 8 STRUCT-ARG" INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ

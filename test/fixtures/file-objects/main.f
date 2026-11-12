@@ -32,5 +32,5 @@ public
    21 FILE-OBJECTS-SHAPE:DOUBLE 42 = if ." ok" cr then ;
 ;package
 
-\ $43A0 is APP-ENTRY:XT-CELL (src/habu/layout.f), E-UNDEFINED in a build's file.
+\ $43A0 is APP-ENTRY:XT-CELL, E-UNDEFINED in a build's file.
 ' FILE-OBJECTS-MAIN:RUN data-base $43A0 + xt!
