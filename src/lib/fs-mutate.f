@@ -36,7 +36,7 @@ private
 $2D constant DASH
 17 constant EEXIST                    \ EEXIST on both targets
 
-\ Process-wide, so COPY-FILE and COPY-FILE-STREAM are single-task: 8192 bytes is
+\ Process-wide, so COPY-FILE-STREAM is single-task: 8192 bytes is
 \ more than the per-task band carries, and a second task that copies needs its
 \ own buffer.
 COPY-CAP SPAN-BUFFER: COPY-BUF
@@ -320,14 +320,6 @@ public
    a u MKDIR-ONE ;
 
 private
-\ `cap` is how much of the copy buffer this call may use: the narrowing refuses
-\ a cap past the buffer (E-SPAN-RANGE) and a negative one, so neither needs a
-\ hand-written comparison. A file larger than `cap` is still READ-ALL's
-\ E-FS-CAPACITY.
-: COPY-FILE ( ptr u8 n ptr u8 n n -- ) {: src:ptr srcu dst:ptr dstu cap :}
-   src srcu COPY-BUF cap SPAN:TAKE SPAN:$ READ-ALL {: n :}
-   dst dstu COPY-BUF n SPAN:TAKE SPAN:$ WRITE-ALL ;
-
 : PREPARE-DST ( fd fd -- ) {: source dest :}
    source dest SAME-OPEN-FILE? if E-FS-OPEN throw then
    dest 0 FD:RESIZE ;

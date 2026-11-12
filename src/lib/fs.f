@@ -503,16 +503,6 @@ private
 : PATH= ( ptr u8 n ptr u8 n -- bool )
    STR= ;
 
-\ E-FS-CAPACITY is a semantic refusal: a link that does not fit would be
-\ silently truncated.
-: READ-LINK ( ptr u8 n SPAN:span<u8> -- n ) {: pa:ptr pu dst :}
-   pa pu TRY-LSTAT 0= if E-FS-STAT throw then
-   STAT-MODE@ S-IFMT and S-IFLNK <> if E-FS-STAT throw then
-   STAT-SIZE@ dst SPAN:LEN > if E-FS-CAPACITY throw then
-   pa pu >PATHZ dst SPAN:$ readlink {: n :}
-   n 0 < if E-FS-IO throw then
-   n ;
-
 : IO-FAIL ( -- )
    IO-FD @ close E-FS-IO throw ;
 
