@@ -23,7 +23,7 @@ public
 \ E-DOMAIN: an invalid root or logarithm input, an FPOW base that is not
 \ positive and finite (zero to the zero is outside it) or an exponent that is
 \ not finite, an ACOS input outside [-1, 1], a SIN or COS argument of magnitude
-\ 1647099 or more (TRIG-DOMAIN's MEDIUM-BITS), a negative absolute error given
+\ 1647100 or more (TRIG-DOMAIN's MEDIUM-BITS), a negative absolute error given
 \ to a *-BOUND word, and a nonfinite input to anything but FINITE? and the IEEE
 \ wrappers ADD..FMIN. E-OUTPUT: an overflowing power, a nonfinite intermediate
 \ exponent product or an out-of-range FROUND. Underflow may return zero.
@@ -139,7 +139,8 @@ $3E40000000000000 constant TINY-BITS       \ |x| < 2^-27: sin x = x, cos x = 1 t
 $3FE921FC00000000 constant PIO4-BITS       \ |x| within pi/4 (fdlibm 0x3fe921fb): no reduction
 $3FD3333300000000 constant KCOS-SMALL-BITS \ |x| < 0.3: the plain 1 - z/2 form
 $3FE9000100000000 constant KCOS-QX-BITS    \ |x| > 0.78125: a fixed quarter
-$413921FB00000000 constant MEDIUM-BITS     \ 2^20 * pi/2: the reduction's exact range
+\ |x| < 1647100 (fdlibm 0x413921fb): fdlibm's medium range
+$413921FC00000000 constant MEDIUM-BITS
 
 \ sin on |x| <= pi/4. y is the tail of a reduced argument (zero for a direct one).
 : KSIN-R ( r -- r ) {: z:r :}
@@ -174,7 +175,7 @@ $413921FB00000000 constant MEDIUM-BITS     \ 2^20 * pi/2: the reduction's exact 
    x KCOS-QX {: qx:r :}
    1.0 qx f-  0.5 z f* qx f-  z r f* x y f* f-  f-  f- ;
 
-\ Reduction of a nonnegative t in (pi/4, 2^20 pi/2) to y0 + y1.
+\ Reduction of t > pi/4 to y0 + y1.
 \ n = round(t / (pi/2)); the remainder is refined a second and a third time only
 \ when cancellation took more than 16, then 49, bits of t.
 : REFINE ( r r r r -- r r ) {: fn:r r:r pk:r pkt:r :}   \ -- r' w'
@@ -309,14 +310,10 @@ public
    power power 1.4426950408889634 f* FROUND FEXP-SCALED FRESULT ;
 
 
-\ Circular constant and the two trigonometric functions. Both accept a finite
-\ |x| below 2^20 * pi/2 (1647099.32...) and refuse the rest with E-DOMAIN: that is
-\ the range fdlibm's three-piece reduction covers exactly, and beyond it the
-\ kernels would be fed a remainder with fewer correct bits. Within it the
-\ result is within 1 ulp of the correctly rounded value (fdlibm's bound for
-\ these kernels and reduction).
 : PI ( -- r ) $400921FB54442D18 IEEE754:BITS>F64 ;
 
+\ SIN and COS are within 1 ulp of correctly rounded; a
+\ finite |x| of 1647100 or more is E-DOMAIN.
 : SIN ( r -- r ) {: x:r :}
    x TRIG-DOMAIN
    x ABS-BITS PIO4-BITS < if x KSIN-DIRECT exit then
