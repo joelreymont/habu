@@ -22,3 +22,5 @@ Done in part (2026-11-09, "Drop the test framework's waiting tests"): test/gate-
 Waiting case (step-5 review, 2026-11-09): with the forked slots gone, src/lib/process-fork.f FORK-REAPER, REAP-WATCH-FD and PROC-REAP-ARM-ON (~277-287) have no production caller or setter; only test/gate-pool-orphan-test.f (suite row gate-stdlib-cases.f ~1275, its GPO and GCR cases) reaches them. Comments describing pool workers the pool no longer forks: process-fork.f:1-2, 241, 267-276; gate-pool-orphan-test.f:1-3, 64-66, 180, 215-216, 276-278. They go, or say what is true, with fork without exec.
 
 Consumers: Zen loads neither src/lib/process-fork.f nor process-pty-io.f, and its two dots that named this one are closed.
+
+Waiting case (jerry, from the memory-fault throw, habu-checked-src-can-88e8a977): on macOS a child of fork without exec has no alternate signal stack (sigaltstack answers SS_DISABLE), so a machine-stack overflow in it cannot reach the crash handler and dies unnamed. It goes with fork without exec.
