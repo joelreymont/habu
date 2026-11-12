@@ -1,12 +1,18 @@
 \ clobber-lint-core.f - register-clobber analysis for BL-able emitter routines.
 \ Run: bin/hb --load tools/lint/clobber-lint.f
+\
+\ Pass 1 records the registers each routine writes and the routines it calls,
+\ and the clobbers are closed over that call graph. Pass 2 reports a register
+\ written, clobbered by a call, then read. Back edges grow a label's state after
+\ its placement, so pass 2 walks a definition until no label's state grows,
+\ then once more; only that last walk reports.
 
 require src/lib/error.f
 require src/lib/string.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require src/lib/fmt.f                        \ FMT:.INT
+require src/lib/fmt.f
 require src/lib/map.f
 
 package CLOBBER-CENSUS
@@ -58,7 +64,6 @@ package CLOBBER
 \ register operands cannot be resolved. This claims no reserved error range.
 -4801 constant E-CLOBBER-WRAP-UNRESOLVED
 
-\ ---- register sets --------------------------------------------------------
 variable WMSK  variable RMSK
 variable RX  variable RACC
 
@@ -94,7 +99,6 @@ variable RX  variable RACC
    a u s" DATA"  LINT-STR= if 20 exit then
    a u CL-NUM-REG ;
 
-\ ---- string/token helpers -------------------------------------------------
 : START-L?  ( ptr u8 n -- bool ) {: a:ptr u :}
    0 u 0 ?do a i + c@ 58 = if drop i 1+ then loop {: off:n :}
    off u < if a off + c@ LINT-FOLD 108 = else LINT-FALSE then ;
@@ -113,7 +117,6 @@ variable RX  variable RACC
       RX @ 1+ RX !
    repeat  LINT-TRUE ;
 
-\ ---- modeled maps ---------------------------------------------------------
 : RETURNS-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
    \ LCOUNT publishes the requested count in NDICT; APPEND and RESET use it.
    a u s" EM-DEF-OCC:LCOUNT" LINT-STR=CI
@@ -181,11 +184,10 @@ variable RX  variable RACC
    then
    0 ;
 
-\ ---- wrapped emitter calls ------------------------------------------------
 \ An UPPER-CASE `PKG:CALL` word emits a register-move prelude and a BL to a
 \ shared helper, so neither the mnemonic scan nor a `LABEL@ BL,` triple sees it.
-\ PROT-GUARD:CALL (src/habu/habu1.f) moves (addr,len) into x10/x11 for the
-\ LPROTSPAN guard, which touches only x12/x13; the BL clobbers x30.
+\ PROT-GUARD:CALL moves (addr,len) into x10/x11 for the LPROTSPAN guard, which
+\ touches only x12/x13; the BL clobbers x30.
 \ C-FIND-GLOBAL feeds literal label/count arguments to LFIND and returns by its
 \ ABI. Any other `:CALL` shape, or operands that do not resolve to registers,
 \ fails closed via E-CLOBBER-WRAP-UNRESOLVED.
@@ -197,7 +199,7 @@ EXPORT E-CLOBBER-WRAP-UNRESOLVED
 package CLOBBER-WRAP
 using CLOBBER
 
-0 12 CL-ADD 13 CL-ADD constant GUARD-BODY   \ registers the LPROTSPAN body clobbers
+0 12 CL-ADD 13 CL-ADD constant GUARD-BODY
 0 10 CL-ADD 11 CL-ADD constant GUARD-ABI    \ x10=addr, x11=len on return
 
 : PROT?  ( ptr u8 n -- bool )  s" PROT-GUARD:CALL" LINT-STR= ;
@@ -206,7 +208,7 @@ public
 
 : GLOBAL-FIND? ( ptr u8 n -- bool ) s" C-FIND-GLOBAL" LINT-STR= ;
 
-: WRAP?  ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ shape of a wrapped emitter call
+: WRAP?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u GLOBAL-FIND? if LINT-TRUE exit then
    u 6 < if LINT-FALSE exit then
    a u s" :CALL" LINT-SUFFIX? ;
@@ -290,11 +292,9 @@ package CLOBBER
 : MN-ST?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" STR," LINT-STR= if LINT-TRUE exit then  a u s" STRB," LINT-STR= if LINT-TRUE exit then
    a u s" STRW," LINT-STR= if LINT-TRUE exit then  a u s" STLR," LINT-STR= ;
-\ The data words lay down data, not instructions.
 : MN-DATA?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" ," LINT-STR= if LINT-TRUE exit then  a u s" BYTES," LINT-STR= if LINT-TRUE exit then
    a u s" DCQ," LINT-STR= if LINT-TRUE exit then  a u s" DLBL," LINT-STR= ;
-\ The barriers and the d register operations touch no x register.
 : MN-QUIET?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" ISB," LINT-STR= if LINT-TRUE exit then  a u s" DSB-ISH," LINT-STR= if LINT-TRUE exit then
    a u s" FADD," LINT-STR= if LINT-TRUE exit then  a u s" FSUB," LINT-STR= if LINT-TRUE exit then
@@ -329,8 +329,7 @@ package CLOBBER
 22 constant MN-TRAP    \ ends the path, touching no register
 23 constant MN-DATA    \ never executed: leaves the path as it found it
 
-\ The one list of mnemonics the lint models; EFFECTS, both passes and
-\ HAND-MODEL? read it.
+\ The one list of mnemonics the lint models.
 : MN-KIND  ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u ENDS-COMMA? 0= if MN-NONE exit then      \ every mnemonic ends in a comma
    a u MN-W3? if MN-WRR exit then
@@ -360,7 +359,6 @@ package CLOBBER
    a u s" BRK," LINT-STR= if MN-TRAP exit then
    MN-NONE ;
 
-\ ---- register extraction/effects -----------------------------------------
 16 constant RRMAX
 create RRS RRMAX cells allot   variable RR#
 variable RK
@@ -428,8 +426,8 @@ DYNAMIC-BUFFER ROLES u8
    \ rather than a clobber; prof.f and crash.f hold x19 across calls, so it
    \ stays tracked everywhere else.
    a u s" g-push" LINT-STR=CI if 0 ER exit then
-   \ C-HIDX-HASH ( nr lr hr c3 c4 c7 ) reads the name and writes the hash and
-   \ its scratch (habu1.f).
+   \ C-HIDX-HASH ( nr lr hr c3 c4 c7 ) reads the name and writes the hash
+   \ and its scratch.
    a u s" c-hidx-hash" LINT-STR=CI if 0 ER 1 ER 2 EW 3 EW 4 EW 5 EW exit then
    a u s" g-pop" LINT-STR=CI if 0 EW exit then
    a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
@@ -464,7 +462,6 @@ variable PATH
    kind lo hi PATH-END? if ENDED PATH ! exit then
    PATH @ MAY-END = if LIVE PATH ! then ;
 
-\ ---- path states -----------------------------------------------------------
 \ Pass 2's state besides PATH: the registers written since entry (DIRTY) and,
 \ for each register, the callee that clobbered it while written, or -1 (POIS).
 create POIS 32 cells allot   variable DIRTY
@@ -502,7 +499,6 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
 : FLOW-COPY  ( n n -- ) {: from:n to:n :}  LS-STRIDE 0 do from i FL @ to i FL ! loop ;
 
 
-\ Exchange the current state with entry e's.
 : FLOW-SWAP  ( n -- )
    {: e:n :}
    PATH @  e FL-PATH FL @ PATH !  e FL-PATH FL !
@@ -627,7 +623,6 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
    kind MN-BLR = if 1 18 lshift 1 -  30 CL-ADD CL-WOR  0 ER exit then
    kind MN-NONE = if a u PSEUDO-EFFECTS then ;
 
-\ ---- clobber table + BL graph --------------------------------------------
 $800 constant CMAX      \ callable labels plus discovered call targets
 $2000 constant EMAX     \ unique BL graph edges
 $10000 constant CNBUF-CAP
@@ -693,7 +688,6 @@ variable PKG-U
    from EFROM EN# @ cells + !  to ETO EN# @ cells + !
    EN# @ 1+ EN# ! ;
 
-\ ---- definitions, labels, and routine regions ----------------------------
 $80 constant OMAX
 create OPENINGS OMAX cells allot   variable ON#
 TYPED-VARIABLE CALA ptr u8   \ start of the callee name CALLEE? resolved
@@ -705,8 +699,6 @@ variable RNEXT  variable RDONE  variable CUR
 \ starting at OPLO. Resolve them, failing closed if they are missing or are not
 \ registers, so the modeled contract never runs on an operand it cannot read.
 : WRAP-REGS  ( -- n n )   \ addr len
-   \ The global lookup's arguments are an emitter label and byte count, not
-   \ target registers. No caller register is read to construct its arguments.
    DI @ TOK CLOBBER-WRAP:GLOBAL-FIND? if 0 0 exit then
    DI @ OPLO @ - 2 < if E-CLOBBER-WRAP-UNRESOLVED throw then
    DI @ 2 - TOK REG-OF  DI @ 1 - TOK REG-OF
@@ -718,7 +710,6 @@ variable RNEXT  variable RDONE  variable CUR
 : WRAP-RETURNS ( -- n ) \ register-valued outputs are resolved from the same operands
    WRAP-REGS  DI @ TOK 2swap CLOBBER-WRAP:RETURNS ;
 
-\ ---- host words -----------------------------------------------------------
 \ Pass 1 makes a row for each colon definition, noting whether its body emits;
 \ a call sees only rows below BOUND#, those of earlier definitions.
 DYNAMIC-BUFFER HOSTS n
@@ -762,8 +753,8 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
 : VISIBLE  ( n -- n )
    begin dup BOUND# @ >= while PREV HOST@ repeat ;
 
-\ A word the lint models by hand keeps that model where a scanned file
-\ defines it, as habu1.f defines CB-SELF,.
+\ A word the lint models by hand keeps that model where a scanned
+\ file defines it.
 : HAND-MODEL?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u MN-KIND MN-NONE <> if LINT-TRUE exit then
    a u PSEUDO? if LINT-TRUE exit then
@@ -931,8 +922,8 @@ variable HIDDEN
    close k 1+ ?do i  i TOK LOCAL-NAME nip  LOCAL+ loop
    close 1+ ;
 
-\ A token spelled as a live local is that local, never a keyword, a run end or a
-\ call (docs/forth.md "Rules learned by refusal", "Parsing operands are data").
+\ A token spelled as a live local is that local, never a keyword, a run end
+\ or a call.
 : SCOPE-TOKEN  ( n n -- ) {: lo:n t:n :}
    t LIVE-LOCAL? if LOCAL-USE t ROLES c! exit then
    HIDDEN @ if lo t RUN-HIDDEN then
@@ -1157,7 +1148,6 @@ variable WI  variable WE
       WI @ 1+ WI !
    repeat ;
 
-\ ---- clobber closure ------------------------------------------------------
 variable CHANGED  variable EFF
 : CLOSE-CLOBBERS  ( -- )
    -1 CHANGED !
@@ -1178,7 +1168,6 @@ variable CHANGED  variable EFF
       repeat
    repeat ;
 
-\ ---- pass 2: call-site liveness ------------------------------------------
 variable APPLY-MASK
 create WNAME 128 allot       variable WLEN
 create NUMBUF 2 allot
@@ -1204,8 +1193,6 @@ variable TRACK-LR
    WNAME WLEN @ type s" : " type reg REG-TYPE
    s"  written, clobbered by " type cidx C-NAME type
    s" , then read" type NL ;
-\ Only the last walk of a definition reports; the walks before it reach the
-\ labels' fixed point.
 variable QUIET
 : REPORT  ( ptr u8 n n n -- ) {: fa:ptr fu:n reg:n cidx:n :}
    QUIET @ if exit then
@@ -1304,7 +1291,6 @@ variable QUIET
 : DIRECT-JUMP? ( n -- bool ) {: kind:n :}
    kind MN-B =  kind MN-COND = or  kind MN-CB = or ;
 
-\ ---- pass 2: label states -------------------------------------------------
 \ One row per LBL, in the definition: its name token, its name's key, then the
 \ state recorded from the branches into it, DIRTY and 32 POIS cells.
 DYNAMIC-BUFFER LSTATE n
@@ -1405,8 +1391,6 @@ variable LBL#  variable LX  variable GROWN
       DI @ 1+ DI !
    repeat ;
 
-\ Back edges grow a label's state after its placement: walk until no label
-\ grows, then once more to report.
 : PASS2-DEF  ( ptr u8 n n n -- ) {: fa:ptr fu:n lo:n hi:n :}
    lo hi RET-IN-RANGE? TRACK-LR !
    lo hi COLLECT-LABELS
@@ -1435,7 +1419,6 @@ variable LBL#  variable LX  variable GROWN
       WI @ 1+ WI !
    repeat  LSTATE-RELEASE ;
 
-\ ---- driver ---------------------------------------------------------------
 \ The engine's files in load order: a call binds an earlier definition, so
 \ every host row precedes its callers.
 : EACH-FILE ( [ ptr u8 n -- ] -- ) {: visit :}
