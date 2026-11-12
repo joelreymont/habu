@@ -1,6 +1,6 @@
 \ A failed later stack allocation leaves no earlier task mappings behind.
 \ Linux's virtual-memory limit permits three guarded 64K stacks but refuses
-\ the next reserve; compare /proc/self/statm before and after the caught error.
+\ the next reserve.
 require src/lib/test.f
 require src/lib/task.f
 require src/lib/fs.f

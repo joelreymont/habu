@@ -1,5 +1,5 @@
 \ A caught declaration with an unfinished quotation must leave the parser
-\ usable for the next declaration, including nested quotations and SUMTYPE.
+\ usable for the next declaration.
 require src/lib/test.f
 
 package QUOT-ROLLBACK-TEST
