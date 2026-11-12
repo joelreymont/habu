@@ -1,6 +1,3 @@
-\ redo.f - one part defines Y and X, which calls Y, undefines both and defines them again,
-\ Y answering 2 the second time.
-
 package FILE-OBJECTS-REDO
 public
 : Y ( -- n ) 1 ;

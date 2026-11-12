@@ -1,6 +1,4 @@
-\ seal-first.f - the sealed program's first file, built by tools/hb-build.f:
-\ it declares the package seal-second.f fills and seals, and a package whose
-\ word seal-second.f exports into it.
+\ seal-first.f - the sealed program's first file, built by tools/hb-build.f.
 
 package FILE-OBJECTS-SEAL-OTHER
 public
