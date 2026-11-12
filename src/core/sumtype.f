@@ -737,7 +737,6 @@ public
 
 private
 
-: TDECL-NICHE? ( n -- bool ) TFAM-LAYOUT-POLICY@ TL-NICHE = ;
 : TDECL-NICHE-THROW ( -- )
    TDN-A @ TDN-U @ TDECL-NICHE-MESSAGE$ E-TDECL-POLICY TDECL-THROW ;
 : TDECL-NICHE-SHAPE? ( n -- bool ) {: vstart:n :}
@@ -746,7 +745,7 @@ private
    vstart 1 + SUMV-SCH-COUNT@ 1 <> IF RES-FALSE EXIT THEN
    vstart 1 + SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-PTR? ;
 : TDECL-NICHE-REQUIRE ( n n -- ) {: fam:n vstart:n :}
-   fam TDECL-NICHE? 0= IF EXIT THEN
+   fam TFAM-NICHE? 0= IF EXIT THEN
    vstart TDECL-NICHE-SHAPE? IF EXIT THEN
    TDECL-NICHE-THROW ;
 
@@ -1014,7 +1013,7 @@ private
    ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
    fam TDECL-CUR-FAM !                    \ field self-references reject by id
    fam TDECL-POLICY
-   fam TDECL-NICHE? IF TDECL-NICHE-THROW THEN
+   fam TFAM-NICHE? IF TDECL-NICHE-THROW THEN
    fam TDECL-DERIVE
    fam TDECL-PRODUCT-RECORD
    fam TDECL-FAM-REG ! ;

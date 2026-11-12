@@ -658,6 +658,11 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    dup 0= if drop TFAM:TFAM-VAR-COUNT@ exit then
    AS-SLOT execute ;
 
+: FAMILY-NICHE? ( n -- bool )
+   NCOMP-DISPATCH:DECL-FAMILY-NICHE-OFF s" family niche" FIELD
+   dup 0= if drop TFAM:TFAM-NICHE? exit then
+   AS-SLOT-PREDICATE execute ;
+
 : FAMILY-NAME$ ( n -- ptr u8 n )
    NCOMP-DISPATCH:DECL-FAMILY-NAME-OFF s" family name" FIELD
    dup 0= if drop TFAM-NAME$ exit then

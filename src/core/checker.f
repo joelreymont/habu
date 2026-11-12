@@ -1001,6 +1001,7 @@ private
    0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here DECLARATIONS - constant OWNER-COMMITTED
 OWNER-BYTES constant OWNER-CELLS-BYTES
@@ -1013,7 +1014,7 @@ OWNER-SIZE-AGREE
 \ The size is the end of the last appended field: a field appended without
 \ growing it is read past the record's extent by every guard that trusts it.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:PIN-TOKEN-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:FAMILY-NICHE-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 DECLARATIONS data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field ptr-cell!

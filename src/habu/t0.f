@@ -1459,11 +1459,13 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 \ ---- MATCH and construct -----------------------------------------------------
 \ `MATCH fam` reads its value as the cells the checker proved at the family
 \ token, tag on top, and opens a case over the tag; each arm drops the tag and
-\ the pads proved at its `of`. `;MATCH` is the default arm: an unmatched tag
-\ calls the trap routine with the family's bad-tag message
+\ the pads proved at its `of`. A niche family's one cell is first given its tag
+\ (NICHE-TAG), and the value's width counts it. `;MATCH` is the default arm: an
+\ unmatched tag calls the trap routine with the family's bad-tag message
 \ (src/compiler/native/trap.f), as tier 1's MATCH-TRAP. `construct fam v` pushes
-\ the variant's pads as zeros, then its tag. A call first pushes, as zeros, the
-\ pads the checker proved the call's instantiation adds (NDICT:CON-PADS):
+\ the variant's pads as zeros, then its tag, which a niche family omits. A call
+\ first pushes, as zeros, the pads the checker proved the call's instantiation
+\ adds (NDICT:CON-PADS):
 \ OPTION:NONE at option<pt>. A form whose facts are missing or disagree, as
 \ tier 1's MATCH-SCAN refuses them, is E-T0-MATCH: MATCH-CK names the token
 \ being compiled, a family or variant that resolves nothing or a MATCH with no
@@ -1486,7 +1488,8 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    EMIT-ENDCASE,
    SCOPE-END ;
 
-\ The mismatch keeps the value for the next arm.
+\ The mismatch keeps the value for the next arm. A niche family's empty arm
+\ drops the cell as its one pad.
 : ARM-OF ( n -- ) {: at:n :}
    ARMS-AT {: k:n :}
    k CS-KIND @ CS-MATCH = MATCH-CK
@@ -1498,10 +1501,18 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    OF-TEST
    pads 0 ?do DROP1 loop ;
 
+\ A niche cell's tag, 0 for a zero cell and else 1, pushed above the cell. The
+\ row after a MATCH's family is an arm or `;MATCH`, so CMP0 leaves its flag.
+: NICHE-TAG ( -- )
+   DUP1
+   [: 0<> bool>n ;] CC-NE CMP0
+   [: negate ;] [: EMIT-NEG ;] UNARY ;
+
 : DO-MATCH ( n n -- ) {: fam:n at:n :}
    fam 0 >= MATCH-CK
-   at NDICT:MATCH-CELLS {: w:n :}
-   w NDICT:MATCH-NONE <> MATCH-CK
+   at NDICT:MATCH-CELLS {: w0:n :}
+   w0 NDICT:MATCH-NONE <> MATCH-CK
+   fam NFAM:NICHE? if NICHE-TAG w0 1+ else w0 then {: w:n :}
    w fam NFAM:WIDTH >= MATCH-CK
    EMIT-CASE,
    CS-N @ {: k:n :}
@@ -1517,11 +1528,14 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    ORD @ ROW-KIND @ CHECKER-TAPE:K-MATCH-OF <> if ORD @ ROW$ E-T0-MATCH REFUSE then
    tag PUSH-CONST ;
 
-\ As tier 1's DO-MAKE-BUNDLE; the payload is already on the stack.
+\ As tier 1's DO-MAKE-BUNDLE; the family is the token before the variant. A niche
+\ value is the bundle without its tag.
 : DO-CONSTRUCT ( n n n -- ) {: tag:n pads:n at:n :}
    tag 0 >= MATCH-CK
    at NDICT:CALL-CELLS drop 0 >= MATCH-CK
+   at 1- ROW$ NFAM:CON-FAM MATCH-CK {: fam:n :}
    pads at NDICT:CON-PADS +  0 ?do 0 PUSH-CONST loop
+   fam NFAM:NICHE? if exit then
    tag PUSH-CONST ;
 
 \ ---- the inlined operations --------------------------------------------------

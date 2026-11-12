@@ -73,7 +73,9 @@ $5D0 constant PIN-SPAN-OFF
 \ ( -- ptr u8 n ) that token's text, empty when none was pinned (checker.f
 \ PIN-TOKEN).
 $5D8 constant PIN-TOKEN-OFF
-PIN-TOKEN-OFF CELL + constant OWNER-BYTES
+\ ( n -- bool ) whether a family is niche-null (type-family.f TFAM-NICHE?).
+$5E0 constant FAMILY-NICHE-OFF
+FAMILY-NICHE-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 10 cells constant MIN-BYTES

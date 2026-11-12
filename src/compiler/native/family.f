@@ -32,6 +32,10 @@ public
 : VARIANTS ( n -- n )
    CHECKER-OWNER:FAMILY-VARIANTS ;
 
+\ Whether MATCH makes the value's tag and construct omits it.
+: NICHE? ( n -- bool )
+   CHECKER-OWNER:FAMILY-NICHE? ;
+
 : NAME$ ( n -- ptr u8 n )
    CHECKER-OWNER:FAMILY-NAME$ ;
 

@@ -408,6 +408,7 @@ public
 : TFAM-ARITY@ ( n -- n ) TF-REC@ TF.ARITY @ ;
 : TFAM-KIND@ ( n -- n ) TF-REC@ TF.KIND @ ;
 : TFAM-LAYOUT-POLICY@ ( n -- n ) TF-REC@ TF.LAYOUT @ ;
+: TFAM-NICHE? ( n -- bool ) TFAM-LAYOUT-POLICY@ TL-NICHE = ;
 : TFAM-SLOTS@ ( n -- n ) TF-REC@ TF.SLOTS @ ;
 : TFAM-VAR-START@ ( n -- n ) TF-REC@ TF.VAR-START @ ;
 : TFAM-VAR-COUNT@ ( n -- n ) TF-REC@ TF.VAR-COUNT @ ;
@@ -5776,7 +5777,7 @@ TFAM-MEMBERS-INSTALL
 \ bundle, the cell and then a tag (0 for a zero cell, else 1).
 : TFC-BUNDLE-CELLS ( n n -- n ) {: fam:n term:n :}
    term T-WIDTH
-   fam TFAM-LAYOUT-POLICY@ TL-NICHE = IF 1 + THEN ;
+   fam TFAM-NICHE? IF 1 + THEN ;
 
 \ One subtraction answers both lowerings, so the number is latched here. Both
 \ push what the family declares and can only add: pass 1 emits the declared
@@ -7404,6 +7405,7 @@ package CHECKER-REG
 ' TFAM:TFL-VAR?        DECLARATIONS FAMILY-VARIANT-OFF + xt!
 ' TFAM:TFAM-SLOTS@     DECLARATIONS FAMILY-SLOTS-OFF + xt!
 ' TFAM:TFAM-VAR-COUNT@ DECLARATIONS FAMILY-VARIANTS-OFF + xt!
+' TFAM:TFAM-NICHE?    DECLARATIONS CHECKER-OWNER-ABI:FAMILY-NICHE-OFF + xt!
 ' TFAM-NAME$           DECLARATIONS FAMILY-NAME-OFF + xt!
 ' TFAM:SUMV-TAG@       DECLARATIONS VARIANT-TAG-OFF + xt!
 ' TFAM:TFL-VPADS       DECLARATIONS VARIANT-PADS-OFF + xt!
