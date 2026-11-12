@@ -553,7 +553,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    DICT-START
    begin dup DICT-END < while
       dup ENT? 0= if drop s" imgdump: corrupt dict entry" 74 die then
-      dup E-NAME 2 SCRIPT-ARGV$ CORE-STR= if
+      dup E-NAME 2 SCRIPT-ARGV$ CORE-STR=CI if
          dup E-NAME type s"  wid " type E-WID . cr exit
       then
       DREC +
