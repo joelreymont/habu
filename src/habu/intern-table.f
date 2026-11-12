@@ -5,8 +5,8 @@
 package INTERN
 private
 
-\ error.f owns E-INTERN-REWIND but loads later: the same (code, name) is
-\ registered here, as error-code-lint admits; test/linker.f CASE-F checks it.
+\ error.f owns E-INTERN-REWIND but loads later: the same (code, name)
+\ is registered here.
 -8638 constant E-INTERN-REWIND
 
 variable HV
@@ -29,10 +29,8 @@ variable HV
 : FILLED-CELL ( ptr n -- ptr n ) cell+ cell+ ;
 : HIGHEST-CELL ( ptr n -- ptr n ) 3 cells + ;
 
-\ A build's data space is open while BOOT:IMAGE-BASE-CELL is nonzero
-\ (boot-cells.f says when it is 0); its close frees its table (CLEANUP).
-\ These cells name memory this process mapped, so a save writes them null
-\ (scratch-cell-mark) and the saved program's TABLE maps a fresh table.
+\ These cells name memory this process mapped, so a save writes them null and
+\ the saved program's TABLE maps a fresh table.
 variable SPACE-IMAGE     \ the image base the space's table serves, 0 for none
 SPACE-IMAGE scratch-cell-mark
 create SPACE-TABLE here scratch-cell-mark 4 cells allot
@@ -102,7 +100,6 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
    0 t HIGHEST-CELL ! ;
 
 
-\ Maps size slots and puts back each old text that ends at or below limit.
 \ To forget it rebuilds: a cleared slot would cut a later body's probe chain.
 : REBUILD ( ptr n n n -- )
    {: t:ptr size:n limit:n :}
@@ -127,10 +124,10 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
    t  t SIZE-CELL @ 2 *  -1 1 rshift  REBUILD ;
 
 
-\ One `allot` checks the bounds and zeroes before the copy; no `,`, so the length
-\ cell never joins a created body's grid (BCOMMA). It ends aligned, as `create`.
+\ One `allot` checks the bounds and zeroes before the copy; no `,`, so the
+\ length cell never joins a created body's grid. It ends aligned, as `create`.
 \ An empty body takes a byte, so no other datum starts at a body's address: a
-\ stripped link keeps a body by its address alone (link-copy.f STRING-OF).
+\ stripped link keeps a body by its address alone.
 : LAY ( ptr n ptr u8 n -- n )
    {: t:ptr a:ptr u:n :}
    t FILLED-CELL @ 1+ 2 *  t SIZE-CELL @ > if t WIDEN then
@@ -146,15 +143,15 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 
 public
 
-\ Frees the table of the build whose space is closing (LINKER:WITH's close).
+\ Frees the table of the build whose space is closing.
 : CLEANUP ( -- )
    SPACE-IMAGE @ 0= if exit then
    SPACE-TABLE @  SPACE-TABLE SIZE-CELL @  TABLE-RELEASE
    0 SPACE-TABLE !  0 SPACE-IMAGE ! ;
 
 
-\ Hands visit each body the build's table holds, as its distance from NULL-PTR. Bodies go
-\ stale only once DP moves back, and the build then writes nothing (linker.f GOING).
+\ Hands visit each body the build's table holds, as its distance from NULL-PTR.
+\ Bodies go stale only once DP moves back, and the build then writes nothing.
 : EACH-STRING ( [ n -- ] -- )
    {: visit :}
    SPACE-IMAGE @ 0=  SPACE-IMAGE @ IMAGE-BASE <>  or if exit then
@@ -171,7 +168,6 @@ private
    IMAGE-BASE SPACE-IMAGE ! ;
 
 
-\ The space's table while SPACE? holds, else hb's; each is mapped on first use.
 : TABLE ( -- ptr n )
    SPACE? if
       SPACE-IMAGE @ IMAGE-BASE <> if SPACE-OPEN then
@@ -207,7 +203,6 @@ public
    t  t a u SLOT-FOR  SLOT-CELL @ ;
 
 
-\ FIND's address, else a u laid at `here` and put in the current table.
 : TEXT ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u FIND {: body:n :}
@@ -215,8 +210,7 @@ public
    TABLE a u LAY ;
 
 
-\ Forgets every text that ends above n (DP-CELL's units). interpreter.f
-\ FRAME-ROLLBACK-CODE, DICTIONARY-DP! and, on arm64, checker.f DP-CUT call it.
+\ Forgets every text that ends above n (DP-CELL's units).
 : KEEP-BELOW ( n -- )
    {: limit:n :}
    SPACE? if
