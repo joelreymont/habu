@@ -196,8 +196,12 @@ private
   naming the package or word, and `tools/check.f` refuses it as
   `E-SEALED-PACKAGE` at the name. Outside a package it is refused:
   `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75. Like `public` it names no word: in a body
-  or after `'` it is `E-UNDEFINED`. Only `seal-package` seals: an engine or
-  application package without it stays reopenable.
+  or after `'` it is `E-UNDEFINED`. A build also seals every package its
+  engine files made before it reads program source; an application package
+  without `seal-package` stays reopenable. So a stripped program cannot
+  require an engine file that opens one of those packages (the compiler,
+  linker, interpreter and debugger files, `src/lib/executable-build.f`); a
+  `--repl` build holds them.
 - `host` and `target` are the section words
   ([xcomp.md](xcomp.md#host-and-target-words)). At top level a bare `host` or
   `target` where a word of that name is in scope could mean either and is
@@ -2573,8 +2577,9 @@ sections above.
   send an accessor's store to another variable. The engine's own definition
   loads before the seal.
 - **Package `private` is visibility, not sealing.** Another file may reopen
-  the package and call its private words until its `seal-package`; a sealed
-  reopen is refused. Multi-file owners seal only after their last file (see
+  an application package and call its private words until its `seal-package`;
+  an engine package is sealed by its build, and a sealed reopen is refused.
+  Multi-file owners seal only after their last file (see
   **Packages**).
 - **A cast that introduces a pointer or xt requires a private package row.**
   `CAST: >BYTES ( n -- ptr u8 )` and `CAST: >OP ( n -- [ n -- n ] )` are

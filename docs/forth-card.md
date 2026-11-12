@@ -65,6 +65,7 @@ public
   `E-SEALED-PACKAGE`, rc 84, and `tools/check.f` refuses the same. Outside a
   package: `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75; in a body or after `'`, as
   `public` there, `E-UNDEFINED`. A multi-file owner seals after its last file.
+  A build seals every package its engine files made before program source.
 - At top level `host` and `target` are the section words
   ([xcomp.md](xcomp.md#host-and-target-words)). Where a word named `HOST` or
   `TARGET` is in scope the bare token is refused, `E-SECTION-WORD`, rc 70:
@@ -196,7 +197,7 @@ before any `require`.
 | a body or quotation literal that reads or pops a return cell it did not push: `: X r@ ;`, `: X ( -- ) r> drop ;`, `>r [: r> ;] execute` | `E-REJECTED` at the read, `fix_return_stack`, at both tiers |
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
 | `package` with a name over the name cap | `E-STATEMENT-THROW` (`E-PACKAGE-NAME-CAP`) |
-| `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where `PKG` wrote `seal-package` and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-SEALED-PACKAGE` at the name |
+| `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where `PKG` is sealed, by its `seal-package` or as an engine package, and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-SEALED-PACKAGE` at the name |
 | a non-preserving `[: G ;] catch` | `E-MISMATCH` at `catch`, with the rows |
 | `( -- n ) [: 1 ;] ONCE` with `ONCE ( R [ -- S ] -- S ) execute`: a callable that names its stack, or keeps it where `[ -- S ]` is declared, passed, stored, installed with `is` or joined | `E-MISMATCH`, `callable row escape: …; held row A would escape into B`; declare `[ R -- S ]` |
 | a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-REJECTED`, `fix_control_flow`, `no loop is open here`, `exit inside a loop needs unloop first` |
@@ -508,8 +509,9 @@ holds an address**.
   them requires (`src/lib/json/read.f`, which `src/lib/json/copy.f` requires;
   both reopen package JSON, which `src/lib/json.f` loads), and
   `src/lib/error.f` says where.
-  The engine bakes `src/lib/error.f`, and a package the engine bakes has one
-  owning file: no source a product engine loads reopens it.
+  The engine bakes `src/lib/error.f` and every other file of a package it
+  bakes, and its build seals the package: loaded source that opens one is
+  `E-SEALED-PACKAGE`, rc 84.
 - A fallible word `throw`s a named code, never an out-of-band flag.
 - A failure caused outside the program (a provider, the network, the OS) is
   logged once, with its text, by the library that saw it, just before it

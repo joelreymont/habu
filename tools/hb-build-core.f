@@ -5,12 +5,14 @@
 \ (KERNEL-BUILD); a Wasm program builds none. Each loads hb's startup files in
 \ hb's own order (STARTUP); hb then loads the runtime's files, --repl the
 \ program's source, and both their registry and installs; a stripped program
-\ loads its source and its entry. The build loads src/core/source-reset.f and
-\ src/habu/app-end.f from the tree; a stripped program's build loads nothing
-\ from under the out. Under <out>/hb-build/<target>/ it writes the kernel object
-\ and hb's end file, its registry and installs, which it loads like a source, so
-\ a warm build links the end file's object. Builds sharing an out root write an
-\ end file whole, and only when it changes (WRITE-CHANGED).
+\ loads ffi-abi.f and task.f unless it is Wasm (APP-FILES), then its source and
+\ its entry. Before any program source the build seals
+\ every package it holds (SEAL-ENGINE). The build loads src/core/source-reset.f
+\ and src/habu/app-end.f from the tree; a stripped program's build loads
+\ nothing from under the out. Under <out>/hb-build/<target>/ it writes the
+\ kernel object and hb's end file, its registry and installs, which it loads
+\ like a source, so a warm build links the end file's object. Builds sharing an
+\ out root write an end file whole, and only when it changes (WRITE-CHANGED).
 
 require src/lib/error.f
 require src/lib/string.f
@@ -223,9 +225,24 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    TEXT-RELEASE ;
 
 
+\ Seals every package the build holds, so no program source reopens one.
+: SEAL-ENGINE ( -- )
+   ndict@ 0 ?do
+      i XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL = if i XREF-REC XREF:SEAL then
+   loop ;
+
+\ An owner row makes FFI and TASK when the build opens, so their files load before the seal.
+\ Neither compiles for Wasm.
+: APP-FILES ( -- )
+   WASM? if exit then
+   s" src/lib/ffi-abi.f" REQUIRE-FILE
+   s" src/lib/task.f" REQUIRE-FILE ;
+
+
 : ENGINE-BODY ( -- )
    STARTUP
    RUNTIME-FILES
+   SEAL-ENGINE
    REQUIRE-N @ false END-WRITE
    END$ INCLUDE-FILE
    OUT$ LINKER:WRITE ;
@@ -234,6 +251,7 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 : REPL-BODY ( -- )
    STARTUP
    RUNTIME-FILES
+   SEAL-ENGINE
    REQUIRE-N @ {: app:n :}
    SRC$ REQUIRE-FILE
    app true END-WRITE
@@ -246,6 +264,8 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 : APP-BODY ( -- )
    STARTUP
    WASM? if s" src/arch/wasm/kernel-words.f" REQUIRE-FILE then
+   APP-FILES
+   SEAL-ENGINE
    SRC$ INCLUDE-FILE
    s" src/habu/app-end.f" INCLUDE-FILE
    OUT$ LINKER:WRITE ;

@@ -990,6 +990,19 @@ variable CLASS-N                        \ the class CLASS+ read
    s" F2" WHICH!  SEAL-REFUSED
    s" the build links seal-second.f" SEAL-SECOND LINKED ;
 
+\ Guards the engine's seal: squat-main.f's build, in a fresh hb as SEAL-REFUSED's, exits 84 with
+\ E-SEALED-PACKAGE naming CHECKER-RESOLVE and squat-main.f's line 4.
+: SQUAT-CASE ( CMD:command -- CMD:command )
+   s" SQ" WHICH!
+   s" test/fixtures/file-objects/squat-main.f" false BUILD-RC {: rc:n :}
+   CMD:ERR$ s" E-SEALED-PACKAGE habu: " CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" 'CHECKER-RESOLVE' is sealed" CONTAINS? classed and {: named:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:4" CONTAINS? {: placed:bool :}
+   named placed and  rc ENGINE-ERROR:SEAL-PACKAGE =  and 0= if rc SHOW then
+   s" the build exits 84" LABEL  rc ENGINE-ERROR:SEAL-PACKAGE T=
+   s" the build refuses CHECKER-RESOLVE" LABEL  named TTRUE
+   s" the refusal names squat-main.f's line 4" LABEL  placed TTRUE ;
+
 
 \ The path of U's source of that name.
 : NEST-PATH$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -1357,7 +1370,7 @@ variable CLASS-N                        \ the class CLASS+ read
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
-      STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE
+      STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE
       NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;

@@ -17,7 +17,7 @@ Design (Fable Plan, read at sqnysqkt; lead complexity pass applied):
 Joel 2026-10-28: one T0 front end, one neutral emission record, one publisher + capture/shadow path, per-arch
 emitters only (arm64, x86-64, Wasm); any host cross-compiles any target; arm64 JIT replaced by a T0 arm64
 emitter, deleted after measurement; tier 1 deleted. Gforth seed: RETIRE (Joel chose).
-Invariants: codegen emits unplaced rows naming records (architecture.md:160-167); publication proves then commits
+Invariants: codegen emits unplaced rows naming records (architecture.md:161-168); publication proves then commits
 (xcomp.md:121-134); no load-time target selection in src/ (xcomp.md:242); a host bin/hb carries no other backend
 (xcomp.md:166-167, 279-285); image-ABI cells stay (hard cutover).
 

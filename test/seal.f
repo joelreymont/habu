@@ -497,6 +497,11 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" EXPORT SP2:Z into SP after its seal-package -> E-SEALED-PACKAGE, 'SP2:Z' is sealed, exit 84" T-LABEL
    SLV-SP-EXPORT$ SLV-SUBJECT s" 'SP2:Z' is sealed" SLV-ASSERT-PROT-PUBLISH ;
 
+\ hb's build seals every engine package, MACHO with no seal-package in its source.
+: SLV-ENGINE-SEALED ( -- )
+   s" package MACHO in hb -> E-SEALED-PACKAGE, 'MACHO' is sealed, exit 84" T-LABEL
+   s" package MACHO ;package" SLV-RUN-LOAD s" 'MACHO' is sealed" SLV-ASSERT-PROT-PUBLISH ;
+
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;
 
@@ -639,6 +644,7 @@ public
    SLV-PWID-BOUND
    SLV-OWNER-FORGE
    SLV-SEALED-DEFINE
+   SLV-ENGINE-SEALED
    SLV-CLEANUP
    T-REPORT
    s" seal-test: ok" type cr ;

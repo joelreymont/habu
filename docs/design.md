@@ -158,9 +158,10 @@ trusted call site, or a whole unchecked span, into checked code.
 **Packages can be sealed.** Not resolving a private name from outside proves
 only that the name is not visible; a later `package NAME` could reopen the
 package and republish a private word, for example one that turns an `mmap`
-result into a typed pointer. A sealed package refuses the reopen, and the
-native build seals every package a capture ships, so on a product engine no
-baked package can be reopened.
+result into a typed pointer. A sealed package refuses the reopen, and a
+build seals every package its engine files made before it reads program source,
+so neither a program compiled in a build nor source loaded on the engine
+reopens one.
 
 ## Families and layout policies
 

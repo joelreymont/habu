@@ -91,7 +91,8 @@ build strips private words from the delivered `hb`. There are no owner rows,
 caller checks or marks on records.
 
 **A sealed package cannot be reopened.** `package NAME` on a sealed package is
-refused.
+refused. A build seals every package its engine files made before it reads
+program source.
 
 **Stripping drops headers; reachability decides code.** The linker writes a
 sealed package's private wordlist empty, so no later source can name its

@@ -128,8 +128,8 @@ $0001000000000000 constant DNAME-CELL
 \ retype the native compiler lowers as the identity it is. Scoped view casts and
 \ LINEAR: records never carry it.
 $0000400000000000 constant DNAME-REP
-\ DNAME-SEALED (bit 45): interpreter.f PKG-SEAL sets it on a package's
-\ namespace record. Capture refuses a record carrying it.
+\ DNAME-SEALED (bit 45): set on a package's namespace record by seal-package,
+\ and on every engine package by its build before program source.
 $0000200000000000 constant DNAME-SEALED
 \ DNAME-TARGET (bit 44): a target word, which a cross-build refuses to run.
 $0000100000000000 constant DNAME-TARGET
