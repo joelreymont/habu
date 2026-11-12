@@ -76,8 +76,8 @@ DYNAMIC-BUFFER ROW-LIVE bool        \ the row holds a task not yet given back
    s"  failed, throw " LOG:TEXT+ code LOG:INT+
    LOG:;LINE ;
 
-\ The value and body of this task's row, run. START fills the row and marks it
-\ live before it releases LOCK, so the row is found.
+\ START fills the row and marks it live before it releases LOCK, so
+\ the row is found.
 : RUN-ONE ( -- )
    LOCK TASK:GET
    TASK:SELF NULL-PTR - ROW-OF {: idx:n :}
@@ -85,8 +85,7 @@ DYNAMIC-BUFFER ROW-LIVE bool        \ the row holds a task not yet given back
    LOCK TASK:RELEASE
    execute ;
 
-\ A task's root. A throw is reported here, in the body. A halt never resumes
-\ the catch (forth.md `finally`), so a stopped task reports nothing.
+\ A halt never resumes the catch, so a stopped task reports nothing.
 : RUN-ROW ( -- )
    [: RUN-ONE ;] catch {: code:n :}
    code 0= if exit then
