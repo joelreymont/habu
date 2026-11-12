@@ -31,66 +31,35 @@ $DFFF constant SURROGATE-LAST
 111 constant OPEN-TYPE
 99 constant CLOSE-TYPE
 
-create STAGE-LETTER-LO RANGE-CAPACITY cells allot
-create STAGE-LETTER-HI RANGE-CAPACITY cells allot
-create STAGE-NUMBER-LO RANGE-CAPACITY cells allot
-create STAGE-NUMBER-HI RANGE-CAPACITY cells allot
-create STAGE-SPACE-LO RANGE-CAPACITY cells allot
-create STAGE-SPACE-HI RANGE-CAPACITY cells allot
-variable STAGE-LETTER-N
-variable STAGE-NUMBER-N
-variable STAGE-SPACE-N
-create STAGE-NL-LO RANGE-CAPACITY cells allot
-create STAGE-NL-HI RANGE-CAPACITY cells allot
-create STAGE-OTHER-LO RANGE-CAPACITY cells allot
-create STAGE-OTHER-HI RANGE-CAPACITY cells allot
-variable STAGE-NL-N
-create STAGE-UPPER-LO RANGE-CAPACITY cells allot
-create STAGE-UPPER-HI RANGE-CAPACITY cells allot
-variable STAGE-UPPER-N
-variable STAGE-OTHER-N
-create STAGE-OTHER-UPPER-LO RANGE-CAPACITY cells allot
-create STAGE-OTHER-UPPER-HI RANGE-CAPACITY cells allot
-variable STAGE-OTHER-UPPER-N
-create STAGE-MARK-LO RANGE-CAPACITY cells allot
-create STAGE-MARK-HI RANGE-CAPACITY cells allot
-variable STAGE-MARK-N
-
-create LETTER-LO RANGE-CAPACITY cells allot
-create LETTER-HI RANGE-CAPACITY cells allot
-create NUMBER-LO RANGE-CAPACITY cells allot
-create NUMBER-HI RANGE-CAPACITY cells allot
-create SPACE-LO RANGE-CAPACITY cells allot
-create SPACE-HI RANGE-CAPACITY cells allot
+RANGE-CAPACITY TYPED-BUFFER LETTER-LO n
+RANGE-CAPACITY TYPED-BUFFER LETTER-HI n
+RANGE-CAPACITY TYPED-BUFFER NUMBER-LO n
+RANGE-CAPACITY TYPED-BUFFER NUMBER-HI n
+RANGE-CAPACITY TYPED-BUFFER SPACE-LO n
+RANGE-CAPACITY TYPED-BUFFER SPACE-HI n
 variable LETTER-N
 variable NUMBER-N
 variable SPACE-N
-create NL-LO RANGE-CAPACITY cells allot
-create NL-HI RANGE-CAPACITY cells allot
-create OTHER-LO RANGE-CAPACITY cells allot
-create OTHER-HI RANGE-CAPACITY cells allot
+RANGE-CAPACITY TYPED-BUFFER NL-LO n
+RANGE-CAPACITY TYPED-BUFFER NL-HI n
+RANGE-CAPACITY TYPED-BUFFER OTHER-LO n
+RANGE-CAPACITY TYPED-BUFFER OTHER-HI n
 variable NL-N
-create UPPER-LO RANGE-CAPACITY cells allot
-create UPPER-HI RANGE-CAPACITY cells allot
+RANGE-CAPACITY TYPED-BUFFER UPPER-LO n
+RANGE-CAPACITY TYPED-BUFFER UPPER-HI n
 variable UPPER-N
 variable OTHER-N
-create OTHER-UPPER-LO RANGE-CAPACITY cells allot
-create OTHER-UPPER-HI RANGE-CAPACITY cells allot
+RANGE-CAPACITY TYPED-BUFFER OTHER-UPPER-LO n
+RANGE-CAPACITY TYPED-BUFFER OTHER-UPPER-HI n
 variable OTHER-UPPER-N
-create MARK-LO RANGE-CAPACITY cells allot
-create MARK-HI RANGE-CAPACITY cells allot
+RANGE-CAPACITY TYPED-BUFFER MARK-LO n
+RANGE-CAPACITY TYPED-BUFFER MARK-HI n
 variable MARK-N
-create STAGE-OPEN-CP RANGE-CAPACITY cells allot
-create STAGE-OPEN-PAIR RANGE-CAPACITY cells allot
-variable STAGE-OPEN-N
-create STAGE-CLOSE-CP RANGE-CAPACITY cells allot
-create STAGE-CLOSE-PAIR RANGE-CAPACITY cells allot
-variable STAGE-CLOSE-N
-create OPEN-CP RANGE-CAPACITY cells allot
-create OPEN-PAIR RANGE-CAPACITY cells allot
+RANGE-CAPACITY TYPED-BUFFER OPEN-CP n
+RANGE-CAPACITY TYPED-BUFFER OPEN-PAIR n
 variable OPEN-N
-create CLOSE-CP RANGE-CAPACITY cells allot
-create CLOSE-PAIR RANGE-CAPACITY cells allot
+RANGE-CAPACITY TYPED-BUFFER CLOSE-CP n
+RANGE-CAPACITY TYPED-BUFFER CLOSE-PAIR n
 variable CLOSE-N
 variable UNICODE-READY
 variable SPACE-READY
@@ -171,7 +140,7 @@ variable PENDING-NAME-U
    u 7 < PENDING-NAME-U @ 8 < or if FALSE-VALUE exit then
    a u 7 - PENDING-NAME-A @ PENDING-NAME-U @ 8 - STR= ;
 
-: STAGE-APPEND ( n n ptr n ptr n ptr n -- )
+: RANGE-APPEND ( n n ptr n ptr n ptr n -- )
    {: lo:n hi:n los:ptr his:ptr countp:ptr :}
    lo hi SCALAR-RANGE
    countp @ 0 > if
@@ -187,23 +156,23 @@ variable PENDING-NAME-U
    hi countp @ his SLOT !
    countp @ 1+ countp ! ;
 
-: STAGE-CLASS+ ( n n n -- ) {: lo:n hi:n class:n :}
+: CLASS+ ( n n n -- ) {: lo:n hi:n class:n :}
    class CLASS-UPPERCASE = if
-      lo hi STAGE-UPPER-LO STAGE-UPPER-HI STAGE-UPPER-N STAGE-APPEND
+      lo hi 0 UPPER-LO 0 UPPER-HI UPPER-N RANGE-APPEND
    then
    class CLASS-LETTER = class CLASS-UPPERCASE = or if
-      lo hi STAGE-LETTER-LO STAGE-LETTER-HI STAGE-LETTER-N STAGE-APPEND
+      lo hi 0 LETTER-LO 0 LETTER-HI LETTER-N RANGE-APPEND
       exit
    then
    class CLASS-MARK = if
-      lo hi STAGE-MARK-LO STAGE-MARK-HI STAGE-MARK-N STAGE-APPEND
+      lo hi 0 MARK-LO 0 MARK-HI MARK-N RANGE-APPEND
       exit
    then
    class CLASS-LETTER-NUMBER = if
-      lo hi STAGE-NL-LO STAGE-NL-HI STAGE-NL-N STAGE-APPEND
+      lo hi 0 NL-LO 0 NL-HI NL-N RANGE-APPEND
    then
    class CLASS-NUMBER = class CLASS-LETTER-NUMBER = or if
-      lo hi STAGE-NUMBER-LO STAGE-NUMBER-HI STAGE-NUMBER-N STAGE-APPEND
+      lo hi 0 NUMBER-LO 0 NUMBER-HI NUMBER-N RANGE-APPEND
    then ;
 
 : SOURCE-ORDER ( n -- ) {: cp:n :}
@@ -224,7 +193,7 @@ variable PENDING-NAME-U
    cp SOURCE-ORDER
    name nameu SAME-RANGE-NAME? 0= if E-SYNTAX throw then
    class PENDING-CLASS @ <> if E-SYNTAX throw then
-   PENDING-LO @ cp class STAGE-CLASS+
+   PENDING-LO @ cp class CLASS+
    cp SOURCE-PREV !
    FALSE-VALUE PENDING ! ;
 
@@ -250,14 +219,7 @@ variable PENDING-NAME-U
    then
    cp SOURCE-ORDER
    cp SOURCE-PREV !
-   cp cp class STAGE-CLASS+ ;
-
-: STAGE-UNICODE-RESET ( -- )
-   0 STAGE-LETTER-N !
-   0 STAGE-NUMBER-N !
-   0 STAGE-NL-N ! 0 STAGE-UPPER-N ! 0 STAGE-MARK-N !
-   -1 SOURCE-PREV !
-   FALSE-VALUE PENDING ! ;
+   cp cp class CLASS+ ;
 
 : SCAN-UNICODE ( ptr u8 n -- ) {: a:ptr u:n :}
    0 begin dup u <= while
@@ -268,27 +230,6 @@ variable PENDING-NAME-U
       next
    repeat drop
    PENDING @ if E-SYNTAX throw then ;
-
-: COPY-RANGES ( ptr a ptr a n ptr a ptr a -- )
-   {: src-lo:ptr src-hi:ptr count:n dst-lo:ptr dst-hi:ptr :}
-   0 begin dup count < while
-      dup src-lo SLOT @ over dst-lo SLOT !
-      dup src-hi SLOT @ over dst-hi SLOT !
-      1+
-   repeat drop ;
-
-: COMMIT-UNICODE ( -- )
-   STAGE-LETTER-LO STAGE-LETTER-HI STAGE-LETTER-N @ LETTER-LO LETTER-HI COPY-RANGES
-   STAGE-NUMBER-LO STAGE-NUMBER-HI STAGE-NUMBER-N @ NUMBER-LO NUMBER-HI COPY-RANGES
-   STAGE-LETTER-N @ LETTER-N !
-   STAGE-NUMBER-N @ NUMBER-N !
-   STAGE-NL-LO STAGE-NL-HI STAGE-NL-N @ NL-LO NL-HI COPY-RANGES
-   STAGE-NL-N @ NL-N !
-   STAGE-UPPER-LO STAGE-UPPER-HI STAGE-UPPER-N @ UPPER-LO UPPER-HI COPY-RANGES
-   STAGE-UPPER-N @ UPPER-N !
-   STAGE-MARK-LO STAGE-MARK-HI STAGE-MARK-N @ MARK-LO MARK-HI COPY-RANGES
-   STAGE-MARK-N @ MARK-N !
-   TRUE-VALUE UNICODE-READY ! ;
 
 : RANGE-PART ( ptr u8 n -- n n ) {: a:ptr u:n :}
    a u DOT BYTE-INDEX {: pos:n :}
@@ -309,16 +250,13 @@ variable PENDING-NAME-U
    row next + rowu next - TRIM {: prop:ptr propu:n :}
    range rangeu TRIM RANGE-PART {: lo:n hi:n :}
    prop propu s" Other_Uppercase" STR= if
-      lo hi STAGE-OTHER-UPPER-LO STAGE-OTHER-UPPER-HI STAGE-OTHER-UPPER-N STAGE-APPEND exit
+      lo hi 0 OTHER-UPPER-LO 0 OTHER-UPPER-HI OTHER-UPPER-N RANGE-APPEND exit
    then
    prop propu s" Other_Alphabetic" STR= if
-      lo hi STAGE-OTHER-LO STAGE-OTHER-HI STAGE-OTHER-N STAGE-APPEND exit
+      lo hi 0 OTHER-LO 0 OTHER-HI OTHER-N RANGE-APPEND exit
    then
    prop propu SPACE-PROPERTY? 0= if lo hi SCALAR-RANGE exit then
-   lo hi STAGE-SPACE-LO STAGE-SPACE-HI STAGE-SPACE-N STAGE-APPEND ;
-
-: STAGE-SPACE-RESET ( -- )
-   0 STAGE-SPACE-N ! 0 STAGE-OTHER-N ! 0 STAGE-OTHER-UPPER-N ! ;
+   lo hi 0 SPACE-LO 0 SPACE-HI SPACE-N RANGE-APPEND ;
 
 : SCAN-PROPS ( ptr u8 n -- ) {: a:ptr u:n :}
    0 begin dup u <= while
@@ -328,15 +266,6 @@ variable PENDING-NAME-U
       line lineu PROP-ROW
       next
    repeat drop ;
-
-: COMMIT-SPACE ( -- )
-   STAGE-SPACE-LO STAGE-SPACE-HI STAGE-SPACE-N @ SPACE-LO SPACE-HI COPY-RANGES
-   STAGE-SPACE-N @ SPACE-N !
-   STAGE-OTHER-LO STAGE-OTHER-HI STAGE-OTHER-N @ OTHER-LO OTHER-HI COPY-RANGES
-   STAGE-OTHER-N @ OTHER-N !
-   STAGE-OTHER-UPPER-LO STAGE-OTHER-UPPER-HI STAGE-OTHER-UPPER-N @ OTHER-UPPER-LO OTHER-UPPER-HI COPY-RANGES
-   STAGE-OTHER-UPPER-N @ OTHER-UPPER-N !
-   TRUE-VALUE SPACE-READY ! ;
 
 \ A table of scalar and paired-bracket cells, kept strictly ascending by scalar.
 : PAIR-APPEND ( n n ptr n ptr n ptr n -- )
@@ -352,12 +281,12 @@ variable PENDING-NAME-U
    countp @ 1+ countp ! ;
 
 \ The pinned file lists only Open and Close rows; a None row is refused.
-: STAGE-BRACKET ( n n n -- ) {: cp:n pair:n type:n :}
+: BRACKET+ ( n n n -- ) {: cp:n pair:n type:n :}
    type OPEN-TYPE = if
-      cp pair STAGE-OPEN-CP STAGE-OPEN-PAIR STAGE-OPEN-N PAIR-APPEND exit
+      cp pair 0 OPEN-CP 0 OPEN-PAIR OPEN-N PAIR-APPEND exit
    then
    type CLOSE-TYPE = if
-      cp pair STAGE-CLOSE-CP STAGE-CLOSE-PAIR STAGE-CLOSE-N PAIR-APPEND exit
+      cp pair 0 CLOSE-CP 0 CLOSE-PAIR CLOSE-N PAIR-APPEND exit
    then
    E-SYNTAX throw ;
 
@@ -369,7 +298,7 @@ variable PENDING-NAME-U
    row rowu next1 NEXT-FIELD {: pa:ptr pu:n next2:n :}
    row next2 + rowu next2 - TRIM {: ta:ptr tu:n :}
    tu 1 <> if E-SYNTAX throw then
-   cpa cpu TRIM PARSE-HEX pa pu TRIM PARSE-HEX ta c@ STAGE-BRACKET ;
+   cpa cpu TRIM PARSE-HEX pa pu TRIM PARSE-HEX ta c@ BRACKET+ ;
 
 : SCAN-BRACKETS ( ptr u8 n -- ) {: a:ptr u:n :}
    0 begin dup u <= while
@@ -379,13 +308,6 @@ variable PENDING-NAME-U
       line lineu BRACKET-ROW
       next
    repeat drop ;
-
-: COMMIT-BRACKETS ( -- )
-   STAGE-OPEN-CP STAGE-OPEN-PAIR STAGE-OPEN-N @ OPEN-CP OPEN-PAIR COPY-RANGES
-   STAGE-OPEN-N @ OPEN-N !
-   STAGE-CLOSE-CP STAGE-CLOSE-PAIR STAGE-CLOSE-N @ CLOSE-CP CLOSE-PAIR COPY-RANGES
-   STAGE-CLOSE-N @ CLOSE-N !
-   TRUE-VALUE BRACKETS-READY ! ;
 
 : VALID-INDEX ( n n -- n ) {: idx:n count:n :}
    idx 0 < idx count >= or if E-RANGE throw then
@@ -407,19 +329,23 @@ public
    0 OPEN-N ! 0 CLOSE-N ! ;
 
 : PARSE-UNICODE ( ptr u8 n -- )
-   STAGE-UNICODE-RESET
+   FALSE-VALUE UNICODE-READY !
+   0 LETTER-N ! 0 NUMBER-N ! 0 NL-N ! 0 UPPER-N ! 0 MARK-N !
+   -1 SOURCE-PREV ! FALSE-VALUE PENDING !
    SCAN-UNICODE
-   COMMIT-UNICODE ;
+   TRUE-VALUE UNICODE-READY ! ;
 
 : PARSE-PROPERTIES ( ptr u8 n -- )
-   STAGE-SPACE-RESET
+   FALSE-VALUE SPACE-READY !
+   0 SPACE-N ! 0 OTHER-N ! 0 OTHER-UPPER-N !
    SCAN-PROPS
-   COMMIT-SPACE ;
+   TRUE-VALUE SPACE-READY ! ;
 
 : PARSE-BRACKETS ( ptr u8 n -- )
-   0 STAGE-OPEN-N ! 0 STAGE-CLOSE-N !
+   FALSE-VALUE BRACKETS-READY !
+   0 OPEN-N ! 0 CLOSE-N !
    SCAN-BRACKETS
-   COMMIT-BRACKETS ;
+   TRUE-VALUE BRACKETS-READY ! ;
 
 : READY? ( -- bool )
    UNICODE-READY @ 0= 0= SPACE-READY @ 0= 0= and
@@ -432,19 +358,19 @@ public
 : OTHER-ALPHABETIC-COUNT ( -- n ) OTHER-N @ ;
 
 : LETTER-RANGE@ ( n -- n n )
-   LETTER-LO LETTER-HI LETTER-N @ RANGE@ ;
+   0 LETTER-LO 0 LETTER-HI LETTER-N @ RANGE@ ;
 
 : NUMBER-RANGE@ ( n -- n n )
-   NUMBER-LO NUMBER-HI NUMBER-N @ RANGE@ ;
+   0 NUMBER-LO 0 NUMBER-HI NUMBER-N @ RANGE@ ;
 
 : SPACE-RANGE@ ( n -- n n )
-   SPACE-LO SPACE-HI SPACE-N @ RANGE@ ;
+   0 SPACE-LO 0 SPACE-HI SPACE-N @ RANGE@ ;
 
 : LETTER-NUMBER-RANGE@ ( n -- n n )
-   NL-LO NL-HI NL-N @ RANGE@ ;
+   0 NL-LO 0 NL-HI NL-N @ RANGE@ ;
 
 : OTHER-ALPHABETIC-RANGE@ ( n -- n n )
-   OTHER-LO OTHER-HI OTHER-N @ RANGE@ ;
+   0 OTHER-LO 0 OTHER-HI OTHER-N @ RANGE@ ;
 
 
 : UPPERCASE-LETTER-COUNT ( -- n ) UPPER-N @ ;
@@ -452,26 +378,26 @@ public
 
 
 : UPPERCASE-LETTER-RANGE@ ( n -- n n )
-   UPPER-LO UPPER-HI UPPER-N @ RANGE@ ;
+   0 UPPER-LO 0 UPPER-HI UPPER-N @ RANGE@ ;
 
 
 : OTHER-UPPERCASE-RANGE@ ( n -- n n )
-   OTHER-UPPER-LO OTHER-UPPER-HI OTHER-UPPER-N @ RANGE@ ;
+   0 OTHER-UPPER-LO 0 OTHER-UPPER-HI OTHER-UPPER-N @ RANGE@ ;
 
 : MARK-COUNT ( -- n ) MARK-N @ ;
 
 : MARK-RANGE@ ( n -- n n )
-   MARK-LO MARK-HI MARK-N @ RANGE@ ;
+   0 MARK-LO 0 MARK-HI MARK-N @ RANGE@ ;
 
 : OPEN-BRACKET-COUNT ( -- n ) OPEN-N @ ;
 : CLOSE-BRACKET-COUNT ( -- n ) CLOSE-N @ ;
 
 \ An opening bracket and its closing pair.
 : OPEN-BRACKET-PAIR@ ( n -- n n )
-   OPEN-CP OPEN-PAIR OPEN-N @ RANGE@ ;
+   0 OPEN-CP 0 OPEN-PAIR OPEN-N @ RANGE@ ;
 
 \ A closing bracket and its opening pair.
 : CLOSE-BRACKET-PAIR@ ( n -- n n )
-   CLOSE-CP CLOSE-PAIR CLOSE-N @ RANGE@ ;
+   0 CLOSE-CP 0 CLOSE-PAIR CLOSE-N @ RANGE@ ;
 
 ;package
