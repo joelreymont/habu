@@ -122,7 +122,6 @@ public
 : EXECUTED ( -- ) 4 execute throw ;
 : CAUGHT ( -- ) 4 catch throw ;
 ;package
-\ The entry's caught code is want, else the check's number k is thrown.
 : WANT ( [ -- ] n n -- )
    {: word want:n k:n :}
    word catch want <> if k throw then ;

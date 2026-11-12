@@ -1,8 +1,7 @@
-\ take.f - TAKE-TURN, a browser host module (src/lib/browser/host.f) that keeps
-\ a delivery past its turn with BROWSER-EVENT:TAKE (src/lib/browser/event.f),
-\ built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN;
-\ test/browser/take-test.f runs it under src/lib/browser/host-cli.mjs. Its
-\ records are test/browser/echo.f's.
+\ take.f - TAKE-TURN, a browser host module that keeps a delivery past its turn
+\ with BROWSER-EVENT:TAKE, built by `tools/hb-build.f -- --target wasm`, whose
+\ entry is MAIN; test/browser/take-test.f runs it under
+\ src/lib/browser/host-cli.mjs.
 \
 \ Start answers hello. Each typed turn first answers "held T", T the delivery the
 \ turn before it took, read from the taken pages, and frees those pages. Typed
@@ -31,7 +30,6 @@ variable HELD-U
    {: kind:n a:n b:n c:n :}
    kind FIELD,  a FIELD,  b FIELD,  c FIELD, ;
 
-\ The bytes appended to TEXT.
 : SAY ( ptr u8 n -- )
    {: t:ptr u:n :}
    u 0 ?do  t i + c@  TEXT TEXT-U @ + c!  TEXT-U @ 1+ TEXT-U !  loop ;
@@ -40,7 +38,6 @@ variable HELD-U
    {: t:ptr u:n :}
    3 t BYTES>N u 0 RECORD ;
 
-\ Answers "held T" from a copy of the taken bytes, then frees them.
 : SHOW-HELD ( -- )
    HELD-U @ 0= if exit then
    0 TEXT-U !  s" held " SAY  HELD @ HELD-U @ SAY
@@ -51,8 +48,6 @@ variable HELD-U
    {: a:ptr au:n b:ptr bu:n :}
    a BYTES>N b BYTES>N =  au bu =  and ;
 
-\ Keeps the delivery in HELD; throws 91 unless TAKE answers DELIVERY and leaves
-\ it and the event's kind, address and length as they were.
 : HOLD ( -- )
    0 EVENT@ 1 EVENT@ 2 EVENT@ DELIVERY {: kind:n at:n u:n d:ptr du:n :}
    BROWSER-EVENT:TAKE {: k:ptr ku:n :}

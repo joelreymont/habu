@@ -1,9 +1,8 @@
-\ calls-test.f - test/wasm/calls.f's CHECKS run in this process, then as the MAIN
-\ of a module `hb-build --target wasm` builds, validated by wasm-tools and run
-\ by bun (test/wasm/harness.f). A trap ends a run, so each trapping entry is the
-\ MAIN of a module of its own. Both tools must be on PATH, so test/wasm/device.f
-\ runs it, not the ordinary gate. The sources and modules stay in the printed
-\ directory.
+\ calls-test.f - test/wasm/calls.f's CHECKS run in this process, then as the
+\ MAIN of a module `hb-build --target wasm` builds, validated by wasm-tools and
+\ run by bun. A trap ends a run, so each trapping entry is the MAIN of a module
+\ of its own. Both tools must be on PATH, so test/wasm/device.f runs it, not the
+\ ordinary gate. The sources and modules stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -28,8 +27,6 @@ variable SRC-U
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm calls: sources and modules in " type  DIR u type cr ;
 
-\ The module name.wasm in DIR, whose MAIN is WCALLS's entry, builds, validates
-\ and runs; answers the run's status.
 : RAN ( ptr u8 n ptr u8 n -- n )
    {: entry:ptr eu:n name:ptr nu:n :}
    SB-RESET name nu SB-APPEND s" .wasm" SB-APPEND

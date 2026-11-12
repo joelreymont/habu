@@ -1,8 +1,7 @@
 \ harness.f - WASM-HARNESS: a module file checked by two engines independent of
-\ Habu, wasm-tools validating it and bun running it through test/wasm/run.mjs
-\ (docs/xcomp.md "Validation and proof"). Both are found on PATH and run from
-\ the tree's root; a missing tool or a passed deadline throws
-\ src/lib/process.f's code.
+\ Habu, wasm-tools validating it and bun running it through test/wasm/run.mjs.
+\ Both are found on PATH and run from the tree's root; a missing tool or a
+\ passed deadline throws.
 \
 \ BUILD answers `hb-build --target wasm`'s exit status, run from the tree's root.
 \ VALID? answers wasm-tools validate's verdict under core Wasm and WPROF's
@@ -35,15 +34,14 @@ variable ADDR
 
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
-\ The program at the path, run with the arguments staged after PROC-ARGV-RESET;
-\ answers its exit status, or 128 plus the signal that ended it.
+\ The program at the path, run with the arguments staged; answers its exit
+\ status, or 128 plus the signal that ended it.
 : RUN-AT ( ptr u8 len -- n )
    OUT WPROF:OUT-CAP >LEN  ERR ERR-CAP >LEN  DEADLINE-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
 
-\ The tool named, found on PATH and run as RUN-AT runs a program.
 : SPAWN ( ptr u8 n -- n )
    >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u RUN-AT ;
@@ -75,7 +73,6 @@ variable ADDR
       1-
    repeat drop a u ;
 
-\ The number spelled by a field of the fault line.
 : FAULT-FIELD ( ptr u8 n ptr u8 n -- n )
    {: line:ptr lu:n a:ptr u:n :}
    a u STR>NUMBER? MATCH option
@@ -110,7 +107,6 @@ variable ADDR
 
 public
 
-\ Prints what a failed build wrote to stderr.
 : BUILD ( ptr u8 n ptr u8 n -- n )
    {: src:ptr su:n mod:ptr mu:n :}
    PROC-ARGV-RESET
