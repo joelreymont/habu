@@ -15,13 +15,12 @@ require src/lib/ffi-callback.f
 
 package SHADOW-KINDS
 public
-variable PROBE                       \ the cell the fixture's KD-READ reads
+variable PROBE
 private
 
 \ A compiled definer's `create` calls through CREATEP-CELL, which on arm64 holds
-\ the kernel's `create` until the typed loop's definer is installed there, as
-\ RUNTIME:INSTALL does. Generated text (TYPED-VARIABLE's accessor) reaches the
-\ typed loop through the evaluate cells, which RUNTIME:INSTALL installs as well.
+\ the kernel's `create` until the typed loop's definer is installed there.
+\ Generated text reaches the typed loop through the evaluate cells.
 INTERPRETER:INSTALL-CREATE
 INTERPRETER:INSTALL-EVALUATE
 
@@ -76,8 +75,6 @@ CAST: CODE>BYTES ( n -- ptr u8 )
    SRC-U @ from ?do SRC i + c@ 10 = if i unloop exit then loop
    SRC-U @ ;
 
-\ A section's name: its marker line's text, or `requires` for the text before
-\ the first.
 : .SECTION ( n -- ) {: at:n :}
    at MARK? 0= if s" requires" type exit then
    SRC at 5 + +  at LINE-END at 5 + -  type ;
