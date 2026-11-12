@@ -2082,13 +2082,13 @@ variable SCAN-LO                     \ the ordinal of its first row
    ndict@ XREF-REC XREF-FLAGS DNAME-TARGET and 0<> ;
 
 \ n routines, one per unit the target walk built, in its order, every one
-\ naming the pending record: a quotation or clause token runs one.
+\ naming the pending record by its entry, the same in every build that links
+\ it: a quotation or clause token runs one.
 : ERROR-EMIT ( n -- ) {: units:n :}
-   ndict@ {: r:n :}
    units 0 ?do
       RESET-STATE
       i 0= if EMIT-OPEN else EMIT-UNIT-OPEN then
-      r PUSH-CONST  SPILL-ALL
+      0 PUSH-UNIT  SPILL-ALL
       ['] NDEFINITION:TARGET-ERROR CALLABLE>N 0 EMIT-CALL
       EMIT-RETURN  EMIT-CLOSE
    loop ;
