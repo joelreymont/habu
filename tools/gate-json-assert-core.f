@@ -543,9 +543,14 @@ variable GJA-DIRECT
    s" malformed type" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" type this definer cannot store" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" scheme in a stored type" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
+   s" xt in a stored type" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
+   s" a width is not stored: keep its bytes (width>n)" s" fix_storage_type"
+      GJA-MAP-ROW IF exit THEN
    s" no type for" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" more than one ':' in name" s" fix_storage_name" GJA-MAP-ROW IF exit THEN
    s" no name for" s" fix_storage_name" GJA-MAP-ROW IF exit THEN
+   s" qualified name" s" fix_storage_name" GJA-MAP-ROW IF exit THEN
+   s" declared outside any package" s" fix_storage_package" GJA-MAP-ROW IF exit THEN
    s" count outside the buffer's extent" s" fix_storage_count" GJA-MAP-ROW IF exit THEN
    s" count resolves to no ( -- n ) word" s" fix_storage_count" GJA-MAP-ROW IF exit THEN
    s" no count for" s" fix_storage_count" GJA-MAP-ROW IF exit THEN
