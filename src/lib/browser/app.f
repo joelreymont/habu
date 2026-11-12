@@ -22,10 +22,12 @@ require src/lib/xml.f
 package MCP-APP
 private
 
-\ A file's path in the tree that resolved this file while it loads.
+\ The path of the named file beside this one; it holds only while this file
+\ loads.
 : PATH ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
-   SOURCE-ROOT:CURRENT$ a u SOURCE-ROOT:JOIN ;
+   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SOURCE-ROOT:DIRNAME
+   a u SOURCE-ROOT:JOIN ;
 
 
 \ A file that changed size since it was measured is E-FS-IO, or E-FS-CAPACITY.
@@ -35,25 +37,25 @@ private
    path pathu BUILD-INPUT:FILE
    path pathu dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
 
-s" src/lib/browser/app.html" PATH FS:FILE-SIZE constant HTML-U
+s" app.html" PATH FS:FILE-SIZE constant HTML-U
 HTML-U BUFFER: HTML
-s" src/lib/browser/app.html" HTML HTML-U READ
+s" app.html" HTML HTML-U READ
 
-s" src/lib/browser/app.js" PATH FS:FILE-SIZE constant APP-U
+s" app.js" PATH FS:FILE-SIZE constant APP-U
 APP-U BUFFER: APP
-s" src/lib/browser/app.js" APP APP-U READ
+s" app.js" APP APP-U READ
 
-s" src/lib/browser/viewport.js" PATH FS:FILE-SIZE constant VIEWPORT-U
+s" viewport.js" PATH FS:FILE-SIZE constant VIEWPORT-U
 VIEWPORT-U BUFFER: VIEWPORT
-s" src/lib/browser/viewport.js" VIEWPORT VIEWPORT-U READ
+s" viewport.js" VIEWPORT VIEWPORT-U READ
 
-s" src/lib/browser/turn.js" PATH FS:FILE-SIZE constant TURN-U
+s" turn.js" PATH FS:FILE-SIZE constant TURN-U
 TURN-U BUFFER: TURN
-s" src/lib/browser/turn.js" TURN TURN-U READ
+s" turn.js" TURN TURN-U READ
 
-s" src/lib/browser/page.js" PATH FS:FILE-SIZE constant PAGE-U
+s" page.js" PATH FS:FILE-SIZE constant PAGE-U
 PAGE-U BUFFER: PAGE
-s" src/lib/browser/page.js" PAGE PAGE-U READ
+s" page.js" PAGE PAGE-U READ
 
 \ The offset of the marker in app.html at or after the offset; each marker
 \ follows the one before it.

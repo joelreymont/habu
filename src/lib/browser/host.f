@@ -14,11 +14,12 @@ require src/lib/net/http.f
 package BROWSER-HOST
 private
 
-\ A file's path in the tree that resolved this file: SOURCE-ROOT:CURRENT$
-\ while it loads.
+\ The path of the named file beside this one; it holds only while this file
+\ loads.
 : PATH ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
-   SOURCE-ROOT:CURRENT$ a u SOURCE-ROOT:JOIN ;
+   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SOURCE-ROOT:DIRNAME
+   a u SOURCE-ROOT:JOIN ;
 
 \ The file at the path into the buffer of its size; a file that changed size
 \ since it was measured is E-FS-IO, or FS:READ-ALL's E-FS-CAPACITY.
@@ -28,29 +29,29 @@ private
    path pathu BUILD-INPUT:FILE
    path pathu dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
 
-s" src/lib/browser/index.html" PATH FS:FILE-SIZE constant INDEX-U
+s" index.html" PATH FS:FILE-SIZE constant INDEX-U
 INDEX-U BUFFER: INDEX
-s" src/lib/browser/index.html" INDEX INDEX-U READ
+s" index.html" INDEX INDEX-U READ
 
-s" src/lib/browser/host.js" PATH FS:FILE-SIZE constant HOST-U
+s" host.js" PATH FS:FILE-SIZE constant HOST-U
 HOST-U BUFFER: HOST
-s" src/lib/browser/host.js" HOST HOST-U READ
+s" host.js" HOST HOST-U READ
 
-s" src/lib/browser/viewport.js" PATH FS:FILE-SIZE constant VIEWPORT-U
+s" viewport.js" PATH FS:FILE-SIZE constant VIEWPORT-U
 VIEWPORT-U BUFFER: VIEWPORT
-s" src/lib/browser/viewport.js" VIEWPORT VIEWPORT-U READ
+s" viewport.js" VIEWPORT VIEWPORT-U READ
 
-s" src/lib/browser/turn.js" PATH FS:FILE-SIZE constant TURN-U
+s" turn.js" PATH FS:FILE-SIZE constant TURN-U
 TURN-U BUFFER: TURN
-s" src/lib/browser/turn.js" TURN TURN-U READ
+s" turn.js" TURN TURN-U READ
 
-s" src/lib/browser/page.js" PATH FS:FILE-SIZE constant PAGE-U
+s" page.js" PATH FS:FILE-SIZE constant PAGE-U
 PAGE-U BUFFER: PAGE
-s" src/lib/browser/page.js" PAGE PAGE-U READ
+s" page.js" PAGE PAGE-U READ
 
-s" src/lib/browser/mcp.js" PATH FS:FILE-SIZE constant MCP-U
+s" mcp.js" PATH FS:FILE-SIZE constant MCP-U
 MCP-U BUFFER: MCP
-s" src/lib/browser/mcp.js" MCP MCP-U READ
+s" mcp.js" MCP MCP-U READ
 
 : SEND ( HTTP:response ptr u8 n ptr u8 n -- )
    {: r:HTTP:response a:ptr u:n type:ptr tu:n :}

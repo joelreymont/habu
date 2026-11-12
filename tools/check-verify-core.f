@@ -509,9 +509,10 @@ variable VFY-PATH-U
 create VFY-CHILD PATH-CAP allot
 variable VFY-CHILD-U
 
-\ While this file loads, SOURCE-ROOT:CURRENT$ is the root that resolved it.
-\ The child beside it is fixed here before the working directory can name another tree.
-SOURCE-ROOT:CURRENT$ s" tools/check-verify-child.f" VFY-CHILD FS:JOIN-PATH VFY-CHILD-U !
+\ While this file loads, SOURCE-ROOT:ACTIVE-SOURCE's path is its own. The child
+\ beside it is fixed here before the working directory can name another tree.
+SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SOURCE-ROOT:DIRNAME
+s" check-verify-child.f" VFY-CHILD FS:JOIN-PATH VFY-CHILD-U !
 
 TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
 TYPED-VARIABLE VFY-INDEX? bool          \ standalone candidate scan
