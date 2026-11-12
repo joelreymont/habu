@@ -2016,7 +2016,9 @@ align
 CMAX constant MSMAX                  \ open tag-dispatch forms, as the control stack's own ceiling
 MSMAX CWORK-SPAN MS-KIND n     \ MK-MATCH or MK-CASE
 MSMAX CWORK-SPAN MS-FAM n      \ the family a `MATCH` frame is over
-MSMAX CWORK-SPAN MS-WID n      \ and the cells one value of its instantiation occupies; a `case` frame's subject is the one cell DO-OPEN-CASE gives it
+\ The cells one value of a frame's instantiation occupies, a niche MATCH's tag
+\ counted; a `case` frame's subject is the one cell DO-OPEN-CASE gives it.
+MSMAX CWORK-SPAN MS-WID n
 MSMAX CWORK-SPAN MS-ARM n      \ whether the pass is inside one of its arms
 MSMAX CWORK-SPAN MS-OF n       \ the row of the `of` that opened the arm read last
 0 CWORK-VARIABLE MSN n                         \ how many forms are open
@@ -2112,8 +2114,9 @@ MSMAX CWORK-SPAN MS-OF n       \ the row of the `of` that opened the arm read la
    ix MTOK$ NFAM:MATCH-FAM {: fam:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-FAMILY MROLE!
-   ix SITE-MATCH {: w:n :}
-   w NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
+   ix SITE-MATCH {: w0:n :}
+   w0 NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
+   fam NFAM:NICHE? if w0 1+ else w0 then {: w:n :}
    w fam NFAM:WIDTH < if E-NELAB-MATCH throw then
    CB-ROW @  w  fam  MMATCH!
    MK-MATCH fam w MS-PUSH
@@ -3069,6 +3072,7 @@ align
    PATH-DEAD PATH-END ! ;
 
 \ ---- the three tag-dispatch forms --------------------------------------------
+\ The checker files a niche family's arms and constructs as the tagged bundle.
 
 \ A bundle's cells are one value, so a form that would split them is refused.
 : BUNDLE-CK ( n n n -- ) {: base:n w:n code:n :}
@@ -3079,7 +3083,19 @@ align
    base w + VN @ >= if exit then
    base w + VGLUE-BIT? if code throw then ;
 
+\ A niche cell's tag, 0 for a zero cell and else 1, pushed above the cell and
+\ glued to it: `0 =` is -1 for a zero cell, so adding 1 gives the tag.
+: NICHE-TAG ( n -- ) {: ix:n :}
+   VN @ 1- VAT VPUSH
+   ix 0 EMIT-LIT
+   ix HIR-OPCODE:EQUAL EMIT-OPCODE
+   ix 1 EMIT-LIT
+   ix HIR-OPCODE:ADD EMIT-OPCODE
+   VN @ 2 -  2  VGLUE-GROW ;
+
+\ A niche value is given its tag before the width check, which counts it.
 : DO-OPEN-MATCH ( n -- ) {: ix:n :}
+   ix MTAG@ NFAM:NICHE? if ix NICHE-TAG then
    ix MWID@ {: w:n :}
    w VN @ > if E-NELAB-UNDER throw then
    VN @ w - {: base:n :}
@@ -3214,14 +3230,18 @@ align
    ix t ADT-JOIN
    CS-POP ;
 
+\ The family is the token after the construct row. A niche value is the bundle
+\ without its tag: the empty variant's one zero pad, or the pointer.
 : DO-MAKE-BUNDLE ( n -- ) {: ix:n :}
+   ix 1+ MTOK$ NFAM:CON-FAM {: fam:n ok:bool :}
+   ok 0= if E-NELAB-MATCH throw then
    ix MPAY@ {: k:n :}
    k VN @ > if E-NELAB-UNDER throw then
    VN @ k - {: base:n :}
    ix MPAD@ 0 ?do
       ix 0 EMIT-LIT
    loop
-   ix  ix MTAG@  EMIT-LIT
+   fam NFAM:NICHE? 0= if ix  ix MTAG@  EMIT-LIT then
    base  VN @ base -  VGLUE-GROW ;
 
 \ What the operation is handed is the whole live vector, because no register
