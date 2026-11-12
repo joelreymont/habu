@@ -1690,9 +1690,8 @@ private
    S\" c\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
    S\" .\\\q" TOKEN-IS? if DEF-ESC-TEXT then ;
 
-\ A body admits a local before looking up a dictionary word. Tier 0's JIT
-\ fills LOCNAMES while compiling `{:`; tier 1 captures each declaration here,
-\ then the native compiler reads it from the body text at `;`.
+\ Tier 0's JIT fills LOCNAMES while compiling `{:`; tier 1 captures each
+\ declaration here, then the native compiler reads it from the body text at `;`.
 : BODY-LOCAL? ( -- bool )
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ 0 ?do
@@ -1729,8 +1728,7 @@ private
       BODY-LOCAL-ONE
    repeat ;
 
-\ A closer discards exactly the locals declared in its block. A later rejected
-\ token can restore the count without reconstructing any row.
+\ A later rejected token can restore the count without reconstructing any row.
 : BODY-BLOCK-DROP ( -- )
    begin
       LOCN-CELL CELL@ 0 > if
@@ -1869,8 +1867,6 @@ private
 \ in PEND-CELL.
 variable ENTRY-PEND
 
-\ A `;` that would close the record pending as the buffer began, one an outer
-\ buffer opened, is refused at the `;`, naming the definition.
 : DEF-SOURCE-CLOSE ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ <> if exit then
    s" hb: source closed a definition it did not open: " ERROR-TEXT:TYPE
@@ -1949,9 +1945,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-PREFIX-BIND
    true ;
 
-\ A created word is published whole where its keyword is read. `variable` is
-\ `create` and one cell more, and the engine names `create` for both: in the
-\ missing name's refusal and in the def hook's text.
+\ A created word is published whole where its keyword is read.
 
 \ The keyword joins the capture, and the checker reads it, `NAME create` for a
 \ created word, its verdict dropped: a definer's word always publishes. The
@@ -1972,8 +1966,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    target 0= if s" trust-raw" RC-REJECT FAIL-CLOSED then
    target ;
 
-\ A definer's effect, raw dictionary storage stated by sig; the checker seals
-\ it through trust-raw.
+\ A definer's effect, raw dictionary storage stated by sig; the
+\ checker seals it.
 : DEF-RAW-PUBLISH ( ptr u8 n -- ) {: sig:ptr su:n :}
    DEF-RAW-ACTIVE {: own:n :}
    sig su own DEF-DECLARE
@@ -1989,7 +1983,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ The DATA address a created word's body pushes, as the number NCOMP takes.
 : DEF-HERE ( -- n ) here NULL-PTR - ;
 
-\ The pending record's fixed body ( val kind ), by the compiler the latch names.
+\ The pending record's fixed body ( val kind ).
 : DEF-FIXED ( n COMP:body -- )
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ {: latch:n :}
    latch 0= if DEF-TIER-0 then
@@ -1998,8 +1992,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    then
    NCOMP:COMPILE-FIXED ;
 
-\ The fixed body pushes the cell-aligned here, recorded in COMMA-BASE-CELL, and
-\ ends in the slot a `does>` patches.
+\ The fixed body pushes the cell-aligned here, and ends in the
+\ slot a `does>` patches.
 : DEF-ADDR-TAIL ( -- )
    align
    DEF-HERE COMMA-BASE-CELL CELL!
@@ -2357,7 +2351,6 @@ private
    cp@ dbase@ - TOKCP-CELL CELL!
    VSP-CELL CELL@ TOKVSP-CELL CELL! ;
 
-\ The pending action finishes before the mark and the read.
 : RUN-TOKENS ( -- )
    begin OBSERVE-FINISH TOKEN-MARK TOKEN while STEP repeat ;
 
