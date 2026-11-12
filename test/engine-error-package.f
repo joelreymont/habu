@@ -97,7 +97,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 : MISSING-DEFINITION-NAME ( -- )
    s" a lone colon rejects at the engine reader" T-LABEL
    HB$ s" :" RUN-SOURCE $4A T=
-   ERR$ s" missing definition name" CONTAINS? TTRUE ;
+   ERR$ s" habu: missing definition name after :" CONTAINS? TTRUE ;
 
 : EXACT-EXITS ( -- )
    s" callable ABI exits 86" T-LABEL

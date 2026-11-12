@@ -299,8 +299,9 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N UNCLOSED T=
    nip LEN>N {: erru:n :}
    s" and names the definition and where the text ran" T-LABEL
-   ERR erru s" hb: source ended inside definition: NATIVE-EVAL-F at " CONTAINS?
-   TTRUE ;
+   ERR erru s" E-VS-UNTERMINATED-DEFINITION habu: " CONTAINS? TTRUE
+   ERR erru s" source ended inside definition: NATIVE-EVAL-F" CONTAINS? TTRUE
+   ERR erru s" E-VS-UNTERMINATED-DEFINITION habu: source" CONTAINS? 0= TTRUE ;
 
 $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
 

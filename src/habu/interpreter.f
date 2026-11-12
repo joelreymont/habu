@@ -252,7 +252,7 @@ private
 74 constant RC-NO-NAME           \ a keyword's operand is missing
 74 constant RC-UNCLOSED          \ the input ends inside a definition or a ( comment, or closes one it did not open
 76 constant RC-TOO-LONG          \ a counted string past CSTR-MAX bytes
-79 constant RC-TASK-THREAD       \ a keyword run on a task's thread
+79 constant RC-TASK-THREAD       \ source read on a task's thread
 52 constant MIN-IN-SHIFT         \ record flag bits 52-59
 32 constant BLANK                \ every byte at or below it separates tokens
 $0A constant NEWLINE
@@ -382,12 +382,6 @@ create NL NEWLINE c,
    s" E-SEALED-PACKAGE" REFUSAL
    s" '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  s" ' is sealed" ERROR-TEXT:TYPE
    s" " ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
-
-\ A keyword that changes the dictionary or its scope, run on a task's thread,
-\ ends the process, the keyword its whole diagnostic line.
-: TASK-GUARD ( -- )
-   TASK-TCB-CELL CELL@ 0= if exit then
-   TOKEN$ RC-TASK-THREAD FAIL-CLOSED ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
@@ -1006,7 +1000,10 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 : PKG-CHECK-EXPORT ( -- )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-EXPORT-OFF PKG-OPERATION
       {: xt:n :}
-   xt 0= if s" checker-export" RC-REJECT FAIL-CLOSED then
+   xt 0= if
+      s" E-AOT-SEED" REFUSAL
+      s" checker-export dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED
+   then
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
 
 : PKG-NOTIFY-EXPORT ( ptr u8 n n -- )
@@ -1104,7 +1101,6 @@ private
 \ The using depth it opens at is the one `;package` restores, a part's its
 \ package's.
 : PKG-PACKAGE ( -- )
-   TASK-GUARD
    [: CHECKER-RESOLVE:PART-GUARD ;] catch PKG-CONTEXT
    PKG-NAME
    TOKEN$ 0 COLON-AT 0 >= if PKG-CONTEXT-FAIL then
@@ -1119,13 +1115,11 @@ private
    0 PKG-OUTSIDE-CELL CELL! ;
 
 : PKG-SECTION ( n n -- ) {: cell:n off:n :}
-   TASK-GUARD
    cell CELL@ 0= if PKG-CONTEXT-FAIL then
    off PKG-NOTIFY
    cell CELL@ set-current ;
 
 : PKG-END-PACKAGE ( -- )
-   TASK-GUARD
    PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
    NCOMP-DISPATCH:DECL-END-PACKAGE-OFF PKG-NOTIFY
    PKG-PARENT-CELL CELL@ set-current
@@ -1135,7 +1129,6 @@ private
    USE-PKG-SAVE-CELL CELL@ USE-DEPTH-CELL CELL! ;
 
 : PKG-SEAL ( -- )
-   TASK-GUARD
    PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
    PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEAL ;
 
@@ -1195,7 +1188,6 @@ private
 variable USE-FLOOR
 
 : PKG-USING ( -- )
-   TASK-GUARD
    PKG-USED-WID {: wid:n :}
    USE-DEPTH-CELL CELL@ {: d:n :}
    d USE-MAX >= if
@@ -1214,7 +1206,6 @@ variable USE-FLOOR
 \ includer opened, at or below the buffer's floor: it would come back open
 \ when the buffer ends.
 : PKG-END-USING ( -- )
-   TASK-GUARD
    USE-DEPTH-CELL CELL@ {: d:n :}
    d 0= if
       s" E-USING-UNBALANCED" REFUSAL
@@ -1308,7 +1299,6 @@ private
 \ does> definer's clause in the slot above. At top level the name is consumed
 \ and nothing else happens: there `export` is a build directive.
 : PKG-EXPORT ( -- )
-   TASK-GUARD
    PKG-PUB-CELL CELL@ 0= if PKG-NAME exit then
    PKG-NAME
    OVERLAY-GUARD
@@ -1424,7 +1414,8 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ body token or fixed body latched to the JIT, refuses: this loop cannot call
 \ the JIT. `immediate` passes.
 : DEF-TIER-0 ( -- )
-   s" hb: tier 0 is not in the Habu loop: " ERROR-TEXT:TYPE
+   s" E-TIER-0" REFUSAL
+   s" tier 0 is not in the Habu loop: " ERROR-TEXT:TYPE
    DEF-RC-TIER-0 PKG-FAIL ;
 
 \ The capture's first token, the definition's name, which a head seeds.
@@ -1444,9 +1435,10 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 : DEF-ENDED ( -- )
    PENDTKA-CELL CELL@ INP-CELL CELL!
-   s" hb: source ended inside definition: " ERROR-TEXT:TYPE
+   s" E-VS-UNTERMINATED-DEFINITION" REFUSAL
+   s" source ended inside definition: " ERROR-TEXT:TYPE
    DEF-CAPTURED-NAME ERROR-TEXT:TYPE
-   RC-UNCLOSED THROW-AT ;
+   NL 1 ERROR-TEXT:TYPE  RC-UNCLOSED throw ;
 
 \ body-append grows the block when the text would pass its capacity, so an
 \ address into the text is formed after the capture, never kept across it.
@@ -1455,13 +1447,15 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ Both comparisons are signed, as the engine's head makes them.
 : DEF-CODE-ROOM ( -- )
    cp@ dbase@ REGION + PKG-CODE-RESERVE - >= if
-      s" hb: code space full at: " ERROR-TEXT:TYPE PKG-RC-CODE-FULL PKG-FAIL
+      s" E-CODE-SPACE-FULL" REFUSAL
+      s" code space full at: " ERROR-TEXT:TYPE PKG-RC-CODE-FULL PKG-FAIL
    then ;
 
 : DEF-ROOM ( -- )
    DEF-CODE-ROOM
    ndict@ DICT-CAP >= if
-      s" hb: dictionary full at: " ERROR-TEXT:TYPE PKG-RC-DICT-FULL PKG-FAIL
+      s" E-DICTIONARY-FULL" REFUSAL
+      s" dictionary full at: " ERROR-TEXT:TYPE PKG-RC-DICT-FULL PKG-FAIL
    then ;
 
 \ With the input at its end `:` and `kernel:` refuse with the engine's colon
@@ -1469,7 +1463,9 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-NAME ( bool -- ) {: trusted:bool :}
    trusted if s" trusted:" OPERAND exit then
    TOKEN if exit then
-   s" hb: : missing definition name after " ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
+   s" E-MISSING-NAME" REFUSAL
+   s" missing definition name after " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-NO-NAME throw ;
 
 \ A head with no row makes a top-level package with a public wordlist
 \ and no private one.
@@ -1497,7 +1493,9 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    TOKEN$ {: a:ptr u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
-   a u q 1+ COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
+   a u q 1+ COLON-AT 0 >= if
+      s" E-BAD-QUALIFIED-RECORD" REFUSAL PKG-RC-CONTEXT PKG-FAIL
+   then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u SEALED-FAIL then ;
 
 \ The keywords a body's compiler reads before it looks a word up: a word named
@@ -1574,20 +1572,23 @@ public
 private
 
 : DEF-KEYWORD-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" hb: compile keyword cannot be a definition name: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
+   s" E-RESERVED-DEFINITION" REFUSAL
+   s" compile keyword cannot be a definition name: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
 : DEF-POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" hb: not in vocabulary: " ERROR-TEXT:TYPE
    a u ERROR-TEXT:TYPE ENGINE-ERROR:POLICY THROW-AT ;
 
 : DEF-RESERVED-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" hb: reserved word cannot be a definition name: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
+   s" E-RESERVED-DEFINITION" REFUSAL
+   s" reserved word cannot be a definition name: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
 : DEF-NUMBER-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" hb: number cannot be a definition name: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
+   s" E-NUMERIC-DEFINITION" REFUSAL
+   s" number cannot be a definition name: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
 \ Generated bodies bind STRUCTURE-MAKE:PROJECT-NAME$ by name, so once sealed
 \ no definition takes it.
@@ -1671,7 +1672,9 @@ private
 \ ends.
 : DEF-DISPATCH ( -- )
    DEF-COMPILER 0<> if exit then
-   s" hb: native compiler dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
+   s" E-AOT-SEED" REFUSAL
+   s" native compiler dispatch unset" ERROR-TEXT:TYPE
+   s" " ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
 
 public
 \ The tail passes the wall, room, duplicate, code room and protected-wordlist
@@ -1714,7 +1717,6 @@ private
    NCOMP-DISPATCH:TIER-CELL CELL@ NCOMP-DISPATCH:COMP-CELL CELL@ or 0= if
       DEF-TIER-0
    then
-   TASK-GUARD
    DEF-ROOM
    trusted DEF-NAME
    0 DEF-START
@@ -1767,14 +1769,16 @@ private
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ {: idx:n :}
    idx LOC-RECS >= if
-      s" hb: more than 64 locals in one definition: " ERROR-TEXT:TYPE
-      TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT
+      s" E-TOO-MANY-LOCALS" REFUSAL
+      s" more than 64 locals in one definition: " ERROR-TEXT:TYPE
+      TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
    then
    a u 0 COLON-AT {: colon:n :}
    colon 0 < if u else colon then {: len:n :}
    len LOC-NAME-CAP > if
-      s" hb: local name over 16 bytes: " ERROR-TEXT:TYPE
-      TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT
+      s" E-LOCAL-NAME-TOO-LONG" REFUSAL
+      s" local name over 16 bytes: " ERROR-TEXT:TYPE
+      TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
    then
    data-base LOCNAMES + idx LOC-REC * + BYTE-VIEW {: row:ptr :}
    len row CELL-VIEW !
@@ -1901,7 +1905,10 @@ private
    loop ;
 
 : DEF-DOES ( -- )
-   DOESB-CELL CELL@ 0<> if s" does>" ERROR-TEXT:TYPE RC-REJECT THROW-AT then
+   DOESB-CELL CELL@ 0<> if
+      s" E-DOES-TWICE" REFUSAL
+      s" does>" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
+   then
    DEF-DOES-NAME
    BODYLEN-CELL CELL@ {: at:n :}
    DEF-CREATED
@@ -1931,9 +1938,10 @@ variable ENTRY-PEND
 
 : DEF-SOURCE-CLOSE ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ <> if exit then
-   s" hb: source closed a definition it did not open: " ERROR-TEXT:TYPE
+   s" E-VS-UNTERMINATED-DEFINITION" REFUSAL
+   s" source closed a definition it did not open: " ERROR-TEXT:TYPE
    DEF-CAPTURED-NAME ERROR-TEXT:TYPE
-   RC-UNCLOSED THROW-AT ;
+   NL 1 ERROR-TEXT:TYPE  RC-UNCLOSED throw ;
 
 : DEF-SOURCE-END ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
@@ -2025,7 +2033,10 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
    own 0<> if own exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
-   target 0= if s" trust-raw" RC-REJECT FAIL-CLOSED then
+   target 0= if
+      s" E-AOT-SEED" REFUSAL
+      s" trust-raw dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED
+   then
    target ;
 
 \ A definer's effect, raw dictionary storage stated by sig; the
@@ -2065,7 +2076,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ No record slot left is refused after the name, naming it. CP at the code
 \ ceiling is refused first, naming the keyword, as `:`'s does.
 : DEF-ADDR-ROW ( bool -- ) {: cell?:bool :}
-   TASK-GUARD
    DEF-CODE-ROOM
    s" create" OPERAND
    DKIND:ADDR DNAME-ALLOC or cell? if DNAME-CELL or then DEF-START
@@ -2089,7 +2099,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 variable DEF-VALUE
 
 : DEF-CONSTANT ( -- )
-   TASK-GUARD
    s" constant" OPERAND
    DKIND:VAL DEF-START
    depth 0= if UNDERFLOW then
@@ -2106,8 +2115,9 @@ variable DEF-VALUE
 \ end's line.
 : DEF-CAST-NAME ( -- )
    TOKEN if exit then
-   s" hb: cast: missing name after " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
+   s" E-MISSING-NAME" REFUSAL
+   s" cast: missing name after " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-NO-NAME throw ;
 
 \ The signature must be there, opened and closed, before the qualifier's
 \ refusals, and INP passes it first, so those name the line it ends on.
@@ -2145,7 +2155,6 @@ variable DEF-VALUE
 \ Its name folds apart from the def-cast row: a word spelled DEF-CAST here
 \ would shadow the row for every later body.
 : DEF-CAST-ROW ( -- )
-   TASK-GUARD
    DEF-ROOM
    DEF-CAST-NAME
    DEF-CAST-HEAD
@@ -2162,7 +2171,6 @@ variable DEF-VALUE
    a u q 1+ COLON-AT 0< ;
 
 : DEF-LINEAR ( -- )
-   TASK-GUARD
    DEF-ROOM
    s" linear:" OPERAND
    DEF-SEED
@@ -2170,7 +2178,8 @@ variable DEF-VALUE
    s end DEF-SIG-PASS
    LINEAR-QUALIFIED? if
       s 1 + end s - 2 - NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-REGISTER-IDENTITY
-      TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT
+      s" E-BAD-QUALIFIED" REFUSAL
+      TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
    then
    DEF-QUALIFY DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER
@@ -2189,7 +2198,9 @@ variable DEF-VALUE
 \ refusal names.
 : DEFER-NAME ( -- )
    TOKEN if exit then
-   s" hb: defer: missing name after " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
+   s" E-MISSING-NAME" REFUSAL
+   s" defer: missing name after " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
+   NL 1 ERROR-TEXT:TYPE  RC-NO-NAME throw ;
 
 : DEFER-UNSET-XT ( -- n )
    s" defer-unset" FIND-SCOPE {: rec:ptr :}
@@ -2218,8 +2229,9 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 \ A full table, or a name or signature past its slot field, ends the process
 \ naming the defer.
 : PD-FULL ( -- )
-   s" hb: pre-trust defer table full: " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
-   NL 1 DEF-RC-PD-FULL FAIL-CLOSED ;
+   s" E-DEFER-TABLE-FULL" REFUSAL
+   s" pre-trust defer table full: " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
+   s" " DEF-RC-PD-FULL FAIL-CLOSED ;
 
 : PD-PUT ( ptr u8 n n n n -- ) {: a:ptr u:n cap:n lenoff:n off:n :}
    u cap > if PD-FULL then
@@ -2255,7 +2267,6 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 
 \ defer-unset is looked up before DEF-ROOM, so its refusal leaves no capture.
 : DEF-DEFER ( -- )
-   TASK-GUARD
    DEFER-UNSET-XT {: unset:n :}
    DEF-ROOM
    DEFER-NAME
@@ -2415,8 +2426,16 @@ private
    cp@ dbase@ - TOKCP-CELL CELL!
    VSP-CELL CELL@ TOKVSP-CELL CELL! ;
 
+\ Reading source on a task's thread ends the process: only the main thread
+\ compiles.
+: TASK-GUARD ( -- )
+   TASK-TCB-CELL CELL@ 0= if exit then
+   s" E-TASK-COMPILE" REFUSAL
+   s" source read on a task's thread; only the main thread compiles"
+   RC-TASK-THREAD FAIL-CLOSED ;
+
 : RUN-TOKENS ( -- )
-   begin OBSERVE-FINISH TOKEN-MARK TOKEN while STEP repeat ;
+   TASK-GUARD  begin OBSERVE-FINISH TOKEN-MARK TOKEN while STEP repeat ;
 
 : RUN ( -- )
    RUN-TOKENS
@@ -2450,10 +2469,6 @@ $38 constant FR-DP
 
 \ The frame on its way into the catch that links it; empty at rest.
 TYPED-VARIABLE FRAME-ARG ptr u8
-
-: EVAL-TASK-GUARD ( -- )
-   TASK-TCB-CELL CELL@ 0= if exit then
-   s" " RC-TASK-THREAD FAIL-CLOSED ;
 
 \ The source owner's record end and its cut, raw execution tokens in the owner
 \ record.
@@ -2655,7 +2670,6 @@ public
 \ The input base stays the buffer's first byte, so a refusal's line counts
 \ from the start of the whole source.
 : EVAL-FRAMED-RANGE ( ptr u8 n n n -- ) {: a:ptr u:n first:n end:n :}
-   EVAL-TASK-GUARD
    depth FRAME-OPEN {: f:ptr :}
    a first + end first - f OBSERVE-ARM
    LOOP-EVAL @ {: reading:n :}

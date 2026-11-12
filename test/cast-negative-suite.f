@@ -472,7 +472,7 @@ CN-CHILD:ERR$ s" undefined word ';'" CONTAINS? TTRUE
 \ A reader keyword that needs a name and reaches the end of its stream fails
 \ closed, and says which keyword and where.
 s" cast:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: cast: missing name after" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" cast: missing name after" CONTAINS? TTRUE
 
 \ Required reader operands fail before stale token bytes can be consumed.
 \ These are child checks because the reader exits after its diagnostic.
@@ -491,11 +491,11 @@ CN-CHILD:ERR$ s" reader keyword needs a name: char" CONTAINS? TTRUE
 \ The interpreter reads a whole definition before it binds the body's tokens,
 \ so at EOF this unfinished one is refused before [char] or ['] reads an operand.
 s" : x [char]" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: source ended inside definition: x" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" source ended inside definition: x" CONTAINS? TTRUE
 s" '"        CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 CN-CHILD:ERR$ s" reader keyword needs a name: '" CONTAINS? TTRUE
 s" : x [']"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: source ended inside definition: x" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" source ended inside definition: x" CONTAINS? TTRUE
 package CN
 
 \ the cast: declarer used inside a checked body is rejected unsafe (verdict 0);

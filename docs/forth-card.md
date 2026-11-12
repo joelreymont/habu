@@ -202,7 +202,7 @@ before any `require`.
 | a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | rc 70 at load; `E-BAD-DECLARATION` from `tools/check.f` |
 | `ENUM state DERIVE eq closed open ;ENUM` in a package's private section | `habu: bad enum declaration 'state': derive requires a public family at 'eq'`, rc 70; test a private family's values with an exhaustive `MATCH` |
 | `16 DYNAMIC-STORAGE:RECORD-NEW`, or any call or tick of `DYNAMIC-STORAGE:RECORD-NEW` or `RECORD-RELEASE`, directly or through a re-export, at top level too, outside a `HEAP`'s generated NAME-NEW and NAME-RELEASE | `E-ARENA-CALL-TOP-LEVEL` for a top-level token in the source, else `E-ARENA-CALL` |
-| `: field-project ( a n -- ptr n ) drop drop V ;`, by any definer, in any package or letter case | `hb: reserved word cannot be a definition name: field-project`, rc 70 |
+| `: field-project ( a n -- ptr n ) drop drop V ;`, by any definer, in any package or letter case | `E-RESERVED-DEFINITION habu: <file>:<line>: reserved word cannot be a definition name: field-project`, rc 70 |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
@@ -345,9 +345,9 @@ evaluates source in a body: the text's `depth` starts at 0, a token reaching
 below it throws a stack underflow and a text that leaves cells throws
 `E-EVAL-RESIDUE`, the caller's cells intact either way. An xt the text runs
 cannot reach them: `' F execute` with F's input under the floor is
-`E-INPUT-UNDERFLOW` at `execute`. A text that ends
-inside a definition it opened is refused as every source is, `hb: source ended
-inside definition: NAME`, and the definition is rolled back (forth.md **Checked code and primitive boundaries** states what `evaluate-closed` checks).
+`E-INPUT-UNDERFLOW` at `execute`. A text that ends inside a definition it
+opened is refused as every source is, `E-VS-UNTERMINATED-DEFINITION` (`source
+ended inside definition: NAME`), and the definition is rolled back (forth.md **Checked code and primitive boundaries** states what `evaluate-closed` checks).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
@@ -518,11 +518,15 @@ holds an address**.
   build makers and CLI boundaries.
 - Exit 79 (`$4F`) is compilation from a task: a definition, `create`, `allot`,
   `,`, `evaluate`, a load or a package keyword run on a task's, an exposed
-  region's or a callback's thread, with nothing on fd 2: `evaluate` is refused
-  before its text is read, so a keyword in that text never runs. The main
-  thread compiles while tasks run; `cp!` and `ndict!` exit 79 on
-  it too, silently, while any task is live. `NLEASE`'s checks throw
-  `NLEASE:E-TASK` on a task's thread.
+  region's or a callback's thread. The kernel's guard writes nothing on fd 2;
+  `evaluate`, `evaluate-closed`, a load, `create`, `,`, `c,`, `align` and
+  `allot` reach it first, so a definition or keyword in a text is refused
+  before the text is read. Calling `INTERPRETER:EVAL-FRAMED`,
+  `INTERPRETER:EVAL-FRAMED-RANGE` or `INTERPRETER:REPL` on a task's thread
+  writes `E-TASK-COMPILE habu: source read on a task's thread; only the main
+  thread compiles`. The main thread compiles while tasks run; `cp!` and
+  `ndict!` exit 79 on it too, silently, while any task is live. `NLEASE`'s
+  checks throw `NLEASE:E-TASK` on a task's thread.
 - `0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op:
   `[: 0 throw ;] catch` answers 109.
 - A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`

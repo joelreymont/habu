@@ -307,7 +307,7 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" defer" GE-SRC-LINE
-   74 s" hb: defer: missing name after" s" hb defer-missing-name names the cause" GE-EVAL-FORK-BAD ;
+   74 s" defer: missing name after" s" hb defer-missing-name names the cause" GE-EVAL-FORK-BAD ;
 
 : ROW-QUOT-CHECKS ( -- )
    GE-HB-RESET

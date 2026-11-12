@@ -152,7 +152,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    TIER0 s" dead" 67 s" hb: uncaught throw code -30001" s" " RUNS
    TIER0 s" throw" 67 s" hb: uncaught throw code -30001" s" " RUNS
    TIER0 s" checked" 70 s" habu: in bad: at 'BAD' expected: n" s" " RUNS
-   TIER0 s" eof" 74 s" hb: source ended inside definition: X at test/policy/eof.f:2" s" " RUNS
+   TIER0 s" eof" 74 s" E-VS-UNTERMINATED-DEFINITION habu: test/policy/eof.f:2: source ended inside definition: X" s" " RUNS
    LOCALS ESCAPED ;
 
 : LOADERS ( -- )
@@ -223,8 +223,8 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" defname-p2" s" hb: not in vocabulary: tuck at test/policy/defname-p2.f:2" TIER0-REFUSES
    s" own-p2-keyword" s" hb: not in vocabulary: tuck at test/policy/own-p2-keyword.f:5" TIER0-REFUSES
    s" defname-interpret" s" hb: not in vocabulary: create at test/policy/defname-interpret.f:2" TIER0-REFUSES
-   TIER0 s" defname-span" 70 s" hb: compile keyword cannot be a definition name: package" s" " RUNS
-   TIER0 s" defname-endloc" 70 s" hb: compile keyword cannot be a definition name: :} at test/policy/defname-endloc.f:4" s" " RUNS
+   TIER0 s" defname-span" 70 s" E-RESERVED-DEFINITION habu: test/policy/defname-span.f:2: compile keyword cannot be a definition name: package" s" " RUNS
+   TIER0 s" defname-endloc" 70 s" E-RESERVED-DEFINITION habu: test/policy/defname-endloc.f:4: compile keyword cannot be a definition name: :}" s" " RUNS
    s" defname-kernel" s" hb: not in vocabulary: kernel: at test/policy/defname-kernel.f:4" TIER0-REFUSES
    s" defname-semimatch" s" hb: not in vocabulary: ;match at test/policy/defname-semimatch.f:4" TIER0-REFUSES ;
 

@@ -87,7 +87,8 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   with file, line and token.
 - **A number-shaped name is refused.** Every definer refuses a name the
   number reader claims, a number out of range included: `: 42` writes
-  `hb: number cannot be a definition name: 42` and exits 70. Dot-letter
+  `E-NUMERIC-DEFINITION` (`number cannot be a definition name: 42`) and exits
+  70. Dot-letter
   printers (`.U`, `.INT`, `F.N`) and names such as `1STNZ`, `0<>`, `2DUP`
   remain legal. Interpretation, compilation, `evaluate` and the checker use
   one literal grammar: integer `-?d+ | -?$h+`; float `-?d*.d+`, exactly one
@@ -248,10 +249,11 @@ public
   cells on the stack is refused `E-EVAL-RESIDUE`, so a value crosses a load
   only as a word the file defines. A file that ends inside a definition it
   opened is refused at its end, as every source is (**Rules learned by
-  refusal**): `hb: source ended inside definition: D at <path>:<line>`, so no
-  definition spans a load. The program file of `hb prog.f` is a loaded file, so a
-  refusal in it names `prog.f:<line>`, but it keeps its top-level stack; a
-  program on stdin is no file and keeps its stack too.
+  refusal**): `E-VS-UNTERMINATED-DEFINITION habu: <path>:<line>: source ended
+  inside definition: D`, so no definition spans a load. The program file of
+  `hb prog.f` is a loaded file, so a refusal in it names `prog.f:<line>`, but
+  it keeps its top-level stack; a program on stdin is no file and keeps its
+  stack too.
 - **Source roots.** Relative dependencies search the root of the file that
   requires them, then the engine's source root, then the invocation working
   directory, each root once. A named `--load` entry's root is its directory; a
@@ -2349,16 +2351,16 @@ sections above.
   unwind carries 0, to its task's root catch.
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
-  (`hb: source ended inside definition: NAME`) or an open comment
-  (`E-UNTERMINATED-COMMENT ... source ended inside a ( comment`). The first
-  includes its stack comment, locals and quotations; the definition rolls back
-  on a caught `evaluate`. An immediate word may evaluate text while a
+  (`E-VS-UNTERMINATED-DEFINITION`, `source ended inside definition: NAME`) or
+  an open comment (`E-UNTERMINATED-COMMENT`, `source ended inside a ( comment`).
+  The first includes its stack comment, locals and quotations; the definition
+  rolls back on a caught `evaluate`. An immediate word may evaluate text while a
   definition is open, but a `;` from that text may not close the outer
-  definition (`hb: source closed a definition it did not open: NAME`).
-  Completed tokens in nested evaluations stay compiled in the outer definition
-  after a caught refusal. The open-definition diagnostic locates the name (or
-  `def-open` caller), the open-comment diagnostic its `(`, and the
-  foreign-close diagnostic its `;`; stdin has no line location.
+  definition (`E-VS-UNTERMINATED-DEFINITION`, `source closed a definition it did
+  not open: NAME`). Completed tokens in nested evaluations stay compiled in the
+  outer definition after a caught refusal. The open-definition diagnostic
+  locates the name (or `def-open` caller), the open-comment diagnostic its `(`,
+  and the foreign-close diagnostic its `;`; stdin has no line location.
 - **An output's fresh identity is minted per call, declared or inferred.** A
   name on a plain input is the argument's identity instead (**Rigid
   host-allocation identity domains**). With
@@ -2559,10 +2561,11 @@ sections above.
   Every `STRUCTURE` accessor spells it unqualified, so it binds through the
   declaring scope's search order; a qualified spelling would carry no checker
   identity. A word of that name, by any definer, in any package and in any
-  letter case, is refused at its definition with `hb: reserved word cannot be a
-  definition name:` and the name as spelled, such as `Field-Project`, rc 70.
-  Admitted, a package's own `field-project` would send an accessor's store to
-  another variable. The engine's own definition loads before the seal.
+  letter case, is refused at its definition with `E-RESERVED-DEFINITION`,
+  `reserved word cannot be a definition name:` and the name as spelled, such
+  as `Field-Project`, rc 70. Admitted, a package's own `field-project` would
+  send an accessor's store to another variable. The engine's own definition
+  loads before the seal.
 - **Package `private` is visibility, not sealing.** Another file may reopen
   the package and call its private words until its `seal-package`; a sealed
   reopen is refused. Multi-file owners seal only after their last file (see

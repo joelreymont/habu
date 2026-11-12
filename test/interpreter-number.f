@@ -78,7 +78,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    number if 1 REFUSALS +! 70 else 0 then {: want:n :}
    a u HOSTILE-EVAL {: rc:n :}
    a u T-LABEL rc want T=
-   a u T-LABEL GT-ERR$ s" hb: number cannot be a definition name: " CONTAINS? number FLAG= ;
+   a u T-LABEL GT-ERR$ s" number cannot be a definition name: " CONTAINS? number FLAG= ;
 
 
 \ A spelling a definition may try to take: both oracles.

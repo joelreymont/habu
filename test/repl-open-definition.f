@@ -90,7 +90,7 @@ using PTY-HARNESS
       then
    then
    74 EXIT=
-   s" hb: source ended inside definition: EOF-Y" IN-BUF? TTRUE ;
+   s" E-VS-UNTERMINATED-DEFINITION habu: source ended inside definition: EOF-Y" IN-BUF? TTRUE ;
 
 \ A failed definition must unwind through the line savepoint, then accept a
 \ new definition. Tier 0 reaches the JIT diagnostic tail before the catch.

@@ -411,6 +411,22 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s" TTC-RUN" SB-APPEND TASK-LF
    SB$ ;
 
+\ A worker calling INTERPRETER:EVAL-FRAMED exits $4F, naming the refusal,
+\ before a token of the text is read.
+: TASK-FRAMED-COMPILES$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" variable TFC-GO" SB-APPEND TASK-LF
+   s" variable TFC-DONE" SB-APPEND TASK-LF
+   S\" : TFC-BODY ( -- ) begin TFC-GO atomic@ 0= while TASK:PAUSE repeat s\" : TFC-IN ( -- ) ;\" INTERPRETER:EVAL-FRAMED 1 TFC-DONE atomic! ;" SB-APPEND TASK-LF
+   s" : TFC-RUN ( -- ) 1 TFC-GO atomic! begin TFC-DONE atomic@ 0= while TASK:PAUSE repeat ;" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK TFC-WORKER" SB-APPEND TASK-LF
+   s" ' TFC-BODY TFC-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
+   s" : TFC-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
+   s" TFC-AFTER ." SB-APPEND TASK-LF
+   s" TFC-RUN" SB-APPEND TASK-LF
+   SB$ ;
+
 \ `create` IN A TASK exits $4F like any other definer, before it parses a name.
 \ The worker runs a definer once main has defined and printed; one that got
 \ past the guard would branch through the startup's create cell.
@@ -610,6 +626,14 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 
 : TASK-TEST-TASK-COMPILES ( -- )
    TASK-COMPILES$ TASK-EXPECT-REFUSED-EXIT ;
+
+: TASK-FRAMED-REFUSAL$ ( -- ptr u8 n )
+   s" E-TASK-COMPILE habu: source read on a task's thread; only the main thread compiles" ;
+
+: TASK-TEST-FRAMED-COMPILES ( -- )
+   TASK-FRAMED-COMPILES$ TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N S\" 7\n" T$=
+   TASK-ERR erru LEN>N TASK-FRAMED-REFUSAL$ CONTAINS? TTRUE ;
 
 : TASK-TEST-TASK-CREATES ( -- )
    TASK-CREATES$ TASK-EXPECT-REFUSED-EXIT ;
@@ -2714,6 +2738,7 @@ variable NEW-STRAY
    TASK-TEST-MAIN-COMPILES
    TASK-TEST-LOWER-LIVE
    TASK-TEST-TASK-COMPILES
+   TASK-TEST-FRAMED-COMPILES
    TASK-TEST-TASK-CREATES
    TASK-TEST-ROLLBACK-LIVE
    TASK-TEST-APP-SOAK
