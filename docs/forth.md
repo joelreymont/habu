@@ -705,6 +705,11 @@ multi-cell type rationale is `docs/design.md` "Types".
     quotation. An atom, or a pointer to one, on either side, and an atom in an
     introduction position of either side, are `E-CAST-CLASS`, except a bare
     `xt` input: a cast may take a primitive's token but never yields one.
+  - Where the output holds a pointer or a quotation, each input row that ends
+    in a row variable meets, at the same place in the output, a row ending in
+    that variable with as many cells, else `E-CAST-CLASS`: `( [ R -- S ] -- [
+    n -- ] )` and `( [ R -- R ] -- [ R n -- R ] )` are refused, `( [ R n -- R
+    ] -- [ R ptr n -- R ] )` loads.
   - A type variable or a linear type anywhere in either term, behind a
     pointer, in any quotation row or in a layout's members, is
     `E-CAST-LINEAR`: a `PRODUCT` field `ptr lease` or a `STRUCTURE`
@@ -713,8 +718,9 @@ multi-cell type rationale is `docs/design.md` "Types".
     `[ R -- S ]`, hands out values it never took, so in a cast's output, in a
     view cast's element on either side, or bound to a stored variable as
     below, it counts as one that may hold a linear value. Elsewhere in a
-    cast's input it is read and never handed out, so there it is any
-    quotation: `CAST: XT>N ( [ R -- S ] -- n )` reads any word's cell.
+    cast's input it is read and never handed out, so there, where the output
+    mints no pointer and no quotation, it is any quotation: `CAST: XT>N ( [ R
+    -- S ] -- n )` reads any word's cell.
     A variable that occurs only where a type is stored, behind a pointer or
     in a family slot the family's width does not read, is admitted:
     `CAST: >ELEM ( ptr u8 -- ptr t )` in a private section loads. Every type

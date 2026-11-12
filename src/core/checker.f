@@ -4003,6 +4003,67 @@ variable CAST-PATH-N
       CAST-PATH-POP EXIT
    THEN
    RES-FALSE ;
+\ Whether term t holds a row variable the signature names; a quotation's
+\ unnamed tail is closed.
+: CAST-HOLDS-ROW? ( n -- bool ) {: t0:n :}
+   t0 R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+   THEN
+   dup ISROW IF PAY RVK-QUOT? 0= EXIT THEN
+   drop
+   t0 T-RES {: t:n :}
+   TWALK-DEEPER
+   t TAG T-PTR = IF t PTR>INNER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN RECURSE  t Q>DOUT RECURSE or
+      t Q>RIN RECURSE or  t Q>ROUT RECURSE or
+      TWALK-SHALLOWER EXIT
+   THEN
+   t TAG T-PARAM <> IF TWALK-SHALLOWER RES-FALSE EXIT THEN
+   RES-FALSE
+   0 BEGIN dup t PARAM>ARGC < WHILE
+      t over PARAM>ARG RECURSE rot or swap
+      1 +
+   REPEAT drop TWALK-SHALLOWER ;
+\ Whether b keeps a's row variables in place: a row of a ending in one pairs
+\ with a row of b ending in it, cell for cell; a part unlike its pair has none.
+: CAST-ROWS-KEPT? ( n n -- bool ) {: a0:n b0:n :}
+   a0 R-RES ROW-NODE?  b0 R-RES ROW-NODE?  or IF
+      a0 R-RES b0 R-RES
+      BEGIN over TAG S-PUSH =  over TAG S-PUSH =  and WHILE
+         over P>TYPE over P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         0= IF 2drop RES-FALSE EXIT THEN
+         P>REST R-RES swap P>REST R-RES swap
+      REPEAT
+      over ROW-TAIL CAST-HOLDS-ROW? IF = EXIT THEN
+      2drop RES-TRUE EXIT
+   THEN
+   a0 T-RES b0 T-RES {: a:n b:n :}
+   TWALK-DEEPER
+   a TAG T-QUOT =  b TAG T-QUOT =  and IF
+      a Q>DIN b Q>DIN RECURSE  a Q>DOUT b Q>DOUT RECURSE and
+      a Q>RIN b Q>RIN RECURSE and  a Q>ROUT b Q>ROUT RECURSE and
+      TWALK-SHALLOWER EXIT
+   THEN
+   a TAG T-PTR =  b TAG T-PTR =  and IF
+      a PTR>INNER b PTR>INNER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   TWALK-SHALLOWER
+   a LAYOUT-PARAM?  b LAYOUT-PARAM?  and IF
+      a PARAM>FAM b PARAM>FAM =  a PARAM>ARGC b PARAM>ARGC =  and IF
+         RES-TRUE
+         0 BEGIN dup a PARAM>ARGC < WHILE
+            dup a swap PARAM>ARG  over b swap PARAM>ARG
+            TWALK-DEEPER RECURSE TWALK-SHALLOWER rot and swap
+            1 +
+         REPEAT drop EXIT
+      THEN
+   THEN
+   a CAST-HOLDS-ROW? 0= ;
 
 \ 0 when a cast's stored position may name term t, 4 when t may hold a linear
 \ value, 5 when it hands out an atom or a width (SCOPE-HIT's codes).
@@ -25221,6 +25282,14 @@ DIAG-DEFAULT
    SGIN @ CAST-ROW-TERM CAST-NEG INTRO-WIDTH CAST-INTRO? IF
       s" the input is handed a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
+   \ A row variable stands for cells the signature does not show, which each use
+   \ of the cast picks; an output holding no pointer or quotation passes.
+   SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? {: mint:bool :}
+   CAST-WALK-RESET
+   mint IF SGIN @ CAST-ROW-TERM SGOUT @ CAST-ROW-TERM CAST-ROWS-KEPT? 0= IF
+      s" a row variable changes place between the input and the output"
+      E-CAST-CLASS CAST-ERROR:RAISE
+   THEN THEN
    CAST-WALK-RESET
    \ The input is only read, so a quotation whose tails differ is any quotation.
    SGIN @ CAST-ROW-TERM RES-FALSE CAST-MAY-LINEAR? IF
@@ -25232,7 +25301,6 @@ DIAG-DEFAULT
    THEN
    \ The mint rule comes last: a mint that also carries ownership is named by
    \ that stronger reject.
-   SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? {: mint:bool :}
    mint IF
       CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF
          s" the output mints a pointer or a quotation outside a private section"

@@ -47,10 +47,9 @@ variable RES
 : AFTER-GROW ( -- )
    depth DEPTH0 !
    5 [: dup 3 + ;] AFTER swap 10 * +  depth DEPTH0 @ - 100 * + throw ;
-CAST: >GROW ( [ R n [ R n -- S ] -- S ] -- [ n [ n -- n n ] -- n n ] )
 : AFTER-VIA-EXECUTE ( -- )
    depth DEPTH0 !
-   5 [: dup 3 + ;] ['] AFTER >GROW execute swap 10 * +  depth DEPTH0 @ - 100 * + throw ;
+   5 [: dup 3 + ;] ['] AFTER execute swap 10 * +  depth DEPTH0 @ - 100 * + throw ;
 : FIN-BODY ( R n [ R n -- S ] -- S ) execute ;
 : FIN-ROWS ( R n [ R n -- S ] -- S )
    {: body :}

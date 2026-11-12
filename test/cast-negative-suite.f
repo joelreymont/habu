@@ -182,6 +182,17 @@ s" CAST: CNP11 ( read-view<p,q,CAST-NEG:nested> -- ptr u8 n )" CN-EVAL-CATCH E-C
 s" CNP11" CN-ABSENT? TTRUE  s" CNP11" 0 search-wl 0= TTRUE
 s" CAST: CNP12 ( read-view<p,q,[ R -- S ]> -- ptr u8 n )" CN-EVAL-CATCH E-CAST-LINEAR T=
 s" CNP12" CN-ABSENT? TTRUE  s" CNP12" 0 search-wl 0= TTRUE
+\ Where the output mints, an input's row variable keeps its place; an
+\ output's own is the linear rule's.
+s" CAST: CNP13 ( [ -- n ] -- [ -- S ] )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP13" CN-ABSENT? TTRUE
+s" CAST: CNP14 ( [ R -- S ] -- [ S -- R ] )" CN-EVAL-CATCH E-CAST-CLASS T=
+s" CNP14" CN-ABSENT? TTRUE
+s" CAST: CNP15 ( [ R -- S ] -- [ n -- ] )" CN-EVAL-CATCH E-CAST-CLASS T=
+s" CNP15" CN-ABSENT? TTRUE
+s" CAST: CNP17 ( [ R -- R ] -- [ R n -- R ] )" CN-EVAL-CATCH E-CAST-CLASS T=
+s" CNP17" CN-ABSENT? TTRUE
+s" CAST: CNP18 ( [ R n -- R ] -- [ R ptr n -- R ] )" CN-EVAL-CATCH 0 T=
 s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
 ;package
