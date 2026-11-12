@@ -566,7 +566,7 @@ public
    {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart bend rstart rend d0 d1 CAPTURE-PREPARE
    SH-KEEP-PRIVATE
-   bstart bend d0 CAPTURE-COMPLETE
+   d0 CAPTURE-COMPLETE
    SHADOW-CAPTURE ;
 
 ;using

@@ -801,47 +801,7 @@
 \ step alone. Each pass takes a row the tables lacked, so the loop ends as a
 \ body's does.
 \
-\ The surface a capture keeps: a capture keeps a checker symbol, and every row
-\ keyed on it, only when some spelling can still reach it in the engine it
-\ writes. Two reasons are this file's own, with or without a dictionary
-\ record: a primitive axiom row names the symbol (PES), or the primitive
-\ control prefix does (NORETS below NORET-PRIM-END), which is how `>r` or
-\ `2>r` resolve at all. Every other symbol is decided by the policy installed
-\ through CHECKER-SWEEP:INSTALL, which reads the dictionary and the seal pass's
-\ verdict. Until a policy is installed the sweep does nothing, so an engine
-\ whose closure does not load one captures every symbol it holds. Which
-\ records ship with a name is the capture's answer: the policy asks NAMED? of
-\ the record a symbol's spelling resolves to. SWEEP, CHECKER-CAPTURE-PREPARE's
-\ call, answers yes for every record. The native build's capture decides which
-\ records keep their names (a retained DNAME-INT word included) and then runs
-\ STRIP with its own answer, before it copies DATA. A stripped name leaves no
-\ spelling, so its symbol goes; a kept one is a callee a TRUSTED: body can
-\ call, whose arity the native compiler asks this checker for. A dropped
-\ symbol is retired in place, never renumbered: ids are held outside this
-\ table (a variant's constructor symbol), and a retired row answers no lookup,
-\ so a stale id names nothing. The string pool is rebuilt from the kept rows
-\ in id order. Its rows go with it: control rows at NORET-COMPACT; defer and
-\ parse-immediate rows filtered by the sweep; effect bindings zeroed in place
-\ (RETIRE-BINDINGS). CHECKER-REG CHECKED-ROW walks every id of a host that
-\ builds an engine, and a binding still keyed on a retired row would hand the
-\ target a symbol with an empty name.
-\
-\ Retired bindings, zeroed in place: every walker of the effect store steps
-\ record to record through ER.NEXT and every saved store position is a record
-\ boundary, so a retired binding keeps its link and nothing moves: no offset,
-\ position, USIGS-USER-OFF or UEND changes. What stays is marked from what
-\ stays: every record of a kept symbol and every record a root names (a
-\ definer's created effect in its control row, a record link's effect and
-\ grid, the DOESEFF latch, RECEFF, a primitive's effect in PES) keeps its
-\ header, content and every node, name string and argument run its rows
-\ reach, by the shape walk UIX-NODE-ADD makes. Every other granule of the user
-\ region is zeroed, leaving a retired binding its ER.NEXT alone: ACTIVE 0
-\ (EFF-DELETED), SYM 0, SYMPREV 0 and CONTENT 0, the record without content
-\ UIX-REC-ADD skips. A content or node a kept record shares stays. A store
-\ offset any other cell holds must be a root here, or its reader finds zeros.
-\ The map is one byte per eight-byte granule of [0, UEND), mmap scratch
-\ released before the sweep returns, so the sweep allots nothing in the image
-\ it cleans.
+\ A capture keeps every checker symbol the engine holds.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
 \ the one a replacement checker publishes itself into.
@@ -9357,12 +9317,6 @@ variable SYM-ID
 \ names nothing and reads as retired.
 : SYM-RETIRED? ( n -- bool )
    SYM-ROW SYM.NAME-U @ 0= ;
-
-: SYM-RETIRE ( n -- )
-   SYM-ROW {: r:ptr :}
-   0 r SYM.PKG-A !  0 r SYM.PKG-U !
-   0 r SYM.NAME-A !  0 r SYM.NAME-U !
-   0 r SYM.VIS ! ;
 
 : SYM-PKG-A-FIELD ( n -- ptr n )
    SYM-ROW SYM.PKG-A ;
@@ -29247,8 +29201,7 @@ private
 \ newest row per symbol after it; a zero row is a retraction and must survive
 \ just like a nonzero one. A retired symbol keeps no row at all: no spelling
 \ reaches it, so no row of its can ever be read again. Effect offsets in
-\ CREATES never change: the sweep zeroes retired bindings in place and moves
-\ nothing.
+\ CREATES never change.
 PTR-VARIABLE RECORD-CTL-MAP-P
 variable RECORD-CTL-MAP-N
 
@@ -29823,304 +29776,6 @@ CHECKER-REG:}SCRATCH
    0 TOP-WRITE-END !  0 TOP-READ-END !  0 TOP-ROW-TV !  0 TOP-ROW-RV !  0 TOP-SCOPE-SEEN !
    0 TOP-LIVE !  0 TOP-BASE !  0 TOP-COPYING ! ;
 
-\ ---- the surface a capture keeps ---------------------------------------------
-package CHECKER-SWEEP
-private
-
-defer KEEP-XT ( ptr u8 n bool ptr u8 n -- bool )
-variable KEEP-SET   0 KEEP-SET !
-defer NAMED-XT ( n -- bool )             \ the capture's answer, by record index
-
-: EVERY-RECORD ( n -- bool ) drop RES-TRUE ;
-: NAMED-DEFAULT ( -- ) ['] EVERY-RECORD is NAMED-XT ;
-NAMED-DEFAULT
-variable DST                             \ the compacting filters' write cursor
-variable CUR                             \ the binding walk's record cursor
-
-: KEEP! ( n ptr n -- ) {: sym:n keep:ptr :}
-   sym 0 > sym SYM-N @ < and IF -1 keep sym cells + ! THEN ;
-
-: MARK-AXIOMS ( ptr n -- ) {: keep:ptr :}
-   #PE @ 0 ?do i PE-SYM@ keep KEEP! loop
-   NORET-PRIM-END NORET-ENTRY / 0 ?do
-      i NORET-ENTRY * NORET-CELL NORET.SYM @ keep KEEP!
-   loop ;
-
-\ The scope key the policy reads: an empty package is the global scope, and the
-\ flag says public rather than private (ASIG-AUDIT-VIS is the inverse).
-: ASK ( n [ ptr u8 n bool ptr u8 n -- bool ] -- bool ) {: id:n policy :}
-   id SYM-PKG$  id SYM-ROW SYM.VIS @ SYM-PUBLIC =  id SYM-NAME$  policy execute ;
-
-: DECIDE ( [ ptr u8 n bool ptr u8 n -- bool ] -- ) {: policy :}
-   SYM-N @ cells ARENA-ALLOC {: keep:ptr :}
-   keep MARK-AXIOMS
-   SYM-N @ 1 ?do
-      i SYM-RETIRED? 0= IF
-         keep i cells + @ 0= IF
-            i policy ASK 0= IF i SYM-RETIRE THEN
-         THEN
-      THEN
-   loop
-   keep BYTE-VIEW SYM-N @ cells ASIG-RELEASE ;
-
-\ Two rows share a string exactly when they share its offset (SYM-PKG-INTERN and
-\ SYM-NAME-INTERN reuse a whole equal string), so mapping old offset to new
-\ keeps the pool's own sharing among the rows that stay. The map holds new+1.
-: MOVE-STR ( n n ptr u8 ptr n -- n ) {: off:n u:n old:ptr map:ptr :}
-   u 0= IF 0 EXIT THEN
-   map off cells + @ {: seen:n :}
-   seen 0 <> IF seen 1 - EXIT THEN
-   SYM-STR-U @ {: at:n :}
-   old off + SYM-STR at + u ARENA-COPY
-   at 1 + map off cells + !
-   at u + SYM-STR-U !
-   at ;
-
-: STR-ZERO ( n n -- ) {: from:n to:n :}
-   to from ?do 0 SYM-STR i + c! loop ;
-
-: STRINGS ( -- )
-   SYM-STR-U @ {: oldu:n :}
-   oldu 0= IF EXIT THEN
-   oldu ARENA-ALLOC {: old:ptr :}
-   SYM-STR old oldu ARENA-COPY
-   oldu cells ARENA-ALLOC {: map:ptr :}
-   0 SYM-STR-U !
-   SYM-N @ 1 ?do
-      i SYM-RETIRED? 0= IF
-         i SYM-PKG-A-FIELD @ i SYM-ROW SYM.PKG-U @ old map MOVE-STR i SYM-PKG-A-FIELD !
-         i SYM-NAME-A-FIELD @ i SYM-ROW SYM.NAME-U @ old map MOVE-STR i SYM-NAME-A-FIELD !
-      THEN
-   loop
-   SYM-STR-U @ oldu STR-ZERO
-   old oldu ASIG-RELEASE
-   map BYTE-VIEW oldu cells ASIG-RELEASE ;
-
-\ ---- retired bindings, zeroed in place ------------------------------------------
-PTR-VARIABLE MARK-P
-variable MARK-U                          \ the map's length in bytes
-1 constant KEEP-BIT                      \ the granule survives
-2 constant SEEN-BIT                      \ the node or content starting here was walked
-4 constant HEAD-BIT                      \ the record starting here is kept
-
-: MARK-AT ( n -- ptr u8 ) 3 rshift MARK-P @ + ;
-: MARKED? ( n n -- bool ) {: off:n bit:n :} off MARK-AT c@ bit and 0 <> ;
-: MARK! ( n n -- ) {: off:n bit:n :} off MARK-AT dup c@ bit or swap c! ;
-
-\ A kept record or root that names bytes outside the store, or not on a granule,
-\ is a corrupt store, and no zeroing decision is safe against one.
-: OFF-CHECK ( n n -- ) {: off:n bytes:n :}
-   off 0 <  off 7 and 0 <> or  off bytes + UEND @ > or IF
-      s" checker: effect store offset outside the store" 76 die
-   THEN ;
-
-: MARK-EXTENT ( n n -- ) {: off:n bytes:n :}
-   off bytes OFF-CHECK
-   off bytes + 7 + 3 rshift  off 3 rshift ?do
-      MARK-P @ i + dup c@ KEEP-BIT or swap c!
-   loop ;
-
-\ A node or content below the user region is the primitive region's, which the
-\ sweep never zeroes; 0 is no node at all, and the user region may start there.
-: MARK-NODE ( n -- ) {: off:n :}
-   off 0= IF EXIT THEN
-   off USIGS-USER-OFF @ < IF EXIT THEN
-   off EFF-NODE OFF-CHECK
-   off SEEN-BIT MARKED? IF EXIT THEN
-   off SEEN-BIT MARK!
-   off EFF-NODE MARK-EXTENT
-   off E-NODE-TAG {: tg:n :}
-   tg EN-CON =  tg EN-VAR = or  tg EN-ROW = or  tg EN-BVAR = or IF EXIT THEN
-   tg EN-PTR = IF off E-PTR EN.A @ RECURSE EXIT THEN
-   tg EN-PUSH = IF
-      off E-PTR EN.A @ RECURSE
-      off E-PTR EN.B @ RECURSE EXIT
-   THEN
-   \ A quantifier's body, parent and second bound are nodes; EN.D, its domain,
-   \ is a scalar (UIX-NODE-ADD walks the same three).
-   tg EN-FORALL = IF
-      off E-PTR EN.A @ RECURSE
-      off E-PTR EN.B @ RECURSE
-      off E-PTR EN.C @ RECURSE EXIT
-   THEN
-   tg EN-QUOT = IF
-      off E-PTR EN.A @ RECURSE
-      off E-PTR EN.B @ RECURSE
-      off E-PTR EN.C @ RECURSE
-      off E-PTR EN.D @ RECURSE
-      off E-PTR EN.I @ RECURSE EXIT
-   THEN
-   tg EN-ATOM = IF off E-PTR EN.A @  off E-PTR EN.B @ UALIGN MARK-EXTENT EXIT THEN
-   tg EN-PARAM = IF
-      off E-PTR EN.A @  off E-PTR EN.B @ UALIGN MARK-EXTENT
-      off E-PTR EN.C @ {: argc:n :}
-      argc 0 > IF off E-PTR EN.D @  argc cells MARK-EXTENT THEN
-      0 BEGIN dup argc < WHILE            \ data-stack index (RECURSE-safe)
-         off E-PTR EN.D @ over cells + E-PTR CELL-VIEW @ RECURSE
-         1 +
-      REPEAT drop EXIT
-   THEN
-   s" checker: effect store node of unknown kind" 76 die ;
-
-\ Every row, with no E-HASR@ gate: a content with no return rows names 0 there.
-: MARK-CONTENT ( n -- ) {: off:n :}
-   off 0= IF EXIT THEN
-   off USIGS-USER-OFF @ < IF EXIT THEN
-   off EFF-CONTENT OFF-CHECK
-   off SEEN-BIT MARKED? IF EXIT THEN
-   off SEEN-BIT MARK!
-   off EFF-CONTENT MARK-EXTENT
-   off E-PTR {: c:ptr :}
-   c EC.DIN @ MARK-NODE  c EC.DOUT @ MARK-NODE
-   c EC.RIN @ MARK-NODE  c EC.ROUT @ MARK-NODE ;
-
-: MARK-REC ( n -- ) {: rec:n :}
-   rec USIGS-USER-OFF @ < IF EXIT THEN
-   rec EFF-REC OFF-CHECK
-   rec HEAD-BIT MARKED? IF EXIT THEN
-   rec HEAD-BIT MARK!
-   rec EFF-REC MARK-EXTENT
-   rec E-PTR ER.CONTENT @ MARK-CONTENT ;
-
-: MARK-OFF1 ( n -- ) {: off1:n :}       \ a record named as offset+1, 0 = none
-   off1 0 <> IF off1 1 - MARK-REC THEN ;
-
-\ A control row of a retired symbol is dropped by NORET-COMPACT, so the created
-\ effect it names stays only if something else still reaches it.
-: MARK-ROW ( n -- ) {: at:n :}
-   at NORET-CELL NORET.SYM @ {: sym:n :}
-   sym 0 >  sym SYM-N @ < and IF sym SYM-RETIRED? IF EXIT THEN THEN
-   at NORET-CELL NORET.CREATES @ MARK-OFF1 ;
-
-: MARK-ROOTS ( -- )
-   NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * MARK-ROW loop
-   RECORD-LINK-CAP @ 0 ?do
-      i RECORD-LINK-CURRENT? IF
-         i RECORD-LINK-CELL {: row:ptr :}
-         row RLINK.EFFECT cells + @ MARK-OFF1
-         row RLINK.GRID cells + @ MARK-OFF1
-      ELSE i RECORD-LINK-CLEAR THEN
-   loop
-   DOESEFF @ MARK-OFF1
-   RECEFF-ON @ 0 <> IF RECEFF @ MARK-REC THEN
-   #PE @ 0 ?do i PE-EFF@ MARK-REC loop ;
-
-\ Bounded by UEND as USX-BUILD walks: a link of 0, one that does not advance, or
-\ one past UEND ends the walk.
-: EACH-REC ( [ n -- ] -- ) {: visit :}
-   USIGS-USER-OFF @ CUR !
-   begin CUR @ EFF-REC + UEND @ <= while
-      CUR @ visit execute
-      CUR @ E-PTR E-NEXT@ {: nx:n :}
-      nx CUR @ <=  nx UEND @ > or IF EXIT THEN
-      nx CUR !
-   repeat ;
-
-\ A binding keyed on no symbol stays only as a root names it. One keyed on an id
-\ this table never issued is not this sweep's to judge, so it stays as it is.
-: LIVE-REC ( n -- ) {: rec:n :}
-   rec E-PTR ER.SYM @ {: sym:n :}
-   sym 0= IF EXIT THEN
-   sym 0 >  sym SYM-N @ < and IF sym SYM-RETIRED? IF EXIT THEN THEN
-   rec MARK-REC ;
-
-: LINK-REC ( n -- ) {: rec:n :}
-   rec HEAD-BIT MARKED? IF EXIT THEN
-   rec ER-NEXT-OFF + CELL MARK-EXTENT ;
-
-: ZERO-UNMARKED ( -- )
-   UEND @ 3 rshift  USIGS-USER-OFF @ 7 + 3 rshift ?do
-      MARK-P @ i + c@ KEEP-BIT and 0= IF 0 i cells USIGS-CELL-AT ! THEN
-   loop ;
-
-\ The zeroed bytes were the last query's rows, a cached head's record and an
-\ index entry's node, so every reader that holds a store offset forgets it: the
-\ query latch closes, the per-symbol heads rebuild at their next use (HIDX-BUILD
-\ keeps the generation), and the two interning indexes rebuild now if they are
-\ live - at a capture seam they are reset right after, and under STRIP not live.
-: RETIRE-BINDINGS ( -- )
-   UEND @ 3 rshift 1 + MARK-U !
-   MARK-U @ ARENA-ALLOC MARK-P !
-   MARK-ROOTS
-   [: LIVE-REC ;] EACH-REC
-   [: LINK-REC ;] EACH-REC
-   ZERO-UNMARKED
-   MARK-P @ BYTE-VIEW MARK-U @ ASIG-RELEASE
-   NULL-PTR MARK-P !  0 MARK-U !
-   0 EFFQ-OK !  0 EFFQ-DIN !  0 EFFQ-DOUT !
-   0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
-   0 USX-GEN !
-   UIX-READY? IF UIX-DROP UIX-BUILD THEN
-   CHX-READY? IF CHX-DROP CHX-BUILD THEN ;
-
-\ Newest-wins holds for the rows that stay because their order does.
-: DEFER-FILTER ( -- )
-   DFER-END @ {: oldend:n :}
-   0 DST !
-   oldend DFER-REC / 0 ?do
-      i DFER-REC * {: at:n :}
-      DFERS at + DFER.SYM @ SYM-RETIRED? 0= IF
-         at DST @ <> IF DFERS at + BYTE-VIEW DFERS DST @ + BYTE-VIEW DFER-REC ARENA-COPY THEN
-         DST @ DFER-REC + DST !
-      THEN
-   loop
-   DST @ DFER-REWIND ;
-
-: PIMM-FILTER ( -- )
-   0 DST !
-   PIMM-N @ 0 ?do
-      i cells PIMM-SYMS + @ {: sym:n :}
-      sym SYM-RETIRED? 0= IF
-         sym DST @ cells PIMM-SYMS + !
-         i cells PIMM-NS + @ DST @ cells PIMM-NS + !
-         DST @ 1 + DST !
-      THEN
-   loop
-   DST @ PIMM-REWIND ;
-
-public
-
-\ The sweep itself, for the policy it is handed. It has no axiom row, so the seal
-\ marks it internal and the product cannot spell it.
-: RUN ( [ ptr u8 n bool ptr u8 n -- bool ] -- ) {: policy :}
-   RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN   \ NORET-COMPACT-CHECK's refusal, met first
-   policy DECIDE
-   STRINGS
-   RETIRE-BINDINGS
-   DEFER-FILTER
-   PIMM-FILTER
-   0 HIDX-VALID ! ;
-
-\ Granted once: a second policy cannot quietly replace the one the build
-\ installed.
-: INSTALL ( [ ptr u8 n bool ptr u8 n -- bool ] -- )
-   KEEP-SET @ IF s" checker: capture keep policy already installed" 76 die THEN
-   is KEEP-XT
-   -1 KEEP-SET ! ;
-
-: NAMED? ( n -- bool )
-   NAMED-XT ;
-
-: SWEEP ( -- )
-   KEEP-SET @ 0= IF EXIT THEN
-   NAMED-DEFAULT
-   ['] KEEP-XT RUN ;
-
-\ A capture that strips names after the seam sweeps again with its own answer,
-\ over stores the seam already persisted into DATA: everything here works in
-\ place and allots nothing (the binding sweep's map is mmap scratch), and
-\ NORET-COMPACT drops the control rows of what this pass retired. The answer is
-\ the capture's own code, so the cell goes back to the window's before the
-\ capture copies DATA.
-: STRIP ( [ n -- bool ] -- )
-   KEEP-SET @ 0= IF drop EXIT THEN
-   is NAMED-XT
-   ['] KEEP-XT RUN
-   NAMED-DEFAULT
-   NORET-COMPACT ;
-
-;package
-
 \ A grown primitive table left its first rows in the boot buffer, which is DATA
 \ and would be baked beside the live copy; nothing reads it once PES-P moved.
 : PES-BOOT-RETIRE ( -- )
@@ -30129,7 +29784,7 @@ public
 
 \ FILE persistence runs on the product checker only after all source-owner
 \ exports and product-owner installs have finished. These steps also prepare
-\ final capture, where the sweep and NORET compaction interleave with them.
+\ final capture, where NORET compaction interleaves with them.
 \ The shared steps do not retire source records or clear observer state.
 : CHECKER-PERSIST-PRIMS ( -- )
    PES-P PE-CAP-V @ PE-REC * REG-PERSIST-BUF drop ;
@@ -30221,7 +29876,6 @@ public
    CHECKER-TAPE:DETACH
    ON-USE-DEFAULT                         \ final image no longer observes source
    CHECKER-QUIESCE-BEGIN
-   CHECKER-SWEEP:SWEEP                    \ retire what the image cannot spell
    CHECKER-QUIESCE-CORE
    NORET-COMPACT
    CHECKER-QUIESCE-END ;

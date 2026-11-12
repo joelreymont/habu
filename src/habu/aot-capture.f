@@ -2067,30 +2067,6 @@ public
       s" aot-capture: dynamic storage has no range release" 74 die then
    d0 AOT-N>U8 d1 d0 - range ACAP-RANGE-XT execute ;
 
-\ The window's checker keeps a symbol only while a record the image ships with
-\ its name resolves to it. CHECKER-CAPTURE-PREPARE
-\ answered as a snapshot does (every record named); the names this capture keeps
-\ are final after ACAP-GRAPH-NAME-DOES, so the checker sweeps again
-\ with ACAP-NAMED-BIT before its DATA
-\ is copied. Records below the prelude band always ship named; the band
-\ [ACAP-PRE-R, ACAP-W-R0) and records defined after the window never ship.
-: ACAP-SHIPS-NAMED? ( n -- bool ) {: idx:n :}
-   idx ACAP-PRE-R @ < if true exit then
-   idx ACAP-DICT>CAP {: k:n :}
-   k 0 < if false exit then
-   k ACAP-NAMED-BIT @ 0<> ;
-
-private
-CAST: ACAP-STRIP-XT ( n -- [ [ n -- bool ] -- ] )
-public
-
-: ACAP-CHECKER-STRIP ( n n -- ) {: b0:n b1:n :}
-   AOT-ARM:PAYLOAD-MODE @ 2 <> if exit then
-   s" CHECKER-SWEEP:STRIP" ACAP-DBUF-XT {: xt:n :}
-   xt b0 < xt b1 >= or if
-      s" aot-capture: the window's checker has no symbol strip" 74 die then
-   ['] ACAP-SHIPS-NAMED? xt ACAP-STRIP-XT execute ;
-
 \ Full-runtime payload mode is explicit. Its verified checker stores travel in
 \ DATA, so an empty sidecar is valid only for that captured owner and closure.
 : ACAP-ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
@@ -2211,8 +2187,7 @@ public
    ACAP-SHADOW-REACH
    ACAP-GRAPH-NAME-DOES ;                       \ the names that ship are final here
 
-: CAPTURE-COMPLETE ( n n n -- ) {: bstart:n bend:n d0:n :}
-   bstart bend ACAP-CHECKER-STRIP               \ ... so the checker retires what they leave
+: CAPTURE-COMPLETE ( n -- ) {: d0:n :}
    SH-NUMBER                                    \ final named rows are the shipped rows
    AOT-ARM:PAYLOAD-MODE @ 2 = if
       ACAP-COPY-CHECKER-DATA
@@ -2241,7 +2216,6 @@ public
    bstart bend d0 d1 ACAP-BAKE-DATA
    prepare execute
    live ACAP-NATIVE-ROOTS
-   bstart bend ACAP-CHECKER-STRIP
    d0 ACAP-COPY-DATA
    ACAP-FINISH ;
 
@@ -2250,7 +2224,7 @@ public
    {: bstart:n bend:n rstart:n rend:n d0:n d1:n all:bool :}
    all ACAP-ALL-NAMES !
    bstart bend rstart rend d0 d1 CAPTURE-PREPARE
-   bstart bend d0 CAPTURE-COMPLETE ;
+   d0 CAPTURE-COMPLETE ;
 
 : CAPTURE ( n n n n n n -- )
    false CAPTURE-WITH-NAMES ;
