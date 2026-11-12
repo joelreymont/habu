@@ -145,7 +145,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    h a u CURL:HEADER+ OK h ;
 
 
-\ A POST to /mcp with the given Content-Type and Accept headers.
 : OPEN-WITH ( ptr u8 n ptr u8 n -- CURL:handle )
    {: kind:ptr ku:n accept:ptr au:n :}
    CURL:INIT
@@ -175,7 +174,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    status ;
 
 
-\ The response's body, then its status against the wanted one.
 : ANSWERED ( n n ptr u8 n -- )
    {: status:n wanted:n want:ptr wu:n :}
    BODY BODY-U @ want wu T$=
@@ -332,7 +330,6 @@ TASK:MIN-STACK TASK:TASK STALLER
 : SPACED ( -- ptr u8 n ) S\" { \"a\":1, \"b\":[2] }" ;
 
 
-\ A legacy tools/call of framed with the given id and arguments.
 : LEGACY-FRAMED ( n ptr u8 n -- n )
    {: id:n args:ptr au:n :}
    LEGACY
@@ -341,8 +338,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    args au SB-APPEND S\" }}" SB-APPEND SB$ POST ;
 
 
-\ A modern tools/call of framed, Mcp-Name included, with the given id and
-\ arguments.
 : MODERN-FRAMED ( n ptr u8 n -- n )
    {: id:n args:ptr au:n :}
    MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: framed" ADD
@@ -413,8 +408,6 @@ TASK:MIN-STACK TASK:TASK STALLER
 : PAIR-CONTENT ( -- ptr u8 n ) PAIR {: a:ptr u:n :} a 1+ u 2 - ;
 
 
-\ A tools/call of pictured with the given id and arguments; a modern one with
-\ its Mcp-Method, Mcp-Name and _meta.
 : PICTURED-CALL ( n ptr u8 n bool -- n )
    {: id:n args:ptr au:n modern:bool :}
    modern if MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: pictured" ADD else LEGACY then
@@ -460,7 +453,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 SB$ ANSWERED ;
 
 
-\ pictured's call naming content blocks RESULT-CONTENT refuses faults to the host with E-SCHEMA.
 : BLOCKS-REFUSED ( ptr u8 n ptr u8 n -- )
    {: label:ptr lu:n args:ptr au:n :}
    label lu T-LABEL
@@ -583,7 +575,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 W$ ANSWERED ;
 
 
-\ A modern tools/call for echo with an Mcp-Method header and the given id.
 : ECHO-CALL ( n -- CURL:handle ptr u8 n )
    {: id:n :}
    MODERN s" Mcp-Method: tools/call" ADD
@@ -689,7 +680,6 @@ TASK:MIN-STACK TASK:TASK STALLER
 : PLAIN ( -- ptr u8 n )
    S\" {\"uri\":\"ui://test/plain.html\",\"name\":\"plain\",\"mimeType\":\"text/html\"}" ;
 
-\ The resources/list array's members.
 : RESOURCE-ITEMS ( -- ) WIDGET-RESOURCE W+ s" ," W+ PLAIN W+ ;
 
 \ Its page: a quote and a newline show the text's escaping.
@@ -737,7 +727,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 W$ ANSWERED ;
 
 
-\ A modern resources/read of the widget with the given id and Mcp-Name header.
 : WIDGET-READ ( n ptr u8 n -- n )
    {: id:n name:ptr nu:n :}
    MODERN s" Mcp-Method: resources/read" ADD name nu ADD
@@ -806,7 +795,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" {\"name\":\"big\",\"description\":\"Answer a long string.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"string\"},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop BIG BIG-U MCP:RESULT ;] MCP:ADD-TOOL ;
 
-\ Answers once the test sets RELEASED.
 : ADD-STALL ( -- )
    S\" {\"name\":\"stall\",\"description\":\"Answer once released.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop 1 ENTERED atomic!
@@ -819,14 +807,12 @@ TASK:MIN-STACK TASK:TASK STALLER
    [: MCP:RESULT ;] MCP:ADD-TOOL ;
 
 
-\ RESULT, keeping in SHAPE-CODE what it threw.
 : SHAPE-TRY ( ptr u8 n -- )
    [: 2dup MCP:RESULT ;] catch {: code:n :} 2drop
    code SHAPE-CODE atomic!
    code 0<> if code throw then ;
 
 
-\ Gives the result {"sources":["a"]}, or an array for arguments naming "flat".
 : ADD-SHAPE ( -- )
    S\" {\"name\":\"shape\",\"description\":\"Answer sources.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"typ\\u0065\":\"object\",\"properties\":{\"sources\":{\"type\":\"array\"}}},\"annotations\":{\"readOnlyHint\":true}}"
    [: s" flat" CONTAINS? if s" []" else S\" {\"sources\":[\"a\"]}" then SHAPE-TRY ;]
@@ -838,27 +824,22 @@ TASK:MIN-STACK TASK:TASK STALLER
 : ADD-DESCRIBED ( ptr u8 n -- ) [: MCP:RESULT ;] MCP:ADD-TOOL ;
 
 
-\ RESULT-META {"ok":true} and meta, keeping in META-CODE what it threw.
 : META-TRY ( ptr u8 n -- )
    [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-META ;] catch {: code:n :} 2drop
    code META-CODE atomic!
    code 0<> if code throw then ;
 
 
-\ Gives a result with the arguments as its _meta, or [] for arguments naming
-\ "flat".
 : ADD-FRAMED ( -- )
    FRAMED [: 2dup s" flat" CONTAINS? if 2drop s" []" then META-TRY ;] MCP:ADD-TOOL ;
 
 
-\ RESULT-CONTENT {"ok":true} and blocks, keeping in BLOCKS-CODE what it threw.
 : BLOCKS-TRY ( ptr u8 n -- )
    [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-CONTENT ;] catch {: code:n :} 2drop
    code BLOCKS-CODE atomic!
    code 0<> if code throw then ;
 
 
-\ The content blocks pictured gives for the case its arguments name.
 : BLOCKS-OF ( ptr u8 n -- ptr u8 n )
    {: args:ptr au:n :}
    args au s" pair" CONTAINS? if PAIR exit then
@@ -874,7 +855,6 @@ TASK:MIN-STACK TASK:TASK STALLER
 : ADD-PICTURED ( -- ) PICTURED [: BLOCKS-OF BLOCKS-TRY ;] MCP:ADD-TOOL ;
 
 
-\ A resource with the descriptor and a small page.
 : ADD-PAGE ( ptr u8 n -- ) s" <p></p>" MCP:ADD-RESOURCE ;
 
 : RESOURCE-REFUSALS ( -- )
@@ -895,8 +875,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    [: S\" {\"uri\":\"ui://test/widget\\u002ehtml\",\"name\":\"x\",\"mimeType\":\"text/html\"}"
       ADD-PAGE ;] MCP:E-DUPLICATE TTHROWSQ ;
 
-
-\ The client's cases.
 
 : URL ( ptr u8 n -- ptr u8 n )
    {: path:ptr pu:n :}
@@ -1225,7 +1203,6 @@ $A constant LF
    [: STALL-CLIENT @ MCP:CLOSE ;] MCP:E-STATE TTHROWSQ
    CLIENT @ MCP:CLOSE ;
 
-\ The task's TOOLS or CALL, its throw code kept in CANCEL-CODE.
 : CANCEL-STORE ( [ -- ] -- ) catch CANCEL-CODE atomic! ;
 : CANCEL-CALL ( -- ) [: STALL-CALL ;] CANCEL-STORE ;
 : CANCEL-TOOLS ( -- ) [: ROUTE-CLIENT @ 0 >MS MCP:TOOLS 2drop ;] CANCEL-STORE ;
@@ -1286,9 +1263,6 @@ TYPED-VARIABLE NEVER MCP:client
    [: CURL:LOOP-STOP ;] catch 0 T= ;
 
 
-\ The protected phase: /mcp guarded by BEARER:ADMIT?, tokens signed by the
-\ fixture key under kid a.
-
 2 constant TWO-WORKERS
 600 constant LIFE-S                 \ how far past now a token's exp lies
 variable PORT                       \ the open phase's port, which /keys's URL names
@@ -1343,7 +1317,6 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
 : ZEN ( -- ) s" zen-app" s" o-1" MINT ;
 : OWNER ( -- ) s" owner-app" s" o-2" MINT ;
 
-\ The Authorization carrying the minted token.
 : BEARING ( CURL:handle -- CURL:handle )
    SB-RESET s" Authorization: Bearer " SB-APPEND TOKEN$ SB-APPEND SB$ ADD ;
 
