@@ -131,16 +131,13 @@ $0000400000000000 constant DNAME-REP
 \ DNAME-SEALED (bit 45): interpreter.f PKG-SEAL sets it on a package's
 \ namespace record. Capture refuses a record carrying it.
 $0000200000000000 constant DNAME-SEALED
-\ [16] bits 45-63: flags above the name length, which every length read clears by this count.
-19 constant DNAME-FLAG-BITS
+\ DNAME-TARGET (bit 44): a target word, which a cross-build refuses to run.
+$0000100000000000 constant DNAME-TARGET
+\ [16] bits 44-63: flags above the name length, which every length read clears by this count.
+20 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
-\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells.
-\ src/habu/interpreter.f fails closed before the call when the interpret stack
-\ holds fewer cells. 0 = unmarked (unchecked words, words without signatures
-\ and the source prefix's words). Compiled calls inside checked
-\ words are checker-proven and carry no guard. Flags cell [16]: IMM/EXT/WIDE/INT
-\ 60-63, min-in 52-59, definer kind 50-51, DNAME-OWNED 49, DNAME-CELL 48,
-\ DNAME-ALLOC 47, DNAME-REP 46, DNAME-SEALED 45, name length 0-44.
+\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, 0 when unmarked: the
+\ interpret loop refuses a call the stack cannot feed; a compiled call carries no guard.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
@@ -273,16 +270,8 @@ $43C0 constant EVAL-TOP-CELL
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
-\ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
-\ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
-\ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
-\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, $98 is free,
-\ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; $128 is held for the
-\ frame's saved next wordlist id (WIDN), $130 is free,
-\ EVAL-FRAME:ROWS $138, EVAL-FRAME:SX-CTX..SX-SRC $140..$158 and
-\ EVAL-FRAME:ENCLOSING $158..$178 and EVAL-FRAME:PKG-OUTSIDE $178, which ends
-\ the frame at STACK-ABI:EVAL-BYTES ($180) and keeps the native stack 16-byte
-\ aligned.
+\ EVAL-INB: the outer evaluate's input-buffer start, which a nested evaluate restores. The frame
+\ ends at STACK-ABI:EVAL-BYTES ($180), a multiple of 16; $128 is held for WIDN and $130 is free.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -315,6 +304,8 @@ $158 constant ENCLOSING
 \ PKG-OUTSIDE: PKG-OUTSIDE-CELL as the buffer began, which a throw puts back.
 \ A clean exit does too unless a `package` ran; one left open is the includer's.
 $178 constant PKG-OUTSIDE
+\ SECTION: SECTION-CELL as the buffer began, which its end puts back.
+$98 constant SECTION
 ;package
 
 \ PATH-CELL / PATHLEN-CELL: the innermost open include frame's path, 0/0 with
@@ -1482,6 +1473,9 @@ $100 constant CAP
 \ Nonzero while the open package was opened outside the buffer being read, so no
 \ part opens; buffers, `package` and CHECKER-OVERLAY write it.
 $4DD0 constant PKG-OUTSIDE-CELL
+
+\ The section in force: 0 host, 1 target; `host` and `target` write it.
+$4DD8 constant SECTION-CELL
 
 \ The protected DATA bands, as one table.
 \ Every engine's span guard walks this table. Each builder reads it twice, for

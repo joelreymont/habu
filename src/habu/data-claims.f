@@ -253,6 +253,7 @@ create TAB
    CLAUSE-CELL                        1 cells                 CLAIM CLAUSE-CELL
    PACKAGE-PATH:OFF                   PACKAGE-PATH:CAP        CLAIM PACKAGE-PATH
    PKG-OUTSIDE-CELL                   1 cells                 CLAIM PKG-OUTSIDE-CELL
+   SECTION-CELL                       1 cells                 CLAIM SECTION-CELL
    \ The profiler band stays the last row, where BAND-ASSERT places it again.
    0 DATA-SIZE PROF-ABI:PROF-BAND-AT  PROF-CNT-BYTES          CLAIM PROF-BAND
    0 ,  0 ,

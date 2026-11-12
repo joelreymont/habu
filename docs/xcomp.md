@@ -56,29 +56,31 @@ backend; the two errors stay distinct.
 ## Host and target words
 
 The host is the machine a build runs on, the target the machine its output
-runs on. In a native build they are one machine and every rule here holds
-unchanged, so a program that builds natively builds for any target. The scheme
-is SwiftX's ([swiftx.md](swiftx.md)), with one difference stated below.
+runs on. In a native build they are one machine: every definition is compiled
+once, and a target word runs there as a host word does. The scheme
+is SwiftX's ([swiftx.md](swiftx.md)), with the differences stated below.
 
-- A definition is a **target word** unless its section says otherwise: it is
-  compiled once, for the target, and never executes during a build.
-- `host` opens a host section and `target` ends it; a file starts in `target`.
+- A definition is a **host word** unless its section says otherwise: it is
+  compiled for the host and for the target (once where they are one machine),
+  and a build may run it.
+- `target` opens a target section and `host` ends it; a file starts in `host`.
   The section is independent of `public` and `private`, and a definition
   belongs to the section in force where it is defined, whichever word
-  generated its text. A definition in a host section is a **host word**: it is
-  compiled for the host and for the target (once where they are one machine).
-  SwiftX has a word needed on both machines written twice; here the one
-  definition is compiled twice, because the words a build runs are mostly
-  words programs also run: of the 890 definitions a Wasm build of a viewer
-  executed on the host, all the library's and none the program's, 29 were also
-  in the module, and an engine ships nearly all of them.
-- Top level executes on the host. It may name a host word, a word a host
-  definer's `does>` made, a data word, and hb's own declaration and loader
-  words (`src/habu/interpreter.f` HOST-WORD?). A data word answers there what
-  it answers on the target: a constant its value, any other the address of its
-  data.
-- A target word named at top level, or in a host word's body, is refused by
-  name (`E-TARGET-WORD`). `'` names it without calling it: its token can be
+  generated its text. A definition in a target section is a **target word**:
+  it is compiled once, for the target, and never executes during a build.
+  SwiftX starts a file in its target scope and has a word needed on both
+  machines written twice; here a file starts in `host` and the one definition
+  is compiled twice, because a build runs about half of what it loads and
+  programs run those words too: a Wasm build of a viewer ran, itself or
+  through a call, 4,668 of the 8,621 definitions it loaded, and a
+  linux-aarch64 build of the engine 10,889 of 20,382.
+- Top level executes on the host. A data word answers there what it answers
+  on the target, in either section: a constant its value, any other the
+  address of its data.
+- A target word a cross-build runs is refused by name (`E-TARGET-WORD`),
+  whether top level names it or a host word calls it. A host word that names one compiles:
+  refusing it there would put every caller of a target word in a target
+  section too. `'` names a target word without calling it: its token can be
   stored in data, and executing the token on the host is the same refusal.
 - A host word reaches a build's data through data words and `data-base`, never
   through an address the target's layout fixes: during a build that address is

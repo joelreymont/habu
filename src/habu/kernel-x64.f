@@ -5132,10 +5132,8 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX WIDN-CELL CELL!,
    WINDOW-CLOSE, ;
 
-\ alias-record ( ptr u8 n n n -- ) name, source index, wid: record NDICT with
-\ the source's [0] and [8] and its DNAME-IMM, DNAME-WIDE, DNAME-MIN-IN
-\ and immutable DKIND:VAL bits. A namespace, retired or DNAME-INT source is refused: an
-\ alias without the bit would run an internal body from the interpret loop.
+\ alias-record: record NDICT with the source's [0], [8] and IMM, WIDE, MIN-IN, TARGET and immutable VAL
+\ bits; a namespace, retired or DNAME-INT source is refused, whose alias would run an internal body.
 : ALIAS-RECORD-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prot:label done:label notval:label :}
    TASK-LIVE-GUARD,
@@ -5162,7 +5160,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX RSP DW-ARG MOV-LOAD,  RCX RECORD-AT,           \ r8 = the source
    RAX R8 REC-CODE MOV-LOAD,  RAX RDI REC-CODE MOV-STORE,
    RAX R8 REC-CODE CELL + MOV-LOAD,  RAX RDI REC-CODE CELL + MOV-STORE,
-   RAX DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or IMM64,
+   RAX DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or DNAME-TARGET or IMM64,
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-RM
    RAX RDI REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    RAX R8 REC-FLAGS MOV-LOAD,
@@ -5239,7 +5237,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    OVERLAY-GUARD,
    FRAME-OPEN,
    DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
-   RAX DKIND:MASK DNAME-CELL or DNAME-ALLOC or invert IMM64,
+   RAX DKIND:MASK DNAME-CELL or DNAME-ALLOC or DNAME-TARGET or invert IMM64,
    RAX RSP DW-ARG MEM-OFF ASM-SINK ENC-TEST-MR  C-NE SEAL-TRAP-LBL JCC,
    RDX RSP DW-WID MOV-LOAD,
    REAL-WID,

@@ -2065,13 +2065,33 @@ variable SCAN-LO                     \ the ordinal of its first row
    STUB-TAKE
    PUBLISH-IT ;
 
+\ In a cross-build the pending record carrying DNAME-TARGET is a target word:
+\ its host walk is an error emission. The first three tests are SHADOWED's.
+: TARGET-WORD? ( -- bool )
+   NSHADOW:OPEN? 0= if false exit then
+   NSHADOW:NATIVE? if false exit then
+   SHADOW-ARCH EMIT-PROVIDED? 0= if false exit then
+   ndict@ XREF-REC XREF-FLAGS DNAME-TARGET and 0<> ;
+
+\ n routines, one per unit the target walk built, in its order, every one
+\ naming the pending record: a quotation or clause token runs one.
+: ERROR-EMIT ( n -- ) {: units:n :}
+   ndict@ {: r:n :}
+   units 0 ?do
+      RESET-STATE
+      i 0= if EMIT-OPEN else EMIT-UNIT-OPEN then
+      r PUSH-CONST  SPILL-ALL
+      ['] NDEFINITION:TARGET-ERROR CALLABLE>N 0 EMIT-CALL
+      EMIT-RETURN  EMIT-CLOSE
+   loop ;
+
 : LOWER ( n -- ) {: before:n :}
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    KEEP-ARITY
    STUB-ARM
    [: WALK ;] SHADOWED
-   [: WALK
+   [: TARGET-WORD? if NQ @ ERROR-EMIT else WALK then
       NQ @ [: drop -1 -1 ;] HOST-ARITIES
       NHOST:SOURCE-FREEZE ;] HOSTED ;
 
@@ -2119,7 +2139,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 : FIXED-LOWER ( -- )
    STUB-ARM
    [: FIXED-BODY ;] SHADOWED
-   [: FIXED-BODY ;] HOSTED ;
+   [: TARGET-WORD? if 1 ERROR-EMIT else FIXED-BODY then ;] HOSTED ;
 
 : FIXED-RUN ( -- ) [: FIXED-LOWER ;] [: SHUT ;] finally ;
 

@@ -1334,13 +1334,32 @@ variable CLASS-N                        \ the class CLASS+ read
    rc 0<> if rc SHOW then
    s" the build exits 0" LABEL  rc 0 T= ;
 
+\ A Wasm build exits 0 where a target word is only named and is refused where top level runs it;
+\ two builds, since a refused build ends its hb.
+: TARGET-CASE ( CMD:command -- CMD:command )
+   s" TN" WHICH!
+   TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
+   s" test/fixtures/file-objects/target-named.f" TOOL-RUN {: named:n :}
+   named 0<> if named SHOW then
+   s" the build exits 0" LABEL  named 0 T=
+   s" TR" WHICH!
+   TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
+   s" test/fixtures/file-objects/target-run.f" TOOL-RUN {: rc:n :}
+   CMD:ERR$ s" E-TARGET-WORD habu: " CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:9: 'FO-TARGET' is a target word"
+      CONTAINS? {: placed:bool :}
+   classed placed and  rc 0<> and 0= if rc SHOW then
+   s" the build fails" LABEL  rc 0<> TTRUE
+   s" the refusal is E-TARGET-WORD" LABEL  classed TTRUE
+   s" the refusal names FO-TARGET on target-run.f's line 9" LABEL  placed TTRUE ;
+
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE
       NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
-      CROSS-CASE ;]
+      CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
 
 

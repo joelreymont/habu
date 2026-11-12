@@ -146,17 +146,17 @@ definition still open at the end of a line continues on the next.
 
 **T0 compiles on ARM64 and x86-64.** A definition compiles through the current
 platform's tier 0 (T0) codegen. Tier 1 stays for experiments, chosen with
-`set-tier`, and for the paths it still owns: Wasm modules, the stripped-image
-driver and saved app images. Hand-written code per platform is only the
+`set-tier`, and for the paths it still owns: the stripped-image driver and
+saved app images. Hand-written code per platform is only the
 kernel's primitives.
 
 ### Cross-compilation
 
 **A build names the platform it runs on and the platform it produces.** Any
 `hb` builds `hb` for every required host
-([xcomp.md](xcomp.md#build-host-product-and-target)). The build runs only the
-words a source defines in a host section and compiles every word for the
-product ([xcomp.md](xcomp.md#host-and-target-words)).
+([xcomp.md](xcomp.md#build-host-product-and-target)). The build runs any
+word but one its source defines in a target section, and compiles every word
+for the target ([xcomp.md](xcomp.md#host-and-target-words)).
 Building for a platform never runs on it: `hb` on a macOS ARM64 machine
 cross-compiles the x86-64 `hb`, and only running the product needs a machine of
 its kind.
@@ -167,8 +167,8 @@ and each row names a record ([header](#dictionary)), not an address. The
 publisher places an emission in the running engine by resolving its rows
 against that engine; the linker places it in an image by resolving them against
 the image's layout. A build compiles a definition once when the product runs on
-the host's platform, and twice otherwise: once to run on the host and once for
-the product.
+the host's platform or the definition is in a target section, and twice
+otherwise: once to run on the host and once for the product.
 
 **Build-time data is product data.** While a build loads the product's
 sources, the dictionary space is the product's: a reservation the build owns,

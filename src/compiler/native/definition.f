@@ -452,6 +452,18 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 
 public
 
+\ Build record n has no host code: a cross-build's host routine for it
+\ ends here, placed on the cursor's line.
+: TARGET-ERROR ( n -- )
+   {: r:n :}
+   SRCLOC:FILE-BUFFER? if
+      FILE-START @ SRCLOC:CURSOR @ ERROR-TEXT:LINE
+   else 0 then {: ln:n :}
+   s" E-TARGET-WORD" CHECK:TOP-SITE-PATH$ ln ERROR-TEXT:PREFIX
+   s" '" ERROR-TEXT:TYPE  r XREF-REC XREF-NAME$ ERROR-TEXT:TYPE
+   S\" ' is a target word: a build cannot run it\n" ERROR-TEXT:TYPE
+   RC-REJECT throw ;
+
 \ The `;` that ends the definition: the token the engine read last, whose
 \ address in the input places a refusal there on its line.
 : CLOSE$ ( -- ptr u8 n ) READ-AT @ data-base TKL-CELL + @ ;

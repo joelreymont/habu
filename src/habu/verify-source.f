@@ -1966,7 +1966,8 @@ private
    a u s" package" STR=CI  a u s" ;package" STR=CI or
    a u s" public" STR=CI or  a u s" private" STR=CI or
    a u s" using" STR=CI or  a u s" ;using" STR=CI or
-   a u s" seal-package" STR=CI or IF 0 0= EXIT THEN
+   a u s" seal-package" STR=CI or  a u s" host" STR=CI or
+   a u s" target" STR=CI or IF 0 0= EXIT THEN
    a u s" export" STR=CI  a u s" trusted:" STR=CI or
    a u s" cast:" STR=CI or  a u s" linear:" STR=CI or
    a u s" defer" STR=CI or  a u s" create" STR=CI or
@@ -3693,6 +3694,8 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
    a u s" private" STR=CI IF RECORD-PRIVATE 0 0= EXIT THEN
+   a u s" host" STR=CI IF 0 0= EXIT THEN
+   a u s" target" STR=CI IF 0 0= EXIT THEN
    a u s" ;package" STR=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
    a u s" seal-package" STR=CI IF SEAL-ROW 0 0= EXIT THEN
    a u s" using" STR=CI IF RECORD-USING 0 0= EXIT THEN

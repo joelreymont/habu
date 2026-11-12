@@ -65,6 +65,10 @@ public
   `E-SEALED-PACKAGE`, rc 84, and `tools/check.f` refuses the same. Outside a
   package: `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75; in a body or after `'`, as
   `public` there, `E-UNDEFINED`. A multi-file owner seals after its last file.
+- At top level `host` and `target` are the section words
+  ([xcomp.md](xcomp.md#host-and-target-words)). Where a word named `HOST` or
+  `TARGET` is in scope the bare token is refused, `E-SECTION-WORD`, rc 70:
+  rename the word or call it qualified; a body or `'` names the word.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
   `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A `does>`
   definer `R` also claims `R;does` there, and so does `EXPORT R`. The new `R`

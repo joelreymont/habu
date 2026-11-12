@@ -5066,13 +5066,14 @@ variable DUE-MADE
    ev EVENT-PATH@ path pathu STR=  and ;
 
 
-\ The offset past request ev's token where the next part starts, -1 unless a clean cut: top scope, empty stack, no open
+\ The next part's offset past request ev's token, -1 unless a clean cut: top scope, host section, empty stack, no open
 \ definition, the token in the source, a loader word run last, this file's reader at the token's end (NEST ends it).
 : RESUME ( n -- n )
    {: ev:n :}
    ev EVENT-TOK@ {: a:n u:n :}
    FILE-SRC @ {: src:n :}
    TOP-SCOPE? 0= if -1 exit then
+   SECTION-CELL HOST@ 0<> if -1 exit then
    ev EVENT-DEPTH@ 0<> if -1 exit then
    PEND-CELL HOST@ 0<> if -1 exit then
    a src <  a u +  src FILE-SRC-U @ +  >  or if -1 exit then

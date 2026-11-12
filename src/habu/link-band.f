@@ -400,7 +400,7 @@ variable UNSAFE-COUNT
             s"  needs a trailer, which a Wasm module cannot hold" SAY SAY-CR
             s" link: a Wasm module cannot hold a defer" 74 die
          then
-         NSHADOW:ENTRY@ rec XREF-LEN +  e NSHADOW:SIZE <> if
+         RANGE-END  e NSHADOW:SIZE <> if
             s" link: the defer " SAY rec XREF-NAME$ SAY s"  does not end its routine" SAY SAY-CR
             s" link: a defer does not end its routine" 74 die
          then

@@ -198,6 +198,12 @@ private
   `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75. Like `public` it names no word: in a body
   or after `'` it is `E-UNDEFINED`. Only `seal-package` seals: an engine or
   application package without it stays reopenable.
+- `host` and `target` are the section words
+  ([xcomp.md](xcomp.md#host-and-target-words)). At top level a bare `host` or
+  `target` where a word of that name is in scope could mean either and is
+  refused: `E-SECTION-WORD habu: <file>:<line>: 'target' is the section word and a word of that name is in scope: rename the word or call it qualified`,
+  rc 70. A public word is called qualified (`PKG:TARGET`); a private or global
+  one is renamed; in a body or after `'` the token names the word.
 - **Qualify only across package boundaries.** In `NAME`'s own files reopen the
   package and use bare names; `NAME:WORD` there is noise. A call into another
   package qualifies (`OTHER:WORD`) or reopens it. A subsystem is a few internal

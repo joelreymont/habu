@@ -511,12 +511,12 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" CAST: TARGET>ADDR ( [ n n ptr n -- n ] -- n )" GE-SRC-LINE
    s" create SAVED-SLOTS DEBUG:MAXBP 32 * allot create SAVED-CODE 16 allot" GE-SRC-LINE
    s" : TABLE ( -- ptr u8 ) data-base BPTAB-OFF + ;" GE-SRC-LINE
-   s" : TARGET ( -- ptr u8 ) TARGET-XT @ TARGET>ADDR 16 CODE-BYTES:AT drop ;" GE-SRC-LINE
+   s" : SUBJECT ( -- ptr u8 ) TARGET-XT @ TARGET>ADDR 16 CODE-BYTES:AT drop ;" GE-SRC-LINE
    s" : ARM ( -- ) TARGET-XT @ DEBUG:BP+ ;" GE-SRC-LINE
-   s" : CHECK ( -- ) VALID-XT @ DEBUG:BP+ TABLE SAVED-SLOTS DEBUG:MAXBP 32 * BYTE-COPY TARGET SAVED-CODE 16 BYTE-COPY" GE-SRC-LINE
+   s" : CHECK ( -- ) VALID-XT @ DEBUG:BP+ TABLE SAVED-SLOTS DEBUG:MAXBP 32 * BYTE-COPY SUBJECT SAVED-CODE 16 BYTE-COPY" GE-SRC-LINE
    s" ['] ARM catch ." GE-SRC-LINE
    s" TABLE DEBUG:MAXBP 32 * SAVED-SLOTS DEBUG:MAXBP 32 * STR= if 1 else 0 then ." GE-SRC-LINE
-   s" TARGET 16 SAVED-CODE 16 STR= if 1 else 0 then . NONE-XT @ DEBUG:BP-" GE-SRC-LINE
+   s" SUBJECT 16 SAVED-CODE 16 STR= if 1 else 0 then . NONE-XT @ DEBUG:BP-" GE-SRC-LINE
    s" TABLE DEBUG:MAXBP 32 * SAVED-SLOTS DEBUG:MAXBP 32 * STR= if 1 else 0 then ." GE-SRC-LINE
    s" VALID-XT @ DEBUG:BP- ; CHECK ;package" GE-SRC-LINE
    s" unsupported breakpoint target" GE-HB-RUN-STDIN
@@ -555,7 +555,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GE-HB-RESET GE-SRC-RESET
    s" 1 set-tier require src/habu/debug.f" GE-SRC-LINE
    s" package GDBNBP" GE-SRC-LINE
-   s" : TARGET ( n -- n ) 3 + ; ' TARGET DEBUG:BP+ 4 TARGET . 5 TARGET . ;package" GE-SRC-LINE
+   s" : SUBJECT ( n -- n ) 3 + ; ' SUBJECT DEBUG:BP+ 4 SUBJECT . 5 SUBJECT . ;package" GE-SRC-LINE
    s" native breakpoint resumes" GE-HB-RUN-STDIN
    S\" 7\n8\n" s" native target resumes and runs again" GE-EXPECT-OUT
    s" habu-bp:" s" native breakpoint was hit" GE-EXPECT-ERR-HAS

@@ -251,12 +251,29 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    wid A64ICODE:DCQ, ;
 
 
-\ Build record rec's length: the target kernel's for a record entering a
-\ kernel primitive, else its own.
-: BUILD-LEN ( ptr n -- n )
-   {: rec:ptr :}
-   rec XREF-START ARM64:KERNEL-ROW {: k:n :}
+\ Shadow record s's [8] cell as native publication records it: a definer's span
+\ runs over its does> clause to its emission's end.
+: TARGET-LEN ( n -- n )
+   {: s:n :}
+   s NSHADOW:EMISSION@ {: e:n :}
+   e NSHADOW:SIZE s NSHADOW:ENTRY@ - {: size:n :}
+   e NSHADOW:RET-BYTES {: ret:n :}
+   ret 0= if size CODE-SPAN:EXACT exit then
+   size ret - ;
+
+\ Build record r's length: the target kernel's for a kernel primitive's, in a
+\ cross-build its target emission's, else its own: a target word's host routine
+\ is the error routine.
+: BUILD-LEN ( n -- n )
+   {: r:n :}
+   r XREF-REC {: rec:ptr :}
+   rec XREF-START {: a:n :}
+   a ARM64:KERNEL-ROW {: k:n :}
    k 0 >= if k PRIM-LEN exit then
+   CROSS? a 0<> and if
+      a REC-AT {: s:n :}
+      s 0 >= if s TARGET-LEN exit then
+   then
    rec XREF-RAW-LEN ;
 
 
@@ -285,7 +302,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    else
       r ENTRY-ADDRESS {: entry:n :}
       entry 0<> if entry at CODE-CELL, else 0 A64ICODE:DCQ, then
-      rec BUILD-LEN A64ICODE:DCQ,
+      r BUILD-LEN A64ICODE:DCQ,
    then
    rec XREF-FLAGS A64ICODE:DCQ,
    rec XREF-EXT? if

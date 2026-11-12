@@ -228,10 +228,8 @@ variable HV  variable HP
    o E-CODE-END o E-S - ;
 
 variable OKV
-\ FIND-DICT asks this at every 4-byte offset and E-L is a 46-bit field
-\ (src/habu/layout.f DNAME-LEN-MASK): reading the whole length cost 130 s of CPU
-\ for `--pc` over the 5 MB bin/hb, so the loop stops at the first byte that is
-\ not printable ASCII.
+\ FIND-DICT asks this at every 4-byte offset, where a garbage length can be 2^44: the loop
+\ stops at the first byte that is not printable ASCII.
 : PRN? {: a:ptr u :} ( ptr u8 n -- bool )     \ a..a+u all printable ascii?
    1 OKV !
    0 begin dup u < OKV @ 0<> and while

@@ -1313,6 +1313,21 @@ private
    clause 0 >= if clause PKG-CLAUSE-ALIAS then
    operand operand-u ord PKG-NOTIFY-EXPORT ;
 
+\ `host` or `target` at top level is the section word; with a word of that name in scope the
+\ token could mean either, so it is refused: the word is renamed, or called qualified if public.
+: SECTION? ( -- bool )
+   s" host" TOKEN-IS?  s" target" TOKEN-IS? or 0= if false exit then
+   SEARCH
+   REC @ XREF-FOUND? if
+      s" E-SECTION-WORD" REFUSAL
+      s" '" ERROR-TEXT:TYPE  TOKEN$ ERROR-TEXT:TYPE
+      s" ' is the section word and a word of that name is in scope: rename the word or call it qualified"
+      ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+      RC-REJECT throw
+   then
+   s" target" TOKEN-IS? if 1 else 0 then SECTION-CELL CELL!
+   true ;
+
 : PACKAGE? ( -- bool )
    s" package" TOKEN-IS? if PKG-PACKAGE true exit then
    s" public" TOKEN-IS? if
@@ -1322,6 +1337,7 @@ private
       PKG-PRI-CELL NCOMP-DISPATCH:DECL-PRIVATE-OFF PKG-SECTION true exit
    then
    s" ;package" TOKEN-IS? if PKG-END-PACKAGE true exit then
+   SECTION? if true exit then
    s" seal-package" TOKEN-IS? if PKG-SEAL true exit then
    s" using" TOKEN-IS? if PKG-USING true exit then
    s" ;using" TOKEN-IS? if PKG-END-USING true exit then
@@ -1681,7 +1697,11 @@ public
    then
    a u PKG-CODE-ROOM
    SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if a u SEALED-FAIL then
-   a u wid kind def-open ;
+   kind DKIND:MASK and {: dk:n :}
+   \ A value or an address in a target section stays unmarked: it answers on the host.
+   SECTION-CELL CELL@ 0<>  dk DKIND:ADDR <> and  dk DKIND:VAL <> and
+   if kind DNAME-TARGET or else kind then {: k:n :}
+   a u wid k def-open ;
 private
 
 \ The capture seeded with the name, the spelling the checker is told.
@@ -2511,6 +2531,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    USE-DEPTH-CELL CELL@ snap PKGSNAP-USE FR!
    USE-PKG-SAVE-CELL CELL@ snap PKGSNAP:FLOOR FR!
    PKG-OUTSIDE-CELL CELL@ f EVAL-FRAME:PKG-OUTSIDE FR!
+   SECTION-CELL CELL@ f EVAL-FRAME:SECTION FR!
    USE-MAX 0 ?do
       i cells USE-WIDS-OFF + CELL@  f EVAL-FRAME:USE-WIDS i cells + FR!
    loop
@@ -2536,6 +2557,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
 : FRAME-LEAVE ( ptr u8 -- ) {: f:ptr :}
    f FRAME-UNLINK
+   f EVAL-FRAME:SECTION FR@ SECTION-CELL CELL!
    f EVAL-FRAME:PKG-OUTSIDE FR@ CLEAN-END ;
 
 
@@ -2573,6 +2595,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f EVAL-PKG + {: snap:ptr :}
    snap PKGSNAP-USE FR@ USE-DEPTH-CELL CELL!
    f EVAL-FRAME:PKG-OUTSIDE FR@ PKG-OUTSIDE-CELL CELL!
+   f EVAL-FRAME:SECTION FR@ SECTION-CELL CELL!
    USE-MAX 0 ?do
       f EVAL-FRAME:USE-WIDS i cells + FR@
       i cells USE-WIDS-OFF + CELL!

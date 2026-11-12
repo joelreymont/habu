@@ -1283,7 +1283,7 @@ variable LREPLAYTRAP
    14 5 0 LDR,  14 11 0 STR,                           \ [0] = the source's entry
    14 5 8 LDR,  14 11 8 STR,                           \ [8] = its recorded length
    16 5 16 LDR,
-   15 DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or LIT64,  14 16 15 AND,
+   15 DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or DNAME-TARGET or LIT64,  14 16 15 AND,
    15 DKIND:MASK LIT64,  16 16 15 AND,
    15 DKIND:VAL LIT64,  16 15 CMP,  C-NE notval BCOND,
       14 14 15 ORR,                                    \ only an immutable value keeps its fixed kind
@@ -1525,7 +1525,7 @@ variable LREPLAYTRAP
    s" E-TASK-COMPILE habu: def-open from a task" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
-   14 DKIND:MASK DNAME-CELL or DNAME-ALLOC or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
+   14 DKIND:MASK DNAME-CELL or DNAME-ALLOC or DNAME-TARGET or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
    bad REAL-WID,
    prot OPEN-WID,
    bad NOT-PENDING,
@@ -2976,6 +2976,7 @@ private
       9 10 PKGSNAP-USE LDR,     12 USE-DEPTH-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ roll the using-scope depth back too (x12 reloaded below)
       9 10 PKGSNAP:FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
       9 13 EVAL-FRAME:PKG-OUTSIDE LDR,  9 DATA PKG-OUTSIDE-CELL STR,   \ and whether the includer opened it
+      9 13 EVAL-FRAME:SECTION LDR,  9 DATA SECTION-CELL STR,   \ and the section in force when it began
       13 EVAL-FRAME:USE-WIDS 12 9 ENGINE-EMIT:USE-WIDS-RESTORE,  \ and the includer's used publics, which the resync names
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
       13 9 10 ENGINE-EMIT:SX-RESTORE,                   \ an adopted observer gets the evaluating word's run back

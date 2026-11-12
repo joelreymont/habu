@@ -117,15 +117,15 @@ private
    s" PASS: a jump into a guard page dies by the signal" type cr ;
 
 \ A watchpoint at address 16 makes the trap handler itself load from the
-\ unmapped first page when TARGET's breakpoint fires.
+\ unmapped first page when SUBJECT's breakpoint fires.
 : TRAP-FAULT ( -- )
    GE-SRC-RESET
    s" 0 set-tier" GE-SRC-LINE
    s" require src/habu/debug.f" GE-SRC-LINE
-   s" : TARGET ( n -- n ) 1 + ;" GE-SRC-LINE
+   s" : SUBJECT ( n -- n ) 1 + ;" GE-SRC-LINE
    s" NULL-PTR BYTE-VIEW 16 + CELL-VIEW DEBUG:BPW+" GE-SRC-LINE
-   s" ' TARGET DEBUG:BP+" GE-SRC-LINE
-   s" 2 TARGET ." GE-SRC-LINE
+   s" ' SUBJECT DEBUG:BP+" GE-SRC-LINE
+   s" 2 SUBJECT ." GE-SRC-LINE
    RUN-BUF
    11 s" a fault in the trap handler" KILLED-BY
    s" habu-crash regs [sig" s" a fault in the trap handler" GE-EXPECT-ERR-HAS

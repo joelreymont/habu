@@ -33,9 +33,9 @@ s" index.html" PATH FS:FILE-SIZE constant INDEX-U
 INDEX-U BUFFER: INDEX
 s" index.html" INDEX INDEX-U READ
 
-s" host.js" PATH FS:FILE-SIZE constant HOST-U
-HOST-U BUFFER: HOST
-s" host.js" HOST HOST-U READ
+s" host.js" PATH FS:FILE-SIZE constant HOST-JS-U
+HOST-JS-U BUFFER: HOST-JS
+s" host.js" HOST-JS HOST-JS-U READ
 
 s" viewport.js" PATH FS:FILE-SIZE constant VIEWPORT-U
 VIEWPORT-U BUFFER: VIEWPORT
@@ -62,7 +62,7 @@ s" mcp.js" MCP MCP-U READ
    nip INDEX INDEX-U s" text/html; charset=utf-8" SEND ;
 
 : HOST-SCRIPT ( HTTP:request HTTP:response -- )
-   nip HOST HOST-U s" text/javascript; charset=utf-8" SEND ;
+   nip HOST-JS HOST-JS-U s" text/javascript; charset=utf-8" SEND ;
 
 : VIEWPORT-SCRIPT ( HTTP:request HTTP:response -- )
    nip VIEWPORT VIEWPORT-U s" text/javascript; charset=utf-8" SEND ;

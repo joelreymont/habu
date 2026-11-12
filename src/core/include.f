@@ -1904,14 +1904,15 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    close 0= if exit then
    close CLOSE-ACTION execute ;
 
-\ A pending created body closes and the residue check runs inside the file's
-\ unit, so a runner's call returns only for an accepted file.
+\ The created body closes and the residue check runs inside the unit, so a runner's call
+\ returns only for an accepted file; each compiled part starts in host.
 : CALL-UNIT ( -- )
    TOP@ {: frame:ptr :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    EXEC-SOURCE frame FR-SIZE + CELL-VIEW @
-   [: RUN-RANGE BODY-CLOSE RESIDUE-CHECK ;] SOURCE-UNIT:LOAD ;
+   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE RESIDUE-CHECK ;]
+   SOURCE-UNIT:LOAD ;
 
 \ A loaded file's DATA starts and ends on a cell, so its bytes are a function
 \ of its own source and a stored object installs whatever earlier files
@@ -1929,8 +1930,10 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    align ;
 
 : LOAD-CURRENT ( -- )
+   data-base SECTION-CELL + @ {: sec:n :}
    PUSH
    [: LOAD-UNIT ;] catch {: rc:n :}
+   sec data-base SECTION-CELL + !
    rc 0 <> if TOP@ FR-EVAL-OK + CELL-VIEW @ LAST-LOAD-EVAL-OK ! then
    INCLUDE-CLOSE
    POP

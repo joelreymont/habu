@@ -445,6 +445,15 @@ variable RC
    s" :1: undefined word '99999999999999999999999'" SB-APPEND
    SB$ ASSERT-NAMED ;
 
+\ A top-level `target` beside the program's own TARGET could mean either, and is refused by name.
+: TEST-SECTION-CLASH ( -- )
+   s" a section word beside a word of its name is refused" T-LABEL
+   BODY$ S\" package LRD-CLASH\n: TARGET ( -- ) ;\ntarget\n;package\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET  s" E-SECTION-WORD habu: " SB-APPEND  BODY$ SB-APPEND
+   s" :3: 'target' is the section word and a word of that name is in scope" SB-APPEND
+   SB$ ASSERT-NAMED ;
+
 \ T0, arm64's tier 0, refuses a body no scan certified at its first token the
 \ scan could not bind or no path reaches.
 : TEST-T0-UNBOUND ( -- )
@@ -864,6 +873,7 @@ variable RC
    TEST-UNSOURCED-PACKET
    TEST-UNREPORTED-REJECT
    TEST-BIG-LITERAL
+   TEST-SECTION-CLASH
    HB-TARGET-LINUX-X86-64? 0= if
       TEST-UNCERTIFIED-MALFORMED
       TEST-T0-UNBOUND
