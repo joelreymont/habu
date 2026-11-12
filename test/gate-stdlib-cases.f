@@ -21,6 +21,10 @@ SUITE lsp-boundary
 ;SUITE
 [then]
 
+SUITE linux-engine-build
+   test/linux-engine-build.f
+;SUITE
+
 \ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
 \ TCP4; writes build/ws-transcript.txt and compares it whole.
 SUITE websocket
