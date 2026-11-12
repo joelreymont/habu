@@ -2,8 +2,8 @@
 \ encodings to the CODE window; labels resolve B/BL, B.cond, CBZ/CBNZ, ADR and
 \ LOFF, sites, backward at once and forward by backpatch. ASM-CP counts words;
 \ a branch or ADR distance reaches its asm.f encoder in bytes. Every label
-\ reference, DLBL, cells included, is recorded until ARESET; CUT removes code
-\ and re-encodes the references that stay.
+\ reference, DLBL, cells included, and every BYTES, run is recorded until
+\ ARESET; CUT removes code and re-encodes the references that stay.
 require src/arch/arm64/asm.f
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
@@ -76,6 +76,11 @@ DYNAMIC-BUFFER REF-SITES n
 DYNAMIC-BUFFER REF-LABELS n
 DYNAMIC-BUFFER REF-KINDS n
 variable NREF
+\ One data span per BYTES, run: SPAN-FIRSTS its first word, SPAN-ENDS the word
+\ after its padding. Control never passes from a span's words into code.
+DYNAMIC-BUFFER SPAN-FIRSTS n
+DYNAMIC-BUFFER SPAN-ENDS n
+variable NSPAN
 4 constant FX-CELL                  \ DLBL,: the label's byte offset as one cell; never pending
 \ CUT's map: the new position of each word from CUT-FROM up to ASM-CP, -1 for
 \ a cut word; ASM-CP's own cell holds the new end.
@@ -94,11 +99,19 @@ public
    NREF @ REF-SITES !
    NREF @ 1 + NREF ! ;
 
+\ Callers add spans in ascending order, as references.
+: DATA-SPAN+ ( n n -- )                          \ ( first end -- )
+   NSPAN @ 1 + SPAN-FIRSTS-RESERVE
+   NSPAN @ 1 + SPAN-ENDS-RESERVE
+   NSPAN @ SPAN-ENDS !
+   NSPAN @ SPAN-FIRSTS !
+   NSPAN @ 1 + NSPAN ! ;
+
 : ARESET ( -- )
    CODE drop
    ICODE-TABS drop
    0 ASM-CP !
-   0 NREF ! ;
+   0 NREF !  0 NSPAN ! ;
 
 : CODE-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
@@ -154,7 +167,8 @@ private
 : BUFFERS-RELEASE ( -- )
    LBLP-RELEASE FXH-RELEASE
    REF-SITES-RELEASE REF-LABELS-RELEASE REF-KINDS-RELEASE CUT-MAP-RELEASE
-   0 NREF !  0 NLBL !  0 NFX !  FX-INIT ;
+   SPAN-FIRSTS-RELEASE SPAN-ENDS-RELEASE
+   0 NREF !  0 NSPAN !  0 NLBL !  0 NFX !  FX-INIT ;
 
 public
 
@@ -211,6 +225,11 @@ public
 : REF-SITE ( n -- n ) REF-SITES @ ;
 : REF-LABEL ( n -- label ) REF-LABELS @ >LABEL ;
 : REF-KIND ( n -- n ) REF-KINDS @ ;
+
+\ Data spans ascend and never overlap.
+: DATA-SPANS ( -- n ) NSPAN @ ;
+: DATA-SPAN-FIRST ( n -- n ) SPAN-FIRSTS @ ;
+: DATA-SPAN-END ( n -- n ) SPAN-ENDS @ ;
 
 : FX-TAKE ( -- n )
    FX?
@@ -577,6 +596,25 @@ PTR-VARIABLE CUT-SRC
       CUT-I @ 1 + CUT-I !
    REPEAT ;
 
+: SPAN-LAST ( n -- n ) SPAN-ENDS @ 1 - ;
+
+\ A cut keeps a span whole or removes it whole: its first and last words are
+\ both kept, the same distance apart, or both cut.
+: SPAN-SPLIT? ( n -- bool )
+   {: k:n :}
+   k SPAN-FIRSTS @ {: a:n :}
+   k SPAN-LAST {: z:n :}
+   a SITE-KEPT? z SITE-KEPT? xor if true exit then
+   a SITE-KEPT? 0= if false exit then
+   z >MOVED  a >MOVED -  z a -  <> ;
+
+: ?SPANS ( -- )
+   NSPAN @ 0 ?do
+      i SPAN-SPLIT? if
+         s" icode: a cut splits a data span" ICODE-EXIT-RC die
+      then
+   loop ;
+
 
 : WORD-MOVE ( n n -- )                           \ ( from to -- ) word positions
    CW@ EP !  CW@ CUT-SRC !
@@ -616,6 +654,17 @@ PTR-VARIABLE CUT-SRC
    REPEAT
    CUT-J @ NREF ! ;
 
+: SPAN-MOVE ( -- )
+   0 CUT-J !
+   NSPAN @ 0 ?do
+      i SPAN-FIRSTS @ SITE-KEPT? if
+         i SPAN-FIRSTS @ >MOVED CUT-J @ SPAN-FIRSTS !
+         i SPAN-LAST >MOVED 1 + CUT-J @ SPAN-ENDS !
+         CUT-J @ 1 + CUT-J !
+      then
+   loop
+   CUT-J @ NSPAN ! ;
+
 : LABEL-MOVE ( -- )
    0 CUT-I !
    BEGIN CUT-I @ NLBL @ < WHILE
@@ -626,11 +675,12 @@ PTR-VARIABLE CUT-SRC
 public
 
 \ CUT ( ranges count from -- ) keeps only the ranges' words of [from, ASM-CP),
-\ moved down with their references; ranges: count ascending [start, end) pairs.
+\ moved down with their references and data spans; ranges: count ascending
+\ [start, end) pairs.
 : CUT ( ptr n n n -- )
    CUT-FROM ! CUT-N ! CUT-RANGES !
-   ?RANGES  MAP-BUILD  ?REFS
-   CODE-MOVE  REF-MOVE  LABEL-MOVE
+   ?RANGES  MAP-BUILD  ?REFS  ?SPANS
+   CODE-MOVE  REF-MOVE  SPAN-MOVE  LABEL-MOVE
    ASM-CP @ MAP-CELL @ ASM-CP ! ;
 
 \ --- data layer ---
@@ -661,14 +711,16 @@ variable BYU
 : BYTES-PAD ( -- )
    BEGIN BYP@ CODE - 3 and 0 <> WHILE  0 BYP@ c!  BYP@ 1 CODE-BYTE+ BYP !  REPEAT ;
 
-\ Each call is its own run: the bytes, then NUL pad to the next word. A span
-\ written as one, such as a message and its newline, is one call.
+\ Each call is its own run, recorded as a data span: the bytes, then NUL pad to
+\ the next word. A span written as one, such as a message and its newline, is
+\ one call.
 : BYTES, ( ptr u8 n -- )
    BYTES-ARGS
    BYTES-CAP
    BYTES-COPY
    BYTES-PAD
-   BYP@ CODE - 4 / ASM-CP ! ;
+   ASM-CP @  BYP@ CODE - 4 /  dup ASM-CP !
+   2dup < if DATA-SPAN+ else 2drop then ;
 \ --- 64-bit constant synthesis: minimal MOVZ/MOVN + MOVK chain. The stage2
 \ fixpoint depends on this exact encoding policy. ---
 variable LIT-CH  variable LFI  variable LCI

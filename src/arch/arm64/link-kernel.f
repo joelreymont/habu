@@ -47,6 +47,8 @@ variable LABELS-AT
 variable LABELS-N
 variable REFS-AT
 variable REFS-N
+variable SPANS-AT
+variable SPANS-N
 variable FIXUPS-AT
 variable FIXUPS-N
 DYNAMIC-BUFFER PRIM-AT n             \ primitive row k's offset in KOBJ
@@ -122,6 +124,7 @@ variable PATH-U
    codeu 3 and 0<> if BAD then
    1 TABLE LABELS-N ! LABELS-AT !
    3 TABLE REFS-N ! REFS-AT !
+   2 TABLE SPANS-N ! SPANS-AT !
    3 TABLE FIXUPS-N ! FIXUPS-AT !
    PRIM-ROWS
    1 TABLE SCOPES-N ! SCOPES-AT !
@@ -450,8 +453,31 @@ variable N-KEPT
    drop ;
 
 
-\ A node reaches the labels its sites name and, unless its last word is
-\ terminal, the node after it: a bl to a word that never returns counts as
+\ The first data span ending after word position a.
+: FIRST-SPAN ( n -- n )
+   {: a:n :}
+   0 A64ICODE:DATA-SPANS
+   begin 2dup < while
+      2dup + 2 /
+      dup A64ICODE:DATA-SPAN-END a <= if rot drop 1 + swap else nip then
+   repeat
+   drop ;
+
+\ True when word position a lies in a data span.
+: DATA? ( n -- bool )
+   {: a:n :}
+   a FIRST-SPAN {: k:n :}
+   k A64ICODE:DATA-SPANS < if k A64ICODE:DATA-SPAN-FIRST a <= else false then ;
+
+\ Control passes on from word position a: it is code that is not terminal.
+: FALLS? ( n -- bool )
+   {: a:n :}
+   a DATA? if false exit then
+   a WORD@ TERMINAL? 0= ;
+
+
+\ A node reaches the labels its sites name and, when control passes on from its
+\ last word, the node after it: a bl to a word that never returns counts as
 \ falling through, so reach is an upper bound.
 : VISIT ( n -- )
    {: node:n :}
@@ -461,7 +487,7 @@ variable N-KEPT
    begin dup A64ICODE:REFS < if dup A64ICODE:REF-SITE b < else false then while
       dup A64ICODE:REF-LABEL LABEL-POS REACH  1 +
    repeat drop
-   b REGION-END < if b 1 - WORD@ TERMINAL? 0= if b REACH then then ;
+   b REGION-END < if b 1 - FALLS? if b REACH then then ;
 
 
 \ The start-up's references, the records sited below K0, root the walk; START,
@@ -515,8 +541,8 @@ public
 
 
 \ The object READ read as the code buffer's start: the start-up, then the
-\ kernel, with their labels, references and pending fixups as the writer left
-\ them; the product's own code follows. No C2 entry is bound.
+\ kernel, with their labels, references, data spans and pending fixups as the
+\ writer left them; the product's own code follows. No C2 entry is bound.
 : ADOPT ( -- )
    READ? 0= if s" link: no kernel object was read for this link" 74 die then
    A64ICODE:ASM-INIT
@@ -528,6 +554,10 @@ public
    REFS-N @ 0 ?do
       i 24 * REFS-AT @ + {: at:n :}
       at KOBJ@  at 8 + KOBJ@ >LABEL  at 16 + KOBJ@  A64ICODE:REF+
+   loop
+   SPANS-N @ 0 ?do
+      i 16 * SPANS-AT @ + {: at:n :}
+      at KOBJ@  at 8 + KOBJ@  A64ICODE:DATA-SPAN+
    loop
    FIXUPS-N @ 0 ?do
       i 24 * FIXUPS-AT @ + {: at:n :}
