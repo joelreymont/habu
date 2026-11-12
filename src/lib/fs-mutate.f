@@ -791,7 +791,9 @@ private
 
 public
 \ FS:MKTEMP-DIR-IN makes the directory under the base as given, and the answer
-\ keeps the caller's spelling: a relative base gives a relative answer.
+\ keeps the caller's spelling: a relative base gives a relative answer. The
+\ answer stays this task's until its next FS:MKTEMP, FS:MKTEMP-DIR or
+\ FS:MKTEMP-DIR-IN: a caller that makes two copies the first.
 : MKTEMP-DIR-IN ( ptr u8 n ptr u8 n -- ptr u8 n )
    mono-ns MKTEMP-DIR-SEED ;
 
