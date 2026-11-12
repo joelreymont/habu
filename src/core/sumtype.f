@@ -1365,9 +1365,12 @@ private
 
 \ A family-application field renders as PKG:tail when the family lives in a
 \ package (the generated eval runs while the declaring package is still open,
-\ so own-private fields resolve too), else as the bare tail.
+\ so own-private fields resolve too), else as the bare tail. PKG is the last
+\ segment of the package path: a part A:B's family renders B:tail, which
+\ names the part from inside A and its parts; a top-level package's path is
+\ its one segment.
 : TDGEN-FAM-REF ( n -- ) {: fam:n :}
-   fam TFAM-PKG$ {: pa:ptr pu:n :}
+   fam TFAM-PKG$ TYPE-NAME:LAST-SEGMENT$ {: pa:ptr pu:n :}
    pu 0 > IF pa pu TDGEN-APP 58 TDGEN-C, THEN
    fam TFAM-NAME$ TDGEN-APP ;
 
@@ -1645,11 +1648,9 @@ private
       32 TDGEN-C,
    loop ;
 
-\ Qualified for the reason TDGEN-FAM-REF qualifies every payload family: the
-\ generated word is interned into the ctor package, so its signature text has no
-\ scope in which a bare tail means this family. A bare output type certified at
-\ generation (the checker context was still the declaring package) and resolved
-\ the GLOBAL family when the same text was re-parsed at AOT intake.
+\ Qualified for the reason TDGEN-FAM-REF qualifies every payload family: a
+\ public family's generated word is interned into its ctor package, so its
+\ signature text has no scope in which a bare tail means this family.
 : TDGEN-OUT-TYPE ( n -- ) {: fam:n :}    \ PKG:family<a,b,..>
    fam TDGEN-FAM-REF
    fam TFAM-ARITY@ {: ar:n :}

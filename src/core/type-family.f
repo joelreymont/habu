@@ -2306,6 +2306,13 @@ public
    a u s" match" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;match" CORE-STR=CI ;
 
+\ The text after the last colon of a name, or the whole name when there is
+\ none: a package path's last segment.
+: LAST-SEGMENT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 0 ?do
+      a u i - 1 - + c@ 58 = IF a u i - + i unloop EXIT THEN
+   loop a u ;
+
 private
 
 : RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -2317,11 +2324,6 @@ private
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
    a u CONTROL? IF RES-TRUE EXIT THEN
    a u TF-GRAMMAR-KEYWORD? ;
-
-: LAST-SEGMENT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u 0 ?do
-      a u i - 1 - + c@ 58 = IF a u i - + i unloop EXIT THEN
-   loop a u ;
 
 \ Name `na nu` spells `<qa>:<ta>`, its qualifier folded as a signature folds it
 \ (TFQ-SPLIT?).

@@ -701,6 +701,25 @@ s" TDPT-SIBLING-HID ( tdpt-b:hid -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPT-OUTSIDE ( tdpt-b:thing -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPT-TOP ( tdpt-s:thing<n> -- tdpt-s:thing<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 
+\ A private STRUCTURE declared in a part names its family B:tail in its
+\ generated words, which the part resolves. Each step evaluates under the catch
+\ so a rejected declaration fails its test and the load goes on.
+package tdpr
+package tdpr-p
+s" STRUCTURE tdpr-pt FIELD x n FIELD y n ;STRUCTURE" TDT-EVAL-CATCH 0 T=
+s" STRUCTURE tdpr-rec DERIVE addr FIELD id n FIELD w n ;STRUCTURE"
+TDT-EVAL-CATCH 0 T=
+s" STRUCTURE tdpr-box OPAQUE DERIVE addr FIELD x n ;STRUCTURE"
+TDT-EVAL-CATCH 0 T=
+s" : TDPR-Y ( -- n ) 3 4 TDPR-PT-MAKE TDPR-PT-UNMAKE nip ; TDPR-Y 4 T="
+TDT-EVAL-CATCH 0 T=
+s" 1 TYPED-BUFFER TDPR-RECS tdpr-rec" TDT-EVAL-CATCH 0 T=
+s" : TDPR-W ( -- n ) 7 0 TDPR-RECS TDPR-REC-W ! 0 TDPR-RECS TDPR-REC-W @ ;"
+TDT-EVAL-CATCH 0 T=
+s" TDPR-W 7 T=" TDT-EVAL-CATCH 0 T=
+;package
+;package
+
 \ A package-owned family may share a tail with a global family. The exact
 \ identities keep separate arities: the owner gets its own row for a bare tail,
 \ while top level and unrelated packages keep the global row for that bare tail.
