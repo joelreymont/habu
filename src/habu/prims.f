@@ -59,7 +59,9 @@ public
 21 constant A-C2-INVOKE
 22 constant A-BASE           \ the pending pointee binds only a base address's own pointee: a distance row's base operand
 23 constant A-NULL           \ NULL-kind the pending pointee: the null, a pointer to no element, permissive inside a pointee
-24 constant A-STORED         \ STORED-kind the pending pointee: any stored type, a record included, for a row that reads nothing through it
+\ ADDR-kind the pending pointee: any type, any family, for a row that reads,
+\ writes and sizes nothing through it.
+24 constant A-ADDR
 
 private
 
@@ -155,7 +157,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-A-RAW   A-VAR-A CODE, A-RAW CODE, A-PTR CODE, ;
 : PE-PTR-A-DBASE A-VAR-A CODE, A-DBASE CODE, A-PTR CODE, ;
 : PE-PTR-A-NULL  A-VAR-A CODE, A-NULL CODE, A-PTR CODE, ;
-: PE-PTR-A-STORED A-VAR-A CODE, A-STORED CODE, A-PTR CODE, ;
+: PE-PTR-A-ADDR  A-VAR-A CODE, A-ADDR CODE, A-PTR CODE, ;
 : PE-PTR-A-OFF   A-VAR-A CODE, A-OFF CODE, A-PTR CODE, ;
 : PE-PTR-B-BASE  A-VAR-B CODE, A-BASE CODE, A-PTR CODE, ;
 : PE-Q           A-QUOT CODE, ;
@@ -411,9 +413,9 @@ EPRIM: +      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
 EPRIM: +      PE-N PE-IN PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
 EPRIM: -      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SUB EPRIM; REACH stack
 EPRIM: -      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
-EPRIM: -      PE-PTR-A-STORED PE-IN PE-PTR-B-BASE PE-IN  PE-N PE-OUT EPRIM; REACH stack
-EPRIM: -      PE-PTR-B-BASE PE-IN PE-PTR-A-STORED PE-IN  PE-N PE-OUT EPRIM; REACH stack
-EPRIM: -      PE-PTR-A-STORED PE-IN PE-PTR-A-STORED PE-IN  PE-N PE-OUT EPRIM; REACH stack
+EPRIM: -      PE-PTR-A-ADDR PE-IN PE-PTR-B-BASE PE-IN  PE-N PE-OUT EPRIM; REACH stack
+EPRIM: -      PE-PTR-B-BASE PE-IN PE-PTR-A-ADDR PE-IN  PE-N PE-OUT EPRIM; REACH stack
+EPRIM: -      PE-PTR-A-ADDR PE-IN PE-PTR-A-ADDR PE-IN  PE-N PE-OUT EPRIM; REACH stack
 EPRIM: *      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MUL EPRIM; REACH stack
 EPRIM: and    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BAND EPRIM; REACH stack
 EPRIM: and    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT REF PRIM-REF:BAND-F EPRIM; REACH stack
@@ -482,7 +484,7 @@ EPRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT EPRIM; REACH stack
 EPRIM: cell-view  PE-PTR-U8 PE-IN PE-PTR-N PE-OUT EPRIM; REACH stack
 \ The address as a number, for a distance or a hash; the way back is a
 \ package's private `CAST:`.
-EPRIM: PTR>N      PE-PTR-A-STORED PE-IN PE-N PE-OUT EPRIM; REACH stack
+EPRIM: PTR>N      PE-PTR-A-ADDR PE-IN PE-N PE-OUT EPRIM; REACH stack
 EPRIM: +!         PE-N PE-IN PE-PTR-N PE-IN REF PRIM-REF:ADD-TO EPRIM; REACH memory
 EPRIM: c@         PE-PTR-U8 PE-IN  PE-U8 PE-OUT EPRIM; REACH memory
 EPRIM: c!         PE-U8 PE-IN PE-PTR-U8 PE-IN EPRIM; REACH memory

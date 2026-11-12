@@ -85,8 +85,10 @@ raises where DATA starts. One to what the running hb's compiler does with the
 tree's code (code layout, records, wordlist numbering, the address list), a
 body that calls a primitive its own change adds, a new primitive-spec atom code
 (the running checker replays the tree's rows and dies `checker: unknown
-primitive-spec atom`), or a tool that calls a word hb carries (the linker) by a
-name or effect its own change gives it, or a change to which files a build
+primitive-spec atom`), an existing atom code given a new meaning (the running
+checker replays the rows with the old meaning and says nothing), or a tool that
+calls a word hb carries (the linker) by a name or effect its own change gives
+it, or a change to which files a build
 loads or their order, needs a stage: the tool itself runs the words hb carries
 (outside a build, `require` of a file hb carries loads nothing), though inside
 the build each `require` loads the tree's file (src/habu/linker.f

@@ -1383,7 +1383,10 @@ New records use `STRUCTURE`.
 `n + ptr a` is `ptr a`; `ptr a - ptr a` is the distance `n`. Adding two
 pointers or scaling one is refused. `PTR>N ( ptr a -- n )` gives a pointer's
 address as `n`, for a distance or a hash; no word turns `n` back into a pointer
-outside a package's private `CAST:`.
+outside a package's private `CAST:`. Its pointee, like a distance's, is any
+type, an open or a linear family included; a declared `ptr a` still takes only
+a stored type, so a word that measures a family pointer names the family
+(`ptr option<a>`).
 
 A **byte view** re-reads a pointer as bytes: `: NAME ( ptr a -- ptr u8 ) ;`
 certifies, because the input pointee stays generalized. A `ptr u8` uses

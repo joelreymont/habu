@@ -1114,13 +1114,8 @@ TV-CLEAR
 \ depth.
 4 constant TVK-NULL
 5 constant TVK-DBASE
-\ TVK-OFF is not a fence but provenance, carried by the pointee variable of
-\ every row that steps a pointer by an integer offset (`+`, `-` with an n, `1+`,
-\ `1-`, `cell+`, `char+`). A null that rides such a row comes out TVK-DBASE,
-\ since an offset null is an arbitrary computed address, not the literal null,
-\ and is fenced at every depth. Against every other kind but TVK-STORED, TVK-OFF
-\ is transparent, so an ordinary pointer keeps stepping and the literal null
-\ keeps its arm.
+\ TVK-OFF: provenance of a pointer stepped by an offset, not a fence: a stepped
+\ null is a computed address, and a stepped pointer addresses no whole value.
 6 constant TVK-OFF
 7 constant TVK-SCOPE   \ a non-value scope parameter, never an allocation identity
 8 constant TVK-REGION  \ a rigid allocation domain, never a value or scope
@@ -1133,18 +1128,19 @@ TV-CLEAR
 \ base address's class or raises it to that class's kind, and TRY-EFF fails the
 \ row when it did neither.
 10 constant TVK-BASE-ONLY
-\ TVK-STORED stands for any stored type, a wide record included: a declared
-\ variable that occurs only behind a pointer or in a slot the family's width does
-\ not read. It is the bottom, so a use that needs one cell meets it away, and a
-\ pointer step makes it ANY: a stepped pointer no longer addresses a whole one.
+\ TVK-STORED: any stored type, a wide record included, for a declared variable
+\ in stored positions only; a one-cell use meets it away, a step makes it ANY.
 11 constant TVK-STORED
+\ TVK-ADDR: the pointee of a row that reads, writes and sizes nothing through
+\ the pointer, so any type, any family included; an inferred signature keeps it.
+12 constant TVK-ADDR
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK! ( n n -- ) cells TVK + ! ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 : BASE-KIND? ( n -- bool )
    dup TVK-NULL = swap TVK-DBASE = or ;
 : ANY-KIND? ( n -- bool )
-   dup TVK-ANY = swap TVK-STORED = or ;
+   dup TVK-ANY = over TVK-STORED = or swap TVK-ADDR = or ;
 \ Permanent (untrailed) marks for build-time contexts (prim and signature build,
 \ freshening); unification uses the trailed TVK-RAISE-TO.
 : TVK-RAW! ( n -- ) TVK-RAW swap cells TVK + ! ;
@@ -1156,21 +1152,23 @@ TV-CLEAR
 : TVK-CELL! ( n -- ) TVK-CELL swap cells TVK + ! ;
 : TVK-BASE-ONLY! ( n -- ) TVK-BASE-ONLY swap cells TVK + ! ;
 : TVK-STORED! ( n -- ) TVK-STORED swap cells TVK + ! ;
+: TVK-ADDR! ( n -- ) TVK-ADDR swap cells TVK + ! ;
 
-\ The fence lattice: STORED < ANY < CELL < NULL < DBASE < RAW. A meet keeps the
-\ stricter kind. Row kinds are not on this lattice and rank 0 (a row var never
-\ meets a type var).
+\ The fence lattice: ADDR < STORED < ANY < CELL < NULL < DBASE < RAW. A meet
+\ keeps the stricter kind. Row kinds are not on this lattice and rank 0 (a row
+\ var never meets a type var).
 : TVK-RANK ( n -- n )
    dup TVK-RAW = IF drop 4 EXIT THEN
    dup TVK-DBASE = IF drop 3 EXIT THEN
    dup TVK-NULL = IF drop 2 EXIT THEN
    dup TVK-STORED = IF drop -1 EXIT THEN
+   dup TVK-ADDR = IF drop -2 EXIT THEN
    TVK-CELL = IF 1 EXIT THEN
    0 ;
 : TVK-MEET ( n n -- n ) {: k1:n k2:n :}
    k1 TVK-SCOPE = k2 TVK-SCOPE = or IF TVK-SCOPE EXIT THEN
    k1 TVK-REGION = k2 TVK-REGION = or IF TVK-REGION EXIT THEN
-   k1 TVK-OFF = k2 TVK-STORED = and  k2 TVK-OFF = k1 TVK-STORED = and  or IF
+   k1 TVK-OFF = k2 TVK-RANK 0 < and  k2 TVK-OFF = k1 TVK-RANK 0 < and  or IF
       TVK-ANY EXIT
    THEN
    k1 TVK-OFF = IF k2 TVK-NULL = IF TVK-DBASE ELSE k2 THEN EXIT THEN
@@ -1212,11 +1210,12 @@ TV-CLEAR
    kind TVK-CELL = IF s" cell" EXIT THEN
    kind TVK-BASE-ONLY = IF s" base-only" EXIT THEN
    kind TVK-STORED = IF s" stored" EXIT THEN
+   kind TVK-ADDR = IF s" addr" EXIT THEN
    s" " ;
 
 : TAG>KIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0 = IF TVK-ANY EXIT THEN
-   TVK-STORED 1 + 1 ?do
+   TVK-ADDR 1 + 1 ?do
       i KIND>TAG$ a u CORE-STR= IF i unloop EXIT THEN
    loop
    TVK-ANY ;
@@ -1273,7 +1272,7 @@ variable TOP-UNKNOWN
 4096 constant TRAIL-INIT
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
-PTR-VARIABLE TRAIL-OLD-P   \ by trail index: the stored link or provenance a compression entry replaced
+PTR-VARIABLE TRAIL-OLD-P   \ by trail index: the value a kind, link or provenance entry replaced
 variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (ROWS-PIN), 0 none
 CHECKER-REG:}SCRATCH
 : TRAIL ( -- ptr n ) TRAIL-P @ ;
@@ -1287,10 +1286,9 @@ CHECKER-REG:}SCRATCH
    nc TRAIL-CAP ! ;
 
 
-\ The tag says what to put back, so a kind raise restores the kind it displaced:
-\ resetting a fenced var to TVK-ANY on rollback would drop the base-address
-\ fence on every row an abandoned prim-overload trial touched.
-: TRAIL-PUSH ( n n -- )   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=NLINEAR, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY, 12=TVT link, 13=RVT link, 14=TVP provenance, 15=TVK-STORED
+\ Tags: 0 TVT, 1 RVT, 2 kind, 3 NLINEAR, 8 NSCOPE, 12 TVT link, 13 RVT link,
+\ 14 TVP. Rollback restores a raise's old kind, not ANY, so fences survive.
+: TRAIL-PUSH ( n n -- )
    {: id:n tag:n :}
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 16 * tag +  TRAIL-N @ cells TRAIL + !
@@ -1301,17 +1299,6 @@ CHECKER-REG:}SCRATCH
    {: old:n id:n tag:n :}
    id tag TRAIL-PUSH
    old  TRAIL-N @ 1 - cells TRAIL-OLD + ! ;
-
-
-: TRAIL-KIND-OF ( n -- n )
-   dup 4 = IF drop TVK-NULL EXIT THEN
-   dup 5 = IF drop TVK-DBASE EXIT THEN
-   dup 6 = IF drop TVK-OFF EXIT THEN
-   dup 7 = IF drop TVK-SCOPE EXIT THEN
-   dup 9 = IF drop TVK-REGION EXIT THEN
-   dup 11 = IF drop TVK-BASE-ONLY EXIT THEN
-   dup 15 = IF drop TVK-STORED EXIT THEN
-   10 = IF TVK-CELL ELSE TVK-ANY THEN ;
 
 
 : TRAIL-SLOT ( n -- ptr n )
@@ -1329,9 +1316,10 @@ CHECKER-REG:}SCRATCH
    {: i:n :}
    i cells TRAIL + @ {: e:n :}
    e 15 and {: tag:n :}
-   tag 12 =  tag 13 = or  tag 14 = or IF i cells TRAIL-OLD + @  e TRAIL-SLOT !  EXIT THEN
-   tag 0=  tag 1 = or  tag 3 = or  tag 8 = or IF 0 ELSE tag TRAIL-KIND-OF THEN
-   e TRAIL-SLOT ! ;
+   tag 2 =  tag 12 = or  tag 13 = or  tag 14 = or IF
+      i cells TRAIL-OLD + @  e TRAIL-SLOT !  EXIT
+   THEN
+   0 e TRAIL-SLOT ! ;
 
 
 : TRAIL-UNWIND ( n -- ) {: mark:n :}
@@ -1374,19 +1362,10 @@ CHECKER-REG:}SCRATCH
       dup mark - cells PIN-SAVE + @  over cells TRAIL + @ TRAIL-SLOT !
       1 +
    REPEAT drop ;
-: TVK-KIND-TAG ( n -- n )
-   dup TVK-SCOPE = IF drop 7 EXIT THEN
-   dup TVK-REGION = IF drop 9 EXIT THEN
-   dup TVK-NULL = IF drop 4 EXIT THEN
-   dup TVK-DBASE = IF drop 5 EXIT THEN
-   dup TVK-CELL = IF drop 10 EXIT THEN
-   dup TVK-BASE-ONLY = IF drop 11 EXIT THEN
-   dup TVK-STORED = IF drop 15 EXIT THEN
-   TVK-OFF = IF 6 ELSE 2 THEN ;
 : TVK-RAISE-TO ( n n -- ) {: id:n kind:n :}
    id TVK@ kind TVK-MEET
    dup id TVK@ = IF drop EXIT THEN
-   id  id TVK@ TVK-KIND-TAG  TRAIL-PUSH
+   id TVK@  id 2 TRAIL-LINK
    id cells TVK + ! ;
 
 : NSCOPE-RAISE ( n -- )
@@ -4160,6 +4139,9 @@ variable NMOFF                           \ its token's offset in the checked tex
    THEN
    expected NOM-SCALAR? actual ISVAR and ;
 
+: ADDR-VAR? ( n -- bool )
+   dup ISVAR IF PAY TVK@ TVK-ADDR = ELSE drop RES-FALSE THEN ;
+
 : STORED-TAKES? ( n n -- bool ) {: v:n t:n :}
    v ISVAR 0= IF RES-FALSE EXIT THEN
    v PAY TVK@ TVK-STORED <> IF RES-FALSE EXIT THEN
@@ -4182,6 +4164,7 @@ variable NMOFF                           \ its token's offset in the checked tex
          b LAYOUT-PARAM? a ISVAR and IF b T-RES LAYOUT-MEM-OK? 0= EXIT THEN
       THEN
    THEN
+   a ADDR-VAR? b ADDR-VAR? or IF RES-FALSE EXIT THEN
    a b STORED-TAKES? IF RES-FALSE EXIT THEN
    b a STORED-TAKES? IF RES-FALSE EXIT THEN
    RES-TRUE ;
@@ -4246,8 +4229,6 @@ CHECKER-REG:}SCRATCH
    kind BASE-PTR-HIT ! RES-TRUE ;
 \ LAYOUT-INTRO is set only while CHECK coerces the output row of the accessor a
 \ storage definer just generated, and user source cannot arm it.
-\ U-TYPE binds one var side to the other in call-argument order; the meet is
-\ identity for every kind but the null and TVK-STORED.
 : OFF-RIDE ( n -- ) T-RES dup ISVAR IF PAY TVK-OFF TVK-RAISE-TO ELSE drop THEN ;
 : REGION-ATOM? ( n -- bool ) {: t:n :}
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
@@ -4288,10 +4269,11 @@ CHECKER-REG:}SCRATCH
    vid TVK@ BASE-KIND? 0= IF RES-TRUE EXIT THEN
    term T-RES PAY vid TVK@ TVK-RAISE-TO RES-FALSE ;
 
-: STORED-LIFT ( n -- ) {: term:n :}
+\ Raises the term's STORED or ADDR var to `kind`, the bound var's, when below it.
+: STORED-LIFT ( n n -- ) {: kind:n term:n :}
    term T-RES {: t:n :}
    t ISVAR 0= IF EXIT THEN
-   t PAY TVK@ TVK-STORED = IF t PAY TVK-ANY TVK-RAISE-TO THEN ;
+   t PAY TVK@ TVK-RANK kind TVK-RANK < IF t PAY kind TVK-RAISE-TO THEN ;
 
 : RAW-BLOCK? ( n n -- bool )
    {: vid:n term:n :}
@@ -4306,7 +4288,7 @@ CHECKER-REG:}SCRATCH
    LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN
    vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN
    vid TVK@ TVK-OFF = IF term OFF-RIDE RES-FALSE EXIT THEN   \ offset row's pointee: provenance, never a fence
-   vid TVK@ TVK-ANY = IF term STORED-LIFT RES-FALSE EXIT THEN
+   vid TVK@ dup ANY-KIND? IF term STORED-LIFT RES-FALSE EXIT THEN drop
    vid TVK@ dup BASE-KIND? 0= IF drop RES-FALSE EXIT THEN
    term T-RES swap BASE-BLOCK? ;
 
@@ -11344,6 +11326,7 @@ PTR-VARIABLE ASIG-LAST-P
          r@ EN.B @ TVK-CELL = IF dup PAY TVK-CELL! THEN
          r@ EN.B @ TVK-BASE-ONLY = IF dup PAY TVK-BASE-ONLY! THEN
          r@ EN.B @ TVK-STORED = IF dup PAY TVK-STORED! THEN
+         r@ EN.B @ TVK-ADDR = IF dup PAY TVK-ADDR! THEN
          r@ EN.C @ 0 <> IF dup PAY NSCOPE! THEN
          r@ EN.D @ 0 <> IF dup PAY NLINEAR! THEN
          r> drop
@@ -12043,8 +12026,7 @@ variable PE-EFF-ID
 \ Marks the base operand's pointee of a pointer-distance row (TVK-BASE-ONLY).
 : PE-BASE-ONLY! ( n -- n ) dup PAY TVK-BASE-ONLY! ;
 
-\ Stored-kinds the pointee var of a row that reads nothing through the pointer.
-: PE-STORED! ( n -- n ) dup PAY TVK-STORED! ;
+: PE-ADDR! ( n -- n ) dup PAY TVK-ADDR! ;
 
 \ Data in and out share one fresh base row and the return effect is neutral,
 \ exactly what SIG-PARSE-QUOT builds from the same text, so a prim row and a
@@ -12130,7 +12112,7 @@ variable PE-SPEC-TOS
    code PRIM-SPEC:A-DBASE    = IF PE-SPEC-POP PE-DBASE! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-NULL     = IF PE-SPEC-POP PE-NULL!  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-OFF      = IF PE-SPEC-POP PE-OFF!   PE-SPEC-PUSH EXIT THEN
-   code PRIM-SPEC:A-STORED   = IF PE-SPEC-POP PE-STORED! PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-ADDR     = IF PE-SPEC-POP PE-ADDR!  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-BASE     = IF PE-SPEC-POP PE-BASE-ONLY! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-QUOT     = IF PE-Q EXIT THEN
    code PRIM-SPEC:A-QUOT-IN  = IF PE-SPEC-POP PE-QIN EXIT THEN
@@ -22294,10 +22276,10 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
 \ what a NULL meeting that quantifier becomes. A quantifier that comes back
 \ marked is therefore still preserved.
 : NP-KIND-SEEN ( n -- n )
-   dup TVK-OFF = over TVK-STORED = or IF drop TVK-ANY THEN ;
+   dup TVK-OFF = over ANY-KIND? or IF drop TVK-ANY THEN ;
 : NP-CHECK-ONE ( n n -- )   \ preserve the declared quantifier and its kind
    {: oid:n k0:n :}
-   k0 TVK-STORED = IF TVK-ANY ELSE k0 THEN {: kind:n :}
+   k0 ANY-KIND? IF TVK-ANY ELSE k0 THEN {: kind:n :}
    oid MK-VAR T-RES {: rt:n :}
    rt ISVAR 0= IF
       oid rt NP-FAIL-SPEC
