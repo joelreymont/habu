@@ -799,7 +799,7 @@ require src/lib/prelude.f
 
 \ Native emission and string storage: -8635..-8639
 -8635 constant E-A64EMIT-ADDEND  \ a multiply-add whose addend register is the zero register: that word is a plain multiply, so emitting one would encode a different operation
--8636 constant E-NSTR-CAP       \ a string literal body larger than one segment's arena (512 KB), or one a stripped link copies into its window's closed pool past the room that pool kept: a pool opens another segment for any other body its last one cannot hold. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
+-8636 constant E-NSTR-CAP       \ a string literal body larger than one segment's arena (512 KB): the store opens another segment for any other body its last one cannot hold. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
 -8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
 -8638 constant E-INTERN-REWIND  \ a string interned while a build's data space is open after DP moved back inside it: a build does not go on once DP moves back inside its space, so a text interned after that is refused (re-registered as the same (code, name) in src/habu/intern-table.f package INTERN, which compiles before src/lib/)
 

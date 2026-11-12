@@ -4,12 +4,11 @@
 \ through INTERN-SOURCE, and fetch descriptors are bodies under the same rule. A
 \ build's data space keeps its strings at `here`.
 \
-\ A pool is a chain of segments, each an owner record, its row tables and an
-\ arena. A capture or a retained compiler opens a pool, and the store opens the
-\ next segment at `here` when the last cannot take a body. A body larger than an
-\ arena is refused by name, and so is one a closed window's pool has no room for
-\ (WINDOW-CLOSE). A body interned again after its segment filled is copied into
-\ the next one.
+\ A segment is an owner record, its row tables and an arena. The store opens the
+\ next segment at `here` when the last cannot take a body, and a capture opens
+\ one before its window's source. A body larger than an arena is refused by
+\ name. A body interned again after its segment filled is copied into the next
+\ one.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -25,77 +24,50 @@ $80000 constant ARENA-CAP            \ 512 KB of bodies per segment
 8192 constant ROWS-MAX               \ distinct bodies per segment
 ROWS-MAX 2 * constant SLOTS          \ a power of two
 
-\ An owner is a pool's first segment, which selects the pool, or a later segment
-\ of one. A first segment is closed once its window is latched: the pool opens no
-\ segment after that.
-1 constant ROLE-HEAD
-2 constant ROLE-MORE
-3 constant ROLE-CLOSED
-
-$38 constant OWNER-BYTES
+3 cells constant OWNER-BYTES
 
 \ The elaborator stages the arena address as an ordinary integer literal: its
 \ distance from the null pointer.
 : PTR>N ( ptr a -- n ) NULL-PTR - ;
 
-\ Each owner owns its metadata as well as its bytes. Forward links leave a new
-\ capture free of references into the older owners excluded from that capture.
-\ A link holds its target's distance from the link's own cell, 0 for none: a
+\ The arena field holds the arena's distance from the field, not an address: a
 \ native build moves the captured window as one block and relocates no raw
-\ cell, so the distance holds wherever the block lands, and a rewind of DATA or
-\ a capture of the window has no pointer mark to drop.
-: NEXT-FIELD ( ptr u8 -- ptr n ) CELL-VIEW ;            \ the next owner of any pool
-: ARENA-FIELD ( ptr u8 -- ptr n ) 1 cells + CELL-VIEW ;
-: CAP-FIELD ( ptr u8 -- ptr n ) 2 cells + CELL-VIEW ;
-: ROWS-FIELD ( ptr u8 -- ptr n ) 3 cells + CELL-VIEW ;
-: USED-FIELD ( ptr u8 -- ptr n ) 4 cells + CELL-VIEW ;
-: MORE-FIELD ( ptr u8 -- ptr n ) 5 cells + CELL-VIEW ;  \ this pool's next segment
-: ROLE-FIELD ( ptr u8 -- ptr n ) 6 cells + CELL-VIEW ;
+\ cell, and a rewind of DATA has no pointer mark to drop.
+: ARENA-FIELD ( ptr u8 -- ptr n ) CELL-VIEW ;
+: ROWS-FIELD ( ptr u8 -- ptr n ) 1 cells + CELL-VIEW ;
+: USED-FIELD ( ptr u8 -- ptr n ) 2 cells + CELL-VIEW ;
 : OFFSETS ( ptr u8 -- ptr n ) OWNER-BYTES + CELL-VIEW ;
-
-: LENGTHS ( ptr u8 -- ptr n ) {: owner:ptr :}
-   owner OFFSETS owner CAP-FIELD @ cells + ;
+: LENGTHS ( ptr u8 -- ptr n ) OFFSETS ROWS-MAX cells + ;
 
 : LINK@ ( ptr n -- ptr u8 ) {: cell:ptr :}
-   cell @ {: d:n :}
-   d 0= if NULL-PTR exit then
-   cell BYTE-VIEW d + ;
+   cell BYTE-VIEW cell @ + ;
 
 : LINK! ( ptr u8 ptr n -- ) {: target:ptr cell:ptr :}
    target PTR>N cell PTR>N - cell ! ;
 
-: NEXT@ ( ptr u8 -- ptr u8 ) NEXT-FIELD LINK@ ;
 : ARENA@ ( ptr u8 -- ptr u8 ) ARENA-FIELD LINK@ ;
-: MORE@ ( ptr u8 -- ptr u8 ) MORE-FIELD LINK@ ;
 
-: OWNER-SIZE ( n -- n ) cells 2 * OWNER-BYTES + ;
+ROWS-MAX cells 2 * OWNER-BYTES + constant OWNER-SIZE
 
 : CLEAR-CELLS ( ptr u8 n -- )
    {: buf:ptr bytes:n :}
    bytes CELL / 0 ?do 0 buf i cells + CELL-VIEW ! loop ;
 
-: OWNER-INIT ( ptr u8 ptr u8 n n -- ) {: owner:ptr arena:ptr cap:n role:n :}
+: OWNER-INIT ( ptr u8 ptr u8 -- ) {: owner:ptr arena:ptr :}
    \ Allot leaves old bytes intact. Unused rows and arena capacity belong to
    \ this new owner too, and must not retain the build host's scratch values.
-   owner cap OWNER-SIZE CLEAR-CELLS
+   owner OWNER-SIZE CLEAR-CELLS
    arena ARENA-CAP CELL + CLEAR-CELLS
-   0 owner NEXT-FIELD !
-   arena owner ARENA-FIELD LINK!
-   cap owner CAP-FIELD !
-   0 owner ROWS-FIELD !  0 owner USED-FIELD !
-   0 owner MORE-FIELD !
-   role owner ROLE-FIELD ! ;
+   arena owner ARENA-FIELD LINK! ;
 
-create BOOT-OWNER ROWS-MAX OWNER-SIZE allot
+create BOOT-OWNER OWNER-SIZE allot
 \ The separate empty-row byte gives it an address no nonempty row can own,
-\ without charging a byte to BYTES or reducing the arena's body capacity.
+\ without counting a byte in USED or reducing the arena's body capacity.
 create BOOT-ARENA ARENA-CAP CELL + allot
-BOOT-OWNER BOOT-ARENA ROWS-MAX ROLE-HEAD OWNER-INIT
+BOOT-OWNER BOOT-ARENA OWNER-INIT
 
-PERSISTED-PTR-VARIABLE FIRST-P       \ every owner, oldest first, through NEXT
-PERSISTED-PTR-VARIABLE ACTIVE-P      \ the active pool's first segment
-PERSISTED-PTR-VARIABLE WRITE-P       \ and its last, which takes new bodies
-BOOT-OWNER FIRST-P !  BOOT-OWNER ACTIVE-P !  BOOT-OWNER WRITE-P !
+PERSISTED-PTR-VARIABLE WRITE-P       \ the segment that takes new bodies
+BOOT-OWNER WRITE-P !
 
 : STRING-ARENA ( -- ptr u8 ) WRITE-P @ ARENA@ ;
 : R-OFF ( -- ptr n ) WRITE-P @ OFFSETS ;
@@ -118,47 +90,12 @@ variable PROBE
 : ROW$ ( n -- ptr u8 n ) {: k:n :}
    STRING-ARENA k ROW-OFF +  k ROW-LEN ;
 
-: OWNER-ROW$ ( ptr u8 n -- ptr u8 n ) {: owner:ptr row:n :}
-   owner ARENA@ owner OFFSETS row cells + @ +
-   owner LENGTHS row cells + @ ;
-
-: LAST-OWNER ( -- ptr u8 )
-   FIRST-P @
-   begin dup NEXT@ 0= 0= while NEXT@ repeat ;
-
-\ `here` is past the owner just laid out, its rows and its arena. A segment can
-\ open inside work later undone (a failed evaluation or REPL line, a rolled-back
-\ declaration) while its addresses are already compiled into published routines,
-\ so every published owner raises the DATA floor past itself and no rewind of
+\ A segment can open inside work later undone (a failed evaluation or REPL
+\ line, a rolled-back declaration) while its addresses are already compiled
+\ into published routines, so its end becomes the DATA floor and no rewind of
 \ DATA frees it.
 : FLOOR-RAISE ( -- )
    here PTR>N data-base PTR>N -  data-base DATA-FLOOR-CELL + ! ;
-
-: PUBLISH ( ptr u8 -- ) {: owner:ptr :}
-   owner LAST-OWNER NEXT-FIELD LINK!
-   FLOOR-RAISE ;
-
-: NEW-SEGMENT ( n -- ptr u8 ) {: role:n :}
-   align here {: owner:ptr :}
-   ROWS-MAX OWNER-SIZE allot
-   here {: arena:ptr :}
-   ARENA-CAP CELL + allot
-   owner arena ROWS-MAX role OWNER-INIT
-   owner ;
-
-: ROW-CONTAINS? ( n ptr u8 n -- bool ) {: address:n body:ptr size:n :}
-   body PTR>N {: start:n :}
-   address start < if false exit then
-   size 0= if address start = exit then
-   address start - size < ;
-
-: FIND-OWNER-ROW ( n ptr u8 -- ptr u8 n bool ) {: address:n owner:ptr :}
-   owner ROWS-FIELD @ {: rows:n :}
-   rows 0 ?do
-      owner rows 1- i - OWNER-ROW$ {: body:ptr size:n :}
-      address body size ROW-CONTAINS? if body size true unloop exit then
-   loop
-   NULL-PTR 0 false ;
 
 \ ---- finding a body that is already here --------------------------------------
 \ Masked by an `and` against a positive constant so a hash whose top bit ran
@@ -179,9 +116,8 @@ variable PROBE
    repeat
    -1 ;
 
-\ Ends at an empty slot, which always exists: the segment written holds fewer
-\ than ROWS-MAX rows when a body is placed (ADD grows a full one first, SWITCH
-\ places at most ROWS-MAX), and SLOTS is twice ROWS-MAX.
+\ Ends at an empty slot: a body is placed only while the segment holds fewer
+\ than ROWS-MAX rows (ROOM?), and SLOTS is twice ROWS-MAX.
 : FREE-SLOT ( ptr u8 n -- n )
    HASH PROBE !
    begin SLOT@ 0= 0= while PROBE-NEXT repeat
@@ -201,14 +137,14 @@ public
 private
 
 \ ---- putting one in ------------------------------------------------------------
-\ The last segment cannot take the body: open the pool's next one behind it. A
-\ closed pool's would land past its window's end, outside the image.
-: GROW ( -- )
-   ACTIVE-P @ ROLE-FIELD @ ROLE-CLOSED = if E-NSTR-CAP throw then
-   ROLE-MORE NEW-SEGMENT {: seg:ptr :}
-   seg PUBLISH
-   seg WRITE-P @ MORE-FIELD LINK!
-   seg WRITE-P !
+: NEW-SEGMENT ( -- )
+   align here {: owner:ptr :}
+   OWNER-SIZE allot
+   here {: arena:ptr :}
+   ARENA-CAP CELL + allot
+   owner arena OWNER-INIT
+   FLOOR-RAISE
+   owner WRITE-P !
    SLOT-CLEAR ;
 
 : ROOM? ( n -- bool ) {: u:n :}
@@ -219,7 +155,7 @@ private
 : ADD ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0 < if E-NSTR-BODY throw then
    u ARENA-CAP > if E-NSTR-CAP throw then
-   u ROOM? 0= if GROW then
+   u ROOM? 0= if NEW-SEGMENT then
    a u FREE-SLOT {: s:n :}
    USED @ {: off:n :}
    u 0= if ARENA-CAP else off then {: stored:n :}
@@ -231,85 +167,11 @@ private
    ROWS @ 1+ ROWS !
    ROWS @ 1- ;
 
-\ A caller may select an existing pool, but cannot manufacture an owner.
-: OWNER? ( ptr u8 -- bool ) {: owner:ptr :}
-   FIRST-P @
-   begin dup 0= 0= while
-      dup owner = if drop true exit then
-      NEXT@
-   repeat
-   drop false ;
-
-: LAST-SEGMENT ( ptr u8 -- ptr u8 )
-   begin dup MORE@ 0= 0= while MORE@ repeat ;
-
-: ACTIVE-SEGMENT? ( ptr u8 -- bool ) {: owner:ptr :}
-   ACTIVE-P @
-   begin dup 0= 0= while
-      dup owner = if drop true exit then
-      MORE@
-   repeat
-   drop false ;
-
-: BODY-BYTES ( ptr u8 -- n ) {: owner:ptr :}
-   0  owner ROWS-FIELD @ 0 ?do  owner LENGTHS i cells + @ +  loop ;
-
-\ The bodies outside the active pool, by rows and bytes, duplicates counted: no
-\ more than these can a link copy into the pool, since equal bodies share a row
-\ within the segment written.
-: FOREIGN-ROWS ( -- n )
-   0 FIRST-P @
-   begin dup 0= 0= while
-      dup ACTIVE-SEGMENT? 0= if dup ROWS-FIELD @ rot + swap then
-      NEXT@
-   repeat
-   drop ;
-
-: FOREIGN-BYTES ( -- n )
-   0 FIRST-P @
-   begin dup 0= 0= while
-      dup ACTIVE-SEGMENT? 0= if dup BODY-BYTES rot + swap then
-      NEXT@
-   repeat
-   drop ;
-
-: SEGMENT ( n -- ptr u8 ) {: k:n :}
-   k 0 < if E-NSTR-BODY throw then
-   ACTIVE-P @
-   k 0 ?do
-      MORE@  dup 0= if E-NSTR-BODY throw then
-   loop ;
-
 public
 
-: ACTIVE ( -- ptr u8 ) ACTIVE-P @ ;
-
-: SWITCH ( ptr u8 -- ) {: owner:ptr :}
-   owner OWNER? 0= if E-NSTR-BODY throw then
-   \ A pool is selected by its first segment; a later segment belongs to it.
-   owner ROLE-FIELD @ {: role:n :}
-   role ROLE-HEAD <> role ROLE-CLOSED <> and if E-NSTR-BODY throw then
-   owner ACTIVE-P !
-   owner LAST-SEGMENT WRITE-P !
-   SLOT-CLEAR
-   ROWS @ 0 ?do
-      i 1+  i ROW$ FREE-SLOT cells SLOT + !
-   loop ;
-
-\ The capture driver calls this after latching D0, before evaluating source.
-\ Old pools stay allocated because published routines still hold their bytes.
-: WINDOW-OPEN ( -- )
-   ROLE-HEAD NEW-SEGMENT dup PUBLISH SWITCH ;
-
-\ Call this with the window's pool active, before the window's end is latched.
-\ The last segment keeps room for every body outside the pool, up to a whole
-\ segment's, and the pool opens no segment afterwards; a pool without that room
-\ is refused with E-NSTR-CAP.
-: WINDOW-CLOSE ( -- )
-   FOREIGN-ROWS ROWS-MAX min  ROWS-MAX ROWS @ -  >
-   FOREIGN-BYTES ARENA-CAP min  ARENA-CAP USED @ -  >  or
-   if GROW then
-   ROLE-CLOSED ACTIVE-P @ ROLE-FIELD ! ;
+\ A capture calls this after latching its window's start, before evaluating
+\ its source, so the window's bodies land inside it.
+: WINDOW-OPEN ( -- ) NEW-SEGMENT ;
 
 \ `s" "` is a body: it gets a row and an address like any other.
 : STRING ( ptr u8 n -- n )
@@ -324,58 +186,6 @@ public
 \ The second result is the origin its callers file beside the address: -1, none.
 : INTERN-SOURCE ( ptr u8 n -- n n )
    STRING -1 ;
-
-: SEGMENTS ( -- n )
-   0 ACTIVE-P @
-   begin dup 0= 0= while
-      swap 1+ swap MORE@
-   repeat
-   drop ;
-
-\ The retained owner's literal rows, as the build driver reads them, one segment
-\ of the active pool at a time: the arena and its capacity for the span check,
-\ then the rows themselves.
-: SOURCE-SPAN ( n -- ptr u8 n )
-   SEGMENT ARENA@ ARENA-CAP ;
-
-: SOURCE-ROWS ( n -- ptr u8 n ptr n ptr n ) {: k:n :}
-   k SEGMENT {: seg:ptr :}
-   seg ARENA@ seg ROWS-FIELD @ seg OFFSETS seg LENGTHS ;
-
-\ Every owner header and row table is cell storage. The separate arena holds
-\ literal bodies, whose byte extents are reported by OWNER-ROW.
-: CELL-SPANS ( [ ptr u8 n -- ] -- ) {: keep :}
-   FIRST-P @
-   begin dup 0= 0= while
-      {: owner:ptr :}
-      owner owner CAP-FIELD @ OWNER-SIZE keep execute
-      owner NEXT@
-   repeat drop
-   SLOT SLOTS cells keep execute ;
-
-\ Query only registered row metadata, never memory at the candidate address.
-: OWNER-ROW ( n -- ptr u8 n bool ) {: address:n :}
-   FIRST-P @
-   begin dup 0= 0= while
-      dup address swap FIND-OWNER-ROW if
-         rot drop true exit
-      then
-      2drop NEXT@
-   repeat
-   drop NULL-PTR 0 false ;
-
-: REINTERN-OWNED ( n -- n bool ) {: address:n :}
-   address OWNER-ROW 0= if 2drop address false exit then
-   {: body:ptr size:n :}
-   address body PTR>N - {: offset:n :}
-   body size STRING offset + true ;
-
-\ The active pool's rows and bytes, over all its segments.
-: COUNT ( -- n )
-   0  SEGMENTS 0 ?do  i SEGMENT ROWS-FIELD @ +  loop ;
-
-: BYTES ( -- n )
-   0  SEGMENTS 0 ?do  i SEGMENT USED-FIELD @ +  loop ;
 
 seal-package
 

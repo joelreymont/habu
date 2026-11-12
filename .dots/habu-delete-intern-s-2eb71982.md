@@ -1,0 +1,9 @@
+---
+title: "Delete INTERN's unreached pools, roles and readers"
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-11-12T02:18:16.551179+02:00"
+---
+
+Problem: src/habu/intern.f's public SOURCE-SPAN, SOURCE-ROWS, CELL-SPANS, OWNER-ROW, REINTERN-OWNED, COUNT, BYTES, SEGMENTS, ACTIVE and WINDOW-CLOSE have no caller (rg -i --no-ignore over every .f and .md: definitions and bin/hb.map only), and neither has src/core/include.f's CELL-SPANS. They are what remains of the capture driver's import and window-close protocol (de3224187d9 added the reverse-order owner search for a seed import that is gone). With them gone, the owner chain (FIRST-P, NEXT-FIELD, LAST-OWNER, OWNER?), the pool links (MORE-FIELD, MORE@, LAST-SEGMENT), the roles (ROLE-FIELD, ROLE-HEAD/MORE/CLOSED), ACTIVE-P, ACTIVE-SEGMENT?, FOREIGN-ROWS/BYTES, BODY-BYTES, SEGMENT, FIND-OWNER-ROW and ROW-CONTAINS? are written or defined but never read, and CAP-FIELD always holds ROWS-MAX. WINDOW-OPEN stays: test/x86-64-link-records.f (x86 suite, set aside) and test/aot-native-does.f (unregistered) call it. Acceptance: those words, fields and variables deleted with their comments; OWNER-SIZE a constant over ROWS-MAX; the owner header holds ARENA, ROWS and USED only; SWITCH folded into WINDOW-OPEN (fresh segment: write segment, slots cleared); NEW-SEGMENT raises the DATA floor; comments that named the deleted words (header, BOOT-ARENA, GROW, FREE-SLOT) rewritten; INTERN's public surface ADOPT, WINDOW-OPEN, STRING, INTERN-SOURCE (plus intern-table.f's). Files: src/habu/intern.f, src/core/include.f. Verify: engine build at the tip rc 0, the suite at landing, rg shows no reference to a deleted name. Consumers: none meets it. Depends: none (built on the comments-107..119 stack). Ownership: jerry. Claim: agent=jerry workspace=.jj-ws.noindex/intern-dead.
