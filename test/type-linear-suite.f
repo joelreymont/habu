@@ -7,6 +7,7 @@
 
 require src/habu/verify-source.f
 require src/lib/test.f
+require src/lib/test/subject.f
 
 T-RESET
 
@@ -206,6 +207,28 @@ s" TC29=" type s" TC29 ( lone ptr lone -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TC30=" type s" TC30 ( plain ptr plain -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
 cr
 
+\ No storage holds a type that may hold a linear value, so no package forges
+\ or drops another's token through a cell.
+: STORAGE-CASES ( -- )
+   s" a foreign cell that would forge a token is refused" T-LABEL
+   s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINF private CAST: >CELLS ( n -- ptr n ) CAST: Q>N ( [ -- n ] -- n ) public TYPED-VARIABLE HK [ -- TLINQ:tok ] : FORGE ( -- TLINQ:tok ) [: 42 ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) FORGE TLINQ:CLOSE . ; ;package TLINF:SHOW" 70
+   s" in HK: stored type may hold a linear value '[ -- TLINQ:tok ]'" SUBJECT:REFUSED? TTRUE
+   s" a foreign cell that would drop a token is refused" T-LABEL
+   s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINL private CAST: >CELLS ( n -- ptr n ) CAST: Q>N ( [ n -- ] -- n ) public TYPED-VARIABLE HK [ TLINQ:tok -- ] : LOSE ( TLINQ:tok -- ) [: drop ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) TLINQ:OPEN LOSE ; ;package TLINL:SHOW" 70
+   s" in HK: stored type may hold a linear value '[ TLINQ:tok -- ]'" SUBJECT:REFUSED? TTRUE
+   s" a cell over an open type variable, unequal row tails or a member is refused" T-LABEL
+   s" TYPED-VARIABLE TLIN-QA [ -- a ]" 70
+   s" in TLIN-QA: stored type may hold a linear value '[ -- a ]'" SUBJECT:REFUSED? TTRUE
+   s" TYPED-VARIABLE TLIN-QR [ R -- S ]" 70
+   s" in TLIN-QR: stored type may hold a linear value '[ R -- S ]'" SUBJECT:REFUSED? TTRUE
+   s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; STRUCTURE hold FIELD fn [ -- TLINQ:tok ] ;STRUCTURE ;package TYPED-VARIABLE TLIN-QS TLINQ:hold" 70
+   s" in TLIN-QS: stored type may hold a linear value 'TLINQ:hold'" SUBJECT:REFUSED? TTRUE
+   s" the owner, a defer over the token and a closed callable cell still load" T-LABEL
+   s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package : TLIN-USE ( -- n ) TLINQ:OPEN TLINQ:CLOSE ; TLIN-USE drop" 0 SUBJECT:EXITED? TTRUE
+   s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; defer D ( -- TLINQ:tok ) : INSTALL ( -- ) [: OPEN ;] is D ; ;package TLINQ:INSTALL : TLIN-USE ( -- n ) TLINQ:D TLINQ:CLOSE ; TLIN-USE drop" 0 SUBJECT:EXITED? TTRUE
+   s\" TYPED-VARIABLE TLIN-QI [ n -- n ] : TLIN-INC ( n -- n ) 1 + ; : TLIN-SET ( -- ) [: TLIN-INC ;] TLIN-QI ! ; : TLIN-RUN ( -- n ) 2 TLIN-QI @ execute ; : TLIN-CHECK ( -- ) TLIN-RUN 3 <> IF s\" the cell ran another word\" 1 die THEN ; TLIN-SET TLIN-CHECK" 0
+      SUBJECT:EXITED? TTRUE ;
+
 \ Atomic memory operations: a closed-surface tripwire, not a linearity proof.
 \ The layout-aware transport step is selected by token name and only `@` and `!`
 \ have it, so every layout value is refused here, the non-linear control too;
@@ -272,4 +295,5 @@ cr
 
 ;package
 
+TLIN:STORAGE-CASES
 T-REPORT

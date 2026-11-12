@@ -8579,6 +8579,7 @@ variable LBI-BAD
 variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
 variable LBI-XT       \ the refused stored type parsed and names `xt`
 variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
+variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear value
 
 \ A stored `xt` would be an engine code address, which no image relocation kind
 \ follows across a restore. A quotation's rows hold no cell.
@@ -8611,7 +8612,7 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
 : WIDTH-STORED? ( n -- bool ) TWALK-RESET WIDTH-STORED?* ;
 
 : STORAGE-PARSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !
+   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-LINEAR !
    NEW
    SGBAD-CLEAR SIG-UNRES-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
@@ -8622,13 +8623,14 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
    SGBAD @ 0 <> LBI-BAD @ 0 <> or 0= ;
 
-\ A scheme is a callback input only, so no storage holds one at any depth of
-\ its stored type.
+\ A scheme is a callback input only, so no storage holds one at any depth. A
+\ cell's type is believed at every read, so none may hold a linear value.
 : STORAGE-TERM-OK? ( -- bool )
    LBI-T @ SCHEME-TYPE? IF -1 LBI-SCHEME ! RES-FALSE EXIT THEN
    SIG-UNRES @ IF RES-FALSE EXIT THEN
    LBI-T @ XT-STORED? IF -1 LBI-XT ! RES-FALSE EXIT THEN
    LBI-T @ WIDTH-STORED? IF -1 LBI-WIDTH ! RES-FALSE EXIT THEN
+   LBI-T @ STORED-TERM-HIT 4 = IF -1 LBI-LINEAR ! RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? 0= ;
 
 : STORAGE-RESOLVE? ( ptr u8 n -- bool )
@@ -8650,16 +8652,12 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
    c CC-U8 = c CC-U16 = or c CC-U32 = or c CC-CHAR = or ;
 : STORAGE-STRUCT-CON? ( n -- bool ) {: t:n :}
    t TAG T-CON <> IF RES-FALSE EXIT THEN
-   t PAY CT-LINEAR? IF RES-FALSE EXIT THEN
    t PAY STORAGE-SUBCELL-CON? 0= ;
 : STORAGE-PTR-POINTEE-OK? ( n -- bool )
    dup NOM-SCALAR? IF drop RES-TRUE EXIT THEN
-   dup LAYOUT-PARAM? IF
-      dup LAYOUT-MAYBE-LINEAR? IF drop RES-FALSE EXIT THEN
-      LAYOUT-ARGS-OPEN? 0= EXIT THEN
+   dup LAYOUT-PARAM? IF LAYOUT-ARGS-OPEN? 0= EXIT THEN
    dup TAG T-PTR = IF PTR>INNER T-RES RECURSE EXIT THEN
-   dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN
-   drop RES-FALSE ;
+   TAG T-CON = ;
 : STORAGE-TYPED-PTR? ( n -- bool )
    dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
    PTR>INNER T-RES STORAGE-PTR-POINTEE-OK? ;
@@ -8699,8 +8697,8 @@ variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
    DYNAMIC-BYTES ;
 
-\ CHECKER-DYNAMIC-INFO's answer, false for a type that may hold a linear value,
-\ an open type variable, or an atom or a width it hands out as a pointee.
+\ CHECKER-DYNAMIC-INFO's answer, false for an atom or a width the type hands
+\ out as a pointee.
 : ARENA-TERM-INFO ( -- n bool )
    STORAGE-TERM-OK? 0= IF 0 RES-FALSE EXIT THEN
    DYNAMIC-BYTES 0= IF RES-FALSE EXIT THEN
@@ -13833,6 +13831,7 @@ package CHECKER-REG
 13 constant STG-NO-PACKAGE      \ the definer mints its records in the declaring package's private section
 14 constant STG-QUALIFIED-NAME  \ the definer declares its words in its own package, by a bare name
 15 constant STG-WIDTH-TYPE      \ the type parses and holds a `width<t>`, which no storage holds
+16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
 PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
 variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where it starts in its file
 defer STORAGE-DIAG-XT ( ptr u8 n ptr u8 n n -- )   \ declared name, refused token, STG- reason
@@ -14327,7 +14326,8 @@ package CHECKER-REG
    SGBAD @ IF STG-MALFORMED-TYPE ELSE
       LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE
       LBI-XT @ IF STG-XT-TYPE ELSE
-      LBI-WIDTH @ IF STG-WIDTH-TYPE ELSE STG-UNSTORABLE-TYPE THEN THEN THEN
+      LBI-WIDTH @ IF STG-WIDTH-TYPE ELSE
+      LBI-LINEAR @ IF STG-LINEAR-TYPE ELSE STG-UNSTORABLE-TYPE THEN THEN THEN THEN
    THEN
    CHECKER-STORAGE-REFUSE ;
 
@@ -22859,7 +22859,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    SGBAD-AR-DECL @ SGBAD-AR-GOT @ SGBAD-SIZE @ {: ard:n arg:n sgs:n :}
    SIG-UNRES @ SIG-UNRES-A @ SIG-UNRES-U @ {: un:n una:ptr unu:n :}
    SGBAD-CLEAR SIG-UNRES-CLEAR
-   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !
+   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-LINEAR !
    a u TYPE-SPAN-READ swap T-RES {: one:bool t:n :}
    t LBI-T !
    SGBAD @ 0= one and IF ARENA-TERM-INFO ELSE 0 RES-FALSE THEN

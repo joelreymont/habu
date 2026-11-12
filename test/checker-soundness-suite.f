@@ -45,17 +45,12 @@ TAIL-MKT TAIL-T1
 : TAIL-MKU ( -- ) create does> ( R [ -- ] -- R ) drop >r 9 r> execute drop ;
 TAIL-MKU TAIL-U1
 TYPED-VARIABLE TAIL-QA [ -- n ]
-TYPED-VARIABLE TAIL-QB [ -- S ]
-TYPED-VARIABLE TAIL-QD [ [ -- S ] -- S ]
-TYPED-VARIABLE TAIL-QN [ R [ R -- S ] -- S ]
 TYPED-VARIABLE TAIL-QR [ R [ R -- R ] -- R ]
 defer TAIL-DF ( R [ R -- S ] -- S )
 \ A family argument is read and written, as a pointee is.
 STRUCTURE tailvals<a> OPAQUE FIELD data ptr a ;STRUCTURE
 : TAIL-VPUT ( a tailvals<a> -- ) TAILVALS-UNMAKE ! ;
 : TAIL-VK ( R tailvals<[ R -- R ]> -- R ) [: ;] swap TAIL-VPUT ;
-TYPED-VARIABLE TAIL-QV tailvals<[ -- S ]>
-TYPED-VARIABLE TAIL-QVV tailvals<tailvals<[ -- S ]>>
 : TAIL-VKN ( R tailvals<tailvals<[ R -- R ]>> -- R ) drop ;
 : TAIL-RETAG ( tailvals<a> a -- tailvals<a> ) drop ;
 : TAIL-RETAGN ( tailvals<tailvals<a>> a -- tailvals<tailvals<a>> ) drop ;
@@ -206,16 +201,16 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" CS-K45 ( R [ -- S ] -- S ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-PICK2 execute" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K47 ( R [ -- S ] f -- S ) IF drop [: 1 ;] THEN execute" CHECK-QUIET-CANDIDATE! 0 T=
    s" a family argument demands its declared callable" T-LABEL
-   s" CS-K49 ( R -- R ) CHECKER-SOUNDNESS:TAIL-QV @ CHECKER-SOUNDNESS:TAIL-VK" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K49 ( R ptr CHECKER-SOUNDNESS:tailvals<[ -- R ]> -- R ) @ CHECKER-SOUNDNESS:TAIL-VK" CHECK-QUIET-CANDIDATE! 0 T=
    s" a type variable may not take a held tail inside a family argument" T-LABEL
    s" CS-K88 ( R -- R ) [: [: ;] CHECKER-SOUNDNESS:TAIL-HF ;] CHECKER-SOUNDNESS:TAIL-TV drop" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K89 ( R -- R ) [: [: ;] CHECKER-SOUNDNESS:TAIL-HG ;] CHECKER-SOUNDNESS:TAIL-TV drop" CHECK-QUIET-CANDIDATE! 0 T=
    s" a family argument stays demanded through a retag" T-LABEL
-   s" CS-K75 ( R -- R ) CHECKER-SOUNDNESS:TAIL-QV @ CHECKER-SOUNDNESS:TAIL-QB @ CHECKER-SOUNDNESS:TAIL-RETAG CHECKER-SOUNDNESS:TAIL-VK" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K75 ( R ptr CHECKER-SOUNDNESS:tailvals<[ -- R ]> ptr [ -- R ] -- R ) swap @ swap @ CHECKER-SOUNDNESS:TAIL-RETAG CHECKER-SOUNDNESS:TAIL-VK" CHECK-QUIET-CANDIDATE! 0 T=
    s" a pointee stays demanded through a retag" T-LABEL
-   s" CS-K76 ( R -- R ) CHECKER-SOUNDNESS:TAIL-QB CHECKER-SOUNDNESS:TAIL-QB @ CHECKER-SOUNDNESS:TAIL-RETAGP CHECKER-SOUNDNESS:TAIL-STORE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K76 ( R ptr [ -- R ] -- R ) dup @ CHECKER-SOUNDNESS:TAIL-RETAGP CHECKER-SOUNDNESS:TAIL-STORE" CHECK-QUIET-CANDIDATE! 0 T=
    s" a nested family argument stays demanded through a retag" T-LABEL
-   s" CS-K77 ( R -- R ) CHECKER-SOUNDNESS:TAIL-QVV @ CHECKER-SOUNDNESS:TAIL-QB @ CHECKER-SOUNDNESS:TAIL-RETAGN CHECKER-SOUNDNESS:TAIL-VKN" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K77 ( R ptr CHECKER-SOUNDNESS:tailvals<CHECKER-SOUNDNESS:tailvals<[ -- R ]>> ptr [ -- R ] -- R ) swap @ swap @ CHECKER-SOUNDNESS:TAIL-RETAGN CHECKER-SOUNDNESS:TAIL-VKN" CHECK-QUIET-CANDIDATE! 0 T=
    s" a view's element type stays demanded inside a record" T-LABEL
    s" CS-K78 ( R CHECKER-SOUNDNESS:tailview<p,q,a,[ -- ]> -- R CHECKER-SOUNDNESS:tailview<p,q,a,[ R -- R ]> ) CHECKER-SOUNDNESS:TAIL-TAKEV" CHECK-QUIET-CANDIDATE! 0 T=
    s" a literal stored beside a cell takes the cell's row" T-LABEL
@@ -241,10 +236,8 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" : CS-K38 ( -- ) create does> ( R [ A -- B ] -- B ) drop CHECKER-SOUNDNESS:TAIL-G ;" 70
    s" callable row escape" SUBJECT:REFUSED? TTRUE
    s" a store or an install demands the declared callable" T-LABEL
-   s" CS-K39 ( -- ) ['] CHECKER-SOUNDNESS:TAIL-G CHECKER-SOUNDNESS:TAIL-QN !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K39 ( ptr [ R [ R -- S ] -- S ] -- ) ['] CHECKER-SOUNDNESS:TAIL-G swap !" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K48 ( -- ) ['] CHECKER-SOUNDNESS:TAIL-UNDER CHECKER-SOUNDNESS:TAIL-QR !" CHECK-QUIET-CANDIDATE! 0 T=
-   s" ' CHECKER-SOUNDNESS:TAIL-G CHECKER-SOUNDNESS:TAIL-QN !" 70
-   s" callable row escape" SUBJECT:REFUSED? TTRUE
    s" ' CHECKER-SOUNDNESS:TAIL-UNDER CHECKER-SOUNDNESS:TAIL-QR !" 70
    s" callable row escape" SUBJECT:REFUSED? TTRUE
    s" CS-K41 ( -- ) ['] CHECKER-SOUNDNESS:TAIL-G is CHECKER-SOUNDNESS:TAIL-DF" CHECK-QUIET-CANDIDATE! 0 T=
@@ -255,8 +248,19 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\",\"verdict\":\"rejected\",\"word\":\"cs-k73\",\"token\":\"is\",\"reason\":\"callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on; held row A would escape into C\"" SUBJECT:REFUSED? TTRUE
    s" -1 JSON-DIAGS ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
    s\" \"inferred_effect\":\"-- [ [ -- ] -- ] \",\"return_stack\"" SUBJECT:REFUSED? TTRUE
-   s" CS-K42 ( -- ) [: ;] CHECKER-SOUNDNESS:TAIL-QB !" CHECK-QUIET-CANDIDATE! 0 T=
-   s" CS-K43 ( R [ R -- S ] -- R ) CHECKER-SOUNDNESS:TAIL-QB !" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" CS-K42 ( ptr [ -- S ] -- ) [: ;] swap !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K43 ( R [ R -- S ] ptr [ -- S ] -- R ) !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" a cell over a callable whose tails differ is refused at its declaration" T-LABEL
+   s" TYPED-VARIABLE CS-QB [ -- S ]" 70
+   s" in CS-QB: stored type may hold a linear value '[ -- S ]'" SUBJECT:REFUSED? TTRUE
+   s" TYPED-VARIABLE CS-QD [ [ -- S ] -- S ]" 70
+   s" in CS-QD: stored type may hold a linear value '[ [ -- S ] -- S ]'" SUBJECT:REFUSED? TTRUE
+   s" TYPED-VARIABLE CS-QN [ R [ R -- S ] -- S ]" 70
+   s" in CS-QN: stored type may hold a linear value '[ R [ R -- S ] -- S ]'" SUBJECT:REFUSED? TTRUE
+   s" TYPED-VARIABLE CS-QV CHECKER-SOUNDNESS:tailvals<[ -- S ]>" 70
+   s" in CS-QV: stored type may hold a linear value" SUBJECT:REFUSED? TTRUE
+   s" TYPED-VARIABLE CS-QVV CHECKER-SOUNDNESS:tailvals<CHECKER-SOUNDNESS:tailvals<[ -- S ]>>" 70
+   s" in CS-QVV: stored type may hold a linear value" SUBJECT:REFUSED? TTRUE ;
 
 
 : CALLABLE-SOUND ( -- )
@@ -276,11 +280,11 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" CS-K64 ( x -- x ) [: ;] CHECKER-SOUNDNESS:TAIL-UNDER" CHECK-QUIET-CANDIDATE! -1 T=
    s" CS-K66 ( A -- A ) [: ;] dup CHECKER-SOUNDNESS:TAIL-KEEP CHECKER-SOUNDNESS:TAIL-NAMED" CHECK-QUIET-CANDIDATE! -1 T=
    \ A literal demanding a named row is a value: its own row instantiates.
-   s" CS-K67 ( -- ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] CHECKER-SOUNDNESS:TAIL-QD !" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CS-K67 ( ptr [ [ -- S ] -- S ] -- ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] swap !" CHECK-QUIET-CANDIDATE! -1 T=
    \ A loaded callable is provided whatever its cell declares.
    s" CS-K68 ( x -- x n ) CHECKER-SOUNDNESS:TAIL-QA @ CHECKER-SOUNDNESS:TAIL-NAMED" CHECK-QUIET-CANDIDATE! -1 T=
-   s" CS-K69 ( R [ -- S ] -- R ) CHECKER-SOUNDNESS:TAIL-QB !" CHECK-QUIET-CANDIDATE! -1 T=
-   s" CS-K70 ( -- ) ['] CHECKER-SOUNDNESS:TAIL-ONCE CHECKER-SOUNDNESS:TAIL-QD !" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" CS-K69 ( R [ -- S ] ptr [ -- S ] -- R ) !" CHECK-QUIET-CANDIDATE! -1 T=
+   s" CS-K70 ( ptr [ [ -- S ] -- S ] -- ) ['] CHECKER-SOUNDNESS:TAIL-ONCE swap !" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 
 : RETURN-ROW ( -- )

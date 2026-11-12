@@ -546,6 +546,7 @@ variable GJA-DIRECT
    s" xt in a stored type" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" a width is not stored: keep its bytes (width>n)" s" fix_storage_type"
       GJA-MAP-ROW IF exit THEN
+   s" stored type may hold a linear value" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" no type for" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" more than one ':' in name" s" fix_storage_name" GJA-MAP-ROW IF exit THEN
    s" no name for" s" fix_storage_name" GJA-MAP-ROW IF exit THEN

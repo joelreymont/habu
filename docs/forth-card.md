@@ -461,6 +461,13 @@ later that may hold a linear value is `E-CAST-LINEAR`, an atom or a width
 (`E-CAST-LINEAR`). Both identity declarers preserve the stack below their
 operand: `LINEAR: MINT ( R n -- R PKG:tok )` is valid, but different tails are
 `E-CAST-ARITY`.
+No storage is declared with a type that may hold a linear value (`E-BAD-STORAGE`,
+`stored type may hold a linear value`): a token or a type variable, or a
+quotation over a token, a type variable or different tails, at any depth
+(`TYPED-VARIABLE HK [ -- PKG:tok ]`, `ptr a`, `[ ptr t ptr t -- ]`,
+`[ R -- S ]`). A cell's type is believed at every read, so such a cell would
+hand any package the token; a token stays on the stack and a `defer` names
+such a quotation.
 
 forth.md: **Structures And Enums**; the rule is forth.md **Raw storage never
 holds an address**.

@@ -716,8 +716,9 @@ multi-cell type rationale is `docs/design.md` "Types".
     field `[ -- lease ]` carries the lease through the cast on either side.
     A quotation whose input and output rows end in different tails, such as
     `[ R -- S ]`, hands out values it never took, so in a cast's output, in a
-    view cast's element on either side, or bound to a stored variable as
-    below, it counts as one that may hold a linear value. Elsewhere in a
+    view cast's element on either side, in a storage declaration's type, or
+    bound to a stored variable as below, it counts as one that may hold a
+    linear value. Elsewhere in a
     cast's input it is read and never handed out, so there, where the output
     mints no pointer and no quotation, it is any quotation: `CAST: XT>N ( [ R
     -- S ] -- n )` reads any word's cell.
@@ -1709,7 +1710,8 @@ defined again binds its earlier text against every later record too.
   with `LINEAR:` rows in the owner's private section (**Structures And
   Enums**), never a `TRUSTED:` mint, state and consume trio: `CAST:` refuses a
   linear operand, behind a pointer or in a quotation row too
-  (`E-CAST-LINEAR`). Without a lifetime to prove, a public `STRUCTURE` plus a
+  (`E-CAST-LINEAR`), and no storage is declared with a type that may hold one
+  (`E-BAD-STORAGE`). Without a lifetime to prove, a public `STRUCTURE` plus a
   `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller trades it for a runtime
   refusal off the definer's zero image.
 - **Pointer-valued cells use cell-indexed `ptr-field`**: `ptr-field` builds a
@@ -2180,9 +2182,9 @@ runtime or analysis layer.
   released one's address), and an arena shared between tasks, which take no
   lock and must serialise every call.
 - **`ARENA NAME Type` for records in an arena**: the stored types of
-  `DYNAMIC-BUFFER` that hold no linear value or type variable and hand out no
-  atom (an `xt` or a phantom index such as `extent-a`) and no `width<t>` in an
-  introduction position, as `CAST:` defines them: the stored type is a pointee,
+  `DYNAMIC-BUFFER` that hand out no atom (an `xt` or a phantom index such as
+  `extent-a`) and no `width<t>` in an introduction position, as `CAST:`
+  defines them: the stored type is a pointee,
   so `[ -- xt ]`, `[ xt -- ]`, `[ -- extent-a ]` and `[ width<n> -- ]` all hand
   one out. Inside a package it defines `NAME-NEW ( ptr ARENA:arena -- ptr
   Type )`, a fresh zeroed record, and `NAME-NEW-DISPOSE ( ptr ARENA:arena
@@ -2348,6 +2350,14 @@ sections above.
   count is bounded by the definer at run time with catchable `E-LAYOUT-BUFFER`.
   For example, `4 TYPED-BUFFER B no-such-type` prints `habu: in B: unknown type
   'no-such-type'`.
+- **No storage is declared with a type that may hold a linear value.** A cell's
+  type is believed at every read whatever bytes were written, so a cell over a
+  token or a type variable, or over a quotation whose rows hold a token, a type
+  variable or different tails, at any depth of the type, would mint the token
+  for any package that writes the cell. `TYPED-VARIABLE HK [ -- Q:tok ]` prints `habu:
+  in HK: stored type may hold a linear value '[ -- Q:tok ]'`, as `ptr a`,
+  `[ -- a ]`, `[ ptr t ptr t -- ]` and `[ R -- S ]` do; `[ n -- n ]` and `[ R -- R ]`
+  load, and a `defer` names a quotation over a token or a type variable.
 - **Fixed `TYPED-BUFFER` elements occupy whole cells.** `2 TYPED-BUFFER TB
   u8` is refused (`type this definer cannot store 'u8'`). Use `n BUFFER: B`
   for fixed bytes, yielding `( -- ptr u8 )`. `DYNAMIC-BUFFER` and `ARENA`
@@ -2642,10 +2652,9 @@ sections above.
   elaboration.
 - **Linear and multi-cell values respect the stale boundary.** A linear
   handle cannot cross a quotation-literal catch: reading it is
-  `E-STALE-READ`, and dropping it is a linear refusal. A typed variable or
-  buffer cannot store that linear type. Open it inside the caught body;
-  use `['] WORD catch` only when WORD's own throw paths preserve the handle;
-  or consume it before rethrowing. A multi-cell value is one logical stale
+  `E-STALE-READ`, and dropping it is a linear refusal. Open it inside the
+  caught body; use `['] WORD catch` only when WORD's own throw paths preserve
+  the handle; or consume it before rethrowing. A multi-cell value is one logical stale
   value (`stale<option<pt>>`): one `drop` removes it, an untyped local can
   transport it, and a typed use or `MATCH` is `E-STALE-READ`.
 - **`depth` and `.s` count no value held in several cells.** They count raw
