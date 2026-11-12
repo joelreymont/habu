@@ -4,12 +4,9 @@ require src/lib/fs-mutate.f
 require src/lib/fs-anchored.f
 require src/lib/fs-list.f
 
-\ The private FS words this test reads, forwarded into its own package.
-package FS
-: FS-ANCHORED-TEST:ENOENT ( -- n ) ENOENT ;
-;package
-
 package FS-ANCHORED-TEST
+
+2 constant ENOENT
 
 16 SPAN-BUFFER: OUT
 create TMP FS:PATHZ-CAP allot

@@ -8,17 +8,13 @@ require src/lib/fs-mutate.f
 require src/lib/fs-list.f
 require src/lib/task.f
 
-\ The private FS words this test reads, forwarded into its own package.
-package FS
-: FS-CAUSE-TEST:ENOENT ( -- n ) ENOENT ;
-: FS-CAUSE-TEST:ENOTDIR ( -- n ) ENOTDIR ;
-: FS-CAUSE-TEST:ELOOP ( -- n ) ELOOP ;
-;package
-
 package FS-CAUSE-TEST
 
 22 constant DARWIN-EINVAL
 1 constant EPERM                    \ link(2) of a directory on macOS and Linux
+2 constant ENOENT
+20 constant ENOTDIR
+: ELOOP ( -- n ) HB-TARGET-MACOS? if 62 else 40 then ;
 
 create ROOT-BUF PATH-CAP allot
 create PATH-BUF PATH-CAP allot

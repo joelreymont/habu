@@ -16,13 +16,6 @@ require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
 
-\ The private FS words this test reads, forwarded into its own package.
-package FS
-: SOURCE-ROOT-EXE-TEST:COPY-CAP ( -- n ) COPY-CAP ;
-: SOURCE-ROOT-EXE-TEST:COPY-FILE ( ptr u8 n ptr u8 n n -- ) COPY-FILE ;
-: SOURCE-ROOT-EXE-TEST:MODE-DIR ( -- n ) MODE-DIR ;
-;package
-
 using SOURCE-ROOT
 package SOURCE-ROOT-EXE-TEST
 private
@@ -41,6 +34,8 @@ $1000 constant PROG-CAP
 $49 constant SEARCH-ONLY
 \ No permission at all (0000).
 0 constant NO-ACCESS
+\ A directory's usual mode (0755).
+493 constant MODE-DIR
 
 create GATE CAP allot
 create TOP CAP allot
@@ -219,7 +214,7 @@ variable RC
    s" b/bin" A$ FS:MAKE-DIRS
    s" b/bin/hb" PLACE-ENGINE
    s" app/src/lib" A$ FS:MAKE-DIRS
-   s" test/source-root-exe-app.f" s" app/app.f" A$ COPY-CAP COPY-FILE
+   s" test/source-root-exe-app.f" s" app/app.f" A$ FS:COPY-FILE-STREAM
    s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/src/lib/error.f" SB$ TEXT
    s" wd-app/src/lib" A$ FS:MAKE-DIRS
    WD-APP s" wd-app/wd.f" SB$ TEXT
