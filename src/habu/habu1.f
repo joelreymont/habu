@@ -2817,9 +2817,10 @@ public
 
 \ macOS: map the region's RW alias over [x0, x0+REGION) with mach_vm_remap
 \ (copy FALSE) and leave x0 = alias - x0. x16 = __text base on entry. fixed
-\ maps the alias at exactly x1, else anywhere. The alias is made with
-\ inheritance NONE: a forked child gets a private copy of the RX view and no
-\ alias, and maps its own at the parent's address. Clobbers x0-x17; jumps to
+\ maps the alias at exactly x1, replacing what is mapped there, else anywhere.
+\ A forked child inherits the alias as a private copy, like the RX view: libc's
+\ fork handlers allocate in the child before fork() returns, so the alias range
+\ must stay mapped until the child replaces it. Clobbers x0-x17; jumps to
 \ fail with SP restored if a lookup or the remap fails. Frame: [0] &cur [8]
 \ &max [16] inheritance (the call's stack arguments), [24] task port, [32]
 \ "mach_vm_remap", [48] "mach_task_self_", [64] alias, [72] cur [76] max, [80]
@@ -2829,7 +2830,7 @@ public
    SP SP 96 SUBI,
    0 SP 80 STR,  16 SP 88 STR,
    9 SP 72 ADDI,  9 SP 0 STR,  9 SP 76 ADDI,  9 SP 8 STR,
-   9 2 MOVZ,  9 SP 16 STR,                          \ VM_INHERIT_NONE
+   9 1 MOVZ,  9 SP 16 STR,                          \ VM_INHERIT_COPY
    fixed if 1 SP 64 STR, else 9 0 MOVZ,  9 SP 64 STR, then
    9 $5F6D765F6863616D LIT64,  9 SP 32 STR,
    9 $70616D6572 LIT64,  9 SP 40 STR,
@@ -2840,7 +2841,7 @@ public
    16 SP 88 LDR,  1 SP 32 ADDI,  DLSYM-AT
    0 bad CBZ,  16 0 0 ADDI,
    0 SP 24 LDR,  1 SP 64 ADDI,  2 REGION LIT64,  3 0 MOVZ,
-   fixed if 4 0 MOVZ, else 4 1 MOVZ, then           \ VM_FLAGS_FIXED or _ANYWHERE
+   fixed if 4 $4000 MOVZ, else 4 1 MOVZ, then       \ VM_FLAGS_FIXED | _OVERWRITE, or _ANYWHERE
    5 0 0 ADDI,  6 SP 80 LDR,  7 0 MOVZ,             \ copy FALSE
    16 BLR,
    0 0 $FFFFFFFF ANDI,  0 bad CBNZ,                 \ kern_return_t
@@ -2988,11 +2989,10 @@ public
       0 failed CBZ,  16 0 0 ADDI,  16 BLR,
       0 0 32 LSLI,  0 0 32 ASRI,        \ signed pid_t -> Habu cell
       0 done CBNZ,
-      \ The child: its RX view is a private copy and it inherited no alias, so it
-      \ maps its own over that copy at the parent's alias address, DBASE + delta,
-      \ which the inherited NONE alias left free, and makes it RW. The alias
-      \ address and delta are the same in parent and child, so every region's
-      \ inherited delta cell stays true and none is rewritten.
+      \ The child: its RX view and alias are private copies, so it replaces the
+      \ alias, at the parent's address DBASE + delta, by an alias of its RX copy
+      \ and makes it RW. The delta is the parent's, so every region's inherited
+      \ delta cell stays true and none is rewritten.
       1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 done CBZ,   \ delta 0: no alias to re-establish (a stripped image)
       1 1 DBASE ADD,
       0 DBASE 0 ADDI,  16 DATA RBASE-CELL LDR,  true dead REGION-REMAP
