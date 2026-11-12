@@ -284,7 +284,7 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and names the token the interpreter was running" T-LABEL
-   ERR erru s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
+   ERR erru s" interpret stack underdepth: execute" CONTAINS? TTRUE
    s" and is no stack bounds exit" T-LABEL
    ERR erru s" stack bounds exceeded" CONTAINS? TFALSE ;
 

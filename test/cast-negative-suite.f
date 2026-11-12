@@ -463,7 +463,7 @@ variable ERR-U
 \ the base. The cast's publish tail pokes the bits; this case is the one that
 \ notices that step missing (measured).
 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
-CN-CHILD:ERR$ s" hb: interpret stack underdepth: >CNMROLE" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" interpret stack underdepth: >CNMROLE" CONTAINS? TTRUE
 
 \ The trailing `;` of the retired spelling is an undefined token at interpret
 \ state.
@@ -477,23 +477,23 @@ CN-CHILD:ERR$ s" hb: cast: missing name after" CONTAINS? TTRUE
 \ Required reader operands fail before stale token bytes can be consumed.
 \ These are child checks because the reader exits after its diagnostic.
 s" create"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: create" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" reader keyword needs a name: create" CONTAINS? TTRUE
 s" trusted:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: trusted:" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" reader keyword needs a name: trusted:" CONTAINS? TTRUE
 s" variable" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 \ `variable` shares the CREATE emitter, so its stable diagnostic names the
 \ implementation keyword that owns the common name reader.
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: create" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" reader keyword needs a name: create" CONTAINS? TTRUE
 s" constant" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: constant" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" reader keyword needs a name: constant" CONTAINS? TTRUE
 s" char"     CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: char" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" reader keyword needs a name: char" CONTAINS? TTRUE
 \ The interpreter reads a whole definition before it binds the body's tokens,
 \ so at EOF this unfinished one is refused before [char] or ['] reads an operand.
 s" : x [char]" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 CN-CHILD:ERR$ s" hb: source ended inside definition: x" CONTAINS? TTRUE
 s" '"        CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: '" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" reader keyword needs a name: '" CONTAINS? TTRUE
 s" : x [']"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 CN-CHILD:ERR$ s" hb: source ended inside definition: x" CONTAINS? TTRUE
 package CN

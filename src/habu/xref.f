@@ -598,7 +598,7 @@ DOES-COMPANION-INSTALL
 \ (src/core/checker.f CHECKER-OVERLAY:RETIRE).
 : XREF-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    data-base REPLAY-SCOPE:LATCH + @ 0= if exit then
-   2 s" hb: undefine while a checker replay is open: " write drop
+   2 s" E-OVERLAY-OPEN habu: undefine while a checker replay is open: " write drop
    2 a u write drop
    2 S\" \n" write drop
    ENGINE-ERROR:OVERLAY-OPEN throw ;

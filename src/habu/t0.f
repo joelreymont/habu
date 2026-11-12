@@ -1240,7 +1240,7 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 \ A counted string of u bytes refuses as tier 1's COUNTED-LENGTH-CK does.
 : TOO-LONG ( n -- )
    COUNTED-MAX <= if exit then
-   2 S\" hb: counted string too long (max 255)\n" write drop
+   2 S\" E-COUNTED-STRING-TOO-LONG habu: counted string too long (max 255)\n" write drop
    76 throw ;                       \ the exit code src/habu/interpreter.f RC-TOO-LONG defines
 
 \ String row k's interned address, its source origin and its length.

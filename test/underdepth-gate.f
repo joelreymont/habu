@@ -1,9 +1,9 @@
 \ underdepth-gate.f - a word with a checker-known effect (certified `:`,
 \ TRUSTED:, defer) carries its input arity in its record (DNAME-MIN-IN, flags
 \ bits 52-59), poked by the publish tails. Run bare at top level on a shallower
-\ stack it fails closed with `hb: interpret stack underdepth: <token>` and rc 70
-\ before its body runs. hb's startup words are defined by the same interpreter, so
-\ an engine-prefix word carries its arity too.
+\ stack it fails closed with `E-UNDERFLOW ... interpret stack underdepth:
+\ <token>` and rc 70 before its body runs. hb's startup words are defined by
+\ the same interpreter, so an engine-prefix word carries its arity too.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -118,7 +118,7 @@ public
 : UDG-ASSERT-UNDERDEPTH ( ptr u8 n -- ) {: a:ptr u:n :}   \ fail-closed reject naming the word
    UDG-EXITED @ TTRUE
    UDG-RC @ UDG-REJECT-RC T=
-   UDG-ERR$ s" hb: interpret stack underdepth: " CONTAINS? TTRUE
+   UDG-ERR$ s" interpret stack underdepth: " CONTAINS? TTRUE
    UDG-ERR$ a u CONTAINS? TTRUE ;
 
 : UDG-ASSERT-OK ( -- )
@@ -333,7 +333,7 @@ package UDG-PARITY
    RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT
    s" FOO2" UDG-ASSERT-UNDERDEPTH
-   RESULT TAIL-PARITY:SAME ;
+   RESULT TAIL-PARITY:SAME-UNLOCATED ;
 
 : NEG-STDIN ( ptr u8 n -- )
    2dup UDG-RUN-STDIN
@@ -341,7 +341,7 @@ package UDG-PARITY
    RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT
    s" FOO2" UDG-ASSERT-UNDERDEPTH
-   RESULT TAIL-PARITY:SAME ;
+   RESULT TAIL-PARITY:SAME-UNLOCATED ;
 
 : POS-LOAD ( ptr u8 n -- )
    2dup UDG-RUN-LOAD UDG-ASSERT-OK
@@ -352,9 +352,9 @@ package UDG-PARITY
 public
 
 : TEST ( -- )
-   s" direct --load and subject preserve raw underdepth results" T-LABEL
+   s" direct --load and subject agree on underdepth results but the location" T-LABEL
    s" FOO2" UDG-FOO2$ NEG-LOAD
-   s" direct stdin and subject preserve raw underdepth results" T-LABEL
+   s" direct stdin and subject agree on underdepth results but the location" T-LABEL
    s" FOO2" UDG-FOO2$ NEG-STDIN
    s" direct --load and subject preserve raw successful results" T-LABEL
    UDG-EXACT$ POS-LOAD ;

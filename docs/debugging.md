@@ -11,7 +11,7 @@ When checked code misbehaves, reduce the failure, find which layer is wrong
 A refusal the engine raises while reading source names the file and the line:
 
 ```
-hb: bad string literal at /home/j/Work/habu/test/fixtures/x.f:12
+E-UNTERMINATED-STRING habu: /home/j/Work/habu/test/fixtures/x.f:12: bad string literal
 ```
 
 No column. `<path>` is the resolved, canonical path of the **innermost open**
@@ -35,9 +35,10 @@ An undefined word, `E-UNDEFINED habu: <path>:<line>: undefined word 'X'`, is loc
 compile refusal on both loops. A loaded file that leaves cells prints
 `E-EVAL-RESIDUE: stack depth N at <path>`, naming the whole file and so no line,
 once at the innermost file, before the throw it raises (uncaught, that throw
-ends the load). The other interpret-level diagnostics
-(`hb: interpret-mode layout value: X` and its siblings) print no location. The
-checker's refusal in a body names the definition and the token
+ends the load). The other interpret-level refusals
+(`E-LAYOUT-VALUE habu: <path>:<line>: interpret-mode layout value: X` and its
+siblings) are located the same way. The checker's refusal in a body names
+the definition and the token
 (`habu: in g: at '2' expected: n actual: n n ; suggestion: Remove an extra producer or drop the surplus value.`);
 the native line after it places the token
 (`ncomp: cannot compile G at 2 in <path>:<line>`), and an undefined word adds
@@ -220,10 +221,11 @@ Every VM stack is a guarded mapping and compiled code carries no bounds check,
 so the message names the mechanism that caught the fault
 (`src/habu/stack-abi.f` and `src/habu/crash.f` hold the rules):
 
-- `hb: interpret stack underdepth: <token>` (exit 70): the interpreter refused
-  a token whose record states more inputs than the stack holds, or compiled
-  code reached through `execute`, `catch`, `finally` or a quotation read below
-  the data stack's base. Catchable; the REPL recovers the line.
+- `E-UNDERFLOW habu: interpret stack underdepth: <token>` (exit 70; the
+  interpreter's refusal in a file names `<path>:<line>: ` before the prose):
+  the interpreter refused a token whose record states more inputs than the
+  stack holds, or compiled code reached through `execute`, `catch`, `finally`
+  or a quotation read below the data stack's base. Catchable; the REPL recovers the line.
 - `E-UNDERFLOW habu: <path>:<line>: stack underflow at '<token>'` (exit 70): a word ran and left the stack below its
   base because its body consumes more than its record states: a word defined
   with checking off, or a `TRUSTED:` body that drops more than it declares.

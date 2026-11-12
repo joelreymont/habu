@@ -988,7 +988,7 @@ COUNTED-MAX 1+ CWORK-SPAN COUNTED-BUF u8
 
 : COUNTED-LENGTH-CK ( n -- )
    COUNTED-MAX <= if exit then
-   2 S\" hb: counted string too long (max 255)\n" write drop
+   2 S\" E-COUNTED-STRING-TOO-LONG habu: counted string too long (max 255)\n" write drop
    76 throw ;
 
 

@@ -118,7 +118,7 @@ public
 
 variable LMINMSG   \ the underdepth message LFLOORREC writes
 private
-: MINMSG$ ( -- ptr u8 n )   s" hb: interpret stack underdepth: " ;
+: MINMSG$ ( -- ptr u8 n )   s" E-UNDERFLOW habu: interpret stack underdepth: " ;
 : MINMSG-LEN ( -- n )   MINMSG$ nip ;
 public
 variable LFLOORREC   \ the underdepth throw for a data access below the base
@@ -3045,7 +3045,7 @@ private
 \ LSRCAT, a leaf (x0-x2, x9-x14 scratch), appends ` at <path>:<line>`.
 : EM-COMPILE-DIE ( -- )
    LBL LBL LBL LBL LBL LBL {: ldie:label noloc:label located:label nlloop:label nldone:label digloop:label :}
-   LBL S" hb: definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
+   LBL S" E-OVERLAY-OPEN habu: definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
    LBL {: dpbad-end:label :}
    LCOMPILEDIE LABEL@ LBL,
    15 0 0 ADDI,                                             \ x15 = code (LEVALREC delivers it as the throw code)

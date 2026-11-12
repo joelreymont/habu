@@ -202,8 +202,8 @@ with this one. Two consequences:
 - A non-linear multi-cell value binds whole to a local, and each reference
   reloads every cell.
 - A word that returns a multi-cell value cannot run at the interpreter prompt
-  (`hb: interpret-mode layout value`), because the interpreter would move one
-  physical cell of the bundle without knowing it.
+  (`E-LAYOUT-VALUE ... interpret-mode layout value`), because the interpreter
+  would move one physical cell of the bundle without knowing it.
 
 **Layout policy is bound per family, once, at declaration.** `POLICY <name>`
 follows the arity; a missing clause means `stack-cell-tag`. A per-use-site

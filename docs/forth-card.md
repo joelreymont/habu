@@ -207,7 +207,7 @@ before any `require`.
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
 | `( R [ R -- S ] -- S ) drop`, `( R n -- ) drop`, `( R -- S ) 1`: a body that unifies two declared rows, a row with the unnamed row, or binds a row other than its own return row to fixed cells | `E-NONPARAMETRIC-EFFECT`, naming the rows — run the quotation on every path, or declare the row the body leaves |
-| a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
+| a multi-cell value at the prompt | `E-LAYOUT-VALUE habu: interpret-mode layout value: NAME` |
 | `depth` or `.s` over a value held in more than one cell, or a layout value whose width is open there: `3 OPTION:SOME depth`, `( option<a> -- ) depth` | `E-REJECTED`, `count_values`, ``cannot count `option<n>`: it is one value held in 2 cells``, or ``cannot count `option<a>`: it is one value, and how many cells it holds is not known here``; take the value apart first (`MATCH` needs concrete arguments, `E-MATCH-OPEN-ARGS`), or count another way |
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with `ENGINE-ERROR:USING-SHADOW-GLOBAL` |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |

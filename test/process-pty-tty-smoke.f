@@ -182,7 +182,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    s" package PTYP public STRUCTURE point FIELD x n FIELD y n ;STRUCTURE : AT ( n n -- point ) PTYP-POINT:MAKE ; : FIRST ( point -- n ) PTYP-POINT:UNMAKE drop ; : FIRST-X ( -- n ) 2 3 AT FIRST ; ;package" TELL
    s"  ok" SETTLE
    s" 2 3 PTYP:AT PTYP:FIRST" TELL
-   s" hb: interpret-mode layout value: PTYP:AT" SETTLE
+   s" E-LAYOUT-VALUE habu: interpret-mode layout value: PTYP:AT" SETTLE
    s" PTYP:FIRST-X . cr depth . cr" TELL
    S\" \r\n2\r\n" EXPECT!
    S\" \r\n0\r\n" PROMPT-AFTER!

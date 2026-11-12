@@ -1160,7 +1160,7 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    \ Depth satisfies +FIELD's declared inputs ( ptr a n n ) so the body's own
    \ state check is reached; an underdepth bare call fails earlier with
-   \ `hb: interpret stack underdepth:` (test/underdepth-gate.f).
+   \ `E-UNDERFLOW ... interpret stack underdepth:` (test/underdepth-gate.f).
    s" NULL-PTR 0 CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
    $4C s" structure: no active structure" s" structures reject field outside begin" RUN-BAD-SOURCE
    GE-SRC-RESET

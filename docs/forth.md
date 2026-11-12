@@ -471,9 +471,10 @@ compact-variant = variant-name
 ```
 
 A multi-cell record is one logical value and lives inside checked definitions.
-The interpreter prompt refuses words with multi-cell inputs or outputs (`hb:
-interpret-mode layout value`), including a word whose `does>` clause effect is
-multi-cell (`64 SPAN-BUFFER: PBUF`, then a bare `PBUF`); so do `evaluate` and
+The interpreter prompt refuses words with multi-cell inputs or outputs
+(`E-LAYOUT-VALUE ... interpret-mode layout value`), including a word whose
+`does>` clause effect is multi-cell (`64 SPAN-BUFFER: PBUF`, then a bare
+`PBUF`); so do `evaluate` and
 interpret-mode tick, and bare `dup`, `drop`, `swap` at the prompt move single
 cells. To compute with a record at the REPL, call a word whose public effect is
 single-cell; `2 3 DEMO:AT DEMO:FIRST` at the prompt is refused at `DEMO:AT`:
@@ -2336,11 +2337,11 @@ sections above.
 - **A checker replay admits rows, never live namespace changes.** While one is
   open, a definer (`:`, `create`, `variable`, `constant`, `defer`, `TRUSTED:`,
   `CAST:`), `EXPORT`, a new `package` or `wordlist` throws
-  `ENGINE-ERROR:OVERLAY-OPEN` at its name before the dictionary changes (`hb:
-  definition while a checker replay is open: NAME`), and `undefine` throws it
-  before retiring anything (`hb: undefine while a checker replay is open:
-  NAME`). Reopening an existing package is allowed. The throw is catchable
-  inside `evaluate`; the replay still closes.
+  `ENGINE-ERROR:OVERLAY-OPEN` at its name before the dictionary changes
+  (`E-OVERLAY-OPEN ... definition while a checker replay is open: NAME`), and
+  `undefine` throws it before retiring anything (`E-OVERLAY-OPEN habu: undefine
+  while a checker replay is open: NAME`). Reopening an existing package is
+  allowed. The throw is catchable inside `evaluate`; the replay still closes.
 - **`0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op.**
   The checker types `throw` as never returning, and a zero code would unwind
   the body yet read as success: `[: 0 throw ;] catch` answers 109, and an
@@ -2348,15 +2349,16 @@ sections above.
   unwind carries 0, to its task's root catch.
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
-  (`hb: source ended inside definition: NAME`) or an open comment (`hb: source
-  ended inside a ( comment`). The first includes its stack comment, locals and
-  quotations; the definition rolls back on a caught `evaluate`. An immediate
-  word may evaluate text while a definition is open, but a `;` from that text
-  may not close the outer definition (`hb: source closed a definition it did
-  not open: NAME`). Completed tokens in nested evaluations stay compiled in the
-  outer definition after a caught refusal. The open-definition diagnostic
-  locates the name (or `def-open` caller), the open-comment diagnostic its `(`,
-  and the foreign-close diagnostic its `;`; stdin has no line location.
+  (`hb: source ended inside definition: NAME`) or an open comment
+  (`E-UNTERMINATED-COMMENT ... source ended inside a ( comment`). The first
+  includes its stack comment, locals and quotations; the definition rolls back
+  on a caught `evaluate`. An immediate word may evaluate text while a
+  definition is open, but a `;` from that text may not close the outer
+  definition (`hb: source closed a definition it did not open: NAME`).
+  Completed tokens in nested evaluations stay compiled in the outer definition
+  after a caught refusal. The open-definition diagnostic locates the name (or
+  `def-open` caller), the open-comment diagnostic its `(`, and the
+  foreign-close diagnostic its `;`; stdin has no line location.
 - **An output's fresh identity is minted per call, declared or inferred.** A
   name on a plain input is the argument's identity instead (**Rigid
   host-allocation identity domains**). With

@@ -397,13 +397,13 @@ CELL 4 * constant DIAG-BYTES
 \ The refusal line of habu2.f LDPBAD, before and between its two numbers.
 : DPBAD-HEAD$ ( -- ptr u8 n ) s" hb: data space out of range: DP " ;
 \ habu2.f MINMSG$'s text, which CONTROL,'s floor recovery writes.
-: UNDERDEPTH$ ( -- ptr u8 n ) s" hb: interpret stack underdepth: " ;
+: UNDERDEPTH$ ( -- ptr u8 n ) s" E-UNDERFLOW habu: interpret stack underdepth: " ;
 : DPBAD-OF$ ( -- ptr u8 n ) s"  of " ;
 : DPBAD-UNIT$ ( -- ptr u8 n ) s"  bytes" ;
 : DPBAD-AT$ ( -- ptr u8 n ) s"  at " ;
 : DPBAD-COLON$ ( -- ptr u8 n ) s" :" ;
 \ The line habu2.f OVERLAY-EMIT:LDIE writes before the token.
-: OVERLAY-OPEN$ ( -- ptr u8 n ) s" hb: definition while a checker replay is open: " ;
+: OVERLAY-OPEN$ ( -- ptr u8 n ) s" E-OVERLAY-OPEN habu: definition while a checker replay is open: " ;
 
 \ The status a refused DP exits with: habu2.f LDPBAD's.
 76 constant DPBAD-RC

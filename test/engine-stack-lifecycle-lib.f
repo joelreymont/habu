@@ -188,7 +188,7 @@ variable ERRLEN
 : PRIMITIVE-BOUNDARIES ( -- )
    HB-TARGET-LINUX-X86-64? if PRIMITIVE-RETURN-X64 else PRIMITIVE-RETURN-ARM then
    s" empty data-stack adjustment" T-LABEL
-   s" drop" S\" hb: interpret stack underdepth: drop\n" NAMED-UNDERDEPTH
+   s" drop" S\" E-UNDERFLOW habu: interpret stack underdepth: drop\n" NAMED-UNDERDEPTH
    s" the last loop frame" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
    CHILD-RC 0 T=

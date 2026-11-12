@@ -394,8 +394,10 @@ create NL NEWLINE c,
 \ wrote.
 : OVERLAY-GUARD ( -- )
    REPLAY-SCOPE:LATCH CELL@ 0= if exit then
-   s" hb: definition while a checker replay is open: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:OVERLAY-OPEN THROW-AT ;
+   s" E-OVERLAY-OPEN" REFUSAL
+   s" definition while a checker replay is open: " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   ENGINE-ERROR:OVERLAY-OPEN throw ;
 
 \ Whether c was found: INP stops past it, else at the end of the input.
 : SKIP-PAST ( n -- bool )
@@ -410,7 +412,9 @@ create NL NEWLINE c,
 \ The refusal's line is the `(`'s, so the cursor goes back to the token.
 : UNCLOSED ( -- )
    TKA-CELL CELL@ INP-CELL CELL!
-   s" hb: source ended inside a ( comment" ERROR-TEXT:TYPE RC-UNCLOSED THROW-AT ;
+   s" E-UNTERMINATED-COMMENT" REFUSAL
+   s" source ended inside a ( comment" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   RC-UNCLOSED throw ;
 
 : COMMENT? ( -- bool )
    TKL-CELL CELL@ 1 <> if false exit then
@@ -513,21 +517,27 @@ TYPED-VARIABLE REC ptr n
 \ wide effect, then an internal word.
 : XT-GATE ( -- )
    REC @ XREF-FLAGS {: f:n :}
-   f DNAME-WIDE and 0<> if s" hb: interpret-mode layout value: " REFUSE then
-   f DNAME-INT and 0<> if s" hb: internal engine word: " REFUSE then ;
+   f DNAME-WIDE and 0<> if
+      s" E-LAYOUT-VALUE" REFUSAL  s" interpret-mode layout value: " REFUSE
+   then
+   f DNAME-INT and 0<> if
+      s" E-UNSAFE" REFUSAL  s" internal engine word: " REFUSE
+   then ;
 
 \ Name dispatch and tick reject an exact native code entry, including an alias,
 \ when it carries a baked scope kind. Arbitrary untyped xref xt execution is
 \ outside these paths.
 : SCOPE-ENTRY-GUARD ( -- )
    REC @ XREF-START scope-kind? 0<> if
-      s" hb: internal engine word: " REFUSE
+      s" E-UNSAFE" REFUSAL  s" internal engine word: " REFUSE
    then ;
 
 : GATE ( -- )
    XT-GATE
    SCOPE-ENTRY-GUARD
-   depth REC @ XREF-FLAGS MIN-IN < if s" hb: interpret stack underdepth: " REFUSE then ;
+   depth REC @ XREF-FLAGS MIN-IN < if
+      s" E-UNDERFLOW" REFUSAL  s" interpret stack underdepth: " REFUSE
+   then ;
 
 \ The flag word as the hook reads it: bit 0 found, bit 1 immediate, bits 8-15
 \ the certified inputs.
@@ -666,8 +676,10 @@ TYPED-VARIABLE RUNS-ON bool
 \ case, at the end's line.
 : OPERAND ( ptr u8 n -- ) {: kw:ptr u:n :}
    TOKEN if exit then
-   s" hb: reader keyword needs a name: " ERROR-TEXT:TYPE
-   kw u ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
+   s" E-MISSING-NAME" REFUSAL
+   s" reader keyword needs a name: " ERROR-TEXT:TYPE
+   kw u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   RC-NO-NAME throw ;
 
 \ A literal's text starts one byte past the keyword, past the blank that ended
 \ it, and runs to a closing quote that INP then passes. A literal with no
@@ -677,10 +689,14 @@ TYPED-VARIABLE RUNS-ON bool
 \ it is written.
 
 : BAD-LITERAL ( -- )
-   s" hb: bad string literal" ERROR-TEXT:TYPE RC-BAD-LITERAL THROW-AT ;
+   s" E-UNTERMINATED-STRING" REFUSAL
+   s" bad string literal" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   RC-BAD-LITERAL throw ;
 
 : TOO-LONG ( -- )
-   s" hb: counted string too long (max 255)" ERROR-TEXT:TYPE RC-TOO-LONG THROW-AT ;
+   s" E-COUNTED-STRING-TOO-LONG" REFUSAL
+   s" counted string too long (max 255)" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   RC-TOO-LONG throw ;
 
 : PAST ( ptr u8 -- )
    1 + INP-CELL ADDR! ;
@@ -816,7 +832,9 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    LOOKUP
    XT-GATE
    SCOPE-ENTRY-GUARD
-   TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
+   TRUSTED-TICK? if
+      s" E-CAP-TRUSTED" REFUSAL  s" trusted-only tick: " REFUSE
+   then ;
 
 \ The host selection, the run log and then the source observer see the tick's
 \ target before the xt is pushed: the file may execute it.
