@@ -92,11 +92,15 @@ variable PROBE
    EDGE-N @ 1+ EDGE-N ! ;
 
 \ A reference names its file from the tree root; a path that names no file is
-\ not an edge. A launch is followed only into a Forth source: a launched script
-\ or data file is not lexed.
+\ not an edge, and one holding a 0 byte names none. A launch is followed only
+\ into a Forth source: a launched script or data file is not lexed.
 : REF ( ptr u8 n n n -- )
    {: a:ptr u:n line:n kind:n :}
    kind LOAD-REFS:LAUNCHES <> {: import:bool :}
+   a u 0 INDEX-OF MATCH option
+      some OF drop exit ENDOF
+      none OF ENDOF
+   ;MATCH
    a u FS:FILE? 0= if exit then
    a u SOURCE-ROOT:CANONICAL drop {: path:ptr pathu:n :}
    import 0= path pathu s" .f" ENDS-WITH? 0= and if exit then
