@@ -214,7 +214,7 @@ public
 \ without that producer cannot claim a kernel-owned division implementation.
 : KERNEL-OWNER ( -- )
    0 KERNEL-BEGIN !  0 KERNEL-END !
-   SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$
+   SOURCE-PRODUCER:KERNEL$
       {: digest:ptr size:n known:bool :}
    known 0= if exit then
    size 32 <> if E-STATE throw then
