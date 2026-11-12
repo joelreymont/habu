@@ -34,16 +34,13 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    true len 0 ?do p i + c@ 0<> if drop false then loop ;
 
 
-\ An action: appends the id byte its allocation holds to ORDER.
 : NOTE ( ptr u8 -- ) c@ ORDER @ 10 * + ORDER ! ;
 
-\ An 8-byte allocation holding `id`, with NOTE as its action.
 : TAGGED ( ptr ARENA:arena n -- )
    {: a:ptr id:n :}
    a 8 [: NOTE ;] ARENA:ALLOC-DISPOSE drop id swap c! ;
 
 
-\ Answers `jumps` plus one when the next 1000 bytes do not follow `prev`'s.
 : NEXT-ALLOC ( ptr ARENA:arena n ptr u8 -- n ptr u8 )
    {: a:ptr jumps:n prev:ptr :}
    a 1000 ARENA:ALLOC {: q:ptr qn:n :}
@@ -241,8 +238,8 @@ public
 
 
 \ 10. RESET unmaps a later chunk and RELEASE the first: a subject child that
-\ touches the allocation afterwards dies of SIGSEGV (src/habu/crash.f
-\ C-CRASH-RERAISE). SUBJECT:RUN's child evaluates each by its public name.
+\ touches the allocation afterwards dies of SIGSEGV. SUBJECT:RUN's child
+\ evaluates each by its public name.
 : RESET-TOUCH ( -- )
    ARENA:NEW {: a:ptr :}
    a 40000 ARENA:ALLOC drop {: p:ptr :}
@@ -279,14 +276,12 @@ CAP BUFFER: CAP-ERR
 
 
 \ 11. A RESET halted inside an action leaves that action out of the RELEASE
-\ after it: the halt unwinds past every catch (src/lib/task.f HALT-UNWIND).
+\ after it: the halt unwinds past every catch.
 variable HALT-READY
 variable HALT-SEEN                 \ the halting action has run once
 TYPED-VARIABLE HALT-ARENA ptr ARENA:arena
 TASK:MIN-STACK TASK:TASK HALT-TASK
 
-\ An action: notes its id; on its first run raises HALT-READY and pauses until
-\ halted.
 : HALT-NOTE ( ptr u8 -- )
    NOTE
    HALT-SEEN @ 0<> if exit then

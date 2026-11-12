@@ -47,7 +47,6 @@ variable EVAL-U
 \ multi-error load state.
 : MULTI ( ptr u8 n -- n n ) MULTI-ERR-BEGIN EVAL MULTI-ERR-END ;
 
-\ Whether NAME+SFX is absent from the current wordlist.
 : ABSENT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n sfx:ptr sfxu:n :}
    SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
@@ -152,7 +151,6 @@ variable OVF-U
    s" P1" get-current search-wl 0= TTRUE ;
 
 
-\ The handle fetched back is the one stored, and still makes records.
 : HANDLES ( -- )
    s" a HEAP element holds an arena handle" T-LABEL
    ARENA:NEW {: a:ptr :}
@@ -242,15 +240,12 @@ private
    s" QUAL" NO-WORDS  s" QUAL" PUB-NO-WORDS ;
 
 
-\ The pre-pass registers each declaration's words with their effects and
-\ sections: calls as declared are admitted, calls with the wrong effect refused.
 : VERIFY-USES-SRC$ ( -- ptr u8 n )
    S\" require src/lib/arena.f\npackage Q public\nSTRUCTURE rec DERIVE addr FIELD id n ;STRUCTURE\nARENA X rec\n: INSIDE ( ptr ARENA:arena -- ptr rec ) [: drop ;] X-NEW-DISPOSE ;\nprivate\n: OWNCAST ( ptr u8 -- ptr rec ) X-NEW-PTR ;\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr Q:rec ) dup Q:X-NEW drop [: drop ;] Q:X-NEW-DISPOSE ;\n;package\npackage P\nprivate\nARENA X n\n: OWNCAST ( ptr u8 -- ptr n ) X-NEW-PTR ;\npublic\n: MK ( ptr ARENA:arena -- ptr n ) X-NEW ;\n;package\n" ;
 
 : VERIFY-WRONG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/arena.f\npackage Q public\nARENA X n\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr u8 ) Q:X-NEW ;\n: V ( ptr ARENA:arena -- ptr n ) [: c@ drop ;] Q:X-NEW-DISPOSE ;\n;package\n" ;
 
-\ tools/check.f --verify-only checks a file without running it, in a child.
 : VERIFY-FILE ( ptr u8 n -- )
    {: rel:ptr relu:n :}
    s" tools/check.f" E2E-TREE:ARGS

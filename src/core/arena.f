@@ -17,7 +17,6 @@ package ARENA-DECL
 
 private
 
-\ Appends `NAME<suffix>`.
 : NAMED, ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n sfx:ptr sfxu:n :}
    name nameu LBUF-APP  sfx sfxu LBUF-APP ;
@@ -56,8 +55,6 @@ private
    CHECKER-PACKAGE-PUBLIC = if CHECKER-PACKAGE-PRIVATE else CHECKER-PACKAGE-PUBLIC then ;
 
 
-\ Runs Q in the section a declaration in MODE is not in, and returns to MODE's
-\ section on a throw too.
 : IN-OTHER ( R [ R -- R ] n -- R )
    {: q mode:n :}
    mode OTHER SECTION
@@ -66,7 +63,6 @@ private
    rc 0 <> if rc throw then ;
 
 
-\ Evaluates the casts in the private section.
 : CASTS-EVAL ( ptr u8 n n -- )
    {: src:ptr srcu:n mode:n :}
    mode CHECKER-PACKAGE-PUBLIC <> if src srcu EVAL exit then
