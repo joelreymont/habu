@@ -14,8 +14,7 @@ untyped and implicitly trusted, and integration tests cover it; there is no
 census and no certification. The checker is part of the kernel, and the kernel
 ends where the checker is switched on. A kernel word that checked code calls
 carries a trusted type declared at its definition. Every other kernel word has
-no type, is private to the system package and is stripped from the delivered
-`hb`.
+no type and is private to the system package.
 
 **One primitive table.** Each primitive is one row that names it and states its
 effect. Each platform supplies one body per row, native code per instruction
@@ -86,19 +85,17 @@ the MMU enforces its bounds and compiled code carries no bounds check.
 ## Packages and privacy
 
 **Privacy is the only restriction.** A word not everyone may call is private to
-its package. System words are private words of the system package, and the
-build strips private words from the delivered `hb`. There are no owner rows,
-caller checks or marks on records.
+its package. System words are private words of the system package. There are
+no owner rows, caller checks or marks on records.
 
 **A sealed package cannot be reopened.** `package NAME` on a sealed package is
 refused. A build seals every package its engine files made before it reads
 program source.
 
-**Stripping drops headers; reachability decides code.** The linker writes a
-sealed package's private wordlist empty, so no later source can name its
-words. A word's code and body stay in the image only while a kept word reaches
-them through a row or a reference cell. An application image keeps no header
-at all.
+**Stripping drops headers; reachability decides code.** `hb` keeps every
+package's private headers, which its own builds read; an application image
+keeps no header at all. A word's code and body stay in the image only while a
+kept word reaches them through a row or a reference cell.
 
 ## Interpreter
 
