@@ -302,7 +302,9 @@ $3A constant COLON-B
    s" refusing binary reference" na nu NO-ARM ;
 
 \ A store/fetch pair round-trips the case value over the file's own fixtures and
-\ covers both rows.
+\ covers both rows. `PTR>N` reads no memory: the value is a byte offset into
+\ FIX-CELLS, answered back as the number less FIX-CELLS's own distance from
+\ NULL-PTR.
 : MEM-PRIM ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
    na nu s" !" STR= IF
       v FIX-CELLS ! FIX-CELLS @ EXIT THEN
@@ -312,6 +314,7 @@ $3A constant COLON-B
    na nu s" count"     STR= IF v FIX-BYTES c! FIX-BYTES count nip EXIT THEN
    na nu s" byte-view" STR= IF v FIX-CELLS ! FIX-CELLS byte-view c@ EXIT THEN
    na nu s" cell-view" STR= IF v FIX-BYTES cell-view ! FIX-BYTES cell-view @ EXIT THEN
+   na nu s" PTR>N"     STR= IF FIX-CELLS v + PTR>N  FIX-CELLS NULL-PTR - - EXIT THEN
    s" memory" na nu NO-ARM ;
 
 : MEM-REF ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}

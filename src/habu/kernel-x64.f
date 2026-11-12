@@ -6168,7 +6168,8 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    s" 2over" [: RAX 3 PEEK,  RCX 2 PEEK,  RAX PUSH,  RCX PUSH, ;] PRIM
    s" ?dup" [: QDUP-BODY ;] PRIM ;
 
-\ The views and chars change only the checked type: their bodies are the ret.
+\ The views, PTR>N and chars change only the checked type: their bodies are the
+\ ret.
 : MEMORY-ROWS, ( -- )
    s" @" [: RAX 0 PEEK,  RAX RAX MEM-AT ASM-SINK ENC-MOV-RM  RAX TOP!, ;] PRIM
    s" !" [: STORE-BODY ;] PRIM
@@ -6176,6 +6177,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
       PAIR,  RAX RAX RCX CELL 0 MEM-IDX ASM-SINK ENC-LEA  RAX TOP!, ;] PRIM
    s" byte-view" [: ;] PRIM
    s" cell-view" [: ;] PRIM
+   s" PTR>N" [: ;] PRIM
    s" +!" [: ADDSTORE-BODY ;] PRIM
    s" c@" [: RAX 0 PEEK,  RAX RAX CFETCH,  RAX TOP!, ;] PRIM
    s" c!" [: CSTORE-BODY ;] PRIM

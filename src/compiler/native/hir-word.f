@@ -1213,9 +1213,9 @@ public
 
 \ ---- the subset's vocabulary -------------------------------------------------
 \ The exact ceilings this registration writes, so a caller commits a table to
-\ them rather than to a guess. Only the fourteen renames contribute pick cells.
-99 constant WORDS
-33 constant PICK-CELLS
+\ them rather than to a guess. Only the renames contribute pick cells.
+100 constant WORDS
+34 constant PICK-CELLS
 
 private
 
@@ -1463,8 +1463,9 @@ private
    0 ADD-PICK
    c b p r c b s" tuck" MODEL-SYM BDECLARE-RENAME ;
 
-\ The memory views ( ptr a -- ptr b ) put the same value back: a view changes
-\ only the pointee the checker sees, and stages no operation.
+\ The memory views ( ptr a -- ptr b ) and PTR>N ( ptr a -- n ) put the same
+\ value back: each changes only the type the checker sees, and stages no
+\ operation.
 : DEF-CELL-VIEW ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
@@ -1478,6 +1479,13 @@ private
    0 ADD-PICK
    HOST-VIEW STG-HOST !
    c b p r c b s" byte-view" MODEL-SYM BDECLARE-RENAME ;
+
+: DEF-PTR>N ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   1 BEGIN-RENAME
+   0 ADD-PICK
+   HOST-VIEW STG-HOST !
+   c b p r c b s" PTR>N" MODEL-SYM BDECLARE-RENAME ;
 
 \ ---- the return-stack words --------------------------------------------------
 \ `2>r` keeps the lower cell lower on the return stack; elaborate.f keeps that
@@ -1521,6 +1529,7 @@ private
    c b p r DEF-TUCK
    c b p r DEF-CELL-VIEW
    c b p r DEF-BYTE-VIEW
+   c b p r DEF-PTR>N
    c b p r DEF-2DROP
    c b p r DEF-2SWAP
    c b p r DEF-2OVER

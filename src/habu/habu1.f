@@ -1929,7 +1929,8 @@ private
 
 : BCHARS ( -- ) ;
 
-\ Memory views change only the checked pointee; the machine address is unchanged.
+\ Memory views and PTR>N change only the checked type; the machine address is
+\ unchanged.
 : BADDRESSVIEW ( -- ) ;
 
 : BCHARPLUS ( -- )
@@ -4810,6 +4811,7 @@ package ENGINE-EMIT
    s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM   s" ptr-field" ['] BPTRFIELD FPRIM-L
    s" byte-view" ['] BADDRESSVIEW FPRIM-L
    s" cell-view" ['] BADDRESSVIEW FPRIM-L
+   s" PTR>N" ['] BADDRESSVIEW FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM
    s" atomic@" ['] BATFETCH FPRIM-L  s" atomic!" ['] BATSTORE FPRIM

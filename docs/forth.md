@@ -1357,7 +1357,9 @@ New records use `STRUCTURE`.
 `ptr τ` records the element addressed. Arithmetic is pointee-polymorphic: `+`,
 `-`, `1+`, `1-`, `cell+` and `char+` step a `ptr τ` by an integer and keep `τ`;
 `n + ptr a` is `ptr a`; `ptr a - ptr a` is the distance `n`. Adding two
-pointers or scaling one is refused.
+pointers or scaling one is refused. `PTR>N ( ptr a -- n )` gives a pointer's
+address as `n`, for a distance or a hash; no word turns `n` back into a pointer
+outside a package's private `CAST:`.
 
 A **byte view** re-reads a pointer as bytes: `: NAME ( ptr a -- ptr u8 ) ;`
 certifies, because the input pointee stays generalized. A `ptr u8` uses

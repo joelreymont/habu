@@ -384,3 +384,8 @@
        $1234                           $1234  MEM
           -1                              -1  MEM
 ;CASES
+
+0 CASES PTR>N                          \ (ptr a -- n), the value a byte offset into the fixture
+           0                               0  MEM
+          24                              24  MEM
+;CASES
