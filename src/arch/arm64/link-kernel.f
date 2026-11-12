@@ -1,8 +1,8 @@
 \ link-kernel.f - the arm64 kernel a build's link adopts from the kernel object
-\ a kernel build writes (src/arch/arm64/kernel-object.f lays it and states its
-\ format), the map from the running hb's kernel primitive entries to the
-\ object's, and the cut that keeps only the kernel code a program reaches. The
-\ two kernels bake different inputs, so the map goes by name and wordlist.
+\ a kernel build writes, the map from the running hb's kernel primitive entries
+\ to the object's, and the cut that keeps only the kernel code a program
+\ reaches. The two kernels bake different inputs, so the map goes
+\ by name and wordlist.
 require src/lib/le.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -17,7 +17,7 @@ require src/habu/code-bytes.f
 package LINKER
 private
 
-\ The linker's error lines go whole to the error output, as error.f's do.
+\ The linker's error lines go whole to the error output.
 : SAY ( ptr u8 n -- ) ERROR-TEXT:TYPE ;
 
 : SAY-INT ( n -- )
@@ -35,11 +35,10 @@ DYNAMIC-BUFFER ROWS n
 variable N-HOSTS
 
 
-\ ---- the kernel object -----------------------------------------------------------
 \ READ checks the whole object and every section's extent once, so the readers
 \ after it index it unchecked.
 
-DYNAMIC-BUFFER KOBJ u8               \ the object READ read
+DYNAMIC-BUFFER KOBJ u8
 variable KOBJ-U                      \ its length, 0 before READ
 variable AT                          \ READ's offset in it
 variable CODE-AT
@@ -68,14 +67,12 @@ PATH-CAP BUFFER: PATH                \ READ's path, for its error lines
 variable PATH-U
 
 
-\ The first error line names READ's object.
 : SAY-OBJECT ( -- ) s" link: kernel object " SAY  PATH PATH-U @ SAY  SAY-CR ;
 
 : BAD ( -- )
    SAY-OBJECT
    s" link: the kernel object is cut short or malformed" 74 die ;
 
-\ One of the object's layout values that is not hb's dies, naming both.
 : SAME ( n n ptr u8 n -- )
    {: mine:n theirs:n a:ptr u:n :}
    mine theirs = if exit then
@@ -90,7 +87,6 @@ variable PATH-U
    AT @ 8 + KOBJ-U @ > if BAD then
    AT @ KOBJ@  8 AT +! ;
 
-\ Past u bytes padded to a multiple of 8.
 : SKIP ( n -- )
    {: u:n :}
    u 0<  u KOBJ-U @ > or if BAD then
@@ -135,7 +131,6 @@ variable PATH-U
       SAY-OBJECT
       s" link: the kernel object has no checker rows: its tree is older than this hb" 74 die
    then
-   \ The last section, the primitives' checker rows.
    NEXT {: rowsu:n :}
    AT @ CHECK-ROWS-AT !  rowsu CHECK-ROWS-U !  rowsu SKIP
    AT @ KOBJ-U @ <> if BAD then ;
@@ -158,8 +153,8 @@ variable PATH-U
    u SKIP
    0 KOBJ at +  u ;
 
-\ One row as kernel-object.f CHECK-ROW+ lays it, stated by kind (PRIM-SPEC:K-*): a package's
-\ private row on its package's private symbol, kept for the record linker.f OWNED+ lays of it.
+\ One row, stated by kind: a package's private row on its package's private
+\ symbol, kept for the record linker.f OWNED+ lays of it.
 : STATE-ROW ( -- )
    NEXT NEXT NEXT NEXT {: kind:n trusted:n fixed:n stow:n :}
    AT @ 8 + {: name-at:n :}
@@ -193,7 +188,6 @@ public
 \ True once READ read an object.
 : READ? ( -- bool ) KOBJ-U @ 0<> ;
 
-\ A symbol's value; one the object lacks dies, naming it.
 : SYM ( ptr u8 n -- n )
    {: a:ptr u:n :}
    SYMS-AT @
@@ -247,7 +241,7 @@ public
    at 8 + KOBJ@  at KOBJ@ ;
 
 \ The kernel object at the path, which the links that follow adopt; one whose
-\ DATA-START is not hb's dies (docs/bootstrap.md "Staged hosts").
+\ DATA-START is not hb's dies.
 : READ ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 KOBJ-U !
@@ -276,7 +270,6 @@ public
    AT @ end <> if BAD then
    CHECK:PRIMS-END ;
 
-\ The running hb's kernel is [rbase, CODE-END-CELL).
 : HOST-KERNEL? ( n -- bool )
    {: a:n :}
    a rbase >= a data-base CODE-END-CELL + @ < and ;
@@ -313,8 +306,7 @@ private
    -1 ;
 
 
-\ The running hb's primitive table (habu1.f EMIT-DICT), which PRIM-TABLE-CELL
-\ places as an offset from rbase; its row count is the cell before it.
+\ The running hb's primitive table; its row count is the cell before it.
 : HOST-TABLE ( -- n )
    data-base PRIM-TABLE-CELL + @ {: off:n :}
    off 0= if s" link: this hb has no primitive table" 74 die then
@@ -437,8 +429,7 @@ variable N-KEPT
 : WORD@ ( n -- n ) A64ICODE:CW@ LE:U32@ ;
 
 
-\ ret, brk, or b or br whatever its field holds: control never passes on. The
-\ field masks are derived as A64ICODE's FX-CLEAR derives its own.
+\ ret, brk, or b or br whatever its field holds: control never passes on.
 : TERMINAL? ( n -- bool )
    {: w:n :}
    w A64ASM:ENC-RET =
@@ -473,8 +464,8 @@ variable N-KEPT
    b REGION-END < if b 1 - WORD@ TERMINAL? 0= if b REACH then then ;
 
 
-\ The start-up's references, the records sited below K0, root the walk; boot.f
-\ names no root. START, ends in an exit syscall, so nothing falls into node 0.
+\ The start-up's references, the records sited below K0, root the walk; START,
+\ ends in an exit syscall, so nothing falls into node 0.
 : ROOT-STARTUP ( -- )
    K0 @ FIRST-REF 0 ?do i A64ICODE:REF-LABEL LABEL-POS REACH loop ;
 
@@ -494,7 +485,6 @@ variable N-KEPT
    repeat ;
 
 
-\ Appends node n's words to KEPT, extending the last pair when they adjoin.
 : KEEP-NODE ( n -- )
    {: node:n :}
    node STARTS @ {: a:n :}
