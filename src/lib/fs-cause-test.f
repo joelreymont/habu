@@ -126,7 +126,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENOENT T=
    [: REGULAR-LIST ;] E-FS-LIST-READ TTHROWSQ
    \ getdirentries64 rejects a regular fd with EINVAL on Darwin; Linux's
-   \ getdents64 reports ENOTDIR. Preserve the errno the host actually returned.
+   \ getdents64 reports ENOTDIR.
    HB-TARGET-MACOS? if
       FS:ERRNO DARWIN-EINVAL T=
    else

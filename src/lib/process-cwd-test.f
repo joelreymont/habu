@@ -157,8 +157,6 @@ variable PCT-I
    PCT-LONG!
    PCT-LONG PCT-LONG-U >LEN PROC-CWD:CWDZ drop ;
 
-\ Direct both-arm coverage for RUN-ARGV-ENV-CWD-CAPTURE: true -> ok(captured),
-\ false -> err(failed) carrying lengths + the completion code (cwd = ".").
 : PCT-RUN-ARGV-ENV-CWD-CAPTURE-RESULT ( -- )
    PCT-RESET
    s" /usr/bin/true" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE

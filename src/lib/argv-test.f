@@ -4,10 +4,10 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/argv.f
-require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
+require src/lib/fmt.f
 
 \ White-box test: reopen the module's package so the fixtures call the public
-\ API by its bare package-local tails (PARSE, OUT$, E-USAGE, ...).
+\ API by its bare package-local tails.
 package ARGV
 
 variable TEST-N

@@ -98,9 +98,6 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    SOURCE-CONTENT
    SOURCE FS:REMOVE-FILE ;
 
-\ Each task joins the rendezvous and waits for the other. A peer that never
-\ arrives ends the wait with E-PROC-TIMEOUT: the task's JOIN records it and main
-\ names it in WINNER?.
 : RACE-WAIT ( -- )
    mono-ns RACE-WAIT-NS + {: deadline :}
    1 RACE-READY atomic-add drop
@@ -120,7 +117,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    if 1 else 0 then TASK:RETURN ;
 
 \ A worker's E-PROC-TIMEOUT is RACE-WAIT's deadline, the row's own: main names
-\ it here, after both joins. Every other code is rethrown as it came.
+\ it here, after both joins.
 : WINNER? ( result<n,n> -- bool )
    MATCH result
       ok OF 0<> ENDOF

@@ -88,7 +88,7 @@ variable PATH-B-U
    la lu want wu T$=
    got next T= ;
 
-\ No line starts at pos: the splitter answers an empty span and pos.
+\ No line starts at pos.
 : SPLIT-END ( ptr u8 n n -- )
    {: a:ptr u:n pos:n :}
    a u pos JSONL:SPLIT-LINE TFALSE {: la:ptr lu:n got:n :}
