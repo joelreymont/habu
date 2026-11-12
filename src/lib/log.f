@@ -15,7 +15,7 @@
 \ and released once a line grows it past START-CAP; ARMED, set once this run
 \ has run REGISTER; PHASE, whether a line is closed, open or lost. A line
 \ logged from a TASK:AT-EXIT cleanup releases its row too: the release LINE
-\ registers then runs in the same ending (src/lib/task.f TASK-RUN-EXIT).
+\ registers then runs in the same ending.
 \ PROCESS-WIDE: LOCK, held for each line's write, which keeps this process's
 \ lines whole (another process writing the same fd can still split a line
 \ longer than PIPE_BUF); NOTICE, written under it; and TAIL, whether fd 2's
@@ -102,7 +102,6 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    1 ARMED ! ;
 
 
-\ A refused mapping loses the open line; any other code goes on.
 : MAP-REFUSED ( n -- )
    {: code:n :}
    code 0= if exit then
@@ -210,7 +209,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 \ A line is lost when fd 2's SIGPIPE hold is refused; a write fd 2 refuses is
 \ answered by TAIL's machine (WROTE, MEND). The flag is held only for the
 \ write: other processes share fd 2's file description and its flag, and a hold
-\ of theirs that overlaps this one can undo it (FD:WITH-NOSIGPIPE).
+\ of theirs that overlaps this one can undo it.
 : OUT ( [ -- ] -- )
    catch {: code:n :}
    code 0= code E-PROC-OUTPUT = or if exit then
@@ -229,7 +228,6 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    [: ROW-OUT ;] WRITE ;
 
 
-\ A task that logged one huge line keeps none of its storage.
 : SHED ( -- )
    ROW BUF:LIVE? 0= if exit then
    ROW BUF:CAP@ BUF:BLEN>N START-CAP <= if exit then
@@ -249,7 +247,7 @@ public
 : INT+ ( n -- )  FMT:INT$ TEXT+ ;
 
 
-\ A code and the name and text ERROR:CODE declared for it:
+\ A code and the name and text declared for it:
 \ `-9701 MODEL:E-KEY: the provider refused the key`, the number alone when none.
 : CODE+ ( n -- ) {: code:n :}
    code INT+
@@ -258,8 +256,6 @@ public
    s"  " TEXT+ name nameu TEXT+ s" : " TEXT+ code ERROR:TEXT$ TEXT+ ;
 
 
-\ A line a throw abandoned between LINE and ;LINE is never written; the next
-\ LINE clears it, and the task's release frees its row.
 : LINE ( level ptr u8 n -- )
    {: level:level tag:ptr tagu:n :}
    CLOSED PHASE !
