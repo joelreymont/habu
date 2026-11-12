@@ -372,14 +372,12 @@ align
    s hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
    s m0 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
-   STUB-ARM
    s ready NPUB:NEXT-SLOT NBACK:EMIT
    STUB-TAKE
    NSHADOW:NATIVE? if SHADOW-TAKE then
    PUBLISH-IT ;
 
 : HOST-CLEAN ( -- )
-   NCBSTUB:CLEAR
    SS NBACK:RELEASE
    SS NBACK:RETIRE ;
 
@@ -397,6 +395,7 @@ align
 
 : EMITTED ( -- )
    SS [: FROZEN ;] NSESSION:WITH-WORK {: hm:IR-BUILD:module :}
+   STUB-ARM
    hm SHADOWED
    hm SS [: HOST-WORK ;] NSESSION:WITH-WORK ;
 
@@ -522,8 +521,9 @@ $20 constant NAME-END
    before M-PUBLISHED-START ! ;
 
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
-\ gives its arenas back. A shadow emission no publication claimed goes too.
+\ gives its arenas back; an unclaimed shadow copy and an armed stub go too.
 : RETIRE-BODY ( -- )
+   NCBSTUB:CLEAR
    NSHADOW:ABANDON
    NFETCH:RELEASE
    NHOST:SOURCE-ABANDON ;

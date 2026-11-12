@@ -14,7 +14,6 @@ require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/target/native-binding.f
 require src/compiler/native/emission.f
-require src/compiler/native/callback-stub.f
 require src/compiler/session/lease.f
 
 package NSHADOW
@@ -93,8 +92,6 @@ DYNAMIC-BUFFER PATCHED n
 ENUM pending none plain does ;ENUM
 TYPED-VARIABLE PENDING pending
 variable PEND-ENTRY
-\ It was taken while NCBSTUB was armed, so it holds the callback stub.
-TYPED-VARIABLE PEND-STUB bool
 
 public
 
@@ -265,7 +262,6 @@ $E9 constant TAIL-OP
    TARGET-CK
    UNPLACE? {: unplace:bool :}
    construct pending none PENDING !
-   NCBSTUB:ARMED? PEND-STUB !
    COPY-BYTES
    unplace if
       NATIVE-CALLS
@@ -433,19 +429,12 @@ public
    REC-RESERVE
    construct pending plain PENDING ! ;
 
-\ Pair the host emission's function entries with the pending shadow's entries
-\ before the host publisher commits either code or dictionary record. Both
-\ selectors retain the same frozen HIR function sequence, even when their
-\ instruction and block layouts differ. The host emission is the one NEMIT
-\ holds sealed, placed at `at`; while NCBSTUB is armed its last function is the
-\ callback stub, which a copy taken while NCBSTUB was armed also holds. TAKE
-\ reserved the rows; this grows nothing, and a failed publication discards the
-\ pending pair with ABANDON.
+\ Pairs the pending copy's functions with the host emission's, placed at `at`,
+\ before publication commits: both walks emit the same functions, a stub last.
 : SOURCE-FUNS ( n -- ) {: at:n :}
    PENDING? 0= if exit then
    N-EMS @ {: e:n :}
    NEMIT:FUNCTIONS
-   NCBSTUB:ARMED? PEND-STUB @ 0= and if 1- then
    e EM-FUNS @ <> if E-NSHADOW-ROW throw then
    e EM-FUNS @ 0 ?do
       at i NEMIT:FUNCTION-OFFSET@ +  e EM-FUN0 @ i + FUN-SOURCE !

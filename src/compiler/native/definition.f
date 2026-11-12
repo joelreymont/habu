@@ -104,8 +104,8 @@ public
 : CALLBACK-STUB@ ( -- n )
    M-CB-ENTRY @ dup 0= if E-COMP-STATE throw then ;
 
-\ A compiler arms NCBSTUB before it seals the accessor's emission, takes the
-\ stub's placed entry after, and ends the pending stub when the compile ends.
+\ A compiler arms NCBSTUB before the accessor's first walk, so each emission
+\ carries the stub; STUB-TAKE reads the host's placed entry.
 : STUB-ARM ( -- )
    STUB-PENDING? if M-CB-SLOT @ M-CB-THUNK @ NCBSTUB:SET then ;
 

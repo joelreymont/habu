@@ -2067,7 +2067,6 @@ variable SCAN-LO                     \ the ordinal of its first row
 : HOSTED ( [ -- ] -- )
    HOST-ARCH EMIT-SELECT
    execute
-   STUB-ARM
    NSHADOW:NATIVE? if EMIT-SEAL-UNPLACED SHADOW-TAKE NEMIT:CLEAR then
    NPUB:NEXT-SLOT EMIT-PLACE EMIT-SEAL
    STUB-TAKE
@@ -2077,6 +2076,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    KEEP-ARITY
+   STUB-ARM
    [: WALK ;] SHADOWED
    [: WALK
       NQ @ [: drop -1 -1 ;] HOST-ARITIES
@@ -2124,6 +2124,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    ;MATCH ;
 
 : FIXED-LOWER ( -- )
+   STUB-ARM
    [: FIXED-BODY ;] SHADOWED
    [: FIXED-BODY ;] HOSTED ;
 
