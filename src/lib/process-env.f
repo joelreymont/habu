@@ -13,6 +13,8 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-roles.f
 require src/lib/memory.f
+require src/lib/span.f
+require src/lib/ffi-abi.f
 require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -220,10 +222,10 @@ public
    nameu valu PROC-ENV-ROW-NEED {: need:n :}
    name nameu PROC-ENV-CHECK-NAME
    need bytes execute {: dst:ptr :}
+   val valu LEN>N dst nameu LEN>N + 1 +
+   valu LEN>N FFI:CSTR-ROOM SPAN:MAKE FFI:CSTR drop
    name dst nameu LEN>N BYTE-COPY
    PROC-ENV-EQUAL dst nameu LEN>N + c!
-   val dst nameu LEN>N + 1 + valu LEN>N BYTE-COPY
-   0 dst nameu LEN>N + 1 + valu LEN>N + c!
    dst ;
 
 : PROC-ENV-ROW-Z ( ptr u8 len ptr u8 len -- ptr u8 )

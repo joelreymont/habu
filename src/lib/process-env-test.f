@@ -578,6 +578,17 @@ public
    PROC-ENV-N @ COUNT>N 0 T=
    PROC-ENV-DEF-N @ COUNT>N 0 T= ;
 
+: PET-NUL-ENV-VALUE ( -- )
+   PET-RESET s" AB" >LEN s\" a\zb" >LEN PROC-ENV+ ;
+
+: PET-NUL-ENV-ENTRY ( -- )
+   PET-RESET s\" AB=a\zb" >LEN PROC-ENV-ENTRY+ ;
+
+: PET-NUL-ENV-THROWS ( -- )
+   [: PET-NUL-ENV-VALUE ;] E-FFI-NUL TTHROWSQ PET-NONE-STAGED
+   [: PET-NUL-ENV-ENTRY ;] E-FFI-NUL TTHROWSQ PET-NONE-STAGED
+   PET-RESET ;
+
 : PET-ENV-BOUND-BEFORE-SCAN ( -- )
    s" an entry's length is checked before it is read" T-LABEL
    [: MEM-MAX-N PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
@@ -714,6 +725,7 @@ public
    s" bad-env-name" [: PET-BAD-ENV-NAME-THROWS ;] PET-CASE
    s" bad-env-entry" [: PET-BAD-ENV-ENTRY-THROWS ;] PET-CASE
    s" bad-env-empty" [: PET-BAD-ENV-EMPTY-THROWS ;] PET-CASE
+   s" nul-env" [: PET-NUL-ENV-THROWS ;] PET-CASE
    s" env-bound-before-scan" [: PET-ENV-BOUND-BEFORE-SCAN ;] PET-CASE
    s" path-find-hb" [: PET-PATH-FIND-HB ;] PET-CASE
    s" path-direct-hb" [: PET-PATH-DIRECT-HB ;] PET-CASE

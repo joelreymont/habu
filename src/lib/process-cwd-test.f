@@ -157,6 +157,11 @@ variable PCT-I
    PCT-LONG!
    PCT-LONG PCT-LONG-U >LEN PROC-CWD:CWDZ drop ;
 
+: PCT-NUL-CWD ( -- )
+   PCT-RESET
+   s" /usr/bin/true" s\" /tmp\zx" PCT-OUT PCT-CAP PCT-ERR PCT-CAP 1000
+   PCT-CAPTURE drop drop drop ;
+
 : PCT-RUN-ARGV-ENV-CWD-CAPTURE-RESULT ( -- )
    PCT-RESET
    s" /usr/bin/true" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
@@ -202,6 +207,7 @@ variable PCT-I
    PCT-RUN-MISSING-CWD
    [: PCT-CWD-TOO-LONG ;] E-PROC-OUTPUT TTHROWSQ
    PCT-REFUSED-RESETS
+   [: PCT-NUL-CWD ;] E-FFI-NUL TTHROWSQ
    T-REPORT
    s" process-cwd-test: ok" type cr ;
 

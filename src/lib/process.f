@@ -11,6 +11,8 @@ s" src/lib/adt/result.f" required            \ result<n,n> for RUN-IO-RC
 s" src/lib/task.f" required                  \ TASK:+USER carries the per-call row
 s" src/lib/fd-lock.f" required               \ FD-LOCK:WITH orders descriptor creation against spawns
 s" src/lib/fd.f" required                    \ FD:PIPE, the capture pipes
+s" src/lib/span.f" required
+s" src/lib/ffi-abi.f" required
 s" src/lib/spawn.f" required                 \ PROCESS:request and PROCESS:SPAWN, the spawn every RAW word makes
 s" src/lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a capture child's tree
 
@@ -203,12 +205,7 @@ public
 : ZCOPY ( ptr u8 len ptr u8 len -- ptr u8 ) {: a:ptr u dst:ptr cap :}
    u LEN>N 0 < if E-PROC-OUTPUT throw then
    u LEN>N cap LEN>N >= if E-PROC-OUTPUT throw then
-   0 begin dup u LEN>N < while
-      dup a + c@  over dst + c!
-      1 +
-   repeat drop
-   0 dst u LEN>N + c!
-   dst ;
+   a u LEN>N dst cap LEN>N SPAN:MAKE FFI:CSTR ;
 
 : PATHZ ( ptr u8 len -- ptr u8 )
    PATHZ-BUF PATHZ-CAP >LEN ZCOPY ;

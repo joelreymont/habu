@@ -10,8 +10,6 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
-require src/lib/process-cwd.f
 require src/lib/signal.f
 require src/lib/task.f
 require src/lib/test/ending.f
@@ -750,30 +748,19 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    killed 0 T=
    PT-UNMARKED-SCRIPT s" " s" " oc PROCESS:SIGKILL T-ENDING-SIGNALED= ;
 
-1 BUFFER: PT-NUL-CWD
+\ Stands in for a spawn whose request is refused.
+: PT-REFUSED-SPAWN ( -- pid )
+   E-PROC-PATH throw ;
 
-\ A cwd whose first byte is NUL passes the cwd bound, but the request reads it
-\ as empty and refuses it inside the spawn's catch: E-PROC-PATH.
-: PT-NUL-CWD-CAPTURE ( -- )
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   s" stale" >LEN PROC-ARGV+
-   s" /bin/echo" >LEN PT-NUL-CWD 1 >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN
-   PT-CMD-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-   PT-CAPTURE>N drop drop drop ;
+: PT-THROWING-CAPTURE ( -- )
+   PT-CMD-TIMEOUT-MS >MS PROCESS:CAPTURE-BEGIN
+   [: PT-REFUSED-SPAWN ;] PROCESS:CAPTURE-ADOPT-SPAWN ;
 
-\ The next capture stages its argument with no reset: the refused spawn reset
-\ the staging.
 : TEST-CAPTURE-SPAWN-THROWS ( -- )
-   [: PT-NUL-CWD-CAPTURE ;] E-PROC-PATH TTHROWSQ
+   [: PT-THROWING-CAPTURE ;] E-PROC-PATH TTHROWSQ
    PROCESS:IN-R @ PROCESS:NO-FD T=  PROCESS:IN-W @ PROCESS:NO-FD T=
    PROCESS:OUT-R @ PROCESS:NO-FD T=  PROCESS:OUT-W @ PROCESS:NO-FD T=
-   PROCESS:ERR-R @ PROCESS:NO-FD T=  PROCESS:ERR-W @ PROCESS:NO-FD T=
-   s" fresh" >LEN PROC-ARGV+
-   s" /bin/echo" >LEN s" /" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN
-   PT-CMD-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-   PT-CAPTURE>N 0 T= 0 T= 6 T=
-   PT-OUT 6 S\" fresh\n" T$= ;
+   PROCESS:ERR-R @ PROCESS:NO-FD T=  PROCESS:ERR-W @ PROCESS:NO-FD T= ;
 
 \ test/process-term-child.f removes the marker only in its SIGTERM answer.
 10000 constant PT-TERM-GRACE-MS          \ src/lib/process.f END-GRACE-MS
