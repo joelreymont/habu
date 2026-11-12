@@ -29469,9 +29469,13 @@ public
    t b - {: at:n :}
    at 0 <  at data-base SRCLOC:OWNEDLEN-CELL + @ >= or IF 0 RES-FALSE EXIT THEN
    b t 1 1 0 DIAG-POS drop drop RES-TRUE ;
+private
+\ The token the engine read last (TKA-CELL, TKL-CELL).
+TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
+public
 \ A top step is placed by its line alone: the source map places only a
-\ definition's tokens.
-: TOP-SITE ( -- n bool ) TOK-SPELL-A @ LINE-AT ;
+\ definition's tokens. A top step's token is the one the engine read last.
+: TOP-SITE ( -- n bool ) LAST-TOKEN @ LINE-AT ;
 
 private
 \ FILE-POS's last answer: a byte offset into the owned bytes, its line, its column.

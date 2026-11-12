@@ -19,8 +19,6 @@ private
 BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
 INE-CELL RESERVED-PTR-U8-CELL INPUT-END
-\ The token the engine read last (TKA-CELL, TKL-CELL).
-TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
 
 \ Arms the checker's source map (checker.f DIAG-SOURCE!, DIAG-MAP!) for the
 \ check of text a u, from the rows the engine's capture records (layout.f
