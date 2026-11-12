@@ -1,22 +1,22 @@
 \ kernel-object.f - the tree's arm64 start-up and kernel, written as a kernel
-\ object a build's link adopts (src/arch/arm64/link-kernel.f READ, ADOPT).
-\ Only a kernel build compiles this file (tools/hb-build-core.f KERNEL-BUILD),
-\ so the kernel and the layout it reads come from the tree being built.
+\ object a build's link adopts.
+\ Only a kernel build compiles this file, so the kernel and the layout it reads
+\ come from the tree being built.
 \
 \ The object: the bytes HBKERNEL, the SHA-256 of every byte after it, then the
 \ sections in this order. Every number is a u64, low byte first; a name is its
 \ length, then its bytes padded with zeros to a multiple of 8.
 \   code        its length in bytes, then the bytes padded as a name's
 \   labels      n, then each label's word position, -1 while unbound
-\   references  n, then each one's site, label and kind (A64ICODE:REF-SITE ...)
+\   references  n, then each one's site, label and kind
 \   fixups      n, then each pending one's site, label and kind
 \   primitives  n, then each one's first label, last label, wordlist and name
 \   scope sites n, then the label of scope-kind?'s chain for each kind from 2
 \   symbols     n, then each one's name and value
 \   presets     n, then each header cell's offset and the value the link writes
-\   checker rows their length in bytes, then n, then each src/habu/prims.f row's
-\               kind, trusted-only, fixed-ABI, stow kind, name, package name,
-\               atom count and atoms
+\   checker rows their length in bytes, then n, then each row's kind,
+\               trusted-only, fixed-ABI, stow kind, name, package name, atom
+\               count and atoms
 
 require src/lib/le.f
 require src/lib/string.f
@@ -49,7 +49,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT OUT-U @ + LE:U64!
    8 OUT-U +! ;
 
-\ The bytes, then zeros to the next multiple of 8.
 : SPAN+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 7 + -8 and {: end:n :}
@@ -61,7 +60,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 : NAME+ ( ptr u8 n -- ) dup U64+ SPAN+ ;
 
 
-\ A section whose count is known once its entries are written.
 : SECTION ( -- ) OUT-U @ COUNT-AT !  0 COUNT-N !  0 U64+ ;
 : ENTRY ( -- ) 1 COUNT-N +! ;
 : ;SECTION ( -- ) COUNT-N @  0 OUT COUNT-AT @ + LE:U64! ;
@@ -73,7 +71,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 
 \ The start-up at code offset 0, then the kernel. The tail's labels stay unbound
-\ for the link to bind; an engine's scope-kind? reads the chains the link writes.
+\ for the link to bind.
 : EMIT ( bool -- )
    {: engine:bool :}
    ENGINE-EMIT:OPEN
@@ -101,7 +99,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
       i A64ICODE:REF-SITE U64+  i A64ICODE:REF-LABEL LABEL>N U64+  i A64ICODE:REF-KIND U64+
    loop ;
 
-\ Each label's pending chain, which its binding patches (icode.f FXH, FXN).
 : FIXUPS+ ( -- )
    SECTION
    A64ICODE:NLBL @ 0 ?do
@@ -114,7 +111,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    ;SECTION ;
 
 \ Refuses a pending chain on a label no emitter placed, which links as a branch
-\ or address to its own site; only the tail's labels wait for the link to bind.
+\ or address to its own site.
 : ?PLACED ( bool -- )
    if 8 else 4 then {: tails:n :}
    A64ICODE:NLBL @ 0 ?do
@@ -211,8 +208,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 \ A bound label's byte offset in the code; labels hold word positions.
 : CODE-OFFSET ( label -- n ) LABEL>N A64ICODE:LBLP @ 4 * ;
 
-\ Header cells' start values the link writes: every program's wordlists and
-\ image base, and an engine's compile state and PRIM-TABLE-CELL.
 : PRESETS+ ( bool -- )
    {: engine:bool :}
    SECTION
@@ -254,7 +249,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    OUT-U @ at - 8 -  0 OUT at + LE:U64! ;
 
 
-\ OUT's sum into its checksum field.
 : SUM ( -- )
    SHA-CTX  0 OUT 40 +  OUT-U @ 40 -  0 OUT 8 +  SHA256-IN ;
 
