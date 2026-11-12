@@ -8,9 +8,15 @@
 \ line costs linear time. git also leaves very frequent lines out of its
 \ search and DIFF does not, so on text with many repeated lines DIFF's edit
 \ can be shorter than git's and its output differ.
-\ STORAGE CLASS. CALLER-OWNED: every word appends to the caller's BUF header
-\ (src/lib/byte-buffer.f). A call's scratch is one MEM:WITH-BYTES scope,
-\ zeroed on entry and released whole when the call returns or throws.
+\ STORAGE CLASS. CALLER-OWNED: every word appends to the caller's BUF header. A
+\ call's scratch is one MEM:WITH-BYTES scope, zeroed on entry and released
+\ whole when the call returns or throws.
+\
+\ The middle snake. The rectangle is old lines x0.. (nn of them) against new
+\ lines y0.. (mm), positions in seq; x and y count from its corner. The
+\ forward pass walks from the start and the reverse pass from the end, each
+\ recording per diagonal k = x - y the furthest x it reached; where they meet
+\ lies a split on a shortest path.
 
 require src/lib/error.f
 require src/lib/memory.f
@@ -49,14 +55,14 @@ STRUCTURE script DERIVE addr
 \ call's texts, which lie back to back in text; a line's class is the first
 \ line with the same bytes, so equal lines have equal classes. out is the
 \ caller's BUF header; starts holds each line's offset in text, then the end
-\ of text; ids each line's class; map (src/lib/map.f, cap slots) finds a
-\ class by a line's bytes. For the script being run, seen holds per class the
-\ sides that have it, and seq the lines the search runs over, the old side's
-\ then the new side's. v1 and v2 hold the furthest x reached on each diagonal,
-\ forward and in reverse; x0, y0, nn and mm are the rectangle being bisected
-\ (its old and new start in seq and length); off is diagonal 0's index in v1
-\ and v2 and the round count; k1lo..k2hi are the diagonals each pass has run
-\ off the rectangle on; sx and sy are the split the bisection found.
+\ of text; ids each line's class; map (cap slots) finds a class by a line's
+\ bytes. For the script being run, seen holds per class the sides that have it,
+\ and seq the lines the search runs over, the old side's then the new side's. v1
+\ and v2 hold the furthest x reached on each diagonal, forward and in reverse;
+\ x0, y0, nn and mm are the rectangle being bisected (its old and new start in
+\ seq and length); off is diagonal 0's index in v1 and v2 and the round count;
+\ k1lo..k2hi are the diagonals each pass has run off the rectangle on; sx and sy
+\ are the split the bisection found.
 STRUCTURE work DERIVE addr
    FIELD out ptr n
    FIELD text ptr u8
@@ -82,14 +88,12 @@ STRUCTURE work DERIVE addr
    FIELD conflicts n
 ;STRUCTURE
 
-\ A text and its line count.
 STRUCTURE text
    FIELD at ptr u8
    FIELD len n
    FIELD lines n
 ;STRUCTURE
 
-\ What a patch compares: a file edited, added or deleted.
 ENUM kind edit add delete ;ENUM
 
 \ How a text ends its lines, as git's merge reads it at one line.
@@ -101,8 +105,6 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
 : NTH@ ( ptr n n -- n )  cells + @ ;
 : NTH! ( n ptr n n -- )  cells + ! ;
 
-
-\ Text and lines.
 
 : LINE-START? ( ptr u8 n -- bool )
    {: a i :}
@@ -162,9 +164,7 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    at u + ;
 
 
-\ Classes. Line g's class is the class the map holds for its bytes, else g
-\ itself, which the map then records; the map keeps a pointer into text,
-\ which lives for the whole call.
+\ The map keeps a pointer into text, which lives for the whole call.
 
 : CLASS ( ptr work n -- n )
    {: w g :}
@@ -186,12 +186,6 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    {: w p :}
    w w WORK-SEQ @ p NTH@ ID@ ;
 
-
-\ The middle snake. The rectangle is old lines x0.. (nn of them) against new
-\ lines y0.. (mm), positions in seq; x and y count from its corner. The
-\ forward pass walks from the start and the reverse pass from the end, each
-\ recording per diagonal k = x - y the furthest x it reached; where they meet
-\ lies a split on a shortest path.
 
 : DELTA ( ptr work -- n )
    {: w :}
@@ -434,13 +428,11 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    again ;
 
 
-\ Clear the seen cell of each class lines lo..hi-1 have.
 : UNSEE ( ptr work n n -- )
    {: w lo hi :}
    hi lo ?do 0 w WORK-SEEN @ w i ID@ NTH! loop ;
 
 
-\ Add side to the seen cell of each class lines lo..hi-1 have.
 : TALLY ( ptr work n n n -- )
    {: w lo hi side :}
    hi lo ?do
@@ -548,8 +540,6 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    w lines CLASSIFY ;
 
 
-\ Output.
-
 : OUT$ ( ptr work ptr u8 n -- )
    {: w a u :}
    a u BUF:N>BLEN w WORK-OUT @ BUF:APPEND-SPAN ;
@@ -622,8 +612,6 @@ CAST: >SCRIPT ( ptr u8 -- ptr script )
    again ;
 
 
-\ A space and function line g's first FUNC-MAX bytes, trailing white space
-\ dropped; nothing for NO-FUNC.
 : OUT-FUNC ( ptr work n -- )
    {: w g :}
    g NO-FUNC = if exit then
@@ -817,10 +805,9 @@ STRUCTURE block
    true ;
 
 
-\ Line ends in a conflict. git's merge matches CR LF texts (xmerge.c
-\ is_cr_needed): it ends the markers, and a line end it adds, with CR LF when
-\ neither side's line before the conflict, or first line, ends in LF alone and
-\ base's first line ends in CR LF.
+\ Line ends in a conflict. git's merge matches CR LF texts: it ends the markers,
+\ and a line end it adds, with CR LF when neither side's line before the
+\ conflict, or first line, ends in LF alone and base's first line ends in CR LF.
 
 : CRLF-LINE? ( ptr work n -- bool )
    {: w g :}
