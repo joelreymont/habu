@@ -75,8 +75,8 @@ EXPORT REPLACE-R-CALLBACK
    s" : C2OP-UNPACK ( mut-view<p,l,a,u8> -- ptr u8 n ) C2-MEM:MUT-UNPACK ;" 70 SUBJECT:EXITED? TTRUE
    s" ticking the unpacker does not cross its internal boundary" T-LABEL
    s" : C2OP-TICK ( mut-view<p,l,a,u8> -- ptr u8 n ) ['] C2-MEM:MUT-UNPACK execute ;" 70 SUBJECT:EXITED? TTRUE
-   \ src/lib/c2-owner.f seals C2-MEM: the engine refuses `package C2-MEM` by
-   \ name, exit 84, before the checker sees a body.
+   \ The engine refuses `package C2-MEM` by name, exit 84, before the checker
+   \ sees a body.
    s" the product refuses a reopen of C2-MEM by name" T-LABEL
    s" package C2-MEM ;package" ENGINE-ERROR:SEAL-PACKAGE s" C2-MEM" SUBJECT:REFUSED? TTRUE
    T-REPORT
