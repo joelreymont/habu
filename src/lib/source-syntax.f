@@ -6,7 +6,6 @@ require src/lib/string.f
 package SOURCE-SYNTAX
 public
 
-\ A parsing word takes the next whitespace-delimited token raw.
 : PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" char" STR=CI if STR-TRUE exit then
    a u s" [char]" STR=CI if STR-TRUE exit then
@@ -19,8 +18,7 @@ public
    a u s" [char]" STR=CI if STR-TRUE exit then
    a u s" [']" STR= ;
 
-\ The engine opens a definition body at these (src/habu/interpreter.f
-\ DEFINE?): `:` byte for byte, the others case-folded.
+\ The engine opens a definition body at these.
 : BODY-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" :" STR= if STR-TRUE exit then
    a u s" TRUSTED:" STR=CI if STR-TRUE exit then

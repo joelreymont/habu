@@ -35,8 +35,8 @@ public
 : ALLOC ( owner<p,i,a> NUM:alloc-byte-len -- owner<p,i,a> mut-view<p,p,fresh-region-a,u8> )
    [: PUBLISH drop ;] ALLOC-DISPOSE ;
 
-\ Only C2-MEM's private section packs a view (checker.f VIEW-CAST-CERTIFY), so
-\ no later source may reopen it; this is the package's last file.
+\ Only C2-MEM's private section packs a view, so no later source may reopen it;
+\ this is the package's last file.
 seal-package
 
 ;package

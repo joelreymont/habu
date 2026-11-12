@@ -15,8 +15,6 @@ package BUILD-OUT
 
 private
 
-\ The caches belong to the process that filled them; zero lengths mean nothing
-\ is cached yet.
 PATH-CAP SCRATCH-BUFFER: OUT-BUF
 SCRATCH-VARIABLE OUT-U
 PATH-CAP SCRATCH-BUFFER: OBJ-BUF
@@ -24,8 +22,7 @@ SCRATCH-VARIABLE OBJ-U
 PATH-CAP SCRATCH-BUFFER: PATH-BUF
 
 \ The out root in OUT-BUF. HABU_OUT is read through ENV-INPUT:CURRENT$, so its
-\ value is no build input; tools/hb-build-core.f's header names the files a
-\ build loads from the out.
+\ value is no build input.
 : OUT-ROOT ( -- n )
    s" HABU_OUT" ENV-INPUT:CURRENT$ {: v:ptr vu:n :}
    vu 0= if SOURCE-ROOT:CWD$ s" .out" OUT-BUF FS:JOIN-PATH exit then

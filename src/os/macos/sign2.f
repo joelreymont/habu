@@ -3,8 +3,8 @@
 \ and appends a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one CodeDirectory
 \ (version $20400, adhoc, one SHA-256 hash per $1000-byte page, a partial last
 \ page hashed at its length). It works in place on MBUF, MLEN and LE-OFF once
-\ SHA256 (src/core/sha256.f, in the engine) and macho.f are loaded. Signature
-\ integers are big-endian; the header patches little-endian.
+\ SHA256 and macho.f are loaded. Signature integers are big-endian; the header
+\ patches little-endian.
 using IMAGE-BYTES
 package MACHO
 PTR-VARIABLE SIGA  variable SIGU
@@ -26,7 +26,7 @@ $1D       constant LC-CODE-SIG
 $1000     constant CS-PAGE
 32        constant CS-HASH
 variable  SIG-DOFF
-create CS-SHA-CTX SHA256-CTX-BYTES allot   \ this signer's own digest context
+create CS-SHA-CTX SHA256-CTX-BYTES allot
 
 : NCSLOTS ( -- n )   SIG-DOFF @ CS-PAGE 1 - +  CS-PAGE / ;
 
@@ -52,7 +52,7 @@ $00020400 constant CD-VERSION
 2         constant HT-SHA256
 12        constant CS-PAGE-LOG
 1         constant EXECSEG-MAIN
-variable EXECSEG-LIM   0 EXECSEG-LIM !   \ 0 = use TEXTSZ (snapshots override: bigger __TEXT)
+variable EXECSEG-LIM   0 EXECSEG-LIM !
 
 : ADD-CODESIG-LC ( -- )
    MH-HDR-SZ  20 M-OFF M-LE32@ +  {: at :}

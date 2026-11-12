@@ -28,7 +28,7 @@ $B7 constant EM-AARCH64
 64 constant ELF-HDR-SZ
 56 constant ELF-PHDR-SZ
 4 constant ELF-PHDR-N
-\ Where the file's first byte maps; BUILD-IMAGE stores it.
+\ Where the file's first byte maps.
 variable VMBASE
 $C0 constant ELF-RW-SZ
 $B0 constant ELF-DYNAMIC-SZ
@@ -67,7 +67,6 @@ variable ELF-TEXT-SIZE
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
 
-\ The image buffer holds the maximum-page-rounded text and its RW tail.
 MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE!
 
 : ASM-CODELEN! ( -- )
@@ -219,7 +218,7 @@ private
    M-HERE MLEN! ;
 
 public
-\ The program in icode's CODE as an ELF file whose code maps at the address.
+\ The program as an ELF file whose code maps at the address.
 : BUILD-IMAGE ( asm n -- img )
    CODE-OFF - VMBASE !
    ASM-DROP

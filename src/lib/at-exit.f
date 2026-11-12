@@ -1,8 +1,7 @@
-\ at-exit.f - the actions a process runs when it exits, newest first. This file
-\ owns the engine's process-exit vector (src/habu/layout.f EXIT-HOOK-CELL): the
-\ engine clears it and calls it once just before the exit_group of a normal
-\ top-level exit, a `die`, an uncaught throw or a stripped program's return
-\ from MAIN, and the vector runs the actions.
+\ at-exit.f - the actions a process runs when it exits. This file owns the
+\ engine's process-exit vector: the engine clears it and calls it once just
+\ before the exit_group of a normal top-level exit, a `die`, an uncaught throw
+\ or a stripped program's return from MAIN, and the vector runs the actions.
 \ STORAGE CLASS. PROCESS-WIDE action table.
 
 require src/lib/prelude.f
@@ -11,8 +10,7 @@ require src/lib/error.f
 package AT-EXIT
 private
 
-\ ACTIONS holds N actions, oldest first; a 65th refuses E-LAYOUT-BOUNDS. MUTEX
-\ serializes adding and taking. The process keeps its actions and a built
+\ ACTIONS holds N actions, oldest first; a 65th refuses E-LAYOUT-BOUNDS. A built
 \ program starts with none: N is a scratch cell, written as 0 in the product.
 64 constant CAP
 CAP TYPED-BUFFER ACTIONS [ -- ]
@@ -27,8 +25,8 @@ variable MUTEX
 
 : UNLOCK ( -- ) 0 MUTEX atomic! ;
 
-\ The vector is an engine DATA cell holding a code pointer, reached through
-\ `data-base`; only a private CAST: gives an address a quotation pointee.
+\ The vector is an engine DATA cell holding a code pointer; only a private CAST:
+\ gives an address a quotation pointee.
 CAST: >VECTOR ( n -- ptr [ -- ] )
 CAST: XT>N ( [ -- ] -- n )
 
