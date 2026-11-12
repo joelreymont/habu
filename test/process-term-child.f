@@ -1,5 +1,4 @@
-\ process-term-child.f - a capture child for the end-of-capture cases of
-\ src/lib/process-test.f.
+\ process-term-child.f - a capture child for the end-of-capture cases.
 \
 \ Run: bin/hb --load test/process-term-child.f -- <marker> <mode>
 \ Writes `ready` to stdout once its signal disposition is set, then waits for

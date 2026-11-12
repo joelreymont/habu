@@ -1,6 +1,6 @@
-\ load-graph.f - the load graph of the registry's rows: every file a row loads and
-\ every file those load, each read once and named by its canonical path, with the
-\ imports and launches it makes (test/load-refs.f). test/gate-entry-guard.f walks it.
+\ load-graph.f - the load graph of the registry's rows: every file a row loads
+\ and every file those load, each read once and named by its canonical path,
+\ with the imports and launches it makes.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -120,10 +120,9 @@ variable PROBE
 
 public
 
-\ Read the load graph of the registry's rows. Files are numbered from 0 in the
-\ order they are found, so a scan's new files come after it and each is scanned
-\ once. Call it once the registry and its TEST:ONLY choice are complete, before
-\ the readers below.
+\ Files are numbered from 0 in the order they are found, so a scan's new files
+\ come after it and each is scanned once. Call it once the registry and its
+\ TEST:ONLY choice are complete, before the readers below.
 : READ ( -- )
    GRAPH-RESET
    [: ROW-FILE ;] TEST:VISIT-LOAD-FILES

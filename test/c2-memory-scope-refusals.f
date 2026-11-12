@@ -36,9 +36,8 @@ create ERR CAP allot
    exited ERR erru LEN>N why whyu CONTAINS? and
    OUT outu LEN>N said saidu CONTAINS? and ;
 
-\ A typed global holds a quotation and never a scheme. An unclosed spelling
-\ ends with its line, and the next line is the next statement's: the refusal is
-\ caught so the definition after it runs.
+\ An unclosed spelling ends with its line, and the next line is the next
+\ statement's: the refusal is caught so the definition after it runs.
 : STORED ( -- )
    s" an ordinary quotation may be stored in a typed global" T-LABEL
    s" TYPED-VARIABLE C2-QUOTE-SLOT [ n -- n ]" 0 SUBJECT:EXITED? TTRUE
@@ -55,10 +54,6 @@ create ERR CAP allot
    s\" ' TYPED-VARIABLE catch C2-LINE-XT [ n -- n\n: C2-LINE-XT-NEXT ( -- n ) 4343 ;\nC2-LINE-XT-NEXT . throw"
    70 s" in C2-LINE-XT: malformed type '[ n -- n'" s" 4343" REPORTED? TTRUE ;
 
-\ The layout definers read their type by the same rule: a scheme is refused
-\ whole and the rest of its line is the next statement's, a family closed over
-\ a quotation is stored, a pointer type is refused whole, and no type at all is
-\ a named refusal in every storage definer.
 : LAYOUT-STORED ( -- )
    s" a scheme cannot fill a layout buffer" T-LABEL
    s" 4 LAYOUT-BUFFER C2-SCOPE-ROWS forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"

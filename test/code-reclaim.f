@@ -148,21 +148,17 @@ $1000 constant LC-CAP
 LC-CAP BUFFER: LC-OUT
 LC-CAP BUFFER: LC-ERR
 
-\ Runs the program in a subject child and asserts its exit code, leaving the
-\ stdout and stderr lengths.
 : LC-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    src srcu LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN LC-TIMEOUT-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu LC-OUT outu LEN>N LC-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 
-\ The program runs to the end and prints this.
 : LC-PRINTS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n :}
    0 LC-EXITS {: outu:len erru:len :}
    erru LEN>N 0 T=
    LC-OUT outu LEN>N want wantu T$= ;
 
-\ The program's does> is refused by name, and the process ends there.
 : LC-REFUSED ( ptr u8 n -- )
    70 LC-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
@@ -174,7 +170,6 @@ LC-CAP BUFFER: LC-ERR
    0 LC-EXITS drop {: outu:len :}
    LC-OUT outu LEN>N want wantu T$= ;
 
-\ A does> outside create's definer: the patched word answers its clause's number.
 : LASTC-CASE ( -- )
    s" a forget that keeps the created record keeps it for does>" T-LABEL
    S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ns\" CR-LC-MARK\" FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-KEEP .\n"

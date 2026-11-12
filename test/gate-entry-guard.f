@@ -1,11 +1,10 @@
 \ Gate entry files are execution roots. A row may share an inert helper, but
 \ importing or launching another row's entry silently runs that suite twice.
 \
-\ The guard walks the load graph test/load-graph.f read, from every file a
-\ running row loads through every import and launch. A load of another running
-\ row's entry is refused, naming the file and line that makes it, and so is a
-\ preload that is another running row's entry. A file may name itself, and rows
-\ may share an entry.
+\ The guard walks the load graph, from every file a running row loads through
+\ every import and launch. A load of another running row's entry is refused,
+\ naming the file and line that makes it, and so is a preload that is another
+\ running row's entry. A file may name itself, and rows may share an entry.
 
 require src/lib/error.f
 require src/lib/fmt.f
@@ -31,8 +30,6 @@ variable ERRORS
    n 0 ?do -1 i ROW-A ! -1 i ROW-B ! 0 i MARK ! loop
    0 WALK ! -1 OWNER ! 0 ERRORS ! ;
 
-\ Every registered file must be one LOAD-GRAPH:READ read. A file keeps the first row that
-\ has it as an entry and one other.
 : ENTRY-ADD ( n bool ptr u8 n -- ) {: row:n entry:bool a:ptr u:n :}
    a u LOAD-GRAPH:FILE-ID {: f:n :}
    entry 0= if exit then
@@ -92,8 +89,7 @@ variable ERRORS
 
 public
 
-\ Refuse a registry whose running rows load one another's entries. Call it
-\ after LOAD-GRAPH:READ read the registry's graph.
+\ Call it after LOAD-GRAPH:READ read the registry's graph.
 : CHECK ( -- )
    RESET
    [: ENTRY-ADD ;] TEST:VISIT-LOAD-FILES
