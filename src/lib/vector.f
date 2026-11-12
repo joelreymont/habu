@@ -3,15 +3,19 @@
 \ capacity cell is the liveness token, a dead header reads length and capacity
 \ zero. Lengths are NUM:item-count and positions NUM:index, so a swap is a
 \ checker reject. Bad capacity is E-VEC-CAPACITY, a bad index E-VEC-BOUNDS,
-\ growing a dead header E-VEC-STATE. STORAGE CLASS. CALLER-OWNED.
+\ growing a dead header E-VEC-STATE. A typed vector<t> (NEW, AT, COUNT,
+\ DELETE) takes its elements from an allocator it keeps. STORAGE CLASS.
+\ CALLER-OWNED.
 
 require src/lib/error.f
 require src/lib/memory.f
+require src/lib/allocator.f
 
 \ The private words keep the header cells and address arithmetic on bare `count`,
 \ `len` and `idx` roles; the public surface converts to NUM roles at its boundary
-\ through the two checked casts ITEM-COUNT>N and INDEX>N. Every allocation goes
-\ through CAP-ALLOC, so a zero or overflowing capacity is refused before mmap.
+\ through the two checked casts ITEM-COUNT>N and INDEX>N. Every cell-vector
+\ allocation goes through CAP-ALLOC, so a zero or overflowing capacity is
+\ refused before mmap.
 
 package VEC
 private
@@ -255,6 +259,50 @@ VEC-HEADER-BYTES CELL / constant HEADER-CELLS   \ cells a caller allots for one 
       i N>INDEX  vec i VEC-IDX VEC@  q execute
    loop ;
 
+\ A typed vector: its allocator, its elements' bytes, their count and the
+\ bytes each takes. No field holds a `t`, so every vector<t> has one layout.
+STRUCTURE vector<t> OPAQUE DERIVE addr
+   FIELD allocator ptr ALLOC:allocator
+   FIELD data ptr u8
+   FIELD count n
+   FIELD width n
+;STRUCTURE
+
+private
+
+CAST: >ELEM ( ptr u8 -- ptr t )
+CAST: >VECTOR ( ptr u8 -- ptr vector<t> )
+CAST: VECTOR> ( ptr vector<t> -- ptr u8 )
+
+public
+
+\ k zeroed elements, or E-VEC-CAPACITY for a negative k or more bytes than
+\ VEC-MAX-CELLS cells; a refused data request frees the header, then rethrows.
+: NEW ( ptr ALLOC:allocator n width<t> -- ptr vector<t> )
+   {: al:ptr k:n w :}
+   w width>n {: wn:n :}
+   k 0 <  k VEC-MAX-CELLS CELL * wn 1 max / >  or if E-VEC-CAPACITY throw then
+   al [type] vector<u8> width>n ALLOC:BYTES drop >VECTOR {: v:ptr :}
+   al v VECTOR-ALLOCATOR !
+   [: al k wn * ALLOC:BYTES drop v VECTOR-DATA ! ;] catch {: code:n :}
+   code 0<> if al v VECTOR> ALLOC:FREE code throw then
+   k v VECTOR-COUNT !  wn v VECTOR-WIDTH !
+   v ;
+
+: COUNT ( ptr vector<t> -- n ) VECTOR-COUNT @ ;
+
+\ An index outside 0 to COUNT - 1 is E-VEC-BOUNDS.
+: AT ( ptr vector<t> n -- ptr t )
+   {: v:ptr i:n :}
+   i 0 <  i v VECTOR-COUNT @ >=  or if E-VEC-BOUNDS throw then
+   v VECTOR-DATA @  i v VECTOR-WIDTH @ * +  >ELEM ;
+
+: DELETE ( ptr vector<t> -- )
+   {: v:ptr :}
+   v VECTOR-ALLOCATOR @ {: al:ptr :}
+   al v VECTOR-DATA @ ALLOC:FREE
+   al v VECTOR> ALLOC:FREE ;
+
 \ Defined last: `@`/`!` name the package fetch/store VEC:@ / VEC:!, which would
 \ shadow the core cell primitives inside later VEC bodies.
 : @ ( ptr a NUM:index -- a ) {: vec:ptr ix:NUM:index :}
@@ -262,4 +310,5 @@ VEC-HEADER-BYTES CELL / constant HEADER-CELLS   \ cells a caller allots for one 
 : ! ( a ptr a NUM:index -- ) {: value:a vec:ptr ix:NUM:index :}
    value vec ix IX>RI VEC! ;
 
+seal-package
 ;package

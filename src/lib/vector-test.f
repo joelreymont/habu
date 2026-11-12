@@ -1,11 +1,14 @@
-\ vector-test.f - focused tests for checked growable cell vectors.
+\ vector-test.f - focused tests for checked growable cell vectors, and for the
+\ frees a typed vector's DELETE and refused NEW make through its allocator.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/vector.f src/lib/vector-test.f
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
+require src/lib/allocator.f
 require src/lib/vector.f
+require src/lib/arena.f
 
 create VECT-VEC VEC:HEADER-CELLS cells allot
 \ The header of a vector OF POINTERS is declared storage: its base carries the
@@ -225,6 +228,106 @@ variable VECT-TSUM   variable VECT-TIXSUM
    2 VECT-REL-INIT                                     \ header now owns a live mapping
    VECT-REL-VEC 2 VEC:N>ITEM VEC:INIT ;               \ re-init without dispose throws (else old mapping leaks)
 
+DEFLINEAR vect-lin
+
+package VECT-TYPED
+
+STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
+
+: CELLS-N ( ptr ALLOC:allocator -- )
+   {: al:ptr :}
+   s" VEC:NEW makes zeroed elements of n that keep what is written" T-LABEL
+   al 3 [type] n VEC:NEW {: v:ptr :}
+   v VEC:COUNT 3 T=
+   v 0 VEC:AT @ 0 T=  v 2 VEC:AT @ 0 T=
+   5 v 0 VEC:AT !  6 v 2 VEC:AT !
+   v 0 VEC:AT @ 5 T=  v 1 VEC:AT @ 0 T=  v 2 VEC:AT @ 6 T=
+   v VEC:DELETE ;
+
+: CELLS-R ( ptr ALLOC:allocator -- )
+   {: al:ptr :}
+   s" and so of r" T-LABEL
+   al 2 [type] r VEC:NEW {: v:ptr :}
+   2.5 v 1 VEC:AT !
+   v 0 VEC:AT @ 0.0 f= TTRUE  v 1 VEC:AT @ 2.5 f= TTRUE ;
+
+: RECORDS ( ptr ALLOC:allocator -- )
+   {: al:ptr :}
+   s" and so of a record, past an index's error" T-LABEL
+   al 4 [type] turn VEC:NEW {: v:ptr :}
+   7 v 3 VEC:AT TURN-ID !  8 v 3 VEC:AT TURN-STEP !
+   v 3 VEC:AT TURN-ID @ 7 T=  v 3 VEC:AT TURN-STEP @ 8 T=
+   v 2 VEC:AT TURN-STEP @ 0 T=
+   [: v 4 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
+   [: v -1 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ ;
+
+: EMPTY ( ptr ALLOC:allocator -- )
+   {: al:ptr :}
+   s" a vector of no elements has no index; a negative count is refused" T-LABEL
+   al 0 [type] n VEC:NEW {: v:ptr :}
+   v VEC:COUNT 0 T=
+   [: v 0 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
+   v VEC:DELETE
+   [: al -1 [type] n VEC:NEW drop ;] E-VEC-CAPACITY TTHROWSQ
+   [: al $2000000000000001 [type] n VEC:NEW drop ;] E-VEC-CAPACITY TTHROWSQ
+   [: al $7FFFFFFFFFFFFFFF [type] u8 VEC:NEW drop ;] E-VEC-CAPACITY TTHROWSQ ;
+
+\ An allocator bumping through POOL that counts its calls and frees, keeps the
+\ last length asked, records each freed offset in POOL and refuses over 2000.
+4096 BUFFER: POOL
+variable TOP
+variable ALLOCS
+variable FREES
+variable LAST-N
+8 TYPED-BUFFER FREED n
+TYPED-VARIABLE AL ALLOC:allocator
+
+: P-ALLOC ( ptr u8 n -- ptr u8 )
+   {: st:ptr len:n :}
+   1 ALLOCS +!  len LAST-N !
+   len 2000 > if E-MEM-SIZE throw then
+   st TOP @ +  len 7 + -8 and TOP +! ;
+
+: P-FREE ( ptr u8 ptr u8 -- )
+   {: st:ptr p:ptr :}
+   p NULL-PTR - st NULL-PTR - - FREES @ FREED !  1 FREES +! ;
+
+: DELETE-SOME ( -- )
+   FREES @ {: f0:n :}  TOP @ {: h:n :}  ALLOCS @ {: a0:n :}
+   AL 3 [type] n VEC:NEW {: v:ptr :}
+   ALLOCS @ a0 - 2 T=  LAST-N @ 3 cells T=
+   v VEC:DELETE  FREES @ f0 - 2 T=
+   f0 FREED @  h [type] VEC:vector<n> width>n +  T=
+   f0 1 + FREED @ h T= ;
+
+: DELETE-NONE ( -- )
+   FREES @ {: f0:n :}  TOP @ {: h:n :}  ALLOCS @ {: a0:n :}
+   AL 0 [type] n VEC:NEW {: v:ptr :}
+   ALLOCS @ a0 - 1 T=
+   v VEC:DELETE  FREES @ f0 - 1 T=  f0 FREED @ h T= ;
+
+: DELETES ( -- )
+   s" VEC:DELETE frees the data, then the header, through the vector's allocator" T-LABEL
+   DELETE-SOME  DELETE-NONE ;
+
+: REFUSED ( -- )
+   s" a refused data request frees the header" T-LABEL
+   FREES @ {: f0:n :}  TOP @ {: h:n :}  ALLOCS @ {: a0:n :}
+   [: AL 1000 [type] n VEC:NEW drop ;] E-MEM-SIZE TTHROWSQ
+   ALLOCS @ a0 - 2 T=  FREES @ f0 - 1 T=  f0 FREED @ h T= ;
+
+public
+
+: RUN ( -- )
+   POOL [: P-ALLOC ;] [: P-FREE ;] AL ALLOC:INIT
+   ARENA:NEW {: a:ptr :}
+   a ARENA:ALLOCATOR {: al:ptr :}
+   al CELLS-N  al CELLS-R  al RECORDS  al EMPTY
+   DELETES  REFUSED
+   a ARENA:RELEASE ;
+
+;package
+
 : VECT-RUN ( -- )
    T-RESET
    \ ---- positive behavior -----------------------------------------------------
@@ -268,6 +371,10 @@ variable VECT-TSUM   variable VECT-TIXSUM
    s" VSWAP-IDX-FOR-LEN ( NUM:index ptr a -- ) VEC:LEN!"     VECT-CHECK-REJECTS
    s" VSWAP-RAW-CAP ( ptr a n -- ) VEC:INIT"                  VECT-CHECK-REJECTS
    s" VSWAP-RAW-IDX ( ptr a n -- a ) VEC:@"                   VECT-CHECK-REJECTS
+   \ ---- the typed vector ---------------------------------------------------------
+   VECT-TYPED:RUN
+   s" VOK-TAT ( ptr VEC:vector<n> -- ptr n ) 0 VEC:AT" CHECK-QUIET-CANDIDATE! -1 T=
+   s" VLIN-AT ( ptr VEC:vector<vect-lin> -- ptr vect-lin ) 0 VEC:AT" VECT-CHECK-REJECTS
    T-REPORT ;
 
 VECT-RUN
