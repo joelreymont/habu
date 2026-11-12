@@ -2,8 +2,7 @@
 \ PostgreSQL server.
 \
 \ test/db/pg-cluster.f starts a private cluster and runs this file, after
-\ src/lib/pg-test.f, with the cluster's conninfo as its one script argument; the
-\ gate row is that harness:
+\ src/lib/pg-test.f, with the cluster's conninfo as its one script argument:
 \
 \     bin/hb --load test/db/pg-cluster.f
 \
@@ -13,6 +12,11 @@
 \ refusal text each leaves; two worker tasks then read at the same time and
 \ each must keep its own bytes and refusal text, and a third worker is one
 \ reader past the declaration, whose EXEC must send nothing.
+\
+\ Both sides are connected at once. The second reads only while the first holds
+\ its record, and each looks at its bytes again only after both have read: with
+\ one arena between them the second read would have copied its name over the
+\ first's.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -53,8 +57,6 @@ TYPED-VARIABLE CONN PG:connection
    s" insert into person values (1, 'Ada', 'ada', 0.5, null, true), (2, 'Grace', null, null, 1, false)" RUN ;
 
 
-\ ---- a record outlives its result ----------------------------------------------
-
 : NAMES-ROW ( PG:result -- ptr u8 n ptr u8 n bool PG:result )
    1 PG:COL-TEXT rot
    2 PG:COL-TEXT? {: ka:ptr ku:n given:bool :}
@@ -84,8 +86,6 @@ TYPED-VARIABLE CONN PG:connection
    CONN @ s" select 1::bigint, 'Zed', 'zed', 0.25::float8, null::bigint, false"
    [: CHURNED ;] PG:WITH-RESULT ;
 
-
-\ ---- the first row's readers and their NULL arms ------------------------------
 
 : ON-PERSON ( n [ PG:result -- PG:result ] -- ) {: id:n body :}
    CONN @ id PERSON-SQL$ body PG:BY-ID ;
@@ -135,8 +135,6 @@ TYPED-VARIABLE CONN PG:connection
    [: NULL-INT ;] PG:E-TYPE TTHROWSQ ;
 
 
-\ ---- rows read in place --------------------------------------------------------
-
 : PAGE-ROWS ( PG:result -- PG:result )
    PG:ROWS-OR-THROW
    2 0 PG:AT-INT 3 T=
@@ -156,8 +154,6 @@ TYPED-VARIABLE CONN PG:connection
    CONN @ s" select count(*) from person" PG:ONE-INT 2 T= ;
 
 
-\ ---- reads longer than an arena's first chunk -----------------------------------
-
 : LONG-SQL$ ( -- ptr u8 n )
    s" select $1::int, 'head', repeat('a', $1::int), repeat('b', 3 * $1::int)" ;
 
@@ -169,8 +165,7 @@ TYPED-VARIABLE CONN PG:connection
 
 
 \ The short text stays in the arena's first chunk while each long one chains
-\ another. The same texts are held in a second result while the spans are
-\ compared, as in OUTLIVES-CASES.
+\ another.
 : LONG-CHURNED ( ptr u8 n ptr u8 n ptr u8 n PG:result -- PG:result )
    >r {: ha:ptr hu:n aa:ptr au:n ba:ptr bu:n :}
    s" a short text beside long ones" T-LABEL
@@ -195,8 +190,6 @@ TYPED-VARIABLE CONN PG:connection
    LONG-READ
    LONG-READ ;
 
-
-\ ---- refusals, each leaving no result behind ------------------------------------
 
 : EACH-REFUSES ( [ -- ] n -- ) {: q want:n :}
    OVER-RESULTS 0 ?do q want TTHROWSQ loop ;
@@ -246,8 +239,6 @@ TYPED-VARIABLE CONN PG:connection
    s" a decoder's refusal inside BY-ID" T-LABEL
    [: BAD-DECODE ;] PG:E-ROW EACH-REFUSES ;
 
-
-\ ---- statements and the refusal text ---------------------------------------------
 
 : REFUSAL-NAMES ( ptr u8 n -- ) {: a:ptr u:n :}
    PG:REFUSED$ s" 42P01: " STARTS-WITH? TTRUE
@@ -320,8 +311,6 @@ TYPED-VARIABLE CONN PG:connection
    s" READ-RESET empties the refusal text" T-LABEL
    PG:READ-RESET NO-REFUSAL ;
 
-
-\ ---- a lost connection's text ------------------------------------------------
 
 TYPED-VARIABLE LOST-A PG:connection
 TYPED-VARIABLE LOST-B PG:connection
@@ -468,12 +457,6 @@ TYPED-VARIABLE LOST-B PG:connection
    [: REFUSED-OPEN ;] PG:E-CONNECT TTHROWSQ ;
 
 
-\ ---- two readers at once, and one too many -------------------------------------
-\ Both sides are connected at once. The second reads only while the first holds
-\ its record, and each looks at its bytes again only after both have read: with
-\ one arena between them the second read would have copied its name over the
-\ first's, which is the order Tender witnessed.
-
 2 TYPED-BUFFER SIDE-CONN PG:connection
 2 TYPED-BUFFER SIDE-ARRIVED n
 2 TYPED-BUFFER SIDE-KEPT n
@@ -510,7 +493,6 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    then ;
 
 
-\ Side 0 meets a refusal of its own, which must leave the main task's text.
 : SIDE-MISSING ( n -- ) {: k:n :}
    k SIDE-CONN @ PG:PARAMS
    k SIDE-CONN @ s" drop table side_missing_q" PG:EXEC ;
