@@ -121,6 +121,19 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
       mid CODE-START off < if mid 1+ hi else lo mid then
    repeat drop ;
 
+\ A package's row, an alias's, and one for a region the link appended after
+\ the code.
+: UNCHARGED? ( ptr u8 n -- bool )
+   {: kind:ptr kindu:n :}
+   kind kindu s" namespace" STR= if true exit then
+   kind kindu s" alias" STR= if true exit then
+   kind kindu s" data" STR= if true exit then
+   kind kindu s" data-list" STR= if true exit then
+   kind kindu s" names" STR= if true exit then
+   kind kindu s" records" STR= if true exit then
+   kind kindu s" record-list" STR= if true exit then
+   kind kindu s" pad" STR= ;
+
 public
 
 -1 constant OWNER-UNKNOWN
@@ -174,8 +187,7 @@ public
          row rowu bytes ORIGIN+
          ATTR-TOTAL @ bytes + ATTR-TOTAL !
       else
-         row rowu COL-KIND @ FIELD$ {: kind:ptr kindu:n :}
-         kind kindu s" namespace" STR=  kind kindu s" alias" STR= or 0= if false exit then
+         row rowu COL-KIND @ FIELD$ UNCHARGED? 0= if false exit then
       then
    repeat
    ATTR-TOTAL @ size = dup ATTR-OK ! ;

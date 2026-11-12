@@ -4,10 +4,12 @@
 \ rows, rec counting them, first list the code the program holds in offset
 \ order: the start-up, each kept kernel primitive and placed build record, a row
 \ for each byte range none of them spans, and the code after the routines to
-\ its end. A row spanning the code of the row before it is an alias. Then a row
-\ for each package the build declared. The code rows other than aliases tile
-\ [0, code end), as IMAGE-NAMES:CODE-ATTR reads them; a record the program
-\ holds no code for has no row.
+\ its end. A row spanning the code of the row before it is an alias. The code
+\ rows other than aliases tile [0, code end); a record the program holds no
+\ code for has no row. Then, tiling on from the code end to the code buffer's,
+\ a row for each region the link appended after the code, in offset order, and
+\ a pad row for the bytes before one that no row spans. Then a row for each
+\ package the build declared.
 
 require src/lib/error.f
 require src/lib/le.f
@@ -61,7 +63,20 @@ variable MAP-ORDER-N
 DYNAMIC-BUFFER MAP-ALIAS n           \ 1 where a row before it spans the same code
 variable MAP-WALK                    \ the BUILT row the record walk has reached
 variable MAP-REC                     \ the next map row's rec
-variable MAP-AT                      \ the first code byte no row written so far spans
+variable MAP-AT                      \ the first byte no row so far spans
+
+\ The regions the link appended after the code, in offset order: region i's
+\ kind and bytes [start, end).
+DYNAMIC-BUFFER REGION-KIND n
+DYNAMIC-BUFFER REGION-START n
+DYNAMIC-BUFFER REGION-END n
+variable REGION-N
+
+0 constant DATA-KIND                 \ the DATA image
+1 constant DATA-LIST-KIND            \ the DATA list
+2 constant NAMES-KIND                \ an engine's out-of-line names
+3 constant RECORDS-KIND              \ an engine's records
+4 constant RECORD-LIST-KIND          \ an engine's record list
 
 \ Kernel primitive k is row k, build record r row P + (r - FIRST-REC).
 : MAP-N ( -- n ) ARM64:ROW-N  ndict@ +  FIRST-REC @ - ;
@@ -279,6 +294,47 @@ variable MAP-AT                      \ the first code byte no row written so far
    BAND-END @ GAP
    BAND-END @ end RUNTIME-ROW+ ;
 
+: KIND$ ( n -- ptr u8 n )
+   {: k:n :}
+   k DATA-KIND = if s" data" exit then
+   k DATA-LIST-KIND = if s" data-list" exit then
+   k NAMES-KIND = if s" names" exit then
+   k RECORDS-KIND = if s" records" exit then
+   k RECORD-LIST-KIND = if s" record-list" exit then
+   s" link: a map region has no kind past 4" 74 die ;
+
+\ The link appended bytes [start, end) of kind k after the code.
+: REGION+ ( n n n -- )
+   {: k:n start:n end:n :}
+   REGION-N @ {: i:n :}
+   i 1 + REGION-KIND-RESERVE  i 1 + REGION-START-RESERVE
+   i 1 + REGION-END-RESERVE
+   k i REGION-KIND !  start i REGION-START !  end i REGION-END !
+   i 1 + REGION-N ! ;
+
+\ The bytes [at, end) the link appended after the code, if any, of the kind.
+: TAIL-ROW+ ( ptr u8 n n n -- )
+   {: kind:ptr kindu:n at:n end:n :}
+   end at > if
+      REC+ 0 at  end at - CODE-SPAN:EXACT  -1 MAP-HEAD
+      s" - " MAP+  kind kindu MAP+  s"  generated -" MAP+  MAP-NL
+   then ;
+
+: REGION-ROW+ ( n -- )
+   {: i:n :}
+   i REGION-START @ {: start:n :}
+   start MAP-AT @ < if s" link: the map's regions overlap" 74 die then
+   s" pad" MAP-AT @ start TAIL-ROW+
+   i REGION-KIND @ KIND$  start  i REGION-END @  TAIL-ROW+
+   i REGION-END @ MAP-AT ! ;
+
+: REGION-ROWS ( n -- )
+   MAP-AT !
+   REGION-N @ 0 ?do i REGION-ROW+ loop
+   MAP-AT @ A64ICODE:ASM-LEN <> if
+      s" link: the map's regions do not end at the code buffer's end" 74 die
+   then ;
+
 : PACKAGE-ROWS ( -- )
    ndict@ FIRST-REC @ ?do
       i XREF-REC XREF-WORDLIST XREF:PACKAGE-WL? if
@@ -292,16 +348,18 @@ variable MAP-AT                      \ the first code byte no row written so far
    MAP-TEXT 4096 BUF:N>BLEN BUF:INIT  MAP-PATH 256 BUF:N>BLEN BUF:INIT
    MAP-FILL MAP-SORT MAP-ENDS MAP-ALIASES
    S\" habu-names 1\ncolumns rec named start len wid name kind origin source\n" MAP+
-   0 MAP-REC !  end CODE-ROWS  PACKAGE-ROWS
+   0 MAP-REC !  end CODE-ROWS  end REGION-ROWS  PACKAGE-ROWS
    path pathu MAP-PATH SPAN+  s" .map" MAP-PATH SPAN+
    MAP-PATH BYTES$ [: MAP-TEXT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
 
 : MAP-RELEASE ( -- )
    MAP-TEXT BUF:DISPOSE  MAP-PATH BUF:DISPOSE
-   MAP-START-RELEASE  MAP-BYTES-RELEASE  MAP-FILE-RELEASE  MAP-ORDER-RELEASE  MAP-ALIAS-RELEASE ;
+   MAP-START-RELEASE  MAP-BYTES-RELEASE  MAP-FILE-RELEASE  MAP-ORDER-RELEASE
+   MAP-ALIAS-RELEASE
+   REGION-KIND-RELEASE  REGION-START-RELEASE  REGION-END-RELEASE  0 REGION-N ! ;
 
 \ The linked program's map to <path>.map, its code ending at offset end, after
-\ the link placed its code.
+\ the link placed its code and REGION+ recorded what it appended.
 : WRITE-MAP ( ptr u8 n n -- ) ['] MAP-WRITE ['] MAP-RELEASE finally ;
 
 ;package

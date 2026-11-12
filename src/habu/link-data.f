@@ -46,6 +46,9 @@ variable LRECS
 variable LRECS-END
 variable LRLIST
 variable LRLIST-END
+\ An engine's name pool's end, which no label marks: the records start after it
+\ at an 8-byte boundary.
+variable NAMES-END
 \ The kernel's uncaught-throw reporter, signal handler, primitive count and
 \ dictionary table; an engine's throw recoveries.
 variable LUNCAUGHT
@@ -310,6 +313,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ the record list.
 : RECORD-IMAGE ( -- )
    NAME-POOL
+   A64ICODE:ASM-LEN NAMES-END !
    PAD8
    0 RLISTED-N !
    LRECS A64ICODE:LABEL@ A64ICODE:LBL,
@@ -370,6 +374,21 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    LIST,
    LIST-HEADER
    LLIST-END A64ICODE:LABEL@ A64ICODE:LBL, ;
+
+
+\ Region kind k spans labels a to b.
+: LABEL-REGION+ ( n ptr n ptr n -- )
+   {: k:n a:ptr b:ptr :}
+   k  a LABEL-OFFSET  b LABEL-OFFSET  REGION+ ;
+
+\ What DATA-IMAGE and RECORD-IMAGE appended, for the map.
+: REGIONS ( -- )
+   DATA-KIND LIMAGE LIMAGE-END LABEL-REGION+
+   DATA-LIST-KIND LLIST LLIST-END LABEL-REGION+
+   ENGINE? @ 0= if exit then
+   NAMES-KIND  LLIST-END LABEL-OFFSET  NAMES-END @  REGION+
+   RECORDS-KIND LRECS LRECS-END LABEL-REGION+
+   RECORD-LIST-KIND LRLIST LRLIST-END LABEL-REGION+ ;
 
 
 : ADOPT-LABELS ( -- )
@@ -496,7 +515,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap EMIT-IMAGE
       FS:CHMOD-X ;] FS:REPLACE-STAGED
-   path pathu DATA-IMAGE-AT WRITE-MAP ;
+   REGIONS  path pathu DATA-IMAGE-AT WRITE-MAP ;
 
 public
 
