@@ -13,9 +13,11 @@
 \ blue square above it none, and the green triangle below the left square,
 \ its z scaled by 0, none. Typed "unmesh", after "draw", draws the
 \ triangle's row alone, unmeshes mesh 1 and draws that row again. Typed
-\ "zero" draws 0 rows. Typed "occlude", after "draw", sends occlude 7 of two
-\ boxes past z 0.5: one behind the left square and one below every instance;
-\ its answer comes back as the text occluded, the bytes in hex and the id.
+\ "metal", after "draw", draws a copy of its rows with the orange square
+\ metallic. Typed "zero" draws 0 rows. Typed "occlude", after "draw", sends
+\ occlude 7 of two boxes past z 0.5: one behind the left square and one below
+\ every instance; its answer comes back as the text occluded, the bytes in
+\ hex and the id.
 \ Typed "edges" sends occlude 8: a box behind the left square from z -0.5,
 \ past the near plane, and one from the square's own z 0.5. Typed "many"
 \ sends occlude 9 of 4097 boxes, the last behind the left square, the others
@@ -44,6 +46,7 @@ CAST: BYTES>N ( ptr u8 -- n )
 50 BUFFER: TRIANGLE-MESH
 50 BUFFER: FLAT-MESH
 504 BUFFER: INSTANCE-ROWS
+360 BUFFER: METAL-ROWS
 8 BUFFER: WORDS
 64 BUFFER: MATRIX
 64 BUFFER: SHIFTED
@@ -159,6 +162,11 @@ variable ECHO-U
    2 $FFFFFF 0 0 PAINT  3 $2060C0 0 65535 PAINT
    4 $30A040 0 0 PAINT ;
 
+: METAL ( -- )
+   \ A copy: the host reads a draw's rows when the turn ends.
+   INSTANCE-ROWS METAL-ROWS 360 BYTE-COPY
+   65535 METAL-ROWS 68 + U16!  METAL-ROWS 5 DRAW ;
+
 : SHOW ( -- )
    SQUARE  TRIANGLE-MESH 14043 32767 TRIANGLE
    FLAT-MESH 32767 0 TRIANGLE
@@ -253,6 +261,7 @@ variable ECHO-U
    s" zero" IS? if INSTANCE-ROWS 0 DRAW exit then
    s" draw" IS? if SHOW exit then
    s" unmesh" IS? if UNMESH exit then
+   s" metal" IS? if METAL exit then
    s" occlude" IS? if OCCLUDE exit then
    s" edges" IS? if EDGES exit then
    s" many" IS? if MANY exit then

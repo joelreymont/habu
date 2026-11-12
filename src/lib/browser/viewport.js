@@ -65,9 +65,17 @@
 // triangle's first vertex's. A fragment is selected when the instance's flags
 // bit 0 is set or, with an offset not 0xFFFFFFFF, bit face % 32 of highlight
 // word offset + face / 32 is set; a selected fragment's paint is mixed toward
-// a mark chosen by the paint's Rec. 709 luma, of its encoded bytes. Metallic
-// and roughness reach fs unused. hit, after vs, marks the nearest fragment in
-// pick's one texel, with 1 in its fourth channel to tell a hit from the clear.
+// a mark chosen by the paint's Rec. 709 luma, of its encoded bytes. fs then
+// shades in linear light: the paint, decoded from sRGB, is a glTF
+// metallic-roughness surface lit by a studio, env, and a directional key
+// light along env's key softbox, tone-mapped by Khronos PBR Neutral and
+// encoded to sRGB, the only encoding, since the preferred canvas format is
+// never an -srgb one. The studio and key light are fixed in view coordinates,
+// view's right, up and back, so they turn with the camera; V points from the
+// fragment toward view's eye, a point when its w is 1 and a direction when 0.
+// The normal is turned toward V: meshes are drawn without culling and may be
+// open. hit, after vs, marks the nearest fragment in pick's one texel, with 1
+// in its fourth channel to tell a hit from the clear.
 // box draws one occlude box per instance as the 12 triangles of its faces:
 // vertex k takes corner corners[k], whose bit j picks the highest coordinate j
 // in place of the lowest. A box whose corners' clip z lie on both sides of 0,
@@ -77,6 +85,17 @@
 const SHADER = `
 @group(0) @binding(0) var<uniform> clip: mat4x4<f32>;
 @group(0) @binding(1) var<storage, read> words: array<u32>;
+
+struct View {
+  eye: vec4<f32>,
+  right: vec4<f32>,
+  up: vec4<f32>,
+  back: vec4<f32>,
+}
+
+@group(0) @binding(2) var<uniform> view: View;
+
+const PI = 3.14159265358979;
 
 struct Vertex {
   @location(0) grid: vec4<u32>,
@@ -134,12 +153,105 @@ fn mark(paint: vec3<f32>) -> vec3<f32> {
   return mix(paint, tint, 0.6);
 }
 
+// The sRGB EOTF.
+fn linear(c: vec3<f32>) -> vec3<f32> {
+  return select(pow((c + 0.055) / 1.055, vec3<f32>(2.4)), c / 12.92,
+    c <= vec3<f32>(0.04045));
+}
+
+// The sRGB OETF.
+fn encoded(c: vec3<f32>) -> vec3<f32> {
+  return select(1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055, 12.92 * c,
+    c <= vec3<f32>(0.0031308));
+}
+
+// Khronos PBR Neutral, as its reference code.
+fn neutral(color: vec3<f32>) -> vec3<f32> {
+  let start = 0.76;
+  let desaturation = 0.15;
+  let x = min(color.r, min(color.g, color.b));
+  let offset = select(0.04, x - 6.25 * x * x, x < 0.08);
+  let c = color - offset;
+  let peak = max(c.r, max(c.g, c.b));
+  if (peak < start) { return c; }
+  let d = 1.0 - start;
+  let top = 1.0 - d * d / (peak + d - start);
+  let g = 1.0 - 1.0 / (desaturation * (peak - top) + 1.0);
+  return mix(c * (top / peak), vec3<f32>(top), g);
+}
+
+// A softbox of half extents h centred on direction c, seen along d: tangent
+// coordinates dot(d, t) / dot(d, c), t horizontal and vertical across c,
+// each edge softened over s.
+fn softbox(d: vec3<f32>, c: vec3<f32>, h: vec2<f32>, s: f32) -> f32 {
+  let facing = dot(d, c);
+  if (facing <= 0.0) { return 0.0; }
+  let across = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), c));
+  let x = abs(vec2<f32>(dot(d, across), dot(d, cross(c, across)))) / facing;
+  let e = vec2<f32>(1.0) - smoothstep(h - s, h + s, x);
+  return e.x * e.y;
+}
+
+fn keyward() -> vec3<f32> {
+  return normalize(vec3<f32>(-0.4, 0.6, 0.7));
+}
+
+// The studio's linear radiance along view direction d, its highlights
+// softened by perceptual roughness.
+fn env(d: vec3<f32>, rough: f32) -> vec3<f32> {
+  let s = 0.02 + 0.5 * rough;
+  let key = softbox(d, keyward(), vec2<f32>(0.45, 0.27), s);
+  let rim = softbox(d, normalize(vec3<f32>(0.8, 0.3, -0.5)),
+    vec2<f32>(0.09, 0.7), s);
+  return vec3<f32>(mix(0.05, 0.6, smoothstep(-0.3, 0.6, d.y)) + 6.0 * key +
+    3.0 * rim);
+}
+
+// The split-sum scale and bias of F0, Karis's analytic approximation.
+fn split(rough: f32, nv: f32) -> vec2<f32> {
+  let r = rough * vec4<f32>(-1.0, -0.0275, -0.572, 0.022) +
+    vec4<f32>(1.0, 0.0425, 1.04, -0.04);
+  let a004 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
+  return vec2<f32>(-1.04, 1.04) * a004 + r.zw;
+}
+
+// The key light, irradiance 3: Lambert, GGX D, height-correlated Smith V and
+// Schlick F.
+fn keyed(n: vec3<f32>, v: vec3<f32>, f0: vec3<f32>, diffuse: vec3<f32>,
+    alpha: f32) -> vec3<f32> {
+  let l = keyward();
+  let nl = dot(n, l);
+  if (nl <= 0.0) { return vec3<f32>(0.0); }
+  let h = normalize(l + v);
+  let nh = max(dot(n, h), 0.0);
+  let nv = max(dot(n, v), 1e-4);
+  let a2 = alpha * alpha;
+  let q = nh * nh * (a2 - 1.0) + 1.0;
+  let d = a2 / (PI * q * q);
+  let vis = 0.5 / (nl * sqrt(nv * nv * (1.0 - a2) + a2) +
+    nv * sqrt(nl * nl * (1.0 - a2) + a2));
+  let f = f0 + (1.0 - f0) * pow(clamp(1.0 - dot(v, h), 0.0, 1.0), 5.0);
+  return ((1.0 - f) * diffuse / PI + f * d * vis) * 3.0 * nl;
+}
+
 @fragment fn fs(c: Corner) -> @location(0) vec4<f32> {
   let flat = normalize(cross(dpdx(c.world), dpdy(c.world)));
-  let n = select(normalize(c.n), flat, dot(c.n, c.n) == 0.0);
-  let lit = 0.3 + 0.7 * abs(dot(n, normalize(vec3<f32>(0.3, 0.5, 0.8))));
-  let color = select(c.paint, mark(c.paint), selected(c.face, c.bits));
-  return vec4<f32>(color * lit, 1.0);
+  let w = select(normalize(c.n), flat, dot(c.n, c.n) == 0.0);
+  let frame = transpose(mat3x3<f32>(view.right.xyz, view.up.xyz,
+    view.back.xyz));
+  let v = frame * normalize(view.eye.xyz - c.world * view.eye.w);
+  let n = select(frame * w, -(frame * w), dot(frame * w, v) < 0.0);
+  let paint = select(c.paint, mark(c.paint), selected(c.face, c.bits));
+  let base = linear(paint);
+  let metallic = c.surface.x;
+  let rough = clamp(c.surface.y, 0.045, 1.0);
+  let f0 = mix(vec3<f32>(0.04), base, metallic);
+  let diffuse = base * (1.0 - metallic);
+  let ab = split(rough, max(dot(n, v), 1e-4));
+  let light = diffuse * env(n, 1.0) +
+    env(reflect(-v, n), rough) * (f0 * ab.x + ab.y) +
+    keyed(n, v, f0, diffuse, rough * rough);
+  return vec4<f32>(encoded(neutral(light)), 1.0);
 }
 
 @fragment fn hit(c: Corner) -> @location(0) vec4<u32> {
@@ -175,6 +287,67 @@ const NONE = [-1, 0, 0x3F800000];
 
 const ROW = 72; // bytes in an instance row
 const QUERIES = 4096; // WebGPU's most queries in one query set
+
+// The rows of the inverse of m, a column-major 4x4, in binary64 by
+// Gauss-Jordan elimination with partial pivoting; null when m is singular.
+function inverse(m) {
+  const a = [0, 1, 2, 3].map((r) => [0, 1, 2, 3].map((c) => m[4 * c + r])
+    .concat([0, 1, 2, 3].map((c) => (c === r ? 1 : 0))));
+  for (let c = 0; c < 4; c++) {
+    let p = c;
+    for (let r = c + 1; r < 4; r++)
+      if (Math.abs(a[r][c]) > Math.abs(a[p][c])) p = r;
+    if (a[p][c] === 0) return null;
+    [a[c], a[p]] = [a[p], a[c]];
+    const pivot = a[c][c];
+    for (let j = 0; j < 8; j++) a[c][j] /= pivot;
+    for (let r = 0; r < 4; r++) {
+      const f = a[r][c];
+      if (r !== c) for (let j = 0; j < 8; j++) a[r][j] -= f * a[c][j];
+    }
+  }
+  return a.map((row) => row.slice(4));
+}
+
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const unit = (a) => { const l = Math.hypot(...a); return a.map((v) => v / l); };
+
+// SHADER's view of clip matrix m, column-major: eye, right, up and back, 16
+// f32s, or null when m is singular or the view comes out not finite. eye is
+// m⁻¹ (0, 0, 1, 0), the centre of projection (E, 1), or the direction (d, 0)
+// when its w is 0, as an affine m's is exactly, negated if need be so that
+// the way toward it lowers NDC depth; back is V at the unprojected NDC
+// centre, right the unprojected (1, 0, 0.5) less that centre, orthogonal to
+// back, and up the unprojected (0, 1, 0.5) less that centre, orthogonal to
+// back and right: no cross product, whose sign would follow the world's
+// handedness.
+function viewer(m) {
+  const inv = inverse(m);
+  if (!inv) return null;
+  const apply = (p) => inv.map((row) => row.reduce((s, v, k) => s + v * p[k], 0));
+  const unproject = (x, y, z) => {
+    const [a, b, c, w] = apply([x, y, z, 1]);
+    return [a / w, b / w, c / w];
+  };
+  const minus = (a, b) => a.map((v, k) => v - b[k]);
+  const h = apply([0, 0, 1, 0]);
+  const length = Math.hypot(h[0], h[1], h[2]);
+  let eye = h[3] !== 0
+    ? [h[0] / h[3], h[1] / h[3], h[2] / h[3], 1]
+    : [h[0] / length, h[1] / length, h[2] / length, 0];
+  const centre = unproject(0, 0, 0.5);
+  const toward = () => minus(eye.slice(0, 3), centre.map((v) => v * eye[3]));
+  if (dot3(toward(), minus(unproject(0, 0, 0.25), unproject(0, 0, 0.75))) < 0)
+    eye = eye.map((v) => -v);
+  const back = unit(toward());
+  const along = (a, b) => b.map((v) => v * dot3(a, b));
+  const across = minus(unproject(1, 0, 0.5), centre);
+  const right = unit(minus(across, along(across, back)));
+  const above = minus(unproject(0, 1, 0.5), centre);
+  const up = unit(minus(minus(above, along(above, back)), along(above, right)));
+  const view = Float32Array.of(...eye, ...right, 0, ...up, 0, ...back, 0);
+  return view.every(Number.isFinite) ? view : null;
+}
 
 // WebGPU on the canvas: setup's renderer, whose release destroys the device
 // and everything allocated from it. A canvas holding another context is
@@ -224,16 +397,19 @@ function grouped(rows, count) {
 // an instance buffer and issues one indexed, instanced draw per handle, and
 // highlight writes the words to a storage buffer. Each buffer is padded to
 // the 4 bytes WebGPU's sizes and writes need, and the instance and highlight
-// buffers grow when a write needs more. The depth texture keeps the last
-// draw's depth, cleared to 1 when made, and the matrix buffer its matrix;
-// occlude draws its boxes against them in passes of at most QUERIES occlusion
-// queries, one per box, and reads the resolved sample counts back through
-// buffers of its own, released once read. pick submits its probe draw of the
-// last draw's runs before it returns, so queue order puts it after that draw
-// and before any later write, and maps the pixel by the drawing buffer's size
-// when it is called, the size pointer events give. A buffer destroyed while a
-// submitted pick uses it lives until the pick's work completes (WebGPU's
-// destroy).
+// buffers grow when a write needs more. draw samples 4 times per pixel: into
+// a 4x colour texture resolved into the canvas's, then discarded, against a
+// 4x depth texture. The depth texture keeps the last draw's depth, cleared
+// to 1 when made, the matrix buffer its matrix and the view buffer the last
+// view viewer gave, the identity matrix's before any; occlude draws its boxes
+// against them in passes of at most QUERIES occlusion queries, one per box,
+// and reads the resolved sample counts back through buffers of its own,
+// released once read, so a box passes when any sample does. pick,
+// single-sample, submits its probe draw of the last draw's runs before it
+// returns, so queue order puts it after that draw and before any later write,
+// and maps the pixel by the drawing buffer's size when it is called, the size
+// pointer events give. A buffer destroyed while a submitted pick uses it lives
+// until the pick's work completes (WebGPU's destroy).
 function setup(canvas, context, device, release, fail) {
   device.lost.then((info) => fail(`WebGPU device lost: ${info.message}`));
   device.addEventListener("uncapturederror", (e) => fail(`WebGPU: ${e.error.message}`));
@@ -258,6 +434,7 @@ function setup(canvas, context, device, release, fail) {
     fragment: { module, entryPoint: "fs", targets: [{ format }] },
     primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
+    multisample: { count: 4 },
   });
   const prober = device.createRenderPipeline({
     layout: "auto",
@@ -277,10 +454,16 @@ function setup(canvas, context, device, release, fail) {
     },
     primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: { format: "depth24plus", depthWriteEnabled: false, depthCompare: "less-equal" },
+    multisample: { count: 4 },
   });
   const { UNIFORM, STORAGE, VERTEX, INDEX, COPY_DST, COPY_SRC, QUERY_RESOLVE, MAP_READ } =
     GPUBufferUsage;
   const matrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
+  const view = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST,
+    mappedAtCreation: true });
+  new Float32Array(view.getMappedRange()).set(
+    viewer(Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)));
+  view.unmap();
   const boxBind = device.createBindGroup({
     layout: occluder.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: matrix } }],
@@ -296,7 +479,7 @@ function setup(canvas, context, device, release, fail) {
     usage: GPUTextureUsage.RENDER_ATTACHMENT });
   const depthTexture = () => {
     const texture = device.createTexture({
-      size: [canvas.width, canvas.height], format: "depth24plus",
+      size: [canvas.width, canvas.height], format: "depth24plus", sampleCount: 4,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     const encoder = device.createCommandEncoder();
@@ -306,7 +489,12 @@ function setup(canvas, context, device, release, fail) {
     device.queue.submit([encoder.finish()]);
     return texture;
   };
+  const colorTexture = () => device.createTexture({
+    size: [canvas.width, canvas.height], format, sampleCount: 4,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
   let depth = depthTexture();
+  let color = colorTexture();
   const meshes = new Map(); // a held handle -> { vertices, indices, count }
   let instances = null;
   let words = null;
@@ -327,7 +515,8 @@ function setup(canvas, context, device, release, fail) {
     bind = device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
       entries: [{ binding: 0, resource: { buffer: matrix } },
-        { binding: 1, resource: { buffer: words } }],
+        { binding: 1, resource: { buffer: words } },
+        { binding: 2, resource: { buffer: view } }],
     });
   };
   highlight(new Uint32Array(0));
@@ -362,7 +551,9 @@ function setup(canvas, context, device, release, fail) {
 
   const resize = () => {
     depth.destroy();
+    color.destroy();
     depth = depthTexture();
+    color = colorTexture();
   };
 
   // The last draw's runs and its matrix, copied, as a pick reads them; null
@@ -378,13 +569,16 @@ function setup(canvas, context, device, release, fail) {
       device.queue.writeBuffer(instances, 0, ordered);
     }
     device.queue.writeBuffer(matrix, 0, clip);
+    const seen = viewer(last.clip);
+    if (seen) device.queue.writeBuffer(view, 0, seen);
     const encoder = device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
-        view: context.getCurrentTexture().createView(),
+        view: color.createView(),
+        resolveTarget: context.getCurrentTexture().createView(),
         clearValue: [1, 1, 1, 1],
         loadOp: "clear",
-        storeOp: "store",
+        storeOp: "discard",
       }],
       depthStencilAttachment: { view: depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" },
     });

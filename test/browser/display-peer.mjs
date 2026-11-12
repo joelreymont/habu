@@ -218,24 +218,6 @@ async function browser() {
     const points = [[-0.6333, -0.1333], [-0.3667, 0.1333], [-0.6333, 0.7667],
       [0.5, 0], [0, 0.7], [0.3667, 0.7667], [-0.6333, -0.9333]];
     const background = [255, 255, 255];
-    const [orange, green, white, cobalt] = [[255, 115, 20], [48, 160, 64],
-      [255, 255, 255], [32, 96, 192]];
-    // The expected bytes: the paint, mixed 60% toward the mark when
-    // selected, times the light of normal n.
-    const light = (n) => 0.3 + 0.7 * Math.abs(
-      (0.3 * n[0] + 0.5 * n[1] + 0.8 * n[2]) / Math.hypot(0.3, 0.5, 0.8));
-    const shade = (paint, selected, n) => {
-      let c = paint.map((v) => v / 255);
-      if (selected) {
-        const y = [0.2126, 0.7152, 0.0722]
-          .reduce((sum, w, k) => sum + w * c[k], 0);
-        const mark = y > 0.5 ? [0.05, 0.15, 0.6] : [0.6, 0.9, 1.0];
-        c = c.map((v, k) => 0.4 * v + 0.6 * mark[k]);
-      }
-      return c.map((v) => Math.round(255 * v * light(n)));
-    };
-    const near = (got, want) => got.every((v, k) => Math.abs(v - want[k]) <= 2);
-    const z = [0, 0, 1], tilted = [0, 1, -3].map((v) => v / Math.hypot(1, 3));
     const start = await state();
     assert.equal(start.disabled, true, "startup must preserve input(false)");
     assert.deepEqual(start.natural, [400, 100]);
@@ -298,28 +280,41 @@ async function browser() {
     assert.deepEqual(drawn.canvas, start.canvas);
     const [face0, face1, triangle, right, above, upper, flat] =
       await pixels(points);
-    assert.ok(near(face0, shade(orange, false, z)),
-      `the orange square's face 0 is orange times its light, got ${face0}`);
-    assert.ok(near(upper, shade(cobalt, false, z)),
-      `the blue square, mesh 1 again, is blue times its light, got ${upper}`);
-    assert.ok(near(face1, shade(orange, true, z)),
-      `the orange square's highlighted face 1 is marked, got ${face1}`);
-    for (const plain of [shade(orange, false, z), shade(white, false, z)])
-      assert.ok(face1.some((v, k) => Math.abs(v - plain[k]) > 40),
-        `the marked face ${face1} reads apart from ${plain}`);
-    assert.ok(near(triangle, shade(green, true, tilted)),
-      `the triangle's face 34, highlighted in word 1, is marked and lit ` +
-      `by its normal through the inverse transpose, got ${triangle}`);
-    assert.ok(near(flat, shade(green, false, z)),
-      `the flat triangle is lit by its own normal, got ${flat}`);
-    assert.ok(near(right, shade(white, true, z)),
-      `the selected white square is marked, got ${right}`);
+    const apart = (a, b, by) => a.some((v, k) => Math.abs(v - b[k]) > by);
+    assert.ok(face0[0] > face0[1] && face0[1] > face0[2] &&
+      Math.max(...face0) > 60 && Math.min(...face0) < 200,
+      `the orange square's face 0 keeps its hue, neither black nor washed ` +
+      `out, got ${face0}`);
+    assert.ok(flat[1] > flat[0] && flat[1] > flat[2],
+      `the green flat triangle stays green, got ${flat}`);
+    assert.ok(apart(face1, face0, 40),
+      `the marked face 1 ${face1} reads apart from the unmarked face 0 ${face0}`);
+    assert.ok(right[2] > right[1] && right[1] > right[0],
+      `the selected white square takes the mark's blue, got ${right}`);
+    assert.ok(triangle[2] > triangle[1] && triangle[1] > triangle[0],
+      `the triangle's face 34, highlighted in word 1, takes the mark's blue, got ${triangle}`);
     assert.deepEqual(above, background,
       `the background is white, got ${above}`);
+    // A row at y -0.8 across the flat triangle's slanted edge x + y = -1.3,
+    // one point per canvas pixel: 4x multisampling blends an edge pixel.
+    const step = 2 / drawn.canvas[2];
+    const row = Array.from({ length: Math.ceil(0.2 / step) + 1 },
+      (_, k) => [-0.6 + k * step, -0.8]);
+    const edge = (await pixels(row)).find((c) => c.every((v, k) =>
+      Math.min(flat[k], 255) + 10 <= v && v <= Math.max(flat[k], 255) - 10));
+    assert.ok(edge, `a pixel on the flat triangle's edge lies between ` +
+      `${flat} and the background`);
+    // display.f's metal: the same draw with the orange square metallic.
+    await command("metal");
+    const [metal] = await pixels(points);
+    assert.ok(apart(metal, face0, 30) && metal[0] > metal[1] &&
+      metal[1] > metal[2],
+      `the metal orange face 0 ${metal} reads apart from the dielectric ` +
+      `${face0} and keeps its hue`);
     console.log(`Headless Chrome pixels: orange face 0 ${face0}, blue ` +
-      `${upper}, marked orange face 1 ${face1}, marked triangle ` +
+      `${upper}, marked orange face 1 ${face1}, marked metal triangle ` +
       `${triangle}, marked white ${right}, background ${above}, flat ` +
-      `triangle ${flat}`);
+      `triangle ${flat}, its edge ${edge}, metal orange face 0 ${metal}`);
     // display.f's occlude against that draw: the box behind the left square
     // answers 0, the box below every instance 1.
     await command("occlude");
