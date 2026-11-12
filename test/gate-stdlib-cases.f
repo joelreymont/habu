@@ -1002,6 +1002,10 @@ SUITE using-import
    test/using-test.f
 ;SUITE
 
+SUITE postpone-define
+   test/postpone-define.f
+;SUITE
+
 \ The design seal: each test/policy case loaded sealed at tier 0, one child per
 \ case; writes build/vocabulary-run.txt.
 SUITE vocabulary

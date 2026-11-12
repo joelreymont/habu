@@ -1398,11 +1398,16 @@ variable TOK-BODY-RAW
 \ and `defer` heads' alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
+\ The checker's postponed rows (`postpone`) have no checked row.
+TRUSTED: DEF-POSTPONED-CLEAR ( -- ) CHECKER-POSTPONE:CLEAR ;
+TRUSTED: DEF-POSTPONED-CUT ( n -- ) CHECKER-POSTPONE:CUT ;
+TRUSTED: DEF-POSTPONED-ADD ( n n -- ) CHECKER-POSTPONE:ADD ;
+
 public
 \ Ending or abandoning a definition also ends the capture's lexical state.
 \ x86-64's def-close leaves the locals count, so `;` clears it here.
-: DEF-CLOSE ( -- ) def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET ;
-: DEF-ABORT ( -- ) def-abort BODY-LEX-RESET ;
+: DEF-CLOSE ( -- ) def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET  DEF-POSTPONED-CLEAR ;
+: DEF-ABORT ( -- ) def-abort BODY-LEX-RESET  DEF-POSTPONED-CLEAR ;
 private
 
 \ The engine's cells hold the compiler entries, the body hook and the checker's
@@ -1442,9 +1447,9 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    DEF-CAPTURED-NAME ERROR-TEXT:TYPE
    NL 1 ERROR-TEXT:TYPE  RC-UNCLOSED throw ;
 
-\ body-append grows the block when the text would pass its capacity, so an
+\ body-capture grows the block when the text would pass its capacity, so an
 \ address into the text is formed after the capture, never kept across it.
-: DEF-CAPTURE ( ptr u8 n -- ) body-append ;
+: DEF-CAPTURE ( ptr u8 n -- ) body-capture ;
 
 \ Both comparisons are signed, as the engine's head makes them.
 : DEF-CODE-ROOM ( -- )
@@ -1488,11 +1493,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ DEF-TKL take the name token, which the refusals after them name. A bare name
 \ goes into the current wordlist; the qualifier is the first colon at neither
 \ edge (`:a:b` is bare), and a second colon after it refuses.
-: DEF-QUALIFY ( -- ptr u8 n n )
-   OVERLAY-GUARD
-   TKA-CELL CELL@ DEF-TKA-CELL CELL!
-   TKL-CELL CELL@ DEF-TKL-CELL CELL!
-   TOKEN$ {: a:ptr u:n :}
+: DEF-QUALIFY-NAME ( ptr u8 n -- ptr u8 n n ) {: a:ptr u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
    a u q 1+ COLON-AT 0 >= if
@@ -1500,10 +1501,16 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u SEALED-FAIL then ;
 
+: DEF-QUALIFY ( -- ptr u8 n n )
+   OVERLAY-GUARD
+   TKA-CELL CELL@ DEF-TKA-CELL CELL!
+   TKL-CELL CELL@ DEF-TKL-CELL CELL!
+   TOKEN$ DEF-QUALIFY-NAME ;
+
 \ The keywords a body's compiler reads before it looks a word up: a word named
 \ by one could never be called from a body.
 : DEF-KEYWORDS ( -- ptr u8 n )
-   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {:" ;
+   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {: postpone" ;
 
 \ A design may define none of the engine's dispatch-row names. The admitted
 \ syntax rows other than S\" keep the ordinary reserved-name error; every other
@@ -1970,26 +1977,128 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
       rollback TOKBODY-CELL CELL! UNDEFINED
    then ;
 
-\ `;`, the one byte, ends the definition and joins no capture. The latch is
-\ checked again here since a body immediate can have cleared it. This `;`
-\ recovers: it declares so in RECOVER-CELL for the compile, and abandons the
-\ definition the compiler refused with E-COMP-RECOVERY, which only a
-\ multi-error run throws, and reads on.
+\ The latch is checked again here since a body immediate can have cleared it.
+\ The end recovers: it declares so in RECOVER-CELL for the compile, and
+\ abandons the definition the compiler refused with E-COMP-RECOVERY, which
+\ only a multi-error run throws, and reads on.
 : DEF-COMPILE ( ptr u8 n -- )
    DEF-DISPATCH DEF-COMPILER AS-COMPILE execute ;
 
-: DEF-SEMI? ( -- bool )
-   s" ;" TOKEN-IS? 0= if false exit then
+: DEF-END ( -- )
    DEF-SOURCE-CLOSE
    NCOMP-DISPATCH:RECOVER-CELL CELL@ {: prior:n :}
    -1 NCOMP-DISPATCH:RECOVER-CELL CELL!
    [: BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ DEF-COMPILE ;] catch
    {: rc:n :}
    prior NCOMP-DISPATCH:RECOVER-CELL CELL!
-   rc E-COMP-RECOVERY = if DEF-ABORT true exit then
+   rc E-COMP-RECOVERY = if DEF-ABORT exit then
    rc 0<> if rc throw then
-   DEF-CLOSE
-   true ;
+   DEF-CLOSE ;
+
+\ `;`, the one byte, ends the definition and joins no capture.
+: DEF-SEMI? ( -- bool )
+   s" ;" TOKEN-IS? 0= if false exit then
+   DEF-END true ;
+
+\ ---- definitions built by a running word -------------------------------------
+\ `define-word` opens a definition from strings, `body-append` adds the
+\ caller's tokens to its capture and `postpone W` adds W bound to the record
+\ the handle names; `postpone ;` ends it as its source `;` would. The source
+\ cursor stays at the running word's call, where a refusal locates.
+
+: DEF-NAME-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-MISSING-NAME" REFUSAL
+   s" define-word needs one token as the name: '" ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  s" '" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   RC-NO-NAME throw ;
+
+: DEF-OPEN-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-DEFINITION-OPEN" REFUSAL
+   s" define-word while a definition is open: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+
+: DEF-GIVEN-SIG-BAD ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-MISSING-SIGNATURE" REFUSAL
+   s" '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
+   s" ' has no closed ( -- ) signature" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   DEF-RC-BAD-SIG throw ;
+
+: DEF-ONE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= if false exit then
+   a a u + WORD-END a u + = ;
+
+\ The signature as source writes it, `( n -- n )`, with blanks at most around
+\ it: the span from its `(` through its `)`.
+: DEF-GIVEN-SIG ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n s:ptr su:n :}
+   s su + {: e:ptr :}
+   s e BLANKS-END {: p:ptr :}
+   p e < if p c@ OPEN-COMMENT = else false then 0= if a u DEF-GIVEN-SIG-BAD then
+   p begin dup e < if dup c@ CLOSE-COMMENT <> else false then while 1 + repeat
+   {: c:ptr :}
+   c e < 0= if a u DEF-GIVEN-SIG-BAD then
+   c 1 + e BLANKS-END e <> if a u DEF-GIVEN-SIG-BAD then
+   p c 1 + p - ;
+
+\ TSIG is read for a trusted head alone, so the signature lives only in the
+\ capture.
+: DEFINE-RUN ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n s:ptr su:n :}
+   PEND-CELL CELL@ 0<> if a u DEF-OPEN-REFUSE then
+   a u DEF-ONE-TOKEN? 0= if a u DEF-NAME-REFUSE then
+   a u s su DEF-GIVEN-SIG {: p:ptr pu:n :}
+   NCOMP-DISPATCH:TIER-CELL CELL@ NCOMP-DISPATCH:COMP-CELL CELL@ or 0= if
+      DEF-TIER-0
+   then
+   DEF-ROOM
+   OVERLAY-GUARD
+   a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
+   ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
+   0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
+   ta tu wid 0 DEF-RECORD
+   0 LOCN-CELL CELL!  BODY-LEX-RESET
+   p pu DEF-CAPTURE
+   DEF-DISPATCH ;
+
+: HANDLE-SPLIT ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
+   a u + {: e:ptr :}
+   a e WORD-END {: w:ptr :}
+   w e = if a u e 0 exit then
+   a w a -  w 1 + e w 1 + - ;
+
+: HANDLE-PROBE ( ptr u8 n n -- ptr n ) {: a:ptr u:n wid:n :}
+   a u wid WL-PROBE {: rec:ptr :}
+   rec XREF-FOUND? 0= if a u UNDEFINED-NAME then
+   rec ;
+
+\ The record a handle names in this dictionary: `global TAIL`, or `public` or
+\ `private` then the package's path and TAIL.
+: HANDLE-REC ( ptr u8 n -- ptr n ) {: h:ptr hu:n :}
+   h hu HANDLE-SPLIT {: k:ptr ku:n r:ptr ru:n :}
+   k ku s" global" STR= if r ru BOOT:GLOBAL-WL HANDLE-PROBE exit then
+   r ru HANDLE-SPLIT {: pa:ptr pu:n t:ptr tu:n :}
+   pa pu BOOT:NAMESPACE-WL WL-PROBE {: row:ptr :}
+   row XREF-FOUND? 0= if pa pu UNDEFINED-NAME then
+   k ku s" public" STR= if t tu row XREF-PKG-PUBLIC HANDLE-PROBE exit then
+   t tu row XREF-PKG-PRIVATE HANDLE-PROBE ;
+
+: BUILT-PENDING ( ptr u8 n -- ) {: a:ptr u:n :}
+   PEND-CELL CELL@ 0<> if exit then
+   s" E-NO-DEFINITION" REFUSAL
+   a u ERROR-TEXT:TYPE  s"  with no definition open" ERROR-TEXT:TYPE
+   NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+
+: APPEND-RUN ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" body-append" BUILT-PENDING
+   a u DEF-CAPTURE ;
+
+\ What `postponed` runs: the handle `end` ends the definition, any other
+\ appends its record's name, which the checker then binds to it.
+: POSTPONE-RUN ( ptr u8 n -- ) {: h:ptr hu:n :}
+   s" postpone" BUILT-PENDING
+   h hu s" end" STR= if DEF-END exit then
+   h hu HANDLE-REC {: rec:ptr :}
+   BODYLEN-CELL CELL@ {: at:n :}
+   rec XREF-NAME$ DEF-CAPTURE
+   at  rec XREF-NULL - XREF-ADDR>INDEX  DEF-POSTPONED-ADD ;
 
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
@@ -2580,6 +2689,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
 : FRAME-ROLLBACK-TOKEN ( -- )
    TOKBODY-CELL CELL@ BODYLEN-CELL CELL!
+   TOKBODY-CELL CELL@ DEF-POSTPONED-CUT
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
    TOK-BODY-DEPTH @ BODY-DEPTH !
    TOK-BODY-RAW @ BODY-RAW-NEXT !
@@ -2723,6 +2833,9 @@ public
 
 : INSTALL-EVALUATE ( -- )
    ['] EVAL-FRAMED data-base PROVIDED-XT:EVALUATE-CELL + xt!
-   ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt! ;
+   ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt!
+   ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
+   ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
+   ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt! ;
 
 ;package

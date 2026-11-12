@@ -402,6 +402,12 @@ deferred D, or one no `parse-name` reaches through the words it calls (not
 through a `defer` or an executed xt), is `E-GENERATES-ROW`.
 `FUNCTION:` needs no row.
 
+A definer that builds a word from words it found writes no text:
+`name$ s" ( n -- n )" define-word` opens the word, `postpone W` appends the W
+found where the definer was compiled, which no package the definer later runs
+in can shadow, `body-append` appends text that binds where it runs, and
+`postpone ;` ends the word.
+
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
 `PTR-U8-TABLE-VARIABLE` cells as null; their `PERSISTED-` siblings keep their
@@ -413,7 +419,8 @@ definer's own scratch body, with `here` cell-aligned. Runtime-sized buffers come
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
 a byte offset.
 
-forth.md: **Structures And Enums**, **Habu Native Tooling Gotchas**.
+forth.md: **Structures And Enums**, **Habu Native Tooling Gotchas**, **Rules
+learned by refusal**.
 
 ## 5 A cell that holds an address is declared
 

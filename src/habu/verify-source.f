@@ -1033,6 +1033,7 @@ variable SEALS-N
 
 : BODY-PARSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" [']" STR=CI IF 0 0= EXIT THEN
+   a u s" postpone" STR=CI IF 0 0= EXIT THEN
    a u s" [char]" STR=CI ;
 
 : OPERAND ( -- ptr u8 n )

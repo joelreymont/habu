@@ -1514,7 +1514,7 @@ variable LREPLAYTRAP
    prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
    done LBL, ;
 
-\ body-append ( ptr u8 n -- ): LBCS is the capture `:` appends through; it grows
+\ body-capture ( ptr u8 n -- ): LBCS is the capture `:` appends through; it grows
 \ the body text block as every capture does.
 : BODY-APPEND ( -- )
    LBL LBL {: bad done :}
@@ -1525,7 +1525,7 @@ variable LREPLAYTRAP
    12 15 CMP,  C-CS bad BCOND,                        \ BODYLEN + u + 1 wraps
    LBCS LABEL@ BL,
    done B,
-   s" E-SEAL-VIOLATION habu: body-append past the body text capacity or wrapping"
+   s" E-SEAL-VIOLATION habu: body-capture past the body text capacity or wrapping"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
@@ -3151,7 +3151,6 @@ variable KERNEL-CODE-END
    s" alias-record" ['] DEFWRITE:ALIAS-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" package-scope!" ['] DEFWRITE:PACKAGE-SCOPE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-open" ['] DEFWRITE:DEF-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" body-append" ['] DEFWRITE:BODY-APPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" body-capture" ['] DEFWRITE:BODY-APPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

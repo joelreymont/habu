@@ -141,6 +141,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" ?do" COMPILE-KEYWORD-REJECT      s" +loop" COMPILE-KEYWORD-REJECT
    s" j" COMPILE-KEYWORD-REJECT        s" leave" COMPILE-KEYWORD-REJECT
    s" unloop" COMPILE-KEYWORD-REJECT   s" {:" COMPILE-KEYWORD-REJECT
+   s" postpone" COMPILE-KEYWORD-REJECT
    \ CASE is the minimal wrong-token reproducer: the diagnostic must include the
    \ guilty spelling itself, not a later body token where syntax finally trips.
    s" compile keyword definition names CASE" T-LABEL

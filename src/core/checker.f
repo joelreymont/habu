@@ -16952,6 +16952,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    s" evaluate" CTL-RENDERS CTL-CORE-OP or NORET-AXIOM
    s" evaluate-closed" CTL-RENDERS NORET-AXIOM
    s" evaluate-range" CTL-RENDERS NORET-AXIOM
+   s" define-word" CTL-RENDERS NORET-AXIOM
    s" parse-name" CTL-PARSES NORET-AXIOM
    s" create" CTL-PARSES CTL-CREATES or INTRINSIC-CREATE INTRINSIC>CTL or NORET-AXIOM
    s" 0=" CTL-CORE-OP CTL-ZERO-TRUE or NORET-AXIOM
@@ -18595,6 +18596,74 @@ defer NAMED-OPERAND-XT ( -- )
    sym CTL-FLAGS-SYM CTL-IDENTITY and ;
 
 
+\ ---- postponed tokens --------------------------------------------------------
+\ Each token `postpone` appended to the pending definition binds the record
+\ it was given, keyed by the token's offset in the body text. The rows belong
+\ to the record pending at the first ADD and apply to no other.
+PTR-VARIABLE PP-P   variable PP-CAP   variable PP-N   variable PP-OWNER
+2 constant PP-ROW
+
+package CHECKER-POSTPONE
+public
+: CLEAR ( -- )
+   PP-CAP @ 0 > IF PP-P PP-CAP PP-ROW ARENA-ROWS-RELEASE THEN
+   0 PP-N !  0 PP-OWNER ! ;
+
+\ Drops the rows at or past body offset off, which a rolled-back token freed.
+: CUT ( n -- ) {: off:n :}
+   BEGIN
+      PP-N @ 0 > IF PP-P PP-N @ 1 - PP-ROW NAV-CELL @ off >= ELSE RES-FALSE THEN
+   WHILE PP-N @ 1 - PP-N ! REPEAT ;
+
+\ Record index ix binds the token at body offset off.
+: ADD ( n n -- ) {: off:n ix:n :}
+   data-base PEND-CELL + @ {: pend:n :}
+   pend PP-OWNER @ <> IF 0 PP-N !  pend PP-OWNER ! THEN
+   PP-P PP-CAP PP-N @ 1 + PP-ROW ARENA-ROWS-ENSURE
+   PP-P PP-N @ PP-ROW NAV-CELL {: p:ptr :}
+   off p !  ix p CELL + !
+   PP-N @ 1 + PP-N ! ;
+;package
+
+\ The package path and section of the wordlist record rec is in, found by the
+\ namespace row that owns it; false for a wordlist no package owns.
+: REC-HOME ( ptr n -- ptr u8 n n bool ) {: rec:ptr :}
+   rec CK-REC-WID {: wid:n :}
+   wid WL:GLOBAL? IF s" " SYM-GLOBAL RES-TRUE EXIT THEN
+   ndict@ 0 ?DO
+      i CHECKER-RESOLVE:REC-AT {: row:ptr :}
+      row CK-REC-WID BOOT:NAMESPACE-WL = IF
+         row 0 DICT-CELL@ wid = IF
+            row CHECKER-RESOLVE:CK-REC-NAME$ SYM-PUBLIC RES-TRUE UNLOOP EXIT
+         THEN
+         row 1 DICT-CELL@ wid = IF
+            row CHECKER-RESOLVE:CK-REC-NAME$ SYM-PRIVATE RES-TRUE UNLOOP EXIT
+         THEN
+      THEN
+   LOOP
+   s" " SYM-GLOBAL RES-FALSE ;
+
+: REC-HOME-SYM ( ptr n -- n ) {: rec:ptr :}
+   rec REC-HOME drop {: pa:ptr pu:n vis:n :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
+   vis SYM-GLOBAL = IF a u CHECKER-GLOBAL-SYM? EXIT THEN
+   pa pu vis a u CHECKER-PKG-SYM? ;
+
+\ The record the u-byte token at offset off was postponed to, NULL-PTR for
+\ none: rows apply only to a walk of their own pending definition's body text.
+: POSTPONED-REC ( n n -- ptr n ) {: off:n u:n :}
+   PP-N @ 0= IF NULL-PTR EXIT THEN
+   data-base PEND-CELL + @ PP-OWNER @ <> IF NULL-PTR EXIT THEN
+   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF NULL-PTR EXIT THEN
+   PP-N @ 0 ?DO
+      PP-P i PP-ROW NAV-CELL {: p:ptr :}
+      p @ off = IF
+         p CELL + @ CHECKER-RESOLVE:REC-AT {: rec:ptr :}
+         rec CHECKER-RESOLVE:CK-REC-NAME$ nip u = IF rec UNLOOP EXIT THEN
+      THEN
+   LOOP
+   NULL-PTR ;
+
 \ Made on the first ask for the token DO-TOK1 is reading, and read by every
 \ later reader of that token. A refusal the lookup raises names the token as
 \ DO-TOK1 read it; `a u` may be the fold the body walk keeps in scratch.
@@ -18606,8 +18675,16 @@ defer NAMED-OPERAND-XT ( -- )
    NULL-PTR TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !  0 TOK-SEEDED !
    0 TOK-LIVE-REC !
    a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
-   NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
-   a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND-WHY {: sym:n why:n :}
+   NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !  0 BIND-SEEDED !
+   TSTART @ u POSTPONED-REC {: prec:ptr :}
+   prec NULL-PTR <> IF
+      prec FACTS-READ-XT  prec BIND-REC !
+      prec CK-REC-WID WL:PRIMITIVES = IF BIND-SCOPE-SEEDED BIND-SEEDED ! THEN
+      -1 WALK-REC !
+      prec REC-HOME-SYM 0
+   ELSE
+      a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND-WHY
+   THEN {: sym:n why:n :}
    sym TOK-SYM !
    BIND-REC @ TOK-REC !
    BIND-PEND-IX @ TOK-PEND-IX !
@@ -22407,6 +22484,11 @@ variable IS-PEND-U                   \ and its length
 \ The symbol the swallowed target names: its fold resolves, and the token as
 \ written names a refusal, so a raised shadow locates in the file.
 : IS-TARGET-SYM ( -- n )
+   IS-TOFF @ IS-TU @ POSTPONED-REC {: prec:ptr :}
+   prec NULL-PTR <> IF
+      prec FACTS-READ-XT  prec BIND-REC !  0 BIND-PEND-IX !  -1 WALK-REC !
+      prec REC-HOME-SYM EXIT
+   THEN
    TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND-WHY {: sym:n why:n :}
    why 0= IF sym IS-TA@ IS-TU @ NAV-USE THEN
    sym 0= CHECKER-PREFIX-ACTIVE @ and IF
@@ -22851,6 +22933,96 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    LBI-T @ TYPE-LIT-WIDTH STEP-TYPE-OUT
    bytes TYPE-LIT-DIGITS!  -1 TPAY-ON ! ;
 
+\ ---- postpone W ----------------------------------------------------------------
+\ `postpone W` compiles W's handle as a string literal and a call of
+\ `postponed`; the handle names W's record by its home, never a search order.
+create POST-BOOT 256 allot
+PERSISTED-PTR-VARIABLE POST-P   variable POST-CAP   variable POST-U
+POST-BOOT POST-P !   256 POST-CAP !
+variable POST-ON      \ did the token just judged compile a handle?
+: POST-FIELD POST-P 0 ptr-field ;
+: POST POST-FIELD @ ;
+
+: POST-ENSURE ( n -- ) {: need:n :}
+   need POST-CAP @ <= IF EXIT THEN
+   need TOKBUF-ROUND-CAP {: cap:n :}
+   cap TOKBUF-ALLOC POST-FIELD !  cap POST-CAP ! ;
+
+: POST+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a POST POST-U @ + u CCOPY  POST-U @ u + POST-U ! ;
+
+: POST-VIS$ ( n -- ptr u8 n ) {: vis:n :}
+   vis SYM-GLOBAL = IF s" global" EXIT THEN
+   vis SYM-PUBLIC = IF s" public" EXIT THEN
+   s" private" ;
+
+: POST-HANDLE! ( ptr u8 n n ptr u8 n -- )
+   {: pa:ptr pu:n vis:n a:ptr u:n :}
+   pu u + 16 + POST-ENSURE  0 POST-U !
+   vis POST-VIS$ POST+  s"  " POST+
+   pu 0 > IF pa pu POST+  s"  " POST+ THEN
+   a u POST+ ;
+
+: PPAY$ ( -- ptr u8 n )
+   POST-ON @ IF POST POST-U @ EXIT THEN
+   PKG-LIT-NAME$ ;
+
+\ The record INTERPRETER's private row of `postponed` lays in its private
+\ wordlist, which a stripped build's link lays too, and that record's symbol.
+: POSTPONE-RUN-REC ( -- ptr n n )
+   s" INTERPRETER" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   pkg NULL-PTR = IF s" checker: no INTERPRETER package for postpone" 76 die THEN
+   s" postponed" pkg 1 DICT-CELL@ CHECKER-RESOLVE:WL-PROBE {: run:ptr :}
+   run NULL-PTR = IF s" checker: no INTERPRETER row of postponed" 76 die THEN
+   run FACTS-READ-XT
+   run REC-HOME-SYM {: sym:n :}
+   sym 0= IF s" checker: no symbol for INTERPRETER's postponed" 76 die THEN
+   run sym ;
+
+\ The handle, pushed as a string literal is, then the call, judged as a call
+\ the body spelled.
+: POSTPONE-CALL ( ptr n n -- ) {: run:ptr sym:n :}
+   -1 PPAY-ON !  -1 POST-ON !
+   s" [package]" PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
+   -1 TOK-DONE !  sym TOK-SYM !  0 TOK-CTL !  0 TOK-DEAD !
+   run TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !  0 TOK-SEEDED !
+   -1 TOK-LIVE-REC !
+   DCUR @ XE-PD !  RCUR @ XE-PR !
+   run CHECKER-RESOLVE:CK-REC-NAME$ DO-TOK
+   OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN ;
+
+: POSTPONE-UNDEFINED ( -- )
+   TICK-PIN  TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
+
+\ W's record, the pending one when W is the definition being compiled.
+: POSTPONE-TARGET ( -- ptr n )
+   IS-TARGET-SYM drop
+   BIND-REC @ {: rec:ptr :}
+   rec NULL-PTR <> IF rec EXIT THEN
+   BIND-PEND-IX @ 0 = IF NULL-PTR EXIT THEN
+   BIND-PEND-IX @ CHECKER-RESOLVE:REC-AT ;
+
+: POSTPONE-TOK ( -- )
+   IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
+   -1 CRTGT !                              \ a refusal names the operand, as a tick's does
+   POSTPONE-RUN-REC {: run:ptr sym:n :}
+   IS-TA@ IS-TU @ s" ;" CORE-STR= IF
+      0 POST-ENSURE  0 POST-U !  s" end" POST+
+      run sym POSTPONE-CALL EXIT
+   THEN
+   POSTPONE-TARGET {: rec:ptr :}
+   rec NULL-PTR = IF POSTPONE-UNDEFINED EXIT THEN
+   rec REC-HOME {: pa:ptr pu:n vis:n homed:bool :}
+   homed 0= IF POSTPONE-UNDEFINED EXIT THEN
+   pa pu vis rec CHECKER-RESOLVE:CK-REC-NAME$ POST-HANDLE!
+   run sym POSTPONE-CALL ;
+
+\ A postponed token names its record even where a local of its spelling is
+\ in scope.
+: BODY-LOC-REF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   TSTART @ u POSTPONED-REC NULL-PTR <> IF RES-FALSE EXIT THEN
+   a u LOC-REF? ;
+
 : DO-TOK1 {: a u :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
@@ -22880,7 +23052,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
       CHECKER-MATCH-MODE @ 4 = IF LITERAL-PAYLOAD-STEP THEN
       TKF TKFU @ MATCH-TOK
    ELSE
-   a u LOC-REF? IF ELSE
+   a u BODY-LOC-REF? IF ELSE
    TKF TKFU @ PARSE-LIT? IF TKF TKFU @ CHAR-LIT-TOK ELSE
    TKF TKFU @ PKG-LIT? IF TKF TKFU @ PKG-LIT-TOK ELSE
    TKF TKFU @ s" [type]" CORE-STR= IF TYPE-LIT-TOK ELSE
@@ -22893,6 +23065,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    a u RETIRED-GLOBAL? IF REJECT-RETIRED ELSE
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
    TKF TKFU @ BTICK-CAND? IF BTICK-TOK ELSE
+   TKF TKFU @ s" postpone" CORE-STR= IF POSTPONE-TOK ELSE
    OK @ IF TKF TKFU @ s" exit" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" leave" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
@@ -22911,7 +23084,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   THEN THEN THEN
+   THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are
@@ -24620,7 +24793,10 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : EV-COMMIT ( -- )
    EV-HIT @  CPAY-ON @ SPAY-ON @ or PPAY-ON @ or 0=  and IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
    REC-IX @ EV-FILE
-   IS-PEND @ IF CHECKER-TAPE:K-OPERAND 0 0 REC-IX @ 1 + EV-FILE THEN ;
+   IS-PEND @ IF
+      POST-ON @ IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE CHECKER-TAPE:K-OPERAND 0 0 THEN
+      REC-IX @ 1 + EV-FILE
+   THEN ;
 
 \ What this token instantiated is filed before the token is reported, so the
 \ row and its ordinal are made in one step: the ordinal is the one the observer
@@ -24643,7 +24819,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
       SCAN-PEND-REPORT EXIT
    THEN
    PPAY-ON @ IF
-      PKG-LIT-NAME$  TSTART @  TI @ TSTART @ -  CHECKER-TAPE:STRING
+      PPAY$  TSTART @  SCAN-U @  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT
    THEN
    TPAY-ON @ IF
@@ -24969,7 +25145,7 @@ variable CUR-OPEN   variable CUR-PSIG
          TI @ TSTART !
          BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
          CHECKER-TAPE:ARMED @ IF
-            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !  0 PPAY-ON !  0 TPAY-ON !
+            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !  0 PPAY-ON !  0 POST-ON !  0 TPAY-ON !
             0 IS-PEND !  0 EV-HIT !
          THEN
          CUR-TOKEN

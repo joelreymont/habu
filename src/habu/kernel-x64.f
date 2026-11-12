@@ -2707,6 +2707,8 @@ public
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
    PROVIDED-XT:EVALUATE-RANGE-CELL s" evaluate-range" [: REFUSE-BODY ;]
       ENGINE-PRIMS:GLOBAL-INT-WID PROVIDED-ROW-WID
+   PROVIDED-XT:DEFINE-CELL s" define-word" [: REFUSE-BODY ;] PROVIDED-ROW
+   PROVIDED-XT:APPEND-CELL s" body-append" [: REFUSE-BODY ;] PROVIDED-ROW
    PROVIDED-XT:POSTPONE-CELL s" postponed" [: REFUSE-BODY ;]
       ENGINE-PRIMS:GLOBAL-INT-WID PROVIDED-ROW-WID
    s" create" [: CREATE-BODY ;] PRIM
@@ -5492,7 +5494,7 @@ variable GROW-CELL
    head X64CODE:LBL,  GROW-HEAD$ TEXT,
    unit X64CODE:LBL,  GROW-UNIT$ TEXT, ;
 
-\ body-append ( ptr u8 n -- ): habu2.f BODY-APPEND's twin, with BODY-ROW,;
+\ body-capture ( ptr u8 n -- ): habu2.f BODY-APPEND's twin, with BODY-ROW,;
 \ pass 2 re-runs a captured body and stores nothing. BODYLEN past the
 \ capacity and a length that wraps exit SEAL-VIOLATION; with no block, or
 \ none the run and its space fit, GROW-LBL grows it first.
@@ -5879,7 +5881,7 @@ public
 \ def-create and def-defer, the tails of the engine's interpret-mode `create`
 \ and `defer`, refuse as those keywords do: the x86-64 kernel carries no
 \ interpreter. def-cast has a body: it publishes a cast's identity slot at CP
-\ and the pending record that names it. GROW-LBL, which body-append calls,
+\ and the pending record that names it. GROW-LBL, which body-capture calls,
 \ comes first.
 : DEFINITION, ( -- )
    X64CODE:LBL GROW-CELL !  GROW-HELPER,
@@ -5888,7 +5890,6 @@ public
    s" alias-record" [: ALIAS-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" package-scope!" [: PACKAGE-SCOPE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-open" [: DEF-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" body-append" [: BODY-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" body-capture" [: BODY-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID

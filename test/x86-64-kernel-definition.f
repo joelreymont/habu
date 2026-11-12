@@ -50,7 +50,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 
-\ ---- the body text block, which body-append maps at run time ---------------
+\ ---- the body text block, which body-capture maps at run time --------------
 : TEXT@, ( r64 -- ) {: r:r64 :}
    r DATA-REG BODY-TEXT:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM ;
 
@@ -103,7 +103,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    row X64HARNESS:PUSH,  parent X64HARNESS:PUSH,
    s" package-scope!" X64HARNESS:CALL-ROW, ;
 
-: APPEND, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" body-append" X64HARNESS:CALL-ROW, ;
+: APPEND, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" body-capture" X64HARNESS:CALL-ROW, ;
 
 \ The signature row named over SIG-LEN bytes at the text's start, a span whose
 \ address the block fixes at run time.
@@ -434,7 +434,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \   (-namespace-private-set-armed), an alias of a DNAME-INT source
 \   (-alias-record-int-armed), package-scope! `-1 5`
 \   (-package-scope-clear-armed), a 17-byte def-open with CP 32 bytes below the
-\   code ceiling (-def-open-ceiling-armed), body-append with BODYLEN one byte
+\   code ceiling (-def-open-ceiling-armed), body-capture with BODYLEN one byte
 \   past the capacity (-body-append-full-armed), and trust-sig!, created-sig! and
 \   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
 \   -def-close-armed), and def-close on a tier 0 definition

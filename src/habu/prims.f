@@ -809,21 +809,28 @@ EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ body-append ( ptr u8 n -- ): append the bytes and one space to the body text
+\ body-capture ( ptr u8 n -- ): append the bytes and one space to the body text
 \ through the capture routine `:` uses, which grows the text block when they do
 \ not fit (rc 71 when it cannot). It refuses BODYLEN past the text capacity and
 \ a BODYLEN + u + 1 that wraps, with BODYLEN and u both unsigned.
-EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
-EPPRIM: INTERPRETER body-append PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ body-capture ( ptr u8 n -- ): body-append's routine under a second name.
 EPRIM: body-capture PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-\ postponed ( ptr u8 n -- ): runs the word the interpreter stores in
-\ PROVIDED-XT:POSTPONE-CELL.
+EPPRIM: INTERPRETER body-capture PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
+\ body-append ( ptr u8 n -- ): append the bytes to the definition `define-word`
+\ or `:` opened; it refuses when no definition is open.
+EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+EPREFIX-PROVIDED!
+\ define-word ( name$ sig$ -- ): open a definition in the open package and
+\ section as `: NAME ( … )` does, NAME one token and SIG the signature as source
+\ writes it.
+EPRIM: define-word PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+EPREFIX-PROVIDED!
+\ postponed ( ptr u8 n -- ): what `postpone W` compiles a call of; only the
+\ checker binds it.
 EPRIM: postponed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPREFIX-PROVIDED!
+EPPRIM: INTERPRETER postponed PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
 EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
