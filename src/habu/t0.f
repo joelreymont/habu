@@ -1863,9 +1863,9 @@ variable FIXED-VAL                   \ the fixed body's value or dispatch cell
 \ quotation's arity is unknown (-1 -1), as tier 1 answers for one it has none
 \ for. A shadow open while it compiles adds a walk (THE WALKS).
 \
-\ T0 owns its copies of tier 1's back-end words HOST-DECL?, HOST-ROOT-CONTRACT,
-\ HOST-ARITIES and PUBLISH-IT, with BODY-KIND and FIXED-VAL; from NDEFINITION
-\ it calls the front end and the callback group only.
+\ T0 owns its copies of tier 1's back-end words HOST-ARITIES and PUBLISH-IT,
+\ with BODY-KIND and FIXED-VAL; from NDEFINITION it calls the front end and the
+\ callback group only.
 \
 \ The scan's recording unit latches the facts the capture and the call targets
 \ read. T0's observer keeps the verdict the scan reached, as tier 1's tape does
@@ -2021,37 +2021,12 @@ variable SCAN-LO                     \ the ordinal of its first row
    SHADOW-TAKE
    NEMIT:CLEAR ;
 
-: HOST-DECL? ( -- bool )
-   NAME$ CHECKER-OWNER:QUERY 0= if false exit then
-   CHECKER-OWNER:STACK-STABLE? 0= if false exit then
-   CHECKER-OWNER:DIN-N M-IN @ <>
-   CHECKER-OWNER:DOUT-N M-OUT @ <> or if false exit then
-   CHECKER-OWNER:DIN-CELLS M-IN @ <>
-   CHECKER-OWNER:DOUT-CELLS M-OUT @ <> or if false exit then
-   M-IN @ 0 ?do
-      i CHECKER-OWNER:DIN-SLOT 0<>
-      i CHECKER-OWNER:DIN-CON 0 <= or if false unloop exit then
-   loop
-   M-OUT @ 0 ?do
-      i CHECKER-OWNER:DOUT-SLOT 0<>
-      i CHECKER-OWNER:DOUT-CON 0 <= or if false unloop exit then
-   loop
-   true ;
-
-: HOST-ROOT-CONTRACT ( -- )
-   HOST-DECL? 0= if exit then
-   NHOST:SOURCE-CONTRACT-START
-   M-IN @ 0 ?do i i CHECKER-OWNER:DIN-CON NHOST:SOURCE-CONTRACT-IN loop
-   M-OUT @ 0 ?do i i CHECKER-OWNER:DOUT-CON NHOST:SOURCE-CONTRACT-OUT loop
-   NHOST:SOURCE-CONTRACT-DONE ;
-
 \ The arity of each of the definition's functions, root first. A `does>`
 \ clause's is the split's; every other function past the root is a quotation,
 \ whose arity the compiler that built it answers by function ordinal.
 : HOST-ARITIES ( n [ n -- n n ] -- )
    {: funs:n q :}
    M-IN @ M-OUT @ NHOST:SOURCE-ARITY+
-   HOST-ROOT-CONTRACT
    funs 1 ?do
       M-DOES @ 0<> i CLAUSE @ = and if
          M-DOES-IN @ M-DOES-OUT @

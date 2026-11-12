@@ -17,10 +17,9 @@ public
 -9440 constant E-FIRST
 -9449 constant E-LAST
 -9441 constant E-STATE
--9442 constant E-ROW
 
 \ A definition's host reason names what in its body the published facts
-\ (contract, call sites, address sites) do not account for. SAFE: nothing.
+\ (call sites, address sites) do not account for. SAFE: nothing.
 \ MEMORY: memory operations and address-forming words, admitted by provenance.
 \ FIXED: a constant compiled as an immediate, or a data address the address
 \ sites carry. INDIRECT: a run of an xt or text operand, which a file's closure
@@ -41,11 +40,6 @@ private
 0 CWORK-VARIABLE IMPL-N n
 DYNAMIC-BUFFER IMPL-ENTRY n
 DYNAMIC-BUFFER IMPL-LEN n
-DYNAMIC-BUFFER IMPL-IN n
-DYNAMIC-BUFFER IMPL-OUT n
-DYNAMIC-BUFFER IMPL-TYPE-FIRST n
-DYNAMIC-BUFFER IMPL-TYPES n
-0 CWORK-VARIABLE IMPL-TYPE-N n
 DYNAMIC-BUFFER IMPL-REASON n
 DYNAMIC-BUFFER IMPL-LOC n
 DYNAMIC-BUFFER IMPL-LIVE n
@@ -55,10 +49,6 @@ UNKNOWN CWORK-VARIABLE SOURCE-REASON n
 0 CWORK-VARIABLE SOURCE-FUNS n
 DYNAMIC-BUFFER SOURCE-IN n
 DYNAMIC-BUFFER SOURCE-OUT n
-DYNAMIC-BUFFER SOURCE-TYPE-FIRST n
-DYNAMIC-BUFFER SOURCE-TYPE-READY n
-DYNAMIC-BUFFER SOURCE-TYPES n
-0 CWORK-VARIABLE SOURCE-TYPE-N n
 
 \ Emission reads the producer's completed source facts after HIR construction.
 0 CWORK-VARIABLE FACT-REASON n
@@ -66,9 +56,6 @@ DYNAMIC-BUFFER SOURCE-TYPES n
 0 CWORK-VARIABLE FACT-FUNS n
 DYNAMIC-BUFFER FACT-IN n
 DYNAMIC-BUFFER FACT-OUT n
-DYNAMIC-BUFFER FACT-TYPE-FIRST n
-DYNAMIC-BUFFER FACT-TYPE-READY n
-DYNAMIC-BUFFER FACT-TYPES n
 
 \ One process's install state (INSTALL): a save or a file's object writes it
 \ zero, as CAPTURE-PREPARE leaves it. The engine cell INSTALL fills holds no
@@ -78,20 +65,11 @@ variable OWNER-INSTALLED    OWNER-INSTALLED scratch-cell-mark
 variable KERNEL-BEGIN       KERNEL-BEGIN scratch-cell-mark
 variable KERNEL-END         KERNEL-END scratch-cell-mark
 variable SEEDED-N           SEEDED-N scratch-cell-mark
-1 constant NUMBER-CON      \ checker.f CC-N, encoded by PRIM-SPEC:A-NUM
-
-: ROW ( n -- n )
-   {: id:n :}
-   id 1 < id IMPL-N @ > or if E-ROW throw then
-   id 1- ;
 
 : RESERVE-IMPL ( n -- )
    {: count:n :}
    count IMPL-ENTRY-RESERVE
    count IMPL-LEN-RESERVE
-   count IMPL-IN-RESERVE
-   count IMPL-OUT-RESERVE
-   count IMPL-TYPE-FIRST-RESERVE
    count IMPL-REASON-RESERVE
    count IMPL-LOC-RESERVE
    count IMPL-LIVE-RESERVE ;
@@ -143,10 +121,9 @@ public
    base 0 <= end base <= or if E-STATE throw then
    base KERNEL-BEGIN !  end KERNEL-END ! ;
 
-\ A registry ordinal selects the exact booted occurrence. Its emitted row
-\ supplies the behavior; the specification contributes only its numeric shape.
-: SEED-ROW ( n n n -- )
-   {: marker:n din:n dout:n :}
+\ A registry ordinal selects the exact booted occurrence.
+: SEED-ROW ( n -- )
+   {: marker:n :}
    marker 0< marker ndict@ > or if E-STATE throw then
    marker 1- XREF-REC {: rec:ptr :}
    rec XREF-START {: entry:n :}
@@ -159,17 +136,10 @@ public
          drop
          IMPL-N @ 1+ dup RESERVE-IMPL {: count:n :}
          count 1- {: row:n :}
-         IMPL-TYPE-N @ {: first:n :}
-         din dout + {: types:n :}
-         first types + IMPL-TYPES-RESERVE
-         types 0 ?do NUMBER-CON first i + IMPL-TYPES ! loop
          entry row IMPL-ENTRY !
          len row IMPL-LEN !
-         din row IMPL-IN !  dout row IMPL-OUT !
-         first row IMPL-TYPE-FIRST !
          SAFE row IMPL-REASON !  0 row IMPL-LOC !
          1 row IMPL-LIVE !
-         first types + IMPL-TYPE-N !
          count IMPL-N !
       ENDOF
    ;MATCH ;
@@ -179,7 +149,7 @@ public
 \ published the marker only after both spans finished.
 : SEED-SCALAR ( -- )
    data-base NATIVE-HOST-CELLS:SCALAR-PRIM + @ {: marker:n :}
-   marker 0<> if marker 1 1 SEED-ROW then ;
+   marker 0<> if marker SEED-ROW then ;
 
 : SEED-DIVISION ( -- )
    data-base NATIVE-HOST-CELLS:DIVISION-PRIM + @ {: marker:n :}
@@ -191,12 +161,11 @@ public
    rec XREF-CODE-BYTES {: len:n :}
    entry KERNEL-BEGIN @ < entry KERNEL-END @ >= or if E-STATE throw then
    len 0 <= len KERNEL-END @ entry - > or if E-STATE throw then
-   marker 2 1 SEED-ROW ;
+   marker SEED-ROW ;
 
 : INSTALL ( -- )
    OWNER-INSTALLED @ 0<> if exit then
    0 IMPL-N !
-   0 IMPL-TYPE-N !
    KERNEL-OWNER
    SEED-SCALAR
    SEED-DIVISION
@@ -218,7 +187,6 @@ public
    if UNCHECKED else SAFE then SOURCE-REASON !
    0 SOURCE-LOC !
    0 SOURCE-FUNS !
-   0 SOURCE-TYPE-N !
    0 FACT-FUNS ! ;
 
 private
@@ -262,12 +230,8 @@ public
    SOURCE-FUNS @ 1+ {: count:n :}
    count SOURCE-IN-RESERVE
    count SOURCE-OUT-RESERVE
-   count SOURCE-TYPE-FIRST-RESERVE
-   count SOURCE-TYPE-READY-RESERVE
    din count 1- SOURCE-IN !
    dout count 1- SOURCE-OUT !
-   -1 count 1- SOURCE-TYPE-FIRST !
-   0 count 1- SOURCE-TYPE-READY !
    count SOURCE-FUNS ! ;
 
 : SOURCE-ARITY@ ( n -- n n )
@@ -275,85 +239,30 @@ public
    ordinal FACT-FUNS @ >= if -1 -1 exit then
    ordinal FACT-IN @ ordinal FACT-OUT @ ;
 
-: SOURCE-CONTRACT-START ( -- )
-   SOURCE-FUNS @ 1- {: ordinal:n :}
-   ordinal 0< if E-STATE throw then
-   ordinal SOURCE-IN @ ordinal SOURCE-OUT @ + {: count:n :}
-   count 0< if E-STATE throw then
-   SOURCE-TYPE-N @ count + dup SOURCE-TYPES-RESERVE SOURCE-TYPE-N !
-   SOURCE-TYPE-N @ count - ordinal SOURCE-TYPE-FIRST ! ;
-
-: SOURCE-CONTRACT-IN ( n n -- )
-   {: idx:n con:n :}
-   SOURCE-FUNS @ 1- {: ordinal:n :}
-   idx 0< idx ordinal SOURCE-IN @ >= or if E-STATE throw then
-   con 0 <= if E-STATE throw then
-   con ordinal SOURCE-TYPE-FIRST @ idx + SOURCE-TYPES ! ;
-
-: SOURCE-CONTRACT-OUT ( n n -- )
-   {: idx:n con:n :}
-   SOURCE-FUNS @ 1- {: ordinal:n :}
-   idx 0< idx ordinal SOURCE-OUT @ >= or if E-STATE throw then
-   con 0 <= if E-STATE throw then
-   con ordinal SOURCE-TYPE-FIRST @ ordinal SOURCE-IN @ + idx + SOURCE-TYPES ! ;
-
-: SOURCE-CONTRACT-DONE ( -- )
-   1 SOURCE-FUNS @ 1- SOURCE-TYPE-READY ! ;
-
 \ The source facts are complete before emission; TAKE reads this copy after it.
 : SOURCE-FREEZE ( -- )
    SOURCE-FUNS @ {: funs:n :}
-   SOURCE-TYPE-N @ {: types:n :}
    funs FACT-IN-RESERVE
    funs FACT-OUT-RESERVE
-   funs FACT-TYPE-FIRST-RESERVE
-   funs FACT-TYPE-READY-RESERVE
-   types FACT-TYPES-RESERVE
    funs 0 ?do
       i SOURCE-IN @ i FACT-IN !
       i SOURCE-OUT @ i FACT-OUT !
-      i SOURCE-TYPE-FIRST @ i FACT-TYPE-FIRST !
-      i SOURCE-TYPE-READY @ i FACT-TYPE-READY !
    loop
-   types 0 ?do i SOURCE-TYPES @ i FACT-TYPES ! loop
    SOURCE-REASON @ FACT-REASON !
    SOURCE-LOC @ FACT-LOC !
    funs FACT-FUNS ! ;
 
 private
 
-: SOURCE-CONTRACT? ( n -- bool )
-   dup FACT-FUNS @ >= if drop false exit then
-   FACT-TYPE-READY @ 0<> ;
-
-: SOURCE-CONTRACT-COPY ( n n -- )
-   {: ordinal:n id:n :}
-   ordinal SOURCE-CONTRACT? 0= if exit then
-   id ROW {: row:n :}
-   ordinal FACT-IN @ row IMPL-IN @ <>
-   ordinal FACT-OUT @ row IMPL-OUT @ <> or if E-STATE throw then
-   row IMPL-IN @ row IMPL-OUT @ + {: count:n :}
-   IMPL-TYPE-N @ count + IMPL-TYPES-RESERVE
-   IMPL-TYPE-N @ row IMPL-TYPE-FIRST !
-   count 0 ?do
-      ordinal FACT-TYPE-FIRST @ i + FACT-TYPES @
-         IMPL-TYPE-N @ i + IMPL-TYPES !
-   loop
-   IMPL-TYPE-N @ count + IMPL-TYPE-N ! ;
-
 \ Prepare all storage while publication may still throw. The publisher only
 \ exposes the row after its bytes and dictionary record are committed.
-: PREPARE ( n n n n n n -- n )
-   {: entry:n len:n din:n dout:n reason:n loc:n :}
+: PREPARE ( n n n n -- n )
+   {: entry:n len:n reason:n loc:n :}
    entry 0 <= len 0 <= or if E-STATE throw then
-   reason SAFE = din 0 < dout 0 < or and if E-STATE throw then
    IMPL-N @ 1+ dup RESERVE-IMPL {: id:n :}
    id 1- {: row:n :}
    entry row IMPL-ENTRY !
    len row IMPL-LEN !
-   din row IMPL-IN !
-   dout row IMPL-OUT !
-   -1 row IMPL-TYPE-FIRST !
    reason row IMPL-REASON !
    loc row IMPL-LOC !
    0 row IMPL-LIVE !

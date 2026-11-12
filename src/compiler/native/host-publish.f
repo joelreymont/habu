@@ -8,7 +8,6 @@ package NHOST
 private
 
 0 CWORK-VARIABLE TAKEN-BASE n
-0 CWORK-VARIABLE TAKEN-TYPES n
 0 CWORK-VARIABLE TAKEN-FUNS n
 0 CWORK-VARIABLE TAKEN-AT n
 
@@ -18,24 +17,20 @@ private
    then
    NEMIT:SIZE ;
 
-\ A function row's facts: its arity, then the definition's host reason and
-\ location. A contract (HOST-ROOT-CONTRACT, the exact constructors a construction
-\ call matches) is a separate fact, a negative type count for a row whose
-\ declaration holds a pointer, a quotation or a variable. An unknown arity or a
-\ body whose facts were abandoned forces UNKNOWN.
-: FACTS ( n -- n n n n )
+\ A function row's facts: the definition's host reason and location. An unknown
+\ arity or a body whose facts were abandoned forces UNKNOWN.
+: FACTS ( n -- n n )
    {: ordinal:n :}
    SOURCE-REASON@ {: reason:n loc:n :}
    ordinal SOURCE-ARITY@ {: din:n dout:n :}
-   din 0 < dout 0 < or if din dout UNKNOWN 0 exit then
-   din dout reason loc ;
+   din 0 < dout 0 < or if UNKNOWN 0 exit then
+   reason loc ;
 
 : TAKE-ONE ( n n -- ) {: at:n ordinal:n :}
    ordinal NEMIT:FUNCTION-OFFSET@ {: off:n :}
    ordinal FUN-END off - {: len:n :}
    at off + len ordinal FACTS
       PREPARE {: id:n :}
-   ordinal id SOURCE-CONTRACT-COPY
    id TAKEN-BASE @ ordinal + 1+ <> if E-STATE throw then ;
 
 : TAKE-BODY ( -- )
@@ -47,7 +42,6 @@ public
 : ABANDON-TAKEN ( -- )
    TAKEN-FUNS @ 0= if exit then
    TAKEN-BASE @ IMPL-N !
-   TAKEN-TYPES @ IMPL-TYPE-N !
    0 TAKEN-FUNS ! ;
 
 \ Take the emission NEMIT holds sealed, placed at `at`, before any code window
@@ -56,7 +50,6 @@ public
 : TAKE ( n -- ) {: at:n :}
    TAKEN-FUNS @ 0<> if E-STATE throw then
    IMPL-N @ TAKEN-BASE !
-   IMPL-TYPE-N @ TAKEN-TYPES !
    NEMIT:FUNCTIONS dup 0 <= if E-STATE throw then TAKEN-FUNS !
    at TAKEN-AT !
    [: TAKE-BODY ;] catch {: rc:n :}
