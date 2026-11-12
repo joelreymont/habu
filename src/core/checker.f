@@ -9313,11 +9313,6 @@ variable SYM-ID
 : SYM-ROW ( n -- ptr u8 )
    SYM-REC * SYMS + ;
 
-\ SYM-INTERN refuses an empty name, so an empty name marks a retired row; id 0
-\ names nothing and reads as retired.
-: SYM-RETIRED? ( n -- bool )
-   SYM-ROW SYM.NAME-U @ 0= ;
-
 : SYM-PKG-A-FIELD ( n -- ptr n )
    SYM-ROW SYM.PKG-A ;
 
@@ -9527,13 +9522,12 @@ HIDX-MEM-CLEAR
    nb @ id <> IF s" checker: name index corrupt" 76 die THEN
    id HT-NAME-NEXT HIDX-CELL @ nb ! ;
 
-\ Pops rows [n, SYM-N) before a scope restores SYM-N; a retired row was never
-\ pushed, so it has nothing to pop.
+\ Pops rows [n, SYM-N) before a scope restores SYM-N.
 : HIDX-SYMS-RETIRE {: keep:n :}
    HIDX-VALID @ 0= IF EXIT THEN
    SYM-N @ 1 -
    begin dup keep >= while
-      dup SYM-RETIRED? 0= IF dup HIDX-SYM-POP THEN
+      dup HIDX-SYM-POP
       1 -
    repeat drop ;
 
@@ -9572,7 +9566,7 @@ HIDX-MEM-CLEAR
    HIDX-ROWS-CLEAR
    1 HIDX-I !
    begin HIDX-I @ SYM-N @ < while
-      HIDX-I @ SYM-RETIRED? 0= IF HIDX-I @ HIDX-SYM+ THEN
+      HIDX-I @ HIDX-SYM+
       HIDX-I @ 1 + HIDX-I !
    repeat
    HIDX-EPOCH+
@@ -22166,7 +22160,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 
 : VIS-SYMS ( -- )
    SYM-N @ 1 ?do
-      i SYM-RETIRED? 0= IF i SYM-NAME$ VIS-WORD THEN
+      i SYM-NAME$ VIS-WORD
    loop ;
 
 \ The qualifier PKG's words are spelled behind here: a top-level package's name,
@@ -22182,9 +22176,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 
 : VIS-PSYMS ( -- )
    SYM-N @ 1 ?do
-      i SYM-RETIRED? 0= IF
-         i SYM-ROW SYM.VIS @ SYM-PUBLIC = IF i SYM-PKG$ VIS-PKG-QUAL i SYM-NAME$ VIS-QWORD THEN
-      THEN
+      i SYM-ROW SYM.VIS @ SYM-PUBLIC = IF i SYM-PKG$ VIS-PKG-QUAL i SYM-NAME$ VIS-QWORD THEN
    loop ;
 
 : VIS-WL ( ptr u8 n n -- )
@@ -27503,7 +27495,6 @@ FILE-CON-RESET
 \ symbol whose facts this unit changes. The wire never stores a live symbol id.
 : UNIT-SYM-ORD ( n -- n ) {: sym:n :}
    sym 0 <= sym SYM-N @ >= or IF UNIT-BAD THEN
-   sym SYM-RETIRED? IF UNIT-BAD THEN
    sym UNIT-SYMN @ >= IF sym UNIT-SYMN @ - EXIT THEN
    UNIT-PREFIX-N @ 0 ?do
       i cells UNIT-PREFIX-SYMS @ + CELL-VIEW @ sym = IF
@@ -27519,7 +27510,6 @@ FILE-CON-RESET
 public
 : UNIT-OWN-SYM-ORD ( n -- n bool ) {: sym:n :}
    sym UNIT-SYMN @ < sym SYM-N @ >= or IF 0 RES-FALSE EXIT THEN
-   sym SYM-RETIRED? IF 0 RES-FALSE EXIT THEN
    sym UNIT-SYMN @ - RES-TRUE ;
 private
 
@@ -29199,9 +29189,7 @@ private
 
 \ A capture keeps the primitive control prefix verbatim and the state now: the
 \ newest row per symbol after it; a zero row is a retraction and must survive
-\ just like a nonzero one. A retired symbol keeps no row at all: no spelling
-\ reaches it, so no row of its can ever be read again. Effect offsets in
-\ CREATES never change.
+\ just like a nonzero one. Effect offsets in CREATES never change.
 PTR-VARIABLE RECORD-CTL-MAP-P
 variable RECORD-CTL-MAP-N
 
@@ -29287,7 +29275,6 @@ variable RECORD-CTL-MAP-N
 : NORET-COMPACT-ONE ( n n ptr n -- n ) {: dst:n off:n heads:ptr :}
    off NORET-CELL NORET.SYM @ {: sym:n :}
    off RECORD-CTL-KEEP? 0= IF
-      sym SYM-RETIRED? IF dst EXIT THEN
       sym heads NORET-COMPACT-HEAD @ off 1 + <> IF dst EXIT THEN
    THEN
    off dst RECORD-CTL-MOVED
