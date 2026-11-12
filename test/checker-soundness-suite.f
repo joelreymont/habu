@@ -1,11 +1,4 @@
 \ checker-soundness-suite.f - a certified body must not exceed its declared effect.
-\ Each case pins one way a body used to launder a value past its contract:
-\ a quotation argument consuming a narrower input than the parameter supplies,
-\ a quotation whose output keeps the input stack a declared callable leaves open,
-\ a return-row read or pop below the frame this definition may see, a
-\ declared row unified with another or given fixed cells, a local over a
-\ cell whose width is open, a signature with tokens after its output side, and
-\ a raw cell count over a wide value or one of open width.
 
 require src/lib/adt/option.f
 require src/lib/test.f
@@ -25,7 +18,6 @@ PRODUCT point FIELD x n FIELD y n ;PRODUCT
 : CALL-U8 ( [ u8 -- ] -- ) MK-U8 swap execute ;
 : CALL-I64-Q ( [ [ i64 -- ] -- ] -- ) ['] TAKE-I64 swap execute ;
 : CALL-U8-Q ( [ [ u8 -- ] -- ] -- ) ['] TAKE-U8 swap execute ;
-\ Defers an install with `is` fills as a call passes its argument.
 defer SET-U8 ( u8 -- )
 defer SET-I64 ( i64 -- )
 defer GET-U8 ( -- u8 )
@@ -37,20 +29,14 @@ defer GET-I64 ( -- i64 )
 : TAIL-NAMED ( R [ R -- S ] -- S ) execute ;
 : TAIL-KEEP ( R [ -- ] -- R ) execute ;
 : TAIL-ARG ( R [ n -- ] -- R ) 1 swap execute ;
-\ Its output callable is declared `[ -- S ]` and runs on whatever it leaves.
 : TAIL-NEST ( R [ R -- R [ -- S ] ] -- S ) execute execute ;
-\ Its input callable is declared `[ -- ]` and runs on a stack one cell deeper.
 : TAIL-UNDER ( R [ -- ] -- R ) >r 5 r> execute drop ;
 : TAIL-APPLY ( R [ R [ R -- R ] -- R ] [ R -- R ] -- R ) swap execute ;
-\ It runs its callable one cell deeper and keeps that cell.
 : TAIL-G ( R [ -- S ] -- S ) >r 5 r> execute ;
-\ Generic one-of-two: a join of its two arguments' types.
 : TAIL-PICK1 ( a a -- a ) nip ;
 : TAIL-PICK2 ( a a -- a ) drop ;
-\ Generic two-argument call: its callable takes both arguments' types.
 : TAIL-EQ2 ( a a -- ) 2drop ;
 : TAIL-K ( a b [ a b -- ] -- ) execute ;
-\ Three deep: an output's output, an input's input, and both.
 : TAIL-N3 ( R [ R -- R [ R -- R [ -- S ] ] ] -- S ) execute execute execute ;
 : TAIL-D3 ( R [ R [ R [ -- S ] -- S ] -- S ] -- S ) [: TAIL-G ;] swap execute ;
 : TAIL-M4 ( R [ R -- R [ R [ R [ -- S ] -- S ] -- S ] ] -- S ) execute [: TAIL-G ;] swap execute ;
@@ -59,7 +45,6 @@ defer GET-I64 ( -- i64 )
 TAIL-MKT TAIL-T1
 : TAIL-MKU ( -- ) create does> ( R [ -- ] -- R ) drop >r 9 r> execute drop ;
 TAIL-MKU TAIL-U1
-\ Declared callables a store demands and a load provides.
 TYPED-VARIABLE TAIL-QA [ -- n ]
 TYPED-VARIABLE TAIL-QB [ -- S ]
 TYPED-VARIABLE TAIL-QD [ [ -- S ] -- S ]
@@ -73,7 +58,6 @@ STRUCTURE tailvals<a> OPAQUE FIELD data ptr a ;STRUCTURE
 TYPED-VARIABLE TAIL-QV tailvals<[ -- S ]>
 TYPED-VARIABLE TAIL-QVV tailvals<tailvals<[ -- S ]>>
 : TAIL-VKN ( R tailvals<tailvals<[ R -- R ]>> -- R ) drop ;
-\ Generic retags: each relabels its storage with a type it takes as a value.
 : TAIL-RETAG ( tailvals<a> a -- tailvals<a> ) drop ;
 : TAIL-RETAGN ( tailvals<tailvals<a>> a -- tailvals<tailvals<a>> ) drop ;
 : TAIL-RETAGP ( ptr a a -- ptr a ) drop ;
@@ -90,8 +74,6 @@ TYPED-VARIABLE TAIL-Q0 [ -- ]
 \ A family built around a literal is a value, as the literal is.
 STRUCTURE tailhook<a> DERIVE addr FIELD fn a ;STRUCTURE
 TYPED-VARIABLE TAIL-QH tailhook<[ n -- n ]>
-\ A pinned callable a family argument holds behind a pointer, bare and inside
-\ a callable's output.
 : TAIL-TV ( R [ -- a ] -- R a ) execute ;
 defer TAIL-HF ( R [ R -- R ] -- R ptr tailhook<[ R -- R ]> )
 defer TAIL-HG ( R [ R -- R ] -- R [ -- ptr tailhook<[ R -- R ]> ] )
@@ -102,9 +84,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 
 
 \ CS-K90's literal leaves 40 values of that type, so its escape refusal renders
-\ about 10 KB as the inferred effect and as much again as the actual callable,
-\ growing the renderer's record buffer and its tail capture past their first
-\ sizes while it shows row tails.
+\ about 10 KB as the inferred effect and as much again as the actual callable.
 : CAPTURE-PAST$ ( -- ptr u8 n )
    s" CS-K90 ( -- ) [: 0 CHECKER-SOUNDNESS:>WIDE dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup ;] CHECKER-SOUNDNESS:TAIL-ONCE" ;
 
