@@ -28,6 +28,8 @@ $DFFF constant SURROGATE-LAST
 3 constant CLASS-LETTER-NUMBER
 4 constant CLASS-UPPERCASE
 5 constant CLASS-MARK
+111 constant OPEN-TYPE
+99 constant CLOSE-TYPE
 
 create STAGE-LETTER-LO RANGE-CAPACITY cells allot
 create STAGE-LETTER-HI RANGE-CAPACITY cells allot
@@ -78,8 +80,21 @@ variable OTHER-UPPER-N
 create MARK-LO RANGE-CAPACITY cells allot
 create MARK-HI RANGE-CAPACITY cells allot
 variable MARK-N
+create STAGE-OPEN-CP RANGE-CAPACITY cells allot
+create STAGE-OPEN-PAIR RANGE-CAPACITY cells allot
+variable STAGE-OPEN-N
+create STAGE-CLOSE-CP RANGE-CAPACITY cells allot
+create STAGE-CLOSE-PAIR RANGE-CAPACITY cells allot
+variable STAGE-CLOSE-N
+create OPEN-CP RANGE-CAPACITY cells allot
+create OPEN-PAIR RANGE-CAPACITY cells allot
+variable OPEN-N
+create CLOSE-CP RANGE-CAPACITY cells allot
+create CLOSE-PAIR RANGE-CAPACITY cells allot
+variable CLOSE-N
 variable UNICODE-READY
 variable SPACE-READY
+variable BRACKETS-READY
 
 variable SOURCE-PREV
 variable PENDING
@@ -323,6 +338,55 @@ variable PENDING-NAME-U
    STAGE-OTHER-UPPER-N @ OTHER-UPPER-N !
    TRUE-VALUE SPACE-READY ! ;
 
+\ A table of scalar and paired-bracket cells, kept strictly ascending by scalar.
+: PAIR-APPEND ( n n ptr n ptr n ptr n -- )
+   {: cp:n pair:n cps:ptr pairs:ptr countp:ptr :}
+   cp cp SCALAR-RANGE
+   pair pair SCALAR-RANGE
+   countp @ 0 > if
+      countp @ 1- cps SLOT @ cp >= if E-RANGE throw then
+   then
+   countp @ RANGE-CAPACITY >= if E-CAPACITY throw then
+   cp countp @ cps SLOT !
+   pair countp @ pairs SLOT !
+   countp @ 1+ countp ! ;
+
+\ The pinned file lists only Open and Close rows; a None row is refused.
+: STAGE-BRACKET ( n n n -- ) {: cp:n pair:n type:n :}
+   type OPEN-TYPE = if
+      cp pair STAGE-OPEN-CP STAGE-OPEN-PAIR STAGE-OPEN-N PAIR-APPEND exit
+   then
+   type CLOSE-TYPE = if
+      cp pair STAGE-CLOSE-CP STAGE-CLOSE-PAIR STAGE-CLOSE-N PAIR-APPEND exit
+   then
+   E-SYNTAX throw ;
+
+: BRACKET-ROW ( ptr u8 n -- ) {: line:ptr lineu:n :}
+   line lineu HASH BYTE-INDEX {: comment:n :}
+   line comment TRIM {: row:ptr rowu:n :}
+   rowu 0= if exit then
+   row rowu 0 NEXT-FIELD {: cpa:ptr cpu:n next1:n :}
+   row rowu next1 NEXT-FIELD {: pa:ptr pu:n next2:n :}
+   row next2 + rowu next2 - TRIM {: ta:ptr tu:n :}
+   tu 1 <> if E-SYNTAX throw then
+   cpa cpu TRIM PARSE-HEX pa pu TRIM PARSE-HEX ta c@ STAGE-BRACKET ;
+
+: SCAN-BRACKETS ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 begin dup u <= while
+      {: start:n :}
+      a u LINE-FEED start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
+      valid 0= if E-SYNTAX throw then
+      line lineu BRACKET-ROW
+      next
+   repeat drop ;
+
+: COMMIT-BRACKETS ( -- )
+   STAGE-OPEN-CP STAGE-OPEN-PAIR STAGE-OPEN-N @ OPEN-CP OPEN-PAIR COPY-RANGES
+   STAGE-OPEN-N @ OPEN-N !
+   STAGE-CLOSE-CP STAGE-CLOSE-PAIR STAGE-CLOSE-N @ CLOSE-CP CLOSE-PAIR COPY-RANGES
+   STAGE-CLOSE-N @ CLOSE-N !
+   TRUE-VALUE BRACKETS-READY ! ;
+
 : VALID-INDEX ( n n -- n ) {: idx:n count:n :}
    idx 0 < idx count >= or if E-RANGE throw then
    idx ;
@@ -336,9 +400,11 @@ public
 : RESET ( -- )
    FALSE-VALUE UNICODE-READY !
    FALSE-VALUE SPACE-READY !
+   FALSE-VALUE BRACKETS-READY !
    0 LETTER-N !
    0 NUMBER-N !
-   0 SPACE-N ! 0 NL-N ! 0 OTHER-N ! 0 UPPER-N ! 0 OTHER-UPPER-N ! 0 MARK-N ! ;
+   0 SPACE-N ! 0 NL-N ! 0 OTHER-N ! 0 UPPER-N ! 0 OTHER-UPPER-N ! 0 MARK-N !
+   0 OPEN-N ! 0 CLOSE-N ! ;
 
 : PARSE-UNICODE ( ptr u8 n -- )
    STAGE-UNICODE-RESET
@@ -350,8 +416,14 @@ public
    SCAN-PROPS
    COMMIT-SPACE ;
 
+: PARSE-BRACKETS ( ptr u8 n -- )
+   0 STAGE-OPEN-N ! 0 STAGE-CLOSE-N !
+   SCAN-BRACKETS
+   COMMIT-BRACKETS ;
+
 : READY? ( -- bool )
-   UNICODE-READY @ 0= 0= SPACE-READY @ 0= 0= and ;
+   UNICODE-READY @ 0= 0= SPACE-READY @ 0= 0= and
+   BRACKETS-READY @ 0= 0= and ;
 
 : LETTER-COUNT ( -- n )   LETTER-N @ ;
 : NUMBER-COUNT ( -- n )   NUMBER-N @ ;
@@ -390,5 +462,16 @@ public
 
 : MARK-RANGE@ ( n -- n n )
    MARK-LO MARK-HI MARK-N @ RANGE@ ;
+
+: OPEN-BRACKET-COUNT ( -- n ) OPEN-N @ ;
+: CLOSE-BRACKET-COUNT ( -- n ) CLOSE-N @ ;
+
+\ An opening bracket and its closing pair.
+: OPEN-BRACKET-PAIR@ ( n -- n n )
+   OPEN-CP OPEN-PAIR OPEN-N @ RANGE@ ;
+
+\ A closing bracket and its opening pair.
+: CLOSE-BRACKET-PAIR@ ( n -- n n )
+   CLOSE-CP CLOSE-PAIR CLOSE-N @ RANGE@ ;
 
 ;package

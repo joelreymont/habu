@@ -1,7 +1,7 @@
 # Unicode class data provenance
 
 This directory pins the final Unicode Character Database for Unicode 16.0.0.
-The generator reads only the two authoritative property files below. The
+The generator reads only the three authoritative property files below. The
 `ReadMe.txt` file identifies them as final Version 16.0.0 data, and
 `LICENSE.txt` records the Unicode Data Files and Software License.
 
@@ -10,14 +10,16 @@ The generator reads only the two authoritative property files below. The
 | `ReadMe.txt` | `https://www.unicode.org/Public/16.0.0/ucd/ReadMe.txt` | `14cafa23788d3a20dd21d6b0cdcb8d6dab520781fcd9ad9392f3b88ea607e633` |
 | `UnicodeData.txt` | `https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt` | `ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f` |
 | `PropList.txt` | `https://www.unicode.org/Public/16.0.0/ucd/PropList.txt` | `53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583` |
+| `BidiBrackets.txt` | `https://www.unicode.org/Public/16.0.0/ucd/BidiBrackets.txt` | `b8f32554c6f658821fb0ee742d21c5b1f2086b9bf13071fed04894b022f93d67` |
 | `LICENSE.txt` | `https://www.unicode.org/license.txt` | `e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96` |
 
 The generated runtime artifact `src/lib/unicode/class-data.f` contains 677
 canonical letter ranges, 144 number ranges, 10 whitespace ranges, 12
-letter-number ranges, 250 Other_Alphabetic ranges, 651 uppercase-letter ranges
-and 5 Other_Uppercase ranges.
-The generator verifies both input digests before parsing and writes the table
-atomically. The independent verifier checks every scalar against the source
+letter-number ranges, 250 Other_Alphabetic ranges, 651 uppercase-letter ranges,
+5 Other_Uppercase ranges, 321 mark ranges, and 128 brackets with their pairs:
+64 opening and 64 closing.
+The generator verifies all three input digests before parsing and writes the
+table atomically. The independent verifier checks every scalar against the source
 properties and compares the table with a fresh byte-identical regeneration.
 
 ## Why this version matches the GPT-2 reference

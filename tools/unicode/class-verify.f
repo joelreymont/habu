@@ -24,12 +24,18 @@ $DFFF constant SURROGATE-LAST
 8 constant ALPHABETIC-BIT
 16 constant UPPERCASE-BIT
 32 constant MARK-BIT
+64 constant OPEN-BIT
+128 constant CLOSE-BIT
+111 constant OPEN-TYPE
+99 constant CLOSE-TYPE
 10 constant LINE-FEED
 59 constant SEMICOLON
 35 constant HASH
 46 constant DOT
 
 TYPED-VARIABLE TRUTH ptr u8
+\ Each scalar's Bidi_Paired_Bracket, zero for none.
+DYNAMIC-BUFFER PAIR-TRUTH n
 variable VERIFY-PENDING
 variable VERIFY-PENDING-LO
 variable VERIFY-PENDING-BIT
@@ -42,6 +48,9 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 : PROPERTIES-PATH$ ( -- ptr u8 n )
    s" data/unicode/16.0.0/PropList.txt" ;
 
+: BRACKETS-PATH$ ( -- ptr u8 n )
+   s" data/unicode/16.0.0/BidiBrackets.txt" ;
+
 : DATA-PATH$ ( -- ptr u8 n )
    s" src/lib/unicode/class-data.f" ;
 
@@ -50,6 +59,9 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : EXPECTED-PROPERTIES-DIGEST$ ( -- ptr u8 n )
    s" 53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583" ;
+
+: EXPECTED-BRACKETS-DIGEST$ ( -- ptr u8 n )
+   s" b8f32554c6f658821fb0ee742d21c5b1f2086b9bf13071fed04894b022f93d67" ;
 
 : HEX-DIGIT ( n -- n bool ) {: c:n :}
    c 48 >= c 57 <= and if c 48 - true exit then
@@ -191,6 +203,37 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
       next
    repeat drop ;
 
+: BRACKET-BIT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 1 <> if E-MISMATCH throw then
+   a c@ OPEN-TYPE = if OPEN-BIT exit then
+   a c@ CLOSE-TYPE = if CLOSE-BIT exit then
+   E-MISMATCH throw ;
+
+: PAIR+ ( n n -- ) {: cp:n pair:n :}
+   cp SCALAR PAIR-TRUTH {: at:ptr :}
+   at @ 0<> if E-MISMATCH throw then
+   pair SCALAR at ! ;
+
+: VERIFY-BRACKET-ROW ( ptr u8 n -- ) {: line:ptr lineu:n :}
+   line lineu HASH BYTE-INDEX {: comment:n :}
+   line comment TRIM {: row:ptr rowu:n :}
+   rowu 0= if exit then
+   row rowu 0 NEXT-FIELD {: cpa:ptr cpu:n next1:n :}
+   row rowu next1 NEXT-FIELD {: pa:ptr pu:n next2:n :}
+   row next2 + rowu next2 - TRIM BRACKET-BIT {: bit:n :}
+   cpa cpu TRIM PARSE-HEX {: cp:n :}
+   cp pa pu TRIM PARSE-HEX PAIR+
+   cp bit TRUTH+ ;
+
+: VERIFY-BRACKETS-BYTES ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 begin dup u <= while
+      {: start:n :}
+      a u LINE-FEED start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
+      valid 0= if E-MISMATCH throw then
+      line lineu VERIFY-BRACKET-ROW
+      next
+   repeat drop ;
+
 : LOAD-UNICODE-TRUTH ( -- )
    UNICODE-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
    path pathu buf cap FS:READ-ALL {: got:n :}
@@ -201,6 +244,11 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got VERIFY-PROPS-BYTES ;
 
+: LOAD-BRACKET-TRUTH ( -- )
+   BRACKETS-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+   path pathu buf cap FS:READ-ALL {: got:n :}
+   buf got VERIFY-BRACKETS-BYTES ;
+
 : CHECK-DIGEST ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
    wantu 64 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
    UCV-FSHA-CTX path pathu DIGEST-HEX SHA256-FILE-HEX-IN 0 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
@@ -208,7 +256,8 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : CHECK-DIGESTS ( -- )
    UNICODE-PATH$ EXPECTED-UNICODE-DIGEST$ CHECK-DIGEST
-   PROPERTIES-PATH$ EXPECTED-PROPERTIES-DIGEST$ CHECK-DIGEST ;
+   PROPERTIES-PATH$ EXPECTED-PROPERTIES-DIGEST$ CHECK-DIGEST
+   BRACKETS-PATH$ EXPECTED-BRACKETS-DIGEST$ CHECK-DIGEST ;
 
 : CHECK-RANGE ( n n n n -- n n ) {: idx:n prev-hi:n lo:n hi:n :}
    lo hi > lo 0 < or hi SCALAR-MAX > or if E-CANONICAL throw then
@@ -240,7 +289,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 : SAME-BOOL? ( bool bool -- bool )
    if else 0= then ;
 
-: CHECK-SCALAR ( n -- ) {: cp:n :}
+: CHECK-CLASSES ( n -- ) {: cp:n :}
    cp LETTER-BIT TRUTH-BIT? cp UNICODE-CLASS:LETTER? SAME-BOOL? 0= if E-MISMATCH throw then
    cp NUMBER-BIT TRUTH-BIT? cp UNICODE-CLASS:NUMBER? SAME-BOOL? 0= if E-MISMATCH throw then
    cp SPACE-BIT TRUTH-BIT? cp UNICODE-CLASS:WHITE-SPACE? SAME-BOOL? 0= if E-MISMATCH throw then
@@ -248,9 +297,27 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    cp UPPERCASE-BIT TRUTH-BIT? cp UNICODE-CLASS:UPPERCASE? SAME-BOOL? 0= if E-MISMATCH throw then
    cp MARK-BIT TRUTH-BIT? cp UNICODE-CLASS:MARK? SAME-BOOL? 0= if E-MISMATCH throw then ;
 
+: PAIR-TRUTH@ ( n -- n ) {: cp:n :}
+   cp PAIR-TRUTH @ {: pair:n :}
+   pair 0= if cp else pair then ;
+
+: CHECK-BRACKETS ( n -- ) {: cp:n :}
+   cp OPEN-BIT TRUTH-BIT? cp UNICODE-CLASS:OPEN-BRACKET? SAME-BOOL? 0= if E-MISMATCH throw then
+   cp CLOSE-BIT TRUTH-BIT? cp UNICODE-CLASS:CLOSE-BRACKET? SAME-BOOL? 0= if E-MISMATCH throw then
+   cp PAIR-TRUTH@ cp UNICODE-CLASS:PAIRED-BRACKET <> if E-MISMATCH throw then ;
+
+: CHECK-SCALAR ( n -- )
+   dup CHECK-CLASSES CHECK-BRACKETS ;
+
+: CHECK-NON-SCALAR ( n -- ) {: cp:n :}
+   cp UNICODE-CLASS:OPEN-BRACKET? if E-MISMATCH throw then
+   cp UNICODE-CLASS:CLOSE-BRACKET? if E-MISMATCH throw then
+   cp UNICODE-CLASS:PAIRED-BRACKET cp <> if E-MISMATCH throw then ;
+
 : CHECK-ALL-SCALARS ( -- )
    0 begin dup SCALAR-MAX <= while
-      dup SURROGATE-FIRST < over SURROGATE-LAST > or if dup CHECK-SCALAR then
+      dup SURROGATE-FIRST < over SURROGATE-LAST > or
+      if dup CHECK-SCALAR else dup CHECK-NON-SCALAR then
       1+
    repeat drop ;
 
@@ -266,10 +333,14 @@ public
 : VERIFY ( -- )
    CHECK-DIGESTS
    SCALAR-COUNT MEM-ALLOC-BYTES drop TRUTH !
+   SCALAR-COUNT PAIR-TRUTH-RESERVE
    LOAD-UNICODE-TRUTH
    LOAD-PROPERTY-TRUTH
+   LOAD-BRACKET-TRUTH
    CHECK-TABLES
    CHECK-ALL-SCALARS
+   -1 CHECK-NON-SCALAR
+   SCALAR-MAX 1+ CHECK-NON-SCALAR
    CHECK-REGENERATION ;
 
 ;package
