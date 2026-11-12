@@ -1,8 +1,9 @@
 // viewport.js - the browser viewer as a component. mount runs a Habu Wasm
-// module's turns (turn.js) on the main thread, draws its triangles with WebGPU
-// on the caller's canvas, and sends the canvas's pointer, wheel, key and size
-// to the module. The caller owns the page: nothing here looks up the DOM, and
-// every other record reaches the caller through a callback.
+// module's turns (turn.js) on the main thread, holds its meshes on the GPU
+// and draws their instances with WebGPU on the caller's canvas, and sends the
+// canvas's pointer, wheel, key and size to the module. The caller owns the
+// page: nothing here looks up the DOM, and every other record reaches the
+// caller through a callback.
 //
 //   mount(canvas, { Module, module, fetch, rpc, onTree, onText, onSvg, onInput })
 //     -> Promise<viewport>
@@ -53,31 +54,58 @@
 // mount resolves once the start turn has begun; it rejects, having released
 // what it took, if WebGPU, the module's fetch or its instantiation fails.
 
-// Clip space from the matrix; each fragment lit by its triangle's normal, from
-// the screen derivatives of the position, so no normals are sent.
+// A vertex is a held mesh's four u16: x, y and z on the mesh's grid, which
+// the instance's 3x4 transform (four float32x3 columns) takes to world, then
+// clip from the matrix; and its face. A fragment is selected when the
+// instance's flags bit 0 is set or, with an offset not 0xFFFFFFFF, bit
+// face % 32 of highlight word offset + face / 32 is set. Each fragment is lit
+// by its triangle's normal, from the screen derivatives of the world
+// position, so no normals are sent.
 const SHADER = `
 @group(0) @binding(0) var<uniform> clip: mat4x4<f32>;
+@group(0) @binding(1) var<storage, read> words: array<u32>;
+
+struct Vertex {
+  @location(0) grid: vec4<u32>,
+  @location(1) c0: vec3<f32>,
+  @location(2) c1: vec3<f32>,
+  @location(3) c2: vec3<f32>,
+  @location(4) c3: vec3<f32>,
+  @location(5) bits: vec2<u32>, // the instance's flags and offset
+}
 
 struct Corner {
   @builtin(position) at: vec4<f32>,
   @location(0) p: vec3<f32>,
-  @location(1) @interpolate(flat) selected: u32,
+  @location(1) @interpolate(flat) face: u32,
+  @location(2) @interpolate(flat) bits: vec2<u32>,
 }
 
-@vertex fn vs(@location(0) p: vec3<f32>, @location(1) selected: u32) -> Corner {
-  return Corner(clip * vec4<f32>(p, 1.0), p, selected);
+@vertex fn vs(v: Vertex) -> Corner {
+  let g = vec3<f32>(v.grid.xyz);
+  let p = v.c0 * g.x + v.c1 * g.y + v.c2 * g.z + v.c3;
+  return Corner(clip * vec4<f32>(p, 1.0), p, v.grid.w, v.bits);
+}
+
+fn selected(face: u32, bits: vec2<u32>) -> bool {
+  if ((bits.x & 1u) != 0u) { return true; }
+  if (bits.y == 0xFFFFFFFFu) { return false; }
+  return ((words[bits.y + face / 32u] >> (face % 32u)) & 1u) != 0u;
 }
 
 @fragment fn fs(c: Corner) -> @location(0) vec4<f32> {
   let n = normalize(cross(dpdx(c.p), dpdy(c.p)));
   let lit = 0.3 + 0.7 * abs(dot(n, normalize(vec3<f32>(0.3, 0.5, 0.8))));
-  let color = select(vec3<f32>(1.0), vec3<f32>(1.0, 0.45, 0.08), c.selected == 1u);
+  let orange = vec3<f32>(1.0, 0.45, 0.08);
+  let color = select(vec3<f32>(1.0), orange, selected(c.face, c.bits));
   return vec4<f32>(color * lit, 1.0);
 }
 `;
 
-// WebGPU on the canvas: draw answers a draw record, release destroys the
-// device and everything allocated from it. A canvas holding another context is
+const ROW = 64; // an instance row: twelve f32, u32 handle, id, flags, offset
+
+// WebGPU on the canvas: setup's renderer, whose release destroys the device
+// and everything allocated from it. A canvas holding another context is
 // refused before a device exists; a later setup failure releases the device.
 async function gpu(canvas, fail) {
   if (!navigator.gpu) throw new Error("this browser has no WebGPU");
@@ -98,59 +126,130 @@ async function gpu(canvas, fail) {
   }
 }
 
+// The rows regrouped by handle, each handle in the order it first appears,
+// and the [handle, first, count] runs over them.
+function grouped(rows, count) {
+  const v = new DataView(rows.buffer, rows.byteOffset, rows.byteLength);
+  const groups = new Map();
+  for (let i = 0; i < count; i++) {
+    const handle = v.getUint32(i * ROW + 48, true);
+    if (!groups.has(handle)) groups.set(handle, []);
+    groups.get(handle).push(i);
+  }
+  const ordered = new Uint8Array(count * ROW);
+  const runs = [];
+  let at = 0;
+  for (const [handle, list] of groups) {
+    runs.push([handle, at, list.length]);
+    for (const i of list)
+      ordered.set(rows.subarray(i * ROW, (i + 1) * ROW), ROW * at++);
+  }
+  return [ordered, runs];
+}
+
+// The renderer holds each mesh by handle as a vertex buffer of its u16x4
+// vertices and an index buffer of its u16 triangles; draw writes the rows to
+// an instance buffer and issues one indexed, instanced draw per handle, and
+// highlight writes the words to a storage buffer. Each buffer is padded to
+// the 4 bytes WebGPU's sizes and writes need, and the instance and highlight
+// buffers grow when a write needs more.
 function setup(canvas, context, device, release, fail) {
   device.lost.then((info) => fail(`WebGPU device lost: ${info.message}`));
   device.addEventListener("uncapturederror", (e) => fail(`WebGPU: ${e.error.message}`));
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque" });
   const module = device.createShaderModule({ code: SHADER });
+  const column = (k) =>
+    ({ shaderLocation: 1 + k, offset: 12 * k, format: "float32x3" });
   const pipeline = device.createRenderPipeline({
     layout: "auto",
     vertex: {
       module,
       entryPoint: "vs",
       buffers: [
-        { arrayStride: 12, attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }] },
-        { arrayStride: 4, attributes: [{ shaderLocation: 1, offset: 0, format: "uint32" }] },
+        { arrayStride: 8, attributes: [
+          { shaderLocation: 0, offset: 0, format: "uint16x4" }] },
+        { arrayStride: ROW, stepMode: "instance", attributes: [
+          column(0), column(1), column(2), column(3),
+          { shaderLocation: 5, offset: 56, format: "uint32x2" }] },
       ],
     },
     fragment: { module, entryPoint: "fs", targets: [{ format }] },
     primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
   });
-  const matrix = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const bind = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: matrix } }],
-  });
+  const { UNIFORM, STORAGE, VERTEX, INDEX, COPY_DST } = GPUBufferUsage;
+  const matrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
   const depthTexture = () => device.createTexture({
     size: [canvas.width, canvas.height], format: "depth24plus",
     usage: GPUTextureUsage.RENDER_ATTACHMENT,
   });
   let depth = depthTexture();
-  let corners = null;
-  let selected = null;
+  const meshes = new Map(); // a held handle -> { vertices, indices, count }
+  let instances = null;
+  let words = null;
+  let bind = null;
+
+  // buffer, or a buffer of at least size bytes in its place.
+  const grown = (buffer, size, usage) => {
+    if (buffer && buffer.size >= size) return buffer;
+    buffer?.destroy();
+    size = Math.max(size, 2 * (buffer?.size ?? 0));
+    return device.createBuffer({ size, usage });
+  };
+  const highlight = (bits) => {
+    const before = words;
+    words = grown(words, Math.max(4, bits.byteLength), STORAGE | COPY_DST);
+    if (bits.byteLength) device.queue.writeBuffer(words, 0, bits);
+    if (words === before) return;
+    bind = device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: matrix } },
+        { binding: 1, resource: { buffer: words } }],
+    });
+  };
+  highlight(new Uint32Array(0));
+
+  // A buffer holding the u16s, its size rounded up to 4 bytes, at least 4.
+  const filled = (u16s, usage) => {
+    const size = Math.max(4, Math.ceil(u16s.byteLength / 4) * 4);
+    const buffer = device.createBuffer({ size, usage, mappedAtCreation: true });
+    new Uint16Array(buffer.getMappedRange()).set(u16s);
+    buffer.unmap();
+    return buffer;
+  };
+  // A failed mesh holds nothing: the vertex buffer goes if the index
+  // buffer's creation throws.
+  const mesh = (handle, vertexCount, triangleCount, vertices, triangles) => {
+    const held = filled(vertices, VERTEX);
+    let indices;
+    try {
+      indices = filled(triangles, INDEX);
+    } catch (e) {
+      held.destroy();
+      throw e;
+    }
+    meshes.set(handle, { vertices: held, indices, count: 3 * triangleCount });
+  };
+  const unmesh = (handle) => {
+    const { vertices, indices } = meshes.get(handle);
+    vertices.destroy();
+    indices.destroy();
+    meshes.delete(handle);
+  };
 
   const resize = () => {
     depth.destroy();
     depth = depthTexture();
   };
 
-  const draw = (bytes, count, clip, mask) => {
-    const cornerSize = Math.max(4, bytes.byteLength);
-    if (!corners || corners.size < cornerSize) {
-      corners?.destroy();
-      corners = device.createBuffer({ size: cornerSize, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+  // rows, count instance rows of held meshes (turn.js); 0 rows clears.
+  const draw = (rows, count, clip) => {
+    const [ordered, runs] = grouped(rows, count);
+    if (count) {
+      instances = grown(instances, ordered.byteLength, VERTEX | COPY_DST);
+      device.queue.writeBuffer(instances, 0, ordered);
     }
-    const flags = new Uint32Array(count * 3);
-    for (let i = 0; i < count; i++) flags.fill(mask[i], i * 3, i * 3 + 3);
-    const selectedSize = Math.max(4, flags.byteLength);
-    if (!selected || selected.size < selectedSize) {
-      selected?.destroy();
-      selected = device.createBuffer({ size: selectedSize, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-    }
-    if (bytes.byteLength) device.queue.writeBuffer(corners, 0, bytes);
-    if (flags.byteLength) device.queue.writeBuffer(selected, 0, flags);
     device.queue.writeBuffer(matrix, 0, clip);
     const encoder = device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
@@ -164,14 +263,19 @@ function setup(canvas, context, device, release, fail) {
     });
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bind);
-    pass.setVertexBuffer(0, corners);
-    pass.setVertexBuffer(1, selected);
-    pass.draw(count * 3);
+    if (count) pass.setVertexBuffer(1, instances);
+    for (const [handle, first, n] of runs) {
+      const { vertices, indices, count: indexCount } =
+        meshes.get(handle);
+      pass.setVertexBuffer(0, vertices);
+      pass.setIndexBuffer(indices, "uint16");
+      pass.drawIndexed(indexCount, n, 0, 0, first);
+    }
     pass.end();
     device.queue.submit([encoder.finish()]);
   };
 
-  return { draw, resize, release };
+  return { mesh, unmesh, highlight, draw, resize, release };
 }
 
 function modifiers(e) {
@@ -281,6 +385,9 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
       read: async (file, offset, length) =>
         new Uint8Array(await files.get(Number(file)).slice(Number(offset), Number(offset + length)).arrayBuffer()),
       error: fail,
+      mesh: live((...args) => renderer.mesh(...args)),
+      unmesh: live((handle) => renderer.unmesh(handle)),
+      highlight: live((words) => renderer.highlight(words)),
       draw: live((...args) => {
         if (shown) {
           shown = false;
@@ -298,7 +405,6 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
       input: live(onInput),
       text: live((s) => onText(s, false)),
       tree: live(onTree),
-      highlight: () => {},
       size: () => [canvas.width, canvas.height],
     });
   } catch (e) {

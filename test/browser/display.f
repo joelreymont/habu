@@ -3,7 +3,14 @@
 \ a space and the event's bytes in lowercase hex. Typed "fetch" fetches the
 \ page-relative path slow. Typed "more" sends a tree whose row Shelf has more;
 \ opening Shelf sends the text opened and the tree again with its child and
-\ grandchild.
+\ grandchild. Typed "draw" sends mesh 1, a square of two triangles of faces 0
+\ and 1; mesh 2, one triangle of face 34; a highlight of two words, bit 1 of
+\ the first and bit 2 of the second set; and a draw of rows of handles 1, 2
+\ and 1: the left square, at offset 0, shows face 1 highlighted and face 0
+\ not, the triangle above it, at offset 0, shows face 34 highlighted, and the
+\ right square selects every face. Typed "unmesh", after "draw", draws the
+\ triangle's row alone, unmeshes mesh 1 and draws that row again. Typed
+\ "zero" draws 0 rows.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
@@ -15,8 +22,11 @@ using BROWSER-EVENT
 CAST: >BYTES ( n -- ptr u8 )
 CAST: BYTES>N ( ptr u8 -- n )
 
+68 BUFFER: SQUARE-MESH
+38 BUFFER: TRIANGLE-MESH
+192 BUFFER: INSTANCE-ROWS
+8 BUFFER: WORDS
 64 BUFFER: MATRIX
-36 BUFFER: CORNERS
 512 BUFFER: IMAGE
 variable IMAGE-U
 1024 constant ECHO-CAP
@@ -49,9 +59,73 @@ variable ECHO-U
 : BLUE ( -- )
    s\" <svg xmlns='http://www.w3.org/2000/svg' width='100' height='400' viewBox='0 0 100 400'><rect width='100' height='400' fill='#245bd6'/></svg>" SVG ;
 
-: DRAW ( n -- )
-   {: count:n :}
-   2 CORNERS BYTES>N count MATRIX BYTES>N RECORD ;
+: U16! ( n ptr u8 -- )
+   {: bits:n dst:ptr :}
+   2 0 do bits i 8 * rshift $FF and dst i + c! loop ;
+
+: U32! ( n ptr u8 -- )
+   {: bits:n dst:ptr :}
+   4 0 do bits i 8 * rshift $FF and dst i + c! loop ;
+
+: VERTEX ( ptr u8 n n n n -- )
+   \ Vertex k of the mesh at m, at x, y and z 0 on the grid, of a face.
+   {: m:ptr k:n x:n y:n face:n :}
+   m 8 + k 8 * + {: at:ptr :}
+   x at U16!  y at 2 + U16!  0 at 4 + U16!  face at 6 + U16! ;
+
+: SQUARE ( -- )
+   \ The unit square's lower-left triangle is face 0, its upper-right face 1;
+   \ the six indices end at byte 68.
+   SQUARE-MESH {: m:ptr :}
+   6 m U32!  2 m 4 + U32!
+   m 0 0 0 0 VERTEX  m 1 1 0 0 VERTEX  m 2 0 1 0 VERTEX
+   m 3 1 0 1 VERTEX  m 4 1 1 1 VERTEX  m 5 0 1 1 VERTEX
+   6 0 do i m 56 + i 2 * + U16! loop ;
+
+: TRIANGLE ( -- )
+   \ The unit square's lower-left half as face 34, whose highlight bit is bit
+   \ 2 of the second word; the three indices end at byte 38.
+   TRIANGLE-MESH {: m:ptr :}
+   3 m U32!  1 m 4 + U32!
+   m 0 0 0 34 VERTEX  m 1 1 0 34 VERTEX  m 2 0 1 34 VERTEX
+   3 0 do i m 32 + i 2 * + U16! loop ;
+
+: PLACE ( n n n n -- )
+   \ Row r draws mesh handle scaled by 0.8 and moved to x tx and y ty (f32
+   \ bits) and z 0.5.
+   {: r:n handle:n tx:n ty:n :}
+   INSTANCE-ROWS r 64 * + {: at:ptr :}
+   $3F4CCCCD at U32!  $3F4CCCCD at 16 + U32!
+   tx at 36 + U32!  ty at 40 + U32!  $3F000000 at 44 + U32!
+   handle at 48 + U32! ;
+
+: MARK ( n n n n -- )
+   \ Row r's id, flags and highlight offset.
+   {: r:n id:n flags:n offset:n :}
+   INSTANCE-ROWS r 64 * + {: at:ptr :}
+   id at 52 + U32!  flags at 56 + U32!  offset at 60 + U32! ;
+
+: IDENTITY ( -- )
+   $3F800000 MATRIX U32!  $3F800000 MATRIX 20 + U32!
+   $3F800000 MATRIX 40 + U32!  $3F800000 MATRIX 60 + U32! ;
+
+: DRAW ( ptr u8 n -- )
+   {: rows:ptr count:n :}
+   2 rows BYTES>N count MATRIX BYTES>N RECORD ;
+
+: SHOW ( -- )
+   \ x -0.9, 0.1 and y -0.4, 0.5 as f32 bits.
+   SQUARE TRIANGLE  2 WORDS U32!  4 WORDS 4 + U32!  IDENTITY
+   0 1 $BF666666 $BECCCCCD PLACE  0 1 0 0 MARK
+   1 2 $BF666666 $3F000000 PLACE  1 2 0 0 MARK
+   2 1 $3DCCCCCD $BECCCCCD PLACE  2 3 1 $FFFFFFFF MARK
+   13 SQUARE-MESH BYTES>N 68 1 RECORD
+   13 TRIANGLE-MESH BYTES>N 38 2 RECORD
+   6 WORDS BYTES>N 2 0 RECORD
+   INSTANCE-ROWS 3 DRAW ;
+
+: UNMESH ( -- )
+   INSTANCE-ROWS 64 + 1 DRAW  14 1 0 0 RECORD  INSTANCE-ROWS 64 + 1 DRAW ;
 
 : ROWS ( -- )
    \ Van and its child Shelf through Shelf's label; the caller closes Shelf's
@@ -79,8 +153,9 @@ variable ECHO-U
 : COMMAND ( -- )
    s" red" IS? if RED exit then
    s" blue" IS? if BLUE exit then
-   s" zero" IS? if 0 DRAW exit then
-   s" draw" IS? if 1 DRAW exit then
+   s" zero" IS? if INSTANCE-ROWS 0 DRAW exit then
+   s" draw" IS? if SHOW exit then
+   s" unmesh" IS? if UNMESH exit then
    s" broken" IS? if s" <svg>" SVG exit then
    s" on" IS? if 9 1 0 0 RECORD exit then
    s" off" IS? if 9 0 0 0 RECORD exit then

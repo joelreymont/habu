@@ -70,13 +70,18 @@ assert.equal(memory(), before, "turns that throw must free their deliveries");
 const scene = join(output, "scene.bin");
 writeFileSync(scene, Uint8Array.of(0, 255, 16));
 const cli = Bun.spawn([process.execPath, "src/lib/browser/host-cli.mjs", file, "--typed", "on", "--typed", "zero",
-  "--load", scene, "--focus", "00".repeat(15) + "Ff", "--highlight", ""], { stdout: "pipe", stderr: "pipe" });
+  "--typed", "draw", "--typed", "unmesh", "--load", scene,
+  "--focus", "00".repeat(15) + "Ff",
+  "--highlight", ""], { stdout: "pipe", stderr: "pipe" });
 const [stdout, stderr, code] = await Promise.all([
   new Response(cli.stdout).text(), new Response(cli.stderr).text(), cli.exited,
 ]);
 writeFileSync(join(output, "cli.txt"), stdout);
 assert.equal(code, 0, stderr);
 assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(original).toString("hex")}\ninput 1\ndraw 0\n` +
+  "mesh 1 6 2\nmesh 2 3 1\nhighlight 2 0200000004000000\n" +
+  "draw 3 1/1/0/0 2/2/0/0 1/3/1/-\n" +
+  "draw 1 2/2/0/0\nunmesh 1\ndraw 1 2/2/0/0\n" +
   `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
 console.log("SVG/input protocol, independent copy, rejected records, identities, refused delivery and CLI passed");
 
@@ -182,6 +187,35 @@ async function browser() {
         fit: image && getComputedStyle(image).objectFit, text: document.querySelector('#text').textContent,
         error: document.querySelector('#text').className, created, revoked, script: window.svgScript ?? 0 };
     })()`);
+    // The screenshot's RGB at each clip-space [x, y] of the canvas, as the
+    // page decodes it.
+    const pixels = async (points) => {
+      const { data } = await call("Page.captureScreenshot", { format: "png" });
+      return evaluate(`(async () => {
+        const image = new Image();
+        image.src = "data:image/png;base64,${data}";
+        await image.decode();
+        const r = document.querySelector("canvas").getBoundingClientRect();
+        const scale = image.naturalWidth / innerWidth;
+        const c = document.createElement("canvas");
+        [c.width, c.height] = [image.naturalWidth, image.naturalHeight];
+        const context = c.getContext("2d");
+        context.drawImage(image, 0, 0);
+        return ${JSON.stringify(points)}.map(([x, y]) => [
+          (r.left + (x + 1) * r.width / 2) * scale,
+          (r.top + (1 - y) * r.height / 2) * scale,
+        ]).map(([x, y]) => Array.from(context.getImageData(
+          Math.floor(x), Math.floor(y), 1, 1).data.slice(0, 3)));
+      })()`);
+    };
+    // display.f's draw: the left square's face 0 and face 1 centres, the
+    // triangle's centre, the right square's centre and the background above
+    // the squares, right of the triangle.
+    const points = [[-0.6333, -0.1333], [-0.3667, 0.1333], [-0.6333, 0.7667],
+      [0.5, 0], [0, 0.7]];
+    const white = ([r, g, b]) => r === g && g === b && r > 150 && r < 250;
+    const orange = ([r, , b]) => r > 150 && b < 60;
+    const background = [255, 255, 255];
     const start = await state();
     assert.equal(start.disabled, true, "startup must preserve input(false)");
     assert.deepEqual(start.natural, [400, 100]);
@@ -237,14 +271,46 @@ async function browser() {
     await evaluate("document.querySelector('input').value='red'; document.querySelector('form').requestSubmit()");
     await until(() => evaluate("document.querySelector('img')?.naturalWidth === 400"));
     assert.equal(await evaluate("document.querySelector('input').value"), "");
-    await command("zero");
+    await command("draw");
+    const drawn = await state();
+    assert.equal(drawn.image, undefined, "nonempty draws also clear SVG");
+    assert.equal(drawn.visible, "visible");
+    assert.deepEqual(drawn.canvas, start.canvas);
+    const [face0, face1, triangle, right, above] = await pixels(points);
+    assert.ok(white(face0),
+      `the left square's face 0 is lit white, got ${face0}`);
+    assert.ok(orange(face1),
+      `the left square's highlighted face 1 is orange, got ${face1}`);
+    assert.ok(orange(triangle),
+      `the triangle's face 34, highlighted in word 1, is orange, ` +
+      `got ${triangle}`);
+    assert.ok(orange(right),
+      `the selected right square is orange, got ${right}`);
+    assert.deepEqual(above, background,
+      `the background is white, got ${above}`);
+    console.log(`Headless Chrome pixels: left face 0 ${face0}, left face 1 ` +
+      `${face1}, triangle ${triangle}, right ${right}, background ${above}`);
+    // Mesh 1 drawn by no row, then unmeshed: only the triangle stays.
+    await command("unmesh");
+    const [left0, left1, alone, right1, over] = await pixels(points);
+    const unmeshed = [left0, left1, right1, over];
+    assert.deepEqual(unmeshed, unmeshed.map(() => background),
+      `mesh 1's pixels are background, got ${JSON.stringify(unmeshed)}`);
+    assert.ok(orange(alone), `the triangle is still drawn, got ${alone}`);
+    console.log(`Headless Chrome pixels after unmesh: triangle ${alone}, ` +
+      `mesh 1's and background ${JSON.stringify(unmeshed)}`);
+    // A draw of 0 rows after a shown SVG shows the canvas, cleared.
+    await command("red"); await command("zero");
     const zero = await state();
     assert.equal(zero.image, undefined); assert.equal(zero.visible, "visible");
     assert.deepEqual(zero.canvas, start.canvas);
+    const cleared = await pixels(points);
+    assert.deepEqual(cleared, points.map(() => background),
+      `a draw of 0 rows clears to white, got ${JSON.stringify(cleared)}`);
+    console.log(`Headless Chrome pixels after 0 rows: ` +
+      JSON.stringify(cleared));
     await evaluate("oldError?.call(oldImage,new Event('error'))");
     assert.equal((await state()).error, "");
-    await command("red"); await command("draw");
-    assert.equal((await state()).image, undefined, "nonempty draws also clear SVG");
     await command("broken");
     await until(() => evaluate("document.querySelector('#text').className === 'error'"));
     assert.match((await state()).text, /SVG image/);
