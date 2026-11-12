@@ -1,6 +1,4 @@
-\ ok.f - a design inside its vocabulary: its own package, locals, if/else/then,
-\ s" names, integer and real literals, a using block, top-level calls, and its
-\ package reopened, where its private word is found first.
+\ ok.f - a design inside its vocabulary.
 package PDESIGN
 private
 : PICK-BIG ( n -- n ) {: dv:n :} dv PDEP:BIG? if dv else PDEP:ZERO then ;
