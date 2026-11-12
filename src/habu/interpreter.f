@@ -339,8 +339,11 @@ create NL NEWLINE c,
 : THROW-AT ( n -- )
    AT-SOURCE NL 1 ERROR-TEXT:TYPE throw ;
 
+: UNDEFINED-NAME ( ptr u8 n -- )
+   s" E-UNDEFINED: " ERROR-TEXT:TYPE ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
+
 : UNDEFINED ( -- )
-   s" E-UNDEFINED: " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
+   TOKEN$ UNDEFINED-NAME ;
 
 : AMBIGUOUS ( -- )
    s" hb: ambiguous bare word resolves in multiple used packages: " ERROR-TEXT:TYPE
@@ -2131,15 +2134,15 @@ variable DEF-VALUE
 
 : DEFER-UNSET-XT ( -- n )
    s" defer-unset" FIND-SCOPE {: rec:ptr :}
-   rec XREF-FOUND? 0= if TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT then
+   rec XREF-FOUND? 0= if s" defer-unset" UNDEFINED-NAME then
    rec XREF-START ;
 
 \ The cell holds an execution token, so xt! declares it one: a snapshot moves
 \ it with the code region.
 TRUSTED: DEF-XT! ( n n -- ) xt! ;
 
-: DEFER-CELL ( -- n )
-   DEFER-UNSET-XT {: xt:n :}
+: DEFER-CELL ( n -- n )
+   {: xt:n :}
    align
    DEF-HERE {: cell:n :}
    1 cells allot
@@ -2191,14 +2194,16 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    ready dtarget 0<> and if DEF-CAPTURED-NAME dtarget PKG-AS-NAME-ACTION execute then
    ready 0= if sig su PD-HOLD then ;
 
+\ defer-unset is looked up before DEF-ROOM, so its refusal leaves no capture.
 : DEF-DEFER ( -- )
    TASK-GUARD
+   DEFER-UNSET-XT {: unset:n :}
    DEF-ROOM
    DEFER-NAME
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
-   DEFER-CELL {: cell:n :}
+   unset DEFER-CELL {: cell:n :}
    DEF-QUALIFY 0 DEF-RECORD
    s end DEF-SIG-INNER
    s 1 + end s - 2 - DEFER-REGISTER
