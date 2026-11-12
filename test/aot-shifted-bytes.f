@@ -2,28 +2,24 @@
 \ cell whatever window it lies in.
 \ The first subject lays two ERROR:CODE rows whose text is the 8 address bytes
 \ of a block it allocates at load and keeps, so the builder has that address
-\ mapped wherever it lands. Each row (src/lib/error.f ROW,) starts aligned with
-\ a 32-byte header. The 9-byte name E-SHIFTED puts the address at row offset
-\ 41, an undeclared window that is not cell-aligned; the 8-byte name E-ALIGN8
-\ puts it at row offset 40, an aligned undeclared window. Bytes are not an
-\ address by type, so the build succeeds and the
-\ application runs and exits 0. MAIN does not read the rows; the build keeps
-\ them all the same.
+\ mapped wherever it lands. Each row starts aligned with a 32-byte header. The
+\ 9-byte name E-SHIFTED puts the address at row offset 41, an undeclared window
+\ that is not cell-aligned; the 8-byte name E-ALIGN8 puts it at row offset 40,
+\ an aligned undeclared window. Bytes are not an address by type, so the build
+\ succeeds and the application runs and exits 0. MAIN does not read the rows;
+\ the build keeps them all the same.
 \ The second subject stores a dictionary-record address in a declared DATA
-\ cell laid with `allot` (src/core/pointer-storage.f PERSISTED-PTR-U8-TABLE).
-\ The record lies outside hb's data and the build's space, so the linker
-\ refuses the file's object, which cannot name it (src/habu/linker.f CELL-REF+).
+\ cell laid with `allot`. The record lies outside hb's data and the build's
+\ space, so the linker refuses the file's object, which cannot name it.
 \ The third subject is a file and a file it requires, each reading the loader at
 \ top level: SOURCE-ROOT:ACTIVE-SOURCE, CURRENT$, and CURRENT$ inside a WITH;
 \ the required file then sets its root with SOURCE-ROOT:ROOT!, which its load's
 \ end undoes. Built through tools/hb-build.f, the file's `SOURCE-ROOT:` words
 \ are the build's copy of src/core/include.f and the loads are hb's; both reach
-\ the one record the process names in SRCLOC:SOURCE-CELL, so the build prints
-\ the lines `hb --load` prints. Run as `hb probe.f`, the program file is a
-\ loaded file to the loader (SOURCE-ROOT:RUN-PROGRAM) and prints them too. A
-\ file whose word only resolves its own path, as Maki's
-\ src/vocabulary.f does, loads nothing: its build prints the directory
-\ `hb --load` prints.
+\ the one record the process names, so the build prints the lines `hb --load`
+\ prints. Run as `hb probe.f`, the program file is a loaded file to the loader
+\ and prints them too. A file whose word only resolves its own path loads
+\ nothing: its build prints the directory `hb --load` prints.
 \ The fourth subject's top level reads an environment variable: a build reuses
 \ its object only while the variable reads as its compile read it.
 \ The fifth subject's top level sets its root with ROOT! and requires a file only
@@ -124,46 +120,35 @@ variable WANT-U
 : SOURCE$ ( -- ptr u8 n )
    S\" require src/lib/error.f\nrequire src/lib/memory.f\nPTR-VARIABLE KEPT\n64 MEM-ALLOC-BYTES drop KEPT !\n: LAY ( -- ) KEPT @ NULL-PTR - {: a:n :} 8 0 do a i 8 * rshift $FF and KEPT @ i + c! loop ;\nLAY\n-110001 KEPT @ 8 ERROR:CODE E-SHIFTED\n-110002 KEPT @ 8 ERROR:CODE E-ALIGN8\n: MAIN ( -- ) s\q ok\q type cr ;\n" ;
 
-\ Record 0's address in the table's one declared DATA cell.
 : RECORD-SOURCE$ ( -- ptr u8 n )
    S\" require src/habu/xref.f\n1 PERSISTED-PTR-U8-TABLE T\n0 XREF-REC BYTE-VIEW T 0 ptr-field !\n: MAIN ( -- ) s\q ok\q type cr ;\n" ;
 
-\ The probe: its path, root and byte count, its current root, and the current
-\ root inside a WITH of /tmp, all at top level. WITH takes /tmp absolute: a
-\ relative root resolves against the working directory, not the current root.
+\ WITH takes /tmp absolute: a relative root resolves against the working
+\ directory, not the current root.
 : PROBE-SOURCE$ ( -- ptr u8 n )
    S\" require sub/inner.f\nSOURCE-ROOT:ACTIVE-SOURCE s\q probe bytes \q type . drop s\q probe root \q type type cr s\q probe path \q type type cr\ns\q probe current \q type SOURCE-ROOT:CURRENT$ type cr\n: PROBE-WITH ( -- ) s\q probe with \q type SOURCE-ROOT:CURRENT$ type cr ;\ns\q /tmp\q ' PROBE-WITH SOURCE-ROOT:WITH\n: MAIN ( -- ) ;\n" ;
 
 : INNER-SOURCE$ ( -- ptr u8 n )
    S\" SOURCE-ROOT:ACTIVE-SOURCE s\q inner bytes \q type . drop s\q inner root \q type type cr s\q inner path \q type type cr\ns\q inner current \q type SOURCE-ROOT:CURRENT$ type cr\n: INNER-WITH ( -- ) s\q inner with \q type SOURCE-ROOT:CURRENT$ type cr ;\ns\q /tmp\q ' INNER-WITH SOURCE-ROOT:WITH\ns\q sub/root\q SOURCE-ROOT:ROOT!\ns\q inner root! \q type SOURCE-ROOT:CURRENT$ type cr\n" ;
 
-\ A word that resolves its own file's path and prints the directory, called at
-\ the file's top level: Maki's src/vocabulary.f shape.
 : RESOLVES-SOURCE$ ( -- ptr u8 n )
    S\" : RESOLVES-DIR ( -- ) s\q resolves.f\q SOURCE-ROOT:RESOLVE drop SOURCE-ROOT:DIRNAME s\q resolves dir \q type type cr ;\nRESOLVES-DIR\n: MAIN ( -- ) ;\n" ;
 
-\ A top level that prints a line and keeps the length of HABU_TEST_SIDE, which
-\ MAIN prints.
 : ENVTOP-SOURCE$ ( -- ptr u8 n )
    S\" s\q envtop top level\q type cr\ns\q HABU_TEST_SIDE\q GETENV nip constant SIDE\n: MAIN ( -- ) SIDE . ;\n" ;
 
-\ A file that prints a line at top level, sets its root to beside/ and requires
-\ helper.f and then shared.f, which only that root resolves and helper.f has
-\ loaded; MAIN prints a word each of them defines.
 : ROOTED-SOURCE$ ( -- ptr u8 n )
    S\" s\q rooted top level\q type cr\ns\q beside\q SOURCE-ROOT:ROOT!\nrequire helper.f\nrequire shared.f\n: MAIN ( -- ) s\q rooted main \q type BESIDE-WORD type s\q  and \q type SHARED-WORD type cr ;\n" ;
 
 : HELPER-SOURCE$ ( -- ptr u8 n )
    S\" require shared.f\n: BESIDE-WORD ( -- ptr u8 n ) s\q from beside\q ;\n" ;
 
-\ helper.f rewritten: its word answers another line.
 : HELPER-CHANGED-SOURCE$ ( -- ptr u8 n )
    S\" require shared.f\n: BESIDE-WORD ( -- ptr u8 n ) s\q from beside, changed\q ;\n" ;
 
 : SHARED-SOURCE$ ( -- ptr u8 n )
    S\" : SHARED-WORD ( -- ptr u8 n ) s\q shared\q ;\n" ;
 
-\ The helpers a case's main.f requires under the root it sets.
 : HELPER-1$ ( -- ptr u8 n ) S\" : HELPER-K ( -- n ) 1 ;\n" ;
 : HELPER-2$ ( -- ptr u8 n ) S\" : HELPER-K ( -- n ) 2 ;\n" ;
 
@@ -205,7 +190,6 @@ variable WANT-U
 : WANT+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a WANT WANT-U @ + u BYTE-COPY  u WANT-U +! ;
 
-\ The label, the probe's canonical directory, the tail and a newline.
 : WANT! ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n tail:ptr tailu:n :}
    0 WANT-U !  label labelu WANT+
    PROBE$ SOURCE-ROOT:DIRNAME SOURCE-ROOT:CANONICAL drop WANT+
@@ -225,7 +209,6 @@ variable WANT-U
    s" probe current " s" " WANT!
    WANT$ s" the requiring file's root is back after the required file's ROOT!" GE-EXPECT-OUT-HAS ;
 
-\ The program file of `hb probe.f`: its frame names it as --load's does.
 : PROBE-PLAIN ( -- )
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
@@ -253,8 +236,8 @@ variable WANT-U
    s" resolves dir " s" " WANT!
    WANT$ s" the directory the word resolves under hb --load" GE-EXPECT-OUT-HAS ;
 
-\ Its own out root, as PROBE-BUILD's: a cached object runs no top-level code.
-\ RESOLVES-LOAD left in WANT the line hb --load printed.
+\ Its own out root: a cached object runs no top-level code. RESOLVES-LOAD left
+\ in WANT the line hb --load printed.
 : RESOLVES-BUILD ( -- )
    GE-HB-RESET
    s" HABU_OUT" >LEN RESOLVES-OUT$ >LEN PROC-ENV-SET
@@ -297,7 +280,6 @@ variable WANT-U
    ROOTED-SHARED$ SHARED-SOURCE$ FS:WRITE-ALL
    ROOTED$ ROOTED-SOURCE$ FS:WRITE-ALL ;
 
-\ The program run, printing MAIN's line.
 : ROOTED-RUN ( ptr u8 n -- ) {: want:ptr wantu:n :}
    GE-HB-RESET
    ROOTED-IMAGE$ GE-ARGV+
@@ -307,8 +289,6 @@ variable WANT-U
 
 : ROOTED-LINE$ ( -- ptr u8 n ) S\" rooted main from beside and shared\n" ;
 
-\ Both builds share ROOTED-OUT: the first compiles the file, running its top
-\ level; the second reuses its cached object, which runs no top-level code.
 : ROOTED-BUILD ( -- )
    GE-HB-RESET
    s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
@@ -325,7 +305,6 @@ variable WANT-U
    s" rooted top level" s" the second build reuses the cached object, running no top-level code" EXPECT-OUT-LACKS
    ROOTED-LINE$ ROOTED-RUN ;
 
-\ A third build into the same out root, after helper.f under the set root changed, links its new word.
 : ROOTED-CHANGED ( -- )
    ROOTED-HELPER$ HELPER-CHANGED-SOURCE$ FS:WRITE-ALL
    GE-HB-RESET
@@ -334,7 +313,6 @@ variable WANT-U
    s" third build of it into the same out root, after its required file changed" GE-EXPECT-OK
    S\" rooted main from beside, changed and shared\n" ROOTED-RUN ;
 
-\ ---- a case: a directory whose main.f sets its root and requires a helper under it
 \ Each build and run is its own process: the out root and the file tree between builds are the boundary under test.
 create C-DIR PATH-CAP allot
 create C-MAIN PATH-CAP allot
@@ -380,7 +358,6 @@ variable LBL-U
 
 : TXT+ ( ptr u8 n -- ) TXT TXT-U TXT-CAP APPEND ;
 
-\ The check's label after the case's name.
 : LABEL ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 LBL-U !  C-NAME C-NAME-U @ LBL LBL-U LBL-CAP APPEND
    s" : " LBL LBL-U LBL-CAP APPEND  a u LBL LBL-U LBL-CAP APPEND
@@ -395,7 +372,6 @@ variable LBL-U
    s" out" C-OUT IN-CASE C-OUT-U !
    s" program" C-IMAGE IN-CASE C-IMAGE-U ! ;
 
-\ Directory name under the case's, its helper.f holding the text.
 : HELPER-DIR ( ptr u8 n ptr u8 ptr n ptr u8 n -- ) {: name:ptr nameu:n dst:ptr up:ptr text:ptr textu:n :}
    name nameu dst IN-CASE up !  dst up @ FS:MAKE-DIRS
    dst up @ s" helper.f" C-H FS:JOIN-PATH C-H-U !
@@ -424,7 +400,6 @@ variable LBL-U
 : WARM ( -- ) C-OUT$ C-IMAGE$ CASE-BUILD ;
 : WARM-RUN ( ptr u8 n -- ) {: want:ptr wantu:n :} C-IMAGE$ want wantu CASE-RUN ;
 
-\ main.f's root is the symlink beside, to v1 for the first build and to v2 for the second.
 : SYMLINK-CASE ( -- )
    s" symlink" CASE-OPEN
    s" v1" C-A C-A-U HELPER-1$ HELPER-DIR
