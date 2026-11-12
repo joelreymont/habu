@@ -160,8 +160,9 @@ cross-compiles the x86-64 `hb`, and only running the product needs a machine of
 its kind.
 
 **Every codegen emits unplaced code.** A compiled definition is its bytes plus
-a row for each call, outgoing branch, code address and data address in them,
-and each row names a record ([header](#dictionary)), not an address. The
+a row for each call, outgoing branch, code address and data address in them;
+an object names what each row reaches by its record ([header](#dictionary)),
+not by an address. The
 publisher places an emission in the running engine by resolving its rows
 against that engine; the linker places it in an image by resolving them against
 the image's layout. A build compiles a definition once when the product runs on
@@ -234,10 +235,9 @@ every build: one that starts or ends inside an open package or `using`, one
 whose request is not a plain one at its top level (made inside a definition,
 with cells on the stack or from evaluated text), the part after such a
 request, one that catches a load it asks for before the load runs, and every
-part of a file with no stamp or of a build for another machine
-(src/habu/linker.f UNLINKABLE). Its object only keeps its words' times, so the
-parts that depend on it link while those words compile to the same bytes; a
-build for another machine writes no object.
+part of a file with no stamp (src/habu/linker.f UNLINKABLE). Its object only
+keeps its words' times, so the parts that depend on it link while those words
+compile to the same bytes.
 
 **An edit during a build is read in due course.** A file already compiled
 keeps the version it read for that build and is rebuilt on the next; a file not

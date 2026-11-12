@@ -37,7 +37,8 @@ variable NATIVE-ADDRS-SET            \ a backend installed NATIVE-ADDRS-XT
 \ the counts until PUBLISH claims it. Offsets stay as NEMIT states them: a site
 \ or function start is bytes from the first byte of its own emission, and a
 \ target is the host address the body named, which the linker resolves to the
-\ target's own.
+\ target's own; a Wasm target that is one of the emission's own functions is
+\ that function's offset.
 DYNAMIC-BUFFER CODE-BUF u8           \ every emission's bytes, one after another
 variable CODE-N
 
@@ -555,8 +556,8 @@ public
 \ that restores the body `create` made; record it as the jump slot's
 \ relocation target of the record's emission and of its host emission. The x86
 \ body holds a five-byte slot and the capture resolves the tail call through
-\ the clause companion's row like any other tail site. A backend with no slot
-\ (Wasm) cannot carry the clause, and since a later replacement can still clear
+\ the clause companion's row like any other tail site. An emission with no slot
+\ cannot carry the clause, and since a later replacement can still clear
 \ the target, nothing is dropped here: ROUTINE? answers the capture when the
 \ map is read. Each patched emission joins PATCHES.
 : PATCH-DOES ( n n -- ) {: idx:n target:n :}
@@ -648,8 +649,8 @@ public
    e SLOT-CALL? if 1+ then ;
 
 \ Whether emission e still does what its records do: false once a clause has
-\ patched a created body that carries no slot for it (the Wasm backend emits
-\ none), so the capture ships that record with no routine and the linker
+\ patched a created body that carries no slot for it, so the capture ships that
+\ record with no routine and the linker
 \ refuses it by name when reached.
 : ROUTINE? ( n -- bool )
    EM-CK {: e:n :}

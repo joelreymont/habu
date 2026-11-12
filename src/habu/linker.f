@@ -122,6 +122,9 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ A build for another target than hb's own.
 : CROSS? ( -- bool ) TARGET @ RTARGET:HOST-TARGET RTARGET:SAME? 0= ;
 
+\ The emissions NSHADOW:PUBLISH files per definition: a cross build's target and host copies, or one.
+: COPIES ( -- n ) CROSS? if 2 else 1 then ;
+
 \ The space's DATA starts, ends and stops DP where the kernel the link adopts
 \ reads them (ARM64:READ); a kernel build's, a cross build's, or one no object
 \ was read for, where hb's does (src/arch/wasm/profile.f WPROF mirrors hb's
@@ -373,7 +376,7 @@ variable FILE-PATH-N
 variable STORES-AT                   \ the offset in OBJECT of STORES' count, of the piece placed or object read
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
 variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
-\ The compiling part never links (WRITE-OBJECT): a cross build, no stamp, a start or end off TOP-SCOPE?, an unclean cut
+\ The compiling part never links (WRITE-OBJECT): no stamp, a start or end off TOP-SCOPE?, an unclean cut
 \ ending it or the part before (NEST), a load it asked for the runner never ran (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
 \ What LOAD's loop over the file's parts does next: link part FILE-PART at FILE-OFF, compile it,
@@ -1152,11 +1155,17 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    idx LISTED-BY @ OBJECT-SERIAL @ = if exit then
    idx WORD-REF  idx WORD-ROW+ ;
 
-\ The record that owns host emission e: its first shadow row's, a definition's;
-\ E-COMP-STATE when no row is e's or that row is a does> companion's. Emissions
-\ rise with the row (SHADOW-ROW).
-: EM-OWNER ( n -- n )
+\ Whether emission e is a cross build's host copy, which the build's process runs and no output holds.
+: HOST-COPY? ( n -- bool )
    {: e:n :}
+   CROSS?  e NSHADOW:HOST@ e =  and ;
+
+\ The record that owns emission e: its first shadow row's, a definition's, whose emission is e or,
+\ for a host copy (HOST-COPY?), the target copy before it; E-COMP-STATE when no row is that
+\ emission's or that row is a does> companion's. Emissions rise with the row (SHADOW-ROW).
+: EM-OWNER ( n -- n )
+   {: h:n :}
+   h HOST-COPY? if h 1 - else h then {: e:n :}
    0 NSHADOW:RECORDS
    begin 2dup < while
       {: lo:n hi:n :}
@@ -1592,8 +1601,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    KIND-ALIAS ;
 
 
-\ Record r's host emission; -1 when no shadow row is r's or r is a does> companion, which owns
-\ none.
+\ Record r's emission, a cross build's target copy; -1 when no shadow row is r's or r is a does>
+\ companion, which owns none.
 : OWNER-EM ( n -- n )
    {: r:n :}
    0 NSHADOW:RECORDS
@@ -1659,7 +1668,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx FILE-REC @ - 6 WORD-SPAN {: at:ptr :}
    at @ bit or  at ! ;
 
-\ RECORD+, then the entry's span, emission (none in a cross build, as CODE+), highest FILES row
+\ The edges to a definition's copies, emission e and, in a cross build, its host copy e + 1: a run
+\ executes the host copy.
+: COPY-EDGES+ ( n -- )
+   {: e:n :}
+   e EM-EDGE+  CROSS? if e 1 + EM-EDGE+ then ;
+
+\ RECORD+, then the entry's span, emission (a cross build's target copy), highest FILES row
 \ and bound record into WORD-SPANS; PIECE+ zeroed cell 6. E-COMP-STATE for an
 \ emission the piece did not file.
 : WORD-RECORD+ ( n -- )
@@ -1671,11 +1686,11 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    idx RECORD+ {: bound:n :}
    idx SHADOW-ROW {: row:n :}
    idx row KIND {: kind:n :}
-   kind KIND-DEF =  kind KIND-DOES =  or  CROSS? 0= and {: coded:bool :}
+   kind KIND-DEF =  kind KIND-DOES =  or {: coded:bool :}
    coded if row NSHADOW:EMISSION@ FILE-EM @ - else -1 then {: em:n :}
    coded  em 0<  em NSHADOW:EMISSIONS FILE-EM @ - >=  or  and if E-COMP-STATE throw then
    bound 0 >= if bound REC-EDGE+ then
-   coded if row NSHADOW:EMISSION@ EM-EDGE+ then
+   coded if  row NSHADOW:EMISSION@ COPY-EDGES+  then
    idx start REC-EDGES!
    at  w 0 WORD-SPAN !
    PIECES BYTES$ nip at -  w 1 WORD-SPAN !
@@ -1789,6 +1804,34 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    a ARM64:HOST-KERNEL? if 1 PIECES U64+  a rbase - PIECES U64+ true exit then
    false ;
 
+\ Whether a is the entry of one of hb's own words, which every build's process holds where this
+\ hb's image puts it. A package's row holds a wordlist id where a word's holds its entry.
+: HB-ENTRY? ( n -- bool )
+   {: a:n :}
+   FIRST-REC @ 0 ?do
+      i XREF-REC XREF-WORDLIST XREF:PACKAGE-WL? 0= if
+         i XREF-REC XREF-START a = if true unloop exit then
+      then
+   loop
+   false ;
+
+\ hb's own code a site of emission e may name as an offset from rbase: the kernel's, and in a host
+\ copy (HOST-COPY?) any of hb's words, as a target word's host copy calls NDEFINITION:TARGET-ERROR.
+: HB-CODE? ( n bool -- bool )
+   {: a:n host:bool :}
+   a ARM64:HOST-KERNEL? if true exit then
+   host if a HB-ENTRY? else false then ;
+
+\ The reference of emission e's site holding v: a function of e itself (OWN-FUNCTION) as a
+\ quotation's, naming e's own record; else CODE-REF+; else hb's own code (HB-CODE?).
+: SITE-REF+ ( n n -- bool )
+   {: e:n v:n :}
+   e v OWN-FUNCTION {: f:n :}
+   f 0 >= if  e EM-EDGE+  2 PIECES U64+  e EM-OWNER ID-REF+  f PIECES U64+ true exit  then
+   v CODE-REF+ if true exit then
+   v  e HOST-COPY?  HB-CODE? 0= if false exit then
+   1 PIECES U64+  v rbase - PIECES U64+ true ;
+
 
 \ One emission of CODE+; address values are read from the shadow's bytes:
 \ PIECES' copy has them cleared.
@@ -1812,7 +1855,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
          e i NSHADOW:CALL-SITE@ PIECES U64+
          kind NEMIT:TAIL = if 1 else 0 then PIECES U64+
          e i NSHADOW:CALL-TARGET@ {: t:n :}
-         t CODE-REF+ 0= if e  e i NSHADOW:CALL-SITE@  t true REFUSE-SITE then
+         e t SITE-REF+ 0= if e  e i NSHADOW:CALL-SITE@  t true REFUSE-SITE then
       then
    loop
    e NSHADOW:ADDR-SITES PIECES U64+
@@ -1827,7 +1870,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       at PIECES U64+
       kind NEMIT:ADDR-CODE = {: code:bool :}
       code if
-         0 PIECES U64+  v CODE-REF+
+         0 PIECES U64+  e v SITE-REF+
       else
          1 PIECES U64+  v DATA-REF+
       then
@@ -1838,7 +1881,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       calls 0 > if calls 1 - else -1 then {: k:n :}
       k 0 >= if e k NSHADOW:PATCH-CALL? else false then if
          e k NSHADOW:CALL-TARGET@ {: t:n :}
-         t CODE-REF+ 0= if e p t true REFUSE-SITE then
+         e t SITE-REF+ 0= if e p t true REFUSE-SITE then
       else
          5 PIECES U64+
       then
@@ -1861,7 +1904,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 
 \ CODE, after the piece's entries, then DATA (DATA+); every number is 8 bytes, low
 \ byte first:
-\   E                      emissions this file's compile filed, from the file's first
+\   E                      emissions this file's compile filed, from the file's first; a cross
+\                          build's in pairs (COPIES), a definition's target copy in the target's
+\                          site encodings and then its host copy (NSHADOW:HOST@)
 \   per emission, in number order:
 \     S, R                 size in bytes; return bytes (R <= S)
 \     S raw bytes          unpadded, as the compile sealed them, except that each address
@@ -1873,8 +1918,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \     P                    the does> slot's site, -1 for none, past the last call row's site; when
 \                          P >= 0 its target's reference
 \ A reference is a tag, then its fields: 0 a dictionary record (file, its name sum, its count
-\ among that part's records with the sum); 1 hb's own code (offset from rbase); 2 a quotation
-\ (file, its owning definition's name sum and count as tag 0's, function); 3 a word's data and 6 a
+\ among that part's records with the sum); 1 hb's own code (offset from rbase: the kernel's, or
+\ in a host copy any of hb's word entries, HB-CODE?); 2 a function of a definition, a quotation,
+\ a clause, a callback's stub or one of the emission's own (file, its owning definition's name
+\ sum and count as tag 0's, function); 3 a word's data and 6 a
 \ string's (file, the extent's sum and count, offset in the extent, at most its length) or a text
 \ an earlier part laid (sum 0 and its FACTS row's number for the extent's); 7 a file's head (file,
 \ offset from that file's first data byte, at most the head's length, 0 for this object's part
@@ -1882,12 +1929,14 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ row's 0 or scratch cell, or a definition with no dispatch cell. A file field is 0 for this
 \ object, else its FILES row from 1 (REF-FILE). Tags 3 and 6 name data by its owner, so data that
 \ only moved keeps its references' bytes.
-\ A cross build's E is 0: its shadow holds the target's code, in the target's site encodings, and
-\ it writes no object (LOAD).
 : CODE+ ( -- )
    ENTRIES
-   CROSS? if 0 PIECES U64+ exit then
    NSHADOW:EMISSIONS FILE-EM @ - PIECES U64+
+   CROSS? if
+      NSHADOW:EMISSIONS FILE-EM @ ?do
+         i NSHADOW:HOST@ i 1 + <> if E-COMP-STATE throw then
+      2 +loop
+   then
    NSHADOW:EMISSIONS FILE-EM @ ?do i EM-CODE+ loop ;
 
 \ The bytes the file's compile laid, [FILE-DP, FILE-END).
@@ -2543,7 +2592,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    pieces piecesu OBJECT SPAN+
    files-at KEYS-OUT
    pieces-at STORES-AT +!  pieces-at FACTS-AT +!
-   STAMPED? 0=  CROSS? or if exit then
+   STAMPED? 0= if exit then
    \ Unsynced: an object a crash cut short fails HEADER-CK's or PIECE-CK's bounds checks and compiles.
    OBJECT$ {: obj:ptr obju:n :}
    obj obju OBJECT-DIR
@@ -2834,6 +2883,15 @@ variable RD-END
    tag 1 = if rbase x + ARM64:HOST-KERNEL? 0= if BAD then exit then
    tag 2 = if x y z w top FN-REF-CK exit then
    BAD ;
+
+
+\ A site's code reference of this object's emission top (CODE-REF-CK), hb's own code as HB-CODE? allows: a cross
+\ object's odd emission is a host copy (COPIES).
+: SITE-REF-CK ( n n n n n n n -- )
+   {: tag:n x:n y:n z:n w:n top:n bound:n :}
+   GOOD? 0= if exit then
+   tag 1 = if  rbase x +  COPIES 2 =  top 1 and 1 =  and  HB-CODE? 0= if BAD then exit  then
+   tag x y z w top bound CODE-REF-CK ;
 
 
 \ A data reference (RD-REF): a word's (tag 3), string's or laid text's (tag 6) extent here (OWN-EXT) or built (ROW-EXT),
@@ -3338,10 +3396,9 @@ variable RD-END
    file n PRIVATE? 0= if BAD then ;
 
 
-\ A KIND-DEF entry's emission: NSHADOW:PUBLISH files one emission per definition, so it is the
-\ count of KIND-DEF entries before it.
+\ A KIND-DEF entry's first emission: COPIES times the count of KIND-DEF entries before it.
 : EM-NAMED ( -- n )
-   DEFS-N @  1 DEFS-N +! ;
+   DEFS-N @ COPIES *  1 DEFS-N +! ;
 
 
 \ A package entry's own-private flag; a 1 adds the package, the next record, to PRIVS.
@@ -3402,7 +3459,10 @@ variable RD-END
    kind KIND-SEALED = if SEALED-CK  -1 LAST-EM ! exit then
    NAME-CK  FLAGS-CK  kind ROLE-CK
    kind KIND-DEF = if EM-NAMED else -1 then {: em:n :}
-   kind KIND-DEF =  GOOD? and if RECS-N @ em EM-RECS ! then
+   kind KIND-DEF =  GOOD? and if
+      RECS-N @ em EM-RECS !
+      COPIES 2 = if RECS-N @ em 1 + EM-RECS ! then
+   then
    kind KIND-DEF = if DISPATCH-CK then
    kind KIND-PACKAGE = if PKG-FLAG-CK then
    kind KIND-ALIAS = if RD-U64 RD-U64 RD-U64 RECS-N @ ID-REF-CK drop then
@@ -3417,19 +3477,23 @@ variable RD-END
    32 RD-COUNT {: n:n :}
    n ENTRIES-N !  0 RECS-N !  0 DEFS-N !  0 DOES-N !  0 PRIVS-N !  -1 LAST-EM !
    n 0 > if
-      n ENTRY-OFFS-RESERVE  n REC-KINDS-RESERVE  n EM-RECS-RESERVE  n REC-EMS-RESERVE  n 2 * PRIVS-RESERVE
+      n ENTRY-OFFS-RESERVE  n REC-KINDS-RESERVE  n COPIES * EM-RECS-RESERVE  n REC-EMS-RESERVE  n 2 * PRIVS-RESERVE
    then
    n 0 ?do i ENTRY-CK loop ;
 
 
-\ The machine this object's emission e holds: every emission of an object is the target's.
+\ The machine this object's emission e holds: the host's for a host copy, a cross object's odd
+\ emission (COPIES), else the target's.
 : EM-ARCH ( n -- CTARGET:arch )
-   drop NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
+   {: e:n :}
+   COPIES 2 =  e 1 and 1 =  and if  RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING
+   else  NSHADOW:BINDING  then
+   CBIND:TARGET@ CTARGET:ARCH@ ;
 
 
 \ A call row of emission top, s bytes; its site, above the row before it, holds the compile's
 \ unplaced call of the row's kind. A record target precedes top's own: a body naming its word is
-\ E-UNDEFINED, RECURSE files no row.
+\ E-UNDEFINED. A function target may be top's own, as a Wasm RECURSE's row is.
 : CALL-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: site:n :}
@@ -3442,7 +3506,7 @@ variable RD-END
       kind 0= if NEMIT:CALL else NEMIT:TAIL then  CALL?
       0= if BAD then
    then
-   RD-REF top  top EM-RECS @  CODE-REF-CK ;
+   RD-REF top  top EM-RECS @  SITE-REF-CK ;
 
 
 \ An address row of an emission of s bytes, numbered top, its site above the row before it: its
@@ -3460,12 +3524,12 @@ variable RD-END
       kind 0= if NEMIT:ADDR-CODE else NEMIT:ADDR-DATA then  ADDRESS@ nip
       0= if BAD then
    then
-   kind 0= if RD-REF top  top EM-RECS @  CODE-REF-CK exit then
+   kind 0= if RD-REF top  top EM-RECS @  SITE-REF-CK exit then
    kind 1 = if RD-REF DATA-REF-CK exit then
    BAD ;
 
 
-\ The does> slot: -1, or its site, past the last call row and holding the compile's return, and
+\ The does> slot: -1, or its site, past the last call row and holding the machine's unpatched slot, and
 \ its target: none while no clause patched it, else the record of a does> clause, checked as a call's.
 : SLOT-CK ( n n -- )
    {: s:n top:n :}
@@ -3479,7 +3543,7 @@ variable RD-END
    RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 5 = if exit then
    tag 0 <> if BAD exit then
-   tag x y z w top  top EM-RECS @ 1 +  CODE-REF-CK
+   tag x y z w top  top EM-RECS @ 1 +  SITE-REF-CK
    GOOD? 0= if exit then
    x 0= if  y z OWN-REC REC-KIND KIND-DOES <> if BAD then  exit  then
    x FILES-ROW y z PLACE {: r:n :}
@@ -3511,7 +3575,8 @@ variable RD-END
 
 
 \ Each KIND-DOES entry's offset: function j's offset of its definer's emission e, j from 1 to
-\ F - 1, an ENTRY@ as RECORD+ writes it.
+\ F - 1, an ENTRY@ as RECORD+ writes it. A host copy has as many functions (PAIRS-CK), so the
+\ clause is its function j too.
 : DOES-ENTRY-CK ( -- )
    GOOD? 0= if exit then
    DOES-N @ 0 ?do
@@ -3521,14 +3586,25 @@ variable RD-END
    loop ;
 
 
+\ A cross object's two copies of a definition have as many functions: both walks emit the same
+\ ones, a callback's stub last, and linking pairs them (NSHADOW:SOURCE-FUNS).
+: PAIRS-CK ( -- )
+   GOOD? 0= if exit then
+   COPIES 2 = 0= if exit then
+   EMS-N @ 0 ?do
+      i OWN-FUNS  i 1 + OWN-FUNS  <> if BAD unloop exit then
+   2 +loop ;
+
+
 \ E, then each emission (CODE+); 60 bytes is a 4-byte emission of one function. Every emission
-\ is one KIND-DEF entry's.
+\ is a KIND-DEF entry's, COPIES of them each.
 : CODE-CK ( -- )
    60 RD-COUNT {: n:n :}
    n EMS-N !
-   n DEFS-N @ <> if BAD then
+   n DEFS-N @ COPIES * <> if BAD then
    n 0 > if n EM-OFFS-RESERVE then
    n 0 ?do i EMISSION-CK loop
+   PAIRS-CK
    DOES-ENTRY-CK ;
 
 
@@ -3864,12 +3940,14 @@ variable PRIOR-STORES-SIZE
    w 3 WORD-SPAN @ start -  u ;
 
 
-\ Word w's emission range, as TEXT-SPAN.
+\ Word w's emission range, as TEXT-SPAN: its COPIES, which CODE+ writes one after another.
 : EM-SPAN ( n n -- n n )
    {: start:n w:n :}
    w 2 WORD-SPAN @ {: em:n :}
    em 0< if 0 0 exit then
-   em 3 * EM-SPANS @ start -  em 3 * 1 + EM-SPANS @ ;
+   em COPIES + 1 - {: last:n :}
+   em 3 * EM-SPANS @ {: at:n :}
+   at start -  last 3 * EM-SPANS @  last 3 * 1 + EM-SPANS @ +  at - ;
 
 
 \ Word w's range s, its entry (0), emission (1) or text (2), as TEXT-SPAN.
@@ -3886,7 +3964,7 @@ variable PRIOR-STORES-SIZE
    w 5 WORD-SPAN @ {: top:n :}
    w 2 WORD-SPAN @ {: em:n :}
    em 0< if top exit then
-   top  em 3 * 2 + EM-SPANS @  max ;
+   top  COPIES 0 ?do  em i + 3 * 2 + EM-SPANS @ max  loop ;
 
 
 \ The offset in PRIOR of the old word with word w's sum and count, -1 for none. The search wraps from after the last
@@ -4141,13 +4219,16 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
 
 
 \ A quotation reference's address (file, owner's sum and count, f), adding the edge to the owner's emission: f of the
-\ definition being made, which has no shadow row yet, or the host entry the shadow filed for it (OWNER-EM).
+\ copy being made, which has no shadow row yet, or the host entry the shadow filed for it (OWNER-EM). A Wasm copy's
+\ own function is its offset in the copy (OWN-FUNCTION), a host copy's its address.
 : FN-ADDR ( n n n n -- n )
    {: file:n sum:n count:n f:n :}
    file sum count ID-REC {: r:n :}
    r LINK-OWNER @ = if
       FILE-EM @ LINK-EM @ + EM-EDGE+
-      LINK-FN @  LINK-EM @ f OWN-FUN-AT +  exit
+      LINK-EM @ f OWN-FUN-AT {: off:n :}
+      LINK-EM @ EM-ARCH CTARGET-ARCH:WASM CTARGET-ARCH:EQ if off exit then
+      LINK-FN @ off +  exit
    then
    r OWNER-EM {: em:n :}
    em 0< if E-COMP-STATE throw then
@@ -4368,10 +4449,12 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
 
 
 \ Entry i, a definition (RECORD+), as the next record, placed and published, a KIND-DOES entry after it its companion;
-\ its emission is the file's next, since each earlier MAKE-DEF of the piece published one.
+\ its emission is the file's next, since each earlier MAKE-DEF of the piece published its COPIES. A cross build's
+\ target copy e is filled and taken first, then the host copy h, which the build's process runs.
 : MAKE-DEF ( n -- )
    {: i:n :}
    NSHADOW:EMISSIONS FILE-EM @ - {: e:n :}
+   e COPIES + 1 - {: h:n :}
    i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 KIND-DEF <> if E-COMP-STATE throw then
    RD-NAME {: a:ptr u:n :}
@@ -4389,15 +4472,25 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    GOOD? 0= if E-COMP-STATE throw then
    does  tag 5 <>  and if E-COMP-STATE throw then
    does if e off DOES-FUN else 0 then {: j:n :}
+   does if h j OWN-FUN-AT else 0 then {: hoff:n :}
    ndict@ {: want:n :}
    a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  INTERPRETER:DEF-RECORD
    NPUB:NEXT-SLOT {: fn:n :}
-   fn LINK-FN !  e LINK-EM !  want LINK-OWNER !
+   fn LINK-FN !  want LINK-OWNER !
+   h e <> if
+      e LINK-EM !
+      EDGES-N @ {: t-start:n :}
+      e NEMIT-FILL drop
+      FILE-EM @ e +  t-start EM-EDGES!
+      does if j NSHADOW:TAKE-DOES else NSHADOW:TAKE then
+      NEMIT:CLEAR
+   then
+   h LINK-EM !
    EDGES-N @ {: em-start:n :}
-   e NEMIT-FILL {: patch:n :}
-   FILE-EM @ e +  em-start EM-EDGES!
+   h NEMIT-FILL {: patch:n :}
+   FILE-EM @ h +  em-start EM-EDGES!
    EDGES-N @ {: start:n :}
-   does if j NSHADOW:TAKE-DOES else NSHADOW:TAKE then
+   does if j NSHADOW:TAKE-HOST-DOES else NSHADOW:TAKE-HOST then
    fn NSHADOW:SOURCE-FUNS
    NEMIT:CLEAR
    want NSHADOW:PUBLISH
@@ -4406,13 +4499,13 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    CODE-COPY BYTES$ drop {: copy:ptr :}
    \ The call targets and chains already hold host values, so both resolvers answer what they get.
    NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;]  ARM64:PATCH
-   e EM-OFFS @ {: at:n :}
+   h EM-OFFS @ {: at:n :}
    at OBJ@  at 8 + OBJ@ {: s:n r:n :}
    r 0= if s CODE-SPAN:EXACT else s r - then {: recorded:n :}
    HOST-CALLS-N @ 0= if NULL-PTR else 0 HOST-CALLS then  HOST-CALLS-N @ {: calls:ptr calln:n :}
    HOST-ADDRS-N @ 0= if NULL-PTR else 0 HOST-ADDRS then  HOST-ADDRS-N @ {: addrs:ptr addrn:n :}
    does if
-      copy s recorded calls calln addrs addrn false 0 off NPUB:IMPORT-PENDING-DOES
+      copy s recorded calls calln addrs addrn false 0 hoff NPUB:IMPORT-PENDING-DOES
    else
       tag 5 <> if
          copy s calls calln addrs addrn false 0  tag x y z w RESOLVE  NPUB:IMPORT-PENDING-DEFER
@@ -4425,13 +4518,13 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    \ After publication, as PENDING-CK refuses IMM and INT on a pending row; it also restores the
    \ wide and min-in bits the imports were given false 0 for.
    flags want SET-FLAGS
-   FILE-EM @ e + EM-EDGE+  want start REC-EDGES!
+   FILE-EM @ e + COPY-EDGES+  want start REC-EDGES!
    does if
       want 1 + XREF-REC {: rec:ptr :}
       rec XREF-NAME$ da du STR= 0=  rec XREF-WORDLIST dwid <>  or if E-COMP-STATE throw then
       dflags want 1 + SET-FLAGS
       EDGES-N @ {: does-start:n :}
-      FILE-EM @ e + EM-EDGE+  want 1 + does-start REC-EDGES!
+      FILE-EM @ e + COPY-EDGES+  want 1 + does-start REC-EDGES!
    then
    LINK-CLEAR ;
 
@@ -4978,7 +5071,7 @@ variable DUE-MADE
    repeat drop ;
 
 \ The file's parts in turn (TURN): one links (LINK-PART) and replays its request, or compiles to its request's clean cut
-\ (NEST) or the end. A cross build writes no object: it makes two emissions per definition, an object holds one.
+\ (NEST) or the end.
 : LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    path pathu KEY!
@@ -4993,7 +5086,7 @@ variable DUE-MADE
       {: compiled:bool :}
       TURN @ MATCH turn
          link OF
-            TOP-SCOPE? CROSS? 0= and if LINK-PART else false then if
+            TOP-SCOPE? if LINK-PART else false then if
                LINK-ROOT                  \ outside COMPILE-READS:RECORD, so its ROOT! records nothing
                REQS-N @ 0= if
                   compiled true
@@ -5011,7 +5104,7 @@ variable DUE-MADE
          ENDOF
          compile OF
             OBJECT-OPEN  COPY-BELOW
-            CROSS? UNLINKABLE !  STAMPED? 0= if true UNLINKABLE ! then  SCOPE-CK
+            STAMPED? 0= UNLINKABLE !  SCOPE-CK
             false PUSH-KEY
             [:
                FILE-OFF @ sourceu q ['] RUN-UNIT ['] POP-KEY finally

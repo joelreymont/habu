@@ -1373,17 +1373,26 @@ variable CLASS-N                        \ the class CLASS+ read
    s" CA3" WHICH!  CAST-REFUSED {: cold:n :}
    s" CA2 exits as the build does" LABEL  warm cold T= ;
 
-\ Guards a cross build, whose words have no emission (linker.f WORD-RECORD+): bare-main.f for Wasm in a
-\ fresh hb, since the process fixes the build's target. The module never runs.
-: CROSS-CASE ( CMD:command -- CMD:command )
-   s" WASM" WHICH!
+\ A Wasm build of bare-main.f in a fresh hb, since the process fixes the build's target; its module never runs.
+: WASM-BUILD ( CMD:command -- CMD:command )
    TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
    s" test/fixtures/file-objects/bare-main.f" TOOL-RUN {: rc:n :}
    rc 0<> if rc SHOW then
    s" the build exits 0" LABEL  rc 0 T= ;
 
-\ A Wasm build exits 0 where a target word is only named and is refused where top level runs it;
-\ two builds, since a refused build ends its hb.
+\ Guards a cross build's objects, which hold each definition's target and host copies: a second Wasm build
+\ links every file and writes the first's module.
+: CROSS-CASE ( CMD:command -- CMD:command )
+   s" WASM" WHICH!  WASM-BUILD
+   L$ s" prog" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
+   F$ MARK
+   s" WASM2" WHICH!  WASM-BUILD
+   s" the build rewrites no object" LABEL  F$ REWRITTEN 0 T=
+   L$ s" prog" IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
+   s" the module is the first build's" LABEL  PROG-1 u1 PROG-2 u2 STR= TTRUE ;
+
+\ A Wasm build exits 0 where a target word is only named and is refused where top level runs it, a linked file's
+\ by its name; two builds, since a refused build ends its hb.
 : TARGET-CASE ( CMD:command -- CMD:command )
    s" TN" WHICH!
    TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
@@ -1394,12 +1403,12 @@ variable CLASS-N                        \ the class CLASS+ read
    TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
    s" test/fixtures/file-objects/target-run.f" TOOL-RUN {: rc:n :}
    CMD:ERR$ s" E-TARGET-WORD habu: " CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:9: 'FO-TARGET' is a target word"
+   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:8: 'FO-TAIL' is a target word"
       CONTAINS? {: placed:bool :}
    classed placed and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the refusal is E-TARGET-WORD" LABEL  classed TTRUE
-   s" the refusal names FO-TARGET on target-run.f's line 9" LABEL  placed TTRUE ;
+   s" the refusal names linked FO-TAIL on target-run.f's line 8" LABEL  placed TTRUE ;
 
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
