@@ -155,14 +155,16 @@ using SYSCALL
 public
 
 \ A stripped program's start-up: the code's linked address, then the DATA
-\ image's and list's start and end labels. It has no records or code region:
-\ DBASE, NDICT and CP are 0.
+\ image's and list's start and end labels. It has no records and an empty code
+\ region at the text's end, so every xt is below CP and needs no ISB.
 : START, ( n label label label label -- )
    {: linked:n image:label image-end:label list:label list-end:label :}
    LBL {: text0:label :}
    text0 ENTRY,
-   DBASE 0 MOVZ,  NDICT 0 MOVZ,  CP 0 MOVZ,
+   NDICT 0 MOVZ,
    linked text0 image image-end list list-end DATA,
+   DBASE DATA RBASE-CELL LDR,  9 DATA TEXT-SIZE-CELL LDR,
+   DBASE DBASE 9 ADD,  CP DBASE 0 ADDI,
    text0 STACKS,
    APP-ENTRY:XT-CELL CALL-EXIT, ;
 

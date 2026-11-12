@@ -938,9 +938,9 @@ $2CD0 constant FLOORREC-CELL
 \ as a throw until a catch resumes; a fault while it is set dies by the signal.
 \ A task's region starts it zero: src/lib/task.f copies only the cells it names.
 $2D48 constant FAULT-MARK-CELL
-\ DBASE-CELL: the live region's base, every thread's DBASE, in the main DATA.
-\ An engine's boot stores it; a stripped program, which has no live region,
-\ leaves it at its mapping's zero.
+\ DBASE-CELL: the live region's base in the main DATA, every engine thread's
+\ DBASE. An engine's boot stores it; a stripped program, which has no live
+\ region, leaves it at its mapping's zero.
 $2D90 constant DBASE-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next. The stacks are this process's mappings, so a
