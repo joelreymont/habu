@@ -147,8 +147,8 @@ After `bin/hb` exists, use it as the host for normal native builds. Build a
 private hb with `TMPDIR=$TMP $HOST --load tools/hb-build.f -- --engine -o
 $OUT` and qualify it: copy it and its `.map` as regular files, not symlinks,
 into `bin/` of a private copy of its matching tree and run the test suite
-there (test/AGENTS.md). A tool that names an image's words reads the `.map`
-beside it (tools/image-names.f), so a stale map names the wrong words. Promote
+there (test/AGENTS.md). The size report reads the `.map` beside the program
+(tools/image-names.f), so copy the two together. Promote
 the qualified hb to `bin/hb` only after the suite passes, by copying it beside
 `bin/hb` and renaming it into place: a copy over `bin/hb` keeps the inode whose
 code signature the kernel cached, and a later launch can die by SIGKILL, rc 137

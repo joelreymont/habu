@@ -1,9 +1,6 @@
 \ asm.f — ARM64 instruction encoders, package A64ASM (operands -> u32).
 \ Every encoder screens its operands before packing a bit: an operand dies with
 \ ASM-EXIT-RC, a branch or ADR distance throws E-A64EMIT-REACH.
-\ tools/aot-startup-shape.f reaches RRR, RRI, ENC-CMP, ENC-BCOND and ENC-ADR in
-\ runtime images: their operands stay locals, since a stripped image cannot
-\ read this file's baked scratch.
 require src/lib/error.f
 
 package A64ASM

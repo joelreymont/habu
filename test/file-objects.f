@@ -7,6 +7,7 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fd.f
+require src/lib/json.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require src/compiler/target/model.f
@@ -94,6 +95,12 @@ variable NEWER-N                         \ the objects REWRITTEN saw changed aft
 TAILS TYPED-BUFFER KEPT-SIZE n          \ by tail, the object's size and its change time's
 TAILS TYPED-BUFFER KEPT-S n             \ seconds and nanoseconds, as KEEP read them; size -1
 TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
+TYPED-VARIABLE REPORT-CURSOR JSON:cursor
+variable REPORT-TOTAL                   \ N's report's size.total,
+variable REPORT-CODE                    \ its size.code,
+variable REPORT-SUM                     \ the sum of its six size classes
+variable REPORT-FILES                   \ and files_reused plus files_compiled
+variable CLASS-N                        \ the class CLASS+ read
 
 
 : A$ ( -- ptr u8 n ) OUT-A OUT-A-U @ ;
@@ -524,11 +531,11 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    PROCESS:ENDING>RC RC>N ;
 
 \ Builds a fixture by tools/hb-build.f (TOOL-RUN), since log.f requires and creates through does>
-\ (build.f's files may not); --repl when the flag is true.
+\ (build.f's files may not); --repl and --report-json when the flag is true.
 : BUILD-RC ( CMD:command ptr u8 n bool -- CMD:command n )
    {: src:ptr src-u:n repl:bool :}
    TOOL-ARGS
-   repl if s" --repl" CMD:ARG+ then
+   repl if s" --repl" CMD:ARG+ s" --report-json" CMD:ARG+ then
    src src-u TOOL-RUN ;
 
 : TOOL-BUILD ( CMD:command ptr u8 n bool -- CMD:command bool )
@@ -699,6 +706,68 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
    rc 0<> if rc SHOW then
    s" a kept handle is refused and word docs read at build and run time count 2 and 1" LABEL
    CMD:OUT$ s\" zip refused\naio refused\ndocs 2 1\n" T$= ;
+
+\ Stores the member's integer in the cell; false when the object has no such member.
+: MEMBER! ( JSON:reader ptr u8 n ptr n -- JSON:reader bool )
+   {: key:ptr keyu:n dst:ptr :}
+   key keyu JSON:READ-FIND-KEY 0= if false exit then
+   JSON:READ-TOKEN JSON:T-INT <> if false exit then
+   JSON:READ-INT dst ! true ;
+
+: CLASS+ ( JSON:reader ptr u8 n -- JSON:reader bool )
+   CLASS-N MEMBER! dup if CLASS-N @ REPORT-SUM +! then ;
+
+\ The members are read in the order the report writes them: READ-FIND-KEY reads forward.
+: COUNTS ( JSON:reader -- JSON:reader bool )
+   s" files_reused" REPORT-FILES MEMBER! 0= if false exit then
+   REPORT-FILES @ {: reused:n :}
+   s" files_compiled" REPORT-FILES MEMBER! 0= if false exit then
+   REPORT-FILES @ reused + REPORT-FILES ! true ;
+
+: CLASSES ( JSON:reader -- JSON:reader bool )
+   s" code" REPORT-CODE MEMBER! 0= if false exit then
+   REPORT-CODE @ REPORT-SUM !
+   s" names" CLASS+ 0= if false exit then
+   s" data_written" CLASS+ 0= if false exit then
+   s" data_zero_filled" CLASS+ 0= if false exit then
+   s" padding" CLASS+ 0= if false exit then
+   s" other" CLASS+ ;
+
+: SIZES ( JSON:reader -- JSON:reader bool )
+   s" size" JSON:READ-FIND-KEY 0= if false exit then
+   JSON:READ-TOKEN JSON:T-OBJ <> if false exit then
+   s" total" REPORT-TOTAL MEMBER! 0= if false exit then
+   CLASSES ;
+
+\ After `other`: the size object's close, the report's and the document's end.
+: CLOSES? ( JSON:reader -- JSON:reader bool )
+   JSON:READ-NEXT JSON:T-OBJ-END <> if false exit then
+   JSON:READ-NEXT JSON:T-OBJ-END <> if false exit then
+   JSON:READ-NEXT JSON:T-END = ;
+
+\ Fills the REPORT- cells from the report; true when it reads whole.
+: REPORT-READ ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   REPORT-CURSOR a u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ = if COUNTS else false then
+   if SIZES else false then
+   if CLOSES? else false then
+   swap JSON:READ-CLOSE ;
+
+\ N's report, stdout's last line: it parses, its total is the program's length, its six classes
+\ sum to the total, it charges code and it counts the build's files.
+: REPORT-RUN ( CMD:command -- CMD:command )
+   CMD:OUT$ {: o:ptr ou:n :}
+   o ou BEFORE-LAST {: at:n :}
+   o at + ou at - REPORT-READ {: read:bool :}
+   read 0= if 0 SHOW then
+   s" the build's report parses" LABEL  read TTRUE
+   read 0= if exit then
+   s" the report's total is the program's length" LABEL
+   REPORT-TOTAL @  L$ s" prog" IN$ FS:FILE-SIZE T=
+   s" the report's classes sum to its total" LABEL  REPORT-SUM @ REPORT-TOTAL @ T=
+   s" the report charges code" LABEL  REPORT-CODE @ 0 > TTRUE
+   s" the report counts the build's files" LABEL  REPORT-FILES @ 0 > TTRUE ;
 
 \ kept-genio.f's program, run in its own process with empty stdin, which ends its REPL.
 : GENIO-RUN ( CMD:command -- CMD:command )
@@ -875,11 +944,13 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
 
 \ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the program,
 \ word docs keep no address of a freed text, a task left running or a run word that loads, provides or reads a file fails it.
+\ N, the one engine build, reports its sizes.
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN
    s" Q" WHICH!  s" test/fixtures/file-objects/kept-main.f" FIXTURE-BUILD 0= if exit then  KEPT-RUN
-   s" N" WHICH!  s" test/fixtures/file-objects/kept-genio.f" REPL-BUILD 0= if exit then  GENIO-RUN
+   s" N" WHICH!  s" test/fixtures/file-objects/kept-genio.f" REPL-BUILD 0= if exit then
+   REPORT-RUN  GENIO-RUN
    s" W" WHICH!  TASK-LEFT-BUILD
    s" W2" WHICH!  TASK-LEFT-BUILD
    WORD-LOAD-BUILD ;

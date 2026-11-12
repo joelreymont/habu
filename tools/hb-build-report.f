@@ -17,10 +17,8 @@ ENUM state empty complete ;ENUM
 variable ELAPSED-VALUE
 variable FILES-REUSED-N
 variable FILES-COMPILED-N
-\ Where the bytes of the image this build wrote went: the same six numbers the
-\ text summary prints, plus the file's own length. tools/image-size-lib.f
-\ measures them and refuses unless its classes sum to that length, so `other`
-\ is what no class claimed and the seven add up exactly.
+\ Where the bytes of the program this build wrote went: the six classes the
+\ text summary prints, which sum to the file's own length, and that length.
 variable SIZE-TOTAL
 variable SIZE-CODE
 variable SIZE-NAMES

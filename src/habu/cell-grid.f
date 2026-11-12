@@ -29,8 +29,7 @@ GROUP-BYTES BM-BYTE-SPAN * constant GROUP-SPAN   \ DATA bytes such a group cover
 10 constant VMAX                     \ an unsigned LEB128 of a whole cell is at most ten bytes
 
 \ A CELL'S VALUE IS AN UNSIGNED LEB128: seven bits a byte, low group first, high
-\ bit set while more groups follow. tools/engine-size.f and tools/image-size-lib.f
-\ mirror the reader for the images they walk.
+\ bit set while more groups follow.
 \ A VALUE IS A WHOLE CELL, so every bit pattern a cell can hold is a field this
 \ format expresses: an address, a small count and a cell of packed bytes alike.
 \ A negative Habu cell is the unsigned value with bit 63 set and encodes in VMAX

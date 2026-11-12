@@ -60,6 +60,14 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 : ROW-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u COL-LEN @ NUM-COL dup CODE-SPAN:VALID? if CODE-SPAN:BYTES else drop -1 then ;
 
+: ROW-BYTES ( ptr u8 n -- n )
+   ROW-LEN dup 0 < if
+      s" image-names: a row's length is not a length" 74 die then ;
+
+: KIND? ( ptr u8 n ptr u8 n -- bool )
+   {: row:ptr rowu:n kind:ptr kindu:n :}
+   row rowu COL-KIND @ FIELD$ kind kindu STR= ;
+
 : ROW-CHARGED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u COL-KIND @ FIELD$ s" runtime" STR= if true exit then
    a u COL-KIND @ FIELD$ s" word" STR= ;
@@ -91,18 +99,21 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
       then
    repeat ;
 
-\ A package's row, an alias's, and one for a region the link appended after
-\ the code.
-: UNCHARGED? ( ptr u8 n -- bool )
+\ The kinds of the rows after the code: the regions the link appended and the pad before one.
+: TAIL? ( ptr u8 n -- bool )
    {: kind:ptr kindu:n :}
-   kind kindu s" namespace" STR= if true exit then
-   kind kindu s" alias" STR= if true exit then
    kind kindu s" data" STR= if true exit then
    kind kindu s" data-list" STR= if true exit then
    kind kindu s" names" STR= if true exit then
    kind kindu s" records" STR= if true exit then
    kind kindu s" record-list" STR= if true exit then
    kind kindu s" pad" STR= ;
+
+: UNCHARGED? ( ptr u8 n -- bool )
+   {: kind:ptr kindu:n :}
+   kind kindu s" namespace" STR= if true exit then
+   kind kindu s" alias" STR= if true exit then
+   kind kindu TAIL? ;
 
 public
 
@@ -156,6 +167,42 @@ public
       then
    repeat
    ATTR-TOTAL @ size = dup ATTR-OK ! ;
+
+\ The code's end: the start of the first row after the code, -1 when the map
+\ has none.
+: CODE-END ( -- n )
+   LOADED? 0= COL-KIND @ 0 < or if -1 exit then
+   ROWS @ POS !
+   begin POS @ USED @ < while
+      LINE$ {: row:ptr rowu:n :}
+      row rowu COL-KIND @ FIELD$ TAIL? if
+         row rowu COL-START @ NUM-COL exit then
+   repeat -1 ;
+
+\ The summed length of every row of a kind.
+: KIND-BYTES ( ptr u8 n -- n )
+   {: kind:ptr kindu:n :}
+   LOADED? 0= COL-KIND @ 0 < or if 0 exit then
+   0 ROWS @ POS !
+   begin POS @ USED @ < while
+      LINE$ {: row:ptr rowu:n :}
+      row rowu kind kindu KIND? if row rowu ROW-BYTES + then
+   repeat ;
+
+\ The start and length of the one row of a kind, 0 0 when there is none.
+: REGION ( ptr u8 n -- n n )
+   {: kind:ptr kindu:n :}
+   0 0 false
+   LOADED? COL-KIND @ 0 >= and if
+      ROWS @ POS !
+      begin POS @ USED @ < while
+         LINE$ {: row:ptr rowu:n :}
+         row rowu kind kindu KIND? if
+            if s" image-names: two rows of one region" 74 die then
+            2drop row rowu COL-START @ NUM-COL row rowu ROW-BYTES true
+         then
+      repeat
+   then drop ;
 
 : ATTR? ( -- bool ) ATTR-OK @ 0<> ;
 : ATTR-BYTES ( -- n ) ATTR-TOTAL @ ;

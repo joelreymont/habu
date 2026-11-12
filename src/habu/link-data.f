@@ -46,6 +46,8 @@ variable LRECS
 variable LRECS-END
 variable LRLIST
 variable LRLIST-END
+\ The code's end, before the pad that aligns the DATA image.
+variable CODE-END
 \ An engine's name pool's end, which no label marks: the records start after it
 \ at an 8-byte boundary.
 variable NAMES-END
@@ -361,6 +363,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ After PLACE-ROUTINES: at an 8-byte boundary the copy's runs with the header
 \ cells written, then the DATA list, the code header cells last.
 : DATA-IMAGE ( -- )
+   A64ICODE:ASM-LEN CODE-END !
    PAD8
    LIMAGE A64ICODE:LABEL@ A64ICODE:LBL,
    KEPT-COPY
@@ -515,7 +518,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap EMIT-IMAGE
       FS:CHMOD-X ;] FS:REPLACE-STAGED
-   REGIONS  path pathu DATA-IMAGE-AT WRITE-MAP ;
+   REGIONS  path pathu CODE-END @ WRITE-MAP ;
 
 public
 

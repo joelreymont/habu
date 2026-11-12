@@ -996,7 +996,7 @@ require src/lib/prelude.f
 \ -9235 unassigned: src/lib/net/curl.f grows its transfer records.
 
 \ Authenticated encryption and HMAC over libcrypto (package CRYPTO):
-\ -9270..-9279. -9240..-9249 is tools/image-size-lib.f.
+\ -9270..-9279.
 -9270 constant E-CRYPTO-FIRST
 -9279 constant E-CRYPTO-LAST
 -9270 constant E-CRYPTO-OPERAND    \ a key, nonce, span length or output span the operation cannot accept

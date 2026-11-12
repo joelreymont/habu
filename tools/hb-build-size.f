@@ -6,9 +6,8 @@ require tools/image-size-lib.f
 
 package HB-BUILD-CLI
 
-\ Where this build's bytes went, by the walk tools/engine-size.f runs; it refuses
-\ to answer unless the classes sum to the file's length. --size-report prints the
-\ whole table; --report-json puts the numbers in the report object instead.
+\ Where this build's bytes went (tools/image-size-lib.f): --size-report prints
+\ the whole table; --report-json puts the numbers in the report object instead.
 : HBB-MEASURE-OUT ( -- )
    HBB-OUT$ IMAGE-SIZE:MEASURE ;
 
