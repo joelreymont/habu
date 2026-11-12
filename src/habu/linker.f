@@ -4901,11 +4901,10 @@ variable DUE-MADE
    then ;
 
 
-\ The piece's checks, RESET-SCRATCH, then PIECES (PIECE+): END-CK, E-STORE (CHECK-EARLIER, FIND-STORES),
+\ The piece's checks, RESET-SCRATCH, then PIECES (PIECE+): E-STORE (CHECK-EARLIER, FIND-STORES),
 \ E-WORDLIST for an id no record holds.
 : PIECE-END ( n -- )
    {: req:n :}
-   END-CK
    FILE-HELD @ CHECK:AMENDED   \ the facts its `TRUST` rows and amenders changed
    TYPE-ENTRIES
    here NULL-PTR - FILE-END !
@@ -5025,7 +5024,7 @@ variable DUE-MADE
             [:
                FILE-OFF @ sourceu q ['] RUN-UNIT ['] POP-KEY finally
                true GOING                 \ E-FAILED: a request failed and the source caught it
-               TURN @ MATCH turn          \ the source ended: END-CK as PIECE-END would, before READS-KEEP
+               TURN @ MATCH turn          \ the source ended: END-CK before READS-KEEP
                   link OF ENDOF
                   compile OF END-CK ENDOF
                   cut OF ENDOF
