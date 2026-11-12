@@ -863,10 +863,8 @@ public
    {: prefix:ptr prefixu :}
    prefixu TEMP-ROOT prefix prefixu mono-ns MKTEMP-SEED >FD ;
 
-\ Its callers are a just-forked child (src/lib/process-fork.f registers it with
-\ FORK-CHILD) and single-task fixtures, where no other task can be inside the
-\ registry: a registration another task was in when the process forked is part
-\ of what the fork copied, so the lock opens with the count.
+\ One task only: a forked child's inherited paths are its parent's to remove,
+\ and a registration another task was in at the fork leaves the lock held.
 : CLEANUP-RESET ( -- )
    0 CLEANUP-N !
    CLEANUP-RELEASE ;

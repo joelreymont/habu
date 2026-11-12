@@ -10,6 +10,7 @@ require src/lib/test/wait.f
 require src/lib/fd.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/process-fork.f
 require src/lib/test/ending.f
 require src/lib/task.f
 require src/lib/ffi-abi.f
@@ -87,6 +88,7 @@ $FFFFFFFF constant INT-MASK        \ sa_flags is an int; the cell read carries i
 1 constant NOT-RUN                 \ no throw code and no kind, so an idle task fails
 
 5000 constant RESUMED-MS           \ far above what a resumed child takes to end
+5000 constant FORKED-MS            \ far above what the forked child takes to end
 2 constant WUNTRACED               \ waitpid's flag on Linux and macOS
 $7F constant STOP-MARK             \ a stop report's low status byte
 
@@ -608,6 +610,24 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 
    SIGNAL:RELEASE ;
 
+\ The child raises both: the ignored SIGUSR1 leaves it running, and the caught
+\ SIGUSR2, back under the default action, ends it.
+: FORKED-RAISES ( -- )
+   SIGNAL:SIGUSR1 RAISE
+   SIGNAL:SIGUSR2 RAISE ;
+
+: FORK-CASE ( -- )
+   SIGNAL:INIT
+   SIGNAL:SIGUSR1 SIGNAL:IGNORE
+   SIGNAL:SIGUSR2 SIGNAL:CATCH
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if [: FORKED-RAISES ;] PROC-FORK:CHILD-MAIN then
+   pid FORKED-MS >MS PROCESS:WAIT-BOUNDED {: done :}
+   SIGNAL:RELEASE
+
+   s" a forked child keeps an ignore and drops the stub of a catch" T-LABEL
+   s" FORKED-RAISES" s" " s" " done SIGNAL:SIGUSR2 T-ENDING-SIGNALED= ;
+
 public
 
 \ The loop is started after the last definition and stopped at the end; every
@@ -635,6 +655,7 @@ public
    RELEASE-CASE
    BROKEN-CASE
    IGNORE-CASE
+   FORK-CASE
    AIO:STOP
    T-REPORT ;
 

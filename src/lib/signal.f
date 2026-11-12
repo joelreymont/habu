@@ -13,6 +13,7 @@ s" src/lib/aio.f" required                    \ the loop the WAIT window runs on
 s" src/lib/task.f" required                   \ TASK:+USER carries the staging span, TASK:SELF-N the owner
 s" src/lib/ffi-abi.f" required                \ sigaction is declared here, not assumed
 require src/habu/layout.f                 \ package SIGNAL-ABI publishes the two cells
+require src/lib/fork-child.f                 \ CHILD-RESET, registered below
 
 package SIGNAL
 public
@@ -105,6 +106,9 @@ create SA-OLD SA-BUF-BYTES allot   \ sigaction fills this; its prior content is 
 SCRATCH-VARIABLE STUB-A            \ the stub's runtime address, as sa_handler
 PTR-VARIABLE FD-WORD-A             \ the ADDRESS of the process-wide fd word
 SCRATCH-VARIABLE CAUGHT            \ bit (sig-1) per signal RELEASE restores
+\ Set before the stub goes in and cleared after it is replaced, so no forked
+\ child keeps it. A refused CATCH's bit stays: sigaction refuses its reset too.
+SCRATCH-VARIABLE STUBBED           \ bit (sig-1) per signal CHILD-RESET resets
 SCRATCH-VARIABLE READ-FD-CELL
 SCRATCH-VARIABLE WRITE-FD-CELL
 SCRATCH-VARIABLE OWNER             \ TASK:SELF-N at INIT; read only while READY
@@ -163,11 +167,17 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : SIG-BIT ( n -- n ) {: sig:n :}
    1 sig 1 - lshift ;
 
-: CAUGHT? ( n -- bool ) {: sig:n :}
-   sig SIG-BIT CAUGHT @ and 0 <> ;
+: IN-SET? ( n n -- bool ) {: sig:n set:n :}
+   sig SIG-BIT set and 0 <> ;
 
 : CAUGHT+ ( n -- ) {: sig:n :}
    sig SIG-BIT CAUGHT @ or CAUGHT ! ;
+
+: STUBBED+ ( n -- ) {: sig:n :}
+   sig SIG-BIT STUBBED @ or STUBBED ! ;
+
+: STUBBED- ( n -- ) {: sig:n :}
+   sig SIG-BIT invert STUBBED @ and STUBBED ! ;
 
 : SIG-CHECK ( n -- ) {: sig:n :}
    sig SIG-MIN < if E-SIGNAL-NUMBER throw then
@@ -179,8 +189,11 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : SA-FLAGS! ( n -- )
    SA-ACT SA-FLAGS-OFF + cell-view ! ;
 
-: SIGACTION! ( n -- ) {: sig:n :}
-   sig SA-ACT SA-OLD SIGACTION-CALL 0 <> if E-SIGNAL-INSTALL throw then ;
+: SIGACTION-RC ( n -- n ) {: sig:n :}
+   sig SA-ACT SA-OLD SIGACTION-CALL ;
+
+: SIGACTION! ( n -- )
+   SIGACTION-RC 0 <> if E-SIGNAL-INSTALL throw then ;
 
 \ SA_RESTART so a read, write or wait a program is blocked in resumes after a
 \ caught signal. The WAIT window does not need it: a signal reaches no thread
@@ -192,18 +205,24 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    sig SIGACTION! ;
 
 \ SIG-DFL or SIG-IGN: an action the kernel takes itself, so no flags.
-: INSTALL-ACTION ( n n -- ) {: sig:n action:n :}
+: ACTION! ( n -- )
    SA-ACT SA-BUF-BYTES ZERO-BYTES
-   action SA-HANDLER!
-   SA-NO-FLAGS SA-FLAGS!
+   SA-HANDLER!
+   SA-NO-FLAGS SA-FLAGS! ;
+
+: INSTALL-ACTION ( n n -- ) {: sig:n action:n :}
+   action ACTION!
    sig SIGACTION! ;
 
-: RESTORE-ONE ( n -- ) {: sig:n :}
-   sig CAUGHT? if sig SIG-DFL INSTALL-ACTION then ;
+: EACH-IN ( n [ n -- ] -- ) {: set:n q :}
+   SIG-MAX 1+ SIG-MIN ?do
+      i set IN-SET? if i q execute then
+   loop ;
 
 : RESTORE-ALL ( -- )
-   SIG-MAX 1+ SIG-MIN ?do i RESTORE-ONE loop
-   0 CAUGHT ! ;
+   CAUGHT @ [: SIG-DFL INSTALL-ACTION ;] EACH-IN
+   0 CAUGHT !
+   0 STUBBED ! ;
 
 : READ-FD ( -- fd )
    READ-FD-CELL @ >FD ;
@@ -224,6 +243,23 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : FORGET-FDS ( -- )
    PROCESS:NO-FD READ-FD-CELL !
    PROCESS:NO-FD WRITE-FD-CELL ! ;
+
+\ A forked child keeps the stub, the armed fd word and both pipe ends, so it
+\ would write a stop signal into the parent's pipe and live on through it.
+: CHILD-RESET ( -- )
+   READY @ 0= if exit then
+   DISARM
+   STUBBED @ [: SIG-DFL ACTION! SIGACTION-RC drop ;] EACH-IN
+   READ-FD-CELL @ close
+   WRITE-FD-CELL @ close
+   FORGET-FDS
+   0 CAUGHT !
+   0 STUBBED !
+   0 READY ! ;
+
+: REGISTER-RESET ( -- )
+   [: CHILD-RESET ;] FORK-CHILD:REGISTER ;
+REGISTER-RESET
 
 \ Both ends are closed before either failure is named, so a refused close never
 \ leaks the other end.
@@ -312,6 +348,7 @@ public
    NEED-READY
    NEED-OWNER
    sig SIG-CHECK
+   sig STUBBED+
    sig INSTALL-STUB
    sig CAUGHT+ ;
 
@@ -324,6 +361,7 @@ public
    NEED-OWNER
    sig SIG-CHECK
    sig SIG-IGN INSTALL-ACTION
+   sig STUBBED-
    sig CAUGHT+ ;
 
 \ TRUE when signal n is ignored. A process starts with its caller's ignored

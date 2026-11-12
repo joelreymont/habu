@@ -69,8 +69,13 @@ create STATUS-ERR STATUS-CAP allot
 : CHILD ( -- )
    [: CHILD-FDS EVAL-STACK ;] PROC-FORK:CHILD-MAIN ;
 
+: FORK-PID ( -- pid )
+   0 >PID [: drop PROC-FORK:RAW ;] catch {: pid code:n :}
+   code 0= if pid exit then
+   code PROCESS:THROW-CAPTURE ;
+
 : SPAWN ( -- )
-   PROC-FORK:RAW {: pid:pid :}
+   FORK-PID {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN PROCESS:THROW-CAPTURE then
    pid PID>N 0= if CHILD then
    pid PROCESS:CAPTURE-PID!

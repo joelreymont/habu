@@ -22,23 +22,15 @@ require src/lib/fd-lock.f                    \ the third lock RAW holds while it
 require src/lib/fs-mutate.f                  \ FS:CLEANUP-RESET, registered below
 require src/lib/process-tree.f               \ PROC-TREE:CHILD-RESET, registered below
 require src/lib/fork-child.f                 \ the resets RAW runs in the child
+require src/lib/memory.f                     \ MEM:WITH-BYTES holds RAW's two masks
+require src/lib/ffi-abi.f                    \ pthread_sigmask is declared here, not assumed
 
 package PROC-FORK
 
 private
 
-\ Registers the resets of task.f, fs-mutate.f and process-tree.f (fork-child.f
-\ REGISTER): RAW, the one fork, is here, so every program that forks has them.
-\
-\ The fs cleanup table is process-owned state: its entries name paths THIS
-\ process created and promised to remove, and FS:CLEANUP-RUN deletes every entry
-\ in it. A child inherits a copy of that table, but not the ownership it
-\ records - those paths still belong to the live parent - so running an
-\ inherited entry deletes somebody else's files. Emptied, the table leaves the
-\ child cleaning up exactly what the child registers, which is the only thing
-\ it owns. Without the reset, a gate pool member that ran its own cleanups also
-\ ran the driver's `GT-ROOT FS:CLEANUP-TREE+` and removed the whole capture root
-\ out from under its live siblings.
+\ An engine or AOT linker closure module never requires fork-child.f (no claim
+\ owns its cells), so the one fork registers its reset here.
 : REGISTER-RESETS ( -- )
    [: TASK:CHILD-RESET ;] FORK-CHILD:REGISTER
    [: FS:CLEANUP-RESET ;] FORK-CHILD:REGISTER
@@ -73,14 +65,86 @@ private
 : FORK-HELD ( -- n )
    [: FORK-REGISTRIES-HELD ;] FD-LOCK:WITH ;
 
+\ glibc's sigset_t is 128 bytes and macOS's 4: the larger holds either.
+128 constant SIGSET-BYTES
+
+\ SIGSEGV, SIGILL, SIGFPE and SIGTRAP carry the same number on both hosts;
+\ SIGBUS and the two `how` values do not.
+11 constant SIGSEGV
+4 constant SIGILL
+8 constant SIGFPE
+5 constant SIGTRAP
+
+: SIGBUS ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 7 exit then
+   HB-TARGET-MACOS? if 10 exit then
+   E-PROC-HOST throw ;
+
+: SIG-BLOCK ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 0 exit then
+   HB-TARGET-MACOS? if 1 exit then
+   E-PROC-HOST throw ;
+
+: SIG-SETMASK ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 2 exit then
+   HB-TARGET-MACOS? if 3 exit then
+   E-PROC-HOST throw ;
+
+PROCESS-SYMBOLS
+
+FUNCTION: SIGMASK-CALL pthread_sigmask ( n ptr u8 ptr u8 -- i32 )
+   2 SIGSET-BYTES WRITES-BYTES
+;FUNCTION
+
+FUNCTION: SIGFILL-CALL sigfillset ( ptr u8 -- i32 )
+   0 SIGSET-BYTES WRITES-BYTES
+;FUNCTION
+
+FUNCTION: SIGDEL-CALL sigdelset ( ptr u8 n -- i32 )
+   0 SIGSET-BYTES WRITES-BYTES
+;FUNCTION
+
+: MASK-OK ( n -- )
+   0 <> if E-PROC-SPAWN throw then ;
+
+: UNBLOCK ( ptr u8 n -- )
+   SIGDEL-CALL MASK-OK ;
+
+\ The engine's crash and breakpoint handlers stay reachable: a fault raised
+\ while blocked kills the process on Linux and refaults for ever on macOS.
+: ASYNC-SET ( ptr u8 -- ) {: set:ptr :}
+   set SIGFILL-CALL MASK-OK
+   set SIGSEGV UNBLOCK
+   set SIGBUS UNBLOCK
+   set SIGILL UNBLOCK
+   set SIGFPE UNBLOCK
+   set SIGTRAP UNBLOCK ;
+
+\ The thread's old mask follows the set in RAW's buffer.
+: OLD-MASK ( ptr u8 -- ptr u8 )
+   SIGSET-BYTES + ;
+
+: BLOCK-ASYNC ( ptr u8 -- ) {: set:ptr :}
+   set ASYNC-SET
+   SIG-BLOCK set set OLD-MASK SIGMASK-CALL MASK-OK ;
+
+\ The answer is dropped: the call cannot fail once BLOCK-ASYNC's did not, and
+\ the child runs this before RAW has returned.
+: RESTORE-MASK ( ptr u8 -- ) {: set:ptr :}
+   SIG-SETMASK set OLD-MASK set SIGMASK-CALL drop ;
+
+: FORK-MASKED ( ptr u8 -- pid ) {: set:ptr :}
+   set BLOCK-ASYNC
+   [: FORK-HELD >PID dup PID>N 0= if FORK-CHILD:RESET then ;]
+   [: set RESTORE-MASK ;] finally ;
+
 public
 
-\ The child runs every reset src/lib/fork-child.f holds on its first instruction
-\ after the fork, before RAW returns to its caller.
+\ A caught stop signal reaches the child after its resets, under the default
+\ action. A refusal throws before the fork, but a refused fork answers pid < 0.
 : RAW ( -- pid )
-   FORK-HELD >PID {: pid:pid :}
-   pid PID>N 0= if FORK-CHILD:RESET then
-   pid ;
+   SIGSET-BYTES 2 * MEM:BYTES-ALLOC-LEN
+   [: drop FORK-MASKED ;] MEM:WITH-BYTES ;
 
 : CHECKED ( -- pid )
    RAW {: pid:pid :}

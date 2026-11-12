@@ -1,8 +1,11 @@
 \ fork-child.f - the resets a process forked through PROC-FORK:RAW runs first:
 \ fork copies only the calling thread, so process-wide state another task was
 \ part way through (a lock it held, a setup it had begun) would wait for ever in
-\ the child. src/lib/process-fork.f RAW runs every reset on the child's first
-\ instruction after the fork, before any caller code.
+\ the child. RAW runs every reset in the child alone, before it returns there:
+\ a reset frees for the child, never under the parent's holder, in stores and
+\ async-signal-safe calls that never throw, block or take a lock. It resets only
+\ state a task may be stopped half way through: a lock whose holder leaves its
+\ table whole at every instruction, a setup the child can start over.
 \ STORAGE CLASS. PROCESS-WIDE: one registry, appended under an atomic lock.
 
 require src/lib/error.f
@@ -34,16 +37,7 @@ variable MUTEX
 public
 
 \ Registers a reset, once, as the module that registers it loads; a full table
-\ refuses E-LAYOUT-BOUNDS. A reset runs in the child alone: what it frees, it
-\ frees for the child, never under the parent's holder. It is a few stores: it
-\ runs before the fork has returned, so it must not throw, block or take a lock.
-\ Only state a task may be stopped half way through belongs here: a lock whose
-\ holder leaves its table whole at every instruction, a setup the child can
-\ start over. A lock whose holder unmaps a table before it publishes the next
-\ cannot be reset, so RAW holds it across the fork (src/lib/process-fork.f
-\ FORK-HELD).
-\ An engine or AOT linker closure module never requires this file (no claim owns
-\ its cells; REFUSE-DATA-SPAN): src/lib/process-fork.f registers its reset.
+\ refuses E-LAYOUT-BOUNDS.
 : REGISTER ( [ -- ] -- )
    LOCK [: APPEND ;] [: UNLOCK ;] finally ;
 
