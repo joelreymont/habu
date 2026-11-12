@@ -2,8 +2,8 @@
 \ asks the OS to hold off idle system sleep under a name the OS lists among its
 \ power assertions, and answers a linear POWER:awake; ALLOW-SLEEP consumes it
 \ and lifts the hold. The display may still sleep. On macOS the hold is an
-\ IOKit power assertion (src/lib/power/macos.f), which the OS also lifts when
-\ the process exits; on any other target KEEP-AWAKE throws E-PLATFORM.
+\ IOKit power assertion, which the OS also lifts when the process exits; on any
+\ other target KEEP-AWAKE throws E-PLATFORM.
 \ STORAGE CLASS. CALLER-OWNED: each token holds its assertion id.
 \ PROCESS-WIDE: the backend hooks, bound when this file loads and only read
 \ afterwards.

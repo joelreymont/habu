@@ -36,7 +36,6 @@ create WANT BUF:HDR-BYTES allot
    HEAD+ s\" @@ -6,4 +6,4 @@\n 6\n 7\n 8\n-9\n+99\n" W+ SAME ;
 
 
-\ Six unchanged lines between two changes join their hunks; seven part them.
 : TEST-HUNKS ( -- )
    s" hunks join across six lines, not seven" FRESH
    PATH TWENTY
@@ -47,9 +46,6 @@ create WANT BUF:HDR-BYTES allot
    s\" @@ -14,7 +14,7 @@\n 14\n 15\n 16\n-17\n+177\n 18\n 19\n 20\n" W+ SAME ;
 
 
-\ After its `@@` a hunk header names the nearest old line before the hunk that
-\ starts with a letter, `_` or `$`; a hunk with none since the previous hunk's
-\ start keeps the previous hunk's.
 : TEST-FUNC ( -- )
    s" function line before a hunk" FRESH
    PATH s\" a\n1\n2\n3\n4\n5\n" s\" a\n1\n2\n3\n4\n55\n" OUT WRITE-EDIT
@@ -61,9 +57,6 @@ create WANT BUF:HDR-BYTES allot
    s\" @@ -13,5 +13,5 @@ f\n 12\n 13\n 14\n-15\n+155\n 16\n" W+ SAME ;
 
 
-\ A path holding a space ends its `---` and `+++` names with a tab; one holding
-\ a control byte or a byte past ASCII is C-quoted, so a line feed in it cannot
-\ start a patch line.
 : TEST-PATHS ( -- )
    s" path with a space" FRESH
    s" my file" s\" 1\n2\n" OUT WRITE-ADD
@@ -164,14 +157,12 @@ create WANT BUF:HDR-BYTES allot
    s\" <<<<<<< ours\n1\n2\n||||||| base\n=======\n3\n>>>>>>> theirs\n" W+ SAME ;
 
 
-\ Each conflict section ends in LF, as git's does, though the texts do not.
 : TEST-MERGE-NO-NEWLINE ( -- )
    s" merge conflict without final newlines" FRESH
    s\" 1\n2\n3" s\" 1\n2\n33" s\" 1\n2\n333" OUT MERGE TFALSE
    s\" 1\n2\n<<<<<<< ours\n33\n||||||| base\n3\n=======\n333\n>>>>>>> theirs\n" W+ SAME ;
 
 
-\ git ends the markers, and a line end it adds, with CR LF when the texts do.
 : TEST-MERGE-CRLF ( -- )
    s" merge conflict in CR LF texts" FRESH
    s\" 1\r\n2\r\n3" s\" 1\r\n2\r\n33" s\" 1\r\n2\r\n333" OUT MERGE TFALSE

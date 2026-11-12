@@ -2,9 +2,7 @@
 \ changes shape, and the context contract.
 \ Run: bin/hb --load src/lib/crypto/sha1-test.f
 \
-\ The block-boundary digests are runs of 'a', as `shasum -a 1` answers them:
-\ 55 bytes leave room for the length in the last block, 56 do not, 63 and 64
-\ straddle the block and 65 spills one byte into the next.
+\ The block-boundary digests are runs of 'a', as `shasum -a 1` answers them.
 
 require src/lib/test.f
 require src/lib/span.f
@@ -73,8 +71,8 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
    CTX-A SHA1:FINISH
    s" 34aa973cd4c4daa4f61eeb2bdbad27316534016f" DIGEST= ;
 
-\ Each length hashed whole and fed a byte at a time: the byte-wise stream
-\ fills the tail through every position before the length lands.
+\ The byte-wise stream fills the tail through every position
+\ before the length lands.
 : BOUNDARY ( n ptr u8 n -- ) {: u:n want wu:n :}
    CTX-A u A$ SHA1:HASH want wu DIGEST=
    CTX-B SHA1:START
@@ -93,8 +91,6 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
    s" 65 bytes: one byte into the second block" T-LABEL
    65 s" 11655326c708d70319be2610e8a57d9a5b959d3b" BOUNDARY ;
 
-\ FINISH reads the context and leaves it as it was: a second FINISH answers
-\ the same digest, and the stream goes on after it.
 : FINISH-KEEPS-STREAM ( -- )
    CTX-A SHA1:START
    CTX-A s" ab" SHA1:FEED
@@ -109,7 +105,6 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
    CTX-A SHA1:FINISH
    s" a9993e364706816aba3e25717850c26c9cd0d89d" DIGEST= ;
 
-\ Two digests in flight at once, fed in turn: each answers for its own bytes.
 : INTERLEAVED ( -- )
    CTX-A SHA1:START
    CTX-B SHA1:START

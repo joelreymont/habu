@@ -542,8 +542,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE ;
 
 \ The output is measured against the fewest bytes the input can need before the
-\ input is read: all of them in UTF-8, two for every three in UTF-16. Each input
-\ ends at an inaccessible page one byte short of the length it claims.
+\ input is read: all of them in UTF-8, two for every three in UTF-16.
 : UNREAD-UTF8 ( XML:source -- XML:source )
    4 [char] A GUARD-PAGE:TAIL 5 ENCODED 4 XML:ENCODE drop ;
 
@@ -615,9 +614,6 @@ CAST: ENCODING>N ( XML:encoding -- n )
    PROBE @ >OFF 0 >LEN XML:SOURCE-RANGE 2drop ;
 
 
-\ Every lexical offset of a long UTF-16 source maps to the original offset its
-\ scalar was written at, as the start and as the end of a range; every offset
-\ inside a scalar is E-BOUNDARY.
 : MARKED-RANGES ( bool -- )
    {: little:bool :}
    little MARKED-BUILD {: original size:n :}
@@ -655,9 +651,8 @@ CAST: ENCODING>N ( XML:encoding -- n )
    at size 2 * + ;
 
 
-\ A UTF-16LE <r> of 100000 <a/> children maps each child, as a consumer
-\ mapping every node does, and every result is checked. Mapping costs time
-\ bounded whatever the offset, or the row overruns its CPU budget.
+\ Mapping costs time bounded whatever the offset, or the row overruns
+\ its CPU budget.
 : WIDE-OWNER-RANGES ( -- )
    CHILDREN 4 * 7 + 2 * 2 + {: size:n :}
    size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: wire wire-alloc :}

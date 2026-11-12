@@ -89,10 +89,10 @@ public
 
 private
 
-\ The record of the name the scan refused (VERIFY:DUPLICATE): its start and
-\ length in the stopped source, and the stopped file. A length of 0 kept no
-\ name, as for one a definer generates, and its start is stale: the record
-\ places an empty token at the statement the scan stopped in (TOKEN-BYTE@).
+\ The record of the name the scan refused: its start and length in the stopped
+\ source, and the stopped file. A length of 0 kept no name, as for one a definer
+\ generates, and its start is stale: the record places an empty token at the
+\ statement the scan stopped in.
 : DUP-RECORD$ ( n n ptr u8 ptr u8 n -- ptr u8 n )
    {: at:n u:n src:ptr name:ptr nameu:n :}
    u 0= if VERIFY:TOKEN-BYTE@ else at then {: start:n :}
@@ -133,7 +133,6 @@ public
    s" suggestion" sug sugu JSON:WRITE-FIELD-S
    END$ ;
 
-\ WHY is the refusal's reason, written as "reason" unless it is empty.
 : THROW-RECORD$ ( n n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
    {: rc:n at:n name:ptr nameu:n src:ptr srcu:n why:ptr whyu:n :}
    src at ORIGIN {: line:n col:n :}

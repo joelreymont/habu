@@ -1,5 +1,5 @@
 \ power/macos.f - POWER:KEEP-AWAKE and ALLOW-SLEEP through IOKit power
-\ assertions, loaded by src/lib/power.f on macOS. Contract: src/lib/power.f.
+\ assertions, loaded on macOS.
 require src/lib/power.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
@@ -33,7 +33,6 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
 : CF-FREE ( n -- )
    dup 0 <> if CF-RELEASE else drop then ;
 
-\ IOReturn 0 is success; any other is the OS's refusal, logged with its code.
 : CHECK ( n ptr u8 n -- )
    {: status:n verb:ptr verbu:n :}
    status 0= if exit then
