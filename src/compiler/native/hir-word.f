@@ -343,8 +343,8 @@ private
 \ vocabulary with no lookup. A reader holds rows and a symbol but no interner,
 \ so spelling questions are answered at registration: ORD-ROW maps a prototype
 \ ordinal to its session row, ROW-ORD maps it back for the binding gate to read
-\ bytes. The prototype interns about 230 symbols and the vocabulary is WORDS
-\ rows; both ceilings refuse by name rather than grow.
+\ bytes. The prototype interns about 230 symbols; ORD-CAP and SROW-CAP refuse
+\ by name rather than grow.
 512 constant ORD-CAP                 \ prototype ordinals the map can cover
 128 constant SROW-CAP                \ session rows the gate can remember
 
@@ -463,10 +463,10 @@ public
    c r link IR-ARENA:PUSH drop
    p r ;
 
-\ A table of its own module, as a caller outside a session and every test
-\ builds: it consults no session rows.
-: NEW ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:arena IR-ARENA:arena )
-   LINK-NONE NEW-TABLE ;
+\ A table of its own module, as every test builds: it consults no session rows
+\ and takes any count of rows a caller writes.
+: NEW ( IR-CTX:ctx IR-ID:ir-module-key -- IR-ARENA:arena IR-ARENA:arena )
+   ROW-CAP-MAX POOL-CAP-MAX LINK-NONE NEW-TABLE ;
 
 private
 
@@ -1212,11 +1212,6 @@ public
    r sy ADMIT ;
 
 \ ---- the subset's vocabulary -------------------------------------------------
-\ The exact ceilings this registration writes, so a caller commits a table to
-\ them rather than to a guess. Only the renames contribute pick cells.
-100 constant WORDS
-34 constant PICK-CELLS
-
 private
 
 : DEF-ARITH ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
@@ -1570,10 +1565,9 @@ public
    {: c:IR-CTX:ctx a:IR-ARENA:arena sr:IR-ARENA:arena
       k:IR-ID:ir-module-key b:IR-BUILD:builder :}
    SESS-FORGET
-   c b IR-BUILD:MODULE-KEY WORDS PICK-CELLS LINK-SESSION NEW-TABLE
+   c b IR-BUILD:MODULE-KEY SROW-CAP POOL-CAP-MAX LINK-SESSION NEW-TABLE
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r REGISTER-WORDS
-   r CNT SROW-CAP > if E-HIR-CAP throw then
    ORD-CAP 0 ?do 0 i ORD-ROW! loop
    SROW-CAP 0 ?do 0 i CHK-GEN! loop
    r CNT 0 ?do

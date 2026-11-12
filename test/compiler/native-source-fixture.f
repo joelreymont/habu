@@ -189,29 +189,17 @@ public
 \ which words are renames that stage nothing.
 : MODEL ( IR-CTX:ctx IR-BUILD:builder -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b IR-BUILD:MODULE-KEY HIR-WORD:WORDS HIR-WORD:PICK-CELLS HIR-WORD:NEW
-   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   c b p r HIR-WORD:REGISTER-WORDS
-   p r ;
-
-\ The same model with room for `extra` rows: src/compiler/native/elaborate.f
-\ RESOLVE-SCAN adds a callable row for every name the engine and the checker
-\ both answer, so a body that calls needs room, sized by the caller.
-: MODEL-ROOM ( IR-CTX:ctx IR-BUILD:builder n -- IR-ARENA:arena IR-ARENA:arena )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder extra:n :}
-   c b IR-BUILD:MODULE-KEY  HIR-WORD:WORDS extra +  HIR-WORD:PICK-CELLS
-   HIR-WORD:NEW
+   c b IR-BUILD:MODULE-KEY HIR-WORD:NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r HIR-WORD:REGISTER-WORDS
    p r ;
 
 \ The same model with one `create`d data word declared by its spelling beside
-\ the subset's vocabulary: the table is committed to one row more than
-\ REGISTER-WORDS writes. The engine answers the word's address, so the caller
+\ the subset's vocabulary. The engine answers the word's address, so the caller
 \ must have created it.
 : MODEL-DATA ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n :}
-   c b IR-BUILD:MODULE-KEY HIR-WORD:WORDS 1+ HIR-WORD:PICK-CELLS HIR-WORD:NEW
+   c b IR-BUILD:MODULE-KEY HIR-WORD:NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r HIR-WORD:REGISTER-WORDS
    c b r  c b a u IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED

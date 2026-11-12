@@ -90,7 +90,7 @@ TYPED-VARIABLE W-SESSION NSESSION:session
    s" : WQ ( -- [ -- ] ) [: 1 drop ;] ;" evaluate-closed
    s" WQ [: 1 drop ;]" NSRC:TEXT!
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
-   c b 4 NSRC:MODEL-ROOM {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b NSRC:MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b NSRC:TAPE {: tp:IR-ARENA:arena :}
    c NSRC:LEX
    tp NTAPE:SEAL {: v:IR-ARENA:view :}
@@ -109,7 +109,7 @@ TYPED-VARIABLE W-SESSION NSESSION:session
    s" : WDEF ( -- ) create 0 , does> ( -- n ) @ ;" evaluate-closed
    s" WDEF create 0 , does> @" NSRC:TEXT!
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
-   c b 4 NSRC:MODEL-ROOM {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b NSRC:MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b NSRC:TAPE {: tp:IR-ARENA:arena :}
    c NSRC:LEX
    tp NTAPE:SEAL {: v:IR-ARENA:view :}
@@ -172,7 +172,7 @@ TYPED-VARIABLE W-SESSION NSESSION:session
    {: c:IR-CTX:ctx :}
    s" WF f+" NSRC:TEXT!
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
-   c b 4 NSRC:MODEL-ROOM {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b NSRC:MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b NSRC:TAPE {: tp:IR-ARENA:arena :}
    c NSRC:LEX
    tp NTAPE:SEAL {: v:IR-ARENA:view :}

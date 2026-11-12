@@ -93,7 +93,7 @@ variable DECL-OUT
 : FROZEN ( IR-CTX:ctx -- IR-BUILD:module )
    {: c:IR-CTX:ctx :}
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
-   c b 8 NSRC:MODEL-ROOM {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b NSRC:MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b NSRC:TAPE {: tp:IR-ARENA:arena :}
    c NSRC:LEX
    tp NTAPE:SEAL {: v:IR-ARENA:view :}
