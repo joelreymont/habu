@@ -24,6 +24,22 @@
 \ HTTP:WORKER-SLOT holding each request's state; and the client table, a row per open
 \ client, read and written under its own lock.
 \ https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http
+\
+\ The client. A client is a row of a process-wide table that grows with the
+\ clients open; a free row's record holds an empty region and is reused. The
+\ table is read and written only under LOCK, since growth moves it; a row's
+\ record, taken from an arena when the row is made, and its region never move.
+\ A client's value is the generation OPEN gave its row from a process-wide
+\ count, and CLOSE clears the row's generation, so a closed client's value
+\ names no row even after another OPEN reuses it. The region holds six BUFs and
+\ the SSE decoder's storage. The BUFs are the URL; the request, then, once
+\ BODY! has copied it, a header line and the reply's header block; the reply;
+\ the tool list TOOLS assembles; the response an event-stream reply carried;
+\ and the token TOKEN! set, empty for none. The handle of the exchange in
+\ flight, none between exchanges, and the stop, which CANCEL reads and sets
+\ from another task, are read and written under LOCK. So is a record's region,
+\ except that its own client reads it without LOCK: OPEN sets it only on a free
+\ row, and only that client's CLOSE empties it.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -242,7 +258,6 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON:WRITE-COMMA s" 2025-11-25" JSON:WRITE-STRING JSON:WRITE-ARRAY-END ;
 
 
-\ Tools always; resources once one is registered.
 : CAPABILITIES ( ptr JSON:writer -- ptr JSON:writer )
    JSON:WRITE-COMMA s" capabilities" JSON:WRITE-KEY
    JSON:WRITE-OBJECT-START s" tools" JSON:WRITE-KEY
@@ -254,8 +269,6 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON:WRITE-OBJECT-END ;
 
 
-\ Discovery, tool and resource lists and resource reads are private with zero
-\ cache lifetime.
 : PRIVATE-CACHE ( ptr JSON:writer -- ptr JSON:writer )
    JSON:WRITE-COMMA s" ttlMs" 0 JSON:WRITE-FIELD-U
    JSON:WRITE-COMMA s" cacheScope" s" private" JSON:WRITE-FIELD-S ;
@@ -279,8 +292,6 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON:WRITE-OBJECT-END ;
 
 
-\ For a declared schema whose "type" is not "object", the schema whose
-\ structuredContent is {"data": the result's JSON}.
 : OUTPUT-SCHEMA ( ptr JSON:writer n -- ptr JSON:writer )
    TOOL-OUTPUT @ SPAN:$ {: text:ptr tu:n :}
    s" outputSchema" JSON:WRITE-KEY
@@ -301,8 +312,6 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    w key 1- ku 2 + JSON:WRITE-RAW s" :" JSON:WRITE-RAW value vu JSON:WRITE-RAW drop ;
 
 
-\ The descriptor as registered, or each top-level member as written with the
-\ outputSchema wrapper in its schema's place.
 : TOOL-ENTRY ( ptr JSON:writer n -- ptr JSON:writer )
    {: w idx:n :}
    idx TOOL-TEXT @ SPAN:$ {: text:ptr tu:n :}
@@ -320,14 +329,12 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : SHOWN? ( n -- bool ) TOOL-NAME @ SPAN:$ VISIBILITY @ execute ;
 
 
-\ A list or read result's start: the modern era's resultType first.
 : RESULT-START ( ptr JSON:writer -- ptr JSON:writer )
    JSON:WRITE-OBJECT-START
    LEGACY? 0= if
       s" resultType" s" complete" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    then ;
 
-\ A list or read result's end: the modern era's cache scope and serverInfo last.
 : CACHED-END ( ptr JSON:writer -- ptr JSON:writer )
    LEGACY? 0= if PRIVATE-CACHE s" " MODERN-META then
    JSON:WRITE-OBJECT-END ;
@@ -379,8 +386,6 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON:WRITE-ARRAY-START JSON:WRITE-ARRAY-END CACHED-END ;
 
 
-\ A tool result: TEXT as readable text, then CONTENT-SPAN's blocks; unless isError, TEXT's JSON
-\ as structuredContent, or its "data" without an object schema; META-SPAN as _meta.
 : CALL-BODY ( ptr JSON:writer -- ptr JSON:writer )
    JSON:WRITE-OBJECT-START
    LEGACY? 0= if
@@ -606,8 +611,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 
 \ The era from one MCP-Protocol-Version: 2026-07-28 also requires MODERN?;
-\ 2025-11-25, or
-\ no header on initialize, is the legacy lifecycle
+\ 2025-11-25, or no header on initialize, is the legacy lifecycle
 \ (https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle).
 : VERSION? ( HTTP:request -- bool )
    {: asked:HTTP:request :}
@@ -994,22 +998,6 @@ public
    BAD-INPUT SEND ;
 
 
-\ The client. A client is a row of a process-wide table that grows with the
-\ clients open; a free row's record holds an empty region and is reused. The
-\ table is read and written only under LOCK, since growth moves it; a row's
-\ record, taken from an arena when the row is made, and its region never move.
-\ A client's value is the generation OPEN gave its row from a process-wide
-\ count, and CLOSE clears the row's generation, so a closed client's value
-\ names no row even after another OPEN reuses it. The region holds six BUFs and
-\ the SSE decoder's storage. The BUFs are the URL; the request, then, once
-\ BODY! has copied it, a header line and the reply's header block; the reply;
-\ the tool list TOOLS assembles; the response an event-stream reply carried;
-\ and the token TOKEN! set, empty for none. The handle of the exchange in
-\ flight, none between exchanges, and the stop, which CANCEL reads and sets
-\ from another task, are read and written under LOCK. So is a record's region,
-\ except that its own client reads it without LOCK: OPEN sets it only on a free
-\ row, and only that client's CLOSE empties it.
-
 private
 
 CAST: >CLIENT ( n -- client )
@@ -1078,7 +1066,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : MESSAGE-BUF ( n -- ptr n ) MESSAGE-OFF BUF-AT ;
 : TOKEN-BUF ( n -- ptr n ) TOKEN-OFF BUF-AT ;
 
-\ A decoder opened on the row's storage.
 : DECODER ( n -- SSE:decoder )
    REGION DECODER-OFF SSE:STORAGE-BYTES SPAN:SUB SPAN:$ {: a:ptr u:n :}
    a CELL-VIEW u SSE:OPEN ;
@@ -1155,7 +1142,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx 0< if E-STATE throw then
    idx ;
 
-\ Gives the row's buffers and region back and frees the row.
 : RELEASE ( n -- )
    {: idx:n :}
    idx URL-BUF BUF:DISPOSE
@@ -1219,8 +1205,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    LOG:;LINE
    E-TRANSFER throw ;
 
-\ Logs what is wrong with the row's reply, its status and its whole body, then
-\ throws the code.
 : BAD-REPLY ( ptr u8 n n n -- )
    {: what:ptr wu:n idx:n code:n :}
    idx URL-BUF BUF$ HOST$ {: host:ptr hu:n :}
@@ -1556,7 +1540,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    ;MATCH ;
 
 
-\ Adds a tools array's members to the list buffer's array.
 : GATHER ( n ptr u8 n -- )
    {: idx:n raw:ptr ru:n :}
    idx LIST-BUF {: buf:ptr :}
