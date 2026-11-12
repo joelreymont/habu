@@ -37,8 +37,7 @@ private
 -9699 constant E-LINKER-LAST
 
 \ The open's progress, the last step completed. Past open, loading: a file's load runs, from its key
-\ to its last BUILT row, the loads it requests included; returned: a load's body returned (LEFT);
-\ failed: a load threw, DP moved back, E-STORE or E-WORDLIST.
+\ to its last BUILT row, the loads it requests included; returned: its body returned; failed: a load threw.
 ENUM step none mapped shadowed moved checked required objects routed open loading returned failed ;ENUM
 TYPED-VARIABLE PROGRESS step
 
@@ -4751,9 +4750,8 @@ variable DUE-MADE
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
 : RUN-UNIT ( n n [ n n -- ] -- ) execute ;
 
-\ A load may start: a top-level one while the build is open; a nested one, or a compiling file's
-\ tail, while its loader's load runs. E-FAILED once a load threw or DP moved back in the space
-\ (failed): a failed build loads and writes nothing more. E-COMP-STATE in any other step.
+\ nested: a load another file's load requested, or a compiling file's tail. DP given back while open
+\ was given back outside the build's files (END-CK refuses it in one); DPHW-CELL stays nonzero to the close.
 : GOING ( bool -- )
    {: nested:bool :}
    PROGRESS @
@@ -4769,12 +4767,19 @@ variable DUE-MADE
       open OF
          nested if E-COMP-STATE throw then
          DPHW-CELL HOST@ 0<> if
-            construct step failed PROGRESS !  E-FAILED throw
+            s" linker: data space was given back outside the build's files" SAY
+            s"  (a caught failure or a negative allot)" SAY
+            s" , so the build loads and writes nothing" SAY SAY-CR
+            E-FAILED throw
          then
       ENDOF
       loading OF nested 0= if E-COMP-STATE throw then ENDOF
       returned OF E-COMP-STATE throw ENDOF
-      failed OF E-FAILED throw ENDOF
+      failed OF
+         REFUSAL s" its load failed and the failure was caught" SAY
+         s" , so the build loads and writes nothing more" SAY SAY-CR
+         E-FAILED throw
+      ENDOF
    ;MATCH ;
 
 
@@ -4895,7 +4900,12 @@ variable DUE-MADE
 \ E-FAILED once DP moved back, then E-LIVE-TASK for a task left running. Both run before READS-KEEP, so a task
 \ cannot read after the part's reads are kept and end before the refusal.
 : END-CK ( -- )
-   DPHW-CELL HOST@ 0<> if E-FAILED throw then
+   DPHW-CELL HOST@ 0<> if
+      REFUSAL s" it gave back data space" SAY
+      s"  (a caught failure or a negative allot)" SAY
+      s" , so the build writes nothing" SAY SAY-CR
+      E-FAILED throw
+   then
    TASKS-LIVE-CELL HOST@ OPEN-TASKS @ > if
       REFUSAL s" a task is still running at the file's end" SAY SAY-CR  E-LIVE-TASK throw
    then ;

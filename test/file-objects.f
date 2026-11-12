@@ -1005,6 +1005,17 @@ variable CLASS-N                        \ the class CLASS+ read
    s" SQ" WHICH!  false SQUAT-REFUSED
    s" SQ2" WHICH!  true SQUAT-REFUSED ;
 
+\ rollback.f's build, which catches a refused definition at its top level: it exits 74
+\ and the linker says the file gave back data space.
+: CAUGHT-CASE ( CMD:command -- CMD:command )
+   s" CF" WHICH!
+   s" test/fixtures/file-objects/rollback.f" FAILING-BUILD {: rc:n :}
+   CMD:ERR$ s" test/fixtures/file-objects/rollback.f: it gave back data space"
+   CONTAINS? {: said:bool :}
+   rc 74 =  said and 0= if rc SHOW then
+   s" the build exits 74" LABEL  rc 74 T=
+   s" the build says rollback.f gave back data space" LABEL  said TTRUE ;
+
 
 \ The path of U's source of that name.
 : NEST-PATH$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -1372,7 +1383,7 @@ variable CLASS-N                        \ the class CLASS+ read
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
-      STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE
+      STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
