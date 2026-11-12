@@ -1,6 +1,6 @@
 \ host.f - implementation-owned facts for native construction calls.
 \ A dictionary occurrence is the selection key; a published implementation row
-\ supplies its exact code, execution contract and direct implementation edges.
+\ supplies its exact code.
 \ Rows retired by code reclamation never become live again when bytes are reused.
 
 require src/lib/prelude.f
@@ -41,7 +41,6 @@ private
 0 CWORK-VARIABLE IMPL-N n
 DYNAMIC-BUFFER IMPL-ENTRY n
 DYNAMIC-BUFFER IMPL-LEN n
-DYNAMIC-BUFFER IMPL-CONTRACT CTARGET:contract
 DYNAMIC-BUFFER IMPL-IN n
 DYNAMIC-BUFFER IMPL-OUT n
 DYNAMIC-BUFFER IMPL-TYPE-FIRST n
@@ -49,15 +48,7 @@ DYNAMIC-BUFFER IMPL-TYPES n
 0 CWORK-VARIABLE IMPL-TYPE-N n
 DYNAMIC-BUFFER IMPL-REASON n
 DYNAMIC-BUFFER IMPL-LOC n
-DYNAMIC-BUFFER IMPL-FIRST n
-DYNAMIC-BUFFER IMPL-EDGES n
 DYNAMIC-BUFFER IMPL-LIVE n
-
-0 CWORK-VARIABLE EDGE-N n
-DYNAMIC-BUFFER EDGE-TO n
-DYNAMIC-BUFFER EDGE-SITE n
-DYNAMIC-BUFFER EDGE-KIND n
-DYNAMIC-BUFFER EDGE-LOC n
 
 UNKNOWN CWORK-VARIABLE SOURCE-REASON n
 0 CWORK-VARIABLE SOURCE-LOC n
@@ -98,22 +89,12 @@ variable SEEDED-N           SEEDED-N scratch-cell-mark
    {: count:n :}
    count IMPL-ENTRY-RESERVE
    count IMPL-LEN-RESERVE
-   count IMPL-CONTRACT-RESERVE
    count IMPL-IN-RESERVE
    count IMPL-OUT-RESERVE
    count IMPL-TYPE-FIRST-RESERVE
    count IMPL-REASON-RESERVE
    count IMPL-LOC-RESERVE
-   count IMPL-FIRST-RESERVE
-   count IMPL-EDGES-RESERVE
    count IMPL-LIVE-RESERVE ;
-
-: RESERVE-EDGE ( n -- )
-   {: count:n :}
-   count EDGE-TO-RESERVE
-   count EDGE-SITE-RESERVE
-   count EDGE-KIND-RESERVE
-   count EDGE-LOC-RESERVE ;
 
 public
 
@@ -175,6 +156,7 @@ public
    MATCH RTARGET:core-result
       unsupported OF E-STATE throw ENDOF
       supported OF
+         drop
          IMPL-N @ 1+ dup RESERVE-IMPL {: count:n :}
          count 1- {: row:n :}
          IMPL-TYPE-N @ {: first:n :}
@@ -186,9 +168,7 @@ public
          din row IMPL-IN !  dout row IMPL-OUT !
          first row IMPL-TYPE-FIRST !
          SAFE row IMPL-REASON !  0 row IMPL-LOC !
-         0 row IMPL-FIRST !  0 row IMPL-EDGES !
          1 row IMPL-LIVE !
-         row IMPL-CONTRACT !
          first types + IMPL-TYPE-N !
          count IMPL-N !
       ENDOF
@@ -217,7 +197,6 @@ public
    OWNER-INSTALLED @ 0<> if exit then
    0 IMPL-N !
    0 IMPL-TYPE-N !
-   0 EDGE-N !
    KERNEL-OWNER
    SEED-SCALAR
    SEED-DIVISION
@@ -364,40 +343,22 @@ private
 
 \ Prepare all storage while publication may still throw. The publisher only
 \ exposes the row after its bytes and dictionary record are committed.
-: PREPARE ( n n CTARGET:contract n n n n -- n )
-   {: entry:n len:n contract:CTARGET:contract din:n dout:n reason:n loc:n :}
+: PREPARE ( n n n n n n -- n )
+   {: entry:n len:n din:n dout:n reason:n loc:n :}
    entry 0 <= len 0 <= or if E-STATE throw then
    reason SAFE = din 0 < dout 0 < or and if E-STATE throw then
    IMPL-N @ 1+ dup RESERVE-IMPL {: id:n :}
    id 1- {: row:n :}
    entry row IMPL-ENTRY !
    len row IMPL-LEN !
-   contract row IMPL-CONTRACT !
    din row IMPL-IN !
    dout row IMPL-OUT !
    -1 row IMPL-TYPE-FIRST !
    reason row IMPL-REASON !
    loc row IMPL-LOC !
-   EDGE-N @ row IMPL-FIRST !
-   0 row IMPL-EDGES !
    0 row IMPL-LIVE !
    id IMPL-N !
    id ;
-
-\ Edges are appended while the row is the newest unpublished implementation.
-: EDGE+ ( n n n n n -- )
-   {: id:n to:n site:n kind:n loc:n :}
-   id IMPL-N @ <> if E-STATE throw then
-   id ROW {: row:n :}
-   row IMPL-LIVE @ 0<> if E-STATE throw then
-   EDGE-N @ 1+ dup RESERVE-EDGE {: count:n :}
-   count 1- {: edge:n :}
-   to edge EDGE-TO !
-   site edge EDGE-SITE !
-   kind edge EDGE-KIND !
-   loc edge EDGE-LOC !
-   count EDGE-N !
-   row IMPL-EDGES @ 1+ row IMPL-EDGES ! ;
 
 \ Each word the source runs passes its record here before its entry is chosen.
 defer RUN-OBSERVE ( ptr n -- )
