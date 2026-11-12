@@ -1,18 +1,24 @@
-\ image-size-lib.f - where the bytes of a Mach-O program the linker wrote went,
-\ read from its load commands (tools/macho-read.f) and the <program>.map beside
-\ it (tools/image-names.f), whose rows tile __text from its first byte. Each
-\ byte falls in one class, and MEASURE dies unless the classes sum to the file's
-\ length:
+\ image-size-lib.f - where the bytes of a program the linker wrote went, read
+\ from its container (tools/macho-read.f for a Mach-O program, tools/elf-read.f
+\ for an ELF one) and the <program>.map beside it (tools/image-names.f), whose
+\ rows tile the code from its first byte. Each byte falls in one class, and
+\ MEASURE dies unless the classes sum to the file's length:
 \ - code: the map's code rows, which end where its first pad or region row starts;
 \ - names: the names, records and record-list rows, what the program holds to
 \   find a word by its name;
 \ - data written and data zero: the data and data-list rows; data zero is the
 \   zero cells inside the DATA image's runs, data written the rest, the runs'
 \   headers included;
-\ - padding: the pad rows, the gap after the load commands up to __text, the
-\   gap after __text to its segment's end and __DATA_CONST past __got;
-\ - other: the header and load commands, __got and __LINKEDIT.
-\ An ELF executable or a Wasm module is refused by name.
+\ - padding: the pad rows; in Mach-O the gap after the load commands up to
+\   __text, the gap after __text to its segment's end and __DATA_CONST past
+\   __got; in ELF the bytes before the code no header or table holds and the
+\   gap after the code to its load's end;
+\ - other: in Mach-O the header and load commands, __got and __LINKEDIT; in
+\   ELF the header, the program headers, the dynamic-linking tables and the
+\   read-write load's dynamic section and slots.
+\ An ELF records no length for the code, so the code ends where the map's rows
+\ do and its classes sum by construction; ELF-TEXT-END checks that end instead.
+\ A Wasm module is refused by name.
 
 require src/lib/le.f
 require src/lib/string.f
@@ -20,6 +26,7 @@ require src/lib/fmt.f
 require src/lib/fs.f
 require tools/image-names.f
 require tools/macho-read.f
+require tools/elf-read.f
 
 package IMAGE-SIZE
 
@@ -47,18 +54,20 @@ variable OTHER-SIZE
       s" image-size: short read" RC die
    then ;
 
+: ELF? ( -- bool ) IMG@ ILEN @ ELF-READ:MAGIC? ;
+
 : REFUSAL$ ( -- ptr u8 n )
-   IMG@ LE:U32@ {: magic:n :}
-   magic $464C457F = if
-      s" image-size: an ELF executable, which this report does not read" exit
-   then
-   magic $6D736100 = if
+   IMG@ LE:U32@ $6D736100 = if
       s" image-size: a Wasm module, which this report does not read" exit
    then
-   s" image-size: not a Habu Mach-O program" ;
+   s" image-size: not a Habu program" ;
 
 : REFUSE ( -- )
-   IMG@ ILEN @ MACHO-READ:MAGIC? 0= if REFUSAL$ RC die then ;
+   ELF? IMG@ ILEN @ MACHO-READ:MAGIC? or 0= if REFUSAL$ RC die then ;
+
+: OPEN ( -- )
+   ELF? if IMG@ ILEN @ ELF-READ:OPEN exit then
+   IMG@ ILEN @ MACHO-READ:OPEN ;
 
 \ The room MAP-CHECK's line needs, the longest built around the path.
 : MAP-ROOM ( ptr u8 n -- ptr u8 n )
@@ -75,13 +84,48 @@ variable OTHER-SIZE
    SB-RESET s" image-size: no map " SB-APPEND
    path pathu SB-APPEND s" .map" SB-APPEND SB$ RC die ;
 
-: CONTAINER ( -- )
+\ The bytes the map's rows tile from the code's first byte.
+: MAP-BYTES ( -- n )
+   IMAGE-NAMES:CODE-END
+   s" pad" IMAGE-NAMES:KIND-BYTES + s" data" IMAGE-NAMES:KIND-BYTES +
+   s" data-list" IMAGE-NAMES:KIND-BYTES + s" names" IMAGE-NAMES:KIND-BYTES +
+   s" records" IMAGE-NAMES:KIND-BYTES +
+   s" record-list" IMAGE-NAMES:KIND-BYTES + ;
+
+: ZEROS? ( n n -- bool ) {: at:n end:n :}
+   end at ?do IMG@ i + c@ 0<> if false unloop exit then loop true ;
+
+\ The text's load pads the code with zeros to the next page.
+: ELF-TEXT-END ( -- n )
+   ELF-READ:TEXT-OFF MAP-BYTES + {: end:n :}
+   end ELF-READ:TEXT-OFF >= end ELF-READ:TEXT-LIMIT <= and
+   ELF-READ:TEXT-LIMIT end - ELF-READ:TEXT-ALIGN < and
+   end ELF-READ:TEXT-LIMIT ZEROS? and 0= if
+      s" image-size: the map's rows do not end at the code's last page" RC die
+   then end ;
+
+: TEXT-OFF ( -- n )
+   ELF? if ELF-READ:TEXT-OFF exit then MACHO-READ:TEXT-OFF ;
+
+: TEXT-END ( -- n )
+   ELF? if ELF-TEXT-END exit then MACHO-READ:TEXT-END ;
+
+: MACHO-CONTAINER ( -- )
    MACHO-READ:COMMANDS-END MACHO-READ:GOT-BYTES + MACHO-READ:LINK-BYTES +
    OTHER-SIZE !
    MACHO-READ:TEXT-OFF MACHO-READ:COMMANDS-END -
    MACHO-READ:TEXT-LIMIT MACHO-READ:TEXT-END - +
    MACHO-READ:DATA-BYTES MACHO-READ:GOT-BYTES - +
    PAD-SIZE ! ;
+
+: ELF-CONTAINER ( -- )
+   ELF-READ:HEADERS-BYTES ELF-READ:TABLES-BYTES + {: head:n :}
+   head ELF-READ:RW-BYTES + OTHER-SIZE !
+   ELF-READ:TEXT-OFF head - ELF-READ:TEXT-LIMIT TEXT-END - +
+   PAD-SIZE ! ;
+
+: CONTAINER ( -- )
+   ELF? if ELF-CONTAINER exit then MACHO-CONTAINER ;
 
 : IMG-U64@ ( n -- n ) IMG@ + LE:U64@ ;
 
@@ -100,8 +144,8 @@ variable OTHER-SIZE
 \ The bytes of the zero cells in the runs at file offsets [at, end).
 : DATA-ZEROS ( n n -- n )
    {: at:n end:n :}
-   end MACHO-READ:TEXT-END > if
-      s" image-size: the DATA image passes __text" RC die then
+   end TEXT-END > if
+      s" image-size: the DATA image passes the code" RC die then
    0 at begin dup end < while end DATA-RUN rot + swap repeat drop ;
 
 : DATA-REGION ( -- n n )
@@ -122,7 +166,7 @@ variable OTHER-SIZE
 
 : DATA-CLASSES ( n n -- )
    {: start:n len:n :}
-   MACHO-READ:TEXT-OFF start + {: at:n :}
+   TEXT-OFF start + {: at:n :}
    at at len + DATA-ZEROS ZERO-SIZE !
    len s" data-list" IMAGE-NAMES:KIND-BYTES + ZERO-SIZE @ - WRITTEN-SIZE ! ;
 
@@ -156,7 +200,7 @@ public
    {: path:ptr pathu:n :}
    path pathu READ-IMAGE
    REFUSE
-   IMG@ ILEN @ MACHO-READ:OPEN
+   OPEN
    path pathu MAP-CHECK
    path pathu IMAGE-NAMES:LOAD
    CONTAINER
