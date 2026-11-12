@@ -22,9 +22,8 @@ private
 
 CAST: STRING-XT ( n -- [ -- ptr u8 n ] )
 
-77 constant BODY-CODE                \ the code case e's body throws
+77 constant BODY-CODE
 
-\ ---- the host before a build ---------------------------------------------------
 variable ND0
 variable CP0
 variable HERE0
@@ -49,7 +48,6 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
    data-base DPHW-CELL + @ DPHW0 !
    DATA-START 0 ?do i DATA-CELL @ i COPY-CELL ! CELL +loop ;
 
-\ Sixteen hex digits, most significant first.
 : .HEX ( n -- )
    {: v:n :}
    [char] $ emit
@@ -58,13 +56,12 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
       d 10 < if d 48 + else d 55 + then emit
    loop ;
 
-\ off in [lo, hi).
 : IN? ( n n n -- bool )
    {: off:n lo:n hi:n :}
    off lo >= off hi < and ;
 
-\ The close's forget keeps NDICT-HW-CELL and HIDX's stale claims (layout.f); a
-\ build's wordlists raise WIDN-CELL.
+\ The close's forget keeps NDICT-HW-CELL and HIDX's stale claims; a build's
+\ wordlists raise WIDN-CELL.
 : CLOSE-LEFT? ( n -- bool )
    {: off:n :}
    off WIDN-CELL = off NDICT-HW-CELL = or off HIDX:CLAIMS = or ;
@@ -84,7 +81,7 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
    {: off:n :}
    off CLOSE-LEFT? off SCRATCH? or 0= ;
 
-\ The header cells that differ from the copy, each printed with before and after.
+\ The header cells that differ from the copy.
 : HEADER-DIFFS ( -- n )
    0
    DATA-START 0 ?do
@@ -111,7 +108,6 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
 
 : SAY ( ptr u8 n -- ) s" linker: " type type cr ;
 
-\ ---- inside a build ------------------------------------------------------------
 variable IMAGE                       \ BOOT:IMAGE-BASE-CELL inside the body
 variable FOUND
 variable FOUND-WL
@@ -139,7 +135,6 @@ variable LOW-DP
 
 : LEN-AT ( n -- ptr n ) NULL-PTR BYTE-VIEW swap + CELL - CELL-VIEW ;
 
-\ ---- the cases -----------------------------------------------------------------
 : MAIN$ ( -- ptr u8 n ) s" MAIN" ;
 
 : BODY-A ( -- )
@@ -366,14 +361,13 @@ ndict@ 1- Q0-ORD !
 CAST: CONTRACT-ACTION ( n -- [ n -- ptr u8 n bool ] )
 
 \ hb's checker owner record's contract for the word at an ordinal, read as the
-\ verifier calls the owner (test/checker-decl-locs-lib.f SLOT).
+\ verifier calls the owner.
 : OWNER-CONTRACT ( n -- ptr u8 n bool )
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
    CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF CELL + CHECKER-OWNER-GUARD:VALIDATE
    CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF + CELL-VIEW @ CONTRACT-ACTION
    execute ;
 
-\ Whether it links the word.
 : LINKED? ( n -- bool ) OWNER-CONTRACT nip nip ;
 
 : Q1 ( -- ) s" : LK-QA ( -- ) ;" evaluate-closed ;

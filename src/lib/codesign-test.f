@@ -119,7 +119,6 @@ create CST-IN-BUF PATH-CAP allot
 : CST-TOOL-RC ( -- n )
    CODESIGN:TOOL >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
-\ The requirement codesign -R checks for the team: the identifier and the team.
 : CST-TEAM-REQ ( ptr u8 n -- ptr u8 n ) {: id:ptr idu :}
    SB-RESET
    s\" =anchor apple generic and identifier \"" SB-APPEND
@@ -319,7 +318,6 @@ variable CST-ERR-U
    {: a:ptr u :}
    0 CODESIGN-ERR CST-ERR-U @ a u CONTAINS? ;
 
-\ A session that runs CODESIGN:<word> on CST-UNSIGNED.
 : CST-UNSIGNED-CHILD ( ptr u8 n -- n ) {: w:ptr wu :}
    SB-RESET
    s\" require src/lib/codesign.f\ns\" " SB-APPEND
