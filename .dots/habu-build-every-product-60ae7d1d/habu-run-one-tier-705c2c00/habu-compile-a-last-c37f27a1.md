@@ -6,4 +6,4 @@ issue-type: task
 created-at: "2026-10-30T19:23:10.793294+02:00"
 ---
 
-Problem: T0 and tier 1 compile no last-call recurse as a tail call; GETS recursing 2000000 deep dies 'stack bounds exceeded (machine)' rc 102 where the JIT's last-call B (habu2.f EM-COMPILE-SEMI) runs. Repro /tmp/jerry-big/gaps/tail-*.f; test/runtime-regression-test.f GE-VTAIL-AT selects the JIT for its tier-0 leg until then. Acceptance: native tail call, GE-VTAIL-AT back on T0. Depends: T0 release. Claim: unassigned.
+Problem: T0 and tier 1 compile no last-call recurse as a tail call (T0's DO-RECURSE, src/habu/t0.f:1064, always calls); a word recursing 2000000 deep dies 'stack bounds exceeded (machine)' rc 102 where the JIT's last-call B ran. Acceptance: native tail call; a test recursing that deep passes on T0. Claim: unassigned.
