@@ -38,7 +38,6 @@ require src/lib/fmt.f
 require src/habu/address-cells.f
 require src/habu/address-carrier.f
 require src/habu/snapshot-format.f
-require src/habu/cell-grid.f
 require src/habu/code-span.f
 require src/habu/aot-runtime.f
 require src/habu/native-observer-cells.f

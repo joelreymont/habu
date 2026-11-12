@@ -8,7 +8,6 @@
 require src/lib/adt/option.f                 \ option<n> for the number parsers
 require src/lib/fs.f
 require src/habu/code-span.f
-require src/habu/snapshot-format.f
 require src/os/macos/macho.f
 
 : IMG-FALSE ( -- bool )
@@ -37,14 +36,9 @@ TYPED-VARIABLE IB ptr u8                     \ image buffer
 variable IL                                  \ image length
 variable MACHO
 variable IFD
-variable TOFF  variable TNDICT  variable TREG  variable TDATA
-variable ROFF  variable HAS-SNAP
 variable X64-IMAGE
 variable RUNV  variable BESTO  variable BESTN
-\ No-trailer only: the base added to a raw dict-record xt field. A baked image
-\ with no trailer stores seed xt fields __text-relative (src/habu/habu2.f
-\ EM-SEED-DICT adds XREG-RBASE at boot); a snapshot's are already absolute. See
-\ NO-SNAP-XTBASE.
+\ The base added to a code record's raw xt field.
 variable XTBASE
 variable HN  variable ISZ
 variable A-N  variable CMP-NAME-LEN-DIFF  variable CMP-OFF-DIFF  variable CMP-IDX
@@ -90,7 +84,7 @@ CAST: MAP>BYTES ( n -- ptr u8 )
    dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN MAP>BYTES ;
 
 : IMG-USAGE ( -- )
-   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name | --data image off" 64 die ;
+   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name" 64 die ;
 
 : IMG-PATH$ ( -- ptr u8 n )
    SCRIPT-ARGC 1 < if IMG-USAGE then
@@ -133,7 +127,7 @@ variable HV  variable HP
 : h. ( n -- )
    HEX$ type ;
 
-\ ---- snapshot and dict entry fields ----
+\ ---- dict entry fields ----
 : I@ ( n -- n ) {: o :}
    IB@ o + {: p:ptr :}
    p c@
@@ -211,15 +205,11 @@ variable HV  variable HP
    o E-WID XREF:PACKAGE-WL? 0= ;
 
 : E-S {: o :} ( n -- n )
-   o I@  HAS-SNAP @ 0= o E-CODE? and if XTBASE @ + then ;
+   o I@  o E-CODE? if XTBASE @ + then ;
 
-\ Dictionary slot 1 carries a different quantity in each image class: a
-\ snapshot stores the live CODE-SPAN raw length, a baked no-trailer image the
-\ seed record's __text-relative span end, which src/habu/habu2.f EM-SEED-DICT
-\ turns into that length at boot (src/habu/xref.f XREF-LEN-SLOT). Both classes
-\ answer the same span here; XREF-CODE-BYTES is the live counterpart.
+\ Slot 1 holds a raw CODE-SPAN length in an x86 dictionary record and a
+\ text-relative span end in an arm64 primitive-table row.
 : E-CODE-END {: o :} ( n -- n )                     \ code records only
-   HAS-SNAP @ if o E-S o E-E CODE-SPAN:BYTES + exit then
    X64-IMAGE @ if o E-S o E-E CODE-SPAN:BYTES + exit then
    XTBASE @ o E-E + ;
 
@@ -238,89 +228,11 @@ variable OKV
      1 +
    repeat drop
    OKV @ ;
-\ Validate the six 8-byte trailer fields (src/habu/layout.f owns the geometry).
-: SNAP-CORE? {: o :} ( n -- bool )
-   o SNAP-TRL-BYTES + IL @ > if IMG-FALSE exit then
-   o I@ SNAP-MAGIC = 0= if IMG-FALSE exit then
-   o SNAP-TRL-VERSION + I@ SNAPSHOT-FORMAT:VERSION = 0= if IMG-FALSE exit then
-   o SNAPSHOT-FORMAT:HEAP-FIELD + I@ SNAPSHOT-FORMAT:HEAP-RAW =
-   o SNAPSHOT-FORMAT:HEAP-FIELD + I@ SNAPSHOT-FORMAT:HEAP-GRID = or 0= if IMG-FALSE exit then
-   o SNAP-TRL-NDICT + I@ 0 < if IMG-FALSE exit then
-   o SNAP-TRL-NDICT + I@ DICT-CAP > if IMG-FALSE exit then
-   o SNAP-TRL-REGLEN + I@ DICT-SIZE < if IMG-FALSE exit then
-   o SNAP-TRL-REGLEN + I@ REGION > if IMG-FALSE exit then
-   o SNAP-TRL-DATALEN + I@ 0 <= if IMG-FALSE exit then
-   X64-IMAGE @ if X64LAYOUT:DATA-SIZE else DATA-SIZE then {: size:n :}
-   o SNAP-TRL-DATALEN + I@ size > if IMG-FALSE exit then
-   o SNAP-TRL-NDICT + I@ DREC * CFSTK-OFF > if IMG-FALSE exit then
-   0 0= ;
-
-: SNAP-REGION-STORED ( n -- n ) {: o:n :}
-   o SNAP-TRL-NDICT + I@ DREC *
-   o SNAP-TRL-REGLEN + I@ DICT-SIZE - + ;
-
-: SNAP? {: o :} ( n -- bool )
-   o SNAP-CORE? 0= if IMG-FALSE exit then
-   X64-IMAGE @ if
-      o SNAP-TRL-DATALEN + I@ DATA-START < if IMG-FALSE exit then
-      o o SNAP-TRL-DATALEN + I@ DATA-START - - {: end:n :}
-      end X64LAYOUT:CODE-OFF < end PROT-PAGE-MAX mod 0<> or if IMG-FALSE exit then
-      end 8 - I@ $3145544953343658 <> if IMG-FALSE exit then
-      X64-REG-PHDR {: p:n :}
-      p 0 < if IMG-FALSE exit then
-      p 32 + I@ o SNAP-TRL-REGLEN + I@ < if IMG-FALSE exit then
-      p 16 + I@ ELF-VA>OFF 0 < if IMG-FALSE exit then
-      0 DATA-START X64-DATA-SPAN>OFF 0 < if IMG-FALSE exit then
-      0 0= exit
-   then
-   o SNAP-TRL-DATALEN + I@ CELL SNAP-RELOC:CALLMAP-OFF + < if IMG-FALSE exit then
-   o SNAP-REGION-STORED o SNAP-TRL-DATALEN + I@ + o > if IMG-FALSE exit then
-   0 0= ;
-
-: FIND-SNAPSHOT ( -- bool )
-   -1 TOFF !
-   IL @ 104 < if IMG-FALSE exit then
-   MACHO @ if MACHO:TEXT-END else 96 I@ then
-      SNAP-TRL-BYTES - {: off:n :}
-   off 0 < if IMG-FALSE exit then
-   off SNAP? 0= if
-      off IL @ 8 - <= if
-         off I@ SNAP-MAGIC = if
-            s" imgdump: malformed snapshot trailer" 74 die
-         then
-      then
-      IMG-FALSE exit
-   then
-   off TOFF !
-   0 0= ;
-: LOAD-SNAPSHOT ( -- )
-   FIND-SNAPSHOT 0= if 0 HAS-SNAP ! exit then
-   -1 HAS-SNAP !
-   TOFF @ SNAP-TRL-NDICT + I@ TNDICT !
-   TOFF @ SNAP-TRL-REGLEN + I@ TREG !
-   TOFF @ SNAP-TRL-DATALEN + I@ TDATA !
-   X64-IMAGE @ if
-      X64-REG-PHDR 16 + I@ ELF-VA>OFF ROFF !
-   else
-      TOFF @ TDATA @ - TOFF @ SNAP-REGION-STORED - ROFF !
-   then ;
 
 using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 : X64-PTR-SPAN>OFF ( n n -- n ) {: p:n len:n :}
    len 1 max {: size:n :}
-   HAS-SNAP @ if
-      p RBASE-VA >= p RBASE-VA TREG @ + < and if
-         p RBASE-VA - {: off:n :}
-         size TREG @ off - <= if ROFF @ off + exit then
-         -1 exit
-      then
-      TOFF @ TDATA @ DATA-START - - X64LAYOUT:CODE-OFF - {: textlen:n :}
-      p 0 >= p textlen < and if
-         size textlen p - <= if p X64LAYOUT:CODE-OFF + exit then
-         -1 exit
-      then
-   then
    p X64LAYOUT:DATA-VA >= p X64LAYOUT:DATA-VA X64LAYOUT:DATA-SIZE + < and if
       p X64LAYOUT:DATA-VA - size X64-DATA-SPAN>OFF exit
    then
@@ -328,38 +240,18 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 ;using   \ X64LAYOUT
 
-: PTR>OFF {: p :} ( n -- n )
-   X64-IMAGE @ if
-      p 1 X64-PTR-SPAN>OFF exit
-   then
-   HAS-SNAP @ 0= if -1 exit then
-   p RBASE-VA >=  p RBASE-VA TREG @ + < and if
-      p RBASE-VA - {: off:n :}
-      off TNDICT @ DREC * < if ROFF @ off + exit then
-      off DICT-SIZE >= if
-         ROFF @ TNDICT @ DREC * + off DICT-SIZE - + exit
-      then
-      -1 exit
-   then
-   \ A text pointer in the payload is canonical: the writer rebased it to 0.
-   p 0 >=  p ROFF @ CODE-OFF - < and if p CODE-OFF + exit then
-   -1 ;
-\ EMIT-DICT stores external names __text-relative in a baked image; a
-\ snapshot instead stores rebased pointers that PTR>OFF maps into the file. A
-\ linked x86 image keeps them at fixed VAs, which its PT_LOADs map.
+\ An external name's cell holds a text-relative offset in an arm64 image and a
+\ fixed VA, which a PT_LOAD maps, in an x86 one.
 : E-NAME-OFF ( n -- n )
    {: o:n :}
    o E-F DNAME-EXT and 0= if o 24 + else
       o 24 + I@ {: raw:n :}
       X64-IMAGE @ if raw o E-L X64-PTR-SPAN>OFF else
-         HAS-SNAP @ if raw PTR>OFF else
-            \ The baked cell is text-relative. Prove the raw offset fits before
-            \ rebasing it; a negative value can otherwise land in the file header.
-            raw 0 < if -1 exit then
-            CODE-OFF IL @ > if -1 exit then
-            raw IL @ CODE-OFF - > if -1 exit then
-            raw CODE-OFF +
-         then
+         \ A negative raw offset would otherwise land in the file header.
+         raw 0 < if -1 exit then
+         CODE-OFF IL @ > if -1 exit then
+         raw IL @ CODE-OFF - > if -1 exit then
+         raw CODE-OFF +
       then
    then {: off:n :}
    off 0 < if -1 exit then
@@ -377,7 +269,6 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    {: o:n :}
    o E-CODE? if
       o E-S 0 <= if IMG-FALSE exit then
-      HAS-SNAP @ if o E-S PTR>OFF 0 < if IMG-FALSE exit then then
    else
       \ Namespace roles may be zero and are never code pointers.
       o E-S 0 < if IMG-FALSE exit then
@@ -436,10 +327,10 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    o E-S h.  32 EMITC
    o E-CODE-BYTES h.  10 EMITC ;
 : DICT-START ( -- n )
-   HAS-SNAP @ if ROFF @ else BESTO @ then ;
+   BESTO @ ;
 
 : DICT-END ( -- n )
-   HAS-SNAP @ if ROFF @ TNDICT @ DREC * + else BESTO @ BESTN @ DREC * + then ;
+   BESTO @ BESTN @ DREC * + ;
 
 : DUMP-DICT
    DICT-START
@@ -462,14 +353,9 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    repeat drop
    s" imgdump: pc not found" 74 die ;
 
-\ ---- no-trailer xt base ----
-\ Without a trailer only the seed table EM-SEED-DICT reads from the baked LDICT
-\ blob (FIND-DICT's counted scan) is locatable; every other word is compiled at
-\ boot into a region the kernel places. EM-SEED-DICT rebases each seed xt by
-\ XREG-RBASE, loaded PC-relative at entry (src/habu/habu2.f EM-RUNTIME-STACK), so
-\ a fixed-base (ET_EXEC) arm64 executable's base is its ELF entry point. A PIE's
-\ base is chosen at exec and is not in the file: refuse rather than guess. On x86
-\ the fixed REGION PT_LOAD carries absolute xt fields and no base is added.
+\ ---- xt base ----
+\ A primitive-table xt field is relative to the text base, which in an ET_EXEC
+\ arm64 ELF is its entry point; a PIE's base is chosen at exec, not in the file.
 : ELF-FIXED-BASE? ( -- bool )
    IL @ ELF-EHDR-BYTES < if IMG-FALSE exit then
    ELF-MAG-OFF I@ $FFFFFFFF and ELF-MAG <> if IMG-FALSE exit then
@@ -481,23 +367,20 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 : ELF-X64? ( -- bool )
    ELF-FIXED-BASE? if ELF-MACHINE-OFF I@ $FFFF and ELF-EM-X86-64 = else false then ;
 
-: NO-SNAP-XTBASE ( -- n )
+: READ-XTBASE ( -- n )
    \ Mach-O reports the section's preferred virtual addresses. Runtime PCs
    \ must have their ASLR slide removed before they are compared to the file.
    MACHO @ if MACHO:TEXT-VA exit then
    ELF-FIXED-BASE? 0= if
-      s" imgdump: no snapshot trailer and image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base" 74 die
+      s" imgdump: image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base" 74 die
    then
-   X64-IMAGE @ if 0 exit then
+   X64-IMAGE @ if 0 exit then                  \ x86 records hold absolute xts
    ELF-ENTRY-OFF I@ ;
 
-: PREP-SNAP ( -- )
-   ELF-X64? X64-IMAGE !
-   LOAD-SNAPSHOT ;
-
 : PREP-IMG ( -- )
-   PREP-SNAP
-   HAS-SNAP @ 0= if NO-SNAP-XTBASE XTBASE !  FIND-DICT then ;
+   ELF-X64? X64-IMAGE !
+   READ-XTBASE XTBASE !
+   FIND-DICT ;
 
 : A-NAME-P! ( ptr u8 n -- ) A-NAME-P-SLOT ! ;
 : A-NAME-U! ( n n -- ) cells A-NAME-U + ! ;
@@ -584,8 +467,6 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 : PRINT-A-NL {: idx :} ( n -- )
    idx A-NAME-P@ idx A-NAME-U@ type 32 EMITC idx A-LEN@ h. 10 EMITC ;
 
-: PRINT-B-NL {: o :} ( n -- )
-   o E-NAME type 32 EMITC o E-CODE-BYTES h. 10 EMITC ;
 
 : PRINT-BAD-NL ( -- )
    CMP-BAD-P @ CMP-BAD-U @ type 32 EMITC CMP-BAD-L @ h. 10 EMITC ;
@@ -679,57 +560,9 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    repeat drop
    s" imgdump: word not found" 74 die ;
 
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
-
-: X64-DATA-BYTE ( n -- n ) {: off:n :}
-   off DATA-START < if
-      off 1 X64-DATA-SPAN>OFF
-   else
-      TOFF @ TDATA @ DATA-START - - off DATA-START - +
-   then
-   dup 0 < if s" imgdump: data byte is not file-backed" 74 die then
-   IB@ + c@ ;
-
-: X64-DATA-CELL ( n -- n ) {: off:n :}
-   0 8 0 ?do
-      off i + X64-DATA-BYTE i 8 * lshift or
-   loop ;
-
-;using   \ X64LAYOUT
-
-\ The arm64 DATA stream holds the DATA extent cell, then DATA [0, CALLMAP-OFF)
-\ as is; what follows is not laid out by DATA offset.
-: ARM-DATA-CELL ( n -- n ) {: off:n :}
-   off SNAP-RELOC:CALLMAP-OFF CELL - > if
-      s" imgdump: data cell is not stored at its offset" 74 die then
-   TOFF @ TDATA @ - CELL + off + I@ ;
-
-: DATA-IMG ( -- )
-   1 SCRIPT-ARGV$ READ-IMG-PATH PREP-SNAP
-   HAS-SNAP @ 0= if s" imgdump: no snapshot" 74 die then
-   2 SCRIPT-ARGV$ IMG>NUMBER? MATCH option
-     none OF IMG-USAGE ENDOF
-     some OF ENDOF
-   ;MATCH {: off:n :}
-   off 0 < off TDATA @ CELL - > or if s" imgdump: data offset out of range" 74 die then
-   X64-IMAGE @ if off X64-DATA-CELL . exit then
-   off ARM-DATA-CELL . ;
-
-: SNAP-INFO ( -- )
-   1 SCRIPT-ARGV$ READ-IMG-PATH PREP-SNAP
-   HAS-SNAP @ 0= if s" no-snapshot" type cr exit then
-   s" ndict " type TNDICT @ . cr
-   s" region " type TREG @ h. cr
-   s" data " type TDATA @ h. cr
-   s" heap " type
-   TOFF @ SNAPSHOT-FORMAT:HEAP-FIELD + I@ SNAPSHOT-FORMAT:HEAP-GRID =
-   if s" grid" else s" raw" then type cr ;
-
 : MAIN ( -- )
    SCRIPT-ARGC 3 >= if 0 SCRIPT-ARGV$ s" --pc" CORE-STR= if PC-IMG exit then then
    SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --wid" CORE-STR= if WID-IMG exit then then
-   SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --data" CORE-STR= if DATA-IMG exit then then
-   SCRIPT-ARGC 2 = if 0 SCRIPT-ARGV$ s" --snap" CORE-STR= if SNAP-INFO exit then then
    SCRIPT-ARGC 2 = if COMPARE-IMG exit then
    READ-IMG  PREP-IMG  DUMP-DICT ;
 

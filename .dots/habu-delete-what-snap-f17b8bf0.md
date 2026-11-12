@@ -1,25 +1,22 @@
 ---
 title: Delete the snapshot format nothing writes
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-12T19:15:03.263744+02:00"
 ---
 
-Problem: no build writes a snapshot image now. Deleting snap-rebase removed the arm64 writer's relocation passes. src/habu/snap-x64.f, the x86-64 writer, is required by no file (its header names a snap-lib.f that does not exist).
+Problem: no build writes a snapshot image. Deleting snap-rebase removed the arm64 writer's relocation passes, and src/habu/snap-x64.f, the x86-64 writer, is required by no file. What only a snapshot reads still stands, and every remaining piece changes x86-64 files, so this waits for the x86-64 step:
 
-What only a snapshot reads still stands:
-- SNAPSHOT-FORMAT (src/habu/snapshot-format.f) and the `snapshot-format` primitive (src/habu/prims.f:507, habu2.f BSNAPSHOTFORMAT, kernel-x64.f:4429);
-- the snapshot trailer (src/habu/layout.f SNAP-TRL-*);
-- the x86-64 boot's snapshot restore (src/habu/boot-x64.f, src/habu/snap-decode-x64.f);
-- tools/imgdump.f LOAD-SNAPSHOT and HAS-SNAP branches, and src/habu/layout.f RBASE-VA, whose writer was the deleted EMIT-ADDRS pass.
+- the x86-64 boot's snapshot restore: src/habu/boot-x64.f SNAP-CARRIER,, SNAP-REGION, and SNAP-FRAME,, the snapshot branch of SNAP-START,, src/habu/snap-decode-x64.f, snap-x64.f and SNAP-CELL;
+- SNAPSHOT-FORMAT, the `snapshot-format` primitive (prims.f, habu2.f BSNAPSHOTFORMAT, kernel-x64.f) and layout.f SNAP-MAGIC and SNAP-TRL-*.
 
-The call-site tables' call kind is the same kind of leftover. publish.f callmap-set, habu1.f BCALLMAPSET and kernel-x64.f:3528 and :5847 record SITE-CALL, and so does link-x64.f:540. Only src/habu/sites.f yields it, to aot-capture.f:1460 and :1505, which drop it. Both arches keep a piece of the shared layer or lose it together.
+The call kind of the call-site tables is the same: publish.f callmap-set, habu1.f BCALLMAPSET, kernel-x64.f and link-x64.f record SITE-CALL, and only aot-capture.f reads it, dropping it. Deleting it cascades through publish.f RELOC-EXTERNAL and linker.f HOST-CALLS. It also moves layout.f ADDRMAP-OFF, which makes the x86-64 row band smaller; size that band for the address map alone, with no kind byte. Both arches lose the call kind together.
 
-The XTBAND-RC comment in layout.f names a writer's canonicalise and a loader's relocate.
+The comments that still describe a snapshot writer or loader go with the code they describe: layout.f's snapshot comments, habu2.f:156, genio-core.f, elaborate.f, dict.f, docs/xcomp.md "Live-region sites", and test/xt-cell-band-bad.f.
 
 Acceptance: what only a snapshot or the call kind reads is deleted, with the tests that only exercise it; whatever remains has a reader that acts on it; the chain build reaches its fixpoint and the full suite passes.
 
-Depends: none.
+Depends: the x86-64 step.
 
-Claim: agent=worker workspace=.jj-ws.noindex/snap-format
+Claim: unassigned.

@@ -56,9 +56,6 @@ constant X64-MASK
 \ Fixed budget for dictionary and code, including the retained build host and
 \ its replacement core.
 $2300000 constant REGION
-\ RBASE-VA: the snapshot's canonical region base, a fixed sentinel, not the map
-\ address.
-$300000000 constant RBASE-VA
 \ Canonical code-region hint past __text. The engine clamps it after the loaded
 \ image and checks the resulting mapping against BL-REACH at boot.
 $1000000 constant REGION-OFF
@@ -1226,15 +1223,13 @@ public
 \ generation before a new src/core constant is reachable. That registry leaves
 \ 96, 98, 99 and 103 to this file.
 \
-\ Exit status for an overfull address-cell table (more cells than XTCELL-CAP):
-\ dropping a cell would leave a stale writer-run address in a restored image.
+\ Exit status when address-cell storage cannot be allocated or is malformed.
 96 constant XTCELL-RC
-\ Exit status for a declared address cell outside DATA: the writer's
-\ canonicalise, the loader's relocate and the declaration itself index DATA by
-\ the row's offset with no further check, so it is refused where first seen.
+\ Exit status for a declared address cell whose offset lies outside
+\ [0, XTCELL-OFF-MAX].
 98 constant XTBAND-RC
-\ Exit status for one address cell declared with both relocation kinds: either
-\ winner would make snapshot or AOT relocation silently wrong.
+\ Exit status for one address cell declared with two kinds: either kind, kept
+\ alone, would relocate the cell wrongly.
 99 constant XTKIND-RC
 
 \ Call-site map: one bit per four-byte word of the JIT region, marking every call
@@ -1321,14 +1316,8 @@ ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows
 XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 
-\ The largest offset a declared cell may carry. The declaration and the
-\ loader's relocate each access the eight bytes at the DATA base plus the
-\ offset, so the whole cell must lie inside the
-\ region; the unsigned compare also rejects negative offsets.
-\ The cell need not be cell-aligned: `create` rounds its field,
-\ but a cell reached through `allot` after byte-sized data, or inside a copied
-\ DATA window, keeps its residue, and unaligned cell loads and stores are
-\ defined here.
+\ The largest offset from DATA's base, or the open image's, at which a declared
+\ cell lies whole; a cell after byte-sized data from `allot` may be unaligned.
 DATA-SIZE 8 - constant XTCELL-OFF-MAX
 
 ;package
