@@ -1,4 +1,4 @@
-\ Grow past the former fixed band without losing either old or new declarations.
+\ Grow past the fixed band without losing either old or new declarations.
 require src/lib/test.f
 require src/habu/address-cells.f
 

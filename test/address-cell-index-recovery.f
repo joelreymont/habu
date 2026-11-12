@@ -34,7 +34,6 @@ DYNAMIC-BUFFER SAVED-STORAGE n
 : CATCH-REFUSAL ( -- )
    BEFORE-CAP @ cells {: bytes:n :}
    \ Leave one cell too little room for PERSIST below the profiler band.
-   \ The refusal arrives through the real evaluator.
    DATA-SIZE PROF-CNT-BYTES - bytes - CELL + here data-base - - allot
    [: TRY-PERSIST ;] catch 76 T=
    LOCK@ 0 T=
