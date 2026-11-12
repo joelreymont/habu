@@ -26,7 +26,6 @@ require src/compiler/session/lease.f
 
 \ The target predicates are read as this file loads: the running engine's, or in
 \ a build window the window's own src/os/*/target.f.
-HB-TARGET-KNOWN? 0= [if] E-CTGT-ABI throw [then]
 HB-TARGET-LINUX? HB-TARGET-MACOS? or [if] require src/arch/arm64/passes.f [then]
 HB-TARGET-LINUX-X86-64? [if] require src/arch/x86-64/passes.f [then]
 
