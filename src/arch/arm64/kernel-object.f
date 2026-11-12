@@ -9,6 +9,7 @@
 \   code        its length in bytes, then the bytes padded as a name's
 \   labels      n, then each label's word position, -1 while unbound
 \   references  n, then each one's site, label and kind
+\   data spans  n, then each span's first and end word position
 \   fixups      n, then each pending one's site, label and kind
 \   primitives  n, then each one's first label, last label, wordlist and name
 \   scope sites n, then the label of scope-kind?'s chain for each kind from 2
@@ -98,6 +99,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 ?do
       i A64ICODE:REF-SITE U64+  i A64ICODE:REF-LABEL LABEL>N U64+  i A64ICODE:REF-KIND U64+
    loop ;
+
+: DATA-SPANS+ ( -- )
+   A64ICODE:DATA-SPANS dup U64+
+   0 ?do i A64ICODE:DATA-SPAN-FIRST U64+  i A64ICODE:DATA-SPAN-END U64+ loop ;
 
 : FIXUPS+ ( -- )
    SECTION
@@ -257,7 +262,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    engine EMIT  engine ?PLACED
    0 OUT-U !
    s" HBKERNEL" SPAN+  4 0 ?do 0 U64+ loop
-   CODE+ LABELS+ REFS+ FIXUPS+ PRIMS+
+   CODE+ LABELS+ REFS+ DATA-SPANS+ FIXUPS+ PRIMS+
    engine SCOPES+  engine SYMBOLS+  engine PRESETS+  CHECK-ROWS+
    SUM
    0 OUT OUT-U @ sink execute ;

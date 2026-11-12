@@ -6,8 +6,9 @@
 \ header and index; LR-DEEP overflows the machine stack and exits 102 through
 \ the crash path the start-up installs. Each file is under 128 KiB, which the
 \ whole kernel alone exceeds: only the kernel code the program reaches is
-\ written. Each program runs in its own process: the boundary under test is the
-\ written file and its start-up.
+\ written, and no message it never prints: control never passes from a message's
+\ text into what follows it. Each program runs in its own process:
+\ the boundary under test is the written file and its start-up.
 \ Fixture words are LR- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
@@ -95,6 +96,19 @@ create PROG-BUF PATH-CAP allot
       T-LABEL
    size $20000 < TTRUE ;
 
+$20000 BUFFER: HI-BYTES
+
+\ Texts hi never prints: the profiler's report, and a message laid after one
+\ every stripped program reaches.
+: NO-PROFILER ( -- )
+   s" hi" PROG$ {: file:ptr file-n:n :}
+   file file-n FS:FILE-SIZE $20000 min {: size:n :}
+   file file-n 0 HI-BYTES size FS:READ-AT
+   s" hi keeps no message it never prints and no profiler code: control never passes from a message into what follows it"
+      T-LABEL
+   HI-BYTES size s" profiler not armed" CONTAINS? TFALSE
+   HI-BYTES size s" hb: snapshot call map mismatch" CONTAINS? TFALSE ;
+
 
 public
 
@@ -111,6 +125,7 @@ public
    [: RUN-XT ;] CMD:WITH-COMMAND
    [: RUN-DEEP ;] CMD:WITH-COMMAND
    s" hi" SMALLER  s" throw" SMALLER  s" xt" SMALLER  s" deep" SMALLER
+   NO-PROFILER
    ROOT$ FS:REMOVE-TREE
    T-REPORT ;
 

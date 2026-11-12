@@ -3418,8 +3418,8 @@ variable KERNEL-CODE-END
    RELOC-EMIT:EMIT-ADDR-SITE  RELOC-EMIT:EMIT-ADDRS
    KWDATA:EMIT ;
 
-\ [LCRASHH, LHANDLERS-END) holds the signal handlers and no code Habu code calls. A cut keeps
-\ what a node not ending in ret, b, br or brk runs into; every such run here enters kept code.
+\ [LCRASHH, LHANDLERS-END) holds the signal handlers and no code Habu code calls. Where an
+\ emitter here runs into the next, that next is code a stripped program keeps anyway.
 : EMIT-RUNTIME-SECTIONS ( -- )
    EMIT-GENIO-OUT
    PROF:EMIT-PROFFIND
