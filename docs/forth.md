@@ -839,40 +839,24 @@ gets, which could only throw. Each line names an input, an ACTION
 `( <ctx> -- )` or `-` for none, and a NEXT: `>state`, any token starting with
 `>`, for a fixed next state, else a word `( <ctx> -- <states> )` that picks
 one. `FINAL <state> <ACTION>` ends a run in that state. DEFINE writes a word
-for each line's ACTION and each `FINAL` row, one for each `IN` row, then the
-step word and the machine:
+`<NAME>/<state>/<input> ( <ctx> -- )` for each line's ACTION,
+`<NAME>/<final> ( <ctx> -- )` for each `FINAL` row,
+`<NAME>/<state> ( <ctx> -- <states> )` for each `IN` row, then the step word
+and the machine; `src/lib/fsm.f`'s header states their bodies.
 
-```forth
-: <NAME>/<state>/<input> ( <ctx> -- ) <ACTION> ;                \ a line's ACTION
-: <NAME>/<final> ( <ctx> -- ) <ACTION> ;                        \ a FINAL row
-: <NAME>/<state> ( <ctx> -- <states> )
-   dup <SENSE> MATCH <inputs>                     \ the row's ENUM, else the header's
-      <input> OF construct <states> <next> swap <NAME>/<state>/<input> ENDOF  \ >next
-      <input> OF dup <NAME>/<state>/<input> <NEXT> ENDOF        \ a NEXT word
-      …
-   ;MATCH ;
-: <NAME>-STEP ( <ctx> <states> -- <states> bool ) MATCH <states>
-   <state> OF false swap <NAME>/<state> ENDOF                   \ an IN row
-   <final> OF true construct <states> <final> rot <NAME>/<final> ENDOF  \ a FINAL row
-   …
-   ;MATCH swap ;
-: <NAME> ( <ctx> <states> -- ) begin over swap <NAME>-STEP until 2drop ;
-```
+`<NAME>-STEP ( <ctx> <states> -- <states> bool )` makes one move. From an
+`IN` state it runs SENSE, the line's ACTION and NEXT and answers the next state
+and false, a `FINAL` state included; from a `FINAL` state it runs the row's
+ACTION and answers the same state and true. `<NAME> ( <ctx> <states> -- )`
+steps until a step answers true, so it runs one `FINAL` ACTION, also when
+started in a `FINAL` state. A caller that feeds one event at a time calls
+`<NAME>-STEP` and keeps the state it answers. A table needs no `FINAL` row; its
+`<NAME>` then runs until a callback throws.
 
-`<NAME>-STEP` makes one move. From an `IN` state it runs SENSE, the line's
-ACTION and NEXT and answers the next state and false, a `FINAL` state
-included; from a `FINAL` state it runs the row's ACTION and answers the same
-state and true. `<NAME>` steps until a step answers true, so it runs one
-`FINAL` ACTION, also when started in a `FINAL` state. A caller that feeds one
-event at a time calls `<NAME>-STEP` and keeps the state it answers. A table
-needs no `FINAL` row; its `<NAME>` then runs until a callback throws.
-
-An ACTION of `-` writes no line word: `drop construct <states> <next>` on a
-`>next` line, `<NEXT>` alone before a NEXT word, and `drop` as
-`<NAME>/<final>`'s body. Every ACTION runs in a word declaring `( <ctx> -- )`,
-so the checker holds it to that effect, and that word ends its arm except
-before a NEXT word, so an ACTION that never returns (a refused pair or a
-failure end) loads on a `>next` line or a `FINAL` row, and so does a state
+An ACTION of `-` writes no line word. Every ACTION runs in a word declaring
+`( <ctx> -- )`, so the checker holds it to that effect, and that word ends its
+arm except before a NEXT word, so an ACTION that never returns (a refused pair
+or a failure end) loads on a `>next` line or a `FINAL` row, and so does a state
 whose every line refuses. Two shapes fail the load with `E-DEAD-CODE`: an
 ACTION that never returns before a NEXT word, at the NEXT word after its line
 word, and a machine none of whose arms returns (every IN row's lines refuse and
