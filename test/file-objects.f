@@ -697,7 +697,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : PART-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:ERR$ s\" hb: bad layout tag\n" STR= {: trapped:bool :}
+   CMD:ERR$ s\" E-BAD-TAG habu: layout tag 7 outside 0..1\n" STR= {: trapped:bool :}
    trapped  rc 85 =  and 0= if rc SHOW then
    s" the program dies with the bad-tag error" LABEL  trapped TTRUE
    s" the program exits 85" LABEL  rc 85 T= ;

@@ -5,7 +5,7 @@ package APP
 
 package NFETCH-CHECK
 public
-: BAD-TAG ( -- ) ;
+: BAD-TAG ( n n -- ) 2drop ;
 ;package
 
 ENUM lay fresh valued ;ENUM

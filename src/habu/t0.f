@@ -1166,9 +1166,12 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    d 0 DESC@ 1 =  d 3 DESC@ 0=  and ;
 
 \ BAD-TAG runs when c holds and never returns, so only the path that skips it
-\ reaches `then`, every entry and vreg as before: no reconcile.
-: TRAP-IF ( cc n n -- ) {: c:cc entry:n at:n :}
-   c EMIT-IF-CC,  entry at EMIT-CALL  EMIT-THEN, ;
+\ reaches `then`, every entry and vreg as before: no reconcile. Its tag and
+\ limit go on the data stack on its path alone.
+: TRAP-IF ( vreg n cc n n -- ) {: tag:vreg limit:n c:cc entry:n at:n :}
+   c EMIT-IF-CC,
+   tag 1 EMIT-PUSH  limit 1 EMIT-PUSH-LIT  entry at EMIT-CALL
+   EMIT-THEN, ;
 
 \ A descriptor of one row and no guards checks inline that 0 <= tag < limit;
 \ every entry it pushes is gone again, so the address is on top.
@@ -1177,13 +1180,14 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    entry 0= if E-HIR-UNMODELED throw then
    d 2 DESC@ {: limit:n :}
    0 DEEP  d 1 DESC@ ADDR+  CELL-W FETCH
-   TOP MAT 0 EMIT-CMP-LIT  CC-LT entry at TRAP-IF
+   TOP MAT {: tag:vreg :}
+   tag 0 EMIT-CMP-LIT  tag limit CC-LT entry at TRAP-IF
    limit EMIT-IMM? if
-      TOP MAT limit EMIT-CMP-LIT
+      tag limit EMIT-CMP-LIT
    else
       limit PUSH-CONST  TOP 1- MAT TOP MAT EMIT-CMP  TOP REMOVE
    then
-   CC-GE entry at TRAP-IF
+   tag limit CC-GE entry at TRAP-IF
    TOP REMOVE ;
 
 \ Any other fact calls NFETCH-CHECK:TAGS as tier 1's VALIDATE-FETCH does (its

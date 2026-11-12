@@ -604,7 +604,7 @@ variable TEXT-U
    s" an ENUM fetched through a pointer passes its tag check, then a stored 7 fails it" T-LABEL
    s" fetch.wasm" BUILD 0 T=
    RAN 2 T=
-   WASM-HARNESS:OUT$ S\" 2\nhb: bad layout tag" T$= ;
+   WASM-HARNESS:OUT$ S\" 2\nE-BAD-TAG habu: layout tag 7 outside 0..2" T$= ;
 
 
 65536 constant PAGE-BYTES

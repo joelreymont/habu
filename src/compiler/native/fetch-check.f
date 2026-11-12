@@ -1,6 +1,8 @@
 \ Execute the frozen tag checks before a native fetch produces a typed value.
+require src/core/util.f
 require src/lib/error.f
 require src/lib/prelude.f
+require src/lib/string.f
 require src/core/engine-error.f
 require src/lib/le.f
 
@@ -14,10 +16,30 @@ public
 \ sanctioned pointer-minus-pointer distance from the null address.
 NEWTYPE frozen
 
+private
+
+\ The longest message: its text and two numbers of up to 20 bytes each.
+80 SCRATCH-BUFFER: MSG
+
+\ Text a u laid at byte at of MSG; answers the byte after it.
+: PUT$ ( ptr u8 n n -- n ) {: a:ptr u:n at:n :}
+   a  MSG at +  u BYTE-COPY
+   at u + ;
+
+: PUT-INT ( n n -- n ) {: v:n at:n :}
+   at  v 0< if s" -" rot PUT$ then
+   v ERROR-TEXT:DIGITS$ rot PUT$ ;
+
+public
+
 \ Tier 0 calls this from its inline check of a one-row descriptor with no
 \ guards (t0.f TAG-INLINE).
-: BAD-TAG ( -- )
-   s" hb: bad layout tag" ENGINE-ERROR:BAD-TAG die ;
+: BAD-TAG ( n n -- ) {: tag:n limit:n :}
+   s" E-BAD-TAG habu: layout tag " 0 PUT$
+   tag swap PUT-INT
+   s"  outside 0.." rot PUT$
+   limit 1- swap PUT-INT
+   MSG swap  ENGINE-ERROR:BAD-TAG die ;
 
 private
 
@@ -62,7 +84,7 @@ CAST: FROZEN>N ( frozen -- n )
    next ;
 
 : TAG@ ( ptr u8 n n -- n ) {: base:ptr offset:n limit:n :}
-   base offset SLOT@ dup limit IN-DOMAIN? 0= if BAD-TAG then ;
+   base offset SLOT@ dup limit IN-DOMAIN? 0= if dup limit BAD-TAG then ;
 
 : ACTIVE? ( ptr u8 ptr u8 n n -- bool )
    {: base:ptr data:ptr index:n guards:n :}

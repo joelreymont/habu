@@ -5,7 +5,7 @@ package LAYOUT-VALID-PART
 
 package NFETCH-CHECK
 public
-: BAD-TAG ( -- ) ;
+: BAD-TAG ( n n -- ) 2drop ;
 ;package
 
 ENUM lv-color red green ;ENUM
