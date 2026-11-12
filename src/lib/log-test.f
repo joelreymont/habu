@@ -32,7 +32,7 @@ CAST: N>PTR ( n -- ptr u8 )
 public
 
 -9672 s" the log test's code" ERROR:CODE E-LOG-CODE
--9678 constant UNDECLARED          \ no ERROR:CODE declares it
+-9678 constant UNDECLARED
 $A constant LF
 $100000 constant BIG-U              \ 1 MiB of text in one line
 $10000 constant PAD-U               \ a pipe line's padding, far past PIPE_BUF
@@ -74,7 +74,7 @@ TASK:MIN-STACK TASK:TASK WRITER-A
 TASK:MIN-STACK TASK:TASK WRITER-B
 TASK:MIN-STACK TASK:TASK READER
 \ RELEASE-CASE's own task: LOG's release must register after ROW-PROBE, and a
-\ registration serves later activations (src/lib/task.f AT-EXIT).
+\ registration serves later activations.
 TASK:MIN-STACK TASK:TASK RELEASER
 
 : BLEN ( n -- NUM:byte-len )  BUF:N>BLEN ;
@@ -134,7 +134,6 @@ TASK:MIN-STACK TASK:TASK RELEASER
    at 17 + 2 DIGITS + ;
 
 
-\ A stamp of the right shape, taken while the case ran.
 : STAMP-OK ( ptr u8 -- )
    {: at:ptr :}
    at SHAPE? TTRUE
@@ -182,7 +181,6 @@ TASK:MIN-STACK TASK:TASK RELEASER
    LOG:ERROR s" big" LOG:LINE BIG$ LOG:TEXT+ LOG:;LINE ;
 
 
-\ The file holds exactly BIG-LINE's line.
 : BIG-OK ( ptr u8 n -- )
    {: at:ptr u:n :}
    u DATE:TIME-LEN BIG-HEAD$ nip + BIG-U + 1 + T=
@@ -296,7 +294,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ The text's span is HUGE-U bytes from a one-byte string, so this case relies on
-\ TEXT+ growing the row before it reads a byte of the text (ESCAPED+).
+\ TEXT+ growing the row before it reads a byte of the text.
 : LOST-LINES ( -- )
    [: LOG:ERROR s" t" LOG:LINE s" x" drop HUGE-U LOG:TEXT+ LOG:;LINE ;] catch CODE-A !
    [: KEPT-LINE ;] catch CODE-B ! ;
@@ -305,7 +303,6 @@ TASK:MIN-STACK TASK:TASK RELEASER
 : NOTICE-REST$ ( -- ptr u8 n )  S\"  error log: out of memory, a line was lost\n" ;
 
 
-\ The file holds the notice, then KEPT-LINE's line.
 : NOTICE-THEN-KEPT ( -- )
    FILE$ {: at:ptr u:n :}
    u DATE:TIME-LEN 2 * NOTICE-REST$ nip + KEPT-REST$ nip + T=
@@ -413,7 +410,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ The text fills the row to its capacity, so the LF ;LINE appends needs a
-\ growth. BIG$ holds the text; a row with more room than BIG-U fails here.
+\ growth. A row with more room than BIG-U fails here.
 : ROW-FILL ( -- )
    LOG-TEST:ROW BUF:CAP@ BUF:BLEN>N LOG-TEST:ROW BUF:LEN@ BUF:BLEN>N -
    {: room:n :}
@@ -442,7 +439,6 @@ TASK:MIN-STACK TASK:TASK RELEASER
 : NEXT ( n -- ptr n )  [char] a - NEXTS ;
 
 
-\ The pad, PAD-U letters.
 : PAD$ ( -- ptr u8 n )  BIG$ drop PAD-U ;
 
 
