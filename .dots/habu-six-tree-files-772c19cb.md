@@ -11,3 +11,4 @@ Problem: nothing in src, tools, test or docs loads or names src/habu/hide.f, src
 2026-11-10 (bob): test/main-routing.f is wired to the suite by habu-docs-gate-md-3b1b9b21's commit; five files remain.
 
 2026-11-10 (bob), checked on master 421bb647: tools/wasm-build.f is gone and its missing include with it. src/habu/hide.f, src/habu/runtime-x64.f, src/habu/text-sites-x64.f and test/aot-native-does.f are still named by nothing; src/habu/bundle-argv.f only by tools/lint/shadow-lint.f:197. These five remain.
+2026-11-12 (jerry): src/habu/hide.f is deleted. Its only loaders, tools/bootstrap.sh (which appended it) and tools/bootstrap-codegen-test.f (which included it), were deleted with the old builders in 1d97c3f2, and `rg --no-ignore 'hide\.f'` over src, tools, test and docs finds no other name. The four others remain.
