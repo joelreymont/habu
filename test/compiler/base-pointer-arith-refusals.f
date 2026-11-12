@@ -6,6 +6,8 @@
 \ engine's checker through CHECK-CANDIDATE!.
 require src/lib/test.f
 require src/lib/string.f
+require src/lib/adt/nullable.f
+require src/lib/adt/option.f
 
 \ File-global: the candidates are checked in the scope a real program writes
 \ them in.
@@ -15,13 +17,16 @@ TYPED-VARIABLE BPA-PP ptr ptr n     \ a declared cell that really holds an addre
 TYPED-VARIABLE BPA-HK [ -- n ]      \ a declared CODE cell, for the executable-value controls
 TYPED-VARIABLE BPA-TV bpathing      \ a pointer to a nominal, for the inferred-operand distances
 variable BPA-RAW                    \ an undeclared raw storage cell, for the RAW controls
+STRUCTURE bpa-rec FIELD x n FIELD y n ;STRUCTURE
+ENUM bpa-dir north south ;ENUM
+TYPED-VARIABLE BPA-RV bpa-rec       \ a pointer to a record, for the stored-pointee distances
 
 \ Its own certification matters: the offset mark rides its published quantifier,
 \ so a null handed to it is a DATA-base pointer at the caller.
 : BPA-STEPPER ( ptr a n -- ptr a ) + ;
 
-\ A distance reads no storage and leaves no kind on its pointee `a`, so a caller
-\ may instantiate `a` with anything, a quotation among them.
+\ A distance reads no storage, so a caller may instantiate its pointee `a` with
+\ any stored type, a quotation or a record among them.
 : BPA-NDIST ( ptr a -- n ) NULL-PTR - ;
 : BPA-DDIST ( ptr a -- n ) data-base - ;
 
@@ -413,6 +418,26 @@ create DIAG-BUF 8192 allot
    s" BPA-NDQ ( -- n ) BPA-HK BPA-NDIST" CERTIFIES
    s" BPA-DDQ ( -- n ) BPA-HK BPA-DDIST" CERTIFIES ;
 
+\ An address read as a number reads nothing through the pointer, so its pointee
+\ is any stored type: a record, an enum, a nullable or an option.
+: CASE-STORED-POINTEE ( -- )
+   s" a distance and PTR>N take a pointer to any stored type" T-LABEL
+   s" BPA-RN ( ptr bpa-rec -- n ) PTR>N" CERTIFIES
+   s" BPA-NN ( ptr nullable<u8> -- n ) PTR>N" CERTIFIES
+   s" BPA-EN ( ptr bpa-dir -- n ) PTR>N" CERTIFIES
+   s" BPA-ON ( ptr option<n> -- n ) PTR>N" CERTIFIES
+   s" BPA-RR ( ptr bpa-rec ptr bpa-rec -- n ) -" CERTIFIES
+   s" BPA-RVD ( -- n ) BPA-RV BPA-NDIST" CERTIFIES ;
+
+\ A byte written through a byte view could forge a value the record's fields
+\ type, so the view still refuses a pointer to one.
+: CASE-RECORD-BYTE-VIEW ( -- )
+   s" a byte view of a pointer to a record is still refused" T-LABEL
+   ARM
+   s" BPA-RBV ( ptr bpa-rec -- ptr u8 ) BYTE-VIEW" CHECK-CANDIDATE! 0 T=
+   S\" \"code\":\"E-MISMATCH\"" HAS?
+   DISARM ;
+
 \ A base row matches only a base address's own pointee. An operand still being
 \ inferred -- a quotation's input, a signature-less word's input -- is not one,
 \ so a distance against a pointer to a nominal pairs both pointees, and the
@@ -585,6 +610,8 @@ public
    CASE-NULL-COMPARE
    CASE-NULL-DIFF
    CASE-NULL-DIST-FREE
+   CASE-STORED-POINTEE
+   CASE-RECORD-BYTE-VIEW
    CASE-NULL-DIST-READ
    CASE-DIST-INFERRED-OPERAND
    CASE-DIST-INFERRED-NULL

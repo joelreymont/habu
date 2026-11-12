@@ -12548,6 +12548,9 @@ variable PE-EFF-ID
 \ Marks the base operand's pointee of a pointer-distance row (TVK-BASE-ONLY).
 : PE-BASE-ONLY! ( n -- n ) dup PAY TVK-BASE-ONLY! ;
 
+\ Stored-kinds the pointee var of a row that reads nothing through the pointer.
+: PE-STORED! ( n -- n ) dup PAY TVK-STORED! ;
+
 \ Data in and out share one fresh base row and the return effect is neutral,
 \ exactly what SIG-PARSE-QUOT builds from the same text, so a prim row and a
 \ written signature describe the same term.
@@ -12632,6 +12635,7 @@ variable PE-SPEC-TOS
    code PRIM-SPEC:A-DBASE    = IF PE-SPEC-POP PE-DBASE! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-NULL     = IF PE-SPEC-POP PE-NULL!  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-OFF      = IF PE-SPEC-POP PE-OFF!   PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-STORED   = IF PE-SPEC-POP PE-STORED! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-BASE     = IF PE-SPEC-POP PE-BASE-ONLY! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-QUOT     = IF PE-Q EXIT THEN
    code PRIM-SPEC:A-QUOT-IN  = IF PE-SPEC-POP PE-QIN EXIT THEN

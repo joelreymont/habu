@@ -79,7 +79,9 @@ seed and product.
 A change to the kernel, the start-up or the layout lands in one build unless it
 moves where DATA starts. One to what the running hb's compiler does with the
 tree's code (code layout, records, wordlist numbering, the address list), a
-body that calls a primitive its own change adds, or a tool that calls a word hb
+body that calls a primitive its own change adds, a new primitive-spec atom code
+(the running checker replays the tree's rows and dies `checker: unknown
+primitive-spec atom`), or a tool that calls a word hb
 carries (the linker) by a name or effect its own change gives it, needs a
 stage: the tool loads from the tree, but `require` of a file hb carries finds
 the running hb's copy. Build the stage first, from a revision that adds the

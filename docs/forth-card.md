@@ -120,8 +120,8 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 - A type var named only behind `ptr`, or in a family argument the family's
   width does not read, takes any stored type: `: SAME ( ptr t -- ptr t ) ;`
   takes `ptr turn`. Fetching, storing or stepping through it, or passing it to
-  a primitive, a `defer` or `RECURSE`, makes it one cell: a record is
-  `E-MISMATCH` at the call.
+  a `defer`, `RECURSE` or any primitive but a distance and `PTR>N`, makes it
+  one cell: a record is `E-MISMATCH` at the call.
 - Concrete integers widen when lossless (`u8 → u16 → u32 → cell/i64`). Generic
   `n` accepts structural integer stack cells in either direction: `n` can pass
   to `u32`, while `i64` needs an explicit conversion. In a definition's body a
