@@ -86,14 +86,9 @@ $FFFFFFFF constant INT-MASK        \ sa_flags is an int; the cell read carries i
 2 constant RACE-TIMEOUT
 1 constant NOT-RUN                 \ no throw code and no kind, so an idle task fails
 
-1000 constant STOPPED-MS           \ the stop poll's deadline from SIGSTOP
 5000 constant RESUMED-MS           \ far above what a resumed child takes to end
-1 constant WNOHANG                 \ waitpid's flags on Linux and macOS
-2 constant WUNTRACED
+2 constant WUNTRACED               \ waitpid's flag on Linux and macOS
 $7F constant STOP-MARK             \ a stop report's low status byte
-0 constant PROBE-RUNNING           \ what one stop probe saw
-1 constant PROBE-STOPPED           \ stopped by SIGSTOP
-2 constant PROBE-OTHER             \ ended, or stopped by another signal
 
 create SA-ACT SA-BUF-BYTES allot
 create SA-OLD SA-BUF-BYTES allot
@@ -120,7 +115,7 @@ variable OUTSIDER-FD
 variable STOP-PID                  \ the stop case's child until reaped, else 0
 variable STOP-R                    \ its stdin's read end until closed, else -1
 variable STOP-W                    \ that pipe's write end until closed, else -1
-variable STOP-STATUS               \ the status waitpid wrote for the stop probe
+variable STOP-STATUS               \ the status waitpid wrote for the stop wait
 
 TASK:MIN-STACK TASK:TASK SIG-RAISER
 TASK:MIN-STACK TASK:TASK RACER-A
@@ -227,8 +222,8 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    s" ... and so does SIGCONT" T-LABEL
    SIGNAL:SIGCONT EXPECT-SIGCONT T= ;
 
-: STOP-SCRIPT ( -- ptr u8 n )
-   s" read x; exit 0" ;
+: READER-PATH ( -- ptr u8 n )
+   s" /bin/cat" ;
 
 : CLOSE-END ( ptr n -- )
    {: v:ptr :}
@@ -243,9 +238,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    r FD>N STOP-R !
    w FD>N STOP-W !
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   STOP-SCRIPT >LEN PROC-ARGV+
-   s" /bin/sh" >LEN r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N STOP-PID !
+   READER-PATH >LEN r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N STOP-PID !
    STOP-R CLOSE-END ;
 
 : SEND ( n -- ) {: sig:n :}
@@ -267,42 +260,31 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    STOP-PID @ >PID PROCESS:WAIT drop
    0 STOP-PID ! ;
 
-\ One waitpid with WUNTRACED: a stop report leaves the child unreaped for a
-\ later wait, while an ending reaps it, so its pid is no longer ours.
-: STOP-PROBE ( -- n )
+\ Waits for the child to stop or end and answers the raw status; an ending
+\ reaps it, so its pid is no longer ours. It needs no deadline: the reader
+\ execs once and the spawn returns after that exec, so the stop is never lost.
+: STOP-WAIT ( -- n )
    0 STOP-STATUS !
-   STOP-PID @ STOP-STATUS BYTE-VIEW WNOHANG WUNTRACED or WAITPID-CALL
-   {: got:n :}
-   got 0= if PROBE-RUNNING exit then
-   got STOP-PID @ <> if
-      FFI:ERRNO FD:EINTR# <> if E-PROC-WAIT throw then
-      PROBE-RUNNING exit
-   then
+   begin
+      STOP-PID @ STOP-STATUS BYTE-VIEW WUNTRACED WAITPID-CALL
+      dup -1 = FFI:ERRNO FD:EINTR# = and
+   while drop repeat
+   STOP-PID @ <> if E-PROC-WAIT throw then
    STOP-STATUS @ {: status:n :}
-   status $FF and STOP-MARK <> if 0 STOP-PID ! PROBE-OTHER exit then
-   status 8 rshift $FF and SIGNAL:SIGSTOP = if PROBE-STOPPED exit then
-   PROBE-OTHER ;
-
-\ True once the child reports a stop by SIGSTOP; false if it ended, stopped
-\ by another signal or reported nothing within STOPPED-MS.
-: STOP-SEEN? ( -- bool )
-   STOPPED-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
-   begin STOP-PROBE dup PROBE-RUNNING = while
-      drop
-      deadline PROCESS:LEFT-MS MS>N 0= if false exit then
-      1 >MS TASK:SLEEP
-   repeat
-   PROBE-STOPPED = ;
+   status $FF and STOP-MARK <> if 0 STOP-PID ! then
+   status ;
 
 \ The write end is closed, ending the child's read, only once the stop is
 \ reported, so the child cannot exit before SIGCONT.
 : STOP-BODY ( -- )
    SPAWN-READER
    SIGNAL:SIGSTOP SEND
-   STOP-SEEN? {: held:bool :}
+   STOP-WAIT {: status:n :}
+   SIGNAL:SIGSTOP 8 lshift STOP-MARK or {: stopped:n :}
+   status stopped = {: held:bool :}
 
    s" a child sent SIGSTOP is reported stopped by that signal" T-LABEL
-   held TTRUE
+   status stopped T=
    held 0= if exit then
 
    STOP-W CLOSE-END
@@ -311,7 +293,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    done REAPED? drop
 
    s" ... and once sent SIGCONT it exits 0" T-LABEL
-   STOP-SCRIPT s" " s" " done 0 T-ENDING-EXITED= ;
+   READER-PATH s" " s" " done 0 T-ENDING-EXITED= ;
 
 : STOP-CASE ( -- )
    0 STOP-PID !
