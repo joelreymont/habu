@@ -154,9 +154,9 @@ kernel's primitives.
 
 **A build names the platform it runs on and the platform it produces.** Any
 `hb` builds `hb` for every required host
-([xcomp.md](xcomp.md#build-host-product-and-target)). The build runs a word's
-host body when it needs the word's value and compiles a target body for the
-product ([xcomp.md](xcomp.md#compile-time-execution-and-target-data)).
+([xcomp.md](xcomp.md#build-host-product-and-target)). The build runs only the
+words a source defines in a host section and compiles every word for the
+product ([xcomp.md](xcomp.md#host-and-target-words)).
 Building for a platform never runs on it: `hb` on a macOS ARM64 machine
 cross-compiles the x86-64 `hb`, and only running the product needs a machine of
 its kind.

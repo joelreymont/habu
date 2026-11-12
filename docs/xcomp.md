@@ -53,25 +53,48 @@ format are separate fields, because one overloaded `abi` field would decide all
 three. A structurally coherent target can still be unsupported by the installed
 backend; the two errors stay distinct.
 
-## Compile-time execution and target data
+## Host and target words
 
-A cross-build runs the target's whole source prefix on the host: definers,
-`create`, `here` and stores execute against host memory. Target data reaches
-the output only through tracked owners, never by copying a host image:
+The host is the machine a build runs on, the target the machine its output
+runs on. In a native build they are one machine and every rule here holds
+unchanged, so a program that builds natively builds for any target. The scheme
+is SwiftX's ([swiftx.md](swiftx.md)), with one difference stated below.
 
-- `src/compiler/native/shadow.f` compiles each definition a second time for the
-  target from the same frozen HIR module and keeps it as a sealed unplaced
-  emission whose every call and address is a row (x86-64 "Dual emission").
-- The capture (`src/habu/aot-shadow.f`) resolves
-  each host address through its record and refuses an unresolved one by name.
-- The target linker places records and DATA at target addresses
-  (`src/habu/link-x64.f`, `src/arch/wasm/link.f`).
+- A definition is a **target word** unless its section says otherwise: it is
+  compiled once, for the target, and never executes during a build.
+- `host` opens a host section and `target` ends it; a file starts in `target`.
+  The section is independent of `public` and `private`, and a definition
+  belongs to the section in force where it is defined, whichever word
+  generated its text. A definition in a host section is a **host word**: it is
+  compiled for the host and for the target (once where they are one machine).
+  SwiftX has a word needed on both machines written twice; here the one
+  definition is compiled twice, because the words a build runs are mostly
+  words programs also run: of the 890 definitions a Wasm build of a viewer
+  executed on the host, all the library's and none the program's, 29 were also
+  in the module, and an engine ships nearly all of them.
+- Top level executes on the host. It may name a host word, a word a host
+  definer's `does>` made, a data word, and hb's own declaration and loader
+  words (`src/habu/interpreter.f` HOST-WORD?). A data word answers there what
+  it answers on the target: a constant its value, any other the address of its
+  data.
+- A target word named at top level, or in a host word's body, is refused by
+  name (`E-TARGET-WORD`). `'` names it without calling it: its token can be
+  stored in data, and executing the token on the host is the same refusal.
+- A host word reaches a build's data through data words and `data-base`, never
+  through an address the target's layout fixes: during a build that address is
+  the host's own memory.
+- An object holds a definition's emission for each machine it was compiled
+  for. Linking a file places its host emissions in the build's process, where
+  later files' top level calls them, and its target emissions in the output; a
+  linked file's top level does not run, its recorded effects are replayed
+  ([architecture.md](architecture.md)). A cross-build writes and links objects
+  as a native build does.
 
-A host pointer is never converted into a target address by value: arithmetic
-that lost provenance cannot be recovered by scanning integers for
-pointer-looking bits. A host-callable body may execute during compilation; a
-target-only body may not, and a declaration's code addresses are never its
-identity.
+Top level lays the target's DATA in host memory, in the target's layout, and
+the linker rewrites each address cell by its row. A host pointer is never
+converted into a target address by value: arithmetic that lost provenance
+cannot be recovered by scanning integers for pointer-looking bits. A
+declaration's code addresses are never its identity.
 
 ## Layout
 
@@ -180,15 +203,12 @@ driver names no backend, and `bin/hb` for one host does not carry the other.
   patch (`src/habu/address-carrier.f`).
 - **Traps** use the same mmap protections; the handler reads `RIP` and `RSP`.
 
-### Dual emission
+### The capture's reach
 
-A cross-build runs the target's whole prefix on the host, so each definition
-must be the host's routine and the target's at once; its names are bound as it
-compiles, so the target's routine cannot be lowered later from the tape.
-`src/compiler/native/shadow.f` is that second target, compiled from the same
-frozen HIR module in a nested context; a shadow refusal refuses the definition.
-With no shadow open the driver runs exactly its old stages, so an engine
-compiles every definition to the same bytes.
+A host word's names are bound as it compiles, so its target routine cannot be
+lowered later from the tape: `src/compiler/native/shadow.f` compiles it for the
+target from the same frozen HIR module in a nested context, and a shadow
+refusal refuses the definition.
 
 The capture carries the shadow's map (`src/habu/aot-shadow.f`). Code bytes
 carry no host address: call fields stay zero, a code literal holds 0, a DATA
