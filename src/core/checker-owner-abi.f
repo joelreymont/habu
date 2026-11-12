@@ -21,7 +21,6 @@ $50 constant SOURCE-ROW-OFF
 $58 constant SOURCE-CON-OFF
 $60 constant EXPORT-OFF
 $68 constant WIDE-OFF
-\ $70 is vacant.
 $78 constant CAPTURE-OFF
 $80 constant CHECK-OFF
 $88 constant TAPE-INSTALL-OFF
@@ -81,11 +80,9 @@ $218 constant PAYLOAD-SPANS-OFF
 $220 constant PAYLOAD-REG-SAVE-OFF
 $228 constant PAYLOAD-DISARM-OFF
 
-\ The does> row's own value boundaries, the shape DIN-SLOT / DOUT-SLOT already
-\ give a definition's rows: the clause's term counts and the bundle slot of each
-\ term, so the native chain can place a does> row from per-cell facts instead of
-\ refusing every clause whose value is wider than a cell. $230 is the frozen
-\ certificate (checker-fetch-abi.f), which these rows are appended after.
+\ The does> row's own value boundaries: the clause's term counts and the bundle
+\ slot of each term. $230 is the frozen certificate, which these rows are
+\ appended after.
 $238 constant DOES-IN-N-OFF
 $240 constant DOES-OUT-N-OFF
 $248 constant DOES-IN-SLOT-OFF
@@ -107,26 +104,23 @@ $2C0 constant UNIT-IMPORT-OFF
 $2C8 constant TRUSTED-TICK-OFF
 $2D0 constant INIT-LAYOUT-OFF
 $2D8 constant FIELD-SPAN-OFF
-\ The engine's package scope was put back after a throw (src/habu/habu2.f LEVALREC;
-\ interpreter.f FRAME-RESTORE-SCOPE): the checker re-reads its package mirror from it.
+\ The engine's package scope was put back after a throw: the checker re-reads
+\ its package mirror from it.
 $2E0 constant PKG-RESYNC-OFF
 $2E8 constant VERIFY-FILE-OFF
 $2F0 constant VERIFY-RENDERS-OFF
-\ The `linear:` declarer's registrar (src/core/checker.f CHECKER-LINEAR): the
-\ owner of a DEFLINEAR type mints and erases its token, as `cast:` reaches
-\ CAST-OFF.
+\ The `linear:` declarer's registrar: the owner of a DEFLINEAR type mints and
+\ erases its token, as `cast:` reaches CAST-OFF.
 $300 constant LINEAR-OFF
 \ The source pre-pass's questions: what the load does with a top-level token,
-\ the report of a stretch deferred to the run (src/habu/verify-source.f
-\ TOP-TOKEN), what a TRUSTED: body's calls may do (SCAN-TRUSTED-BODY), and the
-\ report of a definition deferred to the run (REPORT-DEFERRED).
+\ the report of a stretch deferred to the run, what a TRUSTED: body's calls may
+\ do, and the report of a definition deferred to the run.
 $308 constant VERIFY-TOP-OFF
 $310 constant VERIFY-DEFERRED-OFF
 $318 constant VERIFY-REACH-OFF
-\ A recording symbol's own identity (src/core/checker.f CHECKER-SYM-IDENTITY):
-\ its package, which a consumer of the verifier shows with a definition; the
-\ tail it was recorded under, the verifier's key for an export's own record;
-\ and its visibility.
+\ A recording symbol's own identity: its package, which a consumer of the
+\ verifier shows with a definition; the tail it was recorded under, the
+\ verifier's key for an export's own record; and its visibility.
 $320 constant VERIFY-SYM-IDENTITY-OFF
 \ The returned span is borrowed from this checker instance. Every field is one
 \ cell; EFFECT is an offset plus one in its effect store, not a durable ID.
@@ -143,21 +137,19 @@ $348 constant EFFECT-STACK-STABLE-OFF
 $350 constant BINDING-WINDOW-OFF
 \ The source pre-pass borrows the selected deferred body token's source span.
 $358 constant VERIFY-DEFERRED-BODY-OFF
-\ Navigation (src/core/checker.f): the verifier arms a named declaration's
-\ spelling and location around its registrar (CHECKER-DECL-AT! ( name len
-\ visit start end -- ), CHECKER-DECL-AT-OFF) and
-\ receives the uses a scope's checks bind (CHECKER-WITH-USES).
+\ Navigation: the verifier arms a named declaration's spelling and location
+\ around its registrar, the arm taking ( name len visit start end -- ), and
+\ receives the uses a scope's checks bind.
 $360 constant VERIFY-DECL-ARM-OFF
 $368 constant VERIFY-DECL-DISARM-OFF
 $370 constant VERIFY-USES-OFF
 \ The verifier scopes its prospective compiler ordering answer to one body.
 $378 constant WITH-TICK-ORDER-OFF
-\ The source verifier's registrar (src/core/checker.f TRUST-DECL?): TRUST-DECL's
-\ registration, answering whether it retained the row, so the verifier reports
-\ only the declarations whose rows were kept (src/habu/verify-source.f
-\ DECL-SIGNATURE).
+\ The source verifier's registrar: TRUST-DECL's registration, answering whether
+\ it retained the row, so the verifier reports only the declarations whose
+\ rows were kept.
 $380 constant VERIFY-DECL-OFF
-\ $388 is the borrowed C2 transfer fact.
+\ The borrowed C2 transfer fact.
 $388 constant C2-STOW-OFF
 \ src/lib/error.f names this code E-COMP-BINDING; a retained build host loads
 \ this constants-only ABI before it can load the new error word.
@@ -166,8 +158,8 @@ $388 constant C2-STOW-OFF
 1 constant BOUND-KIND
 2 constant BOUND-SYM
 3 constant BOUND-EFFECT
-\ A BOUND-DICT row's record index (src/core/checker.f REC>INDEX), where every
-\ index from 0 names a record; a row of any other kind holds -1.
+\ A BOUND-DICT row's record index, where every index from 0 names a record; a
+\ row of any other kind holds -1.
 4 constant BOUND-RECORD
 5 constant BOUND-WID
 6 constant BOUND-ENTRY
@@ -175,12 +167,10 @@ $388 constant C2-STOW-OFF
 8 constant BOUND-PEND-IX
 9 constant BOUND-PEND-OFF
 10 constant BOUND-CTL
-\ Every resolved row's return effect is neutral (docs/forth.md "The
-\ return-stack clause") and this tree reads no cell 11, but a retained compiler
-\ built before that rule sizes these rows by BOUND-CELLS and refuses a call
-\ whose cell 11 holds 0: with the field deleted, a native build from such a
-\ host stopped at src/core/check-hook.f (E-COMP-OWNER). So the checker still
-\ writes 1 there for every resolved effect.
+\ Every resolved row's return effect is neutral and this tree reads no cell 11,
+\ but a retained compiler built before that rule sizes these rows by BOUND-CELLS
+\ and refuses a call whose cell 11 holds 0. So the checker still writes 1 there
+\ for every resolved effect.
 11 constant BOUND-NEUTRAL
 12 constant BOUND-DEAD
 13 constant BOUND-IN
@@ -193,41 +183,38 @@ $20000 constant BOUND-SEEDED
 2 constant BOUND-INTRINSIC
 3 constant BOUND-PENDING
 4 constant BOUND-UNRESOLVED
-\ A hook-less definition's declaration, recorded as its row without authority
-\ (src/core/checker.f CHECKER-DECLARED-ROW!).
+\ A hook-less definition's declaration, recorded as its row without authority.
 $390 constant DECLARED-ROW-OFF
 \ A refused definition's rows: the store cut back to the end ROWS-END-OFF read
-\ when the definition began (src/core/checker.f CHECKER-RETRACT-ROWS).
+\ when the definition began.
 $398 constant RETRACT-ROWS-OFF
 $3A0 constant ROWS-END-OFF
 \ The compile window: from the end of the compiler's scan to publication's last
-\ callback the checker refuses every store write with the code set here, 0
-\ when shut (src/core/checker.f CHECKER-WRITE-WINDOW!).
+\ callback the checker refuses every store write with the code set here,
+\ 0 when shut.
 $3A8 constant WRITE-WINDOW-OFF
-\ The does> clause record a replayed TRUSTED: definer publishes at its `;`
-\ (src/habu/verify-source.f TRUSTED-DEFINITION): its clause is declared, never
-\ checked, so VERIFY-SOURCE-DOES-OFF, which checks one first, is not this.
+\ The does> clause record a replayed TRUSTED: definer publishes at its `;`: its
+\ clause is declared, never checked, so VERIFY-SOURCE-DOES-OFF, which checks one
+\ first, is not this.
 $3B0 constant VERIFY-SOURCE-CLAUSE-OFF
-\ Completion (src/core/checker.f): the verifier arms the cursor the next body
-\ check fires at (CHECKER-CURSOR!), and asks which spellings bind at a
-\ top-level cursor (CHECKER-RESOLVE:EACH-VISIBLE). The position kind says how
+\ Completion: the verifier arms the cursor the next body check fires at, and
+\ asks which spellings bind at a top-level cursor. The position kind says how
 \ each spelling is selected: as a body token binds, as a top-level token binds,
-\ or as a body's named operand - a tick or `is` target - binds, which no local
-\ answers.
+\ or as a body's named operand - a tick or `is` target - binds, which
+\ no local answers.
 $3B8 constant VERIFY-CURSOR-OFF
 $3C0 constant VERIFY-EACH-VISIBLE-OFF
 \ The word the load's top-level find selects for a token, asked quietly:
 \ ( ptr u8 n -- sym eff1 ctl ), its symbol, its visible effect record's offset
 \ + 1 and its control word, all 0 when the load refuses the token or nothing
-\ live binds it (src/core/checker.f CHECKER-VERIFY-TOP-BINDING).
+\ live binds it.
 $3C8 constant VERIFY-TOP-BINDING-OFF
 \ The control word's facts its reader tests: the word may read the source after
 \ it, it is deferred, its string operand names a word (a `names:` row), a
-\ `generates:` row states the words it creates (src/core/checker.f
-\ CTL-GENERATES), its record's facts text says `core-op` (CTL-CORE-OP), and the
-\ field holding the id of an engine word (CTL-INTRINSIC), with the ids of
-\ `parses:` and `parses-through:`, the declarers of what such a word reads, and
-\ of `names:`.
+\ `generates:` row states the words it creates, its record's facts text says
+\ `core-op`, and the field holding the id of an engine word, with the ids of
+\ `parses:` and `parses-through:`, the declarers of what such a word reads,
+\ and of `names:`.
 $2000 constant BINDING-PARSES
 $10000 constant BINDING-DEFER
 $20000 constant BINDING-NAMES
@@ -243,16 +230,14 @@ $1F00 constant BINDING-ID-MASK
 2 constant VISIBLE-NAMED
 \ Whether a `trust` row is the run's to judge: ( ptr u8 n -- bool ), true when
 \ the row names no word in the wordlist its record lands in and a rendering
-\ statement read before it marked that wordlist (src/core/checker.f
-\ CHECKER-VERIFY-TRUST).
+\ statement read before it marked that wordlist.
 $3D0 constant VERIFY-TRUST-OFF
-\ The word a symbol is (src/core/checker.f CHECKER-SYM-SOURCE): ( n -- n ), for
-\ an export the symbol of the word it exports, through any re-exports;
-\ otherwise the symbol itself.
+\ The word a symbol is: ( n -- n ), for an export the symbol of the word it
+\ exports, through any re-exports; otherwise the symbol itself.
 $3D8 constant VERIFY-SYM-SOURCE-OFF
-\ A local's final width (src/core/checker.f LOCW-HW@): ( n -- n ), the cells
-\ the local of bind sequence n holds once its body is checked. The tape's
-\ K-LOCAL-DECL and K-LOCAL-REF events carry that sequence.
+\ A local's final width: ( n -- n ), the cells the local of bind sequence n
+\ holds once its body is checked. The tape's K-LOCAL-DECL and K-LOCAL-REF events
+\ carry that sequence.
 $3E0 constant LOCAL-WIDTH-OFF
 \ Prepared checker sections are selected before any FILE range publishes.
 $3E8 constant UNIT-PREPARE-BEGIN-OFF  \ ( -- )
@@ -282,10 +267,10 @@ CHECKER-OWNER-EXT:RECORD-CAPTURE-OFF constant RECORD-CAPTURE-OFF \ ( [ n -- n ] 
 CHECKER-OWNER-EXT:RECORD-SEED-OFF constant RECORD-SEED-OFF \ ( -- )
 CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
 CHECKER-OWNER-EXT:EXPORT-ACCEPT-OFF constant EXPORT-ACCEPT-OFF \ ( ptr u8 n n -- )
-\ Native multi-error recovery and diagnostics (src/compiler/native/checker-owner.f):
-\ the live checker answers whether this run reports every refusal and whether a
-\ refused declaration's recovery row was used, and it owns diagnostic emission
-\ even while a baked compiler asks it.
+\ Native multi-error recovery and diagnostics: the live checker answers whether
+\ this run reports every refusal and whether a refused declaration's
+\ recovery row was used, and it owns diagnostic emission even while a baked
+\ compiler asks it.
 CHECKER-OWNER-EXT:MULTI-ERROR-OFF constant MULTI-ERROR-OFF \ ( -- bool )
 CHECKER-OWNER-EXT:RESET-REPORT-OFF constant RESET-REPORT-OFF \ ( -- )
 CHECKER-OWNER-EXT:JSON-REPORTED-OFF constant JSON-REPORTED-OFF \ ( -- bool )
