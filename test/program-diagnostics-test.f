@@ -151,7 +151,8 @@ package PROGRAM-DIAGNOSTICS
    s" test/native-multi-error-recovery.f" s" habu: in bad:" DIAGNOSTIC
    s" native-multi-error-recovery.f: at 'c@' expected: ptr u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
-   s" test/program-diagnostic-using.f" s" hb: using: unknown package:" DIAGNOSTIC
+   s" test/program-diagnostic-using.f" s" E-USING-UNKNOWN habu: " DIAGNOSTIC
+   s" using: unknown package: NOPE-PKG" s" test/program-diagnostic-using.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-export.f" s" habu: in xpu3:" DIAGNOSTIC
    s" test/program-diagnostic-lower.f" s" habu: in lc-named-bad:" DIAGNOSTIC ;
 

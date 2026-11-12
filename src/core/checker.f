@@ -29583,22 +29583,14 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    data-base PEND-CELL + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
    if nm BYTE-LINE else p BYTE-LINE then ;
 
-\ ` at <path>` while a source file is open, then `:<line>` under
-\ SRCLOC:FILE-BUFFER?, as the tail writes it; nothing on stdin or at the REPL.
-: AT-SOURCE ( -- )
-   data-base SRCLOC:PATHLEN-CELL + @ {: u:n :}
-   u 0= if exit then
-   s"  at " ERROR-TEXT:TYPE
-   SRC-PATH @ u ERROR-TEXT:TYPE
-   SRCLOC:FILE-BUFFER? 0= if exit then
-   s" :" ERROR-TEXT:TYPE
-   NAME-LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 public
 : REFUSE-DUPLICATE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   s" E-DUPLICATE-DEFINITION" TOP-SITE-PATH$
+   SRCLOC:FILE-BUFFER? if NAME-LINE else 0 then
+   ERROR-TEXT:PREFIX
    s" duplicate definition: " ERROR-TEXT:TYPE
-   ERROR-TEXT:TYPE
-   AT-SOURCE
-   S\" \n" ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  S\" \n" ERROR-TEXT:TYPE
    DUP-RC throw ;
 ;package
 

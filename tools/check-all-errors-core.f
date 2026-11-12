@@ -258,12 +258,9 @@ variable CA-COMPOSE-LABEL-U
 
 \ The words the engine's wall writes under --load, for the name and its line.
 : CA-PROSE-DUP-AT ( ptr u8 n n -- ) {: na:ptr nu:n line:n :}
-   CA-JSON-WRITER
-   s" duplicate definition: " JSON:WRITE-RAW
-   na nu JSON:WRITE-RAW
-   s"  at " JSON:WRITE-RAW
-   CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW
-   s" :" JSON:WRITE-RAW line JSON:WRITE-U drop ;
+   CA-JSON-WRITER  s" E-DUPLICATE-DEFINITION habu: " JSON:WRITE-RAW
+   CA-FILE-A@ CA-FILE-U @ JSON:WRITE-RAW  s" :" JSON:WRITE-RAW  line JSON:WRITE-U
+   s" : duplicate definition: " JSON:WRITE-RAW  na nu JSON:WRITE-RAW drop ;
 
 : CA-DUP-AT ( n n -- ) {: at:n u:n :}
    CA-SRC-A@ at BYTE-ORIGIN {: line:n col:n :}

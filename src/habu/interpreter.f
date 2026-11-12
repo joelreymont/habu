@@ -360,12 +360,16 @@ create NL NEWLINE c,
    TOKEN$ UNDEFINED-NAME ;
 
 : AMBIGUOUS ( -- )
-   s" hb: ambiguous bare word resolves in multiple used packages: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:USING-AMBIGUOUS THROW-AT ;
+   s" E-USING-AMBIGUOUS" REFUSAL
+   s" ambiguous bare word resolves in multiple used packages: " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   ENGINE-ERROR:USING-AMBIGUOUS throw ;
 
 : SHADOWED ( -- )
-   s" hb: bare word a global and a used package both export: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:USING-SHADOW-GLOBAL THROW-AT ;
+   s" E-USING-SHADOW-GLOBAL" REFUSAL
+   s" bare word a global and a used package both export: " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   ENGINE-ERROR:USING-SHADOW-GLOBAL throw ;
 
 \ No program code runs after the text: the exit hook is cleared before `die`,
 \ which would otherwise call it.
@@ -880,20 +884,32 @@ $4000 constant PKG-CODE-RESERVE
 : PKG-INDEX ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
 : PKG-FAIL ( n -- )
-   TOKEN$ ERROR-TEXT:TYPE THROW-AT ;
+   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  throw ;
+
+: PKG-CONTEXT-FAIL ( -- )
+   s" E-PKG-CONTEXT" REFUSAL  PKG-RC-CONTEXT PKG-FAIL ;
+
+: PKG-DUPLICATE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   s" E-DUPLICATE-DEFINITION" REFUSAL
+   s" duplicate definition: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   PKG-RC-DUPLICATE throw ;
 
 \ With the input at its end the token cells still hold the keyword, which the
 \ refusal names.
 : PKG-NAME ( -- )
    TOKEN if exit then
+   s" E-MISSING-NAME" REFUSAL
    RC-NO-NAME PKG-FAIL ;
 
 \ The refusal names what DEF-TKA and DEF-TKL hold, which `package` never
 \ writes: for it, what the last definition or `export` left there.
 : PKG-DICT-FULL ( -- )
-   s" hb: dictionary full at: " ERROR-TEXT:TYPE
+   s" E-DICTIONARY-FULL" REFUSAL
+   s" dictionary full at: " ERROR-TEXT:TYPE
    DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ ERROR-TEXT:TYPE
-   PKG-RC-DICT-FULL THROW-AT ;
+   NL 1 ERROR-TEXT:TYPE  PKG-RC-DICT-FULL throw ;
 
 : PKG-DICT-ROOM ( -- )
    ndict@ DICT-CAP < if exit then
@@ -920,8 +936,9 @@ $4000 constant PKG-CODE-RESERVE
 
 : PKG-CODE-ROOM-AFTER ( ptr u8 n n -- ) {: a:ptr u:n used:n :}
    u used PKG-FITS-AFTER? if exit then
-   s" hb: code space full at: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE PKG-RC-CODE-FULL THROW-AT ;
+   s" E-CODE-SPACE-FULL" REFUSAL
+   s" code space full at: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  PKG-RC-CODE-FULL throw ;
 
 : PKG-CODE-ROOM ( ptr u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
 
@@ -1052,15 +1069,14 @@ public
    PKG-DICT-ROOM
    a u PKG-CODE-ROOM
    a u BOOT:NAMESPACE-WL WL-PROBE XREF-FOUND? if
-      s" duplicate definition: " ERROR-TEXT:TYPE
-      a u ERROR-TEXT:TYPE PKG-RC-DUPLICATE THROW-AT
+      a u PKG-DUPLICATE
    then
    a u own namespace-record ;
 private
 
 : PKG-CONTEXT ( n -- ) {: rc:n :}
    rc 0= if exit then
-   rc E-PKG-CONTEXT = if PKG-RC-CONTEXT PKG-FAIL then
+   rc E-PKG-CONTEXT = if PKG-CONTEXT-FAIL then
    rc throw ;
 
 \ Inside package A the token cells name `A:<token>`.
@@ -1073,7 +1089,7 @@ private
    TASK-GUARD
    [: CHECKER-RESOLVE:PART-GUARD ;] catch PKG-CONTEXT
    PKG-NAME
-   TOKEN$ 0 COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
+   TOKEN$ 0 COLON-AT 0 >= if PKG-CONTEXT-FAIL then
    ['] PKG-PATH catch PKG-CONTEXT
    PKG-POLICY-GUARD
    NCOMP-DISPATCH:DECL-PACKAGE-OFF PKG-NOTIFY-NAME
@@ -1086,13 +1102,13 @@ private
 
 : PKG-SECTION ( n n -- ) {: cell:n off:n :}
    TASK-GUARD
-   cell CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
+   cell CELL@ 0= if PKG-CONTEXT-FAIL then
    off PKG-NOTIFY
    cell CELL@ set-current ;
 
 : PKG-END-PACKAGE ( -- )
    TASK-GUARD
-   PKG-PUB-CELL CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
+   PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
    NCOMP-DISPATCH:DECL-END-PACKAGE-OFF PKG-NOTIFY
    PKG-PARENT-CELL CELL@ set-current
    ENCLOSING:REC CELL@ {: outer:n :}
@@ -1102,7 +1118,7 @@ private
 
 : PKG-SEAL ( -- )
    TASK-GUARD
-   PKG-PUB-CELL CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
+   PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
    PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEAL ;
 
 : PKG-WID-SEALED? ( n -- bool ) {: wid:n :}
@@ -1136,20 +1152,23 @@ private
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
 
 : PKG-USING-FAIL ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
-   a u ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE rc THROW-AT ;
+   a u ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE NL 1 ERROR-TEXT:TYPE rc throw ;
 
 : PKG-USED-WID ( -- n )
    TOKEN 0= if
-      s" hb: using: missing package name" ERROR-TEXT:TYPE
-      ENGINE-ERROR:USING-NO-NAME THROW-AT
+      s" E-MISSING-NAME" REFUSAL
+      s" using: missing package name" ERROR-TEXT:TYPE
+      NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:USING-NO-NAME throw
    then
    TOKEN$ 0 COLON-AT 0 >= if
-      s" hb: using: package name must not contain ':': "
+      s" E-USING-BAD-NAME" REFUSAL
+      s" using: package name must not contain ':': "
       ENGINE-ERROR:USING-BAD-NAME PKG-USING-FAIL
    then
    TOKEN$ CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row XREF-FOUND? 0= if
-      s" hb: using: unknown package: " ENGINE-ERROR:USING-UNKNOWN PKG-USING-FAIL
+      s" E-USING-UNKNOWN" REFUSAL
+      s" using: unknown package: " ENGINE-ERROR:USING-UNKNOWN PKG-USING-FAIL
    then
    row XREF-PKG-PUBLIC ;
 
@@ -1162,7 +1181,8 @@ variable USE-FLOOR
    PKG-USED-WID {: wid:n :}
    USE-DEPTH-CELL CELL@ {: d:n :}
    d USE-MAX >= if
-      s" hb: using: too many concurrent usings: "
+      s" E-USING-OVERFLOW" REFUSAL
+      s" using: too many concurrent usings: "
       ENGINE-ERROR:USING-OVERFLOW PKG-USING-FAIL
    then
    d USE-FLOOR @ < if d USE-FLOOR ! then
@@ -1179,16 +1199,19 @@ variable USE-FLOOR
    TASK-GUARD
    USE-DEPTH-CELL CELL@ {: d:n :}
    d 0= if
-      s" hb: ;using without an open using" ERROR-TEXT:TYPE
-      ENGINE-ERROR:USING-UNBALANCED THROW-AT
+      s" E-USING-UNBALANCED" REFUSAL
+      s" ;using without an open using" ERROR-TEXT:TYPE
+      NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:USING-UNBALANCED throw
    then
    PKG-PUB-CELL CELL@ 0<>  d USE-PKG-SAVE-CELL CELL@ <=  and if
-      s" hb: ;using would close a using opened outside the package" ERROR-TEXT:TYPE
-      ENGINE-ERROR:USING-OUTER THROW-AT
+      s" E-USING-OUTER" REFUSAL
+      s" ;using would close a using opened outside the package" ERROR-TEXT:TYPE
+      NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:USING-OUTER throw
    then
    d USE-FLOOR @ <= if
-      s" hb: ;using would close a using opened outside the file" ERROR-TEXT:TYPE
-      ENGINE-ERROR:USING-OUTER THROW-AT
+      s" E-USING-OUTER" REFUSAL
+      s" ;using would close a using opened outside the file" ERROR-TEXT:TYPE
+      NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:USING-OUTER throw
    then
    d 1- USE-DEPTH-CELL CELL! ;
 
@@ -1204,9 +1227,10 @@ variable USE-FLOOR
 \ name.
 : PKG-EXPORT-SOURCE ( -- ptr n )
    TOKEN$ FIND-SCOPE {: src:ptr :}
-   src XREF-FOUND? 0= if RC-REJECT PKG-FAIL then
+   src XREF-FOUND? 0= if s" E-EXPORT-UNDEFINED" REFUSAL  RC-REJECT PKG-FAIL then
    src XREF-FLAGS DNAME-INT and 0<> if
-      s" hb: internal engine word: " REFUSE
+      s" E-EXPORT-UNSAFE" REFUSAL
+      s" internal engine word: " REFUSE
    then
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
@@ -1234,8 +1258,7 @@ variable USE-FLOOR
    ndict@ 1+ DICT-CAP < 0= if PKG-DICT-FULL then
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
    a u get-current WL-PROBE XREF-FOUND? if
-      s" duplicate definition: " ERROR-TEXT:TYPE
-      a u ERROR-TEXT:TYPE PKG-RC-DUPLICATE THROW-AT
+      a u PKG-DUPLICATE
    then ;
 
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
@@ -1257,8 +1280,7 @@ public
    PKG-DICT-ROOM
    a u PKG-CODE-ROOM
    a u wid WL-PROBE XREF-FOUND? if
-      s" duplicate definition: " ERROR-TEXT:TYPE
-      a u ERROR-TEXT:TYPE PKG-RC-DUPLICATE THROW-AT
+      a u PKG-DUPLICATE
    then
    a u src wid alias-record ;
 private
@@ -1278,7 +1300,7 @@ private
    PKG-DICT-ROOM
    PKG-TAIL {: ta:ptr tu:n :}
    ta tu get-current WL-PROBE XREF-FOUND? if
-      s" duplicate definition: " ERROR-TEXT:TYPE PKG-RC-DUPLICATE PKG-FAIL
+      TOKEN$ PKG-DUPLICATE
    then
    src PKG-CLAUSE {: clause:n :}
    clause 0 >= if clause PKG-CLAUSE-ROOM then
@@ -1642,7 +1664,7 @@ public
    a u DEF-WALL
    PKG-DICT-ROOM
    a u wid WL-PROBE XREF-FOUND? if
-      s" duplicate definition: " ERROR-TEXT:TYPE PKG-RC-DUPLICATE PKG-FAIL
+      TOKEN$ PKG-DUPLICATE
    then
    a u PKG-CODE-ROOM
    SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if a u SEALED-FAIL then
@@ -1851,9 +1873,10 @@ private
          size stemu sufu + = if
             name stemu stem stemu STR=CI
             name stemu + sufu suffix sufu STR=CI and if
+               s" E-DUPLICATE-DEFINITION" REFUSAL
                s" duplicate definition: " ERROR-TEXT:TYPE
                stem stemu ERROR-TEXT:TYPE suffix sufu ERROR-TEXT:TYPE
-               PKG-RC-DUPLICATE THROW-AT
+               NL 1 ERROR-TEXT:TYPE  PKG-RC-DUPLICATE throw
             then
          then
       then

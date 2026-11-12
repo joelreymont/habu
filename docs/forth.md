@@ -155,11 +155,11 @@ private
 - In package A's private section, under no `using` A opened, in the file or
   evaluated string A is open in, `package B` opens B as a part of A, whose row
   is named by the path `A:B`. Anywhere else inside a package `package` is
-  refused (`package at <loc>`, rc 75): in a public section, under a using the
+  refused (`E-PKG-CONTEXT habu: <loc>: package`, rc 75): in a public section, under a using the
   package opened, inside a part, and in a file or string that began inside the
   package, so a file required inside a package cannot open one. A package a
   file or string leaves open is its includer's from then on. A path of 256
-  bytes or more is refused by its name (`B at <loc>`, rc 75). `;package` of a
+  bytes or more is refused by its name (`E-PKG-CONTEXT habu: <loc>: B`, rc 75). `;package` of a
   part reopens A in its private section with A's using floor. Inside A and its
   parts a qualifier `B:X` in a word or a family type, `using B` and a qualified
   definition `: B:Q` name the part `A:B` first, then a top-level package B,
@@ -194,7 +194,7 @@ private
   into it then exits 84 with `E-SEALED-PACKAGE habu: <file>:<line>: '<name>' is sealed`,
   naming the package or word, and `tools/check.f` refuses it as
   `E-SEALED-PACKAGE` at the name. Outside a package it is refused:
-  `seal-package at <loc>`, rc 75. Like `public` it names no word: in a body
+  `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75. Like `public` it names no word: in a body
   or after `'` it is `E-UNDEFINED`. Only `seal-package` seals: an engine or
   application package without it stays reopenable.
 - **Qualify only across package boundaries.** In `NAME`'s own files reopen the

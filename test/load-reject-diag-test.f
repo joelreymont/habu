@@ -628,8 +628,8 @@ variable RC
    s" the checker hook places a checker-only duplicate in a slice at its line" T-LABEL
    BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\nparse-name x drop 24 + 30 evaluate\n: LRDREP:MAKE ( n -- n ) 1 + ;\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" duplicate definition: LRDREP:MAKE at " SB-APPEND  BODY$ SB-APPEND
-   s" :4" SB-APPEND  10 SB-APPEND-C
+   SB-RESET  s" E-DUPLICATE-DEFINITION habu: " SB-APPEND  BODY$ SB-APPEND
+   s" :4: duplicate definition: LRDREP:MAKE" SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ CONTAINS? TTRUE
    EXITED @ TTRUE
    RC @ DUP-RC T= ;
@@ -675,8 +675,8 @@ variable RC
    s" an evaluated checker-only duplicate names its file and no line" T-LABEL
    BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" duplicate definition: LRDREP:MAKE at " SB-APPEND  BODY$ SB-APPEND
-   10 SB-APPEND-C
+   SB-RESET  s" E-DUPLICATE-DEFINITION habu: " SB-APPEND  BODY$ SB-APPEND
+   s" : duplicate definition: LRDREP:MAKE" SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ CONTAINS? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
