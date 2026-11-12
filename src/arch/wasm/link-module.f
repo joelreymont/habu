@@ -235,7 +235,6 @@ public
    false GOING
    KERNEL? @ if s" link: a kernel build writes no program" 74 die then
    ENGINE? @ if s" link: a Wasm target builds no engine" 74 die then
-   0 CHECK:PLACE-FACTS
    APP-ENTRY:XT-CELL SPACE-AT @ {: entry:n :}
    entry 0= if s" link: the build stored no entry for the program" 74 die then
    ROUTINES REACH-DATA

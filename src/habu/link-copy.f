@@ -7,7 +7,7 @@
 \ A stripped program keeps the data of the files it reaches, whole files: unit r,
 \ r < BUILT-N, is the file whose first BUILT row is r, each of its pieces; unit
 \ BUILT-N the header data [BASE, OPEN-DP); unit BUILT-N + 1 the data no piece
-\ holds, the build body's and the facts texts. The header is live, and a header
+\ holds, the build body's. The header is live, and a header
 \ address cell is read once no file stored it or a live one did: an address a
 \ file stored there is that file's, as its object carries it. The entry cell is
 \ read whatever stored it: it is the program's root. A read xt cell roots the

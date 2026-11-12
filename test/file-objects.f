@@ -387,13 +387,11 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the map lists K as a word the build loaded" LABEL
    PROG-1 u s"  K word loaded " CONTAINS? TTRUE ;
 
-\ A file's texts and the body's are placed, and a later file's literal finds an earlier file's text.
+\ A file's texts are placed, and a later file's literal finds an earlier file's text.
 : CHECK-FACTS ( -- )
    s" A" WHICH!
    s" HI's record holds its facts text" LABEL
    s\" \nHI\n" s" ( -- ) " FACTS-OF? TTRUE
-   s" the body's word's record holds its facts text" LABEL
-   s\" \nFILE-OBJECTS-BODY-SUM\n" s" ( n n -- n ) " FACTS-OF? TTRUE
    s" main.f's literal lies at HI's text" LABEL
    STATE-A STATE-A-U @ s\" shared -1 \n" CONTAINS? TTRUE ;
 

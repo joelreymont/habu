@@ -521,13 +521,14 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ Link the open space's program and write it, signed, to the path; the caller
-\ first stores its entry. The facts texts the build's body held lie after every
-\ file, so no file's literal can name one. The program goes to a sibling renamed
-\ over the path: macOS kills a signed program rewritten in place.
+\ first stores its entry. Only an engine's records read facts texts, so only an
+\ engine's link places those the build's body held, after every file, where no
+\ file's literal can name one. The program goes to a sibling renamed over the
+\ path: macOS kills a signed program rewritten in place.
 : WRITE-PROGRAM ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    OBJECT-KIND
-   0 CHECK:PLACE-FACTS
+   ENGINE? @ if 0 CHECK:PLACE-FACTS then
    s" ENTRY-CELL" ARM64:SYM {: entry:n :}
    entry SPACE-AT @ 0= if
       s" link: the build stored no entry for the program" 74 die

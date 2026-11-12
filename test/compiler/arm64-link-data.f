@@ -105,13 +105,11 @@ DYNAMIC-BUFFER SECOND-LINK u8
    FIRST-LINK-RELEASE SECOND-LINK-RELEASE ;
 
 
-\ The first link allots in the build's space, so main's expectations are taken
-\ after it.
 : BODY ( -- )
    FIXTURE
-   s" LD-OVER" STORE-ENTRY  s" over" PROG$ LINKER:WRITE
    OVER-EXPECT
    s" LD-DIST LD-HERE !" evaluate-closed
+   s" LD-OVER" STORE-ENTRY  s" over" PROG$ LINKER:WRITE
    s" LD-MAIN" STORE-ENTRY  s" main" PROG$ LINKER:WRITE
    SECOND-CASE ;
 
