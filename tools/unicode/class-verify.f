@@ -26,6 +26,8 @@ $DFFF constant SURROGATE-LAST
 32 constant MARK-BIT
 64 constant OPEN-BIT
 128 constant CLOSE-BIT
+256 constant MATH-SYMBOL-BIT
+512 constant OTHER-SYMBOL-BIT
 111 constant OPEN-TYPE
 99 constant CLOSE-TYPE
 10 constant LINE-FEED
@@ -33,7 +35,8 @@ $DFFF constant SURROGATE-LAST
 35 constant HASH
 46 constant DOT
 
-TYPED-VARIABLE TRUTH ptr u8
+\ Each scalar's class bits.
+DYNAMIC-BUFFER TRUTH n
 \ Each scalar's Bidi_Paired_Bracket, zero for none.
 DYNAMIC-BUFFER PAIR-TRUTH n
 variable VERIFY-PENDING
@@ -92,6 +95,12 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 : CATEGORY-SECOND? ( n ptr u8 n -- bool ) {: c:n allowed:ptr allowedu:n :}
    allowed allowedu c BYTE-INDEX allowedu < ;
 
+: SYMBOL-BIT ( n -- n ) {: c:n :}
+   c s" mcko" CATEGORY-SECOND? 0= if E-MISMATCH throw then
+   c 109 = if MATH-SYMBOL-BIT exit then
+   c 111 = if OTHER-SYMBOL-BIT exit then
+   0 ;
+
 : CLASS-BIT ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 2 <> if E-MISMATCH throw then
    a c@ 76 = if
@@ -104,7 +113,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    then
    a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-MISMATCH throw then MARK-BIT exit then
    a c@ 80 = if a 1+ c@ s" cdseifo" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
-   a c@ 83 = if a 1+ c@ s" mcko" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
+   a c@ 83 = if a 1+ c@ SYMBOL-BIT exit then
    a c@ 90 = if a 1+ c@ s" slp" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
    a c@ 67 = if a 1+ c@ s" cfson" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
    E-MISMATCH throw ;
@@ -121,7 +130,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : TRUTH+ ( n n -- ) {: cp:n bit:n :}
    cp SCALAR {: safe:n :}
-   TRUTH @ safe + dup c@ bit or swap c! ;
+   safe TRUTH dup @ bit or swap ! ;
 
 : MARK-RANGE-AT ( n n n -- ) {: cp:n hi:n bit:n :}
    cp begin dup hi <= while
@@ -281,29 +290,36 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGES CHECK-TABLE
    UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGES CHECK-TABLE
    UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGES CHECK-TABLE
-   UNICODE-CLASS-DATA:MARK-RANGES CHECK-TABLE ;
+   UNICODE-CLASS-DATA:MARK-RANGES CHECK-TABLE
+   UNICODE-CLASS-DATA:MATH-SYMBOL-RANGES CHECK-TABLE
+   UNICODE-CLASS-DATA:OTHER-SYMBOL-RANGES CHECK-TABLE ;
 
 : TRUTH-BIT? ( n n -- bool ) {: cp:n bit:n :}
-   TRUTH @ cp + c@ bit and 0= 0= ;
+   cp TRUTH @ bit and 0= 0= ;
 
 : SAME-BOOL? ( bool bool -- bool )
    if else 0= then ;
 
+\ Throws E-MISMATCH unless the source truth and the table answer agree.
+: AGREE ( bool bool -- ) SAME-BOOL? 0= if E-MISMATCH throw then ;
+
 : CHECK-CLASSES ( n -- ) {: cp:n :}
-   cp LETTER-BIT TRUTH-BIT? cp UNICODE-CLASS:LETTER? SAME-BOOL? 0= if E-MISMATCH throw then
-   cp NUMBER-BIT TRUTH-BIT? cp UNICODE-CLASS:NUMBER? SAME-BOOL? 0= if E-MISMATCH throw then
-   cp SPACE-BIT TRUTH-BIT? cp UNICODE-CLASS:WHITE-SPACE? SAME-BOOL? 0= if E-MISMATCH throw then
-   cp ALPHABETIC-BIT TRUTH-BIT? cp UNICODE-CLASS:ALPHABETIC? SAME-BOOL? 0= if E-MISMATCH throw then
-   cp UPPERCASE-BIT TRUTH-BIT? cp UNICODE-CLASS:UPPERCASE? SAME-BOOL? 0= if E-MISMATCH throw then
-   cp MARK-BIT TRUTH-BIT? cp UNICODE-CLASS:MARK? SAME-BOOL? 0= if E-MISMATCH throw then ;
+   cp LETTER-BIT TRUTH-BIT? cp UNICODE-CLASS:LETTER? AGREE
+   cp NUMBER-BIT TRUTH-BIT? cp UNICODE-CLASS:NUMBER? AGREE
+   cp SPACE-BIT TRUTH-BIT? cp UNICODE-CLASS:WHITE-SPACE? AGREE
+   cp ALPHABETIC-BIT TRUTH-BIT? cp UNICODE-CLASS:ALPHABETIC? AGREE
+   cp UPPERCASE-BIT TRUTH-BIT? cp UNICODE-CLASS:UPPERCASE? AGREE
+   cp MARK-BIT TRUTH-BIT? cp UNICODE-CLASS:MARK? AGREE
+   cp MATH-SYMBOL-BIT TRUTH-BIT? cp UNICODE-CLASS:MATH-SYMBOL? AGREE
+   cp OTHER-SYMBOL-BIT TRUTH-BIT? cp UNICODE-CLASS:OTHER-SYMBOL? AGREE ;
 
 : PAIR-TRUTH@ ( n -- n ) {: cp:n :}
    cp PAIR-TRUTH @ {: pair:n :}
    pair 0= if cp else pair then ;
 
 : CHECK-BRACKETS ( n -- ) {: cp:n :}
-   cp OPEN-BIT TRUTH-BIT? cp UNICODE-CLASS:OPEN-BRACKET? SAME-BOOL? 0= if E-MISMATCH throw then
-   cp CLOSE-BIT TRUTH-BIT? cp UNICODE-CLASS:CLOSE-BRACKET? SAME-BOOL? 0= if E-MISMATCH throw then
+   cp OPEN-BIT TRUTH-BIT? cp UNICODE-CLASS:OPEN-BRACKET? AGREE
+   cp CLOSE-BIT TRUTH-BIT? cp UNICODE-CLASS:CLOSE-BRACKET? AGREE
    cp PAIR-TRUTH@ cp UNICODE-CLASS:PAIRED-BRACKET <> if E-MISMATCH throw then ;
 
 : CHECK-SCALAR ( n -- )
@@ -312,7 +328,9 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 : CHECK-NON-SCALAR ( n -- ) {: cp:n :}
    cp UNICODE-CLASS:OPEN-BRACKET? if E-MISMATCH throw then
    cp UNICODE-CLASS:CLOSE-BRACKET? if E-MISMATCH throw then
-   cp UNICODE-CLASS:PAIRED-BRACKET cp <> if E-MISMATCH throw then ;
+   cp UNICODE-CLASS:PAIRED-BRACKET cp <> if E-MISMATCH throw then
+   cp UNICODE-CLASS:MATH-SYMBOL? if E-MISMATCH throw then
+   cp UNICODE-CLASS:OTHER-SYMBOL? if E-MISMATCH throw then ;
 
 : CHECK-ALL-SCALARS ( -- )
    0 begin dup SCALAR-MAX <= while
@@ -332,7 +350,7 @@ public
 
 : VERIFY ( -- )
    CHECK-DIGESTS
-   SCALAR-COUNT MEM-ALLOC-BYTES drop TRUTH !
+   SCALAR-COUNT TRUTH-RESERVE
    SCALAR-COUNT PAIR-TRUTH-RESERVE
    LOAD-UNICODE-TRUTH
    LOAD-PROPERTY-TRUTH

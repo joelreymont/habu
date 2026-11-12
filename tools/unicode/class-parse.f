@@ -28,6 +28,8 @@ $DFFF constant SURROGATE-LAST
 3 constant CLASS-LETTER-NUMBER
 4 constant CLASS-UPPERCASE
 5 constant CLASS-MARK
+6 constant CLASS-MATH-SYMBOL
+7 constant CLASS-OTHER-SYMBOL
 111 constant OPEN-TYPE
 99 constant CLOSE-TYPE
 
@@ -55,6 +57,12 @@ variable OTHER-UPPER-N
 RANGE-CAPACITY TYPED-BUFFER MARK-LO n
 RANGE-CAPACITY TYPED-BUFFER MARK-HI n
 variable MARK-N
+RANGE-CAPACITY TYPED-BUFFER MATH-LO n
+RANGE-CAPACITY TYPED-BUFFER MATH-HI n
+variable MATH-N
+RANGE-CAPACITY TYPED-BUFFER SO-LO n
+RANGE-CAPACITY TYPED-BUFFER SO-HI n
+variable SO-N
 RANGE-CAPACITY TYPED-BUFFER OPEN-CP n
 RANGE-CAPACITY TYPED-BUFFER OPEN-PAIR n
 variable OPEN-N
@@ -113,6 +121,12 @@ variable PENDING-NAME-U
 : CATEGORY-SECOND? ( n ptr u8 n -- bool ) {: c:n allowed:ptr allowedu:n :}
    allowed allowedu c BYTE-INDEX allowedu < ;
 
+: SYMBOL-CLASS ( n -- n ) {: c:n :}
+   c s" mcko" CATEGORY-SECOND? 0= if E-SYNTAX throw then
+   c 109 = if CLASS-MATH-SYMBOL exit then
+   c 111 = if CLASS-OTHER-SYMBOL exit then
+   0 ;
+
 : CATEGORY ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 2 <> if E-SYNTAX throw then
    a c@ 76 = if
@@ -125,7 +139,7 @@ variable PENDING-NAME-U
    then
    a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-SYNTAX throw then CLASS-MARK exit then
    a c@ 80 = if a 1+ c@ s" cdseifo" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
-   a c@ 83 = if a 1+ c@ s" mcko" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
+   a c@ 83 = if a 1+ c@ SYMBOL-CLASS exit then
    a c@ 90 = if a 1+ c@ s" slp" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
    a c@ 67 = if a 1+ c@ s" cfson" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
    E-SYNTAX throw ;
@@ -166,6 +180,14 @@ variable PENDING-NAME-U
    then
    class CLASS-MARK = if
       lo hi 0 MARK-LO 0 MARK-HI MARK-N RANGE-APPEND
+      exit
+   then
+   class CLASS-MATH-SYMBOL = if
+      lo hi 0 MATH-LO 0 MATH-HI MATH-N RANGE-APPEND
+      exit
+   then
+   class CLASS-OTHER-SYMBOL = if
+      lo hi 0 SO-LO 0 SO-HI SO-N RANGE-APPEND
       exit
    then
    class CLASS-LETTER-NUMBER = if
@@ -326,11 +348,13 @@ public
    0 LETTER-N !
    0 NUMBER-N !
    0 SPACE-N ! 0 NL-N ! 0 OTHER-N ! 0 UPPER-N ! 0 OTHER-UPPER-N ! 0 MARK-N !
+   0 MATH-N ! 0 SO-N !
    0 OPEN-N ! 0 CLOSE-N ! ;
 
 : PARSE-UNICODE ( ptr u8 n -- )
    FALSE-VALUE UNICODE-READY !
    0 LETTER-N ! 0 NUMBER-N ! 0 NL-N ! 0 UPPER-N ! 0 MARK-N !
+   0 MATH-N ! 0 SO-N !
    -1 SOURCE-PREV ! FALSE-VALUE PENDING !
    SCAN-UNICODE
    TRUE-VALUE UNICODE-READY ! ;
@@ -388,6 +412,16 @@ public
 
 : MARK-RANGE@ ( n -- n n )
    0 MARK-LO 0 MARK-HI MARK-N @ RANGE@ ;
+
+: MATH-SYMBOL-COUNT ( -- n ) MATH-N @ ;
+
+: MATH-SYMBOL-RANGE@ ( n -- n n )
+   0 MATH-LO 0 MATH-HI MATH-N @ RANGE@ ;
+
+: OTHER-SYMBOL-COUNT ( -- n ) SO-N @ ;
+
+: OTHER-SYMBOL-RANGE@ ( n -- n n )
+   0 SO-LO 0 SO-HI SO-N @ RANGE@ ;
 
 : OPEN-BRACKET-COUNT ( -- n ) OPEN-N @ ;
 : CLOSE-BRACKET-COUNT ( -- n ) CLOSE-N @ ;

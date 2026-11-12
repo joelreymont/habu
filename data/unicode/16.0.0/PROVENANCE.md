@@ -13,11 +13,6 @@ The generator reads only the three authoritative property files below. The
 | `BidiBrackets.txt` | `https://www.unicode.org/Public/16.0.0/ucd/BidiBrackets.txt` | `b8f32554c6f658821fb0ee742d21c5b1f2086b9bf13071fed04894b022f93d67` |
 | `LICENSE.txt` | `https://www.unicode.org/license.txt` | `e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96` |
 
-The generated runtime artifact `src/lib/unicode/class-data.f` contains 677
-canonical letter ranges, 144 number ranges, 10 whitespace ranges, 12
-letter-number ranges, 250 Other_Alphabetic ranges, 651 uppercase-letter ranges,
-5 Other_Uppercase ranges, 321 mark ranges, and 128 brackets with their pairs:
-64 opening and 64 closing.
 The generator verifies all three input digests before parsing and writes the
 table atomically. The independent verifier checks every scalar against the source
 properties and compares the table with a fresh byte-identical regeneration.

@@ -64,6 +64,16 @@ public
    cp SCALAR? 0= if false exit then
    cp UNICODE-CLASS-DATA:MARK-RANGES RANGE-SEARCH ;
 
+\ Unicode General_Category Sm.
+: MATH-SYMBOL? ( n -- bool ) {: cp:n :}
+   cp SCALAR? 0= if false exit then
+   cp UNICODE-CLASS-DATA:MATH-SYMBOL-RANGES RANGE-SEARCH ;
+
+\ Unicode General_Category So.
+: OTHER-SYMBOL? ( n -- bool ) {: cp:n :}
+   cp SCALAR? 0= if false exit then
+   cp UNICODE-CLASS-DATA:OTHER-SYMBOL-RANGES RANGE-SEARCH ;
+
 : WHITE-SPACE? ( n -- bool ) {: cp:n :}
    cp SCALAR? 0= if false exit then
    cp UNICODE-CLASS-DATA:WHITE-SPACE-RANGES RANGE-SEARCH ;
