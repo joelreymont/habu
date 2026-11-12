@@ -247,7 +247,9 @@ variable BAND-IX
    EREG DATA BODY-TEXT:SIZE-CELL LDR,
    DREG EREG CMP,  C-CC trap BCOND,     \ start - base < SIZE: in the block
    ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,
+   s" E-SEAL-VIOLATION habu: a store span wraps or meets a sealed DATA band or the body text block:"
+   ENGINE-ERROR:SEAL-VIOLATION addr DIE-LINE-VALUE,
    ok LBL, ;
 
 ;package
@@ -288,7 +290,9 @@ public
    addr DREG CMP,  C-HI trap BCOND,
    EREG addr 3 ANDI,  EREG trap CBNZ,
    ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,
+   s" E-SEAL-VIOLATION habu: code address outside [DBASE+DICT-SIZE, DBASE+REGION-4] or not instruction-aligned:"
+   ENGINE-ERROR:SEAL-VIOLATION addr DIE-LINE-VALUE,
    ok LBL, ;
 ;package
 
@@ -336,7 +340,9 @@ package ENGINE-EMIT
       ENGINE-EMIT:TARGET-UNKNOWN
    THEN THEN
    done B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,
+   s" E-SEAL-VIOLATION habu: ioctl request without an encoded argument extent:"
+   ENGINE-ERROR:SEAL-VIOLATION 1 DIE-LINE-VALUE,
    done LBL, ;
 
 \ Primitive bodies operate on the x19 data stack.
@@ -1593,18 +1599,17 @@ private
 \ re-exposes records whose slots later publications may have reused, so a raise
 \ rebuilds the table from [0,NDICT) in place.
 : BNDSET ( -- ) B-TASK-GUARD  B-LOWER-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
-   LBL LBL LBL LBL LBL {: bounded:label msg:label floor-ok:label keep:label done:label :}
-   S\" hb: dictionary count out of range\n" {: ma:ptr mu:n :}
+   LBL LBL LBL LBL {: bounded:label floor-ok:label keep:label done:label :}
    \ NDICT is a count: DICT-CAP is valid. Unsigned comparison also rejects negatives.
    14 DICT-CAP LIT64,  A 14 CMP,  C-LS bounded BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 74 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  ma mu BYTES,
+      s" E-DICT-COUNT habu: dictionary count above DICT-CAP:" 74 A DIE-LINE-VALUE,
    bounded LBL,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
    A 14 CMP,  C-CS floor-ok BCOND,
-      0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+      0 CALLER-LR,
+      s" E-SEAL-VIOLATION habu: ndict! count below the sealed record count:"
+      ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
    floor-ok LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    A NDICT CMP,  C-LE keep BCOND,
@@ -1645,7 +1650,9 @@ private
    EM-DEF-OCC:LAPPEND LABEL@ BL,
    LHIDXADD LABEL@ BL,
    done B,
-   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   bad LBL,  0 CALLER-LR,
+   s" E-SEAL-VIOLATION habu: ndict-append index not NDICT and the pending native record, at or past DICT-CAP, or below the sealed record count:"
+   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
    done LBL, ;
 
 : BEPOCHSECONDS ( -- )
@@ -2181,13 +2188,6 @@ private
 \ YIELD, the spin-wait hint: this thread is waiting on another.
 : YIELD, ( -- ) $D503203F EMITW ;
 
-\ The code lands at the label; callers emit it off their straight-line path.
-: CB-DIE, ( ptr u8 n label -- ) {: a u at:label :}
-   LBL {: msg:label :}
-   at LBL,
-   0 2 MOVZ,  1 msg ADR,  2 u MOVZ,  NR-WRITE SYS,
-   0 ENGINE-ERROR:CALLBACK MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  a u BYTES, ;
 
 \ Every outbound core runs this after its pops and guards, before its BLR. The
 \ owner comes first: LDAR CB-OWNER; this thread already is nested and claims
@@ -2219,7 +2219,8 @@ private
    NDICT DATA CB-NDICT STR,
    CP DATA CB-CP STR,
    go B,
-   S\" hb: callback: context busy on another thread\n" busy CB-DIE,
+   busy LBL,  0 CALLER-LR,
+   s" E-CALLBACK habu: context busy on another thread" ENGINE-ERROR:CALLBACK DIE-LINE,
    go LBL, ;
 
 \ After the BLR, with sp back at the $30 frame and x20 = DATA: the four cells
@@ -2446,6 +2447,12 @@ $138 constant CBT-OWNER-CLAIM           \ 1 when this entry claimed CB-OWNER
 $140 constant CBT-OUTER                 \ the CB-FRAME this entry replaced
 $148 constant CBT-SLOT
 $150 constant CBT-BYTES
+$50 constant CBT-FP                     \ C's x29
+$58 constant CBT-LR                     \ C's x30
+
+\ A callback refusal at the label, sp at the thunk's frame, printing C's lr.
+: CBT-DIE, ( ptr u8 n label -- ) {: a u at:label :}
+   at LBL,  CBT-LR CALLER-LR,  a u ENGINE-ERROR:CALLBACK DIE-LINE, ;
 
 \ Entered from a stub with the slot in x9. The row is claimed before the region
 \ it names is read: LDAR the row owner; a thread already nested through this
@@ -2481,9 +2488,9 @@ $150 constant CBT-BYTES
    \ tools/lint/clobber-lint.f proves x30 from the routine's own text.
    29 19 do i SP i 19 - cells STR, loop
    DATA 0 MOVZ,
-   29 SP $50 STR, 30 SP $58 STR,
+   29 SP CBT-FP STR, 30 SP CBT-LR STR,
    16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
-   29 SP $50 ADDI,                                     \ previous FP/LR form the C frame
+   29 SP CBT-FP ADDI,                                  \ previous FP/LR form the C frame
    8 0 do i SP CBT-MARSHAL i cells + STR, loop
    8 0 do i SP CBT-FLOATS i cells + ENC-STRD EMITW loop
    9 SP CBT-SLOT STR,
@@ -2567,7 +2574,7 @@ $150 constant CBT-BYTES
    0 SP CBT-FLOATS ENC-LDRD EMITW
    16 8 do i SP i 8 - cells $60 + ENC-LDRD EMITW loop
    29 19 do i SP i 19 - cells LDR, loop
-   29 SP $50 LDR, 30 SP $58 LDR,
+   29 SP CBT-FP LDR, 30 SP CBT-LR LDR,
    SP SP CBT-BYTES ADDI,
    RET,
    \ x14 is the owner read, x13 its cell.
@@ -2591,14 +2598,14 @@ $150 constant CBT-BYTES
       16 14 CMP,  C-NE caller-leave BCOND,
       row-kept B,
    row-wait LBL,  YIELD,  row-read B,
-   S\" hb: callback: no slot has been bound\n" no-table CB-DIE,
-   S\" hb: callback: slot held by another thread\n" row-busy CB-DIE,
-   S\" hb: callback: slot is not bound\n" unbound CB-DIE,
-   S\" hb: callback: thread has no region of its own\n" no-region CB-DIE,
-   S\" hb: callback: context busy on another thread\n" owner-busy CB-DIE,
-   S\" hb: callback: context is not inside a foreign call\n" no-frame CB-DIE,
-   S\" hb: callback: slot has no dispatch\n" no-xt CB-DIE,
-   S\" hb: callback: the body defined\n" defined CB-DIE, ;
+   s" E-CALLBACK habu: no slot has been bound" no-table CBT-DIE,
+   s" E-CALLBACK habu: slot held by another thread" row-busy CBT-DIE,
+   s" E-CALLBACK habu: slot is not bound" unbound CBT-DIE,
+   s" E-CALLBACK habu: thread has no region of its own" no-region CBT-DIE,
+   s" E-CALLBACK habu: context busy on another thread" owner-busy CBT-DIE,
+   s" E-CALLBACK habu: context is not inside a foreign call" no-frame CBT-DIE,
+   s" E-CALLBACK habu: slot has no dispatch" no-xt CBT-DIE,
+   s" E-CALLBACK habu: the body defined" defined CBT-DIE, ;
 
 \ -1 answers the shared C thunk for the native compiler's marked address
 \ carrier; other indices answer the seed stubs boot uses. This primitive ends
@@ -2613,7 +2620,7 @@ $150 constant CBT-BYTES
    done B,
    direct LBL,
    LCALLBACKADDR LABEL@ BL,  A G-PUSH  done B,
-   S\" hb: callback: slot out of range\n" bad CB-DIE,
+   bad LBL,  s" E-CALLBACK habu: slot out of range" ENGINE-ERROR:CALLBACK DIE-LINE,
    stubs LBL,
    CB-POOL 0 do  9 i MOVZ,  LCALLBACKTHUNK LABEL@ B,  loop
    done LBL, ;
@@ -3183,7 +3190,9 @@ private
    13 REGION LIT64,  13 DBASE 13 ADD,
    12 13 CMP,  C-HI trap BCOND,
    ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,
+   s" E-SEAL-VIOLATION habu: code span empty, not whole instructions, wrapping or outside [DBASE+DICT-SIZE, DBASE+REGION):"
+   ENGINE-ERROR:SEAL-VIOLATION 10 DIE-LINE-VALUE,
    ok LBL, ;
 
 \ Clear the call-map bit of every word in [x10, x10+x9): a bit left from a
@@ -3208,7 +3217,8 @@ public
    GUARD-CODE-SPAN
    9 SP 8 LDR,  10 SP 16 LDR,
    10 CP CMP,  C-EQ atcp BCOND,
-      0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+      s" E-SEAL-VIOLATION habu: code-publish destination is not CP:"
+      ENGINE-ERROR:SEAL-VIOLATION 10 DIE-LINE-VALUE,
    atcp LBL,
    9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
    12 0 MOVZ,                                    \ x12 = byte offset into the copy
@@ -3237,8 +3247,8 @@ public
    9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
    LBL LBL LBL LBL LBL LBL
    {: bad:label widloop:label widdone:label cloop:label cdone:label rloop:label :}
-   LBL LBL LBL LBL LBL LBL
-   {: rdone:label iloop:label idone:label done:label records:label indexed:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+   {: rdone:label iloop:label idone:label done:label records:label indexed:label prot:label :}
    SP SP 64 SUBI,
    9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
    CP SP 32 STR,
@@ -3253,10 +3263,11 @@ public
    widloop LBL,
       16 widdone CBZ,
       9 15 40 LDR,  LPROTWIDQ LABEL@ BL,
-      13 bad CBNZ,
+      13 prot CBNZ,
       15 15 DREC ADDI,  16 16 1 SUBI,  widloop B,
    widdone LBL,
    9 SP 16 LDR,  9 records CBZ,
+   64 CALLER-LR,
    10 CP 0 ADDI,  GUARD-CODE-SPAN
    records LBL,
    9 SP 32 LDR,  10 SP 24 LDR,  11 SP 16 LDR,  12 0 MOVZ,
@@ -3289,7 +3300,12 @@ public
       15 15 1 SUBI,  iloop B,
    idone LBL,
    SP SP 64 ADDI,  done B,
-   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   bad LBL,
+   s" E-SEAL-VIOLATION habu: native-unit-publish record count above DICT-CAP - NDICT:"
+   ENGINE-ERROR:SEAL-VIOLATION 9 DIE-LINE-VALUE,
+   prot LBL,  64 CALLER-LR,
+   s" E-SEAL-VIOLATION habu: native-unit-publish record into a wordlist protected by the seal:"
+   ENGINE-ERROR:SEAL-VIOLATION 9 DIE-LINE-VALUE,
    done LBL, ;
 
 \ callmap-set ( addr -- ): record the instruction at addr as a call into the
@@ -3306,7 +3322,9 @@ public
    9 DBASE CMP,  C-CC bad BCOND,
    11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND,
    inreg B,
-   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   bad LBL,
+   s" E-SEAL-VIOLATION habu: callmap-set address outside [DBASE, DBASE+REGION) or not instruction-aligned:"
+   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
    inreg LBL,
    9 9 DBASE SUB,
    10 9 2 LSRI,  10 10 7 ANDI,
@@ -3329,7 +3347,9 @@ public
    9 DBASE CMP,  C-CC bad BCOND,
    11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND,
    inreg B,
-   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   bad LBL,
+   s" E-SEAL-VIOLATION habu: addrmap-set address outside [DBASE, DBASE+REGION) or not instruction-aligned:"
+   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
    inreg LBL,
    9 9 DBASE SUB,
    10 9 2 LSRI,  10 10 7 ANDI,
@@ -3345,16 +3365,21 @@ public
 \ reader that LDARs START sees the length that belongs to it and the code
 \ code-publish flushed.
 : BXREFRETARGET ( -- )
-   LBL LBL LBL LBL {: checked:label pending:label done:label bad:label :}
+   LBL LBL LBL LBL LBL {: checked:label pending:label done:label bad:label badlen:label :}
    A G-POP  B G-POP  C G-POP     \ x9 = record index, x10 = len, x11 = start
    \ The index names a live row or the one pending row, record[NDICT]; one
    \ unsigned compare also rejects a negative index.
    9 NDICT CMP,  C-HI bad BCOND,
-   14 CODE-SPAN:RAW-MAX LIT64,  10 14 CMP,  C-HI bad BCOND,
-   14 10 3 ANDI,  14 bad CBNZ,                  \ encoded lengths remain instruction aligned
-   14 CODE-SPAN:FULL LIT64,  10 14 CMP,  C-EQ bad BCOND, \ exact spans cannot be empty
+   14 CODE-SPAN:RAW-MAX LIT64,  10 14 CMP,  C-HI badlen BCOND,
+   14 10 3 ANDI,  14 badlen CBNZ,               \ encoded lengths remain instruction aligned
+   14 CODE-SPAN:FULL LIT64,  10 14 CMP,  C-EQ badlen BCOND, \ exact spans cannot be empty
    checked B,
-   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   bad LBL,
+   s" E-SEAL-VIOLATION habu: xref-retarget record index above NDICT:"
+   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
+   badlen LBL,
+   s" E-SEAL-VIOLATION habu: xref-retarget length above CODE-SPAN:RAW-MAX, not whole instructions or an empty exact span:"
+   ENGINE-ERROR:SEAL-VIOLATION B DIE-LINE-VALUE,
    checked LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
    9 NDICT CMP,  C-EQ pending BCOND,
@@ -3697,7 +3722,7 @@ private
    done B,
    unguarded LBL,
    9 STACK-ABI:E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
-   bad LBL,  STACK-GUARD:EXIT-BOUNDS
+   bad LBL,  32 CALLER-LR,  STACK-GUARD:EXIT-BOUNDS
    done LBL, ;
 
 \ Pop B-EVAL-CLOSED's frame: the text's stack (x11) back to the pool, the
@@ -4349,7 +4374,9 @@ package ENGINE-EMIT
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
    B 12 32 STR,
    done B,
-   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   bad LBL,
+   s" E-SEAL-VIOLATION habu: record-facts! index past NDICT, at or past DICT-CAP, or below the sealed record count:"
+   ENGINE-ERROR:SEAL-VIOLATION A DIE-LINE-VALUE,
    done LBL, ;
 
 \ SHA-256's 64 round constants (FIPS 180-4, 4.2.2).
@@ -5278,16 +5305,15 @@ package ENGINE-EMIT
 \ Protect wid x9, idempotently; one at or above PROT-WID-MAX has no bit and
 \ exits 84 naming it. Single writer. Clobbers x13-x16.
 : EMIT-PROTWIDADD ( -- )
-   LBL LBL LBL {: ok:label done:label msg:label :}
-   S\" hb: protected-WID id above the bound\n" {: ma:ptr mu:n :}
+   LBL LBL {: ok:label done:label :}
    LPROTWIDADD LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    LPROTWIDQ LABEL@ BL,
    13 done CBNZ,
    15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  ma mu BYTES,                            \ data reached only via ADR
+      16 CALLER-LR,           \ BPROTWIDADD, the one caller, holds the frame
+      s" E-SEAL-PACKAGE habu: wid at or above PROT-WID-MAX:" ENGINE-ERROR:SEAL-PACKAGE 9
+      DIE-LINE-VALUE,
    ok LBL,
    DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask
    16 15 LDAR,

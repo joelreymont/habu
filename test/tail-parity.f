@@ -40,6 +40,13 @@ variable SAVED-RC
         a at  a at + 7 +  u at - 7 -  PAST-PATH ENDOF
    ;MATCH ;
 
+\ Short of a trailing ` lr <16 hex>` and newline: a kernel exit line ends in
+\ its trapping code's return address, which ASLR moves between runs.
+21 constant LR-TAIL
+: PAST-LR ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u LR-TAIL < if a u exit then
+   a u + LR-TAIL - 4 s"  lr " STR= if a u LR-TAIL - else a u then ;
+
 public
 
 : SNAPSHOT ( ptr u8 n ptr u8 n n -- )
@@ -52,7 +59,7 @@ public
    {: out:ptr outu:n err:ptr erru:n rc:n :}
    rc SAVED-RC @ T=
    out outu SAVED-OUT SAVED-OUT-U @ T$=
-   err erru SAVED-ERR SAVED-ERR-U @ T$= ;
+   err erru PAST-LR SAVED-ERR SAVED-ERR-U @ PAST-LR T$= ;
 
 \ As SAME, but stderr's location may differ: a run names the file it reads
 \ and line, the file with no line, or nothing.

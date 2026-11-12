@@ -1405,14 +1405,14 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    lit litu GE-SRC+ s"  ndict!" GE-SRC-LINE
    SB-RESET s" interpreted ndict! refuses " SB-APPEND lit litu SB-APPEND
-   74 S\" hb: dictionary count out of range\n" SB$ GE-EVAL-FORK-BAD
+   74 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD
    GE-SRC-RESET
    s" 1 set-tier" GE-SRC-LINE
    s" : GD-NDICT-BAD ( -- ) " GE-SRC+
    lit litu GE-SRC+ s"  ndict! ;" GE-SRC-LINE
    s" GD-NDICT-BAD" GE-SRC-LINE
    SB-RESET s" optimized ndict! refuses " SB-APPEND lit litu SB-APPEND
-   74 S\" hb: dictionary count out of range\n" SB$ GE-EVAL-FORK-BAD ;
+   74 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD ;
 
 : NDICT-LIVE-RESTORE ( -- )
    GE-HB-RESET
@@ -1448,7 +1448,9 @@ variable CANDIDATE-VERDICT
    s" 9223372036854775807" NDICT-BAD-COUNT
    GE-SRC-RESET
    s" 0 ndict!" GE-SRC-LINE
-   83 s" " s" public ndict! still protects the sealed lower bound" GE-EVAL-FORK-BAD ;
+   83
+   s" E-SEAL-VIOLATION habu: ndict! count below the sealed record count: 0000000000000000 lr "
+   s" public ndict! still protects the sealed lower bound" GE-EVAL-FORK-BAD ;
 
 public
 

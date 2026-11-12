@@ -123,7 +123,7 @@ using PTY-HARNESS
    then
    91 EXIT=
    s" HOOK" IN-BUF? TTRUE
-   s" hb: stack bounds exceeded" IN-BUF? TFALSE ;
+   s" stack bounds exceeded" IN-BUF? TFALSE ;
 
 \ The same hook armed while `die` runs inside a `catch`. A tty REPL recovers an
 \ otherwise uncaught throw at its prompt, and the program's catch would return

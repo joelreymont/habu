@@ -95,8 +95,7 @@ variable ERRLEN
    g wu w wu T-STR= ;
 
 \ GOT need only start with WANT: the guard-page crash handler (src/habu/crash.f)
-\ writes a fixed "hb: stack bounds exceeded" prefix, then names the stack that
-\ faulted.
+\ names the stack that faulted, then the trapping code's lr.
 : T-PREFIX= ( ptr u8 n ptr u8 n -- ) {: g:ptr gu:n w:ptr wu:n :}
    T-NEXT
    g gu w wu PREFIX? 0= if
@@ -111,15 +110,15 @@ variable ERRLEN
 \ prefix says which, so every call site names the stack it expects.
 : REFUSED-DATA ( ptr u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
-   ERR ERRLEN @ s" hb: stack bounds exceeded (data)" T-PREFIX= ;
+   ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (data) lr " T-PREFIX= ;
 
 : REFUSED-RETURN ( ptr u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
-   ERR ERRLEN @ s" hb: stack bounds exceeded (return)" T-PREFIX= ;
+   ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (return) lr " T-PREFIX= ;
 
 : REFUSED-LOOP ( ptr u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
-   ERR ERRLEN @ s" hb: stack bounds exceeded (loop)" T-PREFIX= ;
+   ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (loop) lr " T-PREFIX= ;
 
 \ src/habu/layout.f UNCAUGHT-RC: the exit status of an uncaught top-level throw
 \ (BTHROW), also pinned by test/protection-span.f.
@@ -148,7 +147,7 @@ variable ERRLEN
 
 \ GUARDED-EXTENT? (src/habu/habu1.f) runs at every run-in-stack switch, before
 \ the callback and the switch, so a malformed extent is a catchable
-\ E-STACK-UNGUARDED (-3802), never the generic "hb: stack bounds exceeded" exit.
+\ E-STACK-UNGUARDED (-3802), never the E-STACK-BOUNDS exit.
 \ test/stack-guard.f RUN-IN-STACK-REFUSALS owns one in-process case per clause;
 \ this case owns what the refusal looks like from a child that does not catch
 \ it, and that the callback never ran: its body prints, and the child's stdout

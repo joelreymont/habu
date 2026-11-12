@@ -19,11 +19,12 @@
 \ The dump, which every other signal takes too, writes sig, x0..x28 and
 \ fp/lr/sp/pc as hex lines to stderr, and the process dies by the signal
 \ itself (C-CRASH-RERAISE).
+require src/habu/stack-abi.f
 require src/arch/arm64/icode.f
 using SYSCALL
 package CRASH
 public
-variable LCRASHH   variable LHEX   variable LHDR   variable LSIGH
+variable LCRASHH   variable LHEX   variable LDIE-LINE   variable LHDR   variable LSIGH
 variable LFAULTREC  variable LHANDLERS-END
 private
 create CRH 80 allot  variable CRHL
@@ -134,6 +135,78 @@ public
    SP SP $20 ADDI,  RET, ;
 
 private
+256 constant DIE-LINE-FRAME
+\ The text's room in the frame: the rest holds " ", 16 hex digits, " lr ",
+\ 16 hex digits and the newline.
+DIE-LINE-FRAME 38 - constant DIE-LINE-ROOM
+
+\ [x14] = the byte n, x14 one past it. Clobbers x13.
+: DIE-LINE-BYTE, ( n -- )
+   13 swap MOVZ,  13 14 0 STRB,  14 14 1 ADDI, ;
+
+\ [x14, x14 + 16) = the register's 16 hex digits, x14 past them.
+: DIE-LINE-HEX, ( n -- )
+   9 swap 0 ADDI,  C-HEX-DIGITS  14 14 16 ADDI, ;
+
+public
+\ Entered by B, so x30 is the lr it prints. Writes `<text>[ <x3>] lr <x30>`,
+\ 16 hex digits each, and a newline to fd 2 in one write, then exits x0.
+\ x1/x2 = the text, 1 to DIE-LINE-ROOM bytes; x3 prints when x4 is nonzero.
+: EMIT-DIE-LINE ( -- )
+   LBL LBL {: copy:label bare:label :}
+   LDIE-LINE LABEL@ LBL,
+   5 0 0 ADDI,
+   SP SP DIE-LINE-FRAME SUBI,
+   14 SP 0 ADDI,
+   copy LBL,
+      13 1 0 LDRB,  13 14 0 STRB,
+      1 1 1 ADDI,  14 14 1 ADDI,  2 2 1 SUBI,  2 copy CBNZ,
+   4 bare CBZ,
+   $20 DIE-LINE-BYTE,  3 DIE-LINE-HEX,
+   bare LBL,
+   $20 DIE-LINE-BYTE,  $6C DIE-LINE-BYTE,  $72 DIE-LINE-BYTE,  $20 DIE-LINE-BYTE,
+   30 DIE-LINE-HEX,
+   $A DIE-LINE-BYTE,
+   0 2 MOVZ,  1 SP 0 ADDI,  2 14 1 SUB,  NR-WRITE SYS,
+   0 5 0 ADDI,  NR-EXIT-GROUP SYS, ;
+
+private
+: DIE-LINE-SITE, ( ptr u8 n n n -- )
+   LBL {: a:ptr u:n status:n flag:n msg:label :}
+   u 0= u DIE-LINE-ROOM > or IF
+      s" crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" ICODE-EXIT-RC die
+   THEN
+   0 status MOVZ,  1 msg ADR,  2 u MOVZ,  4 flag MOVZ,
+   LDIE-LINE LABEL@ B,
+   msg LBL,  a u BYTES, ;
+
+public
+\ A branch to LDIE-LINE with the text and the exit status, the text laid
+\ after it. The caller places its own label before it.
+: DIE-LINE, ( ptr u8 n n -- )  0 DIE-LINE-SITE, ;
+
+\ DIE-LINE, that also prints the register's value; the register is copied
+\ first, so it may be any of x0..x4.
+: DIE-LINE-VALUE, ( ptr u8 n n n -- )
+   {: a:ptr u:n status:n reg:n :}
+   u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
+      s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value" ICODE-EXIT-RC die
+   THEN
+   reg 3 <> IF 3 reg 0 ADDI, THEN
+   a u status 1 DIE-LINE-SITE, ;
+
+\ x30 = the caller's lr, saved at [sp + off], for a site whose own BL or BLR
+\ replaced x30; LDIE-LINE prints it.
+: CALLER-LR, ( n -- ) {: off:n :}
+   30 SP off LDR, ;
+
+\ x30 = the interrupted code's lr, read from the signal mcontext the register
+\ points at; LDIE-LINE prints it.
+: C-CRASH-LR>R30 ( n -- ) {: mctx:n :}
+   HB-TARGET-LINUX? IF 30 mctx LINUX-MCTX-LR-OFF LDR, exit THEN
+   30 mctx MACOS-MCTX-LR-OFF LDR, ;
+
+private
 \ x20 = signal number, x19 = ucontext, x23 = siginfo, whose si_addr tells a
 \ SIGSEGV inside a VM stack's guard page from any other. Linux enters the
 \ handler with (sig, info, uctx) in x0/x1/x2; the macOS trampoline passes
@@ -239,17 +312,16 @@ private
 variable CRS-BASE   variable CRS-CAP   variable CRS-CAPCELL
 variable CRS-HIT    variable CRS-HIT-LOW
 variable CRS-NEXT   variable CRS-SKIP  variable CRS-FAULT
-variable CRS-DATA-M variable CRS-RET-M variable CRS-LOOP-M
 variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 variable CRS-DATA-LOW-H
-variable CRS-MACHINE-M variable CRS-MACHINE-H
+variable CRS-MACHINE-H
 variable CRS-THROW  variable CRS-MEMORY-M
 
-\ The four diagnostics, each a single line written in one system call.
-: CRS-DATA$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (data)\n" ;
-: CRS-RET$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (return)\n" ;
-: CRS-LOOP$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (loop)\n" ;
-: CRS-MACHINE$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (machine)\n" ;
+\ The four stack-bounds texts LDIE-LINE prints.
+: CRS-DATA$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (data)" ;
+: CRS-RET$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (return)" ;
+: CRS-LOOP$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (loop)" ;
+: CRS-MACHINE$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (machine)" ;
 
 \ The memory fault's line, in two runs: the first is whole words, so BYTES,
 \ lays the second right after it. The handler writes the fault address and the
@@ -282,10 +354,12 @@ CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
    10 11 CMP,  C-CC CRS-HIT-LOW LABEL@ BCOND,
    CRS-NEXT LABEL@ LBL, ;
 
-: C-CRASH-GUARD-REPORT ( label n -- )            \ ( msg-label msg-len -- ) never returns
-   {: msg:label len:n :}
-   0 2 MOVZ,  1 msg ADR,  2 len MOVZ,  NR-WRITE SYS,
-   0 ENGINE-ERROR:STACK-BOUNDS MOVZ,  NR-EXIT-GROUP SYS, ;
+\ The line for the guard page hit at the label; x30 is the interrupted code's
+\ lr. Never returns.
+: C-CRASH-GUARD-REPORT ( ptr u8 n label -- )
+   {: a:ptr u:n hit:label :}
+   hit LBL,  21 C-CRASH-LR>R30
+   a u ENGINE-ERROR:STACK-BOUNDS DIE-LINE, ;
 
 \ x14 = the pc the interrupted thread resumes at; sigreturn resumes it there
 \ with every other register as the saved context holds it. On macOS x1 and x5
@@ -384,7 +458,6 @@ CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
 \ Rows 1 to 6 of the file header's list.
 : C-CRASH-STACK-GUARDS ( -- )
    LBL CRS-SKIP !  LBL CRS-FAULT !  LBL CRS-THROW !  LBL CRS-MEMORY-M !
-   LBL CRS-DATA-M !  LBL CRS-RET-M !  LBL CRS-LOOP-M !  LBL CRS-MACHINE-M !
    LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !  LBL CRS-DATA-LOW-H !
    LBL CRS-MACHINE-H !
    \ si_addr only describes a memory fault; a trap or an FPE carries no address.
@@ -417,14 +490,10 @@ CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
    LBL CRS-NEXT !  C-CRASH-GUARD-CASE
    CRS-THROW LABEL@ B,
    C-CRASH-DATA-RECOVER
-   CRS-DATA-H LABEL@ LBL,  CRS-DATA-M LABEL@ CRS-DATA$ nip C-CRASH-GUARD-REPORT
-   CRS-RET-H  LABEL@ LBL,  CRS-RET-M  LABEL@ CRS-RET$  nip C-CRASH-GUARD-REPORT
-   CRS-LOOP-H LABEL@ LBL,  CRS-LOOP-M LABEL@ CRS-LOOP$ nip C-CRASH-GUARD-REPORT
-   CRS-MACHINE-H LABEL@ LBL,  CRS-MACHINE-M LABEL@ CRS-MACHINE$ nip C-CRASH-GUARD-REPORT
-   CRS-DATA-M LABEL@ LBL,  CRS-DATA$ BYTES,
-   CRS-RET-M  LABEL@ LBL,  CRS-RET$  BYTES,
-   CRS-LOOP-M LABEL@ LBL,  CRS-LOOP$ BYTES,
-   CRS-MACHINE-M LABEL@ LBL,  CRS-MACHINE$ BYTES,
+   CRS-DATA$ CRS-DATA-H LABEL@ C-CRASH-GUARD-REPORT
+   CRS-RET$ CRS-RET-H LABEL@ C-CRASH-GUARD-REPORT
+   CRS-LOOP$ CRS-LOOP-H LABEL@ C-CRASH-GUARD-REPORT
+   CRS-MACHINE$ CRS-MACHINE-H LABEL@ C-CRASH-GUARD-REPORT
    CRS-MEMORY-M LABEL@ LBL,  CRS-MEMORY$ BYTES,  CRS-MEMORY-TAIL$ BYTES,
    C-CRASH-THROW                                 \ a sigreturn that comes back dumps
    CRS-SKIP LABEL@ LBL, ;
@@ -476,7 +545,8 @@ private
    HB-TARGET-LINUX? 0= IF 0 19 0 ADDI,  1 24 0 ADDI,  2 5 0 ADDI, THEN
    NR-SIGRETURN SYS,                             \ macOS: sigreturn(uctx, infostyle, token)
    \ Reached only if sigreturn fails.
-   0 $86 MOVZ,  NR-EXIT-GROUP SYS, ;
+   21 C-CRASH-LR>R30
+   s" E-SIGRETURN habu: sigreturn failed in the crash handler" $86 DIE-LINE, ;
 
 \ Row 0: a saved pc in [LCRASHH, LSIGH), the crash handler's own code, goes
 \ straight to the re-raise. On macOS x1 is still the trampoline's infostyle.
@@ -558,7 +628,7 @@ public
    SP SP SIGSTK-FRAME ADDI,                           \ ADD, not ADDS: the flags are the call's
    C-CC ok BCOND,
       0 2 MOVZ,  1 msg ADR,  2 SIGSTKMSG$ nip MOVZ,  NR-WRITE SYS,
-      0 STACK-GUARD:MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
+      0 STACK-ABI:MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  SIGSTKMSG$ BYTES,
    ok LBL, ;
 

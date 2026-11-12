@@ -415,17 +415,21 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
 
 \ prot-wid-add refuses an id at or above PROT-WID-MAX, the protected-WID
-\ bitmap's bound, naming the bound, and exits 84 rather than writing outside it.
-: PWG-OOR-FORGE$ ( -- ptr u8 n )
-   s" PROT-WID-MAX prot-wid-add" ;
-: SLV-ASSERT-PWID-OOR ( -- )
+\ bitmap's bound, and exits 84 rather than writing outside it, printing the id.
+: SLV-ASSERT-PWID-OOR ( ptr u8 n -- ) {: want:ptr wantu:n :}
    SLV-EXITED @ TTRUE
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
-   SLV-ERR$ S\" hb: protected-WID id above the bound\n" CONTAINS? TTRUE ;
+   SLV-ERR$ want wantu CONTAINS? TTRUE ;
 
 : SLV-PWID-BOUND ( -- )
-   s" prot-wid-add refuses an id at the bitmap bound and names it" T-LABEL
-   PWG-OOR-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PWID-OOR ;
+   s" prot-wid-add refuses an id at the bitmap bound" T-LABEL
+   s" PROT-WID-MAX prot-wid-add" SLV-RUN-LOAD
+   s" E-SEAL-PACKAGE habu: wid at or above PROT-WID-MAX: 0000000000002000 lr "
+   SLV-ASSERT-PWID-OOR
+   s" and prints the id past it, not the bound" T-LABEL
+   s" PROT-WID-MAX 1+ prot-wid-add" SLV-RUN-LOAD
+   s" E-SEAL-PACKAGE habu: wid at or above PROT-WID-MAX: 0000000000002001 lr "
+   SLV-ASSERT-PWID-OOR ;
 
 \ Publishing into a protected WID dies 84 with the line
 \ `E-SEALED-PACKAGE habu: <path>[:<line>]: <prose>`, its path the loading file's.
@@ -536,6 +540,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-NEGATIVES ( -- )
    s" ! into CUR-CELL traps" T-LABEL
    SLV-CUR-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
+   SLV-ERR$
+   s" E-SEAL-VIOLATION habu: a store span wraps or meets a sealed DATA band or the body text block: "
+   STARTS-WITH? TTRUE
    s" overwrite of the latch itself traps (one-way seal)" T-LABEL
    SLV-LATCH-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
    s" c! into WIDN-CELL traps" T-LABEL

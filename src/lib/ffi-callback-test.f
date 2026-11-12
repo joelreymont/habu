@@ -391,13 +391,31 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
    [: DECL-NAME-65 ;] catch E-FFI-SYNTAX = s" a 65-byte name: E-FFI-SYNTAX" FACT
    [: DECL-NAME-64 ;] catch 0= s" a 64-byte name is accepted" FACT ;
 
+\ A kernel exit line ends ` lr <16 hex>`; the transcript keeps ` lr` and drops
+\ the digits, which vary with the build.
+: LR-LINE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 20 < if false exit then
+   a u 16 - s"  lr " ENDS-WITH? 0= if false exit then
+   true u u 16 - ?do a i + c@ STR-HEX-DIGIT? and loop ;
+
+: ERR-LINE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u LR-LINE? if a u 17 - SAY exit then
+   a u SAY ;
+
+\ A captured stderr as STREAM+ writes it, each line through ERR-LINE+.
+: ERR-STREAM+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u LF 0 begin SPLIT-NEXT while {: p:ptr pu:n next:n :}
+      pu 0 <>  next u > 0=  or if p pu ERR-LINE+ then
+      a u LF next
+   repeat drop 2drop ;
+
 \ The name, the exit status and both streams of one spawned process.
 : TRANSCRIBE-RC ( ptr u8 n len len n -- )
    {: name:ptr nameu:n outu:len erru:len rc:n :}
    s" == child " SCRIPT+ name nameu SCRIPT+ s" : exit " SCRIPT+ rc SCRIPT-N LF SCRIPT+C
    OUT outu LEN>N STREAM+
    s" --" SAY
-   ERR erru LEN>N STREAM+ ;
+   ERR erru LEN>N ERR-STREAM+ ;
 
 : TRANSCRIBE ( ptr u8 n len len PROCESS:ending -- )
    PROCESS:ENDING>RC RC>N TRANSCRIBE-RC ;
@@ -590,38 +608,38 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
    s" == child outside: exit 106" W
    s" outside: a thread is parked on its own context" W
    s" --" W
-   s" hb: callback: context is not inside a foreign call" W
+   s" E-CALLBACK habu: context is not inside a foreign call lr" W
    s" == child sleeping: exit 106" W
    s" sleeping: a thread is parked on its own context" W
    s" --" W
-   s" hb: callback: context busy on another thread" W
+   s" E-CALLBACK habu: context busy on another thread lr" W
    s" == child busy: exit 106" W
    s" busy: the first thread is parked inside the context" W
    s" --" W
-   s" hb: callback: context busy on another thread" W
+   s" E-CALLBACK habu: context busy on another thread lr" W
    s" == child unbound: exit 106" W
    s" unbound: sorted while bound" W
    s" --" W
-   s" hb: callback: slot is not bound" W
+   s" E-CALLBACK habu: slot is not bound lr" W
    s" == child worker-stale: exit 106" W
    s" worker-stale: the worker sorted and ended bound" W
    s" --" W
-   s" hb: callback: slot is not bound" W
+   s" E-CALLBACK habu: slot is not bound lr" W
    s" == child unexposed: exit 106" W
    s" unexposed: the context is gone" W
    s" --" W
-   s" hb: callback: slot is not bound" W
+   s" E-CALLBACK habu: slot is not bound lr" W
    s" == child defines: exit 79" W
    s" defines: the exposing worker was joined" W
    s" --" W
    s" == child body-defines: exit 106" W
    s" --" W
-   s" hb: callback: the body defined" W
+   s" E-CALLBACK habu: the body defined lr" W
    HB-TARGET-LINUX-X86-64? 0= if
       s" == child caller-thread: exit 106" W
       s" caller-thread: the slot is bound to the caller's context" W
       s" --" W
-      s" hb: callback: thread has no region of its own" W
+      s" E-CALLBACK habu: thread has no region of its own lr" W
    then
    s" == child released: exit 0" W
    s" halted: the worker is parked inside its comparator" W

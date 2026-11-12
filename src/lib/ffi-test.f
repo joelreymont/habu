@@ -296,7 +296,9 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-STALE-SRC$ ENGINE-ERROR:SEAL-VIOLATION FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru LEN>N 0 T= ;
+   erru FFI-T-ERR$
+   s" E-SEAL-VIOLATION habu: a store span wraps or meets a sealed DATA band or the body text block: "
+   STARTS-WITH? TTRUE ;
 
 \ The line the child prints for an uncaught code, rendered from the name so the
 \ needle follows src/lib/error.f instead of repeating its number.

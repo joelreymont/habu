@@ -2,10 +2,12 @@
 \ guarded stack mapping and the output and printer sequences. Encoders are
 \ package A64ASM (src/arch/arm64/asm.f).
 require src/habu/stack-abi.f
+require src/habu/crash.f
 require src/arch/arm64/icode.f
 using A64ASM
 using A64ICODE
 using SYSCALL
+using CRASH
 
 package RT
 
@@ -26,7 +28,6 @@ DSTACK-AGREE
 
 package STACK-GUARD
 
-variable FAIL-MESSAGE
 variable DESCRIPTOR-FAIL
 variable DESCRIPTOR-BASE
 variable DESCRIPTOR-CAP
@@ -36,11 +37,8 @@ variable MAP-MSG  variable MAP-OK   variable MAP-ROK
 variable MAP-BAD  variable MAP-DONE
 
 : EMIT-FAIL ( -- )
-   S\" hb: stack bounds exceeded\n" {: ma:ptr mu:n :}
-   LBL FAIL-MESSAGE !
-   0 2 MOVZ,  1 FAIL-MESSAGE LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
-   0 ENGINE-ERROR:STACK-BOUNDS MOVZ,  NR-EXIT-GROUP SYS,
-   FAIL-MESSAGE LABEL@ LBL,  ma mu BYTES, ;
+   s" E-STACK-BOUNDS habu: stack bounds exceeded (stack cursor)"
+   ENGINE-ERROR:STACK-BOUNDS DIE-LINE, ;
 
 \ The descriptor itself must not wrap, even
 \ when it came from a saved frame or a task rather than run-in-stack.
@@ -58,8 +56,6 @@ variable MAP-BAD  variable MAP-DONE
    DESCRIPTOR-BASE @ dup ENC-MVN EMITW ;
 
 public
-
-78 constant MAP-FAIL-RC     \ the rc the two fixed-region mappings already use
 
 \ Lifecycle admission at a stack switch (run-in-stack, catch, evaluate, task
 \ and REPL recovery): x14=base, x10=capacity, x12=cursor. Leaves base intact;
@@ -86,8 +82,8 @@ public
 \ A stack occupies [base - PAGE, base + cap + PAGE) with both outer pages
 \ inaccessible: a push past the capacity or a read below the base takes SIGSEGV,
 \ and src/habu/crash.f turns the address into the STACK-BOUNDS exit or, for a
-\ data-stack access below the base, the underdepth throw (crash.f ONE FAULT IS
-\ NOT AN EXIT). Compiled code carries no check.
+\ data-stack access below the base, the underdepth throw. Compiled code carries
+\ no check.
 \
 \ TWO mmap CALLS, NO mprotect: the first maps cap + 3*PAGE PROT_NONE, which IS
 \ the guard; the second reopens the middle read/write with MAP_FIXED. The third
@@ -132,7 +128,7 @@ public
    MAP-DONE LABEL@ B,
    MAP-BAD LABEL@ LBL,
    0 2 MOVZ,  1 MAP-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
-   0 MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
+   0 STACK-ABI:MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
    MAP-MSG LABEL@ LBL,  ma mu BYTES,
    MAP-DONE LABEL@ LBL, ;
 
@@ -232,6 +228,7 @@ public
    SP SP $10 ADDI, ;
 ;package
 
+;using
 ;using
 ;using
 ;using

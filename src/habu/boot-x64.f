@@ -34,8 +34,7 @@ create SCALAR-ROW-VALUE 0 ,
 0 constant PROT-NONE
 3 constant PROT-RW                  \ PROT_READ|PROT_WRITE
 5 constant PROT-RX                  \ PROT_READ|PROT_EXEC
-\ The rc every boot mapping failure exits with: STACK-GUARD's MAP-FAIL-RC
-\ (src/habu/rt.f) and habu2.f's two fixed-region mappings.
+\ The rc every boot mapping failure exits with.
 78 constant MAP-FAIL-RC
 2 constant STDERR
 16 constant CODE-SLOT

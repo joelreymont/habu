@@ -1,9 +1,9 @@
-\ A machine-stack overflow ends named, as a VM stack's does: `hb: stack bounds
-\ exceeded (machine)` on fd 2 and the ENGINE-ERROR:STACK-BOUNDS exit, from the
-\ crash handler on the thread's alternate signal stack (src/habu/crash.f
-\ C-SIGNAL-STACK). Control: a data-stack overflow still reports (data). Every
-\ subject recurses through a self call with work after it, so it cannot become
-\ a jump.
+\ A machine-stack overflow ends named, as a VM stack's does: `E-STACK-BOUNDS
+\ habu: stack bounds exceeded (machine) lr <hex>` on fd 2 and the
+\ ENGINE-ERROR:STACK-BOUNDS exit, from the crash handler on the thread's
+\ alternate signal stack. Control: a data-stack overflow still reports (data).
+\ Every subject recurses through a self call with work after it, so it cannot
+\ become a jump.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/engine-error.f
@@ -22,8 +22,8 @@ variable IMAGE-U
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
-: MACHINE$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (machine)\n" ;
-: DATA$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (data)\n" ;
+: MACHINE$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (machine) lr " ;
+: DATA$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (data) lr " ;
 
 : SELF$ ( -- ptr u8 n ) S\" TRUSTED: R ( -- ) recurse recurse ;\nR\n" ;
 : CELLS$ ( -- ptr u8 n ) S\" : R ( n -- n ) 1 + recurse 1 + ;\n0 R\n" ;
@@ -41,13 +41,17 @@ variable IMAGE-U
 : CALLBACK-THREAD$ ( -- ptr u8 n )
    S\" require src/lib/ffi-abi.f\nrequire src/lib/ffi-callback.f\nrequire src/lib/task.f\nusing FFI-CB\nPROCESS-SYMBOLS\nFUNCTION: PTHREAD-CREATE pthread_create ( ptr u8 n n n -- i32 )\n   0 8 WRITES-BYTES\n;FUNCTION\nFUNCTION: PTHREAD-JOIN pthread_join ( n ptr u8 -- i32 )\n   1 8 WRITES-BYTES\n;FUNCTION\nCALLBACK: START ( n -- n ) 0 FALLBACK ;CALLBACK\nTRUSTED: R ( -- ) recurse recurse ;\n: START-IMPL ( n -- n ) R ;\n' START-IMPL START-BODY !\nTASK:MIN-STACK TASK:TASK CTX\nvariable THREAD\nvariable RET\n: GO ( -- )\n   CTX TASK:EXPOSE\n   THREAD BYTE-VIEW 0 START CTX TASK:CONTEXT ENTRY 0 PTHREAD-CREATE\n   0 <> if s\q callback thread: pthread_create refused\q 1 die then\n   THREAD @ RET BYTE-VIEW PTHREAD-JOIN drop ;\nGO\n;using\n" ;
 
+\ stderr starts with the line's text; its lr varies with the build.
+: EXPECT-LINE ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
+   GT-ERR$ want wantu STARTS-WITH? 0= if label labelu GE-FAIL then ;
+
 : RUN-SRC ( ptr u8 n -- ) {: src:ptr srcu:n :}
    GE-HB-RESET
    GE-HB$ src srcu GE-TIMEOUT-MS GE-RUN-STDIN ;
 
 : MACHINE-EXIT ( ptr u8 n -- ) {: label:ptr labelu:n :}
    ENGINE-ERROR:STACK-BOUNDS label labelu GE-EXPECT-RC
-   MACHINE$ label labelu GE-EXPECT-ERR ;
+   MACHINE$ label labelu EXPECT-LINE ;
 
 : MACHINE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
    src srcu RUN-SRC
@@ -107,7 +111,7 @@ variable IMAGE-U
 : CONTROLS ( -- )
    S\" : X ( n -- ) begin dup recurse again ;\n0 X\n" RUN-SRC
    ENGINE-ERROR:STACK-BOUNDS s" a data-stack overflow" GE-EXPECT-RC
-   DATA$ s" a data-stack overflow" GE-EXPECT-ERR
+   DATA$ s" a data-stack overflow" EXPECT-LINE
    s" PASS: the data-stack control" type cr ;
 
 : BODY ( -- )

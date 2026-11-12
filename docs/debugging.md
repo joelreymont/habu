@@ -216,6 +216,12 @@ specific exit code may simply be asserting a code the tree stopped producing.
 
 ## Stack diagnostics — which one you are looking at
 
+A kernel exit line that ends in `lr <lr>` reads
+`<class> habu: <text>[ <value>] lr <lr>`, the value and `<lr>` in 16 hex
+digits. `<lr>` is the return address the refusing primitive or guard was
+called with, or the interrupted code's link register when a signal handler
+exits.
+
 Every VM stack is a guarded mapping and compiled code carries no bounds check,
 so the message names the mechanism that caught the fault
 (`src/habu/stack-abi.f` and `src/habu/crash.f` hold the rules):
@@ -229,12 +235,14 @@ so the message names the mechanism that caught the fault
 - `E-UNDERFLOW habu: <path>:<line>: stack underflow at '<token>'` (exit 70): a word ran and left the stack below its
   base because its body consumes more than its record states: a word defined
   with checking off, or a `TRUSTED:` body that drops more than it declares.
-- `hb: stack bounds exceeded (data|return|loop)` (exit 102): an overflow or a
-  below-base access where no throw entry exists (a task's own stack, a
-  stripped AOT image). Match the prefix `hb: stack bounds exceeded` unless the
-  stack matters.
-- `hb: stack bounds exceeded (machine)` (exit 102): the OS thread's own stack
-  overflowed, typically unbounded recursion; `catch` does not receive it.
+- `E-STACK-BOUNDS habu: stack bounds exceeded (data|return|loop) lr <lr>`
+  (exit 102): an overflow or a below-base access where no throw entry exists
+  (a task's own stack, a stripped AOT image). `(stack cursor)`: a stack
+  switch or a breakpoint refused a stack's descriptor or cursor.
+  Match the prefix `E-STACK-BOUNDS` unless the stack matters.
+- `E-STACK-BOUNDS habu: stack bounds exceeded (machine) lr <lr>` (exit 102):
+  the OS thread's own stack overflowed, typically unbounded recursion; `catch`
+  does not receive it.
 - `E-MEMORY-FAULT habu: memory fault at <address> pc <pc>` (exit 110): Habu
   code read or wrote unmapped or unwritable memory. It is thrown on the
   faulting thread, so `catch` receives 110 and a task ends with it; the line is

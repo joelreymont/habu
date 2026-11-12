@@ -25,8 +25,9 @@ public
 105 constant USING-SHADOW-GLOBAL \ an interpreted or ticked bare global a used public also exports
 \ 106: a callback thunk runs on C's stack with no catch frame above it, so it
 \ cannot throw. Every refusal (the CB-DIE rows in habu1.f and kernel-x64.f) and an
-\ outbound FFI call on a context another thread owns write `hb: callback: <reason>`
-\ to fd 2 and exit_group 106 without touching the region; a busy context refuses,
+\ outbound FFI call on a context another thread owns write one line to fd 2 and
+\ exit_group 106 without touching the region: `E-CALLBACK habu: <reason> lr
+\ <hex>` on arm64, `hb: callback: <reason>` on x86-64. A busy context refuses,
 \ never waits.
 106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable
 107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (src/lib/vocabulary.f)

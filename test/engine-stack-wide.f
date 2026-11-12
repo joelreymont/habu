@@ -35,8 +35,8 @@ package STACK-LIFECYCLE-TEST
 \ level leaves the stack one cell deeper while the transfer runs whole and
 \ unwinds. The body is live, and every transfer below is wider than one cell, so
 \ the first write past the capacity is the transfer's own. The child dies on the
-\ data guard page: ENGINE-ERROR:STACK-BOUNDS (102), "hb: stack bounds exceeded
-\ (data)".
+\ data guard page: ENGINE-ERROR:STACK-BOUNDS (102), "E-STACK-BOUNDS habu: stack
+\ bounds exceeded (data)".
 : RATCHET-TAIL ( ptr u8 n -- ) {: name:ptr nameu:n :}
    s"  : RATCHET ( n -- ) begin dup " SB-APPEND  name nameu SB-APPEND
    s"  recurse again ; : RATCHET0 ( -- ) 1 RATCHET ; " SB-APPEND

@@ -82,7 +82,8 @@ create PROG-BUF PATH-CAP allot
 : RUN-THROW ( CMD:command -- CMD:command ) s" throw" s" " 3 RUN-PROG ;
 : RUN-XT ( CMD:command -- CMD:command ) s" xt" s\" Hi\n" 0 RUN-PROG ;
 : RUN-DEEP ( CMD:command -- CMD:command ) s" deep" s" " 102 RUN-PROG
-   s" deep" T-LABEL  CMD:ERR$ s\" hb: stack bounds exceeded (machine)\n" T$= ;
+   s" deep" T-LABEL
+   CMD:ERR$ s" E-STACK-BOUNDS habu: stack bounds exceeded (machine) lr " STARTS-WITH? TTRUE ;
 
 
 \ An ELF file is at least one PROT-PAGE-MAX text page.

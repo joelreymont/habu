@@ -271,7 +271,8 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
    nip LEN>N {: erru:n :}
    s" and names the data stack" T-LABEL
-   ERR erru S\" hb: stack bounds exceeded (data)\n" T$= ;
+   ERR erru s" E-STACK-BOUNDS habu: stack bounds exceeded (data) lr " STARTS-WITH?
+   TTRUE ;
 
 \ The same reach outside any closed text: the child's text runs a compiled
 \ word through execute with one cell on the stack it was given.
