@@ -1,13 +1,12 @@
 \ app.f - MCP-APP: one self-contained UTF-8 HTML page that shows a Habu Wasm
-\ module as an MCP App's view (ext-apps "2026-01-26"; app.js states the
-\ protocol). PAGE+ appends app.html with the title HTML-escaped at its
-\ <!--title--> marker and turn.js, viewport.js, page.js, app.js and the module
-\ as base64 at theirs. Its inline bootstrap imports each script from a blob:
-\ URL and starts app.js, so the page fetches nothing and runs under ChatGPT's
-\ view CSP:
+\ module as an MCP App's view (ext-apps "2026-01-26"). PAGE+ appends app.html
+\ with the title HTML-escaped at its <!--title--> marker and turn.js,
+\ viewport.js, page.js, app.js and the module as base64 at theirs. Its inline
+\ bootstrap imports each script from a blob: URL and starts app.js, so the page
+\ fetches nothing and runs under ChatGPT's view CSP:
 \ script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval' blob:;
 \ worker-src blob:; connect-src 'self'. The five files, beside this one, are
-\ read into dictionary buffers as it loads, as host.f reads its own.
+\ read into dictionary buffers as it loads.
 \ STORAGE CLASS. PROCESS-WIDE: buffers filled at load and only read after;
 \ PAGE+ writes only the caller's BUF.
 
@@ -23,15 +22,13 @@ require src/lib/xml.f
 package MCP-APP
 private
 
-\ A file's path in the tree that resolved this file: SOURCE-ROOT:CURRENT$
-\ while it loads.
+\ A file's path in the tree that resolved this file while it loads.
 : PATH ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    SOURCE-ROOT:CURRENT$ a u SOURCE-ROOT:JOIN ;
 
 
-\ The file at the path into the buffer of its size; a file that changed size
-\ since it was measured is E-FS-IO, or FS:READ-ALL's E-FS-CAPACITY.
+\ A file that changed size since it was measured is E-FS-IO, or E-FS-CAPACITY.
 : READ ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n dst:ptr cap:n :}
    a u PATH {: path:ptr pathu:n :}
@@ -96,13 +93,11 @@ MODULE-AT MODULE-MARK nip + constant MODULE-END
    a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 
 
-\ app.html's bytes from one offset to another.
 : GAP+ ( n n ptr a -- )
    {: from:n to:n buf:ptr :}
    HTML from + to from - buf SPAN+ ;
 
 
-\ The bytes' standard base64, written in place in the BUF's new tail.
 : BASE64+ ( ptr u8 n ptr a -- )
    {: a:ptr u:n buf:ptr :}
    u 2 + 3 / 4 * {: len:n :}
@@ -132,7 +127,7 @@ MODULE-AT MODULE-MARK nip + constant MODULE-END
 public
 
 \ The module's bytes, the title and the BUF the page is appended to; a module
-\ the BUF holds (BUF:BORROWED?) or a title that is not XML text is refused.
+\ the BUF holds or a title that is not XML text is refused.
 : PAGE+ ( ptr u8 n ptr u8 n ptr a -- )
    {: m:ptr mu:n t:ptr tu:n buf:ptr :}
    mu STR-CHECK-LEN

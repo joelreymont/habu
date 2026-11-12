@@ -1,12 +1,12 @@
-\ app-test.f - the turn protocol's rpc, after and read records and its
-\ notified, tick, file and chunk events under bun:
-\ src/lib/browser/host-cli.mjs runs test/browser/app.f's module, built by
-\ tools/hb-build.f, through src/lib/browser/turn.js. bun and wasm-tools must
-\ be on PATH, so this is no row of the ordinary gate: test/wasm/device.f runs
-\ it, as does `bin/hb --load test/browser/app-test.f` from the tree's root.
-\ With Chrome installed (macOS's application or google-chrome on PATH) the
-\ --chrome check writes MCP-APP:PAGE+ of the module and runs it in Chrome under
-\ test/browser/app-peer.mjs, which plays ChatGPT's MCP Apps host.
+\ app-test.f - the turn protocol's rpc, after and read records and its notified,
+\ tick, file and chunk events under bun: src/lib/browser/host-cli.mjs runs
+\ test/browser/app.f's module through src/lib/browser/turn.js. bun and
+\ wasm-tools must be on PATH, so this is no row of the ordinary gate:
+\ test/wasm/device.f runs it, as does `bin/hb --load test/browser/app-test.f`
+\ from the tree's root. With Chrome installed (macOS's application or
+\ google-chrome on PATH) the --chrome check writes MCP-APP:PAGE+ of the module
+\ and runs it in Chrome under test/browser/app-peer.mjs, which plays ChatGPT's
+\ MCP Apps host.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -126,7 +126,6 @@ variable BEFORE-U
 
 : TYPED+ ( ptr u8 n -- )  s" --typed" ARG+  ARG+ ;
 
-\ The waiting rpc with this id answered with DIR's file of this name.
 : ANSWER-RPC+ ( ptr u8 n ptr u8 n -- )
    {: id:ptr iu:n name:ptr nu:n :}
    s" --answer-rpc" ARG+  id iu ARG+  name nu FILE-ARG+ ;
@@ -137,7 +136,6 @@ variable BEFORE-U
 : NOTIFY+ ( -- )  s" --notify" ARG+  METHOD$ ARG+  s" params.json" FILE-ARG+ ;
 : FILE+ ( -- )  s" --file" ARG+  NAME$ ARG+  s" data.bin" FILE-ARG+ ;
 
-\ ---- the lines the host prints, built in SB ---------------------------------
 : LINE ( ptr u8 n -- )
    SB-APPEND  10 SB-APPEND-C ;
 
@@ -145,14 +143,12 @@ variable BEFORE-U
 : HELLO ( -- )
    SB-RESET  s" hello" LINE ;
 
-\ The fixture's rpc, tools/call of get_project, as the host prints it.
 : CALL-LINE ( ptr u8 n -- )
    {: id:ptr iu:n :}
    s" rpc tools/call " SB-APPEND  id iu SB-APPEND
    s\"  {\"name\":\"get_project\"}" LINE ;
 
 
-\ The text an answered run makes: c, the id, then the response's bytes.
 : ANSWERED-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: c:ptr cu:n id:ptr iu:n body:ptr bu:n :}
    s" text answered " SB-APPEND  c cu SB-APPEND  32 SB-APPEND-C
@@ -162,8 +158,6 @@ variable BEFORE-U
 : RESULT-BODY$ ( -- ptr u8 n )  s\" {\"content\":[]}" ;
 : ERROR-BODY$ ( -- ptr u8 n )  s\" {\"code\":-32601,\"message\":\"Method not found\"}" ;
 
-\ Writes the expected text and the actual bytes as this name in DIR's expected
-\ and actual directories, then compares them.
 : SAME ( ptr u8 n ptr u8 n -- )
    {: got:ptr gu:n name:ptr nu:n :}
    WANT-DIR WANT-U @ name nu FILE FS:JOIN-PATH {: wu:n :}
@@ -171,8 +165,6 @@ variable BEFORE-U
    GOT-DIR GOT-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu got gu FS:WRITE-ALL
    got gu SB$ T$= ;
-
-\ ---- the cases --------------------------------------------------------------
 
 : RPC-CASE ( -- )
    HOST-OPEN
@@ -234,8 +226,7 @@ variable BEFORE-U
    OUT$ s" file.out" SAME ;
 
 
-\ One round of each delivery four times ends with the memory one round does:
-\ each answered, notified, file and chunk run frees its delivery.
+\ Each answered, notified, file and chunk run frees its delivery.
 : FREED-CASE ( -- )
    s" freed: four rounds of deliveries end with the memory one does"
    MOD MOD-U @ [: s" rpc" TYPED+  s" 1" s" result.json" ANSWER-RPC+
@@ -295,8 +286,6 @@ variable BEFORE-U
    ERR$ s" Invalid byte sequence" CONTAINS?
    ERR$ s" encoded data was not valid" CONTAINS?  or TTRUE ;
 
-\ ---- the --chrome check --------------------------------------------------------
-
 : MAC-CHROME ( -- ptr u8 n )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
 
@@ -310,7 +299,6 @@ variable BEFORE-U
       some OF LEN>N ENDOF
    ;MATCH CHROME-U ! ;
 
-\ MCP-APP:PAGE+ of the built module, written as DIR's page.html.
 : PAGE! ( -- )
    MOD MOD-U @ FS:FILE-SIZE {: wu:n :}
    WASM wu BUF:N>BLEN BUF:INIT
