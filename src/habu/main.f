@@ -239,8 +239,8 @@ public
 
 private
 
-\ Off a built application, any argument names what runs and stdin stays the
-\ program's data (test/main-routing.f); with none, stdin is the source.
+\ An application's MAIN takes the arguments, then stdin is the source. Off
+\ one, an argument names what runs and stdin is its data; else stdin is source.
 : ROUTED ( -- )
    APP? if
       APP-RUN
