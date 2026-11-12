@@ -1010,7 +1010,7 @@ named words, with one word that runs them in order.
   so that copy refuses it, naming the path: `include: a word loaded or
   provided a file during a build; do it at the file's top level: <path>`
   ("Packages" lists the words refused).
-- **Keep lines short**, 80 columns at most: people read this code.
+- **Keep lines short**, about 60 columns at most: people read this code.
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
   standard input, in every file `--load`, `include` and `require` load, and in
   the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.

@@ -136,8 +136,8 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   definition, block-scoped, bindable after a closed early-exit guard. A local
   hides the word of its spelling, the loop index included:
   `{: i:n :} 3 0 ?do i . loop` prints the local three times.
-- Code is well-factored and its lines are short, 80 columns at most, because
-  people read it: a word does one thing in about five lines, and a repeat or
+- Code is well-factored and its lines are short, about 60 columns at most,
+  because people read it: a word does one thing in about five lines, and a repeat or
   a dense expression becomes a named word.
 - A `{: … :}` group that binds at entry goes on its own line after the name
   and stack effect, indented three spaces as the body.
