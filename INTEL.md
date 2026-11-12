@@ -2,9 +2,8 @@
 
 The entry point for the lane that finishes the Linux x86-64 backend. The
 design reference is [docs/x86-64.md](docs/x86-64.md). The seam rules are in
-[docs/porting.md](docs/porting.md). The dot tree starts at
-`habu-finish-the-linux-57cb3952` (`dot show habu-finish-the-linux-57cb3952`),
-under the umbrella `habu-campaign-c6-targets-86bb56bb`.
+[docs/porting.md](docs/porting.md). Its open dots sit under the umbrella
+`habu-campaign-c6-targets-86bb56bb` (`dot tree`).
 
 ## Mission
 
