@@ -53,8 +53,8 @@ using SYSCALL
    rd l LOFF,  rd 9 rd ADD, ;
 
 
-\ Store each run in [x1, x2) (link-data.f RUNS,) at DATA + off, x3 the target
-\ and x4 the cells left; DATA outside the runs stays zero (EM-MMAP-DATA-REGION).
+\ Store each run in [x1, x2) at DATA + off, x3 the target and x4 the cells left;
+\ DATA outside the runs stays zero.
 : COPY-DATA, ( label label label -- )
    {: text0:label start:label end:label :}
    LBL LBL LBL {: more:label each:label done:label :}
@@ -111,25 +111,24 @@ using SYSCALL
    {: text0:label :}
    ASM-LEN 0<> if s" boot: the start-up must sit at code offset 0" 76 die then
    text0 LBL,
-   EM-ENTRY-ARGS                            \ habu2.f
-   C-SIGNAL-STACK                           \ crash.f
-   STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP ;   \ rt.f
+   EM-ENTRY-ARGS
+   C-SIGNAL-STACK
+   STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP ;
 
 \ DATA mapped (x20), its image's runs stored and its listed code addresses slid.
 \ The text size is read from the header the slid RBASE-CELL finds.
 : DATA, ( n label label label label label -- )
    {: linked:n text0:label image:label image-end:label list:label list-end:label :}
-   EM-MMAP-DATA-REGION  DATA 0 0 ADDI,      \ habu2.f
+   EM-MMAP-DATA-REGION  DATA 0 0 ADDI,
    text0 image image-end COPY-DATA,
    linked text0 list list-end SLIDE,
    RUNTIME-CELLS,
-   EM-TEXT-SIZE ;                           \ habu2.f
+   EM-TEXT-SIZE ;
 
-\ The return and loop stacks, then the crash handler.
 : STACKS, ( label -- )
    {: text0:label :}
-   EM-FRAME-STACKS                          \ habu2.f
-   text0 TEXT-BASE,  11 LCRASHH LABEL@ TEXT-AT,  G-INSTALL-CRASH-X11 ;   \ crash.f
+   EM-FRAME-STACKS
+   text0 TEXT-BASE,  11 LCRASHH LABEL@ TEXT-AT,  G-INSTALL-CRASH-X11 ;
 
 \ SIGTRAP repointed from the crash handler at the breakpoint handler; an
 \ engine's only (a stripped program has no breakpoints).
@@ -139,15 +138,14 @@ using SYSCALL
    11 SIGACT-SIGINFO C-SIGACTION-FRAME  5 INSTALL-SIGACT  C-SIGACTION-FRAME-DONE ;
 
 \ The persistent breakpoints' trampolines at the live code's start, stored as
-\ BRK words through the region's RW alias (x17 = alias - base), their address
-\ in BPTRAMP-CELL (layout.f); CP starts after them.
+\ BRK words through the region's RW alias (x17 = alias - base), their address in
+\ BPTRAMP-CELL; CP starts after them.
 : TRAMPOLINES, ( -- )
    9 CP 0 ADDI,  9 DATA BPTRAMP-CELL STR,
    10 $D4200000D4200000 LIT64,  11 CP 17 ADD,
    BPTRAMP-BYTES 0 ?do 10 11 i STR, 8 +loop
    CP CP BPTRAMP-BYTES ADDI, ;
 
-\ Calls the xt in DATA's cell, then exits 0 through habu2.f EMIT-EXITHOOK.
 : CALL-EXIT, ( n -- )
    {: cell:n :}
    9 DATA cell LDR,  9 BLR,
@@ -157,7 +155,7 @@ using SYSCALL
 public
 
 \ A stripped program's start-up: the code's linked address, then the DATA
-\ image's and list's start and end labels, bound later.
+\ image's and list's start and end labels.
 : START, ( n label label label label -- )
    {: linked:n image:label image-end:label list:label list-end:label :}
    LBL {: text0:label :}
@@ -166,10 +164,10 @@ public
    text0 STACKS,
    APP-ENTRY:XT-CELL CALL-EXIT, ;
 
-\ An engine's start-up: START,'s labels, then the record image's and the
-\ record list's start and end. The region's two views come first: habu2.f
-\ EM-MMAP-CODE-REGION reads the image headers through x20 = the text base and
-\ leaves x21 = alias - base, which x17 keeps for REGION-ALIAS:DELTA-CELL.
+\ An engine's start-up: START,'s labels, then the record image's and the record
+\ list's start and end. The region's two views come first: EM-MMAP-CODE-REGION
+\ reads the image headers through x20 = the text base and leaves
+\ x21 = alias - base, which x17 keeps for REGION-ALIAS:DELTA-CELL.
 : ENGINE-START, ( n label label label label label label label label -- )
    {: linked:n image:label image-end:label list:label list-end:label
       recs:label recs-end:label rlist:label rlist-end:label :}
@@ -187,7 +185,7 @@ public
    TRAMPOLINES,
    EM-DEF-OCC:LINIT LABEL@ BL,
    text0 STACKS,  text0 TRAP,
-   LHIDXBUILD LABEL@ BL,                    \ habu1.f: maps the index, keys [0, NDICT)
+   LHIDXBUILD LABEL@ BL,                    \ Maps the index, keys [0, NDICT)
    ENGINE-MAIN:XT-CELL CALL-EXIT, ;
 
 ;using
