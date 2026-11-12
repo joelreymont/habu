@@ -1,9 +1,10 @@
 \ display-test.f - checked Wasm fixture through the foreign display peer; the
-\ printed directory retains the module and exact CLI output. With Chrome
-\ installed (macOS's application or google-chrome on PATH) --chrome also runs
-\ the real browser (src/lib/browser/host.f). Each delivery kind (bytes, load,
-\ focus, highlight) runs through src/lib/browser/host-cli.mjs once and four
-\ times; both end with the same memory because every run frees its page.
+\ printed directory retains the module and exact CLI output. Chrome runs only
+\ when the test is loaded with `-- --chrome`: then --chrome also runs the real
+\ browser (src/lib/browser/host.f), macOS's application or google-chrome on
+\ PATH. Each delivery kind (bytes, load, focus, highlight) runs through
+\ src/lib/browser/host-cli.mjs once and four times; both end with the same
+\ memory because every run frees its page.
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -55,6 +56,11 @@ variable FILE-U
 : MAC-CHROME ( -- ptr u8 n )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
 
+: CHROME-ASKED? ( -- bool )
+   SCRIPT-ARGC 0 ?do
+      i SCRIPT-ARGV$ s" --chrome" STR= if unloop true exit then
+   loop false ;
+
 \ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.
 : FIND-CHROME ( -- )
    MAC-CHROME FS:EXISTS? if
@@ -68,11 +74,15 @@ variable FILE-U
 : PEER ( -- n )
    PROC-ARGV-RESET
    s" test/browser/display-peer.mjs" ARG+ MOD MOD-U @ ARG+ DIR DIR-U @ ARG+
-   FIND-CHROME CHROME-U @ 0<> if
-      s" --chrome" ARG+ CHROME CHROME-U @ ARG+
-      s" browser display: Chrome " type CHROME CHROME-U @ type cr
+   CHROME-ASKED? if
+      FIND-CHROME CHROME-U @ 0<> if
+         s" --chrome" ARG+ CHROME CHROME-U @ ARG+
+         s" browser display: Chrome " type CHROME CHROME-U @ type cr
+      else
+         s" --chrome: Chrome is installed" T-LABEL CHROME-U @ 0<> TTRUE
+      then
    else
-      s" browser display: no Chrome installed; browser cases skipped" type cr
+      s" browser display: Chrome cases run only with -- --chrome" type cr
    then
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
@@ -87,8 +97,9 @@ public
    rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
    s" browser display fixture validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
+   PEER {: peer:n :}
    s" SVG/input records, scenes, identities, refusals and CLI" T-LABEL
-   PEER 0 T=
+   peer 0 T=
    OUT OUT-U @ type ERR ERR-U @ type
    s" four fetched answers end with the memory one does"
       MOD MOD-U @ [: \ the answer follows the typed "fetch" that asks for it

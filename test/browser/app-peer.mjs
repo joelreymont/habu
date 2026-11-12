@@ -12,7 +12,7 @@
 // its ui/initialize is answered. DIR holds data.bin, the file picked, and
 // receives chrome.log; TITLE is the page's unescaped title.
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -188,11 +188,10 @@ try {
   failure = error; throw error;
 } finally {
   try {
-    socket?.close();
-    try { await stopGroup(child.pid); await child.exited; } finally {
+    try { await stopGroup(child.pid, socket); await child.exited; } finally {
+      socket?.close();
       server.stop(true);
-      const cleanup = Bun.spawn(["trash", profile], { stdout: "ignore", stderr: "inherit" });
-      assert.equal(await cleanup.exited, 0, "Chrome profile cleanup");
+      rmSync(profile, { recursive: true });
     }
   } catch (error) {
     if (!failure) throw error;
@@ -200,9 +199,14 @@ try {
   }
 }
 
-// Chrome leads its own process group: a renderer can outlive the browser
-// process, so teardown signals the group and waits until no member is left.
-async function stopGroup(group) {
+// Chrome removes its code-sign clone only when it closes itself, so teardown
+// asks it to close and waits; it signals the group only if no socket opened.
+async function stopGroup(group, socket) {
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ id: 0, method: "Browser.close" }));
+    while (signalGroup(group, 0)) await Bun.sleep(25);
+    return;
+  }
   for (const signal of ["SIGTERM", "SIGKILL"]) {
     if (!signalGroup(group, signal)) return;
     const limit = performance.now() + 5000;

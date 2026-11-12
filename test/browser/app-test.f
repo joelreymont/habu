@@ -3,10 +3,10 @@
 \ test/browser/app.f's module through src/lib/browser/turn.js. bun and
 \ wasm-tools must be on PATH, so this is no row of the ordinary gate:
 \ test/wasm/device.f runs it, as does `bin/hb --load test/browser/app-test.f`
-\ from the tree's root. With Chrome installed (macOS's application or
-\ google-chrome on PATH) the --chrome check writes MCP-APP:PAGE+ of the module
-\ and runs it in Chrome under test/browser/app-peer.mjs, which plays ChatGPT's
-\ MCP Apps host.
+\ from the tree's root. Chrome runs only when the test is loaded with
+\ `-- --chrome`: then the --chrome check writes MCP-APP:PAGE+ of the module
+\ and runs it in Chrome (macOS's application or google-chrome on PATH) under
+\ test/browser/app-peer.mjs, which plays ChatGPT's MCP Apps host.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -289,6 +289,11 @@ variable BEFORE-U
 : MAC-CHROME ( -- ptr u8 n )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
 
+: CHROME-ASKED? ( -- bool )
+   SCRIPT-ARGC 0 ?do
+      i SCRIPT-ARGV$ s" --chrome" STR= if unloop true exit then
+   loop false ;
+
 \ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.
 : FIND-CHROME ( -- )
    MAC-CHROME FS:EXISTS? if
@@ -311,8 +316,11 @@ variable BEFORE-U
 
 
 : CHROME-CASE ( -- )
+   CHROME-ASKED? 0= if
+      s" browser app: Chrome cases run only with -- --chrome" type cr exit
+   then
    FIND-CHROME CHROME-U @ 0= if
-      s" browser app: no Chrome installed; browser cases skipped" type cr exit
+      s" --chrome: Chrome is installed" T-LABEL CHROME-U @ 0<> TTRUE exit
    then
    s" browser app: Chrome " type CHROME CHROME-U @ type cr
    PAGE!
