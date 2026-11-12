@@ -128,11 +128,8 @@ $328 constant CALL-BINDING-OFF
 \ A completed explicitly unjudged scan exposes original resolution and the
 \ declared ABI, without granting a checked call or body verdict.
 $330 constant UNJUDGED-BINDING-OFF
-\ Concrete one-cell constructors and unchanged stack tails for the native
-\ implementation owner's checked call contract. Zero means no concrete term.
-$338 constant EFFECT-DIN-CON-OFF
-$340 constant EFFECT-DOUT-CON-OFF
-$348 constant EFFECT-STACK-STABLE-OFF
+\ $338, $340 and $348 are vacant: a retained prefix still installs its effect
+\ constructor and stack-tail readers there, so no later field may take them.
 \ A scan serial from the same owner that supplies the borrowed binding rows.
 $350 constant BINDING-WINDOW-OFF
 \ The source pre-pass borrows the selected deferred body token's source span.

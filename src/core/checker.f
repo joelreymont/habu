@@ -14591,9 +14591,6 @@ variable EFFQ-SAVE-DOUT
    EFF-ROW-TERM dup 0= if exit then
    dup EFF-TAG@ EN-CON = if EFF-A@ else drop 0 then ;
 
-: EFFECT-DIN-CON ( n -- n ) EFFQ-DIN @ EFF-ROW-CON ;
-: EFFECT-DOUT-CON ( n -- n ) EFFQ-DOUT @ EFF-ROW-CON ;
-
 \ ---- the quotation descent ----------------------------------------------------
 : EFF-DESCEND ( n -- bool )     \ n = term-node offset
    {: t:n :}
@@ -14620,14 +14617,6 @@ variable EFFQ-SAVE-DOUT
 \ Every word leaves its caller's return stack alone.
 : EFFECT-RET-NEUTRAL? ( -- bool )
    EFFQ-OK @ 0 <> ;
-
-: EFFECT-STACK-STABLE? ( -- bool )
-   EFFQ-OK @ 0= if 0 0= 0= exit then
-   EFFQ-DIN @ EFF-ROW-TAIL {: a:n :}
-   EFFQ-DOUT @ EFF-ROW-TAIL {: b:n :}
-   a 0= b 0= or if 0 0= 0= exit then
-   a EFF-TAG@ EN-ROW = b EFF-TAG@ EN-ROW = and 0= if 0 0= 0= exit then
-   a EFF-A@ b EFF-A@ = ;
 
 \ A quotation a caller may compile as an ordinary routine: no throw edge and a
 \ live fall-through.
@@ -30306,9 +30295,6 @@ package CHECKER-REG
 ' EFFECT-DOUT-CELLS                 DECLARATIONS EFFECT-DOUT-CELLS-OFF + xt!
 ' EFFECT-DIN-SLOT                   DECLARATIONS EFFECT-DIN-SLOT-OFF + xt!
 ' EFFECT-DOUT-SLOT                  DECLARATIONS EFFECT-DOUT-SLOT-OFF + xt!
-' EFFECT-DIN-CON                    DECLARATIONS CHECKER-OWNER-ABI:EFFECT-DIN-CON-OFF + xt!
-' EFFECT-DOUT-CON                   DECLARATIONS CHECKER-OWNER-ABI:EFFECT-DOUT-CON-OFF + xt!
-' EFFECT-STACK-STABLE?              DECLARATIONS CHECKER-OWNER-ABI:EFFECT-STACK-STABLE-OFF + xt!
 ' EFFECT-DIN-QUOT                   DECLARATIONS EFFECT-DIN-QUOT-OFF + xt!
 ' EFFECT-DOUT-QUOT                  DECLARATIONS EFFECT-DOUT-QUOT-OFF + xt!
 ' EFFECT-QUOT-UP                    DECLARATIONS EFFECT-QUOT-UP-OFF + xt!
