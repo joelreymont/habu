@@ -30,12 +30,9 @@ public
 
 ;package
 
-\ ---- one spelling, three definitions, one session ----------------------------
-\ The dialect's vocabulary is registered ONCE per load, so whether a spelling is
-\ still the engine's own is asked per DEFINITION, at the moment a token reads the
-\ row. These three pin both directions inside one session: `xor` is the intrinsic
-\ operation, then a package owns it, then it is the intrinsic again. A model that
-\ cached membership for the load would answer one of the three wrongly.
+\ The dialect's vocabulary is registered ONCE per load, so whether a spelling
+\ is still the engine's own is asked per DEFINITION, at the moment a token
+\ reads the row.
 : XOR-BEFORE ( n n -- n ) xor ;
 
 package NATIVE-BOUND-XOR

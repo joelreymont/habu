@@ -1,7 +1,5 @@
 \ width-type.f - the built-in type `width<t>`: one cell holding the bytes t
-\ takes in storage, read with `width>n`. Its slot takes a type of any width, a
-\ width of one type is not a width of another, and no storage holds one. A
-\ body's `[type] t` makes one for a closed type storage holds.
+\ takes in storage, read with `width>n`.
 require src/lib/test.f
 require src/lib/string.f
 
@@ -20,7 +18,7 @@ private
 create DIAG-BUF 8192 allot
 8192 constant DIAG-CAP
 
-: ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
+: ARM ( -- )
    DIAG-BUF DIAG-CAP DIAG-BUFFER!  true DIAG-JSON! ;
 
 : DISARM ( -- )
@@ -92,7 +90,7 @@ create DIAG-BUF 8192 allot
    STORED
    DISARM ;
 
-: DECL-REFUSED ( ptr u8 n -- )   \ the declaration text is refused for its width
+: DECL-REFUSED ( ptr u8 n -- )
    {: a:ptr u:n :}
    ARM
    [: a u evaluate-closed ;] 7109 TTHROWSQ
@@ -108,7 +106,7 @@ create DIAG-BUF 8192 allot
    s" : TW5 ( -- n ) [: [type] turn ;] execute width>n ; TW5" TEST-EVAL:N 16 T=
    s" : TW6 ( -- n ) [type] turn W1 ; TW6" TEST-EVAL:N 16 T= ;
 
-: FORM-REFUSED ( ptr u8 n -- )   \ the text is refused for its [type] span
+: FORM-REFUSED ( ptr u8 n -- )
    {: a:ptr u:n :}
    ARM
    [: a u evaluate-closed ;] CHECK-RC TTHROWSQ
@@ -116,7 +114,7 @@ create DIAG-BUF 8192 allot
    s" [type] names no type storage holds" HAS?
    DISARM ;
 
-: FORM-PINNED ( ptr u8 n ptr u8 n -- )   \ the refusal's JSON holds fragment f
+: FORM-PINNED ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n f:ptr fu:n :}
    ARM
    [: a u evaluate-closed ;] CHECK-RC TTHROWSQ

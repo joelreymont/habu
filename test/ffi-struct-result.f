@@ -8,9 +8,9 @@
 \ destination. CoreMedia has no scalar-only function returning a larger record
 \ (its CMTimeRange makers take CMTime by value), so CMTime stands for every
 \ indirect width. No system function returns a 12-byte integer record; every
-\ 9..16-byte integer record arrives in x0:x1 alike, so lldiv declared at 12
-\ bytes is the same call and shows the second register stored at its exact
-\ width. Each result lands between canaries.
+\ 9..16-byte integer record arrives in x0:x1 alike, so lldiv declared at
+\ 12 bytes is the same call and shows the second register stored at its
+\ exact width.
 
 LIBRARY /usr/lib/libSystem.B.dylib
 FUNCTION: FFI-T-MAKEADDR inet_makeaddr ( n n ptr u8 -- ) 4 STRUCT-RESULT ;FUNCTION
@@ -47,7 +47,6 @@ create FFI-T-SR-BUF 64 allot
 : FFI-T-SR-UNTOUCHED ( -- )
    64 0 do FFI-T-SR-BUF i + c@ FFI-T-SR-FILL T= loop ;
 
-\ The bytes before and the cell after a size-byte result keep their fill.
 : FFI-T-SR-CANARIES ( n -- ) {: size:n :}
    FFI-T-SR-OFF 0 do FFI-T-SR-BUF i + c@ FFI-T-SR-FILL T= loop
    8 0 do FFI-T-SR-DST size + i + c@ FFI-T-SR-FILL T= loop ;
@@ -59,7 +58,6 @@ create FFI-T-SR-BUF 64 allot
    FFI-T-SR-DST 16 + LE:U64@ epoch T=
    24 FFI-T-SR-CANARIES ;
 
-\ Declarations the declarer must refuse, each through the loader's evaluate.
 : FFI-T-SR-ZERO ( -- )
    s" FUNCTION: FFI-T-SRX2 div ( n n ptr u8 -- ) 0 STRUCT-RESULT ;FUNCTION" INCLUDE-EVALUATE ;
 : FFI-T-SR-OUTPUT ( -- )
@@ -85,7 +83,6 @@ create FFI-T-SR-BUF 64 allot
    INCLUDE-EVALUATE ;
 : FFI-T-SR-OUTSIDE ( -- )
    s" 8 STRUCT-RESULT" INCLUDE-EVALUATE ;
-\ Sixteen inputs are the limit, and the destination is one of them.
 : FFI-T-SR-INPUTS ( -- )
    s" FUNCTION: FFI-T-SRXC div ( n n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
    INCLUDE-EVALUATE ;

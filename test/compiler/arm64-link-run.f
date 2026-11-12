@@ -1,14 +1,13 @@
 \ arm64-link-run.f - LINKER:WRITE's stripped programs, run, their kernel the
-\ tree's kernel object (HB-BUILD-CORE:KERNEL-BUILD). One build stores
-\ each of four entries with xt! into APP-ENTRY:XT-CELL and writes a program
-\ for it: LR-HI prints `Hi` and exits 0; LR-THROW prints nothing and exits 3,
-\ its uncaught throw code; LR-XT stores a quotation with xt! at run time and
-\ prints `Hi` only if the product's MARK accepts its address-cell header and
-\ index; LR-DEEP overflows the machine stack and exits 102 through the crash
-\ path the start-up installs. Each file is under 128 KiB, which the whole kernel
-\ alone exceeds: only the kernel code the program reaches is written. WRITE
-\ outside a build is E-COMP-STATE. Each program runs in its own process: the
-\ boundary under test is the written file and its start-up.
+\ tree's kernel object. One build stores each of four entries and writes a
+\ program for it: LR-HI prints `Hi` and exits 0; LR-THROW prints nothing and
+\ exits 3, its uncaught throw code; LR-XT stores a quotation with xt! at run
+\ time and prints `Hi` only if the product's MARK accepts its address-cell
+\ header and index; LR-DEEP overflows the machine stack and exits 102 through
+\ the crash path the start-up installs. Each file is under 128 KiB, which the
+\ whole kernel alone exceeds: only the kernel code the program reaches is
+\ written. Each program runs in its own process: the boundary under test is the
+\ written file and its start-up.
 \ Fixture words are LR- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
@@ -34,7 +33,6 @@ create PROG-BUF PATH-CAP allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 
-\ The path of the program named a u in the run's directory.
 : PROG$ ( ptr u8 n -- ptr u8 n )
    {: name:ptr name-n:n :}
    ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
@@ -50,13 +48,11 @@ create PROG-BUF PATH-CAP allot
    s" : LR-DEEP ( -- ) 0 LR-REC drop ;" evaluate-closed ;
 
 
-\ The entry store APP-ENTRY:XT! makes, of the word named a u.
 : STORE-ENTRY ( ptr u8 n -- )
    XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
    data-base APP-ENTRY:XT-CELL + xt! ;
 
 
-\ The program whose entry is the word named a u, written as file f fu.
 : WRITE-PROG ( ptr u8 n ptr u8 n -- )
    {: word:ptr word-n:n file:ptr file-n:n :}
    word word-n STORE-ENTRY
@@ -71,8 +67,6 @@ create PROG-BUF PATH-CAP allot
    s" LR-DEEP" s" deep" WRITE-PROG ;
 
 
-\ Program file runs, prints out on stdout and exits want; a failed check
-\ shows what it printed on both streams.
 : RUN-PROG ( CMD:command ptr u8 n ptr u8 n n -- CMD:command )
    {: file:ptr file-n:n out:ptr out-n:n want:n :}
    file file-n PROG$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
@@ -90,7 +84,7 @@ create PROG-BUF PATH-CAP allot
    s" deep" T-LABEL  CMD:ERR$ s\" hb: stack bounds exceeded (machine)\n" T$= ;
 
 
-\ An ELF file is at least one PROT-PAGE-MAX text page (src/os/linux/elf.f TEXTSZ).
+\ An ELF file is at least one PROT-PAGE-MAX text page.
 : SMALLER ( ptr u8 n -- )
    {: file:ptr file-n:n :}
    file file-n PROG$ FS:FILE-SIZE {: size:n :}

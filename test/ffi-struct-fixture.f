@@ -8,7 +8,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/codegen.f
-require src/lib/test/assert.f          \ T-EX-FAIL
+require src/lib/test/assert.f
 
 package STRUCT-FIXTURE
 
@@ -104,8 +104,7 @@ variable LIB-U
 
 public
 
-\ Write the fixture source into dir, compile it there, and answer the
-\ library's path, which stays valid until the next BUILD.
+\ Answer the library's path, which stays valid until the next BUILD.
 : BUILD ( ptr u8 n -- ptr u8 n ) {: dir:ptr diru :}
    SRC CODEGEN:RESET
    TYPES SUMS PLACEMENTS OWNERSHIP RESULTS
