@@ -94,6 +94,9 @@ s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 \ ambiguous in a compiled body: the checker refuses it (checker.f LIVE-BIND)
 s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-USING-AMBIGUOUS T=
+\ a top-level `target` where a word of that name is in scope, and where none is
+s" package UT-CLASH : TARGET ( -- ) ; target ;package" VS-CATCH VERIFY:E-SECTION-WORD T=
+s" package UT-SECT : UT-SECT-W ( -- ) ; target ;package" VS-CATCH 0 T=
 \ unknown package
 s" using NOPE-PKG" UCE-CATCH E-UNKNOWN T=
 \ a colon-bearing name is not a package name

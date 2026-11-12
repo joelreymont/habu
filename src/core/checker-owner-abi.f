@@ -204,10 +204,8 @@ $3B0 constant VERIFY-SOURCE-CLAUSE-OFF
 \ no local answers.
 $3B8 constant VERIFY-CURSOR-OFF
 $3C0 constant VERIFY-EACH-VISIBLE-OFF
-\ The word the load's top-level find selects for a token, asked quietly:
-\ ( ptr u8 n -- sym eff1 ctl ), its symbol, its visible effect record's offset
-\ + 1 and its control word, all 0 when the load refuses the token or nothing
-\ live binds it.
+\ The load's top-level find of a token, asked quietly ( ptr u8 n -- sym eff1 ctl ), eff1 the
+\ visible effect record's offset + 1: 0 0 0 if nothing live binds it, 0 0 BINDING-REFUSED if refused.
 $3C8 constant VERIFY-TOP-BINDING-OFF
 \ The control word's facts its reader tests: the word may read the source after
 \ it, it is deferred, its string operand names a word (a `names:` row), a
@@ -219,6 +217,8 @@ $2000 constant BINDING-PARSES
 $10000 constant BINDING-DEFER
 $20000 constant BINDING-NAMES
 $40000 constant BINDING-GENERATES
+\ The top-level walk refused the name, as it does an ambiguous or shadowed one.
+$80000 constant BINDING-REFUSED
 $10 constant BINDING-CORE-OP
 8 constant BINDING-ID-SHIFT
 $1F00 constant BINDING-ID-MASK

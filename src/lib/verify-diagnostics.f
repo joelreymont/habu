@@ -84,6 +84,11 @@ public
       s" The package is sealed: define the word in a package of your own."
       s" sealed package" exit
    then
+   rc VERIFY:E-SECTION-WORD = if
+      s" E-SECTION-WORD" s" rename_section_word_clash"
+      s" The token is the section word and a word of that name is in scope: rename the word or call it qualified."
+      s" section word with a word of that name in scope" exit
+   then
    s" E-STATEMENT-THROW" s" unknown_rejection"
    s" Inspect the token, signature, and raw stack evidence." s" " ;
 

@@ -2154,6 +2154,14 @@ variable RC
    s" : SHADE ( -- ) ;" s"    evaluate SHADE ;" SHADOW-FIXTURE
    s" unsafe-shade.f" FIXTURE!
    s" E-USING-SHADOW-GLOBAL" s" SHADE" 8 13 96 101 REFUSED-AT
+   s" a section word two used publics export" T-LABEL
+   s" package DPA1 public : TARGET ( -- ) ; ;package package DPA2 public : TARGET ( -- ) ; ;package using DPA1 using DPA2 target ;using ;using"
+   s" section-ambiguous.f" LINE-FIXTURE
+   s" E-USING-AMBIGUOUS" s" target" 1 117 116 122 REFUSED-MODES
+   s" a section word a global and a used public export" T-LABEL
+   s" : TARGET ( -- ) ; package DPG1 public : TARGET ( -- ) ; ;package using DPG1 target ;using"
+   s" section-shadow.f" LINE-FIXTURE
+   s" E-USING-SHADOW-GLOBAL" s" target" 1 77 76 82 REFUSED-MODES
    s" a called name two used publics and a global export before an undefined word" T-LABEL
    true s"    AMB NOPE ;" AMBIG-FIXTURE
    s" ambig-global-undefined.f" FIXTURE!

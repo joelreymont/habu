@@ -211,6 +211,9 @@ public
 \ scan with this at the definer, or at `does>` for a clause's (SIGNATURE-AT).
 7157 constant E-MISSING-SIGNATURE
 
+\ A top-level `host` or `target` while a word of that name is in scope.
+7135 constant E-SECTION-WORD
+
 \ A DEFLINEAR or VALUE-RECORD the checker refuses stops the scan with one of
 \ these where the refusal stands; a load's registration dies with it instead.
 7200 constant E-BAD-NOMINAL-TYPE   \ a DEFLINEAR or VALUE-RECORD name no type may take
@@ -2831,8 +2834,6 @@ DYNAMIC-BUFFER PRS-TERMS u8
    NCOMP-DISPATCH:DECL-A @ BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
 CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
-\ Asked quietly of the checker: the symbol, the visible record's offset + 1 and
-\ the control word, all 0 when the load refuses the token or nothing live binds it.
 : TOP-BINDING ( ptr u8 n -- n n n )
    CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF OWNER-XT BINDING-ACTION execute ;
 
@@ -3938,7 +3939,12 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    \ A library definer is a replaceable dictionary call, not structural syntax.
    INDEX-ON @ native 0= and IF false EXIT THEN
    TOKEN-BYTE @ {: at:n :}
-   a u TOP-BINDING drop drop {: sym:n :}
+   a u TOP-BINDING nip {: sym:n ctl:n :}
+   a u s" host" STR=CI  a u s" target" STR=CI or {: section:bool :}
+   \ A refused name goes on as an ordinary word, refused as one.
+   ctl CHECKER-OWNER-ABI:BINDING-REFUSED and 0<>
+   section and IF false EXIT THEN
+   section sym 0<> and IF E-SECTION-WORD throw THEN
    a u RECORD-DEFINER? 0= IF 0 0= 0= EXIT THEN
    native 0= IF TICK-CONTEXT-UNKNOWN THEN
    native 0= IF a u at sym ENGINE-ORIGIN-USE THEN

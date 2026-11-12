@@ -5854,10 +5854,8 @@ $40 constant CTL-ZERO-FALSE
 \ define words at run time that no source text spells.
 $80 constant CTL-RENDERS
 
-\ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13
-\ CTL-PARSES and 14 CTL-CREATES, 15 CTL-NOMINAL, 16 the defer bit, 17
-\ CTL-NAMES and 18 CTL-GENERATES, 19 free outside the flag mask, 20-39 and
-\ 40-59 the intact masks.
+\ Control word bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13-18 the flags below with 16
+\ the defer bit, 19 the verifier query's refused-name mark, 20-39 and 40-59 the intact masks.
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -22053,28 +22051,33 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    CHECKER-QTAIL$ BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE ;
 
 \ The selections, each with the symbol, its newest visible record+1 and the
-\ dictionary record it binds.
-: VIS-TOP-PICK ( ptr u8 n -- n n ptr n bool )
+\ dictionary record it binds, then whether the top-level walk refused the name.
+: VIS-TOP-PICK ( ptr u8 n -- n n ptr n bool bool )
    {: a:ptr u:n :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
-   why 0 <>  CHECKER-QBAD-TOK @ 0 <> or IF 0 0 NULL-PTR RES-FALSE EXIT THEN
+   why 0 <> IF 0 0 NULL-PTR RES-FALSE RES-TRUE EXIT THEN
+   CHECKER-QBAD-TOK @ 0 <> IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
    a u sym TOP-BOUND-SYM {: s2:n ok:bool :}
-   ok 0= IF 0 0 NULL-PTR RES-FALSE EXIT THEN
-   s2 0 <> IF s2  s2 USIG-NEWEST-VISIBLE  s2 VIS-WALK-REC  RES-TRUE EXIT THEN
-   WALK-REC @ IF 0 0 BIND-REC @ RES-TRUE EXIT THEN
+   ok 0= IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
+   s2 0 <> IF
+      s2  s2 USIG-NEWEST-VISIBLE  s2 VIS-WALK-REC  RES-TRUE RES-FALSE EXIT
+   THEN
+   WALK-REC @ IF 0 0 BIND-REC @ RES-TRUE RES-FALSE EXIT THEN
    a u VIS-ENGINE-REC {: rec:ptr :}
-   rec NULL-PTR = IF 0 0 NULL-PTR RES-FALSE EXIT THEN
-   0 0 rec RES-TRUE ;
+   rec NULL-PTR = IF 0 0 NULL-PTR RES-FALSE RES-FALSE EXIT THEN
+   0 0 rec RES-TRUE RES-FALSE ;
 
-: VIS-BODY-PICK ( ptr u8 n -- n n ptr n bool )
+: VIS-BODY-PICK ( ptr u8 n -- n n ptr n bool bool )
    {: a:ptr u:n :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
-   why 0 <>  sym 0=  WALK-REC @ 0=  and  or IF 0 0 NULL-PTR RES-FALSE EXIT THEN
-   sym  sym 0= IF 0 ELSE sym USIG-NEWEST-VISIBLE THEN  sym VIS-WALK-REC  RES-TRUE ;
+   why 0 <>  sym 0=  WALK-REC @ 0=  and  or IF
+      0 0 NULL-PTR RES-FALSE RES-FALSE EXIT
+   THEN
+   sym  sym 0= IF 0 ELSE sym USIG-NEWEST-VISIBLE THEN  sym VIS-WALK-REC
+   RES-TRUE RES-FALSE ;
 
-\ Select A U with every walk output put back after. The binding query also
-\ asks for control and liveness while those outputs are saved. An ordinary
-\ visible-word enumeration asks for neither.
+\ Select A U with every walk output put back after, and control and liveness when CONTROLS.
+\ A name the top-level walk refused is not found, its control word BINDING-REFUSED alone.
 : VIS-PICK ( ptr u8 n n bool -- n n ptr n n bool )
    {: a:ptr u:n kind:n controls:bool :}
    BIND-REC @ {: s-br:ptr :}
@@ -22088,7 +22091,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    PRM-FIRST @ PE-I @ NORET-CTL @ NORET-FMEND @ NRX-POS @
    {: s-pf:n s-pe:n s-nc:n s-nf:n s-np:n :}
    kind CHECKER-OWNER-ABI:VISIBLE-TOP = IF a u VIS-TOP-PICK ELSE a u VIS-BODY-PICK THEN
-   {: sym:n rec1:n drec:ptr ok:bool :}
+   {: sym:n rec1:n drec:ptr ok:bool refused:bool :}
    controls IF
       sym 0= IF drec NULL-PTR <> ELSE
          sym SYM-VISIBLE 0 <>
@@ -22108,6 +22111,9 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    s-ub USING-UNBOUND !  s-wr WALK-REC !
    s-hh HIDX-H !  s-hi HIDX-I !  s-hc HIDX-CUR !  s-xp USX-BP !  s-xn USX-BN !
    s-pf PRM-FIRST !  s-pe PE-I !  s-nc NORET-CTL !  s-nf NORET-FMEND !  s-np NRX-POS !
+   refused IF
+      0 0 NULL-PTR CHECKER-OWNER-ABI:BINDING-REFUSED RES-FALSE EXIT
+   THEN
    controls live 0= and IF 0 0 NULL-PTR 0 RES-FALSE EXIT THEN
    sym rec1 drec ctl ok ;
 
@@ -22123,9 +22129,13 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 
 : TOP-BINDING ( ptr u8 n -- n n n ) TOP-BINDING-REC drop ;
 
-\ The source pre-pass asks for a binding without reporting or marking a use.
-\ VIS-PICK restores the resolver's scratch before the pre-pass resumes.
-: CHECKER-VERIFY-TOP-BINDING ( ptr u8 n -- n n n ) TOP-BINDING ;
+\ The source pre-pass's binding query: it reports and marks nothing, and keeps the
+\ control word of a name the walk refused, which TOP-BINDING answers as 0.
+: CHECKER-VERIFY-TOP-BINDING ( ptr u8 n -- n n n )
+   {: a:ptr u:n :}
+   a u CHECKER-OWNER-ABI:VISIBLE-TOP RES-TRUE VIS-PICK
+   {: sym:n eff1:n drec:ptr ctl:n found:bool :}
+   found IF sym eff1 ctl ELSE 0 0 ctl THEN ;
 
 \ Locals answer here: an unqualified body token, inside a quotation too, where
 \ a token that spells a live local is that local.
