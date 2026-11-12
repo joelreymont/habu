@@ -1,7 +1,7 @@
 \ record.f - machine-readable test failure records.
 \ One TSV line per failing case: TFAIL <layer> <case-id> <label>.
-\ Shared by src/lib/test/assert.f and src/lib/test/runner.f so gate
-\ logs and repair loops parse one record shape across all test layers.
+\ Shared so gate logs and repair loops parse one record shape
+\ across all test layers.
 \
 \ STORAGE CLASS. PROCESS-WIDE: the record line is built in one static buffer.
 
@@ -22,9 +22,8 @@ variable TREC-U
    TREC-BUF TREC-U @ + c!
    TREC-U @ 1+ TREC-U ! ;
 
-\ Payload bytes are sanitized: tab/CR/LF would break the one-line TSV record
-\ contract, so they degrade to spaces (column tabs come from the builder
-\ itself, never from payloads).
+\ Tab/CR/LF in a payload would break the one-line TSV record contract, so they
+\ degrade to spaces.
 : TREC-PAYLOAD-C ( n -- n )
    dup STR-TAB = over STR-LF = or over STR-CR = or if drop STR-SPACE then ;
 

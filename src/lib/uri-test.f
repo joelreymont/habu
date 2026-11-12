@@ -16,7 +16,7 @@ using SPAN
 2 BUFFER: ONE                     \ `/` and the byte a round trip takes
 $A5 constant CANARY
 
-: PATH$ ( ptr u8 n -- ptr u8 n )   \ decode into DST, answer the bytes written
+: PATH$ ( ptr u8 n -- ptr u8 n )
    DST URI:FILE>PATH {: u:n :}
    DST $ drop u ;
 
@@ -78,7 +78,7 @@ $A5 constant CANARY
    [: s" file:///a#b" DECODE-DROP ;] E-URI-ESCAPE TTHROWSQ ;
 
 : UNTOUCHED ( n -- )
-   {: n:n :}   \ DST's first n bytes still hold the canary
+   {: n:n :}
    n 0 ?do DST i U8@ CANARY T= loop ;
 
 : FOUR-SHORT ( -- )
@@ -103,7 +103,7 @@ $A5 constant CANARY
    s" file:///abcd" DST 5 TAKE URI:FILE>PATH 5 T=
    DST $ drop 5 s" /abcd" T$= ;
 
-: URI$ ( ptr u8 n -- ptr u8 n )   \ encode into URI-DST, answer the bytes written
+: URI$ ( ptr u8 n -- ptr u8 n )
    URI-DST URI:PATH>FILE {: u:n :}
    URI-DST $ drop u ;
 
@@ -159,7 +159,7 @@ $A5 constant CANARY
    DST $ drop 13 s" file:///a%20b" T$= ;
 
 : TRIP ( n -- )
-   {: b:n :}   \ `/` and byte b, encoded and decoded back
+   {: b:n :}
    [char] / ONE c!
    b ONE 1+ c!
    ONE 2 URI$ PATH$ ONE 2 T$= ;

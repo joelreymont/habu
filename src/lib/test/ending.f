@@ -1,8 +1,7 @@
-\ ending.f - checked assertions over the process ending enum (src/lib/process.f).
-\ One MATCH per assert, so a child that completed by another variant fails under
-\ that variant's name. A deadline is no verdict on the child: on an expired one
-\ an exit or signal assert prints the program and its capture under the case
-\ label and throws E-PROC-TIMEOUT; T-ENDING-TIMEOUT expects the deadline.
+\ ending.f - checked assertions over the process ending enum.
+\ A deadline is no verdict on the child: on an expired one an exit or signal
+\ assert prints the program and its capture under the case label and throws
+\ E-PROC-TIMEOUT; T-ENDING-TIMEOUT expects the deadline.
 \ STORAGE CLASS. CALLER-OWNED: no module state.
 
 require src/lib/error.f
@@ -55,7 +54,7 @@ require src/lib/test/subject.f
      timeout OF src srcu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: T-ENDING-TIMEOUT ( PROCESS:ending -- )   \ the deadline passed before a terminal status
+: T-ENDING-TIMEOUT ( PROCESS:ending -- )
    MATCH PROCESS:ending
      exited OF s" timeout" s" exit" T-ENDING-MISS ENDOF
      signaled OF s" timeout" s" signal" T-ENDING-MISS ENDOF

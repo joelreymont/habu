@@ -1,8 +1,4 @@
-\ crew-test.f - CREW's tasks: three that record their task by value and hold
-\ until the test has compared them, a fourth START that takes a reaped task's
-\ record, STOP ending parked tasks through their finally, START inside STOP's
-\ quotation refused while STOP still ends its tasks, and a body that throws,
-\ whose LOG line is on fd 2 once it ends, reaped by the next START.
+\ crew-test.f - CREW's tasks.
 \ Run: bin/hb --load src/lib/crew-test.f
 
 require src/lib/error.f
@@ -74,8 +70,6 @@ CAST: N>TCB ( n -- ptr n )
 : START-HOLD ( n -- ) TASK:MIN-STACK swap [: HOLD ;] CREW:START ;
 
 
-\ The parked body's own value: the one whose SEEN is this task among those
-\ parked.
 : UNWIND-MINE ( -- )
    JOBS 0 ?do
       i PARKED ONE? i SEEN@ TASK:SELF-N = and if i UNWOUND SET unloop exit then

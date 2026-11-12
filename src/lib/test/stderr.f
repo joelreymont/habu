@@ -26,7 +26,6 @@ $A constant SAVE-FD-MIN     \ the saved stderr lands clear of 0..2
 variable SAVED              \ the process's own stderr while a capture is open, else 0
 
 
-\ Points fd 2 where the descriptor points and closes the descriptor.
 : REDIRECT-TO ( n -- bool )
    {: from:n :}
    from FD:STDERR FD>N dup2 {: moved:n :}

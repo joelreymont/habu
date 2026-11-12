@@ -60,8 +60,8 @@ variable TAT-COUNT-READY
 : TT-DEADLINE-PASSES ( -- )
    [: TT-DEADLINE-WANT-OTHER ;] catch E-PROC-TIMEOUT T= ;
 
-\ A throw check run inside the xt of another keeps each expected code with its
-\ own call: the inner check wants 5, then the outer xt throws the outer's code.
+\ A throw check run inside the xt of another keeps each expected code
+\ with its own call.
 : TT-INNER-WANTS-5 ( -- )
    [: TT-THROW-5 ;] 5 TTHROWSQ ;
 
@@ -71,8 +71,6 @@ variable TAT-COUNT-READY
 : TT-NESTED-THEN-5 ( -- )
    TT-INNER-WANTS-5 TT-THROW-5 ;
 
-\ A child engine's deliberately failing T= pins the one-line
-\ "assert: expected 3 got 9" shape src/lib/test/assert.f prints.
 create TAT-SCRIPT-PATH PATH-CAP allot
 variable TAT-SCRIPT-U
 
@@ -188,8 +186,8 @@ TAT-COUNT-CONCURRENT
 
 T-RESET
 
-\ The label rule is in src/lib/test/assert.f's header. T-RESET also zeroes the
-\ failure count, so 0 TAT-EXPECT-FAILURES checks these first.
+\ T-RESET also zeroes the failure count, so 0 TAT-EXPECT-FAILURES
+\ checks these first.
 T-LABEL$ s" " T$=
 s" alpha-label" T-LABEL
 T-LABEL$ s" alpha-label" T$=
