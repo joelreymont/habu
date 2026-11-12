@@ -1,12 +1,15 @@
 \ A real OS allocation refusal after successful growth to the inline boundary.
 \ The child denies every further mapping (Linux: RLIMIT_AS set to zero); the
 \ allocation under test is the engine's.
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 package ADDRESS-CELL-STORAGE-OOM
 create OUT 1024 allot
 create ERR 4096 allot
+\ The exit's whole line up to the lr's 16 hex digits and its newline.
+: LINE$ ( -- ptr u8 n ) s" E-XTCELL habu: address-cell storage allocation failed lr " ;
 : RUN ( -- )
    T-RESET
    HB-TARGET-LINUX? 0= if
@@ -29,7 +32,11 @@ create ERR 4096 allot
             s" duplicate marks at capacity allocate nothing" T-LABEL
             OUT outu LEN>N S\" address-cell-oom: ready\naddress-cell-oom: duplicate-ok\n" T$=
             s" the engine names the refused storage allocation" T-LABEL
-            ERR erru LEN>N S\" hb: address-cell storage allocation failed\n" T$=
+            erru LEN>N {: errn:n :}
+            errn LINE$ nip 17 + T=
+            ERR errn LINE$ STARTS-WITH? TTRUE
+            true errn 1- LINE$ nip ?do ERR i + c@ STR-HEX-DIGIT? and loop TTRUE
+            ERR errn + 1- c@ 10 T=
          ENDOF
       ;MATCH
    then

@@ -15,8 +15,9 @@
 \ mmap base, and DATA-VA + 2^38 = $4340000000 is the largest power-of-two window
 \ from DATA-VA that fits. A 38-bit width also meets the compiler's 48-bit
 \ address bound. The boot refuses with rc 78, which an engine names as
-\ "hb: cannot map fixed data region", where the kernel will not reserve the
-\ window lazily (vm.overcommit_memory=2, or RLIMIT_AS or RLIMIT_DATA below it)
+\ "E-MAP-FAIL habu: cannot map fixed data region", where the kernel will not
+\ reserve the window lazily (vm.overcommit_memory=2, or RLIMIT_AS or RLIMIT_DATA
+\ below it)
 \ or cannot place it: the expert-only 36-bit arm64 address space ends inside it,
 \ and a 39-bit kernel in the legacy bottom-up layout (vm.legacy_va_layout=1,
 \ setarch -L or an unlimited stack) maps the loader and libraries from

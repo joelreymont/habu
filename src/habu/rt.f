@@ -33,7 +33,7 @@ variable DESCRIPTOR-BASE
 variable DESCRIPTOR-CAP
 variable CURSOR-ABOVE
 variable MAP-CAP  variable MAP-DST
-variable MAP-MSG  variable MAP-OK   variable MAP-ROK
+variable MAP-OK   variable MAP-ROK
 variable MAP-BAD  variable MAP-DONE
 
 : EMIT-FAIL ( -- )
@@ -93,14 +93,13 @@ public
 \ the slack only widens the guard. A stack mapped this way is never released.
 \
 \ It runs before any crash handler exists and, for the boot data stack, before
-\ any region does: the diagnostic is inline bytes reached by ADR and the exit is
-\ 78, as for the two fixed-region mappings. The engine (habu2.f
+\ any region does: its line's text is laid inline and the exit is 78, as for the
+\ two fixed-region mappings. The engine (habu2.f
 \ EM-RUNTIME-STACK/EM-FRAME-STACKS) and a product's start-up
 \ (src/arch/arm64/boot.f ENTRY,) both emit it.
 : EMIT-MAP ( n n -- )
    MAP-DST !  MAP-CAP !
-   S\" hb: cannot map guarded VM stack\n" {: ma:ptr mu:n :}
-   LBL MAP-MSG !  LBL MAP-OK !  LBL MAP-ROK !  LBL MAP-BAD !  LBL MAP-DONE !
+   LBL MAP-OK !  LBL MAP-ROK !  LBL MAP-BAD !  LBL MAP-DONE !
    0 0 MOVZ,
    1 MAP-CAP @ STACK-ABI:PAGE-BYTES 3 * + LIT64,
    2 0 MOVZ,                                        \ PROT_NONE: the whole span is guard
@@ -127,9 +126,7 @@ public
    MAP-DST @ 9 0 ADDI,
    MAP-DONE LABEL@ B,
    MAP-BAD LABEL@ LBL,
-   0 2 MOVZ,  1 MAP-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
-   0 STACK-ABI:MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
-   MAP-MSG LABEL@ LBL,  ma mu BYTES,
+   s" E-MAP-FAIL habu: cannot map guarded VM stack" STACK-ABI:MAP-FAIL-RC DIE-LINE,
    MAP-DONE LABEL@ LBL, ;
 
 ;package

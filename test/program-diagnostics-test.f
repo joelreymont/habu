@@ -55,18 +55,31 @@ package PROGRAM-DIAGNOSTICS
    path pathu RUN-LOAD-HABU
    path pathu needle needleu EXPECT-DIAGNOSTIC ;
 
-: ADDRESS-CAP ( -- )
-   s" test/address-cell-cap-bad.f" 96
-      s" ADDRESS-CELL-CAP-ARMED" s" hb: invalid address-cell storage header" NEGATIVE
-   GT-ERR$ S\" hb: invalid address-cell storage header\n" STR= 0= if
-      s" address cell capacity diagnostic" GE-FAIL then ;
+\ stderr is one engine exit line: the text, " lr ", the lr's 16 hex digits and
+\ a newline.
+: EXPECT-DIE-LINE ( ptr u8 n ptr u8 n -- )
+   {: text:ptr textu:n label:ptr labelu:n :}
+   SB-RESET text textu SB-APPEND s"  lr " SB-APPEND
+   SB$ {: want:ptr wantu:n :}
+   GT-ERR$ {: err:ptr erru:n :}
+   erru wantu 17 + <> if label labelu GE-FAIL then
+   err wantu want wantu STR= 0= if label labelu GE-FAIL then
+   true erru 1- wantu ?do err i + c@ STR-HEX-DIGIT? and loop
+   0= if label labelu GE-FAIL then
+   err erru + 1- c@ GE-LF <> if label labelu GE-FAIL then ;
+
+: NEGATIVE-LINE ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n rc:n marker:ptr markeru:n text:ptr textu:n :}
+   path pathu rc marker markeru text textu NEGATIVE
+   text textu path pathu EXPECT-DIE-LINE ;
 
 : NEGATIVES ( -- )
-   s" test/address-cell-kind-bad.f" 99
-      s" ADDRESS-CELL-KIND-ARMED" s" hb: snapshot address cell kind mismatch" NEGATIVE
-   ADDRESS-CAP
-   s" test/xt-cell-band-bad.f" 98
-      s" XT-CELL-BAND-ARMED" s" hb: snapshot address cell out of range" NEGATIVE
+   s" test/address-cell-kind-bad.f" 99 s" ADDRESS-CELL-KIND-ARMED"
+      s" E-XTKIND habu: snapshot address cell kind mismatch" NEGATIVE-LINE
+   s" test/address-cell-cap-bad.f" 96 s" ADDRESS-CELL-CAP-ARMED"
+      s" E-XTCELL habu: invalid address-cell storage header" NEGATIVE-LINE
+   s" test/xt-cell-band-bad.f" 98 s" XT-CELL-BAND-ARMED"
+      s" E-XTBAND habu: snapshot address cell out of range" NEGATIVE-LINE
    s" test/checker-decl-depth0-bad.f" 76
       s" CHECKER-DECL-DEPTH0-ARMED" s" declaration rollback failed" NEGATIVE
    s" test/enum-ctor-collide-bad.f"

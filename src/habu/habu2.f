@@ -161,15 +161,6 @@ public
 variable LXTMSG     \ checked growth could not secure storage
 : XTMSG$ ( -- ptr u8 n )   S\" hb: address-cell storage allocation failed\n" ;
 : XTMSG-LEN ( -- n )   XTMSG$ nip ;
-variable LXTHEADERMSG
-: XTHEADERMSG$ ( -- ptr u8 n )   S\" hb: invalid address-cell storage header\n" ;
-: XTHEADERMSG-LEN ( -- n )   XTHEADERMSG$ nip ;
-variable LXTBANDMSG \ a declared address cell is not a cell-aligned address inside DATA
-: XTBANDMSG$ ( -- ptr u8 n )   S\" hb: snapshot address cell out of range\n" ;
-: XTBANDMSG-LEN ( -- n )   XTBANDMSG$ nip ;
-variable LXTKINDMSG \ one cell was declared as both an XT and a DATA pointer
-: XTKINDMSG$ ( -- ptr u8 n )   S\" hb: snapshot address cell kind mismatch\n" ;
-: XTKINDMSG-LEN ( -- n )   XTKINDMSG$ nip ;
 variable LMARK      \ declare one DATA cell as holding a region address
 variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
 variable LSCRATCHMARK \ declare one DATA cell as a scratch pointer, saved as null
@@ -187,8 +178,7 @@ variable LADDRSITE  \ record the address-literal chain whose first word is in x9
    CP MARK-SITE-AT ;
 
 : EMIT-FULL-MESSAGE ( -- )
-   LXTMSG LABEL@ LBL, XTMSG$ BYTES,
-   LXTHEADERMSG LABEL@ LBL, XTHEADERMSG$ BYTES, ;
+   LXTMSG LABEL@ LBL, XTMSG$ BYTES, ;
 
 ;package
 
@@ -213,18 +203,7 @@ private
 : PLACEEND$ ( -- ptr u8 n )   s" : " ;
 : PLACEEND-LEN ( -- n )   PLACEEND$ nip ;
 public
-variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
-private
-: MMAPCODE-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed code region\n" ;
-: MMAPCODE-MSG-LEN ( -- n )   MMAPCODE-MSG$ nip ;
-: MMAPDATA-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed data region\n" ;
-: MMAPDATA-MSG-LEN ( -- n )   MMAPDATA-MSG$ nip ;
-public
-variable LBLRANGE   \ boot BL-range assertion labeled rc-81 exit: the mapped region fell outside BL's +/-128 MiB of __text
 variable LKERNELDIGEST
-private
-: BLRANGE-MSG$ ( -- ptr u8 n )   S\" hb: code region out of BL range\n" ;
-: BLRANGE-MSG-LEN ( -- n )   BLRANGE-MSG$ nip ;
 private
 
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
@@ -474,12 +453,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LBGROWMSG LABEL@ LBL, BGROW-MSG$ BYTES,                               \ EM-BODY-GROW-DIE appends the capacity tried and the unit; LCOMPILEDIE the newline
    LBGROWUNIT LABEL@ LBL, BGROW-UNIT$ BYTES,
    RELOC-EMIT:EMIT-FULL-MESSAGE
-   RELOC-EMIT:LXTBANDMSG LABEL@ LBL, RELOC-EMIT:XTBANDMSG$ BYTES,
-   RELOC-EMIT:LXTKINDMSG LABEL@ LBL, RELOC-EMIT:XTKINDMSG$ BYTES,
-   LPLACEEND LABEL@ LBL, PLACEEND$ BYTES,
-   LMMAPCODE LABEL@ LBL, MMAPCODE-MSG$ BYTES,
-   LMMAPDATA LABEL@ LBL, MMAPDATA-MSG$ BYTES,
-   LBLRANGE LABEL@ LBL, BLRANGE-MSG$ BYTES, ;
+   LPLACEEND LABEL@ LBL, PLACEEND$ BYTES, ;
 
 : C-TARGET-UNKNOWN ( -- )
    s" hb: unknown target" 76 die ;
@@ -1181,11 +1155,8 @@ public
 variable LREPLAYTRAP
 
 : EMIT-REPLAY-TRAP ( -- )
-   LBL  S\" hb: replay record executed\n"  {: msg:label ma mu :}
    LREPLAYTRAP LABEL@ LBL,
-   0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-   0 76 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  ma mu BYTES, ;
+   s" E-REPLAY-RECORD habu: replay record executed" 76 DIE-LINE, ;
 
 \ namespace-record ( ptr u8 n bool -- n )
 \ A name holds at most one colon, never at an edge: a part's path `A:B`.
@@ -1918,8 +1889,7 @@ public
    \ carry flag, and the Linux emitter reconciles -errno into it -- so a failed mapping
    \ is read from the flag the kernel set, not guessed from the shape of x0.
    C-CC rok BCOND,
-      1 LMMAPCODE LABEL@ ADR,  0 2 MOVZ,  2 MMAPCODE-MSG-LEN MOVZ,  NR-WRITE SYS,
-      0 78 MOVZ,  NR-EXIT-GROUP SYS,
+      s" E-MAP-FAIL habu: cannot map fixed code region" 78 DIE-LINE,
    rok LBL,
    9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,
    9 PROT-PAGE-MAX negate LIT64,  0 0 9 AND,       \ page-aligned region base
@@ -1928,8 +1898,7 @@ public
    9 REGION LIT64,  9 0 9 ADD,  9 9 XREG-RBASE SUB,
    5 BL-REACH LIT64,  9 5 CMP,
    C-CC rvok BCOND,
-      1 LBLRANGE LABEL@ ADR,  0 2 MOVZ,  2 BLRANGE-MSG-LEN MOVZ,  NR-WRITE SYS,
-      0 BL-RANGE-RC MOVZ,  NR-EXIT-GROUP SYS,
+      s" E-BL-RANGE habu: code region out of BL range" BL-RANGE-RC DIE-LINE,
    rvok LBL,
    \ The region's two views: code runs from this base, which turns RX here, and
    \ stores go through a RW alias of [base, base+REGION). x21 carries alias -
@@ -1939,8 +1908,7 @@ public
    \ slack on both sides of [base, base+REGION), below the rounded-up base and
    \ past its end, stays anonymous RW.
    HB-TARGET-MACOS? IF
-      LBL LBL LBL  S\" hb: cannot map the code region's alias\n"
-      {: afail:label adone:label amsg:label ma:ptr mu:n :}
+      LBL LBL {: afail:label adone:label :}
       SP SP 32 SUBI,  13 SP 0 STR,  14 SP 8 STR,  15 SP 16 STR,  0 SP 24 STR,
       16 XREG-RBASE 0 ADDI,  false afail LIBC-OS:REGION-REMAP
       21 0 0 ADDI,
@@ -1949,13 +1917,10 @@ public
       13 SP 0 LDR,  14 SP 8 LDR,  15 SP 16 LDR,  0 SP 24 LDR,  SP SP 32 ADDI,
       adone B,
       afail LBL,
-         1 amsg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
-         0 78 MOVZ,  NR-EXIT-GROUP SYS,
-      amsg LBL,  ma mu BYTES,
+         s" E-MAP-FAIL habu: cannot map the code region's alias" 78 DIE-LINE,
       adone LBL,
    ELSE
-      LBL LBL LBL  S\" hb: cannot map the code region's views\n"
-      {: vfail:label vdone:label vmsg:label va:ptr vu:n :}
+      LBL LBL {: vfail:label vdone:label :}
       9 0 0 ADDI,  vfail LIBC-OS:REGION-MEMFD  10 0 0 ADDI,   \ x9 = base, x10 = fd
       0 9 0 ADDI,  1 REGION LIT64,  2 5 MOVZ,  3 MAP-SHARED-FIXED LIT64,
       4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS vfail BCOND,
@@ -1965,9 +1930,7 @@ public
       0 10 0 ADDI,  NR-CLOSE SYS,  C-CS vfail BCOND,
       0 9 0 ADDI,  vdone B,
       vfail LBL,
-         1 vmsg ADR,  0 2 MOVZ,  2 vu MOVZ,  NR-WRITE SYS,
-         0 78 MOVZ,  NR-EXIT-GROUP SYS,
-      vmsg LBL,  va vu BYTES,
+         s" E-MAP-FAIL habu: cannot map the code region's views" 78 DIE-LINE,
       vdone LBL,
    THEN ;
 
@@ -1982,8 +1945,7 @@ public
    NR-MMAP SYS,
    5 DATA-VA VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
-      1 LMMAPDATA LABEL@ ADR,  0 2 MOVZ,  2 MMAPDATA-MSG-LEN MOVZ,  NR-WRITE SYS,
-      0 78 MOVZ,  NR-EXIT-GROUP SYS,
+      s" E-MAP-FAIL habu: cannot map fixed data region" 78 DIE-LINE,
    dvok LBL, ;
 
 ;package
@@ -2313,17 +2275,13 @@ ardone LBL,
       11 1 MOVZ, 11 4 ADDRESS-CELLS:MODE-FIELD STR,
       MARK-COMMIT-INDEX ret B,
    full LBL,
-      1 LXTMSG LABEL@ ADR, 0 2 MOVZ, 2 XTMSG-LEN MOVZ, NR-WRITE SYS,
-      0 SNAP-RELOC:XTCELL-RC MOVZ, NR-EXIT-GROUP SYS,
+      s" E-XTCELL habu: address-cell storage allocation failed" SNAP-RELOC:XTCELL-RC DIE-LINE,
    shape LBL,
-      1 LXTHEADERMSG LABEL@ ADR, 0 2 MOVZ, 2 XTHEADERMSG-LEN MOVZ, NR-WRITE SYS,
-      0 SNAP-RELOC:XTCELL-RC MOVZ, NR-EXIT-GROUP SYS,
+      s" E-XTCELL habu: invalid address-cell storage header" SNAP-RELOC:XTCELL-RC DIE-LINE,
    band LBL,
-      1 LXTBANDMSG LABEL@ ADR, 0 2 MOVZ, 2 XTBANDMSG-LEN MOVZ, NR-WRITE SYS,
-      0 SNAP-RELOC:XTBAND-RC MOVZ, NR-EXIT-GROUP SYS,
+      s" E-XTBAND habu: snapshot address cell out of range" SNAP-RELOC:XTBAND-RC DIE-LINE,
    kind LBL,
-      1 LXTKINDMSG LABEL@ ADR, 0 2 MOVZ, 2 XTKINDMSG-LEN MOVZ, NR-WRITE SYS,
-      0 SNAP-RELOC:XTKIND-RC MOVZ, NR-EXIT-GROUP SYS,
+      s" E-XTKIND habu: snapshot address cell kind mismatch" SNAP-RELOC:XTKIND-RC DIE-LINE,
    ret LBL, MARK-UNLOCK MARK-RESTORE
    end LBL, ;
 
@@ -3052,10 +3010,8 @@ package LABELS
    LBL LDIAGU !
    LBL LBGROWFAIL !  LBL LBGROWCLASS !  LBL LBGROWMSG !  LBL LBGROWUNIT !
    LBL LCOMPILEDIE !  LBL LPLACE !
-   LBL RELOC-EMIT:LXTMSG !  LBL RELOC-EMIT:LXTHEADERMSG !
-   LBL RELOC-EMIT:LXTBANDMSG !  LBL RELOC-EMIT:LXTKINDMSG !
-   LBL LPLACEEND !
-   LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !  ;
+   LBL RELOC-EMIT:LXTMSG !
+   LBL LPLACEEND !  ;
 
 : PROF ( -- )
    LBL PROF:LPROFH !  LBL PROF:LPROFDUMP !  LBL PROF:LPROFFIND !  LBL PROF:LPROFEDGE !
