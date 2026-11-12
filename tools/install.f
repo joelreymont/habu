@@ -3,16 +3,15 @@
 \ bin/hb.map: bin/hb --load tools/install.f
 \ The destination ends holding the tree's bin/hb, bin/hb.map, src/, tools/ and
 \ test/, without their symlinks, and its own .out. A file equal byte for byte,
-\ and an hb equal apart from its signature (CODESIGN:SAME-IMAGE?), is left
-\ untouched, so its change time keeps the objects client builds made from it.
-\ Every other file is written beside the old one and renamed into place
-\ (FS:REPLACE-STAGED): a running hb keeps its old file, and an hb overwritten in
-\ place keeps the inode whose code signature the kernel cached, so the kernel
-\ kills it at launch (`echo bye | hb` dies by SIGKILL, rc 137). hb goes last,
-\ so an engine lands only over the sources that match it. The destination is
-\ locked for the whole run; a failed install is finished by running it again.
-\ The tool signs nothing (the build signs) and writes nothing outside the
-\ destination.
+\ and an hb equal apart from its signature, is left untouched, so its change
+\ time keeps the objects client builds made from it. Every other file is written
+\ beside the old one and renamed into place: a running hb keeps its old file,
+\ and an hb overwritten in place keeps the inode whose code signature the kernel
+\ cached, so the kernel kills it at launch (`echo bye | hb` dies by SIGKILL,
+\ rc 137). hb goes last, so an engine lands only over the sources that match it.
+\ The destination is locked for the whole run; a failed install is finished by
+\ running it again. The tool signs nothing (the build signs) and writes nothing
+\ outside the destination.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -105,9 +104,9 @@ DYNAMIC-BUFFER DOOMED u8            variable DOOMED-U
    TO$ FS:TRY-LSTAT if TO$ DOOM then ;
 
 
-\ The walk never shows an entry FS's SKIP-DIR? names (src/lib/fs.f), so the
-\ copy never carries one and the prune looks each up in every kept directory.
-\ The top-level .out stays.
+\ The walk never shows an entry FS's SKIP-DIR? names, so the copy never
+\ carries one and the prune looks each up in every kept directory. The
+\ top-level .out stays.
 : DOOM-HIDDEN ( ptr u8 n -- ) {: p:ptr u:n :}
    p u s" .jj" DOOM-NAMED
    p u s" .jj-ws" DOOM-NAMED
@@ -134,9 +133,8 @@ DYNAMIC-BUFFER DOOMED u8            variable DOOMED-U
    r ru s" bin/hb" STR=  r ru s" bin/hb.map" STR= or ;
 
 
-\ Whether destination entry p, at tree-relative r and not a symlink, is one the
-\ tree carries. Below src, tools and test the working directory has the same
-\ kind of entry at r, not a symlink.
+\ Whether destination entry p, at tree-relative r and not a symlink, is one
+\ the tree carries.
 : KEPT? ( ptr u8 n ptr u8 n -- bool ) {: r:ptr ru:n p:ptr u:n :}
    r ru NESTED? 0= if r ru TOP? p u FS:DIR? and exit then
    r ru IN-BIN? if r ru BIN-KEPT? p u FS:FILE? and exit then
