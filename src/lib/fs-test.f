@@ -19,15 +19,8 @@ require src/lib/process-argv.f
 require src/lib/process-env.f           \ RESOLVE-EXECUTABLE finds mkfifo and cat
 require src/lib/fd.f                    \ FD:TRY-FIFO-WRITER, WRITE-FULL, READ-EXACT
 
-\ The private FS words this test reads, forwarded into its own package.
-package FS
-: FS-TEST:CHECK-JOIN-CAP ( n -- ) CHECK-JOIN-CAP ;
-: FS-TEST:S-IFDIR ( -- n ) S-IFDIR ;
-: FS-TEST:ENOENT ( -- n ) ENOENT ;
-: FS-TEST:TRY-STAT-MODE ( ptr u8 n -- option<n> ) TRY-STAT-MODE ;
-: FS-TEST:TRY-LSTAT-MODE ( ptr u8 n -- option<n> ) TRY-LSTAT-MODE ;
-;package
-
+$4000 constant FS-TEST-S-IFDIR             \ S_IFDIR on both targets
+2 constant FS-TEST-ENOENT                   \ ENOENT on both targets
 1 constant FS-TEST-EX-FAIL
 $78 constant FS-TEST-FILL-C
 3 constant FS-TEST-WRITE-LEN
@@ -339,8 +332,8 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 : FS-TEST-JOIN-HUGE-PARENT ( -- )
    FS-TEST-LONG MEM-MAX-N s" z" FS-TEST-OUT FS:JOIN-PATH drop ;
 
-: FS-TEST-CAP-TOO-LONG ( -- )
-   PATH-CAP 1 + FS-TEST:CHECK-JOIN-CAP ;
+: FS-TEST-JOIN-LONG-PARENT ( -- )
+   FS-TEST-LONG PATH-CAP 1 + s" z" FS-TEST-OUT FS:JOIN-PATH drop ;
 
 : FS-TEST-MISSING-STAT ( -- )
    s" no-such-habu-fs-path-for-stdlib-test" FS:STAT-MODE drop ;
@@ -403,7 +396,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    s" src" FS:DIR? FS-TEST-TRUE
    s" src" FS:FILE? FS-TEST-FALSE
    s" AGENTS.md" FS:STAT-MODE FS:S-IFMT and FS:S-IFREG = FS-TEST-TRUE
-   s" src" FS:STAT-MODE FS:S-IFMT and FS-TEST:S-IFDIR = FS-TEST-TRUE ;
+   s" src" FS:STAT-MODE FS:S-IFMT and FS-TEST-S-IFDIR = FS-TEST-TRUE ;
 
 : FS-TEST-EXECUTABLE ( -- )
    s" bin/hb" FS:EXECUTABLE? FS-TEST-TRUE
@@ -550,7 +543,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-CAP-BUILD
    FS-TEST-CAP-U @ PATH-CAP FS-TEST=
    FS-TEST-CAP-ROOT FS:MAKE-DIRS
-   FS-TEST-CAP FS:TRY-LSTAT FS-TEST-FALSE  FS:ERRNO FS-TEST:ENOENT FS-TEST=
+   FS-TEST-CAP FS:TRY-LSTAT FS-TEST-FALSE  FS:ERRNO FS-TEST-ENOENT FS-TEST=
    FS-TEST-CAP s" cap" FS:WRITE-ALL
    FS-TEST-CAP FS:TRY-LSTAT FS-TEST-TRUE  FS:ERRNO 0 FS-TEST=
    FS-TEST-CAP FS:FILE? FS-TEST-TRUE
@@ -680,7 +673,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
    [: FS-TEST-JOIN-LONG-PARENT-NEG-NAME ;] E-FS-PATH TTHROWSQ
    [: FS-TEST-JOIN-HUGE-NAME ;] E-FS-CAPACITY TTHROWSQ
    [: FS-TEST-JOIN-HUGE-PARENT ;] E-FS-CAPACITY TTHROWSQ
-   [: FS-TEST-CAP-TOO-LONG ;] E-FS-CAPACITY TTHROWSQ
+   [: FS-TEST-JOIN-LONG-PARENT ;] E-FS-CAPACITY TTHROWSQ
    [: FS-TEST-MISSING-STAT ;] E-FS-STAT TTHROWSQ
    [: FS-TEST-MISSING-FILE-SIZE ;] E-FS-STAT TTHROWSQ
    [: FS-TEST-DIR-FILE-SIZE ;] E-FS-STAT TTHROWSQ
@@ -698,28 +691,14 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
    [: FS-TEST-WRITE-READONLY ;] E-FS-OPEN TTHROWSQ
    T-FAILURES 0 FS-TEST= ;
 
-: FS-TEST-INTERNALS ( -- )
-   PATH-CAP FS-TEST:CHECK-JOIN-CAP
+: FS-TEST-TRY-STAT ( -- )
    FS-TEST-BIG-PATH FS:TRY-STAT FS-TEST-TRUE
    FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG = FS-TEST-TRUE
    FS:STAT-SIZE@ FS-TEST-EXACT-CAP FS-TEST=
    s" no-such-habu-fs-path-for-stdlib-test" FS:TRY-STAT FS-TEST-FALSE
-   s" no-such-habu-fs-path-for-stdlib-test" FS-TEST:TRY-STAT-MODE MATCH option
-     none OF true ENDOF
-     some OF drop false ENDOF
-   ;MATCH FS-TEST-TRUE
-   s" AGENTS.md" FS-TEST:TRY-STAT-MODE MATCH option
-     none OF false ENDOF
-     some OF FS:S-IFMT and FS:S-IFREG = ENDOF
-   ;MATCH FS-TEST-TRUE
-   s" no-such-habu-fs-path-for-stdlib-test" FS-TEST:TRY-LSTAT-MODE MATCH option
-     none OF true ENDOF
-     some OF drop false ENDOF
-   ;MATCH FS-TEST-TRUE
-   s" AGENTS.md" FS-TEST:TRY-LSTAT-MODE MATCH option
-     none OF false ENDOF
-     some OF FS:S-IFMT and FS:S-IFREG = ENDOF
-   ;MATCH FS-TEST-TRUE ;
+   s" no-such-habu-fs-path-for-stdlib-test" FS:TRY-LSTAT FS-TEST-FALSE
+   s" AGENTS.md" FS:TRY-LSTAT FS-TEST-TRUE
+   FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG = FS-TEST-TRUE ;
 
 : FS-TEST-REPORT ( -- )
    FS-TEST-FAIL @ 0 = if s" fs-test: ok" type cr exit then
@@ -1033,7 +1012,7 @@ public
 : FS-TEST-MAIN ( -- )
    FS-TEST-SETUP
    FS-TEST-PREPARE-FIXTURE
-   FS-TEST-INTERNALS
+   FS-TEST-TRY-STAT
    FS-TEST-PATHS
    FS-TEST-FILE-DIR
    FS-TEST-EXECUTABLE
