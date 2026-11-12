@@ -5,7 +5,6 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fmt.f
-require src/lib/sort.f
 require src/habu/code-span.f
 
 package IMAGE-NAMES
@@ -16,9 +15,8 @@ variable USED variable POS variable ROWS
 variable COL-START variable COL-LEN variable COL-WID variable COL-NAME
 variable COL-KIND variable COL-ORIGIN variable COL-SOURCE
 variable GROUP-TOTAL
-DYNAMIC-BUFFER CODE-ROWS n
 DYNAMIC-BUFFER NS-ROWS n
-variable CODE-N variable NS-N
+variable NS-N
 variable ATTR-TOTAL variable ATTR-BAKED variable ATTR-LOADED
 variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
@@ -55,11 +53,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    a u COL-LEN @ FIELD$ NUMBER {: size:n :}
    start 0 < size CODE-SPAN:VALID? 0= or if s" " exit then
    size CODE-SPAN:BYTES {: span:n :}
-   want 0 < if
-      off start >= off start - span < and
-   else
-      off start = want span = and
-   then if a u COL-NAME @ FIELD$ exit then s" " ;
+   off start = want span = and if a u COL-NAME @ FIELD$ exit then s" " ;
 
 : NUM-COL ( ptr u8 n n -- n ) FIELD$ NUMBER ;
 
@@ -83,19 +77,9 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    {: at:n :}
    0 TEXT BYTE-VIEW USED @ 10 at SPLIT-NEXT 2drop ;
 
-: CODE-ROW$ ( n -- ptr u8 n ) CODE-ROWS @ AT-LINE$ ;
-: CODE-START ( n -- n ) CODE-ROW$ COL-START @ NUM-COL ;
-
-: ROW-BEFORE? ( n n -- bool )
-   {: a:n b:n :}
-   a AT-LINE$ COL-START @ NUM-COL {: lo:n :}
-   b AT-LINE$ COL-START @ NUM-COL {: hi:n :}
-   lo hi = if a b < else lo hi < then ;
-
-\ Keep source order within equal spans: aliases and unnamed fallback rows may
-\ share an address. Namespace rows have WIDs in the start/len columns instead.
-: INDEX-ROWS ( -- )
-   0 CODE-N ! 0 NS-N ! ROWS @ POS !
+\ Namespace rows have WIDs in the start/len columns instead of a span.
+: INDEX-NAMESPACES ( -- )
+   0 NS-N ! ROWS @ POS !
    begin POS @ USED @ < while
       POS @ {: at:n :}
       LINE$ {: row:ptr rowu:n :}
@@ -104,22 +88,8 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
       else false then if
          NS-N @ 1+ NS-ROWS-RESERVE
          at NS-N @ NS-ROWS ! NS-N @ 1+ NS-N !
-      else
-         CODE-N @ 1+ CODE-ROWS-RESERVE
-         at CODE-N @ CODE-ROWS ! CODE-N @ 1+ CODE-N !
       then
-   repeat
-   CODE-N @ 1 > if
-      0 CODE-ROWS CODE-N @ [: ROW-BEFORE? ;] SORT:SORT!
-   then ;
-
-: FIRST-CODE ( n -- n )
-   {: off:n :}
-   0 CODE-N @ begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      mid CODE-START off < if mid 1+ hi else lo mid then
-   repeat drop ;
+   repeat ;
 
 \ A package's row, an alias's, and one for a region the link appended after
 \ the code.
@@ -136,15 +106,10 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 public
 
--1 constant OWNER-UNKNOWN
-0 constant OWNER-GLOBAL
-1 constant OWNER-PUBLIC
-2 constant OWNER-PRIVATE
-
 \ A missing map or an unknown header leaves no rows: LOADED? is false.
 : LOAD ( ptr u8 n -- )
    {: path:ptr pathu:n :}
-   0 USED ! 0 ATTR-OK ! 0 CODE-N ! 0 NS-N !
+   0 USED ! 0 ATTR-OK ! 0 NS-N !
    pathu 4 + PATH-CAP > if E-FS-CAPACITY throw then
    path PATH pathu BYTE-COPY
    s" .map" drop PATH pathu + 4 BYTE-COPY
@@ -167,7 +132,7 @@ public
    header headeru s" origin" COLUMN COL-ORIGIN !
    header headeru s" source" COLUMN COL-SOURCE !
    POS @ ROWS !
-   INDEX-ROWS ;
+   INDEX-NAMESPACES ;
 
 \ The ordered rows must tile the physical app/code region without a duplicate
 \ or a gap; a map from another image attributes nothing unless they do. An
@@ -194,21 +159,6 @@ public
 
 : ATTR? ( -- bool ) ATTR-OK @ 0<> ;
 : ATTR-BYTES ( -- n ) ATTR-TOTAL @ ;
-: BAKED-BYTES ( -- n ) ATTR-BAKED @ ;
-: LOADED-BYTES ( -- n ) ATTR-LOADED @ ;
-: GENERATED-BYTES ( -- n ) ATTR-GENERATED @ ;
-: UNKNOWN-BYTES ( -- n ) ATTR-UNKNOWN @ ;
-
-: BAKED-SOURCE? ( -- bool )
-   ATTR? 0= COL-SOURCE @ 0 < or if false exit then
-   ROWS @ POS !
-   begin POS @ USED @ < while
-      LINE$ {: row:ptr rowu:n :}
-      row rowu ROW-CHARGED?
-      row rowu COL-ORIGIN @ FIELD$ s" baked" STR= and if
-         row rowu COL-SOURCE @ FIELD$ s" -" STR= 0= if true exit then
-      then
-   repeat false ;
 
 : PACKAGE$ ( n -- ptr u8 n ) {: wid:n :}
    wid 0= if s" global" exit then
@@ -293,117 +243,10 @@ public
    0 s" by package" REPORT-GROUP
    1 s" by source" REPORT-GROUP ;
 
-\ Wordlist ids are local to an image. Match the package namespace and whether
-\ the record belongs to its public or private wordlist instead of comparing ids.
-: DONOR-OWNER? ( n ptr u8 n n -- bool )
-   {: wid:n pkg:ptr pkgu:n role:n :}
-   role OWNER-GLOBAL = if wid 0= exit then
-   wid 0 <= if false exit then
-   role OWNER-PUBLIC <> role OWNER-PRIVATE <> and if false exit then
-   COL-KIND @ 0 < if false exit then
-   NS-N @ 0 ?do
-      i NS-ROWS @ AT-LINE$ {: row:ptr rowu:n :}
-      row rowu COL-NAME @ FIELD$ pkg pkgu STR= if
-         role OWNER-PUBLIC = if
-            row rowu COL-START @ NUM-COL wid =
-         else
-            row rowu COL-LEN @ NUM-COL wid =
-         then unloop exit
-      then
-   loop false ;
-
-: DONOR-SOURCE$ ( n n ptr u8 n ptr u8 n n -- ptr u8 n bool )
-   {: off:n bytes:n name:ptr nameu:n pkg:ptr pkgu:n role:n :}
-   COL-SOURCE @ 0 < if s" " false exit then
-   off FIRST-CODE begin dup CODE-N @ < while
-      {: idx:n :}
-      idx CODE-ROW$ {: row:ptr rowu:n :}
-      idx CODE-START off <> if s" " false exit then
-      row rowu ROW-LEN bytes = if
-         row rowu COL-NAME @ FIELD$ name nameu STR= if
-            row rowu COL-WID @ NUM-COL pkg pkgu role DONOR-OWNER? if
-               row rowu COL-SOURCE @ FIELD$ dup 0 > if
-                  2dup s" -" STR= 0= if true exit then
-               then 2drop
-               s" " false exit
-            then
-         then
-      then
-      idx 1+
-   repeat drop s" " false ;
-
-: DONOR-RECORD? ( n n ptr u8 n ptr u8 n n -- bool )
-   {: off:n bytes:n name:ptr nameu:n pkg:ptr pkgu:n role:n :}
-   role OWNER-UNKNOWN = if false exit then
-   off FIRST-CODE begin dup CODE-N @ < while
-      {: idx:n :}
-      idx CODE-ROW$ {: row:ptr rowu:n :}
-      idx CODE-START off <> if false exit then
-      row rowu ROW-LEN bytes = if
-         row rowu COL-NAME @ FIELD$ name nameu STR= if
-            row rowu COL-WID @ NUM-COL pkg pkgu role DONOR-OWNER? if true exit then
-         then
-      then
-      idx 1+
-   repeat drop false ;
-
-\ An unnamed closure member can still be the exact body of a record that the
-\ capture stripped. Prefer that record over the extra anonymous span row; the
-\ latter proves baked bytes but has no name or source to recover.
-: DONOR-ANON-ROW ( n n -- ptr u8 n bool ) {: off:n bytes:n :}
-   COL-KIND @ 0 < COL-ORIGIN @ 0 < or if NULL$ false exit then
-   CODE-N @ off FIRST-CODE ?do
-      i CODE-ROW$ {: row:ptr rowu:n :}
-      i CODE-START off <> if leave then
-      row rowu ROW-LEN bytes =
-      row rowu COL-KIND @ FIELD$ s" word" STR= and
-      row rowu COL-ORIGIN @ FIELD$ s" baked" STR= and
-      row rowu COL-NAME @ FIELD$ s" -" STR= 0= and if
-         row rowu true unloop exit
-      then
-   loop
-   CODE-N @ off FIRST-CODE ?do
-      i CODE-ROW$ {: row:ptr rowu:n :}
-      i CODE-START off <> if leave then
-      row rowu ROW-LEN bytes =
-      row rowu COL-KIND @ FIELD$ s" word" STR= and
-      row rowu COL-ORIGIN @ FIELD$ s" baked" STR= and if
-         row rowu true unloop exit
-      then
-   loop NULL$ false ;
-
-: DONOR-ROW-NAME$ ( ptr u8 n -- ptr u8 n ) COL-NAME @ FIELD$ ;
-: DONOR-ROW-WID ( ptr u8 n -- n ) COL-WID @ NUM-COL ;
-: DONOR-ROW-SOURCE$ ( ptr u8 n -- ptr u8 n )
-   COL-SOURCE @ 0 < if 2drop s" -" exit then
-   COL-SOURCE @ FIELD$ ;
-
-\ A stripped map has no dictionary WIDs. The linker tags donor-local positive
-\ WIDs below -1, leaving 0 global and -1 unknown, so its own WIDs cannot
-\ collide with namespace ids from the captured donor map.
-: DONOR-WID ( n -- n ) {: wid:n :}
-   wid 0 > if 0 wid - 1- exit then
-   wid ;
-
-: DONOR-NAMESPACES-EACH ( [ n n ptr u8 n -- ] -- )
-   {: visit :}
-   COL-KIND @ 0 < if exit then
-   ROWS @ POS !
-   begin POS @ USED @ < while
-      LINE$ {: row:ptr rowu:n :}
-      row rowu COL-KIND @ FIELD$ s" namespace" STR= if
-         row rowu COL-START @ NUM-COL DONOR-WID
-         row rowu COL-LEN @ NUM-COL DONOR-WID
-         row rowu COL-NAME @ FIELD$ visit execute
-      then
-   repeat ;
-
 : SPAN-NAME$ ( n n -- ptr u8 n ) {: off:n size:n :}
    ROWS @ POS !
    begin POS @ USED @ < while
       LINE$ off size ROW$ dup 0 > if exit then 2drop
    repeat s" " ;
-
-: NAME$ ( n -- ptr u8 n ) -1 SPAN-NAME$ ;
 
 ;package
