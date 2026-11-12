@@ -85,7 +85,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 \ constant by name, so a renumbered code keeps its text: owners loaded before
 \ this file are explained at the end of this package, later ones beside their
 \ constants. REASON-CAP is the number of codes the engine's owners explain;
-\ EXPLAIN refuses a code past it, or one explained twice, by name.
+\ EXPLAIN throws E-REASON-CAP past it, E-REASON-DUP for a code explained twice.
 create REASON-CODES  REASON-CAP cells allot
 variable REASONS            \ rows explained so far
 
