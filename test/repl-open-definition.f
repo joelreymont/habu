@@ -154,8 +154,8 @@ using PTY-HARNESS
    s" ." STEP TTRUE
    s" 33" IN-BUF? TTRUE
    BUF-CLEAR s" 5 NO-SUCH-WORD" SEND-LINE
-   s" E-UNDEFINED: NO-SUCH-WORD" WAIT-FOR TTRUE
-   s" E-UNDEFINED: NO-SUCH-WORD" s" habu> " WAIT-AFTER TTRUE
+   s" E-UNDEFINED habu: undefined word 'NO-SUCH-WORD'" WAIT-FOR TTRUE
+   s" E-UNDEFINED habu: undefined word 'NO-SUCH-WORD'" s" habu> " WAIT-AFTER TTRUE
    s" depth ." STEP TTRUE
    s" 0" IN-BUF? TTRUE
    s" 22 TWICE ." STEP TTRUE

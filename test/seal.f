@@ -427,11 +427,13 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" prot-wid-add refuses an id at the bitmap bound and names it" T-LABEL
    PWG-OOR-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PWID-OOR ;
 
-\ Publishing into a protected WID dies 84 with `E-SEALED-PACKAGE: <word>`.
-: SLV-ASSERT-PROT-PUBLISH ( ptr u8 n -- ) {: line:ptr lineu:n :}   \ child died ENGINE-ERROR:SEAL-PACKAGE with LINE
+\ Publishing into a protected WID dies 84 with the line
+\ `E-SEALED-PACKAGE habu: <path>[:<line>]: <prose>`, its path the loading file's.
+: SLV-ASSERT-PROT-PUBLISH ( ptr u8 n -- ) {: prose:ptr proseu:n :}
    SLV-EXITED @ TTRUE
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
-   SLV-ERR$ line lineu CONTAINS? TTRUE ;
+   SLV-ERR$ s" E-SEALED-PACKAGE habu: " CONTAINS? TTRUE
+   SLV-ERR$ prose proseu CONTAINS? TTRUE ;
 
 \ The two engine-reserved OWNER-API wordlists are permanently protected, so a
 \ checked program cannot forge a record into them with set-current. Without this,
@@ -450,9 +452,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 : SLV-OWNER-FORGE ( -- )
    s" : X ; via 2 set-current into OWNER-API-PRI-WID -> labeled exit 84" T-LABEL
-   SLV-OWNER-PRI-FORGE$ SLV-SUBJECT s" E-SEALED-PACKAGE: OWNERFORGE at " SLV-ASSERT-PROT-PUBLISH
+   SLV-OWNER-PRI-FORGE$ SLV-SUBJECT s" 'OWNERFORGE' is sealed" SLV-ASSERT-PROT-PUBLISH
    s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 84" T-LABEL
-   SLV-OWNER-PUB-FORGE$ SLV-SUBJECT s" E-SEALED-PACKAGE: OWNERFORGE at " SLV-ASSERT-PROT-PUBLISH ;
+   SLV-OWNER-PUB-FORGE$ SLV-SUBJECT s" 'OWNERFORGE' is sealed" SLV-ASSERT-PROT-PUBLISH ;
 
 : SLV-LINE ( ptr u8 n -- )
    SB-APPEND SLV-LF ;
@@ -482,14 +484,14 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ A sealed package's record refuses a definition, a variable and an export into its
 \ wordlists, and a bare name inside it, naming the name token as written.
 : SLV-SEALED-DEFINE ( -- )
-   s" : SP:B after SP's seal-package -> E-SEALED-PACKAGE: SP:B, exit 84" T-LABEL
-   SLV-SP-COLON$ SLV-RUN-LOAD s" E-SEALED-PACKAGE: SP:B at " SLV-ASSERT-PROT-PUBLISH
-   s" variable SP:V after SP's seal-package -> E-SEALED-PACKAGE: SP:V, exit 84" T-LABEL
-   SLV-SP-VAR$ SLV-SUBJECT s" E-SEALED-PACKAGE: SP:V at " SLV-ASSERT-PROT-PUBLISH
-   s" : C inside SP after its seal-package -> E-SEALED-PACKAGE: C, exit 84" T-LABEL
-   SLV-SP-INSIDE$ SLV-SUBJECT s" E-SEALED-PACKAGE: C at " SLV-ASSERT-PROT-PUBLISH
-   s" EXPORT SP2:Z into SP after its seal-package -> E-SEALED-PACKAGE: SP2:Z, exit 84" T-LABEL
-   SLV-SP-EXPORT$ SLV-SUBJECT s" E-SEALED-PACKAGE: SP2:Z at " SLV-ASSERT-PROT-PUBLISH ;
+   s" : SP:B after SP's seal-package -> E-SEALED-PACKAGE, 'SP:B' is sealed, exit 84" T-LABEL
+   SLV-SP-COLON$ SLV-RUN-LOAD s" 'SP:B' is sealed" SLV-ASSERT-PROT-PUBLISH
+   s" variable SP:V after SP's seal-package -> E-SEALED-PACKAGE, 'SP:V' is sealed, exit 84" T-LABEL
+   SLV-SP-VAR$ SLV-SUBJECT s" 'SP:V' is sealed" SLV-ASSERT-PROT-PUBLISH
+   s" : C inside SP after its seal-package -> E-SEALED-PACKAGE, 'C' is sealed, exit 84" T-LABEL
+   SLV-SP-INSIDE$ SLV-SUBJECT s" 'C' is sealed" SLV-ASSERT-PROT-PUBLISH
+   s" EXPORT SP2:Z into SP after its seal-package -> E-SEALED-PACKAGE, 'SP2:Z' is sealed, exit 84" T-LABEL
+   SLV-SP-EXPORT$ SLV-SUBJECT s" 'SP2:Z' is sealed" SLV-ASSERT-PROT-PUBLISH ;
 
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;

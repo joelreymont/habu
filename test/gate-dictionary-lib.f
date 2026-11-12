@@ -696,11 +696,11 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" 5. ." GE-SRC-LINE
-   70 s" E-UNDEFINED: 5." s" hb engine keeps trailing-dot token a word" RUN-BAD-CHILD
+   70 s" E-UNDEFINED habu: undefined word '5.'" s" hb engine keeps trailing-dot token a word" RUN-BAD-CHILD
    GE-HB-RESET
    GE-SRC-RESET
    s" ..5 ." GE-SRC-LINE
-   70 s" E-UNDEFINED: ..5" s" hb engine keeps double-dot token a word" RUN-BAD-CHILD ;
+   70 s" E-UNDEFINED habu: undefined word '..5'" s" hb engine keeps double-dot token a word" RUN-BAD-CHILD ;
 
 : LITERAL-FLOAT-EVAL ( -- )
    GE-HB-RESET
@@ -1066,7 +1066,7 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET  s" private" GE-SRC-LINE
    $4B s" private" s" package rejects private outside" RUN-BAD-SOURCE
    GE-SRC-RESET  s" end-package" GE-SRC-LINE
-   $46 s" E-UNDEFINED: end-package" s" package rejects legacy closer" RUN-BAD-CHILD
+   $46 s" E-UNDEFINED habu: undefined word 'end-package'" s" package rejects legacy closer" RUN-BAD-CHILD
    GE-SRC-RESET  s" ;package" GE-SRC-LINE
    $4B s" ;package" s" package rejects semicolon closer outside" RUN-BAD-SOURCE
    GE-SRC-RESET  s" package A" GE-SRC-LINE  s" package B" GE-SRC-LINE

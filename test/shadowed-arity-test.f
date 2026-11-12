@@ -28,7 +28,7 @@ public
 \ The codes the refused cases expect. They live in the package because a global
 \ `E-*` constant is src/lib/error.f's surface alone.
 E-SHADOWED-ARITY constant E-SHADOW-ARITY   \ src/core/checker.f SHADOW-ARITY-CK
-70 constant E-REJECT           \ E-UNDEFINED: the checker's compile reject (habu2.f RC-REJECT)
+70 constant E-REJECT           \ the throw code of an E-UNDEFINED refusal
 
 ;package
 

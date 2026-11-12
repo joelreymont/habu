@@ -26,11 +26,12 @@ or the `--load` and `--build` streams themselves) and the engine's own boot
 prefix. The program file of a plain `hb <file>` is an open file and is named. A
 string `evaluate`d *inside* a file keeps the file line only while it is a slice
 of the file's own bytes (`parse-name X evaluate`). Any other evaluated string
-names the file alone (` at <path>`) for a refusal in it, and so do the native
-compiler's `ncomp:` and `E-UNDEFINED:` lines that follow that refusal
+names the file alone (` at <path>`, or `<path>: ` after `habu: ` in a classed
+line) for a refusal in it, and so do the native compiler's `ncomp:` and
+`E-UNDEFINED` lines that follow that refusal
 (src/core/checker.f SRCLOC:FILE-BUFFER?).
 
-An undefined word, `E-UNDEFINED: X at <path>:<line>`, is located like any
+An undefined word, `E-UNDEFINED habu: <path>:<line>: undefined word 'X'`, is located like any
 compile refusal on both loops. A loaded file that leaves cells prints
 `E-EVAL-RESIDUE: stack depth N at <path>`, naming the whole file and so no line,
 once at the innermost file, before the throw it raises (uncaught, that throw
@@ -40,7 +41,7 @@ checker's refusal in a body names the definition and the token
 (`habu: in g: at '2' expected: n actual: n n ; suggestion: Remove an extra producer or drop the surplus value.`);
 the native line after it places the token
 (`ncomp: cannot compile G at 2 in <path>:<line>`), and an undefined word adds
-`E-UNDEFINED: x at <path>:<line>`. A top-level refusal names the file and line
+`E-UNDEFINED habu: <path>:<line>: undefined word 'x'`. A top-level refusal names the file and line
 in its own line (`habu: <path>:<line>: at '!' …`), the file alone for a token of
 an evaluated string that is not the file's own bytes, and no place outside a
 file; a tool's label replaces the path of the file it labels. For those that
@@ -223,7 +224,7 @@ so the message names the mechanism that caught the fault
   a token whose record states more inputs than the stack holds, or compiled
   code reached through `execute`, `catch`, `finally` or a quotation read below
   the data stack's base. Catchable; the REPL recovers the line.
-- `E-UNDERFLOW: <token>` (exit 70): a word ran and left the stack below its
+- `E-UNDERFLOW habu: <path>:<line>: stack underflow at '<token>'` (exit 70): a word ran and left the stack below its
   base because its body consumes more than its record states: a word defined
   with checking off, or a `TRUSTED:` body that drops more than it declares.
 - `hb: stack bounds exceeded (data|return|loop)` (exit 102): an overflow, a

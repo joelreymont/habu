@@ -74,7 +74,7 @@ package PROGRAM-DIAGNOSTICS
    s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
    s" test/layout-buffer-forge.f" 70
-      s" LAYOUT-BUFFER-FORGE-ARMED" s" E-UNDEFINED: LBUF-PEND!" NEGATIVE
+      s" LAYOUT-BUFFER-FORGE-ARMED" s" undefined word 'LBUF-PEND!'" NEGATIVE
    s" test/layout-valid-w1-bad.f" 85
       s" LAYOUT-VALID-ARMED" s" hb: bad layout tag" NEGATIVE
    s" test/layout-valid-w1-neg-bad.f" 85
@@ -91,11 +91,11 @@ package PROGRAM-DIAGNOSTICS
    s" test/layout-valid-tags-bad.f" 85
       s" LAYOUT-VALID-TAGS-ARMED" s" hb: bad layout tag" NEGATIVE
    s" test/layout-valid-hook-forge.f" 70
-      s" LAYOUT-VALID-FORGE-ARMED" s" E-UNDEFINED: LAYOUT-VALID-RECORD-XT" NEGATIVE
+      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'LAYOUT-VALID-RECORD-XT'" NEGATIVE
    s" test/layout-valid-walk-forge.f" 70
-      s" LAYOUT-VALID-FORGE-ARMED" s" E-UNDEFINED: VP-TERM-WALK-XT" NEGATIVE
+      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'VP-TERM-WALK-XT'" NEGATIVE
    s" test/layout-valid-desc-forge.f" 70
-      s" LAYOUT-VALID-FORGE-ARMED" s" E-UNDEFINED: LAYOUT-VALID-DESC-XT" NEGATIVE
+      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'LAYOUT-VALID-DESC-XT'" NEGATIVE
    s" test/bootstrap-created-effect-src.f" 70
       s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" NEGATIVE
    s" test/bootstrap-created-raw-src.f" 70

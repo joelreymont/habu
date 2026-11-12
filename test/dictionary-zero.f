@@ -77,8 +77,8 @@ OUTER-RC  create OU-B 3 cells allot  constant OU-RC
    BUF-CLEAR
    s" create RA 3 cells allot  -1 RA !  -1 RA cell+ !  -1 RA 2 cells + !  RA RA-SEEN !  NOSUCH-WORD"
    SEND-LINE
-   s" E-UNDEFINED: NOSUCH-WORD" WAIT-FOR TTRUE
-   s" E-UNDEFINED: NOSUCH-WORD" PROMPT-AFTER
+   s" E-UNDEFINED habu: undefined word 'NOSUCH-WORD'" WAIT-FOR TTRUE
+   s" E-UNDEFINED habu: undefined word 'NOSUCH-WORD'" PROMPT-AFTER
    s" create RB 3 cells allot  RB @ RB cell+ @ or RB 2 cells + @ or 1000 + 3 * ." STEP
    s" 3000" IN-BUF? TTRUE
    s" RB RA-SEEN @ = bool>n ." STEP

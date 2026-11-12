@@ -459,7 +459,7 @@ seal-package
 \ REPLAY-END for an E-UNRESOLVED replay's span).
 \ A swallowed reject (multi-error load) leaves the tokens up to the terminator
 \ ahead of the interpreter, which would run them: `ENUM m7bad red red blue ;ENUM
-\ NEWTYPE m7cont<a>` died on `E-UNDEFINED: blue`. DRIVE skips to the terminator,
+\ NEWTYPE m7cont<a>` would die `E-UNDEFINED` at `blue`. DRIVE skips to the terminator,
 \ except after SEEN-END (that would eat the next declaration) or at end of input.
 \ The skip reads through RAW, not NEXT, so the packet keeps naming the token.
 \ A replay claims the stream before the packet opens: a failed claim belongs to

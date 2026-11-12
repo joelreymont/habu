@@ -617,7 +617,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 : TASK-TEST-ROLLBACK-LIVE ( -- )
    TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" -1\n771\n" T$=
-   TASK-ERR erru LEN>N s" E-UNDEFINED: MISSING-WORD" CONTAINS? TTRUE ;
+   TASK-ERR erru LEN>N s" undefined word 'MISSING-WORD'" CONTAINS? TTRUE ;
 
 : TASK-EXPECT-FAIL ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n want:n needle:ptr needleu:n :}
    src srcu want TASK-RUN-EXITS {: outu:len erru:len :}

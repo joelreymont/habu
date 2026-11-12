@@ -468,7 +468,7 @@ CN-CHILD:ERR$ s" hb: interpret stack underdepth: >CNMROLE" CONTAINS? TTRUE
 \ The trailing `;` of the retired spelling is an undefined token at interpret
 \ state.
 s" cast: CNZ1 ( n -- n ) ;" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
-CN-CHILD:ERR$ s" E-UNDEFINED: ;" CONTAINS? TTRUE
+CN-CHILD:ERR$ s" undefined word ';'" CONTAINS? TTRUE
 \ A reader keyword that needs a name and reaches the end of its stream fails
 \ closed, and says which keyword and where.
 s" cast:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=

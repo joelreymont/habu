@@ -12,6 +12,7 @@ require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/workspace.f
+require src/core/checker.f
 require src/core/check-hook.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f
@@ -470,13 +471,13 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    then
    S\" \n" ERROR-TEXT:TYPE ;
 
-\ The JIT's text for an undefined word, located from p as it locates it.
+\ An undefined word, placed on p's line while a file buffer is open.
 : REPORT-UNDEFINED ( ptr u8 n ptr u8 -- )
    {: a:ptr u:n p:ptr :}
-   s" E-UNDEFINED: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE
-   s"  at " p SAY-WHERE
-   S\" \n" ERROR-TEXT:TYPE ;
+   SRCLOC:FILE-BUFFER? if p LINE-OF else 0 then {: ln:n :}
+   s" E-UNDEFINED" CHECK:TOP-SITE-PATH$ ln ERROR-TEXT:PREFIX
+   s" undefined word '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
+   S\" '\n" ERROR-TEXT:TYPE ;
 
 public
 

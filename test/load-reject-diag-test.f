@@ -314,7 +314,7 @@ variable RC
    OUT-U @ TEST-OUT-U T=
    ERR-U @ TEST-ERR-U T= ;
 
-\ The native compiler's refusal carries no file:line; the definition's name,
+\ The checker's refusal carries no file:line; the definition's name,
 \ lower-cased as the checker renders it, says where it was refused.
 : ASSERT-UNDEF ( -- )
    s" E-UNDEFINED" ASSERT-NAMED
@@ -322,9 +322,12 @@ variable RC
    ERR$ s" in lrd-x" CONTAINS? TTRUE ;
 
 : TEST-UNDEF ( -- )
-   s" direct --load reject names the undefined word" T-LABEL
+   s" direct --load reject names the undefined word and its line" T-LABEL
    UNDEF$ RUN
-   ASSERT-UNDEF ;
+   ASSERT-UNDEF
+   SB-RESET  s" E-UNDEFINED habu: " SB-APPEND  UNDEF$ SB-APPEND
+   s" :1: undefined word 'LRD-NO-SUCH-WORD-XYZ'" SB-APPEND  10 SB-APPEND-C
+   ERR$ SB$ CONTAINS? TTRUE ;
 
 : TEST-BODY ( -- )
    s" checked-body reject names word and token" T-LABEL
@@ -438,8 +441,9 @@ variable RC
    s" an integer literal the engine cannot read is undefined" T-LABEL
    BODY$ s" TRUSTED: LRD-BIG ( -- n ) 99999999999999999999999 ;" FS:WRITE-ALL
    BODY$ RUN
-   s" E-UNDEFINED: 99999999999999999999999 at " ASSERT-NAMED ;
-
+   SB-RESET  s" E-UNDEFINED habu: " SB-APPEND  BODY$ SB-APPEND
+   s" :1: undefined word '99999999999999999999999'" SB-APPEND
+   SB$ ASSERT-NAMED ;
 
 \ T0, arm64's tier 0, refuses a body no scan certified at its first token the
 \ scan could not bind or no path reaches.
@@ -519,52 +523,59 @@ variable RC
    s" DYNAMIC-BUFFER LRD-STG-DB lrd-stg-none" s" in LRD-STG-DB" STORAGE-REJECT
    s" DEFER-LAYOUT-BUFFER LRD-STG-DL lrd-stg-none" s" in LRD-STG-DL" STORAGE-REJECT ;
 
-\ SRC as the body is refused with exit RC by its code and the token it stops
-\ at, located at AT.
-: CODE-REJECT-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: src:ptr srcu:n line:ptr lineu:n at:ptr atu:n rc:n :}
+\ SRC as the body exits RC, its stderr holding the line
+\ `<class> habu: <body>:<line>: <prose>`.
+: CODE-REJECT-AT ( ptr u8 n ptr u8 n ptr u8 n n n -- )
+   {: src:ptr srcu:n cls:ptr clsu:n prose:ptr proseu:n ln:n rc:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
-   ERR$ line lineu CONTAINS? TTRUE
-   ERR$ at atu CONTAINS? TTRUE
+   SB-RESET  cls clsu SB-APPEND  s"  habu: " SB-APPEND  BODY$ SB-APPEND
+   s" :" SB-APPEND  ln ERROR-TEXT:DIGITS$ SB-APPEND  s" : " SB-APPEND
+   prose proseu SB-APPEND  10 SB-APPEND-C
+   ERR$ SB$ CONTAINS? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ rc T= ;
 
 \ CODE-REJECT-AT located on the body's first line.
-: CODE-REJECT ( ptr u8 n ptr u8 n n -- ) {: src:ptr srcu:n line:ptr lineu:n rc:n :}
-   src srcu line lineu s" body.f:1" rc CODE-REJECT-AT ;
+: CODE-REJECT ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: src:ptr srcu:n cls:ptr clsu:n prose:ptr proseu:n rc:n :}
+   src srcu cls clsu prose proseu 1 rc CODE-REJECT-AT ;
 
 \ A definer with no signature stops at the word being defined, or at `does>`
 \ for a clause.
 : TEST-MISSING-SIGNATURE ( -- )
-   s" a definer's missing signature names its code and token" T-LABEL
-   s" : LRD-MK ( n -- ) create , does> @ ;" s" E-MISSING-SIGNATURE: does> at " BAD-SIG-RC CODE-REJECT
-   s" defer LRD-D" s" E-MISSING-SIGNATURE: LRD-D at " BAD-SIG-RC CODE-REJECT ;
+   s" a definer's missing signature names its class, token and line" T-LABEL
+   s" : LRD-MK ( n -- ) create , does> @ ;"
+   s" E-MISSING-SIGNATURE" s" 'does>' has no closed ( -- ) signature" BAD-SIG-RC CODE-REJECT
+   s" defer LRD-D"
+   s" E-MISSING-SIGNATURE" s" 'LRD-D' has no closed ( -- ) signature" BAD-SIG-RC CODE-REJECT ;
 
 \ Reopening a package the engine sealed stops at the package's name.
 : TEST-SEALED-PACKAGE ( -- )
-   s" a sealed package's reopening names its code and package" T-LABEL
-   S\" package NDICT\n;package" s" E-SEALED-PACKAGE: NDICT at " SEALED-RC CODE-REJECT ;
+   s" a sealed package's reopening names its class, package and line" T-LABEL
+   S\" package NDICT\n;package"
+   s" E-SEALED-PACKAGE" s" 'NDICT' is sealed" SEALED-RC CODE-REJECT ;
 
 \ A definition into a package the engine sealed stops at its whole name.
 : TEST-SEALED-DEFINE ( -- )
-   s" a definition into a sealed package names its code and whole name" T-LABEL
-   s" : NDICT:FOO ( -- ) ;" s" E-SEALED-PACKAGE: NDICT:FOO at " SEALED-RC CODE-REJECT ;
+   s" a definition into a sealed package names its class, whole name and line" T-LABEL
+   s" : NDICT:FOO ( -- ) ;"
+   s" E-SEALED-PACKAGE" s" 'NDICT:FOO' is sealed" SEALED-RC CODE-REJECT ;
 
 \ A name a sealed package already holds is refused as sealed, as the check
 \ refuses it: the seal is asked before the duplicate.
 : TEST-SEALED-DUPLICATE ( -- )
    s" a duplicate definition into a sealed package names the seal" T-LABEL
    S\" package SP\npublic\n: A ( -- ) ;\nseal-package\n;package\n: SP:A ( -- ) ;\n"
-   s" E-SEALED-PACKAGE: SP:A at " s" body.f:6" SEALED-RC CODE-REJECT-AT
+   s" E-SEALED-PACKAGE" s" 'SP:A' is sealed" 6 SEALED-RC CODE-REJECT-AT
    s" a duplicate export into a sealed package names the seal" T-LABEL
    SB-RESET
    S\" package SP2\npublic\n: A ( -- ) ;\n" SB-APPEND
    S\" : MK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" SB-APPEND
    S\" package SP\npublic\n: A ( -- ) ;\nseal-package\nEXPORT SP2:A\n" SB-APPEND
    S\" s\" ACCEPTED\" type cr\n;package\n" SB-APPEND
-   SB$ s" E-SEALED-PACKAGE: SP2:A at " s" body.f:10" SEALED-RC CODE-REJECT-AT ;
+   SB$ s" E-SEALED-PACKAGE" s" 'SP2:A' is sealed" 10 SEALED-RC CODE-REJECT-AT ;
 
 \ A string `s"` copies out of the file, which its line 3 `evaluate`s, is not
 \ the file's bytes, so its refusal names the file alone, with no line.
@@ -572,8 +583,8 @@ variable RC
    s" an evaluated string's refusal names its file and no line" T-LABEL
    BODY$ S\" \n\ns\" lrd-zz-undefined\" evaluate\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" E-UNDEFINED: lrd-zz-undefined at " SB-APPEND  BODY$ SB-APPEND
-   10 SB-APPEND-C
+   SB-RESET  s" E-UNDEFINED habu: " SB-APPEND  BODY$ SB-APPEND
+   s" : undefined word 'lrd-zz-undefined'" SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ T$=
    OUT-U @ 0 T=
    EXITED @ TTRUE
@@ -586,8 +597,8 @@ variable RC
    s" an evaluated slice of the file is refused at its line" T-LABEL
    BODY$ S\" \n\nparse-name lrd-zz-undefined evaluate\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" E-UNDEFINED: lrd-zz-undefined at " SB-APPEND  BODY$ SB-APPEND
-   s" :3" SB-APPEND  10 SB-APPEND-C
+   SB-RESET  s" E-UNDEFINED habu: " SB-APPEND  BODY$ SB-APPEND
+   s" :3: undefined word 'lrd-zz-undefined'" SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ T$=
    EXITED @ TTRUE
    RC @ REJECT-RC T=

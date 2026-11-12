@@ -884,7 +884,8 @@ TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
 \ with E-SEALED-PACKAGE naming the definition and seal-main.f's line.
 : SEAL-REFUSED ( CMD:command -- CMD:command )
    s" test/fixtures/file-objects/seal-main.f" false BUILD-RC {: rc:n :}
-   CMD:ERR$ s" E-SEALED-PACKAGE: FILE-OBJECTS-SEAL:D at " CONTAINS? {: named:bool :}
+   CMD:ERR$ s" E-SEALED-PACKAGE habu: " CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" 'FILE-OBJECTS-SEAL:D' is sealed" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:6" CONTAINS? {: placed:bool :}
    named placed and  rc ENGINE-ERROR:SEAL-PACKAGE =  and 0= if rc SHOW then
    s" the build exits 84" LABEL  rc ENGINE-ERROR:SEAL-PACKAGE T=

@@ -336,11 +336,25 @@ create NL NEWLINE c,
    s" :" ERROR-TEXT:TYPE
    LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 
+: REFUSAL ( ptr u8 n -- )
+   SRCLOC:PATH-CELL ADDR@ SRCLOC:PATHLEN-CELL CELL@
+   SRCLOC:FILE-BUFFER? if LINE else 0 then
+   ERROR-TEXT:PREFIX ;
+
 : THROW-AT ( n -- )
    AT-SOURCE NL 1 ERROR-TEXT:TYPE throw ;
 
-: UNDEFINED-NAME ( ptr u8 n -- )
-   s" E-UNDEFINED: " ERROR-TEXT:TYPE ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
+: UNDEFINED-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-UNDEFINED" REFUSAL
+   s" undefined word '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
+   s" '" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   RC-REJECT throw ;
+
+: UNDERFLOW ( -- )
+   s" E-UNDERFLOW" REFUSAL
+   s" stack underflow at '" ERROR-TEXT:TYPE  TOKEN$ ERROR-TEXT:TYPE
+   s" '" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   RC-REJECT throw ;
 
 : UNDEFINED ( -- )
    TOKEN$ UNDEFINED-NAME ;
@@ -361,7 +375,8 @@ create NL NEWLINE c,
    s" " rc die ;
 
 : SEALED-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-SEALED-PACKAGE: " ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  AT-SOURCE
+   s" E-SEALED-PACKAGE" REFUSAL
+   s" '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  s" ' is sealed" ERROR-TEXT:TYPE
    s" " ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
 \ A keyword that changes the dictionary or its scope, run on a task's thread,
@@ -403,7 +418,7 @@ create NL NEWLINE c,
 \ A word or the hook runs through execute-floor, which answers whether it left
 \ the stack below its base and then resets the stack to the base.
 : FLOORED ( bool -- )
-   if s" E-UNDERFLOW: " REFUSE then ;
+   if UNDERFLOW then ;
 
 \ CHECK:TOP-LEVEL gets ( token class flags ) for each number after the push
 \ and for each word, past its gates, before it runs, and consumes those four
@@ -1588,7 +1603,10 @@ private
    s end DEF-SIG-TAKE ;
 
 : DEF-SIG-BAD ( -- )
-   s" E-MISSING-SIGNATURE: " ERROR-TEXT:TYPE DEF-RC-BAD-SIG PKG-FAIL ;
+   s" E-MISSING-SIGNATURE" REFUSAL
+   s" '" ERROR-TEXT:TYPE  TOKEN$ ERROR-TEXT:TYPE
+   s" ' has no closed ( -- ) signature" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   DEF-RC-BAD-SIG throw ;
 
 \ A head's signature that the input ends before or inside is the source ending
 \ inside the definition.
@@ -2033,7 +2051,7 @@ variable DEF-VALUE
    TASK-GUARD
    s" constant" OPERAND
    DKIND:VAL DEF-START
-   depth 0= if s" E-UNDERFLOW: " REFUSE then
+   depth 0= if UNDERFLOW then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
    DEF-VALUE @ COMP-BODY:value DEF-FIXED
    DEF-CLOSE

@@ -191,7 +191,7 @@ private
   order.
 - `seal-package` is a package keyword beside `public`. Inside a package it
   seals it: reopening it, defining into either of its wordlists or `EXPORT`
-  into it then exits 84 with `E-SEALED-PACKAGE: <name> at <file>:<line>`,
+  into it then exits 84 with `E-SEALED-PACKAGE habu: <file>:<line>: '<name>' is sealed`,
   naming the package or word, and `tools/check.f` refuses it as
   `E-SEALED-PACKAGE` at the name. Outside a package it is refused:
   `seal-package at <loc>`, rc 75. Like `public` it names no word: in a body
@@ -2249,7 +2249,7 @@ runtime or analysis layer.
   `begin`/`while`/`repeat`, `[']`, `i`, `?do` and `;` live inside a `:`
   definition, never at top level; interpreted tests use `'` (`' WORD catch`).
   Both ticks resolve the name as a bare word does (the open scope, the globals,
-  then the used publics), and a miss is `E-UNDEFINED: NAME`, catchable under
+  then the used publics), and a miss is `E-UNDEFINED` (`undefined word 'NAME'`), catchable under
   `evaluate`. A tick is no presence probe: require the file that defines the
   word first.
 - **A `begin <cond> while <body> repeat` condition may only add a flag.** The
@@ -2384,7 +2384,7 @@ sections above.
   `TRUSTED:`, `FUNCTION:`, a `does>` clause, …) with no signature after its
   name, or one never closed, is `E-MISSING-SIGNATURE` (`add_signature`) at the
   definer, at `does>` for a clause. `--load` refuses `defer D` and a clause
-  with exit 76 and `E-MISSING-SIGNATURE: D at <file>:<line>`, `does>` in place
+  with exit 76 and `E-MISSING-SIGNATURE habu: <file>:<line>: 'D' has no closed ( -- ) signature`, `does>` in place
   of the name for a clause.
 - **A `create … does>` clause declares its created words' effects.** The
   source pre-pass learns a scanned clause; for a resident definer, the checker

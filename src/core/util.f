@@ -122,6 +122,14 @@ public
 \ Descriptor 2; a failed write has nowhere further to be reported.
 : TYPE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 a u write drop ;
+
+: PREFIX ( ptr u8 n ptr u8 n n -- )
+   {: c:ptr cu:n p:ptr pu:n ln:n :}
+   c cu TYPE  s"  habu: " TYPE
+   pu 0= if exit then
+   p pu TYPE
+   ln 0 > if s" :" TYPE  ln DIGITS$ TYPE then
+   s" : " TYPE ;
 ;package
 
 \ A loader refusal's exit status, always after a line naming the refusal: an
