@@ -1091,8 +1091,10 @@ public
 \ ever sees a half-written row. FPRIM-WID frames x30 around each body.
 package DEFWRITE
 
-: REFUSE-AT ( label n -- ) {: at:label rc:n :}
-   at LBL,  0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+\ The refusal at the label: the text and the primitive's lr, which BLs in the
+\ body replace and the frame keeps.
+: REFUSE-AT ( ptr u8 n label n -- ) {: a:ptr u:n at:label rc:n :}
+   at LBL,  0 CALLER-LR,  a u rc DIE-LINE, ;
 
 \ x<dst> = the address of record x<ix>; dst and ix differ.
 : REC-AT, ( n n -- ) {: dst:n ix:n :}
@@ -1202,7 +1204,7 @@ variable LREPLAYTRAP
 \ A name holds at most one colon, never at an edge: a part's path `A:B`.
 : NAMESPACE-RECORD ( -- )
    LBL LBL LBL LBL LBL LBL {: bad scan next clean nopri done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: namespace-record from a task" B-TASK-GUARD
    13 G-POP  1 G-POP  0 G-POP                         \ x13 = the flag, x1 = the length, x0 = the name
    bad NOT-PENDING,
    bad DICT-ROOM,
@@ -1232,13 +1234,14 @@ variable LREPLAYTRAP
    HW-RAISE,                                          \ an overlay's row dies at replay-close
    9 NDICT 1 SUBI,  9 G-PUSH
    done B,
+   s" E-SEAL-VIOLATION habu: namespace-record with a definition pending, no record room, an empty name or one reaching the code ceiling, a colon at an edge or twice, or a name already recorded"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ namespace-private ( n -- )
 : NAMESPACE-PRIVATE ( -- )
    LBL LBL {: bad done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: namespace-private from a task" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    0 G-POP
    0 NDICT CMP,  C-CS bad BCOND,
@@ -1251,13 +1254,14 @@ variable LREPLAYTRAP
    14 DATA WIDN-CELL LDR,  14 11 8 STR,
    14 14 1 ADDI,  14 DATA WIDN-CELL STR,
    done B,
+   s" E-SEAL-VIOLATION habu: namespace-private index not a live package row below NDICT, or a row that has a private wordlist"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ alias-record ( ptr u8 n n n -- ) name, source index, wid
 : ALIAS-RECORD ( -- )
    LBL LBL LBL LBL {: bad prot notval done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: alias-record from a task" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    2 G-POP  4 G-POP  1 G-POP  0 G-POP                 \ x2 = the wid, x4 = the source, x1/x0 = the name
    bad REAL-WID,
@@ -1288,7 +1292,9 @@ variable LREPLAYTRAP
    3 11 40 STR,
    PUBLISH,
    done B,
+   s" E-SEAL-VIOLATION habu: alias-record with a marker wid, a definition pending, a source that is no live definition or is internal, no record room, an empty name or one reaching the code ceiling, or a name taken"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   s" E-SEAL-PACKAGE habu: alias-record into a wordlist protected by the seal"
    prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
    done LBL, ;
 
@@ -1337,13 +1343,14 @@ variable LREPLAYTRAP
    11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
    1 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
    done B,
+   s" E-SEAL-VIOLATION habu: package-scope! row not a live package row below NDICT with a private wordlist, a part outside a package or inside a part, or -1 with a parent"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ replay-open ( -- )
 : REPLAY-OPEN ( -- )
    LBL LBL {: bad done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: replay-open from a task" B-TASK-GUARD
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBNZ,   \ an overlay is open
    bad NOT-PENDING,
@@ -1353,6 +1360,7 @@ variable LREPLAYTRAP
    NDICT 8 REPLAY-SCOPE:HW BAND-OFF STR,
    14 1 MOVZ,  14 8 REPLAY-SCOPE:LATCH BAND-OFF STR,
    done B,
+   s" E-SEAL-VIOLATION habu: replay-open with an overlay open or a definition pending"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
@@ -1361,7 +1369,7 @@ variable LREPLAYTRAP
 \ removes it.
 : REPLAY-RECORD ( -- )
    LBL LBL {: bad done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: replay-record from a task" B-TASK-GUARD
    2 G-POP  1 G-POP  0 G-POP                          \ x2 = the wid, x1/x0 = the name
    bad REAL-WID,
    8 BAND,
@@ -1380,6 +1388,7 @@ variable LREPLAYTRAP
    PUBLISH,
    HW-RAISE,
    done B,
+   s" E-SEAL-VIOLATION habu: replay-record with a marker wid, no overlay, a definition pending, no record room, an empty name or one reaching the code ceiling, or a name taken"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
@@ -1395,7 +1404,7 @@ variable LREPLAYTRAP
 \ ROLLBACK's with the ndict! that drops the replay record.
 : RECORD-WID ( -- )
    LBL LBL LBL LBL {: bad wid store done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: record-wid! from a task" B-TASK-GUARD
    3 G-POP  13 G-POP                                  \ x3 = the index, x13 = the wid
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -1412,6 +1421,7 @@ variable LREPLAYTRAP
    14 DATA REGION-ALIAS:DELTA-CELL LDR,  14 9 14 ADD,  13 14 40 STR,
    HIDX-EMIT:LREKEY LABEL@ BL,
    done B,
+   s" E-SEAL-VIOLATION habu: record-wid! with no overlay, an index at or past NDICT, or an old or new wid neither a wordlist nor a retired marker"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
@@ -1422,7 +1432,7 @@ variable LREPLAYTRAP
 \ takes it back before the close.
 : REPLAY-PRIVATE ( -- )
    LBL LBL LBL {: bad give done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: replay-private from a task" B-TASK-GUARD
    13 G-POP  3 G-POP                                  \ x13 = the flag, x3 = the index
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -1443,6 +1453,7 @@ variable LREPLAYTRAP
    14 DATA WIDN-CELL LDR,  14 15 8 STR,
    14 14 1 ADDI,  14 DATA WIDN-CELL STR,
    done B,
+   s" E-SEAL-VIOLATION habu: replay-private with no overlay, an index not a live package row below NDICT, a grant to a row that has one, or a take-back below the saved WIDN"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
@@ -1457,7 +1468,7 @@ variable LREPLAYTRAP
 \ overlay did not leave from being restored over, as the NDICT and CP checks do.
 : REPLAY-CLOSE ( -- )
    LBL LBL LBL {: bad kept done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: replay-close from a task" B-TASK-GUARD
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
    bad NOT-PENDING,
@@ -1483,6 +1494,7 @@ variable LREPLAYTRAP
    11 10 ENCLOSING:END ENCLOSING:PUB - ADDI,
    ZERO-SPAN,
    done B,
+   s" E-SEAL-VIOLATION habu: replay-close with no overlay, a definition pending, NDICT below the saved count or above HW, CP below the saved CP, or WIDN below the saved WIDN"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
@@ -1495,7 +1507,7 @@ variable LREPLAYTRAP
 \ the saved WIDN, so replay-close's WIDN check keeps holding.
 : REPLAY-WIDN ( -- )
    LBL LBL {: bad done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: replay-widn! from a task" B-TASK-GUARD
    13 G-POP                                           \ x13 = the mark
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -1503,13 +1515,14 @@ variable LREPLAYTRAP
    15 DATA WIDN-CELL LDR,  13 15 CMP,  C-HI bad BCOND,
    13 DATA WIDN-CELL STR,
    done B,
+   s" E-SEAL-VIOLATION habu: replay-widn! with no overlay, or a mark below the saved WIDN or above WIDN"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ def-open ( ptr u8 n n n -- ) name, wid, kind
 : DEF-OPEN ( -- )
    LBL LBL LBL {: bad prot done :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: def-open from a task" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
    14 DKIND:MASK DNAME-CELL or DNAME-ALLOC or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
@@ -1538,7 +1551,9 @@ variable LREPLAYTRAP
    14 DATA CLAUSE-CELL STR,
    14 TIER-LATCH  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    done B,
+   s" E-SEAL-VIOLATION habu: def-open with a bad kind, a marker wid, a definition pending, CP at the code ceiling, no record room, an empty name or one reaching the code ceiling, or a name taken"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   s" E-SEAL-PACKAGE habu: def-open into a wordlist protected by the seal"
    prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
    done LBL, ;
 
@@ -1553,26 +1568,29 @@ variable LREPLAYTRAP
    12 15 CMP,  C-CS bad BCOND,                        \ BODYLEN + u + 1 wraps
    LBCS LABEL@ BL,
    done B,
+   s" E-SEAL-VIOLATION habu: body-append past the body text capacity or wrapping"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ ( ptr u8 n -- ): the span into the friend-arena cells aoff and uoff while a
 \ definition is pending.
-: PENDING-SPAN ( n n -- ) {: aoff:n uoff:n :}
+: PENDING-SPAN ( ptr u8 n n n -- ) {: a:ptr u:n aoff:n uoff:n :}
    LBL LBL {: bad done :}
    12 G-POP  11 G-POP
    9 DATA PEND-CELL LDR,  9 bad CBZ,
    11 DATA aoff STR,  12 DATA uoff STR,
    done B,
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   a u bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 \ trust-sig! ( ptr u8 n -- )
 : TRUST-SIG ( -- )
+   s" E-SEAL-VIOLATION habu: trust-sig! with no definition pending"
    TSIG-A-CELL TSIG-U-CELL PENDING-SPAN ;
 
 \ created-sig! ( ptr u8 n -- )
 : CREATED-SIG ( -- )
+   s" E-SEAL-VIOLATION habu: created-sig! with no definition pending"
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN ;
 
 \ The close def-close runs; PEND-CELL clears last.
@@ -1604,6 +1622,7 @@ variable LREPLAYTRAP
    nolast LBL,
    NATIVE-CLOSE
    done B,
+   s" E-SEAL-VIOLATION habu: def-close with no definition pending or no definition tier"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
@@ -1642,8 +1661,8 @@ private
 \ rows alike: the pending record must be of kind `kind`, with CP below the
 \ code ceiling. `tail` writes the row's code, then the state def-open set
 \ clears, PEND-CELL last.
-: TAIL-CLOSE ( n [ -- ] -- )
-   {: kind:n tail :}
+: TAIL-CLOSE ( ptr u8 n n [ -- ] -- )
+   {: a:ptr u:n kind:n tail :}
    LBL LBL {: bad done :}
    9 DATA PEND-CELL LDR,  9 bad CBZ,
    9 NDICT REC-AT,
@@ -1653,14 +1672,16 @@ private
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    done B,
-   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   a u bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
 public
 
 \ def-create ( -- ): a pending DKIND:ADDR record takes ADDR-TAIL, and its
 \ shadow, as `create` does.
-: DEF-CREATE ( -- ) DKIND:ADDR [: ADDR-TAIL,  ADDR-SHADOW, ;] TAIL-CLOSE ;
+: DEF-CREATE ( -- )
+   s" E-SEAL-VIOLATION habu: def-create with no definition pending, one not of the kind, or CP at the code ceiling"
+   DKIND:ADDR [: ADDR-TAIL,  ADDR-SHADOW, ;] TAIL-CLOSE ;
 
 ;package
 
@@ -1713,6 +1734,7 @@ package DEFWRITE
 public
 
 : DEF-CAST ( -- )
+   s" E-SEAL-VIOLATION habu: def-cast with no definition pending, one not of the kind, or CP at the code ceiling"
    DKIND:CAST [: EMPTY-BODY,  EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
       INTERP-EMIT:C-IDENTITY-SHADOW ;]
    TAIL-CLOSE ;
@@ -1780,6 +1802,7 @@ public
 
 : DEF-DEFER ( -- )
    11 G-POP  11 DATA DEFER-XT-CELL STR,
+   s" E-SEAL-VIOLATION habu: def-defer with no definition pending, one not of the kind, or CP at the code ceiling"
    0 [: DEFER-BODY,  EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
       DEFER-SHADOW, ;]
    TAIL-CLOSE ;
@@ -1857,7 +1880,7 @@ public
 variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry
 private
 variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN \ LEVALREC internal labels
-variable LEVCORRUPT  variable LEVCORRUPTMSG   \ eval-cross forged/corrupt handler-frame fail-closed path + its message
+variable LEVCORRUPT   \ eval-cross forged/corrupt handler-frame fail-closed path
 
 public
 : EM-ENTRY-ARGS ( -- )
@@ -2893,10 +2916,9 @@ private
 : EM-EVAL-THROW-RECOVER ( -- )
    LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unrefused:label kept:label :}
    LBL {: retired:label :}
-   S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
    LEVALREC LABEL@ LBL,
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !
-   LBL LEVCORRUPT !  LBL LEVCORRUPTMSG !
+   LBL LEVCORRUPT !
    11 DATA 8 LDR,
    LEVLL LABEL@ LBL,
       12 DATA EVALD-CELL LDR,  12 LEVLD LABEL@ CBZ,   \ no eval frame left → unwind to handler
@@ -2925,7 +2947,7 @@ private
          12 DATA TOKVSP-CELL LDR,  12 DATA VSP-CELL STR,
          scope B,
       owned LBL,
-      SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,
+      SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,  30 SP 24 STR,   \ x30 for the exits below
       \ The checker's records go with the definitions, back to the end as the
       \ buffer began (EVAL-FRAME:ROWS: end+1, 0 with no owner then).
       13 EVAL-FRAME:ROWS kept DECL-OWNER:RETRACT-TO
@@ -2942,7 +2964,7 @@ private
       12 DATA DP-CELL STR,
       9 10 LASTC-TRIM,
       retired LBL,
-      11 SP 0 LDR,  13 SP 8 LDR,  15 SP 16 LDR,  SP SP 32 ADDI,
+      11 SP 0 LDR,  13 SP 8 LDR,  15 SP 16 LDR,  30 SP 24 LDR,  SP SP 32 ADDI,
       scope LBL,
       10 13 EVAL-PKG ADDI,
       9 10 PKGSNAP-CUR LDR,     9 DATA CUR-CELL STR,
@@ -3035,9 +3057,7 @@ private
    unrefused LBL,
    NR-EXIT-GROUP SYS,
    LEVCORRUPT LABEL@ LBL,
-   0 2 MOVZ,  1 LEVCORRUPTMSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
-   0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
-   LEVCORRUPTMSG LABEL@ LBL,  ma mu BYTES,
+   s" E-CATCH-STACK habu: catch frame corrupt" ENGINE-ERROR:CATCH-STACK DIE-LINE,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
 : EM-RECOVER-EXITS ( -- )
@@ -3052,7 +3072,7 @@ private
    LFLOORREC LABEL@ LBL,
    XDS DATA STACK-ABI:BASE-CELL LDR,
    0 2 MOVZ,  1 LMINCLASS LABEL@ ADR,  2 MINCLASS-LEN MOVZ,  NR-WRITE SYS,
-   LPLACE LABEL@ BL,
+   15 30 0 ADDI,  LPLACE LABEL@ BL,  30 15 0 ADDI,   \ LEVALREC's exits print the faulting lr
    0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,

@@ -381,8 +381,8 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SB$ ;
 
 \ LOWERING IS REFUSED WHILE A TASK IS LIVE. Main defines and prints beside a
-\ parked worker, then `ndict!` exits $4F with no message: lowering frees records
-\ a task may hold. The printed word proves main compiled beside the live task.
+\ parked worker, then `ndict!` exits $4F naming it: lowering frees records a
+\ task may hold. The printed word proves main compiled beside the live task.
 : TASK-LOWER-LIVE$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
@@ -395,7 +395,8 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SB$ ;
 
 \ A TASK MAY NOT COMPILE. The worker waits for main to define and print, then
-\ evaluates a colon definition: exit $4F before the text is read, no message.
+\ evaluates a colon definition: exit $4F before the text is read, naming
+\ evaluate-closed.
 \ A worker that survived it would say so in TTC-DONE, and main would exit 0.
 : TASK-COMPILES$ ( -- ptr u8 n )
    SB-RESET
@@ -427,7 +428,8 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s" TFC-RUN" SB-APPEND TASK-LF
    SB$ ;
 
-\ `create` IN A TASK exits $4F like any other definer, before it parses a name.
+\ `create` IN A TASK exits $4F naming it, like any other definer, before it
+\ parses a name.
 \ The worker runs a definer once main has defined and printed; one that got
 \ past the guard would branch through the startup's create cell.
 : TASK-CREATES$ ( -- ptr u8 n )
@@ -615,17 +617,20 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-OUT outu LEN>N S\" 301\n" T$=
    erru LEN>N 0 T= ;
 
-: TASK-EXPECT-REFUSED-EXIT ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+\ The refusal's line, up to its lr's digits.
+: TASK-EXPECT-REFUSED-EXIT ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n line:ptr lineu:n :}
    src srcu TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" 7\n" T$=
-   erru LEN>N 0 T= ;
+   TASK-ERR erru LEN>N line lineu STARTS-WITH? TTRUE ;
 
 : TASK-TEST-LOWER-LIVE ( -- )
-   TASK-LOWER-LIVE$ TASK-EXPECT-REFUSED-EXIT ;
+   TASK-LOWER-LIVE$
+   s" E-TASK-COMPILE habu: ndict! while a task is live lr " TASK-EXPECT-REFUSED-EXIT ;
 
 : TASK-TEST-TASK-COMPILES ( -- )
-   TASK-COMPILES$ TASK-EXPECT-REFUSED-EXIT ;
+   TASK-COMPILES$
+   s" E-TASK-COMPILE habu: evaluate-closed from a task lr " TASK-EXPECT-REFUSED-EXIT ;
 
 : TASK-FRAMED-REFUSAL$ ( -- ptr u8 n )
    s" E-TASK-COMPILE habu: source read on a task's thread; only the main thread compiles" ;
@@ -636,7 +641,8 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-ERR erru LEN>N TASK-FRAMED-REFUSAL$ CONTAINS? TTRUE ;
 
 : TASK-TEST-TASK-CREATES ( -- )
-   TASK-CREATES$ TASK-EXPECT-REFUSED-EXIT ;
+   TASK-CREATES$
+   s" E-TASK-COMPILE habu: create from a task lr " TASK-EXPECT-REFUSED-EXIT ;
 
 : TASK-TEST-ROLLBACK-LIVE ( -- )
    TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
@@ -2488,7 +2494,8 @@ variable BIND-PAIR-Q-WON
    SB$ ;
 
 : TASK-TEST-WORKER-ACTIVATES ( -- )
-   TASK-WORKER-ACTIVATES$ TASK-EXPECT-REFUSED-EXIT ;
+   TASK-WORKER-ACTIVATES$
+   s" E-TASK-COMPILE habu: cp! while a task is live lr " TASK-EXPECT-REFUSED-EXIT ;
 
 $30 constant NEW-N                   \ past one pool chunk of 42 records
 300 constant NEW-ROUNDS

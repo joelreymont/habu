@@ -310,8 +310,10 @@ $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
    s" evaluation in a task exits before it reads the text" T-LABEL
    s" NATIVE-EVAL-TEST:EVAL-IN-TASK" OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
    PROCESS:ENDING>RC RC>N TASK-THREAD T=
-   s" and nothing is printed" T-LABEL
-   LEN>N 0 T=  LEN>N 0 T= ;
+   LEN>N {: erru:n :}
+   s" and names evaluate-closed, printing nothing else" T-LABEL
+   LEN>N 0 T=
+   ERR erru s" E-TASK-COMPILE habu: evaluate-closed from a task lr " STARTS-WITH? TTRUE ;
 
 \ ---- a definition a thrown text takes back keeps no row ----------------------
 \ A text that throws takes back what it defined, and its frame cuts the

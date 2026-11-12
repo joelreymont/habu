@@ -1539,18 +1539,19 @@ public
 \ A task, an exposed region and a callback thread hold a TCB there, and
 \ B-TASK-GUARD exits $4F on one. B-LOWER-GUARD exits $4F while any task is
 \ live, for the sinks that lower CP or NDICT: lowering frees code a task may be
-\ running and records it may reference. Clobbers x9.
-: B-TASK-GUARD ( -- )
+\ running and records it may reference. Each prints the caller's text and the
+\ primitive's lr, so it runs before the body's first BL. Clobbers x9.
+: B-TASK-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    LBL {: ok:label :}
    9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
-      0 $4F MOVZ,  NR-EXIT-GROUP SYS,
+      a u $4F DIE-LINE,
    ok LBL, ;
 
 private
-: B-LOWER-GUARD ( -- )
+: B-LOWER-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
-      0 $4F MOVZ,  NR-EXIT-GROUP SYS,
+      a u $4F DIE-LINE,
    ok LBL, ;
 ;package
 
@@ -1572,7 +1573,10 @@ package ENGINE-EMIT
 \ redirects to, so a post-seal value in a sealed band fails at the sink. FORGET
 \ marks are DBASE-relative and never inside a data-base band, so the guard
 \ admits them.
-: BCPSET ( -- ) B-TASK-GUARD  B-LOWER-GUARD  A G-POP  A GUARD-CODE-WORD
+: BCPSET ( -- )
+   s" E-TASK-COMPILE habu: cp! from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE habu: cp! while a task is live" B-LOWER-GUARD
+   A G-POP  A GUARD-CODE-WORD
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 \ LASTC-CELL names the record the last create, variable or constant wrote;
 \ does> patches it. A record at or above NDICT is retired and its slot reused,
@@ -1598,7 +1602,10 @@ private
 \ holds only while every record below NDICT is in the table. Raising NDICT
 \ re-exposes records whose slots later publications may have reused, so a raise
 \ rebuilds the table from [0,NDICT) in place.
-: BNDSET ( -- ) B-TASK-GUARD  B-LOWER-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
+: BNDSET ( -- )                                     \ ( n -- ) set NDICT — forget dict entries past a mark
+   s" E-TASK-COMPILE habu: ndict! from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE habu: ndict! while a task is live" B-LOWER-GUARD
+   A G-POP
    LBL LBL LBL LBL {: bounded:label floor-ok:label keep:label done:label :}
    \ NDICT is a count: DICT-CAP is valid. Unsigned comparison also rejects negatives.
    14 DICT-CAP LIT64,  A 14 CMP,  C-LS bounded BCOND,
@@ -1627,7 +1634,8 @@ private
 \ index and checks pending ownership before changing either. DOES> publishes
 \ its parent, then its one prepared companion, which CLAUSE-CELL admits; no
 \ other row is eligible.
-: BNDAPPEND ( -- ) B-TASK-GUARD  A G-POP                  \ ( expected-index -- )
+: BNDAPPEND ( -- )                                  \ ( expected-index -- )
+   s" E-TASK-COMPILE habu: ndict-append from a task" B-TASK-GUARD  A G-POP
    LBL LBL LBL LBL LBL {: parent:label owner:label floor-ok:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
@@ -1732,15 +1740,15 @@ private
 \ B-EVAL and B-EVAL-RANGE jump, their arguments on the data stack, through the
 \ PROVIDED-XT cell.
 : B-EVAL ( -- )
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: evaluate from a task" B-TASK-GUARD
    9 DATA PROVIDED-XT:EVALUATE-CELL LDR,  9 BR, ;
 
 : B-EVAL-RANGE ( -- )
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: evaluate-range from a task" B-TASK-GUARD
    9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 BR, ;
 
 : BCREATE ( -- )
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: create from a task" B-TASK-GUARD
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels;
                                      \ LCREATE publishes the word's `-- ptr a` in both modes
@@ -2010,7 +2018,7 @@ private
    done LBL, ;
 
 : BALIGN ( -- )
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: align from a task" B-TASK-GUARD
    7 DATA 0 LDR,  7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 \ `,` keeps the latest run of its cells that starts at a created body: a cell
@@ -2018,7 +2026,7 @@ private
 \ written at the run's end extends it.
 : BCOMMA ( -- )
    LBL LBL LBL {: more:label grow:label done:label :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: , from a task" B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR,
    A DATA COMMA-BASE-CELL LDR,  A 7 CMP,  C-NE more BCOND,
    7 DATA COMMA-RUN-CELL STR,  grow B,
@@ -2027,7 +2035,7 @@ private
    done LBL, ;
 
 : BCCOMMA ( -- )
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: c, from a task" B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
 public
@@ -3242,7 +3250,8 @@ public
 \ No dictionary name becomes live until both copies and the instruction-cache
 \ flush finish. A namespace-only unit has records but no code; it copies only
 \ the records and leaves CP and relocation maps unchanged.
-: BNATIVEUNITPUBLISH ( -- ) B-TASK-GUARD
+: BNATIVEUNITPUBLISH ( -- )
+   s" E-TASK-COMPILE habu: native-unit-publish from a task" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
    LBL LBL LBL LBL LBL LBL
@@ -3587,7 +3596,7 @@ private
 \ high-water instead.
 : BALLOT ( -- )
    LBL LBL LBL LBL LBL {: grow:label zero:label store:label no-owner:label missing:label :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: allot from a task" B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK
    A 0 CMPI,  C-GE grow BCOND,
    SP SP 32 SUBI,  30 SP 0 STR,  7 SP 8 STR,
@@ -3742,7 +3751,7 @@ private
 \ which gives the stack back before throwing on.
 : B-EVAL-CLOSED ( -- )
    LBL LBL LBL LBL {: have:label take:label done:label thrown:label :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: evaluate-closed from a task" B-TASK-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    SP SP 32 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
@@ -3778,7 +3787,7 @@ private
    LBL LBL LBL LBL LBL LBL LBL LBL
       {: have:label take:label caught:label restore:label done:label no-snap:label
          other:label unpended:label :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: source-file-run from a task" B-TASK-GUARD
    A G-POP  BCALLABLE
    \ The child uses a fresh guarded stack; retain the parent action's stack
    \ interval after the loader consumed its arguments and before that swap.
@@ -4363,7 +4372,7 @@ package ENGINE-EMIT
 \ of a record from the seal floor (as BNDAPPEND tests it) to the pending one.
 : BRECFACTS ( -- )
    LBL LBL LBL {: done:label bad:label floor-ok:label :}
-   B-TASK-GUARD
+   s" E-TASK-COMPILE habu: record-facts! from a task" B-TASK-GUARD
    A G-POP  B G-POP                              \ x9 = record index, x10 = offset
    A NDICT CMP,  C-HI bad BCOND,                 \ negative, or past the pending record
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,  \ slot DICT-CAP is the control-flow band
@@ -4492,30 +4501,28 @@ private
    9 G-POP  LPROTWIDADD LABEL@ BL, ;
 
 \ The design seal's two writers. The harness admits packages and seals before
-\ it loads the design; once POLICY-NDICT-CELL is set either prim writes
+\ it loads the design; once POLICY-NDICT-CELL is set either prim prints
 \ POLICY-SEALED$ and exits ENGINE-ERROR:POLICY, so nothing the design can reach
 \ widens its own vocabulary.
-: POLICY-SEALED$ ( -- ptr u8 n ) S\" E-POLICY habu: policy: sealed\n" ;
+: POLICY-SEALED$ ( -- ptr u8 n ) s" E-POLICY habu: policy: sealed" ;
 : POLICY-NOPKG$ ( -- ptr u8 n ) s" E-POLICY habu: policy: no package " ;
-: POLICY-BOUND$ ( -- ptr u8 n ) S\" E-POLICY habu: policy: package wid above the bound\n" ;
+: POLICY-BOUND$ ( -- ptr u8 n ) s" E-POLICY habu: policy: package wid above the bound" ;
 : POLICY-NL$ ( -- ptr u8 n ) S\" \n" ;
 : POLICY-PKG$ ( -- ptr u8 n ) s" E-POLICY habu: policy: package " ;
 : POLICY-KEYWORD$ ( -- ptr u8 n ) s"  publishes keyword " ;
 
 \ Unsealed it falls through, having written x9 only.
 : POLICY-OPEN, ( -- )
-   LBL LBL {: open:label msg:label :}
+   LBL {: open:label :}
    9 DATA POLICY-NDICT-CELL LDR,  9 open CBZ,
-      0 2 MOVZ,  1 msg ADR,  2 POLICY-SEALED$ nip MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  POLICY-SEALED$ BYTES,
+      POLICY-SEALED$ ENGINE-ERROR:POLICY DIE-LINE,
    open LBL, ;
 
 \ policy-admit ( ptr u8 n -- ): admit the public wordlist of the package the
 \ span names, found as a top-level `using` finds it.
 : BPOLICYADMIT ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: found:label bounded:label nopkg:label nl:label bound:label spelled:label pkgmsg:label kwmsg:label walked:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: found:label bounded:label nopkg:label nl:label spelled:label pkgmsg:label kwmsg:label walked:label :}
    POLICY-OPEN,
    1 G-POP  0 G-POP                                  \ x1 = name length, x0 = name
    13 0 0 ADDI,                                      \ the name, for the refusals: the lookup leaves x13 and x1 alone
@@ -4529,11 +4536,10 @@ private
       0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
    found LBL,
    15 PROT-WID-MAX MOVZ,  11 15 CMP,  C-CC bounded BCOND,
-      0 2 MOVZ,  1 bound ADR,  2 POLICY-BOUND$ nip MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
+      0 CALLER-LR,                                   \ WLFIND's BL replaced x30
+      POLICY-BOUND$ ENGINE-ERROR:POLICY DIE-LINE,
    nopkg LBL,  POLICY-NOPKG$ BYTES,
    nl LBL,  POLICY-NL$ BYTES,
-   bound LBL,  POLICY-BOUND$ BYTES,
    bounded LBL,
    \ A public word spelled like a keyword would mean the keyword in one place and
    \ the word in another.
@@ -5424,12 +5430,10 @@ private
 \ DEFWRITE:RECORD-WID calls it after rewriting a published record's wid, because
 \ a rebuild keys a record retired across it on RETIRED's chain.
 : EMIT-HIDX ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: aret:label bfail:label msg:label fmsg:label floop:label fdone:label
-      rret:label zloop:label zdone:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+   {: aret:label bfail:label floop:label fdone:label rret:label zloop:label
+      zdone:label :}
    LBL LBL {: bhave:label ains:label :}
-   S\" hb: dictionary index alloc failed\n" {: ma:ptr mu:n :}
-   S\" hb: dictionary index exhausted\n" {: fa:ptr fu:n :}
    LHIDXADD LABEL@ LBL,
       HIDX-SAVE,
       14 DATA HIDXP-CELL LDR,  14 aret CBZ,
@@ -5471,9 +5475,7 @@ private
       13 SP 80 LDR,  14 SP 88 LDR, 15 SP 96 LDR, 16 SP 104 LDR, 17 SP 112 LDR,
       SP SP 160 ADDI,  RET,
       bfail LBL,
-         0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-         0 74 MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  ma mu BYTES,
+         s" E-DICT-INDEX habu: dictionary index alloc failed" 74 DIE-LINE,
    HIDX-EMIT:LREBUILD LABEL@ LBL,
       \ register-transparent like LHIDXBUILD: BNDSET and LHIDXADD call it
       \ mid-primitive with caller state live.
@@ -5503,9 +5505,7 @@ private
       15 SP 80 LDR,  16 SP 88 LDR, 17 SP 96 LDR,
       SP SP 160 ADDI,  RET,
    HIDX-EMIT:LFULL LABEL@ LBL,
-      0 2 MOVZ,  1 fmsg ADR,  2 fu MOVZ,  NR-WRITE SYS,
-      0 74 MOVZ,  NR-EXIT-GROUP SYS,
-   fmsg LBL,  fa fu BYTES, ;
+      s" E-DICT-INDEX habu: dictionary index exhausted" 74 DIE-LINE, ;
 
 \ A dictionary slot's occurrence is owned by one anonymous mapping. The first
 \ cell is the last issued number; the remaining DICT-CAP cells are indexed by

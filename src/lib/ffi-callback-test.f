@@ -632,6 +632,7 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
    s" == child defines: exit 79" W
    s" defines: the exposing worker was joined" W
    s" --" W
+   s" E-TASK-COMPILE habu: cp! while a task is live lr" W
    s" == child body-defines: exit 106" W
    s" --" W
    s" E-CALLBACK habu: the body defined lr" W
