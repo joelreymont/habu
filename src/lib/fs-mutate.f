@@ -345,12 +345,16 @@ private
 : COPY-PREPARE-DST ( n n -- n n )
    2dup >FD swap >FD swap PREPARE-DST ;
 
-: COPY-OPEN-DST ( n ptr u8 n -- n ) {: in dst:ptr dstu :}
+\ Runs before the source opens, so a refused destination has nothing to close.
+\ The answer lives in the PATHZ2 buffer, which opening the source leaves alone.
+: COPY-DST-PATHZ ( ptr u8 n -- ptr u8 ) {: dst:ptr dstu :}
    dst dstu EXISTS? if
-      dst dstu FILE? 0= if in -1 E-FS-OPEN COPY-THROW then
+      dst dstu FILE? 0= if E-FS-OPEN throw then
    then
-   dst dstu >PATHZ2
-   O-WRONLY O-CREAT or MODE-0644 open {: out :}
+   dst dstu >PATHZ2 ;
+
+: COPY-OPEN-DST ( n ptr u8 -- n ) {: in dstz:ptr :}
+   dstz O-WRONLY O-CREAT or MODE-0644 open {: out :}
    out 0 < if in -1 E-FS-OPEN COPY-THROW then
    \ Opening must not truncate until the descriptor identities differ.
    in out [: COPY-PREPARE-DST ;] catch {: code :}
@@ -384,8 +388,9 @@ private
 
 public
 : COPY-FILE-STREAM ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+   dst dstu COPY-DST-PATHZ {: dstz:ptr :}
    src srcu COPY-OPEN-SRC {: in :}
-   in dst dstu COPY-OPEN-DST {: out :}
+   in dstz COPY-OPEN-DST {: out :}
    in out COPY-PUMP
    in CLOSE-COPY-FD
    out CLOSE-COPY-FD ;

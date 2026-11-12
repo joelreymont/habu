@@ -469,17 +469,37 @@ public
    FMT-COPY-DST FMT-READ-BUF 64 FS:READ-ALL 8 T=
    FMT-READ-BUF 8 s" copy-src" T$= ;
 
-: FMT-NUL-SECOND-COPY ( -- )
+\ The copy destination followed by a NUL byte.
+: FMT-NUL-DST$ ( -- ptr u8 n )
    FMT-COPY-DST {: dst:ptr size:n :}
    dst FMT-LONG-BUF size BYTE-COPY
    0 FMT-LONG-BUF size + c!
-   FMT-COPY-SRC FMT-LONG-BUF BYTE-VIEW size 1+ FS:COPY-FILE-STREAM ;
+   FMT-LONG-BUF BYTE-VIEW size 1+ ;
+
+: FMT-NUL-SECOND-COPY ( -- )
+   FMT-COPY-SRC FMT-NUL-DST$ FS:COPY-FILE-STREAM ;
 
 : FMT-TEST-NUL-SECOND-PATH ( -- )
    [: FMT-NUL-SECOND-COPY ;] E-FFI-NUL TTHROWSQ
    FMT-COPY-SRC FS:FILE? TTRUE
    FMT-COPY-DST FMT-READ-BUF 64 FS:READ-ALL 8 T=
    FMT-READ-BUF 8 s" copy-src" T$= ;
+
+\ The descriptor open would hand out next: the lowest one free.
+: FMT-NEXT-FD ( -- n )
+   FMT-ROOT$ FS:OPEN-DIR-READ dup close ;
+
+: FMT-LONG-STREAM-COPY ( -- )
+   FMT-LONG! FMT-COPY-SRC FMT-LONG$ FS:COPY-FILE-STREAM ;
+
+: FMT-TEST-STREAM-REFUSED-DST ( -- )
+   FMT-NEXT-FD {: before:n :}
+   s" FS:COPY-FILE-STREAM to a NUL destination throws and leaves no fd open" T-LABEL
+   [: FMT-NUL-SECOND-COPY ;] E-FFI-NUL TTHROWSQ
+   FMT-NEXT-FD before T=
+   s" FS:COPY-FILE-STREAM to a too-long destination throws and leaves no fd open" T-LABEL
+   [: FMT-LONG-STREAM-COPY ;] E-FS-PATH TTHROWSQ
+   FMT-NEXT-FD before T= ;
 
 : FMT-FILL-STREAM-DATA ( -- )
    0 begin dup FMT-STREAM-LEN < while
@@ -1182,10 +1202,6 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
    loop
    FMT-ROOT-PATH-BUF u level 2 * + ;
 
-\ The descriptor open would hand out next: the lowest one free.
-: FMT-NEXT-FD ( -- n )
-   FMT-ROOT$ FS:OPEN-DIR-READ dup close ;
-
 \ A tree deeper than the walk's starting frames whose last directory is
 \ locked: the removal grows its frames on the way down, then unlinkat refuses
 \ the deepest level with EACCES while every level above it is open. A leaked
@@ -1797,6 +1813,7 @@ public
    FS-TEST:HARD-LINK
    FMT-TEST-COPY
    FMT-TEST-NUL-SECOND-PATH
+   FMT-TEST-STREAM-REFUSED-DST
    FMT-TEST-STREAM-COPY
    FMT-TEST-ATOMIC-WRITE
    FMT-TEST-ATOMIC-ALIASES
