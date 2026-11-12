@@ -54,18 +54,24 @@
 // mount resolves once the start turn has begun; it rejects, having released
 // what it took, if WebGPU, the module's fetch or its instantiation fails.
 
-// A vertex is a held mesh's four u16: x, y and z on the mesh's grid, which
+// A vertex is a held mesh's four u16, x, y and z on the mesh's grid, which
 // the instance's 3x4 transform (four float32x3 columns) takes to world, then
-// clip from the matrix; and its face. A fragment is selected when the
-// instance's flags bit 0 is set or, with an offset not 0xFFFFFFFF, bit
-// face % 32 of highlight word offset + face / 32 is set. Each fragment is lit
-// by its triangle's normal, from the screen derivatives of the world
-// position, so no normals are sent. box draws one occlude box per instance
-// as the 12 triangles of its faces: vertex k takes corner corners[k], whose
-// bit j picks the highest coordinate j in place of the lowest. A box whose
-// corners' clip z lie on both sides of 0, the near plane, draws the
-// full-viewport quad at depth 0 from vertices 0 to 5 in place of its faces,
-// which that plane can cut away while the box's inside is in view.
+// clip from the matrix, and its face; then its normal, two snorm16 of the
+// octahedral encoding, which the cofactor matrix of the transform's 3x3, the
+// inverse transpose times its determinant, takes to world: the sign of the
+// determinant keeps a mirroring transform's normal outward, and a normal the
+// cofactor matrix maps to zero, one perpendicular to the grid axis a flat 3x3
+// collapses, falls back to the triangle's own normal. A fragment is selected
+// when the instance's flags bit 0 is set or, with an offset not 0xFFFFFFFF,
+// bit face % 32 of highlight word offset + face / 32 is set; a selected
+// fragment's paint is mixed toward a mark chosen by the paint's Rec. 709
+// luma, of its encoded bytes. Metallic and roughness reach fs unused. box
+// draws one occlude box per instance as the 12 triangles of its faces: vertex
+// k takes corner corners[k], whose bit j picks the highest coordinate j in
+// place of the lowest. A box whose corners' clip z lie on both sides of 0,
+// the near plane, draws the full-viewport quad at depth 0 from vertices 0 to
+// 5 in place of its faces, which that plane can cut away while the box's
+// inside is in view.
 const SHADER = `
 @group(0) @binding(0) var<uniform> clip: mat4x4<f32>;
 @group(0) @binding(1) var<storage, read> words: array<u32>;
@@ -77,19 +83,39 @@ struct Vertex {
   @location(3) c2: vec3<f32>,
   @location(4) c3: vec3<f32>,
   @location(5) bits: vec2<u32>, // the instance's flags and offset
+  @location(6) octahedral: vec2<f32>,
+  @location(7) paint: vec4<f32>, // r, g, b and the 0 byte
+  @location(8) surface: vec2<f32>, // metallic, roughness
 }
 
 struct Corner {
   @builtin(position) at: vec4<f32>,
-  @location(0) p: vec3<f32>,
+  @location(0) n: vec3<f32>,
   @location(1) @interpolate(flat) face: u32,
   @location(2) @interpolate(flat) bits: vec2<u32>,
+  @location(3) @interpolate(flat) paint: vec3<f32>,
+  @location(4) @interpolate(flat) surface: vec2<f32>,
+  @location(5) world: vec3<f32>,
+}
+
+fn unfold(e: vec2<f32>) -> vec3<f32> {
+  var n = vec3<f32>(e, 1.0 - abs(e.x) - abs(e.y));
+  let t = max(-n.z, 0.0);
+  n.x += select(t, -t, n.x >= 0.0);
+  n.y += select(t, -t, n.y >= 0.0);
+  return normalize(n);
 }
 
 @vertex fn vs(v: Vertex) -> Corner {
   let g = vec3<f32>(v.grid.xyz);
   let p = v.c0 * g.x + v.c1 * g.y + v.c2 * g.z + v.c3;
-  return Corner(clip * vec4<f32>(p, 1.0), p, v.grid.w, v.bits);
+  let cofactor = mat3x3<f32>(cross(v.c1, v.c2), cross(v.c2, v.c0),
+    cross(v.c0, v.c1));
+  let side = select(1.0, -1.0, dot(v.c0, cofactor[0]) < 0.0);
+  let w = side * (cofactor * unfold(v.octahedral));
+  let n = select(vec3<f32>(0.0), normalize(w), dot(w, w) > 0.0);
+  return Corner(clip * vec4<f32>(p, 1.0), n, v.grid.w, v.bits,
+    v.paint.rgb, v.surface, p);
 }
 
 fn selected(face: u32, bits: vec2<u32>) -> bool {
@@ -98,11 +124,18 @@ fn selected(face: u32, bits: vec2<u32>) -> bool {
   return ((words[bits.y + face / 32u] >> (face % 32u)) & 1u) != 0u;
 }
 
+fn mark(paint: vec3<f32>) -> vec3<f32> {
+  let luminance = dot(paint, vec3<f32>(0.2126, 0.7152, 0.0722));
+  let tint = select(vec3<f32>(0.6, 0.9, 1.0), vec3<f32>(0.05, 0.15, 0.6),
+    luminance > 0.5);
+  return mix(paint, tint, 0.6);
+}
+
 @fragment fn fs(c: Corner) -> @location(0) vec4<f32> {
-  let n = normalize(cross(dpdx(c.p), dpdy(c.p)));
+  let flat = normalize(cross(dpdx(c.world), dpdy(c.world)));
+  let n = select(normalize(c.n), flat, dot(c.n, c.n) == 0.0);
   let lit = 0.3 + 0.7 * abs(dot(n, normalize(vec3<f32>(0.3, 0.5, 0.8))));
-  let orange = vec3<f32>(1.0, 0.45, 0.08);
-  let color = select(vec3<f32>(1.0), orange, selected(c.face, c.bits));
+  let color = select(c.paint, mark(c.paint), selected(c.face, c.bits));
   return vec4<f32>(color * lit, 1.0);
 }
 
@@ -130,7 +163,7 @@ fn corner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec4<f32> {
 }
 `;
 
-const ROW = 64; // an instance row: twelve f32, u32 handle, id, flags, offset
+const ROW = 72; // bytes in an instance row
 const QUERIES = 4096; // WebGPU's most queries in one query set
 
 // WebGPU on the canvas: setup's renderer, whose release destroys the device
@@ -176,7 +209,7 @@ function grouped(rows, count) {
   return [ordered, runs];
 }
 
-// The renderer holds each mesh by handle as a vertex buffer of its u16x4
+// The renderer holds each mesh by handle as a vertex buffer of its 12-byte
 // vertices and an index buffer of its u16 triangles; draw writes the rows to
 // an instance buffer and issues one indexed, instanced draw per handle, and
 // highlight writes the words to a storage buffer. Each buffer is padded to
@@ -200,11 +233,14 @@ function setup(canvas, context, device, release, fail) {
       module,
       entryPoint: "vs",
       buffers: [
-        { arrayStride: 8, attributes: [
-          { shaderLocation: 0, offset: 0, format: "uint16x4" }] },
+        { arrayStride: 12, attributes: [
+          { shaderLocation: 0, offset: 0, format: "uint16x4" },
+          { shaderLocation: 6, offset: 8, format: "snorm16x2" }] },
         { arrayStride: ROW, stepMode: "instance", attributes: [
           column(0), column(1), column(2), column(3),
-          { shaderLocation: 5, offset: 56, format: "uint32x2" }] },
+          { shaderLocation: 5, offset: 56, format: "uint32x2" },
+          { shaderLocation: 7, offset: 64, format: "unorm8x4" },
+          { shaderLocation: 8, offset: 68, format: "unorm16x2" }] },
       ],
     },
     fragment: { module, entryPoint: "fs", targets: [{ format }] },

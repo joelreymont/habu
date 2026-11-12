@@ -4,11 +4,14 @@
 \ page-relative path slow. Typed "more" sends a tree whose row Shelf has more;
 \ opening Shelf sends the text opened and the tree again with its child and
 \ grandchild. Typed "draw" sends mesh 1, a square of two triangles of faces 0
-\ and 1; mesh 2, one triangle of face 34; a highlight of two words, bit 1 of
-\ the first and bit 2 of the second set; and a draw of rows of handles 1, 2
-\ and 1: the left square, at offset 0, shows face 1 highlighted and face 0
-\ not, the triangle above it, at offset 0, shows face 34 highlighted, and the
-\ right square selects every face. Typed "unmesh", after "draw", draws the
+\ and 1; mesh 2, one triangle of face 34 with normals (0, 0.8, -0.6); mesh
+\ 3, that triangle with normals +x; a highlight of two words, bit 1 of the
+\ first and bit 2 of the second set; and a draw of rows of handles 1, 2, 1,
+\ 1 and 3: the orange left square, at offset 0, shows face 1 highlighted and
+\ face 0 not, the green triangle above it, z scaled by 0.2, at offset 0,
+\ shows face 34 highlighted, the white right square selects every face, the
+\ blue square above it none, and the green triangle below the left square,
+\ its z scaled by 0, none. Typed "unmesh", after "draw", draws the
 \ triangle's row alone, unmeshes mesh 1 and draws that row again. Typed
 \ "zero" draws 0 rows. Typed "occlude", after "draw", sends occlude 7 of two
 \ boxes past z 0.5: one behind the left square and one below every instance;
@@ -29,9 +32,10 @@ using BROWSER-EVENT
 CAST: >BYTES ( n -- ptr u8 )
 CAST: BYTES>N ( ptr u8 -- n )
 
-68 BUFFER: SQUARE-MESH
-38 BUFFER: TRIANGLE-MESH
-192 BUFFER: INSTANCE-ROWS
+92 BUFFER: SQUARE-MESH
+50 BUFFER: TRIANGLE-MESH
+50 BUFFER: FLAT-MESH
+360 BUFFER: INSTANCE-ROWS
 8 BUFFER: WORDS
 64 BUFFER: MATRIX
 4097 24 * BUFFER: BOXES
@@ -78,40 +82,53 @@ variable ECHO-U
 : VERTEX ( ptr u8 n n n n -- )
    \ Vertex k of the mesh at m, at x, y and z 0 on the grid, of a face.
    {: m:ptr k:n x:n y:n face:n :}
-   m 8 + k 8 * + {: at:ptr :}
+   m 8 + k 12 * + {: at:ptr :}
    x at U16!  y at 2 + U16!  0 at 4 + U16!  face at 6 + U16! ;
 
 : SQUARE ( -- )
    \ The unit square's lower-left triangle is face 0, its upper-right face 1;
-   \ the six indices end at byte 68.
+   \ its normals are +z, octahedral 0, 0; the six indices end at byte 92.
    SQUARE-MESH {: m:ptr :}
    6 m U32!  2 m 4 + U32!
    m 0 0 0 0 VERTEX  m 1 1 0 0 VERTEX  m 2 0 1 0 VERTEX
    m 3 1 0 1 VERTEX  m 4 1 1 1 VERTEX  m 5 0 1 1 VERTEX
-   6 0 do i m 56 + i 2 * + U16! loop ;
+   6 0 do i m 80 + i 2 * + U16! loop ;
 
-: TRIANGLE ( -- )
+: TRIANGLE ( ptr u8 n n -- )
    \ The unit square's lower-left half as face 34, whose highlight bit is bit
-   \ 2 of the second word; the three indices end at byte 38.
-   TRIANGLE-MESH {: m:ptr :}
+   \ 2 of the second word; the indices end at byte 50.
+   {: m:ptr ox:n oy:n :}
    3 m U32!  1 m 4 + U32!
    m 0 0 0 34 VERTEX  m 1 1 0 34 VERTEX  m 2 0 1 34 VERTEX
-   3 0 do i m 32 + i 2 * + U16! loop ;
+   3 0 do ox m 16 + i 12 * + U16!  oy m 18 + i 12 * + U16! loop
+   3 0 do i m 44 + i 2 * + U16! loop ;
 
 : PLACE ( n n n n -- )
    \ Row r draws mesh handle scaled by 0.8 and moved to x tx and y ty (f32
    \ bits) and z 0.5.
    {: r:n handle:n tx:n ty:n :}
-   INSTANCE-ROWS r 64 * + {: at:ptr :}
-   $3F4CCCCD at U32!  $3F4CCCCD at 16 + U32!
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   $3F4CCCCD at U32!  $3F4CCCCD at 16 + U32!  $3F4CCCCD at 32 + U32!
    tx at 36 + U32!  ty at 40 + U32!  $3F000000 at 44 + U32!
    handle at 48 + U32! ;
+
+: DEPTH ( n n -- )
+   \ Row r's z scale, f32 bits.
+   {: r:n z:n :}
+   z INSTANCE-ROWS r 72 * + 32 + U32! ;
 
 : MARK ( n n n n -- )
    \ Row r's id, flags and highlight offset.
    {: r:n id:n flags:n offset:n :}
-   INSTANCE-ROWS r 64 * + {: at:ptr :}
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
    id at 52 + U32!  flags at 56 + U32!  offset at 60 + U32! ;
+
+: PAINT ( n n n n -- )
+   \ Row r's colour $rrggbb, metallic and roughness.
+   {: r:n rgb:n metal:n rough:n :}
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   rgb 16 rshift at 64 + c!  rgb 8 rshift $FF and at 65 + c!
+   rgb $FF and at 66 + c!  metal at 68 + U16!  rough at 70 + U16! ;
 
 : IDENTITY ( -- )
    $3F800000 MATRIX U32!  $3F800000 MATRIX 20 + U32!
@@ -121,16 +138,27 @@ variable ECHO-U
    {: rows:ptr count:n :}
    2 rows BYTES>N count MATRIX BYTES>N RECORD ;
 
-: SHOW ( -- )
-   \ x -0.9, 0.1 and y -0.4, 0.5 as f32 bits.
-   SQUARE TRIANGLE  2 WORDS U32!  4 WORDS 4 + U32!  IDENTITY
+: INSTANCES ( -- )
+   \ x -0.9, 0.1 and y -1.2, -0.4, 0.5 as f32 bits; z scales 0.2 and 0.
    0 1 $BF666666 $BECCCCCD PLACE  0 1 0 0 MARK
    1 2 $BF666666 $3F000000 PLACE  1 2 0 0 MARK
    2 1 $3DCCCCCD $BECCCCCD PLACE  2 3 1 $FFFFFFFF MARK
-   13 SQUARE-MESH BYTES>N 68 1 RECORD
-   13 TRIANGLE-MESH BYTES>N 38 2 RECORD
+   3 1 $3DCCCCCD $3F000000 PLACE  3 4 0 $FFFFFFFF MARK
+   4 3 $BF666666 $BF99999A PLACE  4 5 0 $FFFFFFFF MARK
+   1 $3E4CCCCD DEPTH  4 0 DEPTH
+   0 $FF7314 0 32768 PAINT  1 $30A040 65535 16384 PAINT
+   2 $FFFFFF 0 0 PAINT  3 $2060C0 0 65535 PAINT
+   4 $30A040 0 0 PAINT ;
+
+: SHOW ( -- )
+   SQUARE  TRIANGLE-MESH 14043 32767 TRIANGLE
+   FLAT-MESH 32767 0 TRIANGLE
+   2 WORDS U32!  4 WORDS 4 + U32!  IDENTITY  INSTANCES
+   13 SQUARE-MESH BYTES>N 92 1 RECORD
+   13 TRIANGLE-MESH BYTES>N 50 2 RECORD
+   13 FLAT-MESH BYTES>N 50 3 RECORD
    6 WORDS BYTES>N 2 0 RECORD
-   INSTANCE-ROWS 3 DRAW ;
+   INSTANCE-ROWS 5 DRAW ;
 
 : BOX ( n n n n n n n -- )
    \ Box k's lowest x, y, z, then its highest, as f32 bits.
@@ -161,7 +189,7 @@ variable ECHO-U
    16 BOXES BYTES>N 4097 24 * 9 RECORD ;
 
 : UNMESH ( -- )
-   INSTANCE-ROWS 64 + 1 DRAW  14 1 0 0 RECORD  INSTANCE-ROWS 64 + 1 DRAW ;
+   INSTANCE-ROWS 72 + 1 DRAW  14 1 0 0 RECORD  INSTANCE-ROWS 72 + 1 DRAW ;
 
 : ROWS ( -- )
    \ Van and its child Shelf through Shelf's label; the caller closes Shelf's

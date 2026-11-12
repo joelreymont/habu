@@ -55,10 +55,11 @@
 // <offset> <length>, occlude <boxes> <id>, tree <selected> <JSON>, mesh
 // <handle> <V> <T>, unmesh <handle>, highlight <words> <words in hex,
 // little-endian>, draw <count> then each row's <handle>/<id>/<flags>/<offset
-// or ->, svg <length> <bytes in hex>, input <0|1>, text <string>; a highlight
-// or draw of none prints only its count. At the end, outstanding <fetch|post>
-// <path>, outstanding request <method> <path> <id>, outstanding rpc <method>
-// <id> or outstanding occlude <id>. A --tick with no after
+// or ->/<rrggbb>/<metallic>/<roughness>, the last two the u16s in decimal, svg
+// <length> <bytes in hex>, input <0|1>, text <string>; a highlight or draw of
+// none prints only its count. At the end, outstanding <fetch|post> <path>,
+// outstanding request <method> <path> <id>, outstanding rpc <method> <id> or
+// outstanding occlude <id>. A --tick with no after
 // waiting, an --answer-rpc or --fail-rpc of an id no waiting rpc holds, or a
 // relay that fails or passes RELAY_MS, is a failure.
 // It
@@ -413,11 +414,14 @@ try {
     draw: (rows, count) => {
       const v = new DataView(rows.buffer, rows.byteOffset, rows.byteLength);
       let line = `draw ${count}`;
-      for (let at = 0; at < rows.length; at += 64) {
+      for (let at = 0; at < rows.length; at += 72) {
         const [handle, id, flags, offset] =
           [48, 52, 56, 60].map((k) => v.getUint32(at + k, true));
         const from = offset === 0xFFFFFFFF ? "-" : offset;
-        line += ` ${handle}/${id}/${flags}/${from}`;
+        const rgb = Buffer.from(rows.subarray(at + 64, at + 67)).toString("hex");
+        const [metallic, roughness] =
+          [68, 70].map((k) => v.getUint16(at + k, true));
+        line += ` ${handle}/${id}/${flags}/${from}/${rgb}/${metallic}/${roughness}`;
       }
       print(line);
     },

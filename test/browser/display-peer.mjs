@@ -80,9 +80,11 @@ const [stdout, stderr, code] = await Promise.all([
 writeFileSync(join(output, "cli.txt"), stdout);
 assert.equal(code, 0, stderr);
 assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(original).toString("hex")}\ninput 1\ndraw 0\n` +
-  "mesh 1 6 2\nmesh 2 3 1\nhighlight 2 0200000004000000\n" +
-  "draw 3 1/1/0/0 2/2/0/0 1/3/1/-\n" +
-  "draw 1 2/2/0/0\nunmesh 1\ndraw 1 2/2/0/0\n" +
+  "mesh 1 6 2\nmesh 2 3 1\nmesh 3 3 1\nhighlight 2 0200000004000000\n" +
+  "draw 5 1/1/0/0/ff7314/0/32768 2/2/0/0/30a040/65535/16384 " +
+  "1/3/1/-/ffffff/0/0 1/4/0/-/2060c0/0/65535 3/5/0/-/30a040/0/0\n" +
+  "draw 1 2/2/0/0/30a040/65535/16384\nunmesh 1\n" +
+  "draw 1 2/2/0/0/30a040/65535/16384\n" +
   `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
 console.log("SVG/input protocol, independent copy, rejected records, identities, refused delivery and CLI passed");
 
@@ -210,13 +212,30 @@ async function browser() {
       })()`);
     };
     // display.f's draw: the left square's face 0 and face 1 centres, the
-    // triangle's centre, the right square's centre and the background above
-    // the squares, right of the triangle.
+    // triangle's centre, the right square's centre, the background above
+    // the squares, right of the triangle, the upper square's face 0 centre
+    // and the flat triangle's centre.
     const points = [[-0.6333, -0.1333], [-0.3667, 0.1333], [-0.6333, 0.7667],
-      [0.5, 0], [0, 0.7]];
-    const white = ([r, g, b]) => r === g && g === b && r > 150 && r < 250;
-    const orange = ([r, , b]) => r > 150 && b < 60;
+      [0.5, 0], [0, 0.7], [0.3667, 0.7667], [-0.6333, -0.9333]];
     const background = [255, 255, 255];
+    const [orange, green, white, cobalt] = [[255, 115, 20], [48, 160, 64],
+      [255, 255, 255], [32, 96, 192]];
+    // The expected bytes: the paint, mixed 60% toward the mark when
+    // selected, times the light of normal n.
+    const light = (n) => 0.3 + 0.7 * Math.abs(
+      (0.3 * n[0] + 0.5 * n[1] + 0.8 * n[2]) / Math.hypot(0.3, 0.5, 0.8));
+    const shade = (paint, selected, n) => {
+      let c = paint.map((v) => v / 255);
+      if (selected) {
+        const y = [0.2126, 0.7152, 0.0722]
+          .reduce((sum, w, k) => sum + w * c[k], 0);
+        const mark = y > 0.5 ? [0.05, 0.15, 0.6] : [0.6, 0.9, 1.0];
+        c = c.map((v, k) => 0.4 * v + 0.6 * mark[k]);
+      }
+      return c.map((v) => Math.round(255 * v * light(n)));
+    };
+    const near = (got, want) => got.every((v, k) => Math.abs(v - want[k]) <= 2);
+    const z = [0, 0, 1], tilted = [0, 1, -3].map((v) => v / Math.hypot(1, 3));
     const start = await state();
     assert.equal(start.disabled, true, "startup must preserve input(false)");
     assert.deepEqual(start.natural, [400, 100]);
@@ -277,20 +296,30 @@ async function browser() {
     assert.equal(drawn.image, undefined, "nonempty draws also clear SVG");
     assert.equal(drawn.visible, "visible");
     assert.deepEqual(drawn.canvas, start.canvas);
-    const [face0, face1, triangle, right, above] = await pixels(points);
-    assert.ok(white(face0),
-      `the left square's face 0 is lit white, got ${face0}`);
-    assert.ok(orange(face1),
-      `the left square's highlighted face 1 is orange, got ${face1}`);
-    assert.ok(orange(triangle),
-      `the triangle's face 34, highlighted in word 1, is orange, ` +
-      `got ${triangle}`);
-    assert.ok(orange(right),
-      `the selected right square is orange, got ${right}`);
+    const [face0, face1, triangle, right, above, upper, flat] =
+      await pixels(points);
+    assert.ok(near(face0, shade(orange, false, z)),
+      `the orange square's face 0 is orange times its light, got ${face0}`);
+    assert.ok(near(upper, shade(cobalt, false, z)),
+      `the blue square, mesh 1 again, is blue times its light, got ${upper}`);
+    assert.ok(near(face1, shade(orange, true, z)),
+      `the orange square's highlighted face 1 is marked, got ${face1}`);
+    for (const plain of [shade(orange, false, z), shade(white, false, z)])
+      assert.ok(face1.some((v, k) => Math.abs(v - plain[k]) > 40),
+        `the marked face ${face1} reads apart from ${plain}`);
+    assert.ok(near(triangle, shade(green, true, tilted)),
+      `the triangle's face 34, highlighted in word 1, is marked and lit ` +
+      `by its normal through the inverse transpose, got ${triangle}`);
+    assert.ok(near(flat, shade(green, false, z)),
+      `the flat triangle is lit by its own normal, got ${flat}`);
+    assert.ok(near(right, shade(white, true, z)),
+      `the selected white square is marked, got ${right}`);
     assert.deepEqual(above, background,
       `the background is white, got ${above}`);
-    console.log(`Headless Chrome pixels: left face 0 ${face0}, left face 1 ` +
-      `${face1}, triangle ${triangle}, right ${right}, background ${above}`);
+    console.log(`Headless Chrome pixels: orange face 0 ${face0}, blue ` +
+      `${upper}, marked orange face 1 ${face1}, marked triangle ` +
+      `${triangle}, marked white ${right}, background ${above}, flat ` +
+      `triangle ${flat}`);
     // display.f's occlude against that draw: the box behind the left square
     // answers 0, the box below every instance 1.
     await command("occlude");
@@ -312,11 +341,12 @@ async function browser() {
     console.log(`Headless Chrome occlude: ${occluded}, ${edges}, ${many}`);
     // Mesh 1 drawn by no row, then unmeshed: only the triangle stays.
     await command("unmesh");
-    const [left0, left1, alone, right1, over] = await pixels(points);
-    const unmeshed = [left0, left1, right1, over];
+    const [left0, left1, alone, right1, over, top] = await pixels(points);
+    const unmeshed = [left0, left1, right1, over, top];
     assert.deepEqual(unmeshed, unmeshed.map(() => background),
       `mesh 1's pixels are background, got ${JSON.stringify(unmeshed)}`);
-    assert.ok(orange(alone), `the triangle is still drawn, got ${alone}`);
+    assert.deepEqual(alone, triangle,
+      `the triangle is still drawn, got ${alone}`);
     console.log(`Headless Chrome pixels after unmesh: triangle ${alone}, ` +
       `mesh 1's and background ${JSON.stringify(unmeshed)}`);
     // A draw of 0 rows after a shown SVG shows the canvas, cleared.

@@ -83,7 +83,8 @@ PATH-CAP BUFFER: FILE
    ROWS-WANT s\" ,\"more\":true}]" LINE
    s" mesh 7 6 2" LINE
    s" highlight 1 01000000" LINE
-   s" draw 2 7/10/0/0 7/11/1/-" LINE ;
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE ;
 
 : OUTPUT! ( ptr u8 n -- )
    {: a:ptr n:n :}
@@ -139,7 +140,8 @@ PATH-CAP BUFFER: FILE
    s" draw 0" LINE
    s" unmesh 7" LINE
    s" mesh 7 6 2" LINE
-   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE
    s" a mesh no row draws unmeshes and meshes again by its handle" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
@@ -147,7 +149,8 @@ PATH-CAP BUFFER: FILE
    HOST-OPEN s" redraw" TYPED+
    HOST 0 T=
    START-WANT
-   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE
    s" a redraw draws the held mesh with the held highlight" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
@@ -156,7 +159,8 @@ PATH-CAP BUFFER: FILE
    HOST 0 T=
    START-WANT
    s" occlude 2 9" LINE
-   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE
    s" text occluded 0100 0,9 640,480" LINE
    s" an occlude's answer reaches the module as event 19" T-LABEL
    OUT OUT-U @ SB$ T$= ;
@@ -166,7 +170,8 @@ PATH-CAP BUFFER: FILE
    HOST 0 T=
    START-WANT
    s" occlude 2 9" LINE
-   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
+      LINE
    s" outstanding occlude 9" LINE
    s" an occlude no step answers is outstanding at the end" T-LABEL
    OUT OUT-U @ SB$ T$= ;
@@ -186,7 +191,7 @@ PATH-CAP BUFFER: FILE
    s" more" s" more must be a boolean" REJECT
    s" unsent" s" parent 1 has more" REJECT
    s" selected" s" selected tree key" REJECT
-   s" length" s" triangles is 68 bytes, not 67" REJECT
+   s" length" s" triangles is 92 bytes, not 91" REJECT
    s" index" s" index 6 is not below its 6 vertices" REJECT
    s" unheld" s" a draw of handle 9, which is not held" REJECT
    s" unmesh" s" an unmesh of handle 9, which is not held" REJECT
@@ -200,6 +205,7 @@ PATH-CAP BUFFER: FILE
       s" a highlight of 0 words, fewer than the 1 the last draw's rows need"
       REJECT
    s" flags" s" flags 2 set a bit other than bit 0" REJECT
+   s" colour" s" a draw row's colour byte 3 is 1, not 0" REJECT
    s" span" s" an occlude of 47 bytes, not whole 24-byte boxes" REJECT
    s" id" s" an occlude needs a positive id, got 0" REJECT ;
 

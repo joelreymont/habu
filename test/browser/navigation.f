@@ -14,8 +14,8 @@ CAST: BYTES>N ( ptr u8 -- n )
 variable TEXT-U
 variable PRESS-BUTTONS
 variable PRESS-MODS
-68 BUFFER: GEOMETRY
-128 BUFFER: INSTANCE-ROWS
+92 BUFFER: GEOMETRY
+144 BUFFER: INSTANCE-ROWS
 4 BUFFER: WORDS
 64 BUFFER: MATRIX
 \ Two boxes of six f32, left zero: host-cli reads only their count.
@@ -76,24 +76,32 @@ variable PRESS-MODS
    4 0 do bits i 8 * rshift $FF and dst i + c! loop ;
 
 : VERTEX ( n n n n -- )
-   \ Vertex k at x, y and z 16384 on the grid, of a face.
+   \ Vertex k at x, y and z 16384 on the grid, of a face; its normal, +z, is
+   \ octahedral 0, 0, the zeroed bytes after it.
    {: k:n x:n y:n face:n :}
-   GEOMETRY 8 + k 8 * + {: at:ptr :}
+   GEOMETRY 8 + k 12 * + {: at:ptr :}
    x at U16!  y at 2 + U16!  16384 at 4 + U16!  face at 6 + U16! ;
 
 : INDEX! ( n n -- )
-   \ Vertex v at triangle corner k, the vertices ending at byte 56.
+   \ Vertex v at triangle corner k, the vertices ending at byte 80.
    {: v:n k:n :}
-   v GEOMETRY 56 + k 2 * + U16! ;
+   v GEOMETRY 80 + k 2 * + U16! ;
 
 : ROW ( n n n n n -- )
    \ Instance row r: scale 2^-15 and x, y moved by tx (f32 bits) and -1.
    {: r:n tx:n id:n flags:n offset:n :}
-   INSTANCE-ROWS r 64 * + {: at:ptr :}
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
    48 0 do 0 at i + c! loop
    $38000000 at U32!  $38000000 at 16 + U32!  $38000000 at 32 + U32!
    tx at 36 + U32!  $BF800000 at 40 + U32!
    7 at 48 + U32!  id at 52 + U32!  flags at 56 + U32!  offset at 60 + U32! ;
+
+: PAINT ( n n n n -- )
+   \ Row r's colour $rrggbb, metallic and roughness.
+   {: r:n rgb:n metal:n rough:n :}
+   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   rgb 16 rshift at 64 + c!  rgb 8 rshift $FF and at 65 + c!
+   rgb $FF and at 66 + c!  metal at 68 + U16!  rough at 70 + U16! ;
 
 : INIT-GEOMETRY ( -- )
    \ Mesh 7: two separate front-facing triangles, faces 0 and 1. Instance 10
@@ -104,6 +112,7 @@ variable PRESS-MODS
    6 0 do i i INDEX! loop
    1 WORDS U32!
    0 $BF800000 10 0 0 ROW  1 0 11 1 $FFFFFFFF ROW
+   0 $FF7314 0 32768 PAINT  1 $2060C0 65535 0 PAINT
    64 0 do 0 MATRIX i + c! loop
    $3F800000 MATRIX U32!
    $3F800000 MATRIX 20 + U32!
@@ -123,7 +132,7 @@ variable PRESS-MODS
    INIT-GEOMETRY
    0 EVENT BYTES>N 0 0 RECORD
    ROWS s\" ,\"more\":true}]" SB-APPEND SB$ 2 TREE
-   68 7 MESH 1 HIGHLIGHT 2 DRAW ;
+   92 7 MESH 1 HIGHLIGHT 2 DRAW ;
 
 : OPENED ( -- )
    \ The tree again with Shelf's two children.
@@ -190,19 +199,20 @@ variable PRESS-MODS
    then
    s" selected" IS? if
       s\" [{\"key\":1,\"parent\":0,\"label\":\"A\"}]" 2 TREE exit then
-   s" length" IS? if 67 8 MESH exit then
-   s" index" IS? if 6 5 INDEX! 68 8 MESH exit then
+   s" length" IS? if 91 8 MESH exit then
+   s" index" IS? if 6 5 INDEX! 92 8 MESH exit then
    s" unheld" IS? if 9 INSTANCE-ROWS 48 + U32! 2 DRAW exit then
    s" unmesh" IS? if 9 UNMESH exit then
    s" offset" IS? if
-      5 32768 16384 32 VERTEX 68 8 MESH
+      5 32768 16384 32 VERTEX 92 8 MESH
       8 INSTANCE-ROWS 48 + U32! 2 DRAW exit then
-   s" handle" IS? if 68 $100000000 MESH exit then
-   s" held" IS? if 68 7 MESH exit then
+   s" handle" IS? if 92 $100000000 MESH exit then
+   s" held" IS? if 92 7 MESH exit then
    s" shown" IS? if 7 UNMESH exit then
    s" short" IS? if 0 HIGHLIGHT exit then
-   s" remesh" IS? if 0 DRAW 7 UNMESH 68 7 MESH 2 DRAW exit then
+   s" remesh" IS? if 0 DRAW 7 UNMESH 92 7 MESH 2 DRAW exit then
    s" flags" IS? if 2 INSTANCE-ROWS 56 + U32! 2 DRAW exit then
+   s" colour" IS? if 1 INSTANCE-ROWS 67 + c! 2 DRAW exit then
    s" zero" IS? if 0 DRAW 0 HIGHLIGHT exit then
    s" redraw" IS? if 2 DRAW exit then
    s" occlude" IS? if 16 BOXES BYTES>N 48 9 RECORD 2 DRAW exit then
