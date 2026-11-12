@@ -1,18 +1,16 @@
 \ hb-build-core.f - builds this tree's arm64 hb, hb with a program's files
-\ (--repl), or a stripped program, as a cross-build in the running hb
-\ (LINKER:WITH) and writes it with its map beside it. A native build first
-\ compiles the tree's arm64 kernel writer and writes the kernel object the
-\ build then links (KERNEL-BUILD); a Wasm program builds none. Each loads hb's
-\ startup files in hb's own order (STARTUP); hb then loads
-\ the runtime's files, --repl the program's source, and both their registry and
-\ installs; a stripped program loads its source and its entry.
-\ The build loads src/core/source-reset.f and src/habu/app-end.f from the tree;
-\ a stripped program's build loads nothing from under the out. Under
-\ <out>/hb-build/<target>/ it writes the kernel object and hb's end file, its
-\ registry and installs (end.f; under --repl end/<the source's path>/end.f),
-\ which it loads like a source, so a warm build links the end file's object.
-\ Builds sharing an out root write an end file whole, and only when it changes
-\ (WRITE-CHANGED).
+\ (--repl), or a stripped program, as a cross-build in the running hb and writes
+\ it with its map beside it. A native build first compiles the tree's arm64
+\ kernel writer and writes the kernel object the build then links
+\ (KERNEL-BUILD); a Wasm program builds none. Each loads hb's startup files in
+\ hb's own order (STARTUP); hb then loads the runtime's files, --repl the
+\ program's source, and both their registry and installs; a stripped program
+\ loads its source and its entry. The build loads src/core/source-reset.f and
+\ src/habu/app-end.f from the tree; a stripped program's build loads nothing
+\ from under the out. Under <out>/hb-build/<target>/ it writes the kernel object
+\ and hb's end file, its registry and installs, which it loads like a source, so
+\ a warm build links the end file's object. Builds sharing an out root write an
+\ end file whole, and only when it changes (WRITE-CHANGED).
 
 require src/lib/error.f
 require src/lib/string.f
@@ -29,7 +27,7 @@ require src/habu/link-data.f
 package HB-BUILD-CORE
 private
 
-PTR-VARIABLE ROW-PATH                   \ the file the build loads, for a failure's message
+PTR-VARIABLE ROW-PATH
 variable ROW-LEN
 PTR-VARIABLE SRC-PATH
 variable SRC-LEN
@@ -41,7 +39,7 @@ create END-DIR PATH-CAP allot           \ a --repl end file's directory (REPL-EN
 create KERNEL-PATH PATH-CAP allot  variable KERNEL-U
 7 64 + 4 + constant KERNEL-NAME-U   \ kernel-<64 hex digits>.hko
 create KERNEL-NAME KERNEL-NAME-U allot
-TYPED-VARIABLE KERNEL-ENGINE? bool     \ the kernel build writes an engine's kernel
+TYPED-VARIABLE KERNEL-ENGINE? bool
 \ the build's target, which every build stores before PATHS
 TYPED-VARIABLE TARGET RTARGET:resolved-target
 DYNAMIC-BUFFER TEXT u8                  \ the end file's text until it is written
@@ -91,7 +89,6 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 
 64 constant USAGE-RC                    \ sysexits EX_USAGE
 
-\ A row loads when its kind is common or the build's target.
 : LOAD? ( n -- bool )
    case
       BOOT-FILES:COMMON of true endof
@@ -125,10 +122,9 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    a u required ;
 
 
-\ hb's startup files: src/habu/boot-files.f's rows, provided and loaded.
-\ The provide rows go to the build's registry, which `provided` writes inside a build.
-\ They come before the loads, so the first boot file is the registry's first row, by
-\ which hb finds its tree (include.f ENGINE-FIND-FOR), not a file a startup file requires.
+\ The provide rows go to the build's registry, which `provided` writes inside a
+\ build. They come before the loads, so the first boot file is the registry's
+\ first row, by which hb finds its tree, not a file a startup file requires.
 : STARTUP ( -- )
    BOOT-FILES:CHECKER ['] PROVIDE BOOT-FILES:EACH
    BOOT-FILES:DECL ['] PROVIDE BOOT-FILES:EACH
@@ -152,8 +148,6 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    s" src/os/linux/repl-term.f" ;
 
 
-\ hb's files after STARTUP's, and the source verifier
-\ tools/check-verify-child.f runs.
 : RUNTIME-FILES ( -- )
    s" src/habu/engine-origin.f" REQUIRE-FILE
    s" src/compiler/native/compiler.f" REQUIRE-FILE
@@ -186,7 +180,7 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    loop ;
 
 \ A registry row below the tree root by its tree-relative name. A program's row
-\ outside it keeps its canonical path (include.f REQUIRE-STORE); hb's is refused.
+\ outside it keeps its canonical path; hb's is refused.
 : REG-ROW ( ptr u8 n bool -- )
    {: a:ptr u:n engine:bool :}
    SOURCE-ROOT:CWD$ {: c:ptr cu:n :}
@@ -216,7 +210,7 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
 \ The product's registry is the build's: the end file records each row with the
 \ product's own include.f and packs them into its DATA; then the installs, and
 \ under --repl the program's MAIN as hb's entry, which hb runs before its REPL
-\ or standard input (src/habu/main.f ROUTED).
+\ or standard input.
 : END-WRITE ( n bool -- )
    {: app:n entry:bool :}
    0 TEXT-U !
@@ -246,8 +240,8 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    OUT$ LINKER:WRITE ;
 
 
-\ A Wasm module's kernel words (WKWORDS) load ahead of the program, so its words
-\ and the link reach them.
+\ A Wasm module's kernel words load ahead of the program, so its words and the
+\ link reach them.
 : APP-BODY ( -- )
    STARTUP
    WASM? if s" src/arch/wasm/kernel-words.f" REQUIRE-FILE then
@@ -255,8 +249,7 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    s" src/habu/app-end.f" INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 
-\ The tree's KERNEL-OBJECT:WRITE, which the kernel build compiled; it lays the
-\ object's bytes and this tool writes the file (KERNEL-WRITE).
+\ The tree's KERNEL-OBJECT:WRITE, which the kernel build compiled.
 CAST: >WRITER ( n -- [ bool [ ptr u8 n -- ] -- ] )
 
 : WRITER ( -- [ bool [ ptr u8 n -- ] -- ] )
@@ -306,15 +299,14 @@ public
    s" kernel" target ['] KERNEL-BODY LINKER:WITH
    KERNEL-PATH KERNEL-U @ LINKER:KERNEL ;
 
-\ The kernel object the last KERNEL-BUILD wrote, for a child process's
-\ LINKER:KERNEL.
+\ The kernel object the last KERNEL-BUILD wrote.
 : KERNEL$ ( -- ptr u8 n ) KERNEL-PATH KERNEL-U @ ;
 
 \ The file the build is loading, for the message of a build that failed; empty
 \ until the build opened last loads its first file.
 : ROW$ ( -- ptr u8 n ) ROW-PATH @ ROW-LEN @ ;
 
-\ Build this tree's hb for the target and write it to the path (REFUSE-WASM).
+\ Build this tree's hb for the target and write it to the path.
 : ENGINE ( ptr u8 n RTARGET:resolved-target -- )
    {: out:ptr outu:n target:RTARGET:resolved-target :}
    target REFUSE-WASM
@@ -324,7 +316,7 @@ public
    s" engine" target ['] ENGINE-BODY LINKER:WITH ;
 
 \ Build hb with the source's files, the source's MAIN its entry, for the target
-\ and write it to the second path (REFUSE-WASM).
+\ and write it to the second path.
 : REPL ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
    {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
    target REFUSE-WASM
@@ -333,8 +325,8 @@ public
    NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" engine" target ['] REPL-BODY LINKER:WITH ;
 
-\ Build the source as a stripped program for the target and write it to the
-\ second path. A Wasm target links no arm64 kernel object.
+\ Build the source as a stripped program for the target and write it to
+\ the second path.
 : APP ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
    {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
