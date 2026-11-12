@@ -1,12 +1,12 @@
-\ link-data.f - a build's DATA: the link's copy of the open space's cells
-\ (link-copy.f), each declared cell given its value at DATA-VA, appended to
-\ A64ICODE's code buffer after the routine band as its non-zero runs, then the
-\ DATA list, the offset from DATA-VA of every cell holding a code address, which
-\ start-up adds the load offset to. The link also writes the header cells
-\ HEADER-CELLS names and lists the code ones. An engine's link adds the records:
-\ the product kernel's primitives, then the build's, each build record and
-\ wordlist id renumbered for the product (RECORD-IMAGE), and the record list.
-\ LINKER:WRITE writes the linked program; the other words are LINKER's own.
+\ link-data.f - a build's DATA: the link's copy of the open space's cells, each
+\ declared cell given its value at DATA-VA, appended to A64ICODE's code buffer
+\ after the routine band as its non-zero runs, then the DATA list, the offset
+\ from DATA-VA of every cell holding a code address, which start-up adds the
+\ load offset to. The link also writes the header cells HEADER-CELLS names and
+\ lists the code ones. An engine's link adds the records: the product kernel's
+\ primitives, then the build's, each build record and wordlist id renumbered for
+\ the product (RECORD-IMAGE), and the record list. LINKER:WRITE writes the
+\ linked program; the other words are LINKER's own.
 
 require src/lib/error.f
 require src/lib/le.f
@@ -35,9 +35,8 @@ using DRIVER
 package LINKER
 private
 
-\ The kernel object's labels (src/arch/arm64/kernel-object.f), which ADOPT-LABELS
-\ sets. The tail's, which the start-up reads: the DATA image's start and end,
-\ the DATA list's start and end.
+\ The kernel object's labels, which ADOPT-LABELS sets. The tail's, which the
+\ start-up reads: the DATA image's start and end, the DATA list's start and end.
 variable LIMAGE
 variable LIMAGE-END
 variable LLIST
@@ -96,8 +95,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    s" link: an xt cell names a routine the product does not place" 74 die ;
 
 
-\ The image copy of row's cell: an xt cell's link address, a DATA pointer's
-\ DATA-VA address, a scratch cell's 0.
 : COPY-ROW ( n -- )
    {: row:n :}
    row ROW-OFF {: off:n :}
@@ -136,7 +133,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ Header cells valued as the product's boot leaves them, at the kernel object's
-\ offsets, and the cells it presets; CODE-END-CELL ends the kernel, before the product's words.
+\ offsets, and the cells it presets.
 : HEADER-CELLS ( -- )
    ARM64:DATA-VA {: va:n :}
    s" DATA-START" ARM64:SYM {: start:n :}
@@ -175,23 +172,19 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ ---- an engine's records ------------------------------------------------------------
 \ A record index holds only in the process that made it: the product numbers its
-\ kernel's primitives [0, P) as EMIT-DICT lays them and each build record r at
-\ P + (r - FIRST-REC). link-map.f WID-MAP numbers the product's wordlist ids.
+\ kernel's primitives [0, P) and each build record r at P + (r - FIRST-REC).
 
-\ The product's WIDN-CELL.
 : PRODUCT-WIDN ( -- n ) FIRST-DYNAMIC-WID  WIDN-CELL HOST@ +  FIRST-WID - ;
 
 
-\ The product kernel's primitive count and record k's cell, as EMIT-DICT laid
-\ them: [0] and [8] the entry's and the last word's code offsets, [24] an
-\ out-of-line name's.
+\ The product kernel's primitive count and record k's cell: [0] and [8] the
+\ entry's and the last word's code offsets, [24] an out-of-line name's.
 : PRIMS ( -- n ) A64ICODE:CODE LNCOUNT LABEL-OFFSET + LE:U64@ ;
 
 : PRIM@ ( n n -- n )
    {: k:n slot:n :}
    A64ICODE:CODE LDICT LABEL-OFFSET +  k DREC * +  slot cells +  LE:U64@ ;
 
-\ Primitive k's name: at code offset [24] when out of line, else in [24].
 : PRIM-NAME$ ( n -- ptr u8 n )
    {: k:n :}
    k 2 PRIM@ {: flags:n :}
@@ -227,7 +220,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    v A64ICODE:DCQ,  off RLIST+ ;
 
 
-\ Primitive k's body length, as PRIM-REC, writes it.
 : PRIM-LEN ( n -- n ) dup 1 PRIM@ swap 0 PRIM@ - 4 - ;
 
 \ A primitive's record: [8] the body's length, a package row's
@@ -263,7 +255,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    rec XREF-RAW-LEN ;
 
 
-\ Build record r's entry at the product's link address; 0 stays 0.
+\ Build record r's entry at the product's link address.
 : ENTRY-ADDRESS ( n -- n )
    {: r:n :}
    r XREF-REC XREF-START {: a:n :}
@@ -300,7 +292,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    wid r WID-MAP A64ICODE:DCQ, ;
 
 
-\ Each build record's out-of-line name, once, before the records.
 : NAME-POOL ( -- )
    ndict@ FIRST-REC @ - NAME-AT-RESERVE
    ndict@ FIRST-REC @ ?do
@@ -312,7 +303,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    loop ;
 
 
-\ The product's record count.
 : PRODUCT-NDICT ( -- n ) PRIMS  ndict@ +  FIRST-REC @ - ;
 
 
@@ -337,7 +327,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : ENGINE-CELLS ( -- )
    PRODUCT-NDICT s" SEAL-NDICT-CELL" ARM64:SYM HEADER!
    PRODUCT-WIDN s" WIDN-CELL" ARM64:SYM HEADER!
-   \ as WID-MAP numbers a minted id
    FIRST-DYNAMIC-WID BOOT:TYPES-WL FIRST-WID - +  s" TYPES-WL-CELL" ARM64:SYM HEADER! ;
 
 
@@ -359,7 +348,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    end first ?do i COPY-CELLS @ A64ICODE:DCQ, loop ;
 
 \ The copy as runs [off u64][n u64][n cells], off the run's byte offset from
-\ DATA; zero cells outside a run are not written (boot.f COPY-DATA,).
+\ DATA; zero cells outside a run are not written.
 : RUNS, ( -- )
    0 NEXT-SET
    begin dup COPY-N < while dup RUN-END tuck RUN, NEXT-SET repeat drop ;
@@ -383,7 +372,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    LLIST-END A64ICODE:LABEL@ A64ICODE:LBL, ;
 
 
-\ The kernel object's start-up and kernel, adopted, and the labels the link reads.
 : ADOPT-LABELS ( -- )
    ARM64:ADOPT
    s" IMAGE" ARM64:SYM-LABEL LIMAGE A64ICODE:LABEL!
@@ -446,8 +434,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    to  ARM64:TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
 
 
-\ After PLACE-ROUTINES, scope-kind?'s chains (src/arch/arm64/kernel-object.f
-\ EMIT) name C2-MEM's entries; a product without C2-MEM leaves them 0.
+\ After PLACE-ROUTINES, scope-kind?'s chains name C2-MEM's entries; a product
+\ without C2-MEM leaves them 0.
 : SCOPE-ENTRIES ( -- )
    s" C2-MEM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
    pkg XREF-FOUND? 0= if exit then
@@ -468,7 +456,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    RECORD-IMAGE ;
 
 
-\ The kernel object READ read is the kind of kernel this build links.
 : OBJECT-KIND ( -- )
    KERNEL? @ if s" link: a kernel build writes no program" 74 die then
    ARM64:READ? 0= if s" link: no kernel object was read for this build" 74 die then
@@ -477,8 +464,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    then ;
 
 
-\ Build the open space's program as a file in the target's format, sign it with
-\ the id and write it to the path.
 : EMIT-IMAGE ( ptr u8 n ptr u8 n -- )
    {: sig:ptr sigu:n path:ptr pathu:n :}
    TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
@@ -497,11 +482,9 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ Link the open space's program and write it, signed, to the path; the caller
-\ first stores its entry, a stripped program's with APP-ENTRY:XT!,
-\ an engine's in ENGINE-MAIN:XT-CELL, and writes its names beside it as
-\ <path>.map. The facts texts the build's body held lie after every file, so
-\ no file's literal can name one. The program goes to a sibling renamed over
-\ the path: macOS kills a signed program rewritten in place (docs/bootstrap.md).
+\ first stores its entry. The facts texts the build's body held lie after every
+\ file, so no file's literal can name one. The program goes to a sibling renamed
+\ over the path: macOS kills a signed program rewritten in place.
 : WRITE-PROGRAM ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    OBJECT-KIND
@@ -518,8 +501,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 public
 
 \ Link the open space's program and write it to the path: a Wasm target's as a
-\ module (WASM:WRITE-MODULE), any other's as WRITE-PROGRAM does. GOING comes
-\ first: outside a build no shadow is open for WASM? to read.
+\ module, any other's as WRITE-PROGRAM does. GOING comes first: outside a build
+\ no shadow is open for WASM? to read.
 : WRITE ( ptr u8 n -- )
    false GOING
    WASM? if WASM:WRITE-MODULE exit then
