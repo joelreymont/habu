@@ -30,9 +30,12 @@ FUNCTION: PID-THREADS proc_pidinfo ( n n n ptr u8 n -- i32 )
       none OF s" thread snapshot: invalid task name" 74 die ENDOF
    ;MATCH ;
 
+\ Flavor 28 (PROC_PIDLISTTHREADIDS) lists each thread's unique id. Flavor 6
+\ lists pthread_t addresses, and a thread created after a joined one gets its
+\ address, so a snapshot would count the new thread as old.
 : COLLECT ( ptr u8 -- n ) {: out:ptr :}
    HB-TARGET-MACOS? if
-      getpid 6 0 out THREAD-BYTES PID-THREADS {: bytes:n :}
+      getpid 28 0 out THREAD-BYTES PID-THREADS {: bytes:n :}
       bytes 0 <= bytes THREAD-BYTES >= or
       bytes THREAD-ID-BYTES mod 0<> or if
          s" thread snapshot: proc_pidinfo failed or overflowed" 74 die
