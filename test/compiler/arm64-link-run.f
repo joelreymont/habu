@@ -99,8 +99,8 @@ create PROG-BUF PATH-CAP allot
 
 $20000 BUFFER: HI-BYTES
 
-\ Texts hi never prints: the profiler's report, and a message laid after one
-\ every stripped program reaches.
+\ Texts hi never prints: the profiler's report, and the message laid right after
+\ the uncaught-throw message, which every stripped program reaches.
 : NO-PROFILER ( -- )
    s" hi" PROG$ {: file:ptr file-n:n :}
    file file-n FS:FILE-SIZE $20000 min {: size:n :}
@@ -108,7 +108,7 @@ $20000 BUFFER: HI-BYTES
    s" hi keeps no message it never prints and no profiler code: control never passes from a message into what follows it"
       T-LABEL
    HI-BYTES size s" profiler not armed" CONTAINS? TFALSE
-   HI-BYTES size s" hb: snapshot call map mismatch" CONTAINS? TFALSE ;
+   HI-BYTES size s" E-UNDERFLOW habu: " CONTAINS? TFALSE ;
 
 
 public

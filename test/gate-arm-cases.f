@@ -18,7 +18,7 @@ SUITE arm64-link-data
    test/compiler/arm64-link-data.f
 ;SUITE
 
-\ arm64-link-run.f writes three stripped programs from one build and runs them.
+\ arm64-link-run.f writes four stripped programs from one build and runs them.
 SUITE arm64-link-run
    test/compiler/arm64-link-run.f
 ;SUITE

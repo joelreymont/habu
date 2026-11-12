@@ -156,10 +156,6 @@ variable RX  variable RACC
    a u s" EM-DEF-OCC:LRESET" LINT-STR=CI or if
       0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD
         15 CL-ADD 30 CL-ADD exit then
-   \ The relocation helpers touch syscall scratch only in fatal write/exit
-   \ arms; neither x8 nor x16 is written on a returning path.
-   a u s" RELOC-EMIT:LCALLS" LINT-STR=CI
-   a u s" RELOC-EMIT:LADDRS" LINT-STR=CI or if SYS-SCRATCH-MASK exit then
    \ Every registrar entry saves/restores x0..x17 around its emitted helpers.
    a u s" RELOC-EMIT:Lmark" LINT-STR=CI if $3FFFF exit then
    a u s" RELOC-EMIT:Lptrmark" LINT-STR=CI if $3FFFF exit then

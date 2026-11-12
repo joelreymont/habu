@@ -675,7 +675,6 @@ ETRUSTED-ONLY!                       \ native defining-word runtime patch
 \ `does-record ( entry len -- )` records the pending definition's `;does`
 \ clause, writes its name at CP, zero-padded to a code slot, and sets CLAUSE-CELL.
 EPPRIM: NPUB does-record PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 EPRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: close         PE-N PE-IN EPRIM;
 EPRIM: close-rc      PE-N PE-IN  PE-N PE-OUT EPRIM;   \ close returning host status (0 ok, <0 fail)

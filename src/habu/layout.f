@@ -57,8 +57,7 @@ constant X64-MASK
 \ its replacement core.
 $2300000 constant REGION
 \ RBASE-VA: the snapshot's canonical region base, a fixed sentinel, not the map
-\ address. snap-rebase canonicalizes region pointers to this sentinel and the
-\ loader rebases them, so images are byte-identical across runs.
+\ address.
 $300000000 constant RBASE-VA
 \ Canonical code-region hint past __text. The engine clamps it after the loaded
 \ image and checks the resulting mapping against BL-REACH at boot.
@@ -1216,29 +1215,20 @@ USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` op
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
-\ Two tables that let a snapshot image be restored at a region address the
-\ writing run never saw. Both live below DATA-START, so the snapshot DATA copy
-\ carries them with no new image section, and both are keyed by offset, so their
-\ contents are the same in every run.
+\ Two tables of the JIT region's recorded sites, which AOT capture reads: calls
+\ into __text and the first instruction of each address literal. Both live below
+\ DATA-START and are keyed by region offset.
 package SNAP-RELOC
 public
 
-\ Exit status for a corrupt call map: a recorded region-to-text call site does
-\ not hold a call instruction, so the region bytes and the call map come from
-\ different builds or one is damaged; relocating would write a wild branch into
-\ live code. These statuses live here beside BL-RANGE-RC, not in
+\ These exit statuses live here beside BL-RANGE-RC, not in
 \ src/core/engine-error.f: the engine emitter reads them from this file one
 \ generation before a new src/core constant is reachable. That registry leaves
-\ 95..99 and 103 to this file.
-95 constant CALLMAP-RC
+\ 96, 98, 99 and 103 to this file.
+\
 \ Exit status for an overfull address-cell table (more cells than XTCELL-CAP):
 \ dropping a cell would leave a stale writer-run address in a restored image.
 96 constant XTCELL-RC
-\ Exit status for a corrupt address-literal map: a recorded site does not hold
-\ the MOVZ/MOVK carrier the compiler emits there, so the region bytes and the
-\ literal map disagree; rewriting its immediates would plant a wild address in
-\ live code.
-97 constant ADDRMAP-RC
 \ Exit status for a declared address cell outside DATA: the writer's
 \ canonicalise, the loader's relocate and the declaration itself index DATA by
 \ the row's offset with no further check, so it is refused where first seen.
@@ -1248,13 +1238,9 @@ public
 99 constant XTKIND-RC
 
 \ Call-site map: one bit per four-byte word of the JIT region, marking every call
-\ whose callee is in the engine's loaded __text. Those are the only instructions
-\ whose displacement differs between the writing and the restoring run: the
-\ kernel picks the region base and the loader the image base independently. A
-\ site is recorded when the call is published, because region bytes cannot be
-\ decoded soundly: a compiled word may carry inline non-instruction data. The
-\ writer rewrites each site as if the region sat REGION-OFF above __text; the
-\ loader rewrites it for this run's distance.
+\ whose callee is in the engine's loaded __text. A site is recorded when the call
+\ is published, because region bytes cannot be decoded soundly: a compiled word
+\ may carry inline non-instruction data.
 REGION 32 / constant CALLMAP-BYTES
 USE-BAND-END constant CALLMAP-OFF
 CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
@@ -1297,7 +1283,7 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \ Unlike a bitmap, the band can fill. SITE-CAP rows fit; a writer refuses one
 \ more with SITE-RC, and the reader refuses with the same status a count above
 \ SITE-CAP, a row at or after REGION, a row of no known kind and a row not above
-\ the one before it. SITE-RC lives here for the reason CALLMAP-RC does.
+\ the one before it. SITE-RC lives here for the reason XTCELL-RC does.
 \
 \ Snapshot relocation does not apply on x86-64: the region and DATA are mapped
 \ at fixed addresses there. The rows serve publication and the AOT capture.

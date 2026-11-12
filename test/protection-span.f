@@ -134,10 +134,6 @@ create ERR CAP allot
    s" 0 data-base 16 read drop" ACCEPTS
    s" 0 data-base $10 + DATA-START $100 + read drop" REJECTS ;
 
-: TEST-SNAP-REBASE ( -- )
-   s" snap-rebase whole-band straddle is rejected" T-LABEL
-   s" TRUSTED: PST-RAW ( -- ) data-base TXN-STATE-OFF 8 - + data-base DATA-START 8 + + 0 0 0 0 snap-rebase ; PST-RAW" REJECTS ;
-
 \ An ordinary definition whose body text passes 20000 bytes: PST-LONG calls a
 \ word with a 59-byte name 350 times, 60 bytes of text each with its separator.
 \ The child's check spells the count.
@@ -176,7 +172,6 @@ public
    TEST-TASK-USER
    TEST-BOUNDARY
    TEST-HULL-EDGE
-   TEST-SNAP-REBASE
    TEST-BODY-TEXT
    T-REPORT
    s" protection-span: ok" type cr ;

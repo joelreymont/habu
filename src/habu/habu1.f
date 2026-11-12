@@ -3343,11 +3343,8 @@ public
    13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
 
 \ addrmap-set ( addr -- ): record the MOVZ/MOVK address carrier at addr. One
-\ map serves code and DATA addresses: the passes need only where a chain
-\ starts; the kind is per relocation window, written beside it. EMIT-ADDRS runs
-\ once per moving band and leaves a chain whose value is outside that band;
-\ DATA, at the fixed DATA-VA above both bands, is rewritten by neither, and
-\ DATA does not move.
+\ map serves code and DATA addresses: the AOT capture needs only where a chain
+\ starts; the kind is per relocation window, written beside it.
 : BADDRMAPSET ( -- )
    LBL LBL {: inreg:label bad:label :}
    A G-POP                                       \ x9 = chain's first word address

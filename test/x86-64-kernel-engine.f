@@ -734,8 +734,6 @@ public
    11 s" hb-x64-kernel-number-11" TMP-PATH BUILD-NUM
    12 s" hb-x64-kernel-number-12" TMP-PATH BUILD-NUM
    13 s" hb-x64-kernel-number-13" TMP-PATH BUILD-NUM
-   \ snap-rebase exits 76 with the REFUSE text.
-   s" snap-rebase" s" hb-x64-kernel-snap-rebase" TMP-PATH BUILD-CALL
    X64HARNESS:DISPOSE
    T-REPORT ;
 

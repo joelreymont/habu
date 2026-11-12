@@ -4207,7 +4207,7 @@ private
    s" policy-seal" [: POLICY-SEAL-BODY ;] PRIM
    s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;
 
-\ Capture needs address-cell declarations at fixed x86-64 addresses too; snap-rebase refuses.
+\ Capture needs address-cell declarations at fixed x86-64 addresses too.
 \ The ARM64 twins are habu2.f RELOC-EMIT's primitives and habu1.f's build and tier primitives.
 
 : TIER-OFF ( -- n ) NCOMP-DISPATCH:TIER-CELL ;
@@ -4429,7 +4429,6 @@ variable MARK-CELL
    s" snapshot-format" [: RAX SNAPSHOT-FORMAT:VERSION IMM32,  RAX PUSH, ;] PRIM
    \ The x86-64 test kernel has no image writer to stamp implementation bytes.
    s" kernel-producer$" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH,  RAX PUSH, ;] PRIM
-   s" snap-rebase" REFUSE
    s" record-facts!" REFUSE
    \ No SHA-256 instructions here yet: sha256.f compresses every block itself.
    s" sha256-blocks" [: RAX POP,  RAX POP,  RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM

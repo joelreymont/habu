@@ -656,10 +656,7 @@ SEAL-SUITE:RUN
 \ Guarded sinks no forge covers. The rest (BSTORE BPLUSSTORE BCSTORE BATSTORE
 \ BATADD on x10=B, BATCAS on x11=C, BREAD BSTAT64 BLSTAT64 on x1, BIOCTL
 \ BREADLINK on x2, BPOLL BMMAP on x0, BGETDIRENTRIES64 on x1 and x3) are forged
-\ above. Two compiler-internal sinks are covered by review only:
+\ above. One compiler-internal sink is covered by review only:
 \ - patch32 (BPATCH32, x10=B), the engine-text patcher: a forge would store into
 \   a live code page through the alias and flush its i-cache line. Its B
 \   register is proven by the store forges; only its own guard line is reviewed.
-\ - snap-rebase (BSNAPREBASE, src/habu/habu2.f), driven only by the snapshot
-\   builder: a forge would run its relocation rewrites. Its span guard over
-\   [x8, x16) is used by no other sink.

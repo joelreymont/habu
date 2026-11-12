@@ -152,40 +152,29 @@ public
 variable LCOMPILEDIE   \ the die sites' tail, x0 = code: ends their line, then throws x0 inside evaluate (LEVALREC), else exits x0
 variable LPLACE        \ the place writer each die site calls after its class head
 ;package
-\ Snapshot relocation labels, messages and instruction constant; the band
+\ Snapshot relocation labels and messages; the band
 \ offsets and exit statuses are src/habu/layout.f package SNAP-RELOC. This file
 \ compiles on a product engine, where no source reopens a baked package, so the
 \ emitter's half is its own package.
 package RELOC-EMIT
 public
-variable LCALLMSG   \ a recorded call site does not hold a call instruction
-: CALLMSG$ ( -- ptr u8 n )   S\" hb: snapshot call map mismatch\n" ;
-: CALLMSG-LEN ( -- n )   CALLMSG$ nip ;
 variable LXTMSG     \ checked growth could not secure storage
 : XTMSG$ ( -- ptr u8 n )   S\" hb: address-cell storage allocation failed\n" ;
 : XTMSG-LEN ( -- n )   XTMSG$ nip ;
 variable LXTHEADERMSG
 : XTHEADERMSG$ ( -- ptr u8 n )   S\" hb: invalid address-cell storage header\n" ;
 : XTHEADERMSG-LEN ( -- n )   XTHEADERMSG$ nip ;
-variable LADDRMSG   \ a recorded address-literal site does not hold the MOVZ/MOVK chain
-: ADDRMSG$ ( -- ptr u8 n )   S\" hb: snapshot address map mismatch\n" ;
-: ADDRMSG-LEN ( -- n )   ADDRMSG$ nip ;
 variable LXTBANDMSG \ a declared address cell is not a cell-aligned address inside DATA
 : XTBANDMSG$ ( -- ptr u8 n )   S\" hb: snapshot address cell out of range\n" ;
 : XTBANDMSG-LEN ( -- n )   XTBANDMSG$ nip ;
 variable LXTKINDMSG \ one cell was declared as both an XT and a DATA pointer
 : XTKINDMSG$ ( -- ptr u8 n )   S\" hb: snapshot address cell kind mismatch\n" ;
 : XTKINDMSG-LEN ( -- n )   XTKINDMSG$ nip ;
-variable LCALLS     \ region-to-text call relocation routine (snapshot write + restore)
 variable LMARK      \ declare one DATA cell as holding a region address
 variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
 variable LSCRATCHMARK \ declare one DATA cell as a scratch pointer, saved as null
 variable LROLLBACK  \ retire address rows at or above the saved DATA cut
-variable LADDRS     \ address-literal relocation routine (snapshot write + restore)
 variable LADDRSITE  \ record the address-literal chain whose first word is in x9
-\ $94000000 >> 26, the opcode bits of an AArch64 BL: the call relocation pass
-\ reads them with one shift instead of a mask against a 64-bit literal.
-$25 constant BL-OP-HI
 
 \ Record an address chain whose first instruction is held in the named register.
 \ Compile handlers use CP; boot relocation uses the captured site's address.
@@ -484,9 +473,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LBGROWCLASS LABEL@ LBL, BGROW-CLASS$ BYTES,
    LBGROWMSG LABEL@ LBL, BGROW-MSG$ BYTES,                               \ EM-BODY-GROW-DIE appends the capacity tried and the unit; LCOMPILEDIE the newline
    LBGROWUNIT LABEL@ LBL, BGROW-UNIT$ BYTES,
-   RELOC-EMIT:LCALLMSG LABEL@ LBL, RELOC-EMIT:CALLMSG$ BYTES,
    RELOC-EMIT:EMIT-FULL-MESSAGE
-   RELOC-EMIT:LADDRMSG LABEL@ LBL, RELOC-EMIT:ADDRMSG$ BYTES,
    RELOC-EMIT:LXTBANDMSG LABEL@ LBL, RELOC-EMIT:XTBANDMSG$ BYTES,
    RELOC-EMIT:LXTKINDMSG LABEL@ LBL, RELOC-EMIT:XTKINDMSG$ BYTES,
    LPLACEEND LABEL@ LBL, PLACEEND$ BYTES,
@@ -1844,12 +1831,6 @@ public
    11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
    10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 11 16 STR, ;
 
-public
-
-variable LSNAPRBD
-
-private
-
 variable LCODEINV
 
 private
@@ -2005,81 +1986,10 @@ public
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL, ;
 
-private
-
-\ Shared by the loader (live region) and the snapshot writer (scratch copy):
-\ x8 = region base, x15 = record count, x21 = detect base, x22 = detect len,
-\ x25 = rebase target base (value - x21 + x25).
-: EM-SNAPSHOT-REBASE-DICT ( -- )
-   LBL LBL LBL LBL {: sdl2 sdn2 sds2 srn :}
-   LSNAPRBD LABEL@ LBL,
-   9 8 0 ADDI,  10 0 MOVZ,
-   sdl2 LBL,  10 15 CMP,  C-GE sdn2 BCOND,
-      13 9 40 LDR,  14 WL:NAMESPACE invert MOVN,  13 14 CMP,  C-EQ sds2 BCOND, \ package [0]/[8] are raw WID roles, never text pointers
-      14 WL:RETIRED-NAMESPACE invert MOVN,  13 14 CMP,  C-EQ sds2 BCOND,
-      13 9 0 LDR,
-      13 21 CMP,  C-LT sds2 BCOND,
-      14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
-      13 13 21 SUB,  13 13 25 ADD,  13 9 0 STR,
-      sds2 LBL,
-      13 9 16 LDR,  13 13 DNAME-EXT ANDI,  13 srn CBZ,
-      13 9 24 LDR,
-      13 21 CMP,  C-LT srn BCOND,
-      14 21 22 ADD,  13 14 CMP,  C-GE srn BCOND,
-      13 13 21 SUB,  13 13 25 ADD,  13 9 24 STR,
-      srn LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
-   sdn2 LBL,  RET, ;
 ;package
 
 package RELOC-EMIT
 public
-
-\ Region-to-text call relocation, the BL counterpart of the dictionary walk. The
-\ writer and the restorer get their region base (kernel) and image base (loader)
-\ independently, so calls into __text need relocating; in-region calls do not.
-\ Sites come from CALLMAP-OFF, never a decode: a compiled word may carry inline
-\ data that looks like a call.
-\ Writer: scratch copy, live -> canonical distance; loader: live region,
-\ canonical -> live.
-\   x8  = base of the region image being patched
-\   x11 = its byte length (the map is scanned only that far)
-\   x10 = signed byte amount to add to every recorded call displacement
-\ x10 is a multiple of four, applied in instruction units and re-masked into
-\ imm26; EM-MMAP-CODE-REGION's boot assertion keeps the result in BL reach.
-\ Clobbers x3..x7, x9, x12..x14; x8/x10/x11 survive for the caller.
-: EMIT-CALLS ( -- )
-   LBL LBL LBL LBL LBL LBL {: scl:label scdone:label scnext:label
-                              scbit:label scbnext:label scbad:label :}
-   LCALLS LABEL@ LBL,
-   6 SNAP-RELOC:CALLMAP-OFF LIT64,  6 DATA 6 ADD,   \ x6 = call-site map base
-   13 11 31 ADDI,  13 13 5 LSRI,                    \ x13 = map bytes covering the image (rounded up)
-   12 0 MOVZ,                                       \ x12 = map byte index
-   7 10 2 ASRI,                                     \ x7 = the delta in instruction units
-   scl LBL,  12 13 CMP,  C-GE scdone BCOND,
-      5 6 12 ADD,  5 5 0 LDRB,                      \ x5 = map byte, consumed one bit at a time
-      5 scnext CBZ,                                 \ no site recorded in these eight words
-      4 12 3 LSLI,                                  \ x4 = region word index of this byte's first bit
-      scbit LBL,  5 scnext CBZ,                     \ every remaining bit is clear
-         14 5 1 ANDI,  14 scbnext CBZ,
-            14 4 2 LSLI,                            \ x14 = site byte offset within the region
-            14 11 CMP,  C-GE scbnext BCOND,         \ past this payload: not part of the image being patched
-            14 14 4 ADDI,  14 11 CMP,  C-HI scbad BCOND,
-            14 14 4 SUBI,                            \ the complete site must be inside the extent
-            14 8 14 ADD,                            \ x14 = site address
-            9 14 0 LDRW,
-            \ A recorded site must still be a BL or a tail call's B,
-            \ which differ only in bit 31; anything else is a corrupt image.
-            3 9 26 LSRI,  3 3 $1F ANDI,  3 BL-OP-HI $1F and CMPI,  C-NE scbad BCOND,
-            3 9 38 LSLI,  3 3 38 LSRI,              \ x3 = current displacement, in instructions
-            3 3 7 ADD,  3 3 38 LSLI,  3 3 38 LSRI,  \ shifted by the delta, back into 26 bits
-            9 9 26 LSRI,  9 9 26 LSLI,  9 9 3 ORR,  9 14 0 STRW,
-         scbnext LBL,
-         5 5 1 LSRI,  4 4 1 ADDI,  scbit B,
-   scnext LBL,  12 12 1 ADDI,  scl B,
-   scbad LBL,
-      1 LCALLMSG LABEL@ ADR,  0 2 MOVZ,  2 CALLMSG-LEN MOVZ,  NR-WRITE SYS,
-      0 SNAP-RELOC:CALLMAP-RC MOVZ,  NR-EXIT-GROUP SYS,
-   scdone LBL,  RET, ;
 
 \ Saves x0-x17, all MARK writes: its callers are mid-handler or mid-word.
 : MARK-SAVE ( -- )
@@ -2480,118 +2390,9 @@ ardone LBL,
    5 1 MOVZ,  5 5 9 LSLV,  9 6 0 LDRB,  9 9 5 ORR,  9 6 0 STRB,
    RET, ;
 
-\ Address-literal relocation: the MOVZ/MOVK counterpart of the dictionary walk
-\ and the call pass. A `[: ... ;]` or `[']` chain names code in the JIT region or
-\ in __text, which move independently, so the pass is called once per band:
-\   x21 = base of the band being moved
-\   x22 = its length
-\   x25 = the base those addresses are moving to  (value - x21 + x25)
-\   x8  = base of the region image being patched
-\   x11 = its byte length (the map is scanned only that far)
-\ The bands are disjoint at write and restore (the region sits REGION-OFF above
-\ __text; canonical text offsets lie far below the RBASE-VA sentinel), so each
-\ chain is rewritten by one call; a chain in neither band, a DATA chain at the
-\ fixed DATA-VA among them, is left alone. Sites come from ADDRMAP-OFF, never a
-\ decode: an integer, inline data and DATA literals share the chain's shape.
-\ Clobbers x2, x3, x4, x5, x6, x7, x9, x10, x12, x13, x14; x8, x11, x21, x22 and
-\ x25 survive for the caller.
-: EMIT-ADDRS ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: sal:label sadone:label sanext:label
-                              sabit:label sabnext:label sabad:label full:label :}
-   LADDRS LABEL@ LBL,
-   6 SNAP-RELOC:ADDRMAP-OFF LIT64,  6 DATA 6 ADD,   \ x6 = address-literal map base
-   13 11 31 ADDI,  13 13 5 LSRI,                    \ x13 = map bytes covering the image (rounded up)
-   12 0 MOVZ,                                       \ x12 = map byte index
-   7 ADDRESS-CARRIER:ADDR-OPC-MASK LIT64,          \ x7 = an instruction word minus its immediate
-   2 ADDRESS-CARRIER:ADDR-IMM-MASK LIT64,          \ x2 = one 16-bit immediate field
-   sal LBL,  12 13 CMP,  C-GE sadone BCOND,
-      5 6 12 ADD,  5 5 0 LDRB,                      \ x5 = map byte, consumed one bit at a time
-      5 sanext CBZ,                                 \ no site recorded in these eight words
-      4 12 3 LSLI,                                  \ x4 = region word index of this byte's first bit
-      sabit LBL,  5 sanext CBZ,                     \ every remaining bit is clear
-         14 5 1 ANDI,  14 sabnext CBZ,
-            14 4 2 LSLI,                            \ x14 = chain's byte offset within the region
-            3 14 ADDRESS-CARRIER:DATA-CHAIN-BYTES ADDI, \ the shortest carrier must fit before its words are read
-            3 11 CMP,  C-HI sabnext BCOND,          \ past this payload: not part of the image being patched
-            14 8 14 ADD,                            \ x14 = chain address
-            \ A recorded site must still be the chain, else the image is corrupt.
-            \ Word 0 supplies the register (x3) and the other three lanes are
-            \ compared against a scaffold carrying it, so four move-wides naming
-            \ different registers are refused too.
-            9 14 0 LDRW,   9 9 7 AND,
-            3 9 ADDRESS-CARRIER:ADDR-RD-MASK ANDI,
-            10 ADDRESS-CARRIER:DATA-MOVZ2 LIT64,  10 10 3 ORR,
-            9 10 CMP,  C-NE full BCOND,
-            \ A shared DATA address is validated but never CODE-rebased.
-            9 14 4 LDRW,  9 9 7 AND,
-            10 $F2A00000 LIT64,  10 10 3 ORR,  9 10 CMP,  C-NE sabad BCOND,
-            9 14 8 LDRW,  9 9 7 AND,
-            10 ADDRESS-CARRIER:DATA-MOVK0 LIT64,  10 10 3 ORR,  9 10 CMP,  C-NE sabad BCOND,
-            sabnext B,
-            full LBL,
-            10 4 2 LSLI,  10 10 ADDRESS-CARRIER:ADDR-CHAIN-BYTES ADDI,
-            10 11 CMP,  C-HI sabad BCOND,
-            10 W-MOVZ0 LIT64,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSRI,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSLI,  10 10 3 ORR,
-            9 10 CMP,  C-NE sabad BCOND,
-            9 14 4 LDRW,   9 9 7 AND,
-            10 W-MOVK1 LIT64,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSRI,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSLI,  10 10 3 ORR,
-            9 10 CMP,  C-NE sabad BCOND,
-            9 14 8 LDRW,   9 9 7 AND,
-            10 W-MOVK2 LIT64,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSRI,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSLI,  10 10 3 ORR,
-            9 10 CMP,  C-NE sabad BCOND,
-            9 14 12 LDRW,  9 9 7 AND,
-            10 W-MOVK3 LIT64,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSRI,  10 10 ADDRESS-CARRIER:ADDR-RD-BITS LSLI,  10 10 3 ORR,
-            9 10 CMP,  C-NE sabad BCOND,
-            9 14 0 LDRW,   9 9 5 LSRI,  9 9 2 AND,  3 9 0 ADDI,
-            9 14 4 LDRW,   9 9 5 LSRI,  9 9 2 AND,  9 9 16 LSLI,  3 3 9 ORR,
-            9 14 8 LDRW,   9 9 5 LSRI,  9 9 2 AND,  9 9 32 LSLI,  3 3 9 ORR,
-            9 14 12 LDRW,  9 9 5 LSRI,  9 9 2 AND,  9 9 48 LSLI,  3 3 9 ORR,
-            3 21 CMP,  C-CC sabnext BCOND,          \ below this band: the other call owns it
-            10 21 22 ADD,  3 10 CMP,  C-CS sabnext BCOND,
-            3 3 21 SUB,  3 3 25 ADD,                \ x3 = the same code at its new base
-            9 14 0 LDRW,   9 9 7 AND,  10 3 0 ADDI,   10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 0 STRW,
-            9 14 4 LDRW,   9 9 7 AND,  10 3 16 LSRI,  10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 4 STRW,
-            9 14 8 LDRW,   9 9 7 AND,  10 3 32 LSRI,  10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 8 STRW,
-            9 14 12 LDRW,  9 9 7 AND,  10 3 48 LSRI,  10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 12 STRW,
-         sabnext LBL,
-         5 5 1 LSRI,  4 4 1 ADDI,  sabit B,
-   sanext LBL,  12 12 1 ADDI,  sal B,
-   sabad LBL,
-      1 LADDRMSG LABEL@ ADR,  0 2 MOVZ,  2 ADDRMSG-LEN MOVZ,  NR-WRITE SYS,
-      0 SNAP-RELOC:ADDRMAP-RC MOVZ,  NR-EXIT-GROUP SYS,
-   sadone LBL,  RET, ;
-
 ;package
 
 package ENGINE-EMIT
-
-\ snap-rebase ( base end count dbase dlen newbase -- ): canonicalize a region copy
-\ [base,end) in two passes so the image is byte-identical whatever VAs this run
-\ got. Pass 1 folds engine-text pointers (dbase,dlen) to newbase (0); pass 2 folds
-\ the live JIT region [DBASE, DBASE+end-base) to the RBASE-VA sentinel. The bands
-\ are disjoint (REGION-OFF >> text size). Pool
-\ registers are spilled before any prim call, so clobbering
-\ x8/x15/x16/x21/x22/x25 is safe. The half-open span guard rejects every
-\ protected-band intersection; the builder uses a high scratch copy.
-: BSNAPREBASE ( -- )
-   25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
-   11 16 8 SUB,  8 11 PROT-GUARD:CALL
-   LSNAPRBD LABEL@ BL,
-   \ Text band: a `[']` may name a primitive in __text, so pass 1's triple
-   \ applies to address chains too.
-   11 16 8 SUB,                                         \ x11 = region payload length
-   RELOC-EMIT:LADDRS LABEL@ BL,
-   \ Rewrite region-to-text calls to the distance they would have with the
-   \ region exactly REGION-OFF above __text. x21 still holds the live text base.
-   10 DBASE 21 SUB,  9 REGION-OFF LIT64,  10 10 9 SUB,  \ x10 = live distance - REGION-OFF
-   11 16 8 SUB,                                         \ x11 = region payload length
-   RELOC-EMIT:LCALLS LABEL@ BL,
-   21 DBASE 0 ADDI,  22 16 8 SUB,  25 RBASE-VA LIT64,   \ pass 2: live region -> RBASE-VA sentinel
-   LSNAPRBD LABEL@ BL,
-   \ Region band: quotation entries and xts of region words, folded to the
-   \ sentinel pass 2 uses.
-   11 16 8 SUB,
-   RELOC-EMIT:LADDRS LABEL@ BL, ;
 
 public
 
@@ -3222,16 +3023,16 @@ package LABELS
    LBL LDIVZERO !
    LBL LPROTWIDQ !  LBL LPROTWIDADD !
    LBL LBCS !
-   LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
+   LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL HIDX-EMIT:LREKEY !
    LBL WLFIND:LENTRY !  LBL WLFIND:LNEWEST !  LBL LHEADROW !
    LBL EM-DEF-OCC:LCOUNT !  LBL EM-DEF-OCC:LAPPEND !  LBL EM-DEF-OCC:LRESET !
    LBL EM-DEF-OCC:LROOM !  LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
    LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
    LBL EM-DEF-OCC:LRECLAIM !  LBL EM-DEF-OCC:LRETIRE !
-   LBL RELOC-EMIT:LCALLS !  LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !  LBL RELOC-EMIT:LSCRATCHMARK !
+   LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !  LBL RELOC-EMIT:LSCRATCHMARK !
    LBL RELOC-EMIT:LROLLBACK !
-   LBL RELOC-EMIT:LADDRS !  LBL RELOC-EMIT:LADDRSITE ! ;
+   LBL RELOC-EMIT:LADDRSITE ! ;
 
 : CONTROL ( -- )
    LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !
@@ -3250,8 +3051,7 @@ package LABELS
    LBL LDIAGU !
    LBL LBGROWFAIL !  LBL LBGROWCLASS !  LBL LBGROWMSG !  LBL LBGROWUNIT !
    LBL LCOMPILEDIE !  LBL LPLACE !
-   LBL RELOC-EMIT:LCALLMSG !  LBL RELOC-EMIT:LXTMSG !  LBL RELOC-EMIT:LXTHEADERMSG !
-   LBL RELOC-EMIT:LADDRMSG !
+   LBL RELOC-EMIT:LXTMSG !  LBL RELOC-EMIT:LXTHEADERMSG !
    LBL RELOC-EMIT:LXTBANDMSG !  LBL RELOC-EMIT:LXTKINDMSG !
    LBL LPLACEEND !
    LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !  ;
@@ -3411,7 +3211,6 @@ variable KERNEL-CODE-END
    s" replay-record" ['] DEFWRITE:REPLAY-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" record-wid!" ['] DEFWRITE:RECORD-WID ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM
    s" scope-find" ['] BSCOPEFIND FPRIM
@@ -3449,10 +3248,9 @@ variable KERNEL-CODE-END
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    DOESPATCH:EMIT
-   EM-SNAPSHOT-REBASE-DICT
-   RELOC-EMIT:EMIT-CALLS  RELOC-EMIT:EMIT-MARK
+   RELOC-EMIT:EMIT-MARK
    RELOC-EMIT:EMIT-ROLLBACK
-   RELOC-EMIT:EMIT-ADDR-SITE  RELOC-EMIT:EMIT-ADDRS
+   RELOC-EMIT:EMIT-ADDR-SITE
    KWDATA:EMIT ;
 
 \ [LCRASHH, LHANDLERS-END) holds the signal handlers and no code Habu code calls. Where an
