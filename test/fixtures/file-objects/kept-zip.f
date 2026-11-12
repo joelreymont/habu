@@ -1,6 +1,4 @@
-\ kept-zip.f - the file kept-main.f requires: its top level opens an archive
-\ and keeps its handle in OLD; CHECK, run in kept-main.f's program, opens
-\ another archive and asks OLD for its count, which ZIP:E-HANDLE refuses.
+\ kept-zip.f - the file kept-main.f requires.
 
 require src/lib/string.f
 require src/lib/zip.f
@@ -19,7 +17,6 @@ create ROOT PATH-CAP allot
 variable ROOT-LEN
 create PATH PATH-CAP allot
 
-\ The archive is opened from a fresh directory, removed once it is open.
 : OPEN-COPY ( -- ZIP:archive )
    s" habu-kept-zip" FS:MKTEMP-DIR {: dir:ptr len:n :}
    dir ROOT len BYTE-COPY  len ROOT-LEN !

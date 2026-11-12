@@ -32,23 +32,23 @@ variable PROGRAM-LEN
 
 : ARITHMETIC-CASES ( -- )
    P-RESET 7 1 A! 3 2 B! $80000000 3 A! -1 4 B!
-   5 A-REG 1 A-REG 2 B-REG ENC-ADD-L P+                       \ 7 + 3
-   6 A-REG 1 A-REG 2 B-REG ENC-SUB-L P+                       \ 7 - 3
-   7 A-REG 1 A-REG -8 ENC-ADD-I5 P+                           \ 7 - 8
+   5 A-REG 1 A-REG 2 B-REG ENC-ADD-L P+
+   6 A-REG 1 A-REG 2 B-REG ENC-SUB-L P+
+   7 A-REG 1 A-REG -8 ENC-ADD-I5 P+
    8 A-REG 1 A-REG 2 B-REG ENC-AND-L P+ 9 A-REG 1 A-REG 2 B-REG ENC-XOR-L P+
    10 A-REG 3 A-REG ALWAYS ENC-ABS-L P+                       \ ABS saturates INT_MIN to INT_MAX (SPRUGH7)
    11 A-REG 4 B-REG ALWAYS ENC-NORM-L P+                      \ -1 has 31 redundant sign bits
    12 A-REG 1 A-REG ALWAYS ENC-NORM-L P+                      \ 7 has 28
    13 A-REG 3 A-REG ALWAYS ENC-NORM-L P+                      \ INT_MIN has none
    14 A-REG 1 A-REG 2 B-REG ENC-CMPEQ-L P+
-   0 A-REG 3 A-REG 1 A-REG ALWAYS ENC-CMPGT-L P+              \ INT_MIN > 7 signed: no
-   1 B-REG 4 B-REG 1 A-REG ALWAYS ENC-CMPGTU-L P+             \ $FFFFFFFF > 7 unsigned: yes
-   2 B-REG 2 B-REG 1 A-REG ALWAYS ENC-CMPLT-L P+              \ 3 < 7: yes
-   0 B-REG 4 B-REG 1 A-REG ALWAYS ENC-CMPLTU-L P+             \ $FFFFFFFF < 7 unsigned: no
-   15 A-REG 1 A-REG -3 ALWAYS ENC-CMPGT-I5 P+                 \ -3 > 7: no
-   16 A-REG 1 A-REG 9 ALWAYS ENC-CMPGTU-U4 P+                 \ 9 > 7: yes
-   17 A-REG 1 A-REG -3 ALWAYS ENC-CMPLT-I5 P+                 \ -3 < 7: yes
-   18 A-REG 1 A-REG 9 ALWAYS ENC-CMPLTU-U4 P+                 \ 9 < 7: no
+   0 A-REG 3 A-REG 1 A-REG ALWAYS ENC-CMPGT-L P+
+   1 B-REG 4 B-REG 1 A-REG ALWAYS ENC-CMPGTU-L P+
+   2 B-REG 2 B-REG 1 A-REG ALWAYS ENC-CMPLT-L P+
+   0 B-REG 4 B-REG 1 A-REG ALWAYS ENC-CMPLTU-L P+
+   15 A-REG 1 A-REG -3 ALWAYS ENC-CMPGT-I5 P+
+   16 A-REG 1 A-REG 9 ALWAYS ENC-CMPGTU-U4 P+
+   17 A-REG 1 A-REG -3 ALWAYS ENC-CMPLT-I5 P+
+   18 A-REG 1 A-REG 9 ALWAYS ENC-CMPLTU-U4 P+
    P-RETURN P-RUN drop
    5 A@ 10 T= 6 A@ 4 T= 7 A@ $FFFFFFFF T= 8 A@ 3 T= 9 A@ 4 T=
    10 A@ $7FFFFFFF T= 11 A@ 31 T= 12 A@ 28 T= 13 A@ 0 T= 14 A@ 0 T=
@@ -95,8 +95,8 @@ variable PROGRAM-LEN
    P-RESET MEMORY-BASE 1 A! $7F 3 A! $80 4 A! $11223344 10 A! $55667788 11 A!
    3 A-REG 1 A-REG 0 >BYTE-OFFSET ALWAYS ENC-STB P+
    4 A-REG 1 A-REG 1 >BYTE-OFFSET ALWAYS ENC-STB P+
-   5 A-REG 1 A-REG 1 >BYTE-OFFSET ALWAYS ENC-LDB P+           \ signed byte: -128
-   6 A-REG 1 A-REG 1 >BYTE-OFFSET ALWAYS ENC-LDBU P+          \ unsigned: 128
+   5 A-REG 1 A-REG 1 >BYTE-OFFSET ALWAYS ENC-LDB P+
+   6 A-REG 1 A-REG 1 >BYTE-OFFSET ALWAYS ENC-LDBU P+
    7 A-REG 5 A-REG ENC-MV-L P+                                \ still the old value in the delay slots
    4 ENC-NOP P+
    8 A-REG 5 A-REG ENC-MV-L P+                                \ the loaded value has landed
@@ -172,7 +172,7 @@ variable PROGRAM-LEN
 \ Reading through a cross path a register a non-load wrote last cycle costs a cycle.
 : STALL-CASES ( -- )
    P-RESET 1 0 A! 2 0 B!
-   1 A-REG 0 A-REG 0 A-REG ENC-ADD-L P+                         \ A1 = 2
+   1 A-REG 0 A-REG 0 A-REG ENC-ADD-L P+
    1 B-REG 0 B-REG 1 A-REG ENC-ADD-L P+                         \ .L2 reads A1 through 2X: a stall
    P-RETURN P-RUN 9 T=
    1 B@ 4 T=

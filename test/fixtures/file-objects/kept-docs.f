@@ -1,6 +1,4 @@
-\ kept-docs.f - the file kept-main.f requires: its top level reads word docs from
-\ a text it allocated, keeps their count in KEPT and frees the text; CHECK, run in
-\ kept-main.f's program, reads a second text and prints both counts.
+\ kept-docs.f - the file kept-main.f requires.
 
 require src/lib/memory.f
 require src/lib/string.f
