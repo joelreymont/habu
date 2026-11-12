@@ -819,8 +819,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   made, only while that word lives.** A forget, an `undefine`, a failed
   `evaluate` or a failed REPL line that retires it leaves `does>` nothing to
   patch, even when an earlier created word survives, and `does>` is then
-  refused with `hb: does> has no created word` (a catchable throw inside
-  `evaluate`):
+  refused with `E-DOES-UNCREATED habu: <path>:<line>: does> has no created
+  word` (a catchable throw inside `evaluate`):
 
   ```forth
   create K 7 ,
@@ -2025,8 +2025,8 @@ These ceilings are reachable from plain Habu rather than a runaway. Each
 refuses by name with the count it saw and the ceiling, and none truncates; the
 ceiling is a named constant beside the code that enforces it. A definition's
 captured text and its name have no ceiling: they grow with the definition, and
-a refused map ends the run, rc 71, with `hb: cannot grow definition body text
-to <n> bytes`.
+a refused map ends the run, rc 71, with `E-BODY-TEXT habu: <path>:<line>:
+cannot grow definition body text to <n> bytes`.
 
 - **One REPL line.** A longer line is refused, `hb: repl line over <cap> bytes:
   <length> typed`, and read again, never truncated, evaluated or saved to
@@ -2068,10 +2068,10 @@ to <n> bytes`.
   `fix_signature_size`. Pass bulk values in a buffer, not on the stack.
 - **Data space**: `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and
   the interpret-mode string literals that keep their text (all but `."`)
-  advance the dictionary pointer. Past the DATA reservation: `hb: data space out
-  of range: DP <dp> of <cap> bytes`, catchable inside `evaluate`, both numbers
-  offsets from `data-base`, then the place [debugging.md](debugging.md) "Where
-  a load refusal happened" states. Hold bulk data in `MEM:ALLOC-BYTES` or a
+  advance the dictionary pointer. Past the DATA reservation: `E-DATA-SPACE
+  habu: <path>:<line>: data space out of range: DP <dp> of <cap> bytes`, the
+  place as [debugging.md](debugging.md) "Where a load refusal happened" states,
+  catchable inside `evaluate`, both numbers offsets from `data-base`. Hold bulk data in `MEM:ALLOC-BYTES` or a
   `DYNAMIC-BUFFER`, which map their own pages, not in the dictionary. On a
   task's thread every one of these sinks exits before it writes, as do
   `evaluate` and `evaluate-closed`; the main thread uses them while tasks run

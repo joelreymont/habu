@@ -162,7 +162,8 @@ LC-CAP BUFFER: LC-ERR
 : LC-REFUSED ( ptr u8 n -- )
    70 LC-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
-   LC-ERR erru LEN>N s" hb: does> has no created word" CONTAINS? TTRUE ;
+   LC-ERR erru LEN>N s" E-DOES-UNCREATED habu: " CONTAINS? TTRUE
+   LC-ERR erru LEN>N s" .f: does> has no created word" CONTAINS? TTRUE ;
 
 \ The program runs to the end and prints this; the definition it refuses reports
 \ on stderr.

@@ -116,9 +116,11 @@ variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ 
 : UNCMSG-LEN ( -- n )   UNCMSG$ nip ;
 public
 
-variable LMINMSG   \ the underdepth message LFLOORREC writes
+variable LMINCLASS   variable LMINMSG   \ the underdepth class head and prose LFLOORREC writes
 private
-: MINMSG$ ( -- ptr u8 n )   s" E-UNDERFLOW habu: interpret stack underdepth: " ;
+: MINCLASS$ ( -- ptr u8 n )   s" E-UNDERFLOW habu: " ;
+: MINMSG$ ( -- ptr u8 n )   s" interpret stack underdepth: " ;
+: MINCLASS-LEN ( -- n )   MINCLASS$ nip ;
 : MINMSG-LEN ( -- n )   MINMSG$ nip ;
 public
 variable LFLOORREC   \ the underdepth throw for a data access below the base
@@ -126,16 +128,20 @@ variable LFLOORREC   \ the underdepth throw for a data access below the base
 \ Capacity refusals that state a count: one line naming what filled up, the
 \ ceiling and the count.
 variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline
-variable LBGROWMSG   variable LBGROWUNIT   \ the body text block could not grow
-variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject: the head, the " of " before the ceiling and the " bytes" that ends the line
+variable LBGROWCLASS   variable LBGROWMSG   variable LBGROWUNIT   \ the body text block could not grow
+variable LDPBADCLASS   variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject: the class head, the prose before the DP, the " of " before the ceiling and the " bytes" that ends the line
 
 private
-: DPBAD-MSG$ ( -- ptr u8 n )     s" hb: data space out of range: DP " ;
+: DPBAD-CLASS$ ( -- ptr u8 n )   s" E-DATA-SPACE habu: " ;
+: DPBAD-MSG$ ( -- ptr u8 n )     s" data space out of range: DP " ;
 : DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
 : DPBAD-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
-: BGROW-MSG$ ( -- ptr u8 n )     s" hb: cannot grow definition body text to " ;
+: BGROW-CLASS$ ( -- ptr u8 n )   s" E-BODY-TEXT habu: " ;
+: BGROW-MSG$ ( -- ptr u8 n )     s" cannot grow definition body text to " ;
 : BGROW-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
 
+: DPBAD-CLASS-LEN ( -- n )   DPBAD-CLASS$ nip ;
+: BGROW-CLASS-LEN ( -- n )   BGROW-CLASS$ nip ;
 : DPBADMSG-LEN ( -- n )      DPBAD-MSG$ nip ;
 : DPBAD-OF-LEN ( -- n )      DPBAD-OF$ nip ;
 : DPBAD-UNIT-LEN ( -- n )    DPBAD-UNIT$ nip ;
@@ -143,8 +149,8 @@ private
 : BGROW-UNIT-LEN ( -- n )    BGROW-UNIT$ nip ;
 public
 
-variable LCOMPILEDIE   \ shared recoverable compile-error tail: a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it calls exit_group(x0).
-variable LSRCAT        \ the LCOMPILEDIE tail's location writer, a leaf a fail-closed die site calls before it exits
+variable LCOMPILEDIE   \ the die sites' tail, x0 = code: ends their line, then throws x0 inside evaluate (LEVALREC), else exits x0
+variable LPLACE        \ the place writer each die site calls after its class head
 ;package
 \ Snapshot relocation labels, messages and instruction constant; the band
 \ offsets and exit statuses are src/habu/layout.f package SNAP-RELOC. This file
@@ -213,10 +219,10 @@ $D63F0200 constant C-CALL-BLR-X16     \ blr x16: deferred-word indirect call
 
 public
 
-variable LATMSG               \ " at " — the refusal-location separator LSRCAT writes before <path>:<line>
+variable LPLACEEND            \ ": " — what LPLACE writes after <path> or <path>:<line>
 private
-: ATMSG$ ( -- ptr u8 n )   s"  at " ;
-: ATMSG-LEN ( -- n )   ATMSG$ nip ;
+: PLACEEND$ ( -- ptr u8 n )   s" : " ;
+: PLACEEND-LEN ( -- n )   PLACEEND$ nip ;
 public
 variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
 private
@@ -469,18 +475,21 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LBPWH LABEL@ LBL, BPW-KW BPW-LEN BYTES,
    LOPENNL LABEL@ LBL, NL-KW NL-LEN BYTES,
    LUNCMSG LABEL@ LBL, UNCMSG$ BYTES,                  \ LUNCAUGHT appends the signed code + newline
+   LMINCLASS LABEL@ LBL, MINCLASS$ BYTES,
    LMINMSG LABEL@ LBL, MINMSG$ BYTES,                  \ LFLOORREC appends the token + newline
+   LDPBADCLASS LABEL@ LBL, DPBAD-CLASS$ BYTES,
    LDPBADMSG LABEL@ LBL, DPBAD-MSG$ BYTES,                               \ LDPBAD appends the refused DP, " of ", the ceiling and " bytes"
    LDPBADOF LABEL@ LBL, DPBAD-OF$ BYTES,
    LDPBADUNIT LABEL@ LBL, DPBAD-UNIT$ BYTES,
-   LBGROWMSG LABEL@ LBL, BGROW-MSG$ BYTES,                               \ EM-BODY-GROW-DIE appends the capacity tried and the unit; LCOMPILEDIE the place and newline
+   LBGROWCLASS LABEL@ LBL, BGROW-CLASS$ BYTES,
+   LBGROWMSG LABEL@ LBL, BGROW-MSG$ BYTES,                               \ EM-BODY-GROW-DIE appends the capacity tried and the unit; LCOMPILEDIE the newline
    LBGROWUNIT LABEL@ LBL, BGROW-UNIT$ BYTES,
    RELOC-EMIT:LCALLMSG LABEL@ LBL, RELOC-EMIT:CALLMSG$ BYTES,
    RELOC-EMIT:EMIT-FULL-MESSAGE
    RELOC-EMIT:LADDRMSG LABEL@ LBL, RELOC-EMIT:ADDRMSG$ BYTES,
    RELOC-EMIT:LXTBANDMSG LABEL@ LBL, RELOC-EMIT:XTBANDMSG$ BYTES,
    RELOC-EMIT:LXTKINDMSG LABEL@ LBL, RELOC-EMIT:XTKINDMSG$ BYTES,
-   LATMSG   LABEL@ LBL, ATMSG$ BYTES,
+   LPLACEEND LABEL@ LBL, PLACEEND$ BYTES,
    LMMAPCODE LABEL@ LBL, MMAPCODE-MSG$ BYTES,
    LMMAPDATA LABEL@ LBL, MMAPDATA-MSG$ BYTES,
    LBLRANGE LABEL@ LBL, BLRANGE-MSG$ BYTES, ;
@@ -830,8 +839,11 @@ public
 
 private
 
+: NONE-CLASS$ ( -- ptr u8 n )
+   s" E-DOES-UNCREATED habu: " ;
+
 : NONE$ ( -- ptr u8 n )
-   s" hb: does> has no created word" ;
+   s" does> has no created word" ;
 
 \ A LASTC of zero names no record: none was created since boot, or the one it
 \ named was retired by a motion that lowered NDICT. A LASTC whose wordlist cell
@@ -839,12 +851,15 @@ private
 \ alone. Either is refused before anything is patched, recoverable inside
 \ evaluate like the other definition errors.
 : EMIT-NONE ( label -- ) {: have:label :}
-   LBL LBL {: none:label msg:label :}
+   LBL LBL LBL {: none:label class:label msg:label :}
    11 DATA LASTC-CELL LDR,  11 none CBZ,
    12 11 40 LDR,  13 WL:RETIRED invert MOVN,  12 13 CMP,  C-NE have BCOND,
    none LBL,
+   0 2 MOVZ,  1 class ADR,  2 NONE-CLASS$ nip MOVZ,  NR-WRITE SYS,
+   LPLACE LABEL@ BL,
    0 2 MOVZ,  1 msg ADR,  2 NONE$ nip MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
+   class LBL,  NONE-CLASS$ BYTES,
    msg LBL,  NONE$ BYTES, ;
 
 public
@@ -3036,67 +3051,67 @@ private
    \ running code, maybe under a catch, which receives it as a throw.
    LFLOORREC LABEL@ LBL,
    XDS DATA STACK-ABI:BASE-CELL LDR,
+   0 2 MOVZ,  1 LMINCLASS LABEL@ ADR,  2 MINCLASS-LEN MOVZ,  NR-WRITE SYS,
+   LPLACE LABEL@ BL,
    0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    15 RC-REJECT MOVZ,  LEVALREC LABEL@ B, ;
 
+\ LPLACE, a leaf (x0-x2, x9-x14 and SYS,'s registers; x15 kept), writes
+\ `<path>:<line>: `, or `<path>: ` off the file's bytes, or nothing outside one.
+: EM-SOURCE-PLACE ( -- )
+   LBL LBL LBL LBL LBL {: noline:label nlloop:label nldone:label digloop:label done:label :}
+   LPLACE LABEL@ LBL,
+   9 DATA SRCLOC:PATHLEN-CELL LDR,  9 done CBZ,             \ no open source file -> nothing
+   2 DATA SRCLOC:PATHLEN-CELL LDR,  1 DATA SRCLOC:PATH-CELL LDR,  0 2 MOVZ,  NR-WRITE SYS,
+   10 DATA SRCLOC:OWNED-CELL LDR,  10 noline CBZ,           \ x10 = the file's first owned byte; none -> the path alone
+   11 DATA SRCLOC:INB-CELL LDR,  11 10 CMP,  C-CC noline BCOND,       \ the buffer starts before the file -> the path alone
+   12 DATA SRCLOC:OWNEDLEN-CELL LDR,  12 10 12 ADD,
+   11 DATA INE-CELL LDR,  11 12 CMP,  C-HI noline BCOND,    \ the buffer ends past the file -> the path alone
+   11 DATA INP-CELL LDR,
+   12 1 MOVZ,                                               \ x12 = line, 1-based
+   nlloop LBL,
+      10 11 CMP,  C-CS nldone BCOND,
+      13 10 0 LDRB,  10 10 1 ADDI,
+      13 $A CMPI,  C-NE nlloop BCOND,
+      12 12 1 ADDI,  nlloop B,
+   nldone LBL,
+   \ ":" + decimal line, built backwards in a 32-byte stack scratch.
+   SP SP $20 SUBI,  14 SP $20 ADDI,
+   9 $A MOVZ,
+   digloop LBL,
+      11 12 9 UDIV,  13 11 9 MUL,  13 12 13 SUB,
+      13 13 $30 ADDI,  14 14 1 SUBI,  13 14 0 STRB,
+      12 11 0 ADDI,  12 digloop CBNZ,
+   13 $3A MOVZ,  14 14 1 SUBI,  13 14 0 STRB,
+   2 SP $20 ADDI,  2 2 14 SUB,  1 14 0 ADDI,  0 2 MOVZ,  NR-WRITE SYS,
+   SP SP $20 ADDI,
+   noline LBL,
+   0 2 MOVZ,  1 LPLACEEND LABEL@ ADR,  2 PLACEEND-LEN MOVZ,  NR-WRITE SYS,
+   done LBL,
+   RET, ;
+
 \ In x0 = the exit or throw code, the diagnostic written without its newline.
-\ LSRCAT, a leaf (x0-x2, x9-x14 scratch), appends ` at <path>:<line>`.
 : EM-COMPILE-DIE ( -- )
-   LBL LBL LBL LBL LBL LBL {: ldie:label noloc:label located:label nlloop:label nldone:label digloop:label :}
-   LBL S" E-OVERLAY-OPEN habu: definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
+   LBL {: ldie:label :}
+   LBL S" E-OVERLAY-OPEN habu: " {: oclass:label oca:ptr ocu:n :}
+   LBL S" definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
    LBL {: dpbad-end:label :}
    LCOMPILEDIE LABEL@ LBL,
    15 0 0 ADDI,                                             \ x15 = code (LEVALREC delivers it as the throw code)
-   LSRCAT LABEL@ BL,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    9 DATA EVALD-CELL LDR,  9 ldie CBZ,
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
    ldie LBL,
    0 15 0 ADDI,
    NR-EXIT-GROUP SYS,
-   LSRCAT LABEL@ LBL,
-   9 DATA SRCLOC:PATHLEN-CELL LDR,  9 noloc CBZ,            \ no open source file -> newline only
-      0 2 MOVZ,  1 LATMSG LABEL@ ADR,  2 ATMSG-LEN MOVZ,  NR-WRITE SYS,
-      2 DATA SRCLOC:PATHLEN-CELL LDR,  1 DATA SRCLOC:PATH-CELL LDR,  0 2 MOVZ,  NR-WRITE SYS,
-      10 DATA SRCLOC:OWNED-CELL LDR,  10 noloc CBZ,         \ x10 = the file's first owned byte; none -> the path alone
-      11 DATA SRCLOC:INB-CELL LDR,  11 10 CMP,  C-CC noloc BCOND,       \ the buffer starts before the file -> the path alone
-      12 DATA SRCLOC:OWNEDLEN-CELL LDR,  12 10 12 ADD,
-      11 DATA INE-CELL LDR,  11 12 CMP,  C-HI noloc BCOND,  \ the buffer ends past the file -> the path alone
-      11 DATA INP-CELL LDR,
-      12 1 MOVZ,                                            \ x12 = line, 1-based
-      nlloop LBL,
-         10 11 CMP,  C-CS nldone BCOND,
-         13 10 0 LDRB,  10 10 1 ADDI,
-         13 $A CMPI,  C-NE nlloop BCOND,
-         12 12 1 ADDI,  nlloop B,
-      nldone LBL,
-      \ ":" + decimal line + newline, built backwards in a 32-byte stack
-      \ scratch, so it costs one write.
-      SP SP $20 SUBI,  14 SP $20 ADDI,
-      13 $A MOVZ,  14 14 1 SUBI,  13 14 0 STRB,
-      9 $A MOVZ,
-      digloop LBL,
-         11 12 9 UDIV,  13 11 9 MUL,  13 12 13 SUB,
-         13 13 $30 ADDI,  14 14 1 SUBI,  13 14 0 STRB,
-         12 11 0 ADDI,  12 digloop CBNZ,
-      13 $3A MOVZ,  14 14 1 SUBI,  13 14 0 STRB,
-      2 SP $20 ADDI,  2 2 14 SUB,  1 14 0 ADDI,  0 2 MOVZ,  NR-WRITE SYS,
-      SP SP $20 ADDI,
-      located B,
-   noloc LBL,
-   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
-   located LBL,
-   RET,
-   \ DP-heap out-of-range diagnostic for DP-CHECK, which hands the candidate DP
-   \ in x15: "hb: data space out of range: DP <dp> of <cap> bytes" on fd 2,
-   \ both numbers offsets from the space's base, floor - DATA-START, then
-   \ LCOMPILEDIE with x0=76 (catchable inside evaluate, nothing written; exit
-   \ 76 at top level).
-   \ No definition is named: no DP sink runs while a colon body compiles
-   \ (compile-mode string literals go to the code region). LCOMPILEDIE's ` at
-   \ <path>:<line>` names the refusing line.
+   EM-SOURCE-PLACE
+   \ DP-CHECK hands the refused DP in x15. No definition is named: no DP sink
+   \ runs inside a colon body (its string literals go to the code region).
    LDPBAD LABEL@ LBL,
+   0 2 MOVZ,  1 LDPBADCLASS LABEL@ ADR,  2 DPBAD-CLASS-LEN MOVZ,  NR-WRITE SYS,
+   LPLACE LABEL@ BL,
    0 2 MOVZ,  1 LDPBADMSG LABEL@ ADR,  2 DPBADMSG-LEN MOVZ,  NR-WRITE SYS,
    9 DATA BOOT:DP-FLOOR-CELL LDR,  10 DATA-START LIT64,  9 9 10 SUB,
    9 15 9 SUB,  LDIAGU LABEL@ BL,                           \ the refused DP
@@ -3114,9 +3129,12 @@ private
    \ writer primitive. The code is a literal so a pre-window host need not
    \ carry the constant.
    OVERLAY-EMIT:LDIE LABEL@ LBL,
+   0 2 MOVZ,  1 oclass ADR,  2 ocu MOVZ,  NR-WRITE SYS,
+   LPLACE LABEL@ BL,
    0 2 MOVZ,  1 omsg ADR,  2 omu MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 108 MOVZ,  LCOMPILEDIE LABEL@ B,                     \ 108 = ENGINE-ERROR:OVERLAY-OPEN
+   oclass LBL,  oca ocu BYTES,
    omsg LBL,  oma omu BYTES, ;
 
 \ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. A diagnostic
@@ -3137,15 +3155,13 @@ private
    0 2 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,  NR-WRITE SYS,
    SP SP 32 ADDI,  RET, ;
 
-\ The body text block could not grow: `hb: cannot grow definition body text to
-\ <n> bytes`, n the capacity BCAP-GROW tried, then LCOMPILEDIE with x0=71
-\ (catchable inside evaluate, since the grow fails before anything is stored;
-\ exit 71 at top level). Entered with x16 = that capacity; it moves to x15
-\ before the first write because SYS, reconciles errno in x16 and macOS passes
-\ the syscall number there; LDIAGU takes it in x9.
+\ x16 = the capacity BCAP-GROW tried, moved to x15 first since SYS, uses x16.
+\ Nothing is stored before the grow fails, so the throw inside evaluate is safe.
 : EM-BODY-GROW-DIE ( -- )
    LBGROWFAIL LABEL@ LBL,
    15 16 0 ADDI,
+   0 2 MOVZ,  1 LBGROWCLASS LABEL@ ADR,  2 BGROW-CLASS-LEN MOVZ,  NR-WRITE SYS,
+   LPLACE LABEL@ BL,
    0 2 MOVZ,  1 LBGROWMSG LABEL@ ADR,  2 BGROW-MSG-LEN MOVZ,  NR-WRITE SYS,
    9 15 0 ADDI,  LDIAGU LABEL@ BL,
    0 2 MOVZ,  1 LBGROWUNIT LABEL@ ADR,  2 BGROW-UNIT-LEN MOVZ,  NR-WRITE SYS,
@@ -3207,16 +3223,16 @@ package LABELS
    LBL LCRASHH !  LBL LHANDLERS-END !  LBL LFAULTREC !  LBL LSIGH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !
    LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
-   LBL LMINMSG !  LBL LFLOORREC !
-   LBL LDPBAD !  LBL LDPBADMSG !  LBL LDPBADOF !  LBL LDPBADUNIT !
+   LBL LMINCLASS !  LBL LMINMSG !  LBL LFLOORREC !
+   LBL LDPBAD !  LBL LDPBADCLASS !  LBL LDPBADMSG !  LBL LDPBADOF !  LBL LDPBADUNIT !
    LBL OVERLAY-EMIT:LDIE !
    LBL LDIAGU !
-   LBL LBGROWFAIL !  LBL LBGROWMSG !  LBL LBGROWUNIT !
-   LBL LCOMPILEDIE !  LBL LSRCAT !
+   LBL LBGROWFAIL !  LBL LBGROWCLASS !  LBL LBGROWMSG !  LBL LBGROWUNIT !
+   LBL LCOMPILEDIE !  LBL LPLACE !
    LBL RELOC-EMIT:LCALLMSG !  LBL RELOC-EMIT:LXTMSG !  LBL RELOC-EMIT:LXTHEADERMSG !
    LBL RELOC-EMIT:LADDRMSG !
    LBL RELOC-EMIT:LXTBANDMSG !  LBL RELOC-EMIT:LXTKINDMSG !
-   LBL LATMSG !
+   LBL LPLACEEND !
    LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !  ;
 
 : PROF ( -- )

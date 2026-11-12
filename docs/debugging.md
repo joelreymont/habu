@@ -19,17 +19,16 @@ file, so a nested `require` names the file that actually holds the offending
 token, not the entry the command line asked for. `<line>` counts newlines from
 the start of the file.
 
-A refusal with no include frame open prints the message and a newline with
-**no** ` at …`, because there is no file to name: the root source stream's own
+A refusal with no include frame open names no place, `E-<class> habu:
+<prose>`, because there is no file to name: the root source stream's own
 text (src/habu/main.f `ROUTED`: stdin when `hb` has no argument, tty or piped,
 or the `--load` and `--build` streams themselves) and the engine's own boot
 prefix. The program file of a plain `hb <file>` is an open file and is named. A
 string `evaluate`d *inside* a file keeps the file line only while it is a slice
 of the file's own bytes (`parse-name X evaluate`). Any other evaluated string
-names the file alone (` at <path>`, or `<path>: ` after `habu: ` in a classed
-line) for a refusal in it, and so do the native compiler's `ncomp:` and
-`E-UNDEFINED` lines that follow that refusal
-(src/core/checker.f SRCLOC:FILE-BUFFER?).
+names the file alone (`<path>: ` after `habu: `) for a refusal in it, and so
+do the native compiler's `ncomp:` and `E-UNDEFINED` lines that follow that
+refusal (src/core/checker.f SRCLOC:FILE-BUFFER?).
 
 An undefined word, `E-UNDEFINED habu: <path>:<line>: undefined word 'X'`, is located like any
 compile refusal on both loops. A loaded file that leaves cells prints
@@ -221,8 +220,9 @@ Every VM stack is a guarded mapping and compiled code carries no bounds check,
 so the message names the mechanism that caught the fault
 (`src/habu/stack-abi.f` and `src/habu/crash.f` hold the rules):
 
-- `E-UNDERFLOW habu: interpret stack underdepth: <token>` (exit 70; the
-  interpreter's refusal in a file names `<path>:<line>: ` before the prose):
+- `E-UNDERFLOW habu: interpret stack underdepth: <token>` (exit 70; in a file
+  the place comes before the prose: `<path>:<line>: `, or `<path>: ` in an
+  evaluated string):
   the interpreter refused a token whose record states more inputs than the
   stack holds, or compiled code reached through `execute`, `catch`, `finally`
   or a quotation read below the data stack's base. Catchable; the REPL recovers the line.
