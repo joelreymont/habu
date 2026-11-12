@@ -567,11 +567,13 @@ multi-cell type rationale is `docs/design.md` "Types".
   never raw `=`. A public `STRUCTURE`'s `MAKE`/`UNMAKE` let any package
   rebuild it with any field values; an owner that validates its fields
   declares `OPAQUE`.
-- `POLICY` takes `stack-cell-tag` (the default) or `packed-tag`;
-  `niche-null` and `boxed` are `E-TDECL-POLICY` ("layout policy not yet
-  supported"). A `SUMTYPE` or `PRODUCT` payload naming the family being
-  declared (inline, through `ptr` or bare) is `E-TDECL-RECURSIVE` under either
-  accepted policy, and a payload naming a family not yet declared is
+- `POLICY` takes `stack-cell-tag` (the default), `packed-tag` or `niche-null`;
+  `boxed` is `E-TDECL-POLICY` ("layout policy not yet supported").
+  `niche-null` takes one shape, an empty variant then one holding a single
+  `ptr` field, and refuses any other, a `PRODUCT` included (`E-TDECL-POLICY`,
+  "niche-null needs an empty variant, then one ptr field"). A `SUMTYPE` or
+  `PRODUCT` payload naming the family being declared (inline, through `ptr` or
+  bare) is `E-TDECL-RECURSIVE` under every accepted policy, and a payload naming a family not yet declared is
   `E-TDECL-PAYLOAD`, which also keeps mutual recursion out.
 - A `STRUCTURE` field or `ENUM` payload may name its own family only inside a
   `ptr` pointee, as a linked record does:
@@ -589,7 +591,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   SHAPE:result`), so other packages use the generated words. The effect is the
   generated constructor's. At run time a constructor leaves its payload cells,
   pushes `M-p` zero cells (`M` the family's widest payload, `p` this
-  variant's), then the tag.
+  variant's), then the tag. A `niche-null` family pushes no tag: its value is
+  one cell, the pointer, or zero for the empty variant.
 - **`MATCH family` is the only eliminator.** Each variant is named in exactly
   one `OF … ENDOF` arm, which starts with that variant's payload on the stack;
   there is no default arm (`E-MATCH-NONEXHAUSTIVE`, `bad match: missing
@@ -638,6 +641,13 @@ multi-cell type rationale is `docs/design.md` "Types".
   losing the payload (`LOPT:NONE` where it was live), rejects. `MATCH`
   consumes the sum and gives the arm the payload once, which the arm must
   consume: re-mint it or call its destructor.
+- **`nullable<a>` is an address of an `a` or none, in one cell**
+  (`src/lib/adt/nullable.f`, `POLICY niche-null`): `NULLABLE:SOME ( ptr a --
+  nullable<a> )` stores the address, `NULLABLE:NONE` and zero-filled storage
+  are zero, and `MATCH nullable` with `none` and `some` arms is the only way to
+  the address; a `some` of a null pointer matches `none`.
+- **A `FUNCTION:` result declared `nullable<u8>`** is the C pointer as a
+  `nullable<u8>`: NULL is `none`.
 - **A package family's generated words are `PKG-FAMILY:tail` with every hyphen
   in the package and family names doubled**: an `ENUM read-result` in `package TCP4`
   constructs its `data` variant through `TCP4-READ--RESULT:data`; a `STRUCTURE

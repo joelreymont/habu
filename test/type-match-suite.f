@@ -6,6 +6,7 @@
 
 require src/lib/string.f
 require src/lib/test.f
+require src/lib/ffi-abi.f
 
 T-RESET
 
@@ -395,5 +396,46 @@ s\" \"payload_pos\":1" MDG?
 s\" \"field\":\"y\"" MDG?
 MDG-END
 s" ENUM-CONSTRUCT-MATCH" type cr
+
+\ nullable<u8> through the load path: built by construct, read from zero-filled
+\ typed storage and returned by a C call. Each byte read is non-zero, so 0 is
+\ the none arm.
+PROCESS-SYMBOLS
+FUNCTION: TMN-MEMCHR memchr ( ptr u8 n n -- nullable<u8> ) ;FUNCTION
+
+TYPED-VARIABLE TMN-HELD nullable<u8>
+
+: TMN-BYTE ( nullable<u8> -- n )
+   MATCH nullable
+      none OF 0 ENDOF
+      some OF c@ ENDOF
+   ;MATCH ;
+: TMN-NONE ( -- nullable<u8> ) construct nullable none ;
+: TMN-SOME ( ptr u8 -- nullable<u8> ) construct nullable some ;
+
+: TMN-CONSTRUCT ( -- )
+   s" construct nullable none matches none" T-LABEL
+   TMN-NONE TMN-BYTE 0 T=
+   s" construct nullable some matches some at its byte" T-LABEL
+   s" Q" drop TMN-SOME TMN-BYTE [char] Q T= ;
+
+: TMN-STORAGE ( -- )
+   s" a nullable<u8> typed variable reads none before a write" T-LABEL
+   TMN-HELD @ TMN-BYTE 0 T=
+   s" a nullable<u8> typed variable keeps a stored some" T-LABEL
+   s" R" drop TMN-SOME TMN-HELD !
+   TMN-HELD @ TMN-BYTE [char] R T= ;
+
+: TMN-C-RESULT ( -- )
+   s" ABC" {: buf:ptr u:n :}
+   s" memchr answers some at a byte the buffer holds" T-LABEL
+   buf [char] B u TMN-MEMCHR TMN-BYTE [char] B T=
+   s" memchr answers none for a byte the buffer lacks" T-LABEL
+   buf [char] Z u TMN-MEMCHR TMN-BYTE 0 T= ;
+
+TMN-CONSTRUCT
+TMN-STORAGE
+TMN-C-RESULT
+s" NULLABLE-LOAD-PATH" type cr
 
 T-REPORT

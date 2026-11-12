@@ -130,6 +130,11 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   (`idx`, `len`, `fd`) never widen. Booleans are real `bool`s: `true`, `false` or a
   comparison, never a raw `0`/`-1`; a `bool` never passes as `n`, so convert
   it with `bool>n` (-1 or 0).
+- `nullable<a>` (`src/lib/adt/nullable.f`) is one cell, an address or zero:
+  `NULLABLE:SOME ( ptr a -- nullable<a> )`, `NULLABLE:NONE`, and `MATCH
+  nullable` with `none` and `some` arms reaches the address. Zero-filled
+  storage and a null `some` read as `none`.
+- A `FUNCTION:` result declared `nullable<u8>` is `none` for NULL.
 - Locals `{: a b:ptr :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Names are at most 16 bytes, 64 per
@@ -151,7 +156,8 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   runs: `{: v :} [: v RENDER ;] [: v CLOSE ;] finally`. It may not outlive
   them (`E-LOCAL-ESCAPE`) and binds no group of its own.
 
-forth.md: **Stack comments**, **Stack effects**, **Words & factoring**.
+forth.md: **Stack comments**, **Stack effects**, **Words & factoring**,
+**Structures And Enums**.
 
 ## 3 What the checker refuses, and what it admits
 

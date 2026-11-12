@@ -31,6 +31,7 @@ s" src/lib/string.f" required
 s" src/lib/le.f" required
 s" src/lib/float32.f" required
 s" src/lib/adt/option.f" required
+s" src/lib/adt/nullable.f" required
 s" src/lib/codegen.f" required
 s" src/lib/memory.f" required
 
@@ -1029,6 +1030,7 @@ create ARG-SBYTES ARG-MAX cells allot         \ STRUCT-ARG's record width; 0 whe
 create ARG-PAY ARG-MAX cells allot            \ planned: a large record's first copy cell
 variable ARG-N
 variable RES-KIND
+variable RES-NULLABLE                      \ 1 for a nullable<u8> result
 variable VAR-START
 variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 when none
 variable CUR-LIB
@@ -1050,7 +1052,7 @@ SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
       0 ARG-KIND i cells + ! 0 ARG-REG i cells + ! 0 ARG-EXT i cells + !
       0 ARG-EXT-ARG i cells + ! 0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
    loop
-   0 ARG-N ! 0 RES-KIND !
+   0 ARG-N ! 0 RES-KIND ! 0 RES-NULLABLE !
    0 VAR-START ! 0 STRUCT-BYTES ! ;
 
 : KEEP-REST ( R [ R -- S ] -- S )
@@ -1156,6 +1158,9 @@ SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
 : OUT-TOKEN ( -- )
    RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
    s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL R-POINTER RES-KIND ! exit then
+   s" nullable<u8>" TOK-IS? if
+      TOK-KEEP R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit
+   then
    s" r" TOK-IS? if TOK-KEEP R-FLOAT RES-KIND ! exit then
    s" f32" TOK-IS? if s" r" EFF+ R-FLOAT32 RES-KIND ! exit then
    s" i32" TOK-IS? if s" n" EFF+ R-I32 RES-KIND ! exit then
@@ -1461,7 +1466,9 @@ private
    {: int:n stk:n :}
    SYM-BUF SYM-U @ CUR-LIB @ int stk RELOC-MASK DECLARE-ROW ;
 
+\ A niche value's zero cell is none, so `some` of the returned cell reads NULL as none.
 : RESULT-TAIL ( -- )
+   RES-NULLABLE @ 0<> if s"  NULLABLE:SOME" GEN+ exit then
    RES-KIND @ R-NONE = if s"  drop" GEN+ exit then
    RES-KIND @ R-I32 = if s"  FFI:I32-RESULT" GEN+ exit then
    RES-KIND @ R-U32 = if s"  $FFFFFFFF and" GEN+ then ;
@@ -1495,7 +1502,7 @@ private
       s"  FFI:CALL-STRUCT " GEN+
       ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:STORE-RESULT" GEN+ exit
    then
-   RES-KIND @ R-POINTER = if s"  FFI:CALL-STRUCT-PTR" GEN+ exit then
+   RES-KIND @ R-POINTER = if s"  FFI:CALL-STRUCT-PTR" GEN+ RESULT-TAIL exit then
    s"  FFI:CALL-STRUCT drop" GEN+
    RESULT-TAIL ;
 
@@ -1541,7 +1548,7 @@ public
    [: CHECK-SCOPE
       OPEN @ 0 <> if E-FFI-SYNTAX throw then
       0 ARG-N ! -1 VAR-START ! 0 STRUCT-BYTES !
-      R-NONE RES-KIND !
+      R-NONE RES-KIND ! 0 RES-NULLABLE !
       TOK@ NAME!
       TOK@ SYM!
       EFFECT

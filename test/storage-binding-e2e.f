@@ -1,7 +1,9 @@
-\ Fixed storage binds the accessor that owns its allocation, and capture walks
-\ only cells whose stored type can contain a quotation.
+\ Fixed storage binds the accessor that owns its allocation, and capture marks
+\ cells by their stored type: a quotation cell as code, a nullable cell as a
+\ DATA address whether it holds an address or zero.
 require src/lib/test.f
 require src/habu/address-cells.f
+require src/lib/adt/nullable.f
 
 package STORAGE-BIND-TEST
 
@@ -31,14 +33,27 @@ TYPED-VARIABLE ROW n
 : PUBLIC-READ ( -- n ) STORAGE-BIND-TEST:ROW @ ;
 : PUBLIC-OFF ( -- n ) PUBLIC-BASE @ BYTE-VIEW data-base BYTE-VIEW - ;
 
-: XT-MARKED? ( n -- bool ) {: off:n :}
+\ The kind bits of the address-cell row at a DATA offset, -1 for no row.
+: CELL-KIND ( n -- n ) {: off:n :}
    ADDRESS-CELLS:LIVE-SPAN nip 0 ?do
       i ADDRESS-CELLS:ROW@ {: row:n :}
-      row SNAP-RELOC:XTCELL-OFF-MASK and off =
-      row SNAP-RELOC:XTCELL-DATA-TAG and 0= and if
-         true unloop exit
+      row SNAP-RELOC:XTCELL-OFF-MASK and off = if
+         row SNAP-RELOC:XTCELL-OFF-MASK invert and unloop exit
       then
-   loop false ;
+   loop -1 ;
+: XT-MARKED? ( n -- bool ) CELL-KIND 0 = ;
+: DATA-MARKED? ( n -- bool ) CELL-KIND SNAP-RELOC:XTCELL-DATA-TAG = ;
+
+\ A pointer to a family value binds no ptr a, so each nullable cell's address
+\ is recorded before it is allocated, as PUBLIC-BASE records ROW's.
+PTR-VARIABLE NULL-SOME-BASE
+here NULL-SOME-BASE !
+TYPED-VARIABLE NULL-SOME nullable<u8>
+PTR-VARIABLE NULL-NONE-BASE
+here NULL-NONE-BASE !
+TYPED-VARIABLE NULL-NONE nullable<u8>
+: NULL-STORE ( -- )
+   PUBLIC-BASE @ BYTE-VIEW NULLABLE:SOME NULL-SOME ! ;
 
 : RUN ( -- )
    17 PUBLIC-STORE PUBLIC-READ 17 T=
@@ -46,9 +61,12 @@ TYPED-VARIABLE ROW n
    3 s" abc" drop PLAIN-ROW-MAKE 4095 PLAIN !
    4095 PLAIN @ PLAIN-ROW-UNMAKE 3
    s" abc" T$= 3 T=
-   CHECKER-CAPTURE-PREPARE
+   NULL-STORE
+   ['] CHECKER-CAPTURE-PREPARE catch 0 T=
    PRIVATE-OFF XT-MARKED? TTRUE
    PUBLIC-OFF XT-MARKED? TFALSE
+   NULL-SOME-BASE @ BYTE-VIEW data-base BYTE-VIEW - DATA-MARKED? TTRUE
+   NULL-NONE-BASE @ BYTE-VIEW data-base BYTE-VIEW - DATA-MARKED? TTRUE
    5 PRIVATE-CALL 6 T=
    T-REPORT ;
 

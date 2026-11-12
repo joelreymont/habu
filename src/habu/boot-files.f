@@ -120,6 +120,7 @@ private
    BASELIB COMMON s" src/core/layout-buffer-address.f" ROW
    RESTLIB COMMON s" src/lib/span.f" ROW
    RESTLIB COMMON s" src/lib/adt/option.f" ROW
+   RESTLIB COMMON s" src/lib/adt/nullable.f" ROW
    RESTLIB COMMON s" src/lib/num-types.f" ROW
    RESTLIB COMMON s" src/lib/num-arithmetic.f" ROW
    RESTLIB COMMON s" src/lib/string.f" ROW

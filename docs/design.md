@@ -214,13 +214,15 @@ policy would give one logical type several stack shapes.
   (size, alignment, tag width narrowed to the variant count) for arrays and
   buffers of the type. Payloads stay cell-wide, so the descriptor needs no
   offset table.
-- `niche-null` and `boxed` change the stack shape to one cell and are refused
-  with `layout policy not yet supported`. A policy that changes the stack
-  shape must not be selectable before its constructor, `MATCH`, stack-operation
-  and invalid-tag lowering exists.
-- A null niche needs a checker-tracked non-null pointer type: with a plain
-  `ptr`, a null `some` would read as `none`. No such type exists, so no
-  declarable family qualifies.
+- `niche-null` and `boxed` change the stack shape to one cell. A policy that
+  changes the stack shape must not be selectable before its constructor,
+  `MATCH`, stack-operation and invalid-tag lowering exists; `boxed` has none
+  and is refused with `layout policy not yet supported`.
+- `niche-null` is one shape: an empty variant, then one holding a single `ptr`
+  field. The cell is the pointer, zero for the empty variant, so every cell
+  value is a variant and no tag can be invalid. With a plain `ptr` a null
+  `some` reads as `none`: the family means "an address or none", and
+  `nullable<a>` is it.
 - Any other name is `unknown layout policy`. Every refusal rolls back the
   family row and its layout state.
 
