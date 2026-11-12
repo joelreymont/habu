@@ -434,12 +434,8 @@ private
    h PLACE ;
 
 
-\ A refused request or spawn closes the capture descriptors before its code goes
-\ on (PROCESS:THROW-CAPTURE); a child becomes this task's capture child.
-: SPAWN ( ptr n -- )
-   0 >PID [: drop dup REQUEST PROCESS:SPAWN ;] catch {: rc:n :}
-   rc 0<> if drop drop rc PROCESS:THROW-CAPTURE then
-   nip PROCESS:CAPTURE-ADOPT-SPAWN ;
+: SPAWN ( ptr n -- ) {: h:ptr :}
+   [: h REQUEST PROCESS:SPAWN ;] PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 
 \ process.f's growing loop asks for room for `need` bytes and keeps the length

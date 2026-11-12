@@ -1072,9 +1072,11 @@ public
    CLOSE-ALL-CAPTURE-FDS
    CAPTURE-ENDING@ ;
 
-\ Every spawn shape ends here: a failed spawn closes the capture descriptors and
-\ throws; a live pid becomes the capture child, and the child's pipe ends close.
-: CAPTURE-ADOPT-SPAWN ( pid -- ) {: pid :}
+\ Runs a capture's spawn: a throw out of it ends the capture with its code, a
+\ negative pid with E-PROC-SPAWN; a pid becomes the child, its pipe ends closed.
+: CAPTURE-ADOPT-SPAWN ( [ -- pid ] -- ) {: spawn :}
+   0 >PID [: drop spawn execute ;] catch {: pid code:n :}
+   code 0<> if code THROW-CAPTURE then
    pid PID>N 0 < if E-PROC-SPAWN THROW-CAPTURE then
    pid CAPTURE-PID!
    IN-R CLOSE-CELL
@@ -1082,8 +1084,8 @@ public
    ERR-W CLOSE-CELL ;
 
 private
-: SPAWN-CAPTURE ( ptr u8 -- )
-   CAPTURE-NULL-INPUT OUT-W @ >FD ERR-W @ >FD SPAWN-RAW
+: SPAWN-CAPTURE ( ptr u8 -- ) {: pathz:ptr :}
+   [: pathz CAPTURE-NULL-INPUT OUT-W @ >FD ERR-W @ >FD SPAWN-RAW ;]
    CAPTURE-ADOPT-SPAWN ;
 
 public

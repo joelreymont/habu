@@ -289,22 +289,17 @@ public
    PROC-SPAWN-ARGV-ENV-IO PROCESS:WAIT PROCESS:STATUS>RC PROCESS:RC>RESULT ;
 
 : PROC-SPAWN-ARGV-ENV-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp PROCESS:CAPTURE-NULL-INPUT PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD PROC-SPAWN-ARGV-ENV-RAW {: pid :}
-   PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROCESS:THROW-CAPTURE then
-   pid PROCESS:CAPTURE-PID!
-   PROCESS:IN-R PROCESS:CLOSE-CELL
-   PROCESS:OUT-W PROCESS:CLOSE-CELL
-   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
+   [: [: pathz argv envp PROCESS:CAPTURE-NULL-INPUT
+         PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD PROC-SPAWN-ARGV-ENV-RAW ;]
+      [: PROC-ARGV-ENV-RESET ;] finally ;]
+   PROCESS:CAPTURE-ADOPT-SPAWN ;
 
-\ The staging is reset ahead of the failed spawn's throw, so a refused spawn
-\ cannot leave rows for the next one.
 : PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- )
    {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp PROCESS:IN-R @ >FD PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD
-   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
-   PROC-ARGV-ENV-RESET
-   pid PROCESS:CAPTURE-ADOPT-SPAWN ;
+   [: [: pathz argv envp PROCESS:IN-R @ >FD
+         PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD PROC-SPAWN-ARGV-ENV-RAW ;]
+      [: PROC-ARGV-ENV-RESET ;] finally ;]
+   PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 : RUN-ARGV-ENV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}

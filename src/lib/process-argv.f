@@ -112,22 +112,16 @@ public
    pathu LEN>N PROCESS:PATHZ-CAP >= if E-PROC-OUTPUT throw then ;
 
 : PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- ) {: pathz:ptr argv:ptr :}
-   pathz argv PROCESS:CAPTURE-NULL-INPUT PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD PROC-SPAWN-ARGV-RAW {: pid :}
-   PROC-ARGV-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROCESS:THROW-CAPTURE then
-   pid PROCESS:CAPTURE-PID!
-   PROCESS:IN-R PROCESS:CLOSE-CELL
-   PROCESS:OUT-W PROCESS:CLOSE-CELL
-   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
+   [: [: pathz argv PROCESS:CAPTURE-NULL-INPUT
+         PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD PROC-SPAWN-ARGV-RAW ;]
+      [: PROC-ARGV-RESET ;] finally ;]
+   PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 : PROC-SPAWN-ARGV-STDIN-CAPTURE ( ptr u8 ptr a -- ) {: pathz:ptr argv:ptr :}
-   pathz argv PROCESS:IN-R @ >FD PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD PROC-SPAWN-ARGV-RAW {: pid :}
-   PROC-ARGV-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROCESS:THROW-CAPTURE then
-   pid PROCESS:CAPTURE-PID!
-   PROCESS:IN-R PROCESS:CLOSE-CELL
-   PROCESS:OUT-W PROCESS:CLOSE-CELL
-   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
+   [: [: pathz argv PROCESS:IN-R @ >FD
+         PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD PROC-SPAWN-ARGV-RAW ;]
+      [: PROC-ARGV-RESET ;] finally ;]
+   PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 : RUN-ARGV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}

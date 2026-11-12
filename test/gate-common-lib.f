@@ -410,8 +410,9 @@ variable GE-EVAL-SRC-U
    rc GE-EVAL-FORK-EXIT ;
 
 : GE-EVAL-FORK-SPAWN ( -- )
-   PROC-FORK:RAW {: pid:pid :}
-   pid PID>N 0 < if E-PROC-SPAWN throw then
+   0 >PID [: drop PROC-FORK:RAW ;] catch {: pid code:n :}
+   code 0<> if code PROCESS:THROW-CAPTURE then
+   pid PID>N 0 < if E-PROC-SPAWN PROCESS:THROW-CAPTURE then
    pid PID>N 0= if GE-EVAL-FORK-CHILD then
    pid PID>N PROCESS:PID !
    PROCESS:OUT-W PROCESS:CLOSE-CELL

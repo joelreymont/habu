@@ -58,21 +58,17 @@ private
 
 : PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
-   pathz argv envp cwdz PROCESS:CAPTURE-NULL-INPUT PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD
-   SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
-   ARGV-ENV-CWD-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROCESS:THROW-CAPTURE then
-   pid PROCESS:CAPTURE-PID!
-   PROCESS:IN-R PROCESS:CLOSE-CELL
-   PROCESS:OUT-W PROCESS:CLOSE-CELL
-   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
+   [: [: pathz argv envp cwdz PROCESS:CAPTURE-NULL-INPUT
+         PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD SPAWN-ARGV-ENV-CWD-RAW ;]
+      [: ARGV-ENV-CWD-RESET ;] finally ;]
+   PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 : PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
-   pathz argv envp cwdz PROCESS:IN-R @ >FD PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD
-   SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
-   ARGV-ENV-CWD-RESET
-   pid PROCESS:CAPTURE-ADOPT-SPAWN ;
+   [: [: pathz argv envp cwdz PROCESS:IN-R @ >FD
+         PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD SPAWN-ARGV-ENV-CWD-RAW ;]
+      [: ARGV-ENV-CWD-RESET ;] finally ;]
+   PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 public
 
