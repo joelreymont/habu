@@ -16,6 +16,7 @@
 //    --key TEXT MODS       KeyboardEvent.key on the focused canvas
 //    --resize W H          change the drawing buffer and send a resize event
 //    --control KEY         select a transient tree row
+//    --open KEY            open a transient tree row whose more is true
 //    --load FILE           FILE's bytes as a scene
 //    --focus HEX, --highlight HEX
 //                          focus or highlight HEX's packed 16-byte identities,
@@ -66,6 +67,7 @@ const USAGE =
   "usage: bun host-cli.mjs <module.wasm> [--size W H] [--mcp URL TOKEN-FILE] " +
   "[--pointer X Y BUTTONS MODS | --move X Y BUTTONS MODS | --release X Y BUTTONS MODS | " +
   "--wheel DX DY MODS | --key TEXT MODS | --resize W H | --control KEY | " +
+  "--open KEY | " +
   "--load FILE | --focus HEX | --highlight HEX | " +
   "--typed TEXT | --repeat-typed TEXT N | --memory | " +
   "--answer STATUS FILE | --answer-id ID STATUS FILE | --fail | " +
@@ -206,6 +208,11 @@ function parse(args) {
       case "--control": {
         const [key] = take(1).map(BigInt);
         steps.push((m) => m.control(key).catch(report));
+        break;
+      }
+      case "--open": {
+        const [key] = take(1).map(BigInt);
+        steps.push((m) => m.control(key, true).catch(report));
         break;
       }
       case "--load": {

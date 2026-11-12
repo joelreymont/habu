@@ -69,10 +69,17 @@ PATH-CAP BUFFER: FILE
 : LINE ( ptr u8 n -- )
    SB-APPEND 10 SB-APPEND-C ;
 
+: ROWS-WANT ( -- )
+   \ navigation.f's tree line through Shelf's label.
+   s\" tree 2 [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"}," SB-APPEND
+   s\" {\"key\":2,\"parent\":1,\"label\":\"Part\"}," SB-APPEND
+   s\" {\"key\":3,\"parent\":2,\"label\":\"Face\"}," SB-APPEND
+   s\" {\"key\":4,\"parent\":0,\"label\":\"Shelf\"" SB-APPEND ;
+
 : START-WANT ( -- )
    SB-RESET
    s" hello" LINE
-   s\" tree 2 [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\"}]" LINE
+   ROWS-WANT s\" ,\"more\":true}]" LINE
    s" draw 2 0000" LINE
    s" highlight 2 0100" LINE
    s" draw 2 0100" LINE ;
@@ -95,6 +102,7 @@ PATH-CAP BUFFER: FILE
    s" --key" ARG+ s" Escape" ARG+ 8 N-ARG+
    s" --resize" ARG+ 100 N-ARG+ 80 N-ARG+
    s" --control" ARG+ 3 N-ARG+
+   s" --open" ARG+ 4 N-ARG+
    s" tree" TYPED+
    HOST 0 T=
    START-WANT
@@ -105,10 +113,13 @@ PATH-CAP BUFFER: FILE
    s" text key Escape 640,480 8" LINE
    s" text 9:0,0@100,80 0,0" LINE
    s" text 10:3,0@100,80 0,0" LINE
+   ROWS-WANT
+   s\" },{\"key\":5,\"parent\":4,\"label\":\"Board\"}," SB-APPEND
+   s\" {\"key\":6,\"parent\":4,\"label\":\"Bracket\"}]" LINE
    s\" tree 3 [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\"}]" LINE
    SB$ OUTPUT!
    ACTUAL!
-   s" pointer/wheel/key/resize/control fields and tree selection round-trip through Wasm" T-LABEL
+   s" input fields, tree opening and selection round-trip through Wasm" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
 : ZERO-CASE ( -- )
@@ -140,6 +151,8 @@ PATH-CAP BUFFER: FILE
    s" utf8" s" UTF-8" REJECT
    s" duplicate" s" duplicate tree key" REJECT
    s" parent" s" parent" REJECT
+   s" more" s" more must be a boolean" REJECT
+   s" unsent" s" parent 1 has more" REJECT
    s" selected" s" selected tree key" REJECT
    s" mask" s" highlight mask" REJECT
    s" short" s" highlight count" REJECT

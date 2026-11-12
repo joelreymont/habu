@@ -107,7 +107,8 @@ export async function start(Module, mount, { canvas, show, enable, sceneTree, sv
       return new Response(bytes, { headers: { "Content-Type": "application/wasm" } });
     },
     rpc,
-    onTree: sceneTree((key) => mounted.post({ kind: "control", key })),
+    onTree: sceneTree((key, opened) =>
+      mounted.post({ kind: "control", key, opened })),
     onText: show,
     onSvg: svg,
     onInput: enable,

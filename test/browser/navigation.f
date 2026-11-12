@@ -79,11 +79,27 @@ variable PRESS-MODS
    $3F800000 MATRIX 60 + U32!
    1 MASK c! 0 MASK 1+ c! 0 MASK 2 + c! ;
 
+: ROWS ( -- )
+   \ The tree's rows through Shelf's label; the caller closes Shelf's row and
+   \ the array.
+   SB-RESET
+   s\" [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"}," SB-APPEND
+   s\" {\"key\":2,\"parent\":1,\"label\":\"Part\"}," SB-APPEND
+   s\" {\"key\":3,\"parent\":2,\"label\":\"Face\"}," SB-APPEND
+   s\" {\"key\":4,\"parent\":0,\"label\":\"Shelf\"" SB-APPEND ;
+
 : START ( -- )
    INIT-GEOMETRY
    0 EVENT BYTES>N 0 0 RECORD
-   s\" [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\"}]" 2 TREE
+   ROWS s\" ,\"more\":true}]" SB-APPEND SB$ 2 TREE
    2 DRAW 2 HIGHLIGHT 2 DRAW ;
+
+: OPENED ( -- )
+   \ The tree again with Shelf's two children.
+   ROWS
+   s\" },{\"key\":5,\"parent\":4,\"label\":\"Board\"}," SB-APPEND
+   s\" {\"key\":6,\"parent\":4,\"label\":\"Bracket\"}]" SB-APPEND
+   SB$ 2 TREE ;
 
 : EVENT-TEXT ( -- )
    0 TEXT-U !
@@ -117,6 +133,16 @@ variable PRESS-MODS
       s\" [{\"key\":1,\"parent\":0,\"label\":\"A\"},{\"key\":1,\"parent\":0,\"label\":\"B\"}]" 0 TREE exit then
    s" parent" IS? if
       s\" [{\"key\":2,\"parent\":1,\"label\":\"Child\"}]" 0 TREE exit then
+   s" more" IS? if
+      s\" [{\"key\":1,\"parent\":0,\"label\":\"A\",\"more\":1}]" 0 TREE
+      exit
+   then
+   s" unsent" IS? if
+      SB-RESET
+      s\" [{\"key\":1,\"parent\":0,\"label\":\"A\",\"more\":true}," SB-APPEND
+      s\" {\"key\":2,\"parent\":1,\"label\":\"B\"}]" SB-APPEND
+      SB$ 0 TREE exit
+   then
    s" selected" IS? if
       s\" [{\"key\":1,\"parent\":0,\"label\":\"A\"}]" 2 TREE exit then
    s" mask" IS? if 2 MASK c! 2 HIGHLIGHT exit then
@@ -131,6 +157,7 @@ variable PRESS-MODS
    0 EVENT@ {: kind:n :}
    kind 0 = if START exit then
    kind 4 = if INVALID exit then
+   kind 10 = if 2 EVENT@ 1 = if OPENED exit then then
    kind 8 = if KEY-TEXT exit then
    kind 2 = if 5 EVENT@ PRESS-BUTTONS ! 6 EVENT@ PRESS-MODS ! then
    EVENT-TEXT ;

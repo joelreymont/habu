@@ -30,12 +30,22 @@ export function enable(enabled) {
   field.disabled = !enabled;
 }
 
-// Native buttons remain keyboard reachable. Rows retain their expansion and
-// focus when the module sends the same tree again with a different selection.
-export function sceneTree(onSelect) {
+// Native buttons remain keyboard reachable. A tree sent again with only its
+// selection changed keeps its buttons; a changed tree is rebuilt. A rebuild
+// keeps each row's expansion by key, a row the module sends again keeping its
+// key: a row open before stays open, and a new row starts open exactly when
+// its children have been sent. When focus was on a row's toggle or label, the
+// same control of the row with the same key has it after the rebuild, where
+// the row still has that control. A row whose more is true shows a toggle with
+// no children; opening it calls onControl(key, true), once per opening, and
+// the module answers with its children. A selection calls
+// onControl(key, false).
+export function sceneTree(onControl) {
   let snapshot = null;
   let selected = 0;
-  let buttons = new Map();
+  let buttons = new Map(); // a row key -> its label button
+  let toggles = new Map(); // a row key -> its toggle
+  let expanded = new Map(); // a row key -> whether its children are shown
 
   const select = (key) => {
     buttons.get(selected)?.setAttribute("aria-pressed", "false");
@@ -43,15 +53,48 @@ export function sceneTree(onSelect) {
     buttons.get(key)?.setAttribute("aria-pressed", "true");
   };
 
+  // The toggle of a row shown with branch, its children's list.
+  const toggle = (row, descendants, branch, open) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    const expand = (open) => {
+      branch.hidden = !open;
+      button.textContent = open ? "▾" : "▸";
+      const verb = open ? "Collapse" : "Expand";
+      button.setAttribute("aria-label", `${verb} ${row.label}`);
+      button.setAttribute("aria-expanded", String(open));
+      expanded.set(row.key, open);
+    };
+    expand(open);
+    button.addEventListener("click", () => {
+      expand(branch.hidden);
+      if (!branch.hidden && row.more && !descendants.length)
+        onControl(row.key, true);
+    });
+    return button;
+  };
+
+  // The key of the row whose control in controls has focus, or undefined.
+  const focused = (controls) => {
+    for (const [key, button] of controls)
+      if (button === document.activeElement) return key;
+  };
+
   return (rows, key) => {
-    const next = JSON.stringify(rows.map(({ key, parent, label }) => [key, parent, label]));
+    const next = JSON.stringify(rows.map(({ key, parent, label, more }) =>
+      [key, parent, label, more === true]));
     if (next !== snapshot) {
       const children = new Map([[0, []]]);
       for (const row of rows) {
         if (!children.has(row.key)) children.set(row.key, []);
         children.get(row.parent).push(row);
       }
+      const label = focused(buttons);
+      const opener = focused(toggles);
+      const known = expanded;
+      expanded = new Map();
       const nextButtons = new Map();
+      const nextToggles = new Map();
       const build = (parent) => {
         const list = document.createElement("ul");
         for (const row of children.get(parent)) {
@@ -59,21 +102,12 @@ export function sceneTree(onSelect) {
           const line = document.createElement("div");
           line.className = "tree-row";
           const descendants = children.get(row.key);
-          if (descendants.length) {
+          if (descendants.length || row.more) {
             const branch = build(row.key);
-            const toggle = document.createElement("button");
-            toggle.type = "button";
-            toggle.textContent = "▾";
-            toggle.setAttribute("aria-label", `Collapse ${row.label}`);
-            toggle.setAttribute("aria-expanded", "true");
-            toggle.addEventListener("click", () => {
-              const open = branch.hidden;
-              branch.hidden = !open;
-              toggle.textContent = open ? "▾" : "▸";
-              toggle.setAttribute("aria-label", `${open ? "Collapse" : "Expand"} ${row.label}`);
-              toggle.setAttribute("aria-expanded", String(open));
-            });
-            line.append(toggle);
+            const open = known.get(row.key) ?? descendants.length > 0;
+            const button = toggle(row, descendants, branch, open);
+            nextToggles.set(row.key, button);
+            line.append(button);
             item.append(line, branch);
           } else {
             const spacer = document.createElement("span");
@@ -84,7 +118,7 @@ export function sceneTree(onSelect) {
           const button = document.createElement("button");
           button.type = "button";
           button.textContent = row.label;
-          button.addEventListener("click", () => onSelect(row.key));
+          button.addEventListener("click", () => onControl(row.key, false));
           line.append(button);
           nextButtons.set(row.key, button);
           list.append(item);
@@ -93,7 +127,9 @@ export function sceneTree(onSelect) {
       };
       tree.replaceChildren(build(0));
       buttons = nextButtons;
+      toggles = nextToggles;
       snapshot = next;
+      (label === undefined ? toggles.get(opener) : buttons.get(label))?.focus();
     }
     select(key);
   };

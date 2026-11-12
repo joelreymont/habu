@@ -27,7 +27,10 @@
 //     response's result, c 1, or of its error, c 2; a transport failure is c 0
 //     with String(error)
 //   wheel: a, b signed device-pixel deltas; resize: a, b are 0
-//   control: a is a transient tree row key, never a persistent identity
+//   control: a is a tree row's key, transient across sessions and never a
+//     persistent identity; b is 1 when the person opens a row whose more is
+//     true, which the module answers by sending the tree again with that row's
+//     children, else 0, a selection
 //   load: a, b name the scene's bytes
 //   focus, highlight: a, b name packed 16-byte identities, b a multiple of 16;
 //     b 0 clears. What a scene or an identity means is the module's.
@@ -50,9 +53,12 @@
 //     removes a shown SVG
 //   3 text: a, b UTF-8 text
 //   4 post: span a, b whose first c bytes are the path and the rest the body
-//   5 tree: a, b strict UTF-8 JSON rows {key, parent, label}, c the selected key
-//     or 0; keys are unique positive safe integers, a parent is 0 or an earlier
-//     row's key
+//   5 tree: a, b strict UTF-8 JSON rows {key, parent, label} with an optional
+//     boolean more, true when the row has children and none of them are among
+//     the rows (absent is false); c the selected key or 0; keys are unique
+//     positive safe integers, a parent is 0 or an earlier row's key whose more
+//     is not true; a row the module sends again keeps its key from one tree to
+//     the next
 //   6 highlight: a one u8 per triangle (1 selected), b the count; it holds for
 //     every later draw, which must have that count
 //   7 request: span a, b of u64 method and path lengths, the method token, the
@@ -97,6 +103,8 @@ const RECORD_BYTES = 32;
 const CORNER_BYTES = 36n; // a triangle's three corners of f32 x y z
 const MATRIX_BYTES = 64n; // 16 f32, column-major
 const MAX_KEY = BigInt(Number.MAX_SAFE_INTEGER);
+// A tree row's keys, sorted: more is optional.
+const TREE_KEYS = new Set(["key,label,parent", "key,label,more,parent"]);
 
 // Events; start, kind 0, is the zero event block the first run reads.
 const BYTES = 1n;
@@ -207,10 +215,13 @@ export class Module {
     return this.turn([RESIZE, 0, 0, ...this.host.size(), 0, 0]);
   }
 
-  control(key) {
+  // A tree row selected, or opened when opened is true.
+  control(key, opened = false) {
     const id = BigInt(key);
     if (id <= 0n || id > MAX_KEY) throw new RangeError(`control key ${id} is not a positive safe integer`);
-    return this.turn([CONTROL, id, 0, ...this.host.size(), 0, 0]);
+    if (typeof opened !== "boolean")
+      throw new TypeError("control opened must be a boolean");
+    return this.turn([CONTROL, id, opened ? 1 : 0, ...this.host.size(), 0, 0]);
   }
 
   // A turn for a scene's bytes.
@@ -516,17 +527,23 @@ export class Module {
     }
     if (!Array.isArray(rows)) throw new Error("tree JSON must be an array");
     const keys = new Set();
+    const more = new Set(); // keys of rows whose more is true
     for (const row of rows) {
       if (row === null || typeof row !== "object" || Array.isArray(row) ||
-          Object.keys(row).sort().join(",") !== "key,label,parent" ||
+          !TREE_KEYS.has(Object.keys(row).sort().join(",")) ||
           !Number.isSafeInteger(row.key) || row.key <= 0 ||
           !Number.isSafeInteger(row.parent) || row.parent < 0 ||
           typeof row.label !== "string")
         throw new Error("tree row must have a positive safe key, earlier parent, and string label");
+      if ("more" in row && typeof row.more !== "boolean")
+        throw new Error(`tree row ${row.key} more must be a boolean`);
       if (keys.has(row.key)) throw new Error(`duplicate tree key ${row.key}`);
       if (row.parent !== 0 && !keys.has(row.parent))
         throw new Error(`tree parent ${row.parent} must be an earlier row key`);
+      if (more.has(row.parent))
+        throw new Error(`tree row ${row.key}'s parent ${row.parent} has more`);
       keys.add(row.key);
+      if (row.more) more.add(row.key);
     }
     if (c < 0n || c > MAX_KEY || (c !== 0n && !keys.has(Number(c))))
       throw new Error(`selected tree key ${c} is missing`);

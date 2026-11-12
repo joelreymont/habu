@@ -205,6 +205,30 @@ async function browser() {
     assert.equal((await state()).error, "", "stale callbacks must not report an error");
     await command("text"); await command("tree");
     assert.equal((await state()).image, blue.image, "text and tree records must leave the viewport alone");
+    // A row whose more is true opens from its toggle: the module sees b = 1
+    // and answers with the row's child Bracket and Bracket's child Bolt. The
+    // rebuilt tree keeps the row open and its toggle focused, and Bracket,
+    // whose child arrived with it, starts open.
+    await command("more");
+    const toggle = (label) =>
+      `document.querySelector('#tree button[aria-label$=" ${label}"]')`;
+    const shelf = toggle("Shelf");
+    const expanded = (label) =>
+      evaluate(`${toggle(label)}.getAttribute('aria-expanded')`);
+    assert.equal(await expanded("Shelf"), "false",
+      "a new row with more starts closed");
+    await evaluate(`${shelf}.focus(); ${shelf}.click()`);
+    await until(() => evaluate(
+      "document.querySelector('#tree').textContent.includes('Bolt')"));
+    assert.equal(
+      await evaluate("document.querySelector('#text').textContent"), "opened",
+      "the opening reaches the module with b = 1");
+    assert.equal(await expanded("Shelf"), "true",
+      "an opened row stays open across a changed tree");
+    assert.equal(await evaluate(`document.activeElement === ${shelf}`), true,
+      "the opened row's toggle keeps focus across the rebuild");
+    assert.equal(await expanded("Bracket"), "true",
+      "a new row whose children arrive with it starts open");
     await command("off");
     await evaluate("document.querySelector('input').value='red'; document.querySelector('form').dispatchEvent(new Event('submit',{cancelable:true}))");
     assert.equal((await state()).image, blue.image, "disabled form must not dispatch a typed turn");
@@ -236,7 +260,9 @@ async function browser() {
     const shot = await call("Page.captureScreenshot", { format: "png" });
     writeFileSync(join(output, "display.png"), Buffer.from(shot.data, "base64"));
     writeFileSync(join(output, "dom.json"), JSON.stringify(await state(), null, 2));
-    console.log("Headless Chrome: inert SVG rendering, replacement, draw clearing, stale callbacks, errors and input control passed");
+    console.log("Headless Chrome: inert SVG rendering, replacement, " +
+      "draw clearing, stale callbacks, errors, input control and tree " +
+      "opening passed");
     await mounted();
 
     // viewport.js alone on a page that owns only a canvas: mount, turns,

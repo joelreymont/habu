@@ -17,7 +17,8 @@ async function main() {
     module: "/module.wasm",
     fetch: (url, init) => fetch(url, init),
     rpc,
-    onTree: sceneTree((key) => view.post({ kind: "control", key })),
+    onTree: sceneTree((key, opened) =>
+      view.post({ kind: "control", key, opened })),
     onText: show,
     onSvg: svg,
     onInput: enable,

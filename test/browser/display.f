@@ -1,7 +1,9 @@
 \ display.f - checked Wasm peer for SVG images and typed-input control. It
 \ echoes a load, focus or highlight event as a text record: the kind's name,
 \ a space and the event's bytes in lowercase hex. Typed "fetch" fetches the
-\ page-relative path slow.
+\ page-relative path slow. Typed "more" sends a tree whose row Shelf has more;
+\ opening Shelf sends the text opened and the tree again with its child and
+\ grandchild.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
@@ -51,6 +53,23 @@ variable ECHO-U
    {: count:n :}
    2 CORNERS BYTES>N count MATRIX BYTES>N RECORD ;
 
+: ROWS ( -- )
+   \ Van and its child Shelf through Shelf's label; the caller closes Shelf's
+   \ row and the array.
+   SB-RESET
+   s\" [{\"key\":1,\"parent\":0,\"label\":\"Van\"}," SB-APPEND
+   s\" {\"key\":2,\"parent\":1,\"label\":\"Shelf\"" SB-APPEND ;
+
+: TREE ( ptr u8 n -- )
+   \ The rows closed by the string, sent with no selection.
+   SB-APPEND SB$ {: t:ptr tu:n :} 5 t BYTES>N tu 0 RECORD ;
+
+: OPENED ( -- )
+   \ Shelf's child Bracket arrives with Bracket's child Bolt.
+   s" opened" {: a:ptr u:n :} 3 a BYTES>N u 0 RECORD
+   ROWS s\" },{\"key\":3,\"parent\":2,\"label\":\"Bracket\"}," SB-APPEND
+   s\" {\"key\":4,\"parent\":3,\"label\":\"Bolt\"}]" TREE ;
+
 : IS? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    2 EVENT@ u <> if false exit then
@@ -67,6 +86,7 @@ variable ECHO-U
    s" off" IS? if 9 0 0 0 RECORD exit then
    s" text" IS? if s" still here" {: a:ptr u:n :} 3 a BYTES>N u 0 RECORD exit then
    s" tree" IS? if s" []" {: a:ptr u:n :} 5 a BYTES>N u 0 RECORD exit then
+   s" more" IS? if ROWS s\" ,\"more\":true}]" TREE exit then
    s" fetch" IS? if s" slow" {: a:ptr u:n :} 1 a BYTES>N u 0 RECORD exit then
    s" empty" IS? if 8 0 0 0 RECORD exit then
    s" negative" IS? if 8 0 -1 0 RECORD exit then
@@ -100,6 +120,7 @@ variable ECHO-U
       RED exit
    then
    0 EVENT@ 4 = if COMMAND exit then
+   0 EVENT@ 10 = if 1 EVENT@ 2 = if 2 EVENT@ 1 = if OPENED then then exit then
    0 EVENT@ 11 = if s" load " ECHO exit then
    0 EVENT@ 12 = if s" focus " ECHO exit then
    0 EVENT@ 13 = if s" highlight " ECHO then ;
