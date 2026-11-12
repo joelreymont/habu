@@ -1,5 +1,5 @@
 \ Initialized storage keeps its scope and nominal element type through the real
-\ checker load path. Run with a candidate built from this source tree.
+\ checker load path.
 
 require src/lib/test.f
 require src/lib/test/subject.f

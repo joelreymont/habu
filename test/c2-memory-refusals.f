@@ -70,8 +70,6 @@ public
    s" an ordinary declaration cannot invent unique scope and region binders" T-LABEL
    \ The bad stored signature is rendered before its code is thrown, so it exits 70.
    s" TRUSTED: C2-MEM-FORGE ( -- mut-view<p,q,a,u8> ) 0 0 ;" 70 SUBJECT:EXITED? TTRUE
-   \ src/lib/c2-owner.f seals C2-MEM: the engine refuses `package C2-MEM` by
-   \ name, exit 84, before the checker sees a body.
    s" the product refuses a reopen of C2-MEM by name" T-LABEL
    s" package C2-MEM ;package" ENGINE-ERROR:SEAL-PACKAGE s" C2-MEM" SUBJECT:REFUSED? TTRUE
    T-REPORT

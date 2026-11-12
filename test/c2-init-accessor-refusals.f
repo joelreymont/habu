@@ -29,9 +29,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   \ Both refusals are thrown inside the declaration transaction and rendered
-   \ by the runner that wraps it (sumtype.f TDECL-RUN, DECL-FRONT:RUN) before the code
-   \ is rethrown, so each exits 70.
+   \ Both refusals are thrown inside the declaration transaction and rendered by
+   \ the runner that wraps it before the code is rethrown, so each exits 70.
    s" an open-width field cannot derive initialized accessors" T-LABEL
    s" package C2IA STRUCTURE badwidth<a> DERIVE init FIELD value a FIELD tail n ;STRUCTURE ;package"
       70 REFUSED? TTRUE

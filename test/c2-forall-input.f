@@ -54,7 +54,7 @@ TRUSTED: SEED ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> state<p> ) 0 0 ;
    TAKE-REGION ;
 
 \ The surplus callback specializes before the loan. Only an extra parent view
-\ may leave that loan; the matched child-view escape is refused below.
+\ may leave that loan.
 : LOAN-PARENT-EXTRA
    ( read-view<p,p,u8> forall<q,[ read-view<q,q,u8> -- read-view<q,q,u8> ]> forall<j inside p,[ read-view<p,j,u8> -- read-view<p,p,u8> read-view<p,j,u8> ]> -- read-view<p,p,u8> read-view<p,p,u8> )
    {: loan :} GENERIC-SCOPE loan C2-MEM:WITH-READ ;
