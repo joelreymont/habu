@@ -1,6 +1,6 @@
 ---
 title: A refused evaluate at top level writes no JSON under --all-errors --json-errors
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-11T17:27:27.644922+02:00"
@@ -10,4 +10,4 @@ Problem: a refusal the engine raises while a checked run executes is written as 
 
 Fix (lead, to design): a refusal raised by the run under JSON-DIAGS is written as a record, in the interpreter's THROW-AT or by check.f turning a prose-only failed run into one.
 
-Acceptance: the run writes one JSON record for the refusal and diag-contract accepts it; a case in test/diag-position-test.f. Depends: none. Claim: agent=carl workspace=none (cause found; fix design owed by the lead).
+Acceptance: the run writes one JSON record for the refusal and diag-contract accepts it; a case in test/diag-position-test.f. Depends: none. Claim: unassigned.

@@ -1,6 +1,6 @@
 ---
 title: "A program can store into a DYNAMIC-BUFFER's NAME#base and NAME#ctl cells"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-11T17:38:32.541216+02:00"
@@ -10,4 +10,4 @@ Problem: a program can store into a dynamic buffer's NAME#base and NAME#ctl cell
 
 Fix (lead, to design): the generated cells are not words checked source can name, in the declaring package included; only the definer's generated accessors reach them, so load and check agree. The callers above get what they read another way (a null test on the head; the record handed to DYNAMIC-STORAGE).
 
-Acceptance: the cells are private to the definer's generated words and a rejected program proves it, in every mode. Depends: none. Claim: agent=carl workspace=none (cause found; fix design owed by the lead).
+Acceptance: the cells are private to the definer's generated words and a rejected program proves it, in every mode. Depends: none. Claim: unassigned.

@@ -1,6 +1,6 @@
 ---
 title: "Find a compile's stores without comparing all earlier data"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-10T12:39:52.114041+02:00"
@@ -10,4 +10,4 @@ Problem: as a file's compile or a new part's starts, src/habu/linker.f COPY-BELO
 
 Acceptance: COPY-BELOW and FIND-STORES together under 5 percent of a cold engine build by the build profile (`bin/hb --load tools/build-profile.f`); warm equal to cold; file-objects passing, STOP-GAP's plain store into a gap still refused.
 
-Claim: agent=carl workspace=.jj-ws.noindex/carl-below
+Claim: unassigned.

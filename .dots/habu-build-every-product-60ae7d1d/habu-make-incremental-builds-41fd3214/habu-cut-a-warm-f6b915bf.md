@@ -1,6 +1,6 @@
 ---
 title: "Cut a warm build's cost"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-07T22:36:22.404001+02:00"
@@ -12,4 +12,4 @@ Acceptance: profile the warm engine build; root-cause the largest cost and remov
 
 Depends: Joel's approval of the kernel-reuse design.
 
-Claim (carl, 2026-11-10): agent=carl worker workspace=.jj-ws.noindex/carl-bcopy, root-cause hunt of BYTE-COPY-LEN's per-cell guarded store (count and length of the copies in a warm kernel build, the guard's cost per store, where a copy that checks its destination once could live); ends at a reported cause, the fix is a second brief.
+Claim: unassigned.
