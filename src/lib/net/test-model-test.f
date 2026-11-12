@@ -35,20 +35,17 @@ TASK:SEMAPHORE IN-REC
 TASK:SEMAPHORE GO
 
 : KEY$ ( -- ptr u8 n ) s" test-model-key" ;
-\ The completed reply's text, a JSON object whose string holds escaped quotes.
 : TEXT$ ( -- ptr u8 n ) S\" {\qanswer\q:\qsay \\\qhi\\\q\q}" ;
 : REASON$ ( -- ptr u8 n ) s" max_output_tokens" ;
 
 : SCHEMA$ ( -- ptr u8 n )
    S\" {\qtype\q:\qobject\q,\qproperties\q:{\qanswer\q:{\qtype\q:\qstring\q}},\qrequired\q:[\qanswer\q]}" ;
-\ One function tool, and a reply's output of reasoning and one call of it.
 : TOOLS$ ( -- ptr u8 n )
    S\" [{\qtype\q:\qfunction\q,\qname\q:\qlookup\q,\qparameters\q:{\qtype\q:\qobject\q,\qproperties\q:{}}}]" ;
 : TOOL-OUTPUT$ ( -- ptr u8 n )
    S\" [{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qfunction_call\q,\qid\q:\qfc_1\q,\qcall_id\q:\qcall_1\q,\qname\q:\qlookup\q,\qarguments\q:\q{}\q,\qstatus\q:\qcompleted\q}]" ;
 
 
-\ A compaction's window: one kept user message, then the compaction item.
 : WINDOW$ ( -- ptr u8 n )
    S\" [{\qtype\q:\qmessage\q,\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qkept\q}]},{\qtype\q:\qcompaction\q,\qid\q:\qcmp_item\q,\qencrypted_content\q:\qsealed\q}]" ;
 
@@ -81,7 +78,6 @@ TASK:SEMAPHORE GO
    s" POST" s" /compact/responses/compact" [: nip WINDOW$ TEST-MODEL:COMPACTION! ;] HTTP:ROUTE ;
 
 
-\ Points the call at this server's routes under the path and asks one text.
 : AT ( ptr u8 n -- )
    {: path:ptr pu:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND

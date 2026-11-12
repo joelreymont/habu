@@ -37,9 +37,9 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 : AVAILABLE ( n -- n )
    dup 0= if drop E-UNAVAILABLE throw then ;
 
-\ The query table has no destroy functions (g_hash_table_new), so each
-\ identifier's C copy is Habu's: allocated and published before the copy, so
-\ LINUX-CLOSE frees it after the table on every exit.
+\ The query table has no destroy functions, so each identifier's C copy is
+\ Habu's: allocated and published before the copy, so LINUX-CLOSE frees it
+\ after the table on every exit.
 : ID-SPAN ( n n -- SPAN:span<u8> )
    {: cell:n u:n :}
    cell >BYTES u FFI:CSTR-ROOM SPAN:MAKE ;
@@ -74,7 +74,6 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    {: req:ptr :}
    req LINUX-OPEN
    \ Search retains a matching locked item even when its unlock prompt is dismissed.
-   \ https://gnome.pages.gitlab.gnome.org/libsecret/method.Service.search_sync.html
    0 0 req REQUEST-QUERY @ 12 0 req REQUEST-ERROR BYTE-VIEW SECRET-SEARCH
       req REQUEST-LIST !
    req REQUEST-ERROR @ 0 <> if E-ACCESS throw then

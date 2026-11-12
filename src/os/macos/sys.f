@@ -69,8 +69,7 @@ $1   constant NR-EXIT-GROUP
 \ A Linux-only call has no Darwin number: its constant is -1 and SYS, refuses
 \ every negative number, so a macOS arm that reaches one dies at engine build
 \ instead of reaching the kernel. 0 cannot mark an absent call: Darwin syscall
-\ 0 is the indirect `syscall` entry, which dispatches on x0. Only Linux arms
-\ emit these (habu1.f LINUX-SPAWN-FDS-CHILD and REGION-MEMFD, kernel-x64.f).
+\ 0 is the indirect `syscall` entry, which dispatches on x0.
 -1   constant NR-CLOSE-RANGE
 -1   constant NR-MEMFD-CREATE
 
@@ -86,8 +85,6 @@ $20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux
 : OS-OPEN-RD ( n -- )
    0 swap 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
 
-\ Send the signal in a register to this thread, as libc's pthread_kill(
-\ pthread_self(), sig) does: x0 = thread_self_trap(), then __pthread_kill.
 \ Clobbers x0, x1 and x16.
 : OS-RAISE-SELF ( n -- )
    {: sigreg :}

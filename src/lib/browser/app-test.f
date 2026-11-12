@@ -33,7 +33,6 @@ BUF:HDR-BYTES BUFFER: PAGE
 
 : PAGE$ ( -- ptr u8 n )  PAGE BUF:SPAN$ BUF:BLEN>N ;
 
-\ The page after the prefix.
 : AFTER$ ( -- ptr u8 n )
    PAGE$ {: a:ptr u:n :}
    PREFIX$ nip {: pu:n :}
@@ -57,7 +56,6 @@ BUF:HDR-BYTES BUFFER: PAGE
    ;MATCH ;
 
 
-\ The script of this id decodes to the file's bytes.
 : CARRIES ( ptr u8 n ptr u8 n -- )
    {: id:ptr iu:n path:ptr pu:n :}
    path pu WANT CAP FS:READ-ALL {: wu:n :}

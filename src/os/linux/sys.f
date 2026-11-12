@@ -19,7 +19,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 \ in the set. A kernel before 4.17 treats NOREPLACE as a hint and may map
 \ elsewhere; the boot's compare of the result with DATA-VA refuses that too.
 $104022 constant MAP-DATA-RESERVE
-\ The code region's two views map one memfd (habu2.f EM-MMAP-CODE-REGION).
+\ The code region's two views map one memfd.
 $01 constant MAP-SHARED
 $11 constant MAP-SHARED-FIXED
 
@@ -83,8 +83,7 @@ $100 constant AT-SYMLINK-NOFOLLOW
    {: pathreg :}
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
 
-\ Send the signal in a register to this thread: tgkill(getpid(), gettid(),
-\ sig). Clobbers x0, x1, x2, x8, x10 and x16.
+\ Clobbers x0, x1, x2, x8, x10 and x16.
 : OS-RAISE-SELF ( n -- )
    {: sigreg :}
    NR-GETPID SYS,  10 0 0 ADDI,

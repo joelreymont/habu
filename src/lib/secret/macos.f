@@ -6,7 +6,6 @@ require src/lib/secret.f
 package SECRET
 private
 
-\ https://developer.apple.com/documentation/security/keychain-items
 \ CF values and the returned data remain owned through each native call.
 LIBRARY /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
 FUNCTION: CF-STRING CFStringCreateWithBytes ( n ptr u8 n n n -- n ) ;FUNCTION
@@ -36,7 +35,7 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 : OWNED ( n -- n )
    dup 0= if drop E-UNAVAILABLE throw then ;
 
-\ Any status but success is a failure; the caller handles SEC-NOT-FOUND first.
+\ The caller handles SEC-NOT-FOUND first.
 : SEC-STATUS ( n -- )
    dup SEC-UNAVAILABLE = if drop E-UNAVAILABLE throw then
    0 <> if E-ACCESS throw then ;
@@ -53,7 +52,6 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    req REQUEST-LIBRARY2 @ name SYMBOL ;
 
 
-\ The query selects one generic password by service and account.
 : MAC-OPEN ( ptr request -- )
    {: req:ptr :}
    s\" /System/Library/Frameworks/Security.framework/Security\z" drop FFI:NOW FFI:DLOPEN
@@ -84,11 +82,9 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    value CF-BYTES value CF-SIZE req COPY-VALUE ;
 
 
-\ Updating in place keeps an existing item's access control; only a missing
-\ item is added. An add that meets a duplicate lost a race with a concurrent
-\ creator, so the value-only update runs once more against that item. The
-\ CFData borrows the caller's bytes (kCFAllocatorNull), so Habu allocates no
-\ copy of the value.
+\ Updating in place keeps an existing item's access control. An add that meets
+\ a duplicate lost a race with a concurrent creator, so the value-only update
+\ runs once more against that item.
 : MAC-WRITE ( ptr request -- )
    {: req:ptr :}
    req MAC-OPEN

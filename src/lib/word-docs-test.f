@@ -46,13 +46,10 @@ variable FIX-U
 : DOCS ( ptr u8 n -- )
    WORD-DOCS:RESET WORD-DOCS:FILE ;
 
-\ Record k is named a u, in package p pu, with effect e eu.
 : REC= ( n ptr u8 n ptr u8 n ptr u8 n -- ) {: k:n a:ptr u:n p:ptr pu:n e:ptr eu:n :}
    k WORD-DOCS:NAME$ a u T$=
    k WORD-DOCS:PACKAGE$ p pu T$=
    k WORD-DOCS:EFFECT$ e eu T$= ;
-
-\ ---- the recording rules -------------------------------------------------------
 
 : RULES-FIXTURE ( -- )
    0 FIX-U !
@@ -152,8 +149,6 @@ variable FIX-U
    0 s" KEPT" s" " s" --" REC=
    WORD-DOCS:RESET ;
 
-\ ---- storage past one chunk and one index capacity ------------------------------
-
 : MANY-FIXTURE ( -- )
    0 FIX-U !
    MANY 0 ?do
@@ -180,8 +175,6 @@ variable FIX-U
    c LONG-WIDTH + c@ STR-LF T=
    c cu + 1- c@ X-BYTE T=
    WORD-DOCS:RESET ;
-
-\ ---- a real source file --------------------------------------------------------
 
 : READ-FILE ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu FS:OPEN-SIZED {: fd size:n ok :}
