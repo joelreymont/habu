@@ -2658,3 +2658,7 @@ PARSES-DIAG-INSTALL
 NAMES-DIAG-INSTALL
 
 ;using
+
+\ `+` and `cell+` refuse a layout pointee; bounds stay the caller's. It loads
+\ before any structure's AT is generated, since AT postpones it.
+: record-at ( ptr a n -- ptr a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC

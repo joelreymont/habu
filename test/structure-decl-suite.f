@@ -268,6 +268,25 @@ STRUCTURE sdsplistn<a> DERIVE addr FIELD v a FIELD next ptr sdsplistn<n> ;STRUCT
 s" SDSNG ( ptr sdsplistn<a> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDSNC ( ptr sdsplistn<n> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
 
+\ The declaring package's own `*` does not reach its structure's AT: another
+\ package reads element 2 of three through it.
+package SDSTARP
+: * ( n n -- n ) + ;
+public
+STRUCTURE trio DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE
+;package
+package SDSTARQ
+3 TYPED-BUFFER SDSTAR-BUF SDSTARP:trio
+: SDSTAR-PUT ( n n -- )
+   {: v:n i:n :}
+   v v 1 + v 2 + SDSTARP-TRIO:MAKE i SDSTAR-BUF ! ;
+public
+: SDSTAR-THIRD ( -- n )
+   100 0 SDSTAR-PUT  200 1 SDSTAR-PUT  300 2 SDSTAR-PUT
+   0 SDSTAR-BUF 2 SDSTARP-TRIO:AT SDSTARP-TRIO:A @ ;
+;package
+SDSTARQ:SDSTAR-THIRD 300 T=
+
 \ Its own family as another family's argument is refused, a span's too, though a
 \ span's base only points at its element.
 DECL-DIAG:PROSE

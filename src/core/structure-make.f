@@ -142,17 +142,14 @@ SM-INSTALL-INIT
 
 ;package
 
-\ The two runtime words a generated address surface calls; global because a
-\ generated body names them unqualified from the declaring package.
+\ The runtime word a generated field accessor calls; global because a generated
+\ body names it unqualified from the declaring package.
 \ `field-project` outside the checker's window is a plain `+` with no retype;
 \ inside it, armed per accessor with a committed field id, the checker types it
 \ `ptr family<args> -- ptr field-type`.
-\ `record-at` ( ptr F cells -- ptr F ) exists because `+` and `cell+` refuse a
-\ layout pointee; bounds stay the caller's. `F:AT` bakes the family width.
-\ INTRINSIC tags each for the checker (checker.f CTL-INTRINSIC); a redefinition
-\ after `undefine` carries none.
+\ INTRINSIC tags it for the checker; a redefinition after `undefine` carries
+\ none.
 : field-project ( ptr a n -- ptr a ) + ;  INTRINSIC-FIELD-PROJECT INTRINSIC
-: record-at ( ptr a n -- ptr a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC
 
 ;using
 ;using

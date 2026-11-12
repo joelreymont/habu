@@ -1082,12 +1082,12 @@ PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
 \ validate live visibility and every plan-determined fixed registry.
 \ A row also carries the field-projection arming a generated address accessor
 \ needs (TDECL-ADDR-FIELD-WORD). The sealed window is single-shot and keyed on
-\ the accessor's name, and every generated definition is read twice (candidate
-\ preflight, evaluator), so the authority rides the row that names the word.
+\ the accessor's name, and every text row is read twice (candidate preflight,
+\ evaluator), so the authority rides the row that names the word.
 \ FID -1 means no arming: every constructor and derived row.
 $1000 constant TDPLAN-CAP-INIT
 4 constant TDPLAN-ROW-CAP-INIT
-7 cells constant TDPLAN-REC
+8 cells constant TDPLAN-REC
 $7FFFFFFFFFFFFFFF constant TDPLAN-BYTE-MAX
 TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 0 cells constant TDPLAN.SYM-OFF
@@ -1097,6 +1097,7 @@ TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 4 cells constant TDPLAN.NAME-U-OFF
 5 cells constant TDPLAN.FID-OFF
 6 cells constant TDPLAN.FOFF-OFF
+7 cells constant TDPLAN.BUILT-OFF
 -1 constant TDPLAN-NO-ARM
 create TDPLAN-BOOT TDPLAN-CAP-INIT allot
 create TDPLAN-ROW-BOOT TDPLAN-ROW-CAP-INIT TDPLAN-REC * allot
@@ -1218,6 +1219,7 @@ private
 : TDPLAN.NAME-U ( ptr a -- ptr a ) TDPLAN.NAME-U-OFF + ;
 : TDPLAN.FID ( ptr a -- ptr a ) TDPLAN.FID-OFF + ;
 : TDPLAN.FOFF ( ptr a -- ptr a ) TDPLAN.FOFF-OFF + ;
+: TDPLAN.BUILT ( ptr a -- ptr a ) TDPLAN.BUILT-OFF + ;
 
 : TDPLAN-SYM@ ( n -- n )
    TDPLAN-ROW TDPLAN.SYM @ ;
@@ -1256,6 +1258,7 @@ private
    TDGEN-NU @ r TDPLAN.NAME-U !
    TDPLAN-NO-ARM r TDPLAN.FID !
    0 r TDPLAN.FOFF !
+   0 r TDPLAN.BUILT !
    TDGEN-BUF TDGEN-U @ TDPLAN-APP
    10 TDPLAN-C, ;
 
@@ -1289,6 +1292,23 @@ private
    TDPLAN-NAME+ drop
    TDPLAN-WORD+ ;
 
+\ A built row plans ": NAME ( sig )" from TDGEN-BUF, its definition span the
+\ signature: its generator builds the word from both when the plan is
+\ evaluated, so a plan holding one is evaluated row by row.
+: TDPLAN-BUILT+ ( -- )
+   TDPLAN-NAME+ drop
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   TDGEN-NA @ TDGEN-BUF - {: noff:n :}
+   noff TDGEN-NU @ + 1 + {: soff:n :}
+   noff TDPLAN-BYTE-NEED r TDPLAN.NAME-OFF !
+   TDGEN-NU @ r TDPLAN.NAME-U !
+   soff TDPLAN-BYTE-NEED r TDPLAN.DEF-OFF !
+   TDGEN-U @ soff - r TDPLAN.DEF-U !
+   TDPLAN-NO-ARM r TDPLAN.FID !
+   0 r TDPLAN.FOFF !
+   1 r TDPLAN.BUILT !
+   TDGEN-BUF TDGEN-U @ TDPLAN-APP ;
+
 : TDPLAN-SPAN$ ( n n -- ptr u8 n ) {: off:n u:n :}
    off 0 < u 0 < or off TDPLAN-U @ > or IF
       s" sumtype: invalid generated declaration span" 76 die
@@ -1311,6 +1331,8 @@ public
 
 
 private
+
+: TDPLAN-TEXT? ( n -- bool ) TDPLAN-ROW TDPLAN.BUILT @ 0= ;
 
 \ The whole row text, ": NAME ( sig ) body ;", as the evaluator reads it;
 \ TDPLAN-DEF$ is the same span without ': ' and ';', the candidate form CHECK!
@@ -1336,10 +1358,16 @@ private
 : TDPLAN-PREFLIGHT-NAMES ( -- )
    TDPLAN-N @ 0 ?do i TDPLAN-NAME$ TDECL-NAME-PREFLIGHT-XT loop ;
 
+\ A built row registers its signature; a bad or duplicate one is refused here.
 : TDPLAN-PREFLIGHT-ROWS ( -- )
    TDPLAN-N @ 0 ?do
-      i TDPLAN-ARM
-      i TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
+      i TDPLAN-TEXT? IF
+         i TDPLAN-ARM
+         i TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
+      ELSE
+         i TDPLAN-DEF$ 4 - swap 2 + swap
+         i TDPLAN-NAME$ CHECKER-USIG-CERT-ADD
+      THEN
    loop
    CTOR-PEND-REQUIRE-DONE ;
 
@@ -1988,8 +2016,11 @@ public
 \   : PKG-BUF:AT   ( ptr PKG:buf n -- ptr PKG:buf ) 3 * record-at ;
 \   : PKG-BUF:BYTES ( -- n ) 24 ;
 \
-\ The bodies are ordinary checked text: no TRUST row, no set-check, no pending
-\ window. Outside the armed window `field-project` is `+` and `record-at` is
+\ The field accessors, BYTES and CELLS are ordinary checked text: no TRUST row,
+\ no set-check, no pending window. AT is built, not evaluated: its `*` and
+\ `record-at` are the words found when its generator was compiled, so the
+\ declaring package's own words cannot capture them.
+\ Outside the armed window `field-project` is `+` and `record-at` is
 \ `cells +`; the checker replaces the first only while this plan's window is
 \ live, and the second only on a layout pointee, which the plain rows fence. The
 \ committed field id is the whole authority: the checker re-derives family,
@@ -2016,18 +2047,24 @@ private
    TDPLAN-DERIVED+
    fid fid PF-BYTE-OFF@ TDPLAN-ARM+ ;
 
-\ Strides by the family's committed width. The multiply is baked because the row
-\ cannot scale: it keeps the pointee and adds cells, as `cells +` does on any
-\ other pointer.
-: TDECL-ADDR-AT-WORD ( n -- ) {: fam:n :}
+: TDECL-ADDR-AT-NAME ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" at" TDGEN-DRV-NAME
    fam TDGEN-ADDR-IN
-   s" n -- ptr " TDGEN-APP  fam TDGEN-OUT-TYPE
-   s"  ) " TDGEN-APP
+   s" n -- ptr " TDGEN-APP  fam TDGEN-OUT-TYPE  s"  )" TDGEN-APP
+   TDPLAN-BUILT+ ;
+
+\ Builds AT from its plan row's name and signature. It strides by the family's
+\ committed width, baked because `record-at`'s row cannot scale: it keeps the
+\ pointee and adds cells, as `cells +` does on any other pointer.
+: TDECL-ADDR-AT-WORD ( n n -- ) {: fam:n row:n :}
+   row TDPLAN-NAME$  row TDPLAN-DEF$  define-word
+   TDGEN-CLEAR
    fam TFAM-SLOTS@ TDGEN-DEC
-   s"  * record-at ;" TDGEN-APP
-   TDPLAN-DERIVED+ ;
+   TDGEN-BUF TDGEN-U @ body-append
+   postpone *
+   postpone record-at
+   postpone ; ;
 
 : TDECL-ADDR-SIZE-WORD ( n ptr u8 n n -- ) {: fam:n ta:ptr tu:n v:n :}
    TDGEN-CLEAR
@@ -2043,28 +2080,30 @@ private
    fam TFAM-FLD-COUNT@ 0 ?do
       fam  fs i +  TDECL-ADDR-FIELD-WORD
    loop
-   fam TDECL-ADDR-AT-WORD
+   fam TDECL-ADDR-AT-NAME
    fam s" bytes" fam TFAM-SLOTS@ CELL * TDECL-ADDR-SIZE-WORD
    fam s" cells" fam TFAM-SLOTS@        TDECL-ADDR-SIZE-WORD ;
 
 \ Evaluation is row by row, unlike the constructor set's single evaluator call,
 \ because each armed row must be armed again for the evaluator's reading. The
 \ plan is checked whole first (TDPLAN-PREFLIGHT), so a set that cannot certify
-\ reaches no evaluator.
-: TDECL-ADDR-EVAL ( -- )
+\ reaches no evaluator. The built row is AT, built in its place.
+: TDECL-ADDR-EVAL ( n -- ) {: fam:n :}
    TDECL-EVAL-ARMED @ 0= IF s" sumtype: accessor eval hook not installed" 76 die THEN
    TDPLAN-PREFLIGHT
    TDPLAN-N @ 0 ?do
-      i TDPLAN-ARM
-      i TDPLAN-FULL$ TDECL-EVAL-XT
+      i TDPLAN-TEXT? IF
+         i TDPLAN-ARM
+         i TDPLAN-FULL$ TDECL-EVAL-XT
+      ELSE fam i TDECL-ADDR-AT-WORD THEN
    loop ;
 
 : TDECL-ADDR-BODY ( n -- )
-   RES-FALSE [: dup TDECL-ADDR-PLAN TDECL-ADDR-EVAL ;] TDECL-GEN-PLACED ;
+   RES-FALSE [: dup TDECL-ADDR-PLAN dup TDECL-ADDR-EVAL ;] TDECL-GEN-PLACED ;
 
-\ Replay takes only the first reading: each row is armed and checked, so the
-\ accessor's effect registers under its own name, and no row reaches
-\ TDECL-EVAL-XT. The arming is live: this participant commits after DECL-EVENT
+\ Replay takes only the first reading: each text row is armed and checked and
+\ the built row registers its signature, so every accessor's effect registers
+\ under its own name, and no row reaches TDECL-EVAL-XT. The arming is live: this participant commits after DECL-EVENT
 \ advances the committed field watermark on both paths, so the baked field ids
 \ are committed ids.
 : TDECL-ADDR-REPLAY-BODY ( n -- )
