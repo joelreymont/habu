@@ -56,7 +56,6 @@ variable VALID
    fd close
    read-ok ;
 
-\ The next blank-delimited field in a registry token, as parse-name reads it.
 : FIELD ( ptr u8 n n -- n n )
    {: a:ptr u:n from:n :}
    from
@@ -73,8 +72,6 @@ variable VALID
       1+
    repeat ;
 
-\ A registry token must be the next retained primitive row; its header gives
-\ the raw source offset of the name without interpreting its body.
 : MATCH-NAME ( n n n -- bool )
    {: token:n row:n after:n :}
    token LINT-LEX:TOKEN {: a:ptr u:n :}
@@ -162,8 +159,7 @@ variable VALID
 
 public
 
-\ Raw source for a caller that validates an image-recorded name token. The
-\ bytes are borrowed until another read through this package.
+\ The bytes are borrowed until another read through this package.
 : FILE-BYTES ( ptr u8 n -- ptr u8 n bool )
    READ-FILE if 0 SOURCE-B SOURCE-U @ true exit then
    NULL$ false ;

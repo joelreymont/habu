@@ -7,8 +7,8 @@ public
 2 constant RUNNING
 3 constant DONE
 4 constant HALT-REQ
-\ A prepared task whose region C may enter through a callback binding
-\ (src/lib/task.f EXPOSE); it runs no body of its own and is never activated.
+\ A prepared task whose region C may enter through a callback binding; it runs
+\ no body of its own and is never activated.
 5 constant EXPOSED
 
 0 constant SIZE-OFF
@@ -25,9 +25,9 @@ $50 constant STATUS-OFF
 $58 constant STOP-OFF
 $60 constant RET-OFF
 $68 constant USER-XT-OFF
-\ A task's return stack and DO/LOOP frame stack are guarded mappings of its
-\ own (src/habu/stack-abi.f); their bases are published into the task's
-\ region copy at construction and the mappings released with the task.
+\ A task's return stack and DO/LOOP frame stack are guarded mappings of its own;
+\ their bases are published into the task's region copy at construction and the
+\ mappings released with the task.
 $70 constant RSTACK-OFF
 $78 constant RSTACK-U-OFF
 $80 constant LSTACK-OFF
@@ -37,17 +37,16 @@ $88 constant LSTACK-U-OFF
 $90 constant THROW-OFF
 \ The task's one-cell mailbox: the unread message, the TCB of whoever sent it,
 \ the pending flag MSG? reads, and the two semaphores that make a send block
-\ while the cell is full and a get block while it is empty (src/lib/task.f). Each
-\ semaphore record is a guard cell followed by one sem_t.
+\ while the cell is full and a get block while it is empty. Each semaphore
+\ record is a guard cell followed by one sem_t.
 $98 constant MSG-OFF
 $A0 constant MSG-SENDER-OFF
 $A8 constant MSG-PENDING-OFF
 $B0 constant MSG-FREE-OFF
 $D8 constant MSG-FULL-OFF
 \ The task's own wake-up: TASK:WAIT waits on this semaphore and TASK:WAKE posts
-\ it, so a loop that completes work for many tasks needs no semaphore per waiter.
-\ Same shape as the two mailbox records above, a guard cell then one sem_t, but
-\ it lives as long as its TCB in this process and the capture sweep destroys
+\ it. Same shape as the two mailbox records above, a guard cell then one sem_t,
+\ but it lives as long as its TCB in this process and the capture sweep destroys
 \ it; ACTIVATE and EXPOSE drain it, so every run and exposure opens at zero.
 $100 constant PARK-OFF
 \ The task's outcome, read by TASK:JOIN after the task has ended: the cell

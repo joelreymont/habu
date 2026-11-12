@@ -1,7 +1,6 @@
 \ created-body-abi.f - the record flag and engine cells that bound a created
-\ word's body. Loaded before checker.f at startup (src/habu/boot-files.f
-\ CHECKER), so the checker and src/habu/layout.f, which loads after it, read one
-\ definition. Constants only: no DATA.
+\ word's body. Loaded before checker.f at startup, so the checker and
+\ src/habu/layout.f, which loads after it, read one definition.
 package CREATED-BODY-ABI
 public
 
@@ -13,19 +12,11 @@ $0000800000000000 constant DNAME-ALLOC
 
 \ The latest run of `,` cells that starts at a created body, [COMMA-RUN,
 \ COMMA-END) as addresses, DATA offsets of engine cells. A `,` at COMMA-BASE
-\ starts a run there, one at COMMA-END extends it, any other leaves it alone
-\ (habu1.f BCOMMA).
-\ COMMA-RUN-CELL: written by habu1.f BCOMMA; zeroed by SND-ZERO-LIVE and by
-\ every path that lowers DP, beside the DPHW-CELL raise: habu1.f DP-LOWER, (and
-\ so BALLOT and habu2.f EM-EVAL-THROW-RECOVER), interpreter.f
-\ FRAME-ROLLBACK-CODE and src/core/generated-declaration-dictionary.f
-\ DICTIONARY-DP!. A zero RUN never equals a body start.
+\ starts a run there, one at COMMA-END extends it, any other leaves it alone.
+\ A path that lowers DP zeroes COMMA-RUN; a zero RUN never equals a body start.
 $6A8 constant COMMA-RUN-CELL
-\ COMMA-END-CELL: written by habu1.f BCOMMA, zeroed by SND-ZERO-LIVE.
 $6B0 constant COMMA-END-CELL
-\ COMMA-BASE-CELL: the start of the latest created body, the address its word
-\ pushes, written by habu2.f ADDR-TAIL and interpreter.f DEF-ADDR-TAIL, zeroed
-\ by SND-ZERO-LIVE.
+\ The start of the latest created body, the address its word pushes.
 $6B8 constant COMMA-BASE-CELL
 
 ;package
