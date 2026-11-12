@@ -92,7 +92,15 @@ public
    al v VECTOR-DATA @ ALLOC:FREE
    al v VECTOR> ALLOC:FREE ;
 
-\ n below 0 or past NEW's ceiling is E-VEC-CAPACITY; the block may move.
+\ Room for n elements, COUNT kept; the block may move. Until COUNT passes n,
+\ ENSURE, RESIZE and PUSH neither allocate nor move the block.
+: RESERVE ( ptr vector<t> n -- )
+   {: v:ptr k:n :}
+   k v VECTOR-WIDTH @ CHECK-COUNT
+   k v VECTOR-ROOM @ > if v k GROW then ;
+
+\ n below 0 or past NEW's ceiling is E-VEC-CAPACITY; the block may move when n
+\ passes the room it holds.
 : ENSURE ( ptr vector<t> n -- )
    {: v:ptr k:n :}
    k v VECTOR-WIDTH @ CHECK-COUNT

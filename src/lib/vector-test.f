@@ -117,11 +117,13 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 
 : BAD-COUNTS ( ptr ALLOC:allocator -- )
    {: al:ptr :}
-   s" VEC:ENSURE and VEC:RESIZE refuse a negative count or one too big" T-LABEL
+   s" VEC:ENSURE, VEC:RESIZE and VEC:RESERVE refuse a negative count or one too big" T-LABEL
    al 1 [type] n VEC:NEW {: v:ptr :}
    [: v -1 VEC:ENSURE ;] E-VEC-CAPACITY TTHROWSQ
    [: v -1 VEC:RESIZE ;] E-VEC-CAPACITY TTHROWSQ
    [: v $2000000000000001 VEC:ENSURE ;] E-VEC-CAPACITY TTHROWSQ
+   [: v -1 VEC:RESERVE ;] E-VEC-CAPACITY TTHROWSQ
+   [: v $2000000000000001 VEC:RESERVE ;] E-VEC-CAPACITY TTHROWSQ
    v VEC:DELETE ;
 
 TYPED-VARIABLE NO-VEC ptr VEC:vector<n>
@@ -140,7 +142,7 @@ variable ALLOCS
 variable RESIZE-CALLS
 variable FREES
 variable LAST-N
-8 TYPED-BUFFER FREED n
+10 TYPED-BUFFER FREED n
 TYPED-VARIABLE AL ALLOC:allocator
 
 : P-ALLOC ( ptr u8 n -- ptr u8 )
@@ -192,6 +194,19 @@ TYPED-VARIABLE AL ALLOC:allocator
    3 0 ?do v i VEC:AT @ i 1 + T= loop
    v VEC:DELETE ;
 
+: RESERVED ( -- )
+   s" VEC:RESERVE keeps COUNT; growth within it asks for no bytes and moves nothing" T-LABEL
+   AL 2 [type] n VEC:NEW {: v:ptr :}
+   7 v 0 VEC:AT !
+   v 40 VEC:RESERVE
+   v VEC:COUNT 2 T=  v 0 VEC:AT @ 7 T=
+   v 0 VEC:AT {: first:ptr :}  ALLOCS @ {: a0:n :}
+   38 0 ?do v VEC:PUSH drop loop
+   v 3 VEC:RESIZE  v 40 VEC:ENSURE  v 40 VEC:RESERVE
+   ALLOCS @ a0 T=  v 0 VEC:AT first = TTRUE
+   v VEC:COUNT 40 T=  v 0 VEC:AT @ 7 T=
+   v VEC:DELETE ;
+
 \ Last on POOL: growth that does not double fills it.
 : AMORTIZED ( -- )
    s" sixty-four pushes double the room in at most eight resize calls" T-LABEL
@@ -210,7 +225,7 @@ public
    al CELLS-N  al CELLS-R  al RECORDS  al EMPTY
    al GROWS  al PUSH-TURNS  al ENSURED  al RESIZED
    al SPANS  al BAD-COUNTS  DELETE-NULL
-   DELETES  REFUSED  REFUSED-GROWTH  AMORTIZED
+   DELETES  REFUSED  REFUSED-GROWTH  RESERVED  AMORTIZED
    a ARENA:RELEASE ;
 
 ;package
