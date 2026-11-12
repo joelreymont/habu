@@ -3,7 +3,6 @@
 require src/lib/adt/option.f
 require src/lib/test.f
 require src/lib/test/subject.f
-require src/lib/adt/option.f
 
 package CHECKER-SOUNDNESS
 public
