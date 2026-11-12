@@ -1737,8 +1737,8 @@ public
 variable LSOURCEEXECFINISH
 
 private
-\ B-EVAL and B-EVAL-RANGE jump, their arguments on the data stack, through the
-\ PROVIDED-XT cell.
+\ B-EVAL and the bodies after it jump, their arguments on the data stack,
+\ through their PROVIDED-XT cell.
 : B-EVAL ( -- )
    s" E-TASK-COMPILE habu: evaluate from a task" B-TASK-GUARD
    9 DATA PROVIDED-XT:EVALUATE-CELL LDR,  9 BR, ;
@@ -1746,6 +1746,10 @@ private
 : B-EVAL-RANGE ( -- )
    s" E-TASK-COMPILE habu: evaluate-range from a task" B-TASK-GUARD
    9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 BR, ;
+
+: B-POSTPONED ( -- )
+   s" E-TASK-COMPILE habu: postponed from a task" B-TASK-GUARD
+   9 DATA PROVIDED-XT:POSTPONE-CELL LDR,  9 BR, ;
 
 : BCREATE ( -- )
    s" E-TASK-COMPILE habu: create from a task" B-TASK-GUARD
@@ -4873,6 +4877,7 @@ package ENGINE-EMIT
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L
    s" evaluate-range" ['] B-EVAL-RANGE FPRIM-L
+   s" postponed" ['] B-POSTPONED FPRIM-L
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
    s" source-file-run" ['] B-SOURCE-FILE-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" source-exec-run" ['] BSOURCEEXECRUN FPRIM

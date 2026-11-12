@@ -578,13 +578,18 @@ $3868 constant ARENA-CELL
 \ PROVIDED-XT: the dispatch cell of each src/habu/prims.f row a captured
 \ runtime provides, stored with `xt!` and restored on every x86-64 boot as a
 \ fixed address row. A seeded x86-64 row is a stub that jumps through it, and
-\ x86-64's `evaluate-closed` calls EVALUATE-CELL's word; arm64's evaluate words
-\ run the cells' words.
+\ x86-64's `evaluate-closed` calls EVALUATE-CELL's word; arm64's rows run the
+\ cells' words.
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
 \ A seeded x86-64 `evaluate-range` jumps through its own cell the same way.
 $3860 constant EVALUATE-RANGE-CELL
+\ `define-word`, `body-append` and `postponed` run the running engine's
+\ interpreter words these cells hold.
+$3878 constant DEFINE-CELL
+$3880 constant APPEND-CELL
+$3888 constant POSTPONE-CELL
 ;package
 
 \ The checked interpreter's keyword test ( wid -- name len hit ), which every

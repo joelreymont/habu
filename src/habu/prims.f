@@ -816,6 +816,14 @@ EPPRIM: INTERPRETER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EC
 EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER body-append PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
+\ body-capture ( ptr u8 n -- ): body-append's routine under a second name.
+EPRIM: body-capture PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ postponed ( ptr u8 n -- ): runs the word the interpreter stores in
+\ PROVIDED-XT:POSTPONE-CELL.
+EPRIM: postponed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+EPREFIX-PROVIDED!
 \ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
 EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;

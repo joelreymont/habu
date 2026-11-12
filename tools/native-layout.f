@@ -49,6 +49,9 @@ create SLOTS
    POLICY-ABI:KEYWORD-CELL ,            0 ,
    ENGINE-MAIN:REPORT-CELL ,            0 ,
    PROVIDED-XT:EVALUATE-RANGE-CELL ,    0 ,
+   PROVIDED-XT:DEFINE-CELL ,            0 ,
+   PROVIDED-XT:APPEND-CELL ,            0 ,
+   PROVIDED-XT:POSTPONE-CELL ,          0 ,
    BPTRAMP-CELL ,                       0 ,
 here SLOTS - 2 cells / constant ROWS
 
