@@ -12,7 +12,7 @@ Acceptance: one green full suite run on current master, on an idle host, records
 
 Files: none.
 
-Verify: first, the full suite `bin/hb --load test/run.f` on a master tip with its wall time; the run docs/gate.md requires once on each landing tip can serve.
+Verify: first, the full suite `bin/hb --load test/run.f` on a master tip with its wall time; the run test/AGENTS.md requires once on each landing tip can serve.
 
 Depends: none.
 

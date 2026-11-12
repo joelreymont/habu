@@ -14,7 +14,7 @@ Acceptance: a design, decided, for checking each definition during its one readi
 
 Files: docs/compilation.md for the design; later src/core/checker.f, src/core/check-hook.f, src/habu/definers.f, src/habu/verify-source.f, src/core/type-family.f.
 
-Verify: the design is in docs/compilation.md and its lanes are dots with acceptance; each lane then keeps the suite and the convergence check (docs/gate.md) green and runs tools/compile-floor.f before and after.
+Verify: the design is in docs/compilation.md and its lanes are dots with acceptance; each lane then keeps the suite and the convergence check (test/AGENTS.md) green and runs tools/compile-floor.f before and after.
 
 Depends: none.
 

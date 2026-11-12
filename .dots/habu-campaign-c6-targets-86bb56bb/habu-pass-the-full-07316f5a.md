@@ -14,10 +14,10 @@ blocks:
 ---
 
 Problem: the full gate has never run on an x86 engine.
-Acceptance: ThinkPad `bin/hb --load test/run.f` green with the cross-built `hb-x64` at `bin/hb` in a copied tree; every red becomes a leaf under lane R, K or C; `docs/gate.md` names the x86 host and its gate command.
-Files: `docs/gate.md`; fixes land as their own leaves.
+Acceptance: ThinkPad `bin/hb --load test/run.f` green with the cross-built `hb-x64` at `bin/hb` in a copied tree; every red becomes a leaf under lane R, K or C; `test/AGENTS.md` names the x86 host and its gate command.
+Files: `test/AGENTS.md`; fixes land as their own leaves.
 Verify: ThinkPad `bin/hb --load test/run.f`.
 Depends: habu-inventory-the-gate-9d02ff35 (G1), habu-emit-x86-float-38de4a6f (K13), habu-marshal-ffi-calls-46dfd999 (R2), habu-add-linux-family-56c75040 (R3), habu-pass-task-signal-bdb4c4f4 (R4), habu-pass-crash-and-c451eb43 (R5), habu-build-stripped-images-b27cfad7 (R6), habu-write-snapshots-and-25a9e6b7 (R7).
-Route: Alder (shared: docs/gate.md).
+Route: Alder (shared: test/AGENTS.md).
 Ownership: krait (Intel lane).
 Claim: unassigned.

@@ -12,7 +12,7 @@ Acceptance: each word above deleted, or kept with the caller found, after rg sho
 
 Files: src/habu/rt.f, src/habu/xref.f, src/habu/address-cells.f, src/habu/layout.f, src/habu/task-abi.f, src/core/util.f, src/core/roles.f, src/habu/bundle-argv.f, tools/lint/shadow-lint.f.
 
-Verify: the candidate engine built as docs/gate.md "Qualifying a candidate" says (`bin/hb --load tools/hb-build.f -- --engine -o $OUT/hb`), `test/run.f` on it, and the convergence check `tools/chain-run-build.f` (docs/bootstrap.md "Convergence check"), since the engine's bytes change.
+Verify: the candidate engine built as docs/bootstrap.md "Refresh `bin/hb`" says (`bin/hb --load tools/hb-build.f -- --engine -o $OUT/hb`), `test/run.f` on it, and the convergence check `tools/chain-run-build.f` (docs/bootstrap.md "Convergence check"), since the engine's bytes change.
 
 Depends: none.
 
