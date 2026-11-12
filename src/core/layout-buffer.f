@@ -178,6 +178,7 @@ PTR-VARIABLE STGT-START
 
 \ The capture walk marks by the active sum tag: a shared payload slot is a code
 \ cell while it holds a quotation and an address cell while it holds a pointer.
+\ A niche value has no tag: its one cell is an address cell, zero or not.
 : STORAGE-MARK-TERM ( ptr n n -- ) {: base:ptr term:n :}
    term TFAM:TFAM-STORAGE-QUOT? if base @ base xt! exit then
    term T-RES TAG T-PTR = if base ptr-cell-mark exit then
@@ -194,6 +195,7 @@ PTR-VARIABLE STGT-START
    then drop
    term TFAM:TFAM-STORAGE-SUM? if
       {: fam:n :}
+      fam TFAM:TFAM-NICHE? if base ptr-cell-mark exit then
       base term T-WIDTH 1- cells + @
       fam swap TFAM:TFAM-STORAGE-VARIANT
       0= if drop E-LAYOUT-BUFFER throw then {: vid:n :}

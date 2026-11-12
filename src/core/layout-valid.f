@@ -253,6 +253,8 @@ variable CHECKS
    term LAYOUT-PARAM? 0= if exit then
    term PARAM>FAM {: fam:n :}
    fam TFAM-PRODUCT? if term off QUEUE-PRODUCT exit then
+   \ A niche value is one cell, zero or a `ptr`: it has no tag to check.
+   fam TFAM-NICHE? if exit then
    fam TFAM-SUM? fam TFAM-ENUM? or if term off QUEUE-SUM exit then
    s" lowering certificate non-layout family" 76 die ;
 
