@@ -31,7 +31,7 @@ require src/lib/net/http.f
 package TEST-ISSUER
 private
 
-3600 constant LIFE-S                \ an issued token's lifetime, its expires_in
+3600 constant LIFE-S
 $100 constant FIRST-CAP
 
 : KID$ ( -- ptr u8 n ) s" test-issuer" ;
@@ -255,8 +255,8 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
-\ A string member as sent, quotes and escapes included, for
-\ JSON:WRITE-FIELD-RAW; false when absent or not a string.
+\ A string member as sent, quotes and escapes included; false when absent or
+\ not a string.
 : MEMBER-RAW ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    MEMBER 0= if JSON:READ-CLOSE s" " false exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
@@ -280,8 +280,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    buf u 4 * 2 + 3 / BUF:N>BLEN BUF:GROW {: room :}
    a u room BASE64:ENCODE-URL drop ;
 
-\ The signature over the BUF's text appended as its third segment; the bytes
-\ are WITH-BYTES's scratch.
+\ The signature over the BUF's text appended as its third segment.
 : SIGNED+ ( ptr n ptr u8 NUM:alloc-byte-len -- )
    MEM:ALLOCATION>SPAN SPAN:$ {: buf:ptr out:ptr cap:n :}
    JWS-FIXTURE:PEM$ buf BUF$ out cap CRYPTO:RS256-SIGN {: su:n :}
@@ -391,14 +390,12 @@ private
    s" refresh_token" RENEWAL BUF-OF BUF$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
 
-\ The token of the claims written into the buffer, minted into another.
 : MINTED ( n n -- ) {: from:n into:n :} from BUF-OF BUF$ into BUF-OF MINT 2drop ;
 
 : ISSUE ( HTTP:response -- )
    CLAIMS TOKEN MINTED
    [: ISSUED-BODY ;] HTTP:JSON! ;
 
-\ A new access token and refresh token for the refresh token's user.
 : RENEW ( HTTP:response -- )
    ON-BEHALF CLAIMS TOKEN MINTED
    RENEWAL-CLAIMS CLAIMS RENEWAL MINTED
@@ -414,7 +411,6 @@ private
    answer status HTTP:STATUS!
    answer [: ERROR-BODY ;] HTTP:JSON! ;
 
-\ The media type, parameters aside, is a form's, compared case-insensitively.
 : FORM-TYPE? ( HTTP:request -- bool )
    s" Content-Type" HTTP:HEADER-OF$ 0= if 2drop false exit then {: t:ptr u:n :}
    t u 0 [char] ; FIND {: end:n :}
