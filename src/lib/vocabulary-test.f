@@ -157,11 +157,11 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 : LOADERS ( -- )
    s" bypass" s" hb: not in vocabulary: require at test/policy/bypass.f:2" TIER0-REFUSES
-   s" included" s" hb: not in vocabulary: included at test/policy/included.f:2" TIER0-REFUSES
-   s" evaluate" s" hb: not in vocabulary: evaluate at test/policy/evaluate.f:2" TIER0-REFUSES ;
+   s" included" s" hb: not in vocabulary: included at test/policy/included.f:1" TIER0-REFUSES
+   s" evaluate" s" hb: not in vocabulary: evaluate at test/policy/evaluate.f:1" TIER0-REFUSES ;
 
 : KEYWORDS ( -- )
-   s" trusted" s" hb: not in vocabulary: trusted: at test/policy/trusted.f:2" TIER0-REFUSES
+   s" trusted" s" hb: not in vocabulary: trusted: at test/policy/trusted.f:1" TIER0-REFUSES
    s" tick" s" hb: not in vocabulary: ' at test/policy/tick.f:2" TIER0-REFUSES
    s" string" S\" hb: not in vocabulary: c\q at test/policy/string.f:2" TIER0-REFUSES ;
 
@@ -176,7 +176,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" reopen" s" hb: policy: package PDEP predates the seal at test/policy/reopen.f:2" TIER0-REFUSES
    s" reopen-foreign" s" hb: policy: package PFOREIGN predates the seal at test/policy/reopen-foreign.f:2" TIER0-REFUSES
    s" foreign-call" s" hb: not in vocabulary: PFOREIGN:LEAK at test/policy/foreign-call.f:2" TIER0-REFUSES
-   s" undefined" s" hb: not in vocabulary: NOSUCHWORD at test/policy/undefined.f:2" TIER0-REFUSES ;
+   s" undefined" s" hb: not in vocabulary: NOSUCHWORD at test/policy/undefined.f:1" TIER0-REFUSES ;
 
 : WIDENING ( -- )
    s" allow-call" s" hb: not in vocabulary: VOCABULARY:ALLOW-PACKAGE at test/policy/allow-call.f:2" TIER0-REFUSES
@@ -185,9 +185,9 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ Tier 0 refuses at its compile rows and call lookup.
 : BODIES ( -- )
    s" capture" s" hb: not in vocabulary: require at test/policy/capture.f:2" TIER0-REFUSES
-   s" execute" s" hb: not in vocabulary: execute at test/policy/execute.f:2" TIER0-REFUSES
-   s" store" s" hb: not in vocabulary: ! at test/policy/store.f:2" TIER0-REFUSES
-   s" arith" s" hb: not in vocabulary: + at test/policy/arith.f:2" TIER0-REFUSES
+   s" execute" s" hb: not in vocabulary: execute at test/policy/execute.f:1" TIER0-REFUSES
+   s" store" s" hb: not in vocabulary: ! at test/policy/store.f:1" TIER0-REFUSES
+   s" arith" s" hb: not in vocabulary: + at test/policy/arith.f:1" TIER0-REFUSES
    s" dotq" S\" hb: not in vocabulary: .\q at test/policy/dotq.f:2" TIER0-REFUSES
    s" used" s" hb: not in vocabulary: LEAK at test/policy/used.f:3" TIER0-REFUSES
    s" internal" s" hb: not in vocabulary: STEP at test/policy/internal.f:4" TIER0-REFUSES ;
@@ -198,18 +198,18 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ the checker reads the body. `[package]`, in the design span, compiles.
 : MODELED ( -- )
    TIER0 s" package-literal" 0 s" " s" pdesign-name" RUNS
-   s" begin" s" hb: not in vocabulary: begin at test/policy/begin.f:2" TIER0-REFUSES
-   s" recurse" s" hb: not in vocabulary: recurse at test/policy/recurse.f:2" TIER0-REFUSES
-   s" quote" s" hb: not in vocabulary: [: at test/policy/quote.f:2" TIER0-REFUSES
+   s" begin" s" hb: not in vocabulary: begin at test/policy/begin.f:1" TIER0-REFUSES
+   s" recurse" s" hb: not in vocabulary: recurse at test/policy/recurse.f:1" TIER0-REFUSES
+   s" quote" s" hb: not in vocabulary: [: at test/policy/quote.f:1" TIER0-REFUSES
    s" btick" s" hb: not in vocabulary: ['] at test/policy/btick.f:2" TIER0-REFUSES
    s" char-literal" s" hb: not in vocabulary: [char] at test/policy/char-literal.f:2" TIER0-REFUSES
-   s" self" s" hb: not in vocabulary: R at test/policy/self.f:2" TIER0-REFUSES
-   s" exit" s" hb: not in vocabulary: exit at test/policy/exit.f:2" TIER0-REFUSES
+   s" self" s" hb: not in vocabulary: R at test/policy/self.f:1" TIER0-REFUSES
+   s" exit" s" hb: not in vocabulary: exit at test/policy/exit.f:1" TIER0-REFUSES
    s" bracket" s" hb: not in vocabulary: [ at test/policy/bracket.f:2" TIER0-REFUSES
-   s" postpone" s" hb: not in vocabulary: postpone at test/policy/postpone.f:2" TIER0-REFUSES
-   s" rstack" s" hb: not in vocabulary: >r at test/policy/rstack.f:2" TIER0-REFUSES
-   s" do" s" hb: not in vocabulary: do at test/policy/do.f:2" TIER0-REFUSES
-   s" stray-close" s" hb: not in vocabulary: :} at test/policy/stray-close.f:2" TIER0-REFUSES ;
+   s" postpone" s" hb: not in vocabulary: postpone at test/policy/postpone.f:1" TIER0-REFUSES
+   s" rstack" s" hb: not in vocabulary: >r at test/policy/rstack.f:1" TIER0-REFUSES
+   s" do" s" hb: not in vocabulary: do at test/policy/do.f:1" TIER0-REFUSES
+   s" stray-close" s" hb: not in vocabulary: :} at test/policy/stray-close.f:1" TIER0-REFUSES ;
 
 \ No keyword row: at tier 0 the row would answer a global name before any
 \ lookup. A row outside the design span is refused as a token; a row inside it
@@ -248,7 +248,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" allow-task-package" HARNESS!
    s" " ENGINE-ERROR:POLICY s" hb: policy: package PTKW publishes keyword DUP" S\" admitted\n0\n" RUNS
    s" allow-catch" HARNESS!
-   s" evaluate" 0 s" hb: not in vocabulary: evaluate at test/policy/evaluate.f:2" S\" 107\n" RUNS ;
+   s" evaluate" 0 s" hb: not in vocabulary: evaluate at test/policy/evaluate.f:1" S\" 107\n" RUNS ;
 
 \ A wordlist id at or above PROT-WID-MAX has no bit in the admission bitmap: it
 \ cannot be admitted, and a record in it is never in the vocabulary.
