@@ -8,10 +8,14 @@
 \ throwing action stop the rest or loses its code; admits a zero, negative or
 \ overflowing size; changes when a mapping is refused; fails on NULL-PTR;
 \ cannot be held in a run-time record's field; leaves a chunk mapped after
-\ RESET or RELEASE; runs an action twice when a release halted in it resumes.
+\ RESET or RELEASE; runs an action twice when a release halted in it resumes;
+\ moves a newest block it could grow in place, gives back an older block's
+\ bytes when it shrinks, or loses a block's bytes or leaves stale ones in it
+\ when its allocator resizes it.
 
 require src/lib/test.f
 require src/lib/span.f
+require src/lib/allocator.f
 require src/lib/arena.f
 require src/lib/task.f
 require src/lib/adt/result.f                 \ a halted task's join answer is MATCHed
@@ -310,12 +314,50 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    a ARENA:RELEASE
    ORDER @ 321 T= ;
 
+
+\ The newest block grows in place; an older one moves, its old bytes as written.
+: RESIZE-MOVES ( ptr ALLOC:allocator -- ptr u8 )
+   {: al:ptr :}
+   al 16 ALLOC:BYTES drop {: block:ptr :}
+   block 16 FILL-FF
+   al block 16 40 ALLOC:RESIZE 40 T= {: grown:ptr :}
+   grown block = TTRUE
+   al 16 ALLOC:BYTES drop {: mid:ptr :}
+   al grown 40 64 ALLOC:RESIZE 64 T= {: moved:ptr :}
+   moved grown <> TTRUE  moved 15 + c@ $FF T=  moved 16 + 48 ZEROED? TTRUE
+   grown c@ $FF T=  grown 15 + c@ $FF T=
+   al mid 16 8 ALLOC:RESIZE 8 T= mid = TTRUE
+   moved ;
+
+
+\ A shrunk newest block regrows in place past its old extent and reads zeros
+\ there; a growth past the first chunk moves the block and keeps its bytes.
+: RESIZE-REGROWS ( ptr ALLOC:allocator ptr u8 -- )
+   {: al:ptr block:ptr :}
+   block 64 FILL-FF
+   al block 64 20 ALLOC:RESIZE 20 T= block = TTRUE
+   al block 20 128 ALLOC:RESIZE 128 T= block = TTRUE
+   block 19 + c@ $FF T=  block 20 + 108 ZEROED? TTRUE
+   al block 128 $5000 ALLOC:RESIZE $5000 T= {: far:ptr :}
+   far block <> TTRUE
+   far c@ $FF T=  far 19 + c@ $FF T=  far 20 + $5000 20 - ZEROED? TTRUE ;
+
+
+\ 12. ALLOC:RESIZE through an arena's allocator: in place, by a move, after a
+\ shrink and past the first chunk.
+: RESIZES ( -- )
+   s" resize" T-LABEL
+   ARENA:NEW {: a:ptr :}
+   a ARENA:ALLOCATOR {: al:ptr :}
+   al al RESIZE-MOVES RESIZE-REGROWS
+   a ARENA:RELEASE ;
+
 public
 
 : RUN ( -- )
    T-RESET
    MANY LARGE ACTIONS-ONCE RESET-ZEROES CHILDREN WITH-RELEASES ACTION-THROWS
-   EDGES HELD UNMAPPED HALTED
+   EDGES HELD UNMAPPED HALTED RESIZES
    T-REPORT ;
 
 RUN

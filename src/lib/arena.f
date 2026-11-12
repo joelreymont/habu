@@ -3,7 +3,8 @@
 \ header sits at the start of its first chunk; each later chunk is the larger
 \ of a request with its chunk header and twice the chunk before it. No lock:
 \ one task uses an arena at a time. A handle used after RELEASE is undefined,
-\ as a HEAP record's is. An arena provides an allocator whose free does nothing.
+\ as a HEAP record's is. An arena provides an allocator whose free does nothing
+\ and whose resize leaves a moved block's old bytes in place.
 \ STORAGE CLASS. CALLER-OWNED: the caller releases each arena NEW makes.
 
 require src/lib/memory.f
@@ -169,6 +170,34 @@ CAST: >ACTION ( ptr u8 -- ptr action )
 
 \ The arena's allocator: its state is the arena's own first-chunk bytes.
 : SELF-ALLOC ( ptr u8 n -- ptr u8 ) swap >ARENA swap EXTENT BUMP ;
+
+
+\ A shrink zeroes the cut bytes before a later growth reads them or the
+\ newest block gives them back to its chunk.
+: ZERO-TAIL ( ptr u8 n n -- )
+   {: block:ptr old:n new:n :}
+   new old < if 0 block new + old new - SPAN:MAKE SPAN:FILL then ;
+
+
+\ True when the block is the newest allocation and its chunk has `more` bytes
+\ after it; `more` is below zero when the block shrinks.
+: IN-PLACE? ( ptr arena ptr u8 n n -- bool )
+   {: a:ptr block:ptr extent:n more:n :}
+   a NEWEST {: base:ptr size:n :}
+   block extent + base a ARENA-TOP @ + =
+   size a ARENA-TOP @ - more >= and ;
+
+
+: SELF-RESIZE ( ptr u8 ptr u8 n n -- ptr u8 )
+   {: st:ptr block:ptr old:n new:n :}
+   st >ARENA {: a:ptr :}
+   old EXTENT {: oe:n :}
+   new EXTENT oe - {: more:n :}
+   block old new ZERO-TAIL
+   a block oe more IN-PLACE? if more a ARENA-TOP +! block exit then
+   more 0 <= if block exit then
+   a oe more + BUMP {: moved:ptr :}
+   block moved old BYTE-COPY moved ;
 \ An arena frees its bytes together, at RESET or RELEASE.
 : SELF-FREE ( ptr u8 ptr u8 -- ) drop drop ;
 
@@ -179,7 +208,8 @@ public
    self >ARENA {: a:ptr :}
    self a ARENA-SELF !
    ARENA-BYTES a ARENA-TOP !
-   self [: SELF-ALLOC ;] [: SELF-FREE ;] a ARENA-ALLOCATOR ALLOC:INIT
+   self [: SELF-ALLOC ;] [: SELF-RESIZE ;] [: SELF-FREE ;]
+   a ARENA-ALLOCATOR ALLOC:INIT
    a ;
 
 
@@ -204,7 +234,7 @@ public
 
 
 \ The allocation and its action share one bump, so a refused mapping leaves
-\ neither.
+\ neither. The action runs on this address: the block is never resized.
 : ALLOC-DISPOSE ( ptr arena n [ ptr u8 -- ] -- ptr u8 n )
    {: a:ptr len:n run :}
    len EXTENT {: bytes:n :}

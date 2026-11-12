@@ -3,7 +3,8 @@
 \ zeroed bytes past the first chunk too; the allocator outlives a reset; a child
 \ arena has its own; DELETE and FREE leave earlier records readable; BYTES and
 \ FREE call a recording allocator's functions only for bytes, and INIT fills a
-\ record once.
+\ record once; RESIZE keeps a block's bytes, allocates for NULL-PTR, frees at
+\ zero, refuses a negative count and skips an equal one.
 require src/lib/test.f
 require src/lib/allocator.f
 require src/lib/arena.f
@@ -124,6 +125,7 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 variable TOP
 variable ALLOCS
 variable FREES-MADE
+variable RESIZES-MADE
 variable LAST-N
 variable FREED-STATE
 variable FREED-AT
@@ -144,9 +146,17 @@ TYPED-VARIABLE AL ALLOC:allocator
    1 FREES-MADE +!  st OFFSET FREED-STATE !  p OFFSET FREED-AT ! ;
 
 
+\ Moves every block, so a byte RESIZE keeps was copied.
+: P-RESIZE ( ptr u8 ptr u8 n n -- ptr u8 )
+   {: st:ptr block:ptr old:n new:n :}
+   1 RESIZES-MADE +!
+   st new P-ALLOC {: moved:ptr :}
+   block moved old new min BYTE-COPY moved ;
+
+
 : FILL ( ptr ALLOC:allocator -- )
    {: al:ptr :}
-   POOL [: P-ALLOC ;] [: P-FREE ;] al ALLOC:INIT ;
+   POOL [: P-ALLOC ;] [: P-RESIZE ;] [: P-FREE ;] al ALLOC:INIT ;
 
 
 : NO-CALLS ( -- )
@@ -182,9 +192,53 @@ TYPED-VARIABLE AL ALLOC:allocator
    NO-CALLS ONE-CALL REFUSED REFILLS ;
 
 
+: GROWN ( -- ptr u8 )
+   s" ALLOC:RESIZE keeps a block's bytes" T-LABEL
+   AL 8 ALLOC:BYTES drop {: block:ptr :}
+   7 block c!  9 block 7 + c!
+   AL block 8 24 ALLOC:RESIZE 24 T= {: grown:ptr :}
+   RESIZES-MADE @ 1 T=  grown c@ 7 T=  grown 7 + c@ 9 T=
+   grown ;
+
+
+: SAME-SIZE ( ptr u8 -- )
+   {: block:ptr :}
+   s" and answers the block with no call when the count is unchanged" T-LABEL
+   AL block 24 24 ALLOC:RESIZE 24 T= block = TTRUE
+   RESIZES-MADE @ 1 T= ;
+
+
+: NEGATIVE ( ptr u8 -- )
+   {: block:ptr :}
+   s" and refuses a negative count" T-LABEL
+   [: AL block -1 8 ALLOC:RESIZE drop drop ;] E-MEM-SIZE TTHROWSQ
+   [: AL block 24 -1 ALLOC:RESIZE drop drop ;] E-MEM-SIZE TTHROWSQ
+   RESIZES-MADE @ 1 T= ;
+
+
+: TO-ZERO ( ptr u8 -- )
+   {: block:ptr :}
+   s" and frees the block at zero bytes" T-LABEL
+   FREES-MADE @ {: f0:n :}
+   AL block 24 0 ALLOC:RESIZE 0 T= NULL-PTR = TTRUE
+   FREES-MADE @ f0 - 1 T=  FREED-AT @ block OFFSET T= ;
+
+
+: FROM-NULL ( -- )
+   s" and allocates for a NULL-PTR block" T-LABEL
+   ALLOCS @ {: a0:n :}
+   AL NULL-PTR 0 16 ALLOC:RESIZE 16 T= NULL-PTR <> TTRUE
+   ALLOCS @ a0 - 1 T=  RESIZES-MADE @ 1 T= ;
+
+
+\ Runs after CALLS, on the pool allocator it filled.
+: RESIZES ( -- )
+   GROWN dup SAME-SIZE dup NEGATIVE TO-ZERO FROM-NULL ;
+
+
 : RUN ( -- )
    T-RESET
-   RECORDS RESETS CHILDREN FREES CALLS ;
+   RECORDS RESETS CHILDREN FREES CALLS RESIZES ;
 
 RUN
 T-REPORT

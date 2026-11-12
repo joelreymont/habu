@@ -2,8 +2,9 @@
 \ they act on, each function taking the state first. A container takes one when
 \ made and keeps it, so the same container code runs on any allocator. Every
 \ allocator answers zeroed bytes and throws a memory error on a refused request.
-\ No word copies bytes into an allocator: a program writes bytes once, into the
-\ storage they live in, and a request to copy them points at the producer.
+\ Only RESIZE copies bytes, a block's own as it moves: a program writes bytes
+\ once, into the storage they live in, and a request to copy them in points at
+\ the producer.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/error.f
@@ -14,6 +15,7 @@ public
 STRUCTURE allocator OPAQUE DERIVE addr
    FIELD state ptr u8
    FIELD allocate [ ptr u8 n -- ptr u8 ]
+   FIELD resize [ ptr u8 ptr u8 n n -- ptr u8 ]
    FIELD free [ ptr u8 ptr u8 -- ]
 ;STRUCTURE
 
@@ -27,11 +29,13 @@ public
 
 \ Fills a zeroed record once; a filled one is E-ALLOC-STATE, so a
 \ container frees through the functions that gave it its bytes.
-: INIT ( ptr u8 [ ptr u8 n -- ptr u8 ] [ ptr u8 ptr u8 -- ] ptr allocator -- )
-   {: state:ptr alloc release al:ptr :}
+: INIT ( ptr u8 [ ptr u8 n -- ptr u8 ] [ ptr u8 ptr u8 n n -- ptr u8 ]
+         [ ptr u8 ptr u8 -- ] ptr allocator -- )
+   {: state:ptr alloc resize release al:ptr :}
    al ALLOCATOR-ALLOCATE @ ALLOCATE>N 0<> if E-ALLOC-STATE throw then
    state al ALLOCATOR-STATE !
    alloc al ALLOCATOR-ALLOCATE !
+   resize al ALLOCATOR-RESIZE !
    release al ALLOCATOR-FREE ! ;
 
 
@@ -48,6 +52,17 @@ public
    {: al:ptr p:ptr :}
    p NULL-PTR = if exit then
    al ALLOCATOR-STATE @ p al ALLOCATOR-FREE @ execute ;
+
+
+\ Keeps a block's first bytes, up to the smaller count, and zeroes added ones;
+\ the block may move, and the old pointer is then dead to the caller.
+: RESIZE ( ptr allocator ptr u8 n n -- ptr u8 n )
+   {: al:ptr block:ptr old:n new:n :}
+   old 0 < new 0 < or if E-MEM-SIZE throw then
+   new 0= if al block FREE NULL-PTR 0 exit then
+   block NULL-PTR = if al new BYTES exit then
+   new old = if block new exit then
+   al ALLOCATOR-STATE @ block old new al ALLOCATOR-RESIZE @ execute new ;
 
 
 

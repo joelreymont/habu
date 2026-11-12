@@ -273,7 +273,8 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
    [: al $7FFFFFFFFFFFFFFF [type] u8 VEC:NEW drop ;] E-VEC-CAPACITY TTHROWSQ ;
 
 \ An allocator bumping through POOL that counts its calls and frees, keeps the
-\ last length asked, records each freed offset in POOL and refuses over 2000.
+\ last length asked, records each freed offset in POOL, refuses over 2000 and
+\ moves each resized block.
 4096 BUFFER: POOL
 variable TOP
 variable ALLOCS
@@ -287,6 +288,11 @@ TYPED-VARIABLE AL ALLOC:allocator
    1 ALLOCS +!  len LAST-N !
    len 2000 > if E-MEM-SIZE throw then
    st TOP @ +  len 7 + -8 and TOP +! ;
+
+: P-RESIZE ( ptr u8 ptr u8 n n -- ptr u8 )
+   {: st:ptr block:ptr old:n new:n :}
+   st new P-ALLOC {: moved:ptr :}
+   block moved old new min BYTE-COPY moved ;
 
 : P-FREE ( ptr u8 ptr u8 -- )
    {: st:ptr p:ptr :}
@@ -319,7 +325,7 @@ TYPED-VARIABLE AL ALLOC:allocator
 public
 
 : RUN ( -- )
-   POOL [: P-ALLOC ;] [: P-FREE ;] AL ALLOC:INIT
+   POOL [: P-ALLOC ;] [: P-RESIZE ;] [: P-FREE ;] AL ALLOC:INIT
    ARENA:NEW {: a:ptr :}
    a ARENA:ALLOCATOR {: al:ptr :}
    al CELLS-N  al CELLS-R  al RECORDS  al EMPTY
