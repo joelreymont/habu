@@ -223,7 +223,7 @@ create MT-KEY-Z 122 c,
    [: MT-BAD-FIELD-HIGH ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-HASH ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-KEY-U ;] catch E-MAP-BAD-CAP MT=
-   [: MT-BAD-STATE-TAG ;] catch ENGINE-ERROR:BAD-TAG MT= ;
+   [: MT-BAD-STATE-TAG ;] catch E-MAP-BAD-CAP MT= ;
 
 : MT-TEST-INIT-CLEAR ( -- )
    MT-FILL-STORAGE

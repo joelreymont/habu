@@ -5,7 +5,6 @@
 \ capacity, malformed storage or a full table throws E-MAP-*.
 \ STORAGE CLASS. CALLER-OWNED: the caller's cells; no module state.
 
-require src/core/util.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/siphash.f
@@ -112,21 +111,11 @@ private
 : NUM-FIELD ( ptr a idx off -- ptr n )
    SLOT-FIELD BYTE-VIEW CELL-VIEW ;
 
-\ An uncaught code from 1 to 255 is the exit status alone, so the line goes
-\ first.
-: BAD-STATE ( n -- ) {: v:n :}
-   s" E-BAD-TAG" s" " 0 ERROR-TEXT:PREFIX
-   s" map slot state " ERROR-TEXT:TYPE
-   v 0< if s" -" ERROR-TEXT:TYPE then
-   v ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
-   S\" \x20outside 0..1\n" ERROR-TEXT:TYPE
-   ENGINE-ERROR:BAD-TAG throw ;
-
 : SLOT-STATE@ ( ptr a idx -- slot-state )
    SLOT-STATE-OFF >OFF NUM-FIELD @ case
       0 of MAP-SLOT--STATE:EMPTY endof
       1 of MAP-SLOT--STATE:OCCUPIED endof
-      dup BAD-STATE
+      E-MAP-BAD-CAP throw
    endcase ;
 
 : SLOT-STATE! ( slot-state ptr a idx -- ) {: m:ptr ix:idx :}
