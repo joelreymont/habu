@@ -129,6 +129,7 @@ public
 variable LFIND  variable LNUM  variable LDICT
 variable LCEMIT  variable LTOK  variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
+variable LUNSET-QUOTATION   variable LCATCH-CORRUPT   \ the exits many bodies share
 private
 \ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder reads this,
 \ not the registry: a payload record's dictionary index is the seeded count
@@ -428,7 +429,6 @@ variable THROW-NOREC-FB
 variable THROW-NOREC-FB2
 variable THROW-EVAL
 variable THROW-CORRUPT
-variable THROW-CORRUPT-MSG
 public
 variable SWL-LOOP
 variable SWL-END
@@ -3419,12 +3419,8 @@ package ENGINE-EMIT
 \ A typed quotation cell starts at zero. Reading it is valid, but no public
 \ quotation call may branch to that address, even beneath a catch handler.
 : BCALLABLE ( -- )
-   LBL LBL LBL {: live:label msg:label old:label :}
-   S\" hb: unset quotation\n" {: ma:ptr mu:n :}
-   9 live CBNZ,
-   0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-   0 ENGINE-ERROR:CALLABLE-ABI MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  ma mu BYTES,
+   LBL LBL {: live:label old:label :}
+   9 live CBNZ,  LUNSET-QUOTATION LABEL@ B,
    live LBL,  A CP CMP,  C-CC old BCOND,  ISB,
    old LBL, ;
 
@@ -3497,8 +3493,7 @@ private
 \ checker or compile error inside `evaluate` is a catchable throw and a catch
 \ inside the evaluated source still handles its own throws.
 : BTHROW-UNWIND ( -- )
-   LBL THROW-NOH !  LBL THROW-EVAL !  LBL THROW-CORRUPT !  LBL THROW-CORRUPT-MSG !
-   S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
+   LBL THROW-NOH !  LBL THROW-EVAL !  LBL THROW-CORRUPT !
    15 9 0 ADDI,                                        \ x15 = code
    12 DATA EVALD-CELL LDR,  12 THROW-EVAL LABEL@ CBNZ,
    11 DATA 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
@@ -3534,14 +3529,19 @@ private
    9 255 CMPI,  C-GT THROW-NOREC-FB2 LABEL@ BCOND,
    NR-EXIT-GROUP SYS,
    THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
-   THROW-CORRUPT LABEL@ LBL,
-   0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
-   0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
-   THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
+   THROW-CORRUPT LABEL@ LBL,  LCATCH-CORRUPT LABEL@ B, ;
 
 public
 \ BTHROW ( code -- ): unwind to the nearest catch handler.
 : BTHROW ( -- )  A G-POP  BTHROW-UNWIND ;
+
+\ The one copy of the lines BCALLABLE and BTHROW-UNWIND, laid in many bodies,
+\ branch to; each prints the lr its body held.
+: EMIT-SHARED-EXITS ( -- )
+   LUNSET-QUOTATION LABEL@ LBL,
+   s" E-CALLABLE-ABI habu: unset quotation" ENGINE-ERROR:CALLABLE-ABI DIE-LINE,
+   LCATCH-CORRUPT LABEL@ LBL,
+   s" E-CATCH-STACK habu: catch frame corrupt" ENGINE-ERROR:CATCH-STACK DIE-LINE, ;
 
 \ The fault entry: the crash handler resumes a faulting thread here with the
 \ code in x9, reaching it with ADR, so it sits next to the handler.
@@ -4188,16 +4188,13 @@ private
 \ set-tier ( n -- ): a primitive so it works on a file's first line; a tier is
 \ not a flag, so only 0 and 1 pass.
 : BSETTIER ( -- )
-   LBL LBL LBL {: bad:label done:label msg:label :}
-   S\" set-tier: tier must be 0 or 1\n" {: ma:ptr mu:n :}
+   LBL LBL {: bad:label done:label :}
    A G-POP                               \ x9 = requested tier
    9 1 CMPI,  C-HI bad BCOND,            \ unsigned > 1: rejects 2.. and every negative
    A DATA NCOMP-DISPATCH:TIER-CELL STR,
    done B,
    bad LBL,
-      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  ma mu BYTES,
+      s" E-SET-TIER habu: set-tier: tier must be 0 or 1" 70 DIE-LINE,
    done LBL, ;
 
 \ tier@ ( -- n ): the live tier.
@@ -5515,9 +5512,8 @@ private
    LBL LBL LBL LBL LBL LBL LBL LBL
    {: room-ok:label lower:label raise:label loop:label raised:label
       done:label clear-loop:label reset:label :}
-   LBL LBL LBL LBL
-   {: reset-loop:label init-bad:label init-msg:label append-done:label :}
-   S\" hb: definition occurrence alloc failed\n" {: ma:ptr mu:n :}
+   LBL LBL LBL
+   {: reset-loop:label init-bad:label append-done:label :}
    EM-DEF-OCC:LROOM LABEL@ LBL,
       SP SP 32 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
       10 DATA DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
@@ -5620,9 +5616,7 @@ private
       30 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  15 SP 24 LDR,
       SP SP 32 ADDI,  RET,
    init-bad LBL,
-      0 2 MOVZ,  1 init-msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 78 MOVZ,  NR-EXIT-GROUP SYS,
-   init-msg LBL,  ma mu BYTES, ;
+      s" E-MAP-FAIL habu: definition occurrence alloc failed" 78 DIE-LINE, ;
 
 \ A rollback's lower-or-retire step (evaluate's and the REPL's recovery,
 \ replay-close), x9 = the NDICT to lower to. With no task live it answers

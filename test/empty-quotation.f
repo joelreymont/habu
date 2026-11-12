@@ -32,11 +32,18 @@ variable ERR-U
    exe exeu >LEN src size >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N >r ERR-U ! OUT-U ! r> ;
 
+\ The exit's whole line up to the lr's 16 hex digits and its newline.
+: LINE$ ( -- ptr u8 n ) s" E-CALLABLE-ABI habu: unset quotation lr " ;
+
+: LR-DIGITS? ( -- bool )
+   true  ERR-U @ 1-  LINE$ nip ?do ERR i + c@ STR-HEX-DIGIT? and loop ;
+
 : FATAL ( ptr u8 n -- ) {: body:ptr size:n :}
    body size SOURCE$ RUN-SOURCE 86 T=
-   ERR$ nip 20 T=
-   ERR$ s" hb: unset quotation" CONTAINS? TTRUE
-   ERR 19 + c@ 10 T=
+   ERR$ nip LINE$ nip 17 + T=
+   ERR$ LINE$ STARTS-WITH? TTRUE
+   LR-DIGITS? TTRUE
+   ERR$ + 1- c@ 10 T=
    OUT$ s" BODY" CONTAINS? 0= TTRUE ;
 
 : CASES ( -- )

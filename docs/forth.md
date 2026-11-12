@@ -1812,8 +1812,9 @@ defined again binds its earlier text against every later record too.
   tails such as `[ -- ]` enforce their windows through wrappers and typed
   storage; name rows explicitly for generic callbacks (`[ R -- S ]`).
   A zero-initialized typed quotation may be fetched or dropped. Calling it
-  through `execute`, `catch`, `finally`, or `run-in-stack` exits with
-  `hb: unset quotation` on stderr; `catch` cannot recover that fatal error.
+  through `execute`, `catch`, `finally`, or `run-in-stack` exits 86 with
+  `E-CALLABLE-ABI habu: unset quotation lr <lr>` on stderr; `catch` cannot
+  recover that fatal error.
 - **Higher-order signatures publish themselves** once `CHECK!` passes (`DIP`,
   `KEEP`, row callbacks); no TRUST row to pin a scheme.
 - **Function passing is checked.** A quotation parameter (`[ a a -- bool ]`, `[

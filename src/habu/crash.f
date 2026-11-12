@@ -609,16 +609,14 @@ private
 \ BCALLBACK-THUNK). The profiler's SA_ONSTACK handler runs on the same one.
 \
 \ Each of the three writes x0, x1, x12 and the system call's own registers, and
-\ x2 on the path that exits, and nothing else, and holds no BL and no ADR into
-\ x9.
-: SIGSTKMSG$ ( -- ptr u8 n ) S\" hb: cannot install the signal stack\n" ;
+\ nothing else on the paths that return, and holds no BL and no ADR into x9.
 
 public
 \ sp drops SIGNAL-BYTES and the band above it is registered. A refused
 \ registration is named and fatal: the handler would run on the interrupted
 \ stack, and a machine-stack overflow would die unnamed again.
 : C-SIGNAL-STACK ( -- )
-   LBL LBL {: ok:label msg:label :}
+   LBL {: ok:label :}
    SP SP STACK-ABI:SIGNAL-BYTES SUBI-4K,
    SP SP SIGSTK-FRAME SUBI,
    12 0 MOVZ,  12 SP SIGSTK-FLAGS STR,
@@ -627,9 +625,7 @@ public
    0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
    SP SP SIGSTK-FRAME ADDI,                           \ ADD, not ADDS: the flags are the call's
    C-CC ok BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 SIGSTKMSG$ nip MOVZ,  NR-WRITE SYS,
-      0 STACK-ABI:MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  SIGSTKMSG$ BYTES,
+      s" E-MAP-FAIL habu: cannot install the signal stack" STACK-ABI:MAP-FAIL-RC DIE-LINE,
    ok LBL, ;
 
 \ The way out of the code that registered: SS_DISABLE, then the caller gives

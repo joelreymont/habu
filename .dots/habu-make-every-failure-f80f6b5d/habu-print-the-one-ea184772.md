@@ -1,9 +1,10 @@
 ---
 title: "Print the one line at habu1's and crash.f's kept exits"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-12T16:36:37.106969+02:00"
+closed-at: "2026-11-12T18:46:13.997270+02:00"
 ---
 
 Problem: these kept arm64 kernel exits (primitive bodies and routines the typed interpreter still calls; census at master 045c8ff4) write a fixed line off the shape `<class> habu: <text>[ <16 hex>] lr <16 hex>` (src/habu/crash.f LDIE-LINE): src/habu/habu1.f BCALLABLE :3429 ('hb: unset quotation', rc 86, inlined in execute, catch, run-stack, source-file-run, finally and c2-invoke); BTHROW-UNWIND THROW-CORRUPT :3542 ('hb: catch frame corrupt', rc 87, copied into every BTHROW expansion; habu2.f LEVCORRUPT already prints it in shape); BSETTIER :4202 ('set-tier: tier must be 0 or 1', rc 70); EMIT-DEF-OCC LINIT :5627 ('hb: definition occurrence alloc failed', rc 78); src/habu/crash.f C-SIGNAL-STACK :631 ('hb: cannot install the signal stack', rc 78). Each text is fixed when hb is built, so DIE-LINE, holds it. Settled elsewhere: habu2.f's kept exits are habu-print-the-one-339ad0d7; the interpreter's, fork's, SEAL-CAPTURE's and the hooks' are acceptance cases of habu-move-the-interpreter-d35780fa, habu-fork-only-to-59d3557e, habu-delete-the-trusted-42b30edd and habu-remove-the-checker-4425bcef; the spawn child's 127 (habu1.f :494, :747) reaches its caller as spawn's result; the silent 1..255 exits (habu1.f :3538, habu2.f :3034, die's caller text) are the program's status under design C; habu1.f :3539 and habu2.f :3059 belong to habu-uncaught-throws-name-1a43b055. Acceptance: each site above writes the one line through DIE-LINE, with its exit status unchanged, THROW-CORRUPT's copies sharing one line; a test that reaches each site through a real program shows it where one can. Depends: none. Claim: agent=worker workspace=.jj-ws.noindex/exits-habu1.

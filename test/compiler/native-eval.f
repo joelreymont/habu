@@ -315,6 +315,21 @@ $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
    LEN>N 0 T=
    ERR erru s" E-TASK-COMPILE habu: evaluate-closed from a task lr " STARTS-WITH? TTRUE ;
 
+\ The set-tier refusal's whole line up to the lr's 16 hex digits and its newline.
+: SET-TIER-LINE$ ( -- ptr u8 n )
+   s" E-SET-TIER habu: set-tier: tier must be 0 or 1 lr " ;
+
+: SET-TIER-PAST ( -- )
+   s" set-tier past 1 exits 70" T-LABEL
+   s" 2 set-tier" OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   PROCESS:ENDING>RC RC>N 70 T=
+   nip LEN>N {: erru:n :}
+   s" and prints its one line" T-LABEL
+   erru SET-TIER-LINE$ nip 17 + T=
+   ERR erru SET-TIER-LINE$ STARTS-WITH? TTRUE
+   true  erru 1-  SET-TIER-LINE$ nip ?do ERR i + c@ STR-HEX-DIGIT? and loop TTRUE
+   ERR erru + 1- c@ 10 T= ;
+
 \ ---- a definition a thrown text takes back keeps no row ----------------------
 \ A text that throws takes back what it defined, and its frame cuts the
 \ checker's records back to where the text began, so a later word is checked
@@ -374,7 +389,7 @@ variable ERR-U
    UNFINISHED
    UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED AGREEMENT OVERFLOW
    TOP-LEVEL
-   UNFINISHED-LINE IN-TASK
+   UNFINISHED-LINE IN-TASK SET-TIER-PAST
    NAME-THROWN ROW-THROWN
    CHECKED
    T-REPORT ;
