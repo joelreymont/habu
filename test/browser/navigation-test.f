@@ -1,5 +1,5 @@
-\ navigation-test.f - Wasm end-to-end browser input, tree, highlight and occlude
-\ records.
+\ navigation-test.f - Wasm end-to-end browser input, tree, highlight, pick and
+\ occlude records.
 \ The printed directory keeps the module and expected/actual CLI output.
 \ Each kind of delivery navigation.f receives, typed, key and occluded, runs
 \ once and four times, and both runs end with the same memory: every run frees
@@ -154,6 +154,19 @@ PATH-CAP BUFFER: FILE
    s" a redraw draws the held mesh with the held highlight" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
+: PICK-CASE ( -- )
+   \ 0.5's f32 bits are 1056964608.
+   HOST-OPEN s" pick" TYPED+
+   s" --picked" ARG+ 7 N-ARG+ 2 N-ARG+ s" 0.5" ARG+  s" pick" TYPED+
+   HOST 0 T=
+   START-WANT
+   s" pick 5 6 9" LINE
+   s" text 18:7,2@1056964608,9 640,480" LINE
+   s" pick 5 6 9" LINE
+   s" outstanding pick 9" LINE
+   s" a pick's answer reaches the module as a picked event, and a pick no step answers is outstanding" T-LABEL
+   OUT OUT-U @ SB$ T$= ;
+
 : OCCLUDE-CASE ( -- )
    HOST-OPEN s" occlude" TYPED+ s" --occluded" ARG+ s" 0100" ARG+
    HOST 0 T=
@@ -206,6 +219,7 @@ PATH-CAP BUFFER: FILE
       REJECT
    s" flags" s" flags 2 set a bit other than bit 0" REJECT
    s" colour" s" a draw row's colour byte 3 is 1, not 0" REJECT
+   s" pick-id" s" a pick needs a positive id, got 0" REJECT
    s" span" s" an occlude of 47 bytes, not whole 24-byte boxes" REJECT
    s" id" s" an occlude needs a positive id, got 0" REJECT ;
 
@@ -230,8 +244,8 @@ public
    rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
    s" browser navigation module validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   INPUT-CASE ZERO-CASE REDRAW-CASE REMESH-CASE OCCLUDE-CASE
-   UNANSWERED-CASE INVALID-CASES FREED-CASES
+   INPUT-CASE ZERO-CASE REDRAW-CASE REMESH-CASE PICK-CASE
+   OCCLUDE-CASE UNANSWERED-CASE INVALID-CASES FREED-CASES
    T-REPORT ;
 
 ;package

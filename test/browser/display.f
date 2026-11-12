@@ -20,7 +20,15 @@
 \ past the near plane, and one from the square's own z 0.5. Typed "many"
 \ sends occlude 9 of 4097 boxes, the last behind the left square, the others
 \ below every instance; its text gives bytes 4095 and 4096 in hex, the count
-\ of 1s and the id, since the echo holds 1024 bytes.
+\ of 1s and the id, since the echo holds 1024 bytes. Typed "pick", after
+\ "draw", picks with ids 1 to 4 a pixel of the left square's face 1, of the
+\ right square's face 0, of the background and one below the canvas, over the
+\ flat triangle's plane. Typed "nearer", after
+\ "draw", draws ids 6 and 7, mesh 1 at z 0.5 and 0.625, the farther last,
+\ through twice the identity moved by x 0.4, y -0.2 and z 0.5, so w is 2,
+\ and picks with id 5 a pixel of their face 1 that the identity leaves
+\ empty. Each picked event comes back as the text picked and its a, b, c and
+\ d in decimal.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
@@ -35,9 +43,10 @@ CAST: BYTES>N ( ptr u8 -- n )
 92 BUFFER: SQUARE-MESH
 50 BUFFER: TRIANGLE-MESH
 50 BUFFER: FLAT-MESH
-360 BUFFER: INSTANCE-ROWS
+504 BUFFER: INSTANCE-ROWS
 8 BUFFER: WORDS
 64 BUFFER: MATRIX
+64 BUFFER: SHIFTED
 4097 24 * BUFFER: BOXES
 512 BUFFER: IMAGE
 variable IMAGE-U
@@ -208,6 +217,30 @@ variable ECHO-U
    ROWS s\" },{\"key\":3,\"parent\":2,\"label\":\"Bracket\"}," SB-APPEND
    s\" {\"key\":4,\"parent\":3,\"label\":\"Bolt\"}]" TREE ;
 
+: PICK ( n n n -- )
+   \ The pixel at clip x and y in tenths, from the typed event's buffer width
+   \ and height, picked with an id.
+   {: x:n y:n id:n :}
+   15  10 x + 3 EVENT@ * 20 /  10 y - 4 EVENT@ * 20 /  id RECORD ;
+
+: PICKS ( -- )
+   -3 2 1 PICK  4 -2 2 PICK  0 7 3 PICK  -7 -11 4 PICK ;
+
+: SHIFT ( -- )
+   \ Twice the identity, w included, then x 0.4, y -0.2 and z 0.5 added.
+   $40000000 SHIFTED U32!  $40000000 SHIFTED 20 + U32!
+   $40000000 SHIFTED 40 + U32!  $40000000 SHIFTED 60 + U32!
+   $3ECCCCCD SHIFTED 48 + U32!  $BE4CCCCD SHIFTED 52 + U32!
+   $3F000000 SHIFTED 56 + U32! ;
+
+: NEARER ( -- )
+   \ Rows 5 and 6 at x and y -0.4; NDC 0.5, 0.2 is world 0.3, 0.3.
+   5 1 $BECCCCCD $BECCCCCD PLACE  5 6 0 $FFFFFFFF MARK
+   6 1 $BECCCCCD $BECCCCCD PLACE  6 7 0 $FFFFFFFF MARK
+   $3F200000 INSTANCE-ROWS 6 72 * + 44 + U32!  SHIFT
+   2 INSTANCE-ROWS 360 + BYTES>N 2 SHIFTED BYTES>N RECORD
+   5 2 5 PICK ;
+
 : IS? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    2 EVENT@ u <> if false exit then
@@ -223,6 +256,8 @@ variable ECHO-U
    s" occlude" IS? if OCCLUDE exit then
    s" edges" IS? if EDGES exit then
    s" many" IS? if MANY exit then
+   s" pick" IS? if PICKS exit then
+   s" nearer" IS? if NEARER exit then
    s" broken" IS? if s" <svg>" SVG exit then
    s" on" IS? if 9 1 0 0 RECORD exit then
    s" off" IS? if 9 0 0 0 RECORD exit then
@@ -290,6 +325,14 @@ variable ECHO-U
    4 EVENT@ 9 = if SUMMARY else s" occluded " ECHOED then
    32 CHAR+  4 EVENT@ DIGITS  ECHO-RECORD ;
 
+: SIGNED ( n -- )
+   dup 0< if [char] - CHAR+ negate then DIGITS ;
+
+: PICKED ( -- )
+   s" picked" NAMED
+   5 1 do 32 CHAR+ i EVENT@ SIGNED loop
+   ECHO-RECORD ;
+
 : DISPATCH ( -- )
    0 EVENT@ 0 = if
       0 EVENT BYTES>N 0 0 RECORD
@@ -301,6 +344,7 @@ variable ECHO-U
    0 EVENT@ 11 = if s" load " ECHO exit then
    0 EVENT@ 12 = if s" focus " ECHO exit then
    0 EVENT@ 13 = if s" highlight " ECHO exit then
+   0 EVENT@ 18 = if PICKED exit then
    0 EVENT@ 19 = if OCCLUDED then ;
 
 public

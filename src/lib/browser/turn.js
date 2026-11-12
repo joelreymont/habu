@@ -13,9 +13,9 @@
 // An event is 56 bytes at the address hello names: kind, a, b, c, d, buttons,
 // mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
 // 6 released, 7 wheel, 8 key, 9 resize, 10 control, 11 load, 12 focus,
-// 13 highlight, 14 notified, 15 tick, 16 file, 17 chunk, 19 occluded. c and d
-// are the drawing buffer's width and height in device pixels except for
-// answered, file, chunk and occluded.
+// 13 highlight, 14 notified, 15 tick, 16 file, 17 chunk, 18 picked,
+// 19 occluded. c and d are the drawing buffer's width and height in device
+// pixels except for answered, file, chunk, picked and occluded.
 //   bytes, typed, key: a, b name the fetched bytes, the field's text or
 //     KeyboardEvent.key (sent only while the canvas has focus)
 //   pointer, moved, released: a, b are x, y from the canvas's top-left; the
@@ -42,6 +42,13 @@
 //     or dropped
 //   chunk: a, b the bytes read, c the file number, d the offset; buttons 1, or
 //     0 when the read failed, with a, b String(error)
+//   picked: a the id (the row's u32 id) of the instance nearest at the pick's
+//     pixel, or -1 for none; b the face there (the fourth u16 of the
+//     triangle's first vertex, as the shader's face reads it), 0 for none; c
+//     the bits of the f32 depth there, z in [0, 1] after the matrix (0
+//     nearest), 1.0's bits for none; d the pick's id; buttons and mods the
+//     drawing buffer's width and height when the answer arrived, as answered
+//     gives them
 //   occluded: a, b one byte per box of the occlude record, in its order, 1
 //     when the box passed, else 0; 0 boxes answers 0 bytes. c 0, d the
 //     record's id, buttons and mods the buffer size when the answer arrived
@@ -103,6 +110,13 @@
 //   14 unmesh: a a held handle that no row of the last draw names, b and c 0,
 //     so a module draws without a mesh before it unmeshes it; the handle may
 //     be used again after
+//   15 pick: a x, b y, a pixel of the drawing buffer from its top-left as
+//     pointer events give them; c a positive i64 id. It reads the last draw
+//     before it in record order, as that draw's rows, meshes, highlight and
+//     matrix stand: a pick after a draw in the same run reads that draw. A
+//     pick before any draw, of a draw of 0 rows, or of a pixel outside the
+//     buffer answers none. A pick that fails, the device lost, reaches error
+//     as a reply failure does, and sends no event
 //   16 occlude: a, b a span of boxes, six f32 each in world space (the lowest
 //     x, y, z, then the highest), so b is a multiple of 24; c a positive i64
 //     id. It tests against the last draw before it in record order: its matrix
@@ -115,12 +129,12 @@
 //     drawn, and the plane can cut every face away while its inside is in
 //     view. After a draw of 0 rows, or after a resize and before the next
 //     draw, nothing is drawn, so every box in view passes
-// A post or request is answered for every HTTP status. Request, rpc, read and
-// occlude records are tagged. A host that takes tagged records, or fetches and
-// posts from a run that throws, provides error(error): the first reply failure
-// of a turn reaches it at once, each further one as an AggregateError of all
-// of them. An occlude that fails, the device lost, sends no event and reaches
-// error as a reply failure does.
+// A post or request is answered for every HTTP status. Request, rpc, read,
+// pick and occlude records are tagged. A host that takes tagged records, or
+// fetches and posts from a run that throws, provides error(error): the first
+// reply failure of a turn reaches it at once, each further one as an
+// AggregateError of all of them. An occlude that fails, the device lost,
+// sends no event and reaches error as a reply failure does.
 // The module maps clip space to pixels as x = (ndc.x + 1) * width / 2 and
 // y = (1 - ndc.y) * height / 2, origin top-left.
 //
@@ -128,14 +142,15 @@
 // module named in hello, calls run() and handles the records the run left in
 // [out-base, out-base + out-len), in order. The first run has no event: the
 // module's event block is zero, which reads as start. Fetch, post, request,
-// rpc, read and occlude records are requests: as the records are read, each is
-// decoded and each body copied, since later runs rewrite the storage they name
-// and growth detaches it. An occlude starts as it is read, so its GPU work is
-// queued before any later record's. Once the run's other records are handled,
-// the other tagged requests from that run start independently; legacy fetches
-// and posts still wait in order, including the requests made by their
-// replies. An answer is copied into pages reserved through the module, and the
-// module runs again with an event naming them.
+// rpc, read, pick and occlude records are requests: as the records are read,
+// each is decoded and each body copied, since later runs rewrite the storage
+// they name and growth detaches it, and a pick is made as it is read, so no
+// later record changes what it reads. An occlude starts as it is read, so its
+// GPU work is queued before any later record's. Once the run's other records
+// are handled, the other tagged requests from that run start independently;
+// legacy fetches and posts still wait in order, including the requests made by
+// their replies. An answer is copied into pages reserved through the module,
+// and the module runs again with an event naming them.
 // Reserve, copy and run are one synchronous stretch: the module imports nothing,
 // so no other turn runs between them, and host.size() is the only call there.
 // Runs are synchronous and never overlap, but other turns
@@ -176,6 +191,7 @@ const NOTIFIED = 14n;
 const TICK = 15n;
 const FILE = 16n;
 const CHUNK = 17n;
+const PICKED = 18n;
 const OCCLUDED = 19n;
 const ID_BYTES = 16;
 
@@ -195,8 +211,9 @@ const AFTER = 11n;
 const READ = 12n;
 const MESH = 13n;
 const UNMESH = 14n;
+const PICK = 15n;
 const OCCLUDE = 16n;
-const TAGGED = new Set([REQUEST, RPC, READ, OCCLUDE]);
+const TAGGED = new Set([REQUEST, RPC, READ, PICK, OCCLUDE]);
 const BOX_BYTES = 24n; // an occlude's box: six f32
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -223,8 +240,11 @@ export class Module {
   // {"result":…} or {"error":…}; params is the record's JSON text.
   // after(ms, token) runs tick(token) once ms have passed. read(file, offset,
   // length) -> Promise<Uint8Array> of the numbered file's bytes.
-  // occlude(boxes, id) with a copied Float32Array -> Promise<Uint8Array> of a
-  // byte per box, called as the record is read; id is as request's. Also
+  // pick(x, y, id) -> Promise of [instance, face, depthBits], numbers as
+  // event picked's a, b and c, called as the record is read; id is as
+  // request's. occlude(boxes, id) with a copied Float32Array ->
+  // Promise<Uint8Array> of a byte per box, called as the record is read; id
+  // is as request's. Also
   // mesh(handle, vertexCount, triangleCount, vertices, triangles) with copied
   // Uint16Arrays, unmesh(handle), draw(rows, count, matrix) with the rows'
   // bytes copied, highlight(words) with a copied Uint32Array, text(string),
@@ -340,11 +360,11 @@ export class Module {
     await this.turn([FILE, this.place(bytes), bytes.length, size, n, 0, 0]);
   }
 
-  // The event's run, which starts each occlude as it reads it, then the run's
-  // other requests. All tagged requests start independently; legacy requests
-  // keep their order and wait for their own recursive replies. A run's throw
-  // is passed on at once: its requests go on, and a legacy request that fails
-  // later reports to host.error.
+  // The event's run, which starts each pick and occlude as it reads it, then
+  // the run's other requests. All tagged requests start independently; legacy
+  // requests keep their order and wait for their own recursive replies. A
+  // run's throw is passed on at once: its requests go on, and a legacy request
+  // that fails later reports to host.error.
   async turn(event) {
     const [requests, thrown] = this.run(event);
     if (requests.some((request) => TAGGED.has(request.kind)) && typeof this.host.error !== "function")
@@ -404,6 +424,9 @@ export class Module {
         [read, bytes] = [0n, encoder.encode(String(error))];
       }
       await this.turn([CHUNK, this.place(bytes), bytes.length, file, offset, read, 0]);
+    } else if (kind === PICK) {
+      const [instance, face, depth] = await started;
+      await this.turn([PICKED, instance, face, depth, id, ...this.host.size()]);
     } else if (kind === OCCLUDE) {
       const bytes = await started;
       if (bytes.length !== count)
@@ -426,9 +449,9 @@ export class Module {
   }
 
   // Writes the event and runs the module; handles the records but the
-  // requests, starting each occlude as it is read, and answers [requests, the
-  // run's throw or null]. A run that throws has still made its records: the
-  // module waits on every request it wrote.
+  // requests, starting each pick and occlude as it is read, and answers
+  // [requests, the run's throw or null]. A run that throws has still made its
+  // records: the module waits on every request it wrote.
   run(event) {
     this.live();
     if (event) this.write(event);
@@ -448,6 +471,7 @@ export class Module {
         else if (kind === REQUEST) requests.push(this.request(a, b, c));
         else if (kind === RPC) requests.push(this.rpc(a, b, c));
         else if (kind === READ) requests.push(this.read(a, b, c));
+        else if (kind === PICK) requests.push(this.pick(a, b, c));
         else if (kind === OCCLUDE) requests.push(this.occlude(a, b, c));
         else this.record(kind, a, b, c);
       }
@@ -533,6 +557,14 @@ export class Module {
     return { kind: READ, file, offset, length };
   }
 
+  // A tagged pick of pixel x, y, made at once.
+  pick(x, y, id) {
+    if (id <= 0n) throw new RangeError(`a pick needs a positive id, got ${id}`);
+    if (typeof this.host.error !== "function")
+      throw new TypeError("host.error(error) is required for a pick's failure");
+    return { kind: PICK, id, started: this.host.pick(x, y, id) };
+  }
+
   // A tagged occlude of b / 24 boxes, copied and handed to the host at once.
   occlude(a, b, id) {
     if (b < 0n || b % BOX_BYTES !== 0n)
@@ -567,7 +599,7 @@ export class Module {
     return out;
   }
 
-  // Every record but a request, an rpc, a read or an occlude.
+  // Every record but a request, an rpc, a read, a pick or an occlude.
   record(kind, a, b, c) {
     switch (kind) {
       case HELLO:

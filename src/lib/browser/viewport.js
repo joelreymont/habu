@@ -61,14 +61,16 @@
 // inverse transpose times its determinant, takes to world: the sign of the
 // determinant keeps a mirroring transform's normal outward, and a normal the
 // cofactor matrix maps to zero, one perpendicular to the grid axis a flat 3x3
-// collapses, falls back to the triangle's own normal. A fragment is selected
-// when the instance's flags bit 0 is set or, with an offset not 0xFFFFFFFF,
-// bit face % 32 of highlight word offset + face / 32 is set; a selected
-// fragment's paint is mixed toward a mark chosen by the paint's Rec. 709
-// luma, of its encoded bytes. Metallic and roughness reach fs unused. box
-// draws one occlude box per instance as the 12 triangles of its faces: vertex
-// k takes corner corners[k], whose bit j picks the highest coordinate j in
-// place of the lowest. A box whose corners' clip z lie on both sides of 0,
+// collapses, falls back to the triangle's own normal. A face is its
+// triangle's first vertex's. A fragment is selected when the instance's flags
+// bit 0 is set or, with an offset not 0xFFFFFFFF, bit face % 32 of highlight
+// word offset + face / 32 is set; a selected fragment's paint is mixed toward
+// a mark chosen by the paint's Rec. 709 luma, of its encoded bytes. Metallic
+// and roughness reach fs unused. hit, after vs, marks the nearest fragment in
+// pick's one texel, with 1 in its fourth channel to tell a hit from the clear.
+// box draws one occlude box per instance as the 12 triangles of its faces:
+// vertex k takes corner corners[k], whose bit j picks the highest coordinate j
+// in place of the lowest. A box whose corners' clip z lie on both sides of 0,
 // the near plane, draws the full-viewport quad at depth 0 from vertices 0 to
 // 5 in place of its faces, which that plane can cut away while the box's
 // inside is in view.
@@ -82,7 +84,7 @@ struct Vertex {
   @location(2) c1: vec3<f32>,
   @location(3) c2: vec3<f32>,
   @location(4) c3: vec3<f32>,
-  @location(5) bits: vec2<u32>, // the instance's flags and offset
+  @location(5) row: vec3<u32>, // the instance's id, flags and offset
   @location(6) octahedral: vec2<f32>,
   @location(7) paint: vec4<f32>, // r, g, b and the 0 byte
   @location(8) surface: vec2<f32>, // metallic, roughness
@@ -96,6 +98,7 @@ struct Corner {
   @location(3) @interpolate(flat) paint: vec3<f32>,
   @location(4) @interpolate(flat) surface: vec2<f32>,
   @location(5) world: vec3<f32>,
+  @location(6) @interpolate(flat) id: u32,
 }
 
 fn unfold(e: vec2<f32>) -> vec3<f32> {
@@ -114,8 +117,8 @@ fn unfold(e: vec2<f32>) -> vec3<f32> {
   let side = select(1.0, -1.0, dot(v.c0, cofactor[0]) < 0.0);
   let w = side * (cofactor * unfold(v.octahedral));
   let n = select(vec3<f32>(0.0), normalize(w), dot(w, w) > 0.0);
-  return Corner(clip * vec4<f32>(p, 1.0), n, v.grid.w, v.bits,
-    v.paint.rgb, v.surface, p);
+  return Corner(clip * vec4<f32>(p, 1.0), n, v.grid.w, v.row.yz,
+    v.paint.rgb, v.surface, p, v.row.x);
 }
 
 fn selected(face: u32, bits: vec2<u32>) -> bool {
@@ -137,6 +140,10 @@ fn mark(paint: vec3<f32>) -> vec3<f32> {
   let lit = 0.3 + 0.7 * abs(dot(n, normalize(vec3<f32>(0.3, 0.5, 0.8))));
   let color = select(c.paint, mark(c.paint), selected(c.face, c.bits));
   return vec4<f32>(color * lit, 1.0);
+}
+
+@fragment fn hit(c: Corner) -> @location(0) vec4<u32> {
+  return vec4<u32>(c.id, c.face, bitcast<u32>(c.at.z), 1u);
 }
 
 fn corner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec4<f32> {
@@ -162,6 +169,9 @@ fn corner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec4<f32> {
   return corner(corners[k], lo, hi);
 }
 `;
+
+// A pick that finds no instance; 0x3F800000 is 1.0's bits.
+const NONE = [-1, 0, 0x3F800000];
 
 const ROW = 72; // bytes in an instance row
 const QUERIES = 4096; // WebGPU's most queries in one query set
@@ -218,7 +228,12 @@ function grouped(rows, count) {
 // draw's depth, cleared to 1 when made, and the matrix buffer its matrix;
 // occlude draws its boxes against them in passes of at most QUERIES occlusion
 // queries, one per box, and reads the resolved sample counts back through
-// buffers of its own, released once read.
+// buffers of its own, released once read. pick submits its probe draw of the
+// last draw's runs before it returns, so queue order puts it after that draw
+// and before any later write, and maps the pixel by the drawing buffer's size
+// when it is called, the size pointer events give. A buffer destroyed while a
+// submitted pick uses it lives until the pick's work completes (WebGPU's
+// destroy).
 function setup(canvas, context, device, release, fail) {
   device.lost.then((info) => fail(`WebGPU device lost: ${info.message}`));
   device.addEventListener("uncapturederror", (e) => fail(`WebGPU: ${e.error.message}`));
@@ -227,23 +242,27 @@ function setup(canvas, context, device, release, fail) {
   const module = device.createShaderModule({ code: SHADER });
   const column = (k) =>
     ({ shaderLocation: 1 + k, offset: 12 * k, format: "float32x3" });
+  const layouts = [
+    { arrayStride: 12, attributes: [
+      { shaderLocation: 0, offset: 0, format: "uint16x4" },
+      { shaderLocation: 6, offset: 8, format: "snorm16x2" }] },
+    { arrayStride: ROW, stepMode: "instance", attributes: [
+      column(0), column(1), column(2), column(3),
+      { shaderLocation: 5, offset: 52, format: "uint32x3" },
+      { shaderLocation: 7, offset: 64, format: "unorm8x4" },
+      { shaderLocation: 8, offset: 68, format: "unorm16x2" }] },
+  ];
   const pipeline = device.createRenderPipeline({
     layout: "auto",
-    vertex: {
-      module,
-      entryPoint: "vs",
-      buffers: [
-        { arrayStride: 12, attributes: [
-          { shaderLocation: 0, offset: 0, format: "uint16x4" },
-          { shaderLocation: 6, offset: 8, format: "snorm16x2" }] },
-        { arrayStride: ROW, stepMode: "instance", attributes: [
-          column(0), column(1), column(2), column(3),
-          { shaderLocation: 5, offset: 56, format: "uint32x2" },
-          { shaderLocation: 7, offset: 64, format: "unorm8x4" },
-          { shaderLocation: 8, offset: 68, format: "unorm16x2" }] },
-      ],
-    },
+    vertex: { module, entryPoint: "vs", buffers: layouts },
     fragment: { module, entryPoint: "fs", targets: [{ format }] },
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
+  });
+  const prober = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module, entryPoint: "vs", buffers: layouts },
+    fragment: { module, entryPoint: "hit", targets: [{ format: "rgba32uint" }] },
     primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
   });
@@ -266,6 +285,15 @@ function setup(canvas, context, device, release, fail) {
     layout: occluder.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: matrix } }],
   });
+  const probeMatrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
+  const probeBind = device.createBindGroup({
+    layout: prober.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: probeMatrix } }],
+  });
+  const texel = device.createTexture({ size: [1, 1], format: "rgba32uint",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+  const texelDepth = device.createTexture({ size: [1, 1], format: "depth24plus",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT });
   const depthTexture = () => {
     const texture = device.createTexture({
       size: [canvas.width, canvas.height], format: "depth24plus",
@@ -337,9 +365,14 @@ function setup(canvas, context, device, release, fail) {
     depth = depthTexture();
   };
 
+  // The last draw's runs and its matrix, copied, as a pick reads them; null
+  // before the first.
+  let last = null;
+
   // rows, count instance rows of held meshes (turn.js); 0 rows clears.
   const draw = (rows, count, clip) => {
     const [ordered, runs] = grouped(rows, count);
+    last = { runs, clip: new Float32Array(clip.slice().buffer) };
     if (count) {
       instances = grown(instances, ordered.byteLength, VERTEX | COPY_DST);
       device.queue.writeBuffer(instances, 0, ordered);
@@ -412,7 +445,56 @@ function setup(canvas, context, device, release, fail) {
     }
   };
 
-  return { mesh, unmesh, highlight, draw, occlude, resize, release };
+  // The last draw's matrix composed with the map of pixel px, py of a W by H
+  // buffer onto a 1x1 target, the pixel's centre onto the texel's.
+  const probed = (px, py, W, H) => {
+    const out = new Float32Array(16);
+    for (let k = 0; k < 16; k += 4) {
+      const [x, y, z, w] = last.clip.subarray(k, k + 4);
+      out.set([W * x + (W - 2 * px - 1) * w, H * y + (1 - H + 2 * py) * w,
+        z, w], k);
+    }
+    return out;
+  };
+
+  // [instance, face, depthBits] at pixel x, y (BigInts) of the last draw.
+  const pick = async (x, y) => {
+    const [width, height] = [canvas.width, canvas.height];
+    if (!last?.runs.length || x < 0n || y < 0n || x >= BigInt(width) ||
+        y >= BigInt(height))
+      return NONE;
+    device.queue.writeBuffer(probeMatrix, 0,
+      probed(Number(x), Number(y), width, height));
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{ view: texel.createView(), clearValue: [0, 0, 0, 0],
+        loadOp: "clear", storeOp: "store" }],
+      depthStencilAttachment: { view: texelDepth.createView(),
+        depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "discard" },
+    });
+    pass.setPipeline(prober);
+    pass.setBindGroup(0, probeBind);
+    pass.setVertexBuffer(1, instances);
+    for (const [handle, first, n] of last.runs) {
+      const { vertices, indices, count } = meshes.get(handle);
+      pass.setVertexBuffer(0, vertices);
+      pass.setIndexBuffer(indices, "uint16");
+      pass.drawIndexed(count, n, 0, 0, first);
+    }
+    pass.end();
+    const read = device.createBuffer({ size: 16, usage: MAP_READ | COPY_DST });
+    encoder.copyTextureToBuffer({ texture: texel }, { buffer: read }, [1, 1]);
+    device.queue.submit([encoder.finish()]);
+    try {
+      await read.mapAsync(GPUMapMode.READ);
+      const [id, face, depth, hit] = new Uint32Array(read.getMappedRange());
+      return hit ? [id, face, depth] : NONE;
+    } finally {
+      read.destroy();
+    }
+  };
+
+  return { mesh, unmesh, highlight, draw, pick, occlude, resize, release };
 }
 
 function modifiers(e) {
@@ -525,6 +607,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
       mesh: live((...args) => renderer.mesh(...args)),
       unmesh: live((handle) => renderer.unmesh(handle)),
       highlight: live((words) => renderer.highlight(words)),
+      pick: live((x, y) => renderer.pick(x, y)),
       occlude: live((boxes) => renderer.occlude(boxes)),
       draw: live((...args) => {
         if (shown) {

@@ -40,6 +40,12 @@
 //    --answer-rpc ID FILE  answers the waiting rpc with ID with FILE's JSON
 //                          text, {"result":…} or {"error":…}
 //    --fail-rpc ID         fails the waiting rpc with ID, as a lost parent does
+//    --picked INSTANCE FACE DEPTH
+//                          answers the oldest waiting pick with INSTANCE, -1
+//                          to 0xFFFFFFFF, FACE, 0 to 0xFFFF, and DEPTH, a
+//                          decimal whose f32 is finite, sent as its f32 bits;
+//                          a value outside these is a usage error, and none
+//                          waiting a failure
 //    --occluded HEX        answers the oldest waiting occlude with HEX's bytes,
 //                          one per box; none waiting, or a byte count other
 //                          than its boxes, is a failure
@@ -52,14 +58,15 @@
 // line per record, a request's when the host makes it: hello, fetch <path>,
 // post <path> <length> <body in hex>, request <method> <path> <id> <length>
 // <hex>, rpc <method> <id> <params JSON>, after <ms> <token>, read <file>
-// <offset> <length>, occlude <boxes> <id>, tree <selected> <JSON>, mesh
-// <handle> <V> <T>, unmesh <handle>, highlight <words> <words in hex,
-// little-endian>, draw <count> then each row's <handle>/<id>/<flags>/<offset
-// or ->/<rrggbb>/<metallic>/<roughness>, the last two the u16s in decimal, svg
-// <length> <bytes in hex>, input <0|1>, text <string>; a highlight or draw of
-// none prints only its count. At the end, outstanding <fetch|post> <path>,
-// outstanding request <method> <path> <id>, outstanding rpc <method> <id> or
-// outstanding occlude <id>. A --tick with no after
+// <offset> <length>, pick <x> <y> <id>, occlude <boxes> <id>, tree <selected>
+// <JSON>, mesh <handle> <V> <T>, unmesh <handle>, highlight <words> <words in
+// hex, little-endian>, draw <count> then each row's
+// <handle>/<id>/<flags>/<offset or ->/<rrggbb>/<metallic>/<roughness>, the
+// last two the u16s in decimal, svg <length> <bytes in hex>, input <0|1>, text
+// <string>; a highlight or draw of none prints only its count. At the end,
+// outstanding <fetch|post> <path>, outstanding request <method> <path> <id>,
+// outstanding rpc <method> <id>, outstanding pick <id> or outstanding occlude
+// <id>. A --tick with no after
 // waiting, an --answer-rpc or --fail-rpc of an id no waiting rpc holds, or a
 // relay that fails or passes RELAY_MS, is a failure.
 // It
@@ -79,7 +86,7 @@ const USAGE =
   "--typed TEXT | --repeat-typed TEXT N | --memory | " +
   "--answer STATUS FILE | --answer-id ID STATUS FILE | --fail | " +
   "--notify METHOD FILE | --tick | --file NAME PATH | --answer-rpc ID FILE | --fail-rpc ID | " +
-  "--occluded HEX | --until TEXT MS]...";
+  "--picked INSTANCE FACE DEPTH | --occluded HEX | --until TEXT MS]...";
 
 // The time a relayed rpc may take before it fails.
 const RELAY_MS = 60000;
@@ -109,10 +116,11 @@ function byId(flag, id) {
   return waiting.splice(at, 1)[0];
 }
 
-// The rpcs and occludes the host made that no step has answered and the
-// tokens of the afters no --tick has fired, each oldest first; each --file's
-// bytes by number.
+// The rpcs, picks and occludes the host made that no step has answered and
+// the tokens of the afters no --tick has fired, each oldest first; each
+// --file's bytes by number.
 const calls = [];
+const picks = [];
 const occludes = [];
 const ticks = [];
 const files = new Map();
@@ -310,6 +318,24 @@ function parse(args) {
         steps.push(() => call(flag, key).reject(new Error(`rpc ${key}: failed`)));
         break;
       }
+      case "--picked": {
+        const [instance, face, depth] = take(3);
+        const whole = (text, low, high) =>
+          /^-?[0-9]+$/.test(text) && BigInt(text) >= low && BigInt(text) <= high;
+        const z = Math.fround(Number(depth));
+        if (!whole(instance, -1n, 0xFFFFFFFFn) || !whole(face, 0n, 0xFFFFn) ||
+            !/^[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?$/.test(depth) ||
+            !Number.isFinite(z))
+          throw new Error(USAGE);
+        const bits = new DataView(new ArrayBuffer(4));
+        bits.setFloat32(0, z);
+        const answer = [Number(instance), Number(face), bits.getUint32(0)];
+        steps.push(() => {
+          if (picks.length === 0) throw new Error(`${flag}: no pick is waiting`);
+          picks.shift().resolve(answer);
+        });
+        break;
+      }
       case "--occluded": {
         const [hex] = take(1);
         if (!/^(?:[0-9a-fA-F]{2})*$/.test(hex)) throw new Error(USAGE);
@@ -402,6 +428,10 @@ try {
       print(`read ${file} ${offset} ${length}`);
       return Promise.resolve(files.get(Number(file)).subarray(Number(offset), Number(offset + length)));
     },
+    pick: (x, y, id) => {
+      print(`pick ${x} ${y} ${id}`);
+      return new Promise((resolve) => picks.push({ id, resolve }));
+    },
     occlude: (boxes, id) => {
       const count = boxes.length / 6;
       print(`occlude ${count} ${id}`);
@@ -453,6 +483,7 @@ try {
   for (const { kind, path, method, id } of waiting)
     console.log(kind === "request" ? `outstanding request ${method} ${path} ${id}` : `outstanding ${kind} ${path}`);
   for (const { id, method } of calls) console.log(`outstanding rpc ${method} ${id}`);
+  for (const { id } of picks) console.log(`outstanding pick ${id}`);
   for (const { id } of occludes) console.log(`outstanding occlude ${id}`);
   if (state.memory) console.log(`memory ${module.x.memory.buffer.byteLength}`);
 } catch (e) {

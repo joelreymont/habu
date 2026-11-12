@@ -339,6 +339,23 @@ async function browser() {
     assert.equal(many, "occluded 0100 4096 9",
       `4096 open boxes pass and the hidden last one fails, got ${many}`);
     console.log(`Headless Chrome occlude: ${occluded}, ${edges}, ${many}`);
+    await evaluate(`(() => { window.texts = []; window.text = subject.host.text;
+      subject.host.text = (s) => { texts.push(s); text(s); }; })()`);
+    await command("pick");
+    const picks = await evaluate("subject.host.text = text, texts");
+    const [half, one] = [0x3F000000, 0x3F800000];
+    assert.deepEqual(picks.toSorted(), [`picked 1 1 ${half} 1`,
+      `picked 3 0 ${half} 2`, `picked -1 0 ${one} 3`,
+      `picked -1 0 ${one} 4`].toSorted(),
+      "each pick answers its pixel's instance, face and depth, or none; " +
+      `the page's text, where a failed pick goes: ${(await state()).text}`);
+    // z 0.5 through the matrix's 2z + 0.5 over w 2 is depth 0.75.
+    await command("nearer");
+    const nearer = (await state()).text;
+    assert.equal(nearer, `picked 6 1 ${0x3F400000} 5`,
+      `a pick through a moved matrix with w 2 answers the nearer instance, ` +
+      `its face and its depth, got ${nearer}`);
+    console.log(`Headless Chrome picks: ${picks.join("; ")}; ${nearer}`);
     // Mesh 1 drawn by no row, then unmeshed: only the triangle stays.
     await command("unmesh");
     const [left0, left1, alone, right1, over, top] = await pixels(points);
