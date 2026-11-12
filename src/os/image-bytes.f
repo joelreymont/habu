@@ -3,7 +3,7 @@
 \ target writer and links as any file does; the writer sizes the buffer.
 
 package IMAGE-BYTES
-\ The buffer's bytes: the largest image a loaded target writer names (MSIZE!).
+\ The buffer's bytes: the largest image a loaded target writer names.
 variable MSIZE-N
 public
 : MSIZE ( -- n ) MSIZE-N @ ;
@@ -42,9 +42,9 @@ private
    MBUF-A@ 0= if M-ALLOC-BUF MBUF-A! then ;
 
 public
-\ A target writer names its largest image at load, rounded up to 64 KiB; the
-\ largest named wins, whatever the load order. The buffer maps on first use,
-\ so a size named after that is refused.
+\ A target writer names its largest image at load; the largest named wins,
+\ whatever the load order. The buffer maps on first use, so a size named after
+\ that is refused.
 : MSIZE! ( n -- )
    MBUF-A@ 0= 0= if s" image-bytes: a size named after the buffer mapped" 73 die then
    $FFFF + $10000 / $10000 *  MSIZE-N @ max  MSIZE-N ! ;

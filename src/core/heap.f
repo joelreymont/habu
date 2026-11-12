@@ -8,7 +8,7 @@
 \ Each record is its own OS mapping, so the OS rounds it up to a page. The width
 \ is the declared type's, fixed per declaration.
 \ Checked code reaches DYNAMIC-STORAGE:RECORD-NEW and RECORD-RELEASE only from
-\ these generated words (checker.f ARENA-CALL-REFUSE?).
+\ these generated words.
 
 package HEAP-DECL
 

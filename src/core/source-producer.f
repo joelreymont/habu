@@ -13,10 +13,10 @@ TYPED-VARIABLE DEFAULT-COMPILER [ ptr u8 n -- ]
 CAST: KERNEL-XT ( n -- [ -- ptr u8 n bool ] )
 CAST: COMPILER>N ( [ ptr u8 n -- ] -- n )
 
-\ A source definition on an older host must not impersonate its absent
-\ kernel metadata primitive. The text extent is the running engine's, as its
-\ boot published it (layout.f TEXT-SIZE-CELL): a build window for another OS
-\ loads that OS's header offsets, so no layout constant may enter this test.
+\ A source definition on an older host must not impersonate its absent kernel
+\ metadata primitive. The text extent is the running engine's, as its boot
+\ published it: a build window for another OS loads that OS's header offsets, so
+\ no layout constant may enter this test.
 : ENGINE-TEXT? ( n -- bool )
    {: xt:n :}
    data-base RBASE-CELL + @ {: base:n :}

@@ -46,8 +46,8 @@ $2D constant ENV-DASH
 : NULL$ ( -- ptr u8 n )
    NULL-PTR 0 ;
 
-\ CURRENT$ reads a variable unrecorded; GETENV records the read in the active
-\ compile-reads recording (src/core/compile-reads.f).
+\ CURRENT$ reads a variable unrecorded; GETENV records the read in the
+\ active compile-reads recording.
 package ENV-INPUT
 public
 
@@ -68,9 +68,9 @@ public
    query queryu value valueu COMPILE-READS:ENV+
    value valueu ;
 
-\ TMP-PATH's answer is a path of at most PATH-CAP bytes (src/core/util.f) with
-\ no NUL: a caller that opens it hands it to PATH0 or PATHZ, which add one in
-\ a buffer of their own.
+\ TMP-PATH's answer is a path of at most PATH-CAP bytes with no NUL: a
+\ caller that opens it hands it to PATH0 or PATHZ, which add one in a buffer
+\ of their own.
 create TPB PATH-CAP allot
 PTR-VARIABLE TPP
 variable TPQ

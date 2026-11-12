@@ -24,7 +24,7 @@ CELL constant REC-MAP
 4 cells constant REC-BYTES
 create READS-REC REC-BYTES SCRATCH-ALLOT   \ a saved program starts with it empty
 SRCLOC:READS-CELL RESERVED-PTR-U8-CELL READS-CELL
-READS-REC READS-CELL ptr-cell!             \ a build's store goes to its image (habu2.f ROUTE-HEADER)
+READS-REC READS-CELL ptr-cell!             \ a build's store goes to its image
 CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
 : REC ( -- ptr u8 ) READS-CELL @ ;
 : ACTIVE ( -- ptr n ) REC REC-ACTIVE + CELL-VIEW ;
@@ -35,8 +35,6 @@ CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
 : SAVED ( -- n ptr u8 n n ) ACTIVE @ MAP @ CAP @ USED @ ;
 : RESTORE ( n ptr u8 n n -- ) USED ! CAP ! MAP ! ACTIVE ! ;
 
-\ Only memory refuses, as the loader's event tables do: a failed mapping or
-\ release ends the process with INCLUDE-IO-RC.
 : UNMAP ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if exit then
    a u munmap 0 < if s" compile reads: cannot release a recording" INCLUDE-IO-RC die then ;
@@ -45,8 +43,6 @@ CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
    MAP @ CAP @ UNMAP
    NULL-PTR MAP !  0 CAP !  0 USED ! ;
 
-\ Runs q with a fresh, empty recording, active when on is not 0, then releases
-\ it and puts the caller's record back, on a throw too.
 : SCOPE ( n [ -- ] -- )
    {: on:n q :}
    SAVED {: old-on:n old-map:ptr old-cap:n old-used:n :}
@@ -79,8 +75,6 @@ CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
       dup SPAN +
    repeat drop 0 0= 0= ;
 
-\ A fresh mapping of at least need bytes holding the used ones; the old one is
-\ released after the copy, and the answer and its capacity published last.
 : ROOM ( n -- ) {: need:n :}
    need CAP @ <= if exit then
    CAP @ 2 * need max ROOM-MIN max {: cap:n :}

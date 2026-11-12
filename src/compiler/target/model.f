@@ -245,7 +245,7 @@ public
    dup E-UNKNOWN = if drop false exit then
    throw ;
 
-\ True for a platform name, one per target (PLATFORM); false for a triple.
+\ True for a platform name, one per target; false for a triple.
 : PLATFORM? ( ptr u8 n -- bool ) PLATFORM nip ;
 
 : RESOLVE ( ptr u8 n -- resolved-target )
