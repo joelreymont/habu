@@ -10,7 +10,6 @@ create REC 4 cells allot
 
 public
 
-\ Compiled before the package owns `!` and `@`: the engine's cell store and fetch.
 : SET ( -- ) 7 REC 2 cells + ! ;
 : GET ( -- n ) REC 2 cells + @ ;
 

@@ -1,6 +1,5 @@
-\ int-convert.f — the integer conversion words >U8, >U16, >U32 and >I64
-\ (src/core/util.f), through the engine's own `:`.
-\ Run: bin/hb --load test/int-convert.f   (exit 0 + "test: ok")
+\ int-convert.f — the integer conversion words >U8, >U16, >U32 and >I64, through
+\ the engine's own `:`.
 
 require src/lib/string.f
 require src/lib/test.f

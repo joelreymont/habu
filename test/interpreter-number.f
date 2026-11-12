@@ -35,7 +35,6 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    s" 0.000000000000000001" $3C32725DD1D243AC FLOAT-BITS
    s" 9223372036854775807.0" $43E0000000000000 FLOAT-BITS ;
 
-\ Replay text emitted by the wider text API through a fresh source compiler.
 \ This value's shortest spelling is in the language reader's decimal domain.
 : FORMATTED-REPLAY ( -- )
    $4023FFCB923A29C7 IEEE754:BITS>F64
@@ -95,7 +94,6 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    1 COMPARED +! ;
 
 
-\ test/compiler/integer-literals.f VALUES and REFUSALS.
 : INTEGERS ( -- )
    s" 0" SPELLING  s" -0" SPELLING
    s" 9223372036854775807" SPELLING  s" -9223372036854775808" SPELLING

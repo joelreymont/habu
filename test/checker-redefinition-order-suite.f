@@ -8,9 +8,8 @@ package REDEFINITION-ORDER-TEST
 T-RESET
 variable TC                    \ last caught throw code
 
-\ 1a. effect records: newest wins; a deletion is an absence, not a fall-back to
-\     the record it shadows. Each caller has its own name, so a refusal is the
-\     checker's and never a duplicate definition.
+\ Each caller has its own name, so a refusal is the checker's and never
+\ a duplicate definition.
 : SCX-DEF1 ( -- ) s" : SCXA ( n -- n ) ;" evaluate-closed ;
 : SCX-UNDEF ( -- ) s" undefine SCXA" evaluate-closed ;
 : SCX-DEF2 ( -- ) s" : SCXA ( n n -- n ) drop ;" evaluate-closed ;
@@ -46,9 +45,8 @@ s" a deletion and redefinition on one line take the newest effect" T-LABEL
 s" a definition after a deletion answers again" T-LABEL
 ' SCX-USE7 catch TC !   TC @ 0 T=
 
-\ 1b. control flags: later wins, and a redefinition clears the stale metadata.
-\     The caller's arm leaves one value more than its fall-through, so it
-\     certifies only while SCXT ends the path.
+\ The caller's arm leaves one value more than its fall-through, so it certifies
+\ only while SCXT ends the path.
 : SCX-CTLDEF ( -- ) s" : SCXT ( n -- n ) 7101 throw ;" evaluate-closed ;
 : SCX-CTLREDEF ( -- ) s" undefine SCXT : SCXT ( n -- n ) ;" evaluate-closed ;
 : SCX-CTLUSE1 ( -- ) s" : SCXTU1 ( n -- n ) dup 0 = if 5 SCXT then ;" evaluate-closed ;

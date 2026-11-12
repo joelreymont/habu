@@ -1,9 +1,8 @@
 \ task-signal-altstack.f - a runtime alternate signal stack belongs to each
 \ Habu OS thread, and profiler arming must keep that thread's stack installed.
-\ The x86-64 task entry registers its own band below the task's pushes
-\ (src/habu/kernel-x64.f, X64BOOT:SIGNAL-STACK,), so a worker answers a
-\ signal stack other than its creator's. The worker's failure exits the process
-\ by name before its creator can join.
+\ The x86-64 task entry registers its own band below the task's pushes, so a
+\ worker answers a signal stack other than its creator's. The worker's failure
+\ exits the process by name before its creator can join.
 require src/lib/test.f
 require src/lib/task.f
 require src/lib/ffi-abi.f

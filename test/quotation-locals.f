@@ -61,7 +61,6 @@ defer PLAIN ( -- n )
    k OBJ [: k 0 > if k 1- RECURSE then ;] SCOPE ;
 
 
-\ Each body waits inside its scope until both are inside, then reads its locals.
 : MEET ( -- )
    1 ARRIVED atomic-add drop
    begin ARRIVED atomic@ 2 < while TASK:PAUSE repeat ;
@@ -89,7 +88,6 @@ defer PLAIN ( -- n )
    WORKER-A WAIT WORKER-B WAIT ;
 
 
-\ A plain quotation kept in a defer, beside one that reads a local.
 : BESIDE ( n -- n )
    {: a:n :}
    [: 123 ;] is PLAIN [: a 1+ ;] execute ;
