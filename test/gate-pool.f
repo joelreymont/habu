@@ -96,6 +96,9 @@ create GT-POOL-TMP-PATH-US GT-POOL-MAX cells allot
 create GT-POOL-SOCK-PATHS GT-POOL-MAX PATH-CAP * allot
 create GT-POOL-SOCK-PATH-US GT-POOL-MAX cells allot
 create GT-POOL-SCRATCH-CODES GT-POOL-MAX cells allot
+create GT-POOL-REAPER-FAULTS GT-POOL-MAX cells allot
+create GT-POOL-REAPER-EXITEDS GT-POOL-MAX cells allot
+create GT-POOL-REAPER-CODES GT-POOL-MAX cells allot
 create GT-POOL-SOCK-ROOT-BUF PATH-CAP allot
 create GT-POOL-OUT-FDS GT-POOL-MAX cells allot
 create GT-POOL-ERR-FDS GT-POOL-MAX cells allot
@@ -110,6 +113,9 @@ create GT-POOL-RED-CODES GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SEQS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-PATH-BUF PATH-CAP allot
 create GT-POOL-RED-SCRATCH-CODES GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-REAPER-FAULTS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-REAPER-EXITEDS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-REAPER-CODES GT-POOL-RED-MAX cells allot
 
 TYPED-VARIABLE GT-POOL-OUT-BUFS-A ptr u8
 TYPED-VARIABLE GT-POOL-ERR-BUFS-A ptr u8
@@ -327,6 +333,17 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-SCRATCH-CODE-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-SCRATCH-CODES + ;
 
+\ The slot's reaper ended other than by the pool's SIGKILL (GT-POOL-KILL-REAPER).
+: GT-POOL-REAPER-FAULT-PTR ( idx -- ptr bool )
+   IDX>N cells GT-POOL-REAPER-FAULTS + ;
+
+\ A faulted reaper's ending: an exit status or a signal number.
+: GT-POOL-REAPER-EXITED-PTR ( idx -- ptr bool )
+   IDX>N cells GT-POOL-REAPER-EXITEDS + ;
+
+: GT-POOL-REAPER-CODE-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-REAPER-CODES + ;
+
 \ The short directory this pool made for the slot's child's sockets
 \ (GT-POOL-CHILD-SOCK!).
 : GT-POOL-SOCK$ ( idx -- ptr u8 n ) {: idx:idx :}
@@ -395,15 +412,29 @@ GT-POOL-ABORT-BARE!
    idx GT-POOL-OUT-FD-PTR GT-POOL-CLOSE-FD
    idx GT-POOL-ERR-FD-PTR GT-POOL-CLOSE-FD ;
 
-\ A spawned child leads its own group and the reaper joined it, so a slot
-\ group-kill already SIGKILLed the reaper - this still reaps its zombie, and in
-\ the normal-completion path (child exited on its own, reaper still blocking) it
-\ SIGKILLs the reaper first. A slot whose reaper fork failed keeps pid -1, which
-\ the guard skips.
+\ Every reaper the pool ends dies of its SIGKILL; any other ending left the
+\ slot unwatched, so it is named and the row fails (GT-POOL-OK?).
+: GT-POOL-REAPER-ENDING ( n bool idx -- ) {: n:n exited:bool idx:idx :}
+   exited 0= n PROCESS:SIGKILL = and if exit then
+   s" test pool: reaper of " type idx GT-POOL-LABEL$ type
+   s"  ended " type exited GT-POOL-KIND-NAME.
+   s"  " type n FMT:.INT cr
+   exited idx GT-POOL-REAPER-EXITED-PTR !
+   n idx GT-POOL-REAPER-CODE-PTR !
+   true idx GT-POOL-REAPER-FAULT-PTR ! ;
+
+: GT-POOL-REAPER-STATUS ( PROCESS:status idx -- ) {: idx:idx :}
+   MATCH PROCESS:status
+     exited OF true idx GT-POOL-REAPER-ENDING ENDOF
+     signaled OF false idx GT-POOL-REAPER-ENDING ENDOF
+   ;MATCH ;
+
+\ Runs while the child is unreaped: a zombie keeps its group, so only a fault
+\ ends the reaper other than by this SIGKILL. A failed reaper fork leaves pid -1.
 : GT-POOL-KILL-REAPER ( idx -- ) {: idx:idx :}
    idx GT-POOL-REAPER-PID@ PID>N 0 >= if
       idx GT-POOL-REAPER-PID@ PROCESS:SIGKILL PROCESS:KILL-RAW drop
-      idx GT-POOL-REAPER-PID@ PROCESS:WAIT drop
+      idx GT-POOL-REAPER-PID@ PROCESS:WAIT idx GT-POOL-REAPER-STATUS
       -1 >PID idx GT-POOL-REAPER-PID-PTR !
    then ;
 
@@ -422,10 +453,10 @@ GT-POOL-ABORT-BARE!
       idx GT-POOL-KILL-TREE
       idx GT-POOL-PID@ PROCESS:SIGKILL PROC-FORK:KILL-GROUP drop
       idx GT-POOL-PID@ PROCESS:SIGKILL PROCESS:KILL-RAW drop
+      idx GT-POOL-KILL-REAPER
       idx GT-POOL-PID@ PROCESS:WAIT drop
       -1 >PID idx GT-POOL-PID-PTR !
    then
-   idx GT-POOL-KILL-REAPER
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-CLOSE-READS
    idx GT-POOL-CLOSE-WATCH
@@ -649,6 +680,9 @@ false GT-POOL-CATCHING !
    0 idx GT-POOL-TMP-PATH-U-PTR !
    0 idx GT-POOL-SOCK-PATH-U-PTR !
    0 idx GT-POOL-SCRATCH-CODE-PTR !
+   false idx GT-POOL-REAPER-FAULT-PTR !
+   false idx GT-POOL-REAPER-EXITED-PTR !
+   0 idx GT-POOL-REAPER-CODE-PTR !
    false idx GT-POOL-ASKED-PTR !
    0 idx GT-POOL-SEQ-PTR !
    0 idx GT-POOL-CPU-USED-PTR !
@@ -1012,6 +1046,15 @@ variable GT-POOL-CPU-NS
 : GT-POOL-RED-SCRATCH-CODE-PTR ( n -- ptr n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-SCRATCH-CODES + ;
 
+: GT-POOL-RED-REAPER-FAULT-PTR ( n -- ptr bool )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-REAPER-FAULTS + ;
+
+: GT-POOL-RED-REAPER-EXITED-PTR ( n -- ptr bool )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-REAPER-EXITEDS + ;
+
+: GT-POOL-RED-REAPER-CODE-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-REAPER-CODES + ;
+
 : GT-POOL-RED-LABEL$ ( n -- ptr u8 n ) {: i:n :}
    i GT-POOL-RED-LABEL-BUF i GT-POOL-RED-LABEL-U-PTR @ ;
 
@@ -1043,6 +1086,9 @@ variable GT-POOL-CPU-NS
    idx GT-POOL-EXITED-PTR @ i GT-POOL-RED-EXITED-PTR !
    idx GT-POOL-CODE-PTR @ i GT-POOL-RED-CODE-PTR !
    idx GT-POOL-SCRATCH-CODE-PTR @ i GT-POOL-RED-SCRATCH-CODE-PTR !
+   idx GT-POOL-REAPER-FAULT-PTR @ i GT-POOL-RED-REAPER-FAULT-PTR !
+   idx GT-POOL-REAPER-EXITED-PTR @ i GT-POOL-RED-REAPER-EXITED-PTR !
+   idx GT-POOL-REAPER-CODE-PTR @ i GT-POOL-RED-REAPER-CODE-PTR !
    idx GT-POOL-SEQ-PTR @ i GT-POOL-RED-SEQ-PTR ! ;
 
 : GT-POOL-RED+ ( idx -- ) {: idx:idx :}
@@ -1061,11 +1107,19 @@ variable GT-POOL-CPU-NS
    repeat drop
    -1 ;
 
+: GT-POOL-RED-REAPER-LINE ( n -- ) {: i:n :}
+   i GT-POOL-RED-REAPER-FAULT-PTR @ 0= if exit then
+   s"  reaper-kind=" type
+   i GT-POOL-RED-REAPER-EXITED-PTR @ GT-POOL-KIND-NAME.
+   s"  reaper-code=" type
+   i GT-POOL-RED-REAPER-CODE-PTR @ GT-POOL-N-TYPE ;
+
 : GT-POOL-RED-LINE ( n -- ) {: i:n :}
    s" RED: " type i GT-POOL-RED-LABEL$ type
    s"  kind=" type
    i GT-POOL-RED-EXITED-PTR @ GT-POOL-KIND-NAME.
    s"  code=" type i GT-POOL-RED-CODE-PTR @ GT-POOL-N-TYPE
+   i GT-POOL-RED-REAPER-LINE
    s"  out=" type i GT-POOL-RED-OUT$ type
    s"  err=" type i GT-POOL-RED-ERR$ type
    i GT-POOL-RED-SCRATCH-CODE-PTR @ 0<> if
@@ -1262,7 +1316,8 @@ variable GT-POOL-CPU-NS
 : GT-POOL-OK? ( idx -- bool ) {: idx :}
    idx GT-POOL-EXITED-PTR @
    idx GT-POOL-CODE-PTR @ 0= and
-   idx GT-POOL-SCRATCH-CODE-PTR @ 0= and ;
+   idx GT-POOL-SCRATCH-CODE-PTR @ 0= and
+   idx GT-POOL-REAPER-FAULT-PTR @ 0= and ;
 
 : GT-POOL-TRUNC-LINE ( idx n -- ) {: idx:idx stream:n :}
    idx stream GT-POOL-STREAM-TOTAL-PTR @ idx stream GT-POOL-STREAM-U-PTR @ - {: cut:n :}
@@ -1295,9 +1350,9 @@ variable GT-POOL-CPU-NS
    idx GT-POOL-RED+ ;
 
 : GT-POOL-REAP ( idx -- ) {: idx :}
+   idx GT-POOL-KILL-REAPER
    idx GT-POOL-PID@ PROCESS:WAIT idx GT-POOL-OUTCOME!
    -1 >PID idx GT-POOL-PID-PTR !
-   idx GT-POOL-KILL-REAPER
    idx GT-POOL-CLOSE-CAPTURE
    idx GT-POOL-RETIRE-SLOT
    idx GT-POOL-OK? if idx GT-POOL-PASS-LINE exit then
