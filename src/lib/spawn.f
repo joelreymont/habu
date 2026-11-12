@@ -12,6 +12,7 @@ require src/lib/ffi-abi.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/fd-lock.f
 require src/lib/process-chunks.f
 require src/habu/spawn-abi.f
@@ -28,8 +29,6 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER ERRNO-CELL drop
 LINEAR: MINT ( ptr n -- PROCESS:request )
 LINEAR: ERASE ( PROCESS:request -- ptr n )
 
-CAST: ITEM>N ( NUM:item-count -- n )
-
 \ fcntl's F_GETFD and the errno of a closed fd, on Darwin and Linux alike.
 1 constant F-GETFD
 9 constant EBADF
@@ -37,16 +36,23 @@ CAST: ITEM>N ( NUM:item-count -- n )
 \ The byte that ends an environment row's name.
 $3D constant EQUAL-BYTE
 
-\ The SPAWN-ABI cells spawn-fds reads come first; PATH and CWD are written as
-\ they are given, the rest just before the spawn. Then the owned string chunks,
-\ the argv, envp and descriptor-map vectors, the mask of stdio slots an FD set
-\ and the HERMETIC flag, 0 for a request that inherits.
+STRUCTURE vectors DERIVE addr
+   FIELD args ptr VEC:vector<ptr u8>
+   FIELD envs ptr VEC:vector<ptr u8>
+   FIELD map ptr VEC:vector<n>
+;STRUCTURE
+
+CAST: >VECTORS ( ptr n -- ptr vectors )
+
+\ The SPAWN-ABI cells spawn-fds reads come first: PATH and
+\ CWD written as given, the rest just before the spawn.
 SPAWN-ABI:BYTES 1 cells / constant ABI-CELLS
+\ The owned string chunks.
 ABI-CELLS constant CHUNKS-AT
 CHUNKS-AT PROC-CHUNKS:OWNED-CELLS + constant ARGS-AT
-ARGS-AT VEC:HEADER-CELLS + constant ENVS-AT
-ENVS-AT VEC:HEADER-CELLS + constant MAP-AT
-MAP-AT VEC:HEADER-CELLS + constant SET-AT
+\ The mask of stdio slots an FD set.
+ARGS-AT VECTORS-CELLS + constant SET-AT
+\ The HERMETIC flag, 0 for a request that inherits.
 SET-AT 1+ constant HERM-AT
 HERM-AT 1+ constant RECORD-CELLS
 
@@ -57,23 +63,26 @@ HERM-AT 1+ constant RECORD-CELLS
 : FDS-CELL ( ptr n -- ptr ptr a ) SPAWN-ABI:FDS 1 cells / ptr-field ;
 : NFDS-CELL ( ptr n -- ptr n ) SPAWN-ABI:NFDS + ;
 : CHUNKS ( ptr n -- ptr n ) CHUNKS-AT cells + ;
-: ARGS ( ptr n -- ptr ptr u8 ) ARGS-AT ptr-field ;
-: ENVS ( ptr n -- ptr ptr u8 ) ENVS-AT ptr-field ;
-: MAP ( ptr n -- ptr n ) MAP-AT cells + ;
+: ARGS ( ptr n -- ptr ptr VEC:vector<ptr u8> )
+   ARGS-AT cells + >VECTORS VECTORS-ARGS ;
+: ENVS ( ptr n -- ptr ptr VEC:vector<ptr u8> )
+   ARGS-AT cells + >VECTORS VECTORS-ENVS ;
+: MAP ( ptr n -- ptr ptr VEC:vector<n> )
+   ARGS-AT cells + >VECTORS VECTORS-MAP ;
 : SET ( ptr n -- ptr n ) SET-AT cells + ;
 : HERM ( ptr n -- ptr n ) HERM-AT cells + ;
 
-: MAP-LEN ( ptr n -- n ) MAP VEC:LEN@ ITEM>N ;
-: MAP! ( n ptr n n -- ) VEC:N>INDEX swap MAP swap VEC:! ;
+: MAP-LEN ( ptr n -- n ) MAP @ VEC:COUNT ;
+: MAP! ( n ptr n n -- ) swap MAP @ swap VEC:AT ! ;
 
 
-\ A member never initialised is a dead header, which VEC:DISPOSE ignores.
+\ A vector never made is NULL-PTR in its cell, which VEC:DELETE ignores.
 : RELEASE ( ptr n -- )
    {: h:ptr :}
    h CHUNKS PROC-CHUNKS:OWNED-FREE
-   h ARGS VEC:DISPOSE
-   h ENVS VEC:DISPOSE
-   h MAP VEC:DISPOSE
+   h ARGS @ VEC:DELETE
+   h ENVS @ VEC:DELETE
+   h MAP @ VEC:DELETE
    h RECORD-CELLS MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
 
 
@@ -95,22 +104,22 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 \ Pushes a copy of every string before the array's NULL.
-: ROWS+ ( ptr ptr u8 ptr n ptr ptr u8 -- )
+: ROWS+ ( ptr ptr u8 ptr n ptr VEC:vector<ptr u8> -- )
    {: rows:ptr h:ptr vec:ptr :}
    0 begin rows over cells + @ dup NULL-PTR - 0<> while
-      dup ZLEN h CHUNK-ZCOPY vec VEC:PUSH drop
+      dup ZLEN h CHUNK-ZCOPY vec VEC:PUSH !
       1+
    repeat 2drop ;
 
 
 : START ( ptr n ptr u8 n -- ptr n ptr u8 n )
    {: h:ptr path:ptr len :}
-   h ARGS 4 VEC:N>ITEM VEC:INIT
-   h ENVS 4 VEC:N>ITEM VEC:INIT
-   h MAP 4 VEC:N>ITEM VEC:INIT
-   0 h MAP VEC:PUSH drop
-   1 h MAP VEC:PUSH drop
-   2 h MAP VEC:PUSH drop
+   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW h ARGS !
+   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW h ENVS !
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW h MAP !
+   0 h MAP @ VEC:PUSH !
+   1 h MAP @ VEC:PUSH !
+   2 h MAP @ VEC:PUSH !
    path len h CHUNK-ZCOPY h PATH-CELL !
    h path len ;
 
@@ -119,8 +128,8 @@ HERM-AT 1+ constant RECORD-CELLS
 : ADD-ARG ( ptr n ptr u8 n -- ptr n ptr u8 n )
    {: h:ptr a:ptr len :}
    len 0 < if E-PROC-OUTPUT throw then
-   h ARGS VEC:LEN@ ITEM>N 0= if h PATH-CELL @ h ARGS VEC:PUSH drop then
-   a len h CHUNK-ZCOPY h ARGS VEC:PUSH drop
+   h ARGS @ VEC:COUNT 0= if h PATH-CELL @ h ARGS @ VEC:PUSH ! then
+   a len h CHUNK-ZCOPY h ARGS @ VEC:PUSH !
    h a len ;
 
 
@@ -145,15 +154,15 @@ HERM-AT 1+ constant RECORD-CELLS
    name namelen room SPAN:COPY
    EQUAL-BYTE room namelen SPAN:U8!
    val vallen room namelen 1+ SPAN:SKIP SPAN:COPY
-   rowlen room FFI:CSTR! h ENVS VEC:PUSH drop
+   rowlen room FFI:CSTR! h ENVS @ VEC:PUSH !
    h name namelen val vallen ;
 
 
 : ADD-ARGV-ROWS ( ptr n ptr ptr u8 -- ptr n ptr ptr u8 )
-   2dup swap dup ARGS ROWS+ ;
+   2dup swap dup ARGS @ ROWS+ ;
 
 : ADD-ENV-ROWS ( ptr n ptr ptr u8 -- ptr n ptr ptr u8 )
-   2dup swap dup ENVS ROWS+ ;
+   2dup swap dup ENVS @ ROWS+ ;
 
 
 : SET-CWD ( ptr n ptr u8 n -- ptr n ptr u8 n )
@@ -166,7 +175,7 @@ HERM-AT 1+ constant RECORD-CELLS
 : SET-FD ( ptr n fd fd -- ptr n fd fd )
    {: h:ptr child parent :}
    child FD>N 0 < parent FD>N 0 < or if E-PROC-OUTPUT throw then
-   begin h MAP-LEN child FD>N <= while -1 h MAP VEC:PUSH drop repeat
+   begin h MAP-LEN child FD>N <= while -1 h MAP @ VEC:PUSH ! repeat
    parent FD>N h child FD>N MAP!
    child FD>N 3 < if h SET @ 1 child FD>N lshift or h SET ! then
    h child parent ;
@@ -188,7 +197,7 @@ HERM-AT 1+ constant RECORD-CELLS
 : INHERIT-SLOT ( ptr n n -- )
    {: h:ptr slot :}
    h SET @ 1 slot lshift and 0<> if exit then
-   h MAP slot VEC:N>INDEX VEC:@ {: parent :}
+   h MAP @ slot VEC:AT @ {: parent :}
    parent 0 < if exit then
    parent OPEN? if exit then
    -1 h slot MAP! ;
@@ -212,8 +221,8 @@ HERM-AT 1+ constant RECORD-CELLS
 \ name that the parent holds twice reaches the child once, as its first row.
 : HAS-NAME? ( ptr n ptr u8 -- bool )
    {: h:ptr z:ptr :}
-   h ENVS VEC:LEN@ ITEM>N 0 ?do
-      h ENVS i VEC:N>INDEX VEC:@ z SAME-NAME? if true unloop exit then
+   h ENVS @ VEC:COUNT 0 ?do
+      h ENVS @ i VEC:AT @ z SAME-NAME? if true unloop exit then
    loop false ;
 
 
@@ -222,7 +231,7 @@ HERM-AT 1+ constant RECORD-CELLS
 : INHERIT-ROW ( ptr n ptr u8 -- )
    {: h:ptr z:ptr :}
    h z HAS-NAME? if exit then
-   z h ENVS VEC:PUSH drop ;
+   z h ENVS @ VEC:PUSH ! ;
 
 : INHERIT-PARENT ( ptr n -- )
    {: h:ptr :}
@@ -234,14 +243,14 @@ HERM-AT 1+ constant RECORD-CELLS
 
 : LAUNCH ( ptr n -- n )
    {: h:ptr :}
-   h ARGS VEC:LEN@ ITEM>N 0= if h PATH-CELL @ h ARGS VEC:PUSH drop then
-   NULL-PTR h ARGS VEC:PUSH drop
+   h ARGS @ VEC:COUNT 0= if h PATH-CELL @ h ARGS @ VEC:PUSH ! then
+   NULL-PTR h ARGS @ VEC:PUSH !
    h HERM @ 0= if h INHERIT-PARENT then
-   NULL-PTR h ENVS VEC:PUSH drop
+   NULL-PTR h ENVS @ VEC:PUSH !
    3 0 do h i INHERIT-SLOT loop
-   h ARGS VEC:DATA@ h ARGV-CELL !
-   h ENVS VEC:DATA@ h ENVP-CELL !
-   h MAP VEC:DATA@ h FDS-CELL !
+   h ARGS @ 0 VEC:AT h ARGV-CELL !
+   h ENVS @ 0 VEC:AT h ENVP-CELL !
+   h MAP @ 0 VEC:AT h FDS-CELL !
    h MAP-LEN h NFDS-CELL !
    h [: spawn-fds ;] FD-LOCK:WITH ;
 

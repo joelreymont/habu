@@ -1,270 +1,29 @@
-\ vector.f - package VEC: checked growable cell vectors over NUM roles. A
-\ caller-owned header of HEADER-CELLS cells (data, length, capacity); the
-\ capacity cell is the liveness token, a dead header reads length and capacity
-\ zero. Lengths are NUM:item-count and positions NUM:index, so a swap is a
-\ checker reject. Bad capacity is E-VEC-CAPACITY, a bad index E-VEC-BOUNDS,
-\ growing a dead header E-VEC-STATE. A typed vector<t> (NEW, AT, COUNT,
-\ DELETE) takes its elements from an allocator it keeps. STORAGE CLASS.
-\ CALLER-OWNED.
+\ vector.f - package VEC: a typed vector<t> that takes its elements from an
+\ allocator it keeps and grows through it. COUNT elements are live; growth
+\ doubles the room the block holds, so n pushes make about log2 n resize calls.
+\ A bad count is E-VEC-CAPACITY, an index outside the elements E-VEC-BOUNDS.
+\ STORAGE CLASS. CALLER-OWNED: the caller frees a vector with DELETE.
 
 require src/lib/error.f
 require src/lib/memory.f
 require src/lib/allocator.f
-
-\ The private words keep the header cells and address arithmetic on bare `count`,
-\ `len` and `idx` roles; the public surface converts to NUM roles at its boundary
-\ through the two checked casts ITEM-COUNT>N and INDEX>N. Every cell-vector
-\ allocation goes through CAP-ALLOC, so a zero or overflowing capacity is
-\ refused before mmap.
+require src/lib/span.f
 
 package VEC
 private
 
-BEGIN-STRUCTURE VEC-HEADER-BYTES
-   PTR-FIELD: VEC.DATA
-   CELL +FIELD VEC.LEN
-   CELL +FIELD VEC.CAP
-END-STRUCTURE
-
-2 constant VEC-GROWTH
 MEM-MAX-CELLS constant VEC-MAX-CELLS
-
-: VEC-COUNT ( n -- count )
-   dup 0 < if E-VEC-CAPACITY throw then
-   dup VEC-MAX-CELLS > if E-VEC-CAPACITY throw then
-   >COUNT ;
-
-: VEC-LEN ( n -- len )
-   dup 0 < if E-VEC-BOUNDS throw then
-   dup VEC-MAX-CELLS > if E-VEC-CAPACITY throw then
-   >LEN ;
-
-: VEC-IDX ( n -- idx )
-   dup 0 < if E-VEC-BOUNDS throw then
-   >IDX ;
-
-: VEC-CHECK-NEED ( count -- ) {: need :}
-   need COUNT>N 0 < if E-VEC-CAPACITY throw then
-   need COUNT>N VEC-MAX-CELLS > if E-VEC-CAPACITY throw then ;
-
-: VEC-CHECK-CAP ( count -- )
-   dup VEC-CHECK-NEED
-   COUNT>N 0= if E-VEC-CAPACITY throw then ;
-
-: VEC-CHECK-LEN ( len -- ) {: len :}
-   len LEN>N 0 < if E-VEC-BOUNDS throw then
-   len LEN>N VEC-MAX-CELLS > if E-VEC-CAPACITY throw then ;
-
-: VEC-CELL-FIELD ( ptr a n -- ptr a ) {: base:ptr off :}
-   off 0 < if E-VEC-BOUNDS throw then
-   base off cells + ;
-
-: VEC-DATA-FIELD ( ptr a -- ptr ptr a )
-   VEC.DATA ;
-
-: VEC-DATA@ ( ptr a -- ptr a )
-   VEC-DATA-FIELD @ ;
-
-: VEC-DATA! ( ptr a ptr a -- ) {: data:ptr vec:ptr :}
-   data vec VEC-DATA-FIELD ! ;
-
-: VEC-LEN-FIELD ( ptr a -- ptr n )
-   VEC.LEN BYTE-VIEW CELL-VIEW ;
-
-: VEC-LEN@ ( ptr a -- len )
-   VEC-LEN-FIELD @ VEC-LEN ;
-
-: VEC-CAP-FIELD ( ptr a -- ptr n )
-   VEC.CAP BYTE-VIEW CELL-VIEW ;
-
-: VEC-CAP@ ( ptr a -- count )
-   VEC-CAP-FIELD @ VEC-COUNT ;
-
-: VEC-CAP! ( count ptr a -- ) {: cap vec:ptr :}
-   cap VEC-CHECK-CAP
-   cap COUNT>N vec VEC-CAP-FIELD ! ;
-
-\ A positive VEC.CAP means the header owns a mapping of that many cells at
-\ VEC.DATA; zero means none (fresh or disposed). Touching a dead vector throws
-\ E-VEC-STATE instead of dereferencing freed storage. Reads the raw cell:
-\ VEC-CAP@ would refuse a zero.
-: VEC-CHECK-LIVE ( ptr a -- ) {: vec:ptr :}
-   vec VEC-CAP-FIELD @ 0= if E-VEC-STATE throw then ;
-
-\ Initializing over a live header would orphan its mapping: callers dispose an
-\ owned vector first.
-: VEC-CHECK-DEAD ( ptr a -- ) {: vec:ptr :}
-   vec VEC-CAP-FIELD @ 0 <> if E-VEC-STATE throw then ;
-
-: VEC-LEN! ( len ptr a -- ) {: len vec:ptr :}
-   len VEC-CHECK-LEN
-   len LEN>N vec VEC-CAP@ COUNT>N > if E-VEC-BOUNDS throw then
-   len LEN>N vec VEC-LEN-FIELD ! ;
-
-: VEC-CHECK-INDEX ( ptr a idx -- ) {: vec:ptr ix :}
-   vec VEC-CHECK-LIVE
-   ix IDX>N 0 < if E-VEC-BOUNDS throw then
-   ix IDX>N vec VEC-LEN@ LEN>N >= if E-VEC-BOUNDS throw then ;
-
-: VEC@ ( ptr a idx -- a ) {: vec:ptr ix :}
-   vec ix VEC-CHECK-INDEX
-   vec VEC-DATA@ ix IDX>N VEC-CELL-FIELD @ ;
-
-: VEC! ( a ptr a idx -- ) {: value vec:ptr ix :}
-   vec ix VEC-CHECK-INDEX
-   value vec VEC-DATA@ ix IDX>N VEC-CELL-FIELD ! ;
-
-: VEC-COPY-CELLS ( ptr a ptr a len -- ) {: src:ptr dst:ptr len :}
-   len VEC-CHECK-LEN
-   len LEN>N 0 ?do
-      src i VEC-CELL-FIELD @ dst i VEC-CELL-FIELD !
-   loop ;
-
-\ The capacity is the mapping's cell length, so MEM-CELLS>BYTES gives the exact
-\ byte extent the allocation minted.
-: VEC-RELEASE-STORAGE ( ptr a count -- ) {: data:ptr cap :}
-   data BYTE-VIEW  cap MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN  MEM:RELEASE-BYTES ;
-
-\ The release is last and the caller allocates before this runs, so a failed
-\ grow leaves the old storage owned and intact.
-: VEC-INSTALL-RESIZE ( ptr a count ptr a -- ) {: vec:ptr cap data:ptr :}
-   vec VEC-DATA@ {: old:ptr :}
-   vec VEC-CAP@ {: oldcap :}
-   old data vec VEC-LEN@ VEC-COPY-CELLS
-   data vec VEC-DATA!
-   cap vec VEC-CAP!
-   old oldcap VEC-RELEASE-STORAGE ;
-
-: VEC-CHECK-RESIZE-CAP ( ptr a count -- ) {: vec:ptr cap :}
-   vec VEC-CHECK-LIVE
-   cap VEC-CHECK-CAP
-   cap COUNT>N vec VEC-LEN@ LEN>N < if E-VEC-BOUNDS throw then ;
-
-: VEC-GROW-CAP ( ptr a count -- count ) {: vec:ptr need :}
-   vec VEC-CHECK-LIVE
-   need VEC-CHECK-NEED
-   vec VEC-CAP@ COUNT>N
-   begin dup need COUNT>N < while
-      dup VEC-MAX-CELLS VEC-GROWTH / > if
-         drop need COUNT>N
-      else
-         VEC-GROWTH *
-      then
-   repeat VEC-COUNT ;
-
-CAST: ITEM-COUNT>N ( NUM:item-count -- n )
-CAST: INDEX>N ( NUM:index -- n )
-
-\ The derived cell is provably nonnegative, so the refusal arms are unreachable
-\ (E-VEC-BOUNDS), as in MEM's exhaustive E-MEM-TOTALITY match.
-: OK-CELL-COUNT ( NUM:numeric-result<NUM:cell-count> -- NUM:cell-count )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
-
-: OK-ALLOC-CELL-COUNT
-      ( NUM:numeric-result<NUM:alloc-cell-count> -- NUM:alloc-cell-count )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
-      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
-      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
-      misaligned OF E-VEC-CAPACITY throw ENDOF
-   ;MATCH ;
-
-\ One cell per item. MEM:CELLS-ALLOC-COUNT has this shape but throws E-MEM-SIZE;
-\ the vector's refusal is E-VEC-CAPACITY, so the two narrowing steps are here.
-: CAP-ALLOC ( NUM:item-count -- NUM:alloc-cell-count )
-   ITEM-COUNT>N NUM:CELL-COUNT OK-CELL-COUNT
-   NUM:AS-ALLOC-CELL-COUNT OK-ALLOC-CELL-COUNT ;
-
-: ITEM>RC  ( NUM:item-count -- count )  ITEM-COUNT>N >COUNT ;
-: IX>RI    ( NUM:index -- idx )         INDEX>N >IDX ;
 
 public
 
-VEC-HEADER-BYTES CELL / constant HEADER-CELLS   \ cells a caller allots for one header
-
-\ A length or capacity as an item count; a negative n throws E-VEC-CAPACITY.
-: N>ITEM ( n -- NUM:item-count )
-   NUM:ITEM-COUNT
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
-      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
-      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
-      misaligned OF E-VEC-CAPACITY throw ENDOF
-   ;MATCH ;
-\ An element position as an index; a negative n throws E-VEC-BOUNDS.
-: N>INDEX ( n -- NUM:index )
-   NUM:INDEX
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
-
-: INIT ( ptr a NUM:item-count -- ) {: vec:ptr cap:NUM:item-count :}
-   vec VEC-CHECK-DEAD
-   cap CAP-ALLOC MEM:ALLOC-CELLS vec VEC-DATA!
-   cap ITEM>RC vec VEC-CAP!
-   0 VEC-LEN vec VEC-LEN! ;
-: CLEAR ( ptr a -- )
-   0 VEC-LEN swap VEC-LEN! ;
-
-\ Clear the entire header before release, so retries cannot free the mapping
-\ twice and a captured dead header cannot retain its former process address.
-: DISPOSE ( ptr a -- ) {: vec:ptr :}
-   vec VEC-CAP-FIELD @ {: cap :}
-   vec VEC-DATA@ {: data:ptr :}
-   NULL-PTR vec VEC-DATA!
-   0 vec VEC-CAP-FIELD !
-   0 vec VEC-LEN-FIELD !
-   cap 0= if exit then
-   data cap >COUNT VEC-RELEASE-STORAGE ;
-
-: LEN@ ( ptr a -- NUM:item-count )  VEC-LEN@ LEN>N N>ITEM ;
-: CAP@ ( ptr a -- NUM:item-count )  VEC-CAP@ COUNT>N N>ITEM ;
-\ Any length from zero through the capacity; above it throws E-VEC-BOUNDS.
-: LEN! ( NUM:item-count ptr a -- )  swap ITEM-COUNT>N VEC-LEN swap VEC-LEN! ;
-
-\ Borrowed base of the contiguous cells: growth (PUSH, ENSURE), RESIZE and DISPOSE invalidate it.
-: DATA@ ( ptr a -- ptr a )  VEC-DATA@ ;
-
-: RESIZE ( ptr a NUM:item-count -- ) {: vec:ptr cap:NUM:item-count :}
-   cap ITEM>RC {: rc:count :}
-   vec rc VEC-CHECK-RESIZE-CAP
-   vec rc  cap CAP-ALLOC MEM:ALLOC-CELLS  VEC-INSTALL-RESIZE ;
-: ENSURE ( ptr a NUM:item-count -- ) {: vec:ptr need:NUM:item-count :}
-   need ITEM-COUNT>N {: nn:n :}
-   nn >COUNT VEC-CHECK-NEED
-   nn vec VEC-CAP@ COUNT>N <= if exit then
-   vec  vec nn >COUNT VEC-GROW-CAP COUNT>N N>ITEM  RESIZE ;
-
-\ Answers the index the value landed at; the capacity doubles when the length
-\ reaches it.
-: PUSH ( a ptr a -- NUM:index ) {: value:a vec:ptr :}
-   vec VEC-LEN@ LEN>N {: old:n :}
-   vec old 1 + N>ITEM ENSURE
-   value vec VEC-DATA@ old VEC-CELL-FIELD !
-   old 1 + VEC-LEN vec VEC-LEN!
-   old N>INDEX ;
-
-\ The quotation's effect [ R NUM:index a -- R ] is one a local annotation cannot
-\ express.
-: EACH ( R ptr a [ R NUM:index a -- R ] -- R ) {: vec:ptr q :}
-   vec VEC-LEN@ LEN>N 0 ?do
-      i N>INDEX  vec i VEC-IDX VEC@  q execute
-   loop ;
-
-\ A typed vector: its allocator, its elements' bytes, their count and the
-\ bytes each takes. No field holds a `t`, so every vector<t> has one layout.
+\ A typed vector: its allocator, its elements' bytes, their count, the elements
+\ the bytes hold and the bytes each takes. The bytes of elements from count to
+\ room are zero. No field holds a `t`, so every vector<t> has one layout.
 STRUCTURE vector<t> OPAQUE DERIVE addr
    FIELD allocator ptr ALLOC:allocator
    FIELD data ptr u8
    FIELD count n
+   FIELD room n
    FIELD width n
 ;STRUCTURE
 
@@ -274,6 +33,35 @@ CAST: >ELEM ( ptr u8 -- ptr t )
 CAST: >VECTOR ( ptr u8 -- ptr vector<t> )
 CAST: VECTOR> ( ptr vector<t> -- ptr u8 )
 
+\ The most elements of n bytes that VEC-MAX-CELLS cells hold.
+: MOST ( n -- n ) VEC-MAX-CELLS CELL * swap 1 max / ;
+
+: CHECK-COUNT ( n n -- )
+   {: k:n w:n :}
+   k 0 <  k w MOST >  or if E-VEC-CAPACITY throw then ;
+
+\ Twice the room, or k when that is more or twice the room passes the ceiling.
+: ROOM-FOR ( ptr vector<t> n -- n )
+   {: v:ptr k:n :}
+   v VECTOR-ROOM @ {: r:n :}
+   r  v VECTOR-WIDTH @ MOST 2 /  > if k exit then
+   k  r 2 *  max ;
+
+: GROW ( ptr vector<t> n -- )
+   {: v:ptr k:n :}
+   v k ROOM-FOR {: r:n :}
+   v VECTOR-WIDTH @ {: w:n :}
+   v VECTOR-ALLOCATOR @  v VECTOR-DATA @  v VECTOR-ROOM @ w *  r w *
+   ALLOC:RESIZE drop  v VECTOR-DATA !
+   r v VECTOR-ROOM ! ;
+
+: CUT ( ptr vector<t> n -- )
+   {: v:ptr k:n :}
+   v VECTOR-WIDTH @ {: w:n :}
+   v VECTOR-DATA @ k w * +  v VECTOR-COUNT @ k - w *  SPAN:MAKE {: s :}
+   0 s SPAN:FILL
+   k v VECTOR-COUNT ! ;
+
 public
 
 \ k zeroed elements, or E-VEC-CAPACITY for a negative k or more bytes than
@@ -281,12 +69,12 @@ public
 : NEW ( ptr ALLOC:allocator n width<t> -- ptr vector<t> )
    {: al:ptr k:n w :}
    w width>n {: wn:n :}
-   k 0 <  k VEC-MAX-CELLS CELL * wn 1 max / >  or if E-VEC-CAPACITY throw then
+   k wn CHECK-COUNT
    al [type] vector<u8> width>n ALLOC:BYTES drop >VECTOR {: v:ptr :}
    al v VECTOR-ALLOCATOR !
    [: al k wn * ALLOC:BYTES drop v VECTOR-DATA ! ;] catch {: code:n :}
    code 0<> if al v VECTOR> ALLOC:FREE code throw then
-   k v VECTOR-COUNT !  wn v VECTOR-WIDTH !
+   k v VECTOR-COUNT !  k v VECTOR-ROOM !  wn v VECTOR-WIDTH !
    v ;
 
 : COUNT ( ptr vector<t> -- n ) VECTOR-COUNT @ ;
@@ -299,16 +87,37 @@ public
 
 : DELETE ( ptr vector<t> -- )
    {: v:ptr :}
+   v NULL-PTR = if exit then
    v VECTOR-ALLOCATOR @ {: al:ptr :}
    al v VECTOR-DATA @ ALLOC:FREE
    al v VECTOR> ALLOC:FREE ;
 
-\ Defined last: `@`/`!` name the package fetch/store VEC:@ / VEC:!, which would
-\ shadow the core cell primitives inside later VEC bodies.
-: @ ( ptr a NUM:index -- a ) {: vec:ptr ix:NUM:index :}
-   vec ix IX>RI VEC@ ;
-: ! ( a ptr a NUM:index -- ) {: value:a vec:ptr ix:NUM:index :}
-   value vec ix IX>RI VEC! ;
+\ n below 0 or past NEW's ceiling is E-VEC-CAPACITY; the block may move.
+: ENSURE ( ptr vector<t> n -- )
+   {: v:ptr k:n :}
+   k v VECTOR-WIDTH @ CHECK-COUNT
+   k v VECTOR-COUNT @ <= if exit then
+   k v VECTOR-ROOM @ > if v k GROW then
+   k v VECTOR-COUNT ! ;
+
+\ n below 0 is E-VEC-CAPACITY; below COUNT the block stays where it is.
+: RESIZE ( ptr vector<t> n -- )
+   {: v:ptr k:n :}
+   k 0 < if E-VEC-CAPACITY throw then
+   k v VECTOR-COUNT @ < if v k CUT exit then
+   v k ENSURE ;
+
+\ Answers the new last element, its bytes zero, growing as ENSURE does.
+: PUSH ( ptr vector<t> -- ptr t )
+   {: v:ptr :}
+   v VECTOR-COUNT @ {: i:n :}
+   v i 1 + ENSURE
+   v i AT ;
+
+\ Growth and DELETE end the span, as they end an AT address.
+: SPAN ( ptr vector<t> -- SPAN:span<t> )
+   {: v:ptr :}
+   v VECTOR-DATA @ >ELEM  v VECTOR-COUNT @ v VECTOR-WIDTH @ *  SPAN:MAKE ;
 
 seal-package
 ;package

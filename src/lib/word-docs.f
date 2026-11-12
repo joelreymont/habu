@@ -7,8 +7,10 @@
 \ larger record, that RESET releases together; answered spans stay valid until
 \ RESET. FILE keeps no address of its text and releases the lexer's tables.
 
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
+require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/source-lex.f
 
@@ -23,7 +25,6 @@ public
 private
 
 $10000 constant CHUNK-BYTES
-1024 constant INDEX-CAP     \ first capacity of each index vector, in cells
 5 constant HEAD-CELLS       \ a record's header: four text lengths, then flags
 4 constant FLAGS-CELL
 1 constant PUBLIC-BIT
@@ -32,8 +33,10 @@ $10000 constant CHUNK-BYTES
 58 constant COLON-BYTE
 92 constant BACKSLASH
 
-VEC:HEADER-CELLS TYPED-BUFFER RECS ptr u8     \ each record, in source order
-VEC:HEADER-CELLS TYPED-BUFFER CHUNKS ptr u8   \ each chunk; its first cell holds its length
+\ Each record in source order, and each chunk, whose first cell holds its
+\ length; each vector is NULL-PTR while it is not made.
+TYPED-VARIABLE RECS ptr VEC:vector<ptr u8>
+TYPED-VARIABLE CHUNKS ptr VEC:vector<ptr u8>
 TYPED-VARIABLE CHUNK ptr u8                   \ the chunk records are taken from
 variable USED                                 \ bytes of CHUNK taken
 variable ROOM                                 \ CHUNK's length; 0 when there is none
@@ -46,27 +49,23 @@ TYPED-VARIABLE PART ptr u8                    \ the part open in PKG, in the tex
 variable PART-U                               \ 0 outside a part
 variable PUB                                  \ the open section is public
 
-\ Record and chunk counts drive raw loops and COUNT, so a vector length or
-\ capacity leaves its role here.
-CAST: ITEM>N ( NUM:item-count -- n )
-
 : CELL! ( n ptr u8 -- )
    CELL-VIEW ! ;
 
 : CELL@ ( ptr u8 -- n )
    CELL-VIEW @ ;
 
-\ The index vectors' capacity cell is their liveness token (vector.f).
 : LIVE? ( -- bool )
-   0 RECS VEC:CAP@ ITEM>N 0 > ;
+   RECS @ NULL-PTR <> ;
 
+\ CHUNKS first: a made RECS says both are made (LIVE?).
 : INIT ( -- )
-   0 RECS INDEX-CAP VEC:N>ITEM VEC:INIT
-   0 CHUNKS INDEX-CAP VEC:N>ITEM VEC:INIT ;
+   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW CHUNKS !
+   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW RECS ! ;
 
 : RELEASE-CHUNKS ( -- )
-   0 CHUNKS VEC:LEN@ ITEM>N 0 ?do
-      0 CHUNKS i VEC:N>INDEX VEC:@ {: base:ptr :}
+   CHUNKS @ VEC:COUNT 0 ?do
+      CHUNKS @ i VEC:AT @ {: base:ptr :}
       base base CELL@ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    loop ;
 
@@ -77,7 +76,7 @@ CAST: ITEM>N ( NUM:item-count -- n )
 : NEW-CHUNK ( n -- ) {: need:n :}
    need CELL + CHUNK-BYTES max {: len:n :}
    len MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:ptr :}
-   base 0 CHUNKS VEC:PUSH drop
+   base CHUNKS @ VEC:PUSH !
    len base CELL!
    base CHUNK !
    CELL USED !
@@ -162,7 +161,9 @@ CAST: ITEM>N ( NUM:item-count -- n )
    repeat 2drop ;
 
 : REC ( n -- ptr u8 )
-   0 RECS swap VEC:N>INDEX VEC:@ ;
+   {: k:n :}
+   LIVE? 0= if E-VEC-BOUNDS throw then
+   RECS @ k VEC:AT @ ;
 
 : FIELD@ ( n n -- n ) {: k:n f:n :}
    k REC f cells + CELL@ ;
@@ -209,7 +210,7 @@ CAST: ITEM>N ( NUM:item-count -- n )
    a t pu + u BYTE-COPY
    e t pu + u + eu BYTE-COPY
    t pu + u + eu + top stop NOTES-COPY
-   r 0 RECS VEC:PUSH drop ;
+   r RECS @ VEC:PUSH ! ;
 
 : LEXED ( -- )
    LINT-LEX:ERROR? if E-SOURCE throw then ;
@@ -294,13 +295,13 @@ public
    a PKG !  0 PKG-U !  a PART !  0 PART-U !  false PUB !
    [: READ-ALL ;] [: FORGET-TEXT ;] finally ;
 
-\ Drops every record and releases their storage. A record past COUNT is
-\ E-VEC-BOUNDS, and any record after RESET E-VEC-STATE.
+\ Drops every record and releases their storage. A record at or past COUNT,
+\ so any record after RESET, is E-VEC-BOUNDS.
 : RESET ( -- )
    LIVE? 0= if exit then
    RELEASE-CHUNKS
-   0 CHUNKS VEC:DISPOSE
-   0 RECS VEC:DISPOSE
+   CHUNKS @ VEC:DELETE  NULL-PTR CHUNKS !
+   RECS @ VEC:DELETE  NULL-PTR RECS !
    NULL-PTR CHUNK !
    0 ROOM !
    0 USED ! ;
@@ -333,6 +334,7 @@ public
 
 \ Defined last: inside this package a bare COUNT is this word from here on.
 : COUNT ( -- n )
-   0 RECS VEC:LEN@ ITEM>N ;
+   LIVE? 0= if 0 exit then
+   RECS @ VEC:COUNT ;
 
 ;package

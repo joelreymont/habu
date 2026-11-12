@@ -1,6 +1,6 @@
 \ word-docs-test.f - package WORD-DOCS through its public API: an inline fixture
-\ for each recording rule, the refusals, storage beyond one chunk and one index
-\ capacity, and a real source file.
+\ for each recording rule, the refusals, storage beyond one chunk, and a real
+\ source file.
 \ Run: bin/hb --load src/lib/word-docs-test.f
 
 require src/lib/string.f
@@ -14,7 +14,7 @@ package WORD-DOCS-TEST
 private
 
 $40000 constant FIX-CAP          \ room for the largest generated text
-1500 constant MANY               \ past one chunk of records and the first index capacity
+1500 constant MANY               \ past one chunk of records
 1200 constant LONG-LINES         \ one comment longer than a chunk
 58 constant LONG-WIDTH           \ bytes of each of its lines after `\ `
 120 constant X-BYTE              \ `x`, which fills them
@@ -118,7 +118,7 @@ variable FIX-U
    1 s" TWO" s" GAMMA" s" --" REC=
    WORD-DOCS:RESET
    WORD-DOCS:COUNT 0 T=
-   [: 0 WORD-DOCS:NAME$ 2drop ;] E-VEC-STATE TTHROWSQ ;
+   [: 0 WORD-DOCS:NAME$ 2drop ;] E-VEC-BOUNDS TTHROWSQ ;
 
 \ A part's records name its path; its `;package` returns to OUTER's private
 \ section, and OUTER's own closes the package.

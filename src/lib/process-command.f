@@ -11,6 +11,7 @@ require src/lib/fs.f
 require src/lib/fd.f
 require src/lib/byte-buffer.f
 require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/map.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -43,8 +44,20 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 2 cells TASK:+USER CMD-TASK drop
 : INNER ( -- ptr ptr n ) CMD-TASK 0 ptr-field ;
 : RUNNING ( -- ptr ptr n ) CMD-TASK 1 ptr-field ;
 
-\ Header cells, then the PATHZ and CWDZ byte regions. A member that holds an
-\ address is a typed `ptr-field`; a pointer kept in an undeclared cell is refused.
+STRUCTURE vectors DERIVE addr
+   FIELD argv ptr VEC:vector<ptr u8>
+   FIELD envp ptr VEC:vector<ptr u8>
+   FIELD arg-off ptr VEC:vector<n>
+   FIELD env-off ptr VEC:vector<n>
+   FIELD placed ptr VEC:vector<n>
+   FIELD unset-off ptr VEC:vector<n>
+   FIELD env-names ptr VEC:vector<n>
+;STRUCTURE
+
+CAST: >VECTORS ( ptr n -- ptr vectors )
+
+\ Header cells, then the PATHZ and CWDZ byte regions. A
+\ pointer kept in a cell that declares none is refused.
 : OUTER ( ptr n -- ptr ptr n ) 0 ptr-field ;
 : INHERIT ( ptr n -- ptr n ) 1 cells + ;
 : CWD-LEN ( ptr n -- ptr n ) 2 cells + ;       \ 0: the child inherits this process's directory
@@ -62,15 +75,30 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 2 cells TASK:+USER CMD-TASK drop
 : ARG-BUF ( ptr n -- ptr n ) 14 cells + ;      \ NUL-terminated arguments, back to back
 : ENV-BUF ( ptr n -- ptr n ) 17 cells + ;      \ NUL-terminated caller rows, back to back
 : IN-BUF ( ptr n -- ptr n ) 20 cells + ;
-: ARGV-VEC ( ptr n -- ptr ptr u8 ) 23 ptr-field ;  \ the child's argv, built by PREPARE
-: ENVP-VEC ( ptr n -- ptr ptr u8 ) 26 ptr-field ;  \ the child's envp, built by PREPARE
-: ARG-OFF ( ptr n -- ptr n ) 29 cells + ;      \ each argument's offset in ARG-BUF
-: ENV-OFF ( ptr n -- ptr n ) 32 cells + ;      \ each caller row's offset in ENV-BUF
-: PLACED ( ptr n -- ptr n ) 35 cells + ;       \ FD+'s child/parent pairs, back to back
-: UNSET-BUF ( ptr n -- ptr n ) 38 cells + ;    \ UNSETENV's NUL-terminated names, back to back
-: UNSET-OFF ( ptr n -- ptr n ) 41 cells + ;    \ each unset name's offset in UNSET-BUF
-: ENV-NAMES ( ptr n -- ptr n ) 44 cells + ;    \ a MAP indexing envp rows by name during PREPARE
-47 constant HEAD-CELLS
+\ UNSETENV's NUL-terminated names, back to back
+: UNSET-BUF ( ptr n -- ptr n ) 23 cells + ;
+\ the child's argv, built by PREPARE
+: ARGV-VEC ( ptr n -- ptr ptr VEC:vector<ptr u8> )
+   26 cells + >VECTORS VECTORS-ARGV ;
+\ the child's envp, built by PREPARE
+: ENVP-VEC ( ptr n -- ptr ptr VEC:vector<ptr u8> )
+   26 cells + >VECTORS VECTORS-ENVP ;
+\ each argument's offset in ARG-BUF
+: ARG-OFF ( ptr n -- ptr ptr VEC:vector<n> )
+   26 cells + >VECTORS VECTORS-ARG-OFF ;
+\ each caller row's offset in ENV-BUF
+: ENV-OFF ( ptr n -- ptr ptr VEC:vector<n> )
+   26 cells + >VECTORS VECTORS-ENV-OFF ;
+\ FD+'s child/parent pairs, back to back
+: PLACED ( ptr n -- ptr ptr VEC:vector<n> )
+   26 cells + >VECTORS VECTORS-PLACED ;
+\ each unset name's offset in UNSET-BUF
+: UNSET-OFF ( ptr n -- ptr ptr VEC:vector<n> )
+   26 cells + >VECTORS VECTORS-UNSET-OFF ;
+\ a MAP indexing envp rows by name during PREPARE
+: ENV-NAMES ( ptr n -- ptr ptr VEC:vector<n> )
+   26 cells + >VECTORS VECTORS-ENV-NAMES ;
+26 VECTORS-CELLS + constant HEAD-CELLS
 
 PROCESS:PATHZ-CAP constant PATHZ-CAP
 HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
@@ -80,18 +108,6 @@ HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
 
 \ Growing members start small; the first byte, row or capture grows them.
 64 constant BYTES-START
-16 constant ITEMS-START
-
-CAST: ITEM>N ( NUM:item-count -- n )
-
-: N>ITEM ( n -- NUM:item-count )
-   NUM:ITEM-COUNT
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
-      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
-      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
-      misaligned OF E-VEC-CAPACITY throw ENDOF
-   ;MATCH ;
 
 : BUF-LEN ( ptr a -- n ) BUF:LEN@ BUF:BLEN>N ;
 : BUF-BASE ( ptr a -- ptr u8 ) BUF:SPAN$ drop ;
@@ -115,11 +131,11 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h ARG-BUF BUF:CLEAR
    h ENV-BUF BUF:CLEAR
    h IN-BUF BUF:CLEAR
-   h ARG-OFF VEC:CLEAR
-   h ENV-OFF VEC:CLEAR
-   h PLACED VEC:CLEAR
+   h ARG-OFF @ 0 VEC:RESIZE
+   h ENV-OFF @ 0 VEC:RESIZE
+   h PLACED @ 0 VEC:RESIZE
    h UNSET-BUF BUF:CLEAR
-   h UNSET-OFF VEC:CLEAR
+   h UNSET-OFF @ 0 VEC:RESIZE
    0 h CWD-LEN !
    1 h INHERIT !
    PROCESS:NO-FD h CANCEL-FD !
@@ -130,14 +146,14 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h ARG-BUF BYTES-START BUF:N>BLEN BUF:INIT
    h ENV-BUF BYTES-START BUF:N>BLEN BUF:INIT
    h IN-BUF BYTES-START BUF:N>BLEN BUF:INIT
-   h ARGV-VEC ITEMS-START N>ITEM VEC:INIT
-   h ENVP-VEC ITEMS-START N>ITEM VEC:INIT
-   h ENV-NAMES ITEMS-START N>ITEM VEC:INIT
-   h ARG-OFF ITEMS-START N>ITEM VEC:INIT
-   h ENV-OFF ITEMS-START N>ITEM VEC:INIT
-   h PLACED ITEMS-START N>ITEM VEC:INIT
+   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW h ARGV-VEC !
+   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW h ENVP-VEC !
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW h ENV-NAMES !
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW h ARG-OFF !
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW h ENV-OFF !
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW h PLACED !
    h UNSET-BUF BYTES-START BUF:N>BLEN BUF:INIT
-   h UNSET-OFF ITEMS-START N>ITEM VEC:INIT
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW h UNSET-OFF !
    h CLEAR-BUILD ;
 
 : RELEASE-REGION ( ptr u8 n -- ) {: base:ptr cap:n :}
@@ -145,21 +161,22 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    base cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 \ Pop the context first, so a failing disposer cannot leave a freed context on
-\ the chain; a member never initialised is a dead header, which DISPOSE ignores.
+\ the chain; a member never initialised is a dead header or a NULL-PTR vector,
+\ which DISPOSE and DELETE ignore.
 : CLOSE ( -- )
    INNER @ {: h:ptr :}
    h OUTER @ INNER !
    h ARG-BUF BUF:DISPOSE
    h ENV-BUF BUF:DISPOSE
    h IN-BUF BUF:DISPOSE
-   h ARGV-VEC VEC:DISPOSE
-   h ENVP-VEC VEC:DISPOSE
-   h ENV-NAMES VEC:DISPOSE
-   h ARG-OFF VEC:DISPOSE
-   h ENV-OFF VEC:DISPOSE
-   h PLACED VEC:DISPOSE
+   h ARGV-VEC @ VEC:DELETE
+   h ENVP-VEC @ VEC:DELETE
+   h ENV-NAMES @ VEC:DELETE
+   h ARG-OFF @ VEC:DELETE
+   h ENV-OFF @ VEC:DELETE
+   h PLACED @ VEC:DELETE
    h UNSET-BUF BUF:DISPOSE
-   h UNSET-OFF VEC:DISPOSE
+   h UNSET-OFF @ VEC:DELETE
    h OUT-BASE @ h OUT-CAP @ RELEASE-REGION
    h ERR-BASE @ h ERR-CAP @ RELEASE-REGION
    h CTX-CELLS MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
@@ -206,15 +223,15 @@ private
 
 \ Record where the next NUL-terminated entry starts; PREPARE resolves offsets to
 \ addresses once the bytes stop moving.
-: MARK ( ptr n ptr n -- ) {: buf:ptr offs:ptr :}
-   buf BUF-LEN offs VEC:PUSH drop ;
+: MARK ( ptr n ptr VEC:vector<n> -- ) {: buf:ptr offs:ptr :}
+   buf BUF-LEN offs VEC:PUSH ! ;
 
 public
 
 : ARG+ ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
    CTX {: h:ptr :}
    u 0 < if E-PROC-OUTPUT throw then
-   h ARG-BUF h ARG-OFF MARK
+   h ARG-BUF h ARG-OFF @ MARK
    a u BUF:N>BLEN h ARG-BUF BUF:APPEND-SPAN
    0 h ARG-BUF BUF:APPEND-BYTE ;
 
@@ -222,7 +239,7 @@ public
    CTX {: h:ptr :}
    u 0 < if E-PROC-ENV throw then
    a u >LEN PROC-ENV-CHECK-ENTRY
-   h ENV-BUF h ENV-OFF MARK
+   h ENV-BUF h ENV-OFF @ MARK
    a u BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
    0 h ENV-BUF BUF:APPEND-BYTE ;
 
@@ -231,7 +248,7 @@ public
    CTX {: h:ptr :}
    nameu 0 < valu 0 < or if E-PROC-ENV throw then
    name nameu >LEN PROC-ENV-CHECK-NAME
-   h ENV-BUF h ENV-OFF MARK
+   h ENV-BUF h ENV-OFF @ MARK
    name nameu BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
    PROC-ENV-EQUAL h ENV-BUF BUF:APPEND-BYTE
    val valu BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
@@ -252,7 +269,7 @@ public
    {: a:ptr u:n :}
    CTX {: h:ptr :}
    a u >LEN PROC-ENV-CHECK-NAME
-   h UNSET-BUF h UNSET-OFF MARK
+   h UNSET-BUF h UNSET-OFF @ MARK
    a u BUF:N>BLEN h UNSET-BUF BUF:APPEND-SPAN
    0 h UNSET-BUF BUF:APPEND-BYTE ;
 
@@ -289,41 +306,28 @@ public
    {: child:fd parent:fd :}
    CTX {: h:ptr :}
    child FD>N 0 < parent FD>N 0 < or if E-PROC-OUTPUT throw then
-   child FD>N h PLACED VEC:PUSH drop
-   parent FD>N h PLACED VEC:PUSH drop ;
+   child FD>N h PLACED @ VEC:PUSH !
+   parent FD>N h PLACED @ VEC:PUSH ! ;
 
 private
 
-: ARG-ADDR+ ( ptr n NUM:index n -- ptr n ) {: off:n :} drop {: h:ptr :}
-   h ARG-BUF BUF-BASE off + h ARGV-VEC VEC:PUSH drop
-   h ;
-
-: NAMES ( ptr n -- ptr n count ) ENV-NAMES VEC:DATA@ dup MAP:CAP@ ;
+: NAMES ( ptr n -- ptr n count ) ENV-NAMES @ 0 VEC:AT dup MAP:CAP@ ;
 
 : ROW-NAME ( ptr u8 -- ptr u8 len ) {: z:ptr :}
    z z z ZLEN >LEN PROC-ENV-NAME-LEN ;
 
 : NAMED-PUSH ( ptr n ptr u8 -- ) {: h:ptr z:ptr :}
-   h ENVP-VEC VEC:LEN@ ITEM>N h NAMES z ROW-NAME MAP:SET
-   z h ENVP-VEC VEC:PUSH drop ;
-
-: ENV-ADDR+ ( ptr n NUM:index n -- ptr n ) {: off:n :} drop {: h:ptr :}
-   h ENV-BUF BUF-BASE off + {: z:ptr :}
-   h NAMES z ROW-NAME MAP:GET MATCH option
-      none OF h z NAMED-PUSH ENDOF
-      some OF z swap h ENVP-VEC swap VEC:N>INDEX VEC:! ENDOF
-   ;MATCH
-   h ;
-
+   h ENVP-VEC @ VEC:COUNT h NAMES z ROW-NAME MAP:SET
+   z h ENVP-VEC @ VEC:PUSH ! ;
 
 : UNSET-NAME ( ptr n n -- ptr u8 len )
    {: h:ptr i:n :}
-   h UNSET-BUF BUF-BASE h UNSET-OFF i VEC:N>INDEX VEC:@ + dup ZLEN >LEN ;
+   h UNSET-BUF BUF-BASE h UNSET-OFF @ i VEC:AT @ + dup ZLEN >LEN ;
 
 
 : UNSET? ( ptr n ptr u8 -- bool )
    {: h:ptr z:ptr :}
-   0 begin dup h UNSET-OFF VEC:LEN@ ITEM>N < while
+   0 begin dup h UNSET-OFF @ VEC:COUNT < while
       h over UNSET-NAME z z ZLEN >LEN PROC-ENV-SAME-NAME? if drop PROC-ENV-TRUE exit then
       1+
    repeat drop PROC-ENV-FALSE ;
@@ -351,7 +355,7 @@ private
    repeat drop ;
 
 : ENV-ROWS ( ptr n -- n ) {: h:ptr :}
-   h ENV-OFF VEC:LEN@ ITEM>N
+   h ENV-OFF @ VEC:COUNT
    h INHERIT @ 0= if exit then
    PROC-ENV-DEF-N @ COUNT>N +
    0 begin dup ENVP 0= 0= while 1 + repeat + ;
@@ -360,23 +364,31 @@ private
 \ themselves; ENV-BUF does not grow in PREPARE and inherited rows never move.
 : NAMES-INIT ( ptr n -- ) {: h:ptr :}
    h ENV-ROWS 2 * 1 max >COUNT {: cap :}
-   h ENV-NAMES cap MAP:CELL-COUNT COUNT>N N>ITEM VEC:ENSURE
-   h ENV-NAMES VEC:DATA@ cap MAP:INIT ;
+   h ENV-NAMES @ cap MAP:CELL-COUNT COUNT>N VEC:ENSURE
+   h ENV-NAMES @ 0 VEC:AT cap MAP:INIT ;
 
 \ argv: the path, each argument, the NULL. envp: the caller's rows, one per name
 \ with its last value, then the inherited ones, the NULL; both rebuilt every run.
 : PREPARE ( ptr n ptr u8 n -- )
    {: h:ptr path:ptr pathu:n :}
    path pathu >LEN h PATHZ PATHZ-CAP >LEN PROCESS:ZCOPY {: z:ptr :}
-   h ARGV-VEC VEC:CLEAR
-   z h ARGV-VEC VEC:PUSH drop
-   h h ARG-OFF [: ARG-ADDR+ ;] VEC:EACH drop
-   NULL-PTR h ARGV-VEC VEC:PUSH drop
+   h ARGV-VEC @ 0 VEC:RESIZE
+   z h ARGV-VEC @ VEC:PUSH !
+   h ARG-OFF @ VEC:COUNT 0 ?do
+      h ARG-BUF BUF-BASE  h ARG-OFF @ i VEC:AT @ +  h ARGV-VEC @ VEC:PUSH !
+   loop
+   NULL-PTR h ARGV-VEC @ VEC:PUSH !
    h NAMES-INIT
-   h ENVP-VEC VEC:CLEAR
-   h h ENV-OFF [: ENV-ADDR+ ;] VEC:EACH drop
+   h ENVP-VEC @ 0 VEC:RESIZE
+   h ENV-OFF @ VEC:COUNT 0 ?do
+      h ENV-BUF BUF-BASE  h ENV-OFF @ i VEC:AT @ +  {: z:ptr :}
+      h NAMES z ROW-NAME MAP:GET MATCH option
+         none OF h z NAMED-PUSH ENDOF
+         some OF z swap h ENVP-VEC @ swap VEC:AT ! ENDOF
+      ;MATCH
+   loop
    h INHERIT @ 0<> if h INHERIT-DEFAULTS h INHERIT-PARENT then
-   NULL-PTR h ENVP-VEC VEC:PUSH drop ;
+   NULL-PTR h ENVP-VEC @ VEC:PUSH ! ;
 
 : CHECK-RUN ( ptr u8 n ms -- )
    {: path:ptr pathu:n timeout:ms :}
@@ -384,19 +396,18 @@ private
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then ;
 
 
-: PAIRS ( ptr n -- ptr n n )
-   {: h:ptr :}
-   h PLACED VEC:DATA@ h PLACED VEC:LEN@ ITEM>N 2 / ;
+: PAIRS ( ptr n -- n ) PLACED @ VEC:COUNT 2 / ;
 
 
-\ The pair at idx of PLACED's array: the child's fd and the parent's.
+\ The pair at idx of PLACED: the child's fd and the parent's.
 : PAIR ( ptr n n -- fd fd )
-   2 * cells + {: p:ptr :}
-   p @ >FD p cell+ @ >FD ;
+   {: h:ptr k:n :}
+   h PLACED @ 2 k * VEC:AT @ >FD
+   h PLACED @ 2 k * 1 + VEC:AT @ >FD ;
 
 
 : CHECK-PLACED ( ptr n -- )
-   PAIRS 0 ?do dup i PAIR nip PROCESS:CHECK-FD loop drop ;
+   dup PAIRS 0 ?do dup i PAIR nip PROCESS:CHECK-FD loop drop ;
 
 
 \ The capture pipes at the child's 0, 1 and 2.
@@ -407,8 +418,8 @@ private
 
 
 : PLACE ( PROCESS:request ptr n -- PROCESS:request )
-   PAIRS {: fds:ptr n :}
-   n 0 ?do fds i PAIR PROCESS:FD loop ;
+   {: h:ptr :}
+   h PAIRS 0 ?do h i PAIR PROCESS:FD loop ;
 
 
 \ The run's request from the context's own storage; FD+'s placements apply after
@@ -416,8 +427,8 @@ private
 : REQUEST ( ptr n -- PROCESS:request )
    {: h:ptr :}
    h PATHZ dup ZLEN PROCESS:NEW PROCESS:HERMETIC
-   h ARGV-VEC VEC:DATA@ PROCESS:ARGV-ROWS
-   h ENVP-VEC VEC:DATA@ PROCESS:ENV-ROWS
+   h ARGV-VEC @ 0 VEC:AT PROCESS:ARGV-ROWS
+   h ENVP-VEC @ 0 VEC:AT PROCESS:ENV-ROWS
    h CWD-LEN @ 0 > if h CWDZ h CWD-LEN @ PROCESS:CWD then
    STDIO
    h PLACE ;

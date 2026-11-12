@@ -2,7 +2,6 @@
 \ The caller embeds a three-cell header (BUF:HDR-BYTES); the buffer owns the one
 \ OS mapping at its storage pointer. The capacity cell is the ownership token:
 \ positive, a live mapping of that many bytes; zero, none (fresh or disposed).
-\ Storage discipline mirrors src/lib/vector.f.
 \ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; BUF owns the mapping.
 
 require src/lib/error.f

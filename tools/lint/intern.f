@@ -3,6 +3,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
+require src/lib/heap.f
 require src/lib/vector.f
 require tools/lint/text.f
 
@@ -17,59 +18,50 @@ private
 \ The set has no entry ceiling: ids live in growable vectors and their bytes in
 \ chunks allocated on demand, so a repository-scale input is bounded by memory
 \ alone and a failed chunk allocation reports as a memory error. The bounds
-\ below are real resources: the chunk granularity, the fixed fold buffer, and
-\ the starting vector capacities.
+\ below are real resources: the chunk granularity and the fixed fold buffer.
 $1000 constant INTERN-CHUNK-MIN
 $100 constant INTERN-FOLD-CAP
-8 constant INTERN-VEC-CAP
-2 constant INTERN-CHUNK-VEC-CAP
 
-VEC:HEADER-CELLS TYPED-BUFFER INTERN-ADDR-V ptr u8
-create INTERN-LEN-V VEC:HEADER-CELLS cells allot
-\ The chunk column holds allocation addresses, so its header is declared
-\ pointer storage and carries the element type.
-VEC:HEADER-CELLS TYPED-BUFFER INTERN-CHUNK-A-V ptr u8
-create INTERN-CHUNK-CAP-V VEC:HEADER-CELLS cells allot
-create INTERN-CHUNK-USED-V VEC:HEADER-CELLS cells allot
+\ NULL-PTR until INTERN-INIT-ONCE makes them; every public word runs it first.
+TYPED-VARIABLE INTERN-ADDR-V ptr VEC:vector<ptr u8>
+TYPED-VARIABLE INTERN-LEN-V ptr VEC:vector<n>
+TYPED-VARIABLE INTERN-CHUNK-A-V ptr VEC:vector<ptr u8>
+TYPED-VARIABLE INTERN-CHUNK-CAP-V ptr VEC:vector<n>
+TYPED-VARIABLE INTERN-CHUNK-USED-V ptr VEC:vector<n>
 create INTERN-FOLD-BUF INTERN-FOLD-CAP allot
 variable INTERN-READY
 variable INTERN-CHUNK-I
-
-\ ---- VEC length -> raw count bridge ---------------------------------------
-\ The entry and chunk counts drive raw bounds and the id a new entry is stored
-\ under, so a vector length leaves its role here.
-CAST: ITEM>N ( NUM:item-count -- n )
 
 : INTERN-READY? ( -- bool )
    INTERN-READY @ 0 = IF LINT-FALSE ELSE LINT-TRUE THEN ;
 
 : INTERN-INIT-ONCE ( -- )
    INTERN-READY? IF exit THEN
-   0 INTERN-ADDR-V INTERN-VEC-CAP VEC:N>ITEM VEC:INIT
-   INTERN-LEN-V INTERN-VEC-CAP VEC:N>ITEM VEC:INIT
-   0 INTERN-CHUNK-A-V INTERN-CHUNK-VEC-CAP VEC:N>ITEM VEC:INIT
-   INTERN-CHUNK-CAP-V INTERN-CHUNK-VEC-CAP VEC:N>ITEM VEC:INIT
-   INTERN-CHUNK-USED-V INTERN-CHUNK-VEC-CAP VEC:N>ITEM VEC:INIT
+   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW INTERN-ADDR-V !
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW INTERN-LEN-V !
+   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW INTERN-CHUNK-A-V !
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW INTERN-CHUNK-CAP-V !
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW INTERN-CHUNK-USED-V !
    1 INTERN-READY ! ;
 
 : INTERN# ( -- n )
    INTERN-INIT-ONCE
-   0 INTERN-ADDR-V VEC:LEN@ ITEM>N ;
+   INTERN-ADDR-V @ VEC:COUNT ;
 
 : INTERN-CHUNK# ( -- n )
-   0 INTERN-CHUNK-A-V VEC:LEN@ ITEM>N ;
+   INTERN-CHUNK-A-V @ VEC:COUNT ;
 
 : INTERN-CHUNK-A@ ( n -- ptr u8 )
-   0 INTERN-CHUNK-A-V swap VEC:N>INDEX VEC:@ ;
+   INTERN-CHUNK-A-V @ swap VEC:AT @ ;
 
 : INTERN-CHUNK-CAP@ ( n -- n )
-   INTERN-CHUNK-CAP-V swap VEC:N>INDEX VEC:@ ;
+   INTERN-CHUNK-CAP-V @ swap VEC:AT @ ;
 
 : INTERN-CHUNK-USED@ ( n -- n )
-   INTERN-CHUNK-USED-V swap VEC:N>INDEX VEC:@ ;
+   INTERN-CHUNK-USED-V @ swap VEC:AT @ ;
 
 : INTERN-CHUNK-USED! ( n n -- ) {: used k :}
-   used INTERN-CHUNK-USED-V k VEC:N>INDEX VEC:! ;
+   used INTERN-CHUNK-USED-V @ k VEC:AT ! ;
 
 : INTERN-RESET-CHUNKS ( -- )
    0 begin dup INTERN-CHUNK# < while
@@ -81,8 +73,8 @@ public
 
 : INTERN-RESET ( -- )
    INTERN-INIT-ONCE
-   0 INTERN-ADDR-V VEC:CLEAR
-   INTERN-LEN-V VEC:CLEAR
+   INTERN-ADDR-V @ 0 VEC:RESIZE
+   INTERN-LEN-V @ 0 VEC:RESIZE
    0 INTERN-CHUNK-I !
    INTERN-RESET-CHUNKS ;
 
@@ -90,8 +82,8 @@ public
    INTERN-INIT-ONCE
    id 0 < IF E-LINT-INTERN-CAP throw THEN
    id INTERN# >= IF E-LINT-INTERN-CAP throw THEN
-   0 INTERN-ADDR-V id VEC:N>INDEX VEC:@
-   INTERN-LEN-V id VEC:N>INDEX VEC:@ ;
+   INTERN-ADDR-V @ id VEC:AT @
+   INTERN-LEN-V @ id VEC:AT @ ;
 
 : INTERN-FIND ( ptr u8 n -- n ) {: a:ptr u :}
    INTERN-INIT-ONCE
@@ -109,9 +101,9 @@ private
    dup INTERN-CHUNK-MIN < IF drop INTERN-CHUNK-MIN THEN ;
 
 : INTERN-STORE-CHUNK ( ptr u8 n -- ) {: a:ptr cap :}
-   a 0 INTERN-CHUNK-A-V VEC:PUSH drop
-   cap INTERN-CHUNK-CAP-V VEC:PUSH drop
-   0 INTERN-CHUNK-USED-V VEC:PUSH drop ;
+   a INTERN-CHUNK-A-V @ VEC:PUSH !
+   cap INTERN-CHUNK-CAP-V @ VEC:PUSH !
+   0 INTERN-CHUNK-USED-V @ VEC:PUSH ! ;
 
 : INTERN-ADD-CHUNK ( n -- )
    INTERN-CHUNK-SIZE {: cap:n :}
@@ -151,8 +143,8 @@ private
    a u u INTERN-ALLOC-SPAN INTERN-COPY-TO ;
 
 : INTERN-STORE-NEW ( ptr u8 n n -- n ) {: a:ptr u id :}
-   a u INTERN-COPY$ 0 INTERN-ADDR-V VEC:PUSH drop
-   u INTERN-LEN-V VEC:PUSH drop
+   a u INTERN-COPY$ INTERN-ADDR-V @ VEC:PUSH !
+   u INTERN-LEN-V @ VEC:PUSH !
    id ;
 
 public

@@ -1,20 +1,20 @@
 \ source-lex.f - package LINT-LEX: the one shared lexer for Habu source, for the
 \ lint, checker and codegen tooling and applications that read source by its
 \ tokens. Tokens point into the span SOURCE was given, so that span stays in
-\ place while they are read. It requires src/lib/vector.f, which the engine lacks.
+\ place while they are read.
 \ STORAGE CLASS. PROCESS-WIDE: one token table and scan state for the image;
-\ SOURCE replaces the last scan's tokens. SOURCE maps the tables when none are
-\ mapped; RELEASE unmaps them and forgets the span.
+\ SOURCE replaces the last scan's tokens. SOURCE makes the tables on the heap
+\ when none are made; RELEASE deletes them and forgets the span.
 
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/source.f
 
 package LINT-LEX
 private
 
-1024 constant MIN-CAP
 0 constant NO-ERROR
 $22 constant DQUOTE             \ the byte that closes a string literal
 
@@ -23,9 +23,8 @@ $22 constant DQUOTE             \ the byte that closes a string literal
 2 constant ROW-EBARE            \ FAM: engine `EPRIM:` row, closed by either engine closer
 3 constant ROW-EPKG             \ FAM: engine `EPPRIM:` row, closed by either engine closer
 
-\ released: no table mapped; partial: the tables possibly part mapped; mapped:
-\ every table mapped.
-ENUM tables released partial mapped ;ENUM
+\ partial: the tables possibly part made.
+ENUM tables released partial made ;ENUM
 TYPED-VARIABLE TABLES tables
 TYPED-VARIABLE SRC-A ptr u8   \ start of the source span being lexed
 variable TOK-N   variable SRC-U   variable POS
@@ -41,29 +40,25 @@ variable FAM                    \ family of the row being scanned
 variable FOFF   variable FLEN   \ current row field: offset into the source, length
 variable R-BYTE variable R-LINE variable R-COL   \ opener site of the row being scanned
 
-create KIND-V VEC:HEADER-CELLS cells allot
-\ The two address columns hold starts into the linted source, so their vector
-\ headers are declared pointer storage and carry the element type.
-VEC:HEADER-CELLS TYPED-BUFFER ADDR-V ptr u8
-create LEN-V VEC:HEADER-CELLS cells allot
-create BYTE-V VEC:HEADER-CELLS cells allot
-create LINE-V VEC:HEADER-CELLS cells allot
-create COL-V VEC:HEADER-CELLS cells allot
-VEC:HEADER-CELLS TYPED-BUFFER CADDR-V ptr u8
-create CLEN-V VEC:HEADER-CELLS cells allot
-create OPND-V VEC:HEADER-CELLS cells allot   \ the token is a raw operand
+\ Each table is a vector the cell holds, NULL-PTR while it is not made.
+TYPED-VARIABLE KIND-V ptr VEC:vector<n>
+\ The two address columns hold starts into the linted source.
+TYPED-VARIABLE ADDR-V ptr VEC:vector<ptr u8>
+TYPED-VARIABLE LEN-V ptr VEC:vector<n>
+TYPED-VARIABLE BYTE-V ptr VEC:vector<n>
+TYPED-VARIABLE LINE-V ptr VEC:vector<n>
+TYPED-VARIABLE COL-V ptr VEC:vector<n>
+TYPED-VARIABLE CADDR-V ptr VEC:vector<ptr u8>
+TYPED-VARIABLE CLEN-V ptr VEC:vector<n>
+TYPED-VARIABLE OPND-V ptr VEC:vector<n>   \ the token is a raw operand
 \ The locals live after the tokens below STEPPED, read from those tokens (STEP):
 \ the token of each live local's name and the block depth that declared it.
-create LOCAL-V VEC:HEADER-CELLS cells allot
-create LDEPTH-V VEC:HEADER-CELLS cells allot
+TYPED-VARIABLE LOCAL-V ptr VEC:vector<n>
+TYPED-VARIABLE LDEPTH-V ptr VEC:vector<n>
 variable STEPPED
 variable DEPTH                  \ blocks open, counted while a local lives
 variable IN-GROUP               \ those tokens end inside a `{: … :}` group
 variable IN-BODY                \ those tokens end inside a definition body
-
-\ The token and locals counts drive raw cell arithmetic (COUNT 1- ...), so a
-\ vector length leaves its role here.
-CAST: ITEM>N ( NUM:item-count -- n )
 
 : SRC@ ( -- ptr u8 )
    SRC-A @ ;
@@ -71,11 +66,25 @@ CAST: ITEM>N ( NUM:item-count -- n )
 : SRC! ( ptr u8 -- )
    SRC-A ! ;
 
-: INIT-ONE ( ptr a -- )
-   dup VEC:DISPOSE MIN-CAP VEC:N>ITEM VEC:INIT ;
+\ NULL-PTR goes in before NEW: a refused NEW leaves no vector to delete twice.
+: INIT-ONE ( ptr ptr VEC:vector<n> -- )
+   {: c:ptr :}
+   c @ VEC:DELETE  NULL-PTR c !
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW c ! ;
 
-: CLEAR-ONE ( ptr a -- )
-   VEC:CLEAR ;
+: INIT-ADDR ( ptr ptr VEC:vector<ptr u8> -- )
+   {: c:ptr :}
+   c @ VEC:DELETE  NULL-PTR c !
+   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW c ! ;
+
+: CLEAR-ONE ( ptr ptr VEC:vector<t> -- )
+   {: c:ptr :}
+   c @ NULL-PTR = if exit then
+   c @ 0 VEC:RESIZE ;
+
+\ The vector a table's cell holds; one not made is E-VEC-BOUNDS.
+: TABLE@ ( ptr ptr VEC:vector<t> -- ptr VEC:vector<t> )
+   @ dup NULL-PTR = if E-VEC-BOUNDS throw then ;
 
 : CLEAR-ERROR ( -- )
    NO-ERROR ERR-KIND !
@@ -94,26 +103,26 @@ TABLES-RELEASED
 
 : INIT-VECTORS ( -- )
    KIND-V INIT-ONE
-   0 ADDR-V INIT-ONE
+   ADDR-V INIT-ADDR
    LEN-V INIT-ONE
    BYTE-V INIT-ONE
    LINE-V INIT-ONE
    COL-V INIT-ONE
-   0 CADDR-V INIT-ONE
+   CADDR-V INIT-ADDR
    CLEN-V INIT-ONE
    OPND-V INIT-ONE
    LOCAL-V INIT-ONE
    LDEPTH-V INIT-ONE
-   construct tables mapped TABLES ! ;
+   construct tables made TABLES ! ;
 
 : CLEAR-VECTORS ( -- )
    KIND-V CLEAR-ONE
-   0 ADDR-V CLEAR-ONE
+   ADDR-V CLEAR-ONE
    LEN-V CLEAR-ONE
    BYTE-V CLEAR-ONE
    LINE-V CLEAR-ONE
    COL-V CLEAR-ONE
-   0 CADDR-V CLEAR-ONE
+   CADDR-V CLEAR-ONE
    CLEN-V CLEAR-ONE
    OPND-V CLEAR-ONE ;
 
@@ -128,48 +137,48 @@ TABLES-RELEASED
    false IN-BODY ! ;
 
 : DISPOSE-VECTORS ( -- )
-   KIND-V VEC:DISPOSE
-   0 ADDR-V VEC:DISPOSE
-   LEN-V VEC:DISPOSE
-   BYTE-V VEC:DISPOSE
-   LINE-V VEC:DISPOSE
-   COL-V VEC:DISPOSE
-   0 CADDR-V VEC:DISPOSE
-   CLEN-V VEC:DISPOSE
-   OPND-V VEC:DISPOSE
-   LOCAL-V VEC:DISPOSE
-   LDEPTH-V VEC:DISPOSE ;
+   KIND-V @ VEC:DELETE  NULL-PTR KIND-V !
+   ADDR-V @ VEC:DELETE  NULL-PTR ADDR-V !
+   LEN-V @ VEC:DELETE  NULL-PTR LEN-V !
+   BYTE-V @ VEC:DELETE  NULL-PTR BYTE-V !
+   LINE-V @ VEC:DELETE  NULL-PTR LINE-V !
+   COL-V @ VEC:DELETE  NULL-PTR COL-V !
+   CADDR-V @ VEC:DELETE  NULL-PTR CADDR-V !
+   CLEN-V @ VEC:DELETE  NULL-PTR CLEN-V !
+   OPND-V @ VEC:DELETE  NULL-PTR OPND-V !
+   LOCAL-V @ VEC:DELETE  NULL-PTR LOCAL-V !
+   LDEPTH-V @ VEC:DELETE  NULL-PTR LDEPTH-V ! ;
 
-\ The state is partial before any table is mapped: a failed map leaves partial,
-\ and the retry maps each table again.
+\ The state is partial before any table is made: a refused NEW leaves partial,
+\ and the retry makes each table again.
 : RESET-TABLES ( -- )
    TABLES @
    MATCH tables
       released OF TABLES-PARTIAL INIT-VECTORS ENDOF
       partial OF INIT-VECTORS ENDOF
-      mapped OF CLEAR-VECTORS ENDOF
+      made OF CLEAR-VECTORS ENDOF
    ;MATCH
    0 TOK-N !
    LOCALS-RESET ;
 
 : SYNC-COUNT ( -- )
-   KIND-V VEC:LEN@ ITEM>N TOK-N ! ;
+   KIND-V TABLE@ VEC:COUNT TOK-N ! ;
 
 : ADD ( n ptr u8 n n n n ptr u8 n -- ) {: kind:n a:ptr u:n byte:n line:n col:n ca:ptr cu:n :}
-   kind KIND-V VEC:PUSH drop
-   a 0 ADDR-V VEC:PUSH drop
-   u LEN-V VEC:PUSH drop
-   byte BYTE-V VEC:PUSH drop
-   line LINE-V VEC:PUSH drop
-   col COL-V VEC:PUSH drop
-   ca 0 CADDR-V VEC:PUSH drop
-   cu CLEN-V VEC:PUSH drop
-   false OPND-V VEC:PUSH drop
+   kind KIND-V TABLE@ VEC:PUSH !
+   a ADDR-V TABLE@ VEC:PUSH !
+   u LEN-V TABLE@ VEC:PUSH !
+   byte BYTE-V TABLE@ VEC:PUSH !
+   line LINE-V TABLE@ VEC:PUSH !
+   col COL-V TABLE@ VEC:PUSH !
+   ca CADDR-V TABLE@ VEC:PUSH !
+   cu CLEN-V TABLE@ VEC:PUSH !
+   false bool>n OPND-V TABLE@ VEC:PUSH !
    SYNC-COUNT ;
 
 \ The locals state reads the marks, so a mark on a token it has read forgets it.
 : MARK-OPERAND ( n -- ) {: k:n :}
-   true OPND-V k VEC:N>INDEX VEC:!
+   true bool>n OPND-V TABLE@ k VEC:AT !
    k STEPPED @ < if LOCALS-RESET then ;
 
 public
@@ -185,30 +194,30 @@ public
    TOK-N @ ;
 
 : TOKEN ( n -- ptr u8 n ) {: k:n :}
-   0 ADDR-V k VEC:N>INDEX VEC:@
-   LEN-V k VEC:N>INDEX VEC:@ ;
+   ADDR-V TABLE@ k VEC:AT @
+   LEN-V TABLE@ k VEC:AT @ ;
 
 : CONTENT ( n -- ptr u8 n ) {: k:n :}
-   0 CADDR-V k VEC:N>INDEX VEC:@
-   CLEN-V k VEC:N>INDEX VEC:@ ;
+   CADDR-V TABLE@ k VEC:AT @
+   CLEN-V TABLE@ k VEC:AT @ ;
 
 : KIND@ ( n -- n ) {: k:n :}
-   KIND-V k VEC:N>INDEX VEC:@ ;
+   KIND-V TABLE@ k VEC:AT @ ;
 
 \ A token's byte offset is 0-based; its line and column are 1-based.
 : BYTE@ ( n -- n ) {: k:n :}
-   BYTE-V k VEC:N>INDEX VEC:@ ;
+   BYTE-V TABLE@ k VEC:AT @ ;
 
 : LINE@ ( n -- n ) {: k:n :}
-   LINE-V k VEC:N>INDEX VEC:@ ;
+   LINE-V TABLE@ k VEC:AT @ ;
 
 : COL@ ( n -- n ) {: k:n :}
-   COL-V k VEC:N>INDEX VEC:@ ;
+   COL-V TABLE@ k VEC:AT @ ;
 
 \ Token k is a raw operand: data the source never runs, so it starts nothing,
 \ ends nothing and makes no name of the token after it.
 : OPERAND? ( n -- bool ) {: k:n :}
-   OPND-V k VEC:N>INDEX VEC:@ ;
+   OPND-V TABLE@ k VEC:AT @ 0<> ;
 
 \ The diagnostic is one record, written at most once per scan: the writer stops
 \ the scan at the malformed site, so no token after it is exposed. A rescan by
@@ -532,27 +541,31 @@ private
    a swap ;
 
 : LIVE ( -- n )
-   LOCAL-V VEC:LEN@ ITEM>N ;
+   LOCAL-V @ {: v:ptr :}
+   v NULL-PTR = if 0 exit then
+   v VEC:COUNT ;
 
 : LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LIVE 0 ?do
-      a u LOCAL-V i VEC:N>INDEX VEC:@ LOCAL$ STR= if true unloop exit then
+      a u LOCAL-V TABLE@ i VEC:AT @ LOCAL$ STR= if true unloop exit then
    loop
    false ;
 
 : LOCAL-PUSH ( n -- )
-   LOCAL-V VEC:PUSH drop
-   DEPTH @ LDEPTH-V VEC:PUSH drop ;
+   LOCAL-V TABLE@ VEC:PUSH !
+   DEPTH @ LDEPTH-V TABLE@ VEC:PUSH ! ;
 
 : LOCALS-DROP ( -- )
    LOCAL-V CLEAR-ONE
    LDEPTH-V CLEAR-ONE ;
 
 : BLOCK-DROP ( -- )
-   begin LIVE 0 > if LDEPTH-V LIVE 1- VEC:N>INDEX VEC:@ DEPTH @ >= else false then while
-      LIVE 1- VEC:N>ITEM {: l:NUM:item-count :}
-      l LOCAL-V VEC:LEN!
-      l LDEPTH-V VEC:LEN!
+   begin
+      LIVE 0 > if LDEPTH-V TABLE@ LIVE 1- VEC:AT @ DEPTH @ >= else false then
+   while
+      LIVE 1- {: l:n :}
+      LOCAL-V TABLE@ l VEC:RESIZE
+      LDEPTH-V TABLE@ l VEC:RESIZE
    repeat ;
 
 \ Block word k acts unless it is a name or names a live local.
@@ -769,16 +782,16 @@ private
 \ a dropped one.
 : KEEP ( n -- )
    dup STEPPED @ < if LOCALS-RESET then
-   VEC:N>ITEM {: l:NUM:item-count :}
-   l KIND-V VEC:LEN!
-   l 0 ADDR-V VEC:LEN!
-   l LEN-V VEC:LEN!
-   l BYTE-V VEC:LEN!
-   l LINE-V VEC:LEN!
-   l COL-V VEC:LEN!
-   l 0 CADDR-V VEC:LEN!
-   l CLEN-V VEC:LEN!
-   l OPND-V VEC:LEN!
+   {: l:n :}
+   KIND-V TABLE@ l VEC:RESIZE
+   ADDR-V TABLE@ l VEC:RESIZE
+   LEN-V TABLE@ l VEC:RESIZE
+   BYTE-V TABLE@ l VEC:RESIZE
+   LINE-V TABLE@ l VEC:RESIZE
+   COL-V TABLE@ l VEC:RESIZE
+   CADDR-V TABLE@ l VEC:RESIZE
+   CLEN-V TABLE@ l VEC:RESIZE
+   OPND-V TABLE@ l VEC:RESIZE
    SYNC-COUNT ;
 
 \ Token k, read as a plain word, steers how the scan reads the token after it.
@@ -808,8 +821,8 @@ public
    RESET-TABLES
    SCAN ;
 
-\ Unmaps the tables and forgets the span, so no cell holds an address SOURCE was
-\ given or mapped; the next SOURCE maps them again.
+\ Deletes the tables and forgets the span, so no cell holds an address SOURCE
+\ was given or made; the next SOURCE makes them again.
 : RELEASE ( -- )
    DISPOSE-VECTORS
    TABLES-RELEASED
