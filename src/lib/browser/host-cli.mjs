@@ -40,6 +40,9 @@
 //    --answer-rpc ID FILE  answers the waiting rpc with ID with FILE's JSON
 //                          text, {"result":…} or {"error":…}
 //    --fail-rpc ID         fails the waiting rpc with ID, as a lost parent does
+//    --occluded HEX        answers the oldest waiting occlude with HEX's bytes,
+//                          one per box; none waiting, or a byte count other
+//                          than its boxes, is a failure
 //    --until TEXT MS       waits until a line printed after it began contains
 //                          TEXT; MS ms without one is a failure
 //
@@ -49,12 +52,13 @@
 // line per record, a request's when the host makes it: hello, fetch <path>,
 // post <path> <length> <body in hex>, request <method> <path> <id> <length>
 // <hex>, rpc <method> <id> <params JSON>, after <ms> <token>, read <file>
-// <offset> <length>, tree <selected> <JSON>, mesh <handle> <V> <T>, unmesh
-// <handle>, highlight <words> <words in hex, little-endian>, draw <count>
-// then each row's <handle>/<id>/<flags>/<offset or ->, svg <length> <bytes in
-// hex>, input <0|1>, text <string>; a highlight or draw of none prints only its
-// count. At the end, outstanding <fetch|post> <path>, outstanding request
-// <method> <path> <id> or outstanding rpc <method> <id>. A --tick with no after
+// <offset> <length>, occlude <boxes> <id>, tree <selected> <JSON>, mesh
+// <handle> <V> <T>, unmesh <handle>, highlight <words> <words in hex,
+// little-endian>, draw <count> then each row's <handle>/<id>/<flags>/<offset
+// or ->, svg <length> <bytes in hex>, input <0|1>, text <string>; a highlight
+// or draw of none prints only its count. At the end, outstanding <fetch|post>
+// <path>, outstanding request <method> <path> <id>, outstanding rpc <method>
+// <id> or outstanding occlude <id>. A --tick with no after
 // waiting, an --answer-rpc or --fail-rpc of an id no waiting rpc holds, or a
 // relay that fails or passes RELAY_MS, is a failure.
 // It
@@ -73,7 +77,8 @@ const USAGE =
   "--load FILE | --focus HEX | --highlight HEX | " +
   "--typed TEXT | --repeat-typed TEXT N | --memory | " +
   "--answer STATUS FILE | --answer-id ID STATUS FILE | --fail | " +
-  "--notify METHOD FILE | --tick | --file NAME PATH | --answer-rpc ID FILE | --fail-rpc ID | --until TEXT MS]...";
+  "--notify METHOD FILE | --tick | --file NAME PATH | --answer-rpc ID FILE | --fail-rpc ID | " +
+  "--occluded HEX | --until TEXT MS]...";
 
 // The time a relayed rpc may take before it fails.
 const RELAY_MS = 60000;
@@ -103,9 +108,11 @@ function byId(flag, id) {
   return waiting.splice(at, 1)[0];
 }
 
-// The rpcs the host made that no step has answered and the tokens of the
-// afters no --tick has fired, each oldest first; each --file's bytes by number.
+// The rpcs and occludes the host made that no step has answered and the
+// tokens of the afters no --tick has fired, each oldest first; each --file's
+// bytes by number.
 const calls = [];
+const occludes = [];
 const ticks = [];
 const files = new Map();
 
@@ -302,6 +309,20 @@ function parse(args) {
         steps.push(() => call(flag, key).reject(new Error(`rpc ${key}: failed`)));
         break;
       }
+      case "--occluded": {
+        const [hex] = take(1);
+        if (!/^(?:[0-9a-fA-F]{2})*$/.test(hex)) throw new Error(USAGE);
+        const bytes = Uint8Array.from(Buffer.from(hex, "hex"));
+        steps.push(() => {
+          if (occludes.length === 0) throw new Error(`${flag}: no occlude is outstanding`);
+          const { id, count, resolve } = occludes[0];
+          if (bytes.length !== count)
+            throw new Error(`${flag}: ${bytes.length} bytes for occlude ${id}'s ${count} boxes`);
+          occludes.shift();
+          resolve(bytes);
+        });
+        break;
+      }
       case "--until": {
         const [text, limit] = take(2);
         const ms = Number(limit);
@@ -380,6 +401,11 @@ try {
       print(`read ${file} ${offset} ${length}`);
       return Promise.resolve(files.get(Number(file)).subarray(Number(offset), Number(offset + length)));
     },
+    occlude: (boxes, id) => {
+      const count = boxes.length / 6;
+      print(`occlude ${count} ${id}`);
+      return new Promise((resolve) => occludes.push({ id, count, resolve }));
+    },
     error: report,
     mesh: (handle, vertexCount, triangleCount) =>
       print(`mesh ${handle} ${vertexCount} ${triangleCount}`),
@@ -423,6 +449,7 @@ try {
   for (const { kind, path, method, id } of waiting)
     console.log(kind === "request" ? `outstanding request ${method} ${path} ${id}` : `outstanding ${kind} ${path}`);
   for (const { id, method } of calls) console.log(`outstanding rpc ${method} ${id}`);
+  for (const { id } of occludes) console.log(`outstanding occlude ${id}`);
   if (state.memory) console.log(`memory ${module.x.memory.buffer.byteLength}`);
 } catch (e) {
   report(e);

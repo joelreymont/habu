@@ -10,7 +10,14 @@
 \ not, the triangle above it, at offset 0, shows face 34 highlighted, and the
 \ right square selects every face. Typed "unmesh", after "draw", draws the
 \ triangle's row alone, unmeshes mesh 1 and draws that row again. Typed
-\ "zero" draws 0 rows.
+\ "zero" draws 0 rows. Typed "occlude", after "draw", sends occlude 7 of two
+\ boxes past z 0.5: one behind the left square and one below every instance;
+\ its answer comes back as the text occluded, the bytes in hex and the id.
+\ Typed "edges" sends occlude 8: a box behind the left square from z -0.5,
+\ past the near plane, and one from the square's own z 0.5. Typed "many"
+\ sends occlude 9 of 4097 boxes, the last behind the left square, the others
+\ below every instance; its text gives bytes 4095 and 4096 in hex, the count
+\ of 1s and the id, since the echo holds 1024 bytes.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
@@ -27,6 +34,7 @@ CAST: BYTES>N ( ptr u8 -- n )
 192 BUFFER: INSTANCE-ROWS
 8 BUFFER: WORDS
 64 BUFFER: MATRIX
+4097 24 * BUFFER: BOXES
 512 BUFFER: IMAGE
 variable IMAGE-U
 1024 constant ECHO-CAP
@@ -124,6 +132,34 @@ variable ECHO-U
    6 WORDS BYTES>N 2 0 RECORD
    INSTANCE-ROWS 3 DRAW ;
 
+: BOX ( n n n n n n n -- )
+   \ Box k's lowest x, y, z, then its highest, as f32 bits.
+   {: k:n x0:n y0:n z0:n x1:n y1:n z1:n :}
+   BOXES k 24 * + {: at:ptr :}
+   x0 at U32!  y0 at 4 + U32!  z0 at 8 + U32!
+   x1 at 12 + U32!  y1 at 16 + U32!  z1 at 20 + U32! ;
+
+: HIDDEN ( n -- )
+   \ Box k at x -0.7..-0.3, y -0.2..0.2, z 0.6..0.8.
+   $BF333333 $BE4CCCCD $3F19999A $BE99999A $3E4CCCCD $3F4CCCCD BOX ;
+
+: OPEN ( n -- )
+   \ Box k at x -0.6..0.6, y -0.9..-0.6, z 0.6..0.8.
+   $BF19999A $BF666666 $3F19999A $3F19999A $BF19999A $3F4CCCCD BOX ;
+
+: OCCLUDE ( -- )
+   0 HIDDEN 1 OPEN  16 BOXES BYTES>N 48 7 RECORD ;
+
+: EDGES ( -- )
+   \ x -0.7..-0.3, y -0.2..0.2; z -0.5..0.6 and z 0.5..0.8.
+   0 $BF333333 $BE4CCCCD $BF000000 $BE99999A $3E4CCCCD $3F19999A BOX
+   1 $BF333333 $BE4CCCCD $3F000000 $BE99999A $3E4CCCCD $3F4CCCCD BOX
+   16 BOXES BYTES>N 48 8 RECORD ;
+
+: MANY ( -- )
+   4096 0 do i OPEN loop  4096 HIDDEN
+   16 BOXES BYTES>N 4097 24 * 9 RECORD ;
+
 : UNMESH ( -- )
    INSTANCE-ROWS 64 + 1 DRAW  14 1 0 0 RECORD  INSTANCE-ROWS 64 + 1 DRAW ;
 
@@ -156,6 +192,9 @@ variable ECHO-U
    s" zero" IS? if INSTANCE-ROWS 0 DRAW exit then
    s" draw" IS? if SHOW exit then
    s" unmesh" IS? if UNMESH exit then
+   s" occlude" IS? if OCCLUDE exit then
+   s" edges" IS? if EDGES exit then
+   s" many" IS? if MANY exit then
    s" broken" IS? if s" <svg>" SVG exit then
    s" on" IS? if 9 1 0 0 RECORD exit then
    s" off" IS? if 9 0 0 0 RECORD exit then
@@ -173,20 +212,55 @@ variable ECHO-U
    s" input-b" IS? if 9 1 1 0 RECORD exit then
    s" input-c" IS? if 9 0 0 1 RECORD exit then ;
 
-: HEX, ( n -- )
-   dup 10 < if [char] 0 + else 10 - [char] a + then
+: CHAR+ ( n -- )
+   ECHO-U @ ECHO-CAP >= if -1 throw then
    ECHO-BUF ECHO-U @ + c!  1 ECHO-U +! ;
 
-\ The event's bytes after the name, as one text record; refuses an echo past
-\ the buffer.
-: ECHO ( ptr u8 n -- )
+: HEX, ( n -- )
+   dup 10 < if [char] 0 + else 10 - [char] a + then CHAR+ ;
+
+: DIGITS ( n -- )
+   {: v:n :}
+   v 10 / {: q:n :}
+   q 0<> if q RECURSE then
+   v q 10 * - [char] 0 + CHAR+ ;
+
+: BYTE, ( n -- )
+   {: v:n :}
+   v 4 rshift HEX,  v 15 and HEX, ;
+
+: BYTE@ ( n -- n )
+   \ Byte k of the event's bytes.
+   1 EVENT@ + >BYTES c@ ;
+
+: NAMED ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a ECHO-BUF u BYTE-COPY u ECHO-U ! ;
+
+\ The name and the event's bytes in ECHO-BUF; refuses an echo past the
+\ buffer.
+: ECHOED ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 2 EVENT@ dup + + ECHO-CAP > if -1 throw then
-   a ECHO-BUF u BYTE-COPY u ECHO-U !
-   2 EVENT@ 0 ?do
-      1 EVENT@ i + >BYTES c@ {: v:n :}  v 4 rshift HEX,  v 15 and HEX,
-   loop
+   a u NAMED
+   2 EVENT@ 0 ?do i BYTE@ BYTE, loop ;
+
+: ECHO-RECORD ( -- )
    3 ECHO-BUF BYTES>N ECHO-U @ 0 RECORD ;
+
+: ECHO ( ptr u8 n -- )
+   ECHOED ECHO-RECORD ;
+
+: ONES ( -- n )
+   0  2 EVENT@ 0 ?do i BYTE@ + loop ;
+
+: SUMMARY ( -- )
+   s" occluded " NAMED  4095 BYTE@ BYTE,  4096 BYTE@ BYTE,
+   32 CHAR+  ONES DIGITS ;
+
+: OCCLUDED ( -- )
+   4 EVENT@ 9 = if SUMMARY else s" occluded " ECHOED then
+   32 CHAR+  4 EVENT@ DIGITS  ECHO-RECORD ;
 
 : DISPATCH ( -- )
    0 EVENT@ 0 = if
@@ -198,7 +272,8 @@ variable ECHO-U
    0 EVENT@ 10 = if 1 EVENT@ 2 = if 2 EVENT@ 1 = if OPENED then then exit then
    0 EVENT@ 11 = if s" load " ECHO exit then
    0 EVENT@ 12 = if s" focus " ECHO exit then
-   0 EVENT@ 13 = if s" highlight " ECHO then ;
+   0 EVENT@ 13 = if s" highlight " ECHO exit then
+   0 EVENT@ 19 = if OCCLUDED then ;
 
 public
 

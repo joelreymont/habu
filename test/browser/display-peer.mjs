@@ -42,6 +42,7 @@ for (const [command, reason] of [
   ["svg-reserved", /svg c must be zero/],
   ["flag", /input a must be 0 or 1/], ["negative-flag", /input a must be 0 or 1/],
   ["input-b", /input b and c must be zero/], ["input-c", /input b and c must be zero/],
+  ["occlude", /occlude 7 before any draw/],
 ]) {
   const count = records.length;
   await assert.rejects(module.typed(command), reason, command);
@@ -290,6 +291,25 @@ async function browser() {
       `the background is white, got ${above}`);
     console.log(`Headless Chrome pixels: left face 0 ${face0}, left face 1 ` +
       `${face1}, triangle ${triangle}, right ${right}, background ${above}`);
+    // display.f's occlude against that draw: the box behind the left square
+    // answers 0, the box below every instance 1.
+    await command("occlude");
+    const occluded = (await state()).text;
+    assert.equal(occluded, "occluded 0001 7",
+      `the hidden box fails and the open one passes, got ${occluded}`);
+    // A box from past the near plane to behind the left square passes, and
+    // so does one whose front face lies on the square's depth.
+    await command("edges");
+    const edges = (await state()).text;
+    assert.equal(edges, "occluded 0101 8",
+      `the box across the near plane and the flush box pass, got ${edges}`);
+    // 4097 boxes, all below every instance but the last, behind the left
+    // square.
+    await command("many");
+    const many = (await state()).text;
+    assert.equal(many, "occluded 0100 4096 9",
+      `4096 open boxes pass and the hidden last one fails, got ${many}`);
+    console.log(`Headless Chrome occlude: ${occluded}, ${edges}, ${many}`);
     // Mesh 1 drawn by no row, then unmeshed: only the triangle stays.
     await command("unmesh");
     const [left0, left1, alone, right1, over] = await pixels(points);
@@ -309,6 +329,12 @@ async function browser() {
       `a draw of 0 rows clears to white, got ${JSON.stringify(cleared)}`);
     console.log(`Headless Chrome pixels after 0 rows: ` +
       JSON.stringify(cleared));
+    // Nothing drawn hides nothing.
+    await command("occlude");
+    const open = (await state()).text;
+    assert.equal(open, "occluded 0101 7",
+      `after a draw of 0 rows both boxes pass, got ${open}`);
+    console.log(`Headless Chrome occlude after 0 rows: ${open}`);
     await evaluate("oldError?.call(oldImage,new Event('error'))");
     assert.equal((await state()).error, "");
     await command("broken");

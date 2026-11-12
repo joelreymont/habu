@@ -1,8 +1,9 @@
-\ navigation-test.f - Wasm end-to-end browser input, tree and highlight records.
+\ navigation-test.f - Wasm end-to-end browser input, tree, highlight and occlude
+\ records.
 \ The printed directory keeps the module and expected/actual CLI output.
-\ Each kind of delivery navigation.f receives, typed and key, runs once and four
-\ times, and both runs end with the same memory: every run frees its delivery's
-\ page.
+\ Each kind of delivery navigation.f receives, typed, key and occluded, runs
+\ once and four times, and both runs end with the same memory: every run frees
+\ its delivery's page.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -150,6 +151,26 @@ PATH-CAP BUFFER: FILE
    s" a redraw draws the held mesh with the held highlight" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
+: OCCLUDE-CASE ( -- )
+   HOST-OPEN s" occlude" TYPED+ s" --occluded" ARG+ s" 0100" ARG+
+   HOST 0 T=
+   START-WANT
+   s" occlude 2 9" LINE
+   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" text occluded 0100 0,9 640,480" LINE
+   s" an occlude's answer reaches the module as event 19" T-LABEL
+   OUT OUT-U @ SB$ T$= ;
+
+: UNANSWERED-CASE ( -- )
+   HOST-OPEN s" occlude" TYPED+
+   HOST 0 T=
+   START-WANT
+   s" occlude 2 9" LINE
+   s" draw 2 7/10/0/0 7/11/1/-" LINE
+   s" outstanding occlude 9" LINE
+   s" an occlude no step answers is outstanding at the end" T-LABEL
+   OUT OUT-U @ SB$ T$= ;
+
 : REJECT ( ptr u8 n ptr u8 n -- )
    {: command:ptr cu:n why:ptr wu:n :}
    HOST-OPEN command cu TYPED+
@@ -178,13 +199,19 @@ PATH-CAP BUFFER: FILE
    s" short"
       s" a highlight of 0 words, fewer than the 1 the last draw's rows need"
       REJECT
-   s" flags" s" flags 2 set a bit other than bit 0" REJECT ;
+   s" flags" s" flags 2 set a bit other than bit 0" REJECT
+   s" span" s" an occlude of 47 bytes, not whole 24-byte boxes" REJECT
+   s" id" s" an occlude needs a positive id, got 0" REJECT ;
 
 : FREED-CASES ( -- )
    s" four typed turns end with the memory one does"
       MOD MOD-U @ [: s" redraw" TYPED+ ;] BROWSER-MEMORY-TEST:FREED
    s" four key turns end with the memory one does"
       MOD MOD-U @ [: s" --key" ARG+ s" Escape" ARG+ 8 N-ARG+ ;]
+      BROWSER-MEMORY-TEST:FREED
+   s" four occluded turns end with the memory one does"
+      MOD MOD-U @
+      [: s" occlude" TYPED+ s" --occluded" ARG+ s" 0100" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED ;
 
 public
@@ -197,7 +224,8 @@ public
    rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
    s" browser navigation module validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
-   INPUT-CASE ZERO-CASE REDRAW-CASE REMESH-CASE INVALID-CASES FREED-CASES
+   INPUT-CASE ZERO-CASE REDRAW-CASE REMESH-CASE OCCLUDE-CASE
+   UNANSWERED-CASE INVALID-CASES FREED-CASES
    T-REPORT ;
 
 ;package

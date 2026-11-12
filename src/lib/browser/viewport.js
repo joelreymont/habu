@@ -60,7 +60,12 @@
 // instance's flags bit 0 is set or, with an offset not 0xFFFFFFFF, bit
 // face % 32 of highlight word offset + face / 32 is set. Each fragment is lit
 // by its triangle's normal, from the screen derivatives of the world
-// position, so no normals are sent.
+// position, so no normals are sent. box draws one occlude box per instance
+// as the 12 triangles of its faces: vertex k takes corner corners[k], whose
+// bit j picks the highest coordinate j in place of the lowest. A box whose
+// corners' clip z lie on both sides of 0, the near plane, draws the
+// full-viewport quad at depth 0 from vertices 0 to 5 in place of its faces,
+// which that plane can cut away while the box's inside is in view.
 const SHADER = `
 @group(0) @binding(0) var<uniform> clip: mat4x4<f32>;
 @group(0) @binding(1) var<storage, read> words: array<u32>;
@@ -100,9 +105,33 @@ fn selected(face: u32, bits: vec2<u32>) -> bool {
   let color = select(vec3<f32>(1.0), orange, selected(c.face, c.bits));
   return vec4<f32>(color * lit, 1.0);
 }
+
+fn corner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec4<f32> {
+  let high = vec3<bool>((c & 1u) != 0u, (c & 2u) != 0u, (c & 4u) != 0u);
+  return clip * vec4<f32>(select(lo, hi, high), 1.0);
+}
+
+@vertex fn box(@builtin(vertex_index) k: u32, @location(0) lo: vec3<f32>,
+    @location(1) hi: vec3<f32>) -> @builtin(position) vec4<f32> {
+  var near = 0u;
+  for (var c = 0u; c < 8u; c++) {
+    if (corner(c, lo, hi).z < 0.0) { near++; }
+  }
+  if (near != 0u && near != 8u) {
+    var quad = array<vec2<f32>, 6>(vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0),
+      vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0),
+      vec2<f32>(-1.0, 1.0));
+    return vec4<f32>(select(vec2<f32>(0.0), quad[min(k, 5u)], k < 6u), 0.0, 1.0);
+  }
+  var corners = array<u32, 36>(0u, 2u, 6u, 0u, 6u, 4u, 1u, 3u, 7u, 1u, 7u, 5u,
+    0u, 1u, 5u, 0u, 5u, 4u, 2u, 3u, 7u, 2u, 7u, 6u,
+    0u, 1u, 3u, 0u, 3u, 2u, 4u, 5u, 7u, 4u, 7u, 6u);
+  return corner(corners[k], lo, hi);
+}
 `;
 
 const ROW = 64; // an instance row: twelve f32, u32 handle, id, flags, offset
+const QUERIES = 4096; // WebGPU's most queries in one query set
 
 // WebGPU on the canvas: setup's renderer, whose release destroys the device
 // and everything allocated from it. A canvas holding another context is
@@ -152,7 +181,11 @@ function grouped(rows, count) {
 // an instance buffer and issues one indexed, instanced draw per handle, and
 // highlight writes the words to a storage buffer. Each buffer is padded to
 // the 4 bytes WebGPU's sizes and writes need, and the instance and highlight
-// buffers grow when a write needs more.
+// buffers grow when a write needs more. The depth texture keeps the last
+// draw's depth, cleared to 1 when made, and the matrix buffer its matrix;
+// occlude draws its boxes against them in passes of at most QUERIES occlusion
+// queries, one per box, and reads the resolved sample counts back through
+// buffers of its own, released once read.
 function setup(canvas, context, device, release, fail) {
   device.lost.then((info) => fail(`WebGPU device lost: ${info.message}`));
   device.addEventListener("uncapturederror", (e) => fail(`WebGPU: ${e.error.message}`));
@@ -178,12 +211,37 @@ function setup(canvas, context, device, release, fail) {
     primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
   });
-  const { UNIFORM, STORAGE, VERTEX, INDEX, COPY_DST } = GPUBufferUsage;
-  const matrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
-  const depthTexture = () => device.createTexture({
-    size: [canvas.width, canvas.height], format: "depth24plus",
-    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  const occluder = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module,
+      entryPoint: "box",
+      buffers: [{ arrayStride: 24, stepMode: "instance", attributes: [
+        { shaderLocation: 0, offset: 0, format: "float32x3" },
+        { shaderLocation: 1, offset: 12, format: "float32x3" }] }],
+    },
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: { format: "depth24plus", depthWriteEnabled: false, depthCompare: "less-equal" },
   });
+  const { UNIFORM, STORAGE, VERTEX, INDEX, COPY_DST, COPY_SRC, QUERY_RESOLVE, MAP_READ } =
+    GPUBufferUsage;
+  const matrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
+  const boxBind = device.createBindGroup({
+    layout: occluder.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: matrix } }],
+  });
+  const depthTexture = () => {
+    const texture = device.createTexture({
+      size: [canvas.width, canvas.height], format: "depth24plus",
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    const encoder = device.createCommandEncoder();
+    encoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: {
+      view: texture.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store",
+    } }).end();
+    device.queue.submit([encoder.finish()]);
+    return texture;
+  };
   let depth = depthTexture();
   const meshes = new Map(); // a held handle -> { vertices, indices, count }
   let instances = null;
@@ -259,7 +317,7 @@ function setup(canvas, context, device, release, fail) {
         loadOp: "clear",
         storeOp: "store",
       }],
-      depthStencilAttachment: { view: depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "discard" },
+      depthStencilAttachment: { view: depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" },
     });
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bind);
@@ -275,7 +333,50 @@ function setup(canvas, context, device, release, fail) {
     device.queue.submit([encoder.finish()]);
   };
 
-  return { mesh, unmesh, highlight, draw, resize, release };
+  // boxes, six f32 each, lowest corner then highest -> a byte per box, 1 when
+  // any of its samples passed the last draw's depth.
+  const occlude = async (boxes) => {
+    const count = boxes.length / 6;
+    if (count === 0) return new Uint8Array(0);
+    const held = device.createBuffer({ size: boxes.byteLength, usage: VERTEX, mappedAtCreation: true });
+    new Float32Array(held.getMappedRange()).set(boxes);
+    held.unmap();
+    const resolved = device.createBuffer({ size: 8 * count, usage: QUERY_RESOLVE | COPY_SRC });
+    const read = device.createBuffer({ size: 8 * count, usage: MAP_READ | COPY_DST });
+    const sets = [];
+    try {
+      const encoder = device.createCommandEncoder();
+      for (let first = 0; first < count; first += QUERIES) {
+        const n = Math.min(QUERIES, count - first);
+        const set = device.createQuerySet({ type: "occlusion", count: n });
+        sets.push(set);
+        const pass = encoder.beginRenderPass({
+          colorAttachments: [],
+          depthStencilAttachment: { view: depth.createView(), depthReadOnly: true },
+          occlusionQuerySet: set,
+        });
+        pass.setPipeline(occluder);
+        pass.setBindGroup(0, boxBind);
+        pass.setVertexBuffer(0, held);
+        for (let i = 0; i < n; i++) {
+          pass.beginOcclusionQuery(i);
+          pass.draw(36, 1, 0, first + i);
+          pass.endOcclusionQuery();
+        }
+        pass.end();
+        // first is a multiple of QUERIES, so the offset is 256-aligned.
+        encoder.resolveQuerySet(set, 0, n, resolved, 8 * first);
+      }
+      encoder.copyBufferToBuffer(resolved, 0, read, 0, 8 * count);
+      device.queue.submit([encoder.finish()]);
+      await read.mapAsync(GPUMapMode.READ);
+      return Uint8Array.from(new BigUint64Array(read.getMappedRange()), (s) => (s > 0n ? 1 : 0));
+    } finally {
+      for (const resource of [held, resolved, read, ...sets]) resource.destroy();
+    }
+  };
+
+  return { mesh, unmesh, highlight, draw, occlude, resize, release };
 }
 
 function modifiers(e) {
@@ -344,7 +445,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
     onText(String(e), true);
     console.error(e);
   };
-  const live = (fn) => (...args) => { if (!disposed) fn(...args); };
+  const live = (fn) => (...args) => (disposed ? undefined : fn(...args));
   const answer = async (path, init) => {
     const r = await load(path, { ...init, signal });
     return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
@@ -388,6 +489,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
       mesh: live((...args) => renderer.mesh(...args)),
       unmesh: live((handle) => renderer.unmesh(handle)),
       highlight: live((words) => renderer.highlight(words)),
+      occlude: live((boxes) => renderer.occlude(boxes)),
       draw: live((...args) => {
         if (shown) {
           shown = false;

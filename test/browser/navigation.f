@@ -1,5 +1,5 @@
-\ navigation.f - Wasm fixture for the browser navigation, tree and highlight
-\ protocol, built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
+\ navigation.f - Wasm fixture for the browser navigation, tree, highlight and
+\ occlude protocol, built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
 
@@ -18,6 +18,8 @@ variable PRESS-MODS
 128 BUFFER: INSTANCE-ROWS
 4 BUFFER: WORDS
 64 BUFFER: MATRIX
+\ Two boxes of six f32, left zero: host-cli reads only their count.
+48 BUFFER: BOXES
 
 : FIELD, ( n -- )
    8 0 do dup $FF and emit 8 rshift loop drop ;
@@ -141,6 +143,20 @@ variable PRESS-MODS
    then
    TEXT-RECORD ;
 
+: HEX+ ( n -- )
+   dup 10 < if 48 + else 87 + then CHAR+ ;
+
+: OCCLUDED-TEXT ( -- )
+   \ The answer's bytes in hex, then c,d buttons,mods.
+   0 TEXT-U !
+   s" occluded " SAY
+   2 EVENT@ 0 ?do
+      1 EVENT@ i + >BYTES c@ {: v:n :}  v 4 rshift HEX+  v 15 and HEX+
+   loop
+   32 CHAR+ 3 EVENT@ SIGNED 44 CHAR+ 4 EVENT@ SIGNED
+   32 CHAR+ 5 EVENT@ SIGNED 44 CHAR+ 6 EVENT@ SIGNED
+   TEXT-RECORD ;
+
 : KEY-TEXT ( -- )
    0 TEXT-U !
    s" key " SAY
@@ -189,6 +205,9 @@ variable PRESS-MODS
    s" flags" IS? if 2 INSTANCE-ROWS 56 + U32! 2 DRAW exit then
    s" zero" IS? if 0 DRAW 0 HIGHLIGHT exit then
    s" redraw" IS? if 2 DRAW exit then
+   s" occlude" IS? if 16 BOXES BYTES>N 48 9 RECORD 2 DRAW exit then
+   s" span" IS? if 16 BOXES BYTES>N 47 9 RECORD exit then
+   s" id" IS? if 16 BOXES BYTES>N 48 0 RECORD exit then
    s" tree" IS? if
       s\" [{\"key\":1,\"parent\":0,\"label\":\"Assembly\"},{\"key\":2,\"parent\":1,\"label\":\"Part\"},{\"key\":3,\"parent\":2,\"label\":\"Face\"}]" 3 TREE exit then ;
 
@@ -198,6 +217,7 @@ variable PRESS-MODS
    kind 4 = if INVALID exit then
    kind 10 = if 2 EVENT@ 1 = if OPENED exit then then
    kind 8 = if KEY-TEXT exit then
+   kind 19 = if OCCLUDED-TEXT exit then
    kind 2 = if 5 EVENT@ PRESS-BUTTONS ! 6 EVENT@ PRESS-MODS ! then
    EVENT-TEXT ;
 

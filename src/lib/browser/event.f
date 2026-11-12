@@ -25,7 +25,7 @@ TYPED-VARIABLE TAKEN bool
    {: kind:n :}
    kind 1 =  kind 3 = or  kind 4 = or  kind 8 = or
    kind 11 = or  kind 12 = or  kind 13 = or  kind 14 = or
-   kind 16 = or  kind 17 = or ;
+   kind 16 = or  kind 17 = or  kind 19 = or ;
 
 public
 
