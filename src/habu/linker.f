@@ -177,9 +177,9 @@ create USED-EXTS BUF:HDR-BYTES allot
 create REQUESTS BUF:HDR-BYTES allot  \ the object's REQUESTS rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create TIMES BUF:HDR-BYTES allot     \ the object's TIMES: the part's block (TIMES+)
-create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's source names whole, 8 bytes each
+create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling part's source and evaluated texts name whole, 8 bytes each
 create NAMED-RECS BUF:HDR-BYTES allot \ the records with a time the running scan hit, 8 bytes each, in hit order
-create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELLED's HIT sums, each open a 0 then its sum
+create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELL-TEXT's HIT sums, each open a 0 then its sum
 create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling part ran, 8 bytes each (RAN-RECORD)
 \ The object's REACHED: per piece whose data or stores RAN-FILES+ reached, its FILES row and its stores time, 8 bytes each.
 create REACHED BUF:HDR-BYTES allot
@@ -189,6 +189,7 @@ create UNDER-PATH BUF:HDR-BYTES allot \ RESOLVE-UNDER's answer under another roo
 create ENTRY-ROOT BUF:HDR-BYTES allot \ the root current as the part started (MARKS)
 create EXIT-ROOT BUF:HDR-BYTES allot \ the root current as the part ended
 create PART-READS BUF:HDR-BYTES allot \ the reads the part's compile made (READS-KEEP)
+create PART-TEXTS BUF:HDR-BYTES allot \ the texts the part's compile evaluated (READS-KEEP)
 create OBJECT BUF:HDR-BYTES allot    \ the object WRITE-OBJECT lays or READ-OBJECT reads
 create PRIOR BUF:HDR-BYTES allot     \ the compiling file's object as the last build left it
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
@@ -457,7 +458,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT BUF:DISPOSE  REQ-PATH BUF:DISPOSE  UNDER-PATH BUF:DISPOSE
-   ENTRY-ROOT BUF:DISPOSE  EXIT-ROOT BUF:DISPOSE  PART-READS BUF:DISPOSE
+   ENTRY-ROOT BUF:DISPOSE  EXIT-ROOT BUF:DISPOSE  PART-READS BUF:DISPOSE  PART-TEXTS BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-RECS BUF:DISPOSE
    SPELLS BUF:DISPOSE  NAMED-RECS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  USED-EXTS BUF:DISPOSE  REFS BUF:DISPOSE
    BUILT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  RUN-SUMS-RELEASE  HIT-STAMPS-RELEASE  HITS-RELEASE  OPENED-RELEASE
@@ -485,6 +486,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    ENTRY-ROOT 256 BUF:N>BLEN BUF:INIT
    EXIT-ROOT 256 BUF:N>BLEN BUF:INIT
    PART-READS 256 BUF:N>BLEN BUF:INIT
+   PART-TEXTS 256 BUF:N>BLEN BUF:INIT
    OBJECT 256 BUF:N>BLEN BUF:INIT
    PRIOR 256 BUF:N>BLEN BUF:INIT
    CODE-COPY 256 BUF:N>BLEN BUF:INIT
@@ -969,7 +971,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    loop
    end INDEXED ! ;
 
-\ True for a public name's key, 0, and for a package the running file's source opened.
+\ True for a public name's key, 0, and for a package the running scan opened.
 : OPENED? ( n -- bool )
    {: pkg:n :}
    pkg 0= if true exit then
@@ -1028,16 +1030,17 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 
 : RUN! ( -- ) 1 RUN-ID +!  0 RUN-N !  SPELLS BYTES$ nip RUN-AT ! ;
 
-\ SPELLED's HIT: SPELLS gains the sum once per run, as a repeat with no open between marks
+\ SPELL-TEXT's HIT: SPELLS gains the sum once per run, as a repeat with no open between marks
 \ nothing more. Half RUN-SUMS' slots at most are filled, so a probe always ends.
 : SPELL-HIT ( n -- )
    {: sum:n :}
    RUN-N @ 1 + 2 *  RUN-CAP @ > if GROW-RUN then
    sum RUN-SUM+ if  sum SPELLS U64+  sum HIT  then ;
 
-\ SPELLED's OPENED+: SPELLS gains 0, which no NAME-SUM is, then the sum, and a run starts.
+\ SPELL-TEXT's OPENED+ of a sum OPENED? lacks: SPELLS gains 0, which no NAME-SUM is, then the sum, and a run starts.
 : SPELL-OPEN ( n -- )
    {: sum:n :}
+   sum OPENED? if exit then
    0 SPELLS U64+  sum SPELLS U64+  sum OPENED+  RUN! ;
 
 \ A byte that ends a spelled name: white space, or ':' and '"', which join a package to its
@@ -1048,7 +1051,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 \ A byte that ends a type argument in a span: '<', '>' and ','.
 : ARG-CUT? ( n -- bool ) {: c:n :}  c 60 =  c 62 = or  c 44 = or ;
 
-variable PART-AT                     \ SPELLED's running part's first byte
+variable PART-AT                     \ SPELL-TEXT's running part's first byte
 variable ARG-FROM                    \ its running argument's
 variable WORD-AT                     \ its running word's
 TYPED-VARIABLE JOINED bool           \ the running word holds a ':' or '"'
@@ -1088,11 +1091,10 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 \ SPELL-HIT for each name outside comment lines: a span between CUT? bytes, a
 \ run of it between ARG-CUT? bytes (`box<turn>`: box<turn>, box, turn) and a
 \ joined word (`P:W`: P, W, P:W).
-: SPELLED ( ptr u8 n -- )
+: SPELL-TEXT ( ptr u8 n -- )
    {: src:ptr u:n :}
    0 PART-AT !  0 ARG-FROM !  0 WORD-AT !  false JOINED !
-   true FIRST-WORD !  false SKIP !
-   false AFTER-PACKAGE !  0 OPENED-N !  SPELLS BUF:CLEAR  RUN!
+   true FIRST-WORD !  false SKIP !  false AFTER-PACKAGE !   \ a text's last word opens nothing in the next
    u 0 ?do
       src i + c@ {: c:n :}
       SKIP @ if
@@ -1114,6 +1116,12 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    loop
    SKIP @ 0= if src u 32 WORD-END then ;
 
+\ A scan of the text from an empty SPELLS; SPELL-TEXT after it appends another text's names.
+: SPELLED ( ptr u8 n -- )
+   {: src:ptr u:n :}
+   0 OPENED-N !  SPELLS BUF:CLEAR  RUN!
+   src u SPELL-TEXT ;
+
 \ A new scan: no row marked, nor the build's body, nor a record (HIT-STAMPS).
 : HITS-CLEAR ( -- )
    BUILT-N 1 + HITS-RESERVE
@@ -1132,7 +1140,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 \ False for bytes no file stamp covers (size -1): such a file never links.
 : STAMPED? ( -- bool ) INPUT-STAMP 16 + LE:U64@ -1 <> ;
 
-\ After SPELLED, before the compile: NAMED-ROWS from HITS, the pieces the source names whole, which
+\ After PART-NAMES' scan, before WRITE-OBJECT: NAMED-ROWS from HITS, the pieces the source and its texts name whole, which
 \ a requested file's load overwrites.
 : NAMED! ( -- )
    NAMED-ROWS BUF:CLEAR
@@ -2921,7 +2929,7 @@ variable RD-END
    FILES-N @ 0 ?do i 1 + FILE-ROWS @ ROW-ABSENT = if BAD unloop exit then loop ;
 
 
-\ After FILES-CK: bad when the source names a record of the build's body, or names a piece whole
+\ After FILES-CK: bad when the source or a text it evaluated names a record of the build's body, or names a piece whole
 \ (NAMES-CK) that no whole FILES row, one with the BUILT row's time, lists.
 : NAMED-CK ( -- )
    GOOD? 0= if exit then
@@ -2994,7 +3002,7 @@ variable RD-END
    RD-AT @ end <> if BAD then ;
 
 
-\ NAMES' u bytes (SPELLS) run as SPELLED ran them: HIT each sum, OPENED+ the sum after a 0; for a source INPUT-STAMP
+\ NAMES' u bytes (SPELLS) run as SPELLED and SPELL-TEXT ran them: HIT each sum, OPENED+ the sum after a 0; for a source INPUT-STAMP
 \ stamps, HITS, HIT-STAMPS and HIT-N end as a scan's.
 : NAMES-CK ( n -- )
    {: u:n :}
@@ -4918,12 +4926,23 @@ variable DUE-MADE
    t PIECE-STORES-TIME BUILT+ ;
 
 
-\ The compiling part's NAMES (NAMED!) from FILE-OFF to end in its source, before PIECE-END. Scanned as the part ends, so
-\ a part after a request hits the names of the file just loaded.
+\ The compiling part's NAMES (NAMED!) as it ends, after READS-KEEP, before PIECE-END, so a part after a request hits the file it loaded:
+\ its source from FILE-OFF to end, then PART-TEXTS' texts and, if there are any, both again, so each is scanned with every package one opened.
 : PART-NAMES ( n -- )
    {: end:n :}
    HITS-CLEAR
-   NULL-PTR BYTE-VIEW FILE-SRC @ + FILE-OFF @ +  end FILE-OFF @ -  SPELLED
+   NULL-PTR BYTE-VIEW FILE-SRC @ + FILE-OFF @ +  end FILE-OFF @ - {: src:ptr srcu:n :}
+   src srcu SPELLED
+   PART-TEXTS BYTES$ {: p:ptr pu:n :}
+   2 0 do
+      i 1 =  pu 0 >  and if src srcu SPELL-TEXT then
+      0 begin dup pu < while
+         {: at:n :}
+         p at + 8 + LE:U64@  p at + 16 + LE:U64@ {: u:n v:n :}
+         p at + 24 + u SPELL-TEXT
+         at 24 + u + v + 7 + 8 / 8 *
+      repeat drop
+   loop
    NAMED! ;
 
 
@@ -4950,8 +4969,22 @@ variable DUE-MADE
    resume ;
 
 
-\ The running recording's reads (COMPILE-READS:READS$) into PART-READS; none when no recording is active.
-: READS-KEEP ( -- ) COMPILE-READS:READS$ BUF:N>BLEN PART-READS BUF:REPLACE ;
+\ The running recording's reads (COMPILE-READS:READS$), each whole: its texts into PART-TEXTS, the others into
+\ PART-READS; none when no recording is active.
+: READS-KEEP ( -- )
+   PART-READS BUF:CLEAR  PART-TEXTS BUF:CLEAR
+   COMPILE-READS:READS$ {: p:ptr pu:n :}
+   0 begin dup pu < while
+      {: at:n :}
+      p at + 8 + LE:U64@  p at + 16 + LE:U64@ {: u:n v:n :}
+      at 24 + u + v + 7 + 8 / 8 * {: next:n :}
+      p at + LE:U64@ COMPILE-READS:TEXT-READ = if
+         p at + next at - PART-TEXTS SPAN+
+      else
+         p at + next at - PART-READS SPAN+
+      then
+      next
+   repeat drop ;
 
 \ The file's parts in turn (TURN): one links (LINK-PART) and replays its request, or compiles to its request's clean cut
 \ (NEST) or the end. A cross build writes no object: it makes two emissions per definition, an object holds one.
@@ -5061,12 +5094,12 @@ variable DUE-MADE
    ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
    ev RESUME {: resume:n :}
    resume 0< if true UNLINKABLE ! then
+   END-CK READS-KEEP              \ NEST runs inside the requesting part's RUN-UNIT, so the recording is its
    resume 0< if FILE-SRC-U @ else resume then PART-NAMES
    mode REQUESTS U64+  resume REQUESTS U64+
    ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+
    0 PIECE-END
    0 COMPILED-TIME {: t:n :}
-   READS-KEEP                     \ NEST runs inside the requesting part's RUN-UNIT, so the recording is its
    ev SOURCE-EVENT:CURRENT@ BUF:N>BLEN EXIT-ROOT BUF:REPLACE   \ CURRENT$ is already the requested file's root
    t WRITE-OBJECT
    t PIECE-PLACE

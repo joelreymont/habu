@@ -2298,6 +2298,7 @@ require src/habu/address-cells.f
 require src/habu/native-body-abi.f
 require src/habu/native-body.f
 require src/habu/repl.f
+require src/core/compile-reads.f
 
 package INTERPRETER
 
@@ -2699,6 +2700,7 @@ public
    code 0<> if code throw then ;
 
 : EVAL-FRAMED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u COMPILE-READS:TEXT+
    a u 0 u EVAL-FRAMED-RANGE ;
 
 : INSTALL-EVALUATE ( -- )

@@ -1,15 +1,18 @@
 \ compile-reads.f - what a compile reads besides its source: the roots it looked
-\ up and what they resolved to, and the environment variables it read.
+\ up and what they resolved to, the environment variables it read and the texts
+\ it evaluated.
 \ A recording is one mapping of reads. Each read is three cells (kind, first
 \ length, second length), the first bytes, the second bytes, then zero bytes to
 \ the next cell boundary: ROOT-READ holds an absolute spelling and its canonical
-\ directory, ENV-READ a name and its value, ENV-ABSENT a name and no bytes.
+\ directory, ENV-READ a name and its value, ENV-ABSENT a name and no bytes,
+\ TEXT-READ a text the compile evaluates and no bytes.
 package COMPILE-READS
 public
 
 1 constant ROOT-READ
 2 constant ENV-READ
 3 constant ENV-ABSENT
+4 constant TEXT-READ
 
 private
 
@@ -123,5 +126,10 @@ public
 : ENV+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
    b NULL-PTR - 0= if ENV-ABSENT a u b 0 APPEND exit then
    ENV-READ a u b v APPEND ;
+
+\ A text the compile evaluates. One of length 0 or less records nothing: `evaluate` reads no byte of it.
+: TEXT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if exit then
+   TEXT-READ a u a 0 APPEND ;
 
 ;package

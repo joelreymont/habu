@@ -214,8 +214,9 @@ one file.
 each is in the build with the time the part's object recorded:
 
 - a word or a stretch of data its compiled code refers to;
-- a public word its source spells outside comment lines, and for a part that
-  reopens a package, that package's private words too;
+- a public word its source, or a text its compile evaluates, spells outside
+  comment lines, and for a part that reopens a package, or evaluates a text
+  that does, that package's private words too;
 - a part that changes a record an earlier part made, which counts as defining
   that record's name;
 - when it ran an earlier word while it compiled, every word that word's code
