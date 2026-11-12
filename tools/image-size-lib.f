@@ -1,7 +1,6 @@
 \ image-size-lib.f - where the bytes of a program the linker wrote went, read
-\ from its container (tools/macho-read.f for a Mach-O program, tools/elf-read.f
-\ for an ELF one) and the <program>.map beside it (tools/image-names.f), whose
-\ rows tile the code from its first byte. Each byte falls in one class, and
+\ from its container and the <program>.map beside it, whose rows tile the code
+\ from its first byte. Each byte falls in one class, and
 \ MEASURE dies unless the classes sum to the file's length:
 \ - code: the map's code rows, which end where its first pad or region row starts;
 \ - names: the names, records and record-list rows, what the program holds to
@@ -25,8 +24,8 @@ require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
 require tools/image-names.f
-require tools/macho-read.f
-require tools/elf-read.f
+require src/os/macos/macho.f
+require src/os/linux/elf.f
 
 package IMAGE-SIZE
 
@@ -54,7 +53,7 @@ variable OTHER-SIZE
       s" image-size: short read" RC die
    then ;
 
-: ELF? ( -- bool ) IMG@ ILEN @ ELF-READ:MAGIC? ;
+: ELF? ( -- bool ) IMG@ ILEN @ ELF:MAGIC? ;
 
 : REFUSAL$ ( -- ptr u8 n )
    IMG@ LE:U32@ $6D736100 = if
@@ -63,11 +62,11 @@ variable OTHER-SIZE
    s" image-size: not a Habu program" ;
 
 : REFUSE ( -- )
-   ELF? IMG@ ILEN @ MACHO-READ:MAGIC? or 0= if REFUSAL$ RC die then ;
+   ELF? IMG@ ILEN @ MACHO:MAGIC? or 0= if REFUSAL$ RC die then ;
 
 : OPEN ( -- )
-   ELF? if IMG@ ILEN @ ELF-READ:OPEN exit then
-   IMG@ ILEN @ MACHO-READ:OPEN ;
+   ELF? if IMG@ ILEN @ ELF:OPEN exit then
+   IMG@ ILEN @ MACHO:OPEN ;
 
 \ The room MAP-CHECK's line needs, the longest built around the path.
 : MAP-ROOM ( ptr u8 n -- ptr u8 n )
@@ -97,31 +96,31 @@ variable OTHER-SIZE
 
 \ The text's load pads the code with zeros to the next page.
 : ELF-TEXT-END ( -- n )
-   ELF-READ:TEXT-OFF MAP-BYTES + {: end:n :}
-   end ELF-READ:TEXT-OFF >= end ELF-READ:TEXT-LIMIT <= and
-   ELF-READ:TEXT-LIMIT end - ELF-READ:TEXT-ALIGN < and
-   end ELF-READ:TEXT-LIMIT ZEROS? and 0= if
+   ELF:TEXT-OFF MAP-BYTES + {: end:n :}
+   end ELF:TEXT-OFF >= end ELF:TEXT-LIMIT <= and
+   ELF:TEXT-LIMIT end - ELF:TEXT-ALIGN < and
+   end ELF:TEXT-LIMIT ZEROS? and 0= if
       s" image-size: the map's rows do not end at the code's last page" RC die
    then end ;
 
 : TEXT-OFF ( -- n )
-   ELF? if ELF-READ:TEXT-OFF exit then MACHO-READ:TEXT-OFF ;
+   ELF? if ELF:TEXT-OFF exit then MACHO:TEXT-OFF ;
 
 : TEXT-END ( -- n )
-   ELF? if ELF-TEXT-END exit then MACHO-READ:TEXT-END ;
+   ELF? if ELF-TEXT-END exit then MACHO:TEXT-END ;
 
 : MACHO-CONTAINER ( -- )
-   MACHO-READ:COMMANDS-END MACHO-READ:GOT-BYTES + MACHO-READ:LINK-BYTES +
+   MACHO:COMMANDS-END MACHO:GOT-BYTES + MACHO:LINK-BYTES +
    OTHER-SIZE !
-   MACHO-READ:TEXT-OFF MACHO-READ:COMMANDS-END -
-   MACHO-READ:TEXT-LIMIT MACHO-READ:TEXT-END - +
-   MACHO-READ:DATA-BYTES MACHO-READ:GOT-BYTES - +
+   MACHO:TEXT-OFF MACHO:COMMANDS-END -
+   MACHO:TEXT-LIMIT MACHO:TEXT-END - +
+   MACHO:DATA-BYTES MACHO:GOT-BYTES - +
    PAD-SIZE ! ;
 
 : ELF-CONTAINER ( -- )
-   ELF-READ:HEADERS-BYTES ELF-READ:TABLES-BYTES + {: head:n :}
-   head ELF-READ:RW-BYTES + OTHER-SIZE !
-   ELF-READ:TEXT-OFF head - ELF-READ:TEXT-LIMIT TEXT-END - +
+   ELF:HEADERS-BYTES ELF:TABLES-BYTES + {: head:n :}
+   head ELF:RW-BYTES + OTHER-SIZE !
+   ELF:TEXT-OFF head - ELF:TEXT-LIMIT TEXT-END - +
    PAD-SIZE ! ;
 
 : CONTAINER ( -- )

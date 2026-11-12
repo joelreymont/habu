@@ -21,7 +21,6 @@ public
 
 private
 : SIG-IDLEN ( -- n )  SIGU @ 1 + ;
-$1D       constant LC-CODE-SIG
 88        constant CD-HDR
 $1000     constant CS-PAGE
 32        constant CS-HASH

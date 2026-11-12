@@ -9,7 +9,7 @@ require src/lib/adt/option.f                 \ option<n> for the number parsers
 require src/lib/fs.f
 require src/habu/code-span.f
 require src/habu/snapshot-format.f
-require tools/macho-read.f
+require src/os/macos/macho.f
 
 : IMG-FALSE ( -- bool )
    0 0= 0= ;
@@ -105,8 +105,8 @@ CAST: MAP>BYTES ( n -- ptr u8 )
    IMG-MMAP-PTR IB!
    IFD @ close
    ISZ @ IL !
-   IB@ IL @ MACHO-READ:MAGIC? MACHO !
-   MACHO @ if IB@ IL @ MACHO-READ:OPEN then ;
+   IB@ IL @ MACHO:MAGIC? MACHO !
+   MACHO @ if IB@ IL @ MACHO:OPEN then ;
 
 : READ-IMG
    IMG-PATH$ READ-IMG-PATH ;
@@ -282,7 +282,7 @@ variable OKV
 : FIND-SNAPSHOT ( -- bool )
    -1 TOFF !
    IL @ 104 < if IMG-FALSE exit then
-   MACHO @ if MACHO-READ:TEXT-END else 96 I@ then
+   MACHO @ if MACHO:TEXT-END else 96 I@ then
       SNAP-TRL-BYTES - {: off:n :}
    off 0 < if IMG-FALSE exit then
    off SNAP? 0= if
@@ -486,7 +486,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 : NO-SNAP-XTBASE ( -- n )
    \ Mach-O reports the section's preferred virtual addresses. Runtime PCs
    \ must have their ASLR slide removed before they are compared to the file.
-   MACHO @ if MACHO-READ:TEXT-VA exit then
+   MACHO @ if MACHO:TEXT-VA exit then
    ELF-FIXED-BASE? 0= if
       s" imgdump: no snapshot trailer and image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base" 74 die
    then
