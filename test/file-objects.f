@@ -531,21 +531,33 @@ variable CLASS-N                        \ the class CLASS+ read
    PROCESS:ENDING>RC RC>N ;
 
 \ Builds a fixture by tools/hb-build.f (TOOL-RUN), since log.f requires and creates through does>
-\ (build.f's files may not); --repl and --report-json when the flag is true.
+\ (build.f's files may not); --repl and, on macOS, --report-json when the flag is true.
 : BUILD-RC ( CMD:command ptr u8 n bool -- CMD:command n )
    {: src:ptr src-u:n repl:bool :}
    TOOL-ARGS
-   repl if s" --repl" CMD:ARG+ s" --report-json" CMD:ARG+ then
+   repl if
+      s" --repl" CMD:ARG+
+      \ macOS only: the report reads only a Mach-O program.
+      HB-TARGET-MACOS? if s" --report-json" CMD:ARG+ then
+   then
    src src-u TOOL-RUN ;
 
-: TOOL-BUILD ( CMD:command ptr u8 n bool -- CMD:command bool )
-   BUILD-RC {: rc:n :}
+: BUILT? ( CMD:command n -- CMD:command bool ) {: rc:n :}
    rc 0<> if rc SHOW then
    s" the build exits 0" LABEL  rc 0 T=
    rc 0 = ;
 
+: TOOL-BUILD ( CMD:command ptr u8 n bool -- CMD:command bool ) BUILD-RC BUILT? ;
+
 : FIXTURE-BUILD ( CMD:command ptr u8 n -- CMD:command bool ) false TOOL-BUILD ;
 : REPL-BUILD ( CMD:command ptr u8 n -- CMD:command bool ) true TOOL-BUILD ;
+
+\ macOS only: the size report reads only a Mach-O program, so elsewhere a plain build.
+: SIZE-BUILD ( CMD:command ptr u8 n -- CMD:command bool )
+   {: src:ptr src-u:n :}
+   TOOL-ARGS
+   HB-TARGET-MACOS? if s" --size-report" CMD:ARG+ then
+   src src-u TOOL-RUN BUILT? ;
 
 \ Builds a fixture the build refuses and answers its exit code.
 : FAILING-BUILD ( CMD:command ptr u8 n -- CMD:command n ) false BUILD-RC ;
@@ -756,7 +768,9 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ N's report, stdout's last line: it parses, its total is the program's length, its six classes
 \ sum to the total, it charges code and it counts the build's files.
+\ macOS only: the report reads only a Mach-O program.
 : REPORT-RUN ( CMD:command -- CMD:command )
+   HB-TARGET-MACOS? 0= if exit then
    CMD:OUT$ {: o:ptr ou:n :}
    o ou BEFORE-LAST {: at:n :}
    o at + ou at - REPORT-READ {: read:bool :}
@@ -785,13 +799,21 @@ variable CLASS-N                        \ the class CLASS+ read
    rc 0<> if rc SHOW then
    label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
+: SIZE-RUN ( CMD:command -- CMD:command )
+   HB-TARGET-MACOS? 0= if exit then
+   s" the size report groups the code by package" LABEL
+   CMD:OUT$ s\" \nby package\n" CONTAINS? TTRUE
+   s" the size report groups the code by source" LABEL
+   CMD:OUT$ s\" \nby source\n" CONTAINS? TTRUE ;
+
 \ Guards a lock across a build: L's program holds no mutex the build locked and takes HELD, which log-first.f left
 \ held; and linker.f OWNED-RECORDS: L2, after M rewrites app-end.f's object, rewrites only that object.
+\ On macOS, M's size report groups its code by package and by source.
 : LOG-CASE ( CMD:command -- CMD:command )
    s" L" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    LOG-UNLOCKED  LOG-RUN  LOG-FIRST KEEP
-   s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
-   BARE-RUN  F$ MARK
+   s" M" WHICH!  s" test/fixtures/file-objects/bare-main.f" SIZE-BUILD 0= if exit then
+   SIZE-RUN  BARE-RUN  F$ MARK
    s" L2" WHICH!  s" test/fixtures/file-objects/log-main.f" FIXTURE-BUILD 0= if exit then
    s" the build links log-first.f" LOG-FIRST LINKED
    F$ REWRITTEN {: n:n :}
@@ -944,7 +966,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the program,
 \ word docs keep no address of a freed text, a task left running or a run word that loads, provides or reads a file fails it.
-\ N, the one engine build, reports its sizes.
+\ N, the one engine build, reports its sizes on macOS.
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN

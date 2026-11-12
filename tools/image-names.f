@@ -1,6 +1,6 @@
-\ Read an image's optional <image>.map by column name; unknown versions
-\ and malformed rows supply no name. Signing rewrites the image, so rows
-\ match by span.
+\ Read a program's <program>.map by column name: its code rows, the regions
+\ the link appended after the code and its packages. An unknown version
+\ supplies no rows.
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
@@ -14,9 +14,20 @@ create PATH PATH-CAP allot
 variable USED variable POS variable ROWS
 variable COL-START variable COL-LEN variable COL-WID variable COL-NAME
 variable COL-KIND variable COL-ORIGIN variable COL-SOURCE
-variable GROUP-TOTAL
-DYNAMIC-BUFFER NS-ROWS n
+\ A namespace row holds its package's public wid in the start column and its
+\ private wid in the len column. Its name points into TEXT, which only LOAD
+\ moves, and LOAD indexes the rows again.
+STRUCTURE pkg DERIVE addr
+   FIELD pub n FIELD priv n FIELD name ptr u8 FIELD size n
+;STRUCTURE
+DYNAMIC-BUFFER NS-ROWS pkg
 variable NS-N
+\ One line of a group's report, in the order its key first appears.
+STRUCTURE owner DERIVE addr
+   FIELD key ptr u8 FIELD size n FIELD sum n
+;STRUCTURE
+DYNAMIC-BUFFER OWNERS owner
+variable OWNER-N
 variable ATTR-TOTAL variable ATTR-BAKED variable ATTR-LOADED
 variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
@@ -48,13 +59,6 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 : NUMBER ( ptr u8 n -- n )
    STR>NUMBER? MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH ;
 
-: ROW$ ( ptr u8 n n n -- ptr u8 n ) {: a:ptr u:n off:n want:n :}
-   a u COL-START @ FIELD$ NUMBER {: start:n :}
-   a u COL-LEN @ FIELD$ NUMBER {: size:n :}
-   start 0 < size CODE-SPAN:VALID? 0= or if s" " exit then
-   size CODE-SPAN:BYTES {: span:n :}
-   off start = want span = and if a u COL-NAME @ FIELD$ exit then s" " ;
-
 : NUM-COL ( ptr u8 n n -- n ) FIELD$ NUMBER ;
 
 : ROW-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -81,22 +85,21 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
       ATTR-GENERATED @ bytes + ATTR-GENERATED ! exit then
    ATTR-UNKNOWN @ bytes + ATTR-UNKNOWN ! ;
 
-: AT-LINE$ ( n -- ptr u8 n )
-   {: at:n :}
-   0 TEXT BYTE-VIEW USED @ 10 at SPLIT-NEXT 2drop ;
+: NS+ ( ptr u8 n -- ) {: row:ptr rowu:n :}
+   NS-N @ 1+ NS-ROWS-RESERVE
+   NS-N @ NS-ROWS {: pkg:ptr :}
+   row rowu COL-START @ NUM-COL pkg PKG-PUB !
+   row rowu COL-LEN @ NUM-COL pkg PKG-PRIV !
+   row rowu COL-NAME @ FIELD$ pkg PKG-SIZE ! pkg PKG-NAME !
+   NS-N @ 1+ NS-N ! ;
 
-\ Namespace rows have WIDs in the start/len columns instead of a span.
 : INDEX-NAMESPACES ( -- )
    0 NS-N ! ROWS @ POS !
    begin POS @ USED @ < while
-      POS @ {: at:n :}
       LINE$ {: row:ptr rowu:n :}
       COL-KIND @ 0 >= if
          row rowu COL-KIND @ FIELD$ s" namespace" STR=
-      else false then if
-         NS-N @ 1+ NS-ROWS-RESERVE
-         at NS-N @ NS-ROWS ! NS-N @ 1+ NS-N !
-      then
+      else false then if row rowu NS+ then
    repeat ;
 
 \ The kinds of the rows after the code: the regions the link appended and the pad before one.
@@ -114,6 +117,12 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    kind kindu s" namespace" STR= if true exit then
    kind kindu s" alias" STR= if true exit then
    kind kindu TAIL? ;
+
+\ At most 64 bytes of the kind: a corrupt map's field can pass the string builder.
+: UNKNOWN-KIND ( ptr u8 n -- )
+   {: kind:ptr kindu:n :}
+   SB-RESET s" image-names: a map row of unknown kind " SB-APPEND
+   kind kindu 64 min SB-APPEND SB$ 74 die ;
 
 public
 
@@ -163,7 +172,8 @@ public
          row rowu bytes ORIGIN+
          ATTR-TOTAL @ bytes + ATTR-TOTAL !
       else
-         row rowu COL-KIND @ FIELD$ UNCHARGED? 0= if false exit then
+         row rowu COL-KIND @ FIELD$
+         2dup UNCHARGED? if 2drop else UNKNOWN-KIND then
       then
    repeat
    ATTR-TOTAL @ size = dup ATTR-OK ! ;
@@ -204,18 +214,17 @@ public
       repeat
    then drop ;
 
+private
+
 : ATTR? ( -- bool ) ATTR-OK @ 0<> ;
-: ATTR-BYTES ( -- n ) ATTR-TOTAL @ ;
 
 : PACKAGE$ ( n -- ptr u8 n ) {: wid:n :}
    wid 0= if s" global" exit then
    wid -1 = if s" -" exit then
-   COL-KIND @ 0 < if s" -" exit then
    NS-N @ 0 ?do
-      i NS-ROWS @ AT-LINE$ {: row:ptr rowu:n :}
-      row rowu COL-START @ NUM-COL wid =
-      row rowu COL-LEN @ NUM-COL wid = or if
-         row rowu COL-NAME @ FIELD$ unloop exit
+      i NS-ROWS {: pkg:ptr :}
+      pkg PKG-PUB @ wid = pkg PKG-PRIV @ wid = or if
+         pkg PKG-NAME @ pkg PKG-SIZE @ unloop exit
       then
    loop s" -" ;
 
@@ -224,45 +233,42 @@ public
    COL-SOURCE @ 0 < if s" -" exit then
    row rowu COL-SOURCE @ FIELD$ ;
 
-: GROUP-SEEN? ( ptr u8 n n n -- bool )
-   {: key:ptr keyu:n group:n before:n :}
-   ROWS @ POS !
-   begin POS @ before < while
-      LINE$ {: row:ptr rowu:n :}
-      row rowu ROW-CHARGED? if
-         row rowu group GROUP-KEY$ key keyu STR= if true exit then
+\ The pointer holds until the next call: a new owner may move OWNERS.
+: OWNER ( ptr u8 n -- ptr owner ) {: key:ptr keyu:n :}
+   OWNER-N @ 0 ?do
+      i OWNERS {: seen:ptr :}
+      seen OWNER-KEY @ seen OWNER-SIZE @ key keyu STR= if
+         seen unloop exit
       then
-   repeat false ;
+   loop
+   OWNER-N @ 1+ OWNERS-RESERVE
+   OWNER-N @ OWNERS {: new:ptr :}
+   key new OWNER-KEY ! keyu new OWNER-SIZE ! 0 new OWNER-SUM !
+   OWNER-N @ 1+ OWNER-N ! new ;
 
-: GROUP-BYTES ( ptr u8 n n -- n ) {: key:ptr keyu:n group:n :}
-   0 GROUP-TOTAL !
-   ROWS @ POS !
+\ Rows whose keys print the same sum into one owner.
+: SUM-OWNERS ( n -- ) {: group:n :}
+   0 OWNER-N ! ROWS @ POS !
    begin POS @ USED @ < while
       LINE$ {: row:ptr rowu:n :}
       row rowu ROW-CHARGED? if
-         row rowu group GROUP-KEY$ key keyu STR= if
-            row rowu ROW-LEN GROUP-TOTAL +!
-         then
+         row rowu ROW-LEN
+         row rowu group GROUP-KEY$ OWNER OWNER-SUM +!
       then
-   repeat GROUP-TOTAL @ ;
+   repeat ;
 
 : REPORT-GROUP ( n ptr u8 n -- )
    {: group:n label:ptr labelu:n :}
    cr label labelu type cr
    s" bytes" type 9 emit s" owner" type cr
-   ROWS @ POS !
-   begin POS @ USED @ < while
-      POS @ {: at:n :}
-      LINE$ {: row:ptr rowu:n :}
-      POS @ {: next:n :}
-      row rowu ROW-CHARGED? if
-         row rowu group GROUP-KEY$ {: key:ptr keyu:n :}
-         key keyu group at GROUP-SEEN? 0= if
-            key keyu group GROUP-BYTES FMT:.U 9 emit key keyu type cr
-         then
-      then
-      next POS !
-   repeat ;
+   group SUM-OWNERS
+   OWNER-N @ 0 ?do
+      i OWNERS {: own:ptr :}
+      own OWNER-SUM @ FMT:.U 9 emit
+      own OWNER-KEY @ own OWNER-SIZE @ type cr
+   loop ;
+
+public
 
 : REPORT-CODE ( -- )
    cr s" retained code attribution: " type
@@ -289,11 +295,5 @@ public
    repeat
    0 s" by package" REPORT-GROUP
    1 s" by source" REPORT-GROUP ;
-
-: SPAN-NAME$ ( n n -- ptr u8 n ) {: off:n size:n :}
-   ROWS @ POS !
-   begin POS @ USED @ < while
-      LINE$ off size ROW$ dup 0 > if exit then 2drop
-   repeat s" " ;
 
 ;package
