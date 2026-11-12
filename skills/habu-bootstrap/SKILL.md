@@ -23,6 +23,6 @@ TMPDIR=$TMP "$HOST" --load tools/hb-build.f -- --engine -o "$OUT"
 ```
 
 Check that successive builds converge with `tools/chain-run-build.f`
-(docs/bootstrap.md "Convergence check"), then gate the converged hb with its
-matching source tree before replacing `bin/hb`; see `docs/gate.md`
-"Qualifying a candidate".
+(docs/bootstrap.md "Convergence check"), then qualify the converged hb with
+its matching source tree before replacing `bin/hb` (docs/bootstrap.md
+"Refresh `bin/hb`").

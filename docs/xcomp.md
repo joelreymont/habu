@@ -366,8 +366,7 @@ validates and isolates execution. A valid module can still compute the wrong
 answer or overwrite another object in its memory, so Wasm validation never
 widens Habu's safety claims. No `TRUSTED:` wrapper is added around a compiler
 algorithm to get it through the checker. An independent engine validator runs
-during qualification ([gate.md](gate.md)); engine validity is necessary, not a
-semantic proof.
+during qualification; engine validity is necessary, not a semantic proof.
 
 ## Freestanding targets
 

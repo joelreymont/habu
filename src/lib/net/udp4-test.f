@@ -156,9 +156,8 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    mono-ns start - NS-PER-MS / ;
 
 
-\ A count still short of want at WAIT-MS is a deadline, not an assertion result
-\ (docs/gate.md "How a suite runs, and what that demands of its files"): the
-\ wait names itself and throws E-PROC-TIMEOUT.
+\ A count still short of want at WAIT-MS is a deadline, not an assertion result:
+\ the wait names itself and throws E-PROC-TIMEOUT.
 : REACH ( ptr n n -- )
    [: 2dup swap atomic@ <= ;] mono-ns WAIT-MS NS-PER-MS * +
    s" udp4-test REACH" TEST-WAIT:POLL

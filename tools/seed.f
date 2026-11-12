@@ -13,7 +13,7 @@ require src/core/sha256.f
 
 64 constant SEED-SHA256-HEX-U
 10000 constant SEED-SMOKE-TIMEOUT-MS
-\ ms per engine build: docs/gate.md "Qualifying a candidate"
+\ An engine build takes 5 minutes at most.
 300000 constant SEED-BUILD-TIMEOUT-MS
 4096 constant SEED-SMOKE-OUT-CAP
 4096 constant SEED-SMOKE-ERR-CAP

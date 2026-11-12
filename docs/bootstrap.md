@@ -11,11 +11,12 @@ running machine: the product is data the build writes, never a slice of the
 running hb's memory. Its start-up,
 kernel and layout come from the tree too: a kernel build first compiles the
 tree's src/arch/arm64/kernel-object.f and writes a kernel object under the out
-root, which the build then links.
+root, which the build then links. An engine build takes at most 5 minutes; one
+that runs past it has a defect to root-cause, never a longer limit.
 
 Build from the tree's root: a build opens its boot files under the working
 directory and refuses one outside the engine root. Builds write their objects
-under the out root ([gate.md](gate.md#scratch-and-cache)), in a directory
+under the out root (src/lib/build-out.f), in a directory
 named by the building hb's change time and size, so two hb never share an
 object.
 
@@ -36,8 +37,8 @@ HABU_SEED_SHA256=<hex> /path/to/trusted-hb --load tools/seed-main.f \
 installs it as `bin/hb`, checks that it runs, and has it build `bin/hb` from
 current source with `tools/hb-build.f -- --engine -o bin/hb`. That result is a
 candidate, not a qualified product: run the
-[convergence check](#convergence-check) from it, then qualify the converged hb
-([gate.md](gate.md)) before installing it.
+[convergence check](#convergence-check) from it, then
+[qualify](#refresh-binhb) the converged hb before installing it.
 
 A trusted hb too old to build the tree needs a [staged host](#staged-hosts).
 
@@ -54,7 +55,6 @@ On macOS the library tests use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
 The FFI test compiles its struct-by-value fixture library with /usr/bin/cc.
 Keg-only postgresql@18 needs its bin directory on PATH.
-See [gate.md](gate.md) for the suite and its boundaries.
 
 ## Convergence check
 
@@ -66,8 +66,8 @@ generations are the same image (CODESIGN:SAME-IMAGE?):
     TMPDIR=$TMP bin/hb --load tools/chain-run-build.f -- bin/hb $TMP/g1 $TMP/g2 $TMP/g3 $TMP
 
 Run it for changes to code generation, self-hosting or capture that can affect
-successive output. Use an external scratch directory for `$TMP`, as described
-in [gate.md](gate.md). Every generation compiles the checkout's source, so
+successive output. Use a scratch directory outside the checkout for `$TMP`.
+Every generation compiles the checkout's source, so
 leave the tree unchanged until the tool exits.
 
 A codegen change can first appear in generation two because generation one
@@ -135,28 +135,29 @@ change:
 1. Run the previous engine with a one-line file, `s" <new path>" provided`,
    loaded before `tools/hb-build.f -- --engine -o $OUT`. Never install this
    engine: the next one differs from it.
-2. On that engine, build again by the candidate command in
-   [gate.md](gate.md) "Qualifying a candidate", at the normal limits.
+2. On that engine, build again with `tools/hb-build.f -- --engine -o $OUT`.
 3. On the step-2 engine, build once more; qualify and install it once
    CODESIGN:SAME-IMAGE? holds between it and the step-2 engine.
 
 ## Refresh `bin/hb`
 
 After `bin/hb` exists, use it as the host for normal native builds. Build a
-private hb with `tools/hb-build.f -- --engine -o <out>` and qualify it against
-its matching source tree as described in [gate.md](gate.md). Promote the
-verified product to `bin/hb` only after the gate passes, by copying it beside
+private hb with `TMPDIR=$TMP $HOST --load tools/hb-build.f -- --engine -o
+$OUT` and qualify it: copy it and its `.map` as regular files, not symlinks,
+into `bin/` of a private copy of its matching tree and run the test suite
+there (test/AGENTS.md). A tool that names an image's words reads the `.map`
+beside it (tools/image-names.f), so a stale map names the wrong words. Promote
+the qualified hb to `bin/hb` only after the suite passes, by copying it beside
 `bin/hb` and renaming it into place: a copy over `bin/hb` keeps the inode whose
 code signature the kernel cached, and a later launch can die by SIGKILL, rc 137
 (the kernel logs `load code signature error 2 for file "hb"`).
 
 If the checkout's `bin/hb` is missing or too old to load current source, use a
 trusted installed native engine as `HOST` and build from the checkout root
-with the candidate command in [gate.md](gate.md#qualifying-a-candidate).
-Build a second product with `$OUT` as `HOST`; if those bytes differ, build
-another generation until successive products match. Keep each output private,
-with its paired `.map` file, and run the [native gate](gate.md) on the
-converged product before promotion. A stale host can fail to compile an
+with the command above. Build a second product with `$OUT` as `HOST`; if those
+bytes differ, build another generation until successive products match. Keep
+each output private, with its paired `.map` file, and qualify the converged
+product before promotion. A stale host can fail to compile an
 application against newer source while still compiling the current engine.
 
 ## Stable local command
@@ -187,6 +188,3 @@ On macOS every build signs its product with the team identity
 identity fails the build with `CODESIGN:E-IDENTITY`. The login keychain
 partitions an item by its filer's team, so each build reads the items any other
 build filed with at most one prompt per identifier.
-
-Run the gate after recovery or refresh (`bin/hb --load test/run.f`,
-[gate.md](gate.md)). It runs in the product `bin/hb` engine.

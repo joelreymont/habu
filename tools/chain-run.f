@@ -23,7 +23,7 @@ public
 
 private
 
-\ ms per engine build: docs/gate.md "Qualifying a candidate"
+\ An engine build takes 5 minutes at most.
 300000 constant BUILD-MS
 DYNAMIC-BUFFER FILES u8
 

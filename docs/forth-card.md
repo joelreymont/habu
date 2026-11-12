@@ -556,8 +556,8 @@ forth.md: **Files**, **Packages**.
 
 ## 8 Tests
 
-What to test: [gate.md](gate.md) "Writing tests". Use `require
-src/lib/test.f` for assertions and keep fixtures package-scoped.
+What to test: [test/AGENTS.md](../test/AGENTS.md) "Writing tests". Use
+`require src/lib/test.f` for assertions and keep fixtures package-scoped.
 
 `T=` / `T<>` scalars, `T$=` strings, `TTRUE` / `TFALSE` flags, `TTHROWSQ` /
 `TTHROWS` throw codes. `TEST-EVAL:N` / `FLAG` / `RC` take one cell, a flag or

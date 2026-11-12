@@ -114,8 +114,7 @@ public
 
 private
 
-\ A signal is not an exit. A deadline is no verdict (docs/gate.md "How a suite
-\ runs, and what that demands of its files").
+\ A signal is not an exit. A deadline is no verdict.
 : STATUS ( ptr u8 n n -- len len bool )
    {: src:ptr srcu:n want:n :}
    src srcu STATUS-OUT STATUS-CAP >LEN STATUS-ERR STATUS-CAP >LEN STATUS-MS >MS RUN

@@ -1,7 +1,6 @@
-\ wait.f - a test's own waits. POLL's expired deadline is no assertion result
-\ (docs/gate.md "How a suite runs, and what that demands of its files"): it names
-\ itself on stdout and throws E-PROC-TIMEOUT, so the row ends as a timeout and
-\ not as a FAIL. FOR-CELL has no deadline: its worker's end ends it.
+\ wait.f - a test's own waits. POLL's expired deadline is no assertion result:
+\ it names itself on stdout and throws E-PROC-TIMEOUT, so the test ends as a
+\ timeout and not as a FAIL. FOR-CELL has no deadline: its worker's end ends it.
 \
 \ STORAGE CLASS. CALLER-OWNED: no module state.
 

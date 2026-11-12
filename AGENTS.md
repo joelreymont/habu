@@ -8,10 +8,14 @@ Habu directly.
 Zen, Tender and Maki build, test and run on Habu without issues. A dot that
 removes an issue one of them meets goes before any other work.
 
-Until the three are released, a Habu change is measured by what they do on it,
-and work that does not move that measure waits:
-[docs/gate.md](docs/gate.md#until-zen-tender-and-maki-are-released) says how a
-change is measured and lands.
+Until the three are released, a Habu change is measured by what they do on it:
+Maki's image and viewer, Zen's server and Tender's server built from their
+masters, cold then warm, and Tender's `tender.f` loaded, on the candidate
+engine before it lands and on the installed one after. Work that does not move
+that measure waits. A fix one of them waits for lands and is installed alone.
+The test suite, the convergence check and a feature's review run once, before
+the install, never per change; a rebase over changes to `.dots/` alone reruns
+nothing.
 
 Incremental builds ship in the release, rock-solid: a warm build never fails or
 differs where a cold build would not.
@@ -20,8 +24,7 @@ differs where a cold build would not.
 
 - Before writing or changing Habu's tools, modules or boundaries: [docs/design.md](docs/design.md#writing-and-changing-habu) "Writing and changing Habu".
 - Before extending any existing machinery: [docs/design.md](docs/design.md#machinery-being-replaced) "Machinery being replaced".
-- Before choosing or running a check: [docs/gate.md](docs/gate.md#native-test-suite) "Native test suite".
-- Before writing a test: [docs/gate.md](docs/gate.md#writing-tests) "Writing tests".
+- Before writing or running a test: [test/AGENTS.md](test/AGENTS.md).
 - Before building a candidate or installing: [docs/bootstrap.md](docs/bootstrap.md#stable-local-command) "Stable local command".
 - Before diagnosing checked code that misbehaves: [docs/debugging.md](docs/debugging.md#debugging-the-self-hosted-standalone) "Debugging the self-hosted standalone".
 
@@ -50,8 +53,8 @@ differs where a cold build would not.
 A finding goes where it is checked: a test or a code comment when either can
 hold it; [docs/forth.md](docs/forth.md) "Rules learned by refusal" and the card
 for a language rule; [docs/bootstrap.md](docs/bootstrap.md),
-[docs/gate.md](docs/gate.md) or [docs/debugging.md](docs/debugging.md) for a
-build, test or diagnosis rule. Other reference material belongs in `docs/`.
+[test/AGENTS.md](test/AGENTS.md) or [docs/debugging.md](docs/debugging.md) for
+a build, test or diagnosis rule. Other reference material belongs in `docs/`.
 State the rule and the fact that proves it, without dates or narrative, and
 search and merge before adding. A doc passage that must track code is deleted;
 the fact goes into the code's comment. This file holds only rules: a procedure

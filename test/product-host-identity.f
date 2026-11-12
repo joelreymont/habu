@@ -19,7 +19,7 @@ require src/lib/tree-copy.f
 package PRODUCT-HOST-TEST
 
 $4000 constant CAP
-\ ms per engine build: docs/gate.md "Qualifying a candidate"
+\ An engine build takes 5 minutes at most.
 300000 constant BUILD-TIMEOUT-MS
 
 create ROOT PATH-CAP allot          variable ROOT-U

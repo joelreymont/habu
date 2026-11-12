@@ -326,3 +326,11 @@ perf script | bin/hb --load tools/perf-map.f
 - When the limit's last sample is foreign the report waits for the next Habu
   sample, so a program that exits or stays blocked in a foreign call from that
   point on never reports; call `prof-report` yourself.
+
+## Timing a change
+
+A before-and-after timing runs both sides on one idle host (spark, Linux
+arm64), never the shared Mac, with one engine, interleaved in one session for
+several rounds each, and compares instructions retired. Separate sessions
+drift: zz's run phase moved 40M instructions (0.3%) between two sessions hours
+apart with unchanged code, more than many single changes.

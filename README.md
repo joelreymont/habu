@@ -45,9 +45,9 @@ bin/hb --load tools/hb-build.f -- --target wasm path/to/program.f -o program.was
 ```
 
 If `bin/hb` is missing or broken, read the current recovery status and procedure
-in [docs/bootstrap.md](docs/bootstrap.md). The build and
-gate recipes live in [`skills/habu-build/SKILL.md`](skills/habu-build/SKILL.md)
-and [`skills/habu-gate/SKILL.md`](skills/habu-gate/SKILL.md).
+in [docs/bootstrap.md](docs/bootstrap.md). The build recipes live in
+[`skills/habu-build/SKILL.md`](skills/habu-build/SKILL.md), and the test suite
+in [`test/AGENTS.md`](test/AGENTS.md).
 
 ## What the checker covers
 
@@ -87,7 +87,6 @@ documents native scoped-root loading against Habu's shared libraries.
 - [`docs/xcomp.md`](docs/xcomp.md) — cross-compilation, targets and porting.
 - [`docs/bootstrap.md`](docs/bootstrap.md) — bootstrap and self-hosting.
 - [`docs/debugging.md`](docs/debugging.md) — debugger and inspection tools.
-- [`docs/gate.md`](docs/gate.md) — the native test suite and what it demands of a test file.
 - [`docs/swiftforth.md`](docs/swiftforth.md) — SwiftForth's reference manual, restated for comparison.
 
 Each library module's header states its contract and storage class.

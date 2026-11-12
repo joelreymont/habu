@@ -2,7 +2,7 @@
 
 Start with the [short card](forth-card.md); use this guide for full language
 rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
-[gate.md](gate.md).
+[test/AGENTS.md](../test/AGENTS.md).
 
 ## Checked code and primitive boundaries
 
@@ -2036,9 +2036,10 @@ to <n> bytes`.
 
 ## Testing
 
-- What to test: [gate.md](gate.md) "Writing tests". `T=`/`T<>` for scalars,
-  `T$=` for strings, `TTRUE`/`TFALSE` for flags (not `T=`), `TTHROWS` for
-  codes; several results compared top down, one assertion each.
+- What to test: [test/AGENTS.md](../test/AGENTS.md) "Writing tests".
+  `T=`/`T<>` for scalars, `T$=` for strings, `TTRUE`/`TFALSE` for flags (not
+  `T=`), `TTHROWS` for codes; several results compared top down, one assertion
+  each.
 - `src/lib/test.f` is the test framework; a test file requires its own
   dependencies. A suite file installs its hooks, declares groups and rows and
   runs them once; the `src/lib/test/suite.f` header states the hook set, the
@@ -2098,12 +2099,6 @@ whether the defect is in a declaration, the checker, generated code or runtime,
 fix that layer, and add a regression through the actual load path. A property
 outside the type system's contract is stated as such and checked at the right
 runtime or analysis layer.
-
-## Verification before committing
-
-The required gates and the full native suite live in [gate.md](gate.md).
-Compiler, runtime or broad library changes rebuild the engine before the suite;
-documentation-only edits need no rebuild.
 
 ## Comments & hygiene
 
