@@ -2242,5 +2242,14 @@ public
    a u INCLUDE-DIAG+
    INCLUDE-DIAG$ INCLUDE-DIE ;
 
+\ A file that builds for some targets only states them on its first code line,
+\ before its requires; on another target its load stops there.
+: ?TARGET ( bool -- )
+   if exit then
+   s" E-TARGET" CHECK:TOP-SITE-PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
+   s" the file does not build for " ERROR-TEXT:TYPE
+   HB-TARGET$ ERROR-TEXT:TYPE  S\" \n" ERROR-TEXT:TYPE
+   INCLUDE-IO-RC throw ;
+
 
 ;using

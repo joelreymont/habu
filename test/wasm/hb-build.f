@@ -366,6 +366,13 @@ variable TEXT-U
    s" APP-ENTRY:XT!" ERR-HAS
    s" expected: [ -- ] actual: [ n -- ]" ERR-HAS
    NO-MODULE
+   s" require src/lib/fs.f" s" native-only.f" SOURCE!
+   s" a file that does not build for Wasm stops its load with 74 and no module" T-LABEL
+   s" native-only.wasm" BUILD 74 T=
+   s" E-TARGET habu: " ERR-HAS
+   s" src/lib/ffi-abi.f:" ERR-HAS
+   s" : the file does not build for wasm" ERR-HAS
+   NO-MODULE
    s" : MAIN ( -- ) ;" s" unwritten.f" SOURCE!
    s" an output path in a missing directory is refused with 64 and no module" T-LABEL
    s" missing/unwritten.wasm" BUILD 64 T=

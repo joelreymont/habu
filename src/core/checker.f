@@ -29446,6 +29446,8 @@ public
    TOP-PUSH ;
 
 package SRCLOC
+private
+OWNED-CELL RESERVED-PTR-U8-CELL FILE-START
 public
 
 \ True while the buffer read, [INB, INE), lies inside the bytes the loader owns
@@ -29457,6 +29459,11 @@ public
    data-base INB-CELL + @ {: b:n :}
    data-base INE-CELL + @ {: e:n :}
    o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-CELL + @ + e - 0 >= and ;
+
+\ The cursor's line from the file's first owned byte; 0 outside file text.
+: LINE ( -- n )
+   FILE-BUFFER? 0= IF 0 EXIT THEN
+   FILE-START @ CURSOR @ ERROR-TEXT:LINE ;
 ;package
 
 package CHECK

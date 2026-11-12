@@ -18,3 +18,6 @@
 : HB-TARGET-KNOWN? ( -- bool )
    HB-TARGET-LINUX? HB-TARGET-MACOS? or HB-TARGET-LINUX-X86-64? or
    HB-TARGET-WASM? or ;
+
+: HB-TARGET$ ( -- ptr u8 n )
+   s" linux-aarch64" ;

@@ -4,6 +4,7 @@
 \ the build stored. ENGINE-START, first maps the code region, copies the record
 \ image into its dictionary band and slides the record list, then builds the
 \ name index and enters the engine's main. Its caller binds the tail's labels.
+HB-TARGET-LINUX? HB-TARGET-MACOS? or ?TARGET
 require src/lib/le.f
 require src/lib/string.f
 require src/arch/arm64/asm.f
@@ -12,7 +13,6 @@ require src/arch/arm64/mnem.f
 require src/habu/layout.f
 require src/habu/xref.f
 
-HB-TARGET-LINUX? HB-TARGET-MACOS? or 0= [if] s" boot: unknown target" 76 die [then]
 HB-TARGET-LINUX? [if] require src/os/linux/sys.f [then]
 HB-TARGET-MACOS? [if] require src/os/macos/sys.f [then]
 

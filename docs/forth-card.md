@@ -572,7 +572,12 @@ forth.md: **Errors**, **Integer arithmetic**.
   require src/lib/secret/macos.f [then]`, never from inside a word: a build
   refuses a load a word runs (`include: a word loaded or provided a file
   during a build`). The verifier follows a `[if]` only after a target predicate, or one
-  and `0=`; `[if]` and `[then]` are reserved.
+  and `0=`; `[if]` and `[then]` are reserved. A file that builds for some
+  targets only states them on its first code line, before its requires:
+  `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET`. On another target
+  the load stops there, `E-TARGET habu: <path>:<line>: the file does not
+  build for <target>` (the seam's `HB-TARGET$`), throw 74. A file that
+  requires it states nothing.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws a stack underflow, a file that ends
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a

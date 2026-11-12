@@ -25,6 +25,7 @@
 \ kept as its number and a stack cell as -1-cell; a record of 16 bytes or fewer
 \ has no copy, kept as 0.
 
+HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
 s" src/lib/error.f" required
 s" src/lib/span.f" required
 s" src/lib/string.f" required
