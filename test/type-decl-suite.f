@@ -1045,17 +1045,15 @@ PRODUCT tdpolpkr POLICY packed-tag FIELD x n ;PRODUCT
 \ every expected reject's diagnostic and is sized to just fit, so each section
 \ resets its offset.
 TDIAG-BUF 8192 DIAG-BUFFER!
-\ not-yet-supported policies reject on every header (grammar-gated until lowering).
+\ boxed rejects on every header until it is lowered; niche-null rejects every
+\ shape but its one, a product included.
 s" SUMTYPE tdpolns2<a> POLICY niche-null VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" SUMTYPE tdpolns3<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" ENUM tdpolns4 POLICY boxed red green ;ENUM" E-TDECL-POLICY TDT-NEG
 s" PRODUCT tdpolns5 POLICY niche-null FIELD x n ;PRODUCT" E-TDECL-POLICY TDT-NEG
-\ niche-null rejects at the POLICY clause for every shape, the
-\ null-pointer-niche option shape included (a 2-variant sum { none (empty), some
-\ (one pointer) }): the policy is validated before any variant, so no family is
-\ accepted before the nonnull-ptr refined type and the W=1 MATCH/ctor lowering
-\ exist.
-s" SUMTYPE tdpolnq1<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
+\ niche-null accepts its one shape, an empty variant then one `ptr` field; an
+\ ENUM of two empty variants is refused.
+s" SUMTYPE tdpolnq1<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some ptr u8 ;VARIANT ;SUMTYPE" 0 TDT-NEG
 s" ENUM tdpolnq2 POLICY niche-null red green ;ENUM" E-TDECL-POLICY TDT-NEG
 \ unknown policy names reject (incl. the v1 non-goal `custom`).
 s" SUMTYPE tdpolun1<a> POLICY bogus VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG

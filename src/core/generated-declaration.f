@@ -593,6 +593,7 @@ public
    dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
    2dup s" stack-cell-tag" CORE-STR=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
    2dup s" packed-tag" CORE-STR=CI IF 2drop TL-PACKED-TAG EXIT THEN
+   2dup s" niche-null" CORE-STR=CI IF 2drop TL-NICHE EXIT THEN
    2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
 
 : VIS ( -- n )                          \ declaration visibility (public at top level)

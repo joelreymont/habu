@@ -696,18 +696,19 @@ public
 \ `POLICY <name>` follows the arity (sum/product) or the name (enum), before the
 \ first VARIANT/FIELD; a missing clause leaves TL-STACK-CELL-TAG. stack-cell-tag
 \ and packed-tag are accepted: packed keeps the stack representation and bakes a
-\ LAY memory descriptor at close (TDECL-LAYOUT-DESC). niche-null and boxed
-\ reject as not supported until codegen lowers them. Any other token, `custom`
-\ included (the LAY registry tolerates it), is an unknown policy.
+\ LAY memory descriptor at close (TDECL-LAYOUT-DESC). niche-null is accepted for
+\ one shape, checked once the variants are read; boxed rejects as not supported
+\ until codegen lowers it. Any other token, `custom` included (the LAY registry
+\ tolerates it), is an unknown policy.
 
 private
 
 : TDECL-POLICY-DEFERRED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" niche-null" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" boxed" CORE-STR=CI ;
 : TDECL-POLICY-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    a u s" stack-cell-tag" CORE-STR=CI IF fam TL-STACK-CELL-TAG TFAM-LAYOUT! EXIT THEN
    a u s" packed-tag" CORE-STR=CI IF fam TL-PACKED-TAG TFAM-LAYOUT! EXIT THEN
+   a u s" niche-null" CORE-STR=CI IF fam TL-NICHE TFAM-LAYOUT! EXIT THEN
    a u TDECL-POLICY-DEFERRED? IF
       a u s" layout policy not yet supported" E-TDECL-POLICY TDECL-THROW
    THEN
@@ -729,6 +730,26 @@ public
    pu 0= IF TDN-A @ TDN-U @ s" missing layout policy name" E-TDECL-POLICY TDECL-THROW THEN
    pa pu fam TDECL-POLICY-SET ;
 
+\ A niche-null value is one cell whose zero is the empty first variant, so the
+\ family is that variant and one holding a single `ptr` field.
+: TDECL-NICHE-MESSAGE$ ( -- ptr u8 n )
+   s" niche-null needs an empty variant, then one ptr field" ;
+
+private
+
+: TDECL-NICHE? ( n -- bool ) TFAM-LAYOUT-POLICY@ TL-NICHE = ;
+: TDECL-NICHE-THROW ( -- )
+   TDN-A @ TDN-U @ TDECL-NICHE-MESSAGE$ E-TDECL-POLICY TDECL-THROW ;
+: TDECL-NICHE-SHAPE? ( n -- bool ) {: vstart:n :}
+   TDV-N @ 2 <> IF RES-FALSE EXIT THEN
+   vstart SUMV-SCH-COUNT@ 0 <> IF RES-FALSE EXIT THEN
+   vstart 1 + SUMV-SCH-COUNT@ 1 <> IF RES-FALSE EXIT THEN
+   vstart 1 + SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-PTR? ;
+: TDECL-NICHE-REQUIRE ( n n -- ) {: fam:n vstart:n :}
+   fam TDECL-NICHE? 0= IF EXIT THEN
+   vstart TDECL-NICHE-SHAPE? IF EXIT THEN
+   TDECL-NICHE-THROW ;
+
 \ `DERIVE <feature>...` follows the POLICY position, before the variants/fields.
 \ eq and hash need a PUBLIC arity-0 family, init a product; order rejects as not
 \ supported; an unknown first token rejects, and the list ends at the first
@@ -738,8 +759,6 @@ public
 \ pointer-equality surface exists); other scalars reject, linear ones because
 \ comparing consumes them; a family-typed field requires that family to derive
 \ too (its words are the field comparator).
-
-private
 
 : TDECL-DERIVE-GUARD ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    fam TFAM-PUBLIC? 0= IF
@@ -839,6 +858,7 @@ private
    fam TDECL-SUM-VARIANTS
    SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
    TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty sum" E-TDECL-SYNTAX TDECL-THROW THEN
+   fam vstart TDECL-NICHE-REQUIRE
    fam vstart TDV-N @ TDECL-DERIVE-COLLIDE
    fam vstart TDV-N @ TDECL-DERIVE-REQUIRE
    fam vstart TDV-N @ TFAM-VAR-RANGE!
@@ -994,6 +1014,7 @@ private
    ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
    fam TDECL-CUR-FAM !                    \ field self-references reject by id
    fam TDECL-POLICY
+   fam TDECL-NICHE? IF TDECL-NICHE-THROW THEN
    fam TDECL-DERIVE
    fam TDECL-PRODUCT-RECORD
    fam TDECL-FAM-REG ! ;

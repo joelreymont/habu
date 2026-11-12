@@ -468,8 +468,7 @@ public
 
 \ A boxed value is one pointer and a niche value one cell with the discriminant
 \ folded into the payload, so the width branch keys on the policy before the
-\ kind. Only TFAM-LAYOUT! reaches them (the POLICY clause refuses boxed and
-\ niche-null).
+\ kind. Only TFAM-LAYOUT! reaches them (the POLICY clause refuses boxed).
 
 private
 
@@ -2603,6 +2602,11 @@ TFAM-SCH-ROW-ARITY-INSTALL
 : PF-CELL-BYTES ( n -- n ) {: n:n :}
    n 0 < n PF-MAX-N CELL / > or IF E-PF-LAYOUT throw THEN
    n cells ;
+: PF-CELL-SLOTS-REQUIRE ( n n n n n -- )   \ a field laid out in whole cells
+   {: slot:n cellsn:n boff:n bytesn:n al:n :}
+   slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
+   cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
+   al CELL <> IF E-PF-LAYOUT throw THEN ;
 
 public
 
@@ -2628,16 +2632,9 @@ public
    fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN
    fam TFAM-LAYOUT-POLICY@ CASE
       TL-STACK-CELL-TAG OF
-         slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
-         cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
-         al CELL <> IF E-PF-LAYOUT throw THEN
-      ENDOF
-      TL-PACKED-TAG OF
-         slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
-         cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
-         al CELL <> IF E-PF-LAYOUT throw THEN
-      ENDOF
-      TL-NICHE OF E-PF-LAYOUT throw ENDOF
+         slot cellsn boff bytesn al PF-CELL-SLOTS-REQUIRE ENDOF
+      TL-PACKED-TAG OF slot cellsn boff bytesn al PF-CELL-SLOTS-REQUIRE ENDOF
+      TL-NICHE OF slot cellsn boff bytesn al PF-CELL-SLOTS-REQUIRE ENDOF
       TL-BOXED OF E-PF-LAYOUT throw ENDOF
       TL-CUSTOM OF E-PF-LAYOUT throw ENDOF
       E-PF-LAYOUT throw
@@ -3852,7 +3849,7 @@ UNIT-FAM-NO-VIEW-INSTALL
    swap CHECKER-PACKAGE-PUBLIC > or IF
       s" tfam: a seeded family has invalid visibility" REG-AOT-REFUSE THEN
    row TF.KIND @ TK-MAX REG-AOT-LIMIT
-   row TF.LAYOUT @ TL-PACKED-TAG REG-AOT-LIMIT
+   row TF.LAYOUT @ TL-NICHE REG-AOT-LIMIT
    row TF.SLOTS @ $7FFFFFFFFFFFFFFF CELL / 1- REG-AOT-LIMIT
    row TF.TAGW @ CELL REG-AOT-LIMIT
    row TF.DERIVE @ DRV-ALL invert and 0 <> IF
@@ -4280,7 +4277,7 @@ REG-AOT-FAM-W-INSTALL
    src u row PF.FAM @ row PF.SCH @ RES-TRUE REG-AOT-OWNED-ROOT
    row PF.CELLS @ <> IF
       s" tfam: a seeded field width disagrees with its schema" REG-AOT-REFUSE THEN
-   family TF.LAYOUT @ TL-PACKED-TAG > IF
+   family TF.LAYOUT @ TL-NICHE > IF
       s" tfam: a seeded field uses an unsupported layout" REG-AOT-REFUSE THEN
    row PF.SLOT @ $7FFFFFFFFFFFFFFF CELL / >
    row PF.CELLS @ $7FFFFFFFFFFFFFFF CELL / > or IF
@@ -5775,6 +5772,12 @@ TFAM-MEMBERS-INSTALL
    dup TFAM-SUM? IF drop 1 EXIT THEN
    TFAM-ENUM? IF 1 ELSE 0 THEN ;
 
+\ A niche value is one cell; MATCH and construct work on its stack-cell-tag
+\ bundle, the cell and then a tag (0 for a zero cell, else 1).
+: TFC-BUNDLE-CELLS ( n n -- n ) {: fam:n term:n :}
+   term T-WIDTH
+   fam TFAM-LAYOUT-POLICY@ TL-NICHE = IF 1 + THEN ;
+
 \ One subtraction answers both lowerings, so the number is latched here. Both
 \ push what the family declares and can only add: pass 1 emits the declared
 \ pads and pass 2 adds the WF row's cells at the same site; the native chain
@@ -5783,9 +5786,10 @@ TFAM-MEMBERS-INSTALL
 \ `construct`. MWIN-CELLS! files the difference under the judged token for
 \ src/compiler/native/elaborate.f; the WF row carries it to pass 2. A
 \ construction that adds nothing files nothing (src/core/checker.f states the
-\ absent case above the table).
+\ absent case above the table). A niche family counts its bundle, so a construct
+\ of either variant adds nothing.
 : TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}
-   famterm T-WIDTH fam TFC-TAG-CELLS -
+   fam famterm TFC-BUNDLE-CELLS fam TFC-TAG-CELLS -
    vid TFC-VAR-PAYCELLS -
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
    {: extra:n :}
@@ -5801,11 +5805,13 @@ TFAM-MEMBERS-INSTALL
 \ pad count itself. Both come off one subtraction: MWIN-CELLS! files the count
 \ under this `of` token for src/compiler/native/elaborate.f, and the WF row
 \ carries the difference to pass 2. An arm whose term is not closed latches
-\ nothing: the cell-accurate consumer then refuses the definition by name.
+\ nothing: the cell-accurate consumer then refuses the definition by name. A
+\ niche family counts its bundle, so its empty arm files one pad and the other
+\ none.
 : TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}
    term T-RES {: rt:n :}
    rt TYPE-REP-CLOSED? 0= IF EXIT THEN           \ open value/row: leave declared width; scope identities do not affect padding
-   rt T-WIDTH 1 -
+   vid SUMV-FAM@ rt TFC-BUNDLE-CELLS 1 -
    vid TFC-VAR-PAYCELLS -
    {: ipads:n :}
    ipads MWIN-CELLS!

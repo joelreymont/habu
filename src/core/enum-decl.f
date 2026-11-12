@@ -258,6 +258,19 @@ ED-RESET
    0 TK-ENUM TFAM-DECL FAM !
    OPEN-TX ;
 
+\ The variants' fields are still events until commit, so the niche-null shape
+\ is read through DECL-EVENT.
+: NICHE-SHAPE? ( -- bool )
+   NVAR @ 2 <> IF NO EXIT THEN
+   TOK @ FAM @ VBASE @ DECL-EVENT:PAYLOAD-N 0 <> IF NO EXIT THEN
+   TOK @ FAM @ VBASE @ 1 + DECL-EVENT:PAYLOAD-N 1 <> IF NO EXIT THEN
+   TOK @ FAM @ VBASE @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@
+   SCHEMA-ROOT@ SCHEMA-PTR? ;
+: NICHE-REQUIRE ( -- )
+   FAM @ TFAM-LAYOUT-POLICY@ TL-NICHE <> IF EXIT THEN
+   NICHE-SHAPE? IF EXIT THEN
+   TDECL-NICHE-MESSAGE$ E-POLICY DECL-REJECT:REJECT throw ;
+
 \ ED-CLOSE renders nothing: it arms the constructor participant, which generates
 \ at commit after DECL-EVENT has promoted this declaration's TYPE-FIELD rows to
 \ the committed watermark the generator reads. GENERATED-DECL-CTOR:OWNS? is the
@@ -271,6 +284,7 @@ ED-RESET
    DECL-REJECT:AT-FAMILY
    NVAR @ 0= IF s" empty enum" E-SYNTAX DECL-REJECT:REJECT throw THEN
    MISSING? IF E-UNRESOLVED throw THEN
+   NICHE-REQUIRE
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do
