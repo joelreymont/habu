@@ -25,13 +25,13 @@ $10 constant READONLY-FLAG
 $4 constant STAT-SIZE-VALID
 \ LP64 zip_stat_t begins with valid, name, index, size (eight bytes each).
 3 constant STAT-SIZE-CELL
-\ libzip writes these scratch bytes; each calling task owns its own row.
+\ libzip writes these scratch bytes.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and STAT-BYTES CELL + TASK:+USER ZIP-SCRATCH drop
 : STAT-DATA ( -- ptr n ) ZIP-SCRATCH ;
 : EOF-BYTE ( -- ptr u8 ) ZIP-SCRATCH STAT-BYTES + BYTE-VIEW ;
 
-\ Archive identities span tasks. Only the short registry operations take this
-\ lock; decompression and archive-owned buffers remain independent.
+\ Only the short registry operations take this lock; decompression and
+\ archive-owned buffers remain independent.
 here data-base - negate 7 and allot
 SCRATCH-VARIABLE STATE-LOCK
 \ A contended PAUSE must not end a task between native disposal and unlinking.

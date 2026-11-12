@@ -85,7 +85,6 @@ TASK:SEMAPHORE LOCK-RELEASE
    node SOURCE-PTR @ SNAP-PATH node SOURCE-LEN @ BYTE-COPY
    node SOURCE-LEN @ SNAP-PATH-U ! ;
 
-\ An archive's snapshot exists while it is open and goes with CLOSE.
 : SNAPSHOT-REMOVED ( -- )
    INPUT$ OPEN {: archive:archive :}
    archive KEEP-SNAP-PATH

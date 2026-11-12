@@ -46,8 +46,6 @@ $FF constant OCTET
    k 0 ?do v 24 i 8 * - rshift OCTET and out i + c! loop ;
 
 
-\ A whole group's value, refused above 32 bits, and its first k bytes at out
-\ when put is set.
 : GROUP! ( n ptr u8 n bool -- )
    {: v:n out k:n put:bool :}
    v MAX-VALUE > if E-VALUE throw then
@@ -71,8 +69,6 @@ $FF constant OCTET
    len GROUP-BYTES + 0 0 ;
 
 
-\ The open group at the end, filled out with digit 84, gives one byte fewer
-\ than it has digits.
 : FINISH ( n n n ptr u8 bool -- n )
    {: len:n v:n k:n out put:bool :}
    k 0= if len exit then

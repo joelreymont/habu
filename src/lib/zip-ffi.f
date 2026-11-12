@@ -11,11 +11,11 @@ VERSIONED-LIBRARY zip 5,4                 \ Debian and Ubuntu ship libzip as lib
 FUNCTION: OPEN-CALL zip_open ( ptr u8 n n -- ptr u8 ) ;FUNCTION
 FUNCTION: COUNT-CALL zip_get_num_entries ( ptr u8 n -- n ) ;FUNCTION
 FUNCTION: STAT-CALL zip_stat_index ( ptr u8 n n ptr u8 -- i32 )
-   3 STAT-BYTES WRITES-BYTES             \ zip_stat_t
+   3 STAT-BYTES WRITES-BYTES
 ;FUNCTION
 FUNCTION: FOPEN-CALL zip_fopen_index ( ptr u8 n n -- ptr u8 ) ;FUNCTION
 FUNCTION: C-FREAD zip_fread ( ptr u8 ptr u8 n -- n )
-   1 2 WRITES-ARG                        \ the caller's buffer
+   1 2 WRITES-ARG
 ;FUNCTION
 FUNCTION: C-FCLOSE zip_fclose ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: C-DISCARD zip_discard ( ptr u8 -- ) ;FUNCTION
