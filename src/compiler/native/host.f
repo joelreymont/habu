@@ -59,11 +59,6 @@ DYNAMIC-BUFFER EDGE-SITE n
 DYNAMIC-BUFFER EDGE-KIND n
 DYNAMIC-BUFFER EDGE-LOC n
 
-0 CWORK-VARIABLE ASSOC-N n
-DYNAMIC-BUFFER ASSOC-ENTRY n
-DYNAMIC-BUFFER ASSOC-LEN n
-DYNAMIC-BUFFER ASSOC-LIVE n
-
 UNKNOWN CWORK-VARIABLE SOURCE-REASON n
 0 CWORK-VARIABLE SOURCE-LOC n
 0 CWORK-VARIABLE SOURCE-FUNS n
@@ -152,10 +147,6 @@ public
    IMPL-N @ 0 ?do
       i IMPL-ENTRY @ end <
       i IMPL-ENTRY @ i IMPL-LEN @ + first > and if 0 i IMPL-LIVE ! then
-   loop
-   ASSOC-N @ 0 ?do
-      i ASSOC-ENTRY @ end <
-      i ASSOC-ENTRY @ i ASSOC-LEN @ + first > and if 0 i ASSOC-LIVE ! then
    loop ;
 
 \ The digest slot follows the entire immutable kernel code interval. A marker
@@ -227,7 +218,6 @@ public
    0 IMPL-N !
    0 IMPL-TYPE-N !
    0 EDGE-N !
-   0 ASSOC-N !
    KERNEL-OWNER
    SEED-SCALAR
    SEED-DIVISION
