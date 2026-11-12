@@ -1,4 +1,16 @@
 \ diag-origin-core.f - inject checker diagnostic origin markers before definitions.
+\
+\ A definer reads the token after it as its name, and the scan cannot tell
+\ which words are definers: `create`, `variable` and any word made from them,
+\ in the scanned file or one it requires. So a marker never directly follows a
+\ word. A run of words starts after the last token that leaves no name to
+\ read: a `;`, a comment, a string literal or a parsing keyword's operand, or
+\ at the start of the file. Each `:`'s marker goes where its run began, never
+\ between a definer and its name; its origin is the token after the `:`, the
+\ name it reads. In `create :` followed by `: F` both colons are marked before
+\ `create`, and F's marker, the later, is in force when F is checked. A
+\ definer that names `;` and reads more after it (`TYPED-VARIABLE ; n`) is
+\ split; no tree definer does.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -50,7 +62,7 @@ variable DO-ORIG-COL
 variable DO-ORIG-BYTE
 variable DO-ORIG-POS
 variable DO-BODY              \ between a body opener and its `;`
-variable DO-RUN-X             \ first word of the current run, -1 for none (DO-STEP)
+variable DO-RUN-X             \ first word of the current run, -1 for none
 TYPED-VARIABLE DO-OUT-A ptr u8
 variable DO-OUT-U
 TYPED-VARIABLE DO-OUT-ROOM [ n -- ptr u8 ]   \ the caller's growing buffer
@@ -252,7 +264,6 @@ variable DO-OUT-BUF?
 : DO-SEMI? ( -- bool )
    DO-SEMI-C DO-CHAR-WORD? ;
 
-\ The word opens a string literal, whose text the scan has skipped.
 : DO-STRING? ( -- bool )
    DO-TOK-A@ DO-TOK-U @ SOURCE:ESC-STRING-OPENER? if DO-TRUE exit then
    DO-TOK-A@ DO-TOK-U @ SOURCE:NORMAL-STRING-OPENER? ;
@@ -260,7 +271,6 @@ variable DO-OUT-BUF?
 : DO-ORIGIN-WORD? ( -- bool )
    DO-TOK-K @ DO-WORD = ;
 
-\ In a body only `[char]` and `[']` parse; at top level `char` and `'` do too.
 : DO-PARSER? ( -- bool )
    DO-ORIGIN-WORD? 0= if DO-FALSE exit then
    DO-BODY @ if
@@ -296,10 +306,6 @@ variable DO-OUT-BUF?
    s"  DIAG-ORIGIN!" DO-OUT
    DO-SP DO-C ;
 
-\ The marker goes where the `:`'s run of words began, never between a definer
-\ and its name. In `create :` followed by `: F` both colons are marked before
-\ `create`, and F's marker, the later, is in force when F is checked. The
-\ origin is the token after the `:`, the name it reads.
 : DO-MARK-COLON ( -- )
    DO-TOK-LINE @ DO-ORIG-LINE !
    DO-TOK-COL @ DO-ORIG-COL !
@@ -325,13 +331,6 @@ variable DO-OUT-BUF?
    0 DO-OUT-U !
    DO-TRUE DO-OUT-BUF? ! ;
 
-\ A definer reads the token after it as its name, and the scan cannot tell
-\ which words are definers: `create`, `variable` and any word made from them,
-\ in this file or one it requires. So a marker never directly follows a word. A
-\ run of words starts after the last token that leaves no name to read: a `;`,
-\ a comment, a string literal or a parsing keyword's operand, or at the start
-\ of the file. A definer that names `;` and reads more after it
-\ (`TYPED-VARIABLE ; n`) is split; no tree definer does.
 : DO-STEP ( -- )
    DO-ORIGIN-WORD? 0= if DO-RUN-END exit then
    DO-PARSER? if DO-SKIP-OPERAND DO-RUN-END exit then
@@ -362,8 +361,8 @@ variable DO-OUT-BUF?
    drop 2dup [: DO-FILE-ROOM ;] SOURCE:READ-WHOLE-FILE ;
 
 \ A source the CLI cannot read ends the run naming it: a path the file system
-\ refuses, or a failed open or read (src/lib/source.f READ-WHOLE-FILE). Any other
-\ code, such as the buffer's own allocation, is not about the file.
+\ refuses, or a failed open or read. Any other code, such as the buffer's own
+\ allocation, is not about the file.
 : DO-READ-FAIL? ( n -- bool )
    {: rc:n :}
    rc E-FS-PATH = rc E-FFI-NUL = or
@@ -373,10 +372,9 @@ variable DO-OUT-BUF?
    2 s" diag-origin: cannot read file: " DO-WRITE 1 die ;
 
 \ The engine's own rewrite comments a leading `#!` line, so the scan and the
-\ marked copy read it as the engine does (src/core/include.f SHEBANG-COMMENT).
-\ The source is read whole however it grows while it is read (src/lib/source.f
-\ READ-WHOLE-FILE), and its bytes are taken after the read, which may move the
-\ buffer.
+\ marked copy read it as the engine does. The source is read whole however it
+\ grows while it is read, and its bytes are taken after the read, which may
+\ move the buffer.
 : DIAG-ORIGIN ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    DO-OUT-FD!
