@@ -34,3 +34,5 @@ Acceptance cases:
 Claim: unassigned.
 
 Acceptance case 2026-11-12 (jerry; from habu-print-the-one-ea184772's census, master 045c8ff4): four exits of the arm64 interpreter and definers write nothing or a line off the shape `<class> habu: <text>[ <16 hex>] lr <16 hex>` (src/habu/crash.f LDIE-LINE): src/habu/habu2.f C-EXIT-LABEL :577 (rc 70, 'trust-decl'/'trust-raw'), C-OWNER-FIELD :699 (rc 70, 'rec-wide-publish'/'rec-min-in@', no newline), EMIT-ROLLBACK :2291 (rc 96, evaluate's rollback), EM-COMPILE-DIE LCOMPILEDIE :3129 (no lr). Accepted when the typed interpreter's equivalents print the one line.
+
+Acceptance case 2026-11-12 (jerry; from habu-a-build-that-e324b393): a build whose program caught a throw that rolled DP back ends in LINKER:E-FAILED naming the caught code. The typed recovery (src/habu/interpreter.f FRAME-ROLLBACK-CODE) can record it beside DPHW-CELL for src/habu/linker.f END-CK and GOING to print; on arm64 the kernel's LEVALREC (habu2.f EM-EVAL-THROW-RECOVER, its DP-LOWER) recovers instead and records nothing. Accepted when test/file-objects.f CAUGHT-CASE asserts the code test/fixtures/file-objects/rollback.f caught.
