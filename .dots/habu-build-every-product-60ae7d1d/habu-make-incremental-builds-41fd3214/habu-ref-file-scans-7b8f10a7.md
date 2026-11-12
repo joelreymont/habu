@@ -1,9 +1,10 @@
 ---
 title: REF-FILE scans every FILES row for each word the run walk reaches
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-10T14:02:16.887905+02:00"
+closed-at: "2026-11-12T07:43:24.191858+02:00"
 ---
 
 Problem: src/habu/linker.f REF-FILE (:648 at 0fbd7181) compares the BUILT row's key and piece number with every FILES row of the object; the run walk calls it once per word reached (SEE -> NAMED-REC+ -> WORD-REF). Measured by lane 2's fold-in worker on a cold engine build: REF-FILE 2072 of 135844 samples (222 before the walk), STR= under it 673; cold user CPU 13.03 and 12.89 s against the parent's 12.59 and 12.45 s. Acceptance: REF-FILE answers a BUILT row's FILES row from a mark stamped with the object's serial (REF-OF), scanning only on a miss; same answer and writes for every call; cold = warm unsigned; file-objects unchanged. Left unmeasured after it: the walk's own per-cell cost (DYNAMIC-STORAGE RESERVE +1169 and ADDRESS +1001 samples, SEE 472, SEE-SPAN 139): profile again after this lane before filing anything. Files: src/habu/linker.f. Verify: ev.sh; a scratch assertion that the mark's row passes the scan's comparison; back-to-back user CPU; build-profile rows. Depends: none. Ownership: carl. Brief: .out/briefs/lane-ref-file-index.md. Claim: agent=carl workspace=.jj-ws.noindex/carl-ref.
