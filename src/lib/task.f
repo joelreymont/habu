@@ -956,8 +956,8 @@ variable ROW-N
    rows ;
 
 : ROW-GROW ( -- )
-   MAIN-BASE TASKS-LIVE-CELL + atomic@ 0<> if E-TASK-STATE throw then
-   MAIN-BASE CB-FRAME + @ 0<> if E-TASK-STATE throw then
+   data-base TASKS-LIVE-CELL + atomic@ 0<> if E-TASK-STATE throw then
+   data-base CB-FRAME + @ 0<> if E-TASK-STATE throw then
    ROW-TABLE @ {: old:ptr :}
    ROW-CAP @ {: oldcap:n :}
    oldcap dup 0= if drop 1 else 2 * then {: cap:n :}
@@ -965,7 +965,7 @@ variable ROW-N
    ROW-N @ 0 > if old rows ROW-N @ ROW-BYTES * BYTE-COPY then
    rows ROW-TABLE !
    cap ROW-CAP !
-   rows FFI:>CELL MAIN-BASE CB-ROWS + atomic!
+   rows FFI:>CELL data-base CB-ROWS + atomic!
    \ No task or callback is running. After publication the former rows are
    \ unreachable, including their per-process region-store counters.
    oldcap ROW-BYTES * CELL / 0 ?do 0 old i cells + CELL-VIEW ! loop ;

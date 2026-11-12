@@ -110,7 +110,7 @@ CAST: >ENTRY-XT ( n -- [ -- ] )
    then
    rows TABLE !
    next CAP !
-   rows FFI:>CELL TASK:MAIN-BASE CB-XTS + atomic!
+   rows FFI:>CELL data-base CB-XTS + atomic!
    old oldcap RETIRE-TABLE ;
 
 \ The live marshal frame of the innermost callback on this region.
