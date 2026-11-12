@@ -41,6 +41,12 @@ to remove, not a row to add.
   or rewinding its memory: a cross-build that writes the target as data.
 - The per-definition build cache and its source observers: the file linker.
 - A linker per target: one linker for every target.
+- Compiling each definition of a cross-build twice, for the host and for the
+  target, so that top level can run it, and writing no object for a
+  cross-build: one compile per definition, for the target, into its file's
+  object; top level runs on the host and calls only host words, hb's own and
+  those a source defines in a host section, as SwiftX does
+  ([swiftx.md](swiftx.md)).
 - Tier 1 and the JIT as compilers: T0 on every target, reusing what they
   already implement; tier 1 changes only to fix a defect on a path it still
   owns.
