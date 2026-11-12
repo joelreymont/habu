@@ -1,8 +1,7 @@
 \ link-copy.f - the data a program reaches and the link's copy of the open
 \ space: REACH-DATA marks the units and address rows a stripped program reads;
 \ the copy is the space's bytes without its dead units, its kept rows listed in
-\ cell order. A machine's writer gives each kept cell its image value. Words
-\ visible only inside LINKER.
+\ cell order. A machine's writer gives each kept cell its image value.
 \
 \ THE DATA A STRIPPED PROGRAM REACHES.
 \ A stripped program keeps the data of the files it reaches, whole files: unit r,
@@ -15,10 +14,10 @@
 \ code it names and a read pointer cell makes its target's unit live;
 \ each placed emission's data addresses and defer trailer make theirs live.
 \ An address in a string literal's body keeps that body alone: the body lies in
-\ the file that first interned it, and every later file spelling it shares it
-\ (src/habu/intern-table.f). The copy holds the dead units, all but their
-\ kept bodies, and every address cell not read as zeros, and lists none of
-\ them. An engine keeps every unit and cell.
+\ the file that first interned it, and every later file spelling it shares it.
+\ The copy holds the dead units, all but their kept bodies, and every address
+\ cell not read as zeros, and lists none of them. An engine keeps every unit
+\ and cell.
 
 require src/lib/le.f
 require src/lib/sort.f
@@ -33,7 +32,6 @@ require src/habu/link-band.f
 package LINKER
 private
 
-\ The copy's length is the open space's.
 : DATA-IMAGE-LEN ( -- n ) SPACE-DATA nip ;
 
 
@@ -45,8 +43,6 @@ private
    s" link: a DATA pointer outside the build's space: " SAY v SAY-INT SAY-CR
    s" link: a DATA pointer outside the build's space" 74 die ;
 
-
-\ ---- the data a stripped program reaches ------------------------------------------
 
 DYNAMIC-BUFFER ROW-UNIT n            \ BUILT row r's unit
 DYNAMIC-BUFFER UNIT-LIVE n           \ 1 once the unit is live
@@ -82,7 +78,7 @@ variable STR-N
 
 
 \ The unit holding data address v, -1 outside the space. An address a piece ends
-\ at is that piece's when no piece starts there, as DATA-REF+ names it.
+\ at is that piece's when no piece starts there.
 : UNIT-OF ( n -- n )
    {: v:n :}
    v BASE @ - {: off:n :}
@@ -131,7 +127,6 @@ variable STR-N
    -1 ;
 
 
-\ Data address v: the string body holding it is kept, else its unit goes live.
 : REACH-ADDRESS ( n -- )
    {: v:n :}
    v STRING-OF {: k:n :}
@@ -157,8 +152,6 @@ variable STR-N
    NSHADOW:EMISSIONS 0 ?do 0 i EM-READ ! loop ;
 
 
-\ A read address row: an xt cell roots the code it names, a pointer cell makes
-\ its target's unit live.
 : READ-ROW ( n -- )
    {: row:n :}
    row SCRATCH-ROW? if exit then
@@ -183,8 +176,6 @@ variable STR-N
    false ;
 
 
-\ Address row i, row, is read once its unit is live and, for a header cell files
-\ stored into other than the entry, one of those files is.
 : ROW-LIVE? ( n n -- bool )
    {: i:n row:n :}
    i CELL-UNIT @ {: u:n :}
@@ -206,7 +197,6 @@ variable STR-N
    loop ;
 
 
-\ Placed emission e's data addresses and defer trailer make their units live.
 : READ-EM ( n -- )
    {: e:n :}
    e NSHADOW:ADDR-SITES 0 ?do
@@ -236,14 +226,11 @@ variable STR-N
    until ;
 
 
-\ Address row i's cell is copied: every row of an engine, a stripped program's
-\ rows REACH-DATA read.
 : ROW-KEPT? ( n -- bool )
    {: i:n :}
    ENGINE? @ if true exit then
    i CELL-READ @ 0<> ;
 
-\ Dies unless the cell at offset off lies inside the copy.
 : CELL-FITS ( n -- )
    {: off:n :}
    off CELL + DATA-IMAGE-LEN > if
@@ -251,7 +238,6 @@ variable STR-N
       s" link: a declared cell lies past the build's data" 74 die
    then ;
 
-\ Each kept address row, handed to visit.
 : EACH-KEPT ( [ n -- ] -- )
    {: visit :}
    ROWS {: rows:ptr count:n :}
@@ -346,8 +332,6 @@ variable STR-N
    n 0 > if at COPY-CELLS n [: ROW-OFF swap ROW-OFF swap < ;] SORT:SORT! then ;
 
 
-\ The copy filled, a stripped program's dead units cut and its kept rows listed
-\ in cell order; an engine keeps every unit and row.
 : KEPT-COPY ( -- )
    FILL-COPY
    ENGINE? @ 0= if CUT-DEAD KEEP-STRINGS KEEP-LIST then
