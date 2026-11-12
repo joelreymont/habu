@@ -7,7 +7,7 @@
 \ DECL-REJECT is the one reject packet both front ends raise through. RENDER
 \ forwards to render.f TDECL-DIAG.
 \ A front end arms its own reason (REJECT, EXPECT); a code raised deeper arrives
-\ bare and PICK-REASON reads the table each code's owner fills with EXPLAIN. An
+\ bare and PICK-REASON reads the rows each code's owner lays with EXPLAIN. An
 \ armed reason counts only for the code it was armed for. Declarations never
 \ nest, so the packet is one frame.
 using TFAM
@@ -21,8 +21,7 @@ package DECL-REJECT
 \ also keeps the span it was copied from, which a located token renders instead
 \ (TOKEN-SPAN@), until GUARD-CODE ends the declaration.
 4 constant SLOTS
-35 constant REASON-CAP      \ reason-table rows: the codes the engine's owners explain
-96 constant SPAN-CAP        \ per-slot bytes; a longer copy is capped, never overruns
+96 constant SPAN-CAP        \ bytes a copy keeps; a longer copy is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
 46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times
 
@@ -31,13 +30,11 @@ package DECL-REJECT
 2 constant S-TOKEN          \ offending token ("" when the fault has no token)
 3 constant S-REASON         \ short reason text
 
-create SPAN-BUF  SLOTS REASON-CAP + SPAN-CAP * allot
-create SPAN-LEN  SLOTS REASON-CAP + cells allot
+create SPAN-BUF  SLOTS SPAN-CAP * allot
+create SPAN-LEN  SLOTS cells allot
 SLOTS PTR-U8-TABLE SLOT-SRC-A        \ the span a slot was copied from: its bytes
 create SLOT-SRC-U  SLOTS cells allot  \ and its length
 
-\ SLOT! clamps to SPAN-CAP and marks a capped copy: its last MARK-LEN bytes
-\ become "...", so the packet never presents a prefix as the whole name.
 : SRC! ( ptr u8 n n -- )   \ span, slot
    {: a:ptr u:n s:n :}
    a SLOT-SRC-A s ptr-field !
@@ -50,10 +47,12 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
       NULL-PTR SLOT-SRC-A i ptr-field !
       0 i cells SLOT-SRC-U + !
    loop ;
-: SLOT! ( ptr u8 n n -- ) {: a:ptr u:n s:n :}   \ span, slot
-   u SPAN-CAP > IF SPAN-CAP ELSE u THEN {: len:n :}
-   len s cells SPAN-LEN + !
-   s SPAN-CAP * SPAN-BUF + {: d:ptr :}
+: CAPPED ( n -- n ) SPAN-CAP min ;
+
+\ Copies a span's first CAPPED bytes to d; a capped copy's last MARK-LEN bytes
+\ become "...", so it never presents a prefix as the whole name.
+: CAP-COPY ( ptr u8 n ptr u8 -- ) {: a:ptr u:n d:ptr :}
+   u CAPPED {: len:n :}
    0 BEGIN dup len < WHILE
       dup a + c@  over d + c!
       1 +
@@ -63,8 +62,12 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
          MARK-BYTE over d + c!
          1 +
       REPEAT drop
-   THEN
-   s SLOTS < IF a u s SRC! THEN ;
+   THEN ;
+
+: SLOT! ( ptr u8 n n -- ) {: a:ptr u:n s:n :}   \ span, slot
+   u CAPPED s cells SPAN-LEN + !
+   a u s SPAN-CAP * SPAN-BUF + CAP-COPY
+   a u s SRC! ;
 : SLOT@ ( n -- ptr u8 n ) {: s:n :}
    s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
 
@@ -80,14 +83,14 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
    a DIAG>SRC nip IF a u EXIT THEN
    S-TOKEN SLOT@ ;
 
-\ The reason table: row r is a code in REASON-CODES and its text in slot
-\ SLOTS + r. Each code's owner explains it with EXPLAIN, reading its own
-\ constant by name, so a renumbered code keeps its text: owners loaded before
-\ this file are explained at the end of this package, later ones beside their
-\ constants. REASON-CAP is the number of codes the engine's owners explain;
-\ EXPLAIN throws E-REASON-CAP past it, E-REASON-DUP for a code explained twice.
-create REASON-CODES  REASON-CAP cells allot
-variable REASONS            \ rows explained so far
+\ A reason row is the explaining file's data, laid by EXPLAIN where it runs:
+\ the previous row, the code, the text's capped length, then the text. Each
+\ owner explains its codes reading its own constants, so a renumbered code
+\ keeps its text: owners loaded before this file are explained at the end of
+\ this package, later ones beside their constants. NEWEST and each row's first
+\ cell are declared address cells, NULL-PTR for none, so the linker relocates
+\ them.
+PERSISTED-PTR-VARIABLE NEWEST
 
 0 constant NO-CODE          \ no reason is armed
 
@@ -96,20 +99,22 @@ variable ARMED              \ the code the armed reason explains (NO-CODE = none
 : NOTHING$ ( -- ptr u8 n ) s" " ;
 : FALLBACK$ ( -- ptr u8 n ) s" declaration failed" ;
 
-: CODE-AT ( n -- n ) cells REASON-CODES + @ ;
+: ROW-PREV ( ptr n -- ptr n ) 0 ptr-field @ ;
+: ROW-CODE ( ptr n -- n ) cell+ @ ;
+: ROW-TEXT$ ( ptr n -- ptr u8 n ) {: r:ptr :}
+   r 3 cells + BYTE-VIEW  r 2 cells + @ ;
 
-\ The row that explains a code, or REASONS when none does: an unexplained code
-\ stays distinguishable from an explained one instead of reading as the default.
-: REASON-ROW ( n -- n ) {: code:n :}
-   REASONS @ 0 ?do
-      i CODE-AT code = IF i unloop EXIT THEN
-   loop
-   REASONS @ ;
+\ The newest row that explains a code, NULL-PTR when none does.
+: REASON-ROW ( n -- ptr n ) {: code:n :}
+   NEWEST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup ROW-CODE code = IF EXIT THEN
+      ROW-PREV
+   REPEAT ;
 
-: CODE-REASON ( n -- ptr u8 n ) {: code:n :}
-   code REASON-ROW {: row:n :}
-   row REASONS @ < IF SLOTS row + SLOT@ EXIT THEN
-   FALLBACK$ ;
+: CODE-REASON ( n -- ptr u8 n )
+   REASON-ROW dup NULL-PTR = IF drop FALLBACK$ EXIT THEN
+   ROW-TEXT$ ;
 
 : PICK-REASON ( n -- ptr u8 n ) {: code:n :}
    ARMED @ code = IF S-REASON SLOT@ EXIT THEN
@@ -175,22 +180,25 @@ public
 : TOKEN$ ( -- ptr u8 n ) S-TOKEN SLOT@ ;
 : REASON$ ( n -- ptr u8 n ) PICK-REASON ;
 
-7181 constant E-REASON-CAP  \ every reason-table row is taken: widen REASON-CAP
 7182 constant E-REASON-DUP  \ the code already has a reason
 
 \ EXPLAIN ( reason code -- ): the code's owner calls it once, at load, reading
-\ its own constant.
+\ its own constant. The copy follows the allot: allot zeroes reused space it
+\ hands out, padding included.
 : EXPLAIN ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
-   code REASON-ROW REASONS @ < IF E-REASON-DUP throw THEN
-   REASONS @ REASON-CAP < 0= IF E-REASON-CAP throw THEN
-   code REASONS @ cells REASON-CODES + !
-   a u SLOTS REASONS @ + SLOT!
-   1 REASONS +! ;
+   code REASON-ROW NULL-PTR <> IF E-REASON-DUP throw THEN
+   u CAPPED {: len:n :}
+   align here CELL-VIEW {: row:ptr :}
+   here ptr-cell-mark 0 ,
+   NEWEST @ row 0 ptr-field !
+   code ,  len ,
+   here BYTE-VIEW {: d:ptr :}
+   len 1 cells 1- + 1 cells / cells allot
+   a u d CAP-COPY
+   row NEWEST ! ;
 
 \ The last declaration's packet slots back to zero at a file boundary or image
-\ capture (generated-declaration-protection.f SNAPSHOT-RESET), so a cached load
-\ and a fresh one capture the same bytes. The reason rows past SLOTS are load
-\ state and stay.
+\ capture, so a cached load and a fresh one capture the same bytes.
 : SNAPSHOT-RESET ( -- )
    SLOTS SPAN-CAP * 0 ?do 0 SPAN-BUF i + c! loop
    SLOTS 0 ?do 0 i cells SPAN-LEN + ! loop
