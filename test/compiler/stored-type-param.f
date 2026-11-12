@@ -322,6 +322,7 @@ variable RC-LEN
    [: s" RC-FORGE" s" TOK-STEP" RC-RECURSE$ evaluate-closed ;]
       CHECK-RC TTHROWSQ
    S\" \"code\":\"E-CAST-LINEAR\"" HAS?
+   S\" \"token\":\"RECURSE\"" HAS?
    DISARM
    [: s" RC-KEEP" s" N-STEP" RC-RECURSE$ evaluate-closed ;] 0 TTHROWSQ ;
 

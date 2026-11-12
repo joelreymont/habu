@@ -20,6 +20,11 @@
 \ so the pin falls with it, and AT-PIN still takes back every binding made
 \ after the refusal.
 \
+\ Recursive calls: RECURSE instantiates the effect SIG-EFF-CACHE! built
+\ before the body ran, so the kind and restrictions the body later gives a
+\ declared quantifier reach no instance. RECUR-CHECK meets each instance with
+\ them after the body and pins a failure on the RECURSE that made it.
+\
 \ The linear discipline: counting concrete linear types on the stack misses a
 \ value copied or dropped while its type is still a var that later unifies
 \ with a linear type (KEEP's `over`, a quotation's `dup FREE`). Two rules close
@@ -11951,11 +11956,8 @@ create NP-ORIG NP-CAP cells allot   variable NP-ORIG-N   \ distinct declared qua
       1 +
    REPEAT drop RES-FALSE ;
 
-\ A recursive call instantiates the effect SIG-EFF-CACHE! built before the body
-\ ran, so the kind and restrictions the body later gives a declared quantifier
-\ reach no instance: RECUR-CHECK meets each instance with them after the body.
-\ RECUR-MAP pairs a declared id with the cached effect's number for it,
-\ RECUR-INST a declared id with one call's instance.
+\ RECUR-MAP pairs a declared id with the cached effect's number for it. A
+\ RECUR-INST row: declared id, instance, RECURSE's TSTART, TOKIX, length.
 CHECKER-REG:SCRATCH{
 create RECUR-MAP NP-CAP 2 * cells allot   variable RECUR-MAP-N
 PTR-VARIABLE RECUR-INST-P   variable RECUR-INST-CAP   variable RECUR-INST-N
@@ -11990,21 +11992,24 @@ CHECKER-REG:}SCRATCH
       THEN
    loop -1 ;
 
-: RECUR-INST+ ( n n -- ) {: id:n v:n :}
-   RECUR-INST-N @ 1 + 2 * RECUR-INST-CAP @ > IF
+: RECUR-INST+ ( n n n n n -- ) {: id:n v:n s:n ix:n u:n :}
+   RECUR-INST-N @ 1 + 5 * RECUR-INST-CAP @ > IF
       RECUR-INST-CAP @ 2 * 16 max {: nc:n :}
       RECUR-INST-P @ RECUR-INST-CAP @ cells nc cells SR-GROW RECUR-INST-P !
       nc RECUR-INST-CAP !
    THEN
-   id RECUR-INST-N @ 2 * cells RECUR-INST-P @ + !
-   v RECUR-INST-N @ 2 * 1 + cells RECUR-INST-P @ + !
+   RECUR-INST-N @ 5 * cells RECUR-INST-P @ + {: r:ptr :}
+   id r !  v r 1 cells + !  s r 2 cells + !
+   ix r 3 cells + !  u r 4 cells + !
    RECUR-INST-N @ 1 + RECUR-INST-N ! ;
 
 \ After the E-INST calls of one recursive call.
 : RECUR-INST-KEEP ( -- )
    NP-ORIG-N @ 0 ?do
       i cells NP-ORIG + @ dup RECUR-MAP-FIND
-      dup 0 < IF 2drop ELSE E-I-TV RECUR-INST+ THEN
+      dup 0 < IF 2drop ELSE
+         E-I-TV  TSTART @  TOKIX @  TI @ TSTART @ -  RECUR-INST+
+      THEN
    loop ;
 
 \ A declared quantifier's root kind and restrictions as one number.
@@ -12038,11 +12043,17 @@ CHECKER-REG:}SCRATCH
 
 \ The rows only carry the pair to the diagnostic; their shared tail binds nothing.
 : RECUR-MEET ( n -- ) {: k:n :}
+   k 5 * cells RECUR-INST-P @ + {: r:ptr :}
    FRESH MK-ROW {: tail:n :}
-   k 2 * cells RECUR-INST-P @ + @ RECUR-WANT tail MK-PUSH {: exp:n :}
-   k 2 * 1 + cells RECUR-INST-P @ + @ tail MK-PUSH {: act:n :}
+   r @ RECUR-WANT tail MK-PUSH {: exp:n :}
+   r 1 cells + @ tail MK-PUSH {: act:n :}
    act exp UNIFY-EXACT
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF exp act UF-CAPTURE THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF
+      r 2 cells + @ {: s:n :}  r 4 cells + @ {: u:n :}
+      u TOKBUF-ENSURE  s TADDR FAILTK u CCOPY  u FAILTU !
+      r 3 cells + @ FAILIX !  s FAILB !  s u + FAILE !
+      exp act UF-CAPTURE
+   THEN
    OK @ and OK ! ;
 
 : RECUR-PASS ( -- )
