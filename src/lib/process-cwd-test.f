@@ -171,6 +171,28 @@ variable PCT-I
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
    ;MATCH ;
 
+: PCT-STAGE-STALE ( -- )
+   s" stale" >LEN PROC-ARGV+ ;
+
+: PCT-ECHO-FRESH ( -- )
+   s" fresh" >LEN PROC-ARGV+
+   s" /bin/echo" s" /" PCT-OUT PCT-CAP PCT-ERR PCT-CAP 1000 PCT-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   PCT-OUT outu s\" fresh\n" T$= ;
+
+: PCT-REFUSED-RESETS ( -- )
+   s" a refused cwd spawn leaves no staged argument" T-LABEL
+   PCT-RESET PCT-STAGE-STALE
+   [: s" /bin/echo" >LEN s" " >LEN -1 >FD -1 >FD -1 >FD
+      PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;]
+   E-PROC-OUTPUT TTHROWSQ
+   PCT-ECHO-FRESH
+   PCT-STAGE-STALE
+   [: s" /bin/echo" s" " PCT-OUT PCT-CAP PCT-ERR PCT-CAP 1000 PCT-CAPTURE
+      drop drop drop ;]
+   E-PROC-OUTPUT TTHROWSQ
+   PCT-ECHO-FRESH ;
+
 : PROCESS-CWD-TEST-MAIN ( -- )
    T-RESET
    PCT-RUN-CAT-CWD
@@ -179,6 +201,7 @@ variable PCT-I
    PCT-RUN-EARLY-EOF
    PCT-RUN-MISSING-CWD
    [: PCT-CWD-TOO-LONG ;] E-PROC-OUTPUT TTHROWSQ
+   PCT-REFUSED-RESETS
    T-REPORT
    s" process-cwd-test: ok" type cr ;
 

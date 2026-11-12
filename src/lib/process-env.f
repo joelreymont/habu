@@ -279,9 +279,9 @@ public
    PROC-ENV-RESET ;
 
 : PROC-SPAWN-ARGV-ENV-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
-   a u PROC-ARGV-PREPARE PROC-ENV-PREPARE infd outfd errfd
-   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
-   PROC-ARGV-ENV-RESET
+   [: a u PROC-ARGV-PREPARE PROC-ENV-PREPARE infd outfd errfd
+      PROC-SPAWN-ARGV-ENV-RAW ;]
+   [: PROC-ARGV-ENV-RESET ;] finally {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
@@ -303,47 +303,47 @@ public
 
 : RUN-ARGV-ENV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
-   path pathu PROC-ARGV-CHECK-PATH
-   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROCESS:CAPTURE-BEGIN
-   pathz argv envp PROC-SPAWN-ARGV-ENV-CAPTURE
+   [: path pathu PROC-ARGV-CHECK-PATH
+      outcap errcap PROCESS:CAPTURE-CHECK-CAPS
+      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      timeout PROCESS:CAPTURE-BEGIN
+      PROC-SPAWN-ARGV-ENV-CAPTURE ;]
+   [: PROC-ARGV-ENV-RESET ;] finally
    out outcap err errcap PROCESS:RUN-CAPTURE-LOOP
    PROCESS:CAPTURE-FINISH-RC ;
 
 : RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len PROCESS:ending )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
-   path pathu PROC-ARGV-CHECK-PATH
-   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROCESS:CAPTURE-BEGIN
-   pathz argv envp PROC-SPAWN-ARGV-ENV-CAPTURE
+   [: path pathu PROC-ARGV-CHECK-PATH
+      outcap errcap PROCESS:CAPTURE-CHECK-CAPS
+      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      timeout PROCESS:CAPTURE-BEGIN
+      PROC-SPAWN-ARGV-ENV-CAPTURE ;]
+   [: PROC-ARGV-ENV-RESET ;] finally
    out outcap err errcap PROCESS:RUN-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
 : RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
-   path pathu PROC-ARGV-CHECK-PATH
-   inu PROCESS:CAPTURE-CHECK-STDIN
-   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROCESS:STDIN-CAPTURE-BEGIN
-   pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   [: path pathu PROC-ARGV-CHECK-PATH
+      inu PROCESS:CAPTURE-CHECK-STDIN
+      outcap errcap PROCESS:CAPTURE-CHECK-CAPS
+      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      timeout PROCESS:STDIN-CAPTURE-BEGIN
+      PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
+   [: PROC-ARGV-ENV-RESET ;] finally
    in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-LOOP
    PROCESS:CAPTURE-FINISH-RC ;
 
 : RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len PROCESS:ending )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
-   path pathu PROC-ARGV-CHECK-PATH
-   inu PROCESS:CAPTURE-CHECK-STDIN
-   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROCESS:STDIN-CAPTURE-BEGIN
-   pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   [: path pathu PROC-ARGV-CHECK-PATH
+      inu PROCESS:CAPTURE-CHECK-STDIN
+      outcap errcap PROCESS:CAPTURE-CHECK-CAPS
+      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      timeout PROCESS:STDIN-CAPTURE-BEGIN
+      PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
+   [: PROC-ARGV-ENV-RESET ;] finally
    in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
@@ -352,13 +352,13 @@ public
 \ what the child wrote.
 : RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len [ n -- ptr u8 ] ptr u8 len ms -- len len PROCESS:ending )
    {: path:ptr pathu in:ptr inu sink err:ptr errcap timeout :}
-   path pathu PROC-ARGV-CHECK-PATH
-   inu PROCESS:CAPTURE-CHECK-STDIN
-   errcap PROCESS:CAPTURE-CHECK-CAP
-   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROCESS:STDIN-CAPTURE-BEGIN
-   pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   [: path pathu PROC-ARGV-CHECK-PATH
+      inu PROCESS:CAPTURE-CHECK-STDIN
+      errcap PROCESS:CAPTURE-CHECK-CAP
+      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      timeout PROCESS:STDIN-CAPTURE-BEGIN
+      PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
+   [: PROC-ARGV-ENV-RESET ;] finally
    in inu sink err errcap PROCESS:RUN-STDIN-GROWING-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
@@ -367,12 +367,12 @@ public
 \ on every outcome, including a timeout or a nonzero child completion.
 : RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len [ n -- ptr u8 ] [ n -- ptr u8 ] ms -- len len PROCESS:ending )
    {: path:ptr pathu in:ptr inu out err timeout :}
-   path pathu PROC-ARGV-CHECK-PATH
-   inu PROCESS:CAPTURE-CHECK-STDIN
-   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROCESS:STDIN-CAPTURE-BEGIN
-   pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   [: path pathu PROC-ARGV-CHECK-PATH
+      inu PROCESS:CAPTURE-CHECK-STDIN
+      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      timeout PROCESS:STDIN-CAPTURE-BEGIN
+      PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
+   [: PROC-ARGV-ENV-RESET ;] finally
    in inu out err PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 

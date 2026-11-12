@@ -298,6 +298,28 @@ TASK:SEMAPHORE PET-ENV-START
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
    ;MATCH ;
 
+: PET-STAGE-STALE ( -- )
+   s" stale" >LEN PROC-ARGV+
+   s" HABU_PROC_ENV_STALE" s" 1" PET-ENV+ ;
+
+: PET-ECHO-FRESH ( -- )
+   PROC-ENV-N @ COUNT>N 0 T=
+   s" fresh" >LEN PROC-ARGV+
+   s" /bin/echo" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   PET-OUT outu s\" fresh\n" T$= ;
+
+: PET-REFUSED-RESETS ( -- )
+   PET-RESET PET-STAGE-STALE
+   [: s" " >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-IO drop ;]
+   E-PROC-OUTPUT TTHROWSQ
+   PET-ECHO-FRESH
+   PET-STAGE-STALE
+   [: s" " PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-CAPTURE
+      drop drop drop ;]
+   E-PROC-OUTPUT TTHROWSQ
+   PET-ECHO-FRESH ;
+
 : PET-RUN-ENV-OUTCOME-TIMEOUT ( -- )
    PET-RESET
    s" 5"  >LEN PROC-ARGV+
@@ -679,6 +701,7 @@ public
    s" env-many-rows" [: PET-MANY:ENV-ROWS ;] PET-CASE
    s" default-many-rows" [: PET-MANY:DEFAULT-ROWS ;] PET-CASE
    s" argv-env-capture-result" [: PET-RUN-ARGV-ENV-CAPTURE-RESULT ;] PET-CASE
+   s" refused-resets" [: PET-REFUSED-RESETS ;] PET-CASE
    s" env-outcome-false" [: PET-RUN-ENV-OUTCOME-FALSE ;] PET-CASE
    s" env-outcome-timeout" [: PET-RUN-ENV-OUTCOME-TIMEOUT ;] PET-CASE
    s" env-stdin-outcome" [: PET-RUN-ENV-STDIN-OUTCOME ;] PET-CASE

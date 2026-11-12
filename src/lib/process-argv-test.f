@@ -331,6 +331,26 @@ variable PAT-SAVED-STDIN
    PAT-IN-R @ FD>N 0 dup2 0 < if E-PROC-OUTPUT throw then
    [: PAT-IDLE-CAPTURES ;] [: PAT-RESTORE-STDIN ;] finally ;
 
+: PAT-STAGE-STALE ( -- )
+   s" stale" >LEN PROC-ARGV+ ;
+
+: PAT-ECHO-FRESH ( -- )
+   s" fresh" >LEN PROC-ARGV+
+   s" /bin/echo" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   PAT-CAP-OUT outu s\" fresh\n" T$= ;
+
+: PAT-REFUSED-RESETS ( -- )
+   s" a refused spawn leaves no staged argument" T-LABEL
+   PROC-ARGV-RESET PAT-STAGE-STALE
+   [: s" " >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop ;]
+   E-PROC-OUTPUT TTHROWSQ
+   PAT-ECHO-FRESH
+   PAT-STAGE-STALE
+   [: s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-CAPTURE drop drop drop ;]
+   E-PROC-OUTPUT TTHROWSQ
+   PAT-ECHO-FRESH ;
+
 : PROCESS-ARGV-TEST-MAIN ( -- )
    T-RESET
    PAT-RUN-IDLE-STDIN
@@ -343,6 +363,7 @@ variable PAT-SAVED-STDIN
    PAT-MANY-ARGS
    [: PAT-NEG-ARG ;] E-PROC-OUTPUT TTHROWSQ
    [: PAT-HUGE-ARG ;] E-PROC-OUTPUT TTHROWSQ
+   PAT-REFUSED-RESETS
    PAT-PATH-BOUNDS
    PAT-RUN-ARGV-CAPTURE
    PAT-RUN-ARGV-CAPTURE-RESULT
