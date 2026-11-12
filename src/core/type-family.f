@@ -7363,9 +7363,10 @@ UNIT-FAM-RESET-INSTALL
    [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
-   [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ constructor-package reopen reject
-   [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ generated-word undefine reject
-   [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ closed-package extra-tail reject
+   \ The constructor checks answer from the rows read: a linked family is read first.
+   [: READ-PENDING TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ package reopen
+   [: READ-PENDING TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ generated-word undefine
+   [: READ-PENDING TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ closed-package extra tail
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
    [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ checker reaches the layout kind for its fail-closed guard
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance

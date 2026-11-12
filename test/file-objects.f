@@ -3,6 +3,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -40,7 +41,8 @@ package FILE-OBJECTS-TEST
 28 constant CAST-A                       \ the cast sequence's a.f's
 29 constant EVALUATED-LAST               \ the evaluated sequence's main.f's last part's
 30 constant OPENED-LAST                  \ and the opened sequence's
-31 constant TAILS                        \ TAIL$'s tails
+31 constant CTOR-SUM                     \ ctor-sum.f's
+32 constant TAILS                        \ TAIL$'s tails
 65 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -216,6 +218,7 @@ variable CLASS-N                        \ the class CLASS+ read
    i CAST-A = if s" /cast/a.f.hfo" exit then
    i EVALUATED-LAST = if s" /evaluated/main.f+3.hfo" exit then
    i OPENED-LAST = if s" /opened/main.f+3.hfo" exit then
+   i CTOR-SUM = if s" /test/fixtures/file-objects/ctor-sum.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -1016,6 +1019,25 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build exits 74" LABEL  rc 74 T=
    s" the build says rollback.f gave back data space" LABEL  said TTRUE ;
 
+\ ctor-main.f's build, in a fresh hb since the refusal ends the build: it fails with
+\ E-CTOR-PROTECTED's code. Answers its exit code.
+: CTOR-REFUSED ( CMD:command -- CMD:command n )
+   s" test/fixtures/file-objects/ctor-main.f" false BUILD-RC {: rc:n :}
+   SB-RESET  s" threw " SB-APPEND  E-CTOR-PROTECTED FMT:SB-INT
+   CMD:ERR$ SB$ CONTAINS? {: named:bool :}
+   named  rc 0<>  and 0= if rc SHOW then
+   s" the build fails" LABEL  rc 0<> TTRUE
+   s" the build refuses with E-CTOR-PROTECTED" LABEL  named TTRUE
+   rc ;
+
+\ Guards a constructor package a link carries: CT2 links ctor-sum.f's object and is refused as
+\ CT, which compiles it, is.
+: CTOR-CASE ( CMD:command -- CMD:command )
+   s" CT" WHICH!  CTOR-REFUSED {: cold:n :}  CTOR-SUM KEEP
+   s" CT2" WHICH!  CTOR-REFUSED {: warm:n :}
+   s" the build exits as CT does" LABEL  warm cold T=
+   s" the build links ctor-sum.f" CTOR-SUM LINKED ;
+
 
 \ The path of U's source of that name.
 : NEST-PATH$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -1384,6 +1406,7 @@ variable CLASS-N                        \ the class CLASS+ read
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
+      CTOR-CASE
       NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;

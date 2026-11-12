@@ -37,6 +37,9 @@ TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
    TCE-U ! TCE-A !
    [: TCE-GO ;] catch ;
 
+\ An engine family's generated word is protected before anything names the family.
+s" undefine SPAN-SPAN:MAKE" TCE-CATCH E-CTOR-PROTECTED T=
+
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
 
