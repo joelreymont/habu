@@ -75,6 +75,10 @@ SUITE memory-guarded-failure
    test/memory-guarded-failure.f
 ;SUITE
 
+SUITE memory-fault
+   test/memory-fault.f
+;SUITE
+
 SUITE byte-copy
    test/byte-copy-test.f
 ;SUITE

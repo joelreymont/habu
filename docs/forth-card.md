@@ -519,6 +519,11 @@ holds an address**.
   `NLEASE:E-TASK` on a task's thread.
 - `0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op:
   `[: 0 throw ;] catch` answers 109.
+- A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`
+  (110) on the faulting thread, after the line `E-MEMORY-FAULT habu: memory
+  fault at <address> pc <pc>` on fd 2: `catch` answers 110, a task ends with
+  110, an uncaught one exits 110. A fault in C code, a jump out of Habu code
+  and a fault while one is delivered still dump and die by the signal.
 - Arithmetic is modular and never refuses, with one exception: `/`, `mod` and
   `/mod` throw catchable `E-DIV-ZERO` on a zero divisor;
   `$8000000000000000 -1 /` wraps to `$8000000000000000`.

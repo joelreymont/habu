@@ -146,6 +146,8 @@ create TAB
    JIT-QUOT:SP-CELL                   1 cells                 CLAIM JIT-QUOT-SP-CELL
    JIT-QUOT:STK-OFF                   JIT-QUOT:END JIT-QUOT:STK-OFF -  CLAIM JIT-QUOT-FRAMES
    FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL
+   FAULT-MARK-CELL                    1 cells                 CLAIM FAULT-MARK-CELL
+   DBASE-CELL                         1 cells                 CLAIM DBASE-CELL
    CLOSED-FREE-CELL                   1 cells                 CLAIM CLOSED-FREE-CELL
    CODE-END-CELL                      1 cells                 CLAIM CODE-END-CELL
    PRIM-TABLE-CELL                    1 cells                 CLAIM PRIM-TABLE-CELL

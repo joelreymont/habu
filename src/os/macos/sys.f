@@ -33,6 +33,7 @@ $52  constant NR-SETPGID
 $14  constant NR-GETPID
 private
 $148 constant NR-PTHREAD-KILL  \ __pthread_kill(thread port, sig) — BSD syscall 328
+$149 constant NR-PTHREAD-SIGMASK  \ __pthread_sigmask(how, set, oset) — BSD syscall 329
 26   constant MACH-THREAD-SELF  \ thread_self_trap is Mach trap -27, so x16 = ~26
 public
 $16A constant NR-KQUEUE
@@ -90,6 +91,15 @@ $20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux
    {: sigreg :}
    16 MACH-THREAD-SELF MOVN,  $80 SVC,
    1 sigreg 0 ADDI,  NR-PTHREAD-KILL SYS, ;
+
+\ __pthread_sigmask(SIG_BLOCK, set, NULL) on this thread, the 4-byte set in a
+\ frame on sp that it gives back. Clobbers x0, x1, x2, x10 and x16.
+: OS-BLOCK-SELF ( n -- )
+   {: sigreg :}
+   10 1 MOVZ,  1 sigreg 1 SUBI,  10 10 1 LSLV,     \ bit sig - 1
+   SP SP $10 SUBI,  10 SP 0 STRW,
+   0 1 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-PTHREAD-SIGMASK SYS,
+   SP SP $10 ADDI, ;
 
 : OS-OPEN-FLAGS ( -- ) ;
 

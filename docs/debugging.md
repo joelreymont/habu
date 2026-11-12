@@ -227,16 +227,22 @@ so the message names the mechanism that caught the fault
 - `E-UNDERFLOW habu: <path>:<line>: stack underflow at '<token>'` (exit 70): a word ran and left the stack below its
   base because its body consumes more than its record states: a word defined
   with checking off, or a `TRUSTED:` body that drops more than it declares.
-- `hb: stack bounds exceeded (data|return|loop)` (exit 102): an overflow, a
-  jump into a guard page, or a below-base access where no throw entry exists
-  (a task's own stack, a stripped AOT image). Match the
-  prefix `hb: stack bounds exceeded` unless the stack matters.
+- `hb: stack bounds exceeded (data|return|loop)` (exit 102): an overflow or a
+  below-base access where no throw entry exists (a task's own stack, a
+  stripped AOT image). Match the prefix `hb: stack bounds exceeded` unless the
+  stack matters.
 - `hb: stack bounds exceeded (machine)` (exit 102): the OS thread's own stack
   overflowed, typically unbounded recursion; `catch` does not receive it.
-- `habu-crash regs [...]` and one hex value per line: any other fault
-  (SIGSEGV, SIGBUS, SIGILL, SIGTRAP, SIGFPE). After the dump the process dies
-  by that signal at the faulting pc, with a core when RLIMIT_CORE allows (see
-  "gdb/lldb" above).
+- `E-MEMORY-FAULT habu: memory fault at <address> pc <pc>` (exit 110): Habu
+  code read or wrote unmapped or unwritable memory. It is thrown on the
+  faulting thread, so `catch` receives 110 and a task ends with it; the line is
+  written even when a catch takes the throw.
+- `habu-crash regs [...]` and one hex value per line: any other fault: a
+  SIGSEGV or SIGBUS in C code or a signal handler, a jump to an address outside
+  Habu code or into a guard page, a second fault while one is delivered, and
+  SIGILL, SIGTRAP and SIGFPE. After the dump the process dies by that signal
+  at the faulting pc, with a core when RLIMIT_CORE allows (see "gdb/lldb"
+  above).
 - `E-STACK-UNGUARDED`: `run-in-stack` refused an extent that is not a guarded
   mapping, before the callback ran. Allocate the stack with
   `MEM:ALLOC-GUARDED`.

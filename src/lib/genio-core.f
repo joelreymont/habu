@@ -11,7 +11,8 @@
 \ runs afterwards still sees itself as SELF. An operation that may throw runs
 \ under `catch` through a RUN-*-OP word that reads its row from ACTIVE-CELL,
 \ because a quotation cannot reference a local. EMIT, WRITE, FORWARD and
-\ FORWARD-EMIT skip that catch, because their operations do not throw.
+\ FORWARD-EMIT skip that catch: their operations throw only a memory fault, and
+\ the catch that takes it puts ACTIVE-CELL back itself.
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
@@ -194,10 +195,8 @@ public
    ACTIVE-ROW SLOT-STATE @ ;
 
 \ Latch a failed write on the running device: a write or emit operation must not
-\ throw. The engine reaches a write from inside `emit` and `type`, where a throw
-\ would unwind through engine internals with the funnel's re-entrancy guard set,
-\ and EMIT and FORWARD-EMIT raise that guard around an emit with no catch. The
-\ device's next EMIT, WRITE, FLUSH, KEY, KEY?, READ or ACCEPT raises
+\ throw. EMIT and FORWARD-EMIT raise the funnel's re-entrancy guard around an
+\ emit with no catch, and on x86-64 a throw leaves it set. The device's next EMIT, WRITE, FLUSH, KEY, KEY?, READ or ACCEPT raises
 \ E-GENIO-IO. A zero is ignored, and a failure already latched is kept.
 : FAULT! ( n -- )
    ACTIVE-ROW LATCH-ROW ;

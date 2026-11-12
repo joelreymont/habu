@@ -40,6 +40,7 @@ public
 172 constant NR-GETPID
 178 constant NR-GETTID
 131 constant NR-TGKILL
+135 constant NR-RT-SIGPROCMASK
 434 constant NR-PIDFD-OPEN
 436 constant NR-CLOSE-RANGE
 59  constant NR-PIPE
@@ -89,6 +90,15 @@ $100 constant AT-SYMLINK-NOFOLLOW
    NR-GETPID SYS,  10 0 0 ADDI,
    NR-GETTID SYS,  1 0 0 ADDI,
    0 10 0 ADDI,  2 sigreg 0 ADDI,  NR-TGKILL SYS, ;
+
+\ rt_sigprocmask(SIG_BLOCK, set, NULL, 8) on this thread, the 8-byte set in a
+\ frame on sp that it gives back. Clobbers x0..x3, x8, x10 and x16.
+: OS-BLOCK-SELF ( n -- )
+   {: sigreg :}
+   10 1 MOVZ,  1 sigreg 1 SUBI,  10 10 1 LSLV,     \ bit sig - 1
+   SP SP $10 SUBI,  10 SP 0 STR,
+   0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  3 8 MOVZ,  NR-RT-SIGPROCMASK SYS,
+   SP SP $10 ADDI, ;
 
 : OS-OPEN-FLAGS ( -- )
    LBL LBL LBL LBL LBL {: nononblock noappend nocreat notrunc noctty :}

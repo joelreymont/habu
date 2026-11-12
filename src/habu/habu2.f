@@ -498,7 +498,7 @@ private
 \ when the re-entrancy guard is set, the index is outside 1..DEVICES or the row
 \ is empty: output keeps working while a device is built or gone. A device
 \ reports a failure by latching it for its next checked operation; a throw out
-\ of `emit` would unwind through engine internals.
+\ of its write is caught with the device state its catch saved.
 : EMIT-GENIO-OUT ( -- )
    LBL LBL LBL {: term:label done:label end:label :}
    LGENIOOUT LABEL@ {: start:label :}
@@ -2558,9 +2558,7 @@ package ENGINE-EMIT
 public
 
 : EM-TEXT-SIZE ( -- )
-   9 DATA RBASE-CELL LDR,  10 CODE-OFF LIT64,  9 9 10 SUB,
-   9 9 IMAGE-TEXT-SIZE-OFF LDR,  10 IMAGE-TEXT-CONTENT-ADJ LIT64,  9 9 10 SUB,
-   9 DATA TEXT-SIZE-CELL STR, ;
+   9 DATA RBASE-CELL LDR,  9 10 TEXT-SIZE,  9 DATA TEXT-SIZE-CELL STR, ;
 
 private
 
@@ -2970,6 +2968,8 @@ private
    19 11 8 LDR,
    14 DATA STACK-ABI:BASE-CELL STR,
    10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
+   10 11 STACK-ABI:CATCH-BUSY LDR,  10 DATA GENIO-ABI:BUSY-CELL STR,
+   10 11 STACK-ABI:CATCH-ACTIVE LDR,  10 DATA GENIO-ABI:ACTIVE-CELL STR,
    10 11 40 LDR,  10 DATA RSP-CELL STR,
    10 11 48 LDR,  10 DATA LOOPSP-CELL STR,
    10 11 0 LDR,  10 DATA 8 STR,                       \ HND = prev
@@ -3204,7 +3204,7 @@ package LABELS
 : RUNTIME ( -- )
    LBL LDOESPATCH !  LBL LGENIOOUT !
    LBL LEVALREC !  LBL LEXITHOOK !
-   LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !
+   LBL LCRASHH !  LBL LHANDLERS-END !  LBL LFAULTREC !  LBL LSIGH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !
    LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LMINMSG !  LBL LFLOORREC !
@@ -3418,16 +3418,20 @@ variable KERNEL-CODE-END
    RELOC-EMIT:EMIT-ADDR-SITE  RELOC-EMIT:EMIT-ADDRS
    KWDATA:EMIT ;
 
+\ [LCRASHH, LHANDLERS-END) holds the signal handlers and no code Habu code calls. A cut keeps
+\ what a node not ending in ret, b, br or brk runs into; every such run here enters kept code.
 : EMIT-RUNTIME-SECTIONS ( -- )
    EMIT-GENIO-OUT
-   EMIT-CRASH-HANDLER
-   EMIT-SIGNAL-HANDLER
-   EMIT-TRAPH
-   EMIT-HEX
    PROF:EMIT-PROFFIND
    PROF:EMIT-PROFEDGE
    PROF:EMIT-PROF-REPORTS
-   PROF:EMIT-PROF ;
+   EMIT-FAULT-REC
+   EMIT-CRASH-HANDLER
+   EMIT-SIGNAL-HANDLER
+   PROF:EMIT-PROF
+   EMIT-TRAPH
+   LHANDLERS-END LABEL@ LBL,
+   EMIT-HEX ;
 
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-ROUTINES

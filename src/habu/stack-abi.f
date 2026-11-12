@@ -52,10 +52,13 @@ LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 \ the two spellings equal.
 -3804 constant E-EVAL-RESIDUE
 
-\ The active allocation descriptor follows the frame's existing fields.
+\ The active allocation descriptor follows the frame's existing fields, then
+\ the output device state, GENIO-ABI:BUSY-CELL and ACTIVE-CELL.
 $40 constant CATCH-BASE
 $48 constant CATCH-CAP
-$50 constant CATCH-BYTES
+$50 constant CATCH-BUSY
+$58 constant CATCH-ACTIVE
+$60 constant CATCH-BYTES
 $CA7CF4A3E00E constant CATCH-MAGIC
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
@@ -73,7 +76,7 @@ $180 constant EVAL-BYTES
 \ of the interrupted sp, either side, is that overflow: the faulting access
 \ lies within one frame of sp, below it when the access itself moves sp (a
 \ push, a pre-indexed store) and above it when sp moved first. A frame wider
-\ than MACHINE-REACH that faults farther from sp keeps the register dump.
+\ than MACHINE-REACH that faults farther from sp is a memory fault.
 $10000 constant SIGNAL-BYTES
 $10000 constant MACHINE-REACH
 

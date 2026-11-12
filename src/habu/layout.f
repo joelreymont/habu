@@ -941,14 +941,20 @@ STK-OFF LEVELS 1- FRAME-BYTES * + constant END
 ;package
 \ FLOORREC-CELL: runtime address of the underdepth throw entry, stored at
 \ startup because the crash handler that jumps there cannot name an emit-time
-\ label: a stripped image bakes the same handler. The handler resumes a data
-\ access below the base at that address, from the image's text [RBASE-CELL,
-\ RBASE-CELL + TEXT-SIZE-CELL) or the JIT region. Zero means no entry, and the
+\ label: a stripped image bakes the same handler. Zero means no entry, and the
 \ fault keeps the named bounds exit: a stripped image leaves the cell at its
 \ mapping's zero, and a task region reads zero because src/lib/task.f copies
 \ only the cells it names. It and CODE-END-CELL hold this process's addresses,
 \ so boot stores them.
 $2CD0 constant FLOORREC-CELL
+\ FAULT-MARK-CELL: nonzero from the crash handler's delivery of a memory fault
+\ as a throw until a catch resumes; a fault while it is set dies by the signal.
+\ A task's region starts it zero: src/lib/task.f copies only the cells it names.
+$2D48 constant FAULT-MARK-CELL
+\ DBASE-CELL: the live region's base, every thread's DBASE, in the main DATA.
+\ An engine's boot stores it; a stripped program, which has no live region,
+\ leaves it at its mapping's zero.
+$2D90 constant DBASE-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next. The stacks are this process's mappings, so a
 \ process starts with the cell zero.
@@ -1038,7 +1044,8 @@ $4CA8 constant CLAUSE-CELL
 \ allocation before any restore store.
 \ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
 \               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel
-\               64 saved-base | 72 saved-capacity
+\               64 saved-base | 72 saved-capacity | 80 saved-BUSY
+\               88 saved-ACTIVE
 
 \ Compiler lowering transaction: all mutable pass-2 authority lives in one engine
 \ band.

@@ -3428,9 +3428,11 @@ package ENGINE-EMIT
 \ HND-CELL saves the complete caller execution frame so a caught throw resumes
 \ it. Frame: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc |
 \ 32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel | 64 saved base |
-\ 72 saved capacity. A normal return branches to CATCH-PUSH with x9 = 0; a
-\ throw resumes at CATCH-RES, where it ends, with the code in x9 and the frame
-\ already unlinked. Its caller places CATCH-PUSH.
+\ 72 saved capacity | 80 saved BUSY-CELL | 88 saved ACTIVE-CELL. A normal
+\ return branches to CATCH-PUSH with x9 = 0; a throw resumes at CATCH-RES,
+\ where it ends, with the code in x9 and the frame already unlinked; CATCH-RES
+\ clears FAULT-MARK-CELL, as a delivered memory fault ends at its catch. Its
+\ caller places CATCH-PUSH.
 : BCATCH-RUN ( -- )
    LBL CATCH-RES !
    LBL CATCH-PUSH !
@@ -3446,23 +3448,26 @@ package ENGINE-EMIT
    11 STACK-ABI:CATCH-MAGIC LIT64,  11 SP 56 STR,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
+   11 DATA GENIO-ABI:BUSY-CELL LDR,  11 SP STACK-ABI:CATCH-BUSY STR,
+   11 DATA GENIO-ABI:ACTIVE-CELL LDR,  11 SP STACK-ABI:CATCH-ACTIVE STR,
    14 SP 0 ADDI,  14 DATA 8 STR,
    9 BLR,
    11 SP 0 LDR,  11 DATA 8 STR,
    30 SP 32 LDR,  SP SP STACK-ABI:CATCH-BYTES ADDI,
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
-   CATCH-RES LABEL@ LBL, ;
+   CATCH-RES LABEL@ LBL,
+   31 DATA FAULT-MARK-CELL STR, ;
 
-public
-\ BTHROW ( code -- ): unwind to the nearest catch handler. With EVALD>0 it
-\ first goes to LEVALREC (through EVALREC-CELL: a leaf prim cannot name a
-\ habu2.f label), which rolls back each escaped evaluate frame, so a checker or
-\ compile error inside `evaluate` is a catchable throw and a catch inside the
-\ evaluated source still handles its own throws.
-: BTHROW ( -- )
+private
+\ The unwind of a throw whose code is in x9: to the nearest catch handler. With
+\ EVALD>0 it first goes to LEVALREC (through EVALREC-CELL: a leaf prim cannot
+\ name a habu2.f label), which rolls back each escaped evaluate frame, so a
+\ checker or compile error inside `evaluate` is a catchable throw and a catch
+\ inside the evaluated source still handles its own throws.
+: BTHROW-UNWIND ( -- )
    LBL THROW-NOH !  LBL THROW-EVAL !  LBL THROW-CORRUPT !  LBL THROW-CORRUPT-MSG !
    S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
-   A G-POP  15 9 0 ADDI,                               \ x15 = code
+   15 9 0 ADDI,                                        \ x15 = code
    12 DATA EVALD-CELL LDR,  12 THROW-EVAL LABEL@ CBNZ,
    11 DATA 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
    9 15 0 ADDI,
@@ -3478,6 +3483,8 @@ public
    19 11 8 LDR,
    14 DATA STACK-ABI:BASE-CELL STR,
    10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
+   10 11 STACK-ABI:CATCH-BUSY LDR,  10 DATA GENIO-ABI:BUSY-CELL STR,
+   10 11 STACK-ABI:CATCH-ACTIVE LDR,  10 DATA GENIO-ABI:ACTIVE-CELL STR,
    10 11 40 LDR,  10 DATA RSP-CELL STR,
    10 11 48 LDR,  10 DATA LOOPSP-CELL STR,
    10 11 0 LDR,  10 DATA 8 STR,
@@ -3499,6 +3506,14 @@ public
    0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
+
+public
+\ BTHROW ( code -- ): unwind to the nearest catch handler.
+: BTHROW ( -- )  A G-POP  BTHROW-UNWIND ;
+
+\ The fault entry: the crash handler resumes a faulting thread here with the
+\ code in x9, reaching it with ADR, so it sits next to the handler.
+: EMIT-FAULT-REC ( -- )  LFAULTREC LABEL@ LBL,  BTHROW-UNWIND ;
 
 private
 \ The `throw` primitive. A zero code is a caller bug, success passed as a
@@ -3770,10 +3785,11 @@ private
    13 DATA STACK-ABI:BASE-CELL STR,
    12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
-   \ Same handler shape as BCATCH, but do not push its status on the callback's
-   \ stack: the clean callback may have filled that stack exactly. It reads no
-   \ HALT-UNWIND-CELL: a task never reaches it, B-TASK-GUARD above exits
-   \ on a task's thread.
+   \ Same handler shape as BCATCH, `caught` clearing FAULT-MARK-CELL as
+   \ CATCH-RES does, but do not push its status on the callback's stack: the
+   \ clean callback may have filled that stack exactly. It reads no
+   \ HALT-UNWIND-CELL: a task never reaches it, B-TASK-GUARD above exits on a
+   \ task's thread.
    SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
@@ -3785,12 +3801,15 @@ private
    11 STACK-ABI:CATCH-MAGIC LIT64,  11 SP 56 STR,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
+   11 DATA GENIO-ABI:BUSY-CELL LDR,  11 SP STACK-ABI:CATCH-BUSY STR,
+   11 DATA GENIO-ABI:ACTIVE-CELL LDR,  11 SP STACK-ABI:CATCH-ACTIVE STR,
    14 SP 0 ADDI,  14 DATA 8 STR,
    9 BLR,
    11 SP 0 LDR,  11 DATA 8 STR,
    30 SP 32 LDR,  SP SP STACK-ABI:CATCH-BYTES ADDI,
    9 0 MOVZ,
    caught LBL,
+   31 DATA FAULT-MARK-CELL STR,
    9 restore CBNZ,
    11 SP 24 LDR,
    XDS 11 CMP,  C-EQ restore BCOND,

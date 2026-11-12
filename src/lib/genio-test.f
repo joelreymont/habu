@@ -3,6 +3,8 @@
 \ line and shuts its sending side before the server reads, so no read waits on a
 \ peer or needs the AIO loop. The terminal is put back before anything is
 \ asserted, so the REPL that follows the load reads its own input again.
+\ A device write that faults is caught with the output state its catch saved,
+\ so the next write reaches its device rather than fd 1.
 \ Run: bin/hb --load src/lib/genio-test.f </dev/null
 require src/lib/test.f
 require src/lib/string.f
@@ -26,9 +28,11 @@ $64 constant CH-D
 1000 constant ACCEPT-LEN               \ read by successive ACCEPTs
 $100 constant ACCEPT-CAP
 $800 constant SRC-CAP
+$10 constant SINK-CAP
 
 create SRC SRC-CAP allot
 create PART ACCEPT-CAP allot
+create SINK SINK-CAP allot
 
 variable LISTENER
 variable CLIENT
@@ -39,6 +43,9 @@ variable WANT-CH
 variable GOT-CODE
 variable PARTS
 variable PART-LAST
+variable SINK-N
+variable SINK-DEV
+variable FAULTY-DEV
 TASK:MIN-STACK TASK:TASK READER
 
 \ ---- the endpoints -----------------------------------------------------------
@@ -137,6 +144,45 @@ TASK:MIN-STACK TASK:TASK READER
    GOT-LEN @ want T=
    GOT-SAME @ TTRUE ;
 
+\ ---- a device write that faults ---------------------------------------------
+\ The sink appends what it is written; the faulty device's write reads address 0.
+
+: SINK-WRITE ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do
+      SINK-N @ SINK-CAP < if a i + c@ SINK SINK-N @ + c!  SINK-N @ 1+ SINK-N ! then
+   loop ;
+
+: FAULTY-WRITE ( ptr u8 n -- ) {: a:ptr u:n :}
+   NULL-PTR BYTE-VIEW c@ drop ;
+
+: NO-EMIT ( n -- ) drop ;
+: NO-KEY ( -- n ) GENIO:E-IO throw ;
+: NO-READY? ( -- bool ) false ;
+: NO-READ ( ptr u8 n -- n ) {: a:ptr cap:n :} 0 ;
+: NOTHING ( -- ) ;
+
+: OUT-DEVICE ( [ ptr u8 n -- ] -- GENIO:device ) {: qwrite :}
+   [: NO-EMIT ;] [: NO-KEY ;] [: NO-READY? ;] [: NO-READ ;]
+   qwrite [: NO-READ ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;
+
+: FAULT-TYPE ( -- ) s" x" type ;
+: SINK-TYPE ( -- ) s" y" type ;
+
+: T-FAULTING-WRITE ( -- )
+   s" a write after a caught faulting device write reaches its device" T-LABEL
+   [: SINK-WRITE ;] OUT-DEVICE GENIO:DEVICE>N SINK-DEV !
+   [: FAULTY-WRITE ;] OUT-DEVICE GENIO:DEVICE>N FAULTY-DEV !
+   0 SINK-N !
+   [: GENIO:TERMINAL FAULTY-DEV @ GENIO:>DEVICE [: FAULT-TYPE ;] GENIO:WITH-IO ;]
+   catch GOT-CODE !
+   GENIO:SELF GENIO:DEVICE>N {: self:n :}
+   GENIO:TERMINAL SINK-DEV @ GENIO:>DEVICE [: SINK-TYPE ;] GENIO:WITH-IO
+   FAULTY-DEV @ GENIO:>DEVICE GENIO:CLOSE
+   SINK-DEV @ GENIO:>DEVICE GENIO:CLOSE
+   GOT-CODE @ ENGINE-ERROR:MEMORY-FAULT T=
+   self GENIO:TERMINAL GENIO:DEVICE>N T=
+   SINK SINK-N @ s" y" T$= ;
+
 \ ---- the worker ---------------------------------------------------------------
 \ The worker's line is released on its exit chain, which TASK:JOIN has run.
 : READER-BODY ( -- )
@@ -178,6 +224,8 @@ public
    T-PARTS
    0 CH-A s" the end of input is a zero-length line" T-LINE
    CLOSE-ALL
+   \ The x86-64 engine has no memory-fault throw: the fault kills the test.
+   HB-TARGET-LINUX-X86-64? 0= if T-FAULTING-WRITE then
    T-REPORT ;
 
 ;package

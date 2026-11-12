@@ -1974,6 +1974,18 @@ backend answers alike.
   exception edge, for recoverable and interactive paths (REPL recovery: `?`,
   rollback, reread); `die` is no-return, for build makers and CLI boundaries
   where exiting is the contract.
+- **A memory fault in Habu code is a throw.** A read or write that faults
+  (unmapped or unwritable memory) in a word's code writes `E-MEMORY-FAULT
+  habu: memory fault at <address> pc <pc>` to fd 2 and throws
+  `ENGINE-ERROR:MEMORY-FAULT`, 110, on the faulting thread: a `catch` answers
+  110, a task ends with 110 recorded while the others run, and an uncaught one
+  exits 110. A fault in C code, a jump to an address outside Habu code and a
+  second fault while one is delivered still dump the registers and die by the
+  signal; a stack guard keeps its named exit 102. The throw recovers the
+  thread, not the memory: a stray store into mapped memory does not fault and
+  stays written. A fault unwinds past any lock or guard a word holds without
+  `finally`, so a word that holds one across loads or stores releases it in
+  `finally`. `src/habu/crash.f` states the rows in order.
 - **`die` consumes a real message and code**, `( ptr u8 n n -- )`, never `0 0`
   as a fake string; model exits as no-return only at certified wrappers.
 - **`die` writes its message as one line**: the span and then exactly one

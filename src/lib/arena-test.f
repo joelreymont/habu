@@ -242,8 +242,9 @@ public
 
 
 \ 10. RESET unmaps a later chunk and RELEASE the first: a subject child that
-\ touches the allocation afterwards dies of SIGSEGV. SUBJECT:RUN's child
-\ evaluates each by its public name.
+\ touches the allocation afterwards exits 110, the memory fault, on arm64 and
+\ dies of SIGSEGV on x86-64. SUBJECT:RUN's child evaluates each by its public
+\ name.
 : RESET-TOUCH ( -- )
    ARENA:NEW {: a:ptr :}
    a 40000 ARENA:ALLOC drop {: p:ptr :}
@@ -259,18 +260,30 @@ public
 
 private
 
-11 constant FAULT-SIG
 $1000 constant CAP
 1000 constant TIMEOUT-MS
 CAP BUFFER: CAP-OUT
 CAP BUFFER: CAP-ERR
 
 
+HB-TARGET-LINUX-X86-64? 0= [if]
 : EXPECT-FAULT ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
-   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FAULT-SIG T-ENDING-SIGNALED= ;
+   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
+   ENGINE-ERROR:MEMORY-FAULT T-ENDING-EXITED= ;
+[then]
+\ The x86-64 engine has no memory-fault throw.
+HB-TARGET-LINUX-X86-64? [if]
+11 constant FAULT-SIG
+: EXPECT-FAULT ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
+   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
+   FAULT-SIG T-ENDING-SIGNALED= ;
+[then]
 
 
 : UNMAPPED ( -- )

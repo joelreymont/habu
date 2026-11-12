@@ -2,8 +2,9 @@
 \ CHECK! and CHECK-DOES! (src/core/checker.f) scan a caller's text; a guard
 \ joining the bound and byte tests with `and` evaluates both and reads past the
 \ text. Each case ends its text on the last byte before an inaccessible page
-\ (src/lib/test/guard-page.f): a read past the end dies by the signal after the
-\ crash handler's dump, where a bounded scan answers as the text does anywhere.
+\ (src/lib/test/guard-page.f): a read past the end faults (the memory-fault
+\ throw on arm64, the dump and the signal on x86-64), where a bounded scan
+\ answers as the text does anywhere.
 
 require src/lib/test.f
 require src/lib/test/guard-page.f

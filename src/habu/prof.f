@@ -659,7 +659,7 @@ public
    10 11 CMP,  C-LT pexit BCOND,
    17 pexit CBZ,                                     \ the limit reached on a foreign sample: the next Habu sample reports
    LPROFDUMP LABEL@ BL,  0 PROF-LIMIT-RC MOVZ,  NR-EXIT-GROUP SYS,
-   pexit LBL,  0 4 0 ADDI,  NR-SIGRETURN SYS, ;
+   pexit LBL,  0 4 0 ADDI,  NR-SIGRETURN SYS,  BRK, ;
 
 private
 

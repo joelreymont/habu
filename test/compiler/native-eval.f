@@ -273,19 +273,6 @@ create ERR IO-CAP allot
    s" and names the data stack" T-LABEL
    ERR erru S\" hb: stack bounds exceeded (data)\n" T$= ;
 
-\ FLOOR-JUMP, run by the text, jumps one cell under the text's floor: the fault
-\ is an instruction fetch, not a read: the exit is STACK-BOUNDS, not underdepth.
-: FLOOR-JUMP$ ( -- ptr u8 n )
-   S\" TRUSTED: FLOOR-JUMP ( -- ) data-base STACK-ABI:BASE-CELL + @ cell - execute ; 7 s\" FLOOR-JUMP\" evaluate-closed" ;
-
-: FLOOR-JUMP ( -- )
-   s" a jump under a closed text's floor exits STACK-BOUNDS" T-LABEL
-   FLOOR-JUMP$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROCESS:ENDING>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
-   nip LEN>N {: erru:n :}
-   s" and names the data stack" T-LABEL
-   ERR erru s" hb: stack bounds exceeded (data)" CONTAINS? TTRUE ;
-
 \ The same reach outside any closed text: the child's text runs a compiled
 \ word through execute with one cell on the stack it was given.
 : TOP-LEVEL$ ( -- ptr u8 n )
@@ -381,7 +368,7 @@ variable ERR-U
    T-RESET
    DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL FLOOR-POOL-THROW XT-UNDER
    UNFINISHED
-   UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED AGREEMENT OVERFLOW FLOOR-JUMP
+   UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED AGREEMENT OVERFLOW
    TOP-LEVEL
    UNFINISHED-LINE IN-TASK
    NAME-THROWN ROW-THROWN

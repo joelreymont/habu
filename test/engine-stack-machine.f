@@ -1,9 +1,9 @@
 \ A machine-stack overflow ends named, as a VM stack's does: `hb: stack bounds
 \ exceeded (machine)` on fd 2 and the ENGINE-ERROR:STACK-BOUNDS exit, from the
 \ crash handler on the thread's alternate signal stack (src/habu/crash.f
-\ C-SIGNAL-STACK). Controls: a data-stack overflow still reports (data); a load
-\ from address 0 still dumps registers and dies of the SIGSEGV. Every subject
-\ recurses through a self call with work after it, so it cannot become a jump.
+\ C-SIGNAL-STACK). Control: a data-stack overflow still reports (data). Every
+\ subject recurses through a self call with work after it, so it cannot become
+\ a jump.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/engine-error.f
@@ -13,7 +13,6 @@ private
 
 \ ms for the stripped application's hb-build, held to an engine build's limit
 300000 constant BUILD-MS
-11 constant SIGSEGV
 
 create SUBJECT PATH-CAP allot
 create IMAGE PATH-CAP allot
@@ -46,15 +45,6 @@ variable IMAGE-U
    GE-HB-RESET
    GE-HB$ src srcu GE-TIMEOUT-MS GE-RUN-STDIN ;
 
-\ The child ended by the signal, not by an exit: crash.f EMIT-CRASH-HANDLER
-\ re-raises it after the dump. An exit of 128 + n is no signal death.
-: KILLED-BY ( n ptr u8 n -- ) {: sig:n label:ptr labelu:n :}
-   GT-OUTCOME@ MATCH PROCESS:ending
-     exited OF drop label labelu GE-FAIL ENDOF
-     signaled OF sig <> if label labelu GE-FAIL then ENDOF
-     timeout OF label labelu GE-FAIL ENDOF
-   ;MATCH ;
-
 : MACHINE-EXIT ( ptr u8 n -- ) {: label:ptr labelu:n :}
    ENGINE-ERROR:STACK-BOUNDS label labelu GE-EXPECT-RC
    MACHINE$ label labelu GE-EXPECT-ERR ;
@@ -75,10 +65,23 @@ variable IMAGE-U
    CALLBACK-THREAD$ s" a thread C started, inside a callback" MACHINE
    s" PASS: a task thread and a callback thread" type cr ;
 
+\ MAIN catches a load from address 0, prints its code and overflows the machine
+\ stack; given an argument, it leaves the load uncaught.
+: STRIPPED-SRC$ ( -- ptr u8 n )
+   S\" TRUSTED: R ( -- ) recurse recurse ;\n: W ( -- ) NULL-PTR BYTE-VIEW c@ drop ;\n: MAIN ( -- ) ARGC 1 > if W then ['] W catch . R ;\n" ;
+
+\ The fault's line up to its address, written on fd 2 at the fault, caught or
+\ not.
+: FAULT-LINE$ ( -- ptr u8 n ) s" E-MEMORY-FAULT habu: memory fault at " ;
+
+: FAULT-LINE ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   GT-ERR$ FAULT-LINE$ STARTS-WITH? 0= if label labelu GE-FAIL then ;
+
 \ The stripped application's own startup registers the alternate stack before it
-\ installs the handler (src/arch/arm64/boot.f ENTRY,).
+\ installs the handler (src/arch/arm64/boot.f ENTRY,). It has no interpreter
+\ catch: its own text faults, and its uncaught throw reaches its own reporter.
 : STRIPPED ( -- )
-   SUBJECT$ S\" TRUSTED: R ( -- ) recurse recurse ;\n: MAIN ( -- ) R ;\n" FS:WRITE-ALL
+   SUBJECT$ STRIPPED-SRC$ FS:WRITE-ALL
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+
@@ -89,18 +92,23 @@ variable IMAGE-U
    GE-HB-RESET
    IMAGE$ GE-ARGV+
    IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
-   s" a stripped application" MACHINE-EXIT
-   s" PASS: a stripped application" type cr ;
+   S\" 110\n" s" a stripped application's caught fault" GE-EXPECT-OUT
+   s" a stripped application's caught fault" FAULT-LINE
+   ENGINE-ERROR:STACK-BOUNDS s" a stripped application" GE-EXPECT-RC
+   MACHINE$ s" a stripped application" GE-EXPECT-ERR-HAS
+   GE-HB-RESET
+   IMAGE$ GE-ARGV+ s" uncaught" GE-ARG+
+   IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   ENGINE-ERROR:MEMORY-FAULT s" a stripped application's uncaught fault"
+   GE-EXPECT-RC
+   s" a stripped application's uncaught fault" FAULT-LINE
+   s" PASS: a stripped application, its fault caught and uncaught" type cr ;
 
 : CONTROLS ( -- )
    S\" : X ( n -- ) begin dup recurse again ;\n0 X\n" RUN-SRC
    ENGINE-ERROR:STACK-BOUNDS s" a data-stack overflow" GE-EXPECT-RC
    DATA$ s" a data-stack overflow" GE-EXPECT-ERR
-   S\" TRUSTED: W ( -- ) 0 @ drop ;\nW\n" RUN-SRC
-   SIGSEGV s" a load from address 0" KILLED-BY
-   s" habu-crash regs [sig" s" a load from address 0" GE-EXPECT-ERR-HAS
-   s" stack bounds" s" a load from address 0" GE-EXPECT-ERR-LACKS
-   s" PASS: the data-stack and address-0 controls" type cr ;
+   s" PASS: the data-stack control" type cr ;
 
 : BODY ( -- )
    s" engine-stack-machine" GT-START

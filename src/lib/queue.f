@@ -140,8 +140,9 @@ variable Q-N
 : Q-LIVE-CHECK ( n -- )
    Q-REC Q.LIVE atomic@ 0= if E-QUEUE-STATE throw then ;
 
-\ The lock is a binary semaphore, so it is held for the index move and the one
-\ cell copy below and nothing in between can throw.
+\ The lock is a binary semaphore, held for the index move and the one cell copy
+\ below. They touch only the queue's own record, so only a corrupt queue throws
+\ between them: a memory fault, with the lock still held.
 : Q-LOCK-GET ( n -- )
    Q-LOCK-SEM WAIT-SEM ;
 

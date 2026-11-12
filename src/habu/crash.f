@@ -1,17 +1,34 @@
 \ crash.f - the in-binary signal handlers the native engine bakes: the crash
-\ handler (the raw sa_tramp: it dumps sig, x0..x28 and fp/lr/sp/pc as hex lines
-\ to stderr, then dies by the signal itself, C-CRASH-RERAISE) and
-\ EMIT-SIGNAL-HANDLER, the async-signal-safe stub a program installs for an
-\ ordinary signal. Encoders are package A64ASM (src/arch/arm64/asm.f).
+\ handler, the raw sa_tramp, and EMIT-SIGNAL-HANDLER, the async-signal-safe
+\ stub a program installs for an ordinary signal. Encoders are package A64ASM
+\ (src/arch/arm64/asm.f).
+\
+\ The crash handler gives a SIGSEGV or SIGBUS the first of these rows that
+\ holds:
+\ 0. a fault in the crash handler itself: death by the signal, no dump;
+\ 1. the fault within MACHINE-REACH of sp: the named machine exit 102;
+\ 2. not Habu code -- a saved x20 of 0, code interrupted on this thread's
+\    signal stack, a fetch (pc = fault address), a pc in the engine's signal
+\    handlers (the crash, signal-stub, trap and profiler handlers), or a pc
+\    outside the image's text and the live region: the dump, read through no
+\    x20;
+\ 3. FAULT-MARK-CELL set, a fault while one is delivered: the dump;
+\ 4. the data stack's low guard page and FLOORREC-CELL set: the underdepth throw;
+\ 5. a data, return or loop stack guard page: the named exit 102;
+\ 6. anything else: the line on fd 2 and the throw of MEMORY-FAULT.
+\ The dump, which every other signal takes too, writes sig, x0..x28 and
+\ fp/lr/sp/pc as hex lines to stderr, and the process dies by the signal
+\ itself (C-CRASH-RERAISE).
 require src/arch/arm64/icode.f
 using SYSCALL
 package CRASH
 public
 variable LCRASHH   variable LHEX   variable LHDR   variable LSIGH
+variable LFAULTREC  variable LHANDLERS-END
 private
 create CRH 80 allot  variable CRHL
-variable CR-L1  variable CR-L2  variable CR-L3
-variable CR-OFF  variable CR-HANDLER  variable CR-FLAGS
+variable CR-L1  variable CR-L2
+variable CR-OFF  variable CR-HANDLER  variable CR-FLAGS  variable CR-RERAISE
 ;package
 using A64ASM
 using A64ICODE
@@ -29,15 +46,20 @@ package CRASH
 CRH-INIT
 \ The sa_flags bits the installs set. SA_ONSTACK runs the crash handler on the
 \ thread's alternate signal stack (C-SIGNAL-STACK below); the trap handler
-\ (src/arch/arm64/boot.f TRAP,) keeps the interrupted stack.
+\ (src/arch/arm64/boot.f TRAP,) keeps the interrupted stack. SA_NODEFER leaves
+\ the crash handler's signal unblocked, so a fault inside it enters it again
+\ instead of re-executing the faulting load forever.
 $40 constant MACOS-SA-SIGINFO
 $1 constant MACOS-SA-ONSTACK
+$10 constant MACOS-SA-NODEFER
 $4 constant LINUX-SA-SIGINFO
 $08000000 constant LINUX-SA-ONSTACK
+$40000000 constant LINUX-SA-NODEFER
 public
 : SIGACT-SIGINFO ( -- n )  HB-TARGET-LINUX? IF LINUX-SA-SIGINFO ELSE MACOS-SA-SIGINFO THEN ;
 private
 : SIGACT-ONSTACK ( -- n )  HB-TARGET-LINUX? IF LINUX-SA-ONSTACK ELSE MACOS-SA-ONSTACK THEN ;
+: SIGACT-NODEFER ( -- n )  HB-TARGET-LINUX? IF LINUX-SA-NODEFER ELSE MACOS-SA-NODEFER THEN ;
 \ stack_t, the struct sigaltstack reads and writes: ss_sp first on both, then
 \ Linux puts the int ss_flags before ss_size and Darwin after it.
 32 constant SIGSTK-FRAME                \ the 24-byte struct, rounded to sp's alignment
@@ -75,24 +97,38 @@ $100 constant MACOS-MCTX-LR-OFF
 $108 constant MACOS-MCTX-SP-OFF
 $110 constant MACOS-MCTX-PC-OFF
 
+private
+\ x9's 16 hex digits, most significant first, at [x14, x14 + 16). Clobbers
+\ x9, x11..x13 and x15.
+: C-HEX-DIGITS ( -- )
+   LBL LBL LBL {: next:label done:label digit:label :}
+   11 $F MOVZ,
+   next LBL,
+      12 9 $F ANDI,
+      13 12 $30 ADDI,
+      12 $A CMPI,  C-LT digit BCOND,  13 13 $27 ADDI,
+      digit LBL,
+      15 14 11 ADD,  13 15 0 STRB,
+      9 9 4 LSRI,
+      11 done CBZ,
+      11 11 1 SUBI,  next B,
+   done LBL, ;
+
+public
+\ rd = the text content size of the image whose code offset 0 is at rd: its
+\ header's text-size field less IMAGE-TEXT-CONTENT-ADJ. Clobbers tmp.
+: TEXT-SIZE, ( n n -- )
+   {: rd:n tmp:n :}
+   tmp CODE-OFF LIT64,  rd rd tmp SUB,
+   rd rd IMAGE-TEXT-SIZE-OFF LDR,  tmp IMAGE-TEXT-CONTENT-ADJ LIT64,  rd rd tmp SUB, ;
+
 \ LHEX ( x9=val ): write 16 hex digits + newline to fd 2. Leaf; clobbers
 \ x9..x15 and x0-x2/x16 (write syscall).
 : EMIT-HEX ( -- )
    LHEX LABEL@ LBL,
-   LBL CR-L1 !  LBL CR-L2 !  LBL CR-L3 !
    SP SP $20 SUBI,
    14 SP 0 ADDI,
-   11 $F MOVZ,
-   CR-L1 LABEL@ LBL,
-      12 9 $F ANDI,
-      13 12 $30 ADDI,
-      12 $A CMPI,  C-LT CR-L3 LABEL@ BCOND,  13 13 $27 ADDI,
-      CR-L3 LABEL@ LBL,
-      15 14 11 ADD,  13 15 0 STRB,
-      9 9 4 LSRI,
-      11 CR-L2 LABEL@ CBZ,
-      11 11 1 SUBI,  CR-L1 LABEL@ B,
-   CR-L2 LABEL@ LBL,
+   C-HEX-DIGITS
    12 $A MOVZ,  12 14 $10 STRB,
    0 2 MOVZ,  1 14 0 ADDI,  2 $11 MOVZ,  NR-WRITE SYS,
    SP SP $20 ADDI,  RET, ;
@@ -119,9 +155,10 @@ private
    HB-TARGET-LINUX? IF 25 23 LINUX-SI-ADDR-OFF LDR, exit THEN
    25 23 MACOS-SI-ADDR-OFF LDR, ;
 
-\ The interrupted x20 from the mcontext: this thread's DATA wherever kernel code
-\ can fault, 0 from a task's or a callback's entry until DATA loads, the frame
-\ sp across an FFI call's BLR.
+\ The interrupted x20 from the mcontext, as the handler's own x20 is the signal
+\ number by now: this thread's DATA wherever kernel code can fault, 0 from a
+\ task's or a callback's entry until DATA loads, the frame sp across an FFI
+\ call's BLR.
 : C-CRASH-DATA>R24 ( -- )
    HB-TARGET-LINUX? IF 24 21 LINUX-MCTX-X0-OFF DATA 8 * + LDR, exit THEN
    24 21 SS-OFF DATA 8 * + LDR, ;
@@ -158,13 +195,11 @@ private
    C-CRASH-SP>R9  LHEX LABEL@ BL,
    C-CRASH-PC>R9  LHEX LABEL@ BL, ;
 
-\ x10 = the live region base = the interrupted engine's DBASE (x26, the pinned
-\ region register). The trampoline clobbers the handler's own x26, so this reads
-\ the SAVED x26 out of the signal mcontext (x21): it tracks the live region
-\ wherever it mapped, with no fixed-VA assumption.
+\ x10 = the live region's base, 0 when there is none, read at the absolute
+\ address DATA-VA + DBASE-CELL and never from the saved x26: in foreign code
+\ x26 is anything, and a forged base would pass a pc in C as Habu code.
 : C-CRASH-REGION>R10 ( -- )
-   HB-TARGET-LINUX? IF 10 21 LINUX-MCTX-X0-OFF 26 8 * + LDR, exit THEN
-   10 21 SS-OFF 26 8 * + LDR, ;
+   10 DATA-VA VA>N DBASE-CELL + LIT64,  10 10 0 LDR, ;
 
 : C-CRASH-PC-WORD ( n -- )
    CR-OFF !
@@ -172,7 +207,7 @@ private
    C-CRASH-PC>R9
    CR-OFF @ 0< IF 9 9 CR-OFF @ negate SUBI, ELSE 9 9 CR-OFF @ ADDI, THEN
    \ x9 holds the PC being classified; x10 = region base then end-4.
-   C-CRASH-REGION>R10
+   C-CRASH-REGION>R10  10 CR-L1 LABEL@ CBZ,
    9 10 CMP,  C-LT CR-L1 LABEL@ BCOND,
    11 REGION $4 - LIT64,  10 10 11 ADD,  9 10 CMP,  C-GT CR-L1 LABEL@ BCOND,
    9 9 0 LDRW,  LHEX LABEL@ BL,  CR-L2 LABEL@ B,
@@ -196,27 +231,11 @@ private
 \ whose address lands in one of those pages. Compiled code carries no bounds
 \ check; this is where the fault becomes the diagnostic.
 \
-\ ONE FAULT IS NOT AN EXIT: a load or store in the data stack's low guard page,
-\ by an instruction of the engine's own code or of the JIT region, is a word
-\ reaching below the base -- `dup` on an empty stack, `1 ' W execute` handing a
-\ two-cell word one cell, a closed text's xt reaching under its floor.
-\ C-CRASH-DATA-RECOVER resumes that thread at the underdepth throw (habu2.f
-\ LFLOORREC, published in FLOORREC-CELL): `hb: interpret stack underdepth:
-\ <token>` and throw 70, which a catch receives with the state its frame saved.
-\ Everything else keeps the named exit: an instruction fetch in a guard page (a
-\ wild jump, no load or store), a pc in foreign code (no libc frame is
-\ unwound), a region whose FLOORREC-CELL is zero (a task's own region, a
-\ stripped image), the high guard (overflow) and the return and loop stacks.
-\
-\ A case is skipped rather than trusted when its descriptor is not a plausible
-\ one -- a zero base, a base off a cell boundary, or a top (base + capacity) off
-\ a PAGE-BYTES boundary. Every extent the engine installs starts on a page
-\ boundary and ends where its high guard page begins (rt.f
-\ STACK-GUARD:EMIT-MAP, habu1.f GUARDED-EXTENT?). The DATA base
-\ comes out of the signal mcontext, so a fault in foreign code that had already
-\ overwritten x20 reads cells that are not descriptors at all; an implausible
-\ one falls through to the ordinary register dump instead of naming a stack
-\ that did not fault.
+\ A guard case is skipped rather than trusted when its descriptor is not a
+\ plausible one -- a zero base, a base off a cell boundary, or a top (base +
+\ capacity) off a PAGE-BYTES boundary. Every extent the engine installs starts
+\ on a page boundary and ends where its high guard page begins (rt.f
+\ STACK-GUARD:EMIT-MAP, habu1.f GUARDED-EXTENT?).
 variable CRS-BASE   variable CRS-CAP   variable CRS-CAPCELL
 variable CRS-HIT    variable CRS-HIT-LOW
 variable CRS-NEXT   variable CRS-SKIP  variable CRS-FAULT
@@ -224,12 +243,24 @@ variable CRS-DATA-M variable CRS-RET-M variable CRS-LOOP-M
 variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 variable CRS-DATA-LOW-H
 variable CRS-MACHINE-M variable CRS-MACHINE-H
+variable CRS-THROW  variable CRS-MEMORY-M
 
 \ The four diagnostics, each a single line written in one system call.
 : CRS-DATA$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (data)\n" ;
 : CRS-RET$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (return)\n" ;
 : CRS-LOOP$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (loop)\n" ;
 : CRS-MACHINE$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (machine)\n" ;
+
+\ The memory fault's line, in two runs: the first is whole words, so BYTES,
+\ lays the second right after it. The handler writes the fault address and the
+\ pc over the zeros at byte offsets CRS-MEMORY-AT and CRS-MEMORY-PC.
+: CRS-MEMORY$ ( -- ptr u8 n )
+   S\" E-MEMORY-FAULT habu: memory fault at 0000000000000000 pc" ;
+: CRS-MEMORY-TAIL$ ( -- ptr u8 n )  S\"  0000000000000000\n" ;
+CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
+37 constant CRS-MEMORY-AT
+57 constant CRS-MEMORY-PC
+80 constant CRS-MEMORY-FRAME            \ the line's copy, rounded to sp's alignment
 
 11 constant CRASH-SIGSEGV
 : CRASH-SIGBUS ( -- n )  HB-TARGET-LINUX? IF 7 ELSE 10 THEN ;
@@ -256,29 +287,11 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    0 2 MOVZ,  1 msg ADR,  2 len MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:STACK-BOUNDS MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ The data stack's low-guard hit: x19 = ucontext, x21 = mcontext, x24 = DATA,
-\ x25 = fault address, and on macOS x1/x5 still hold the trampoline's infostyle
-\ and token. A recoverable fault gets its saved pc replaced by FLOORREC-CELL's
-\ entry and returns through sigreturn, as habu2.f EMIT-TRAPH does: the thread
-\ resumes there with every other register as it faulted. Recoverable means an
-\ entry exists, the fault is not the fetch (pc = fault address), and the pc lies
-\ in the image's text [RBASE-CELL, RBASE-CELL + TEXT-SIZE-CELL), whose code is
-\ the kernel and a linked program's words, or in the live region
-\ [x26, x26 + REGION). Anything else is the named data exit, and so is a
-\ sigreturn that comes back: its report is emitted right after this.
-: C-CRASH-DATA-RECOVER ( -- )
-   LBL LBL {: region:label resume:label :}
-   CRS-DATA-LOW-H LABEL@ LBL,
-   14 24 FLOORREC-CELL LDR,  14 CRS-DATA-H LABEL@ CBZ,
-   C-CRASH-PC>R9
-   9 25 CMP,  C-EQ CRS-DATA-H LABEL@ BCOND,
-   10 24 RBASE-CELL LDR,  9 10 CMP,  C-CC region BCOND,
-   11 24 TEXT-SIZE-CELL LDR,  10 10 11 ADD,  9 10 CMP,  C-CC resume BCOND,
-   region LBL,
-   C-CRASH-REGION>R10
-   9 10 CMP,  C-CC CRS-DATA-H LABEL@ BCOND,
-   11 REGION LIT64,  10 10 11 ADD,  9 10 CMP,  C-CS CRS-DATA-H LABEL@ BCOND,
-   resume LBL,
+\ x14 = the pc the interrupted thread resumes at; sigreturn resumes it there
+\ with every other register as the saved context holds it. On macOS x1 and x5
+\ still hold the trampoline's infostyle and token. Returns only if sigreturn
+\ fails.
+: C-CRASH-RESUME ( -- )
    HB-TARGET-LINUX? IF
       14 21 LINUX-MCTX-PC-OFF STR,
       NR-SIGRETURN SYS,                          \ rt_sigreturn reads the frame at the entry sp
@@ -288,8 +301,89 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    0 19 0 ADDI,  2 5 0 ADDI,
    NR-SIGRETURN SYS, ;                           \ sigreturn(uctx, infostyle, token)
 
+\ x9 = nonzero if the interrupted sp lies in the signal stack this thread
+\ registered, as sigaltstack(NULL, old) answers it; zero when none is. Not the
+\ ucontext's flags: Linux records there the flags the thread registered, never
+\ SS_ONSTACK. Writes x0, x9, x10 and the system call's registers; x1, the
+\ trampoline's infostyle on macOS, is kept in the frame across the call.
+: C-CRASH-ONSTACK>R9 ( -- )
+   LBL {: off:label :}
+   SP SP SIGSTK-FRAME SUBI,
+   1 SP 24 STR,
+   0 0 MOVZ,  1 SP 0 ADDI,  NR-SIGALTSTACK SYS,
+   1 SP 24 LDR,
+   9 0 MOVZ,
+   10 SP SIGSTK-FLAGS LDRW,  10 10 SIGSTK-DISABLE ANDI,  10 off CBNZ,
+   C-CRASH-SP>R9
+   10 SP 0 LDR,  9 9 10 SUB,                     \ sp - ss_sp, unsigned
+   10 SP SIGSTK-SIZE LDR,  9 10 CMP,  9 C-CC CSET,
+   off LBL,
+   SP SP SIGSTK-FRAME ADDI, ;
+
+\ Row 2, from the ucontext, the saved registers and DBASE-CELL, reading through
+\ none of the registers; falls through when Habu code faulted. A fetch's pc is
+\ the jump's target and says nothing of the code that ran. The signal handlers
+\ are the band [LCRASHH, LHANDLERS-END): the trap handler runs off the signal
+\ stack with x20 = DATA. Leaves x24 = the saved x20, DATA, and x9 = the saved
+\ pc.
+: C-CRASH-HABU-PC ( -- )
+   LBL LBL LBL {: text:label region:label habu:label :}
+   C-CRASH-ONSTACK>R9  9 CRS-SKIP LABEL@ CBNZ,
+   C-CRASH-DATA>R24  24 CRS-SKIP LABEL@ CBZ,
+   C-CRASH-PC>R9  9 25 CMP,  C-EQ CRS-SKIP LABEL@ BCOND,
+   10 LCRASHH LABEL@ ADR,  9 10 CMP,  C-CC text BCOND,
+   11 LHANDLERS-END LABEL@ ADR,  9 11 CMP,  C-CC CRS-SKIP LABEL@ BCOND,
+   text LBL,
+   11 LCRASHH LABEL@ LOFF,  10 10 11 SUB,       \ code offset 0
+   9 10 CMP,  C-CC region BCOND,
+   11 10 0 ADDI,  11 12 TEXT-SIZE,  10 10 11 ADD,
+   9 10 CMP,  C-CC habu BCOND,
+   region LBL,
+   C-CRASH-REGION>R10  10 CRS-SKIP LABEL@ CBZ,
+   9 10 CMP,  C-CC CRS-SKIP LABEL@ BCOND,
+   11 REGION LIT64,  10 10 11 ADD,  9 10 CMP,  C-CS CRS-SKIP LABEL@ BCOND,
+   habu LBL, ;
+
+\ Row 4: a word reached below the data stack's base -- `dup` on an empty
+\ stack, `1 ' W execute` handing a two-cell word one cell, a closed text's xt
+\ reaching under its floor. The thread resumes at FLOORREC-CELL's entry, the
+\ underdepth throw. A zero entry and a sigreturn that comes back take the named
+\ data exit emitted right after this.
+: C-CRASH-DATA-RECOVER ( -- )
+   CRS-DATA-LOW-H LABEL@ LBL,
+   14 24 FLOORREC-CELL LDR,  14 CRS-DATA-H LABEL@ CBZ,
+   C-CRASH-RESUME ;
+
+\ Row 6, x24 = DATA and x25 = the fault address: set the mark, write the line
+\ from a copy on the stack, store the code in the saved x9 and resume at the
+\ fault entry. x26 keeps macOS's infostyle across the write.
+: C-CRASH-THROW ( -- )
+   LBL {: copy:label :}
+   CRS-THROW LABEL@ LBL,
+   HB-TARGET-LINUX? 0= IF 26 1 0 ADDI, THEN
+   14 1 MOVZ,  14 24 FAULT-MARK-CELL STR,
+   SP SP CRS-MEMORY-FRAME SUBI,
+   10 CRS-MEMORY-M LABEL@ ADR,  11 SP 0 ADDI,  12 CRS-MEMORY-LEN MOVZ,
+   copy LBL,
+      13 10 0 LDRB,  13 11 0 STRB,
+      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  12 copy CBNZ,
+   9 25 0 ADDI,  14 SP CRS-MEMORY-AT ADDI,  C-HEX-DIGITS
+   C-CRASH-PC>R9  14 SP CRS-MEMORY-PC ADDI,  C-HEX-DIGITS
+   0 2 MOVZ,  1 SP 0 ADDI,  2 CRS-MEMORY-LEN MOVZ,  NR-WRITE SYS,
+   SP SP CRS-MEMORY-FRAME ADDI,
+   10 ENGINE-ERROR:MEMORY-FAULT MOVZ,
+   HB-TARGET-LINUX? IF
+      10 21 LINUX-MCTX-X0-OFF 9 8 * + STR,
+   ELSE
+      10 21 SS-OFF 9 8 * + STR,
+   THEN
+   14 LFAULTREC LABEL@ ADR,
+   HB-TARGET-LINUX? 0= IF 1 26 0 ADDI, THEN
+   C-CRASH-RESUME ;
+
+\ Rows 1 to 6 of the file header's list.
 : C-CRASH-STACK-GUARDS ( -- )
-   LBL CRS-SKIP !  LBL CRS-FAULT !
+   LBL CRS-SKIP !  LBL CRS-FAULT !  LBL CRS-THROW !  LBL CRS-MEMORY-M !
    LBL CRS-DATA-M !  LBL CRS-RET-M !  LBL CRS-LOOP-M !  LBL CRS-MACHINE-M !
    LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !  LBL CRS-DATA-LOW-H !
    LBL CRS-MACHINE-H !
@@ -306,7 +400,8 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    10 25 9 SUB,  10 10 11 ADD,                   \ fault - sp + reach
    11 11 1 LSLI,
    10 11 CMP,  C-CC CRS-MACHINE-H LABEL@ BCOND,
-   C-CRASH-DATA>R24
+   C-CRASH-HABU-PC
+   14 24 FAULT-MARK-CELL LDR,  14 CRS-SKIP LABEL@ CBNZ,
    11 STACK-ABI:PAGE-BYTES LIT64,
    12 STACK-ABI:PAGE-BYTES 1 - LIT64,
    STACK-ABI:BASE-CELL CRS-BASE !  STACK-ABI:CAP-CELL CRS-CAPCELL !
@@ -320,7 +415,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    STACK-ABI:LOOP-BYTES CRS-CAP !
    CRS-LOOP-H @ CRS-HIT !  CRS-LOOP-H @ CRS-HIT-LOW !
    LBL CRS-NEXT !  C-CRASH-GUARD-CASE
-   CRS-SKIP LABEL@ B,
+   CRS-THROW LABEL@ B,
    C-CRASH-DATA-RECOVER
    CRS-DATA-H LABEL@ LBL,  CRS-DATA-M LABEL@ CRS-DATA$ nip C-CRASH-GUARD-REPORT
    CRS-RET-H  LABEL@ LBL,  CRS-RET-M  LABEL@ CRS-RET$  nip C-CRASH-GUARD-REPORT
@@ -330,6 +425,8 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    CRS-RET-M  LABEL@ LBL,  CRS-RET$  BYTES,
    CRS-LOOP-M LABEL@ LBL,  CRS-LOOP$ BYTES,
    CRS-MACHINE-M LABEL@ LBL,  CRS-MACHINE$ BYTES,
+   CRS-MEMORY-M LABEL@ LBL,  CRS-MEMORY$ BYTES,  CRS-MEMORY-TAIL$ BYTES,
+   C-CRASH-THROW                                 \ a sigreturn that comes back dumps
    CRS-SKIP LABEL@ LBL, ;
 
 \ sigaction(x0, the frame at sp, NULL).
@@ -364,29 +461,43 @@ private
 \ The end of a reported crash: the process dies by the signal itself, so the
 \ parent sees it and a core (when RLIMIT_CORE allows) shows the faulting
 \ context. x27 = the signal; on macOS x24 = the trampoline's infostyle and x5
-\ its token. SIG_DFL goes in, the signal is sent to this thread, where it stays
-\ pending because it is blocked while its handler runs, and sigreturn restores
-\ the interrupted context and its mask: the signal is delivered at the faulting
-\ pc and takes its default action there. Linux rt_sigreturn reads the frame at
-\ the entry sp, which every call in the dump gives back.
+\ its token. SIG_DFL goes in, the signal, which SA_NODEFER left unblocked, is
+\ blocked and sent to this thread, where it stays pending, and sigreturn
+\ restores the interrupted context and its mask: the signal is delivered at the
+\ faulting pc and takes its default action there. Linux rt_sigreturn reads the
+\ frame at the entry sp, which every call in the dump and here gives back.
 : C-CRASH-RERAISE ( -- )
+   CR-RERAISE LABEL@ LBL,
    11 0 MOVZ,  11 0 C-SIGACTION-FRAME            \ handler SIG_DFL, no flags
    0 27 0 ADDI,  C-SIGACTION-CALL
    C-SIGACTION-FRAME-DONE
+   27 OS-BLOCK-SELF
    27 OS-RAISE-SELF
    HB-TARGET-LINUX? 0= IF 0 19 0 ADDI,  1 24 0 ADDI,  2 5 0 ADDI, THEN
    NR-SIGRETURN SYS,                             \ macOS: sigreturn(uctx, infostyle, token)
    \ Reached only if sigreturn fails.
    0 $86 MOVZ,  NR-EXIT-GROUP SYS, ;
 
+\ Row 0: a saved pc in [LCRASHH, LSIGH), the crash handler's own code, goes
+\ straight to the re-raise. On macOS x1 is still the trampoline's infostyle.
+: C-CRASH-NESTED ( -- )
+   LBL {: outside:label :}
+   C-CRASH-PC>R9
+   10 LCRASHH LABEL@ ADR,  9 10 CMP,  C-CC outside BCOND,
+   10 LSIGH LABEL@ ADR,  9 10 CMP,  C-CS outside BCOND,
+   HB-TARGET-LINUX? 0= IF 24 1 0 ADDI, THEN
+   CR-RERAISE LABEL@ B,
+   outside LBL, ;
+
 public
 : EMIT-CRASH-HANDLER ( -- )
    LCRASHH LABEL@ LBL,
-   LBL CR-L1 !  LBL CR-L2 !
+   LBL CR-L1 !  LBL CR-L2 !  LBL CR-RERAISE !
       C-CRASH-ENTRY
       27 20 0 ADDI,                                 \ x27 = the signal; the dump reuses x20
       C-CRASH-MCTX>R21
-      C-CRASH-STACK-GUARDS                          \ a guard-page fault exits here, named
+      C-CRASH-NESTED
+      C-CRASH-STACK-GUARDS                          \ rows 2 and 3 fall through
       HB-TARGET-LINUX? 0= IF                        \ x24 = the trampoline's infostyle:
          24 1 0 ADDI,                               \ the dump's writes clobber x1
       THEN
@@ -408,7 +519,7 @@ public
 \ The caller loads x11 with the handler's address: src/arch/arm64/boot.f
 \ STACKS, reaches it from the text base through TEXT-AT,.
 : G-INSTALL-CRASH-X11 ( -- )                     \ x11 = the crash handler's address
-   11 SIGACT-SIGINFO SIGACT-ONSTACK or C-SIGACTION-FRAME
+   11 SIGACT-SIGINFO SIGACT-ONSTACK or SIGACT-NODEFER or C-SIGACTION-FRAME
    HB-TARGET-LINUX? IF
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  7 INSTALL-SIGACT  8 INSTALL-SIGACT  11 INSTALL-SIGACT
    ELSE

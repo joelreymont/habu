@@ -1526,8 +1526,10 @@ public
    s" run-rc" [: RUN-RC-ROW ;] PRIM ;
 
 \ The catch frame, STACK-ABI:CATCH-BYTES on the machine stack and chained
-\ through HND-CELL, laid out as habu1.f BCATCH lays it: the byte offsets of its
-\ cells below STACK-ABI:CATCH-BASE and CATCH-CAP.
+\ through HND-CELL, laid out as habu1.f BCATCH lays it but for the output
+\ device cells at STACK-ABI:CATCH-BUSY and CATCH-ACTIVE, which only the
+\ memory-fault throw needs: the byte offsets of its cells below
+\ STACK-ABI:CATCH-BASE and CATCH-CAP.
 0 constant CATCH-PREV       \ the handler this one hides
 8 constant CATCH-DSP        \ the data stack pointer once the xt is popped
 16 constant CATCH-MSP       \ rsp at CAUGHT,'s entry, above the frame
