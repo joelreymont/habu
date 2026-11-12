@@ -14,6 +14,7 @@ require src/lib/engine-candidate.f                  \ the TMPDIR child's engine
 require src/lib/test/ending.f                      \ the TMPDIR child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
 require src/lib/test/wait.f                         \ a worker's deadline at the join
+require src/lib/test/stderr.f                       \ the staged cleanup line
 
 variable FMT-ROOT-U
 variable FMT-REMOVE-U
@@ -100,6 +101,9 @@ create FMT-PARENT-BOUND-BUF PATH-CAP allot
 create FMT-STAGED-TMP-BUF PATH-CAP allot
 create FMT-STAGED-FORGOT-BUF PATH-CAP allot
 create FMT-REAL-BUF FS:PATHZ-CAP allot
+create FMT-ERR-PATH-BUF PATH-CAP allot
+PATH-CAP 128 + constant FMT-ERR-CAP      \ a staged cleanup line: path and text
+create FMT-ERR-BUF FMT-ERR-CAP allot
 
 9217 constant FMT-STREAM-LEN
 384 constant FMT-MODE-0600
@@ -559,13 +563,50 @@ public
    FS:MAKE-DIR
    E-FS-CAPACITY throw ;
 
+\ A diagnostic line's class: the code's declared name, else its number.
+: FMT-CLASS$ ( n -- ptr u8 n ) {: code :}
+   code ERROR:NAME$ {: name:ptr nameu :}
+   nameu 0= if code FMT:INT$ exit then
+   name nameu ;
+
+: FMT-ERR-PATH ( -- ptr u8 n )
+   FMT-ROOT$ s" stderr.txt" FMT-ERR-PATH-BUF FS:JOIN-PATH {: u:n :}
+   FMT-ERR-PATH-BUF u ;
+
+: FMT-STAGED-CAPTURED ( -- )
+   FMT-ERR-PATH STDERR:CAPTURE
+   [: FMT-ATOMIC-PATH [: FMT-STAGED-CLEAN-FAIL ;] FS:REPLACE-STAGED ;]
+   [: STDERR:;CAPTURE ;] finally ;
+
+: FMT-STAGED-WANT ( -- ptr u8 n )
+   SB-RESET
+   E-FS-IO FMT-CLASS$ SB-APPEND
+   s"  habu: " SB-APPEND
+   FMT-STAGED-TMP SB-APPEND
+   s" : staged replacement cleanup failed, errno " SB-APPEND
+   SB$ ;
+
+\ The errno's digits sit between the fixed text and the line's end.
+: FMT-STAGED-LINE ( -- )
+   FMT-ERR-PATH FMT-ERR-BUF FMT-ERR-CAP FS:READ-ALL {: u:n :}
+   FMT-STAGED-WANT {: want:ptr wantu:n :}
+   u wantu 1+ > TTRUE
+   FMT-ERR-BUF wantu want wantu T$=
+   FMT-ERR-BUF u + 1- c@ 10 T=
+   FMT-ERR-BUF wantu + u wantu - 1- STR>NUMBER? MATCH option
+      none OF false TTRUE ENDOF
+      some OF 0 > TTRUE ENDOF
+   ;MATCH
+   FMT-ERR-PATH FS:REMOVE-FILE ;
+
 : FMT-TEST-STAGED-PRIMARY ( -- )
    FMT-ATOMIC-PATH s" previous" FS:WRITE-ALL
    s" staged fill error survives cleanup refusal" T-LABEL
-   [: FMT-ATOMIC-PATH [: FMT-STAGED-CLEAN-FAIL ;] FS:REPLACE-STAGED ;]
-      E-FS-CAPACITY TTHROWSQ
+   [: FMT-STAGED-CAPTURED ;] E-FS-CAPACITY TTHROWSQ
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL {: u:n :}
    FMT-READ-BUF u s" previous" T$=
+   s" the cleanup refusal's line names its operation and errno" T-LABEL
+   FMT-STAGED-LINE
    FMT-STAGED-TMP FS:DIR? TTRUE
    FMT-STAGED-TMP FS:REMOVE-DIR
    FMT-STAGED-TMP s" removable" FS:WRITE-ALL
@@ -887,7 +928,7 @@ create MISSING-BUF PATH-CAP allot
 create PROG-BUF PATH-CAP allot
 create FILE-PROG-BUF PATH-CAP allot
 create CANON-PROG-BUF PATH-CAP allot
-create WANT-BUF PATH-CAP 64 + allot   \ a reason, a value, the newline
+create WANT-BUF PATH-CAP 128 + allot  \ a class, a value, a reason, the newline
 variable MISSING-U
 variable PROG-U
 variable FILE-PROG-U
@@ -941,10 +982,14 @@ variable WANT-U
    WANT-U @ u + WANT-U ! ;
 
 \ Not built in SB: a value near PATH-CAP bytes with the reason overflows SB-CAP.
-: WANT$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: why:ptr whyu a:ptr u :}
+: WANT$ ( n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: code a:ptr u why:ptr whyu :}
    0 WANT-U !
-   why whyu WANT+
+   code FMT-CLASS$ WANT+
+   s"  habu: " WANT+
    a u WANT+
+   s" : " WANT+
+   why whyu WANT+
    S\" \n" WANT+
    WANT-BUF WANT-U @ ;
 
@@ -962,7 +1007,7 @@ variable WANT-U
      signaled OF s" exit" s" signal" T-ENDING-MISS ENDOF
      timeout OF prog progu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH
-   ERR erru LEN>N why whyu a u WANT$ CONTAINS? TTRUE
+   ERR erru LEN>N code a u why whyu WANT$ CONTAINS? TTRUE
    ERR erru LEN>N code CODE$ CONTAINS? TTRUE ;
 
 \ With TMPDIR a link to a directory, the line the child prints is its own
@@ -991,11 +1036,11 @@ public
    FILE-PROG$ FILE-PROG-SRC$ FS:WRITE-ALL
    FILE-PROG$ FS:CLEANUP+
    s" a missing TMPDIR is refused by name" T-LABEL
-   PROG$ MISSING$ s" hb: TMPDIR is not a directory: " E-FS-DIR REFUSED
+   PROG$ MISSING$ s" TMPDIR is not a directory" E-FS-DIR REFUSED
    s" FS:MKTEMP refuses a missing TMPDIR by name" T-LABEL
-   FILE-PROG$ MISSING$ s" hb: TMPDIR is not a directory: " E-FS-DIR REFUSED
+   FILE-PROG$ MISSING$ s" TMPDIR is not a directory" E-FS-DIR REFUSED
    s" a TMPDIR with no room for the temp name is refused by name" T-LABEL
-   PROG$ LONG$ s" hb: TMPDIR is too long for a temp path: "
+   PROG$ LONG$ s" TMPDIR is too long for a temp path"
    E-SPAN-CAPACITY REFUSED
    s" a TMPDIR through a link makes a canonical temp directory" T-LABEL
    CANONICAL ;

@@ -547,22 +547,37 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 : ENOTSUP ( -- n )
    HB-TARGET-MACOS? if 45 else 95 then ;
 
+\ A line `<CLASS> habu: <place>: <text>` on fd 2 is written in pieces: a place
+\ of PATH-CAP bytes with its text overflows the 1 KiB string builder.
+: SAY ( ptr u8 n -- ) {: a:ptr u :}
+   2 a u write drop ;
+
+\ The code's declared name, else its signed number.
+: SAY-CLASS ( n -- ) {: code :}
+   code ERROR:NAME$ {: name:ptr nameu :}
+   nameu 0= if code FMT:INT$ else name nameu then SAY
+   s"  habu: " SAY ;
+
+: SAY-TEXT ( ptr u8 n -- )
+   s" : " SAY SAY ;
+
+\ `, errno N` when e is a host errno, then the line's end.
+: SAY-END ( n -- ) {: e :}
+   e 0<> if s" , errno " SAY e FMT:INT$ SAY then
+   S\" \n" SAY ;
+
 \ Reporting is best effort after a primary failure: a closed stderr must not
 \ replace the fill or rename error. The sibling is named as a directory prefix
-\ and a name, written apart from the 1 KiB string builder so even the longest
-\ legal sibling can be named.
-: STAGED-REPORT ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: label:ptr labelu:n code:n path:ptr pathu:n name:ptr nameu:n :}
-   SB-RESET
-   s" hb: staged replacement " SB-APPEND
-   label labelu SB-APPEND
-   s"  threw " SB-APPEND
-   code FMT:SB-INT
-   s"  at " SB-APPEND
-   2 SB$ write drop
-   2 path pathu write drop
-   2 name nameu write drop
-   2 S\" \n" write drop ;
+\ and a name. The errno is the failed step's FS:ERRNO, which the caller clears
+\ before the step; it is read before the first write, which replaces it.
+: STAGED-REPORT ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: op:ptr opu step:ptr stepu code path:ptr pathu name:ptr nameu :}
+   ERRNO {: e:n :}
+   code SAY-CLASS
+   path pathu SAY  name nameu SAY
+   s" : " SAY  op opu SAY  s"  " SAY  step stepu SAY
+   s"  failed" SAY
+   e SAY-END ;
 
 \ The destination's directory, opened for search only for every call that names
 \ the sibling or the destination, so a directory the caller may write and
@@ -641,10 +656,12 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 
 : ATOMIC-ABANDON ( n ptr u8 n n n -- ) {: dir dst:ptr off nameu code :}
    ERRNO {: cause :}
+   CAUSE-CLEAR
    dir [: ATOMIC-UNLINK ;] catch {: clean-code:n :}
    drop
    clean-code 0<> if
-      s" cleanup" clean-code dst off SIBLING-Z nameu STAGED-REPORT
+      s" atomic replacement" s" cleanup" clean-code
+      dst off SIBLING-Z nameu STAGED-REPORT
    then
    code cause CAUSE-FAIL ;
 
@@ -803,26 +820,27 @@ private
 \ E-SPAN-CAPACITY, one that is not a directory E-FS-DIR, and one realpath
 \ refuses (a canonical spelling past PATH-CAP) E-FS-IO. Without the check each
 \ dies later on an error that does not name TMPDIR. The answer is the canonical
-\ spelling, borrowed from this task's PATHZ2 buffer. The line is three writes,
-\ not one SB$ write: a root of PATH-CAP bytes with the reason overflows SB-CAP.
-: TMPDIR-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u why:ptr whyu :}
-   2 why whyu write drop
-   2 a u write drop
-   2 S\" \n" write drop ;
+\ spelling, borrowed from this task's PATHZ2 buffer.
+: TMPDIR-REFUSE ( ptr u8 n ptr u8 n n n -- )
+   {: a:ptr u why:ptr whyu code e :}
+   code SAY-CLASS  a u SAY  why whyu SAY-TEXT  e SAY-END ;
 
 : TMPDIR-LONG ( ptr u8 n -- ) {: a:ptr u :}
-   a u s" hb: TMPDIR is too long for a temp path: " TMPDIR-REFUSE
+   a u s" TMPDIR is too long for a temp path" E-SPAN-CAPACITY 0
+   TMPDIR-REFUSE
    E-SPAN-CAPACITY throw ;
 
 : TMPDIR-CHECK ( ptr u8 n n -- ptr u8 n ) {: a:ptr u prefixu :}
    u PATH-CAP > if a u TMPDIR-LONG then
    a u DIR? 0= if
-      a u s" hb: TMPDIR is not a directory: " TMPDIR-REFUSE
+      a u s" TMPDIR is not a directory" E-FS-DIR 0 TMPDIR-REFUSE
       E-FS-DIR throw
    then
    a u TEMP-REAL {: real:n :}
+   \ -2 is a spelling past PATHZ-CAP, which realpath gave with no errno.
+   real -1 = if FFI:ERRNO else 0 then {: e:n :}
    real 0 < if
-      a u s" hb: TMPDIR has no canonical path: " TMPDIR-REFUSE
+      a u s" TMPDIR has no canonical path" E-FS-IO e TMPDIR-REFUSE
       E-FS-IO throw
    then
    real prefixu TEMP-DIR-BASE-MAX > if a u TMPDIR-LONG then
@@ -1015,10 +1033,12 @@ public
    path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}
    fd CLOSE-FD 0<> if
       FFI:ERRNO {: close-cause:n :}
+      CAUSE-CLEAR
       tmp tmpu [: STAGED-CLEAN ;] catch {: clean-code:n :}
       2drop
       clean-code 0<> if
-         s" close cleanup" clean-code tmp tmpu s" " STAGED-REPORT
+         s" staged replacement" s" close cleanup" clean-code
+         tmp tmpu s" " STAGED-REPORT
       then
       E-FS-IO close-cause CAUSE-FAIL
    then
@@ -1026,16 +1046,20 @@ public
    drop 2drop 2drop
    code 0<> if
       ERRNO {: cause:n :}
+      CAUSE-CLEAR
       tmp tmpu [: STAGED-CLEAN ;] catch {: clean-code:n :}
       2drop
       clean-code 0= if
+         CAUSE-CLEAR
          tmp tmpu [: STAGED-FORGET ;] catch {: forget-code:n :}
          2drop
          forget-code 0<> if
-            s" cleanup registration" forget-code tmp tmpu s" " STAGED-REPORT
+            s" staged replacement" s" cleanup registration" forget-code
+            tmp tmpu s" " STAGED-REPORT
          then
       else
-         s" cleanup" clean-code tmp tmpu s" " STAGED-REPORT
+         s" staged replacement" s" cleanup" clean-code
+         tmp tmpu s" " STAGED-REPORT
       then
       code cause CAUSE-FAIL
    then
