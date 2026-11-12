@@ -645,9 +645,8 @@ $6C0 constant FIXED-COMP-CELL
 \       refuses a definition. Every `--load` and
 \       the REPL; every process starts at 0.
 \   1 = tier 1, the IR pipeline reached through XT-CELL.
-\       Selected deliberately with `1 set-tier`. An executable build compiles
-\       at its caller's tier; the engine build selects tier 1 for its target,
-\       whose capture requires native code.
+\       Selected deliberately with `1 set-tier`. A build, the engine's
+\       included, compiles at its caller's tier.
 \
 \ On an engine whose tier 0 is the JIT, tier 1 must be selected BEFORE the
 \ first definition on a tier-1 path: NCOMP's READ-PRIOR exits on GLUE-UNKNOWN
