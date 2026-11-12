@@ -327,22 +327,10 @@ create NL NEWLINE c,
 : LINE ( -- n )
    SRCLOC:OWNED-CELL ADDR@ INP-CELL ADDR@ ERROR-TEXT:LINE ;
 
-: AT-SOURCE ( -- )
-   SRCLOC:PATHLEN-CELL CELL@ {: u:n :}
-   u 0= if exit then
-   s"  at " ERROR-TEXT:TYPE
-   SRCLOC:PATH-CELL ADDR@ u ERROR-TEXT:TYPE
-   SRCLOC:FILE-BUFFER? 0= if exit then
-   s" :" ERROR-TEXT:TYPE
-   LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
-
 : REFUSAL ( ptr u8 n -- )
    SRCLOC:PATH-CELL ADDR@ SRCLOC:PATHLEN-CELL CELL@
    SRCLOC:FILE-BUFFER? if LINE else 0 then
    ERROR-TEXT:PREFIX ;
-
-: THROW-AT ( n -- )
-   AT-SOURCE NL 1 ERROR-TEXT:TYPE throw ;
 
 : UNDEFINED-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-UNDEFINED" REFUSAL
@@ -454,8 +442,9 @@ TYPED-VARIABLE REC ptr n
 \ A sealed source may name a record it defined after the seal or a callable
 \ public record in an admitted wordlist.
 : POLICY-REFUSE ( -- )
-   s" hb: not in vocabulary: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:POLICY THROW-AT ;
+   s" E-POLICY" REFUSAL
+   s" not in vocabulary: " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:POLICY throw ;
 
 : POLICY-CHECK-REC ( ptr n -- ) {: rec:ptr :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
@@ -1035,8 +1024,10 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? 0= if exit then
    row PKG-INDEX seal >= if exit then
-   s" hb: policy: package " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
-   s"  predates the seal" ERROR-TEXT:TYPE ENGINE-ERROR:POLICY THROW-AT ;
+   s" E-POLICY" REFUSAL
+   s" policy: package " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
+   s"  predates the seal" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   ENGINE-ERROR:POLICY throw ;
 
 : PKG-REOPEN ( ptr n -- n ) {: row:ptr :}
    row PKG-INDEX {: ix:n :}
@@ -1503,8 +1494,8 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-KEYWORDS ( -- ptr u8 n )
    S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {:" ;
 
-\ A design may define none of the engine's dispatch-row names. The thirteen
-\ admitted syntax rows keep the ordinary reserved-name error; every other
+\ A design may define none of the engine's dispatch-row names. The admitted
+\ syntax rows other than S\" keep the ordinary reserved-name error; every other
 \ row is outside the vocabulary before dictionary duplicate checks run.
 : DEF-DESIGN-KEYWORDS ( -- ptr u8 n )
    S\" if else then {: :} s\q [package] package public private ;package using ;using" ;
@@ -1577,8 +1568,9 @@ private
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
 : DEF-POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" hb: not in vocabulary: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE ENGINE-ERROR:POLICY THROW-AT ;
+   s" E-POLICY" REFUSAL
+   s" not in vocabulary: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:POLICY throw ;
 
 : DEF-RESERVED-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-RESERVED-DEFINITION" REFUSAL

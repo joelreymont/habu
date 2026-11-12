@@ -529,7 +529,7 @@ public
    data-base POLICY-REQUIRE-CELL + @ 0= if a u exit then
    a u CANONICAL drop {: path:ptr pathu:n :}
    path pathu POLICY-ROOT-BUF POLICY-ROOT-U @ BELOW? if path pathu exit then
-   2 s" hb: policy: source outside root: " write drop
+   2 s" E-POLICY habu: policy: source outside root: " write drop
    2 path pathu write drop
    2 POLICY-LF 1 write drop
    107 throw ;
@@ -1599,7 +1599,7 @@ variable LAST-LOAD-EVAL-OK
       drop frame HEADER-BYTES +
    then ;
 
-\ The engine's refusal tail prints ` at <path>:<line>` from these two cells and
+\ The engine's refusals name their place from these four cells and
 \ nothing else decides when they are right: PUBLISH-LOCATION republishes them
 \ when the top frame, its size, execution copy or root-run count changes, so
 \ they name the file being read, or 0 for none (the REPL, a stdin session, the
@@ -2146,7 +2146,7 @@ package SOURCE-ROOT
 private
 
 : POLICY-SEALED ( -- )
-   2 s" hb: policy: sealed" write drop
+   2 s" E-POLICY habu: policy: sealed" write drop
    2 POLICY-LF 1 write drop
    107 throw ;
 

@@ -14,7 +14,7 @@ TYPED-VARIABLE REQUIRE-XT [ -- ]
 public
 
 \ Admit the public words of the package this span names. A name no package
-\ owns is `hb: policy: no package <name>`.
+\ owns is `E-POLICY habu: policy: no package <name>`.
 : ALLOW-PACKAGE ( ptr u8 n -- ) policy-admit ;
 
 \ Opt in to ordinary static require within this canonical searchable directory.
@@ -34,8 +34,9 @@ public
 \ three, both native kernels enforce it. From then on the engine refuses every
 \ token outside the vocabulary, at the token, before anything it names runs. In
 \ it: a `:` definition with `\` and `( ... )` comments; a number literal; a
-\ `{: :}` group or a name it bound; thirteen keywords (if else then {: :} s" S\"
-\ package public private ;package using ;using); a word the sealed source
+\ `{: :}` group or a name it bound; fourteen keywords (if else then {: :} s" S\"
+\ [package] package public private ;package using ;using) and, in a body,
+\ [type]; a word the sealed source
 \ defined; a public word of an admitted package that checked source may call and
 \ the engine has not marked internal; after SOURCE-ROOT!, a top-level global
 \ `require` with a literal path. `using` does not admit a package, and `package`
@@ -51,17 +52,13 @@ public
 \ parsing word reads boundedly many tokens, no word stores to an address its caller
 \ supplies, and no word widens what the design can name (set-current,
 \ prot-wid-add, evaluate or included on caller data).
-\ Refusals are one stderr line and ENGINE-ERROR:POLICY (107), a throw a `catch`
-\ around `included` can take: `hb: not in vocabulary: <token> at <path>:<line>`,
-\ at the token; `hb: policy: package <name> predates the seal
-\ at <path>:<line>`; `hb: policy: sealed` from any of the four words once sealed;
-\ `hb: policy: no package <name>`; `hb: policy: package wid above the bound` (wid
-\ >= PROT-WID-MAX has no admission bit); `hb: policy: package <name> publishes
-\ keyword <word>` (a public word spelled like a dispatched keyword row, case
-\ folded, which tier 0 would read as the row and tier 1 as the word); `hb: policy:
-\ source outside root: <path>`. A definition named like one of the thirteen
-\ keywords is the reserved-name refusal, exit 70; one named like another row is
-\ refused as above.
+\ Refusals are one stderr line of class E-POLICY and code 107. A token outside
+\ the vocabulary (at the token), a package that predates the seal, SOURCE-ROOT!
+\ or WITH-SOURCE-ROOT once sealed, and a source outside the root throw it, which
+\ a `catch` around `included` takes; ALLOW-PACKAGE or RESTRICT once sealed, an
+\ unknown package, a wid at or above PROT-WID-MAX (it has no admission bit) and
+\ a package publishing a word spelled like a dispatched keyword row, case folded
+\ (tier 0 would read it as the row, tier 1 as the word), exit with it.
 : RESTRICT ( -- ) policy-seal ;
 
 ;package

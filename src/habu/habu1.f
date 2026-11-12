@@ -4466,14 +4466,13 @@ private
 
 \ The design seal's two writers. The harness admits packages and seals before
 \ it loads the design; once POLICY-NDICT-CELL is set either prim writes
-\ `hb: policy: sealed` and exits ENGINE-ERROR:POLICY, so nothing the design
-\ can reach widens its own vocabulary. Each refusal is one line on fd 2 and
-\ that exit.
-: POLICY-SEALED$ ( -- ptr u8 n ) S\" hb: policy: sealed\n" ;
-: POLICY-NOPKG$ ( -- ptr u8 n ) s" hb: policy: no package " ;
-: POLICY-BOUND$ ( -- ptr u8 n ) S\" hb: policy: package wid above the bound\n" ;
+\ POLICY-SEALED$ and exits ENGINE-ERROR:POLICY, so nothing the design can reach
+\ widens its own vocabulary.
+: POLICY-SEALED$ ( -- ptr u8 n ) S\" E-POLICY habu: policy: sealed\n" ;
+: POLICY-NOPKG$ ( -- ptr u8 n ) s" E-POLICY habu: policy: no package " ;
+: POLICY-BOUND$ ( -- ptr u8 n ) S\" E-POLICY habu: policy: package wid above the bound\n" ;
 : POLICY-NL$ ( -- ptr u8 n ) S\" \n" ;
-: POLICY-PKG$ ( -- ptr u8 n ) s" hb: policy: package " ;
+: POLICY-PKG$ ( -- ptr u8 n ) s" E-POLICY habu: policy: package " ;
 : POLICY-KEYWORD$ ( -- ptr u8 n ) s"  publishes keyword " ;
 
 \ Unsealed it falls through, having written x9 only.

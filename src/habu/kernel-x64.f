@@ -4136,7 +4136,7 @@ private
    X64CODE:LBL {: open:label :}
    RAX POLICY-NDICT-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E open JCC,
-   S\" hb: policy: sealed\n" ENGINE-ERROR:POLICY STDERR-EXIT,
+   S\" E-POLICY habu: policy: sealed\n" ENGINE-ERROR:POLICY STDERR-EXIT,
    open X64CODE:LBL, ;
 
 : POLICY-ADMIT-BODY ( -- )
@@ -4150,29 +4150,29 @@ private
    FIND-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE found JCC,
       R9 RDI ASM-SINK ENC-MOV-RR  R10 RSI ASM-SINK ENC-MOV-RR
-      nopkg s" hb: policy: no package " nip STDERR-WRITE,
+      nopkg s" E-POLICY habu: policy: no package " nip STDERR-WRITE,
       RDI STDERR IMM32,  RSI R9 ASM-SINK ENC-MOV-RR
       RDX R10 ASM-SINK ENC-MOV-RR  NR-WRITE SYS,
       nl 1 STDERR-WRITE,
       ENGINE-ERROR:POLICY EXIT-GROUP,
-      nopkg X64CODE:LBL,  s" hb: policy: no package " TEXT,
+      nopkg X64CODE:LBL,  s" E-POLICY habu: policy: no package " TEXT,
       nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE
    found X64CODE:LBL,
    RAX RAX REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
    RAX PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-B bounded JCC,
-      S\" hb: policy: package wid above the bound\n" ENGINE-ERROR:POLICY STDERR-EXIT,
+      S\" E-POLICY habu: policy: package wid above the bound\n" ENGINE-ERROR:POLICY STDERR-EXIT,
    bounded X64CODE:LBL,
    RDI ASM-SINK ENC-PUSH  RSI ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-PUSH
    RAX PUSH,                                         \ callback (wid -- name len hit)
    RCX POLICY-ABI:KEYWORD-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-NE ready JCC,
-      S\" hb: policy: keyword check unavailable\n" REFUSE-RC STDERR-EXIT,
+      S\" E-POLICY habu: policy: keyword check unavailable\n" REFUSE-RC STDERR-EXIT,
    ready X64CODE:LBL,
    RCX ASM-SINK ENC-CALL-REG
    RAX POP,  RDX POP,  RSI POP,                     \ hit, length, keyword
    RAX RAX ASM-SINK ENC-TEST-RR  C-E checked JCC,
       R9 RSI ASM-SINK ENC-MOV-RR  R10 RDX ASM-SINK ENC-MOV-RR
-      pkg s" hb: policy: package " nip STDERR-WRITE,
+      pkg s" E-POLICY habu: policy: package " nip STDERR-WRITE,
       RDI STDERR IMM32,  RSI RSP 16 MEM-OFF ASM-SINK ENC-MOV-RM
       RDX RSP 8 MEM-OFF ASM-SINK ENC-MOV-RM  NR-WRITE SYS,
       keyword s"  publishes keyword " nip STDERR-WRITE,
@@ -4180,7 +4180,7 @@ private
       RDX R10 ASM-SINK ENC-MOV-RR  NR-WRITE SYS,
       nl 1 STDERR-WRITE,
       ENGINE-ERROR:POLICY EXIT-GROUP,
-      pkg X64CODE:LBL,  s" hb: policy: package " TEXT,
+      pkg X64CODE:LBL,  s" E-POLICY habu: policy: package " TEXT,
       keyword X64CODE:LBL,  s"  publishes keyword " TEXT,
    checked X64CODE:LBL,
    RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
