@@ -176,6 +176,7 @@ variable PEER-MOVED               \ when that last changed
 variable CLOSE-GOAL               \ the count of logged closes a case awaits
 variable HALT-ARMED               \ set while the next `closed` handler is to block
 variable HALT-FD                  \ the file that handler opened
+variable HALT-SOCK                \ that handler's socket, as SOCK>N gives it
 variable THROW-ARMED              \ set while the next `closed` handler is to throw
 variable ERR-U
 variable ERR-WANT-U
@@ -562,9 +563,10 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ Once HALT-CASE arms it, the next `closed` handler opens a file, on the
 \ descriptor number its socket's connection has just given back, and blocks
 \ past any stop's bound, until WS:STOP kills WS's task.
-: BLOCK-IN-CLOSED ( -- )
+: BLOCK-IN-CLOSED ( WS:socket -- ) {: sock:WS:socket :}
    HALT-ARMED @ 0= if exit then
    0 HALT-ARMED !
+   sock SOCK>N HALT-SOCK !
    HALTED$ FS:OPEN-APPEND-FD HALT-FD !
    mono-ns STOP-BOUND-MS GRACE-MS + NS-PER-MS * + {: deadline:n :}
    begin
@@ -584,7 +586,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    MATCH WS:message
       text OF sock TEXT-IN ENDOF
       binary OF sock BINARY-IN ENDOF
-      closed OF sock CLOSED-IN BLOCK-IN-CLOSED THROW-IN-CLOSED ENDOF
+      closed OF sock CLOSED-IN sock BLOCK-IN-CLOSED THROW-IN-CLOSED ENDOF
    ;MATCH ;
 
 : KEEP ( WS:accepted -- )
@@ -1327,25 +1329,32 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    mono-ns began - IDLE-STOP-MS NS-PER-MS * < TTRUE
    conn TCP4:CLOSE DROP-STATUS ;
 
-\ A `closed` handler that blocks until WS:STOP kills WS's task leaves its slot
-\ retired, so the task's cleanup does not close the connection again: the
-\ file the handler opened on that descriptor number stays open. The kill
-\ closes the other socket, whose 1001 the blocked handler kept from being
-\ written: its peer reads the end of the stream.
+\ Either socket's 1001 poll may be answered first and its handler block; the
+\ kill closes the other, whose 1001 is never written.
+: HALT-HEARD ( TCP4:connection WS:socket TCP4:connection -- )
+   {: conn:TCP4:connection sock:WS:socket other:TCP4:connection :}
+   sock SOCK>N HALT-SOCK @ = if conn other else other conn then
+   {: told:TCP4:connection cut:TCP4:connection :}
+   told HEAR 1001 GOT-CLOSE
+   cut ENDS
+   told TCP4:CLOSE DROP-STATUS ;
+
+\ A `closed` handler killed by WS:STOP leaves its slot retired, so the task's
+\ cleanup leaves open the file it opened on that descriptor number.
 : HALT-CASE ( -- )
    s" a stop that kills a blocked handler" SECTION
    HALTED$ s" " FS:WRITE-ALL
    0 HALT-FD !
+   -1 HALT-SOCK !
    CROWD WS:START
-   OPENS drop {: conn:TCP4:connection :}
+   OPENS {: conn:TCP4:connection sock:WS:socket :}
    OPENS drop {: other:TCP4:connection :}
    1 HALT-ARMED !
    WS:STOP
    HALT-FD @ ONE-BYTE 1 write 1 T=
    HALTED$ FS:FILE-SIZE 1 T=
    HALT-FD @ close-rc drop
-   other ENDS
-   conn TCP4:CLOSE DROP-STATUS
+   conn sock other HALT-HEARD
    HALTED$ FS:REMOVE-FILE ;
 
 
@@ -1844,6 +1853,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" == a stop" W
    s" < close 2 03e9" W-FAILED
    s" == a stop that kills a blocked handler" W
+   s" < close 2 03e9" W
    s" < end of stream" W
    s" == a stop while a socket closes" W
    s" > text 3 627965" W
