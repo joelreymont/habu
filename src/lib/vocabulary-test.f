@@ -229,23 +229,23 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 : HARNESSES ( -- )
    s" allow-sealed-admit" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: sealed" s" " RUNS
+   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: sealed lr " s" " RUNS
    s" allow-seal-twice" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: sealed" s" " RUNS
+   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: sealed lr " s" " RUNS
    s" allow-no-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: no package NOPE" s" " RUNS
+   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: no package NOPE lr " s" " RUNS
    s" allow-keyword-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PKW publishes keyword DUP" s" " RUNS
+   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PKW publishes keyword DUP lr " s" " RUNS
    s" allow-design-keyword-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PSYNTAX publishes keyword package" s" " RUNS
+   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PSYNTAX publishes keyword package lr " s" " RUNS
    s" allow-ordinary-keyword-package" HARNESS!
    s" ordinary-keyword" 0 s" " S\" 42\n" RUNS
    s" allow-p2-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PTUCK publishes keyword TUCK" s" " RUNS
+   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PTUCK publishes keyword TUCK lr " s" " RUNS
    s" allow-seal-keyword-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PSEAL publishes keyword seal-package" s" " RUNS
+   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PSEAL publishes keyword seal-package lr " s" " RUNS
    s" allow-task-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PTKW publishes keyword DUP" S\" admitted\n0\n" RUNS
+   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PTKW publishes keyword DUP lr " S\" admitted\n0\n" RUNS
    s" allow-catch" HARNESS!
    s" evaluate" 0 s" E-POLICY habu: test/policy/evaluate.f:1: not in vocabulary: evaluate" S\" 107\n" RUNS ;
 
@@ -253,7 +253,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ cannot be admitted, and a record in it is never in the vocabulary.
 : BOUND ( -- )
    s" allow-bound" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package wid above the bound" s" " RUNS
+   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package wid above the bound lr " s" " RUNS
    s" far" s" E-POLICY habu: test/policy/far.f:2: not in vocabulary: PBIG:FAR" REFUSES ;
 
 \ A harness that bound the loaded-bytes seam to the interpret loop written in

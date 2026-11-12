@@ -4501,7 +4501,7 @@ private
 : POLICY-SEALED$ ( -- ptr u8 n ) s" E-POLICY habu: policy: sealed" ;
 : POLICY-NOPKG$ ( -- ptr u8 n ) s" E-POLICY habu: policy: no package " ;
 : POLICY-BOUND$ ( -- ptr u8 n ) s" E-POLICY habu: policy: package wid above the bound" ;
-: POLICY-NL$ ( -- ptr u8 n ) S\" \n" ;
+: POLICY-LR$ ( -- ptr u8 n ) s"  lr " ;
 : POLICY-PKG$ ( -- ptr u8 n ) s" E-POLICY habu: policy: package " ;
 : POLICY-KEYWORD$ ( -- ptr u8 n ) s"  publishes keyword " ;
 
@@ -4515,8 +4515,8 @@ private
 \ policy-admit ( ptr u8 n -- ): admit the public wordlist of the package the
 \ span names, found as a top-level `using` finds it.
 : BPOLICYADMIT ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL
-   {: found:label bounded:label nopkg:label nl:label spelled:label pkgmsg:label kwmsg:label walked:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+   {: found:label bounded:label nopkg:label lrmsg:label pkgmsg:label kwmsg:label walked:label :}
    POLICY-OPEN,
    1 G-POP  0 G-POP                                  \ x1 = name length, x0 = name
    13 0 0 ADDI,                                      \ the name, for the refusals: the lookup leaves x13 and x1 alone
@@ -4526,14 +4526,15 @@ private
    12 found CBNZ,
       0 2 MOVZ,  1 nopkg ADR,  2 POLICY-NOPKG$ nip MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 13 0 ADDI,  2 14 0 ADDI,  NR-WRITE SYS,
-      0 2 MOVZ,  1 nl ADR,  2 POLICY-NL$ nip MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 lrmsg ADR,  2 POLICY-LR$ nip MOVZ,  NR-WRITE SYS,
+      9 SP 0 LDR,  LHEX LABEL@ BL,                   \ the caller's lr, FPRIM's frame
       0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
    found LBL,
    15 PROT-WID-MAX MOVZ,  11 15 CMP,  C-CC bounded BCOND,
       0 CALLER-LR,                                   \ WLFIND's BL replaced x30
       POLICY-BOUND$ ENGINE-ERROR:POLICY DIE-LINE,
    nopkg LBL,  POLICY-NOPKG$ BYTES,
-   nl LBL,  POLICY-NL$ BYTES,
+   lrmsg LBL,  POLICY-LR$ BYTES,
    bounded LBL,
    \ A public word spelled like a keyword would mean the keyword in one place and
    \ the word in another.
@@ -4542,13 +4543,13 @@ private
    15 G-POP  10 G-POP  9 G-POP
    11 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  SP SP 32 ADDI,
    15 walked CBZ,
-   spelled LBL,
       SP SP 16 SUBI,  9 SP 0 STR,  10 SP 8 STR,
       0 2 MOVZ,  1 pkgmsg ADR,  2 POLICY-PKG$ nip MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 13 0 ADDI,  2 14 0 ADDI,  NR-WRITE SYS,
       0 2 MOVZ,  1 kwmsg ADR,  2 POLICY-KEYWORD$ nip MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 SP 0 LDR,  2 SP 8 LDR,  NR-WRITE SYS,
-      0 2 MOVZ,  1 nl ADR,  2 POLICY-NL$ nip MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 lrmsg ADR,  2 POLICY-LR$ nip MOVZ,  NR-WRITE SYS,
+      9 SP 16 LDR,  LHEX LABEL@ BL,                  \ the caller's lr, above the keyword's slots
       0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
    pkgmsg LBL,  POLICY-PKG$ BYTES,
    kwmsg LBL,  POLICY-KEYWORD$ BYTES,

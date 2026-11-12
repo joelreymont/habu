@@ -14,7 +14,7 @@ TYPED-VARIABLE REQUIRE-XT [ -- ]
 public
 
 \ Admit the public words of the package this span names. A name no package
-\ owns is `E-POLICY habu: policy: no package <name>`.
+\ owns is `E-POLICY habu: policy: no package <name> lr <hex>`.
 : ALLOW-PACKAGE ( ptr u8 n -- ) policy-admit ;
 
 \ Opt in to ordinary static require within this canonical searchable directory.
