@@ -5,9 +5,9 @@ SUITE compiler-shadow
    test/compiler/shadow-kinds.f
 ;SUITE
 
-\ arm64-place.f checks the product kernel's entry map, compares a placed arm64
-\ shadow emission with the host's tier-0 routine and places every emission, then
-\ only what a root reaches, and refuses a reached word a stripped program cannot run.
+\ arm64-place.f writes stripped programs from one build and runs them, checks
+\ that each map names only the words its entry reaches and that a second link
+\ gives the same bytes, and refuses a reached word a stripped program cannot run.
 SUITE arm64-place
    test/compiler/arm64-place.f
 ;SUITE
