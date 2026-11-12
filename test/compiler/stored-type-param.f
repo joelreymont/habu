@@ -90,6 +90,8 @@ public
 : QC-AT ( ptr u8 -- ptr a ) QC->ELEM ;
 defer QC-ANY ( ptr u8 -- ptr a )
 defer QC-D ( ptr u8 -- ptr a )
+: RUN-Q ( R [ R -- S ] -- S ) execute ;
+defer QR-D ( ptr u8 -- ptr [ R -- S ] )
 private
 
 \ The admitted callers: each loads only if its record type is taken.
@@ -327,6 +329,28 @@ variable RC-LEN
    s" a recursive call at another instance the body leaves free" T-LABEL
    [: RC-OTHER$ evaluate-closed ;] 0 TTHROWSQ ;
 
+: CASE-ELEM-ROWS ( -- )
+   s" nor a quotation whose rows end in different tails" T-LABEL
+   ARM
+   [: s" : STORED-R16 ( ptr u8 -- ptr [ R -- S ] ) STORED:AT ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-CAST-LINEAR\"" HAS?
+   DISARM
+   ARM
+   [: s" : STORED-R17 ( ptr u8 -- n ) STORED:AT @ STORED:RUN-Q ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-CAST-LINEAR\"" HAS?
+   DISARM
+   ARM
+   [: s" : STORED-R18 ( -- ) [: STORED:AT ;] is STORED:QR-D ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-CAST-LINEAR\"" HAS?
+   DISARM
+   [: s" : STORED-QOK1 ( ptr u8 -- ptr [ -- n ] ) STORED:AT ;" evaluate-closed ;]
+      0 TTHROWSQ
+   [: s" : STORED-QOK2 ( ptr u8 -- ) STORED:AT [: 42 ;] swap ! ;" evaluate-closed ;]
+      0 TTHROWSQ ;
+
 public
 
 \ A generic word that passes the cast's stored variable on to its caller.
@@ -354,6 +378,7 @@ public
    CASE-IS-STORED
    CASE-RC-LINEAR
    CASE-RC-OTHER
+   CASE-ELEM-ROWS
    T-REPORT ;
 
 ;package

@@ -111,10 +111,16 @@ s" cast: CNL5 ( CAST-NEG:nested -- n )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL6 ( n -- ptr a )"        CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNL7 ( ptr a -- n )"        CN-RUN:DECL 0 T=
 s" cast: CNL8 ( n -- [ -- a ] )"     CN-RUN:DECL E-CAST-LINEAR T=
+\ A quotation whose rows end in different tails hands out values it never took;
+\ a cast's input only reads it.
+s" cast: CNL19 ( n -- [ R -- S ] )"  CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL20 ( [ R -- S ] -- n )"  CN-RUN:DECL 0 T=
 \ A private section admits the mint under a bare name only.
 package CN-STORED
 s" cast: CNL18 ( n -- ptr a )"       CN-RUN:DECL 0 T=
 s" cast: CNQ:FORGE ( n -- ptr u8 )"  CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNL21 ( ptr u8 -- ptr [ R -- S ] )" CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL22 ( ptr u8 -- ptr [ R -- R n ] )" CN-RUN:DECL 0 T=
 ;package
 \ A linear type behind a pointer, or in either of a quotation's rows, is
 \ carried ownership too, on either side of the cast.
@@ -174,6 +180,8 @@ s" CAST: CNP10 ( read-view<p,q,t> -- ptr u8 n )" CN-EVAL-CATCH E-CAST-LINEAR T=
 s" CNP10" CN-ABSENT? TTRUE  s" CNP10" 0 search-wl 0= TTRUE
 s" CAST: CNP11 ( read-view<p,q,CAST-NEG:nested> -- ptr u8 n )" CN-EVAL-CATCH E-CAST-LINEAR T=
 s" CNP11" CN-ABSENT? TTRUE  s" CNP11" 0 search-wl 0= TTRUE
+s" CAST: CNP12 ( read-view<p,q,[ R -- S ]> -- ptr u8 n )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CNP12" CN-ABSENT? TTRUE  s" CNP12" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
 ;package

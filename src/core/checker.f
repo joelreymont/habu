@@ -715,6 +715,12 @@
 \ argument terms, so a recursive member names the same terms, not copies; past
 \ CAST-PATH-CAP nested layouts the walk dies rather than guess. An expansion
 \ pops what it pushed; CAST-WALK-RESET empties the path after a throw.
+\ CAST-MAY-LINEAR? counts a type variable without NLINEAR, as TV! checks each
+\ binding of one with it, and walks pointees, quotation rows and layout
+\ members, since a projection hands out what they reach; cell-family arguments
+\ are phantom, and a scope or region variable binds no value. A quotation whose
+\ in and out rows end in one tail passes that tail through; one whose tails
+\ differ hands out values it never took.
 \
 \ Rollback frames: every checker scope and candidate probe pushes a frame
 \ holding every mutable high-water mark, and its end pops it, so nested
@@ -3948,19 +3954,15 @@ variable CAST-PATH-N
    CAST-PATH-POP ;
 : CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
    CAST-WALK-RESET t CAST-POS q CAST-INTRO? ;
-\ Fail closed over the complete signature term: CAST is an authority boundary.
-\ A direct unresolved var may later bind linear; one carrying NLINEAR may not,
-\ since TV! checks each of its bindings. Cell-family parameters are
-\ phantom and own no payload. Pointers and quotations own nothing themselves,
-\ but what they reach is walked: a linear value behind a field's pointer or in
-\ a field's quotation row is one a projection hands out. A quotation in a
-\ signature shares one base between its in and out rows, so the tail it passes
-\ through owns nothing. A scope or region variable binds a scope or a region,
-\ never a value.
-: CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
+\ Two rows are the same stack only if they share this tail.
+: ROW-TAIL ( n -- n )
+   R-RES BEGIN dup TAG S-PUSH = WHILE P>REST R-RES REPEAT ;
+\ Whether term t may hold a linear value; it fails closed, as a cast is an
+\ authority boundary, and with split counts a quotation whose tails differ.
+: CAST-MAY-LINEAR? ( n bool -- bool ) {: t0:n split:bool :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         dup P>TYPE split TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          P>REST R-RES
       REPEAT
    THEN
@@ -3971,24 +3973,28 @@ variable CAST-PATH-N
       t PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or 0= EXIT
    THEN
    t TAG T-CON = IF t PAY CT-LINEAR? EXIT THEN
-   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-PTR = IF t PTR>INNER split TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-QUOT = IF
-      t Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+      split IF
+         t Q>DIN ROW-TAIL t Q>DOUT ROW-TAIL <> IF RES-TRUE EXIT THEN
+         t Q>RIN ROW-TAIL t Q>ROUT ROW-TAIL <> IF RES-TRUE EXIT THEN
+      THEN
+      t Q>DIN split TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT split TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN split TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT split TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    t TAG T-PARAM = IF
       t PARAM>FAM dup 0 < IF drop RES-TRUE EXIT THEN
       TFAM-CON-LIN-XT IF RES-TRUE EXIT THEN
       t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
       0 BEGIN dup t PARAM>ARGC < WHILE
-         t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         t over PARAM>ARG split TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
       t CAST-POS CAST-ON-PATH? IF RES-FALSE EXIT THEN
       t CAST-POS CAST-PATH-PUSH
-      t TFAM-MEMBERS-XT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      t TFAM-MEMBERS-XT split TWALK-DEEPER RECURSE TWALK-SHALLOWER
       CAST-PATH-POP EXIT
    THEN
    RES-FALSE ;
@@ -3996,7 +4002,7 @@ variable CAST-PATH-N
 \ 0 when a cast's stored position may name term t, 4 when t may hold a linear
 \ value, 5 when it hands out an atom or a width (SCOPE-HIT's codes).
 : STORED-TERM-HIT ( n -- n ) {: t:n :}
-   CAST-WALK-RESET t CAST-MAY-LINEAR? IF 4 EXIT THEN
+   CAST-WALK-RESET t RES-TRUE CAST-MAY-LINEAR? IF 4 EXIT THEN
    CAST-WALK-RESET t CAST-BOTH INTRO-ATOM CAST-INTRO? IF 5 EXIT THEN
    CAST-WALK-RESET t CAST-BOTH INTRO-WIDTH CAST-INTRO? IF 5 EXIT THEN
    0 ;
@@ -4672,11 +4678,6 @@ CHECKER-REG:}SCRATCH
    got F>PARENT want F>PARENT FORALL-CEILING-PAIR
    got F>SECOND want F>SECOND FORALL-CEILING-PAIR
    got F>BODY want F>BODY PAIR-STRICT ;
-
-
-\ Two rows are the same stack only if they share this tail.
-: ROW-TAIL ( n -- n )
-   R-RES BEGIN dup TAG S-PUSH = WHILE P>REST R-RES REPEAT ;
 
 
 8 constant HOLD-FRAME   \ cells: mark, floor, K count, 4 K ids, I start
@@ -25210,11 +25211,12 @@ DIAG-DEFAULT
       s" the input is handed a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    CAST-WALK-RESET
-   SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF
+   \ The input is only read, so a quotation whose tails differ is any quotation.
+   SGIN @ CAST-ROW-TERM RES-FALSE CAST-MAY-LINEAR? IF
       s" the input may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
    CAST-WALK-RESET
-   SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF
+   SGOUT @ CAST-ROW-TERM RES-TRUE CAST-MAY-LINEAR? IF
       s" the output may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
    \ The mint rule comes last: a mint that also carries ownership is named by
@@ -25293,7 +25295,7 @@ DIAG-DEFAULT
    THEN
    side CAST-ROW-TERM T-RES {: view:n :}
    CAST-WALK-RESET
-   view view PARAM>ARGC 1 - PARAM>ARG CAST-MAY-LINEAR? IF
+   view view PARAM>ARGC 1 - PARAM>ARG RES-TRUE CAST-MAY-LINEAR? IF
       s" the view's element may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
    unpack IF view READ-VIEW? IF EXIT THEN THEN

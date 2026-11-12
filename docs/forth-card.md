@@ -449,14 +449,16 @@ package that declared the type: `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR:
 `E-LINEAR-SCOPE`, as is a qualified `LINEAR:` name in the private section;
 in any other package or for a top-level `DEFLINEAR`
 `E-LINEAR-OWNER`, and a row that is not one token and one non-linear con (or
-pointer to one) `E-LINEAR-PAYLOAD`. `CAST:` refuses a linear side
-(`E-CAST-LINEAR`). A type variable only where a type is stored is admitted
-in a private section (`CAST: >ELEM ( ptr u8 -- ptr t )`); a type bound to it
-later that may hold a linear value is `E-CAST-LINEAR`, an atom or a width
-`E-CAST-CLASS`, and `is` refuses a callable over it into a cell over any type
-(`E-CAST-LINEAR`). Both identity declarers preserve the stack below their
-operand: `LINEAR: MINT ( R n -- R PKG:tok )` is valid, but different tails
-are `E-CAST-ARITY`.
+pointer to one) `E-LINEAR-PAYLOAD`. `CAST:` refuses a side that may hold a
+linear value (`E-CAST-LINEAR`); a quotation whose rows end in different tails
+(`[ R -- S ]`) counts as one, except in a cast's input outside a view's element,
+where it is any quotation. A type variable only where a type is stored is
+admitted (`CAST: >ELEM ( ptr u8 -- ptr t )` mints a pointer, so only in a
+private section); a type bound to it later that may hold a linear value is
+`E-CAST-LINEAR`, an atom or a width `E-CAST-CLASS`, and `is` refuses a callable
+over it into a cell over any type (`E-CAST-LINEAR`). Both identity declarers
+preserve the stack below their operand: `LINEAR: MINT ( R n -- R PKG:tok )` is
+valid, but different tails are `E-CAST-ARITY`.
 
 forth.md: **Structures And Enums**; the rule is forth.md **Raw storage never
 holds an address**.

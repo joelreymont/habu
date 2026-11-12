@@ -709,6 +709,12 @@ multi-cell type rationale is `docs/design.md` "Types".
     pointer, in any quotation row or in a layout's members, is
     `E-CAST-LINEAR`: a `PRODUCT` field `ptr lease` or a `STRUCTURE`
     field `[ -- lease ]` carries the lease through the cast on either side.
+    A quotation whose input and output rows end in different tails, such as
+    `[ R -- S ]`, hands out values it never took, so in a cast's output, in a
+    view cast's element on either side, or bound to a stored variable as
+    below, it counts as one that may hold a linear value. Elsewhere in a
+    cast's input it is read and never handed out, so there it is any
+    quotation: `CAST: XT>N ( [ R -- S ] -- n )` reads any word's cell.
     A variable that occurs only where a type is stored, behind a pointer or
     in a family slot the family's width does not read, is admitted:
     `CAST: >ELEM ( ptr u8 -- ptr t )` in a private section loads. Every type
