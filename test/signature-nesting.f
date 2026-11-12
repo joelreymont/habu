@@ -1,24 +1,23 @@
 \ signature-nesting.f - a signature nested past the parser's limits refuses by
-\ name through the real load path: a 33rd nested binder (checker.f
-\ BINDER-DEPTH-MAX), and pointees or quotations nested past EFFECT-DEPTH-MAX.
-\ A body nested past CF-FRAMES-MAX control frames, a RECURSE with no declared
-\ effect and a RECURSE in a does> clause are uncheckable for a reason they name
-\ too, and each says so in its JSON packet with a suggestion of its own; the
-\ packet of a RECURSE with no declared effect has a null declared_effect, which
-\ the diagnostics gate accepts. A token that fails before the frames overflow
-\ keeps its mismatch in prose, packet and CHECK-CANDIDATE!'s answer; a failure
-\ pinned before a name a rendering statement may define, or a compile-time
-\ refusal after it in an unfit definition, keeps its packet and answer, and that
-\ name alone defers its definition, or makes an unfit one uncheckable for its
-\ width. An undefined word is refused in packet and answer, alone or after a
-\ covered name in an unfit definition. A refusal's prose line ends with its
-\ packet's suggestion, after the rows when it prints them. A mismatch over cells
-\ below prints its expected row over them too, so it is classed by type and a
-\ surplus by depth; one over an open input (a quotation's or an unsigned
-\ definition's) prints its actual row over the cells it would take, so it is
-\ classed by type too, while one over a row the signature declares is a
-\ missing value. The tokens after a refusal check in CPU time linear in
-\ their count.
+\ name through the real load path: a 33rd nested binder, and pointees or
+\ quotations nested past EFFECT-DEPTH-MAX. A body nested past CF-FRAMES-MAX
+\ control frames, a RECURSE with no declared effect and a RECURSE in a does>
+\ clause are uncheckable for a reason they name too, and each says so in its
+\ JSON packet with a suggestion of its own; the packet of a RECURSE with no
+\ declared effect has a null declared_effect, which the diagnostics gate
+\ accepts. A token that fails before the frames overflow keeps its mismatch in
+\ prose, packet and CHECK-CANDIDATE!'s answer; a failure pinned before a name a
+\ rendering statement may define, or a compile-time refusal after it in an unfit
+\ definition, keeps its packet and answer, and that name alone defers its
+\ definition, or makes an unfit one uncheckable for its width. An undefined word
+\ is refused in packet and answer, alone or after a covered name in an unfit
+\ definition. A refusal's prose line ends with its packet's suggestion, after
+\ the rows when it prints them. A mismatch over cells below prints its expected
+\ row over them too, so it is classed by type and a surplus by depth; one over
+\ an open input (a quotation's or an unsigned definition's) prints its actual
+\ row over the cells it would take, so it is classed by type too, while one over
+\ a row the signature declares is a missing value. The tokens after a refusal
+\ check in CPU time linear in their count.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
@@ -109,8 +108,8 @@ TYPED-VARIABLE SRC-U len
    {: k:n :}
    SRC-RESET  s" : " S+  k BADCOND-TEXT  s"  ;" S+ ;
 
-\ A loop over 70 cells, more than a diagnostic prints of a row (RBUF-CAP), whose
-\ body leaves one more cell, from its name to its last token.
+\ A loop over 70 cells, more than a diagnostic prints of a row, whose body
+\ leaves one more cell, from its name to its last token.
 : BIGLOOP-TEXT ( -- )
    SRC-RESET  s" SN-BIGLOOP ( -- ) " S+  s" 1 " 70 S+N  s" 10 0 DO 1 LOOP" S+
    s"  drop" 70 S+N ;
@@ -180,9 +179,6 @@ variable JSON-WAS   JSON-DIAGS @ JSON-WAS !   false DIAG-JSON!
    DIAG-BUFFER$ nip  0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF  PKT-BUF swap ;
 
 
-\ The packet passes the diagnostics gate, which adds to PACKET-HAS's substrings
-\ each field's presence and kind, the declared pair null together, and the
-\ verdict and repair class its code names.
 : PACKET-PASSES ( -- )
    PACKET$ GJA-PARSE dup GJA-OBJ GJA-DIAG-CONTRACT-ROW ;
 
@@ -382,7 +378,7 @@ public
    S\" E-CAP-TRUSTED habu: in sn-cap: 'reloc-maps-clear' is a trust-boundary primitive; suggestion: Move this compiler or runtime boundary behind audited TRUST.\n" REFUSES ;
 
 \ Run while a package holding a rendering statement's mark is open, so MADE is
-\ a name the run may define (UNSEEN-COVERS?) to these texts and to no other.
+\ a name the run may define to these texts and to no other.
 : UNSEEN-CASES ( -- )
    s" an is target the run may define defers its definition to the run" T-LABEL
    SRC-RESET  s" SN-IS-UNSEEN ( -- ) ['] T-RESET is MADE-D" S+
@@ -404,8 +400,8 @@ public
    S\" \"code\":\"E-MISMATCH\"" S\" \"verdict\":\"rejected\""
    S\" \"expected\":\"bool \",\"actual\":\"n \"" VERDICT-REFUSED PACKET-HAS ;
 
-\ Run from a package no mark covers, so a bare name nothing defines is
-\ undefined while SN-MARKED:MADE is a name the run may define (UNSEEN-COVERS?).
+\ Run from a package no mark covers, so a bare name nothing defines is undefined
+\ while SN-MARKED:MADE is a name the run may define.
 : COVERED-CASES ( -- )
    s" an undefined word after a covered name in an unfit definition is refused" T-LABEL
    s" SN-WIDE-UNDEF" s" SN-MARKED:MADE SN-NO-SUCH-WORD" WIDE-TEXT
@@ -420,7 +416,7 @@ public
 
 SIGNATURE-NESTING:RUN
 
-\ The mark covers this package alone (UNSEEN-COVERS?).
+\ The mark covers this package alone.
 package UNSEEN-NAMES
 CHECKER-UNSEEN-MARK
 SIGNATURE-NESTING:UNSEEN-CASES
