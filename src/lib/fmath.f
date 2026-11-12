@@ -3,6 +3,10 @@
 \ three-piece pi/2 reduction, and ACOS is fdlibm's arc cosine; FLN uses an
 \ atanh series and FPOW is exp(exponent * ln(base)): an approximation, not a
 \ correctly rounded libm.
+\ FMOD divides on integers, as C libraries do: |x| = m * 2^(e-1075) with bit
+\ 52 of m set, a subnormal normalised to e < 1. Once per exponent step from
+\ x's down to y's, x's significand subtracts y's when it holds it, then
+\ doubles; what stays is the exact remainder, on y's exponent.
 \ Errors: E-DOMAIN, E-OUTPUT. Sampled accuracy: FLN-ACC. Error bounds:
 \ BOUND-INPUTS.
 \ STORAGE CLASS. CALLER-OWNED: pure functions over stack values; no module state.
@@ -24,9 +28,10 @@ public
 \ positive and finite (zero to the zero is outside it) or an exponent that is
 \ not finite, an ACOS input outside [-1, 1], a SIN or COS argument of magnitude
 \ 1647100 or more (TRIG-DOMAIN's MEDIUM-BITS), a negative absolute error given
-\ to a *-BOUND word, and a nonfinite input to anything but FINITE? and the IEEE
-\ wrappers ADD..FMIN. E-OUTPUT: an overflowing power, a nonfinite intermediate
-\ exponent product or an out-of-range FROUND. Underflow may return zero.
+\ to a *-BOUND word, a zero FMOD divisor, and a nonfinite input to anything but
+\ FINITE? and the IEEE wrappers ADD..FMIN. E-OUTPUT: an overflowing power, a
+\ nonfinite intermediate exponent product or an out-of-range FROUND. Underflow
+\ may return zero.
 -9020 constant E-DOMAIN
 -9021 constant E-OUTPUT
 
@@ -236,6 +241,38 @@ $413921FC00000000 constant MEDIUM-BITS
    x k s>f 0.6931471805599453 f* f- 1.0 1.0 1 FEXP-SERIES
    k LDEXP-STEPS ;
 
+$10000000000000 constant HIDDEN-BIT
+
+: NORMALISE ( n n -- n n )
+   begin over HIDDEN-BIT and 0= while
+      swap 2 * swap 1-
+   repeat ;
+
+: SPLIT ( r -- n n )
+   ABS-BITS {: bits:n :}
+   bits 52 rshift {: e:n :}
+   bits HIDDEN-BIT 1- and {: m:n :}
+   e 0= if m 1 NORMALISE exit then
+   m HIDDEN-BIT or e ;
+
+: TRIAL-SUBTRACT ( n n -- n )
+   {: m:n d:n :}
+   m d >= if m d - exit then
+   m ;
+
+: REDUCE ( n n n n -- n n )
+   {: mx:n ex:n my:n ey:n :}
+   mx ex ey - 0 ?do my TRIAL-SUBTRACT 2 * loop
+   my TRIAL-SUBTRACT ey ;
+
+\ A subnormal result shifts out only zeros: it is a multiple of 2^-1074.
+: PACK ( n n -- n )
+   {: m:n e:n :}
+   e 0 > if m HIDDEN-BIT 1- and e 52 lshift or exit then
+   m 1 e - rshift ;
+
+: SIGN-BITS ( r -- n ) IEEE754:F64>BITS $8000000000000000 and ;
+
 public
 
 \ Binary64 arithmetic for callers whose admitted vocabulary excludes the
@@ -272,6 +309,16 @@ public
    fraction 0.5 f>= if whole 1+ exit then
    fraction -0.5 f<= if whole 1- exit then
    whole ;
+
+\ x - n*y for n = trunc(x/y), exact, with x's sign: a zero keeps its sign.
+: FMOD ( r r -- r )
+   {: x:r y:r :}
+   x FINITE? y FINITE? and 0= if E-DOMAIN throw then
+   y f0= if E-DOMAIN throw then
+   x ABS-BITS y ABS-BITS < if x exit then
+   x SPLIT y SPLIT REDUCE {: m:n e:n :}
+   m 0= if x SIGN-BITS IEEE754:BITS>F64 exit then
+   m e NORMALISE PACK x SIGN-BITS or IEEE754:BITS>F64 ;
 
 : FEXP ( r -- r ) {: x:r :}
    x FINITE? 0= if E-DOMAIN throw then
