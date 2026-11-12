@@ -3,6 +3,24 @@
 \ interpreter loop and keyword JIT are in habu2.f.
 \ Requests run before any package or `using` opens, so each file links
 \ (linker.f TOP-SCOPE?). A64ASM's encoders live in src/arch/arm64/asm.f.
+\
+\ An indirect call through an xt fences before it branches: an xt at or above
+\ the thread's CP register gets an ISB, the reader's half of publication. An xt
+\ held as data may name code main compiled after this thread started, and no
+\ instruction fetched before the xt arrived may run in its place. An xt below
+\ CP needs none. On main every xt is below the live CP and main's flushes end
+\ in an ISB. A task's CP is the snapshot taken as the task went live, after
+\ every earlier flush and before the thread existed, so an xt below it names
+\ code published before the thread. With a definition pending the snapshot is
+\ that definition's body start, not CP: its body is flushed only at `;`, after
+\ the thread exists, and CP may move back within it. Everything below a live
+\ task's CP stays unwritten, since a rollback with a task live lowers nothing,
+\ except a `does>` or patch32 rewrite, which is outside the architecture's
+\ concurrent-modification guarantee (only B, BL, BRK, HVC, ISB, NOP, SMC and
+\ SVC may be rewritten under a running thread). The compare is the control
+\ dependency that orders the fence after the xt's load; the comparison is
+\ unsigned. A direct BL needs no fence: its target was published before the
+\ caller was compiled.
 require src/arch/arm64/icode.f
 require src/habu/primitive-registry.f
 require src/habu/native-observer-extension.f
@@ -38,17 +56,15 @@ $F2E00009 constant W-MOVK3
 
 private
 \ XDS points just past the top cell: a push is a post-indexed store, a pop a
-\ pre-indexed load. Encoded through asm.f so an out-of-field offset fails at
-\ build time.
- 9 XDS   8 ENC-STRPOST constant W-PUSH9    \ str x9,[x19],#8
+\ pre-indexed load.
+ 9 XDS   8 ENC-STRPOST constant W-PUSH9
 
 public
-\ A compiled word saves LR with one pre-indexed store and restores it with one
-\ post-indexed load; a word that calls nothing gets W-NOP in the entry slot
-\ (EM-COMPILE-RET backpatches it). 16 bytes: AArch64 sp stays 16-byte aligned.
-30 SP -16 ENC-STRPRE  constant W-LINKSAVE  \ str x30,[sp,#-16]!
+\ A word that calls nothing gets W-NOP in the entry slot. 16 bytes: AArch64 sp
+\ stays 16-byte aligned.
+30 SP -16 ENC-STRPRE  constant W-LINKSAVE
 private
-30 SP  16 ENC-LDRPOST constant W-LINKREST  \ ldr x30,[sp],#16
+30 SP  16 ENC-LDRPOST constant W-LINKREST
 ;package
 package ENGINE-EMIT
 PTR-VARIABLE FP-A  variable FP-U
@@ -59,9 +75,6 @@ defer FP-EMIT ( -- )
 variable FPL  variable FPE
 variable DIVISION-PRIM-ROW
 
-\ Every body registers under a name src/habu/prims.f specifies: FP-ARGS checks
-\ it (ENGINE-PRIMS:SPEC-CHECK) and habu2.f ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS
-\ checks the registry is complete.
 : FP-ARGS ( ptr u8 n [ -- ] -- )
    is FP-EMIT  FP-U !  FP-A !
    FP-A@ FP-U @ ENGINE-PRIMS:SPEC-CHECK ;
@@ -92,8 +105,8 @@ private
    FP-REG 1+ DIVISION-PRIM-ROW !
    FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
 
-\ For an LR-preserving straight-line body (BABS): MARK-SCALAR records that the
-\ span has no helper or terminal call edge.
+\ For an LR-preserving straight-line body: MARK-SCALAR records that the span
+\ has no helper or terminal call edge.
 : FPRIM-L-SCALAR ( ptr u8 n [ -- ] -- )
    FP-ARGS
    LBL FPL !  LBL FPE !
@@ -117,13 +130,12 @@ variable LFIND  variable LNUM  variable LDICT
 variable LCEMIT  variable LTOK  variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 private
-\ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder (habu2.f)
-\ reads this, not the registry: a payload record's dictionary index is the
-\ seeded count plus its position, and the registry can grow after EMIT-DICT.
+\ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder reads this,
+\ not the registry: a payload record's dictionary index is the seeded count
+\ plus its position, and the registry can grow after EMIT-DICT.
 variable SEEDED-PRIM-N
 public
-\ The process-exit trampoline (habu2.f EMIT-EXITHOOK, layout.f EXIT-HOOK-CELL),
-\ declared here because BDIE below calls it.
+\ The process-exit trampoline, declared here because BDIE below calls it.
 variable LEXITHOOK
 private
 \ A seed stub branches to this disjoint shared C entry. Reserve its label
@@ -139,7 +151,7 @@ variable LBGROWFAIL   \ body text grow refused die target, x16 = the capacity tr
 ;package
 \ Hash-index label ids, bound in EMIT-HIDX: LREBUILD for the in-place compaction
 \ BNDSET's raise leg calls, LFULL for the cannot-maintain exit, LREKEY for the
-\ re-key record-wid! calls. Not in layout.f's HIDX: the engine bakes that one.
+\ re-key record-wid! calls.
 package HIDX-EMIT
 public
 variable LREBUILD
@@ -196,8 +208,6 @@ private
 
 package ENGINE-EMIT
 
-\ The protected bands are src/habu/layout.f's DATA-BANDS table, which the
-\ x86-64 (PROT-SPAN) helper reads as well.
 variable BAND-IX
 
 : BANDS-EMIT ( n label -- ) {: addr:n trap:label :}
@@ -246,10 +256,8 @@ package PROT-GUARD
 
 public
 
-\ Move addr/len (the caller's registers, any aliasing) into x10/x11 and BL the
-\ one engine-resident guard body at LPROTSPAN, the (PROT-SPAN) helper. Clobbers
-\ x10-x13 and x30: a sink needing one live across the guard saves it first
-\ (BATCAS, BPATCH32). The body touches only x12/x13.
+\ Clobbers x10-x13 and x30: a sink needing one live across the guard saves it
+\ first. The body touches only x12/x13.
 : CALL ( n n -- ) {: addr:n len:n :}
    len 10 = if
       addr 11 = if
@@ -258,8 +266,8 @@ public
          11 10 0 ADDI,  10 addr 0 ADDI,               \ len in x10: move it up before x10 is overwritten
       then
    else
-      addr 10 <> if 10 addr 0 ADDI, then              \ addr -> x10 (skip a no-op move)
-      len 11 <> if 11 len 0 ADDI, then                \ len  -> x11 (skip a no-op move)
+      addr 10 <> if 10 addr 0 ADDI, then
+      len 11 <> if 11 len 0 ADDI, then
    then
    LPROTSPAN LABEL@ BL, ;
 
@@ -286,7 +294,7 @@ public
 
 \ Every target selector below names the Linux-aarch64 and macOS arms and calls
 \ this otherwise: this file holds primitive bodies for those two targets only,
-\ so emitting one for any other target fails closed (docs/xcomp.md "Source Selection").
+\ so emitting one for any other target fails closed.
 package ENGINE-EMIT
 public
 : TARGET-UNKNOWN ( -- )
@@ -959,11 +967,9 @@ private
    THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
-\ Every syscall wrapper here collapses a failure to -1 (`0 0 MOVN`): its callers
-\ only ask whether the call worked. BPOLL alone publishes -errno: poll(2) is the
-\ one blocking call the kernel never restarts. read, write and wait4 restart
-\ under SA_RESTART, which the engine's only handler sets (src/habu/prof-abi.f
-\ LINUX-SA-PROF-FLAGS); a handler without it would need -errno on those too.
+\ BPOLL publishes -errno: poll(2) is the one blocking call the kernel never
+\ restarts. read, write and wait4 restart under SA_RESTART, which the engine's
+\ only handler sets; a handler without it would need -errno on those too.
 \ Linux leaves 0/-errno in x0; macOS sets carry with a positive errno, negated
 \ here.
 : BPOLL ( -- )                     \ ( fds nfds timeout -- rc ) rc=nready/0 or -errno
@@ -1134,7 +1140,6 @@ variable SZA-I
    SPAWN-COUNT-ACTION
    skip LBL, ;
 
-\ Emit one PSFA_CHDIR record into the runtime file-actions blob at x13.
 : SPAWN-CHDIR-ARGS ( reg label -- )
    SCA-FAIL !  SCA-CWD ! ;
 
@@ -1494,8 +1499,7 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
    leave LBL,
    SP SP SPAWN-FDS-FRAME ADDI, ;
 
-\ spawn-fds ( request -- pid|-errno ): src/habu/spawn-abi.f lays out the
-\ request. A negative NFDS is -EINVAL.
+\ spawn-fds ( request -- pid|-errno ). A negative NFDS is -EINVAL.
 : BSPAWNFDS ( -- )
    LBL {: valid:label :}
    LBL {: push:label :}
@@ -1525,11 +1529,11 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 
 public
 \ The main thread is the compiler: only the thread whose DATA is the main
-\ region, TASK-TCB-CELL 0 (layout.f), defines, allots, evaluates or changes
-\ package scope. A task, an exposed region and a callback thread hold a TCB
-\ there, and B-TASK-GUARD exits $4F on one. B-LOWER-GUARD exits $4F while any
-\ task is live, for the sinks that lower CP or NDICT: lowering frees code a
-\ task may be running and records it may reference. Clobbers x9.
+\ region, TASK-TCB-CELL 0, defines, allots, evaluates or changes package scope.
+\ A task, an exposed region and a callback thread hold a TCB there, and
+\ B-TASK-GUARD exits $4F on one. B-LOWER-GUARD exits $4F while any task is
+\ live, for the sinks that lower CP or NDICT: lowering frees code a task may be
+\ running and records it may reference. Clobbers x9.
 : B-TASK-GUARD ( -- )
    LBL {: ok:label :}
    9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
@@ -1559,20 +1563,19 @@ variable LDIE
 package ENGINE-EMIT
 \ cp! and ndict! are the FORGET sinks: cp! moves JIT emission to the popped CP,
 \ ndict! the next record write to DBASE+n*DREC. Each guards the span it
-\ redirects to, so a post-seal value in a sealed band fails at the sink
-\ (ENGINE-ERROR:SEAL-VIOLATION). FORGET marks are DBASE-relative and never
-\ inside a data-base band, so the guard admits them.
+\ redirects to, so a post-seal value in a sealed band fails at the sink. FORGET
+\ marks are DBASE-relative and never inside a data-base band, so the guard
+\ admits them.
 : BCPSET ( -- ) B-TASK-GUARD  B-LOWER-GUARD  A G-POP  A GUARD-CODE-WORD
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 \ LASTC-CELL names the record the last create, variable or constant wrote;
-\ does> patches it (habu2.f DOESPATCH). A record at or above NDICT is retired
-\ and its slot reused, so every motion that lowers NDICT (these two sinks,
-\ evaluate's error recovery, the REPL's) calls this after setting the count. A
-\ LASTC below the count is kept; one at or above it is cleared, not moved back:
-\ a does>-patched record no longer says a create made it (layout.f DKIND). A
-\ does> with none refuses by name. LASTC-CUT, cuts at the index in k instead,
-\ for a rollback that retires records and keeps the count (EM-DEF-OCC:LRETIRE).
-\ Clobbers the two scratch registers.
+\ does> patches it. A record at or above NDICT is retired and its slot reused,
+\ so every motion that lowers NDICT (these two sinks, evaluate's error
+\ recovery, the REPL's) calls this after setting the count. A LASTC below the
+\ count is kept; one at or above it is cleared, not moved back: a does>-patched
+\ record no longer says a create made it. A does> with none refuses by name.
+\ LASTC-CUT, cuts at the index in k instead, for a rollback that retires
+\ records and keeps the count. Clobbers the two scratch registers.
 : LASTC-CUT, ( n n n -- ) {: k:n t:n u:n :}
    LBL {: live:label :}
    t DREC MOVZ,  t k t MUL,  t DBASE t ADD,            \ first retired record
@@ -1588,7 +1591,7 @@ private
 \ The name lookup reads an empty hash slot as proof a name is absent, which
 \ holds only while every record below NDICT is in the table. Raising NDICT
 \ re-exposes records whose slots later publications may have reused, so a raise
-\ rebuilds the table from [0,NDICT) in place (HIDX-EMIT:LREBUILD).
+\ rebuilds the table from [0,NDICT) in place.
 : BNDSET ( -- ) B-TASK-GUARD  B-LOWER-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
    LBL LBL LBL LBL LBL {: bounded:label msg:label floor-ok:label keep:label done:label :}
    S\" hb: dictionary count out of range\n" {: ma:ptr mu:n :}
@@ -1680,11 +1683,10 @@ public
       tmp base off i + LDR,  tmp DATA ENCLOSING:PUB i + STR,
    CELL +loop ;
 
-\ Give the observer the evaluate frame in x<f> adopted (src/habu/interpreter.f
-\ OBSERVE-ADOPT) back its frame (the one x<f> nests in, which adoption
-\ required), the evaluating word's ticket and its source start, with that
-\ word's run pending again and no callback open (habu2.f LEVALREC). Nothing
-\ when the frame adopted none. ctx and tmp are scratch.
+\ Give the observer the evaluate frame in x<f> adopted back its frame (the one
+\ x<f> nests in, which adoption required), the evaluating word's ticket and its
+\ source start, with that word's run pending again and no callback open.
+\ Nothing when the frame adopted none. ctx and tmp are scratch.
 : SX-RESTORE, ( n n n -- ) {: f:n ctx:n tmp:n :}
    LBL {: kept:label :}
    ctx f EVAL-FRAME:SX-CTX LDR,  ctx kept CBZ,
@@ -1696,8 +1698,7 @@ public
    kept LBL, ;
 ;package
 
-\ The source checker's operations and its record mark; habu2.f DECL-OWNER
-\ holds the rest of the package.
+\ The source checker's operations and its record mark.
 package DECL-OWNER
 public
 
@@ -1722,7 +1723,7 @@ variable LSOURCEEXECFINISH
 
 private
 \ B-EVAL and B-EVAL-RANGE jump, their arguments on the data stack, through the
-\ PROVIDED-XT cell src/habu/runtime.f RUNTIME:INSTALL sets.
+\ PROVIDED-XT cell.
 : B-EVAL ( -- )
    B-TASK-GUARD
    9 DATA PROVIDED-XT:EVALUATE-CELL LDR,  9 BR, ;
@@ -1732,7 +1733,7 @@ private
    9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 BR, ;
 
 : BCREATE ( -- )
-   B-TASK-GUARD                                   \ only main defines
+   B-TASK-GUARD
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels;
                                      \ LCREATE publishes the word's `-- ptr a` in both modes
@@ -1824,12 +1825,11 @@ private
 \ is a caller error the program can recover from, so the guard branches to the
 \ engine-resident (DIV-ZERO) helper, which throws ARITH-ABI:E-DIV-ZERO. The
 \ helper is out of line so the guard costs one branch: inlining BTHROW's forty
-\ instructions pushes the divide out of the body's first cache lines (8.7% on a
-\ million-division loop).
+\ instructions pushes the divide out of the body's first cache lines.
 \
-\ MIN-N -1 / is MIN-N, SDIV's modular answer, like the wrap of `+`, `-` and `*`
-\ (docs/forth.md); a guard for it would cost every division a compare no
-\ caller in this tree can fail.
+\ MIN-N -1 / is MIN-N, SDIV's modular answer, like the wrap of `+`, `-` and
+\ `*`; a guard for it would cost every division a compare no caller in this
+\ tree can fail.
 : BDIV0? ( -- )
    LBL {: ok:label :}
    B ok CBNZ,  LDIVZERO LABEL@ BL,  ok LBL, ;
@@ -1907,7 +1907,7 @@ private
 : BCSTORE ( -- )
    B G-POP A G-POP  7 1 MOVZ,  B 7 PROT-GUARD:CALL  A B 0 STRB, ;
 
-\ Atomic primitives (ARMv8.1 LSE; Orin is ARMv8.2). A=x9 B=x10 C=x11.
+\ Atomic primitives (ARMv8.1 LSE). A=x9 B=x10 C=x11.
 : BATFETCH ( -- )   \ atomic@ ( ptr a -- a ) : LDAR x9,[x9]
    A G-POP  $C8DFFD29 EMITW  A G-PUSH ;
 : BATSTORE ( -- )   \ atomic! ( a ptr a -- ) : STLR x9,[x10]
@@ -1938,11 +1938,9 @@ private
 : BCOUNT ( -- )
    A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
 
-\ The return stack is a guarded mapping whose base is in the header, not a
-\ fixed DATA band: a slot is [RETURN-BASE-CELL] + depth*8. The depth is stored
-\ before x14 is reloaded with the base, so two scratch registers suffice. A
-\ push past RETURN-CELLS faults on the mapping's guard page; there is no
-\ capacity compare.
+\ The return stack is a guarded mapping. The depth is stored before x14 is
+\ reloaded with the base, so two scratch registers suffice. A push past
+\ RETURN-CELLS faults on the mapping's guard page; there is no capacity compare.
 : RSTK-PUSH ( n -- )
    RSTK-REG !
    14 DATA RSP-CELL LDR,
@@ -1973,15 +1971,10 @@ private
    7 DATA 0 LDR,  7 G-PUSH ;
 
 public
-\ Bound the DP heap to [floor, ceiling], the two cells at
-\ BOOT:DP-FLOOR-CELL and DP-CEILING-CELL, before any allot , c, or
-\ definer stores a new DP; out of range goes to habu2.f LDPBAD (EM-COMPILE-DIE).
-\ Every site hands the candidate in x15: the sinks hold it in x7
-\ (BALLOT/BALIGN/C-VARIABLE/C-DEFER-CELL), x11 (BCOMMA/BCCOMMA/LCREATE) or x14
-\ (interpret-mode string copies). x15 is free on the refusal arm: a site
-\ carrying a live x15 (the string copies' literal base) needs it only on the
-\ returning arm, and it survives the write syscalls (the kernel preserves
-\ x2-x15) and LDIAGU.
+\ Bound the DP heap before any allot , c, or definer stores a new DP. x15 is
+\ free on the refusal arm: a site carrying a live x15 (the string copies'
+\ literal base) needs it only on the returning arm, and it survives the write
+\ syscalls (the kernel preserves x2-x15).
 : DP-CHECK ( n -- )
    DP-REG !
    LBL DP-LOW !
@@ -1996,10 +1989,9 @@ public
    DP-HIGH LABEL@ LBL, ;
 
 private
-\ Before a path lowers DP, raise the release high-water (layout.f DPHW-CELL)
-\ to the DP it lowers from, which the DP cell still holds: O(1), so releasing a
-\ large allot costs nothing, and `allot` (BALLOT) zeroes the reused space when
-\ it hands it out again. Clobbers the two scratch registers.
+\ Before a path lowers DP, raise the release high-water to the DP it lowers
+\ from, which the DP cell still holds; `allot` zeroes the reused space when it
+\ hands it out again. Clobbers the two scratch registers.
 : DP-LOWER, ( n n -- )
    {: t:n u:n :}
    LBL {: done:label :}
@@ -2009,14 +2001,13 @@ private
    t DATA DPHW-CELL STR,
    done LBL, ;
 
-\ `create` applies the same rounding itself.
 : BALIGN ( -- )
    B-TASK-GUARD
    7 DATA 0 LDR,  7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,  7 DP-CHECK  7 DATA 0 STR, ;
 
-\ `,` keeps the latest run of its cells that starts at a created body
-\ (layout.f COMMA-RUN-CELL): a cell written at the body start starts a run,
-\ even where the last run ended; one written at the run's end extends it.
+\ `,` keeps the latest run of its cells that starts at a created body: a cell
+\ written at the body start starts a run, even where the last run ended; one
+\ written at the run's end extends it.
 : BCOMMA ( -- )
    LBL LBL LBL {: more:label grow:label done:label :}
    B-TASK-GUARD
@@ -2036,14 +2027,11 @@ public
    2 G-POP  1 G-POP  G-OUT ;
 
 private
-10 constant DIE-NL                 \ the one byte that ends every die message
+10 constant DIE-NL
 
-\ die ( ptr u8 n n -- ): write the span and one newline to fd 2, then exit. An
-\ empty span writes nothing, so a site whose report already ends in a newline
-\ passes `s" "`. The newline byte sits in a 16-byte stack frame (no label, no
-\ ADR). An rc outside [0,255] maps to UNCAUGHT-RC: the kernel masks rc & 0xFF,
-\ and a negative throw code reused as rc could exit 0. x7 holds the rc across
-\ both syscalls.
+\ An empty span writes nothing, so a site whose report already ends in a
+\ newline passes `s" "`. An rc outside [0,255] maps to UNCAUGHT-RC: the kernel
+\ masks rc & 0xFF, and a negative throw code reused as rc could exit 0.
 : BDIE ( -- )
    LBL {: lfixed:label :}
    LBL {: quiet:label :}
@@ -2055,16 +2043,15 @@ private
       SP SP $10 ADDI,
    quiet LBL,
    0 7 0 ADDI,
-   \ Run the process-exit hook (layout.f EXIT-HOOK-CELL) before exiting. The
-   \ trampoline preserves x0; x7 is re-derived because the hook is compiled code
-   \ owning every caller-saved register. BDIE never returns, so LR is free.
+   \ The trampoline preserves x0; x7 is re-derived because the hook is compiled
+   \ code owning every caller-saved register. BDIE never returns, so LR is free.
    LEXITHOOK LABEL@ BL,  7 0 0 ADDI,
    7 0 CMPI,    C-LT lfixed BCOND,
    7 255 CMPI,  C-GT lfixed BCOND,
    NR-EXIT-GROUP SYS,
    lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
 
-: SYS-PUSH ( -- )                  \ push x0, or -1 when the syscall carry is set
+: SYS-PUSH ( -- )
    LBL SYS-OK !
    LBL SYS-DONE !
    9 C-CS CSET,  9 SYS-OK LABEL@ CBZ,
@@ -2074,8 +2061,7 @@ private
    0 G-PUSH ;
 
 \ x9 holds the carry sampled immediately after a filesystem syscall. Linux
-\ leaves -errno in x0; Darwin leaves positive errno there. Preserve that
-\ cause in the running task before publishing the existing 0/-1 result.
+\ leaves -errno in x0; Darwin leaves positive errno there.
 : FS-SYS-PUSH-FLAG ( -- )
    LBL LBL {: ok:label done:label :}
    9 ok CBZ,
@@ -2118,7 +2104,7 @@ private
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
    LBL {: notfixed:label :}
    6 3 $10 ANDI,  6 notfixed CBZ,            \ only MAP_FIXED replaces an existing mapping
-      0 1 PROT-GUARD:CALL                      \ x0 = address, x1 = mapping length
+      0 1 PROT-GUARD:CALL
    notfixed LBL,
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS  NR-MMAP SYS,  SYS-PUSH  exit THEN
    HB-TARGET-MACOS? IF NR-MMAP SYS,  SYS-PUSH  exit THEN
@@ -2139,56 +2125,46 @@ private
    failed LBL,  0 0 MOVZ,  1 0 MOVN,
    done LBL,  0 G-PUSH  1 G-PUSH ;
 
-: BMUNMAP ( -- )                   \ ( addr len -- 0|-1 ) release a mapping; span-guard the extent
+: BMUNMAP ( -- )                   \ ( addr len -- 0|-1 )
    1 G-POP  0 G-POP
-   0 1 PROT-GUARD:CALL             \ trap an unmap aimed at any protected engine band
+   0 1 PROT-GUARD:CALL
    NR-MUNMAP SYS,  SYS-PUSH ;
 
-: BGETPID ( -- )                   \ ( -- pid ) never fails; x0 holds the caller's pid
+: BGETPID ( -- )                   \ ( -- pid )
    NR-GETPID SYS,  SYS-PUSH ;
 
-\ `ffi-call` loads 8 argbuf cells into x0-x7, BLRs fn and pushes x0;
-\ `ffi-call-abi`/`ffi-call-abi-r` add x8, d0-d7, caller-packed stack spill and
-\ integer/float returns for src/lib/ffi-abi.f. argbuf is at least 8 cells. XDS
-\ (x19) is callee-saved, so the data stack survives the call; FPRIM frames x30.
-\ Every foreign-call primitive is restricted to TRUSTED: definitions. Sealed
-\ FFI bindings use ffi-call-bounded: one schema extent per live argument, zero
-\ for scalar/read-only, and a whole-span guard for every writer before the BLR.
+\ Argbuf is at least 8 cells. XDS (x19) is callee-saved, so the
+\ data stack survives the call. Every foreign-call primitive is restricted
+\ to TRUSTED: definitions.
+
 : BFFI-LOAD-X0-X7 ( -- )
    0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,
    4 15 32 LDR,   5 15 40 LDR,   6 15 48 LDR,   7 15 56 LDR, ;
 
-\ Sound seal guard for the raw (unbounded) trampolines: the argbuf carries no
-\ per-arg writable extents, so every LIVE integer/pointer arg is checked as a
-\ band pointer -- a one-byte span-guard at the arg value. x14 = live arg count,
-\ x15 = integer argbuf, x9 = sret flag (guard x8 = argbuf[8] when nonzero).
-\ Stale slots [nargs..8) are skipped, so a low-arity call never trips on the
-\ garbage cells above its args. x5/x6 are the only scratch; x14/x15/x9 stay live
-\ across the shared LPROTSPAN body (it touches only x10-x13,x30).
+\ The argbuf carries no per-arg writable extents, so every LIVE integer/pointer
+\ arg is checked as a band pointer. x14 = live arg count, x15 = integer argbuf,
+\ x9 = sret flag (guard x8 = argbuf[8] when nonzero). Stale slots [nargs..8) are
+\ skipped, so a low-arity call never trips on the garbage cells above its args.
+\ x5/x6 are the only scratch; x14/x15/x9 stay live across the shared LPROTSPAN
+\ body (it touches only x10-x13,x30).
 : BFFI-GUARD-ARGS ( -- )
    LBL LBL LBL {: loop:label done:label nosret:label :}
    5 0 MOVZ,
    loop LBL,
       5 14 CMP,  C-GE done BCOND,
-      6 5 3 LSLI,  6 15 6 ADD,  10 6 0 LDR,            \ x10 = argbuf[i]
+      6 5 3 LSLI,  6 15 6 ADD,  10 6 0 LDR,
       11 1 MOVZ,  LPROTSPAN LABEL@ BL,                 \ one-byte band guard on the arg value
       5 5 1 ADDI,  loop B,
    done LBL,
-      9 nosret CBZ,                                    \ sret flag == 0 -> no x8 guard
-      10 15 $40 LDR,  11 1 MOVZ,  LPROTSPAN LABEL@ BL, \ guard x8 = argbuf[8] indirect result
+      9 nosret CBZ,
+      10 15 $40 LDR,  11 1 MOVZ,  LPROTSPAN LABEL@ BL,
    nosret LBL, ;
 
-\ The VM frame an outbound call leaves for C (src/lib/ffi-callback.f).
 \ This thread's pointer, compared with CB-OWNER and a slot row: one value for a
 \ thread's life, distinct across live threads. Linux: TPIDR_EL0, the TLS base
 \ clone gives each thread. macOS: TPIDRRO_EL0, the kernel's current cthread
-\ pointer (SDK Kernel.framework arm64/machine_machdep.h). Measured on macOS
-\ 27.0.1 (26A434): pthread_self opens with `mrs x0, TPIDRRO_EL0 ; ldr x8,
-\ [x0, #-0xe0]!` unmasked; seven threads reading it four million times each saw
-\ one value per thread, low three bits clear, pthread_self + $E0. The low three
-\ bits are cleared anyway, as os/tsd.h _os_tsd_get_base does for kernels that
-\ kept the CPU number there. src/lib/ffi-callback-test.f OWNER-IDENTITY checks
-\ the running host.
+\ pointer. The low three bits are cleared anyway, for kernels that kept the
+\ CPU number there.
 : CB-SELF, ( n -- ) {: r:n :}
    HB-TARGET-LINUX? IF
       $D53BD040 r or EMITW
@@ -2204,8 +2180,7 @@ private
 \ YIELD, the spin-wait hint: this thread is waiting on another.
 : YIELD, ( -- ) $D503203F EMITW ;
 
-\ One refusal: `hb: callback: <reason>` on fd 2, then exit_group 106. The code
-\ lands at the label; callers emit it off their straight-line path.
+\ The code lands at the label; callers emit it off their straight-line path.
 : CB-DIE, ( ptr u8 n label -- ) {: a u at:label :}
    LBL {: msg:label :}
    at LBL,
@@ -2266,7 +2241,7 @@ private
    16 G-POP                                            \ x16 = fn
    14 G-POP                                            \ x14 = nargs
    15 G-POP                                            \ x15 = argbuf
-   9 0 MOVZ,  BFFI-GUARD-ARGS                          \ no sret: guard the live x0..x7 args
+   9 0 MOVZ,  BFFI-GUARD-ARGS
    BCB-ENTER
    BFFI-LOAD-X0-X7
    16 BLR,
@@ -2288,7 +2263,7 @@ private
    LBL FFI-SKIP !
    LBL FFI-LOOP !
    LBL FFI-DONE !
-   14 0 CMPI,  C-LE FFI-SKIP LABEL@ BCOND,             \ stackcells <= 0 -> no spill
+   14 0 CMPI,  C-LE FFI-SKIP LABEL@ BCOND,
    10 14 0 ADDI,                                      \ x10 = cells left
    11 10 3 LSLI,  11 11 $F ADDI,  11 11 4 LSRI,  11 11 4 LSLI,
    12 SP 0 ADDI,  12 12 11 SUB,  SP 12 0 ADDI,        \ sp -= align(cells*8,16)
@@ -2304,7 +2279,6 @@ private
 \ A relocated cell holds a prepacked-buffer address; it is moved by the
 \ distance x13 from that buffer to the copy on the native stack. The mask in
 \ x12 names the cells: bits 0-7 are x0-x7, bits 8-23 the stack cells 0-15.
-\ x11 is the bit test's scratch, x9 the stack cell's.
 : BFFI-RELOC-REG ( n -- ) LBL {: r:n skip:label :}
    11 12 63 r - LSLI,  11 11 63 LSRI,  11 skip CBZ,
    r r 13 ADD,
@@ -2315,8 +2289,8 @@ private
    9 SP j 8 * LDR,  9 9 13 ADD,  9 SP j 8 * STR,
    skip LBL, ;
 
-\ A relocating call (STRUCT-ARG's private copies) enters with the mask in x2
-\ and keeps the prepacked buffer's address in x3 until the copy is made.
+\ A relocating call enters with the mask in x2 and keeps the prepacked buffer's
+\ address in x3 until the copy is made.
 : BFFI-CALL-ABI-CORE ( bool -- ) {: reloc:bool :}
    16 G-POP                                            \ x16 = fn
    9 G-POP                                             \ x9  = sret-present flag
@@ -2325,15 +2299,15 @@ private
    13 G-POP                                            \ x13 = prepacked stack cells
    17 G-POP                                            \ x17 = FP argbuf
    15 G-POP                                            \ x15 = integer argbuf
-   BFFI-GUARD-ARGS                                     \ band-guard live int args + x8 sret before any load
+   BFFI-GUARD-ARGS
    14 1 0 ADDI,                                        \ x14 = stack cell count (restore for the spill copy)
-   reloc if 3 13 0 ADDI, then                          \ x3 = prepacked stack cells
+   reloc if 3 13 0 ADDI, then
    BCB-ENTER
-   20 SP $8 STR,                                       \ park caller x20 in frame slot
-   20 SP 0 ADDI,                                       \ x20 = frame sp
+   20 SP $8 STR,
+   20 SP 0 ADDI,
    BFFI-COPY-ABI-STACK
    reloc if
-      13 SP 0 ADDI,  13 13 3 SUB,                      \ x13 = native copy - prepacked cells
+      13 SP 0 ADDI,  13 13 3 SUB,
       12 2 0 ADDI,                                     \ x12 = mask; x0-x7 load over x2/x3
       16 0 do i BFFI-RELOC-CELL loop
    then
@@ -2357,42 +2331,36 @@ private
 \ Sealed bindings carry one writable byte extent per live argument: zero for
 \ scalars and read-only pointers; writable pointers are guarded as whole spans
 \ before the BLR. Preconditions: x14=nargs, x15=argbuf, x17=writable-length
-\ buffer, x20=DATA. Each (arg, extent) pair loads straight into LPROTSPAN's
-\ x10/x11 ABI. x5/x6 are the only scratch; x14/x15/x17 stay live.
+\ buffer, x20=DATA. x5/x6 are the only scratch; x14/x15/x17 stay live.
 : BFFI-GUARD-BOUNDS ( -- )
    LBL LBL {: loop:label done:label :}
    5 0 MOVZ,
    loop LBL,
       5 14 CMP,  C-GE done BCOND,
-      6 5 3 LSLI,  6 15 6 ADD,  10 6 0 LDR,            \ x10 = argbuf[i]
-      6 5 3 LSLI,  6 17 6 ADD,  11 6 0 LDR,            \ x11 = writable extent
+      6 5 3 LSLI,  6 15 6 ADD,  10 6 0 LDR,
+      6 5 3 LSLI,  6 17 6 ADD,  11 6 0 LDR,
       LPROTSPAN LABEL@ BL,
       5 5 1 ADDI,  loop B,
    done LBL, ;
 
-\ FFI: the general AAPCS64 trampoline, for any integer/pointer arity.
-\ ( argbuf nargs fn -- ret ): x0-x7 from argbuf[0..7]; args 9..nargs spill to
-\ the 16-byte aligned stack by an exact runtime loop. argbuf holds max(8,nargs)
-\ cells. x20 (callee-saved) carries the frame sp across the BLR; the caller's
-\ x20 parks at [sp,#8] of BCB-ENTER's $30 frame. Shifted-register SUB reads r31
-\ as XZR, not SP, so sp is lowered through a temp. Every live arg is
-\ PROT-GUARD'd first, so the checked FFI library routes integer/pointer calls
-\ here.
+\ Argbuf holds max(8,nargs) cells. x20 (callee-saved) carries the frame sp
+\ across the BLR. Shifted-register SUB reads r31 as XZR, not SP, so sp is
+\ lowered through a temp.
 : BFFI-CALL-N-CORE ( -- )
    BCB-ENTER
-   20 SP $8 STR,                                       \ park caller x20 in frame slot
-   20 SP 0 ADDI,                                       \ x20 = frame sp
+   20 SP $8 STR,
+   20 SP 0 ADDI,
    LBL FFI-SKIP !
    LBL FFI-LOOP !
    LBL FFI-DONE !
-   14 8 CMPI,  C-LE FFI-SKIP LABEL@ BCOND,             \ nargs <= 8 -> no spill
+   14 8 CMPI,  C-LE FFI-SKIP LABEL@ BCOND,
       10 14 8 SUBI,                                    \ x10 = extra = nargs - 8
       11 10 3 LSLI,  11 11 $F ADDI,  11 11 4 LSRI,  11 11 4 LSLI,  \ salloc = (extra*8+$F)&~$F
       12 SP 0 ADDI,  12 12 11 SUB,  SP 12 0 ADDI,      \ sp -= salloc
       12 15 $40 ADDI,                                  \ x12 = src = argbuf + 8 cells
       13 SP 0 ADDI,                                    \ x13 = dst = sp
       FFI-LOOP LABEL@ LBL,
-      10 FFI-DONE LABEL@ CBZ,                          \ extra == 0 -> done
+      10 FFI-DONE LABEL@ CBZ,
          9 12 0 LDR,  9 13 0 STR,
          12 12 $8 ADDI,  13 13 $8 ADDI,
          10 10 1 SUBI,  FFI-LOOP LABEL@ B,
@@ -2400,8 +2368,8 @@ private
    FFI-SKIP LABEL@ LBL,
    BFFI-LOAD-X0-X7
    16 BLR,
-   SP 20 0 ADDI,                                       \ restore sp from x20
-   20 SP $8 LDR,                                       \ restore caller x20
+   SP 20 0 ADDI,
+   20 SP $8 LDR,
    BCB-LEAVE
    0 G-PUSH ;
 
@@ -2418,17 +2386,14 @@ private
    BFFI-CALL-N-CORE ;
 
 \ Returns an immutable pthread entry, not a Habu xt; its C argument is the
-\ TASK-ABI descriptor and the body enters that task's VM state. It preserves
-\ the whole AAPCS64 callee-save set, d8..d15 included. The alternate signal
-\ stack is registered below the frame before the body and given back after it
-\ (crash.f C-SIGNAL-STACK). It writes two task cells: the TCB address into the
-\ task's data region, and DONE into the status after the body. Not RUNNING:
-\ ACTIVATE stores it before pthread_create (src/lib/task.f), and a store here
-\ could land after a TASK:HALT took RUNNING -> HALT-REQ in the create window.
-\ DONE is release-published by STLR (as BATSTORE): it is the task's last write
-\ another thread reads, so an owner polling TASK:DONE? (TASK-STATE@, an
-\ acquire load) sees the body's writes without joining. STLR takes no offset,
-\ so the status address is formed first, in x11.
+\ TASK-ABI descriptor and the body enters that task's VM state. It writes two
+\ task cells: the TCB address into the task's data region, and DONE into the
+\ status after the body. Not RUNNING: ACTIVATE stores it before pthread_create,
+\ and a store here could land after a TASK:HALT took RUNNING -> HALT-REQ in the
+\ create window. DONE is release-published by STLR: it is the task's last write
+\ another thread reads, so an owner polling TASK:DONE? (an acquire load) sees
+\ the body's writes without joining. STLR takes no offset, so the status address
+\ is formed first, in x11.
 : BTASK-ENTRY ( -- )
    LBL LBL {: entry:label done:label :}
    A entry ADR, A G-PUSH done B,
@@ -2439,7 +2404,7 @@ private
    16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
    29 SP $50 ADDI,                         \ previous FP/LR form the C frame
    19 0 0 ADDI,                            \ the descriptor across the registration
-   C-SIGNAL-STACK                          \ this thread's own (crash.f): below the frame
+   C-SIGNAL-STACK                          \ this thread's own: below the frame
    0 19 0 ADDI,
    9 0 TASK-ABI:XT-OFF LDR,
    XDS 0 TASK-ABI:STACK-OFF LDR,
@@ -2448,7 +2413,7 @@ private
    NDICT 0 TASK-ABI:NDICT-OFF LDR,
    CP 0 TASK-ABI:CP-OFF LDR,
    0 DATA TASK-TCB-CELL STR,
-   ISB,  9 BLR,                            \ ISB: BCALLABLE's
+   ISB,  9 BLR,
    C-SIGNAL-STACK-OFF
    SP SP STACK-ABI:SIGNAL-BYTES ADDI-4K,   \ the band back: sp is the frame's again
    9 DATA TASK-TCB-CELL LDR,
@@ -2460,12 +2425,11 @@ private
    SP SP $A0 ADDI, RET,
    done LBL, ;
 
-\ Callback entry: CB-POOL C entries into checked code (src/lib/ffi-callback.f).
-\ The thunk's frame on C's stack: C's callee-saved set at [sp..$A0) as
-\ BTASK-ENTRY keeps it, the marshal frame CB-FRAME names (x0..x7, then d0..d7
-\ from CB-FRAME-FLOATS), and the thunk's own state. Checked code may hold state
-\ in x21..x25 and x29 (src/compiler/native/abi.f SCRATCH), so everything the
-\ thunk needs after its BLR is on this frame, never in a register.
+\ The thunk's frame on C's stack: C's callee-saved set at [sp..$A0), the
+\ marshal frame CB-FRAME names (x0..x7, then d0..d7 from CB-FRAME-FLOATS),
+\ and the thunk's own state. Checked code may hold state in x21..x25 and
+\ x29, so everything the thunk needs after its BLR is on this frame,
+\ never in a register.
 $A0 constant CBT-MARSHAL
 CBT-MARSHAL CB-FRAME-FLOATS + constant CBT-FLOATS
 $120 constant CBT-ROW                   \ the slot row's address
@@ -2479,16 +2443,15 @@ $150 constant CBT-BYTES
 \ Entered from a stub with the slot in x9. The row is claimed before the region
 \ it names is read: LDAR the row owner; a thread already nested through this
 \ slot claims nothing; 0 is CASAL'd 0 -> self; another thread dies. CB-ROW-BUSY
-\ (read, or answered by a lost CAS) is a src/lib/task.f mover holding the row
-\ for a few steps that call and wait on nothing, so the thunk spins on LDAR
-\ with YIELD until the row is handed back and claims it as left; a row dropped
-\ meanwhile reads unbound and dies unless a bind took it. A caller row names
-\ no region: the region is this thread's own, mapped while the thread runs.
-\ A region stays mapped
-\ while a row names it (task.f UNEXPOSE and TASK-END drop rows first), so the
-\ region is read only then: its CB-OWNER claimed as BCB-ENTER claims it, a live
-\ frame (CB-XDS <> 0) and the slot's xt, a ( -- ) dispatch that reads its
-\ arguments through CB-FRAME and leaves its result in the x0 or d0 slot.
+\ (read, or answered by a lost CAS) is a mover holding the row for a few steps
+\ that call and wait on nothing, so the thunk spins on LDAR with YIELD until the
+\ row is handed back and claims it as left; a row dropped meanwhile reads
+\ unbound and dies unless a bind took it. A caller row names no region: the
+\ region is this thread's own, mapped while the thread runs. A region stays
+\ mapped while a row names it, so the region is read only then: its CB-OWNER
+\ claimed as BCB-ENTER claims it, a live frame (CB-XDS <> 0) and the slot's xt,
+\ a ( -- ) dispatch that reads its arguments through CB-FRAME and leaves its
+\ result in the x0 or d0 slot.
 \ A body whose NDICT or CP differs from the frame's dies: the way out restores
 \ C's callee-saved registers, the caller's VM among them, and would drop what a
 \ definition added. Otherwise CB-FRAME, then the owner if claimed, then the
@@ -2496,8 +2459,8 @@ $150 constant CBT-BYTES
 \ A C-started thread has no alternate signal stack. Only an owner-claiming
 \ entry can be on one (an owner already its own means a registered thread), so
 \ it queries before the branch and carves one below the frame when none is
-\ registered (crash.f C-SIGNAL-STACK); a 16-byte cell at the branch's sp
-\ records that, so the way out gives the band back before reading the frame.
+\ registered; a 16-byte cell at the branch's sp records that, so the way out
+\ gives the band back before reading the frame.
 : BCALLBACK-THUNK ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    LBL LBL LBL LBL
@@ -2507,8 +2470,8 @@ $150 constant CBT-BYTES
       defined:label signal-had:label signal-kept:label caller-row:label
       region-found:label caller-leave:label no-region:label :}
    SP SP CBT-BYTES SUBI,
-   \ C's callee-saved set is saved and restored in this body, as BTASK-ENTRY
-   \ does: tools/lint/clobber-lint.f proves x30 from the routine's own text.
+   \ C's callee-saved set is saved and restored in this body:
+   \ tools/lint/clobber-lint.f proves x30 from the routine's own text.
    29 19 do i SP i 19 - cells STR, loop
    29 SP $50 STR, 30 SP $58 STR,
    16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
@@ -2573,7 +2536,7 @@ $150 constant CBT-BYTES
       12 1 MOVZ,
    signal-had LBL,
    SP SP 16 SUBI,  12 SP 0 STR,                        \ 1 when the band below the frame is this entry's
-   ISB,  13 BLR,                                       \ ISB: BCALLABLE's
+   ISB,  13 BLR,
    12 SP 0 LDR,  SP SP 16 ADDI,
    12 signal-kept CBZ,
       C-SIGNAL-STACK-OFF
@@ -2664,9 +2627,8 @@ $150 constant CBT-BYTES
    BCALLBACK-THUNK
    done LBL, ;
 
-\ Mixed-ABI bounded calls guard every integer register slot (x0..x8) and
-\ every caller-packed stack slot before the foreign branch.  The two extent
-\ tables are distinct because stack slot zero is not integer slot zero.
+\ The two extent tables are distinct because stack slot zero is
+\ not integer slot zero.
 : BFFI-CALL-ABI-BOUNDED-CORE ( bool -- ) {: reloc:bool :}
    16 G-POP                                            \ x16 = fn
    reloc if 2 G-POP then                               \ x2  = relocation mask
@@ -2763,7 +2725,7 @@ $150 constant CBT-BYTES
 
 : BREADLINK ( -- )
    3 G-POP  2 G-POP  1 G-POP
-   2 3 PROT-GUARD:CALL                         \ x2 = kernel-written link buffer, x3 = length
+   2 3 PROT-GUARD:CALL
    HB-TARGET-LINUX? IF 0 99 MOVN, ELSE
       HB-TARGET-MACOS? IF 0 1 MOVN, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
    THEN
@@ -2773,9 +2735,9 @@ $150 constant CBT-BYTES
 
 package LIBC-OS
 
-\ Read this process's loader slot, as src/os/*/layout.f DLSYM-SLOT does.
-\ Neither a library handle nor a resolved function survives this call.
-\ x16 = this run's __text base, x1 = the NUL-terminated symbol name.
+\ Read this process's loader slot. Neither a library handle nor a resolved
+\ function survives this call. x16 = this run's __text base, x1 = the
+\ NUL-terminated symbol name.
 : DLSYM-AT ( -- )
    15 CODE-OFF LIT64,  16 16 15 SUB,
    17 16 IMAGE-TEXT-SIZE-OFF LDR,
@@ -2812,8 +2774,7 @@ package LIBC-OS
       off 7 + i -  dup len < if a swap + c@ or else drop then
    loop ;
 
-\ Write the text to fd 2 from a stack frame filled by immediates, then release
-\ the frame. Clobbers x0-x2, x9 and the system call's registers.
+\ Clobbers x0-x2, x9 and the system call's registers.
 : ERR-TEXT, ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 15 + -16 and {: frame:n :}
@@ -2826,10 +2787,10 @@ package LIBC-OS
 
 public
 
-\ ( label -- ) Linux: x0 = a new memfd "hb-region" of REGION bytes,
-\ close-on-exec and executable. A kernel before 6.3 refuses MFD_EXEC with
-\ EINVAL, and that answer alone retries without it; any other failure jumps to
-\ fail with no descriptor left open. Clobbers x0, x1, x5, x8, x16.
+\ Linux: x0 = a new memfd "hb-region" of REGION bytes, close-on-exec and
+\ executable. A kernel before 6.3 refuses MFD_EXEC with EINVAL, and that answer
+\ alone retries without it; any other failure jumps to fail with no descriptor
+\ left open. Clobbers x0, x1, x5, x8, x16.
 : REGION-MEMFD ( label -- ) {: fail:label :}
    LBL LBL LBL {: made:label retry:label sized:label :}
    SP SP 16 SUBI,
@@ -2846,15 +2807,15 @@ public
       0 5 0 ADDI,  NR-CLOSE SYS,  fail B,
    sized LBL,  0 5 0 ADDI, ;
 
-\ ( fixed label -- ) macOS: map the region's RW alias over [x0, x0+REGION) with
-\ mach_vm_remap (copy FALSE) and leave x0 = alias - x0. x16 = __text base on
-\ entry. fixed maps the alias at exactly x1, else anywhere. The alias is made
-\ with inheritance NONE: a forked child gets a private copy of the RX view and
-\ no alias, and maps its own at the parent's address (FORK below).
-\ Clobbers x0-x17; jumps to fail with SP restored if a lookup or the remap fails.
-\ Frame: [0] &cur [8] &max [16] inheritance (the call's stack arguments),
-\ [24] task port, [32] "mach_vm_remap", [48] "mach_task_self_", [64] alias,
-\ [72] cur [76] max, [80] RX base, [88] __text base.
+\ macOS: map the region's RW alias over [x0, x0+REGION) with mach_vm_remap
+\ (copy FALSE) and leave x0 = alias - x0. x16 = __text base on entry. fixed
+\ maps the alias at exactly x1, else anywhere. The alias is made with
+\ inheritance NONE: a forked child gets a private copy of the RX view and no
+\ alias, and maps its own at the parent's address. Clobbers x0-x17; jumps to
+\ fail with SP restored if a lookup or the remap fails. Frame: [0] &cur [8]
+\ &max [16] inheritance (the call's stack arguments), [24] task port, [32]
+\ "mach_vm_remap", [48] "mach_task_self_", [64] alias, [72] cur [76] max, [80]
+\ RX base, [88] __text base.
 : REGION-REMAP ( bool label -- ) {: fixed:bool fail:label :}
    LBL LBL {: bad:label ok:label :}
    SP SP 96 SUBI,
@@ -2928,15 +2889,13 @@ public
 \ queries fail; the same query succeeds after libc fork. Linux keeps clone.
 \ Each child owns its region before any Habu code runs, so its compiles stay
 \ out of the parent's code and the parent's patches out of the child's. On
-\ macOS libc fork gives the child a private copy of the RX view and no alias
-\ (REGION-REMAP's inheritance NONE), and the child maps its own alias. On Linux
-\ both views are MAP_SHARED, so a child would alias the parent's live memfd,
-\ which the parent keeps writing once `fork` has returned to it: the parent
-\ fills a fresh memfd with its region's used extent BEFORE the clone and the
-\ child maps that memfd over both views, so the child's region is the parent's
-\ as it stood when the parent made the copy, and no byte the parent writes
-\ afterwards reaches it. A failure before the clone answers -1, as a refused
-\ clone does; a child that cannot map its views dies named with exit 78.
+\ Linux both views are MAP_SHARED, so a child would alias the parent's live
+\ memfd, which the parent keeps writing once `fork` has returned to it: the
+\ parent fills a fresh memfd with its region's used extent BEFORE the clone and
+\ the child maps that memfd over both views, so the child's region is the
+\ parent's as it stood when the parent made the copy, and no byte the parent
+\ writes afterwards reaches it. A failure before the clone answers -1, as a
+\ refused clone does; a child that cannot map its views dies named with exit 78.
 : FORK ( -- )                         \ ( -- pid|-1 )
    HB-TARGET-LINUX? IF
       LBL LBL LBL LBL LBL {: unfd:label failed:label parent:label done:label dead:label :}
@@ -3004,7 +2963,7 @@ public
          0 78 MOVZ,  NR-EXIT-GROUP SYS,
       parent LBL,                       \ the descriptor is released whatever close answers
          9 0 0 ADDI,  0 SP 0 LDR,  NR-CLOSE SYS,  0 9 0 ADDI,  done B,
-      plain LBL,                        \ nothing to re-establish: a plain fork
+      plain LBL,
          0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
          NR-FORK SYS,  C-CC done BCOND,  failed B,
       unfd LBL,  0 SP 0 LDR,  NR-CLOSE SYS,
@@ -3161,18 +3120,16 @@ package ENGINE-EMIT
    \ bytes belonged to a native body. Invalidate before the write can publish.
    9 SP 8 LDR,  10 9 4 ADDI,  HOST-INVALIDATE,
    9 SP 8 LDR,  10 SP 16 LDR,
-   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  10 11 0 STRW,   \ through the alias
+   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  10 11 0 STRW,
    C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 ;package
 
 \ Both relocation maps are keyed on region offset, and their readers refuse the
-\ image when the bytes lack the recorded shape (habu2.f RELOC-EMIT:EMIT-CALLS
-\ and EMIT-ADDRS, exits CALLMAP-RC and ADDRMAP-RC), so a bit left over replaced
+\ image when the bytes lack the recorded shape, so a bit left over replaced
 \ code is a defect. Both maps: one bit per region word, byte index = offset >>
-\ 5, bit = (offset >> 2) & 7; only the base differs, so one emitter serves both.
-\   x10 = the span's first region address, x9 = its byte length; both survive.
-\ Clobbers x6, x7 and x12..x15.
+\ 5, bit = (offset >> 2) & 7. x10 = the span's first region address, x9 = its
+\ byte length; both survive. Clobbers x6, x7 and x12..x15.
 package RELOC-EMIT
 public
 : CLEAR-SPAN, ( n -- ) {: mapoff:n :}
@@ -3182,10 +3139,10 @@ public
    7 0 MOVZ,  7 7 1 SUBI,                       \ x7 = all ones, for inverting one bit mask
    loop LBL,
    12 13 CMP,  C-CS done BCOND,
-   14 12 2 LSRI,  14 14 7 ANDI,                 \ x14 = bit number = word index & 7
-   15 12 5 LSRI,                                \ x15 = map byte index = offset >> 5
+   14 12 2 LSRI,  14 14 7 ANDI,
+   15 12 5 LSRI,
    6 mapoff LIT64,  15 15 6 ADD,  15 DATA 15 ADD,
-   6 1 MOVZ,  6 6 14 LSLV,  6 6 7 EOR,          \ x6 = ~(1 << bit)
+   6 1 MOVZ,  6 6 14 LSLV,  6 6 7 EOR,
    14 15 0 LDRB,  14 14 6 AND,  14 15 0 STRB,
    12 12 4 ADDI,
    loop B,
@@ -3201,26 +3158,22 @@ package NPUBWIN
 
 private
 
-\ BPATCH32 is the isolated writer: one instruction and its own line flush. The
-\ three primitives below publish a whole routine or record pair as one guarded
-\ copy through the RW alias and one flush.
-
-\ Guard one aligned SPAN of the writable code interval, the span-wise form of
-\ GUARD-CODE-WORD above: x9 = length, x10 = start. A zero length, a length or a
-\ start that is not a whole number of instructions, a span that wraps, and a span
-\ reaching outside [DBASE+DICT-SIZE, DBASE+REGION) all fail closed the way every
-\ other protected-memory violation does. Clobbers x12/x13.
+\ Guard one aligned SPAN of the writable code interval: x9 = length, x10 =
+\ start. A zero length, a length or a start that is not a whole number of
+\ instructions, a span that wraps, and a span reaching outside
+\ [DBASE+DICT-SIZE, DBASE+REGION) all fail closed the way every other
+\ protected-memory violation does. Clobbers x12/x13.
 : GUARD-CODE-SPAN ( -- )
    LBL LBL {: ok:label trap:label :}
    9 trap CBZ,                                  \ a window of nothing is a caller bug
-   12 9 3 ANDI,  12 trap CBNZ,                  \ length is whole instructions
-   12 10 3 ANDI,  12 trap CBNZ,                 \ start is instruction aligned
-   12 10 9 ADD,                                 \ x12 = end
-   12 10 CMP,  C-CC trap BCOND,                 \ unsigned wrap
+   12 9 3 ANDI,  12 trap CBNZ,
+   12 10 3 ANDI,  12 trap CBNZ,
+   12 10 9 ADD,
+   12 10 CMP,  C-CC trap BCOND,
    13 DICT-SIZE LIT64,  13 DBASE 13 ADD,
-   10 13 CMP,  C-CC trap BCOND,                 \ start below the code interval
+   10 13 CMP,  C-CC trap BCOND,
    13 REGION LIT64,  13 DBASE 13 ADD,
-   12 13 CMP,  C-HI trap BCOND,                 \ end past the region
+   12 13 CMP,  C-HI trap BCOND,
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
@@ -3229,26 +3182,24 @@ private
 \ reclaimed routine would make a snapshot restore relocate a displacement that
 \ is no longer a call. Call map only: this publisher's address records go in
 \ through `addrmap-set` after the copy; a CP rewind clears both maps over its
-\ released span (src/habu/xref.f CODE-RECLAIM). Clobbers x6, x7 and x12..x15.
+\ released span. Clobbers x6, x7 and x12..x15.
 : CLEAR-CALLMAP-SPAN ( -- )
    SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN, ;
 
 public
 
 \ code-publish ( src dst len -- ): write a whole emission into the code arena in
-\ one copy: guard the span, copy through the region's RW alias, clear the call
-\ map over the span, advance CP, flush. A publication is an append: dst must
-\ equal CP or it fails closed, and CP advances in the same primitive, so a throw
-\ never sees CP disagree with the arena. Rewriting a published instruction is
-\ `patch32`. LFLUSH walks [x9, CP) once CP has advanced.
+\ one copy. A publication is an append: dst must equal CP or it fails closed,
+\ and CP advances in the same primitive, so a throw never sees CP disagree with
+\ the arena. LFLUSH walks [x9, CP) once CP has advanced.
 : BCODEPUBLISH ( -- )
    A G-POP  B G-POP  C G-POP     \ x9 = len, x10 = dst, x11 = src
    LBL LBL LBL {: loop:label done:label atcp:label :}
    SP SP 48 SUBI,
    A SP 8 STR,  B SP 16 STR,  C SP 24 STR,
-   GUARD-CODE-SPAN                               \ x9/x10 survive: it clobbers x12/x13
+   GUARD-CODE-SPAN
    9 SP 8 LDR,  10 SP 16 LDR,
-   10 CP CMP,  C-EQ atcp BCOND,                 \ a publication is an append, or nothing
+   10 CP CMP,  C-EQ atcp BCOND,
       0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    atcp LBL,
    9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
@@ -3262,10 +3213,10 @@ public
    loop B,
    done LBL,
    9 SP 8 LDR,  10 SP 16 LDR,
-   CLEAR-CALLMAP-SPAN                            \ the span's relocation record, reset with it
+   CLEAR-CALLMAP-SPAN
    9 SP 8 LDR,  10 SP 16 LDR,
-   CP 10 9 ADD,                                  \ the slot is claimed
-   9 10 0 ADDI,  LFLUSH LABEL@ BL,              \ flush [dst, CP), once
+   CP 10 9 ADD,
+   9 10 0 ADDI,  LFLUSH LABEL@ BL,
    SP SP 48 ADDI, ;
 
 \ Install one prepared native package unit. The caller has relocated its code
@@ -3336,8 +3287,7 @@ public
 \ callmap-set ( addr -- ): record the instruction at addr as a call into the
 \ engine's loaded __text, the only call a snapshot must rewrite (a region-to-
 \ region call keeps its distance). Only the builder knows a branch's kind:
-\ region bytes may hold data that decodes as a branch. Code-publish starts
-\ every span cleared.
+\ region bytes may hold data that decodes as a branch.
 : BCALLMAPSET ( -- )
    LBL LBL {: inreg:label bad:label :}
    A G-POP                                       \ x9 = call-site address
@@ -3345,38 +3295,37 @@ public
    \ index into the DATA band after the map.
    10 9 3 ANDI,  10 bad CBNZ,                    \ a call site is a whole instruction
    10 9 DBASE SUB,                               \ x10 = candidate region byte offset
-   9 DBASE CMP,  C-CC bad BCOND,                 \ below the region
-   11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND, \ at or past its end
+   9 DBASE CMP,  C-CC bad BCOND,
+   11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND,
    inreg B,
    bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    inreg LBL,
-   9 9 DBASE SUB,                                \ x9 = region byte offset
-   10 9 2 LSRI,  10 10 7 ANDI,                   \ x10 = bit number
-   11 9 5 LSRI,                                  \ x11 = map byte index
+   9 9 DBASE SUB,
+   10 9 2 LSRI,  10 10 7 ANDI,
+   11 9 5 LSRI,
    12 SNAP-RELOC:CALLMAP-OFF LIT64,  11 11 12 ADD,  11 DATA 11 ADD,
    12 1 MOVZ,  12 12 10 LSLV,
    13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
 
-\ addrmap-set ( addr -- ): record the MOVZ/MOVK address carrier at addr, as
-\ habu2.f EMIT-ADDR-SITE does. One map serves code and DATA
-\ addresses: the passes need only where a chain starts; the kind is per
-\ relocation window, written beside it (src/compiler/native/publish.f).
-\ EMIT-ADDRS runs once per moving band and leaves a chain whose value is
-\ outside that band; DATA, at the fixed DATA-VA above both bands, is rewritten
-\ by neither, and DATA does not move. Guarded as BCALLMAPSET is.
+\ addrmap-set ( addr -- ): record the MOVZ/MOVK address carrier at addr. One
+\ map serves code and DATA addresses: the passes need only where a chain
+\ starts; the kind is per relocation window, written beside it. EMIT-ADDRS runs
+\ once per moving band and leaves a chain whose value is outside that band;
+\ DATA, at the fixed DATA-VA above both bands, is rewritten by neither, and
+\ DATA does not move.
 : BADDRMAPSET ( -- )
    LBL LBL {: inreg:label bad:label :}
    A G-POP                                       \ x9 = chain's first word address
    10 9 3 ANDI,  10 bad CBNZ,                    \ a chain starts on a whole instruction
    10 9 DBASE SUB,                               \ x10 = candidate region byte offset
-   9 DBASE CMP,  C-CC bad BCOND,                 \ below the region
-   11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND, \ at or past its end
+   9 DBASE CMP,  C-CC bad BCOND,
+   11 REGION LIT64,  10 11 CMP,  C-CS bad BCOND,
    inreg B,
    bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    inreg LBL,
-   9 9 DBASE SUB,                                \ x9 = region byte offset
-   10 9 2 LSRI,  10 10 7 ANDI,                   \ x10 = bit number
-   11 9 5 LSRI,                                  \ x11 = map byte index
+   9 9 DBASE SUB,
+   10 9 2 LSRI,  10 10 7 ANDI,
+   11 9 5 LSRI,
    12 SNAP-RELOC:ADDRMAP-OFF LIT64,  11 11 12 ADD,  11 DATA 11 ADD,
    12 1 MOVZ,  12 12 10 LSLV,
    13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
@@ -3392,9 +3341,7 @@ public
    A G-POP  B G-POP  C G-POP     \ x9 = record index, x10 = len, x11 = start
    \ The index names a live row or the one pending row, record[NDICT]; one
    \ unsigned compare also rejects a negative index.
-   \ src/compiler/native/publish.f COMMIT-HELD prepares a withheld record's two
-   \ cells this way. NDICT+1 and beyond trap.
-   9 NDICT CMP,  C-HI bad BCOND,                 \ negative, or past the pending record
+   9 NDICT CMP,  C-HI bad BCOND,
    14 CODE-SPAN:RAW-MAX LIT64,  10 14 CMP,  C-HI bad BCOND,
    14 10 3 ANDI,  14 bad CBNZ,                  \ encoded lengths remain instruction aligned
    14 CODE-SPAN:FULL LIT64,  10 14 CMP,  C-EQ bad BCOND, \ exact spans cannot be empty
@@ -3411,8 +3358,8 @@ public
    pending LBL,
    14 DREC MOVZ,  9 9 14 MUL,  9 DBASE 9 ADD,   \ x9 = &record[idx]
    15 DATA REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,   \ x15 = the record through the alias
-   10 15 8 STR,                                  \ length first
-   11 15 STLR,                                   \ then release-publish the address
+   10 15 8 STR,
+   11 15 STLR,
    9 SP 8 LDR,  9 NDICT CMP,  C-EQ done BCOND,
    EM-DEF-OCC:LISSUE LABEL@ BL,
    done LBL,
@@ -3431,24 +3378,7 @@ package ENGINE-EMIT
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
 \ A typed quotation cell starts at zero. Reading it is valid, but no public
-\ quotation call may branch to that address, even beneath a catch handler. The
-\ ISB is the reader's half of publication (src/lib/task.f header), and it runs
-\ only for an xt at or above the thread's CP register: an xt held as data may
-\ name code main compiled after this thread started, and no instruction fetched
-\ before the xt arrived may run in its place. An xt below CP needs none. On main
-\ every xt is below the live CP and main's flushes end in an ISB. A task's CP is
-\ the snapshot TASK:ACTIVATE took after every earlier flush, before the thread
-\ existed, so an xt below it names code published before the thread. With a
-\ definition pending the snapshot is that definition's body start, not CP: its
-\ body is flushed only at `;`, after the thread exists, and CP may move back
-\ within it. Everything below a live task's CP stays unwritten, since a rollback
-\ with a task live lowers nothing (EM-DEF-OCC:LRETIRE), except a `does>` or
-\ patch32 rewrite, which is outside the architecture's concurrent-modification
-\ guarantee anyway (only B, BL, BRK, HVC, ISB, NOP, SMC and SVC may be rewritten
-\ under a running thread). The compare is the control dependency that orders the
-\ fence after the xt's load; the comparison is unsigned. A direct BL needs no
-\ fence: its target was published before the caller was compiled. BEXECFLOOR and
-\ the defer stub (habu2.f C-DEFER-EMIT-CODE) fence the same way.
+\ quotation call may branch to that address, even beneath a catch handler.
 : BCALLABLE ( -- )
    LBL LBL LBL {: live:label msg:label old:label :}
    S\" hb: unset quotation\n" {: ma:ptr mu:n :}
@@ -3459,8 +3389,9 @@ package ENGINE-EMIT
    live LBL,  A CP CMP,  C-CC old BCOND,  ISB,
    old LBL, ;
 
-\ A reading quotation is its record's address with bit 63 set: x4 := the record, x9 := its code
-\ (cell 0); a plain one passes untouched. No code from these pops to their BLR writes x4 (t0-arm64.f REGS).
+\ A reading quotation is its record's address with bit 63 set: x4 := the
+\ record, x9 := its code (cell 0); a plain one passes untouched. No code from
+\ these pops to their BLR writes x4.
 : BRECORD ( -- )
    LBL {: plain:label :}
    A 0 CMPI,  C-PL plain BCOND,
@@ -3478,11 +3409,11 @@ package ENGINE-EMIT
 \ holds the caller's x30 across the BLR.
 : BEXECFLOOR ( -- )
    LBL LBL {: above:label old:label :}
-   A G-POP  A CP CMP,  C-CC old BCOND,  ISB,           \ BCALLABLE's fence
+   A G-POP  A CP CMP,  C-CC old BCOND,  ISB,
    old LBL,  A BLR,
    B 0 MOVZ,
-   A DATA S0-CELL LDR,  XDS A CMP,  C-CS above BCOND,   \ at or above the base: flag 0
-      XDS A 0 ADDI,  B 0 MOVN,                          \ below: XDS := base, flag -1
+   A DATA S0-CELL LDR,  XDS A CMP,  C-CS above BCOND,
+      XDS A 0 ADDI,  B 0 MOVN,
    above LBL,
    B G-PUSH ;
 
@@ -3490,10 +3421,9 @@ package ENGINE-EMIT
 \ HND-CELL saves the complete caller execution frame so a caught throw resumes
 \ it. Frame: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc |
 \ 32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel | 64 saved base |
-\ 72 saved capacity. BTHROW and EM-EVAL-THROW-RECOVER restore all of it.
-\ BCATCH-RUN is the frame alone: push, call, unlink. A normal return branches
-\ to CATCH-PUSH with x9 = 0; a throw resumes at CATCH-RES, where it ends, with
-\ the code in x9 and the frame already unlinked. Its caller places CATCH-PUSH.
+\ 72 saved capacity. A normal return branches to CATCH-PUSH with x9 = 0; a
+\ throw resumes at CATCH-RES, where it ends, with the code in x9 and the frame
+\ already unlinked. Its caller places CATCH-PUSH.
 : BCATCH-RUN ( -- )
    LBL CATCH-RES !
    LBL CATCH-PUSH !
@@ -3504,8 +3434,8 @@ package ENGINE-EMIT
    19 SP 8 STR,
    13 SP STACK-ABI:CATCH-BYTES ADDI,  13 SP 16 STR,
    12 CATCH-RES LABEL@ ADR,  12 SP 24 STR,
-   11 DATA RSP-CELL LDR,     11 SP 40 STR,   \ save user return-stack depth
-   11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,   \ save loop-stack depth
+   11 DATA RSP-CELL LDR,     11 SP 40 STR,
+   11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,
    11 STACK-ABI:CATCH-MAGIC LIT64,  11 SP 56 STR,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
@@ -3517,19 +3447,18 @@ package ENGINE-EMIT
    CATCH-RES LABEL@ LBL, ;
 
 public
-\ BTHROW ( code -- ): unwind to the nearest catch handler; the tail of `throw`
-\ (BTHROWPRIM) and the engine's throw sites. With EVALD>0 it first goes to
-\ LEVALREC (habu2.f, through EVALREC-CELL: a leaf prim cannot name a habu2.f
-\ label), which rolls back each escaped evaluate frame, so a checker or compile
-\ error inside `evaluate` is a catchable throw and a catch inside the evaluated
-\ source still handles its own throws.
+\ BTHROW ( code -- ): unwind to the nearest catch handler. With EVALD>0 it
+\ first goes to LEVALREC (through EVALREC-CELL: a leaf prim cannot name a
+\ habu2.f label), which rolls back each escaped evaluate frame, so a checker or
+\ compile error inside `evaluate` is a catchable throw and a catch inside the
+\ evaluated source still handles its own throws.
 : BTHROW ( -- )
    LBL THROW-NOH !  LBL THROW-EVAL !  LBL THROW-CORRUPT !  LBL THROW-CORRUPT-MSG !
    S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
    A G-POP  15 9 0 ADDI,                               \ x15 = code
-   12 DATA EVALD-CELL LDR,  12 THROW-EVAL LABEL@ CBNZ, \ inside evaluate → LEVALREC cleans frames first
+   12 DATA EVALD-CELL LDR,  12 THROW-EVAL LABEL@ CBNZ,
    11 DATA 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
-   9 15 0 ADDI,                                        \ x9 = code
+   9 15 0 ADDI,
    11 THROW-NOH LABEL@ CBZ,
    \ handler-frame integrity: check sentinel + saved depths BEFORE any restore store
    14 STACK-ABI:CATCH-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE THROW-CORRUPT LABEL@ BCOND,
@@ -3542,9 +3471,9 @@ public
    19 11 8 LDR,
    14 DATA STACK-ABI:BASE-CELL STR,
    10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
-   10 11 40 LDR,  10 DATA RSP-CELL STR,               \ restore user return-stack depth
-   10 11 48 LDR,  10 DATA LOOPSP-CELL STR,            \ restore loop-stack depth
-   10 11 0 LDR,  10 DATA 8 STR,                       \ HND = prev
+   10 11 40 LDR,  10 DATA RSP-CELL STR,
+   10 11 48 LDR,  10 DATA LOOPSP-CELL STR,
+   10 11 0 LDR,  10 DATA 8 STR,
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
    THROW-EVAL LABEL@ LBL,
@@ -3558,8 +3487,8 @@ public
    9 1 CMPI,    C-LT THROW-NOREC-FB2 LABEL@ BCOND,
    9 255 CMPI,  C-GT THROW-NOREC-FB2 LABEL@ BCOND,
    NR-EXIT-GROUP SYS,
-   THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, \ else deterministic uncaught-throw rc
-   THROW-CORRUPT LABEL@ LBL,                             \ forged/corrupt handler frame: fail closed before any restore
+   THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
+   THROW-CORRUPT LABEL@ LBL,
    0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
@@ -3581,9 +3510,8 @@ private
 \ clear the code is delivered as always. Set, a TASK:HALT is unwinding the task:
 \ while a frame remains below this one (HND nonzero) this is an inner catch,
 \ which rethrows the code at once and never delivers it, so no code after a
-\ `catch` observes a halt; the task's root catch (HND 0, src/lib/task.f
-\ TASK-RUN-USER) clears the cell and delivers the code, so the runner ends the
-\ task.
+\ `catch` observes a halt; the task's root catch (HND 0) clears the cell and
+\ delivers the code, so the runner ends the task.
 : BCATCH-FORWARD ( -- )
    LBL LBL {: inner:label keep:label :}
    10 DATA HALT-UNWIND-CELL LDR,  10 keep CBZ,
@@ -3604,12 +3532,11 @@ public
    BCATCH-RUN  BCATCH-FORWARD  CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
 
 private
-\ ALLOT's missing owner callback throws through the engine helper above.
-\ `allot` hands out zeroed space (docs/forth.md `create … allot`). Fresh DATA
-\ pages are zero, so a positive count zeroes only the part of [old DP, new DP)
-\ below the release high-water (DP-LOWER,), the space a lowered DP gave back;
-\ above it nothing has been handed out, and the pages a large allot reserves
-\ stay untouched. A negative count raises the high-water instead.
+\ `allot` hands out zeroed space. Fresh DATA pages are zero, so a positive
+\ count zeroes only the part of [old DP, new DP) below the release high-water,
+\ the space a lowered DP gave back; above it nothing has been handed out, and
+\ the pages a large allot reserves stay untouched. A negative count raises the
+\ high-water instead.
 : BALLOT ( -- )
    LBL LBL LBL LBL LBL {: grow:label zero:label store:label no-owner:label missing:label :}
    B-TASK-GUARD
@@ -3721,12 +3648,11 @@ private
 \ run-in-stack ( xt base size -- ): run xt on a fresh data stack (x19=base,
 \ full-ascending). The extent becomes allocation authority, saved with XDS so
 \ return and unwind restore the caller. An unguarded extent is a caller error
-\ and throws STACK-ABI:E-STACK-UNGUARDED (BTHROW inlined as in BFINALLY, so
-\ this word sits below it); a malformed descriptor is still the fail-closed
-\ STACK-BOUNDS exit, since it can arrive from a saved frame or a task with no
-\ caller to throw to. No STACK-GUARD:CHECK-CURSOR on entry: GUARDED-EXTENT?
-\ already proves every branch it would emit with cursor = base. The exit check
-\ stays: the callback may have moved the descriptor.
+\ and throws STACK-ABI:E-STACK-UNGUARDED; a malformed descriptor is still the
+\ fail-closed STACK-BOUNDS exit, since it can arrive from a saved frame or a
+\ task with no caller to throw to. No STACK-GUARD:CHECK-CURSOR on entry:
+\ GUARDED-EXTENT? already proves every branch it would emit with cursor = base.
+\ The exit check stays: the callback may have moved the descriptor.
 : BRUNSTACK ( -- )
    LBL LBL LBL {: bad:label unguarded:label done:label :}
    12 XDS 24 SUBI,
@@ -3797,8 +3723,9 @@ private
    thrown LBL,  9 G-PUSH  BTHROW
    done LBL, ;
 
-\ source-file-run ( xt -- ): run a file's unit (src/core/include.f LOAD-UNIT) on a pool stack, as B-EVAL-CLOSED runs text,
-\ its include's pending observer unpended meanwhile so no evaluate in the file adopts it; frame [32] keeps it, 0 for none.
+\ source-file-run ( xt -- ): run a file's unit on a pool stack, as B-EVAL-CLOSED
+\ runs text, its include's pending observer unpended meanwhile so no evaluate in
+\ the file adopts it; frame [32] keeps it, 0 for none.
 : B-SOURCE-FILE-RUN ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL
       {: have:label take:label caught:label restore:label done:label no-snap:label
@@ -3920,11 +3847,10 @@ private
 
 \ A loader cut may carry parent data cells across the child's guarded stack.
 \ All compiler state and the return stack must still be closed at that cut.
-\ The floors are the owned range's, so a loop reading a buffer an observed
-\ word evaluates (its frame's EVAL-FRAME:SX-CTX set, interpreter.f
-\ OBSERVE-ADOPT) is never clean: no boundary, no cut and no balanced position
-\ there. x10 = the observer, whose SX-EVAL every caller has matched to
-\ EVAL-TOP-CELL.
+\ The floors are the owned range's, so a loop reading a buffer an observed word
+\ evaluates (its frame's EVAL-FRAME:SX-CTX set) is never clean: no boundary, no
+\ cut and no balanced position there. x10 = the observer, whose SX-EVAL every
+\ caller has matched to EVAL-TOP-CELL.
 : BSOURCEEXECCLEAN ( -- )
    LBL LBL {: bad:label done:label :}
    9 10 SX-EVAL LDR,  9 9 EVAL-FRAME:SX-CTX LDR,  9 bad CBNZ,
@@ -4000,10 +3926,10 @@ private
    10 DATA HALT-UNWIND-CELL LDR,  10 SP 16 STR,
    10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
    9 SP 0 LDR,  9 G-PUSH  BCATCH-HELD
-   9 keep CBZ,  9 SP 8 STR,                     \ a cleanup's code supersedes
+   9 keep CBZ,  9 SP 8 STR,
    keep LBL,
    10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
-   10 SP 16 STR,                                \ a halt begun in the cleanup
+   10 SP 16 STR,
    calm LBL,
    9 SP 8 LDR,  10 SP 16 LDR,  SP SP 32 ADDI,
    10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
@@ -4034,7 +3960,7 @@ private
    9 SP 16 STR,
    C2-INVOKE-CLEAN LABEL@ LBL,
    10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
-   10 SP 24 STR,                                \ a halt begun in the cleanup
+   10 SP 24 STR,
    10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
    calm LBL,
    9 SP 16 LDR,  9 G-PUSH
@@ -4136,9 +4062,8 @@ private
 \ set-check ( xt -- ): install the checker hook. 0 disables checking (the
 \ audited `0 set-check` boundary) and parks an armed hook with its preflight in
 \ the SUSP-HOOK pair; arming the parked hook while the preflight cell is empty
-\ brings that preflight back, and every arm clears the pair (docs/forth.md
-\ "`0 set-check` suspends the armed hook"). A non-zero xt must lie in
-\ [DBASE, CP) (x26/x28): every real hook is a source-loaded word compiled
+\ brings that preflight back, and every arm clears the pair. A non-zero xt must
+\ lie in [DBASE, CP) (x26/x28): every real hook is a source-loaded word compiled
 \ there, and a wild install (1, a DATA address, a baked-primitive xt) dies here
 \ with a named rc-70 diagnostic instead of at the next publish's BLR. The
 \ window cannot tell a word entry from another in-range address.
@@ -4146,11 +4071,10 @@ private
    LBL LBL LBL LBL LBL LBL {: bad:label disarm:label kept:label armed:label done:label msg:label :}
    S\" set-check: invalid checker xt\n" {: ma:ptr mu:n :}
    A G-POP                               \ x9 = candidate xt
-   9 disarm CBZ,                         \ 0 -> checking off
-      9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
-      9 CP CMP,     C-CS bad BCOND,      \ xt >= CP (unsigned) -> reject
+   9 disarm CBZ,
+      9 DBASE CMP,  C-CC bad BCOND,
+      9 CP CMP,     C-CS bad BCOND,
       A DATA HOOK-CELL STR,
-      \ The parked hook brings its preflight back; any other arm starts bare.
       11 DATA COMPILE-PREFLIGHT-CELL LDR,  11 armed CBNZ,
       11 DATA SUSP-HOOK-CELL LDR,  9 11 CMP,  C-NE armed BCOND,
       11 DATA SUSP-PREFLIGHT-CELL LDR,  11 DATA COMPILE-PREFLIGHT-CELL STR,
@@ -4170,7 +4094,7 @@ private
    msg LBL,  ma mu BYTES,
    done LBL,
       \ Each successful install invalidates the observer identity, including
-      \ suspension and same-xt rearming. INSTALL pairs hook and completion.
+      \ suspension and same-xt rearming.
       10 0 MOVZ,
       10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + STR,
       10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR, ;
@@ -4203,8 +4127,8 @@ private
    9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
    done LBL, ;
 
-\ set-tier ( n -- ): layout.f NCOMP-DISPATCH:TIER-CELL states the rule. A primitive
-\ so it works on a file's first line; a tier is not a flag, so only 0 and 1 pass.
+\ set-tier ( n -- ): a primitive so it works on a file's first line; a tier is
+\ not a flag, so only 0 and 1 pass.
 : BSETTIER ( -- )
    LBL LBL LBL {: bad:label done:label msg:label :}
    S\" set-tier: tier must be 0 or 1\n" {: ma:ptr mu:n :}
@@ -4218,8 +4142,7 @@ private
    msg LBL,  ma mu BYTES,
    done LBL, ;
 
-\ tier@ ( -- n ): the live tier, for a driver that wants to assert its own
-\ selection.
+\ tier@ ( -- n ): the live tier.
 : BTIERFETCH ( -- ) 9 DATA NCOMP-DISPATCH:TIER-CELL LDR,  A G-PUSH ;
 
 \ The same readiness supplies the live tick gate and the verifier's entry
@@ -4244,7 +4167,7 @@ private
    done LBL, ;
 
 public
-\ Register n gets the DEF-TIER-CELL latch (layout.f) the next `:` takes.
+\ Register n gets the DEF-TIER-CELL latch the next `:` takes.
 : TIER-LATCH ( n -- ) {: r:n :}
    LBL {: done:label :}
    r DATA NCOMP-DISPATCH:TIER-CELL LDR,  r done CBNZ,
@@ -4272,12 +4195,10 @@ private
    9 0 MOVZ,  9 G-PUSH  9 G-PUSH
    done LBL, ;
 
-\ set-preflight ( xt -- ): single-assignment installer for the
-\ checker-owned immediate preflight. `0 set-check` suspends the paired
-\ protected cell with the armed hook and empties it, and `set-check` of that
-\ same hook resumes it (BSETCHECK); while it is empty the checker may install
-\ one live JIT entry, and an identical reinstall is inert. While checking stays
-\ armed, even a TRUSTED: caller cannot replace the hook.
+\ set-preflight ( xt -- ): single-assignment installer for the checker-owned
+\ immediate preflight. While it is empty the checker may install one live JIT
+\ entry, and an identical reinstall is inert. While checking stays armed, even
+\ a TRUSTED: caller cannot replace the hook.
 : BSETPREFLIGHT ( -- )
    LBL LBL LBL LBL LBL LBL LBL
    {: bad:label invalid:label empty:label emit:label done:label msg:label invalid-msg:label :}
@@ -4305,17 +4226,15 @@ private
    invalid-msg LBL,  ia iu BYTES,
    done LBL, ;
 
-\ set-top-check ( xt -- ): install the top-row token hook (src/core/top-row.f)
-\ with BSETCHECK's window: 0 uninstalls; a non-zero xt outside [DBASE, CP)
-\ dies with a named rc-70 diagnostic. The cell is a PROT-GUARD band (layout.f
-\ TOP-HOOK-CELL), so this direct STR is its only post-seal writer.
+\ set-top-check ( xt -- ): install the top-row token hook. The cell is a
+\ PROT-GUARD band, so this direct STR is its only post-seal writer.
 : BSETTOPCHECK ( -- )
    LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
    S\" set-top-check: invalid top-row hook xt\n" {: ma:ptr mu:n :}
    A G-POP                               \ x9 = candidate xt
-   9 ok CBZ,                             \ 0 -> hook off, install as-is
-      9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
-      9 CP CMP,     C-CS bad BCOND,      \ xt >= CP (unsigned) -> reject
+   9 ok CBZ,
+      9 DBASE CMP,  C-CC bad BCOND,
+      9 CP CMP,     C-CS bad BCOND,
    ok LBL,
       A DATA TOP-HOOK-CELL STR,
       done B,
@@ -4334,27 +4253,23 @@ package ENGINE-EMIT
    9 C-NE CSET,  9 31 9 SUB,  9 G-PUSH ;
 
 \ Capture the seal-time dictionary-truncation watermark. SEAL-CAPTURE tokens
-\ call it (the xref.f baseline and the cold prefix's token at the engine-prefix
-\ end), after engine definitions and before
-\ any user token. The friend latch is already sealed, so a raw ! would trap;
-\ this direct STR from NDICT (x27) is the sanctioned bypass, as in
-\ BSETCUR/BSETCHECK. NDICT only grows once the engine is loaded, so a rerun
-\ never lowers the watermark. The pre-trust defer table (layout.f PD-*) must be
-\ empty by then: checker.f drains it after `: TRUST`, and SEAL-CAPTURE runs
-\ after checker.f. A non-empty table means DRAIN-PRETRUST never ran: each
-\ undrained defer is named on fd 2 and the exit is 73. Loop state stays off the
-\ write-clobbered x0-x2/x9 and re-derives the band base each iteration.
+\ call it after engine definitions and before any user token. The friend latch
+\ is already sealed, so a raw ! would trap; this direct STR from NDICT (x27) is
+\ the sanctioned bypass. NDICT only grows once the engine is loaded, so a rerun
+\ never lowers the watermark. The pre-trust defer table must be empty by then.
+\ Loop state stays off the write-clobbered x0-x2/x9 and re-derives the band
+\ base each iteration.
 : BSEALCAP ( -- )
    LBL LBL LBL {: pdok pdloop pdexit :}
    9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,   \ x10 = pending count; 0 -> drained
       13 0 MOVZ,                                                     \ x13 = index
       pdloop LBL,  13 10 CMP,  C-GE pdexit BCOND,
-         9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,                        \ re-derive &band (writes clobber x9)
+         9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,
          15 PD-SLOT MOVZ,  15 13 15 MUL,  14 9 PD-SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = slot base
          SP SP 32 SUBI,  9 $72646E75203A6268 LIT64,  9 SP 0 STR,  9 $72702064656E6961 LIT64,  9 SP 8 STR,  9 $2074737572742D65 LIT64,  9 SP 16 STR,  9 $00203A7265666564 LIT64,  9 SP 24 STR,
          0 2 MOVZ,  1 SP 0 ADDI,  2 31 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,       \ "hb: undrained pre-trust defer: "
-         0 2 MOVZ,  1 14 PD-NAME-OFF ADDI,  2 14 PD-NLEN-OFF LDR,  NR-WRITE SYS,   \ the defer name
-         SP SP 16 SUBI,  9 $0A LIT64,  9 SP 0 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,   \ newline (LOPENNL is habu2.f-only)
+         0 2 MOVZ,  1 14 PD-NAME-OFF ADDI,  2 14 PD-NLEN-OFF LDR,  NR-WRITE SYS,
+         SP SP 16 SUBI,  9 $0A LIT64,  9 SP 0 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,
          13 13 1 ADDI,  pdloop B,
       pdexit LBL,  0 73 MOVZ,  NR-EXIT-GROUP SYS,
    pdok LBL,
@@ -4368,17 +4283,15 @@ package ENGINE-EMIT
 
 \ wide-mark ( -- ): set DNAME-WIDE on the newest record: its effect carries a
 \ wider-than-cell layout value, so interpret-mode execute and tick refuse it.
-\ Like `immediate` it stores through the
-\ region's RW alias: the record's own address is read-only. The checker calls
-\ it at signature-record time.
+\ It stores through the region's RW alias: the record's own address is
+\ read-only. The checker calls it at signature-record time.
 : BWIDEMARK ( -- )
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ x9 = &record[NDICT-1]
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 9 12 ADD,   \ x12 = the record through the alias
    10 12 16 LDR,  10 10 DNAME-WIDE ORRI,  10 12 16 STR, ;
 
 \ int-mark ( n -- ): set DNAME-INT on record n; interpret-mode execute and tick
-\ refuse it. Stored through the alias as in BWIDEMARK.
-\ Monotonic: no clear prim exists.
+\ refuse it. Monotonic: no clear prim exists.
 : BINTMARK ( -- )
    A G-POP
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
@@ -4386,9 +4299,8 @@ package ENGINE-EMIT
    C 12 16 LDR,  C C DNAME-INT ORRI,  C 12 16 STR, ;
 
 \ rep-mark ( n -- ): set DNAME-REP on dictionary record n, the CAST: record the
-\ checker certified as a representation cast (src/core/checker.f
-\ CHECKER-DEFCAST). The twin of BINTMARK: the same alias store, no index
-\ check, monotonic (no clear prim exists).
+\ checker certified as a representation cast. The twin of BINTMARK: the same
+\ alias store, no index check, monotonic (no clear prim exists).
 : BREPMARK ( -- )
    A G-POP
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
@@ -4484,13 +4396,10 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
    done LBL,  15 G-PUSH ;
 
 \ min-in-mark ( rec-idx min -- ): OR the certified minimum input arity into
-\ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The publisher
-\ (src/compiler/native/publish.f MIN-IN-REC) and the Habu loop's definers set it
-\ on a certified word, and interpreter.f INTERPRETER:GATE refuses a call with
-\ fewer interpret-stack cells. Stored through the alias as in BINTMARK;
-\ monotonic.
-\ The registry stamps this prim's own record DNAME-INT, so user source cannot
-\ re-drive it.
+\ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The publisher and the Habu
+\ loop's definers set it on a certified word, and the interpreter refuses a call
+\ with fewer interpret-stack cells. Monotonic. The registry stamps this prim's
+\ own record DNAME-INT, so user source cannot re-drive it.
 : BMININMARK ( -- )
    B G-POP                               \ x10 = min-in cells
    A G-POP                               \ x9  = record index
@@ -4524,15 +4433,15 @@ public
 
 private
 
-\ prot-wid-add ( wid -- ): mark wid protected through LPROTWIDADD.
+\ prot-wid-add ( wid -- ): mark wid protected.
 : BPROTWIDADD ( -- )
    9 G-POP  LPROTWIDADD LABEL@ BL, ;
 
-\ The design seal's two writers (src/lib/vocabulary.f). The harness
-\ admits packages and seals before it loads the design; once POLICY-NDICT-CELL
-\ is set either prim writes `hb: policy: sealed` and exits ENGINE-ERROR:POLICY,
-\ so nothing the design can reach widens its own vocabulary. Each refusal is one
-\ line on fd 2 and that exit, as BPROTWIDADD refuses past its bound.
+\ The design seal's two writers. The harness admits packages and seals before
+\ it loads the design; once POLICY-NDICT-CELL is set either prim writes
+\ `hb: policy: sealed` and exits ENGINE-ERROR:POLICY, so nothing the design
+\ can reach widens its own vocabulary. Each refusal is one line on fd 2 and
+\ that exit.
 : POLICY-SEALED$ ( -- ptr u8 n ) S\" hb: policy: sealed\n" ;
 : POLICY-NOPKG$ ( -- ptr u8 n ) s" hb: policy: no package " ;
 : POLICY-BOUND$ ( -- ptr u8 n ) S\" hb: policy: package wid above the bound\n" ;
@@ -4540,8 +4449,7 @@ private
 : POLICY-PKG$ ( -- ptr u8 n ) s" hb: policy: package " ;
 : POLICY-KEYWORD$ ( -- ptr u8 n ) s"  publishes keyword " ;
 
-\ What both writers open with: once sealed, name the refusal and exit. Unsealed
-\ it falls through, having written x9 only.
+\ Unsealed it falls through, having written x9 only.
 : POLICY-OPEN, ( -- )
    LBL LBL {: open:label msg:label :}
    9 DATA POLICY-NDICT-CELL LDR,  9 open CBZ,
@@ -4610,10 +4518,9 @@ private
 
 package ENGINE-EMIT
 \ prot-wid-room ( -- n ): how many more wordlists may still be allocated AND
-\ protected. Every WID below PROT-WID-MAX has a bit, so the only thing that can run
-\ out is WID ids themselves -- the resource a declaration actually consumes. Clamped
-\ at 0 so a caller's `room 0=` and `need room >` tests stay meaningful if WIDN ever
-\ passes the bound (unprotected wordlists may be allocated beyond it).
+\ protected. Clamped at 0 so a caller's `room 0=` and `need room >` tests stay
+\ meaningful if WIDN ever passes the bound (unprotected wordlists may be
+\ allocated beyond it).
 : BPROTWIDROOM ( -- )
    LBL {: pos:label :}
    14 DATA WIDN-CELL LDR,
@@ -4625,10 +4532,8 @@ package ENGINE-EMIT
 
 public
 \ Emit the FNV-1a fold+hash of the name at reg nr (ptr), length lr, into hr;
-\ clobbers c3 c4 (byte/fold scratch) and c7 (cursor). The fold is FIND's
-\ A-Z|0x20 idiom. This is the hash index's key derivation, shared by the
-\ inserter, the duplicate wall, LFIND's two probes and BSWL; it sits here
-\ because BSWL is the earliest user.
+\ clobbers c3 c4 (byte/fold scratch) and c7 (cursor). This is the hash
+\ index's key derivation.
 : C-HIDX-HASH ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
    LBL LBL {: hl:label hd:label :}
    hr $CBF29CE484222325 LIT64,
@@ -4652,16 +4557,14 @@ public
 \ a wid holds one live row per folded name:
 \   - a real wordlist (the global wid, a package's private or public wid, a
 \     package-row marker) is guarded by duplicate walls at its definers.
-\     native-unit-publish can
-\     still append duplicates;
-\     XREF's indexed probe below scans the whole chain for its newest-record
-\     rule;
+\     native-unit-publish can still append duplicates; XREF's indexed probe
+\     below scans the whole chain for its newest-record rule;
 \   - WL:RETIRED is not a wordlist: xref.f XREF:RETIRE stamps it onto rows
 \     still keyed under their published wid, and retiring one name twice puts
 \     two rows under the key, so that wid always takes the scan.
-\ The scan also answers for no table and for a chain with no empty slot (as
-\ LFIND's FIND-START). An empty slot means absent: every record below NDICT is
-\ in the table and slots only go empty -> occupied.
+\ The scan also answers for no table and for a chain with no empty slot. An
+\ empty slot means absent: every record below NDICT is in the table and slots
+\ only go empty -> occupied.
 \ A miss in the global wid asks WL:PRIMITIVES by the same entry's rule and
 \ answers that, with x2 restored.
 package WLFIND
@@ -4688,18 +4591,18 @@ public
    LBL SWL-INL !
    LBL LBL LBL LBL LBL LBL LBL LBL
    {: plin:label ploop:label pnext:label pinl:label pcmp:label pmatch:label pend:label nend:label :}
-   11 0 MOVZ,                                              \ result defaults to absent
-   12 0 MOVZ,                                              \ ... and so does the row: neither loop writes x12
+   11 0 MOVZ,
+   12 0 MOVZ,
    \ Hash probe. x0 (name), x1 (len), x2 (wid) and x11 (result) are preserved
    \ across it for the scan the two fallbacks reach.
-   4 WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,   \ not a wordlist key -> scan
-   14 DATA HIDXP-CELL LDR,  14 plin CBZ,                   \ no table -> scan
+   4 WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,
+   14 DATA HIDXP-CELL LDR,  14 plin CBZ,
    0 1 15 4 16 7 C-HIDX-HASH
-   6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
+   6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
    8 HIDX-SLOTS LIT64,
    ploop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,            \ x3 = slot value (index+1)
-      3 pend CBZ,                                          \ empty slot -> absent from this wordlist
+      3 pend CBZ,
       4 3 1 SUBI,  4 NDICT CMP,  C-GE pnext BCOND,         \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,             \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE pnext BCOND,           \ wid mismatch (retired / other wordlist)
@@ -5035,8 +4938,8 @@ package ENGINE-EMIT
 ;package
 
 package ENGINE-EMIT
-\ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
-\ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
+\ FP: doubles as raw IEEE754 bit-cells on the data stack. Compare conds per FP
+\ flag semantics: < MI, > GT, = EQ (NaN compares false).
 : BF+ ( -- )
    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A G-PUSH ;
 
@@ -5092,22 +4995,22 @@ package ENGINE-EMIT
    LBL FD-FRAC !
    LBL FD-INT !
    LBL FD-SIGN !
-   A G-POP  15 A 0 ADDI,                               \ bits (sign test later)
+   A G-POP  15 A 0 ADDI,
    SP SP 48 SUBI,
    12 SP 48 ADDI,
    13 10 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,           \ newline
-   0 15 FMOVXD,  1 0 FABS,                             \ d1 = |x|
-   9 1 FCVTZS,                                         \ x9 = int part
-   2 9 SCVTF,  3 1 2 FSUB,                             \ d3 = frac
+   0 15 FMOVXD,  1 0 FABS,
+   9 1 FCVTZS,
+   2 9 SCVTF,  3 1 2 FSUB,
    14 $F4240 LIT64,  2 14 SCVTF,  3 3 2 FMUL,
    14 3 FCVTZS,                                        \ x14 = frac * 1e6
    10 10 MOVZ,  5 6 MOVZ,
-   FD-FRAC LABEL@ LBL,                                 \ six zero-padded frac digits
+   FD-FRAC LABEL@ LBL,
      11 14 10 SDIV,  13 11 10 MUL,  13 14 13 SUB,
      13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
      14 11 0 ADDI,  5 5 1 SUBI,  5 FD-FRAC LABEL@ CBNZ,
    13 46 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,           \ '.'
-   FD-INT LABEL@ LBL,                                  \ int digits (do-while)
+   FD-INT LABEL@ LBL,
      11 9 10 SDIV,  13 11 10 MUL,  13 9 13 SUB,
      13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
      9 11 0 ADDI,  9 FD-INT LABEL@ CBNZ,
@@ -5134,20 +5037,15 @@ package ENGINE-EMIT
    LCEMIT LABEL@ LBL,
    SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,
    28 GUARD-CODE-WORD
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 28 12 ADD,  9 12 0 STRW,   \ through the alias
+   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 28 12 ADD,  9 12 0 STRW,
    12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
    28 28 4 ADDI,  RET, ;
 
-\ EMIT-BCAP's grow routine at gsub ( x16 = the text length needed -- x16 = 0, or the
-\ capacity a refused map tried ): the new capacity is BODY-TEXT:FIRST-CAP doubled
-\ until it holds x16, and the block 17 * cap bytes, anonymous, private and
-\ read-write. It copies the old block's min(BODYLEN, cap) text bytes to the new
-\ base and its ROWS * 16 row bytes to new base + new cap, adds new base - old
-\ base to TCSIG-A-CELL when that lies in the old text, unmaps the old block and
-\ stores BASE, CAP and SIZE. A capacity at 2^59, whose block's size would pass
-\ 2^63, is refused as a map is, as kernel-x64.f GROW-LIMIT-SHIFT refuses it. It keeps every register but x16, the syscall's
-\ included: LBCS's callers hold x6-x10 live, and the capture then reads x11,
-\ x12, x14 and x17. A refused map leaves the handle as it was.
+\ EMIT-BCAP's grow routine at gsub ( x16 = the text length needed -- x16 = 0, or
+\ the capacity a refused map tried ). A capacity at 2^59, whose block's size
+\ would pass 2^63, is refused as a map is. It keeps every register but x16, the
+\ syscall's included: LBCS's callers hold x6-x10 live, and the capture then
+\ reads x11, x12, x14 and x17. A refused map leaves the handle as it was.
 : BCAP-GROW ( label -- ) {: gsub:label :}
    LBL LBL LBL LBL LBL {: dbl:label fits:label fail:label done:label fresh:label :}
    LBL LBL LBL LBL LBL {: tloop:label tdone:label rloop:label rdone:label kept:label :}
@@ -5158,9 +5056,9 @@ package ENGINE-EMIT
    5 SP 40 STR,   6 SP 48 STR,   7 SP 56 STR,   8 SP 64 STR,   9 SP 72 STR,
    10 SP 80 STR,  11 SP 88 STR,  12 SP 96 STR,  13 SP 104 STR, 14 SP 112 STR,
    15 SP 120 STR, 17 SP 128 STR,
-   9 16 0 ADDI,                                   \ x9 = the length needed
-   10 BODY-TEXT:FIRST-CAP LIT64,                  \ x10 = the new capacity
-   11 1 MOVZ,  11 11 59 LSLI,                     \ x11 = 2^59, the first capacity refused
+   9 16 0 ADDI,
+   10 BODY-TEXT:FIRST-CAP LIT64,
+   11 1 MOVZ,  11 11 59 LSLI,
    dbl LBL,
       10 9 CMP,  C-CS fits BCOND,
       10 10 1 LSLI,
@@ -5170,11 +5068,10 @@ package ENGINE-EMIT
    0 0 MOVZ,  1 10 4 LSLI,  1 1 10 ADD,  2 3 MOVZ,
    3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,
    C-CS fail BCOND,
-   11 0 0 ADDI,                                   \ x11 = the new base
-   12 DATA BODY-TEXT:BASE-CELL LDR,               \ x12 = the old base, x13 its capacity
+   11 0 0 ADDI,
+   12 DATA BODY-TEXT:BASE-CELL LDR,
    13 DATA BODY-TEXT:CAP-CELL LDR,
    12 fresh CBZ,
-   \ the text: min(BODYLEN, old cap) bytes
    14 DATA BODYLEN-CELL LDR,  14 13 CMP,  C-LS kept BCOND,  14 13 0 ADDI,
    kept LBL,
    15 0 MOVZ,
@@ -5183,7 +5080,6 @@ package ENGINE-EMIT
       5 12 15 ADD,  5 5 0 LDRB,  6 11 15 ADD,  5 6 0 STRB,
       15 15 1 ADDI,  tloop B,
    tdone LBL,
-   \ the rows: ROWS * 16 bytes from old base + old cap to new base + new cap
    7 DATA BODY-TEXT:ROWS-CELL LDR,  7 7 4 LSLI,
    15 0 MOVZ,
    rloop LBL,
@@ -5203,7 +5099,7 @@ package ENGINE-EMIT
    16 0 MOVZ,
    back B,
    fail LBL,
-   16 10 0 ADDI,                                  \ x16 = the capacity refused
+   16 10 0 ADDI,
    back LBL,
    0 SP 0 LDR,    1 SP 8 LDR,    2 SP 16 LDR,   3 SP 24 LDR,   4 SP 32 LDR,
    5 SP 40 LDR,   6 SP 48 LDR,   7 SP 56 LDR,   8 SP 64 LDR,   9 SP 72 LDR,
@@ -5212,10 +5108,8 @@ package ENGINE-EMIT
    SP SP 144 ADDI,  RET, ;
 
 \ LBCS ( x11=a x12=u ) appends a run and a space to the body text, with a
-\ layout.f BODY-SOURCE row at base + cap. When BODY-TEXT's BASE
-\ is 0 or BODYLEN + u + 1 passes its CAP, it maps a larger
-\ block first (BCAP-GROW); a refused map dies rc 71 at LBGROWFAIL (habu2.f EM-BODY-GROW-DIE)
-\ before anything is stored, so the refusal is catchable inside evaluate.
+\ BODY-SOURCE row at base + cap. A refused map dies rc 71 at LBGROWFAIL before
+\ anything is stored, so the refusal is catchable inside evaluate.
 : EMIT-BCAP ( -- )
    LBL LBL LBL LBL LBL LBL {: pop put seed none src rowed :}
    LBL LBL {: grow:label gsub:label :}
@@ -5229,18 +5123,17 @@ package ENGINE-EMIT
    BCAP-GO LABEL@ LBL,
    17 12 0 ADDI,                  \ len in x17: callers keep x6-x8
    14 DATA BODYLEN-CELL LDR,
-   16 14 17 ADD,  16 16 1 ADDI,   \ x16 = the text length the capture needs
+   16 14 17 ADD,  16 16 1 ADDI,
    5 DATA BODY-TEXT:BASE-CELL LDR,  5 grow CBZ,
    5 DATA BODY-TEXT:CAP-CELL LDR,  16 5 CMP,  C-LS BCAP-OK LABEL@ BCOND,
    grow LBL,
       SP SP 16 SUBI,  30 SP 0 STR,
-      gsub BL,                     \ x16 = 0 grown, else the capacity a refused map tried
+      gsub BL,
       30 SP 0 LDR,  SP SP 16 ADDI,
       16 BCAP-OK LABEL@ CBZ,
-      LBGROWFAIL LABEL@ B,         \ habu2.f EM-BODY-GROW-DIE names the capacity, then rc 71
+      LBGROWFAIL LABEL@ B,
    BCAP-OK LABEL@ LBL,
    17 rowed CBZ,
-   \ x15 = the rows (base + cap), x16 = their count; x5 = the last row's text offset
    15 DATA BODY-TEXT:BASE-CELL LDR,  13 DATA BODY-TEXT:CAP-CELL LDR,  15 15 13 ADD,
    16 DATA BODY-TEXT:ROWS-CELL LDR,
    pop LBL,  16 put CBZ,
@@ -5248,7 +5141,7 @@ package ENGINE-EMIT
       5 14 CMP,  C-CC put BCOND,
       16 16 1 SUBI,  pop B,
    put LBL,
-   13 16 4 LSLI,  13 15 13 ADD,  14 13 0 STR,  \ the new row is at x13
+   13 16 4 LSLI,  13 15 13 ADD,  14 13 0 STR,
    16 16 1 ADDI,  16 DATA BODY-TEXT:ROWS-CELL STR,
    15 DATA SRCLOC:INB-CELL LDR,  5 DATA INE-CELL LDR,
    \ The name and the run lie in [INB, INE); the first run is the name, seeded
@@ -5295,8 +5188,7 @@ package ENGINE-EMIT
 \ The shared runtime lowering guard body ( x10=address, x11=byte length ). It is
 \ registered as the sealed (PROT-SPAN) engine helper so a guarded primitive that
 \ reaches it by a direct branch is carried into an ahead-of-time image and
-\ relocated. The label is reserved in the habu2.f LABELS allocator (its CORE
-\ block) so the record spans exactly [start, end).
+\ relocated. The label is reserved so the record spans exactly [start, end).
 package ENGINE-EMIT
 
 : EMIT-PROT-SPAN ( -- )
@@ -5310,11 +5202,10 @@ package ENGINE-EMIT
 
 \ The dividing primitives' refusal ( no arguments; never returns ). `/`, `mod`
 \ and `/mod` each test their divisor and branch here when it is zero, so the
-\ throw exists ONCE and their bodies grow by nothing: the guard is the same two
-\ instructions the trapping version had. Registered as the sealed (DIV-ZERO)
-\ engine helper for the same reason (PROT-SPAN) is -- a direct branch out of a
-\ primitive has to be a record the ahead-of-time closure walker can follow.
-\ It inlines BTHROW, which is why it sits here and not beside the bodies.
+\ throw exists ONCE. Registered as the sealed (DIV-ZERO) engine helper for the
+\ same reason (PROT-SPAN) is -- a direct branch out of a primitive has to be a
+\ record the ahead-of-time closure walker can follow. It inlines BTHROW, which
+\ is why it sits here and not beside the bodies.
 : EMIT-DIV-ZERO ( -- )
    LDIVZERO LABEL@ {: start:label :}
    LBL {: end:label :}
@@ -5324,8 +5215,6 @@ package ENGINE-EMIT
    end LBL,
    DIVISION-PRIM-ROW @ dup 0<> if 1- ENGINE-PRIMS:MARK-DIVISION else drop then ;
 
-\ The shared bodies this file emits beside the span guard: (PROT-SPAN), then the
-\ dividing primitives' (DIV-ZERO).
 : EMIT-PROT ( -- )
    EMIT-PROT-SPAN
    EMIT-DIV-ZERO ;
@@ -5336,10 +5225,9 @@ package ENGINE-EMIT
 \ The OWNER-API wordlists (public=1, private=2; OWNER-API-PRI-WID marks the AOT
 \ direct-branch helpers) are always protected, pinned here because three paths
 \ populate the protected-WID table (cold init, AOT-REPL restore, snapshot
-\ restore). Dynamic wordlists start at FIRST-DYNAMIC-WID. Any other WID is one
-\ bit in the PROT-BITS-OFF bitmap; one at or above PROT-WID-MAX answers "not
-\ protected", sound because prot-wid-add refuses to protect it. Preserves x5 x6 x7
-\ x9 x14.
+\ restore). Any other WID is one bit in the PROT-BITS-OFF bitmap; one at or
+\ above PROT-WID-MAX answers "not protected", sound because prot-wid-add
+\ refuses to protect it. Preserves x5 x6 x7 x9 x14.
 package ENGINE-EMIT
 
 : EMIT-PROTWID ( -- )
@@ -5347,21 +5235,21 @@ package ENGINE-EMIT
    LPROTWIDQ LABEL@ LBL,
    SP SP 32 SUBI,
    5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  14 SP 24 STR,
-   13 0 MOVZ,                                   \ result = 0 (not protected)
-   9 OWNER-API-PUB-WID CMPI,  C-EQ qhit BCOND,  \ engine-reserved public API wordlist
-   9 OWNER-API-PRI-WID CMPI,  C-EQ qhit BCOND,  \ engine-reserved private wordlist (helper marker)
-   5 PROT-WID-MAX MOVZ,  9 5 CMP,  C-CS qdone BCOND,   \ above the bound: no bit, never protected
+   13 0 MOVZ,
+   9 OWNER-API-PUB-WID CMPI,  C-EQ qhit BCOND,
+   9 OWNER-API-PRI-WID CMPI,  C-EQ qhit BCOND,
+   5 PROT-WID-MAX MOVZ,  9 5 CMP,  C-CS qdone BCOND,
    DATA 9 5 14 6 PROT-BITS-ADDR,                \ x5 = &word, x14 = mask
-   7 5 LDAR,                                    \ acquire-load the containing word
+   7 5 LDAR,
    7 7 14 AND,
    7 qdone CBZ,
-   qhit LBL,  13 1 MOVZ,                        \ reserved pin or set bit -> protected
+   qhit LBL,  13 1 MOVZ,
    qdone LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
    SP SP 32 ADDI,  RET, ;
 
 \ Protect wid x9, idempotently; one at or above PROT-WID-MAX has no bit and
-\ exits 84 naming it. Single writer. Clobbers x13-x16; saves x30 for LPROTWIDQ.
+\ exits 84 naming it. Single writer. Clobbers x13-x16.
 : EMIT-PROTWIDADD ( -- )
    LBL LBL LBL {: ok:label done:label msg:label :}
    S\" hb: protected-WID id above the bound\n" {: ma:ptr mu:n :}
@@ -5370,14 +5258,14 @@ package ENGINE-EMIT
    LPROTWIDQ LABEL@ BL,
    13 done CBNZ,
    15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,    \ name the exhausted bound on fd 2 before exit 84
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  ma mu BYTES,                            \ data reached only via ADR
    ok LBL,
    DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask
    16 15 LDAR,
    16 16 14 ORR,
-   16 15 STLR,                                       \ release-publish the set bit
+   16 15 STLR,
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -5385,8 +5273,8 @@ package ENGINE-EMIT
 
 package ENGINE-EMIT
 \ LFLUSH makes the code in [x9, CP) visible to instruction fetch; LFLUSHTO takes
-\ the end in x11 instead, for code that stands above CP (LIBC-OS:FORK's child).
-\ Clobbers x9 (rounded down to its line), x10, x11.
+\ the end in x11 instead, for code that stands above CP. Clobbers x9 (rounded
+\ down to its line), x10, x11.
 \ LFLUSHTO is registered as the sealed (FLUSHTO) engine helper, as (DIV-ZERO)
 \ is: the fork primitive's Linux child branches to it directly.
 : EMIT-FLUSH ( -- )
@@ -5432,9 +5320,8 @@ private
 
 \ Emit: insert record index x3 into table x14, storing index+1 in the first empty
 \ or stale slot of its chain. Insert-once: the dictionary rejects duplicate
-\ definitions. Only claiming an EMPTY slot raises HIDX:CLAIMS. LHIDXADD compacts
-\ at HIDX:LOAD-MAX, so the exhausted-wrap exit is unreachable and dies loudly
-\ (HIDX-EMIT:LFULL).
+\ definitions. LHIDXADD compacts at HIDX:LOAD-MAX, so the exhausted-wrap exit
+\ is unreachable and dies loudly (HIDX-EMIT:LFULL).
 \ Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
 : C-HIDX-INS ( -- )
    LBL LBL LBL LBL {: iloop:label inext:label iempty:label iput:label :}
@@ -5475,16 +5362,14 @@ private
 
 \ LHIDXADD inserts record NDICT-1 mid-publish, saving its whole clobber set, and
 \ compacts the table when HIDX:CLAIMS crosses HIDX:LOAD-MAX, sweeping the stale
-\ slots rollback leaves. LHIDXBUILD maps a zeroed table; a failed mmap exits,
-\ never a degraded mode. HIDX-EMIT:LREBUILD zeroes the table and HIDX:CLAIMS and
+\ slots rollback leaves. HIDX-EMIT:LREBUILD zeroes the table and HIDX:CLAIMS and
 \ re-inserts [0,NDICT): the only operation that lowers HIDX:CLAIMS, called by the
 \ raise leg of ndict! (BNDSET). HIDX-EMIT:LFULL is the loud exit for every
 \ unreachable state.
 \ HIDX-EMIT:LREKEY (x3 = record index) re-indexes a record under its current wid
-\ cell unless its chain already holds it, register-transparent. habu2.f
-\ DEFWRITE:RECORD-WID calls it after rewriting a published record's wid, because a
-\ rebuild keys a record retired across it on RETIRED's chain. x86-64 refuses
-\ record-wid! (kernel-x64.f), so it has no twin.
+\ cell unless its chain already holds it, register-transparent.
+\ DEFWRITE:RECORD-WID calls it after rewriting a published record's wid, because
+\ a rebuild keys a record retired across it on RETIRED's chain.
 : EMIT-HIDX ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: aret:label bfail:label msg:label fmsg:label floop:label fdone:label
@@ -5527,12 +5412,12 @@ private
       14 0 0 ADDI,  14 DATA HIDXP-CELL STR,
       4 0 MOVZ,  4 DATA HIDX:CLAIMS STR,             \ fresh pages hold no claims
       bhave LBL,
-      HIDX-EMIT:LREBUILD LABEL@ BL,                  \ zero + fill [0,NDICT)
+      HIDX-EMIT:LREBUILD LABEL@ BL,
       30 SP 0 LDR,   0 SP 8 LDR,   1 SP 16 LDR,  2 SP 24 LDR,  3 SP 32 LDR,
       4 SP 40 LDR,   5 SP 48 LDR,  6 SP 56 LDR,  7 SP 64 LDR,  8 SP 72 LDR,
       13 SP 80 LDR,  14 SP 88 LDR, 15 SP 96 LDR, 16 SP 104 LDR, 17 SP 112 LDR,
       SP SP 160 ADDI,  RET,
-      bfail LBL,                                     \ dict hash-index mmap failed: label fd 2 before exit 74
+      bfail LBL,
          0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
          0 74 MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  ma mu BYTES,
@@ -5553,7 +5438,7 @@ private
          17 14 13 ADD,  4 17 0 STR,
          13 13 8 ADDI,  zloop B,
       zdone LBL,
-      4 DATA HIDX:CLAIMS STR,                         \ zero claims (x4 = 0)
+      4 DATA HIDX:CLAIMS STR,
       13 0 MOVZ,
       floop LBL,  13 NDICT CMP,  C-GE fdone BCOND,
          3 13 0 ADDI,  C-HIDX-INS
@@ -5564,7 +5449,7 @@ private
       6 SP 40 LDR,   7 SP 48 LDR,  8 SP 56 LDR,  13 SP 64 LDR, 14 SP 72 LDR,
       15 SP 80 LDR,  16 SP 88 LDR, 17 SP 96 LDR,
       SP SP 160 ADDI,  RET,
-   HIDX-EMIT:LFULL LABEL@ LBL,                        \ cannot maintain the index: loud, never a quiet downgrade
+   HIDX-EMIT:LFULL LABEL@ LBL,
       0 2 MOVZ,  1 fmsg ADR,  2 fu MOVZ,  NR-WRITE SYS,
       0 74 MOVZ,  NR-EXIT-GROUP SYS,
    fmsg LBL,  fa fu BYTES, ;
@@ -5575,7 +5460,7 @@ private
 : DEF-OCC-EXHAUSTED, ( -- )
    9 DEF-OCC:E-EXHAUSTED LIT64,  9 G-PUSH  BTHROW ;
 
-\ x9 = number about to be issued. Preserve every touched caller register.
+\ x9 = number about to be issued.
 : EMIT-DEF-OCC ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL
    {: room-ok:label lower:label raise:label loop:label raised:label
@@ -5624,8 +5509,8 @@ private
       lower LBL,
          PROF-ABI:LPROFTRIM LABEL@ BL,
          CAPTURE-CUT,
-         12 DATA NDICT-HW-CELL LDR,  12 NDICT CMP,  12 12 NDICT C-HI CSEL,   \ raise the high-water to the count this lowers from
-         12 DATA NDICT-HW-CELL STR,                       \ (layout.f NDICT-HW-CELL)
+         12 DATA NDICT-HW-CELL LDR,  12 NDICT CMP,  12 12 NDICT C-HI CSEL,
+         12 DATA NDICT-HW-CELL STR,
          11 DATA DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
       clear-loop LBL,
          10 NDICT CMP,  C-CS done BCOND,
@@ -5689,21 +5574,21 @@ private
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    init-msg LBL,  ma mu BYTES, ;
 
-\ A rollback's lower-or-retire step (habu2.f: evaluate's and the REPL's
-\ recovery, replay-close), x9 = the NDICT to lower to. With no task live it
-\ answers x14 = 0 and the caller lowers; the count cannot rise from 0 under it,
-\ since only main or a live task activates one. Else a task may still use the
-\ code and records above, so it stamps each record in [x9, NDICT) with
-\ WL:RETIRED, a live package row with RETIRED-NAMESPACE, clears a LASTC at
-\ or above x9 and answers x14 nonzero: the caller keeps CP, NDICT, DP and the
-\ relocation rows. Preserves every register but x14.
+\ A rollback's lower-or-retire step (evaluate's and the REPL's recovery,
+\ replay-close), x9 = the NDICT to lower to. With no task live it answers
+\ x14 = 0 and the caller lowers; the count cannot rise from 0 under it, since
+\ only main or a live task activates one. Else a task may still use the code
+\ and records above, so it stamps each record in [x9, NDICT) with WL:RETIRED, a
+\ live package row with RETIRED-NAMESPACE, clears a LASTC at or above x9 and
+\ answers x14 nonzero: the caller keeps CP, NDICT, DP and the relocation rows.
+\ Preserves every register but x14.
 : EMIT-DEF-OCC-RETIRE ( -- )
    LBL LBL LBL LBL LBL {: loop:label pkg:label next:label cut:label done:label :}
    EM-DEF-OCC:LRETIRE LABEL@ LBL,
       14 DATA TASKS-LIVE-CELL LDR,  14 done CBZ,
       SP SP 48 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
       13 SP 32 STR,  15 SP 40 STR,
-      11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 DBASE 11 ADD,   \ the records through the alias
+      11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 DBASE 11 ADD,
       12 WL:RETIRED invert MOVN,
       15 WL:RETIRED-NAMESPACE invert MOVN,
    loop LBL,
@@ -5816,8 +5701,8 @@ public
 \ head names A's part `A:head` first, then a top-level package. In: x9 =
 \ head, x17 = its length. Out: x12 = the row or 0. It preserves x0, x1, x9,
 \ x10, x13 and x17 and clobbers x2-x8, x11, x14-x16. The path is composed on
-\ the machine stack: layout.f PACKAGE-PATH holds the token `package` is
-\ opening while a lookup runs.
+\ the machine stack: PACKAGE-PATH holds the token `package` is opening while a
+\ lookup runs.
 variable LHEADROW
 private
 : EMIT-HEAD-ROW ( -- )
@@ -5831,12 +5716,12 @@ private
    5 DATA ENCLOSING:REC LDR,  5 top CBNZ,
    5 DATA PKG-REC-CELL LDR,  5 bare CBZ,
    top LBL,
-   2 5 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,   \ x2 = A's name length
+   2 5 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,
    4 5 24 ADDI,
    14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
-      4 5 24 LDR,                                     \ x4 = A's name bytes
+      4 5 24 LDR,
    inline LBL,
-   1 2 17 ADD,  1 1 1 ADDI,                           \ x1 = the path's length
+   1 2 17 ADD,  1 1 1 ADDI,
    1 PACKAGE-PATH:CAP CMPI,  C-CS bare BCOND,         \ no part has a path so long
    0 SP 64 ADDI,
    7 0 MOVZ,
@@ -5915,7 +5800,6 @@ private
       15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ FIND-QBAD LABEL@ BCOND,
       14 14 1 ADDI,  FIND-QTAIL LABEL@ B,
    FIND-QTAILOK LABEL@ LBL,
-      \ NAME:tail: the row the head names (LHEADROW). x9/x10/x13/x17 survive it.
       SP SP 16 SUBI,  30 SP 0 STR,
       LHEADROW LABEL@ BL,
       30 SP 0 LDR,  SP SP 16 ADDI,
@@ -5928,20 +5812,20 @@ private
    FIND-NEND LABEL@ LBL,  5 0 MOVZ,  RET,       \ no such wordlist: no record, and x5 says so
    FIND-QBAD LABEL@ LBL,  5 0 MOVZ,  RET,       \ malformed NAME:a:b - the one exit that never touched x5
    FIND-START LABEL@ LBL,
-      \ Wid 0 becomes the global wid. The hash probe answers as WLFIND's does
-      \ and keeps x2 (wid), x9/x10 (name) and x13 (result) for the linear scan.
+      \ The hash probe answers as WLFIND's does and keeps x2 (wid), x9/x10
+      \ (name) and x13 (result) for the linear scan.
       14 DATA BOOT:GLOBAL-WL-CELL LDR,  2 0 CMPI,  2 14 2 C-EQ CSEL,
-      14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table -> linear
+      14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,
       9 10 15 4 16 7 C-HIDX-HASH
-      6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
+      6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
       8 HIDX-SLOTS LIT64,
    FIND-HLOOP LABEL@ LBL,
-      17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,               \ x3 = slot value (index+1)
+      17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,
       3 FIND-DONE LABEL@ CBZ,                                 \ empty slot -> absent from this wordlist
       4 3 1 SUBI,  4 NDICT CMP,  C-GE FIND-HNEXT LABEL@ BCOND, \ stale (truncated) index
-      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                \ x5 = record ptr
+      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,
       16 5 40 LDR,  16 2 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ wid mismatch (retired=-2 / other wl)
-      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ name-len mismatch
+      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,
       16 5 24 ADDI,
       3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 FIND-HINL LABEL@ CBZ,
          16 5 24 LDR,
@@ -5958,12 +5842,12 @@ private
       FIND-HMATCH LABEL@ LBL,
          11 5 0 LDR,  12 5 8 LDR,
          14 5 16 LDR,
-         15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
-         16 14 DNAME-INT ANDI,  16 16 59 LSRI,                \ internal bit -> 16
+         15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
+         16 14 DNAME-INT ANDI,  16 16 59 LSRI,
          15 15 16 ORR,
-         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,        \ certified min-in byte -> bits 8-15
+         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,
          15 15 16 ORR,
-         14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
+         14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
          14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,  RET,
       FIND-HNEXT LABEL@ LBL,
@@ -5991,12 +5875,12 @@ private
       FIND-MATCH LABEL@ LBL,
          11 5 0 LDR,  12 5 8 LDR,
          14 5 16 LDR,
-         15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
-         16 14 DNAME-INT ANDI,  16 16 59 LSRI,                \ internal bit -> 16
+         15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
+         16 14 DNAME-INT ANDI,  16 16 59 LSRI,
          15 15 16 ORR,
-         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,        \ certified min-in byte -> bits 8-15
+         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,
          15 15 16 ORR,
-         14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
+         14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
          14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,
          17 5 0 ADDI,                                         \ park the match: x5 is this loop's cursor, x17 is not touched by it
@@ -6045,7 +5929,7 @@ private
    5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  C-NE NUM-NOHEX LABEL@ BCOND,
       6 16 MOVZ,  14 14 1 ADDI,
    NUM-NOHEX LABEL@ LBL,
-   2 0 MOVZ,                                                    \ frac mode off
+   2 0 MOVZ,
    14 10 CMP,  C-GE NUM-DONE LABEL@ BCOND, ;
 
 : C-NUM-DOT ( -- )
@@ -6164,7 +6048,7 @@ private
    NUM-GOTD LABEL@ LBL,
    2 NUM-ISFRAC LABEL@ CBNZ,
    C-NUM-INT-STEP
-   NUM-ISFRAC LABEL@ LBL,                                      \ frac digit: f=f*10+d, k*=10
+   NUM-ISFRAC LABEL@ LBL,
    C-NUM-FRAC-STEP
    NUM-OK LABEL@ LBL,
    2 NUM-LINT LABEL@ CBZ,
