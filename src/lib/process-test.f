@@ -158,8 +158,10 @@ create PT-DRAIN-BUF PT-CHUNK allot
    code 0 < TTRUE
    HB-TARGET-MACOS? if code PT-ENOENT negate T= then ;
 
+\ A process is never its own child, so the wait fails whatever launched it;
+\ a wait on any child blocks under a launcher that leaves one, as caffeinate.
 : TEST-WAIT-BAD ( -- )
-   -1 >PID PROCESS:WAIT drop ;
+   getpid >PID PROCESS:WAIT drop ;
 
 : TEST-POLL-WAIT ( -- )
    PT-R @ 1 >MS PROCESS:POLL-IN-OR-TIMEOUT drop ;
