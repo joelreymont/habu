@@ -38,7 +38,7 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 : AOT-DBASE ( -- ptr n ) dbase@ AOT-N>U8 CELL-VIEW ;
 : AOT-DBASE-N ( -- n ) dbase@ ;
 : AOT-DATA-N ( -- n ) data-base BYTE-VIEW NULL-PTR BYTE-VIEW - ;
-: AOT-WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
+: AOT-WL-RECORD ( ptr u8 n n -- ptr n ) CHECKER-RESOLVE:WL-PROBE ;
 : AOT-LIVE-DATA ( -- ptr n ) data-base ;
 : AOT-CELL@ ( ptr n -- n ) @ ;
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes

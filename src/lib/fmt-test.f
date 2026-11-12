@@ -8,9 +8,8 @@ require src/lib/float.f
 require src/lib/fmt.f
 require src/lib/ieee754.f
 
-\ White-box test: reopen the module's package so the fixtures call FMT's public
-\ builders (SB-U / SB-HEX / SB-HEX-WIDTH / SB-INT / SB-FIX) by their bare package-local names.
-package FMT
+package FMT-TEST
+using FMT
 
 : T-U ( n ptr u8 n -- ) {: a:ptr u :}
    SB-RESET SB-U  SB$ a u T$= ;
@@ -158,4 +157,5 @@ package FMT
 FMT-RUN
 T-REPORT
 
+;using
 ;package

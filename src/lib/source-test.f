@@ -7,7 +7,8 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/source.f
 
-package SOURCE
+package SOURCE-TEST
+using SOURCE
 
 2048 constant ST-CAP
 92 constant ST-BACKSLASH
@@ -88,4 +89,5 @@ create ST-QP-BUF ST-CAP allot
 
 ST-MAIN
 
+;using
 ;package
