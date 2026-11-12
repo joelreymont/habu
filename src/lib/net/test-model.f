@@ -3,13 +3,8 @@
 \ Responses API does. COMPLETED!, INCOMPLETE!, REFUSAL! and OUTPUT! answer a
 \ POST /responses as it streams it, an event stream of response resp_1's
 \ created and in_progress events and then the terminal event carrying the
-\ reply, which MODEL:CHAT reads. Each terminal reply carries fixed usage, input
-\ 11 tokens (4 cached), output 6 (2 reasoning), total 17, so a test may assert
-\ them. OUTPUT! answers an output array the test gives whole, such as a tool
-\ call. INPUT-TOKENS! answers a POST /responses/input_tokens with the count it
-\ is given, as plain JSON, which MODEL:COUNT-INPUT reads. COMPACTION! answers
-\ a POST /responses/compact with an output array the test gives whole and the
-\ same fixed usage, as plain JSON, which MODEL:COMPACT reads. The host routes
+\ reply. Each terminal reply carries fixed usage, input 11 tokens (4 cached),
+\ output 6 (2 reasoning), total 17, so a test may assert them. The host routes
 \ the request to its own handler and calls one of them there.
 \ STORAGE CLASS. PROCESS-WIDE: rows indexed by HTTP:WORKER-SLOT, each a reply
 \ body and its writer, whose buffer a slot's first reply makes and the process
@@ -60,7 +55,6 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    EVENT-OPEN S\" ,\qresponse\q:" JSON:WRITE-RAW ;
 
 
-\ The response with the status, no output yet.
 : PENDING ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: status:ptr status-u:n :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
@@ -76,7 +70,6 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    S\" ,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]}" JSON:WRITE-RAW ;
 
 
-\ A terminal reply's usage member, its fixed counts.
 : USAGE ( ptr JSON:writer -- ptr JSON:writer )
    S\" ,\qusage\q:{\qinput_tokens\q:11,\qinput_tokens_details\q:{\qcached_tokens\q:4},\qoutput_tokens\q:6,\qoutput_tokens_details\q:{\qreasoning_tokens\q:2},\qtotal_tokens\q:17}" JSON:WRITE-RAW ;
 
@@ -125,8 +118,6 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    s" }" JSON:WRITE-RAW ;
 
 
-\ Answers with resp_1's opening events and then the terminal event of the
-\ type, carrying the reply the body writes from the text, as the whole body.
 : STREAMED ( HTTP:response ptr u8 n [ ptr JSON:writer ptr u8 n -- ptr JSON:writer ] ptr u8 n -- )
    {: answer:HTTP:response text:ptr text-u:n body type:ptr type-u:n :}
    READY
