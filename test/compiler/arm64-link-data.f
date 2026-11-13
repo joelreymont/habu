@@ -8,10 +8,11 @@
 \ allots past its ceiling and exits 76 naming its DP and ceiling as the build's
 \ floor and ceiling place them. A second link of main writes the same bytes.
 \ Each refusal (arm64-link-data-bad.f) dies, so each runs in its own child.
-\ The data child also runs on two malformed copies of the kernel object, one
-\ failing its checksum and one whose DATA-START is off a cell, which its read
-\ refuses before the child arms; the header child runs on a third, whose DP-CELL
-\ lies at its DATA-START, which the link refuses at that cell after it arms.
+\ The data child also runs on three malformed copies of the kernel object, one
+\ failing its checksum, one whose DATA-START is off a cell and one whose Mach-O
+\ import names do not end in a NUL, which its read refuses before the child
+\ arms; the header child runs on a fourth, whose DP-CELL lies at its
+\ DATA-START, which the link refuses at that cell after it arms.
 \ Fixture words are LD- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
@@ -31,6 +32,7 @@ require src/habu/xref.f
 require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
+require src/os/macos/macho.f
 require tools/hb-build-core.f
 
 package ARM64-LINK-DATA
@@ -241,6 +243,21 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    a u RESUM
    s" dp-at-start" PROG$ a u FS:WRITE-ALL  FIRST-LINK-RELEASE ;
 
+\ The kernel object with the NUL ending its Mach-O imports' last name made an
+\ x, and the checksum over it, written to unended.
+: UNENDED ( -- )
+   HB-BUILD-CORE:KERNEL$ FILE-BYTES {: a:ptr u:n :}
+   SB-RESET  MACHO:IMPORTS 0 ?do i MACHO:IMPORT$ SB-APPEND  0 SB-APPEND-C loop
+   a u SB$ FIND-SUB MATCH option
+      none OF -1 ENDOF
+      some OF IDX>N SB$ nip + 1 - ENDOF
+   ;MATCH {: at:n :}
+   s" the kernel object holds the Mach-O import names" T-LABEL  at 0 >= TTRUE
+   at 0< if FIRST-LINK-RELEASE exit then
+   [char] x a at + c!
+   a u RESUM
+   s" unended" PROG$ a u FS:WRITE-ALL  FIRST-LINK-RELEASE ;
+
 \ The data child on the object at name, refused by its read for the reason err
 \ before it arms, exits 74.
 : BAD-OBJECT ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
@@ -256,6 +273,9 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 : BAD-SHIFTED ( CMD:command -- CMD:command )
    s" shifted"  s" link: the kernel object is cut short or malformed" BAD-OBJECT ;
+
+: BAD-UNENDED ( CMD:command -- CMD:command )
+   s" unended"  s" link: the kernel object is cut short or malformed" BAD-OBJECT ;
 
 : BAD-DP-AT-START ( CMD:command -- CMD:command )
    s" header"  s" dp-at-start" PROG$  s" dp-at-start"
@@ -273,9 +293,10 @@ public
    [: RUN-MAIN ;] CMD:WITH-COMMAND
    [: RUN-OVER ;] CMD:WITH-COMMAND
    [: BAD-DATA ;] CMD:WITH-COMMAND
-   FLIPPED  SHIFTED  DP-AT-START
+   FLIPPED  SHIFTED  UNENDED  DP-AT-START
    [: BAD-FLIPPED ;] CMD:WITH-COMMAND
    [: BAD-SHIFTED ;] CMD:WITH-COMMAND
+   [: BAD-UNENDED ;] CMD:WITH-COMMAND
    [: BAD-DP-AT-START ;] CMD:WITH-COMMAND
    [: BAD-HEADER ;] CMD:WITH-COMMAND
    [: BAD-EVAL ;] CMD:WITH-COMMAND

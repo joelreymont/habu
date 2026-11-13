@@ -112,15 +112,15 @@ private
 
 : MACHO-FIXUPS-SIZE ( -- n ) MACHO-FIXUPS-USED 7 + -8 and ;
 
-\ One chained start belongs to each __DATA_CONST page. The first starts the
-\ GOT binds; no other page holds a bind.
+\ The largest blob: one chained start per page of the largest __DATA_CONST, the
+\ GOT and an assembler window of payload.
 : MACHO-FIXUPS-MAX ( -- n )
    CODE-CAP-BYTES MACHO-GOT-BYTES + MACHO-PAGE 1- + MACHO-PAGE /
    1- 2 * 3 + -4 and  MACHO-FIXUPS-SIZE + ;
 
-\ Code and payload share the assembler window. Their two separately rounded
-\ segments can therefore exceed MPAGE + one DATA_CONST page by one more page.
-MPAGE DATA-CONST-SIZE + MACHO-PAGE + constant MACHO-IMAGE-MAX
+\ Code and payload share the assembler window and the GOT precedes the payload,
+\ so the two page-rounded segments fit MPAGE, the GOT and two pages.
+: MACHO-IMAGE-MAX ( -- n ) MPAGE MACHO-GOT-BYTES + DATA-CONST-SIZE + MACHO-PAGE + ;
 
 \ CODESIG2's largest signature, spelt from sign2.f's CS-PAGE, CS-HASH, CD-HDR and
 \ $14 SuperBlob header, which load later, and a $40 id; more throws M-BOUNDS-RC.
@@ -147,9 +147,8 @@ private
 : MACHO-STARTS-BYTES ( -- n )
    24 DATA-CONST-PAGES 1- 2 * + 3 + -4 and ;
 
-\ The image buffer fits the largest emittable image, so the loud MPAGE
-\ code-window guard stays the binding constraint, never a silent M-BOUNDS-RC
-\ throw from the byte cursor.
+\ The buffer fits the largest image any code and import count emit, so too much
+\ code meets the MPAGE guard, never an M-BOUNDS-RC throw from the byte cursor.
 : MACHO-MSIZE! ( -- )
    MACHO-IMAGE-MAX MACHO-FIXUPS-MAX + MACHO-SIG-MAX + MSIZE! ;
 
@@ -233,13 +232,23 @@ variable NCMDS
    M-HERE LE-OFF !
    s" __LINKEDIT" linkoff VA+ MACHO-PAGE linkoff MACHO-FIXUPS-BYTES 1 0 0 SEG, ;
 
-\ A bind per row: the import's ordinal, the bind bit and, on every row but the
-\ last, a next of two 4-byte strides.
+\ Whether row n's chain goes on to the next row, which it does only within
+\ a page: a chain never crosses one.
+: NEXT-IN-PAGE? ( n -- bool )
+   1 + {: next:n :}
+   next IMPORT-NAMES:COUNT <  next SLOT-OFF MACHO-PAGE mod 0<>  and ;
+
+\ A bind per row: the import's ordinal, the bind bit and, while the next row is
+\ in its page, a next of two 4-byte strides.
 : MACHO-GOT, ( -- )
    IMPORT-NAMES:COUNT 0 ?do
       i IMG-M32
-      $80000000 i IMPORT-NAMES:COUNT 1- < if $00100000 or then IMG-M32
+      $80000000 i NEXT-IN-PAGE? if $00100000 or then IMG-M32
    loop ;
+
+\ Page n's chain start. The GOT opens the segment and its cells tile a page, so
+\ a page holding a row starts at offset 0; one without has none ($FFFF).
+: PAGE-START ( n -- n ) MACHO-PAGE * MACHO-GOT-BYTES < if 0 else $FFFF then ;
 
 \ Each import names libSystem (ordinal 1) and its name's offset.
 : MACHO-IMPORTS, ( -- )
@@ -271,8 +280,7 @@ variable NCMDS
    segoff IMG-M64
    0 IMG-M32
    DATA-CONST-PAGES IMG-M16
-   0 IMG-M16
-   DATA-CONST-PAGES 1- 0 ?do $FFFF IMG-M16 loop
+   DATA-CONST-PAGES 0 ?do i PAGE-START IMG-M16 loop
    DATA-CONST-PAGES 1 and 0= if 0 IMG-M16 then
    MACHO-IMPORTS,
    MACHO-SYMBOLS, ;
