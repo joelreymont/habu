@@ -1,16 +1,9 @@
-\ process-fork.f - checked fork wrappers (package PROC-FORK) and the reapers
-\ that kill a worker's process group when its pool parent dies.
-\
-\ FORK-REAPER arms through a double fork: an intermediate forks the reaper and
-\ exits, so the reaper reparents to init and a worker's wait(-1) with no child
-\ of its own fails at once instead of blocking on the reaper. The reaper keeps
-\ the worker's process group, so a group kill ends it and the pool parent's
-\ death lets it kill the group. The intermediate answers through its exit
-\ status: a throw would unwind its copy of the worker's stack.
+\ process-fork.f - checked fork wrappers (package PROC-FORK) and the reaper
+\ that kills a spawned pool child's process group when its pool parent dies.
 \ CHECKED and SET-PGID are not named FORK and SETPGID: those tails would
 \ case-insensitively shadow the core `fork` / `setpgid` their bodies call.
-\ STORAGE CLASS. PROCESS-WIDE: the reaper's pollfd pair and REAP-WATCH-FD
-\ belong to the process, not to a task.
+\ STORAGE CLASS. PROCESS-WIDE: the reaper's pollfd belongs to the process, not
+\ to a task.
 
 require src/lib/error.f
 require src/lib/task.f                       \ TASK:CHILD-RESET, registered below
@@ -38,17 +31,6 @@ private
    [: prof-child-reset ;] FORK-CHILD:REGISTER ;
 REGISTER-RESETS
 
-public
-
-\ Runs under FORK-HELD's locks: no hook, buffer, quotation or spawn.
-defer FORK-CALL ( -- n )
-
-: FORK-CALL-DEFAULT ( -- )
-   [: fork ;] is FORK-CALL ;
-FORK-CALL-DEFAULT
-
-private
-
 \ The fork, made with the engine's two registry locks held. Each guards a
 \ table that is unmapped and republished over several stores, so no reset in
 \ the child could tell where a task it interrupted had stopped; held here,
@@ -61,7 +43,7 @@ private
 \ no descriptor another task has created but not yet marked close-on-exec. The
 \ child is the forking thread's copy, so the same finally releases it there.
 : FORK-REGISTRIES-HELD ( -- n )
-   [: [: FORK-CALL ;] ADDRESS-CELLS:ACROSS-FORK ;] DYNAMIC-STORAGE:ACROSS-FORK ;
+   [: [: fork ;] ADDRESS-CELLS:ACROSS-FORK ;] DYNAMIC-STORAGE:ACROSS-FORK ;
 
 : FORK-HELD ( -- n )
    [: FORK-REGISTRIES-HELD ;] FD-LOCK:WITH ;
@@ -177,11 +159,11 @@ public
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    pid PID>N negate >PID sig PROCESS:KILL-RAW ;
 
-\ A pool worker in its own process group forks a reaper that watches the pool
-\ parent's death-pipe write end. When the parent is SIGKILLed - the exact case
-\ where the pool's own group-kill cleanup can never run - the write end closes,
-\ the reaper's blocking read EOFs, and it SIGKILLs its own group, reaping the
-\ orphaned worker subtree. Built only from pipe/read/close/kill/setpgid, so it
+\ A reaper in a spawned pool child's process group watches the pool parent's
+\ death-pipe write end. When the parent is SIGKILLed - the exact case where the
+\ pool's own group-kill cleanup can never run - the write end closes, the
+\ reaper's blocking read EOFs, and it SIGKILLs its own group, reaping the
+\ orphaned child subtree. Built only from pipe/read/close/kill/setpgid, so it
 \ is portable (no PR_SET_PDEATHSIG/kqueue, which are not primitives here).
 
 $400 constant MAXFD
@@ -190,7 +172,7 @@ private
 
 $FFFF constant PROC-REAP-EVMASK
 
-create PROC-REAP-PFD 16 allot   \ two pollfd cells (8 bytes each)
+create PROC-REAP-PFD 8 allot    \ one pollfd (8 bytes)
 
 public
 
@@ -200,12 +182,11 @@ public
 : DEATH-PIPE ( -- fd fd )
    FD:PIPE ;
 
-\ A forked reaper inherits every fd the worker held; keeping any capture-pipe
-\ or death-pipe write end open would wedge a downstream EOF, so it closes all
-\ but the two read ends it watches.
-: CLOSE-EXCEPT2 ( fd fd -- ) {: k1:fd k2:fd :}
+\ A forked reaper inherits every fd the worker held; an open death-pipe write
+\ end would wedge its EOF, so it closes every fd but the death pipe's read end.
+: CLOSE-EXCEPT ( fd -- ) {: keep:fd :}
    0 begin dup MAXFD < while
-      dup k1 FD>N <> over k2 FD>N <> and if dup close then
+      dup keep FD>N <> if dup close then
       1+
    repeat drop ;
 
@@ -223,54 +204,11 @@ private
 : PROC-REAP-REVENTS ( idx -- n )
    PROC-REAP-PFD-SLOT @ 48 rshift PROC-REAP-EVMASK and ;
 
-\ Reaper body: block until the parent-death read end (pd) or the worker-alive
-\ read end (wa) reports EOF. Neither pipe is ever written, so a readable poll
-\ means its write end closed. If pd closed the pool parent died - reap the
-\ worker's process group. If wa closed the worker exited normally - just
-\ return so the reaper exits without signalling. Loops only over EINTR: the wait
-\ is indefinite, so poll can only come back with an event or an error, and any
-\ errno other than EINTR means the watch itself is broken - the reaper leaves
-\ without signalling rather than spinning on a descriptor it can no longer read.
-: PROC-REAP-WATCH2 ( fd fd -- ) {: pd:fd wa:fd :}
-   begin
-      pd FD:POLLIN 0 >IDX PROC-REAP-PFD!
-      wa FD:POLLIN 1 >IDX PROC-REAP-PFD!
-      PROC-REAP-PFD 2 -1 poll {: rc:n :}
-      rc 0 > if
-         0 >IDX PROC-REAP-REVENTS 0 <> if PROC-REAP-KILL-GROUP then
-         exit
-      then
-      rc FD:EINTR# negate <> if exit then
-   again ;
-
-\ FORK-REAPER's intermediate exits with this when it cannot fork the reaper.
-1 constant REAPER-REFUSED-RC
-
-public
-
-\ The worker is its own group leader and holds wa's write end until it exits.
-\ CHECKED, so a refused fork's -1 never reaches the wait as wait4(-1).
-: FORK-REAPER ( fd fd -- ) {: pd:fd wa:fd :}
-   CHECKED {: ipid:pid :}
-   ipid PID>N 0= if
-      RAW {: r2:pid :}
-      r2 PID>N 0= if
-         pd wa CLOSE-EXCEPT2
-         pd wa PROC-REAP-WATCH2
-      then
-      r2 PID>N 0 < if s" " REAPER-REFUSED-RC die then
-      s" " 0 die
-   then
-   ipid PROCESS:WAIT PROCESS:STATUS>RC RC>N 0<> if E-PROC-SPAWN throw then ;
-
 \ Reaper body for a spawned (exec'd) child: block until the single parent-death
 \ read end (pd) EOFs, then reap the reaper's own process group. The reaper has
 \ already joined the child's group, so this kills the child subtree. Loops only
 \ over EINTR; any other errno means the watch is broken, and the reaper leaves
 \ without signalling rather than spinning.
-
-private
-
 : PROC-REAP-WATCH1 ( fd -- ) {: pd:fd :}
    begin
       pd FD:POLLIN 0 >IDX PROC-REAP-PFD!
@@ -284,11 +222,10 @@ private
 
 public
 
-\ Co-located reaper for a SPAWNED (exec'd) child the pool tracks by pid. Unlike
-\ FORK-REAPER (forked workers, invisible to the worker's own wait(-1)), the
+\ Co-located reaper for a SPAWNED (exec'd) child the pool tracks by pid. The
 \ pool parent that arms this reaper reaps by specific pid and never wait(-1)s, so
 \ this reaper is a single-fork direct child the pool kills+waits by the returned
-\ pid on slot cleanup - no double-fork or worker-alive pipe is needed.
+\ pid on slot cleanup.
 \
 \ The spawn primitive makes the child lead its own process group before exec.
 \ The reaper joins that group with setpgid(0,cpid) and ONLY then may signal. If
@@ -297,40 +234,17 @@ public
 \ successful join it closes every inherited fd but the pool-death read end and
 \ blocks; when the pool parent is SIGKILLed the write end EOFs and the reaper
 \ SIGKILLs the child's group. A failed fork throws E-PROC-SPAWN; no reaper
-\ watches the child, and its caller ends it (PROCESS:CAPTURE-PID! kills the
-\ capture child, the gate pool kills every slot).
+\ watches the child, and its caller ends it (the gate pool kills every slot).
 : SPAWN-REAPER ( fd pid -- pid ) {: pd:fd cpid:pid :}
    CHECKED {: rpid:pid :}
    rpid PID>N 0= if
       0 >PID cpid SET-PGID RC>N 0 < if
          s" " 0 die
       then
-      pd pd CLOSE-EXCEPT2
+      pd CLOSE-EXCEPT
       pd PROC-REAP-WATCH1
       s" " 0 die
    then
    rpid ;
-
-\ A worker that owns a death-watch read end (its worker-alive pipe: the write
-\ end is held only by the worker, so EOF == this worker died, whatever killed
-\ it) publishes the fd here; every capture spawn (PROCESS:RUN-CAPTURE family,
-\ via PROCESS:CAPTURE-PID!) then arms a co-located SPAWN-REAPER in the child's
-\ group watching that fd. Spawned capture children are their own group leaders,
-\ so neither the worker's group-kill nor its parent-death reaper reaches them;
-\ this closes that gap. -1 = no context: PROC-REAP-ARM-ON arms nothing, so
-\ ordinary tools keep zero extra processes. The fd cell is per-process state:
-\ forked children inherit a copy and nested pool workers overwrite it with
-\ their own worker-alive read end.
-variable REAP-WATCH-FD   -1 REAP-WATCH-FD !
-
-private
-
-: PROC-REAP-ARM-ON ( pid -- pid ) {: cpid:pid :}
-   REAP-WATCH-FD @ dup 0 < if drop -1 >PID exit then
-   >FD cpid SPAWN-REAPER ;
-
-: PROC-REAP-ARM-INSTALL ( -- )
-   [: PROC-REAP-ARM-ON ;] is PROCESS:REAP-ARM ;
-PROC-REAP-ARM-INSTALL
 
 ;package

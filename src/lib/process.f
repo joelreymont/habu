@@ -1,7 +1,7 @@
 \ process.f - spawn, capture, poll and reap child processes.
 \ The path buffer, pollfd array and capture slots are one STORAGE-BYTES
 \ TASK:+USER row per task, so any number of tasks run children at once; the
-\ REAP-ARM and STOP vectors are process-wide policies. Spawn requests
+\ STOP vector is a process-wide policy. Spawn requests
 \ are src/lib/spawn.f's, tree kills src/lib/process-tree.f's; process-argv.f,
 \ process-env.f and process-cwd.f add spawn shapes.
 
@@ -61,7 +61,7 @@ public
 4096 constant STDIN-CHUNK-CAP
 
 -1 constant NO-FD                        \ a closed / never-opened descriptor cell
--1 constant NO-PID                       \ no child, and no armed reaper
+-1 constant NO-PID                       \ no child
 
 private
 \ The per-task row, laid out like src/lib/net/tcp4.f's: a poll array shared by
@@ -93,8 +93,7 @@ IN-OFF-OFF  1 cells + constant DEADLINE-OFF
 DEADLINE-OFF 1 cells + constant RD-OFF
 RD-OFF      1 cells + constant STATUS-OFF
 STATUS-OFF  1 cells + constant TIMED-OUT-OFF
-TIMED-OUT-OFF 1 cells + constant REAP-PID-OFF
-REAP-PID-OFF 1 cells + constant CANCEL-FD-OFF
+TIMED-OUT-OFF 1 cells + constant CANCEL-FD-OFF
 public
 CANCEL-FD-OFF 1 cells + constant RAW-PID-OFF
 private
@@ -130,7 +129,6 @@ private
 : STATUS ( -- ptr n ) ROW STATUS-OFF + CELL-VIEW ;
 : TIMED-OUT ( -- ptr n ) ROW TIMED-OUT-OFF + CELL-VIEW ;
 public
-: REAP-PID ( -- ptr n ) ROW REAP-PID-OFF + CELL-VIEW ;
 \ Borrowed, never read, duplicated or closed. CMD installs it after BEGIN.
 : CANCEL-FD ( -- ptr n ) ROW CANCEL-FD-OFF + CELL-VIEW ;
 ;package
@@ -403,36 +401,7 @@ public
    repeat
    BOUNDED-STATUS @ >STATUS STATUS>ENDING ;
 
-\ A context that owns a death-watch fd (a pool worker's worker-alive read end;
-\ src/lib/process-fork.f installs the live vector) arms a reaper for the
-\ just-spawned capture child, so the child's group dies with the arming process.
-\ The default arms nothing and returns NO-PID. A vector that cannot arm
-\ throws, and CAPTURE-PID! refuses the capture. The reaper is a direct
-\ child of this process and every capture-termination path kills and waits it
-\ by pid, so no wait(-1) caller sees a stray child. Process-wide: one policy
-\ the image installs at load.
-defer REAP-ARM ( pid -- pid )
-private
-: REAP-ARM-OFF ( pid -- pid )
-   drop NO-PID >PID ;
-public
-: REAP-ARM-DEFAULT ( -- )
-   [: REAP-ARM-OFF ;] is REAP-ARM ;
-REAP-ARM-DEFAULT
-
-private
-: REAP-DISARM ( -- )
-   REAP-PID @ dup 0 > if
-      >PID dup SIGKILL KILL-RAW drop
-      WAIT drop
-      NO-PID REAP-PID !
-   else
-      drop
-   then ;
-
-public
 : CAPTURE-RESET ( -- )
-   REAP-DISARM
    NO-PID PID !
    -1 RC !
    NO-FD OUT-R !
@@ -477,8 +446,7 @@ public
       NO-PID PID !
    else
       drop
-   then
-   REAP-DISARM ;
+   then ;
 
 \ A throw while a child is ended must neither replace its caller's reason nor
 \ vanish: CODE-REPORT names it on stderr from constant text, sharing no storage.
@@ -575,13 +543,8 @@ public
    END-CAPTURE
    code throw ;
 
-\ A refused reaper arm refuses the capture: the child's tree is killed, the
-\ child reaped and the descriptors closed before the code goes on.
-: CAPTURE-PID! ( pid -- ) {: pid:pid :}
-   pid PID>N PID !
-   pid [: REAP-ARM ;] catch {: rpid code:n :}
-   code 0= if rpid PID>N REAP-PID ! exit then
-   code THROW-CAPTURE ;
+: CAPTURE-PID! ( pid -- )
+   PID>N PID ! ;
 
 private
 : CLOEXEC-CELL ( ptr n -- ) {: p:ptr :}
@@ -920,8 +883,7 @@ private
          \ the child runs.
          1 >MS TASK:SLEEP
       then
-   repeat
-   REAP-DISARM ;
+   repeat ;
 
 public
 \ One ready read per stream survives an expired deadline. The check after the
