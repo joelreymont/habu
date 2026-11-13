@@ -73,8 +73,6 @@ create TAB
    DP-CELL                            1 cells                 CLAIM DP-CELL
    HND-CELL                           1 cells                 CLAIM HND-CELL
    LOCN-CELL                          1 cells                 CLAIM LOCN-CELL
-   CMBK-CELL                          1 cells                 CLAIM CMBK-CELL
-   CMFRD-CELL                         1 cells                 CLAIM CMFRD-CELL
    ADDRESS-CELLS:LOCK-CELL            1 cells                 CLAIM ADDRESS-CELLS-LOCK
    BODYLEN-CELL                       1 cells                 CLAIM BODYLEN-CELL
    RBASE-CELL                         1 cells                 CLAIM RBASE-CELL
@@ -84,7 +82,6 @@ create TAB
    GTOD-SCRATCH                       2 cells                 CLAIM GTOD-SCRATCH
    VSP-CELL                           1 cells                 CLAIM VSP-CELL
    CREATEP-CELL                       1 cells                 CLAIM CREATEP-CELL
-   QPATCH-CELL                        1 cells                 CLAIM QPATCH-CELL
    VVAL-OFF                           VSMAX cells             CLAIM VVAL-STACK
    NCOMP-DISPATCH:COMP-CELL           1 cells                 CLAIM NCOMP-COMP-CELL
    NCOMP-DISPATCH:FIXED-COMP-CELL     1 cells                 CLAIM NCOMP-FIXED-COMP-CELL
@@ -95,7 +92,6 @@ create TAB
    LASTC-CELL                         1 cells                 CLAIM LASTC-CELL
    RSP-CELL                           1 cells                 CLAIM RSP-CELL
    EXITH-CELL                         1 cells                 CLAIM EXITH-CELL
-   LVD-CELL                           1 cells                 CLAIM LVD-CELL
    GENIO-ABI:OUT-CELL                 GENIO-ABI:END GENIO-ABI:OUT-CELL -  CLAIM GENIO-ABI
    AOT-CELLS:SPAN-TABLE-CELL          3 cells                 CLAIM AOT-SPAN
    SIGNAL-ABI:STUB-CELL               3 cells                 CLAIM SIGNAL-ABI
@@ -103,7 +99,6 @@ create TAB
    COMMA-END-CELL                     1 cells                 CLAIM COMMA-END-CELL
    COMMA-BASE-CELL                    1 cells                 CLAIM COMMA-BASE-CELL
    FRAME-CELL                         1 cells                 CLAIM FRAME-CELL
-   QFRAME-CELL                        1 cells                 CLAIM QFRAME-CELL
    BODY-TEXT:BASE-CELL                4 cells                 CLAIM BODY-TEXT
    BODY-ITEMS:BASE-CELL               4 cells                 CLAIM BODY-ITEMS
    CMM-CELL                           1 cells                 CLAIM CMM-CELL

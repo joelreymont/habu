@@ -1151,7 +1151,6 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    tcb TCB.LSTACK @ reg STACK-ABI:LOOP-BASE-CELL TASK-PTR!
    0 reg RSP-CELL + !
    0 reg LOOPSP-CELL + !
-   0 reg LVD-CELL + !
    0 reg HND-CELL + !
    0 reg EVALD-CELL + !
    0 reg EVALERR-CELL + !

@@ -215,10 +215,6 @@ $A0 constant DEFER-XT-CELL
 \ holding a record recognises a defer's trailer by this word, never by the
 \ shape of what follows the code (an ordinary integer can hold any value).
 $4842444546455201 constant DEFER-MAGIC
-\ CMBK-CELL and CMFRD-CELL: zeroed by both kernels' compile reset; nothing
-\ reads them.
-$B0 constant CMBK-CELL
-$C8 constant CMFRD-CELL
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
@@ -777,14 +773,11 @@ CREATED-BODY-ABI:COMMA-END-CELL constant COMMA-END-CELL
 CREATED-BODY-ABI:COMMA-BASE-CELL constant COMMA-BASE-CELL
 $568 constant RSP-CELL
 $570 constant EXITH-CELL
-$578 constant LVD-CELL
 $560 constant LASTC-CELL
 $230 constant CREATEP-CELL
-$238 constant QPATCH-CELL
 \ FRAME-CELL: the open body's entry slot, where `:` emitted the link-register
-\ save. Zero means no frame. QFRAME-CELL scopes it across a quotation.
+\ save. Zero means no frame.
 $7D0 constant FRAME-CELL
-$7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
 \ CMM-CELL: compile-loop ADT-lowering mode: 0 = off; a `construct`/`MATCH`
