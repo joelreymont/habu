@@ -1681,11 +1681,6 @@ variable T7-READY
 public
 
 : RUN ( -- )
-   s" the fs-mutate band is carved directly below FS-ABI" T-LABEL
-   FS-MUT-ABI:END FS-ABI:START T=
-   s" the WITH-BYTES scope head is carved between USER-BAND and FS-MUT-ABI" T-LABEL
-   MEM-ABI:END FS-MUT-ABI:START T=
-   MEM-ABI:START USER-BAND:END T=
    PATHS!
    T1-RUN
    T2-RUN

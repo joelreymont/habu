@@ -26,7 +26,7 @@ $10000 constant PAGE-BYTES
 PAGE-BYTES constant BOOT-BYTES
 
 \ User return stack and DO/LOOP frame stack: each its own mapping with its base in
-\ a header cell, since a $8000 header has no room for a guard page. Cells and
+\ a header cell, since the header has no room for a guard page. Cells and
 \ mappings are per task, as DATA is (habu1.f task entry loads x20 from the TCB;
 \ src/lib/task.f PREPARE maps a task's own pair).
 $4800 constant RETURN-BASE-CELL

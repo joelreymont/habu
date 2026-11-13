@@ -984,21 +984,24 @@ $4CA8 constant CLAUSE-CELL
 
 STACK-ABI:PAGE-BYTES constant PROT-PAGE-MAX   \ the mapping alignment
 
-\ The end of the run handed to the libraries that need storage a task owns.
-$8000 constant USER-REGION-END
-
-\ STRING-ABI is src/lib/string.f's SB builder, declared here because string.f is
-\ baked into the engine below src/lib/ffi-abi.f, which requires it back.
-\ Carved from the top of the run so USER-BAND keeps the growable end.
-package STRING-ABI
+\ USER-BAND is the run of the per-task header src/lib/task.f keeps its own cells
+\ in: two, TASK-DEFER-OFF and TASK-AREA-OFF.
+package USER-BAND
 public
-$400 constant SB-BUF-BYTES
-8 constant SB-LEN-BYTES
-SB-BUF-BYTES SB-LEN-BYTES + constant BYTES
-USER-REGION-END BYTES - constant START
-START constant SB-BUF-OFF
-SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
-USER-REGION-END constant END
+$5000 constant START
+START 2 cells + constant END
+;package
+
+\ MEM-ABI is src/lib/memory.f's scope head: one cell naming the
+\ running task's first scope chunk, 0 until its first scope; that chunk's header
+\ names the innermost scope. A region is a fresh zeroed mapping, so every task
+\ and every stripped image starts with no scope open.
+package MEM-ABI
+public
+1 cells constant BYTES
+USER-BAND:END constant START
+START BYTES + constant END
+START constant HEAD-OFF
 ;package
 
 \ FMT-ABI is src/lib/fmt.f's integer render buffer, its four scratch cells, and
@@ -1018,14 +1021,27 @@ public
 20 constant NUM-BUF-BYTES
 SCRATCH-CELLS SCI-LIMBS + cells NUM-BUF-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES
-STRING-ABI:START constant END
-END BYTES - constant START
+MEM-ABI:END constant START
+START BYTES + constant END
 START constant NUM-U-OFF
 NUM-U-OFF 8 + constant IX-OFF
 IX-OFF 8 + constant FR-OFF
 FR-OFF 8 + constant DV-OFF
 DV-OFF 8 + constant SCI-LIMBS-OFF
 SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
+;package
+
+\ STRING-ABI is src/lib/string.f's SB builder, declared here because string.f is
+\ baked into the engine below src/lib/ffi-abi.f, which requires it back.
+package STRING-ABI
+public
+$400 constant SB-BUF-BYTES
+8 constant SB-LEN-BYTES
+SB-BUF-BYTES SB-LEN-BYTES + constant BYTES
+FMT-ABI:END constant START
+START constant SB-BUF-OFF
+SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
+START BYTES + constant END
 ;package
 
 \ FS-ABI is src/lib/fs.f's per-call slots. 64 text bytes hold every errno's
@@ -1039,8 +1055,8 @@ PATH-CAP 1 + constant PATHZ-BYTES
 64 constant TEXT-BYTES
 IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + TEXT-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
-FMT-ABI:START constant END
-END BYTES - constant START
+STRING-ABI:END constant START
+START BYTES + constant END
 START constant ERRNO-OFF
 ERRNO-OFF 8 + constant FD-OFF
 FD-OFF 8 + constant LEN-OFF
@@ -1065,7 +1081,8 @@ $4000 constant S-IFDIR
 $A000 constant S-IFLNK
 ;package
 
-\ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch.
+\ FS-MUT-ABI, src/lib/fs-mutate.f's per-call path scratch, is the last band: the
+\ bands' cells precede the path slots, so each stays inside a scaled load's reach.
 package FS-MUT-ABI
 public
 PATH-CAP 1 + constant PATHZ2-BYTES
@@ -1073,30 +1090,11 @@ PATH-CAP constant ATOMIC-BYTES
 PATH-CAP constant TMP-BYTES
 PATHZ2-BYTES ATOMIC-BYTES + TMP-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
-FS-ABI:START constant END
-END BYTES - constant START
+FS-ABI:END constant START
+START BYTES + constant END
 START constant PATHZ2-OFF
 PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF
 ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
-;package
-
-\ MEM-ABI is src/lib/memory.f's scope head: one cell naming the
-\ running task's first scope chunk, 0 until its first scope; that chunk's header
-\ names the innermost scope. A region is a fresh zeroed mapping, so every task
-\ and every stripped image starts with no scope open.
-package MEM-ABI
-public
-1 cells constant BYTES
-FS-MUT-ABI:START constant END
-END BYTES - constant START
-START constant HEAD-OFF
-;package
-
-\ USER-BAND is the run of the per-task header src/lib/task.f keeps its own cells in.
-package USER-BAND
-public
-$5000 constant START
-MEM-ABI:START constant END
 ;package
 
 \ A `defer NAME ( E )` in src/core/checker.f before `: TRUST` cannot register
