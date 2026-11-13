@@ -266,9 +266,10 @@ Cross-build first, self-host second.
    bound to the `src/habu/prims.f` names; the outer interpreter, definers,
    packages, source loading and `MAIN` are checked Habu captured into both
    products. There is no x86 copy of `habu2.f`.
-2. **The ARM64 engine cross-builds by dual emission.** Loading the prefix
-   executes on the host, so the host cannot switch its contract; each
-   definition's one HIR is emitted twice and the capture carries the shadow.
+2. **The ARM64 engine cross-builds through tier 0.** Loading the prefix
+   executes on the host, so the host cannot switch its contract; while a
+   shadow is open tier 0 walks each definition for the target and then for
+   the host, and the capture carries the shadow.
 3. **A host-side Habu linker writes the image** (`src/habu/link-x64.f`). It
    resolves every record, call, literal and DATA cell at write time; no
    relocation runs at boot or snapshot restore.

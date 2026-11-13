@@ -20,12 +20,8 @@ DYNAMIC-BUFFER SOURCE-CERT-CELLS n
 
 public
 
-\ Same callback shape as a family name reader: one scalar query, one byte span.
-\ A captured compiler requires the appended field, with no by-name fallback.
 : CERTIFICATE ( n -- ptr u8 n )
-   CHECKER-FETCH-ABI:CERTIFICATE-OFF s" frozen source certificate" FIELD
-   dup 0= if drop SOURCE-CERTIFICATE exit then
-   AS-FAMILY-NAME execute ;
+   SOURCE-CERTIFICATE ;
 
 : RELEASE-CERTIFICATE ( -- )
    SOURCE-CERT-CELLS-RELEASE ;

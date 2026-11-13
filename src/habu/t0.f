@@ -2035,7 +2035,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 : LOWER ( n -- ) {: before:n :}
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
-   KEEP-ARITY
+   ARITY-CK
    STUB-ARM
    [: WALK ;] SHADOWED
    [: TARGET-WORD? if NQ @ ERROR-EMIT else WALK then ;] HOSTED ;

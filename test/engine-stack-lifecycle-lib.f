@@ -123,10 +123,6 @@ variable ERRLEN
 \ (BTHROW).
 67 constant CHILD-UNCAUGHT-RC
 
-: REFUSED-NATIVE-RSTACK ( ptr u8 n -- )
-   CHILD-RC CHILD-UNCAUGHT-RC T=
-   ERR ERRLEN @ S\" ncomp: cannot compile EDGE\nhb: uncaught throw code -8304\n" T$= ;
-
 \ run-in-stack refuses an extent that is not a guarded mapping -- a
 \ create/allot buffer, a null or unaligned base, a capacity that is zero or
 \ not a STACK-ABI:PAGE-BYTES multiple, or a wrapping extent -- by throwing
@@ -172,16 +168,8 @@ variable ERRLEN
    s" empty return-stack read" T-LABEL
    s" 0 set-tier : EDGE ( -- ) 11 22 2>r 0 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN ;
 
-: PRIMITIVE-RETURN-X64 ( -- )
-   s" native pair transfer preserves values and VM return depth" T-LABEL
-   s" variable OLD-RSP TRUSTED: EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 1 - = . OLD-RSP @ data-base RSP-CELL + ! ; EDGE"
-   CHILD-RC 0 T=
-   OUT OUTLEN @ S\" 22\n11\n-1\n" T$=
-   s" native return pop without a value is refused" T-LABEL
-   s" TRUSTED: EDGE ( -- ) 2r> 2drop ; EDGE" REFUSED-NATIVE-RSTACK ;
-
 : PRIMITIVE-BOUNDARIES ( -- )
-   HB-TARGET-LINUX-X86-64? if PRIMITIVE-RETURN-X64 else PRIMITIVE-RETURN-ARM then
+   HB-TARGET-LINUX-X86-64? 0= if PRIMITIVE-RETURN-ARM then
    s" empty data-stack adjustment" T-LABEL
    s" drop" S\" E-UNDERFLOW habu: interpret stack underdepth: drop\n" NAMED-UNDERDEPTH
    s" the last loop frame" T-LABEL

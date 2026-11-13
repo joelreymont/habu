@@ -25,15 +25,11 @@ package NDEFINITION
 public
 
 \ Everything the run needs, parked in cells: the whole run is one quotation under catch (compiler.f RUN).
-0 CWORK-VARIABLE M-IN n
-0 CWORK-VARIABLE M-OUT n
 0 CWORK-VARIABLE M-VERDICT n                   \ the verdict the recorded scan reached
 0 CWORK-VARIABLE M-DOES-FRAME n                \ checker-owned transaction spans a split compilation
 0 CWORK-VARIABLE M-DOES n                      \ byte split after `does> `, or zero
 0 CWORK-VARIABLE M-DOES-SIG ptr u8
 0 CWORK-VARIABLE M-DOES-SIG-U n
-0 CWORK-VARIABLE M-DOES-IN n
-0 CWORK-VARIABLE M-DOES-OUT n
 0 CWORK-VARIABLE M-DOES-GIN n                  \ where the clause's argument row's values end
 0 CWORK-VARIABLE M-DOES-GOUT n                 \ where the clause's result row's values end
 0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
@@ -192,9 +188,7 @@ public
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
    M-SRC @ cut + M-SRC-U @ cut - cut NFETCH:CAPTURE
-   CHECKER-OWNER:DOES-IN M-DOES-IN !
-   CHECKER-OWNER:DOES-OUT M-DOES-OUT !
-   M-DOES-IN @ 0 < M-DOES-OUT @ 0 < or if E-COMP-ARITY throw then
+   CHECKER-OWNER:DOES-IN 0 <  CHECKER-OWNER:DOES-OUT 0 <  or if E-COMP-ARITY throw then
    \ Where the clause's values end, read here because the checker captured
    \ the clause's rows for this split and the next one replaces them. A row
    \ wider than a cell is placed from these boundaries as a definition's own
@@ -279,11 +273,7 @@ public
    then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
-\ The arity is the checker's answer, from the same dict.f reader every callee's
-\ arity comes from, so the routine's contract and its calls share one
-\ authority. It asks for cells; dict.f EFF-CELLS states the width rule.
-\
-\ It is asked with the source spelling KEEP-TAPE-NAME kept: bare for an
+\ The arity is asked with the source spelling KEEP-TAPE-NAME kept: bare for an
 \ author's private definition, qualified when a public definition names a
 \ different wordlist. A TRUSTED: effect is registered under that same spelling.
 \
@@ -294,13 +284,10 @@ public
 \ E-COMP-NAME, an unsigned body answers its inferred effect, and one whose
 \ effect is unrecorded (W-EFFECT-NOT-RECORDED) answers CHECKER-OWNER's
 \ UNRECORDED-IN and UNRECORDED-OUT cells; no row carries them for callers.
-: KEEP-ARITY ( -- )
-   NAME$ NDICT:SPELL-ARITY {: din:n dout:n :}
-   din NDICT:ARITY-NONE <> if din M-IN !  dout M-OUT !  exit then
-   CHECKER-OWNER:UNRECORDED-IN {: uin:n :}
-   CHECKER-OWNER:UNRECORDED-OUT {: uout:n :}
-   uin 0 < uout 0 < or if E-COMP-ARITY throw then
-   uin M-IN !  uout M-OUT ! ;
+: ARITY-CK ( -- )
+   NAME$ NDICT:SPELL-ARITY drop NDICT:ARITY-NONE <> if exit then
+   CHECKER-OWNER:UNRECORDED-IN 0 <  CHECKER-OWNER:UNRECORDED-OUT 0 <  or
+   if E-COMP-ARITY throw then ;
 
 private
 
@@ -538,7 +525,6 @@ public
    NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
    NULL-PTR M-SCAN !
-   0 M-IN ! 0 M-OUT !
    NHOST:INSTALL
    0 M-VERDICT !
    CHECKER-OWNER:ROWS-END M-ROWS !
@@ -546,7 +532,6 @@ public
    DOES-BYTE@ M-DOES !
    DOES-SIG-FIELD @ M-DOES-SIG !
    data-base TCSIG-U-CELL + @ M-DOES-SIG-U !
-   0 M-DOES-IN ! 0 M-DOES-OUT !
    false M-HEAD-RECOVERY !
    NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !

@@ -1,8 +1,7 @@
 \ shadowed-arity-test.f - a package public whose own bare tail a private word of
 \ the same package claims. A bare tail binds the open package's private wordlist
-\ first and the native compiler reads the contract from that binding
-\ (definition.f KEEP-ARITY asks NDICT:SPELL-ARITY), so effects moving different
-\ cell counts are refused at the second definition.
+\ first and the native compiler reads the contract from that binding, so effects
+\ moving different cell counts are refused at the second definition.
 
 require src/lib/prelude.f
 require src/lib/test.f

@@ -1,8 +1,5 @@
-\ checker-owner.f - the checker this compiler asks, resolved per definition.
+\ checker-owner.f - the checker this compiler asks.
 \ A source-loaded compiler binds the checker beside it from the same tree.
-\ Capture switches it to dispatch through the live declaration-owner record,
-\ so a baked compiler follows a replacement checker instead of its old names.
-\ The scan, call facts and effect-query readers must all reach that same owner.
 \ Missing fields refuse with E-COMP-OWNER; they never fall back by name.
 
 require src/lib/prelude.f
@@ -17,8 +14,6 @@ package CHECKER-OWNER
 : RECORD ( -- ptr u8 )
    NCOMP-DISPATCH:DECL-A @ ;
 
-\ Set by this module's load, cleared before the compiler is captured.
-variable SOURCE-LOADED   -1 SOURCE-LOADED !
 variable BIND-UNJUDGED
 
 \ A retained prefix may carry these pre-hook words without native call models.
@@ -53,11 +48,9 @@ defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
 \ The owner record stores raw execution tokens; each view states a field's
 \ signature so native execute has a callable layout.
 CAST: AS-CHECK ( n -- [ ptr u8 n -- n ] )
-CAST: AS-TAPE-INSTALL ( n -- [ [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- ] )
 CAST: AS-ACTION ( n -- [ -- ] )
 CAST: AS-DOES-CHECK ( n -- [ ptr u8 n ptr u8 n -- n ] )
 CAST: AS-DOES-REPORT ( n -- [ n ptr u8 n -- n ] )
-CAST: AS-DOES-FINISH ( n -- [ ptr u8 n bool -- ] )
 CAST: AS-N ( n -- [ -- n ] )
 CAST: AS-BOOL ( n -- [ -- bool ] )
 CAST: AS-SPAN ( n -- [ -- n n bool ] )
@@ -67,17 +60,6 @@ CAST: AS-CELLS ( n -- [ n -- n n ] )
 CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
 CAST: AS-INIT-LAYOUT ( n -- [ n -- n n n ] )
 CAST: AS-QUOT-CELLS ( n -- [ n n -- n n ] )
-CAST: AS-DECLARATION ( n -- [ ptr u8 n ptr u8 n -- ] )
-CAST: AS-NAME-PREDICATE ( n -- [ ptr u8 n -- bool ] )
-CAST: AS-SLOT ( n -- [ n -- n ] )
-CAST: AS-SLOT-PREDICATE ( n -- [ n -- bool ] )
-CAST: AS-FINALLY-CELLS ( n -- [ n -- n n n ] )
-CAST: AS-EVENT ( n -- [ n -- n n n ] )
-CAST: AS-WIDTH-ROW ( n -- [ n -- n n n ] )
-CAST: AS-WIDTH ( n -- [ n n -- n ] )
-CAST: AS-FAMILY ( n -- [ ptr u8 n -- n bool ] )
-CAST: AS-VARIANT ( n -- [ ptr u8 n n -- n bool ] )
-CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
 
 \ Checked bodies name field offsets through layout.f's NCOMP-DISPATCH:DECL-*.
 \ CHECKER-OWNER-ABI loads before the checker, so build-fixpoint's stage-built
@@ -92,8 +74,7 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    xt 0= if a u REFUSE then
    xt ;
 
-\ A field of the live owner, read per call, so a captured compiler follows a
-\ replacement checker.
+\ A field of the live owner, read per call.
 : SOURCE-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
    RECORD off a u RECORD-FIELD ;
 
@@ -128,146 +109,88 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-NATIVE-DOES-REPORT-OFF s" source does> report" PAIRED-FIELD AS-DOES-REPORT is SOURCE-DOES-REPORT ;
 BIND-SOURCE-CALLS
 
-\ Zero selects this source compiler's by-name binding; a captured compiler
-\ requires an installed operation from the live source owner.
-: FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
-   SOURCE-LOADED @ 0<> if 0 exit then
-   off a u SOURCE-FIELD ;
-
 public
 
 : RECORD? ( -- bool )
    RECORD 0= 0= ;
 
-: BY-NAME? ( -- bool )
-   SOURCE-LOADED @ 0<> ;
-
 \ ---- the front end the checker IS: the scan, the tape it fills, the does> split,
 \ the declared-effect row and the retract of one ----------------
 
 : CHECK ( ptr u8 n -- n )
-   NCOMP-DISPATCH:DECL-CHECK-OFF s" scan" FIELD
-   dup 0= if drop CHECK! exit then
-   AS-CHECK execute ;
+   CHECK! ;
 
-\ An operation, not a read of the owner's quiet counter: a baked compiler reaches
-\ a counter only by name, which is the retired instance, so the suppression and
-\ the render would land on different checkers.
 : CHECK-UNJUDGED ( ptr u8 n -- n )
-   NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" unjudged scan" FIELD
-   dup 0= if drop SOURCE-UNJUDGED exit then
-   AS-CHECK execute ;
+   SOURCE-UNJUDGED ;
 
-\ NATIVE MULTI-ERROR RECOVERY AND DIAGNOSTICS. Fields appended after the
-\ retained host's owner (src/core/checker-owner-extension.f), named through
-\ layout.f like every field above and read through the live source owner so a
-\ captured compiler never asks a stale checker by name.
 : RESET-REPORT ( -- )
-   NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" report reset" FIELD
-   dup 0= if drop SOURCE-REPORT-RESET exit then
-   AS-ACTION execute ;
+   SOURCE-REPORT-RESET ;
 
 : JSON-REPORTED? ( -- bool )
-   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" JSON report" FIELD
-   dup 0= if drop SOURCE-JSON-REPORTED exit then
-   AS-BOOL execute ;
+   SOURCE-JSON-REPORTED ;
 
 \ The source owner that counted a refusal decides whether compilation may
 \ continue to the next definition.
 : MULTI-ERROR? ( -- bool )
-   NCOMP-DISPATCH:DECL-MULTI-ERROR-OFF s" multi-error mode" FIELD
-   dup 0= if drop MULTI-ERR? exit then
-   AS-BOOL execute ;
+   MULTI-ERR? ;
 
 \ Whether the definition just checked bound a refused declaration's recovery
 \ row (checker.f RECOVERY-BIND): it is checked for diagnostics, never published.
 : RECOVERY-USED? ( -- bool )
-   NCOMP-DISPATCH:DECL-RECOVERY-USED-OFF s" recovery use" FIELD
-   dup 0= if drop CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? exit then
-   AS-BOOL execute ;
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? ;
 
 \ CHECKER-TAPE token-kind constants remain part of the shared observer ABI.
 : TAPE-INSTALL ( [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
-   NCOMP-DISPATCH:DECL-TAPE-INSTALL-OFF s" tape install" FIELD
-   dup 0= if drop CHECKER-TAPE:INSTALL exit then
-   AS-TAPE-INSTALL execute ;
+   CHECKER-TAPE:INSTALL ;
 
 : TAPE-ARM ( -- )
-   NCOMP-DISPATCH:DECL-TAPE-ARM-OFF s" tape arm" FIELD
-   dup 0= if drop CHECKER-TAPE:ARM exit then
-   AS-ACTION execute ;
+   CHECKER-TAPE:ARM ;
 
 : TAPE-DISARM ( -- )
-   NCOMP-DISPATCH:DECL-TAPE-DISARM-OFF s" tape disarm" FIELD
-   dup 0= if drop CHECKER-TAPE:DISARM exit then
-   AS-ACTION execute ;
+   CHECKER-TAPE:DISARM ;
 
 : TAPE-ADVANCE ( -- )
-   NCOMP-DISPATCH:DECL-TAPE-ADVANCE-OFF s" tape advance" FIELD
-   dup 0= if drop CHECKER-TAPE:ADVANCE exit then
-   AS-ACTION execute ;
+   CHECKER-TAPE:ADVANCE ;
 
 : TAPE-EVENT ( n -- n n n )
-   CHECKER-OWNER-EXT:TAPE-EVENT-OFF s" tape event" FIELD
-   dup 0= if drop CHECKER-TAPE:EVENT exit then
-   AS-EVENT execute ;
+   CHECKER-TAPE:EVENT ;
 
 \ A clause is scanned in its parent's regime (BIND-REGIME!, set by the parent's
 \ scan): unjudged under a TRUSTED: or hookless parent, so it binds and
 \ authorizes calls as that parent's body does (checker.f CHECK-DOES-UNJUDGED!).
 : DOES-UNJUDGED ( ptr u8 n ptr u8 n -- n )
-   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" unjudged does> split" FIELD
-   dup 0= if drop SOURCE-DOES-UNJUDGED exit then
-   AS-DOES-CHECK execute ;
+   SOURCE-DOES-UNJUDGED ;
 
 : DOES-CHECK ( ptr u8 n ptr u8 n -- n )
    BIND-UNJUDGED @ 0<> if DOES-UNJUDGED exit then
-   NCOMP-DISPATCH:DECL-DOES-CHECK-OFF s" does> split" FIELD
-   dup 0= if drop SOURCE-DOES-CHECK exit then
-   AS-DOES-CHECK execute ;
+   SOURCE-DOES-CHECK ;
 
 \ The split's scan renders nothing, so the reason for a clause it refused is
 \ rendered here, under the clause name of the definer NAME (checker.f
 \ CHECKER-NATIVE-DOES-REPORT), while the owner still holds that scan.
 : DOES-REPORT ( n ptr u8 n -- n )
-   NCOMP-DISPATCH:DECL-NATIVE-DOES-REPORT-OFF s" does> report" FIELD
-   dup 0= if drop SOURCE-DOES-REPORT exit then
-   AS-DOES-REPORT execute ;
+   SOURCE-DOES-REPORT ;
 
 : DOES-FINISH ( ptr u8 n bool -- )
-   CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF s" does> publication" FIELD
-   dup 0= if drop CHECK:DOES-PUBLISHED exit then
-   AS-DOES-FINISH execute ;
+   CHECK:DOES-PUBLISHED ;
 
 : DOES-BEGIN ( -- )
-   CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF s" does> rollback frame" FIELD
-   dup 0= if drop CHECKER-NATIVE-DOES-BEGIN exit then
-   AS-ACTION execute ;
+   CHECKER-NATIVE-DOES-BEGIN ;
 
 : DOES-COMMIT ( -- )
-   CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF s" does> rollback release" FIELD
-   dup 0= if drop CHECKER-NATIVE-DOES-COMMIT exit then
-   AS-ACTION execute ;
+   CHECKER-NATIVE-DOES-COMMIT ;
 
 : DOES-IN ( -- n )
-   NCOMP-DISPATCH:DECL-DOES-IN-OFF s" does> input cells" FIELD
-   dup 0= if drop CHECK-DOES-DIN-CELLS exit then
-   AS-N execute ;
+   CHECK-DOES-DIN-CELLS ;
 
 : DOES-OUT ( -- n )
-   NCOMP-DISPATCH:DECL-DOES-OUT-OFF s" does> output cells" FIELD
-   dup 0= if drop CHECK-DOES-DOUT-CELLS exit then
-   AS-N execute ;
+   CHECK-DOES-DOUT-CELLS ;
 
 : UNRECORDED-IN ( -- n )
-   NCOMP-DISPATCH:DECL-UNRECORDED-IN-OFF s" unrecorded input cells" FIELD
-   dup 0= if drop CHECK-UNRECORDED-DIN exit then
-   AS-N execute ;
+   CHECK-UNRECORDED-DIN ;
 
 : UNRECORDED-OUT ( -- n )
-   NCOMP-DISPATCH:DECL-UNRECORDED-OUT-OFF s" unrecorded output cells" FIELD
-   dup 0= if drop CHECK-UNRECORDED-DOUT exit then
-   AS-N execute ;
+   CHECK-UNRECORDED-DOUT ;
 
 \ Whether the checker counted a refusal of this definition's declared row
 \ (checker.f SIG-COUNTED). Read per call, not by name nor in BIND-SOURCE-CALLS:
@@ -292,63 +215,43 @@ public
 \ the per-term bundle slot are read the same way a definition's DIN-N / DIN-SLOT
 \ are read, and the placer (dict.f ROW-GLUE) asks the same questions of both.
 : DOES-IN-N ( -- n )
-   NCOMP-DISPATCH:DECL-DOES-IN-N-OFF s" does> input terms" FIELD
-   dup 0= if drop CHECK-DOES-DIN-N exit then
-   AS-N execute ;
+   CHECK-DOES-DIN-N ;
 
 : DOES-OUT-N ( -- n )
-   NCOMP-DISPATCH:DECL-DOES-OUT-N-OFF s" does> output terms" FIELD
-   dup 0= if drop CHECK-DOES-DOUT-N exit then
-   AS-N execute ;
+   CHECK-DOES-DOUT-N ;
 
 : DOES-IN-SLOT ( n -- n )
-   NCOMP-DISPATCH:DECL-DOES-IN-SLOT-OFF s" does> input slot" FIELD
-   dup 0= if drop CHECK-DOES-DIN-SLOT exit then
-   AS-SLOT execute ;
+   CHECK-DOES-DIN-SLOT ;
 
 : DOES-OUT-SLOT ( n -- n )
-   NCOMP-DISPATCH:DECL-DOES-OUT-SLOT-OFF s" does> output slot" FIELD
-   dup 0= if drop CHECK-DOES-DOUT-SLOT exit then
-   AS-SLOT execute ;
+   CHECK-DOES-DOUT-SLOT ;
 
 \ The store's end when a definition begins, and a refused one's cut back to it:
 \ exactly the rows it recorded go, and every row recorded before it stays
 \ (checker.f CHECKER-RETRACT-ROWS).
 : ROWS-END ( -- n )
-   NCOMP-DISPATCH:DECL-ROWS-END-OFF s" rows end" FIELD
-   dup 0= if drop SOURCE-ROWS-END exit then
-   AS-N execute ;
+   SOURCE-ROWS-END ;
 
 : RETRACT-ROWS ( n -- )
-   NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" rows retract" FIELD
-   dup 0= if drop SOURCE-RETRACT-ROWS exit then
-   AS-MARK-ACTION execute ;
+   SOURCE-RETRACT-ROWS ;
 
 \ Opens the compile window with the code a callback's checker write is refused
 \ with, or shuts it with 0: between them only the compiler's callbacks run, so
 \ the cut above takes exactly the definition's rows (checker.f WRITE-WINDOW).
 : WRITE-WINDOW ( n -- )
-   NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" write window" FIELD
-   dup 0= if drop SOURCE-WRITE-WINDOW exit then
-   AS-MARK-ACTION execute ;
+   SOURCE-WRITE-WINDOW ;
 
 
 \ ---- the finalized per-call-site facts the scan recorded ----------------
 
 : CALL-CELLS ( n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-CELLS-OFF s" call cells" FIELD
-   dup 0= if drop SOURCE-CALL-CELLS exit then
-   AS-CELLS execute ;
+   SOURCE-CALL-CELLS ;
 
 : CALL-BINDING ( n -- ptr u8 n )
-   NCOMP-DISPATCH:DECL-CALL-BINDING-OFF s" resolved call binding" FIELD
-   dup 0= if drop SOURCE-CALL-BINDING exit then
-   AS-BINDING execute ;
+   SOURCE-CALL-BINDING ;
 
 : UNJUDGED-BINDING ( n -- ptr u8 n )
-   NCOMP-DISPATCH:DECL-UNJUDGED-BINDING-OFF s" unjudged source binding" FIELD
-   dup 0= if drop SOURCE-UNJUDGED-BINDING exit then
-   AS-BINDING execute ;
+   SOURCE-UNJUDGED-BINDING ;
 
 : BIND-REGIME! ( n -- ) BIND-UNJUDGED ! ;
 
@@ -378,8 +281,7 @@ public
 \ compiler binds or borrows rows, so a rejected tape can still be sealed.
 : BINDING-WINDOW ( -- ptr u8 n bool )
    RECORD
-   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" FIELD
-   dup 0= if drop SOURCE-BINDING-WINDOW else AS-N execute then
+   SOURCE-BINDING-WINDOW
    BIND-UNJUDGED @ 0<> ;
 
 : BINDING-WINDOW-CK ( ptr u8 n bool -- )
@@ -387,57 +289,38 @@ public
    RECORD owner <> if CHECKER-OWNER-ABI:BINDING-RC throw then
    unjudged if BIND-UNJUDGED @ 0= else BIND-UNJUDGED @ 0<> then
    if CHECKER-OWNER-ABI:BINDING-RC throw then
-   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" FIELD
-   dup 0= if drop SOURCE-BINDING-WINDOW else AS-N execute then
+   SOURCE-BINDING-WINDOW
    serial <> if CHECKER-OWNER-ABI:BINDING-RC throw then ;
 
 : INIT-LAYOUT ( n -- n n n )
-   NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" init layout" FIELD
-   dup 0= if drop SOURCE-INIT-LAYOUT exit then
-   AS-INIT-LAYOUT execute ;
+   SOURCE-INIT-LAYOUT ;
 
 : FIELD-SPAN ( n -- n n )
-   NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" field span" FIELD
-   dup 0= if drop SOURCE-FIELD-SPAN exit then
-   AS-CELLS execute ;
+   SOURCE-FIELD-SPAN ;
 
 : C2-STOW ( n -- n n )
-   NCOMP-DISPATCH:DECL-C2-STOW-OFF s" C2 stow" FIELD
-   dup 0= if drop SOURCE-C2-STOW exit then
-   AS-CELLS execute ;
+   SOURCE-C2-STOW ;
 
 : CALL-GLUE ( n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-GLUE-OFF s" call glue" FIELD
-   dup 0= if drop SOURCE-CALL-GLUE exit then
-   AS-CELLS execute ;
+   SOURCE-CALL-GLUE ;
 
 : MATCH-PAYLOAD ( n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-MATCH-OFF s" match payload" FIELD
-   dup 0= if drop SOURCE-MATCH-PAYLOAD exit then
-   AS-CELLS execute ;
+   SOURCE-MATCH-PAYLOAD ;
 
 : CALL-QUOT-IN ( n n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-QUOT-IN-OFF s" quotation inputs" FIELD
-   dup 0= if drop SOURCE-QUOT-IN exit then
-   AS-QUOT-CELLS execute ;
+   SOURCE-QUOT-IN ;
 
 : CALL-QUOT-OUT ( n n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-QUOT-OUT-OFF s" quotation outputs" FIELD
-   dup 0= if drop SOURCE-QUOT-OUT exit then
-   AS-QUOT-CELLS execute ;
+   SOURCE-QUOT-OUT ;
 
 
 \ ---- the declared-effect rows -------------------------------------------------
 
 TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
-   CHECKER-OWNER-ABI:TRUST-DECL-OFF s" declared-effect row" FIELD
-   dup 0= if drop CHECK:DECLARED exit then
-   AS-DECLARATION execute ;
+   CHECK:DECLARED ;
 
 : PARSE-IMM? ( ptr u8 n -- bool )
-   NCOMP-DISPATCH:DECL-PARSE-IMM-OFF s" parse-neutral immediate" FIELD
-   dup 0= if drop NEUTRAL-PARSE-IMM? exit then
-   AS-NAME-PREDICATE execute ;
+   NEUTRAL-PARSE-IMM? ;
 
 
 \ ---- the effect-store query group ---------------------------------------------
@@ -445,177 +328,109 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
 \ reads that state, so all of them must reach the same owner.
 
 : QUERY ( ptr u8 n -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-QUERY-OFF s" effect query" FIELD
-   dup 0= if drop EFFECT-QUERY exit then
-   AS-NAME-PREDICATE execute ;
+   EFFECT-QUERY ;
 
 : DIN-N ( -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DIN-N-OFF s" din terms" FIELD
-   dup 0= if drop EFFECT-DIN-N exit then
-   AS-N execute ;
+   EFFECT-DIN-N ;
 
 : DOUT-N ( -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DOUT-N-OFF s" dout terms" FIELD
-   dup 0= if drop EFFECT-DOUT-N exit then
-   AS-N execute ;
+   EFFECT-DOUT-N ;
 
 : DIN-CELLS ( -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DIN-CELLS-OFF s" din cells" FIELD
-   dup 0= if drop EFFECT-DIN-CELLS exit then
-   AS-N execute ;
+   EFFECT-DIN-CELLS ;
 
 : DOUT-CELLS ( -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DOUT-CELLS-OFF s" dout cells" FIELD
-   dup 0= if drop EFFECT-DOUT-CELLS exit then
-   AS-N execute ;
+   EFFECT-DOUT-CELLS ;
 
 : DIN-SLOT ( n -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DIN-SLOT-OFF s" din slot" FIELD
-   dup 0= if drop EFFECT-DIN-SLOT exit then
-   AS-SLOT execute ;
+   EFFECT-DIN-SLOT ;
 
 : DOUT-SLOT ( n -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DOUT-SLOT-OFF s" dout slot" FIELD
-   dup 0= if drop EFFECT-DOUT-SLOT exit then
-   AS-SLOT execute ;
+   EFFECT-DOUT-SLOT ;
 
 : DIN-QUOT ( n -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-DIN-QUOT-OFF s" din quotation" FIELD
-   dup 0= if drop EFFECT-DIN-QUOT exit then
-   AS-SLOT-PREDICATE execute ;
+   EFFECT-DIN-QUOT ;
 
 : DOUT-QUOT ( n -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-DOUT-QUOT-OFF s" dout quotation" FIELD
-   dup 0= if drop EFFECT-DOUT-QUOT exit then
-   AS-SLOT-PREDICATE execute ;
+   EFFECT-DOUT-QUOT ;
 
 : QUOT-UP ( -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-QUOT-UP-OFF s" quotation upward" FIELD
-   dup 0= if drop EFFECT-QUOT-UP exit then
-   AS-BOOL execute ;
+   EFFECT-QUOT-UP ;
 
 : QUOT-SIMPLE? ( -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-QUOT-SIMPLE-OFF s" simple quotation" FIELD
-   dup 0= if drop EFFECT-QUOT-SIMPLE? exit then
-   AS-BOOL execute ;
+   EFFECT-QUOT-SIMPLE? ;
 
 : CATCH-CELLS ( n -- n n )
-   NCOMP-DISPATCH:DECL-EFFECT-CATCH-CELLS-OFF s" catch cells" FIELD
-   dup 0= if drop EFFECT-CATCH-CELLS exit then
-   AS-CELLS execute ;
+   EFFECT-CATCH-CELLS ;
 
 : EXEC-CELLS ( n -- n n )
-   NCOMP-DISPATCH:DECL-EFFECT-EXEC-CELLS-OFF s" execute cells" FIELD
-   dup 0= if drop EFFECT-EXEC-CELLS exit then
-   AS-CELLS execute ;
+   EFFECT-EXEC-CELLS ;
 
 : FINALLY-CELLS ( n -- n n n )
-   NCOMP-DISPATCH:DECL-EFFECT-FINALLY-CELLS-OFF s" finally cells" FIELD
-   dup 0= if drop EFFECT-FINALLY-CELLS exit then
-   AS-FINALLY-CELLS execute ;
+   EFFECT-FINALLY-CELLS ;
 
 : MATCH-CELLS ( n -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-MATCH-CELLS-OFF s" match cells" FIELD
-   dup 0= if drop EFFECT-MATCH-CELLS exit then
-   AS-SLOT execute ;
+   EFFECT-MATCH-CELLS ;
 
 : DEAD-TOKEN? ( ptr u8 n -- bool )
-   NCOMP-DISPATCH:DECL-CTL-DEAD-OFF s" dead control token" FIELD
-   dup 0= if drop CTL-DEAD? exit then
-   AS-NAME-PREDICATE execute ;
+   CTL-DEAD? ;
 
 : WIDTH-AT ( n n -- n )
-   NCOMP-DISPATCH:DECL-WF-W-AT-OFF s" width fact" FIELD
-   dup 0= if drop WF-W-AT exit then
-   AS-WIDTH execute ;
+   WF-W-AT ;
 
 \ A scan's facts as its end leaves them, for a compiler that keeps them past the
 \ next scan (t0.f ON-DONE): its width-fact rows, each the token's offset in the
 \ scanned text, the operand position and its cells; and its binds, each the
 \ cells that local holds.
 : WIDTH-ROWS ( -- n )
-   CHECKER-OWNER-EXT:WIDTH-ROWS-OFF s" width rows" FIELD
-   dup 0= if drop WF-N@ exit then
-   AS-N execute ;
+   WF-N@ ;
 
 : WIDTH-ROW ( n -- n n n )
-   CHECKER-OWNER-EXT:WIDTH-ROW-OFF s" width row" FIELD
-   dup 0= if drop WF-FACT@ exit then
-   AS-WIDTH-ROW execute ;
+   WF-FACT@ ;
 
 : LOCAL-COUNT ( -- n )
-   CHECKER-OWNER-EXT:LOCAL-COUNT-OFF s" local count" FIELD
-   dup 0= if drop LOCW-HW-N@ exit then
-   AS-N execute ;
+   LOCW-HW-N@ ;
 
 : LOCAL-WIDTH ( n -- n )
-   CHECKER-OWNER-ABI:LOCAL-WIDTH-OFF s" local width" FIELD
-   dup 0= if drop LOCW-HW@ exit then
-   AS-SLOT execute ;
+   LOCW-HW@ ;
 
 
 \ ---- what the record a definition publishes needs from the checker ----------------
 
 : MIN-IN ( -- n )
-   NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF s" minimum input arity" FIELD
-   dup 0= if drop REC-MIN-IN@ exit then
-   AS-N execute ;
+   REC-MIN-IN@ ;
 
 : WIDE-PUBLISH ( -- )
-   NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF s" wide record publish" FIELD
-   dup 0= if drop REC-WIDE-PUBLISH exit then
-   AS-ACTION execute ;
+   REC-WIDE-PUBLISH ;
 
-\ Family ids, variant ids and their metadata belong to the owner's registry.
-\ Name lookup alone cannot transfer an id to a different registry's reader.
 : FAMILY-MATCH ( ptr u8 n -- n bool )
-   NCOMP-DISPATCH:DECL-FAMILY-MATCH-OFF s" match family" FIELD
-   dup 0= if drop TFL-MATCH-FAM? exit then
-   AS-FAMILY execute ;
+   TFL-MATCH-FAM? ;
 
 : FAMILY-CON ( ptr u8 n -- n bool )
-   NCOMP-DISPATCH:DECL-FAMILY-CON-OFF s" construct family" FIELD
-   dup 0= if drop TFL-CON-FAM? exit then
-   AS-FAMILY execute ;
+   TFL-CON-FAM? ;
 
 : FAMILY-VARIANT ( ptr u8 n n -- n bool )
-   NCOMP-DISPATCH:DECL-FAMILY-VARIANT-OFF s" family variant" FIELD
-   dup 0= if drop TFAM:TFL-VAR? exit then
-   AS-VARIANT execute ;
+   TFAM:TFL-VAR? ;
 
 : FAMILY-SLOTS ( n -- n )
-   NCOMP-DISPATCH:DECL-FAMILY-SLOTS-OFF s" family slots" FIELD
-   dup 0= if drop TFAM:TFAM-SLOTS@ exit then
-   AS-SLOT execute ;
+   TFAM:TFAM-SLOTS@ ;
 
 : FAMILY-VARIANTS ( n -- n )
-   NCOMP-DISPATCH:DECL-FAMILY-VARIANTS-OFF s" family variants" FIELD
-   dup 0= if drop TFAM:TFAM-VAR-COUNT@ exit then
-   AS-SLOT execute ;
+   TFAM:TFAM-VAR-COUNT@ ;
 
 : FAMILY-NICHE? ( n -- bool )
-   NCOMP-DISPATCH:DECL-FAMILY-NICHE-OFF s" family niche" FIELD
-   dup 0= if drop TFAM:TFAM-NICHE? exit then
-   AS-SLOT-PREDICATE execute ;
+   TFAM:TFAM-NICHE? ;
 
 : FAMILY-NAME$ ( n -- ptr u8 n )
-   NCOMP-DISPATCH:DECL-FAMILY-NAME-OFF s" family name" FIELD
-   dup 0= if drop TFAM-NAME$ exit then
-   AS-FAMILY-NAME execute ;
+   TFAM-NAME$ ;
 
 : VARIANT-TAG ( n -- n )
-   NCOMP-DISPATCH:DECL-VARIANT-TAG-OFF s" variant tag" FIELD
-   dup 0= if drop TFAM:SUMV-TAG@ exit then
-   AS-SLOT execute ;
+   TFAM:SUMV-TAG@ ;
 
 : VARIANT-PADS ( n n -- n )
-   NCOMP-DISPATCH:DECL-VARIANT-PADS-OFF s" variant pads" FIELD
-   dup 0= if drop TFAM:TFL-VPADS exit then
-   AS-WIDTH execute ;
+   TFAM:TFL-VPADS ;
 
 : VARIANT-PAY-CELLS ( n -- n )
-   NCOMP-DISPATCH:DECL-VARIANT-PAY-CELLS-OFF s" variant payload cells" FIELD
-   dup 0= if drop TFAM:SUMV-PAYCELLS@ exit then
-   AS-SLOT execute ;
+   TFAM:SUMV-PAYCELLS@ ;
 
 ;package

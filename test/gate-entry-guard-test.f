@@ -75,16 +75,16 @@ TEST:SUITE wrapper test/gate-entry-guard-wrapper.f TEST:;SUITE
 TEST:SUITE read-only test/gate-entry-guard-read-only.f TEST:;SUITE
 GUARD
 
-\ A tier prefix and repeated script argv do not add another execution root.
+\ Repeated script argv do not add another execution root.
 TEST:RESET
-TEST:SUITE first test/compiler/aot-mode.f ENTRIES test/gate-entry-guard-wrapper.f -- first TEST:;SUITE
-TEST:SUITE second test/compiler/aot-mode.f ENTRIES test/gate-entry-guard-wrapper.f -- second TEST:;SUITE
+TEST:SUITE first test/gate-entry-guard-wrapper.f -- first TEST:;SUITE
+TEST:SUITE second test/gate-entry-guard-wrapper.f -- second TEST:;SUITE
 GUARD
 
 \ A file may launch itself, even as an entry two rows share.
 TEST:RESET
 TEST:SUITE self test/gate-entry-guard-self-launch.f TEST:;SUITE
-TEST:SUITE self-aot test/compiler/aot-mode.f ENTRIES test/gate-entry-guard-self-launch.f TEST:;SUITE
+TEST:SUITE again test/gate-entry-guard-self-launch.f TEST:;SUITE
 GUARD
 
 \ A row may import one of its own entries from another, unless another row

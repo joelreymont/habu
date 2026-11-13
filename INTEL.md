@@ -16,10 +16,10 @@ The goal is a Linux x86-64 engine on tier 0:
   Habu. They are captured into both the ARM64 and the x86-64 product. The
   seeded boot enters them through the DATA cell `ENGINE-MAIN:XT-CELL`, so
   `habu2.f` gets no x86 twin.
-- **Dual-emission cross-build.** spark cross-builds the first x86 engine by
-  dual emission: each definition's single HIR is lowered and emitted twice,
-  ARM64 into the live region and x86 into a shadow keyed by record, and the
-  capture carries the shadow.
+- **Tier-0 cross-build.** spark cross-builds the first x86 engine through
+  tier 0: while a shadow is open each definition is walked twice, x86 into a
+  shadow keyed by record and ARM64 into the live region, and the capture
+  carries the shadow.
 - **Write-time link.** A host-side Habu linker writes the x86 image with the
   code region and DATA as fixed `PT_LOAD`s.
 - **Self-host.** The cross-built engine rebuilds itself on the ThinkPad to a
@@ -33,9 +33,7 @@ Landed on `master` (the facts are in [docs/x86-64.md](docs/x86-64.md)):
 - the assembler (`X64ASM`);
 - the primitive table and its parity gate;
 - the OS seam, the ELF64 writer and the `MOVABS` site kind;
-- the register-file description;
-- the backend registry and pass rows;
-- `x64ir.f`, `select-x64.f`, the partial `emit-x64.f` and `X64PASS`.
+- the register-file description.
 
 The implementation lane also carries checked Habu startup and interpretation,
 the fixed-segment image linker, recorded anonymous-function targets, SysV FFI,
