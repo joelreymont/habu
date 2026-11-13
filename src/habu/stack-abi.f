@@ -14,8 +14,6 @@ public
 \ The live data-stack allocation changes at run-in-stack or task entry and at unwind.
 $1D0 constant BASE-CELL
 $47E8 constant CAP-CELL
-$47F0 constant REPL-BASE-CELL
-$47F8 constant REPL-CAP-CELL
 
 \ The guard granule. It is the MAXIMUM arm64 page a supported target can boot
 \ with (64 KiB), not this host's 16 KiB: a guard smaller than the running page

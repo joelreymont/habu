@@ -205,8 +205,6 @@ create TAB
    BOOT:TYPES-WL-CELL                 1 cells                 CLAIM BOOT-TYPES-WL
    BOOT:IMAGE-BASE-CELL               1 cells                 CLAIM BOOT-IMAGE-BASE
    STACK-ABI:CAP-CELL                 1 cells                 CLAIM STACK-ABI-CAP
-   STACK-ABI:REPL-BASE-CELL           1 cells                 CLAIM STACK-ABI-REPL-BASE
-   STACK-ABI:REPL-CAP-CELL            1 cells                 CLAIM STACK-ABI-REPL-CAP
    STACK-ABI:RETURN-BASE-CELL         1 cells                 CLAIM STACK-ABI-RETURN-BASE
    STACK-ABI:LOOP-BASE-CELL           1 cells                 CLAIM STACK-ABI-LOOP-BASE
    USER-BAND:START                    USER-BAND:END USER-BAND:START -  CLAIM USER-BAND
