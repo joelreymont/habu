@@ -8,10 +8,10 @@
 \ while PIE? is set, PIE. The load commands, in order: __PAGEZERO, 4 GiB with
 \ no file bytes; __TEXT at VMBASE, sized to its content in 16 KB pages, __text
 \ at CODE-OFF; __DATA_CONST, whose __got holds one cell per import BUILD-IMAGE
-\ is given, which dyld binds to libSystem; __LINKEDIT, the chained-fixups blob, which the signer
-\ grows; LC_DYLD_CHAINED_FIXUPS, whose starts name the __DATA_CONST segment
-\ offset so dyld rewrites the GOT before LC_MAIN runs; /usr/lib/dyld; LC_MAIN at
-\ CODE-OFF; libSystem; and two Homebrew runpaths.
+\ is given, which dyld binds to libSystem; __LINKEDIT, the chained-fixups blob,
+\ which the signer grows; LC_DYLD_CHAINED_FIXUPS, whose starts name the
+\ __DATA_CONST segment offset so dyld rewrites the GOT before LC_MAIN runs;
+\ /usr/lib/dyld; LC_MAIN at CODE-OFF; libSystem; and two Homebrew runpaths.
 \ sign2.f adds LC_CODE_SIGNATURE in the header slack.
 \
 \ DETERMINISTIC. The self-rebuild gate compares successive images, so none
@@ -24,6 +24,7 @@
 \ inspecting host.
 require src/arch/arm64/icode.f
 require src/os/image-bytes.f
+require src/os/import-names.f
 require src/lib/le.f
 require src/lib/string.f
 using A64ICODE
@@ -79,28 +80,6 @@ public
 : SLOT-OFF ( n -- n ) 8 * ;
 private
 
-\ The image's imports, which BUILD-IMAGE is given: C names in GOT row order,
-\ each ending in a NUL.
-PTR-VARIABLE NAMES
-variable NAMES-U
-variable NAMES-N
-
-: NAMES@ ( -- ptr u8 ) NAMES @ ;
-
-\ The name at a byte offset in NAMES.
-: NAME-AT ( n -- ptr u8 n )
-   {: at:n :}
-   NAMES@ at +  0
-   begin 2dup + c@ 0<> while 1 + repeat ;
-
-: NEXT-AT ( n -- n ) dup NAME-AT nip + 1 + ;
-
-: NAMES! ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a NAMES !  u NAMES-U !
-   0 0 begin dup u < while NEXT-AT swap 1 + swap repeat
-   drop NAMES-N ! ;
-
 \ Darwin's plain realpath is its legacy entry, which reads every parent
 \ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
 : SUFFIX$ ( ptr u8 n -- ptr u8 n )
@@ -115,21 +94,21 @@ variable NAMES-N
    {: a:ptr u:n :}
    s" _" M-BYTES  a u M-BYTES  a u SUFFIX$ M-BYTES ;
 
-\ From a symbol's offset in the symbol strings and its name's in NAMES to the
-\ next one's.
+\ From a symbol's offset in the symbol strings and its name's in the imports to
+\ the next one's.
 : STEP ( n n -- n n )
-   dup NAME-AT SYMBOL-LEN 1 + rot + swap NEXT-AT ;
+   dup IMPORT-NAMES:NAME-AT SYMBOL-LEN 1 + rot + swap IMPORT-NAMES:NEXT-AT ;
 
 \ The symbol strings open with a NUL, and each symbol ends in one.
 : SYMBOLS-BYTES ( -- n )
-   1 0 begin dup NAMES-U @ < while STEP repeat drop ;
+   1 0 begin dup IMPORT-NAMES:END? 0= while STEP repeat drop ;
 
-: MACHO-GOT-BYTES ( -- n ) NAMES-N @ SLOT-OFF ;
+: MACHO-GOT-BYTES ( -- n ) IMPORT-NAMES:COUNT SLOT-OFF ;
 
 \ The fixups header and image starts ($38), one page's segment starts (24), the
 \ imports and the symbol strings; the blob pads them to a cell.
 : MACHO-FIXUPS-USED ( -- n )
-   $38 24 + NAMES-N @ 4 * + SYMBOLS-BYTES + ;
+   $38 24 + IMPORT-NAMES:COUNT 4 * + SYMBOLS-BYTES + ;
 
 : MACHO-FIXUPS-SIZE ( -- n ) MACHO-FIXUPS-USED 7 + -8 and ;
 
@@ -257,21 +236,21 @@ variable NCMDS
 \ A bind per row: the import's ordinal, the bind bit and, on every row but the
 \ last, a next of two 4-byte strides.
 : MACHO-GOT, ( -- )
-   NAMES-N @ 0 ?do
+   IMPORT-NAMES:COUNT 0 ?do
       i IMG-M32
-      $80000000 i NAMES-N @ 1- < if $00100000 or then IMG-M32
+      $80000000 i IMPORT-NAMES:COUNT 1- < if $00100000 or then IMG-M32
    loop ;
 
 \ Each import names libSystem (ordinal 1) and its name's offset.
 : MACHO-IMPORTS, ( -- )
-   1 0 begin dup NAMES-U @ < while
+   1 0 begin dup IMPORT-NAMES:END? 0= while
       over 9 lshift 1 or IMG-M32  STEP
    repeat 2drop ;
 
 : MACHO-SYMBOLS, ( -- )
    0 IMG-M8
-   0 begin dup NAMES-U @ < while
-      dup NAME-AT SYMBOL, 0 IMG-M8  NEXT-AT
+   0 begin dup IMPORT-NAMES:END? 0= while
+      dup IMPORT-NAMES:NAME-AT SYMBOL, 0 IMG-M8  IMPORT-NAMES:NEXT-AT
    repeat drop
    MACHO-FIXUPS-SIZE MACHO-FIXUPS-USED - M-ZEROS ;
 
@@ -279,8 +258,8 @@ variable NCMDS
    0 IMG-M32                 \ fixups_version
    $20 IMG-M32               \ starts_offset
    $38 MACHO-STARTS-BYTES + IMG-M32  \ imports_offset
-   $38 MACHO-STARTS-BYTES + NAMES-N @ 4 * + IMG-M32  \ symbols_offset
-   NAMES-N @ IMG-M32         \ imports_count
+   $38 MACHO-STARTS-BYTES + IMPORT-NAMES:COUNT 4 * + IMG-M32  \ symbols_offset
+   IMPORT-NAMES:COUNT IMG-M32  \ imports_count
    1 IMG-M32                 \ DYLD_CHAINED_IMPORT
    0 IMG-M32                 \ uncompressed symbol strings
    4 M-ZEROS
@@ -343,9 +322,9 @@ variable NCMDS
 
 public
 \ The program in icode's CODE as a Mach-O file whose code maps at the address,
-\ its GOT binding the C names, each ending in a NUL, in row order.
+\ its GOT binding the import names given.
 : BUILD-IMAGE ( asm n ptr u8 n -- img )
-   NAMES!
+   IMPORT-NAMES:SPAN!
    CODE-OFF - VMBASE !
    ASM-DROP
    BUILD-MACHO

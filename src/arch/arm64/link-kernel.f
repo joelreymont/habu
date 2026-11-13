@@ -245,8 +245,7 @@ public
    j 0<  j SCOPES-N @ >= or if s" link: the kernel object has no scope site of that kind" 74 die then
    j 8 * SCOPES-AT @ + KOBJ@ >LABEL ;
 
-\ The C names a Mach-O or an ELF image's GOT binds, in row order, each ending
-\ in a NUL.
+\ The Mach-O and the ELF import sections' bytes.
 : MACHO-IMPORTS$ ( -- ptr u8 n ) 0 KOBJ MACHO-AT @ +  MACHO-U @ ;
 : ELF-IMPORTS$ ( -- ptr u8 n ) 0 KOBJ ELF-AT @ +  ELF-U @ ;
 

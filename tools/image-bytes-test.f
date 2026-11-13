@@ -43,6 +43,17 @@ s" IMAGE-BYTES:MSIZE" s" -- n" TRUST
 : IBT-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ A size rounds up to 64 KiB. A larger one maps a fresh, zeroed buffer at the
+\ next use; an equal or smaller one keeps the mapped buffer and its bytes.
+: IBT-TEST-MSIZE ( -- )
+   MSIZE $10000 + {: grown:n :}
+   grown 1 - MSIZE!  MSIZE grown T=
+   M-RESET  7 IMG-M8  MBUF c@ 7 T=
+   grown MSIZE!  MSIZE grown T=  MBUF c@ 7 T=
+   1 MSIZE!  MSIZE grown T=  MBUF c@ 7 T=
+   grown 1 + MSIZE!  MSIZE grown $10000 + T=  MBUF c@ 0 T=
+   M-RESET  MSIZE 1- M-OFF M-PAD-OFF  1 IMG-M8  M-HERE MSIZE T= ;
+
 : IBT-TEST-LITTLE-ENDIAN ( -- )
    M-RESET
    $12 IMG-M8
@@ -144,6 +155,7 @@ public
 
 : RUN ( -- )
    T-RESET
+   IBT-TEST-MSIZE
    IBT-TEST-LITTLE-ENDIAN
    IBT-TEST-COPY-PAD
    IBT-TEST-BIG-ENDIAN

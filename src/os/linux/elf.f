@@ -14,6 +14,8 @@
 
 require src/arch/arm64/icode.f
 require src/os/image-bytes.f
+require src/os/import-names.f
+require src/lib/fmt.f
 require src/lib/le.f
 require src/lib/string.f
 using A64ICODE
@@ -87,39 +89,21 @@ public
 : SLOT-OFF ( n -- n ) 8 * ELF-GOT-OFF + ;
 private
 
-\ The image's imports, which BUILD-IMAGE is given: C names in GOT row order,
-\ each ending in a NUL.
-PTR-VARIABLE NAMES
-variable NAMES-U
-variable NAMES-N
-
-: NAMES@ ( -- ptr u8 ) NAMES @ ;
-
-: NAMES! ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a NAMES !  u NAMES-U !
-   0  u 0 ?do a i + c@ 0= if 1 + then loop  NAMES-N ! ;
-
-\ Whether a name starts at byte k of NAMES: the first, or one past a NUL.
-: START? ( n -- bool )
-   {: k:n :}
-   k 0= if true exit then
-   NAMES@ k + 1 - c@ 0= ;
-
 : LIBC$ ( -- ptr u8 n ) s" libc.so.6" ;
 
 : ELF-ALIGN8 ( n -- n ) 7 + -8 and ;
 
-: ELF-RW-SZ ( -- n ) NAMES-N @ SLOT-OFF ;
-\ One bucket, then a chain through every symbol after the null one.
-: ELF-HASH-SZ ( -- n ) NAMES-N @ 4 + 4 * ;
+: ELF-RW-SZ ( -- n ) IMPORT-NAMES:COUNT SLOT-OFF ;
+\ The two counts, one bucket and a chain cell per symbol, the null one included.
+: ELF-HASH-SZ ( -- n ) IMPORT-NAMES:COUNT 4 + 4 * ;
 : ELF-DYNSYM-OFF ( -- n ) ELF-HASH-OFF ELF-HASH-SZ + ELF-ALIGN8 ;
-: ELF-DYNSTR-OFF ( -- n ) ELF-DYNSYM-OFF NAMES-N @ 1 + ELF-SYM-SZ * + ;
+: ELF-DYNSTR-OFF ( -- n ) ELF-DYNSYM-OFF IMPORT-NAMES:COUNT 1 + ELF-SYM-SZ * + ;
 \ The string table opens with a NUL, then holds the names, then libc's.
-: ELF-LIBC-OFF ( -- n ) NAMES-U @ 1 + ;
+: ELF-LIBC-OFF ( -- n ) IMPORT-NAMES:SPAN@ nip 1 + ;
 : ELF-DYNSTR-SZ ( -- n ) ELF-LIBC-OFF LIBC$ nip + 1 + ;
 : ELF-RELA-OFF ( -- n ) ELF-DYNSTR-OFF ELF-DYNSTR-SZ + ELF-ALIGN8 ;
-: ELF-RELA-SZ ( -- n ) NAMES-N @ ELF-RELA-ENT-SZ * ;
+: ELF-RELA-SZ ( -- n ) IMPORT-NAMES:COUNT ELF-RELA-ENT-SZ * ;
+: ELF-TABLES-END ( -- n ) ELF-RELA-OFF ELF-RELA-SZ + ;
 \ The generated executable window: everything the assembler can emit, behind the
 \ header page it sits at.
 CODE-CAP-BYTES CODE-OFF + constant MPAGE
@@ -203,11 +187,14 @@ private
    s" /lib/ld-linux-aarch64.so.1" M-BYTES
    0 IMG-M8 ;
 
+: NEXT-SYM ( n -- n ) 1 + dup IMPORT-NAMES:COUNT > if drop 0 then ;
+
+\ The bucket holds the first symbol and each chain cell the next; the null
+\ symbol, 0, ends the chain.
 : ELF-HASH, ( -- )
    ELF-HASH-OFF M-OFF M-PAD-OFF
-   1 IMG-M32  NAMES-N @ 1 + IMG-M32  1 IMG-M32  0 IMG-M32
-   NAMES-N @ 1 ?do i 1 + IMG-M32 loop
-   0 IMG-M32 ;
+   1 IMG-M32  IMPORT-NAMES:COUNT 1 + IMG-M32  0 NEXT-SYM IMG-M32  0 IMG-M32
+   IMPORT-NAMES:COUNT 1 + 1 ?do i NEXT-SYM IMG-M32 loop ;
 
 : ELF-SYM-NULL, ( -- )
    ELF-SYM-SZ M-ZEROS ;
@@ -218,12 +205,14 @@ private
 : ELF-DYNSYM, ( -- )
    ELF-DYNSYM-OFF M-OFF M-PAD-OFF
    ELF-SYM-NULL,
-   NAMES-U @ 0 ?do i START? if i 1 + ELF-SYM, then loop ;
+   0 begin dup IMPORT-NAMES:END? 0= while
+      dup 1 + ELF-SYM,  IMPORT-NAMES:NEXT-AT
+   repeat drop ;
 
 : ELF-DYNSTR, ( -- )
    ELF-DYNSTR-OFF M-OFF M-PAD-OFF
    0 IMG-M8
-   NAMES@ NAMES-U @ M-BYTES
+   IMPORT-NAMES:SPAN@ M-BYTES
    LIBC$ M-BYTES 0 IMG-M8 ;
 
 : ELF-R-INFO ( n -- n )
@@ -231,7 +220,7 @@ private
 
 : ELF-RELA, ( -- )
    ELF-RELA-OFF M-OFF M-PAD-OFF
-   NAMES-N @ 0 ?do
+   IMPORT-NAMES:COUNT 0 ?do
       i ELF-SLOT-VA IMG-M64  i 1 + ELF-R-INFO IMG-M64  0 IMG-M64
    loop ;
 
@@ -261,7 +250,7 @@ private
    0 0 ELF-DYN, ;
 
 : ELF-GOT, ( -- )
-   NAMES-N @ 0 ?do 0 IMG-M64 loop ;
+   IMPORT-NAMES:COUNT 0 ?do 0 IMG-M64 loop ;
 
 : ELF-RW-AT, ( n -- ) {: off :}
    off M-OFF M-PAD-OFF
@@ -271,6 +260,11 @@ private
 : BUILD-ELF ( -- )
    ASM-CODELEN!  ELF-MSIZE!  M-RESET
    CODELEN @  MPAGE CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
+   ELF-TABLES-END CODE-OFF > if
+      SB-RESET  s" elf: " SB-APPEND  IMPORT-NAMES:COUNT FMT:SB-U
+      s"  imports outgrow the header page's " SB-APPEND  CODE-OFF FMT:SB-U
+      s"  bytes" SB-APPEND  SB$ 73 die
+   then
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
    ELF-PHDRS,
@@ -282,9 +276,9 @@ private
 
 public
 \ The program as an ELF file whose code maps at the address, its GOT binding
-\ the C names, each ending in a NUL, in row order.
+\ the import names given.
 : BUILD-IMAGE ( asm n ptr u8 n -- img )
-   NAMES!
+   IMPORT-NAMES:SPAN!
    CODE-OFF - VMBASE !
    ASM-DROP
    BUILD-ELF

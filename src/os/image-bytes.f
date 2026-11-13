@@ -49,8 +49,7 @@ private
 
 public
 \ A target writer names its largest image at load or before an image's M-RESET;
-\ the largest named wins. The buffer maps on first use, and a size above a
-\ mapped buffer's unmaps it, so the next use maps one that large.
+\ the largest wins, and one above a mapped buffer's unmaps it for the next use.
 : MSIZE! ( n -- )
    $FFFF + $10000 / $10000 * {: n:n :}
    n MSIZE > if
