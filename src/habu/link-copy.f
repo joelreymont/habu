@@ -12,7 +12,7 @@
 \ file stored there is that file's, as its object carries it. The entry cell is
 \ read whatever stored it: it is the program's root. A read xt cell roots the
 \ code it names and a read pointer cell makes its target's unit live;
-\ each placed emission's data addresses and defer trailer make theirs live.
+\ each placed emission's data addresses make theirs live.
 \ An address in a string literal's body keeps that body alone: the body lies in
 \ the file that first interned it, and every later file spelling it shares it.
 \ The copy holds the dead units, all but their kept bodies, and every address
@@ -204,9 +204,7 @@ variable STR-N
          e i SITE-VALUE {: v:n has:bool :}
          has if v REACH-ADDRESS then
       then
-   loop
-   e EM-TRAILER {: cell:n :}
-   cell 0<> if cell UNIT-OF REACH-UNIT then ;
+   loop ;
 
 : READ-EMS ( -- )
    NSHADOW:EMISSIONS 0 ?do

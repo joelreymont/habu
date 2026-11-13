@@ -654,6 +654,8 @@ public
    name u s" emit" STR=CI if EMIT-BODY BODY$ true exit then
    name u s" !" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    name u s" c!" STR=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
+   \ A module saves no image, so xt! is a plain store.
+   name u s" xt!" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    \ ---- division, views and atomics
    name u s" /" STR=CI if OP-I64-DIV-S true DIVIDE-BODY BODY$ true exit then
    name u s" mod" STR=CI if OP-I64-REM-S false DIVIDE-BODY BODY$ true exit then

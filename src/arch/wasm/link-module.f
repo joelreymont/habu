@@ -1,9 +1,9 @@
 \ link-module.f - LINKER's Wasm writer: a stripped program's placed emissions and
 \ the link's copy of its data, handed to WLINK and written as one module. It
-\ refuses by name a defer, a does> clause, a routine entered inside a function
-\ and every kernel word the program reaches that no kernel-words.f word
-\ provides and no routine of link-routines.f answers; a kernel word resolves to
-\ its routine when the module has one.
+\ refuses by name a does> clause, a routine entered inside a function and every
+\ kernel word the program reaches that no kernel-words.f word provides and no
+\ routine of link-routines.f answers; a kernel word resolves to its routine when
+\ the module has one.
 require src/lib/error.f
 require src/lib/fs-mutate.f
 require src/lib/le.f

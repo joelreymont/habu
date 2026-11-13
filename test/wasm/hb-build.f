@@ -374,6 +374,14 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    RAN 2 T=
    WASM-HARNESS:OUT$ S\" 0\n0\n" T$= ;
 
+: DEFER-CASE ( -- )
+   S\" defer HOOK ( n -- n )\n: TWICE ( n -- n ) 2 * ;\n: SET ( -- ) [: TWICE ;] is HOOK ;\nSET\n: MAIN ( -- ) 3 HOOK .  [: 1 + ;] is HOOK  3 HOOK . ;"
+   s" defer.f" SOURCE!
+   s" a defer set while building and again while running calls each word it holds" T-LABEL
+   s" defer.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ S\" 6\n4\n" T$= ;
+
 
 : ERR-HAS ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -388,13 +396,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" link: a Wasm module has no here" ERR-HAS
    s" link: a Wasm module has no align" ERR-HAS
    s" link: the program reaches kernel words a Wasm module does not provide" ERR-HAS
-   NO-MODULE
-   s" defer HOOK ( n -- n )  : TWICE ( n -- n ) 2 * ;  : MAIN ( -- ) [: TWICE ;] is HOOK  3 HOOK drop ;"
-   s" defer.f" SOURCE!
-   s" a defer is refused by name with 74 and no module" T-LABEL
-   s" defer.wasm" BUILD 74 T=
-   s" link: the defer HOOK needs a trailer, which a Wasm module cannot hold" ERR-HAS
-   s" link: a Wasm module cannot hold a defer" ERR-HAS
    NO-MODULE
    s" require src/lib/span.f 8 SPAN-BUFFER: B : MAIN ( -- ) B SPAN:LEN . ;" s" does.f" SOURCE!
    s" a does> clause is refused by name with 74 and no module" T-LABEL
@@ -746,6 +747,7 @@ public
    SHA-CASE
    NAN-CASE
    TWICE-CASE
+   DEFER-CASE
    REFUSAL-CASES
    THROW-CASES
    DIE-CASE
