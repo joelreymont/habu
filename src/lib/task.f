@@ -369,8 +369,11 @@ FUNCTION: GETSPECIFIC-CALL pthread_getspecific ( n -- n ) ;FUNCTION
    data-base TASK-TCB-CELL + @ ;
 
 \ The main region, whichever task asks: DATA is mapped at the fixed DATA-VA.
+\ A cross build's process is not mapped there, so the word is the target's.
+target
 : MAIN-BASE ( -- ptr n )
    DATA-VA VA>N TASK-N>PTR ;
+host
 
 : SEM-REC ( sem -- ptr n )
    SEM>N TASK-N>PTR ;
