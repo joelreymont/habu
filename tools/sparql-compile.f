@@ -29,9 +29,9 @@ CAST: >DRIVER-CURSOR ( ptr u8 -- ptr JSON:cursor )
    {: bytes size:n arena :}
    arena DRIVER-CURSOR bytes size JSON:READ-INIT
    JSON:READ-NEXT JSON:T-ARR <> if E-JSON-READ-STATE throw then
-   arena size DRIVER-TEXT {: reader query qu:n :}
-   reader arena size DRIVER-TEXT {: next base bu:n :}
-   next JSON:READ-NEXT JSON:T-ARR-END <> if E-JSON-READ-STATE throw then
+   arena size DRIVER-TEXT {: query qu:n :}
+   arena size DRIVER-TEXT {: base bu:n :}
+   JSON:READ-NEXT JSON:T-ARR-END <> if E-JSON-READ-STATE throw then
    JSON:READ-FINISH
    [: query qu base bu TIME:MONO-NS 10000000000 + arena PARSE-UNTIL
       1 SCRIPT-ARGV$ COMPILE PLAN-REQUEST$ type cr ;]

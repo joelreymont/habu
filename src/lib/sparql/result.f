@@ -66,8 +66,8 @@ CAST: >CURSOR ( ptr u8 -- ptr JSON:cursor )
    arena CURSOR bytes size JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if E-QUERY throw then
    key ku JSON:READ-FIND-KEY if
-      JSON:READ-ANY-SPAN$ {: reader out count:n :}
-      reader JSON:READ-CLOSE out count
+      JSON:READ-ANY-SPAN$ {: out count:n :}
+      JSON:READ-CLOSE out count
    else JSON:READ-CLOSE s" " then ;
 
 : STRING$ ( ptr u8 n ptr ARENA:arena -- ptr u8 n )
@@ -75,8 +75,8 @@ CAST: >CURSOR ( ptr u8 -- ptr JSON:cursor )
    arena ARENA:ALLOCATOR size ALLOC:BYTES {: out capacity:n :}
    arena CURSOR bytes size JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR <> if E-QUERY throw then
-   out capacity JSON:READ-STR {: reader count:n :}
-   reader JSON:READ-FINISH out count ;
+   out capacity JSON:READ-STR {: count:n :}
+   JSON:READ-FINISH out count ;
 
 : TEXT-MEMBER$ ( ptr u8 n ptr u8 n ptr ARENA:arena -- ptr u8 n )
    {: bytes size:n key ku:n arena :}
@@ -165,8 +165,8 @@ CAST: >CURSOR ( ptr u8 -- ptr JSON:cursor )
    arena CURSOR bytes size JSON:READ-INIT
    JSON:READ-NEXT JSON:T-ARR <> if E-QUERY throw then
    begin JSON:READ-NEXT JSON:T-ARR-END <> while
-      JSON:READ-ANY-SPAN$ {: reader row ru:n :}
-      call row ru arena ROW reader
+      JSON:READ-ANY-SPAN$ {: row ru:n :}
+      call row ru arena ROW
    repeat JSON:READ-FINISH
    call CALL-ROWS @ before <> ;
 
