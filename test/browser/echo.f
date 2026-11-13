@@ -94,13 +94,16 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    u 0 ?do  at i + >BYTES c@  REQ REQ-U @ + i + c!  loop
    REQ-U @ u + REQ-U ! ;
 
+\ Overruns the loop stack, a fault that still traps, so the module ends.
+: SINK ( -- ) 1 0 do recurse loop ;
+
 \ Typed text T posts twice into REQ's span, then answers T. The second post
 \ waits behind the first, so a host must copy it before it waits. "trap" traps
-\ at a load from the null region; "long path" names a path one byte past the
-\ span and "neg path" one of -1 bytes.
+\ (SINK); "long path" names a path one byte past the span and "neg path" one of
+\ -1 bytes.
 : TYPED ( -- )
    1 EVENT@ 2 EVENT@ {: at:n u:n :}
-   at u s" trap" IS? if  $FFFF >BYTES c@ drop exit  then
+   at u s" trap" IS? if  SINK exit  then
    0 REQ-U !  at u REQ+  at u REQ+  at u REQ+
    at u s" long path" IS? if  REQ-U @ 1+
    else  at u s" neg path" IS? if  -1  else  u  then  then {: path:n :}

@@ -2,7 +2,7 @@
 \ and quotations that read their word's locals.
 \ CHECKS throws the number of the first entry whose code is not the one it throws
 \ natively; test/wasm/calls-test.f runs CHECKS natively and as a module's MAIN, and
-\ each trapping word as a module of its own.
+\ each word that ends its run as a module of its own.
 
 package WCALLS
 private
@@ -147,7 +147,7 @@ public
    [: READ-RSTACK ;] 42 32 WANT  [: READ-LOOP ;] 10 33 WANT
    [: READ-BESIDE ;] 32 34 WANT  [: READ-RELEASE ;] 77 35 WANT ;
 
-: TRAPPED ( -- ) [: 0 >CELL @ drop ;] catch throw ;
+: FAULTED ( -- ) [: 0 >CELL @ drop ;] catch throw ;
 : ZERO ( -- ) 0 >VOID execute ;
 : ZERO-CAUGHT ( -- ) 0 >VOID catch throw ;
 : ZERO-CLEANUP ( -- ) [: 1 . ;] 0 >VOID finally ;

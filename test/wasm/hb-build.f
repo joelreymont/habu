@@ -142,16 +142,18 @@ variable TEXT-U
    121 s" k-bad.f" K!
    0 TEXT-U !  s" k-bad.f" REQUIRE+  S\" : MAIN ( -- ) K:MAIN ;\n" TEXT+
    TEXT TEXT-U @ s" k-fail.f" SOURCE!
-   s" the same program with a failing first test runs to its trap" T-LABEL
+   s" the same program with a failing first test throws E-MEMORY-FAULT" T-LABEL
    s" k-fail.wasm" BUILD 0 T=
-   RAN 2 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
    WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
    WASM-HARNESS:FAULT-ADDR 1 T=
    S\" package K private CAST: >BYTES ( n -- ptr u8 ) public : MAIN ( -- ) 65 8 >BYTES c! ; ;package : MAIN ( -- ) K:MAIN ;"
    s" low.f" SOURCE!
-   s" a c! below WPROF:CTX-BASE faults and traps" T-LABEL
+   s" a c! below WPROF:CTX-BASE faults and throws E-MEMORY-FAULT" T-LABEL
    s" low.wasm" BUILD 0 T=
-   RAN 2 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
    WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
    WASM-HARNESS:FAULT-ADDR 8 T= ;
 
@@ -660,13 +662,15 @@ DYNAMIC-BUFFER MODULE u8
 \ Memory ends at the memory section's minimum pages, not the image; the four
 \ sources differ only in the access, so they share that end.
 : MEMORY-CASES ( -- )
-   s" a cell at an upper-bit pointer, $100031000, fails its check and traps" T-LABEL
+   s" a cell at an upper-bit pointer, $100031000, fails its check and throws" T-LABEL
    $100031000 true s" upper.f" ACCESS!
-   s" upper.wasm" ACCESS 2 T=
+   s" upper.wasm" ACCESS 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
    MEMORY-END {: end:n :}
-   s" a byte in the null region, $FFFF, fails its check and traps" T-LABEL
+   s" a byte in the null region, $FFFF, fails its check and throws" T-LABEL
    $FFFF false s" null.f" ACCESS!
-   s" null.wasm" ACCESS 2 T=
+   s" null.wasm" ACCESS 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
    s" the last byte of the module's memory reads" T-LABEL
    end 1- false s" last.f" ACCESS!
    s" last.wasm" ACCESS 0 T=

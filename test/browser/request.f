@@ -60,6 +60,9 @@ variable TEXT-U
    tu 0 ?do at i + >BYTES c@ t i + c@ <> if false unloop exit then loop
    true ;
 
+\ Overruns the loop stack, a fault that still traps, so the module ends.
+: SINK ( -- ) 1 0 do recurse loop ;
+
 : MAKE ( -- )
    0 REQ-U !
    4 REQ-CELL 6 REQ-CELL
@@ -69,7 +72,7 @@ variable TEXT-U
 : TYPED ( -- )
    1 EVENT@ 2 EVENT@ {: at:n u:n :}
    MAKE
-   at u s" trap" IS? if -1 >BYTES c@ drop exit then
+   at u s" trap" IS? if SINK exit then
    at u s" throw" IS? if $20000000000001 REQUEST 94 throw then
    at u s" fetch throw" IS? if
       s" /state" {: path:ptr len:n :}
@@ -156,7 +159,7 @@ variable TEXT-U
 
 : ANSWERED ( -- )
    3 EVENT@ 470 = if 99 0 0 0 RECORD exit then
-   3 EVENT@ 471 = if -1 >BYTES c@ drop exit then
+   3 EVENT@ 471 = if SINK exit then
    0 TEXT-U !
    4 EVENT@ DIGITS 32 SAY-C 3 EVENT@ DIGITS 32 SAY-C
    5 EVENT@ DIGITS 44 SAY-C 6 EVENT@ DIGITS 32 SAY-C

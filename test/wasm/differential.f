@@ -1,9 +1,10 @@
 \ differential.f - W31: a program runs natively under bin/hb and as a module
 \ `hb-build --target wasm` builds, wasm-tools validates and bun runs
 \ (test/wasm/harness.f), both held to the same bytes. The rows that return are
-\ one program, built once; a throw or a trap ends a run, so each such row is a
-\ program of its own. Both tools must be on PATH, so test/wasm/device.f runs it,
-\ as does `bin/hb --load test/wasm/differential.f` from the tree's root.
+\ one program, built once; a throw ends a run and a native fault writes a line
+\ on stderr, so each such row is a program of its own. Both tools must be on
+\ PATH, so test/wasm/device.f runs it, as does
+\ `bin/hb --load test/wasm/differential.f` from the tree's root.
 \ Sources, modules and the expected and actual output stay in the printed
 \ directory.
 
@@ -21,7 +22,6 @@ private
 
 60000 constant DEADLINE-MS
 65536 constant CAP
-139 constant CRASH-RC                  \ 128 + SIGSEGV: native dies of the trap after its dump
 CAP BUFFER: OUT
 CAP BUFFER: ERR
 PATH-CAP BUFFER: DIR
@@ -102,10 +102,10 @@ variable PROG-U
    {: code:n :}
    SB-RESET  s" hb: uncaught throw code " SB-APPEND  code FMT:SB-INT  SB$ ;
 
-\ The program natively: it prints want and exits rc, with nothing on stderr
-\ for 0 and the uncaught throw of code for UNCAUGHT-RC.
-: NATIVE ( ptr u8 n n n -- )
-   {: want:ptr wu:n rc:n code:n :}
+\ The program natively: it prints want and exits rc; answers its stderr's
+\ length.
+: NATIVE-RUN ( ptr u8 n n -- n )
+   {: want:ptr wu:n rc:n :}
    want wu s" -expected.txt" KEEP
    PROC-ARGV-RESET
    s" --load" ARG+  SRC SRC-U @ ARG+  CALLER CALLER-U @ ARG+
@@ -113,6 +113,13 @@ variable PROG-U
    OUT o s" -native.txt" KEEP
    LABEL  r rc T=
    LABEL  OUT o want wu T$=
+   e ;
+
+\ NATIVE-RUN with nothing on stderr for 0 and the uncaught throw of code for
+\ UNCAUGHT-RC.
+: NATIVE ( ptr u8 n n n -- )
+   {: want:ptr wu:n rc:n code:n :}
+   want wu rc NATIVE-RUN {: e:n :}
    rc 0= if  LABEL  ERR e s" " T$=  then
    rc UNCAUGHT-RC = if  LABEL  ERR e RTRIM code UNCAUGHT$ T$=  then ;
 
@@ -216,13 +223,22 @@ public
    want wu UNCAUGHT-RC code NATIVE
    want wu 1 code WASM ;
 
-\ TRAP-ROW's program traps: natively through the crash handler, in Wasm as
-\ status 2, which no catch takes.
-: TRAP-ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
+\ Stderr is one line, the native engine's report of a caught memory fault.
+: FAULT-LINE? ( ptr u8 n -- bool )
+   RTRIM {: a:ptr u:n :}
+   a u 10 INDEX-OF MATCH option
+      some OF drop false ENDOF
+      none OF a u s" E-MEMORY-FAULT habu: memory fault at " STARTS-WITH? ENDOF
+   ;MATCH ;
+
+\ FAULT-ROW's program catches a memory fault and ends with status 0; natively
+\ the engine reports the fault on stderr, the module reports nothing.
+: FAULT-ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
    name nu src su name nu FILES
-   want wu CRASH-RC 0 NATIVE
-   want wu 2 0 WASM ;
+   want wu 0 NATIVE-RUN {: e:n :}
+   LABEL  ERR e FAULT-LINE? TTRUE
+   want wu 0 0 WASM ;
 
 ;package
 
@@ -257,16 +273,16 @@ s" W06"
 s" : W06-FOLD16 ( n n n n n n n n n n n n n n n n -- n ) 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + 2 * + ; : W06-FOLD17 ( n n n n n n n n n n n n n n n n n -- n ) W06-FOLD16 2 * + ; : W06-COUNT16 ( n -- n n n n n n n n n n n n n n n n ) dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ ; : W06-COUNT17 ( n -- n n n n n n n n n n n n n n n n n ) W06-COUNT16 dup 1+ ; : W06 ( -- ) 1 W06-COUNT16 W06-FOLD16 . 1 W06-COUNT17 W06-FOLD17 . 1 ['] W06-COUNT16 execute ['] W06-FOLD16 execute . 1 ['] W06-COUNT17 execute ['] W06-FOLD17 execute . depth . ;"
 s\" 983041\n2097153\n983041\n2097153\n0\n" ROW
 
-\ ---- W07 a full-width throw is a status, a trap is not ---------------------------
+\ ---- W07 a full-width throw is a status, a memory fault is a throw --------------
 \ MIN-N + 1, which a double rounds, caught and printed, then thrown uncaught.
 s" W07-THROW"
 s" : W07-THROW ( -- ) [: $8000000000000001 throw ;] catch . $8000000000000001 throw ;"
 s\" -9223372036854775807\n" $8000000000000001 THROW-ROW
 
-\ A byte read in the null region traps through the catch around it.
-s" W07-TRAP"
-s" package W07-TRAP-CAST private CAST: >BYTE ( n -- ptr u8 ) public : PEEK ( -- ) $FFFF >BYTE c@ drop ; ;package : W07-TRAP ( -- ) 2 . [: W07-TRAP-CAST:PEEK ;] catch . ;"
-s\" 2\n" TRAP-ROW
+\ A byte read in the null region throws E-MEMORY-FAULT through the catch around it.
+s" W07-FAULT"
+s" package W07-FAULT-CAST private CAST: >BYTE ( n -- ptr u8 ) public : PEEK ( -- ) $FFFF >BYTE c@ drop ; ;package : W07-FAULT ( -- ) 2 . [: W07-FAULT-CAST:PEEK ;] catch . ;"
+s\" 2\n110\n" FAULT-ROW
 
 \ ---- W31 a program's own storage -------------------------------------------------
 \ A variable, a created buffer and a constant link as data; ! and c! store

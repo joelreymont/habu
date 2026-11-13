@@ -8,7 +8,8 @@
 \ features. RUN answers run.mjs's exit status: 0 or 1, the entry's status, 2 for
 \ a trap and 3 for a compile or link error. OUT$ answers the OUT bytes the run
 \ wrote and THROW-CODE its full throw code, 0 unless it exited 1; FAULT-KIND and
-\ FAULT-ADDR the kind and address a checked fault stored before its trap, else 0.
+\ FAULT-ADDR the kind and address of the fault that trapped or threw uncaught,
+\ else 0.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -46,25 +47,33 @@ variable ADDR
    >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u RUN-AT ;
 
-\ run.mjs's stderr for status 1 is its throw line; bun's own failures exit 1 as
-\ well, so any other text ends the check.
+: FIRST-LINE ( -- ptr u8 n )
+   ERR ERR-U @ RTRIM {: a:ptr u:n :}
+   a u 10 INDEX-OF MATCH option
+      some OF IDX>N a swap ENDOF
+      none OF a u ENDOF
+   ;MATCH ;
+
+\ run.mjs's first stderr line for status 1 is its throw line; bun's own failures
+\ exit 1 as well, so any other text ends the check.
 : NO-THROW-LINE ( ptr u8 n -- )
    type cr
    s" wasm harness: bun exited 1 without a `throw <i64>` line" 1 die ;
 
 : THROWN ( -- n )
-   ERR ERR-U @ RTRIM {: a:ptr u:n :}
+   FIRST-LINE {: a:ptr u:n :}
    a u s" throw " STARTS-WITH? 0= if  a u NO-THROW-LINE  then
    a 6 + u 6 - STR>NUMBER? MATCH option
       some OF ENDOF
       none OF a u NO-THROW-LINE ENDOF
    ;MATCH ;
 
-\ run.mjs's last stderr line for status 2 is its fault line; bun's own failures
-\ may exit 2 as well, so any other text ends the check.
+\ run.mjs's last stderr line for status 2 is its fault line, and for status 1
+\ when it reports one; bun's own failures may exit 2 as well, so any other text
+\ ends the check.
 : NO-FAULT-LINE ( ptr u8 n -- )
    type cr
-   s" wasm harness: bun exited 2 without a `fault <kind> <addr>` line" 1 die ;
+   s" wasm harness: bun's stderr ends without a `fault <kind> <addr>` line" 1 die ;
 
 : LAST-LINE ( -- ptr u8 n )
    ERR ERR-U @ RTRIM {: a:ptr u:n :}
@@ -89,6 +98,9 @@ variable ADDR
    ;MATCH {: k:n :}
    a u  a 6 + k FAULT-FIELD KIND !
    a u  a 7 + k +  u 7 - k -  FAULT-FIELD ADDR ! ;
+
+\ A status 1 run reports a fault only when the uncaught throw was one.
+: FAULT-REPORTED? ( -- bool )  LAST-LINE s" fault " STARTS-WITH? ;
 
 : VALIDATE ( ptr u8 n bool -- bool )
    {: path:ptr u:n no-sat:bool :}
@@ -127,7 +139,7 @@ public
    s" test/wasm/run.mjs" ARG+  path u ARG+
    s" bun" SPAWN {: rc:n :}
    0 CODE !  0 KIND !  0 ADDR !
-   rc 1 = if  THROWN CODE !  then
+   rc 1 = if  THROWN CODE !  FAULT-REPORTED? if  FAULTED  then  then
    rc 2 = if  FAULTED  then
    rc ;
 
