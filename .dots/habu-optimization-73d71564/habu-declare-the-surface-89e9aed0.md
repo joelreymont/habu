@@ -13,6 +13,6 @@ Direction: put the legacy global files in packages:
 - words other files name become public;
 - consumers keep bare spelling through `using`.
 The design found that a global which calls a private helper must live inside its package. About 450 bare-called words are named from outside (171 by product consumers, 111 whitebox-only, 163 cross-file engine).
-Acceptance: a Fable design pass fixes the per-file plan against the residual measured after 974304d0 and 130fd5d0 land, then this dot is split into dispatchable leaves. Downstream (Tender, Etch, Loom) builds green on the result, with each hit turned into a public API.
+Acceptance: a Fable design pass fixes the per-file plan against the residual measured after 974304d0 and 130fd5d0 land, then this dot is split into dispatchable leaves. Downstream (Tender, Loom) builds green on the result, with each hit turned into a public API.
 Depends: habu-seal-every-captured-c550102f, habu-drop-private-signatures-974304d0.
 Parent: habu-ship-only-the-d7d38629. Design: the Fable surface design of 2026-09-30.
