@@ -2201,12 +2201,11 @@ runtime or analysis layer.
   `TYPED-BUFFER`, closed non-linear layouts included, **and `u8`**, the
   growable byte row; it and `ARENA` are the definers that take `u8`
   (`DYNAMIC-BUFFER X u16` is refused). `count NAME-RESERVE` allocates at least that many elements
-  and keeps contents; `index NAME` answers `ptr Type`, rejecting negative and
-  beyond-capacity indices; a smaller reserve keeps the allocation; growth may
-  move it, so retain indices and reacquire pointers. A growing reserve copies
-  the whole old capacity, so stale cells beyond the old count survive and the
-  accessor bounds by capacity, not the requested count: a column whose zero is a
-  default is cleared over the newly exposed range by the reserving word.
+  and keeps contents; `index NAME` answers `ptr Type` and checks no index; a
+  smaller reserve keeps the allocation; growth may move it, so retain indices
+  and reacquire pointers. A growing reserve copies the whole old capacity, so
+  stale cells beyond the old count survive: a column whose zero is a default is
+  cleared over the newly exposed range by the reserving word.
   `NAME-RELEASE` frees the mapping and is safe to repeat. Mappings are
   transient: release before saving an image; image-retained values use
   dictionary storage. With `u8`, `index NAME` is `( n -- ptr u8 )` at byte

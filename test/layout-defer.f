@@ -1,8 +1,7 @@
 \ layout-defer.f - DEFER-LAYOUT-BUFFER, a layout column whose offset and count
 \ cells are bound at run time: its accessor checks like LAYOUT-BUFFER's under
-\ the armed LAYOUT-INTRO window, an unbound access dies named, NAME-BIND sizes
-\ from the counted need reusing the largest region, and a bind past the ceiling
-\ dies named before any mutation.
+\ the armed LAYOUT-INTRO window, NAME-BIND sizes from the counted need reusing
+\ the largest region, and NAME-GROW carries live cells over.
 
 require src/lib/test.f
 
@@ -28,8 +27,10 @@ variable DTK-I
 : DTK-BIND ( -- )  DTK-I @ DTK-AT-BIND ;
 : DTK-BIND-RC ( n -- n )  DTK-I !  [: DTK-BIND ;] catch ;
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 \ (A) unbound: count-cell 0 -> dies NAMED, never a silent zero-offset read
 0 DTK-IDX-RC E-LAYOUT-UNBOUND T=
+[then]
 
 \ (B) bind to 3 (derived count); zero image; store + read back
 3 DTK-AT-BIND
@@ -39,36 +40,37 @@ variable DTK-I
 1 DTK-GET 22 T=
 2 DTK-GET 33 T=
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 \ (C) bounds: live count is the bound, both ends die NAMED
 3 DTK-IDX-RC E-LAYOUT-BOUNDS T=
 -1 DTK-IDX-RC E-LAYOUT-BOUNDS T=
+[then]
 
 \ (D) grow-to-largest: bind to 5 allots a fresh larger region (zero image)
 5 DTK-AT-BIND
 4 DTK-GET 0 T=                       \ new slot present and zeroed
 44 4 DTK-PUT  4 DTK-GET 44 T=
 
-\ (E) shrink reuses the region; the live count shrinks, so index 2 is now oob
+\ (E) shrink reuses the region and the live count shrinks
 2 DTK-AT-BIND
-2 DTK-IDX-RC E-LAYOUT-BOUNDS T=
+false [if] \ off until dot habu-add-the-checks-a49d054d
+2 DTK-IDX-RC E-LAYOUT-BOUNDS T=     \ index 2 is now oob
+[then]
 0 DTK-GET 0 T=
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 \ (F) ceiling is transactional: a bind past LDEFER-CELL-MAX dies NAMED with NO
 \ mutation, so the prior (count=2) bind survives
 $200000 DTK-BIND-RC E-LAYOUT-CEIL T=
 1 DTK-IDX-RC 0 T=                    \ index 1 still in bounds (prior bind intact)
 2 DTK-IDX-RC E-LAYOUT-BOUNDS T=      \ index 2 still oob (count unchanged at 2)
+[then]
 
 \ Copy-on-grow (NAME-GROW) keeps live cells across a two-phase grow.
 variable DTK-BASE
 CAST: DTK-ADDR ( ptr dtk -- n )   \ read the accessor's base pointer as a number
 : DTK-GROW ( -- )  DTK-I @ DTK-AT-GROW ;
 : DTK-GROW-RC ( n -- n )  DTK-I !  [: DTK-GROW ;] catch ;
-
-\ a second deferred column, left unbound, for the unbound-grow test
-DEFER-LAYOUT-BUFFER UGB-AT dtk
-: UGB-GROW ( -- )  DTK-I @ UGB-AT-GROW ;
-: UGB-GROW-RC ( n -- n )  DTK-I !  [: UGB-GROW ;] catch ;
 
 \ (G) copy-on-grow preserves live cells: bind to 3, write, GROW past capacity;
 \ every live cell is byte-identical in the moved region and new cells read 0.
@@ -80,8 +82,10 @@ DEFER-LAYOUT-BUFFER UGB-AT dtk
 2 DTK-GET 333 T=
 3 DTK-GET 0 T=                       \ grown-into cells zeroed
 6 DTK-GET 0 T=
+false [if] \ off until dot habu-add-the-checks-a49d054d
 6 DTK-IDX-RC 0 T=                    \ live count is exactly 7: index 6 in bounds
 7 DTK-IDX-RC E-LAYOUT-BOUNDS T=
+[then]
 
 \ (H) grow-to-at-least: G's grow to 7 doubled the region (cap 5 -> max(10,7)=10),
 \ so growing to 8 fits and reuses it in place - the accessor base does not move.
@@ -90,6 +94,12 @@ DEFER-LAYOUT-BUFFER UGB-AT dtk
 0 DTK-AT DTK-ADDR DTK-BASE @ T=      \ base unmoved => capacity grew past the request
 0 DTK-GET 111 T=
 7 DTK-GET 0 T=                       \ index 7 now exposed and zeroed
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ a second deferred column, left unbound, for the unbound-grow test
+DEFER-LAYOUT-BUFFER UGB-AT dtk
+: UGB-GROW ( -- )  DTK-I @ UGB-AT-GROW ;
+: UGB-GROW-RC ( n -- n )  DTK-I !  [: UGB-GROW ;] catch ;
 
 \ (I) growing a never-bound column dies NAMED - the caller must BIND first
 0 UGB-GROW-RC E-LAYOUT-UNBOUND T=
@@ -100,6 +110,7 @@ $200000 DTK-GROW-RC E-LAYOUT-CEIL T=
 0 DTK-GET 111 T=
 7 DTK-IDX-RC 0 T=                    \ index 7 still in bounds (live unchanged at 8)
 8 DTK-IDX-RC E-LAYOUT-BOUNDS T=
+[then]
 
 \ (K) a within-capacity grow ZEROES the newly exposed slots even when a prior
 \ shrink left them dirty: write index 5, shrink live below it, grow back -> 0.

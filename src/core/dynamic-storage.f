@@ -1,7 +1,7 @@
 \ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER
 \ and HEAP. A buffer record is the head NAME#base (a PTR-VARIABLE holding the
 \ mapping, `ptr ptr a`) and the control block NAME#ctl behind it (capacity,
-\ registry slot + 1, width tag, bound for that width; `ptr n`). No word views a
+\ registry slot + 1; `ptr n`). No word views a
 \ pointer cell as bytes or cells. Release zeroes the record, so no process
 \ address survives capture; the head and the control cells are scratch, so a
 \ save or a file's object holds every record released and the registry empty
@@ -21,20 +21,12 @@ DBUF-CTRL-BYTES CELL / 1- constant CONTROL-CELLS
 private
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
-E-LAYOUT-BUFFER constant E-SIZE    \ src/core/layout-buffer.f's size and bounds refusals
-E-LAYOUT-BOUNDS constant E-BOUNDS
+E-LAYOUT-BUFFER constant E-SIZE    \ src/core/layout-buffer.f's size refusal
 
 $40 constant REG-INIT
 
-: EXTENT ( n n -- n ) {: count:n width:n :}
-   count 0 < width 0 <= or if E-SIZE throw then
-   count MAX-BYTES width / > if E-SIZE throw then
-   count width * ;
-
 \ Keep the existing cell-rounded capacity contract: 100 byte elements reserve
-\ 104 addressable bytes. The accessor admits only complete elements of its
-\ width within the capacity, whether it reads the cached bound or divides;
-\ COPY below preserves every capacity byte.
+\ 104 addressable bytes; COPY below preserves every capacity byte.
 : CELL-CEIL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: part:n :}
    part 0= if bytes exit then
@@ -67,18 +59,14 @@ variable MUTEX
 : LOCK ( -- ) begin 0 1 MUTEX atomic-cas 0= until ;
 : UNLOCK ( -- ) 0 MUTEX atomic! ;
 
-: REG-BYTES ( n -- n ) 2 cells EXTENT ;
+: REG-BYTES ( n -- n ) 2 cells * ;
 : ROW-HEAD ( n -- ptr ptr ptr a ) 2 * REG @ swap ptr-field ;
 : ROW-CTL ( n -- ptr ptr n ) 2 * 1+ REG @ swap ptr-field ;
 : REG-ENTRY ( n -- ptr ptr a ) ROW-HEAD @ ;
 : REG-CTL ( n -- ptr n ) ROW-CTL @ ;
 
-\ The control block's cells after the capacity, which is its first cell.
+\ The control block's cell after the capacity, which is its first cell.
 : SLOT ( ptr n -- ptr n ) CELL + ;
-2 cells constant TAG-OFF
-3 cells constant BOUND-OFF
-: TAG ( ptr n -- ptr n ) TAG-OFF + ;
-: BOUND ( ptr n -- ptr n ) BOUND-OFF + ;
 
 : REG-MAP ( n -- ptr ptr u8 )
    REG-BYTES map-anon 0< if drop E-MAP throw then ;
@@ -130,43 +118,16 @@ variable MUTEX
 
 public
 
-: BOUNDS ( n n -- n ) {: idx:n count:n :}
-   idx 0 < if E-BOUNDS throw then
-   idx count >= if E-BOUNDS throw then
-   idx ;
-
-\ Growth can replace the mapping, so every access fetches the head after checking
-\ capacity. The width guard on the exact division keeps native and Wasm
-\ identical: a division by zero answers 0 on ARM64 and traps on Wasm. Since the
-\ index is checked first, a width <= 0 with a negative index, and a width of 0 on
-\ an empty record (tag 0), answer E-BOUNDS rather than E-SIZE; generated
-\ accessors always pass a positive width. The tag and bound are read inline: two
-\ calls per access cost more than the division they replace.
-: ADDRESS ( n ptr ptr a ptr n n -- ptr a ) {: idx:n cb:ptr ctl:ptr width:n :}
-   idx 0 < if E-BOUNDS throw then
-   ctl TAG-OFF + @ width = if
-      idx ctl BOUND-OFF + @ >= if E-BOUNDS throw then
-   else
-      width 0 <= if E-SIZE throw then
-      idx ctl @ width / >= if E-BOUNDS throw then
-   then
-   cb @ idx width * + ;
-
-\ The capacity, its width tag and the bound (capacity / tag) change together:
-\ PUBLISH and RELEASE are their only writers, each under LOCK. ADDRESS uses the
-\ bound only when the tag equals its width; any other record (grown with a
-\ foreign width, empty, released, or a stripped image's zero mapping) answers by
-\ exact division.
-: PUBLISH ( ptr a n ptr ptr a ptr n n -- )
-   {: fresh:ptr cap:n cb:ptr ctl:ptr width:n :}
+\ The mapping and its capacity change together: PUBLISH and RELEASE are their
+\ only writers, each under LOCK.
+: PUBLISH ( ptr a n ptr ptr a ptr n -- )
+   {: fresh:ptr cap:n cb:ptr ctl:ptr :}
    fresh cb !
-   cap ctl !
-   width ctl TAG !
-   cap width / ctl BOUND ! ;
+   cap ctl ! ;
 
 \ Nothing in the record changes until every fallible operation has succeeded.
-: GROW ( n ptr ptr a ptr n n n -- )
-   {: need:n cb:ptr ctl:ptr old:n width:n :}
+: GROW ( n ptr ptr a ptr n n -- )
+   {: need:n cb:ptr ctl:ptr old:n :}
    need old CAPACITY {: cap:n :}
    cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
    old 0= if
@@ -177,7 +138,7 @@ public
       rc 0 <> if
          UNLOCK fresh cap munmap drop rc throw
       then
-      fresh cap cb ctl width PUBLISH
+      fresh cap cb ctl PUBLISH
       cb ctl REGISTER
       UNLOCK
       exit
@@ -187,14 +148,14 @@ public
    cb @ old munmap 0< if
       UNLOCK fresh cap munmap drop E-UNMAP throw
    then
-   fresh cap cb ctl width PUBLISH
+   fresh cap cb ctl PUBLISH
    UNLOCK ;
 
 : RESERVE ( n ptr ptr a ptr n n -- ) {: count:n cb:ptr ctl:ptr width:n :}
-   count width EXTENT {: need:n :}
+   count width * {: need:n :}
    ctl @ {: old:n :}
    need old <= if exit then
-   need cb ctl old width GROW ;
+   need cb ctl old GROW ;
 
 : RELEASE ( ptr ptr a ptr n -- ) {: cb:ptr ctl:ptr :}
    ctl @ {: cap:n :}
@@ -204,8 +165,6 @@ public
    ctl UNREGISTER
    NULL-PTR cb !
    0 ctl !
-   0 ctl TAG !
-   0 ctl BOUND !
    UNLOCK ;
 
 

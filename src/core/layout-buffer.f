@@ -11,9 +11,6 @@ $1000 constant LBUF-GEN-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 E-CHECKER-LAYOUT-BUFFER constant E-LAYOUT-BUFFER   \ the checker's layout refusal, one code
 7122 constant E-LAYOUT-BOUNDS
-7123 constant E-LAYOUT-UNBOUND    \ deferred column accessed before its NAME-BIND
-7124 constant E-LAYOUT-CEIL       \ deferred bind past the generous per-column sanity ceiling
-$100000 constant LDEFER-CELL-MAX  \ per-column allot ceiling (cells); generous, well under the data-region floor
 78 constant E-DUP-DEFINITION
 0 constant LBUF-FALSE
 -1 constant LBUF-TRUE
@@ -294,9 +291,9 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \ LBUF-PEND-MATCH?), not the body, so it mints the LAYOUT-BUFFER signature.
 \ NAME-BIND reuses the region when the count fits, else allots a larger one and
 \ retires the old; its cells are fresh and zeroed. NAME-GROW carries the live
-\ cells over. A count past LDEFER-CELL-MAX throws E-LAYOUT-CEIL before any allot
-\ or store. The accessor reads the offset cell on every call, so indices survive
-\ a grow; a raw pointer derived from an accessor dangles across NAME-GROW.
+\ cells over. The accessor reads the offset cell on every call, so indices
+\ survive a grow; a raw pointer derived from an accessor dangles across
+\ NAME-GROW.
 
 \ Every generated NAME-BIND is `<NAME>#base <wc> LDEFER-BIND`. The region offset
 \ is measured from the control cells, not from `data-base`, so it relocates with
@@ -310,9 +307,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 
 : LDEFER-BIND ( n ptr n n -- )   \ count cbase wc
    {: count:n cb:ptr wc:n :}
-   count 0 < if E-LAYOUT-BUFFER throw then
    count wc * {: need:n :}
-   need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then
    cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
    count  cb CELL + @  > if
       LBUF-ALIGN
@@ -329,23 +324,16 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \ Effect: ( count cbase wc -- ).
 PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
-\ NAME-GROW extends a bound column, preserving written cells; an unbound column
-\ throws E-LAYOUT-UNBOUND (a column binds before it grows). Past
-\ capacity the region becomes max(2*capacity, count), clamped to count when
-\ doubling would pass the ceiling. A within-capacity grow zeroes [old-live,
-\ count): a prior shrink may have left it dirty.
+\ NAME-GROW extends a column, preserving written cells. Past capacity the
+\ region becomes max(2*capacity, count). A within-capacity grow
+\ zeroes [old-live, count): a prior shrink may have left it dirty.
 : LDEFER-GROW ( n ptr n n -- )   \ count cbase wc
    {: count:n cb:ptr wc:n :}
-   count 0 < if E-LAYOUT-BUFFER throw then
-   cb 2 CELL * + @ 0= if E-LAYOUT-UNBOUND throw then
-   count wc * {: need:n :}
-   need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then
    cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
    count  cb CELL + @  > if
       cb 2 CELL * + @ {: live:n :}
       cb  cb @  + {: obase:ptr :}
-      cb CELL + @ 2 *  count max {: dbl:n :}
-      dbl wc * LDEFER-CELL-MAX > if count else dbl then {: newcap:n :}   \ clamp so doubling never trips the ceiling
+      cb CELL + @ 2 *  count max {: newcap:n :}
       LBUF-ALIGN
       here {: nbase:ptr :}
       newcap wc * cells allot                                \ allot hands the fresh region out zeroed
@@ -481,9 +469,8 @@ PRIM: TYPED-VARIABLE PRIM;
 \ expressible only here (CHECKER-DYNAMIC-INFO over CHECKER-STORAGE-INFO).
 variable DBUF-W
 \ Every dynamic control record (src/core/dynamic-storage.f): the head cell, then
-\ the control block's exact byte capacity, registry slot + 1, width tag and
-\ element bound for that width.
-5 cells constant DBUF-CTRL-BYTES
+\ the control block's exact byte capacity and registry slot + 1.
+3 cells constant DBUF-CTRL-BYTES
 : DBUF-CTL$ ( -- ptr u8 n ) s" #ctl" ;
 
 : DBUF-CTL, ( ptr u8 n -- ) {: name:ptr nameu:n :}

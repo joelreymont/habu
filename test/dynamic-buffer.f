@@ -21,10 +21,10 @@ DYNAMIC-BUFFER CELLROW n
 STRUCTURE triple DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE
 DYNAMIC-BUFFER WIDE triple
 \ A control record no definer generated, as a downstream table's: a declared
-\ head and DYNAMIC-STORAGE:CONTROL-CELLS (four) cells, as `NAME#base` and
+\ head and DYNAMIC-STORAGE:CONTROL-CELLS (two) cells, as `NAME#base` and
 \ `NAME#ctl` are; a shorter block would overlap its neighbour's cells.
 PTR-VARIABLE RAW-CTRL
-create RAW-CTL 0 , 0 , 0 , 0 ,
+create RAW-CTL 0 , 0 ,
 create MARK 8 allot
 variable RAW
 
@@ -41,20 +41,6 @@ variable DB-EVAL-U
       some OF ENDOF
    ;MATCH ;
 
-: BAD-LOW ( -- ) -1 TOKENS drop ;
-: BAD-HIGH ( -- ) $7FFFFFFFFFFFFFFF TOKENS drop ;
-\ A negative index is refused before the control record is read.
-: NEG-NULL-CONTROL ( -- ) -1 NULL-PTR RAW-CTL 8 DYNAMIC-STORAGE:ADDRESS drop ;
-: BAD-SIZE ( -- ) -1 TOKENS-RESERVE ;
-: BAD-OVERFLOW ( -- ) $7FFFFFFFFFFFFFFF OPTIONS-RESERVE ;
-: AFTER-RELEASE ( -- ) 0 TOKENS drop ;
-: BAD-BYTE-LOW ( -- ) -1 BYTES drop ;
-: BAD-BYTE-HIGH ( -- ) $7FFFFFFFFFFFFFFF BYTES drop ;
-: AFTER-BYTE-RELEASE ( -- ) 0 BYTES drop ;
-\ 100 bytes reserved from empty is a capacity of 104 - the first cell multiple
-\ at or above it - and the accessor bounds by that capacity, in bytes.
-: BYTE-AT-CAP ( -- ) 104 BYTES drop ;
-
 \ The byte row retains its cell-rounded capacity across growth, including the
 \ four bytes beyond the requested 100.
 : BYTE-ROWS ( -- )
@@ -64,80 +50,58 @@ variable DB-EVAL-U
    0 BYTES c@ 7 T=
    99 BYTES c@ 9 T=
    103 BYTES c@ 0 T=
-   ['] BYTE-AT-CAP 7122 TTHROWS
    100000 BYTES-RESERVE
    0 BYTES c@ 7 T=
    99 BYTES c@ 9 T=
    1 BYTES-RESERVE
    0 BYTES c@ 7 T=
    99 BYTES c@ 9 T=
-   ['] BAD-BYTE-LOW 7122 TTHROWS
-   ['] BAD-BYTE-HIGH 7122 TTHROWS
    s" BAD-BYTE-FETCH ( n -- n ) BYTES @" CHECK! 0 T=
    s" DYNAMIC-BUFFER BAD-U16 u16" DB-EVAL CHECKER-REJECT-RC T=
    s" BAD-U16" 0 search-wl 0= TTRUE
    BYTES-RELEASE
-   ['] AFTER-BYTE-RELEASE 7122 TTHROWS
    1 BYTES-RESERVE
    65 0 BYTES c!
    0 BYTES c@ 65 T=
    BYTES-RELEASE ;
 
-: WIDE-PAST ( -- ) 2 WIDE drop ;
-: WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
 : FOREIGN-WIDTH ( -- ) 2048 WIDE#base WIDE#ctl 8 DYNAMIC-STORAGE:RESERVE ;
-: WIDE-2047 ( -- ) 2047 WIDE drop ;
-: WIDE-682 ( -- ) 682 WIDE drop ;
-: WIDE-100 ( -- ) 100 WIDE drop ;
-: WIDE-2048 ( -- ) 2048 WIDE drop ;
 : RAW-RESERVE ( -- ) 3 RAW-CTRL RAW-CTL 24 DYNAMIC-STORAGE:RESERVE ;
 : WIDE-MAP-FAIL ( -- ) $7FFFFFFFFFFFFFFF 24 / WIDE-RESERVE ;
 
 : WIDE-ROWS ( -- )
    0 WIDE-RESERVE
-   ['] WIDE-PAST 7122 TTHROWS
    1 WIDE-RESERVE                         \ capacity 64, two complete elements
    7 0 WIDE TRIPLE-A byte-view 63 + c!    \ fractional tail belongs to mapping
    1 WIDE drop
-   ['] WIDE-PAST 7122 TTHROWS
    ['] WIDE-MAP-FAIL 7138 TTHROWS
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
-   ['] WIDE-PAST 7122 TTHROWS
    3 WIDE-RESERVE                         \ capacity doubles to 128
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
    4 WIDE drop
-   ['] WIDE-PAST-GROWN 7122 TTHROWS
    \ A reserve through the generic entry with a foreign width is a byte request:
    \ 2048 cells grow the capacity to 16384 bytes, which hold 682 complete
-   \ triples. The accessor still bounds by its declared width: 2047 would be
-   \ byte 49128 and 682 is the fractional one, while 681's last field is bytes
-   \ 16360..16367. The fractional tail survives the growth.
+   \ triples, 681's last field at bytes 16360..16367. The fractional tail
+   \ survives the growth.
    FOREIGN-WIDTH
-   ['] WIDE-2047 7122 TTHROWS
-   ['] WIDE-682 7122 TTHROWS
    7 681 WIDE TRIPLE-C !
    681 WIDE TRIPLE-C @ 7 T=
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
-   \ The generated reserve grows the foreign-width record to 49152 bytes and
-   \ retags its bound for width 24: 2048 triples, the last at 2047.
+   \ The generated reserve grows the foreign-width record to 49152 bytes: 2048
+   \ triples, the last at 2047.
    2048 WIDE-RESERVE
    2047 WIDE drop
-   ['] WIDE-2048 7122 TTHROWS
    681 WIDE TRIPLE-C @ 7 T=
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
-   \ The generic release empties the generated control for its accessor too.
+   \ The generic release empties the generated control.
    WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE
-   ['] WIDE-100 7122 TTHROWS
    1 WIDE-RESERVE
    1 WIDE drop
    WIDE-RELEASE
    \ The downstream contract: a hand-made record reserves 72 bytes and releases
-   \ to empty, its capacity read from the control block. The reserve tags the
-   \ record with its width 24 and caches the bound 72 / 24.
+   \ to empty, its capacity read from the control block.
    RAW-RESERVE
    RAW-CTL @ 72 T=
-   RAW-CTL 2 cells + @ 24 T=
-   RAW-CTL 3 cells + @ 3 T=
    RAW-CTRL RAW-CTL DYNAMIC-STORAGE:RELEASE
    RAW-CTL @ 0 T= ;
 
@@ -159,13 +123,13 @@ DYNAMIC-BUFFER RNG-A n
 DYNAMIC-BUFFER RNG-B n
 DYNAMIC-BUFFER RNG-C n
 : RNG-REC ( -- ptr u8 ) RNG-A#ctl byte-view CELL - ;
-: RNG-WHOLE ( -- ) RNG-REC 5 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-WHOLE ( -- ) RNG-REC 3 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
 : RNG-HEAD ( -- ) RNG-REC CELL DYNAMIC-STORAGE:RELEASE-RANGE ;
-: RNG-CTL ( -- ) RNG-A#ctl byte-view 4 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-CTL ( -- ) RNG-A#ctl byte-view 2 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
 : RNG-CUT-HEAD ( -- ) RNG-REC 4 DYNAMIC-STORAGE:RELEASE-RANGE ;
-: RNG-CUT-CTL ( -- ) RNG-REC 3 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-CUT-CTL ( -- ) RNG-REC 2 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
 \ Starts inside A's control block and ends at A's end: only the front cut refuses.
-: RNG-CUT-TAIL ( -- ) RNG-A#ctl byte-view CELL + 3 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-CUT-TAIL ( -- ) RNG-A#ctl byte-view CELL + CELL DYNAMIC-STORAGE:RELEASE-RANGE ;
 : RNG-BEFORE ( -- ) RNG-REC 64 - 64 DYNAMIC-STORAGE:RELEASE-RANGE ;
 : RNG-EMPTY ( -- ) RNG-REC 4 + 0 DYNAMIC-STORAGE:RELEASE-RANGE ;
 : RNG-NEG ( -- ) RNG-REC -1 DYNAMIC-STORAGE:RELEASE-RANGE ;
@@ -227,18 +191,12 @@ variable RNG-BASE
    1024 ADDRS-RESERVE
    0 ADDRS @ MARK byte-view = TTRUE
    3 ADDRS @ MARK byte-view = TTRUE
-   ['] BAD-LOW 7122 TTHROWS
-   ['] BAD-HIGH 7122 TTHROWS
-   ['] NEG-NULL-CONTROL 7122 TTHROWS
-   ['] BAD-SIZE 7121 TTHROWS
-   ['] BAD-OVERFLOW 7121 TTHROWS
    0 TOKENS @ TOKEN-N 42 T=
    s" BAD-TOKEN-STORE ( n -- ) 0 TOKENS !" CHECK! 0 T=
    s" BAD-TOKEN-POINTER ( -- ptr token ) RAW" CHECK! 0 T=
    s" BAD-DYNAMIC-DEF ( -- ) DYNAMIC-BUFFER X n" CHECK! 0 T=
    TOKENS-RELEASE
    TOKENS-RELEASE
-   ['] AFTER-RELEASE 7122 TTHROWS
    1 TOKENS-RESERVE
    7 TOKEN 0 TOKENS !
    0 TOKENS @ TOKEN-N 7 T=
@@ -252,4 +210,62 @@ variable RNG-BASE
    T-REPORT ;
 
 RUN
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: BAD-LOW ( -- ) -1 TOKENS drop ;
+: BAD-HIGH ( -- ) $7FFFFFFFFFFFFFFF TOKENS drop ;
+\ A negative index is refused before the control record is read.
+: NEG-NULL-CONTROL ( -- ) -1 NULL-PTR RAW-CTL 8 DYNAMIC-STORAGE:ADDRESS drop ;
+: BAD-SIZE ( -- ) -1 TOKENS-RESERVE ;
+: BAD-OVERFLOW ( -- ) $7FFFFFFFFFFFFFFF OPTIONS-RESERVE ;
+: AFTER-RELEASE ( -- ) 0 TOKENS drop ;
+: BAD-BYTE-LOW ( -- ) -1 BYTES drop ;
+: BAD-BYTE-HIGH ( -- ) $7FFFFFFFFFFFFFFF BYTES drop ;
+: AFTER-BYTE-RELEASE ( -- ) 0 BYTES drop ;
+\ 100 bytes reserved from empty is a capacity of 104 - the first cell multiple
+\ at or above it - and the accessor bounds by that capacity, in bytes.
+: BYTE-AT-CAP ( -- ) 104 BYTES drop ;
+: WIDE-PAST ( -- ) 2 WIDE drop ;
+: WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
+: WIDE-2047 ( -- ) 2047 WIDE drop ;
+: WIDE-682 ( -- ) 682 WIDE drop ;
+: WIDE-100 ( -- ) 100 WIDE drop ;
+: WIDE-2048 ( -- ) 2048 WIDE drop ;
+
+: BOUNDS-ROWS ( -- )
+   T-RESET
+   1 TOKENS-RESERVE
+   ['] BAD-LOW 7122 TTHROWS
+   ['] BAD-HIGH 7122 TTHROWS
+   ['] NEG-NULL-CONTROL 7122 TTHROWS
+   ['] BAD-SIZE 7121 TTHROWS
+   ['] BAD-OVERFLOW 7121 TTHROWS
+   TOKENS-RELEASE
+   ['] AFTER-RELEASE 7122 TTHROWS
+   100 BYTES-RESERVE
+   ['] BYTE-AT-CAP 7122 TTHROWS
+   ['] BAD-BYTE-LOW 7122 TTHROWS
+   ['] BAD-BYTE-HIGH 7122 TTHROWS
+   BYTES-RELEASE
+   ['] AFTER-BYTE-RELEASE 7122 TTHROWS
+   0 WIDE-RESERVE
+   ['] WIDE-PAST 7122 TTHROWS
+   1 WIDE-RESERVE
+   ['] WIDE-PAST 7122 TTHROWS
+   3 WIDE-RESERVE
+   ['] WIDE-PAST-GROWN 7122 TTHROWS
+   \ The accessor bounds by its declared width after a foreign-width reserve:
+   \ 2047 would be byte 49128 and 682 is the fractional one.
+   FOREIGN-WIDTH
+   ['] WIDE-2047 7122 TTHROWS
+   ['] WIDE-682 7122 TTHROWS
+   2048 WIDE-RESERVE
+   ['] WIDE-2048 7122 TTHROWS
+   \ The generic release empties the generated control for its accessor too.
+   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE
+   ['] WIDE-100 7122 TTHROWS
+   T-REPORT ;
+
+BOUNDS-ROWS
+[then]
 ;package

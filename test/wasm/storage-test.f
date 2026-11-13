@@ -63,13 +63,13 @@ variable FILE-U
 
 \ GROW's lines, REFUSE's and REUSE's.
 : BUFFER$ ( -- ptr u8 n )
-   S\" 7122\n77\n88\n312\n1\n7121\n7122\n7121\n7138\n7138\n77\n88\n7122\n7122\n1\n0\n0\n" ;
+   S\" 77\n88\n312\n1\n7138\n7138\n77\n88\n1\n0\n0\n" ;
 
 : HOLES$ ( -- ptr u8 n )
    S\" 1\n0\n1\n1\n" ;
 
 : FRACTIONAL$ ( -- ptr u8 n )
-   S\" 7122\n7122\n7\n7122\n7122\n7122\n7\n7\n7122\n7\n7\n7122\n" ;
+   S\" 7\n7\n7\n7\n7\n" ;
 
 \ Each map's and free's ior, and INSIDE's pages' distance, up to the trap.
 : TWICE$ ( -- ptr u8 n )
@@ -92,7 +92,7 @@ public
    s" WSTORE:RECORD" s" record" S\" 23\n1.250000\n47\n-2.500000\n" 0 ENTRY-CASE
    s" one buffer reserves, grows across a page, refuses, releases and is reused cleared" T-LABEL
    s" WSTORE:BUFFER" s" buffer" BUFFER$ 0 ENTRY-CASE
-   s" fractional capacity retains its tail and the accessor bounds by its declared width through any entry point" T-LABEL
+   s" fractional capacity retains its tail through any entry point" T-LABEL
    s" WSTORE:FRACTIONAL" s" fractional" FRACTIONAL$ 0 ENTRY-CASE
    s" freed neighbours join into one run, which a smaller request splits" T-LABEL
    s" WSTORE:HOLES" s" holes" HOLES$ 0 ENTRY-CASE
@@ -104,6 +104,22 @@ public
    s" WSTORE:REFUSED" s" refused" REFUSED$ 0 ENTRY-CASE
    T-REPORT ;
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ BOUNDS's lines: one per refused index or reserve.
+: BOUNDS$ ( -- ptr u8 n )
+   S\" 7122\n7121\n7122\n7121\n7122\n7122\n7122\n7122\n7122\n7122\n7122\n7122\n7122\n" ;
+
+: RUN-BOUNDS ( -- )
+   T-RESET
+   SETUP
+   s" generated accessors refuse out-of-range indices and reserves refuse bad counts" T-LABEL
+   s" WSTORE:BOUNDS" s" bounds" BOUNDS$ 0 ENTRY-CASE
+   T-REPORT ;
+[then]
+
 ;package
 
 WASM-STORAGE-TEST:RUN
+false [if] \ off until dot habu-add-the-checks-a49d054d
+WASM-STORAGE-TEST:RUN-BOUNDS
+[then]

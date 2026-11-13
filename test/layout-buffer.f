@@ -65,8 +65,10 @@ s" LB-WRONG-FETCH ( ptr lb-res<n,n> -- lb-other<n> ) @" CHECK-QUIET-CANDIDATE! 0
 1 LB-GET 0 T= 8 T=
 2 LB-GET 0 T= 9 T=
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 LB-LOW-RC E-LAYOUT-BOUNDS T=
 LB-HIGH-RC E-LAYOUT-BOUNDS T=
+[then]
 
 TYPED-VARIABLE LB-EVAL-A ptr u8
 variable LB-EVAL-U
@@ -122,9 +124,11 @@ CAST: LBTK>N ( lbtk -- n )
 7 0 LBTK-PUT  9 3 LBTK-PUT
 0 LBTK-GET 7 T=
 3 LBTK-GET 9 T=
+false [if] \ off until dot habu-add-the-checks-a49d054d
 \ bounds stay owned by the generated accessor
 LBTK-LOW-RC E-LAYOUT-BOUNDS T=
 LBTK-HIGH-RC E-LAYOUT-BOUNDS T=
+[then]
 
 \ checker seam: typed round-trip certifies; raw and foreign-family reject
 s" LBTK-STORE ( lbtk ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! -1 T=

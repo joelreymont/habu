@@ -78,7 +78,7 @@ private
 
 public
 
-\ 7122-7124 are layout-buffer.f's E-LAYOUT-BOUNDS / -UNBOUND / -CEIL.
+\ 7122 is layout-buffer.f's E-LAYOUT-BOUNDS.
 7148 constant E-PF-ID         \ invalid or provisional (uncommitted) product-field id
 7149 constant E-PF-TX         \ stale or non-LIFO field transaction, or reset while a field transaction is open
 7150 constant E-PF-OWNER      \ invalid family / optional-variant ownership

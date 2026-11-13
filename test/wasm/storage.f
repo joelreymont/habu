@@ -25,25 +25,12 @@ STRUCTURE sample OPAQUE DERIVE addr
 : SAME ( ptr a ptr a -- n )
    = if 1 else 0 then ;
 
-: PAST-CAP ( -- )  104 BYTES drop ;
-: AT-CAP ( -- )  70000 BYTES drop ;
-: NEGATIVE-IDX ( -- )  -1 BYTES drop ;
-: RELEASED ( -- )  0 BYTES drop ;
-: NEGATIVE-COUNT ( -- )  -1 BYTES-RESERVE ;
-: WIDE-COUNT ( -- )  $7FFFFFFFFFFFFFFF PTRS-RESERVE ;
 : PAST-MEMORY ( -- )  $100000000 BYTES-RESERVE ;
 : PAST-MEMORY32 ( -- )  $1000000000000 BYTES-RESERVE ;
-: WIDE-PAST ( -- ) 2 WIDE drop ;
-: WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
-: WIDE-2047 ( -- ) 2047 WIDE drop ;
-: WIDE-682 ( -- ) 682 WIDE drop ;
-: WIDE-100 ( -- ) 100 WIDE drop ;
-: WIDE-2048 ( -- ) 2048 WIDE drop ;
 
 : GROW ( -- )
    100 BYTES-RESERVE
    77 103 BYTES c!
-   ['] PAST-CAP catch .
    70000 BYTES-RESERVE
    103 BYTES c@ .
    88 69999 BYTES c!
@@ -56,19 +43,14 @@ STRUCTURE sample OPAQUE DERIVE addr
    1 PTRS @ 0 BYTES SAME . ;
 
 : REFUSE ( -- )
-   ['] NEGATIVE-COUNT catch .
-   ['] NEGATIVE-IDX catch .
-   ['] WIDE-COUNT catch .
    ['] PAST-MEMORY catch .
    ['] PAST-MEMORY32 catch .
    103 BYTES c@ .
-   69999 BYTES c@ .
-   ['] AT-CAP catch . ;
+   69999 BYTES c@ . ;
 
 : REUSE ( -- )
    0 BYTES FIRST !
    BYTES-RELEASE
-   ['] RELEASED catch .
    BYTES-RELEASE
    70000 BYTES-RESERVE
    0 BYTES FIRST @ SAME .
@@ -79,28 +61,21 @@ public
 
 : FRACTIONAL ( -- )
    0 WIDE-RESERVE
-   ['] WIDE-PAST catch .
    1 WIDE-RESERVE
    7 0 WIDE TRIPLE-A byte-view 63 + c!
    1 WIDE drop
-   ['] WIDE-PAST catch .
    3 WIDE-RESERVE
    0 WIDE TRIPLE-A byte-view 63 + c@ .
    4 WIDE drop
-   ['] WIDE-PAST-GROWN catch .
    2048 WIDE#base WIDE#ctl 8 DYNAMIC-STORAGE:RESERVE
-   ['] WIDE-2047 catch .
-   ['] WIDE-682 catch .
    7 681 WIDE TRIPLE-C !
    681 WIDE TRIPLE-C @ .
    0 WIDE TRIPLE-A byte-view 63 + c@ .
    2048 WIDE-RESERVE
    2047 WIDE drop
-   ['] WIDE-2048 catch .
    681 WIDE TRIPLE-C @ .
    0 WIDE TRIPLE-A byte-view 63 + c@ .
-   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE
-   ['] WIDE-100 catch . ;
+   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE ;
 
 : RECORD ( -- )
    23 0 ROWS SAMPLE-NUMBER !  1.25 0 ROWS SAMPLE-VALUE !
@@ -108,13 +83,12 @@ public
    0 ROWS SAMPLE-NUMBER @ .  0 ROWS SAMPLE-VALUE @ f.
    1 ROWS SAMPLE-NUMBER @ .  1 ROWS SAMPLE-VALUE @ f. ;
 
-\ One buffer's life as on the native target. 100 bytes hold index 103 and not
-\ 104: the capacity is the request rounded up to a cell. Growing to 70000 bytes
-\ maps two pages at P+1, copies the old page's bytes and frees it. A refused
-\ reserve throws its code and keeps the mapping and its capacity: a negative
-\ count, a count whose bytes overflow, 4 GiB, which memory.grow refuses, and
-\ 2^48 bytes, more pages than memory32 has. A released buffer refuses every
-\ index; reserving it again takes its two pages back, cleared.
+\ One buffer's life as on the native target. 100 bytes hold index 103: the
+\ capacity is the request rounded up to a cell. Growing to 70000 bytes maps two
+\ pages at P+1, copies the old page's bytes and frees it. A refused reserve
+\ throws its code and keeps the mapping and its capacity: 4 GiB, which
+\ memory.grow refuses, and 2^48 bytes, more pages than memory32 has. Reserving
+\ a released buffer again takes its two pages back, cleared.
 : BUFFER ( -- )
    GROW REFUSE REUSE
    BYTES-RELEASE CELLS-RELEASE PTRS-RELEASE ;
@@ -168,5 +142,47 @@ public
    65536 map-anon . {: q:ptr :}
    q p SAME .
    q 65536 munmap . ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: PAST-CAP ( -- )  104 BYTES drop ;
+: AT-CAP ( -- )  70000 BYTES drop ;
+: NEGATIVE-IDX ( -- )  -1 BYTES drop ;
+: RELEASED ( -- )  0 BYTES drop ;
+: NEGATIVE-COUNT ( -- )  -1 BYTES-RESERVE ;
+: WIDE-COUNT ( -- )  $7FFFFFFFFFFFFFFF PTRS-RESERVE ;
+: WIDE-PAST ( -- ) 2 WIDE drop ;
+: WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
+: WIDE-2047 ( -- ) 2047 WIDE drop ;
+: WIDE-682 ( -- ) 682 WIDE drop ;
+: WIDE-100 ( -- ) 100 WIDE drop ;
+: WIDE-2048 ( -- ) 2048 WIDE drop ;
+
+\ A buffer refuses an index past its capacity, a negative one and any after
+\ release; a reserve refuses a negative count and one whose bytes overflow.
+\ The accessor bounds by its declared width through any entry point.
+: BOUNDS ( -- )
+   100 BYTES-RESERVE
+   ['] PAST-CAP catch .
+   ['] NEGATIVE-COUNT catch .
+   ['] NEGATIVE-IDX catch .
+   ['] WIDE-COUNT catch .
+   70000 BYTES-RESERVE
+   ['] AT-CAP catch .
+   BYTES-RELEASE
+   ['] RELEASED catch .
+   0 WIDE-RESERVE
+   ['] WIDE-PAST catch .
+   1 WIDE-RESERVE
+   ['] WIDE-PAST catch .
+   3 WIDE-RESERVE
+   ['] WIDE-PAST-GROWN catch .
+   2048 WIDE#base WIDE#ctl 8 DYNAMIC-STORAGE:RESERVE
+   ['] WIDE-2047 catch .
+   ['] WIDE-682 catch .
+   2048 WIDE-RESERVE
+   ['] WIDE-2048 catch .
+   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE
+   ['] WIDE-100 catch . ;
+[then]
 
 ;package

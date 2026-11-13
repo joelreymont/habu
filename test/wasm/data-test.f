@@ -127,8 +127,8 @@ public
    host HOST-OFFSET + AFTER c@ HOST-BYTE T=
    s" OUT starts with the stack depth line" T-LABEL
    OUT$ s\" stack depth ok\n" STARTS-WITH? TTRUE
-   s" OUT holds the static owner line, the stored byte and the bounds refusal" T-LABEL
-   OUT$ s\" static owner intact\n137\nbounds ok\n" CONTAINS? TTRUE
+   s" OUT holds the static owner line and the stored byte" T-LABEL
+   OUT$ s\" static owner intact\n137\n" CONTAINS? TTRUE
    DYN-BASE {: b:n :}
    s" the dynamic buffer lies past the page the peer grew" T-LABEL
    b host WPROF:PAGE-BYTES + >= TTRUE

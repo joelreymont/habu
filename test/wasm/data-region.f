@@ -1,6 +1,6 @@
 \ data-region.f - a program for test/wasm/data-test.f: a stack depth, a real's
-\ text, a dynamic buffer and its bounds refusal, built by `tools/hb-build.f --
-\ --target wasm`, whose entry is MAIN.
+\ text and a dynamic buffer, built by `tools/hb-build.f -- --target wasm`, whose
+\ entry is MAIN.
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/ieee754.f
@@ -20,9 +20,6 @@ public
    204800 BYTES-RESERVE
    137 204799 BYTES c!
    204799 BYTES c@ .
-   [: 204800 BYTES c@ drop ;] catch E-LAYOUT-BOUNDS = if
-      s" bounds ok" type cr
-   then
    0 BYTES BYTE-VIEW NULL-PTR BYTE-VIEW - . ;
 
 ;package
