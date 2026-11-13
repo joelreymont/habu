@@ -5,6 +5,7 @@
 \ intended root, cross-root renames, hard links, mounts, content changes.
 \ STORAGE CLASS. CALLER-OWNED: OPEN-DIR's descriptors are the caller's.
 require src/lib/fs.f
+require src/core/compile-reads.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
@@ -195,6 +196,7 @@ public
 \ .. component throw E-FS-PATH, a NUL E-FS-PATH-UNSAFE (.cache and a..b are
 \ ordinary names). A failed syscall leaves its errno in FS:ERRNO, a refusal 0.
 : OPEN-DIR ( ptr u8 n -- fd ) {: src:ptr u:n :}
+   COMPILE-READS:MISS
    0 CAUSE!
    A-MAP {: work:ptr len:NUM:alloc-byte-len :}
    src u work [: A-OPEN-RUN ;] catch {: code:n :}
@@ -205,6 +207,7 @@ public
    work len code cause A-FINISH
    opened >FD ;
 : OPEN-DIR-AT ( fd ptr u8 n -- fd ) {: anchor:fd src:ptr u:n :}
+   COMPILE-READS:MISS
    0 CAUSE!
    A-MAP {: work:ptr len:NUM:alloc-byte-len :}
    anchor src u work [: A-OPEN-AT-RUN ;] catch {: code:n :}
@@ -219,6 +222,7 @@ public
 \ throw.
 : READ-FILE-AT ( fd ptr u8 n SPAN:span<u8> -- n )
    {: anchor:fd src:ptr u:n dst :}
+   COMPILE-READS:MISS
    0 CAUSE!
    A-MAP {: work:ptr len:NUM:alloc-byte-len :}
    anchor src u dst work [: A-READ-RUN ;] catch {: code:n :}

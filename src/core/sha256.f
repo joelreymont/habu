@@ -3,6 +3,9 @@
 \ runs in a context span the caller owns (SHA256-CTX-BYTES; a file context is
 \ SHA256-FILE-CTX-BYTES); this file keeps no digest state of its own, so tasks
 \ hash concurrently with a context each, and copying a context copies its state.
+
+require src/core/compile-reads.f
+
 $FFFFFFFF constant W32
 
 create KK
@@ -252,6 +255,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    {: fctx a u:n out :}
    fctx SHA-FILE-PATH {: pz :}
    a u pz PATH-CAP 1+ PATHZ
+   a u pz COMPILE-READS:FILE+
    pz open-rd {: fd:n :}
    fd 0 < if SHA-E-OPEN exit then
    fctx fd out SHA256-FD-IN {: rc:n :}

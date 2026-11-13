@@ -5,6 +5,7 @@
 \ failure, ENOENT included.
 \ STORAGE CLASS. CALLER-OWNED: each call maps and releases its own MEM; no state.
 require src/lib/fs.f
+require src/core/compile-reads.f
 require src/lib/le.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
@@ -56,8 +57,9 @@ FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
 : IDENTITY ( ptr u8 n SPAN:span<u8> -- n n bool )
    {: text bytes:n work :}
    text bytes CHECK-PATH
-   text bytes  work STAT-CAP PATHZ-CAP SPAN:SUB  PATHZ-INTO
-   work 0 STAT-CAP SPAN:SUB STAT-EXISTS? if
+   text bytes  work STAT-CAP PATHZ-CAP SPAN:SUB  PATHZ-INTO {: z:ptr :}
+   text bytes z COMPILE-READS:FILE+
+   z work 0 STAT-CAP SPAN:SUB STAT-EXISTS? if
       work 0 SPAN:AT DEVICE-INODE true
    else 0 0 false then ;
 

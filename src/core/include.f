@@ -1665,8 +1665,7 @@ variable LAST-LOAD-EVAL-OK
    INCLUDE-FALSE ;
 
 \ The open frame's stamp, from a stat of the path taken before the file is
-\ opened, so a change during the read leaves a stamp no later load matches. A
-\ path that is not a regular file gets 0 0 -1: its bytes have no stamp.
+\ opened, so a change during the read leaves a stamp no later load matches.
 : STAMP! ( ptr u8 -- )
    COMPILE-READS:STAMP {: sec:n ns:n size:n :}
    TOP@ {: frame:ptr :}
@@ -1699,9 +1698,8 @@ public
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    SOURCE frame FR-SIZE + CELL-VIEW @ ;
 
-\ The active file's change time seconds, nanoseconds and size as STAMP! took
-\ them; 0 0 -1 for bytes READ-OS did not read from a regular file, as
-\ WITH-SUPPLIED's are.
+\ The active file's COMPILE-READS:STAMP as STAMP! took it; 0 0 -1 for bytes
+\ READ-OS did not read, as WITH-SUPPLIED's are.
 : ACTIVE-STAMP ( -- n n n )
    CHECK-ACTIVE
    TOP@ {: frame:ptr :}

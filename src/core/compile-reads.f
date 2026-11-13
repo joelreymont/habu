@@ -1,12 +1,13 @@
 \ compile-reads.f - what a compile reads besides its source: the roots it looked
 \ up and what they resolved to, the environment variables it read, the texts it
-\ evaluated and the files it read through FS.
+\ evaluated and the files it read.
 \ A recording is one mapping of reads. Each read is three cells (kind, first
 \ length, second length), the first bytes, the second bytes, then zero bytes to
 \ the next cell boundary: ROOT-READ holds an absolute spelling and its canonical
 \ directory, ENV-READ a name and its value, ENV-ABSENT a name and no bytes,
 \ TEXT-READ a text the compile evaluates and no bytes, FILE-READ a path and the
-\ three cells of its file's STAMP.
+\ three cells of its file's STAMP, FILE-LREAD a path and the three cells of its
+\ LSTAMP.
 package COMPILE-READS
 public
 
@@ -15,30 +16,34 @@ public
 3 constant ENV-ABSENT
 4 constant TEXT-READ
 5 constant FILE-READ
+6 constant FILE-LREAD
 
 private
 
 $1000 constant ROOM-MIN                    \ a first mapping's bytes
 
-\ The process's record: active flag, mapping, its capacity, bytes used. Readers
-\ reach it by SRCLOC:READS-CELL, the running hb's in a build.
-0 constant REC-ACTIVE
+\ The process's record, by SRCLOC:READS-CELL (hb's in a build): its state,
+\ mapping, capacity and bytes used. Only main writes it; other threads MISS.
+0 constant REC-STATE
 CELL constant REC-MAP
 2 cells constant REC-CAP
 3 cells constant REC-USED
 4 cells constant REC-BYTES
+0 constant ST-OFF
+1 constant ST-RECORDING
+2 constant ST-MISSED
 create READS-REC REC-BYTES SCRATCH-ALLOT   \ a saved program starts with it empty
 SRCLOC:READS-CELL RESERVED-PTR-U8-CELL READS-CELL
 READS-REC READS-CELL ptr-cell!             \ a build's store goes to its image
 CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
 : REC ( -- ptr u8 ) READS-CELL @ ;
-: ACTIVE ( -- ptr n ) REC REC-ACTIVE + CELL-VIEW ;
+: STATUS ( -- ptr n ) REC REC-STATE + CELL-VIEW ;
 : MAP ( -- ptr ptr u8 ) REC REC-CELLS REC-MAP CELL / ptr-field ;
 : CAP ( -- ptr n ) REC REC-CAP + CELL-VIEW ;
 : USED ( -- ptr n ) REC REC-USED + CELL-VIEW ;
 
-: SAVED ( -- n ptr u8 n n ) ACTIVE @ MAP @ CAP @ USED @ ;
-: RESTORE ( n ptr u8 n n -- ) USED ! CAP ! MAP ! ACTIVE ! ;
+: SAVED ( -- n ptr u8 n n ) STATUS @ MAP @ CAP @ USED @ ;
+: RESTORE ( n ptr u8 n n -- ) USED ! CAP ! MAP ! STATUS ! ;
 
 : UNMAP ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if exit then
@@ -48,30 +53,21 @@ CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
    MAP @ CAP @ UNMAP
    NULL-PTR MAP !  0 CAP !  0 USED ! ;
 
-: SCOPE ( n [ -- ] -- )
-   {: on:n q :}
-   SAVED {: old-on:n old-map:ptr old-cap:n old-used:n :}
-   on ACTIVE !  NULL-PTR MAP !  0 CAP !  0 USED !
-   q catch {: rc:n :}
-   RELEASE
-   old-on old-map old-cap old-used RESTORE
-   rc 0= 0= if rc throw then ;
-
 : PAD ( n -- n ) CELL 1- + CELL / CELL * ;
 : AT ( n -- ptr u8 ) MAP @ + ;
 : CELL@ ( n -- n ) AT CELL-VIEW @ ;
 
-\ A stat64 buffer of this file's own: src/lib/fs.f, which owns the per-task
-\ one, loads after it.
+\ This file's own stat buffer, main thread only: FILE+ and LFILE+ MISS on any
+\ other, and STAMP and LSTAMP run under a load or a link.
 create STAT-BUF FS-ABI:STAT-BYTES allot
 
 : STAT-CELL@ ( n -- n ) STAT-BUF + CELL-VIEW @ ;
 
-: STAT-REGULAR? ( -- bool )
+: STAT-TYPE ( -- n )
    STAT-BUF FS-ABI:STAT-MODE-OFF + {: m:ptr :}
-   m c@  m 1 + c@ 256 * or  FS-ABI:S-IFMT and  FS-ABI:S-IFREG = ;
+   m c@  m 1 + c@ 256 * or  FS-ABI:S-IFMT and ;
 
-create STAMP-BUF 3 cells SCRATCH-ALLOT   \ FILE+'s second bytes
+create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
 
 \ The bytes from the start of the read at off to the start of the next.
 : SPAN ( n -- n ) {: off:n :}
@@ -102,9 +98,24 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ FILE+'s second bytes
    fresh MAP !
    cap CAP ! ;
 
+: OFF-MAIN? ( -- bool ) data-base TASK-TCB-CELL + @ 0= 0= ;
+
+public
+
+\ Marks a recording incomplete: a read on a thread whose DATA holds a TCB (a
+\ task's or a callback's), one whose path it cannot name, or a process start.
+: MISS ( -- )
+   STATUS @ ST-RECORDING = if
+      ST-RECORDING ST-MISSED STATUS atomic-cas drop then ;
+
+: MISSED? ( -- bool ) STATUS @ ST-MISSED = ;
+
+private
+
 : APPEND ( n ptr u8 n ptr u8 n -- )
    {: kind:n a:ptr u:n b:ptr v:n :}
-   ACTIVE @ 0= if exit then
+   OFF-MAIN? if MISS exit then
+   STATUS @ ST-OFF = if exit then
    u 0 < v 0 < or if s" compile reads: negative length" INCLUDE-IO-RC die then
    kind a u b v SEEN? if exit then
    USED @ {: off:n :}
@@ -118,18 +129,27 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ FILE+'s second bytes
    size 3 cells - u v + ?do 0 off 3 cells + i + AT c! loop
    off size + USED ! ;
 
+\ Runs q with the record swapped for a fresh one in state st.
+: SCOPE ( n [ -- ] -- )
+   {: st:n q :}
+   SAVED {: old-st:n old-map:ptr old-cap:n old-used:n :}
+   st STATUS !  NULL-PTR MAP !  0 CAP !  0 USED !
+   q catch {: rc:n :}
+   RELEASE old-st old-map old-cap old-used RESTORE
+   rc 0= 0= if rc throw then ;
+
 public
 
 \ Runs q with a fresh, empty, active recording; recordings nest, and an inner
 \ one's reads are not the outer one's.
-: RECORD ( [ -- ] -- ) {: q :} 1 q SCOPE ;
+: RECORD ( [ -- ] -- ) {: q :} ST-RECORDING q SCOPE ;
 
 \ Runs q with no recording active.
-: UNRECORDED ( [ -- ] -- ) {: q :} 0 q SCOPE ;
+: UNRECORDED ( [ -- ] -- ) {: q :} ST-OFF q SCOPE ;
 
 \ The active recording's bytes, valid until its next append or its end.
 : READS$ ( -- ptr u8 n )
-   ACTIVE @ 0= if NULL-PTR 0 exit then
+   STATUS @ ST-OFF = if NULL-PTR 0 exit then
    MAP @ USED @ ;
 
 \ A root's absolute spelling and its canonical directory.
@@ -146,23 +166,55 @@ public
    u 0 <= if exit then
    TEXT-READ a u a 0 APPEND ;
 
-\ The file at the NUL-terminated path: its change time seconds, nanoseconds and
-\ size, or 0 0 -1 when it is missing or not a regular file.
-: STAMP ( ptr u8 -- n n n )
-   STAT-BUF stat64 0 < if 0 0 -1 exit then
-   STAT-REGULAR? 0= if 0 0 -1 exit then
+private
+
+\ The stamp of the stat whose return code is rc, which filled STAT-BUF.
+: STAT-STAMP ( n -- n n n ) {: rc:n :}
+   rc 0 < if 0 0 -1 exit then
    FS-ABI:STAT-CTIME-SEC-OFF STAT-CELL@
-   FS-ABI:STAT-CTIME-NS-OFF STAT-CELL@
+   FS-ABI:STAT-CTIME-NS-OFF STAT-CELL@  STAT-TYPE 32 lshift or
    FS-ABI:STAT-SIZE-OFF STAT-CELL@ ;
 
-\ A path a word reads through FS and z, its NUL-terminated copy, which STAMP
-\ stats only while a recording is active.
-: FILE+ ( ptr u8 n ptr u8 -- ) {: a:ptr u:n z:ptr :}
-   ACTIVE @ 0= if exit then
-   z STAMP {: sec:n ns:n size:n :}
+public
+
+\ The file at the NUL-terminated path: its change time seconds, its type (mode
+\ and S_IFMT) shifted 32 bits over its change time nanoseconds, and its size; 0 0
+\ -1 when it is missing. A directory's change time moves when an entry is added,
+\ removed or renamed.
+: STAMP ( ptr u8 -- n n n ) STAT-BUF stat64 STAT-STAMP ;
+
+\ STAMP of the path itself, a symlink's own and never its target's.
+: LSTAMP ( ptr u8 -- n n n ) STAT-BUF lstat64 STAT-STAMP ;
+
+\ Whether a STAMP or LSTAMP still holding means the file reads the same: true for
+\ a missing file, a regular file, a directory or a symlink, whose change time
+\ moves with what a read answers; false for any other kind (a FIFO, a device).
+: STABLE? ( n n n -- bool )
+   drop nip 32 rshift {: t:n :}
+   t 0=  t FS-ABI:S-IFREG = or  t FS-ABI:S-IFDIR = or  t FS-ABI:S-IFLNK = or ;
+
+private
+
+: STAMP+ ( n ptr u8 n n n n -- ) {: kind:n a:ptr u:n sec:n ns:n size:n :}
    sec STAMP-BUF CELL-VIEW !
    ns STAMP-BUF CELL + CELL-VIEW !
    size STAMP-BUF 2 cells + CELL-VIEW !
-   FILE-READ a u STAMP-BUF 3 cells APPEND ;
+   kind a u STAMP-BUF 3 cells APPEND ;
+
+public
+
+\ A path a word reads and z, its NUL-terminated copy, recorded with its STAMP
+\ while a recording is active; on a thread other than main, MISS.
+: FILE+ ( ptr u8 n ptr u8 -- ) {: a:ptr u:n z:ptr :}
+   OFF-MAIN? if MISS exit then
+   STATUS @ ST-OFF = if exit then
+   FILE-READ a u z STAT-BUF stat64 STAT-STAMP STAMP+ ;
+
+\ FILE+ of a path a word reads without following a symlink at its end, which
+\ LSTAMP stats.
+: LFILE+ ( ptr u8 n ptr u8 -- ) {: a:ptr u:n z:ptr :}
+   OFF-MAIN? if MISS exit then
+   STATUS @ ST-OFF = if exit then
+   FILE-LREAD a u z STAT-BUF lstat64 STAT-STAMP STAMP+ ;
 
 ;package

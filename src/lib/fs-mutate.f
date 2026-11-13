@@ -335,7 +335,7 @@ private
    code throw ;
 
 : COPY-OPEN-SRC ( ptr u8 n -- n ) {: src:ptr srcu :}
-   src srcu >PATHZ open-rd {: in :}
+   src srcu READ-PATHZ open-rd {: in :}
    in 0 < if E-FS-OPEN throw then
    in ;
 
@@ -835,9 +835,15 @@ private
    TMPDIR-REFUSE
    E-SPAN-CAPACITY throw ;
 
+\ DIR? recording no read: a temp made in the root moves its change time, which
+\ no compile's answer depends on.
+: TMPDIR-DIR? ( ptr u8 n -- bool )
+   >PATHZ STAT-Z? 0= if false exit then
+   STAT-MODE@ S-IFMT and S-IFDIR = ;
+
 : TMPDIR-CHECK ( ptr u8 n n -- ptr u8 n ) {: a:ptr u prefixu :}
    u PATH-CAP > if a u TMPDIR-LONG then
-   a u DIR? 0= if
+   a u TMPDIR-DIR? 0= if
       a u s" TMPDIR is not a directory" E-FS-DIR 0 TMPDIR-REFUSE
       E-FS-DIR throw
    then

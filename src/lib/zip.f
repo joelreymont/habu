@@ -11,6 +11,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/zip-raw.f
 require src/lib/span.f
+require src/core/compile-reads.f
 
 package ZIP
 using FFI
@@ -76,6 +77,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    path len node room BUFFER-ALLOC room SPAN:MAKE CSTR node PATH-PTR !
    len node PATH-LEN !
    node SNAPSHOT-OPEN
+   path len node PATH-PTR @ COMPILE-READS:FILE+
    node PATH-PTR @ open-rd {: src:n :}
    src 0 < if E-FS-OPEN throw then src node SOURCE-FD !
    node COPY-SOURCE node CLOSE-SOURCE-FD

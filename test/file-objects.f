@@ -292,10 +292,11 @@ variable CLASS-N                        \ the class CLASS+ read
    b bu bn bnu IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
    PROG-1 u1 PROG-2 u2 STR= ;
 
-\ EXPECT: the file's stamp, its change time seconds, nanoseconds and size, each low byte first.
+\ EXPECT: the regular file's stamp, its change time seconds, its type over its change time nanoseconds
+\ and its size, each low byte first.
 : EXPECT! ( ptr u8 n -- )
    FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
-   cs EXPECT LE:U64!  cns EXPECT 8 + LE:U64!  size EXPECT 16 + LE:U64! ;
+   cs EXPECT LE:U64!  cns FS:S-IFREG 32 lshift or EXPECT 8 + LE:U64!  size EXPECT 16 + LE:U64! ;
 
 \ Build C's objects: each sequence's, the twins', e.f's, and count.f's and shape.f's, which A also
 \ writes; a refused file writes none, and count.f's holds its INPUT.
@@ -1304,6 +1305,242 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" build three rewrites no object" LABEL  n 0 T=
    s" prog-d" s\" 50\n" s" the program prints d.txt's byte" NEST-RUN ;
 
+\ The listing sequence's f.f: K counts the entries of e/, which it lists by its absolute path through FS-LIST:EACH.
+: WRITE-LIST ( -- )
+   L$ s" list" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s" e" NEST-PATH$ FS:MAKE-DIR
+   s" 1" SRC+  s" e/a.txt" NEST-WRITE
+   s\" require src/lib/fs-list.f\npackage FILE-OBJECTS-LIST\nvariable N\n: COUNTED ( -- ) s\" " SRC+
+   s" e" NEST-PATH$ SRC+
+   s\" \" [: 2drop 1 N +! ;] FS-LIST:EACH ;\nCOUNTED public N @ constant K ;package\n" SRC+
+   s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-LIST:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a directory a load lists: LS2, after a file is added to e/, prints a cold build's 2; LS3, with
+\ nothing changed, links every file.
+: LIST-CASE ( CMD:command -- CMD:command )
+   WRITE-LIST
+   s" LS" WHICH!  s" main.f" s" prog-l" NEST-BUILD 0= if exit then
+   s" prog-l" s\" 1\n" s" the program prints e/'s entry count" NEST-RUN
+   s" 2" SRC+  s" e/b.txt" NEST-WRITE
+   s" LS2" WHICH!  s" main.f" s" prog-l" NEST-BUILD 0= if exit then
+   s" prog-l" s\" 2\n" s" the program prints e/'s entry count" NEST-RUN  L$ MARK
+   s" LS3" WHICH!  s" main.f" s" prog-l" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build three rewrites no object" LABEL  n 0 T=
+   s" prog-l" s\" 2\n" s" the program prints e/'s entry count" NEST-RUN ;
+
+\ The link sequence's f.f: K is whether l is a symlink, which it asks by its absolute path through
+\ FS:SYMLINK?; l names a missing file.
+: WRITE-LINK ( -- )
+   L$ s" link" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s" missing" s" l" NEST-PATH$ FS:MAKE-SYMLINK
+   s\" require src/lib/fs.f\npackage FILE-OBJECTS-LINK\npublic s\" " SRC+
+   s" l" NEST-PATH$ SRC+
+   s\" \" FS:SYMLINK? bool>n constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-LINK:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a dangling symlink a load asks about: SL2, with nothing changed, links every file; SL3, after
+\ l is removed, prints a cold build's 0; SL4, with nothing changed, links every file.
+: LINK-CASE ( CMD:command -- CMD:command )
+   WRITE-LINK
+   s" SL" WHICH!  s" main.f" s" prog-y" NEST-BUILD 0= if exit then
+   s" prog-y" s\" -1\n" s" the program prints whether l is a symlink" NEST-RUN  L$ MARK
+   s" SL2" WHICH!  s" main.f" s" prog-y" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: kept:n :}
+   s" build two rewrites no object" LABEL  kept 0 T=
+   s" l" NEST-PATH$ FS:REMOVE-FILE
+   s" SL3" WHICH!  s" main.f" s" prog-y" NEST-BUILD 0= if exit then
+   s" prog-y" s\" 0\n" s" the program prints whether l is a symlink" NEST-RUN  L$ MARK
+   s" SL4" WHICH!  s" main.f" s" prog-y" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build four rewrites no object" LABEL  n 0 T=
+   s" prog-y" s\" 0\n" s" the program prints whether l is a symlink" NEST-RUN ;
+
+\ The task sequence's f.f: K is d.txt's first byte, which a task f.f runs and joins as it loads reads
+\ by its absolute path through FS:READ-ALL.
+: WRITE-TASK ( -- )
+   L$ s" task" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s" 1" WRITE-DATA
+   s\" require src/lib/fs.f\nrequire src/lib/task.f\npackage FILE-OBJECTS-TASK\n1 BUFFER: B\n" SRC+
+   s\" TASK:MIN-STACK TASK:TASK READER\n: READ-D ( -- ) s\" " SRC+
+   s" d.txt" NEST-PATH$ SRC+
+   s\" \" B 1 FS:READ-ALL drop 0 TASK:RETURN ;\n" SRC+
+   s\" : RUN-READER ( -- ) ['] READ-D READER TASK:ACTIVATE\n" SRC+
+   s\"    READER TASK:JOIN MATCH result ok OF drop ENDOF err OF throw ENDOF ;MATCH ;\n" SRC+
+   s\" RUN-READER public B c@ constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-TASK:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a file a task reads, which no recording holds: TK2, with nothing changed, still compiles f.f.
+: TASK-CASE ( CMD:command -- CMD:command )
+   WRITE-TASK
+   s" TK" WHICH!  s" main.f" s" prog-t" NEST-BUILD 0= if exit then
+   s" prog-t" s\" 49\n" s" the program prints d.txt's byte" NEST-RUN  L$ MARK
+   s" TK2" WHICH!  s" main.f" s" prog-t" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build two rewrites an object" LABEL  n 0 > TTRUE
+   s" prog-t" s\" 49\n" s" the program prints d.txt's byte" NEST-RUN ;
+
+\ The samefile sequence's f.f: K is whether a.txt and l, a symlink to it, name one file, which it
+\ asks by their absolute paths through FS:SAMEFILE.
+: WRITE-SAMEFILE ( -- )
+   L$ s" samefile" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s" 1" SRC+  s" a.txt" NEST-WRITE
+   s" 22" SRC+  s" b.txt" NEST-WRITE
+   s" a.txt" s" l" NEST-PATH$ FS:MAKE-SYMLINK
+   s\" require src/lib/fs-identity.f\npackage FILE-OBJECTS-SAMEFILE\npublic s\" " SRC+
+   s" a.txt" NEST-PATH$ SRC+  s\" \" s\" " SRC+  s" l" NEST-PATH$ SRC+
+   s\" \" FS:SAMEFILE bool>n constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-SAMEFILE:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a symlink a load compares through: SF2, after l is re-pointed to b.txt, prints a cold build's
+\ 0; SF3, with nothing changed, links every file.
+: SAMEFILE-CASE ( CMD:command -- CMD:command )
+   WRITE-SAMEFILE
+   s" SF" WHICH!  s" main.f" s" prog-sf" NEST-BUILD 0= if exit then
+   s" prog-sf" s\" -1\n" s" the program prints whether a.txt and l are one file" NEST-RUN
+   s" l" NEST-PATH$ FS:REMOVE-FILE  s" b.txt" s" l" NEST-PATH$ FS:MAKE-SYMLINK
+   s" SF2" WHICH!  s" main.f" s" prog-sf" NEST-BUILD 0= if exit then
+   s" prog-sf" s\" 0\n" s" the program prints whether a.txt and l are one file" NEST-RUN  L$ MARK
+   s" SF3" WHICH!  s" main.f" s" prog-sf" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build three rewrites no object" LABEL  n 0 T=
+   s" prog-sf" s\" 0\n" s" the program prints whether a.txt and l are one file" NEST-RUN ;
+
+\ The anchored sequence's f.f: K is the byte count of d.txt, which it reads through FS:READ-FILE-AT
+\ from its directory, opened by its real path (FS:OPEN-DIR follows no symlink) as it loads.
+: WRITE-ANCHORED ( -- )
+   L$ s" anchored" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s" 1" WRITE-DATA
+   s\" require src/lib/fs-anchored.f\npackage FILE-OBJECTS-ANCHORED\n1 SPAN-BUFFER: B\n" SRC+
+   s\" : READ-D ( -- n ) s\" " SRC+
+   NEST-DIR NEST-DIR-U @ FS:>PATHZ NEST-PATH PATH-CAP realpath {: real:n :}
+   NEST-PATH real SRC+
+   s\" \" FS:OPEN-DIR {: d:fd :} d s\" d.txt\" B FS:READ-FILE-AT d FS:CLOSE-DIR ;\n" SRC+
+   s\" public READ-D constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-ANCHORED:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a file a load reads through an anchor, which no recording holds: AN2, with nothing changed,
+\ still compiles f.f.
+: ANCHORED-CASE ( CMD:command -- CMD:command )
+   WRITE-ANCHORED
+   s" AN" WHICH!  s" main.f" s" prog-an" NEST-BUILD 0= if exit then
+   s" prog-an" s\" 1\n" s" the program prints d.txt's byte count" NEST-RUN  L$ MARK
+   s" AN2" WHICH!  s" main.f" s" prog-an" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build two rewrites an object" LABEL  n 0 > TTRUE
+   s" prog-an" s\" 1\n" s" the program prints d.txt's byte count" NEST-RUN ;
+
+\ The spawn sequence's f.f: K is d.txt's first byte, which /bin/cat, run as f.f loads, reads by its
+\ absolute path and prints.
+: WRITE-SPAWN ( -- )
+   L$ s" spawn" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s" 1" WRITE-DATA
+   s\" require src/lib/process-command.f\npackage FILE-OBJECTS-SPAWN\nvariable N\n" SRC+
+   s\" : CAT ( CMD:command -- CMD:command ) s\" " SRC+  s" d.txt" NEST-PATH$ SRC+
+   s\" \" CMD:ARG+ s\" /bin/cat\" PROCESS:WAIT-FOREVER 1 CMD:RUN CMD:OUT$ drop c@ N ! ;\n" SRC+
+   s\" : RUN-CAT ( -- ) [: CAT ;] CMD:WITH-COMMAND ;\nRUN-CAT public N @ constant K ;package\n" SRC+
+   s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-SPAWN:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a file a process a load starts reads, which no recording holds: SP2, after d.txt's byte
+\ changes, prints a cold build's 50.
+: SPAWN-CASE ( CMD:command -- CMD:command )
+   WRITE-SPAWN
+   s" SP" WHICH!  s" main.f" s" prog-sp" NEST-BUILD 0= if exit then
+   s" prog-sp" s\" 49\n" s" the program prints d.txt's byte" NEST-RUN
+   s" 2" WRITE-DATA
+   s" SP2" WHICH!  s" main.f" s" prog-sp" NEST-BUILD 0= if exit then
+   s" prog-sp" s\" 50\n" s" the program prints d.txt's byte" NEST-RUN ;
+
+\ The zip sequence's f.f: K is the entry count of z.zip, an empty archive, which it opens by its
+\ absolute path through ZIP:OPEN and closes.
+: WRITE-ZIP ( -- )
+   L$ s" zip" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" PK\x05\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" SRC+
+   s" z.zip" NEST-WRITE
+   s\" require src/lib/zip.f\npackage FILE-OBJECTS-ZIP\n: COUNTED ( -- n ) s\" " SRC+
+   s" z.zip" NEST-PATH$ SRC+
+   s\" \" ZIP:OPEN {: z:ZIP:archive :} z ZIP:COUNT z ZIP:CLOSE ;\n" SRC+
+   s\" public COUNTED constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-ZIP:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards the temp root a ZIP:OPEN snapshots into, which no compile reads: ZP2, with nothing changed,
+\ links every file.
+: ZIP-CASE ( CMD:command -- CMD:command )
+   WRITE-ZIP
+   s" ZP" WHICH!  s" main.f" s" prog-z" NEST-BUILD 0= if exit then
+   s" prog-z" s\" 0\n" s" the program prints z.zip's entry count" NEST-RUN  L$ MARK
+   s" ZP2" WHICH!  s" main.f" s" prog-z" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build two rewrites no object" LABEL  n 0 T=
+   s" prog-z" s\" 0\n" s" the program prints z.zip's entry count" NEST-RUN ;
+
+\ The jsonl sequence's f.f: K counts the lines of d.jsonl, which it reads by its absolute path
+\ through JSONL:OPEN.
+: WRITE-JSONL ( -- )
+   L$ s" jsonl" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" 1\n" SRC+  s" d.jsonl" NEST-WRITE
+   s\" require src/lib/byte-buffer.f\nrequire src/lib/jsonl.f\npackage FILE-OBJECTS-JSONL\n" SRC+
+   s\" TYPED-VARIABLE C JSONL:cursor\nvariable N\n: COUNTED ( -- ) C s\" " SRC+
+   s" d.jsonl" NEST-PATH$ SRC+
+   s\" \" 64 BUF:N>BLEN JSONL:OPEN begin C JSONL:NEXT while 1 N +! repeat ;\n" SRC+
+   s\" COUNTED public N @ constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-JSONL:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a file a load reads through JSONL: JL2, after a line is added to d.jsonl, prints a cold
+\ build's 2; JL3, with nothing changed, links every file.
+: JSONL-CASE ( CMD:command -- CMD:command )
+   WRITE-JSONL
+   s" JL" WHICH!  s" main.f" s" prog-j" NEST-BUILD 0= if exit then
+   s" prog-j" s\" 1\n" s" the program prints d.jsonl's line count" NEST-RUN
+   s\" 1\n2\n" SRC+  s" d.jsonl" NEST-WRITE
+   s" JL2" WHICH!  s" main.f" s" prog-j" NEST-BUILD 0= if exit then
+   s" prog-j" s\" 2\n" s" the program prints d.jsonl's line count" NEST-RUN  L$ MARK
+   s" JL3" WHICH!  s" main.f" s" prog-j" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build three rewrites no object" LABEL  n 0 T=
+   s" prog-j" s\" 2\n" s" the program prints d.jsonl's line count" NEST-RUN ;
+
+\ The kind sequence's f.f: K is whether k is a directory, which it asks by its absolute path through FS:DIR?.
+: WRITE-KIND ( -- )
+   L$ s" kind" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" require src/lib/fs.f\npackage FILE-OBJECTS-KIND\npublic s\" " SRC+
+   s" k" NEST-PATH$ SRC+
+   s\" \" FS:DIR? bool>n constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-KIND:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a file's kind a load asks: KD2, after a missing k becomes a directory, and KD3, after that
+\ directory becomes a regular file, print a cold build's answer.
+: KIND-CASE ( CMD:command -- CMD:command )
+   WRITE-KIND
+   s" KD" WHICH!  s" main.f" s" prog-k" NEST-BUILD 0= if exit then
+   s" prog-k" s\" 0\n" s" the program prints whether k is a directory" NEST-RUN
+   s" k" NEST-PATH$ FS:MAKE-DIR
+   s" KD2" WHICH!  s" main.f" s" prog-k" NEST-BUILD 0= if exit then
+   s" prog-k" s\" -1\n" s" the program prints whether k is a directory" NEST-RUN
+   s" k" NEST-PATH$ FS:REMOVE-DIR  s" 1" SRC+  s" k" NEST-WRITE
+   s" KD3" WHICH!  s" main.f" s" prog-k" NEST-BUILD 0= if exit then
+   s" prog-k" s\" 0\n" s" the program prints whether k is a directory" NEST-RUN ;
+
+\ The device sequence's f.f: K is the byte count a read of /dev/null answers, a file whose change time
+\ does not track its bytes.
+: WRITE-DEVICE ( -- )
+   L$ s" device" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" require src/lib/fs.f\npackage FILE-OBJECTS-DEVICE\n1 BUFFER: B\n" SRC+
+   s\" public s\" /dev/null\" B 1 FS:READ-ALL constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-DEVICE:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a read of a file no stamp covers: DV2, with nothing changed, still compiles f.f.
+: DEVICE-CASE ( CMD:command -- CMD:command )
+   WRITE-DEVICE
+   s" DV" WHICH!  s" main.f" s" prog-v" NEST-BUILD 0= if exit then
+   s" prog-v" s\" 0\n" s" the program prints /dev/null's byte count" NEST-RUN  L$ MARK
+   s" DV2" WHICH!  s" main.f" s" prog-v" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build two rewrites an object" LABEL  n 0 > TTRUE
+   s" prog-v" s\" 0\n" s" the program prints /dev/null's byte count" NEST-RUN ;
+
 \ The spelled sequence's turn.f: the record turn, with a third field when the
 \ flag is true, and box<a>.
 : WRITE-TURN ( bool -- )
@@ -1538,7 +1775,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
-      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
+      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
+      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE
+      DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
 

@@ -9,6 +9,7 @@ require src/lib/error.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/fs.f
+require src/core/compile-reads.f
 
 package FS-LIST
 public
@@ -69,7 +70,9 @@ CAST: CONTEXT>PTR ( context -- ptr u8 )
 
 
 : OPEN ( ptr u8 ptr u8 n -- ) {: ls:ptr path:ptr size:n :}
-   path size FS:>PATHZ open-rd {: handle:n :}
+   path size FS:>PATHZ {: z:ptr :}
+   path size z COMPILE-READS:FILE+
+   z open-rd {: handle:n :}
    handle 0 < if E-OPEN throw then
    handle ls FD-CELL ! ;
 

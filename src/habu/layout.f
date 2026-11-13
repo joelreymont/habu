@@ -1067,6 +1067,8 @@ PATHZ-OFF PATHZ-BYTES + constant TEXT-OFF
 96 constant STAT-SIZE-OFF
 $F000 constant S-IFMT
 $8000 constant S-IFREG
+$4000 constant S-IFDIR
+$A000 constant S-IFLNK
 ;package
 
 \ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch.

@@ -6,6 +6,7 @@
 \ vectors, shared with no process-wide staging. PROCESS:ERRNO is a TASK:+USER cell.
 
 require src/lib/error.f
+require src/core/compile-reads.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
@@ -357,6 +358,7 @@ public
 \ Spawns the request and frees it whatever the outcome. A refusal throws
 \ E-PROC-SPAWN with the positive errno in ERRNO; a spawn that succeeds sets it 0.
 : SPAWN ( PROCESS:request -- pid )
+   COMPILE-READS:MISS
    ERASE {: h:ptr :}
    h 0 [: drop dup LAUNCH ;] catch {: rc :}
    rc 0<> if drop drop h RELEASE rc throw then

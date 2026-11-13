@@ -11,6 +11,7 @@ require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/string.f
 require src/lib/span.f
+require src/core/compile-reads.f
 
 package JSONL
 public
@@ -80,7 +81,9 @@ public
 : OPEN ( ptr cursor ptr u8 n NUM:byte-len -- )
    {: cur:ptr path:ptr u:n max:NUM:byte-len :}
    cur CURSOR-LIVE @ if E-STATE throw then
-   path u FS:>PATHZ open-rd {: fd:n :}
+   path u FS:>PATHZ {: z:ptr :}
+   path u z COMPILE-READS:FILE+
+   z open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd >FD cur CURSOR-FD !
    max cur CURSOR-MAX !

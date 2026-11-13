@@ -6,6 +6,7 @@
 \ to a task.
 
 require src/lib/error.f
+require src/core/compile-reads.f
 require src/lib/task.f                       \ TASK:CHILD-RESET, registered below
 require src/core/dynamic-storage.f
 require src/habu/address-cells.f
@@ -120,6 +121,7 @@ public
 \ A caught stop signal reaches the child after its resets, under the default
 \ action. A refusal throws before the fork, but a refused fork answers pid < 0.
 : RAW ( -- pid )
+   COMPILE-READS:MISS
    SIGSET-BYTES 2 * MEM:BYTES-ALLOC-LEN
    [: drop FORK-MASKED ;] MEM:WITH-BYTES ;
 

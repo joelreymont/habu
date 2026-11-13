@@ -1162,16 +1162,20 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    false BODY-HIT !
    2 HIT-STAMP +!  0 HIT-N !  NAMED-RECS BUF:CLEAR ;
 
-\ After KEY!, before LINK-PART: INPUT-STAMP, the active file's change time seconds, nanoseconds and
-\ size, and HITS-CLEAR, NAMES first taking the records the build's body made since the last file.
+\ After KEY!, before LINK-PART: INPUT-STAMP, the active file's stamp (SOURCE-ROOT:ACTIVE-STAMP),
+\ and HITS-CLEAR, NAMES first taking the records the build's body made since the last file.
 : INPUT! ( -- )
    SOURCE-ROOT:ACTIVE-STAMP {: sec:n ns:n size:n :}
    sec INPUT-STAMP LE:U64!  ns INPUT-STAMP 8 + LE:U64!  size INPUT-STAMP 16 + LE:U64!
    FILE-REC @ -1 INDEX-RECS
    HITS-CLEAR ;
 
-\ False for bytes no file stamp covers (size -1): such a file never links.
-: STAMPED? ( -- bool ) INPUT-STAMP 16 + LE:U64@ -1 <> ;
+\ False for bytes no file stamp covers: READ-OS did not read them (size -1) or
+\ their file's stamp is not COMPILE-READS:STABLE?. Such a file never links.
+: STAMPED? ( -- bool )
+   INPUT-STAMP LE:U64@  INPUT-STAMP 8 + LE:U64@  INPUT-STAMP 16 + LE:U64@
+   {: sec:n ns:n size:n :}
+   size -1 <>  sec ns size COMPILE-READS:STABLE?  and ;
 
 \ After PART-NAMES' scan, before WRITE-OBJECT: NAMED-ROWS from HITS, the pieces the source and its texts name whole, which
 \ a requested file's load overwrites.
@@ -3311,13 +3315,20 @@ variable RD-END
    u PATH-CAP > if false exit then
    a u NUL-FREE? ;
 
-\ Whether the file has the stamp (COMPILE-READS:STAMP) whose three cells are the bytes.
-: FILE-HOLDS? ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr u:n b:ptr v:n :}
+\ Whether the file at the path has the COMPILE-READS:LSTAMP, when link is true, else the
+\ COMPILE-READS:STAMP, of the three cells; false for a stamp that is not COMPILE-READS:STABLE?.
+: STAMP-SAME? ( ptr u8 n n n n bool -- bool )
+   {: a:ptr u:n sec:n ns:n size:n link:bool :}
+   sec ns size COMPILE-READS:STABLE? 0= if false exit then
+   a u FS:>PATHZ  link if COMPILE-READS:LSTAMP else COMPILE-READS:STAMP then {: s:n n:n z:n :}
+   s sec =  n ns =  and  z size =  and ;
+
+\ Whether the file has the stamp whose three cells are the bytes (STAMP-SAME?).
+: FILE-HOLDS? ( ptr u8 n ptr u8 n bool -- bool )
+   {: a:ptr u:n b:ptr v:n link:bool :}
    v 24 <> if false exit then
    a u PATH-OK? 0= if false exit then
-   a u FS:>PATHZ COMPILE-READS:STAMP {: sec:n ns:n size:n :}
-   sec b LE:U64@ =  ns b 8 + LE:U64@ =  and  size b 16 + LE:U64@ =  and ;
+   a u  b LE:U64@  b 8 + LE:U64@  b 16 + LE:U64@  link STAMP-SAME? ;
 
 \ Whether the read of the kind (COMPILE-READS) reads the same now; false for a spelling holding a NUL, which ROOT?
 \ would refuse with a throw (E-PATH-NUL).
@@ -3327,7 +3338,8 @@ variable RD-END
    kind COMPILE-READS:ROOT-READ = if a u b v ROOT-HOLDS? exit then
    kind COMPILE-READS:ENV-READ = if a u b v ENV-HOLDS? exit then
    kind COMPILE-READS:ENV-ABSENT = if a u NULL-PTR 0 ENV-HOLDS? exit then
-   kind COMPILE-READS:FILE-READ = if a u b v FILE-HOLDS? exit then
+   kind COMPILE-READS:FILE-READ = if a u b v false FILE-HOLDS? exit then
+   kind COMPILE-READS:FILE-LREAD = if a u b v true FILE-HOLDS? exit then
    false ;
 
 \ Whether every read in the bytes, an INPUT reads field in COMPILE-READS' layout, reads the same now: false when a
@@ -4269,13 +4281,12 @@ variable PRIOR-STORES-SIZE
 \ Each HOLD- word takes the log's bytes and an offset in a record and answers the offset past what it checked, or -1
 \ when that does not hold now or runs past the bytes.
 
-\ Whether the file at the canonical path is a regular file with the stamp's change time and size.
+\ Whether the file at the canonical path has the stamp its load took (STAMP-SAME?); false for
+\ bytes no file stamp covers (size -1).
 : STAMP-HOLDS? ( ptr u8 n n n n -- bool )
    {: a:ptr u:n sec:n ns:n size:n :}
    size -1 = if false exit then
-   a u FS:TRY-FILE-META {: fsize:n msec:n mns:n csec:n cns:n file:bool :}
-   file 0= if false exit then
-   csec sec =  cns ns =  and  fsize size =  and ;
+   a u sec ns size false STAMP-SAME? ;
 
 : HOLD-SOURCE ( ptr u8 n n -- n )
    {: p:ptr pu:n at:n :}
@@ -5359,6 +5370,7 @@ variable DUE-MADE
 \ The running recording's reads (COMPILE-READS:READS$), each whole: its texts into PART-TEXTS, the others into
 \ PART-READS; none when no recording is active.
 : READS-KEEP ( -- )
+   COMPILE-READS:MISSED? if true UNLINKABLE ! then
    PART-READS BUF:CLEAR  PART-TEXTS BUF:CLEAR
    COMPILE-READS:READS$ {: p:ptr pu:n :}
    0 begin dup pu < while

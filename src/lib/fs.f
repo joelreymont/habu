@@ -46,13 +46,13 @@ FS-ABI:S-IFMT constant S-IFMT
 
 private
 $1000 constant S-IFIFO
-$4000 constant S-IFDIR
+FS-ABI:S-IFDIR constant S-IFDIR
 
 public
 FS-ABI:S-IFREG constant S-IFREG
 
 private
-$A000 constant S-IFLNK
+FS-ABI:S-IFLNK constant S-IFLNK
 
 public
 $2E constant DOT
@@ -357,6 +357,19 @@ private
    a u z COMPILE-READS:FILE+
    z ;
 
+\ >PATHZ of a path whose final symlink a word reads, not its target, the read
+\ recorded.
+: READ-LPATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u:n :}
+   a u >PATHZ {: z:ptr :}
+   a u z COMPILE-READS:LFILE+
+   z ;
+
+\ Whether stat answers for the NUL-terminated path, into STAT-BUF; it records no
+\ read.
+: STAT-Z? ( ptr u8 -- bool )
+   STAT-BUF stat64 0 < if false exit then
+   true ;
+
 public
 : EXISTS? ( ptr u8 n -- bool )
    READ-PATHZ 0 access 0= ;
@@ -379,12 +392,10 @@ public
 : STAT-CTIME-NS@ ( -- n )
    STAT-BUF FS-ABI:STAT-CTIME-NS-OFF + LE:U64@ ;
 
-: TRY-STAT ( ptr u8 n -- bool )
-   READ-PATHZ STAT-BUF stat64 0 < if false exit then
-   true ;
+: TRY-STAT ( ptr u8 n -- bool ) READ-PATHZ STAT-Z? ;
 
 : TRY-LSTAT ( ptr u8 n -- bool )
-   READ-PATHZ STAT-BUF lstat64 0 < if false exit then
+   READ-LPATHZ STAT-BUF lstat64 0 < if false exit then
    true ;
 
 private
@@ -703,7 +714,7 @@ private
 
 public
 : OPEN-DIR-READ ( ptr u8 n -- n )
-   >PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then ;
+   READ-PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then ;
 
 private
 \ openat(2) and unlinkat(2): the NUL-terminated name relative to a directory
