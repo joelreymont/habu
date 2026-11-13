@@ -11,6 +11,7 @@
 require src/habu/layout.f
 require src/habu/xref.f
 require src/core/bytes.f
+require src/core/rollback-cells.f
 require src/lib/prelude.f
 
 \ Arrays: -2000..-2099
@@ -716,6 +717,7 @@ private
 NAME-CAP 30 + constant LINE-CAP
 
 PERSISTED-PTR-VARIABLE HEAD
+HEAD ROLLBACK-CELLS:MARK
 create LINE LINE-CAP allot
 variable LINE-U
 create NL $0A c,

@@ -27,6 +27,7 @@
 
 HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
 s" src/lib/error.f" required
+s" src/core/rollback-cells.f" required
 s" src/lib/span.f" required
 s" src/lib/string.f" required
 s" src/lib/le.f" required
@@ -195,11 +196,17 @@ FN-NAME-OFF FN-NAME-CAP + constant FN-ROW-BYTES
 4 cells constant LIB-PATH-OFF
 LIB-PATH-OFF LIB-PATH-CAP + 7 + 8 / 8 * constant LIB-ROW-BYTES
 PERSISTED-PTR-VARIABLE FN-TABLE
+FN-TABLE ROLLBACK-CELLS:MARK
 PERSISTED-PTR-VARIABLE LIB-TABLE
+LIB-TABLE ROLLBACK-CELLS:MARK
 variable FN-CAP
+FN-CAP ROLLBACK-CELLS:MARK
 variable LIB-CAP
+LIB-CAP ROLLBACK-CELLS:MARK
 variable FN-N
+FN-N ROLLBACK-CELLS:MARK
 variable LIB-N
+LIB-N ROLLBACK-CELLS:MARK
 
 : ALIGNED-ROWS ( n -- ptr u8 )
    {: size:n :}
@@ -954,10 +961,12 @@ variable RES-NULLABLE                      \ 1 for a nullable<u8> result
 variable VAR-START
 variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 when none
 variable CUR-LIB
+CUR-LIB ROLLBACK-CELLS:MARK
 variable OPEN                              \ 0 closed, else 1 + the open declaration's clauses
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET
 SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
+SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 \ The token cells a library selection shares with a declaration, at rest.
 : REST-TOKENS ( -- )

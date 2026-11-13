@@ -19,6 +19,7 @@ CAST: FFI-T-CELL-AT ( n -- ptr n )
 PROCESS-SYMBOLS
 FUNCTION: FFI-T-STRTOL strtol ( ptr u8 ptr u8 n -- n ) 1 8 WRITES-BYTES ;FUNCTION
 FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) 0 2 WRITES-ARG ;FUNCTION
+FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 
 : FFI-T-OUT-PARAM ( -- )
    s\" 42x\z" drop {: num:ptr :}
@@ -52,6 +53,49 @@ FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) 0 2 WRITES-ARG ;FUNCTION
    FFI:KPARAM-RESET
    FFI:KPARAM-COUNT 0 T= ;
 
+\ A row no other declaration shares, by its argument and spill counts.
+variable FFI-T-PADS
+: FFI-T-PAD ( -- n )
+   FFI-T-PADS @ {: k:n :}
+   1 FFI-T-PADS +!
+   s" hb_pad_row" 0
+   k FFI:MAX-ARGS 1+ mod  k FFI:MAX-ARGS 1+ /  0
+   FFI:DECLARE-ROW 1+ ;
+
+: FFI-T-POW2? ( n -- bool ) dup 1- and 0= ;
+
+\ A full table, so the next declaration grows it.
+: FFI-T-FULL ( -- )
+   begin FFI-T-PAD dup FFI-T-POW2? 0= while drop repeat drop ;
+
+\ The table this declaration grows lies in the storage its rollback cuts.
+: FFI-T-CUT-TEXT$ ( -- ptr u8 n )
+   s\" FUNCTION: FFI-T-CUT getpid ( -- i32 ) ;FUNCTION  1 throw" ;
+
+: FFI-T-AFTER-TEXT$ ( -- ptr u8 n )
+   s\" FUNCTION: FFI-T-LLABS llabs ( n -- n ) ;FUNCTION  -7 FFI-T-LLABS" ;
+
+: FFI-T-FILL ( n -- ) 0 ?do 777 , loop ;
+
+: FFI-T-SELECT-TEXT$ ( -- ptr u8 n )
+   s" VERSIONED-LIBRARY habu-no-such 1  1 throw" ;
+
+: FFI-T-ABS-TEXT$ ( -- ptr u8 n )
+   s" FUNCTION: FFI-T-ABS abs ( n -- i32 ) ;FUNCTION  -9 FFI-T-ABS" ;
+
+\ Calls through rows declared before and after a rolled-back declaration.
+: FFI-T-ROLLBACK ( -- )
+   -5 FFI-T-LABS 5 T=
+   FFI-T-FULL
+   FFI-T-CUT-TEXT$ TEST-EVAL:RC 1 T=
+   4000 FFI-T-FILL
+   -6 FFI-T-LABS 6 T=
+   FFI-T-AFTER-TEXT$ TEST-EVAL:N 7 T=
+   -8 FFI-T-LABS 8 T=
+   s" a rolled-back library selection leaves the one before it" T-LABEL
+   FFI-T-SELECT-TEXT$ TEST-EVAL:RC 1 T=
+   FFI-T-ABS-TEXT$ TEST-EVAL:N 9 T= ;
+
 \ src/lib/ffi-test.f calls C functions that write the sret x8 and stack-slot
 \ outputs, and names the shapes no C function witnesses.
 
@@ -60,6 +104,7 @@ FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) 0 2 WRITES-ARG ;FUNCTION
    FFI-T-EVALREC-DISJOINT
    FFI-T-OUT-PARAM
    FFI-T-KPARAMS
+   FFI-T-ROLLBACK
    T-REPORT ;
 
 FFI-ABI-RUN

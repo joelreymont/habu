@@ -164,6 +164,29 @@ package PB
    [: LONG-NAME-RUN ;] CMD:WITH-COMMAND ;
 
 
+\ The cut text's row lies where FILL lays its cells, so a head left on it
+\ walks into them.
+: ROLLBACK-TEXT$ ( -- ptr u8 n )
+   s\" -9686 s\" the cut code\" ERROR:CODE E-CUT  1 throw" ;
+
+
+: AFTER-TEXT$ ( -- ptr u8 n )
+   s\" -9687 s\" the code after the cut\" ERROR:CODE E-AFTER" ;
+
+
+: FILL ( n -- ) 0 ?do 777 , loop ;
+
+
+: ROLLBACK-CASE ( -- )
+   s" a code rolled back by its evaluate leaves the codes before it" T-LABEL
+   ROLLBACK-TEXT$ TEST-EVAL:RC 1 T=
+   12 FILL
+   -9670 ERROR:NAME$ s" ERROR-TEST:E-PACKAGED" T$=
+   -9686 ERROR:NAME$ nip 0 T=
+   AFTER-TEXT$ TEST-EVAL:RC 0 T=
+   -9687 ERROR:NAME$ s" ERROR-TEST:E-AFTER" T$= ;
+
+
 : ERROR-RUN ( -- )
    PACKAGED-CASE
    GLOBAL-CASE
@@ -180,7 +203,8 @@ package PB
    EMPTY-CASE
    FAULT-EMPTY-CASE
    NO-NAME-CASE
-   LONG-NAME-CASE ;
+   LONG-NAME-CASE
+   ROLLBACK-CASE ;
 
 ERROR-RUN
 T-REPORT
