@@ -1,5 +1,5 @@
-\ link.f - WLINK (src/arch/wasm/link.f) on the product engine: encoded
-\ functions, a data image and table slots become one Wasm module. Byte fixtures
+\ link.f - WLINK (src/arch/wasm/link.f) on the host engine: function
+\ bodies, a data image and table slots become one Wasm module. Byte fixtures
 \ pin the module shape and ABI, the run wrapper's task DATA header stores
 \ included; the device gate validates and runs linked modules. Call and address
 \ fields are the padded LEB WLINK writes, where a text assembler writes the
@@ -11,9 +11,7 @@ require src/lib/string.f
 require src/lib/span.f
 require src/core/sha256.f
 require src/arch/wasm/leb.f
-require src/arch/wasm/wstruct.f
 require src/arch/wasm/profile.f
-require src/arch/wasm/encode.f
 require src/arch/wasm/link.f
 require test/wasm/w03.f
 require src/compiler/native/emission.f
@@ -114,6 +112,8 @@ TYPED-VARIABLE WANT-U len
 
 \ ---- refusals ----------------------------------------------------------------------
 : LINK0 ( -- )  0 WLINK:LINK 2drop ;
+
+0 constant ADDR-NONE                 \ the address kind of a field holding no address
 
 $7FFFFFFFFFFFFFFF constant MAX-N
 
@@ -424,11 +424,11 @@ $350000 constant PAGE-53-END
    s" a code address of slot 0, which holds no function, is refused" T-LABEL
    BASE  2 2 NEMIT:ADDR-CODE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an address of kind none names nothing and is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-NONE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
+   BASE  2 2 ADDR-NONE 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-UNRESOLVED TTHROWSQ
    s" an address of a kind past code is refused" T-LABEL
    BASE  2 2 NEMIT:ADDR-CODE 1+ 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-KIND TTHROWSQ
    s" an address of a kind below none is refused" T-LABEL
-   BASE  2 2 WSTRUCT:ADDR-NONE 1- 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-KIND TTHROWSQ
+   BASE  2 2 ADDR-NONE 1- 0 WLINK:ADDRESS+  [: LINK0 ;] E-WLINK-KIND TTHROWSQ
    s" an address field that is not padded is refused" T-LABEL
    BASE  0 BODY-U !  0 B, $42 B, 0 B, $1A B, $41 B, 0 B, $0B B,  0 0 0 ADD0
    3 2 NEMIT:ADDR-DATA 0 WLINK:ADDRESS+  [: LINK0 ;] WLEB:E-UNPADDED TTHROWSQ ;

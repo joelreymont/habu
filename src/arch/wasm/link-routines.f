@@ -38,8 +38,7 @@ using WCODE
 3 constant L-B
 4 constant L-R
 
-\ The NaN every float operation that makes one answers, src/arch/wasm/select.f
-\ NAN-MADE.
+\ The NaN every float operation that makes one answers.
 $7FF8000000000000 constant NAN-MADE
 
 \ ---- map-anon and munmap

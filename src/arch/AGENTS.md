@@ -10,7 +10,7 @@ table (`src/compiler/native/backend.f`) from its `passes.f`.
   (`link-kernel.f`) and code placement (`link.f`).
 - `x86-64/` — encoders (`asm.f`) into a byte sink, the code layer
   (`icode.f`), ABI, machine, runtime emitters (`rt.f`), disassembler.
-- `wasm/` — the Wasm backend (`backend.f`): dialect, selector,
-  structured control, encoder, linker, kernel words, target profile.
+- `wasm/` — tier 0's Wasm linker (`link*.f`), kernel words, target
+  profile, LEB128 (`leb.f`) and code bytes (`code.f`).
 - `arm32/`, `tic6x/` — instruction constructors, no backend; `tic6x/` adds a
   C66x simulator, resource facts and EABI helpers.

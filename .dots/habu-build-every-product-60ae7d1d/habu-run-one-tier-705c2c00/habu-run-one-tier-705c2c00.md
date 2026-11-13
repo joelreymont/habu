@@ -33,8 +33,7 @@ DEFTYPEs/constants (t0-x64.f:63-111 move), one TYPED-VARIABLE xt cell per op + s
 publish.f:29-30), VREGS as a cell, registry T0-EMIT:PROVIDE ( CTARGET:arch [ -- ] -- ) / SELECT ( arch -- ),
 E-T0-TARGET if none. Each emitter ends `ARCH [: INSTALL ;] T0-EMIT:PROVIDE`. Each emitter owns its sink/rows.
 T0:COMPILE selects host arch (NABI:BINDING abi.f:25-26) at install, shadow arch (NSHADOW:BINDING) per definition;
-native-build-core.f loads the target emitter (as native-emit-x64.f:6-15 today); wasm-build.f requires t0-wasm.f
-(replacing src/arch/wasm/backend.f, line 29).
+native-build-core.f loads the target emitter (as native-emit-x64.f:6-15 today); wasm-build.f requires t0-wasm.f.
 Structured control (Wasm forces it): replace JMP/JZ/JNZ/JMP-BACK/JZ-BACK/JNE*/LABEL/PATCH/LOOP-ENTER/SKIP-EQUAL
 in the interface with IF ( vreg -- ) ELSE THEN; BEGIN; WHILE ( vreg -- ) REPEAT; UNTIL ( vreg -- ); AGAIN;
 LOOP-OPEN ( entry:bool -- ) LEAVE LOOP-NEXT LOOP-STEP ( vreg -- ) LOOP-CLOSE; CASE OF ( vreg -- )
@@ -88,10 +87,8 @@ trusted native seed or cross-build from another host; DDC = cross-host double co
 product vs arm64 self-build, byte compare). Update CLAUDE.md/docs that name Gforth recovery.
 
 ## 4. Wasm (host-side only; no Wasm runtime compiler)
-t0-wasm.f writes WENC's emission format (encode.f:48-57; CALL row = padded 5-byte index; ADDR row = padded 10-byte
-SLEB, kinds DATA/CODE/FUN) so capture.f, link.f, link-wasm.f, dynamic.f, kernel.f, kernel-words.f, leb.f,
-profile.f survive; delete backend.f, passes.f, select.f, structure.f, wstruct.f, encode.f (SLEB/field helpers and
-lane rule encode.f:584-592 move into t0-wasm.f). Vregs = i64 locals; SPILL-ALL at calls; IF/ELSE/THEN ->
+t0-wasm.f writes WLINK's call and address rows (CALL row = padded 5-byte index; ADDR row = padded 10-byte
+SLEB, kinds DATA/CODE/FUN). Vregs = i64 locals; SPILL-ALL at calls; IF/ELSE/THEN ->
 if/else/end, BEGIN..UNTIL -> loop/br_if, WHILE..REPEAT -> block/loop/br_if/br, LEAVE -> br, multiple whiles -> one
 block per exit, EXIT -> return. Lanes: definition in/out from the certificate; callee arity needs a record->arity
 reader (checker-owner; word not determined). does>/create stay refused in a Wasm link.

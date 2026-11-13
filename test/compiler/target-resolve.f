@@ -97,8 +97,7 @@ private
 
 : ARTIFACT ( -- )
    s" target-resolve profile=" type RTARGET:HOST-TARGET RTARGET:PROFILE$ type cr
-   s" target-resolve windows-core=unsupported" type cr
-   s" target-resolve wasm-backend=unloaded" type cr ;
+   s" target-resolve windows-core=unsupported" type cr ;
 
 : RUN ( -- )
    T-RESET T01 T02 T03 T04 T05 T06 T15 ARTIFACT T-REPORT ;

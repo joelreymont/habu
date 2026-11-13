@@ -126,57 +126,17 @@ SUITE wasm-numeric
    test/wasm/numeric.f
 ;SUITE
 
-\ WLEB, the Wasm backend's LEB128: the shortest and padded forms at their
+\ WLEB, tier 0's Wasm LEB128: the shortest and padded forms at their
 \ edges, the call and address fields rewritten in place, and each refusal.
 SUITE wasm-leb
    test/wasm/leb.f
 ;SUITE
 
-\ The Wasm backend's dialect, src/arch/wasm/wstruct.f: its closed vocabulary,
-\ a module frozen through WSTRUCT:FREEZE and the substrate's refusals.
-SUITE wasm-wstruct
-   test/wasm/wstruct.f
-;SUITE
-
-\ WCTL, the Wasm backend's structured control, src/arch/wasm/structure.f: W01's
-\ copies and label depths over nested loops and ifs, and W02's refusal of a
-\ cycle entered at two blocks.
-SUITE wasm-structure
-   test/wasm/structure.f
-;SUITE
-
-\ The Wasm selector, src/arch/wasm/select.f: definitions compiled through
-\ NBACK and selected to frozen WSTRUCT, calls, status and the integer rows.
-SUITE wasm-select
-   test/wasm/select.f
-;SUITE
-
-\ WENC, the Wasm backend's encoder, src/arch/wasm/encode.f: byte-exact bodies
-\ for a straight line, an if/else, nested loops, calls and address literals,
-\ the emission's header, call and address sites, and each refusal.
-SUITE wasm-encode
-   test/wasm/encode.f
-;SUITE
-
-\ WLINK, the Wasm backend's linker, src/arch/wasm/link.f: modules wasm-tools
+\ WLINK, tier 0's Wasm linker, src/arch/wasm/link.f: modules wasm-tools
 \ assembles byte for byte, index and type order, patched call and address
 \ fields, the table, data cells and memory pages, W03 and each refusal.
 SUITE wasm-link
    test/wasm/link.f
-;SUITE
-
-\ WSEL's f64 rows: Habu's NaN rule after f64 add, sub, mul, div and sqrt, the
-\ sign operations, the comparisons and the conversions.
-SUITE wasm-select-f64
-   test/wasm/select-f64.f
-;SUITE
-
-\ The Wasm backend registered at run time, src/arch/wasm/backend.f and
-\ passes.f: real source compiled through an open Wasm shadow, one emission per
-\ record whose rows match its bytes, NEMIT empty after each, the placed row
-\ refused, and the engine's own routine unchanged.
-SUITE wasm-backend
-   test/wasm/backend.f
 ;SUITE
 
 \ Some of src/arch/wasm/kernel-words.f's words beside the engine's primitives, on the host.

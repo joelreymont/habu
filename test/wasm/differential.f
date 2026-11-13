@@ -193,7 +193,7 @@ public
    s" wasm differential: sources and modules in " type  DIR u type cr ;
 
 \ A row's NAME, the SOURCE defining it and the bytes it prints (numeric-rows.f) join
-\ RETURNING's program. No control word builds W02's cycle; test/wasm/structure.f tests its refusal.
+\ RETURNING's program.
 : ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
    src su ALL+  S\" \n" ALL+

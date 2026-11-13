@@ -156,13 +156,14 @@ variable TEXT-U
    WASM-HARNESS:FAULT-ADDR 8 T= ;
 
 
-\ Package D in d.f: division, max, atomics and views through words whose
-\ operands are not literals at the call.
+\ Package D in d.f: division, max, invert and rshift, atomics and views through
+\ words whose operands are not literals at the call.
 : D! ( -- )
    SB-RESET
    S\" package D\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable CELL0\nvariable SPOT\n" SB-APPEND
    S\" : DIV ( n n -- n ) / ;\n: REM ( n n -- n ) mod ;\n: BIG ( n n -- n ) max ;\n" SB-APPEND
-   S\" : MIN-N ( -- n ) 1 63 lshift ;\n: FAIL ( n -- ) >BYTES c@ drop ;\npublic\n" SB-APPEND
+   S\" : MIN-N ( -- n ) 1 63 lshift ;\n: FAIL ( n -- ) >BYTES c@ drop ;\n" SB-APPEND
+   S\" : FLIP ( n -- n ) invert 3 rshift ;\npublic\n" SB-APPEND
    S\" : MAIN ( -- )\n   17 5 DIV 3 <> if 1 FAIL then  17 5 REM 2 <> if 2 FAIL then\n" SB-APPEND
    S\"    -17 5 DIV -3 <> if 3 FAIL then  -17 5 REM -2 <> if 4 FAIL then\n" SB-APPEND
    S\"    MIN-N -1 DIV MIN-N <> if 5 FAIL then  MIN-N -1 REM 0 <> if 6 FAIL then\n" SB-APPEND
@@ -171,7 +172,8 @@ variable TEXT-U
    S\"    5 9 CELL0 atomic-cas 5 <> if 10 FAIL then  CELL0 @ 9 <> if 11 FAIL then\n" SB-APPEND
    S\"    5 1 CELL0 atomic-cas 9 <> if 12 FAIL then  CELL0 @ 9 <> if 13 FAIL then\n" SB-APPEND
    S\"    77 SPOT !  SPOT byte-view c@ 77 <> if 14 FAIL then\n" SB-APPEND
-   S\"    SPOT cell-view @ 77 <> if 15 FAIL then ;\n;package\n" SB-APPEND
+   S\"    SPOT cell-view @ 77 <> if 15 FAIL then\n" SB-APPEND
+   S\"    5 FLIP $1FFFFFFFFFFFFFFF <> if 16 FAIL then ;\n;package\n" SB-APPEND
    SB$ s" d.f" SOURCE! ;
 
 : DIV0-CASE ( -- )
@@ -183,7 +185,8 @@ variable TEXT-U
 
 
 \ The program f.f: each float word through a word whose operands are not
-\ literals at the call, printed by `f.` and `.`.
+\ literals at the call, and a double out of an if's two arms, printed by `f.`
+\ and `.`.
 : F! ( -- )
    SB-RESET
    S\" : ADD ( r r -- r ) f+ ;\n: SUB ( r r -- r ) f- ;\n: MUL ( r r -- r ) f* ;\n" SB-APPEND
@@ -192,12 +195,14 @@ variable TEXT-U
    S\" : MORE ( r r -- ) f> bool>n . ;\n: SAME ( r r -- ) f= bool>n . ;\n" SB-APPEND
    S\" : BELOW0 ( r -- ) f0< bool>n . ;\n: AT0 ( r -- ) f0= bool>n . ;\n" SB-APPEND
    S\" : FLOAT ( n -- r ) s>f ;\n: TRUNC ( r -- n ) f>s ;\n" SB-APPEND
+   S\" : CHOOSE ( n -- r ) 0<> if 1.5 else 2.5 then ;\n" SB-APPEND
    S\" : BIG ( -- r ) 1000000000000000.0 dup MUL ;\n: MAIN ( -- )\n" SB-APPEND
    S\"    1.5 2.25 ADD f.  1.5 2.25 SUB f.  1.5 2.25 MUL f.  1.5 0.25 DIV f.\n" SB-APPEND
    S\"    2.0 ROOT f.  -4.0 ROOT dup TRUNC .  dup SAME\n   -2.5 FLIP f.  -2.5 SIZE f.\n" SB-APPEND
    S\"    1.0 2.0 LESS  2.0 1.0 LESS  2.0 1.0 MORE  1.0 2.0 MORE  1.0 1.0 SAME  1.0 2.0 SAME\n" SB-APPEND
    S\"    0.0 FLIP BELOW0  0.0 BELOW0  -1.0 BELOW0  0.0 FLIP AT0  0.0 AT0  -1.0 AT0\n" SB-APPEND
-   S\"    -7 FLOAT f.  2.9 TRUNC .  -2.9 TRUNC .  BIG TRUNC .  BIG FLIP TRUNC . ;\n" SB-APPEND
+   S\"    -7 FLOAT f.  2.9 TRUNC .  -2.9 TRUNC .  BIG TRUNC .  BIG FLIP TRUNC .\n" SB-APPEND
+   S\"    1 CHOOSE f.  0 CHOOSE f. ;\n" SB-APPEND
    SB$ s" f.f" SOURCE! ;
 
 \ What F!'s MAIN prints on the host: the square root of -4 is a NaN, which
@@ -207,6 +212,7 @@ variable TEXT-U
    S\" 3.750000\n-0.750000\n3.375000\n6.000000\n1.414213\n0\n0\n2.500000\n2.500000\n" SB-APPEND
    S\" -1\n0\n-1\n0\n-1\n0\n0\n0\n-1\n-1\n-1\n0\n" SB-APPEND
    S\" -7.000000\n2\n-2\n9223372036854775807\n-9223372036854775808\n" SB-APPEND
+   S\" 1.500000\n2.500000\n" SB-APPEND
    SB$ ;
 
 : FLOAT-CASE ( -- )
@@ -504,7 +510,7 @@ variable TEXT-U
    S\" : MAIN ( -- ) 75 emit K:MAIN 68 emit D:MAIN 77 emit M:MAIN " TEXT+
    S\" 88 emit X:MAIN 67 emit C:MAIN 71 emit G:MAIN ;\n" TEXT+
    TEXT TEXT-U @ s" pass.f" SOURCE!
-   s" six programs in one module each run to their end: recursion, a loop, variables and a quotation; division, max, atomics and views; map-anon and munmap; execute; catch and finally; a DYNAMIC-BUFFER reserved larger" T-LABEL
+   s" six programs in one module each run to their end: recursion, a loop, variables and a quotation; division, max, invert and rshift, atomics and views; map-anon and munmap; execute; catch and finally; a DYNAMIC-BUFFER reserved larger" T-LABEL
    s" pass.wasm" BUILD 0 T=
    RAN 0 T=
    WASM-HARNESS:FAULT-ADDR 0 T=
