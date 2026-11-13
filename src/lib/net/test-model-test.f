@@ -1,7 +1,8 @@
 \ test-model-test.f - MODEL:CHAT against a loopback HTTP server whose
 \ /responses routes answer through TEST-MODEL: a completed reply gives its text,
 \ JSON escapes included; an incomplete one MODEL:E-INCOMPLETE with its reason;
-\ a refusal MODEL:E-REFUSED; a tool reply answers its output array whole; a
+\ a stream cut before its reply MODEL:E-TRANSPORT; a refusal MODEL:E-REFUSED;
+\ a tool reply answers its output array whole; a
 \ count answers the input tokens the server counted; a compaction's usage
 \ reaches the call; a halt in the recorder leaves the call free to close. Every
 \ key item reads as one key from a store the test binds with SECRET:STORE!, so
@@ -72,6 +73,7 @@ TASK:SEMAPHORE GO
    HTTP:ROUTES-RESET
    s" POST" s" /completed/responses" [: nip TEXT$ TEST-MODEL:COMPLETED! ;] HTTP:ROUTE
    s" POST" s" /incomplete/responses" [: nip REASON$ TEST-MODEL:INCOMPLETE! ;] HTTP:ROUTE
+   s" POST" s" /cut/responses" [: nip TEST-MODEL:CUT! ;] HTTP:ROUTE
    s" POST" s" /refusal/responses" [: nip s" cannot comply" TEST-MODEL:REFUSAL! ;] HTTP:ROUTE
    s" POST" s" /tools/responses" [: nip TOOL-OUTPUT$ TEST-MODEL:OUTPUT! ;] HTTP:ROUTE
    s" POST" s" /count/responses/input_tokens" [: nip 11 TEST-MODEL:INPUT-TOKENS! ;] HTTP:ROUTE
@@ -108,6 +110,12 @@ TASK:SEMAPHORE GO
    s" /incomplete" AT
    [: M MODEL:CHAT 2drop ;] MODEL:E-INCOMPLETE TTHROWSQ
    M MODEL:INCOMPLETE-REASON$ REASON$ T$= ;
+
+
+: CUT ( -- )
+   s" a stream cut before its reply is E-TRANSPORT" T-LABEL
+   s" /cut" AT
+   [: M MODEL:CHAT 2drop ;] MODEL:E-TRANSPORT TTHROWSQ ;
 
 
 : REFUSAL ( -- )
@@ -191,7 +199,7 @@ TASK:SEMAPHORE GO
    ROUTES
    LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
    SETUP
-   COMPLETED INCOMPLETE REFUSAL TOOLS COUNTED COMPACTED HALTED
+   COMPLETED INCOMPLETE CUT REFUSAL TOOLS COUNTED COMPACTED HALTED
    HTTP:STOP
    CURL:LOOP-STOP
    AIO:STOP ;

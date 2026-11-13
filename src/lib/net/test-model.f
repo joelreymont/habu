@@ -3,9 +3,10 @@
 \ Responses API does. COMPLETED!, INCOMPLETE!, REFUSAL! and OUTPUT! answer a
 \ POST /responses as it streams it, an event stream of response resp_1's
 \ created and in_progress events and then the terminal event carrying the
-\ reply. Each terminal reply carries fixed usage, input 11 tokens (4 cached),
-\ output 6 (2 reasoning), total 17, so a test may assert them. The host routes
-\ the request to its own handler and calls one of them there.
+\ reply; CUT! sends those two events alone. Each terminal reply carries
+\ fixed usage, input 11 tokens (4 cached), output 6 (2 reasoning), total 17,
+\ so a test may assert them. The host routes the request to its own handler
+\ and calls one of them there.
 \ STORAGE CLASS. PROCESS-WIDE: rows indexed by HTTP:WORKER-SLOT, each a reply
 \ body and its writer, whose buffer a slot's first reply makes and the process
 \ keeps; a body stays in its row, as HTTP:BODY! borrows it, until the slot's
@@ -118,16 +119,25 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    s" }" JSON:WRITE-RAW ;
 
 
-: STREAMED ( HTTP:response ptr u8 n [ ptr JSON:writer ptr u8 n -- ptr JSON:writer ] ptr u8 n -- )
-   {: answer:HTTP:response text:ptr text-u:n body type:ptr type-u:n :}
+: OPENED ( -- ptr JSON:writer )
    READY
    SLOT WRITER ROW JSON:WRITE-OPEN-BUF
    s" response.created" 0 RESPONSE-OPEN s" queued" PENDING EVENT-CLOSE
-   s" response.in_progress" 1 RESPONSE-OPEN s" in_progress" PENDING EVENT-CLOSE
-   type type-u 2 RESPONSE-OPEN text text-u body execute EVENT-CLOSE
+   s" response.in_progress" 1 RESPONSE-OPEN s" in_progress" PENDING EVENT-CLOSE ;
+
+
+: SENT ( ptr JSON:writer HTTP:response -- )
+   {: answer:HTTP:response :}
    JSON:WRITE-CLOSE
    answer s" Content-Type" s" text/event-stream" HTTP:HEADER!
    answer ROW$ HTTP:BODY! ;
+
+
+: STREAMED ( HTTP:response ptr u8 n [ ptr JSON:writer ptr u8 n -- ptr JSON:writer ] ptr u8 n -- )
+   {: answer:HTTP:response text:ptr text-u:n body type:ptr type-u:n :}
+   OPENED
+   type type-u 2 RESPONSE-OPEN text text-u body execute EVENT-CLOSE
+   answer SENT ;
 
 public
 
@@ -139,6 +149,12 @@ public
 \ A stream ending in an incomplete reply with the reason.
 : INCOMPLETE! ( HTTP:response ptr u8 n -- )
    [: INCOMPLETE-REPLY ;] s" response.incomplete" STREAMED ;
+
+
+\ A stream cut before its reply: its body ends cleanly with no terminal event.
+: CUT! ( HTTP:response -- )
+   {: answer:HTTP:response :}
+   OPENED answer SENT ;
 
 
 \ A stream ending in a completed reply whose message part is a refusal with
