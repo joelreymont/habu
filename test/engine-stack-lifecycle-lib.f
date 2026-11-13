@@ -158,15 +158,15 @@ variable ERRLEN
 \ parks its own cells on the return stack between top-level words.
 : PRIMITIVE-RETURN-ARM ( -- )
    s" last two return-stack slots" T-LABEL
-   s" 0 set-tier variable OLD-RSP : EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n . OLD-RSP @ data-base RSP-CELL + ! ; EDGE"
+   s" variable OLD-RSP : EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n . OLD-RSP @ data-base RSP-CELL + ! ; EDGE"
    CHILD-RC 0 T=
    OUT OUTLEN @ S\" 22\n11\n-1\n" T$=
    s" whole return transfer needs two free slots" T-LABEL
-   s" 0 set-tier : EDGE ( -- ) STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r 2r> 2drop ; EDGE" REFUSED-RETURN
+   s" : EDGE ( -- ) STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r 2r> 2drop ; EDGE" REFUSED-RETURN
    s" whole return transfer needs two live slots" T-LABEL
-   s" 0 set-tier : EDGE ( -- ) 11 22 2>r 1 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN
+   s" : EDGE ( -- ) 11 22 2>r 1 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN
    s" empty return-stack read" T-LABEL
-   s" 0 set-tier : EDGE ( -- ) 11 22 2>r 0 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN ;
+   s" : EDGE ( -- ) 11 22 2>r 0 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN ;
 
 : PRIMITIVE-BOUNDARIES ( -- )
    HB-TARGET-LINUX-X86-64? 0= if PRIMITIVE-RETURN-ARM then

@@ -5,13 +5,8 @@ require src/lib/string.f
 
 package STACK-LIFECYCLE-TEST
 
-\ These checked transfer bodies compile at tier 0 (src/habu/t0.f).
-: SOURCE-TIER ( -- )
-   s" 0 set-tier " SB-APPEND ;
-
 : PAIR-TYPE-SOURCE ( -- )
    SB-RESET
-   SOURCE-TIER
    s" package SW public PRODUCT pair FIELD a n FIELD b n ;PRODUCT " SB-APPEND ;
 
 \ BUF is a real guarded mapping in whole STACK-ABI:PAGE-BYTES multiples, the
@@ -114,7 +109,6 @@ package STACK-LIFECYCLE-TEST
 \ The 513-cell value's byte offsets pass arm64 ADD/SUB's 12-bit immediate.
 : LARGE-TYPE-SOURCE ( -- )
    SB-RESET
-   SOURCE-TIER
    s" PRODUCT sw-double<a> FIELD a a FIELD b a ;PRODUCT PRODUCT sw-plus<a> FIELD a a FIELD b n ;PRODUCT " SB-APPEND
    s" 1 TYPED-BUFFER ITEM sw-plus<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>>>>>> " SB-APPEND ;
 

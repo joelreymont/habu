@@ -2566,7 +2566,6 @@ public
 
 private
 
-4 constant PATCH-BYTES                 \ the word patch32 writes
 52 constant MIN-IN-SHIFT               \ layout.f DNAME-MIN-IN-MASK: flag bits 52-59
 $CC constant INT3                      \ the byte code-publish fills a slot's gap with
 
@@ -2835,27 +2834,8 @@ variable SITE-TRAP-CELL
 
 \ patch32 ( n n -- ): store the word at the address between two LPROTREC flips
 \ of its pages, as BPATCH32 does: the flip is keyed on the target, never on a
-\ band another bracket may hold open. A generic
-\ instruction write carries no optimizer proof, so the four bytes lose their
-\ native evidence before the write can publish.
-: INVALIDATE-CELL, ( n -- )
-   {: cell:n :}
-   X64CODE:LBL {: done:label :}
-   RDI RSI ASM-SINK ENC-CMP-RR  C-AE done JCC,
-   RAX cell CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
-   RDI ASM-SINK ENC-PUSH  RSI ASM-SINK ENC-PUSH
-   RDI PUSH,  RSI PUSH,
-   RAX ASM-SINK ENC-CALL-REG
-   RSI ASM-SINK ENC-POP  RDI ASM-SINK ENC-POP
-   done X64CODE:LBL, ;
-
-: HOST-INVALIDATE, ( -- )
-   NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL, ;
-
+\ band another bracket may hold open.
 : PATCH32, ( -- )
-   RDI 0 PEEK,  RSI RDI PATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
-   HOST-INVALIDATE,
    R8 POP,  R9 POP,                                    \ the address, the word
    R8 PROT-RW PROT-REC,
    R9 R64>N >R32 R8 MEM-AT ASM-SINK ENC-MOV32-MR
@@ -3465,8 +3445,6 @@ private
 \ A successful code rewind retires any published span that reaches its floor.
 : DEF-CODE-RECLAIM-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label next:label full:label done:label :}
-   RSI CP-REG ASM-SINK ENC-MOV-RR
-   HOST-INVALIDATE,
    RCX ZERO-REG,
    scan X64CODE:LBL,
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
@@ -3858,17 +3836,6 @@ private
    RAX SAVED-OFF CELL!,
    done X64CODE:LBL, ;
 
-\ set-tier ( n -- ): tier 0 is the only native tier, so only 0 passes.
-: SET-TIER-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL {: bad:label done:label :}
-   RAX POP,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE bad JCC,
-   RAX TIER-OFF CELL!,
-   done JMP,
-   bad X64CODE:LBL,
-   S\" E-SET-TIER habu: set-tier: tier must be 0\n" HOOK-BAD-RC STDERR-EXIT,
-   done X64CODE:LBL, ;
-
 \ (MARK) takes rdi = the cell and rsi = its kind tag. Its declaration happens
 \ before xt! writes, so a refused cell cannot leave an untracked address.
 \ The row vector is authoritative; a linear search keeps the original ordinal
@@ -4051,8 +4018,6 @@ variable MARK-CELL
    s" sha256-blocks" [: RAX POP,  RAX POP,  RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM
    s" executable-build-enter" [: BUILD-ENTER-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" set-tier" [: SET-TIER-BODY ;] PRIM
-   s" tier@" [: RAX TIER-OFF CELL@,  RAX PUSH, ;] PRIM
    s" tick-order@" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH, ;] PRIM ;
 
 public
@@ -5584,12 +5549,6 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    XMM0 XMM0 ASM-SINK ENC-UCOMISD-RR  C-P RAX RCX ASM-SINK ENC-CMOVCC
    RAX TOP!, ;
 
-\ Register the body under the row's name and mark it scalar, for a
-\ straight-line ( n -- n ) body with no call.
-: SCALAR ( ptr u8 n [ -- ] -- )
-   ARGS
-   EMIT-ROW ENGINE-PRIMS:MARK-SCALAR ;
-
 : STORE-BODY ( -- )
    RCX POP,  RAX POP,
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
@@ -5674,7 +5633,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    s" /" [: DIVIDE,  RAX PUSH, ;] PRIM
    s" mod" [: DIVIDE,  RDX PUSH, ;] PRIM
    s" /mod" [: DIVIDE,  RDX PUSH,  RAX PUSH, ;] PRIM
-   s" abs" [: ABS-BODY ;] SCALAR
+   s" abs" [: ABS-BODY ;] PRIM
    s" min" [: C-G EXTREME, ;] PRIM
    s" max" [: C-L EXTREME, ;] PRIM ;
 
@@ -5857,8 +5816,7 @@ public
    SCOPE-SEED-LBL X64CODE:LBL,
    R8 ENGINE-PRIMS:COUNT DREC * IMM32,
    ASM-SINK ENC-RET
-   SCOPE-SEED-END-LBL X64CODE:LBL,
-   ENGINE-PRIMS:SCALAR-ROW@ X64BOOT:SCALAR-ROW, ;
+   SCOPE-SEED-END-LBL X64CODE:LBL, ;
 
 ;using   \ X64LAYOUT
 ;using

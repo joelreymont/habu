@@ -640,7 +640,7 @@ $6C0 constant FIXED-COMP-CELL
 
 \ TIER-CELL ( 0 ) -- which compiler the `:` handlers dispatch to: tier 0, the
 \ compiler in COMP-CELL; with COMP-CELL zero, the Habu loop refuses a
-\ definition. Every process starts at 0, and `set-tier` refuses any other tier.
+\ definition. Every process starts at 0.
 \
 \ Read by emitted code as `DATA TIER-CELL LDR` (12-bit scaled immediate), so it
 \ stays 8-aligned and below $7FF8.

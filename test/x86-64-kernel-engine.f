@@ -528,12 +528,10 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ The constant rows and tier 1.
-: BUILD-TIER ( ptr u8 n -- ) {: path:ptr pathu:n :}
+\ The constant rows.
+: BUILD-CONSTANTS ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    s" snapshot-format" ROW  SNAPSHOT-FORMAT:VERSION X64HARNESS:EXPECT-POP,
-   1 X64HARNESS:PUSH,  s" set-tier" ROW
-   s" tier@" ROW  1 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
@@ -554,7 +552,7 @@ $5A constant CALLER-TIER
    CALLER-TIER TIER-CELL?,
    2 NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL,
    CALLER-TIER NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
-   1 X64HARNESS:PUSH,  s" set-tier" ROW
+   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    LEAVE,  1 TIER-CELL?,
    LEAVE,  CALLER-TIER TIER-CELL?,
    0 NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
@@ -562,12 +560,6 @@ $5A constant CALLER-TIER
    0 NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL,
    CALLER-TIER TIER-CELL?,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ Tier 0 exits 70 with the x86-64 text.
-: BUILD-TIER-ZERO ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   0 X64HARNESS:PUSH,  s" set-tier" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ Exercise the booted kernel's reader through its public primitive. Rejected
@@ -673,9 +665,8 @@ public
    s" hb-x64-kernel-addr-kind" TMP-PATH BUILD-ADDR-KIND
    s" hb-x64-kernel-addr-band" TMP-PATH BUILD-ADDR-BAND
    s" hb-x64-kernel-addr-header" TMP-PATH BUILD-ADDR-HEADER
-   s" hb-x64-kernel-tier" TMP-PATH BUILD-TIER
+   s" hb-x64-kernel-constants" TMP-PATH BUILD-CONSTANTS
    s" hb-x64-kernel-scope" TMP-PATH BUILD-SCOPE
-   s" hb-x64-kernel-tier-zero" TMP-PATH BUILD-TIER-ZERO
    0 s" hb-x64-kernel-number-00" TMP-PATH BUILD-NUM
    1 s" hb-x64-kernel-number-01" TMP-PATH BUILD-NUM
    2 s" hb-x64-kernel-number-02" TMP-PATH BUILD-NUM

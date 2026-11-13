@@ -660,9 +660,6 @@ EPRIM: cp@            PE-N PE-OUT EPRIM;
 EPRIM: cp!            PE-N PE-IN EPRIM;
 EPRIM: dbase@         PE-N PE-OUT EPRIM;
 EPRIM: check@         PE-N PE-OUT EPRIM;
-\ Reading the selected compiler tier decides nothing and mutates nothing, so it
-\ is an ordinary reader like check@ beside it.
-EPRIM: tier@          PE-N PE-OUT EPRIM; REACH build
 \ The compiler's prospective trusted-tick order and the owner whose installed
 \ query established it. Order 0 is checking first; 1 is trusted gate first.
 EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
@@ -686,10 +683,6 @@ EFIXED-ABI!
 \ set-check and set-preflight do.
 EPPRIM: CHECK set-top-check
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
-\ Choosing the compiler is a top-level step every program may take on its first
-\ line, before any require, so the row is global: a top-level step and a checked
-\ body anywhere may call set-tier.
-EPRIM: set-tier       PE-N PE-IN EPRIM; REACH build
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: ndict-append   PE-N PE-IN EPRIM;

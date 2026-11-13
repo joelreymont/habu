@@ -5,8 +5,7 @@
 \ Run: bin/hb --load tools/tier0-profile.f -- corpus <usec> <file.f>...
 \      bin/hb --load tools/tier0-profile.f -- trivial <usec> <count>
 
-\ Nothing loads before the corpus (`set-tier` is an engine word): src/lib/fmt.f
-\ is a corpus entry, and loading it first would hide every word its compile
+\ Nothing loads before the corpus: src/lib/fmt.f is a corpus entry, and loading it first would hide every word its compile
 \ reaches. The decimal writer below is the price.
 package TIER0-PROF
 private
@@ -126,9 +125,6 @@ public
    1 script-argv$ ARG>N {: usec :}
    usec 0 > 0= if USAGE then
    0 script-argv$ {: mode:ptr mu :}
-   \ set-tier is engine-global and only code compiled after it takes the tier,
-   \ so this precedes the first corpus token.
-   0 set-tier
    usec prof-rate
    mode mu s" corpus" STR= if
       ndict@ {: first :}

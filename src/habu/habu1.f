@@ -2814,36 +2814,10 @@ package ENGINE-EMIT
 : C-FLUSH-X9-LINE ( -- )
    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
 
-\ x9/x10 bound the changed bytes. The mandatory owner retires facts before
-\ an instruction write or CP rewind can expose replacement code.
-: INVALIDATE-CELL, ( n -- )
-   {: cell:n :}
-   LBL {: done:label :}
-   9 10 CMP,  C-CS done BCOND,
-   12 DATA cell LDR,  12 done CBZ,
-   SP SP 64 SUBI,
-   30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
-   13 SP 32 STR,  14 SP 40 STR,  15 SP 48 STR,
-   9 G-PUSH  10 G-PUSH  12 BLR,
-   15 SP 48 LDR,  14 SP 40 LDR,  13 SP 32 LDR,
-   11 SP 24 LDR,  10 SP 16 LDR,  9 SP 8 LDR,  30 SP 0 LDR,
-   SP SP 64 ADDI,
-   done LBL, ;
-
-: HOST-INVALIDATE, ( -- )
-   NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL, ;
-
 : BPATCH32 ( -- )                \ ( w addr -- ): store through the alias, cache-sync
    A G-POP  B G-POP
-   SP SP 32 SUBI,
-   A SP 8 STR,  B SP 16 STR,     \ x9 is the target; the invalidate reuses x10 (w)
-   \ A generic instruction write carries no optimizer proof, even if its old
-   \ bytes belonged to a native body. Invalidate before the write can publish.
-   9 SP 8 LDR,  10 9 4 ADDI,  HOST-INVALIDATE,
-   9 SP 8 LDR,  10 SP 16 LDR,
    11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  10 11 0 STRW,
-   C-FLUSH-X9-LINE
-   SP SP 32 ADDI, ;
+   C-FLUSH-X9-LINE ;
 ;package
 
 \ Both relocation maps are keyed on region offset, and their readers refuse the
@@ -3228,7 +3202,6 @@ private
    SP SP 16 SUBI,  30 SP 0 STR,
    PROF-ABI:LPROFRECLAIM LABEL@ BL,
    30 SP 0 LDR,  SP SP 16 ADDI,
-   10 CP 0 ADDI,  HOST-INVALIDATE,
    10 0 MOVZ,
    loop LBL,
       10 NDICT CMP,  C-CS done BCOND,
@@ -3613,21 +3586,6 @@ private
    10 DATA NCOMP-DISPATCH:TIER-CELL STR,
    9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
    done LBL, ;
-
-\ set-tier ( n -- ): a primitive so it works on a file's first line; tier 0 is
-\ the only native tier, so only 0 passes.
-: BSETTIER ( -- )
-   LBL LBL {: bad:label done:label :}
-   A G-POP                               \ x9 = requested tier
-   A bad CBNZ,
-   A DATA NCOMP-DISPATCH:TIER-CELL STR,
-   done B,
-   bad LBL,
-      s" E-SET-TIER habu: set-tier: tier must be 0" 70 DIE-LINE,
-   done LBL, ;
-
-\ tier@ ( -- n ): the live tier.
-: BTIERFETCH ( -- ) 9 DATA NCOMP-DISPATCH:TIER-CELL LDR,  A G-PUSH ;
 
 \ The same readiness supplies the live tick gate and the verifier's entry
 \ observation. x11 is the installed query, x12 its owner, both zero if absent.
@@ -4335,7 +4293,6 @@ package ENGINE-EMIT
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
-   s" set-tier" ['] BSETTIER FPRIM     s" tier@" ['] BTIERFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
    s" executable-build-enter" ['] BBUILDENTER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" executable-build-leave" ['] BBUILDLEAVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

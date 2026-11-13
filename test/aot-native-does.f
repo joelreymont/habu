@@ -80,7 +80,6 @@ public
    s" aot-native-does: captured" type cr ;
 ;package
 
-1 set-tier
 AOTN:OPEN
 AOT-ARM:WINDOW-OPEN
 INTERN:WINDOW-OPEN

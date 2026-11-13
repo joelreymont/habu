@@ -13,7 +13,6 @@ require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/wl.f
 require src/habu/stack-abi.f
-require src/habu/native-host-cells.f
 require src/habu/task-abi.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
@@ -27,9 +26,6 @@ package X64BOOT
 using X64ASM
 using X64CODE
 using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
-
-variable SCALAR-ROW-LABEL
-create SCALAR-ROW-VALUE 0 ,
 
 0 constant PROT-NONE
 3 constant PROT-RW                  \ PROT_READ|PROT_WRITE
@@ -261,9 +257,6 @@ variable SNAP-END
       RAX DATA-START IMM,  RAX BOOT:HEAP-START-CELL CELL!
       RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL!
    then
-   RAX SCALAR-ROW-LABEL @ >LABEL MOVABS,
-   RAX RAX MEM-AT ASM-SINK ENC-MOV-RM
-   RAX NATIVE-HOST-CELLS:SCALAR-PRIM CELL!
    \ Every process starts at tier 0 with no definition or build scope open,
    \ whatever DATA carried.
    RAX ZERO-REG,
@@ -380,13 +373,6 @@ create GREG-SLOTS
    0 c, 1 c, 2 c, 3 c, 4 c, 5 c, 6 c, 7 c,
 
 public
-
-\ CLOSE, or SCALAR-CELL, emits an absent marker; the completed kernel fills
-\ that same cell with the audited primitive ordinal plus one.
-: SCALAR-ROW, ( n -- )
-   SCALAR-ROW-VALUE !
-   SCALAR-ROW-VALUE BYTE-VIEW
-   CODE SCALAR-ROW-LABEL @ >LABEL LABEL-AT + CELL BYTE-COPY ;
 
 \ The flag that enters a handler with the signal number in rdi, the siginfo in
 \ rsi and the ucontext in rdx, and has the kernel fill the siginfo.
@@ -803,13 +789,6 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    SIGFPE flags at rest SIGACTION,
    SIGSEGV flags at rest SIGACTION, ;
 
-
-\ The scalar row cell DATA-INIT, loads, bound here, holding the absent marker.
-: SCALAR-MARKER, ( -- )
-   SCALAR-ROW-LABEL @ >LABEL X64CODE:LBL,
-   0 SCALAR-ROW-VALUE !
-   SCALAR-ROW-VALUE BYTE-VIEW CELL TEXT-BYTES, ;
-
 : OPEN, ( -- )
    X64CODE:LBL STACK-BAD !  X64CODE:LBL REGION-BAD !  X64CODE:LBL DATA-BAD !  X64CODE:LBL OCC-BAD !
    RBASE-REG TEXT-BASE,
@@ -830,27 +809,17 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    rest RESTORER,
    stub SIGNAL-STUB, ;
 
-\ The close of a boot that carries its own scalar row cell.
 : CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
    crash rest stub STUBS,
-   SCALAR-MARKER,
    booted X64CODE:LBL, ;
 
 public
-
-\ The scalar row cell of a stream whose kernel precedes its boot: KERNEL, fills
-\ it (SCALAR-ROW,) and SNAP-START, loads it, so the stream emits it, once and
-\ out of the path of execution, before the kernel.
-: SCALAR-CELL, ( -- )
-   X64CODE:LBL SCALAR-ROW-LABEL !
-   SCALAR-MARKER, ;
 
 \ The caller binds this after the immutable text-site footer.
 : TEXT-END, ( -- ) SNAP-END @ >LABEL X64CODE:LBL, ;
 
 : START, ( label label -- ) {: floor:label code-end:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: booted:label crash:label rest:label stub:label :}
-   X64CODE:LBL SCALAR-ROW-LABEL !
    OPEN,
    CODE-REGION,
    DATA-REGION,                  \ its carrier is empty: nothing to copy

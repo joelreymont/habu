@@ -120,7 +120,6 @@ private
 \ unmapped first page when SUBJECT's breakpoint fires.
 : TRAP-FAULT ( -- )
    GE-SRC-RESET
-   s" 0 set-tier" GE-SRC-LINE
    s" require src/habu/debug.f" GE-SRC-LINE
    s" : SUBJECT ( n -- n ) 1 + ;" GE-SRC-LINE
    s" NULL-PTR BYTE-VIEW 16 + CELL-VIEW DEBUG:BPW+" GE-SRC-LINE

@@ -251,10 +251,9 @@ package CERTIFY-DOES-DEFINER
 \ definitions, so they run between two scopes.
 : CDD-SECTION-LATCH-LIVE ( -- )
    s" a clause its body contradicts is refused" T-LABEL
-   \ Tier 0 refuses the clause with the checker's rc 70; the native compiler,
-   \ the only one an x86-64 engine has, refuses it as an uncertified verdict.
+   \ The checker refuses the clause with rc 70.
    [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" evaluate-closed ;]
-      tier@ 0= if 70 else E-COMP-VERDICT then TTHROWSQ
+      70 TTHROWSQ
    s\" : CDD-RES-AFTER ( n -- n ) 2 * ;\n" evaluate-closed ;
 
 : CDD-SECTION-LATCH-AFTER ( -- )
@@ -448,7 +447,7 @@ create CDD-DIAG 4096 allot
 : CDD-NOT-CERTIFIED ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n wa:ptr wu:n :}
    CDD-DIAG 4096 DIAG-BUFFER!
-   sa su TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
+   sa su TEST-EVAL:RC  70 T=
    DIAG-BUFFER$ wa wu CONTAINS? TTRUE
    DIAG-BUFFER-OFF ;
 
@@ -493,7 +492,7 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
 
 : CDD-FIT-DECLARED ( -- )
    CDD-DIAG 4096 DIAG-BUFFER!
-   CDD-FIT$ TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
+   CDD-FIT$ TEST-EVAL:RC  70 T=
    DIAG-BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
    s\" \"declared_effect\":\"" s\" -- n \"" CDD-FIT-FIELD
    s\" \"declared_effect_source\":\"" s\" -- n\"" CDD-FIT-FIELD
@@ -561,7 +560,7 @@ variable CDD-GOT
    s" the patching word keeps its own effect" T-LABEL
    s" variable CDD-PV3 : CDD-PB3 ( -- ) does> ( -- n ) drop 9 ; CDD-PB3 CDD-PV3 drop"
       TEST-EVAL:RC 0 T=
-   s" : CDD-PT3 ( -- n ) CDD-PB3 ;" TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
+   s" : CDD-PT3 ( -- n ) CDD-PB3 ;" TEST-EVAL:RC  70 T=
    s" a does> word defined before the created word patches it the same way" T-LABEL
    s" : CDD-PB4 ( -- ) does> ( -- n ) drop 9 ; variable CDD-PV4 CDD-PB4 CDD-PV4 CDD-GOT !"
       CDD-GOT-RC 9 T= 0 T=
@@ -569,7 +568,7 @@ variable CDD-GOT
    s" CDD-PKC:CDD-PKV CDD-GOT !" CDD-GOT-RC 9 T= 0 T=
    s" a word created over a forgotten definition's ordinal starts unlinked" T-LABEL
    s" : CDD-FD ( -- n ) 5 ; ndict@ 1- ndict! create CDD-FX" TEST-EVAL:RC 0 T=
-   s" : CDD-FG ( -- ) CDD-FX ;" TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
+   s" : CDD-FG ( -- ) CDD-FX ;" TEST-EVAL:RC  70 T=
    \ Last: a word still typed as its cell runs `@` on the clause's 9 and dies.
    s" the patched word's cell is gone, so `@` on it is refused" T-LABEL
    s" variable CDD-PV2 : CDD-PB2 ( -- ) does> ( -- n ) drop 9 ; CDD-PB2 CDD-PV2 @ drop"

@@ -1,6 +1,6 @@
-\ A definition held open across tty lines, at the target's first tier. The line
-\ reader is compiled code that runs between the lines, and the open definition
-\ holds the compile loop's bands RW; its end of input is the pipe's refusal,
+\ A definition held open across tty lines. The line reader is compiled code
+\ that runs between the lines, and the open definition holds the compile
+\ loop's bands RW; its end of input is the pipe's refusal,
 \ rc 74, since no input remains for the REPL to recover into.
 require src/lib/test.f
 require src/lib/test/ending.f
@@ -10,21 +10,15 @@ require src/lib/engine-candidate.f
 package REPL-OPEN-DEF-TEST
 using PTY-HARNESS
 
-: FIRST-TIER ( -- n )
-   HB-TARGET-LINUX-X86-64? if 1 else 0 then ;
-
 \ Only the prompt after an answer shows the child reading raw again, so a step
 \ waits for that one and ^D goes only after a step that saw it.
 : STEP ( ptr u8 n -- bool )
    BUF-CLEAR SEND-LINE WAIT-ANSWER ;
 
-\ A REPL child on the pty, set to the tier under test.
-: OPEN ( n -- bool )
-   {: tier:n :}
+\ A REPL child on the pty.
+: OPEN ( -- bool )
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
-   s" habu> " WAIT-FOR if
-      tier 0= if s" 0 set-tier" else s" 1 set-tier" then STEP
-   else false then ;
+   s" habu> " WAIT-FOR ;
 
 \ Reap the child and assert it exited with code want. The terminal carries both
 \ streams, and its buffer holds what the reap drained; a signal fails the case,
@@ -52,37 +46,19 @@ using PTY-HARNESS
    s" -7 SPAN-W ." STEP TTRUE
    s" -107" IN-BUF? TTRUE ;
 
-\ Tier 1 keeps a block's local table across source lines, then releases it at
-\ `then`: the same spelling is a string opener in the last line. Only the Habu
-\ REPL, x86-64's, carries the table across lines; ARM64's kernel REPL drops the
-\ local table at each line end.
-: LEXICAL-LINES ( -- )
-   s" : SPAN-LEX ( bool -- n )" STEP TTRUE
-   S\" if 7 {: s\q:n :}" STEP TTRUE
-   S\" s\q" STEP TTRUE
-   s" else 0 then" STEP TTRUE
-   S\" s\q done\q 2drop ;" STEP TTRUE
-   s" true SPAN-LEX ." STEP TTRUE
-   s" 7" IN-BUF? TTRUE
-   s" false SPAN-LEX ." STEP TTRUE
-   s" 0" IN-BUF? TTRUE ;
-
-: SPAN-CASE ( n -- )
-   {: tier:n :}
-   tier OPEN dup TTRUE if
+: SPAN-CASE ( -- )
+   OPEN dup TTRUE if
       s" : SPAN-X ( -- n )" STEP dup TTRUE if
          SPAN-LINES
          BRANCH-LINES
-         tier 1 = HB-TARGET-LINUX-X86-64? and if LEXICAL-LINES then
          4 SEND-BYTE
       then
    then
    0 EXIT= ;
 
 \ ^D with the definition still open names it and exits 74.
-: EOF-CASE ( n -- )
-   {: tier:n :}
-   tier OPEN dup TTRUE if
+: EOF-CASE ( -- )
+   OPEN dup TTRUE if
       s" : EOF-Y ( -- )" STEP dup TTRUE if
          4 SEND-BYTE
       then
@@ -91,10 +67,9 @@ using PTY-HARNESS
    s" E-VS-UNTERMINATED-DEFINITION habu: source ended inside definition: EOF-Y" IN-BUF? TTRUE ;
 
 \ A failed definition must unwind through the line savepoint, then accept a
-\ new definition. Tier 0 reaches the JIT diagnostic tail before the catch.
-: REJECT-CASE ( n -- )
-   {: tier:n :}
-   tier OPEN dup TTRUE if
+\ new definition.
+: REJECT-CASE ( -- )
+   OPEN dup TTRUE if
       BUF-CLEAR s" : REJECT-X ( -- ) NO-SUCH-WORD ;" SEND-LINE
       s" E-UNDEFINED" WAIT-FOR TTRUE
       s" E-UNDEFINED" s" habu> " WAIT-AFTER
@@ -113,7 +88,7 @@ using PTY-HARNESS
 \ jump back into the reader's retired REPL savepoint: on both targets the
 \ hook's throw ends the process with its code.
 : HOOK-CASE ( -- )
-   FIRST-TIER OPEN dup TTRUE if
+   OPEN dup TTRUE if
       S\" : RV-HOOK ( -- ) s\" HOOK\" type cr 91 throw ;" STEP TTRUE
       s" TRUSTED: RV-ARM ( -- ) ['] RV-HOOK data-base EXIT-HOOK-CELL + ! ;" STEP TTRUE
       s" RV-ARM" STEP TTRUE
@@ -128,7 +103,7 @@ using PTY-HARNESS
 \ from `die`; `die` disarms both before the hook runs, so the hook's throw ends
 \ the process with its code and no prompt follows die's message.
 : DIE-HOOK-CASE ( -- )
-   FIRST-TIER OPEN dup TTRUE if
+   OPEN dup TTRUE if
       s" : CHILD-HOOK ( -- ) 9 throw ;" STEP TTRUE
       s" TRUSTED: CHILD-ARM ( -- ) ['] CHILD-HOOK data-base EXIT-HOOK-CELL + ! ;" STEP TTRUE
       s" CHILD-ARM" STEP TTRUE
@@ -166,9 +141,9 @@ public
 
 : RUN ( -- )
    T-RESET
-   FIRST-TIER SPAN-CASE
-   FIRST-TIER EOF-CASE
-   FIRST-TIER REJECT-CASE
+   SPAN-CASE
+   EOF-CASE
+   REJECT-CASE
    USING-CASE
    HOOK-CASE
    DIE-HOOK-CASE

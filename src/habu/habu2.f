@@ -41,7 +41,6 @@ require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/habu/aot-runtime.f
 require src/habu/native-body-abi.f
-require src/habu/native-host-cells.f
 require src/core/sha256.f
 require src/compiler/fixed-body.f
 require src/arch/arm64/icode.f

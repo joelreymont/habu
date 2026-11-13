@@ -25,7 +25,6 @@ DYNAMIC-BUFFER ROWS n
 DYNAMIC-BUFFER NAMES n
 variable USED
 variable NAME-BYTES
-variable SCALAR-ROW
 \ Nonzero while an x86-64 build carries a complete captured runtime; RESET
 \ clears it.
 variable SEEDED
@@ -48,7 +47,7 @@ variable SEEDED
 public
 
 : COUNT ( -- n ) USED @ ;
-: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! 0 SEEDED ! ;
+: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SEEDED ! ;
 : SEEDED! ( bool -- ) if 1 else 0 then SEEDED ! ;
 : SEEDED? ( -- bool ) SEEDED @ 0<> ;
 
@@ -73,23 +72,6 @@ public
 : NAME-LABEL! ( label n -- ) swap LABEL>N swap 4 ROW-FIELD ! ;
 : WID ( n -- n ) 5 ROW-FIELD @ ;
 : WID! ( n n -- ) 5 ROW-FIELD ! ;
-
-\ Only an emitter that owns the completed body may mark it. The specification
-\ proves the declared n -> n effect; a helper has no checked row and cannot
-\ pass this gate. The marked row is carried into the booted dictionary by its
-\ exact ordinal, independently of its spelling or a later checker verdict.
-: MARK-SCALAR ( n -- ) {: row:n :}
-   SCALAR-ROW @ 0<> if E-INDEX throw then
-   row NAME$ PRIM-SPEC:FIND {: spec:n :}
-   spec 0 < if E-INDEX throw then
-   spec PRIM-SPEC:CODE-LEN@ 4 <> if E-INDEX throw then
-   spec 0 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
-   spec 1 PRIM-SPEC:CODE@ PRIM-SPEC:A-IN <> if E-INDEX throw then
-   spec 2 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
-   spec 3 PRIM-SPEC:CODE@ PRIM-SPEC:A-OUT <> if E-INDEX throw then
-   row 1+ SCALAR-ROW ! ;
-
-: SCALAR-ROW@ ( -- n ) SCALAR-ROW @ ;
 
 \ The table is which primitives exist: every body registers under a name
 \ src/habu/prims.f specifies; the row states the effect, the body the machine

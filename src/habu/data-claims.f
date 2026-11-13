@@ -5,7 +5,6 @@ require src/habu/address-cells.f
 require src/habu/prof-abi.f
 require src/habu/native-observer-cells.f
 require src/habu/native-body-abi.f
-require src/habu/native-host-cells.f
 
 \ Every claim on DATA states its extent. CLAIMS-ASSERT refuses an overlapping
 \ pair at engine build time, naming both, when an engine builder
@@ -149,8 +148,6 @@ create TAB
    NDICT-HW-CELL                      1 cells                 CLAIM NDICT-HW-CELL
    DATA-FLOOR-CELL                    1 cells                 CLAIM DATA-FLOOR-CELL
    NATIVE-OBS-CELLS:PUBLISHED         1 cells                 CLAIM NATIVE-OBS-CELLS:PUBLISHED
-   NATIVE-OBS-CELLS:HOST-INVALIDATE   1 cells                 CLAIM NATIVE-OBS-CELLS:HOST-INVALIDATE
-   NATIVE-HOST-CELLS:SCALAR-PRIM      1 cells                 CLAIM NATIVE-HOST-CELLS:SCALAR-PRIM
    DEF-OCC:PTR-CELL                   1 cells                 CLAIM DEF-OCC:PTR-CELL
    LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL
