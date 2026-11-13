@@ -1,71 +1,93 @@
 # SPARQL
 
-One public operation: `SPARQL:QUERY`.
+One public operation, `SPARQL:QUERY`:
 
 ```forth
-( request length context read write -- )
+( query query-length base base-length schema schema-length deadline
+  context read write -- )
 ```
 
-`read` has effect `[ context request length -- reply length ]`.
-`write` has effect `[ context status bytes length -- ]`.
+`read` has effect `[ context request length -- batch length ]`.
+`write` has effect `[ context bytes length -- ]`.
 The exact checked effects are in `src/lib/sparql.f`.
 
-The caller supplies SPARQL text and explicit limits in one JSON request.
-Use standard SPARQL `VALUES` or `BIND` for query values. The C header defines the
-byte protocol: `native/sparql/habu-sparql.h`.
+Habu parses SPARQL and compiles one parameterized PostgreSQL statement.
+PostgreSQL evaluates joins, paths, expressions, aggregates, ordering and
+slicing. Models supply SPARQL text. The host supplies the base IRI, trusted
+backend schema, absolute monotonic deadline and callbacks.
 
 ## Ownership
 
-The call owns parsing, evaluation and cleanup. There is no public query object,
-prepare/bind/close sequence, form enum, source setter or reply token.
-Callbacks use their context for state and run synchronously on the caller's
-thread. The read reply is copied immediately. A write span expires when that
-callback returns. Habu callback errors are caught before returning through C
-and rethrown after the native call returns.
+`QUERY` owns one arena for syntax, SQL construction and result writing.
+Callbacks run synchronously on the caller's task. A returned batch remains
+valid until the next `read`; a write span expires when `write` returns.
+Callback and library errors propagate as Habu throws. The host discards
+partial output after an error and always closes its cursor and transaction.
 
-`write` receives result chunks with status zero. A positive status carries a
-diagnostic, after which `QUERY` throws. Discard partial output on any failure.
-A result limit fails the query; it never turns a partial answer into success.
+The deadline is an absolute `TIME:MONO-NS` value, or zero for no deadline.
+Parsing, compilation and output check it and yield to task cancellation.
+The host enforces the same deadline during database waits and bounds output
+bytes. There is no intermediate-read or result-row cap in the library.
 
-## Data
+## Database callback
 
-The source answers three requests: scan matching quads, list named graphs,
-and check a named graph. Scans and graph lists use opaque cursors and pages of
-at most 256 items. A page is fetched only when evaluation needs it.
+The first `read` receives a descriptor:
 
-The source owns authorization, one consistent snapshot and RDF-set uniqueness.
-It distinguishes the default graph from named graphs, including empty ones.
-The bridge checks term types and pattern matches. Terms use SPARQL Results
-JSON binding objects, preserving literal spelling, datatype and language.
+```json
+{"op":"query","sql":"...","params":["..."],"form":"select","vars":["x"]}
+```
 
-For Zen, PostgreSQL remains the store. Its source maps existing authorized
-views to RDF; the library has no database handle, SQL, storage engine or
-network client. `FROM` selects supplied graphs. Updates have no entry point,
-and no remote `SERVICE` handler is installed.
+The host binds every parameter as text and opens a PostgreSQL cursor. Later
+reads receive `{"op":"next"}`. Each reply is a JSON array; `[]` ends the
+result. Every SQL row contains one JSONB column, `v`:
 
-## Evaluation
+| Form | Row value | Output |
+| --- | --- | --- |
+| SELECT | Variable-to-term binding object | SPARQL Results JSON |
+| ASK | One boolean | SPARQL Results JSON |
+| CONSTRUCT / DESCRIBE | Object with `s`, `p`, `o` RDF terms | N-Triples |
 
-Spargebra parses standard SPARQL; Spareval evaluates it. These standalone
-crates share a pinned upstream revision and a locked dependency graph. No
-Oxigraph store or RocksDB is used.
+The host owns authorization and one read-only, repeatable-read snapshot
+across cursor creation and all fetches. Zen fetches 64 rows at a time and
+applies its output-byte budget. Counts and joins execute before rows cross
+this boundary.
 
-SELECT and ASK stream SPARQL Results JSON. CONSTRUCT and DESCRIBE stream
-N-Triples. Source pages, result rows, result bytes and callback deadlines are
-bounded by the caller's request. Joins and sorting can still buffer data inside
-the evaluator; this is not a compiler that pushes the whole query into SQL.
+## RDF source
 
-Deadline checks at callbacks cannot interrupt arbitrary CPU work inside the
-parser or evaluator. Zen runs the call in a short-lived process using its
-existing process timeout. That also keeps native evaluation off the server's
-cooperative scheduler. A timeout kills the worker and discards its output.
+The trusted schema is checked as a simple SQL identifier and quoted.
+Query-controlled strings enter only bound parameters. The backend provides:
+
+- `sparql_match(s,p,o,g)`: RDF triples; SQL NULL means a wildcard for s/p/o
+  and the default graph for g.
+- `sparql_graphs()`: named graph terms, including empty graphs.
+- `sparql_*` term helpers: RDF expression operations. Expression errors are
+  SQL NULL; cancellation and resource errors propagate.
+
+Each graph is a set. Terms use SPARQL Results JSON, with language tags in
+lowercase and the xsd:string datatype omitted. Other literal lexical forms
+and datatype IRIs remain intact. Ordinary solutions retain duplicates.
+`FROM` merges selected supplied graphs, renaming their blank nodes apart.
+`DESCRIBE` returns a concise bounded description.
+
+Zen supplies its authorized RDF projection over PostgreSQL views through
+these functions. Habu owns neither a connection nor a copied dataset.
+Updates have no entry point. A normal remote `SERVICE` throws `E-SERVICE`;
+`SERVICE SILENT` preserves its input.
 
 ## Build and check
 
-Build `native/sparql` with Cargo and make its dynamic library available to Habu.
-`native/sparql/README.md` gives the command. With a trusted installed `hb`, load
-`src/lib/sparql-test.f` for the focused callback/exception check.
+Load the library with the current T0 Habu executable. No Rust crate, dynamic
+SPARQL library or separate query executable is required.
 
-The [native conformance audit](../native/sparql/conformance/README.md) contains
-the W3C harness and measured results.
-Those execute the native ABI. They do not establish that the Habu wrapper or
-Zen worker has compiled; both require a trusted `hb` run.
+```sh
+bin/hb --load src/lib/sparql-test.f </dev/null
+```
+
+The [W3C audit](../test/sparql/README.md) uses the native Habu compiler and
+PostgreSQL with the pinned 855-case query profile. Its fixture loading and
+comparison policy are preserved from the earlier audit. The old Rust score
+is historical; it does not validate this replacement. Native execution and
+conformance remain pending until a current T0 runtime runs these checks.
+
+The private [compiler contract](../src/lib/sparql/README.md) records current
+implementation limits separately from the public callback API.

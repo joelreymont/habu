@@ -1,43 +1,30 @@
-#!/usr/bin/env python3
-"""External W3C audit of Habu's SPARQL C bridge and source callback.
+"""Pinned W3C fixture loading and result comparison, independent of the engine.
 
-RDFLib loads RDF and expected results and compares graph isomorphism. It never
-evaluates a query. Query parsing/evaluation exclusively use libhabu_sparql.so.
-This audit does not execute the Habu-language wrapper.
+These functions are preserved verbatim from the historical audit. RDFLib reads
+RDF/results and compares terms and graph isomorphism; it never runs SPARQL.
 """
 from __future__ import annotations
 
-import argparse
 from collections import Counter
-from contextlib import nullcontext
-import ctypes as C
 import hashlib
-import io
 import json
-import os
 from pathlib import Path
-import shutil
-import sys
 import time
 import traceback
 from urllib.parse import unquote, urlparse, quote
 
-HERE = Path(__file__).resolve().parent
-NATIVE = HERE.parent
 import rdflib
 rdflib.NORMALIZE_LITERALS = False
 from rdflib import BNode, Graph, Literal, Namespace, RDF, URIRef, Dataset as RDFDataset
 from rdflib.compare import isomorphic
 from rdflib.query import Result
 
+HERE = Path(__file__).resolve().parent
 XSD = "http://www.w3.org/2001/XMLSchema#"
 RS = Namespace("http://www.w3.org/2001/sw/DataAccess/tests/result-set#")
 HX = Namespace("urn:habu:sparql:conformance:")
 STATUS = {0:"success", 1:"syntax", 2:"source", 3:"evaluation", 4:"argument",
-          5:"caught_native_panic", 6:"limit"}
-SOURCE = C.CFUNCTYPE(C.c_int32, C.c_void_p, C.c_void_p, C.c_size_t, C.c_void_p)
-WRITE = C.CFUNCTYPE(C.c_int32, C.c_void_p, C.c_int32, C.c_void_p, C.c_size_t)
-LIMITS = {"timeout_ms":10000, "max_rows":100000, "max_bytes":16777216, "max_scan_rows":1000000}
+          5:"engine_error", 6:"limit"}
 
 
 def normalized_term(t):
@@ -58,8 +45,10 @@ def normalized_term(t):
     raise ValueError(f"Unsupported RDF term kind {kind!r}")
 
 
+
 def term_key(t):
     return json.dumps(normalized_term(t), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
 
 
 def to_json_term(t):
@@ -77,6 +66,7 @@ def to_json_term(t):
     raise TypeError(f"Unsupported RDFLib term: {t!r}")
 
 
+
 def to_rdf_term(t, bnodes=None):
     t = normalized_term(t)
     if t["type"] == "uri":
@@ -87,55 +77,6 @@ def to_rdf_term(t, bnodes=None):
         return bnodes.setdefault(t["value"], BNode())
     return Literal(t["value"], lang=t.get("xml:lang"), datatype=t.get("datatype"), normalize=False)
 
-
-class Native:
-    def __init__(self, path):
-        self.path = Path(path).resolve()
-        self.sha256 = hashlib.sha256(self.path.read_bytes()).hexdigest()
-        cache = HERE / "binaries"
-        cache.mkdir(exist_ok=True)
-        self.loaded_path = cache / ("libhabu_sparql-" + self.sha256 + ".so")
-        if not self.loaded_path.exists():
-            shutil.copy2(self.path,self.loaded_path)
-        if hashlib.sha256(self.loaded_path.read_bytes()).hexdigest() != self.sha256:
-            raise RuntimeError("Native library changed while creating audit snapshot")
-        self.lib = C.CDLL(str(self.loaded_path))
-        self.lib.hb_sparql_run.argtypes = [C.c_void_p,C.c_size_t,C.c_void_p,SOURCE,WRITE]
-        self.lib.hb_sparql_run.restype = C.c_int32
-        self.lib.hb_sparql_reply_set.argtypes = [C.c_void_p,C.c_void_p,C.c_size_t]
-        self.lib.hb_sparql_reply_set.restype = None
-
-    def run(self, query, base, provider, **limits):
-        errors, chunks, diagnostics = [], [], []
-        count = Counter()
-
-        @SOURCE
-        def source(context, request, length, reply):
-            try:
-                req = json.loads(C.string_at(request,length))
-                count[req.get("op","?")] += 1
-                if sum(count.values()) > 100000:
-                    raise RuntimeError("Audit source request budget exceeded (100000)")
-                payload = provider.request(req)
-                encoded = json.dumps(payload,ensure_ascii=False,separators=(",", ":")).encode()
-                self.lib.hb_sparql_reply_set(reply,encoded,len(encoded))
-                return 0
-            except BaseException as exc:
-                message = type(exc).__name__+": "+str(exc)
-                errors.append(message)
-                encoded = json.dumps({"error":message}).encode()
-                self.lib.hb_sparql_reply_set(reply,encoded,len(encoded))
-                return 1
-
-        @WRITE
-        def write(context,status,data,length):
-            (diagnostics if status else chunks).append(C.string_at(data,length))
-            return 0
-
-        request = json.dumps({"query":query,"base_iri":base or "",**LIMITS,**limits}).encode()
-        with provider.snapshot():
-            status = self.lib.hb_sparql_run(request,len(request),None,source,write)
-        return status,b"".join(chunks).decode(),b"".join(diagnostics).decode(),dict(count),errors
 
 
 class Dataset:
@@ -153,111 +94,6 @@ class Dataset:
         self.graph(g)
 
 
-def page(rows,req,key):
-    start,limit = int(req.get("cursor") or 0),req["limit"]
-    return {key:rows[start:start+limit], "next":str(start+limit) if start+limit<len(rows) else None}
-
-
-class MemoryProvider:
-    def load(self, dataset):
-        self.dataset = dataset
-
-    def snapshot(self):
-        return nullcontext()
-
-    def request(self, req):
-        if req["op"] == "graphs":
-            return page(list(self.dataset.graphs.values()),req,"graphs")
-        if req["op"] == "contains":
-            return {"contains":term_key(req["graph"]) in self.dataset.graphs}
-        if req["op"] != "scan":
-            raise ValueError("Unknown source operation")
-        graph = req["graph"]
-        kind = graph["kind"]
-        if kind not in ("default","named","any"):
-            raise ValueError("Unknown graph selector")
-        matches = []
-        for key,quad in self.dataset.quads.items():
-            if kind == "default" and key[3] is not None:
-                continue
-            if kind == "any" and key[3] is None:
-                continue
-            if kind == "named" and key[3] != term_key(graph["name"]):
-                continue
-            if any(req.get(col) is not None and key[i] != term_key(req[col]) for i,col in enumerate("spo")):
-                continue
-            matches.append(quad)
-        return page(matches,req,"quads")
-
-    def close(self):
-        pass
-
-
-class PostgresProvider:
-    def __init__(self):
-        import psycopg
-        self.connection = psycopg.connect(os.environ["ZEN_VALIDATION_CONNINFO"], autocommit=True)
-        self.version = self.connection.execute("SELECT version()").fetchone()[0]
-        self.connection.execute("CREATE TEMP TABLE audit_quad (s text NOT NULL,p text NOT NULL,o text NOT NULL,g text)")
-        self.connection.execute("CREATE INDEX ON audit_quad (p,s,o,g)")
-        self.connection.execute("CREATE TEMP TABLE audit_graph (name text PRIMARY KEY)")
-
-    def load(self, dataset):
-        with self.connection.transaction():
-            self.connection.execute("TRUNCATE audit_quad,audit_graph")
-            with self.connection.cursor() as cur:
-                with cur.copy("COPY audit_quad(s,p,o,g) FROM STDIN") as copy:
-                    for key in dataset.quads:
-                        copy.write_row(key)
-                with cur.copy("COPY audit_graph(name) FROM STDIN") as copy:
-                    for name in dataset.graphs:
-                        copy.write_row((name,))
-
-    def snapshot(self):
-        from contextlib import contextmanager
-        @contextmanager
-        def scope():
-            with self.connection.transaction():
-                self.connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-                self.connection.execute("SET LOCAL statement_timeout='10s'")
-                yield
-        return scope()
-
-    def request(self, req):
-        if req["op"] == "contains":
-            row = self.connection.execute("SELECT EXISTS(SELECT FROM audit_graph WHERE name=%s)",(term_key(req["graph"]),)).fetchone()
-            return {"contains":row[0]}
-        start,limit = int(req.get("cursor") or 0),req["limit"]
-        if req["op"] == "graphs":
-            rows = [json.loads(r[0]) for r in self.connection.execute(
-                "SELECT name FROM audit_graph ORDER BY name LIMIT %s OFFSET %s",(limit+1,start))]
-            return {"graphs":rows[:limit],"next":str(start+limit) if len(rows)>limit else None}
-        if req["op"] != "scan":
-            raise ValueError("Unknown source operation")
-        clauses, params = [], []
-        graph = req["graph"]
-        if graph["kind"] == "default":
-            clauses.append("g IS NULL")
-        elif graph["kind"] == "any":
-            clauses.append("g IS NOT NULL")
-        elif graph["kind"] == "named":
-            clauses.append("g=%s"); params.append(term_key(graph["name"]))
-        else:
-            raise ValueError("Unknown graph selector")
-        for col in "spo":
-            if req.get(col) is not None:
-                clauses.append(col+"=%s"); params.append(term_key(req[col]))
-        # Fixed SQL structure; every value, page limit and offset is bound.
-        params.extend((limit+1,start))
-        rows = list(self.connection.execute("SELECT s,p,o,g FROM audit_quad WHERE "+
-            " AND ".join(clauses)+" ORDER BY s,p,o,g LIMIT %s OFFSET %s",params))
-        return {"quads":[{k:json.loads(v) if v is not None else None for k,v in zip("spog",row)}
-                         for row in rows[:limit]],
-                "next":str(start+limit) if len(rows)>limit else None}
-
-    def close(self):
-        self.connection.close()
-
 
 def fixture_graph(path, cache):
     path = Path(path).resolve()
@@ -268,6 +104,7 @@ def fixture_graph(path, cache):
             raise ValueError(f"Unsupported RDF input format {suffix}")
         cache[path] = Graph().parse(path, format=fmt, publicID=path.as_uri())
     return cache[path]
+
 
 
 def load_dataset(test, description, suite_root):
@@ -310,6 +147,7 @@ def load_dataset(test, description, suite_root):
     return dataset
 
 
+
 def load_expected(test):
     path = Path(test["result"]["path"])
     suffix = path.suffix.lower()
@@ -349,8 +187,10 @@ def load_expected(test):
             "rows":rows, "ordered":ordered}
 
 
+
 def row_key(row):
     return tuple(sorted((v,term_key(t)) for v,t in row.items()))
+
 
 
 def solution_graph(rows, ordered):
@@ -364,6 +204,7 @@ def solution_graph(rows, ordered):
         for variable,term in row.items():
             result.add((solution,URIRef(str(HX)+"variable:"+quote(variable,safe="")),to_rdf_term(term,bnodes)))
     return result
+
 
 
 def compare_result(form, text, expected, lax):
@@ -405,6 +246,7 @@ def compare_result(form, text, expected, lax):
         details["actual_rows_preview"] = rows[:12]
         details["expected_rows_preview"] = exp_rows[:12]
     return ok,details
+
 
 
 def run_one(native, provider, test, suite_root, descriptions):
@@ -456,62 +298,3 @@ def run_one(native, provider, test, suite_root, descriptions):
         return record
     finally:
         record["elapsed_ms"] = round(1000*(time.perf_counter()-started),3)
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--library",type=Path,default=NATIVE/"target/debug/libhabu_sparql.so")
-    ap.add_argument("--manifest",type=Path,default=HERE/"readonly-manifest.json")
-    ap.add_argument("--provider",choices=("memory","postgres"),required=True)
-    ap.add_argument("--output",type=Path)
-    ap.add_argument("--id",action="append",default=[])
-    ap.add_argument("--limit",type=int)
-    args = ap.parse_args()
-    manifest = json.loads(args.manifest.read_text())
-    tests = [t for t in manifest["tests"] if t["group"] in ("query_syntax","query_evaluation")]
-    if args.id:
-        tests = [t for t in tests if any(s in t["id"] for s in args.id)]
-    if args.limit is not None:
-        tests = tests[:args.limit]
-    descriptions = json.loads((HERE/"dataset-descriptions.json").read_text())["tests"]
-    native = Native(args.library)
-    provider = MemoryProvider() if args.provider == "memory" else PostgresProvider()
-    output = args.output or HERE/("native-"+args.provider+"-results.json")
-    records = []
-    started = time.perf_counter()
-    try:
-        for index,test in enumerate(tests,1):
-            record = run_one(native,provider,test,Path(manifest["suite_root"]),descriptions)
-            records.append(record)
-            if index % 50 == 0 or record["status"] != "pass":
-                print(json.dumps({"completed":index,"total":len(tests),"status":record["status"],"test":test["id"]}),flush=True)
-    finally:
-        provider.close()
-        group_counts = {group:dict(Counter(r["status"] for r in records if r["group"] == group))
-                        for group in sorted(set(r["group"] for r in records))}
-        result = {
-            "subject":"Habu SPARQL native C bridge with caller-owned provider callback",
-            "habu_language_wrapper_executed":False,"limits":LIMITS,
-            "syntax_method":"One-shot empty-source execution; syntax failure is status 1; evaluation failures do not reject valid syntax",
-            "fixture_metadata_sha256":hashlib.sha256((HERE/"dataset-descriptions.json").read_bytes()).hexdigest(),
-            "provider":args.provider,"postgres_version":getattr(provider,"version",None),
-            "library":str(native.path),"loaded_library_snapshot":str(native.loaded_path),"library_sha256":native.sha256,
-            "harness_sha256":hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "source_hashes":{name:hashlib.sha256((NATIVE/name).read_bytes()).hexdigest()
-                             for name in ("src/lib.rs","src/source.rs","src/terms.rs","Cargo.toml","Cargo.lock","habu-sparql.h",
-                                          "vendor/spareval/Cargo.toml","vendor/spareval/src/eval.rs",
-                                          "vendor/spareval/src/expression.rs","vendor/spareval/src/lib.rs")
-                             if (NATIVE/name).exists()},
-            "manifest_sha256":hashlib.sha256(args.manifest.read_bytes()).hexdigest(),
-            "suite_revision":manifest["revision"],"planned":len(tests),"completed":len(records),
-            "counts":dict(Counter(r["status"] for r in records)),"counts_by_group":group_counts,
-            "elapsed_seconds":round(time.perf_counter()-started,3),
-            "comparison":"Exact RDF 1.1 terms (plain=xsd:string, language tags case-insensitive), bags, global blank-node bijection, rs:index ordering, REDUCED lax cardinality; no numeric lexical normalization",
-            "records":records,
-        }
-        output.write_text(json.dumps(result,indent=2,ensure_ascii=False)+"\n")
-        print(json.dumps({k:v for k,v in result.items() if k != "records"},indent=2),flush=True)
-
-
-if __name__ == "__main__":
-    main()

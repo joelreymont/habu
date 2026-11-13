@@ -1,47 +1,83 @@
-\ sparql-test.f - streaming output and callback failures through Habu.
-\ Run with the native library on the loader path:
-\   hb --load src/lib/sparql-test.f
-
+\ Result batches and callback failures through the public Habu interface.
+\ This checks the host boundary; the W3C suite checks query evaluation.
 require src/lib/test.f
 require src/lib/json.f
 require src/lib/codegen.f
 require src/lib/sparql.f
+require src/lib/time.f
 
 package SPARQL-TEST
+private
 
-1024 CODEGEN:BUFFER OUTPUT
+4096 CODEGEN:BUFFER OUTPUT
+variable READS
+variable KIND
 
-: REQUEST$ ( -- ptr u8 n )
-   s\" {\"query\":\"ASK { ?s ?p ?o }\",\"timeout_ms\":5000,\"max_rows\":1000,\"max_bytes\":1048576,\"max_scan_rows\":100000}" ;
+: REPLY$ ( -- ptr u8 n )
+   KIND @ 0= if s" [false]" exit then
+   KIND @ 1 = if
+      s\" [{\"x\":{\"type\":\"literal\",\"value\":\"one\"}}]" exit
+   then
+   s\" [{\"s\":{\"type\":\"bnode\",\"value\":\"a/b\"},\"p\":{\"type\":\"uri\",\"value\":\"urn:p\"},\"o\":{\"type\":\"literal\",\"value\":\"x\\n\\\"\"}}]" ;
 
-: EMPTY ( ptr u8 ptr u8 n -- ptr u8 n )
-   2drop drop s\" {\"quads\":[],\"next\":null}" ;
+: SOURCE ( ptr u8 ptr u8 n -- ptr u8 n )
+   2drop drop
+   READS @ 0= {: first:bool :}
+   1 READS +!
+   first if REPLY$ else s" []" then ;
 
-: COLLECT ( ptr u8 n ptr u8 n -- )
-   {: context status:n bytes length:n :}
-   status 0<> if SPARQL:E-QUERY throw then
+: COLLECT ( ptr u8 ptr u8 n -- )
+   {: context bytes length:n :}
    bytes length OUTPUT CODEGEN:APPEND-STRING ;
 
 : FAIL-READ ( ptr u8 ptr u8 n -- ptr u8 n )
    2drop drop E-FS-IO throw ;
 
-: FAIL-WRITE ( ptr u8 n ptr u8 n -- )
-   2drop 2drop E-FS-IO throw ;
+: FAIL-WRITE ( ptr u8 ptr u8 n -- )
+   2drop drop E-FS-IO throw ;
+
+: RESET ( -- ) 0 READS ! OUTPUT CODEGEN:RESET ;
+
+: RUN-QUERY ( ptr u8 n -- )
+   s" " s" test_backend" 0 NULL-PTR [: SOURCE ;] [: COLLECT ;]
+      SPARQL:QUERY ;
 
 public
 
 : RUN ( -- )
-   T-RESET OUTPUT CODEGEN:RESET
-   s" an empty source answers ASK false" T-LABEL
-   REQUEST$ NULL-PTR [: EMPTY ;] [: COLLECT ;] SPARQL:QUERY
+   T-RESET RESET 0 KIND !
+   s" one boolean row answers ASK" T-LABEL
+   s" ASK { ?s ?p ?o }" RUN-QUERY
    OUTPUT CODEGEN:CONTENTS
    s\" {\"head\":{},\"boolean\":false}" JSON:VALUE= TTRUE
-   s" source failure is rethrown after C returns" T-LABEL
-   [: REQUEST$ NULL-PTR [: FAIL-READ ;] [: COLLECT ;]
-      SPARQL:QUERY ;] E-FS-IO TTHROWSQ
-   s" output failure is rethrown after C returns" T-LABEL
-   [: REQUEST$ NULL-PTR [: EMPTY ;] [: FAIL-WRITE ;]
-      SPARQL:QUERY ;] E-FS-IO TTHROWSQ ;
+
+   RESET 1 KIND !
+   s" SELECT rows are standard result bindings" T-LABEL
+   s" SELECT ?x WHERE { VALUES ?x { 'one' } }" RUN-QUERY
+   OUTPUT CODEGEN:CONTENTS
+   s\" {\"head\":{\"vars\":[\"x\"]},\"results\":{\"bindings\":[{\"x\":{\"type\":\"literal\",\"value\":\"one\"}}]}}"
+      JSON:VALUE= TTRUE
+
+   RESET 2 KIND !
+   s" graph terms escape literals and preserve blank node identity" T-LABEL
+   s\" CONSTRUCT { _:a <urn:p> \"x\\n\\\"\" } WHERE {}" RUN-QUERY
+   OUTPUT CODEGEN:CONTENTS
+   s\" _:b612f62 <urn:p> \"x\\u000a\\\"\" .\n" T$=
+
+   s" source failure propagates through QUERY cleanup" T-LABEL
+   [: s" ASK {}" s" " s" test_backend" 0 NULL-PTR
+      [: FAIL-READ ;] [: COLLECT ;] SPARQL:QUERY ;]
+      E-FS-IO TTHROWSQ
+
+   s" output failure propagates through QUERY cleanup" T-LABEL
+   [: s" ASK {}" s" " s" test_backend" 0 NULL-PTR
+      [: SOURCE ;] [: FAIL-WRITE ;] SPARQL:QUERY ;]
+      E-FS-IO TTHROWSQ
+
+   s" an expired deadline ends CPU-only parsing" T-LABEL
+   [: s" ASK {}" s" " s" test_backend" TIME:MONO-NS 1- NULL-PTR
+      [: SOURCE ;] [: COLLECT ;] SPARQL:QUERY ;]
+      SPARQL:E-DEADLINE TTHROWSQ ;
 
 ;package
 
