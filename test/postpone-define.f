@@ -68,8 +68,7 @@ private
 : record-at ( ptr n n -- ptr n ) drop ;
 STRUCTURE pdpair DERIVE addr FIELD a n FIELD b n ;STRUCTURE
 3 TYPED-BUFFER PD-PAIRS pdpair
-\ The buffer's own accessor is generated text this package's `*` captures,
-\ so the test measures AT from the base it answers for 0.
+\ AT's stride, measured from the buffer's element 0.
 : PD-STRIDE ( -- n )
    0 PD-PAIRS {: p:ptr :}
    p 1 PDPAIR-AT NULL-PTR -  p NULL-PTR - - ;

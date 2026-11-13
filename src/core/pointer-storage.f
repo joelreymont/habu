@@ -43,8 +43,8 @@ public
 \ so the cell's type is exactly what the clause says.
 \
 \ These live here, not beside TYPED-VARIABLE (src/core/layout-buffer.f), because
-\ that form computes its signature and throws E-LAYOUT-BUFFER until include.f
-\ arms TDECL-EVAL-ARMED; a clause is compiled, so it works in the boot prefix,
+\ that form lays its words through the engine's child cell, filled only after the
+\ boot prefix; a clause is compiled, so it works in the boot prefix,
 \ where the checker's own pointer tables are declared. A new definer needs two
 \ rows, because a definer written before the checker exists is invisible to it:
 \ src/core/cell-effects.f states its own effect (without it the sealed checker

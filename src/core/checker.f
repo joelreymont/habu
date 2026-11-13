@@ -11561,7 +11561,8 @@ CHECKER-REG:}SCRATCH
 : E-INST ( n -- n ) USIGS E-INST-FROM ;
 
 -1 constant STORAGE-DEFERRED
-3 constant LDEFER-CTRL-CELLS
+4 constant LDEFER-CTRL-CELLS   \ header cells of a deferred column's block
+
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
 \ Counts: input side deeper, output side on top. A quotation's rows flip polarity:
 \ the word supplies the quotation's inputs and receives its outputs.
@@ -15224,8 +15225,8 @@ public
    count rec ER.STORAGE-N !
    STORAGE-ACCESSOR rec ER.STORAGE-KIND ! ;
 
-\ A deferred accessor owns a persistent three-cell control, not an allocation
-\ at declaration. Resolve its current region through that control at capture.
+\ A deferred accessor owns a persistent four-cell header, not an allocation at
+\ declaration. Resolve its current region through that header at capture.
 : CHECKER-STORAGE-DEFER ( n ptr n -- )
    {: handle:n cb:ptr :}
    handle 0= IF EXIT THEN

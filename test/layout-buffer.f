@@ -211,4 +211,73 @@ LBP-FILL
 2 LBP-HUE@ 2 T=   2 LBP-CNT@ 30 T=
 LBP-WALK-SUM 360 T=
 
+\ A declaring package's own words named as the storage accessors' calls capture
+\ none of them: LBFW's accessors answer what LBFC's do, and no fake runs.
+package LBFW
+public
+variable HITS
+private
+: HIT ( -- ) 1 HITS +! ;
+package DYNAMIC-STORAGE
+public
+: BOUNDS ( n n -- n ) HIT 2drop 0 ;
+;package
+: LDEFER-BIND ( n ptr n n -- ) HIT 2drop drop ;
+: LDEFER-GROW ( n ptr n n -- ) HIT 2drop drop ;
+: throw ( n -- ) HIT drop ;
+: 0= ( n -- bool ) HIT 0<> ;
+: >= ( n n -- bool ) HIT < ;
+: < ( n n -- bool ) HIT > ;
+: @ ( ptr n -- n ) HIT drop 0 ;
+: * ( n n -- n ) HIT + ;
+: + ( a n -- a ) HIT drop ;
+: swap ( a b -- b a ) {: x y :} HIT y x ;
+public
+3 LAYOUT-BUFFER LB lb-res<n,n>
+3 TYPED-BUFFER TB n
+DEFER-LAYOUT-BUFFER DL lb-res<n,n>
+;package
+
+package LBFC
+public
+3 LAYOUT-BUFFER LB lb-res<n,n>
+3 TYPED-BUFFER TB n
+DEFER-LAYOUT-BUFFER DL lb-res<n,n>
+;package
+
+\ Stores 1, 2 and 3 at indices 0 to 2 and reads them back as one number.
+: LBF-CELLS ( [ n -- ptr n ] -- n ) {: at :}
+   3 0 ?do i 1 + i at execute ! loop
+   0 3 0 ?do 10 * i at execute @ + loop ;
+: LBF-RES ( [ n -- ptr lb-res<n,n> ] -- n ) {: at :}
+   3 0 ?do i 1 + LB--RES:OK i at execute ! loop
+   0 3 0 ?do 10 * i at execute @ LB-UN drop + loop ;
+: LBF-AT-RC ( n [ n -- ptr n ] -- n ) {: k:n at :}
+   [: k at execute drop ;] catch ;
+: LBF-RES-RC ( n [ n -- ptr lb-res<n,n> ] -- n ) {: k:n at :}
+   [: k at execute drop ;] catch ;
+
+\ Each answers LBFW's then LBFC's.
+: LBF-TB ( -- n n ) [: LBFW:TB ;] LBF-CELLS  [: LBFC:TB ;] LBF-CELLS ;
+: LBF-TB-PAST ( -- n n )
+   3 [: LBFW:TB ;] LBF-AT-RC  3 [: LBFC:TB ;] LBF-AT-RC ;
+: LBF-LB ( -- n n ) [: LBFW:LB ;] LBF-RES  [: LBFC:LB ;] LBF-RES ;
+: LBF-LB-PAST ( -- n n )
+   3 [: LBFW:LB ;] LBF-RES-RC  3 [: LBFC:LB ;] LBF-RES-RC ;
+: LBF-DL ( -- n n ) [: LBFW:DL ;] LBF-RES  [: LBFC:DL ;] LBF-RES ;
+: LBF-DL-PAST ( n -- n n ) {: k:n :}
+   k [: LBFW:DL ;] LBF-RES-RC  k [: LBFC:DL ;] LBF-RES-RC ;
+
+LBF-TB T=
+LBF-TB-PAST T=
+LBF-LB T=
+LBF-LB-PAST T=
+3 LBFW:DL-BIND  3 LBFC:DL-BIND
+LBF-DL T=
+3 LBF-DL-PAST T=
+-1 LBF-DL-PAST T=
+4 LBFW:DL-GROW  4 LBFC:DL-GROW
+LBF-DL T=
+LBFW:HITS @ 0 T=
+
 T-REPORT
