@@ -22684,18 +22684,17 @@ variable ARMED   0 ARMED !
    a u off u  first 0 = IF a u KIND ELSE K-NAME THEN  first TOKEN-XT
    REC-STEP ;
 
-\ One string literal: its decoded BODY and the source span its payload
-\ occupied, which differ whenever an escape decoded; a `[package]` row's span
-\ is the keyword and its body the open package's name. It is never a name
-\ token: the name is reported before any payload is consumed.
-
+\ The kind an `s"`, `c"` or `."` payload compiles, read from its opener, the
+\ current token.
 : STRING-KIND ( -- n )
    TKF c@ $63 = if K-COUNTED-STRING exit then
    TKF c@ $2E = if K-PRINTED-STRING exit then
    K-STRING ;
 
-: STRING ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
-   a u off ru STRING-KIND 0 TOKEN-XT
+\ A string literal of KIND: its decoded BODY and the span its payload occupied,
+\ or a `[package]` or `postpone` handle's keyword; never the name token.
+: STRING ( ptr u8 n n n n -- ) {: a:ptr u:n off:n ru:n kind:n :}
+   a u off ru kind 0 TOKEN-XT
    REC-STEP ;
 
 : CHARACTER ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
@@ -23464,12 +23463,12 @@ variable SCAN-TOK0
    0 IS-PEND !
    IS-PEND-OFF @ TADDR  IS-PEND-U @  IS-PEND-OFF @  0  CHECKER-TAPE:TOKEN ;
 
-\ The event of a token no step judged: a name with no record, but a character
-\ or string payload is the literal its opener compiles.
+\ The event of a token no step judged: a name with no record; a payload, the
+\ literal its opener compiles; a `postpone` or `[package]` handle, a string.
 : EV-UNJUDGED ( -- n n n )
    CPAY-ON @ IF CHECKER-TAPE:K-CHAR  CPAY-B @ TADDR c@  0 EXIT THEN
    SPAY-ON @ IF CHECKER-TAPE:STRING-KIND 0 0 EXIT THEN
-   PPAY-ON @ IF CHECKER-TAPE:STRING-KIND 0 0 EXIT THEN
+   PPAY-ON @ IF CHECKER-TAPE:K-STRING 0 0 EXIT THEN
    CHECKER-TAPE:K-NAME -1 0 ;
 
 \ This turn's events, filed under the ordinals the reports take, on every pass:
@@ -23496,11 +23495,13 @@ variable SCAN-TOK0
       SCAN-PEND-REPORT EXIT
    THEN
    SPAY-ON @ IF
-      SPAY-BYTES  SPAY-B @ SPAY-U @  CHECKER-TAPE:STRING
+      SPAY-BYTES  SPAY-B @ SPAY-U @
+      CHECKER-TAPE:STRING-KIND  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT
    THEN
    PPAY-ON @ IF
-      PPAY$  TSTART @  SCAN-U @  CHECKER-TAPE:STRING
+      PPAY$  TSTART @  SCAN-U @
+      CHECKER-TAPE:K-STRING  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT
    THEN
    TPAY-ON @ IF

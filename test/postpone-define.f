@@ -35,6 +35,23 @@ public
    -6 literal  7 literal
    postpone *
    postpone ; ;
+
+\ These names start with the first byte of `c"` or `."`: a postponed name
+\ binds the word whatever its spelling.
+: CUBE ( n -- n ) dup dup * * ;
+: .HALF ( n -- n ) 2 / ;
+
+\ : NAME ( n -- n ) CUBE ;
+: MAKE-CUBER ( ptr u8 n -- )
+   s" ( n -- n )" define-word
+   postpone CUBE
+   postpone ; ;
+
+\ : NAME ( n -- n ) .HALF ;
+: MAKE-HALVER ( ptr u8 n -- )
+   s" ( n -- n )" define-word
+   postpone .HALF
+   postpone ; ;
 ;package
 
 package POSTPONE-USER
@@ -52,6 +69,11 @@ s" : TRIPLE-TEXT ( n -- n ) 3 * ;" evaluate-closed
 7 STEP 16 T=
 7 TRIPLE-TEXT 10 T=
 NEG-ANSWER -42 T=
+
+s" CUBED" POSTPONE-DEFINER:MAKE-CUBER
+s" HALVED" POSTPONE-DEFINER:MAKE-HALVER
+3 CUBED 27 T=
+8 HALVED 4 T=
 
 : APPEND-NONE ( -- n ) [: s" 1" body-append ;] catch ;
 APPEND-NONE 0 T<>
