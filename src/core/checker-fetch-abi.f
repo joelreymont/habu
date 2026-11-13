@@ -6,6 +6,6 @@ $1E0 constant CERTIFICATE-OFF
 
 \ The record's size: the end of its last field (checker-owner-extension.f
 \ FAMILY-NICHE-OFF); checker.f checks the two agree before it commits storage.
-$428 constant BYTES
+$420 constant BYTES
 
 ;package

@@ -354,21 +354,9 @@ variable RC-2
    s" : LK-M1 ( -- n n ) 1 2 ;" TEST-EVAL:RC 0 T=
    s" p: after the close hb's checker has none of the builds' names" SAY ;
 
-variable Q0-ORD                      \ LK-Q0's dictionary ordinal
+\ RUN and its cases run with no package open, so a text that calls LK-Q0
+\ reopens LINKER-TEST.
 : LK-Q0 ( n -- n ) 1 + ;
-ndict@ 1- Q0-ORD !
-
-CAST: CONTRACT-ACTION ( n -- [ n -- ptr u8 n bool ] )
-
-\ hb's checker owner record's contract for the word at an ordinal, read as the
-\ verifier calls the owner.
-: OWNER-CONTRACT ( n -- ptr u8 n bool )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
-   CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF CELL + CHECKER-OWNER-GUARD:VALIDATE
-   CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF + CELL-VIEW @ CONTRACT-ACTION
-   execute ;
-
-: LINKED? ( n -- bool ) OWNER-CONTRACT nip nip ;
 
 : Q1 ( -- ) s" : LK-QA ( -- ) ;" evaluate-closed ;
 
@@ -383,7 +371,8 @@ CAST: CONTRACT-ACTION ( n -- [ n -- ptr u8 n bool ] )
    HOST-CHECK
    RC-1 @ 0 T=
    RC-2 @ CHECKER-REJECT-RC T=
-   Q0-ORD @ LINKED? TTRUE
+   s" package LINKER-TEST : LK-Q2 ( -- n ) 1 LK-Q0 ; ;package"
+      TEST-EVAL:RC 0 T=
    s" q: a build's definitions leave hb's records linked" SAY ;
 
 public
@@ -393,8 +382,9 @@ public
    HEADER-ALLOC
    \ The first build installs the typed loop for good; the host is taken after it.
    [: ;] BUILD
+   s" package LINKER-TEST : LK-Q1 ( -- n ) 1 LK-Q0 ; ;package"
+      TEST-EVAL:RC 0 T=
    TAKE-HOST
-   Q0-ORD @ LINKED? TTRUE
    CASE-A CASE-B CASE-C CASE-D CASE-E CASE-F CASE-G CASE-H CASE-I CASE-J
    CASE-M CASE-N CASE-O CASE-P CASE-Q ;
 
@@ -439,17 +429,6 @@ variable RAN-L
 
 CASE-L
 
-variable R1-ORD                      \ LK-R1's dictionary ordinal
-\ The grid flag is the eighth cell RECORD-CONTRACT-BUILD writes.
-7 cells constant CONTRACT-GRID
-
-\ Whether hb's checker owner holds a current contract with a storage grid for
-\ the word at an ordinal.
-: RECORD-GRID? ( n -- bool )
-   OWNER-CONTRACT {: p:ptr u:n ok:bool :}
-   ok 0= if false exit then
-   p BYTE-VIEW CONTRACT-GRID + CELL-VIEW @ 0 <> ;
-
 : BODY-R ( -- ) s" create LK-RB 1 ," evaluate-closed ;
 
 : BUILD-R ( -- )
@@ -458,13 +437,13 @@ variable R1-ORD                      \ LK-R1's dictionary ordinal
    HOST-CHECK ;
 
 : CASE-R ( -- )
-   R1-ORD @ RECORD-GRID? TTRUE
-   s" r: a created body pending across a build keeps its grid" SAY ;
+   s" : LK-R3 ( -- n ) LK-R1 @ ;" TEST-EVAL:RC 0 T=
+   s" LK-R3" TEST-EVAL:N 7 T=
+   s" r: a created body pending across a build keeps its first cell" SAY ;
 
 \ Case r: LK-R1's body pends across a build that creates its own, as a build
 \ driver's top level does, and LK-R2 then closes it.
 create LK-R1 7 , 8 ,
-ndict@ 1- R1-ORD !
 BUILD-R
 create LK-R2
 CASE-R

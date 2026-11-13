@@ -893,7 +893,6 @@ private
    0 ,
    0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 ,
-   0 ,
    0 , 0 , 0 , 0 ,
    0 ,
    0 ,
@@ -11603,7 +11602,6 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
 
 : E-INST ( n -- n ) USIGS E-INST-FROM ;
 
-variable CHECKER-STORAGE-CUR
 -1 constant STORAGE-DEFERRED
 3 constant LDEFER-CTRL-CELLS
 defer CHECKER-GRID-UNBIND-XT ( -- )
@@ -11611,18 +11609,6 @@ defer CHECKER-GRID-UNBIND-XT ( -- )
 : CHECKER-GRID-CELLS-INSTALL ( -- )
    [: CHECKER-GRID-UNBIND-DEFAULT ;] is CHECKER-GRID-UNBIND-XT ;
 CHECKER-GRID-CELLS-INSTALL
-\ A bare native engine rebuild starts with freshly loaded source. Its builder
-\ allocations do not survive into the new engine's DATA, so only that builder
-\ drops their ownership.
-: CHECKER-STORAGE-UNBIND-ALL ( -- )
-   CHECKER-GRID-UNBIND-XT
-   0 CHECKER-STORAGE-CUR !
-   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
-      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
-      0 rec ER.STORAGE-OFF !  0 rec ER.STORAGE-N !
-      STORAGE-NONE rec ER.STORAGE-KIND !
-      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
-   repeat ;
 
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
 \ Counts: input side deeper, output side on top. A quotation's rows flip polarity:
@@ -15592,10 +15578,6 @@ CHECKER-REG:}SCRATCH
    boot 0 cells ARENA-CELLS-ZERO
    boot pv ! ;
 
-: REG-POINTERS-CLEAR ( ptr ptr a n n -- ) {: base:ptr from:n to:n :}
-   from to >= IF EXIT THEN
-   to from ?do NULL-PTR base i cells + ! loop ;
-
 \ The lowering-certificate producer owns it: per-definition arena bases that
 \ must be back on their baked boot buffers before capture, since a grown base
 \ lives in process-local mmap.
@@ -15929,10 +15911,6 @@ PENDING-OWNER-READY 0 CELL-ROW+
    row RLINK.GRID cells + @ PENDING-GRID ord PENDING-OWNER-PUT
    row PENDING-CREATED PENDING-OWNER-FIELD@
       PENDING-CREATED ord PENDING-OWNER-PUT ;
-: PENDING-OWNER-RELEASE ( -- )
-   PENDING-OWNER-P @ PENDING-OWNER-CAP @ 2 cells * ASIG-RELEASE
-   NULL-PTR PENDING-OWNER-P ! 0 PENDING-OWNER-CAP !
-   0 PENDING-OWNER-N ! 0 PENDING-OWNER-READY ! ;
 
 PERSISTED-PTR-VARIABLE PENDING-DIRTY-P   NULL-PTR PENDING-DIRTY-P !
 variable PENDING-DIRTY-CAP   0 PENDING-DIRTY-CAP !
@@ -15953,9 +15931,6 @@ PENDING-MARKED 0 CELL-ROW+
       ARENA-ROWS-ENSURE
    ord PENDING-DIRTY-N @ cells PENDING-DIRTY-P @ + CELL-VIEW !
    1 PENDING-DIRTY-N +! ;
-: PENDING-DIRTY-RELEASE ( -- )
-   PENDING-DIRTY-P PENDING-DIRTY-CAP 1 ARENA-ROWS-RELEASE
-   0 PENDING-DIRTY-N ! 0 PENDING-MARKED ! ;
 
 : RECORD-LINK-WRITE ( n n n bool n -- )
    {: ord:n effect:n control:n deferred:bool occurrence:n :}
@@ -23035,10 +23010,6 @@ CHECKER-REG:}SCRATCH
 
 defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
 variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
-: ASIG-GRAPH-SCRATCH-RELEASE ( -- )
-   ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ ASIG-RELEASE
-   NULL-PTR ASIG-GRAPH-MAP ! 0 ASIG-GRAPH-MAP-CAP !
-   0 ASIG-GRAPH-UNIT-OFF ! ;
 
 : ASIG-GRAPH-NODE ( n -- n ) {: src:n :}
    src 0= IF 0 EXIT THEN
@@ -25026,26 +24997,6 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    src CHECKER-PACKAGE-NAME u ARENA-COPY
    src PACKAGE-PATH:CAP + CK-USE-RESTORE ;
 
-\ Frames are transient (depth 0 at snapshot), so snapshot prepare drops a grown
-\ arena buffer back to the baked boot store; the next scope re-grows lazily.
-: RBF-SNAP-RESET ( -- )
-   RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
-   RBF-A-BOOT RBF-A-P !
-   RBF-NAME-BOOT RBF-NAME-P !
-   RBF-CAP-INIT RBF-CAP-V !
-   0 RBF-DEPTH !
-   RBF-A-BOOT 0 RBF-CAP-INIT RBF-REC * CELL / ARENA-CELLS-ZERO
-   RBF-NAME-BOOT 0 RBF-CAP-INIT RBF-NAME-REC * CELL / ARENA-CELLS-ZERO
-   MF-DEPTH @ IF s" checker: snapshot inside match frame" 76 die THEN
-   MF-A-BOOT MF-A-P !          \ MATCH frames are per-definition transient: drop any
-   MF-CAP-INIT MF-CAP-V !      \ grown arena back to the baked boot stores
-   MSEEN-BOOT MSEEN-P !
-   MSEEN-CAP-INIT MSEEN-CAP-V !
-   MF-A-BOOT 0 MF-CAP-INIT MF-REC * CELL / ARENA-CELLS-ZERO
-   MSEEN-BOOT 0 MSEEN-CAP-INIT ARENA-CELLS-ZERO
-   0 MSEEN-N !
-   0 MTCH-ROW !  0 MTCH-I !  0 MTCH-TAGT !  0 MTCH-W ! ;
-
 : RBF-SAVE-INTO ( ptr n -- ) {: r:ptr :}
    UEND @ r RBF.UEND !
    NORET-END @ r RBF.NEND !
@@ -26205,22 +26156,12 @@ NAMED-OPERAND-INSTALL
    {: a:ptr u:n :}
    a u NAMED-SYM a u NAV-USE-NOW ;
 
-\ Exact dictionary-record contracts and the checker scratch they borrow.
+\ How a unit's effect graphs resolve their families and constructors.
 package CHECKER-REG
 
 public
 7159 constant E-UNIT-FORMAT   \ 7161-7164 are decl-event.f's E-DEV block
 private
-
-PERSISTED-PTR-VARIABLE UNIT-PREFIX-SYMS
-NULL-PTR UNIT-PREFIX-SYMS !
-variable UNIT-PREFIX-CAP
-variable UNIT-PREP-PENDING 0 UNIT-PREP-PENDING !
-variable UNIT-PLAN-OPEN
-
-PERSISTED-PTR-VARIABLE UNIT-BUF-P   NULL-PTR UNIT-BUF-P !
-variable UNIT-BUF-CAP   0 UNIT-BUF-CAP !
-$10000 constant UNIT-BUF-INIT
 
 : UNIT-FORMAT-BAD ( -- ) E-UNIT-FORMAT throw ;
 public
@@ -26232,148 +26173,6 @@ private
 : UNIT-GRAPH-MAP-INSTALL ( -- )
    [: UNIT-TFAM-MAP ;] is CK-GRAPH-FAMILY-MAP-XT ;
 UNIT-GRAPH-MAP-INSTALL
-
-\ A contract borrows this buffer until the next contract question. Graphs use
-\ the checker's canonical graph encoder; the header adds the exact control row's
-\ packed facts, the exact grid declaration and the callable and created graphs,
-\ never live offsets.
-CHECKER-OWNER-ABI:RECORD-CONTRACT-MAGIC constant RECORD-CONTRACT-MAGIC
-PTR-VARIABLE RECORD-BUF-P
-NULL-PTR RECORD-BUF-P !
-variable RECORD-BUF-CAP   0 RECORD-BUF-CAP !
-variable RECORD-BUF-U     0 RECORD-BUF-U !
-PTR-VARIABLE RECORD-GRAPH-SAVED-P
-variable RECORD-GRAPH-SAVED-U
-variable RECORD-GRAPH-SAVED-CAP
-PTR-VARIABLE RECORD-GRAPH-P   NULL-PTR RECORD-GRAPH-P !
-variable RECORD-GRAPH-CAP   0 RECORD-GRAPH-CAP !
-
-: RECORD-BUF-ROOM ( n -- ) {: add:n :}
-   RECORD-BUF-U @ add + RECORD-BUF-CAP @ <= IF EXIT THEN
-   RECORD-BUF-CAP @ 0= IF 256 ELSE RECORD-BUF-CAP @ THEN
-   BEGIN dup RECORD-BUF-U @ add + < WHILE 2 * REPEAT {: cap:n :}
-   RECORD-BUF-P RECORD-BUF-CAP @ cap REG-GROW1
-   cap RECORD-BUF-CAP ! ;
-
-: RECORD-BUF+ ( ptr u8 n -- ) {: src:ptr bytes:n :}
-   bytes RECORD-BUF-ROOM
-   src RECORD-BUF-P @ RECORD-BUF-U @ + bytes ARENA-COPY
-   bytes RECORD-BUF-U +! ;
-
-: RECORD-CELL+ ( n -- ) {: value:n :}
-   CELL RECORD-BUF-ROOM
-   value RECORD-BUF-P @ RECORD-BUF-U @ + CELL-VIEW !
-   CELL RECORD-BUF-U +! ;
-
-: RECORD-ALIGN ( -- )
-   RECORD-BUF-U @ 7 + -8 and RECORD-BUF-U @ - {: pad:n :}
-   pad RECORD-BUF-ROOM
-   pad 0 ?do 0 RECORD-BUF-P @ RECORD-BUF-U @ i + + c! loop
-   pad RECORD-BUF-U +! ;
-
-: RECORD-GRAPH-BEGIN ( -- )
-   ASIG-STR-P @ RECORD-GRAPH-SAVED-P !
-   ASIG-STR-U @ RECORD-GRAPH-SAVED-U !
-   ASIG-STR-CAP-V @ RECORD-GRAPH-SAVED-CAP !
-   RECORD-GRAPH-CAP @ 0= IF
-      UNIT-BUF-INIT ARENA-ALLOC-BYTES RECORD-GRAPH-P !
-      UNIT-BUF-INIT RECORD-GRAPH-CAP !
-   THEN
-   RECORD-GRAPH-P @ ASIG-STR-P !
-   RECORD-GRAPH-CAP @ ASIG-STR-CAP-V !
-   0 ASIG-STR-U ! ;
-
-: RECORD-GRAPH-END ( -- )
-   ASIG-STR-P @ RECORD-GRAPH-P !
-   ASIG-STR-CAP-V @ RECORD-GRAPH-CAP !
-   RECORD-GRAPH-SAVED-P @ ASIG-STR-P !
-   RECORD-GRAPH-SAVED-U @ ASIG-STR-U !
-   RECORD-GRAPH-SAVED-CAP @ ASIG-STR-CAP-V !
-   NULL-PTR RECORD-GRAPH-SAVED-P ! ;
-
-: RECORD-GRAPH-NOMINALS ( ptr u8 n -- )
-   {: graph:ptr bytes:n :}
-   \ Validation marks exact node starts. Names and packages identify families
-   \ in a contract; live family IDs are needed only by the import graph.
-   bytes CELL / EFF-WIRE CELL / ?do
-      i cells CK-GRAPH-SLOT @ EN-PARAM 1+ = IF
-         0 graph i cells + EN.H !
-      THEN
-   loop ;
-
-: RECORD-GRAPH+ ( n n -- ) {: effect:n flags:n :}
-   effect 0= IF 0 RECORD-CELL+ EXIT THEN
-   effect flags ASIG-GRAPH-COPY-RECORD
-   ASIG-STR-P @ + {: graph:ptr :}
-   graph EW.NEXT @ {: bytes:n :}
-   graph bytes RECORD-GRAPH-NOMINALS
-   bytes RECORD-CELL+
-   graph bytes RECORD-BUF+
-   RECORD-ALIGN ;
-
-: RECORD-CONTRACT-BUILD ( n n n n n n -- )
-   {: effect:n control:n deferred:n fixed-kind:n fixed-value:n grid:n :}
-   0 RECORD-BUF-U !
-   RECORD-CONTRACT-MAGIC RECORD-CELL+
-   control 0= IF 0 ELSE control 1- NORET-CELL NORET-CTL@ THEN
-      {: packed:n :}
-   packed RECORD-CELL+
-   deferred 0 <> IF 1 ELSE 0 THEN RECORD-CELL+
-   grid 0 <> IF grid RECORD-GRID-REC ER.STORAGE-N @
-   ELSE effect 1- E-PTR ER.STORAGE-N @ THEN RECORD-CELL+
-   control 0= IF 0 ELSE
-      control 1- NORET-CELL NORET.SOURCE @ 0 <> IF 1 ELSE 0 THEN
-   THEN
-      RECORD-CELL+
-   fixed-kind RECORD-CELL+
-   fixed-value RECORD-CELL+
-   grid 0= 0= IF 1 ELSE 0 THEN RECORD-CELL+
-   packed XFER-FLAGS
-   deferred 0 <> IF ASIG-GRAPH-DEFER or THEN
-   effect swap RECORD-GRAPH+
-   control 0= IF 0 ELSE control 1- NORET-CELL NORET.CREATES @ THEN
-      0 RECORD-GRAPH+ ;
-
-: RECORD-CONTRACT ( n -- ptr u8 n bool ) {: ord:n :}
-   ord RECORD-LINK-CURRENT? 0= IF NULL-PTR 0 RES-FALSE EXIT THEN
-   ord RECORD-LINK-CELL {: row:ptr :}
-   row RLINK.EFFECT cells + @ {: effect:n :}
-   row RLINK.GRID cells + @ {: grid:n :}
-   row RLINK.CONTROL cells + @ {: control:n :}
-   row RLINK.FIXED-KIND cells + @ {: fixed-kind:n :}
-   fixed-kind 0 < IF
-      NULL-PTR 0 RES-FALSE EXIT THEN
-   effect 0 <> IF
-      effect 0 < effect UEND @ > or IF NULL-PTR 0 RES-FALSE EXIT THEN
-      effect 1- E-PTR ER.ACTIVE @ EFF-ACTIVE <>
-         IF NULL-PTR 0 RES-FALSE EXIT THEN
-   THEN
-   grid 0 <> IF grid RECORD-GRID-REC drop THEN
-   control 0 <> IF
-      control 0 < control NORET-END @ > or
-      control 1- NORET-ENTRY mod 0 <> or IF NULL-PTR 0 RES-FALSE EXIT THEN
-      control 1- NORET-CELL NORET.SYM @ 0= IF NULL-PTR 0 RES-FALSE EXIT THEN
-      control 1- NORET-CELL NORET.CREATES @ {: created:n :}
-      created 0 <> IF
-         created 0 < created UEND @ > or IF NULL-PTR 0 RES-FALSE EXIT THEN
-         created 1- E-PTR ER.ACTIVE @ EFF-ACTIVE <>
-            IF NULL-PTR 0 RES-FALSE EXIT THEN
-      THEN
-   THEN
-   RECORD-GRAPH-BEGIN
-   effect control row RLINK.DEFER cells + @
-   fixed-kind row RLINK.FIXED-VALUE cells + @
-   grid
-   [: RECORD-CONTRACT-BUILD ;] [: RECORD-GRAPH-END ;] finally
-   RECORD-BUF-P @ RECORD-BUF-U @ RES-TRUE ;
-
-public
-: RECORD-CONTRACT-RELEASE ( -- )
-   RECORD-BUF-P @ RECORD-BUF-CAP @ ASIG-RELEASE
-   RECORD-GRAPH-P @ RECORD-GRAPH-CAP @ ASIG-RELEASE
-   NULL-PTR RECORD-BUF-P ! 0 RECORD-BUF-CAP ! 0 RECORD-BUF-U !
-   NULL-PTR RECORD-GRAPH-P ! 0 RECORD-GRAPH-CAP ! ;
-private
 
 : UNIT-CON-RESOLVE ( ptr u8 ptr u8 -- n ) {: node:ptr pool:ptr :}
    node EN.A @ pool + node EN.B @ CT-FIND
@@ -26396,29 +26195,6 @@ UNIT-CON-INSTALL
 
 PTR-VARIABLE UNIT-PLAN-FIRST
 
-\ Prepared plans keep interior pointers into their copied blob and rows. The
-\ chunks stay fixed while a FILE tree is prepared, then are reused by the next.
-2 cells constant UP-CH-HEAD
-PTR-VARIABLE UP-CH-FIRST   NULL-PTR UP-CH-FIRST !
-
-: UP-CH-NEXT ( ptr u8 -- ptr u8 ) REG-PTR-CELLS @ ;
-: UP-CH-CAP ( ptr u8 -- n ) cell+ CELL-VIEW @ ;
-
-: UP-CH-RELEASE ( -- )
-   UP-CH-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UP-CH-NEXT swap
-      dup UP-CH-CAP UP-CH-HEAD + ASIG-RELEASE
-   REPEAT drop
-   NULL-PTR UP-CH-FIRST ! ;
-
-: CHECKER-UNIT-PREPARE-END ( -- )
-   NULL-PTR UNIT-PLAN-FIRST !
-   0 UNIT-PLAN-OPEN !
-   UNIT-TFAM-END
-   0 CK-GRAPH-EXTRA-FLAGS ! 0 CK-GRAPH-UNIT-MAP !
-   CK-GRAPH-RELEASE ;
-
 : UP-CON-VALID ( n -- bool ) {: id:n :}
    id CT-LIVE? IF
       id CT-CLASS@ CT-LINEAR = id CT-WIDTH@ 64 = and
@@ -26436,32 +26212,6 @@ PTR-VARIABLE UP-CH-FIRST   NULL-PTR UP-CH-FIRST !
 : UNIT-CON-PROJECT-INSTALL ( -- )
    [: UP-CON-VALID ;] is UNIT-CON-VALID-XT ;
 UNIT-CON-PROJECT-INSTALL
-
-public
-: UNIT-SCRATCH-RELEASE-CHECKER ( -- )
-   UNIT-PREP-PENDING @ UNIT-PLAN-OPEN @ and 0 <> IF
-      CHECKER-UNIT-PREPARE-END
-   THEN
-   UNIT-PLAN-OPEN @ 0= IF UP-CH-RELEASE THEN
-   NULL-PTR TOK-REC !
-   REC-RELEASE
-   RECORD-CONTRACT-RELEASE
-   UWL-SNAP-RESET
-   RBF-SNAP-RESET
-   REG-CERT-SNAP-XT
-   ASIG-GRAPH-SCRATCH-RELEASE
-   CK-GRAPH-RELEASE
-   UNIT-BUF-P @ NULL-PTR <> IF
-      UNIT-BUF-P @ UNIT-BUF-CAP @ ASIG-RELEASE
-   THEN
-   NULL-PTR UNIT-BUF-P ! 0 UNIT-BUF-CAP !
-   UNIT-PREFIX-SYMS @ UNIT-PREFIX-CAP @ cells ASIG-RELEASE
-   NULL-PTR UNIT-PREFIX-SYMS ! 0 UNIT-PREFIX-CAP !
-   0 UNIT-PREP-PENDING !
-   PENDING-DIRTY-RELEASE
-   PENDING-OWNER-RELEASE
-   0 CK-GRAPH-EXTRA-FLAGS ! ;
-private
 
 ;package
 
@@ -26917,7 +26667,6 @@ CHECKER-REG:}SCRATCH
    live CHECKER-TOP-LOAD  a u cls TOP-LIT-STEP  CHECKER-TOP-SAVE ;
 
 package CHECKER-REG
-' RECORD-CONTRACT DECLARATIONS CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF + xt!
 ' RECORD-GRID-BEFORE DECLARATIONS CHECKER-OWNER-ABI:GRID-BEFORE-OFF + xt!
 ' RECORD-GRID-AFTER DECLARATIONS CHECKER-OWNER-ABI:GRID-AFTER-OFF + xt!
 ' DP-CUT DECLARATIONS CHECKER-OWNER-ABI:GRID-REVOKE-OFF + xt!
