@@ -64,8 +64,9 @@ STOP-BOUND-MS 2 / constant IDLE-STOP-MS \ an idle socket's stop: far over its fe
 STOP-BOUND-MS GRACE-MS + constant HOLD-MS \ how long a stalled handshake holds its slot: past any stop's bound
 $400000 constant QUEUE-MAX        \ the unwritten bytes behind which a frame loses its socket
 $10000 constant PUSH-BYTES
-$200000 constant STALL-PUSH       \ what a stalled peer's socket queues: half of QUEUE-MAX, far past its peer's buffers
+$200000 constant STALL-PUSH       \ what a stalled peer's socket queues: half of QUEUE-MAX, far past both ends' pinned buffers
 $1000 constant PEER-RCVBUF       \ the stalled peer's receive buffer, fixed before it connects; macOS lo0 rounds it up
+$1000 constant SERVER-SNDBUF     \ the stalled peer's server end's send buffer
 $10 constant SOCKADDR-N          \ sockaddr_in
 $2000000 constant FLOOD-PUSH      \ what the overflow case may push: QUEUE-MAX and every kernel buffer, many times over
 $101 constant CROWD               \ WS:START's limit: one socket past a one-byte slot field
@@ -109,6 +110,10 @@ CAST: SOCK>N ( WS:socket -- n )
 : SO-RCVBUF ( -- n )
    HB-TARGET-LINUX-KERNEL? if 8 exit then
    HB-TARGET-MACOS? if $1002 exit then
+   E-PLATFORM throw ;
+: SO-SNDBUF ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 7 exit then
+   HB-TARGET-MACOS? if $1001 exit then
    E-PLATFORM throw ;
 : ERRNO-INPROGRESS ( -- n )
    HB-TARGET-LINUX-KERNEL? if 115 exit then
@@ -292,8 +297,13 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       refused OF drop false ENDOF
    ;MATCH ;
 
-\ A connection whose receive buffer is PEER-RCVBUF from its first byte: the
-\ option is set before it connects, and holds the buffer at that size.
+: SOCKET-OPT! ( n n n -- n )
+   {: fd:n opt:n val:n :}
+   4 0 ?do val i 8 * rshift $FF and OPT-VAL i SPAN:U8! loop
+   fd SOL-SOCKET opt OPT-VAL SPAN:$ SET-OPT-CALL ;
+
+\ PEER-RCVBUF and the server end's SERVER-SNDBUF hold from the first byte. The
+\ listener's accepted sockets copy its send buffer: every later accept keeps it.
 : DIAL-SMALL ( -- TCP4:connection )
    0 STREAM-AT ! 0 STREAM-U !
    TCP4:SOCKET
@@ -301,8 +311,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       opened OF ENDOF
       failed OF drop E-DIAL throw ENDOF
    ;MATCH {: conn:TCP4:connection :}
-   4 0 ?do PEER-RCVBUF i 8 * rshift $FF and OPT-VAL i SPAN:U8! loop
-   conn TCP4:CONNECTION-FD FD>N SOL-SOCKET SO-RCVBUF OPT-VAL SPAN:$ SET-OPT-CALL
+   conn TCP4:CONNECTION-FD FD>N SO-RCVBUF PEER-RCVBUF SOCKET-OPT!
+   0 <> if conn TCP4:CLOSE DROP-STATUS E-DIAL throw then
+   WS-TEST:LISTEN-FD FD>N SO-SNDBUF SERVER-SNDBUF SOCKET-OPT!
    0 <> if conn TCP4:CLOSE DROP-STATUS E-DIAL throw then
    PEER-SA!
    conn CONNECTED? 0= if conn TCP4:CLOSE DROP-STATUS E-DIAL throw then
