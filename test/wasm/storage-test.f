@@ -1,9 +1,9 @@
 \ storage-test.f - test/wasm/storage.f's entries, each the MAIN of a module
 \ `hb-build --target wasm` builds, validated by wasm-tools and run by bun
 \ (test/wasm/harness.f); each module's output must be its entry's lines and its
-\ status the entry's: 0, or a trap for a page freed twice. Both tools must be on
-\ PATH, so test/wasm/device.f runs it, not the ordinary gate. The sources, the
-\ modules, the expected and the actual output stay in the printed directory.
+\ status the entry's: 0, or a trap for a page freed twice. test/wasm/device.f
+\ runs it. The sources, the modules, the expected and the actual output stay in
+\ the printed directory.
 
 require src/lib/string.f
 require src/lib/fs.f

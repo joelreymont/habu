@@ -1,9 +1,8 @@
 \ calls-test.f - test/wasm/calls.f's CHECKS run in this process, then as the
 \ MAIN of a module `hb-build --target wasm` builds, validated by wasm-tools and
 \ run by bun. A trap or an uncaught throw ends a run, so each such entry is the
-\ MAIN of a module of its own. Both tools must be on PATH, so test/wasm/device.f
-\ runs it, not the ordinary gate. The sources and modules stay in the printed
-\ directory.
+\ MAIN of a module of its own. test/wasm/device.f runs it. The sources and
+\ modules stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fs.f

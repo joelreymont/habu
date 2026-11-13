@@ -3,8 +3,7 @@
 \ (src/lib/browser/host.f), and test/browser/stale.f's, whose hello states
 \ another turn protocol revision; the modules and files stay in the printed
 \ directory.
-\ bun and wasm-tools must be on PATH, so this
-\ is no row of the ordinary gate: test/wasm/device.f runs it, as does
+\ test/wasm/device.f runs it, as does
 \ `bin/hb --load test/browser/echo-test.f` from the tree's root.
 
 require src/lib/string.f

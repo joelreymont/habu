@@ -1,9 +1,7 @@
 \ request-test.f - the browser request protocol under bun:
 \ src/lib/browser/host-cli.mjs runs test/browser/request.f's module, built by
-\ tools/hb-build.f, through src/lib/browser/turn.js. bun and
-\ wasm-tools must be on PATH, so this is no row of the ordinary gate:
-\ test/wasm/device.f runs it, as does `bin/hb --load test/browser/request-test.f`
-\ from the tree's root.
+\ tools/hb-build.f, through src/lib/browser/turn.js. test/wasm/device.f runs
+\ it, as does `bin/hb --load test/browser/request-test.f` from the tree's root.
 
 require src/lib/string.f
 require src/lib/fmt.f

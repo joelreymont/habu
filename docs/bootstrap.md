@@ -52,6 +52,7 @@ run as an ordinary user because initdb refuses root. With libpq 16 the test
 dies `E-FFI-DLSYM: PQcancelCreate in libpq.so.5`. Debian and Ubuntu keep
 initdb and postgres in `/usr/lib/postgresql/<version>/bin`, which must be put
 on PATH.
+The Wasm device suite needs wasm-tools and bun on PATH.
 On macOS the library tests use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
 The FFI test compiles its struct-by-value fixture library with /usr/bin/cc.

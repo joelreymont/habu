@@ -35,6 +35,12 @@ SUITE websocket
    src/lib/net/ws-test.f
 ;SUITE
 
+\ The Wasm and browser modules, validated by wasm-tools and run by bun; both on
+\ PATH are a suite requirement (docs/bootstrap.md "Requirements").
+SUITE wasm-device
+   test/wasm/device.f
+;SUITE
+
 SUITE xml-owner-consumer
    test/xml-owner-e2e.f
 ;SUITE

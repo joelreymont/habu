@@ -1,7 +1,6 @@
 \ app-test.f - the turn protocol's rpc, after and read records and its notified,
 \ tick, file and chunk events under bun: src/lib/browser/host-cli.mjs runs
-\ test/browser/app.f's module through src/lib/browser/turn.js. bun and
-\ wasm-tools must be on PATH, so this is no row of the ordinary gate:
+\ test/browser/app.f's module through src/lib/browser/turn.js.
 \ test/wasm/device.f runs it, as does `bin/hb --load test/browser/app-test.f`
 \ from the tree's root. Chrome runs only when the test is loaded with
 \ `-- --chrome`: then the --chrome check writes MCP-APP:PAGE+ of the module
