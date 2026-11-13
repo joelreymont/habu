@@ -6024,17 +6024,15 @@ variable EXEC-OPAQUE   \ RSEXEC rejected an execute of an opaque (untyped-memory
 variable CATCH-OPAQUE  \ RSCATCH rejected a catch of an opaque (untyped-memory) xt this token; latched the same way so the prose names 'catch' not 'execute'
 CHECKER-REG:}SCRATCH
 
-\ The native compiler consumes the effect of the quotation at each call site.
+\ The native compiler consumes the effect of the quotation at each catch.
 variable CWIN-HIT
 variable CWIN-IN
 variable CWIN-OUT
-variable CWIN-KIND                  \ 0 catch, 1 execute, -1 finally
 variable CWIN-DTERMS  variable CWIN-RTERMS   \ the window in row terms (mask positions)
 variable CWIN-DOUT-TERMS  variable CWIN-ROUT-TERMS
 variable CWIN-DMASK                 \ the callee's intact bits over the live window's cells
 
-: QUOT-WINDOW ( n -- ) {: kind:n :}
-   kind CWIN-KIND !
+: QUOT-WINDOW ( -- )
    \ Counted before UNIFY-IN: after it the quotation's own tail IS the live row
    \ and its fixed prefix can no longer be told from the caller's stack.
    QTT @ Q>DIN ROW-TERMS CWIN-DTERMS !
@@ -6046,8 +6044,7 @@ variable CWIN-DMASK                 \ the callee's intact bits over the live win
    REC-ON @ IF
       QTT @ Q>DIN CALL-DIN !  QTT @ Q>DOUT CALL-DOUT !
       CALL-FREEZE-XT
-   THEN
-   -1 CWIN-HIT ! ;
+   THEN ;
 
 \ After the unify a logical input term of known width covers its W live cells:
 \ CWIN-LIVE expands them and restates the window and its intact mask in cells.
@@ -6125,7 +6122,7 @@ variable QUOT-LOSS
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
-     1 QUOT-WINDOW
+     QUOT-WINDOW
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
      QTT @ RSEXEC-LIN-EXPLICIT? RSEXEC-EXP !
@@ -6198,7 +6195,7 @@ variable QUOT-LOSS
      QTT @ Q>XDEAD QTT @ Q>XHAS 0= and 0=
    ELSE RES-TRUE THEN {: returns:bool :}
    QTT @ TAG T-QUOT = IF
-     0 QUOT-WINDOW
+     QUOT-WINDOW  -1 CWIN-HIT !
      CATCH-N @ 1 + CATCH-N !
      QTT @ QUOT-STEP-IN
      QTT @ Q>XDEAD IF
@@ -6257,7 +6254,6 @@ variable QUOT-LOSS
    tv T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF 0 OK ! EXIT THEN
    RSEXEC
-   -1 CWIN-KIND !
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
    cleanup Q>XHAS IF DCUR @ RCUR @ THROW-EDGE-ROWS THEN   \ a cleanup borrows nothing: its own entry row
@@ -6285,7 +6281,6 @@ variable QUOT-LOSS
    clean-term T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF 0 OK ! EXIT THEN
    RSEXEC
-   -1 CWIN-KIND !
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
    cleanup Q>XHAS IF DCUR @ RCUR @ THROW-EDGE-ROWS THEN
@@ -14221,6 +14216,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 -7 constant CW-FIELD-SPAN            \ authenticated field offset and extent
 2 constant CW-CALL-RAW               \ frozen row spines with live type terms
 3 constant CW-CALL
+0 constant CW-CATCH                  \ a catch's window and what its body leaves
 
 : CWIN-P ( -- ptr ptr n ) CWIN-STATE drop drop ;
 : CWIN-N ( -- ptr n ) CWIN-STATE drop nip ;
@@ -14236,7 +14232,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    0 CALL-DIN !  0 CALL-DOUT !  0 QTT !
    QAPP-OLD 0 4 ARENA-CELLS-ZERO
    QAPP-NEW 0 4 ARENA-CELLS-ZERO  0 QAPP-N !
-   0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT !  0 CWIN-KIND !
+   0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT !
    0 CWIN-DTERMS !  0 CWIN-RTERMS !
    0 CWIN-DOUT-TERMS !  0 CWIN-ROUT-TERMS ! ;
 
@@ -14390,7 +14386,7 @@ CALL-FREEZE-INSTALL
 : CWIN-COMMIT ( -- )
    CWIN-HIT @ IF
       0 CWIN-HIT !
-      REC-IX @ CWIN-IN @ CWIN-OUT @ CWIN-KIND @ CWIN-ADD
+      REC-IX @ CWIN-IN @ CWIN-OUT @ CW-CATCH CWIN-ADD
    THEN
    CALL-HIT @ IF
       0 CALL-HIT !
@@ -14548,18 +14544,7 @@ variable EV-LO   variable EV-N
    CWIN-COMMIT  MWIN-COMMIT  BWIN-COMMIT ;
 
 \ A catch whose body never returns answers its input width and CELLS-NONE.
-: EFFECT-QUOT-CALL-CELLS ( n n -- n n )
-   {: ix:n kind:n :}
-   0 BEGIN dup CWIN-N @ < WHILE
-      dup CW-ORD CWIN-AT @ ix = over CW-KIND CWIN-AT @ kind = and IF
-         dup CW-IN CWIN-AT @  swap CW-OUT CWIN-AT @  EXIT
-      THEN
-      1 +
-   REPEAT drop
-   CELLS-NONE CELLS-NONE ;
-
-: EFFECT-CATCH-CELLS ( n -- n n )
-   0 EFFECT-QUOT-CALL-CELLS ;
+: EFFECT-CATCH-CELLS ( n -- n n ) CW-CATCH CWIN-FIND ;
 
 \ CELLS-NONE for a token that published no number, or a definition nobody
 \ recorded.
@@ -17843,16 +17828,6 @@ variable CHECKER-PREFIX-ROLLBACK
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
    a u WF-XPORT-K  WF-ROW-SCAN ;
 
-\ The facts are the last checked definition's per-CHECK scratch, still live
-\ until the next CHECK.
-: WF-HIT? ( n n n -- bool ) {: i:n off:n pos:n :}
-   i WF-OFF@ off <> IF RES-FALSE EXIT THEN
-   i WF-POS@ pos = ;
-: WF-W-AT ( n n -- n ) {: off:n pos:n :}   \ width at raw source offset and operand position
-   0 BEGIN dup WF-N @ < WHILE
-      dup off pos WF-HIT? IF WF-WIDTH@ EXIT THEN
-      1 +
-   REPEAT drop 1 ;
 
 LOC-RECS constant XG-GCAP      \ max logical groups per op
 256 constant XG-TCAP           \ max total cells across one op's groups

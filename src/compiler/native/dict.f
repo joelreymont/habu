@@ -485,12 +485,6 @@ public
    then
    0 ;
 
-\ ---- and how many cells one memory access moves ------------------------------
-\ Keyed by the token's OFFSET into the checked text. Absent is one cell, which
-\ is the checker's own answer.
-: MEM-CELLS ( n -- n )
-   0 WF-W-AT ;
-
 private
 
 \ ---- and which cell a deferred word dispatches through ------------------------
