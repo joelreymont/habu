@@ -470,7 +470,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
 \ The word with a long name, and the top-level-only word taking its name.
 LONG-LEN 113 DEF-SRC evaluate
-LONG$ SIG$ TRUST
+s" LONG$ SIG$ TRUST" evaluate
 
 MAIN
 
