@@ -17,7 +17,7 @@ public
 : NTH ( ptr n n -- n ) {: base:ptr off:n :} base off cells + @ ;
 
 \ `@` is a spelling the checker types by a rule of its own; `dup` and `+` are
-\ spellings the JIT lowers inline. Each is defined after its last use as the
+\ spellings tier 0 inlines. Each is defined after its last use as the
 \ engine's word, so the bodies above and `dup`'s own keep the engine meaning.
 : @ ( ptr n n -- n ) NTH ;
 : dup ( n -- n ) 1 + ;

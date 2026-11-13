@@ -50,16 +50,15 @@ s\" package SAT-D\n: K ( ptr u8 n -- n ) drop c@ ;\npublic\n: K ( n -- n ) 1 + ;
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
 \ The private twin may be a definer-made word: what the rule judges is the PUBLIC
-\ colon definition, whose body ncomp elaborates against whatever the bare tail
-\ binds - here a constant that leaves one cell where the body declares two.
+\ colon definition, whose contract the compiler reads from whatever the bare
+\ tail binds - here a constant that leaves one cell where the body declares two.
 s\" package SAT-M\n10 constant W\npublic\n: W ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
 \ === accepted: every neighbouring shape that must stay legal =================
-\ A definer-made public is not judged by this rule: `constant` compiles no body
-\ for ncomp to elaborate (test/ndict-binding.f's NDB-LEFT shape). The checker
-\ sees the definer call's effect, `20 constant CV` presents ( n -- ), which is
-\ why the rule is asked at the colon-definition intake alone.
+\ A definer-made public is not judged by this rule: `constant` compiles no body.
+\ The checker sees the definer call's effect, `20 constant CV` presents
+\ ( n -- ), which is why the rule is asked at the colon-definition intake alone.
 s\" package SAT-K\n10 constant CV\npublic\n20 constant CV\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" : SAT-K-CK ( -- ) SAT-K:CV 20 <> if s\q public constant lost its own value\q 1 die then ;\nSAT-K-CK"

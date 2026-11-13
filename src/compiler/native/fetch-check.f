@@ -32,8 +32,6 @@ private
 
 public
 
-\ Tier 0 calls this from its inline check of a one-row descriptor with no
-\ guards (t0.f TAG-INLINE).
 : BAD-TAG ( n n -- ) {: tag:n limit:n :}
    s" E-BAD-TAG habu: layout tag " 0 PUT$
    tag swap PUT-INT

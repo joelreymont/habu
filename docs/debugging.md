@@ -108,7 +108,7 @@ prints `habu-bp:` with the pc and stack top, `habu-bp-lr:` with the address the
 word will return to, then the live data stack and watched cells, and resumes
 the word. Feed the `habu-bp-lr:` value to `tools/code-owner.f` (below) to name
 the caller: in a seeded engine that pair is the only way to answer "who called
-this?", because lldb cannot plant a breakpoint in the JIT region at all.
+this?", because lldb cannot plant a breakpoint in the compiled code region at all.
 Each word takes the target as an xt, which must be an instruction-aligned entry
 in the live compiled code region; engine-text primitives are refused.
 
@@ -166,7 +166,7 @@ remove the process's ASLR slide from a live PC before passing it to `--pc`.
 ## Which word owns this address — `tools/code-owner.f`
 
 A debugger stop, a crash dump and a breakpoint all hand back raw addresses in the
-JIT region, where no external symbol table reaches. The dictionary has the
+compiled code region, where no external symbol table reaches. The dictionary has the
 answer:
 
 ```sh
@@ -277,7 +277,7 @@ so the message names the mechanism that caught the fault
 `n prof-on` samples the running program and attributes each tick to the word
 whose code holds the interrupted pc, with its callers (`src/habu/prof.f` states
 the surface and the report format). A word whose last call compiles as a tail
-call, at either tier, is gone from the stack while its callee runs, so the
+call is gone from the stack while its callee runs, so the
 callee's samples show `(unknown)` or an outer caller instead of it. The usual
 phase measurement:
 

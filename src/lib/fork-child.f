@@ -9,9 +9,6 @@
 \ STORAGE CLASS. PROCESS-WIDE: one registry, appended under an atomic lock.
 
 require src/lib/error.f
-\ HOOKS below is a checked quotation store; the optimizing tier lowers such a
-\ store through QUOTATION-STORAGE:STORE, so this file owns that dependency.
-require src/core/quotation-storage.f
 
 package FORK-CHILD
 private

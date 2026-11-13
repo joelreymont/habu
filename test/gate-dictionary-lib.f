@@ -504,15 +504,15 @@ variable CANDIDATE-VERDICT
    s" 42" GE-OUT-LINE
    SB$ s" hb semicolon package alias output" GE-EXPECT-OUT ;
 
-: PACKAGE-JIT-STACK ( -- )
+: PACKAGE-VALUE-STACK ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s" : FIVE-LITS ( -- n n n n n ) 10 10 10 10 10 ;" GE-SRC-LINE
    s" FIVE-LITS + + + + ." GE-SRC-LINE
-   s" hb package cells do not overlap jit stack" GE-EVAL-RUN-STDIN
+   s" hb package cells do not overlap the value stack" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 50" GE-OUT-LINE
-   SB$ s" hb package cells do not overlap jit stack output" GE-EXPECT-OUT ;
+   SB$ s" hb package cells do not overlap the value stack output" GE-EXPECT-OUT ;
 
 : PACKAGE-CHECK-SOURCE ( -- )
    GE-SRC-RESET
@@ -1492,7 +1492,7 @@ public
    NAMESPACE-QUALIFIED
    PACKAGE-RUNTIME
    PACKAGE-SEMICOLON
-   PACKAGE-JIT-STACK
+   PACKAGE-VALUE-STACK
    PACKAGE-CHECK
    PACKAGE-NORET
    DUPLICATE-DEFINITION-REJECTS

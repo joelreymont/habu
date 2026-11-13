@@ -1393,7 +1393,7 @@ $44000000000 constant ES-MACOS-DATA-VA
    HB-TARGET-LINUX-X86-64? if ES-LINUX-DATA-VA exit then
    HB-TARGET-MACOS? if ES-MACOS-DATA-VA exit then
    ES-TARGET-UNKNOWN ;
-dbase@ rbase > TTRUE                                 \ live JIT region sits above __text
+dbase@ rbase > TTRUE                                 \ the code region sits above __text
 dbase@ PROT-PAGE-MAX 1 - and 0= TTRUE
 dbase@ REGION + rbase - BL-REACH < TTRUE             \ whole region within BL's +/-128 MiB of __text
 data-base NULL-PTR - ES-DATA-VA = TTRUE
@@ -1474,7 +1474,7 @@ s" TPNI" 1 parse-imm
 : TPN2 ( -- n ) TPNI beta 7 ;
 TPN2 7 T=
 
-\ The evaluator's stack-frame pointer stays outside the JIT value stack.
+\ The evaluator's stack-frame pointer stays outside the virtual value stack.
 EVAL-TOP-CELL VVAL-OFF VSMAX cells + >= TTRUE
 EVAL-TOP-CELL CELL + DATA-START <= TTRUE
 s" : TEVAL-HI-CALLEE ( n n n n n n n -- ) {: a:n b:n c:n d:n e:n f:n g:n :} a drop b drop c drop d drop e drop f drop g drop ; : TEVAL-HI-CALL ( -- ) 1 2 3 4 5 6 7 TEVAL-HI-CALLEE ;" evaluate

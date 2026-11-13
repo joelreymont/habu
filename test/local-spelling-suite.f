@@ -13,7 +13,7 @@ require src/lib/test/subject.f
 \ ---- section 1: the three incidents, compiled by tier 0 -----------------------
 \ Each body once lost a word to a local of the same letters, which read as a
 \ stack error elsewhere; a resolver that folded case answers the local's result.
-package LSP-JIT
+package LSP-INCIDENT
 
 create TEXT 64 allot           \ the buffer the incident lost
 variable REV                   \ the variable the incident fetched through
@@ -133,16 +133,16 @@ private
 
 : INCIDENT-CASE ( -- )
    s" a buffer named TEXT is the buffer under a local named text" T-LABEL
-   s" hello" LSP-JIT:PUT
-   5 LSP-JIT:TEXT$ s" hello" T$=
+   s" hello" LSP-INCIDENT:PUT
+   5 LSP-INCIDENT:TEXT$ s" hello" T$=
 
    s" a package word KEY is the emitter under a local named key" T-LABEL
-   s" id" s" 7" LSP-JIT:FIELD-S
-   LSP-JIT:OUT$ s" id:7" T$=
+   s" id" s" 7" LSP-INCIDENT:FIELD-S
+   LSP-INCIDENT:OUT$ s" id:7" T$=
 
    s" a variable REV is the variable under a local named rev" T-LABEL
-   5 LSP-JIT:REV!
-   3 LSP-JIT:BUMP 8 T= ;
+   5 LSP-INCIDENT:REV!
+   3 LSP-INCIDENT:BUMP 8 T= ;
 
 : SHADOW-CASE ( -- )
    s" a local spelled like a word still shadows it" T-LABEL

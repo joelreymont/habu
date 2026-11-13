@@ -18,9 +18,9 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   through its real call path. Renaming a Forth algorithm or unchecked wrapper,
   or asserting its effect, does not make it a primitive.
 - A `PPRIM:` row closed with `CLOSE-PRIVATE` instead of `PPRIM;` belongs to its
-  package: only that package's checked bodies call the primitive, at both
-  tiers. Outside it, a call of a primitive whose one row is the private one
-  (`xref-retarget`) is `E-UNDEFINED`, in a body and at top level, and a
+  package: only that package's checked bodies call the primitive. Outside it,
+  a call of a primitive whose one row is the private one (`xref-retarget`) is
+  `E-UNDEFINED`, in a body and at top level, and a
   top-level `'` of it yields the xt; a body's call of one that also keeps a
   global trusted-only row (`reloc-maps-clear`) is `E-CAP-TRUSTED`. A checked
   `[']` of it is admitted and refused exactly where that call is.
@@ -809,7 +809,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   **Raw storage never holds an address** and **An undeclared cell holds no
   execution token** for the declared forms.
 - **A definer that only wants a type writes an EMPTY `does>` clause**: on a
-  fresh word it is elided at both tiers, so a read costs one load; `0 ptr-field`
+  fresh word it is elided, so a read costs one load; `0 ptr-field`
   in the clause is a body and pays a call, a branch and a frame per read.
 - **A definer may replace another definer's `does>` clause.** Calling the inner
   definer creates the word; a nonempty outer clause then replaces its behavior
@@ -1140,7 +1140,7 @@ A definition reads only the return-stack cells it pushed with `>r` and leaves
 the return stack as it found it, so no signature declares a return-stack cell.
 A `|` clause may name one row variable, the same on both sides: the word leaves
 its caller's return stack alone, which is what a signature with no bar says.
-Any other clause is refused at the declaration, at both tiers, before the body
+Any other clause is refused at the declaration, before the body
 is checked: `habu: in NAME: return-stack effect in signature '<sig>';
 suggestion: Declare no return-stack effect: after '|' write one row variable,
 the same on both sides, or no '|'; park a value with >r and take it back with
@@ -1205,7 +1205,7 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 - The implicit return row is sealed the same way, with or without a signature:
   `r>`, `r@`, `2r>` and `2r@` reach only cells this definition pushed, even
   when a later `>r` restores the balance, so `: X r@ ;` and `: X r> ;` are
-  refused (`fix_return_stack`) at the read, at both tiers. A quotation
+  refused (`fix_return_stack`) at the read. A quotation
   literal's own reads are sealed the same way (`>r [: r> ;] execute` is refused
   at `r>`); one that leaves its return row unbalanced is refused at its `;]`
   (`[: >r ;] execute r>`).
@@ -2445,10 +2445,10 @@ sections above.
   `leave` or `recurse` inherits it. A `TRUSTED:` body's clause is a
   declaration even though its body is asserted. The same rule applies to a
   replacement clause (see **Structures And Enums**). A definer's `create`
-  gives each word it makes `-- ptr a` the moment it is made, at either tier,
-  at top level, in a package or under `evaluate`; a `does>` the definer then
-  reaches replaces it with the clause effect, and a branch that `exit`s
-  before `does>` leaves `-- ptr a`.
+  gives each word it makes `-- ptr a` the moment it is made, at top level, in
+  a package or under `evaluate`; a `does>` the definer then reaches replaces it
+  with the clause effect, and a branch that `exit`s before `does>` leaves
+  `-- ptr a`.
 - **Renderers can define words absent from source text.** A word whose body
   reaches `INCLUDE-EVALUATE`, `evaluate` or `evaluate-closed` marks the
   wordlist of its top-level call. There, a later unresolved name that may be

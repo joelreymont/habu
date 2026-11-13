@@ -37,9 +37,8 @@ package STACK-LIFECYCLE-TEST
    DEBUGGER-LINES 7 T= ;
 
 \ A PERSISTENT breakpoint keeps its BRK planted, so the word's entry instruction
-\ never runs in place (src/habu/habu2.f C-BP-EMULATE): the SIGTRAP handler
-\ emulates the JIT's two entries, a leaf's nop (EM-COMPILE-RET rewrote it) and a
-\ caller's `str x30,[sp,#-16]!`, and runs any other in debug.f's trampoline, as
+\ never runs in place: the SIGTRAP handler emulates a nop and
+\ `str x30,[sp,#-16]!`, and runs any other entry in debug.f's trampoline, as
 \ T0's KEEP (`ret`) and TWICE (`ldr x9,[x19,#-8]!`) are. The printed 42 is the
 \ return value through the breakpoint's entry: a handler that failed to store
 \ x30 at the lowered sp would return through whatever was there. The second

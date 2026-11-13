@@ -157,9 +157,8 @@ SUITE compiler-x86-64-asm
    test/compiler/x86-64-asm.f
 ;SUITE
 
-\ Host rows (the ARM tier-0 JIT, native x86-64 capture) live in
-\ test/gate-arm-cases.f and test/gate-x64-cases.f; rows for both hosts stay
-\ here.
+\ Tests for one host live in test/gate-arm-cases.f and test/gate-x64-cases.f;
+\ tests for both hosts stay here.
 package STDLIB-GATE
 private
 : HOST-ROWS ( -- )

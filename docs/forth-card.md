@@ -383,8 +383,8 @@ A build tracks a compile-time read of storage as a read of the record whose
 address it derives from, within that record's extent: `L 8 +` past
 `create L 8 allot` reads the next record, whose edit a warm build misses.
 
-A word a definer's `create` makes has `-- ptr a` from the moment it is made, at
-either tier, in a package or under `evaluate`, until a `does>` the definer then
+A word a definer's `create` makes has `-- ptr a` from the moment it is made, in
+a package or under `evaluate`, until a `does>` the definer then
 reaches replaces it with the clause effect; a branch that `exit`s before
 `does>` leaves `-- ptr a`.
 

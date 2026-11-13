@@ -670,9 +670,7 @@ CHECKER-OWNER-ABI:END-PACKAGE-OFF constant DECL-END-PACKAGE-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant DECL-EXPORT-OFF
 CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
 CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
-\ The rest are called by the native compiler and the source verifier: the
-\ checker's does> split, per-call-site facts and diagnostics, and the
-\ verifier's questions.
+\ The rest are called by the native compiler, the engine and the source verifier.
 CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DECL-DOES-CHECK-OFF
 CHECKER-OWNER-ABI:SIG-COUNTED-OFF constant DECL-SIG-COUNTED-OFF
 CHECKER-OWNER-ABI:UNJUDGED-CLOSED-OFF constant DECL-UNJUDGED-CLOSED-OFF

@@ -1554,7 +1554,7 @@ variable LREPLAYTRAP
    nolast LBL,
    NATIVE-CLOSE
    done B,
-   s" E-SEAL-VIOLATION habu: def-close with no definition pending or no definition tier"
+   s" E-SEAL-VIOLATION habu: def-close with no definition pending or no compiler latched"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 

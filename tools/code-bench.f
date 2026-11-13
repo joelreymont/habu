@@ -1,5 +1,5 @@
-\ tier-bench.f - run time of compiled code on the benchmark corpus.
-\ Run: bin/hb --load tools/tier-bench.f -- <source-file>
+\ code-bench.f - run time of compiled code on the benchmark corpus.
+\ Run: bin/hb --load tools/code-bench.f -- <source-file>
 \ Per benchmark: `B <name> <run1> ... <run15> <median>` in microseconds of thread
 \ CPU, then `R <name> <value>`, its result over the whole output. Every round
 \ must compute run 0's value. Subtract `harness`, the bare timing loop.
@@ -8,7 +8,7 @@ require src/lib/time-cpu.f
 require src/lib/array.f
 require tools/lint/text.f
 
-package TIER-BENCH
+package CODE-BENCH
 private
 
 $40000 constant CELLS-N             \ 262144 cells under the integer loops
@@ -95,7 +95,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
    row FOLD-ROW = if s" fold" exit then
    row MOVE-ROW = if s" move" exit then
    row LINES-ROW = if s" lines" exit then
-   s" tier-bench: no such benchmark row" WRONG-RC die ;
+   s" code-bench: no such benchmark row" WRONG-RC die ;
 
 \ ---- the source under the text benchmarks -----------------------------------
 
@@ -118,7 +118,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 : LOAD-SOURCE ( ptr u8 n -- )
    LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT nip {: got :}
-   got 0= if s" tier-bench: source file is empty" IO-RC die then
+   got 0= if s" code-bench: source file is empty" IO-RC die then
    got TEXT-CAP > if TEXT-CAP else got then TEXT-N !
    LINE-LIMIT ;
 
@@ -245,7 +245,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
    run 0= if SINK @ row RESULT-AT ! exit then
    SINK @ row RESULT-AT @ = if exit then
    MSG-N BUF-RESET
-   s" tier-bench: " MSG+
+   s" code-bench: " MSG+
    row ROW-NAME$ MSG+
    s"  computed a different result in a later round" MSG+
    MSG MSG-N BUF-LEN@ WRONG-RC die ;
@@ -296,7 +296,7 @@ public
 
 : MAIN ( -- )
    script-argc 1 < if
-      s" usage: bin/hb --load tools/tier-bench.f -- <source-file>" USAGE-RC die
+      s" usage: bin/hb --load tools/code-bench.f -- <source-file>" USAGE-RC die
    then
    0 script-argv$ LOAD-SOURCE
    PICK-NEEDLE
@@ -307,4 +307,4 @@ public
 
 ;package
 
-TIER-BENCH:MAIN
+CODE-BENCH:MAIN

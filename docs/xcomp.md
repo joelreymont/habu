@@ -178,8 +178,7 @@ is not covered: ARM64 answers the signalling one quieted, SSE the left one.
 
 The x86-64 backend shares the target-free compiler with ARM64 and forks
 nothing else by accident. Linux x86-64 is the target; the ARM64 engine
-cross-builds it. x86-64 builds are off until x86-64 moves onto the linker: the
-builder this section names, `tools/native-build.f`, is gone.
+cross-builds it. x86-64 builds are off until x86-64 moves onto the linker.
 
 A second architecture touches five layers: the assembler
 (`src/arch/x86-64/`), the engine primitive bodies (`src/habu/kernel-x64.f`,
@@ -224,10 +223,7 @@ either side, because the merged engine is the ARM64 seed.
 captured DATA pointers need no translation between the two Linux hosts. Seam
 register arguments are x86-64 register numbers moving through an
 upward-growing data stack, and the seam's instruction stencils are byte strings
-of whole instructions appended as they stand. `tools/native-emit.f` sends an
-x86-64 target to `tools/native-emit-x64.f`, which loads the x86 code stream
-before the window installs its compiler, so the ARM64 assembler cannot bind
-it.
+of whole instructions appended as they stand.
 
 ### Fixed segments
 
