@@ -121,13 +121,6 @@ variable UNIT-ARMED
       fn i NEMIT:ADDR-SITE@ + RELOC-ADDR
    loop ;
 
-\ A recorded span excludes the trailing return. An emission with none records
-\ its whole span exactly, so a reader never borrows the next record's bytes.
-: RECORDED-LEN ( n -- n ) {: size:n :}
-   NEMIT:RET-BYTES {: ret:n :}
-   ret 0= if size CODE-SPAN:EXACT exit then
-   size ret - ;
-
 : VALIDATE-EMISSION ( n -- n ) {: size:n :}
    size ROOM-CK {: fn:n :}
    fn PLACE-CK
@@ -141,7 +134,7 @@ variable UNIT-ARMED
 
 : COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
    fn size PLACE
-   fn size RECORDED-LEN idx PUBLISH-REC ;
+   fn size NEMIT:RET-BYTES CODE-SPAN:RECORDED idx PUBLISH-REC ;
 
 \ One routine's commit, held where COMMIT-OWNED's quotations read it. Compiler
 \ working storage, as NHOST's TAKEN-* are: an image carries none of it.
@@ -275,7 +268,7 @@ public
    fn NSHADOW:SOURCE-FUNS
    idx fn size 0 COMMIT-OWNED
    idx NSHADOW:PUBLISH
-   fn off + size off - RECORDED-LEN does-record
+   fn off + size off - NEMIT:RET-BYTES CODE-SPAN:RECORDED does-record
    idx APPEND-PENDING
    idx XREF-REC XREF-NAME$ true CHECKER-OWNER:DOES-FINISH
    idx PENDING-FACTS

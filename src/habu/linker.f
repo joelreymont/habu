@@ -4515,7 +4515,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;]  ARM64:PATCH
    h EM-OFFS @ {: at:n :}
    at OBJ@  at 8 + OBJ@ {: s:n r:n :}
-   r 0= if s CODE-SPAN:EXACT else s r - then {: recorded:n :}
+   s r CODE-SPAN:RECORDED {: recorded:n :}
    HOST-CALLS-N @ 0= if NULL-PTR else 0 HOST-CALLS then  HOST-CALLS-N @ {: calls:ptr calln:n :}
    HOST-ADDRS-N @ 0= if NULL-PTR else 0 HOST-ADDRS then  HOST-ADDRS-N @ {: addrs:ptr addrn:n :}
    does if

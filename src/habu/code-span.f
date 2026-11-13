@@ -35,4 +35,10 @@ $FFFFFFFF constant RAW-MAX
    size SIZE? 0= if s" hb: malformed dictionary code size" 74 die then
    size FULL or ;
 
+\ A record's length: size less the emission's trailing return of ret bytes; with
+\ none, the whole span exactly, so a reader never borrows the next record's bytes.
+: RECORDED ( n n -- n ) {: size:n ret:n :}
+   ret 0= if size EXACT exit then
+   size ret - ;
+
 ;package

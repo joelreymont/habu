@@ -256,10 +256,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : TARGET-LEN ( n -- n )
    {: s:n :}
    s NSHADOW:EMISSION@ {: e:n :}
-   e NSHADOW:SIZE s NSHADOW:ENTRY@ - {: size:n :}
-   e NSHADOW:RET-BYTES {: ret:n :}
-   ret 0= if size CODE-SPAN:EXACT exit then
-   size ret - ;
+   e NSHADOW:SIZE s NSHADOW:ENTRY@ -  e NSHADOW:RET-BYTES CODE-SPAN:RECORDED ;
 
 \ Build record r's length: the target kernel's for a kernel primitive's, in a
 \ cross-build its target emission's, else its own: a target word's host routine
