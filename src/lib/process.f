@@ -365,7 +365,7 @@ private
 1 constant WNOHANG
 $7FFFFFFF constant PID-MAX    \ the largest signed 32-bit pid_t
 
-1 TASK:+USERS BOUNDED-STATUS n
+TASK:+USER BOUNDED-STATUS n
 
 public
 \ A zero return leaves the cleared cell unread; a stop (status low bits $7F,
@@ -374,10 +374,10 @@ public
 \ writes a C int, so the whole cell is cleared first.
 : WAIT-PROBE ( pid -- bool )
    {: pid:pid :}
-   0 0 BOUNDED-STATUS !
-   pid PID>N 0 BOUNDED-STATUS BYTE-VIEW WNOHANG WAITPID-CALL {: got:n :}
+   0 BOUNDED-STATUS !
+   pid PID>N BOUNDED-STATUS BYTE-VIEW WNOHANG WAITPID-CALL {: got:n :}
    got pid PID>N = if
-      0 BOUNDED-STATUS @ WAIT-TERM-MASK and WAIT-TERM-MASK <> exit
+      BOUNDED-STATUS @ WAIT-TERM-MASK and WAIT-TERM-MASK <> exit
    then
    got 0= if 0 0= 0= exit then
    FFI:ERRNO FD:EINTR# <> if E-PROC-WAIT throw then
@@ -395,7 +395,7 @@ public
       deadline LEFT-MS MS>N 0= if PROCESS-ENDING:timeout exit then
       1 >MS TASK:SLEEP
    repeat
-   0 BOUNDED-STATUS @ >STATUS STATUS>ENDING ;
+   BOUNDED-STATUS @ >STATUS STATUS>ENDING ;
 
 : CAPTURE-RESET ( -- )
    NO-PID PID !

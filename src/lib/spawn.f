@@ -3,7 +3,7 @@
 \ spawns it through the engine's spawn-fds (src/habu/spawn-abi.f lays out what it
 \ reads) under FD-LOCK (src/lib/fd-lock.f) and answers its pid.
 \ STORAGE CLASS. CALLER-OWNED: each request maps its own record, string chunks and
-\ vectors, shared with no process-wide staging. PROCESS:ERRNO is a TASK:+USERS cell.
+\ vectors, shared with no process-wide staging. PROCESS:ERRNO is a TASK:+USER slot.
 
 require src/lib/error.f
 require src/core/compile-reads.f
@@ -25,7 +25,7 @@ DEFLINEAR PROCESS:request
 
 private
 
-1 TASK:+USERS ERRNO-CELL n
+TASK:+USER ERRNO-CELL n
 
 LINEAR: MINT ( ptr n -- PROCESS:request )
 LINEAR: ERASE ( PROCESS:request -- ptr n )
@@ -258,7 +258,7 @@ HERM-AT 1+ constant RECORD-CELLS
 public
 
 \ Positive errno of this task's last refused spawn; 0 after one that succeeded.
-: ERRNO ( -- n ) 0 ERRNO-CELL @ ;
+: ERRNO ( -- n ) ERRNO-CELL @ ;
 
 
 \ A request for the program at path, map [0 1 2], no argument, this process's
@@ -351,7 +351,7 @@ public
 \ could take the closed number. An open fd passes and leaves ERRNO as it was.
 : CHECK-FD ( fd -- )
    FD>N OPEN? if exit then
-   EBADF 0 ERRNO-CELL !
+   EBADF ERRNO-CELL !
    E-PROC-SPAWN throw ;
 
 
@@ -364,8 +364,8 @@ public
    rc 0<> if drop drop h RELEASE rc throw then
    nip {: result :}
    h RELEASE
-   result 0 < if result negate 0 ERRNO-CELL ! E-PROC-SPAWN throw then
-   0 0 ERRNO-CELL !
+   result 0 < if result negate ERRNO-CELL ! E-PROC-SPAWN throw then
+   0 ERRNO-CELL !
    result >PID ;
 
 
