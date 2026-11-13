@@ -217,12 +217,16 @@ private
    [: [: CODESIGN-PICK ;] CODESIGN-SECURITY ;] [: CODESIGN-RELEASE ;] finally
    CODESIGN-ID? @ 0= if CODESIGN-NO-IDENTITY then ;
 
+public
+
 \ The one identity every macOS signature names, found on first use.
 : IDENTITY$ ( -- ptr u8 n )
    CODESIGN-ID? @ 0= if
       [: CODESIGN-FIND-ID ;] [: CODESIGN-IDS-RELEASE ;] finally
    then
    CODESIGN-ID CODESIGN-ID-LEN ;
+
+private
 
 : CODESIGN-TARGET-UNKNOWN ( -- )
    E-BUILD-SOURCE throw ;

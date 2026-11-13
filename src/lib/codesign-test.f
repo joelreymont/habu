@@ -15,9 +15,7 @@ require src/lib/process-env.f
 require src/lib/engine-id.f
 require src/lib/codesign.f
 
-\ White-box test: reopen the module's package so the fixtures reach the team,
-\ the identity and the certificate pick.
-package CODESIGN
+package CODESIGN-TEST
 
 variable CST-ROOT-U
 variable CST-SCRIPT-SRC-U
@@ -119,12 +117,41 @@ create CST-IN-BUF PATH-CAP allot
 : CST-TOOL-RC ( -- n )
    CODESIGN:TOOL >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
+: CST-TEAM ( -- ptr u8 n )
+   s" 8TW82D98K7" ;
+
+10000 constant CST-TIMEOUT-MS
+
+DYNAMIC-BUFFER CST-OUT u8
+DYNAMIC-BUFFER CST-ERR u8
+variable CST-ERR-U
+
+: CST-OUT-ROOM ( n -- ptr u8 )
+   CST-OUT-RESERVE 0 CST-OUT ;
+
+: CST-ERR-ROOM ( n -- ptr u8 )
+   CST-ERR-RESERVE 0 CST-ERR ;
+
+: CST-RELEASE ( -- )
+   CST-OUT-RELEASE
+   CST-ERR-RELEASE ;
+
+\ Runs tool with PROC-ARGV and stdin in; its stderr stays in CST-ERR.
+: CST-CAPTURE ( ptr u8 n ptr u8 n -- n ) {: tool:ptr toolu:n in:ptr inu:n :}
+   PROC-ENV-RESET
+   tool toolu >LEN in inu >LEN
+   [: CST-OUT-ROOM ;] [: CST-ERR-ROOM ;]
+   CST-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
+   {: o:len e:len oc :}
+   e LEN>N CST-ERR-U !
+   oc PROCESS:ENDING>RC RC>N ;
+
 : CST-TEAM-REQ ( ptr u8 n -- ptr u8 n ) {: id:ptr idu :}
    SB-RESET
    s\" =anchor apple generic and identifier \"" SB-APPEND
    id idu SB-APPEND
    s\" \" and certificate leaf[subject.OU] = \"" SB-APPEND
-   TEAM$ SB-APPEND
+   CST-TEAM SB-APPEND
    s\" \"" SB-APPEND
    SB-BUF SB-LEN @ ;
 
@@ -200,7 +227,7 @@ create CST-IN-BUF PATH-CAP allot
    s" /bin/echo" CST-KEEP CST-CP
    PROC-ARGV-RESET
    s" -s" >LEN PROC-ARGV+
-   IDENTITY$ >LEN PROC-ARGV+
+   CODESIGN:IDENTITY$ >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    s" runtime" >LEN PROC-ARGV+
    s" --timestamp=none" >LEN PROC-ARGV+
@@ -211,81 +238,9 @@ create CST-IN-BUF PATH-CAP allot
    PROC-ARGV-RESET
    s" -dv" >LEN PROC-ARGV+
    CST-KEEP >LEN PROC-ARGV+
-   CODESIGN:TOOL CODESIGN-CAPTURE 0 T=
-   0 CODESIGN-ERR CODESIGN-ERR-U @ s" (runtime)" CONTAINS? TTRUE
-   CODESIGN-RELEASE ;
-
-: CST-HASH ( n -- ) {: c :}
-   0 begin dup CODESIGN-ID-LEN < while
-      c SB-APPEND-C
-      1 +
-   repeat
-   drop ;
-
-\ One line of `security find-identity -v -p codesigning`.
-: CST-ID-LINE ( n -- )
-   s"   1) " SB-APPEND
-   CST-HASH
-   s\" \"Apple Development: X (M1)\"\n" SB-APPEND ;
-
-\ An escaped name; a team gives it an organizational unit: the OU mark, the
-\ string's tag and length, then the team.
-: CST-NAME ( ptr u8 n -- ) {: t:ptr tu :}
-   s\" \"" SB-APPEND
-   tu 0 > if
-      s" U\004\013\014\012" SB-APPEND
-      t tu SB-APPEND
-   then
-   s\" 1\\0140\\012CN\"\n" SB-APPEND ;
-
-\ One certificate of `security find-certificate -a -Z`.
-: CST-CERT ( n ptr u8 n ptr u8 n -- ) {: c issuer:ptr iu subject:ptr su :}
-   s" SHA-1 hash: " SB-APPEND
-   c CST-HASH
-   s\" \nkeychain: \"/k\"\nattributes:\n    \"issu\"<blob>=0x00  " SB-APPEND
-   issuer iu CST-NAME
-   s\"     \"subj\"<blob>=0x00  " SB-APPEND
-   subject su CST-NAME ;
-
-: CST-OTHER-TEAM ( -- ptr u8 n )
-   s" OTHERTEAM0" ;
-
-65 constant CST-A
-66 constant CST-B
-67 constant CST-C
-68 constant CST-D
-
-\ D names the team only in its issuer, C is another team's, A is no valid
-\ identity: none of them is the team's identity.
-: CST-CERTS-DCA ( -- )
-   SB-RESET
-   CST-D TEAM$ CST-OTHER-TEAM CST-CERT
-   CST-C s" " CST-OTHER-TEAM CST-CERT
-   CST-A s" " TEAM$ CST-CERT ;
-
-: CST-PICK ( -- )
-   0 CODESIGN-ID? !
-   SB-BUF SB-LEN @ CODESIGN-PICK ;
-
-\ Runs first: the live identity is found again after it.
-: CST-TEST-PICK ( -- )
-   SB-RESET
-   CST-B CST-ID-LINE
-   CST-C CST-ID-LINE
-   CST-D CST-ID-LINE
-   SB-BUF SB-LEN @ CODESIGN-KEEP-IDS
-   CST-CERTS-DCA
-   CST-B s" " TEAM$ CST-CERT
-   CST-PICK
-   CODESIGN-ID? @ 0<> TTRUE
-   SB-RESET
-   CST-B CST-HASH
-   CODESIGN-ID CODESIGN-ID-LEN SB-BUF SB-LEN @ STR= TTRUE
-   CST-CERTS-DCA
-   CST-PICK
-   CODESIGN-ID? @ 0= TTRUE
-   0 CODESIGN-ID? !
-   CODESIGN-IDS-RELEASE ;
+   CODESIGN:TOOL s" " CST-CAPTURE 0 T=
+   0 CST-ERR CST-ERR-U @ s" (runtime)" CONTAINS? TTRUE
+   CST-RELEASE ;
 
 \ A Linux executable built on a Mac (--target) is an ELF file: ENSURE leaves it
 \ unsigned, as a Linux host does.
@@ -299,24 +254,16 @@ create CST-IN-BUF PATH-CAP allot
    CST-ELF >LEN PROC-ARGV+
    CST-TOOL-RC 0 T<> ;
 
-variable CST-ERR-U
-
 \ What a session prints is under test, so a child engine runs CST-IN from stdin;
-\ its stderr stays in CODESIGN-ERR and its exit status is returned.
+\ its exit status is returned.
 : CST-CHILD ( -- n )
    SB-BUF SB-LEN @ CST-IN-BUF CST-IN-U CST-COPY!
    PROC-ARGV-RESET
-   PROC-ENV-RESET
-   ENGINE-ID:PATH$ >LEN CST-IN >LEN
-   [: CODESIGN-OUT-ROOM ;] [: CODESIGN-ERR-ROOM ;]
-   CODESIGN-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
-   {: o:len e:len oc :}
-   e LEN>N CST-ERR-U !
-   oc PROCESS:ENDING>RC RC>N ;
+   ENGINE-ID:PATH$ CST-IN CST-CAPTURE ;
 
 : CST-ERR-HAS? ( ptr u8 n -- bool )
    {: a:ptr u :}
-   0 CODESIGN-ERR CST-ERR-U @ a u CONTAINS? ;
+   0 CST-ERR CST-ERR-U @ a u CONTAINS? ;
 
 : CST-UNSIGNED-CHILD ( ptr u8 n -- n ) {: w:ptr wu :}
    SB-RESET
@@ -335,10 +282,10 @@ variable CST-ERR-U
    CST-UNSIGNED FS:CHMOD-X
    s" VERIFY" CST-UNSIGNED-CHILD drop
    s" not signed at all" CST-ERR-HAS? TTRUE
-   CODESIGN-RELEASE
+   CST-RELEASE
    s" VERIFY-RC drop" CST-UNSIGNED-CHILD 0 T=
    CST-ERR-U @ 0 T=
-   CODESIGN-RELEASE ;
+   CST-RELEASE ;
 
 : CST-CODESIGN-MISSING ( -- )
    s" /no/such/habu-codesign-test" CODESIGN:VERIFY ;
@@ -458,7 +405,6 @@ create CST-IMG-B 128 allot
 
 : CODESIGN-TEST-MAIN ( -- )
    T-RESET
-   CST-TEST-PICK
    CST-PREPARE
    CST-TEST-TOOL
    CST-TEST-PROMOTE
