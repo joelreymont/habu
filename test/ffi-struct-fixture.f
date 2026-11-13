@@ -1,7 +1,7 @@
 \ ffi-struct-fixture.f - the C library the struct-by-value FFI cases call.
-\ test/ffi-struct-arg.f and the full-image restore case build it with the
-\ system compiler: no system library takes integer records of every
-\ AAPCS64 argument class by value. The layouts are asserted at compile time,
+\ The struct suite and the full-image restore case build it with the
+\ system compiler: no system library takes integer records of every supported
+\ AAPCS64 and SysV argument class. The layouts are asserted at compile time,
 \ and every checksum weighs each member by its position (MIX), so a member
 \ read from the wrong offset, register or stack slot changes the answer.
 require src/lib/fs.f
@@ -81,15 +81,23 @@ variable LIB-U
    s" s16 *hb_park16(s16 s) { parked = s; return &parked; }" L+ ;
 
 : RESULTS ( -- )
+   s" s24 hb_ret24(i64 a, i64 b, i64 c, i64 d) {" L+
+   s"    s24 r = { a, (int32_t)b, (uint32_t)c, d }; return r; }" L+
+   s" s24 hb_fret24(double a, i64 b) { return hb_ret24((i64)(a * b), b, 1, 0); }" L+
    s" s16 hb_swap16(s16 s) { s16 r = { s.b, s.a }; return r; }" L+
    s" s32 hb_echo32(i64 k, s32 s) {" L+
    s"    s32 r = { s.a + k, s.b + k, s.c + k, s.d + k }; return r; }" L+
    s" s32 hb_ret9(i64 a, i64 b, i64 c, i64 d, i64 e, i64 f, i64 g, i64 k, i64 i) {" L+
-   s"    s32 r = { (i64)hb_fold8(a, b, c, d, e, f, g, k), i, a, k }; return r; }" L+ ;
+   s"    s32 r = { (i64)hb_fold8(a, b, c, d, e, f, g, k), i, a, k }; return r; }" L+
+   \ SysV's hidden result and four scalars leave only r9: s spills whole,
+   \ while t still uses r9. This catches failure to roll back the record.
+   s" s32 hb_rettail16(i64 a, i64 b, i64 c, i64 d, s16 s, i64 t) {" L+
+   s"    s32 r = { (i64)MIX(MIX(MIX(MIX(1, a), b), c), d), hb_sum16(s), t, -99 }; return r; }" L+ ;
 
 : CC ( -- )
    PROC-ARGV-RESET
    s" -shared" >LEN PROC-ARGV+
+   s" -fPIC" >LEN PROC-ARGV+
    s" -O2" >LEN PROC-ARGV+
    s" -std=c11" >LEN PROC-ARGV+
    s" -Wall" >LEN PROC-ARGV+
@@ -102,6 +110,10 @@ variable LIB-U
       err OF drop s" struct-fixture: cc failed" T-EX-FAIL die ENDOF
    ;MATCH ;
 
+\ Both the declaration and dlopen see the host's library spelling.
+: LIBRARY-NAME ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" libhbstruct.dylib" exit then s" libhbstruct.so" ;
+
 public
 
 \ Answer the library's path, which stays valid until the next BUILD.
@@ -109,7 +121,7 @@ public
    SRC CODEGEN:RESET
    TYPES SUMS PLACEMENTS OWNERSHIP RESULTS
    dir diru s" hb-struct.c" SRC-PATH FS:JOIN-PATH SRC-U !
-   dir diru s" libhbstruct.dylib" LIB-PATH FS:JOIN-PATH LIB-U !
+   dir diru LIBRARY-NAME LIB-PATH FS:JOIN-PATH LIB-U !
    SRC-PATH SRC-U @ SRC CODEGEN:CONTENTS FS:WRITE-ALL
    CC
    LIB-PATH LIB-U @ ;

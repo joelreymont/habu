@@ -3546,7 +3546,6 @@ variable FFI-LIT-B                          \ and the newer
 : FFI-STRUCT-ARG ( -- )
    2 FFI-OPERANDS? 0= IF EXIT THEN
    FFI-LIT-A @ FFI-LIT-B @ {: i:n bytes:n :}
-   HB-TARGET-LINUX-X86-64? IF FFI-STOP THEN
    FFI-VAR @ FFI-OUT-FP @ or IF FFI-STOP THEN
    bytes 0 <= IF FFI-STOP THEN
    i FFI-INPUT? 0= IF FFI-STOP THEN
@@ -3560,7 +3559,6 @@ variable FFI-LIT-B                          \ and the newer
 : FFI-STRUCT-RESULT ( -- )
    1 FFI-OPERANDS? 0= IF EXIT THEN
    FFI-LIT-B @ {: bytes:n :}
-   HB-TARGET-LINUX-X86-64? IF FFI-STOP THEN
    FFI-RES @ 0<> FFI-VAR @ or IF FFI-STOP THEN
    bytes 0 <= IF FFI-STOP THEN
    FFI-OUT-N @ 0<> FFI-IN-N @ 0= or IF FFI-STOP THEN
@@ -3586,7 +3584,7 @@ variable FFI-LIT-B                          \ and the newer
    FFI-CLAUSES @ 0= IF EXIT THEN
    FFI-RES @ 0= FFI-ANY-SARG? 0= and IF EXIT THEN
    FFI-IN-N @ FFI-RES @ 0<> IF 1- THEN {: args:n :}
-   0 FFI-KIND 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS FFI:STRUCT-FITS?
+   0 FFI-KIND 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS FFI-RES @ FFI:STRUCT-FITS?
    0= IF E-FFI-ARITY STATEMENT-STOP THEN ;
 
 \ The library's storage definers are words, not keywords: a package's word of

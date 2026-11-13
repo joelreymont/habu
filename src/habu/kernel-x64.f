@@ -956,7 +956,7 @@ public
 
 \ Call the C function at r11 under the SysV ABI: the register arguments already
 \ in rdi rsi rdx rcx r8 r9 and xmm0..7, and the r10 cells at rax (a count >= 0)
-\ as its stack arguments; the answer is in rax or xmm0. al is set to n, the
+\ as its stack arguments; the answer is in rax/rdx or xmm0. al is set to n, the
 \ bound on vector arguments a variadic callee reads to decide whether it saves
 \ xmm0..7. The entry rsp waits in rbx, itself saved on the machine stack. The
 \ VM registers survive by the callee-saved rule; rax rcx rdx rsi rdi, r8-r11
@@ -1572,6 +1572,20 @@ private
    S\" hb: unset quotation\n" ENGINE-ERROR:CALLABLE-ABI STDERR-EXIT,
    live X64CODE:LBL, ;
 
+\ Bit 63 marks a stack record: rdi receives its address and rax its code.
+\ Invocation setup preserves rdi until the quotation saves it in its frame.
+: QUOTATION-RECORD, ( -- )
+   X64CODE:LBL {: plain:label :}
+   RAX RAX ASM-SINK ENC-TEST-RR C-NS plain JCC,
+   RDI $7FFFFFFFFFFFFFFF >IMM64 ASM-SINK ENC-MOV-RI64
+   RDI RAX ASM-SINK ENC-AND-RR
+   RAX RDI 0 MOV-LOAD,
+   plain X64CODE:LBL, ;
+
+: INVOKE, ( -- )
+   QUOTATION-RECORD, CALLABLE,
+   RAX ASM-SINK ENC-CALL-REG ;
+
 \ run-in-stack's frame: the caller's data stack pointer and descriptor.
 0 constant RUN-DSP
 8 constant RUN-BASE
@@ -1589,7 +1603,8 @@ private
    wide X64CODE:LBL,
    UNCAUGHT-RC EXIT-GROUP, ;
 
-\ execute-floor ( n -- bool ): call the xt, then answer whether it left the
+\ execute-floor takes an interpreter-owned code address, never a local record.
+\ Call it, then answer whether it left the
 \ data stack below the base in S0-CELL. Below, the stack is reset to the base
 \ before the flag is pushed, so the push lands at the base and not on the low
 \ guard page.
@@ -1636,7 +1651,7 @@ private
 \ in rax. The caller places that label after the return path.
 : CATCH-RUN, ( -- label )
    X64CODE:LBL {: resume:label :}
-   RAX POP,  CALLABLE,
+   RAX POP,  QUOTATION-RECORD, CALLABLE,
    RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
    RCX DATA-REG HND-CELL MOV-LOAD,  RCX RSP CATCH-PREV MOV-STORE,
    DSP RSP CATCH-DSP MOV-STORE,
@@ -1929,7 +1944,7 @@ private
    RCX ZERO-REG,  RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,
    calm X64CODE:LBL,
    RAX RSP 2 CELL * MOV-LOAD,  RAX PUSH,
-   RAX RSP CELL MOV-LOAD,  RAX ASM-SINK ENC-CALL-REG
+   RAX RSP CELL MOV-LOAD, INVOKE,
    RAX RSP 2 CELL * MOV-LOAD,  RCX RSP 3 CELL * MOV-LOAD,
    RSP 4 CELL * >IMM8 ASM-SINK ENC-ADD-RI8
    RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,      \ the halt taken, 0 when none
@@ -2065,6 +2080,7 @@ private
    RDI RSI ASM-SINK ENC-CMP-RR  C-B bad JCC, ;
 
 \ run-in-stack ( xt ptr u8 n -- ): run the xt on the extent as its data stack.
+\ Its checked primitive row rejects quotations that read locals.
 \ An extent that is not a guarded mapping is the caller's error, so it throws
 \ STACK-ABI:E-STACK-UNGUARDED over the three cells, as BRUNSTACK does. The
 \ extent becomes the data stack and its descriptor for the call; on the return
@@ -2100,8 +2116,9 @@ private
    EXIT-BOUNDS
    done X64CODE:LBL, ;
 
-\ source-file-run ( xt -- ): the unit runs on the caller's extent with the cursor as its floor, compared before any push so
-\ a full extent reports residue. This kernel refuses source-exec-run, so it suspends no observer.
+\ The private loader caller supplies a quotation without local reads.
+\ Its unit runs above the caller's cursor; compare before a push so a full
+\ extent reports residue. No source-exec observer runs on this path.
 : SOURCE-FILE-RUN, ( -- )
    X64CODE:LBL X64CODE:LBL {: restore:label done:label :}
    TASK-LIVE-GUARD,
@@ -2717,7 +2734,7 @@ public
    msg X64CODE:LBL,  UNDERDEPTH$ TEXT,
    nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE
    after-floor X64CODE:LBL,
-   s" execute" [: RAX POP,  CALLABLE,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
+   s" execute" [: RAX POP, INVOKE, ;] PRIM
    s" execute-floor" [: EXECUTE-FLOOR, ;] PRIM
    s" 2>r" [: 2>R, ;] PRIM
    s" 2r>" [: 2R>, ;] PRIM
@@ -4777,8 +4794,9 @@ public
    s" ffi-call-abi-r" [: FFI-CALL-ABI-BODY  XMM0-PUSH, ;] PRIM
    s" ffi-call-abi-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH, ;] PRIM
    s" ffi-call-abi-r-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  XMM0-PUSH, ;] PRIM
-   \ x86-64 refuses STRUCT-ARG declarations, so the relocation mask under fn
-   \ is always zero here: it is dropped before the body reads its inputs.
+   \ SysV records are values in registers or the copied native stack frame;
+   \ their rows have no indirect-copy addresses to relocate. Drop the zero
+   \ relocation mask, then keep both integer result registers across CB-LEAVE,.
    s" ffi-call-struct-bounded"
       [: R11 POP,  DROP,  R11 PUSH,  FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH,  RDX PUSH, ;] PRIM ;
 

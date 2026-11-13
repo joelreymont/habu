@@ -837,10 +837,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 FFI-RUN
 
-\ Structs by value are AAPCS64, results against macOS libraries and arguments
-\ against a fixture library built for the run.
+\ Structs by value against libc and the fixture built for this ABI.
 : FFI-T-STRUCT-LOAD ( -- )
-   HB-TARGET-MACOS? if
+   HB-TARGET-MACOS? HB-TARGET-LINUX-X86-64? or if
       s" test/ffi-struct-result.f" required
       s" test/ffi-struct-arg.f" required
       s" test/ffi-struct-verify.f" required

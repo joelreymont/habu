@@ -22,9 +22,6 @@ SHA256-FILE-CTX-BYTES BUFFER: HASH
 : SOURCE$ ( -- ptr u8 n ) SOURCE SOURCE-U @ ;
 : EXE$ ( -- ptr u8 n ) EXE EXE-U @ ;
 
-: PROGRAM$ ( -- ptr u8 n )
-   s\" require src/lib/string.f\npackage GREETING\nprivate\ncreate MESSAGE 72 c, 105 c, 10 c,\n: VALUE ( n -- ) create , does> ( -- n ) @ ;\n41 VALUE BASE\ndefer NEXT ( n -- n )\n: INC ( n -- n ) 1 + ;\n' INC is NEXT\n: SAY ( -- ) MESSAGE 3 type ;\npublic\n: RUN ( -- ) BASE NEXT 42 <> if 1 throw then [: SAY ;] execute ;\n;package\n: MAIN ( -- ) GREETING:RUN ;\n" ;
-
 : SHOW ( CMD:command n -- CMD:command )
    s" x64-link-run: exit " type . cr
    CMD:OUT$ type CMD:ERR$ type ;
@@ -47,7 +44,7 @@ SHA256-FILE-CTX-BYTES BUFFER: HASH
    PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    s" x86-64 program exits successfully" T-LABEL rc 0 T=
-   s" package, does>, defer, quotation and DATA run" T-LABEL
+   s" package, does>, defer, captured quotations and DATA run" T-LABEL
    CMD:OUT$ s\" Hi\n" T$= ;
 
 : DIGEST ( ptr u8 -- )
@@ -68,7 +65,7 @@ public
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" program.f" SOURCE FS:JOIN-PATH SOURCE-U !
    ROOT$ s" program" EXE FS:JOIN-PATH EXE-U !
-   SOURCE$ PROGRAM$ FS:WRITE-ALL
+   s" test/fixtures/x64-link-main.f" SOURCE$ FS:COPY-FILE-STREAM
    ['] CHECK [: ROOT$ FS:REMOVE-TREE ;] finally
    T-REPORT ;
 

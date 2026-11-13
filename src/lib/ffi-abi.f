@@ -13,17 +13,15 @@
 \ open passes the call to the next library its row names. Rows may move when a
 \ table grows; indices stay stable.
 \
-\ A declaration with a C struct is planned by AAPCS64 over its C arguments in
-\ order; the STRUCT-RESULT destination, the last input, is not one. Floats take
-\ v0-v7. An integer argument takes the next of x0-x7, else the next stack
-\ cell. A record of up to 16 bytes takes its registers whole, the last one's
-\ unused high bytes zero, or when too few remain its stack cells whole, and the
-\ next register becomes x8. A larger record is passed as a pointer, an integer
-\ argument, to a private copy in the native call frame that lives exactly as
-\ long as the call; the copy follows every stack argument from an even cell,
-\ 16-byte aligned on the 16-byte aligned native stack. A planned register is
-\ kept as its number and a stack cell as -1-cell; a record of 16 bytes or fewer
-\ has no copy, kept as 0.
+\ Struct arguments follow the target ABI. AAPCS64 takes a small record whole
+\ in x0-x7, else whole on the stack and closes the integer register bank. A
+\ larger record takes a pointer to a private, 16-byte-aligned native-frame
+\ copy after the stack arguments. SysV takes a small integer/pointer record
+\ whole in rdi..r9, else whole on the stack, leaving any register for the next
+\ argument; a larger record goes directly on the stack. A large result uses
+\ x8 on AAPCS64 and reserves rdi on SysV. The last Habu input, its destination,
+\ is not a C argument. A planned register is its number, a stack cell -1-cell,
+\ and a separate copy's position 0 when none. Every copy lives for the call.
 
 HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
 s" src/lib/error.f" required
@@ -720,23 +718,24 @@ public
 \ dlopen can run constructors that call C through this task's scratch.
 : RESOLVE-ROW ( n -- ) FN-LOOKUP drop ;
 
-\ The caller's result storage rides x8, AAPCS64's indirect-result register,
-\ with its whole extent guarded. A record returned in x0/x1 ignores x8, and the
-\ guard still covers the stores made from them. Storage C writes through x8 is
-\ 16-byte aligned, the strictest a supported record can need; a register record
-\ stores into eight-byte-aligned storage.
+\ Guard the whole result extent. Large results use x8 on AAPCS64 or the
+\ reserved first integer argument on SysV. A register result uses slot 8 only
+\ for the guard. Both targets retain the same destination alignment contract:
+\ sixteen bytes for a large result, eight for one returned in registers.
 : RESULT-DEST! ( ptr u8 n -- ) {: dst:ptr len:n :}
    dst PTR>CELL {: addr:n :}
    len 16 > if 15 else 7 then {: mask:n :}
    addr 0= addr mask and 0<> or if E-FFI-SYNTAX throw then
-   dst len X8-WRITABLE! ;
+   dst len
+   HB-TARGET-LINUX-X86-64? len 16 > and if 0 else 8 then WRITABLE! ;
 
-\ The raw x0 and x1 after the call, in address order. The row's relocation
-\ mask names the staged cells that hold a private struct copy's address in
+\ The raw return registers, x0/x1 or rax/rdx, in address order. An AAPCS64
+\ row's relocation mask names staged cells holding a private copy's address in
 \ the stack buffer: bits 0-7 are x0-x7 and bits 8-23 stack cells 0-15. The
 \ engine copies the stack buffer into the native call frame and moves each
 \ named cell to the copy there, so C receives storage that lives exactly as
-\ long as the call and that no other call reuses.
+\ long as the call and that no other call reuses. SysV passes the records
+\ themselves in that frame, with no relocated addresses.
 : CALL-STRUCT ( n -- n n ) {: idx:n :}
    idx FN-LOOKUP {: fn:n :}
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
@@ -764,11 +763,10 @@ private
 
 public
 
-\ STRUCT-ARG staging. A record of 16 bytes or fewer goes whole in consecutive
-\ integer registers from reg, or in stack cells from pos; a larger one is
-\ copied into stack cells from pay and passed by address in register reg or
-\ stack cell pos. Every staged cell has extent 0: C reads the record's
-\ copy, never the source.
+\ STRUCT-ARG staging. Consecutive cells go in integer registers from reg or
+\ stack cells from pos. AAPCS64's larger records have a separate copy from
+\ pay, passed by address in reg or pos. Every staged cell has extent 0:
+\ C reads the record's copy, never the source.
 : STRUCT-REGS! ( ptr u8 n n -- ) {: src:ptr len:n reg:n :}
    src len RECORD-CELLS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
 
@@ -781,8 +779,8 @@ public
 : STRUCT-COPY-STACK! ( ptr u8 n n n -- ) {: src:ptr len:n pay:n pos:n :}
    src len pay RECORD-COPY pos STACK-VALUE! ;
 
-\ A record of len bytes returned in x0 then x1 lands at exactly its width;
-\ one larger than 16 bytes is already in place through x8.
+\ A record returned in two integer registers lands at exactly its width;
+\ one larger than 16 bytes is already in place through the result pointer.
 : STORE-RESULT ( n n ptr u8 n -- ) {: lo:n hi:n dst:ptr len:n :}
    len 16 > if exit then
    lo dst len 8 min REG-STORE
@@ -910,11 +908,15 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ `bytes STRUCT-RESULT` declares a C struct of `bytes`, any positive count,
 \ returned by value. The last input is a `ptr u8` to caller-owned storage of at
 \ least `bytes` that must not alias memory the callee reaches; it is no C
-\ argument, and the output row is empty. The record has integer, pointer or
-\ mixed members: an HFA (one to four members of one float type) or an HVA (one
-\ to four 8- or 16-byte vectors) returns in v0-v3, which no byte count reveals,
-\ and must not be declared. AAPCS64 returns up to 8 bytes in x0 and 9..16 in x0
-\ then x1, stored at exactly `bytes`; C writes a larger record through x8. The
+\ argument, and the output row is empty. On AAPCS64 the record has integer,
+\ pointer or mixed members, excluding an HFA (one to four members of one
+\ float type) or HVA (one to four vectors), whose v-register class no byte
+\ count reveals. SysV admits only naturally aligned integer/pointer members,
+\ with record alignment at most eight: floating members, packed/unaligned
+\ fields and over-alignment cannot be classified from a byte count alone.
+\ AAPCS64 returns up to 8 bytes in x0 and 9..16 in x0 then x1; SysV uses rax
+\ then rdx. Both are stored at exactly `bytes`. C writes a larger record
+\ through x8 on AAPCS64 or a hidden first argument in rdi on SysV. The
 \ storage is eight-byte aligned, 16-byte aligned for a record over 16 bytes; a
 \ record type aligned beyond 16 bytes is excluded. The whole extent is guarded.
 \ The destination is one of the sixteen inputs, so at most fifteen C arguments
@@ -924,9 +926,9 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ `idx bytes STRUCT-ARG` declares input idx, a `ptr u8`, the address of a C
 \ struct of `bytes`, any positive count, passed by value: one C argument,
 \ read at exactly `bytes` when the call is staged, so the callee never sees
-\ the source. The record is neither an HFA nor an HVA, as for STRUCT-RESULT;
-\ either travels in v registers and must not be declared. A declaration may
-\ have up to eight float arguments beside its records; its integer and pointer
+\ the source. Its members and alignment obey STRUCT-RESULT's restrictions.
+\ A declaration may have up to eight float arguments beside its records; its
+\ integer and pointer
 \ inputs must be cell-wide C types, since Apple arm64 packs two spilled C ints
 \ into one stack cell. The stack cells, the copies and the padding that aligns
 \ each copy share sixteen cells, refused past that at ;FUNCTION
@@ -935,7 +937,9 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ of 16 bytes or fewer: Apple arm64 may start such a record in an odd
 \ register like any other, but on the stack it starts at a 16-byte aligned
 \ slot, so after nine longs an ordinary 16-byte record is at SP+8 and a
-\ 16-byte aligned one at SP+16. It combines with STRUCT-RESULT:
+\ 16-byte aligned one at SP+16. SysV passes records over 16 bytes on the stack
+\ by value, with no separate copy; its record alignment is at most eight.
+\ It combines with STRUCT-RESULT:
 \     FUNCTION: DEPARSE pg_query_deparse_protobuf ( ptr u8 ptr u8 -- )
 \        0 16 STRUCT-ARG  16 STRUCT-RESULT
 \     ;FUNCTION
@@ -1242,8 +1246,21 @@ SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
    bytes 0 > bytes 16 <= and if bytes RECORD-WORDS exit then
    1 ;
 
+\ SysV AMD64 ABI 3.2.3, INTEGER subset: a record gets every register or none.
+\ A MEMORY record consumes stack cells without consuming an integer register.
+\ Saturate an overfull stack so repeated huge widths cannot wrap the count.
+: X86-RECORD-ARG ( n n n n -- n n n n ) {: int:n flt:n stack:n bytes:n :}
+   bytes 0 > if bytes RECORD-WORDS else 1 then {: words:n :}
+   bytes 16 <= int words + X86-INT-REG-MAX <= and if
+      int words + flt stack int exit
+   then
+   int flt
+   words STACK-CELLS stack - > if STACK-CELLS 1+ else stack words + then
+   stack 1+ negate ;
+
 : PLACE-ARG ( n n n n n -- n n n n ) {: int:n flt:n stack:n kind:n bytes:n :}
    kind K-FLOAT = kind K-FLOAT32 = or if int flt 1+ stack flt exit then
+   HB-TARGET-LINUX-X86-64? if int flt stack bytes X86-RECORD-ARG exit then
    bytes INT-WORDS {: words:n :}
    int words + REG-MAX <= if int words + flt stack int exit then
    REG-MAX flt stack words + stack 1+ negate ;
@@ -1258,13 +1275,18 @@ SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
 
 \ The plan of n C arguments, each with its kind in kinds and its record width,
 \ 0 for none, in sbytes: each one's place goes to regs and its copy's to pays.
-\ Answers the integer registers, float registers and stack cells it takes.
-: PLAN-RECORDS ( ptr n ptr n n ptr n ptr n -- n n n )
-   {: kinds:ptr sbytes:ptr argc:n regs:ptr pays:ptr :}
-   0 0 0 argc 0 ?do
+\ result is the returned record's width, 0 for none. Answers the integer
+\ registers, float registers and stack cells it takes.
+: PLAN-RECORDS ( ptr n ptr n n ptr n ptr n n -- n n n )
+   {: kinds:ptr sbytes:ptr argc:n regs:ptr pays:ptr result:n :}
+   HB-TARGET-LINUX-X86-64? result 16 > and if 1 else 0 then
+   0 0 argc 0 ?do
       kinds i cells + @ sbytes i cells + @ PLACE-ARG
       regs i cells + !
    loop
+   HB-TARGET-LINUX-X86-64? if
+      argc 0 ?do 0 pays i cells + ! loop exit
+   then
    argc 0 ?do
       sbytes i cells + @ PLACE-COPY
       pays i cells + !
@@ -1277,16 +1299,16 @@ public
 
 \ Whether n C arguments, kinds and record widths as PLAN-RECORDS reads them,
 \ fit the struct call; past it the declaration is refused (E-FFI-ARITY).
-\ regs and pays take the plan, n cells each. The source checker holds a
-\ declaration's clauses to the rule this way.
-: STRUCT-FITS? ( ptr n ptr n n ptr n ptr n -- bool )
+\ regs and pays take the plan, n cells each; result is its result record's
+\ width, 0 for none. The source checker uses the same hidden-result rule.
+: STRUCT-FITS? ( ptr n ptr n n ptr n ptr n n -- bool )
    PLAN-RECORDS {: flt:n stk:n :}
    drop flt stk PLAN-FITS? ;
 
 private
 
 : PLAN-STRUCT ( -- n n )
-   ARG-KIND ARG-SBYTES C-ARGS ARG-REG ARG-PAY PLAN-RECORDS
+   ARG-KIND ARG-SBYTES C-ARGS ARG-REG ARG-PAY STRUCT-BYTES @ PLAN-RECORDS
    {: int:n flt:n stk:n :}
    flt stk PLAN-FITS? 0= if E-FFI-ARITY throw then
    int stk ;
@@ -1448,6 +1470,7 @@ private
 \ the copy in its native frame: bit reg for x0-x7, bit 8+cell for a stack
 \ cell. The row keeps this mask; no caller supplies one.
 : RELOC-MASK ( -- n )
+   HB-TARGET-LINUX-X86-64? if 0 exit then
    0 C-ARGS 0 ?do
       i ARG-SBYTES@ 16 > if
          i ARG-REG@ 0 < if 1 i ARG-REG@ negate 1- 8 + lshift
@@ -1469,7 +1492,7 @@ private
 
 : STAGE-RECORD ( n -- ) {: i:n :}
    i ARG-SBYTES@ GEN-N GEN-SP
-   i ARG-SBYTES@ 16 <= if
+   i ARG-SBYTES@ 16 <= HB-TARGET-LINUX-X86-64? or if
       i ARG-REG@ 0 < if i STACK-POS s"  FFI:STRUCT-STACK! " GEN+ exit then
       i ARG-REG@ GEN-N s"  FFI:STRUCT-REGS! " GEN+ exit
    then
@@ -1605,7 +1628,6 @@ private
 
 : STRUCT-RESULT-CLAUSE ( n -- ) {: bytes:n :}
    OPEN @ 0= if REFUSE then
-   HB-TARGET-LINUX-X86-64? if REFUSE then
    STRUCT-BYTES @ 0 <> if REFUSE then
    bytes 0 <= if REFUSE then
    RES-KIND @ R-NONE <> if REFUSE then
@@ -1615,10 +1637,9 @@ private
    bytes STRUCT-BYTES !
    1 OPEN +! ;
 
-\ The struct call returns x0 and x1 only, so a float result has no shape here.
+\ The struct call returns two integer registers, so a float result has no shape.
 : STRUCT-ARG-CLAUSE ( n n -- ) {: idx:n bytes:n :}
    OPEN @ 0= if REFUSE then
-   HB-TARGET-LINUX-X86-64? if REFUSE then
    idx CLAUSE-TARGET
    bytes 0 <= if REFUSE then
    VAR-START @ -1 <> if REFUSE then

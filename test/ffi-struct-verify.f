@@ -1,6 +1,6 @@
 \ ffi-struct-verify.f - LSP-CHECK:VERIFY-BYTES, the check of tools/check.f
 \ --verify-only, reads FUNCTION:'s struct clauses. Loaded by src/lib/ffi-test.f
-\ on macOS arm64, inside package FFI-TEST. Each declaration is its own source,
+\ inside package FFI-TEST. Each declaration is its own source,
 \ checked in a verifier child that stops at its first refusal. Sources select
 \ PROCESS-SYMBOLS (LIBRARY leaves the rest of its file to the run and would
 \ hide the clauses) and name no defined symbol, so a clean certify shows the
@@ -167,7 +167,11 @@ variable FFI-SV-SRC-U
    s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 0 WRITES-ARG" FFI-SV-SYNTAX
    s" ( n ptr u8 -- ) 1 VARIADIC 8 STRUCT-RESULT" FFI-SV-SYNTAX
    s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC" FFI-SV-SYNTAX
-   s" ( ptr u8 ptr u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY ;
+   s" ( ptr u8 ptr u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY
+   HB-TARGET-LINUX-X86-64? if
+      s" ( n n n n n ptr u8 ptr u8 -- ) 5 128 STRUCT-ARG 32 STRUCT-RESULT" FFI-SV-PASS
+      s" ( n n n n n n ptr u8 ptr u8 -- ) 6 128 STRUCT-ARG 32 STRUCT-RESULT" FFI-SV-ARITY
+   then ;
 
 
 \ A clause is the declarer's word only where the token resolves to it: a

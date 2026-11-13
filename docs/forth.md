@@ -1734,9 +1734,9 @@ defined again binds its earlier text against every later record too.
   `E-LOCAL-ESCAPE`. A quotation that reads no
   local is a plain xt: storable, and saved in images. Declaring a local inside
   a quotation is `E-BAD-LOCAL-SHAPE`: a body that needs locals of its own
-  becomes a named private word. T0 compiles the read for arm64 and Wasm; an
-  x86-64 build and tier 1 refuse it. Quotations nest: each `[:` inside another opens its own body,
-  with its own inputs, calls and `exit`, and the enclosing body resumes after
+  becomes a named private word. T0 compiles the read for arm64, x86-64 and
+  Wasm; tier 1 refuses it. Quotations nest: each `[:` inside another opens its
+  own body, with its own inputs, calls and `exit`; the enclosing body resumes after
   its `;]`; at most 32 are open at once (**Engine limits ordinary source
   reaches**).
 - **A handle over caller-owned storage is a linear token its package mints

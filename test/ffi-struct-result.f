@@ -1,34 +1,29 @@
 \ ffi-struct-result.f - C structs returned by value through FUNCTION:.
-\ Loaded by src/lib/ffi-test.f on macOS arm64, inside package FFI-TEST.
+\ Loaded by src/lib/ffi-test.f inside package FFI-TEST.
 \
-\ System functions return integer records in each AAPCS64 convention:
-\ inet_makeaddr's 4-byte struct in_addr and div's 8-byte div_t in x0,
-\ lldiv's 16-byte lldiv_t in x0:x1, and CoreMedia's 24-byte CMTime
-\ { int64 value; int32 timescale; uint32 flags; int64 epoch } through the x8
-\ destination. CoreMedia has no scalar-only function returning a larger record
-\ (its CMTimeRange makers take CMTime by value), so CMTime stands for every
-\ indirect width. No system function returns a 12-byte integer record; every
-\ 9..16-byte integer record arrives in x0:x1 alike, so lldiv declared at
-\ 12 bytes is the same call and shows the second register stored at its
-\ exact width.
+\ libc supplies the 4-, 8- and 16-byte integer results; the C fixture supplies
+\ the larger result through x8 on AAPCS64 and rdi on SysV. lldiv declared at
+\ 12 bytes shows that the second return register is stored at its exact width.
 
-LIBRARY /usr/lib/libSystem.B.dylib
+PROCESS-SYMBOLS
 FUNCTION: FFI-T-MAKEADDR inet_makeaddr ( n n ptr u8 -- ) 4 STRUCT-RESULT ;FUNCTION
 FUNCTION: FFI-T-DIV div ( n n ptr u8 -- ) 8 STRUCT-RESULT ;FUNCTION
 FUNCTION: FFI-T-LLDIV12 lldiv ( n n ptr u8 -- ) 12 STRUCT-RESULT ;FUNCTION
 FUNCTION: FFI-T-LLDIV lldiv ( n n ptr u8 -- ) 16 STRUCT-RESULT ;FUNCTION
 
-LIBRARY /System/Library/Frameworks/CoreMedia.framework/CoreMedia
-FUNCTION: FFI-T-CMTIME CMTimeMake ( n n ptr u8 -- ) 24 STRUCT-RESULT ;FUNCTION
-FUNCTION: FFI-T-CMTIME-EPOCH CMTimeMakeWithEpoch ( n n n ptr u8 -- )
-   24 STRUCT-RESULT
-;FUNCTION
-FUNCTION: FFI-T-CMTIME-SECONDS CMTimeMakeWithSeconds ( r n ptr u8 -- )
+: FFI-T-STRUCT-LIBRARY ( -- )
+   s" habu-ffi-struct" FS:MKTEMP-DIR {: dir:ptr diru :}
+   dir diru FS:CLEANUP-TREE+
+   dir diru STRUCT-FIXTURE:BUILD FFI:SELECT-LIBRARY ;
+FFI-T-STRUCT-LIBRARY
+
+FUNCTION: FFI-T-RET24 hb_ret24 ( n n n n ptr u8 -- ) 24 STRUCT-RESULT ;FUNCTION
+FUNCTION: FFI-T-FRET24 hb_fret24 ( r n ptr u8 -- )
    24 STRUCT-RESULT
 ;FUNCTION
 
-\ Eight C arguments fill x0-x7 and the destination rides x8, so this shape is
-\ admitted; it is declared only, never called.
+\ The destination is additional to the eight C arguments. This shape fits
+\ both targets; it is declared only, never called.
 FUNCTION: FFI-T-SR-FULL habu-no-such-struct ( n n n n n n n n ptr u8 -- )
    32 STRUCT-RESULT
 ;FUNCTION
@@ -51,7 +46,7 @@ create FFI-T-SR-BUF 64 allot
    FFI-T-SR-OFF 0 do FFI-T-SR-BUF i + c@ FFI-T-SR-FILL T= loop
    8 0 do FFI-T-SR-DST size + i + c@ FFI-T-SR-FILL T= loop ;
 
-: FFI-T-SR-CMTIME ( n n n n -- ) {: value:n scale:n flags:n epoch:n :}
+: FFI-T-SR-24= ( n n n n -- ) {: value:n scale:n flags:n epoch:n :}
    FFI-T-SR-DST LE:U64@ value T=
    FFI-T-SR-DST 8 + LE:S32@ scale T=
    FFI-T-SR-DST 12 + LE:U32@ flags T=
@@ -88,7 +83,7 @@ create FFI-T-SR-BUF 64 allot
    INCLUDE-EVALUATE ;
 
 : FFI-T-STRUCT-RESULTS ( -- )
-   s" a 4-byte struct result takes exactly four bytes of x0" T-LABEL
+   s" a 4-byte struct result stores exactly four bytes" T-LABEL
    FFI-T-SR-RESET
    10 $010203 FFI-T-SR-DST FFI-T-MAKEADDR
    FFI-T-SR-DST c@ 10 T=
@@ -97,46 +92,46 @@ create FFI-T-SR-BUF 64 allot
    FFI-T-SR-DST 3 + c@ 3 T=
    4 FFI-T-SR-CANARIES
 
-   s" an 8-byte struct result arrives whole from x0" T-LABEL
+   s" an 8-byte struct result arrives in one register" T-LABEL
    FFI-T-SR-RESET
    -7 2 FFI-T-SR-DST FFI-T-DIV
    FFI-T-SR-DST LE:S32@ -3 T=
    FFI-T-SR-DST 4 + LE:S32@ -1 T=
    8 FFI-T-SR-CANARIES
 
-   s" a 12-byte struct result takes x0 and exactly four bytes of x1" T-LABEL
+   s" a 12-byte struct result stores four bytes of its second register" T-LABEL
    FFI-T-SR-RESET
    -7000000000000 3 FFI-T-SR-DST FFI-T-LLDIV12
    FFI-T-SR-DST LE:U64@ -2333333333333 T=
    FFI-T-SR-DST 8 + LE:U32@ $FFFFFFFF T=
    12 FFI-T-SR-CANARIES
 
-   s" a 16-byte struct result arrives from x0 then x1" T-LABEL
+   s" a 16-byte struct result arrives in two registers" T-LABEL
    FFI-T-SR-RESET
    -7000000000000 3 FFI-T-SR-DST FFI-T-LLDIV
    FFI-T-SR-DST LE:U64@ -2333333333333 T=
    FFI-T-SR-DST 8 + LE:U64@ -1 T=
    16 FFI-T-SR-CANARIES
 
-   s" a 24-byte struct result is written through x8" T-LABEL
+   s" a 24-byte struct result is written through the hidden pointer" T-LABEL
    FFI-T-SR-RESET
-   1001 30000 FFI-T-SR-DST FFI-T-CMTIME
-   1001 30000 1 0 FFI-T-SR-CMTIME
+   1001 30000 1 0 FFI-T-SR-DST FFI-T-RET24
+   1001 30000 1 0 FFI-T-SR-24=
    FFI-T-SR-RESET
-   -5 600 7 FFI-T-SR-DST FFI-T-CMTIME-EPOCH
-   -5 600 1 7 FFI-T-SR-CMTIME
+   -5 600 1 7 FFI-T-SR-DST FFI-T-RET24
+   -5 600 1 7 FFI-T-SR-24=
 
-   s" a double argument rides d0 beside an x8 struct result" T-LABEL
+   s" a double argument beside a hidden struct result" T-LABEL
    FFI-T-SR-RESET
-   2.5 600 FFI-T-SR-DST FFI-T-CMTIME-SECONDS
-   1500 600 1 0 FFI-T-SR-CMTIME
+   2.5 600 FFI-T-SR-DST FFI-T-FRET24
+   1500 600 1 0 FFI-T-SR-24=
 
    s" a misaligned result destination is refused before the call" T-LABEL
    FFI-T-SR-RESET
    [: 1 2 FFI-T-SR-DST 4 + FFI-T-DIV ;] E-FFI-SYNTAX TTHROWSQ
    FFI-T-SR-UNTOUCHED
-   s" an x8 result destination needs 16-byte alignment" T-LABEL
-   [: 1 2 FFI-T-SR-DST 8 + FFI-T-CMTIME ;] E-FFI-SYNTAX TTHROWSQ
+   s" a large result destination needs 16-byte alignment" T-LABEL
+   [: 1 2 3 4 FFI-T-SR-DST 8 + FFI-T-RET24 ;] E-FFI-SYNTAX TTHROWSQ
    FFI-T-SR-UNTOUCHED
 
    s" malformed struct-result declarations are refused" T-LABEL
