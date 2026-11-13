@@ -416,6 +416,11 @@ public
    STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then
    STAT-SIZE@ ;
 
+\ The regular file at the path: size, modification time seconds and
+\ nanoseconds, change time seconds and nanoseconds, then true; five zeros and
+\ false when stat fails (the file is missing or a directory above it cannot be
+\ searched) or it is not a regular file. A malformed path
+\ throws, as FILE-META's does: E-FS-PATH, or E-FFI-NUL for a 0 byte.
 : TRY-FILE-META ( ptr u8 n -- n n n n n bool )
    TRY-STAT 0= if 0 0 0 0 0 false exit then
    STAT-MODE@ S-IFMT and S-IFREG <> if 0 0 0 0 0 false exit then
