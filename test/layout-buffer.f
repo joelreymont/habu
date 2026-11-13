@@ -218,9 +218,13 @@ public
 variable HITS
 private
 : HIT ( -- ) 1 HITS +! ;
+: DS-RESERVE ( n ptr ptr a ptr n n -- ) HIT DYNAMIC-STORAGE:RESERVE ;
+: DS-RELEASE ( ptr ptr a ptr n -- ) HIT DYNAMIC-STORAGE:RELEASE ;
 package DYNAMIC-STORAGE
 public
 : BOUNDS ( n n -- n ) HIT 2drop 0 ;
+: RESERVE ( n ptr ptr a ptr n n -- ) DS-RESERVE ;
+: RELEASE ( ptr ptr a ptr n -- ) DS-RELEASE ;
 ;package
 : LDEFER-BIND ( n ptr n n -- ) HIT 2drop drop ;
 : LDEFER-GROW ( n ptr n n -- ) HIT 2drop drop ;
@@ -236,6 +240,7 @@ public
 3 LAYOUT-BUFFER LB lb-res<n,n>
 3 TYPED-BUFFER TB n
 DEFER-LAYOUT-BUFFER DL lb-res<n,n>
+DYNAMIC-BUFFER DB n
 ;package
 
 package LBFC
@@ -243,6 +248,7 @@ public
 3 LAYOUT-BUFFER LB lb-res<n,n>
 3 TYPED-BUFFER TB n
 DEFER-LAYOUT-BUFFER DL lb-res<n,n>
+DYNAMIC-BUFFER DB n
 ;package
 
 \ Stores 1, 2 and 3 at indices 0 to 2 and reads them back as one number.
@@ -267,6 +273,7 @@ DEFER-LAYOUT-BUFFER DL lb-res<n,n>
 : LBF-DL ( -- n n ) [: LBFW:DL ;] LBF-RES  [: LBFC:DL ;] LBF-RES ;
 : LBF-DL-PAST ( n -- n n ) {: k:n :}
    k [: LBFW:DL ;] LBF-RES-RC  k [: LBFC:DL ;] LBF-RES-RC ;
+: LBF-DB ( -- n n ) [: LBFW:DB ;] LBF-CELLS  [: LBFC:DB ;] LBF-CELLS ;
 
 LBF-TB T=
 LBF-TB-PAST T=
@@ -278,6 +285,9 @@ LBF-DL T=
 -1 LBF-DL-PAST T=
 4 LBFW:DL-GROW  4 LBFC:DL-GROW
 LBF-DL T=
+3 LBFW:DB-RESERVE  3 LBFC:DB-RESERVE
+LBF-DB T=
+LBFW:DB-RELEASE  LBFC:DB-RELEASE
 LBFW:HITS @ 0 T=
 
 T-REPORT

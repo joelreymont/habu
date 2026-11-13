@@ -1510,10 +1510,10 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 \ loads T0 on its host. So OP-CODE maps the operations by name from the running
 \ dictionary at the first T0 compile in each process (OPS-MAP); a record at or
 \ above the boundary is never an operation, so a package's own word of that
-\ name is a call. OP-OF#base is a scratch pointer cell: a linked program stores
-\ it null (src/core/pointer-storage.f PTR-VARIABLE, src/habu/link-data.f
-\ COPY-ROW), so a null base says the map is missing.
+\ name is a call. OP-MAPPED is a scratch cell, which a written image or program
+\ holds 0, so each process maps again.
 variable OP-N                        \ the records OP-OF holds, once mapped
+SCRATCH-VARIABLE OP-MAPPED
 DYNAMIC-BUFFER OP-OF n
 variable OP-HITS                     \ the seeded records OP-MAP found by the name
 variable OP-REC                      \ the last of them
@@ -1538,7 +1538,7 @@ variable OP-REC                      \ the last of them
 
 : OPS-MAP ( -- )
    CORE-PREFIX:FIRST-RECORD {: n:n :}
-   n OP-OF-RESERVE  n OP-N !
+   n OP-OF-RESERVE  1 OP-MAPPED !  n OP-N !
    s" +" 1 OP-MAP  s" -" 2 OP-MAP  s" *" 3 OP-MAP  s" /" 4 OP-MAP
    s" @" 5 OP-MAP  s" !" 6 OP-MAP  s" =" 7 OP-MAP  s" <" 8 OP-MAP
    s" >" 9 OP-MAP  s" or" 10 OP-MAP  s" 1+" 11 OP-MAP  s" 1-" 12 OP-MAP
@@ -1554,7 +1554,7 @@ variable OP-REC                      \ the last of them
 
 : OP-CODE ( n -- n )
    {: r:n :}
-   OP-OF#base @ 0= if OPS-MAP then
+   OP-MAPPED @ 0= if OPS-MAP then
    r OP-N @ >= if 0 exit then
    r OP-OF @ ;
 

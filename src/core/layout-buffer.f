@@ -1,10 +1,10 @@
 \ layout-buffer.f: the generative storage definers LAYOUT-BUFFER (the only
 \ introduction form for `ptr layout`), DEFER-LAYOUT-BUFFER, TYPED-VARIABLE,
-\ TYPED-BUFFER and DYNAMIC-BUFFER. The first four make their words as typed
-\ children and lay each child's block at the address its body pushes;
-\ DYNAMIC-BUFFER evaluates a generated accessor the checker authorizes once, by
-\ name, in the armed window (LBUF-EVAL, checker.f LBUF-PEND!). A ptr variable
-\ never gains layout identity by unification. Admission: LAYOUT-BUFFER
+\ TYPED-BUFFER and DYNAMIC-BUFFER. Each makes its words as typed children and
+\ lays each child's block at the address its body pushes. LBUF-EVAL evaluates a
+\ generated accessor the checker authorizes once, by name, in the armed window
+\ (checker.f LBUF-PEND!). A ptr variable never gains layout identity by
+\ unification. Admission: LAYOUT-BUFFER
 \ CHECKER-LAYOUT-INFO, TYPED-* CHECKER-STORAGE-INFO, DYNAMIC-BUFFER CHECKER-DYNAMIC-INFO.
 
 using TYPE-DECL
@@ -116,11 +116,6 @@ variable LBUF-BYTES
 
 : LBUF-BASE, ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu LBUF-APP  LBUF-BASE$ LBUF-APP ;
-
-\ The generated text allots its storage right after its `create`, so each
-\ definition in the text, which may lay data at `here`, follows the storage.
-: LBUF-ALLOT, ( n -- ) {: bytes:n :}
-   s"  " LBUF-APP  bytes LBUF-DEC,  s"  allot" LBUF-APP ;
 
 PTR-VARIABLE LBUF-EVAL-A
 variable LBUF-EVAL-U
@@ -452,35 +447,17 @@ PRIM: TYPED-BUFFER PE-N PE-IN PRIM;
 PRIM: TYPED-VARIABLE PRIM;
 
 \ ---- transient typed buffers (DYNAMIC-BUFFER) --------------------------------
-\ The control head owns an OS mapping; RESERVE preserves old cells and may move
-\ it, so callers keep indices, not pointers. The registry handle is registered on
-\ first allocation and unregistered by RELEASE, so a declaration stays reusable
-\ after capture and restore. The accessor fetches the head on every call and
-\ adds index times width, with no index check.
-\ The head is a declared PTR-VARIABLE, not `create`d: a raw storage cell never
-\ holds an address. NAME#ctl names the numeric cells, so DYNAMIC-STORAGE never
-\ views the head's pointer cell as bytes.
-\ The element width is bytes, where LBUF-W holds cells, so a byte element is
+\ DYNAMIC-BUFFER lays its block at the address its children hold: the head,
+\ which holds the OS mapping, the control cells behind it, then the element
+\ width in bytes. The head and the control cells describe this process's
+\ mapping, so they are scratch: a save or a file's object writes the record
+\ released. RESERVE may move the mapping, so callers keep indices, not pointers.
+\ The width is bytes, where LBUF-W holds cells, so a byte element is
 \ expressible only here (CHECKER-DYNAMIC-INFO over CHECKER-STORAGE-INFO).
 variable DBUF-W
-\ Every dynamic control record (src/core/dynamic-storage.f): the head cell, then
-\ the control block's exact byte capacity and registry slot + 1.
+\ The head cell, then the control block's exact byte capacity and registry
+\ slot + 1.
 3 cells constant DBUF-CTRL-BYTES
-: DBUF-CTL$ ( -- ptr u8 n ) s" #ctl" ;
-
-: DBUF-CTL, ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu LBUF-APP  DBUF-CTL$ LBUF-APP ;
-
-\ The control cells describe the head's mapping, so a save or a file's object
-\ writes them zero with the head (scratch-cell-mark): the record it holds is
-\ released.
-: DBUF-MARKS, ( -- )
-   DBUF-CTRL-BYTES CELL / 1- 0 ?do
-      s"  here " LBUF-APP  i cells LBUF-DEC,  s"  + scratch-cell-mark" LBUF-APP
-   loop ;
-
-: DBUF-RECORD, ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu LBUF-BASE,  s"  " LBUF-APP  name nameu DBUF-CTL, ;
 
 : DBUF-VALIDATE ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n type:ptr typeu:n :}
    type typeu CHECKER-DYNAMIC-INFO 0= if
@@ -488,35 +465,19 @@ variable DBUF-W
    then
    DBUF-W ! LBUF-TRUE ;
 
-: DBUF-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
-   {: name:ptr nameu:n type:ptr typeu:n :}
-   LBUF-CLEAR
-   s" PTR-VARIABLE " LBUF-APP name nameu LBUF-BASE,
-   s"  create " LBUF-APP name nameu DBUF-CTL,  DBUF-MARKS,  DBUF-CTRL-BYTES CELL - LBUF-ALLOT,
-   s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
-   s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
-   s"  ) " LBUF-APP name nameu LBUF-BASE,
-   s"  @ swap " LBUF-APP DBUF-W @ LBUF-DEC,
-   s"  * + ; : " LBUF-APP name nameu LBUF-APP
-   s" -RESERVE ( n -- ) " LBUF-APP name nameu DBUF-RECORD,
-   s"  " LBUF-APP DBUF-W @ LBUF-DEC,
-   s"  DYNAMIC-STORAGE:RESERVE ; : " LBUF-APP name nameu LBUF-APP
-   s" -RELEASE ( -- ) " LBUF-APP name nameu DBUF-RECORD,
-   s"  DYNAMIC-STORAGE:RELEASE ;" LBUF-APP
-   LBUF-GEN LBUF-GEN-U @ pna pnu ;
-
 : DYNAMIC-BUFFER ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" DYNAMIC-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
-   name nameu LBUF-NAMES-OK? 0= if exit then
+   name nameu LBUF-NAME-OK? 0= if exit then
    name nameu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
    name nameu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
-   name nameu DBUF-CTL$ LBUF-SUFFIX-OK? 0= if exit then
    name nameu type typeu DBUF-VALIDATE 0= if exit then
-   name nameu type typeu DBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
-   src srcu pna pnu LBUF-EVAL! drop ;
+   name nameu CHILD-ABI:DYNAMIC type typeu TDECL-STORAGE-CHILD drop
+   here {: v:ptr :}
+   DBUF-CTRL-BYTES SCRATCH-ALLOT  DBUF-W @ ,
+   name nameu s" -RESERVE" CHILD-ABI:RESERVE v LDEFER-COMPANION
+   name nameu s" -RELEASE" CHILD-ABI:RELEASE v LDEFER-COMPANION ;
 
 PRIM: DYNAMIC-BUFFER PRIM;
 

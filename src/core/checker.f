@@ -11561,7 +11561,6 @@ CHECKER-REG:}SCRATCH
 : E-INST ( n -- n ) USIGS E-INST-FROM ;
 
 -1 constant STORAGE-DEFERRED
-4 constant LDEFER-CTRL-CELLS   \ header cells of a deferred column's block
 
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
 \ Counts: input side deeper, output side on top. A quotation's rows flip polarity:

@@ -20,9 +20,9 @@ DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER CELLROW n
 STRUCTURE triple DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE
 DYNAMIC-BUFFER WIDE triple
-\ A control record no definer generated, as a downstream table's: a declared
-\ head and DYNAMIC-STORAGE:CONTROL-CELLS (two) cells, as `NAME#base` and
-\ `NAME#ctl` are; a shorter block would overlap its neighbour's cells.
+\ A control record no definer made, as a downstream table's: a declared head
+\ and DYNAMIC-STORAGE:CONTROL-CELLS (two) cells; a shorter block would overlap
+\ its neighbour's cells.
 PTR-VARIABLE RAW-CTRL
 create RAW-CTL 0 , 0 ,
 create MARK 8 allot
@@ -65,7 +65,6 @@ variable DB-EVAL-U
    0 BYTES c@ 65 T=
    BYTES-RELEASE ;
 
-: FOREIGN-WIDTH ( -- ) 2048 WIDE#base WIDE#ctl 8 DYNAMIC-STORAGE:RESERVE ;
 : RAW-RESERVE ( -- ) 3 RAW-CTRL RAW-CTL 24 DYNAMIC-STORAGE:RESERVE ;
 : WIDE-MAP-FAIL ( -- ) $7FFFFFFFFFFFFFFF 24 / WIDE-RESERVE ;
 
@@ -79,24 +78,6 @@ variable DB-EVAL-U
    3 WIDE-RESERVE                         \ capacity doubles to 128
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
    4 WIDE drop
-   \ A reserve through the generic entry with a foreign width is a byte request:
-   \ 2048 cells grow the capacity to 16384 bytes, which hold 682 complete
-   \ triples, 681's last field at bytes 16360..16367. The fractional tail
-   \ survives the growth.
-   FOREIGN-WIDTH
-   7 681 WIDE TRIPLE-C !
-   681 WIDE TRIPLE-C @ 7 T=
-   0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
-   \ The generated reserve grows the foreign-width record to 49152 bytes: 2048
-   \ triples, the last at 2047.
-   2048 WIDE-RESERVE
-   2047 WIDE drop
-   681 WIDE TRIPLE-C @ 7 T=
-   0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
-   \ The generic release empties the generated control.
-   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE
-   1 WIDE-RESERVE
-   1 WIDE drop
    WIDE-RELEASE
    \ The downstream contract: a hand-made record reserves 72 bytes and releases
    \ to empty, its capacity read from the control block.
@@ -117,11 +98,23 @@ variable DB-EVAL-U
 
 \ RELEASE-RANGE (src/habu/aot-capture.f's capture window) owns a record only
 \ when both its head and its control block lie inside the span; a span holding
-\ one part, or cutting either, is E-SIZE. Generated records sit head-then-ctl,
-\ so the record starts one cell before RNG-A#ctl.
-DYNAMIC-BUFFER RNG-A n
-DYNAMIC-BUFFER RNG-B n
-DYNAMIC-BUFFER RNG-C n
+\ one part, or cutting either, is E-SIZE. Each record is laid by hand as a
+\ DYNAMIC-BUFFER's block starts, head then control cells, so the record starts
+\ one cell before RNG-A#ctl.
+PTR-VARIABLE RNG-A#base
+create RNG-A#ctl DYNAMIC-STORAGE:CONTROL-CELLS cells SCRATCH-ALLOT
+PTR-VARIABLE RNG-B#base
+create RNG-B#ctl DYNAMIC-STORAGE:CONTROL-CELLS cells SCRATCH-ALLOT
+PTR-VARIABLE RNG-C#base
+create RNG-C#ctl DYNAMIC-STORAGE:CONTROL-CELLS cells SCRATCH-ALLOT
+: RNG-A-RESERVE ( n -- ) RNG-A#base RNG-A#ctl 8 DYNAMIC-STORAGE:RESERVE ;
+: RNG-B-RESERVE ( n -- ) RNG-B#base RNG-B#ctl 8 DYNAMIC-STORAGE:RESERVE ;
+: RNG-C-RESERVE ( n -- ) RNG-C#base RNG-C#ctl 8 DYNAMIC-STORAGE:RESERVE ;
+: RNG-A-RELEASE ( -- ) RNG-A#base RNG-A#ctl DYNAMIC-STORAGE:RELEASE ;
+: RNG-B-RELEASE ( -- ) RNG-B#base RNG-B#ctl DYNAMIC-STORAGE:RELEASE ;
+: RNG-C-RELEASE ( -- ) RNG-C#base RNG-C#ctl DYNAMIC-STORAGE:RELEASE ;
+\ Cell 1 of B's mapping.
+: RNG-B-1 ( -- ptr n ) RNG-B#base @ CELL + ;
 : RNG-REC ( -- ptr u8 ) RNG-A#ctl byte-view CELL - ;
 : RNG-WHOLE ( -- ) RNG-REC 3 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
 : RNG-HEAD ( -- ) RNG-REC CELL DYNAMIC-STORAGE:RELEASE-RANGE ;
@@ -155,7 +148,7 @@ variable RNG-BASE
    RNG-C#ctl RNG-SLOT 1 T=
    RNG-C-RELEASE RNG-N 1 T=
    RNG-B#ctl RNG-SLOT 1 T=
-   7 1 RNG-B !  1 RNG-B @ 7 T=
+   7 RNG-B-1 !  RNG-B-1 @ 7 T=
    RNG-B-RELEASE RNG-N 0 T=
    RNG-B#ctl CELL + @ 0 T=
    \ A span holding the whole record releases exactly that record.
@@ -214,8 +207,6 @@ RUN
 false [if] \ off until dot habu-add-the-checks-a49d054d
 : BAD-LOW ( -- ) -1 TOKENS drop ;
 : BAD-HIGH ( -- ) $7FFFFFFFFFFFFFFF TOKENS drop ;
-\ A negative index is refused before the control record is read.
-: NEG-NULL-CONTROL ( -- ) -1 NULL-PTR RAW-CTL 8 DYNAMIC-STORAGE:ADDRESS drop ;
 : BAD-SIZE ( -- ) -1 TOKENS-RESERVE ;
 : BAD-OVERFLOW ( -- ) $7FFFFFFFFFFFFFFF OPTIONS-RESERVE ;
 : AFTER-RELEASE ( -- ) 0 TOKENS drop ;
@@ -227,17 +218,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : BYTE-AT-CAP ( -- ) 104 BYTES drop ;
 : WIDE-PAST ( -- ) 2 WIDE drop ;
 : WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
-: WIDE-2047 ( -- ) 2047 WIDE drop ;
-: WIDE-682 ( -- ) 682 WIDE drop ;
-: WIDE-100 ( -- ) 100 WIDE drop ;
-: WIDE-2048 ( -- ) 2048 WIDE drop ;
 
 : BOUNDS-ROWS ( -- )
    T-RESET
    1 TOKENS-RESERVE
    ['] BAD-LOW 7122 TTHROWS
    ['] BAD-HIGH 7122 TTHROWS
-   ['] NEG-NULL-CONTROL 7122 TTHROWS
    ['] BAD-SIZE 7121 TTHROWS
    ['] BAD-OVERFLOW 7121 TTHROWS
    TOKENS-RELEASE
@@ -254,16 +240,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    ['] WIDE-PAST 7122 TTHROWS
    3 WIDE-RESERVE
    ['] WIDE-PAST-GROWN 7122 TTHROWS
-   \ The accessor bounds by its declared width after a foreign-width reserve:
-   \ 2047 would be byte 49128 and 682 is the fractional one.
-   FOREIGN-WIDTH
-   ['] WIDE-2047 7122 TTHROWS
-   ['] WIDE-682 7122 TTHROWS
-   2048 WIDE-RESERVE
-   ['] WIDE-2048 7122 TTHROWS
-   \ The generic release empties the generated control for its accessor too.
-   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE
-   ['] WIDE-100 7122 TTHROWS
    T-REPORT ;
 
 BOUNDS-ROWS

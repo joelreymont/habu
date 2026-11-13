@@ -1,11 +1,12 @@
 \ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER
-\ and HEAP. A buffer record is the head NAME#base (a PTR-VARIABLE holding the
-\ mapping, `ptr ptr a`) and the control block NAME#ctl behind it (capacity,
-\ registry slot + 1; `ptr n`). No word views a
-\ pointer cell as bytes or cells. Release zeroes the record, so no process
-\ address survives capture; the head and the control cells are scratch, so a
-\ save or a file's object holds every record released and the registry empty
-\ even while this process keeps them. It loads below the core-prefix mark:
+\ and HEAP. A buffer record is a head cell holding the mapping (`ptr ptr a`)
+\ and the control block right behind it (capacity and registry slot + 1;
+\ `ptr n`); a DYNAMIC-BUFFER's block follows them with its element width in
+\ bytes. No word views a pointer cell as bytes or cells. Release zeroes the
+\ record, so no process address survives capture; the head and the control
+\ cells are scratch, so a save or a file's object holds every record released
+\ and the registry empty even while this process keeps them. It loads below the
+\ core-prefix mark:
 \ rewound generated declarations call it.
 package DYNAMIC-STORAGE
 public
@@ -192,9 +193,8 @@ public
 
 private
 
-\ A buffer block is its head, its control block right behind it and the
-\ element width in bytes after that; each routine takes the head, or the cell
-\ holding it, last.
+\ Each routine takes a DYNAMIC-BUFFER's block by its head, or by the cell
+\ holding the head, last.
 1 cells constant CTL-OFF
 CONTROL-CELLS 1+ cells constant WIDTH-OFF
 

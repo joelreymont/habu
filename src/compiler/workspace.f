@@ -1,12 +1,16 @@
 \ workspace.f - fixed compiler working storage in one transient mapping. Capture
 \ releases it; the next access maps a fresh one and stores the defaults (OPEN).
+\ The mapping's record is laid by hand, head then control cells, both scratch:
+\ DECLARE's text reads the head by name.
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
 
 package CWORK
 public
 $100000 constant LIMIT
-DYNAMIC-BUFFER MEM u8
+PTR-VARIABLE MEM#base
+create MEM#ctl DYNAMIC-STORAGE:CONTROL-CELLS cells SCRATCH-ALLOT
+: MEM-RESERVE ( n -- ) MEM#base MEM#ctl 1 DYNAMIC-STORAGE:RESERVE ;
 private
 variable USED
 $100 constant DEFAULT-CAP

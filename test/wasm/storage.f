@@ -66,16 +66,7 @@ public
    1 WIDE drop
    3 WIDE-RESERVE
    0 WIDE TRIPLE-A byte-view 63 + c@ .
-   4 WIDE drop
-   2048 WIDE#base WIDE#ctl 8 DYNAMIC-STORAGE:RESERVE
-   7 681 WIDE TRIPLE-C !
-   681 WIDE TRIPLE-C @ .
-   0 WIDE TRIPLE-A byte-view 63 + c@ .
-   2048 WIDE-RESERVE
-   2047 WIDE drop
-   681 WIDE TRIPLE-C @ .
-   0 WIDE TRIPLE-A byte-view 63 + c@ .
-   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE ;
+   4 WIDE drop ;
 
 : RECORD ( -- )
    23 0 ROWS SAMPLE-NUMBER !  1.25 0 ROWS SAMPLE-VALUE !
@@ -152,14 +143,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WIDE-COUNT ( -- )  $7FFFFFFFFFFFFFFF PTRS-RESERVE ;
 : WIDE-PAST ( -- ) 2 WIDE drop ;
 : WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
-: WIDE-2047 ( -- ) 2047 WIDE drop ;
-: WIDE-682 ( -- ) 682 WIDE drop ;
-: WIDE-100 ( -- ) 100 WIDE drop ;
-: WIDE-2048 ( -- ) 2048 WIDE drop ;
 
 \ A buffer refuses an index past its capacity, a negative one and any after
 \ release; a reserve refuses a negative count and one whose bytes overflow.
-\ The accessor bounds by its declared width through any entry point.
+\ The accessor bounds by its declared width.
 : BOUNDS ( -- )
    100 BYTES-RESERVE
    ['] PAST-CAP catch .
@@ -176,13 +163,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    ['] WIDE-PAST catch .
    3 WIDE-RESERVE
    ['] WIDE-PAST-GROWN catch .
-   2048 WIDE#base WIDE#ctl 8 DYNAMIC-STORAGE:RESERVE
-   ['] WIDE-2047 catch .
-   ['] WIDE-682 catch .
-   2048 WIDE-RESERVE
-   ['] WIDE-2048 catch .
-   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE
-   ['] WIDE-100 catch . ;
+   WIDE-RELEASE ;
 [then]
 
 ;package

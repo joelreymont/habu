@@ -69,7 +69,7 @@ variable FILE-U
    S\" 1\n0\n1\n1\n" ;
 
 : FRACTIONAL$ ( -- ptr u8 n )
-   S\" 7\n7\n7\n7\n7\n" ;
+   S\" 7\n" ;
 
 \ Each map's and free's ior, and INSIDE's pages' distance, up to the trap.
 : TWICE$ ( -- ptr u8 n )
@@ -92,7 +92,7 @@ public
    s" WSTORE:RECORD" s" record" S\" 23\n1.250000\n47\n-2.500000\n" 0 ENTRY-CASE
    s" one buffer reserves, grows across a page, refuses, releases and is reused cleared" T-LABEL
    s" WSTORE:BUFFER" s" buffer" BUFFER$ 0 ENTRY-CASE
-   s" fractional capacity retains its tail through any entry point" T-LABEL
+   s" fractional capacity retains its tail" T-LABEL
    s" WSTORE:FRACTIONAL" s" fractional" FRACTIONAL$ 0 ENTRY-CASE
    s" freed neighbours join into one run, which a smaller request splits" T-LABEL
    s" WSTORE:HOLES" s" holes" HOLES$ 0 ENTRY-CASE
@@ -107,7 +107,7 @@ public
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ BOUNDS's lines: one per refused index or reserve.
 : BOUNDS$ ( -- ptr u8 n )
-   S\" 7122\n7121\n7122\n7121\n7122\n7122\n7122\n7122\n7122\n7122\n7122\n7122\n7122\n" ;
+   S\" 7122\n7121\n7122\n7121\n7122\n7122\n7122\n7122\n7122\n" ;
 
 : RUN-BOUNDS ( -- )
    T-RESET
