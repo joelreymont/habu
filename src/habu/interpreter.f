@@ -636,7 +636,7 @@ TYPED-VARIABLE RUNS-ON bool
 \ The flags and xt are read before the hooks run.
 : RUN-FOUND ( -- )
    GATE
-   WORD-FLAGS REC @ NHOST:RUN-REC {: flags:n xt:n :}
+   WORD-FLAGS REC @ XREF-START {: flags:n xt:n :}
    TOP-EV-WORD flags HOOK
    REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
    idx RUN+
@@ -814,10 +814,10 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
       s" E-CAP-TRUSTED" REFUSAL  s" trusted-only tick: " REFUSE
    then ;
 
-\ The host selection, the run log and then the source observer see the tick's
-\ target before the xt is pushed: the file may execute it.
+\ The run log and then the source observer see the tick's target before the
+\ xt is pushed: the file may execute it.
 : TICK-OBSERVE ( -- n )
-   REC @ NHOST:RUN-REC {: xt:n :}
+   REC @ XREF-START {: xt:n :}
    REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
    idx RUN+
    OBSERVE-TICK idx xt OBSERVE-BEFORE
@@ -1870,7 +1870,7 @@ private
    DEF-PREFLIGHT
    slot occurrence DEF-OCC:RESOLVE {: rec:ptr :}
    rec XREF-NULL - XREF-ADDR>INDEX RUN+
-   rec NHOST:RUN-REC
+   rec XREF-START
    execute-floor FLOORED ;
 
 : DEF-IMMEDIATE? ( -- bool )

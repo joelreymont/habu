@@ -269,45 +269,6 @@ private
    id IMPL-N !
    id ;
 
-\ Each word the source runs passes its record here before its entry is chosen.
-defer RUN-OBSERVE ( ptr n -- )
-: NO-RUN-OBSERVE ( ptr n -- ) drop ;
-: DEFAULT-RUNS ( -- ) ['] NO-RUN-OBSERVE is RUN-OBSERVE ;
-DEFAULT-RUNS
-0 CWORK-VARIABLE PRIOR-SELECT n
-
-public
-
-\ A word the source runs at top level, by an immediate or under a top-level
-\ tick. A compiler read of a fixed value selects its record without running it.
-: RUN-REC ( ptr n -- n )
-   {: rec:ptr :}
-   rec RUN-OBSERVE
-   rec XREF-START ;
-
-\ The engine's selection callback: an already-bound code entry runs as it is.
-: SELECT-CALL ( ptr n n -- n )
-   {: rec:ptr entry:n :}
-   rec 0= if entry exit then
-   rec RUN-REC ;
-
-\ Until UNOBSERVE-RUNS puts back the callback the engine's selection cell held,
-\ the observer sees every word the source runs.
-: OBSERVE-RUNS ( [ ptr n -- ] -- )
-   is RUN-OBSERVE
-   data-base NATIVE-HOST-CELLS:SELECT + @ PRIOR-SELECT !
-   ['] SELECT-CALL data-base NATIVE-HOST-CELLS:SELECT + xt! ;
-
-: UNOBSERVE-RUNS ( -- )
-   PRIOR-SELECT @ {: callback:n :}
-   callback 0<> if
-      callback data-base NATIVE-HOST-CELLS:SELECT + xt!
-   else
-      0 data-base NATIVE-HOST-CELLS:SELECT + !
-   then
-   0 PRIOR-SELECT !
-   DEFAULT-RUNS ;
-
 ;package
 
 NHOST:INSTALL

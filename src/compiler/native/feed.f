@@ -50,24 +50,9 @@ variable OBSERVER-ID                   \ address identifies this producer instan
 1 CWORK-BUFFER PRODUCED-VIEW IR-ARENA:view
 0 CWORK-VARIABLE PRODUCED-VALID n
 0 CWORK-VARIABLE PRODUCED-BOUND n
-0 CWORK-VARIABLE PRODUCED-N n
 0 CWORK-VARIABLE PRODUCED-OWNER ptr u8
 0 CWORK-VARIABLE PRODUCED-WINDOW n
 0 CWORK-VARIABLE PRODUCED-UNJUDGED bool
-
-defer BINDING-OBSERVE ( ptr u8 n -- )
-0 CWORK-VARIABLE BINDING-ACTIVE bool
-: NO-BINDING-OBSERVE ( ptr u8 n -- ) 2drop ;
-: DEFAULT-BINDINGS ( -- )
-   ['] NO-BINDING-OBSERVE is BINDING-OBSERVE
-   false BINDING-ACTIVE ! ;
-DEFAULT-BINDINGS
-
-defer FILE-COMPILE-OBSERVE ( -- )
-: NO-FILE-COMPILE ( -- ) ;
-: DEFAULT-FILE-COMPILE ( -- )
-   ['] NO-FILE-COMPILE is FILE-COMPILE-OBSERVE ;
-DEFAULT-FILE-COMPILE
 
 : TXT@ ( -- ptr u8 )
    F-TXT @ ;
@@ -279,26 +264,7 @@ using NTAPE
    0 F-N !  0 F-LEN !  0 F-VERDICT !
    0 F-DOES !  0 F-BASE !  0 F-NAME-OFF !  0 F-NAME-U ! ;
 
-\ Three events, one authority: the scan's text, each token and the verdict.
-\ Installed per unit into whichever checker owns the source, last writer wins
-\ (src/core/checker.f CHECKER-TAPE): a replaced checker must read this tape,
-\ and a seeded engine's three captured cells arrive trapped.
 public
-
-: USE-BINDINGS ( [ ptr u8 n -- ] -- )
-   is BINDING-OBSERVE
-   true BINDING-ACTIVE ! ;
-: BINDINGS-DEFAULT ( -- ) DEFAULT-BINDINGS ;
-
-: FILE-COMPILE-USE ( [ -- ] -- ) is FILE-COMPILE-OBSERVE ;
-: FILE-COMPILE-DEFAULT ( -- ) DEFAULT-FILE-COMPILE ;
-
-: OBSERVE-BINDINGS ( -- )
-   BINDING-ACTIVE @ 0= if exit then
-   PRODUCED-N @ 0 ?do
-      i CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
-      size 0<> if row size BINDING-OBSERVE then
-   loop ;
 
 \ END-UNIT supplies the exact sealed view. NCOMP binds only that view to the
 \ live checker window; a manually written tape has no producer association.
@@ -311,9 +277,7 @@ public
    PRODUCED-OWNER @ PRODUCED-WINDOW @ PRODUCED-UNJUDGED @
       CHECKER-OWNER:BINDING-WINDOW-CK
    0 CHECKER-OWNER:SOURCE-BINDING 2drop
-   OBSERVE-BINDINGS
-   -1 PRODUCED-BOUND !
-   FILE-COMPILE-OBSERVE ;
+   -1 PRODUCED-BOUND ! ;
 
 : PRODUCED-CK ( IR-ARENA:view -- )
    {: view:IR-ARENA:view :}
@@ -331,6 +295,8 @@ private
 : SCAN-ID ( -- n )
    OBSERVER-ID BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
+\ Installed per unit on the checker that owns the source: a replaced checker
+\ must read this tape too.
 : OBSERVE ( -- )
    SCAN-ID [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-OWNER:TAPE-INSTALL ;
 public
@@ -388,7 +354,6 @@ public
    CHECKER-OWNER:TAPE-DISARM
    TAPE NTAPE:SEAL {: view:IR-ARENA:view :}
    view 0 PRODUCED-VIEW !
-   F-N @ PRODUCED-N !
    -1 PRODUCED-VALID !  0 PRODUCED-BOUND !
    view
    F-VERDICT @
@@ -401,9 +366,7 @@ public
    CLEAR ;
 
 : CAPTURE-PREPARE ( -- )
-   ST-IDLE STATE-CK
-   DEFAULT-BINDINGS
-   DEFAULT-FILE-COMPILE ;
+   ST-IDLE STATE-CK ;
 
 seal-package
 
