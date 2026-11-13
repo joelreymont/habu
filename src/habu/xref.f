@@ -91,7 +91,8 @@ public
 
 \ A namespace row has no code, so it reuses a word's two code-span cells for its
 \ two wordlist ids: the public wid where a word keeps its start, the private wid
-\ where a word keeps its length.
+\ where a word keeps its length. A private wid of 0 means the package has opened
+\ no private section.
 \ Reading them as XREF-START / XREF-RAW-LEN says the opposite of what is meant.
 : XREF-PKG-PUBLIC ( ptr n -- n )
    XREF-START-SLOT XREF-CELL@ ;
