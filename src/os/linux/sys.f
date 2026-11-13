@@ -4,6 +4,7 @@
 \ carry set means error, carry clear means success.
 
 require src/arch/arm64/icode.f
+require src/os/linux-flags.f
 using A64ICODE
 package SYSCALL
 public
@@ -141,37 +142,28 @@ $100 constant AT-SYMLINK-NOFOLLOW
    0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  3 8 MOVZ,  NR-RT-SIGPROCMASK SYS,
    SP SP $10 ADDI, ;
 
+private
+\ x6 takes the Linux bit when register src holds the BSD bit. Clobbers x7.
+: FLAG-BIT, ( n n n -- )
+   {: bsd:n lin:n src:n :}
+   LBL {: skip :}
+   7 bsd LIT64,  7 src 7 AND,  7 skip CBZ,
+      7 lin LIT64,  6 6 7 ORR,
+   skip LBL, ;
+public
+
+\ x1's BSD-shaped open flags into x2: the access mode as it is, each flag to
+\ its Linux bit. Clobbers x6 and x7.
 : OS-OPEN-FLAGS ( -- )
-   LBL LBL LBL LBL LBL {: nononblock noappend nocreat notrunc noctty :}
-   7 3 MOVZ,  6 1 7 AND,
-   7 4 MOVZ,  7 1 7 AND,  7 nononblock CBZ,
-      7 $800 MOVZ,  6 6 7 ORR,
-   nononblock LBL,
-   7 8 MOVZ,  7 1 7 AND,  7 noappend CBZ,
-      7 $400 MOVZ,  6 6 7 ORR,
-   noappend LBL,
-   7 $200 MOVZ,  7 1 7 AND,  7 nocreat CBZ,
-      7 $40 MOVZ,  6 6 7 ORR,
-   nocreat LBL,
-   7 $400 MOVZ,  7 1 7 AND,  7 notrunc CBZ,
-      7 $200 MOVZ,  6 6 7 ORR,
-   notrunc LBL,
-   7 $20000 LIT64,  7 1 7 AND,  7 noctty CBZ,
-      7 $100 MOVZ,  6 6 7 ORR,
-   noctty LBL,
+   7 LINUX-FLAGS:OPEN-KEPT MOVZ,  6 1 7 AND,
+   [: 1 FLAG-BIT, ;] LINUX-FLAGS:OPEN-PAIRS
    2 6 0 ADDI, ;
 
-\ x3 carries mmap's flags both ways: SHARED, PRIVATE and FIXED keep their bits,
-\ MAP_ANON moves from BSD's $1000 to $20 and MAP_NORESERVE from $40 to $4000.
+\ x3 carries mmap's flags both ways: the kept bits as they are, each flag to
+\ its Linux bit. Clobbers x6 and x7.
 : OS-MMAP-FLAGS ( -- )
-   LBL LBL {: noanon nonores :}
-   7 $13 MOVZ,  6 3 7 AND,
-   7 $1000 MOVZ,  7 3 7 AND,  7 noanon CBZ,
-      7 $20 MOVZ,  6 6 7 ORR,
-   noanon LBL,
-   7 $40 MOVZ,  7 3 7 AND,  7 nonores CBZ,
-      7 $4000 MOVZ,  6 6 7 ORR,
-   nonores LBL,
+   7 LINUX-FLAGS:MMAP-KEPT MOVZ,  6 3 7 AND,
+   [: 3 FLAG-BIT, ;] LINUX-FLAGS:MMAP-PAIRS
    3 6 0 ADDI, ;
 ;package
 ;using

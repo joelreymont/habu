@@ -187,7 +187,8 @@ variable WANT-N
    E= ;
 
 : MMAP-CASES ( -- )
-   s" OS-MMAP-FLAGS keeps share/private/fixed and moves MAP_ANON to $20" T-LABEL
+   s" OS-MMAP-FLAGS keeps share/private/fixed and moves MAP_ANON and MAP_NORESERVE"
+   T-LABEL
    OS-MMAP-FLAGS
    s" 4c89d0" E+              \ llvm-mc: movq %r10, %rax
    s" 4883e013" E+            \ llvm-mc: andq $19, %rax
@@ -196,6 +197,10 @@ variable WANT-N
    s" 49f7c200100000" E+      \ llvm-mc: testq $4096, %r10
    s" 490f45cb" E+            \ llvm-mc: cmovneq %r11, %rcx
    s" 4809c8" E+              \ llvm-mc: orq %rcx, %rax
+   s" 31c9" E+                \ MAP_NORESERVE
+   s" 49c7c300400000" E+      \ llvm-mc: movq $16384, %r11
+   s" 49f7c240000000" E+      \ llvm-mc: testq $64, %r10
+   s" 490f45cb" E+  s" 4809c8" E+
    s" 4989c2" E+              \ llvm-mc: movq %rax, %r10
    E= ;
 

@@ -25,6 +25,8 @@
 \ number and the result are rax; the engine's x0..x5 order maps onto them in that
 \ sequence. G-POP and G-PUSH therefore name x86_64 register numbers here.
 
+require src/os/linux-flags.f
+
 using X64ASM
 using X64CODE
 
@@ -162,12 +164,8 @@ $05 SYS-SVC-STENCIL 1 + c!
    R10 ZERO-REG,                                 \ mode 0
    NR-OPEN SYS, ;
 
-\ One flag bit of the caller's BSD-shaped word becomes one flag bit of the Linux
-\ word, branchlessly: the source bit selects between zero and the Linux bit, and
-\ the accumulator takes it. Both masks are single bits, so the selection is the
-\ whole translation. rax accumulates and rcx and r11 hold the candidate - none of
-\ the three is a VM register or a syscall argument, and all three are dead across
-\ the trap that follows.
+\ rax takes the Linux bit when src holds the BSD bit, with no branch. Clobbers
+\ rcx and r11, which hold no VM register or syscall argument.
 : OS-FLAG-BIT, ( r64 n n -- ) {: src:r64 srcbit:n dstbit:n :}
    RCX ZERO-REG,
    R11 dstbit >IMM32 ASM-SINK ENC-MOV-RI32      \ mov r11, the Linux bit
@@ -176,23 +174,19 @@ $05 SYS-SVC-STENCIL 1 + c!
    RAX RCX ASM-SINK ENC-OR-RR ;                 \ or rax, rcx
 
 \ rsi's BSD-shaped open flags into rdx: the access mode as it is, each flag to
-\ its Linux bit; it clobbers rax, rcx and r11, so stage other arguments first.
+\ its Linux bit. Clobbers rax, rcx and r11, so stage other arguments first.
 : OS-OPEN-FLAGS ( -- )
    RAX RSI ASM-SINK ENC-MOV-RR
-   RAX 3 >IMM8 ASM-SINK ENC-AND-RI8
-   RSI $4 $800 OS-FLAG-BIT,                     \ O_NONBLOCK
-   RSI $8 $400 OS-FLAG-BIT,                     \ O_APPEND
-   RSI $200 $40 OS-FLAG-BIT,                    \ O_CREAT
-   RSI $400 $200 OS-FLAG-BIT,                   \ O_TRUNC
-   RSI $20000 $100 OS-FLAG-BIT,                 \ O_NOCTTY
+   RAX LINUX-FLAGS:OPEN-KEPT >IMM8 ASM-SINK ENC-AND-RI8
+   [: RSI -rot OS-FLAG-BIT, ;] LINUX-FLAGS:OPEN-PAIRS
    RDX RAX ASM-SINK ENC-MOV-RR ;
 
-\ r10 carries mmap's flags both ways: MAP_SHARED, MAP_PRIVATE and MAP_FIXED have
-\ the same values on both kernels, and MAP_ANON moves from the BSD bit to $20.
+\ r10 carries mmap's flags both ways: the kept bits as they are, each flag to
+\ its Linux bit. Clobbers rax, rcx and r11.
 : OS-MMAP-FLAGS ( -- )
    RAX R10 ASM-SINK ENC-MOV-RR
-   RAX $13 >IMM8 ASM-SINK ENC-AND-RI8
-   R10 $1000 $20 OS-FLAG-BIT,                   \ MAP_ANONYMOUS
+   RAX LINUX-FLAGS:MMAP-KEPT >IMM8 ASM-SINK ENC-AND-RI8
+   [: R10 -rot OS-FLAG-BIT, ;] LINUX-FLAGS:MMAP-PAIRS
    R10 RAX ASM-SINK ENC-MOV-RR ;
 
 ;using

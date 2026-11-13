@@ -13,5 +13,6 @@ holds only `target.f` and `layout.f`: a Wasm module has no OS seam.
 
 Shared: `env-base.f` (argv, envp), `script-argv.f` (`--load` arguments),
 `image-bytes.f` (image byte cursor), `import-names.f` (the import names an
-image writer is given). Selection fails closed
+image writer is given), `linux-flags.f` (the BSD-to-Linux open and mmap flag
+bits both Linux `sys.f` files translate). Selection fails closed
 (`docs/xcomp.md` "Porting").
