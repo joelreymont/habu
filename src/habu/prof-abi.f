@@ -46,7 +46,7 @@ variable LPROFRECLAIM
 \ and its original) in dictionary order; the search lands on the last of them.
 \ Records with no code (a namespace row, a retired row, a zero-length body) are
 \ not in the index.
-160 constant ARN-HDR        \ arena header bytes, then the index
+168 constant ARN-HDR        \ arena header bytes, then the index
 0  constant ARN-COUNT       \ index entries
 8  constant ARN-LO          \ lowest code address in the index
 16 constant ARN-HI          \ one past the highest
@@ -65,8 +65,8 @@ variable LPROFRECLAIM
 120 constant ARN-STACK-LOW   \ the top less the stack limit
 \ A standard signal does not queue: the ticks that expire while the process is
 \ blocked in a syscall or descheduled arrive as one SIGALRM. The aarch64 handler
-\ therefore counts each sample as the intervals elapsed since the last one,
-\ rounded, at least 1, so blocked time is charged where the sample lands.
+\ therefore counts each sample as the whole intervals elapsed since the last
+\ one, so blocked time is charged where the sample lands.
 128 constant ARN-LAST        \ CNTVCT_EL0 at the last sample, or when the clock was armed
 136 constant ARN-TICKS       \ the sampling interval in CNTVCT_EL0 ticks, at least 1
 \ The x86-64 twin weighs nothing and keeps no ARN-SEQ: its stamp is PROF-TOT + 1,
@@ -75,6 +75,7 @@ variable LPROFRECLAIM
 \ aarch64 charges a sample inside C on the main stack to the Habu word that
 \ called it, so that weight is in the word's counter and not in PROF-FOREIGN.
 152 constant ARN-FCALLED     \ the weight of foreign samples charged to a calling word
+160 constant ARN-CARRY       \ CNTVCT_EL0 ticks elapsed and not yet counted, below ARN-TICKS
 32 constant PROF-ENT        \ index entry bytes
 0  constant ENT-START
 8  constant ENT-END

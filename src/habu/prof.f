@@ -37,10 +37,12 @@
 \ every tick that expires while the process waits in a syscall (an fsync, a
 \ regular-file read) or is descheduled arrives as one signal, so a count of
 \ signals would show a blocked second as about one sample. The handler reads
-\ CNTVCT_EL0 and counts (now - ARN-LAST + ARN-TICKS/2) / ARN-TICKS, at least
-\ 1, wherever it counts a sample; arming sets ARN-LAST, so time the clock was
-\ held or stopped is never counted. ARN-SEQ still counts samples one by one
-\ for the inclusive stamps.
+\ CNTVCT_EL0 and counts (now - ARN-LAST + ARN-CARRY) / ARN-TICKS wherever it
+\ counts a sample, and keeps the remainder in ARN-CARRY, so the weights sum to
+\ the whole intervals armed: a sample that lands within an interval of the
+\ last one weighs 0. Arming sets ARN-LAST, so time the clock was held or
+\ stopped is never counted. ARN-SEQ still counts samples one by one, a weight
+\ of 0 included, for the inclusive stamps.
 \
 \ A foreign sample (x20 not DATA, or x26 not the recorded DBASE) whose SP lies
 \ on the main stack is inside C a Habu word called: an FFI word, libSystem's
@@ -654,8 +656,8 @@ public
    s" profiler: no row for that record" C-PROF-SAY  C-PROF-NL
    C-PROF-REP-CLOSE ;
 
-\ x7 = band: x3 = this sample's weight, the intervals since the last sample as
-\ the file header states; ARN-LAST moves to now and ARN-SEQ counts the sample.
+\ x7 = band: x3 = this sample's weight, as the file header states; ARN-LAST
+\ moves to now, ARN-CARRY keeps the remainder and ARN-SEQ counts the sample.
 \ Clobbers x8 and x10-x12.
 : C-PROF-WEIGHT ( -- )
    LBL {: wdone :}
@@ -665,8 +667,9 @@ public
    11 8 ARN-LAST LDR,  10 8 ARN-LAST STR,
    12 8 ARN-SEQ LDR,  12 12 1 ADDI,  12 8 ARN-SEQ STR,
    12 8 ARN-TICKS LDR,  12 wdone CBZ,
-   10 10 11 SUB,  11 12 1 LSRI,  10 10 11 ADD,
-   10 10 12 UDIV,  10 wdone CBZ,  3 10 0 ADDI,
+   10 10 11 SUB,  11 8 ARN-CARRY LDR,  10 10 11 ADD,
+   3 10 12 UDIV,  11 3 12 MUL,  10 10 11 SUB,
+   10 8 ARN-CARRY STR,
    wdone LBL, ;
 
 \ x8 = arena, x21 = mcontext, a foreign sample: x6 = the index entry of the
@@ -1052,6 +1055,7 @@ private
    15 0 MOVZ,
    15 0 ARN-NEW STR,  15 0 ARN-DROP STR,  15 0 ARN-FRAMES STR,
    15 0 ARN-SPILL STR,  15 0 ARN-DEFER STR,  15 0 ARN-FCALLED STR,
+   15 0 ARN-CARRY STR,                            \ a phase's weights sum to its own armed time
    15 PROF-WALK-CELLS MOVZ,  15 0 ARN-WALK STR,
    12 ARN-INCL LIT64,  12 0 12 ADD,               \ the inclusive array and the stamps
    13 ARN-DEF LIT64,  13 0 13 ADD,                \ sit back to back, so one loop clears both
