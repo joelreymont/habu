@@ -484,10 +484,6 @@ SUITE model
    src/lib/net/model-test.f
 ;SUITE
 
-SUITE crew
-   src/lib/crew-test.f
-;SUITE
-
 \ TEST-ISSUER's routes on a loopback port and tools/test-issuer.f as a child.
 SUITE test-issuer
    src/lib/net/test-issuer-test.f

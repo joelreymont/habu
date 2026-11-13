@@ -16,9 +16,8 @@
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
 \ event-stream replies and one that is not UTF-8, TOOLS's limit shared by its
 \ pages, CLOSE after a halt mid-receive, a closed client refused once its row
-\ is reused, CANCEL of a CALL, of TOOLS's second page, of an idle client
-\ and of a closed one, and REQUEST-STOP of an idle client and of a CALL, after
-\ which CALL and TOOLS throw sending nothing, a client on the row a stopped one
+\ is reused, REQUEST-STOP of TOOLS's second page, of an idle client and of a
+\ CALL, after which CALL and TOOLS throw sending nothing, a client on the row a stopped one
 \ left calling normally, and REQUEST-STOP of a closed one. Then /mcp guarded
 \ by BEARER:ADMIT?: VISIBLE! hiding a tool by the caller's claim from
 \ tools/list and tools/call, and refused while HTTP serves; a client's TOKEN!,
@@ -1202,9 +1201,8 @@ $A constant LF
 : CANCEL-CALL ( -- ) [: STALL-CALL ;] CANCEL-STORE ;
 : CANCEL-TOOLS ( -- ) [: ROUTE-CLIENT @ 0 >MS MCP:TOOLS 2drop ;] CANCEL-STORE ;
 
-\ Runs the call on STALLER and stops the client, by CANCEL or REQUEST-STOP,
-\ once the server has its request: the call ends E-TRANSFER while the server
-\ still holds it.
+\ Runs the call on STALLER and stops the client once the server has its
+\ request: the call ends E-TRANSFER while the server still holds it.
 : CANCELLED ( [ -- ] MCP:client [ MCP:client -- ] -- )
    {: work who:MCP:client stop :}
    ARM RUNNING CANCEL-CODE atomic!
@@ -1217,25 +1215,13 @@ $A constant LF
    1 RELEASED atomic! SETTLE ;
 
 
-\ The one HTTP worker stays inside the stall tool, or /late's second page,
-\ until RELEASED: CANCEL ends the client's side alone.
-: CLIENT-CANCEL ( -- )
-   s" CANCEL from another task ends a CALL in flight with E-TRANSFER" T-LABEL
-   s" /mcp" URL MCP:OPEN STALL-CLIENT !
-   [: ['] CANCEL-CALL STALL-CLIENT @ ['] MCP:CANCEL CANCELLED ;] CAPTURED
-   s" the cancelled CALL logs nothing: the program ended it" T-LABEL
-   LINES 0 T=
-   s" the cancelled client then serves a CALL" T-LABEL
-   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
-   s" CANCEL of an idle client leaves its next CALL to run" T-LABEL
-   STALL-CLIENT @ MCP:CANCEL
-   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
-   STALL-CLIENT @ MCP:CLOSE
-   s" CANCEL refuses a closed client" T-LABEL
-   [: STALL-CLIENT @ MCP:CANCEL ;] MCP:E-STATE TTHROWSQ
-   s" CANCEL during TOOLS's second page ends it with E-TRANSFER" T-LABEL
+\ The one HTTP worker stays in /late's second page until RELEASED:
+\ REQUEST-STOP ends the client's side alone.
+: CLIENT-STOP-PAGE ( -- )
+   s" REQUEST-STOP during TOOLS's second page ends it with E-TRANSFER"
+   T-LABEL
    s" /late" URL MCP:OPEN ROUTE-CLIENT !
-   ['] CANCEL-TOOLS ROUTE-CLIENT @ ['] MCP:CANCEL CANCELLED
+   ['] CANCEL-TOOLS ROUTE-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED
    ROUTE-CLIENT @ MCP:CLOSE ;
 
 : STOP-CALL ( -- ) STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;
@@ -1263,7 +1249,9 @@ $A constant LF
    STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
    HITS atomic@ 1 T=
    s" REQUEST-STOP during a CALL ends it with E-TRANSFER" T-LABEL
-   ['] CANCEL-CALL STALL-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED
+   [: ['] CANCEL-CALL STALL-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED ;] CAPTURED
+   s" the stopped CALL logs nothing: the program ended it" T-LABEL
+   LINES 0 T=
    s" then CALL and TOOLS throw, sending nothing" T-LABEL
    2 STOP-REFUSED
    STALL-CLIENT @ MCP:CLOSE
@@ -1286,7 +1274,7 @@ TYPED-VARIABLE NEVER MCP:client
    CLIENT-NAMES CLIENT-EVENTS CLIENT-LIST-TIMEOUT CLIENT-LIST-PAGES-TIMEOUT
    CLIENT-LIST-LATE-PAGE
    CLIENT @ MCP:CLOSE
-   CLIENT-HALTED CLIENT-CANCEL CLIENT-STOP CLIENT-NEVER
+   CLIENT-HALTED CLIENT-STOP-PAGE CLIENT-STOP CLIENT-NEVER
    s" no transfer is left in flight" T-LABEL
    [: CURL:LOOP-STOP ;] catch 0 T= ;
 

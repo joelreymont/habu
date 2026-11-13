@@ -18,9 +18,7 @@
 \ as structuredContent's "data", and tools/list shows that wrapper in the schema's
 \ place. The client side, OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one
 \ server over CURL and takes a JSON or an event-stream reply. TOKEN! sets the bearer
-\ token a client sends, and CANCEL ends its TOOLS or CALL from another task.
-\ REQUEST-STOP ends it as CANCEL does and stops the client for good: every
-\ later TOOLS or CALL throws E-TRANSFER at once, sending nothing, until CLOSE.
+\ token a client sends, and REQUEST-STOP stops the client from another task.
 \ STORAGE CLASS. PROCESS-WIDE: the server info and instructions, tool and resource
 \ registries and visibility hook, written before HTTP serves; tables indexed by
 \ HTTP:WORKER-SLOT holding each request's state; and the client table, a row per open
@@ -38,11 +36,10 @@
 \ BODY! has copied it, a header line and the reply's header block; the reply;
 \ the tool list TOOLS assembles; the response an event-stream reply carried;
 \ and the token TOKEN! set, empty for none. The handle of the exchange in
-\ flight, none between exchanges, and the row's run state, which CANCEL and
-\ REQUEST-STOP set from another task (ROW-RUN), are read and written under
-\ LOCK. So is a record's region, except that its own client reads it without
-\ LOCK: OPEN sets it only on a free row, and only that client's CLOSE empties
-\ it.
+\ flight, none between exchanges, and the row's run state, which REQUEST-STOP
+\ sets from another task (ROW-RUN), are read and written under LOCK. So is a
+\ record's region, except that its own client reads it without LOCK: OPEN
+\ sets it only on a free row, and only that client's CLOSE empties it.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -1040,10 +1037,9 @@ variable ROW-COUNT
 variable GENERATION                 \ the last generation OPEN gave a row
 DYNAMIC-BUFFER ROW-PEER ptr peer
 DYNAMIC-BUFFER ROW-HANDLE option<CURL:handle>
-\ A row's run state, changed only under LOCK. CLAIM makes it running; STOP-ROW
-\ makes it cancelled unless it is stopped; REQUEST-STOP makes it stopped, which
-\ only a reuse of the row ends; UNSTOP makes cancelled running again.
-ENUM run running cancelled stopped ;ENUM
+\ A row's run state, changed only under LOCK: CLAIM makes it running and
+\ REQUEST-STOP stopped, which only a reuse of the row ends.
+ENUM run running stopped ;ENUM
 DYNAMIC-BUFFER ROW-RUN run
 DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
@@ -1051,31 +1047,21 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : REGION ( n -- SPAN:span<u8> ) ROW PEER-REGION @ ;
 : HANDLE! ( option<CURL:handle> n -- ) LOCK TASK:GET ROW-HANDLE ! LOCK TASK:RELEASE ;
 
-: RUNNING? ( run -- bool )
-   MATCH run
-      running OF true ENDOF
-      cancelled OF false ENDOF
-      stopped OF false ENDOF
-   ;MATCH ;
-
 : STOPPED? ( run -- bool )
    MATCH run
       running OF false ENDOF
-      cancelled OF false ENDOF
       stopped OF true ENDOF
    ;MATCH ;
 
-\ Whether the row is not running.
+\ Whether REQUEST-STOP has stopped the row.
 : STOP@ ( n -- bool )
-   LOCK TASK:GET ROW-RUN @ RUNNING? 0= LOCK TASK:RELEASE ;
+   LOCK TASK:GET ROW-RUN @ STOPPED? LOCK TASK:RELEASE ;
 
-\ Readies the row for a new TOOLS or CALL, or throws E-TRANSFER, sending
-\ nothing, once REQUEST-STOP has stopped it.
-: UNSTOP ( n -- )
+\ Throws E-TRANSFER, sending nothing, once REQUEST-STOP has stopped the row.
+: REFUSE-STOPPED ( n -- )
    {: idx:n :}
    LOCK TASK:GET
    idx ROW-RUN @ STOPPED? if LOCK TASK:RELEASE E-TRANSFER throw then
-   construct run running idx ROW-RUN !
    LOCK TASK:RELEASE ;
 
 \ The row's handle, left none in the same hold, so no other task can reach a
@@ -1228,7 +1214,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    a start + end start - ;
 
 \ Curl's failure on the row's exchange, logged with the row's host, unless
-\ CANCEL or REQUEST-STOP stopped the row: then the program ended it.
+\ REQUEST-STOP stopped the row: then the program ended it.
 : CURL-FAULT ( CURL:code n -- )
    {: rc:CURL:code idx:n :}
    idx STOP@ if E-TRANSFER throw then
@@ -1267,7 +1253,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    a u + buf BUF:CAP@ BUF:BLEN>N u - ;
 
 
-\ Collects the end of a transfer CANCEL has stopped.
+\ Collects the end of a transfer CURL:CANCEL has stopped.
 : DRAIN ( n CURL:handle -- )
    {: idx:n h:CURL:handle :}
    idx REPLY-BUF {: buf:ptr :}
@@ -1369,10 +1355,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    buf BUF$ ;
 
 
-\ A fresh handle, held by the row, posting the request buffer to the URL with
-\ the 2026-07-28 headers, the Mcp-Method line and, while the row holds a token,
-\ its Authorization line. A handle a halt left is retired first. E-TRANSFER
-\ once CANCEL or REQUEST-STOP has stopped the row's TOOLS or CALL.
+\ A fresh handle, held by the row, posting the request buffer to the URL; a
+\ handle a halt left is retired first. E-TRANSFER once REQUEST-STOP stopped the row.
 : PREPARE ( n ptr u8 n ms -- CURL:handle )
    {: idx:n line:ptr lu:n limit:ms :}
    idx RETIRE
@@ -1433,13 +1417,12 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       at len + 1+
    repeat drop false ;
 
-\ Queues the row's transfer, or throws E-TRANSFER, queueing nothing, once
-\ CANCEL or REQUEST-STOP has stopped the row. The state is read and the record
-\ queued in one hold, so a later STOP-ROW finds the record and marks it.
+\ The state is read and the transfer started in one LOCK hold: a REQUEST-STOP
+\ before it is refused here, one after it finds the transfer for CANCEL-ROW.
 : QUEUE ( n CURL:handle -- CURL:status )
    {: idx:n h:CURL:handle :}
    LOCK TASK:GET
-   idx ROW-RUN @ RUNNING? 0= if LOCK TASK:RELEASE E-TRANSFER throw then
+   idx ROW-RUN @ STOPPED? if LOCK TASK:RELEASE E-TRANSFER throw then
    [: h CURL:STREAM-START ;] [: LOCK TASK:RELEASE ;] finally ;
 
 
@@ -1624,20 +1607,16 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx tools tu GATHER
    more ;
 
-\ Stops the row's TOOLS or CALL, leaving a stopped row stopped, and cancels
-\ its transfer in flight; under LOCK. Answers CURL:CANCEL's throw code, 0 when
-\ there was no handle.
-: STOP-ROW ( n -- n )
+\ Cancels the row's transfer in flight; under LOCK. Answers CURL:CANCEL's
+\ throw code, 0 when there was no handle.
+: CANCEL-ROW ( n -- n )
    {: idx:n :}
-   idx ROW-RUN @ STOPPED? 0= if
-      construct run cancelled idx ROW-RUN !
-   then
    idx ROW-HANDLE @ MATCH option
       none OF 0 ENDOF
       some OF [: dup CURL:CANCEL ;] catch nip ENDOF
    ;MATCH ;
 
-\ STOP-ROW's code passed on; CURL's E-STATE means no transfer was in flight,
+\ CANCEL-ROW's code passed on; CURL's E-STATE means no transfer was in flight,
 \ not started or its end taken.
 : STOP-CODE ( n -- )
    {: code:n :}
@@ -1687,17 +1666,13 @@ public
    token tu buf BUF+ ;
 
 
-\ Every tool the server lists, following nextCursor to the last page, the
-\ whole call within ms (0: no limit): one JSON array of the tool objects in
-\ order. E-TRANSFER when an exchange fails, the pages run past ms, CANCEL
-\ ends the call or REQUEST-STOP has stopped the client, E-DENIED when the
-\ server refuses the client, E-UNAVAILABLE when the server reports itself
-\ unavailable, E-RESPONSE for a reply that is no tools/list result.
+\ Every tool the server lists, following nextCursor to the last page, as one JSON
+\ array in order, the whole call within ms (0: no limit); E-TRANSFER past ms.
 : TOOLS ( client ms -- ptr u8 n )
    {: who:client limit:ms :}
    TIME:MONO-NS {: start:n :}
    who LIVE {: idx:n :}
-   idx UNSTOP
+   idx REFUSE-STOPPED
    idx LIST-BUF {: buf:ptr :}
    buf BUF:CLEAR
    91 buf BUF:APPEND-BYTE
@@ -1706,17 +1681,12 @@ public
    buf BUF$ ;
 
 
-\ tools/call of the named tool with the arguments' JSON object, within ms for
-\ the whole transfer (0: no limit): answers the result object's JSON text and
-\ its isError. E-TRANSFER when the exchange fails, runs past ms, CANCEL ends
-\ it or REQUEST-STOP has stopped the client, E-DENIED when the server refuses
-\ the client, E-UNAVAILABLE when the server reports itself unavailable,
-\ E-RESPONSE for a JSON-RPC error, an unknown tool included, or a reply that
-\ is no result.
+\ tools/call of the named tool with the arguments' JSON object, within ms for the
+\ whole transfer (0: no limit): the result object's JSON text and its isError.
 : CALL ( client ptr u8 n ptr u8 n ms -- ptr u8 n bool )
    {: who:client name:ptr nu:n args:ptr au:n limit:ms :}
    who LIVE {: idx:n :}
-   idx UNSTOP
+   idx REFUSE-STOPPED
    idx name nu args au CALL-REQUEST
    idx name nu limit [: CALL-EXCHANGE ;] catch {: code:n :} 2drop 2drop
    idx code SETTLE
@@ -1732,20 +1702,11 @@ public
    result ru fault ;
 
 
-\ From any task, ends the TOOLS or CALL this client has in flight, which then
-\ answers E-TRANSFER; an idle client is left as it is. E-STATE for a closed
-\ client.
-: CANCEL ( client -- )
-   HELD-ROW STOP-ROW LOCK TASK:RELEASE STOP-CODE ;
-
-
-\ From any task, stops the client for good: ends its TOOLS or CALL in flight
-\ as CANCEL does, and from then on every TOOLS or CALL of the client throws
-\ E-TRANSFER at once, sending nothing, until CLOSE. E-STATE for a closed
-\ client.
+\ From any task, stops the client until CLOSE: a TOOLS or CALL whose transfer has not
+\ ended throws E-TRANSFER, a later one at once, sending nothing. E-STATE once closed.
 : REQUEST-STOP ( client -- )
    HELD-ROW {: idx:n :}
    construct run stopped idx ROW-RUN !
-   idx STOP-ROW LOCK TASK:RELEASE STOP-CODE ;
+   idx CANCEL-ROW LOCK TASK:RELEASE STOP-CODE ;
 
 ;package

@@ -668,8 +668,6 @@ require src/lib/prelude.f
 \ COMP.
 \ Stderr capture for tests: -9610..-9619, minted in src/lib/test/stderr.f, which
 \ owns package STDERR.
-\ A task to each job: -9620..-9629, minted in src/lib/crew.f, which owns
-\ package CREW.
 \ OAuth bearer tokens: -9630..-9639, minted in src/lib/net/bearer.f, which owns
 \ package BEARER.
 \ Keeping the machine awake: -9640..-9649, minted in src/lib/power.f, which
