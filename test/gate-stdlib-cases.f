@@ -1306,9 +1306,8 @@ SUITE type-match
 \ it finish, and the rows after it start only when it ends.
 GROUP SEQ native-serial-gates
 
-\ The PTY REPL fixture starts and reaps eight engine children. Keep it in the
-\ idle serial group so the fixed 20 s child-reap budget is not consumed by a
-\ saturated suite pool.
+\ The PTY REPL fixture starts and reaps four engine children: in the idle serial
+\ group a saturated suite pool cannot eat its fixed 20 s child-reap budget.
 SUITE repl-address-cell-rollback
    test/repl-address-cell-rollback.f
 ;SUITE

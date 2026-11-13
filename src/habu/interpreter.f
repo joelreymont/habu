@@ -2470,6 +2470,7 @@ public
 
 require src/lib/memory.f
 require src/habu/address-cells.f
+require src/core/rollback-cells.f
 require src/habu/native-body-abi.f
 require src/habu/native-body.f
 require src/habu/repl.f
@@ -2659,10 +2660,15 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    xt 0= if exit then
    mark 1- xt AS-ROWS-CUT execute ;
 
+\ Past the frame, its mapping holds the mapping's length, then the saved cells.
+: FRAME-CELLS ( ptr u8 -- ptr u8 ) EVAL-FRAME-SIZE CELL + + ;
+
 \ The frame of a buffer whose caller leaves n cells on the data stack, all but
 \ its link. Its using depth is also the buffer's using floor.
 : FRAME-OPEN ( n -- ptr u8 ) {: cells-in:n :}
-   EVAL-FRAME-SIZE MEM-ALLOC-PTR {: f:ptr :}
+   EVAL-FRAME-SIZE CELL + ROLLBACK-CELLS:BYTES + {: total:n :}
+   total MEM-ALLOC-PTR {: f:ptr :}
+   total f EVAL-FRAME-SIZE FR!
    INP-CELL CELL@ f FR-INP FR!
    INE-CELL CELL@ f FR-INE FR!
    SRCLOC:INB-CELL CELL@ f EVAL-INB FR!
@@ -2690,6 +2696,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
       i cells USE-WIDS-OFF + CELL@  f EVAL-FRAME:USE-WIDS i cells + FR!
    loop
    ROWS-MARK f EVAL-FRAME:ROWS FR!
+   f FRAME-CELLS ROLLBACK-CELLS:SAVE
    f ;
 
 \ It runs first in the evaluate's catch, so the nearest handler is that
@@ -2715,6 +2722,11 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f EVAL-FRAME:PKG-OUTSIDE FR@ CLEAN-END ;
 
 
+: FRAME-CUT ( ptr u8 -- n )
+   {: f:ptr :}
+   data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
+   f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max ;
+
 \ x86 THROW returns with the evaluation frame still linked; arm64's throw
 \ recovery has already popped it before catch returns. The top link is the
 \ ownership test: exactly one path performs the rollback.
@@ -2727,7 +2739,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f FR-NDICT FR@ dup ndict@ <> if ndict! else drop then
    f FR-CP FR@ dup cp@ <> if CODE-RECLAIM:TRUNCATE else drop then
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
-   f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max {: cut:n :}
+   f FRAME-CUT {: cut:n :}
    cut base - ADDRESS-CELLS:KEEP-BELOW
    cut INTERN:KEEP-BELOW
    \ Raise the release high-water to the DP this lowers from, so `allot`
@@ -2772,7 +2784,15 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    code EVALERR-CELL CELL! ;
 
 : FRAME-FREE ( ptr u8 -- )
-   EVAL-FRAME-SIZE munmap 0<> if E-MEM-UNMAP throw then ;
+   dup EVAL-FRAME-SIZE FR@ munmap 0<> if E-MEM-UNMAP throw then ;
+
+\ A rollback that left DP above the cut (a live task's, a pending definition's)
+\ kept every body; one that left DP at the cut puts the marked cells back.
+: FRAME-CELLS-RESTORE ( ptr u8 -- )
+   {: f:ptr :}
+   DP-CELL CELL@ f FRAME-CUT = if
+      f FRAME-CELLS ROLLBACK-CELLS:RESTORE
+   then ;
 
 \ The REPL has one source owner. A line uses a savepoint, but its successful
 \ stack, pending definition, package and usings remain for the next line.
@@ -2808,6 +2828,7 @@ variable REPL-OK
    else
       f NULL-PTR - EVAL-TOP-CELL CELL@ = if f FRAME-UNLINK then
       f prior found REPL-RECOVER
+      f FRAME-CELLS-RESTORE
    then
    f FRAME-FREE
    code 0<> if
@@ -2854,6 +2875,7 @@ public
       f FRAME-LEAVE
    else
       f NULL-PTR - EVAL-TOP-CELL CELL@ = if f code FRAME-RECOVER then
+      f FRAME-CELLS-RESTORE
       \ The kernel's engine-cell rollback cannot restore the Habu lexical
       \ capture cells.
       entry 0= if BODY-LEX-RESET else
@@ -2886,3 +2908,9 @@ public
    ['] CHECK:TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt! ;
 
 ;package
+
+\ Only INTERPRETER saves and puts back the marked cells: once its words above
+\ bind these, they are retired.
+undefine ROLLBACK-CELLS:BYTES
+undefine ROLLBACK-CELLS:SAVE
+undefine ROLLBACK-CELLS:RESTORE

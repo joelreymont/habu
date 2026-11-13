@@ -65,6 +65,7 @@ s" src/lib/ffi-abi.f" required
 require src/lib/le.f
 s" src/lib/adt/result.f" required
 require src/core/quotation-storage.f
+require src/core/rollback-cells.f
 require src/habu/task-abi.f
 require src/habu/stack-abi.f
 require src/habu/boot-cells.f
@@ -170,6 +171,7 @@ END-STRUCTURE
 TASK-TCB-LAYOUT-CHECK
 
 variable TASK-USER-NEXT
+TASK-USER-NEXT ROLLBACK-CELLS:MARK
 
 \ The band is this file's run of each region's header, with no engine cell.
 USER-BAND:START constant TASK-USER-BASE
@@ -1003,9 +1005,10 @@ variable ROW-N
    0 tcb TCB.CP ! ;
 
 \ ---- every declared TCB ------------------------------------------------------
-\ The head and each link (TASK-LINK@) are declared address cells; 0 ends. The
-\ chain only grows, read unlocked, so a TASK:NEW record stays on TCB-POOL.
+\ Head and links (TASK-LINK@) are declared address cells; 0 ends. Read unlocked:
+\ a live task's rollback keeps what it unlinks; TASK:FREE pools what it frees.
 PERSISTED-PTR-VARIABLE TASK-CHAIN
+TASK-CHAIN ROLLBACK-CELLS:MARK
 
 \ The crash handler reads this chain after an instruction fetch faults in a
 \ task's guard, where task-local RBP is unavailable, so the head is published in
@@ -1588,6 +1591,7 @@ CELL constant SLOT-SIZE
 4 cells constant SLOT-DATA
 
 PERSISTED-PTR-VARIABLE SLOT-LAST
+SLOT-LAST ROLLBACK-CELLS:MARK
 
 : SLOT-LAST@ ( -- ptr n )
    SLOT-LAST @ ;

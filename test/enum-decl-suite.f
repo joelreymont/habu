@@ -443,6 +443,17 @@ DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:OFF
 
+\ 22j. A reason explained in a text that throws is taken back with it, so
+\      storage laid over its row is never walked as a reason.
+package enum-reason-test
+: ED-ONE ( -- ) s" reason one" 990001 DECL-REJECT:EXPLAIN ;
+: ED-FILL ( n -- ) 0 ?do 777 , loop ;
+s" ED-ONE 1 throw" TEST-EVAL:RC 1 T=
+create ED-JUNK 16 ED-FILL
+s" reason two" 990002 DECL-REJECT:EXPLAIN
+990002 DECL-REJECT:REASON$ s" reason two" DECL-DIAG:SAME? TTRUE
+;package
+
 \ 23. ED-REPLAY - registering an ENUM from tokens a tool already lexed.
 package enum-replay-test
 public

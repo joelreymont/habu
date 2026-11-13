@@ -572,6 +572,40 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s\" s\" ' LIVE drop\" TEST-EVAL:RC drop" SB-APPEND TASK-LF
    SB$ ;
 
+\ Slots (one above a raised DATA floor) and a TASK made in texts that throw, each
+\ under later data: PA and PC keep apart, PC follows PA, the chain skips TB.
+: TASK-ROLLBACK-SLOT$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" require src/lib/test.f" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
+   s" TASK:+USER PA n" SB-APPEND TASK-LF
+   s\" s\" TASK:+USER PB n  1 throw\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s" create JUNK 111 , 222 , 333 , 444 , 555 ," SB-APPEND TASK-LF
+   s\" s\" INTERN:WINDOW-OPEN TASK:+USER PD n  1 throw\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s" create JUNK2 111 , 222 , 333 , 444 , 555 ," SB-APPEND TASK-LF
+   s" TASK:+USER PC n  W TASK:PREPARE" SB-APPEND TASK-LF
+   s" 5 W PA TASK:HIS !  7 W PC TASK:HIS !" SB-APPEND TASK-LF
+   s" W PA TASK:HIS @ .  W PC TASK:HIS @ ." SB-APPEND TASK-LF
+   s" W PC TASK:HIS W PA TASK:HIS - CELL - ." SB-APPEND TASK-LF
+   s" require src/habu/task-abi.f" SB-APPEND TASK-LF
+   s" package TRC" SB-APPEND TASK-LF
+   s" CAST: N>P ( n -- ptr n )" SB-APPEND TASK-LF
+   s" public" SB-APPEND TASK-LF
+   s" : HEAD ( -- n ) data-base NULL-PTR - TASK-CHAIN-CELL + N>P @ N>P @ ;" SB-APPEND TASK-LF
+   s" : LINK ( n -- n ) TASK-ABI:TCB-BYTES + N>P @ ;" SB-APPEND TASK-LF
+   s" : FILL ( n -- ) 0 ?do 777 , loop ;" SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   s" variable H0  TRC:HEAD H0 !" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK TA" SB-APPEND TASK-LF
+   s\" s\" TASK:MIN-STACK TASK:TASK TB  1 throw\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s" create JUNK3 TASK-ABI:TCB-BYTES CELL / 4 + TRC:FILL" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK TC" SB-APPEND TASK-LF
+   s" TRC:HEAD TC FFI:>CELL = bool>n ." SB-APPEND TASK-LF
+   s" TRC:HEAD TRC:LINK TA FFI:>CELL = bool>n ." SB-APPEND TASK-LF
+   s" TRC:HEAD TRC:LINK TRC:LINK H0 @ = bool>n ." SB-APPEND TASK-LF
+   SB$ ;
+
 : TASK-SPAWN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
@@ -707,6 +741,11 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-ERR hugerr LEN>N s" data space out of range" CONTAINS? TTRUE
    TASK-ERR hugerr LEN>N s" unknown type 'no-such-type'" CONTAINS? TTRUE
    TASK-ERR hugerr LEN>N s" undefined word 'PT'" CONTAINS? TTRUE ;
+
+: TASK-TEST-ROLLBACK-SLOT ( -- )
+   TASK-ROLLBACK-SLOT$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N S\" 1\n1\n5\n7\n0\n1\n-1\n-1\n-1\n" T$=
+   erru LEN>N 0 T= ;
 
 : TASK-USER-REEXPORT$ ( -- ptr u8 n )
    SB-RESET
@@ -2486,6 +2525,7 @@ variable NEW-STRAY
    TASK-TEST-ROLLBACK-LIVE
    TASK-TEST-APP-SOAK
    TASK-TEST-USER-SLOTS
+   TASK-TEST-ROLLBACK-SLOT
    TASK-TEST-USER-REEXPORT
    TASK-TEST-BUILDERS
    TASK-TEST-WORKER-DIE

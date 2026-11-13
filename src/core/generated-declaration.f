@@ -91,6 +91,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 \ cell are declared address cells, NULL-PTR for none, so the linker relocates
 \ them.
 PERSISTED-PTR-VARIABLE NEWEST
+NEWEST ROLLBACK-CELLS:MARK
 
 0 constant NO-CODE          \ no reason is armed
 
