@@ -517,7 +517,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
          sig sigu MACHO:SET-SIGID MACHO:CODESIG2
       ENDOF
       elf OF
-         ELF:ASM-CODE ARM64:TEXT-VA ELF:BUILD-IMAGE
+         ELF:ASM-CODE ARM64:TEXT-VA ARM64:ELF-IMPORTS$ ELF:BUILD-IMAGE
          sig sigu ELF:SET-SIGID ELF:CODESIG2
       ENDOF
       pe OF s" link: no file writer for a PE target" 74 die ENDOF

@@ -1,5 +1,6 @@
 \ elf.f - the ELF writer for Linux arm64: a dynamic executable of the program
-\ in icode's CODE (BUILD-IMAGE), under the Mach-O writer's public names.
+\ in icode's CODE (BUILD-IMAGE), whose GOT ld.so binds to the libc names
+\ BUILD-IMAGE is given.
 \ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
 \ tail never share a kernel page on any supported page size.
 \
@@ -59,7 +60,12 @@ $401 constant ELF-R-AARCH64-GLOB-DAT
 30 constant DT-FLAGS
 8 constant DF-BIND-NOW
 
-\ The libc symbols the loader binds into the GOT, in slot order.
+\ The GOT follows the dynamic section and ends the read-write tail.
+ELF-DYNAMIC-SZ constant ELF-GOT-OFF
+
+public
+\ The libc symbols the loader binds into the GOT of the tree's kernel, in slot
+\ order, by C name; the kernel object carries them to the link.
 : IMPORT$ ( n -- ptr u8 n )
    case
       0 of s" dlopen" endof
@@ -70,14 +76,6 @@ $401 constant ELF-R-AARCH64-GLOB-DAT
    endcase ;
 4 constant IMPORTS
 
-\ The GOT follows the dynamic section and ends the read-write tail.
-ELF-DYNAMIC-SZ constant ELF-GOT-OFF
-
-: NAME-SUM ( n ptr u8 n -- n )
-   {: h:n a:ptr u:n :}
-   h  u 0 ?do 31 * a i + c@ + loop  31 * ;
-
-public
 \ The row whose C name this is; the build dies on a name the table lacks.
 : IMPORT-ROW ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -85,31 +83,43 @@ public
    SB-RESET  s" elf: no such import " SB-APPEND  a u SB-APPEND
    SB$ 73 die ;
 
-\ A sum over the C names in row order.
-: IMPORTS-SUM ( -- n )
-   0  IMPORTS 0 ?do i IMPORT$ NAME-SUM loop ;
-
 \ Import row n's cell, as a byte offset from the read-write tail's start.
 : SLOT-OFF ( n -- n ) 8 * ELF-GOT-OFF + ;
 private
 
-\ A row's name's offset in the string table, which opens with a NUL.
-: NAME-OFF ( n -- n )
-   1 swap 0 ?do i IMPORT$ nip 1 + + loop ;
+\ The image's imports, which BUILD-IMAGE is given: C names in GOT row order,
+\ each ending in a NUL.
+PTR-VARIABLE NAMES
+variable NAMES-U
+variable NAMES-N
+
+: NAMES@ ( -- ptr u8 ) NAMES @ ;
+
+: NAMES! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a NAMES !  u NAMES-U !
+   0  u 0 ?do a i + c@ 0= if 1 + then loop  NAMES-N ! ;
+
+\ Whether a name starts at byte k of NAMES: the first, or one past a NUL.
+: START? ( n -- bool )
+   {: k:n :}
+   k 0= if true exit then
+   NAMES@ k + 1 - c@ 0= ;
 
 : LIBC$ ( -- ptr u8 n ) s" libc.so.6" ;
 
 : ELF-ALIGN8 ( n -- n ) 7 + -8 and ;
 
-IMPORTS SLOT-OFF constant ELF-RW-SZ
+: ELF-RW-SZ ( -- n ) NAMES-N @ SLOT-OFF ;
 \ One bucket, then a chain through every symbol after the null one.
-IMPORTS 4 + 4 * constant ELF-HASH-SZ
-ELF-HASH-OFF ELF-HASH-SZ + ELF-ALIGN8 constant ELF-DYNSYM-OFF
-ELF-DYNSYM-OFF IMPORTS 1 + ELF-SYM-SZ * + constant ELF-DYNSTR-OFF
-IMPORTS NAME-OFF constant ELF-LIBC-OFF
-ELF-LIBC-OFF LIBC$ nip + 1 + constant ELF-DYNSTR-SZ
-ELF-DYNSTR-OFF ELF-DYNSTR-SZ + ELF-ALIGN8 constant ELF-RELA-OFF
-IMPORTS ELF-RELA-ENT-SZ * constant ELF-RELA-SZ
+: ELF-HASH-SZ ( -- n ) NAMES-N @ 4 + 4 * ;
+: ELF-DYNSYM-OFF ( -- n ) ELF-HASH-OFF ELF-HASH-SZ + ELF-ALIGN8 ;
+: ELF-DYNSTR-OFF ( -- n ) ELF-DYNSYM-OFF NAMES-N @ 1 + ELF-SYM-SZ * + ;
+\ The string table opens with a NUL, then holds the names, then libc's.
+: ELF-LIBC-OFF ( -- n ) NAMES-U @ 1 + ;
+: ELF-DYNSTR-SZ ( -- n ) ELF-LIBC-OFF LIBC$ nip + 1 + ;
+: ELF-RELA-OFF ( -- n ) ELF-DYNSTR-OFF ELF-DYNSTR-SZ + ELF-ALIGN8 ;
+: ELF-RELA-SZ ( -- n ) NAMES-N @ ELF-RELA-ENT-SZ * ;
 \ The generated executable window: everything the assembler can emit, behind the
 \ header page it sits at.
 CODE-CAP-BYTES CODE-OFF + constant MPAGE
@@ -121,7 +131,8 @@ variable ELF-TEXT-SIZE
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
 
-MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE!
+\ The image buffer holds the maximum-page-rounded text and its RW tail.
+: ELF-MSIZE! ( -- ) MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE! ;
 
 : ASM-CODELEN! ( -- )
    ASM-LEN CODELEN ! ;
@@ -194,8 +205,8 @@ private
 
 : ELF-HASH, ( -- )
    ELF-HASH-OFF M-OFF M-PAD-OFF
-   1 IMG-M32  IMPORTS 1 + IMG-M32  1 IMG-M32  0 IMG-M32
-   IMPORTS 1 ?do i 1 + IMG-M32 loop
+   1 IMG-M32  NAMES-N @ 1 + IMG-M32  1 IMG-M32  0 IMG-M32
+   NAMES-N @ 1 ?do i 1 + IMG-M32 loop
    0 IMG-M32 ;
 
 : ELF-SYM-NULL, ( -- )
@@ -207,12 +218,12 @@ private
 : ELF-DYNSYM, ( -- )
    ELF-DYNSYM-OFF M-OFF M-PAD-OFF
    ELF-SYM-NULL,
-   IMPORTS 0 ?do i NAME-OFF ELF-SYM, loop ;
+   NAMES-U @ 0 ?do i START? if i 1 + ELF-SYM, then loop ;
 
 : ELF-DYNSTR, ( -- )
    ELF-DYNSTR-OFF M-OFF M-PAD-OFF
    0 IMG-M8
-   IMPORTS 0 ?do i IMPORT$ M-BYTES 0 IMG-M8 loop
+   NAMES@ NAMES-U @ M-BYTES
    LIBC$ M-BYTES 0 IMG-M8 ;
 
 : ELF-R-INFO ( n -- n )
@@ -220,7 +231,7 @@ private
 
 : ELF-RELA, ( -- )
    ELF-RELA-OFF M-OFF M-PAD-OFF
-   IMPORTS 0 ?do
+   NAMES-N @ 0 ?do
       i ELF-SLOT-VA IMG-M64  i 1 + ELF-R-INFO IMG-M64  0 IMG-M64
    loop ;
 
@@ -250,7 +261,7 @@ private
    0 0 ELF-DYN, ;
 
 : ELF-GOT, ( -- )
-   IMPORTS 0 ?do 0 IMG-M64 loop ;
+   NAMES-N @ 0 ?do 0 IMG-M64 loop ;
 
 : ELF-RW-AT, ( n -- ) {: off :}
    off M-OFF M-PAD-OFF
@@ -258,7 +269,7 @@ private
    ELF-GOT, ;
 
 : BUILD-ELF ( -- )
-   ASM-CODELEN!  M-RESET
+   ASM-CODELEN!  ELF-MSIZE!  M-RESET
    CODELEN @  MPAGE CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
@@ -270,8 +281,10 @@ private
    M-HERE MLEN! ;
 
 public
-\ The program as an ELF file whose code maps at the address.
-: BUILD-IMAGE ( asm n -- img )
+\ The program as an ELF file whose code maps at the address, its GOT binding
+\ the C names, each ending in a NUL, in row order.
+: BUILD-IMAGE ( asm n ptr u8 n -- img )
+   NAMES!
    CODE-OFF - VMBASE !
    ASM-DROP
    BUILD-ELF

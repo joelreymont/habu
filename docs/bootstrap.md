@@ -110,10 +110,7 @@ The link refuses a kernel object the running hb cannot read
 stage that changes the reader before the tree changes the writer. READ also
 refuses an object whose DATA-START is above hb's: the hb building
 it sends a build's xt! and ptr-cell! stores into its header to the image only
-below its own DATA start (src/habu/habu2.f ROUTE-HEADER). READ refuses an
-object whose ELF import table is not hb's too: the tree's kernel reads each
-libc slot at the row the tree's writer gives it, and hb's ELF writer lays the
-image's imports. A Mach-O image's imports come from the object.
+below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 
 A build types the primitives by the tree's kernel object, not by the running
 hb's rows (src/arch/arm64/link-kernel.f STATE-PRIMS), so an engine carries the

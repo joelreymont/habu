@@ -17,6 +17,7 @@
 \   presets     n, then each header cell's offset and the value the link writes
 \   Mach-O imports their length in bytes, then the C names the GOT binds in row
 \               order, each ending in a NUL, padded as a name's
+\   ELF imports    the same for an ELF image's GOT
 \   checker rows their length in bytes, then n, then each row's kind,
 \               trusted-only, fixed-ABI, name, package name, atom count and
 \               atoms
@@ -192,8 +193,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    s" RBASE-CELL" RBASE-CELL SYM+
    s" UNCGH-CELL" UNCGH-CELL SYM+
    s" STUB-CELL" SIGNAL-ABI:STUB-CELL SYM+
-   s" CODE-END-CELL" CODE-END-CELL SYM+
-   s" ELF-IMPORTS" ELF:IMPORTS-SUM SYM+ ;
+   s" CODE-END-CELL" CODE-END-CELL SYM+ ;
 
 : ENGINE-SYMBOLS ( -- )
    s" RECS" 4 TAIL@ LSYM+
@@ -244,10 +244,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    ;SECTION ;
 
 
-: MACHO-IMPORTS+ ( -- )
+: IMPORTS+ ( n [ n -- ptr u8 n ] -- )
+   {: n:n name :}
    OUT-U @ {: at:n :}
    0 U64+
-   MACHO:IMPORTS 0 ?do i MACHO:IMPORT$ BYTES+  0 BYTE+ loop
+   n 0 ?do i name execute BYTES+  0 BYTE+ loop
    OUT-U @ at - 8 -  0 OUT at + LE:U64!
    PAD+ ;
 
@@ -282,7 +283,9 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT-U !
    s" HBKERNEL" SPAN+  4 0 ?do 0 U64+ loop
    CODE+ LABELS+ REFS+ DATA-SPANS+ FIXUPS+ PRIMS+
-   engine SCOPES+  engine SYMBOLS+  engine PRESETS+  MACHO-IMPORTS+  CHECK-ROWS+
+   engine SCOPES+  engine SYMBOLS+  engine PRESETS+
+   MACHO:IMPORTS ['] MACHO:IMPORT$ IMPORTS+  ELF:IMPORTS ['] ELF:IMPORT$ IMPORTS+
+   CHECK-ROWS+
    SUM
    0 OUT OUT-U @ sink execute ;
 
