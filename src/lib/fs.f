@@ -607,10 +607,23 @@ private
    HB-TARGET-MACOS? if buf 64 + LE:U64@ buf 72 + LE:U64@ exit then
    buf 104 + LE:U64@ buf 112 + LE:U64@ ;
 
+\ The link count of libc's struct stat; the last branch is the generic layout
+\ Linux arm64 uses.
+: LIBC-NLINK@ ( ptr u8 -- n )
+   HB-TARGET-MACOS? if 6 + LE:U16@ exit then
+   HB-TARGET-LINUX-X86-64? if 16 + LE:U64@ exit then
+   20 + LE:U32@ ;
+
 : FSTAT-FAIL ( n n -- ) {: file cause :}
    file close
    cause CAUSE!
    E-FS-STAT throw ;
+
+\ fstat into STAT-BUF. A failure is E-FS-STAT with errno its cause, and the
+\ descriptor stays open.
+: FD-FSTAT ( fd -- ) {: file:fd :}
+   file FD>N STAT-BUF FSTAT-CALL
+   0<> if FFI:ERRNO CAUSE! E-FS-STAT throw then ;
 
 public
 \ Open a regular file for reading once and size it from that descriptor, so a
@@ -640,10 +653,12 @@ public
    IO-FD @ close ;
 
 \ The open descriptor's file: change time, seconds then nanoseconds, and size.
-\ A failed fstat is E-FS-STAT with the descriptor left open.
-: FD-STAMP ( fd -- n n n ) {: file:fd :}
-   file FD>N STAT-BUF FSTAT-CALL 0<> if FFI:ERRNO CAUSE! E-FS-STAT throw then
-   STAT-BUF LIBC-CTIME@  STAT-BUF LIBC-SIZE@ ;
+: FD-STAMP ( fd -- n n n )
+   FD-FSTAT STAT-BUF LIBC-CTIME@  STAT-BUF LIBC-SIZE@ ;
+
+\ The open descriptor's file's link count, 0 once every name of it is removed.
+: FD-LINKS ( fd -- n )
+   FD-FSTAT STAT-BUF LIBC-NLINK@ ;
 
 private
 : WRITE-BY-FLAGS ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu src:ptr u flags :}
