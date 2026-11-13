@@ -22,11 +22,10 @@ private
 
 PATH-CAP 1+ constant CAP
 $10000 constant IO-CAP
-$1000 constant PROG-CAP
+PATH-CAP 1+ 4 * constant PROG-CAP
 \ Guards against a hung child, not budgets: the host runs loaded.
 120000 constant TIMEOUT-MS
-\ A prompt line holds 255 bytes, so `cd <name>` names at most this much; four
-\ nested names fit the 1023-byte path cap and a fifth does not.
+\ A prompt line holds 255 bytes, so `cd <name>` names at most this much.
 200 constant LONG-NAME
 \ One more than the path stack holds (src/core/include.f PATH-DEPTH).
 9 constant OVER-DEPTH
@@ -176,11 +175,23 @@ variable RC
    s" HELLO" LINE
    s" ;package" LINE ;
 
-\ deep/<name>/<name>/<name>/<name>
+create DEEP CAP allot
+variable DEEP-U
+
+\ The most /<name> levels below <tmp>/deep whose path fits PATH-CAP.
+: DEEP-LEVELS ( -- n ) PATH-CAP TOP-U @ - 5 - LONG-NAME 1+ / ;
+
+\ deep and DEEP-LEVELS nested <name>s below it, built in DEEP: the path can
+\ outgrow the string builder.
 : DEEP-DIRS ( -- )
-   SB-RESET s" deep" SB-APPEND
-   4 0 do s" /" SB-APPEND LONG LONG-NAME SB-APPEND loop
-   SB$ A$ FS:MAKE-DIRS ;
+   s" deep" {: a:ptr u:n :}
+   a DEEP u BYTE-COPY u DEEP-U !
+   DEEP-LEVELS 0 ?do
+      [char] / DEEP DEEP-U @ + c!
+      LONG DEEP DEEP-U @ + 1+ LONG-NAME BYTE-COPY
+      LONG-NAME 1+ DEEP-U +!
+   loop
+   DEEP DEEP-U @ A$ FS:MAKE-DIRS ;
 
 \ Each case runs a fresh child of a copy of the engine under test
 \ (src/lib/engine-candidate.f), placed in the layout it needs.
@@ -560,10 +571,11 @@ variable RC
    SB-RESET s" search-only" A$ LINE SB$ 0 EXPECT ;
 
 \ Each step is one prompt line, so the path grows past the cap only by joining.
+\ The first DEEP-LEVELS steps reach existing paths that fit; the next is over.
 : CD-TOO-LONG ( -- )
    s" a current path longer than a loader path is refused by name" T-LABEL
    PROG-RESET s" SOURCE-ROOT:CD" s" deep" PATH-LINE
-   5 0 do SB-RESET s" SOURCE-ROOT:CD " SB-APPEND LONG LONG-NAME SB-APPEND SB$ PLINE loop
+   DEEP-LEVELS 1+ 0 do SB-RESET s" SOURCE-ROOT:CD " SB-APPEND LONG LONG-NAME SB-APPEND SB$ PLINE loop
    RUN-TREE
    S\" source root: path is too long\n" REFUSAL ;
 

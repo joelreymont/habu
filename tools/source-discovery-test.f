@@ -429,16 +429,11 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
 : SDT-DOT16$ ( -- ptr u8 n )
    s" ././././././././" ;
 
-\ The engine's resolver alone caps a loader's path: it refuses an absolute one
-\ of 2048 bytes or more, a relative one that is 2048 bytes or more joined as
-\ root, `/` and path to a root searched before one holds the file, and one over
-\ PATH-CAP once normalized (src/core/include.f SOURCE-ROOT CHECK,
-\ SEARCH-ROOTS, JOIN! and NORMALIZE). Paths of 1280
-\ and of PATH-CAP x bytes resolve past PATH-CAP against any root. PATH-CAP
-\ bytes of `./` before a file name resolve within it; SDT-OVER bytes of them
-\ and an 18-byte name are 2050 bytes.
-$500 constant SDT-BIG
-$7F0 constant SDT-OVER
+\ SDT-FIT bytes pass PATH-CAP only once joined to a root, SDT-BIG as written;
+\ SDT-OVER bytes of `./` and an 18-byte name are too long for the resolver.
+PATH-CAP 16 / 1+ 16 * constant SDT-BIG
+PATH-CAP 1+ 2 * 16 - constant SDT-OVER
+PATH-CAP 16 / 16 * constant SDT-FIT
 
 \ writes name = head + u bytes of the 16-byte piece, u a multiple of 16, + tail
 : SDT-WRITE-BIG ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
@@ -456,7 +451,7 @@ $7F0 constant SDT-OVER
 : SDT-TEST-BIG-STRING-LOADER ( -- )
    s" big-bad.f" S\" s\" " SDT-BIG SDT-X16$ S\" \" required\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ
-   s" big-resolved.f" S\" s\" " PATH-CAP SDT-X16$ S\" \" required\n" SDT-WRITE-BIG
+   s" big-resolved.f" S\" s\" " SDT-FIT SDT-X16$ S\" \" required\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ
    s" big-over.f" S\" s\" " SDT-OVER SDT-DOT16$ S\" sd-pad-over-caps.f\" required\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ ;
@@ -467,7 +462,7 @@ $7F0 constant SDT-OVER
    s" big-body.f" S\" : L ( -- ) s\" " SDT-BIG SDT-X16$ S\" \" required ;\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 0 T=
-   s" big-body-resolved.f" S\" : L ( -- ) s\" " PATH-CAP SDT-X16$ S\" \" required ;\n" SDT-WRITE-BIG
+   s" big-body-resolved.f" S\" : L ( -- ) s\" " SDT-FIT SDT-X16$ S\" \" required ;\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 0 T=
    s" big-body-over.f" S\" : L ( -- ) s\" " SDT-OVER SDT-DOT16$ S\" sd-pad-over-caps.f\" required ;\n" SDT-WRITE-BIG
@@ -477,9 +472,9 @@ $7F0 constant SDT-OVER
 \ A path over PATH-CAP as written that the resolver takes is a load the walk
 \ follows, at top level and in a body.
 : SDT-TEST-BIG-STRING-PAD ( -- )
-   s" big-pad.f" S\" s\" " PATH-CAP SDT-DOT16$ S\" sd-pad.f\" required\n" SDT-WRITE-BIG
+   s" big-pad.f" S\" s\" " SDT-BIG SDT-DOT16$ S\" sd-pad.f\" required\n" SDT-WRITE-BIG
    s" sd-pad.f" SDT-ONE-LOAD
-   s" big-body-pad.f" S\" : L ( -- ) s\" " PATH-CAP SDT-DOT16$ S\" sd-pad.f\" required ;\n" SDT-WRITE-BIG
+   s" big-body-pad.f" S\" : L ( -- ) s\" " SDT-BIG SDT-DOT16$ S\" sd-pad.f\" required ;\n" SDT-WRITE-BIG
    s" sd-pad.f" SDT-ONE-LOAD ;
 
 \ Loaders past 1 MiB are found, the same scratch then grows again, and the

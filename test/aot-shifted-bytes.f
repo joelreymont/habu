@@ -341,7 +341,8 @@ variable C-REL-U
 : C-LINK$ ( -- ptr u8 n ) C-LINK C-LINK-U @ ;
 : C-REL$ ( -- ptr u8 n ) C-REL C-REL-U @ ;
 
-4096 constant TXT-CAP
+\ main.f's text: a root and a helper's path, each up to PATH-CAP, and the code around them
+PATH-CAP 2 * 256 + constant TXT-CAP
 create TXT TXT-CAP allot
 variable TXT-U
 : TXT$ ( -- ptr u8 n ) TXT TXT-U @ ;

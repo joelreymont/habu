@@ -941,7 +941,8 @@ public
 package FMT-TMPDIR
 private
 
-$1000 constant CAP
+\ A child's stderr line can echo a TMPDIR of nearly PATH-CAP bytes.
+PATH-CAP 1+ 4 * constant CAP
 15000 constant TIMEOUT-MS
 10 constant NL
 

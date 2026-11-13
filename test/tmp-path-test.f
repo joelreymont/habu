@@ -17,7 +17,7 @@ require src/lib/engine-candidate.f
 package TMP-PATH-TEST
 private
 
-$1000 constant IO-CAP
+PATH-CAP 1+ 4 * constant IO-CAP
 120000 constant TIMEOUT-MS
 76 constant REFUSE-RC
 $2F constant SLASH

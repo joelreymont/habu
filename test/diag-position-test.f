@@ -20,7 +20,7 @@ require tools/check-core.f
 
 package DIAG-POSITION-TEST
 
-$1000 constant CAP
+PATH-CAP 1+ 4 * constant CAP
 120000 constant TIMEOUT-MS
 70 constant REJECT-RC
 67 constant THROW-RC
@@ -1493,9 +1493,8 @@ variable RC
    a FX FX-U @ + u BYTE-COPY
    FX-U @ u + FX-U ! ;
 
-\ 250 steps exceed PATH-CAP (1023 bytes) as written only, 600 decoded too. The
-\ resolver measures the path decoded and refuses it only at 2048 bytes joined to
-\ a searched root or over PATH-CAP normalized, so the engine loads both.
+\ A step is 5 bytes written and 2 decoded: PATH-CAP 4 / steps pass PATH-CAP
+\ written only, PATH-CAP 3 * 5 / decoded too, and the resolver takes both.
 : STEPS-FIXTURE ( n ptr u8 n -- ) {: steps:n name:ptr nameu:n :}
    BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
    0 FX-U !
@@ -1602,10 +1601,10 @@ variable RC
    s" escaped-body-path-package.f" FIXTURE!
    s" DPT-ESC:L" 7 137 s" BODY-A-WORD" 8 1 147 158 VERIFY-DEFERRED-AT
    s" an escaped path over the capacity as written, within it decoded" T-LABEL
-   250 s" escaped-steps-fit.f" STEPS-FIXTURE
+   PATH-CAP 4 / s" escaped-steps-fit.f" STEPS-FIXTURE
    CERTIFIED
    s" an escaped path over the capacity decoded, within it normalized" T-LABEL
-   600 s" escaped-steps-over.f" STEPS-FIXTURE
+   PATH-CAP 3 * 5 / s" escaped-steps-over.f" STEPS-FIXTURE
    CERTIFIED
    s" a bad escape in a loader's path" T-LABEL
    SB-RESET
