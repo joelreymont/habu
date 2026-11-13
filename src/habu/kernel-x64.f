@@ -3443,20 +3443,11 @@ private
    FIND-LBL CALL,
    RAX R64>N X64RT:G-PUSH ;
 
-\ The scan keeps the highest matching row; a global miss retries
-\ WL:PRIMITIVES (FIND-HELPER,).
-: XREF-SEARCH-WL-NEWEST-BODY ( -- )
-   FIND-ARGS,
-   FIND-SCAN-LBL CALL,
-   RAX R64>N X64RT:G-PUSH ;
-
 public
 
 : DICT-SEARCH, ( -- )
    s" search-wl" [: SEARCH-WL-BODY ;] PRIM
-   s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" xref-wl-newest" [: XREF-SEARCH-WL-NEWEST-BODY ;]
-      ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 private
 

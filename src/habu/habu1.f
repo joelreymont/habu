@@ -182,7 +182,6 @@ variable LRETIRE
 package WLFIND
 public
 variable LENTRY
-variable LNEWEST
 ;package
 package ENGINE-EMIT
 public
@@ -4566,8 +4565,8 @@ public
    LBL SWL-F1 !
    LBL SWL-F2 !
    LBL SWL-INL !
-   LBL LBL LBL LBL LBL LBL LBL LBL
-   {: plin:label ploop:label pnext:label pinl:label pcmp:label pmatch:label pend:label nend:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+   {: plin:label ploop:label pnext:label pinl:label pcmp:label pmatch:label pend:label :}
    11 0 MOVZ,
    12 0 MOVZ,
    \ Hash probe. x0 (name), x1 (len), x2 (wid) and x11 (result) are preserved
@@ -4603,7 +4602,6 @@ public
          8 8 1 SUBI,  8 plin CBZ,
          6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  ploop B,
    plin LBL,
-   4 0 MOVZ,                                               \ x4 = the entry the shared scan ends as: 0 LENTRY, 1 LNEWEST
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
@@ -4624,50 +4622,8 @@ public
          7 7 1 ADDI,  SWL-CMP LABEL@ B,
       SWL-MATCH LABEL@ LBL,  11 5 0 LDR,  12 5 0 ADDI,  SWL-NEXT LABEL@ B,
       SWL-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  SWL-LOOP LABEL@ B,
-   SWL-END LABEL@ LBL,  4 nend CBNZ,
-   pend LBL,  LENTRY LABEL@ RETRY,
-
-   WLFIND:LNEWEST LABEL@ LBL,
-   LBL LBL LBL LBL LBL LBL
-   {: nloop:label nnext:label ninl:label ncmp:label nmatch:label nlinear:label :}
-   12 0 MOVZ,
-   4 WL:RETIRED LIT64,  2 4 CMP,  C-EQ nlinear BCOND,
-   14 DATA HIDXP-CELL LDR,  14 nlinear CBZ,
-   0 1 15 4 16 7 C-HIDX-HASH
-   6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
-   8 HIDX-SLOTS LIT64,
-   nloop LBL,
-      17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,
-      3 nend CBZ,
-      4 3 1 SUBI,  4 NDICT CMP,  C-GE nnext BCOND,
-      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,
-      16 5 40 LDR,  16 2 CMP,  C-NE nnext BCOND,
-      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,
-      16 1 CMP,  C-NE nnext BCOND,
-      16 5 24 ADDI,
-      3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 ninl CBZ,
-         16 5 24 LDR,
-      ninl LBL,
-      7 0 MOVZ,
-      ncmp LBL,
-         7 1 CMP,  C-GE nmatch BCOND,
-         15 16 7 ADD,  15 15 0 LDRB,
-         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-         4 0 7 ADD,     4 4 0 LDRB,
-         3 4 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE nnext BCOND,
-         7 7 1 ADDI,  ncmp B,
-      nmatch LBL,
-         12 5 CMP,  C-CS nnext BCOND,
-         12 5 0 ADDI,
-      nnext LBL,
-         8 8 1 SUBI,  8 nlinear CBZ,
-         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  nloop B,
-   nend LBL,  WLFIND:LNEWEST LABEL@ RETRY,
-   nlinear LBL,
-      4 1 MOVZ,
-      3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-      SWL-LOOP LABEL@ B, ;
+   SWL-END LABEL@ LBL,
+   pend LBL,  LENTRY LABEL@ RETRY, ;
 ;package
 
 package ENGINE-EMIT
@@ -4693,11 +4649,6 @@ package ENGINE-EMIT
 : BCOMPILERSWL ( -- )
    2 G-POP  1 G-POP  0 G-POP
    WLFIND:LENTRY LABEL@ BL,
-   12 G-PUSH ;
-
-: BXREFNEWEST ( -- )
-   2 G-POP  1 G-POP  0 G-POP
-   WLFIND:LNEWEST LABEL@ BL,
    12 G-PUSH ;
 
 : BPARSE-NAME ( -- )
@@ -4895,7 +4846,6 @@ package ENGINE-EMIT
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" xref-wl-newest" ['] BXREFNEWEST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" discard-check" ['] BDISCARDCHECK FPRIM-L
    s" set-tier" ['] BSETTIER FPRIM     s" tier@" ['] BTIERFETCH FPRIM-L

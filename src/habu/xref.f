@@ -55,7 +55,7 @@ CAST: N>U8 ( n -- ptr u8 )
 public
 : REC ( n -- ptr n ) XREF-REC-ADDR N>REC ;
 : PTR@ ( ptr n n -- ptr u8 ) XREF-CELL@ N>U8 ;
-: INDEXED-WL ( ptr u8 n n -- ptr n ) xref-wl-newest ;
+: INDEXED-WL ( ptr u8 n n -- ptr n ) xref-search-wl ;
 ;package
 
 : XREF-REC ( n -- ptr n ) XREF:REC ;

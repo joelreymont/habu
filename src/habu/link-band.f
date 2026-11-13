@@ -167,7 +167,6 @@ variable UNSAFE-COUNT
    a u s" xref-retarget" XREF-STR=CI or
    a u s" search-wl" XREF-STR=CI or
    a u s" xref-search-wl" XREF-STR=CI or
-   a u s" xref-wl-newest" XREF-STR=CI or
    a u s" scope-find" XREF-STR=CI or
    a u s" tok-imm?" XREF-STR=CI or
    a u s" policy-admit" XREF-STR=CI or
