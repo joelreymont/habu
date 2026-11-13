@@ -9,20 +9,6 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 
-package PROC-RAW
-public
-
-: SPAWN-ARGV-ENV-CWD ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- ptr u8 ptr a ptr a ptr u8 fd fd fd )
-   {: pathz:ptr argv:ptr envp:ptr cwdz:ptr infd outfd errfd :}
-   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
-   argv ROWS PROCESS:ARGV-ROWS
-   envp ROWS PROCESS:ENV-ROWS
-   cwdz dup ZLEN PROCESS:CWD
-   infd outfd errfd LAUNCH
-   pathz argv envp cwdz infd outfd errfd ;
-
-;package
-
 package PROC-CWD
 
 private
