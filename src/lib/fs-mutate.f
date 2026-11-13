@@ -35,6 +35,8 @@ private
 2 constant CLEANUP-TREE
 $2D constant DASH
 17 constant EEXIST                    \ EEXIST on both targets
+4 constant RENAME-EXCL                \ renameatx_np's RENAME_EXCL
+1 constant NO-REPLACE                 \ renameat2's RENAME_NOREPLACE
 
 \ Process-wide, so COPY-FILE-STREAM is single-task: 8192 bytes is
 \ more than the per-task band carries, and a second task that copies needs its
@@ -151,18 +153,18 @@ public
 private
 PROCESS-SYMBOLS
 FUNCTION: LINK-CALL link ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LINKAT-CALL linkat ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: RENAMEAT2-CALL renameat2 ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: RENAMEATX-CALL renameatx_np ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
 
-\ Links NUL-terminated src to dst in dir, then unlinks src; false, src kept, if
-\ dst names an entry. A failed unlink is E-FS-IO, dst published. One mount.
+\ One rename that never replaces dst, so a throw has not published; false, src
+\ kept, if dst names an entry. File systems without it (NFS, 9p) throw E-FS-IO.
 : RENAME-NOREPLACE ( n ptr u8 ptr u8 -- bool )
    {: dir src:ptr dst:ptr :}
-   dir src dir dst 0 LINKAT-CALL 0<> if
-      FFI:ERRNO EEXIST = if false exit then
-      E-FS-IO ERRNO-FAIL
-   then
-   dir src 0 UNLINK-AT-CALL 0<> if E-FS-IO ERRNO-FAIL then
-   true ;
+   HB-TARGET-MACOS? if dir src dir dst RENAME-EXCL RENAMEATX-CALL
+   else dir src dir dst NO-REPLACE RENAMEAT2-CALL then
+   0= if true exit then
+   FFI:ERRNO EEXIST = if false exit then
+   E-FS-IO ERRNO-FAIL ;
 
 public
 \ A throw sets FS:ERRNO.
