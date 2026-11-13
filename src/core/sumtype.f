@@ -1055,6 +1055,29 @@ defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )
 defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )
 variable TDECL-EVAL-ARMED
 
+private
+
+\ The engine's cell holds INTERPRETER:CHILD-RUN as a raw execution token.
+CAST: AS-CHILD-RUN ( n -- [ ptr u8 n bool n n -- ] )
+
+\ Makes the child word NAME through CHILD-RUN, of a CHILD-ABI SHAPE and PARAM. A
+\ definer reaches the running engine through the cell, never by name: inside a
+\ build a name binds the tree's copy.
+: TDECL-CHILD ( ptr u8 n bool n n -- )
+   data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
+
+public
+
+\ The structures.f field words, OFF bytes into a record.
+: TDECL-CELL-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
+   na nu RES-FALSE CHILD-ABI:CELL-OFF off TDECL-CHILD ;
+
+: TDECL-PTR-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
+   na nu RES-FALSE CHILD-ABI:PTR-OFF off TDECL-CHILD ;
+
+: TDECL-BYTE-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
+   na nu RES-FALSE CHILD-ABI:BYTE-OFF off TDECL-CHILD ;
+
 
 private
 

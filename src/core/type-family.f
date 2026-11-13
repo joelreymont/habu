@@ -5277,6 +5277,26 @@ private
 : TFAM-MEMBERS-INSTALL ( -- ) [: TFAM-MEMBERS ;] is TFAM-MEMBERS-XT ;
 TFAM-MEMBERS-INSTALL
 
+\ What an offset child's output points at, from the record's pointee A.
+: CHILD-POINTEE ( n n -- n ) {: shape:n a:n :}
+   shape CHILD-ABI:CELL-OFF = IF a EXIT THEN
+   shape CHILD-ABI:PTR-OFF = IF FRESH MK-VAR MK-PTR EXIT THEN
+   shape CHILD-ABI:BYTE-OFF = IF CC-U8 MK-CON EXIT THEN
+   s" tfam: unknown child shape" 76 die ;
+
+public
+
+\ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
+\ and PARAM, in fresh checker terms.
+: TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
+   NEW
+   FRESH MK-ROW  FRESH MK-VAR {: base:n a:n :}
+   a MK-PTR base MK-PUSH
+   shape a CHILD-POINTEE MK-PTR base MK-PUSH
+   param ;
+
+private
+
 \ Payload transport uses the canonical logical-value seam. PUSH-LOGICAL expands
 \ every closed layout to its hidden physical fields, including a width-one enum,
 \ while scalar, pointer, and open terms retain their ordinary one-cell form.

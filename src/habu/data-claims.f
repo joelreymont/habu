@@ -184,6 +184,7 @@ create TAB
    PROVIDED-XT:DEFINE-CELL            1 cells                 CLAIM PROVIDED-XT-DEFINE-CELL
    PROVIDED-XT:APPEND-CELL            1 cells                 CLAIM PROVIDED-XT-APPEND-CELL
    PROVIDED-XT:POSTPONE-CELL          1 cells                 CLAIM PROVIDED-XT-POSTPONE-CELL
+   PROVIDED-XT:CHILD-CELL             1 cells                 CLAIM PROVIDED-XT-CHILD-CELL
    POLICY-ABI:KEYWORD-CELL            1 cells                 CLAIM POLICY-KEYWORD-CELL
    ENGINE-MAIN:ARENA-CELL             1 cells                 CLAIM ENGINE-MAIN-ARENA-CELL
    HALT-UNWIND-CELL                   1 cells                 CLAIM HALT-UNWIND-CELL

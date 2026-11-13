@@ -778,8 +778,9 @@
 \
 \ A capture keeps every checker symbol the engine holds.
 package CHECKER-REG
-\ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
-\ the one each checker publishes itself into as it loads.
+\ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is the
+\ image's own record: inside a build a store to it reaches the image being
+\ written, never the builder's checker.
 NCOMP-DISPATCH:DECL-CELL RESERVED-PTR-U8-CELL SOURCE-OWNER-A
 NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
 CHECKER-OWNER-ABI:RAW-OFF constant RAW-OFF
@@ -15071,15 +15072,28 @@ CHECKER-REG:}SCRATCH
    ELSE CHECKER-PUBLISH-PARSED THEN
    sa su CHECKER-ASIG-CAPTURE ;
 
+\ Publishes certified rows as built, under the signature text SA SU, which only
+\ a refusal names. Only USIG-ADD-AS's depth bound can trip.
+: CHECKER-ROWS-PUBLISH ( ptr u8 n ptr u8 n n n n n bool -- )
+   {: sa:ptr su:n na:ptr nu:n din:n dout:n rin:n rout:n hasr:bool :}
+   na nu na nu USIG-CERT-ADMIT
+   sa su na nu na nu  din dout rin rout  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
+   din KEEP-QUOTS
+   din dout rin rout hasr RES-TRUE E-ADD-EFFECT DL-TAKE
+   sa su CHECKER-ASIG-CAPTURE ;
+
 \ Publishes a cast's certified rows as parsed: a reparse refuses a view pack
-\ and drops the marks a gate raised. Only USIG-ADD-AS's depth bound can trip.
+\ and drops the marks a gate raised.
 : CHECKER-USIG-CERT-ROWS ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
-   na nu na nu USIG-CERT-ADMIT
-   sa su na nu na nu  SGIN @ SGOUT @ SGRIN @ SGROUT @  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
-   SGIN @ KEEP-QUOTS
-   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ RES-TRUE E-ADD-EFFECT DL-TAKE
-   sa su CHECKER-ASIG-CAPTURE ;
+   sa su na nu  SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @  CHECKER-ROWS-PUBLISH ;
+
+\ A child word's effect, rows a declaration built, for the pending record named
+\ NA NU: it has no signature text and no return clause.
+: CHECKER-CHILD-ROWS ( ptr u8 n n n -- )
+   {: na:ptr nu:n din:n dout:n :}
+   NULL-PTR 0 na nu din dout 0 0 RES-FALSE CHECKER-ROWS-PUBLISH
+   CHECKER-REC-SYM @ CK-CLOSE! ;
 
 $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
 create LBUF-SIG-BUF LBUF-SIG-CAP allot

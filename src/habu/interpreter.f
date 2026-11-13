@@ -1896,15 +1896,17 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ the handle names; `postpone ;` ends it as its source `;` would. The source
 \ cursor stays at the running word's call, where a refusal locates.
 
-: DEF-NAME-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
+\ WHO names the operation refused: `define-word`, or a declaration's child.
+: DEF-NAME-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
    s" E-MISSING-NAME" REFUSAL
-   s" define-word needs one token as the name: '" ERROR-TEXT:TYPE
+   w wu ERROR-TEXT:TYPE
+   s"  needs one token as the name: '" ERROR-TEXT:TYPE
    a u ERROR-TEXT:TYPE  s" '" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    RC-NO-NAME throw ;
 
-: DEF-OPEN-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
+: DEF-OPEN-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
    s" E-DEFINITION-OPEN" REFUSAL
-   s" define-word while a definition is open: " ERROR-TEXT:TYPE
+   w wu ERROR-TEXT:TYPE  s"  while a definition is open: " ERROR-TEXT:TYPE
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
 : DEF-GIVEN-SIG-BAD ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -1932,8 +1934,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ TSIG is read for a trusted head alone, so the signature lives only in the
 \ capture.
 : DEFINE-RUN ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n s:ptr su:n :}
-   PEND-CELL CELL@ 0<> if a u DEF-OPEN-REFUSE then
-   a u DEF-ONE-TOKEN? 0= if a u DEF-NAME-REFUSE then
+   PEND-CELL CELL@ 0<> if s" define-word" a u DEF-OPEN-REFUSE then
+   a u DEF-ONE-TOKEN? 0= if s" define-word" a u DEF-NAME-REFUSE then
    a u s su DEF-GIVEN-SIG {: p:ptr pu:n :}
    NCOMP-DISPATCH:TIER-CELL CELL@ NCOMP-DISPATCH:COMP-CELL CELL@ or 0= if
       DEF-TIER-0
@@ -2164,6 +2166,62 @@ variable DEF-VALUE
    DEF-REGISTER-CAST
    0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
    DEF-CAST-FACTS ;
+
+\ ---- child words a declaration makes ------------------------------------------
+\ CHILD-RUN makes the word NAME for a declaration, with no text: a fixed body of
+\ its CHILD-ABI shape, whose value and effect CHECK:CHILD makes from the shape
+\ and parameter while the record is pending. A private child goes into the
+\ package's private section.
+
+\ An unknown shape is the calling declaration's error.
+: CHILD-BODY ( n -- COMP:body ) {: shape:n :}
+   shape CHILD-ABI:CELL-OFF =
+   shape CHILD-ABI:PTR-OFF = or
+   shape CHILD-ABI:BYTE-OFF = or if COMP-BODY:offset exit then
+   RC-REJECT throw ;
+
+: CHILD-RECORD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
+   ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
+   0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
+   ta tu wid 0 DEF-RECORD ;
+
+: CHILD-CLOSE ( n n -- ) {: shape:n param:n :}
+   DEF-CAPTURED-NAME shape param CHECK:CHILD {: val:n :}
+   val shape CHILD-BODY DEF-FIXED
+   DEF-CLOSE
+   DEF-CAST-FACTS ;
+
+: CHILD-DEFINE ( ptr u8 n n n -- )
+   {: a:ptr u:n shape:n param:n :}
+   a u CHILD-RECORD
+   [: shape param CHILD-CLOSE ;] catch {: rc:n :}
+   rc 0<> if DEF-ABORT rc throw then ;
+
+\ True when the public section was left for the private one.
+: CHILD-PRIVATE ( bool -- bool ) {: priv:bool :}
+   priv 0= if false exit then
+   get-current PKG-PUB-CELL CELL@ <> if false exit then
+   PKG-PRI-CELL NCOMP-DISPATCH:DECL-PRIVATE-OFF PKG-SECTION
+   true ;
+
+: CHILD-PUBLIC ( bool -- )
+   if PKG-PUB-CELL NCOMP-DISPATCH:DECL-PUBLIC-OFF PKG-SECTION then ;
+
+: CHILD-RUN ( ptr u8 n bool n n -- )
+   {: a:ptr u:n priv:bool shape:n param:n :}
+   PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
+   a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
+   shape CHILD-BODY drop
+   NCOMP-DISPATCH:TIER-CELL CELL@ NCOMP-DISPATCH:COMP-CELL CELL@ or 0= if
+      DEF-TIER-0
+   then
+   DEF-ROOM
+   OVERLAY-GUARD
+   priv CHILD-PRIVATE {: left:bool :}
+   [: a u shape param CHILD-DEFINE ;] catch {: rc:n :}
+   left CHILD-PUBLIC
+   rc 0<> if rc throw then ;
 
 \ A qualified linear name is refused by the certifier before DEF-QUALIFY can
 \ create its namespace. A second colon is left to DEF-QUALIFY's syntax refusal.
@@ -2714,6 +2772,7 @@ public
    ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt!
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
-   ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt! ;
+   ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt!
+   ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt! ;
 
 ;package

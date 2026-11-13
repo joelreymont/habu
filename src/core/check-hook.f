@@ -210,6 +210,14 @@ public
    {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
 
+\ Registers the effect of the pending child word NAME of SHAPE and PARAM, lays
+\ its facts, and answers its body value.
+: CHILD ( ptr u8 n n n -- n )
+   {: na:ptr nu:n shape:n param:n :}
+   shape param TFAM:TFAM-CHILD-ROWS {: din:n dout:n val:n :}
+   na nu din dout CHECKER-CHILD-ROWS  na nu PENDING-FACTS
+   val ;
+
 private
 
 

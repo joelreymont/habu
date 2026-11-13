@@ -1098,6 +1098,26 @@ variable CANDIDATE-VERDICT
    s" undefine GD-UQ:MISSING" GE-SRC-LINE
    70 s" undefine: word not found" s" unknown qualified undefine fails closed" RUN-BAD-SOURCE ;
 
+\ A package's own `+`, `ptr-field` and `STRUCT-BYTE+` capture none of the
+\ field words it declares: they read POINT's layout.
+: FIELD-WORDS-SOURCE ( -- )
+   s" package GD-FW" GE-SRC-LINE
+   s" : ptr-field ( ptr a n -- ptr ptr b ) 1 + ptr-field ;" GE-SRC-LINE
+   s" : STRUCT-BYTE+ ( ptr a n -- ptr u8 ) 1 + STRUCT-BYTE+ ;" GE-SRC-LINE
+   s" : + ( ptr a n -- ptr a ) CELL + + ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" BEGIN-STRUCTURE FW" GE-SRC-LINE
+   s" CELL +FIELD FW.X" GE-SRC-LINE
+   s" CELL +FIELD FW.Y" GE-SRC-LINE
+   s" PTR-FIELD: FW.NAME" GE-SRC-LINE
+   s" CFIELD: FW.FLAGS" GE-SRC-LINE
+   s" END-STRUCTURE" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" GD-POINT GD-FW:FW.X @ ." GE-SRC-LINE
+   s" GD-POINT GD-FW:FW.Y @ ." GE-SRC-LINE
+   s" GD-POINT GD-FW:FW.FLAGS c@ ." GE-SRC-LINE
+   s" GD-POINT GD-FW:FW.NAME @ 2 type cr" GE-SRC-LINE ;
+
 : STRUCTURE-SOURCE ( -- )
    GE-SRC-RESET
    s" BEGIN-STRUCTURE POINT" GE-SRC-LINE
@@ -1123,7 +1143,8 @@ variable CANDIDATE-VERDICT
    s" : GD-USE-X ( ptr a -- ptr a ) POINT.X ;" GE-SRC-LINE
    s" : GD-USE-NAME ( ptr a -- ptr ptr u8 ) POINT.NAME ;" GE-SRC-LINE
    s" : GD-USE-PTR ( -- ptr ptr u8 ) GD-PTR ;" GE-SRC-LINE
-   s" : GD-USE-FLAGS ( ptr a -- ptr u8 ) POINT.FLAGS ;" GE-SRC-LINE ;
+   s" : GD-USE-FLAGS ( ptr a -- ptr u8 ) POINT.FLAGS ;" GE-SRC-LINE
+   FIELD-WORDS-SOURCE ;
 
 : STRUCTURES ( -- )
    GE-HB-RESET
@@ -1135,6 +1156,10 @@ variable CANDIDATE-VERDICT
    s" 22" GE-OUT-LINE
    s" 123" GE-OUT-LINE
    s" gd" GE-OUT-LINE
+   s" gd" GE-OUT-LINE
+   s" 11" GE-OUT-LINE
+   s" 22" GE-OUT-LINE
+   s" 123" GE-OUT-LINE
    s" gd" GE-OUT-LINE
    SB$ s" hb structures output" GE-EXPECT-OUT ;
 

@@ -559,6 +559,19 @@ $3860 constant EVALUATE-RANGE-CELL
 $3878 constant DEFINE-CELL
 $3880 constant APPEND-CELL
 $3888 constant POSTPONE-CELL
+\ A declaration makes each child word through the interpreter's CHILD-RUN,
+\ which this cell holds, with a CHILD-ABI shape code.
+$3890 constant CHILD-CELL
+;package
+
+\ A child word's shape: from it the engine makes the child's body and the effect
+\ it registers. An OFF child adds its parameter, a byte offset, to `ptr a`,
+\ answering `ptr a` for CELL-OFF, `ptr ptr b` for PTR-OFF, `ptr u8` for BYTE-OFF.
+package CHILD-ABI
+public
+0 constant CELL-OFF
+1 constant PTR-OFF
+2 constant BYTE-OFF
 ;package
 
 \ The checked interpreter's keyword test ( wid -- name len hit ), which every

@@ -197,6 +197,7 @@ public
       address OF ENDOF
       defer OF E-NDICT-KIND throw ENDOF
       cast OF E-NDICT-KIND throw ENDOF
+      offset OF E-NDICT-KIND throw ENDOF
    ;MATCH
    entry READ-FIXED ;
 
