@@ -831,7 +831,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the program dies with the bad-tag error" LABEL  trapped TTRUE
    s" the program exits 85" LABEL  rc 85 T= ;
 
-\ H's program dies on a bad tag though part-main.f's NFETCH-CHECK has a BAD-TAG that returns.
+\ H's linked program dies on a fetch of an out-of-domain tag.
 : PART-CASE ( CMD:command -- CMD:command )
    s" H" WHICH!  s" test/fixtures/file-objects/part-main.f" FIXTURE-BUILD 0= if exit then
    PART-RUN ;

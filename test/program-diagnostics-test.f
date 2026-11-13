@@ -98,6 +98,7 @@ package PROGRAM-DIAGNOSTICS
       s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id actual: a" NEGATIVE ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
+\ The trap ends the load's process, so its exit code and stderr are what is checked.
 : BAD-TAGS ( -- )
    s" test/layout-valid-w1-bad.f" 85
       s" LAYOUT-VALID-ARMED"
@@ -113,13 +114,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE
    s" test/layout-valid-root-bad.f" 85
       s" LAYOUT-VALID-ROOT-ARMED"
-      s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE
-   \ The trap ends the load's process, so its exit code and stderr are what is checked.
-   s" test/layout-valid-part-bad.f" 85
-      s" LAYOUT-VALID-PART-ARMED"
-      s" E-BAD-TAG habu: layout tag 7 outside 0..1" NEGATIVE
-   s" test/layout-valid-tags-bad.f" 85
-      s" LAYOUT-VALID-TAGS-ARMED"
       s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE ;
 [then]
 

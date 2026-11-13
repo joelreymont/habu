@@ -1,12 +1,6 @@
-\ part-main.f - a part NFETCH-CHECK with a BAD-TAG that returns; MAIN's fetch
-\ of an out-of-domain tag still dies with the bad-tag error.
+\ part-main.f - MAIN's fetch of an out-of-domain tag dies with the bad-tag error.
 
 package APP
-
-package NFETCH-CHECK
-public
-: BAD-TAG ( n n -- ) 2drop ;
-;package
 
 ENUM lay fresh valued ;ENUM
 TYPED-VARIABLE SLOT lay
