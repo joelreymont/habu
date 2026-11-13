@@ -4178,14 +4178,6 @@ variable READ-META-VALID
    a FAULT-TARGET u BYTE-COPY
    u FAULT-U ! ;
 
-\ A stream has no reusable stamp: it is read, but only a regular file takes the
-\ before/after stamp check.
-: QUIET-FILE-META ( ptr u8 n -- n n n n n bool )
-   FS:TRY-STAT 0= IF 0 0 0 0 0 false EXIT THEN
-   FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG <> IF 0 0 0 0 0 false EXIT THEN
-   FS:STAT-SIZE@ FS:STAT-MTIME-SEC@ FS:STAT-MTIME-NS@
-   FS:STAT-CTIME-SEC@ FS:STAT-CTIME-NS@ true ;
-
 : READ-FILL ( -- )
    0 READ-U !
    BEGIN
@@ -4197,12 +4189,14 @@ variable READ-META-VALID
       READ-U @ + READ-U !
    REPEAT drop ;
 
+\ A stream has no reusable stamp: it is read, but only a regular file takes the
+\ before/after stamp check.
 : QUIET-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop {: path:ptr pathu:n :}
    0 READ-META-VALID !
    path pathu READ-PATHZ PATH-CAP 1+ PATHZ
    pathu READ-PATH-U !
-   path pathu QUIET-FILE-META
+   path pathu FS:TRY-FILE-META
    {: size:n msec:n mns:n csec:n cns:n valid:bool :}
    READ-PATHZ open-rd {: fd:n :}
    fd 0 < IF path pathu FAULT-TARGET!  E-SOURCE-READ throw THEN
@@ -4212,7 +4206,7 @@ variable READ-META-VALID
    rc E-SOURCE-READ = IF path pathu FAULT-TARGET! THEN
    rc 0<> IF rc throw THEN
    valid IF
-      path pathu QUIET-FILE-META
+      path pathu FS:TRY-FILE-META
       {: after:n amsec:n amns:n acsec:n acns:n still:bool :}
       size after = msec amsec = and mns amns = and
       csec acsec = and cns acns = and still and 0= IF

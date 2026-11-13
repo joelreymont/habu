@@ -416,12 +416,14 @@ public
    STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then
    STAT-SIZE@ ;
 
+: TRY-FILE-META ( ptr u8 n -- n n n n n bool )
+   TRY-STAT 0= if 0 0 0 0 0 false exit then
+   STAT-MODE@ S-IFMT and S-IFREG <> if 0 0 0 0 0 false exit then
+   STAT-SIZE@ STAT-MTIME-SEC@ STAT-MTIME-NS@
+   STAT-CTIME-SEC@ STAT-CTIME-NS@ true ;
+
 : FILE-META ( ptr u8 n -- n n n n n )
-   TRY-STAT 0= if E-FS-STAT throw then
-   STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then
-   STAT-SIZE@
-   STAT-MTIME-SEC@ STAT-MTIME-NS@
-   STAT-CTIME-SEC@ STAT-CTIME-NS@ ;
+   TRY-FILE-META 0= if E-FS-STAT throw then ;
 
 : FILE? ( ptr u8 n -- bool )
    TRY-STAT-MODE MATCH option

@@ -191,7 +191,8 @@ create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling part ran, 8 byt
 create REACHED BUF:HDR-BYTES allot
 create PENDING-PATHS BUF:HDR-BYTES allot \ the paths the checked part's earlier acts provided, each a FIELD+
 create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
-create UNDER-PATH BUF:HDR-BYTES allot \ RESOLVE-UNDER's answer under another root
+PATH-CAP BUFFER: UNDER-PATH          \ RESOLVE-UNDER's answer under another root
+variable UNDER-PATH-N
 create ENTRY-ROOT BUF:HDR-BYTES allot \ the root current as the part started (MARKS)
 create EXIT-ROOT BUF:HDR-BYTES allot \ the root current as the part ended
 create PART-READS BUF:HDR-BYTES allot \ the reads the part's compile made (READS-KEEP)
@@ -204,6 +205,19 @@ create LOAD-PATHS BUF:HDR-BYTES allot \ each load's key, then its path below its
 create KEY-PATHS BUF:HDR-BYTES allot  \ each loaded or named file's path once, a FIELD+; a key's first cell is its offset
 create OBJ-PATHS BUF:HDR-BYTES allot  \ the object's PATHS as WRITE-OBJECT lays it
 create OBJ-NAME BUF:HDR-BYTES allot   \ an object's name below BUILD-OUT:OBJ$'s directory
+\ INPUTS: a record per part the build linked or compiled and per loader event made while no load was open other than the
+\ request that starts a load, which is that load's first part's (TOP-EV), in the order they ran, each number 8 bytes and
+\ each path a FIELD+, each record its kind first. A part's (INPUT-PART): its canonical source path; its stamp
+\ (STAMP-BYTES); its entry root, exit root and compile reads (INPUT); the request no part made that loaded it (TOP-EV):
+\ its kind, -1 for none, -2 for one not seen, the root current as it was made and its spelled path; its act count, then
+\ per act its kind, spelled path, root and the canonical path the spelling resolves to under that root; its request's
+\ kind, -1 for none, spelled and loaded paths. An UNLINKABLE part's record keeps its source path; its size is -1, its
+\ roots and reads empty, its requests -1 and its acts none. An event's (EV-INPUT): the root current as it was made, its
+\ spelled path and the canonical path it found.
+create INPUTS BUF:HDR-BYTES allot
+0 constant INPUT-PART
+1 constant INPUT-SKIP                \ a require the registry held
+2 constant INPUT-PROVIDE
 DYNAMIC-BUFFER BUILT-PATHS n         \ BUILT row r's path: its FIELD+'s offset in LOAD-PATHS
 KEY-BYTES BUFFER: FILE-KEY
 \ An object's INPUT: the source's stamp (STAMP-BYTES), then the part's entry root, its exit root and its compile's
@@ -365,6 +379,11 @@ variable FILE-PART                   \ the part compiling or linking, from 0
 variable FILE-OFF                    \ the offset in the source the compiling or linking part starts at
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-EVENT                  \ the first event of the loader's log the piece made
+\ The loader's log event of the request no part made that loaded the running part, -1 for a part another started, -2
+\ when the log holds no such request (TOP-REQUEST).
+variable TOP-EV
+\ The first loader event EVENTS-LOG has yet to log; LOAD moves it past a top-level load's own events as the load ends.
+variable LOGGED-EV
 variable FILE-RUN                    \ the first entry of INTERPRETER's run log the piece made
 variable FILE-END                    \ here's distance as the piece ends
 \ The running piece holds a header-data address outside its STORES rows' cells: a tag-4
@@ -379,7 +398,9 @@ PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused referenc
 variable FILE-PATH-N
 variable STORES-AT                   \ the offset in OBJECT of STORES' count, of the piece placed or object read
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
-variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
+variable ACTS-AT                     \ the offset in OBJECT of ACTS' count, of the piece placed or object read
+variable REQS-AT                     \ the offset in OBJECT of REQUESTS, of the object written or read
+variable REQS-N                      \ its REQUESTS rows: 1 when a request ends the part, else 0 (REQUESTS-CK)
 \ The compiling part never links (WRITE-OBJECT): no stamp, a start or end off TOP-SCOPE?, an unclean cut
 \ ending it or the part before (NEST), a load it asked for the runner never ran (ACTS+).
 TYPED-VARIABLE UNLINKABLE bool
@@ -463,7 +484,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    FILE-ROWS-RELEASE
    DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
-   LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT BUF:DISPOSE  REQ-PATH BUF:DISPOSE  UNDER-PATH BUF:DISPOSE
+   LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT BUF:DISPOSE  REQ-PATH BUF:DISPOSE  INPUTS BUF:DISPOSE
    ENTRY-ROOT BUF:DISPOSE  EXIT-ROOT BUF:DISPOSE  PART-READS BUF:DISPOSE  PART-TEXTS BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  REACHED BUF:DISPOSE  RAN-RECS BUF:DISPOSE
    SPELLS BUF:DISPOSE  NAMED-RECS BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE  PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  WORD-RECS BUF:DISPOSE  WORD-ROWS BUF:DISPOSE  USED-EXTS BUF:DISPOSE  REFS BUF:DISPOSE
@@ -488,7 +509,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    REACHED 256 BUF:N>BLEN BUF:INIT
    PENDING-PATHS 256 BUF:N>BLEN BUF:INIT
    REQ-PATH 256 BUF:N>BLEN BUF:INIT
-   UNDER-PATH 256 BUF:N>BLEN BUF:INIT
+   INPUTS 256 BUF:N>BLEN BUF:INIT
    ENTRY-ROOT 256 BUF:N>BLEN BUF:INIT
    EXIT-ROOT 256 BUF:N>BLEN BUF:INIT
    PART-READS 256 BUF:N>BLEN BUF:INIT
@@ -2529,7 +2550,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    CODE+  DATA+  EDGES-N @ {: start:n :}
    PIECES BYTES$ nip STORES-AT !  STORES+  BUILT-N start ROW-EDGES!
    PIECES BYTES$ nip FACTS-AT !  FACTS+
-   req ACTS+
+   PIECES BYTES$ nip ACTS-AT !  req ACTS+
    req PIECES U64+ ;
 
 \ As the file's compile starts: no FILES, WORDS, EXTENTS, REQUESTS, RAN-RECS, TIMES or piece yet,
@@ -2615,7 +2636,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    pieces piecesu OBJECT SPAN+
    OBJ-TAKE drop                       \ PIECE-PLACE reads the object with no RD-OPEN first
    files-at KEYS-OUT
-   pieces-at STORES-AT +!  pieces-at FACTS-AT +!
+   pieces-at STORES-AT +!  pieces-at FACTS-AT +!  pieces-at ACTS-AT +!
+   reqs-at REQS-AT !  requ 0<> if 1 else 0 then REQS-N !
    STAMPED? 0= if exit then
    \ Unsynced: an object a crash cut short fails HEADER-CK's or PIECE-CK's bounds checks and compiles.
    OBJECT$ {: obj:ptr obju:n :}
@@ -2715,8 +2737,6 @@ variable RECS-N                       \ its records: entries neither KIND-PRIVAT
 variable EMS-N                        \ its emissions, E
 variable DATA-AT                      \ the offset in OBJECT of DATA's D
 variable EXTS-AT                      \ of its X
-variable REQS-AT                      \ the offset in OBJECT of its REQUESTS
-variable REQS-N                       \ its REQUESTS rows: 1 when a request ends the part, else 0 (REQUESTS-CK)
 variable PIECE-AT                     \ the offset in OBJECT of the part's piece (HEADER-CK)
 \ Only the check uses these and DOES-AT.
 variable FILES-N                      \ its FILES rows
@@ -3306,6 +3326,9 @@ variable RD-END
    a u SOURCE-ROOT:CURRENT$ STR= if true exit then
    a u a u ROOT-HOLDS? ;
 
+\ Whether a part's entry root is the current one, as its link needs.
+: ENTRY-HOLDS? ( ptr u8 n -- bool ) SOURCE-ROOT:CURRENT$ STR= ;
+
 \ Whether the environment variable holds the value it held, or is absent when value is NULL-PTR.
 : ENV-HOLDS? ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
@@ -3314,18 +3337,31 @@ variable RD-END
    e NULL-PTR - 0= if false exit then
    e eu b v STR= ;
 
-\ Whether the read of the kind (COMPILE-READS) reads the same now.
+: NUL-FREE? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   u 0 ?do  a i + c@ 0= if unloop false exit then  loop
+   true ;
+
+\ Whether the bytes are a path FS takes without a throw: at most PATH-CAP bytes, none of them NUL.
+: PATH-OK? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   u PATH-CAP > if false exit then
+   a u NUL-FREE? ;
+
+\ Whether the read of the kind (COMPILE-READS) reads the same now; false for a spelling holding a NUL, which ROOT?
+\ would refuse with a throw (E-PATH-NUL).
 : READ-HOLDS? ( n ptr u8 n ptr u8 n -- bool )
    {: kind:n a:ptr u:n b:ptr v:n :}
+   a u NUL-FREE? 0= if false exit then
    kind COMPILE-READS:ROOT-READ = if a u b v ROOT-HOLDS? exit then
    kind COMPILE-READS:ENV-READ = if a u b v ENV-HOLDS? exit then
    kind COMPILE-READS:ENV-ABSENT = if a u NULL-PTR 0 ENV-HOLDS? exit then
    false ;
 
-\ Whether every read in INPUT's reads (field 2) reads the same now, in COMPILE-READS' layout: false when a read's
-\ lengths run past the field. A link check runs outside any recording, so these lookups record nothing.
-: READS-HOLD? ( -- bool )
-   2 INPUT-AT FIELD$ {: p:ptr pu:n :}
+\ Whether every read in the bytes, an INPUT reads field in COMPILE-READS' layout, reads the same now: false when a
+\ read's lengths run past them. A link check runs outside any recording, so these lookups record nothing.
+: READS-HOLD? ( ptr u8 n -- bool )
+   {: p:ptr pu:n :}
    0 begin dup pu < while
       {: at:n :}
       at 24 + pu > if false exit then
@@ -3342,8 +3378,26 @@ variable RD-END
 : RESOLVE-UNDER ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    {: a:ptr u:n root:ptr rootu:n :}
    root rootu SOURCE-ROOT:CURRENT$ STR= if a u SOURCE-ROOT:RESOLVE exit then
-   root rootu [: a u SOURCE-ROOT:RESOLVE UNDER-KNOWN ! BUF:N>BLEN UNDER-PATH BUF:REPLACE ;] SOURCE-ROOT:WITH
-   UNDER-PATH BYTES$ UNDER-KNOWN @ ;
+   root rootu [:
+      a u SOURCE-ROOT:RESOLVE UNDER-KNOWN !
+      dup PATH-CAP > if E-PATH-RANGE throw then
+      dup UNDER-PATH-N !  UNDER-PATH swap BYTE-COPY
+   ;] SOURCE-ROOT:WITH
+   UNDER-PATH UNDER-PATH-N @ UNDER-KNOWN @ ;
+
+\ The act's spelled path resolved under the root it was spelled in, RESOLVE-UNDER's known flag, and whether that root
+\ stands (ROOT-STANDS?); an empty path when it does not.
+: ACT-RESOLVE ( ptr u8 n ptr u8 n -- ptr u8 n bool bool )
+   {: a:ptr u:n root:ptr rootu:n :}
+   root rootu ROOT-STANDS? 0= if a 0 false false exit then
+   a u root rootu RESOLVE-UNDER true ;
+
+\ The request's spelled path resolved under the exit root, RESOLVE-UNDER's known flag, and whether it is the loaded
+\ path and a regular file.
+: REQ-RESOLVE ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n bool bool )
+   {: s:ptr su:n x:ptr xu:n l:ptr lu:n :}
+   s su x xu RESOLVE-UNDER {: c:ptr cu:n known:bool :}
+   c cu known  c cu l lu STR=  c cu FS:FILE?  and ;
 
 
 \ A record reference (file, sum, count) naming a package: an earlier entry of KIND-PACKAGE, or an
@@ -4182,9 +4236,8 @@ variable PRIOR-STORES-SIZE
    ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: kind:n :}
-      RD-NAME RD-NAME {: a:ptr u:n root:ptr rootu:n :}
-      root rootu ROOT-STANDS? 0= if BAD unloop exit then
-      a u root rootu RESOLVE-UNDER {: canon:ptr canonu:n known:bool :}
+      RD-NAME RD-NAME ACT-RESOLVE {: canon:ptr canonu:n known:bool stands:bool :}
+      stands 0= if BAD unloop exit then
       kind EV-PROVIDED = if
          canon canonu PENDING-PATHS FIELD+
       else
@@ -4203,18 +4256,329 @@ variable PRIOR-STORES-SIZE
    HEADER-CK
    REQS-N @ 0<> if 0 else -1 then PIECE-CK
    GOOD? 0= if false exit then
-   0 INPUT-AT FIELD$  SOURCE-ROOT:CURRENT$  STR= 0= if false exit then
-   READS-HOLD? 0= if false exit then
+   0 INPUT-AT FIELD$ ENTRY-HOLDS? 0= if false exit then
+   2 INPUT-AT FIELD$ READS-HOLD? 0= if false exit then
    ACTS-WALK
    GOOD? 0= if false exit then
    1 INPUT-AT FIELD$ ROOT-STANDS? 0= if false exit then
    REQS-N @ 0= if true exit then
    REQ-FIELDS {: kind:n spelled:n loaded:n :}
-   spelled FIELD$  1 INPUT-AT FIELD$  RESOLVE-UNDER {: canon:ptr canonu:n known:bool :}
-   canon canonu  loaded FIELD$  STR= 0= if false exit then
-   canon canonu FS:FILE? 0= if false exit then
+   spelled FIELD$  1 INPUT-AT FIELD$  loaded FIELD$  REQ-RESOLVE {: canon:ptr canonu:n known:bool ok:bool :}
+   ok 0= if false exit then
    kind SOURCE-UNIT:LOAD-REQUIRE <> if true exit then
    canon canonu known REGISTERED? 0= ;
+
+
+\ ---- the inputs log ---------------------------------------------------------------
+
+\ The running part's request in INPUTS, from OBJECT's REQUESTS row.
+: REQ-LOG ( -- )
+   REQS-N @ 0= if -1 INPUTS U64+  0 INPUTS U64+  0 INPUTS U64+ exit then
+   REQ-FIELDS {: kind:n spelled:n loaded:n :}
+   kind INPUTS U64+  spelled FIELD$ INPUTS FIELD+  loaded FIELD$ INPUTS FIELD+ ;
+
+\ The running part's acts in INPUTS, from OBJECT's ACTS rows, each with the path it resolves to (ACT-RESOLVE).
+: ACTS-LOG ( -- )
+   ACTS-AT @ {: at:n :}
+   at OBJ@ {: n:n :}
+   n INPUTS U64+
+   at 8 +  n 0 ?do
+      {: row:n :}
+      row 8 + {: spelled:n :}
+      spelled 8 + spelled OBJ@ + {: root:n :}
+      row OBJ@ INPUTS U64+  spelled FIELD$ INPUTS FIELD+  root FIELD$ INPUTS FIELD+
+      spelled FIELD$ root FIELD$ ACT-RESOLVE 2drop INPUTS FIELD+
+      root 8 + root OBJ@ +
+   loop drop ;
+
+\ The request no part made that loaded the running part in INPUTS, from the loader's log event TOP-EV.
+: TOP-LOG ( -- )
+   TOP-EV @ {: ev:n :}
+   ev 0< if ev INPUTS U64+  0 INPUTS U64+  0 INPUTS U64+ exit then
+   ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then INPUTS U64+
+   ev SOURCE-EVENT:CURRENT@ INPUTS FIELD+  ev EVENT-SPELLED@ INPUTS FIELD+ ;
+
+\ The running part's INPUTS record, from OBJECT once HEADER-CK and ACTS-CK read it or WRITE-OBJECT laid it, and from
+\ the loader's log for a part a request no part made loaded (TOP-LOG).
+: PART-LOG ( -- )
+   INPUT-PART INPUTS U64+
+   FILE-KEY CANON$ INPUTS FIELD+
+   HEADER-BYTES OBJ-PTR STAMP-BYTES INPUTS SPAN+
+   HEADER-BYTES 16 + OBJ@ -1 = if
+      0 INPUTS U64+  0 INPUTS U64+  0 INPUTS U64+
+      -1 INPUTS U64+  0 INPUTS U64+  0 INPUTS U64+
+      0 INPUTS U64+
+      -1 INPUTS U64+  0 INPUTS U64+  0 INPUTS U64+
+      exit
+   then
+   0 INPUT-AT FIELD$ INPUTS FIELD+  1 INPUT-AT FIELD$ INPUTS FIELD+  2 INPUT-AT FIELD$ INPUTS FIELD+
+   TOP-LOG  ACTS-LOG  REQ-LOG ;
+
+\ PART-LOG with no recording active, so its resolves add no read to a compiling part.
+: INPUTS+ ( -- ) ['] PART-LOG COMPILE-READS:UNRECORDED ;
+
+\ The loader event's INPUTS kind: INPUT-SKIP for a require the registry held, INPUT-PROVIDE for a provide; -1 for any
+\ other, a load no LOAD started, which never holds.
+: EV-INPUT ( n -- n )
+   {: ev:n :}
+   ev EVENT-KIND@ {: kind:n :}
+   kind EV-PROVIDED = if INPUT-PROVIDE exit then
+   kind EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-KNOWN =  and if INPUT-SKIP exit then
+   -1 ;
+
+\ The loader's events from LOGGED-EV to the one before end in INPUTS, each one made while no load was open.
+: EVENTS-LOG ( n -- )
+   {: end:n :}
+   end LOGGED-EV @ ?do
+      i EV-INPUT INPUTS U64+
+      i SOURCE-EVENT:CURRENT@ INPUTS FIELD+  i EVENT-SPELLED@ INPUTS FIELD+  i EVENT-PATH@ INPUTS FIELD+
+   loop
+   end LOGGED-EV ! ;
+
+
+\ ---- replaying the inputs log -------------------------------------------------------
+\ INPUTS-HOLD? runs the log through a machine of include.f's loader. State: NEXT-REC, what the next record is; the
+\ current root (LOG-ROOT); the path of the innermost open load's file (LOG-PART); the roots the open loads restore,
+\ innermost last, each with LOG-PART as the load began, the requesting file's for a nested load (LOG-ROOTS: LOAD-RAW's ROOT-ENTER saves CURRENT@ and its
+\ ROOT-LEAVE restores it, as WITH's pair does); the build's registry, which every resolve consults:
+\ the process's own made empty as a build's open makes it (REQUIRE-SNAPSHOT), restored at the end (REQUIRE-RESTORE).
+\ Inputs: the records in order. Transitions:
+\ - outside, an event: made from the current root, its spelling resolves (RESOLVE: SELECT, SEARCH-ROOTS, ABS-OWNER) to
+\   its path, which a skipped require finds registered (REQUIRE-BODY) and a provide registers (provided); outside.
+\ - outside, a part: its request no part made, made from the current root, loads it (LOADS?).
+\ - requested, a part: the request the last part ended with, for the part's path, loads it (LOADS?).
+\ - resumed, a part: its path is the popped one, as the next part after a nested load is always the requesting file's,
+\   an empty last part included; its entry root is the current root.
+\ - LOADS?: the spelling resolves from the current root to the part's path, a require's unregistered, then registered
+\   (REQUIRE-BODY); the owner root (RESOLVED-ROOT$) made canonical (ROOT-ENTER) is the part's entry root; the current
+\   root and LOG-PART are pushed and the entry root made current.
+\ - then the part runs: its stamp and reads hold, each act resolves as it did, a require's registered and a provide's
+\   registered after (ACTS-WALK), its exit root stands and is made current (ROOT!) and its path LOG-PART; a request
+\   ends it: requested; none ends its load: the root popped is made current (ROOT-LEAVE) and the path popped LOG-PART,
+\   resumed, or outside once no load stays open.
+\ The log holds when every record holds and the machine ends outside.
+
+\ The log's number at the offset and the offset past it; -1 for the offset when the bytes end first.
+: LOG-CELL ( ptr u8 n n -- n n )
+   {: p:ptr pu:n at:n :}
+   at 0<  at pu 8 - >  or if 0 -1 exit then
+   p at + LE:U64@  at 8 + ;
+
+\ The log's FIELD+ at the offset and the offset past it; -1 for the offset when the bytes end first.
+: LOG-FIELD ( ptr u8 n n -- ptr u8 n n )
+   {: p:ptr pu:n at:n :}
+   p pu at LOG-CELL {: u:n next:n :}
+   next 0<  u 0<  or  u pu next - >  or if p 0 -1 exit then
+   p next +  u  next u + ;
+
+\ LOG-FIELD for a path, -1 for the offset when it is not PATH-OK?, so no FS or resolver call ever takes it.
+: LOG-PATH ( ptr u8 n n -- ptr u8 n n )
+   LOG-FIELD {: a:ptr u:n next:n :}
+   a u PATH-OK? if a u next else a 0 -1 then ;
+
+\ Each HOLD- word takes the log's bytes and an offset in a record and answers the offset past what it checked, or -1
+\ when that does not hold now or runs past the bytes.
+
+\ Whether the file at the canonical path is a regular file with the stamp's change time and size.
+: STAMP-HOLDS? ( ptr u8 n n n n -- bool )
+   {: a:ptr u:n sec:n ns:n size:n :}
+   size -1 = if false exit then
+   a u FS:TRY-FILE-META {: fsize:n msec:n mns:n csec:n cns:n file:bool :}
+   file 0= if false exit then
+   csec sec =  cns ns =  and  fsize size =  and ;
+
+: HOLD-SOURCE ( ptr u8 n n -- n )
+   {: p:ptr pu:n at:n :}
+   p pu at LOG-PATH {: a:ptr u:n at1:n :}
+   p pu at1 LOG-CELL {: sec:n at2:n :}
+   p pu at2 LOG-CELL {: ns:n at3:n :}
+   p pu at3 LOG-CELL {: size:n at4:n :}
+   at4 0< if -1 exit then
+   a u sec ns size STAMP-HOLDS? if at4 else -1 then ;
+
+\ What the next record is: outside any load, the first part of the file the last part requested, or the next part of
+\ the file whose request's load just ended.
+ENUM expect outside requested resumed ;ENUM
+TYPED-VARIABLE NEXT-REC expect
+variable LOG-ROOT                    \ the current root's offset in the log, -1 for SOURCE-ROOT:CURRENT$
+variable LOG-ROOT-U                  \ its length
+variable LOG-PART                    \ the offset in the log of the path of the innermost open load's file
+variable LOG-PART-U                  \ its length
+variable LOG-REQ                     \ the offset in the log of the request the last part ended with
+\ The roots the open loads restore, each with LOG-PART as the load began (the requesting file's path for a nested
+\ load): each one's LOG-ROOT, LOG-ROOT-U, LOG-PART and LOG-PART-U.
+create LOG-ROOTS BUF:HDR-BYTES allot
+
+: CUR-ROOT$ ( ptr u8 -- ptr u8 n )
+   {: p:ptr :}
+   LOG-ROOT @ 0< if SOURCE-ROOT:CURRENT$ exit then
+   p LOG-ROOT @ +  LOG-ROOT-U @ ;
+
+: ROOT-PUSH ( -- )
+   LOG-ROOT @ LOG-ROOTS U64+  LOG-ROOT-U @ LOG-ROOTS U64+
+   LOG-PART @ LOG-ROOTS U64+  LOG-PART-U @ LOG-ROOTS U64+ ;
+
+\ The innermost open load's restored root made current and LOG-PART as that load began; false when no load is open.
+: ROOT-POP ( -- bool )
+   LOG-ROOTS BYTES$ {: a:ptr u:n :}
+   u 32 < if false exit then
+   a u + 32 - {: e:ptr :}
+   e LE:U64@ LOG-ROOT !  e 8 + LE:U64@ LOG-ROOT-U !
+   e 16 + LE:U64@ LOG-PART !  e 24 + LE:U64@ LOG-PART-U !
+   u 32 - BUF:N>BLEN LOG-ROOTS BUF:LEN!
+   true ;
+
+\ The resolved path into the build's registry once, as `provided` stores it.
+: REG+ ( ptr u8 n -- )
+   2dup REQUIRE-KNOWN? if 2drop exit then
+   REQUIRE-STORE 2drop ;
+
+: LOAD-KIND? ( n -- bool )
+   {: kind:n :}
+   kind SOURCE-UNIT:LOAD-INCLUDE =  kind SOURCE-UNIT:LOAD-REQUIRE =  or ;
+
+\ Whether the request (kind, spelling) loads the part whose path and entry root sit at the offsets in the log, of the
+\ lengths, as LOAD-RAW would from the current root now; true registers a require's path, pushes the current root and
+\ LOG-PART and makes the entry root current.
+: LOADS? ( ptr u8 n ptr u8 n n n n n -- bool )
+   {: p:ptr kind:n s:ptr su:n c:n cu:n e:n eu:n :}
+   kind LOAD-KIND? 0=  su 0=  or if false exit then
+   s su  p CUR-ROOT$  RESOLVE-UNDER {: a:ptr au:n known:bool :}
+   a au  p c + cu  STR= 0= if false exit then
+   SOURCE-ROOT:RESOLVED-ROOT$ SOURCE-ROOT:ROOT? {: o:ptr ou:n ok:bool :}
+   ok 0= if false exit then
+   o ou  p e + eu  STR= 0= if false exit then
+   kind SOURCE-UNIT:LOAD-REQUIRE = if
+      p c + cu  REQUIRE-KNOWN? if false exit then
+      p c + cu REG+
+   then
+   ROOT-PUSH  e LOG-ROOT !  eu LOG-ROOT-U !
+   true ;
+
+\ Whether the request at LOG-REQ is for the part's path and loads it (LOADS?).
+: REQUESTED? ( ptr u8 n n n n n -- bool )
+   {: p:ptr pu:n c:n cu:n e:n eu:n :}
+   p pu LOG-REQ @ LOG-CELL {: kind:n at1:n :}
+   p pu at1 LOG-PATH {: s:ptr su:n at2:n :}
+   p pu at2 LOG-PATH {: l:ptr lu:n at3:n :}
+   at3 0< if false exit then
+   l lu  p c + cu  STR= 0= if false exit then
+   p kind s su c cu e eu LOADS? ;
+
+\ The request no part made that loaded the part, and the part's entry by NEXT-REC; the part's path and entry root sit
+\ at the offsets in the log, of the lengths.
+: HOLD-ENTRY ( ptr u8 n n n n n n -- n )
+   {: p:ptr pu:n at:n c:n cu:n e:n eu:n :}
+   p pu at LOG-CELL {: kind:n at1:n :}
+   p pu at1 LOG-PATH {: r:ptr ru:n at2:n :}
+   p pu at2 LOG-PATH {: s:ptr su:n at3:n :}
+   at3 0< if -1 exit then
+   NEXT-REC @ MATCH expect
+      outside OF  r ru p CUR-ROOT$ STR=  dup if drop p kind s su c cu e eu LOADS? then  ENDOF
+      requested OF  kind -1 =  dup if drop p pu c cu e eu REQUESTED? then  ENDOF
+      resumed OF
+         kind -1 =  p e + eu p CUR-ROOT$ STR=  and
+         p c + cu  p LOG-PART @ + LOG-PART-U @  STR=  and
+      ENDOF
+   ;MATCH
+   if at3 else -1 then ;
+
+: HOLD-ACT ( ptr u8 n n -- n )
+   {: p:ptr pu:n at:n :}
+   p pu at LOG-CELL {: kind:n at1:n :}
+   p pu at1 LOG-PATH {: s:ptr su:n at2:n :}
+   p pu at2 LOG-PATH {: r:ptr ru:n at3:n :}
+   p pu at3 LOG-PATH {: c:ptr cu:n at4:n :}
+   at4 0<  su 0=  or if -1 exit then
+   kind EV-REQUIRED <>  kind EV-PROVIDED <>  and if -1 exit then
+   s su r ru ACT-RESOLVE {: a:ptr au:n known:bool stands:bool :}
+   stands  a au c cu STR=  and 0= if -1 exit then
+   kind EV-PROVIDED = if c cu REG+ at4 exit then
+   c cu REQUIRE-KNOWN? if at4 else -1 then ;
+
+\ An act takes at least 32 bytes, so a count the bytes cannot hold is -1 before any act is read.
+: HOLD-ACTS ( ptr u8 n n -- n )
+   {: p:ptr pu:n at:n :}
+   p pu at LOG-CELL {: n:n at1:n :}
+   n 0<  n  pu at1 - 32 /  >  or if -1 exit then
+   at1  n 0 ?do  p pu rot HOLD-ACT  loop ;
+
+\ The request the part ended with, its exit root current: NEXT-REC by it.
+: HOLD-REQUEST ( ptr u8 n n -- n )
+   {: p:ptr pu:n at:n :}
+   p pu at LOG-CELL {: kind:n at1:n :}
+   p pu at1 LOG-PATH {: s:ptr su:n at2:n :}
+   p pu at2 LOG-PATH {: l:ptr lu:n at3:n :}
+   at3 0< if -1 exit then
+   kind -1 = if
+      ROOT-POP 0= if -1 exit then
+      LOG-ROOTS BYTES$ nip 0= if construct expect outside else construct expect resumed then NEXT-REC !
+      at3 exit
+   then
+   kind LOAD-KIND? 0= if -1 exit then
+   at LOG-REQ !  construct expect requested NEXT-REC !
+   at3 ;
+
+: HOLD-PART ( ptr u8 n n -- n )
+   {: p:ptr pu:n at:n :}
+   p pu at LOG-PATH {: c:ptr cu:n at0:n :}
+   p pu at HOLD-SOURCE {: at1:n :}
+   p pu at1 LOG-PATH {: e:ptr eu:n at2:n :}
+   p pu at2 LOG-PATH {: x:ptr xu:n at3:n :}
+   p pu at3 LOG-FIELD {: r:ptr ru:n at4:n :}
+   at4 0< if -1 exit then
+   p pu at4  at 8 + cu  at1 8 + eu  HOLD-ENTRY {: at5:n :}
+   at5 0< if -1 exit then
+   r ru READS-HOLD? 0= if -1 exit then
+   p pu at5 HOLD-ACTS {: at6:n :}
+   at6 0<  x xu ROOT-STANDS? 0=  or if -1 exit then
+   at2 8 + LOG-ROOT !  xu LOG-ROOT-U !
+   at 8 + LOG-PART !  cu LOG-PART-U !
+   p pu at6 HOLD-REQUEST ;
+
+: HOLD-EVENT ( ptr u8 n n n -- n )
+   {: p:ptr pu:n at:n kind:n :}
+   p pu at LOG-PATH {: r:ptr ru:n at1:n :}
+   p pu at1 LOG-PATH {: s:ptr su:n at2:n :}
+   p pu at2 LOG-PATH {: c:ptr cu:n at3:n :}
+   at3 0<  su 0=  or if -1 exit then
+   r ru  p CUR-ROOT$  STR= 0= if -1 exit then
+   s su  p CUR-ROOT$  RESOLVE-UNDER {: a:ptr au:n known:bool :}
+   a au c cu STR= 0= if -1 exit then
+   kind INPUT-PROVIDE = if c cu REG+ at3 exit then
+   c cu REQUIRE-KNOWN? if at3 else -1 then ;
+
+: OUTSIDE? ( -- bool )
+   NEXT-REC @ MATCH expect
+      outside OF true ENDOF
+      requested OF false ENDOF
+      resumed OF false ENDOF
+   ;MATCH ;
+
+: HOLD-RECORD ( ptr u8 n n -- n )
+   {: p:ptr pu:n at:n :}
+   p pu at LOG-CELL {: kind:n at1:n :}
+   at1 0< if -1 exit then
+   kind INPUT-PART = if p pu at1 HOLD-PART exit then
+   OUTSIDE? 0= if -1 exit then
+   kind INPUT-SKIP <>  kind INPUT-PROVIDE <>  and if -1 exit then
+   p pu at1 kind HOLD-EVENT ;
+
+: HOLD-OPEN ( -- )
+   LOG-ROOTS 256 BUF:N>BLEN BUF:INIT
+   -1 LOG-ROOT !  0 LOG-ROOT-U !  0 LOG-PART !  0 LOG-PART-U !  -1 LOG-REQ !
+   construct expect outside NEXT-REC !
+   REQUIRE-SNAPSHOT ;
+
+: HOLD-CLOSE ( -- ) REQUIRE-RESTORE  LOG-ROOTS BUF:DISPOSE ;
+
+\ Whether every record from the log's start holds and the machine ends outside at its end.
+: HOLD-ALL ( ptr u8 n -- bool )
+   {: p:ptr pu:n :}
+   0 begin dup 0 >=  over pu <  and while
+      p pu rot HOLD-RECORD
+   repeat
+   pu =  OUTSIDE?  and ;
 
 \ ---- linking an object ---------------------------------------------------------
 \ What a link of an object PART-FRESH? passed applies it with: each reference's value (RESOLVE), the non-code entries.
@@ -4849,7 +5213,7 @@ variable DUE-MADE
 \ The build's registry starts empty (include.f REQUIRE-SNAPSHOT), the loader logs each act,
 \ which a compiling file's object carries (ACTS+), and INTERPRETER logs each word run (RAN+).
 : REQUIRE-FRESH ( -- )
-   REQUIRE-SNAPSHOT  EVENTS-RESET EVENT-ON  INTERPRETER:RECORD-RUNS
+   REQUIRE-SNAPSHOT  EVENTS-RESET EVENT-ON  0 LOGGED-EV !  INTERPRETER:RECORD-RUNS
    construct step required PROGRESS ! ;
 
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
@@ -4893,9 +5257,11 @@ variable DUE-MADE
    ALIASES-N @ 0 ?do  i ALIASES @  i 1 + ALIASES @  CHECK:READ-ALIAS  2 +loop ;
 
 
-\ As a file's load or its piece after a request starts. After an unclean cut (NEST) ENTRY-ROOT is the requested
-\ file's root, but that part is UNLINKABLE, so its INPUT never holds it.
+\ As a file's load or its piece after a request starts; no request no part made started it until LOAD sets TOP-EV.
+\ After an unclean cut (NEST) ENTRY-ROOT is the requested file's root, but that part is UNLINKABLE, so its INPUT never
+\ holds it.
 : MARKS ( -- )
+   -1 TOP-EV !
    ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !  0 RETIRED-N !  false HOLDS-HEADER !
    TFAM:TFAM-N@ FILE-TFAM !  CHECK:TYPE-END FILE-TYPES !
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
@@ -4903,6 +5269,17 @@ variable DUE-MADE
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
    EVENT-COUNT FILE-EVENT !  INTERPRETER:RUN-COUNT FILE-RUN !
    SOURCE-ROOT:CURRENT$ BUF:N>BLEN ENTRY-ROOT BUF:REPLACE ;
+
+\ The loader's log event of the request no part made that loads the path, as LOAD starts: the newest event, an
+\ include or a require the registry did not hold for the path; -2 when it is not one.
+: TOP-REQUEST ( ptr u8 n -- n )
+   {: path:ptr pathu:n :}
+   EVENT-COUNT 1 - {: ev:n :}
+   ev 0< if -2 exit then
+   ev EVENT-KIND@ {: kind:n :}
+   kind EV-INCLUDED =
+   kind EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-FRESH =  and  or
+   ev EVENT-PATH@ path pathu STR=  and  if ev else -2 then ;
 
 
 \ The scope a build's top-level file starts in: no package or part open, the build's global
@@ -4956,6 +5333,7 @@ variable DUE-MADE
          LINK-OBJECT  LINKED-TIMES  true LINK-FACTS  READ-ALIASES  LINK-ACTS
          here NULL-PTR - FILE-END !
          PIECE-TIME PIECE-STORES-TIME BUILT+
+         INPUTS+
       then
    ;] catch {: linked rc:n :}
    rc 0<> if DROP-OBJECT rc throw then
@@ -5101,13 +5479,16 @@ variable DUE-MADE
    repeat drop ;
 
 \ The file's parts in turn (TURN): one links (LINK-PART) and replays its request, or compiles to its request's clean cut
-\ (NEST) or the end.
+\ (NEST) or the end. A load no load holds first logs the events made since the last such load ended (EVENTS-LOG).
 : LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   LOADER$ nip 0= {: outer:bool :}
+   outer if path pathu TOP-REQUEST else -1 then {: top:n :}
+   outer if  top 0 >= if top else EVENT-COUNT then EVENTS-LOG  then
    path pathu KEY!
    path pathu PATH!
    path pathu root rootu PATH+
-   MARKS
+   MARKS  top TOP-EV !
    INPUT!
    0 FILE-PART !  0 FILE-OFF !
    source NULL-PTR - FILE-SRC !  sourceu FILE-SRC-U !
@@ -5154,6 +5535,7 @@ variable DUE-MADE
                   -1 PIECE-END
                   SOURCE-ROOT:CURRENT$ BUF:N>BLEN EXIT-ROOT BUF:REPLACE   \ the file's load scope is still open
                   0 COMPILED-TIME dup WRITE-OBJECT
+                  INPUTS+
                   PIECE-PLACE
                   true true
                ENDOF
@@ -5167,6 +5549,7 @@ variable DUE-MADE
          cut OF E-COMP-STATE throw ENDOF
       ;MATCH
    until
+   outer if EVENT-COUNT LOGGED-EV ! then
    if 1 COMPILED-N +! else 1 LINKED-N +! then ;
 
 
@@ -5217,6 +5600,7 @@ variable DUE-MADE
    0 COMPILED-TIME {: t:n :}
    ev SOURCE-EVENT:CURRENT@ BUF:N>BLEN EXIT-ROOT BUF:REPLACE   \ CURRENT$ is already the requested file's root
    t WRITE-OBJECT
+   INPUTS+
    t PIECE-PLACE
    align   \ the next part starts at a cell boundary, as include.f LOAD-UNIT leaves here
    STAMP@ {: s:n ns:n size:n :}
@@ -5519,5 +5903,28 @@ public
 \ The files the last build compiled and linked, from its open until the next open.
 : COMPILED ( -- n ) COMPILED-N @ ;
 : LINKED ( -- n ) LINKED-N @ ;
+
+\ The open build's INPUTS log, with the events made since its last load no load held ended (EVENTS-LOG) when no load
+\ is open; valid until the next part or event is logged or the build closes.
+: INPUTS$ ( -- ptr u8 n )
+   LOADER$ nip 0= if EVENT-COUNT EVENTS-LOG then
+   INPUTS BYTES$ ;
+
+\ The false beneath the catch keeps the stack's shape.
+: HOLD-CAUGHT ( ptr u8 n -- bool )
+   {: p:ptr pu:n :}
+   false [: drop p pu HOLD-ALL ;] catch {: ok rc:n :}
+   rc 0= if ok exit then
+   rc E-PATH-RANGE <> if rc throw then
+   false ;
+
+\ Whether a build run now from the current root would load every record the INPUTS bytes log as it did, with no build
+\ open: the replay machine above, over the build's registry; false for empty bytes, bytes that run past their end or
+\ end inside a load, a path no FS call takes (PATH-OK?) and a spelling the resolver refuses (E-PATH-RANGE).
+: INPUTS-HOLD? ( ptr u8 n -- bool )
+   {: p:ptr pu:n :}
+   pu 0 <= if false exit then
+   HOLD-OPEN
+   [: p pu HOLD-CAUGHT ;] [: HOLD-CLOSE ;] finally ;
 
 ;package
