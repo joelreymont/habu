@@ -9,7 +9,6 @@ require src/lib/error.f
 require src/habu/layout.f
 require src/habu/wl.f
 require src/compiler/fixed-body.f
-require src/habu/terminal-call.f
 require src/core/checker.f
 require src/compiler/native/checker-owner.f
 require src/compiler/workspace.f
@@ -276,17 +275,6 @@ public
    SPELL-REC {: rec:ptr :}
    rec XREF-FOUND? if rec TICK-REFUSED? if 0 exit then then
    rec false REC-CODE drop ;
-
-\ A helper (src/habu/primitive-registry.f HELPER-REGISTER) sits in
-\ OWNER-API-PRI-WID, which no spelling search enters, so it is looked up there
-\ by exact name. Only an entry inside the engine's text answers
-\ (TERMINAL-CALL:IN-ENGINE-TEXT?).
-: HELPER-TARGET ( ptr u8 n -- n )
-   OWNER-API-PRI-WID WL-RECORD {: rec:ptr :}
-   rec XREF-FOUND? 0= if 0 exit then
-   rec XREF-START {: start:n :}
-   start TERMINAL-CALL:IN-ENGINE-TEXT? 0= if 0 exit then
-   start ;
 
 -1 constant ARITY-NONE
 
