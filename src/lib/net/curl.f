@@ -144,12 +144,12 @@ $7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 $08 constant CELL-BYTES
 
 \ Foreign out-parameter cells, per task.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $28 TASK:+USER IO-STORAGE drop
-: INFO-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
-: BUF-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $08 + ;
-: LEN-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
-: HBUF-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
-: HLEN-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $20 + ;
+$28 TASK:+USERS IO-STORAGE u8
+: INFO-CELL ( -- ptr u8 ) 0 IO-STORAGE ;
+: BUF-CELL ( -- ptr u8 ) $08 IO-STORAGE ;
+: LEN-CELL ( -- ptr u8 ) $10 IO-STORAGE ;
+: HBUF-CELL ( -- ptr u8 ) $18 IO-STORAGE ;
+: HLEN-CELL ( -- ptr u8 ) $20 IO-STORAGE ;
 
 
 \ CURL* and FILE* are OPAQUE here, and so is curl_slist* outside SLIST-RELEASE;

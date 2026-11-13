@@ -103,22 +103,21 @@ variable SERIAL
 here data-base - negate 7 and allot
 SCRATCH-VARIABLE LOCK-CELL
 
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 5 cells TASK:+USER RENDER-STATE drop
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER OPEN-STATE drop
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 7 cells TASK:+USER HULL-STATE drop
-: REF-CELL ( -- ptr ptr u8 ) RENDER-STATE 0 ptr-field ;
-: FONT-CELL ( -- ptr ptr u8 ) RENDER-STATE 1 ptr-field ;
-: BUF-CELL ( -- ptr ptr u8 ) RENDER-STATE 2 ptr-field ;
-: DRAW-CELL ( -- ptr ptr u8 ) RENDER-STATE 3 ptr-field ;
-: BLOB-CELL ( -- ptr ptr u8 ) RENDER-STATE 4 ptr-field ;
-: OPEN-CELL ( -- ptr ptr u8 ) OPEN-STATE 0 ptr-field ;
-: H-MINX ( -- ptr n ) HULL-STATE BYTE-VIEW CELL-VIEW ;
-: H-MINY ( -- ptr n ) HULL-STATE BYTE-VIEW 1 cells + CELL-VIEW ;
-: H-MAXX ( -- ptr n ) HULL-STATE BYTE-VIEW 2 cells + CELL-VIEW ;
-: H-MAXY ( -- ptr n ) HULL-STATE BYTE-VIEW 3 cells + CELL-VIEW ;
-: H-X ( -- ptr n ) HULL-STATE BYTE-VIEW 4 cells + CELL-VIEW ;
-: H-PAIR ( -- ptr n ) HULL-STATE BYTE-VIEW 5 cells + CELL-VIEW ;
-: H-SEEN ( -- ptr n ) HULL-STATE BYTE-VIEW 6 cells + CELL-VIEW ;
+5 TASK:+USERS RENDER-STATE ptr u8
+TASK:+USER OPEN-CELL ptr u8
+7 TASK:+USERS HULL-STATE n
+: REF-CELL ( -- ptr ptr u8 ) 0 RENDER-STATE ;
+: FONT-CELL ( -- ptr ptr u8 ) 1 RENDER-STATE ;
+: BUF-CELL ( -- ptr ptr u8 ) 2 RENDER-STATE ;
+: DRAW-CELL ( -- ptr ptr u8 ) 3 RENDER-STATE ;
+: BLOB-CELL ( -- ptr ptr u8 ) 4 RENDER-STATE ;
+: H-MINX ( -- ptr n ) 0 HULL-STATE ;
+: H-MINY ( -- ptr n ) 1 HULL-STATE ;
+: H-MAXX ( -- ptr n ) 2 HULL-STATE ;
+: H-MAXY ( -- ptr n ) 3 HULL-STATE ;
+: H-X ( -- ptr n ) 4 HULL-STATE ;
+: H-PAIR ( -- ptr n ) 5 HULL-STATE ;
+: H-SEEN ( -- ptr n ) 6 HULL-STATE ;
 
 : LOCK ( -- )
    begin 0 1 LOCK-CELL atomic-cas 0= until ;

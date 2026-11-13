@@ -3849,7 +3849,7 @@ ENUM dispatch-event armed faulted ;ENUM
 
 \ The call whose recorder or journal put this task runs (ACCOUNT), for the
 \ cleanup a halt's unwind runs, which takes nothing.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER LANDING drop
+TASK:+USER LANDING n
 CAST: CALL>N ( ptr call -- n )
 CAST: N>CALL ( n -- ptr call )
 

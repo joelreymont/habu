@@ -105,8 +105,8 @@ FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: SYNC-CALL fsync ( n -- i32 ) ;FUNCTION
 FUNCTION: RESIZE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
 
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
-: POLL-FD ( -- ptr u8 ) POLL-STORAGE BYTE-VIEW ;
+8 TASK:+USERS POLL-STORAGE u8
+: POLL-FD ( -- ptr u8 ) 0 POLL-STORAGE ;
 
 : FLAGS ( fd -- n )
    FD>N F-GETFL 0 fcntl dup 0 < if E-FS-IO throw then ;
@@ -137,8 +137,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
       left NS-PER-MS / left NS-PER-MS mod 0<> if 1+ then
       MAX-POLL-MS min {: ms:n :}
       f FD>N POLL-FD LE:U32!
-      POLLOUT POLL-FD 4 + LE:U16!
-      0 POLL-FD 6 + LE:U16!
+      POLLOUT 4 POLL-STORAGE LE:U16!
+      0 6 POLL-STORAGE LE:U16!
       POLL-FD 1 ms poll {: rc:n :}
       rc 0 > if exit then
       rc 0 < rc EINTR# negate <> and if E-FS-IO throw then

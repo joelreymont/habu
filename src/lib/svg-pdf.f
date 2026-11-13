@@ -71,14 +71,16 @@ FUNCTION: CLIP cairo_clip ( ptr u8 -- ) ;FUNCTION
 
 \ Four owned foreign handles and the four-double RsvgRectangle are one
 \ task-local row. Both writers are synchronous and expose no handles.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 cells TASK:+USER STATE drop
-: ERROR-CELL ( -- ptr ptr u8 ) STATE 0 ptr-field ;
-: SVG-CELL ( -- ptr ptr u8 ) STATE 1 ptr-field ;
-: SURFACE-CELL ( -- ptr ptr u8 ) STATE 2 ptr-field ;
-: CONTEXT-CELL ( -- ptr ptr u8 ) STATE 3 ptr-field ;
-: VIEWPORT ( -- ptr u8 ) STATE BYTE-VIEW 4 cells + ;
-: WIDTH-PTR ( -- ptr u8 ) VIEWPORT 16 + ;
-: HEIGHT-PTR ( -- ptr u8 ) VIEWPORT 24 + ;
+4 cells constant VIEWPORT-AT
+32 constant RECT-BYTES
+VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
+: ERROR-CELL ( -- ptr ptr u8 ) 0 STATE 0 ptr-field ;
+: SVG-CELL ( -- ptr ptr u8 ) 1 cells STATE 0 ptr-field ;
+: SURFACE-CELL ( -- ptr ptr u8 ) 2 cells STATE 0 ptr-field ;
+: CONTEXT-CELL ( -- ptr ptr u8 ) 3 cells STATE 0 ptr-field ;
+: VIEWPORT ( -- ptr u8 ) VIEWPORT-AT STATE ;
+: WIDTH-PTR ( -- ptr u8 ) VIEWPORT-AT 16 + STATE ;
+: HEIGHT-PTR ( -- ptr u8 ) VIEWPORT-AT 24 + STATE ;
 : WIDTH ( -- r ) WIDTH-PTR LE:U64@ IEEE754:BITS>F64 ;
 : HEIGHT ( -- r ) HEIGHT-PTR LE:U64@ IEEE754:BITS>F64 ;
 : NULL? ( ptr a -- bool ) NULL-PTR = ;
@@ -86,7 +88,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 cells TASK:+USER STATE drop
 : CLEAR ( -- )
    NULL-PTR ERROR-CELL ! NULL-PTR SVG-CELL !
    NULL-PTR SURFACE-CELL ! NULL-PTR CONTEXT-CELL !
-   0 VIEWPORT LE:U64! 0 VIEWPORT 8 + LE:U64! ;
+   0 VIEWPORT LE:U64! 0 VIEWPORT-AT 8 + STATE LE:U64! ;
 
 : RELEASE-PAGE ( -- )
    ERROR-CELL @ dup NULL? 0= if ERROR-FREE else drop then

@@ -2,7 +2,7 @@
 \ REPL reader, added to package GENIO from src/lib/genio-core.f (device table,
 \ terminal, dispatchers). Requiring it installs READ-LINE as REPL-READ.
 \ STORAGE CLASS. TASK-LOCAL: READ-LINE's line and the chunk a device's accept
-\ fills are TASK:+USER rows, so two tasks may each be reading a line from their
+\ fills are TASK:+USERS rows, so two tasks may each be reading a line from their
 \ own device.
 require src/lib/prelude.f
 require src/lib/num-types.f
@@ -22,16 +22,16 @@ $A constant LF
 \ task's exit chain; the main task has no exit chain, and its line lives as long
 \ as the process.
 $100 constant CHUNK-CAP
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CHUNK-CAP TASK:+USER IO-CHUNK drop
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and BUF:HDR-BYTES TASK:+USER IO-LINE drop
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-LINE-LIVE drop
+CHUNK-CAP TASK:+USERS IO-CHUNK u8
+BUF:HDR-BYTES TASK:+USERS IO-LINE u8
+TASK:+USER IO-LINE-LIVE n
 
 : CHUNK ( -- ptr u8 )
-   IO-CHUNK BYTE-VIEW ;
+   0 IO-CHUNK ;
 
 : LINE-DISPOSE ( -- )
    0 IO-LINE-LIVE !
-   IO-LINE BUF:DISPOSE ;
+   0 IO-LINE BUF:DISPOSE ;
 
 : LINE-REGISTER ( -- )
    TASK:SELF-N 0= if exit then
@@ -41,9 +41,9 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-LINE-LIVE drop
 \ live line always has its release armed.
 : LINE-OPEN ( -- )
    IO-LINE-LIVE @ 0<> if exit then
-   IO-LINE CHUNK-CAP BUF:N>BLEN BUF:INIT
+   0 IO-LINE CHUNK-CAP BUF:N>BLEN BUF:INIT
    [: LINE-REGISTER ;] catch {: code:n :}
-   code 0<> if IO-LINE BUF:DISPOSE code throw then
+   code 0<> if 0 IO-LINE BUF:DISPOSE code throw then
    1 IO-LINE-LIVE ! ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
@@ -53,7 +53,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : LINE-FILL ( -- )
    begin
       CHUNK CHUNK-CAP ACCEPT {: got:n :}
-      CHUNK got BUF:N>BLEN IO-LINE BUF:APPEND-SPAN
+      CHUNK got BUF:N>BLEN 0 IO-LINE BUF:APPEND-SPAN
       got CHUNK-CAP <
    until ;
 
@@ -65,9 +65,9 @@ public
 : READ-LINE ( -- ptr u8 n )
    IN-ROW TERMINAL-ROW = if RD-LINE exit then
    LINE-OPEN
-   IO-LINE BUF:CLEAR
+   0 IO-LINE BUF:CLEAR
    LINE-FILL
-   IO-LINE BUF:SPAN$ BLEN>N ;
+   0 IO-LINE BUF:SPAN$ BLEN>N ;
 
 private
 

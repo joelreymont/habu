@@ -277,11 +277,11 @@ defer HOST-LOOP ( -- )
 \ Set at a task's first submission, when its cleanup registers, so a program
 \ that never submits registers nothing; the cell keeps a submitting task from
 \ walking its TASK:AT-EXIT chain again at later submissions.
-TASK:#USER CELL TASK:+USER AIO-REGISTERED drop
+TASK:+USER AIO-REGISTERED n
 
 \ A wait's record or group, set around its PAUSE, else -1. A throw out of PAUSE
 \ alone leaves it set for the finally to cancel: a group returns with more live.
-TASK:#USER CELL TASK:+USER AIO-PARKED drop
+TASK:+USER AIO-PARKED n
 
 $40 constant DIAG-CAP
 DIAG-CAP CODEGEN:BUFFER DIAG

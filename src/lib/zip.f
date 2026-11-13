@@ -5,7 +5,7 @@
 \ failure, and E-SIZE a caller's length too; a host fault ZIP sees keeps the
 \ host's code (FS:MKTEMP's, E-FS-OPEN, E-FS-IO).
 \ STORAGE CLASS. TASK-LOCAL: libzip's stat block and EOF probe byte, one
-\ TASK:+USER row. A handle owns its buffers, entries and inputs and has one task
+\ TASK:+USERS row. A handle owns its buffers, entries and inputs and has one task
 \ owner. PROCESS-WIDE: the identity registry and serial, src/lib/zip-state.f.
 require src/lib/fs.f
 require src/lib/fs-mutate.f

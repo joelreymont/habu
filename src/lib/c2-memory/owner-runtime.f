@@ -2,7 +2,8 @@
 \ (src/lib/c2-memory.f; rules in docs/design.md "Ownership"). A frame is PENDING
 \ before any allocation can return, LIVE once its acquisitions are recorded,
 \ then CLOSING -> CLOSED as disposers run; at most FRAME-CAP nest (E-C2-CAPACITY).
-\ STORAGE CLASS. TASK-LOCAL: the frame chain is one TASK:+USER row (OWNER-REGION).
+\ STORAGE CLASS. TASK-LOCAL: the frame chain is one TASK:+USERS byte row
+\ (OWNER-REGION).
 require src/lib/error.f
 require src/lib/task.f
 require src/lib/memory.f
@@ -25,23 +26,23 @@ MEM-MAX-N APPEND-HEADER-BYTES 2 * - CELL 1- - constant MAX-APPEND
 40 constant META-BYTES
 META-BYTES FRAME-CAP FRAME-BYTES * + constant REGION-BYTES
 
-\ +USER resolves this row through the calling task's data-base. Main has the
+\ +USERS resolves this row through the calling task's data-base. Main has the
 \ same row in its own data region, although TASK:SELF names no TCB there.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and REGION-BYTES TASK:+USER OWNER-REGION drop
+REGION-BYTES TASK:+USERS OWNER-REGION u8
 
-: HEAD-CELL ( -- ptr n ) OWNER-REGION ;
-: DEPTH-CELL ( -- ptr n ) OWNER-REGION 8 + ;
-: HOOK-CELL ( -- ptr n ) OWNER-REGION 16 + ;
-: LOAN-DEPTH-CELL ( -- ptr n ) OWNER-REGION 24 + ;
-: INIT-BOUND-CELL ( -- ptr n ) OWNER-REGION 32 + ;
+: HEAD-CELL ( -- ptr n ) 0 OWNER-REGION CELL-VIEW ;
+: DEPTH-CELL ( -- ptr n ) 8 OWNER-REGION CELL-VIEW ;
+: HOOK-CELL ( -- ptr n ) 16 OWNER-REGION CELL-VIEW ;
+: LOAN-DEPTH-CELL ( -- ptr n ) 24 OWNER-REGION CELL-VIEW ;
+: INIT-BOUND-CELL ( -- ptr n ) 32 OWNER-REGION CELL-VIEW ;
 
 : FRAME-AT ( n -- ptr n )
-   FRAME-BYTES * OWNER-REGION META-BYTES + + ;
+   FRAME-BYTES * META-BYTES + OWNER-REGION CELL-VIEW ;
 
 : STATE-CELL ( ptr n -- ptr n ) ;
 : PREV-CELL ( ptr n -- ptr n ) 8 + ;
 
-\ +USER publishes a raw byte row. The casts below retype the slots' pointees;
+\ OWNER-REGION is a byte row. The casts below retype its cells' pointees;
 \ they are C2-MEM's private words, so nothing outside C2-MEM can name them.
 CAST: >PTR-CELL ( ptr n -- ptr ptr u8 )
 CAST: >DISPOSER-CELL ( ptr n -- ptr [ ptr u8 NUM:alloc-byte-len -- ] )

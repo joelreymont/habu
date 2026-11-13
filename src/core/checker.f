@@ -15175,9 +15175,9 @@ public
    drop                                    \ single cell: extent is one slot, width unused here
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
-\ Compiler workspace arrays are byte-strided to admit u8 as well as stored
-\ cell types; their generated accessor retains the ordinary typed signature.
-: CHECKER-DEFCWORK-BUFFER
+\ Byte-strided arrays (compiler workspace arrays, a task's slot rows) admit u8
+\ as well as stored cell types; their accessor keeps the ordinary typed signature.
+: CHECKER-DEFBYTE-BUFFER
    ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
@@ -15209,6 +15209,15 @@ public
    THEN
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE ;
+
+\ A task's single slot admits what CHECK:STORAGE-LINE admits.
+: CHECKER-DEFSLOT ( ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n name:ptr nameu:n :}
+   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-DYNAMIC-INFO nip 0= IF
+      name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
+   type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 \ The allocator binds the actual generated accessor only after its DATA cells
 \ exist. A verifier's projected signature, an alias, or an imported effect has

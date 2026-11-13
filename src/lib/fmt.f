@@ -17,7 +17,7 @@ package FMT
 
 \ The FMT-ABI band is declared in src/habu/layout.f beside STRING-ABI and
 \ asserted there against every other DATA claim. It is a declared band and not
-\ TASK:+USER rows because src/habu/habu2.f requires this module for number text:
+\ TASK:+USERS rows because src/habu/habu2.f requires this module for number text:
 \ a `require src/lib/task.f` here would pull pthread, mmap and the FFI staging
 \ tables into the base image for 52 bytes of scratch. A region is a fresh zeroed
 \ mapping, so a new task's cells start at zero.

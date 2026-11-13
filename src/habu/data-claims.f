@@ -10,7 +10,7 @@ require src/habu/native-host-cells.f
 \ Every claim on DATA states its extent. CLAIMS-ASSERT refuses an overlapping
 \ pair at engine build time, naming both, when an engine builder
 \ (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file. Without the map a
-\ TASK:+USER row overran the AOT window: one $40 row crashed at teardown.
+\ per-task slot can overrun the AOT window and crash at teardown.
 \
 \ The map holds every claim with a declared extent: everything from $3A00 up,
 \ src/habu/address-cells.f LOCK-CELL and INDEX-CELL, and the profiler band, the top PROF-CNT-BYTES of DATA as src/habu/prof-abi.f

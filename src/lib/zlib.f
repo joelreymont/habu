@@ -28,7 +28,9 @@ $FFFFFFFF constant U32-MAX
 \ z_stream on the supported LP64 hosts (Darwin and Linux): pointers and uLong
 \ are eight bytes, uInt four, with the padding that gives these offsets.
 112 constant STREAM-BYTES
+0 constant NEXT-IN-OFF
 8 constant AVAIL-IN-OFF
+24 constant NEXT-OUT-OFF
 32 constant AVAIL-OUT-OFF
 40 constant TOTAL-OUT-OFF
 
@@ -46,15 +48,15 @@ $FFFFFFFF constant U32-MAX
 8 constant MEM-LEVEL
 0 constant Z-DEFAULT-STRATEGY
 
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and STREAM-BYTES 8 + TASK:+USER SCRATCH drop
-: STREAM ( -- ptr u8 ) SCRATCH BYTE-VIEW ;
-: PROBE ( -- ptr u8 ) STREAM STREAM-BYTES + ;
-: NEXT-IN ( -- ptr ptr u8 ) SCRATCH 0 ptr-field ;
-: NEXT-OUT ( -- ptr ptr u8 ) SCRATCH 3 ptr-field ;
-: AVAIL-IN@ ( -- n ) STREAM AVAIL-IN-OFF + LE:U32@ ;
-: AVAIL-OUT@ ( -- n ) STREAM AVAIL-OUT-OFF + LE:U32@ ;
-: AVAIL-OUT! ( n -- ) STREAM AVAIL-OUT-OFF + LE:U32! ;
-: TOTAL-OUT@ ( -- n ) STREAM TOTAL-OUT-OFF + LE:U64@ ;
+STREAM-BYTES 1+ TASK:+USERS SCRATCH u8
+: STREAM ( -- ptr u8 ) 0 SCRATCH ;
+: PROBE ( -- ptr u8 ) STREAM-BYTES SCRATCH ;
+: NEXT-IN ( -- ptr ptr u8 ) NEXT-IN-OFF SCRATCH 0 ptr-field ;
+: NEXT-OUT ( -- ptr ptr u8 ) NEXT-OUT-OFF SCRATCH 0 ptr-field ;
+: AVAIL-IN@ ( -- n ) AVAIL-IN-OFF SCRATCH LE:U32@ ;
+: AVAIL-OUT@ ( -- n ) AVAIL-OUT-OFF SCRATCH LE:U32@ ;
+: AVAIL-OUT! ( n -- ) AVAIL-OUT-OFF SCRATCH LE:U32! ;
+: TOTAL-OUT@ ( -- n ) TOTAL-OUT-OFF SCRATCH LE:U64@ ;
 
 \ The only asserted effects are exact C entry points; Habu owns every check.
 VERSIONED-LIBRARY z 1
@@ -82,7 +84,7 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
 
 \ Null allocator callbacks select libz's own malloc and free.
 : CLEAR ( -- )
-   STREAM-BYTES 1+ 0 ?do 0 STREAM i + c! loop ;
+   STREAM-BYTES 1+ 0 ?do 0 i SCRATCH c! loop ;
 
 : ADDRESS ( ptr u8 -- n ) NULL-PTR - ;
 
@@ -118,7 +120,7 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
 : STAGE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n dst:ptr cap:n :}
    CLEAR
-   src NEXT-IN ! srcu STREAM AVAIL-IN-OFF + LE:U32!
+   src NEXT-IN ! srcu AVAIL-IN-OFF SCRATCH LE:U32!
    dst NEXT-OUT ! cap AVAIL-OUT! ;
 
 \ The *End status of an operation that succeeded. After a failure the caught

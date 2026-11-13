@@ -65,9 +65,9 @@ $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
 
 \ Two records: Darwin's 72-byte termios or Linux's 44-byte termios2.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 144 TASK:+USER IO-STORAGE drop
-: TERM ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
-: SAVED ( -- ptr u8 ) IO-STORAGE BYTE-VIEW 72 + ;
+144 TASK:+USERS IO-STORAGE u8
+: TERM ( -- ptr u8 ) 0 IO-STORAGE ;
+: SAVED ( -- ptr u8 ) 72 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 

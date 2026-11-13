@@ -246,7 +246,7 @@ variable IO-GO-R                                 \ child-side release gate
 \ nested scope saves the cell in IO-OUTER under its own slot and its cleanup
 \ puts it back, so each cleanup retires its own target. Zero is no scope: every
 \ reservation advances its slot's generation past zero, so no handle is zero.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER IO-SCOPE drop
+TASK:+USER IO-SCOPE n
 create IO-OUTER SLOT-CAP cells allot
 
 : IO-ENTER ( process-pty-handle -- process-pty-handle )

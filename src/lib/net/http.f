@@ -7,7 +7,7 @@
 \ http-static.f.
 \ STORAGE CLASS. PROCESS-WIDE: one server per image; its tables are written
 \ before START, and per-request state is each worker's slot row (http-arena.f).
-\ TASK-LOCAL: REPLY's connection and drain room, TASK:+USER rows.
+\ TASK-LOCAL: REPLY's connection and drain room, per-task slots.
 require src/lib/net/http-static.f
 require src/lib/task.f
 require src/lib/queue.f
@@ -80,8 +80,8 @@ variable ACCEPTED-COUNT           \ connections the listener has taken since STA
 
 \ REPLY's drain room: its task has no worker slot, whose input buffer a worker
 \ drains into. REPLYING is the connection REPLY's close takes on every way out.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER REPLYING
-LINGER-CAP TASK:+USER LINGER-SCRATCH drop
+TASK:+USER REPLYING n
+LINGER-CAP TASK:+USERS LINGER-SCRATCH u8
 
 
 public
@@ -758,7 +758,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 
 : LINGER-ROOM ( -- SPAN:span<u8> )
-   LINGER-SCRATCH BYTE-VIEW LINGER-CAP SPAN:MAKE ;
+   0 LINGER-SCRATCH LINGER-CAP SPAN:MAKE ;
 
 
 : REPLY-HEAD ( n ptr u8 n n -- ) {: status:n type:ptr type-n:n body-n:n :}

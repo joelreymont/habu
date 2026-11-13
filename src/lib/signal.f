@@ -105,7 +105,7 @@ SCRATCH-VARIABLE OWNER             \ TASK:SELF-N at INIT; read only while READY
 SCRATCH-VARIABLE READY             \ 1 from INIT to RELEASE, else 0
 
 \ One staging span per task: WAIT reads the number into its own row.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER SIGNO-STORAGE drop
+8 TASK:+USERS SIGNO-STORAGE u8
 
 PROCESS-SYMBOLS
 
@@ -120,7 +120,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    repeat drop ;
 
 : SIGNO-BUF ( -- ptr u8 )
-   SIGNO-STORAGE BYTE-VIEW ;
+   0 SIGNO-STORAGE ;
 
 : ABI-SLOT ( n -- ptr n ) {: off:n :}
    data-base off + ;

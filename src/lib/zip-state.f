@@ -26,9 +26,9 @@ $4 constant STAT-SIZE-VALID
 \ LP64 zip_stat_t begins with valid, name, index, size (eight bytes each).
 3 constant STAT-SIZE-CELL
 \ libzip writes these scratch bytes.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and STAT-BYTES CELL + TASK:+USER ZIP-SCRATCH drop
-: STAT-DATA ( -- ptr n ) ZIP-SCRATCH ;
-: EOF-BYTE ( -- ptr u8 ) ZIP-SCRATCH STAT-BYTES + BYTE-VIEW ;
+STAT-BYTES 1+ TASK:+USERS ZIP-SCRATCH u8
+: STAT-DATA ( -- ptr n ) 0 ZIP-SCRATCH CELL-VIEW ;
+: EOF-BYTE ( -- ptr u8 ) STAT-BYTES ZIP-SCRATCH ;
 
 \ Only the short registry operations take this lock; decompression and
 \ archive-owned buffers remain independent.

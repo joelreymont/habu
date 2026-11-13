@@ -109,10 +109,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER EXPONENT SPAN:span<u8>
 
 \ The running task's: PASSED is nonzero once ADMIT? admitted FROM, a request's
 \ number.
-TASK:#USER
-CELL TASK:+USER PASSED
-CELL TASK:+USER FROM
-drop
+TASK:+USER PASSED n
+TASK:+USER FROM n
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
 : CURSOR ( -- ptr JSON:cursor ) SLOT READER ;

@@ -2,7 +2,7 @@
 \ bindings; no protocol, framing, name resolution or connection policy. Another
 \ OS is E-PLATFORM before a socket opens. Every connection is non-blocking. Not
 \ run on Linux: the non-blocking path, TRY-READ, TRY-SEND, UNREAD and UNSENT.
-\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USER row; the
+\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USERS row; the
 \ payload spans the transfers take are caller-owned.
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -178,14 +178,13 @@ $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option
 
 \ Endpoint storage is per task: a $10 sockaddr_in, a $04 socklen_t, the $04
 \ int a socket option is set from, and the $08 pollfd a transfer waits through
-\ (int fd, short events, short revents), which end on the cell so the row after
-\ this one still starts aligned. Calls must not nest within one task; readers
-\ sharing a connection coordinate themselves.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
-: SOCKADDR ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
-: ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
-: OPTION ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $14 + ;
-: POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
+\ (int fd, short events, short revents). Calls must not nest within one task;
+\ readers sharing a connection coordinate themselves.
+$20 TASK:+USERS IO-STORAGE u8
+: SOCKADDR ( -- ptr u8 ) 0 IO-STORAGE ;
+: ADDRLEN ( -- ptr u8 ) $10 IO-STORAGE ;
+: OPTION ( -- ptr u8 ) $14 IO-STORAGE ;
+: POLLFD ( -- ptr u8 ) $18 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 

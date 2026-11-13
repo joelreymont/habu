@@ -180,24 +180,24 @@ here data-base - negate 7 and allot
 variable GENERATION
 SCRATCH-VARIABLE CONFIG-MUTEX
 \ The packed handle of the running task's innermost result scope.
-TASK:#USER 7 + CELL-MASK and CELL TASK:+USER SCOPE-HEAD drop
+TASK:+USER SCOPE-HEAD n
 \ The packed handle of the attempt CONNECT waits on, 0 when none. Its cleanup
 \ is a quotation, which cannot read CONNECT's locals.
-TASK:#USER 7 + CELL-MASK and CELL TASK:+USER CONNECT-HEAD drop
+TASK:+USER CONNECT-HEAD n
 \ The task's last connect refusal's or lost connection's text, a BUF growing
 \ from REFUSED-CAP; REFUSED-REGISTER says who releases it.
 $1000 constant REFUSED-CAP
-TASK:#USER 7 + CELL-MASK and BUF:HDR-BYTES TASK:+USER REFUSED-TEXT drop
-TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-LIVE drop
+BUF:HDR-BYTES TASK:+USERS REFUSED-TEXT u8
+TASK:+USER REFUSED-LIVE n
 0 constant KIND-NONE
 1 constant KIND-REFUSAL
 2 constant KIND-LOSS
 \ The text PG:REFUSED$ answers: none (zero, as a task starts), a refusal (the
 \ reader row's) or a loss (REFUSED-TEXT's).
-TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-KIND drop
+TASK:+USER REFUSED-KIND n
 \ Nonzero while ABORT-TX's ROLLBACK runs: an operation's start and CONN-LOST
 \ then leave REFUSED-KIND as the body's failure left it.
-TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-HOLD drop
+TASK:+USER REFUSED-HOLD n
 
 : CONN-CAP ( -- n ) CONN-CAPACITY @ ;
 : RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
@@ -967,7 +967,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 : RECORD-REFUSAL ( -- )   KIND-REFUSAL REFUSED-KIND ! ;
 
 : RECORD-LOSS ( -- )
-   REFUSED-TEXT BUF:LEN@ BUF:BLEN>N 0<> if KIND-LOSS REFUSED-KIND ! then ;
+   0 REFUSED-TEXT BUF:LEN@ BUF:BLEN>N 0<> if KIND-LOSS REFUSED-KIND ! then ;
 
 : DROP-LOSS ( -- )
    REFUSED-KIND @ KIND-LOSS = if RECORD-NONE then ;
@@ -982,7 +982,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 : REFUSED-DISPOSE ( -- )
    RECORD-NONE
    0 REFUSED-LIVE !
-   REFUSED-TEXT BUF:DISPOSE ;
+   0 REFUSED-TEXT BUF:DISPOSE ;
 
 : REFUSED-REGISTER ( -- )
    TASK:SELF-N 0= if exit then
@@ -993,9 +993,9 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 \ buffer always has its release armed.
 : REFUSED-OPEN ( -- )
    REFUSED-LIVE @ 0<> if exit then
-   REFUSED-TEXT REFUSED-CAP BUF:N>BLEN BUF:INIT
+   0 REFUSED-TEXT REFUSED-CAP BUF:N>BLEN BUF:INIT
    [: REFUSED-REGISTER ;] catch {: code:n :}
-   code 0<> if REFUSED-TEXT BUF:DISPOSE code throw then
+   code 0<> if 0 REFUSED-TEXT BUF:DISPOSE code throw then
    1 REFUSED-LIVE ! ;
 
 
@@ -1005,16 +1005,16 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    {: slot:n :}
    DROP-LOSS
    REFUSED-OPEN
-   REFUSED-TEXT BUF:CLEAR
+   0 REFUSED-TEXT BUF:CLEAR
    slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
-   p NULL-ADDR? 0= if p CSTR$ -TRAILING-LF BUF:N>BLEN REFUSED-TEXT BUF:APPEND-SPAN then
+   p NULL-ADDR? 0= if p CSTR$ -TRAILING-LF BUF:N>BLEN 0 REFUSED-TEXT BUF:APPEND-SPAN then
    slot ;
 
 : CONNECT-REFUSED ( n -- progress ) {: slot:n :}
    slot ['] KEEP-REFUSAL catch nip {: code:n :}
    slot CLOSE-SLOT drop
    code 0<> if code throw then
-   REFUSED-TEXT BUF:SPAN$ BUF:BLEN>N PG-PROGRESS:refused ;
+   0 REFUSED-TEXT BUF:SPAN$ BUF:BLEN>N PG-PROGRESS:refused ;
 
 
 \ CONN-LOST's copy; one that throws leaves the record empty.

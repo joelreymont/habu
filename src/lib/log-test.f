@@ -22,7 +22,7 @@ require src/lib/test/stderr.f
 
 \ LOG's line row, read to show a task's release disposed it.
 package LOG
-: LOG-TEST:ROW ( -- ptr n ) ROW ;
+: LOG-TEST:ROW ( -- ptr u8 ) 0 ROW ;
 ;package
 
 package LOG-TEST

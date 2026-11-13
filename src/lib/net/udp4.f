@@ -2,7 +2,7 @@
 \ bindings; no protocol, sequencing or retry policy. Another OS is E-PLATFORM
 \ before a socket opens. Calls must not nest within one task; close sockets
 \ before image capture: they are process resources.
-\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one $18 TASK:+USER row
+\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USERS row
 \ (IO-STORAGE); the datagram spans are caller-owned.
 require src/lib/error.f
 require src/lib/memory.f
@@ -62,11 +62,10 @@ $20 constant MSG-TRUNC
 1000000 constant NS-PER-MS
 
 \ Endpoint storage is per task, matching FFI's argument/extent tables: a $10
-\ sockaddr_in and a $04 socklen_t, rounded up to the cell so the row after this
-\ one still starts aligned.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $18 TASK:+USER IO-STORAGE drop
-: SOCKADDR ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
-: ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
+\ sockaddr_in and a $04 socklen_t.
+$14 TASK:+USERS IO-STORAGE u8
+: SOCKADDR ( -- ptr u8 ) 0 IO-STORAGE ;
+: ADDRLEN ( -- ptr u8 ) $10 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 

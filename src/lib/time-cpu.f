@@ -3,7 +3,7 @@
 \ preempted, waiting or asleep, but still runs slower on a slower core. It is its
 \ own file so time.f stays free of src/lib/ffi-abi.f and src/lib/task.f.
 \ STORAGE CLASS. TASK-LOCAL: clock_gettime writes through a pointer, so the
-\ timespec is a TASK:+USER row; tasks are OS threads and share nothing.
+\ timespec is a TASK:+USERS row; tasks are OS threads and share nothing.
 
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -22,7 +22,7 @@ $10 constant SPEC-BYTES                 \ struct timespec on an LP64 host
 3 constant THREAD-CPU-LINUX
 16 constant THREAD-CPU-MACOS
 
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and SPEC-BYTES TASK:+USER CPU-SPEC drop
+SPEC-BYTES TASK:+USERS CPU-SPEC u8
 
 PROCESS-SYMBOLS
 
@@ -37,9 +37,9 @@ public
 
 \ Throws E-TIME-CLOCK when the host refuses the clock.
 : THREAD-CPU-NS ( -- n )
-   THREAD-CPU-CLOCK CPU-SPEC BYTE-VIEW CLOCK-GETTIME-CALL
+   THREAD-CPU-CLOCK 0 CPU-SPEC CLOCK-GETTIME-CALL
    0 <> if E-TIME-CLOCK throw then
-   CPU-SPEC SPEC-SEC-OFF + @ NS-PER-S *
-   CPU-SPEC SPEC-NSEC-OFF + @ + ;
+   SPEC-SEC-OFF CPU-SPEC CELL-VIEW @ NS-PER-S *
+   SPEC-NSEC-OFF CPU-SPEC CELL-VIEW @ + ;
 
 ;package

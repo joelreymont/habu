@@ -2,7 +2,7 @@
 \ 3's libcrypto. No key management: derivation, rotation, storage format, nonce
 \ counters, JWS serialization and key selection belong above it.
 \ STORAGE CLASS. TASK-LOCAL: each task's EVP_CIPHER_CTX slot and RS256 record
-\ are TASK:+USER rows. Input spans are borrowed per call and nothing is kept
+\ are TASK:+USERS rows. Input spans are borrowed per call and nothing is kept
 \ between calls; a SEAL or UNSEAL context is freed on every path, a throw included.
 require src/lib/error.f
 require src/lib/prelude.f
@@ -217,21 +217,20 @@ $08 constant OUTL-OFF
 $10 constant FINAL-OFF
 $20 constant MAC-LEN-OFF
 $28 constant STORAGE-BYTES
-$FFFFFFFFFFFFFFF8 constant CELL-ALIGN      \ ~7: with the 7 + below, rounds the slot's offset up to a cell
 
-TASK:#USER 7 + CELL-ALIGN and STORAGE-BYTES TASK:+USER EVP-STORAGE drop
+STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 : CTX-SLOT ( -- ptr n )
-   EVP-STORAGE CTX-OFF + ;
+   CTX-OFF EVP-STORAGE CELL-VIEW ;
 
 : OUTL-BUF ( -- ptr u8 )
-   EVP-STORAGE BYTE-VIEW OUTL-OFF + ;
+   OUTL-OFF EVP-STORAGE ;
 
 : FINAL-BUF ( -- ptr u8 )
-   EVP-STORAGE BYTE-VIEW FINAL-OFF + ;
+   FINAL-OFF EVP-STORAGE ;
 
 : MAC-LEN-BUF ( -- ptr u8 )
-   EVP-STORAGE BYTE-VIEW MAC-LEN-OFF + ;
+   MAC-LEN-OFF EVP-STORAGE ;
 
 
 \ A C int out-parameter, little-endian on both targets (src/lib/le.f).
@@ -399,7 +398,7 @@ $98 constant RS-MD-CTX
 $A0 constant RS-DIGEST-CTX
 $A8 constant RS-SIG-LEN
 $B0 constant RS-RECORD-BYTES
-TASK:#USER 7 + CELL-ALIGN and RS-RECORD-BYTES TASK:+USER RS-STORAGE drop
+RS-RECORD-BYTES TASK:+USERS RS-STORAGE u8
 
 create RSA-NAME 82 c, 83 c, 65 c, 0 c,
 create BN-NAME 110 c, 0 c,
@@ -430,8 +429,8 @@ $C0000 constant ERR-REASON-FLAGS
 57 constant ERR-PROV-LIB
 $80004 constant ERR-PROV-RSA-LIB
 
-: RS-SLOT ( n -- ptr n ) RS-STORAGE + ;
-: RS-BUF ( n -- ptr u8 ) RS-STORAGE BYTE-VIEW + ;
+: RS-SLOT ( n -- ptr n ) RS-STORAGE CELL-VIEW ;
+: RS-BUF ( n -- ptr u8 ) RS-STORAGE ;
 : RS@ ( n -- n ) RS-SLOT @ ;
 : RS! ( n n -- ) RS-SLOT ! ;
 : RS-KEY@ ( -- n ) RS-KEY RS@ ;

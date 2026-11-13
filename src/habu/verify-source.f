@@ -2604,14 +2604,14 @@ variable STG-TYPE-U
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
-: RECORD-CWORK-BUFFER ( -- )
+: RECORD-BYTE-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
-   type typeu count countu name nameu CHECKER-DEFCWORK-BUFFER
+   type typeu count countu name nameu CHECKER-DEFBYTE-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
@@ -2624,6 +2624,15 @@ variable STG-TYPE-U
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFCWORK-SPAN
+   DISARM
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+
+: RECORD-SLOT ( -- )
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   nameu 0= IF EXIT THEN
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   name nameu at nameu ARM
+   type typeu name nameu CHECKER-DEFSLOT
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
@@ -3611,8 +3620,8 @@ variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-X
 \ library word's code. An export keeps its source's tail, so only a token whose
 \ tail is the word's name, in any case, can bind it. A live export's record
 \ runs that code; one this scan's replay made has none, so its symbol is
-\ followed to the word it names, the library word only when the global word's
-\ newest record still runs its code.
+\ followed to the word its package and tail name, the library word only when
+\ that word's newest record still runs its code.
 \ Known gap: an alias exported before its source is undefined, redefined or
 \ not, is followed to the current global word, so the check can certify a use
 \ the load refuses.
@@ -3626,11 +3635,22 @@ variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-X
    sym 0= IF false EXIT THEN
    sym SYM-SOURCE {: src:n :}
    src sym = IF false EXIT THEN
-   src SYM-IDENTITY drop 2swap nip {: tail:ptr tailu:n pkgu:n :}
-   pkgu 0<> tailu 0= or IF false EXIT THEN
-   tail tailu XREF-FIND {: word:ptr :}
+   src SYM-IDENTITY drop {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   tailu 0= IF false EXIT THEN
+   pkgu 0<> IF pkg pkgu tail tailu QUAL-SPELLING
+   ELSE tail tailu THEN
+   XREF-FIND {: word:ptr :}
    word XREF-FOUND? 0= IF false EXIT THEN
    word XREF-START code = ;
+
+\ src/lib/task.f loads after this file, so a TASK definer's code is read where
+\ its row is reached; Q is its qualified name.
+: TASK-DEFINER? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n q:ptr qu:n name:ptr nameu:n :}
+   a u TOKEN-TAIL name nameu STR=CI 0= IF false EXIT THEN
+   q qu XREF-FIND {: rec:ptr :}
+   rec XREF-FOUND? 0= IF false EXIT THEN
+   a u rec XREF-START name nameu LIBRARY-DEFINER? ;
 
 \ FUNCTION:'s clauses sit between a group and its `;FUNCTION`. A token is a
 \ clause only where the load's lookup binds it to the declarer's word, read as
@@ -3703,6 +3723,10 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
       [: RECORD-TYPED-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u TYPED-VARIABLE-XT @ s" TYPED-VARIABLE" LIBRARY-DEFINER? IF
       [: RECORD-TYPED-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u s" TASK:+USERS" s" +USERS" TASK-DEFINER? IF
+      [: RECORD-BYTE-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u s" TASK:+USER" s" +USER" TASK-DEFINER? IF
+      [: RECORD-SLOT ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u DYNAMIC-BUFFER-XT @ s" DYNAMIC-BUFFER" LIBRARY-DEFINER? IF
       [: RECORD-DYNAMIC-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u ARENA-XT @ s" ARENA" LIBRARY-DEFINER? IF
@@ -3710,7 +3734,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u HEAP-XT @ s" HEAP" LIBRARY-DEFINER? IF
       [: RECORD-HEAP ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-BUFFER-XT @ s" CWORK-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-CWORK-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-BYTE-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-SPAN-XT @ s" CWORK-SPAN" LIBRARY-DEFINER? IF
       [: RECORD-CWORK-SPAN ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER? IF

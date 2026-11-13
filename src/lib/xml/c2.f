@@ -66,7 +66,7 @@ LAYOUT-CHECK
 \ The task's innermost live reader record, or null. A reader links its record
 \ only once WITH-INIT has opened it, so inner readers unwind first, also under
 \ a throw, and the release always finds its own record at the head.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER READER-HEAD drop
+TASK:+USER READER-HEAD ptr u8
 
 \ The load-time marker is retired after it seals the representation leaves.
 TRUSTED: HIDE ( n -- ) int-mark ;
@@ -107,8 +107,6 @@ ndict@ 1- constant DEST-SPAN-ID
 TRUSTED: SOURCE-SLICE ( mut-view<b,i,a,init<i,reader-state<p,q>>> ptr u8 n -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> ) ;
 ndict@ 1- constant SOURCE-SLICE-ID
 
-CAST: >HEAD-CELL ( ptr n -- ptr ptr u8 )
-ndict@ 1- constant HEAD-CELL-ID
 CAST: >ADDR-CELL ( ptr u8 -- ptr ptr u8 )
 ndict@ 1- constant ADDR-CELL-ID
 CAST: >LEN-CELL ( ptr u8 -- ptr n )
@@ -131,13 +129,13 @@ ndict@ 1- constant OPEN-ID
 
 : LINK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
    CURSOR-BASE {: record:ptr :}
-   READER-HEAD >HEAD-CELL @ record LINK-OFF + >ADDR-CELL !
-   record READER-HEAD >HEAD-CELL ! ;
+   READER-HEAD @ record LINK-OFF + >ADDR-CELL !
+   record READER-HEAD ! ;
 ndict@ 1- constant LINK-ID
 
 : RELEASE ( -- )
-   READER-HEAD >HEAD-CELL @ {: record:ptr :}
-   record LINK-OFF + >ADDR-CELL @ READER-HEAD >HEAD-CELL !
+   READER-HEAD @ {: record:ptr :}
+   record LINK-OFF + >ADDR-CELL @ READER-HEAD !
    record REENTER XML:CLOSE ;
 ndict@ 1- constant RELEASE-ID
 
@@ -245,7 +243,6 @@ DEST-ID HIDE
 CURSOR-BASE-ID HIDE
 DEST-SPAN-ID HIDE
 SOURCE-SLICE-ID HIDE
-HEAD-CELL-ID HIDE
 ADDR-CELL-ID HIDE
 LEN-CELL-ID HIDE
 REENTER-ID HIDE

@@ -27,8 +27,8 @@
 \ store of its wordlist cell, so a lookup that began before the store finds
 \ only words whose code is kept.
 \ TASK:NEW defines nothing. Task-local storage: a band in src/habu/layout.f for
-\ a module the engine bakes, else TASK:+USER rows.
-\ STORAGE CLASS. TASK-LOCAL: SLEEP's timespecs (a TASK:+USER row). PROCESS-WIDE:
+\ a module the engine bakes, else TASK:+USER and TASK:+USERS slots.
+\ STORAGE CLASS. TASK-LOCAL: SLEEP's timespecs (a TASK:+USERS slot). PROCESS-WIDE:
 \ semaphore pool, AT-EXIT rows, TCB chain and pool, callback rows; a CAS per move.
 \
 \ CLEANUPS. A task's cleanups are a chain of rows. Each quotation is stored AS a
@@ -68,6 +68,8 @@ require src/core/quotation-storage.f
 require src/habu/task-abi.f
 require src/habu/stack-abi.f
 require src/habu/boot-cells.f
+require src/habu/layout.f
+require src/core/layout-buffer.f
 
 package TASK
 public
@@ -108,7 +110,6 @@ TASK-TIMESPEC-BYTES 2 * constant TASK-SLEEP-BYTES  \ the request and the remaind
 1000000 constant TASK-NS-PER-MS
 1000000000 constant TASK-NS-PER-S
 $7FFFFFFFFFFFFFFF constant TASK-NS-MAX             \ the latest mono-ns deadline a cell holds
-$FFFFFFFFFFFFFFF8 constant TASK-CELL-MASK
 
 TASK-ABI:EMPTY constant TASK-EMPTY
 TASK-ABI:CONSTRUCTED constant TASK-CONSTRUCTED
@@ -1565,17 +1566,14 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
       r> TASK-CHAIN!
    does> ( -- ptr n ) ;
 
-: #USER ( -- n )
-   TASK-USER-NEXT @ ;
-
 \ The largest claim end whose TASK-REGION-TOTAL cannot wrap.
 MEM-MAX-N TASK-REGION-BYTES - STACK-ABI:PAGE-BYTES - constant USER-END-MAX
 
-\ Only main claims, and only while no task is live: a live task's area cannot
-\ grow. A task's own region holds 1 in TASKS-LIVE-CELL, so its claim throws.
-: USER-NEXT ( n n -- n ) {: off:n size:n :}
-   off TASK-USER-NEXT @ < if E-TASK-USER throw then
-   size 0 < if E-TASK-USER throw then
+\ A claim starts at the first cell boundary past the last. Only main claims,
+\ and only while no task is live: a live task's area cannot grow. A task's own
+\ region holds 1 in TASKS-LIVE-CELL, so its claim throws.
+: USER-NEXT ( n -- n ) {: size:n :}
+   TASK-USER-NEXT @ CELL 1 - + CELL negate and {: off:n :}
    size USER-END-MAX off - > if E-TASK-USER throw then
    data-base TASKS-LIVE-CELL + atomic@ 0<> if E-TASK-USER throw then
    off size + ;
@@ -1630,23 +1628,18 @@ CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
    count 1 <  count USER-END-MAX bytes / >  or if
       E-TASK-USER throw
    then
-   TASK-USER-NEXT @ CELL 1 - + CELL negate and {: off:n :}
    count bytes * {: size:n :}
-   off size USER-NEXT {: next:n :}
+   size USER-NEXT {: next:n :}
    na nu shape 0 ta tu data-base PROVIDED-XT:CHILD-CELL + @
    AS-CHILD-RUN execute drop
-   off size bytes SLOT-LAY
+   next size - size bytes SLOT-LAY
    next TASK-USER-NEXT ! ;
 
 public
 
-: +USER ( n n -- n ) {: off:n size:n :}
-   off size USER-NEXT {: next:n :}
-   TASK-ALIGN8
-   create off size size SLOT-LAY
-   next TASK-USER-NEXT !
-   next
-   does> ( -- ptr n ) SLOT ;
+\ Accessor ( -- ptr t ): the calling thread's copy.
+: +USER ( -- )
+   1 CHILD-ABI:SLOT s" TASK:+USER" USER-ROW ;
 
 \ Accessor ( n -- ptr t ): element n of the calling thread's copy.
 : +USERS ( n -- )
@@ -1654,11 +1647,12 @@ public
 
 private
 
-: SLOT-HOLDS? ( ptr n ptr n -- bool ) {: at:ptr b:ptr :}
-   at b SLOT-DATA + - {: d:n :}
+: SLOT-HOLDS? ( n ptr n -- bool ) {: at:n b:ptr :}
+   at b SLOT-DATA + FFI:>CELL - {: d:n :}
    d 0 >= d b SLOT-SIZE + @ < and ;
 
-: MAIN-SLOT-OFF ( ptr n -- n ) {: at:ptr :}
+: MAIN-SLOT-OFF ( ptr t -- n )
+   FFI:>CELL {: at:n :}
    SLOT-LAST@
    begin
       dup FFI:>CELL 0= if E-TASK-USER throw then
@@ -1667,14 +1661,16 @@ private
       SLOT-PREV + 0 ptr-field @
    repeat
    {: b:ptr :}
-   b SLOT-OFF + @ at b SLOT-DATA + - + ;
+   b SLOT-OFF + @ at b SLOT-DATA + FFI:>CELL - + ;
 
-\ cur lies in a slot of the calling thread's copy; the answer is the same place
-\ in that task's copy.
-: HIS ( ptr n ptr n -- ptr n ) {: tcb:ptr cur:ptr :}
+CAST: >SLOT-AT ( n -- ptr t )
+
+\ cur lies in a slot of the calling thread's copy; the answer moves it to the
+\ same place in that task's copy, so it keeps cur's type.
+: HIS ( ptr n ptr t -- ptr t ) {: tcb:ptr cur:ptr :}
    data-base TASK-AREA-OFF + @ {: area:n :}
    area 0= if cur MAIN-SLOT-OFF else cur FFI:>CELL area - then
-   tcb TCB.REGION @ TASK-REGION-BYTES + + ;
+   tcb TCB.REGION @ TASK-REGION-BYTES + FFI:>CELL + >SLOT-AT ;
 
 \ The record is this process's lock and its holder, so every cell is a scratch
 \ cell, which a link writes zero.
@@ -1732,13 +1728,13 @@ private
 
 \ ---- sleeping ----------------------------------------------------------------
 \ The request and remainder timespecs are one slot: each task sleeps on its own.
-#USER 7 + TASK-CELL-MASK and TASK-SLEEP-BYTES +USER SLEEP-SPECS drop
+TASK-SLEEP-BYTES TASK:+USERS SLEEP-SPECS u8
 
 : SLEEP-REQ ( -- ptr n )
-   SLEEP-SPECS ;
+   0 SLEEP-SPECS CELL-VIEW ;
 
 : SLEEP-REM ( -- ptr n )
-   SLEEP-SPECS TASK-TIMESPEC-BYTES + ;
+   TASK-TIMESPEC-BYTES SLEEP-SPECS CELL-VIEW ;
 
 : SPEC! ( n ptr n -- ) {: ns:n spec:ptr :}
    ns TASK-NS-PER-S /   spec TASK-SPEC-SEC-OFF + !
@@ -2031,10 +2027,8 @@ TASK-MIN-STACK constant MIN-STACK
    TASK-EXIT-UNLOCK
    MAIN-PARK-FORGET ;
 
-: #USER ( -- n )
-   #USER ;
-
-: HIS ( ptr n ptr n -- ptr n )
+\ No program calls it: tests time a cancel by watching a running task's slots.
+: HIS ( ptr n ptr t -- ptr t )
    HIS ;
 
 \ A facility excludes (owner-tracked mutex: GET is idempotent for its owner,

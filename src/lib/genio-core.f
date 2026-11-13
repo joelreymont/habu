@@ -75,13 +75,13 @@ SCRATCH-VARIABLE TERMINAL-READY
 
 \ Task-local: two tasks may hold two devices and neither may see the other's
 \ byte.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-SCRATCH drop
+$8 TASK:+USERS IO-SCRATCH u8
 
 : SCRATCH-CELL ( -- ptr n )
-   IO-SCRATCH ;
+   0 IO-SCRATCH CELL-VIEW ;
 
 : SCRATCH ( -- ptr u8 )
-   IO-SCRATCH BYTE-VIEW ;
+   0 IO-SCRATCH ;
 
 \ The current task's input and output devices are two cells of the engine's DATA
 \ header: the engine swaps DATA for each task, and the engine's output funnel

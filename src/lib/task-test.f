@@ -60,12 +60,14 @@ variable SLEEP-W-CPU
 variable SLEEP-TICKS
 variable SLEEP-DONE-CELL
 
-TASK:#USER
-CELL TASK:+USER TASK-USER-CELL
-CELL TASK:+USER TASK-LOCAL-ID
-CELL TASK:+USER TASK-LOCAL-FFI
-CELL TASK:+USER TASK-EXIT-MARK
-drop
+TASK:+USER TASK-USER-CELL n
+2 TASK:+USERS TASK-USER-ROW n
+TASK:+USER TASK-USER-TEXT ptr u8
+STRUCTURE task-pair DERIVE addr FIELD first n FIELD second n ;STRUCTURE
+TASK:+USER TASK-USER-PAIR task-pair
+TASK:+USER TASK-LOCAL-ID n
+TASK:+USER TASK-LOCAL-FFI n
+TASK:+USER TASK-EXIT-MARK n
 
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
@@ -168,12 +170,20 @@ variable BUILD-FMT-READY
 
 : TASK-WORK-A ( -- )
    11 TASK-USER-CELL !
+   11 1 TASK-USER-ROW !
+   s" a" drop TASK-USER-TEXT !
+   11 TASK-USER-PAIR TASK-PAIR-FIRST !
+   12 TASK-USER-PAIR TASK-PAIR-SECOND !
    TASK:SELF-N TASK-SELF-A !
    TASK-INC-LOCKED
    1 TASK-READY-A atomic! ;
 
 : TASK-WORK-B ( -- )
    22 TASK-USER-CELL !
+   22 1 TASK-USER-ROW !
+   s" b" drop TASK-USER-TEXT !
+   22 TASK-USER-PAIR TASK-PAIR-FIRST !
+   23 TASK-USER-PAIR TASK-PAIR-SECOND !
    TASK:SELF-N TASK-SELF-B !
    TASK-INC-LOCKED
    1 TASK-READY-B atomic! ;
@@ -485,13 +495,13 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s" variable GOT  variable CTX  variable DIST  variable REGU" SB-APPEND TASK-LF
    s" : REGION-U ( ptr n -- n ) BYTE-VIEW TASK-ABI:REGION-U-OFF + CELL-VIEW @ ;" SB-APPEND TASK-LF ;
 
-: TASK-USER-SLOT ( n -- ) {: size:n :}
-   s" TASK:#USER 7 + -8 and " SB-APPEND size FMT:SB-INT
-   s"  TASK:+USER BIG drop" SB-APPEND TASK-LF
-   s" : LAST ( -- ptr n ) BIG " SB-APPEND size FMT:SB-INT s"  + CELL - ;" SB-APPEND TASK-LF
-   s" : WORK ( -- ) 77 LAST ! LAST @ GOT ! TASK:SELF-CONTEXT CTX ! BIG FFI:>CELL CTX @ - DIST ! ;" SB-APPEND TASK-LF
-   s" : FITS ( -- n ) DIST @ $10000 >= DIST @ " SB-APPEND size FMT:SB-INT
-   s"  + REGU @ <= and bool>n ;" SB-APPEND TASK-LF ;
+\ A row of count cells.
+: TASK-USER-SLOT ( n -- ) {: count:n :}
+   count FMT:SB-INT s"  TASK:+USERS BIG n" SB-APPEND TASK-LF
+   s" : LAST ( -- ptr n ) " SB-APPEND count 1 - FMT:SB-INT s"  BIG ;" SB-APPEND TASK-LF
+   s" : WORK ( -- ) 77 LAST ! LAST @ GOT ! TASK:SELF-CONTEXT CTX ! 0 BIG FFI:>CELL CTX @ - DIST ! ;" SB-APPEND TASK-LF
+   s" : FITS ( -- n ) DIST @ $10000 >= DIST @ " SB-APPEND count FMT:SB-INT
+   s"  cells + REGU @ <= and bool>n ;" SB-APPEND TASK-LF ;
 
 \ REGU is main's write at ACTIVATE, read before the join releases the region.
 : TASK-USER-RUN ( -- )
@@ -499,11 +509,11 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s" : RUN ( -- ) ['] WORK W TASK:ACTIVATE W REGION-U REGU ! W TASK:JOIN JOINED ;" SB-APPEND TASK-LF
    s" RUN GOT @ . LAST @ ." SB-APPEND TASK-LF ;
 
-\ 8192 bytes: more than the band in a region's header holds.
+\ 1024 cells: more than the band in a region's header holds.
 : TASK-USER-BIG$ ( -- ptr u8 n )
    SB-RESET
    TASK-USER-HEAD
-   8192 TASK-USER-SLOT
+   1024 TASK-USER-SLOT
    TASK-USER-RUN
    s" ;package" SB-APPEND TASK-LF
    SB$ ;
@@ -514,58 +524,71 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SB-RESET
    TASK-USER-HEAD
    s" variable OLD  W TASK:PREPARE W BYTE-VIEW TASK-ABI:REGION-OFF + CELL-VIEW @ OLD !" SB-APPEND TASK-LF
-   65536 TASK-USER-SLOT
+   8192 TASK-USER-SLOT
    TASK-USER-RUN
    s" CTX @ OLD @ <> bool>n . FITS ." SB-APPEND TASK-LF
    s" ;package" SB-APPEND TASK-LF
    SB$ ;
 
-\ A claim whose end passes MEM-MAX-N would wrap.
+\ The largest row the ceiling admits alone, $20000 under MEM-MAX-N: past the
+\ slots before it, its end is refused.
 : TASK-USER-WRAP$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" TASK:#USER $7FFFFFFFFFFFFFF0 TASK:+USER PW drop" SB-APPEND TASK-LF
+   s" $7FFFFFFFFFFDFFFF TASK:+USERS PW u8" SB-APPEND TASK-LF
    SB$ ;
 
-\ A claim under the ceiling that the data space cannot hold, then SCRATCH-ALLOT's own huge and
-\ negative sizes: each prints the engine's refusal code, the claim leaves TASK:#USER where it
-\ was, and the next claim's slot holds a value.
+\ A row under the ceiling that the data space cannot hold, a count below one, a
+\ count whose bytes wrap, a refused type, then SCRATCH-ALLOT's own huge and
+\ negative sizes: each prints its refusal, and the slots declared around them
+\ lie next to each other in a task's region.
 : TASK-USER-HUGE$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" require src/lib/test.f" SB-APPEND TASK-LF
-   s" TASK:#USER" SB-APPEND TASK-LF
-   s\" s\" TASK:#USER $7FFFFFFFFFFD0000 TASK:+USER PH drop\" TEST-EVAL:RC ." SB-APPEND TASK-LF
-   s" TASK:#USER - ." SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
+   s" TASK:+USER BEFORE n" SB-APPEND TASK-LF
+   s\" s\" $7FFFFFFFFFFD0000 TASK:+USERS PH u8\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s\" s\" 0 TASK:+USERS PC n\" TEST-EVAL:RC E-TASK-USER = bool>n ." SB-APPEND TASK-LF
+   s\" s\" $2000000000000001 TASK:+USERS PV n\" TEST-EVAL:RC E-TASK-USER = bool>n ." SB-APPEND TASK-LF
+   s\" s\" TASK:+USER PT no-such-type\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s\" s\" ' PT drop\" TEST-EVAL:RC drop" SB-APPEND TASK-LF
    s\" s\" create PX $7FFFFFFFFFFD0000 SCRATCH-ALLOT\" TEST-EVAL:RC ." SB-APPEND TASK-LF
    s\" s\" create PN -16 SCRATCH-ALLOT\" TEST-EVAL:RC ." SB-APPEND TASK-LF
-   s" TASK:#USER 7 + -8 and CELL TASK:+USER AFTER drop  5 AFTER !  AFTER @ ." SB-APPEND TASK-LF
+   s" TASK:+USER AFTER n  5 AFTER !  AFTER @ ." SB-APPEND TASK-LF
+   s" W AFTER TASK:HIS W BEFORE TASK:HIS - CELL - ." SB-APPEND TASK-LF
    SB$ ;
 
-\ One byte below TASK:#USER would overlap the newest slot.
-: TASK-USER-BELOW$ ( -- ptr u8 n )
-   SB-RESET
-   s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" TASK:#USER 1 - CELL TASK:+USER BELOW drop" SB-APPEND TASK-LF
-   SB$ ;
-
-\ A live task's area cannot grow, so a claim while one runs is refused.
+\ A live task's area cannot grow, so a claim while one runs is refused and
+\ leaves no word.
 : TASK-USER-LIVE$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" require src/lib/test.f" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK SPINNER" SB-APPEND TASK-LF
    s" : SPIN ( -- ) begin TASK:PAUSE false until ;" SB-APPEND TASK-LF
    s" ' SPIN SPINNER TASK:ACTIVATE" SB-APPEND TASK-LF
-   s" TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER LIVE drop" SB-APPEND TASK-LF
+   s\" s\" TASK:+USER LIVE n\" TEST-EVAL:RC E-TASK-USER = bool>n ." SB-APPEND TASK-LF
+   s\" s\" ' LIVE drop\" TEST-EVAL:RC drop" SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-RUN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
-   PROC-ARGV-RESET
+: TASK-SPAWN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
    TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
+
+: TASK-RUN-EXITS ( ptr u8 n n -- len len )
+   PROC-ARGV-RESET TASK-SPAWN-EXITS ;
+
+\ The pre-run check of the source, read from stdin as task-rx.f.
+: TASK-CHECK-EXITS ( ptr u8 n n -- len len )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  s" --verify-only" >LEN PROC-ARGV+
+   s" --stdin-path" >LEN PROC-ARGV+  s" task-rx.f" >LEN PROC-ARGV+
+   TASK-SPAWN-EXITS ;
 
 : TASK-TEST-MAIN-COMPILES ( -- )
    TASK-MAIN-COMPILES$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
@@ -675,12 +698,38 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-OUT lateu LEN>N S\" 77\n0\n-1\n-1\n" T$=
    laterr LEN>N 0 T=
    E-TASK-USER TASK-CODE$ {: needle:ptr needleu:n :}
-   TASK-USER-BELOW$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
-   TASK-USER-LIVE$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
    TASK-USER-WRAP$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
+   TASK-USER-LIVE$ 0 TASK-RUN-EXITS {: liveu:len liverr:len :}
+   TASK-OUT liveu LEN>N S\" -1\n" T$=
+   TASK-ERR liverr LEN>N s" undefined word 'LIVE'" CONTAINS? TTRUE
    TASK-USER-HUGE$ 0 TASK-RUN-EXITS {: hugeu:len hugerr:len :}
-   TASK-OUT hugeu LEN>N S\" 76\n0\n76\n76\n5\n" T$=
-   TASK-ERR hugerr LEN>N s" data space out of range" CONTAINS? TTRUE ;
+   TASK-OUT hugeu LEN>N S\" 76\n-1\n-1\n70\n76\n76\n5\n0\n" T$=
+   TASK-ERR hugerr LEN>N s" data space out of range" CONTAINS? TTRUE
+   TASK-ERR hugerr LEN>N s" unknown type 'no-such-type'" CONTAINS? TTRUE
+   TASK-ERR hugerr LEN>N s" undefined word 'PT'" CONTAINS? TTRUE ;
+
+: TASK-USER-REEXPORT$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" package TASK-RX" SB-APPEND TASK-LF
+   s" public" SB-APPEND TASK-LF
+   s" export TASK:+USER  export TASK:+USERS" SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   s" TASK-RX:+USER TASK-RX-SLOT n" SB-APPEND TASK-LF
+   s" 2 TASK-RX:+USERS TASK-RX-ROW n" SB-APPEND TASK-LF
+   s" : TASK-RX-SUM ( -- n ) TASK-RX-SLOT @ 1 TASK-RX-ROW @ + ;" SB-APPEND TASK-LF
+   s" 5 TASK-RX-SLOT !  7 1 TASK-RX-ROW !  TASK-RX-SUM ." SB-APPEND TASK-LF
+   SB$ ;
+
+\ A re-export of a TASK definer is that definer: the pre-run check certifies
+\ the slots declared through it and the load runs them.
+: TASK-TEST-USER-REEXPORT ( -- )
+   s" a re-exported +USER and +USERS declare slots" T-LABEL
+   TASK-USER-REEXPORT$ 0 TASK-CHECK-EXITS nip LEN>N 0 T=
+   TASK-USER-REEXPORT$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N S\" 12\n" T$=
+   erru LEN>N 0 T=
+   T-LABEL-CLEAR ;
 
 : TASK-TEST-WORKER-THROW ( -- )
    0 TASK-OK-CELL !
@@ -2398,6 +2447,7 @@ variable NEW-STRAY
    0 TASK-SELF-A !
    0 TASK-SELF-B !
    99 TASK-USER-CELL !
+   99 1 TASK-USER-ROW !
    TASK-LOCK TASK:FACILITY-INIT
    TASK-TEST-FACILITY-SWIFT
    ['] TASK-WORK-A WORKER-A TASK:ACTIVATE
@@ -2407,6 +2457,15 @@ variable NEW-STRAY
    TASK-USER-CELL @ 99 T=
    WORKER-A TASK-USER-CELL TASK:HIS @ 11 T=
    WORKER-B TASK-USER-CELL TASK:HIS @ 22 T=
+   1 TASK-USER-ROW @ 99 T=
+   WORKER-A 1 TASK-USER-ROW TASK:HIS @ 11 T=
+   WORKER-B 1 TASK-USER-ROW TASK:HIS @ 22 T=
+   WORKER-A TASK-USER-TEXT TASK:HIS @ 1 s" a" T$=
+   WORKER-B TASK-USER-TEXT TASK:HIS @ 1 s" b" T$=
+   WORKER-A TASK-USER-PAIR TASK:HIS TASK-PAIR-FIRST @ 11 T=
+   WORKER-A TASK-USER-PAIR TASK:HIS TASK-PAIR-SECOND @ 12 T=
+   WORKER-B TASK-USER-PAIR TASK:HIS TASK-PAIR-FIRST @ 22 T=
+   WORKER-B TASK-USER-PAIR TASK:HIS TASK-PAIR-SECOND @ 23 T=
    s" HIS of an address in no slot" T-LABEL
    [: WORKER-A TASK-USER-CELL CELL + TASK:HIS drop ;] E-TASK-USER TTHROWSQ
    T-LABEL-CLEAR
@@ -2427,6 +2486,7 @@ variable NEW-STRAY
    TASK-TEST-ROLLBACK-LIVE
    TASK-TEST-APP-SOAK
    TASK-TEST-USER-SLOTS
+   TASK-TEST-USER-REEXPORT
    TASK-TEST-BUILDERS
    TASK-TEST-WORKER-DIE
    TASK-TEST-WORKER-THROW

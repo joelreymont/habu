@@ -40,7 +40,7 @@ create ERR CAP allot
    s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT ;
 
 : TEST-TASK-USER ( -- )
-   s" require src/lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
+   s" require src/lib/task.f -1 TASK:+USERS PST-WRAP u8" UNCAUGHT-RC EXPECT ;
 
 \ An ordinary definition whose body text passes 20000 bytes: PST-LONG calls a
 \ word with a 59-byte name 350 times, 60 bytes of text each with its separator.
