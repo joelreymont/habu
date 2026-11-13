@@ -36,12 +36,14 @@ TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
 package TDT-EVENT
 public
 variable BASE
-\ The event depth brackets a negative to catch a leaked event frame.
-variable EVD
+\ Transaction depths bracket a negative to catch leaked event or field frames.
+variable EVD    variable PFD
 : SAVE ( -- )
-   DECL-EVENT:DEPTH EVD ! ;
+   DECL-EVENT:DEPTH EVD !
+   TFAM:PF-TX-DEPTH @ PFD ! ;
 : SAME ( -- )
-   DECL-EVENT:DEPTH EVD @ T= ;
+   DECL-EVENT:DEPTH EVD @ T=
+   TFAM:PF-TX-DEPTH @ PFD @ T= ;
 ;package
 \ Checked aliases of the checker's multi-error bracket.
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
