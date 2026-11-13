@@ -50,6 +50,10 @@ public
 24  constant NR-DUP2
 25  constant NR-FCNTL
 103 constant NR-SETITIMER
+private
+113 constant NR-CLOCK-GETTIME
+1   constant CLOCK-MONOTONIC
+public
 163 constant NR-GETRLIMIT
 3   constant RLIMIT-STACK
 -1  constant RLIM-INFINITY
@@ -91,6 +95,23 @@ $100 constant AT-SYMLINK-NOFOLLOW
 : OS-THREAD-HANDLE ( n -- )
    {: reg :}
    NR-GETTID SYS,  reg 0 0 ADDI, ;
+
+\ x(n) = OS-TIMER-NOW's ticks per second.
+: OS-TIMER-HZ ( n -- ) 1000000000 LIT64, ;
+
+\ x(n) = CLOCK_MONOTONIC in ns, the clock ITIMER_REAL expires on, by a frame on
+\ sp it gives back; dies for n of 0, 1, 8 or 16. Clobbers only x(n) and flags.
+: OS-TIMER-NOW ( n -- )
+   {: reg :}
+   reg 0 = reg 1 = or reg 8 = or reg 16 = or
+   if s" hb: sys: OS-TIMER-NOW into a register it restores" 76 die then
+   SP SP 48 SUBI,
+   0 SP 16 STR,  1 SP 24 STR,  8 SP 32 STR,  16 SP 40 STR,
+   0 CLOCK-MONOTONIC MOVZ,  1 SP 0 ADDI,  NR-CLOCK-GETTIME SYS,
+   reg SP 0 LDR,  0 OS-TIMER-HZ  reg reg 0 MUL,
+   1 SP 8 LDR,  reg reg 1 ADD,
+   0 SP 16 LDR,  1 SP 24 LDR,  8 SP 32 LDR,  16 SP 40 LDR,
+   SP SP 48 ADDI, ;
 
 \ tgkill(getpid(), the tid in x(t), the signal in x(s)); s is not x8.
 \ Clobbers x0-x2, x8 and x16.

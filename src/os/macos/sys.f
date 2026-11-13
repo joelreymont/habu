@@ -100,6 +100,18 @@ $20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux
    {: reg :}
    16 MACH-THREAD-SELF MOVN,  $80 SVC,  reg 0 0 ADDI, ;
 
+private
+: CNTVCT>R ( n -- ) $D53BE040 or EMITW ;   \ mrs xn, CNTVCT_EL0
+: CNTFRQ>R ( n -- ) $D53BE000 or EMITW ;   \ mrs xn, CNTFRQ_EL0
+public
+
+\ x(n) = the clock setitimer's ITIMER_REAL expires on, mach absolute time.
+\ Clobbers only x(n).
+: OS-TIMER-NOW ( n -- ) CNTVCT>R ;
+
+\ x(n) = OS-TIMER-NOW's ticks per second.
+: OS-TIMER-HZ ( n -- ) CNTFRQ>R ;
+
 \ __pthread_kill(the port in x(t), the signal in x(s)); s is not x16.
 \ Clobbers x0, x1 and x16.
 : OS-SIGNAL-THREAD ( n n -- )

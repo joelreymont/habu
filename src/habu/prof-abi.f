@@ -73,8 +73,8 @@ variable LPROFRECLAIM
 \ blocked in a syscall or descheduled arrive as one SIGALRM. The aarch64 handler
 \ therefore counts each sample as the whole intervals elapsed since the last
 \ one, so blocked time is charged where the sample lands.
-128 constant ARN-LAST        \ CNTVCT_EL0 at the last sample, or when the clock was armed
-136 constant ARN-TICKS       \ the sampling interval in CNTVCT_EL0 ticks, at least 1
+128 constant ARN-LAST        \ the timer clock at the last sample, or at arming
+136 constant ARN-TICKS       \ the sampling interval in the timer clock's ticks, at least 1
 \ The x86-64 twin weighs nothing and keeps no ARN-SEQ: its stamp is PROF-TOT + 1,
 \ which is the serial only while every sample adds exactly one to PROF-TOT.
 144 constant ARN-SEQ         \ samples taken, one each whatever their weight: the stamps' serial
@@ -82,7 +82,7 @@ variable LPROFRECLAIM
 \ the bounded scan names one, so that weight is in the word's counter and not in
 \ PROF-FOREIGN.
 152 constant ARN-FCALLED     \ the weight of foreign samples charged to a calling word
-160 constant ARN-CARRY       \ CNTVCT_EL0 ticks elapsed and not yet counted; a hold can lift it past ARN-TICKS
+160 constant ARN-CARRY       \ the timer clock's ticks elapsed and not yet counted; a hold can lift it past ARN-TICKS
 \ A SIGALRM reaches any thread that does not block it, and macOS gives the
 \ process's to the main thread: the aarch64 handler counts only on ARN-OWNER
 \ and forwards a delivery on any other thread to ARN-OWNER-TID.

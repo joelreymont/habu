@@ -52,17 +52,18 @@
 \ A sample is weighed by the time since the last one. SIGALRM does not queue:
 \ every tick that expires while the process waits in a syscall (an fsync, a
 \ regular-file read) or is descheduled arrives as one signal, so a count of
-\ signals would show a blocked second as about one sample. The handler reads
-\ CNTVCT_EL0 and counts (now - ARN-LAST + ARN-CARRY) / ARN-TICKS wherever it
-\ counts a sample, and keeps the remainder in ARN-CARRY, so the weights sum to
-\ the whole intervals armed. A hold of a running clock adds the armed time
-\ since the last sample to ARN-CARRY, which can then exceed ARN-TICKS. Arming
-\ sets ARN-LAST, and a resume's first expiry falls at the interval less the
-\ carry, so the first sample after it weighs the carry, held or stopped time is
-\ never counted, and a program that holds the clock more often than the
-\ interval is still sampled. The time lost at prof-off is the carry left, under
-\ one interval. A sample that weighs 0 moves ARN-SEQ and ends there: no count,
-\ edge, deferred slot or walk.
+\ signals would show a blocked second as about one sample. The handler reads the
+\ clock the timer expires on and counts (now - ARN-LAST + ARN-CARRY) / ARN-TICKS
+\ wherever it counts a sample, and keeps the remainder in ARN-CARRY, so the
+\ weights sum to the whole intervals armed. A weight measured on another clock
+\ would floor an expiry that arrives early by that clock's drift to 0. A hold of
+\ a running clock adds the armed time since the last sample to ARN-CARRY, which
+\ can then exceed ARN-TICKS. Arming sets ARN-LAST, and a resume's first expiry
+\ falls at the interval less the carry, so the first sample after it weighs the
+\ carry, held or stopped time is never counted, and a program that holds the
+\ clock more often than the interval is still sampled. The time lost at prof-off
+\ is the carry left, under one interval. A sample that weighs 0 moves ARN-SEQ
+\ and ends there: no count, edge, deferred slot or walk.
 \
 \ A foreign sample (x20 not the owner's DATA, ARN-OWNER-DATA, which on a task
 \ is the task's own region, or x26 not the recorded DBASE) is inside C a
@@ -125,9 +126,6 @@ $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
    13 13 CODE-SPAN:MASK ANDI,
    13 13 CODE-SPAN:INSN-BYTES ADDI,
    14 14 2 LSLI,  13 13 14 SUB, ;
-
-: CNTVCT>R ( n -- ) $D53BE040 or EMITW ;   \ mrs xn, CNTVCT_EL0
-: CNTFRQ>R ( n -- ) $D53BE000 or EMITW ;   \ mrs xn, CNTFRQ_EL0
 
 public
 
@@ -699,14 +697,14 @@ public
 \ moves to now, ARN-CARRY keeps the remainder and ARN-SEQ counts the sample,
 \ whatever its weight. Plain loads and stores suffice: only the owner's handler
 \ reaches here, and a word that leaves ARMED-RUNS waits for it. The ISB keeps
-\ CNTVCT_EL0 from being read before the admission's load-acquire, ahead of the
-\ ARN-LAST a resume wrote.
+\ the timer clock from being read before the admission's load-acquire, ahead of
+\ the ARN-LAST a resume wrote.
 \ Clobbers x8 and x10-x12.
 : C-PROF-WEIGHT ( -- )
    LBL {: wdone :}
    3 1 MOVZ,
    8 7 PROF-ARENA LDR,  8 wdone CBZ,
-   ISB,  10 CNTVCT>R
+   ISB,  10 OS-TIMER-NOW
    11 8 ARN-LAST LDR,  10 8 ARN-LAST STR,
    12 8 ARN-SEQ LDR,  12 12 1 ADDI,  12 8 ARN-SEQ STR,
    12 8 ARN-TICKS LDR,  12 wdone CBZ,
@@ -868,17 +866,17 @@ private
    10 0 ARN-USEC LDR,  10 dflt CBNZ,  10 1000 MOVZ,
    dflt LBL,  10 0 ARN-USEC STR, ;
 
-\ x0 = arena: ARN-TICKS = the interval in CNTVCT_EL0 ticks, at least 1, and
-\ ARN-LAST = now. Run before PROF-ARMED goes to ARMED-RUNS, so a sample never
-\ weighs time the clock was held or stopped. Clobbers x10-x12.
+\ x0 = arena: ARN-TICKS = the interval in the timer clock's ticks, at least 1,
+\ and ARN-LAST = now. Run before PROF-ARMED goes to ARMED-RUNS, so a sample
+\ never weighs time the clock was held or stopped. Clobbers x10-x12.
 : C-PROF-CLOCK-MARK ( -- )
    LBL {: tk :}
    C-PROF-USEC>R10
-   11 CNTFRQ>R  10 10 11 MUL,
+   11 OS-TIMER-HZ  10 10 11 MUL,
    11 USEC-PER-SEC LIT64,  10 10 11 UDIV,
    10 tk CBNZ,  10 1 MOVZ,
    tk LBL,  10 0 ARN-TICKS STR,
-   10 CNTVCT>R  10 0 ARN-LAST STR, ;
+   10 OS-TIMER-NOW  10 0 ARN-LAST STR, ;
 
 \ x0 = arena: the interval split for setitimer. The signed divide keeps an
 \ interval below 0 negative, which C-PROF-TIMER's arm refuses rather than
@@ -1408,7 +1406,7 @@ private
    C-PROF-TIMER-DONE
    C-PROF-CTL-FREE ;
 
-\ Clobbers x0-x2 and x9.
+\ Clobbers x0-x2, x8, x9 and x16.
 : C-PROF-TIMER-STOP ( -- )
    SP SP 32 SUBI,
    9 0 MOVZ,  9 SP 0 STR,  9 SP 8 STR,  9 SP 16 STR,  9 SP 24 STR,
@@ -1418,14 +1416,14 @@ private
 \ Hold the clock for a walk or a clear: a running clock goes to ARMED-HELD
 \ before the timer stops, so the handler counts nothing from here on, and its
 \ time since the last sample goes to ARN-CARRY once its handler is out; a held
-\ or stopped clock only has its timer stopped. Clobbers x0-x2, x7, x9 and x10.
+\ or stopped clock only has its timer stopped. Clobbers x0-x2, x7-x10 and x16.
 : C-PROF-CLOCK-HOLD ( -- )
    LBL {: off :}
    7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
    9 ARMED-RUNS CMPI,  C-NE off BCOND,
    ARMED-HELD C-PROF-LEAVE-RUNS
    0 7 PROF-ARENA LDR,  0 off CBZ,
-   9 CNTVCT>R  1 0 ARN-LAST LDR,  9 9 1 SUB,
+   9 OS-TIMER-NOW  1 0 ARN-LAST LDR,  9 9 1 SUB,
    1 0 ARN-CARRY LDR,  9 9 1 ADD,  9 0 ARN-CARRY STR,
    off LBL,
    C-PROF-TIMER-STOP ;
