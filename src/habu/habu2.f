@@ -1565,17 +1565,6 @@ public
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    LFLUSH LABEL@ BL, ;
 
-\ The native compiler's fixed shadow callback, when one is installed, learns
-\ the deferred record just published, NDICT - 1, and its dispatch cell.
-: DEFER-SHADOW, ( -- )
-   LBL {: noshadow:label :}
-   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
-   9 DATA DEFER-XT-CELL LDR,  9 G-PUSH
-   9 COMP-BODY:defer COMP:BODY>N MOVZ,  9 G-PUSH
-   9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
-   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
-   noshadow LBL, ;
-
 ;package
 
 \ def-defer ( n -- ): a pending kind-0 record takes DEFER-BODY, for dispatch
@@ -1587,8 +1576,7 @@ public
 : DEF-DEFER ( -- )
    11 G-POP  11 DATA DEFER-XT-CELL STR,
    s" E-SEAL-VIOLATION habu: def-defer with no definition pending, one not of the kind, or CP at the code ceiling"
-   0 [: DEFER-BODY,  EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
-      DEFER-SHADOW, ;]
+   0 [: DEFER-BODY,  EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL, ;]
    TAIL-CLOSE ;
 
 ;package
@@ -2197,7 +2185,7 @@ public
    9 0 MOVZ,
    9 DATA NCOMP-DISPATCH:COMP-LATCH-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
-   9 DATA VSP-CELL STR,  9 DATA FRAME-CELL STR,
+   9 DATA VSP-CELL STR,
    9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
    9 0 MOVZ,

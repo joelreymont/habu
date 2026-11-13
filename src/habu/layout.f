@@ -741,9 +741,6 @@ $568 constant RSP-CELL
 $570 constant EXITH-CELL
 $560 constant LASTC-CELL
 $230 constant CREATEP-CELL
-\ FRAME-CELL: the open body's entry slot, where `:` emitted the link-register
-\ save. Zero means no frame.
-$7D0 constant FRAME-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
 \ CMM-CELL: compile-loop ADT-lowering mode: 0 = off; a `construct`/`MATCH`
@@ -906,7 +903,6 @@ $2D60 constant NDICT-HW-CELL
 
 package NCOMP-DISPATCH
 public
-$2D98 constant FIXED-SHADOW-CELL
 $2DA0 constant DOES-SHADOW-CELL
 ;package
 $2DA8 constant TASK-CHAIN-CELL

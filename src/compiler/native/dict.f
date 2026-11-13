@@ -354,25 +354,6 @@ public
    rec XREF-RETIRED? if 0 exit then
    rec TRAILER-CELL ;
 
-\ The DATA origin a record's definer stamped, retired or not: the address a
-\ `create`d or `variable` body pushes, or a deferred word's dispatch cell.
-\ A dependency walk reads storage by ordinal, and code compiled before an
-\ `undefine` still reaches it.
-: STAMP-ORIGIN ( ptr n -- n bool )
-   {: rec:ptr :}
-   rec STAMP-FIXED COMP-BODY:address COMP-BODY:EQ if rec XREF-START READ-FIXED true exit then
-   rec TRAILER-CELL dup 0<> ;
-
-\ Resolve once: the address and its owner must describe the same declaration.
-: SPELL-DEFER-BINDING ( ptr u8 n -- n n )
-   SPELL-REC {: rec:ptr :}
-   rec REC-DEFER-CELL {: cell:n :}
-   cell 0= if 0 -1 exit then
-   cell rec XREF-A>U8 NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
-
-: SPELL-DEFER-CELL ( ptr u8 n -- n )
-   SPELL-DEFER-BINDING drop ;
-
 \ ---- and the engine word a does> body leaves through --------------------------
 \ The engine's own, whatever the compiled source's package scope. Its tick is
 \ trust-only: `['] does-patch` in a checked body is E-CAP-TRUSTED.

@@ -5,13 +5,10 @@
 \ field child's offset adds its number to the top cell, an index child's index
 \ pops n and adds n times its number to the pointer below, a routine pushes
 \ its data address and calls its fixed routine; compiled is an ordinary body.
-\ The engine's machine code passes the tag as a number through
-\ NCOMP-DISPATCH:FIXED-SHADOW-CELL.
 
 require src/lib/prelude.f
 
 package COMP
 public
 ENUM body DERIVE eq compiled value address defer cast offset index routine ;ENUM
-CAST: BODY>N ( body -- n )
 ;package

@@ -96,7 +96,6 @@ create TAB
    COMMA-RUN-CELL                     1 cells                 CLAIM COMMA-RUN-CELL
    COMMA-END-CELL                     1 cells                 CLAIM COMMA-END-CELL
    COMMA-BASE-CELL                    1 cells                 CLAIM COMMA-BASE-CELL
-   FRAME-CELL                         1 cells                 CLAIM FRAME-CELL
    BODY-TEXT:BASE-CELL                4 cells                 CLAIM BODY-TEXT
    BODY-ITEMS:BASE-CELL               4 cells                 CLAIM BODY-ITEMS
    CMM-CELL                           1 cells                 CLAIM CMM-CELL
@@ -114,7 +113,6 @@ create TAB
    TOKCP-CELL                         1 cells                 CLAIM TOKCP-CELL
    TOKVSP-CELL                        1 cells                 CLAIM TOKVSP-CELL
    PENDTKA-CELL                       1 cells                 CLAIM PENDTKA-CELL
-   NCOMP-DISPATCH:FIXED-SHADOW-CELL   1 cells                 CLAIM NCOMP-FIXED-SHADOW-CELL
    NCOMP-DISPATCH:DOES-SHADOW-CELL    1 cells                 CLAIM NCOMP-DOES-SHADOW-CELL
    TASK-CHAIN-CELL                    1 cells                 CLAIM TASK-CHAIN-CELL
    PKGRESYNC-CELL                     1 cells                 CLAIM PKGRESYNC-CELL
