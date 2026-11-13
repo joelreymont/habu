@@ -224,7 +224,6 @@ public
 : OPEN ( ptr n n -- decoder )
    {: state:ptr cap:n :}
    state 0= if E-STORAGE throw then
-   state NULL-PTR - CELL 1- and 0 <> if E-STORAGE throw then
    cap STORAGE-BYTES < if E-STORAGE throw then
    state ST@ CLOSED <> if E-STATE throw then
    state LINE-BUF ZERO-BUF

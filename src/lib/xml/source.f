@@ -258,7 +258,6 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
 : SRC-STORAGE-CHECK ( ptr n n ptr u8 n n -- )
    {: storage cap:n original size:n needed:n :}
    storage BYTE-VIEW cap SPAN-CHECK
-   storage BYTE-VIEW BYTE-ADDRESS CELL 1- and 0<> if E-STORAGE throw then
    cap needed < if E-CAPACITY throw then
    original size storage BYTE-VIEW cap OVERLAP? if E-ALIAS throw then ;
 
@@ -309,16 +308,15 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    then ;
 
 public
-\ Validates the whole wire encoding and scalar range and answers the
-\ cell-aligned storage SOURCE-INIT needs; SOURCE-INIT validates again before
-\ publishing. Neither checks well-formedness. Accepted: UTF-8 with or without
-\ BOM; declared US-ASCII without BOM (a byte above $7F anywhere, replacement
-\ markup included, is E-ENCODING; numeric references stay ASCII); UTF-16 LE or
-\ BE with BOM and no or a generic UTF-16 declaration; BOM-less UTF-16 starting
-\ `<?` with a matching UTF-16LE or UTF-16BE declaration, checked by the first
-\ NEXT. Labels are case-insensitive and the target `xml` lowercase (XML 1.0
-\ section 4.3.3). Anything else, UTF-32 included, is E-ENCODING; bad surrogates
-\ are E-UTF16.
+\ Validates the whole wire encoding and scalar range and answers the storage
+\ SOURCE-INIT needs; SOURCE-INIT validates again before publishing. Neither
+\ checks well-formedness. Accepted: UTF-8 with or without BOM; declared US-ASCII
+\ without BOM (a byte above $7F anywhere, replacement markup included, is
+\ E-ENCODING; numeric references stay ASCII); UTF-16 LE or BE with BOM and no or
+\ a generic UTF-16 declaration; BOM-less UTF-16 starting `<?` with a matching
+\ UTF-16LE or UTF-16BE declaration, checked by the first NEXT. Labels are
+\ case-insensitive and the target `xml` lowercase (XML 1.0 section 4.3.3).
+\ Anything else, UTF-32 included, is E-ENCODING; bad surrogates are E-UTF16.
 : SOURCE-BYTES ( ptr u8 n -- n )
    SRC-BYTES 2drop ;
 

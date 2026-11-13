@@ -10,7 +10,6 @@ require src/lib/prelude.f
 package EDIT
 public
 DEFLINEAR EDIT:editor
--9140 constant E-STORAGE
 -9141 constant E-CAPACITY
 -9142 constant E-RANGE
 -9143 constant E-ORDER
@@ -28,8 +27,8 @@ private
 6 cells constant STORAGE-LEN
 $7FFFFFFFFFFFFFFF constant MAX-SIZE
 
-\ Representation leaf: a span's address as a number, used only by the range,
-\ alias and alignment checks; its extent and lifetime stay caller-owned.
+\ Representation leaf: a span's address as a number, used only by the range
+\ and alias checks; its extent and lifetime stay caller-owned.
 : ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
 LINEAR: MINT ( ptr n -- EDIT:editor )
@@ -79,7 +78,6 @@ private
 : STORAGE-CHECK ( ptr n n ptr u8 n -- )
    {: storage cap:n source size:n :}
    storage BYTE-VIEW cap REQUIRE-SPAN
-   storage BYTE-VIEW ADDRESS CELL 1- and 0<> if E-STORAGE throw then
    cap 0 STORAGE-BYTES < if E-CAPACITY throw then
    source size REQUIRE-SPAN
    storage BYTE-VIEW cap source size OVERLAPS? if E-ALIAS throw then ;

@@ -5,8 +5,7 @@ require src/lib/string.f
 
 package XML
 public
-\ XML scalar/parser errors: -9200..-9217.
--9200 constant E-STORAGE
+\ XML scalar/parser errors: -9201..-9208 and -9212..-9217.
 -9201 constant E-CAPACITY
 -9202 constant E-RANGE
 -9203 constant E-MALFORMED
