@@ -60,9 +60,8 @@ public
 \ Lifecycle admission at a stack switch (run-in-stack, catch, evaluate, task
 \ and REPL recovery): x14=base, x10=capacity, x12=cursor. Leaves base intact;
 \ x10 becomes remaining bytes and x12 becomes used bytes. No memory is changed.
-\ This is the only bounds check the engine performs on a data stack: inside
-\ compiled code the checker proves the stack effect, and a push past the
-\ capacity faults on the guard page beyond the allocation.
+\ Inside native compiled code the checker proves the stack effect, and a push
+\ past the capacity faults on the guard page beyond the allocation.
 : CHECK-CURSOR ( n label -- )
    DESCRIPTOR-FAIL !  CURSOR-ABOVE !
    14 10 DESCRIPTOR-FAIL LABEL@ DESCRIPTOR

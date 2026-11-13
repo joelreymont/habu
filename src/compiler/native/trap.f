@@ -13,10 +13,8 @@ package NTRAP
 private
 
 \ ---- the message -------------------------------------------------------------
-\ The tag form writes the exact bytes the engine's own inline trap writes, so a
-\ compiled MATCH and an interpreted one end the process saying the same thing.
-\ The trailing newline of those bytes is die's, written for every non-empty
-\ message (src/habu/habu1.f BDIE); the engine's inline trap carries its own.
+\ T0 and tier 1 both call ROUTINE, so a MATCH ends the process with the same
+\ bytes on either tier. die writes the trailing newline.
 \ The message is built in a byte row that grows to hold the whole name.
 \ Growing moves the row, so its span is taken after the last byte is written,
 \ and it holds until the next message is built.
