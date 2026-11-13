@@ -9,6 +9,7 @@ require src/lib/string-roles.f
 require src/lib/float.f
 require src/lib/adt/option.f
 require src/lib/byte-buffer.f
+require src/lib/sort.f
 
 \ The E-JSON-READ-* codes stay global names, as callers spell them.
 -3900 constant E-JSON-READ-FIRST
@@ -972,25 +973,31 @@ public
 
 private
 
-\ READ-REPEATS? scratch, mapped per call and zero-filled, so the record owns no stack
-\ until it grows one. After the record, cell 0 counts the keys read, k, and cells
-\ 1..k+1 hold offsets into the room, the first 0: key i decodes to room bytes
-\ o(i)..o(i+1). A member takes at least 5 source bytes ("":0,), so the reader
-\ returns at most u/5 + 1 keys before it refuses, and decoded keys fit u bytes.
+\ A member takes at least 5 source bytes ("":0,), so the
+\ reader returns at most u/5 + 1 keys before it refuses.
 : TABLE-CELLS ( n -- n )
    5 / 3 + ;
 
+\ READ-REPEATS? scratch, zero-filled: the record, the table, the
+\ order, then the room, u bytes, which every decoded key fits.
 : SCRATCH-LEN ( n -- n )
-   dup TABLE-CELLS cells + CURSOR-BYTES + ;
+   dup TABLE-CELLS 2 * cells + CURSOR-BYTES + ;
 
+\ Zero-filled, so the record owns no stack until it grows one.
 : RECORD ( ptr u8 -- ptr cursor )
    CELL-VIEW >CURSOR ;
 
+\ Cell 0 counts the keys read, k; cells 1..k+1 hold room offsets,
+\ the first 0, and key i decodes to room bytes o(i)..o(i+1).
 : TABLE ( ptr u8 -- ptr n )
    CURSOR-BYTES + CELL-VIEW ;
 
+\ Key indices, sorted by their decoded bytes once all are read.
+: ORDER ( ptr u8 n -- ptr n )
+   TABLE-CELLS cells + CURSOR-BYTES + CELL-VIEW ;
+
 : ROOM ( ptr u8 n -- ptr u8 )
-   TABLE-CELLS cells + CURSOR-BYTES + ;
+   TABLE-CELLS 2 * cells + CURSOR-BYTES + ;
 
 : OFFSET-AT ( ptr n n -- ptr n )
    1+ cells + ;
@@ -1005,19 +1012,8 @@ private
    room from +  table idx 1+ OFFSET from - ;
 
 
-\ Whether one of the keys before key k decodes the same as it.
-: SEEN? ( ptr n ptr u8 n -- bool )
-   {: table:ptr room:ptr k:n :}
-   table room k KEY$ {: key:ptr ku:n :}
-   k 0 ?do
-      table room i KEY$ key ku STR= if true unloop exit then
-   loop
-   false ;
-
-
-\ On a top-level key of the record: decodes it as key k, after the k before it,
-\ and answers whether one of them decodes the same.
-: REPEATED? ( ptr u8 n -- bool )
+\ On a top-level key of the record: decodes it as key k, after the k before it.
+: RECORD-KEY ( ptr u8 n -- )
    {: base:ptr u:n :}
    base TABLE {: table:ptr :}
    base u ROOM {: room:ptr :}
@@ -1025,19 +1021,54 @@ private
    table k OFFSET {: from:n :}
    base RECORD room from + u from - STR-INNER {: ku:n :}
    from ku + table k 1+ OFFSET-AT !
-   k 1+ table !
-   table room k SEEN? ;
+   k 1+ table ! ;
 
 
-: FIRST-REPEAT? ( ptr u8 n -- bool )
+: RECORD-KEYS ( ptr u8 n -- )
    {: base:ptr u:n :}
    base RECORD {: a:ptr :}
    begin a NEXT-INNER T-KEY = while
-      base u REPEATED? if true exit then
+      base u RECORD-KEY
       a NEXT-INNER drop
       a SKIP-INNER
-   repeat
-   false ;
+   repeat ;
+
+
+: KEY< ( n n ptr n ptr u8 -- bool )
+   {: i:n j:n table:ptr room:ptr :}
+   table room i KEY$ table room j KEY$ STR< ;
+
+
+: FILL-ORDER ( ptr n n -- )
+   {: order:ptr k:n :}
+   k 0 ?do i order i cells + ! loop ;
+
+
+: RANKED$ ( ptr n ptr n ptr u8 n -- ptr u8 n )
+   {: order:ptr table:ptr room:ptr idx:n :}
+   table room order idx cells + @ KEY$ ;
+
+
+: SAME-NEIGHBOUR? ( ptr n n ptr n ptr u8 -- bool )
+   {: order:ptr k:n table:ptr room:ptr :}
+   k 1 ?do
+      order table room i 1- RANKED$
+      order table room i RANKED$ STR=
+      if true unloop exit then
+   loop false ;
+
+
+\ Whether two recorded keys decode the same: sorted by their
+\ bytes, equal keys are neighbours.
+: REPEAT-RECORDED? ( ptr u8 n -- bool )
+   {: base:ptr u:n :}
+   base TABLE {: table:ptr :}
+   base u ROOM {: room:ptr :}
+   base u ORDER {: order:ptr :}
+   table @ {: k:n :}
+   order k FILL-ORDER
+   order k [: table room KEY< ;] SORT:SORT!
+   order k table room SAME-NEIGHBOUR? ;
 
 
 \ The answer stands only once the whole text has read as well formed.
@@ -1046,8 +1077,9 @@ private
    base RECORD {: a:ptr :}
    a text u INIT-STATE
    a NEXT-INNER T-OBJ <> if E-JSON-READ-STATE throw then
-   base u FIRST-REPEAT?
-   begin a NEXT-INNER T-END = until ;
+   base u RECORD-KEYS
+   begin a NEXT-INNER T-END = until
+   base u REPEAT-RECORDED? ;
 
 
 : REPEATS-SLOT ( bool SPAN:span<u8> ptr u8 n -- bool SPAN:span<u8> ptr u8 n )
