@@ -1293,11 +1293,36 @@ TRUSTED: DEF-POSTPONED-CLEAR ( -- ) CHECKER-POSTPONE:CLEAR ;
 TRUSTED: DEF-POSTPONED-CUT ( n -- ) CHECKER-POSTPONE:CUT ;
 TRUSTED: DEF-POSTPONED-ADD ( n n -- ) CHECKER-POSTPONE:ADD ;
 
+\ The block BODY-ITEMS describes. CAP-CELL is 0 outside a definition, so each
+\ definition's first item reserves the block again, as it must after a capture
+\ released it.
+DYNAMIC-BUFFER ITEM-CELLS n
+
+: ITEMS-RESET ( -- )
+   0 BODY-ITEMS:BASE-CELL CELL!  0 BODY-ITEMS:CAP-CELL CELL!
+   0 BODY-ITEMS:COUNT-CELL CELL!  0 BODY-ITEMS:RAW-CELL CELL! ;
+
+: ITEM@ ( n n -- n ) {: i:n f:n :}
+   i BODY-ITEMS:ROW * f + ITEM-CELLS @ ;
+
+: ITEM! ( n n n -- ) {: v:n i:n f:n :}
+   v i BODY-ITEMS:ROW * f + ITEM-CELLS ! ;
+
+\ Drops the rows of runs at or past offset at, as a rolled-back token's
+\ capture drops its text.
+: ITEMS-CUT ( n -- ) {: at:n :}
+   BODY-ITEMS:COUNT-CELL CELL@
+   begin
+      dup 0 > if dup 1 - BODY-ITEMS:OFF ITEM@ at >= else false then
+   while 1 - repeat
+   BODY-ITEMS:COUNT-CELL CELL! ;
+
 public
 \ Ending or abandoning a definition also ends the capture's lexical state.
 \ x86-64's def-close leaves the locals count, so `;` clears it here.
-: DEF-CLOSE ( -- ) def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET  DEF-POSTPONED-CLEAR ;
-: DEF-ABORT ( -- ) def-abort BODY-LEX-RESET  DEF-POSTPONED-CLEAR ;
+: DEF-CLOSE ( -- )
+   def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET  DEF-POSTPONED-CLEAR  ITEMS-RESET ;
+: DEF-ABORT ( -- ) def-abort BODY-LEX-RESET  DEF-POSTPONED-CLEAR  ITEMS-RESET ;
 private
 
 \ The engine's cells hold the compiler entries, the body hook and the checker's
@@ -1340,6 +1365,32 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ body-capture grows the block when the text would pass its capacity, so an
 \ address into the text is formed after the capture, never kept across it.
 : DEF-CAPTURE ( ptr u8 n -- ) body-capture ;
+
+: ITEM-ROOM ( -- )
+   BODY-ITEMS:CAP-CELL CELL@ {: cap:n :}
+   BODY-ITEMS:COUNT-CELL CELL@ cap < if exit then
+   cap 0= if BODY-ITEMS:FIRST-CAP else cap 2 * then {: grown:n :}
+   grown BODY-ITEMS:ROW * ITEM-CELLS-RESERVE
+   grown BODY-ITEMS:CAP-CELL CELL!
+   0 ITEM-CELLS NULL-PTR - BODY-ITEMS:BASE-CELL CELL! ;
+
+\ Where the next item's run starts when every run so far was an item's.
+: ITEMS-END ( -- n )
+   BODY-ITEMS:COUNT-CELL CELL@ {: i:n :}
+   i 0= if 0 exit then
+   i 1 - BODY-ITEMS:OFF ITEM@  i 1 - BODY-ITEMS:LEN ITEM@ + 1 + ;
+
+\ Appends an item and captures its spelling, which the row's off and len span;
+\ a run captured between items is text no item spans.
+: ITEM+ ( n n n ptr u8 n -- ) {: kind:n a:n b:n s:ptr u:n :}
+   BODYLEN-CELL CELL@ {: off:n :}
+   off ITEMS-END <> if -1 BODY-ITEMS:RAW-CELL CELL! then
+   ITEM-ROOM
+   s u DEF-CAPTURE
+   BODY-ITEMS:COUNT-CELL CELL@ {: i:n :}
+   kind i BODY-ITEMS:KIND ITEM!  a i BODY-ITEMS:A ITEM!  b i BODY-ITEMS:B ITEM!
+   off i BODY-ITEMS:OFF ITEM!  u i BODY-ITEMS:LEN ITEM!
+   i 1 + BODY-ITEMS:COUNT-CELL CELL! ;
 
 \ Both comparisons are signed, as the engine's head makes them.
 : DEF-CODE-ROOM ( -- )
@@ -1598,6 +1649,7 @@ private
 
 \ The capture seeded with the name, the spelling the checker is told.
 : DEF-SEED ( -- )
+   ITEMS-RESET
    0 BODYLEN-CELL CELL!
    TOKEN$ DEF-CAPTURE ;
 
@@ -1892,9 +1944,10 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ ---- definitions built by a running word -------------------------------------
 \ `define-word` opens a definition from strings, `body-append` adds the
-\ caller's tokens to its capture and `postpone W` adds W bound to the record
-\ the handle names; `postpone ;` ends it as its source `;` would. The source
-\ cursor stays at the running word's call, where a refusal locates.
+\ caller's tokens to its capture, `literal` a number and `postpone W` W bound
+\ to the record the handle names; `postpone ;` ends it as its source `;`
+\ would. All but body-append add items (BODY-ITEMS). The source cursor stays
+\ at the running word's call, where a refusal locates.
 
 \ WHO names the operation refused: `define-word`, or a declaration's child.
 : DEF-NAME-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
@@ -1944,10 +1997,13 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    OVERLAY-GUARD
    a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
-   0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
-   ta tu wid 0 DEF-RECORD
+   ITEMS-RESET
+   0 BODYLEN-CELL CELL!  BODY-ITEM-KIND:NAME 0 0 a u ITEM+
+   \ A refused record opens no definition, whose end would drop the item.
+   [: ta tu wid 0 DEF-RECORD ;] catch {: rc:n :}
+   rc 0<> if ITEMS-RESET rc throw then
    0 LOCN-CELL CELL!  BODY-LEX-RESET
-   p pu DEF-CAPTURE
+   BODY-ITEM-KIND:SIG 0 0 p pu ITEM+
    DEF-DISPATCH ;
 
 : HANDLE-SPLIT ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
@@ -1980,6 +2036,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 : APPEND-RUN ( ptr u8 n -- ) {: a:ptr u:n :}
    s" body-append" BUILT-PENDING
+   -1 BODY-ITEMS:RAW-CELL CELL!
    a u DEF-CAPTURE ;
 
 \ What `postponed` runs: the handle `end` ends the definition, any other
@@ -1989,8 +2046,34 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    h hu s" end" STR= if DEF-END exit then
    h hu HANDLE-REC {: rec:ptr :}
    BODYLEN-CELL CELL@ {: at:n :}
-   rec XREF-NAME$ DEF-CAPTURE
-   at  rec XREF-NULL - XREF-ADDR>INDEX  DEF-POSTPONED-ADD ;
+   rec XREF-NULL - XREF-ADDR>INDEX {: ix:n :}
+   BODY-ITEM-KIND:CALL ix 0 rec XREF-NAME$ ITEM+
+   at ix DEF-POSTPONED-ADD ;
+
+\ A cell's decimal spelling, written from the end of LIT-DIGITS: 20 bytes
+\ hold any i64 and its sign. `/` truncates, so a negative value's remainders
+\ are at most 0.
+20 BUFFER: LIT-DIGITS
+variable LIT-AT
+
+: LIT-DIGIT ( n -- ) {: c:n :}
+   LIT-AT @ 1 - LIT-AT !
+   c LIT-DIGITS LIT-AT @ + c! ;
+
+: LIT-REM ( n -- n ) {: v:n :}
+   v v 10 / 10 * - {: r:n :}
+   r 0 < if 0 r - else r then ;
+
+: LIT$ ( n -- ptr u8 n ) {: v:n :}
+   20 LIT-AT !
+   v begin dup LIT-REM 48 + LIT-DIGIT  10 / dup 0= until drop
+   v 0 < if 45 LIT-DIGIT then
+   LIT-DIGITS LIT-AT @ +  20 LIT-AT @ - ;
+
+\ What `literal` runs: an INT item, spelled in decimal.
+: LITERAL-RUN ( n -- ) {: v:n :}
+   s" literal" BUILT-PENDING
+   BODY-ITEM-KIND:INT v 0 v LIT$ ITEM+ ;
 
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
@@ -2634,6 +2717,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 : FRAME-ROLLBACK-TOKEN ( -- )
    TOKBODY-CELL CELL@ BODYLEN-CELL CELL!
    TOKBODY-CELL CELL@ DEF-POSTPONED-CUT
+   TOKBODY-CELL CELL@ ITEMS-CUT
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
    TOK-BODY-DEPTH @ BODY-DEPTH !
    TOK-BODY-RAW @ BODY-RAW-NEXT !
@@ -2773,6 +2857,7 @@ public
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt!
-   ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt! ;
+   ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
+   ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt! ;
 
 ;package

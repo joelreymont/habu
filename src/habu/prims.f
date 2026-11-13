@@ -784,6 +784,10 @@ EPPRIM: INTERPRETER body-capture PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ or `:` opened; it refuses when no definition is open.
 EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPREFIX-PROVIDED!
+\ literal ( n -- ): append n to the definition `define-word` opened, which the
+\ checker reads as that number; it refuses when no definition is open.
+EPRIM: literal PE-N PE-IN EPRIM;
+EPREFIX-PROVIDED!
 \ define-word ( name$ sig$ -- ): open a definition in the open package and
 \ section as `: NAME ( … )` does, NAME one token and SIG the signature as source
 \ writes it.

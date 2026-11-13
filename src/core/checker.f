@@ -17896,27 +17896,25 @@ public
    LOOP
    NULL-PTR ;
 
-\ Made on the first ask for the token DO-TOK1 is reading, and read by every
-\ later reader of that token. A refusal the lookup raises names the token as
-\ DO-TOK1 read it; `a u` may be the fold the body walk keeps in scratch.
-: BIND-TOK ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   TOK-DONE @ IF EXIT THEN
+\ The token is bound to nothing, as a number is.
+: BIND-CLEAR ( -- )
    -1 TOK-DONE !
    0 TOK-SYM !  0 TOK-CTL !  0 TOK-DEAD !
    NULL-PTR TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !  0 TOK-SEEDED !
-   0 TOK-LIVE-REC !
-   a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
-   NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !  0 BIND-SEEDED !
-   TSTART @ u POSTPONED-REC {: prec:ptr :}
-   prec NULL-PTR <> IF
-      prec FACTS-READ-XT  prec BIND-REC !
-      prec CK-REC-WID WL:PRIMITIVES = IF BIND-SCOPE-SEEDED BIND-SEEDED ! THEN
-      -1 WALK-REC !
-      prec REC-HOME-SYM 0
-   ELSE
-      a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND-WHY
-   THEN {: sym:n why:n :}
+   0 TOK-LIVE-REC ! ;
+
+: BIND-START ( -- )
+   NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !  0 BIND-SEEDED ! ;
+
+\ The binding a record found where the definer was compiled makes, and its
+\ symbol.
+: BIND-PREC ( ptr n -- n ) {: prec:ptr :}
+   prec FACTS-READ-XT  prec BIND-REC !
+   prec CK-REC-WID WL:PRIMITIVES = IF BIND-SCOPE-SEEDED BIND-SEEDED ! THEN
+   -1 WALK-REC !
+   prec REC-HOME-SYM ;
+
+: BIND-FILL ( n n ptr u8 n -- ) {: sym:n why:n a:ptr u:n :}
    sym TOK-SYM !
    BIND-REC @ TOK-REC !
    BIND-PEND-IX @ TOK-PEND-IX !
@@ -17929,6 +17927,25 @@ public
       TOK-SYM @ CTL-FLAGS-SYM CTL-NAMES and 0 <> IF NAMED-OPERAND-XT THEN
    THEN
    TOK-SYM @ a u TOK-IDENTITY TOK-CTL ! ;
+
+\ Made on the first ask for the token DO-TOK1 is reading, and read by every
+\ later reader of that token. A refusal the lookup raises names the token as
+\ DO-TOK1 read it; `a u` may be the fold the body walk keeps in scratch.
+: BIND-TOK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   TOK-DONE @ IF EXIT THEN
+   BIND-CLEAR
+   a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
+   BIND-START
+   TSTART @ u POSTPONED-REC {: prec:ptr :}
+   prec NULL-PTR <> IF prec BIND-PREC 0
+   ELSE a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND-WHY THEN
+   a u BIND-FILL ;
+
+\ A CALL item's token, spelled a u, binds the record rec.
+: BIND-RECORD ( ptr n ptr u8 n -- ) {: rec:ptr a:ptr u:n :}
+   BIND-CLEAR  BIND-START
+   rec BIND-PREC 0 a u BIND-FILL ;
 
 
 \ The engine's `>r` `r>` `r@` are compile keywords with no record: a call bound
@@ -22271,6 +22288,23 @@ variable POST-ON      \ did the token just judged compile a handle?
    a u REFUSAL-STEP
    TOKIX @ 1 + TOKIX ! ;
 
+\ The steps of a token no keyword, mode or literal form took, a call's or a
+\ number's; a call's binding is made on the first ask.
+: CALL-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
+   TKF TKFU @ SPELLED-STEP? IF EXIT THEN
+   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN
+   DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
+   TKF TKFU @ RELEASE-CALL? LAYOUT-RELEASE !
+   TKF TKFU @ DO-TOK
+   0 LAYOUT-RELEASE !
+   OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
+   OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
+   OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF REJECT-DIVBAR THEN THEN THEN
+   LITERAL-PAYLOAD-STEP
+   PIMM-STREAM @ 0 = IF
+      CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
+   THEN ;
+
 : DO-TOK1 {: a u :}
    a u DO-TOK-HEAD
    {: unj unsafe ok-in unck-in pin-in :}
@@ -22302,22 +22336,9 @@ variable POST-ON      \ did the token just judged compile a handle?
    OK @ IF cf 22 = IF a u DEAD-OWNER! THEN THEN   \ leave
    OK @ IF cf 12 = IF a u DEAD-OWNER! THEN THEN   \ again
    cf 0 >= IF cf CF-STEP THEN
-   cf 0 < IF
-   TKF TKFU @ SPELLED-STEP? 0= IF
-   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN
-   DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
-   TKF TKFU @ RELEASE-CALL? LAYOUT-RELEASE !
-   TKF TKFU @ DO-TOK
-   0 LAYOUT-RELEASE !
-   OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
-   OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
-   OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF REJECT-DIVBAR THEN THEN THEN
-   LITERAL-PAYLOAD-STEP
-   PIMM-STREAM @ 0 = IF
-      CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
-   THEN
+   cf 0 < IF a u CALL-STEP THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   THEN THEN THEN THEN
+   THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 \ A declared type variable must remain a distinct variable after checking the
@@ -24073,6 +24094,37 @@ variable CUR-OPEN   variable CUR-PSIG
    SGBAD @ UNFIT @ or SGDECL-BAD !
    RES-FALSE ;
 
+\ The '( ... )' inside TSTART..TI is the signature when it follows the name;
+\ true when its install ends the walk. Only the first is: once it is seen, or
+\ body tokens ran, every later one is a comment and must not touch any
+\ signature state.
+: PAREN-SIG? ( -- bool )
+   VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
+      TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
+      TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW
+      SIG-INSTALL EXIT
+   THEN
+   RES-FALSE ;
+
+\ What a walk does around the step of the token at TSTART..TI: the tape's
+\ fields and the cursor before it, answering TOK0, then the summary and the
+\ report after, answering whether the walk ends.
+: SCAN-TOK-HEAD ( -- n )
+   CHECKER-TAPE:ARMED @ IF
+      TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !  0 PPAY-ON !  0 POST-ON !  0 TPAY-ON !
+      0 IS-PEND !  0 EV-HIT !
+   THEN
+   CUR-TOKEN
+   SPAY-S @ SPAY-ARMED !  0 SPAY-S !
+   TOK0 @ ;
+
+: SCAN-TOK-TAIL ( n -- bool ) {: was-name:n :}
+   TORDER-SCAN-UNKNOWN @ IF RES-TRUE EXIT THEN
+   was-name 0= IF TSTART @ TADDR TI @ TSTART @ - ZSUMMARY-TOKEN THEN
+   SCAN-TOKS @ 1 + SCAN-TOKS !
+   CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
+   RES-FALSE ;
+
 : CHECK-SCAN-WALK ( -- )
    0 SCAN-TOKS !  0 SPAY-S !
    EV-START
@@ -24086,34 +24138,109 @@ variable CUR-OPEN   variable CUR-PSIG
          TI @ 1 + TI !  TI @ TSTART !
          BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
          TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
-         \ only the '( ... )' right after the name is the sig; once it is seen
-         \ (or body tokens ran) every later '( ... )' is a comment and must
-         \ not touch any signature state.
-         VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
-           TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
-           TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW
-           SIG-INSTALL IF EXIT THEN
-         THEN
+         PAREN-SIG? IF EXIT THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
          CUR-PAREN
        ELSE
          TI @ TSTART !
          BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
-         CHECKER-TAPE:ARMED @ IF
-            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !  0 PPAY-ON !  0 POST-ON !  0 TPAY-ON !
-            0 IS-PEND !  0 EV-HIT !
-         THEN
-         CUR-TOKEN
-         TOK0 @ {: was-name:bool :}
-         SPAY-S @ SPAY-ARMED !  0 SPAY-S !
+         SCAN-TOK-HEAD {: was-name:n :}
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
-         TORDER-SCAN-UNKNOWN @ IF EXIT THEN
-         was-name 0= IF TSTART @ TADDR TI @ TSTART @ - ZSUMMARY-TOKEN THEN
-         SCAN-TOKS @ 1 + SCAN-TOKS !
-         CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
+         was-name SCAN-TOK-TAIL IF EXIT THEN
        THEN
      THEN
    REPEAT
+   CUR-END ;
+
+\ ---- the walk of a built definition's items ---------------------------------
+\ A definition `define-word` opened is walked by its items, not its listing's
+\ bytes: each row's span in the listing is its token, and its kind picks the
+\ step that parsed source reaches by spelling. A CALL binds the record the
+\ definer found, so nothing the building package defines captures it.
+BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
+
+: ITEM-CELL@ ( n n -- n ) {: i:n f:n :}
+   ITEM-BLOCK @  i BODY-ITEMS:ROW * f + cells +  cell-view @ ;
+
+: ITEM-COUNT ( -- n ) data-base BODY-ITEMS:COUNT-CELL + @ ;
+
+\ The items stand for the text walked: it is the pending definition's body
+\ text, no text an item does not span joined it, and the last item ends it.
+: ITEM-WALK? ( -- bool )
+   data-base PEND-CELL + @ 0= IF RES-FALSE EXIT THEN
+   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF RES-FALSE EXIT THEN
+   data-base BODY-ITEMS:RAW-CELL + @ 0 <> IF RES-FALSE EXIT THEN
+   ITEM-COUNT {: n:n :}
+   n 0= IF RES-FALSE EXIT THEN
+   n 1 - BODY-ITEMS:OFF ITEM-CELL@  n 1 - BODY-ITEMS:LEN ITEM-CELL@ +  1 +
+   TBLEN @ = ;
+
+: ITEM-SPAN ( n -- ) {: i:n :}
+   TI @ CUR-GAP !
+   i BODY-ITEMS:OFF ITEM-CELL@ TSTART !
+   TSTART @  i BODY-ITEMS:LEN ITEM-CELL@ +  TI ! ;
+
+\ A signature's span holds its parentheses, and the byte walk's paren branch
+\ reads inside them.
+: ITEM-SIG ( n -- bool ) {: i:n :}
+   TI @ CUR-GAP !
+   i BODY-ITEMS:OFF ITEM-CELL@ TI !
+   CUR-PAREN-AT
+   TI @ 1 + TSTART !
+   TI @  i BODY-ITEMS:LEN ITEM-CELL@ +  1 - TI !
+   PAREN-SIG? IF RES-TRUE EXIT THEN
+   TI @ 1 + TI !
+   CUR-PAREN
+   RES-FALSE ;
+
+\ A token after a call that cannot return is dead, as in the byte walk.
+: ITEM-LIVE? ( -- bool )
+   TKF TKFU @ LIVE-TOKEN? IF RES-TRUE EXIT THEN
+   -1 DEADERR !  0 OK !  TKF TKFU @ DEAD-TOK
+   RES-FALSE ;
+
+: ITEM-CALL ( ptr u8 n n -- ) {: a:ptr u:n ix:n :}
+   ix CHECKER-RESOLVE:REC-AT  TKF TKFU @ BIND-RECORD
+   ITEM-LIVE? 0= IF EXIT THEN
+   TKF TKFU @ UNSAFE-TOK? IF
+      BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
+      REJECT-UNSAFE EXIT
+   THEN
+   a u CALL-STEP ;
+
+: ITEM-INT ( n -- ) {: v:n :}
+   BIND-CLEAR
+   ITEM-LIVE? 0= IF EXIT THEN
+   0 CURSYM !
+   v INT-STEP ;
+
+: ITEM-STEP ( n -- ) {: i:n :}
+   TSTART @ TADDR  TI @ TSTART @ -  {: a:ptr u:n :}
+   a u DO-TOK-HEAD
+   {: unj unsafe ok-in unck-in pin-in :}
+   i BODY-ITEMS:KIND ITEM-CELL@ {: kind:n :}
+   kind BODY-ITEM-KIND:NAME = IF NAME-TOK ELSE
+   kind BODY-ITEM-KIND:CALL = IF a u  i BODY-ITEMS:A ITEM-CELL@  ITEM-CALL ELSE
+   kind BODY-ITEM-KIND:INT = IF i BODY-ITEMS:A ITEM-CELL@ ITEM-INT ELSE
+      s" checker: an item of no kind the walk knows" 76 die
+   THEN THEN THEN
+   a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
+
+: ITEM-WALK ( -- )
+   0 SCAN-TOKS !  0 SPAY-S !
+   EV-START
+   TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
+   ITEM-COUNT 0 ?DO
+      i BODY-ITEMS:KIND ITEM-CELL@ BODY-ITEM-KIND:SIG = IF
+         i ITEM-SIG IF UNLOOP EXIT THEN
+      ELSE
+         i ITEM-SPAN
+         SCAN-TOK-HEAD {: was-name:n :}
+         i ITEM-STEP
+         was-name SCAN-TOK-TAIL IF UNLOOP EXIT THEN
+      THEN
+   LOOP
+   TI @ CUR-GAP !  TBLEN @ TI !
    CUR-END ;
 
 \ Walks a body, holding its using refusals for the end, where a structure open
@@ -24122,7 +24249,8 @@ variable CUR-OPEN   variable CUR-PSIG
    {: ca:ptr cu:n :}
    BODY-WALK @ {: walk0:n :}
    -1 BODY-WALK !
-   [: CHECK-SCAN-WALK ;] catch  0 USING-HOLD !  walk0 BODY-WALK !
+   [: ITEM-WALK? IF ITEM-WALK ELSE CHECK-SCAN-WALK THEN ;] catch
+   0 USING-HOLD !  walk0 BODY-WALK !
    {: rc:n :}
    rc 0 <> IF rc throw THEN
    TORDER-SCAN-UNKNOWN @ IF EXIT THEN

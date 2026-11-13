@@ -554,11 +554,12 @@ public
 $3848 constant EVALUATE-CELL
 \ A seeded x86-64 `evaluate-range` jumps through its own cell the same way.
 $3860 constant EVALUATE-RANGE-CELL
-\ `define-word`, `body-append` and `postponed` run the running engine's
-\ interpreter words these cells hold.
+\ `define-word`, `body-append`, `postponed` and `literal` run the running
+\ engine's interpreter words these cells hold.
 $3878 constant DEFINE-CELL
 $3880 constant APPEND-CELL
 $3888 constant POSTPONE-CELL
+$3898 constant LITERAL-CELL
 \ A declaration makes each child word through the interpreter's CHILD-RUN,
 \ which this cell holds, with a CHILD-ABI shape code.
 $3890 constant CHILD-CELL
@@ -776,6 +777,39 @@ $808 constant CAP-CELL      \ the text capacity in bytes, 0 before
 $810 constant SIZE-CELL     \ the block's length in bytes, 17 * cap, 0 before; guards read BASE and SIZE
 $818 constant ROWS-CELL     \ the BODY-SOURCE row count
 8192 constant FIRST-CAP     \ the capacity mapped at the first capture, doubled as it grows
+;package
+
+\ The items of a definition `define-word` opened: rows of ROW cells
+\ {kind, a, b, off, len} in a block the interpreter grows, off and len the
+\ item's spelling in the body text. The checker walks them in place of the
+\ text while RAW-CELL is 0; RAW-CELL is nonzero once text no item spans joined
+\ the capture. All four cells are 0 outside such a definition, so no image
+\ holds the block's address. They take $4340..$4360 of the run below
+\ DECLARED-LOG:ADDR-CELL.
+package BODY-ITEMS
+public
+$4340 constant BASE-CELL     \ the block's address
+$4348 constant CAP-CELL      \ the capacity in rows
+$4350 constant COUNT-CELL    \ the rows held
+$4358 constant RAW-CELL
+5 constant ROW               \ cells per row
+0 constant KIND
+1 constant A
+2 constant B
+3 constant OFF
+4 constant LEN
+64 constant FIRST-CAP        \ rows at the first item, doubled as it grows
+;package
+
+\ The kinds of an item row. NAME spans the definition's name and SIG its
+\ signature with its parentheses; CALL's a is a record index; INT's a is the
+\ value.
+package BODY-ITEM-KIND
+public
+1 constant NAME
+2 constant SIG
+3 constant CALL
+4 constant INT
 ;package
 \ The latest `,` run of a created body.
 CREATED-BODY-ABI:COMMA-RUN-CELL constant COMMA-RUN-CELL

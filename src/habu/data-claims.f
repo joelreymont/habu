@@ -108,6 +108,7 @@ create TAB
    FRAME-CELL                         1 cells                 CLAIM FRAME-CELL
    QFRAME-CELL                        1 cells                 CLAIM QFRAME-CELL
    BODY-TEXT:BASE-CELL                4 cells                 CLAIM BODY-TEXT
+   BODY-ITEMS:BASE-CELL               4 cells                 CLAIM BODY-ITEMS
    CMM-CELL                           1 cells                 CLAIM CMM-CELL
    DOESB-CELL                         1 cells                 CLAIM DOESB-CELL
    TRUSTED-CELL                       1 cells                 CLAIM TRUSTED-CELL
@@ -185,6 +186,7 @@ create TAB
    PROVIDED-XT:APPEND-CELL            1 cells                 CLAIM PROVIDED-XT-APPEND-CELL
    PROVIDED-XT:POSTPONE-CELL          1 cells                 CLAIM PROVIDED-XT-POSTPONE-CELL
    PROVIDED-XT:CHILD-CELL             1 cells                 CLAIM PROVIDED-XT-CHILD-CELL
+   PROVIDED-XT:LITERAL-CELL           1 cells                 CLAIM PROVIDED-XT-LITERAL-CELL
    POLICY-ABI:KEYWORD-CELL            1 cells                 CLAIM POLICY-KEYWORD-CELL
    ENGINE-MAIN:ARENA-CELL             1 cells                 CLAIM ENGINE-MAIN-ARENA-CELL
    HALT-UNWIND-CELL                   1 cells                 CLAIM HALT-UNWIND-CELL
