@@ -16,8 +16,8 @@
 \   symbols     n, then each one's name and value
 \   presets     n, then each header cell's offset and the value the link writes
 \   checker rows their length in bytes, then n, then each row's kind,
-\               trusted-only, fixed-ABI, stow kind, name, package name, atom
-\               count and atoms
+\               trusted-only, fixed-ABI, name, package name, atom count and
+\               atoms
 
 require src/lib/le.f
 require src/lib/string.f
@@ -243,7 +243,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    row PRIM-SPEC:KIND@ U64+
    row PRIM-SPEC:TRUSTED-ONLY? FLAG+
    row PRIM-SPEC:FIXED-ABI? FLAG+
-   row PRIM-SPEC:C2-STOW-KIND U64+
    row PRIM-SPEC:NAME$ NAME+
    row PRIM-SPEC:PKG$ NAME+
    row PRIM-SPEC:CODE-LEN@ dup U64+

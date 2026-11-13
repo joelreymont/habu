@@ -89,8 +89,6 @@ $1000 constant CODE-CAP
 
 1 constant FL-TRUSTED-ONLY
 2 constant FL-FIXED-ABI
-4 constant FL-C2-INIT
-8 constant FL-C2-RECORDS
 16 constant FL-PREFIX-PROVIDED
 
 create ROWS  ROW-CAP ROW-CELLS * cells allot
@@ -245,12 +243,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: fixed ABI before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
 
-: EC2-INIT! ( -- )
-   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-C2-INIT or swap ! ;
-
-: EC2-RECORDS! ( -- )
-   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-C2-RECORDS or swap ! ;
-
 \ The just-written row is one an x86-64 captured runtime provides. Its record
 \ stays in every build; in a seeded x86-64 build its body jumps through the
 \ row's dispatch cell, which the captured runtime fills, and a build with no
@@ -322,10 +314,6 @@ public
 : FIXED-ABI? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-FIXED-ABI and 0 <> ;
 
-: C2-STOW-KIND ( n -- n )
-   F-FLAGS ROW-FIELD @ dup FL-C2-INIT and 0 <> if drop 1 exit then
-   FL-C2-RECORDS and 0 <> if 2 else 0 then ;
-
 : PREFIX-PROVIDED? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-PREFIX-PROVIDED and 0 <> ;
 
@@ -373,13 +361,11 @@ EPRIM: c2-init-stow
    PE-C PE-IN PE-PTR-N PE-IN
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
 ETRUSTED-ONLY!
-EC2-INIT!
 EPRIM: c2-records-stow
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
    PE-C PE-IN PE-PTR-N PE-IN
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
 ETRUSTED-ONLY!
-EC2-RECORDS!
 
 EPRIM: source-file-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ runs a file the loader opened as its own source unit
