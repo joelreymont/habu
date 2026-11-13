@@ -27,7 +27,8 @@ using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
 \   profiler samples N words W other O new X foreign F frames ... indexed I usec U
 \
 \ W + O + X + F == N is the identity the counting cases read, by field name, so
-\ a report that grows a column stays checked. A busy word whose loop inlines its
+\ a report that grows a column stays checked. F counts the foreign samples
+\ charged to no word; the ones charged to a calling word are inside W. A busy word whose loop inlines its
 \ primitives keeps every interrupted pc inside its own range, so its samples
 \ land in one deterministic bucket.
 
@@ -74,12 +75,14 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-SAMPLES ( ptr u8 n -- n )
    s" samples" GDB-FIELD ;
 
-\ The header's own identity, plus the sample count the case expects (-1: any).
+\ The header's own identity, plus the limit the sample total must reach (-1:
+\ none). A sample counts the intervals since the last one, so the one that
+\ reaches the limit may carry the total past it.
 : GDB-ACCOUNT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    a u GDB-SAMPLES {: tot:n :}
    tot 0 < if s" profiler report has no header line" GE-FAIL then
-   want 0 >= tot want <> and if
-      s" profiler sample total is not the limit" GE-FAIL
+   want 0 >= tot want < and if
+      s" profiler sample total is below the limit" GE-FAIL
    then
    a u s" words" GDB-FIELD
    a u s" other" GDB-FIELD +
@@ -112,15 +115,17 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" ;package" GE-SRC-LINE ;
 
 \ --- the SIGALRM handler reads nothing from the interrupted context's live
-\ registers: a foreign callee (libc's dlsym here) may reuse x20/x26/x27, and a
-\ tick inside one counts in the header's foreign field. The profiler's total
+\ registers: a foreign callee (libc's dlsym here) may reuse x20/x26/x27. On
+\ arm64 a tick inside it is charged to the Habu word that called it and counted
+\ in the header's foreign charged to callers field; the x86-64 twin charges
+\ none, so there it counts in the foreign field. The profiler's total
 \ and limit do not share $1E0/$1E8 with GTOD-SCRATCH, so a clock query after
 \ prof-on cannot turn the next tick into an early report and exit 99.
 \ GDB-SYM-FOR calls dlsym for n ms of the monotonic clock, not a call count, so
 \ the sample total follows the timer rather than the host's call speed. On spark
 \ (ARM64 Linux, glibc, the default 1000 us rate) 100,000 calls took 8 or 9
-\ ticks and an empty foreign bucket came up by chance; 200 ms gave 200 ticks in
-\ each of 20 runs, 64 to 86 of them (38% overall) foreign.
+\ ticks and none inside dlsym came up by chance; 200 ms gave 200 ticks in
+\ each of 20 runs, 64 to 86 of them (38% overall) inside dlsym.
 : GDB-PROFILER-FOREIGN ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -132,12 +137,18 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROF-RUN
    s" profiler foreign-context ticks" GE-EXPECT-OK
    s" dlsym loop done" s" profiler foreign loop completes" GE-EXPECT-OUT-HAS
-   GT-OUT$ s" foreign" GDB-FIELD 0 <= if
-      s" profiler foreign bucket counted nothing" GE-FAIL
+   HB-TARGET-LINUX-X86-64? if
+      GT-OUT$ s" foreign" GDB-FIELD 0 <= if
+         s" profiler foreign bucket counted nothing" GE-FAIL
+      then
+   else
+      GT-OUT$ s" foreign charged to callers" GDB-FIELD 0 <= if
+         s" profiler charged no dlsym tick to its caller" GE-FAIL
+      then
    then
    GT-OUT$ -1 GDB-ACCOUNT
    s" habu-crash" s" profiler foreign no-crash" GE-EXPECT-ERR-LACKS
-   s" PASS: profiler counts ticks inside foreign code as foreign instead of dying" type cr ;
+   s" PASS: profiler counts ticks inside foreign code instead of dying" type cr ;
 
 : GDB-PROFILER-CLOCK ( -- )
    GE-HB-RESET
@@ -158,7 +169,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GT-OUT$ 1 GDB-ACCOUNT
    s" PASS: profiler limit 1 attributes the interrupted sample" type cr ;
 
-: GDB-PROFILER-EXACT ( n -- )   \ words + other + new + foreign == limit at the auto-report
+: GDB-PROFILER-EXACT ( n -- )   \ the buckets sum to samples, at least the limit, at the auto-report
    {: lim:n :}
    GE-HB-RESET
    lim GDB-PROF-SRC
@@ -170,7 +181,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    1 GDB-PROFILER-EXACT
    2 GDB-PROFILER-EXACT
    5 GDB-PROFILER-EXACT
-   s" PASS: profiler sample totals are exact (sum == limit)" type cr ;
+   s" PASS: profiler sample totals are exact (sum == samples >= limit)" type cr ;
 
 \ Words defined INSIDE the profiled phase: every one of them is compiled after
 \ prof-on built the index, so the handler can only keep the raw pc and the report

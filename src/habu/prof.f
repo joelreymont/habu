@@ -41,6 +41,14 @@
 \ 1, wherever it counts a sample; arming sets ARN-LAST, so time the clock was
 \ held or stopped is never counted. ARN-SEQ still counts samples one by one
 \ for the inclusive stamps.
+\
+\ A foreign sample (x20 not DATA, or x26 not the recorded DBASE) whose SP lies
+\ on the main stack is inside C a Habu word called: an FFI word, libSystem's
+\ fsync. Its weight goes to the nearest Habu word, the one the interrupted x30
+\ returns into, else the first the scan up from SP finds, as that word's own
+\ exclusive sample, and the walk names its callers from there. ARN-FCALLED
+\ counts that weight; PROF-FOREIGN counts only the foreign samples charged to
+\ no word: off the main stack, or with no Habu word above SP.
 require src/habu/prof-abi.f
 
 require src/arch/arm64/icode.f
@@ -359,9 +367,10 @@ public
 \ the exclusive column), other (Habu code in no word:
 \ the main loop, engine helpers, gaps between spans), new (deferred ticks whose pc
 \ no live record owns), defer (ticks in code compiled after prof-on, still
-\ unnamed), spill (deferred ticks the buffer had no room for), foreign (contexts
-\ without the engine's DATA and dictionary registers: a lower bound on FFI time,
-\ since a foreign leaf that keeps both lands in other), frames (caller frames
+\ unnamed), spill (deferred ticks the buffer had no room for), foreign (ticks
+\ without the engine's DATA and dictionary registers charged to no word; a
+\ foreign leaf that keeps both lands in other), foreign charged to callers
+\ (foreign ticks a calling word took, already in words), frames (caller frames
 \ attributed), dropped (caller edges a full probe window could not key), indexed
 \ (index entries), usec (the interval sampled at) and attributed (words that took
 \ a sample of either kind; the text report prints PROF-ROWS of them per section,
@@ -399,6 +408,9 @@ public
    json IF s\" ,\"spill\":" ELSE s"  spill " THEN 10 C-PROF-FIELD
    10 7 PROF-FOREIGN LDR,
    json IF s\" ,\"foreign\":" ELSE s"  foreign " THEN 10 C-PROF-FIELD
+   10 19 ARN-FCALLED LDR,
+   json IF s\" ,\"foreign charged to callers\":"
+   ELSE s"  foreign charged to callers " THEN 10 C-PROF-FIELD
    10 19 ARN-FRAMES LDR,
    json IF s\" ,\"frames\":" ELSE s"  frames " THEN 10 C-PROF-FIELD
    10 19 ARN-DROP LDR,
@@ -657,6 +669,43 @@ public
    10 10 12 UDIV,  10 wdone CBZ,  3 10 0 ADDI,
    wdone LBL, ;
 
+\ x8 = arena, x21 = mcontext, a foreign sample: x6 = the index entry of the
+\ Habu word nearest it, or 0 when SP is off the main stack or no Habu word lies
+\ above it. x30 and each scanned cell are tested as C-PROF-WALK tests them.
+\ Clobbers x9-x13, x23 and x24.
+: C-PROF-FCALLER ( -- )
+   LBL LBL LBL {: fl fnone fdone :}
+   31 23 C-PROF-CTX-X>R
+   10 8 ARN-STACK-LOW LDR,  23 10 CMP,  C-CC fnone BCOND,
+   24 8 ARN-STACK-TOP LDR,  23 24 CMP,  C-CS fnone BCOND,
+   30 9 C-PROF-CTX-X>R
+   9 9 4 SUBI,
+   10 8 ARN-LO LDR,  9 10 CMP,  C-CC fl BCOND,
+   10 8 ARN-HI LDR,  9 10 CMP,  C-CS fl BCOND,
+   LPROFFIND LABEL@ BL,
+   6 fdone CBNZ,
+   fl LBL,
+      23 24 CMP,  C-CS fnone BCOND,
+      9 23 0 LDR,  23 23 8 ADDI,
+      10 8 ARN-LO LDR,  9 10 CMP,  C-CC fl BCOND,
+      10 8 ARN-HI LDR,  9 10 CMP,  C-CS fl BCOND,
+      9 9 4 SUBI,
+      LPROFFIND LABEL@ BL,
+      6 fl CBZ,
+      fdone B,
+   fnone LBL,  6 0 MOVZ,
+   fdone LBL, ;
+
+\ x7 = band, x8 = arena, x6 = an index entry, x3 = the weight: the sample is
+\ that word's own, exclusive and inclusive; x22 = its record for the walk.
+\ Clobbers x10-x14.
+: C-PROF-CHARGE ( -- )
+   12 6 ENT-IDX LDR,
+   14 PROF-CNT-VA LIT64,  13 12 3 LSLI,  14 14 13 ADD,
+   12 14 0 LDR,  12 12 3 ADD,  12 14 0 STR,
+   10 6 ENT-IDX LDR,  C-PROF-INCL-ONCE                \ a word is inside itself
+   22 6 ENT-IDX LDR, ;
+
 \ THE HANDLER TAKES NOTHING FROM THE LIVE REGISTERS: a foreign callee (libc's
 \ dlsym, libzip's inflate) reuses x20 (DATA), x26 (DBASE) and x27 (NDICT).
 \ The handler runs on the crash handler's alternate signal stack, so a deep
@@ -668,7 +717,7 @@ public
 \ no word the handler calls writes it.
 : EMIT-PROF ( -- )
    LPROFH LABEL@ LBL,
-   LBL LBL LBL LBL LBL LBL {: pnew pother pdone pforeign psig pexit :}
+   LBL LBL LBL LBL LBL LBL LBL {: pnew pother pdone pforeign plost psig pexit :}
    7 PROF-BAND-VA LIT64,
    9 7 PROF-ARMED LDR,  9 ARMED-RUNS CMPI,  C-NE pexit BCOND,
    C-PROF-WEIGHT
@@ -679,11 +728,7 @@ public
    8 7 PROF-ARENA LDR,  8 pdone CBZ,
    LPROFFIND LABEL@ BL,                              \ the handler never returns, so x30 needs no frame
    6 pnew CBZ,
-   12 6 ENT-IDX LDR,
-   14 PROF-CNT-VA LIT64,  13 12 3 LSLI,  14 14 13 ADD,
-   12 14 0 LDR,  12 12 3 ADD,  12 14 0 STR,
-   10 6 ENT-IDX LDR,  C-PROF-INCL-ONCE                \ a word is inside itself
-   22 6 ENT-IDX LDR,
+   C-PROF-CHARGE
    C-PROF-WALK
    psig B,
    pnew LBL,
@@ -700,7 +745,15 @@ public
    12 7 PROF-OTHER LDR,  12 12 3 ADD,  12 7 PROF-OTHER STR,
    psig B,
    pforeign LBL,
-   17 0 MOVZ,                                        \ not Habu code: no search, no report from here
+   17 0 MOVZ,                                        \ not Habu code: no report from here
+   8 7 PROF-ARENA LDR,  8 plost CBZ,
+   C-PROF-FCALLER
+   6 plost CBZ,
+   12 8 ARN-FCALLED LDR,  12 12 3 ADD,  12 8 ARN-FCALLED STR,
+   C-PROF-CHARGE
+   C-PROF-WALK
+   psig B,
+   plost LBL,
    12 7 PROF-FOREIGN LDR,  12 12 3 ADD,  12 7 PROF-FOREIGN STR,
    psig LBL,
    10 7 PROF-TOT LDR,  10 10 3 ADD,  10 7 PROF-TOT STR,
@@ -998,7 +1051,7 @@ private
    LBL LBL LBL LBL {: il idone el edone :}
    15 0 MOVZ,
    15 0 ARN-NEW STR,  15 0 ARN-DROP STR,  15 0 ARN-FRAMES STR,
-   15 0 ARN-SPILL STR,  15 0 ARN-DEFER STR,
+   15 0 ARN-SPILL STR,  15 0 ARN-DEFER STR,  15 0 ARN-FCALLED STR,
    15 PROF-WALK-CELLS MOVZ,  15 0 ARN-WALK STR,
    12 ARN-INCL LIT64,  12 0 12 ADD,               \ the inclusive array and the stamps
    13 ARN-DEF LIT64,  13 0 13 ADD,                \ sit back to back, so one loop clears both

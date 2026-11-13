@@ -19,7 +19,7 @@ variable LPROFRECLAIM
 0  constant PROF-TOT        \ sample intervals elapsed: aarch64 weighs each sample (ARN-LAST)
 8  constant PROF-LIM        \ report + exit(PROF-LIMIT-RC) at this many, 0 = sample until prof-off
 16 constant PROF-OTHER      \ Habu-code samples outside any dict word (main loop, helpers)
-24 constant PROF-FOREIGN    \ samples in a context that is not Habu code
+24 constant PROF-FOREIGN    \ samples in a context that is not Habu code, charged to no word
 32 constant PROF-DBASE      \ the dictionary base, recorded by prof-on
 40 constant PROF-ARENA      \ the profiler arena, mapped once per process
 48 constant PROF-ARMED      \ the clock: ARMED-RUNS, ARMED-HELD, or 0 while stopped
@@ -72,6 +72,9 @@ variable LPROFRECLAIM
 \ The x86-64 twin weighs nothing and keeps no ARN-SEQ: its stamp is PROF-TOT + 1,
 \ which is the serial only while every sample adds exactly one to PROF-TOT.
 144 constant ARN-SEQ         \ samples taken, one each whatever their weight: the stamps' serial
+\ aarch64 charges a sample inside C on the main stack to the Habu word that
+\ called it, so that weight is in the word's counter and not in PROF-FOREIGN.
+152 constant ARN-FCALLED     \ the weight of foreign samples charged to a calling word
 32 constant PROF-ENT        \ index entry bytes
 0  constant ENT-START
 8  constant ENT-END

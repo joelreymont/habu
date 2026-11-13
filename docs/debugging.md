@@ -293,18 +293,28 @@ phase measurement:
   `by inclusive`. The second section shows a phase word, such as a compiler
   pass, that does no work of its own. `prof-json` prints every attributed word
   and caller edge.
-- A sample whose stack pointer lies on the main thread's stack scans every
-  cell from it up to the stack's top, so every word with a frame there counts
-  inclusively. Any other sample scans at most `PROF-WALK-CELLS` cells and
-  none past its 4 KiB block (`src/habu/prof.f` C-PROF-WALK). In a warm
-  `--engine` build profile, `LINKER:WITH` took 14,704 inclusive samples of
-  14,707 Habu samples (15,726 less 1,019 foreign).
+- On arm64 a sample whose stack pointer lies on the main thread's stack scans
+  every cell from it up to the stack's top, so every word with a frame there
+  counts inclusively. Any other sample, and every sample on x86-64, scans at
+  most `PROF-WALK-CELLS` cells and none past its 4 KiB block
+  (`src/habu/prof.f` C-PROF-WALK). In a warm arm64 `--engine` build profile,
+  `LINKER:WITH` took 19,660 inclusive samples of 19,663, none of them foreign.
+- On arm64 a sample inside C on the main stack (an FFI call, libSystem's
+  `fsync`) is charged to the nearest Habu return address: the interrupted
+  return register's, else the first code address the scan up from the stack
+  pointer finds. The scan is conservative, so a stale code-shaped cell left on
+  the stack can take the sample. Its callers are walked from there. The
+  header's `foreign charged to callers` says how many; `foreign` counts only
+  the foreign samples charged to no word. On x86-64 every sample inside C
+  counts in `foreign`, and the header has no `foreign charged to callers`.
 - `n prof-row` prints one word's row whatever its rank.
-- A sample counts the sampling intervals elapsed since the last one, so time
-  blocked in a syscall (an fsync, a file read) is charged where the sample that
-  ends it lands, though the ticks of that wait arrive as one signal.
+- On arm64 a sample counts the sampling intervals elapsed since the last one,
+  so time blocked in a syscall (an fsync, a file read) is charged where the
+  sample that ends it lands, though the ticks of that wait arrive as one
+  signal. On x86-64 each signal counts one sample.
 - A non-zero `prof-on` limit reports from inside the signal handler and exits
-  99 at that many samples. Words compiled after `prof-on` stay in the `defer`
+  99 when the sample total reaches or passes the limit: on arm64 the sample
+  that reaches it may count several intervals. Words compiled after `prof-on` stay in the `defer`
   column of that report; a program that can reach its own `prof-off` should
   use one and call `prof-report`.
 
