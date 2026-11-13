@@ -505,21 +505,19 @@ variable ERR-U
 \ A child on a terminal: only the REPL's line loop recovers from a throw and
 \ reads the next line.
 : STEP ( ptr u8 n -- bool )
-   BUF-CLEAR SEND-LINE
-   s"  ok" WAIT-FOR if s"  ok" s" habu> " WAIT-AFTER else false then ;
+   BUF-CLEAR SEND-LINE WAIT-ANSWER ;
 
 : CASE-REPL ( -- )
    s" a refused REPL line names no file or definition" T-LABEL
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
    s" habu> " WAIT-FOR TTRUE
-   BUF-CLEAR s" variable TS-RV  here TS-RV !" SEND-LINE
-   s" habu: at '!' raw storage cell" WAIT-FOR TTRUE
+   s" variable TS-RV  here TS-RV !" STEP TFALSE
+   s" habu: at '!' raw storage cell" IN-BUF? TTRUE
    s" a REPL line that throws, then a fresh line storing a pointer typed" T-LABEL
    s" PTR-VARIABLE TS-RP" STEP TTRUE
-   BUF-CLEAR s" here 7 throw" SEND-LINE
-   s" habu> " WAIT-FOR TTRUE
+   s" here 7 throw" STEP TFALSE
    s" here TS-RP !  42 ." STEP TTRUE
-   s" 42" IN-BUF? TTRUE
+   s\" 42\r\n" IN-BUF? TTRUE
    s" E-" IN-BUF? TFALSE
    4 SEND-BYTE
    REAP {: oc :}

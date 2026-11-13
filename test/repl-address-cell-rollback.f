@@ -10,12 +10,12 @@ using PTY-HARNESS
 \ The first prompt of a fresh child is the only one a plain wait may take: after
 \ a line the editor has already echoed "habu> " ahead of the answer, so the
 \ prompt that proves the child holds the terminal raw again is the one AFTER
-\ the answer (src/lib/pty-harness.f WAIT-AFTER). ^D sent on the echoed prompt lands
+\ the answer. ^D sent on the echoed prompt lands
 \ in the cooked window and is read as a NUL, never as the end of file STOP means.
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
 : PROMPT-AFTER ( ptr u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
 : STEP ( ptr u8 n -- )
-   BUF-CLEAR SEND-LINE s"  ok" WAIT-FOR TTRUE s"  ok" PROMPT-AFTER ;
+   BUF-CLEAR SEND-LINE WAIT-ANSWER TTRUE ;
 \ The terminal carries both of the child's streams, so BUF$ is its stdout and
 \ there is no stderr apart from it.
 : STOP ( -- )

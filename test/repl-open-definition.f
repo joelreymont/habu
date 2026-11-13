@@ -14,11 +14,9 @@ using PTY-HARNESS
    HB-TARGET-LINUX-X86-64? if 1 else 0 then ;
 
 \ Only the prompt after an answer shows the child reading raw again, so a step
-\ waits for that one and ^D goes only after a step that saw it
-\ (src/lib/pty-harness.f WAIT-AFTER).
+\ waits for that one and ^D goes only after a step that saw it.
 : STEP ( ptr u8 n -- bool )
-   BUF-CLEAR SEND-LINE
-   s"  ok" WAIT-FOR if s"  ok" s" habu> " WAIT-AFTER else false then ;
+   BUF-CLEAR SEND-LINE WAIT-ANSWER ;
 
 \ A REPL child on the pty, set to the tier under test.
 : OPEN ( n -- bool )

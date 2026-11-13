@@ -59,7 +59,7 @@ OUTER-RC  create OU-B 3 cells allot  constant OU-RC
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
 : PROMPT-AFTER ( ptr u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
 : STEP ( ptr u8 n -- )
-   BUF-CLEAR SEND-LINE s"  ok" WAIT-FOR TTRUE s"  ok" PROMPT-AFTER ;
+   BUF-CLEAR SEND-LINE WAIT-ANSWER TTRUE ;
 : STOP ( -- )
    4 SEND-BYTE
    REAP {: oc :}

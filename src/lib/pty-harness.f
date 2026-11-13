@@ -408,37 +408,26 @@ public
    FIND-AFTER 0 >= ;
 
 
-\ Keep reading the master until the tail appears AT OR AFTER THE END OF THE
-\ HEAD, the child hangs up, or ms pass on the clock. A child engine answers in
-\ as many pieces as the host's scheduling chooses - its line editor redraws on
-\ every keystroke, and a loaded box splits one echo across dozens of reads - so
-\ no count of polls bounds the wait. A partial read is not an answer and not a
-\ failure: only the text, the hang-up and the clock end the loop. The hang-up
-\ answers whether the text came before it. The clock answers nothing: a child
-\ that still holds the terminal has not answered YET, which is a deadline and
-\ not a wrong answer, so the wait throws E-PROC-TIMEOUT and the row reads as a
-\ timeout instead of a failed assertion.
-: WAIT-AFTER-WITHIN ( ptr u8 n ptr u8 n n -- bool ) {: ha:ptr hu:n ta:ptr tu:n ms:n :}
-   ms WAIT-OPEN
+private
+
+\ Read until the quotation holds; a hang-up answers its last answer. The clock
+\ throws E-PROC-TIMEOUT: a child that holds the terminal is late, not wrong.
+: WAIT-UNTIL ( [ -- bool ] n -- bool )
+   WAIT-OPEN
    begin
-      ha hu ta tu AFTER? if true exit then
+      dup execute if drop true exit then
       WAIT-LEFT 0= if E-PROC-TIMEOUT throw then
-      MASTER-FD READ-STEP 0 < if ha hu ta tu AFTER? exit then
+      MASTER-FD READ-STEP 0 < if execute exit then
    again ;
 
+public
 
-\ The wait for the TAIL AT OR AFTER THE HEAD is the only wait that can tell the
-\ prompt a child prints once it holds the terminal raw from the one its line
-\ editor redrew while echoing the line. The editor redraws "habu> " plus the
-\ line on every keystroke, so the prompt is in the buffer before the answer is;
-\ a wait for the prompt alone is satisfied by the echo and a ^D sent then lands
-\ while the child has the terminal cooked between the answer and the next read,
-\ where the line discipline turns it into an end of file the raw-mode read
-\ later sees as a NUL and ignores. Measured (strace of
-\ test/repl-address-cell-rollback.f): the child restores cooked mode before it
-\ prints " ok" and takes raw mode about 100 us later; a driver that reacts
-\ within that window hangs the child at its read, and a loaded box widens the
-\ window to milliseconds for any driver.
+: WAIT-AFTER-WITHIN ( ptr u8 n ptr u8 n n -- bool ) {: ha:ptr hu:n ta:ptr tu:n ms:n :}
+   [: ha hu ta tu AFTER? ;] ms WAIT-UNTIL ;
+
+
+\ The editor redraws "habu> " per key, so only a prompt after the answer shows
+\ the child raw again; a ^D sent before it is read cooked and dropped as a NUL.
 : WAIT-AFTER ( ptr u8 n ptr u8 n -- bool )
    WAIT-BUDGET-MS WAIT-AFTER-WITHIN ;
 
@@ -446,6 +435,15 @@ public
 \ The text anywhere: an empty head puts the tail anywhere.
 : WAIT-FOR ( ptr u8 n -- bool ) {: a:ptr u:n :}
    s" " a u WAIT-AFTER ;
+
+
+\ The answer is the line just before the editor redraws its prompt: neither
+\ the echo nor the line's own output can end there.
+: WAIT-ANSWER ( -- bool )
+   s\"  ok\r\n\r\x1B[Khabu> " {: a:ptr u:n :}
+   [: a u IN-BUF?  s\" ?\r\n\r\x1B[Khabu> " IN-BUF? or ;]
+   WAIT-BUDGET-MS WAIT-UNTIL
+   a u IN-BUF? and ;
 
 
 \ Wait for a marker and close an absence claim's window at its end. The marker
