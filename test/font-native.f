@@ -1,4 +1,6 @@
-\ font-native.f - native HarfBuzz FONT test on installed macOS fonts.
+\ font-native.f - native HarfBuzz FONT test on each platform's installed fonts:
+\ on Linux, Ubuntu's fonts-dejavu-core, fonts-urw-base35 and
+\ fonts-noto-color-emoji.
 require src/lib/font.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -13,7 +15,43 @@ TYPED-VARIABLE COLOR-FACE FONT:font
 TYPED-VARIABLE IMAGE FONT:image
 
 : FONT-PATH$ ( -- ptr u8 n )
-   s" /System/Library/Fonts/Supplemental/Arial.ttf" ;
+   HB-TARGET-MACOS? if
+      s" /System/Library/Fonts/Supplemental/Arial.ttf" exit
+   then
+   s" /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" ;
+
+: LIGATURE-PATH$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if
+      s" /System/Library/Fonts/Supplemental/Baskerville.ttc" exit
+   then
+   s" /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" ;
+
+: CFF-PATH$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if
+      s" /System/Library/Fonts/Supplemental/STIXGeneral.otf" exit
+   then
+   s" /usr/share/fonts/opentype/urw-base35/NimbusRoman-Regular.otf" ;
+
+: COLOR-PATH$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if
+      s" /System/Library/Fonts/Apple Color Emoji.ttc" exit
+   then
+   s" /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf" ;
+
+\ The accents' binary32 ink left, top and right edges from HarfBuzz, the top
+\ past the em as the accents stack, then the viewBox that rounds them outward.
+: ACCENT-BOX ( -- r r r ptr u8 n )
+   HB-TARGET-MACOS? if
+      -1.4648 -1581.5273 668.457
+      s\" viewBox=\"-2 -1582 671 1582\"" exit
+   then
+   7.8126 -1281.2343 675.7812 s\" viewBox=\"7 -1282 669 1282\"" ;
+
+\ HarfBuzz's ink box of `o` ends at -9 in Arial at 17, at -14 in DejaVu Sans
+\ at 25; the emitted path reaches -9.0146 or -14.0015, and the viewBox holds it.
+: ROUND-CASE ( -- n ptr u8 n )
+   HB-TARGET-MACOS? if 17 s\" viewBox=\"0 -10 9 11\"" exit then
+   25 s\" viewBox=\"1 -15 13 16\"" ;
 
 : READ-FONT ( ptr u8 n -- ptr u8 n )
    {: path:ptr len:n :}
@@ -35,21 +73,18 @@ TYPED-VARIABLE IMAGE FONT:image
    face s\" A\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81" 1000 FONT:RENDER
       {: accents:FONT:image :}
    accents FONT:BOUNDS {: x:r y:r w:r h:r :}
-   x 0.0 f< T-ASSERT
-   y -1500.0 f< T-ASSERT
-   h 1500.0 f> T-ASSERT
-   w 600.0 f> T-ASSERT
-   x -1.4648 f< T-ASSERT
-   y -1581.5273 f< T-ASSERT
-   x w f+ 668.457 f> T-ASSERT
+   ACCENT-BOX {: left:r top:r right:r box:ptr box-len:n :}
+   x left f< T-ASSERT
+   y top f< T-ASSERT
+   x w f+ right f> T-ASSERT
    y h f+ 0.0 f= T-ASSERT
    accents FONT:SVG$ s" viewBox='" CONTAINS? 0= T-ASSERT
-   accents FONT:SVG$ s\" viewBox=\"-2 -1582 671 1582\"" CONTAINS? TTRUE
+   accents FONT:SVG$ box box-len CONTAINS? TTRUE
    accents FONT:FREE
 
-   \ HarfBuzz's ink box ends at -9; its emitted `o` path reaches -9.0146.
-   face s" o" 17 FONT:RENDER {: round:FONT:image :}
-   round FONT:SVG$ s\" viewBox=\"0 -10 9 11\"" CONTAINS? TTRUE
+   ROUND-CASE {: em:n view:ptr view-len:n :}
+   face s" o" em FONT:RENDER {: round:FONT:image :}
+   round FONT:SVG$ view view-len CONTAINS? TTRUE
    round FONT:FREE
 
    face s\" \xD0\x94" 400 FONT:RENDER {: greek:FONT:image :}
@@ -69,8 +104,7 @@ TYPED-VARIABLE IMAGE FONT:image
    small FONT:FREE ;
 
 : LIGATURE-CHECK ( -- )
-   s" /System/Library/Fonts/Supplemental/Baskerville.ttc"
-      READ-FONT {: data:ptr size:n :}
+   LIGATURE-PATH$ READ-FONT {: data:ptr size:n :}
    data size 0 FONT:OPEN {: face:FONT:font :}
    data size MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face s" fi" 1000 FONT:RENDER {: ligature:FONT:image :}
@@ -78,11 +112,12 @@ TYPED-VARIABLE IMAGE FONT:image
    ligature FONT:FREE face FONT:CLOSE ;
 
 : CFF-BOUNDS-CHECK ( -- )
-   s" /System/Library/Fonts/Supplemental/STIXGeneral.otf"
-      READ-FONT {: data:ptr size:n :}
+   CFF-PATH$ READ-FONT {: data:ptr size:n :}
    data size 0 FONT:OPEN {: face:FONT:font :}
    data size MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face s" j" 23 FONT:RENDER {: img:FONT:image :}
+   \ Both platforms' faces give this box; Nimbus Roman's ink box of `j` ends at 5,
+   \ and its emitted path passes it.
    img FONT:SVG$ s\" viewBox=\"-2 -16 7 22\"" CONTAINS? TTRUE
    img FONT:FREE face FONT:CLOSE ;
 
@@ -90,8 +125,7 @@ TYPED-VARIABLE IMAGE FONT:image
    COLOR-FACE @ s\" \xF0\x9F\x94\xA9" 1000 FONT:RENDER FONT:FREE ;
 
 : COLOR-CHECK ( -- )
-   s" /System/Library/Fonts/Apple Color Emoji.ttc"
-      READ-FONT {: data:ptr size:n :}
+   COLOR-PATH$ READ-FONT {: data:ptr size:n :}
    data size 0 FONT:OPEN {: face:FONT:font :}
    data size MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    face COLOR-FACE !

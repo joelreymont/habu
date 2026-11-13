@@ -427,6 +427,12 @@ SUITE zlib
    test/zlib-source.f
 ;SUITE
 
+\ FONT on the host's installed fonts; HarfBuzz and the fonts are a gate
+\ requirement (docs/bootstrap.md "Requirements").
+SUITE font-native
+   test/font-native.f
+;SUITE
+
 \ C calling back into checked code through libc's qsort and pthread_create, on
 \ the calling task and on foreign threads; writes
 \ build/ffi-callback-transcript.txt and compares it whole.

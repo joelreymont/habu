@@ -51,7 +51,9 @@ and postgres on PATH and libpq 17 or newer for native query cancellation,
 run as an ordinary user because initdb refuses root. With libpq 16 the test
 dies `E-FFI-DLSYM: PQcancelCreate in libpq.so.5`. Debian and Ubuntu keep
 initdb and postgres in `/usr/lib/postgresql/<version>/bin`, which must be put
-on PATH.
+on PATH. The FONT test needs HarfBuzz 14.2 or newer, libharfbuzz and
+libharfbuzz-vector, on the loader path (Ubuntu 24.04 ships 8.3), and on
+Linux the Ubuntu font packages test/font-native.f's header names.
 The Wasm device suite needs wasm-tools and bun on PATH.
 On macOS the library tests use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
