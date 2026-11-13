@@ -239,9 +239,12 @@ DYNAMIC-BUFFER PRESENT u8               \ a written file's bytes while SAME-FILE
    s" src/lib/task.f" REQUIRE-FILE ;
 
 
+\ hb carries the build command's files, so `hb --load tools/hb-build.f`
+\ compiles only that driver.
 : ENGINE-BODY ( -- )
    STARTUP
    RUNTIME-FILES
+   s" tools/hb-build-lib.f" REQUIRE-FILE
    SEAL-ENGINE
    REQUIRE-N @ false END-WRITE
    END$ INCLUDE-FILE

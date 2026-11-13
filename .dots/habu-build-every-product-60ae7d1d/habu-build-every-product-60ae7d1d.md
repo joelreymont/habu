@@ -17,7 +17,7 @@ Why: Joel, 2026-11-04 ("how Habu builds Habu", "one compiler"): an arm64 build i
 
 Order (each step lands as small green commits; a later step starts when the one before it lands; Joel, 2026-11-09: arm64 to arm64, then Wasm, then x86-64):
 1. The cross-build and the one linker (habu-make-a-file-dfc7e030), under habu-make-incremental-builds-41fd3214. Prerequisite: checker working state outside DATA (habu-take-checker-working-6703bc4f).
-2. arm64 end to end: one typed interpreter (habu-move-the-interpreter-d35780fa); hb is linked and skips the startup reload (habu-load-hb-build-00d1dd6a); the build names (habu-name-the-build-abed309a).
+2. arm64 end to end: one typed interpreter (habu-move-the-interpreter-d35780fa); the build names (habu-name-the-build-abed309a).
 3. Wasm on T0 and the one linker (habu-emit-wasm-from-0d5dab47).
 4. x86-64 through the same linker (habu-build-x86-64-3ed6f45d).
 5. Deletions: tier 1 (habu-delete-tier-1-f5c44fb4) and the JIT (habu-delete-the-jit-d9fdaf67), held until T0 is as fast.

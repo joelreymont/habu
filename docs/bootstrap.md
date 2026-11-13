@@ -8,10 +8,11 @@ How `hb` builds `hb`, and how a missing or broken `bin/hb` is recovered.
 the running hb and writes it, with its `.map`, to `<out>`
 (tools/hb-build-core.f). The build is a cross-build for the running
 machine: the target is data the build writes, never a slice of the
-running hb's memory. Its start-up,
-kernel and layout come from the tree too: a kernel build first compiles the
-tree's src/arch/arm64/kernel-object.f and writes a kernel object under the out
-root, which the build then links. An engine build takes at most 5 minutes; one
+running hb's memory. The text of its start-up files, its kernel and its layout
+come from the tree, but which files it loads, and in what order, are the
+running hb's, which carries the build command. A kernel build first compiles
+the tree's src/arch/arm64/kernel-object.f and writes a kernel object under the
+out root, which the build then links. An engine build takes at most 5 minutes; one
 that runs past it has a defect to root-cause, never a longer limit.
 
 Build from the tree's root: a build opens its boot files under the working
@@ -82,8 +83,8 @@ tree's code (code layout, records, wordlist numbering, the address list), a
 body that calls a primitive its own change adds, a new primitive-spec atom code
 (the running checker replays the tree's rows and dies `checker: unknown
 primitive-spec atom`), or a tool that calls a word hb
-carries (the linker) by a name or effect its own change gives it, needs a
-stage: the tool loads from the tree, but `require` of a file hb carries finds
+carries (the linker) by a name or effect its own change gives it, or a change
+to which files a build loads or their order, needs a stage: the tool loads from the tree, but `require` of a file hb carries finds
 the running hb's copy. Build the stage first, from a revision that adds the
 change but does not yet need it, with the running hb; then build the tree with
 that stage:
@@ -121,8 +122,7 @@ its `.map`; it then builds the tree as any trusted hb does.
 
 ## What the engine carries
 
-tools/hb-build-core.f (STARTUP and RUNTIME-FILES) lists the source baked into
-hb. Loading a baked file by name does not reread edits from disk;
+tools/hb-build-core.f lists the source baked into hb. Loading a baked file by name does not reread edits from disk;
 a native rebuild is needed to test those changes. Files outside that closure
 load normally from disk. Use the convergence check for changes baked into the
 engine.

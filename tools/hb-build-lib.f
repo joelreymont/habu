@@ -19,6 +19,7 @@ require src/compiler/target/model.f
 require src/habu/linker.f
 require tools/hb-build-core.f
 require tools/hb-build-report.f
+require tools/image-size-lib.f
 
 package HB-BUILD-CLI
 
@@ -477,16 +478,33 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    then then then type
    cr ;
 
-defer HBB-REPORT-HOOK ( -- )
+: HBB-MEASURE-OUT ( -- )
+   HBB-OUT$ IMAGE-SIZE:MEASURE ;
+
+: HBB-SIZE-LINE ( -- )
+   s" hb-build " type
+   HBB-OUT$ IMAGE-SIZE:.SUMMARY ;
+
+: HBB-CAPTURE-REPORT ( -- )
+   HBB-ELAPSED-NS @
+   HB-BUILD:CAPTURE
+   IMAGE-SIZE:TOTAL-BYTES IMAGE-SIZE:CODE-BYTES IMAGE-SIZE:NAME-BYTES
+   IMAGE-SIZE:DATA-WRITTEN IMAGE-SIZE:DATA-ZERO IMAGE-SIZE:PAD-BYTES
+   IMAGE-SIZE:OTHER-BYTES
+   HB-BUILD:CAPTURE-SIZE ;
+
+\ --report-json prints the report object alone, size numbers included, so its
+\ stdout parses as JSON.
+: HBB-REPORT ( -- )
+   HBB-MEASURE-OUT
+   HBB-CAPTURE-REPORT
+   HBB-REPORT-JSON @ if HB-BUILD:REPORT$ type cr exit then
+   HBB-SUCCESS
+   HBB-SIZE-REPORT @ if IMAGE-SIZE:REPORT HBB-SIZE-LINE then ;
 
 : HBB-FINISH ( -- )
    mono-ns HBB-START-NS @ - HBB-ELAPSED-NS !
-   HBB-REPORT-JSON @ HBB-SIZE-REPORT @ or 0<> if
-      s" tools/hb-build-size.f" required
-      HBB-REPORT-HOOK
-   else
-      HBB-SUCCESS
-   then ;
+   HBB-REPORT-JSON @ HBB-SIZE-REPORT @ or 0<> if HBB-REPORT else HBB-SUCCESS then ;
 
 : HBB-PATH-ERROR ( -- )
    HBB-JSON @ if HB-BUILD:PATH-ERROR$ else HB-BUILD:PATH-ERROR-TEXT$ then HBB-WERR
