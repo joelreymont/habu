@@ -41,11 +41,25 @@ create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable OUTLEN
 variable ERRLEN
+variable STATUS
 
-: CHILD-RC ( ptr u8 n -- n ) {: src:ptr size:n :}
+: CHILD-CAPTURE ( ptr u8 n -- ) {: src:ptr size:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
-   RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N >r ERRLEN ! OUTLEN ! r> ;
+   RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N STATUS ! ERRLEN ! OUTLEN ! ;
+
+\ A crashed child's dump outgrows IO-CAP, and E-PROC-TRUNCATED uncaught would
+\ end the file without naming the case. The case fails under its label, and the
+\ empty capture and -1 fail the checks after it.
+: CHILD-TRUNCATED ( -- n )
+   T-NEXT s" child output exceeded the capture" T-ASSERT-DETAIL
+   0 OUTLEN ! 0 ERRLEN ! -1 ;
+
+: CHILD-RC ( ptr u8 n -- n ) {: src:ptr size:n :}
+   [: src size CHILD-CAPTURE ;] catch {: code:n :}
+   code 0= if STATUS @ exit then
+   code E-PROC-TRUNCATED = if CHILD-TRUNCATED exit then
+   code throw ;
 
 : PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: g:ptr gu:n w:ptr wu:n :}
    gu wu < if 0 0= 0= exit then
