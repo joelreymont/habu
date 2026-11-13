@@ -623,10 +623,8 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ starts it at the page-aligned DBASE+DICT-SIZE, `code-publish` moves it to
 \ the first slot at or past dst+len, x86-64 filling the gap with int3,
 \ `does-record` pads the name it writes at CP to a slot with zeros,
-\ `namespace-record`, `alias-record` and `def-open` move it past a long name
-\ to the next slot, x86-64 padding with zeros, and ARM64
-\ `native-unit-publish` moves it past a unit whose length GUARD-CODE-SPAN
-\ admits only in whole instruction words.
+\ and `namespace-record`, `alias-record` and `def-open` move it past a long
+\ name to the next slot, x86-64 padding with zeros.
 \ An `addr` outside the region, or on ARM64 not a whole instruction, exits
 \ ENGINE-ERROR:SEAL-VIOLATION.
 \
@@ -641,10 +639,6 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ E-HIR-UNMODELED there. The same reason keeps the global rows of
 \ reloc-maps-clear and set-top-check beside their owners' rows below.
 EPPRIM: NPUB code-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: native-unit-publish
-   PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ installs relocated package code and dictionary rows
-EPPRIM: NPUB native-unit-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
 EPPRIM: NPUB callmap-set PE-N PE-IN ECLOSE-PRIVATE
@@ -750,7 +744,7 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ caller checks first and prints the engine's own text. Two refusals are
 \ compile dies instead, which `evaluate` delivers as throws: while a checker
 \ overlay is open `namespace-private`, `alias-record`
-\ and `def-open`, like `native-unit-publish` above, name the token and die
+\ and `def-open` name the token and die
 \ ENGINE-ERROR:OVERLAY-OPEN, and `def-create`
 \ dies 76 as `allot` does when DP would pass the data region. x86-64 refuses
 \ `def-create` and `def-defer`: its Habu loop has NCOMP
@@ -943,9 +937,6 @@ EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ address. What it refuses is a value read THROUGH it: `NULL-PTR + @` taken as
 \ a nominal identity or as an address certified and forged one.
 EPRIM: NULL-PTR       PE-PTR-A-NULL PE-OUT EPRIM; REACH stack
-\ Resolve the capture observer slot from the running kernel.
-EPRIM: native-unit-cut-cell PE-PTR-A PE-OUT EPRIM;
-ETRUSTED-ONLY!
 \ A null result means the running kernel has no origin record. Source reaches
 \ the three optional cells through this byte pointer and the running engine's
 \ NATIVE-BODY-ABI indices; only the engine's own emitters bake their offsets.

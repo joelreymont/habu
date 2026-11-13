@@ -771,10 +771,6 @@ require src/lib/prelude.f
 -8580 constant E-NELAB-TYPE     \ a compile-time value whose type is not the one the position wants and is not a crossing this dialect performs: a double handed to an operation that computes with cells, or a double stored into a memory cell, which no leaf places yet
 -8581 constant E-A64RA-FILE     \ two values of two different register files joined into one class: an edge or a schema tie whose two ends cannot share a register because no register holds both
 
-\ Native unit artifacts
--8597 constant E-NUNIT-PROFILE  \ package state or relocation that this native artifact format cannot represent
--8599 constant E-NUNIT-FILE     \ malformed or incompatible native package artifact
-
 \ Asking the running dictionary about a spelling: -8600..-8609
 -8600 constant E-NDICT-NAME     \ a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent
 -8601 constant E-NDICT-VALUE    \ the word a spelling denoted did not leave exactly one value where it was entered, so it is not a word whose whole meaning is the value it pushes and what it left is not its answer

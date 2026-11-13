@@ -4,7 +4,6 @@ require src/habu/layout.f
 require src/habu/address-cells.f
 require src/habu/prof-abi.f
 require src/habu/native-observer-cells.f
-require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
 
@@ -160,7 +159,6 @@ create TAB
    NATIVE-OBS-CELLS:PUBLISHED         1 cells                 CLAIM NATIVE-OBS-CELLS:PUBLISHED
    NATIVE-OBS-CELLS:INVALIDATE        1 cells                 CLAIM NATIVE-OBS-CELLS:INVALIDATE
    NATIVE-OBS-CELLS:HOST-INVALIDATE   1 cells                 CLAIM NATIVE-OBS-CELLS:HOST-INVALIDATE
-   NATIVE-OBS-EXT:CAPTURE-INVALIDATE  1 cells                 CLAIM NATIVE-OBS-EXT:CAPTURE-INVALIDATE
    NATIVE-HOST-CELLS:SELECT           1 cells                 CLAIM NATIVE-HOST-CELLS:SELECT
    NATIVE-HOST-CELLS:SCALAR-PRIM      1 cells                 CLAIM NATIVE-HOST-CELLS:SCALAR-PRIM
    NATIVE-HOST-CELLS:DIVISION-PRIM    1 cells                 CLAIM NATIVE-HOST-CELLS:DIVISION-PRIM

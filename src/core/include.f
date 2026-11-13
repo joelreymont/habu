@@ -1337,9 +1337,8 @@ INSTALL
 ;package
 ;using
 
-\ A source load is also the publication boundary for an explicitly selected
-\ package unit. The continuation keeps the ordinary frame and scope behavior;
-\ callers may bind a unit importer after the complete loader has been loaded.
+\ Every source load runs through the bound runner. The ordinary one keeps the
+\ frame and scope behavior; a build binds its own once the loader has loaded.
 package SOURCE-UNIT
 private
 

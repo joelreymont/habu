@@ -45,8 +45,7 @@ public
    0 TAKEN-FUNS ! ;
 
 \ Take the emission NEMIT holds sealed, placed at `at`, before any code window
-\ opens. Every reserve and row copy that may throw runs before the observer; a
-\ refused take is abandoned.
+\ opens; a refused take is abandoned.
 : TAKE ( n -- ) {: at:n :}
    TAKEN-FUNS @ 0<> if E-STATE throw then
    IMPL-N @ TAKEN-BASE !

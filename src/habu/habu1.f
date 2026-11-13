@@ -23,7 +23,6 @@
 \ caller was compiled.
 require src/arch/arm64/icode.f
 require src/habu/primitive-registry.f
-require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
 require src/habu/data-claims.f          \ each band GUARD-SPAN tests is a claim
 require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
@@ -1524,9 +1523,6 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
 : BNULLPTR ( -- ) 31 G-PUSH ;   \ ( -- 0 ) the null: register 31 as a store source is xzr
-: BNUNITCUTCELL ( -- )
-   9 NATIVE-OBS-EXT:CAPTURE-INVALIDATE MOVZ,
-   9 DATA 9 ADD,  9 G-PUSH ;
 : BNATIVEORIGINCELL ( -- )
    9 NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + MOVZ,
    9 DATA 9 ADD,  9 G-PUSH ;
@@ -3133,20 +3129,6 @@ package ENGINE-EMIT
 : HOST-INVALIDATE, ( -- )
    NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL, ;
 
-\ x9 is the dictionary count NDICT is about to drop to. The capture owner
-\ ( n -- ) retires every captured definition at or past it. It runs inside
-\ the count change every lowering shares, so it preserves x0-x17.
-: CAPTURE-CUT, ( -- )
-   LBL {: done:label :}
-   12 DATA NATIVE-OBS-EXT:CAPTURE-INVALIDATE LDR,  12 done CBZ,
-   SP SP 160 SUBI,
-   18 0 ?do i SP i cells STR, loop
-   30 SP 144 STR,
-   9 G-PUSH  12 BLR,
-   18 0 ?do i SP i cells LDR, loop
-   30 SP 144 LDR,  SP SP 160 ADDI,
-   done LBL, ;
-
 : BPATCH32 ( -- )                \ ( w addr -- ): store through the alias, cache-sync
    A G-POP  B G-POP
    SP SP 32 SUBI,
@@ -3257,78 +3239,6 @@ public
    CP 10 9 ADD,
    9 10 0 ADDI,  LFLUSH LABEL@ BL,
    SP SP 48 ADDI, ;
-
-\ Install one prepared native package unit. The caller has relocated its code
-\ and complete dictionary rows before this engine-owned publication boundary.
-\ No dictionary name becomes live until both copies and the instruction-cache
-\ flush finish. A namespace-only unit has records but no code; it copies only
-\ the records and leaves CP and relocation maps unchanged.
-: BNATIVEUNITPUBLISH ( -- )
-   s" E-TASK-COMPILE habu: native-unit-publish from a task" B-TASK-GUARD
-   OVERLAY-EMIT:GUARD,
-   9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
-   LBL LBL LBL LBL LBL LBL
-   {: bad:label widloop:label widdone:label cloop:label cdone:label rloop:label :}
-   LBL LBL LBL LBL LBL LBL LBL
-   {: rdone:label iloop:label idone:label done:label records:label indexed:label prot:label :}
-   SP SP 64 SUBI,
-   9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
-   CP SP 32 STR,
-   14 DICT-CAP LIT64,  14 14 NDICT SUB,
-   9 14 CMP,  C-HI bad BCOND,       \ unsigned comparison rejects negative count
-   EM-DEF-OCC:LROOM LABEL@ BL,
-   14 DREC MOVZ,  14 9 14 MUL,  14 SP 48 STR,
-   12 DREC MOVZ,  12 NDICT 12 MUL,  12 DBASE 12 ADD,  12 SP 40 STR,
-   \ A sealed image cannot acquire a record in an already protected wordlist.
-   17 DATA SEAL-NDICT-CELL LDR,  17 widdone CBZ,
-   15 SP 8 LDR,  16 SP 0 LDR,
-   widloop LBL,
-      16 widdone CBZ,
-      9 15 40 LDR,  LPROTWIDQ LABEL@ BL,
-      13 prot CBNZ,
-      15 15 DREC ADDI,  16 16 1 SUBI,  widloop B,
-   widdone LBL,
-   9 SP 16 LDR,  9 records CBZ,
-   64 CALLER-LR,
-   10 CP 0 ADDI,  GUARD-CODE-SPAN
-   records LBL,
-   9 SP 32 LDR,  10 SP 24 LDR,  11 SP 16 LDR,  12 0 MOVZ,
-   15 DATA REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,    \ x15 = CP through the alias
-   cloop LBL,
-      12 11 CMP,  C-CS cdone BCOND,
-      13 10 12 ADD,  14 13 0 LDRW,
-      13 15 12 ADD,  14 13 0 STRW,
-      12 12 4 ADDI,  cloop B,
-   cdone LBL,
-   9 SP 40 LDR,  10 SP 8 LDR,  11 SP 48 LDR,  12 0 MOVZ,
-   15 DATA REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,    \ x15 = the rows through the alias
-   rloop LBL,
-      12 11 CMP,  C-CS rdone BCOND,
-      13 10 12 ADD,  14 13 0 LDR,
-      13 15 12 ADD,  14 13 0 STR,
-      12 12 8 ADDI,  rloop B,
-   rdone LBL,
-   9 SP 16 LDR,  9 indexed CBZ,
-   10 SP 32 LDR,
-   SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN,
-   SNAP-RELOC:ADDRMAP-OFF RELOC-EMIT:CLEAR-SPAN,
-   9 SP 16 LDR,  CP CP 9 ADD,
-   9 SP 32 LDR,  LFLUSH LABEL@ BL,
-   indexed LBL,
-   15 SP 0 LDR,
-   iloop LBL,
-      15 idone CBZ,
-      EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
-      15 15 1 SUBI,  iloop B,
-   idone LBL,
-   SP SP 64 ADDI,  done B,
-   bad LBL,
-   s" E-SEAL-VIOLATION habu: native-unit-publish record count above DICT-CAP - NDICT:"
-   ENGINE-ERROR:SEAL-VIOLATION 9 DIE-LINE-VALUE,
-   prot LBL,  64 CALLER-LR,
-   s" E-SEAL-VIOLATION habu: native-unit-publish record into a wordlist protected by the seal:"
-   ENGINE-ERROR:SEAL-VIOLATION 9 DIE-LINE-VALUE,
-   done LBL, ;
 
 \ callmap-set ( addr -- ): record the instruction at addr as a call into the
 \ engine's loaded __text, the only call a snapshot must rewrite (a region-to-
@@ -4625,9 +4535,7 @@ public
 \ slot per (name, wid), answers the first validated row. They agree only where
 \ a wid holds one live row per folded name:
 \   - a real wordlist (the global wid, a package's private or public wid, a
-\     package-row marker) is guarded by duplicate walls at its definers.
-\     native-unit-publish can still append duplicates; XREF's indexed probe
-\     below scans the whole chain for its newest-record rule;
+\     package-row marker) is guarded by duplicate walls at its definers;
 \   - WL:RETIRED is not a wordlist: xref.f XREF:RETIRE stamps it onto rows
 \     still keyed under their published wid, and retiring one name twice puts
 \     two rows under the key, so that wid always takes the scan.
@@ -4916,7 +4824,6 @@ package ENGINE-EMIT
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" NULL-PTR" ['] BNULLPTR FPRIM-L
-   s" native-unit-cut-cell" ['] BNUNITCUTCELL FPRIM-L
    s" native-origin-cell" ['] BNATIVEORIGINCELL FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
@@ -4972,7 +4879,6 @@ package ENGINE-EMIT
    s" patch32" ['] BPATCH32 FPRIM
    s" reloc-maps-clear" ['] RELOC-EMIT:BCLEAR-MAPS FPRIM-L
    s" code-publish" ['] NPUBWIN:BCODEPUBLISH FPRIM
-   s" native-unit-publish" ['] NPUBWIN:BNATIVEUNITPUBLISH ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" callmap-set" ['] NPUBWIN:BCALLMAPSET FPRIM
    s" addrmap-set" ['] NPUBWIN:BADDRMAPSET FPRIM
    s" xref-retarget" ['] NPUBWIN:BXREFRETARGET FPRIM
@@ -5573,7 +5479,6 @@ private
          done B,
       lower LBL,
          PROF-ABI:LPROFTRIM LABEL@ BL,
-         CAPTURE-CUT,
          12 DATA NDICT-HW-CELL LDR,  12 NDICT CMP,  12 12 NDICT C-HI CSEL,
          12 DATA NDICT-HW-CELL STR,
          11 DATA DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,

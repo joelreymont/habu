@@ -716,10 +716,6 @@ SUITE x86-64-kernel-control
    test/x86-64-kernel-control.f
 ;SUITE
 
-SUITE x86-64-kernel-unit
-   test/x86-64-kernel-unit.f
-;SUITE
-
 SUITE x86-64-kernel-policy
    test/x86-64-kernel-policy.f
 ;SUITE

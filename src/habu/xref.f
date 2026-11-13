@@ -299,9 +299,8 @@ INSTALL
 ;package
 
 : XREF-FIND-WL ( ptr u8 n n -- ptr n ) {: a:ptr u:n wid:n :}
-   \ Native unit publication may add duplicate real-WID rows, so the indexed
-   \ probe must take the newest match. RETIRED rows may still be indexed under
-   \ the wordlist they left; that WID retains the descending scan.
+   \ A retired row stays indexed under the wordlist it left, so WL:RETIRED takes
+   \ the descending scan.
    wid 0 >= wid BOOT:NAMESPACE-WL = or if
       a u wid XREF:INDEXED-WL exit
    then

@@ -17,7 +17,6 @@ require src/core/util.f
 require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/wl.f
-require src/habu/native-observer-extension.f
 require src/habu/address-cells.f
 require src/habu/stack-abi.f
 require src/habu/arith-abi.f
@@ -442,9 +441,8 @@ CELL 4 * constant DIAG-BYTES
 \ The twins of habu1.f EMIT-HIDX and WLFIND:EMIT. The index at HIDXP-CELL is
 \ HIDX-SLOTS u32 slots, each 0 (empty) or a record index plus one, keyed on
 \ C-HIDX-HASH's hash of the folded name XOR the record's wid. It is
-\ insert-once per record: ordinary definers refuse duplicate live names, while
-\ native unit publication can add one. An empty slot on a key's chain means
-\ absent; XREF's newest-row lookup uses the descending scan below.
+\ insert-once per record: definers refuse duplicate live names. An empty slot
+\ on a key's chain means absent.
 
 public
 
@@ -3128,26 +3126,6 @@ variable SITE-TRAP-CELL
    cp RSP PUB-SLOT MOV-LOAD,                           \ the slot is claimed
    RSP PUB-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
-\ RAX is the dictionary count NDICT is about to drop to. The capture owner
-\ ( n -- ) retires every captured definition at or past it. It runs inside
-\ the count change every lowering shares, so it preserves every caller
-\ scratch register.
-: CAPTURE-CUT, ( -- )
-   X64CODE:LBL {: done:label :}
-   RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
-   RSI ASM-SINK ENC-PUSH  RDI ASM-SINK ENC-PUSH
-   R8 ASM-SINK ENC-PUSH  R9 ASM-SINK ENC-PUSH
-   R10 ASM-SINK ENC-PUSH  R11 ASM-SINK ENC-PUSH
-   RCX NATIVE-OBS-EXT:CAPTURE-INVALIDATE CELL@,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
-   RAX PUSH,
-   RCX ASM-SINK ENC-CALL-REG
-   done X64CODE:LBL,
-   R11 ASM-SINK ENC-POP  R10 ASM-SINK ENC-POP
-   R9 ASM-SINK ENC-POP  R8 ASM-SINK ENC-POP
-   RDI ASM-SINK ENC-POP  RSI ASM-SINK ENC-POP
-   RDX ASM-SINK ENC-POP  RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP ;
-
 \ RAX is the new published count. Keep all caller scratch registers intact.
 \ The first mapped cell is the last number issued; slot cells follow it.
 : OCC-COUNT, ( -- )
@@ -3175,7 +3153,6 @@ variable SITE-TRAP-CELL
       R8 RDX MEM-AT ASM-SINK ENC-MOV-MR
       done JMP,
    lower X64CODE:LBL,
-      CAPTURE-CUT,
       R9 NDICT-HW-CELL CELL@,                     \ raise the high-water to the count this lowers from
       R9 NDICT-REG ASM-SINK ENC-CMP-RR  C-AE hw JCC,   \ (layout.f NDICT-HW-CELL)
       NDICT-REG NDICT-HW-CELL CELL!,
@@ -3213,112 +3190,6 @@ variable SITE-TRAP-CELL
    exhausted X64CODE:LBL,
    RAX DEF-OCC:E-EXHAUSTED IMM64,  THROW,
    end X64CODE:LBL, ;
-
-\ A prepared unit owns one code emission and complete dictionary records.
-\ Keep both protection bands open for the copy, close them before publishing
-\ the dictionary count, and index each record as it appears.
-0 constant UNIT-SRC
-8 constant UNIT-LEN
-16 constant UNIT-RECS
-24 constant UNIT-COUNT
-32 constant UNIT-DST
-40 constant UNIT-SLOT
-48 constant UNIT-REC-DST
-56 constant UNIT-REC-BYTES
-64 constant UNIT-FRAME
-
-: NATIVE-UNIT-PUBLISH, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: widloop:label widdone:label copy:label copied:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: fill:label filled:label recopy:label recopied:label :}
-   X64CODE:LBL X64CODE:LBL {: index:label indexed:label :}
-   TASK-LIVE-GUARD,
-   OVERLAY-GUARD,
-   RSP UNIT-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
-   RAX POP,  RAX RSP UNIT-COUNT MOV-STORE,
-   RAX POP,  RAX RSP UNIT-RECS MOV-STORE,
-   RAX POP,  RAX RSP UNIT-LEN MOV-STORE,
-   RAX POP,  RAX RSP UNIT-SRC MOV-STORE,
-   NDICT-REG DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-A SEAL-TRAP-LBL JCC,
-   RCX DICT-CAP IMM32,  RCX NDICT-REG ASM-SINK ENC-SUB-RR
-   RAX RSP UNIT-COUNT MOV-LOAD,
-   RAX RCX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
-   RCX RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
-   RCX RSP UNIT-REC-BYTES MOV-STORE,
-   RDI NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
-   RDI DBASE-REG ASM-SINK ENC-ADD-RR
-   RDI RSP UNIT-REC-DST MOV-STORE,
-   RSI RSP UNIT-LEN MOV-LOAD,
-   RSI RSI ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
-   RDI ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-MOV-RR
-   RDI RSP UNIT-DST MOV-STORE,
-   RAX RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA
-   RAX RDI ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
-   RCX DBASE-REG REGION MEM-OFF ASM-SINK ENC-LEA
-   RAX RCX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
-   RDI RAX SLOT-UP,
-   RDI RSP UNIT-SLOT MOV-STORE,
-   R8 RSP UNIT-RECS MOV-LOAD,
-   R9 RSP UNIT-COUNT MOV-LOAD,
-   widloop X64CODE:LBL,
-   R9 R9 ASM-SINK ENC-TEST-RR  C-E widdone JCC,
-   RDX R8 REC-WID MOV-LOAD,
-   SEAL-TRAP-LBL OPEN-WID,
-   R8 DREC >IMM8 ASM-SINK ENC-ADD-RI8
-   R9 ASM-SINK ENC-DEC
-   widloop JMP,
-   widdone X64CODE:LBL,
-   RDI RSP UNIT-SLOT MOV-LOAD,  LOPEN-LBL CALL,
-   RDI RSP UNIT-REC-DST MOV-LOAD,
-   RSI RSP UNIT-REC-BYTES MOV-LOAD,  LSPAN-LBL CALL,
-   RDX RSP UNIT-SRC MOV-LOAD,
-   RDI RSP UNIT-DST MOV-LOAD,
-   RCX RSP UNIT-LEN MOV-LOAD,
-   RAX ZERO-REG,
-   copy X64CODE:LBL,
-   RAX RCX ASM-SINK ENC-CMP-RR  C-AE copied JCC,
-   R8 RDX RAX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
-   8 >R8 RDI RAX 1 0 MEM-IDX ASM-SINK ENC-MOV8-MR
-   RAX ASM-SINK ENC-INC
-   copy JMP,
-   copied X64CODE:LBL,
-   RCX RSP UNIT-SLOT MOV-LOAD,  RCX RDI ASM-SINK ENC-SUB-RR
-   R8 INT3 IMM32,
-   fill X64CODE:LBL,
-   RAX RCX ASM-SINK ENC-CMP-RR  C-AE filled JCC,
-   8 >R8 RDI RAX 1 0 MEM-IDX ASM-SINK ENC-MOV8-MR
-   RAX ASM-SINK ENC-INC
-   fill JMP,
-   filled X64CODE:LBL,
-   RDX RSP UNIT-RECS MOV-LOAD,
-   RDI RSP UNIT-REC-DST MOV-LOAD,
-   RCX RSP UNIT-REC-BYTES MOV-LOAD,
-   RAX ZERO-REG,
-   recopy X64CODE:LBL,
-   RAX RCX ASM-SINK ENC-CMP-RR  C-AE recopied JCC,
-   R8 RDX RAX 1 0 MEM-IDX ASM-SINK ENC-MOV-RM
-   R8 RDI RAX 1 0 MEM-IDX ASM-SINK ENC-MOV-MR
-   RAX CELL >IMM8 ASM-SINK ENC-ADD-RI8
-   recopy JMP,
-   recopied X64CODE:LBL,
-   LCLOSE-LBL CALL,
-   RDI RSP UNIT-DST MOV-LOAD,
-   RSI RSP UNIT-SLOT MOV-LOAD,  RSI RDI ASM-SINK ENC-SUB-RR
-   DROP-SITES-LBL CALL,
-   ENGINE-GPR:X64-CP >R64 RSP UNIT-SLOT MOV-LOAD,
-   index X64CODE:LBL,
-   RAX RSP UNIT-COUNT MOV-LOAD,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E indexed JCC,
-   \ Each record is counted through OCC-COUNT, so it gets its occurrence.
-   RAX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
-   OCC-COUNT,
-   HIDX-ADD,
-   RAX RSP UNIT-COUNT MOV-LOAD,  RAX ASM-SINK ENC-DEC
-   RAX RSP UNIT-COUNT MOV-STORE,
-   index JMP,
-   indexed X64CODE:LBL,
-   RSP UNIT-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 \ callmap-set and addrmap-set ( n -- ): the site's region offset into rdi, where
 \ an address outside the region exits SEAL-VIOLATION, and the kind into rdx.
@@ -3531,8 +3402,6 @@ public
       ENGINE-PRIMS:HELPER-REGISTER
    s" patch32" [: PATCH32, ;] PRIM
    s" code-publish" [: PUBLISH, ;] PRIM
-   s" native-unit-publish" [: NATIVE-UNIT-PUBLISH, ;]
-      ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" callmap-set" [: SNAP-RELOC:SITE-CALL SITE-SET, ;] PRIM
    s" addrmap-set" [: SNAP-RELOC:SITE-ADDR SITE-SET, ;] PRIM
    s" reloc-maps-clear" [: RSI POP,  RDI POP,  DROP-SITES-LBL CALL, ;] PRIM
@@ -3574,8 +3443,8 @@ private
    FIND-LBL CALL,
    RAX R64>N X64RT:G-PUSH ;
 
-\ The scan keeps the highest matching row when a native unit publishes duplicate
-\ names into one wordlist; a global miss retries WL:PRIMITIVES (FIND-HELPER,).
+\ The scan keeps the highest matching row; a global miss retries
+\ WL:PRIMITIVES (FIND-HELPER,).
 : XREF-SEARCH-WL-NEWEST-BODY ( -- )
    FIND-ARGS,
    FIND-SCAN-LBL CALL,
@@ -3969,9 +3838,6 @@ private
    s" dbase@" [: DBASE-REG PUSH, ;] PRIM
    s" data-base" [: DATA-REG PUSH, ;] PRIM
    s" NULL-PTR" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
-   s" native-unit-cut-cell" [:
-      RAX DATA-REG NATIVE-OBS-EXT:CAPTURE-INVALIDATE MEM-OFF ASM-SINK ENC-LEA
-      RAX PUSH, ;] PRIM
    \ This kernel has no origin record. The optional ABI reports absence.
    s" native-origin-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
    s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM

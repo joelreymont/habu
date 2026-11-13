@@ -427,12 +427,8 @@ align
 : SHUT ( -- )
    0 CHECKER-OWNER:WRITE-WINDOW ;
 
-\ The compile window opens when RECORD returns: every row the definition records
-\ is recorded by then. Until publication's last callback (publish.f UNIT-NOTIFY)
-\ the checker refuses every scan and store write with E-COMP-STATE (checker.f
-\ WRITE-WINDOW), so a callback cannot reset the latches publication reads or
-\ record a row the definition's refusal would cut. publish.f shuts the window
-\ before the compiler's own writes, and the finally shuts it on every exit.
+\ RECORD has recorded every row of the definition, so from here to the commit a
+\ callback's checker write is refused; the finally shuts the window on every exit.
 : WORK ( -- )
    CC HIR-MOD 0 M-BLD !
    RECORD {: before:n :}

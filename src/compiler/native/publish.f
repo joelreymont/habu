@@ -22,9 +22,6 @@ package NPUB
 private
 
 $4000 constant CODE-RESERVE
-TYPED-VARIABLE UNIT-OBSERVER [ n n n -- ]
-TYPED-VARIABLE UNIT-PRIOR-OBSERVER [ n n n -- ]
-variable UNIT-ARMED
 
 \ Inside NPUB the publication primitives bind this package's private rows
 \ (src/habu/prims.f), so their callers here are checked. Anywhere else a
@@ -54,25 +51,6 @@ variable UNIT-ARMED
 
 : APPEND-PENDING ( n -- )
    ndict-append ;
-
-\ A prepared package unit: the build host has
-\ relocated its code and dictionary rows and names each relocation site as a
-\ unit-relative byte offset. The publication itself is this owner's alone.
-: PUBLISH-UNIT ( ptr u8 n ptr u8 n -- )
-   native-unit-publish ;
-
-: IMPORT-UNIT ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
-   {: code:ptr codeu:n recs:ptr recn:n calls:ptr callu:n addrs:ptr addru:n :}
-   \ Without code there are no relocation sites. Namespace rows still publish;
-   \ a file with only DATA effects has no dictionary span either.
-   codeu 0= if
-      callu 0<> addru 0<> or if E-NPUB-RELOC throw then
-      recn 0= if exit then
-   then
-   cp@ {: base:n :}
-   code codeu recs recn PUBLISH-UNIT
-   callu 0 ?do calls i cells + @ base + RELOC-EXTERNAL loop
-   addru 0 ?do addrs i cells + @ base + RELOC-ADDR loop ;
 
 : CODE-CEILING ( -- n )
    dbase@ REGION + CODE-RESERVE - ;
@@ -160,25 +138,16 @@ create TRAILER TRAILER-BYTES allot
    fn slot fn - CODE-SPAN:EXACT idx PUBLISH-REC
    cell slot TRAILER-PLACE ;
 
-: UNIT-NOTIFY ( n n n -- ) {: idx:n fn:n size:n :}
-   UNIT-ARMED @ if idx fn size UNIT-OBSERVER @ execute then ;
-
 : COMMIT-HELD ( -- )
    HELD-DEFER @ 0<> if
       HELD-IDX @ HELD-FN @ HELD-SIZE @ HELD-DEFER @ COMMIT-DEFER exit
    then
    HELD-IDX @ HELD-FN @ HELD-SIZE @ COMMIT ;
 
-\ The unit observer is the last callback; checker writes follow the commit.
-: NOTIFY-HELD ( -- )
-   HELD-IDX @ HELD-FN @ HELD-SIZE @ UNIT-NOTIFY
-   0 CHECKER-OWNER:WRITE-WINDOW ;
-
 \ A take TAKE refuses is its own to abandon; one it made is abandoned here.
 : COMMIT-OWNED-BODY ( -- )
+   0 CHECKER-OWNER:WRITE-WINDOW
    HELD-FN @ NHOST:TAKE
-   [: NOTIFY-HELD ;] catch {: notify-rc:n :}
-   notify-rc 0<> if NHOST:ABANDON-TAKEN notify-rc throw then
    [: COMMIT-HELD ;] catch {: rc:n :}
    rc 0<> if NHOST:ABANDON-TAKEN rc throw then
    NHOST:PUBLISH-TAKEN ;
@@ -376,20 +345,6 @@ public
    entry recorded idx PUBLISH-REC
    idx APPEND-PENDING
    idx ;
-
-: IMPORT-FILE-UNIT ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
-   IMPORT-UNIT ;
-
-: WITH-UNIT ( [ n n n -- ] [ -- ] -- )
-   {: observer q :}
-   UNIT-ARMED @ if E-NPUB-PENDING throw then
-   UNIT-OBSERVER @ UNIT-PRIOR-OBSERVER !
-   observer UNIT-OBSERVER !
-   1 UNIT-ARMED !
-   q catch {: rc:n :}
-   0 UNIT-ARMED !
-   UNIT-PRIOR-OBSERVER @ UNIT-OBSERVER !
-   rc 0<> if rc throw then ;
 
 seal-package
 ;package

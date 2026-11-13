@@ -3,7 +3,6 @@
 require src/habu/layout.f
 require src/habu/aot-decl.f              \ AOT-WINDOW, the XT-offset rows TRANSLATE-ROWS rewrites
 require src/habu/native-observer-cells.f
-require src/habu/native-observer-extension.f
 require src/habu/native-host-cells.f
 
 package NATIVE-LAYOUT
@@ -30,7 +29,6 @@ create SLOTS
    BPWBASE-CELL ,                       1 ,
    LASTC-CELL ,                         0 ,
    NATIVE-OBS-CELLS:HOST-INVALIDATE ,   0 ,
-   NATIVE-OBS-EXT:CAPTURE-INVALIDATE , 0 ,
    NATIVE-HOST-CELLS:SELECT ,           0 ,
    \ The origin record's three cells, which no constant names.
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + ,       0 ,
